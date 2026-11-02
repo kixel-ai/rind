@@ -74,6 +74,8 @@
           # only unmodified, so its 64-bit launcher runs as shipped in an FHS
           # sandbox for its /lib64 loader, rather than patched for Nix. The
           # kit's `sde` launcher is 32-bit; `sde64` takes the same arguments.
+          # Ubuntu's AppArmor denies the sandbox its user namespace until
+          # `kernel.apparmor_restrict_unprivileged_userns=0`, as x86-cpu.yml sets.
           sde = pkgs.buildFHSEnv {
             name = "sde";
             runScript = "${
