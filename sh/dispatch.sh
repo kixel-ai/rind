@@ -59,6 +59,8 @@ declare -A scope=(
     # s2n-bignum's proofs assume separate input and output, so the kernels
     # rind runs in place are walked, after planting faults in each.
     [inplace]='^(rind/src/low/|admin/parse-asm/)'
+    # COMPATIBILITY.md is generated from the CPU scans.
+    [compat]='^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))'
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
@@ -80,6 +82,7 @@ declare -A tools=(
     [license]='find grep'
     [cross]='cargo'
     [inplace]='python3'
+    [compat]='python3'
     [quest]='quest'
     [gh]='actionlint yq jq'
     [hooks]='shellcheck'
@@ -91,8 +94,8 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs cross deny license inplace quest gh hooks shell nix) ;;
-    fix) modules=(rs nix) ;;
+    check) modules=(rs cross deny license inplace compat quest gh hooks shell nix) ;;
+    fix) modules=(rs compat nix) ;;
 esac
 
 selected=()
@@ -182,6 +185,8 @@ for module in "${selected[@]}"; do
         check:license) bash admin/scan-license ;;
         # It finds the generated kernels relative to its own directory.
         check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
+        check:compat) python3 admin/x86-cpu markdown-table | diff -u COMPATIBILITY.md - ;;
+        fix:compat) python3 admin/x86-cpu markdown-table >COMPATIBILITY.md ;;
         check:gh)
             actionlint
             sh/alert.sh check

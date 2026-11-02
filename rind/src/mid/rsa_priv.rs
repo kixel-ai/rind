@@ -82,11 +82,15 @@ impl RsaPrivateKey {
         // here rather than by every signature's fault check. Each relation
         // is computed in full, and only the verdict is revealed.
         let pq: RsaPosIntModN = low::PosInt::mul(&p, &q);
+        // q may be above p, and Montgomery multiplication takes operands
+        // below the modulus.
+        let q_wide: RsaPosIntModN = q.widen();
+        let q_p = q_wide.reduce(&p, &p_montifier);
         let consistent = exponents_agree
             & pq.equals(&public.n)
             & iqmp.less_than(&p)
             // Out of Montgomery form: iqmp * R * q * R^-1 = iqmp * q (mod p).
-            & iqmp_mont.mont_mul(&q, &p, p0).equals(&p.fixed_one());
+            & iqmp_mont.mont_mul(&q_p, &p, p0).equals(&p.fixed_one());
         if !low::ct::into_public(consistent) {
             return Err(KeyFormatError::MismatchedRsaComponents.into());
         }

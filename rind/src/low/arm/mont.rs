@@ -15,6 +15,7 @@
 //! `-m^-1 mod 2^64` is `-m^-1 mod 2^32`, as aws-lc's two-word `n0` holds it.
 
 use super::cpu::HaveNeon;
+use crate::low::ct;
 
 unsafe extern "C" {
     #[link_name = aws_lc_symbol!("bn_mul_mont_nohw")]
@@ -61,6 +62,16 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
         // of eight, they read `n0`'s low word, and the token proves the CPU
         // has NEON.
         Some(_) if num.is_multiple_of(8) => unsafe { bn_mul8x_mont_neon(rp, ap, bp, np, &n0, num) },
+        // Where m's top 32 bits are zero, as for a 2056-bit key's 1028-bit
+        // primes, so are x's and y's, and the integer routine runs a word
+        // narrower, as aws-lc's does at the modulus's own width; one more
+        // reduction step then divides by the word it left out. The modulus's
+        // width is public: the key's encoding gives it.
+        _ if k > 1 && ct::into_public(m[k - 1] >> 32 == 0) => {
+            // SAFETY: as above, for `num - 1` words, at least two.
+            unsafe { bn_mul_mont_nohw(rp, ap, bp, np, &n0, num - 1) };
+            reduce_limb(z, m, n0 as u32);
+        }
         // SAFETY: as above, from two words.
         _ => unsafe {
             bn_mul_mont_nohw(rp, ap, bp, np, &n0, num);
@@ -72,6 +83,40 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
 /// length of each and `n0` is `-m^-1 mod 2^64`.
 pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
     mont_mul(z, x, x, m, n0);
+}
+
+/// `z := z / 2^32 mod m`, for `z` below the odd `m`, whose top 32 bits are
+/// zero, and ignoring the top 32 bits of `z`; `n0` is `-m^-1 mod 2^32`.
+///
+/// One step of Montgomery reduction: adding `u * m` for `u = z * n0 mod 2^32`
+/// clears the low limb, and `(z + u * m) / 2^32 < (m + (2^32 - 1) m) / 2^32
+/// = m`, so no subtraction follows.
+fn reduce_limb(z: &mut [u64], m: &[u64], n0: u32) {
+    const LOW: u64 = u32::MAX as u64;
+    let k = m.len();
+    z[k - 1] &= LOW;
+    let u = u64::from((z[0] as u32).wrapping_mul(n0));
+
+    // Each word's two limbs of `z + u * m`, the low then the high, each at
+    // most (2^32 - 1)^2 + 2 (2^32 - 1) = 2^64 - 1. Wrapping, as a debug
+    // build's overflow check would branch on the values. The sum moves down
+    // a limb, so each word is written once the next word's low limb is known.
+    let (mut carry, mut high) = (0, 0);
+    for j in 0..k {
+        let lo = u
+            .wrapping_mul(m[j] & LOW)
+            .wrapping_add(z[j] & LOW)
+            .wrapping_add(carry);
+        let hi = u
+            .wrapping_mul(m[j] >> 32)
+            .wrapping_add(z[j] >> 32)
+            .wrapping_add(lo >> 32);
+        if let Some(below) = j.checked_sub(1) {
+            z[below] = high | lo << 32;
+        }
+        (high, carry) = (hi & LOW, hi >> 32);
+    }
+    z[k - 1] = high;
 }
 
 #[cfg(test)]
