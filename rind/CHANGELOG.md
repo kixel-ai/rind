@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/moq-dev/rind/compare/rind-v0.1.6...rind-v0.1.7) - 2026-11-02
+
+### Fixed
+
+- clear the nightly quality lints and verify nightly passes on main ([#212](https://github.com/moq-dev/rind/pull/212))
+- wipe only what a returned value owns ([#221](https://github.com/moq-dev/rind/pull/221))
+- *(armv7)* stop wiping RSA per-call scratch ([#216](https://github.com/moq-dev/rind/pull/216))
+
+### Other
+
+- *(bench)* audit every algorithm's speed against aws-lc-rs, ring, and other sources ([#191](https://github.com/moq-dev/rind/pull/191))
+- run ctgrind in its own dev shell ([#218](https://github.com/moq-dev/rind/pull/218))
+- *(aarch64)* aws-lc's Montgomery multiplication at every RSA size ([#206](https://github.com/moq-dev/rind/pull/206))
+
 ## [0.1.6](https://github.com/moq-dev/rind/compare/rind-v0.1.5...rind-v0.1.6) - 2026-11-02
 
 ### Fixed
