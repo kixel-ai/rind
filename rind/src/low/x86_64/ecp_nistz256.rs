@@ -28,10 +28,11 @@ impl core::ops::Deref for P256GeneratorRow {
     }
 }
 
-/// Returns `row`'s point `index - 1`, or zeros for an `index` of 0, reading
-/// every point.
+/// Returns `row`'s point `index - 1`, or zeros for an `index` of 0 or above
+/// 64, reading every point.
+///
+/// `index` is secret, so not even a debug build asserts on it.
 pub(crate) fn p256_select_w7(row: &P256GeneratorRow, index: u8) -> [u64; 8] {
-    debug_assert!(index <= 64);
     let mut r = [0; 8];
     // SAFETY: `r` is one writable point and `row` 64 readable points, as
     // aligned as the routines load them. The AVX2 routine runs only where the
@@ -203,7 +204,7 @@ mod tests {
         }
 
         if HaveAvx2::check().is_some() {
-            for index in 0..=64 {
+            for index in 0..=255 {
                 let (mut sse2, mut avx2) = ([1; 8], [1; 8]);
                 // SAFETY: as in `p256_select_w7`, on a CPU with AVX2.
                 unsafe {
@@ -212,7 +213,7 @@ mod tests {
                 }
                 assert_eq!(sse2, avx2);
                 let want = match index {
-                    0 => [0; 8],
+                    0 | 65.. => [0; 8],
                     i => row.0[(i as usize - 1) * 8..][..8].try_into().unwrap(),
                 };
                 assert_eq!(sse2, want);
