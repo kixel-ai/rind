@@ -494,8 +494,7 @@ impl JacobianMontPoint {
                 result = Self::public_add_fast(&result, &tmp);
             }
             if *g_digit != 0 {
-                let mut tmp =
-                    AffineMontPoint::public_lookup(g_multiples, g_digit.unsigned_abs());
+                let mut tmp = AffineMontPoint::public_lookup(g_multiples, g_digit.unsigned_abs());
                 if *g_digit < 0 {
                     tmp.negate_y();
                 }
