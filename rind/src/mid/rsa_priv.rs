@@ -206,8 +206,11 @@ impl RsaPrivateKey {
         // (we don't support multiprime rsa)
 
         // iii. Let h = (m_1 - m_2) * qInv mod p.
+        // (m_2 < q may exceed p, so reduce it first.)
+        let m_2_wide: RsaPosIntModN = m_2.widen();
+        let m_2_p = m_2_wide.reduce(&self.p, &self.p_montifier);
         let h = m_1
-            .sub_mod(&m_2, &self.p)
+            .sub_mod(&m_2_p, &self.p)
             .mont_mul(&self.iqmp_mont, &self.p, self.p0);
 
         // iv.  Let m = m_2 + q * h.

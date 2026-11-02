@@ -968,6 +968,22 @@ mod tests {
         add_sub(a, b, true)
     }
 
+    /// `a * b`, big-endian.
+    fn mul(a: &[u8], b: &[u8]) -> Vec<u8> {
+        let mut out = vec![0u8; a.len() + b.len()];
+        for (i, x) in a.iter().rev().enumerate() {
+            let mut carry = 0;
+            for (j, y) in b.iter().rev().enumerate() {
+                let at = out.len() - 1 - i - j;
+                let sum = u32::from(out[at]) + u32::from(*x) * u32::from(*y) + carry;
+                out[at] = sum as u8;
+                carry = sum >> 8;
+            }
+            out[a.len() - 1 - i] = carry as u8;
+        }
+        trim(&out).to_vec()
+    }
+
     /// Each key breaks one relation between its components, which rind and
     /// aws-lc-rs both refuse. Those that stay congruent but are unreduced
     /// are caught only by a range check.
@@ -1132,6 +1148,20 @@ mod tests {
         aws_lc_rs::rsa::KeyPair::from_der(der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(der).unwrap();
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
+    }
+
+    /// With q above p, `s mod q` can exceed `p + s mod p`, which a random
+    /// message reaches about once in a thousand signatures with this key.
+    /// `s = q * iqmp - 1` is 0 mod p and q - 1 mod q, the widest gap.
+    #[test]
+    fn signs_with_crt_half_above_p() {
+        let der = include_bytes!("rsa/rsa2048-q-above-p.der");
+        let key = Pkcs1::decode(der);
+        let private_key = SigningKey::from_pkcs1_der(der).unwrap();
+        let s = sub(&mul(&key.q, &key.iqmp), &[1]);
+        let m = private_key.0.public_key().public_op(PosInt::from_bytes(&s).unwrap());
+        let signature = private_key.0.private_op(&m.unwrap()).unwrap();
+        assert_eq!(trim(i2osp(&signature, &mut [0u8; 256]).unwrap()), s);
     }
 
     /// rind generated `d` mod (p - 1)(q - 1) before it reduced `d` mod
