@@ -16,7 +16,7 @@ set -e
     pending && /^(pub(\([^)]*\))? )?mod [A-Za-z0-9_]+ [{]$/ { pending = 0; intest = 1; next }
     /^#\[cfg\(test\)\]$/ { pending = 1 }
     !/^#\[/ { pending = 0 }
-    /crate::high/ || FILENAME ~ /\/src\/low\// && /crate::mid/ {
+    /(crate|super)::high/ || FILENAME ~ /\/src\/low\// && /(crate|super)::mid/ {
       printf "ERROR: %s:%d names a higher layer: %s\n", FILENAME, FNR, $0 > "/dev/stderr"
       errors++
     }
