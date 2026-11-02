@@ -14,9 +14,10 @@
 
 #![allow(missing_docs)]
 
+use ring::aead::quic;
+
 #[allow(deprecated)]
 use crate::{test, test_file};
-use ring::aead::quic;
 
 #[test]
 fn quic_aes_128() {

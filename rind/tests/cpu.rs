@@ -83,6 +83,7 @@ fn missing_feature_is_named() {
 fn upper_vector_state_left_clean() {
     use core::arch::asm;
     use core::arch::x86_64::{__cpuid_count, _mm256_zeroupper};
+
     use rind::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce};
     use rind::agreement::{self, X25519};
     use rind::digest::{SHA256, SHA512, digest, legacy::SHA1};

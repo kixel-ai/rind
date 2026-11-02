@@ -25,9 +25,7 @@ impl DecapKey {
         let _entry = low::Entry::new_secret();
         let mut seed = [0u8; 64];
         SystemRandom.fill(&mut seed)?;
-        let key = Self::keygen_internal(&seed);
-        low::zeroise(&mut seed);
-        Ok(key)
+        Ok(Self::keygen_internal(&seed))
     }
 
     /// Decapsulate ciphertext `c`, yielding a [`SharedSecret`].
@@ -140,12 +138,6 @@ impl AsRef<[u8; 1088]> for Ciphertext {
 
 /// A K-PKE message.
 pub(crate) struct Message(pub(crate) [u8; 32]);
-
-impl Drop for Message {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.0);
-    }
-}
 
 /// An ML-KEM shared secret.
 pub(crate) struct SharedSecret([u8; 32]);
