@@ -8,4 +8,3 @@ does not block it.
 ## Required
 
 - [Fastest at every algorithm](/quest/m2/speed/README.md) - every algorithm on every path as fast as any permissive source
-- [Coverage runs the pinned SDE](/quest/m2/coverage-sde.md) - coverage uses the flake's SDE like x86-cpu.yml

@@ -12,8 +12,11 @@
 use core::arch::x86_64::*;
 use core::mem;
 
+use super::aes_gcm_avx::AvxKernel;
 use super::aes_gcm_vaes::VaesKernel;
-use super::cpu::{HaveAesHardware, HaveAvx512ForAesGcm, HaveSsse3, HaveVaesAvx2ForAesGcm};
+use super::cpu::{
+    HaveAesHardware, HaveAvx512ForAesGcm, HaveAvxMovbeForAesGcm, HaveSsse3, HaveVaesAvx2ForAesGcm,
+};
 use super::ghash_nohw::NohwTable;
 use super::ghash_ssse3_x86_64::Ssse3Table;
 use crate::low;
@@ -58,6 +61,9 @@ pub(crate) enum GhashTable {
     /// VAES without AVX-512: the PCLMULQDQ path for short messages, and
     /// BoringSSL's 256-bit kernel for long ones.
     VaesAvx2(ClmulTable, VaesKernel),
+    /// AVX and MOVBE without VAES: the PCLMULQDQ path for short messages and
+    /// tails, and aws-lc's `aesni_gcm` routine for the rest.
+    Avx(ClmulTable, AvxKernel),
     Avx512(GhashTableAvx512),
     /// SSSE3's, which the table picks when the CPU lacks AES-NI or
     /// PCLMULQDQ.
@@ -79,6 +85,11 @@ impl GhashTable {
         }
         if let Some(token) = HaveVaesAvx2ForAesGcm::check() {
             return Self::VaesAvx2(ClmulTable::new(h, hw), VaesKernel::avx2(h, token));
+        }
+        if let Some(token) = HaveAvxMovbeForAesGcm::check() {
+            let table = ClmulTable::new(h, hw);
+            let kernel = AvxKernel::new(&table, token);
+            return Self::Avx(table, kernel);
         }
 
         Self::Clmul(ClmulTable::new(h, hw))
@@ -127,6 +138,17 @@ impl ClmulTable {
         }
 
         Self { powers, powers_xor }
+    }
+
+    /// H^1 to H^6 as aws-lc's `gcm_init_avx` lays them out, in the same
+    /// representation: each pair of powers, then a vector of their Karatsuba
+    /// middle terms, the lower power's in its low half.
+    pub(crate) fn aws_lc_htable(&self) -> [__m128i; 9] {
+        let [h1, h2, h3, h4, h5, h6, ..] = self.powers;
+        let [x1, x2, x3, x4, x5, x6, ..] = self.powers_xor;
+        // SAFETY: every x86_64 CPU has SSE2
+        let k = |lo, hi| unsafe { _mm_unpacklo_epi64(lo, hi) };
+        [h1, h2, k(x1, x2), h3, h4, k(x3, x4), h5, h6, k(x5, x6)]
     }
 
     /// Hashes `bytes` into `current`.
@@ -291,11 +313,13 @@ impl<'a> Ghash<'a> {
     /// `bytes` is zero-padded, if required.
     pub(crate) fn add(&mut self, bytes: &[u8]) {
         self.current = match self.table {
-            // SAFETY: only a `HaveAesHardware` token builds `table`, proving
-            // PCLMULQDQ.
-            GhashTable::Clmul(table) | GhashTable::VaesAvx2(table, _) => unsafe {
-                table.add(bytes, self.current)
-            },
+            GhashTable::Clmul(table)
+            | GhashTable::VaesAvx2(table, _)
+            | GhashTable::Avx(table, _) => {
+                // SAFETY: only a `HaveAesHardware` token builds `table`,
+                // proving PCLMULQDQ.
+                unsafe { table.add(bytes, self.current) }
+            }
             // SAFETY: avx512.token proves features were dynamically checked
             GhashTable::Avx512(avx512) => unsafe { avx512.add(bytes, self.current) },
             GhashTable::Ssse3(table) => {
@@ -327,6 +351,7 @@ impl<'a> Ghash<'a> {
         let table = match self.table {
             GhashTable::Clmul(table)
             | GhashTable::VaesAvx2(table, _)
+            | GhashTable::Avx(table, _)
             | GhashTable::Avx512(GhashTableAvx512 { clmul: table, .. }) => table,
             GhashTable::Ssse3(_) | GhashTable::Nohw(_) => return self.add(&block.to_be_bytes()),
         };

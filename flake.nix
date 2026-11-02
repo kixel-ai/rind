@@ -69,13 +69,14 @@
           armv7-cc = pkgs.pkgsCross.armv7l-hf-multiplatform.stdenv.cc;
           armv7-prefix = "${armv7-cc}/bin/${armv7-cc.targetPrefix}";
 
-          # Intel SDE, which `x86-cpu.yml` and `admin/x86-cpu` run to emulate
-          # each Intel CPU model. Its license allows use and redistribution
-          # only unmodified, so its 64-bit launcher runs as shipped in an FHS
-          # sandbox for its /lib64 loader, rather than patched for Nix. The
-          # kit's `sde` launcher is 32-bit; `sde64` takes the same arguments.
+          # Intel SDE, which `x86-cpu.yml`, `coverage.yml`, and `admin/x86-cpu`
+          # run to emulate Intel CPU models. Its license allows use and
+          # redistribution only unmodified, so its 64-bit launcher runs as
+          # shipped in an FHS sandbox for its /lib64 loader, rather than
+          # patched for Nix. The kit's `sde` launcher is 32-bit; `sde64` takes
+          # the same arguments.
           # Ubuntu's AppArmor denies the sandbox its user namespace until
-          # `kernel.apparmor_restrict_unprivileged_userns=0`, as x86-cpu.yml sets.
+          # `kernel.apparmor_restrict_unprivileged_userns=0`, as the workflows set.
           sde = pkgs.buildFHSEnv {
             name = "sde";
             runScript = "${
@@ -88,6 +89,14 @@
               }
             }/sde64";
           };
+
+          # Otherwise cargo exports the host's OpenSSL CA paths, which on
+          # Ubuntu lie under the /usr the SDE sandbox replaces, and the tests
+          # that load the system's roots find none. A shell hook, since `nix
+          # develop` keeps the caller's SSL_CERT_FILE over `env`.
+          sde-certs = ''
+            export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+          '';
         in
         {
           devShells = {
@@ -150,6 +159,25 @@
                 })
               ];
             };
+
+            # `coverage.yml` runs `admin/coverage` in it. On x86_64 Linux it
+            # adds `sde`, for the pass that covers the AVX-512 paths.
+            coverage = pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override { extensions = [ "llvm-tools" ]; })
+                # Its tests build with nixpkgs' rustc, whose instrumented
+                # binaries crash on exit, so the cache has no build. rind's
+                # coverage builds with the toolchain above instead.
+                (pkgs.cargo-llvm-cov.overrideAttrs { doCheck = false; })
+                # aws-lc-rs builds C.
+                pkgs.cmake
+                pkgs.pkg-config
+                pkgs.openssl
+              ]
+              ++ pkgs.lib.optionals (system == "x86_64-linux") [ sde ];
+
+              shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
+            };
           }
           # Linux only, since valgrind and qemu-user need a Linux host.
           // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
@@ -209,13 +237,7 @@
                 sde
               ];
 
-              # Otherwise cargo exports the host's OpenSSL CA paths, which on
-              # Ubuntu lie under the /usr the SDE sandbox replaces, and the
-              # tests that load the system's roots find none. A hook, since
-              # `nix develop` keeps the caller's SSL_CERT_FILE over `env`.
-              shellHook = ''
-                export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-              '';
+              shellHook = sde-certs;
             };
           };
 

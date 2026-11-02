@@ -5,6 +5,7 @@
 // generated-src/linux-aarch64/crypto/fipsmodule/armv8-mont.S, which aws-lc generates from crypto/fipsmodule/bn/asm/armv8-mont.pl.
 // Do not edit by hand.
 .cfi_startproc
+.cfi_remember_state
 	
 	tst	x5,#7
 	b.eq	.Lmont___bn_sqr8x_mont
@@ -224,10 +225,10 @@
 .cfi_def_cfa_offset	0
 	
 	ret
-.cfi_endproc
 .align	5
 .Lmont___bn_sqr8x_mont:
-.cfi_startproc
+.cfi_restore_state
+.cfi_remember_state
 	// Not adding  here because .Lmont___bn_sqr8x_mont is jumped to
 	// only from bn_mul_mont which has already signed the return address.
 	cmp	x1,x2
@@ -1013,10 +1014,9 @@
 	// x30 is popped earlier
 	
 	ret
-.cfi_endproc
 .align	5
 .Lmont___bn_mul4x_mont:
-.cfi_startproc
+.cfi_restore_state
 	// Not adding  here because .Lmont___bn_mul4x_mont is jumped to
 	// only from bn_mul_mont or __bn_mul8x_mont which have already signed the
 	// return address.
