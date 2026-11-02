@@ -214,7 +214,7 @@ row from [run 41472308771], the other SHA, HMAC, and HKDF cells from
 | PBKDF2 | 0.91 rind | 0.93 | 0.98 |
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
 | Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
-| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | ? fiat-crypto ✓ + rind ⚡ + Graviola ⚡ |
+| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | 0.58 fiat-crypto ✓ + rind ⚡ + Graviola ⚡ |
 | P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.03** fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | 0.64 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.04** fiat-crypto ✓ + rind ⚡ |
 | ML-KEM-768 | **1.04** s2n-bignum ✓ + Graviola ⚡ | 0.93 | **1.05** libcrux-ml-kem ✓ |
