@@ -40,7 +40,11 @@ impl DecapsulationKey {
 
     /// Returns the encapsulation key to send to the peer.
     pub fn public_key(&self) -> EncapsulationKey {
-        EncapsulationKey::wrap(self.0.encapsulation_key())
+        let key = self.0.encapsulation_key();
+        EncapsulationKey {
+            bytes: key.as_bytes(),
+            key,
+        }
     }
 
     /// Recovers the secret the peer encapsulated in `ciphertext`, consuming this key.
@@ -78,15 +82,9 @@ impl EncapsulationKey {
         match algorithm.id {
             AlgorithmId::MlKem768 => {
                 let bytes = bytes.try_into().map_err(|_| KeyFormatError::WrongLength)?;
-                mlkem768::EncapKey::from_bytes(bytes).map(Self::wrap)
+                let key = mlkem768::EncapKey::from_bytes(bytes)?;
+                Ok(Self { key, bytes: *bytes })
             }
-        }
-    }
-
-    fn wrap(key: mlkem768::EncapKey) -> Self {
-        Self {
-            bytes: key.as_bytes(),
-            key,
         }
     }
 
@@ -111,6 +109,16 @@ impl fmt::Debug for EncapsulationKey {
             .finish()
     }
 }
+
+// Moving a key calls `memcpy`, which from 8 KiB is glibc's `rep movsb` on
+// AVX2 CPUs without FSRM. CodSpeed's simulator charges that per byte, which
+// would swamp real changes in the ML-KEM benchmarks.
+const _: () = {
+    assert!(size_of::<EncapsulationKey>() < 8192);
+    assert!(size_of::<Result<EncapsulationKey, Error>>() < 8192);
+    assert!(size_of::<DecapsulationKey>() < 8192);
+    assert!(size_of::<Result<DecapsulationKey, Error>>() < 8192);
+};
 
 /// A ciphertext carrying an encapsulated secret, to send to the key's holder.
 #[derive(Clone, Debug)]

@@ -15,6 +15,9 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
+    // SHA-3 and Poly1305 buffer through these methods, and 32-bit ARM builds
+    // neither.
+    #[cfg(not(target_arch = "arm"))]
     pub(crate) const fn used(&self) -> usize {
         self.used
     }
@@ -28,6 +31,40 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
+    /// Adds `bytes`, passing each run of whole blocks to `blocks` in order and
+    /// holding the rest.
+    pub(crate) fn update(&mut self, bytes: &[u8], blocks: impl FnMut(&[u8])) {
+        let used = self.used;
+        // A short update, such as a one-byte one, only copies. Storing
+        // `used` first, and leaving blocks to another function, lets it
+        // save no registers and tail-call the copy.
+        if bytes.len() < N - used {
+            self.used = used + bytes.len();
+            self.buffer[used..used + bytes.len()].copy_from_slice(bytes);
+        } else {
+            self.complete_blocks(bytes, blocks);
+        }
+    }
+
+    #[inline(never)]
+    fn complete_blocks(&mut self, mut bytes: &[u8], mut blocks: impl FnMut(&[u8])) {
+        let used = self.used;
+        if used > 0 {
+            let (head, rest) = bytes.split_at(N - used);
+            self.buffer[used..].copy_from_slice(head);
+            blocks(&self.buffer);
+            bytes = rest;
+        }
+
+        let (whole, rest) = bytes.split_at(bytes.len() - bytes.len() % N);
+        if !whole.is_empty() {
+            blocks(whole);
+        }
+        self.buffer[..rest.len()].copy_from_slice(rest);
+        self.used = rest.len();
+    }
+
+    #[cfg(not(target_arch = "arm"))]
     pub(crate) fn add_leading<'a>(&mut self, bytes: &'a [u8]) -> &'a [u8] {
         if self.used == 0 {
             return bytes;
@@ -41,6 +78,7 @@ impl<const N: usize> Blockwise<N> {
         returned
     }
 
+    #[cfg(not(target_arch = "arm"))]
     pub(crate) fn take(&mut self) -> Option<[u8; N]> {
         if self.used == N {
             self.used = 0;
@@ -65,6 +103,7 @@ impl<const N: usize> Blockwise<N> {
         &self.buffer[..self.used]
     }
 
+    #[cfg(not(target_arch = "arm"))]
     pub(crate) fn add_trailing(&mut self, trailing: &[u8]) {
         self.buffer[..trailing.len()].copy_from_slice(trailing);
         self.used += trailing.len();
