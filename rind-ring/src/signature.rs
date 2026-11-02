@@ -9,8 +9,8 @@ use core::fmt;
 
 use zeroize::Zeroizing;
 
-use crate::{der, error, pkcs8, rand, sealed};
-
+/// An RSA public key as its big-endian modulus and exponent.
+pub use crate::rsa::PublicKeyComponents as RsaPublicKeyComponents;
 pub use crate::rsa::{
     RsaParameters,
     padding::{
@@ -26,9 +26,7 @@ pub use crate::rsa::{
         RSA_PSS_2048_8192_SHA256, RSA_PSS_2048_8192_SHA384, RSA_PSS_2048_8192_SHA512,
     },
 };
-
-/// An RSA public key as its big-endian modulus and exponent.
-pub use crate::rsa::PublicKeyComponents as RsaPublicKeyComponents;
+use crate::{der, error, pkcs8, rand, sealed};
 
 /// An RSA key pair, for signing.
 pub type RsaKeyPair = crate::rsa::KeyPair;

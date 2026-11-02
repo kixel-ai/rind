@@ -12,7 +12,6 @@
 // HACL*'s verified Poly1305, Wycheproof, and aws-lc-rs.
 
 use super::cpu::HaveNeon;
-use crate::low::{Zeroable, zeroise_value};
 
 /// Two field elements in 26-bit limbs, interleaved: lane 0 in the even words
 /// and lane 1 in the odd ones. The last two words only pad it to 16 bytes,
@@ -185,8 +184,6 @@ pub(crate) struct Poly1305Neon {
     key: [u8; 16],
 }
 
-impl Zeroable for Poly1305Neon {}
-
 impl Poly1305Neon {
     pub(crate) fn new(key: &[u8; 32], _: HaveNeon) -> Self {
         let mut r = Fe1305x2 { v: [0; 12] };
@@ -283,11 +280,5 @@ impl Poly1305Neon {
         let mut mac = [0u8; 16];
         fe1305x2_tobytearray(&mut mac, &self.h);
         mac
-    }
-}
-
-impl Drop for Poly1305Neon {
-    fn drop(&mut self) {
-        zeroise_value(self);
     }
 }
