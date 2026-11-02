@@ -28,31 +28,15 @@ jobs:
 
       - uses: ./.github/actions/vectors
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-          components: llvm-tools
+      - uses: ./.github/actions/nix
 
-      - name: Install valgrind on Linux
+      # The dev shell's `sde` runs Intel's binaries in a bubblewrap sandbox,
+      # which needs the unprivileged user namespaces Ubuntu's AppArmor denies
+      # an unprofiled program.
+      - name: Allow user namespaces
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y valgrind
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
-      - uses: actions/checkout@v4
-        if: runner.os == 'Linux'
-        with:
-          repository: ctz/intel-sde
-          path: thirdparty/intel-sde
-          persist-credentials: false
-
-      - name: Set up Intel SDE
-        if: runner.os == 'Linux'
-        run: |
-          echo "PATH=$(pwd)/thirdparty/intel-sde:$PATH" >> "$GITHUB_ENV"
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       # The summary table in the log is the report.
       - name: Measure coverage
-        run: ./admin/coverage
+        run: nix develop .#coverage --command ./admin/coverage

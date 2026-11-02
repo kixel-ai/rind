@@ -169,6 +169,17 @@ impl HaveVaesAvx2ForAesGcm {
     }
 }
 
+/// Proof that the CPU has AVX and MOVBE, with AES-NI and PCLMULQDQ, which
+/// aws-lc's `aesni_gcm` routine uses.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvxMovbeForAesGcm(());
+
+impl HaveAvxMovbeForAesGcm {
+    pub(crate) fn check() -> Option<Self> {
+        has(AES | PCLMULQDQ | SSSE3 | SSE41 | AVX | MOVBE).then_some(Self(()))
+    }
+}
+
 /// Token type reflecting the check for CPU features needed for AVX512-ML-KEM
 ///
 /// A value of this type is proof that the CPU dynamic feature check has happened.
@@ -323,6 +334,7 @@ const AVX512VBMI: u32 = 1 << 13;
 const AVX512VBMI2: u32 = 1 << 14;
 const SHA: u32 = 1 << 15;
 const SSE41: u32 = 1 << 16;
+const MOVBE: u32 = 1 << 17;
 const INTEL: u32 = 1 << 30;
 /// What rind's AVX2 kernels use, for [`HaveAvx2`].
 const AVX2_KERNELS: u32 = AVX | AVX2 | BMI2 | POPCNT | SSSE3;
@@ -396,6 +408,7 @@ fn detect() -> u32 {
         | detect!("avx512vbmi", AVX512VBMI)
         | detect!("avx512vbmi2", AVX512VBMI2)
         | detect!("sha", SHA)
+        | detect!("movbe", MOVBE)
 }
 
 #[cfg(not(any(debug_assertions, rind_cpu_disable)))]
@@ -476,6 +489,9 @@ mod tests {
         }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_VAES_AES_GCM") {
             assert_eq!(HaveVaesAvx2ForAesGcm::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX_MOVBE_AES_GCM") {
+            assert_eq!(HaveAvxMovbeForAesGcm::check().is_some(), expected == "1");
         }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX512_AES_GCM") {
             assert_eq!(HaveAvx512ForAesGcm::check().is_some(), expected == "1");
