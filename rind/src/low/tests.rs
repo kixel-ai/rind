@@ -54,6 +54,36 @@ fn ct_equal_equiv(a: &[u8], b: &[u8]) {
     assert_eq!(a == b, super::ct_equal(a, b));
 }
 
+// ld64 splits a Mach-O object into atoms at each CFI frame, and can
+// dead-strip one that is reached only by branches with no relocation, such as
+// a routine joined into another's naked function.
+#[test]
+fn apple_routines_open_one_cfi_frame() {
+    fn visit(dir: &std::path::Path, files: &mut usize) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                visit(&path, files);
+            } else if path.to_str().unwrap().ends_with(".apple.s") {
+                let text = std::fs::read_to_string(&path).unwrap();
+                let frames = text
+                    .lines()
+                    .filter(|line| line.trim() == ".cfi_startproc")
+                    .count();
+                assert!(frames <= 1, "{}: {frames} CFI frames", path.display());
+                *files += 1;
+            }
+        }
+    }
+
+    let mut files = 0;
+    visit(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/src/low").as_ref(),
+        &mut files,
+    );
+    assert_ne!(files, 0);
+}
+
 mod model {
     pub(super) fn bignum_mux(p: u64, z: &mut [u64], x_if_p: &[u64], y_if_not_p: &[u64]) {
         if p > 0 {
