@@ -649,7 +649,12 @@ impl<const N: usize> PosInt<N> {
         let mut r = Self::zero();
         r.used = self.used;
         // TODO: could pull in bignum_sub for this.
-        low::bignum_optsub(r.as_mut_words(), self.as_words(), b.as_words(), 1);
+        low::bignum_optsub(
+            r.as_mut_words(),
+            self.as_words(),
+            b.as_words_with_len_of(self),
+            1,
+        );
         r
     }
 
@@ -1027,6 +1032,13 @@ mod tests {
             u64::from_be_bytes(out[8..16].try_into().unwrap()),
             LOW_ORDER_WORD
         );
+    }
+
+    /// A narrower subtrahend's borrow runs through the wider value's words.
+    #[test]
+    fn sub_narrower() {
+        let w = PosInt::<2>::from_words(&[1, 1]).unwrap();
+        assert_eq!(w.sub(&PosInt::word(3)).as_words(), &[u64::MAX - 1, 0]);
     }
 
     #[test]
