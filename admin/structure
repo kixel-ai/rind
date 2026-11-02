@@ -12,28 +12,51 @@ set -e
   files=$(find rind/src/low rind/src/mid -name '*.rs' | sort)
   awk '
     # Whether a cfg predicate holds only under test.
-    function test_only(p,    depth, i, c, arg) {
+    function test_only(p,    args, n, i, depth, c, arg) {
       gsub(/[ \t]/, "", p)
       if (p == "test") return 1
-      if (p !~ /^all\(.*\)$/) return 0
-      p = substr(p, 5, length(p) - 5) ","
-      depth = 0; arg = ""
-      for (i = 1; i <= length(p); i++) {
+      if (p !~ /^(all|any)\(.*\)$/) return 0
+      n = 0; depth = 0; arg = ""
+      for (i = 5; i < length(p); i++) {
         c = substr(p, i, 1)
-        if (c == "," && depth == 0) {
-          if (test_only(arg)) return 1
-          arg = ""
-          continue
-        }
+        if (c == "," && depth == 0) { args[++n] = arg; arg = ""; continue }
         if (c == "(") depth++
         if (c == ")") depth--
         arg = arg c
       }
-      return 0
+      if (arg != "") args[++n] = arg
+      for (i = 1; i <= n; i++) {
+        if (p ~ /^all/ && test_only(args[i])) return 1
+        if (p ~ /^any/ && !test_only(args[i])) return 0
+      }
+      return p ~ /^any/ && n > 0
+    }
+
+    # The code in s, without comments, strings, or char literals; a block comment
+    # or string may continue across lines.
+    function code(s,    out) {
+      out = ""
+      while (s != "") {
+        if (incomment) {
+          if (!match(s, /\*\//)) return out
+          s = substr(s, RSTART + 2); incomment = 0
+        } else if (instr) {
+          if (!match(s, /^([^"\\]|\\.)*"/)) return out
+          s = substr(s, RLENGTH + 1); instr = 0; out = out "\"\""
+        }
+        if (!match(s, /["\/\047]/)) return out s
+        out = out substr(s, 1, RSTART - 1); s = substr(s, RSTART)
+        if (s ~ /^"/) { instr = 1; s = substr(s, 2) }
+        else if (s ~ /^\/\//) return out
+        else if (s ~ /^\/\*/) { incomment = 1; s = substr(s, 3) }
+        else if (match(s, /^\047([^\047\\]|\\.)\047/)) { out = out "\047 \047"; s = substr(s, RLENGTH + 1) }
+        else { out = out substr(s, 1, 1); s = substr(s, 2) }
+      }
+      return out
     }
 
     FNR == 1 {
-      pending = 0; skip = -1; attr = ""; inuse = 0; carry = ""
+      pending = 0; skip = -1; attr = ""; inuse = 0; carry = ""; instr = 0; incomment = 0
       base = FILENAME; sub(/\/mod\.rs$/, "", base); sub(/\.rs$/, "", base)
       exempt = 0
       for (b in testmod) if (FILENAME == b ".rs" || index(FILENAME, b "/") == 1) exempt = 1
@@ -47,13 +70,19 @@ set -e
     skip >= 0 && /[^ \t]/ {
       match($0, /^ */)
       if (RLENGTH > skip) next
-      if (RLENGTH == skip && $0 ~ /^ *[])}][;,]?[ \t]*$/) { skip = -1; next }
+      if (RLENGTH == skip && $0 ~ /^ *[])}][;,]?[ \t]*(\/[\/*].*)?$/) { skip = -1; next }
       if (RLENGTH == skip) next
       skip = -1
     }
     skip >= 0 { next }
 
-    { line = $0 }
+    # Lex only lines that may hold a comment or an unclosed string.
+    {
+      line = $0
+      if (instr || incomment || line ~ /[\/\047]|\\"/) line = code(line)
+      else if (index(line, "\"") && gsub(/"/, "\"", line) % 2) line = code(line)
+      else if (index(line, "\"") && line ~ /high|mid|use|::/) gsub(/"[^"]*"/, "\"\"", line)
+    }
 
     # A cfg attribute may wrap; judge it whole.
     attr != "" || line ~ /^[ \t]*#\[cfg\(/ {
@@ -63,18 +92,6 @@ set -e
       if (test_only(pred)) pending = 1
       sub(/^[^]]*\)\]/, "", attr)
       line = attr; attr = ""
-    }
-
-    # Most lines can neither name a layer nor change what counts as test code.
-    !pending && !inuse && line !~ /high|mid|use|::/ {
-      if (line ~ /[^ \t]/) carry = ""
-      next
-    }
-
-    {
-      if (index(line, "\047")) gsub(/\047([^\047\\]|\\.)\047/, "\047 \047", line)
-      if (index(line, "\"")) gsub(/"([^"\\]|\\.)*"/, "\"\"", line)
-      if (index(line, "/")) { gsub(/\/\*([^*]|\*[^\/])*\*\//, "", line); sub(/\/\/.*/, "", line) }
     }
 
     pending && line ~ /^[ \t]*(#\[.*\])?[ \t]*$/ { next }
@@ -91,6 +108,11 @@ set -e
     }
 
     pass == 1 { next }
+
+    !inuse && line !~ /high|mid|use|::/ {
+      if (line ~ /[^ \t]/) carry = ""
+      next
+    }
 
     {
       if (line ~ /^[ \t]*(pub(\([^)]*\))?[ \t]+)?use[ \t]/) inuse = 1
