@@ -55,5 +55,4 @@ settled; don't ask them again. The chosen option is marked ✅.
 - [ML-KEM-768 encapsulation as fast as the fastest source](/quest/m2/speed/mlkem-encaps.md) - armv7 1.05x and aarch64 1.04x today
 - [x86_64 RSA with AVX-512 IFMA](/quest/m2/speed/x86-rsa-ifma.md) - aws-lc's AVX-512 RSA is up to 3.56x faster
 - [aarch64 RSA on a 5-bit exponent window](/quest/m2/speed/aarch64-rsa-window.md) - the window x86_64 gained in #224
-- [The AES-GCM bench times decryption](/quest/m2/speed/aes-gcm-open-bench.md) - open rows beside seal rows on every tier
 - [Imported aws-lc routines keep their alignment](/quest/m2/speed/import-alignment.md) - restore `.align` before carried routines if it measures faster
