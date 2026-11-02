@@ -361,7 +361,7 @@ impl AffineMontPoint {
 
     /// `scalar * G`, by s2n-bignum's `p256_scalarmulbase` over the
     /// generator table.
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(not(target_arch = "x86_64"))]
     fn base_multiply(scalar: &Scalar) -> Self {
         let mut xy = [0; 8];
         low::p256_scalarmulbase(&mut xy, &scalar.0, &precomp::CURVE_GENERATOR_PRECOMP);
@@ -946,7 +946,7 @@ type AffineMontPointTable = [low::P256GeneratorRow; 37];
 /// 43 rows of the 32 multiples `i * 2^(6 * j) * G`, one row per 6-bit window.
 ///
 /// 43 := 256 / 6 + 1, as Booth recoding carries into a window above the top bit.
-#[cfg(target_arch = "aarch64")]
+#[cfg(not(target_arch = "x86_64"))]
 type AffineMontPointTable = [[u64; 256]; 43];
 
 const CURVE_A_MONT: FieldElement = FieldElement([
