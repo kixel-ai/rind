@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8](https://github.com/moq-dev/rind/compare/rind-v0.1.7...rind-v0.1.8) - 2026-11-02
+
+### Fixed
+
+- *(rsa)* sign with keys whose q is above p ([#242](https://github.com/moq-dev/rind/pull/242))
+
+### Other
+
+- *(aarch64)* aws-lc's SHA-256 routine for the SHA-256 instructions ([#231](https://github.com/moq-dev/rind/pull/231))
+- *(aarch64)* aws-lc's Montgomery multiplication for 1024- and 2048-bit moduli ([#232](https://github.com/moq-dev/rind/pull/232))
+- *(mlkem)* ML-KEM-768 encapsulation without redundant Keccak-f and compression work ([#233](https://github.com/moq-dev/rind/pull/233))
+- *(aes-gcm)* keep x86_64's per-call blocks in vector registers ([#229](https://github.com/moq-dev/rind/pull/229))
+
 ## [0.1.7](https://github.com/moq-dev/rind/compare/rind-v0.1.6...rind-v0.1.7) - 2026-11-02
 
 ### Fixed

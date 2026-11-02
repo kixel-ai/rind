@@ -66,10 +66,16 @@ pub static SHA512_256: Algorithm = Algorithm {
 
 /// Hashes `data` in one go.
 pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
-    // A `State` rather than a `Context`, which would wipe this call's copy.
-    let mut state = State::new(algorithm);
-    state.update(data);
-    state.finish()
+    match algorithm.id {
+        Id::Sha1 => LegacySha1::hash(data),
+        Id::Sha256 => Sha256::hash(data),
+        Id::Sha384 => Sha384::hash(data),
+        Id::Sha512 => Sha512::hash(data),
+        Id::Sha512_256 => Digest::new(
+            &SHA512_256,
+            &sha2::Sha512_256Context::truncate(&sha2::Sha512_256Context::INITIAL.finish_with(data)),
+        ),
+    }
 }
 
 /// An in-progress hash computation, wiped on drop.
@@ -111,12 +117,12 @@ impl State {
         }
     }
 
-    fn finish(self) -> Digest {
+    fn finish(&self) -> Digest {
         match self {
-            Self::Sha1(ctx) => HashContext::finish(ctx),
-            Self::Sha256(ctx) => HashContext::finish(ctx),
-            Self::Sha384(ctx) => HashContext::finish(ctx),
-            Self::Sha512(ctx) => HashContext::finish(ctx),
+            Self::Sha1(ctx) => ctx.finish(),
+            Self::Sha256(ctx) => ctx.finish(),
+            Self::Sha384(ctx) => ctx.finish(),
+            Self::Sha512(ctx) => ctx.finish(),
             Self::Sha512_256(ctx) => Digest::new(&SHA512_256, &ctx.finish()),
         }
     }
@@ -136,9 +142,8 @@ impl Context {
     }
 
     /// Returns the digest of the message.
-    // Finishes a copy: `Drop` forbids moving the state out of `self`.
     pub fn finish(self) -> Digest {
-        self.0.clone().finish()
+        self.0.finish()
     }
 }
 
