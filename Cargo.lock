@@ -2905,7 +2905,6 @@ dependencies = [
  "libcrux-aes",
  "libcrux-hacl-rs",
  "libcrux-macros",
- "libcrux-ml-kem",
  "libcrux-p256",
  "libcrux-poly1305",
  "libcrux-traits",

@@ -11,8 +11,8 @@ cfg_if::cfg_if! {
         pub(super) mod aes_gcm;
         #[path = "arm/ed25519.rs"]
         pub(super) mod ed25519;
-        #[path = "arm/mlkem768.rs"]
         pub(super) mod mlkem768;
+        pub(super) mod sha3;
         #[path = "arm/p256.rs"]
         pub(super) mod p256;
         #[path = "arm/rsa_priv.rs"]
