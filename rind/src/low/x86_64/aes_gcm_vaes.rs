@@ -7,6 +7,8 @@
 //! testing in BoringSSL and Linux, and on rind's tests of them against the
 //! portable GHASH, Wycheproof, and aws-lc-rs. Both support in-place use.
 
+use core::arch::x86_64::*;
+
 use super::aes::HwKey;
 use super::cpu::{HaveAvx512ForAesGcm, HaveVaesAvx2ForAesGcm};
 use super::ghash::Ghash;
@@ -65,8 +67,7 @@ impl VaesKernel {
         ghash: &mut Ghash<'_>,
         inout: &mut [u8],
     ) {
-        let mut counter = *y0;
-        add_to_counter(&mut counter, 1);
+        let counter = add_to_counter(y0, 1);
 
         // The AVX2 kernel takes only whole blocks, so a partial last one is
         // done here; the AVX-512 kernel masks it.
@@ -105,14 +106,13 @@ impl VaesKernel {
                     ),
                 }
             }
-            ghash.set_xi(xi);
+            ghash.set_xi(&xi);
         }
 
         if !partial.is_empty() {
             // The kernel took `bulk.len() / 16` counter blocks, modulo 2^32
             // as GCM increments them.
-            add_to_counter(&mut counter, (bulk.len() / 16) as u32);
-            let mut keystream = counter;
+            let mut keystream = add_to_counter(&counter, (bulk.len() / 16) as u32);
             key.encrypt_block(&mut keystream);
             if !ENC {
                 ghash.add(partial);
@@ -127,11 +127,24 @@ impl VaesKernel {
     }
 }
 
-/// Adds `n` to the big-endian 32-bit counter in the last four bytes of `block`.
-fn add_to_counter(block: &mut [u8; 16], n: u32) {
-    let [.., a, b, c, d] = block;
-    let ctr = u32::from_be_bytes([*a, *b, *c, *d]).wrapping_add(n);
-    [*a, *b, *c, *d] = ctr.to_be_bytes();
+/// `block` with `n` added to the big-endian 32-bit counter in its last four
+/// bytes.
+fn add_to_counter(block: &[u8; 16], n: u32) -> [u8; 16] {
+    let [.., a, b, c, d] = *block;
+    let ctr = u32::from_be_bytes([a, b, c, d]).wrapping_add(n);
+    let mut out = [0u8; 16];
+    // SAFETY: every x86_64 CPU has SSE2, and `block` and `out` are 16
+    // readable and writable bytes. One vector store, so the kernel's 16-byte
+    // load of it is forwarded.
+    unsafe {
+        let v = _mm_and_si128(
+            _mm_loadu_si128(block.as_ptr().cast()),
+            _mm_set_epi32(0, -1, -1, -1),
+        );
+        let ctr = _mm_slli_si128(_mm_cvtsi32_si128(i32::from_le_bytes(ctr.to_be_bytes())), 12);
+        _mm_storeu_si128(out.as_mut_ptr().cast(), _mm_or_si128(v, ctr));
+    }
+    out
 }
 
 /// A table the kernels load, aligned so no load splits a cache line.

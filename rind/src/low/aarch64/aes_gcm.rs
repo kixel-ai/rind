@@ -11,24 +11,54 @@ use super::aes256_gcm_enc_alt::aes256_gcm_enc_alt;
 use crate::low::ghash::{Ghash, GhashTable};
 use crate::low::{AesKey, aes_ctr};
 
-pub(crate) fn encrypt(
+/// Encrypts `cipher_inout` in place under `nonce`, and returns its tag.
+pub(crate) fn seal(
     key: &AesKey,
-    ghash: &mut Ghash<'_>,
-    initial_counter: &[u8; 16],
+    table: &GhashTable,
+    nonce: &[u8; 12],
     aad: &[u8],
     cipher_inout: &mut [u8],
-) {
-    cipher::<true>(key, ghash, initial_counter, aad, cipher_inout)
+) -> [u8; 16] {
+    tagged::<true>(key, table, nonce, aad, cipher_inout)
 }
 
-pub(crate) fn decrypt(
+/// Decrypts `cipher_inout` in place under `nonce`, and returns the tag it
+/// should carry.
+pub(crate) fn open(
     key: &AesKey,
-    ghash: &mut Ghash<'_>,
-    initial_counter: &[u8; 16],
+    table: &GhashTable,
+    nonce: &[u8; 12],
     aad: &[u8],
     cipher_inout: &mut [u8],
-) {
-    cipher::<false>(key, ghash, initial_counter, aad, cipher_inout)
+) -> [u8; 16] {
+    tagged::<false>(key, table, nonce, aad, cipher_inout)
+}
+
+fn tagged<const ENC: bool>(
+    key: &AesKey,
+    table: &GhashTable,
+    nonce: &[u8; 12],
+    aad: &[u8],
+    cipher_inout: &mut [u8],
+) -> [u8; 16] {
+    let mut y0 = [0u8; 16];
+    y0[..12].copy_from_slice(nonce);
+    y0[15] = 0x01;
+
+    let mut ghash = Ghash::new(table);
+    cipher::<ENC>(key, &mut ghash, &y0, aad, cipher_inout);
+
+    let mut lengths = [0u8; 16];
+    lengths[..8].copy_from_slice(&((aad.len() * 8) as u64).to_be_bytes());
+    lengths[8..].copy_from_slice(&((cipher_inout.len() * 8) as u64).to_be_bytes());
+    ghash.add(&lengths);
+
+    let mut tag = y0;
+    key.encrypt_block(&mut tag);
+    for (t, x) in tag.iter_mut().zip(ghash.into_bytes()) {
+        *t ^= x;
+    }
+    tag
 }
 
 // AES-GCM encrypt (if `ENC` is `true`) or decrypt.
@@ -180,25 +210,21 @@ mod tests {
 
             for aad_len in [0, 1, 16, 17] {
                 for msg_len in [0, 1, 15, 16, 17, 112, 127, 128, 129, 255, 256, 1000] {
-                    // As GCM's: a 96-bit nonce, then a counter of 1.
-                    let mut counter = [0u8; 16];
-                    counter[..12].copy_from_slice(&bytes(12, msg_len as u32));
-                    counter[15] = 1;
+                    let nonce = bytes(12, msg_len as u32).try_into().unwrap();
                     let aad = bytes(aad_len, 2);
                     let plain = bytes(msg_len, 3);
 
-                    let (mut want, mut want_ghash) = (plain.clone(), Ghash::new(&pmull));
-                    encrypt(&hw, &mut want_ghash, &counter, &aad, &mut want);
-                    let (mut got, mut got_ghash) = (plain.clone(), Ghash::new(&neon));
-                    encrypt(&vpaes, &mut got_ghash, &counter, &aad, &mut got);
+                    let mut want = plain.clone();
+                    let want_tag = seal(&hw, &pmull, &nonce, &aad, &mut want);
+                    let mut got = plain.clone();
+                    let tag = seal(&vpaes, &neon, &nonce, &aad, &mut got);
                     let what = format!("{key_len} {aad_len} {msg_len}");
                     assert_eq!(got, want, "{what}");
-                    assert_eq!(got_ghash.state(), want_ghash.state(), "{what}");
+                    assert_eq!(tag, want_tag, "{what}");
 
-                    let mut ghash = Ghash::new(&neon);
-                    decrypt(&vpaes, &mut ghash, &counter, &aad, &mut got);
+                    let tag = open(&vpaes, &neon, &nonce, &aad, &mut got);
                     assert_eq!(got, plain, "{what}");
-                    assert_eq!(ghash.state(), want_ghash.state(), "{what}");
+                    assert_eq!(tag, want_tag, "{what}");
                 }
             }
         }
