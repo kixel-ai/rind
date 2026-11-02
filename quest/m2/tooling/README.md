@@ -23,5 +23,3 @@ Decided with the maintainer on 2026-11-02, planning follow-ups from
 ## Required
 
 - [Intel SDE in a dev shell](/quest/m2/tooling/sde-shell.md) - local SDE scans and forced-CPU tests run on NixOS like CI
-- [admin/x86-cpu drops its dead code](/quest/m2/tooling/x86-cpu-dead-code.md) - the commented-out workflow generator goes
-- [Refresh the Zen 3 scan on real hardware](/quest/m2/tooling/zen3-scan.md) - amd-zen3.json carries every reported feature
