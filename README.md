@@ -128,8 +128,8 @@ resumed TLS 1.3 handshakes and bulk transfer against rustls over aws-lc-rs's
 and ring's providers. RSA key generation, whose time swings by up to 3x from
 run to run, stays out of the ratios. The nightly `bench` workflow times every
 cell and keeps each benchmark's numbers in its summary. These are from
-[run 41378010740], and the P-256, P-384, and P-521 cells and armv7's
-handshakes from [run 41399702862]; a change that moves a cell refreshes it.
+[run 41378010740], and the P-256, P-384, and P-521 cells, except armv7's
+P-256, from [run 41399702862]; a change that moves a cell refreshes it.
 
 x86_64 runs every feature of an AMD EPYC 7763 (Zen 3: ADX, AVX2, SHA-NI, and
 VAES, but no AVX-512), except in the AES-GCM and 1 MB transfer rows, noted
@@ -193,12 +193,12 @@ run doesn't time.
 | PBKDF2 | 0.95 rind | 0.93 | 0.98 |
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
 | Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
-| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | **3.50** fiat-crypto ✓ + rind ⚡ + Graviola ⚡ |
+| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | **2.63** HACL\* ✓ |
 | P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.03** fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | 0.64 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.04** fiat-crypto ✓ + rind ⚡ |
 | ML-KEM-768 | **1.12** s2n-bignum ✓ + Graviola ⚡ | 0.99 | **1.05** libcrux-ml-kem ✓ |
 | RSA signatures, key generation | **1.56** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | 1.00 | **6.42** HACL\* ✓ |
-| rind-rustls handshakes | **1.49** | 0.99 | **3.02** |
+| rind-rustls handshakes | **1.49** | 0.99 | **2.50** |
 | rind-rustls 1 MB transfer | 1.00 | 1.00 | 1.01 |
 
 The table describes `main`, and changes alongside the code it describes. The
@@ -211,7 +211,7 @@ tests use [Wycheproof]'s vectors.
 | [Graviola] | copied: rind began as a copy of it, and rind-rustls of its rustls-graviola; its aarch64 ChaCha20 and its Poly1305 began as [cifra], CC0-1.0 | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | rind | its own code | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | [s2n-bignum] | copied: its assembly, transliterated into Rust `asm!` by `admin/parse-asm`, which ends each x86_64 routine using 256-bit registers with `vzeroupper` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM and aarch64 Keccak-f routines (from mlkem-native) Apache-2.0 OR ISC OR MIT; its x86_64 Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/main/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/main/arm/proofs)) that each routine's object code computes its specified result for all inputs. They check s2n-bignum's own build, not rind's transliteration, and do not cover memory safety. |
-| [HACL\*] | dependency, through libcrux-hacl-rs and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
+| [HACL\*] | dependency, through libcrux-hacl-rs, libcrux-p256, and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
 | [libcrux-ml-kem] | dependency | Apache-2.0 | [hax and F\* proofs](https://github.com/cryspen/libcrux/blob/main/libcrux-ml-kem/proofs/verification_status.md) of panic freedom and functional correctness for its portable arithmetic, NTT, serialization, and high-level code. Its SHA-3, from libcrux-sha3, is unverified. |
 | [mlkem-native] | ported: its portable C polynomial arithmetic (the NTT, inverse NTT, base multiplication, reductions, packing, and rejection sampling), to Rust, for x86_64 CPUs without AVX2 | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port. |
 | [libcrux-aes] | dependency for AES-GCM; copied: the block cipher | Apache-2.0 | nothing: libcrux marks it pre-verification |
@@ -300,10 +300,7 @@ only which candidates it discards.
 
 ### ECC
 On x86_64 and aarch64, all ECC field and scalar arithmetic are provided by
-s2n-bignum. On armv7, fiat-crypto provides it instead, under rind's own
-versions of the s2n-bignum routines below: its point formulas repeat
-s2n-bignum's, and its variable point multiplication uses 5-bit Booth
-windows, after negating a scalar above n / 2 so that no addition doubles.
+s2n-bignum, and the rest of this section describes those backends.
 
 P256 base point multiplication is s2n-bignum's `p256_scalarmulbase`, over
 6-bit Booth windows and a table of each window's 32 multiples (an 88KB
