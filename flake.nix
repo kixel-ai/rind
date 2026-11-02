@@ -208,6 +208,14 @@
                 python3
                 sde
               ];
+
+              # Otherwise cargo exports the host's OpenSSL CA paths, which on
+              # Ubuntu lie under the /usr the SDE sandbox replaces, and the
+              # tests that load the system's roots find none. A hook, since
+              # `nix develop` keeps the caller's SSL_CERT_FILE over `env`.
+              shellHook = ''
+                export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+              '';
             };
           };
 
