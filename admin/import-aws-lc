@@ -375,6 +375,15 @@ IMPORTS_64 = [
         "tables": ["K512"],
         "routines": ["sha512_block_data_order_nohw", "sha512_block_data_order_hw"],
     },
+    {
+        "arch": "aarch64",
+        "source": "sha256-armv8.S",
+        "tag": "sha256",
+        "perlasm": "crypto/fipsmodule/sha/asm/sha512-armv8.pl",
+        "copyright": "Copyright 2014-2020 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["K256"],
+        "routines": ["sha256_block_data_order_nohw", "sha256_block_data_order_hw"],
+    },
     # Montgomery multiplication, which picks its squaring or 4x routine by
     # the width itself.
     {
@@ -388,15 +397,6 @@ IMPORTS_64 = [
         "joins": ["__bn_sqr8x_mont", "__bn_mul4x_mont"],
     },
     # The rest are for aarch64 CPUs without the crypto extension.
-    {
-        "arch": "aarch64",
-        "source": "sha256-armv8.S",
-        "tag": "sha256",
-        "perlasm": "crypto/fipsmodule/sha/asm/sha512-armv8.pl",
-        "copyright": "Copyright 2014-2020 The OpenSSL Project Authors. All Rights Reserved.",
-        "tables": ["K256"],
-        "routines": ["sha256_block_data_order_nohw"],
-    },
     {
         "arch": "aarch64",
         "source": "sha1-armv8.S",
