@@ -353,21 +353,40 @@ impl AffineMontPoint {
         r
     }
 
+    /// `scalar * G`, by aws-lc's routines over the generator table.
+    #[cfg(target_arch = "x86_64")]
+    fn base_multiply(scalar: &Scalar) -> Self {
+        JacobianMontPoint::base_multiply(scalar).as_affine()
+    }
+
     /// `scalar * G`, by s2n-bignum's `p256_scalarmulbase` over the
     /// generator table.
+    #[cfg(target_arch = "aarch64")]
     fn base_multiply(scalar: &Scalar) -> Self {
         let mut xy = [0; 8];
-        low::p256_scalarmulbase(&mut xy, &scalar.0, &precomp::CURVE_GENERATOR_PRECOMP_W6);
+        low::p256_scalarmulbase(&mut xy, &scalar.0, &precomp::CURVE_GENERATOR_PRECOMP);
         let x = FieldElement(xy[Self::X].try_into().unwrap());
         let y = FieldElement(xy[Self::Y].try_into().unwrap());
         Self::from_xy(x.as_mont(), y.as_mont())
     }
 
-    /// Returns `table[index - 1]`, for a public `index` above zero.
-    fn public_lookup_w6(table: &[u64; 256], index: u8) -> Self {
+    /// Returns `row[index - 1]`, for a public `index` above zero.
+    fn public_lookup(row: &[u64], index: u8) -> Self {
         Self {
-            xy: table.as_chunks::<8>().0[index as usize - 1],
+            xy: row.as_chunks::<8>().0[index as usize - 1],
         }
+    }
+
+    /// Negates `y` if `negate` is 1, in constant time.
+    #[cfg(target_arch = "x86_64")]
+    fn negate_y_if(&mut self, negate: u8) {
+        let y = self.y();
+        low::bignum_mux(
+            negate.into(),
+            &mut self.xy[Self::Y],
+            &y.negate_mod_p().0,
+            &y.0,
+        );
     }
 }
 
@@ -415,15 +434,52 @@ impl JacobianMontPoint {
         r
     }
 
+    /// `scalar * G`, as aws-lc's `ecp_nistz256_point_mul_base` computes it:
+    /// one addition from each generator table row per Booth-recoded 7-bit
+    /// window, with every row scanned whole.
+    ///
+    /// No addition doubles, which `p256_point_add_affine` cannot: the
+    /// accumulator sums lower windows, so it is a smaller integer than the
+    /// table point, in magnitude, and below n.
+    #[cfg(target_arch = "x86_64")]
+    fn base_multiply(scalar: &Scalar) -> Self {
+        let mut windows = precomp::CURVE_GENERATOR_PRECOMP
+            .iter()
+            .zip(scalar.booth_recoded::<BASE_WINDOW>());
+        let lookup = |row, digit, sign| {
+            let mut point = AffineMontPoint {
+                xy: low::p256_select_w7(row, digit),
+            };
+            point.negate_y_if(sign);
+            point
+        };
+
+        // unwrap: the number of windows is constant. The first point is
+        // infinity, with a zero `z`, when its digit is zero.
+        let (row, (digit, sign)) = windows.next().unwrap();
+        let mut result = Self::from_affine(&lookup(row, digit, sign));
+        low::bignum_mux(
+            digit.into(),
+            &mut result.xyz[Self::Z],
+            &CURVE_ONE_MONT.0,
+            &[0; 4],
+        );
+
+        for (row, (digit, sign)) in windows {
+            result.xyz = low::p256_point_add_affine(&result.xyz, &lookup(row, digit, sign).xy);
+        }
+        result
+    }
+
     /// `g * G + p * P` for public scalars, given P's odd multiples.
     ///
     /// One chain of doublings serves both: P's digits are a width-5 NAF
     /// over `odd_multiples`, and G's a width-6 NAF over the generator
-    /// table's first row, which holds G to 32G.
+    /// table's first row, which holds G to at least 32G.
     fn public_twin_multiply(g: &Scalar, p: &Scalar, odd_multiples: &[Self; 8]) -> Self {
         let g_digits = g.public_naf::<6>();
         let p_digits = p.public_naf::<5>();
-        let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP_W6[0];
+        let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP[0][..];
 
         let mut result = Self::infinity();
         for (g_digit, p_digit) in g_digits.iter().zip(&p_digits).rev() {
@@ -438,8 +494,7 @@ impl JacobianMontPoint {
                 result = Self::public_add_fast(&result, &tmp);
             }
             if *g_digit != 0 {
-                let mut tmp =
-                    AffineMontPoint::public_lookup_w6(g_multiples, g_digit.unsigned_abs());
+                let mut tmp = AffineMontPoint::public_lookup(g_multiples, g_digit.unsigned_abs());
                 if *g_digit < 0 {
                     tmp.negate_y();
                 }
@@ -774,6 +829,12 @@ impl Scalar {
         }
     }
 
+    /// Iterator of `256 / W + 1` W-bit elements, LSB first, sign bit is separate
+    #[cfg(target_arch = "x86_64")]
+    fn booth_recoded<const W: usize>(&self) -> BoothRecode<W> {
+        BoothRecode::new(self)
+    }
+
     /// The width-`W` non-adjacent form of this scalar, by
     /// [`util::public_naf`].
     fn public_naf<const W: u32>(&self) -> [i8; 257] {
@@ -811,10 +872,82 @@ impl Iterator for Bits<'_> {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
+struct BoothRecode<const W: usize> {
+    // little endian
+    bytes: [u8; 33],
+    index: usize,
+}
+
+#[cfg(target_arch = "x86_64")]
+impl<const W: usize> BoothRecode<W> {
+    fn new(scalar: &Scalar) -> Self {
+        let mut bytes = [0u8; 33];
+
+        bytes[0..8].copy_from_slice(&scalar.0[0].to_le_bytes());
+        bytes[8..16].copy_from_slice(&scalar.0[1].to_le_bytes());
+        bytes[16..24].copy_from_slice(&scalar.0[2].to_le_bytes());
+        bytes[24..32].copy_from_slice(&scalar.0[3].to_le_bytes());
+
+        Self { bytes, index: 0 }
+    }
+
+    fn recode(v: u8) -> (u8, u8) {
+        // see the comment above boringssl's `ec_GFp_nistp_recode_scalar_bits` for
+        // references
+        let sign = !((v >> W).wrapping_sub(1));
+
+        let d = (1u16 << (W + 1)).wrapping_sub(v as u16).wrapping_sub(1) as u8;
+        let d = (d & sign) | (v & !sign);
+        let d = (d >> 1).wrapping_add(d & 1);
+
+        (d, sign & 1)
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+impl<const W: usize> Iterator for BoothRecode<W> {
+    type Item = (u8, u8);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mask = ((1u16 << (W + 1)) - 1) as u8;
+
+        match self.index {
+            0 => {
+                self.index += W;
+                Some(Self::recode((self.bytes[0] << 1) & mask))
+            }
+
+            _ if self.index < 256 => {
+                let offset = (self.index - 1) / 8;
+                let shift = (self.index - 1) % 8;
+                let value = (((self.bytes[offset] as u16) | ((self.bytes[offset + 1] as u16) << 8))
+                    >> shift) as u8
+                    & mask;
+                self.index += W;
+                Some(Self::recode(value))
+            }
+
+            _ => None,
+        }
+    }
+}
+
+/// The generator table's window, aws-lc's.
+#[cfg(target_arch = "x86_64")]
+const BASE_WINDOW: usize = 7;
+
+/// 37 rows of the 64 multiples `i * 2^(7 * j) * G`, one row per 7-bit window.
+///
+/// 37 := 256 / 7 + 1, as Booth recoding carries into a window above the top bit.
+#[cfg(target_arch = "x86_64")]
+type AffineMontPointTable = [low::P256GeneratorRow; 37];
+
 /// 43 rows of the 32 multiples `i * 2^(6 * j) * G`, one row per 6-bit window.
 ///
 /// 43 := 256 / 6 + 1, as Booth recoding carries into a window above the top bit.
-type AffineMontPointTableW6 = [[u64; 256]; 43];
+#[cfg(target_arch = "aarch64")]
+type AffineMontPointTable = [[u64; 256]; 43];
 
 const CURVE_A_MONT: FieldElement = FieldElement([
     0xffff_ffff_ffff_fffc,
@@ -920,8 +1053,15 @@ mod tests {
             s[0] -= k;
             Scalar(s)
         };
-        // Every 6-bit window 32, so each Booth digit is a full row's last entry.
+        // Every 6-bit window 32, and every 7-bit window 64, so each Booth
+        // digit is a full row's last entry, on aarch64 and x86_64.
         let all_32 = Scalar([0x0820_8208_2082_0820; 4]);
+        let all_64 = Scalar([
+            0x4081_0204_0810_2040,
+            0x2040_8102_0408_1020,
+            0x1020_4081_0204_0810,
+            0x0810_2040_8102_0408,
+        ]);
         for scalar in [
             Scalar::small_u64(1),
             Scalar::small_u64(2),
@@ -931,6 +1071,7 @@ mod tests {
             Scalar::small_u64(99999999),
             Scalar([0, 0, 0, 1 << 63]),
             all_32,
+            all_64,
             n_minus(1),
             n_minus(2),
         ] {
@@ -1053,9 +1194,9 @@ mod tests {
     }
 
     #[test]
-    fn base_point_precomp_w6() {
+    fn base_point_precomp() {
         let mut base = JacobianMontPoint::from_affine(&CURVE_GENERATOR);
-        for row in &precomp::CURVE_GENERATOR_PRECOMP_W6 {
+        for row in &precomp::CURVE_GENERATOR_PRECOMP {
             let mut multiple = base;
             for (i, entry) in (1..).zip(row.as_chunks::<8>().0) {
                 assert_eq!(&multiple.as_affine().xy, entry);
@@ -1064,7 +1205,9 @@ mod tests {
                     _ => multiple.add(&base),
                 };
             }
-            base.double_inplace_n(6);
+            // A row of 2^(w - 1) multiples spans a w-bit window.
+            let window = row.as_chunks::<8>().0.len().ilog2() + 1;
+            base.double_inplace_n(window as usize);
         }
     }
 }
