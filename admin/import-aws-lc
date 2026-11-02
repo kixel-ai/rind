@@ -34,7 +34,8 @@ either, and stays as a local label. A routine that jumps or calls into
 another routine of its file `carries` it: the other's label and body follow
 the routine's in the same file, as local labels. One that branches to a
 helper by name `joins` it: the helper follows the routine's body under a
-local label, through the end of its CFI frame. An import's `cpp` defines
+local label, within the routine's CFI frame, which restarts there from the
+routine's entry state. An import's `cpp` defines
 drop branches rind never takes. Its `inserts` add an instruction before one
 that names a symbol, and its `replaces` swap one instruction for another:
 deliberate changes to aws-lc's code, each saying why.
@@ -484,6 +485,23 @@ def body(lines, label, local, inner=()):
     return lines[start:end] + closing
 
 
+def one_frame(frames):
+    """The routines of `frames`, each a CFI frame, in one frame that
+    restarts from the first's entry state where each later one opened.
+    Apple's ld64 splits code at each frame and dead-strips one that only
+    branches without a relocation reach, such as a joined routine's."""
+    out = []
+    for i, frame in enumerate(frames):
+        last = i + 1 == len(frames)
+        for line in frame:
+            directive = line.split()[:1]
+            if directive == [".cfi_startproc"]:
+                out += [line if i == 0 else ".cfi_restore_state"] + ([] if last else [".cfi_remember_state"])
+            elif directive != [".cfi_endproc"] or last:
+                out.append(line)
+    return out
+
+
 def table(lines, label, local, packed=False):
     """The values from `label` up to the first line that is not one of the
     same width, their width in bytes, and the offset of each label within
@@ -631,14 +649,14 @@ def import_64(aws_lc):
                 text = body(lines, f"{other}:", local)
                 end = [line.split()[:1] for line in text].index([".cfi_endproc"])
                 align = lines[start - 1 : start] if lines[start - 1].split()[:1] == [".align"] else []
-                joined += align + [f"{local}{other}:"] + text[: end + 1]
+                joined.append(align + [f"{local}{other}:"] + text[: end + 1])
             for label, name in entries:
                 text = [line for line in body(lines, label, local, inner + labels) if line.split() not in dropped]
                 carried = spec.get("carries", {}).get(name, [])
                 for other in carried:
                     text += [f"{local}{other}:"] + body(lines, f"{other}:", local)
-                if name in spec["routines"]:
-                    text += joined
+                if name in spec["routines"] and joined:
+                    text = one_frame([text] + joined)
                 if labels or carried or joins:
                     local_re = words(labels + carried + joins)
                     text = [local_re.sub(lambda m: local + m[1], line) for line in text]
@@ -657,6 +675,9 @@ def import_64(aws_lc):
                     if len(at) != 1:
                         sys.exit(f"{name}: expected one {op} {args}")
                     text[at[0]] = "\t" + line
+                # ld64 would split off and could drop the second (see `one_frame`).
+                if flavor == "apple" and sum(line.split()[:1] == [".cfi_startproc"] for line in text) > 1:
+                    sys.exit(f"{name}: more than one CFI frame for Mach-O")
                 text = escape(text, operands, local, spec["tag"], arch["comment"])
                 write(os.path.join(out_dir, f"{name}.{flavor}.s"), header(arch["comment"], spec, source) + list(text))
 
