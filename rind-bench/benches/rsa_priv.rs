@@ -136,6 +136,25 @@ fn rsa_pkcs1_sha256_sign_sizes(c: &mut Criterion) {
         let mut group = c.benchmark_group(format!("rsa{bits}-pkcs1-sha256-sign"));
         group.throughput(Throughput::Elements(1));
 
+        // ring signs only with primes of a multiple of 512 bits, and
+        // moduli of at most 4096.
+        if matches!(bits, 3072 | 4096) {
+            group.bench_function("ring", |b| {
+                use ring::{rand, rsa, signature};
+                let key = rsa::KeyPair::from_pkcs8(private_key).unwrap();
+                let rng = rand::SystemRandom::new();
+                let mut signature = vec![0u8; key.public().modulus_len()];
+                b.iter(|| {
+                    black_box(key.sign(
+                        &signature::RSA_PKCS1_SHA256,
+                        &rng,
+                        message,
+                        &mut signature,
+                    ))
+                    .unwrap();
+                })
+            });
+        }
         group.bench_function("aws-lc-rs", |b| {
             use aws_lc_rs::{rand, rsa, signature};
 

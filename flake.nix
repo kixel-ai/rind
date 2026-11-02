@@ -151,11 +151,26 @@
               ];
             };
           }
-          # `just armv7` enters it to lint and test the armv7 build under qemu.
-          # A separate shell because the ARM C toolchain, qemu-user, and the
-          # armv7 standard libraries add about 700 MB, which every other CI job
-          # would download. Linux only, since qemu-user needs a Linux host.
+          # Linux only, since valgrind and qemu-user need a Linux host.
           // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            # `admin/ctgrind` and the ctgrind workflow run in it. A separate
+            # shell because crabgrind's bindgen needs libclang, which no other
+            # job does.
+            ctgrind = pkgs.mkShell {
+              packages = [
+                rust-stable.minimal
+                pkgs.valgrind
+                # crabgrind finds valgrind's headers through it.
+                pkgs.pkg-config
+              ];
+
+              env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+            };
+
+            # `just armv7` enters it to lint and test the armv7 build under
+            # qemu. A separate shell because the ARM C toolchain, qemu-user,
+            # and the armv7 standard libraries add about 700 MB, which every
+            # other CI job would download.
             armv7 = pkgs.mkShell {
               packages = [
                 (rust-stable.minimal.override {
