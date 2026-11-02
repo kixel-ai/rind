@@ -51,8 +51,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Fetch test vectors
-        run: git submodule update --init --depth 1 thirdparty/cavp thirdparty/wycheproof
+      - uses: ./.github/actions/vectors
       - name: Check and test the merge group
         run: nix develop --command quest gate just ci "$BASE"
 
