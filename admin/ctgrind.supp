@@ -19,3 +19,13 @@
    fun:*libcrux_p256*
 }
 
+# On armv7 without NEON, memcheck reports a condition in aws-lc's integer
+# SHA-512. Every condition in it tests a round constant or the input pointer
+# (sha512-armv4.s), never state or data, so the report comes from memcheck's
+# flag tracking: each condition follows additions of secret words, whose carry
+# memcheck can count against flags the condition never reads.
+{
+   aws-lc-sha512-armv4-nohw-flags
+   Memcheck:Cond
+   fun:rind_*_sha512_block_data_order_nohw
+}

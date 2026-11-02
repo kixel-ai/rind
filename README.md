@@ -133,10 +133,10 @@ run to run, stays out of the ratios. The nightly `bench` workflow times every
 cell and keeps each benchmark's numbers in its summary. These are from
 [run 41378010740], and the P-256, P-384, and P-521 cells, except armv7's
 P-256, from [run 41399702862]; a change that moves a cell refreshes it.
-ML-KEM-768's cells are from [run 41400124007], whose x86_64 job drew an EPYC
-9V74 (Zen 4) and no AVX2 job an EPYC 7763. RSA's no ADX and no AVX2 cells are
-from [run 41469252502], whose no ADX job drew a Xeon 6973P-C (Granite Rapids)
-and no AVX2 job an EPYC 7763.
+ML-KEM-768's cells, except armv7's from [run 41516604217], are from
+[run 41400124007], whose x86_64 job drew an EPYC 9V74 (Zen 4) and no AVX2 job
+an EPYC 7763. RSA's no ADX and no AVX2 cells are from [run 41469252502], whose
+no ADX job drew a Xeon 6973P-C (Granite Rapids) and no AVX2 job an EPYC 7763.
 
 x86_64 runs every feature of an AMD EPYC 7763 (Zen 3: ADX, AVX2, SHA-NI, and
 VAES, but no AVX-512), except in the 1 MB transfer and P-256 rows, noted
@@ -217,7 +217,7 @@ row from [run 41472308771], the other SHA, HMAC, and HKDF cells from
 | P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | **2.63** HACL\* ✓ |
 | P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.03** fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | 0.64 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.04** fiat-crypto ✓ + rind ⚡ |
-| ML-KEM-768 | **1.04** s2n-bignum ✓ + Graviola ⚡ | 0.93 | pending mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ |
+| ML-KEM-768 | **1.04** s2n-bignum ✓ + Graviola ⚡ | 0.93 | 0.68 mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ |
 | RSA signatures, key generation | 0.97 s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | 0.97 | **1.34** aws-lc ⚡ + Graviola ⚡ + rind ⚡ |
 | rind-rustls handshakes | 0.96 | 0.90 | **1.29** |
 | rind-rustls 1 MB transfer | 1.00 | 1.00 | 1.01 |
@@ -275,6 +275,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41397278464]: https://github.com/moq-dev/rind/actions/runs/41397278464
 [run 41398664891]: https://github.com/moq-dev/rind/actions/runs/41398664891
 [run 41400124007]: https://github.com/moq-dev/rind/actions/runs/41400124007
+[run 41516604217]: https://github.com/moq-dev/rind/actions/runs/41516604217
 [run 41464027605]: https://github.com/moq-dev/rind/actions/runs/41464027605
 [run 41467306881]: https://github.com/moq-dev/rind/actions/runs/41467306881
 [run 41401180882]: https://github.com/moq-dev/rind/actions/runs/41401180882
@@ -396,8 +397,10 @@ generation and encapsulation there, and 2x for decapsulation.
 armv7 runs the same construction and arithmetic, with [OpenSSL]'s Keccak-f:
 NEON where the CPU has it, and integer code on bit-interleaved lanes
 otherwise. Keccak-f dominates ML-KEM there, and compiled code spills its
-state, so under qemu this ran key generation and encapsulation in 2.5x fewer
-instructions than libcrux's portable ML-KEM with NEON, and 1.3x without.
+state. With NEON it measured 1.5x faster than libcrux's portable ML-KEM for
+key generation and encapsulation, and 2.8x for decapsulation. Without NEON,
+under qemu, it ran key generation and encapsulation in 1.3x fewer
+instructions.
 
 Compression and decompression are division-free, avoiding the variable-time
 division behind the KyberSlash attacks.
