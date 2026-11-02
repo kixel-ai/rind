@@ -2,6 +2,9 @@
 
 import subprocess, json, os, sys, glob
 
+# Run `sde-scan` in `nix develop .#sde`, which has the Intel SDE build
+# x86-cpu.yml runs.
+
 # excludes 32-bit only parts
 KNOWN_CPUS = [
     ("-p4p", "Pentium4 Prescott"),
@@ -45,10 +48,6 @@ KNOWN_CPUS = [
 _, mode = sys.argv
 
 if mode == "sde-scan":
-    # The flake's sde shell pins the SDE build x86-cpu.yml runs.
-    if os.environ.get("IN_RIND_SDE_SHELL") != "1":
-        os.execvp("nix", ["nix", "develop", ".#sde", "--command", *sys.argv])
-
     output = []
     env = os.environ.copy()
 

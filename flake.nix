@@ -200,7 +200,7 @@
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             sde = pkgs.mkShell {
               packages = with pkgs; [
-                rust-toolchain
+                rust-stable.minimal
                 # aws-lc-rs and the OpenSSL benchmarks build C.
                 cmake
                 pkg-config
@@ -208,9 +208,6 @@
                 python3
                 sde
               ];
-
-              # What `admin/x86-cpu sde-scan` checks before entering this shell.
-              env.IN_RIND_SDE_SHELL = "1";
             };
           };
 
