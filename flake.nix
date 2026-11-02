@@ -98,7 +98,6 @@
                   # admin/ scripts.
                   python3
                   cargo-modules
-                  graphviz
                   quest-cli
                   # rind-instant-acme's end-to-end test issues a certificate from it.
                   pebble
