@@ -4,7 +4,9 @@
 //! multiplication, with their contracts, in portable Rust for armv7.
 //!
 //! Each runs in time that depends only on its lengths, never on its values:
-//! loops run a count fixed by the lengths, and selects are masks. Products
+//! loops run a count fixed by the lengths, and selects are masks. Arithmetic
+//! on values wraps, though the bounds rule out overflow, since a debug build's
+//! overflow check would branch on them. Products
 //! are formed from 32-bit halves, which a 32-bit core multiplies in one
 //! instruction, where 64-bit words would take a library call.
 //!
@@ -43,7 +45,7 @@ pub(crate) fn bignum_add(z: &mut [u64], x: &[u64], y: &[u64]) -> u64 {
 pub(crate) fn bignum_bitsize(x: &[u64]) -> usize {
     let mut bits = 0;
     for (i, w) in x.iter().enumerate() {
-        let here = i as u64 * 64 + 64 - u64::from(w.leading_zeros());
+        let here = (i as u64 * 64 + 64).wrapping_sub(u64::from(w.leading_zeros()));
         bits = select(nonzero(*w), here, bits);
     }
     bits as usize
@@ -123,7 +125,7 @@ pub(crate) fn bignum_copy_row_from_table(
 pub(crate) fn bignum_ctz(x: &[u64]) -> usize {
     let mut zeros = 64 * x.len() as u64;
     for (i, w) in x.iter().enumerate().rev() {
-        let here = i as u64 * 64 + u64::from(w.trailing_zeros());
+        let here = (i as u64 * 64).wrapping_add(u64::from(w.trailing_zeros()));
         zeros = select(nonzero(*w), here, zeros);
     }
     zeros as usize
@@ -252,7 +254,7 @@ pub(crate) fn bignum_montredc(z: &mut [u64], x: &[u64], m: &[u64], p: u64) {
     for i in 0..p {
         let u = t[i].wrapping_mul(n0);
         let carry = mul_add(&mut t[i..i + k], m, u);
-        let sum = u64::from(t[i + k]) + carry + top;
+        let sum = u64::from(t[i + k]).wrapping_add(carry).wrapping_add(top);
         t[i + k] = sum as u32;
         top = sum >> 32;
     }
@@ -318,14 +320,14 @@ fn mont_mul(z: &mut [u32], x: &[u32], y: &[u32], m: &[u32], n0: u32) {
     let mut t = [0; MAX_LIMBS + 2];
     let t = &mut t[..n + 2];
     for x in x {
-        let sum = u64::from(t[n]) + mul_add(&mut t[..n], y, *x);
+        let sum = u64::from(t[n]).wrapping_add(mul_add(&mut t[..n], y, *x));
         t[n] = sum as u32;
         t[n + 1] = (sum >> 32) as u32;
 
         let u = t[0].wrapping_mul(n0);
-        let sum = u64::from(t[n]) + mul_add(&mut t[..n], m, u);
+        let sum = u64::from(t[n]).wrapping_add(mul_add(&mut t[..n], m, u));
         t[n] = sum as u32;
-        t[n + 1] += (sum >> 32) as u32;
+        t[n + 1] = t[n + 1].wrapping_add((sum >> 32) as u32);
         t.copy_within(1.., 0);
         t[n + 1] = 0;
     }
@@ -340,7 +342,10 @@ fn mul_add(x: &mut [u32], y: &[u32], u: u32) -> u64 {
     let mut carry = 0;
     for (x, y) in x.iter_mut().zip(y) {
         // At most (2^32 - 1)^2 + 2 (2^32 - 1) = 2^64 - 1.
-        let t = u64::from(u) * u64::from(*y) + u64::from(*x) + carry;
+        let t = u64::from(u)
+            .wrapping_mul(u64::from(*y))
+            .wrapping_add(u64::from(*x))
+            .wrapping_add(carry);
         *x = t as u32;
         carry = t >> 32;
     }
@@ -586,12 +591,12 @@ mod tests {
             low::bignum_optsub(&mut theirs, &x[..k], &y[..k], index);
             prop_assert_eq!(public(&ours), theirs);
 
-            let table = [x.clone(), y.clone(), vec![!0; x.len()]].concat();
-            let width = x.len().min(y.len()) as u64;
+            let width = x.len().min(y.len());
             if width > 0 {
-                let (mut ours, mut theirs) = (vec![0; width as usize], vec![0; width as usize]);
-                bignum_copy_row_from_table(&mut ours, &table, 3, width, into_secret(index));
-                low::bignum_copy_row_from_table(&mut theirs, &table, 3, width, index);
+                let table = [&x[..width], &y[..width], &vec![!0; width]].concat();
+                let (mut ours, mut theirs) = (vec![0; width], vec![0; width]);
+                bignum_copy_row_from_table(&mut ours, &table, 3, width as u64, into_secret(index));
+                low::bignum_copy_row_from_table(&mut theirs, &table, 3, width as u64, index);
                 prop_assert_eq!(public(&ours), theirs);
             }
         }
