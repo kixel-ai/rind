@@ -65,32 +65,6 @@ pub(crate) fn p256_point_add_affine(p1: &[u64; 12], p2: &[u64; 8]) -> [u64; 12] 
     r
 }
 
-/// Sets `p3` to `2 * p1`, for a Jacobian point in Montgomery form: by
-/// s2n-bignum's verified `p256_montjdouble` with BMI2 and ADX, and otherwise
-/// by aws-lc's doubling, which measured faster than s2n-bignum's `_alt`.
-pub(crate) fn p256_montjdouble(p3: &mut [u64; 12], p1: &[u64; 12]) {
-    match HaveBmi2Adx::check() {
-        Some(_) => super::p256_montjdouble::p256_montjdouble(p3, p1),
-        // SAFETY: `p3` is one writable Jacobian point and `p1` one readable
-        // one, which the routine loads unaligned. It needs only SSE2.
-        None => unsafe { ecp_nistz256_point_double(p3, p1) },
-    }
-}
-
-/// Sets `p3` to `p1 + p2`, for Jacobian points in Montgomery form that are
-/// not equal or at infinity, which s2n-bignum's routine does not handle: by
-/// its verified `p256_montjadd` with BMI2 and ADX, and otherwise by aws-lc's
-/// addition, which measured faster than s2n-bignum's `_alt`.
-pub(crate) fn p256_montjadd(p3: &mut [u64; 12], p1: &[u64; 12], p2: &[u64; 12]) {
-    match HaveBmi2Adx::check() {
-        Some(_) => super::p256_montjadd::p256_montjadd(p3, p1, p2),
-        // SAFETY: `p3` is one writable Jacobian point and `p1` and `p2`
-        // readable ones, which the routine loads unaligned. It needs only
-        // SSE2.
-        None => unsafe { ecp_nistz256_point_add(p3, p1, p2) },
-    }
-}
-
 /// aws-lc's `.Lpoly`, the field prime, as the multiplications load it.
 #[repr(C, align(16))]
 struct Poly([u64; 4]);
@@ -154,29 +128,8 @@ p256_routine!(ecp_nistz256_point_add_affinex(r: *mut [u64; 12], a: *const [u64; 
     ecp_nistz256_subx = ecp_nistz256_subx
 });
 
-p256_routine!(ecp_nistz256_point_double(r: *mut [u64; 12], a: *const [u64; 12]) {
-    poly = POLY,
-    ecp_nistz256_add_toq = ecp_nistz256_add_toq,
-    ecp_nistz256_mul_by_2q = ecp_nistz256_mul_by_2q,
-    ecp_nistz256_mul_montq = ecp_nistz256_mul_montq,
-    ecp_nistz256_sqr_montq = ecp_nistz256_sqr_montq,
-    ecp_nistz256_sub_fromq = ecp_nistz256_sub_fromq,
-    ecp_nistz256_subq = ecp_nistz256_subq
-});
-p256_routine!(ecp_nistz256_point_add(r: *mut [u64; 12], a: *const [u64; 12], b: *const [u64; 12]) {
-    poly = POLY,
-    ecp_nistz256_add_toq = ecp_nistz256_add_toq,
-    ecp_nistz256_mul_by_2q = ecp_nistz256_mul_by_2q,
-    ecp_nistz256_mul_montq = ecp_nistz256_mul_montq,
-    ecp_nistz256_sqr_montq = ecp_nistz256_sqr_montq,
-    ecp_nistz256_sub_fromq = ecp_nistz256_sub_fromq,
-    ecp_nistz256_subq = ecp_nistz256_subq
-});
-
 // The routines' helpers, which pass their arguments in registers of their
 // own choosing rather than by the C ABI, so only the routines call them.
-p256_routine!(ecp_nistz256_add_toq() {});
-p256_routine!(ecp_nistz256_mul_by_2q() {});
 p256_routine!(ecp_nistz256_mul_montq() { poly = POLY });
 p256_routine!(ecp_nistz256_sqr_montq() { poly = POLY });
 p256_routine!(ecp_nistz256_sub_fromq() {});
@@ -193,8 +146,8 @@ mod tests {
     use super::*;
 
     // The other tests run only the twin this CPU picks, so each pair is
-    // checked against each other here, where the CPU runs both, as are
-    // aws-lc's doubling and addition against s2n-bignum's verified ones.
+    // checked against each other here, where the CPU runs both, and the
+    // mixed addition against s2n-bignum's verified one.
     #[test]
     fn twins_agree() {
         let mut rng = Rng(0x243f_6a88_85a3_08d3);
@@ -240,22 +193,17 @@ mod tests {
                     ecp_nistz256_point_add_affinex(&mut mulx, &p1, &p2);
                 }
                 assert_eq!(mulq, mulx);
-
-                // Neither is at infinity, nor are they equal, which
-                // s2n-bignum's addition requires.
-                let mut p2: [u64; 12] = rng.field(255);
-                p1[8] |= 1;
-                p2[8] |= 1;
-                let (mut aws_lc, mut s2n) = ([0; 12], [0; 12]);
-                // SAFETY: as in `p256_montjdouble`.
-                unsafe { ecp_nistz256_point_double(&mut aws_lc, &p1) };
-                super::super::p256_montjdouble::p256_montjdouble(&mut s2n, &p1);
-                assert_eq!(aws_lc, s2n);
-                // SAFETY: as in `p256_montjadd`.
-                unsafe { ecp_nistz256_point_add(&mut aws_lc, &p1, &p2) };
-                super::super::p256_montjadd::p256_montjadd(&mut s2n, &p1, &p2);
-                assert_eq!(aws_lc, s2n);
             }
+        }
+
+        // `p1` is not at infinity, which s2n-bignum's addition requires.
+        for _ in 0..256 {
+            let mut p1: [u64; 12] = rng.field(255);
+            let p2: [u64; 8] = rng.field(255);
+            p1[8] |= 1;
+            let mut s2n = [0; 12];
+            super::super::adx_mux::p256_montjmixadd(&mut s2n, &p1, &p2);
+            assert_eq!(p256_point_add_affine(&p1, &p2), s2n);
         }
     }
 }

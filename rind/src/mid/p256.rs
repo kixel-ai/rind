@@ -634,12 +634,6 @@ impl JacobianMontPoint {
         *self = r;
     }
 
-    #[cfg(target_arch = "x86_64")]
-    fn add_inplace_affine(&mut self, p: &AffineMontPoint) {
-        self.xyz = low::p256_point_add_affine(&self.xyz, &p.xy);
-    }
-
-    #[cfg(target_arch = "aarch64")]
     fn add_inplace_affine(&mut self, p: &AffineMontPoint) {
         let mut r = Self::infinity();
         low::p256_montjmixadd(&mut r.xyz, &self.xyz, &p.xy);
