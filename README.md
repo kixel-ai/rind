@@ -260,10 +260,10 @@ whose width in 64-bit words is a multiple of four, `bn_sqr8x_mont` for
 squaring a multiple of eight, each by `mulx` with ADX, and `bn_mul_mont_nohw`
 for other widths), other than 1024- and 2048-bit moduli on CPUs with ADX,
 where s2n-bignum's Karatsuba routines are as fast or faster. aarch64 runs
-s2n-bignum's Karatsuba routines for 1024- and 2048-bit moduli, and aws-lc's
-`bn_mul_mont`, which picks its own squaring or 4x routine by the width, for
-every other size, where it measured 1.15 to 2 times as fast as s2n-bignum's
-generic routines on a Neoverse-N2.
+aws-lc's `bn_mul_mont`, which picks its own squaring or 4x routine by the
+width, at every size: on a Neoverse-N2 it measured 1.15 to 2 times as fast as
+s2n-bignum's generic routines, and faster than its Karatsuba routines for
+1024- and 2048-bit moduli.
 armv7 uses HACL\*'s arithmetic and exponentiation instead. On x86_64 CPUs with AVX2
 but without ADX, the private operation's exponentiation modulo each 1024-bit
 prime of RSA-2048 runs aws-lc's RSAZ, as aws-lc does there: Montgomery
