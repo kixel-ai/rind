@@ -464,116 +464,52 @@ impl<const N: usize> PosInt<N> {
     }
 
     /// Computes `self` ^ `e` mod `n`, as the x86_64 `mont_exp` does, by a
-    /// 4-bit window over `mont_mul` and `mont_sqr`.
+    /// 5-bit window over `mont_mul` and `mont_sqr`.
     #[cfg(not(target_arch = "x86_64"))]
     pub(crate) fn mont_exp(&self, one_mont: Self, e: &Self, n: &Self, n_0: u64) -> Self {
+        const WINDOW: usize = 5;
+        let k = n.used;
+        let Some(top) = (e.used * 64).checked_sub(1) else {
+            return one_mont;
+        };
+
+        // `table` holds `self^i` at row `i`: each even power squares its
+        // half, and each odd one multiplies the power below it by `self`.
+        let mut table = vec![0; k << WINDOW];
+        table[..k].copy_from_slice(one_mont.as_words_with_len_of(n));
+        table[k..2 * k].copy_from_slice(self.as_words_with_len_of(n));
+        for i in 2..1 << WINDOW {
+            let (done, rest) = table.split_at_mut(i * k);
+            let row = |j: usize| &done[j * k..(j + 1) * k];
+            match i % 2 {
+                0 => low::mont_sqr(&mut rest[..k], row(i / 2), n.as_words(), n_0),
+                _ => low::mont_mul(&mut rest[..k], row(i - 1), row(1), n.as_words(), n_0),
+            }
+        }
+        // Reads every row, so the trace is the same whichever it takes.
+        let select = |z: &mut Self, i: u64| {
+            low::bignum_copy_row_from_table(z.as_mut_words(), &table, 1 << WINDOW, k as u64, i)
+        };
+
         // Each product goes to the other of these, then they swap roles.
-        let (mut a, mut b) = (one_mont, Self::zero());
+        let mut term = Self::zero();
+        term.used = k;
+        let (mut a, mut b) = (term.clone(), term.clone());
         let (mut accum, mut spare) = (&mut a, &mut b);
 
-        // our window size is 4 bits, so precompute a table of 2**4 multiples of self
-        //
-        // the window size also evenly divides our 64-bit word size, so there is no
-        // need to have a degenerate case at the end of the loop
-        //
-        // put this on the heap, so only n.used * 16 entries are needed (rather than
-        // N * 16, which is not possible to express with half-finished const generics)
-
-        let mut table = Vec::with_capacity(n.used * 16);
-
-        // 0: identity in montgomery domain
-        table.extend_from_slice(accum.as_words());
-
-        // 1: self
-        let t1 = self;
-        table.extend_from_slice(t1.as_words());
-
-        // 2: self ^ 2
-        let t2 = t1.mont_sqr(n, n_0);
-        table.extend_from_slice(t2.as_words());
-
-        // 3: self ^ 2 * self
-        let t3 = t2.mont_mul(t1, n, n_0);
-        table.extend_from_slice(t3.as_words());
-
-        // 4: self ^ 2 ^ 2
-        let t4 = t2.mont_sqr(n, n_0);
-        table.extend_from_slice(t4.as_words());
-
-        // (and so on)
-        let t5 = t4.mont_mul(t1, n, n_0);
-        table.extend_from_slice(t5.as_words());
-
-        let t6 = t3.mont_sqr(n, n_0);
-        table.extend_from_slice(t6.as_words());
-
-        let t7 = t6.mont_mul(t1, n, n_0);
-        table.extend_from_slice(t7.as_words());
-
-        let t8 = t4.mont_sqr(n, n_0);
-        table.extend_from_slice(t8.as_words());
-
-        let t9 = t8.mont_mul(t1, n, n_0);
-        table.extend_from_slice(t9.as_words());
-
-        let t10 = t5.mont_sqr(n, n_0);
-        table.extend_from_slice(t10.as_words());
-
-        let t11 = t10.mont_mul(t1, n, n_0);
-        table.extend_from_slice(t11.as_words());
-
-        let t12 = t6.mont_sqr(n, n_0);
-        table.extend_from_slice(t12.as_words());
-
-        let t13 = t12.mont_mul(t1, n, n_0);
-        table.extend_from_slice(t13.as_words());
-
-        let t14 = t7.mont_sqr(n, n_0);
-        table.extend_from_slice(t14.as_words());
-
-        let t15 = t14.mont_mul(t1, n, n_0);
-        table.extend_from_slice(t15.as_words());
-
-        let mut first = true;
-        let mut wcount = 0;
-        let mut window = 0;
-
-        let mut term = Self::zero();
-        term.used = n.used;
-
-        for bit in BitsMsbFirstIter::new(e.as_words()) {
-            // for the first exponent bit, `accum` is 1M;
-            // squaring this would be a waste of effort.
-            if first {
-                first = false;
-            } else {
+        // The top window takes what is left above whole windows, starting
+        // `accum` at its power rather than squaring `one_mont`.
+        let mut lsb = top - top % WINDOW;
+        select(accum, window_bits(e.as_words(), lsb, top + 1 - lsb));
+        while lsb > 0 {
+            lsb -= WINDOW;
+            for _ in 0..WINDOW {
                 accum.mont_sqr_into(spare, n, n_0);
                 core::mem::swap(&mut accum, &mut spare);
-            };
-
-            // accumulate exponent bits into the window.
-            window = (window << 1) | bit;
-            wcount += 1;
-
-            // until we have a full window of bits
-            if wcount == 4 {
-                // and then use that to select the term from `table`;
-                // relying on `bignum_copy_row_from_table` being side-channel
-                // silent.
-                low::bignum_copy_row_from_table(
-                    term.as_mut_words(),
-                    table.as_slice(),
-                    16,
-                    n.used as u64,
-                    window,
-                );
-
-                // then multiply that in, mod n.
-                accum.mont_mul_into(&term, spare, n, n_0);
-                core::mem::swap(&mut accum, &mut spare);
-                wcount = 0;
-                window = 0;
             }
+            select(&mut term, window_bits(e.as_words(), lsb, WINDOW));
+            accum.mont_mul_into(&term, spare, n, n_0);
+            core::mem::swap(&mut accum, &mut spare);
         }
 
         // The powers of a secret base, on the heap.
@@ -740,44 +676,16 @@ impl<const N: usize> Drop for SecretPosInt<N> {
     }
 }
 
+/// The `width` bits of `e` from bit `lsb` up, which must lie within it. Only
+/// the positions decide which words are read, so the bits may be secret.
 #[cfg(not(target_arch = "x86_64"))]
-#[derive(Debug)]
-struct BitsMsbFirstIter<'a> {
-    words: &'a [u64],
-    bit: usize,
-    word: usize,
-}
-
-#[cfg(not(target_arch = "x86_64"))]
-impl<'a> BitsMsbFirstIter<'a> {
-    fn new(words: &'a [u64]) -> Self {
-        debug_assert!(!words.is_empty());
-        Self {
-            words,
-            bit: 64,
-            word: words.len() - 1,
-        }
+fn window_bits(e: &[u64], lsb: usize, width: usize) -> u64 {
+    let (word, shift) = (lsb / 64, lsb % 64);
+    let mut bits = e[word] >> shift;
+    if shift + width > 64 {
+        bits |= e[word + 1] << (64 - shift);
     }
-}
-
-#[cfg(not(target_arch = "x86_64"))]
-impl Iterator for BitsMsbFirstIter<'_> {
-    type Item = u64;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.bit == 0 && self.word == 0 {
-            return None;
-        }
-
-        if self.bit == 0 {
-            self.bit = 63;
-            self.word -= 1;
-        } else {
-            self.bit -= 1;
-        }
-
-        Some((self.words[self.word] >> self.bit) & 1)
-    }
+    bits & ((1 << width) - 1)
 }
 
 fn trim_leading_zeroes(mut bytes: &[u8]) -> &[u8] {
@@ -865,6 +773,72 @@ mod tests {
 
             for n in [low, high] {
                 assert!(n.pub_montifier().pub_equals(&n.montifier()), "{bits} bits");
+            }
+        }
+    }
+
+    /// Against square-and-multiply, at each width class aarch64's
+    /// `bn_mul_mont` branches on, and exponents of one to five words, whose
+    /// top windows take each width from one to five bits.
+    #[cfg(not(target_arch = "x86_64"))]
+    #[test]
+    fn mont_exp_matches_square_and_multiply() {
+        let mut state = 0x6a09_e667_f3bc_c908u64;
+        let mut word = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for k in [1, 2, 7, 8, 16, 17] {
+            let mut n = PosInt::<32>::zero();
+            n.used = k;
+            n.words[..k].fill_with(&mut word);
+            n.words[0] |= 1;
+            n.words[k - 1] |= 1 << 63;
+            let n_0 = n.mont_neg_inverse();
+            let montifier = n.montifier();
+            let one_mont = n.fixed_one().to_montgomery(&montifier, &n);
+
+            // A base below `n`, with its extremes, zero and `n - 1`, and an
+            // exponent of zero, of every bit set, and random.
+            for case in 0..5 {
+                let mut x = PosInt::<32>::zero();
+                x.used = k;
+                x.words[..k].fill_with(&mut word);
+                x.words[k - 1] >>= 1;
+                match case {
+                    0 => x.words[..k].fill(0),
+                    1 => {
+                        x.words[..k].copy_from_slice(n.as_words());
+                        x.words[0] -= 1;
+                    }
+                    _ => {}
+                }
+                let x = x.to_montgomery(&montifier, &n);
+
+                for len in 1..=5 {
+                    let mut e = PosInt::<32>::zero();
+                    e.used = len;
+                    match case {
+                        2 => {}
+                        3 => e.words[..len].fill(u64::MAX),
+                        _ => e.words[..len].fill_with(&mut word),
+                    }
+
+                    let mut want = one_mont.clone();
+                    for i in (0..len * 64).rev() {
+                        want = want.mont_sqr(&n, n_0);
+                        if e.words[i / 64] >> (i % 64) & 1 == 1 {
+                            want = want.mont_mul(&x, &n, n_0);
+                        }
+                    }
+                    let got = x.mont_exp(one_mont.clone(), &e, &n, n_0);
+                    assert!(
+                        got.equals(&want),
+                        "{k} words, case {case}, {len}-word exponent"
+                    );
+                }
             }
         }
     }

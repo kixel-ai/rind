@@ -31,11 +31,11 @@ drops the label line; one naming a helper gives that helper its own copy from
 the label on, which opens a CFI frame of its own where the copy closes one.
 One of an import's `labels`, a jump target inside a routine, does not end it
 either, and stays as a local label. A routine that jumps or calls into
-another routine of its file `carries` it: the other's label and body follow
-the routine's in the same file, as local labels. One that branches to a
-helper by name `joins` it: the helper follows the routine's body under a
-local label, within the routine's CFI frame, which restarts there from the
-routine's entry state. An import's `cpp` defines
+another routine of its file `carries` it: the other's alignment, label, and
+body follow the routine's in the same file, as local labels. One that
+branches to a helper by name `joins` it: the helper follows the routine's
+body under a local label, within the routine's CFI frame, which restarts
+there from the routine's entry state. An import's `cpp` defines
 drop branches rind never takes. Its `aliases` name the
 routine an entry label calls, where that label shares the routine's own,
 which another import may hold. Its `inserts` add an instruction before the
@@ -579,6 +579,15 @@ def spelling(lines, name, local):
     sys.exit(f"missing label: {name}")
 
 
+def alignment(lines, name):
+    """The alignment aws-lc puts before `name`'s label, if any, which may
+    precede its `.type` or, in Apple's flavor, the blank line in its place."""
+    i = find(lines, [f"{name}:"]) - 1
+    while lines[i].split()[:1] in ([], [".type"]):
+        i -= 1
+    return lines[i : i + 1] if lines[i].split()[:1] in ([".align"], [".p2align"]) else []
+
+
 def body(lines, label, local, inner=()):
     """What follows `label` up to the next directive or label that ends a
     routine: Apple's flavor has no `.size`, so the next routine's label ends
@@ -775,16 +784,14 @@ def import_64(aws_lc):
             joined = []
             joins = spec.get("joins", [])
             for other in joins:
-                start = find(lines, [f"{other}:"])
                 text = body(lines, f"{other}:", local)
                 end = [line.split()[:1] for line in text].index([".cfi_endproc"])
-                align = lines[start - 1 : start] if lines[start - 1].split()[:1] == [".align"] else []
-                joined.append(align + [f"{local}{other}:"] + text[: end + 1])
+                joined.append(alignment(lines, other) + [f"{local}{other}:"] + text[: end + 1])
             for label, name in entries:
                 text = [line for line in body(lines, label, local, inner + labels) if line.split() not in dropped]
                 carried = spec.get("carries", {}).get(name, [])
                 for other in carried:
-                    text += [f"{local}{other}:"] + body(lines, f"{other}:", local)
+                    text += alignment(lines, other) + [f"{local}{other}:"] + body(lines, f"{other}:", local)
                 if name in spec["routines"] and joined:
                     text = one_frame([text] + joined)
                 if labels or carried or joins:

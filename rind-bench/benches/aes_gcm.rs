@@ -175,5 +175,105 @@ fn aes256_gcm(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, aes128_gcm, aes256_gcm);
+// Decrypting and verifying each size's ciphertext, as a receiver pays.
+fn open(
+    c: &mut Criterion,
+    name: &str,
+    key: &[u8],
+    ring: &'static ring::aead::Algorithm,
+    aws: &'static aws_lc_rs::aead::Algorithm,
+    ours: &'static rind::aead::Algorithm,
+) {
+    let nonce = [0u8; 12];
+    let aad = [0u8; 32];
+    let ring_key = ring::aead::LessSafeKey::new(ring::aead::UnboundKey::new(ring, key).unwrap());
+    let aws_key =
+        aws_lc_rs::aead::LessSafeKey::new(aws_lc_rs::aead::UnboundKey::new(aws, key).unwrap());
+    let rind_key = rind::aead::Key::new(ours, key).unwrap();
+
+    let mut group = c.benchmark_group(name);
+    for (size, size_name) in criterion::SIZES {
+        let mut ct = vec![0u8; size];
+        let tag = rind_key
+            .seal_in_place_separate_tag(
+                rind::aead::Nonce::assume_unique_for_key(nonce),
+                &aad,
+                &mut ct,
+            )
+            .unwrap();
+        group.throughput(Throughput::Bytes(size as u64));
+
+        group.bench_with_input(BenchmarkId::new("ring", size_name), &ct, |b, ct| {
+            let tag = ring::aead::Tag::try_from(tag.as_ref()).unwrap();
+            b.iter(|| {
+                let mut pt = ct.to_vec();
+                ring_key
+                    .open_in_place_separate_tag(
+                        ring::aead::Nonce::assume_unique_for_key(nonce),
+                        ring::aead::Aad::from(aad),
+                        tag,
+                        &mut pt,
+                        0..,
+                    )
+                    .unwrap();
+            });
+        });
+        group.bench_with_input(BenchmarkId::new("aws-lc-rs", size_name), &ct, |b, ct| {
+            b.iter(|| {
+                let mut pt = ct.to_vec();
+                aws_key
+                    .open_in_place_separate_tag(
+                        aws_lc_rs::aead::Nonce::assume_unique_for_key(nonce),
+                        aws_lc_rs::aead::Aad::from(aad),
+                        tag.as_ref(),
+                        &mut pt,
+                    )
+                    .unwrap();
+            });
+        });
+        group.bench_with_input(BenchmarkId::new("rind", size_name), &ct, |b, ct| {
+            b.iter(|| {
+                let mut pt = ct.to_vec();
+                rind_key
+                    .open_in_place_separate_tag(
+                        rind::aead::Nonce::assume_unique_for_key(nonce),
+                        &aad,
+                        tag,
+                        &mut pt,
+                    )
+                    .unwrap();
+            });
+        });
+    }
+}
+
+fn aes128_gcm_open(c: &mut Criterion) {
+    open(
+        c,
+        "aes128-gcm-open",
+        &[0u8; 16],
+        &ring::aead::AES_128_GCM,
+        &aws_lc_rs::aead::AES_128_GCM,
+        &rind::aead::AES_128_GCM,
+    );
+}
+
+fn aes256_gcm_open(c: &mut Criterion) {
+    open(
+        c,
+        "aes256-gcm-open",
+        &[0u8; 32],
+        &ring::aead::AES_256_GCM,
+        &aws_lc_rs::aead::AES_256_GCM,
+        &rind::aead::AES_256_GCM,
+    );
+}
+
+criterion_group!(
+    benches,
+    aes128_gcm,
+    aes256_gcm,
+    aes128_gcm_open,
+    aes256_gcm_open
+);
 criterion_main!(benches);
