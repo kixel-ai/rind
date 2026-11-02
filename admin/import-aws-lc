@@ -3,7 +3,7 @@
 
 Usage: admin/import-aws-lc <aws-lc checkout at REV>
 
-Every output starts from one of aws-lc's assembly files, all but one
+Every output starts from one of aws-lc's assembly files, all but three
 pregenerated under `generated-src`, run through cpp, and is escaped for Rust's assembly macros: braces doubled,
 each table a routine loads a `{name}` operand, and each local label tagged
 with its file, since the blocks can share an assembler scope. Undoing those
@@ -39,7 +39,11 @@ drop branches rind never takes. Its `aliases` name the
 routine an entry label calls, where that label shares the routine's own,
 which another import may hold. Its `inserts` add an instruction before the
 first that names a symbol, and its `replaces` swap one instruction for another:
-deliberate changes to aws-lc's code, each saying why.
+deliberate changes to aws-lc's code, each saying why. A `vzeroupper` import
+gains that instruction before each return: mlkem-native's routines return
+with the upper halves of the ymm registers dirty, which costs the SSE code
+that runs next a transition on Intel's cores, so rind ends them as
+`admin/parse-asm` does s2n-bignum's.
 """
 
 import os
@@ -140,10 +144,18 @@ ARM_IMPORTS = [
 ARCHES = {
     "x86_64": {
         "comment": "#",
-        "cpp": ["-DOPENSSL_X86_64", "-D_CET_ENDBR="],
+        # The S2N_BN macros stand in for the s2n-bignum header that
+        # mlkem-native's routines include.
+        "cpp": [
+            "-DOPENSSL_X86_64",
+            "-D_CET_ENDBR=",
+            "-DS2N_BN_SYM_VISIBILITY_DIRECTIVE(n)=.globl S2N_BN_SYMBOL(n)",
+            "-DS2N_BN_SYM_PRIVACY_DIRECTIVE(n)=",
+            "-DS2N_BN_SIZE_DIRECTIVE(n)=.size S2N_BN_SYMBOL(n),.-S2N_BN_SYMBOL(n)",
+        ],
         "flavors": {
-            "linux": ("linux-x86_64", ["-D__ELF__"], "", ".L"),
-            "apple": ("mac-x86_64", ["-D__APPLE__"], "_", "L$"),
+            "linux": ("linux-x86_64", ["-D__ELF__", "-DS2N_BN_SYMBOL(n)=n"], "", ".L"),
+            "apple": ("mac-x86_64", ["-D__APPLE__", "-DS2N_BN_SYMBOL(n)=_/**/n"], "_", "L$"),
         },
     },
     "aarch64": {
@@ -351,6 +363,22 @@ IMPORTS_64 = [
             for name in ["chacha20_poly1305_open", "chacha20_poly1305_seal"]
         },
     },
+    *[
+        {
+            "arch": "x86_64",
+            "source": f"mlkem_poly_compress_{d}_avx2_asm.S",
+            "path": "crypto/fipsmodule/ml_kem/mlkem/native/x86_64/src",
+            "tag": f"mlkem_{d}",
+            "notice": [
+                "Copyright (c) The mlkem-native project authors",
+                "SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT",
+            ],
+            "tables": [],
+            "routines": [f"mlkem_poly_compress_{d}_avx2_asm"],
+            "vzeroupper": True,
+        }
+        for d in ["d4", "d10"]
+    ],
     {
         "arch": "aarch64",
         "source": "sha512-armv8.S",
@@ -359,6 +387,15 @@ IMPORTS_64 = [
         "copyright": "Copyright 2014-2020 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["K512"],
         "routines": ["sha512_block_data_order_nohw", "sha512_block_data_order_hw"],
+    },
+    {
+        "arch": "aarch64",
+        "source": "sha256-armv8.S",
+        "tag": "sha256",
+        "perlasm": "crypto/fipsmodule/sha/asm/sha512-armv8.pl",
+        "copyright": "Copyright 2014-2020 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["K256"],
+        "routines": ["sha256_block_data_order_nohw", "sha256_block_data_order_hw"],
     },
     # Montgomery multiplication, which picks its squaring or 4x routine by
     # the width itself.
@@ -373,15 +410,6 @@ IMPORTS_64 = [
         "joins": ["__bn_sqr8x_mont", "__bn_mul4x_mont"],
     },
     # The rest are for aarch64 CPUs without the crypto extension.
-    {
-        "arch": "aarch64",
-        "source": "sha256-armv8.S",
-        "tag": "sha256",
-        "perlasm": "crypto/fipsmodule/sha/asm/sha512-armv8.pl",
-        "copyright": "Copyright 2014-2020 The OpenSSL Project Authors. All Rights Reserved.",
-        "tables": ["K256"],
-        "routines": ["sha256_block_data_order_nohw"],
-    },
     {
         "arch": "aarch64",
         "source": "sha1-armv8.S",
@@ -438,10 +466,17 @@ IMPORTS_64 = [
 ]
 
 
+def vzeroupper(line):
+    """`line`, after a `vzeroupper` if it returns."""
+    if line.split()[:1] in (["ret"], ["retq"]):
+        yield "\tvzeroupper"
+    yield line
+
+
 def preprocess(path, defines):
     # The headers only define what the defines already do, or macros for
     # other architectures.
-    include = re.compile(r"#\s*include <openssl/")
+    include = re.compile(r'#\s*include (<openssl/|"_internal_s2n_bignum_x86_att\.h")')
     with open(path) as f:
         text = "".join(line for line in f if not include.match(line))
     # As an assembler source, so qhasm's `#` comment lines pass through.
@@ -617,7 +652,10 @@ def import_64(aws_lc):
         out_dir = os.path.join(ROOT, spec["arch"], "aws_lc")
         stem = spec["source"].removesuffix(".S")
         for flavor, (directory, defines, prefix, local) in arch["flavors"].items():
-            source = os.path.join("generated-src", directory, "crypto", spec.get("dir", "fipsmodule"), spec["source"])
+            if "path" in spec:
+                source = os.path.join(spec["path"], spec["source"])
+            else:
+                source = os.path.join("generated-src", directory, "crypto", spec.get("dir", "fipsmodule"), spec["source"])
             lines = preprocess(os.path.join(aws_lc, source), arch["cpp"] + defines + spec.get("cpp", []))
 
             # A flavor names a table with or without its local prefix, and a
@@ -686,6 +724,8 @@ def import_64(aws_lc):
                     if len(at) != 1:
                         sys.exit(f"{name}: expected one {op} {args}")
                     text[at[0]] = "\t" + line
+                if spec.get("vzeroupper"):
+                    text = [new for line in text for new in vzeroupper(line)]
                 text = escape(text, operands, local, spec["tag"], arch["comment"])
                 write(os.path.join(out_dir, f"{name}.{flavor}.s"), header(arch["comment"], spec, source) + list(text))
 

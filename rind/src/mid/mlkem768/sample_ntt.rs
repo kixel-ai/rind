@@ -4,7 +4,7 @@
 use super::{K, N, Q};
 use crate::{
     low,
-    mid::sha3::{self, SqueezingSpongeObligation},
+    mid::sha3::{self, SqueezingSponge},
 };
 
 pub(super) fn sample_ntt(rho: &[u8; 32]) -> [i16; K * K * N] {
@@ -88,7 +88,7 @@ fn _sample_poly_ntt_8x(inputs: &[[u8; 40]; 8], outputs: &mut [i16; N * 8]) {
             let tail = Shake128ForMlKem::sample(samples, output);
             if !tail.is_empty() {
                 Shake128ForMlKem {
-                    sponge: tail_sponge.restitute(),
+                    sponge: tail_sponge,
                 }
                 .tail_case(tail);
             }
@@ -98,7 +98,7 @@ fn _sample_poly_ntt_8x(inputs: &[[u8; 40]; 8], outputs: &mut [i16; N * 8]) {
 
 fn _sample_poly_ntt_tail(tail_sponge: &mut [u64; 25], tail: &mut [i16]) {
     Shake128ForMlKem {
-        sponge: SqueezingSpongeObligation(*tail_sponge).restitute(),
+        sponge: SqueezingSponge::new(*tail_sponge),
     }
     .tail_case(tail);
 }
