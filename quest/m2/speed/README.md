@@ -47,7 +47,6 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [RSA at every key size as fast as aws-lc-rs](/quest/m2/speed/rsa-sizes.md) - x86_64 signing's exponentiation beyond the Karatsuba sizes, as aws-lc's windows and `bn_power5` run it
 - [armv7 P-256 as fast as the fastest source](/quest/m2/speed/armv7-p256.md) - signing 2.63x, ES256 2.04x today
 - [armv7 RSA as fast as the fastest source](/quest/m2/speed/armv7-rsa.md) - key loading 1.30-1.34x, RSA-2056 1.07-1.08x today
 - [x86_64 SHA-256 finishing in two blocks and PBKDF2-HMAC-SHA1 as fast as the fastest source](/quest/m2/speed/armv7-hmac-hkdf.md) - 1.08x at 64 B and 1.02x today
