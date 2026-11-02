@@ -173,7 +173,7 @@ extension; without them it runs the code [Symmetric
 cryptography](#symmetric-cryptography) names. aarch64 RSA trails only ring,
 at every size but 3072 bits; it is level with aws-lc-rs or faster at every
 size. The run predates [#206], which changed aarch64 RSA only at sizes the
-run doesn't time.
+run doesn't time. armv7's RSA and handshake cells are from [run 41401089431].
 
 | Algorithm | aarch64 | no crypto | armv7 |
 |---|---|---|---|
@@ -193,8 +193,8 @@ run doesn't time.
 | P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.09** fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | 0.65 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.05** fiat-crypto ✓ + rind ⚡ |
 | ML-KEM-768 | **1.12** s2n-bignum ✓ + Graviola ⚡ | 0.99 | **1.05** libcrux-ml-kem ✓ |
-| RSA signatures, key generation | **1.56** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | 1.00 | PENDING aws-lc ⚡ + Graviola ⚡ + rind ⚡ |
-| rind-rustls handshakes | **1.49** | 0.99 | **2.50** |
+| RSA signatures, key generation | **1.56** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | 1.00 | **1.34** aws-lc ⚡ + Graviola ⚡ + rind ⚡ |
+| rind-rustls handshakes | **1.49** | 0.99 | **1.29** |
 | rind-rustls 1 MB transfer | 1.00 | 1.00 | 1.01 |
 
 The table describes `main`, and changes alongside the code it describes. The
@@ -245,6 +245,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [run 41378010740]: https://github.com/moq-dev/rind/actions/runs/41378010740
+[run 41401089431]: https://github.com/moq-dev/rind/actions/runs/41401089431
 [#206]: https://github.com/moq-dev/rind/pull/206
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
