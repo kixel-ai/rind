@@ -49,13 +49,14 @@ impl PmullTable {
     pub(crate) fn new(h: u128, token: HaveCryptoExt) -> Self {
         // SAFETY: this crate requires the `neon` cpu feature
         let h = unsafe { gf128_big_endian(from_u128(h)) };
+        // A tree, so the longest chain of dependent multiplies is three
+        // rather than seven.
         let h2 = mul(h, h, token);
-        let h3 = mul(h2, h, token);
-        let h4 = mul(h3, h, token);
+        let (h3, h4) = (mul(h2, h, token), mul(h2, h2, token));
         let h5 = mul(h4, h, token);
-        let h6 = mul(h5, h, token);
-        let h7 = mul(h6, h, token);
-        let h8 = mul(h7, h, token);
+        let h6 = mul(h4, h2, token);
+        let h7 = mul(h4, h3, token);
+        let h8 = mul(h4, h4, token);
 
         let powers = [h, h2, h3, h4, h5, h6, h7, h8];
         // SAFETY: this crate requires the `neon` cpu feature
