@@ -56,5 +56,4 @@ settled; don't ask them again. The chosen option is marked ✅.
 - [aarch64 RSA as fast as ring](/quest/m2/speed/aarch64-rsa-ring.md) - signing 1.56x at 2048 bits today
 - [ML-KEM-768 encapsulation as fast as the fastest source](/quest/m2/speed/mlkem-encaps.md) - 1.05-1.22x today
 - [SHA-256 fed 1-byte updates as fast as the fastest source](/quest/m2/speed/sha256-small-updates.md) - up to 1.34x today
-- [x86_64 P-256 key generation as fast as the fastest source](/quest/m2/speed/x86-p256-keygen.md) - 1.11-1.17x today
 - [x86_64 RSA with AVX-512 IFMA](/quest/m2/speed/x86-rsa-ifma.md) - aws-lc's AVX-512 RSA is up to 3.56x faster

@@ -156,7 +156,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 | PBKDF2 | 0.94 rind |  | 0.93 |  |  |  |
 | X25519 | 1.01 s2n-bignum ✓ | 1.00 | 1.02 |  |  |  |
 | Ed25519 | **1.04** s2n-bignum ✓ + Graviola ⚡ | **1.03** | **1.03** |  |  |  |
-| P-256 ECDH, ECDSA | **1.11** s2n-bignum ✓ + Graviola ⚡ | **1.17** | **1.12** |  |  |  |
+| P-256 ECDH, ECDSA | **1.11** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | **1.17** | **1.12** |  |  |  |
 | P-384 ECDH, ECDSA | 0.90 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.91 | 0.92 |  |  |  |
 | P-521 ECDH, ECDSA | 0.94 s2n-bignum ✓ + rind ⚡ | 0.95 | 0.95 |  |  |  |
 | ML-KEM-768 | **1.22** s2n-bignum ✓ + Graviola ⚡ |  | 0.99 mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
@@ -209,7 +209,7 @@ tests use [Wycheproof]'s vectors.
 | [libcrux-ml-kem] | dependency | Apache-2.0 | [hax and F\* proofs](https://github.com/cryspen/libcrux/blob/main/libcrux-ml-kem/proofs/verification_status.md) of panic freedom and functional correctness for its portable arithmetic, NTT, serialization, and high-level code. Its SHA-3, from libcrux-sha3, is unverified. |
 | [mlkem-native] | ported: its portable C polynomial arithmetic (the NTT, inverse NTT, base multiplication, reductions, packing, and rejection sampling), to Rust, for x86_64 CPUs without AVX2 | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port. |
 | [libcrux-aes] | dependency for AES-GCM; copied: the block cipher | Apache-2.0 | nothing: libcrux marks it pre-verification |
-| [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine, Montgomery multiplication (with one deliberate change: rind's `bn_sqr8x_mont` zeroes two scratch words its `mulx` branch reads unwritten, which valgrind reports though results and timing do not depend on them), RSAZ exponentiation, AES-NI AES-CTR, and SSE4.1 and AVX2 ChaCha20-Poly1305 (with one deliberate change: rind's copy reads the choice of AVX2 from the block rind passes it rather than aws-lc's `OPENSSL_ia32cap_P`), its aarch64 NEON ChaCha20-Poly1305, its x86_64 assembly for CPUs without AVX2 (SSSE3 and integer ChaCha20, SSSE3 and AVX SHA-1, and SSSE3 SHA-256) without AES-NI (SSSE3 AES and GHASH), and without SSSE3 (integer SHA-1 and SHA-256), its aarch64 Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`; and the C that drives that Poly1305 and RSAZ, that sets up its x86_64 SSSE3 GHASH table, and that computes its constant-time SSE2 AES and integer GHASH for x86_64 CPUs without SSSE3, ported to Rust. aws-lc takes its Poly1305, ChaCha20-Poly1305, SSSE3 GHASH, and constant-time AES and GHASH from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305, ChaCha20-Poly1305, SSSE3 and integer GHASH, and constant-time AES ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification) that its x86_64 AVX and aarch64 (with and without the SHA-512 instructions) SHA-384/512 routines compute their specified result for all inputs. They check aws-lc's own build, not rind's copy, and do not cover its 32-bit ARM code. |
+| [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine, Montgomery multiplication (with one deliberate change: rind's `bn_sqr8x_mont` zeroes two scratch words its `mulx` branch reads unwritten, which valgrind reports though results and timing do not depend on them), RSAZ exponentiation, AES-NI AES-CTR, P-256's generator multiplication (its row scan and mixed addition) and its doubling and addition for CPUs without ADX, and SSE4.1 and AVX2 ChaCha20-Poly1305 (with one deliberate change: rind's copy reads the choice of AVX2 from the block rind passes it rather than aws-lc's `OPENSSL_ia32cap_P`), its aarch64 NEON ChaCha20-Poly1305, its x86_64 assembly for CPUs without AVX2 (SSSE3 and integer ChaCha20, SSSE3 and AVX SHA-1, and SSSE3 SHA-256) without AES-NI (SSSE3 AES and GHASH), and without SSSE3 (integer SHA-1 and SHA-256), its aarch64 Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`; and the C that drives that Poly1305 and RSAZ, that sets up its x86_64 SSSE3 GHASH table, and that computes its constant-time SSE2 AES and integer GHASH for x86_64 CPUs without SSSE3, ported to Rust. aws-lc takes its Poly1305, ChaCha20-Poly1305, SSSE3 GHASH, and constant-time AES and GHASH from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305, ChaCha20-Poly1305, SSSE3 and integer GHASH, and constant-time AES ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification) that its x86_64 AVX and aarch64 (with and without the SHA-512 instructions) SHA-384/512 routines compute their specified result for all inputs. They check aws-lc's own build, not rind's copy, and do not cover its 32-bit ARM code. |
 | [BoringSSL] | copied, by `admin/import-boringssl`: its x86_64 VAES AES-GCM assembly, `aes-gcm-avx2-x86_64` and `aes-gcm-avx512-x86_64`, as Rust naked functions; its 32-bit ARM NEON X25519 assembly, in Rust `global_asm!`, which BoringSSL takes from [SUPERCOP]'s `neon2`, public domain | Apache-2.0 | nothing |
 | [curve25519-dalek] | dependency, with its serial 32-bit backend | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
@@ -292,13 +292,21 @@ only which candidates it discards.
 
 ### ECC
 On x86_64 and aarch64, all ECC field and scalar arithmetic are provided by
-s2n-bignum, and the rest of this section describes those backends.
+s2n-bignum, except P256's on x86_64 where aws-lc's is named below, and the
+rest of this section describes those backends.
 
-P256 base point multiplication uses a 7-bit exponent window with Booth encoding
-(this costs a 148KB constant table).
-Variable point multiplication uses a 5-bit exponent window with Booth encoding.
-Both use the same exponent representations for "public" and "secret" exponents --
-however the table selection for "public" exponents is specialized at compile-time.
+P256 base point multiplication on x86_64 is aws-lc's: 7-bit Booth windows over
+37 rows of 64 affine points (a 148KB constant table), each row scanned whole
+by its SSE2 or AVX2 routine and added by its mixed addition, with `mulq` or
+with BMI2 and ADX, as aws-lc's `ecp_nistz256_point_mul_base` runs them. On
+aarch64 it is s2n-bignum's `p256_scalarmulbase` over 6-bit Booth windows (an
+86KB constant table). Variable point multiplication is s2n-bignum's
+`p256_montjscalarmul`, except for ECDSA verification's public scalar, which
+uses a 5-bit Booth window over the multiples of the public key, computed once
+when the key is parsed. Verification's generator half walks the same table
+by public index. On x86_64 CPUs without ADX, verification's doubling and
+addition are aws-lc's `mulq` routines, which measured faster than
+s2n-bignum's `_alt` ones; with ADX they are s2n-bignum's.
 
 P384 base point multiplication uses a comb of 20 tables of 16 affine points
 (a 30KB constant table) over 5-bit Booth windows, as aws-lc does. Variable
@@ -322,7 +330,8 @@ This is allowed for by RFC6979, and the HMAC-DRBG that it builds on.
 The code is structured such that we pass the RFC6979 test vectors.
 
 The code which selects a term from a table of points is non-verified,
-and is written in AVX2/Neon intrinsics.
+and is written in AVX2/Neon intrinsics, or for P256 on x86_64 is aws-lc's
+SSE2 and AVX2 assembly.
 
 On x86_64 and aarch64, X25519 directly uses the s2n-bignum implementation.
 

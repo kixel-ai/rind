@@ -25,11 +25,7 @@ mux! {
     bignum_montmul_p256 / bignum_montmul_p256_alt(z: &mut [u64; 4], x: &[u64; 4], y: &[u64; 4]);
     bignum_montsqr_p256 / bignum_montsqr_p256_alt(z: &mut [u64; 4], x: &[u64; 4]);
     bignum_tomont_p256 / bignum_tomont_p256_alt(z: &mut [u64; 4], x: &[u64; 4]);
-    p256_montjadd / p256_montjadd_alt(p3: &mut [u64; 12], p1: &[u64; 12], p2: &[u64; 12]);
-    p256_montjdouble / p256_montjdouble_alt(p3: &mut [u64; 12], p1: &[u64; 12]);
-    p256_montjmixadd / p256_montjmixadd_alt(p3: &mut [u64; 12], p1: &[u64; 12], p2: &[u64; 8]);
     p256_montjscalarmul / p256_montjscalarmul_alt(res: &mut [u64; 12], scalar: &[u64; 4], point: &[u64; 12]);
-    p256_scalarmulbase / p256_scalarmulbase_alt(res: &mut [u64; 8], scalar: &[u64; 4], table: &[[u64; 256]; 43]);
 
     bignum_demont_p384 / bignum_demont_p384_alt(z: &mut [u64; 6], x: &[u64; 6]);
     bignum_montmul_p384 / bignum_montmul_p384_alt(z: &mut [u64; 6], x: &[u64; 6], y: &[u64; 6]);
@@ -97,24 +93,6 @@ pub(super) mod tests {
                 255,
                 bignum_montmul_p256::bignum_montmul_p256,
                 bignum_montmul_p256_alt::bignum_montmul_p256_alt,
-            );
-            same1(
-                &mut rng,
-                255,
-                p256_montjdouble::p256_montjdouble,
-                p256_montjdouble_alt::p256_montjdouble_alt,
-            );
-            same2(
-                &mut rng,
-                255,
-                p256_montjadd::p256_montjadd,
-                p256_montjadd_alt::p256_montjadd_alt,
-            );
-            same2(
-                &mut rng,
-                255,
-                p256_montjmixadd::p256_montjmixadd,
-                p256_montjmixadd_alt::p256_montjmixadd_alt,
             );
             same2(
                 &mut rng,
@@ -272,18 +250,6 @@ pub(super) mod tests {
             );
             assert_eq!(want, got);
         }
-
-        // Its table holds affine points, so field elements do here too.
-        let mut table = vec![[0; 256]; 43];
-        for row in table.iter_mut() {
-            *row = rng.field(255);
-        }
-        let table: &[[u64; 256]; 43] = table.as_slice().try_into().unwrap();
-        let scalar = rng.words::<4>(256);
-        let (mut want, mut got) = ([0; 8], [0; 8]);
-        p256_scalarmulbase::p256_scalarmulbase(&mut want, &scalar, table);
-        p256_scalarmulbase_alt::p256_scalarmulbase_alt(&mut got, &scalar, table);
-        assert_eq!(want, got);
     }
 
     fn same1<const N: usize, const M: usize>(
@@ -338,7 +304,7 @@ pub(super) mod tests {
 
         /// Field elements of a curve whose prime exceeds 2^`bits`, packed
         /// into an array of whole coordinates.
-        fn field<const N: usize>(&mut self, bits: u32) -> [u64; N] {
+        pub(in super::super) fn field<const N: usize>(&mut self, bits: u32) -> [u64; N] {
             let words = bits.div_ceil(64) as usize;
             let mut out = [0; N];
             for chunk in out.chunks_mut(words) {

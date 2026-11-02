@@ -37,7 +37,12 @@ helper by name `joins` it: the helper follows the routine's body under a
 local label, through the end of its CFI frame. An import's `cpp` defines
 drop branches rind never takes. Its `inserts` add an instruction before one
 that names a symbol, and its `replaces` swap one instruction for another:
-deliberate changes to aws-lc's code, each saying why.
+deliberate changes to aws-lc's code, each saying why. Its `dispatches` drop
+a routine's CPU checks, each from its load of `OPENSSL_ia32cap_P` through
+its jump to a twin, since rind picks the twin itself; a twin that is not
+global keeps its name unprefixed in Apple's flavor. A routine that carries
+another the import also writes tags its labels with its own name, since the
+copies would otherwise repeat them.
 """
 
 import os
@@ -180,6 +185,51 @@ IMPORTS_64 = [
             "sha256_block_data_order_avx",
             "sha256_block_data_order_ssse3",
             "sha256_block_data_order_nohw",
+        ],
+    },
+    # P-256's generator multiplication, as aws-lc's
+    # `ecp_nistz256_point_mul_base` runs it: a constant-time row scan, with
+    # SSE2 or AVX2, and a mixed addition, with `mulq` or with BMI2 and ADX.
+    # And the `mulq` doubling and addition, for verification on CPUs without
+    # them; the addition doubles equal points by jumping into the doubling.
+    {
+        "arch": "x86_64",
+        "source": "p256-x86_64-asm.S",
+        "tag": "p256",
+        "perlasm": "crypto/fipsmodule/ec/asm/p256-x86_64-asm.pl",
+        "notice": [
+            "Copyright 2014-2016 The OpenSSL Project Authors. All Rights Reserved.",
+            "Copyright (c) 2014, Intel Corporation. All Rights Reserved.",
+            "Copyright (c) 2015 CloudFlare, Inc.",
+            "SPDX-License-Identifier: Apache-2.0",
+        ],
+        "tables": ["poly", "One", "ONE_mont"],
+        "routines": [
+            "ecp_nistz256_select_w7",
+            "ecp_nistz256_avx2_select_w7",
+            "ecp_nistz256_point_add_affine",
+            "ecp_nistz256_point_add_affinex",
+            "ecp_nistz256_point_double",
+            "ecp_nistz256_point_add",
+        ],
+        "helpers": [
+            "__ecp_nistz256_add_toq",
+            "__ecp_nistz256_mul_by_2q",
+            "__ecp_nistz256_mul_montq",
+            "__ecp_nistz256_sqr_montq",
+            "__ecp_nistz256_sub_fromq",
+            "__ecp_nistz256_subq",
+            "__ecp_nistz256_mul_montx",
+            "__ecp_nistz256_sqr_montx",
+            "__ecp_nistz256_sub_fromx",
+            "__ecp_nistz256_subx",
+        ],
+        "carries": {"ecp_nistz256_point_add": ["ecp_nistz256_point_double"]},
+        "dispatches": [
+            "ecp_nistz256_select_w7",
+            "ecp_nistz256_point_add_affine",
+            "ecp_nistz256_point_double",
+            "ecp_nistz256_point_add",
         ],
     },
     # The rest of the x86_64 imports are for CPUs without AVX2.
@@ -617,7 +667,13 @@ def import_64(aws_lc):
             operands |= {s: (name.lstrip("_"), 0) for name in helpers for s in (name, local + name)}
             # Routines of another import that these call.
             operands |= {prefix + name: (name, 0) for name in spec.get("calls", [])}
-            entries = [(f"{prefix}{name}:", name) for name in spec["routines"]]
+            # A routine's label, which is unprefixed when it is not global.
+            defined = [line.split() for line in lines]
+
+            def label_of(name):
+                return next(s for s in (prefix + name, name) if [s + ":"] in defined) + ":"
+
+            entries = [(label_of(name), name) for name in spec["routines"]]
             entries += [(spelling(lines, name, local) + ":", name.lstrip("_")) for name in helpers]
             inner = spec.get("inner", [])
             labels = spec.get("labels", [])
@@ -636,7 +692,7 @@ def import_64(aws_lc):
                 text = [line for line in body(lines, label, local, inner + labels) if line.split() not in dropped]
                 carried = spec.get("carries", {}).get(name, [])
                 for other in carried:
-                    text += [f"{local}{other}:"] + body(lines, f"{other}:", local)
+                    text += [f"{local}{other}:"] + body(lines, label_of(other), local)
                 if name in spec["routines"]:
                     text += joined
                 if labels or carried or joins:
@@ -645,6 +701,14 @@ def import_64(aws_lc):
                 directives = [line.split()[:1] for line in text]
                 if label[:-1] in inner and [".cfi_endproc"] in directives and [".cfi_startproc"] not in directives:
                     text = [".cfi_startproc"] + text
+                # Each CPU check, as a carried routine brings its own.
+                if name in spec.get("dispatches", []):
+                    checks = [i for i, old in enumerate(text) if "OPENSSL_ia32cap_P" in old]
+                    if not checks:
+                        sys.exit(f"{name}: expected a CPU check")
+                    for at in reversed(checks):
+                        end = next(i for i in range(at, len(text)) if text[i].split()[0].startswith("j"))
+                        del text[at : end + 1]
                 # Before the one instruction that names this symbol.
                 for op, symbol, line in spec.get("inserts", {}).get(name, []):
                     at = [i for i, old in enumerate(text) if old.split() == [op, prefix + symbol]]
@@ -657,7 +721,12 @@ def import_64(aws_lc):
                     if len(at) != 1:
                         sys.exit(f"{name}: expected one {op} {args}")
                     text[at[0]] = "\t" + line
-                text = escape(text, operands, local, spec["tag"], arch["comment"])
+                # A copy of another routine this import also writes would
+                # repeat its labels, so a routine carrying one tags its own.
+                tag = spec["tag"]
+                if set(carried) & set(spec["routines"]):
+                    tag += "_" + name
+                text = escape(text, operands, local, tag, arch["comment"])
                 write(os.path.join(out_dir, f"{name}.{flavor}.s"), header(arch["comment"], spec, source) + list(text))
 
 

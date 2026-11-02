@@ -148,11 +148,10 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::rsaz::Rsaz;
         pub(crate) use x86_64::mlkem768_sample_poly_ntt_8x::mlkem768_sample_poly_ntt_8x;
 
-        pub(crate) use x86_64::adx_mux::p256_montjadd;
-        pub(crate) use x86_64::adx_mux::p256_montjdouble;
-        pub(crate) use x86_64::adx_mux::p256_montjmixadd;
+        pub(crate) use x86_64::ecp_nistz256::p256_montjadd;
+        pub(crate) use x86_64::ecp_nistz256::p256_montjdouble;
         pub(crate) use x86_64::adx_mux::p256_montjscalarmul;
-        pub(crate) use x86_64::adx_mux::p256_scalarmulbase;
+        pub(crate) use x86_64::ecp_nistz256::{P256GeneratorRow, p256_point_add_affine, p256_select_w7};
         pub(crate) use x86_64::adx_mux::p384_montjadd;
         pub(crate) use x86_64::adx_mux::p384_montjmixadd;
         pub(crate) use x86_64::adx_mux::p384_montjdouble;
