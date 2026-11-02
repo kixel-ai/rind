@@ -34,9 +34,7 @@ impl DecapKey {
         let _entry = low::Entry::new_secret();
         let mut seed = [0u8; 64];
         SystemRandom.fill(&mut seed)?;
-        let key = Self::keygen_internal(&seed);
-        low::zeroise(&mut seed);
-        Ok(key)
+        Ok(Self::keygen_internal(&seed))
     }
 
     /// Decapsulate ciphertext `c`, yielding a [`SharedSecret`].
@@ -69,12 +67,11 @@ impl DecapKey {
     pub(crate) fn keygen_internal(seed: &[u8; 64]) -> Self {
         // Preliminaries: split seed into d and z.
         let (d, z) = seed.split_at(32);
-        let mut d = low::ct::into_secret(d.try_into().unwrap());
+        let d = low::ct::into_secret(d.try_into().unwrap());
 
         // 1. (ekPKE, dkPKE) <- K-PKE.KeyGen(d)
         // 2. ek <- ekPKE
         let (ek_pke, dk_pke) = Self::kpke_keygen(&d);
-        low::zeroise(&mut d);
 
         // 3. dk <- (dkPKE || ek || H(ek) || z)
         // 4. return (ek, dk)
@@ -100,25 +97,21 @@ impl DecapKey {
         let mut g = sha3::Sha3_512Context::new();
         g.update(&m_prime.0);
         g.update(&self.h_ek);
-        let mut kr_prime = g.finish();
+        let kr_prime = g.finish();
         let (k_prime, r_prime) = kr_prime.split_at(32);
         let mut k_prime = SharedSecret(k_prime.try_into().unwrap());
         let r_prime = KpkeRandomness(r_prime.try_into().unwrap());
-        low::zeroise(&mut kr_prime);
 
         // 7. K‾ <- J(z || c)
         let mut k_bar = SharedSecret([0u8; 32]);
         sha3::Shake256::new(&[&self.z, &c.0]).read(&mut k_bar.0);
 
         // 8. c' <- K-PKE.Encrypt(ekPKE, m', r')
-        let mut c_prime = self.ek_pke.kpke_encrypt(m_prime, r_prime);
+        let c_prime = self.ek_pke.kpke_encrypt(m_prime, r_prime);
 
         // 9. - 11. if c != c' then K' <- K‾
         // 12. return K'
         ct_copy(ct_equal(&c.0, &c_prime.0), &mut k_prime.0, &k_bar.0);
-        // A c' that differs from c re-encrypts m', the decryption of a
-        // ciphertext the peer chose.
-        low::zeroise(&mut c_prime.0);
         k_prime
     }
 
@@ -128,12 +121,11 @@ impl DecapKey {
         let mut g = sha3::Sha3_512Context::new();
         g.update(d);
         g.update(&[K_BYTE]);
-        let mut g = g.finish();
+        let g = g.finish();
         let (rho, sigma) = g.split_at(32);
         // rho seeds the public matrix, so it is public.
         let rho: [u8; 32] = low::ct::into_public(rho.try_into().unwrap());
         let sigma = KpkeRandomness(sigma.try_into().unwrap());
-        low::zeroise(&mut g);
 
         // 3. - 7.
         let a_hat = Coeffs::sample_poly(&rho);
@@ -267,11 +259,10 @@ impl EncapKey {
         let mut g = sha3::Sha3_512Context::new();
         g.update(&m.0);
         g.update(&h_ek);
-        let mut kr = g.finish();
+        let kr = g.finish();
         let (k, r) = kr.split_at(32);
         let k = SharedSecret(k.try_into().unwrap());
         let r = KpkeRandomness(r.try_into().unwrap());
-        low::zeroise(&mut kr);
 
         // 2. c <- K-PKE.Encrypt(ek, m, r)
         let c = self.kpke_encrypt(m, r);
@@ -353,20 +344,8 @@ impl AsRef<[u8; 1088]> for Ciphertext {
 /// A K-PKE message.
 pub(crate) struct Message(pub(crate) [u8; 32]);
 
-impl Drop for Message {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.0);
-    }
-}
-
 /// K-PKE randomness input: `sigma` for key generation, `r` for encryption.
 struct KpkeRandomness([u8; 32]);
-
-impl Drop for KpkeRandomness {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.0);
-    }
-}
 
 /// An ML-KEM shared secret.
 pub(crate) struct SharedSecret([u8; 32]);
@@ -415,13 +394,6 @@ impl Domain for MulCache {}
 #[derive(Clone, Debug)]
 #[repr(align(32))]
 struct Coeffs<const C: usize, D: Domain>([i16; C], PhantomData<D>);
-
-// Most coefficients are secret: noise, keys, and the message and its encryption.
-impl<const C: usize, D: Domain> Drop for Coeffs<C, D> {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.0);
-    }
-}
 
 impl<const C: usize, D: Domain> Coeffs<C, D> {
     const fn zero() -> Self {
@@ -754,13 +726,11 @@ fn sample_poly_cbd<'a, const P: usize>(
     }
 
     sha3::Shake256::one_shot_batch(&bufs, &mut samples);
-    low::zeroise(bufs.as_flattened_mut());
 
     for (sample, poly) in samples.iter().zip(polys.by_ref()) {
         sample_cbd2(sample, poly);
     }
     debug_assert!(polys.next().is_none());
-    low::zeroise(samples.as_flattened_mut());
 }
 
 fn sample_cbd2(buf: &[u8; 128], out: &mut [i16; 256]) {

@@ -20,10 +20,12 @@ use wasm_bindgen_test::{wasm_bindgen_test as test, wasm_bindgen_test_configure};
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 wasm_bindgen_test_configure!(run_in_browser);
 
+use core::ops::RangeFrom;
+
+use ring::{aead, error};
+
 #[allow(deprecated)]
 use crate::{test, test_file};
-use core::ops::RangeFrom;
-use ring::{aead, error};
 
 /// Generate the known answer test functions for the given algorithm and test
 /// case input file, where each test is implemented by a test in `$test`.
