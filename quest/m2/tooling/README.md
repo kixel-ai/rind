@@ -22,5 +22,3 @@ Decided with the maintainer on 2026-11-02, planning follow-ups from
 
 ## Required
 
-- [admin/structure sees function bodies](/quest/m2/tooling/structure-bodies.md) - a `mid` function body naming `high` fails the layering check
-- [Refresh the Zen 3 scan on real hardware](/quest/m2/tooling/zen3-scan.md) - amd-zen3.json carries every reported feature
