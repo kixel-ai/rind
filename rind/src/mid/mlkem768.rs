@@ -131,7 +131,9 @@ impl DecapKey {
         let a_hat = Coeffs::sample_poly(&rho);
 
         // 8. - 15.
-        let (s, e) = Coeffs::sample_poly_cbd_dual(&sigma.0);
+        let mut s = Coeffs::zero();
+        let mut e = Coeffs::zero();
+        sample_poly_cbd::<{ 2 * K }>(&sigma.0, s.polys_mut().chain(e.polys_mut()));
 
         // 16. ŝ <- NTT(s)
         let mut s_hat = s.ntt();
@@ -145,6 +147,7 @@ impl DecapKey {
         let encap = EncapKey {
             t_hat: low::ct::into_public(t_hat.to_bytes()),
             rho,
+            t_hat_coeffs: Coeffs(low::ct::into_public(t_hat.0), PhantomData),
             transpose_a_hat: a_hat.transpose(),
         };
 
@@ -169,7 +172,8 @@ impl DecapKey {
         let s_hat = Coeffs::from_bytes(&self.dk_pke);
 
         // 6. w <- v' - NTT-1(transpose(s^) * NTT(u'))
-        let w = v_prime.sub(&s_hat.mul_and_inverse_ntt(&u_prime.ntt()));
+        let u_hat = u_prime.ntt();
+        let w = v_prime.sub(&s_hat.mul_and_inverse_ntt(&u_hat, &u_hat.mul_cache()));
 
         // 7. m <- ByteEncode_1(Compress_1(w))
         w.to_message_bits()
@@ -190,6 +194,8 @@ impl low::Zeroable for DecapKey {}
 pub(crate) struct EncapKey {
     t_hat: [u8; K * 384],
     rho: [u8; 32],
+    /// `t_hat` decoded, which the modulus check computes anyway.
+    t_hat_coeffs: Coeffs<{ K * N }, Ntt>,
     transpose_a_hat: Coeffs<{ K * K * N }, Ntt>,
 }
 
@@ -206,7 +212,8 @@ impl EncapKey {
         //   test <- ByteEncode_12(ByteDecode_12(ek[0 ∶ 384k]))
         //
         // If test != ek[0 ∶ 384k], then input checking failed.
-        if t_hat != Coeffs::from_bytes(&t_hat).to_bytes() {
+        let t_hat_coeffs = Coeffs::from_bytes(&t_hat);
+        if t_hat != t_hat_coeffs.to_bytes() {
             return Err(KeyFormatError::MlKemModulus.into());
         }
 
@@ -215,6 +222,7 @@ impl EncapKey {
         Ok(Self {
             t_hat,
             rho,
+            t_hat_coeffs,
             transpose_a_hat,
         })
     }
@@ -263,33 +271,46 @@ impl EncapKey {
 
     fn kpke_encrypt(&self, m: Message, r: KpkeRandomness) -> Ciphertext {
         // 2. t^ <- ByteDecode12(ekPKE[0 ∶ 384k])
-        let t_hat = Coeffs::from_bytes(&self.t_hat);
-
+        //  - already decoded, as self.t_hat_coeffs.
         // 3. 𝜌 <- ekPKE[384k ∶ 384k + 32]
         //  - only required for a_hat expansion
         // 4. - 8. rolled into self.transpose_a_hat.
 
         // 9. - 12.
         // 13. - 16.
-        let (y, e_1) = Coeffs::sample_poly_cbd_dual(&r.0);
-
         // 17. e_2 <- SamplePolyCBD(PRF (r, N))
-        let mut buf = [0u8; 128];
-        sha3::Shake256::new(&[&r.0, &[K_BYTE * 2]]).read(&mut buf);
+        let mut y = Coeffs::zero();
+        let mut e_1 = Coeffs::zero();
         let mut e_2 = Coeffs::zero();
-        sample_cbd2(&buf, &mut e_2.0);
+        sample_poly_cbd::<{ 2 * K + 1 }>(
+            &r.0,
+            y.polys_mut().chain(e_1.polys_mut()).chain(e_2.polys_mut()),
+        );
 
         // 18. y^ <- NTT(y)
         let y_hat = y.ntt();
+        let y_cache = y_hat.mul_cache();
 
         // 19. u <- NTT^-1(transpose(A^) ∘ y^) + e_1
-        let u = self.transpose_a_hat.mul_and_inverse_ntt(&y_hat).add(&e_1);
+        let mut u = self
+            .transpose_a_hat
+            .mul_and_inverse_ntt(&y_hat, &y_cache)
+            .add(&e_1);
+        u.reduce_in_place();
 
         // 20. µ <- Decompress_1(ByteDecode_1(m))
         let mu = Coeffs::from_message_bits(m);
 
         // 21. v <- NTT^-1(transpose(t^) ∘ y^) + e_2 + µ
-        let v = t_hat.mul_and_inverse_ntt(&y_hat).add(&e_2).add(&mu);
+        //
+        // The inverse NTT's output is below 8Q in magnitude, so the sums fit
+        // an i16 and one reduction serves.
+        let mut v = self
+            .t_hat_coeffs
+            .mul_and_inverse_ntt(&y_hat, &y_cache)
+            .add(&e_2)
+            .add(&mu);
+        v.reduce_in_place();
 
         let mut c = Ciphertext([0; _]);
         let (c_1, c_2) = c.0.split_at_mut(32 * DU * K);
@@ -379,6 +400,11 @@ impl<const C: usize, D: Domain> Coeffs<C, D> {
         Self([0; C], PhantomData)
     }
 
+    /// Each polynomial's coefficients.
+    fn polys_mut(&mut self) -> impl Iterator<Item = &mut [i16; N]> {
+        self.0.as_chunks_mut().0.iter_mut()
+    }
+
     /// Reduce coefficients into [0, Q)
     fn reduce_in_place(&mut self) {
         for k in self.0.as_chunks_mut().0 {
@@ -449,28 +475,20 @@ impl Coeffs<{ K * K * N }, Ntt> {
         self
     }
 
-    fn mul_and_inverse_ntt(&self, y: &Coeffs<{ K * N }, Ntt>) -> Coeffs<{ K * N }, Normal> {
+    /// This is `NTT-1(self * y)`, given `y`'s mulcache `y_cache`.
+    ///
+    /// The inverse NTT takes any `i16`, so the products go in unreduced.
+    fn mul_and_inverse_ntt(
+        &self,
+        y: &Coeffs<{ K * N }, Ntt>,
+        y_cache: &Coeffs<{ K * 128 }, MulCache>,
+    ) -> Coeffs<{ K * N }, Normal> {
         let mut r = Coeffs::<_, Ntt>::zero();
 
-        let y_precomp = y.mul_cache();
-
-        let mut term = Coeffs::<_, Ntt>::zero();
-
-        for (aa, rr) in self
-            .0
-            .as_chunks()
-            .0
-            .iter()
-            .zip(r.0.as_chunks_mut::<N>().0.iter_mut())
-        {
-            low::mlkem_basemul_k3(&mut term.0, aa, &y.0, &y_precomp.0);
-
-            for (r, t) in rr.iter_mut().zip(term.0.iter()) {
-                *r = r.wrapping_add(*t);
-            }
+        for (aa, rr) in self.0.as_chunks().0.iter().zip(r.polys_mut()) {
+            low::mlkem_basemul_k3(rr, aa, &y.0, &y_cache.0);
         }
 
-        r.reduce_in_place();
         r.inverse_ntt()
     }
 }
@@ -505,13 +523,15 @@ impl Coeffs<{ K * N }, Ntt> {
         r
     }
 
-    /// This is `NTT-1(self * s)`
-    fn mul_and_inverse_ntt(&self, s: &Coeffs<{ K * N }, Ntt>) -> Coeffs<{ N }, Normal> {
+    /// This is `NTT-1(self * s)`, given `s`'s mulcache `s_cache`.
+    fn mul_and_inverse_ntt(
+        &self,
+        s: &Coeffs<{ K * N }, Ntt>,
+        s_cache: &Coeffs<{ K * 128 }, MulCache>,
+    ) -> Coeffs<{ N }, Normal> {
         let mut r = Coeffs::zero();
 
-        let s_precomp = s.mul_cache();
-
-        low::mlkem_basemul_k3(&mut r.0, &self.0, &s.0, &s_precomp.0);
+        low::mlkem_basemul_k3(&mut r.0, &self.0, &s.0, &s_cache.0);
         // nb. no need for a tomont here, as `inverse_ntt` incorporates that
 
         r.inverse_ntt()
@@ -540,21 +560,6 @@ impl<const C: usize> Coeffs<C, Ntt> {
     }
 }
 
-/// `Compress_4(x) = round((2^4 / q) * x) mod 2^4`, for x in [0, Q)
-///
-/// Division-free so no variable-time division instruction is emitted
-/// (cf. KyberSlash); the constant is exact over the whole input range.
-fn compress_4(x: i16) -> u8 {
-    debug_assert!((0..Q).contains(&low::ct::into_public(x)));
-    let c = x as u64;
-    let c = c << 4;
-    let c = c.wrapping_add(Q_HALF as u64);
-    let c = c.wrapping_mul(80635);
-    let c = c >> 28;
-    let c = c & 0xf;
-    c as u8
-}
-
 /// `Decompress_4(y) = round((q / 2^4) * y)`, for y in [0, 2^4)
 fn decompress_4(y: u16) -> i16 {
     debug_assert!(y < 16);
@@ -563,18 +568,6 @@ fn decompress_4(y: u16) -> i16 {
     let d = d + 8;
     let d = d >> 4;
     d as i16
-}
-
-/// `Compress_10(x) = round((2^10 / q) * x) mod 2^10`, for x in [0, Q)
-fn compress_10(x: i16) -> u16 {
-    debug_assert!((0..Q).contains(&low::ct::into_public(x)));
-    let c = x as u64;
-    let c = c << 10;
-    let c = c.wrapping_add(Q_HALF as u64);
-    let c = c.wrapping_mul(1290167);
-    let c = c >> 32;
-    let c = c & 0x3ff;
-    c as u16
 }
 
 /// `Decompress_10(y) = round((q / 2^10) * y)`, for y in [0, 2^10)
@@ -604,39 +597,6 @@ fn compress_1_x8(coeffs: &[i16; 8]) -> u8 {
 }
 
 impl Coeffs<{ K * N }, Normal> {
-    /// This is dual, K-wise `SamplePolyCBD`.
-    ///
-    /// In other words, it produces two noise vectors, diversifying the seed `sigma`
-    /// with indices from 0..2K.
-    fn sample_poly_cbd_dual(sigma: &[u8; 32]) -> (Self, Self) {
-        // We need 2 * K samples.
-        let mut samples = [[0; 128]; 6];
-
-        // Prepare 6 SHAKE256 inputs.
-        let mut bufs = [[0; 40]; 6];
-        for (n, buf) in bufs.iter_mut().enumerate() {
-            buf[..32].copy_from_slice(sigma);
-            buf[32] = n as u8;
-            buf[33] = sha3::SHAKE_PAD_BYTE;
-        }
-
-        sha3::Shake256::one_shot_sextet(&bufs, &mut samples);
-
-        let mut a = Coeffs::zero();
-        let mut b = Coeffs::zero();
-
-        for (sample, poly) in samples.iter().zip(
-            a.0.as_chunks_mut()
-                .0
-                .iter_mut()
-                .chain(b.0.as_chunks_mut().0.iter_mut()),
-        ) {
-            sample_cbd2(sample, poly);
-        }
-
-        (a, b)
-    }
-
     /// K-wise NTT
     fn ntt(mut self) -> Coeffs<{ K * N }, Ntt> {
         for ch in self.0.as_chunks_mut().0 {
@@ -645,25 +605,13 @@ impl Coeffs<{ K * N }, Normal> {
         Coeffs(self.0, PhantomData)
     }
 
-    /// This is `ByteEncode_10(Compress_10(u))`
-    ///
-    /// Each group of four coefficients becomes five bytes,
-    /// little-endian bit order per `BitsToBytes`.
+    /// This is `ByteEncode_10(Compress_10(u))`, for `u` in `[0, Q)`
     fn compress_into_bytes_du_10(&self, c_1: &mut [u8; 960]) {
-        let (quads, _) = self.0.as_chunks::<4>();
-        let (out_chunks, _) = c_1.as_chunks_mut::<5>();
+        let (polys, _) = self.0.as_chunks::<N>();
+        let (out_chunks, _) = c_1.as_chunks_mut::<320>();
 
-        for (quad, out) in quads.iter().zip(out_chunks.iter_mut()) {
-            let t0 = compress_10(quad[0]);
-            let t1 = compress_10(quad[1]);
-            let t2 = compress_10(quad[2]);
-            let t3 = compress_10(quad[3]);
-
-            out[0] = t0 as u8;
-            out[1] = ((t0 >> 8) | (t1 << 2)) as u8;
-            out[2] = ((t1 >> 6) | (t2 << 4)) as u8;
-            out[3] = ((t2 >> 4) | (t3 << 6)) as u8;
-            out[4] = (t3 >> 2) as u8;
+        for (poly, out) in polys.iter().zip(out_chunks.iter_mut()) {
+            low::mlkem_compress_d10(out, poly);
         }
     }
 
@@ -721,14 +669,9 @@ impl Coeffs<N, Normal> {
         r
     }
 
-    /// This is `ByteEncode_4(Compress_4(v))`
-    ///
-    /// Each pair of coefficients becomes one byte, low nibble first.
+    /// This is `ByteEncode_4(Compress_4(v))`, for `v` in `[0, Q)`
     fn compress_into_bytes_dv_4(&self, c_2: &mut [u8; 128]) {
-        let (pairs, _) = self.0.as_chunks::<2>();
-        for (pair, byte) in pairs.iter().zip(c_2.iter_mut()) {
-            *byte = compress_4(pair[0]) | (compress_4(pair[1]) << 4);
-        }
+        low::mlkem_compress_d4(c_2, &self.0);
     }
 
     /// This is `Decompress_4(ByteDecode_4(c_2))`
@@ -749,12 +692,11 @@ impl Coeffs<N, Normal> {
 }
 
 impl<const C: usize> Coeffs<C, Normal> {
-    /// Simple addition
+    /// Simple addition, leaving the sum unreduced
     fn add(mut self, term: &Self) -> Self {
         for (ss, tt) in self.0.iter_mut().zip(term.0.iter()) {
             *ss = ss.wrapping_add(*tt);
         }
-        self.reduce_in_place();
         self
     }
 
@@ -766,6 +708,29 @@ impl<const C: usize> Coeffs<C, Normal> {
         self.reduce_in_place();
         self
     }
+}
+
+/// `SamplePolyCBD(PRF(sigma, n))` into the `n`th of the `P` `polys`.
+fn sample_poly_cbd<'a, const P: usize>(
+    sigma: &[u8; 32],
+    mut polys: impl Iterator<Item = &'a mut [i16; N]>,
+) {
+    let mut samples = [[0; 128]; P];
+
+    // Prepare P SHAKE256 inputs.
+    let mut bufs = [[0; 40]; P];
+    for (n, buf) in bufs.iter_mut().enumerate() {
+        buf[..32].copy_from_slice(sigma);
+        buf[32] = n as u8;
+        buf[33] = sha3::SHAKE_PAD_BYTE;
+    }
+
+    sha3::Shake256::one_shot_batch(&bufs, &mut samples);
+
+    for (sample, poly) in samples.iter().zip(polys.by_ref()) {
+        sample_cbd2(sample, poly);
+    }
+    debug_assert!(polys.next().is_none());
 }
 
 fn sample_cbd2(buf: &[u8; 128], out: &mut [i16; 256]) {

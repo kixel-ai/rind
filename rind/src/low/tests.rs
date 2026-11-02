@@ -19,14 +19,19 @@ fn bignum_mux() {
 #[test]
 fn zeroise() {
     for n in 0..1024 {
-        zeroise_equiv(n);
+        for offset in 0..4 {
+            zeroise_equiv(offset, n);
+        }
     }
 }
 
-fn zeroise_equiv(len: usize) {
-    let expect = vec![0x00u8; len];
-    let mut bytes = vec![0xffu8; len];
-    super::zeroise(&mut bytes);
+// Zeroes `len` bytes from `offset` in, so the wide stores start unaligned too,
+// and checks the bytes either side are untouched.
+fn zeroise_equiv(offset: usize, len: usize) {
+    let mut expect = vec![0xffu8; offset + len + 1];
+    expect[offset..offset + len].fill(0);
+    let mut bytes = vec![0xffu8; offset + len + 1];
+    super::zeroise(&mut bytes[offset..offset + len]);
     assert_eq!(expect, bytes);
 }
 
@@ -47,6 +52,36 @@ fn ct_equal() {
 
 fn ct_equal_equiv(a: &[u8], b: &[u8]) {
     assert_eq!(a == b, super::ct_equal(a, b));
+}
+
+// ld64 splits a Mach-O object into atoms at each CFI frame, and can
+// dead-strip one that is reached only by branches with no relocation, such as
+// a routine joined into another's naked function.
+#[test]
+fn apple_routines_open_one_cfi_frame() {
+    fn visit(dir: &std::path::Path, files: &mut usize) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                visit(&path, files);
+            } else if path.to_str().unwrap().ends_with(".apple.s") {
+                let text = std::fs::read_to_string(&path).unwrap();
+                let frames = text
+                    .lines()
+                    .filter(|line| line.trim() == ".cfi_startproc")
+                    .count();
+                assert!(frames <= 1, "{}: {frames} CFI frames", path.display());
+                *files += 1;
+            }
+        }
+    }
+
+    let mut files = 0;
+    visit(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/src/low").as_ref(),
+        &mut files,
+    );
+    assert_ne!(files, 0);
 }
 
 mod model {

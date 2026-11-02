@@ -9,6 +9,8 @@
 //! covers the AVX routine, as aws-lc builds it; nothing verifies the scalar
 //! one.
 
+use std::sync::OnceLock;
+
 use super::cpu::{HaveAvx, is_intel};
 
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
@@ -19,11 +21,13 @@ pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
         return;
     }
     let (data, num) = (blocks.as_ptr(), blocks.len() / 128);
-    match HaveAvx::check() {
+    // Picked once, rather than testing two features on every compression.
+    static AVX: OnceLock<Option<HaveAvx>> = OnceLock::new();
+    match AVX.get_or_init(|| HaveAvx::check().filter(|_| is_intel())) {
         // SAFETY: `blocks` is `num` readable blocks, and the token proves AVX.
-        Some(_) if is_intel() => unsafe { sha512_block_data_order_avx(state, data, num) },
+        Some(_) => unsafe { sha512_block_data_order_avx(state, data, num) },
         // SAFETY: `blocks` is `num` readable blocks.
-        _ => unsafe { sha512_block_data_order_nohw(state, data, num) },
+        None => unsafe { sha512_block_data_order_nohw(state, data, num) },
     }
 }
 
