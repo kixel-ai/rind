@@ -8,6 +8,7 @@ use core::mem;
 
 use super::aes::{AesKey, HwKey};
 use super::aes_ctr;
+use super::aes_gcm_vaes::add_to_counter;
 use super::cpu::HaveAvx512ForAesGcm;
 use super::ghash::{self, ClmulTable, Ghash, GhashTable, GhashTableAvx512};
 
@@ -95,8 +96,18 @@ fn cipher<const ENC: bool>(
             ghash.add(aad);
             return vaes.cipher::<ENC>(hw_key, initial_counter, ghash, cipher_inout);
         }
+        GhashTable::Avx(table, kernel) if len >= avx_minimum_cipher_len(ENC) => {
+            ghash.add(aad);
+            let done = kernel.cipher::<ENC>(hw_key, initial_counter, ghash, cipher_inout);
+            // The kernel took `done / 16` counter blocks, and the rest follow.
+            let y = add_to_counter(initial_counter, (done / 16) as u32);
+            // SAFETY: only a `HaveAesHardware` token builds `hw_key` and
+            // `table`, proving AES-NI, PCLMULQDQ, and SSSE3.
+            return unsafe { by8::<ENC>(hw_key, table, ghash, &y, &[], &mut cipher_inout[done..]) };
+        }
         GhashTable::Clmul(table)
         | GhashTable::VaesAvx2(table, _)
+        | GhashTable::Avx(table, _)
         | GhashTable::Avx512(GhashTableAvx512 { clmul: table, .. }) => table,
         GhashTable::Ssse3(_) | GhashTable::Nohw(_) => {
             return composed::<ENC>(key, ghash, initial_counter, aad, cipher_inout);
@@ -463,6 +474,12 @@ const AVX512_MINIMUM_CIPHER_LEN: usize = 16 * 16;
 /// setup costs more on short ones.
 const AVX512_KERNEL_MINIMUM_CIPHER_LEN: usize = 2048;
 
+/// The fewest message bytes aws-lc's AVX routine takes: it keeps two
+/// six-block batches of keystream ahead when encrypting.
+const fn avx_minimum_cipher_len(enc: bool) -> usize {
+    if enc { 18 * 16 } else { 6 * 16 }
+}
+
 /// How many message bytes BoringSSL's 256-bit kernel needs to beat the AVX
 /// path, whose single blocks are quicker for short messages.
 const VAES_AVX2_MINIMUM_CIPHER_LEN: usize = 16 * 16;
@@ -571,17 +588,20 @@ const BYTESWAP_512_EPI64: __m512i = unsafe {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::x86_64::aes_gcm_avx::AvxKernel;
     use crate::low::x86_64::aes_nohw::NohwKey;
-    use crate::low::x86_64::cpu::{HaveAesHardware, HaveSsse3};
+    use crate::low::x86_64::cpu::{HaveAesHardware, HaveAvxMovbeForAesGcm, HaveSsse3};
     use crate::low::x86_64::ghash_nohw::NohwTable;
     use crate::low::x86_64::ghash_ssse3_x86_64::Ssse3Table;
     use crate::low::x86_64::vpaes_x86_64::VpaesKey;
 
     // Every other test sees only the path the CPU picks, so the slower ones
     // are checked against it here: the by-8 PCLMULQDQ kernel, which a CPU
-    // with VAES runs only for short messages, vpaes with SSSE3 GHASH, and SSE2
-    // AES with integer GHASH. Each key size, and AAD and message lengths
-    // around the block, eight-block, and sixteen-block boundaries, both ways.
+    // with VAES runs only for short messages, aws-lc's AVX routine, vpaes
+    // with SSSE3 GHASH, and SSE2 AES with integer GHASH. Each key size, and
+    // AAD and message lengths around the block, six-, eight-, and
+    // sixteen-block boundaries and the AVX routine's minimums, both ways, and
+    // one long enough to carry out of the counter's low byte.
     #[test]
     fn paths_match() {
         let bytes = |n: usize, seed: u32| -> Vec<u8> {
@@ -608,10 +628,18 @@ mod tests {
             if let Some(hw) = HaveAesHardware::check() {
                 let clmul = ClmulTable::new(u128::from_be_bytes(h), hw);
                 slow.push((AesKey::new(&key), GhashTable::Clmul(clmul)));
+                if let Some(token) = HaveAvxMovbeForAesGcm::check() {
+                    let clmul = ClmulTable::new(u128::from_be_bytes(h), hw);
+                    let kernel = AvxKernel::new(&clmul, token);
+                    slow.push((AesKey::new(&key), GhashTable::Avx(clmul, kernel)));
+                }
             }
 
             for aad_len in [0, 1, 16, 17] {
-                for msg_len in [0, 1, 15, 16, 17, 112, 127, 128, 129, 255, 256, 257, 1000] {
+                for msg_len in [
+                    0, 1, 15, 16, 17, 95, 96, 97, 112, 127, 128, 129, 255, 256, 257, 287, 288, 289,
+                    1000, 5000,
+                ] {
                     let nonce = bytes(12, msg_len as u32).try_into().unwrap();
                     let aad = bytes(aad_len, 2);
                     let plain = bytes(msg_len, 3);

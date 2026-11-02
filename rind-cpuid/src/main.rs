@@ -24,6 +24,7 @@ fn main() {
         ("pclmulqdq", is_x86_feature_detected!("pclmulqdq")),
         ("vpclmulqdq", is_x86_feature_detected!("vpclmulqdq")),
         ("bmi2", is_x86_feature_detected!("bmi2")),
+        ("movbe", is_x86_feature_detected!("movbe")),
         ("popcnt", is_x86_feature_detected!("popcnt")),
         ("ssse3", is_x86_feature_detected!("ssse3")),
         ("sse4.1", is_x86_feature_detected!("sse4.1")),
