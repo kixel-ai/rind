@@ -33,20 +33,31 @@ set -e
     }
 
     # The code in s, without comments, strings, or char literals; a block comment
-    # or string may continue across lines.
+    # or string may continue across lines. rawend closes a raw string.
     function code(s,    out) {
       out = ""
       while (s != "") {
         if (incomment) {
-          if (!match(s, /\*\//)) return out
-          s = substr(s, RSTART + 2); incomment = 0
+          if (!match(s, /\/\*|\*\//)) return out
+          incomment += substr(s, RSTART, 2) == "/*" ? 1 : -1
+          s = substr(s, RSTART + 2)
+          continue
+        }
+        if (instr && rawend != "") {
+          if (!index(s, rawend)) return out
+          s = substr(s, index(s, rawend) + length(rawend)); instr = 0; out = out "\"\""
         } else if (instr) {
           if (!match(s, /^([^"\\]|\\.)*"/)) return out
           s = substr(s, RLENGTH + 1); instr = 0; out = out "\"\""
         }
         if (!match(s, /["\/\047]/)) return out s
         out = out substr(s, 1, RSTART - 1); s = substr(s, RSTART)
-        if (s ~ /^"/) { instr = 1; s = substr(s, 2) }
+        if (s ~ /^"/) {
+          instr = 1; s = substr(s, 2); rawend = ""
+          if (match(out, /(^|[^A-Za-z0-9_]|[bc])r#*$/)) {
+            rawend = substr(out, RSTART); sub(/^[^#]*/, "", rawend); rawend = "\"" rawend
+          }
+        }
         else if (s ~ /^\/\//) return out
         else if (s ~ /^\/\*/) { incomment = 1; s = substr(s, 3) }
         else if (match(s, /^\047([^\047\\]|\\.)\047/)) { out = out "\047 \047"; s = substr(s, RLENGTH + 1) }
@@ -65,21 +76,28 @@ set -e
     }
     exempt { next }
 
-    # rustfmt closes a multi-line item with a line at its own indent; a line
+    # Whether the code s, on a line indented ind, ends the skipped test item.
+    function ends(s, ind,    t) {
+      t = s; depth += gsub(/[[({]/, "", t)
+      t = s; depth -= gsub(/[])}]/, "", t)
+      return depth <= 0 && ind == skip && s ~ /[;,}][ \t]*$/
+    }
+
+    # rustfmt ends a multi-line item on a line at its own indent; a code line
     # indented less has left it.
-    skip >= 0 && /[^ \t]/ {
-      match($0, /^ */)
-      if (RLENGTH > skip) next
-      if (RLENGTH == skip && $0 ~ /^ *[])}][;,]?[ \t]*(\/[\/*].*)?$/) { skip = -1; next }
-      if (RLENGTH == skip) next
+    skip >= 0 {
+      match($0, /^ */); ind = RLENGTH
+      if (instr || incomment || $0 !~ /[^ \t]/ || ind >= skip) {
+        if (ends(code($0), ind)) skip = -1
+        next
+      }
       skip = -1
     }
-    skip >= 0 { next }
 
     # Lex only lines that may hold a comment or an unclosed string.
     {
       line = $0
-      if (instr || incomment || line ~ /[\/\047]|\\"/) line = code(line)
+      if (instr || incomment || line ~ /[\/\047]|\\"|r#*"/) line = code(line)
       else if (index(line, "\"") && gsub(/"/, "\"", line) % 2) line = code(line)
       else if (index(line, "\"") && line ~ /high|mid|use|::/) gsub(/"[^"]*"/, "\"\"", line)
     }
@@ -101,8 +119,9 @@ set -e
       if (line ~ /^[ \t]*(pub(\([^)]*\))?[ \t]+)?mod[ \t]+[A-Za-z0-9_]+[ \t]*;/) {
         name = line; sub(/^[ \t]*(pub(\([^)]*\))?[ \t]+)?mod[ \t]+/, "", name); sub(/[ \t]*;.*/, "", name)
         if (pass == 1) testmod[base "/" name] = 1
-      } else if (line !~ /[;,}][ \t]*$/) {
-        match($0, /^ */); skip = RLENGTH
+      } else {
+        match($0, /^ */); skip = RLENGTH; depth = 0
+        if (ends(line, skip)) skip = -1
       }
       next
     }
