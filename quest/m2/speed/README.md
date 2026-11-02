@@ -53,7 +53,6 @@ settled; don't ask them again. The chosen option is marked ✅.
 - [AES-GCM key setup as fast as the fastest source](/quest/m2/speed/aes-gcm-key-setup.md) - 1.30-1.48x today
 - [x86_64 AES-GCM with VAES as fast as the fastest source](/quest/m2/speed/aes-gcm-vaes.md) - 1.29-1.35x at 32 B today
 - [aarch64 SHA-256 as fast as the fastest source](/quest/m2/speed/aarch64-sha256.md) - 1.26-1.30x today
-- [aarch64 RSA as fast as ring](/quest/m2/speed/aarch64-rsa-ring.md) - signing 1.56x at 2048 bits today
 - [ML-KEM-768 encapsulation as fast as the fastest source](/quest/m2/speed/mlkem-encaps.md) - 1.05-1.22x today
 - [SHA-256 fed 1-byte updates as fast as the fastest source](/quest/m2/speed/sha256-small-updates.md) - up to 1.34x today
 - [x86_64 P-256 key generation as fast as the fastest source](/quest/m2/speed/x86-p256-keygen.md) - 1.11-1.17x today

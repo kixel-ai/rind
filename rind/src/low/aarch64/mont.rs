@@ -6,9 +6,9 @@
 //! s2n-bignum's generic `bignum_montmul` and `bignum_montsqr` in every width
 //! class it branches on: 1.15x at 17 and 33 words, 1.6x at 20, and twice as
 //! fast at 24, 48, 64, 96, and 128. It replaces s2n-bignum's Karatsuba
-//! routines at 16 and 32 words too, where ring, running it, signed RSA-2048
-//! and RSA-4096 1.55x as fast as rind did on them. The generic routines run
-//! only below two words.
+//! routines at 16 and 32 words too, where it signs RSA-2048 1.75x and
+//! RSA-4096 1.6x as fast, and verifies RSA-1024 and RSA-2048 1.5x as fast.
+//! The generic routines run only below two words.
 
 /// `z = x * y / 2^(64k) mod m`, for `x` and `y` below `m`, where `k` is the
 /// length of each and `n0` is `-m^-1 mod 2^64`.
