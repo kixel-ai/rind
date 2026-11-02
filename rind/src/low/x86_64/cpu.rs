@@ -344,23 +344,30 @@ const AES_GCM_BASE: u32 = AES | PCLMULQDQ | SSSE3 | AVX | AVX2;
 const DETECTED: u32 = 1 << 31;
 
 /// Whether the CPU has every feature in `wanted`.
+#[inline]
 fn has(wanted: u32) -> bool {
     features() & wanted == wanted
 }
 
-/// The detected features, read once: `cpuid` is slow, and traps to the
-/// hypervisor in a VM.
-fn features() -> u32 {
-    static FEATURES: AtomicU32 = AtomicU32::new(0);
+static FEATURES: AtomicU32 = AtomicU32::new(0);
 
+/// The detected features, read once: `cpuid` is slow, and traps to the
+/// hypervisor in a VM. Inlined, so a check is a load and a test, with the
+/// first call's detection out of line.
+#[inline]
+fn features() -> u32 {
     match FEATURES.load(Ordering::Relaxed) {
-        0 => {
-            let features = detect() | DETECTED;
-            FEATURES.store(features, Ordering::Relaxed);
-            features
-        }
+        0 => detect_once(),
         features => features,
     }
+}
+
+#[cold]
+#[inline(never)]
+fn detect_once() -> u32 {
+    let features = detect() | DETECTED;
+    FEATURES.store(features, Ordering::Relaxed);
+    features
 }
 
 fn detect() -> u32 {
