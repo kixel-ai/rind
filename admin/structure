@@ -11,37 +11,29 @@ set -e
   cd "$(dirname "$0")/.."
   files=$(find rind/src/low rind/src/mid -name '*.rs' | sort)
   awk '
-    # Whether a #[cfg(...)] predicate holds only under test.
-    function test_only(pred,    args, depth, i, c, arg) {
-      if (pred == "test") return 1
-      if (pred !~ /^all\(.*\)$/) return 0
-      args = substr(pred, 5, length(pred) - 5) ","
+    # Whether a cfg predicate holds only under test.
+    function test_only(p,    depth, i, c, arg) {
+      gsub(/[ \t]/, "", p)
+      if (p == "test") return 1
+      if (p !~ /^all\(.*\)$/) return 0
+      p = substr(p, 5, length(p) - 5) ","
       depth = 0; arg = ""
-      for (i = 1; i <= length(args); i++) {
-        c = substr(args, i, 1)
+      for (i = 1; i <= length(p); i++) {
+        c = substr(p, i, 1)
+        if (c == "," && depth == 0) {
+          if (test_only(arg)) return 1
+          arg = ""
+          continue
+        }
         if (c == "(") depth++
         if (c == ")") depth--
-        if (c == "," && depth == 0) {
-          if (arg == "test") return 1
-          arg = ""
-        } else if (c != " ") arg = arg c
+        arg = arg c
       }
       return 0
     }
 
-    # Tracks bracket depth through a skipped test item; clears skip at its end.
-    function scan(s,    i, c) {
-      for (i = 1; i <= length(s); i++) {
-        c = substr(s, i, 1)
-        if (c ~ /[[({]/) depth++
-        else if (c ~ /[])}]/) { if (--depth == 0 && c == "}") skip = 0 }
-        else if (c == ";" && depth == 0) skip = 0
-        if (!skip) return
-      }
-    }
-
     FNR == 1 {
-      pending = 0; skip = 0; inuse = 0
+      pending = 0; skip = -1; attr = ""; inuse = 0; carry = ""
       base = FILENAME; sub(/\/mod\.rs$/, "", base); sub(/\.rs$/, "", base)
       exempt = 0
       for (b in testmod) if (FILENAME == b ".rs" || index(FILENAME, b "/") == 1) exempt = 1
@@ -50,47 +42,67 @@ set -e
     }
     exempt { next }
 
-    # Most lines can neither name a layer nor change what counts as test code.
-    !skip && !pending && !inuse && !/high|mid|cfg|use/ { next }
+    # rustfmt closes a multi-line item with a line at its own indent; a line
+    # indented less has left it.
+    skip >= 0 && /[^ \t]/ {
+      match($0, /^ */)
+      if (RLENGTH > skip) next
+      if (RLENGTH == skip && $0 ~ /^ *[])}][;,]?[ \t]*$/) { skip = -1; next }
+      if (RLENGTH == skip) next
+      skip = -1
+    }
+    skip >= 0 { next }
 
-    {
-      line = $0
-      if (index(line, "\"")) gsub(/"([^"\\]|\\.)*"/, "\"\"", line)
-      if (index(line, "\047")) gsub(/\047([^\047\\]|\\.)\047/, "\047 \047", line)
-      if (index(line, "/")) { gsub(/\/\*([^*]|\*[^\/])*\*\//, "", line); sub(/\/\/.*/, "", line) }
+    { line = $0 }
+
+    # A cfg attribute may wrap; judge it whole.
+    attr != "" || line ~ /^[ \t]*#\[cfg\(/ {
+      attr = attr " " line
+      if (!index(attr, ")]")) next
+      pred = attr; sub(/^[ \t]*#\[cfg\(/, "", pred); sub(/\)\].*/, "", pred)
+      if (test_only(pred)) pending = 1
+      sub(/^[^]]*\)\]/, "", attr)
+      line = attr; attr = ""
     }
 
-    !skip && line ~ /^[ \t]*#\[cfg\(/ {
-      pred = line; sub(/^[ \t]*#\[cfg\(/, "", pred); sub(/\)\].*/, "", pred)
-      if (test_only(pred)) pending = 1
-      sub(/^[ \t]*#\[cfg\([^]]*\)\]/, "", line)
+    # Most lines can neither name a layer nor change what counts as test code.
+    !pending && !inuse && line !~ /high|mid|use|::/ {
+      if (line ~ /[^ \t]/) carry = ""
+      next
+    }
+
+    {
+      if (index(line, "\047")) gsub(/\047([^\047\\]|\\.)\047/, "\047 \047", line)
+      if (index(line, "\"")) gsub(/"([^"\\]|\\.)*"/, "\"\"", line)
+      if (index(line, "/")) { gsub(/\/\*([^*]|\*[^\/])*\*\//, "", line); sub(/\/\/.*/, "", line) }
     }
 
     pending && line ~ /^[ \t]*(#\[.*\])?[ \t]*$/ { next }
 
     pending {
-      pending = 0
-      if (match(line, /^[ \t]*mod[ \t]+[A-Za-z0-9_]+[ \t]*;/)) {
-        name = line; sub(/^[ \t]*mod[ \t]+/, "", name); sub(/[ \t]*;.*/, "", name)
+      pending = 0; carry = ""
+      if (line ~ /^[ \t]*(pub(\([^)]*\))?[ \t]+)?mod[ \t]+[A-Za-z0-9_]+[ \t]*;/) {
+        name = line; sub(/^[ \t]*(pub(\([^)]*\))?[ \t]+)?mod[ \t]+/, "", name); sub(/[ \t]*;.*/, "", name)
         if (pass == 1) testmod[base "/" name] = 1
-        next
+      } else if (line !~ /[;,}][ \t]*$/) {
+        match($0, /^ */); skip = RLENGTH
       }
-      skip = 1; depth = 0
+      next
     }
-
-    skip { scan(line); next }
 
     pass == 1 { next }
 
     {
       if (line ~ /^[ \t]*(pub(\([^)]*\))?[ \t]+)?use[ \t]/) inuse = 1
-      bad = line ~ ("(^|[^A-Za-z0-9_])" higher "::") || line ~ ("::" higher "([^A-Za-z0-9_]|$)")
+      text = carry " " line
+      bad = text ~ ("(^|[^A-Za-z0-9_])" higher "[ \t]*::") || text ~ ("::[ \t]*" higher "([^A-Za-z0-9_]|$)")
       bad = bad || inuse && line ~ ("(^|[^A-Za-z0-9_])" higher "([^A-Za-z0-9_]|$)")
       if (inuse && line ~ /;/) inuse = 0
+      carry = ""
       if (bad) {
         printf "ERROR: %s:%d names a layer above %s: %s\n", FILENAME, FNR, layer, $0 > "/dev/stderr"
         errors++
-      }
+      } else if (match(line, /(::|[A-Za-z0-9_]+)[ \t]*$/)) carry = substr(line, RSTART)
     }
 
     END {
