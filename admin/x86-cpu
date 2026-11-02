@@ -88,18 +88,3 @@ elif mode == "markdown-table":
                 detail(d["result"]["cpuid"]),
             )
         )
-
-
-# RIND_MINIMUM = "Skylake"
-# past_minimum = False
-#
-# for flag, name in KNOWN_CPUS:
-#     if not past_minimum and name == RIND_MINIMUM:
-#         past_minimum = True
-#     if past_minimum:
-#         print(f"""      - name: Check {name}
-#         run: cargo test --release
-#         env:
-#           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde {flag} --"
-# """)
-# """
