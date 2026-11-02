@@ -7,7 +7,6 @@
 use super::digest::MAX_OUTPUT_LEN;
 use super::hash::Hash;
 use super::hmac::{self, HmacKey, Keyed};
-use crate::low::zeroise;
 use crate::{Error, aead};
 
 /// An HKDF algorithm, chosen by one of this module's constants.
@@ -78,9 +77,6 @@ impl Prk {
                 block = ctx.finish();
                 chunk.copy_from_slice(&block.as_ref()[..chunk.len()]);
             }
-
-            // The last block's tail is key material the caller did not take.
-            zeroise(block.as_mut());
         }
 
         match &self.0.0 {
@@ -162,16 +158,13 @@ impl Okm<'_, usize> {
 }
 
 impl<L: KeyType> Okm<'_, L> {
-    // Expands into a stack buffer for `key` to copy, then wipes it, since the
-    // key it becomes owns the secret. Every key length fits the buffer and
-    // the 255-block limit.
+    // Expands into a stack buffer for `key` to copy. Every key length fits
+    // the buffer and the 255-block limit.
     fn into_key<K>(self, key: impl FnOnce(&L, &[u8]) -> K) -> K {
         let mut buf = [0u8; MAX_OUTPUT_LEN];
         let bytes = &mut buf[..self.len.len()];
         self.prk.expand_into(self.info, bytes);
-        let key = key(&self.len, bytes);
-        zeroise(&mut buf);
-        key
+        key(&self.len, bytes)
     }
 }
 

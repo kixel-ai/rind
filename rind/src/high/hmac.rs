@@ -256,8 +256,8 @@ impl Keyed {
 
 impl Drop for Keyed {
     fn drop(&mut self) {
-        // Wipes the discriminant and the space a smaller variant leaves unused,
-        // not only the variant's own hash states.
+        // Wipes the keyed hash states, the discriminant, and the space a
+        // smaller variant leaves unused.
         zeroise_value(self);
     }
 }
@@ -274,7 +274,7 @@ enum Streaming {
     Sha512(Hmac<Sha512>),
 }
 
-// The keyed outer state has no wipe of its own.
+// Neither the hash context nor the keyed outer state wipes itself.
 impl Drop for Streaming {
     fn drop(&mut self) {
         zeroise_value(self);

@@ -6,8 +6,6 @@
 //! The counter blocks are `nonce` followed by the big-endian `counter`,
 //! `counter + 1`, and so on, wrapping within 32 bits.
 
-use crate::low::zeroise;
-
 /// XORs AES-CTR keystream into `inout` with `apply_8`, which XORs it into
 /// eight blocks from the counter given.
 ///
@@ -28,8 +26,6 @@ pub(crate) fn by8(counter: u32, inout: &mut [u8], mut apply_8: impl FnMut(u32, &
         buf[..tail.len()].copy_from_slice(tail);
         apply_8(counter, &mut buf);
         tail.copy_from_slice(&buf[..tail.len()]);
-        // the unused part is bare keystream
-        zeroise(&mut buf);
     }
 }
 
@@ -55,7 +51,5 @@ pub(crate) fn blocks(
         buf[..tail.len()].copy_from_slice(tail);
         ctr32(&ivec, core::slice::from_mut(&mut buf));
         tail.copy_from_slice(&buf[..tail.len()]);
-        // the unused part is bare keystream
-        zeroise(&mut buf);
     }
 }

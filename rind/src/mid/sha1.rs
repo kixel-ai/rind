@@ -6,8 +6,8 @@
 //! Its collision resistance is broken, so it must not be used where that
 //! matters, such as in signatures.
 
+use crate::low::Blockwise;
 use crate::low::cpu::verify_cpu_features;
-use crate::low::{Blockwise, Zeroable, zeroise_value};
 
 /// SHA1's chaining value after a whole number of blocks.
 ///
@@ -130,15 +130,6 @@ impl Sha1Context {
     /// The output size of SHA1.
     pub(crate) const OUTPUT_SZ: usize = 20;
 }
-
-// The state is keyed when hashing an HMAC key, and the buffer may hold secret input.
-impl Drop for Sha1Context {
-    fn drop(&mut self) {
-        zeroise_value(self);
-    }
-}
-
-impl Zeroable for Sha1Context {}
 
 #[cfg(test)]
 mod tests {

@@ -2,6 +2,9 @@
 
 import subprocess, json, os, sys, glob
 
+# Run `sde-scan` in `nix develop .#sde`, which has the Intel SDE build
+# x86-cpu.yml runs.
+
 # excludes 32-bit only parts
 KNOWN_CPUS = [
     ("-p4p", "Pentium4 Prescott"),
