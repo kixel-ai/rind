@@ -58,6 +58,5 @@ settled; don't ask them again. The chosen option is marked ✅.
 - [SHA-256 fed 1-byte updates as fast as the fastest source](/quest/m2/speed/sha256-small-updates.md) - up to 1.34x today
 - [x86_64 P-256 key generation as fast as the fastest source](/quest/m2/speed/x86-p256-keygen.md) - 1.11-1.17x today
 - [x86_64 RSA with AVX-512 IFMA](/quest/m2/speed/x86-rsa-ifma.md) - aws-lc's AVX-512 RSA is up to 3.56x faster
-- [x86_64 AES-GCM without VAES as fast as ring](/quest/m2/speed/aes-gcm-no-vaes.md) - 1.22-1.31x at QUIC sizes today
 - [aarch64 RSA on a 5-bit exponent window](/quest/m2/speed/aarch64-rsa-window.md) - the window x86_64 gained in #224
 - [x86_64 SHA-256 picks its path once](/quest/m2/speed/sha256-dispatch-once.md) - no per-block feature checks without SHA-NI
