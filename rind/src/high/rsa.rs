@@ -1150,6 +1150,18 @@ mod tests {
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
     }
 
+    /// Primes of 1028 and 1058 bits: both fill 17 words, but only q's top
+    /// 32 bits are nonzero, so q is wider than p's 32-bit width.
+    #[test]
+    fn loads_unbalanced_primes() {
+        let der = include_bytes!("rsa/rsa2086-unbalanced.der");
+        let key = Pkcs1::decode(der);
+        assert!(key.q.len() > key.p.len());
+        aws_lc_rs::rsa::KeyPair::from_der(der).unwrap();
+        let private_key = SigningKey::from_pkcs1_der(der).unwrap();
+        check_all_algs(&mut [0u8; 261], &private_key, &private_key.public_key());
+    }
+
     /// With q above p, `s mod q` can exceed `p + s mod p`, which a random
     /// message reaches about once in a thousand signatures with this key.
     /// `s = q * iqmp - 1` is 0 mod p and q - 1 mod q, the widest gap.
