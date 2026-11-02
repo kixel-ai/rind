@@ -8,10 +8,7 @@
 use core::ops::Range;
 
 use crate::low::cpu::verify_cpu_features;
-use crate::low::{
-    Blockwise, Zeroable, sha3_keccak_f1600, sha3_keccak2of4_f1600, sha3_keccak4_f1600, zeroise,
-    zeroise_value,
-};
+use crate::low::{Blockwise, sha3_keccak_f1600, sha3_keccak2of4_f1600, sha3_keccak4_f1600};
 
 /// A context for incremental computation of SHA3-256.
 pub(crate) struct Sha3_256Context {
@@ -105,17 +102,6 @@ impl Shake128 {
             .shake_read(output, &mut self.buffer, &mut self.buffer_offset);
     }
 }
-
-// The state and buffered output are a function of the input, which may be secret.
-#[cfg(test)]
-impl Drop for Shake128 {
-    fn drop(&mut self) {
-        zeroise_value(self);
-    }
-}
-
-#[cfg(test)]
-impl Zeroable for Shake128 {}
 
 pub(crate) type Shake128Sponge = Sponge<SHAKE_128_R_BYTES, SHAKE_PAD_BYTE>;
 pub(crate) type Shake128SqueezingSponge = SqueezingSponge<SHAKE_128_R_BYTES>;
@@ -224,10 +210,6 @@ impl Shake256 {
         squeeze(&states[0], &mut outputs[4]);
         squeeze(&states[1], &mut outputs[5]);
 
-        // ML-KEM's inputs here are its secret noise seeds.
-        zeroise(&mut s);
-        zeroise(states.as_flattened_mut());
-
         fn squeeze(states: &[u64; 25], output: &mut [u8; 128]) {
             debug_assert!(output.len() <= SHAKE_256_R_BYTES);
             for (i, ch) in output.chunks_mut(8).enumerate() {
@@ -236,15 +218,6 @@ impl Shake256 {
         }
     }
 }
-
-// The state and buffered output are a function of the input, which may be secret.
-impl Drop for Shake256 {
-    fn drop(&mut self) {
-        zeroise_value(self);
-    }
-}
-
-impl Zeroable for Shake256 {}
 
 pub(crate) struct SqueezingSponge<const R: usize> {
     s: [u64; 25],
@@ -481,17 +454,6 @@ impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
         sha3_keccak_f1600(&mut self.sponge.s, &RC);
     }
 }
-
-// The state and buffer are a function of the input, which may be secret.
-// Keccak-f is invertible, so even a state that has squeezed its output gives
-// back a short message.
-impl<const R: usize, const PAD: u8> Drop for Sponge<R, PAD> {
-    fn drop(&mut self) {
-        zeroise_value(self);
-    }
-}
-
-impl<const R: usize, const PAD: u8> Zeroable for Sponge<R, PAD> {}
 
 const RC: [u64; 24] = [
     0x00000000_00000001,
