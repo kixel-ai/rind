@@ -305,9 +305,6 @@ fn mask(bit: u64) -> u64 {
 
 /// Writes `a * b` to `out`, as wide as both.
 fn mul(a: &[u64], b: &[u64], out: &mut [u64]) {
-    #[cfg(target_arch = "arm")]
-    libcrux_hacl_rs::bignum::bignum64::mul(a.len() as u32, a, b, out);
-    #[cfg(not(target_arch = "arm"))]
     crate::low::bignum_mul(out, a, b);
 }
 

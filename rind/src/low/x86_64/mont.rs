@@ -171,10 +171,10 @@ unsafe extern "sysv64" fn bn_sqr8x_mont(
 }
 
 /// `bn_sqr8x_mont`'s squaring and reduction, which takes its arguments in
-/// registers and a stack frame of that routine's making, so only it calls
-/// this.
+/// registers and a stack frame of that routine's making, so only it and
+/// `bn_power5` call this.
 #[unsafe(naked)]
-unsafe extern "sysv64" fn bn_sqr8x_internal() {
+pub(super) unsafe extern "sysv64" fn bn_sqr8x_internal() {
     #[cfg(not(target_vendor = "apple"))]
     core::arch::naked_asm!(
         include_str!("aws_lc/bn_sqr8x_internal.linux.s"),
@@ -188,9 +188,9 @@ unsafe extern "sysv64" fn bn_sqr8x_internal() {
 }
 
 /// `bn_sqr8x_internal` by `mulx`, `adcx`, and `adox`, which only
-/// `bn_sqr8x_mont` calls, likewise.
+/// `bn_sqr8x_mont` and `bn_powerx5` call, likewise.
 #[unsafe(naked)]
-unsafe extern "sysv64" fn bn_sqrx8x_internal() {
+pub(super) unsafe extern "sysv64" fn bn_sqrx8x_internal() {
     #[cfg(not(target_vendor = "apple"))]
     core::arch::naked_asm!(
         include_str!("aws_lc/bn_sqrx8x_internal.linux.s"),
