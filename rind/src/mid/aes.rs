@@ -19,7 +19,7 @@ impl Aes {
         if key.len() != algorithm.key_len {
             return Err(Error::WrongLength);
         }
-        expand_key(key).map(Self)
+        Ok(Self(expand_key(key)))
     }
 
     /// Encrypts one block in place.
@@ -46,7 +46,7 @@ impl AesCtr {
         if key.len() != algorithm.key_len {
             return Err(Error::WrongLength);
         }
-        expand_key(key).map(Self)
+        Ok(Self(expand_key(key)))
     }
 
     /// XORs the keystream for `nonce`, starting at block `counter`, into `inout`.
@@ -93,17 +93,14 @@ pub(super) fn check_gcm_lengths(aad: usize, msg: usize) -> Result<(), Error> {
     check_counter(2, msg)
 }
 
-pub(super) fn expand_key(key: &[u8]) -> Result<AesKey, Error> {
-    if !matches!(key.len(), 16 | 32) {
-        return Err(Error::WrongLength);
-    }
-
+/// Expands `key`, which the caller has checked is 16 or 32 bytes.
+pub(super) fn expand_key(key: &[u8]) -> AesKey {
     // Mark a copy: the caller's buffer may be shared, or a promoted constant.
     let mut copy = [0u8; 32];
     let copy_key = &mut copy[..key.len()];
     copy_key.copy_from_slice(key);
     low::ct::secret_slice(copy_key);
-    Ok(AesKey::new(copy_key))
+    AesKey::new(copy_key)
 }
 
 #[cfg(test)]

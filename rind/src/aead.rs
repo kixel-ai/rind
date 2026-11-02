@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::mem::ManuallyDrop;
+
 use crate::Error;
 use crate::low::{Zeroable, zeroise_value};
 use crate::mid::aes_gcm::AesGcm;
@@ -95,12 +97,7 @@ impl Key {
             return Err(Error::WrongLength);
         }
 
-        Ok(Self(match algorithm.id {
-            AlgorithmId::Aes128Gcm | AlgorithmId::Aes256Gcm => Inner::AesGcm(AesGcm::new(key)?),
-            AlgorithmId::ChaCha20Poly1305 => Inner::ChaCha20Poly1305(ChaCha20Poly1305::new(
-                key.try_into().map_err(|_| Error::WrongLength)?,
-            )),
-        }))
+        Ok(Self(Inner::new(algorithm, key)))
     }
 
     /// Encrypts `in_out` in place and returns the tag.
@@ -178,6 +175,8 @@ impl Key {
 
 // All-zero is the `AesGcm` variant with an all-zero key and table, which
 // `Zeroable` requires to be valid: every field is a plain integer or vector.
+// Neither variant owns memory beyond itself, so its drop does nothing but wipe
+// what `Inner`'s drop wipes anyway; `ManuallyDrop` skips that second pass.
 //
 // Boxing the AES-GCM table would allocate for every key to save space only on
 // ChaCha20-Poly1305 keys; the 32-bit arm table is small, so the lint is allowed
@@ -185,8 +184,27 @@ impl Key {
 #[allow(clippy::large_enum_variant)]
 #[repr(u8)]
 enum Inner {
-    AesGcm(AesGcm),
-    ChaCha20Poly1305(ChaCha20Poly1305),
+    AesGcm(ManuallyDrop<AesGcm>),
+    ChaCha20Poly1305(ManuallyDrop<ChaCha20Poly1305>),
+}
+
+impl Inner {
+    /// Expands `key`, which the caller has checked is `algorithm`'s length.
+    ///
+    /// Not inlined, so each function wraps a value in one layer, and LLVM
+    /// builds it in the caller's slot: two layers in one function, as
+    /// `Ok(Key(Inner::AesGcm(..)))`, copied the whole key twice.
+    #[inline(never)]
+    fn new(algorithm: &Algorithm, key: &[u8]) -> Self {
+        match algorithm.id {
+            AlgorithmId::Aes128Gcm | AlgorithmId::Aes256Gcm => {
+                Self::AesGcm(ManuallyDrop::new(AesGcm::new(key)))
+            }
+            AlgorithmId::ChaCha20Poly1305 => Self::ChaCha20Poly1305(ManuallyDrop::new(
+                ChaCha20Poly1305::new(key.try_into().unwrap()),
+            )),
+        }
+    }
 }
 
 impl Drop for Inner {

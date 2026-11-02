@@ -4,7 +4,7 @@
 #
 # Usage: sh/release.sh [BEFORE]
 # release-plz publishes only when HEAD is a release PR's commit (release_always
-# = false), but the land gate lands a batch as several squash commits in quick
+# = false), but the merge queue can land several squash commits in quick
 # succession, so other PRs can follow the release PR onto `main`. Each commit `main` gained since BEFORE gets its
 # own `release-plz release`, which publishes from that commit only when it is
 # the release PR's, keeping later PRs out of the release. Without BEFORE, only

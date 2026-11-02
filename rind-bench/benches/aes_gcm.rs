@@ -1,4 +1,6 @@
 mod criterion;
+use std::hint::black_box;
+
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 fn test_ring_aes_gcm(key: &ring::aead::LessSafeKey, nonce: &[u8; 12], aad: &[u8], plain: &[u8]) {
@@ -51,12 +53,40 @@ fn test_rind_aes_gcm(key: &rind::aead::Key, nonce: &[u8; 12], aad: &[u8], plain:
         .unwrap();
 }
 
+// Expanding a key and its GHASH table, as each QUIC connection and derived
+// track key pays. It drops each key in the loop, so their wiping is timed too.
+fn key_setup(
+    group: &mut criterion::BenchmarkGroup<'_, criterion::measurement::WallTime>,
+    key: &[u8],
+    ring: &'static ring::aead::Algorithm,
+    aws: &'static aws_lc_rs::aead::Algorithm,
+    ours: &'static rind::aead::Algorithm,
+) {
+    group.bench_function(BenchmarkId::new("ring", "key"), |b| {
+        b.iter(|| ring::aead::UnboundKey::new(ring, black_box(key)).unwrap())
+    });
+    group.bench_function(BenchmarkId::new("aws-lc-rs", "key"), |b| {
+        b.iter(|| aws_lc_rs::aead::UnboundKey::new(aws, black_box(key)).unwrap())
+    });
+    group.bench_function(BenchmarkId::new("rind", "key"), |b| {
+        b.iter(|| rind::aead::Key::new(ours, black_box(key)).unwrap())
+    });
+}
+
 fn aes128_gcm(c: &mut Criterion) {
     let key = [0u8; 16];
     let nonce = [0u8; 12];
     let aad = [0u8; 32];
 
     let mut group = c.benchmark_group("aes128-gcm");
+    key_setup(
+        &mut group,
+        &key,
+        &ring::aead::AES_128_GCM,
+        &aws_lc_rs::aead::AES_128_GCM,
+        &rind::aead::AES_128_GCM,
+    );
+
     for (size, size_name) in criterion::SIZES {
         let input = vec![0u8; size];
         group.throughput(Throughput::Bytes(size as u64));
@@ -100,6 +130,14 @@ fn aes256_gcm(c: &mut Criterion) {
     let aad = [0u8; 32];
 
     let mut group = c.benchmark_group("aes256-gcm");
+    key_setup(
+        &mut group,
+        &key,
+        &ring::aead::AES_256_GCM,
+        &aws_lc_rs::aead::AES_256_GCM,
+        &rind::aead::AES_256_GCM,
+    );
+
     for (size, size_name) in criterion::SIZES {
         let input = vec![0u8; size];
         group.throughput(Throughput::Bytes(size as u64));

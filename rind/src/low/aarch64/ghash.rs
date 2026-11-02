@@ -13,8 +13,6 @@ use super::cpu::{HaveCryptoExt, HaveSha3};
 use super::ghash_neon_armv8::NeonTable;
 use crate::low;
 
-// A process only ever builds one variant, so boxing would buy nothing.
-#[expect(clippy::large_enum_variant)]
 pub(crate) enum GhashTable {
     Pmull(PmullTable),
     /// NEON's, which the table picks when the CPU lacks the crypto extension.
@@ -32,78 +30,58 @@ impl GhashTable {
 
 /// Powers of a GHASH key for PMULL, which only a `HaveCryptoExt` token builds.
 pub(crate) struct PmullTable {
-    powers: [uint64x2_t; 8],
-    powers_xor: [uint64x2_t; 8],
     /// H to H^8 in the layout `gcm_init_v8` writes, which s2n-bignum's
-    /// AES-GCM kernels read: H, m(H, H^2), H^2, H^3, m(H^3, H^4), H^4, and so
-    /// on to H^8, with each power's 64-bit halves swapped and m(A, B) holding
-    /// the Karatsuba middle terms of A and B in its low and high halves. The
-    /// four-way kernels read only the first six entries.
+    /// AES-GCM kernels read and `mul!` multiplies by: H, m(H, H^2), H^2,
+    /// H^3, m(H^3, H^4), H^4, and so on to H^8, with each power's 64-bit
+    /// halves swapped and m(A, B) holding the Karatsuba middle terms of A and
+    /// B in its low and high halves. The four-way kernels read only the first
+    /// six entries.
     pub(crate) htable: [uint64x2_t; 12],
     /// Whether AES-256 runs the eight-way kernels, which need SHA3's `EOR3`.
     pub(crate) eight_way: Option<HaveSha3>,
-    token: HaveCryptoExt,
 }
 
 impl PmullTable {
     pub(crate) fn new(h: u128, token: HaveCryptoExt) -> Self {
         // SAFETY: this crate requires the `neon` cpu feature
         let h = unsafe { gf128_big_endian(from_u128(h)) };
+        // A tree, so the longest chain of dependent multiplies is three
+        // rather than seven.
         let h2 = mul(h, h, token);
-        let h3 = mul(h2, h, token);
-        let h4 = mul(h3, h, token);
+        let (h3, h4) = (mul(h2, h, token), mul(h2, h2, token));
         let h5 = mul(h4, h, token);
-        let h6 = mul(h5, h, token);
-        let h7 = mul(h6, h, token);
-        let h8 = mul(h7, h, token);
-
-        let powers = [h, h2, h3, h4, h5, h6, h7, h8];
-        // SAFETY: this crate requires the `neon` cpu feature
-        let powers_xor = unsafe {
-            [
-                xor_halves(h),
-                xor_halves(h2),
-                xor_halves(h3),
-                xor_halves(h4),
-                xor_halves(h5),
-                xor_halves(h6),
-                xor_halves(h7),
-                xor_halves(h8),
-            ]
-        };
+        let h6 = mul(h4, h2, token);
+        let h7 = mul(h4, h3, token);
+        let h8 = mul(h4, h4, token);
 
         // SAFETY: this crate requires the `neon` cpu feature
         let htable = unsafe {
+            let m = |a, b| vzip1q_u64(xor_halves(a), xor_halves(b));
             [
                 vextq_u64(h, h, 1),
-                vzip1q_u64(powers_xor[0], powers_xor[1]),
+                m(h, h2),
                 vextq_u64(h2, h2, 1),
                 vextq_u64(h3, h3, 1),
-                vzip1q_u64(powers_xor[2], powers_xor[3]),
+                m(h3, h4),
                 vextq_u64(h4, h4, 1),
                 vextq_u64(h5, h5, 1),
-                vzip1q_u64(powers_xor[4], powers_xor[5]),
+                m(h5, h6),
                 vextq_u64(h6, h6, 1),
                 vextq_u64(h7, h7, 1),
-                vzip1q_u64(powers_xor[6], powers_xor[7]),
+                m(h7, h8),
                 vextq_u64(h8, h8, 1),
             ]
         };
 
         Self {
-            powers,
-            powers_xor,
             htable,
             eight_way: HaveSha3::check(),
-            token,
         }
     }
 }
 
 impl Drop for PmullTable {
     fn drop(&mut self) {
-        low::zeroise(&mut self.powers);
-        low::zeroise(&mut self.powers_xor);
         low::zeroise(&mut self.htable);
     }
 }
@@ -190,7 +168,9 @@ impl<'a> Ghash<'a> {
     fn one_block(&mut self, table: &PmullTable, block: u128) {
         // SAFETY: this crate requires the `neon` cpu feature
         self.current = unsafe { veorq_u64(self.current, from_u128(block)) };
-        self.current = mul(self.current, table.powers[0], table.token);
+        // SAFETY: only a `HaveCryptoExt` token builds `table`, and rind
+        // requires NEON.
+        self.current = unsafe { _mul_h(table, self.current) };
     }
 
     #[inline]
@@ -245,18 +225,24 @@ fn mul8(
     unsafe { _mul8(table, a, b, c, d, e, f, g, h) }
 }
 
+/// Accumulates `x` times a power of H, read as `htable` holds it: `hs`, its
+/// halves swapped, and the half of `m` that `mul_m` takes, its Karatsuba
+/// middle term. Swapping `x` lines it up with `hs` and also sums its halves
+/// into both lanes of `xx`, so the layout costs no extra instructions.
 macro_rules! mul {
-    ($lo:ident, $mi:ident, $hi:ident, $x:ident, $h:expr, $hx:expr) => {
-        let tlo = vmull_p64_fix($x, $h);
+    ($lo:ident, $mi:ident, $hi:ident, $x:expr, $hs:expr, $m:expr, $mul_m:ident) => {
+        let x = $x;
+        let xs = vextq_u64(x, x, 1);
+
+        let tlo = vmull_high_p64_fix(xs, $hs);
         $lo = veorq_u64(tlo, $lo);
 
-        let xx = vextq_u64($x, $x, 1);
-        let xx = veorq_u64(xx, $x);
+        let xx = veorq_u64(xs, x);
 
-        let thi = vmull_high_p64_fix($x, $h);
+        let thi = vmull_p64_fix(xs, $hs);
         $hi = veorq_u64(thi, $hi);
 
-        let tmi = vmull_p64_fix(xx, $hx);
+        let tmi = $mul_m(xx, $m);
         $mi = veorq_u64(tmi, $mi);
     };
 }
@@ -282,8 +268,16 @@ macro_rules! reduce {
 #[target_feature(enable = "neon,aes")]
 fn _mul(a: uint64x2_t, b: uint64x2_t) -> uint64x2_t {
     let (mut lo, mut mi, mut hi) = (zero(), zero(), zero());
-    let bx = xor_halves(b);
-    mul!(lo, mi, hi, a, b, bx);
+    let (bs, bx) = (vextq_u64(b, b, 1), xor_halves(b));
+    mul!(lo, mi, hi, a, bs, bx, vmull_p64_fix);
+    reduce!(lo, mi, hi)
+}
+
+#[target_feature(enable = "neon,aes")]
+fn _mul_h(table: &PmullTable, a: uint64x2_t) -> uint64x2_t {
+    let (mut lo, mut mi, mut hi) = (zero(), zero(), zero());
+    let t = &table.htable;
+    mul!(lo, mi, hi, a, t[0], t[1], vmull_p64_fix);
     reduce!(lo, mi, hi)
 }
 
@@ -301,14 +295,15 @@ fn _mul8(
     h: uint64x2_t,
 ) -> uint64x2_t {
     let (mut lo, mut mi, mut hi) = (zero(), zero(), zero());
-    mul!(lo, mi, hi, a, table.powers[7], table.powers_xor[7]);
-    mul!(lo, mi, hi, b, table.powers[6], table.powers_xor[6]);
-    mul!(lo, mi, hi, c, table.powers[5], table.powers_xor[5]);
-    mul!(lo, mi, hi, d, table.powers[4], table.powers_xor[4]);
-    mul!(lo, mi, hi, e, table.powers[3], table.powers_xor[3]);
-    mul!(lo, mi, hi, f, table.powers[2], table.powers_xor[2]);
-    mul!(lo, mi, hi, g, table.powers[1], table.powers_xor[1]);
-    mul!(lo, mi, hi, h, table.powers[0], table.powers_xor[0]);
+    let t = &table.htable;
+    mul!(lo, mi, hi, a, t[11], t[10], vmull_high_p64_fix);
+    mul!(lo, mi, hi, b, t[9], t[10], vmull_p64_fix);
+    mul!(lo, mi, hi, c, t[8], t[7], vmull_high_p64_fix);
+    mul!(lo, mi, hi, d, t[6], t[7], vmull_p64_fix);
+    mul!(lo, mi, hi, e, t[5], t[4], vmull_high_p64_fix);
+    mul!(lo, mi, hi, f, t[3], t[4], vmull_p64_fix);
+    mul!(lo, mi, hi, g, t[2], t[1], vmull_high_p64_fix);
+    mul!(lo, mi, hi, h, t[0], t[1], vmull_p64_fix);
     reduce!(lo, mi, hi)
 }
 

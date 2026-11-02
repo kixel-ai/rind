@@ -448,6 +448,24 @@ impl<const N: usize> PosInt<N> {
     ///
     /// This is done in a side-channel-free way, with respect to the values of `self`, `e`,
     /// `n` and `n_0`.  The instruction trace depends only on `e.used` and `n.used`.
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) fn mont_exp(&self, one_mont: Self, e: &Self, n: &Self, n_0: u64) -> Self {
+        let mut r = Self::zero();
+        r.used = n.used;
+        low::mont_exp(
+            r.as_mut_words(),
+            self.as_words_with_len_of(n),
+            one_mont.as_words_with_len_of(n),
+            e.as_words(),
+            n.as_words(),
+            n_0,
+        );
+        r
+    }
+
+    /// Computes `self` ^ `e` mod `n`, as the x86_64 `mont_exp` does, by a
+    /// 4-bit window over `mont_mul` and `mont_sqr`.
+    #[cfg(not(target_arch = "x86_64"))]
     pub(crate) fn mont_exp(&self, one_mont: Self, e: &Self, n: &Self, n_0: u64) -> Self {
         // Each product goes to the other of these, then they swap roles.
         let (mut a, mut b) = (one_mont, Self::zero());
@@ -591,47 +609,48 @@ impl<const N: usize> PosInt<N> {
     pub(crate) fn reduce_even<const M: usize>(&self, m: &PosInt<M>) -> PosInt<M> {
         assert!(M < N);
 
-        let mut r = PosInt::<M>::zero();
-        r.used = m.used;
-        let mut addend = r.clone();
-        let mut next = r.clone();
+        let mut a = PosInt::<M>::zero();
+        a.used = m.used;
+        let mut b = a.clone();
+        let mut addend = a.clone();
 
         // First, observe that any value of M-1 words cannot change
         // when reduced by m (M := |m|).  So we can copy these top words
         // in directly.
-        let limit = r.used.saturating_sub(1);
+        let limit = a.used.saturating_sub(1);
         let i = self.used.saturating_sub(limit);
         let top = &self.words[i..self.used];
-        r.words[..top.len()].copy_from_slice(top);
+        a.words[..top.len()].copy_from_slice(top);
 
-        // For the remaining bits, we double-and-add them.
+        // The remaining bits are shifted in by doubling, then added, a word
+        // at a time where a word is below `m`, as it is when `m` is wider,
+        // and a bit at a time otherwise. Each step writes to the other of
+        // `a` and `b`, then they swap roles.
+        let bits = if m.used > 1 { 64 } else { 1 };
+        let (mut r, mut next) = (&mut a, &mut b);
         for j in (0..i).rev() {
-            let word = self.words[j];
+            for piece in (0..64 / bits).rev() {
+                for _ in 0..bits {
+                    low::bignum_modadd(
+                        next.as_mut_words(),
+                        r.as_words(),
+                        r.as_words(),
+                        m.as_words(),
+                    );
+                    core::mem::swap(&mut r, &mut next);
+                }
 
-            for b in (0..64).rev() {
-                let bit = (word >> b) & 1;
-
-                // First, double r mod m; ie shift it left once.
-                // TODO: `bignum_moddouble` should be faster.
+                addend.words[0] = self.words[j] >> (piece * bits) & u64::MAX >> (64 - bits);
                 low::bignum_modadd(
                     next.as_mut_words(),
                     r.as_words(),
-                    r.as_words(),
-                    m.as_words(),
-                );
-
-                // Now add the new bit.  This might add zero.
-                addend.words[0] = bit;
-                low::bignum_modadd(
-                    r.as_mut_words(),
-                    next.as_words(),
                     addend.as_words(),
                     m.as_words(),
                 );
+                core::mem::swap(&mut r, &mut next);
             }
         }
-
-        r
+        r.clone()
     }
 
     /// Computes `self` + `b`
@@ -721,6 +740,7 @@ impl<const N: usize> Drop for SecretPosInt<N> {
     }
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[derive(Debug)]
 struct BitsMsbFirstIter<'a> {
     words: &'a [u64],
@@ -728,6 +748,7 @@ struct BitsMsbFirstIter<'a> {
     word: usize,
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 impl<'a> BitsMsbFirstIter<'a> {
     fn new(words: &'a [u64]) -> Self {
         debug_assert!(!words.is_empty());
@@ -739,6 +760,7 @@ impl<'a> BitsMsbFirstIter<'a> {
     }
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 impl Iterator for BitsMsbFirstIter<'_> {
     type Item = u64;
 

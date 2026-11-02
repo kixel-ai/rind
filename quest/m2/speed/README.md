@@ -47,12 +47,11 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [RSA at every key size as fast as aws-lc-rs](/quest/m2/speed/rsa-sizes.md) - x86_64 signing's exponentiation beyond the Karatsuba sizes, as aws-lc's windows and `bn_power5` run it
 - [armv7 P-256 as fast as the fastest source](/quest/m2/speed/armv7-p256.md) - signing 2.63x, ES256 2.04x today
-- [armv7 RSA as fast as the fastest source](/quest/m2/speed/armv7-rsa.md) - key loading 1.30-1.34x, RSA-2056 1.07-1.08x today
-- [x86_64 SHA-256 finishing in two blocks and PBKDF2-HMAC-SHA1 as fast as the fastest source](/quest/m2/speed/armv7-hmac-hkdf.md) - 1.08x at 64 B and 1.02x today
-- [AES-GCM key setup as fast as the fastest source](/quest/m2/speed/aes-gcm-key-setup.md) - 1.30-1.48x today
+- [AES-GCM key setup as fast as the fastest source](/quest/m2/speed/aes-gcm-key-setup.md) - 1.13-1.66x today
 - [ML-KEM-768 encapsulation as fast as the fastest source](/quest/m2/speed/mlkem-encaps.md) - armv7 1.05x and aarch64 1.04x today
 - [x86_64 RSA with AVX-512 IFMA](/quest/m2/speed/x86-rsa-ifma.md) - aws-lc's AVX-512 RSA is up to 3.56x faster
 - [aarch64 RSA on a 5-bit exponent window](/quest/m2/speed/aarch64-rsa-window.md) - the window x86_64 gained in #224
 - [Imported aws-lc routines keep their alignment](/quest/m2/speed/import-alignment.md) - restore `.align` before carried routines if it measures faster
+- [armv7 P-384 multiply without carry-flag spills](/quest/m2/speed/armv7-p384-mul.md) - only if more than ~10% faster than fiat-crypto
+- [Imported routines start at aws-lc's alignment](/quest/m2/speed/import-entry-alignment.md) - top-level entries aligned like aws-lc, if it measures faster
