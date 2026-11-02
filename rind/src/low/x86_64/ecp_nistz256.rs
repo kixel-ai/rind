@@ -246,10 +246,11 @@ mod tests {
                 p1[8] |= 1;
                 p2[8] |= 1;
                 let (mut aws_lc, mut s2n) = ([0; 12], [0; 12]);
-                // SAFETY: as in `p256_montjdouble` and `p256_montjadd`.
+                // SAFETY: as in `p256_montjdouble`.
                 unsafe { ecp_nistz256_point_double(&mut aws_lc, &p1) };
                 super::super::p256_montjdouble::p256_montjdouble(&mut s2n, &p1);
                 assert_eq!(aws_lc, s2n);
+                // SAFETY: as in `p256_montjadd`.
                 unsafe { ecp_nistz256_point_add(&mut aws_lc, &p1, &p2) };
                 super::super::p256_montjadd::p256_montjadd(&mut s2n, &p1, &p2);
                 assert_eq!(aws_lc, s2n);
