@@ -1988,6 +1988,7 @@ L$chacha_poly_seal_sse_128_rounds:
 
 
 .p2align	6
+.p2align	6
 L$chacha_poly_chacha20_poly1305_seal_avx2:
 
 

@@ -9,16 +9,6 @@
    fun:*libcrux_aes*
 }
 
-# Unoptimised, libcrux's P-256 Diffie-Hellman branches on its check that the
-# private scalar is in range. rind's scalars always are, so the outcome is
-# public, but libcrux does not declassify it for memcheck.
-{
-   libcrux-p256-dh-scalar-check
-   Memcheck:Cond
-   src:p256.rs:1571
-   fun:*libcrux_p256*
-}
-
 # On armv7 without NEON, memcheck reports a condition in aws-lc's integer
 # SHA-512. Every condition in it tests a round constant or the input pointer
 # (sha512-armv4.s), never state or data, so the report comes from memcheck's

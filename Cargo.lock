@@ -2060,19 +2060,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libcrux-p256"
-version = "0.0.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7489aa205be22524e2f6ddbe006c0c4ff5f1dfc7c17b783e3d02f1cb2a01c605"
-dependencies = [
- "libcrux-hacl-rs",
- "libcrux-macros",
- "libcrux-secrets",
- "libcrux-sha2",
- "libcrux-traits",
-]
-
-[[package]]
 name = "libcrux-platform"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2099,17 +2086,6 @@ checksum = "03c4ba47b3596f2771213ff162c792e9b93ddc0cdd178a2e407e00bb8ae4afcd"
 dependencies = [
  "crabgrind 0.3.1",
  "hax-lib 0.4.2",
-]
-
-[[package]]
-name = "libcrux-sha2"
-version = "0.0.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86aa35d8fc9576a41df34af4d95d1f11186c1f65cd6c829329748915ea556d71"
-dependencies = [
- "libcrux-hacl-rs",
- "libcrux-macros",
- "libcrux-traits",
 ]
 
 [[package]]
@@ -2905,7 +2881,6 @@ dependencies = [
  "libcrux-aes",
  "libcrux-hacl-rs",
  "libcrux-macros",
- "libcrux-p256",
  "libcrux-poly1305",
  "libcrux-traits",
  "proptest",

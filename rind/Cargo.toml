@@ -19,15 +19,14 @@ getrandom = "0.4"
 crabgrind = { version = "0.4", optional = true }
 
 # armv7's backend: libcrux's portable Rust, with no C or
-# intrinsics features enabled, fiat-crypto's for P-384, which libcrux
-# exports only as ECDH, and curve25519-dalek's for X25519 and Ed25519.
+# intrinsics features enabled, fiat-crypto's for the NIST curves, and
+# curve25519-dalek's for X25519 and Ed25519.
 [target.'cfg(target_arch = "arm")'.dependencies]
 curve25519-dalek = { version = "5", default-features = false, features = ["precomputed-tables"] }
 fiat-crypto = { version = "0.3", default-features = false }
 libcrux-aes = { version = "0.0.10", default-features = false }
 libcrux-hacl-rs = { version = "0.0.6", features = ["alloc"] }
 libcrux-macros = "0.0.4"
-libcrux-p256 = { version = "0.0.9", features = ["expose-hacl"] }
 libcrux-poly1305 = { version = "0.0.7", features = ["expose-hacl"] }
 libcrux-traits = "0.0.9"
 
@@ -37,7 +36,7 @@ libc = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 aws-lc-rs = { version = "1.16", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
-# Checks armv7's P-384 arithmetic against s2n-bignum's on the other arches.
+# Checks armv7's NIST curve arithmetic against s2n-bignum's on the other arches.
 fiat-crypto = { version = "0.3", default-features = false }
 hex = { version = "0.4", features = ["serde"] }
 proptest = "1.5.0"

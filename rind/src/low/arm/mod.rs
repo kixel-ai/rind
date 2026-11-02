@@ -7,9 +7,9 @@
 //!
 //! libcrux exposes only a few operations at this layer's granularity.  The
 //! rest are swapped in `mid`, where libcrux's whole operations fit, except
-//! P-384, whose arithmetic is fiat-crypto's in `generic::p384`, RSA's, which
-//! is portable Rust in `generic::bignum` around aws-lc's, and ML-KEM's, which
-//! is `generic::mlkem_poly`.
+//! the NIST curves, whose arithmetic is in `generic::p256`, `generic::p384`,
+//! and `generic::p521`, RSA's, which is portable Rust in `generic::bignum`
+//! around aws-lc's, and ML-KEM's, which is `generic::mlkem_poly`.
 
 /// The symbol for an aws-lc routine, qualified by rind's version so two
 /// semver-incompatible copies of rind can link into one binary.
