@@ -32,8 +32,9 @@ settled; don't ask them again. The chosen option is marked ✅.
 - The existing speed quests join this epic ✅ / stay separate.
 - Nightly baselines: aws-lc-rs and ring, so regressions show; other sources
   are measured once by the audit ✅ / every source nightly / aws-lc-rs only.
-- Verification breaks ties only: a verified source wins when it is within
-  measurement noise, about 2%, of the fastest ✅ / within 5% / never.
+- Verification breaks ties: a verified source wins unless another is more
+  than about 10% faster ✅ (maintainer, 2026-11-02: raised from about 2% to
+  prefer verified code over chasing benchmark noise) / within 2% / never.
 - Scope: every exported primitive, plus rind-rustls full and resumed
   handshakes and bulk transfer against aws-lc-rs's and ring's providers ✅ /
   primitives only / also every adapter.
