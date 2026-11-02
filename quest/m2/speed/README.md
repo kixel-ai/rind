@@ -56,3 +56,4 @@ settled; don't ask them again. The chosen option is marked ✅.
 - [Imported aws-lc routines keep their alignment](/quest/m2/speed/import-alignment.md) - restore `.align` before carried routines if it measures faster
 - [armv7 P-384 multiply without carry-flag spills](/quest/m2/speed/armv7-p384-mul.md) - only if more than ~10% faster than fiat-crypto
 - [Imported routines start at aws-lc's alignment](/quest/m2/speed/import-entry-alignment.md) - top-level entries aligned like aws-lc, if it measures faster
+- [AES-128-GCM 16 KB bench measures the cipher](/quest/m2/speed/aes128-16k-bench.md) - the bench's 3x AES-128 anomaly on the EPYC 7763
