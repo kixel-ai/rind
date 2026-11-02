@@ -111,6 +111,8 @@ toolchain, and `just check` runs CI's gate over what the branch changed.
 On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
 with NEON alone, and with NEON denied.
+`nix develop .#ctgrind --command admin/ctgrind` runs the nightly
+constant-time checks under valgrind.
 
 ## Algorithms
 
