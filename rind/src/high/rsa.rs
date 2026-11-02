@@ -1159,8 +1159,9 @@ mod tests {
         let key = Pkcs1::decode(der);
         let private_key = SigningKey::from_pkcs1_der(der).unwrap();
         let s = sub(&mul(&key.q, &key.iqmp), &[1]);
-        let m = private_key.0.public_key().public_op(PosInt::from_bytes(&s).unwrap());
-        let signature = private_key.0.private_op(&m.unwrap()).unwrap();
+        let m = PosInt::from_bytes(&s).unwrap();
+        let m = private_key.0.public_key().public_op(m).unwrap();
+        let signature = private_key.0.private_op(&m).unwrap();
         assert_eq!(trim(i2osp(&signature, &mut [0u8; 256]).unwrap()), s);
     }
 
