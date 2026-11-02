@@ -11,24 +11,57 @@ use super::aes_ctr;
 use super::cpu::HaveAvx512ForAesGcm;
 use super::ghash::{self, ClmulTable, Ghash, GhashTable, GhashTableAvx512};
 
-pub(crate) fn encrypt(
+/// Encrypts `cipher_inout` in place under `nonce`, and returns its tag.
+pub(crate) fn seal(
     key: &AesKey,
-    ghash: &mut Ghash<'_>,
-    initial_counter: &[u8; 16],
+    table: &GhashTable,
+    nonce: &[u8; 12],
     aad: &[u8],
     cipher_inout: &mut [u8],
-) {
-    cipher::<true>(key, ghash, initial_counter, aad, cipher_inout)
+) -> [u8; 16] {
+    tagged::<true>(key, table, nonce, aad, cipher_inout)
 }
 
-pub(crate) fn decrypt(
+/// Decrypts `cipher_inout` in place under `nonce`, and returns the tag it
+/// should carry.
+pub(crate) fn open(
     key: &AesKey,
-    ghash: &mut Ghash<'_>,
-    initial_counter: &[u8; 16],
+    table: &GhashTable,
+    nonce: &[u8; 12],
     aad: &[u8],
     cipher_inout: &mut [u8],
-) {
-    cipher::<false>(key, ghash, initial_counter, aad, cipher_inout)
+) -> [u8; 16] {
+    tagged::<false>(key, table, nonce, aad, cipher_inout)
+}
+
+fn tagged<const ENC: bool>(
+    key: &AesKey,
+    table: &GhashTable,
+    nonce: &[u8; 12],
+    aad: &[u8],
+    cipher_inout: &mut [u8],
+) -> [u8; 16] {
+    let y0 = counter_block(nonce);
+    let mut ghash = Ghash::new(table);
+    cipher::<ENC>(key, &mut ghash, &y0, aad, cipher_inout);
+    ghash.add_lengths(aad.len(), cipher_inout.len());
+
+    // Last, so its AES overlaps the GHASH before it.
+    let mut e_y0 = y0;
+    key.encrypt_block(&mut e_y0);
+    ghash.tag(&e_y0)
+}
+
+/// GCM's first counter block for a 96-bit nonce: the nonce, then 1.
+fn counter_block(nonce: &[u8; 12]) -> [u8; 16] {
+    let lo = u64::from_le_bytes(nonce[..8].try_into().unwrap());
+    let hi = u64::from(u32::from_le_bytes(nonce[8..].try_into().unwrap())) | 1 << 56;
+    let mut y0 = [0u8; 16];
+    // SAFETY: every x86_64 CPU has SSE2, and `y0` is 16 writable bytes. One
+    // vector store, so the 16-byte loads that read it are forwarded, where
+    // separate stores of its parts would stall them.
+    unsafe { _mm_storeu_si128(y0.as_mut_ptr().cast(), _mm_set_epi64x(hi as i64, lo as i64)) };
+    y0
 }
 
 // AES-GCM encrypt (if `ENC` is `true`) or decrypt, on the fastest path for
@@ -579,26 +612,22 @@ mod tests {
 
             for aad_len in [0, 1, 16, 17] {
                 for msg_len in [0, 1, 15, 16, 17, 112, 127, 128, 129, 255, 256, 257, 1000] {
-                    // As GCM's: a 96-bit nonce, then a counter of 1.
-                    let mut counter = [0u8; 16];
-                    counter[..12].copy_from_slice(&bytes(12, msg_len as u32));
-                    counter[15] = 1;
+                    let nonce = bytes(12, msg_len as u32).try_into().unwrap();
                     let aad = bytes(aad_len, 2);
                     let plain = bytes(msg_len, 3);
 
-                    let (mut want, mut want_ghash) = (plain.clone(), Ghash::new(&fast_table));
-                    encrypt(&fast, &mut want_ghash, &counter, &aad, &mut want);
+                    let mut want = plain.clone();
+                    let want_tag = seal(&fast, &fast_table, &nonce, &aad, &mut want);
                     for (key, table) in &slow {
-                        let (mut got, mut got_ghash) = (plain.clone(), Ghash::new(table));
-                        encrypt(key, &mut got_ghash, &counter, &aad, &mut got);
+                        let mut got = plain.clone();
+                        let tag = seal(key, table, &nonce, &aad, &mut got);
                         let what = format!("{key_len} {aad_len} {msg_len}");
                         assert_eq!(got, want, "{what}");
-                        assert_eq!(got_ghash.xi(), want_ghash.xi(), "{what}");
+                        assert_eq!(tag, want_tag, "{what}");
 
-                        let mut ghash = Ghash::new(table);
-                        decrypt(key, &mut ghash, &counter, &aad, &mut got);
+                        let tag = open(key, table, &nonce, &aad, &mut got);
                         assert_eq!(got, plain, "{what}");
-                        assert_eq!(ghash.xi(), want_ghash.xi(), "{what}");
+                        assert_eq!(tag, want_tag, "{what}");
                     }
                 }
             }
