@@ -18,7 +18,7 @@ use libcrux_hacl_rs::bignum::bignum64;
 use super::exponents::{Exponents, PUBLIC_EXPONENT, shift_right_secret};
 use super::{MAX_PRIVATE_MODULUS_BYTES, MAX_PRIVATE_MODULUS_WORDS, Mont, RsaPrivateKey};
 use crate::Error;
-use crate::low::{self, PosInt, ct};
+use crate::low::{PosInt, ct};
 use crate::mid::rng::RandomSource;
 use crate::mid::rsa_key_size::RsaKeySize;
 
@@ -39,7 +39,7 @@ pub(super) fn generate_key(
         let mut p = random_prime(size, &sieve, candidate_random, checks_random)?;
         let mut q = loop {
             let q = random_prime(size, &sieve, candidate_random, checks_random)?;
-            let (p, q_words) = (&p.0[..len], &q.0[..len]);
+            let (p, q_words) = (&p[..len], &q[..len]);
 
             if public(bignum64::eq_mask(len as u32, p, q_words)) != 0 {
                 // for the set of `RsaSizes` supported here, choosing p == q
@@ -65,7 +65,7 @@ pub(super) fn generate_key(
                 break q;
             }
         };
-        let (p, q) = (&mut p.0[..len], &mut q.0[..len]);
+        let (p, q) = (&mut p[..len], &mut q[..len]);
 
         // arrange that q < p, without revealing which was drawn first.
         let swap = bignum64::lt_mask(len as u32, p, q);
@@ -80,8 +80,18 @@ pub(super) fn generate_key(
             // primes and start again.
             continue;
         };
-        let mut s = Derivation::default();
-        s.derive(p, q);
+        let w = len as u32;
+
+        // iqmp = q ^ (p - 2) mod p, by Fermat's little theorem since p
+        // is prime. HACL* requires the base below the modulus: q < p.
+        let mut p_2 = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+        bignum64::sub(w, p, &ONE_TWO[1][..len], &mut p_2[..len]);
+        let ctx = Mont::new_secret(p, len);
+        let mut iqmp = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+        bignum64::mod_exp_consttime_precomp(&ctx, q, w * 64, &p_2[..len], &mut iqmp[..len]);
+
+        let mut n = [0u64; MAX_PRIVATE_MODULUS_WORDS * 2];
+        bignum64::mul(w, p, q, &mut n[..len * 2]);
 
         // `new` checks only what the construction fixes (odd, full-length
         // primes of matching widths), so its branches reveal nothing.
@@ -91,61 +101,10 @@ pub(super) fn generate_key(
             public(PosInt::from_words(&k.d[..len * 2])?),
             public(PosInt::from_words(&k.dp[..len])?),
             public(PosInt::from_words(&k.dq[..len])?),
-            public(PosInt::from_words(&s.iqmp[..len])?),
-            public(PosInt::from_words(&s.n[..len * 2])?),
+            public(PosInt::from_words(&iqmp[..len])?),
+            public(PosInt::from_words(&n[..len * 2])?),
             PUBLIC_EXPONENT.into(),
         );
-    }
-}
-
-/// `iqmp` and `n` for a pair of primes, zeroed on drop.
-struct Derivation {
-    p_2: [u64; MAX_PRIVATE_MODULUS_WORDS],
-    iqmp: [u64; MAX_PRIVATE_MODULUS_WORDS],
-    n: [u64; MAX_PRIVATE_MODULUS_WORDS * 2],
-}
-
-impl Derivation {
-    /// Derives `iqmp` and `n` from primes `q < p`.
-    fn derive(&mut self, p: &[u64], q: &[u64]) {
-        let len = p.len();
-        let w = len as u32;
-
-        // iqmp = q ^ (p - 2) mod p, by Fermat's little theorem since p
-        // is prime. HACL* requires the base below the modulus: q < p.
-        let p_2 = &mut self.p_2[..len];
-        bignum64::sub(w, p, &ONE_TWO[1][..len], p_2);
-        let ctx = Mont::new_secret(p, len);
-        bignum64::mod_exp_consttime_precomp(&ctx, q, w * 64, p_2, &mut self.iqmp[..len]);
-
-        bignum64::mul(w, p, q, &mut self.n[..len * 2]);
-    }
-}
-
-impl Default for Derivation {
-    fn default() -> Self {
-        Self {
-            p_2: [0; MAX_PRIVATE_MODULUS_WORDS],
-            iqmp: [0; MAX_PRIVATE_MODULUS_WORDS],
-            n: [0; MAX_PRIVATE_MODULUS_WORDS * 2],
-        }
-    }
-}
-
-impl Drop for Derivation {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.p_2);
-        low::zeroise(&mut self.iqmp);
-        low::zeroise(&mut self.n);
-    }
-}
-
-/// A secret prime's words, zeroed on drop.
-struct Prime([u64; MAX_PRIVATE_MODULUS_WORDS]);
-
-impl Drop for Prime {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.0);
     }
 }
 
@@ -154,10 +113,10 @@ fn random_prime(
     sieve: &Sieve,
     candidate_random: &mut dyn RandomSource,
     checks_random: &mut dyn RandomSource,
-) -> Result<Prime, Error> {
+) -> Result<[u64; MAX_PRIVATE_MODULUS_WORDS], Error> {
     let len = size.prime_bits() / 64;
     let mut buffer = [0u8; MAX_PRIVATE_MODULUS_BYTES];
-    let mut candidate = Prime([0; MAX_PRIVATE_MODULUS_WORDS]);
+    let mut candidate = [0; MAX_PRIVATE_MODULUS_WORDS];
     loop {
         candidate_random.fill(&mut buffer[..len * 8])?;
 
@@ -167,16 +126,12 @@ fn random_prime(
         // set bottom bit: an even number (of given `size`) is never prime
         buffer[len * 8 - 1] |= 0b0000_0001;
 
-        for (word, bytes) in candidate
-            .0
-            .iter_mut()
-            .zip(buffer[..len * 8].rchunks_exact(8))
-        {
+        for (word, bytes) in candidate.iter_mut().zip(buffer[..len * 8].rchunks_exact(8)) {
             *word = u64::from_be_bytes(bytes.try_into().unwrap());
         }
-        ct::secret_slice(&candidate.0[..len]);
+        ct::secret_slice(&candidate[..len]);
 
-        if is_prime(&candidate.0[..len], size, sieve, checks_random)? {
+        if is_prime(&candidate[..len], size, sieve, checks_random)? {
             return Ok(candidate);
         }
     }
@@ -235,7 +190,7 @@ fn miller_rabin(w: &[u64], size: RsaKeySize, rng: &mut dyn RandomSource) -> Resu
     Ok(true)
 }
 
-/// Miller-Rabin's working, zeroed on drop.
+/// Miller-Rabin's working.
 struct MillerRabinScratch {
     w1: [u64; MAX_PRIVATE_MODULUS_WORDS],
     w2: [u64; MAX_PRIVATE_MODULUS_WORDS],
@@ -318,18 +273,6 @@ impl Default for MillerRabinScratch {
             z: [0; MAX_PRIVATE_MODULUS_WORDS],
             wide: [0; MAX_PRIVATE_MODULUS_WORDS * 2],
         }
-    }
-}
-
-impl Drop for MillerRabinScratch {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.w1);
-        low::zeroise(&mut self.w2);
-        low::zeroise(&mut self.w3);
-        low::zeroise(&mut self.m);
-        low::zeroise(&mut self.b);
-        low::zeroise(&mut self.z);
-        low::zeroise(&mut self.wide);
     }
 }
 
