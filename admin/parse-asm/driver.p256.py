@@ -494,42 +494,6 @@ if __name__ == "__main__":
         )
         parse_file(input, d)
 
-    with (
-        open("../../thirdparty/s2n-bignum/x86/p256/p256_scalarmulbase.S") as input,
-        open("../../rind/src/low/x86_64/p256_scalarmulbase.rs", "w") as output,
-    ):
-        d = RustDriver(output, Architecture_amd64)
-        d.emit_rust_function(
-            "p256_scalarmulbase",
-            parameter_map=[
-                ("inout", "res.as_mut_ptr() => _"),
-                ("inout", "scalar.as_ptr() => _"),
-                ("inout", "6u64 => _"),
-                ("inout", "table.as_ptr() => _"),
-            ],
-            hoist=["proc", "Lp256_scalarmulbase_local_p256_montjmixadd", "ret"],
-            rust_decl="fn p256_scalarmulbase(res: &mut [u64; 8], scalar: &[u64; 4], table: &[[u64; 256]; 43])",
-        )
-        parse_file(input, d)
-
-    with (
-        open("../../thirdparty/s2n-bignum/x86/p256/p256_scalarmulbase_alt.S") as input,
-        open("../../rind/src/low/x86_64/p256_scalarmulbase_alt.rs", "w") as output,
-    ):
-        d = RustDriver(output, Architecture_amd64)
-        d.emit_rust_function(
-            "p256_scalarmulbase_alt",
-            parameter_map=[
-                ("inout", "res.as_mut_ptr() => _"),
-                ("inout", "scalar.as_ptr() => _"),
-                ("inout", "6u64 => _"),
-                ("inout", "table.as_ptr() => _"),
-            ],
-            hoist=["proc", "Lp256_scalarmulbase_alt_local_p256_montjmixadd", "ret"],
-            rust_decl="fn p256_scalarmulbase_alt(res: &mut [u64; 8], scalar: &[u64; 4], table: &[[u64; 256]; 43])",
-        )
-        parse_file(input, d)
-
     # aarch64
     with (
         open("../../thirdparty/s2n-bignum/arm/p256/bignum_montsqr_p256.S") as input,

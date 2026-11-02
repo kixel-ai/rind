@@ -36,9 +36,14 @@ the routine's in the same file, as local labels. One that branches to a
 helper by name `joins` it: the helper follows the routine's body under a
 local label, within the routine's CFI frame, which restarts there from the
 routine's entry state. An import's `cpp` defines
-drop branches rind never takes. Its `inserts` add an instruction before one
-that names a symbol, and its `replaces` swap one instruction for another:
-deliberate changes to aws-lc's code, each saying why. A `vzeroupper` import
+drop branches rind never takes. Its `aliases` name the
+routine an entry label calls, where that label shares the routine's own,
+which another import may hold. Its `inserts` add an instruction before the
+first that names a symbol, and its `replaces` swap one instruction for another:
+deliberate changes to aws-lc's code, each saying why. Its `dispatches` drop
+a routine's CPU check, from its load of `OPENSSL_ia32cap_P` through its jump
+to a twin, since rind picks the twin itself; a twin that is not global keeps
+its name unprefixed in Apple's flavor. A `vzeroupper` import
 gains that instruction before each return: mlkem-native's routines return
 with the upper halves of the ymm registers dirty, which costs the SSE code
 that runs next a transition on Intel's cores, so rind ends them as
@@ -109,6 +114,16 @@ ARM_IMPORTS = [
         "copyright": "Copyright 2007-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "constants": [("K512:", 40)],
         "routines": ["sha512_block_data_order_nohw", "sha512_block_data_order_neon"],
+    },
+    # Montgomery multiplication, as aws-lc's `bn_mul_mont` picks between them:
+    # NEON for widths of eight 32-bit words, and integer code otherwise.
+    {
+        "source": "armv4-mont.S",
+        "tag": "mont",
+        "perlasm": "crypto/fipsmodule/bn/asm/armv4-mont.pl",
+        "copyright": "Copyright 2007-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "constants": [],
+        "routines": ["bn_mul_mont_nohw", "bn_mul8x_mont_neon"],
     },
     {
         "source": "chacha-armv4.S",
@@ -195,6 +210,39 @@ IMPORTS_64 = [
             "sha256_block_data_order_nohw",
         ],
     },
+    # P-256's generator multiplication, as aws-lc's
+    # `ecp_nistz256_point_mul_base` runs it: a constant-time row scan, with
+    # SSE2 or AVX2, and a mixed addition, with `mulq` or with BMI2 and ADX.
+    {
+        "arch": "x86_64",
+        "source": "p256-x86_64-asm.S",
+        "tag": "p256",
+        "perlasm": "crypto/fipsmodule/ec/asm/p256-x86_64-asm.pl",
+        "notice": [
+            "Copyright 2014-2016 The OpenSSL Project Authors. All Rights Reserved.",
+            "Copyright (c) 2014, Intel Corporation. All Rights Reserved.",
+            "Copyright (c) 2015 CloudFlare, Inc.",
+            "SPDX-License-Identifier: Apache-2.0",
+        ],
+        "tables": ["poly", "One", "ONE_mont"],
+        "routines": [
+            "ecp_nistz256_select_w7",
+            "ecp_nistz256_avx2_select_w7",
+            "ecp_nistz256_point_add_affine",
+            "ecp_nistz256_point_add_affinex",
+        ],
+        "helpers": [
+            "__ecp_nistz256_mul_montq",
+            "__ecp_nistz256_sqr_montq",
+            "__ecp_nistz256_sub_fromq",
+            "__ecp_nistz256_subq",
+            "__ecp_nistz256_mul_montx",
+            "__ecp_nistz256_sqr_montx",
+            "__ecp_nistz256_sub_fromx",
+            "__ecp_nistz256_subx",
+        ],
+        "dispatches": ["ecp_nistz256_select_w7", "ecp_nistz256_point_add_affine"],
+    },
     # The rest of the x86_64 imports are for CPUs without AVX2.
     {
         "arch": "x86_64",
@@ -221,10 +269,10 @@ IMPORTS_64 = [
     },
     # The routines aws-lc's `bn_mul_mont` picks from, by width and CPU.
     # `bn_sqrx8x_internal` loads the two scratch words after the 2n-word
-    # product, which `bn_sqr8x_mont` never writes. They reach only the
-    # overflow flag before it is cleared, so results and timing do not depend
-    # on them, but memcheck carries them into every result and fails
-    # `admin/ctgrind`; rind's copy of `bn_sqr8x_mont` zeroes them first.
+    # product, which `bn_sqr8x_mont` and `bn_powerx5` never write. They reach
+    # only the overflow flag before it is cleared, so results and timing do
+    # not depend on them, but memcheck carries them into every result and
+    # fails `admin/ctgrind`; rind's copies of both zero them first.
     {
         "arch": "x86_64",
         "source": "x86_64-mont.S",
@@ -236,20 +284,41 @@ IMPORTS_64 = [
         "calls": ["bn_sqr8x_internal", "bn_sqrx8x_internal"],
         "inserts": {"bn_sqr8x_mont": [("call", "bn_sqrx8x_internal", "movdqu\t%xmm0,48(%rsp,%r9,2)")]},
     },
+    # And the exponentiation's: five squarings and a multiplication by a
+    # gathered table entry in one call, for a multiple of eight words, where
+    # each routine carries the multiplication and the reduction it jumps
+    # into. The `mulx`, `adcx`, and `adox` one is its own entry, which the
+    # define below drops, along with the check of aws-lc's
+    # `OPENSSL_ia32cap_P` that picks it, as rind picks it by its own.
     {
         "arch": "x86_64",
         "source": "x86_64-mont5.S",
         "tag": "mont5",
         "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont5.pl",
         "copyright": "Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved.",
-        "tables": [],
-        "routines": ["bn_sqr8x_internal", "bn_sqrx8x_internal"],
+        "tables": ["inc"],
+        "routines": ["bn_sqr8x_internal", "bn_sqrx8x_internal", "bn_powerx5"],
         "inner": [
             "__bn_sqr8x_internal",
             "__bn_sqr8x_reduction",
             "__bn_sqrx8x_internal",
             "__bn_sqrx8x_reduction",
         ],
+        "carries": {"bn_powerx5": ["mulx4x_internal", "__bn_postx4x_internal"]},
+        "aliases": {"__bn_sqrx8x_internal": "bn_sqrx8x_internal"},
+        "inserts": {"bn_powerx5": [("call", "__bn_sqrx8x_internal", "movdqu\t%xmm0,48(%rsp,%r9,2)")]},
+    },
+    {
+        "arch": "x86_64",
+        "source": "x86_64-mont5.S",
+        "tag": "mont5",
+        "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont5.pl",
+        "copyright": "Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "cpp": ["-DMY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2"],
+        "tables": ["inc"],
+        "routines": ["bn_power5"],
+        "carries": {"bn_power5": ["mul4x_internal", "__bn_post4x_internal"]},
+        "aliases": {"__bn_sqr8x_internal": "bn_sqr8x_internal"},
     },
     # RSAZ, the exponentiation aws-lc runs for 1024-bit moduli with AVX2 but
     # without ADX. `scatter_permd` runs on through `gather_permd` and `inc`,
@@ -686,7 +755,17 @@ def import_64(aws_lc):
             operands |= {s: (name.lstrip("_"), 0) for name in helpers for s in (name, local + name)}
             # Routines of another import that these call.
             operands |= {prefix + name: (name, 0) for name in spec.get("calls", [])}
-            entries = [(f"{prefix}{name}:", name) for name in spec["routines"]]
+            # Entries that share a routine's own, by the routine.
+            operands |= {
+                spelling(lines, alias, prefix): (name, 0) for alias, name in spec.get("aliases", {}).items()
+            }
+            # A routine's label, which is unprefixed when it is not global.
+            defined = [line.split() for line in lines]
+
+            def label_of(name):
+                return next(s for s in (prefix + name, name) if [s + ":"] in defined) + ":"
+
+            entries = [(label_of(name), name) for name in spec["routines"]]
             entries += [(spelling(lines, name, local) + ":", name.lstrip("_")) for name in helpers]
             inner = spec.get("inner", [])
             labels = spec.get("labels", [])
@@ -714,11 +793,19 @@ def import_64(aws_lc):
                 directives = [line.split()[:1] for line in text]
                 if label[:-1] in inner and [".cfi_endproc"] in directives and [".cfi_startproc"] not in directives:
                     text = [".cfi_startproc"] + text
-                # Before the one instruction that names this symbol.
-                for op, symbol, line in spec.get("inserts", {}).get(name, []):
-                    at = [i for i, old in enumerate(text) if old.split() == [op, prefix + symbol]]
+                # Its CPU check, through the jump to its twin.
+                if name in spec.get("dispatches", []):
+                    at = [i for i, old in enumerate(text) if "OPENSSL_ia32cap_P" in old]
                     if len(at) != 1:
-                        sys.exit(f"{name}: expected one {op} {symbol}")
+                        sys.exit(f"{name}: expected one CPU check")
+                    end = next(i for i in range(at[0], len(text)) if text[i].split()[0].startswith("j"))
+                    del text[at[0] : end + 1]
+                # Before the first instruction that names this symbol, which
+                # has no prefix if it is not global.
+                for op, symbol, line in spec.get("inserts", {}).get(name, []):
+                    at = [i for i, old in enumerate(text) if old.split() in ([op, prefix + symbol], [op, symbol])]
+                    if not at:
+                        sys.exit(f"{name}: expected {op} {symbol}")
                     text.insert(at[0], "\t" + line)
                 # The one instruction with these operands, which name a symbol.
                 for op, args, line in spec.get("replaces", {}).get(name, []):

@@ -370,11 +370,12 @@ impl<const N: usize> PosInt<N> {
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn from_montgomery(self, n: &Self) -> Self {
         // On x86_64, `mont_mul` by one measured faster than s2n-bignum's
-        // generic `bignum_demont`.
-        #[cfg(target_arch = "x86_64")]
+        // generic `bignum_demont`, and armv7's `bignum_demont` takes only group
+        // orders.
+        #[cfg(any(target_arch = "x86_64", target_arch = "arm"))]
         return self.mont_mul(&n.fixed_one(), n, n.mont_neg_inverse());
 
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(target_arch = "aarch64")]
         {
             let mut demont = Self::zero();
             demont.used = n.used;
@@ -447,6 +448,24 @@ impl<const N: usize> PosInt<N> {
     ///
     /// This is done in a side-channel-free way, with respect to the values of `self`, `e`,
     /// `n` and `n_0`.  The instruction trace depends only on `e.used` and `n.used`.
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) fn mont_exp(&self, one_mont: Self, e: &Self, n: &Self, n_0: u64) -> Self {
+        let mut r = Self::zero();
+        r.used = n.used;
+        low::mont_exp(
+            r.as_mut_words(),
+            self.as_words_with_len_of(n),
+            one_mont.as_words_with_len_of(n),
+            e.as_words(),
+            n.as_words(),
+            n_0,
+        );
+        r
+    }
+
+    /// Computes `self` ^ `e` mod `n`, as the x86_64 `mont_exp` does, by a
+    /// 4-bit window over `mont_mul` and `mont_sqr`.
+    #[cfg(not(target_arch = "x86_64"))]
     pub(crate) fn mont_exp(&self, one_mont: Self, e: &Self, n: &Self, n_0: u64) -> Self {
         // Each product goes to the other of these, then they swap roles.
         let (mut a, mut b) = (one_mont, Self::zero());
@@ -648,7 +667,12 @@ impl<const N: usize> PosInt<N> {
         let mut r = Self::zero();
         r.used = self.used;
         // TODO: could pull in bignum_sub for this.
-        low::bignum_optsub(r.as_mut_words(), self.as_words(), b.as_words(), 1);
+        low::bignum_optsub(
+            r.as_mut_words(),
+            self.as_words(),
+            b.as_words_with_len_of(self),
+            1,
+        );
         r
     }
 
@@ -676,6 +700,9 @@ impl<const N: usize> PosInt<N> {
         r
     }
 }
+
+// All-zero bytes are a valid zero.
+impl<const N: usize> low::Zeroable for PosInt<N> {}
 
 /// A `SecretPosInt` is a `PosInt` containing long-term key material.
 ///
@@ -707,11 +734,12 @@ impl<const N: usize> DerefMut for SecretPosInt<N> {
 
 impl<const N: usize> Drop for SecretPosInt<N> {
     fn drop(&mut self) {
-        low::zeroise(self.as_mut_words());
-        low::zeroise_value(&mut self.used);
+        // The whole value, as 32-bit targets pad after `used`.
+        low::zeroise_value(&mut self.0);
     }
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[derive(Debug)]
 struct BitsMsbFirstIter<'a> {
     words: &'a [u64],
@@ -719,6 +747,7 @@ struct BitsMsbFirstIter<'a> {
     word: usize,
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 impl<'a> BitsMsbFirstIter<'a> {
     fn new(words: &'a [u64]) -> Self {
         debug_assert!(!words.is_empty());
@@ -730,6 +759,7 @@ impl<'a> BitsMsbFirstIter<'a> {
     }
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 impl Iterator for BitsMsbFirstIter<'_> {
     type Item = u64;
 
@@ -1023,6 +1053,13 @@ mod tests {
             u64::from_be_bytes(out[8..16].try_into().unwrap()),
             LOW_ORDER_WORD
         );
+    }
+
+    /// A narrower subtrahend's borrow runs through the wider value's words.
+    #[test]
+    fn sub_narrower() {
+        let w = PosInt::<2>::from_words(&[1, 1]).unwrap();
+        assert_eq!(w.sub(&PosInt::word(3)).as_words(), &[u64::MAX - 1, 0]);
     }
 
     #[test]

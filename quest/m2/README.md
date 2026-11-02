@@ -8,3 +8,4 @@ does not block it.
 ## Required
 
 - [Fastest at every algorithm](/quest/m2/speed/README.md) - every algorithm on every path as fast as any permissive source
+- [CI and tooling follow-ups](/quest/m2/tooling/README.md) - COMPATIBILITY.md regenerated and build.yml trimmed
