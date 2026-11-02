@@ -19,14 +19,19 @@ fn bignum_mux() {
 #[test]
 fn zeroise() {
     for n in 0..1024 {
-        zeroise_equiv(n);
+        for offset in 0..4 {
+            zeroise_equiv(offset, n);
+        }
     }
 }
 
-fn zeroise_equiv(len: usize) {
-    let expect = vec![0x00u8; len];
-    let mut bytes = vec![0xffu8; len];
-    super::zeroise(&mut bytes);
+// Zeroes `len` bytes from `offset` in, so the wide stores start unaligned too,
+// and checks the bytes either side are untouched.
+fn zeroise_equiv(offset: usize, len: usize) {
+    let mut expect = vec![0xffu8; offset + len + 1];
+    expect[offset..offset + len].fill(0);
+    let mut bytes = vec![0xffu8; offset + len + 1];
+    super::zeroise(&mut bytes[offset..offset + len]);
     assert_eq!(expect, bytes);
 }
 
