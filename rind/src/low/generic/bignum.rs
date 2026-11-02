@@ -89,8 +89,8 @@ pub(crate) fn bignum_coprime(x: &[u64], y: &[u64], t: &mut [u64]) -> bool {
         gcd_step(a, b, odd);
     }
 
-    let mut not_one = a[0] ^ 1;
-    for w in &a[1..] {
+    let mut not_one = word(a, 0) ^ 1;
+    for w in a.iter().skip(1) {
         not_one |= w;
     }
     (nonzero(not_one) ^ 1) & (x_odd | y_odd) == 1
@@ -639,7 +639,7 @@ mod tests {
         }
 
         #[test]
-        fn gcd(x in words(1, 6), y in words(1, 6), (m, a, _) in modulus()) {
+        fn gcd(x in words(0, 6), y in words(0, 6), (m, a, _) in modulus()) {
             let w = x.len().max(y.len());
             let ours = bignum_coprime(&secret(&x), &secret(&y), &mut vec![0; 2 * w]);
             let theirs = low::bignum_coprime(&x, &y, &mut vec![0; 2 * w]);
