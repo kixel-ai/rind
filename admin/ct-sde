@@ -18,7 +18,7 @@
 # Run it in `nix develop .#sde`. Without ASLR, as `setarch -R` runs it, the
 # stack and heap lie at the same addresses for both seeds.
 
-import collections, json, os, re, subprocess, sys, tempfile
+import collections, itertools, json, os, re, subprocess, sys, tempfile
 
 SEEDS = ["0123456789abcdef", "fedcba9876543210"]
 # `rind/src/low/x86_64/ct_sde.rs` marks the call between these.
@@ -114,17 +114,12 @@ def compare(exe, name, tmp):
     context = collections.deque(maxlen=8)
     lines = 0
     diff = None
-    for a, b in zip(*traces):
+    for a, b in itertools.zip_longest(*traces, fillvalue="(end)"):
         if a != b:
             diff = (context, a, b)
             break
         context.append(a)
         lines += 1
-    else:
-        # One trace may have ended before the other.
-        rest = [next(t, None) for t in traces]
-        if any(rest):
-            diff = (context, *(r or "(end)" for r in rest))
 
     for proc, log in procs:
         if diff:
@@ -140,6 +135,8 @@ def compare(exe, name, tmp):
 
 
 def main():
+    # Each result as it comes, since a run takes about an hour.
+    sys.stdout.reconfigure(line_buffering=True)
     filter = sys.argv[1] if len(sys.argv) > 1 else ""
     exe = build()
     names = tests(exe, filter)
