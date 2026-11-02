@@ -29,15 +29,13 @@ impl SigningKey {
         // `h := SHA512(seed)`
         // `s := ed25519-clamp(h[0..32])`
         // `prefix := h[32..64]`
-        let mut h = ed25519_digest(seed, &[], &[]);
+        let h = ed25519_digest(seed, &[], &[]);
         // INVARIANT: these unwraps are unreachable: `h` is [u8; 64], so its
         // split at 32 yields two 32-length slices.
         let (lower, upper) = h.split_at(32);
         // `s` is reduced, but `[s]B` is unchanged since `B` has order `L`.
         let s = Scalar::from_bytes_mod_order(clamp_integer(lower.try_into().unwrap()));
         let prefix = upper.try_into().unwrap();
-        // aws-lc wipes the hashed seed.
-        low::zeroise(&mut h);
 
         // Step: rfc8032 5.1.5.3, 5.1.5.4
         let point = EdwardsPoint::mul_base(&s);
@@ -57,8 +55,8 @@ impl SigningKey {
     pub(crate) fn sign(&self, msg: &[u8]) -> [u8; 64] {
         // Step: rfc8032 5.1.6.2
         // `r := SHA-512(dom2(F, C) || prefix || msg) mod L`
-        let mut r_hash = ed25519_digest(&self.prefix, msg, &[]);
-        let mut r = Scalar::from_bytes_mod_order_wide(&r_hash);
+        let r_hash = ed25519_digest(&self.prefix, msg, &[]);
+        let r = Scalar::from_bytes_mod_order_wide(&r_hash);
 
         // Step: rfc8032 5.1.6.3
         // `R := [r]B`
@@ -72,10 +70,6 @@ impl SigningKey {
         // Step: rfc8032 5.1.6.5
         // `S := (k * s + r) mod L`
         let s = k * self.s + r;
-        // aws-lc wipes the nonce as a hash and reduced. It wipes the
-        // challenge `k` too, but any verifier recomputes that.
-        low::zeroise(&mut r_hash);
-        low::zeroise_value(&mut r);
 
         let mut sig = [0u8; 64];
         sig[..32].copy_from_slice(&sig_r);

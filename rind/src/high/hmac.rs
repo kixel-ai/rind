@@ -8,7 +8,7 @@
 use super::digest::Digest;
 use super::hash::{Hash, HashContext, LegacySha1, Sha256, Sha384, Sha512};
 use crate::Error;
-use crate::low::{Zeroable, zeroise, zeroise_value};
+use crate::low::{Zeroable, zeroise_value};
 
 /// An in-progress HMAC computation, using hash function `H`.
 pub(crate) struct Hmac<H: Hash> {
@@ -54,7 +54,6 @@ impl<H: Hash> Hmac<H> {
         let mut outer = H::new();
         outer.update(&key_block);
 
-        zeroise(&mut key_block);
         Self { inner, outer }
     }
 
@@ -67,9 +66,8 @@ impl<H: Hash> Hmac<H> {
     ///
     /// The HMAC output (sometimes called a "signature", or "tag") is returned.
     pub(crate) fn finish(mut self) -> Digest {
-        let mut inner_output = self.inner.finish();
+        let inner_output = self.inner.finish();
         self.outer.update(inner_output.as_ref());
-        zeroise(inner_output.as_mut());
         self.outer.finish()
     }
 
@@ -237,8 +235,8 @@ impl Keyed {
 
 impl Drop for Keyed {
     fn drop(&mut self) {
-        // Wipes the discriminant and the space a smaller variant leaves unused,
-        // not only the variant's own hash contexts.
+        // Wipes the keyed hash contexts, the discriminant, and the space a
+        // smaller variant leaves unused.
         zeroise_value(self);
     }
 }
