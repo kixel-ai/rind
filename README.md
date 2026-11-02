@@ -187,7 +187,7 @@ run doesn't time.
 | PBKDF2 | 0.95 rind | 0.93 | 0.98 |
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
 | Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
-| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 1.00 | **2.63** HACL\* ✓ |
+| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 1.00 | **2.63** fiat-crypto ✓ + rind ⚡ + Graviola ⚡ |
 | P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.09** fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | 0.65 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.05** fiat-crypto ✓ + rind ⚡ |
 | ML-KEM-768 | **1.12** s2n-bignum ✓ + Graviola ⚡ | 0.99 | **1.05** libcrux-ml-kem ✓ |
@@ -205,7 +205,7 @@ tests use [Wycheproof]'s vectors.
 | [Graviola] | copied: rind began as a copy of it, and rind-rustls of its rustls-graviola; its aarch64 ChaCha20 and its Poly1305 began as [cifra], CC0-1.0 | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | rind | its own code | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | [s2n-bignum] | copied: its assembly, transliterated into Rust `asm!` by `admin/parse-asm`, which ends each x86_64 routine using 256-bit registers with `vzeroupper` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM and aarch64 Keccak-f routines (from mlkem-native) Apache-2.0 OR ISC OR MIT; its x86_64 Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/main/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/main/arm/proofs)) that each routine's object code computes its specified result for all inputs. They check s2n-bignum's own build, not rind's transliteration, and do not cover memory safety. |
-| [HACL\*] | dependency, through libcrux-hacl-rs, libcrux-p256, and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
+| [HACL\*] | dependency, through libcrux-hacl-rs and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
 | [libcrux-ml-kem] | dependency | Apache-2.0 | [hax and F\* proofs](https://github.com/cryspen/libcrux/blob/main/libcrux-ml-kem/proofs/verification_status.md) of panic freedom and functional correctness for its portable arithmetic, NTT, serialization, and high-level code. Its SHA-3, from libcrux-sha3, is unverified. |
 | [mlkem-native] | ported: its portable C polynomial arithmetic (the NTT, inverse NTT, base multiplication, reductions, packing, and rejection sampling), to Rust, for x86_64 CPUs without AVX2 | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port. |
 | [libcrux-aes] | dependency for AES-GCM; copied: the block cipher | Apache-2.0 | nothing: libcrux marks it pre-verification |
@@ -292,29 +292,35 @@ only which candidates it discards.
 
 ### ECC
 On x86_64 and aarch64, all ECC field and scalar arithmetic are provided by
-s2n-bignum, and the rest of this section describes those backends.
+s2n-bignum. On armv7, fiat-crypto provides it instead, under rind's own
+versions of the s2n-bignum routines below: its point formulas repeat
+s2n-bignum's, and its variable point multiplication uses 5-bit Booth
+windows, after negating a scalar above n / 2 so that no addition doubles.
 
-P256 base point multiplication uses a 7-bit exponent window with Booth encoding
-(this costs a 148KB constant table).
-Variable point multiplication uses a 5-bit exponent window with Booth encoding.
-Both use the same exponent representations for "public" and "secret" exponents --
-however the table selection for "public" exponents is specialized at compile-time.
+P256 base point multiplication is s2n-bignum's `p256_scalarmulbase`, over
+6-bit Booth windows and a table of each window's 32 multiples (an 88KB
+constant table). Variable point multiplication is s2n-bignum's
+`p256_montjscalarmul`.
 
 P384 base point multiplication uses a comb of 20 tables of 16 affine points
 (a 30KB constant table) over 5-bit Booth windows, as aws-lc does. Variable
-point multiplication is s2n-bignum's `p384_montjscalarmul`, except for ECDSA
-verification's public scalar, which uses a 5-bit Booth window over the
-multiples of the public key, computed once when the key is parsed.
+point multiplication is s2n-bignum's `p384_montjscalarmul`.
 
 P521's prime is a Mersenne prime, so its field arithmetic is direct rather
 than Montgomery's. Base point multiplication uses a comb of 27 tables of 16
 affine points (a 62KB constant table) over 5-bit Booth windows, as aws-lc
-does. Variable point multiplication is s2n-bignum's `p521_jscalarmul`, for
-ECDSA verification's public scalar too, except on aarch64, where a 5-bit Booth
-window over the point's cached multiples measured faster for that one.
+does. Variable point multiplication is s2n-bignum's `p521_jscalarmul`.
 s2n-bignum's P521 point addition requires points that are not at infinity,
-equal, or opposite, so the comb and the window keep to that, and select or
-branch around the cases they reach.
+equal, or opposite, so the comb keeps to that, selecting around the cases
+it reaches.
+
+ECDSA verification computes `u1 G + u2 Q` in one chain of doublings, as
+aws-lc does, adding terms from width-5 non-adjacent forms of the public
+scalars: `u2`'s over the public key's odd multiples, computed once when the
+key is parsed, and `u1`'s over the first row of the base point table, at
+width 6 for P256, whose row holds 32 multiples. An addition of equal or
+opposite points gives a zero z, as infinity does, so only then is it redone
+by cases.
 
 ECDSA follows RFC6979 for generation of `k`, but adds additional non-critical random input.
 We do this to avoid the theoretical fragility of RFC6979 under fault conditions.

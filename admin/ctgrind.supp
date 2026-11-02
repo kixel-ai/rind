@@ -9,16 +9,6 @@
    fun:*libcrux_aes*
 }
 
-# Unoptimised, libcrux's P-256 Diffie-Hellman branches on its check that the
-# private scalar is in range. rind's scalars always are, so the outcome is
-# public, but libcrux does not declassify it for memcheck.
-{
-   libcrux-p256-dh-scalar-check
-   Memcheck:Cond
-   src:p256.rs:1571
-   fun:*libcrux_p256*
-}
-
 # libcrux-hacl-rs bignum constant-time finding, reported privately; drop once
 # fixed (quest/m1/moq/libcrux-ct-fixes.md).
 {

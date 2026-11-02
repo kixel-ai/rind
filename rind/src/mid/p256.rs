@@ -553,6 +553,7 @@ impl JacobianMontPoint {
         tmp
     }
 
+    #[cfg(test)]
     fn double_inplace_n(&mut self, n: usize) {
         for _ in 0..n {
             let tmp = *self;
@@ -560,6 +561,7 @@ impl JacobianMontPoint {
         }
     }
 
+    #[cfg(test)]
     fn add_inplace(&mut self, p: &Self) {
         let mut r = Self::infinity();
         low::p256_montjadd(&mut r.xyz, &self.xyz, &p.xyz);
