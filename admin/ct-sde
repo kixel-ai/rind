@@ -91,19 +91,25 @@ def compare(exe, name, tmp):
     """Traces `name` once for each seed, and returns where the traces differ,
     with the lines before it, or None, and how many lines they agreed on."""
     procs = []
+    files = []
     for i, seed in enumerate(SEEDS):
-        fifo = os.path.join(tmp, "trace{}".format(i))
-        os.mkfifo(fifo)
-        cmd = ["setarch", "-R", "sde", "-spr", "-debugtrace", "-dt_out", fifo]
+        # A pipe rather than a named one, so that if SDE fails, the trace
+        # ends rather than waits for SDE to open it.
+        r, w = os.pipe()
+        cmd = ["setarch", "-R", "sde", "-spr", "-debugtrace"]
+        cmd += ["-dt_out", "/dev/fd/{}".format(w)]
         cmd += ["-start_ssc_mark", MARKS[0], "-stop_ssc_mark", MARKS[1], "--"]
         cmd += [exe, "--ignored", "--exact", name, "--test-threads=1", "-q"]
         env = dict(os.environ, RIND_CT_SDE_SEED=seed)
         log = open(os.path.join(tmp, "log{}".format(i)), "w+")
         # SDE writes its own logs to its working directory.
-        proc = subprocess.Popen(cmd, env=env, cwd=tmp, stdout=log, stderr=log)
-        procs.append((proc, fifo, log))
+        proc = subprocess.Popen(
+            cmd, env=env, cwd=tmp, stdout=log, stderr=log, pass_fds=[w]
+        )
+        os.close(w)
+        procs.append((proc, log))
+        files.append(open(r))
 
-    files = [open(fifo) for _, fifo, _ in procs]
     traces = [records(f) for f in files]
     context = collections.deque(maxlen=8)
     lines = 0
@@ -120,7 +126,7 @@ def compare(exe, name, tmp):
         if any(rest):
             diff = (context, *(r or "(end)" for r in rest))
 
-    for proc, _, log in procs:
+    for proc, log in procs:
         if diff:
             proc.kill()
         elif proc.wait() != 0:
@@ -128,7 +134,7 @@ def compare(exe, name, tmp):
             sys.exit("ct-sde: {} failed under SDE:\n{}".format(name, log.read()))
     for f in files:
         f.close()
-    for proc, _, _ in procs:
+    for proc, _ in procs:
         proc.wait()
     return diff, lines
 
