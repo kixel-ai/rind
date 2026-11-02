@@ -20,6 +20,42 @@ fn ed25519_key_generation() {
     }
 }
 
+// Every length to three of the larger blocks, so each tail lands on both
+// sides of the length field for both block sizes. One-shot, and in updates
+// that end on each block boundary, which leave a whole block buffered.
+#[test]
+fn hashes_every_length() {
+    let message: Vec<u8> = (0..3 * 128 + 1).map(|i| (i * 7 + 3) as u8).collect();
+    for (ours, theirs, block) in [
+        (
+            &rind::digest::legacy::SHA1,
+            &digest::SHA1_FOR_LEGACY_USE_ONLY,
+            64,
+        ),
+        (&rind::digest::SHA256, &digest::SHA256, 64),
+        (&rind::digest::SHA384, &digest::SHA384, 128),
+        (&rind::digest::SHA512, &digest::SHA512, 128),
+        (&rind::digest::SHA512_256, &digest::SHA512_256, 128),
+    ] {
+        for len in 0..=message.len() {
+            let message = &message[..len];
+            let wanted = digest::digest(theirs, message);
+            let got = rind::digest::digest(ours, message);
+            assert_eq!(got.as_ref(), wanted.as_ref(), "{ours:?} one-shot {len}");
+
+            let mut ctx = rind::digest::Context::new(ours);
+            for part in message.chunks(block) {
+                ctx.update(part);
+            }
+            assert_eq!(
+                ctx.finish().as_ref(),
+                wanted.as_ref(),
+                "{ours:?} blockwise {len}"
+            );
+        }
+    }
+}
+
 proptest! {
     #[test]
     fn hashes_match_aws_lc_rs(
