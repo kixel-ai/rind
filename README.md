@@ -131,7 +131,8 @@ cell and keeps each benchmark's numbers in its summary. These are from
 [run 41378010740]; a change that moves a cell refreshes it.
 
 x86_64 runs every feature of an AMD EPYC 7763 (Zen 3: ADX, AVX2, SHA-NI, and
-VAES, but no AVX-512). Each column to its right denies more, as `bench.yml`
+VAES, but no AVX-512), except in the AES-GCM and 1 MB transfer rows, noted
+below. Each column to its right denies more, as `bench.yml`
 describes, and compares with aws-lc-rs alone, since ring cannot be denied a
 feature: no ADX denies ADX (Haswell); no AVX2 also AVX2, BMI2, SHA-NI,
 AVX-512, VAES, and VPCLMULQDQ (Sandy Bridge); no AVX also AVX (Westmere); no
