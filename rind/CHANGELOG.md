@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9](https://github.com/moq-dev/rind/compare/rind-v0.1.8...rind-v0.1.9) - 2026-11-02
+
+### Fixed
+
+- *(aarch64)* emit one unwind frame per imported macOS function ([#250](https://github.com/moq-dev/rind/pull/250))
+- *(x86_64)* reduce a Montgomery result equal to the modulus to zero ([#244](https://github.com/moq-dev/rind/pull/244))
+
+### Other
+
+- *(hash)* finish hashes and HMAC from a chaining state, without copies ([#230](https://github.com/moq-dev/rind/pull/230))
+- *(p256, p384, p521)* verify ECDSA in one chain of doublings ([#228](https://github.com/moq-dev/rind/pull/228))
+
 ## [0.1.8](https://github.com/moq-dev/rind/compare/rind-v0.1.7...rind-v0.1.8) - 2026-11-02
 
 ### Fixed
