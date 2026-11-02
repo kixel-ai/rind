@@ -236,7 +236,8 @@ pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64])
 }
 
 /// z := 2^768 mod m, for m = n_384
-#[cfg(test)]
+// Checks the constant against s2n-bignum, which armv7 lacks.
+#[cfg(all(test, not(target_arch = "arm")))]
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
     assert_eq!(m, N);
     // to_montgomery multiplies by 2^384, so this is 2^384 * (2^384 mod n).
@@ -439,7 +440,7 @@ const P: [u64; 6] = [
 ];
 
 /// n_384, the group order, as little-endian words.
-const N: [u64; 6] = [
+pub(super) const N: [u64; 6] = [
     0xecec_196a_ccc5_2973,
     0x581a_0db2_48b0_a77a,
     0xc763_4d81_f437_2ddf,

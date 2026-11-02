@@ -15,17 +15,11 @@ cfg_if::cfg_if! {
         pub(super) mod mlkem768;
         #[path = "arm/p256.rs"]
         pub(super) mod p256;
-        #[path = "arm/rsa_priv.rs"]
-        pub(super) mod rsa_priv;
-        #[path = "arm/rsa_pub.rs"]
-        pub(super) mod rsa_pub;
     } else {
         pub(super) mod aes_gcm;
         pub(super) mod ed25519;
         pub(super) mod mlkem768;
         pub(super) mod p256;
-        pub(super) mod rsa_priv;
-        pub(super) mod rsa_pub;
         pub(super) mod sha3;
     }
 }
@@ -37,6 +31,8 @@ pub(super) mod p384;
 pub(super) mod p521;
 pub(super) mod rng;
 pub(super) mod rsa_key_size;
+pub(super) mod rsa_priv;
+pub(super) mod rsa_pub;
 pub(super) mod sha1;
 pub(super) mod sha2;
 pub(super) mod util;
