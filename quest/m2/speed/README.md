@@ -53,7 +53,6 @@ settled; don't ask them again. The chosen option is marked ✅.
 - [x86_64 SHA-256 finishing in two blocks and PBKDF2-HMAC-SHA1 as fast as the fastest source](/quest/m2/speed/armv7-hmac-hkdf.md) - 1.08x at 64 B and 1.02x today
 - [AES-GCM key setup as fast as the fastest source](/quest/m2/speed/aes-gcm-key-setup.md) - 1.13-1.66x today
 - [ML-KEM-768 encapsulation as fast as the fastest source](/quest/m2/speed/mlkem-encaps.md) - armv7 1.05x and aarch64 1.04x today
-- [x86_64 P-256 key generation as fast as the fastest source](/quest/m2/speed/x86-p256-keygen.md) - 1.11-1.17x today
 - [x86_64 RSA with AVX-512 IFMA](/quest/m2/speed/x86-rsa-ifma.md) - aws-lc's AVX-512 RSA is up to 3.56x faster
 - [aarch64 RSA on a 5-bit exponent window](/quest/m2/speed/aarch64-rsa-window.md) - the window x86_64 gained in #224
 - [The AES-GCM bench times decryption](/quest/m2/speed/aes-gcm-open-bench.md) - open rows beside seal rows on every tier
