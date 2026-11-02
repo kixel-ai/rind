@@ -1,4 +1,5 @@
-//! Verification that long-term key data is zeroed.
+//! Verification that every value owning a secret (a key, keyed state, or a
+//! shared secret) is zeroed on drop.
 //!
 //! Some of this is subject to whims of the compiler, and
 //! hand-written drop impls, so we test it here.
@@ -96,6 +97,13 @@ fn ecdh() {
     use rind::agreement::*;
     for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
         let key = PrivateKey::generate(algorithm).unwrap();
+        let peer = PrivateKey::generate(algorithm).unwrap().public_key();
+        check_zeroed_on_drop(Box::pin(
+            PrivateKey::generate(algorithm)
+                .unwrap()
+                .agree(peer.as_ref())
+                .unwrap(),
+        ));
         check_zeroed_on_drop(Box::pin(key));
     }
 }
@@ -103,7 +111,27 @@ fn ecdh() {
 #[test]
 fn mlkem768() {
     use rind::kem::*;
-    check_zeroed_on_drop(Box::pin(DecapsulationKey::generate(&ML_KEM_768).unwrap()));
+    let key = DecapsulationKey::generate(&ML_KEM_768).unwrap();
+    let (ciphertext, secret) = key.public_key().encapsulate().unwrap();
+    check_zeroed_on_drop(Box::pin(secret));
+    let decapsulated = DecapsulationKey::generate(&ML_KEM_768)
+        .unwrap()
+        .decapsulate(ciphertext.as_ref())
+        .unwrap();
+    check_zeroed_on_drop(Box::pin(decapsulated));
+    check_zeroed_on_drop(Box::pin(key));
+}
+
+#[test]
+fn digest() {
+    use rind::digest::*;
+
+    for algorithm in [&legacy::SHA1, &SHA256, &SHA384, &SHA512, &SHA512_256] {
+        // A partial block leaves message bytes buffered beside the state.
+        let mut ctx = Context::new(algorithm);
+        ctx.update(&[0xffu8; 3]);
+        check_zeroed_on_drop(Box::pin(ctx));
+    }
 }
 
 #[test]
