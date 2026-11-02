@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10](https://github.com/moq-dev/rind/compare/rind-v0.1.9...rind-v0.1.10) - 2026-11-02
+
+### Other
+
+- *(aes-gcm)* set up keys and GHASH tables without serial chains or repeated work ([#239](https://github.com/moq-dev/rind/pull/239))
+- *(x86_64)* exponentiate RSA by aws-lc's 5-bit window and bn_power5 ([#224](https://github.com/moq-dev/rind/pull/224))
+- *(p256)* multiply the x86_64 generator by aws-lc's nistz256 routines ([#234](https://github.com/moq-dev/rind/pull/234))
+- *(rsa)* run armv7 RSA on aws-lc's Montgomery multiplication and the shared code ([#227](https://github.com/moq-dev/rind/pull/227))
+- *(hash)* buffer a short SHA-1/SHA-2 update with one copy ([#247](https://github.com/moq-dev/rind/pull/247))
+- *(mlkem)* keep H(ek) in the key instead of a second encoding ([#249](https://github.com/moq-dev/rind/pull/249))
+- *(aes-gcm)* run aws-lc's aesni_gcm on x86_64 CPUs with AVX and MOVBE but no VAES ([#240](https://github.com/moq-dev/rind/pull/240))
+- *(sha1, sha256, sha512)* pick the x86_64 block function once ([#248](https://github.com/moq-dev/rind/pull/248))
+
 ## [0.1.9](https://github.com/moq-dev/rind/compare/rind-v0.1.8...rind-v0.1.9) - 2026-11-02
 
 ### Fixed
