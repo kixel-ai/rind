@@ -57,7 +57,7 @@ mod entry;
 mod posint;
 
 pub(crate) use entry::Entry;
-pub(crate) use generic::blockwise::Blockwise;
+pub(crate) use generic::blockwise::{Blockwise, pad_message};
 #[cfg(not(target_arch = "arm"))]
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;

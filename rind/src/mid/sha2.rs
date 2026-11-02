@@ -6,8 +6,8 @@
 //! This is SHA256, SHA384, SHA512, and SHA512/256.
 //! These are all described in [FIPS180](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
 
-use crate::low::Blockwise;
 use crate::low::cpu::verify_cpu_features;
+use crate::low::{Blockwise, pad_message};
 
 /// SHA256's chaining value after a whole number of blocks.
 ///
@@ -51,7 +51,6 @@ impl Sha256State {
     /// The hash of the input so far followed by `message`, leaving this state as it was.
     pub(crate) fn finish_with(&self, message: &[u8]) -> [u8; Sha256Context::OUTPUT_SZ] {
         const BLOCK_SZ: usize = Sha256Context::BLOCK_SZ;
-        let (blocks, tail) = message.split_at(message.len() & !(BLOCK_SZ - 1));
         let bits = self
             .nblocks
             .checked_mul(BLOCK_SZ as u64)
@@ -63,20 +62,12 @@ impl Sha256State {
         // two stores, which the SHA extensions' 16-byte load of it then
         // waits on instead of forwarding.
         let mut h = self.h;
+        let mut last = [[0u8; BLOCK_SZ]; 2];
+        let (blocks, last) = pad_message(message, bits.to_be_bytes(), &mut last);
         if !blocks.is_empty() {
             Self::compress(&mut h, blocks);
         }
-
-        let mut block = [0u8; BLOCK_SZ];
-        block[..tail.len()].copy_from_slice(tail);
-        block[tail.len()] = 0x80;
-        // The length takes a block of its own when the tail leaves no room for it.
-        if tail.len() >= BLOCK_SZ - 8 {
-            Self::compress(&mut h, &block);
-            block = [0u8; BLOCK_SZ];
-        }
-        block[BLOCK_SZ - 8..].copy_from_slice(&bits.to_be_bytes());
-        Self::compress(&mut h, &block);
+        Self::compress(&mut h, last);
 
         let mut r = [0u8; Sha256Context::OUTPUT_SZ];
         let (chunks, _) = r.as_chunks_mut::<4>();
@@ -270,27 +261,18 @@ impl Sha512State {
     /// The hash of the input so far followed by `message`, leaving this state as it was.
     pub(crate) fn finish_with(&self, message: &[u8]) -> [u8; Sha512Context::OUTPUT_SZ] {
         const BLOCK_SZ: usize = Sha512Context::BLOCK_SZ;
-        let (blocks, tail) = message.split_at(message.len() & !(BLOCK_SZ - 1));
         let bits = (u128::from(self.nblocks) * BLOCK_SZ as u128 + message.len() as u128) * 8;
 
         // Copies `h` alone: copying the whole state can leave it straddling
         // two stores, which the SHA extensions' 16-byte load of it then
         // waits on instead of forwarding.
         let mut h = self.h;
+        let mut last = [[0u8; BLOCK_SZ]; 2];
+        let (blocks, last) = pad_message(message, bits.to_be_bytes(), &mut last);
         if !blocks.is_empty() {
             Self::compress(&mut h, blocks);
         }
-
-        let mut block = [0u8; BLOCK_SZ];
-        block[..tail.len()].copy_from_slice(tail);
-        block[tail.len()] = 0x80;
-        // The length takes a block of its own when the tail leaves no room for it.
-        if tail.len() >= BLOCK_SZ - 16 {
-            Self::compress(&mut h, &block);
-            block = [0u8; BLOCK_SZ];
-        }
-        block[BLOCK_SZ - 16..].copy_from_slice(&bits.to_be_bytes());
-        Self::compress(&mut h, &block);
+        Self::compress(&mut h, last);
 
         let mut r = [0u8; Sha512Context::OUTPUT_SZ];
         let (chunks, _) = r.as_chunks_mut::<8>();
