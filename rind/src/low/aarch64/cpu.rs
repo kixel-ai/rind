@@ -28,12 +28,18 @@ pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
             "       add {ptr}, {ptr}, #16",
             "       sub {len}, {len}, #16",
             "       b 2b",
-            // by-1 loop
-            "   3:  subs {len}, {len}, #1",
+            // by-8 loop
+            "   3:  cmp {len}, #8",
             "       blt 4f",
-            "       strb wzr, [{ptr}], #1",
+            "       str xzr, [{ptr}], #8",
+            "       sub {len}, {len}, #8",
             "       b 3b",
-            "   4:  ",
+            // by-1 loop
+            "   4:  subs {len}, {len}, #1",
+            "       blt 5f",
+            "       strb wzr, [{ptr}], #1",
+            "       b 4b",
+            "   5:  ",
 
             ptr = inout(reg) ptr => _,
             len = inout(reg) len => _,

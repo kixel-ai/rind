@@ -128,14 +128,33 @@ pub(crate) fn leave_cpu_state(_old: u32) {}
 /// There must be `len` writable bytes at `ptr`; with no alignment
 /// requirement.
 pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
+    // ARMv7 Linux and Android allow unaligned word stores, so the by-16 loop
+    // needs no aligned start.
+    //
     // SAFETY: inline assembly. all written registers are listed as clobbers.
     unsafe {
         core::arch::asm!(
-            "   2:  subs {len}, {len}, #1",
+            // by-16 loop
+            "   2:  subs {len}, {len}, #16",
             "       blo 3f",
-            "       strb {zero}, [{ptr}], #1",
+            "       str {zero}, [{ptr}], #4",
+            "       str {zero}, [{ptr}], #4",
+            "       str {zero}, [{ptr}], #4",
+            "       str {zero}, [{ptr}], #4",
             "       b 2b",
-            "   3:",
+            // by-4 loop, over the 0 to 15 bytes left
+            "   3:  add {len}, {len}, #16",
+            "   4:  subs {len}, {len}, #4",
+            "       blo 5f",
+            "       str {zero}, [{ptr}], #4",
+            "       b 4b",
+            // by-1 loop, over the 0 to 3 bytes left
+            "   5:  add {len}, {len}, #4",
+            "   6:  subs {len}, {len}, #1",
+            "       blo 7f",
+            "       strb {zero}, [{ptr}], #1",
+            "       b 6b",
+            "   7:",
 
             ptr = inout(reg) ptr => _,
             len = inout(reg) len => _,

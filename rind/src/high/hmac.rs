@@ -6,18 +6,18 @@
 //! HMAC is standardized in [FIPS 198](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.198-1.pdf).
 
 use super::digest::Digest;
-use super::hash::{Hash, HashContext, LegacySha1, Sha256, Sha384, Sha512};
+use super::hash::{Hash, HashContext, HashState, LegacySha1, Sha256, Sha384, Sha512};
 use crate::Error;
 use crate::low::{Zeroable, zeroise_value};
 
-/// An in-progress HMAC computation, using hash function `H`.
-pub(crate) struct Hmac<H: Hash> {
-    inner: H::Context,
-    outer: H::Context,
+/// HMAC's keyed hash states, each one key block in, using hash function `H`.
+pub(crate) struct HmacKey<H: Hash> {
+    inner: H::State,
+    outer: H::State,
 }
 
 // Not derived: that would also require `H: Clone`, which code generic over `H: Hash` cannot assume.
-impl<H: Hash> Clone for Hmac<H> {
+impl<H: Hash> Clone for HmacKey<H> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -26,12 +26,11 @@ impl<H: Hash> Clone for Hmac<H> {
     }
 }
 
-impl<H: Hash> Hmac<H> {
-    /// Create a new [`Hmac<H>`] using the given key material.
-    pub(crate) fn new(key: impl AsRef<[u8]>) -> Self {
+impl<H: Hash> HmacKey<H> {
+    /// Keys HMAC with `key`, which may be any length.
+    pub(crate) fn new(key: &[u8]) -> Self {
         let mut key_block = H::zeroed_block();
 
-        let key = key.as_ref();
         // shorten long keys
         if key.len() > key_block.len() {
             let h_key = H::hash(key);
@@ -44,39 +43,62 @@ impl<H: Hash> Hmac<H> {
         for byte in key_block.iter_mut() {
             *byte ^= 0x36;
         }
-        let mut inner = H::new();
-        inner.update(&key_block);
+        let mut inner = H::initial();
+        inner.update_blocks(&key_block);
 
         // and outer
         for byte in key_block.iter_mut() {
             *byte ^= 0x5c ^ 0x36;
         }
-        let mut outer = H::new();
-        outer.update(&key_block);
+        let mut outer = H::initial();
+        outer.update_blocks(&key_block);
 
         Self { inner, outer }
     }
 
+    /// The tag of `message`, finished straight from the keyed states.
+    pub(crate) fn sign(&self, message: &[u8]) -> Digest {
+        let inner = self.inner.finish_with(message);
+        self.outer.finish_with(inner.as_ref())
+    }
+
+    /// Starts a tag computation for a message given in pieces.
+    pub(crate) fn start(&self) -> Hmac<H> {
+        Hmac {
+            inner: self.inner.resume(),
+            outer: self.outer.clone(),
+        }
+    }
+}
+
+/// An in-progress HMAC computation, using hash function `H`.
+pub(crate) struct Hmac<H: Hash> {
+    inner: H::Context,
+    outer: H::State,
+}
+
+// Not derived, as for `HmacKey`.
+impl<H: Hash> Clone for Hmac<H> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            outer: self.outer.clone(),
+        }
+    }
+}
+
+impl<H: Hash> Hmac<H> {
     /// Add data to be signed.
     pub(crate) fn update(&mut self, bytes: impl AsRef<[u8]>) {
         self.inner.update(bytes.as_ref());
     }
 
-    /// Complete the HMAC signing operation, consuming it.
+    /// Complete the HMAC signing operation.
     ///
     /// The HMAC output (sometimes called a "signature", or "tag") is returned.
-    pub(crate) fn finish(mut self) -> Digest {
-        let inner_output = self.inner.finish();
-        self.outer.update(inner_output.as_ref());
-        self.outer.finish()
-    }
-
-    /// The tag of `message`, at most one hash output long, under a key no message has been added to.
-    ///
-    /// Each hash then finishes in one block, from a copy of its keyed state.
-    pub(crate) fn sign_block(&self, message: &[u8]) -> Digest {
-        let inner = self.inner.finish_block(message);
-        self.outer.finish_block(inner.as_ref())
+    pub(crate) fn finish(&self) -> Digest {
+        let inner = self.inner.finish();
+        self.outer.finish_with(inner.as_ref())
     }
 }
 
@@ -129,10 +151,10 @@ impl Key {
     /// Keys `algorithm` with `key_value`, which may be any length.
     pub fn new(algorithm: &'static Algorithm, key_value: &[u8]) -> Self {
         Self(match algorithm.0 {
-            Id::Sha1 => Keyed::Sha1(Hmac::new(key_value)),
-            Id::Sha256 => Keyed::Sha256(Hmac::new(key_value)),
-            Id::Sha384 => Keyed::Sha384(Hmac::new(key_value)),
-            Id::Sha512 => Keyed::Sha512(Hmac::new(key_value)),
+            Id::Sha1 => Keyed::Sha1(HmacKey::new(key_value)),
+            Id::Sha256 => Keyed::Sha256(HmacKey::new(key_value)),
+            Id::Sha384 => Keyed::Sha384(HmacKey::new(key_value)),
+            Id::Sha512 => Keyed::Sha512(HmacKey::new(key_value)),
         })
     }
 
@@ -151,22 +173,37 @@ impl Key {
 ///
 /// A clone forks the computation, so messages sharing a prefix process it once.
 #[derive(Clone)]
-pub struct Context(Keyed);
+pub struct Context(Streaming);
 
 impl Context {
     /// Starts a tag computation under `key`.
     pub fn with_key(key: &Key) -> Self {
-        Self(key.0.clone())
+        Self(match &key.0 {
+            Keyed::Sha1(key) => Streaming::Sha1(key.start()),
+            Keyed::Sha256(key) => Streaming::Sha256(key.start()),
+            Keyed::Sha384(key) => Streaming::Sha384(key.start()),
+            Keyed::Sha512(key) => Streaming::Sha512(key.start()),
+        })
     }
 
     /// Adds `data` to the message.
     pub fn update(&mut self, data: &[u8]) {
-        self.0.update(data);
+        match &mut self.0 {
+            Streaming::Sha1(hmac) => hmac.update(data),
+            Streaming::Sha256(hmac) => hmac.update(data),
+            Streaming::Sha384(hmac) => hmac.update(data),
+            Streaming::Sha512(hmac) => hmac.update(data),
+        }
     }
 
     /// Returns the tag of the message.
     pub fn sign(self) -> Tag {
-        Tag(self.0.sign(&[]))
+        Tag(match &self.0 {
+            Streaming::Sha1(hmac) => hmac.finish(),
+            Streaming::Sha256(hmac) => hmac.finish(),
+            Streaming::Sha384(hmac) => hmac.finish(),
+            Streaming::Sha512(hmac) => hmac.finish(),
+        })
     }
 }
 
@@ -195,53 +232,56 @@ impl AsRef<[u8]> for Tag {
     }
 }
 
-// All-zero is the `Sha1` variant with all-zero hash contexts, which
+// All-zero is the `Sha1` variant with all-zero hash states, which
 // `Zeroable` allows: every field is a plain integer or byte array.
 #[derive(Clone)]
 #[repr(u8)]
 pub(super) enum Keyed {
-    Sha1(Hmac<LegacySha1>),
-    Sha256(Hmac<Sha256>),
-    Sha384(Hmac<Sha384>),
-    Sha512(Hmac<Sha512>),
+    Sha1(HmacKey<LegacySha1>),
+    Sha256(HmacKey<Sha256>),
+    Sha384(HmacKey<Sha384>),
+    Sha512(HmacKey<Sha512>),
 }
 
 impl Keyed {
-    fn update(&mut self, data: &[u8]) {
-        match self {
-            Self::Sha1(hmac) => hmac.update(data),
-            Self::Sha256(hmac) => hmac.update(data),
-            Self::Sha384(hmac) => hmac.update(data),
-            Self::Sha512(hmac) => hmac.update(data),
-        }
-    }
-
-    // Finishes a copy: `Drop` forbids moving the hash contexts out of `self`.
     fn sign(&self, data: &[u8]) -> Digest {
-        fn sign<H: Hash>(hmac: &Hmac<H>, data: &[u8]) -> Digest {
-            let mut hmac = hmac.clone();
-            hmac.update(data);
-            hmac.finish()
-        }
-
         match self {
-            Self::Sha1(hmac) => sign(hmac, data),
-            Self::Sha256(hmac) => sign(hmac, data),
-            Self::Sha384(hmac) => sign(hmac, data),
-            Self::Sha512(hmac) => sign(hmac, data),
+            Self::Sha1(key) => key.sign(data),
+            Self::Sha256(key) => key.sign(data),
+            Self::Sha384(key) => key.sign(data),
+            Self::Sha512(key) => key.sign(data),
         }
     }
 }
 
 impl Drop for Keyed {
     fn drop(&mut self) {
-        // Wipes the keyed hash contexts, the discriminant, and the space a
+        // Wipes the keyed hash states, the discriminant, and the space a
         // smaller variant leaves unused.
         zeroise_value(self);
     }
 }
 
 impl Zeroable for Keyed {}
+
+// As `Keyed`, with all-zero hash contexts too.
+#[derive(Clone)]
+#[repr(u8)]
+enum Streaming {
+    Sha1(Hmac<LegacySha1>),
+    Sha256(Hmac<Sha256>),
+    Sha384(Hmac<Sha384>),
+    Sha512(Hmac<Sha512>),
+}
+
+// Neither the hash context nor the keyed outer state wipes itself.
+impl Drop for Streaming {
+    fn drop(&mut self) {
+        zeroise_value(self);
+    }
+}
+
+impl Zeroable for Streaming {}
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]

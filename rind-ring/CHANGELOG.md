@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.7...rind-ring-v0.1.8) - 2026-11-02
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.1.7](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.6...rind-ring-v0.1.7) - 2026-11-02
+
+### Other
+
+- updated the following local packages: rind
+
 ## [0.1.6](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.5...rind-ring-v0.1.6) - 2026-11-02
 
 ### Fixed

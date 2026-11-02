@@ -46,13 +46,20 @@ unsafe fn zero_bytes_avx2(ptr: *mut u8, len: usize) {
             "       add {ptr}, 32",
             "       sub {len}, 32",
             "       jmp 2b",
-            // by-1 loop
-            "   3:  sub {len}, 1",
+            // by-8 loop
+            "   3:  cmp {len}, 8",
             "       jl  4f",
+            "       mov qword ptr [{ptr}], 0",
+            "       add {ptr}, 8",
+            "       sub {len}, 8",
+            "       jmp 3b",
+            // by-1 loop
+            "   4:  sub {len}, 1",
+            "       jl  5f",
             "       mov byte ptr [{ptr}], 0",
             "       add {ptr}, 1",
-            "       jmp 3b",
-            "   4:  ",
+            "       jmp 4b",
+            "   5:  ",
 
             ptr = inout(reg) ptr => _,
             len = inout(reg) len => _,
@@ -74,13 +81,20 @@ unsafe fn zero_bytes_sse2(ptr: *mut u8, len: usize) {
             "       add {ptr}, 16",
             "       sub {len}, 16",
             "       jmp 2b",
-            // by-1 loop
-            "   3:  sub {len}, 1",
+            // by-8 loop
+            "   3:  cmp {len}, 8",
             "       jl  4f",
+            "       mov qword ptr [{ptr}], 0",
+            "       add {ptr}, 8",
+            "       sub {len}, 8",
+            "       jmp 3b",
+            // by-1 loop
+            "   4:  sub {len}, 1",
+            "       jl  5f",
             "       mov byte ptr [{ptr}], 0",
             "       add {ptr}, 1",
-            "       jmp 3b",
-            "   4:  ",
+            "       jmp 4b",
+            "   5:  ",
 
             ptr = inout(reg) ptr => _,
             len = inout(reg) len => _,
@@ -152,6 +166,17 @@ impl HaveVaesAvx2ForAesGcm {
             true => Some(Self(())),
             false => None,
         }
+    }
+}
+
+/// Proof that the CPU has AVX and MOVBE, with AES-NI and PCLMULQDQ, which
+/// aws-lc's `aesni_gcm` routine uses.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvxMovbeForAesGcm(());
+
+impl HaveAvxMovbeForAesGcm {
+    pub(crate) fn check() -> Option<Self> {
+        has(AES | PCLMULQDQ | SSSE3 | SSE41 | AVX | MOVBE).then_some(Self(()))
     }
 }
 
@@ -309,6 +334,7 @@ const AVX512VBMI: u32 = 1 << 13;
 const AVX512VBMI2: u32 = 1 << 14;
 const SHA: u32 = 1 << 15;
 const SSE41: u32 = 1 << 16;
+const MOVBE: u32 = 1 << 17;
 const INTEL: u32 = 1 << 30;
 /// What rind's AVX2 kernels use, for [`HaveAvx2`].
 const AVX2_KERNELS: u32 = AVX | AVX2 | BMI2 | POPCNT | SSSE3;
@@ -382,6 +408,7 @@ fn detect() -> u32 {
         | detect!("avx512vbmi", AVX512VBMI)
         | detect!("avx512vbmi2", AVX512VBMI2)
         | detect!("sha", SHA)
+        | detect!("movbe", MOVBE)
 }
 
 #[cfg(not(any(debug_assertions, rind_cpu_disable)))]
@@ -462,6 +489,9 @@ mod tests {
         }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_VAES_AES_GCM") {
             assert_eq!(HaveVaesAvx2ForAesGcm::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX_MOVBE_AES_GCM") {
+            assert_eq!(HaveAvxMovbeForAesGcm::check().is_some(), expected == "1");
         }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX512_AES_GCM") {
             assert_eq!(HaveAvx512ForAesGcm::check().is_some(), expected == "1");

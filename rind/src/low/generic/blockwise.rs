@@ -60,48 +60,13 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
+    /// The bytes held short of a whole block.
+    pub(crate) fn buffered(&self) -> &[u8] {
+        &self.buffer[..self.used]
+    }
+
     pub(crate) fn add_trailing(&mut self, trailing: &[u8]) {
         self.buffer[..trailing.len()].copy_from_slice(trailing);
         self.used += trailing.len();
-    }
-
-    pub(crate) fn md_pad_with_length(&mut self, length_bits: &[u8]) -> FinalBlocks<N> {
-        let space = N - self.used;
-        let required = 1 + length_bits.len();
-
-        if required > space {
-            // two block case (not especially optimised)
-            self.add_leading(&[0x80]);
-            self.add_leading(&[0u8; N]);
-
-            let first = self.take().unwrap();
-            let mut second = [0u8; N];
-            let (_, length) = second.split_at_mut(N - length_bits.len());
-            length.copy_from_slice(length_bits);
-            FinalBlocks::Two([first, second])
-        } else {
-            let (_used, trailer) = self.buffer.split_at_mut(self.used);
-            let (padding, length) = trailer.split_at_mut(trailer.len() - length_bits.len());
-            let (delim, zeroes) = padding.split_at_mut(1);
-            delim[0] = 0x80;
-            zeroes.fill(0x00);
-            length.copy_from_slice(length_bits);
-            self.used = 0;
-            FinalBlocks::One(self.buffer)
-        }
-    }
-}
-
-pub(crate) enum FinalBlocks<const N: usize> {
-    One([u8; N]),
-    Two([[u8; N]; 2]),
-}
-
-impl<const N: usize> AsRef<[u8]> for FinalBlocks<N> {
-    fn as_ref(&self) -> &[u8] {
-        match self {
-            Self::One(one) => &one[..],
-            Self::Two(two) => two.as_flattened(),
-        }
     }
 }
