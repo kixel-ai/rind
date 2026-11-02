@@ -22,5 +22,4 @@ Decided with the maintainer on 2026-11-02, planning follow-ups from
 
 ## Required
 
-- [admin/structure sees function bodies](/quest/m2/tooling/structure-bodies.md) - a `mid` function body naming `high` fails the layering check
 - [Intel SDE in a dev shell](/quest/m2/tooling/sde-shell.md) - local SDE scans and forced-CPU tests run on NixOS like CI
