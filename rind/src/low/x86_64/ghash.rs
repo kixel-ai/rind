@@ -55,7 +55,6 @@ macro_rules! reduce {
     }};
 }
 
-#[expect(clippy::large_enum_variant)]
 pub(crate) enum GhashTable {
     Clmul(ClmulTable),
     /// VAES without AVX-512: the PCLMULQDQ path for short messages, and
@@ -84,7 +83,8 @@ impl GhashTable {
             return Self::Avx512(GhashTableAvx512::new(h, hw, token));
         }
         if let Some(token) = HaveVaesAvx2ForAesGcm::check() {
-            return Self::VaesAvx2(ClmulTable::new(h, hw), VaesKernel::avx2(h, token));
+            let vaes = VaesKernel::avx2(h, token);
+            return Self::VaesAvx2(ClmulTable::from_powers(vaes.powers(), hw), vaes);
         }
         if let Some(token) = HaveAvxMovbeForAesGcm::check() {
             let table = ClmulTable::new(h, hw);
@@ -119,25 +119,38 @@ pub(crate) struct ClmulTable {
 
 impl ClmulTable {
     pub(crate) fn new(h: u128, _: HaveAesHardware) -> Self {
+        // SAFETY: the token proves the CPU has PCLMULQDQ.
+        unsafe { Self::with_powers(&Self::powers(h)) }
+    }
+
+    /// The table for the powers a VAES kernel's table holds, H^n down to H^1
+    /// for some `n` of at least 8, so they are not computed twice.
+    pub(crate) fn from_powers(descending: &[__m128i], _: HaveAesHardware) -> Self {
         let mut powers = [zero(); 8];
-        let mut powers_xor = powers;
-        let h = u128_to_m128i(h);
-
-        // SAFETY: every x86_64 CPU has SSE2
-        let h = unsafe { gf128_big_endian(h) };
-        powers[0] = h;
-
-        for i in 1..8 {
-            // SAFETY: the token proves the CPU has PCLMULQDQ.
-            powers[i] = unsafe { _mul(powers[i - 1], h) };
+        for (p, d) in powers.iter_mut().zip(descending.iter().rev()) {
+            *p = *d;
         }
+        // SAFETY: the token proves the CPU has PCLMULQDQ.
+        unsafe { Self::with_powers(&powers) }
+    }
 
-        for i in 0..8 {
-            // SAFETY: every x86_64 CPU has SSE2
-            powers_xor[i] = unsafe { xor_halves(powers[i]) };
+    /// H to H^8, multiplied as a tree, so the longest chain of dependent
+    /// multiplies is three rather than seven.
+    #[target_feature(enable = "pclmulqdq")]
+    fn powers(h: u128) -> [__m128i; 8] {
+        let h = gf128_big_endian(u128_to_m128i(h));
+        let h2 = _mul(h, h);
+        let (h3, h4) = (_mul(h2, h), _mul(h2, h2));
+        let (h5, h6, h7, h8) = (_mul(h4, h), _mul(h4, h2), _mul(h4, h3), _mul(h4, h4));
+        [h, h2, h3, h4, h5, h6, h7, h8]
+    }
+
+    #[target_feature(enable = "pclmulqdq")]
+    fn with_powers(powers: &[__m128i; 8]) -> Self {
+        Self {
+            powers: *powers,
+            powers_xor: powers.map(|p| xor_halves(p)),
         }
-
-        Self { powers, powers_xor }
     }
 
     /// H^1 to H^6 as aws-lc's `gcm_init_avx` lays them out, in the same
@@ -219,47 +232,32 @@ impl ClmulTable {
 }
 
 pub(crate) struct GhashTableAvx512 {
-    /// H^16, H^15, ... H^1: descending, so a tail of `n` blocks multiplies
-    /// by the last `n`
-    powers: [__m512i; 4],
     /// For inputs too short to fill the 512-bit vectors.
     pub(crate) clmul: ClmulTable,
-    /// BoringSSL's 512-bit kernel, for long messages.
+    /// BoringSSL's 512-bit kernel, for long messages, whose table also holds
+    /// the powers the 512-bit multiplies here take.
     pub(crate) vaes: VaesKernel,
     pub(crate) token: HaveAvx512ForAesGcm,
 }
 
 impl GhashTableAvx512 {
     pub(crate) fn new(h: u128, hw: HaveAesHardware, token: HaveAvx512ForAesGcm) -> Self {
-        // This builds on the PCLMULQDQ table, which is perhaps not the most
-        // efficient option.
-        let clmul = ClmulTable::new(h, hw);
-
-        let mut powers = [zero(); 16];
-
-        powers[..8].copy_from_slice(&clmul.powers);
-
-        for i in 8..16 {
-            // SAFETY: the token proves the CPU has PCLMULQDQ.
-            powers[i] = unsafe { _mul(powers[i - 1], powers[0]) };
-        }
-
-        // SAFETY: avx512f checked by caller
-        let powers = unsafe {
-            [
-                join512(powers[12], powers[13], powers[14], powers[15]),
-                join512(powers[8], powers[9], powers[10], powers[11]),
-                join512(powers[4], powers[5], powers[6], powers[7]),
-                join512(powers[0], powers[1], powers[2], powers[3]),
-            ]
-        };
-
+        let vaes = VaesKernel::avx512(h, token);
         Self {
-            powers,
-            clmul,
-            vaes: VaesKernel::avx512(h, token),
+            clmul: ClmulTable::from_powers(vaes.powers(), hw),
+            vaes,
             token,
         }
+    }
+
+    /// H^16, H^15, ... H^1: descending, so a tail of `n` blocks multiplies
+    /// by the last `n`.
+    fn powers(&self) -> &[__m512i; 4] {
+        let powers = self.vaes.powers();
+        debug_assert_eq!(powers.len(), 16);
+        // SAFETY: the 512-bit kernel's table holds 16 powers, 64-byte
+        // aligned as `__m512i` needs, and any bits are a valid `__m512i`.
+        unsafe { &*powers.as_ptr().cast() }
     }
 
     #[target_feature(enable = "vpclmulqdq,avx512bw,avx512f,avx512vl")]
@@ -435,39 +433,40 @@ pub(crate) fn _mul16(
     x89ab: __m512i,
     xcdef: __m512i,
 ) -> __m128i {
+    let powers = table.powers();
     let gfpoly = _mm512_broadcast_i32x4(GF128_POLY_LO);
 
-    let lo0 = _mm512_clmulepi64_epi128(x0123, table.powers[0], 0x00);
-    let lo1 = _mm512_clmulepi64_epi128(x4567, table.powers[1], 0x00);
-    let lo2 = _mm512_clmulepi64_epi128(x89ab, table.powers[2], 0x00);
+    let lo0 = _mm512_clmulepi64_epi128(x0123, powers[0], 0x00);
+    let lo1 = _mm512_clmulepi64_epi128(x4567, powers[1], 0x00);
+    let lo2 = _mm512_clmulepi64_epi128(x89ab, powers[2], 0x00);
 
     let lo01 = _mm512_xor_epi32(lo0, lo1);
-    let lo3 = _mm512_clmulepi64_epi128(xcdef, table.powers[3], 0x00);
+    let lo3 = _mm512_clmulepi64_epi128(xcdef, powers[3], 0x00);
     let lo = _mm512_ternarylogic_epi64(lo2, lo3, lo01, TERNARY_XOR);
-    let mi0 = _mm512_clmulepi64_epi128(x0123, table.powers[0], 0x01);
+    let mi0 = _mm512_clmulepi64_epi128(x0123, powers[0], 0x01);
 
-    let mi1 = _mm512_clmulepi64_epi128(x4567, table.powers[1], 0x01);
-    let mi2 = _mm512_clmulepi64_epi128(x89ab, table.powers[2], 0x01);
+    let mi1 = _mm512_clmulepi64_epi128(x4567, powers[1], 0x01);
+    let mi2 = _mm512_clmulepi64_epi128(x89ab, powers[2], 0x01);
     let mi012 = _mm512_ternarylogic_epi32(mi0, mi1, mi2, TERNARY_XOR);
-    let mi3 = _mm512_clmulepi64_epi128(xcdef, table.powers[3], 0x01);
+    let mi3 = _mm512_clmulepi64_epi128(xcdef, powers[3], 0x01);
 
-    let mi4 = _mm512_clmulepi64_epi128(x0123, table.powers[0], 0x10);
+    let mi4 = _mm512_clmulepi64_epi128(x0123, powers[0], 0x10);
     let mi01234 = _mm512_ternarylogic_epi32(mi012, mi3, mi4, TERNARY_XOR);
-    let mi5 = _mm512_clmulepi64_epi128(x4567, table.powers[1], 0x10);
-    let mi6 = _mm512_clmulepi64_epi128(x89ab, table.powers[2], 0x10);
+    let mi5 = _mm512_clmulepi64_epi128(x4567, powers[1], 0x10);
+    let mi6 = _mm512_clmulepi64_epi128(x89ab, powers[2], 0x10);
 
     let mi = _mm512_ternarylogic_epi64(mi01234, mi5, mi6, TERNARY_XOR);
     let lo_r = _mm512_clmulepi64_epi128(gfpoly, lo, 0x01);
-    let mi7 = _mm512_clmulepi64_epi128(xcdef, table.powers[3], 0x10);
+    let mi7 = _mm512_clmulepi64_epi128(xcdef, powers[3], 0x10);
     let mi = _mm512_xor_epi32(mi7, mi);
 
     let lo_s = _mm512_shuffle_epi32(lo, 0b01_00_11_10);
-    let hi0 = _mm512_clmulepi64_epi128(x0123, table.powers[0], 0x11);
-    let hi1 = _mm512_clmulepi64_epi128(x4567, table.powers[1], 0x11);
-    let hi2 = _mm512_clmulepi64_epi128(x89ab, table.powers[2], 0x11);
+    let hi0 = _mm512_clmulepi64_epi128(x0123, powers[0], 0x11);
+    let hi1 = _mm512_clmulepi64_epi128(x4567, powers[1], 0x11);
+    let hi2 = _mm512_clmulepi64_epi128(x89ab, powers[2], 0x11);
 
     let mi = _mm512_ternarylogic_epi32(lo_r, lo_s, mi, TERNARY_XOR);
-    let hi3 = _mm512_clmulepi64_epi128(xcdef, table.powers[3], 0x11);
+    let hi3 = _mm512_clmulepi64_epi128(xcdef, powers[3], 0x11);
     let hi012 = _mm512_ternarylogic_epi32(hi0, hi1, hi2, TERNARY_XOR);
     let mi_r = _mm512_clmulepi64_epi128(gfpoly, mi, 0x01);
 
@@ -502,8 +501,8 @@ pub(crate) fn _mul_tail(
         return current;
     }
 
-    // `table.powers` descends to H^1, so H^n is `n` blocks before its end.
-    let powers = table.powers.as_ptr().cast::<__m128i>();
+    // `table.powers()` descends to H^1, so H^n is `n` blocks before its end.
+    let powers = table.powers().as_ptr().cast::<__m128i>();
     let (mut lo, mut mi, mut hi) = (
         _mm512_setzero_si512(),
         _mm512_setzero_si512(),
@@ -516,7 +515,7 @@ pub(crate) fn _mul_tail(
         };
         // Two quadwords per block, for up to four blocks left from here on.
         let mask = u8::MAX >> (8 - 2 * (n - 4 * j).min(4));
-        // SAFETY: the vector starts at H^(n-4j), within `table.powers`, and
+        // SAFETY: the vector starts at H^(n-4j), within `table.powers()`, and
         // the mask stops it at H^1, the last; masked-off lanes are not read.
         let h = unsafe { _mm512_maskz_loadu_epi64(mask, powers.add(16 - n + 4 * j).cast()) };
         lo = _mm512_xor_epi32(lo, _mm512_clmulepi64_epi128(x, h, 0x00));
@@ -579,15 +578,6 @@ fn byte_reverse(x: __m128i) -> __m128i {
 fn zero() -> __m128i {
     // SAFETY: every x86_64 CPU has SSE2
     unsafe { _mm_setzero_si128() }
-}
-
-#[inline]
-#[target_feature(enable = "avx512f")]
-fn join512(a: __m128i, b: __m128i, c: __m128i, d: __m128i) -> __m512i {
-    let r = _mm512_inserti32x4(_mm512_setzero_epi32(), d, 0);
-    let r = _mm512_inserti32x4(r, c, 1);
-    let r = _mm512_inserti32x4(r, b, 2);
-    _mm512_inserti32x4(r, a, 3)
 }
 
 /// Loads a block in GCM's byte order as the polynomial the multiplies take.
