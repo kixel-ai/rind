@@ -171,7 +171,8 @@ extension; without them it runs the code [Symmetric
 cryptography](#symmetric-cryptography) names. aarch64 RSA trails only ring,
 at every size but 3072 bits; it is level with aws-lc-rs or faster at every
 size. The run predates [#206], which changed aarch64 RSA only at sizes the
-run doesn't time.
+run doesn't time. aarch64's SHA-256, HMAC, HKDF, and PBKDF2 cells are from
+[run 41397347485].
 
 | Algorithm | aarch64 | no crypto | armv7 |
 |---|---|---|---|
@@ -180,11 +181,11 @@ run doesn't time.
 | ChaCha20 (header protection) | **1.03** Graviola | 0.96 | 0.87 aws-lc ⚡ |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ | 1.00 | **1.06** |
 | SHA-1 | 1.01 rind | 1.00 aws-lc | 1.01 |
-| SHA-256 | **1.30** aws-lc ⚡ | **1.15** aws-lc | **1.04** aws-lc ⚡ |
+| SHA-256 | **1.19** aws-lc ⚡ | **1.15** aws-lc | **1.04** aws-lc ⚡ |
 | SHA-384, SHA-512, SHA-512/256 | 1.00 aws-lc ✓ | 1.00 | **1.12** aws-lc ⚡ |
-| HMAC | **1.30** Graviola ⚡ | 1.00 | **1.28** |
-| HKDF | **1.48** rind ⚡ | 0.99 | **1.59** |
-| PBKDF2 | 0.95 rind | 0.93 | 0.98 |
+| HMAC | **1.08** Graviola ⚡ | 1.00 | **1.28** |
+| HKDF | **1.42** rind ⚡ | 0.99 | **1.59** |
+| PBKDF2 | 0.92 rind | 0.93 | 0.98 |
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
 | Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
 | P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 1.00 | **2.63** HACL\* ✓ |
@@ -243,6 +244,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [run 41378010740]: https://github.com/moq-dev/rind/actions/runs/41378010740
+[run 41397347485]: https://github.com/moq-dev/rind/actions/runs/41397347485
 [#206]: https://github.com/moq-dev/rind/pull/206
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
