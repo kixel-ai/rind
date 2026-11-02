@@ -22,7 +22,6 @@ mod sample_ntt;
 pub(crate) struct DecapKey {
     ek_pke: EncapKey,
     dk_pke: [u8; K * 384],
-    h_ek: [u8; 32],
     z: [u8; 32],
 }
 
@@ -57,9 +56,9 @@ impl DecapKey {
         let _entry = low::Entry::new_secret();
         let mut out = [0u8; K * 768 + 96];
         out[..K * 384].copy_from_slice(&self.dk_pke);
-        out[K * 384..K * 768].copy_from_slice(&self.ek_pke.t_hat);
+        out[K * 384..K * 768].copy_from_slice(&self.ek_pke.t_hat_coeffs.to_bytes());
         out[K * 768..K * 768 + 32].copy_from_slice(&self.ek_pke.rho);
-        out[K * 768 + 32..K * 768 + 64].copy_from_slice(&self.h_ek);
+        out[K * 768 + 32..K * 768 + 64].copy_from_slice(&self.ek_pke.h_ek);
         out[K * 768 + 64..].copy_from_slice(&self.z);
         out
     }
@@ -75,15 +74,9 @@ impl DecapKey {
 
         // 3. dk <- (dkPKE || ek || H(ek) || z)
         // 4. return (ek, dk)
-        let mut h = sha3::Sha3_256Context::new();
-        h.update(&ek_pke.t_hat);
-        h.update(&ek_pke.rho);
-        let h_ek = h.finish();
-
         Self {
             dk_pke,
             ek_pke,
-            h_ek,
             z: low::ct::into_secret(z.try_into().unwrap()),
         }
     }
@@ -96,7 +89,7 @@ impl DecapKey {
         // 6. (K', r') <- G(m' || h)
         let mut g = sha3::Sha3_512Context::new();
         g.update(&m_prime.0);
-        g.update(&self.h_ek);
+        g.update(&self.ek_pke.h_ek);
         let kr_prime = g.finish();
         let (k_prime, r_prime) = kr_prime.split_at(32);
         let mut k_prime = SharedSecret(k_prime.try_into().unwrap());
@@ -144,8 +137,12 @@ impl DecapKey {
         // 18. t^ = A^ ∘ ŝ + ê
         let t_hat = a_hat.mul_add(&s_hat, &e_hat);
 
+        // H(ek), for ML-KEM.KeyGen's step 3.
+        let mut h = sha3::Sha3_256Context::new();
+        h.update(&low::ct::into_public(t_hat.to_bytes()));
+        h.update(&rho);
         let encap = EncapKey {
-            t_hat: low::ct::into_public(t_hat.to_bytes()),
+            h_ek: h.finish(),
             rho,
             t_hat_coeffs: Coeffs(low::ct::into_public(t_hat.0), PhantomData),
             transpose_a_hat: a_hat.transpose(),
@@ -192,9 +189,11 @@ impl low::Zeroable for DecapKey {}
 /// An ML-KEM-768 encapsulation key.
 #[derive(Clone)]
 pub(crate) struct EncapKey {
-    t_hat: [u8; K * 384],
+    /// `H(ek)`, which both encapsulation and decapsulation hash in.
+    h_ek: [u8; 32],
     rho: [u8; 32],
-    /// `t_hat` decoded, which the modulus check computes anyway.
+    /// `t_hat` decoded, which the modulus check computes anyway. No encoded
+    /// copy is kept: only `as_bytes` needs one, and it re-encodes.
     t_hat_coeffs: Coeffs<{ K * N }, Ntt>,
     transpose_a_hat: Coeffs<{ K * K * N }, Ntt>,
 }
@@ -219,8 +218,11 @@ impl EncapKey {
 
         let transpose_a_hat = Coeffs::sample_poly_transposed(&rho);
 
+        let mut h = sha3::Sha3_256Context::new();
+        h.update(input);
+
         Ok(Self {
-            t_hat,
+            h_ek: h.finish(),
             rho,
             t_hat_coeffs,
             transpose_a_hat,
@@ -242,7 +244,7 @@ impl EncapKey {
     pub(crate) fn as_bytes(&self) -> [u8; K * 384 + 32] {
         let _entry = low::Entry::new_public();
         let mut out = [0u8; K * 384 + 32];
-        out[..K * 384].copy_from_slice(&self.t_hat);
+        out[..K * 384].copy_from_slice(&self.t_hat_coeffs.to_bytes());
         out[K * 384..].copy_from_slice(&self.rho);
         out
     }
@@ -251,14 +253,9 @@ impl EncapKey {
         low::ct::secret_slice(&m.0);
 
         // 1. (K, r) <- G(m || H(ek))
-        let mut h = sha3::Sha3_256Context::new();
-        h.update(&self.t_hat);
-        h.update(&self.rho);
-        let h_ek = h.finish();
-
         let mut g = sha3::Sha3_512Context::new();
         g.update(&m.0);
-        g.update(&h_ek);
+        g.update(&self.h_ek);
         let kr = g.finish();
         let (k, r) = kr.split_at(32);
         let k = SharedSecret(k.try_into().unwrap());

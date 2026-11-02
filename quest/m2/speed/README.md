@@ -56,4 +56,3 @@ settled; don't ask them again. The chosen option is marked ✅.
 - [x86_64 P-256 key generation as fast as the fastest source](/quest/m2/speed/x86-p256-keygen.md) - 1.11-1.17x today
 - [x86_64 RSA with AVX-512 IFMA](/quest/m2/speed/x86-rsa-ifma.md) - aws-lc's AVX-512 RSA is up to 3.56x faster
 - [aarch64 RSA on a 5-bit exponent window](/quest/m2/speed/aarch64-rsa-window.md) - the window x86_64 gained in #224
-- [ML-KEM keys hold the key hash, not a second copy](/quest/m2/speed/mlkem-key-size.md) - key types drop below 8 KiB and lose a duplicate encoding
