@@ -148,7 +148,8 @@ x86_64, no AVX2, and no AES-NI on an EPYC 9V74, whose AVX-512 runs AES-GCM's
 512-bit paths rather than the 256-bit VAES ones Zen 3 runs, no AVX on an EPYC
 7763, and SSE2 on a Xeon Platinum 8370C (Ice Lake).
 The SHA, HMAC, and HKDF rows are from [run 41398664891], which ran every
-column on an EPYC 7763.
+column on an EPYC 7763, and x86_64's PBKDF2 cell from [run 41464027605], on
+the same CPU.
 Intel CPUs without SHA-NI run [aws-lc]'s AVX SHA-1 and SHA-256, and every
 Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 
@@ -259,6 +260,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41397347485]: https://github.com/moq-dev/rind/actions/runs/41397347485
 [run 41398664891]: https://github.com/moq-dev/rind/actions/runs/41398664891
 [run 41400124007]: https://github.com/moq-dev/rind/actions/runs/41400124007
+[run 41464027605]: https://github.com/moq-dev/rind/actions/runs/41464027605
 [run 41401180882]: https://github.com/moq-dev/rind/actions/runs/41401180882
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
