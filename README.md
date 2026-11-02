@@ -193,7 +193,7 @@ run doesn't time.
 | P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.09** fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | 0.65 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.05** fiat-crypto ✓ + rind ⚡ |
 | ML-KEM-768 | **1.12** s2n-bignum ✓ + Graviola ⚡ | 0.99 | **1.05** libcrux-ml-kem ✓ |
-| RSA signatures, key generation | **1.56** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | 1.00 | **6.42** HACL\* ✓ |
+| RSA signatures, key generation | **1.56** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | 1.00 | PENDING aws-lc ⚡ + Graviola ⚡ + rind ⚡ |
 | rind-rustls handshakes | **1.49** | 0.99 | **2.50** |
 | rind-rustls 1 MB transfer | 1.00 | 1.00 | 1.01 |
 

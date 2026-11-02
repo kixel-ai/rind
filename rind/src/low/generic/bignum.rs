@@ -573,7 +573,9 @@ mod tests {
             prop_assert_eq!(into_public(bignum_digitsize(&sx)), low::bignum_digitsize(&x));
             prop_assert_eq!(into_public(bignum_ctz(&sx)), low::bignum_ctz(&x));
 
-            let (mut ours, mut theirs) = (vec![0; p], vec![0; p]);
+            // rind's s2n-bignum wrappers refuse to truncate a product.
+            let wide = x.len() + y.len() + p % 3;
+            let (mut ours, mut theirs) = (vec![0; wide], vec![0; wide]);
             bignum_mul(&mut ours, &sx, &sy);
             low::bignum_mul(&mut theirs, &x, &y);
             prop_assert_eq!(public(&ours), theirs);
