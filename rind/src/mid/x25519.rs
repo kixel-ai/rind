@@ -7,6 +7,8 @@ use crate::low;
 use crate::mid::rng::{RandomSource, SystemRandom};
 
 /// An X25519 ephemeral private key.
+///
+/// It is not wiped on drop: `agreement::PrivateKey` wipes it.
 pub(crate) struct PrivateKey([u64; 4]);
 
 impl PrivateKey {
@@ -51,12 +53,6 @@ impl PrivateKey {
         } else {
             Ok(SharedSecret(util::u64x4_to_little_endian(&res)))
         }
-    }
-}
-
-impl Drop for PrivateKey {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.0);
     }
 }
 
@@ -162,6 +158,8 @@ impl PublicKey {
 }
 
 /// A shared secret resulting from a X25519 Diffie-Hellman operation.
+///
+/// It is not wiped on drop: `agreement::SharedSecret` wipes it.
 pub(crate) struct SharedSecret(pub(crate) [u8; 32]);
 
 impl SharedSecret {
@@ -171,12 +169,6 @@ impl SharedSecret {
         let bytes = self.0;
         low::ct::public_slice(&bytes);
         bytes
-    }
-}
-
-impl Drop for SharedSecret {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.0);
     }
 }
 

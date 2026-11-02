@@ -5,7 +5,7 @@
 use core::fmt;
 
 use super::hash::{Hash, HashContext, LegacySha1, Sha256, Sha384, Sha512};
-use crate::low::{ct, ct_equal};
+use crate::low::{Zeroable, ct, ct_equal, zeroise_value};
 use crate::mid::{sha1, sha2};
 
 /// A hash function, chosen by one of this module's constants.
@@ -66,18 +66,22 @@ pub static SHA512_256: Algorithm = Algorithm {
 
 /// Hashes `data` in one go.
 pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
-    let mut ctx = Context::new(algorithm);
-    ctx.update(data);
-    ctx.finish()
+    // A `State` rather than a `Context`, which would wipe this call's copy.
+    let mut state = State::new(algorithm);
+    state.update(data);
+    state.finish()
 }
 
-/// An in-progress hash computation.
+/// An in-progress hash computation, wiped on drop.
 ///
 /// A clone forks the computation, so messages sharing a prefix hash it once.
 #[derive(Clone)]
 pub struct Context(State);
 
+// `repr(u8)` puts `Sha1` at tag zero, and every context is plain integers and
+// bytes, so all-bits-zero is a valid value.
 #[derive(Clone)]
+#[repr(u8)]
 enum State {
     Sha1(<LegacySha1 as Hash>::Context),
     Sha256(<Sha256 as Hash>::Context),
@@ -86,38 +90,62 @@ enum State {
     Sha512_256(sha2::Sha512_256Context),
 }
 
+impl State {
+    fn new(algorithm: &'static Algorithm) -> Self {
+        match algorithm.id {
+            Id::Sha1 => Self::Sha1(LegacySha1::new()),
+            Id::Sha256 => Self::Sha256(Sha256::new()),
+            Id::Sha384 => Self::Sha384(Sha384::new()),
+            Id::Sha512 => Self::Sha512(Sha512::new()),
+            Id::Sha512_256 => Self::Sha512_256(sha2::Sha512_256Context::new()),
+        }
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        match self {
+            Self::Sha1(ctx) => ctx.update(data),
+            Self::Sha256(ctx) => ctx.update(data),
+            Self::Sha384(ctx) => ctx.update(data),
+            Self::Sha512(ctx) => ctx.update(data),
+            Self::Sha512_256(ctx) => ctx.update(data),
+        }
+    }
+
+    fn finish(self) -> Digest {
+        match self {
+            Self::Sha1(ctx) => HashContext::finish(ctx),
+            Self::Sha256(ctx) => HashContext::finish(ctx),
+            Self::Sha384(ctx) => HashContext::finish(ctx),
+            Self::Sha512(ctx) => HashContext::finish(ctx),
+            Self::Sha512_256(ctx) => Digest::new(&SHA512_256, &ctx.finish()),
+        }
+    }
+}
+
+impl Zeroable for State {}
+
 impl Context {
     /// Starts hashing with `algorithm`.
     pub fn new(algorithm: &'static Algorithm) -> Self {
-        Self(match algorithm.id {
-            Id::Sha1 => State::Sha1(LegacySha1::new()),
-            Id::Sha256 => State::Sha256(Sha256::new()),
-            Id::Sha384 => State::Sha384(Sha384::new()),
-            Id::Sha512 => State::Sha512(Sha512::new()),
-            Id::Sha512_256 => State::Sha512_256(sha2::Sha512_256Context::new()),
-        })
+        Self(State::new(algorithm))
     }
 
     /// Adds `data` to the message.
     pub fn update(&mut self, data: &[u8]) {
-        match &mut self.0 {
-            State::Sha1(ctx) => ctx.update(data),
-            State::Sha256(ctx) => ctx.update(data),
-            State::Sha384(ctx) => ctx.update(data),
-            State::Sha512(ctx) => ctx.update(data),
-            State::Sha512_256(ctx) => ctx.update(data),
-        }
+        self.0.update(data);
     }
 
     /// Returns the digest of the message.
+    // Finishes a copy: `Drop` forbids moving the state out of `self`.
     pub fn finish(self) -> Digest {
-        match self.0 {
-            State::Sha1(ctx) => HashContext::finish(ctx),
-            State::Sha256(ctx) => HashContext::finish(ctx),
-            State::Sha384(ctx) => HashContext::finish(ctx),
-            State::Sha512(ctx) => HashContext::finish(ctx),
-            State::Sha512_256(ctx) => Digest::new(&SHA512_256, &ctx.finish()),
-        }
+        self.0.clone().finish()
+    }
+}
+
+// The message may be secret, and aws-lc wipes a digest context when it frees it.
+impl Drop for Context {
+    fn drop(&mut self) {
+        zeroise_value(&mut self.0);
     }
 }
 

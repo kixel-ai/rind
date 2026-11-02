@@ -5,7 +5,7 @@ use crate::Error;
 use crate::error::KeyFormatError;
 use crate::high::asn1::{self, Type, pkix};
 use crate::high::pkcs8;
-use crate::low::{Entry, ct, zeroise};
+use crate::low::{Entry, ct};
 use crate::mid::ed25519;
 use crate::mid::rng::{RandomSource, SystemRandom};
 
@@ -71,9 +71,7 @@ impl Ed25519SigningKey {
         let _entry = Entry::new_secret();
         let mut seed = [0u8; 32];
         SystemRandom.fill(&mut seed)?;
-        let r = Ok(Self(ed25519::SigningKey::from_seed(&seed)));
-        zeroise(&mut seed);
-        r
+        Ok(Self(ed25519::SigningKey::from_seed(&seed)))
     }
 
     /// Sign `message`.
