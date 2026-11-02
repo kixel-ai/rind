@@ -27,4 +27,3 @@ Decided with the maintainer on 2026-11-02, planning follow-ups from
 - [admin/structure without graphviz](/quest/m2/tooling/structure-awk.md) - the default dev shell drops graphviz
 - [A ctgrind dev shell](/quest/m2/tooling/ctgrind-shell.md) - `admin/ctgrind` runs locally without setting `LIBCLANG_PATH`
 - [armv7 key generation stops wiping scratch](/quest/m2/tooling/armv7-keygen-scratch.md) - per-call scratch drops its zeroing, as `AGENTS.md` says
-- [rind-cpuid reports every feature the dispatch reads](/quest/m2/tooling/cpuid-features.md) - the x86-cpu grouping rebuilds from the repo alone
