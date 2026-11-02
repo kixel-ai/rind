@@ -776,6 +776,72 @@ mod tests {
         }
     }
 
+    /// Against square-and-multiply, at each width class aarch64's
+    /// `bn_mul_mont` branches on, and exponents of one to five words, whose
+    /// top windows take each width from one to five bits.
+    #[cfg(not(target_arch = "x86_64"))]
+    #[test]
+    fn mont_exp_matches_square_and_multiply() {
+        let mut state = 0x6a09_e667_f3bc_c908u64;
+        let mut word = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for k in [1, 2, 7, 8, 16, 17] {
+            let mut n = PosInt::<32>::zero();
+            n.used = k;
+            n.words[..k].fill_with(&mut word);
+            n.words[0] |= 1;
+            n.words[k - 1] |= 1 << 63;
+            let n_0 = n.mont_neg_inverse();
+            let montifier = n.montifier();
+            let one_mont = n.fixed_one().to_montgomery(&montifier, &n);
+
+            // A base below `n`, with its extremes, zero and `n - 1`, and an
+            // exponent of zero, of every bit set, and random.
+            for case in 0..5 {
+                let mut x = PosInt::<32>::zero();
+                x.used = k;
+                x.words[..k].fill_with(&mut word);
+                x.words[k - 1] >>= 1;
+                match case {
+                    0 => x.words[..k].fill(0),
+                    1 => {
+                        x.words[..k].copy_from_slice(n.as_words());
+                        x.words[0] -= 1;
+                    }
+                    _ => {}
+                }
+                let x = x.to_montgomery(&montifier, &n);
+
+                for len in 1..=5 {
+                    let mut e = PosInt::<32>::zero();
+                    e.used = len;
+                    match case {
+                        2 => {}
+                        3 => e.words[..len].fill(u64::MAX),
+                        _ => e.words[..len].fill_with(&mut word),
+                    }
+
+                    let mut want = one_mont.clone();
+                    for i in (0..len * 64).rev() {
+                        want = want.mont_sqr(&n, n_0);
+                        if e.words[i / 64] >> (i % 64) & 1 == 1 {
+                            want = want.mont_mul(&x, &n, n_0);
+                        }
+                    }
+                    let got = x.mont_exp(one_mont.clone(), &e, &n, n_0);
+                    assert!(
+                        got.equals(&want),
+                        "{k} words, case {case}, {len}-word exponent"
+                    );
+                }
+            }
+        }
+    }
+
     /// The rare quotient estimates `pub_montifier`'s moduli never reach.
     #[test]
     fn mul_word_mod() {
