@@ -39,7 +39,8 @@ impl PublicKey {
 /// never needs them.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
-    precomp_w5: JacobianMontPointTableW5,
+    /// P, 3P, ..., 15P.
+    odd_multiples: [JacobianMontPoint; 8],
 }
 
 impl VerifyingKey {
@@ -47,7 +48,7 @@ impl VerifyingKey {
     pub(crate) fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
         let PublicKey { point } = PublicKey::from_x962_uncompressed(bytes)?;
         Ok(Self {
-            precomp_w5: point.public_precomp_w5(),
+            odd_multiples: point.public_odd_multiples(),
         })
     }
 
@@ -59,10 +60,7 @@ impl VerifyingKey {
 
         // 5. Compute: R = (xR, yR) = u1 G + u2 QU
         //  If R = O, output "invalid" and stop.
-        let lhs = JacobianMontPoint::public_base_multiply(&u1);
-        let rhs = JacobianMontPoint::public_multiply_w5(&u2, &self.precomp_w5);
-
-        let point = JacobianMontPoint::public_add(&lhs, &rhs);
+        let point = JacobianMontPoint::public_twin_multiply(&u1, &u2, &self.odd_multiples);
 
         if point.public_is_infinity() {
             return Err(Error::BadSignature);
@@ -344,43 +342,15 @@ impl AffineMontPoint {
         self.xy[Self::Y].copy_from_slice(&neg_y.0);
     }
 
-    fn public_precomp_w5(&self) -> JacobianMontPointTableW5 {
-        let mut r = [JacobianMontPoint::zero(); 16];
-
-        // indices into r are intuitively 1-based; index i contains i * G,
-        // and 0 * G is not useful to store.
-        macro_rules! index {
-            ($i:literal) => {
-                $i - 1
-            };
+    /// P, 3P, ..., 15P: the odd multiples a width-5 NAF digit picks.
+    fn public_odd_multiples(&self) -> [JacobianMontPoint; 8] {
+        let p = JacobianMontPoint::from_affine(self);
+        let p2 = p.double();
+        let mut r = [p; 8];
+        for i in 1..r.len() {
+            r[i] = r[i - 1].add(&p2);
         }
-
-        r[index!(1)] = JacobianMontPoint::from_affine(self);
-        r[index!(2)] = r[index!(1)].double();
-        r[index!(3)] = r[index!(1)].add(&r[index!(2)]);
-        r[index!(4)] = r[index!(2)].double();
-        r[index!(5)] = r[index!(1)].add(&r[index!(4)]);
-        r[index!(6)] = r[index!(3)].double();
-        r[index!(7)] = r[index!(1)].add(&r[index!(6)]);
-        r[index!(8)] = r[index!(4)].double();
-        r[index!(9)] = r[index!(1)].add(&r[index!(8)]);
-        r[index!(10)] = r[index!(5)].double();
-        r[index!(11)] = r[index!(1)].add(&r[index!(10)]);
-        r[index!(12)] = r[index!(6)].double();
-        r[index!(13)] = r[index!(1)].add(&r[index!(12)]);
-        r[index!(14)] = r[index!(7)].double();
-        r[index!(15)] = r[index!(1)].add(&r[index!(14)]);
-        r[index!(16)] = r[index!(8)].double();
-
-        // now linearise, so table lookup can be type safe
-        let mut t = [0; 192];
-
-        let (chunks, _) = t.as_chunks_mut::<12>();
-        for (out, rr) in chunks.iter_mut().zip(r) {
-            out.copy_from_slice(&rr.xyz);
-        }
-
-        t
+        r
     }
 
     /// `scalar * G`, by s2n-bignum's `p256_scalarmulbase` over the
@@ -445,49 +415,37 @@ impl JacobianMontPoint {
         r
     }
 
-    /// `scalar * G` for a public `scalar`: one addition from each generator
-    /// table row per nonzero Booth-recoded 6-bit window.
+    /// `g * G + p * P` for public scalars, given P's odd multiples.
     ///
-    /// No addition doubles, which `p256_montjmixadd` cannot: the accumulator
-    /// sums lower windows, so it is a smaller integer than the table point,
-    /// in magnitude, and below n.
-    fn public_base_multiply(scalar: &Scalar) -> Self {
+    /// One chain of doublings serves both: P's digits are a width-5 NAF
+    /// over `odd_multiples`, and G's a width-6 NAF over the generator
+    /// table's first row, which holds G to 32G.
+    fn public_twin_multiply(g: &Scalar, p: &Scalar, odd_multiples: &[Self; 8]) -> Self {
+        let g_digits = g.public_naf::<6>();
+        let p_digits = p.public_naf::<5>();
+        let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP_W6[0];
+
         let mut result = Self::infinity();
-        for (row, (digit, sign)) in precomp::CURVE_GENERATOR_PRECOMP_W6
-            .iter()
-            .zip(scalar.booth_recoded_w6())
-        {
-            if digit > 0 {
-                let mut tmp = AffineMontPoint::public_lookup_w6(row, digit);
-                if sign > 0 {
+        for (g_digit, p_digit) in g_digits.iter().zip(&p_digits).rev() {
+            if !result.public_is_infinity() {
+                result = result.double();
+            }
+            if *p_digit != 0 {
+                let mut tmp = odd_multiples[usize::from(p_digit.unsigned_abs() / 2)];
+                if *p_digit < 0 {
                     tmp.negate_y();
                 }
-                result.add_inplace_affine(&tmp);
+                result = Self::public_add_fast(&result, &tmp);
+            }
+            if *g_digit != 0 {
+                let mut tmp =
+                    AffineMontPoint::public_lookup_w6(g_multiples, g_digit.unsigned_abs());
+                if *g_digit < 0 {
+                    tmp.negate_y();
+                }
+                result = result.public_add_affine(&tmp);
             }
         }
-        result
-    }
-
-    /// `scalar * P` for a public `scalar`, from `P`'s multiples in `precomp`.
-    fn public_multiply_w5(scalar: &Scalar, precomp: &JacobianMontPointTableW5) -> Self {
-        let mut terms = scalar.reversed_booth_recoded_w5();
-
-        let (digit, _, _) = terms.next().unwrap();
-        let mut result = Self::public_lookup_w5(precomp, digit);
-        result.double_inplace_n(5);
-
-        for (digit, sign, last) in terms {
-            let mut tmp = Self::public_lookup_w5(precomp, digit);
-            if sign > 0 {
-                tmp.negate_y();
-            }
-            result.add_inplace(&tmp);
-
-            if !last {
-                result.double_inplace_n(5);
-            }
-        }
-
         result
     }
 
@@ -500,13 +458,11 @@ impl JacobianMontPoint {
 
     fn as_affine(&self) -> AffineMontPoint {
         // recover (x, y) from (x / z ^ 2, x / z ^ 3, z)
-        let z2 = self.z().mont_sqr();
-        let z3 = self.z().mont_mul(&z2);
-
         // inversion calculated outside montgomery domain
         // (benchmarked vs addition chain in montgomery)
-        let z2_inv = z2.demont().inv().as_mont();
-        let z3_inv = z3.demont().inv().as_mont();
+        let z_inv = self.z().demont().inv().as_mont();
+        let z2_inv = z_inv.mont_sqr();
+        let z3_inv = z2_inv.mont_mul(&z_inv);
 
         let x = self.x().mont_mul(&z2_inv);
         let y = self.y().mont_mul(&z3_inv);
@@ -535,6 +491,29 @@ impl JacobianMontPoint {
         match ay.public_eq(&by) {
             true => a.double(),
             false => Self::infinity(),
+        }
+    }
+
+    /// `a + b`, for any points, by [`Self::public_add`] only when they turn
+    /// out to be equal or opposite.
+    ///
+    /// The formulas give such points a zero z, as they do infinity, so
+    /// only a zero z from two points not at infinity takes the slow path.
+    fn public_add_fast(a: &Self, b: &Self) -> Self {
+        let sum = a.add(b);
+        match sum.public_is_infinity() && !a.public_is_infinity() && !b.public_is_infinity() {
+            true => Self::public_add(a, b),
+            false => sum,
+        }
+    }
+
+    /// `self + p`, for any points, as [`Self::public_add_fast`] does.
+    fn public_add_affine(&self, p: &AffineMontPoint) -> Self {
+        let mut sum = *self;
+        sum.add_inplace_affine(p);
+        match sum.public_is_infinity() && !self.public_is_infinity() {
+            true => Self::public_add(self, &Self::from_affine(p)),
+            false => sum,
         }
     }
 
@@ -568,6 +547,7 @@ impl JacobianMontPoint {
         tmp
     }
 
+    #[cfg(test)]
     fn double_inplace_n(&mut self, n: usize) {
         for _ in 0..n {
             let tmp = *self;
@@ -575,6 +555,7 @@ impl JacobianMontPoint {
         }
     }
 
+    #[cfg(test)]
     fn add_inplace(&mut self, p: &Self) {
         let mut r = Self::infinity();
         low::p256_montjadd(&mut r.xyz, &self.xyz, &p.xyz);
@@ -601,16 +582,6 @@ impl JacobianMontPoint {
         let mut r = Self::zero();
         let select = select as u64;
         low::bignum_mux(select, &mut r.xyz[..], &p1.xyz[..], &p0.xyz[..]);
-        r
-    }
-
-    /// Returns table[i - 1] if index > 0, or else an infinity
-    fn public_lookup_w5(table: &JacobianMontPointTableW5, index: u8) -> Self {
-        let mut r = Self::infinity();
-        if index > 0 {
-            let offs = (index as usize - 1) * 12;
-            r.xyz.copy_from_slice(&table[offs..offs + 12]);
-        }
         r
     }
 
@@ -803,14 +774,12 @@ impl Scalar {
         }
     }
 
-    /// Iterator of 43 * 6-bit elements, LSB first, sign bit is separate
-    fn booth_recoded_w6(&self) -> BoothRecodeW6 {
-        BoothRecodeW6::new(self)
-    }
-
-    /// Iterator of 51 * 5-bit elements, LSB first, sign bit and final flag is separate
-    fn reversed_booth_recoded_w5(&self) -> BoothRecodeW5 {
-        BoothRecodeW5::new(self)
+    /// The width-`W` non-adjacent form of this scalar, by
+    /// [`util::public_naf`].
+    fn public_naf<const W: u32>(&self) -> [i8; 257] {
+        let mut digits = [0; 257];
+        util::public_naf::<W>(&self.0, &mut digits);
+        digits
     }
 }
 
@@ -842,131 +811,10 @@ impl Iterator for Bits<'_> {
     }
 }
 
-struct BoothRecodeW6 {
-    // little endian
-    bytes: [u8; 33],
-    index: usize,
-}
-
-impl BoothRecodeW6 {
-    fn new(scalar: &Scalar) -> Self {
-        let mut bytes = [0u8; 33];
-
-        bytes[0..8].copy_from_slice(&scalar.0[0].to_le_bytes());
-        bytes[8..16].copy_from_slice(&scalar.0[1].to_le_bytes());
-        bytes[16..24].copy_from_slice(&scalar.0[2].to_le_bytes());
-        bytes[24..32].copy_from_slice(&scalar.0[3].to_le_bytes());
-
-        Self { bytes, index: 0 }
-    }
-
-    fn recode(v: u8) -> (u8, u8) {
-        // see the comment above boringssl's `ec_GFp_nistp_recode_scalar_bits` for
-        // references
-        let sign = !((v >> 6).wrapping_sub(1));
-
-        let d = (1u16 << 7).wrapping_sub(v as u16).wrapping_sub(1) as u8;
-        let d = (d & sign) | (v & !sign);
-        let d = (d >> 1).wrapping_add(d & 1);
-
-        (d, sign & 1)
-    }
-}
-
-impl Iterator for BoothRecodeW6 {
-    type Item = (u8, u8);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        const MASK: u8 = (1 << (6 + 1)) - 1;
-
-        match self.index {
-            0 => {
-                self.index += 6;
-                Some(Self::recode((self.bytes[0] << 1) & MASK))
-            }
-
-            6..=252 => {
-                let offset = (self.index - 1) / 8;
-                let shift = (self.index - 1) % 8;
-                let value = (((self.bytes[offset] as u16) | ((self.bytes[offset + 1] as u16) << 8))
-                    >> shift) as u8
-                    & MASK;
-                self.index += 6;
-                Some(Self::recode(value))
-            }
-
-            _ => None,
-        }
-    }
-}
-
-struct BoothRecodeW5 {
-    // little endian
-    bytes: [u8; 33],
-    index: usize,
-}
-
-impl BoothRecodeW5 {
-    fn new(scalar: &Scalar) -> Self {
-        let mut bytes = [0u8; 33];
-
-        bytes[0..8].copy_from_slice(&scalar.0[0].to_le_bytes());
-        bytes[8..16].copy_from_slice(&scalar.0[1].to_le_bytes());
-        bytes[16..24].copy_from_slice(&scalar.0[2].to_le_bytes());
-        bytes[24..32].copy_from_slice(&scalar.0[3].to_le_bytes());
-
-        Self { bytes, index: 255 }
-    }
-
-    fn recode(v: u8) -> (u8, u8) {
-        // see the comment above boringssl's `ec_GFp_nistp_recode_scalar_bits` for
-        // references
-        let sign = !((v >> 5).wrapping_sub(1));
-
-        let d = (1u16 << 6).wrapping_sub(v as u16).wrapping_sub(1) as u8;
-        let d = (d & sign) | (v & !sign);
-        let d = (d >> 1).wrapping_add(d & 1);
-
-        (d, sign & 1)
-    }
-}
-
-impl Iterator for BoothRecodeW5 {
-    type Item = (u8, u8, bool);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        const MASK: u8 = (1 << (5 + 1)) - 1;
-
-        match self.index {
-            5..=255 => {
-                let offset = (self.index - 1) / 8;
-                let shift = (self.index - 1) % 8;
-                let value = (((self.bytes[offset] as u16) | ((self.bytes[offset + 1] as u16) << 8))
-                    >> shift) as u8
-                    & MASK;
-                let (digit, sign) = Self::recode(value);
-                self.index -= 5;
-                Some((digit, sign, false))
-            }
-
-            0 => {
-                let value = (self.bytes[0] << 1) & MASK;
-                let (digit, sign) = Self::recode(value);
-                self.index = usize::MAX;
-                Some((digit, sign, true))
-            }
-
-            _ => None,
-        }
-    }
-}
-
 /// 43 rows of the 32 multiples `i * 2^(6 * j) * G`, one row per 6-bit window.
 ///
 /// 43 := 256 / 6 + 1, as Booth recoding carries into a window above the top bit.
 type AffineMontPointTableW6 = [[u64; 256]; 43];
-
-type JacobianMontPointTableW5 = [u64; 192];
 
 const CURVE_A_MONT: FieldElement = FieldElement([
     0xffff_ffff_ffff_fffc,
@@ -1088,21 +936,47 @@ mod tests {
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&scalar).xy;
             assert_eq!(AffineMontPoint::base_multiply(&scalar).xy, expected);
-            assert_eq!(
-                JacobianMontPoint::public_base_multiply(&scalar)
-                    .as_affine()
-                    .xy,
-                expected
-            );
+            let odd_multiples = CURVE_GENERATOR.public_odd_multiples();
+            let zero = Scalar::default();
+            for (g, p) in [(&scalar, &zero), (&zero, &scalar)] {
+                assert_eq!(
+                    JacobianMontPoint::public_twin_multiply(g, p, &odd_multiples)
+                        .as_affine()
+                        .xy,
+                    expected
+                );
+            }
             assert_eq!(
                 JacobianMontPoint::multiply(&scalar, &CURVE_GENERATOR)
                     .as_affine()
                     .xy,
                 expected
             );
-            let precomp = CURVE_GENERATOR.public_precomp_w5();
+        }
+    }
+
+    #[test]
+    fn twin_multiply_exceptional() {
+        // With P = G, the accumulator meets the point it adds: equal, which
+        // must double, or opposite, which must give infinity.
+        let odd_multiples = CURVE_GENERATOR.public_odd_multiples();
+        let n_minus = |k: u64| {
+            let mut s = CURVE_ORDER;
+            s[0] -= k;
+            Scalar(s)
+        };
+        for (g, p) in [
+            (Scalar::small_u64(1), Scalar::small_u64(1)),
+            (Scalar::small_u64(3), Scalar::small_u64(3)),
+            (Scalar::small_u64(2), Scalar::small_u64(1)),
+            (Scalar::small_u64(1), n_minus(1)),
+            (n_minus(5), Scalar::small_u64(5)),
+            (n_minus(1), n_minus(1)),
+            (Scalar([0, 0, 0, 1 << 63]), Scalar([0, 0, 0, 1 << 63])),
+        ] {
+            let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
             assert_eq!(
-                JacobianMontPoint::public_multiply_w5(&scalar, &precomp)
+                JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples)
                     .as_affine()
                     .xy,
                 expected
