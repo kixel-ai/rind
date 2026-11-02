@@ -22,7 +22,6 @@ Decided with the maintainer on 2026-11-02, planning follow-ups from
 
 ## Required
 
-- [MSRV covers aarch64 and armv7](/quest/m2/tooling/msrv-arches.md) - the nightly MSRV row also checks the other two backends on 1.90
 - [admin/structure sees function bodies](/quest/m2/tooling/structure-bodies.md) - a `mid` function body naming `high` fails the layering check
 - [A ctgrind dev shell](/quest/m2/tooling/ctgrind-shell.md) - `admin/ctgrind` runs locally without setting `LIBCLANG_PATH`
 - [armv7 key generation stops wiping scratch](/quest/m2/tooling/armv7-keygen-scratch.md) - per-call scratch drops its zeroing, as `AGENTS.md` says
