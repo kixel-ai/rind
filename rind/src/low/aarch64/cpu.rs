@@ -218,18 +218,6 @@ fn test_toggle(id: &str, detected: bool) -> bool {
     }
 }
 
-/// Read-only prefetch hint.
-pub(in crate::low) fn prefetch_ro<T>(ptr: *const T) {
-    // SAFETY: inline assembly
-    unsafe {
-        core::arch::asm!(
-            "prfm pldl1strm, [{ptr}]",
-            ptr = in(reg) ptr,
-            options(readonly, nostack)
-        );
-    }
-}
-
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
