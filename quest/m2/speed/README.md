@@ -47,7 +47,6 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [armv7 P-256 as fast as the fastest source](/quest/m2/speed/armv7-p256.md) - signing 2.63x, ES256 2.04x today
 - [armv7 RSA as fast as the fastest source](/quest/m2/speed/armv7-rsa.md) - key loading 1.30-1.34x, RSA-2056 1.07-1.08x today
 - [x86_64 SHA-256 finishing in two blocks and PBKDF2-HMAC-SHA1 as fast as the fastest source](/quest/m2/speed/armv7-hmac-hkdf.md) - 1.08x at 64 B and 1.02x today
 - [AES-GCM key setup as fast as the fastest source](/quest/m2/speed/aes-gcm-key-setup.md) - 1.13-1.66x today
