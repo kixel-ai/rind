@@ -46,4 +46,4 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [RSA at every key size as fast as aws-lc-rs](/quest/m2/speed/rsa-sizes.md) - aws-lc's Montgomery routines beyond 1024 and 2048 bits, on x86_64 and aarch64
+- [RSA at every key size as fast as aws-lc-rs](/quest/m2/speed/rsa-sizes.md) - x86_64 signing's exponentiation beyond the Karatsuba sizes, as aws-lc's windows and `bn_power5` run it
