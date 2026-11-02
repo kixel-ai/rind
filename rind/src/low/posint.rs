@@ -672,6 +672,9 @@ impl<const N: usize> PosInt<N> {
     }
 }
 
+// All-zero bytes are a valid zero.
+impl<const N: usize> low::Zeroable for PosInt<N> {}
+
 /// A `SecretPosInt` is a `PosInt` containing long-term key material.
 ///
 /// It is zeroed on drop.
@@ -702,8 +705,8 @@ impl<const N: usize> DerefMut for SecretPosInt<N> {
 
 impl<const N: usize> Drop for SecretPosInt<N> {
     fn drop(&mut self) {
-        low::zeroise(self.as_mut_words());
-        low::zeroise_value(&mut self.used);
+        // The whole value, as 32-bit targets pad after `used`.
+        low::zeroise_value(&mut self.0);
     }
 }
 

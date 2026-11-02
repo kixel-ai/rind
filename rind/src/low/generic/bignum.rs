@@ -371,14 +371,7 @@ fn neg_inverse(m: u32) -> u32 {
 /// One step of the binary gcd, for an odd `a`: where `subtract` is one,
 /// `b := b - a`, which must not go negative; then `b := b / 2`.
 fn gcd_step(a: &[u64], b: &mut [u64], subtract: u64) {
-    let keep = mask(subtract);
-    let mut borrow = 0;
-    for (b, a) in b.iter_mut().zip(a) {
-        let (diff, b1) = b.overflowing_sub(a & keep);
-        let (diff, b2) = diff.overflowing_sub(borrow);
-        *b = diff;
-        borrow = u64::from(b1 | b2);
-    }
+    sub_masked(b, a, mask(subtract));
     for i in 0..b.len() {
         b[i] = b[i] >> 1 | word(b, i + 1) << 63;
     }
@@ -395,38 +388,30 @@ fn cswap(x: &mut [u64], y: &mut [u64], swap: u64) {
 
 /// `x := x - y mod m` where `keep` is all ones, for `x` and `y` below `m`.
 fn mod_sub_masked(x: &mut [u64], y: &[u64], m: &[u64], keep: u64) {
-    let mut borrow = 0;
-    for (x, y) in x.iter_mut().zip(y) {
-        let (diff, b1) = x.overflowing_sub(y & keep);
-        let (diff, b2) = diff.overflowing_sub(borrow);
-        *x = diff;
-        borrow = u64::from(b1 | b2);
-    }
-    let add = mask(borrow);
-    let mut carry = 0;
-    for (x, m) in x.iter_mut().zip(m) {
-        let (sum, c1) = x.overflowing_add(m & add);
-        let (sum, c2) = sum.overflowing_add(carry);
-        *x = sum;
-        carry = u64::from(c1 | c2);
-    }
+    let borrow = sub_masked(x, y, keep);
+    add_masked(x, m, mask(borrow));
 }
 
 /// `x := x / 2 mod m`, for `x` below the odd `m`: adds `m` to an odd `x`
 /// first, keeping the carry as the sum's top bit.
 fn mod_halve(x: &mut [u64], m: &[u64]) {
-    let add = mask(x[0] & 1);
-    let mut carry = 0;
-    for (x, m) in x.iter_mut().zip(m) {
-        let (sum, c1) = x.overflowing_add(m & add);
-        let (sum, c2) = sum.overflowing_add(carry);
-        *x = sum;
-        carry = u64::from(c1 | c2);
-    }
+    let carry = add_masked(x, m, mask(x[0] & 1));
     for i in 0..x.len() {
         let above = x.get(i + 1).copied().unwrap_or(carry);
         x[i] = x[i] >> 1 | above << 63;
     }
+}
+
+/// `x := x + y` where `keep` is all ones, returning the carry.
+fn add_masked(x: &mut [u64], y: &[u64], keep: u64) -> u64 {
+    let mut carry = 0;
+    for (x, y) in x.iter_mut().zip(y) {
+        let (sum, c1) = x.overflowing_add(y & keep);
+        let (sum, c2) = sum.overflowing_add(carry);
+        *x = sum;
+        carry = u64::from(c1 | c2);
+    }
+    carry
 }
 
 /// `x := x - y` where `keep` is all ones, returning the borrow.
@@ -511,7 +496,7 @@ mod tests {
 
     use super::*;
     use crate::low;
-    use crate::low::ct::{into_public, into_secret};
+    use crate::low::ct::{into_public, into_secret, public_slice, secret_slice};
 
     /// `min` to `max` words, biased towards zero and full words.
     fn words(min: usize, max: usize) -> impl Strategy<Value = Vec<u64>> {
@@ -561,8 +546,17 @@ mod tests {
         })
     }
 
+    /// A copy of `x` whose words, but not length, are secret.
     fn secret(x: &[u64]) -> Vec<u64> {
-        into_secret(x.to_vec())
+        let x = x.to_vec();
+        secret_slice(&x);
+        x
+    }
+
+    /// `x`'s words, made public to compare.
+    fn public(x: &[u64]) -> Vec<u64> {
+        public_slice(x);
+        x.to_vec()
     }
 
     proptest! {
@@ -572,7 +566,7 @@ mod tests {
             let (mut ours, mut theirs) = (vec![0; p], vec![0; p]);
             let carry = bignum_add(&mut ours, &sx, &sy);
             prop_assert_eq!(into_public(carry), low::bignum_add(&mut theirs, &x, &y));
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(public(&ours), theirs);
 
             prop_assert_eq!(into_public(bignum_cmp_lt(&sx, &sy)), low::bignum_cmp_lt(&x, &y));
             prop_assert_eq!(into_public(bignum_bitsize(&sx)), low::bignum_bitsize(&x));
@@ -582,13 +576,13 @@ mod tests {
             let (mut ours, mut theirs) = (vec![0; p], vec![0; p]);
             bignum_mul(&mut ours, &sx, &sy);
             low::bignum_mul(&mut theirs, &x, &y);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(public(&ours), theirs);
 
             let k = x.len().min(y.len());
             let (mut ours, mut theirs) = (vec![0; k], vec![0; k]);
             bignum_optsub(&mut ours, &sx[..k], &sy[..k], index);
             low::bignum_optsub(&mut theirs, &x[..k], &y[..k], index);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(public(&ours), theirs);
 
             let table = [x.clone(), y.clone(), vec![!0; x.len()]].concat();
             let width = x.len().min(y.len()) as u64;
@@ -596,7 +590,7 @@ mod tests {
                 let (mut ours, mut theirs) = (vec![0; width as usize], vec![0; width as usize]);
                 bignum_copy_row_from_table(&mut ours, &table, 3, width, into_secret(index));
                 low::bignum_copy_row_from_table(&mut theirs, &table, 3, width, index);
-                prop_assert_eq!(into_public(ours), theirs);
+                prop_assert_eq!(public(&ours), theirs);
             }
         }
 
@@ -608,15 +602,15 @@ mod tests {
 
             bignum_modadd(&mut ours, &sx, &sy, &sm);
             low::bignum_modadd(&mut theirs, &x, &y, &m);
-            prop_assert_eq!(into_public(ours.clone()), theirs.clone());
+            prop_assert_eq!(public(&ours), theirs.clone());
 
             bignum_modsub(&mut ours, &sx, &sy, &sm);
             low::bignum_modsub(&mut theirs, &x, &y, &m);
-            prop_assert_eq!(into_public(ours.clone()), theirs.clone());
+            prop_assert_eq!(public(&ours), theirs.clone());
 
             bignum_montifier(&mut ours, &sm, &mut []);
             low::bignum_montifier(&mut theirs, &m, &mut vec![0; k]);
-            prop_assert_eq!(into_public(ours.clone()), theirs.clone());
+            prop_assert_eq!(public(&ours), theirs.clone());
 
             // x * y + extra * 2^64k * m stays within 2^64(k + p) * m for p
             // above the extra words.
@@ -629,7 +623,7 @@ mod tests {
             low::bignum_add(&mut sum, &wide, &[vec![0; k], em].concat());
             bignum_montredc(&mut ours, &secret(&sum), &sm, p as u64);
             low::bignum_montredc(&mut theirs, &sum, &m, p as u64);
-            prop_assert_eq!(into_public(ours.clone()), theirs.clone());
+            prop_assert_eq!(public(&ours), theirs.clone());
 
             let (mut ours, mut theirs) = ([0], [0]);
             bignum_negmodinv(&mut ours, &sm[..1]);
@@ -649,7 +643,7 @@ mod tests {
                 let (mut ours, mut theirs) = (vec![0; k], vec![0; k]);
                 bignum_modinv(&mut ours, &secret(&a), &secret(&m), &mut []);
                 low::bignum_modinv(&mut theirs, &a, &m, &mut vec![0; 3 * k]);
-                prop_assert_eq!(into_public(ours), theirs);
+                prop_assert_eq!(public(&ours), theirs);
             }
         }
     }
