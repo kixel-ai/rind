@@ -73,6 +73,8 @@ pub(crate) mod bignum_tomont_p384_alt;
 pub(crate) mod chacha20;
 pub(crate) mod chacha20poly1305;
 pub(crate) mod cpu;
+#[cfg(test)]
+pub(crate) mod ct_sde;
 pub(crate) mod curve25519_x25519;
 pub(crate) mod curve25519_x25519_alt;
 pub(crate) mod curve25519_x25519base;

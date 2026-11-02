@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+
+# Usage: admin/ct-sde [filter]
+#
+# The constant-time check for code valgrind cannot run, such as AVX-512 (see
+# `admin/ctgrind`). Each rind test named `ct_sde...` derives its secrets
+# from a seed and marks the call it checks. This runs each one whose name
+# contains `filter` twice under Intel SDE's Sapphire Rapids model, with
+# different seeds, and fails unless SDE's debugtraces of the marked call
+# name the same instruction and memory addresses in the same order. The
+# traces stream through pipes and are compared as they arrive, so no run
+# stores one. It cannot see variable-time instructions, which take the same
+# addresses whatever their operands.
+#
+# The `ct_sde_planted_...` tests leak their seed, and run every time. They
+# must differ, so a harness that traces nothing, or compares nothing, fails.
+#
+# Run it in `nix develop .#sde`. Without ASLR, as `setarch -R` runs it, the
+# stack and heap lie at the same addresses for both seeds.
+
+import collections, json, os, re, subprocess, sys, tempfile
+
+SEEDS = ["0123456789abcdef", "fedcba9876543210"]
+# `rind/src/low/x86_64/ct_sde.rs` marks the call between these.
+MARKS = ["52430001:repeat", "52430002:repeat"]
+
+# An instruction, without the registers it wrote, or a memory access,
+# without its value.
+INS = re.compile(r"INS (0x[0-9a-f]+) +\S+ +(.*?) *(\| .*)?$")
+MEM = re.compile(r"(Read|Write) .*?\*\((.+?)\*\)(0x[0-9a-f]+)", re.S)
+
+
+def records(trace):
+    """Each of SDE's records, without its values: a vector's value
+    continues onto lines that start with a tab."""
+    record = None
+    for line in trace:
+        if line.startswith("\t") and record is not None:
+            record += line
+            continue
+        if record is not None:
+            yield normalize(record)
+        record = line
+    if record is not None:
+        yield normalize(record)
+
+
+def normalize(record):
+    first = record.split("\n", 1)[0]
+    if m := INS.match(first):
+        return "INS {} {}".format(m[1], " ".join(m[2].split()))
+    if m := MEM.match(record):
+        return "{} *({}*){}".format(m[1], m[2], m[3])
+    return first
+
+
+def build():
+    out = subprocess.run(
+        ["cargo", "test", "-p", "rind", "--lib", "--release", "--no-run"]
+        + ["--message-format=json-render-diagnostics"],
+        stdout=subprocess.PIPE,
+        check=True,
+        encoding="utf-8",
+    ).stdout
+    for line in out.splitlines():
+        js = json.loads(line)
+        if js.get("reason") == "compiler-artifact" and js.get("executable"):
+            if js["target"]["name"] == "rind":
+                return js["executable"]
+    sys.exit("ct-sde: no rind test binary")
+
+
+def tests(exe, filter):
+    out = subprocess.run(
+        [exe, "--list", "--ignored", "--format", "terse"],
+        stdout=subprocess.PIPE,
+        check=True,
+        encoding="utf-8",
+    ).stdout
+    names = [line.removesuffix(": test") for line in out.splitlines()]
+    names = [n for n in names if n.split("::")[-1].startswith("ct_sde")]
+    planted = [n for n in names if is_planted(n)]
+    return planted + [n for n in names if filter in n and not is_planted(n)]
+
+
+def is_planted(name):
+    return name.split("::")[-1].startswith("ct_sde_planted")
+
+
+def compare(exe, name, tmp):
+    """Traces `name` once for each seed, and returns where the traces differ,
+    with the lines before it, or None, and how many lines they agreed on."""
+    procs = []
+    for i, seed in enumerate(SEEDS):
+        fifo = os.path.join(tmp, "trace{}".format(i))
+        os.mkfifo(fifo)
+        cmd = ["setarch", "-R", "sde", "-spr", "-debugtrace", "-dt_out", fifo]
+        cmd += ["-start_ssc_mark", MARKS[0], "-stop_ssc_mark", MARKS[1], "--"]
+        cmd += [exe, "--ignored", "--exact", name, "--test-threads=1", "-q"]
+        env = dict(os.environ, RIND_CT_SDE_SEED=seed)
+        log = open(os.path.join(tmp, "log{}".format(i)), "w+")
+        # SDE writes its own logs to its working directory.
+        proc = subprocess.Popen(cmd, env=env, cwd=tmp, stdout=log, stderr=log)
+        procs.append((proc, fifo, log))
+
+    files = [open(fifo) for _, fifo, _ in procs]
+    traces = [records(f) for f in files]
+    context = collections.deque(maxlen=8)
+    lines = 0
+    diff = None
+    for a, b in zip(*traces):
+        if a != b:
+            diff = (context, a, b)
+            break
+        context.append(a)
+        lines += 1
+    else:
+        # One trace may have ended before the other.
+        rest = [next(t, None) for t in traces]
+        if any(rest):
+            diff = (context, *(r or "(end)" for r in rest))
+
+    for proc, _, log in procs:
+        if diff:
+            proc.kill()
+        elif proc.wait() != 0:
+            log.seek(0)
+            sys.exit("ct-sde: {} failed under SDE:\n{}".format(name, log.read()))
+    for f in files:
+        f.close()
+    for proc, _, _ in procs:
+        proc.wait()
+    return diff, lines
+
+
+def main():
+    filter = sys.argv[1] if len(sys.argv) > 1 else ""
+    exe = build()
+    names = tests(exe, filter)
+    if all(is_planted(n) for n in names):
+        sys.exit("ct-sde: no ct_sde test matches {!r}".format(filter))
+
+    failed = False
+    for name in names:
+        with tempfile.TemporaryDirectory() as tmp:
+            diff, lines = compare(exe, name, tmp)
+        planted = is_planted(name)
+        if lines == 0:
+            print("FAIL {}: traced nothing".format(name))
+            failed = True
+        elif diff and not planted:
+            context, a, b = diff
+            print("FAIL {}: traces differ after {} lines".format(name, lines))
+            for line in context:
+                print("    " + line)
+            print("  - " + a)
+            print("  + " + b)
+            failed = True
+        elif not diff and planted:
+            print("FAIL {}: a planted leak traced the same".format(name))
+            failed = True
+        else:
+            print("ok   {}: {} lines".format(name, lines))
+    sys.exit(failed)
+
+
+main()

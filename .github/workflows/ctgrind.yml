@@ -84,6 +84,30 @@ jobs:
           RIND_CPU_DISABLE_adx: 1
           RIND_TEST_X86_BMI2_ADX: 0
 
+  # Valgrind runs no AVX-512, so `admin/ct-sde` compares Intel SDE traces of
+  # those paths for two secrets instead. One job per test, since RSA-4096's
+  # traces alone take about an hour.
+  x86_64-sde:
+    name: x86_64-sde (${{ matrix.test }})
+    strategy:
+      fail-fast: false
+      matrix:
+        test: [rsa2048, rsa3072, rsa4096]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      # As in x86-cpu.yml, for the dev shell's SDE sandbox.
+      - name: Allow user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: ct-sde
+        run: nix develop .#sde --command admin/ct-sde ${{ matrix.test }}
+
   # The arm64 runner's core has the crypto extension, so this job denies it
   # to check vpaes, NEON GHASH, and the scalar SHA-1 and SHA-256 that cores
   # without it run. The denial takes `--cfg rind_cpu_disable`, as above.

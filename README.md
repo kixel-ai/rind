@@ -116,7 +116,8 @@ On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
 with NEON alone, and with NEON denied.
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
-constant-time checks under valgrind.
+constant-time checks under valgrind, and `nix develop .#sde --command
+admin/ct-sde` those of the AVX-512 code valgrind cannot run, under Intel SDE.
 
 ## Algorithms
 
@@ -321,7 +322,7 @@ of 1024, 1536, or 2048 bits run at once by aws-lc's dual RSAZ, as aws-lc's
 `BN_mod_exp_mont_consttime_x2` does there: almost Montgomery products on
 256-bit vectors over 52-bit limbs, two moduli at a time, and a 5-bit fixed
 window whose table entries are gathered by masking all 32. Valgrind runs no
-AVX-512, so `admin/ctgrind` cannot check it.
+AVX-512, so `admin/ct-sde` checks it under Intel SDE instead.
 
 The RSA private operation always uses the CRT optimisation.
 

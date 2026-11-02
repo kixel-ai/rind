@@ -97,6 +97,9 @@ impl<const H: usize> Pair<H> {
     }
 }
 
+// All-zero words are a valid pair.
+impl<const H: usize> low::Zeroable for Pair<H> {}
+
 const MASK: u64 = (1 << 52) - 1;
 
 /// Splits `words` into 52-bit `limbs`, zero above them.
@@ -220,6 +223,9 @@ fn mod_exp<const H: usize>(
         rsaz.mul_by(&mut y, &x);
     }
 
+    // The powers of a secret base, on the heap.
+    low::zeroise(&mut table);
+
     // Out of Montgomery form, which leaves each at most its modulus.
     rsaz.mul_by(&mut y, &one);
     for ((z, limbs), o) in z.into_iter().zip(&y.0).zip(operands) {
@@ -334,8 +340,27 @@ rsaz_routine!(extract_multiplier_2x40_win5(r: *mut u64, table: *const u64, i: u6
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::super::adx_mux::tests::Rng;
+    use super::super::ct_sde;
     use super::*;
     use crate::low::PosInt;
+
+    fn int(words: &[u64]) -> PosInt<32> {
+        let bytes: Vec<u8> = words.iter().rev().flat_map(|w| w.to_be_bytes()).collect();
+        PosInt::from_bytes(&bytes).unwrap()
+    }
+
+    /// `int` in `k` words.
+    fn words(int: &PosInt<32>, k: usize) -> Vec<u64> {
+        let mut bytes = [0; 256];
+        let bytes = int.to_bytes(&mut bytes).unwrap();
+        let mut words = vec![0; k];
+        for (word, chunk) in words.iter_mut().zip(bytes.rchunks(8)) {
+            let mut be = [0; 8];
+            be[8 - chunk.len()..].copy_from_slice(chunk);
+            *word = u64::from_be_bytes(be);
+        }
+        words
+    }
 
     // Only CPUs with AVX-512 IFMA run it, so on those this checks it against
     // the exponentiation the others run, at each width it takes.
@@ -347,21 +372,6 @@ mod tests {
         let mut rng = Rng(0x3c6e_f372_fe94_f82b);
         for k in [16, 24, 32] {
             let rsaz = RsazAvx512::check(k).unwrap();
-            let int = |words: &[u64]| {
-                let bytes: Vec<u8> = words.iter().rev().flat_map(|w| w.to_be_bytes()).collect();
-                PosInt::<32>::from_bytes(&bytes).unwrap()
-            };
-            let words = |int: &PosInt<32>| {
-                let mut bytes = [0; 256];
-                let bytes = int.to_bytes(&mut bytes).unwrap();
-                let mut words = vec![0; k];
-                for (word, chunk) in words.iter_mut().zip(bytes.rchunks(8)) {
-                    let mut be = [0; 8];
-                    be[8 - chunk.len()..].copy_from_slice(chunk);
-                    *word = u64::from_be_bytes(be);
-                }
-                words
-            };
             for case in 0..16 {
                 let ops: [_; 2] = core::array::from_fn(|i| {
                     // The widest modulus, the narrowest with its top word
@@ -428,7 +438,7 @@ mod tests {
                         .to_montgomery(&rr, &n)
                         .mont_exp(one, &e, &n, n0)
                         .from_montgomery(&n);
-                    (words(&r), words(&rr), n0)
+                    (words(&r, k), words(&rr, k), n0)
                 });
 
                 let mut got = [vec![0; k], vec![0; k]];
@@ -444,5 +454,50 @@ mod tests {
                 assert_eq!(got, want.map(|w| w.0), "{k} words, case {case}");
             }
         }
+    }
+
+    // The CRT of each RSA size, with secret moduli, bases, and exponents,
+    // for `admin/ct-sde`.
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_rsa2048() {
+        trace(16);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_rsa3072() {
+        trace(24);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_rsa4096() {
+        trace(32);
+    }
+
+    fn trace(k: usize) {
+        let mut rng = Rng(ct_sde::seed());
+        let rsaz = RsazAvx512::check(k).expect("AVX-512 IFMA");
+        let ops: [_; 2] = core::array::from_fn(|_| {
+            let mut m: [u64; 32] = rng.words(64 * k as u32);
+            m[0] |= 1;
+            m[k - 1] |= 1 << 63;
+            let mut x: [u64; 32] = rng.words(64 * k as u32);
+            x[k - 1] >>= 1;
+            let e: [u64; 32] = rng.words(64 * k as u32);
+            let n = int(&m[..k]);
+            (m, x, e, words(&n.montifier(), k), n.mont_neg_inverse())
+        });
+        let mut z = [[0; 32]; 2];
+        let [z0, z1] = &mut z;
+        let operands = ops.each_ref().map(|(m, x, e, rr, n0)| Operands {
+            x: &x[..k],
+            e: &e[..k],
+            m: &m[..k],
+            rr,
+            n0: *n0,
+        });
+        ct_sde::traced(|| rsaz.mod_exp([&mut z0[..k], &mut z1[..k]], operands));
     }
 }
