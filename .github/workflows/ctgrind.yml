@@ -28,16 +28,10 @@ jobs:
 
       - uses: ./.github/actions/vectors
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-
-      - name: Install valgrind
-        run: sudo apt-get update && sudo apt-get install -y valgrind
+      - uses: ./.github/actions/nix
 
       - name: ctgrind tests
-        run: admin/ctgrind ${{ matrix.build }}
+        run: nix develop .#ctgrind --command admin/ctgrind ${{ matrix.build }}
 
   # Valgrind hides ADX, which `admin/ctgrind`'s build switch overrides to
   # check s2n-bignum's ADX routines, so this job denies it to check what
@@ -75,20 +69,14 @@ jobs:
 
       - uses: ./.github/actions/vectors
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-
-      - name: Install valgrind
-        run: sudo apt-get update && sudo apt-get install -y valgrind
+      - uses: ./.github/actions/nix
 
       # A denial set to any value takes effect, so a row's extra variables
       # are words for `env`.
       - name: ctgrind tests
         run: |
           read -ra deny <<< "$DENY"
-          env "${deny[@]}" admin/ctgrind --release
+          nix develop .#ctgrind --command env "${deny[@]}" admin/ctgrind --release
         env:
           RUSTFLAGS: --cfg rind_cpu_disable
           DENY: ${{ matrix.deny }}
@@ -107,16 +95,10 @@ jobs:
 
       - uses: ./.github/actions/vectors
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-
-      - name: Install valgrind
-        run: sudo apt-get update && sudo apt-get install -y valgrind
+      - uses: ./.github/actions/nix
 
       - name: ctgrind tests
-        run: admin/ctgrind --release
+        run: nix develop .#ctgrind --command admin/ctgrind --release
         env:
           RUSTFLAGS: --cfg rind_cpu_disable
           RIND_CPU_DISABLE_aes: 1
@@ -132,6 +114,9 @@ jobs:
   # Release only: constant time matters in the code that ships, and a debug
   # build can only add findings in code that does not. Valgrind runs every
   # thread on one core, so the suites run as parallel jobs instead.
+  #
+  # Ubuntu's armhf valgrind rather than `devShells.ctgrind`: nixpkgs caches no
+  # armhf valgrind for an arm64 host, and building it builds its gdb too.
   armv7:
     name: armv7 (${{ matrix.suite }})
     strategy:
