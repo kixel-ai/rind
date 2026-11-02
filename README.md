@@ -131,7 +131,8 @@ cell and keeps each benchmark's numbers in its summary. These are from
 [run 41378010740]; a change that moves a cell refreshes it.
 
 x86_64 runs every feature of an AMD EPYC 7763 (Zen 3: ADX, AVX2, SHA-NI, and
-VAES, but no AVX-512). Each column to its right denies more, as `bench.yml`
+VAES, but no AVX-512), except in the AES-GCM and 1 MB transfer rows, noted
+below. Each column to its right denies more, as `bench.yml`
 describes, and compares with aws-lc-rs alone, since ring cannot be denied a
 feature: no ADX denies ADX (Haswell); no AVX2 also AVX2, BMI2, SHA-NI,
 AVX-512, VAES, and VPCLMULQDQ (Sandy Bridge); no AVX also AVX (Westmere); no
@@ -139,12 +140,16 @@ AES-NI also AES-NI, PCLMULQDQ, and SSE4.1 (Core 2); and SSE2 also SSSE3.
 GitHub's pool ran no ADX on an EPYC 7763 too, no AVX2 on an EPYC 9V74 (Zen
 4), no AVX and SSE2 on an EPYC 9V45 (Zen 5), and no AES-NI on a Xeon Platinum
 8573C (Emerald Rapids).
+The AES-GCM and 1 MB transfer rows are from [run 41401180882], which ran
+x86_64, no AVX2, and no AES-NI on an EPYC 9V74, whose AVX-512 runs AES-GCM's
+512-bit paths rather than the 256-bit VAES ones Zen 3 runs, no AVX on an EPYC
+7763, and SSE2 on a Xeon Platinum 8370C (Ice Lake).
 Intel CPUs without SHA-NI run [aws-lc]'s AVX SHA-1 and SHA-256, and every
 Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 
 | Algorithm | x86_64 | no ADX | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|---|
-| AES-GCM | **1.35** BoringSSL ⚡ + Graviola |  | **1.05** Graviola | 0.85 | **1.09** aws-lc + rind | 0.84 |
+| AES-GCM | 0.93 BoringSSL ⚡ + Graviola |  | **1.03** Graviola | 0.93 | 1.01 aws-lc + rind | 0.88 |
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 0.99 | 0.99 | 1.01 aws-lc | 0.85 |
 | ChaCha20 (header protection) | 0.96 Graviola |  | 0.95 aws-lc ⚡ | 0.93 | 0.95 | 0.92 |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.02 aws-lc ⚡ |  | 1.00 |  | **1.12** aws-lc ⚡ + Graviola ⚡ | **1.10** |
@@ -162,7 +167,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 | ML-KEM-768 | **1.22** s2n-bignum ✓ + Graviola ⚡ |  | 0.99 mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
 | RSA signatures, key generation | **1.07** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | **1.05** aws-lc ⚡ + Graviola ⚡ | **1.05** |  |  |  |
 | rind-rustls handshakes | 0.98 |  | **1.05** |  |  |  |
-| rind-rustls 1 MB transfer | 1.02 |  | 1.01 |  |  |  |
+| rind-rustls 1 MB transfer | 1.00 |  | 1.01 |  |  |  |
 
 aarch64 runs a Neoverse-N2, with the crypto extension and the SHA-512 and
 SHA-3 instructions; no crypto denies them, as a Raspberry Pi 4 lacks them.
@@ -243,6 +248,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [run 41378010740]: https://github.com/moq-dev/rind/actions/runs/41378010740
+[run 41401180882]: https://github.com/moq-dev/rind/actions/runs/41401180882
 [#206]: https://github.com/moq-dev/rind/pull/206
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls

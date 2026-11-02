@@ -132,57 +132,56 @@ impl ClmulTable {
     /// Hashes `bytes` into `current`.
     ///
     /// It is SSE-encoded on every CPU, as the by-8 AES-GCM kernel is.
-    #[target_feature(enable = "pclmulqdq")]
+    #[target_feature(enable = "pclmulqdq,ssse3")]
     fn add(&self, bytes: &[u8], mut current: __m128i) -> __m128i {
         let (eight_blocks, remainder) = bytes.as_chunks::<128>();
 
         for chunk8 in eight_blocks {
-            let u1 = u128::from_be_bytes(chunk8[0..16].try_into().unwrap());
-            let u2 = u128::from_be_bytes(chunk8[16..32].try_into().unwrap());
-            let u3 = u128::from_be_bytes(chunk8[32..48].try_into().unwrap());
-            let u4 = u128::from_be_bytes(chunk8[48..64].try_into().unwrap());
-            let u5 = u128::from_be_bytes(chunk8[64..80].try_into().unwrap());
-            let u6 = u128::from_be_bytes(chunk8[80..96].try_into().unwrap());
-            let u7 = u128::from_be_bytes(chunk8[96..112].try_into().unwrap());
-            let u8 = u128::from_be_bytes(chunk8[112..128].try_into().unwrap());
-
-            let b1 = u128_to_m128i(u1);
-            let b2 = u128_to_m128i(u2);
-            let b3 = u128_to_m128i(u3);
-            let b4 = u128_to_m128i(u4);
-            let b5 = u128_to_m128i(u5);
-            let b6 = u128_to_m128i(u6);
-            let b7 = u128_to_m128i(u7);
-            let b8 = u128_to_m128i(u8);
-
-            let b1 = _mm_xor_si128(current, b1);
-            current = _mul8(self, b1, b2, b3, b4, b5, b6, b7, b8);
+            let [b1, b2, b3, b4, b5, b6, b7, b8] = chunk8.as_chunks::<16>().0 else {
+                unreachable!()
+            };
+            let b1 = _mm_xor_si128(current, load_be(b1));
+            current = _mul8(
+                self,
+                b1,
+                load_be(b2),
+                load_be(b3),
+                load_be(b4),
+                load_be(b5),
+                load_be(b6),
+                load_be(b7),
+                load_be(b8),
+            );
         }
 
         self.add_tail(remainder, current)
     }
 
+    /// Multiplies `x` by H.
+    #[target_feature(enable = "pclmulqdq")]
+    fn mul_h(&self, x: __m128i) -> __m128i {
+        let (mut lo, mut mi, mut hi) = (zero(), zero(), zero());
+        mul!(lo, mi, hi, x, self.powers[0], self.powers_xor[0]);
+        reduce!(lo, mi, hi)
+    }
+
     /// Hashes the fewer than eight blocks after `add`'s chunks, zero-padding
     /// the last: block `i` of `n` is multiplied by H^(n-i), so the sum needs
     /// one reduction rather than one per block.
-    #[target_feature(enable = "pclmulqdq")]
+    #[target_feature(enable = "pclmulqdq,ssse3")]
     fn add_tail(&self, bytes: &[u8], current: __m128i) -> __m128i {
         if bytes.is_empty() {
             return current;
         }
 
-        let (blocks, partial) = bytes.as_chunks::<16>();
-        let mut powers = self
-            .powers
-            .iter()
-            .zip(&self.powers_xor)
-            .take(bytes.len().div_ceil(16))
-            .rev();
+        let n = bytes.len().div_ceil(16);
+        let mut powers = self.powers[..n].iter().zip(&self.powers_xor[..n]).rev();
 
+        let (blocks, partial) = bytes.as_chunks::<16>();
         let (mut lo, mut mi, mut hi) = (zero(), zero(), zero());
         let mut x = current;
         for (block, (h, hx)) in blocks.iter().zip(&mut powers) {
-            let b = _mm_xor_si128(x, u128_to_m128i(u128::from_be_bytes(*block)));
+            let b = _mm_xor_si128(x, load_be(block));
             mul!(lo, mi, hi, b, *h, *hx);
             x = zero();
         }
@@ -190,7 +189,7 @@ impl ClmulTable {
         if let Some((h, hx)) = powers.next() {
             let mut last = [0u8; 16];
             last[..partial.len()].copy_from_slice(partial);
-            let b = _mm_xor_si128(x, u128_to_m128i(u128::from_be_bytes(last)));
+            let b = _mm_xor_si128(x, load_be(&last));
             mul!(lo, mi, hi, b, *h, *hx);
         }
         reduce!(lo, mi, hi)
@@ -319,21 +318,51 @@ impl<'a> Ghash<'a> {
             last[..tail.len()].copy_from_slice(tail);
             ghash(&mut xi, &[last]);
         }
-        self.set_xi(xi);
+        self.set_xi(&xi);
     }
 
-    pub(crate) fn into_bytes(self) -> [u8; 16] {
-        self.xi()
+    /// Inputs GCM's last block: the bit lengths of the AAD and the message.
+    pub(crate) fn add_lengths(&mut self, aad_len: usize, msg_len: usize) {
+        let block = ((aad_len as u128 * 8) << 64) | (msg_len as u128 * 8);
+        let table = match self.table {
+            GhashTable::Clmul(table)
+            | GhashTable::VaesAvx2(table, _)
+            | GhashTable::Avx512(GhashTableAvx512 { clmul: table, .. }) => table,
+            GhashTable::Ssse3(_) | GhashTable::Nohw(_) => return self.add(&block.to_be_bytes()),
+        };
+        // SAFETY: only a `HaveAesHardware` token builds `table`, proving
+        // PCLMULQDQ, and every x86_64 CPU has SSE2.
+        self.current = unsafe { table.mul_h(_mm_xor_si128(self.current, u128_to_m128i(block))) };
+    }
+
+    /// The tag: the hash, in GCM's byte order, XORed with `mask`.
+    pub(crate) fn tag(self, mask: &[u8; 16]) -> [u8; 16] {
+        let mut tag = [0u8; 16];
+        // SAFETY: every x86_64 CPU has SSE2, and `mask` and `tag` are 16
+        // readable and writable bytes
+        unsafe {
+            let mask = _mm_loadu_si128(mask.as_ptr().cast());
+            let tag_v = _mm_xor_si128(byte_reverse(self.current), mask);
+            _mm_storeu_si128(tag.as_mut_ptr().cast(), tag_v);
+        }
+        tag
     }
 
     /// The state in GCM's byte order, as BoringSSL's `Xi`.
+    #[inline]
     pub(crate) fn xi(&self) -> [u8; 16] {
-        m128i_to_u128(self.current).to_be_bytes()
+        let mut xi = [0u8; 16];
+        // SAFETY: every x86_64 CPU has SSE2, and `xi` is 16 writable bytes.
+        // One vector store, so the kernels' 16-byte load of it is forwarded.
+        unsafe { _mm_storeu_si128(xi.as_mut_ptr().cast(), byte_reverse(self.current)) };
+        xi
     }
 
     /// Sets the state from GCM's byte order, as BoringSSL's `Xi`.
-    pub(crate) fn set_xi(&mut self, xi: [u8; 16]) {
-        self.current = u128_to_m128i(u128::from_be_bytes(xi));
+    #[inline]
+    pub(crate) fn set_xi(&mut self, xi: &[u8; 16]) {
+        // SAFETY: every x86_64 CPU has SSE2, and `xi` is 16 readable bytes
+        self.current = byte_reverse(unsafe { _mm_loadu_si128(xi.as_ptr().cast()) });
     }
 }
 
@@ -509,6 +538,18 @@ fn xor_halves(h: __m128i) -> __m128i {
     _mm_xor_si128(hx, h)
 }
 
+/// Reverses the bytes of `x`, between GCM's byte order and the polynomial the
+/// multiplies take. SSE2 alone, so every table's state can use it.
+#[inline]
+fn byte_reverse(x: __m128i) -> __m128i {
+    // SAFETY: every x86_64 CPU has SSE2
+    unsafe {
+        let x = _mm_shuffle_epi32(x, 0b00_01_10_11);
+        let x = _mm_shufflehi_epi16(_mm_shufflelo_epi16(x, 0b10_11_00_01), 0b10_11_00_01);
+        _mm_or_si128(_mm_slli_epi16(x, 8), _mm_srli_epi16(x, 8))
+    }
+}
+
 #[inline]
 fn zero() -> __m128i {
     // SAFETY: every x86_64 CPU has SSE2
@@ -524,14 +565,16 @@ fn join512(a: __m128i, b: __m128i, c: __m128i, d: __m128i) -> __m512i {
     _mm512_inserti32x4(r, a, 3)
 }
 
+/// Loads a block in GCM's byte order as the polynomial the multiplies take.
 #[inline]
-fn u128_to_m128i(v: u128) -> __m128i {
-    // SAFETY: sizeof(u128) == sizeof(__m128i), all bits have same meaning
-    unsafe { mem::transmute(v) }
+#[target_feature(enable = "ssse3")]
+fn load_be(block: &[u8; 16]) -> __m128i {
+    // SAFETY: `block` is 16 readable bytes
+    _mm_shuffle_epi8(unsafe { _mm_loadu_si128(block.as_ptr().cast()) }, BYTESWAP)
 }
 
 #[inline]
-fn m128i_to_u128(v: __m128i) -> u128 {
+fn u128_to_m128i(v: u128) -> __m128i {
     // SAFETY: sizeof(u128) == sizeof(__m128i), all bits have same meaning
     unsafe { mem::transmute(v) }
 }
@@ -620,7 +663,7 @@ mod tests {
         for ta in &tables {
             let mut a = Ghash::new(ta);
             a.add(input);
-            let fa = a.into_bytes();
+            let fa = a.xi();
 
             if fa != fb {
                 panic!("for input: {input:02x?}:\n\n impl  {fa:02x?}\n    !=\nmodel  {fb:02x?}");
