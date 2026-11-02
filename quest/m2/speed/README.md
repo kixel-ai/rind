@@ -54,3 +54,5 @@ settled; don't ask them again. The chosen option is marked ✅.
 - [aarch64 RSA on a 5-bit exponent window](/quest/m2/speed/aarch64-rsa-window.md) - the window x86_64 gained in #224
 - [The AES-GCM bench times decryption](/quest/m2/speed/aes-gcm-open-bench.md) - open rows beside seal rows on every tier
 - [Imported aws-lc routines keep their alignment](/quest/m2/speed/import-alignment.md) - restore `.align` before carried routines if it measures faster
+- [armv7 P-384 multiply without carry-flag spills](/quest/m2/speed/armv7-p384-mul.md) - only if more than ~10% faster than fiat-crypto
+- [Imported routines start at aws-lc's alignment](/quest/m2/speed/import-entry-alignment.md) - top-level entries aligned like aws-lc, if it measures faster
