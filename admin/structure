@@ -9,6 +9,7 @@ set -e
 # to the column-0 `}` that rustfmt closes it with; any other match is an error.
 (
   cd "$(dirname "$0")/.."
+  files=$(find rind/src/low rind/src/mid -name '*.rs' | sort)
   awk '
     FNR == 1 { pending = 0; intest = 0 }
     intest { if ($0 !~ /^[}]/) next; intest = 0 }
@@ -23,7 +24,7 @@ set -e
       printf "%d errors\n", errors > "/dev/stderr"
       exit(errors > 0)
     }
-  ' $(find rind/src/low rind/src/mid -name '*.rs' | sort)
+  ' $files
 )
 
 # Captured first so a cargo-modules failure fails the script rather than
