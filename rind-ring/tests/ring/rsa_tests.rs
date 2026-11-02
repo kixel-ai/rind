@@ -15,16 +15,16 @@
 #![allow(missing_docs)]
 #![cfg(feature = "alloc")]
 
-use crate::test::der;
-#[allow(deprecated)]
-use crate::{test, test_file};
 use ring::{
     error, rand, rsa,
     signature::{self, KeyPair},
 };
-
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use wasm_bindgen_test::{wasm_bindgen_test as test, wasm_bindgen_test_configure};
+
+use crate::test::der;
+#[allow(deprecated)]
+use crate::{test, test_file};
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 wasm_bindgen_test_configure!(run_in_browser);
