@@ -107,25 +107,8 @@ impl Sha1Context {
 
     /// Add `bytes` to the ongoing hash computation.
     pub(crate) fn update(&mut self, bytes: &[u8]) {
-        if self.blockwise.used() == 0 && bytes.len().is_multiple_of(Self::BLOCK_SZ) {
-            self.state.update_blocks(bytes);
-            return;
-        }
-
-        let bytes = self.blockwise.add_leading(bytes);
-
-        if let Some(block) = self.blockwise.take() {
-            self.state.update_blocks(&block);
-        }
-
-        let (whole_blocks, remainder) = {
-            let whole_len = bytes.len() - (bytes.len() & (Self::BLOCK_SZ - 1));
-            (&bytes[..whole_len], &bytes[whole_len..])
-        };
-
-        self.state.update_blocks(whole_blocks);
-
-        self.blockwise.add_trailing(remainder);
+        self.blockwise
+            .update(bytes, |blocks| self.state.update_blocks(blocks));
     }
 
     /// Complete the SHA1 computation, returning the hash output.
