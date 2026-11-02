@@ -123,10 +123,10 @@ chosen because it measured faster than a verified alternative. A cell naming
 no source runs the same sources as the one to its left, and an empty cell
 runs the same code, so it isn't timed. The rind-rustls rows time full and
 resumed TLS 1.3 handshakes and bulk transfer against rustls over aws-lc-rs's
-and ring's providers. The nightly `bench` workflow times every cell and
-keeps each benchmark's numbers in its summary. These are from
-[run 41363822221], and no ADX from [run 41378010740]; a change that moves a
-cell refreshes it.
+and ring's providers. RSA key generation, whose time swings by up to 3x from
+run to run, stays out of the ratios. The nightly `bench` workflow times every
+cell and keeps each benchmark's numbers in its summary. These are from
+[run 41378010740]; a change that moves a cell refreshes it.
 
 x86_64 runs every feature of an AMD EPYC 7763 (Zen 3: ADX, AVX2, SHA-NI, and
 VAES, but no AVX-512). Each column to its right denies more, as `bench.yml`
@@ -134,59 +134,63 @@ describes, and compares with aws-lc-rs alone, since ring cannot be denied a
 feature: no ADX denies ADX (Haswell); no AVX2 also AVX2, BMI2, SHA-NI,
 AVX-512, VAES, and VPCLMULQDQ (Sandy Bridge); no AVX also AVX (Westmere); no
 AES-NI also AES-NI, PCLMULQDQ, and SSE4.1 (Core 2); and SSE2 also SSSE3.
+GitHub's pool ran no ADX on an EPYC 7763 too, no AVX2 on an EPYC 9V74 (Zen
+4), no AVX and SSE2 on an EPYC 9V45 (Zen 5), and no AES-NI on a Xeon Platinum
+8573C (Emerald Rapids).
 Intel CPUs without SHA-NI run [aws-lc]'s AVX SHA-1 and SHA-256, and every
 Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 
 | Algorithm | x86_64 | no ADX | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|---|
-| AES-GCM | **1.34** BoringSSL ⚡ + Graviola |  | **1.05** Graviola | 0.90 | **1.03** aws-lc + rind | 0.81 |
-| AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 1.00 | 1.00 | 1.01 aws-lc | 0.81 |
-| ChaCha20 (header protection) | 0.96 Graviola |  | 0.93 aws-lc ⚡ | 0.96 | 0.93 | 0.93 |
-| ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.02 aws-lc ⚡ |  | 1.00 |  | **1.14** aws-lc ⚡ + Graviola ⚡ | **1.08** |
-| SHA-1 | 1.00 rind |  | 1.00 aws-lc | 1.00 |  | 1.00 |
-| SHA-256 | **1.20** Graviola ⚡ |  | **1.26** aws-lc ⚡ | **1.34** |  | **1.24** |
-| SHA-384, SHA-512, SHA-512/256 | 1.02 aws-lc ⚡ |  | 1.00 | 1.00 |  | 1.00 |
-| HMAC | **1.09** Graviola ⚡ |  | 1.01 |  |  |  |
-| HKDF | **1.34** rind ⚡ |  | 0.96 |  |  |  |
-| PBKDF2 | 0.94 rind |  | 0.91 |  |  |  |
-| X25519 | 1.02 s2n-bignum ✓ | 1.00 | 1.00 |  |  |  |
-| Ed25519 | **1.03** s2n-bignum ✓ + Graviola ⚡ | **1.03** | 1.01 |  |  |  |
-| P-256 ECDH, ECDSA | **1.11** s2n-bignum ✓ + Graviola ⚡ | **1.17** | **1.08** |  |  |  |
+| AES-GCM | **1.35** BoringSSL ⚡ + Graviola |  | **1.05** Graviola | 0.85 | **1.09** aws-lc + rind | 0.84 |
+| AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 0.99 | 0.99 | 1.01 aws-lc | 0.85 |
+| ChaCha20 (header protection) | 0.96 Graviola |  | 0.95 aws-lc ⚡ | 0.93 | 0.95 | 0.92 |
+| ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.02 aws-lc ⚡ |  | 1.00 |  | **1.12** aws-lc ⚡ + Graviola ⚡ | **1.10** |
+| SHA-1 | 1.00 rind |  | 1.00 aws-lc | 1.02 |  | 1.01 |
+| SHA-256 | **1.20** Graviola ⚡ |  | **1.34** aws-lc ⚡ | **1.07** |  | **1.03** |
+| SHA-384, SHA-512, SHA-512/256 | **1.04** aws-lc ⚡ |  | 1.01 | 1.02 |  | 1.01 |
+| HMAC | **1.08** Graviola ⚡ |  | 1.01 |  |  |  |
+| HKDF | **1.30** rind ⚡ |  | 1.01 |  |  |  |
+| PBKDF2 | 0.94 rind |  | 0.93 |  |  |  |
+| X25519 | 1.01 s2n-bignum ✓ | 1.00 | 1.02 |  |  |  |
+| Ed25519 | **1.04** s2n-bignum ✓ + Graviola ⚡ | **1.03** | **1.03** |  |  |  |
+| P-256 ECDH, ECDSA | **1.11** s2n-bignum ✓ + Graviola ⚡ | **1.17** | **1.12** |  |  |  |
 | P-384 ECDH, ECDSA | 0.90 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.91 | 0.92 |  |  |  |
 | P-521 ECDH, ECDSA | 0.94 s2n-bignum ✓ + rind ⚡ | 0.95 | 0.95 |  |  |  |
-| ML-KEM-768 | **1.22** s2n-bignum ✓ + Graviola ⚡ |  | 0.95 mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
-| RSA signatures, key generation | **1.05** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | **1.05** aws-lc ⚡ + Graviola ⚡ | **1.06** |  |  |  |
-| rind-rustls handshakes | 0.99 |  | **1.05** |  |  |  |
-| rind-rustls 1 MB transfer | **1.08** |  | **1.04** |  |  |  |
+| ML-KEM-768 | **1.22** s2n-bignum ✓ + Graviola ⚡ |  | 0.99 mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
+| RSA signatures, key generation | **1.07** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | **1.05** aws-lc ⚡ + Graviola ⚡ | **1.05** |  |  |  |
+| rind-rustls handshakes | 0.98 |  | **1.05** |  |  |  |
+| rind-rustls 1 MB transfer | 1.02 |  | 1.01 |  |  |  |
 
 aarch64 runs a Neoverse-N2, with the crypto extension and the SHA-512 and
 SHA-3 instructions; no crypto denies them, as a Raspberry Pi 4 lacks them.
 armv7 runs on the same core in 32-bit mode, with NEON and the crypto
 extension; without them it runs the code [Symmetric
-cryptography](#symmetric-cryptography) names. aarch64 RSA, and the
-handshakes it signs, are pending [run 41378010740], the first since aws-lc's
-Montgomery multiplication took its 1536-, 3072-, and 4096-bit moduli.
+cryptography](#symmetric-cryptography) names. aarch64 RSA trails only ring,
+at every size but 3072 bits; it is level with aws-lc-rs or faster at every
+size. The run predates [#206], which changed aarch64 RSA only at sizes the
+run doesn't time.
 
 | Algorithm | aarch64 | no crypto | armv7 |
 |---|---|---|---|
 | AES-GCM | 1.02 s2n-bignum ⚡ + Graviola | 1.00 aws-lc + rind | 0.99 |
-| AES block, AES-CTR | **1.17** Graviola + rind | 1.00 aws-lc | 0.99 |
+| AES block, AES-CTR | **1.18** Graviola + rind | 1.01 aws-lc | 0.99 |
 | ChaCha20 (header protection) | **1.03** Graviola | 0.96 | 0.87 aws-lc ⚡ |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ | 1.00 | **1.06** |
 | SHA-1 | 1.01 rind | 1.00 aws-lc | 1.01 |
-| SHA-256 | **1.30** Graviola ⚡ | **1.14** aws-lc | **1.04** aws-lc ⚡ |
+| SHA-256 | **1.30** Graviola ⚡ | **1.15** aws-lc | **1.04** aws-lc ⚡ |
 | SHA-384, SHA-512, SHA-512/256 | 1.00 aws-lc ✓ | 1.00 | **1.12** aws-lc ⚡ |
 | HMAC | **1.30** Graviola ⚡ | 1.00 | **1.28** |
 | HKDF | **1.48** rind ⚡ | 0.99 | **1.59** |
-| PBKDF2 | 0.95 rind | 0.93 | 0.99 |
+| PBKDF2 | 0.95 rind | 0.93 | 0.98 |
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
 | Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
-| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | **2.61** HACL\* ✓ |
+| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 1.00 | **2.63** HACL\* ✓ |
 | P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.09** fiat-crypto ✓ + rind ⚡ |
-| P-521 ECDH, ECDSA | 0.65 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.06** fiat-crypto ✓ + rind ⚡ |
+| P-521 ECDH, ECDSA | 0.65 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.05** fiat-crypto ✓ + rind ⚡ |
 | ML-KEM-768 | **1.12** s2n-bignum ✓ + Graviola ⚡ | 0.99 | **1.05** libcrux-ml-kem ✓ |
-| RSA signatures, key generation | pending: s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | pending | **6.44** HACL\* ✓ |
-| rind-rustls handshakes | pending | pending | **2.49** |
+| RSA signatures, key generation | **1.56** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | 1.00 | **6.42** HACL\* ✓ |
+| rind-rustls handshakes | **1.49** | 0.99 | **2.50** |
 | rind-rustls 1 MB transfer | 1.00 | 1.00 | 1.01 |
 
 The table describes `main`, and changes alongside the code it describes. The
@@ -236,8 +240,8 @@ different one, updates this table and [LICENSE] in the same PR.
 [SUPERCOP]: https://bench.cr.yp.to/supercop.html
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
-[run 41363822221]: https://github.com/moq-dev/rind/actions/runs/41363822221
 [run 41378010740]: https://github.com/moq-dev/rind/actions/runs/41378010740
+[#206]: https://github.com/moq-dev/rind/pull/206
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
