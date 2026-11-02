@@ -58,7 +58,7 @@ mod entry;
 mod posint;
 
 pub(crate) use entry::Entry;
-pub(crate) use generic::blockwise::Blockwise;
+pub(crate) use generic::blockwise::{Blockwise, pad_message};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]

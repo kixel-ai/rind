@@ -71,15 +71,18 @@ impl RsaPublicKey {
             accum.mont_sqr_into(spare, &self.n, self.n0);
             core::mem::swap(&mut accum, &mut spare);
 
+            // e is odd, so the last step multiplies, and by c itself rather
+            // than c_mont it takes the result out of the montgomery domain
+            // too, saving a multiplication.
             let mask = 1 << bit;
             if self.e & mask == mask {
-                accum.mont_mul_into(&c_mont, spare, &self.n, self.n0);
+                let term = if bit == 0 { &c } else { &c_mont };
+                accum.mont_mul_into(term, spare, &self.n, self.n0);
                 core::mem::swap(&mut accum, &mut spare);
             }
         }
 
-        // drop accumulator out of montgomery domain
-        Ok(accum.clone().from_montgomery(&self.n))
+        Ok(accum.clone())
     }
 }
 

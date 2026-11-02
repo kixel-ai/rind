@@ -97,14 +97,7 @@ impl Key {
             return Err(Error::WrongLength);
         }
 
-        Ok(Self(match algorithm.id {
-            AlgorithmId::Aes128Gcm | AlgorithmId::Aes256Gcm => {
-                Inner::AesGcm(ManuallyDrop::new(AesGcm::new(key)?))
-            }
-            AlgorithmId::ChaCha20Poly1305 => Inner::ChaCha20Poly1305(ManuallyDrop::new(
-                ChaCha20Poly1305::new(key.try_into().map_err(|_| Error::WrongLength)?),
-            )),
-        }))
+        Ok(Self(Inner::new(algorithm, key)))
     }
 
     /// Encrypts `in_out` in place and returns the tag.
@@ -193,6 +186,25 @@ impl Key {
 enum Inner {
     AesGcm(ManuallyDrop<AesGcm>),
     ChaCha20Poly1305(ManuallyDrop<ChaCha20Poly1305>),
+}
+
+impl Inner {
+    /// Expands `key`, which the caller has checked is `algorithm`'s length.
+    ///
+    /// Not inlined, so each function wraps a value in one layer, and LLVM
+    /// builds it in the caller's slot: two layers in one function, as
+    /// `Ok(Key(Inner::AesGcm(..)))`, copied the whole key twice.
+    #[inline(never)]
+    fn new(algorithm: &Algorithm, key: &[u8]) -> Self {
+        match algorithm.id {
+            AlgorithmId::Aes128Gcm | AlgorithmId::Aes256Gcm => {
+                Self::AesGcm(ManuallyDrop::new(AesGcm::new(key)))
+            }
+            AlgorithmId::ChaCha20Poly1305 => Self::ChaCha20Poly1305(ManuallyDrop::new(
+                ChaCha20Poly1305::new(key.try_into().unwrap()),
+            )),
+        }
+    }
 }
 
 impl Drop for Inner {
