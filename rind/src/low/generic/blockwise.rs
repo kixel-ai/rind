@@ -32,13 +32,15 @@ impl<const N: usize> Blockwise<N> {
     }
 
     /// Adds `bytes`, passing each run of whole blocks to `blocks` in order and
-    /// holding the rest.
+    /// holding the rest: what is short of a whole block, or the last whole
+    /// block until more follows, so a hash can compress it with its padding
+    /// in one call.
     pub(crate) fn update(&mut self, bytes: &[u8], blocks: impl FnMut(&[u8])) {
         let used = self.used;
         // A short update, such as a one-byte one, only copies. Storing
         // `used` first, and leaving blocks to another function, lets it
         // save no registers and tail-call the copy.
-        if bytes.len() < N - used {
+        if bytes.len() <= N - used {
             self.used = used + bytes.len();
             self.buffer[used..used + bytes.len()].copy_from_slice(bytes);
         } else {
@@ -46,6 +48,7 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
+    /// As [`Self::update`], for `bytes` longer than the room left.
     #[inline(never)]
     fn complete_blocks(&mut self, mut bytes: &[u8], mut blocks: impl FnMut(&[u8])) {
         let used = self.used;
@@ -56,7 +59,8 @@ impl<const N: usize> Blockwise<N> {
             bytes = rest;
         }
 
-        let (whole, rest) = bytes.split_at(bytes.len() - bytes.len() % N);
+        // Holds the last 1 to N bytes.
+        let (whole, rest) = bytes.split_at((bytes.len() - 1) / N * N);
         if !whole.is_empty() {
             blocks(whole);
         }
@@ -98,7 +102,7 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
-    /// The bytes held short of a whole block.
+    /// The bytes [`Self::update`] holds, up to one whole block.
     pub(crate) fn buffered(&self) -> &[u8] {
         &self.buffer[..self.used]
     }
@@ -108,4 +112,29 @@ impl<const N: usize> Blockwise<N> {
         self.buffer[..trailing.len()].copy_from_slice(trailing);
         self.used += trailing.len();
     }
+}
+
+/// Pads the end of `message` for a Merkle-Damgard hash of `N`-byte blocks:
+/// a 0x80 byte, zeroes, and `length`. Returns the whole blocks to compress
+/// first, then the rest padded in `last`, which must be zeroed. The rest takes
+/// the message's last whole block too where the padding fits after it, so the
+/// routine runs once over both.
+pub(crate) fn pad_message<'m, 'l, const N: usize, const L: usize>(
+    message: &'m [u8],
+    length: [u8; L],
+    last: &'l mut [[u8; N]; 2],
+) -> (&'m [u8], &'l [u8]) {
+    let tail = message.len() % N;
+    let start = if tail + 1 + L <= N && message.len() >= N {
+        message.len() - tail - N
+    } else {
+        message.len() - tail
+    };
+    let (blocks, rest) = message.split_at(start);
+    let padded = if rest.len() + 1 + L <= N { N } else { 2 * N };
+    let last = &mut last.as_flattened_mut()[..padded];
+    last[..rest.len()].copy_from_slice(rest);
+    last[rest.len()] = 0x80;
+    last[padded - L..].copy_from_slice(&length);
+    (blocks, last)
 }

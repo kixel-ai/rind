@@ -3,8 +3,9 @@
 //! The s2n-bignum routines `low::PosInt` uses beyond Montgomery
 //! multiplication, with their contracts, in portable Rust for armv7.
 //!
-//! Each runs in time that depends only on its lengths, never on its values:
-//! loops run a count fixed by the lengths, and selects are masks. Arithmetic
+//! Each runs in time that depends only on its lengths, and its modulus's
+//! width in `bignum_montifier`, never on its values: loops run a count fixed
+//! by those, and selects are masks. Arithmetic
 //! on values wraps, though the bounds rule out overflow, since a debug build's
 //! overflow check would branch on them. Products
 //! are formed from 32-bit halves, which a 32-bit core multiplies in one
@@ -14,6 +15,8 @@
 //! it is defined: Montgomery multiplication and reduction (HAC 14.32 and
 //! 14.36), and Stein's binary gcd and inversion (HAC 14.54 and 14.61)
 //! rearranged to run a fixed number of steps.
+
+use crate::low::ct;
 
 /// The widest value any of these takes: an 8192-bit modulus.
 const MAX_WORDS: usize = 128;
@@ -198,21 +201,29 @@ pub(crate) fn bignum_modsub(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
 /// Input m[k]; output z[k]; temporary buffer t[>=k]
 ///
 /// For an odd m above one, as Montgomery multiplication needs. `_t` is
-/// s2n-bignum's scratch space, which this does not need.
+/// s2n-bignum's scratch space, which this does not need. Its time also
+/// depends on, and so reveals, m's width in 32-bit limbs, as aws-lc's
+/// reveals its width in bits: an RSA key's encoding gives its primes' widths.
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
     let n = m.len() * 2;
     let m = halves(m);
     let m = &m[..n];
     let n0 = neg_inverse(m[0]);
 
-    // Doubling 1 (64k + 1) times gives 2^(64k + 1) mod m, which is 2 in
+    // 2^32t for m's top nonzero limb t is below m, as m is odd and above one.
+    // Doubling it (32(n - t) + 1) times gives 2^(32n + 1) mod m, which is 2 in
     // Montgomery form. Squaring 2^e there gives 2^2e, and doubling 2^(e + 1),
-    // so squaring and doubling by the bits of 64k below its top one raise
-    // it to 2^64k, whose Montgomery form 2^128k is the montifier.
+    // so squaring and doubling by the bits of 32n below its top one raise
+    // it to 2^32n, whose Montgomery form 2^64n is the montifier.
+    let mut top = 0;
+    for (i, limb) in m.iter().enumerate() {
+        top = select(nonzero(u64::from(*limb)), i as u64, top);
+    }
+    let top = ct::into_public(top) as usize;
     let mut r = [0; MAX_LIMBS];
     let r = &mut r[..n];
-    r[0] = 1;
-    for _ in 0..=32 * n {
+    r[top] = 1;
+    for _ in 0..=32 * (n - top) {
         mod_double(r, m);
     }
     let e = 32 * n;

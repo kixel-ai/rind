@@ -3,10 +3,7 @@ name: Check
 permissions:
   contents: read
 
-# PRs land through the host land gate, which runs `just ci` over each batch's
-# diff on the maintainer's host. A push to `main` runs every crate, so a tool or advisory
-# that changed under an untouched crate shows too. The platform matrix and the
-# deeper suites run nightly in the other workflows.
+# Main checks every crate; Queue checks each picked PR against its base.
 on:
   push:
     branches:

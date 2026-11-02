@@ -123,18 +123,24 @@ const SHA3: u8 = 1 << 2;
 const DIT: u8 = 1 << 3;
 const DETECTED: u8 = 1 << 7;
 
-/// The detected features, read once.
-fn features() -> u8 {
-    static FEATURES: AtomicU8 = AtomicU8::new(0);
+static FEATURES: AtomicU8 = AtomicU8::new(0);
 
+/// The detected features, read once. Inlined, so a check is a load and a
+/// test, with the first call's detection out of line.
+#[inline]
+fn features() -> u8 {
     match FEATURES.load(Ordering::Relaxed) {
-        0 => {
-            let features = detect() | DETECTED;
-            FEATURES.store(features, Ordering::Relaxed);
-            features
-        }
+        0 => detect_once(),
         features => features,
     }
+}
+
+#[cold]
+#[inline(never)]
+fn detect_once() -> u8 {
+    let features = detect() | DETECTED;
+    FEATURES.store(features, Ordering::Relaxed);
+    features
 }
 
 fn detect() -> u8 {
