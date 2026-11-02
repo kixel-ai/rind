@@ -24,10 +24,12 @@ proptest! {
     #[test]
     fn hashes_match_aws_lc_rs(
         message in vec(any::<u8>(), 0..1024),
-        split in any::<prop::sample::Index>(),
+        splits in vec(any::<prop::sample::Index>(), 0..4),
     ) {
-        // Two updates split anywhere exercise the partial-block buffering.
-        let split = split.index(message.len() + 1);
+        // Updates split anywhere exercise the partial-block buffering: one
+        // that fills a block exactly, or spans several, after a partial one.
+        let mut splits: Vec<_> = splits.iter().map(|s| s.index(message.len() + 1)).collect();
+        splits.sort();
         for (ours, theirs) in [
             (&rind::digest::legacy::SHA1, &digest::SHA1_FOR_LEGACY_USE_ONLY),
             (&rind::digest::SHA256, &digest::SHA256),
@@ -36,8 +38,11 @@ proptest! {
             (&rind::digest::SHA512_256, &digest::SHA512_256),
         ] {
             let mut ctx = rind::digest::Context::new(ours);
-            ctx.update(&message[..split]);
-            ctx.update(&message[split..]);
+            let mut start = 0;
+            for &end in splits.iter().chain([&message.len()]) {
+                ctx.update(&message[start..end]);
+                start = end;
+            }
             let (got, wanted) = (ctx.finish(), digest::digest(theirs, &message));
             prop_assert_eq!(got.as_ref(), wanted.as_ref());
         }
