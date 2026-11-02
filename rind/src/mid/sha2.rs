@@ -36,12 +36,16 @@ impl Sha256State {
     pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
         debug_assert!(blocks.len().is_multiple_of(Sha256Context::BLOCK_SZ));
         if !blocks.is_empty() {
-            verify_cpu_features();
-            crate::low::sha256_compress_blocks(&mut self.h, blocks);
+            Self::compress(&mut self.h, blocks);
             self.nblocks = self
                 .nblocks
                 .saturating_add((blocks.len() / Sha256Context::BLOCK_SZ) as u64);
         }
+    }
+
+    fn compress(h: &mut [u32; 8], blocks: &[u8]) {
+        verify_cpu_features();
+        crate::low::sha256_compress_blocks(h, blocks);
     }
 
     /// The hash of the input so far followed by `message`, leaving this state as it was.
@@ -55,24 +59,29 @@ impl Sha256State {
             .and_then(|bytes| bytes.checked_mul(8))
             .expect("excess data processed by hash function");
 
-        let mut state = self.clone();
-        state.update_blocks(blocks);
+        // Copies `h` alone: copying the whole state can leave it straddling
+        // two stores, which the SHA extensions' 16-byte load of it then
+        // waits on instead of forwarding.
+        let mut h = self.h;
+        if !blocks.is_empty() {
+            Self::compress(&mut h, blocks);
+        }
 
         let mut block = [0u8; BLOCK_SZ];
         block[..tail.len()].copy_from_slice(tail);
         block[tail.len()] = 0x80;
         // The length takes a block of its own when the tail leaves no room for it.
         if tail.len() >= BLOCK_SZ - 8 {
-            state.update_blocks(&block);
+            Self::compress(&mut h, &block);
             block = [0u8; BLOCK_SZ];
         }
         block[BLOCK_SZ - 8..].copy_from_slice(&bits.to_be_bytes());
-        state.update_blocks(&block);
+        Self::compress(&mut h, &block);
 
         let mut r = [0u8; Sha256Context::OUTPUT_SZ];
         let (chunks, _) = r.as_chunks_mut::<4>();
-        for (out, h) in chunks.iter_mut().zip(state.h.iter()) {
-            out.copy_from_slice(&h.to_be_bytes());
+        for (out, word) in chunks.iter_mut().zip(h.iter()) {
+            out.copy_from_slice(&word.to_be_bytes());
         }
         r
     }
@@ -263,12 +272,16 @@ impl Sha512State {
     pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
         debug_assert!(blocks.len().is_multiple_of(Sha512Context::BLOCK_SZ));
         if !blocks.is_empty() {
-            verify_cpu_features();
-            crate::low::sha512_compress_blocks(&mut self.h, blocks);
+            Self::compress(&mut self.h, blocks);
             self.nblocks = self
                 .nblocks
                 .saturating_add((blocks.len() / Sha512Context::BLOCK_SZ) as u64);
         }
+    }
+
+    fn compress(h: &mut [u64; 8], blocks: &[u8]) {
+        verify_cpu_features();
+        crate::low::sha512_compress_blocks(h, blocks);
     }
 
     /// The hash of the input so far followed by `message`, leaving this state as it was.
@@ -277,24 +290,29 @@ impl Sha512State {
         let (blocks, tail) = message.split_at(message.len() & !(BLOCK_SZ - 1));
         let bits = (u128::from(self.nblocks) * BLOCK_SZ as u128 + message.len() as u128) * 8;
 
-        let mut state = self.clone();
-        state.update_blocks(blocks);
+        // Copies `h` alone: copying the whole state can leave it straddling
+        // two stores, which the SHA extensions' 16-byte load of it then
+        // waits on instead of forwarding.
+        let mut h = self.h;
+        if !blocks.is_empty() {
+            Self::compress(&mut h, blocks);
+        }
 
         let mut block = [0u8; BLOCK_SZ];
         block[..tail.len()].copy_from_slice(tail);
         block[tail.len()] = 0x80;
         // The length takes a block of its own when the tail leaves no room for it.
         if tail.len() >= BLOCK_SZ - 16 {
-            state.update_blocks(&block);
+            Self::compress(&mut h, &block);
             block = [0u8; BLOCK_SZ];
         }
         block[BLOCK_SZ - 16..].copy_from_slice(&bits.to_be_bytes());
-        state.update_blocks(&block);
+        Self::compress(&mut h, &block);
 
         let mut r = [0u8; Sha512Context::OUTPUT_SZ];
         let (chunks, _) = r.as_chunks_mut::<8>();
-        for (out, h) in chunks.iter_mut().zip(state.h.iter()) {
-            out.copy_from_slice(&h.to_be_bytes());
+        for (out, word) in chunks.iter_mut().zip(h.iter()) {
+            out.copy_from_slice(&word.to_be_bytes());
         }
         r
     }
