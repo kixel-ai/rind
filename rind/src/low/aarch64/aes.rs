@@ -72,29 +72,10 @@ pub(crate) struct AesKey128 {
 }
 
 impl AesKey128 {
-    pub(crate) fn new(key: &[u8; 16], token: HaveCryptoExt) -> Self {
-        // we do the key expansion in 32 bit words, then convert
-        // uint8x16_t as the final step.
-        let mut rk32 = [0; (10 + 1) * 4];
-        rk32[0] = u32::from_be_bytes(key[0..4].try_into().unwrap());
-        rk32[1] = u32::from_be_bytes(key[4..8].try_into().unwrap());
-        rk32[2] = u32::from_be_bytes(key[8..12].try_into().unwrap());
-        rk32[3] = u32::from_be_bytes(key[12..16].try_into().unwrap());
-
-        for r in 1..11 {
-            let (prev, current) = &mut rk32[((r - 1) * 4)..((r + 1) * 4)].split_at_mut(4);
-            current[0] = sub_word(prev[3].rotate_left(8), token) ^ (RCON[r - 1] << 24) ^ prev[0];
-            current[1] = current[0] ^ prev[1];
-            current[2] = current[1] ^ prev[2];
-            current[3] = current[2] ^ prev[3];
-        }
-
+    pub(crate) fn new(key: &[u8; 16], _: HaveCryptoExt) -> Self {
         let mut round_keys = [zero(); 10 + 1];
-        for (i, rk) in rk32.chunks(4).enumerate() {
-            // SAFETY: `rk` is 128-bit in size; `vld1q_u8` has no alignment req.
-            round_keys[i] = unsafe { vrev32q_u8(vld1q_u8(rk.as_ptr().cast())) };
-        }
-
+        // SAFETY: the token proves the CPU has the AES instructions.
+        unsafe { aes128_expand(key, &mut round_keys) };
         Self { round_keys }
     }
 
@@ -115,38 +96,10 @@ pub(crate) struct AesKey256 {
 }
 
 impl AesKey256 {
-    pub(crate) fn new(key: &[u8; 32], token: HaveCryptoExt) -> Self {
-        let mut rk32 = [0; (14 + 1) * 4];
-        rk32[0] = u32::from_be_bytes(key[0..4].try_into().unwrap());
-        rk32[1] = u32::from_be_bytes(key[4..8].try_into().unwrap());
-        rk32[2] = u32::from_be_bytes(key[8..12].try_into().unwrap());
-        rk32[3] = u32::from_be_bytes(key[12..16].try_into().unwrap());
-        rk32[4] = u32::from_be_bytes(key[16..20].try_into().unwrap());
-        rk32[5] = u32::from_be_bytes(key[20..24].try_into().unwrap());
-        rk32[6] = u32::from_be_bytes(key[24..28].try_into().unwrap());
-        rk32[7] = u32::from_be_bytes(key[28..32].try_into().unwrap());
-
-        for r in 2..15 {
-            let (prev, current) = &mut rk32[((r - 2) * 4)..((r + 1) * 4)].split_at_mut(8);
-            if r & 1 == 1 {
-                // odd round
-                current[0] = sub_word(prev[7], token) ^ prev[0];
-            } else {
-                // even round
-                current[0] =
-                    sub_word(prev[7].rotate_left(8), token) ^ (RCON[(r - 1) / 2] << 24) ^ prev[0];
-            }
-            current[1] = current[0] ^ prev[1];
-            current[2] = current[1] ^ prev[2];
-            current[3] = current[2] ^ prev[3];
-        }
-
+    pub(crate) fn new(key: &[u8; 32], _: HaveCryptoExt) -> Self {
         let mut round_keys = [zero(); 14 + 1];
-        for (i, rk) in rk32.chunks(4).enumerate() {
-            // SAFETY: `rk` is 128-bit in size; `vld1q_u8` has no alignment req.
-            round_keys[i] = unsafe { vrev32q_u8(vld1q_u8(rk.as_ptr().cast())) };
-        }
-
+        // SAFETY: the token proves the CPU has the AES instructions.
+        unsafe { aes256_expand(key, &mut round_keys) };
         Self { round_keys }
     }
 
@@ -165,29 +118,69 @@ fn zero() -> uint8x16_t {
     unsafe { vdupq_n_u8(0) }
 }
 
-fn sub_word(w: u32, _: HaveCryptoExt) -> u32 {
-    // SAFETY: the token proves the CPU has the AES instructions.
-    unsafe { _sub_word(w) }
+const RCON: [u32; 10] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+
+// The key schedule in vector registers, as aws-lc's `aes_hw_set_encrypt_key`
+// runs it, rather than word by word through general registers.
+#[target_feature(enable = "aes")]
+fn aes128_expand(key: &[u8; 16], out: &mut [uint8x16_t; 11]) {
+    // SAFETY: `key` is 16 readable bytes
+    let mut t = unsafe { vld1q_u8(key.as_ptr()) };
+    out[0] = t;
+
+    for (rk, rcon) in out[1..].iter_mut().zip(RCON) {
+        t = veorq_u8(xor_prefix(t), sub_rot_word(t, rcon));
+        *rk = t;
+    }
 }
 
 #[target_feature(enable = "aes")]
-fn _sub_word(w: u32) -> u32 {
-    // we have the `aese` instruction, which is
-    // `sub_word(shift_rows(w), S)`. however, fortunately
-    // `shift_rows` is the identity for the first 32-bit word
+fn aes256_expand(key: &[u8; 32], out: &mut [uint8x16_t; 15]) {
+    // SAFETY: `key` is 32 readable bytes
+    let (mut a, mut b) = unsafe { (vld1q_u8(key.as_ptr()), vld1q_u8(key[16..].as_ptr())) };
+    out[0] = a;
+    out[1] = b;
 
-    let t2 = vdupq_n_u32(w);
-    let t2 = vreinterpretq_u8_u32(t2);
-    let z = vdupq_n_u8(0);
-    let t2 = vaeseq_u8(t2, z);
-    let mut out: u32 = 0;
-    let t2 = vreinterpretq_u32_u8(t2);
-    // SAFETY: out is a writable u32
-    unsafe { vst1q_lane_u32(&mut out, t2, 0) };
-    out
+    // Round keys alternate: the first of each pair takes RotWord and the
+    // round constant, as AES-128's do, and the second only SubWord.
+    for (i, rcon) in RCON[..7].iter().enumerate() {
+        a = veorq_u8(xor_prefix(a), sub_rot_word(b, *rcon));
+        out[2 * i + 2] = a;
+        if i == 6 {
+            break;
+        }
+        let w3 = vreinterpretq_u8_u32(vdupq_laneq_u32::<3>(vreinterpretq_u32_u8(a)));
+        b = veorq_u8(xor_prefix(b), vaeseq_u8(w3, zero()));
+        out[2 * i + 3] = b;
+    }
 }
 
-const RCON: [u32; 10] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+/// SubWord(RotWord(w3)) XOR `rcon` in every word, where w3 is `t`'s last.
+///
+/// `aese` with a zero key on four equal columns is SubBytes alone, since
+/// ShiftRows moves nothing.
+#[inline]
+#[target_feature(enable = "aes")]
+fn sub_rot_word(t: uint8x16_t, rcon: u32) -> uint8x16_t {
+    const ROT_WORD_3: [u8; 16] = [
+        13, 14, 15, 12, 13, 14, 15, 12, 13, 14, 15, 12, 13, 14, 15, 12,
+    ];
+    // SAFETY: `ROT_WORD_3` is 16 readable bytes
+    let rot = vqtbl1q_u8(t, unsafe { vld1q_u8(ROT_WORD_3.as_ptr()) });
+    veorq_u8(
+        vaeseq_u8(rot, zero()),
+        vreinterpretq_u8_u32(vdupq_n_u32(rcon)),
+    )
+}
+
+/// Each word of `t` XORed with the words before it: the round key's words
+/// before the SubWord term is added.
+#[inline]
+#[target_feature(enable = "neon")]
+fn xor_prefix(t: uint8x16_t) -> uint8x16_t {
+    let t = veorq_u8(t, vextq_u8::<12>(zero(), t));
+    veorq_u8(t, vextq_u8::<8>(zero(), t))
+}
 
 #[target_feature(enable = "aes")]
 fn aes128_block(round_keys: &[uint8x16_t; 11], block_inout: &mut [u8]) {

@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! s2n-bignum's routines that are generic over an odd modulus, for the
-//! group orders armv7 has fiat-crypto arithmetic for, told apart by their
-//! length: n_384 and n_521.  Each refuses any other modulus.
+//! s2n-bignum's routines that are generic over an odd modulus, for armv7:
+//! fiat-crypto's arithmetic for the group orders it has, n_384 and n_521,
+//! and `bignum`'s for any other modulus, as RSA's are. Montgomery
+//! multiplication and its inverse serve only the group orders, and refuse
+//! any other modulus.
 
-use super::{p384, p521};
+use super::{bignum, p384, p521};
+use crate::low::{bignum_eq, ct};
 
 /// z := x * y / 2^(64k) mod m, for m = n_384 or n_521 of k words
 pub(crate) fn bignum_montmul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
@@ -22,27 +25,38 @@ pub(crate) fn bignum_demont(z: &mut [u64], x: &[u64], m: &[u64]) {
     }
 }
 
-/// z := (x + y) mod m, for m = n_384 or n_521
+/// z := (x + y) mod m, assuming x and y reduced
 pub(crate) fn bignum_modadd(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
-    match m.len() {
-        6 => p384::bignum_modadd(z, x, y, m),
-        _ => p521::bignum_modadd(z, x, y, m),
+    match order(m) {
+        Some(Order::N384) => p384::bignum_modadd(z, x, y, m),
+        Some(Order::N521) => p521::bignum_modadd(z, x, y, m),
+        None => bignum::bignum_modadd(z, x, y, m),
     }
 }
 
-/// z := a^-1 mod b, for b = n_384 or n_521
+/// z := a^-1 mod b, for an odd b > 1 coprime to a
 pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], t: &mut [u64]) {
-    match b.len() {
-        6 => p384::bignum_modinv(z, a, b, t),
-        _ => p521::bignum_modinv(z, a, b, t),
+    match order(b) {
+        Some(Order::N384) => p384::bignum_modinv(z, a, b, t),
+        Some(Order::N521) => p521::bignum_modinv(z, a, b, t),
+        None => bignum::bignum_modinv(z, a, b, t),
     }
 }
 
-/// z := 2^(128k) mod m, for m = n_384 or n_521 of k words
-#[cfg(test)]
-pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], t: &mut [u64]) {
-    match m.len() {
-        6 => p384::bignum_montifier(z, m, t),
-        _ => p521::bignum_montifier(z, m, t),
+enum Order {
+    N384,
+    N521,
+}
+
+/// Which group order `m` is, if any. An RSA modulus may be secret, so it is
+/// compared in constant time, revealing only that it is no group order.
+fn order(m: &[u64]) -> Option<Order> {
+    let is = |n: &[u64]| m.len() == n.len() && ct::into_public(bignum_eq(m, n));
+    if is(&p384::N) {
+        Some(Order::N384)
+    } else if is(&p521::N) {
+        Some(Order::N521)
+    } else {
+        None
     }
 }
