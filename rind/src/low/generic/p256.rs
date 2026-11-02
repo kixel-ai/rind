@@ -11,8 +11,8 @@
 //! 64-bit accumulators instead (`umaal`), as Montgomery's method in the
 //! textbook form, with no secret-dependent branch or index either.  It is
 //! not proven: the tests check it against fiat-crypto and s2n-bignum.
-//! fiat-crypto has no unsaturated P-256, whose prime's terms fall between
-//! the limbs of any 32-bit radix, so its bounds checks fail.  The rest
+//! fiat-crypto cannot generate an unsaturated P-256, as it does P-521: its
+//! bounds checks fail at every 32-bit limb count from 9 to 16.  The rest
 //! composes those: the point formulas repeat s2n-bignum's operation
 //! sequences, and every coordinate is fully reduced, so results match it
 //! word for word; inversion is Fermat's little theorem, raising to a public
