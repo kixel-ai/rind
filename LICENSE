@@ -78,7 +78,8 @@ HACL* <https://github.com/hacl-star/hacl-star>, through libcrux
 
 aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
 
-  What: the files under rind/src/low/{arm,aarch64,x86_64}/aws_lc, which
+  What: the files under rind/src/low/{arm,aarch64,x86_64}/aws_lc but
+  the mlkem_* ones (see mlkem-native), which
   admin/import-aws-lc takes from aws-lc's assembly at commit
   91c93a8eb860e51482a871a8772cb9b1b310baea,
   rind/src/low/arm/poly1305_arm.rs,
@@ -162,7 +163,11 @@ mlkem-native <https://github.com/pq-code-package/mlkem-native>
   What: rind/src/low/generic/mlkem_poly.rs, which ports mlkem-native's
   portable C polynomial arithmetic (mlkem/poly.c, poly_k.c, compress.c,
   sampling.c, and zetas.inc, as aws-lc vendors them at commit
-  91c93a8eb860e51482a871a8772cb9b1b310baea) to Rust.
+  91c93a8eb860e51482a871a8772cb9b1b310baea) to Rust; and
+  rind/src/low/x86_64/aws_lc/mlkem_*, which admin/import-aws-lc takes from
+  mlkem-native's x86_64 AVX2 assembly as aws-lc vendors it at that commit,
+  with the tables of its compress_consts.c in
+  rind/src/low/x86_64/mlkem_compress.rs.
   Copyright (c) The mlkem-native project authors
   License: Apache-2.0 OR ISC OR MIT.
 
