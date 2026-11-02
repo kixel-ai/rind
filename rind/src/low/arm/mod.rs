@@ -6,7 +6,7 @@
 //!
 //! libcrux exposes only a few operations at this layer's granularity.  The
 //! rest are swapped in `mid`, where libcrux's whole operations fit, except
-//! P-384, whose arithmetic is fiat-crypto's in `generic::p384`.
+//! the NIST curves, whose arithmetic is fiat-crypto's in `generic`.
 
 /// The symbol for an aws-lc routine, qualified by rind's version so two
 /// semver-incompatible copies of rind can link into one binary.

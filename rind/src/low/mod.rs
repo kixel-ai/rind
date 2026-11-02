@@ -32,8 +32,10 @@ mod generic {
     // armv7's group orders, picked from by modulus.
     #[cfg(target_arch = "arm")]
     pub(crate) mod order;
-    // armv7's P-384 and P-521, also built in tests elsewhere to check them
-    // against s2n-bignum.
+    // armv7's P-256, P-384, and P-521, also built in tests elsewhere to
+    // check them against s2n-bignum.
+    #[cfg(any(target_arch = "arm", test))]
+    pub(crate) mod p256;
     #[cfg(any(target_arch = "arm", test))]
     pub(crate) mod p384;
     #[cfg(any(target_arch = "arm", test))]
@@ -277,11 +279,18 @@ cfg_if::cfg_if! {
         pub(crate) use arm::bignum_eq::bignum_eq;
         pub(crate) use arm::curve25519::{curve25519_x25519, curve25519_x25519base};
         pub(crate) use arm::posint::{PosInt, SecretPosInt};
-        // libcrux exports P-384 only as ECDH, and has no P-521, so their
-        // arithmetic is fiat-crypto's.
+        // libcrux's P-256 runs 64-bit limbs and recomputes the nonce's point
+        // to sign, it exports P-384 only as ECDH, and it has no P-521, so
+        // their arithmetic is fiat-crypto's.
         #[cfg(test)]
         pub(crate) use generic::order::bignum_montifier;
         pub(crate) use generic::order::{bignum_demont, bignum_modadd, bignum_modinv, bignum_montmul};
+        pub(crate) use generic::p256::{
+            bignum_add_p256, bignum_demont_p256, bignum_inv_p256, bignum_mod_n256,
+            bignum_montmul_p256, bignum_montsqr_p256, bignum_neg_p256, bignum_tomont_p256,
+            p256_montjadd, p256_montjdouble, p256_montjmixadd, p256_montjscalarmul,
+            p256_scalarmulbase,
+        };
         pub(crate) use generic::p384::{
             bignum_add_p384, bignum_aff_point_select_p384, bignum_demont_p384,
             bignum_inv_p384, bignum_jac_point_select_p384, bignum_mod_n384, bignum_montmul_p384,
