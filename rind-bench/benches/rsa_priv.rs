@@ -136,8 +136,9 @@ fn rsa_pkcs1_sha256_sign_sizes(c: &mut Criterion) {
         let mut group = c.benchmark_group(format!("rsa{bits}-pkcs1-sha256-sign"));
         group.throughput(Throughput::Elements(1));
 
-        // ring refuses private keys over 4096 bits.
-        if bits <= 4096 {
+        // ring signs only with primes of a multiple of 512 bits, and
+        // moduli of at most 4096.
+        if matches!(bits, 3072 | 4096) {
             group.bench_function("ring", |b| {
                 use ring::{rand, rsa, signature};
                 let key = rsa::KeyPair::from_pkcs8(private_key).unwrap();
