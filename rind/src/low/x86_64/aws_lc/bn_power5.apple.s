@@ -129,6 +129,7 @@ L$mont5_power5_body:
 
 L$mont5_power5_epilogue:
 	.byte	0xf3,0xc3
+.p2align	5
 L$mont5_mul4x_internal:
 
 	shlq	$5,%r9
@@ -654,6 +655,7 @@ L$mont5_inner4x:
 	movq	16(%rbp),%r14
 	movq	24(%rbp),%r15
 	jmp	L$mont5_sqr4x_sub_entry
+.p2align	5
 L$mont5___bn_post4x_internal:
 
 	movq	0(%rbp),%r12

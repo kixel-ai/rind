@@ -484,6 +484,7 @@ L$aesni_ctr32_done:
 
 L$aesni_ctr32_epilogue:
 	.byte	0xf3,0xc3
+.p2align	4
 L$aesni__aesni_encrypt8:
 
 	movups	(%rcx),%xmm0

@@ -1877,6 +1877,7 @@
 	movdqa	%xmm14,%xmm10
 	jmp	.Lchacha_poly_open_sse_128_xor_hash
 .cfi_endproc	
+.align	64
 .Lchacha_poly_chacha20_poly1305_open_avx2:
 .cfi_startproc	
 

@@ -134,6 +134,7 @@ L$mont5_powerx5_body:
 
 L$mont5_powerx5_epilogue:
 	.byte	0xf3,0xc3
+.p2align	5
 L$mont5_mulx4x_internal:
 
 	movq	%r9,8(%rsp)
@@ -559,6 +560,7 @@ L$mont5_mulx4x_inner:
 
 
 
+.p2align	5
 .p2align	5
 L$mont5___bn_postx4x_internal:
 
