@@ -139,8 +139,8 @@ impl Portable {
         tag_out: &mut [u8; 16],
     ) -> Result<(), Error> {
         // libcrux reads and writes separate buffers.
-        let plain = cipher_inout.to_vec();
-        match self.key_len {
+        let mut plain = cipher_inout.to_vec();
+        let result = match self.key_len {
             16 => PortableAesGcm128::encrypt(
                 cipher_inout,
                 tag_out,
@@ -150,8 +150,10 @@ impl Portable {
                 &plain,
             ),
             _ => PortableAesGcm256::encrypt(cipher_inout, tag_out, &self.key, nonce, aad, &plain),
-        }
-        .map_err(|_| Error::WrongLength)
+        };
+        // The plaintext copy is on the heap.
+        zeroise(&mut plain);
+        result.map_err(|_| Error::WrongLength)
     }
 
     /// Decrypts in place, returning whether `tag` is right.

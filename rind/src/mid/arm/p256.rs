@@ -66,7 +66,8 @@ pub(crate) type VerifyingKey = PublicKey;
 /// A P-256 ephemeral private key.
 ///
 /// `agreement::PrivateKey` uses one for a single Diffie-Hellman
-/// operation.
+/// operation. It is not wiped on drop: the public keys holding one wipe it,
+/// and an ECDSA nonce is one too, which lives only for the signing call.
 pub(crate) struct PrivateKey {
     scalar: Scalar,
 }
@@ -97,7 +98,6 @@ impl PrivateKey {
         let ok = libcrux_p256::dh_responder(&mut point, &peer.xy, &d);
         let mut secret = SharedSecret([0u8; 32]);
         secret.0.copy_from_slice(&point[..32]);
-        low::zeroise(&mut point);
         match low::ct::into_public(ok) {
             true => Ok(secret),
             false => Err(Error::Fault),
@@ -224,13 +224,9 @@ impl StaticPrivateKey {
 }
 
 /// A shared secret output from a P-256 Diffie-Hellman operation.
+///
+/// It is not wiped on drop: `agreement::SharedSecret` wipes it.
 pub(crate) struct SharedSecret(pub(crate) [u8; 32]);
-
-impl Drop for SharedSecret {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.0);
-    }
-}
 
 /// An integer mod the curve order `n`, as little-endian words.
 #[derive(Default)]
@@ -278,12 +274,6 @@ impl Scalar {
     /// Private test for zero
     pub(crate) fn is_zero(&self) -> bool {
         low::bignum_eq(&self.0, &[0; 4])
-    }
-}
-
-impl Drop for Scalar {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.0);
     }
 }
 

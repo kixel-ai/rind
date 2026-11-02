@@ -162,6 +162,8 @@ impl fmt::Debug for PublicKey {
 /// The secret both parties agree on, wiped on drop.
 pub struct SharedSecret(Secret);
 
+// As `Private`: all-bits-zero is a valid `X25519` secret.
+#[repr(u8)]
 enum Secret {
     X25519(x25519::SharedSecret),
     P256(p256::SharedSecret),
@@ -177,6 +179,14 @@ impl AsRef<[u8]> for SharedSecret {
             Secret::P384(secret) => &secret.0,
             Secret::P521(secret) => &secret.0,
         }
+    }
+}
+
+impl low::Zeroable for Secret {}
+
+impl Drop for SharedSecret {
+    fn drop(&mut self) {
+        low::zeroise_value(&mut self.0);
     }
 }
 

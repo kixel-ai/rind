@@ -9,7 +9,6 @@ use libcrux_poly1305::hacl::mac_poly1305::{self, state_t};
 
 use super::cpu::HaveNeon;
 use super::poly1305_arm::Poly1305Neon;
-use crate::low::zeroise;
 
 pub(crate) enum Poly1305 {
     Neon(Poly1305Neon),
@@ -66,14 +65,6 @@ impl Hacl {
         let mut tag = [0u8; 16];
         mac_poly1305::digest(&self.0, &mut tag);
         tag
-    }
-}
-
-impl Drop for Hacl {
-    fn drop(&mut self) {
-        let state = &mut self.0[0];
-        zeroise(&mut state.block_state);
-        zeroise(&mut state.p_key);
     }
 }
 

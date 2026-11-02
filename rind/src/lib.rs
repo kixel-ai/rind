@@ -236,8 +236,14 @@ pub mod hmac {
 /// use rind::constant_time;
 ///
 /// constant_time::verify(b"expected", b"expected").unwrap();
-/// assert_eq!(constant_time::verify(b"expected", b"presented"), Err(rind::Error::WrongLength));
-/// assert_eq!(constant_time::verify(b"expected", b"Expected"), Err(rind::Error::NotEqual));
+/// assert_eq!(
+///     constant_time::verify(b"expected", b"presented"),
+///     Err(rind::Error::WrongLength)
+/// );
+/// assert_eq!(
+///     constant_time::verify(b"expected", b"Expected"),
+///     Err(rind::Error::NotEqual)
+/// );
 /// ```
 pub mod constant_time {
     pub use crate::high::constant_time::verify;
@@ -280,15 +286,20 @@ pub mod hkdf {
 ///
 /// ```no_run
 /// use std::num::NonZeroU32;
+///
 /// use rind::pbkdf2;
 ///
 /// let iterations = NonZeroU32::new(600_000).unwrap();
 /// let secret = pbkdf2::Secret::new(&pbkdf2::PBKDF2_HMAC_SHA256, b"password");
 ///
 /// let mut stored = [0u8; 32];
-/// secret.derive(iterations, b"per-user salt", &mut stored).unwrap();
+/// secret
+///     .derive(iterations, b"per-user salt", &mut stored)
+///     .unwrap();
 ///
-/// secret.verify(iterations, b"per-user salt", &stored).unwrap();
+/// secret
+///     .verify(iterations, b"per-user salt", &stored)
+///     .unwrap();
 /// ```
 pub mod pbkdf2 {
     pub use super::high::pbkdf2::{
