@@ -4,33 +4,32 @@
 # from rind::low to rind::mid, or rind::mid to rind::high.
 set -e
 
-cat >structure.gvpr <<END
-BEGIN {
-  int rc = 0;
-  int errors = 0;
-}
-E [match(tail.name, "rind::low::") == 0 && match(head.name, "rind::mid::") == 0] {
-  printf(2, "ERROR: edge %s is a dependency low->mid\n", name);
-  rc = 1;
-  errors += 1;
-}
-E [match(tail.name, "rind::low::") == 0 && match(head.name, "rind::high::") == 0] {
-  printf(2, "ERROR: edge %s is a dependency low->high\n", name);
-  rc = 1;
-  errors += 1;
-}
-E [match(tail.name, "rind::mid::") == 0 && match(head.name, "rind::high::") == 0] {
-  printf(2, "ERROR: edge %s is a dependency mid->high\n", name);
-  rc = 1;
-  errors += 1;
-}
-END {
-  printf(2, "%d errors\n", errors);
-  exit(rc);
-}
-END
-
-cargo modules dependencies \
+# Captured first so a cargo-modules failure fails the script rather than
+# feeding the filter an empty graph.
+deps=$(cargo modules dependencies \
         --no-externs \
         --no-sysroot \
-        -p rind | gvpr -f structure.gvpr
+        -p rind)
+
+# Each edge is a line `"tail" -> "head" [...]`, so splitting on quotes puts the
+# tail in $2 and the head in $4.
+printf '%s\n' "$deps" | awk -F'"' '
+function layer(path) {
+  if (index(path, "rind::low::") == 1) return "low";
+  if (index(path, "rind::mid::") == 1) return "mid";
+  if (index(path, "rind::high::") == 1) return "high";
+  return "";
+}
+$3 == " -> " {
+  from = layer($2);
+  to = layer($4);
+  if ((from == "low" && (to == "mid" || to == "high")) || (from == "mid" && to == "high")) {
+    printf("ERROR: edge %s->%s is a dependency %s->%s\n", $2, $4, from, to) > "/dev/stderr";
+    errors += 1;
+  }
+}
+END {
+  printf("%d errors\n", errors) > "/dev/stderr";
+  exit(errors > 0);
+}
+'

@@ -98,7 +98,6 @@
                   # admin/ scripts.
                   python3
                   cargo-modules
-                  graphviz
                   quest-cli
                   # rind-instant-acme's end-to-end test issues a certificate from it.
                   pebble
@@ -117,12 +116,17 @@
 
             # The nightly MSRV job builds in it. The workspace's rust-version
             # names a minor release, which resolves to its latest patch, as
-            # rustup does.
+            # rustup does. The extra targets let it check rind's other
+            # backends, which `check` does without a C toolchain.
             msrv = pkgs.mkShell {
               packages = [
                 (pkgs.rust-bin.fromRustupToolchain {
                   channel = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.rust-version;
                   profile = "minimal";
+                  targets = [
+                    "aarch64-unknown-linux-gnu"
+                    "armv7-unknown-linux-gnueabihf"
+                  ];
                 })
               ];
             };
