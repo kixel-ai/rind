@@ -96,6 +96,22 @@ pub(crate) fn mlkem_tobytes(r: &mut [u8; 384], a: &[i16; 256]) {
     }
 }
 
+/// Compress ML-KEM polynomial coefficients in `[0, Q)` to 10 bits each, and pack them
+pub(crate) fn mlkem_compress_d10(r: &mut [u8; 320], a: &[i16; 256]) {
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_compress::mlkem_compress_d10(r, a),
+        None => generic::mlkem_compress_d10(r, a),
+    }
+}
+
+/// Compress ML-KEM polynomial coefficients in `[0, Q)` to 4 bits each, and pack them
+pub(crate) fn mlkem_compress_d4(r: &mut [u8; 128], a: &[i16; 256]) {
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_compress::mlkem_compress_d4(r, a),
+        None => generic::mlkem_compress_d4(r, a),
+    }
+}
+
 /// Reorder ML-KEM polynomial coefficients from their natural order into the
 /// order the other routines use
 pub(crate) fn mlkem_unpack(a: &mut [i16; 256]) {
@@ -417,6 +433,29 @@ const MLKEM_REJ_UNIFORM_TABLE: [i8; 4096] = [
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+
+    // AVX2 hides the portable compression from every other test too, so it
+    // is checked against mlkem-native's here.
+    #[test]
+    fn compress_matches_portable() {
+        if HaveAvx2::check().is_none() {
+            return;
+        }
+        // Every coefficient value in [0, Q).
+        for start in (0..3329 + 7).step_by(256 - 7) {
+            let a = Coeffs::<256>(core::array::from_fn(|i| ((start + i) % 3329) as i16));
+
+            let (mut want, mut got) = ([0; 320], [0; 320]);
+            generic::mlkem_compress_d10(&mut want, &a.0);
+            super::super::mlkem_compress::mlkem_compress_d10(&mut got, &a.0);
+            assert_eq!(want, got, "d10, from {start}");
+
+            let (mut want, mut got) = ([0; 128], [0; 128]);
+            generic::mlkem_compress_d4(&mut want, &a.0);
+            super::super::mlkem_compress::mlkem_compress_d4(&mut got, &a.0);
+            assert_eq!(want, got, "d4, from {start}");
+        }
+    }
 
     // AVX2, where present, hides the portable routines from every other
     // test, so each is checked against s2n-bignum's. Those keep NTT-domain

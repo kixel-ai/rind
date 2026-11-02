@@ -139,6 +139,8 @@ cfg_if::cfg_if! {
             mlkem_rej_uniform_vartime,
             mlkem_basemul_k3,
             mlkem_reduce,
+            mlkem_compress_d4,
+            mlkem_compress_d10,
             mlkem_frombytes,
             mlkem_tobytes,
             mlkem_tomont,
@@ -166,7 +168,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::sha512::sha512_compress_blocks;
         pub(crate) use x86_64::sha3_keccak_f1600::sha3_keccak_f1600;
         pub(crate) use x86_64::sha3_keccak4_f1600_shim::sha3_keccak4_f1600;
-        pub(crate) use x86_64::sha3_keccak2of4_f1600::sha3_keccak2of4_f1600;
+        pub(crate) use x86_64::sha3_keccak_nof4_f1600::sha3_keccak_nof4_f1600;
 
     } else if #[cfg(target_arch = "aarch64")] {
         mod aarch64;
@@ -255,12 +257,12 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::sha256::sha256_compress_blocks;
         pub(crate) use aarch64::sha3_keccak_f1600_mux::sha3_keccak_f1600;
         pub(crate) use aarch64::sha3_keccak4_f1600_mux::sha3_keccak4_f1600;
-        pub(crate) use aarch64::sha3_keccak2of4_f1600::sha3_keccak2of4_f1600;
+        pub(crate) use aarch64::sha3_keccak_nof4_f1600::sha3_keccak_nof4_f1600;
         pub(crate) use aarch64::sha512::sha512_compress_blocks;
 
         pub(crate) use aarch64::chacha20;
         pub(crate) use aarch64::chacha20poly1305;
-        pub(crate) use generic::mlkem::{mlkem_frombytes, mlkem_unpack};
+        pub(crate) use generic::mlkem::{mlkem_compress_d4, mlkem_compress_d10, mlkem_frombytes, mlkem_unpack};
         pub(crate) use generic::mlkem768::mlkem768_sample_poly_ntt_8x;
     } else if #[cfg(target_arch = "arm")] {
         mod arm;
