@@ -26,24 +26,19 @@ pub(crate) enum AesGcm {
 }
 
 impl AesGcm {
-    /// Expands a 16- or 32-byte key into an AES-128-GCM or AES-256-GCM key.
-    ///
-    /// Any other length, including AES-192's 24 bytes, is an error.
-    pub(crate) fn new(key: &[u8]) -> Result<Self, Error> {
+    /// Expands a 16- or 32-byte key, which the caller has checked, into an
+    /// AES-128-GCM or AES-256-GCM key.
+    pub(crate) fn new(key: &[u8]) -> Self {
         let _entry = Entry::new_secret();
-        if !matches!(key.len(), 16 | 32) {
-            return Err(Error::WrongLength);
-        }
-
         // Mark a copy: the caller's buffer may be shared, or a promoted constant.
         let mut copy = [0u8; 32];
         let copy_key = &mut copy[..key.len()];
         copy_key.copy_from_slice(key);
         low::ct::secret_slice(copy_key);
-        Ok(match HaveCryptoExt::check() {
+        match HaveCryptoExt::check() {
             Some(token) => Self::Hw(Hw::new(copy_key, token)),
             None => Self::Portable(Portable::new(copy_key)),
-        })
+        }
     }
 
     /// Encrypts the given message.
@@ -302,7 +297,7 @@ mod tests {
 
     #[test]
     fn smoketest() {
-        let t = AesGcm::new(&[0; 16]).unwrap();
+        let t = AesGcm::new(&[0; 16]);
         let mut tag = [0u8; 16];
         t.encrypt(&[0u8; 12], &[], &mut [], &mut tag).unwrap();
         assert_eq!(
@@ -313,7 +308,7 @@ mod tests {
 
     #[test]
     fn long_round_trip() {
-        let t = AesGcm::new(&[b'k'; 16]).unwrap();
+        let t = AesGcm::new(&[b'k'; 16]);
         let expected = include_bytes!("../../testdata/aes-gcm-ciphertext.bin");
         let (expected_cipher, expected_tag) = expected.split_at(expected.len() - 16);
 

@@ -39,18 +39,24 @@ const NEON: u8 = 1 << 0;
 const CRYPTO_EXT: u8 = 1 << 1;
 const DETECTED: u8 = 1 << 7;
 
-/// The detected features, read from the kernel once.
-fn features() -> u8 {
-    static FEATURES: AtomicU8 = AtomicU8::new(0);
+static FEATURES: AtomicU8 = AtomicU8::new(0);
 
+/// The detected features, read from the kernel once. Inlined, so a check is
+/// a load and a test, with the first call's detection out of line.
+#[inline]
+fn features() -> u8 {
     match FEATURES.load(Ordering::Relaxed) {
-        0 => {
-            let features = detect() | DETECTED;
-            FEATURES.store(features, Ordering::Relaxed);
-            features
-        }
+        0 => detect_once(),
         features => features,
     }
+}
+
+#[cold]
+#[inline(never)]
+fn detect_once() -> u8 {
+    let features = detect() | DETECTED;
+    FEATURES.store(features, Ordering::Relaxed);
+    features
 }
 
 /// Reads the features the kernel reports to 32-bit processes, as aws-lc does
