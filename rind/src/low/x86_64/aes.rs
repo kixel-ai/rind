@@ -169,7 +169,7 @@ impl AesKey128 {
     pub(crate) fn new(key: &[u8; 16], _: HaveAesHardware) -> Self {
         let mut round_keys = [zero(); (10 + 1)];
 
-        // SAFETY: the token proves the CPU has AES-NI.
+        // SAFETY: the token proves the CPU has AES-NI and SSSE3.
         unsafe {
             aes128_expand(key, &mut round_keys);
         }
@@ -208,7 +208,7 @@ impl AesKey256 {
     pub(crate) fn new(key: &[u8; 32], _: HaveAesHardware) -> Self {
         let mut round_keys = [zero(); 14 + 1];
 
-        // SAFETY: the token proves the CPU has AES-NI.
+        // SAFETY: the token proves the CPU has AES-NI and SSSE3.
         unsafe {
             aes256_expand(key, &mut round_keys);
         }
@@ -225,112 +225,68 @@ impl AesKey256 {
     }
 }
 
-macro_rules! expand_128 {
-    ($rcon:literal, $t1:ident, $out:expr) => {
-        // with [X3, _, X1,  _] = t1
-        // t2 := [RotWord (SubWord (X3)) XOR RCON, SubWord (X3),
-        //        RotWord (SubWord (X1)) XOR RCON, SubWord (X1)]
-        let t2 = _mm_aeskeygenassist_si128($t1, $rcon);
+const RCON: [i32; 10] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
 
-        // select just high dqword, distribute to other dqwords
-        let t2 = _mm_shuffle_epi32(t2, 0b11_11_11_11);
-
-        let t3 = _mm_slli_si128($t1, 0x4); // nb. 4 bytes shift
-        $t1 = _mm_xor_si128($t1, t3);
-
-        let t3 = _mm_slli_si128(t3, 0x4);
-        $t1 = _mm_xor_si128($t1, t3);
-
-        let t3 = _mm_slli_si128(t3, 0x4);
-        $t1 = _mm_xor_si128($t1, t3);
-
-        $t1 = _mm_xor_si128($t1, t2);
-
-        $out = $t1;
-    };
-}
-
-#[target_feature(enable = "aes")]
+#[target_feature(enable = "aes,ssse3")]
 fn aes128_expand(key: &[u8; 16], out: &mut [__m128i; 11]) {
     // SAFETY: `key` is 16 bytes and can be loaded from
-    let mut t1 = unsafe { _mm_loadu_si128(key.as_ptr().cast()) };
-    out[0] = t1;
+    let mut t = unsafe { _mm_loadu_si128(key.as_ptr().cast()) };
+    out[0] = t;
 
-    expand_128!(0x01, t1, out[1]);
-    expand_128!(0x02, t1, out[2]);
-    expand_128!(0x04, t1, out[3]);
-    expand_128!(0x08, t1, out[4]);
-    expand_128!(0x10, t1, out[5]);
-    expand_128!(0x20, t1, out[6]);
-    expand_128!(0x40, t1, out[7]);
-    expand_128!(0x80, t1, out[8]);
-    expand_128!(0x1b, t1, out[9]);
-    expand_128!(0x36, t1, out[10]);
+    for (rk, rcon) in out[1..].iter_mut().zip(RCON) {
+        t = _mm_xor_si128(xor_prefix(t), sub_rot_word(t, rcon));
+        *rk = t;
+    }
 }
 
-macro_rules! expand_256 {
-    (Odd, $rcon:literal, $t1:ident, $t3:ident, $out:expr) => {
-        let t2 = _mm_aeskeygenassist_si128($t3, $rcon);
-        let t2 = _mm_shuffle_epi32(t2, 0b11_11_11_11);
-
-        let t3 = _mm_slli_si128($t1, 0x4); // nb. 4 bytes shift
-        $t1 = _mm_xor_si128($t1, t3);
-
-        let t3 = _mm_slli_si128(t3, 0x4);
-        $t1 = _mm_xor_si128($t1, t3);
-
-        let t3 = _mm_slli_si128(t3, 0x4);
-        $t1 = _mm_xor_si128($t1, t3);
-
-        $t1 = _mm_xor_si128($t1, t2);
-
-        $out = $t1;
-    };
-    (Even, $t1:ident, $t3:ident, $out:expr) => {
-        let t4 = _mm_aeskeygenassist_si128($t1, 0);
-        let t2 = _mm_shuffle_epi32(t4, 0b10_10_10_10); // choose SubWord(X3) term
-
-        let t4 = _mm_slli_si128($t3, 0x4);
-        $t3 = _mm_xor_si128($t3, t4);
-
-        let t4 = _mm_slli_si128(t4, 0x4);
-        $t3 = _mm_xor_si128($t3, t4);
-
-        let t4 = _mm_slli_si128(t4, 0x4);
-        $t3 = _mm_xor_si128($t3, t4);
-        $t3 = _mm_xor_si128($t3, t2);
-
-        $out = $t3;
-    };
-}
-
-#[target_feature(enable = "aes")]
+#[target_feature(enable = "aes,ssse3")]
 fn aes256_expand(key: &[u8; 32], out: &mut [__m128i; 15]) {
     // SAFETY: `key` is 32 bytes and readable
-    let (mut t1, mut t3) = unsafe {
+    let (mut a, mut b) = unsafe {
         (
             _mm_loadu_si128(key.as_ptr().cast()),
             _mm_loadu_si128(key[16..].as_ptr().cast()),
         )
     };
-    out[0] = t1;
-    out[1] = t3;
+    out[0] = a;
+    out[1] = b;
 
-    // nb. 'odd' rounds in units of Nk have an rcon term (equivalent
-    // to all rounds of 128-bit key expansion), 'even' rounds do not
-    expand_256!(Odd, 0x01, t1, t3, out[2]);
-    expand_256!(Even, t1, t3, out[3]);
-    expand_256!(Odd, 0x02, t1, t3, out[4]);
-    expand_256!(Even, t1, t3, out[5]);
-    expand_256!(Odd, 0x04, t1, t3, out[6]);
-    expand_256!(Even, t1, t3, out[7]);
-    expand_256!(Odd, 0x08, t1, t3, out[8]);
-    expand_256!(Even, t1, t3, out[9]);
-    expand_256!(Odd, 0x10, t1, t3, out[10]);
-    expand_256!(Even, t1, t3, out[11]);
-    expand_256!(Odd, 0x20, t1, t3, out[12]);
-    expand_256!(Even, t1, t3, out[13]);
-    expand_256!(Odd, 0x40, t1, t3, out[14]);
+    // Round keys alternate: the first of each pair takes RotWord and the
+    // round constant, as AES-128's do, and the second only SubWord.
+    for (i, rcon) in RCON[..7].iter().enumerate() {
+        a = _mm_xor_si128(xor_prefix(a), sub_rot_word(b, *rcon));
+        out[2 * i + 2] = a;
+        if i == 6 {
+            break;
+        }
+        let sub = _mm_aesenclast_si128(_mm_shuffle_epi32(a, 0b11_11_11_11), zero());
+        b = _mm_xor_si128(xor_prefix(b), sub);
+        out[2 * i + 3] = b;
+    }
+}
+
+/// SubWord(RotWord(w3)) XOR `rcon` in every word, where w3 is `t`'s last.
+///
+/// `aesenclast` on four equal columns is SubBytes alone, since ShiftRows
+/// moves nothing, and then XORs its round key. `aeskeygenassist` computes
+/// this too, but is slow on Intel cores: this form expands an AES-256 key in
+/// under half the time on Skylake, and aws-lc prefers it on CPUs with AVX.
+#[inline]
+#[target_feature(enable = "aes,ssse3")]
+fn sub_rot_word(t: __m128i, rcon: i32) -> __m128i {
+    let rot_word_3 = _mm_setr_epi8(
+        13, 14, 15, 12, 13, 14, 15, 12, 13, 14, 15, 12, 13, 14, 15, 12,
+    );
+    _mm_aesenclast_si128(_mm_shuffle_epi8(t, rot_word_3), _mm_set1_epi32(rcon))
+}
+
+/// Each word of `t` XORed with the words before it: the round key's words
+/// before the SubWord term is added.
+#[inline]
+#[target_feature(enable = "sse2")]
+fn xor_prefix(t: __m128i) -> __m128i {
+    let t = _mm_xor_si128(t, _mm_slli_si128(t, 4));
+    _mm_xor_si128(t, _mm_slli_si128(t, 8))
 }
 
 #[target_feature(enable = "aes")]

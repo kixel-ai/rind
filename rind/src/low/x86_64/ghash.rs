@@ -78,7 +78,8 @@ impl GhashTable {
             return Self::Avx512(GhashTableAvx512::new(h, hw, token));
         }
         if let Some(token) = HaveVaesAvx2ForAesGcm::check() {
-            return Self::VaesAvx2(ClmulTable::new(h, hw), VaesKernel::avx2(h, token));
+            let vaes = VaesKernel::avx2(h, token);
+            return Self::VaesAvx2(ClmulTable::from_powers(vaes.powers(), hw), vaes);
         }
 
         Self::Clmul(ClmulTable::new(h, hw))
@@ -108,25 +109,38 @@ pub(crate) struct ClmulTable {
 
 impl ClmulTable {
     pub(crate) fn new(h: u128, _: HaveAesHardware) -> Self {
+        // SAFETY: the token proves the CPU has PCLMULQDQ.
+        unsafe { Self::with_powers(&Self::powers(h)) }
+    }
+
+    /// The table for the powers a VAES kernel's table holds, H^n down to H^1
+    /// for some `n` of at least 8, so they are not computed twice.
+    pub(crate) fn from_powers(descending: &[__m128i], _: HaveAesHardware) -> Self {
         let mut powers = [zero(); 8];
-        let mut powers_xor = powers;
-        let h = u128_to_m128i(h);
-
-        // SAFETY: every x86_64 CPU has SSE2
-        let h = unsafe { gf128_big_endian(h) };
-        powers[0] = h;
-
-        for i in 1..8 {
-            // SAFETY: the token proves the CPU has PCLMULQDQ.
-            powers[i] = unsafe { _mul(powers[i - 1], h) };
+        for (p, d) in powers.iter_mut().zip(descending.iter().rev()) {
+            *p = *d;
         }
+        // SAFETY: the token proves the CPU has PCLMULQDQ.
+        unsafe { Self::with_powers(&powers) }
+    }
 
-        for i in 0..8 {
-            // SAFETY: every x86_64 CPU has SSE2
-            powers_xor[i] = unsafe { xor_halves(powers[i]) };
+    /// H to H^8, multiplied as a tree, so the longest chain of dependent
+    /// multiplies is three rather than seven.
+    #[target_feature(enable = "pclmulqdq")]
+    fn powers(h: u128) -> [__m128i; 8] {
+        let h = gf128_big_endian(u128_to_m128i(h));
+        let h2 = _mul(h, h);
+        let (h3, h4) = (_mul(h2, h), _mul(h2, h2));
+        let (h5, h6, h7, h8) = (_mul(h4, h), _mul(h4, h2), _mul(h4, h3), _mul(h4, h4));
+        [h, h2, h3, h4, h5, h6, h7, h8]
+    }
+
+    #[target_feature(enable = "pclmulqdq")]
+    fn with_powers(powers: &[__m128i; 8]) -> Self {
+        Self {
+            powers: *powers,
+            powers_xor: powers.map(|p| xor_halves(p)),
         }
-
-        Self { powers, powers_xor }
     }
 
     /// Hashes `bytes` into `current`.
@@ -209,33 +223,19 @@ pub(crate) struct GhashTableAvx512 {
 
 impl GhashTableAvx512 {
     pub(crate) fn new(h: u128, hw: HaveAesHardware, token: HaveAvx512ForAesGcm) -> Self {
-        // This builds on the PCLMULQDQ table, which is perhaps not the most
-        // efficient option.
-        let clmul = ClmulTable::new(h, hw);
-
-        let mut powers = [zero(); 16];
-
-        powers[..8].copy_from_slice(&clmul.powers);
-
-        for i in 8..16 {
-            // SAFETY: the token proves the CPU has PCLMULQDQ.
-            powers[i] = unsafe { _mul(powers[i - 1], powers[0]) };
-        }
-
-        // SAFETY: avx512f checked by caller
-        let powers = unsafe {
-            [
-                join512(powers[12], powers[13], powers[14], powers[15]),
-                join512(powers[8], powers[9], powers[10], powers[11]),
-                join512(powers[4], powers[5], powers[6], powers[7]),
-                join512(powers[0], powers[1], powers[2], powers[3]),
-            ]
-        };
+        // The kernel's table holds H^16 down to H^1, as `powers` does.
+        let vaes = VaesKernel::avx512(h, token);
+        let descending = vaes.powers();
+        let powers = core::array::from_fn(|i| {
+            // SAFETY: `descending` has 16 entries, so four from `4 * i` are
+            // readable, and the token proves the CPU has AVX-512F.
+            unsafe { _mm512_loadu_si512(descending[4 * i..].as_ptr().cast()) }
+        });
 
         Self {
             powers,
-            clmul,
-            vaes: VaesKernel::avx512(h, token),
+            clmul: ClmulTable::from_powers(descending, hw),
+            vaes,
             token,
         }
     }
@@ -554,15 +554,6 @@ fn byte_reverse(x: __m128i) -> __m128i {
 fn zero() -> __m128i {
     // SAFETY: every x86_64 CPU has SSE2
     unsafe { _mm_setzero_si128() }
-}
-
-#[inline]
-#[target_feature(enable = "avx512f")]
-fn join512(a: __m128i, b: __m128i, c: __m128i, d: __m128i) -> __m512i {
-    let r = _mm512_inserti32x4(_mm512_setzero_epi32(), d, 0);
-    let r = _mm512_inserti32x4(r, c, 1);
-    let r = _mm512_inserti32x4(r, b, 2);
-    _mm512_inserti32x4(r, a, 3)
 }
 
 /// Loads a block in GCM's byte order as the polynomial the multiplies take.

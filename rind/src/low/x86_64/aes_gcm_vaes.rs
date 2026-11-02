@@ -58,6 +58,20 @@ impl VaesKernel {
         Self { htable, width }
     }
 
+    /// The GHASH key's powers in its table, H^n down to H^1: H^8 for the
+    /// 256-bit kernel, after which its table holds their Karatsuba terms,
+    /// and H^16 for the 512-bit one.
+    pub(crate) fn powers(&self) -> &[__m128i] {
+        let n = match self.width {
+            Width::Avx2(_) => 8,
+            Width::Avx512(_) => 16,
+        };
+        // SAFETY: an `Htable` is 16 blocks of 16 bytes, aligned for
+        // `__m128i`, and every bit pattern is a valid `__m128i`.
+        let blocks: &[__m128i; 16] = unsafe { &*(&raw const self.htable).cast() };
+        &blocks[..n]
+    }
+
     /// Encrypts (if `ENC`) or decrypts `inout` in place, from the counter
     /// block after `y0`, folding the ciphertext into `ghash`.
     pub(crate) fn cipher<const ENC: bool>(
