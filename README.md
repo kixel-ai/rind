@@ -139,8 +139,7 @@ from [run 41469252502], whose no ADX job drew a Xeon 6973P-C (Granite Rapids)
 and no AVX2 job an EPYC 7763.
 
 x86_64 runs every feature of an AMD EPYC 7763 (Zen 3: ADX, AVX2, SHA-NI, and
-VAES, but no AVX-512), except in the 1 MB transfer and P-256 rows, noted
-below. Each column to its right denies more, as `bench.yml`
+VAES, but no AVX-512), except where noted below. Each column to its right denies more, as `bench.yml`
 describes, and compares with aws-lc-rs alone, since ring cannot be denied a
 feature: no ADX denies ADX (Haswell); no AVX2 also AVX2, BMI2, SHA-NI,
 AVX-512, VAES, and VPCLMULQDQ (Sandy Bridge); no AVX also AVX (Westmere); no
@@ -151,12 +150,12 @@ GitHub's pool ran no ADX on an EPYC 7763 too, no AVX2 on an EPYC 9V74 (Zen
 The 1 MB transfer row is from [run 41401180882], which ran x86_64 on an
 EPYC 9V74, whose AVX-512 runs AES-GCM's 512-bit paths rather than the 256-bit
 VAES ones Zen 3 runs, except its no AVX2 cell, from [run 41468954426] on an
-EPYC 9V45. AES-GCM's no AVX2 cell is from that run too, and its other cells
-from [run 41472308771], which ran x86_64 and SSE2 on an EPYC 7763, no AVX on
-an EPYC 9V74, and no AES-NI on a Xeon Platinum 8573C (Emerald Rapids).
+EPYC 9V45. The AES-GCM row is from [run 41519474246], which ran x86_64 on an
+EPYC 9V45, whose AVX-512 runs AES-GCM's 512-bit paths, no AVX2, no AVX, and
+no AES-NI on an EPYC 7763, and SSE2 on a Xeon Platinum 8573C.
 The SHA, HMAC, and HKDF rows are from [run 41398664891], which ran every
-column on an EPYC 7763, except x86_64's HKDF cell, from [run 41472308771], and
-x86_64's PBKDF2 cell from [run 41464027605], both on the same CPU. The SHA-256
+column on an EPYC 7763, except x86_64's HKDF cell, from [run 41519474246] on
+an EPYC 9V45, and its PBKDF2 cell, from [run 41464027605] on an EPYC 7763. The SHA-256
 cells are from [run 41485960394], which ran x86_64 on an EPYC 9V74, no AVX2 on
 an EPYC 7763, no AVX on an EPYC 9V45, and SSE2 on a Xeon Platinum 8573C.
 The x86_64 P-256 cells take key generation, signing, and ECDH from
@@ -169,7 +168,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 
 | Algorithm | x86_64 | no ADX | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|---|
-| AES-GCM | **1.20** BoringSSL ⚡ + Graviola |  | 0.99 aws-lc ✓ + Graviola | **1.47** Graviola | **1.13** aws-lc + rind | 0.85 |
+| AES-GCM | 0.99 BoringSSL ⚡ + Graviola |  | 0.99 aws-lc ✓ + Graviola | 0.94 Graviola | 1.01 aws-lc + rind | 0.89 |
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 0.99 | 0.99 | 1.01 aws-lc | 0.85 |
 | ChaCha20 (header protection) | 0.96 Graviola |  | 0.95 aws-lc ⚡ | 0.93 | 0.95 | 0.92 |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.02 aws-lc ⚡ |  | 1.00 |  | **1.12** aws-lc ⚡ + Graviola ⚡ | **1.10** |
@@ -177,7 +176,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 | SHA-256 | **1.13** Graviola ⚡ |  | 1.00 aws-lc ⚡ | 1.02 |  | **1.03** |
 | SHA-384, SHA-512, SHA-512/256 | 1.01 aws-lc ⚡ |  | 1.00 | 1.01 |  | 1.00 |
 | HMAC | 1.00 Graviola ⚡ |  | 1.01 |  |  |  |
-| HKDF | 1.02 rind ⚡ |  | 0.87 |  |  |  |
+| HKDF | 0.93 rind ⚡ |  | 0.87 |  |  |  |
 | PBKDF2 | 0.94 rind |  | 0.93 |  |  |  |
 | X25519 | 1.01 s2n-bignum ✓ | 1.00 | 1.02 |  |  |  |
 | Ed25519 | **1.04** s2n-bignum ✓ + Graviola ⚡ | **1.03** | **1.03** |  |  |  |
@@ -196,13 +195,13 @@ extension; without them it runs the code [Symmetric
 cryptography](#symmetric-cryptography) names. The aarch64 and no crypto
 cells for RSA and rind-rustls handshakes are from [run 41397278464], which
 times aarch64 RSA's current Montgomery multiplication. The SHA-256 cells and
-aarch64's HMAC, HKDF, and PBKDF2 cells are from [run 41485960394], the AES-GCM
-row from [run 41472308771], the other SHA, HMAC, and HKDF cells from
+aarch64's HMAC and PBKDF2 cells are from [run 41485960394], the AES-GCM and
+HKDF rows from [run 41519474246], the other SHA and HMAC cells from
 [run 41398664891], and armv7's RSA and handshake cells from [run 41401089431].
 
 | Algorithm | aarch64 | no crypto | armv7 |
 |---|---|---|---|
-| AES-GCM | **1.55** Graviola | **1.28** aws-lc + rind | **1.66** |
+| AES-GCM | **1.04** Graviola | 1.02 aws-lc + rind | 0.99 |
 | AES block, AES-CTR | **1.18** Graviola + rind | 1.01 aws-lc | 0.99 |
 | ChaCha20 (header protection) | **1.03** Graviola | 0.96 | 0.87 aws-lc ⚡ |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ | 1.00 | **1.06** |
@@ -210,7 +209,7 @@ row from [run 41472308771], the other SHA, HMAC, and HKDF cells from
 | SHA-256 | 1.02 aws-lc ⚡ | 1.00 aws-lc | 0.99 aws-lc ⚡ |
 | SHA-384, SHA-512, SHA-512/256 | 1.00 aws-lc ✓ | 1.00 | 1.00 aws-lc ⚡ |
 | HMAC | 1.00 Graviola ⚡ | 1.00 | 1.00 |
-| HKDF | **1.32** rind ⚡ | 0.90 | 1.01 |
+| HKDF | 0.86 rind ⚡ | 0.88 | 1.00 |
 | PBKDF2 | 0.91 rind | 0.93 | 0.98 |
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
 | Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
@@ -279,7 +278,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41467306881]: https://github.com/moq-dev/rind/actions/runs/41467306881
 [run 41401180882]: https://github.com/moq-dev/rind/actions/runs/41401180882
 [run 41468954426]: https://github.com/moq-dev/rind/actions/runs/41468954426
-[run 41472308771]: https://github.com/moq-dev/rind/actions/runs/41472308771
+[run 41519474246]: https://github.com/moq-dev/rind/actions/runs/41519474246
 [run 41469252502]: https://github.com/moq-dev/rind/actions/runs/41469252502
 [run 41485960394]: https://github.com/moq-dev/rind/actions/runs/41485960394
 [run 41518446383]: https://github.com/moq-dev/rind/actions/runs/41518446383
