@@ -14,6 +14,7 @@ pub(crate) mod bignum_add_p521;
 pub(crate) mod bignum_bitsize;
 pub(crate) mod bignum_cmp_lt;
 pub(crate) mod bignum_coprime;
+pub(crate) mod bignum_copy_row_from_table;
 pub(crate) mod bignum_ctz;
 pub(crate) mod bignum_demont;
 pub(crate) mod bignum_demont_p256;

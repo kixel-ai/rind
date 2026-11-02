@@ -2,27 +2,39 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Exponentiation modulo an odd `m` in Montgomery form, by a 5-bit fixed
-//! window whose table entry is gathered by masking every entry.
+//! window whose table entry is gathered by reading every entry.
 //!
 //! This ports the `OPENSSL_BN_ASM_MONT5` branch of aws-lc's
 //! `BN_mod_exp_mont_consttime`, from `exponentiation.c` at the commit
-//! `admin/import-aws-lc` names, over its `x86_64-mont5` assembly. For a
-//! multiple of eight words, `bn_power5` squares five times and multiplies by
-//! the gathered entry in one call, whose products skip the full reduction
-//! and copy that each `bn_sqr8x_mont` makes. With BMI2 and ADX it also beat
-//! s2n-bignum's Karatsuba products by 6% at 16 words, but trailed them by 1%
-//! at 32, where the verified Karatsuba products run instead. Those, and other
-//! widths, where aws-lc calls `bn_mul_mont_gather5`, which jumps into its
-//! routine for a multiple of eight, multiply by rind's `mont_mul` after a
-//! `bn_gather5`. At 17 words that gather runs a quarter of the instructions
-//! of s2n-bignum's scalar `bignum_copy_row_from_table`.
+//! `admin/import-aws-lc` names, over its `x86_64-mont5` assembly, wherever
+//! that beats verified code by more than 10%. Per width in words, from
+//! GitHub bench runs 41401212831 and 41401209714, RSA signing on the same
+//! CPU before and after:
 //!
-//! It is not formally verified: its correctness rests on its use in OpenSSL
-//! and aws-lc, and on rind's tests of it against s2n-bignum's
-//! `bignum_montmul`, Wycheproof, and aws-lc-rs. `bn_power5`'s products are
-//! almost Montgomery: below `R`, not `m`, given inputs below `R`. So the last
-//! product, by `R mod m`, is below `2m`, and one subtraction reduces it.
+//! - A multiple of eight but 16 and 32 with BMI2 and ADX: `bn_power5` squares
+//!   five times and multiplies by the gathered entry in one call, whose
+//!   products skip the full reduction and copy that each `bn_sqr8x_mont`
+//!   makes. It displaces only unverified code: aws-lc's `bn_sqr8x_mont` and
+//!   `bn_mul4x_mont` and Graviola's gather. It saved 7-8% on Zen 3 without
+//!   ADX or AVX2, and 0.2-2% with them on Zen 5.
+//! - 16 and 32 words with BMI2 and ADX: s2n-bignum's verified Karatsuba
+//!   products, by rind's `mont_sqr` and `mont_mul`, after a `bn_gather5`.
+//!   `bn_powerx5` trailed them by 13% at 16 words on Zen 5 and 1% at 32 on an
+//!   i7-8700, and led by 6% at 16 there.
+//! - Other widths, where aws-lc's `bn_mul_mont_gather5` jumps into its
+//!   routine for a multiple of eight: rind's `mont_sqr` and `mont_mul` after
+//!   s2n-bignum's verified `bignum_copy_row_from_table`. `bn_gather5` with
+//!   them saved at most 5%: at 17 words, 4.7% on Zen 3 and none on Zen 5, and
+//!   at 20, 2.8% on Zen 5.
+//!
+//! aws-lc's routines are not formally verified: their correctness rests on
+//! their use in OpenSSL and aws-lc, and on rind's tests of them against
+//! s2n-bignum's `bignum_montmul`, Wycheproof, and aws-lc-rs. `bn_power5`'s
+//! products are almost Montgomery: below `R`, not `m`, given inputs below
+//! `R`. So the last product, by `R mod m`, is below `2m`, and one
+//! subtraction reduces it.
 
+use super::bignum_copy_row_from_table::bignum_copy_row_from_table;
 use super::cpu::HaveBmi2Adx;
 use super::mont::{mont_mul, mont_sqr};
 use crate::low;
@@ -72,42 +84,53 @@ fn mont_exp_by(
             _ => mont_mul(&mut rest[..k], row(i - 1), x, m, n0),
         }
     }
-    let mut table = vec![Row([0; 32]); k];
-    for (i, power) in powers.chunks_exact(k).enumerate() {
-        for (row, &word) in table.iter_mut().zip(power) {
-            row.0[i] = word;
+    // A multiple of eight words scatters the powers for aws-lc's gathers;
+    // other widths read them by s2n-bignum's verified one.
+    let table = k.is_multiple_of(8).then(|| {
+        let mut table = vec![Row([0; 32]); k];
+        for (i, power) in powers.chunks_exact(k).enumerate() {
+            for (row, &word) in table.iter_mut().zip(power) {
+                row.0[i] = word;
+            }
         }
-    }
+        table
+    });
+    let select = |z: &mut [u64], i: u64| match &table {
+        Some(table) => gather(z, table, i),
+        None => bignum_copy_row_from_table(z, &powers, 32, k as u64, i),
+    };
 
     // The top window takes what is left above whole windows, starting `z`
     // at its power rather than squaring `one`.
     let mut lsb = top - top % 5;
-    gather(z, &table, bits(e, lsb, top + 1 - lsb));
+    select(z, bits(e, lsb, top + 1 - lsb));
 
-    // At 32 words with ADX, the Karatsuba products below are verified and as
-    // fast.
-    if k.is_multiple_of(8) && !(adx.is_some() && k == 32) {
-        while lsb > 0 {
-            lsb -= 5;
-            power5(z, &table, m, n0, bits(e, lsb, 5), adx);
+    match &table {
+        // At 16 and 32 words with ADX, the verified Karatsuba products below
+        // run instead.
+        Some(table) if adx.is_none() || !matches!(k, 16 | 32) => {
+            while lsb > 0 {
+                lsb -= 5;
+                power5(z, table, m, n0, bits(e, lsb, 5), adx);
+            }
+            let mut almost = vec![0; k];
+            mont_mul(&mut almost, z, one, m, n0);
+            let ge = 1 - low::bignum_cmp_lt(&almost, m);
+            low::bignum_optsub(z, &almost, m, ge);
         }
-        let mut almost = vec![0; k];
-        mont_mul(&mut almost, z, one, m, n0);
-        let ge = 1 - low::bignum_cmp_lt(&almost, m);
-        low::bignum_optsub(z, &almost, m, ge);
-        return;
-    }
-
-    let (mut spare, mut term) = (vec![0; k], vec![0; k]);
-    while lsb > 0 {
-        lsb -= 5;
-        for _ in 0..5 {
-            mont_sqr(&mut spare, z, m, n0);
-            z.copy_from_slice(&spare);
+        _ => {
+            let (mut spare, mut term) = (vec![0; k], vec![0; k]);
+            while lsb > 0 {
+                lsb -= 5;
+                for _ in 0..5 {
+                    mont_sqr(&mut spare, z, m, n0);
+                    z.copy_from_slice(&spare);
+                }
+                select(&mut term, bits(e, lsb, 5));
+                mont_mul(&mut spare, z, &term, m, n0);
+                z.copy_from_slice(&spare);
+            }
         }
-        gather(&mut term, &table, bits(e, lsb, 5));
-        mont_mul(&mut spare, z, &term, m, n0);
-        z.copy_from_slice(&spare);
     }
 }
 

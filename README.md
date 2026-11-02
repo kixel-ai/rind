@@ -269,9 +269,10 @@ but without ADX, the private operation's exponentiation modulo each 1024-bit
 prime of RSA-2048 runs aws-lc's RSAZ, as aws-lc does there: Montgomery
 products on AVX2 over 29-bit limbs, and a 5-bit fixed window whose table
 entry is gathered by masking all 32 entries. Otherwise x86_64 runs aws-lc's
-5-bit window, gathering the same way, as `BN_mod_exp_mont_consttime` does, with
-its `bn_power5`, five squarings and the gathered product in one call, for
-moduli of a multiple of 512 bits other than 2048 bits with ADX.
+5-bit window, as `BN_mod_exp_mont_consttime` does. For moduli of a multiple of
+512 bits, it gathers the same way, and other than 1024 and 2048 bits with ADX,
+runs its `bn_power5`, five squarings and the gathered product in one call. For
+other moduli, s2n-bignum's verified gather reads every entry instead.
 
 The RSA private operation always uses the CRT optimisation.
 

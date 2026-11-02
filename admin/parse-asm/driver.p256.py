@@ -212,6 +212,31 @@ if __name__ == "__main__":
         parse_file(input, d)
 
     with (
+        open(
+            "../../thirdparty/s2n-bignum/x86/generic/bignum_copy_row_from_table.S"
+        ) as input,
+        open(
+            "../../rind/src/low/x86_64/bignum_copy_row_from_table.rs", "w"
+        ) as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "bignum_copy_row_from_table",
+            parameter_map=[
+                ("inout", "z.as_mut_ptr() => _"),
+                ("inout", "table.as_ptr() => _"),
+                ("inout", "height => _"),
+                ("inout", "width => _"),
+                ("inout", "index => _"),
+            ],
+            rust_decl="fn bignum_copy_row_from_table(z: &mut [u64], table: &[u64], height: u64, width: u64, index: u64)",
+            assertions=[
+                "z.len() as u64 == width",
+            ],
+        )
+        parse_file(input, d)
+
+    with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_modadd.S") as input,
         open("../../rind/src/low/x86_64/bignum_modadd.rs", "w") as output,
     ):
