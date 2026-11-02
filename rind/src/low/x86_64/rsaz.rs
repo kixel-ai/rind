@@ -65,16 +65,14 @@ type Red = [u64; 40];
 #[repr(C, align(64))]
 struct Table([u64; 32 * 18]);
 
-/// Everything secret that the exponentiation writes, so it is wiped as one,
-/// as aws-lc wipes its `storage`.
+/// The exponentiation's working, laid out as aws-lc's `storage`: `mod_exp`
+/// places the modulus by where `red` falls against a page.
 #[repr(C, align(64))]
 struct Storage {
     red: [Red; 3],
     rr: Red,
     table: Table,
 }
-
-impl low::Zeroable for Storage {}
 
 /// 1 and 2^80 in RSAZ's form: limb 2 is `2^58`, times `2^22`.
 static ONE: Red = limb(0, 1);
@@ -178,8 +176,6 @@ fn mod_exp(
     red2norm(token, &mut norm, result);
     let ge = 1 - low::bignum_cmp_lt(&norm, m);
     low::bignum_optsub(z, &norm, m, ge);
-
-    low::zeroise_value(&mut storage);
 }
 
 /// The Montgomery products, modulo `m` in RSAZ's form, with `n0` as

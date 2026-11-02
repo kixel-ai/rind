@@ -68,6 +68,26 @@
           # links it.
           armv7-cc = pkgs.pkgsCross.armv7l-hf-multiplatform.stdenv.cc;
           armv7-prefix = "${armv7-cc}/bin/${armv7-cc.targetPrefix}";
+
+          # Intel SDE, which `x86-cpu.yml` and `admin/x86-cpu` run to emulate
+          # each Intel CPU model. Its license allows use and redistribution
+          # only unmodified, so its 64-bit launcher runs as shipped in an FHS
+          # sandbox for its /lib64 loader, rather than patched for Nix. The
+          # kit's `sde` launcher is 32-bit; `sde64` takes the same arguments.
+          # Ubuntu's AppArmor denies the sandbox its user namespace until
+          # `kernel.apparmor_restrict_unprivileged_userns=0`, as x86-cpu.yml sets.
+          sde = pkgs.buildFHSEnv {
+            name = "sde";
+            runScript = "${
+              pkgs.fetchFromGitHub {
+                owner = "ctz";
+                repo = "intel-sde";
+                # SDE 9.53.0.
+                rev = "1e06cc8cf49bb3b9004737e4f69bcf12f80e0bca";
+                hash = "sha256-KjemFD8imYo22rlnfKQbRPfmuMdVNaljqQSwyQxzo90=";
+              }
+            }/sde64";
+          };
         in
         {
           devShells = {
@@ -173,6 +193,29 @@
                 # path, so qemu needs no sysroot.
                 CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER = "qemu-arm";
               };
+            };
+          }
+          # `x86-cpu.yml` and `admin/x86-cpu sde-scan` run the tests and
+          # `rind-cpuid` under `sde` in it. SDE runs only on x86_64.
+          // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+            sde = pkgs.mkShell {
+              packages = with pkgs; [
+                rust-stable.minimal
+                # aws-lc-rs and the OpenSSL benchmarks build C.
+                cmake
+                pkg-config
+                openssl
+                python3
+                sde
+              ];
+
+              # Otherwise cargo exports the host's OpenSSL CA paths, which on
+              # Ubuntu lie under the /usr the SDE sandbox replaces, and the
+              # tests that load the system's roots find none. A hook, since
+              # `nix develop` keeps the caller's SSL_CERT_FILE over `env`.
+              shellHook = ''
+                export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+              '';
             };
           };
 

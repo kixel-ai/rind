@@ -381,7 +381,7 @@ impl Default for CrtScratch {
     }
 }
 
-/// A HACL* Montgomery context.
+/// A HACL* Montgomery context, wiped on drop.
 struct Mont(Box<[bn_mont_ctx_u64]>);
 
 impl Mont {
@@ -413,6 +413,18 @@ impl Deref for Mont {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+// The context is on the heap, which the allocator hands on to other code, and
+// its `n` is often a secret prime.
+impl Drop for Mont {
+    fn drop(&mut self) {
+        for k in self.0.iter_mut() {
+            low::zeroise(&mut k.n);
+            low::zeroise(&mut k.r2);
+            low::zeroise_value(&mut k.mu);
+        }
     }
 }
 

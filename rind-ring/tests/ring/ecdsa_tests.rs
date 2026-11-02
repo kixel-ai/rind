@@ -14,12 +14,13 @@
 
 #![allow(missing_docs)]
 
-#[allow(deprecated)]
-use crate::{test, test_file};
 use ring::{
     rand,
     signature::{self, KeyPair},
 };
+
+#[allow(deprecated)]
+use crate::{test, test_file};
 
 // ECDSA *signing* tests are in src/ec/ecdsa/signing.rs.
 
