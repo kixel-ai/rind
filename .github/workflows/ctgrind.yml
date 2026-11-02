@@ -55,7 +55,7 @@ jobs:
       matrix:
         include:
           - cpu: no-adx
-            deny: RIND_CPU_DISABLE_vaes=1 RIND_TEST_X86_AVX2=1 RIND_TEST_X86_VAES_AES_GCM=0
+            deny: RIND_CPU_DISABLE_vaes=1 RIND_TEST_X86_AVX2=1 RIND_TEST_X86_VAES_AES_GCM=0 RIND_TEST_X86_AVX_MOVBE_AES_GCM=1
           - cpu: no-avx
             deny: RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_intel=1 RIND_CPU_DISABLE_sha=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=1 RIND_TEST_X86_SSE41=1
           - cpu: no-aes

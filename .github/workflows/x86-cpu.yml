@@ -55,6 +55,7 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 0
           RIND_TEST_X86_SHA: 0
           RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
 
@@ -73,6 +74,7 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 0
           RIND_TEST_X86_SHA: 0
           RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
 
@@ -91,6 +93,7 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 0
           RIND_TEST_X86_SHA: 0
           RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
 
@@ -109,6 +112,7 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 0
           RIND_TEST_X86_SHA: 0
           RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
 
@@ -127,13 +131,14 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 0
           RIND_TEST_X86_SHA: 1
           RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
 
-      # Sandy Bridge lacks AVX2, BMI2, and ADX, so aws-lc's AVX SHA and SSSE3
-      # ChaCha20 routines, the portable ML-KEM arithmetic, s2n-bignum's
-      # `_alt` routines, and aws-lc's Montgomery multiplication run. Ivy
-      # Bridge selects the same paths.
+      # Sandy Bridge lacks AVX2, MOVBE, BMI2, and ADX, so rind's AES-GCM
+      # intrinsics, aws-lc's AVX SHA and SSSE3 ChaCha20 routines, the portable
+      # ML-KEM arithmetic, s2n-bignum's `_alt` routines, and aws-lc's
+      # Montgomery multiplication run. Ivy Bridge selects the same paths.
       - name: Check Sandy Bridge
         run: nix develop .#sde --command cargo test --release
         env:
@@ -146,12 +151,13 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 0
           RIND_TEST_X86_SHA: 0
           RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
 
-      # Haswell lacks ADX, so s2n-bignum's `_alt` routines, aws-lc's
-      # Montgomery multiplication, and its RSAZ exponentiation for RSA-2048
-      # run, beside the AVX2 kernels.
+      # Haswell lacks ADX and VAES, so s2n-bignum's `_alt` routines, aws-lc's
+      # Montgomery multiplication, its RSAZ exponentiation for RSA-2048, and
+      # its AVX AES-GCM run, beside the AVX2 kernels.
       - name: Check Haswell
         run: nix develop .#sde --command cargo test --release
         env:
@@ -164,13 +170,14 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 0
           RIND_TEST_X86_SHA: 0
           RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
 
       # Skylake server has AVX-512 but neither SHA nor VAES, so it runs the
       # AVX2 kernels with s2n-bignum's BMI2 and ADX routines, and aws-lc's AVX
-      # SHA. Broadwell, Skylake, Cascade Lake, and Cooper Lake select the
-      # same paths.
+      # AES-GCM and SHA. Broadwell, Skylake, Cascade Lake, and Cooper Lake
+      # select the same paths.
       - name: Check Skylake server
         run: nix develop .#sde --command cargo test --release
         env:
@@ -183,6 +190,7 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 1
           RIND_TEST_X86_SHA: 0
           RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
 
@@ -200,6 +208,7 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 1
           RIND_TEST_X86_SHA: 1
           RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
 
@@ -218,6 +227,7 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 1
           RIND_TEST_X86_SHA: 1
           RIND_TEST_X86_VAES_AES_GCM: 1
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
 
@@ -235,6 +245,7 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 1
           RIND_TEST_X86_SHA: 1
           RIND_TEST_X86_VAES_AES_GCM: 1
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
 
@@ -253,5 +264,6 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 1
           RIND_TEST_X86_SHA: 1
           RIND_TEST_X86_VAES_AES_GCM: 1
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 1
           RIND_TEST_X86_AVX512_ML_KEM: 1

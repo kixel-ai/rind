@@ -144,9 +144,10 @@ GitHub's pool ran no ADX on an EPYC 7763 too, no AVX2 on an EPYC 9V74 (Zen
 4), no AVX and SSE2 on an EPYC 9V45 (Zen 5), and no AES-NI on a Xeon Platinum
 8573C (Emerald Rapids).
 The AES-GCM and 1 MB transfer rows are from [run 41401180882], which ran
-x86_64, no AVX2, and no AES-NI on an EPYC 9V74, whose AVX-512 runs AES-GCM's
-512-bit paths rather than the 256-bit VAES ones Zen 3 runs, no AVX on an EPYC
-7763, and SSE2 on a Xeon Platinum 8370C (Ice Lake).
+x86_64 and no AES-NI on an EPYC 9V74, whose AVX-512 runs AES-GCM's 512-bit
+paths rather than the 256-bit VAES ones Zen 3 runs, no AVX on an EPYC 7763,
+and SSE2 on a Xeon Platinum 8370C (Ice Lake), except their no AVX2 cells,
+from [run 41468954426] on an EPYC 9V45.
 The SHA, HMAC, and HKDF rows are from [run 41398664891], which ran every
 column on an EPYC 7763, and x86_64's PBKDF2 cell from [run 41464027605], on
 the same CPU.
@@ -155,7 +156,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 
 | Algorithm | x86_64 | no ADX | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|---|
-| AES-GCM | 0.93 BoringSSL ⚡ + Graviola |  | **1.03** aws-lc ✓ + Graviola | 0.93 Graviola | 1.01 aws-lc + rind | 0.88 |
+| AES-GCM | 0.93 BoringSSL ⚡ + Graviola |  | 0.99 aws-lc ✓ + Graviola | 0.93 Graviola | 1.01 aws-lc + rind | 0.88 |
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 0.99 | 0.99 | 1.01 aws-lc | 0.85 |
 | ChaCha20 (header protection) | 0.96 Graviola |  | 0.95 aws-lc ⚡ | 0.93 | 0.95 | 0.92 |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.02 aws-lc ⚡ |  | 1.00 |  | **1.12** aws-lc ⚡ + Graviola ⚡ | **1.10** |
@@ -173,7 +174,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 | ML-KEM-768 | 0.79 s2n-bignum ✓ + mlkem-native ✓ + Graviola ⚡ |  | 0.92 mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
 | RSA signatures, key generation | **1.07** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | **1.05** aws-lc ⚡ + Graviola ⚡ | **1.05** |  |  |  |
 | rind-rustls handshakes | 0.98 |  | **1.05** |  |  |  |
-| rind-rustls 1 MB transfer | 1.00 |  | 1.01 |  |  |  |
+| rind-rustls 1 MB transfer | 1.00 |  | 1.00 |  |  |  |
 
 aarch64 runs a Neoverse-N2, with the crypto extension and the SHA-512 and
 SHA-3 instructions; no crypto denies them, as a Raspberry Pi 4 lacks them.
@@ -262,6 +263,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41400124007]: https://github.com/moq-dev/rind/actions/runs/41400124007
 [run 41464027605]: https://github.com/moq-dev/rind/actions/runs/41464027605
 [run 41401180882]: https://github.com/moq-dev/rind/actions/runs/41401180882
+[run 41468954426]: https://github.com/moq-dev/rind/actions/runs/41468954426
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
