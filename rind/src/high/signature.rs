@@ -577,8 +577,8 @@ impl Zeroable for EcdsaKeyPair {}
 
 impl Drop for EcdsaKeyPair {
     fn drop(&mut self) {
-        // The key wipes its own scalar. Wiping the rest, which is not secret,
-        // lets `tests/zeroing.rs` check every byte.
+        // Wipes the scalar, which the curve's key leaves to its owner. Wiping
+        // the rest, which is not secret, lets `tests/zeroing.rs` check every byte.
         low::zeroise_value(self);
     }
 }

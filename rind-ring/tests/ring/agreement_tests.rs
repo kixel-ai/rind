@@ -22,9 +22,10 @@ wasm_bindgen_test_configure!(run_in_browser);
 
 extern crate alloc;
 
+use ring::{agreement, rand};
+
 #[allow(deprecated)]
 use crate::{test, test_file};
-use ring::{agreement, rand};
 
 #[test]
 fn agreement_traits() {

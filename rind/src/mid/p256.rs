@@ -81,7 +81,8 @@ impl VerifyingKey {
 /// A P-256 ephemeral private key.
 ///
 /// `agreement::PrivateKey` uses one for a single Diffie-Hellman
-/// operation.
+/// operation. It is not wiped on drop: the public keys holding one wipe it,
+/// and an ECDSA nonce is one too, which lives only for the signing call.
 pub(crate) struct PrivateKey {
     scalar: Scalar,
 }
@@ -107,10 +108,7 @@ impl PrivateKey {
     /// Returns a [`SharedSecret`].  May return an error in fault conditions.
     pub(crate) fn diffie_hellman(&self, peer: &PublicKey) -> Result<SharedSecret, Error> {
         let _entry = low::Entry::new_secret();
-        let mut shared_point = JacobianMontPoint::multiply(&self.scalar, &peer.point);
-        let result = shared_point.as_affine();
-        // aws-lc wipes the product point, but not the coordinates derived from it.
-        low::zeroise(&mut shared_point.xyz);
+        let result = JacobianMontPoint::multiply(&self.scalar, &peer.point).as_affine();
         match low::ct::into_public(result.on_curve()) {
             true => Ok(SharedSecret(util::u64x4_to_big_endian(
                 &result.x().demont().0,
@@ -229,13 +227,9 @@ impl StaticPrivateKey {
 }
 
 /// A shared secret output from a P-256 Diffie-Hellman operation.
+///
+/// It is not wiped on drop: `agreement::SharedSecret` wipes it.
 pub(crate) struct SharedSecret(pub(crate) [u8; FieldElement::BYTES]);
-
-impl Drop for SharedSecret {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.0);
-    }
-}
 
 #[derive(Clone, Copy, Debug, Default)]
 struct AffineMontPoint {
@@ -876,12 +870,6 @@ impl Scalar {
     /// Iterator of 51 * 5-bit elements, LSB first, sign bit and final flag is separate
     fn reversed_booth_recoded_w5(&self) -> BoothRecodeW5 {
         BoothRecodeW5::new(self)
-    }
-}
-
-impl Drop for Scalar {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.0);
     }
 }
 
