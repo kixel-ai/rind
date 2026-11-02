@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 
 use super::digest::Digest;
 use super::hash::Hash;
-use super::hmac::Hmac;
+use super::hmac::HmacKey;
 use crate::Error;
 use crate::mid::rng::RandomSource;
 
@@ -43,7 +43,7 @@ impl<H: Hash> HmacDrbg<H> {
 
     fn update(&mut self, additional_input: &[&[u8]]) {
         // 1. K = HMAC (K, V || 0x00 || provided_data).
-        let mut ctx = Hmac::<H>::new(self.k.as_ref());
+        let mut ctx = HmacKey::<H>::new(self.k.as_ref()).start();
         ctx.update(self.v.as_ref());
         ctx.update([0u8]);
 
@@ -54,9 +54,7 @@ impl<H: Hash> HmacDrbg<H> {
         self.k = ctx.finish();
 
         // 2. V = HMAC (K, V).
-        let mut ctx = Hmac::<H>::new(self.k.as_ref());
-        ctx.update(self.v.as_ref());
-        self.v = ctx.finish();
+        self.v = HmacKey::<H>::new(self.k.as_ref()).sign(self.v.as_ref());
 
         self.reseed_counter += 1;
 
@@ -66,7 +64,7 @@ impl<H: Hash> HmacDrbg<H> {
         }
 
         // 4. K = HMAC (K, V || 0x01 || provided_data).
-        let mut ctx = Hmac::<H>::new(self.k.as_ref());
+        let mut ctx = HmacKey::<H>::new(self.k.as_ref()).start();
         ctx.update(self.v.as_ref());
         ctx.update([1u8]);
 
@@ -77,16 +75,12 @@ impl<H: Hash> HmacDrbg<H> {
         self.k = ctx.finish();
 
         // 5. V = HMAC (K, V).
-        let mut ctx = Hmac::<H>::new(self.k.as_ref());
-        ctx.update(self.v.as_ref());
-        self.v = ctx.finish();
+        self.v = HmacKey::<H>::new(self.k.as_ref()).sign(self.v.as_ref());
     }
 
     fn generate_block(&mut self) {
         // V = HMAC (Key, V).
-        let mut ctx = Hmac::<H>::new(self.k.as_ref());
-        ctx.update(self.v.as_ref());
-        self.v = ctx.finish();
+        self.v = HmacKey::<H>::new(self.k.as_ref()).sign(self.v.as_ref());
     }
 }
 

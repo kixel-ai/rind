@@ -59,10 +59,7 @@ impl VerifyingKey {
 
         // 5. Compute: R = (xR, yR) = u1 G + u2 QU
         //  If R = O, output "invalid" and stop.
-        let lhs = JacobianMontPoint::public_base_multiply(&u1);
-        let rhs = JacobianMontPoint::multiply_w5::<false>(&u2, &self.precomp_w5);
-
-        let point = JacobianMontPoint::public_add(&lhs, &rhs);
+        let point = JacobianMontPoint::public_twin_multiply(&u1, &u2, &self.precomp_w5);
 
         if point.public_is_infinity() {
             return Err(Error::BadSignature);
@@ -443,14 +440,6 @@ impl JacobianMontPoint {
         FieldElement(self.xyz[Self::Z].try_into().unwrap())
     }
 
-    fn base_multiply(scalar: &Scalar) -> Self {
-        Self::multiply_comb::<true>(scalar)
-    }
-
-    fn public_base_multiply(scalar: &Scalar) -> Self {
-        Self::multiply_comb::<false>(scalar)
-    }
-
     /// `scalar * G`, for a `scalar` below n, by the comb layout of aws-lc's
     /// `ec_nistp_scalar_mul_base`.
     ///
@@ -467,7 +456,7 @@ impl JacobianMontPoint {
     /// added last, each is below `2^380`, so they are unequal mod n too.  At
     /// window 76, equal points would need the accumulator to be
     /// `16 * 2^380 - n`, making `scalar` `2^385 - n`, which is above n.
-    fn multiply_comb<const SECRET: bool>(scalar: &Scalar) -> Self {
+    fn base_multiply(scalar: &Scalar) -> Self {
         let mut windows = [(0u8, 0u8); 77];
         for ((digit, sign, _), window) in scalar
             .reversed_booth_recoded_w5()
@@ -486,17 +475,9 @@ impl JacobianMontPoint {
                 .iter()
                 .zip(windows.iter().skip(tooth).step_by(4))
             {
-                if SECRET {
-                    let mut tmp = AffineMontPoint::lookup_comb(table, digit);
-                    tmp.maybe_negate_y(sign);
-                    result.add_inplace_affine(&tmp, digit);
-                } else if digit > 0 {
-                    let mut tmp = AffineMontPoint::public_lookup_comb(table, digit);
-                    if sign > 0 {
-                        tmp.negate_y();
-                    }
-                    result.add_inplace_affine(&tmp, digit);
-                }
+                let mut tmp = AffineMontPoint::lookup_comb(table, digit);
+                tmp.maybe_negate_y(sign);
+                result.add_inplace_affine(&tmp, digit);
             }
         }
 
@@ -511,32 +492,59 @@ impl JacobianMontPoint {
         r
     }
 
-    /// `scalar * point`, by windows over the point's multiples.
+    /// `scalar * point`, by Booth-recoded 5-bit windows over the point's
+    /// multiples.
     #[cfg(target_arch = "arm")]
     fn multiply(scalar: &Scalar, point: &AffineMontPoint) -> Self {
-        Self::multiply_w5::<true>(scalar, &point.public_precomp_w5())
-    }
-
-    /// `scalar * P`, from `P`'s multiples in `precomp`, by Booth-recoded
-    /// 5-bit windows.
-    fn multiply_w5<const SECRET: bool>(
-        scalar: &Scalar,
-        precomp: &JacobianMontPointTableW5,
-    ) -> Self {
+        let precomp = point.public_precomp_w5();
         let mut terms = scalar.reversed_booth_recoded_w5();
 
         let (digit, _, _) = terms.next().unwrap();
-        let mut result = Self::lookup_w5::<SECRET>(precomp, digit, 0);
+        let mut result = Self::lookup_w5::<true>(&precomp, digit, 0);
         result.double_inplace_n(5);
 
         for (digit, sign, last) in terms {
-            result.add_inplace(&Self::lookup_w5::<SECRET>(precomp, digit, sign));
+            result.add_inplace(&Self::lookup_w5::<true>(&precomp, digit, sign));
 
             if !last {
                 result.double_inplace_n(5);
             }
         }
 
+        result
+    }
+
+    /// `g * G + p * P` for public scalars, from `P`'s multiples in
+    /// `precomp`.
+    ///
+    /// One chain of doublings serves both, each scalar's digits a width-5
+    /// NAF: over `precomp` for P, and over the first comb table, which holds
+    /// G to 16G, for G.
+    fn public_twin_multiply(g: &Scalar, p: &Scalar, precomp: &JacobianMontPointTableW5) -> Self {
+        let (mut g_digits, mut p_digits) = ([0; 385], [0; 385]);
+        util::public_naf::<5>(&g.0, &mut g_digits);
+        util::public_naf::<5>(&p.0, &mut p_digits);
+        let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP_COMB[0];
+
+        let mut result = Self::infinity();
+        for (g_digit, p_digit) in g_digits.iter().zip(&p_digits).rev() {
+            if !result.public_is_infinity() {
+                result = result.double();
+            }
+            if *p_digit != 0 {
+                let sign = u8::from(*p_digit < 0);
+                let tmp = Self::lookup_w5::<false>(precomp, p_digit.unsigned_abs(), sign);
+                result = Self::public_add_fast(&result, &tmp);
+            }
+            if *g_digit != 0 {
+                let mut tmp =
+                    AffineMontPoint::public_lookup_comb(g_multiples, g_digit.unsigned_abs());
+                if *g_digit < 0 {
+                    tmp.negate_y();
+                }
+                result = result.public_add_affine(&tmp);
+            }
+        }
         result
     }
 
@@ -586,6 +594,29 @@ impl JacobianMontPoint {
         }
     }
 
+    /// `a + b`, for any points, by [`Self::public_add`] only when they turn
+    /// out to be equal or opposite.
+    ///
+    /// The formulas give such points a zero z, as they do infinity, so
+    /// only a zero z from two points not at infinity takes the slow path.
+    fn public_add_fast(a: &Self, b: &Self) -> Self {
+        let sum = a.add(b);
+        match sum.public_is_infinity() && !a.public_is_infinity() && !b.public_is_infinity() {
+            true => Self::public_add(a, b),
+            false => sum,
+        }
+    }
+
+    /// `self + p`, for any points, as [`Self::public_add_fast`] does.
+    fn public_add_affine(&self, p: &AffineMontPoint) -> Self {
+        let mut sum = Self::infinity();
+        low::p384_montjmixadd(&mut sum.xyz, &self.xyz, &p.xy);
+        match sum.public_is_infinity() && !self.public_is_infinity() {
+            true => Self::public_add(self, &Self::from_affine(p)),
+            false => sum,
+        }
+    }
+
     /// Whether this point's x, reduced mod n, is `r`, for a point not at
     /// infinity.
     ///
@@ -623,6 +654,7 @@ impl JacobianMontPoint {
         }
     }
 
+    #[cfg(any(target_arch = "arm", test))]
     fn add_inplace(&mut self, p: &Self) {
         let mut r = Self::infinity();
         low::p384_montjadd(&mut r.xyz, &self.xyz, &p.xyz);
@@ -1153,8 +1185,43 @@ mod tests {
                 JacobianMontPoint::multiply(&scalar, &point).as_affine().xy,
                 expected
             );
+            let zero = Scalar::default();
             assert_eq!(
-                JacobianMontPoint::multiply_w5::<false>(&scalar, &precomp)
+                JacobianMontPoint::public_twin_multiply(&zero, &scalar, &precomp)
+                    .as_affine()
+                    .xy,
+                expected
+            );
+            assert_eq!(
+                JacobianMontPoint::public_twin_multiply(&scalar, &zero, &precomp)
+                    .as_affine()
+                    .xy,
+                CURVE_GENERATOR.slow_multiply(&scalar).xy
+            );
+        }
+    }
+
+    #[test]
+    fn twin_multiply_exceptional() {
+        // With P = G, the accumulator meets the point it adds: equal, which
+        // must double, or opposite, which must give infinity.
+        let precomp = CURVE_GENERATOR.public_precomp_w5();
+        let n_minus = |k: u64| {
+            let mut s = CURVE_ORDER;
+            s[0] -= k;
+            Scalar(s)
+        };
+        for (g, p) in [
+            (Scalar::small_u64(1), Scalar::small_u64(1)),
+            (Scalar::small_u64(3), Scalar::small_u64(3)),
+            (Scalar::small_u64(2), Scalar::small_u64(1)),
+            (Scalar::small_u64(1), n_minus(1)),
+            (n_minus(5), Scalar::small_u64(5)),
+            (n_minus(1), n_minus(1)),
+        ] {
+            let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
+            assert_eq!(
+                JacobianMontPoint::public_twin_multiply(&g, &p, &precomp)
                     .as_affine()
                     .xy,
                 expected

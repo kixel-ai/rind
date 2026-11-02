@@ -130,9 +130,10 @@ resumed TLS 1.3 handshakes and bulk transfer against rustls over aws-lc-rs's
 and ring's providers. RSA key generation, whose time swings by up to 3x from
 run to run, stays out of the ratios. The nightly `bench` workflow times every
 cell and keeps each benchmark's numbers in its summary. These are from
-[run 41378010740]; a change that moves a cell refreshes it. ML-KEM-768's
-cells are from [run 41400124007], whose x86_64 job drew an EPYC 9V74 (Zen 4)
-and no AVX2 job an EPYC 7763.
+[run 41378010740], and the P-256, P-384, and P-521 cells, except armv7's
+P-256, from [run 41399702862]; a change that moves a cell refreshes it.
+ML-KEM-768's cells are from [run 41400124007], whose x86_64 job drew an EPYC
+9V74 (Zen 4) and no AVX2 job an EPYC 7763.
 
 x86_64 runs every feature of an AMD EPYC 7763 (Zen 3: ADX, AVX2, SHA-NI, and
 VAES, but no AVX-512), except in the AES-GCM and 1 MB transfer rows, noted
@@ -148,6 +149,9 @@ The AES-GCM and 1 MB transfer rows are from [run 41401180882], which ran
 x86_64, no AVX2, and no AES-NI on an EPYC 9V74, whose AVX-512 runs AES-GCM's
 512-bit paths rather than the 256-bit VAES ones Zen 3 runs, no AVX on an EPYC
 7763, and SSE2 on a Xeon Platinum 8370C (Ice Lake).
+The SHA, HMAC, and HKDF rows are from [run 41398664891], which ran every
+column on an EPYC 7763, and x86_64's PBKDF2 cell from [run 41464027605], on
+the same CPU.
 Intel CPUs without SHA-NI run [aws-lc]'s AVX SHA-1 and SHA-256, and every
 Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 
@@ -157,17 +161,17 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 0.99 | 0.99 | 1.01 aws-lc | 0.85 |
 | ChaCha20 (header protection) | 0.96 Graviola |  | 0.95 aws-lc ⚡ | 0.93 | 0.95 | 0.92 |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.02 aws-lc ⚡ |  | 1.00 |  | **1.12** aws-lc ⚡ + Graviola ⚡ | **1.10** |
-| SHA-1 | 1.00 rind |  | 1.00 aws-lc | 1.02 |  | 1.01 |
-| SHA-256 | **1.20** Graviola ⚡ |  | **1.34** aws-lc ⚡ | **1.07** |  | **1.03** |
-| SHA-384, SHA-512, SHA-512/256 | **1.04** aws-lc ⚡ |  | 1.01 | 1.02 |  | 1.01 |
-| HMAC | **1.08** Graviola ⚡ |  | 1.01 |  |  |  |
-| HKDF | **1.30** rind ⚡ |  | 1.01 |  |  |  |
+| SHA-1 | 1.00 rind |  | 1.00 aws-lc | 1.00 |  | 0.94 |
+| SHA-256 | **1.12** Graviola ⚡ |  | **1.39** aws-lc ⚡ | **1.32** |  | **1.32** |
+| SHA-384, SHA-512, SHA-512/256 | 1.01 aws-lc ⚡ |  | 1.00 | 1.01 |  | 1.00 |
+| HMAC | 1.00 Graviola ⚡ |  | 1.01 |  |  |  |
+| HKDF | **1.17** rind ⚡ |  | 0.87 |  |  |  |
 | PBKDF2 | 0.94 rind |  | 0.93 |  |  |  |
 | X25519 | 1.01 s2n-bignum ✓ | 1.00 | 1.02 |  |  |  |
 | Ed25519 | **1.04** s2n-bignum ✓ + Graviola ⚡ | **1.03** | **1.03** |  |  |  |
-| P-256 ECDH, ECDSA | **1.11** s2n-bignum ✓ + Graviola ⚡ | **1.17** | **1.12** |  |  |  |
-| P-384 ECDH, ECDSA | 0.90 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.91 | 0.92 |  |  |  |
-| P-521 ECDH, ECDSA | 0.94 s2n-bignum ✓ + rind ⚡ | 0.95 | 0.95 |  |  |  |
+| P-256 ECDH, ECDSA | **1.11** s2n-bignum ✓ + Graviola ⚡ | **1.07** | **1.09** |  |  |  |
+| P-384 ECDH, ECDSA | 0.90 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.96 | 0.92 |  |  |  |
+| P-521 ECDH, ECDSA | 0.94 s2n-bignum ✓ + rind ⚡ | 0.94 | 0.94 |  |  |  |
 | ML-KEM-768 | 0.79 s2n-bignum ✓ + mlkem-native ✓ + Graviola ⚡ |  | 0.92 mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
 | RSA signatures, key generation | **1.07** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | **1.05** aws-lc ⚡ + Graviola ⚡ | **1.05** |  |  |  |
 | rind-rustls handshakes | 0.98 |  | **1.05** |  |  |  |
@@ -180,8 +184,9 @@ extension; without them it runs the code [Symmetric
 cryptography](#symmetric-cryptography) names. The aarch64 and no crypto
 cells for RSA and rind-rustls handshakes are from [run 41397278464], which
 times aarch64 RSA's current Montgomery multiplication. aarch64's SHA-256,
-HMAC, HKDF, and PBKDF2 cells are from [run 41397347485], and armv7's RSA and
-handshake cells from [run 41401089431].
+HMAC, HKDF, and PBKDF2 cells are from [run 41397347485], the other SHA, HMAC,
+and HKDF cells from [run 41398664891], and armv7's RSA and handshake cells
+from [run 41401089431].
 
 | Algorithm | aarch64 | no crypto | armv7 |
 |---|---|---|---|
@@ -189,17 +194,17 @@ handshake cells from [run 41401089431].
 | AES block, AES-CTR | **1.18** Graviola + rind | 1.01 aws-lc | 0.99 |
 | ChaCha20 (header protection) | **1.03** Graviola | 0.96 | 0.87 aws-lc ⚡ |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ | 1.00 | **1.06** |
-| SHA-1 | 1.01 rind | 1.00 aws-lc | 1.01 |
-| SHA-256 | **1.19** aws-lc ⚡ | **1.15** aws-lc | **1.04** aws-lc ⚡ |
-| SHA-384, SHA-512, SHA-512/256 | 1.00 aws-lc ✓ | 1.00 | **1.12** aws-lc ⚡ |
-| HMAC | **1.08** Graviola ⚡ | 1.00 | **1.28** |
-| HKDF | **1.42** rind ⚡ | 0.99 | **1.59** |
+| SHA-1 | 1.01 rind | 1.00 aws-lc | 1.00 |
+| SHA-256 | **1.19** aws-lc ⚡ | **1.16** aws-lc | 0.99 aws-lc ⚡ |
+| SHA-384, SHA-512, SHA-512/256 | 1.00 aws-lc ✓ | 1.00 | 1.00 aws-lc ⚡ |
+| HMAC | **1.08** Graviola ⚡ | 1.00 | 1.00 |
+| HKDF | **1.42** rind ⚡ | 0.90 | 1.01 |
 | PBKDF2 | 0.92 rind | 0.93 | 0.98 |
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
 | Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
-| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 1.00 | **2.63** HACL\* ✓ |
-| P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.09** fiat-crypto ✓ + rind ⚡ |
-| P-521 ECDH, ECDSA | 0.65 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.05** fiat-crypto ✓ + rind ⚡ |
+| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | **2.63** HACL\* ✓ |
+| P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.03** fiat-crypto ✓ + rind ⚡ |
+| P-521 ECDH, ECDSA | 0.64 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.04** fiat-crypto ✓ + rind ⚡ |
 | ML-KEM-768 | **1.04** s2n-bignum ✓ + Graviola ⚡ | 0.93 | **1.05** libcrux-ml-kem ✓ |
 | RSA signatures, key generation | 0.97 s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | 0.97 | **1.34** aws-lc ⚡ + Graviola ⚡ + rind ⚡ |
 | rind-rustls handshakes | 0.96 | 0.90 | **1.29** |
@@ -254,9 +259,12 @@ different one, updates this table and [LICENSE] in the same PR.
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [run 41378010740]: https://github.com/moq-dev/rind/actions/runs/41378010740
 [run 41401089431]: https://github.com/moq-dev/rind/actions/runs/41401089431
+[run 41399702862]: https://github.com/moq-dev/rind/actions/runs/41399702862
 [run 41397278464]: https://github.com/moq-dev/rind/actions/runs/41397278464
 [run 41397347485]: https://github.com/moq-dev/rind/actions/runs/41397347485
+[run 41398664891]: https://github.com/moq-dev/rind/actions/runs/41398664891
 [run 41400124007]: https://github.com/moq-dev/rind/actions/runs/41400124007
+[run 41464027605]: https://github.com/moq-dev/rind/actions/runs/41464027605
 [run 41401180882]: https://github.com/moq-dev/rind/actions/runs/41401180882
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
@@ -311,27 +319,30 @@ only which candidates it discards.
 On x86_64 and aarch64, all ECC field and scalar arithmetic are provided by
 s2n-bignum, and the rest of this section describes those backends.
 
-P256 base point multiplication uses a 7-bit exponent window with Booth encoding
-(this costs a 148KB constant table).
-Variable point multiplication uses a 5-bit exponent window with Booth encoding.
-Both use the same exponent representations for "public" and "secret" exponents --
-however the table selection for "public" exponents is specialized at compile-time.
+P256 base point multiplication is s2n-bignum's `p256_scalarmulbase`, over
+6-bit Booth windows and a table of each window's 32 multiples (an 88KB
+constant table). Variable point multiplication is s2n-bignum's
+`p256_montjscalarmul`.
 
 P384 base point multiplication uses a comb of 20 tables of 16 affine points
 (a 30KB constant table) over 5-bit Booth windows, as aws-lc does. Variable
-point multiplication is s2n-bignum's `p384_montjscalarmul`, except for ECDSA
-verification's public scalar, which uses a 5-bit Booth window over the
-multiples of the public key, computed once when the key is parsed.
+point multiplication is s2n-bignum's `p384_montjscalarmul`.
 
 P521's prime is a Mersenne prime, so its field arithmetic is direct rather
 than Montgomery's. Base point multiplication uses a comb of 27 tables of 16
 affine points (a 62KB constant table) over 5-bit Booth windows, as aws-lc
-does. Variable point multiplication is s2n-bignum's `p521_jscalarmul`, for
-ECDSA verification's public scalar too, except on aarch64, where a 5-bit Booth
-window over the point's cached multiples measured faster for that one.
+does. Variable point multiplication is s2n-bignum's `p521_jscalarmul`.
 s2n-bignum's P521 point addition requires points that are not at infinity,
-equal, or opposite, so the comb and the window keep to that, and select or
-branch around the cases they reach.
+equal, or opposite, so the comb keeps to that, selecting around the cases
+it reaches.
+
+ECDSA verification computes `u1 G + u2 Q` in one chain of doublings, as
+aws-lc does, adding terms from width-5 non-adjacent forms of the public
+scalars: `u2`'s over the public key's odd multiples, computed once when the
+key is parsed, and `u1`'s over the first row of the base point table, at
+width 6 for P256, whose row holds 32 multiples. An addition of equal or
+opposite points gives a zero z, as infinity does, so only then is it redone
+by cases.
 
 ECDSA follows RFC6979 for generation of `k`, but adds additional non-critical random input.
 We do this to avoid the theoretical fragility of RFC6979 under fault conditions.
