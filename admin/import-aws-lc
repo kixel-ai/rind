@@ -31,11 +31,11 @@ drops the label line; one naming a helper gives that helper its own copy from
 the label on, which opens a CFI frame of its own where the copy closes one.
 One of an import's `labels`, a jump target inside a routine, does not end it
 either, and stays as a local label. A routine that jumps or calls into
-another routine of its file `carries` it: the other's label and body follow
-the routine's in the same file, as local labels. One that branches to a
-helper by name `joins` it: the helper follows the routine's body under a
-local label, within the routine's CFI frame, which restarts there from the
-routine's entry state. An import's `cpp` defines
+another routine of its file `carries` it: the other's alignment, label, and
+body follow the routine's in the same file, as local labels. One that
+branches to a helper by name `joins` it: the helper follows the routine's
+body under a local label, within the routine's CFI frame, which restarts
+there from the routine's entry state. An import's `cpp` defines
 drop branches rind never takes. Its `aliases` name the
 routine an entry label calls, where that label shares the routine's own,
 which another import may hold. Its `inserts` add an instruction before the
