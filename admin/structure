@@ -4,6 +4,102 @@
 # from rind::low to rind::mid, or rind::mid to rind::high.
 set -e
 
+# cargo-modules reads only signatures and `use` items, so also search the
+# non-test source for a path naming a higher layer. The first pass finds
+# test-only `mod x;` files; the second checks the rest.
+(
+  cd "$(dirname "$0")/.."
+  files=$(find rind/src/low rind/src/mid -name '*.rs' | sort)
+  awk '
+    # Whether a #[cfg(...)] predicate holds only under test.
+    function test_only(pred,    args, depth, i, c, arg) {
+      if (pred == "test") return 1
+      if (pred !~ /^all\(.*\)$/) return 0
+      args = substr(pred, 5, length(pred) - 5) ","
+      depth = 0; arg = ""
+      for (i = 1; i <= length(args); i++) {
+        c = substr(args, i, 1)
+        if (c == "(") depth++
+        if (c == ")") depth--
+        if (c == "," && depth == 0) {
+          if (arg == "test") return 1
+          arg = ""
+        } else if (c != " ") arg = arg c
+      }
+      return 0
+    }
+
+    # Tracks bracket depth through a skipped test item; clears skip at its end.
+    function scan(s,    i, c) {
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c ~ /[[({]/) depth++
+        else if (c ~ /[])}]/) { if (--depth == 0 && c == "}") skip = 0 }
+        else if (c == ";" && depth == 0) skip = 0
+        if (!skip) return
+      }
+    }
+
+    FNR == 1 {
+      pending = 0; skip = 0; inuse = 0
+      base = FILENAME; sub(/\/mod\.rs$/, "", base); sub(/\.rs$/, "", base)
+      exempt = 0
+      for (b in testmod) if (FILENAME == b ".rs" || index(FILENAME, b "/") == 1) exempt = 1
+      layer = FILENAME ~ /\/src\/low\// ? "low" : "mid"
+      higher = layer == "low" ? "(mid|high)" : "high"
+    }
+    exempt { next }
+
+    # Most lines can neither name a layer nor change what counts as test code.
+    !skip && !pending && !inuse && !/high|mid|cfg|use/ { next }
+
+    {
+      line = $0
+      if (index(line, "\"")) gsub(/"([^"\\]|\\.)*"/, "\"\"", line)
+      if (index(line, "\047")) gsub(/\047([^\047\\]|\\.)\047/, "\047 \047", line)
+      if (index(line, "/")) { gsub(/\/\*([^*]|\*[^\/])*\*\//, "", line); sub(/\/\/.*/, "", line) }
+    }
+
+    !skip && line ~ /^[ \t]*#\[cfg\(/ {
+      pred = line; sub(/^[ \t]*#\[cfg\(/, "", pred); sub(/\)\].*/, "", pred)
+      if (test_only(pred)) pending = 1
+      sub(/^[ \t]*#\[cfg\([^]]*\)\]/, "", line)
+    }
+
+    pending && line ~ /^[ \t]*(#\[.*\])?[ \t]*$/ { next }
+
+    pending {
+      pending = 0
+      if (match(line, /^[ \t]*mod[ \t]+[A-Za-z0-9_]+[ \t]*;/)) {
+        name = line; sub(/^[ \t]*mod[ \t]+/, "", name); sub(/[ \t]*;.*/, "", name)
+        if (pass == 1) testmod[base "/" name] = 1
+        next
+      }
+      skip = 1; depth = 0
+    }
+
+    skip { scan(line); next }
+
+    pass == 1 { next }
+
+    {
+      if (line ~ /^[ \t]*(pub(\([^)]*\))?[ \t]+)?use[ \t]/) inuse = 1
+      bad = line ~ ("(^|[^A-Za-z0-9_])" higher "::") || line ~ ("::" higher "([^A-Za-z0-9_]|$)")
+      bad = bad || inuse && line ~ ("(^|[^A-Za-z0-9_])" higher "([^A-Za-z0-9_]|$)")
+      if (inuse && line ~ /;/) inuse = 0
+      if (bad) {
+        printf "ERROR: %s:%d names a layer above %s: %s\n", FILENAME, FNR, layer, $0 > "/dev/stderr"
+        errors++
+      }
+    }
+
+    END {
+      printf "%d errors\n", errors > "/dev/stderr"
+      exit(errors > 0)
+    }
+  ' pass=1 $files pass=2 $files
+)
+
 cat >structure.gvpr <<END
 BEGIN {
   int rc = 0;
