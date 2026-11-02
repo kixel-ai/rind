@@ -51,7 +51,8 @@ jobs:
       # Each step runs one SDE model for each distinct set of dispatch paths
       # that `rind/src/low/x86_64/cpu.rs` picks from cpuid, and asserts that
       # set with `RIND_TEST_X86_*`. Its comment names the other models that
-      # select the same set.
+      # select the same set, per the scans `admin/x86-cpu sde-scan` saves in
+      # `admin/x86-cpus`.
 
       # Prescott, a Pentium 4, lacks SSSE3, so it runs every slowest path:
       # aws-lc's SSE2 AES and integer GHASH, ChaCha20, SHA-1, and SHA-256, the
