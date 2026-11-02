@@ -68,20 +68,20 @@ impl RsazAvx512 {
     }
 }
 
-/// A value for each modulus, in 52-bit limbs, the second `W / 2` words after
-/// the first, as the routines take them. Products are almost Montgomery:
+/// A value for each modulus, in `H` words of 52-bit limbs each, one after
+/// the other, as the routines take them. Products are almost Montgomery:
 /// below `2m`, not `m`.
 #[derive(Clone, Copy)]
 #[repr(C, align(64))]
-struct Pair<const W: usize>([u64; W]);
+struct Pair<const H: usize>([[u64; H]; 2]);
 
-impl<const W: usize> Pair<W> {
-    const ZERO: Self = Self([0; W]);
+impl<const H: usize> Pair<H> {
+    const ZERO: Self = Self([[0; H]; 2]);
 
     /// `words[i]` in the value for modulus `i`.
     fn from_words(words: [&[u64]; 2]) -> Self {
         let mut pair = Self::ZERO;
-        for (limbs, words) in pair.0.chunks_exact_mut(W / 2).zip(words) {
+        for (limbs, words) in pair.0.iter_mut().zip(words) {
             to_limbs(limbs, words);
         }
         pair
@@ -90,7 +90,7 @@ impl<const W: usize> Pair<W> {
     /// `v << shift` in the value for each modulus, for `v` below `2^52`.
     fn both(v: u64, shift: usize) -> Self {
         let mut pair = Self::ZERO;
-        for limbs in pair.0.chunks_exact_mut(W / 2) {
+        for limbs in &mut pair.0 {
             limbs[shift / 52] = v << (shift % 52);
         }
         pair
@@ -129,10 +129,10 @@ fn from_limbs(words: &mut [u64], limbs: &[u64]) {
     }
 }
 
-/// One width's routines, which take each value as a [`Pair<W>`].
-struct Routines<const W: usize> {
-    /// The limbs of each value; `W / 2` pads 30 to 32 so that each value
-    /// fills whole vectors.
+/// One width's routines, which take each value as a [`Pair<H>`].
+struct Routines<const H: usize> {
+    /// The limbs of each value; `H` pads 30 to 32 so that each value fills
+    /// whole vectors.
     limbs: usize,
     amm: unsafe extern "sysv64" fn(
         r: *mut u64,
@@ -144,25 +144,25 @@ struct Routines<const W: usize> {
     extract: unsafe extern "sysv64" fn(r: *mut u64, table: *const u64, i: u64, j: u64),
 }
 
-static X20: Routines<40> = Routines {
+static X20: Routines<20> = Routines {
     limbs: 20,
     amm: rsaz_amm52x20_x2_ifma256,
     extract: extract_multiplier_2x20_win5,
 };
-static X30: Routines<64> = Routines {
+static X30: Routines<32> = Routines {
     limbs: 30,
     amm: rsaz_amm52x30_x2_ifma256,
     extract: extract_multiplier_2x30_win5,
 };
-static X40: Routines<80> = Routines {
+static X40: Routines<40> = Routines {
     limbs: 40,
     amm: rsaz_amm52x40_x2_ifma256,
     extract: extract_multiplier_2x40_win5,
 };
 
-fn mod_exp<const W: usize>(
+fn mod_exp<const H: usize>(
     token: HaveAvx512ForRsa,
-    routines: &Routines<W>,
+    routines: &Routines<H>,
     z: [&mut [u64]; 2],
     operands: &[Operands<'_>; 2],
 ) {
@@ -222,7 +222,7 @@ fn mod_exp<const W: usize>(
 
     // Out of Montgomery form, which leaves each at most its modulus.
     rsaz.mul_by(&mut y, &one);
-    for ((z, limbs), o) in z.into_iter().zip(y.0.chunks_exact(W / 2)).zip(operands) {
+    for ((z, limbs), o) in z.into_iter().zip(&y.0).zip(operands) {
         let mut norm = [0; 32];
         let norm = &mut norm[..k];
         from_limbs(norm, limbs);
@@ -232,35 +232,35 @@ fn mod_exp<const W: usize>(
 }
 
 /// The products modulo each of `m`, with `k0` as each's `-m^-1 mod 2^64`.
-struct Products<'a, const W: usize> {
+struct Products<'a, const H: usize> {
     _token: HaveAvx512ForRsa,
-    routines: &'a Routines<W>,
-    m: &'a Pair<W>,
+    routines: &'a Routines<H>,
+    m: &'a Pair<H>,
     k0: [u64; 2],
 }
 
-impl<const W: usize> Products<'_, W> {
+impl<const H: usize> Products<'_, H> {
     /// `r = a * b / R`.
-    fn mul(&self, r: &mut Pair<W>, a: &Pair<W>, b: &Pair<W>) {
+    fn mul(&self, r: &mut Pair<H>, a: &Pair<H>, b: &Pair<H>) {
         self.mul_raw(r, a, b);
     }
 
     /// `r = r * b / R`.
-    fn mul_by(&self, r: &mut Pair<W>, b: &Pair<W>) {
-        let r: *mut Pair<W> = r;
+    fn mul_by(&self, r: &mut Pair<H>, b: &Pair<H>) {
+        let r: *mut Pair<H> = r;
         self.mul_raw(r, r, b);
     }
 
     /// `r = r * r / R`.
-    fn sqr(&self, r: &mut Pair<W>) {
-        let r: *mut Pair<W> = r;
+    fn sqr(&self, r: &mut Pair<H>) {
+        let r: *mut Pair<H> = r;
         self.mul_raw(r, r, r);
     }
 
     /// `r = a * b / R`, where `a` and `b` may be `r`, as aws-lc calls it.
-    fn mul_raw(&self, r: *mut Pair<W>, a: *const Pair<W>, b: *const Pair<W>) {
-        // SAFETY: each pointer is to a pair of `W / 2` words, as the routine
-        // for `W` reads and writes, and it reads two words of `k0`. It
+    fn mul_raw(&self, r: *mut Pair<H>, a: *const Pair<H>, b: *const Pair<H>) {
+        // SAFETY: each pointer is to a pair of `H` words, as the routine for
+        // `H` reads and writes, and it reads two words of `k0`. It
         // takes `a` and `b` as `r` too, as aws-lc calls it; the token proves
         // the AVX-512 IFMA and BMI2 it uses.
         unsafe {
@@ -268,7 +268,7 @@ impl<const W: usize> Products<'_, W> {
                 r.cast(),
                 a.cast(),
                 b.cast(),
-                self.m.0.as_ptr(),
+                self.m.0.as_ptr().cast(),
                 self.k0.as_ptr(),
             )
         };
@@ -276,12 +276,14 @@ impl<const W: usize> Products<'_, W> {
 
     /// Loads entry `i[0]` of `table` into `r` for the first modulus, and
     /// `i[1]` for the second, for secret `i` below 32, reading every entry.
-    fn extract(&self, r: &mut Pair<W>, table: &[Pair<W>], i: [u64; 2]) {
+    fn extract(&self, r: &mut Pair<H>, table: &[Pair<H>], i: [u64; 2]) {
         assert!(table.len() == 32);
-        // SAFETY: the routine for `W` reads the 32 entries of `W` words
-        // whatever `i` is, and writes `W` words; the token proves the
+        // SAFETY: the routine for `H` reads the 32 entries of `2H` words
+        // whatever `i` is, and writes `2H` words; the token proves the
         // AVX-512 it uses.
-        unsafe { (self.routines.extract)(r.0.as_mut_ptr(), table.as_ptr().cast(), i[0], i[1]) };
+        unsafe {
+            (self.routines.extract)(r.0.as_mut_ptr().cast(), table.as_ptr().cast(), i[0], i[1])
+        };
     }
 }
 
