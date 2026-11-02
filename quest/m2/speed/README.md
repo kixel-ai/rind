@@ -46,5 +46,15 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [Audit every algorithm's speed](/quest/m2/speed/audit.md) - measure every algorithm on every path against every source, and recommend a quest per gap
 - [RSA at every key size as fast as aws-lc-rs](/quest/m2/speed/rsa-sizes.md) - x86_64 signing's exponentiation beyond the Karatsuba sizes, as aws-lc's windows and `bn_power5` run it
+- [armv7 P-256 as fast as the fastest source](/quest/m2/speed/armv7-p256.md) - signing 2.63x, ES256 2.04x today
+- [armv7 RSA as fast as the fastest source](/quest/m2/speed/armv7-rsa.md) - signing 2.3-2.6x, key loading 6.4x today
+- [One-block hashes, HMAC, and HKDF as fast as the fastest source](/quest/m2/speed/armv7-hmac-hkdf.md) - up to 1.59x on armv7 today
+- [AES-GCM key setup as fast as the fastest source](/quest/m2/speed/aes-gcm-key-setup.md) - 1.30-1.48x today
+- [x86_64 AES-GCM with VAES as fast as the fastest source](/quest/m2/speed/aes-gcm-vaes.md) - 1.29-1.35x at 32 B today
+- [aarch64 SHA-256 as fast as the fastest source](/quest/m2/speed/aarch64-sha256.md) - 1.26-1.30x today
+- [aarch64 RSA as fast as ring](/quest/m2/speed/aarch64-rsa-ring.md) - signing 1.56x at 2048 bits today
+- [ML-KEM-768 encapsulation as fast as the fastest source](/quest/m2/speed/mlkem-encaps.md) - 1.05-1.22x today
+- [SHA-256 fed 1-byte updates as fast as the fastest source](/quest/m2/speed/sha256-small-updates.md) - up to 1.34x today
+- [x86_64 P-256 key generation as fast as the fastest source](/quest/m2/speed/x86-p256-keygen.md) - 1.11-1.17x today
+- [x86_64 RSA with AVX-512 IFMA](/quest/m2/speed/x86-rsa-ifma.md) - aws-lc's AVX-512 RSA is up to 3.56x faster
