@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.5...rind-ring-v0.1.6) - 2026-11-02
+
+### Fixed
+
+- clear the nightly quality lints and verify nightly passes on main ([#212](https://github.com/moq-dev/rind/pull/212))
+
 ## [0.1.5](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.4...rind-ring-v0.1.5) - 2026-11-02
 
 ### Other
