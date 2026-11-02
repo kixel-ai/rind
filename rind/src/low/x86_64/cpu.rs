@@ -46,13 +46,20 @@ unsafe fn zero_bytes_avx2(ptr: *mut u8, len: usize) {
             "       add {ptr}, 32",
             "       sub {len}, 32",
             "       jmp 2b",
-            // by-1 loop
-            "   3:  sub {len}, 1",
+            // by-8 loop
+            "   3:  cmp {len}, 8",
             "       jl  4f",
+            "       mov qword ptr [{ptr}], 0",
+            "       add {ptr}, 8",
+            "       sub {len}, 8",
+            "       jmp 3b",
+            // by-1 loop
+            "   4:  sub {len}, 1",
+            "       jl  5f",
             "       mov byte ptr [{ptr}], 0",
             "       add {ptr}, 1",
-            "       jmp 3b",
-            "   4:  ",
+            "       jmp 4b",
+            "   5:  ",
 
             ptr = inout(reg) ptr => _,
             len = inout(reg) len => _,
@@ -74,13 +81,20 @@ unsafe fn zero_bytes_sse2(ptr: *mut u8, len: usize) {
             "       add {ptr}, 16",
             "       sub {len}, 16",
             "       jmp 2b",
-            // by-1 loop
-            "   3:  sub {len}, 1",
+            // by-8 loop
+            "   3:  cmp {len}, 8",
             "       jl  4f",
+            "       mov qword ptr [{ptr}], 0",
+            "       add {ptr}, 8",
+            "       sub {len}, 8",
+            "       jmp 3b",
+            // by-1 loop
+            "   4:  sub {len}, 1",
+            "       jl  5f",
             "       mov byte ptr [{ptr}], 0",
             "       add {ptr}, 1",
-            "       jmp 3b",
-            "   4:  ",
+            "       jmp 4b",
+            "   5:  ",
 
             ptr = inout(reg) ptr => _,
             len = inout(reg) len => _,

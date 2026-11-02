@@ -6,7 +6,7 @@
 
 use super::digest::MAX_OUTPUT_LEN;
 use super::hash::Hash;
-use super::hmac::{self, Hmac, Keyed};
+use super::hmac::{self, HmacKey, Keyed};
 use crate::low::zeroise;
 use crate::{Error, aead};
 
@@ -63,11 +63,11 @@ impl Prk {
     // Fills `out`, which must be at most 255 hash outputs: HKDF-Expand's
     // one-byte block counter limits it to 255 blocks.
     fn expand_into(&self, info: &[&[u8]], out: &mut [u8]) {
-        fn expand<H: Hash>(hmac: &Hmac<H>, info: &[&[u8]], out: &mut [u8]) {
+        fn expand<H: Hash>(key: &HmacKey<H>, info: &[&[u8]], out: &mut [u8]) {
             let mut block = H::zeroed_output();
             let hash_len = block.as_ref().len();
             for (counter, chunk) in (1..=255u8).zip(out.chunks_mut(hash_len)) {
-                let mut ctx = hmac.clone();
+                let mut ctx = key.start();
                 if counter > 1 {
                     ctx.update(&block);
                 }
@@ -84,10 +84,10 @@ impl Prk {
         }
 
         match &self.0.0 {
-            Keyed::Sha1(hmac) => expand(hmac, info, out),
-            Keyed::Sha256(hmac) => expand(hmac, info, out),
-            Keyed::Sha384(hmac) => expand(hmac, info, out),
-            Keyed::Sha512(hmac) => expand(hmac, info, out),
+            Keyed::Sha1(key) => expand(key, info, out),
+            Keyed::Sha256(key) => expand(key, info, out),
+            Keyed::Sha384(key) => expand(key, info, out),
+            Keyed::Sha512(key) => expand(key, info, out),
         }
     }
 }

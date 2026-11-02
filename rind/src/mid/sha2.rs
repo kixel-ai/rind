@@ -9,39 +9,107 @@
 use crate::low::cpu::verify_cpu_features;
 use crate::low::{Blockwise, Zeroable, zeroise_value};
 
-/// A context for incremental computation of SHA256.
+/// SHA256's chaining value after a whole number of blocks.
+///
+/// Finishing needs no buffer, so a one-shot hash, or HMAC from its keyed
+/// states, works on this alone.
 #[derive(Clone)]
-pub(crate) struct Sha256Context {
+pub(crate) struct Sha256State {
     h: [u32; 8],
-    blockwise: Blockwise<{ Self::BLOCK_SZ }>,
     // u64 so 32-bit targets can hash past 4 GiB.
     nblocks: u64,
 }
 
-impl Sha256Context {
-    /// Start a new SHA256 hash computation.
+impl Sha256State {
+    /// SHA256's initial value.
     pub(crate) const fn new() -> Self {
         Self {
             h: [
                 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
                 0x5be0cd19,
             ],
-            blockwise: Blockwise::new(),
             nblocks: 0,
+        }
+    }
+
+    /// Add `blocks`, a whole number of blocks, to the hash computation.
+    pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
+        debug_assert!(blocks.len().is_multiple_of(Sha256Context::BLOCK_SZ));
+        if !blocks.is_empty() {
+            verify_cpu_features();
+            crate::low::sha256_compress_blocks(&mut self.h, blocks);
+            self.nblocks = self
+                .nblocks
+                .saturating_add((blocks.len() / Sha256Context::BLOCK_SZ) as u64);
+        }
+    }
+
+    /// The hash of the input so far followed by `message`, leaving this state as it was.
+    pub(crate) fn finish_with(&self, message: &[u8]) -> [u8; Sha256Context::OUTPUT_SZ] {
+        const BLOCK_SZ: usize = Sha256Context::BLOCK_SZ;
+        let (blocks, tail) = message.split_at(message.len() & !(BLOCK_SZ - 1));
+        let bits = self
+            .nblocks
+            .checked_mul(BLOCK_SZ as u64)
+            .and_then(|bytes| bytes.checked_add(message.len() as u64))
+            .and_then(|bytes| bytes.checked_mul(8))
+            .expect("excess data processed by hash function");
+
+        let mut state = self.clone();
+        state.update_blocks(blocks);
+
+        let mut block = [0u8; BLOCK_SZ];
+        block[..tail.len()].copy_from_slice(tail);
+        block[tail.len()] = 0x80;
+        // The length takes a block of its own when the tail leaves no room for it.
+        if tail.len() >= BLOCK_SZ - 8 {
+            state.update_blocks(&block);
+            block = [0u8; BLOCK_SZ];
+        }
+        block[BLOCK_SZ - 8..].copy_from_slice(&bits.to_be_bytes());
+        state.update_blocks(&block);
+
+        let mut r = [0u8; Sha256Context::OUTPUT_SZ];
+        let (chunks, _) = r.as_chunks_mut::<4>();
+        for (out, h) in chunks.iter_mut().zip(state.h.iter()) {
+            out.copy_from_slice(&h.to_be_bytes());
+        }
+        r
+    }
+}
+
+/// A context for incremental computation of SHA256.
+#[derive(Clone)]
+pub(crate) struct Sha256Context {
+    state: Sha256State,
+    blockwise: Blockwise<{ Self::BLOCK_SZ }>,
+}
+
+impl Sha256Context {
+    /// Start a new SHA256 hash computation.
+    pub(crate) const fn new() -> Self {
+        Self::resume(Sha256State::new())
+    }
+
+    /// Continue a hash computation from `state`.
+    pub(crate) const fn resume(state: Sha256State) -> Self {
+        Self {
+            state,
+            blockwise: Blockwise::new(),
         }
     }
 
     /// Add `bytes` to the ongoing hash computation.
     pub(crate) fn update(&mut self, bytes: &[u8]) {
         if self.blockwise.used() == 0 && bytes.len().is_multiple_of(Self::BLOCK_SZ) {
-            self.update_blocks(bytes);
+            self.state.update_blocks(bytes);
             return;
         }
 
         let bytes = self.blockwise.add_leading(bytes);
 
         if let Some(block) = self.blockwise.take() {
-            self.update_blocks(&block);
+            self.state.update_blocks(&block);
         }
 
         let (whole_blocks, remainder) = {
@@ -49,65 +117,14 @@ impl Sha256Context {
             (&bytes[..whole_len], &bytes[whole_len..])
         };
 
-        self.update_blocks(whole_blocks);
+        self.state.update_blocks(whole_blocks);
 
         self.blockwise.add_trailing(remainder);
     }
 
     /// Complete the SHA256 computation, returning the hash output.
-    pub(crate) fn finish(mut self) -> [u8; Self::OUTPUT_SZ] {
-        let bytes = self
-            .nblocks
-            .checked_mul(Self::BLOCK_SZ as u64)
-            .and_then(|bytes| bytes.checked_add(self.blockwise.used() as u64))
-            .unwrap();
-
-        let bits = bytes
-            .checked_mul(8)
-            .expect("excess data processed by hash function");
-
-        let last_blocks = self.blockwise.md_pad_with_length(&bits.to_be_bytes());
-        self.update_blocks(last_blocks.as_ref());
-
-        Self::output(&self.h)
-    }
-
-    /// The hash of the input so far followed by `tail`, leaving this context as it was.
-    ///
-    /// Compresses one block from a copy of the state, so the input so far
-    /// must be whole blocks, and `tail` must leave room for the padding.
-    pub(crate) fn finish_block(&self, tail: &[u8]) -> [u8; Self::OUTPUT_SZ] {
-        assert!(self.blockwise.used() == 0 && tail.len() < Self::BLOCK_SZ - 8);
-        let mut block = [0u8; Self::BLOCK_SZ];
-        block[..tail.len()].copy_from_slice(tail);
-        block[tail.len()] = 0x80;
-        let bits = (self.nblocks * Self::BLOCK_SZ as u64 + tail.len() as u64) * 8;
-        block[Self::BLOCK_SZ - 8..].copy_from_slice(&bits.to_be_bytes());
-
-        let mut h = self.h;
-        verify_cpu_features();
-        crate::low::sha256_compress_blocks(&mut h, &block);
-
-        Self::output(&h)
-    }
-
-    fn output(h: &[u32; 8]) -> [u8; Self::OUTPUT_SZ] {
-        let mut r = [0u8; Self::OUTPUT_SZ];
-        let (chunks, _) = r.as_chunks_mut::<4>();
-        for (out, state) in chunks.iter_mut().zip(h.iter()) {
-            out.copy_from_slice(&state.to_be_bytes());
-        }
-        r
-    }
-    fn update_blocks(&mut self, blocks: &[u8]) {
-        debug_assert!(blocks.len().is_multiple_of(Self::BLOCK_SZ));
-        if !blocks.is_empty() {
-            verify_cpu_features();
-            crate::low::sha256_compress_blocks(&mut self.h, blocks);
-            self.nblocks = self
-                .nblocks
-                .saturating_add((blocks.len() / Self::BLOCK_SZ) as u64);
-        }
+    pub(crate) fn finish(&self) -> [u8; Self::OUTPUT_SZ] {
+        self.state.finish_with(self.blockwise.buffered())
     }
 
     /// The internal block size of SHA256.
@@ -133,19 +150,27 @@ pub(crate) struct Sha384Context {
 }
 
 impl Sha384Context {
+    /// SHA384's initial value.
+    pub(crate) const INITIAL: Sha512State = Sha512State::with_h([
+        0xcbbb9d5dc1059ed8,
+        0x629a292a367cd507,
+        0x9159015a3070dd17,
+        0x152fecd8f70e5939,
+        0x67332667ffc00b31,
+        0x8eb44a8768581511,
+        0xdb0c2e0d64f98fa7,
+        0x47b5481dbefa4fa4,
+    ]);
+
     /// Start a new SHA384 hash computation.
     pub(crate) const fn new() -> Self {
+        Self::resume(Self::INITIAL)
+    }
+
+    /// Continue a hash computation from `state`.
+    pub(crate) const fn resume(state: Sha512State) -> Self {
         Self {
-            inner: Sha512Context::with_h([
-                0xcbbb9d5dc1059ed8,
-                0x629a292a367cd507,
-                0x9159015a3070dd17,
-                0x152fecd8f70e5939,
-                0x67332667ffc00b31,
-                0x8eb44a8768581511,
-                0xdb0c2e0d64f98fa7,
-                0x47b5481dbefa4fa4,
-            ]),
+            inner: Sha512Context::resume(state),
         }
     }
 
@@ -155,16 +180,13 @@ impl Sha384Context {
     }
 
     /// Complete the SHA384 computation, returning the hash output.
-    pub(crate) fn finish(self) -> [u8; Self::OUTPUT_SZ] {
-        let inner = self.inner.finish();
-        // SAFETY: 48 is less than 64.
-        inner[..Self::OUTPUT_SZ].try_into().unwrap()
+    pub(crate) fn finish(&self) -> [u8; Self::OUTPUT_SZ] {
+        Self::truncate(&self.inner.finish())
     }
 
-    /// As [`Sha512Context::finish_block`].
-    pub(crate) fn finish_block(&self, tail: &[u8]) -> [u8; Self::OUTPUT_SZ] {
-        let inner = self.inner.finish_block(tail);
-        inner[..Self::OUTPUT_SZ].try_into().unwrap()
+    /// The SHA384 output within a SHA512 one.
+    pub(crate) fn truncate(output: &[u8; Sha512Context::OUTPUT_SZ]) -> [u8; Self::OUTPUT_SZ] {
+        *output.first_chunk().unwrap()
     }
 
     /// The output size of SHA384.
@@ -178,19 +200,22 @@ pub(crate) struct Sha512_256Context {
 }
 
 impl Sha512_256Context {
+    /// SHA512/256's initial value.
+    pub(crate) const INITIAL: Sha512State = Sha512State::with_h([
+        0x22312194fc2bf72c,
+        0x9f555fa3c84c64c2,
+        0x2393b86b6f53b151,
+        0x963877195940eabd,
+        0x96283ee2a88effe3,
+        0xbe5e1e2553863992,
+        0x2b0199fc2c85b8aa,
+        0x0eb72ddc81c52ca2,
+    ]);
+
     /// Start a new SHA512/256 hash computation.
     pub(crate) const fn new() -> Self {
         Self {
-            inner: Sha512Context::with_h([
-                0x22312194fc2bf72c,
-                0x9f555fa3c84c64c2,
-                0x2393b86b6f53b151,
-                0x963877195940eabd,
-                0x96283ee2a88effe3,
-                0xbe5e1e2553863992,
-                0x2b0199fc2c85b8aa,
-                0x0eb72ddc81c52ca2,
-            ]),
+            inner: Sha512Context::resume(Self::INITIAL),
         }
     }
 
@@ -200,27 +225,31 @@ impl Sha512_256Context {
     }
 
     /// Complete the SHA512/256 computation, returning the hash output.
-    pub(crate) fn finish(self) -> [u8; Self::OUTPUT_SZ] {
-        let inner = self.inner.finish();
-        // SAFETY: 32 is less than 64.
-        inner[..Self::OUTPUT_SZ].try_into().unwrap()
+    pub(crate) fn finish(&self) -> [u8; Self::OUTPUT_SZ] {
+        Self::truncate(&self.inner.finish())
+    }
+
+    /// The SHA512/256 output within a SHA512 one.
+    pub(crate) fn truncate(output: &[u8; Sha512Context::OUTPUT_SZ]) -> [u8; Self::OUTPUT_SZ] {
+        *output.first_chunk().unwrap()
     }
 
     /// The output size of SHA512/256.
     pub(crate) const OUTPUT_SZ: usize = 32;
 }
 
-/// A context for incremental computation of SHA512.
+/// SHA512's chaining value after a whole number of blocks, as [`Sha256State`].
+///
+/// SHA384 and SHA512/256 share it, from their own initial values.
 #[derive(Clone)]
-pub(crate) struct Sha512Context {
+pub(crate) struct Sha512State {
     h: [u64; 8],
-    blockwise: Blockwise<{ Self::BLOCK_SZ }>,
     // u64 so 32-bit targets can hash past 4 GiB.
     nblocks: u64,
 }
 
-impl Sha512Context {
-    /// Start a new SHA512 hash computation.
+impl Sha512State {
+    /// SHA512's initial value.
     pub(crate) const fn new() -> Self {
         Self::with_h([
             0x6a09e667f3bcc908,
@@ -236,24 +265,82 @@ impl Sha512Context {
 
     /// The truncated variants differ from SHA512 only in this initial value.
     const fn with_h(h: [u64; 8]) -> Self {
+        Self { h, nblocks: 0 }
+    }
+
+    /// Add `blocks`, a whole number of blocks, to the hash computation.
+    pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
+        debug_assert!(blocks.len().is_multiple_of(Sha512Context::BLOCK_SZ));
+        if !blocks.is_empty() {
+            verify_cpu_features();
+            crate::low::sha512_compress_blocks(&mut self.h, blocks);
+            self.nblocks = self
+                .nblocks
+                .saturating_add((blocks.len() / Sha512Context::BLOCK_SZ) as u64);
+        }
+    }
+
+    /// The hash of the input so far followed by `message`, leaving this state as it was.
+    pub(crate) fn finish_with(&self, message: &[u8]) -> [u8; Sha512Context::OUTPUT_SZ] {
+        const BLOCK_SZ: usize = Sha512Context::BLOCK_SZ;
+        let (blocks, tail) = message.split_at(message.len() & !(BLOCK_SZ - 1));
+        let bits = (u128::from(self.nblocks) * BLOCK_SZ as u128 + message.len() as u128) * 8;
+
+        let mut state = self.clone();
+        state.update_blocks(blocks);
+
+        let mut block = [0u8; BLOCK_SZ];
+        block[..tail.len()].copy_from_slice(tail);
+        block[tail.len()] = 0x80;
+        // The length takes a block of its own when the tail leaves no room for it.
+        if tail.len() >= BLOCK_SZ - 16 {
+            state.update_blocks(&block);
+            block = [0u8; BLOCK_SZ];
+        }
+        block[BLOCK_SZ - 16..].copy_from_slice(&bits.to_be_bytes());
+        state.update_blocks(&block);
+
+        let mut r = [0u8; Sha512Context::OUTPUT_SZ];
+        let (chunks, _) = r.as_chunks_mut::<8>();
+        for (out, h) in chunks.iter_mut().zip(state.h.iter()) {
+            out.copy_from_slice(&h.to_be_bytes());
+        }
+        r
+    }
+}
+
+/// A context for incremental computation of SHA512.
+#[derive(Clone)]
+pub(crate) struct Sha512Context {
+    state: Sha512State,
+    blockwise: Blockwise<{ Self::BLOCK_SZ }>,
+}
+
+impl Sha512Context {
+    /// Start a new SHA512 hash computation.
+    pub(crate) const fn new() -> Self {
+        Self::resume(Sha512State::new())
+    }
+
+    /// Continue a hash computation from `state`.
+    pub(crate) const fn resume(state: Sha512State) -> Self {
         Self {
-            h,
+            state,
             blockwise: Blockwise::new(),
-            nblocks: 0,
         }
     }
 
     /// Add `bytes` to the ongoing hash computation.
     pub(crate) fn update(&mut self, bytes: &[u8]) {
         if self.blockwise.used() == 0 && bytes.len().is_multiple_of(Self::BLOCK_SZ) {
-            self.update_blocks(bytes);
+            self.state.update_blocks(bytes);
             return;
         }
 
         let bytes = self.blockwise.add_leading(bytes);
 
         if let Some(block) = self.blockwise.take() {
-            self.update_blocks(&block);
+            self.state.update_blocks(&block);
         }
 
         let (whole_blocks, remainder) = {
@@ -261,65 +348,14 @@ impl Sha512Context {
             (&bytes[..whole_len], &bytes[whole_len..])
         };
 
-        self.update_blocks(whole_blocks);
+        self.state.update_blocks(whole_blocks);
 
         self.blockwise.add_trailing(remainder);
     }
 
     /// Complete the SHA512 computation, returning the hash output.
-    pub(crate) fn finish(mut self) -> [u8; Self::OUTPUT_SZ] {
-        let bytes = self
-            .nblocks
-            .checked_mul(Self::BLOCK_SZ as u64)
-            .and_then(|bytes| bytes.checked_add(self.blockwise.used() as u64))
-            .unwrap();
-
-        let bits = (bytes as u128)
-            .checked_mul(8)
-            .expect("excess data processed by hash function");
-
-        let last_blocks = self.blockwise.md_pad_with_length(&bits.to_be_bytes());
-        self.update_blocks(last_blocks.as_ref());
-
-        Self::output(&self.h)
-    }
-
-    /// The hash of the input so far followed by `tail`, leaving this context as it was.
-    ///
-    /// Compresses one block from a copy of the state, so the input so far
-    /// must be whole blocks, and `tail` must leave room for the padding.
-    pub(crate) fn finish_block(&self, tail: &[u8]) -> [u8; Self::OUTPUT_SZ] {
-        assert!(self.blockwise.used() == 0 && tail.len() < Self::BLOCK_SZ - 16);
-        let mut block = [0u8; Self::BLOCK_SZ];
-        block[..tail.len()].copy_from_slice(tail);
-        block[tail.len()] = 0x80;
-        let bits = (u128::from(self.nblocks) * Self::BLOCK_SZ as u128 + tail.len() as u128) * 8;
-        block[Self::BLOCK_SZ - 16..].copy_from_slice(&bits.to_be_bytes());
-
-        let mut h = self.h;
-        verify_cpu_features();
-        crate::low::sha512_compress_blocks(&mut h, &block);
-
-        Self::output(&h)
-    }
-
-    fn output(h: &[u64; 8]) -> [u8; Self::OUTPUT_SZ] {
-        let mut r = [0u8; Self::OUTPUT_SZ];
-        let (chunks, _) = r.as_chunks_mut::<8>();
-        for (out, state) in chunks.iter_mut().zip(h.iter()) {
-            out.copy_from_slice(&state.to_be_bytes());
-        }
-        r
-    }
-    fn update_blocks(&mut self, blocks: &[u8]) {
-        debug_assert!(blocks.len().is_multiple_of(Self::BLOCK_SZ));
-        if !blocks.is_empty() {
-            verify_cpu_features();
-            crate::low::sha512_compress_blocks(&mut self.h, blocks);
-            self.nblocks = self
-                .nblocks
-                .saturating_add((blocks.len() / Self::BLOCK_SZ) as u64);
-        }
+    pub(crate) fn finish(&self) -> [u8; Self::OUTPUT_SZ] {
+        self.state.finish_with(self.blockwise.buffered())
     }
 
     /// The internal block size of SHA512.
@@ -362,12 +398,12 @@ mod tests {
     fn length_past_32_bit_usize() {
         for bytes in [1u64 << 29, 1 << 32] {
             let mut ctx = Sha256Context::new();
-            ctx.nblocks = bytes / Sha256Context::BLOCK_SZ as u64;
+            ctx.state.nblocks = bytes / Sha256Context::BLOCK_SZ as u64;
             ctx.update(b"x");
             ctx.finish();
 
             let mut ctx = Sha512Context::new();
-            ctx.nblocks = bytes / Sha512Context::BLOCK_SZ as u64;
+            ctx.state.nblocks = bytes / Sha512Context::BLOCK_SZ as u64;
             ctx.update(b"x");
             ctx.finish();
         }
