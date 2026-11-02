@@ -129,7 +129,7 @@ impl VaesKernel {
 
 /// `block` with `n` added to the big-endian 32-bit counter in its last four
 /// bytes.
-fn add_to_counter(block: &[u8; 16], n: u32) -> [u8; 16] {
+pub(super) fn add_to_counter(block: &[u8; 16], n: u32) -> [u8; 16] {
     let [.., a, b, c, d] = *block;
     let ctr = u32::from_be_bytes([a, b, c, d]).wrapping_add(n);
     let mut out = [0u8; 16];
