@@ -33,16 +33,11 @@ impl PublicKey {
 
 /// A P-521 public key for ECDSA verification.
 ///
-/// On aarch64 it keeps the point's multiples, so verifying again with the
-/// same key skips computing them.  Elsewhere s2n-bignum's
-/// `p521_jscalarmul`, verified, measured as fast as that window, so it
-/// takes the point alone.
+/// It keeps the point's multiples, so verifying again with the same key
+/// skips computing them.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
-    #[cfg(target_arch = "aarch64")]
     precomp_w5: JacobianPointTableW5,
-    #[cfg(not(target_arch = "aarch64"))]
-    point: AffinePoint,
 }
 
 impl VerifyingKey {
@@ -50,10 +45,7 @@ impl VerifyingKey {
     pub(crate) fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
         let PublicKey { point } = PublicKey::from_x962_uncompressed(bytes)?;
         Ok(Self {
-            #[cfg(target_arch = "aarch64")]
             precomp_w5: point.public_precomp_w5(),
-            #[cfg(not(target_arch = "aarch64"))]
-            point,
         })
     }
 
@@ -65,12 +57,7 @@ impl VerifyingKey {
 
         // 5. Compute: R = (xR, yR) = u1 G + u2 QU
         //  If R = O, output "invalid" and stop.
-        let lhs = JacobianPoint::public_base_multiply(&u1);
-        #[cfg(target_arch = "aarch64")]
-        let rhs = JacobianPoint::public_multiply_w5(&u2, &self.precomp_w5);
-        #[cfg(not(target_arch = "aarch64"))]
-        let rhs = JacobianPoint::multiply(&u2, &self.point);
-        let point = JacobianPoint::public_add(&lhs, &rhs);
+        let point = JacobianPoint::public_twin_multiply(&u1, &u2, &self.precomp_w5);
 
         if point.public_is_infinity() {
             return Err(Error::BadSignature);
@@ -388,7 +375,6 @@ impl AffinePoint {
         self.xy[Self::Y].copy_from_slice(&result.0);
     }
 
-    #[cfg(any(target_arch = "aarch64", test))]
     fn public_precomp_w5(&self) -> JacobianPointTableW5 {
         let mut r = [JacobianPoint::infinity(); 16];
 
@@ -471,14 +457,6 @@ impl JacobianPoint {
         FieldElement(self.xyz[Self::Z].try_into().unwrap())
     }
 
-    fn base_multiply(scalar: &Scalar) -> Self {
-        Self::multiply_comb::<true>(scalar)
-    }
-
-    fn public_base_multiply(scalar: &Scalar) -> Self {
-        Self::multiply_comb::<false>(scalar)
-    }
-
     /// `scalar * G`, for a `scalar` below n, by the comb layout of aws-lc's
     /// `ec_nistp_scalar_mul_base`.
     ///
@@ -498,7 +476,7 @@ impl JacobianPoint {
     /// equal accumulator would be `d * 2^520 - n`, out of its range for
     /// `d = 1` and making `scalar` `2^522 - n` for `d = 2`, and an opposite
     /// one would make `scalar` a multiple of n.
-    fn multiply_comb<const SECRET: bool>(scalar: &Scalar) -> Self {
+    fn base_multiply(scalar: &Scalar) -> Self {
         let mut windows = [(0u8, 0u8); 105];
         for ((digit, sign, _), window) in scalar
             .reversed_booth_recoded_w5()
@@ -510,34 +488,19 @@ impl JacobianPoint {
         let mut result = Self::infinity();
         for tooth in (0..4).rev() {
             if tooth != 3 {
-                if SECRET {
-                    // `p521_jdouble` requires a nonzero z, so infinity is kept.
-                    let mut doubled = result;
-                    doubled.double_inplace_n(5);
-                    result = Self::select(&doubled, &result, result.is_infinity());
-                } else if !result.public_is_infinity() {
-                    result.double_inplace_n(5);
-                }
+                // `p521_jdouble` requires a nonzero z, so infinity is kept.
+                let mut doubled = result;
+                doubled.double_inplace_n(5);
+                result = Self::select(&doubled, &result, result.is_infinity());
             }
 
             for (table, &(digit, sign)) in precomp::CURVE_GENERATOR_PRECOMP_COMB
                 .iter()
                 .zip(windows.iter().skip(tooth).step_by(4))
             {
-                if SECRET {
-                    let mut tmp = AffinePoint::lookup_comb(table, digit);
-                    tmp.maybe_negate_y(sign);
-                    result.add_inplace_affine(&tmp, digit);
-                } else if digit > 0 {
-                    let mut tmp = AffinePoint::public_lookup_comb(table, digit);
-                    if sign > 0 {
-                        tmp.negate_y();
-                    }
-                    result = match result.public_is_infinity() {
-                        true => Self::from_affine(&tmp),
-                        false => result.add_affine(&tmp),
-                    };
-                }
+                let mut tmp = AffinePoint::lookup_comb(table, digit);
+                tmp.maybe_negate_y(sign);
+                result.add_inplace_affine(&tmp, digit);
             }
         }
 
@@ -551,39 +514,65 @@ impl JacobianPoint {
         r
     }
 
-    /// `scalar * P`, for a public `scalar` below n, from `P`'s multiples in
-    /// `precomp`, by Booth-recoded 5-bit windows.
+    /// `g * G + p * P` for public scalars, from `P`'s multiples in
+    /// `precomp`.
     ///
-    /// Before each addition, the accumulator is `32m P` for the value `m`
-    /// of the windows above, and the table point is `d P` for a digit `d`
-    /// of at most 16.  `32m + d` is the value of the windows so far, below
-    /// n, so the two are never opposites; they are equal only if `32m - d`
-    /// is n, which needs `32m + d` within 32 of n, so only the last window,
-    /// for a `scalar` from n - 32 to n - 2, can double.
-    #[cfg(any(target_arch = "aarch64", test))]
-    fn public_multiply_w5(scalar: &Scalar, precomp: &JacobianPointTableW5) -> Self {
-        let mut terms = scalar.reversed_booth_recoded_w5();
+    /// One chain of doublings serves both, each scalar's digits a width-5
+    /// NAF: over `precomp` for P, and over the first comb table, which holds
+    /// G to 16G, for G.
+    fn public_twin_multiply(g: &Scalar, p: &Scalar, precomp: &JacobianPointTableW5) -> Self {
+        let (mut g_digits, mut p_digits) = ([0; 522], [0; 522]);
+        util::public_naf::<5>(&g.0, &mut g_digits);
+        util::public_naf::<5>(&p.0, &mut p_digits);
+        let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP_COMB[0];
 
-        let (digit, _, _) = terms.next().unwrap();
-        let mut result = Self::public_lookup_w5(precomp, digit, 0);
-
-        for (digit, sign, last) in terms {
+        let mut result = Self::infinity();
+        for (g_digit, p_digit) in g_digits.iter().zip(&p_digits).rev() {
+            // `p521_jdouble` requires a nonzero z.
             if !result.public_is_infinity() {
-                result.double_inplace_n(5);
+                result = result.double();
             }
-            if digit == 0 {
-                continue;
+            if *p_digit != 0 {
+                let sign = u8::from(*p_digit < 0);
+                let term = Self::public_lookup_w5(precomp, p_digit.unsigned_abs(), sign);
+                result = Self::public_add_fast(&result, &term);
             }
-
-            let term = Self::public_lookup_w5(precomp, digit, sign);
-            result = match (result.public_is_infinity(), last) {
-                (true, _) => term,
-                (false, false) => result.add(&term),
-                (false, true) => Self::public_add(&result, &term),
-            };
+            if *g_digit != 0 {
+                let mut term = AffinePoint::public_lookup_comb(g_multiples, g_digit.unsigned_abs());
+                if *g_digit < 0 {
+                    term.negate_y();
+                }
+                result = match result.public_is_infinity() {
+                    true => Self::from_affine(&term),
+                    false => match result.add_affine(&term) {
+                        sum if sum.public_is_infinity() => {
+                            Self::public_add(&result, &Self::from_affine(&term))
+                        }
+                        sum => sum,
+                    },
+                };
+            }
         }
-
         result
+    }
+
+    /// `a + b`, for any points, by [`Self::public_add`] only when they turn
+    /// out to be equal or opposite.
+    ///
+    /// For such points `p521_jadd`, which requires neither, computes a zero
+    /// z, as its z is the product of both z's and the difference of the x's
+    /// scaled to it.
+    fn public_add_fast(a: &Self, b: &Self) -> Self {
+        if a.public_is_infinity() {
+            return *b;
+        }
+        if b.public_is_infinity() {
+            return *a;
+        }
+        match a.add(b) {
+            sum if sum.public_is_infinity() => Self::public_add(a, b),
+            sum => sum,
+        }
     }
 
     /// `a + b`, for any points, including at infinity, equal, or opposite.
@@ -683,7 +672,6 @@ impl JacobianPoint {
 
     /// Returns `table[index - 1]`, negated if `sign` is set, or infinity
     /// for a zero `index`.
-    #[cfg(any(target_arch = "aarch64", test))]
     fn public_lookup_w5(table: &JacobianPointTableW5, index: u8, sign: u8) -> Self {
         let mut r = Self::infinity();
         if index > 0 {
@@ -957,7 +945,6 @@ impl Iterator for BoothRecodeW5 {
 }
 
 /// 16 jacobian points
-#[cfg(any(target_arch = "aarch64", test))]
 type JacobianPointTableW5 = [u64; 432];
 
 /// 27 tables of 16 affine points
@@ -1087,8 +1074,9 @@ mod tests {
                 JacobianPoint::multiply(&scalar, &point).as_affine().xy,
                 expected
             );
+            let zero = Scalar::default();
             assert_eq!(
-                JacobianPoint::public_multiply_w5(&scalar, &precomp)
+                JacobianPoint::public_twin_multiply(&zero, &scalar, &precomp)
                     .as_affine()
                     .xy,
                 expected
@@ -1100,7 +1088,9 @@ mod tests {
                 expected
             );
             assert_eq!(
-                JacobianPoint::public_base_multiply(&scalar).as_affine().xy,
+                JacobianPoint::public_twin_multiply(&scalar, &zero, &precomp)
+                    .as_affine()
+                    .xy,
                 expected
             );
         }
@@ -1133,6 +1123,29 @@ mod tests {
         assert_eq!(JacobianPoint::public_add(&g, &infinity).xyz, g.xyz);
         assert_eq!(JacobianPoint::public_add(&infinity, &g).xyz, g.xyz);
         assert!(JacobianPoint::public_add(&infinity, &infinity).public_is_infinity());
+    }
+
+    #[test]
+    fn twin_multiply_exceptional() {
+        // With P = G, the accumulator meets the point it adds: equal, which
+        // must double, or opposite, which must give infinity.
+        let precomp = CURVE_GENERATOR.public_precomp_w5();
+        for (g, p) in [
+            (Scalar::small_u64(1), Scalar::small_u64(1)),
+            (Scalar::small_u64(3), Scalar::small_u64(3)),
+            (Scalar::small_u64(2), Scalar::small_u64(1)),
+            (Scalar::small_u64(1), n_minus(1)),
+            (n_minus(5), Scalar::small_u64(5)),
+            (n_minus(1), n_minus(1)),
+        ] {
+            let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
+            assert_eq!(
+                JacobianPoint::public_twin_multiply(&g, &p, &precomp)
+                    .as_affine()
+                    .xy,
+                expected
+            );
+        }
     }
 
     #[test]

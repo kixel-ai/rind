@@ -7,7 +7,7 @@
 use core::num::NonZeroU32;
 
 use super::hash::Hash;
-use super::hmac::{self, Hmac, Keyed};
+use super::hmac::{self, HmacKey, Keyed};
 use crate::Error;
 use crate::low::{ct, ct_equal};
 
@@ -103,13 +103,13 @@ impl Secret {
         sink: impl FnMut(usize, &[u8]),
     ) {
         fn blocks<H: Hash>(
-            hmac: &Hmac<H>,
+            key: &HmacKey<H>,
             iterations: NonZeroU32,
             salt: &[u8],
             len: usize,
             mut sink: impl FnMut(usize, &[u8]),
         ) {
-            let mut salted = hmac.clone();
+            let mut salted = key.start();
             salted.update(salt);
 
             let hash_len = H::zeroed_output().as_ref().len();
@@ -119,7 +119,7 @@ impl Secret {
                 let mut u = ctx.finish();
                 let mut t = u.clone();
                 for _ in 1..iterations.get() {
-                    u = hmac.sign_block(u.as_ref());
+                    u = key.sign(u.as_ref());
                     for (t, u) in t.as_mut().iter_mut().zip(u.as_ref()) {
                         *t ^= u;
                     }
@@ -129,10 +129,10 @@ impl Secret {
         }
 
         match &self.0.0 {
-            Keyed::Sha1(hmac) => blocks(hmac, iterations, salt, len, sink),
-            Keyed::Sha256(hmac) => blocks(hmac, iterations, salt, len, sink),
-            Keyed::Sha384(hmac) => blocks(hmac, iterations, salt, len, sink),
-            Keyed::Sha512(hmac) => blocks(hmac, iterations, salt, len, sink),
+            Keyed::Sha1(key) => blocks(key, iterations, salt, len, sink),
+            Keyed::Sha256(key) => blocks(key, iterations, salt, len, sink),
+            Keyed::Sha384(key) => blocks(key, iterations, salt, len, sink),
+            Keyed::Sha512(key) => blocks(key, iterations, salt, len, sink),
         }
     }
 }

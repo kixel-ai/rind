@@ -74,8 +74,8 @@ fn karatsuba_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
 fn redc_8n(z: &mut [u64], product: &mut [u64], m: &[u64], n0: u64) {
     let carry = super::bignum_emontredc_8n::bignum_emontredc_8n(product, m, n0);
     let (_, reduced) = product.split_at(m.len());
-    let carry = carry | super::bignum_cmp_lt::bignum_cmp_lt(m, reduced);
-    super::bignum_optsub::bignum_optsub(z, reduced, m, carry);
+    let ge = carry | (1 - super::bignum_cmp_lt::bignum_cmp_lt(reduced, m));
+    super::bignum_optsub::bignum_optsub(z, reduced, m, ge);
 }
 
 /// `mont_mul` for a multiple of four words from eight, by `mulx`, `adcx`,
@@ -249,7 +249,7 @@ unsafe extern "sysv64" fn bn_mul_mont_nohw(
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::super::adx_mux::tests::Rng;
-    use super::super::{bignum_montmul, bignum_negmodinv};
+    use super::super::{bignum_montmul, bignum_mul, bignum_negmodinv};
     use super::*;
 
     // Every other test runs only the routines this CPU picks, so here aws-lc's
@@ -265,12 +265,23 @@ mod tests {
                 let mut m = rng.words::<64>(64 * k as u32);
                 let m = &mut m[..k];
                 // The widest modulus, the narrowest with its top word set,
-                // and random ones.
+                // the product of odd `r` and `s`, and random ones.
+                let (mut r, mut s) = ([0; 64], [0; 64]);
                 match case {
                     0 => m.fill(u64::MAX),
                     1 => {
                         m.fill(0);
                         m[k - 1] = 1;
+                    }
+                    4 => {
+                        let h = k / 2;
+                        r = rng.words::<64>(64 * h as u32);
+                        s = rng.words::<64>(64 * (k - h) as u32);
+                        r[0] |= 1;
+                        r[h - 1] |= 1 << 63;
+                        s[0] |= 1;
+                        s[k - h - 1] |= 1 << 63;
+                        bignum_mul::bignum_mul(m, &r[..h], &s[..k - h]);
                     }
                     _ => m[k - 1] |= 1 << 63,
                 }
@@ -279,8 +290,9 @@ mod tests {
                 bignum_negmodinv::bignum_negmodinv(&mut n0, &m[..1]);
                 let n0 = n0[0];
 
-                // Operands below `m`, with its extremes: zero, and `m - 1`
-                // for both.
+                // Operands below `m`, with its extremes: zero, `m - 1` for
+                // both, and `r` and `s`, whose product reduces to `m` before
+                // the final subtraction.
                 let below = |rng: &mut Rng| {
                     let mut x = rng.words::<64>(64 * k as u32);
                     x[k - 1] %= m[k - 1];
@@ -294,6 +306,7 @@ mod tests {
                         x[0] -= 1;
                         y = x;
                     }
+                    4 => (x, y) = (r, s),
                     _ => {}
                 }
                 let (x, y) = (&x[..k], &y[..k]);
@@ -304,6 +317,9 @@ mod tests {
                 let want_sqr = &mut want_sqr[..k];
                 bignum_montmul::bignum_montmul(want, x, y, m);
                 bignum_montmul::bignum_montmul(want_sqr, x, x, m);
+                if case == 4 {
+                    assert!(want.iter().all(|&w| w == 0), "{k} words");
+                }
 
                 let mut got = [0; 64];
                 let got = &mut got[..k];

@@ -49,12 +49,11 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 - [armv7 P-256 as fast as the fastest source](/quest/m2/speed/armv7-p256.md) - signing 2.63x, ES256 2.04x today
 - [armv7 RSA as fast as the fastest source](/quest/m2/speed/armv7-rsa.md) - signing 2.3-2.6x, key loading 6.4x today
-- [One-block hashes, HMAC, and HKDF as fast as the fastest source](/quest/m2/speed/armv7-hmac-hkdf.md) - up to 1.59x on armv7 today
+- [x86_64 SHA-256 finishing in two blocks and PBKDF2-HMAC-SHA1 as fast as the fastest source](/quest/m2/speed/armv7-hmac-hkdf.md) - 1.08x at 64 B and 1.02x today
 - [AES-GCM key setup as fast as the fastest source](/quest/m2/speed/aes-gcm-key-setup.md) - 1.30-1.48x today
 - [ML-KEM-768 encapsulation as fast as the fastest source](/quest/m2/speed/mlkem-encaps.md) - armv7 1.05x and aarch64 1.04x today
 - [SHA-256 fed 1-byte updates as fast as the fastest source](/quest/m2/speed/sha256-small-updates.md) - up to 1.34x today
 - [x86_64 P-256 key generation as fast as the fastest source](/quest/m2/speed/x86-p256-keygen.md) - 1.11-1.17x today
 - [x86_64 RSA with AVX-512 IFMA](/quest/m2/speed/x86-rsa-ifma.md) - aws-lc's AVX-512 RSA is up to 3.56x faster
-- [x86_64 AES-GCM without VAES as fast as ring](/quest/m2/speed/aes-gcm-no-vaes.md) - 1.22-1.31x at QUIC sizes today
 - [aarch64 RSA on a 5-bit exponent window](/quest/m2/speed/aarch64-rsa-window.md) - the window x86_64 gained in #224
-- [x86_64 SHA-256 picks its path once](/quest/m2/speed/sha256-dispatch-once.md) - no per-block feature checks without SHA-NI
+- [ML-KEM keys hold the key hash, not a second copy](/quest/m2/speed/mlkem-key-size.md) - key types drop below 8 KiB and lose a duplicate encoding
