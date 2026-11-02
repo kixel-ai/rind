@@ -4,6 +4,29 @@
 # from rind::low to rind::mid, or rind::mid to rind::high.
 set -e
 
+# cargo-modules reads only signatures and `use` items, so also grep the source
+# for a path into a higher layer. A file's `#[cfg(test)] mod x {` is skipped up
+# to the column-0 `}` that rustfmt closes it with; any other match is an error.
+(
+  cd "$(dirname "$0")/.."
+  files=$(find rind/src/low rind/src/mid -name '*.rs' | sort)
+  awk '
+    FNR == 1 { pending = 0; intest = 0 }
+    intest { if ($0 !~ /^[}]/) next; intest = 0 }
+    pending && /^(pub(\([^)]*\))? )?mod [A-Za-z0-9_]+ [{]$/ { pending = 0; intest = 1; next }
+    /^#\[cfg\(test\)\]$/ { pending = 1 }
+    !/^#\[/ { pending = 0 }
+    /(crate|super)::high/ || FILENAME ~ /\/src\/low\// && /(crate|super)::mid/ {
+      printf "ERROR: %s:%d names a higher layer: %s\n", FILENAME, FNR, $0 > "/dev/stderr"
+      errors++
+    }
+    END {
+      printf "%d errors\n", errors > "/dev/stderr"
+      exit(errors > 0)
+    }
+  ' $files
+)
+
 # Captured first so a cargo-modules failure fails the script rather than
 # feeding the filter an empty graph.
 deps=$(cargo modules dependencies \

@@ -3,6 +3,8 @@ set -e
 
 # Usage: admin/ctgrind [unit|wycheproof|adapters] [cargo test args...]
 # Runs every suite unless one is named, so CI can run them in parallel.
+# Run it in `nix develop .#ctgrind`, which has the libclang and valgrind
+# headers crabgrind builds with.
 #
 # Pass `--target armv7-unknown-linux-gnueabihf` on a host that executes
 # 32-bit ARM natively, such as an arm64 one, with an armhf valgrind.
