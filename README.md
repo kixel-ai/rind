@@ -319,8 +319,8 @@ masking all 32, in one call.
 
 The RSA private operation always uses the CRT optimisation.
 
-On aarch64, modular exponentiation uses a 4-bit fixed exponent window, and the term is selected by
-the exponent bits from the table of base powers in a side-channel-free way.
+On aarch64 and armv7, modular exponentiation uses a 5-bit fixed exponent window, as aws-lc's does,
+and the term is selected by the exponent bits from the table of base powers in a side-channel-free way.
 The private operation is always followed by the public operation to verify the result
 (and the result compared in a side-channel-free way).
 

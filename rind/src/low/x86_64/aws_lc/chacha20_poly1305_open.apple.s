@@ -1862,6 +1862,7 @@ L$chacha_poly_open_sse_128_xor_hash:
 	movdqa	%xmm10,%xmm6
 	movdqa	%xmm14,%xmm10
 	jmp	L$chacha_poly_open_sse_128_xor_hash
+.p2align	6
 L$chacha_poly_chacha20_poly1305_open_avx2:
 
 
