@@ -273,6 +273,19 @@ IMPORTS_64 = [
         "routines": ["aes_hw_ctr32_encrypt_blocks"],
         "carries": {"aes_hw_ctr32_encrypt_blocks": ["_aesni_encrypt8"]},
     },
+    # AES-CTR and GHASH interleaved six blocks at a time, for CPUs with AVX
+    # and MOVBE but no VAES. Its constants load from offsets off the first.
+    {
+        "arch": "x86_64",
+        "source": "aesni-gcm-x86_64.S",
+        "tag": "aesni_gcm",
+        "perlasm": "crypto/fipsmodule/modes/asm/aesni-gcm-x86_64.pl",
+        "copyright": "Copyright 2013-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["bswap_mask"],
+        "packed": ["bswap_mask"],
+        "routines": ["aesni_gcm_encrypt", "aesni_gcm_decrypt"],
+        "helpers": ["_aesni_ctr32_ghash_6x", "_aesni_ctr32_6x"],
+    },
     {
         "arch": "x86_64",
         "source": "vpaes-x86_64.S",
