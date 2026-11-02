@@ -367,11 +367,12 @@ impl<const N: usize> PosInt<N> {
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn from_montgomery(self, n: &Self) -> Self {
         // On x86_64, `mont_mul` by one measured faster than s2n-bignum's
-        // generic `bignum_demont`.
-        #[cfg(target_arch = "x86_64")]
+        // generic `bignum_demont`, and armv7's `bignum_demont` takes only group
+        // orders.
+        #[cfg(any(target_arch = "x86_64", target_arch = "arm"))]
         return self.mont_mul(&n.fixed_one(), n, n.mont_neg_inverse());
 
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(target_arch = "aarch64")]
         {
             let mut demont = Self::zero();
             demont.used = n.used;

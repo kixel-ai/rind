@@ -1,0 +1,705 @@
+// SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
+
+//! The s2n-bignum routines `low::PosInt` uses beyond Montgomery
+//! multiplication, with their contracts, in portable Rust for armv7.
+//!
+//! Each runs in time that depends only on its lengths, never on its values:
+//! loops run a count fixed by the lengths, and selects are masks. Products
+//! are formed from 32-bit halves, which a 32-bit core multiplies in one
+//! instruction, where 64-bit words would take a library call.
+//!
+//! The algorithms are the textbook ones, each stated with its bound where
+//! it is defined: Montgomery multiplication and reduction (HAC 14.32 and
+//! 14.36), and Stein's binary gcd and inversion (HAC 14.54 and 14.61)
+//! rearranged to run a fixed number of steps.
+
+/// The widest value any of these takes: an 8192-bit modulus.
+const MAX_WORDS: usize = 128;
+
+/// `MAX_WORDS` in 32-bit halves.
+const MAX_LIMBS: usize = MAX_WORDS * 2;
+
+/// Add, z := x + y
+///
+/// Inputs x[m], y[n]; outputs function return (carry-out) and z[p]
+///
+/// Truncates modulo p words, returning the carry out of the p'th place.
+pub(crate) fn bignum_add(z: &mut [u64], x: &[u64], y: &[u64]) -> u64 {
+    let mut carry = 0;
+    for (i, z) in z.iter_mut().enumerate() {
+        let (sum, c1) = word(x, i).overflowing_add(word(y, i));
+        let (sum, c2) = sum.overflowing_add(carry);
+        *z = sum;
+        carry = u64::from(c1 | c2);
+    }
+    carry
+}
+
+/// Return size of bignum in bits
+///
+/// Input x[k]; output function return
+///
+/// In the case of a zero bignum as input the result is 0
+pub(crate) fn bignum_bitsize(x: &[u64]) -> usize {
+    let mut bits = 0;
+    for (i, w) in x.iter().enumerate() {
+        let here = i as u64 * 64 + 64 - u64::from(w.leading_zeros());
+        bits = select(nonzero(*w), here, bits);
+    }
+    bits as usize
+}
+
+/// Compare bignums, x < y
+///
+/// Inputs x[m], y[n]; output function return
+pub(crate) fn bignum_cmp_lt(x: &[u64], y: &[u64]) -> u64 {
+    let mut borrow = 0;
+    for i in 0..x.len().max(y.len()) {
+        let (diff, b1) = word(x, i).overflowing_sub(word(y, i));
+        let (_, b2) = diff.overflowing_sub(borrow);
+        borrow = u64::from(b1 | b2);
+    }
+    borrow
+}
+
+/// Test bignums for coprimality, gcd(x,y) = 1
+///
+/// Inputs x[m], y[n]; output function return; temporary buffer t[>=2*max(m,n)]
+pub(crate) fn bignum_coprime(x: &[u64], y: &[u64], t: &mut [u64]) -> bool {
+    let w = x.len().max(y.len());
+    let (a, rest) = t.split_at_mut(w);
+    let b = &mut rest[..w];
+
+    // One of x and y must be odd, or 2 divides both. The odd one is `a`,
+    // which stays odd: where `b` is odd, each step swaps them if `b` is the
+    // smaller and subtracts `a` from `b`, then it halves `b`. Each step
+    // lowers log2(a) + log2(b) by at least one until `b` is zero, so 64(m + n)
+    // steps leave the gcd in `a`.
+    let x_odd = word(x, 0) & 1;
+    let y_odd = word(y, 0) & 1;
+    for i in 0..w {
+        a[i] = select(x_odd, word(x, i), word(y, i));
+        b[i] = select(x_odd, word(y, i), word(x, i));
+    }
+    for _ in 0..64 * (x.len() + y.len()) {
+        let odd = b[0] & 1;
+        cswap(a, b, mask(odd & bignum_cmp_lt(b, a)));
+        gcd_step(a, b, odd);
+    }
+
+    let mut not_one = a[0] ^ 1;
+    for w in &a[1..] {
+        not_one |= w;
+    }
+    (nonzero(not_one) ^ 1) & (x_odd | y_odd) == 1
+}
+
+/// Given table: uint64_t[height*width], copy table[idx*width...(idx+1)*width-1]
+///
+/// into z[0..width-1], reading every row.
+pub(crate) fn bignum_copy_row_from_table(
+    z: &mut [u64],
+    table: &[u64],
+    height: u64,
+    width: u64,
+    index: u64,
+) {
+    let width = width as usize;
+    let z = &mut z[..width];
+    z.fill(0);
+    for (row, entry) in table.chunks_exact(width).take(height as usize).enumerate() {
+        let keep = mask(nonzero(row as u64 ^ index) ^ 1);
+        for (z, e) in z.iter_mut().zip(entry) {
+            *z |= e & keep;
+        }
+    }
+}
+
+/// Count trailing zero digits (64-bit words)
+///
+/// Input x[k]; output function return
+///
+/// In the case of a zero bignum as input the result is 64 * k
+pub(crate) fn bignum_ctz(x: &[u64]) -> usize {
+    let mut zeros = 64 * x.len() as u64;
+    for (i, w) in x.iter().enumerate().rev() {
+        let here = i as u64 * 64 + u64::from(w.trailing_zeros());
+        zeros = select(nonzero(*w), here, zeros);
+    }
+    zeros as usize
+}
+
+/// Return size of bignum in digits (64-bit word)
+///
+/// Input x[k]; output function return
+///
+/// In the case of a zero bignum as input the result is 0
+pub(crate) fn bignum_digitsize(x: &[u64]) -> usize {
+    let mut digits = 0;
+    for (i, w) in x.iter().enumerate() {
+        digits = select(nonzero(*w), i as u64 + 1, digits);
+    }
+    digits as usize
+}
+
+/// Add modulo m, z := (x + y) mod m, assuming x and y reduced
+///
+/// Inputs x[k], y[k], m[k]; output z[k]
+pub(crate) fn bignum_modadd(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
+    let carry = bignum_add(z, x, y);
+    let below = bignum_cmp_lt(z, m);
+    sub_masked(z, m, mask(carry | (below ^ 1)));
+}
+
+/// Invert modulo m, z = (1/a) mod b, assuming b is an odd number > 1, coprime a
+///
+/// Inputs a[k], b[k]; output z[k]; temporary buffer t[>=3*k]
+///
+/// `_t` is s2n-bignum's scratch space, which this does not need.
+pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64]) {
+    let k = b.len();
+    let mut x = [0; MAX_WORDS];
+    let x = &mut x[..k];
+    x.copy_from_slice(a);
+    let mut y = [0; MAX_WORDS];
+    let y = &mut y[..k];
+    y.copy_from_slice(b);
+    let mut u = [0; MAX_WORDS];
+    let u = &mut u[..k];
+    u[0] = 1;
+    let v = z;
+    v.fill(0);
+
+    // `bignum_coprime`'s steps, with `y` odd, keeping u * a = x and
+    // v * a = y (mod b). Once x is zero, y is gcd(a, b) = 1, so v = 1/a.
+    for _ in 0..128 * k {
+        let odd = x[0] & 1;
+        let swap = mask(odd & bignum_cmp_lt(x, y));
+        cswap(x, y, swap);
+        cswap(u, v, swap);
+        gcd_step(y, x, odd);
+        mod_sub_masked(u, v, b, mask(odd));
+        mod_halve(u, b);
+    }
+}
+
+/// Subtract modulo m, z := (x - y) mod m, assuming x and y reduced
+///
+/// Inputs x[k], y[k], m[k]; output z[k]
+pub(crate) fn bignum_modsub(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
+    z.copy_from_slice(x);
+    mod_sub_masked(z, y, m, u64::MAX);
+}
+
+/// Compute "montification" constant z := 2^{128k} mod m
+///
+/// Input m[k]; output z[k]; temporary buffer t[>=k]
+///
+/// For an odd m above one, as Montgomery multiplication needs. `_t` is
+/// s2n-bignum's scratch space, which this does not need.
+pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
+    let n = m.len() * 2;
+    let m = halves(m);
+    let m = &m[..n];
+    let n0 = neg_inverse(m[0]);
+
+    // Doubling 1 (64k + 1) times gives 2^(64k + 1) mod m, which is 2 in
+    // Montgomery form. Squaring 2^e there gives 2^2e, and doubling 2^(e + 1),
+    // so squaring and doubling by the bits of 64k below its top one raise
+    // it to 2^64k, whose Montgomery form 2^128k is the montifier.
+    let mut r = [0; MAX_LIMBS];
+    let r = &mut r[..n];
+    r[0] = 1;
+    for _ in 0..=32 * n {
+        mod_double(r, m);
+    }
+    let e = 32 * n;
+    let mut square = [0; MAX_LIMBS];
+    let square = &mut square[..n];
+    for bit in (0..e.ilog2()).rev() {
+        mont_mul(square, r, r, m, n0);
+        r.copy_from_slice(square);
+        if e >> bit & 1 == 1 {
+            mod_double(r, m);
+        }
+    }
+    join(r, z);
+}
+
+/// Montgomery reduce, z := (x' / 2^{64p}) MOD m
+///
+/// Inputs x[n], m[k], p; output z[k]
+///
+/// Does a := (x' / 2^{64p}) mod m where x' = x if n <= p + k and in general
+/// is the lowest (p+k) digits of x, assuming x' <= 2^{64p} * m. That is,
+/// p-fold Montgomery reduction w.r.t. a k-digit modulus m giving a k-digit
+/// answer.
+pub(crate) fn bignum_montredc(z: &mut [u64], x: &[u64], m: &[u64], p: u64) {
+    let (k, p) = (m.len() * 2, p as usize * 2);
+    let m = halves(m);
+    let m = &m[..k];
+    let n0 = neg_inverse(m[0]);
+    let mut t = [0; MAX_LIMBS * 2];
+    let t = &mut t[..p + k];
+    for (i, t) in t.iter_mut().enumerate() {
+        *t = (word(x, i / 2) >> (32 * (i % 2))) as u32;
+    }
+
+    // Each step clears the lowest limb by adding a multiple of m. The carry
+    // out of the top of a step's sum waits in `top` for the next, as it lands
+    // where the next step's sum ends.
+    let mut top = 0;
+    for i in 0..p {
+        let u = t[i].wrapping_mul(n0);
+        let carry = mul_add(&mut t[i..i + k], m, u);
+        let sum = u64::from(t[i + k]) + carry + top;
+        t[i + k] = sum as u32;
+        top = sum >> 32;
+    }
+
+    // Below 2m, as x' <= 2^64p * m and the multiples are below 2^64p * m.
+    let r = &mut t[p..];
+    let below = cmp_lt_limbs(r, m);
+    sub_limbs_masked(r, m, 0u32.wrapping_sub(top as u32 | (below ^ 1)));
+    join(r, z);
+}
+
+/// Multiply z := x * y
+///
+/// Inputs x[m], y[n]; output z[k]
+///
+/// Truncates the result in general unless k >= m + n
+pub(crate) fn bignum_mul(z: &mut [u64], x: &[u64], y: &[u64]) {
+    let (m, n) = (x.len() * 2, y.len() * 2);
+    let (x, y) = (halves(x), halves(y));
+    let mut product = [0; MAX_LIMBS * 2];
+    for (i, x) in x[..m].iter().enumerate() {
+        product[i + n] = mul_add(&mut product[i..i + n], &y[..n], *x) as u32;
+    }
+    for (i, z) in z.iter_mut().enumerate() {
+        *z = product
+            .get(2 * i..2 * i + 2)
+            .map_or(0, |p| u64::from(p[0]) | u64::from(p[1]) << 32);
+    }
+}
+
+/// Negated modular inverse, z := (-1/x) mod 2^{64k}
+///
+/// Input x[k]; output z[k]
+///
+/// For one word, as `PosInt` takes it, and an odd x.
+pub(crate) fn bignum_negmodinv(z: &mut [u64], x: &[u64]) {
+    assert!(z.len() == 1 && x.len() == 1);
+    // Correct to 5 bits, then Newton's iteration doubles that each time.
+    let x = x[0];
+    let mut inv = x.wrapping_mul(3) ^ 2;
+    for _ in 0..4 {
+        inv = inv.wrapping_mul(2u64.wrapping_sub(x.wrapping_mul(inv)));
+    }
+    z[0] = inv.wrapping_neg();
+}
+
+/// Optionally subtract, z := x - y (if p nonzero) or z := x (if p zero)
+///
+/// Inputs x[k], p, y[k]; output z[k]
+pub(crate) fn bignum_optsub(z: &mut [u64], x: &[u64], y: &[u64], p: u64) {
+    z.copy_from_slice(x);
+    sub_masked(z, y, mask(nonzero(p)));
+}
+
+/// `z := x * y / 2^32n mod m`, for `x` and `y` below the odd `m`, each `n`
+/// limbs, where `n0` is `-m^-1 mod 2^32`.
+///
+/// Koç, Acar, and Kaliski's CIOS method: each step adds `x[i] * y`, then
+/// clears the lowest limb by adding a multiple of `m` and shifts down a
+/// limb, keeping the running sum below 2m.
+fn mont_mul(z: &mut [u32], x: &[u32], y: &[u32], m: &[u32], n0: u32) {
+    let n = m.len();
+    let mut t = [0; MAX_LIMBS + 2];
+    let t = &mut t[..n + 2];
+    for x in x {
+        let sum = u64::from(t[n]) + mul_add(&mut t[..n], y, *x);
+        t[n] = sum as u32;
+        t[n + 1] = (sum >> 32) as u32;
+
+        let u = t[0].wrapping_mul(n0);
+        let sum = u64::from(t[n]) + mul_add(&mut t[..n], m, u);
+        t[n] = sum as u32;
+        t[n + 1] += (sum >> 32) as u32;
+        t.copy_within(1.., 0);
+        t[n + 1] = 0;
+    }
+    let below = cmp_lt_limbs(&t[..n], m);
+    let keep = 0u32.wrapping_sub(t[n] | (below ^ 1));
+    sub_limbs_masked(&mut t[..n], m, keep);
+    z.copy_from_slice(&t[..n]);
+}
+
+/// `x += y * u`, returning the carry out of the top limb.
+fn mul_add(x: &mut [u32], y: &[u32], u: u32) -> u64 {
+    let mut carry = 0;
+    for (x, y) in x.iter_mut().zip(y) {
+        // At most (2^32 - 1)^2 + 2 (2^32 - 1) = 2^64 - 1.
+        let t = u64::from(u) * u64::from(*y) + u64::from(*x) + carry;
+        *x = t as u32;
+        carry = t >> 32;
+    }
+    carry
+}
+
+/// `r := 2r mod m`, for `r` below `m`.
+fn mod_double(r: &mut [u32], m: &[u32]) {
+    let mut out = 0;
+    for r in r.iter_mut() {
+        let next = *r >> 31;
+        *r = *r << 1 | out;
+        out = next;
+    }
+    let below = cmp_lt_limbs(r, m);
+    sub_limbs_masked(r, m, 0u32.wrapping_sub(out | (below ^ 1)));
+}
+
+/// `-m^-1 mod 2^32`, for an odd `m`.
+fn neg_inverse(m: u32) -> u32 {
+    let mut inv = m.wrapping_mul(3) ^ 2;
+    for _ in 0..3 {
+        inv = inv.wrapping_mul(2u32.wrapping_sub(m.wrapping_mul(inv)));
+    }
+    inv.wrapping_neg()
+}
+
+/// One step of the binary gcd, for an odd `a`: where `subtract` is one,
+/// `b := b - a`, which must not go negative; then `b := b / 2`.
+fn gcd_step(a: &[u64], b: &mut [u64], subtract: u64) {
+    let keep = mask(subtract);
+    let mut borrow = 0;
+    for (b, a) in b.iter_mut().zip(a) {
+        let (diff, b1) = b.overflowing_sub(a & keep);
+        let (diff, b2) = diff.overflowing_sub(borrow);
+        *b = diff;
+        borrow = u64::from(b1 | b2);
+    }
+    for i in 0..b.len() {
+        b[i] = b[i] >> 1 | word(b, i + 1) << 63;
+    }
+}
+
+/// Swaps `x` and `y` where `swap` is all ones.
+fn cswap(x: &mut [u64], y: &mut [u64], swap: u64) {
+    for (x, y) in x.iter_mut().zip(y) {
+        let t = (*x ^ *y) & swap;
+        *x ^= t;
+        *y ^= t;
+    }
+}
+
+/// `x := x - y mod m` where `keep` is all ones, for `x` and `y` below `m`.
+fn mod_sub_masked(x: &mut [u64], y: &[u64], m: &[u64], keep: u64) {
+    let mut borrow = 0;
+    for (x, y) in x.iter_mut().zip(y) {
+        let (diff, b1) = x.overflowing_sub(y & keep);
+        let (diff, b2) = diff.overflowing_sub(borrow);
+        *x = diff;
+        borrow = u64::from(b1 | b2);
+    }
+    let add = mask(borrow);
+    let mut carry = 0;
+    for (x, m) in x.iter_mut().zip(m) {
+        let (sum, c1) = x.overflowing_add(m & add);
+        let (sum, c2) = sum.overflowing_add(carry);
+        *x = sum;
+        carry = u64::from(c1 | c2);
+    }
+}
+
+/// `x := x / 2 mod m`, for `x` below the odd `m`: adds `m` to an odd `x`
+/// first, keeping the carry as the sum's top bit.
+fn mod_halve(x: &mut [u64], m: &[u64]) {
+    let add = mask(x[0] & 1);
+    let mut carry = 0;
+    for (x, m) in x.iter_mut().zip(m) {
+        let (sum, c1) = x.overflowing_add(m & add);
+        let (sum, c2) = sum.overflowing_add(carry);
+        *x = sum;
+        carry = u64::from(c1 | c2);
+    }
+    for i in 0..x.len() {
+        let above = x.get(i + 1).copied().unwrap_or(carry);
+        x[i] = x[i] >> 1 | above << 63;
+    }
+}
+
+/// `x := x - y` where `keep` is all ones, returning the borrow.
+fn sub_masked(x: &mut [u64], y: &[u64], keep: u64) -> u64 {
+    let mut borrow = 0;
+    for (x, y) in x.iter_mut().zip(y) {
+        let (diff, b1) = x.overflowing_sub(y & keep);
+        let (diff, b2) = diff.overflowing_sub(borrow);
+        *x = diff;
+        borrow = u64::from(b1 | b2);
+    }
+    borrow
+}
+
+/// `bignum_cmp_lt` for limbs of one length.
+fn cmp_lt_limbs(x: &[u32], y: &[u32]) -> u32 {
+    let mut borrow = 0;
+    for (x, y) in x.iter().zip(y) {
+        let (diff, b1) = x.overflowing_sub(*y);
+        let (_, b2) = diff.overflowing_sub(borrow);
+        borrow = u32::from(b1 | b2);
+    }
+    borrow
+}
+
+/// `sub_masked` for limbs.
+fn sub_limbs_masked(x: &mut [u32], y: &[u32], keep: u32) {
+    let mut borrow = 0;
+    for (x, y) in x.iter_mut().zip(y) {
+        let (diff, b1) = x.overflowing_sub(y & keep);
+        let (diff, b2) = diff.overflowing_sub(borrow);
+        *x = diff;
+        borrow = u32::from(b1 | b2);
+    }
+}
+
+/// `x`'s 32-bit halves, low first.
+fn halves(x: &[u64]) -> [u32; MAX_LIMBS] {
+    let mut out = [0; MAX_LIMBS];
+    for (out, x) in out.as_chunks_mut::<2>().0.iter_mut().zip(x) {
+        *out = [*x as u32, (*x >> 32) as u32];
+    }
+    out
+}
+
+/// Joins pairs of `x`'s 32-bit halves into `z`.
+fn join(x: &[u32], z: &mut [u64]) {
+    for (z, [lo, hi]) in z.iter_mut().zip(x.as_chunks::<2>().0) {
+        *z = u64::from(*lo) | u64::from(*hi) << 32;
+    }
+}
+
+/// The `i`th word of `x`, or zero beyond its length.
+fn word(x: &[u64], i: usize) -> u64 {
+    x.get(i).copied().unwrap_or(0)
+}
+
+/// One if `x` is nonzero, zero if not.
+fn nonzero(x: u64) -> u64 {
+    (x | x.wrapping_neg()) >> 63
+}
+
+/// `x` where `bit` is one, `y` where it is zero.
+fn select(bit: u64, x: u64, y: u64) -> u64 {
+    y ^ ((x ^ y) & mask(bit))
+}
+
+/// All ones for one and zero for zero, through `black_box` so the compiler
+/// cannot turn the select it feeds into a branch.
+fn mask(bit: u64) -> u64 {
+    core::hint::black_box(0u64.wrapping_sub(bit))
+}
+
+/// Checks each routine against s2n-bignum's, word for word.
+///
+/// The values are marked secret, so under `admin/ctgrind` these also check
+/// each routine is constant time in them.
+#[cfg(all(test, not(target_arch = "arm")))]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::low;
+    use crate::low::ct::{into_public, into_secret};
+
+    /// `min` to `max` words, biased towards zero and full words.
+    fn words(min: usize, max: usize) -> impl Strategy<Value = Vec<u64>> {
+        let word = prop_oneof![6 => any::<u64>(), 1 => Just(0), 1 => Just(u64::MAX)];
+        prop::collection::vec(word, min..=max)
+    }
+
+    /// An odd modulus above one, with its top word random, one, zero, or
+    /// full, and two values below it.
+    fn modulus() -> impl Strategy<Value = (Vec<u64>, Vec<u64>, Vec<u64>)> {
+        (1..=20usize, 0..4u8, any::<u64>()).prop_flat_map(|(k, top, seed)| {
+            let m = prop::collection::vec(any::<u64>(), k).prop_map(move |mut m| {
+                match top {
+                    0 if k > 1 => m[k - 1] = 1,
+                    1 if k > 2 => m[k - 1] = 0,
+                    2 => m.fill(u64::MAX),
+                    _ => {}
+                }
+                m[0] |= 1;
+                if m == [1] {
+                    m[0] = seed | 3;
+                }
+                m
+            });
+            m.prop_flat_map(|m| (Just(m.clone()), below(m.clone()), below(m)))
+        })
+    }
+
+    /// A value below `m`, as wide.
+    fn below(m: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
+        let k = m.len();
+        prop_oneof![
+            6 => prop::collection::vec(any::<u64>(), k),
+            1 => Just(vec![0; k]),
+            1 => Just(m.clone()),
+        ]
+        .prop_map(move |mut x| {
+            // Trim to below m at its top nonzero word, then make it smaller
+            // if it is m itself.
+            let top = (0..k).rev().find(|i| m[*i] != 0).unwrap();
+            x[top + 1..].fill(0);
+            x[top] %= m[top] + u64::from(m[top] != u64::MAX);
+            if x == m {
+                x[0] -= 1;
+            }
+            x
+        })
+    }
+
+    fn secret(x: &[u64]) -> Vec<u64> {
+        into_secret(x.to_vec())
+    }
+
+    proptest! {
+        #[test]
+        fn plain(x in words(0, 8), y in words(0, 8), p in 0..12usize, index in 0..4u64) {
+            let (sx, sy) = (secret(&x), secret(&y));
+            let (mut ours, mut theirs) = (vec![0; p], vec![0; p]);
+            let carry = bignum_add(&mut ours, &sx, &sy);
+            prop_assert_eq!(into_public(carry), low::bignum_add(&mut theirs, &x, &y));
+            prop_assert_eq!(into_public(ours), theirs);
+
+            prop_assert_eq!(into_public(bignum_cmp_lt(&sx, &sy)), low::bignum_cmp_lt(&x, &y));
+            prop_assert_eq!(into_public(bignum_bitsize(&sx)), low::bignum_bitsize(&x));
+            prop_assert_eq!(into_public(bignum_digitsize(&sx)), low::bignum_digitsize(&x));
+            prop_assert_eq!(into_public(bignum_ctz(&sx)), low::bignum_ctz(&x));
+
+            let (mut ours, mut theirs) = (vec![0; p], vec![0; p]);
+            bignum_mul(&mut ours, &sx, &sy);
+            low::bignum_mul(&mut theirs, &x, &y);
+            prop_assert_eq!(into_public(ours), theirs);
+
+            let k = x.len().min(y.len());
+            let (mut ours, mut theirs) = (vec![0; k], vec![0; k]);
+            bignum_optsub(&mut ours, &sx[..k], &sy[..k], index);
+            low::bignum_optsub(&mut theirs, &x[..k], &y[..k], index);
+            prop_assert_eq!(into_public(ours), theirs);
+
+            let table = [x.clone(), y.clone(), vec![!0; x.len()]].concat();
+            let width = x.len().min(y.len()) as u64;
+            if width > 0 {
+                let (mut ours, mut theirs) = (vec![0; width as usize], vec![0; width as usize]);
+                bignum_copy_row_from_table(&mut ours, &table, 3, width, into_secret(index));
+                low::bignum_copy_row_from_table(&mut theirs, &table, 3, width, index);
+                prop_assert_eq!(into_public(ours), theirs);
+            }
+        }
+
+        #[test]
+        fn modular((m, x, y) in modulus(), extra in words(0, 4)) {
+            let k = m.len();
+            let (sm, sx, sy) = (secret(&m), secret(&x), secret(&y));
+            let (mut ours, mut theirs) = (vec![0; k], vec![0; k]);
+
+            bignum_modadd(&mut ours, &sx, &sy, &sm);
+            low::bignum_modadd(&mut theirs, &x, &y, &m);
+            prop_assert_eq!(into_public(ours.clone()), theirs.clone());
+
+            bignum_modsub(&mut ours, &sx, &sy, &sm);
+            low::bignum_modsub(&mut theirs, &x, &y, &m);
+            prop_assert_eq!(into_public(ours.clone()), theirs.clone());
+
+            bignum_montifier(&mut ours, &sm, &mut []);
+            low::bignum_montifier(&mut theirs, &m, &mut vec![0; k]);
+            prop_assert_eq!(into_public(ours.clone()), theirs.clone());
+
+            // x * y + extra * 2^64k * m stays within 2^64(k + p) * m for p
+            // above the extra words.
+            let p = k + extra.len();
+            let mut wide = vec![0; 2 * k + extra.len() + 1];
+            low::bignum_mul(&mut wide, &x, &y);
+            let mut em = vec![0; k + extra.len()];
+            low::bignum_mul(&mut em, &extra, &m);
+            let mut sum = vec![0; wide.len()];
+            low::bignum_add(&mut sum, &wide, &[vec![0; k], em].concat());
+            bignum_montredc(&mut ours, &secret(&sum), &sm, p as u64);
+            low::bignum_montredc(&mut theirs, &sum, &m, p as u64);
+            prop_assert_eq!(into_public(ours.clone()), theirs.clone());
+
+            let (mut ours, mut theirs) = ([0], [0]);
+            bignum_negmodinv(&mut ours, &sm[..1]);
+            low::bignum_negmodinv(&mut theirs, &m[..1]);
+            prop_assert_eq!(into_public(ours), theirs);
+        }
+
+        #[test]
+        fn gcd(x in words(1, 6), y in words(1, 6), (m, a, _) in modulus()) {
+            let w = x.len().max(y.len());
+            let ours = bignum_coprime(&secret(&x), &secret(&y), &mut vec![0; 2 * w]);
+            let theirs = low::bignum_coprime(&x, &y, &mut vec![0; 2 * w]);
+            prop_assert_eq!(into_public(ours), theirs);
+
+            let k = m.len();
+            if low::bignum_coprime(&a, &m, &mut vec![0; 2 * k]) {
+                let (mut ours, mut theirs) = (vec![0; k], vec![0; k]);
+                bignum_modinv(&mut ours, &secret(&a), &secret(&m), &mut []);
+                low::bignum_modinv(&mut theirs, &a, &m, &mut vec![0; 3 * k]);
+                prop_assert_eq!(into_public(ours), theirs);
+            }
+        }
+    }
+
+    /// 3 against 2^(64k - 1) and 3 * 2^(64k - 2), which set the gcd only
+    /// after a step per bit of the wider, and inverses of 1 and -1, up to the
+    /// widest the buffers hold.
+    #[test]
+    fn long_gcd() {
+        for k in [1, 2, 20, MAX_WORDS] {
+            let mut top = vec![0; k];
+            top[k - 1] = 1 << 63;
+            let t = &mut vec![0; 2 * k];
+            assert!(bignum_coprime(&[3], &top, t));
+            assert!(bignum_coprime(&top, &[3], t));
+            top[k - 1] = 3 << 62;
+            assert!(!bignum_coprime(&[3], &top, t));
+
+            let full = vec![u64::MAX; k];
+            let mut one = vec![0; k];
+            one[0] = 1;
+            let mut z = vec![0; k];
+            bignum_modinv(&mut z, &one, &full, &mut []);
+            assert_eq!(z, one);
+            let mut minus_one = full.clone();
+            minus_one[0] -= 1;
+            bignum_modinv(&mut z, &minus_one, &full, &mut []);
+            assert_eq!(z, minus_one);
+        }
+    }
+
+    /// The widest values, which the fixed buffers must hold.
+    #[test]
+    fn widest() {
+        let m = [u64::MAX; MAX_WORDS];
+        let x = [u64::MAX - 1; MAX_WORDS];
+        let (mut product, mut theirs) = ([0; MAX_WORDS * 2], [0; MAX_WORDS * 2]);
+        bignum_mul(&mut product, &x, &x);
+        low::bignum_mul(&mut theirs, &x, &x);
+        assert_eq!(product, theirs);
+
+        let (mut ours, mut theirs) = ([0; MAX_WORDS], [0; MAX_WORDS]);
+        bignum_montredc(&mut ours, &product, &m, MAX_WORDS as u64);
+        low::bignum_montredc(&mut theirs, &product, &m, MAX_WORDS as u64);
+        assert_eq!(ours, theirs);
+        bignum_montifier(&mut ours, &m, &mut []);
+        low::bignum_montifier(&mut theirs, &m, &mut [0; MAX_WORDS]);
+        assert_eq!(ours, theirs);
+        bignum_modinv(&mut ours, &x, &m, &mut []);
+        low::bignum_modinv(&mut theirs, &x, &m, &mut [0; MAX_WORDS * 3]);
+        assert_eq!(ours, theirs);
+    }
+}

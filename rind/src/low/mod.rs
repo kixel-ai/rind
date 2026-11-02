@@ -11,6 +11,10 @@ pub(crate) mod ct;
 pub mod inline_assembly_safety;
 
 mod generic {
+    // armv7's RSA arithmetic, also built in tests elsewhere to check it
+    // against s2n-bignum.
+    #[cfg(any(target_arch = "arm", test))]
+    pub(crate) mod bignum;
     pub(super) mod blockwise;
     // Where no one-pass routine runs, and in aarch64 tests to check it
     // against.
@@ -53,7 +57,6 @@ mod generic {
 
 pub(crate) mod cpu;
 mod entry;
-#[cfg(not(target_arch = "arm"))]
 mod posint;
 
 pub(crate) use entry::Entry;
@@ -64,7 +67,6 @@ pub(crate) use generic::ct_equal::ct_equal;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
 pub(crate) use generic::zeroise::{Zeroable, zeroise, zeroise_value};
-#[cfg(not(target_arch = "arm"))]
 pub(crate) use posint::{PosInt, SecretPosInt};
 
 #[cfg(all(test, not(target_arch = "arm")))]
@@ -276,11 +278,14 @@ cfg_if::cfg_if! {
         pub(crate) use arm::poly1305;
         pub(crate) use arm::bignum_eq::bignum_eq;
         pub(crate) use arm::curve25519::{curve25519_x25519, curve25519_x25519base};
-        pub(crate) use arm::posint::{PosInt, SecretPosInt};
+        pub(crate) use arm::mont::{mont_mul, mont_sqr};
+        pub(crate) use generic::bignum::{
+            bignum_add, bignum_bitsize, bignum_cmp_lt, bignum_coprime, bignum_copy_row_from_table,
+            bignum_ctz, bignum_digitsize, bignum_modsub, bignum_montifier, bignum_montredc,
+            bignum_mul, bignum_negmodinv, bignum_optsub,
+        };
         // libcrux exports P-384 only as ECDH, and has no P-521, so their
         // arithmetic is fiat-crypto's.
-        #[cfg(test)]
-        pub(crate) use generic::order::bignum_montifier;
         pub(crate) use generic::order::{bignum_demont, bignum_modadd, bignum_modinv, bignum_montmul};
         pub(crate) use generic::p384::{
             bignum_add_p384, bignum_aff_point_select_p384, bignum_demont_p384,
