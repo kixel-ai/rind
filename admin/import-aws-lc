@@ -251,7 +251,7 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont5.pl",
         "copyright": "Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["inc"],
-        "routines": ["bn_sqr8x_internal", "bn_sqrx8x_internal", "bn_powerx5", "bn_gather5"],
+        "routines": ["bn_sqr8x_internal", "bn_sqrx8x_internal", "bn_powerx5"],
         "inner": [
             "__bn_sqr8x_internal",
             "__bn_sqr8x_reduction",

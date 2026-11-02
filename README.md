@@ -131,7 +131,9 @@ cell and keeps each benchmark's numbers in its summary. These are from
 [run 41378010740], and the P-256, P-384, and P-521 cells, except armv7's
 P-256, from [run 41399702862]; a change that moves a cell refreshes it.
 ML-KEM-768's cells are from [run 41400124007], whose x86_64 job drew an EPYC
-9V74 (Zen 4) and no AVX2 job an EPYC 7763.
+9V74 (Zen 4) and no AVX2 job an EPYC 7763. RSA's no ADX and no AVX2 cells are
+from [run 41469252502], whose no ADX job drew a Xeon 6973P-C (Granite Rapids)
+and no AVX2 job an EPYC 7763.
 
 x86_64 runs every feature of an AMD EPYC 7763 (Zen 3: ADX, AVX2, SHA-NI, and
 VAES, but no AVX-512), except in the AES-GCM and 1 MB transfer rows, noted
@@ -172,7 +174,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 | P-384 ECDH, ECDSA | 0.90 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.96 | 0.92 |  |  |  |
 | P-521 ECDH, ECDSA | 0.94 s2n-bignum ✓ + rind ⚡ | 0.94 | 0.94 |  |  |  |
 | ML-KEM-768 | 0.79 s2n-bignum ✓ + mlkem-native ✓ + Graviola ⚡ |  | 0.92 mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
-| RSA signatures, key generation | **1.07** s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | **1.05** aws-lc ⚡ + Graviola ⚡ | **1.05** |  |  |  |
+| RSA signatures, key generation | **1.07** s2n-bignum ✓ + aws-lc ⚡ | **1.22** | **1.03** |  |  |  |
 | rind-rustls handshakes | 0.98 |  | **1.05** |  |  |  |
 | rind-rustls 1 MB transfer | 1.00 |  | 1.00 |  |  |  |
 
@@ -264,6 +266,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41464027605]: https://github.com/moq-dev/rind/actions/runs/41464027605
 [run 41401180882]: https://github.com/moq-dev/rind/actions/runs/41401180882
 [run 41468954426]: https://github.com/moq-dev/rind/actions/runs/41468954426
+[run 41469252502]: https://github.com/moq-dev/rind/actions/runs/41469252502
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
@@ -289,10 +292,11 @@ but without ADX, the private operation's exponentiation modulo each 1024-bit
 prime of RSA-2048 runs aws-lc's RSAZ, as aws-lc does there: Montgomery
 products on AVX2 over 29-bit limbs, and a 5-bit fixed window whose table
 entry is gathered by masking all 32 entries. Otherwise x86_64 runs aws-lc's
-5-bit window, as `BN_mod_exp_mont_consttime` does. For moduli of a multiple of
-512 bits, it gathers the same way, and other than 1024 and 2048 bits with ADX,
-runs its `bn_power5`, five squarings and the gathered product in one call. For
-other moduli, s2n-bignum's verified gather reads every entry instead.
+5-bit window, as `BN_mod_exp_mont_consttime` does, gathering each entry by
+s2n-bignum's verified routine, which reads every entry. For moduli of a
+multiple of 512 bits other than 1024 and 2048 bits with ADX, it runs aws-lc's
+`bn_power5` instead: five squarings and the product by an entry gathered by
+masking all 32, in one call.
 
 The RSA private operation always uses the CRT optimisation.
 
