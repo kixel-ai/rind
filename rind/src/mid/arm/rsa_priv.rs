@@ -213,9 +213,7 @@ impl RsaPrivateKey {
             },
             c,
         );
-        let m = RsaPosIntModN::from_words(&scratch.m[..n.len()]);
-        drop(scratch);
-        let m = low::ct::into_public(m?);
+        let m = low::ct::into_public(RsaPosIntModN::from_words(&scratch.m[..n.len()])?);
 
         // Check the result as a fault attack countermeasure: `new` checked
         // the key's components, so only a fault fails this.
@@ -319,7 +317,7 @@ struct Primes<'a> {
     iqmp: &'a [u64],
 }
 
-/// The CRT's intermediate values, zeroed on drop.
+/// The CRT's intermediate values.
 struct CrtScratch {
     m_1: [u64; MAX_PRIVATE_MODULUS_WORDS],
     m_2: [u64; MAX_PRIVATE_MODULUS_WORDS],
@@ -383,19 +381,7 @@ impl Default for CrtScratch {
     }
 }
 
-impl Drop for CrtScratch {
-    fn drop(&mut self) {
-        low::zeroise(&mut self.m_1);
-        low::zeroise(&mut self.m_2);
-        low::zeroise(&mut self.h);
-        low::zeroise(&mut self.t);
-        low::zeroise(&mut self.wide);
-        low::zeroise(&mut self.qh);
-        low::zeroise(&mut self.m);
-    }
-}
-
-/// A HACL* Montgomery context, zeroed on drop.
+/// A HACL* Montgomery context.
 struct Mont(Box<[bn_mont_ctx_u64]>);
 
 impl Mont {
@@ -427,16 +413,6 @@ impl Deref for Mont {
 
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-impl Drop for Mont {
-    fn drop(&mut self) {
-        for k in self.0.iter_mut() {
-            low::zeroise(&mut k.n);
-            low::zeroise(&mut k.r2);
-            low::zeroise_value(&mut k.mu);
-        }
     }
 }
 
