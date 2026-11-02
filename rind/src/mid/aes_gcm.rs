@@ -22,19 +22,16 @@ pub(crate) struct AesGcm {
 }
 
 impl AesGcm {
-    /// Expands a 16- or 32-byte key into an AES-128-GCM or AES-256-GCM key.
-    ///
-    /// Any other length, including AES-192's 24 bytes, is an error.
-    pub(crate) fn new(key: &[u8]) -> Result<Self, Error> {
+    /// Expands a 16- or 32-byte key, which the caller has checked, into an
+    /// AES-128-GCM or AES-256-GCM key.
+    pub(crate) fn new(key: &[u8]) -> Self {
         let _entry = Entry::new_secret();
-        let key = expand_key(key)?;
+        let key = expand_key(key);
         let mut h = [0u8; 16];
         key.encrypt_block(&mut h);
+        let gh = GhashTable::new(u128::from_be_bytes(h));
 
-        let h = u128::from_be_bytes(h);
-        let gh = GhashTable::new(h);
-
-        Ok(Self { key, gh })
+        Self { key, gh }
     }
 
     /// Encrypts the given message.
@@ -109,7 +106,7 @@ mod tests {
 
     #[test]
     fn smoketest() {
-        let t = AesGcm::new(&[0; 16]).unwrap();
+        let t = AesGcm::new(&[0; 16]);
         let mut tag = [0u8; 16];
         t.encrypt(&[0u8; 12], &[], &mut [], &mut tag).unwrap();
         assert_eq!(
@@ -120,7 +117,7 @@ mod tests {
 
     #[test]
     fn long_encrypt_test() {
-        let t = AesGcm::new(&[b'k'; 16]).unwrap();
+        let t = AesGcm::new(&[b'k'; 16]);
         let mut tag = [0u8; 16];
         // not divisible by 128, 64, 16 to cover by-8, by-4, and trailing cases
         let mut cipher = [b'p'; 4164];
@@ -135,7 +132,7 @@ mod tests {
 
     #[test]
     fn long_decrypt_test() {
-        let t = AesGcm::new(&[b'k'; 16]).unwrap();
+        let t = AesGcm::new(&[b'k'; 16]);
         let expected = include_bytes!("../testdata/aes-gcm-ciphertext.bin");
         let (cipher, tag) = expected.split_at(expected.len() - 16);
         let mut plain = cipher.to_vec();
@@ -165,7 +162,7 @@ mod tests {
             fn on_value(&mut self, name: &str, value: Value<'_>) {
                 match name {
                     "Count" => println!("  test {}", value.int()),
-                    "Key" => self.key = Some(AesGcm::new(&value.bytes()).unwrap()),
+                    "Key" => self.key = Some(AesGcm::new(&value.bytes())),
                     "IV" => self.nonce = value.bytes(),
                     "CT" => self.ct = value.bytes(),
                     "AAD" => self.aad = value.bytes(),
