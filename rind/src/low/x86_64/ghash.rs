@@ -52,7 +52,6 @@ macro_rules! reduce {
     }};
 }
 
-#[expect(clippy::large_enum_variant)]
 pub(crate) enum GhashTable {
     Clmul(ClmulTable),
     /// VAES without AVX-512: the PCLMULQDQ path for short messages, and
@@ -211,33 +210,32 @@ impl ClmulTable {
 }
 
 pub(crate) struct GhashTableAvx512 {
-    /// H^16, H^15, ... H^1: descending, so a tail of `n` blocks multiplies
-    /// by the last `n`
-    powers: [__m512i; 4],
     /// For inputs too short to fill the 512-bit vectors.
     pub(crate) clmul: ClmulTable,
-    /// BoringSSL's 512-bit kernel, for long messages.
+    /// BoringSSL's 512-bit kernel, for long messages, whose table also holds
+    /// the powers the 512-bit multiplies here take.
     pub(crate) vaes: VaesKernel,
     pub(crate) token: HaveAvx512ForAesGcm,
 }
 
 impl GhashTableAvx512 {
     pub(crate) fn new(h: u128, hw: HaveAesHardware, token: HaveAvx512ForAesGcm) -> Self {
-        // The kernel's table holds H^16 down to H^1, as `powers` does.
         let vaes = VaesKernel::avx512(h, token);
-        let descending = vaes.powers();
-        let powers = core::array::from_fn(|i| {
-            // SAFETY: `descending` has 16 entries, so four from `4 * i` are
-            // readable, and the token proves the CPU has AVX-512F.
-            unsafe { _mm512_loadu_si512(descending[4 * i..].as_ptr().cast()) }
-        });
-
         Self {
-            powers,
-            clmul: ClmulTable::from_powers(descending, hw),
+            clmul: ClmulTable::from_powers(vaes.powers(), hw),
             vaes,
             token,
         }
+    }
+
+    /// H^16, H^15, ... H^1: descending, so a tail of `n` blocks multiplies
+    /// by the last `n`.
+    fn powers(&self) -> &[__m512i; 4] {
+        let powers = self.vaes.powers();
+        debug_assert_eq!(powers.len(), 16);
+        // SAFETY: the 512-bit kernel's table holds 16 powers, 64-byte
+        // aligned as `__m512i` needs, and any bits are a valid `__m512i`.
+        unsafe { &*powers.as_ptr().cast() }
     }
 
     #[target_feature(enable = "vpclmulqdq,avx512bw,avx512f,avx512vl")]
@@ -410,39 +408,40 @@ pub(crate) fn _mul16(
     x89ab: __m512i,
     xcdef: __m512i,
 ) -> __m128i {
+    let powers = table.powers();
     let gfpoly = _mm512_broadcast_i32x4(GF128_POLY_LO);
 
-    let lo0 = _mm512_clmulepi64_epi128(x0123, table.powers[0], 0x00);
-    let lo1 = _mm512_clmulepi64_epi128(x4567, table.powers[1], 0x00);
-    let lo2 = _mm512_clmulepi64_epi128(x89ab, table.powers[2], 0x00);
+    let lo0 = _mm512_clmulepi64_epi128(x0123, powers[0], 0x00);
+    let lo1 = _mm512_clmulepi64_epi128(x4567, powers[1], 0x00);
+    let lo2 = _mm512_clmulepi64_epi128(x89ab, powers[2], 0x00);
 
     let lo01 = _mm512_xor_epi32(lo0, lo1);
-    let lo3 = _mm512_clmulepi64_epi128(xcdef, table.powers[3], 0x00);
+    let lo3 = _mm512_clmulepi64_epi128(xcdef, powers[3], 0x00);
     let lo = _mm512_ternarylogic_epi64(lo2, lo3, lo01, TERNARY_XOR);
-    let mi0 = _mm512_clmulepi64_epi128(x0123, table.powers[0], 0x01);
+    let mi0 = _mm512_clmulepi64_epi128(x0123, powers[0], 0x01);
 
-    let mi1 = _mm512_clmulepi64_epi128(x4567, table.powers[1], 0x01);
-    let mi2 = _mm512_clmulepi64_epi128(x89ab, table.powers[2], 0x01);
+    let mi1 = _mm512_clmulepi64_epi128(x4567, powers[1], 0x01);
+    let mi2 = _mm512_clmulepi64_epi128(x89ab, powers[2], 0x01);
     let mi012 = _mm512_ternarylogic_epi32(mi0, mi1, mi2, TERNARY_XOR);
-    let mi3 = _mm512_clmulepi64_epi128(xcdef, table.powers[3], 0x01);
+    let mi3 = _mm512_clmulepi64_epi128(xcdef, powers[3], 0x01);
 
-    let mi4 = _mm512_clmulepi64_epi128(x0123, table.powers[0], 0x10);
+    let mi4 = _mm512_clmulepi64_epi128(x0123, powers[0], 0x10);
     let mi01234 = _mm512_ternarylogic_epi32(mi012, mi3, mi4, TERNARY_XOR);
-    let mi5 = _mm512_clmulepi64_epi128(x4567, table.powers[1], 0x10);
-    let mi6 = _mm512_clmulepi64_epi128(x89ab, table.powers[2], 0x10);
+    let mi5 = _mm512_clmulepi64_epi128(x4567, powers[1], 0x10);
+    let mi6 = _mm512_clmulepi64_epi128(x89ab, powers[2], 0x10);
 
     let mi = _mm512_ternarylogic_epi64(mi01234, mi5, mi6, TERNARY_XOR);
     let lo_r = _mm512_clmulepi64_epi128(gfpoly, lo, 0x01);
-    let mi7 = _mm512_clmulepi64_epi128(xcdef, table.powers[3], 0x10);
+    let mi7 = _mm512_clmulepi64_epi128(xcdef, powers[3], 0x10);
     let mi = _mm512_xor_epi32(mi7, mi);
 
     let lo_s = _mm512_shuffle_epi32(lo, 0b01_00_11_10);
-    let hi0 = _mm512_clmulepi64_epi128(x0123, table.powers[0], 0x11);
-    let hi1 = _mm512_clmulepi64_epi128(x4567, table.powers[1], 0x11);
-    let hi2 = _mm512_clmulepi64_epi128(x89ab, table.powers[2], 0x11);
+    let hi0 = _mm512_clmulepi64_epi128(x0123, powers[0], 0x11);
+    let hi1 = _mm512_clmulepi64_epi128(x4567, powers[1], 0x11);
+    let hi2 = _mm512_clmulepi64_epi128(x89ab, powers[2], 0x11);
 
     let mi = _mm512_ternarylogic_epi32(lo_r, lo_s, mi, TERNARY_XOR);
-    let hi3 = _mm512_clmulepi64_epi128(xcdef, table.powers[3], 0x11);
+    let hi3 = _mm512_clmulepi64_epi128(xcdef, powers[3], 0x11);
     let hi012 = _mm512_ternarylogic_epi32(hi0, hi1, hi2, TERNARY_XOR);
     let mi_r = _mm512_clmulepi64_epi128(gfpoly, mi, 0x01);
 
@@ -477,8 +476,8 @@ pub(crate) fn _mul_tail(
         return current;
     }
 
-    // `table.powers` descends to H^1, so H^n is `n` blocks before its end.
-    let powers = table.powers.as_ptr().cast::<__m128i>();
+    // `table.powers()` descends to H^1, so H^n is `n` blocks before its end.
+    let powers = table.powers().as_ptr().cast::<__m128i>();
     let (mut lo, mut mi, mut hi) = (
         _mm512_setzero_si512(),
         _mm512_setzero_si512(),
@@ -491,7 +490,7 @@ pub(crate) fn _mul_tail(
         };
         // Two quadwords per block, for up to four blocks left from here on.
         let mask = u8::MAX >> (8 - 2 * (n - 4 * j).min(4));
-        // SAFETY: the vector starts at H^(n-4j), within `table.powers`, and
+        // SAFETY: the vector starts at H^(n-4j), within `table.powers()`, and
         // the mask stops it at H^1, the last; masked-off lanes are not read.
         let h = unsafe { _mm512_maskz_loadu_epi64(mask, powers.add(16 - n + 4 * j).cast()) };
         lo = _mm512_xor_epi32(lo, _mm512_clmulepi64_epi128(x, h, 0x00));
