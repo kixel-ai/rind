@@ -601,55 +601,52 @@ impl<const N: usize> PosInt<N> {
         r
     }
 
-    /// Computes `self` mod `m`, where `m` may be even but its top word is
-    /// nonzero.
+    /// Computes `self` mod `m`, where `m` may be even but is at least two
+    /// words and its top word is nonzero.
     ///
     /// Use `reduce()` if `m` is odd; it will be faster.
     #[must_use]
     pub(crate) fn reduce_even<const M: usize>(&self, m: &PosInt<M>) -> PosInt<M> {
-        assert!(M < N);
+        assert!(M < N && m.used >= 2);
 
-        let mut r = PosInt::<M>::zero();
-        r.used = m.used;
-        let mut addend = r.clone();
-        let mut next = r.clone();
+        let mut a = PosInt::<M>::zero();
+        a.used = m.used;
+        let mut b = a.clone();
+        let mut addend = a.clone();
 
         // First, observe that any value of M-1 words cannot change
         // when reduced by m (M := |m|).  So we can copy these top words
         // in directly.
-        let limit = r.used.saturating_sub(1);
+        let limit = a.used - 1;
         let i = self.used.saturating_sub(limit);
         let top = &self.words[i..self.used];
-        r.words[..top.len()].copy_from_slice(top);
+        a.words[..top.len()].copy_from_slice(top);
 
-        // For the remaining bits, we double-and-add them.
+        // Each remaining word is shifted in by doubling 64 times, then added:
+        // a single word is below `m`, which is wider. Each step writes to the
+        // other of `a` and `b`, then they swap roles.
+        let (mut r, mut next) = (&mut a, &mut b);
         for j in (0..i).rev() {
-            let word = self.words[j];
-
-            for b in (0..64).rev() {
-                let bit = (word >> b) & 1;
-
-                // First, double r mod m; ie shift it left once.
-                // TODO: `bignum_moddouble` should be faster.
+            for _ in 0..64 {
                 low::bignum_modadd(
                     next.as_mut_words(),
                     r.as_words(),
                     r.as_words(),
                     m.as_words(),
                 );
-
-                // Now add the new bit.  This might add zero.
-                addend.words[0] = bit;
-                low::bignum_modadd(
-                    r.as_mut_words(),
-                    next.as_words(),
-                    addend.as_words(),
-                    m.as_words(),
-                );
+                core::mem::swap(&mut r, &mut next);
             }
-        }
 
-        r
+            addend.words[0] = self.words[j];
+            low::bignum_modadd(
+                next.as_mut_words(),
+                r.as_words(),
+                addend.as_words(),
+                m.as_words(),
+            );
+            core::mem::swap(&mut r, &mut next);
+        }
+        r.clone()
     }
 
     /// Computes `self` + `b`
