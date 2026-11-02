@@ -128,7 +128,8 @@ resumed TLS 1.3 handshakes and bulk transfer against rustls over aws-lc-rs's
 and ring's providers. RSA key generation, whose time swings by up to 3x from
 run to run, stays out of the ratios. The nightly `bench` workflow times every
 cell and keeps each benchmark's numbers in its summary. These are from
-[run 41378010740]; a change that moves a cell refreshes it.
+[run 41378010740], and the SHA, HMAC, and HKDF rows from [run 41398664891];
+a change that moves a cell refreshes it.
 
 x86_64 runs every feature of an AMD EPYC 7763 (Zen 3: ADX, AVX2, SHA-NI, and
 VAES, but no AVX-512). Each column to its right denies more, as `bench.yml`
@@ -138,7 +139,8 @@ AVX-512, VAES, and VPCLMULQDQ (Sandy Bridge); no AVX also AVX (Westmere); no
 AES-NI also AES-NI, PCLMULQDQ, and SSE4.1 (Core 2); and SSE2 also SSSE3.
 GitHub's pool ran no ADX on an EPYC 7763 too, no AVX2 on an EPYC 9V74 (Zen
 4), no AVX and SSE2 on an EPYC 9V45 (Zen 5), and no AES-NI on a Xeon Platinum
-8573C (Emerald Rapids).
+8573C (Emerald Rapids). The SHA, HMAC, and HKDF rows ran every column on an
+EPYC 7763.
 Intel CPUs without SHA-NI run [aws-lc]'s AVX SHA-1 and SHA-256, and every
 Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 
@@ -148,11 +150,11 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 0.99 | 0.99 | 1.01 aws-lc | 0.85 |
 | ChaCha20 (header protection) | 0.96 Graviola |  | 0.95 aws-lc ⚡ | 0.93 | 0.95 | 0.92 |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.02 aws-lc ⚡ |  | 1.00 |  | **1.12** aws-lc ⚡ + Graviola ⚡ | **1.10** |
-| SHA-1 | 1.00 rind |  | 1.00 aws-lc | 1.02 |  | 1.01 |
-| SHA-256 | **1.20** Graviola ⚡ |  | **1.34** aws-lc ⚡ | **1.07** |  | **1.03** |
-| SHA-384, SHA-512, SHA-512/256 | **1.04** aws-lc ⚡ |  | 1.01 | 1.02 |  | 1.01 |
-| HMAC | **1.08** Graviola ⚡ |  | 1.01 |  |  |  |
-| HKDF | **1.30** rind ⚡ |  | 1.01 |  |  |  |
+| SHA-1 | 1.00 rind |  | 1.00 aws-lc | 1.00 |  | 0.94 |
+| SHA-256 | **1.12** Graviola ⚡ |  | **1.39** aws-lc ⚡ | **1.32** |  | **1.32** |
+| SHA-384, SHA-512, SHA-512/256 | 1.01 aws-lc ⚡ |  | 1.00 | 1.01 |  | 1.00 |
+| HMAC | 1.00 Graviola ⚡ |  | 1.01 |  |  |  |
+| HKDF | **1.17** rind ⚡ |  | 0.87 |  |  |  |
 | PBKDF2 | 0.94 rind |  | 0.93 |  |  |  |
 | X25519 | 1.01 s2n-bignum ✓ | 1.00 | 1.02 |  |  |  |
 | Ed25519 | **1.04** s2n-bignum ✓ + Graviola ⚡ | **1.03** | **1.03** |  |  |  |
@@ -179,11 +181,11 @@ run doesn't time.
 | AES block, AES-CTR | **1.18** Graviola + rind | 1.01 aws-lc | 0.99 |
 | ChaCha20 (header protection) | **1.03** Graviola | 0.96 | 0.87 aws-lc ⚡ |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ | 1.00 | **1.06** |
-| SHA-1 | 1.01 rind | 1.00 aws-lc | 1.01 |
-| SHA-256 | **1.30** Graviola ⚡ | **1.15** aws-lc | **1.04** aws-lc ⚡ |
-| SHA-384, SHA-512, SHA-512/256 | 1.00 aws-lc ✓ | 1.00 | **1.12** aws-lc ⚡ |
-| HMAC | **1.30** Graviola ⚡ | 1.00 | **1.28** |
-| HKDF | **1.48** rind ⚡ | 0.99 | **1.59** |
+| SHA-1 | 1.01 rind | 1.00 aws-lc | 1.00 |
+| SHA-256 | **1.30** Graviola ⚡ | **1.16** aws-lc | 0.99 aws-lc ⚡ |
+| SHA-384, SHA-512, SHA-512/256 | 1.00 aws-lc ✓ | 1.00 | 1.00 aws-lc ⚡ |
+| HMAC | **1.29** Graviola ⚡ | 1.00 | 1.00 |
+| HKDF | **1.38** rind ⚡ | 0.90 | 1.01 |
 | PBKDF2 | 0.95 rind | 0.93 | 0.98 |
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
 | Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
@@ -243,6 +245,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [run 41378010740]: https://github.com/moq-dev/rind/actions/runs/41378010740
+[run 41398664891]: https://github.com/moq-dev/rind/actions/runs/41398664891
 [#206]: https://github.com/moq-dev/rind/pull/206
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
