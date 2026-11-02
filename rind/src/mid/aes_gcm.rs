@@ -3,7 +3,7 @@
 
 use super::aes::{check_gcm_lengths, expand_key};
 use crate::Error;
-use crate::low::ghash::{Ghash, GhashTable};
+use crate::low::ghash::GhashTable;
 use crate::low::{self, AesKey, Entry, aes_gcm, ct_equal};
 
 /// An AES-GCM key.
@@ -58,27 +58,7 @@ impl AesGcm {
     ) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
-        let mut ghash = Ghash::new(&self.gh);
-
-        let counter = self.nonce_to_y0(nonce);
-
-        let mut e_y0 = counter;
-        self.key.encrypt_block(&mut e_y0);
-
-        // give low-level code opportunity to stitch gf128 and aes
-        // computations. see low::generic::aes_gcm for model version.
-        aes_gcm::encrypt(&self.key, &mut ghash, &counter, aad, cipher_inout);
-
-        let mut lengths = [0u8; 16];
-        lengths[..8].copy_from_slice(&((aad.len() * 8) as u64).to_be_bytes());
-        lengths[8..].copy_from_slice(&((cipher_inout.len() * 8) as u64).to_be_bytes());
-        ghash.add(&lengths);
-
-        let final_xi = ghash.into_bytes();
-
-        for ((out, x), e) in tag_out.iter_mut().zip(final_xi.iter()).zip(e_y0.iter()) {
-            *out = *x ^ *e;
-        }
+        *tag_out = aes_gcm::seal(&self.key, &self.gh, nonce, aad, cipher_inout);
 
         low::ct::public_slice(cipher_inout);
         low::ct::public_slice(tag_out);
@@ -108,24 +88,7 @@ impl AesGcm {
     ) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
-        let mut ghash = Ghash::new(&self.gh);
-
-        let counter = self.nonce_to_y0(nonce);
-
-        let mut e_y0 = counter;
-        self.key.encrypt_block(&mut e_y0);
-
-        aes_gcm::decrypt(&self.key, &mut ghash, &counter, aad, cipher_inout);
-
-        let mut lengths = [0u8; 16];
-        lengths[..8].copy_from_slice(&((aad.len() * 8) as u64).to_be_bytes());
-        lengths[8..].copy_from_slice(&((cipher_inout.len() * 8) as u64).to_be_bytes());
-        ghash.add(&lengths);
-
-        let mut actual_tag = ghash.into_bytes();
-        for (out, e) in actual_tag.iter_mut().zip(e_y0.iter()) {
-            *out ^= *e;
-        }
+        let actual_tag = aes_gcm::open(&self.key, &self.gh, nonce, aad, cipher_inout);
 
         if low::ct::into_public(ct_equal(&actual_tag, tag)) {
             low::ct::public_slice(cipher_inout);
@@ -135,13 +98,6 @@ impl AesGcm {
             cipher_inout.fill(0x00);
             Err(Error::DecryptFailed)
         }
-    }
-
-    fn nonce_to_y0(&self, nonce: &[u8; 12]) -> [u8; 16] {
-        let mut y0 = [0u8; 16];
-        y0[..12].copy_from_slice(nonce);
-        y0[15] = 0x01;
-        y0
     }
 }
 
