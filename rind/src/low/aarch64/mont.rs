@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! Montgomery multiplication modulo an RSA modulus or prime: s2n-bignum's
-//! Karatsuba routines and 8n reduction for 16 and 32 words, and otherwise,
-//! from two words, aws-lc's `bn_mul_mont`, which picks its own squaring or 4x
-//! routine by the width as aws-lc does. On a Neoverse-N2 it measured faster
-//! than s2n-bignum's generic `bignum_montmul` and `bignum_montsqr` in every
-//! width class it branches on: 1.15x at 17 and 33 words, 1.6x at 20, and
-//! twice as fast at 24, 48, 64, 96, and 128. The generic routines run only
-//! below two words.
+//! Montgomery multiplication modulo an RSA modulus or prime: from two words,
+//! aws-lc's `bn_mul_mont`, which picks its own squaring or 4x routine by the
+//! width as aws-lc does. On a Neoverse-N2 it measured faster than
+//! s2n-bignum's generic `bignum_montmul` and `bignum_montsqr` in every width
+//! class it branches on: 1.15x at 17 and 33 words, 1.6x at 20, and twice as
+//! fast at 24, 48, 64, 96, and 128. It replaces s2n-bignum's Karatsuba
+//! routines at 16 and 32 words too, where it signs RSA-2048 1.75x and
+//! RSA-4096 1.6x as fast, and verifies RSA-1024 and RSA-2048 1.5x as fast.
+//! The generic routines run only below two words.
 
 /// `z = x * y / 2^(64k) mod m`, for `x` and `y` below `m`, where `k` is the
 /// length of each and `n0` is `-m^-1 mod 2^64`.
 pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
     debug_assert!(z.len() == m.len() && x.len() == m.len() && y.len() == m.len());
     match m.len() {
-        16 | 32 => karatsuba_mul(z, x, y, m, n0),
         k if k >= 2 => mul_mont(z, x, y, m, n0),
         _ => super::bignum_montmul::bignum_montmul(z, x, y, m),
     }
@@ -25,44 +25,9 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
 pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
     debug_assert!(z.len() == m.len() && x.len() == m.len());
     match m.len() {
-        16 | 32 => karatsuba_sqr(z, x, m, n0),
         k if k >= 2 => mul_mont(z, x, x, m, n0),
         _ => super::bignum_montsqr::bignum_montsqr(z, x, m),
     }
-}
-
-/// `mont_mul` for 16 or 32 words.
-fn karatsuba_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
-    if m.len() == 16 {
-        let mut product = [0; 32];
-        super::bignum_kmul_16_32::bignum_kmul_16_32(&mut product, x, y, &mut [0; 32]);
-        redc_8n(z, &mut product, m, n0);
-    } else {
-        let mut product = [0; 64];
-        super::bignum_kmul_32_64::bignum_kmul_32_64(&mut product, x, y, &mut [0; 96]);
-        redc_8n(z, &mut product, m, n0);
-    }
-}
-
-/// `mont_sqr` for 16 or 32 words.
-fn karatsuba_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
-    if m.len() == 16 {
-        let mut product = [0; 32];
-        super::bignum_ksqr_16_32::bignum_ksqr_16_32(&mut product, x, &mut [0; 24]);
-        redc_8n(z, &mut product, m, n0);
-    } else {
-        let mut product = [0; 64];
-        super::bignum_ksqr_32_64::bignum_ksqr_32_64(&mut product, x, &mut [0; 72]);
-        redc_8n(z, &mut product, m, n0);
-    }
-}
-
-/// Reduces the `2k`-word `product` into the `k`-word `z`, fully, modulo `m`.
-fn redc_8n(z: &mut [u64], product: &mut [u64], m: &[u64], n0: u64) {
-    let carry = super::bignum_emontredc_8n::bignum_emontredc_8n(product, m, n0);
-    let (_, reduced) = product.split_at(m.len());
-    let carry = carry | super::bignum_cmp_lt::bignum_cmp_lt(m, reduced);
-    super::bignum_optsub::bignum_optsub(z, reduced, m, carry);
 }
 
 /// `mont_mul` for any width from two words. It squares by its own routine
@@ -115,8 +80,7 @@ mod tests {
 
     // Every other test runs only the routine each width picks, so here
     // aws-lc's are checked against s2n-bignum's generic `bignum_montmul` at
-    // widths that take each of its three paths, multiplying and squaring, and
-    // so are the Karatsuba routines.
+    // widths that take each of its three paths, multiplying and squaring.
     #[test]
     fn matches_generic() {
         let mut rng = Rng(0x2545_f491_4f6c_dd1d);
@@ -168,18 +132,10 @@ mod tests {
                 bignum_montmul::bignum_montmul(want, x, y, m);
                 mul_mont(got, x, y, m, n0);
                 assert_eq!(want, got, "mul_mont, {k} words, case {case}");
-                if k == 16 || k == 32 {
-                    karatsuba_mul(got, x, y, m, n0);
-                    assert_eq!(want, got, "karatsuba_mul, {k} words, case {case}");
-                }
 
                 bignum_montmul::bignum_montmul(want, x, x, m);
                 mul_mont(got, x, x, m, n0);
                 assert_eq!(want, got, "mul_mont squaring, {k} words, case {case}");
-                if k == 16 || k == 32 {
-                    karatsuba_sqr(got, x, m, n0);
-                    assert_eq!(want, got, "karatsuba_sqr, {k} words, case {case}");
-                }
             }
         }
     }
