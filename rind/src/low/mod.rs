@@ -67,7 +67,7 @@ pub(crate) use generic::ct_equal::ct_equal;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
 pub(crate) use generic::zeroise::{Zeroable, zeroise, zeroise_value};
-pub(crate) use posint::{PosInt, SecretPosInt};
+pub(crate) use posint::{ModExp, PosInt, SecretPosInt};
 
 #[cfg(all(test, not(target_arch = "arm")))]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -152,6 +152,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::mont::{mont_mul, mont_sqr};
         pub(crate) use x86_64::mont_exp::mont_exp;
         pub(crate) use x86_64::rsaz::Rsaz;
+        pub(crate) use x86_64::rsaz_avx512::{Operands, RsazAvx512};
         pub(crate) use x86_64::mlkem768_sample_poly_ntt_8x::mlkem768_sample_poly_ntt_8x;
 
         pub(crate) use x86_64::adx_mux::p256_montjadd;

@@ -127,6 +127,7 @@ pub(crate) mod p521_jmixadd_alt;
 pub(crate) mod p521_jscalarmul;
 pub(crate) mod p521_jscalarmul_alt;
 pub(crate) mod rsaz;
+pub(crate) mod rsaz_avx512;
 pub(crate) mod sha1;
 pub(crate) mod sha1_mux;
 pub(crate) mod sha256;
