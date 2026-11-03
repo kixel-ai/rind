@@ -24,4 +24,4 @@ just check        # Lint, compile, and test what the branch changed
 just fix          # Auto-fix lint/formatting, same scope
 ```
 
-Quests: before starting work, run `quest context` and `quest guide`, and follow both.
+Quests: before any work, run `quest context` and follow it.
