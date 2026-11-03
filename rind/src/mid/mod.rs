@@ -13,13 +13,10 @@ cfg_if::cfg_if! {
         pub(super) mod ed25519;
         #[path = "arm/mlkem768.rs"]
         pub(super) mod mlkem768;
-        #[path = "arm/p256.rs"]
-        pub(super) mod p256;
     } else {
         pub(super) mod aes_gcm;
         pub(super) mod ed25519;
         pub(super) mod mlkem768;
-        pub(super) mod p256;
         pub(super) mod sha3;
     }
 }
@@ -27,6 +24,7 @@ cfg_if::cfg_if! {
 pub(super) mod aes;
 pub(super) mod chacha20;
 pub(super) mod chacha20poly1305;
+pub(super) mod p256;
 pub(super) mod p384;
 pub(super) mod p521;
 pub(super) mod rng;

@@ -133,16 +133,16 @@ resumed TLS 1.3 handshakes and bulk transfer against rustls over aws-lc-rs's
 and ring's providers. RSA key generation, whose time swings by up to 3x from
 run to run, stays out of the ratios. The nightly `bench` workflow times every
 cell and keeps each benchmark's numbers in its summary. These are from
-[run 41378010740], and the P-256, P-384, and P-521 cells, except armv7's
-P-256, from [run 41399702862]; a change that moves a cell refreshes it.
+[run 41378010740], and the P-256, P-384, and P-521 cells from
+[run 41399702862], except armv7's P-256, from [run 41518446383]; a change
+that moves a cell refreshes it.
 ML-KEM-768's cells are from [run 41400124007], whose x86_64 job drew an EPYC
 9V74 (Zen 4) and no AVX2 job an EPYC 7763. RSA's no ADX and no AVX2 cells are
 from [run 41469252502], whose no ADX job drew a Xeon 6973P-C (Granite Rapids)
 and no AVX2 job an EPYC 7763.
 
 x86_64 runs every feature of an AMD EPYC 7763 (Zen 3: ADX, AVX2, SHA-NI, and
-VAES, but no AVX-512), except in the 1 MB transfer and P-256 rows, noted
-below. Each column to its right denies more, as `bench.yml`
+VAES, but no AVX-512), except where noted below. Each column to its right denies more, as `bench.yml`
 describes, and compares with aws-lc-rs alone, since ring cannot be denied a
 feature: no ADX denies ADX (Haswell); no AVX2 also AVX2, BMI2, SHA-NI,
 AVX-512, VAES, and VPCLMULQDQ (Sandy Bridge); no AVX also AVX (Westmere); no
@@ -153,12 +153,12 @@ GitHub's pool ran no ADX on an EPYC 7763 too, no AVX2 on an EPYC 9V74 (Zen
 The 1 MB transfer row is from [run 41401180882], which ran x86_64 on an
 EPYC 9V74, whose AVX-512 runs AES-GCM's 512-bit paths rather than the 256-bit
 VAES ones Zen 3 runs, except its no AVX2 cell, from [run 41468954426] on an
-EPYC 9V45. AES-GCM's no AVX2 cell is from that run too, and its other cells
-from [run 41472308771], which ran x86_64 and SSE2 on an EPYC 7763, no AVX on
-an EPYC 9V74, and no AES-NI on a Xeon Platinum 8573C (Emerald Rapids).
+EPYC 9V45. The AES-GCM row is from [run 41519474246], which ran x86_64 on an
+EPYC 9V45, whose AVX-512 runs AES-GCM's 512-bit paths, no AVX2, no AVX, and
+no AES-NI on an EPYC 7763, and SSE2 on a Xeon Platinum 8573C.
 The SHA, HMAC, and HKDF rows are from [run 41398664891], which ran every
-column on an EPYC 7763, except x86_64's HKDF cell, from [run 41472308771], and
-x86_64's PBKDF2 cell from [run 41464027605], both on the same CPU. The SHA-256
+column on an EPYC 7763, except x86_64's HKDF cell, from [run 41519474246] on
+an EPYC 9V45, and its PBKDF2 cell, from [run 41464027605] on an EPYC 7763. The SHA-256
 cells are from [run 41485960394], which ran x86_64 on an EPYC 9V74, no AVX2 on
 an EPYC 7763, no AVX on an EPYC 9V45, and SSE2 on a Xeon Platinum 8573C.
 The x86_64 P-256 cells take key generation, signing, and ECDH from
@@ -171,7 +171,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 
 | Algorithm | x86_64 | no ADX | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|---|
-| AES-GCM | **1.20** BoringSSL ⚡ + Graviola |  | 0.99 aws-lc ✓ + Graviola | **1.47** Graviola | **1.13** aws-lc + rind | 0.85 |
+| AES-GCM | 0.99 BoringSSL ⚡ + Graviola |  | 0.99 aws-lc ✓ + Graviola | 0.94 Graviola | 1.01 aws-lc + rind | 0.89 |
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 0.99 | 0.99 | 1.01 aws-lc | 0.85 |
 | ChaCha20 (header protection) | 0.96 Graviola |  | 0.95 aws-lc ⚡ | 0.93 | 0.95 | 0.92 |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.02 aws-lc ⚡ |  | 1.00 |  | **1.12** aws-lc ⚡ + Graviola ⚡ | **1.10** |
@@ -179,7 +179,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 | SHA-256 | **1.13** Graviola ⚡ |  | 1.00 aws-lc ⚡ | 1.02 |  | **1.03** |
 | SHA-384, SHA-512, SHA-512/256 | 1.01 aws-lc ⚡ |  | 1.00 | 1.01 |  | 1.00 |
 | HMAC | 1.00 Graviola ⚡ |  | 1.01 |  |  |  |
-| HKDF | 1.02 rind ⚡ |  | 0.87 |  |  |  |
+| HKDF | 0.93 rind ⚡ |  | 0.87 |  |  |  |
 | PBKDF2 | 0.94 rind |  | 0.93 |  |  |  |
 | X25519 | 1.01 s2n-bignum ✓ | 1.00 | 1.02 |  |  |  |
 | Ed25519 | **1.04** s2n-bignum ✓ + Graviola ⚡ | **1.03** | **1.03** |  |  |  |
@@ -198,13 +198,13 @@ extension; without them it runs the code [Symmetric
 cryptography](#symmetric-cryptography) names. The aarch64 and no crypto
 cells for RSA and rind-rustls handshakes are from [run 41397278464], which
 times aarch64 RSA's current Montgomery multiplication. The SHA-256 cells and
-aarch64's HMAC, HKDF, and PBKDF2 cells are from [run 41485960394], the AES-GCM
-row from [run 41472308771], the other SHA, HMAC, and HKDF cells from
+aarch64's HMAC and PBKDF2 cells are from [run 41485960394], the AES-GCM and
+HKDF rows from [run 41519474246], the other SHA and HMAC cells from
 [run 41398664891], and armv7's RSA and handshake cells from [run 41401089431].
 
 | Algorithm | aarch64 | no crypto | armv7 |
 |---|---|---|---|
-| AES-GCM | **1.55** Graviola | **1.28** aws-lc + rind | **1.66** |
+| AES-GCM | **1.04** Graviola | 1.02 aws-lc + rind | 0.99 |
 | AES block, AES-CTR | **1.18** Graviola + rind | 1.01 aws-lc | 0.99 |
 | ChaCha20 (header protection) | **1.03** Graviola | 0.96 | 0.87 aws-lc ⚡ |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ | 1.00 | **1.06** |
@@ -212,11 +212,11 @@ row from [run 41472308771], the other SHA, HMAC, and HKDF cells from
 | SHA-256 | 1.02 aws-lc ⚡ | 1.00 aws-lc | 0.99 aws-lc ⚡ |
 | SHA-384, SHA-512, SHA-512/256 | 1.00 aws-lc ✓ | 1.00 | 1.00 aws-lc ⚡ |
 | HMAC | 1.00 Graviola ⚡ | 1.00 | 1.00 |
-| HKDF | **1.32** rind ⚡ | 0.90 | 1.01 |
+| HKDF | 0.86 rind ⚡ | 0.88 | 1.00 |
 | PBKDF2 | 0.91 rind | 0.93 | 0.98 |
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
 | Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
-| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | **2.63** HACL\* ✓ |
+| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | 0.58 fiat-crypto ✓ + rind ⚡ + Graviola ⚡ |
 | P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.03** fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | 0.64 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.04** fiat-crypto ✓ + rind ⚡ |
 | ML-KEM-768 | **1.04** s2n-bignum ✓ + Graviola ⚡ | 0.93 | **1.05** libcrux-ml-kem ✓ |
@@ -234,7 +234,7 @@ tests use [Wycheproof]'s vectors.
 | [Graviola] | copied: rind began as a copy of it, and rind-rustls of its rustls-graviola; its aarch64 ChaCha20 and its Poly1305 began as [cifra], CC0-1.0 | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | rind | its own code | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | [s2n-bignum] | copied: its assembly, transliterated into Rust `asm!` by `admin/parse-asm`, which ends each x86_64 routine using 256-bit registers with `vzeroupper` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM and aarch64 Keccak-f routines (from mlkem-native) Apache-2.0 OR ISC OR MIT; its x86_64 Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/main/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/main/arm/proofs)) that each routine's object code computes its specified result for all inputs. They check s2n-bignum's own build, not rind's transliteration, and do not cover memory safety. |
-| [HACL\*] | dependency, through libcrux-hacl-rs, libcrux-p256, and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
+| [HACL\*] | dependency, through libcrux-hacl-rs and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
 | [libcrux-ml-kem] | dependency | Apache-2.0 | [hax and F\* proofs](https://github.com/cryspen/libcrux/blob/main/libcrux-ml-kem/proofs/verification_status.md) of panic freedom and functional correctness for its portable arithmetic, NTT, serialization, and high-level code. Its SHA-3, from libcrux-sha3, is unverified. |
 | [mlkem-native] | ported: its portable C polynomial arithmetic (the NTT, inverse NTT, base multiplication, reductions, packing, and rejection sampling), to Rust, for x86_64 CPUs without AVX2; copied, by `admin/import-aws-lc` from aws-lc's copy: its x86_64 AVX2 ciphertext compression, which rind ends with `vzeroupper` | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port. [HOL Light proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/hol_light/x86_64) that its AVX2 compression's object code computes its specified result for all inputs, of mlkem-native's own build. |
 | [libcrux-aes] | dependency for AES-GCM; copied: the block cipher | Apache-2.0 | nothing: libcrux marks it pre-verification |
@@ -281,9 +281,10 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41467306881]: https://github.com/moq-dev/rind/actions/runs/41467306881
 [run 41401180882]: https://github.com/moq-dev/rind/actions/runs/41401180882
 [run 41468954426]: https://github.com/moq-dev/rind/actions/runs/41468954426
-[run 41472308771]: https://github.com/moq-dev/rind/actions/runs/41472308771
+[run 41519474246]: https://github.com/moq-dev/rind/actions/runs/41519474246
 [run 41469252502]: https://github.com/moq-dev/rind/actions/runs/41469252502
 [run 41485960394]: https://github.com/moq-dev/rind/actions/runs/41485960394
+[run 41518446383]: https://github.com/moq-dev/rind/actions/runs/41518446383
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
@@ -356,6 +357,15 @@ with BMI2 and ADX, as aws-lc's `ecp_nistz256_point_mul_base` runs them. On
 aarch64 it is s2n-bignum's `p256_scalarmulbase`, over 6-bit Booth windows and
 a table of each window's 32 multiples (an 88KB constant table). Variable
 point multiplication is s2n-bignum's `p256_montjscalarmul`.
+
+armv7 runs the aarch64 algorithms for P256 in portable Rust, over
+fiat-crypto's field and scalar arithmetic, except its Montgomery
+multiplication and squaring, which are rind's. LLVM compiles fiat-crypto's
+32-bit multiplication to save and restore the one carry flag 171 times a
+call, between its interleaved carry chains; rind's carry in 64-bit
+accumulators (`umaal`) instead, in 560 instructions run to fiat-crypto's
+1,375. fiat-crypto cannot generate an unsaturated P256, as it does P521:
+its bounds checks fail at every 32-bit limb count from 9 to 16.
 
 P384 base point multiplication uses a comb of 20 tables of 16 affine points
 (a 30KB constant table) over 5-bit Booth windows, as aws-lc does. Variable

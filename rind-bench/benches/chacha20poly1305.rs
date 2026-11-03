@@ -1,21 +1,24 @@
 mod criterion;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
-fn test_ring_chacha(key: &ring::aead::LessSafeKey, nonce: &[u8; 12], aad: &[u8], plain: &[u8]) {
-    let mut ct = plain.to_vec();
+fn test_ring_chacha(key: &ring::aead::LessSafeKey, nonce: &[u8; 12], aad: &[u8], buf: &mut [u8]) {
     let _tag = key
         .seal_in_place_separate_tag(
             ring::aead::Nonce::assume_unique_for_key(*nonce),
             ring::aead::Aad::from(aad),
-            &mut ct,
+            buf,
         )
         .unwrap();
 }
 
-fn test_aws_chacha(key: &aws_lc_rs::aead::LessSafeKey, nonce: &[u8; 12], aad: &[u8], plain: &[u8]) {
-    let mut ct = plain.to_vec();
+fn test_aws_chacha(
+    key: &aws_lc_rs::aead::LessSafeKey,
+    nonce: &[u8; 12],
+    aad: &[u8],
+    buf: &mut [u8],
+) {
     let _tag = key
-        .seal_in_place_separate_tag(nonce.into(), aws_lc_rs::aead::Aad::from(aad), &mut ct)
+        .seal_in_place_separate_tag(nonce.into(), aws_lc_rs::aead::Aad::from(aad), buf)
         .unwrap();
 }
 
@@ -23,23 +26,17 @@ fn test_rc_chacha(
     key: &chacha20poly1305::ChaCha20Poly1305,
     nonce: &[u8; 12],
     aad: &[u8],
-    plain: &[u8],
+    buf: &mut [u8],
 ) {
     use chacha20poly1305::AeadInOut;
-    let mut ct = plain.to_vec();
     let _tag = key
-        .encrypt_inout_detached(nonce.into(), aad, ct.as_mut_slice().into())
+        .encrypt_inout_detached(nonce.into(), aad, buf.into())
         .unwrap();
 }
 
-fn test_rind_chacha(key: &rind::aead::Key, nonce: &[u8; 12], aad: &[u8], plain: &[u8]) {
-    let mut ct = plain.to_vec();
+fn test_rind_chacha(key: &rind::aead::Key, nonce: &[u8; 12], aad: &[u8], buf: &mut [u8]) {
     let _tag = key
-        .seal_in_place_separate_tag(
-            rind::aead::Nonce::assume_unique_for_key(*nonce),
-            aad,
-            &mut ct,
-        )
+        .seal_in_place_separate_tag(rind::aead::Nonce::assume_unique_for_key(*nonce), aad, buf)
         .unwrap();
 }
 
@@ -50,38 +47,32 @@ fn bench_chacha20poly1305(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("chacha20poly1305");
     for (size, size_name) in criterion::SIZES {
-        let input = vec![0u8; size];
+        // Sealing the same buffer in place each iteration times the cipher
+        // alone, without an allocation or a copy of the input.
+        let mut buf = vec![0u8; size];
         group.throughput(Throughput::Bytes(size as u64));
 
-        group.bench_with_input(BenchmarkId::new("ring", size_name), &input, |b, input| {
+        group.bench_function(BenchmarkId::new("ring", size_name), |b| {
             use ring::aead::{CHACHA20_POLY1305, LessSafeKey, UnboundKey};
             let key = UnboundKey::new(&CHACHA20_POLY1305, &key).unwrap();
             let key = LessSafeKey::new(key);
-            b.iter(|| test_ring_chacha(&key, &nonce, &aad, input));
+            b.iter(|| test_ring_chacha(&key, &nonce, &aad, &mut buf));
         });
-        group.bench_with_input(
-            BenchmarkId::new("aws-lc-rs", size_name),
-            &input,
-            |b, input| {
-                use aws_lc_rs::aead::{CHACHA20_POLY1305, LessSafeKey, UnboundKey};
-                let key = UnboundKey::new(&CHACHA20_POLY1305, &key).unwrap();
-                let key = LessSafeKey::new(key);
-                b.iter(|| test_aws_chacha(&key, &nonce, &aad, input));
-            },
-        );
-        group.bench_with_input(
-            BenchmarkId::new("rustcrypto", size_name),
-            &input,
-            |b, input| {
-                use chacha20poly1305::KeyInit;
-                let key = chacha20poly1305::ChaCha20Poly1305::new_from_slice(&key).unwrap();
-                b.iter(|| test_rc_chacha(&key, &nonce, &aad, input));
-            },
-        );
-        group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
+        group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
+            use aws_lc_rs::aead::{CHACHA20_POLY1305, LessSafeKey, UnboundKey};
+            let key = UnboundKey::new(&CHACHA20_POLY1305, &key).unwrap();
+            let key = LessSafeKey::new(key);
+            b.iter(|| test_aws_chacha(&key, &nonce, &aad, &mut buf));
+        });
+        group.bench_function(BenchmarkId::new("rustcrypto", size_name), |b| {
+            use chacha20poly1305::KeyInit;
+            let key = chacha20poly1305::ChaCha20Poly1305::new_from_slice(&key).unwrap();
+            b.iter(|| test_rc_chacha(&key, &nonce, &aad, &mut buf));
+        });
+        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
             use rind::aead::{CHACHA20_POLY1305, Key};
             let key = Key::new(&CHACHA20_POLY1305, &key).unwrap();
-            b.iter(|| test_rind_chacha(&key, &nonce, &aad, input));
+            b.iter(|| test_rind_chacha(&key, &nonce, &aad, &mut buf));
         });
     }
 }
