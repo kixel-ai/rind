@@ -31,6 +31,8 @@ fn main() {
         ("avx", is_x86_feature_detected!("avx")),
         ("avx2", is_x86_feature_detected!("avx2")),
         ("avx512f", is_x86_feature_detected!("avx512f")),
+        ("avx512dq", is_x86_feature_detected!("avx512dq")),
+        ("avx512ifma", is_x86_feature_detected!("avx512ifma")),
         ("avx512bw", is_x86_feature_detected!("avx512bw")),
         ("avx512vl", is_x86_feature_detected!("avx512vl")),
         ("avx512vbmi", is_x86_feature_detected!("avx512vbmi")),
