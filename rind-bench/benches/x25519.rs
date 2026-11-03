@@ -93,6 +93,30 @@ fn x25519(c: &mut Criterion) {
             black_box(secret);
         })
     });
+
+    group.bench_function("graviola", |b| {
+        use graviola::key_agreement::x25519::{PrivateKey, PublicKey};
+
+        b.iter(|| {
+            let our_private_key = PrivateKey::new_random().unwrap();
+            black_box(our_private_key.public_key());
+
+            let peer = PublicKey::from_array(PUBLIC_KEY);
+            black_box(our_private_key.diffie_hellman(&peer).unwrap());
+        })
+    });
+
+    group.bench_function("libcrux", |b| {
+        use libcrux_ecdh::{X25519PublicKey, x25519_derive, x25519_key_gen};
+
+        b.iter(|| {
+            let (our_private_key, our_public_key) = x25519_key_gen(&mut getrandom::SysRng).unwrap();
+            black_box(our_public_key);
+
+            let peer = X25519PublicKey(*PUBLIC_KEY);
+            black_box(x25519_derive(&peer, &our_private_key).unwrap());
+        })
+    });
 }
 
 // Generate a key and its public key: the fixed-base multiplication alone,
@@ -134,6 +158,25 @@ fn keygen(c: &mut Criterion) {
             let key = PrivateKey::generate(&X25519).unwrap();
             black_box(key.public_key());
         })
+    });
+
+    group.bench_function("graviola", |b| {
+        b.iter(|| {
+            let key = graviola::key_agreement::x25519::PrivateKey::new_random().unwrap();
+            black_box(key.public_key());
+        })
+    });
+
+    group.bench_function("libcrux", |b| {
+        b.iter(|| black_box(libcrux_ecdh::x25519_key_gen(&mut getrandom::SysRng).unwrap()));
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        b.iter(|| {
+            let key = openssl::pkey::PKey::generate_x25519().unwrap();
+            black_box(key.raw_public_key().unwrap());
+        });
     });
 }
 

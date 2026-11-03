@@ -143,6 +143,14 @@ fn mlkem768_keygen(c: &mut Criterion) {
             black_box(DecapsulationKey::generate(&ML_KEM_768).unwrap());
         });
     });
+
+    group.bench_function("graviola", |b| {
+        use graviola::key_agreement::mlkem768::DecapKey;
+
+        b.iter(|| {
+            black_box(DecapKey::generate().unwrap());
+        });
+    });
 }
 
 // server operation
@@ -228,6 +236,17 @@ fn mlkem768_encaps(c: &mut Criterion) {
             black_box(encaps.encapsulate().unwrap());
         });
     });
+
+    group.bench_function("graviola", |b| {
+        use graviola::key_agreement::mlkem768::{DecapKey, EncapKey};
+
+        let encaps = DecapKey::generate().unwrap().encapsulation_key().as_bytes();
+
+        b.iter(|| {
+            let encaps = EncapKey::from_bytes(&encaps).unwrap();
+            black_box(encaps.encaps().unwrap());
+        });
+    });
 }
 
 // client second operation
@@ -299,6 +318,21 @@ fn mlkem768_decaps(c: &mut Criterion) {
                 (decaps, ciphertext)
             },
             |(decaps, ciphertext)| black_box(decaps.decapsulate(ciphertext.as_ref()).unwrap()),
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.bench_function("graviola", |b| {
+        use graviola::key_agreement::mlkem768::DecapKey;
+
+        // Decapsulation consumes its key here too.
+        b.iter_batched(
+            || {
+                let decaps = DecapKey::generate().unwrap();
+                let (_secret, ciphertext) = decaps.encapsulation_key().encaps().unwrap();
+                (decaps, ciphertext)
+            },
+            |(decaps, ciphertext)| black_box(decaps.decaps(&ciphertext)),
             BatchSize::SmallInput,
         );
     });
@@ -383,6 +417,17 @@ fn mlkem768_combined(c: &mut Criterion) {
             let encaps = EncapsulationKey::new(&ML_KEM_768, encaps_encoded.as_ref()).unwrap();
             let (ciphertext, _secret) = encaps.encapsulate().unwrap();
             black_box(decaps.decapsulate(ciphertext.as_ref()).unwrap());
+        });
+    });
+
+    group.bench_function("graviola", |b| {
+        use graviola::key_agreement::mlkem768::{DecapKey, EncapKey};
+
+        b.iter(|| {
+            let decaps = DecapKey::generate().unwrap();
+            let encaps = EncapKey::from_bytes(&decaps.encapsulation_key().as_bytes()).unwrap();
+            let (_secret, ciphertext) = encaps.encaps().unwrap();
+            black_box(decaps.decaps(&ciphertext));
         });
     });
 }

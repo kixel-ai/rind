@@ -15,12 +15,18 @@ use rustls::{
     RootCertStore, ServerConfig, ServerConnection,
 };
 
-const PROVIDERS: [&str; 3] = ["ring", "aws-lc-rs", "rind"];
+#[cfg(not(all(feature = "__bench_openssl", target_family = "unix")))]
+const PROVIDERS: &[&str] = &["ring", "aws-lc-rs", "rind", "graviola"];
+#[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+const PROVIDERS: &[&str] = &["ring", "aws-lc-rs", "rind", "graviola", "openssl"];
 
 fn provider(name: &str) -> CryptoProvider {
     match name {
         "ring" => rustls::crypto::ring::default_provider(),
         "aws-lc-rs" => rustls::crypto::aws_lc_rs::default_provider(),
+        "graviola" => rustls_graviola::default_provider(),
+        #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+        "openssl" => rustls_openssl::default_provider(),
         _ => rind_rustls::default_provider().unwrap(),
     }
 }
@@ -28,9 +34,13 @@ fn provider(name: &str) -> CryptoProvider {
 /// `name`'s provider, offering only `group`, or `None` where it lacks it.
 fn with_group(name: &str, group: NamedGroup) -> Option<CryptoProvider> {
     let all = match name {
-        "ring" => rustls::crypto::ring::ALL_KX_GROUPS,
-        "aws-lc-rs" => rustls::crypto::aws_lc_rs::ALL_KX_GROUPS,
-        _ => rind_rustls::ALL_KX_GROUPS,
+        "ring" => rustls::crypto::ring::ALL_KX_GROUPS.to_vec(),
+        "aws-lc-rs" => rustls::crypto::aws_lc_rs::ALL_KX_GROUPS.to_vec(),
+        "graviola" => rustls_graviola::kx::ALL_KX_GROUPS.to_vec(),
+        // What the linked OpenSSL offers: ML-KEM needs 3.5.
+        #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+        "openssl" => rustls_openssl::kx_group::available_groups(),
+        _ => rind_rustls::ALL_KX_GROUPS.to_vec(),
     };
     let group = *all.iter().find(|g| g.name() == group)?;
     Some(CryptoProvider {
@@ -150,7 +160,7 @@ fn full_handshake_by_group(c: &mut Criterion) {
     let mut group = c.benchmark_group("rustls-full-handshake-group");
     group.throughput(Throughput::Elements(1));
     for (group_name, named) in GROUPS {
-        for name in PROVIDERS {
+        for &name in PROVIDERS {
             let Some(provider) = with_group(name, named) else {
                 continue;
             };
@@ -171,7 +181,7 @@ fn full_handshake_by_key(c: &mut Criterion) {
     let mut group = c.benchmark_group("rustls-full-handshake-key");
     group.throughput(Throughput::Elements(1));
     for key in KEYS {
-        for name in PROVIDERS {
+        for &name in PROVIDERS {
             let provider = with_group(name, NamedGroup::X25519).unwrap();
             let Some((client, server)) = configs(provider, key, false) else {
                 continue;
@@ -189,7 +199,7 @@ fn resumed_handshake(c: &mut Criterion) {
     let mut group = c.benchmark_group("rustls-resumed-handshake");
     group.throughput(Throughput::Elements(1));
     for (group_name, named) in GROUPS {
-        for name in PROVIDERS {
+        for &name in PROVIDERS {
             let Some(provider) = with_group(name, named) else {
                 continue;
             };
@@ -223,7 +233,7 @@ fn bulk(c: &mut Criterion) {
             CipherSuite::TLS13_CHACHA20_POLY1305_SHA256,
         ),
     ] {
-        for name in PROVIDERS {
+        for &name in PROVIDERS {
             let (client, server) = configs(with_suite(name, suite), "ecdsa-p256", false).unwrap();
             let (mut client, mut server) = handshake(&client, &server);
             let mut buf = Vec::new();

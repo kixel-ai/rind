@@ -1,7 +1,8 @@
 mod criterion;
 use std::hint::black_box;
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::measurement::WallTime;
+use criterion::{BenchmarkGroup, Criterion, criterion_group, criterion_main};
 
 struct Len(usize);
 
@@ -25,6 +26,7 @@ fn bench(
     ring: ring::hkdf::Algorithm,
     aws: aws_lc_rs::hkdf::Algorithm,
     ours: &'static rind::hkdf::Algorithm,
+    hash: Hash,
 ) {
     let mut group = c.benchmark_group(name);
     let secret = [0x5a; 32];
@@ -122,6 +124,118 @@ fn bench(
             ))
         })
     });
+
+    match hash {
+        Hash::Sha1 => rustcrypto::<hkdf::hmac::Hmac<sha1::Sha1>>(&mut group, &secret, info[0]),
+        Hash::Sha256 => rustcrypto::<hkdf::hmac::Hmac<sha2::Sha256>>(&mut group, &secret, info[0]),
+        Hash::Sha384 => rustcrypto::<hkdf::hmac::Hmac<sha2::Sha384>>(&mut group, &secret, info[0]),
+        Hash::Sha512 => rustcrypto::<hkdf::hmac::Hmac<sha2::Sha512>>(&mut group, &secret, info[0]),
+    }
+    libcrux(&mut group, hash, &secret, info[0]);
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    openssl(&mut group, hash, &secret, info[0]);
+}
+
+#[derive(Clone, Copy)]
+enum Hash {
+    Sha1,
+    Sha256,
+    Sha384,
+    Sha512,
+}
+
+fn rustcrypto<H: hkdf::HmacImpl>(group: &mut BenchmarkGroup<'_, WallTime>, secret: &[u8], info: &[u8]) {
+    group.bench_function("extract-expand/rustcrypto", |b| {
+        b.iter(|| {
+            let mut out = [0u8; 32];
+            hkdf::GenericHkdf::<H>::new(Some(b"salt"), secret)
+                .expand(info, &mut out)
+                .unwrap();
+            black_box(out)
+        })
+    });
+    let prk = hkdf::GenericHkdf::<H>::new(Some(b"salt"), secret);
+    group.bench_function("expand/rustcrypto", |b| {
+        b.iter(|| {
+            let mut out = [0u8; 32];
+            prk.expand(info, &mut out).unwrap();
+            black_box(out)
+        })
+    });
+}
+
+fn libcrux(group: &mut BenchmarkGroup<'_, WallTime>, hash: Hash, secret: &[u8], info: &[u8]) {
+    use libcrux_hkdf::{Algorithm, expand, extract, hkdf};
+    let (algorithm, prk_len) = match hash {
+        Hash::Sha1 => return,
+        Hash::Sha256 => (Algorithm::Sha256, 32),
+        Hash::Sha384 => (Algorithm::Sha384, 48),
+        Hash::Sha512 => (Algorithm::Sha512, 64),
+    };
+    group.bench_function("extract-expand/libcrux", |b| {
+        b.iter(|| {
+            let mut out = [0u8; 32];
+            hkdf(algorithm, &mut out, b"salt", secret, info).unwrap();
+            black_box(out)
+        })
+    });
+    let mut prk = [0u8; 64];
+    let prk = &mut prk[..prk_len];
+    extract(algorithm, prk, b"salt", secret).unwrap();
+    group.bench_function("expand/libcrux", |b| {
+        b.iter(|| {
+            let mut out = [0u8; 32];
+            expand(algorithm, &mut out, prk, info).unwrap();
+            black_box(out)
+        })
+    });
+}
+
+#[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+fn openssl(group: &mut BenchmarkGroup<'_, WallTime>, hash: Hash, secret: &[u8], info: &[u8]) {
+    use openssl::md::Md;
+    use openssl::pkey::Id;
+    use openssl::pkey_ctx::{HkdfMode, PkeyCtx};
+    let md = match hash {
+        Hash::Sha1 => Md::sha1(),
+        Hash::Sha256 => Md::sha256(),
+        Hash::Sha384 => Md::sha384(),
+        Hash::Sha512 => Md::sha512(),
+    };
+    // Expands `key` as a PRK, or extracts from it with the salt first.
+    let derive = |expand_only: bool, key: &[u8]| {
+        let mut out = [0u8; 32];
+        let mut ctx = PkeyCtx::new_id(Id::HKDF).unwrap();
+        ctx.derive_init().unwrap();
+        ctx.set_hkdf_md(md).unwrap();
+        if expand_only {
+            ctx.set_hkdf_mode(HkdfMode::EXPAND_ONLY).unwrap();
+        } else {
+            ctx.set_hkdf_salt(b"salt").unwrap();
+        }
+        ctx.set_hkdf_key(key).unwrap();
+        ctx.add_hkdf_info(info).unwrap();
+        ctx.derive(Some(&mut out)).unwrap();
+        out
+    };
+    group.bench_function("extract-expand/openssl", |b| {
+        b.iter(|| black_box(derive(false, secret)))
+    });
+    let prk = aws_lc_rs::hmac::sign(
+        &aws_lc_rs::hmac::Key::new(
+            match hash {
+                Hash::Sha1 => aws_lc_rs::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
+                Hash::Sha256 => aws_lc_rs::hmac::HMAC_SHA256,
+                Hash::Sha384 => aws_lc_rs::hmac::HMAC_SHA384,
+                Hash::Sha512 => aws_lc_rs::hmac::HMAC_SHA512,
+            },
+            b"salt",
+        ),
+        secret,
+    );
+    group.bench_function("expand/openssl", |b| {
+        b.iter(|| black_box(derive(true, prk.as_ref())))
+    });
 }
 
 fn hkdf(c: &mut Criterion) {
@@ -131,6 +245,7 @@ fn hkdf(c: &mut Criterion) {
         ring::hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
         aws_lc_rs::hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
         &rind::hkdf::legacy::HKDF_SHA1,
+        Hash::Sha1,
     );
     bench(
         c,
@@ -138,6 +253,7 @@ fn hkdf(c: &mut Criterion) {
         ring::hkdf::HKDF_SHA256,
         aws_lc_rs::hkdf::HKDF_SHA256,
         &rind::hkdf::HKDF_SHA256,
+        Hash::Sha256,
     );
     bench(
         c,
@@ -145,6 +261,7 @@ fn hkdf(c: &mut Criterion) {
         ring::hkdf::HKDF_SHA384,
         aws_lc_rs::hkdf::HKDF_SHA384,
         &rind::hkdf::HKDF_SHA384,
+        Hash::Sha384,
     );
     bench(
         c,
@@ -152,6 +269,7 @@ fn hkdf(c: &mut Criterion) {
         ring::hkdf::HKDF_SHA512,
         aws_lc_rs::hkdf::HKDF_SHA512,
         &rind::hkdf::HKDF_SHA512,
+        Hash::Sha512,
     );
 }
 

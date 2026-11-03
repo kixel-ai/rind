@@ -18,17 +18,31 @@ chacha20poly1305 = "0.11"
 criterion = "0.8"
 ed25519-dalek = { version = "3", features = ["alloc", "pkcs8", "rand_core"] }
 getrandom = { version = "0.4", features = ["sys_rng"] }
+graviola = "0.4"
+hkdf = "0.13"
 hex = { version = "0.4", features = ["serde"] }
 hmac = "0.13"
 jsonwebtoken = { version = "11.1", default-features = false, features = ["aws_lc_rs"] }
+libcrux-aes = "0.0.10"
+libcrux-chacha20poly1305 = "0.0.10"
+libcrux-ecdh = "0.0.9"
+libcrux-ecdsa = "0.0.9"
+libcrux-ed25519 = { version = "0.0.10", features = ["rand"] }
+libcrux-hkdf = "0.0.9"
+libcrux-hmac = "0.0.9"
 libcrux-ml-kem = { version = "0.0.11", default-features = false, features = ["mlkem768", "alloc"] }
+libcrux-rsa = "0.0.9"
+libcrux-sha2 = "0.0.9"
 ml-kem = { version = "0.3", features = ["getrandom"] }
 p256 = { version = "0.14", features = ["ecdh", "getrandom"] }
 p384 = { version = "0.14", features = ["ecdh", "getrandom"] }
+p521 = { version = "0.14", features = ["ecdh", "getrandom"] }
+pbkdf2 = "0.13"
 proptest = "1.5.0"
 ring = "0.17"
 rind-jsonwebtoken = { path = "../rind-jsonwebtoken" }
 rind-rustls = { path = "../rind-rustls" }
+rustls-graviola = "0.4"
 rsa = { version = "=0.10.0-rc.19", features = ["sha2"] }
 rustls = { version = "0.23.36", default-features = false, features = ["aws-lc-rs", "ring", "std"] }
 serde = { version = "1", features = ["derive"] }
@@ -41,6 +55,7 @@ x25519-dalek = { version = "3", features = ["getrandom"] }
 foreign-types = "0.3"
 openssl = "0.10"
 openssl-sys = "0.9"
+rustls-openssl = { version = "0.4", default-features = false }
 
 [features]
 __bench_openssl = []

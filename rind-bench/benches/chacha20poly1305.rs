@@ -1,4 +1,6 @@
 mod criterion;
+#[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+mod ossl_aead;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 fn test_ring_chacha(key: &ring::aead::LessSafeKey, nonce: &[u8; 12], aad: &[u8], buf: &mut [u8]) {
@@ -73,6 +75,28 @@ fn bench_chacha20poly1305(c: &mut Criterion) {
             use rind::aead::{CHACHA20_POLY1305, Key};
             let key = Key::new(&CHACHA20_POLY1305, &key).unwrap();
             b.iter(|| test_rind_chacha(&key, &nonce, &aad, &mut buf));
+        });
+        group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
+            let key = graviola::aead::ChaCha20Poly1305::new(key);
+            let mut tag = [0u8; 16];
+            b.iter(|| key.encrypt(&nonce, &aad, &mut buf, &mut tag));
+        });
+        // libcrux seals out of place.
+        group.bench_function(BenchmarkId::new("libcrux", size_name), |b| {
+            let mut ct = vec![0u8; size];
+            let mut tag = [0u8; 16];
+            b.iter(|| {
+                libcrux_chacha20poly1305::encrypt_detached(
+                    &key, &buf, &mut ct, &mut tag, &aad, &nonce,
+                )
+                .unwrap();
+            });
+        });
+        #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+        group.bench_function(BenchmarkId::new("openssl", size_name), |b| {
+            let cipher = openssl::cipher::Cipher::chacha20_poly1305();
+            let mut key = ossl_aead::Sealer::new(cipher, &key);
+            b.iter(|| key.seal(&nonce, &aad, &mut buf));
         });
     }
 }

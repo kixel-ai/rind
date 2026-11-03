@@ -1,4 +1,6 @@
 mod criterion;
+#[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+mod ossl_ec;
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
@@ -48,6 +50,26 @@ fn ecdh(c: &mut Criterion) {
             let secret = our_private_key.agree(&public_key).unwrap();
             black_box(secret);
         })
+    });
+
+    group.bench_function("rustcrypto", |b| {
+        use p521::PublicKey;
+        use p521::ecdh::EphemeralSecret;
+        use p521::elliptic_curve::Generate;
+
+        b.iter(|| {
+            let our_private_key = EphemeralSecret::generate();
+            black_box(our_private_key.public_key());
+
+            let peer = PublicKey::from_sec1_bytes(&public_key).unwrap();
+            black_box(our_private_key.diffie_hellman(&peer));
+        });
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        let mut curve = ossl_ec::Curve::new(openssl::nid::Nid::SECP521R1, openssl::hash::MessageDigest::sha512());
+        b.iter(|| curve.ecdh(&public_key));
     });
 }
 
@@ -101,6 +123,24 @@ fn ecdsa_verify(c: &mut Criterion) {
                 .verify(MESSAGE, &signature)
                 .unwrap();
         })
+    });
+
+    group.bench_function("rustcrypto", |b| {
+        use p521::ecdsa::{Signature, VerifyingKey, signature::Verifier};
+
+        b.iter(|| {
+            VerifyingKey::from_sec1_bytes(&public_key)
+                .unwrap()
+                .verify(MESSAGE, &Signature::from_slice(&signature).unwrap())
+                .unwrap();
+        });
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        let mut curve = ossl_ec::Curve::new(openssl::nid::Nid::SECP521R1, openssl::hash::MessageDigest::sha512());
+        let signature = ossl_ec::Curve::der(&signature);
+        b.iter(|| curve.verify(&public_key, MESSAGE, &signature));
     });
     group.finish();
 
@@ -160,6 +200,24 @@ fn ecdsa_sign(c: &mut Criterion) {
         b.iter(|| {
             black_box(signing_key.sign(MESSAGE).unwrap());
         });
+    });
+
+    group.bench_function("rustcrypto", |b| {
+        use p521::ecdsa::{Signature, SigningKey, signature::Signer};
+        use p521::elliptic_curve::Generate;
+        let signing_key = SigningKey::generate();
+
+        b.iter(|| {
+            let signature: Signature = signing_key.sign(MESSAGE);
+            black_box(signature);
+        });
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        let curve = ossl_ec::Curve::new(openssl::nid::Nid::SECP521R1, openssl::hash::MessageDigest::sha512());
+        let signing_key = curve.generate();
+        b.iter(|| black_box(curve.sign(&signing_key, MESSAGE)));
     });
 }
 

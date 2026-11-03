@@ -1,4 +1,6 @@
 mod criterion;
+#[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+mod ossl_ec;
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
@@ -7,34 +9,17 @@ const PUBLIC_KEY: &[u8; 65] = b"\x04\
 \x62\xd5\xbd\x33\x72\xaf\x75\xfe\x85\xa0\x40\x71\x5d\x0f\x50\x24\x28\xe0\x70\x46\x86\x8b\x0b\xfd\xfa\x61\xd7\x31\xaf\xe4\x4f\x26\
 \xac\x33\x3a\x93\xa9\xe7\x0a\x81\xcd\x5a\x95\xb5\xbf\x8d\x13\x99\x0e\xb7\x41\xc8\xc3\x88\x72\xb4\xa0\x7d\x27\x5a\x01\x4e\x30\xcf";
 
+#[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+const P256_NID: openssl::nid::Nid = openssl::nid::Nid::X9_62_PRIME256V1;
+
 fn ecdh(c: &mut Criterion) {
     let mut group = c.benchmark_group("p256-ecdh");
     group.throughput(Throughput::Elements(1));
 
-    #[cfg(all(feature = "__bench_openssl", target_family = "unix",))]
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     group.bench_function("openssl", |b| {
-        use openssl::bn::BigNumContext;
-        use openssl::derive::Deriver;
-        use openssl::ec::{EcGroup, EcKey, EcPoint};
-        use openssl::nid::Nid;
-        use openssl::pkey::PKey;
-
-        let curve = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
-        let mut bn_ctx = BigNumContext::new().unwrap();
-
-        b.iter(|| {
-            let priv_key = PKey::ec_gen("prime256v1").unwrap();
-            black_box(priv_key.public_key_to_der().unwrap());
-
-            let point = EcPoint::from_bytes(&curve, PUBLIC_KEY, &mut bn_ctx).unwrap();
-            let ec_key = EcKey::from_public_key(&curve, &point).unwrap();
-            let peer = PKey::from_ec_key(ec_key).unwrap();
-            let mut deriver = Deriver::new(&priv_key).unwrap();
-            deriver.set_peer(&peer).unwrap();
-            let mut secret = [0u8; 32];
-            deriver.derive(&mut secret).unwrap();
-            black_box(secret);
-        });
+        let mut curve = ossl_ec::Curve::new(P256_NID, openssl::hash::MessageDigest::sha256());
+        b.iter(|| curve.ecdh(PUBLIC_KEY));
     });
 
     group.bench_function("ring", |b| {
@@ -107,6 +92,31 @@ fn ecdh(c: &mut Criterion) {
             black_box(secret);
         })
     });
+
+    group.bench_function("graviola", |b| {
+        use graviola::key_agreement::p256::{PrivateKey, PublicKey};
+
+        b.iter(|| {
+            let our_private_key = PrivateKey::new_random().unwrap();
+            black_box(our_private_key.public_key_uncompressed());
+
+            let peer = PublicKey::from_x962_uncompressed(PUBLIC_KEY).unwrap();
+            black_box(our_private_key.diffie_hellman(&peer).unwrap());
+        })
+    });
+
+    group.bench_function("libcrux", |b| {
+        use libcrux_ecdh::p256::uncompressed_to_coordinates;
+        use libcrux_ecdh::{P256PublicKey, p256_derive, p256_key_gen};
+
+        b.iter(|| {
+            let (our_private_key, our_public_key) = p256_key_gen(&mut getrandom::SysRng).unwrap();
+            black_box(our_public_key);
+
+            let peer = P256PublicKey(uncompressed_to_coordinates(PUBLIC_KEY).unwrap());
+            black_box(p256_derive(&peer, &our_private_key).unwrap());
+        })
+    });
 }
 
 fn keygen(c: &mut Criterion) {
@@ -162,6 +172,17 @@ fn keygen(c: &mut Criterion) {
             black_box(our_private_key.public_key());
         })
     });
+
+    group.bench_function("graviola", |b| {
+        b.iter(|| {
+            let key = graviola::key_agreement::p256::PrivateKey::new_random().unwrap();
+            black_box(key.public_key_uncompressed());
+        })
+    });
+
+    group.bench_function("libcrux", |b| {
+        b.iter(|| black_box(libcrux_ecdh::p256_key_gen(&mut getrandom::SysRng).unwrap()));
+    });
 }
 
 fn ecdsa_verify(c: &mut Criterion) {
@@ -216,6 +237,35 @@ fn ecdsa_verify(c: &mut Criterion) {
                 .verify(message, signature)
                 .unwrap();
         })
+    });
+
+    group.bench_function("graviola", |b| {
+        use graviola::hashing::Sha256;
+        use graviola::signing::ecdsa::{P256, VerifyingKey};
+
+        b.iter(|| {
+            VerifyingKey::<P256>::from_x962_uncompressed(public_key)
+                .unwrap()
+                .verify::<Sha256>(&[message], signature)
+                .unwrap();
+        })
+    });
+
+    group.bench_function("libcrux", |b| {
+        use libcrux_ecdsa::p256::{PublicKey, Signature, uncompressed_to_coordinates, verify};
+        let signature = Signature::from_bytes(*signature);
+
+        b.iter(|| {
+            let public_key = PublicKey(uncompressed_to_coordinates(public_key).unwrap());
+            verify(libcrux_sha2::Algorithm::Sha256, message, &signature, &public_key).unwrap();
+        })
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        let mut curve = ossl_ec::Curve::new(P256_NID, openssl::hash::MessageDigest::sha256());
+        let signature = ossl_ec::Curve::der(signature);
+        b.iter(|| curve.verify(public_key, message, &signature));
     });
     group.finish();
 
@@ -308,6 +358,45 @@ fn ecdsa_sign(c: &mut Criterion) {
         b.iter(|| {
             black_box(signing_key.sign(message).unwrap());
         });
+    });
+
+    group.bench_function("graviola", |b| {
+        use graviola::hashing::Sha256;
+        use graviola::signing::ecdsa::{P256, SigningKey};
+        let signing_key = SigningKey::<P256>::generate().unwrap();
+        let mut signature = [0u8; 64];
+
+        b.iter(|| {
+            black_box(
+                signing_key
+                    .sign::<Sha256>(&[message], &mut signature)
+                    .unwrap(),
+            );
+        });
+    });
+
+    group.bench_function("libcrux", |b| {
+        use libcrux_ecdsa::p256::rand::{generate_key_pair, sign};
+        let (signing_key, _) = generate_key_pair(&mut getrandom::SysRng).unwrap();
+
+        b.iter(|| {
+            black_box(
+                sign(
+                    libcrux_sha2::Algorithm::Sha256,
+                    message,
+                    &signing_key,
+                    &mut getrandom::SysRng,
+                )
+                .unwrap(),
+            );
+        });
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        let curve = ossl_ec::Curve::new(P256_NID, openssl::hash::MessageDigest::sha256());
+        let signing_key = curve.generate();
+        b.iter(|| black_box(curve.sign(&signing_key, message)));
     });
 }
 

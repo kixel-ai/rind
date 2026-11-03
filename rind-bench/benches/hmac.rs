@@ -4,10 +4,27 @@ use std::hint::black_box;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use hmac::{KeyInit, Mac};
 
+/// A library's one-shot MAC: key, then message.
+type OneShot = fn(&[u8], &[u8]);
+
 fn rc<M: KeyInit + Mac>(key: &[u8], data: &[u8]) {
     let mut ctx = <M as KeyInit>::new_from_slice(key).unwrap();
     ctx.update(data);
     black_box(ctx.finalize());
+}
+
+fn graviola<H: graviola::hashing::Hash>(key: &[u8], data: &[u8]) {
+    let mut ctx = graviola::hashing::hmac::Hmac::<H>::new(key);
+    ctx.update(data);
+    black_box(ctx.finish());
+}
+
+#[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+fn openssl(md: openssl::hash::MessageDigest, key: &[u8], data: &[u8]) {
+    let key = openssl::pkey::PKey::hmac(key).unwrap();
+    let mut signer = openssl::sign::Signer::new(md, &key).unwrap();
+    signer.update(data).unwrap();
+    black_box(signer.sign_to_vec().unwrap());
 }
 
 // Each row keys HMAC per message, as a one-off MAC does; the `reused-key`
@@ -17,9 +34,9 @@ fn bench(
     name: &str,
     ring: ring::hmac::Algorithm,
     aws: aws_lc_rs::hmac::Algorithm,
-    rustcrypto: fn(&[u8], &[u8]),
     ours: &'static rind::hmac::Algorithm,
     key: &[u8],
+    others: &[(&str, OneShot)],
 ) {
     let mut group = c.benchmark_group(name);
 
@@ -46,11 +63,11 @@ fn bench(
                 })
             },
         );
-        group.bench_with_input(
-            BenchmarkId::new("rustcrypto", size_name),
-            &input,
-            |b, input| b.iter(|| rustcrypto(key, input)),
-        );
+        for (library, mac) in others {
+            group.bench_with_input(BenchmarkId::new(*library, size_name), &input, |b, input| {
+                b.iter(|| mac(key, input))
+            });
+        }
         group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
             b.iter(|| black_box(rind::hmac::sign(&rind::hmac::Key::new(ours, key), input)))
         });
@@ -77,32 +94,65 @@ fn bench(
 }
 
 fn hmac(c: &mut Criterion) {
+    let sha1: Vec<(&str, OneShot)> = vec![("rustcrypto", rc::<hmac::Hmac<sha1::Sha1>>)];
+    let sha256: Vec<(&str, OneShot)> = vec![
+        ("rustcrypto", rc::<hmac::Hmac<sha2::Sha256>>),
+        ("graviola", graviola::<graviola::hashing::Sha256>),
+        ("libcrux", |key, data| {
+            let mut tag = [0u8; 32];
+            libcrux_hmac::hmac_sha2_256(&mut tag, key, data);
+            black_box(tag);
+        }),
+    ];
+    let sha384: Vec<(&str, OneShot)> = vec![
+        ("rustcrypto", rc::<hmac::Hmac<sha2::Sha384>>),
+        ("graviola", graviola::<graviola::hashing::Sha384>),
+        ("libcrux", |key, data| {
+            let mut tag = [0u8; 48];
+            libcrux_hmac::hmac_sha2_384(&mut tag, key, data);
+            black_box(tag);
+        }),
+    ];
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    let (sha1, sha256, sha384) = {
+        use openssl::hash::MessageDigest;
+        let with = |mut rows: Vec<(&'static str, OneShot)>, mac: OneShot| {
+            rows.push(("openssl", mac));
+            rows
+        };
+        (
+            with(sha1, |key, data| openssl(MessageDigest::sha1(), key, data)),
+            with(sha256, |key, data| openssl(MessageDigest::sha256(), key, data)),
+            with(sha384, |key, data| openssl(MessageDigest::sha384(), key, data)),
+        )
+    };
+
     bench(
         c,
         "hmac-sha1",
         ring::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
         aws_lc_rs::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
-        rc::<hmac::Hmac<sha1::Sha1>>,
         &rind::hmac::legacy::HMAC_SHA1,
         &[0xff; 20],
+        &sha1,
     );
     bench(
         c,
         "hmac-sha256",
         ring::hmac::HMAC_SHA256,
         aws_lc_rs::hmac::HMAC_SHA256,
-        rc::<hmac::Hmac<sha2::Sha256>>,
         &rind::hmac::HMAC_SHA256,
         &[0xff; 32],
+        &sha256,
     );
     bench(
         c,
         "hmac-sha384",
         ring::hmac::HMAC_SHA384,
         aws_lc_rs::hmac::HMAC_SHA384,
-        rc::<hmac::Hmac<sha2::Sha384>>,
         &rind::hmac::HMAC_SHA384,
         &[0xff; 48],
+        &sha384,
     );
 }
 

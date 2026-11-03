@@ -102,6 +102,25 @@ fn bench_chacha20poly1305(c: &mut Criterion) {
             let key = rind::aead::RandomizedNonceKey::new(&key);
             b.iter(|| test_rind_chacha(&key, &aad, &mut buf, size));
         });
+        group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
+            let key = graviola::aead::XChaCha20Poly1305::new(key);
+            let mut tag = [0u8; 16];
+            b.iter(|| {
+                let mut nonce = [0u8; 24];
+                rind::rand::fill(&mut nonce).unwrap();
+                key.encrypt(&nonce, &aad, &mut buf[..size], &mut tag);
+            });
+        });
+        // libcrux seals out of place, appending the tag.
+        group.bench_function(BenchmarkId::new("libcrux", size_name), |b| {
+            use libcrux_chacha20poly1305::xchacha20_poly1305::encrypt;
+            let mut ct = vec![0u8; size + 16];
+            b.iter(|| {
+                let mut nonce = [0u8; 24];
+                rind::rand::fill(&mut nonce).unwrap();
+                encrypt(&key, &buf[..size], &mut ct, &aad, &nonce).unwrap();
+            });
+        });
     }
 }
 
