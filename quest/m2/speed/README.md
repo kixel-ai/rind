@@ -1,4 +1,4 @@
-# Fastest at every algorithm
+# [L] Fastest at every algorithm
 
 ## Goal
 
@@ -44,7 +44,3 @@ settled; don't ask them again. The chosen option is marked ✅.
   fastest baseline, refreshed by the audit and each gap quest; the nightly
   job's summary keeps the live numbers ✅ / nightly summary only / a separate
   BENCHMARKS.md.
-
-## Required
-
-- [x86_64 scalar ChaCha20 on HACL*'s verified rounds](/quest/m2/speed/chacha-scalar-verified.md) - verified ChaCha20 below AVX2 unless aws-lc's is clearly faster
