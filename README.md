@@ -145,7 +145,8 @@ feature: no ADX denies ADX (Haswell); no AVX2 also AVX2, BMI2, SHA-NI,
 AVX-512, VAES, and VPCLMULQDQ (Sandy Bridge); no AVX also AVX (Westmere); no
 AES-NI also AES-NI, PCLMULQDQ, and SSE4.1 (Core 2); and SSE2 also SSSE3.
 GitHub's pool ran no AVX and SSE2 on an EPYC 7763 too, no ADX and no AES-NI
-on an EPYC 9V74 (Zen 4), and no AVX2 on an EPYC 9V45 (Zen 5).
+on an EPYC 9V74 (Zen 4), and no AVX2 on an EPYC 9V45 (Zen 5). The
+ChaCha20-Poly1305 cell without AVX2 is from [run 41585945720], on an EPYC 7763.
 Intel CPUs without SHA-NI run [aws-lc]'s AVX SHA-1 and SHA-256, and every
 Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 
@@ -154,7 +155,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 | AES-GCM | 0.99 BoringSSL ⚡ + Graviola |  | 1.01 aws-lc ✓ + Graviola | 0.95 Graviola | **1.03** aws-lc + rind | 0.82 |
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 1.00 | 0.99 | 1.00 aws-lc | 0.79 |
 | ChaCha20 (header protection) | 0.97 Graviola |  | 0.96 aws-lc ⚡ | 0.93 | 0.94 | 0.93 |
-| ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ |  | **1.13** |  | **1.19** aws-lc ⚡ + Graviola ⚡ | **1.09** |
+| ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ |  | 1.00 |  | **1.19** aws-lc ⚡ + Graviola ⚡ | **1.09** |
 | SHA-1 | 1.00 rind |  | 1.00 aws-lc | 1.00 |  | 1.00 |
 | SHA-256 | 1.02 Graviola ⚡ |  | **1.05** aws-lc ⚡ | 1.01 |  | 1.01 |
 | SHA-384, SHA-512, SHA-512/256 | 1.01 aws-lc ⚡ |  | 1.01 | 1.00 |  | 1.00 |
@@ -184,10 +185,6 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
   Graviola's scalar Poly1305 there, and aws-lc BoringSSL's SSE2
   `poly1305_vec.c`, which rind doesn't port for CPUs older than Westmere.
   16 KB messages trail most.
-- XChaCha20-Poly1305 without AVX2: sealing 32 B takes 676 ns to aws-lc-rs's
-  598 on the EPYC 9V45, while ChaCha20-Poly1305 is level there. That run's
-  HChaCha20 ran in vector registers, which Zen 5 runs at half speed, as
-  [Symmetric cryptography](#symmetric-cryptography) explains.
 - SHA-256, HMAC, and handshakes without AVX2, and AES-GCM without AES-NI:
   noise. Each is one benchmark (SHA-256 of 1200 B, HMAC-SHA1 of 1350 B under a
   reused key, the full handshake with an Ed25519 key, AES-128-GCM key setup)
@@ -277,6 +274,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [run 41572396019]: https://github.com/moq-dev/rind/actions/runs/41572396019
 [run 41550703300]: https://github.com/moq-dev/rind/actions/runs/41550703300
+[run 41585945720]: https://github.com/moq-dev/rind/actions/runs/41585945720
 [#224]: https://github.com/moq-dev/rind/pull/224
 [#281]: https://github.com/moq-dev/rind/pull/281
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
@@ -522,7 +520,9 @@ measured 1.2x faster than HACL*'s ChaCha20 at every length.
 HChaCha20, for XChaCha20, runs HACL*'s verified rounds in general-purpose
 registers on every architecture, as aws-lc does: one block in vector
 registers is a single serial chain, which Zen 5's two-cycle vector latency
-doubles.
+doubles. On an EPYC 9V45, sealing 32 B with XChaCha20-Poly1305 natively takes
+0.99 of aws-lc-rs's time in [run 41585945720], against 1.11 with SSSE3 rounds
+in [run 41550703300].
 
 ChaCha20-Poly1305, and XChaCha20-Poly1305 after HChaCha20, run aws-lc's
 `chacha20_poly1305` assembly, which interleaves ChaCha20 with Poly1305 in one
