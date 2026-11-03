@@ -185,8 +185,9 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
   `poly1305_vec.c`, which rind doesn't port for CPUs older than Westmere.
   16 KB messages trail most.
 - XChaCha20-Poly1305 without AVX2: sealing 32 B takes 676 ns to aws-lc-rs's
-  598 on the EPYC 9V45, while ChaCha20-Poly1305 is level there. [A
-  quest][xchacha-zen5] tracks the gap.
+  598 on the EPYC 9V45, while ChaCha20-Poly1305 is level there. That run's
+  HChaCha20 ran in vector registers, which Zen 5 runs at half speed, as
+  [Symmetric cryptography](#symmetric-cryptography) explains.
 - SHA-256, HMAC, and handshakes without AVX2, and AES-GCM without AES-NI:
   noise. Each is one benchmark (SHA-256 of 1200 B, HMAC-SHA1 of 1350 B under a
   reused key, the full handshake with an Ed25519 key, AES-128-GCM key setup)
@@ -282,7 +283,6 @@ different one, updates this table and [LICENSE] in the same PR.
 [rind-rustls]: https://crates.io/crates/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
 [quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
-[xchacha-zen5]: https://github.com/moq-dev/rind/blob/main/quest/m2/speed/xchacha-zen5.md
 [migrating]: https://github.com/moq-dev/rind/blob/main/MIGRATING.md
 
 ## Assorted technical details
@@ -520,9 +520,9 @@ Without SSSE3, the integer routine runs at every length, as in aws-lc, and
 measured 1.2x faster than HACL*'s ChaCha20 at every length.
 
 HChaCha20, for XChaCha20, runs HACL*'s verified rounds in general-purpose
-registers on every architecture, as aws-lc does. One block in vector
+registers on every architecture, as aws-lc does: one block in vector
 registers is a single serial chain, which Zen 5's two-cycle vector latency
-made 1.13x slower than aws-lc sealing 32 bytes.
+doubles.
 
 ChaCha20-Poly1305, and XChaCha20-Poly1305 after HChaCha20, run aws-lc's
 `chacha20_poly1305` assembly, which interleaves ChaCha20 with Poly1305 in one
