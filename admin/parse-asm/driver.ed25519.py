@@ -2,6 +2,7 @@ from driver import (
     Architecture_aarch64,
     Architecture_amd64,
     RustDriver,
+    generated,
 )
 from parse import parse_file
 
@@ -11,7 +12,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/x86/curve25519/edwards25519_decode.S"
         ) as input,
-        open("../../rind/src/low/x86_64/edwards25519_decode.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/edwards25519_decode.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -32,7 +33,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/x86/curve25519/edwards25519_decode_alt.S"
         ) as input,
-        open("../../rind/src/low/x86_64/edwards25519_decode_alt.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/edwards25519_decode_alt.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -53,9 +54,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/x86/curve25519/edwards25519_scalarmulbase.S"
         ) as input,
-        open(
-            "../../rind/src/low/x86_64/edwards25519_scalarmulbase.rs", "w"
-        ) as output,
+        generated("../../rind/src/low/x86_64/edwards25519_scalarmulbase.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.add_const_symbol("edwards25519_scalarmulbase_constant")
@@ -74,8 +73,8 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/x86/curve25519/edwards25519_scalarmulbase_alt.S"
         ) as input,
-        open(
-            "../../rind/src/low/x86_64/edwards25519_scalarmulbase_alt.rs", "w"
+        generated(
+            "../../rind/src/low/x86_64/edwards25519_scalarmulbase_alt.rs"
         ) as output,
     ):
         d = RustDriver(output, Architecture_amd64)
@@ -95,8 +94,8 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/x86/curve25519/edwards25519_scalarmuldouble.S"
         ) as input,
-        open(
-            "../../rind/src/low/x86_64/edwards25519_scalarmuldouble.rs", "w"
+        generated(
+            "../../rind/src/low/x86_64/edwards25519_scalarmuldouble.rs"
         ) as output,
     ):
         d = RustDriver(output, Architecture_amd64)
@@ -119,8 +118,8 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/x86/curve25519/edwards25519_scalarmuldouble_alt.S"
         ) as input,
-        open(
-            "../../rind/src/low/x86_64/edwards25519_scalarmuldouble_alt.rs", "w"
+        generated(
+            "../../rind/src/low/x86_64/edwards25519_scalarmuldouble_alt.rs"
         ) as output,
     ):
         d = RustDriver(output, Architecture_amd64)
@@ -143,7 +142,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/x86/curve25519/bignum_madd_n25519.S"
         ) as input,
-        open("../../rind/src/low/x86_64/bignum_madd_n25519.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_madd_n25519.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -163,7 +162,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/x86/curve25519/bignum_madd_n25519_alt.S"
         ) as input,
-        open("../../rind/src/low/x86_64/bignum_madd_n25519_alt.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_madd_n25519_alt.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -181,7 +180,7 @@ if __name__ == "__main__":
     # bignum_mod_n25519 (x86_64)
     with (
         open("../../thirdparty/s2n-bignum/x86/curve25519/bignum_mod_n25519.S") as input,
-        open("../../rind/src/low/x86_64/bignum_mod_n25519.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_mod_n25519.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -199,7 +198,7 @@ if __name__ == "__main__":
     # bignum_neg_p25519 (x86_64)
     with (
         open("../../thirdparty/s2n-bignum/x86/curve25519/bignum_neg_p25519.S") as input,
-        open("../../rind/src/low/x86_64/bignum_neg_p25519.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_neg_p25519.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -217,7 +216,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/arm/curve25519/edwards25519_decode_alt.S"
         ) as input,
-        open("../../rind/src/low/aarch64/edwards25519_decode.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/edwards25519_decode.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -237,9 +236,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/arm/curve25519/edwards25519_scalarmulbase_alt.S"
         ) as input,
-        open(
-            "../../rind/src/low/aarch64/edwards25519_scalarmulbase.rs", "w"
-        ) as output,
+        generated("../../rind/src/low/aarch64/edwards25519_scalarmulbase.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.add_const_symbol("edwards25519_scalarmulbase_alt_constant")
@@ -258,8 +255,8 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/arm/curve25519/edwards25519_scalarmuldouble_alt.S"
         ) as input,
-        open(
-            "../../rind/src/low/aarch64/edwards25519_scalarmuldouble.rs", "w"
+        generated(
+            "../../rind/src/low/aarch64/edwards25519_scalarmuldouble.rs"
         ) as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
@@ -282,7 +279,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/arm/curve25519/bignum_madd_n25519_alt.S"
         ) as input,
-        open("../../rind/src/low/aarch64/bignum_madd_n25519.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_madd_n25519.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -300,7 +297,7 @@ if __name__ == "__main__":
     # bignum_mod_n25519 (aarch64)
     with (
         open("../../thirdparty/s2n-bignum/arm/curve25519/bignum_mod_n25519.S") as input,
-        open("../../rind/src/low/aarch64/bignum_mod_n25519.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_mod_n25519.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -318,7 +315,7 @@ if __name__ == "__main__":
     # bignum_neg_p25519 (aarch64)
     with (
         open("../../thirdparty/s2n-bignum/arm/curve25519/bignum_neg_p25519.S") as input,
-        open("../../rind/src/low/aarch64/bignum_neg_p25519.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_neg_p25519.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(

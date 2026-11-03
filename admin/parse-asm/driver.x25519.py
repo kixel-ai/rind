@@ -2,13 +2,14 @@ from driver import (
     Architecture_aarch64,
     Architecture_amd64,
     RustDriver,
+    generated,
 )
 from parse import parse_file
 
 if __name__ == "__main__":
     with (
         open("../../thirdparty/s2n-bignum/x86/curve25519/curve25519_x25519.S") as input,
-        open("../../rind/src/low/x86_64/curve25519_x25519.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/curve25519_x25519.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -24,7 +25,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/curve25519/curve25519_x25519_alt.S") as input,
-        open("../../rind/src/low/x86_64/curve25519_x25519_alt.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/curve25519_x25519_alt.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -42,7 +43,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/x86/curve25519/curve25519_x25519base.S"
         ) as input,
-        open("../../rind/src/low/x86_64/curve25519_x25519base.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/curve25519_x25519base.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.add_const_symbol("curve25519_x25519base_constant")
@@ -60,7 +61,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/x86/curve25519/curve25519_x25519base_alt.S"
         ) as input,
-        open("../../rind/src/low/x86_64/curve25519_x25519base_alt.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/curve25519_x25519base_alt.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.add_const_symbol("curve25519_x25519base_alt_constant")
@@ -78,7 +79,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/arm/curve25519/curve25519_x25519_alt.S"
         ) as input,
-        open("../../rind/src/low/aarch64/curve25519_x25519.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/curve25519_x25519.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -96,7 +97,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/arm/curve25519/curve25519_x25519base_alt.S"
         ) as input,
-        open("../../rind/src/low/aarch64/curve25519_x25519base.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/curve25519_x25519base.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.add_const_symbol("curve25519_x25519base_alt_constant")
