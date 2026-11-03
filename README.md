@@ -130,8 +130,9 @@ resumed TLS 1.3 handshakes and bulk transfer against rustls over aws-lc-rs's
 and ring's providers. RSA key generation, whose time swings by up to 3x from
 run to run, stays out of the ratios. The nightly `bench` workflow times every
 cell and keeps each benchmark's numbers in its summary. These are from
-[run 41378010740], and the P-256, P-384, and P-521 cells, except armv7's
-P-256, from [run 41399702862]; a change that moves a cell refreshes it.
+[run 41378010740], and the P-256, P-384, and P-521 cells from
+[run 41399702862], except armv7's P-256, from [run 41518446383]; a change
+that moves a cell refreshes it.
 ML-KEM-768's cells are from [run 41400124007], whose x86_64 job drew an EPYC
 9V74 (Zen 4) and no AVX2 job an EPYC 7763. RSA's no ADX and no AVX2 cells are
 from [run 41469252502], whose no ADX job drew a Xeon 6973P-C (Granite Rapids)
@@ -213,7 +214,7 @@ row from [run 41472308771], the other SHA, HMAC, and HKDF cells from
 | PBKDF2 | 0.91 rind | 0.93 | 0.98 |
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
 | Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
-| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | **2.63** HACL\* ✓ |
+| P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | 0.58 fiat-crypto ✓ + rind ⚡ + Graviola ⚡ |
 | P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.03** fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | 0.64 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.04** fiat-crypto ✓ + rind ⚡ |
 | ML-KEM-768 | **1.04** s2n-bignum ✓ + Graviola ⚡ | 0.93 | **1.05** libcrux-ml-kem ✓ |
@@ -231,7 +232,7 @@ tests use [Wycheproof]'s vectors.
 | [Graviola] | copied: rind began as a copy of it, and rind-rustls of its rustls-graviola; its aarch64 ChaCha20 and its Poly1305 began as [cifra], CC0-1.0 | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | rind | its own code | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | [s2n-bignum] | copied: its assembly, transliterated into Rust `asm!` by `admin/parse-asm`, which ends each x86_64 routine using 256-bit registers with `vzeroupper` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM and aarch64 Keccak-f routines (from mlkem-native) Apache-2.0 OR ISC OR MIT; its x86_64 Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/main/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/main/arm/proofs)) that each routine's object code computes its specified result for all inputs. They check s2n-bignum's own build, not rind's transliteration, and do not cover memory safety. |
-| [HACL\*] | dependency, through libcrux-hacl-rs, libcrux-p256, and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
+| [HACL\*] | dependency, through libcrux-hacl-rs and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
 | [libcrux-ml-kem] | dependency | Apache-2.0 | [hax and F\* proofs](https://github.com/cryspen/libcrux/blob/main/libcrux-ml-kem/proofs/verification_status.md) of panic freedom and functional correctness for its portable arithmetic, NTT, serialization, and high-level code. Its SHA-3, from libcrux-sha3, is unverified. |
 | [mlkem-native] | ported: its portable C polynomial arithmetic (the NTT, inverse NTT, base multiplication, reductions, packing, and rejection sampling), to Rust, for x86_64 CPUs without AVX2; copied, by `admin/import-aws-lc` from aws-lc's copy: its x86_64 AVX2 ciphertext compression, which rind ends with `vzeroupper` | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port. [HOL Light proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/hol_light/x86_64) that its AVX2 compression's object code computes its specified result for all inputs, of mlkem-native's own build. |
 | [libcrux-aes] | dependency for AES-GCM; copied: the block cipher | Apache-2.0 | nothing: libcrux marks it pre-verification |
@@ -281,6 +282,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41472308771]: https://github.com/moq-dev/rind/actions/runs/41472308771
 [run 41469252502]: https://github.com/moq-dev/rind/actions/runs/41469252502
 [run 41485960394]: https://github.com/moq-dev/rind/actions/runs/41485960394
+[run 41518446383]: https://github.com/moq-dev/rind/actions/runs/41518446383
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
@@ -317,8 +319,8 @@ masking all 32, in one call.
 
 The RSA private operation always uses the CRT optimisation.
 
-On aarch64, modular exponentiation uses a 4-bit fixed exponent window, and the term is selected by
-the exponent bits from the table of base powers in a side-channel-free way.
+On aarch64 and armv7, modular exponentiation uses a 5-bit fixed exponent window, as aws-lc's does,
+and the term is selected by the exponent bits from the table of base powers in a side-channel-free way.
 The private operation is always followed by the public operation to verify the result
 (and the result compared in a side-channel-free way).
 
@@ -347,6 +349,15 @@ with BMI2 and ADX, as aws-lc's `ecp_nistz256_point_mul_base` runs them. On
 aarch64 it is s2n-bignum's `p256_scalarmulbase`, over 6-bit Booth windows and
 a table of each window's 32 multiples (an 88KB constant table). Variable
 point multiplication is s2n-bignum's `p256_montjscalarmul`.
+
+armv7 runs the aarch64 algorithms for P256 in portable Rust, over
+fiat-crypto's field and scalar arithmetic, except its Montgomery
+multiplication and squaring, which are rind's. LLVM compiles fiat-crypto's
+32-bit multiplication to save and restore the one carry flag 171 times a
+call, between its interleaved carry chains; rind's carry in 64-bit
+accumulators (`umaal`) instead, in 560 instructions run to fiat-crypto's
+1,375. fiat-crypto cannot generate an unsaturated P256, as it does P521:
+its bounds checks fail at every 32-bit limb count from 9 to 16.
 
 P384 base point multiplication uses a comb of 20 tables of 16 affine points
 (a 30KB constant table) over 5-bit Booth windows, as aws-lc does. Variable

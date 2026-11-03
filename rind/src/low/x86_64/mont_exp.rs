@@ -43,6 +43,8 @@ use crate::low;
 #[repr(C, align(64))]
 struct Row([u64; 32]);
 
+impl low::Zeroable for Row {}
+
 /// `z = x^e` in Montgomery form modulo `m`, for `x` and `one`, which is
 /// `R mod m`, in Montgomery form below `m`, where `n0` is `-m^-1 mod 2^64`.
 ///
@@ -70,8 +72,12 @@ fn mont_exp_by(
     };
 
     // `powers` holds `x^i` at row `i`: each even power squares its half, and
-    // each odd one multiplies the power below it by `x`.
-    let mut powers = vec![0; 32 * k];
+    // each odd one multiplies the power below it by `x`. Two rows of scratch
+    // follow in the same allocation, which is wiped before it is freed, as
+    // `table` is.
+    let mut heap = vec![0; 34 * k];
+    let (powers, scratch) = heap.split_at_mut(32 * k);
+    let (spare, term) = scratch.split_at_mut(k);
     powers[..k].copy_from_slice(one);
     powers[k..2 * k].copy_from_slice(x);
     for i in 2..32 {
@@ -82,7 +88,8 @@ fn mont_exp_by(
             _ => mont_mul(&mut rest[..k], row(i - 1), x, m, n0),
         }
     }
-    let select = |z: &mut [u64], i: u64| bignum_copy_row_from_table(z, &powers, 32, k as u64, i);
+    let powers = &*powers;
+    let select = |z: &mut [u64], i: u64| bignum_copy_row_from_table(z, powers, 32, k as u64, i);
 
     // The top window takes what is left above whole windows, starting `z`
     // at its power rather than squaring `one`.
@@ -102,23 +109,23 @@ fn mont_exp_by(
             lsb -= 5;
             power5(z, &table, m, n0, bits(e, lsb, 5), adx);
         }
-        let mut almost = vec![0; k];
-        mont_mul(&mut almost, z, one, m, n0);
-        let ge = 1 - low::bignum_cmp_lt(&almost, m);
-        low::bignum_optsub(z, &almost, m, ge);
+        low::zeroise(&mut table);
+        mont_mul(spare, z, one, m, n0);
+        let ge = 1 - low::bignum_cmp_lt(spare, m);
+        low::bignum_optsub(z, spare, m, ge);
     } else {
-        let (mut spare, mut term) = (vec![0; k], vec![0; k]);
         while lsb > 0 {
             lsb -= 5;
             for _ in 0..5 {
-                mont_sqr(&mut spare, z, m, n0);
-                z.copy_from_slice(&spare);
+                mont_sqr(spare, z, m, n0);
+                z.copy_from_slice(spare);
             }
-            select(&mut term, bits(e, lsb, 5));
-            mont_mul(&mut spare, z, &term, m, n0);
-            z.copy_from_slice(&spare);
+            select(term, bits(e, lsb, 5));
+            mont_mul(spare, z, term, m, n0);
+            z.copy_from_slice(spare);
         }
     }
+    low::zeroise(&mut heap);
 }
 
 /// The `width` bits of `e` from bit `lsb` up, which must lie within it. Only

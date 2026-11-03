@@ -19060,7 +19060,7 @@ pub(super) static CURVE_GENERATOR_PRECOMP: super::AffineMontPointTable = [
     ]),
 ];
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(not(target_arch = "x86_64"))]
 pub(super) static CURVE_GENERATOR_PRECOMP: super::AffineMontPointTable = [
     // 1G..32G << 0
     [

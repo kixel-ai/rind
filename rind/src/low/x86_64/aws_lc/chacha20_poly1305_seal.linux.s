@@ -1997,6 +1997,7 @@
 	call	{poly_hash_ad_internal}
 	jmp	.Lchacha_poly_seal_sse_128_tail_xor
 .cfi_endproc	
+.align	64
 .Lchacha_poly_chacha20_poly1305_seal_avx2:
 .cfi_startproc	
 

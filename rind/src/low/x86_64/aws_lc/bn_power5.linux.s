@@ -130,6 +130,7 @@
 .Lmont5_power5_epilogue:
 	.byte	0xf3,0xc3
 .cfi_endproc	
+.align	32
 .Lmont5_mul4x_internal:
 .cfi_startproc	
 	shlq	$5,%r9
@@ -656,6 +657,7 @@
 	movq	24(%rbp),%r15
 	jmp	.Lmont5_sqr4x_sub_entry
 .cfi_endproc	
+.align	32
 .Lmont5___bn_post4x_internal:
 .cfi_startproc	
 	movq	0(%rbp),%r12
