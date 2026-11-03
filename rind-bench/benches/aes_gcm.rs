@@ -200,8 +200,9 @@ trait KeySize {
             TagSize = aes_gcm::aead::consts::U16,
         >;
 
-    /// libcrux's open with `key`: nonce, aad, ciphertext, tag, plaintext.
-    fn libcrux(key: &[u8]) -> impl Fn(&[u8; 12], &[u8], &[u8], &[u8; 16], &mut [u8]);
+    /// libcrux's open, out of place. Its key is the bare bytes, so building
+    /// one in each call costs only the copy.
+    fn libcrux(key: &[u8], nonce: &[u8; 12], aad: &[u8], ct: &[u8], tag: &[u8; 16], pt: &mut [u8]);
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     fn openssl() -> &'static openssl::cipher::CipherRef;
@@ -212,12 +213,10 @@ struct Aes128;
 impl KeySize for Aes128 {
     type RustCrypto = aes_gcm::Aes128Gcm;
 
-    fn libcrux(key: &[u8]) -> impl Fn(&[u8; 12], &[u8], &[u8], &[u8; 16], &mut [u8]) {
+    fn libcrux(key: &[u8], nonce: &[u8; 12], aad: &[u8], ct: &[u8], tag: &[u8; 16], pt: &mut [u8]) {
         let key = libcrux_aes::AesGcm128Key::from(<[u8; 16]>::try_from(key).unwrap());
-        move |nonce, aad, ct, tag, pt| {
-            key.decrypt(pt, &(*nonce).into(), aad, ct, &(*tag).into())
-                .unwrap()
-        }
+        key.decrypt(pt, &(*nonce).into(), aad, ct, &(*tag).into())
+            .unwrap()
     }
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
@@ -231,12 +230,10 @@ struct Aes256;
 impl KeySize for Aes256 {
     type RustCrypto = aes_gcm::Aes256Gcm;
 
-    fn libcrux(key: &[u8]) -> impl Fn(&[u8; 12], &[u8], &[u8], &[u8; 16], &mut [u8]) {
+    fn libcrux(key: &[u8], nonce: &[u8; 12], aad: &[u8], ct: &[u8], tag: &[u8; 16], pt: &mut [u8]) {
         let key = libcrux_aes::AesGcm256Key::from(<[u8; 32]>::try_from(key).unwrap());
-        move |nonce, aad, ct, tag, pt| {
-            key.decrypt(pt, &(*nonce).into(), aad, ct, &(*tag).into())
-                .unwrap()
-        }
+        key.decrypt(pt, &(*nonce).into(), aad, ct, &(*tag).into())
+            .unwrap()
     }
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
@@ -337,9 +334,8 @@ fn open<K: KeySize>(
         });
         // libcrux opens out of place, so it needs no copy.
         group.bench_function(BenchmarkId::new("libcrux", size_name), |b| {
-            let open = K::libcrux(key);
             let tag = tag.as_ref().try_into().unwrap();
-            b.iter(|| open(&nonce, &aad, ct, tag, pt));
+            b.iter(|| K::libcrux(key, &nonce, &aad, ct, tag, pt));
         });
         #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
         group.bench_function(BenchmarkId::new("openssl", size_name), |b| {

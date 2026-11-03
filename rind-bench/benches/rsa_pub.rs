@@ -65,7 +65,7 @@ fn rsa2048_pkcs1_sha256_verify(c: &mut Criterion) {
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     group.bench_function("openssl", |b| {
-        b.iter(|| black_box(openssl_verify(public_key, false, message, signature)));
+        b.iter(|| openssl_verify(public_key, false, message, signature));
     });
     group.finish();
 
@@ -229,7 +229,7 @@ fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     group.bench_function("openssl", |b| {
-        b.iter(|| black_box(openssl_verify(public_key, true, message, signature)));
+        b.iter(|| openssl_verify(public_key, true, message, signature));
     });
 }
 
