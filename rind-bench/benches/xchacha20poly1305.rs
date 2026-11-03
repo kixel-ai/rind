@@ -102,6 +102,7 @@ fn bench_chacha20poly1305(c: &mut Criterion) {
             let key = rind::aead::RandomizedNonceKey::new(&key);
             b.iter(|| test_rind_chacha(&key, &aad, &mut buf, size));
         });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
             let key = graviola::aead::XChaCha20Poly1305::new(key);
             let mut tag = [0u8; 16];

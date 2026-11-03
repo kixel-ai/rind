@@ -52,6 +52,7 @@ fn keygen(c: &mut Criterion) {
         })
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         let mut pkcs8 = [0u8; 128];
         b.iter(|| {
@@ -126,6 +127,7 @@ fn verify(c: &mut Criterion) {
         })
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         use graviola::signing::eddsa::Ed25519VerifyingKey;
 
@@ -204,6 +206,7 @@ fn sign(c: &mut Criterion) {
         });
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         let signing_key = graviola::signing::eddsa::Ed25519SigningKey::generate().unwrap();
 

@@ -144,6 +144,7 @@ fn mlkem768_keygen(c: &mut Criterion) {
         });
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         use graviola::key_agreement::mlkem768::DecapKey;
 
@@ -237,6 +238,7 @@ fn mlkem768_encaps(c: &mut Criterion) {
         });
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         use graviola::key_agreement::mlkem768::{DecapKey, EncapKey};
 
@@ -322,6 +324,7 @@ fn mlkem768_decaps(c: &mut Criterion) {
         );
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         use graviola::key_agreement::mlkem768::DecapKey;
 
@@ -420,6 +423,7 @@ fn mlkem768_combined(c: &mut Criterion) {
         });
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         use graviola::key_agreement::mlkem768::{DecapKey, EncapKey};
 

@@ -90,6 +90,7 @@ fn ecdh(c: &mut Criterion) {
         })
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         use graviola::key_agreement::p384::{PrivateKey, PublicKey};
 
@@ -225,6 +226,7 @@ fn ecdsa_verify(c: &mut Criterion) {
         })
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         use graviola::hashing::Sha384;
         use graviola::signing::ecdsa::{P384, VerifyingKey};
@@ -339,6 +341,7 @@ fn ecdsa_sign(c: &mut Criterion) {
         });
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         use graviola::hashing::Sha384;
         use graviola::signing::ecdsa::{P384, SigningKey};

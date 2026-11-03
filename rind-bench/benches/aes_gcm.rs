@@ -108,6 +108,7 @@ fn aes128_gcm(c: &mut Criterion) {
             let key = Key::new(&AES_128_GCM, &key).unwrap();
             b.iter(|| test_rind_aes_gcm(&key, &nonce, &aad, &mut buf));
         });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
             let key = graviola::aead::AesGcm::new(&key);
             let mut tag = [0u8; 16];
@@ -171,6 +172,7 @@ fn aes256_gcm(c: &mut Criterion) {
             let key = Key::new(&AES_256_GCM, &key).unwrap();
             b.iter(|| test_rind_aes_gcm(&key, &nonce, &aad, &mut buf));
         });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
             let key = graviola::aead::AesGcm::new(&key);
             let mut tag = [0u8; 16];
@@ -325,6 +327,7 @@ fn open<K: KeySize>(
                     .unwrap();
             });
         });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
             let key = graviola::aead::AesGcm::new(key);
             b.iter(|| {

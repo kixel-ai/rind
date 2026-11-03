@@ -54,6 +54,7 @@ fn rsa2048_pkcs1_sha256_verify(c: &mut Criterion) {
         })
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         use graviola::signing::rsa::VerifyingKey;
 
@@ -195,6 +196,7 @@ fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
         });
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         use graviola::signing::rsa::VerifyingKey;
 

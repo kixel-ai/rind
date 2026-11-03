@@ -98,6 +98,7 @@ fn sha256(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
             b.iter(|| test_rind_sha256(input))
         });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_with_input(
             BenchmarkId::new("graviola", size_name),
             &input,
@@ -145,6 +146,7 @@ fn sha512(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
             b.iter(|| test_rind_sha512(input))
         });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_with_input(
             BenchmarkId::new("graviola", size_name),
             &input,

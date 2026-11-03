@@ -75,6 +75,7 @@ fn rsa2048_pkcs1_sha256_sign(c: &mut Criterion) {
         })
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         let key = graviola::signing::rsa::SigningKey::from_pkcs1_der(private_key).unwrap();
 
@@ -153,6 +154,7 @@ fn rsa2048_pss_sha256_sign(c: &mut Criterion) {
         });
     });
 
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         let key = graviola::signing::rsa::SigningKey::from_pkcs1_der(private_key).unwrap();
 

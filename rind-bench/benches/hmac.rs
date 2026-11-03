@@ -13,6 +13,7 @@ fn rc<M: KeyInit + Mac>(key: &[u8], data: &[u8]) {
     black_box(ctx.finalize());
 }
 
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 fn graviola<H: graviola::hashing::Hash>(key: &[u8], data: &[u8]) {
     let mut ctx = graviola::hashing::hmac::Hmac::<H>::new(key);
     ctx.update(data);
@@ -97,7 +98,6 @@ fn hmac(c: &mut Criterion) {
     let sha1: Vec<(&str, OneShot)> = vec![("rustcrypto", rc::<hmac::Hmac<sha1::Sha1>>)];
     let sha256: Vec<(&str, OneShot)> = vec![
         ("rustcrypto", rc::<hmac::Hmac<sha2::Sha256>>),
-        ("graviola", graviola::<graviola::hashing::Sha256>),
         ("libcrux", |key, data| {
             let mut tag = [0u8; 32];
             libcrux_hmac::hmac_sha2_256(&mut tag, key, data);
@@ -106,13 +106,24 @@ fn hmac(c: &mut Criterion) {
     ];
     let sha384: Vec<(&str, OneShot)> = vec![
         ("rustcrypto", rc::<hmac::Hmac<sha2::Sha384>>),
-        ("graviola", graviola::<graviola::hashing::Sha384>),
         ("libcrux", |key, data| {
             let mut tag = [0u8; 48];
             libcrux_hmac::hmac_sha2_384(&mut tag, key, data);
             black_box(tag);
         }),
     ];
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    let (sha256, sha384) = {
+        use graviola::hashing::{Sha256, Sha384};
+        let with = |mut rows: Vec<(&'static str, OneShot)>, mac: OneShot| {
+            rows.push(("graviola", mac));
+            rows
+        };
+        (
+            with(sha256, graviola::<Sha256>),
+            with(sha384, graviola::<Sha384>),
+        )
+    };
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     let (sha1, sha256, sha384) = {
         use openssl::hash::MessageDigest;
