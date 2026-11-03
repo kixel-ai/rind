@@ -144,7 +144,11 @@ enum Hash {
     Sha512,
 }
 
-fn rustcrypto<H: hkdf::HmacImpl>(group: &mut BenchmarkGroup<'_, WallTime>, secret: &[u8], info: &[u8]) {
+fn rustcrypto<H: hkdf::HmacImpl>(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    secret: &[u8],
+    info: &[u8],
+) {
     group.bench_function("extract-expand/rustcrypto", |b| {
         b.iter(|| {
             let mut out = [0u8; 32];

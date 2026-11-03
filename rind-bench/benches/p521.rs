@@ -68,7 +68,10 @@ fn ecdh(c: &mut Criterion) {
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     group.bench_function("openssl", |b| {
-        let mut curve = ossl_ec::Curve::new(openssl::nid::Nid::SECP521R1, openssl::hash::MessageDigest::sha512());
+        let mut curve = ossl_ec::Curve::new(
+            openssl::nid::Nid::SECP521R1,
+            openssl::hash::MessageDigest::sha512(),
+        );
         b.iter(|| curve.ecdh(&public_key));
     });
 }
@@ -138,7 +141,10 @@ fn ecdsa_verify(c: &mut Criterion) {
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     group.bench_function("openssl", |b| {
-        let mut curve = ossl_ec::Curve::new(openssl::nid::Nid::SECP521R1, openssl::hash::MessageDigest::sha512());
+        let mut curve = ossl_ec::Curve::new(
+            openssl::nid::Nid::SECP521R1,
+            openssl::hash::MessageDigest::sha512(),
+        );
         let signature = ossl_ec::Curve::der(&signature);
         b.iter(|| curve.verify(&public_key, MESSAGE, &signature));
     });
@@ -215,7 +221,10 @@ fn ecdsa_sign(c: &mut Criterion) {
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     group.bench_function("openssl", |b| {
-        let curve = ossl_ec::Curve::new(openssl::nid::Nid::SECP521R1, openssl::hash::MessageDigest::sha512());
+        let curve = ossl_ec::Curve::new(
+            openssl::nid::Nid::SECP521R1,
+            openssl::hash::MessageDigest::sha512(),
+        );
         let signing_key = curve.generate();
         b.iter(|| black_box(curve.sign(&signing_key, MESSAGE)));
     });

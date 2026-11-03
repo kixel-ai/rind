@@ -194,7 +194,11 @@ fn aes256_gcm(c: &mut Criterion) {
 
 /// What opening needs that differs by key size.
 trait KeySize {
-    type RustCrypto: aes_gcm::KeyInit + aes_gcm::AeadInOut<NonceSize = aes_gcm::aead::consts::U12, TagSize = aes_gcm::aead::consts::U16>;
+    type RustCrypto: aes_gcm::KeyInit
+        + aes_gcm::AeadInOut<
+            NonceSize = aes_gcm::aead::consts::U12,
+            TagSize = aes_gcm::aead::consts::U16,
+        >;
 
     /// libcrux's open with `key`: nonce, aad, ciphertext, tag, plaintext.
     fn libcrux(key: &[u8]) -> impl Fn(&[u8; 12], &[u8], &[u8], &[u8; 16], &mut [u8]);

@@ -257,7 +257,13 @@ fn ecdsa_verify(c: &mut Criterion) {
 
         b.iter(|| {
             let public_key = PublicKey(uncompressed_to_coordinates(public_key).unwrap());
-            verify(libcrux_sha2::Algorithm::Sha256, message, &signature, &public_key).unwrap();
+            verify(
+                libcrux_sha2::Algorithm::Sha256,
+                message,
+                &signature,
+                &public_key,
+            )
+            .unwrap();
         })
     });
 

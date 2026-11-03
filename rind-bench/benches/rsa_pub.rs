@@ -214,7 +214,8 @@ fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
         let signature = signature.try_into().unwrap();
 
         b.iter(|| {
-            let peer_public_key = libcrux_rsa::PublicKey::<256>::from(<[u8; 256]>::try_from(&*n).unwrap());
+            let peer_public_key =
+                libcrux_rsa::PublicKey::<256>::from(<[u8; 256]>::try_from(&*n).unwrap());
             libcrux_rsa::verify_2048(
                 libcrux_rsa::DigestAlgorithm::Sha2_256,
                 &peer_public_key,
@@ -244,7 +245,9 @@ fn openssl_verify(public_key: &[u8], pss: bool, message: &[u8], signature: &[u8]
     let mut verifier = Verifier::new(MessageDigest::sha256(), &key).unwrap();
     if pss {
         verifier.set_rsa_padding(Padding::PKCS1_PSS).unwrap();
-        verifier.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH).unwrap();
+        verifier
+            .set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)
+            .unwrap();
     }
     assert!(verifier.verify_oneshot(signature, message).unwrap());
 }

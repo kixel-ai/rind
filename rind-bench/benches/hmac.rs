@@ -122,8 +122,12 @@ fn hmac(c: &mut Criterion) {
         };
         (
             with(sha1, |key, data| openssl(MessageDigest::sha1(), key, data)),
-            with(sha256, |key, data| openssl(MessageDigest::sha256(), key, data)),
-            with(sha384, |key, data| openssl(MessageDigest::sha384(), key, data)),
+            with(sha256, |key, data| {
+                openssl(MessageDigest::sha256(), key, data)
+            }),
+            with(sha384, |key, data| {
+                openssl(MessageDigest::sha384(), key, data)
+            }),
         )
     };
 

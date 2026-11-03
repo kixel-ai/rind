@@ -14,7 +14,10 @@ fn libcrux_key(private_key: &[u8]) -> libcrux_rsa::PrivateKey<256> {
         out[256 - bytes.len()..].copy_from_slice(bytes);
         out
     };
-    libcrux_rsa::PrivateKey::<256>::from_components(be(&key.n_bytes()), be(&key.d().to_be_bytes_trimmed_vartime()))
+    libcrux_rsa::PrivateKey::<256>::from_components(
+        be(&key.n_bytes()),
+        be(&key.d().to_be_bytes_trimmed_vartime()),
+    )
 }
 
 fn rsa2048_pkcs1_sha256_sign(c: &mut Criterion) {
@@ -189,7 +192,9 @@ fn rsa2048_pss_sha256_sign(c: &mut Criterion) {
         b.iter(|| {
             let mut signer = Signer::new(MessageDigest::sha256(), &key).unwrap();
             signer.set_rsa_padding(Padding::PKCS1_PSS).unwrap();
-            signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH).unwrap();
+            signer
+                .set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)
+                .unwrap();
             black_box(signer.sign_oneshot_to_vec(message).unwrap());
         })
     });

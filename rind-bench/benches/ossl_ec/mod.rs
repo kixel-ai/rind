@@ -45,7 +45,11 @@ impl Curve {
         black_box(
             ec_key
                 .public_key()
-                .to_bytes(&self.group, PointConversionForm::UNCOMPRESSED, &mut self.ctx)
+                .to_bytes(
+                    &self.group,
+                    PointConversionForm::UNCOMPRESSED,
+                    &mut self.ctx,
+                )
                 .unwrap(),
         );
 
