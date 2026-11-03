@@ -147,7 +147,8 @@ AES-NI also AES-NI, PCLMULQDQ, and SSE4.1 (Core 2); and SSE2 also SSSE3.
 GitHub's pool ran no AVX and SSE2 on an EPYC 7763 too, no ADX and no AES-NI
 on an EPYC 9V74 (Zen 4), and no AVX2 on an EPYC 9V45 (Zen 5). The
 ChaCha20-Poly1305 cell without AVX2 is from [run 41585945720], on an EPYC 7763,
-and the x86_64 ChaCha20 header-protection cell from [run 41678532920], on an
+the x86_64 ChaCha20 header-protection cell from [run 41678532920], and the
+no AES-NI and SSE2 ChaCha20-Poly1305 cells from [run 41697909102], both on an
 EPYC 9V74.
 Intel CPUs without SHA-NI run [aws-lc]'s AVX SHA-1 and SHA-256, and every
 Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
@@ -157,7 +158,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 | AES-GCM | 0.99 BoringSSL ⚡ + Graviola |  | 1.01 aws-lc ✓ + Graviola | 0.95 Graviola | **1.03** aws-lc + rind | 0.82 |
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 1.00 | 0.99 | 1.00 aws-lc | 0.79 |
 | ChaCha20 (header protection) | 0.96 HACL* ✓ |  |  |  |  |  |
-| ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ |  | 1.00 |  | **1.19** HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | **1.09** HACL* ✓ + Graviola ⚡ |
+| ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ |  | 1.00 |  | **1.20** HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | **1.03** HACL* ✓ + Graviola ⚡ |
 | SHA-1 | 1.00 rind |  | 1.00 aws-lc | 1.00 |  | 1.00 |
 | SHA-256 | 1.02 Graviola ⚡ |  | **1.05** aws-lc ⚡ | 1.01 |  | 1.01 |
 | SHA-384, SHA-512, SHA-512/256 | 1.01 aws-lc ⚡ |  | 1.01 | 1.00 |  | 1.00 |
@@ -279,6 +280,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41585945720]: https://github.com/moq-dev/rind/actions/runs/41585945720
 [run 41657617706]: https://github.com/moq-dev/rind/actions/runs/41657617706
 [run 41678532920]: https://github.com/moq-dev/rind/actions/runs/41678532920
+[run 41697909102]: https://github.com/moq-dev/rind/actions/runs/41697909102
 [#224]: https://github.com/moq-dev/rind/pull/224
 [#281]: https://github.com/moq-dev/rind/pull/281
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
@@ -533,7 +535,9 @@ which measured 2.4-2.7x faster than HACL*'s rounds from 256 bytes on Coffee
 Lake, Zen 3, and Arrow Lake. Up to that, and at every length without SSSE3,
 where aws-lc runs its integer routine, they run HACL*'s verified rounds, which
 took 0.92-1.07 of that routine's time on the same CPUs, within the 10% rind
-accepts for verified code.
+accepts for verified code. Header protection without AVX2 takes 0.91 of
+aws-lc-rs's time on an EPYC 9V74 and 0.96 on a Xeon Platinum 8573C in
+[run 41697909102].
 
 HChaCha20, for XChaCha20, runs HACL*'s verified rounds in general-purpose
 registers on every architecture, as aws-lc does: one block in vector
