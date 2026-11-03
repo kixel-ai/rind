@@ -469,16 +469,13 @@ pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
 
 /// Prefetch both `table` and `table[stride]`
 ///
-/// `table[stride]` is not range checked, as prefetching doesn't need a valid
-/// pointer.
+/// `table[stride]` may lie outside `table`: its address is computed with
+/// wrapping arithmetic, and prefetching doesn't need a valid pointer.
 #[target_feature(enable = "sse")]
 #[inline]
 pub(crate) fn prefetch<T>(table: &[T], stride: usize) {
-    // SAFETY: prefetches do not fault and are not architecturally visible
-    unsafe {
-        _mm_prefetch(table.as_ptr().cast(), _MM_HINT_T0);
-        _mm_prefetch(table.as_ptr().add(stride).cast(), _MM_HINT_T0);
-    }
+    _mm_prefetch(table.as_ptr().cast(), _MM_HINT_T0);
+    _mm_prefetch(table.as_ptr().wrapping_add(stride).cast(), _MM_HINT_T0);
 }
 
 #[cfg(test)]
