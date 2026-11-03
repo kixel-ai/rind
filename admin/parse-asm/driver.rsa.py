@@ -2,13 +2,14 @@ from driver import (
     Architecture_aarch64,
     Architecture_amd64,
     RustDriver,
+    generated,
 )
 from parse import assemble_and_disassemble, parse_file
 
 if __name__ == "__main__":
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_bitsize.S") as input,
-        open("../../rind/src/low/x86_64/bignum_bitsize.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_bitsize.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -25,7 +26,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_ctz.S") as input,
-        open("../../rind/src/low/x86_64/bignum_ctz.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_ctz.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -42,7 +43,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_lt.S") as input,
-        open("../../rind/src/low/x86_64/bignum_cmp_lt.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_cmp_lt.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -62,7 +63,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_mul.S") as input,
-        open("../../rind/src/low/x86_64/bignum_mul.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_mul.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -84,7 +85,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_add.S") as input,
-        open("../../rind/src/low/x86_64/bignum_add.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_add.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -106,7 +107,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_modsub.S") as input,
-        open("../../rind/src/low/x86_64/bignum_modsub.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_modsub.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -129,7 +130,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_montredc.S") as input,
-        open("../../rind/src/low/x86_64/bignum_montredc.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_montredc.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -149,7 +150,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_digitsize.S") as input,
-        open("../../rind/src/low/x86_64/bignum_digitsize.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_digitsize.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -184,7 +185,7 @@ if __name__ == "__main__":
 
         with (
             open("../../thirdparty/s2n-bignum/x86/fastmul/%s.S" % name) as input,
-            open("../../rind/src/low/x86_64/%s.rs" % name, "w") as output,
+            generated("../../rind/src/low/x86_64/%s.rs" % name) as output,
         ):
             if op == "kmul":
                 parameter_map = [
@@ -226,7 +227,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/fastmul/bignum_emontredc_8n.S") as input,
-        open("../../rind/src/low/x86_64/bignum_emontredc_8n.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_emontredc_8n.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -248,7 +249,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_optsub.S") as input,
-        open("../../rind/src/low/x86_64/bignum_optsub.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_optsub.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -266,7 +267,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_negmodinv.S") as input,
-        open("../../rind/src/low/x86_64/bignum_negmodinv.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_negmodinv.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -283,7 +284,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_coprime.S") as input,
-        open("../../rind/src/low/x86_64/bignum_coprime.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/bignum_coprime.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -305,7 +306,7 @@ if __name__ == "__main__":
     # aarch64
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_montsqr.S") as input,
-        open("../../rind/src/low/aarch64/bignum_montsqr.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_montsqr.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -326,7 +327,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_bitsize.S") as input,
-        open("../../rind/src/low/aarch64/bignum_bitsize.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_bitsize.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -342,7 +343,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_ctz.S") as input,
-        open("../../rind/src/low/aarch64/bignum_ctz.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_ctz.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -358,7 +359,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_lt.S") as input,
-        open("../../rind/src/low/aarch64/bignum_cmp_lt.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_cmp_lt.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -377,7 +378,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_mul.S") as input,
-        open("../../rind/src/low/aarch64/bignum_mul.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_mul.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -399,7 +400,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_add.S") as input,
-        open("../../rind/src/low/aarch64/bignum_add.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_add.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -420,7 +421,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_modsub.S") as input,
-        open("../../rind/src/low/aarch64/bignum_modsub.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_modsub.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -443,7 +444,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_montredc.S") as input,
-        open("../../rind/src/low/aarch64/bignum_montredc.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_montredc.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -463,7 +464,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_digitsize.S") as input,
-        open("../../rind/src/low/aarch64/bignum_digitsize.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_digitsize.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -479,7 +480,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_optsub.S") as input,
-        open("../../rind/src/low/aarch64/bignum_optsub.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_optsub.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -497,7 +498,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_negmodinv.S") as input,
-        open("../../rind/src/low/aarch64/bignum_negmodinv.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_negmodinv.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -514,7 +515,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_coprime.S") as input,
-        open("../../rind/src/low/aarch64/bignum_coprime.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/bignum_coprime.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(

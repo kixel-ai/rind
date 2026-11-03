@@ -9,4 +9,4 @@ does not block it.
 
 - [Fastest at every algorithm](/quest/m2/speed/README.md) - every algorithm on every path as fast as any permissive source
 - [Fuzzing covers every hostile-input surface](/quest/m2/fuzz-coverage.md) - signatures, KDFs, XChaCha, and ML-KEM fuzzed nightly on a kept corpus
-- [Imported code is checked to regenerate exactly](/quest/m2/import-reproducible.md) - importers rerun in CI, and generators write atomically
+- [Regeneration uses pinned cross tools](/quest/m2/pin-cross-tools.md) - the regeneration check can't fail on a runner image update

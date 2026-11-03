@@ -41,23 +41,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # The codegen calls the cross tools by their Debian names, which the dev
-      # shell's PATH falls through to. The image ships the x86_64 ones.
-      - name: install codegen deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cpp-aarch64-linux-gnu binutils-aarch64-linux-gnu
-
       - uses: ./.github/actions/nix
-
-      # The codegen reads s2n-bignum's assembly; nothing else does.
-      - name: fetch s2n-bignum
-        run: git submodule update --init --depth 1 thirdparty/s2n-bignum
-
-      - name: check codegen
-        run: |
-          nix develop --command sh -c 'cd admin/parse-asm && ./all.sh'
-          git diff --exit-code
 
       - name: check module structure
         run: nix develop --command ./admin/structure

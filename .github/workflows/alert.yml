@@ -22,6 +22,7 @@ on:
       - Pullfrog
       - quality lints
       - Queue
+      - regenerate
       - Release
       - x86-cpu
     types:

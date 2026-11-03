@@ -57,4 +57,7 @@ for j in range(TABLES):
 out.append("];")
 
 path = pathlib.Path(__file__).resolve().parent.parent / "rind/src/mid/p384/precomp.rs"
-path.write_text("\n".join(out) + "\n")
+# Renamed into place, so a failure partway leaves the committed file whole.
+tmp = path.with_name(path.name + ".tmp")
+tmp.write_text("\n".join(out) + "\n")
+tmp.replace(path)
