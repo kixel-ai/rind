@@ -19,10 +19,9 @@ impl AwsXChaCha {
         Self(ctx)
     }
 
-    fn seal(&self, aad: &[u8], plain: &[u8]) {
+    fn seal(&self, aad: &[u8], buf: &mut [u8]) {
         let mut nonce = [0u8; 24];
         rind::rand::fill(&mut nonce).unwrap();
-        let mut ct = plain.to_vec();
         let mut tag = [0u8; 16];
         let mut tag_len = 0;
         // SAFETY: each pointer and length describes a live buffer, and aws-lc
@@ -30,14 +29,14 @@ impl AwsXChaCha {
         let ok = unsafe {
             aws_lc_sys::EVP_AEAD_CTX_seal_scatter(
                 self.0,
-                ct.as_mut_ptr(),
+                buf.as_mut_ptr(),
                 tag.as_mut_ptr(),
                 &mut tag_len,
                 tag.len(),
                 nonce.as_ptr(),
                 nonce.len(),
-                ct.as_ptr(),
-                ct.len(),
+                buf.as_ptr(),
+                buf.len(),
                 std::ptr::null(),
                 0,
                 aad.as_ptr(),
@@ -55,22 +54,25 @@ impl Drop for AwsXChaCha {
     }
 }
 
-fn test_rc_chacha(key: &chacha20poly1305::XChaCha20Poly1305, aad: &[u8], plain: &[u8]) {
+fn test_rc_chacha(key: &chacha20poly1305::XChaCha20Poly1305, aad: &[u8], buf: &mut [u8]) {
     use chacha20poly1305::AeadInOut;
     let mut nonce = [0u8; 24];
     rind::rand::fill(&mut nonce).unwrap();
     let nonce = &nonce;
-    let mut ct = plain.to_vec();
     let _tag = key
-        .encrypt_inout_detached(nonce.into(), aad, ct.as_mut_slice().into())
+        .encrypt_inout_detached(nonce.into(), aad, buf.into())
         .unwrap();
 }
 
-fn test_rind_chacha(key: &rind::aead::RandomizedNonceKey, aad: &[u8], plain: &[u8]) {
-    // Room for the appended tag, so sealing does not reallocate.
-    let mut ct = Vec::with_capacity(plain.len() + 16);
-    ct.extend_from_slice(plain);
-    let _nonce = key.seal_in_place_append_tag(aad, &mut ct).unwrap();
+fn test_rind_chacha(
+    key: &rind::aead::RandomizedNonceKey,
+    aad: &[u8],
+    buf: &mut Vec<u8>,
+    len: usize,
+) {
+    // Drops the last iteration's tag; the capacity holds the next one.
+    buf.truncate(len);
+    let _nonce = key.seal_in_place_append_tag(aad, buf).unwrap();
 }
 
 fn bench_chacha20poly1305(c: &mut Criterion) {
@@ -80,29 +82,25 @@ fn bench_chacha20poly1305(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("xchacha20poly1305");
     for (size, size_name) in criterion::SIZES {
-        let input = vec![0u8; size];
+        // Sealing the same buffer in place each iteration times the cipher
+        // alone, without an allocation or a copy of the input. Its room for
+        // rind's appended tag keeps sealing from reallocating.
+        let mut buf = Vec::with_capacity(size + 16);
+        buf.resize(size, 0u8);
         group.throughput(Throughput::Bytes(size as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("aws-lc-rs", size_name),
-            &input,
-            |b, input| {
-                let key = AwsXChaCha::new(&key);
-                b.iter(|| key.seal(&aad, input));
-            },
-        );
-        group.bench_with_input(
-            BenchmarkId::new("rustcrypto", size_name),
-            &input,
-            |b, input| {
-                use chacha20poly1305::KeyInit;
-                let key = chacha20poly1305::XChaCha20Poly1305::new_from_slice(&key).unwrap();
-                b.iter(|| test_rc_chacha(&key, &aad, input));
-            },
-        );
-        group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
+        group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
+            let key = AwsXChaCha::new(&key);
+            b.iter(|| key.seal(&aad, &mut buf[..size]));
+        });
+        group.bench_function(BenchmarkId::new("rustcrypto", size_name), |b| {
+            use chacha20poly1305::KeyInit;
+            let key = chacha20poly1305::XChaCha20Poly1305::new_from_slice(&key).unwrap();
+            b.iter(|| test_rc_chacha(&key, &aad, &mut buf[..size]));
+        });
+        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
             let key = rind::aead::RandomizedNonceKey::new(&key);
-            b.iter(|| test_rind_chacha(&key, &aad, input));
+            b.iter(|| test_rind_chacha(&key, &aad, &mut buf, size));
         });
     }
 }
