@@ -107,16 +107,16 @@ impl<const N: usize> Blockwise<N> {
     }
 }
 
-/// Pads the end of `message` for a Merkle-Damgard hash of `N`-byte blocks:
-/// a 0x80 byte, zeroes, and `length`. Returns the whole blocks to compress
-/// first, then the rest padded in `last`, which must be zeroed. The rest takes
-/// the message's last whole block too where the padding fits after it, so the
-/// routine runs once over both.
-pub(crate) fn pad_message<'m, 'l, const N: usize, const L: usize>(
-    message: &'m [u8],
+/// Compresses the end of `message` for a Merkle-Damgard hash of `N`-byte
+/// blocks, padded with a 0x80 byte, zeroes, and `length`, through `compress`,
+/// which takes whole blocks. Where the padding fits after the message's last
+/// whole block, the last call covers both, so the routine's entry and exit
+/// and the chaining value's trip through memory come once fewer.
+pub(crate) fn compress_padded<const N: usize, const L: usize>(
+    message: &[u8],
     length: [u8; L],
-    last: &'l mut [[u8; N]; 2],
-) -> (&'m [u8], &'l [u8]) {
+    mut compress: impl FnMut(&[u8]),
+) {
     let tail = message.len() % N;
     let start = if tail + 1 + L <= N && message.len() >= N {
         message.len() - tail - N
@@ -124,10 +124,40 @@ pub(crate) fn pad_message<'m, 'l, const N: usize, const L: usize>(
         message.len() - tail
     };
     let (blocks, rest) = message.split_at(start);
-    let padded = if rest.len() + 1 + L <= N { N } else { 2 * N };
+    if !blocks.is_empty() {
+        compress(blocks);
+    }
+    let mut last = [[0u8; N]; 2];
+    compress(pad(rest, length, &mut last));
+}
+
+/// Pads `message` as [`compress_padded`] does, for a routine that takes the
+/// padding as a run of blocks of its own: returns the message's whole blocks,
+/// then its tail padded in `last`.
+#[cfg(target_arch = "x86_64")]
+pub(crate) fn pad_message<'m, 'l, const N: usize, const L: usize>(
+    message: &'m [u8],
+    length: [u8; L],
+    last: &'l mut [[u8; N]; 2],
+) -> (&'m [u8], &'l [u8]) {
+    let (blocks, rest) = message.split_at(message.len() / N * N);
+    (blocks, pad(rest, length, last))
+}
+
+/// `rest`, under two blocks, padded in `last`, which must be zeroed.
+fn pad<'l, const N: usize, const L: usize>(
+    rest: &[u8],
+    length: [u8; L],
+    last: &'l mut [[u8; N]; 2],
+) -> &'l [u8] {
+    let padded = if rest.len() % N + 1 + L <= N {
+        rest.len() / N * N + N
+    } else {
+        rest.len() / N * N + 2 * N
+    };
     let last = &mut last.as_flattened_mut()[..padded];
     last[..rest.len()].copy_from_slice(rest);
     last[rest.len()] = 0x80;
     last[padded - L..].copy_from_slice(&length);
-    (blocks, last)
+    last
 }

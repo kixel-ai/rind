@@ -61,7 +61,9 @@ mod entry;
 mod posint;
 
 pub(crate) use entry::Entry;
-pub(crate) use generic::blockwise::{Blockwise, pad_message};
+#[cfg(target_arch = "x86_64")]
+pub(crate) use generic::blockwise::pad_message;
+pub(crate) use generic::blockwise::{Blockwise, compress_padded};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
 pub(crate) use generic::hchacha20::hchacha20;
@@ -172,7 +174,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::p521_jmixadd;
         pub(crate) use x86_64::adx_mux::p521_jscalarmul;
         pub(crate) use x86_64::sha1_mux::sha1_compress_blocks;
-        pub(crate) use x86_64::sha256_mux::sha256_compress_blocks;
+        pub(crate) use x86_64::sha256_mux::{sha256_compress_blocks, sha256_compress_padded};
         pub(crate) use x86_64::sha512::sha512_compress_blocks;
         pub(crate) use x86_64::sha3_keccak_f1600::sha3_keccak_f1600;
         pub(crate) use x86_64::sha3_keccak4_f1600_shim::sha3_keccak4_f1600;
@@ -262,7 +264,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::p521_jmixadd::p521_jmixadd;
         pub(crate) use aarch64::p521_jscalarmul::p521_jscalarmul;
         pub(crate) use aarch64::sha1::sha1_compress_blocks;
-        pub(crate) use aarch64::sha256::sha256_compress_blocks;
+        pub(crate) use aarch64::sha256::{sha256_compress_blocks, sha256_compress_padded};
         pub(crate) use aarch64::sha3_keccak_f1600_mux::sha3_keccak_f1600;
         pub(crate) use aarch64::sha3_keccak4_f1600_mux::sha3_keccak4_f1600;
         pub(crate) use aarch64::sha3_keccak_nof4_f1600::sha3_keccak_nof4_f1600;
@@ -326,7 +328,8 @@ cfg_if::cfg_if! {
             sha3_keccak4_f1600, sha3_keccak_f1600, sha3_keccak_nof4_f1600,
         };
         pub(crate) use arm::sha_armv4::{
-            sha1_compress_blocks, sha256_compress_blocks, sha512_compress_blocks,
+            sha1_compress_blocks, sha256_compress_blocks, sha256_compress_padded,
+            sha512_compress_blocks,
         };
     } else {
         compile_error!("This crate only supports x86_64, aarch64, or arm");

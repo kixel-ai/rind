@@ -71,6 +71,13 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
     }
 }
 
+/// Compresses the end of `message`, padded and closed by `length`.
+pub(crate) fn sha256_compress_padded(state: &mut [u32; 8], message: &[u8], length: [u8; 8]) {
+    crate::low::compress_padded::<64, 8>(message, length, |blocks| {
+        sha256_compress_blocks(state, blocks)
+    });
+}
+
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
     debug_assert!(blocks.len().is_multiple_of(128));
     // Both routines run their loop at least once, so zero blocks would read
