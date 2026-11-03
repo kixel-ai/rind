@@ -16,6 +16,7 @@ mod generic {
     #[cfg(any(target_arch = "arm", test))]
     pub(crate) mod bignum;
     pub(super) mod blockwise;
+    pub(crate) mod chacha20;
     // Where no one-pass routine runs, and in aarch64 tests to check it
     // against.
     #[cfg(any(target_arch = "arm", target_arch = "x86_64", test))]
@@ -25,7 +26,6 @@ mod generic {
     pub(super) mod ctr;
     #[cfg(all(test, not(target_arch = "arm")))]
     pub(crate) mod ghash;
-    pub(crate) mod hchacha20;
     pub(crate) mod mlkem;
     #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
     pub(crate) mod mlkem768;
@@ -66,7 +66,7 @@ pub(crate) use generic::blockwise::pad_message;
 pub(crate) use generic::blockwise::{Blockwise, compress_padded};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
-pub(crate) use generic::hchacha20::hchacha20;
+pub(crate) use generic::chacha20::hchacha20;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
 pub(crate) use generic::zeroise::{Zeroable, zeroise, zeroise_value};

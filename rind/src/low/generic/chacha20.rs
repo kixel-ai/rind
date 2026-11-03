@@ -3,9 +3,10 @@
 // Copyright 2023 Cryspen Sarl
 // SPDX-License-Identifier: Apache-2.0
 //
-// HChaCha20's rounds, from HACL*'s verified `Hacl_Chacha20` as
-// libcrux-chacha20poly1305 0.0.10 ships it (`src/hacl/chacha20.rs`). Every
-// backend runs them in general-purpose registers, as aws-lc does: a single
+// ChaCha20's rounds, from HACL*'s verified `Hacl_Chacha20` as
+// libcrux-chacha20poly1305 0.0.10 ships it (`src/hacl/chacha20.rs`), for
+// HChaCha20 on every backend and a single block on x86_64 with AVX2. They run
+// in general-purpose registers, as aws-lc's integer routines do: a single
 // block packed into vector registers is one serial chain, which Zen 5's
 // two-cycle vector latency makes twice as slow.
 
@@ -94,6 +95,36 @@ pub(crate) fn hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
         *o = w.to_le_bytes();
     }
     out
+}
+
+/// XORs the ChaCha20 keystream for `key` and `counter_nonce`, the block
+/// counter then the 96-bit nonce, into `buffer`, one block at a time.
+#[cfg(target_arch = "x86_64")]
+pub(crate) fn cipher(key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
+    let mut input = [0u32; 16];
+    for (i, b) in input.iter_mut().zip(b"expand 32-byte k".as_chunks::<4>().0) {
+        *i = u32::from_le_bytes(*b);
+    }
+    input[4..12].copy_from_slice(key);
+    input[12..].copy_from_slice(counter_nonce);
+
+    for block in buffer.chunks_mut(64) {
+        let mut st = input;
+        rounds(&mut st);
+        for (s, i) in st.iter_mut().zip(input) {
+            *s = s.wrapping_add(i);
+        }
+        let (words, tail) = block.as_chunks_mut::<4>();
+        for (w, k) in words.iter_mut().zip(st) {
+            *w = (u32::from_le_bytes(*w) ^ k).to_le_bytes();
+        }
+        if let Some(k) = st.get(words.len()) {
+            for (b, k) in tail.iter_mut().zip(k.to_le_bytes()) {
+                *b ^= k;
+            }
+        }
+        input[12] = input[12].wrapping_add(1);
+    }
 }
 
 #[cfg(test)]

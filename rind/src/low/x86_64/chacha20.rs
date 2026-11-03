@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 // AVX2 by-8 implementation inspired by YuriMyakotin/ChaCha20-SIMD
 
-//! ChaCha20: rind's AVX2 kernels where the CPU has AVX2, and otherwise
-//! aws-lc's `chacha-x86_64` routines, imported by `admin/import-aws-lc`, at
-//! the lengths aws-lc runs each: four blocks at a time with SSSE3 above 128
-//! bytes, and integer code up to that, or at every length without SSSE3.
+//! ChaCha20: where the CPU has AVX2, HACL*'s rounds in general-purpose
+//! registers for a single block, as aws-lc runs integer code there, and rind's
+//! AVX2 kernels above that; otherwise aws-lc's `chacha-x86_64` routines,
+//! imported by `admin/import-aws-lc`, at the lengths aws-lc runs each: four
+//! blocks at a time with SSSE3 above 128 bytes, and integer code up to that,
+//! or at every length without SSSE3.
 //!
 //! The aws-lc assembly is not formally verified: its correctness rests on its
 //! use and testing in OpenSSL, BoringSSL, and aws-lc, and on rind's tests of
@@ -14,6 +16,7 @@
 use core::arch::x86_64::*;
 
 use super::cpu::{HaveAvx2, HaveSsse3};
+use crate::low::generic::chacha20;
 
 pub(crate) struct ChaCha20 {
     key: [u32; 8],
@@ -37,10 +40,13 @@ impl ChaCha20 {
     /// XORs the keystream into `buffer`, starting at the current block, then
     /// moves the counter past every block it touched.
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
-        match self.avx2 {
+        match (self.avx2, buffer.len()) {
+            // One block is a single serial chain in the AVX2 kernels, which
+            // Zen 5's two-cycle vector latency makes slower than this.
+            (Some(_), ..=64) => chacha20::cipher(&self.key, &self.counter_nonce, buffer),
             // SAFETY: the token proves the `avx2` cpu feature
-            Some(_) => unsafe { cipher_avx2(&self.key, &self.counter_nonce, buffer) },
-            None => chacha20_ctr32(&self.key, &self.counter_nonce, buffer, self.ssse3),
+            (Some(_), _) => unsafe { cipher_avx2(&self.key, &self.counter_nonce, buffer) },
+            (None, _) => chacha20_ctr32(&self.key, &self.counter_nonce, buffer, self.ssse3),
         }
         self.counter_nonce[0] =
             self.counter_nonce[0].wrapping_add(buffer.len().div_ceil(64) as u32);
@@ -565,10 +571,10 @@ mod tests {
     use crate::low::hchacha20;
 
     // The CPU's fastest path hides the others from every other test, so
-    // aws-lc's routines, with SSSE3 and without, are checked against it
-    // directly: every length through both routines' boundaries and two
-    // four-block batches, each continued by a second call, which a whole
-    // number of blocks leaves contiguous.
+    // HACL*'s rounds and aws-lc's routines, with SSSE3 and without, are
+    // checked against it directly: every length through the routines'
+    // boundaries and two four-block batches, each continued by a second call,
+    // which a whole number of blocks leaves contiguous.
     #[test]
     fn paths_match() {
         let key = core::array::from_fn(|i| i as u8);
@@ -592,6 +598,14 @@ mod tests {
                 aws_lc.cipher(second);
                 assert_eq!(got, want, "{path}, {len} bytes, then 200");
             }
+
+            let mut got = vec![0x5a; len + 200];
+            let (first, second) = got.split_at_mut(len);
+            let mut counter_nonce = words(&nonce);
+            chacha20::cipher(&words(&key), &counter_nonce, first);
+            counter_nonce[0] += len.div_ceil(64) as u32;
+            chacha20::cipher(&words(&key), &counter_nonce, second);
+            assert_eq!(got, want, "HACL*, {len} bytes, then 200");
 
             if len % 64 == 0 {
                 let mut whole = vec![0x5a; len + 200];
