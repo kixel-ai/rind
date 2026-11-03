@@ -492,6 +492,8 @@ def summary(args):
             print(f"- `{h['host']}`: {h['cpu']['model']}, {h['os']}, {h['toolchain']['rustc']}{noisy}")
         else:
             print(f"- `{h['host']}`: not measured, {h['status']}: {h['reason']}")
+    if not measured:
+        return
     print()
     print("Each cell is rind's time, then that over the fastest other library's, and which library that is.")
     print()
