@@ -18,7 +18,8 @@ to correctly implement the desired mathematical operation.
 
 *Fast*: rind beats or is competitive with other cryptography
 libraries for Rust.  `cargo bench` compares it with aws-lc-rs, *ring*,
-and RustCrypto.
+RustCrypto, Graviola, libcrux, and, with the `__bench_openssl` feature,
+OpenSSL.
 
 *Easy and fast to build*: no C compiler, assembler or other tooling
 needed: just the Rust compiler.  Compiles in seconds.
@@ -110,6 +111,10 @@ Run performance benchmarks:
 ```shell
 cargo bench
 ```
+
+`admin/bench-report collect` runs the report's benchmarks on each benchmark
+host in turn over ssh, skipping any that is busy, and writes their results
+and the hosts' details as JSON under `.tmp/bench-report/`.
 
 With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
 toolchain, and `just check` runs CI's gate over what the branch changed.
