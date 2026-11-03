@@ -368,4 +368,30 @@ mod tests {
             }
         }
     }
+
+    // The crypto extension's key setup, GHASH, and AES-CTR, both ways, for
+    // each key size, with a secret key, nonce, AAD, and message, for
+    // `admin/ct-qemu`. The message spans a GHASH chunk, then 5 blocks, which
+    // take the CTR routine's 3-block loop and 2-block tail, and a partial
+    // block; the AAD is an even run of blocks and a partial one.
+    #[test]
+    #[ignore = "admin/ct-qemu runs it under qemu-arm"]
+    fn ct_qemu_aes_gcm() {
+        use crate::low::ct_qemu;
+
+        let seed = ct_qemu::seed().to_le_bytes();
+        let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
+        for key_len in [16, 32] {
+            let key = bytes(key_len);
+            let gcm = ct_qemu::traced(|| AesGcm::new(&key));
+            assert!(matches!(gcm, AesGcm::Hw(_)), "the crypto extension");
+
+            let nonce = bytes(12).try_into().unwrap();
+            let aad = bytes(300);
+            let mut msg = bytes(Hw::CHUNK + 5 * 16 + 8);
+            let mut tag = [0u8; 16];
+            ct_qemu::traced(|| gcm.encrypt(&nonce, &aad, &mut msg, &mut tag)).unwrap();
+            ct_qemu::traced(|| gcm.decrypt(&nonce, &aad, &mut msg, &tag)).unwrap();
+        }
+    }
 }
