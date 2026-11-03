@@ -146,7 +146,9 @@ AVX-512, VAES, and VPCLMULQDQ (Sandy Bridge); no AVX also AVX (Westmere); no
 AES-NI also AES-NI, PCLMULQDQ, and SSE4.1 (Core 2); and SSE2 also SSSE3.
 GitHub's pool ran no AVX and SSE2 on an EPYC 7763 too, no ADX and no AES-NI
 on an EPYC 9V74 (Zen 4), and no AVX2 on an EPYC 9V45 (Zen 5). The
-ChaCha20-Poly1305 cell without AVX2 is from [run 41585945720], on an EPYC 7763.
+ChaCha20-Poly1305 cell without AVX2 is from [run 41585945720], on an EPYC 7763,
+and the x86_64 ChaCha20 header-protection cell from [run 41678532920], on an
+EPYC 9V74.
 Intel CPUs without SHA-NI run [aws-lc]'s AVX SHA-1 and SHA-256, and every
 Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 
@@ -154,7 +156,7 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
 |---|---|---|---|---|---|---|
 | AES-GCM | 0.99 BoringSSL ⚡ + Graviola |  | 1.01 aws-lc ✓ + Graviola | 0.95 Graviola | **1.03** aws-lc + rind | 0.82 |
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 1.00 | 0.99 | 1.00 aws-lc | 0.79 |
-| ChaCha20 (header protection) | 0.97 HACL* ✓ |  | 0.96 aws-lc ⚡ | 0.93 | 0.94 | 0.93 |
+| ChaCha20 (header protection) | 0.96 HACL* ✓ |  | 0.96 aws-lc ⚡ | 0.93 | 0.94 | 0.93 |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ |  | 1.00 |  | **1.19** aws-lc ⚡ + Graviola ⚡ | **1.09** |
 | SHA-1 | 1.00 rind |  | 1.00 aws-lc | 1.00 |  | 1.00 |
 | SHA-256 | 1.02 Graviola ⚡ |  | **1.05** aws-lc ⚡ | 1.01 |  | 1.01 |
@@ -275,6 +277,8 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41572396019]: https://github.com/moq-dev/rind/actions/runs/41572396019
 [run 41550703300]: https://github.com/moq-dev/rind/actions/runs/41550703300
 [run 41585945720]: https://github.com/moq-dev/rind/actions/runs/41585945720
+[run 41657617706]: https://github.com/moq-dev/rind/actions/runs/41657617706
+[run 41678532920]: https://github.com/moq-dev/rind/actions/runs/41678532920
 [#224]: https://github.com/moq-dev/rind/pull/224
 [#281]: https://github.com/moq-dev/rind/pull/281
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
@@ -514,11 +518,14 @@ x86_64 CPUs with AVX2 run ChaCha20 on Graviola's AVX2 kernels from two
 blocks, and on HACL*'s verified rounds in general-purpose registers for one
 block, as QUIC header protection takes and as aws-lc runs its integer routine
 there: the kernels compute even one block as a single serial chain, which Zen
-5's two-cycle vector latency doubles. For one block, the kernels measured
-1.05-1.3x faster than HACL*'s rounds on Coffee Lake, Arrow Lake, and Zen 3,
-whose time is within 10% of aws-lc's integer routine there, but header
-protection on them took 1.89 of aws-lc-rs's time on an EPYC 9V45 in [run
-41585945720].
+5's two-cycle vector latency doubles, so header protection on them took 1.89
+of aws-lc-rs's time on an EPYC 9V45 in [run 41585945720]. On HACL*'s rounds
+it takes 0.89 on an EPYC 9V74 (Zen 4) in [run 41678532920], against 0.83 on
+the kernels in [run 41657617706]. No run has drawn Zen 5 since; the fix is
+expected to hold there because HChaCha20, below, measured the same cause and
+fix on it. For one block, the kernels measured 1.05-1.3x faster than HACL*'s
+rounds on Coffee Lake, Arrow Lake, and Zen 3, where HACL*'s rounds are within
+10% of aws-lc's integer routine.
 
 x86_64 CPUs without AVX2 run ChaCha20 on aws-lc's `chacha-x86_64` assembly,
 as aws-lc picks: its integer routine up to 128 bytes, and its SSSE3 routine,
