@@ -528,8 +528,12 @@ as aws-lc picks: its integer routine up to 128 bytes, and its SSSE3 routine,
 four blocks at a time, above that. Both measured faster than the pure Rust
 block function at every length: 1.7x for one block, and 4.5x from 256 bytes.
 Without SSSE3, the integer routine runs at every length, as in aws-lc, and
-measured 1.2x faster than HACL*'s ChaCha20 at every length, and HChaCha20,
-for XChaCha20, rotates with SSE2 shifts rather than SSSE3's byte shuffles.
+measured 1.2x faster than HACL*'s ChaCha20 at every length.
+
+HChaCha20, for XChaCha20, runs HACL*'s verified rounds in general-purpose
+registers on every architecture, as aws-lc does. One block in vector
+registers is a single serial chain, which Zen 5's two-cycle vector latency
+made 1.13x slower than aws-lc sealing 32 bytes.
 
 ChaCha20-Poly1305, and XChaCha20-Poly1305 after HChaCha20, run aws-lc's
 `chacha20_poly1305` assembly, which interleaves ChaCha20 with Poly1305 in one
