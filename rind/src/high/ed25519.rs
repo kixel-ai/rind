@@ -5,7 +5,7 @@ use crate::Error;
 use crate::error::KeyFormatError;
 use crate::high::asn1::{self, Type, pkix};
 use crate::high::pkcs8;
-use crate::low::{Entry, ct};
+use crate::low::{self, Entry, ct};
 use crate::mid::ed25519;
 use crate::mid::rng::{RandomSource, SystemRandom};
 
@@ -36,9 +36,17 @@ impl Ed25519VerifyingKey {
         Ok(&output[..len])
     }
 
-    /// Decode from the 32-byte Ed25519 public key encoding.
+    /// Decode from the 32-byte Ed25519 public key encoding, refusing a point
+    /// of small order.
+    ///
+    /// aws-lc-rs takes one, but with the identity as the key, `R = identity`
+    /// and `S = 0` verify any message. No honest key has small order, so
+    /// rind refuses them all, as libsodium does.
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_public();
+        if has_small_order(bytes) {
+            return Err(KeyFormatError::SmallOrder.into());
+        }
         ed25519::VerifyingKey::from_bytes(bytes).map(Self)
     }
 
@@ -60,6 +68,57 @@ impl Ed25519VerifyingKey {
             message,
         )
     }
+}
+
+/// Whether `bytes` encodes a point of small order, canonically or not.
+///
+/// These are libsodium's `ge25519_has_small_order` encodings, compared, as
+/// there, in constant time and without the sign bit of `x`: the eight points
+/// of order dividing 8, then `y = p` and `y = p + 1`, the only `y` of a
+/// small-order point whose non-canonical `y + p` fits in 255 bits.
+fn has_small_order(bytes: &[u8]) -> bool {
+    const SMALL_ORDER_Y: [[u8; 32]; 7] = [
+        // `y = 0`, order 4.
+        [0; 32],
+        // `y = 1`, the identity.
+        {
+            let mut y = [0; 32];
+            y[0] = 1;
+            y
+        },
+        // Order 8.
+        [
+            0x26, 0xe8, 0x95, 0x8f, 0xc2, 0xb2, 0x27, 0xb0, 0x45, 0xc3, 0xf4, 0x89, 0xf2, 0xef,
+            0x98, 0xf0, 0xd5, 0xdf, 0xac, 0x05, 0xd3, 0xc6, 0x33, 0x39, 0xb1, 0x38, 0x02, 0x88,
+            0x6d, 0x53, 0xfc, 0x05,
+        ],
+        // Order 8.
+        [
+            0xc7, 0x17, 0x6a, 0x70, 0x3d, 0x4d, 0xd8, 0x4f, 0xba, 0x3c, 0x0b, 0x76, 0x0d, 0x10,
+            0x67, 0x0f, 0x2a, 0x20, 0x53, 0xfa, 0x2c, 0x39, 0xcc, 0xc6, 0x4e, 0xc7, 0xfd, 0x77,
+            0x92, 0xac, 0x03, 0x7a,
+        ],
+        // `y = p - 1`, order 2, then `y = p` and `y = p + 1`.
+        near_p(0xec),
+        near_p(0xed),
+        near_p(0xee),
+    ];
+
+    /// `p = 2^255 - 19`, little-endian, with its lowest byte `low`.
+    const fn near_p(low: u8) -> [u8; 32] {
+        let mut y = [0xff; 32];
+        y[0] = low;
+        y[31] = 0x7f;
+        y
+    }
+
+    let Ok(mut y) = <[u8; 32]>::try_from(bytes) else {
+        return false;
+    };
+    y[31] &= 0x7f;
+    SMALL_ORDER_Y
+        .iter()
+        .fold(false, |found, small| found | low::ct_equal(&y, small))
 }
 
 /// An Ed25519 signing private key.
@@ -232,37 +291,27 @@ mod tests {
             Some(KeyFormatError::NotOnCurve.into())
         );
 
-        // Each point has one encoding: `y` below `p`, and no sign on `x = 0`,
-        // where `y = ±1`.
-        let encode = |y: [u8; 32], negative: bool| {
-            let mut bytes = y;
-            bytes[31] |= u8::from(negative) << 7;
-            bytes
-        };
-        let mut y_one = [0; 32];
-        y_one[0] = 1;
-        let mut y_minus_one = [0xff; 32];
-        y_minus_one[0] = 0xec;
-        y_minus_one[31] = 0x7f;
-        let mut y_p = y_minus_one;
-        y_p[0] = 0xed;
+        // Each point has one encoding, `y` below `p`. A sign on `x = 0` (where
+        // `y = ±1`) and `y = p` or `p + 1` encode points of small order, which
+        // `small_order` covers.
+        let mut y_three = [0; 32];
+        y_three[0] = 3;
+        let mut y_p_plus_three = [0xff; 32];
+        y_p_plus_three[0] = 0xf0;
+        y_p_plus_three[31] = 0x7f;
         let mut y_two = [0; 32];
         y_two[0] = 2;
-        for (y, negative, ok) in [
-            (y_one, false, true),
-            (y_one, true, false),
-            (y_minus_one, false, true),
-            (y_minus_one, true, false),
-            // `y = 0`, which has a point, but not reduced.
-            (y_p, false, false),
+        for (y, ok) in [
+            (y_three, true),
+            (y_p_plus_three, false),
             // No `x` has `y = 2`.
-            (y_two, false, false),
+            (y_two, false),
         ] {
-            let result = Ed25519VerifyingKey::from_bytes(&encode(y, negative));
+            let result = Ed25519VerifyingKey::from_bytes(&y);
             assert_eq!(
                 result.err(),
                 (!ok).then_some(KeyFormatError::NotOnCurve.into()),
-                "{y:x?} {negative}"
+                "{y:x?}"
             );
         }
 
@@ -274,5 +323,34 @@ mod tests {
             Ed25519VerifyingKey::from_bytes(&[0; 33]).err(),
             Some(KeyFormatError::WrongLength.into())
         );
+    }
+
+    #[test]
+    fn small_order() {
+        // libsodium's list: each `y` of a small-order point that fits in 255
+        // bits, with either sign, eight of them the canonical encodings of
+        // the points of order dividing 8.
+        let mut points = 0;
+        for y in [
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            "0100000000000000000000000000000000000000000000000000000000000000",
+            "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+            "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+            "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+            "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+            "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+        ] {
+            for sign in [0, 0x80] {
+                let mut bytes: [u8; 32] = hex::decode(y).unwrap().try_into().unwrap();
+                bytes[31] |= sign;
+                points += usize::from(ed25519::VerifyingKey::from_bytes(&bytes).is_ok());
+                assert_eq!(
+                    Ed25519VerifyingKey::from_bytes(&bytes).err(),
+                    Some(KeyFormatError::SmallOrder.into()),
+                    "{bytes:x?}"
+                );
+            }
+        }
+        assert_eq!(points, 8);
     }
 }
