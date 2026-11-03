@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11](https://github.com/moq-dev/rind/compare/rind-v0.1.10...rind-v0.1.11) - 2026-11-03
+
+### Fixed
+
+- *(rsa)* bound x86_64 power5's secret window by a mask, not a check ([#275](https://github.com/moq-dev/rind/pull/275))
+- *(x86_64)* wipe RSA's heap power tables before freeing them ([#267](https://github.com/moq-dev/rind/pull/267))
+
+### Other
+
+- *(x86_64,aarch64)* start imported routines at aws-lc's alignment ([#274](https://github.com/moq-dev/rind/pull/274))
+- *(x86_64)* sign RSA by aws-lc's dual AVX-512 IFMA RSAZ ([#263](https://github.com/moq-dev/rind/pull/263))
+- *(quest)* close the AES-GCM key setup quest with the bench numbers ([#272](https://github.com/moq-dev/rind/pull/272))
+- *(p256)* run armv7 P-256 on the shared code with rind's Montgomery multiplication ([#253](https://github.com/moq-dev/rind/pull/253))
+- *(x86_64)* keep aws-lc's alignment of carried routines ([#262](https://github.com/moq-dev/rind/pull/262))
+- *(rsa)* exponentiate by a 5-bit window on aarch64 and armv7 ([#261](https://github.com/moq-dev/rind/pull/261))
+- *(aead)* build AES-GCM keys in place, check CPU features inline, and keep one aarch64 GHASH table ([#260](https://github.com/moq-dev/rind/pull/260))
+- *(rsa)* load keys faster and multiply odd-width moduli at their own width on armv7 ([#259](https://github.com/moq-dev/rind/pull/259))
+- *(hash)* compress the last whole block with the padding in one call ([#255](https://github.com/moq-dev/rind/pull/255))
+
 ## [0.1.10](https://github.com/moq-dev/rind/compare/rind-v0.1.9...rind-v0.1.10) - 2026-11-02
 
 ### Other
