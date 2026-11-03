@@ -1,4 +1,6 @@
+import contextlib
 import copy
+import os
 import re
 import string
 import subprocess
@@ -6,6 +8,20 @@ from functools import reduce
 from io import StringIO
 
 from parse import Type, is_comment, register_from_token, tokenise
+
+
+@contextlib.contextmanager
+def generated(path):
+    """Opens a file that replaces `path` only once the block completes, so
+    a tool that is missing or fails leaves the committed file whole."""
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w") as output:
+            yield output
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
 
 
 class Architecture:

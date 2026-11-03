@@ -1,6 +1,7 @@
 from driver import (
     Architecture_aarch64,
     RustDriver,
+    generated,
 )
 from parse import assemble_and_disassemble, parse_file
 
@@ -12,7 +13,7 @@ if __name__ == "__main__":
             name = "aes%d_gcm_%s%s" % (bits, op, "_alt" if alt else "")
             with (
                 open("../../thirdparty/s2n-bignum/arm/aes_gcm/%s.S" % name) as input,
-                open("../../rind/src/low/aarch64/%s.rs" % name, "w") as output,
+                generated("../../rind/src/low/aarch64/%s.rs" % name) as output,
             ):
                 d = RustDriver(output, Architecture_aarch64)
                 d.emit_rust_function(
