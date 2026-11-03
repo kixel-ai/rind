@@ -25,6 +25,7 @@ mod generic {
     pub(super) mod ctr;
     #[cfg(all(test, not(target_arch = "arm")))]
     pub(crate) mod ghash;
+    pub(crate) mod hchacha20;
     pub(crate) mod mlkem;
     #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
     pub(crate) mod mlkem768;
@@ -63,6 +64,7 @@ pub(crate) use entry::Entry;
 pub(crate) use generic::blockwise::{Blockwise, pad_message};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
+pub(crate) use generic::hchacha20::hchacha20;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
 pub(crate) use generic::zeroise::{Zeroable, zeroise, zeroise_value};

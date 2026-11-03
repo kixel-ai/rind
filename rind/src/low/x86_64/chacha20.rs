@@ -47,21 +47,6 @@ impl ChaCha20 {
     }
 }
 
-/// HChaCha20 of `key` and `nonce`, for XChaCha20's subkey.
-pub(crate) fn hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
-    let words = match HaveSsse3::check() {
-        // SAFETY: the token proves the `ssse3` cpu feature
-        Some(_) => unsafe { hchacha_ssse3(key, nonce) },
-        // SAFETY: every x86_64 CPU has SSE2
-        None => unsafe { hchacha_sse2(key, nonce) },
-    };
-    let mut out = [0u8; 32];
-    for (o, w) in out.as_chunks_mut::<4>().0.iter_mut().zip(words) {
-        *o = w.to_le_bytes();
-    }
-    out
-}
-
 /// `bytes` as little-endian words.
 fn words<const B: usize, const W: usize>(bytes: &[u8; B]) -> [u32; W] {
     const { assert!(B == 4 * W) };
@@ -190,36 +175,6 @@ macro_rules! rotate_left {
             _mm256_slli_epi32($reg, $rot),
             _mm256_srli_epi32($reg, 32 - $rot),
         )
-    };
-}
-
-macro_rules! rotate_left_128_ssse3 {
-    ($reg:expr, 8) => {
-        // this is a byte shuffle leftwards, except little-endian
-        _mm_shuffle_epi8(
-            $reg,
-            _mm_set_epi8(14, 13, 12, 15, 10, 9, 8, 11, 6, 5, 4, 7, 2, 1, 0, 3),
-        )
-    };
-    ($reg:expr, 16) => {
-        // this is a two-byte shuffle leftwards, except little-endian
-        _mm_shuffle_epi8(
-            $reg,
-            _mm_set_epi8(13, 12, 15, 14, 9, 8, 11, 10, 5, 4, 7, 6, 1, 0, 3, 2),
-        )
-    };
-    ($reg:expr, $rot:literal) => {
-        rotate_left_128_sse2!($reg, $rot)
-    };
-}
-
-macro_rules! rotate_left_128_sse2 {
-    ($reg:expr, 16) => {
-        // swaps the halves of each word
-        _mm_shufflehi_epi16(_mm_shufflelo_epi16($reg, 0b10_11_00_01), 0b10_11_00_01)
-    };
-    ($reg:expr, $rot:literal) => {
-        _mm_or_si128(_mm_slli_epi32($reg, $rot), _mm_srli_epi32($reg, 32 - $rot))
     };
 }
 
@@ -601,86 +556,13 @@ fn core_2x(t07: __m256i, z8f: &mut __m256i, xor_out: &mut [u8]) {
     }
 }
 
-/// Defines `$name`, HChaCha20 of `key` and `nonce`: the ChaCha20 rounds
-/// without the final addition, keeping words 0-3 and 12-15. It rotates with
-/// `$rotate`, under the target features given: SSSE3's byte shuffles, or
-/// SSE2 alone, which every x86_64 CPU has.
-macro_rules! hchacha {
-    ($name:ident, $features:literal, $rotate:ident) => {
-        #[target_feature(enable = $features)]
-        fn $name(key: &[u8; 32], nonce: &[u8; 16]) -> [u32; 8] {
-            // SAFETY: `SIGMA`, `key` and `nonce` are all readable
-            let (mut z03, mut z47, mut z8b, mut zcf) = unsafe {
-                (
-                    _mm_loadu_si128(SIGMA.as_ptr().cast()),
-                    _mm_loadu_si128(key[0..16].as_ptr().cast()),
-                    _mm_loadu_si128(key[16..32].as_ptr().cast()),
-                    _mm_loadu_si128(nonce[0..16].as_ptr().cast()),
-                )
-            };
-
-            for _ in 0..10 {
-                z03 = _mm_add_epi32(z03, z47);
-                zcf = _mm_xor_si128(zcf, z03);
-                zcf = $rotate!(zcf, 16);
-
-                z8b = _mm_add_epi32(z8b, zcf);
-                z47 = _mm_xor_si128(z47, z8b);
-                z47 = $rotate!(z47, 12);
-
-                z03 = _mm_add_epi32(z03, z47);
-                zcf = _mm_xor_si128(zcf, z03);
-                zcf = $rotate!(zcf, 8);
-
-                z8b = _mm_add_epi32(z8b, zcf);
-                z47 = _mm_xor_si128(z47, z8b);
-                z47 = $rotate!(z47, 7);
-
-                z47 = _mm_shuffle_epi32(z47, 0b00_11_10_01);
-                z8b = _mm_shuffle_epi32(z8b, 0b01_00_11_10);
-                zcf = _mm_shuffle_epi32(zcf, 0b10_01_00_11);
-
-                z03 = _mm_add_epi32(z03, z47);
-                zcf = _mm_xor_si128(zcf, z03);
-                zcf = $rotate!(zcf, 16);
-
-                z8b = _mm_add_epi32(z8b, zcf);
-                z47 = _mm_xor_si128(z47, z8b);
-                z47 = $rotate!(z47, 12);
-
-                z03 = _mm_add_epi32(z03, z47);
-                zcf = _mm_xor_si128(zcf, z03);
-                zcf = $rotate!(zcf, 8);
-
-                z8b = _mm_add_epi32(z8b, zcf);
-                z47 = _mm_xor_si128(z47, z8b);
-                z47 = $rotate!(z47, 7);
-
-                z47 = _mm_shuffle_epi32(z47, 0b10_01_00_11);
-                z8b = _mm_shuffle_epi32(z8b, 0b01_00_11_10);
-                zcf = _mm_shuffle_epi32(zcf, 0b00_11_10_01);
-            }
-
-            let mut out = [0u32; 8];
-            // SAFETY: `out` is 8 writable words
-            unsafe {
-                _mm_storeu_si128(out[0..4].as_mut_ptr().cast(), z03);
-                _mm_storeu_si128(out[4..8].as_mut_ptr().cast(), zcf);
-            }
-            out
-        }
-    };
-}
-
-hchacha!(hchacha_ssse3, "ssse3", rotate_left_128_ssse3);
-hchacha!(hchacha_sse2, "sse2", rotate_left_128_sse2);
-
 const SIGMA: [u8; 16] = *b"expand 32-byte k";
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::hchacha20;
 
     // The CPU's fastest path hides the others from every other test, so
     // aws-lc's routines, with SSSE3 and without, are checked against it
@@ -716,21 +598,6 @@ mod tests {
                 ChaCha20::new(&key, &nonce).cipher(&mut whole);
                 assert_eq!(whole, want, "{len} bytes, then 200, at once");
             }
-        }
-    }
-
-    // SSSE3, where present, hides the SSE2 HChaCha20 from every other test.
-    #[test]
-    fn hchacha_paths_match() {
-        if HaveSsse3::check().is_none() {
-            return;
-        }
-        for seed in 1..=4u8 {
-            let key = core::array::from_fn(|i| (i as u8).wrapping_mul(seed).wrapping_add(seed));
-            let nonce = core::array::from_fn(|i| (i as u8).wrapping_mul(0x9d) ^ seed);
-            // SAFETY: SSSE3 was checked above, and every x86_64 CPU has SSE2
-            let (want, got) = unsafe { (hchacha_ssse3(&key, &nonce), hchacha_sse2(&key, &nonce)) };
-            assert_eq!(got, want, "seed {seed}");
         }
     }
 

@@ -52,23 +52,6 @@ impl ChaCha20 {
     }
 }
 
-/// HChaCha20 of `key` and `nonce`, for XChaCha20's subkey.
-pub(crate) fn hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
-    let mut key0 = four(key[0..16].try_into().unwrap());
-    let mut key1 = four(key[16..32].try_into().unwrap());
-    hchacha(&mut key0, &mut key1, &four(nonce));
-    let mut out = [0u8; 32];
-    for (o, w) in out
-        .as_chunks_mut::<4>()
-        .0
-        .iter_mut()
-        .zip(key0.iter().chain(&key1))
-    {
-        *o = w.to_le_bytes();
-    }
-    out
-}
-
 // Rotate each element of a uint32x4_t left by a specified number of bits.
 macro_rules! rotate_left {
     ($reg:expr, 8) => {{
@@ -351,40 +334,6 @@ fn core_x4(key0: &[u32; 4], key1: &[u32; 4], nonce: &[u32; 4], out: &mut [u8; 25
     xor(row3, (&mut out[240..256]).try_into().unwrap());
 }
 
-fn hchacha(key0: &mut [u32; 4], key1: &mut [u32; 4], nonce: &[u32; 4]) {
-    let [mut z0, mut z1, mut z2, mut z3] = SIGMA;
-    let &mut [mut z4, mut z5, mut z6, mut z7] = key0;
-    let &mut [mut z8, mut z9, mut za, mut zb] = key1;
-    let &[mut zc, mut zd, mut ze, mut zf] = nonce;
-
-    macro_rules! quarter {
-        ($a:ident, $b:ident, $c:ident, $d:ident) => {
-            $a = $a.wrapping_add($b);
-            $d = ($d ^ $a).rotate_left(16);
-            $c = $c.wrapping_add($d);
-            $b = ($b ^ $c).rotate_left(12);
-            $a = $a.wrapping_add($b);
-            $d = ($d ^ $a).rotate_left(8);
-            $c = $c.wrapping_add($d);
-            $b = ($b ^ $c).rotate_left(7);
-        };
-    }
-
-    for _ in 0..10 {
-        quarter!(z0, z4, z8, zc);
-        quarter!(z1, z5, z9, zd);
-        quarter!(z2, z6, za, ze);
-        quarter!(z3, z7, zb, zf);
-        quarter!(z0, z5, za, zf);
-        quarter!(z1, z6, zb, zc);
-        quarter!(z2, z7, z8, zd);
-        quarter!(z3, z4, z9, ze);
-    }
-
-    *key0 = [z0, z1, z2, z3];
-    *key1 = [zc, zd, ze, zf];
-}
-
 const fn u32_slice_to_uint32x4_t(value: &[u32; 4]) -> uint32x4_t {
     // SAFETY: the memory layout of [u32; 4] is compatible with uint32x4_t.
     unsafe { mem::transmute(*value) }
@@ -397,6 +346,7 @@ const SIGMA: [u32; 4] = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::hchacha20;
 
     #[test]
     fn test_vectors() {
@@ -500,30 +450,6 @@ mod tests {
                 0xcc, 0xb2, 0x7d, 0x5a, 0xaa, 0xe0, 0xad, 0x7a, 0xd0, 0xf9, 0xd4, 0xb6, 0xad, 0x3b,
                 0x54, 0x09, 0x87, 0x46, 0xd4, 0x52, 0x4d, 0x38, 0x40, 0x7a, 0x6d, 0xeb, 0x3a, 0xb7,
                 0x8f, 0xab, 0x78, 0xc9
-            ]
-        );
-    }
-
-    #[test]
-    fn hchacha_test_vectors() {
-        // From draft-irtf-cfrg-xchacha-03
-
-        let key = [
-            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
-            0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b,
-            0x1c, 0x1d, 0x1e, 0x1f,
-        ];
-        let nonce = [
-            0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x4a, 0x00, 0x00, 0x00, 0x00, 0x31, 0x41,
-            0x59, 0x27, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
-        ];
-
-        assert_eq!(
-            hchacha20(&key, nonce[..16].try_into().unwrap()),
-            [
-                0x82, 0x41, 0x3b, 0x42, 0x27, 0xb2, 0x7b, 0xfe, 0xd3, 0x0e, 0x42, 0x50, 0x8a, 0x87,
-                0x7d, 0x73, 0xa0, 0xf9, 0xe4, 0xd5, 0x8a, 0x74, 0xa8, 0x53, 0xc1, 0x2e, 0xc4, 0x13,
-                0x26, 0xd3, 0xec, 0xdc,
             ]
         );
     }

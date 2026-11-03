@@ -90,7 +90,7 @@ impl XChaCha20Poly1305 {
         let mut chacha_nonce = [0u8; 12];
         chacha_nonce[4..].copy_from_slice(tail);
         (
-            low::chacha20::hchacha20(&self.key, head.try_into().unwrap()),
+            low::hchacha20(&self.key, head.try_into().unwrap()),
             chacha_nonce,
         )
     }
