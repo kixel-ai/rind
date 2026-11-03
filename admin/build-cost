@@ -4,8 +4,9 @@
 Usage: admin/build-cost [--runs N] [BUILD...]
 
 For each build of a fixture in admin/build-cost-fixtures, prints JSON with the
-cold `cargo build --release` time of each run (empty target directory, warm
-download cache), the stripped binary's size, and which build tools it needed.
+cold `cargo build --release` wall and CPU time of each run (empty target
+directory, warm download cache), the stripped binary's size, the packages it
+compiles, and which build tools it needed.
 Run it in the dev shell (`nix develop`) so the toolchain matches CI. It uses
 cargo's default job count unless CARGO_BUILD_JOBS is set, and refuses to start
 on a busy host, since either would skew the times.
@@ -18,6 +19,7 @@ import argparse
 import json
 import os
 import platform
+import resource
 import shlex
 import shutil
 import statistics
@@ -167,16 +169,20 @@ def cargo_build(name, env, target):
     ]
     if features:
         cmd += ["--features", ",".join(features)]
+    before = resource.getrusage(resource.RUSAGE_CHILDREN)
     start = time.monotonic()
     result = subprocess.run(cmd, env=env, capture_output=True, text=True)
-    return time.monotonic() - start, result
+    wall = time.monotonic() - start
+    after = resource.getrusage(resource.RUSAGE_CHILDREN)
+    cpu = after.ru_utime + after.ru_stime - before.ru_utime - before.ru_stime
+    return wall, cpu, result
 
 
 def tools_needed(name, env, scratch):
     """Trace one build's tools, then rebuild without each to see if it needs it."""
     record = scratch / "trace" / "invoked"
     shims = make_shims(scratch / "trace" / "shims", record, None, env)
-    _, result = cargo_build(name, shims, scratch / "target")
+    _, _, result = cargo_build(name, shims, scratch / "target")
     if result.returncode != 0:
         sys.exit(f"{name}: traced build failed:\n{result.stderr}")
     invoked = sorted(set(record.read_text().split())) if record.exists() else []
@@ -187,7 +193,7 @@ def tools_needed(name, env, scratch):
             continue  # Probed for but absent, and the build still succeeded.
         log(f"{name}: building without {tool}")
         denied = make_shims(scratch / f"deny-{tool}", scratch / "ignored", tool, env)
-        _, result = cargo_build(name, denied, scratch / "target")
+        _, _, result = cargo_build(name, denied, scratch / "target")
         if result.returncode != 0:
             needed.append(tool)
     return needed
@@ -217,14 +223,14 @@ def measure(name, runs, env):
     tools = tools_needed(name, env, scratch)
 
     seconds = []
-    loads = []
+    cpu_seconds = []
     for run in range(runs):
         log(f"{name}: build {run + 1} of {runs}")
-        loads.append(round(os.getloadavg()[0], 1))
-        elapsed, result = cargo_build(name, env, target)
+        wall, cpu, result = cargo_build(name, env, target)
         if result.returncode != 0:
             sys.exit(f"{name}: build failed:\n{result.stderr}")
-        seconds.append(round(elapsed, 2))
+        seconds.append(round(wall, 2))
+        cpu_seconds.append(round(cpu, 2))
 
     binary = target / "release" / f"build-cost-{fixture}"
     subprocess.run([binary], check=True, capture_output=True)
@@ -235,8 +241,10 @@ def measure(name, runs, env):
         "name": name,
         "seconds": seconds,
         "median_seconds": statistics.median(seconds),
-        # Each build's starting load average, since other work skews its time.
-        "loads": loads,
+        # User and system time across every process, which other work on the
+        # host skews far less than the wall time.
+        "cpu_seconds": cpu_seconds,
+        "median_cpu_seconds": statistics.median(cpu_seconds),
         "stripped_bytes": stripped.stat().st_size,
         "tools": tools,
         "packages": packages(name, env),
