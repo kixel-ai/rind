@@ -32,4 +32,3 @@ and crates.io publishing no longer depends on a long-lived registry token.
   that is never stored as a repository secret; later versions use OIDC.
 - Check the workflow and trusted-publisher configuration without publishing a
   duplicate version. Treat the next real release as the end-to-end smoke test.
-
