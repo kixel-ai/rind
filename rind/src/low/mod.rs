@@ -20,18 +20,16 @@ mod generic {
     // against.
     #[cfg(any(target_arch = "arm", target_arch = "x86_64", test))]
     pub(crate) mod chacha20poly1305;
-    #[cfg(not(target_arch = "arm"))]
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
     pub(super) mod ctr;
     #[cfg(all(test, not(target_arch = "arm")))]
     pub(crate) mod ghash;
-    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     pub(crate) mod mlkem;
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
     pub(crate) mod mlkem768;
-    // x86_64's ML-KEM arithmetic for CPUs without AVX2.
-    #[cfg(target_arch = "x86_64")]
+    // ML-KEM arithmetic for armv7 and x86_64 CPUs without AVX2.
+    #[cfg(any(target_arch = "arm", target_arch = "x86_64"))]
     pub(crate) mod mlkem_poly;
     // armv7's group orders, picked from by modulus.
     #[cfg(target_arch = "arm")]
@@ -63,7 +61,6 @@ mod posint;
 
 pub(crate) use entry::Entry;
 pub(crate) use generic::blockwise::{Blockwise, pad_message};
-#[cfg(not(target_arch = "arm"))]
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
@@ -317,6 +314,15 @@ cfg_if::cfg_if! {
         // SHA-1 and SHA-256 use the crypto extension where present, else rind's
         // portable SHA, since libcrux has no SHA-1 and rind's SHA-256 is faster
         // than libcrux's. SHA-512 is aws-lc's, NEON or scalar.
+        pub(crate) use generic::mlkem::{mlkem_compress_d4, mlkem_compress_d10, mlkem_frombytes, mlkem_unpack};
+        pub(crate) use generic::mlkem_poly::{
+            mlkem_basemul_k3, mlkem_intt, mlkem_mulcache_compute, mlkem_ntt, mlkem_reduce,
+            mlkem_rej_uniform_vartime, mlkem_tobytes, mlkem_tomont,
+        };
+        pub(crate) use generic::mlkem768::mlkem768_sample_poly_ntt_8x;
+        pub(crate) use arm::keccak1600_armv4::{
+            sha3_keccak4_f1600, sha3_keccak_f1600, sha3_keccak_nof4_f1600,
+        };
         pub(crate) use arm::sha_armv4::{
             sha1_compress_blocks, sha256_compress_blocks, sha512_compress_blocks,
         };

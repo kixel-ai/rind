@@ -86,7 +86,8 @@ but there is also a public API for general-purpose use.
   aws-lc's assembly, and so does Poly1305 where the CPU has NEON. SHA-384,
   SHA-512, and SHA-512/256 always run aws-lc's assembly, with NEON where the
   CPU has it, and with NEON, X25519's shared secret runs [BoringSSL]'s
-  assembly.
+  assembly. ML-KEM's Keccak-f runs [OpenSSL]'s assembly, on NEON where the
+  CPU has it.
 
 Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
 at startup to get an error naming the missing feature instead.
@@ -137,10 +138,10 @@ cell and keeps each benchmark's numbers in its summary. These are from
 [run 41378010740], and the P-256, P-384, and P-521 cells from
 [run 41399702862], except armv7's P-256, from [run 41518446383]; a change
 that moves a cell refreshes it.
-ML-KEM-768's cells are from [run 41400124007], whose x86_64 job drew an EPYC
-9V74 (Zen 4) and no AVX2 job an EPYC 7763. RSA's no ADX and no AVX2 cells are
-from [run 41469252502], whose no ADX job drew a Xeon 6973P-C (Granite Rapids)
-and no AVX2 job an EPYC 7763.
+ML-KEM-768's cells, except armv7's from [run 41516604217], are from
+[run 41400124007], whose x86_64 job drew an EPYC 9V74 (Zen 4) and no AVX2 job
+an EPYC 7763. RSA's no ADX and no AVX2 cells are from [run 41469252502], whose
+no ADX job drew a Xeon 6973P-C (Granite Rapids) and no AVX2 job an EPYC 7763.
 
 x86_64 runs every feature of an AMD EPYC 7763 (Zen 3: ADX, AVX2, SHA-NI, and
 VAES, but no AVX-512), except where noted below. Each column to its right denies more, as `bench.yml`
@@ -220,7 +221,7 @@ HKDF rows from [run 41519474246], the other SHA and HMAC cells from
 | P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | 0.58 fiat-crypto ✓ + rind ⚡ + Graviola ⚡ |
 | P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.03** fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | 0.64 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.04** fiat-crypto ✓ + rind ⚡ |
-| ML-KEM-768 | **1.04** s2n-bignum ✓ + Graviola ⚡ | 0.93 | **1.05** libcrux-ml-kem ✓ |
+| ML-KEM-768 | **1.04** s2n-bignum ✓ + Graviola ⚡ | 0.93 | 0.68 mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ |
 | RSA signatures, key generation | 0.97 s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | 0.97 | **1.34** aws-lc ⚡ + Graviola ⚡ + rind ⚡ |
 | rind-rustls handshakes | 0.96 | 0.90 | **1.29** |
 | rind-rustls 1 MB transfer | 1.00 | 1.00 | 1.01 |
@@ -236,11 +237,11 @@ tests use [Wycheproof]'s vectors.
 | rind | its own code | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | [s2n-bignum] | copied: its assembly, transliterated into Rust `asm!` by `admin/parse-asm`, which ends each x86_64 routine using 256-bit registers with `vzeroupper` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM and aarch64 Keccak-f routines (from mlkem-native) Apache-2.0 OR ISC OR MIT; its x86_64 Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/main/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/main/arm/proofs)) that each routine's object code computes its specified result for all inputs. They check s2n-bignum's own build, not rind's transliteration, and do not cover memory safety. |
 | [HACL\*] | dependency, through libcrux-hacl-rs and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
-| [libcrux-ml-kem] | dependency | Apache-2.0 | [hax and F\* proofs](https://github.com/cryspen/libcrux/blob/main/libcrux-ml-kem/proofs/verification_status.md) of panic freedom and functional correctness for its portable arithmetic, NTT, serialization, and high-level code. Its SHA-3, from libcrux-sha3, is unverified. |
-| [mlkem-native] | ported: its portable C polynomial arithmetic (the NTT, inverse NTT, base multiplication, reductions, packing, and rejection sampling), to Rust, for x86_64 CPUs without AVX2; copied, by `admin/import-aws-lc` from aws-lc's copy: its x86_64 AVX2 ciphertext compression, which rind ends with `vzeroupper` | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port. [HOL Light proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/hol_light/x86_64) that its AVX2 compression's object code computes its specified result for all inputs, of mlkem-native's own build. |
+| [mlkem-native] | ported: its portable C polynomial arithmetic (the NTT, inverse NTT, base multiplication, reductions, packing, and rejection sampling), to Rust, for armv7 and x86_64 CPUs without AVX2; copied, by `admin/import-aws-lc` from aws-lc's copy: its x86_64 AVX2 ciphertext compression, which rind ends with `vzeroupper` | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port. [HOL Light proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/hol_light/x86_64) that its AVX2 compression's object code computes its specified result for all inputs, of mlkem-native's own build. |
 | [libcrux-aes] | dependency for AES-GCM; copied: the block cipher | Apache-2.0 | nothing: libcrux marks it pre-verification |
 | [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine and its aarch64 one for the SHA-256 instructions, Montgomery multiplication and the x86_64 exponentiation's `bn_power5` (with one deliberate change: rind's `bn_sqr8x_mont` and `bn_powerx5` zero two scratch words their `mulx` squaring reads unwritten, which valgrind reports though results and timing do not depend on them), AVX2 and dual AVX-512 RSAZ exponentiation, AES-NI AES-CTR, AVX AES-GCM (`aesni_gcm`), P-256's generator multiplication (its row scan and mixed addition), and SSE4.1 and AVX2 ChaCha20-Poly1305 (with one deliberate change: rind's copy reads the choice of AVX2 from the block rind passes it rather than aws-lc's `OPENSSL_ia32cap_P`), its aarch64 NEON ChaCha20-Poly1305, its x86_64 assembly for CPUs without AVX2 (SSSE3 and integer ChaCha20, SSSE3 and AVX SHA-1, and SSSE3 SHA-256) without AES-NI (SSSE3 AES and GHASH), and without SSSE3 (integer SHA-1 and SHA-256), its aarch64 Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, Montgomery multiplication, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`; and the C that drives that Poly1305, RSAZ, and `bn_power5`, that sets up its x86_64 SSSE3 GHASH table, and that computes its constant-time SSE2 AES and integer GHASH for x86_64 CPUs without SSSE3, ported to Rust. aws-lc takes its Poly1305, ChaCha20-Poly1305, SSSE3 GHASH, and constant-time AES and GHASH from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305, ChaCha20-Poly1305, SSSE3 and integer GHASH, and constant-time AES ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification) that its x86_64 AVX and aarch64 (with and without the SHA-512 instructions) SHA-384/512 routines compute their specified result for all inputs, and SAW proofs that its x86_64 AVX AES-GCM does, for AES-256 and whole blocks. They check aws-lc's own build, not rind's copy, and do not cover its 32-bit ARM code. |
 | [BoringSSL] | copied, by `admin/import-boringssl`: its x86_64 VAES AES-GCM assembly, `aes-gcm-avx2-x86_64` and `aes-gcm-avx512-x86_64`, as Rust naked functions; its 32-bit ARM NEON X25519 assembly, in Rust `global_asm!`, which BoringSSL takes from [SUPERCOP]'s `neon2`, public domain | Apache-2.0 | nothing |
+| [OpenSSL] | copied, by `admin/import-openssl`: its 32-bit ARM Keccak-f assembly, integer and NEON, `keccak1600-armv4`, in Rust `global_asm!` | Apache-2.0 | nothing |
 | [curve25519-dalek] | dependency, with its serial 32-bit backend | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
 
@@ -262,13 +263,13 @@ different one, updates this table and [LICENSE] in the same PR.
 [cifra]: https://github.com/ctz/cifra
 [s2n-bignum]: https://github.com/awslabs/s2n-bignum
 [HACL\*]: https://github.com/hacl-star/hacl-star
-[libcrux-ml-kem]: https://github.com/cryspen/libcrux/tree/main/libcrux-ml-kem
 [libcrux-aes]: https://github.com/cryspen/libcrux/tree/main/crates/algorithms/aes
 [mlkem-native]: https://github.com/pq-code-package/mlkem-native
 [libcrux]: https://github.com/cryspen/libcrux
 [aws-lc]: https://github.com/aws/aws-lc
 [fiat-crypto]: https://github.com/mit-plv/fiat-crypto
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
+[OpenSSL]: https://github.com/openssl/openssl
 [SUPERCOP]: https://bench.cr.yp.to/supercop.html
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
@@ -278,6 +279,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41397278464]: https://github.com/moq-dev/rind/actions/runs/41397278464
 [run 41398664891]: https://github.com/moq-dev/rind/actions/runs/41398664891
 [run 41400124007]: https://github.com/moq-dev/rind/actions/runs/41400124007
+[run 41516604217]: https://github.com/moq-dev/rind/actions/runs/41516604217
 [run 41464027605]: https://github.com/moq-dev/rind/actions/runs/41464027605
 [run 41467306881]: https://github.com/moq-dev/rind/actions/runs/41467306881
 [run 41401180882]: https://github.com/moq-dev/rind/actions/runs/41401180882
@@ -412,6 +414,14 @@ aarch64 keeps it, and Keccak-f four states one at a time, chosen once per
 process. It measured 1.3x faster than libcrux's portable ML-KEM for key
 generation and encapsulation there, and 2x for decapsulation.
 
+armv7 runs the same construction and arithmetic, with [OpenSSL]'s Keccak-f:
+NEON where the CPU has it, and integer code on bit-interleaved lanes
+otherwise. Keccak-f dominates ML-KEM there, and compiled code spills its
+state. With NEON it measured 1.5x faster than libcrux's portable ML-KEM for
+key generation and encapsulation, and 2.8x for decapsulation. Without NEON,
+under qemu, it ran key generation and encapsulation in 1.3x fewer
+instructions.
+
 Compression and decompression are division-free, avoiding the variable-time
 division behind the KyberSlash attacks.
 
@@ -423,6 +433,8 @@ have some different options depending on CPU features:
 - We have a 4-wide Keccak-f using AVX2 on x86-64.
 - We have a 2-wide Keccak-f using Neon+SHA3 on aarch64.
 - We have a basic Keccak-f using scalar instructions on aarch64.
+- We have OpenSSL's Keccak-f, on NEON or bit-interleaved in integer code, on
+  armv7.
 
 ### Symmetric cryptography
 SHA1 and SHA256 have straightforward implementations using hashing intrinsics
