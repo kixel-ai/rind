@@ -15,4 +15,4 @@ revision.
 
 ## Required
 
-- [instant-acme 0.9 is released](/quest/m1/moq/instant-acme-release.md) - the release this switches to
+- [instant-acme 0.9 is released](/quest/m3/instant-acme-release.md) - the release this switches to
