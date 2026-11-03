@@ -139,12 +139,15 @@ fn bits(e: &[u64], lsb: usize, width: usize) -> u64 {
     bits & ((1 << width) - 1)
 }
 
-/// Squares `z` five times and multiplies it by power `i` of `table`, each
-/// product almost Montgomery modulo `m`, for a multiple of eight words, by
-/// `mulx`, `adcx`, and `adox` given the proof of BMI2 and ADX.
+/// Squares `z` five times and multiplies it by power `i % 32` of `table`,
+/// each product almost Montgomery modulo `m`, for a multiple of eight words,
+/// by `mulx`, `adcx`, and `adox` given the proof of BMI2 and ADX.
 fn power5(z: &mut [u64], table: &[Row], m: &[u64], n0: u64, i: u64, adx: Option<HaveBmi2Adx>) {
     let k = m.len();
-    assert!(k.is_multiple_of(8) && z.len() == k && table.len() == k && i < 32);
+    assert!(k.is_multiple_of(8) && z.len() == k && table.len() == k);
+    // A mask rather than a check bounds the secret `i`, since a debug build
+    // would branch on the check.
+    let i = (i % 32) as i32;
     let z = z.as_mut_ptr();
     let (table, m) = (table.as_ptr().cast(), m.as_ptr());
     // SAFETY: `z` and `m` are each `k` words, a nonzero multiple of eight, as
@@ -155,8 +158,8 @@ fn power5(z: &mut [u64], table: &[Row], m: &[u64], n0: u64, i: u64, adx: Option<
     // `bn_powerx5` runs.
     unsafe {
         match adx {
-            Some(_) => bn_powerx5(z, z, table, m, &n0, k as i32, i as i32),
-            None => bn_power5(z, z, table, m, &n0, k as i32, i as i32),
+            Some(_) => bn_powerx5(z, z, table, m, &n0, k as i32, i),
+            None => bn_power5(z, z, table, m, &n0, k as i32, i),
         }
     };
 }
