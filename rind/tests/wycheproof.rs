@@ -89,6 +89,8 @@ struct Test {
     iteration_count: u32,
     #[serde(default, with = "hex::serde")]
     dk: Vec<u8>,
+    #[serde(default)]
+    flags: Vec<String>,
     result: ExpectedResult,
 }
 
@@ -770,14 +772,22 @@ fn test_ed25519_verify() {
     for group in tests.groups {
         summary.group(&group);
 
-        let key = signature::PublicKey::new(&verify::ED25519, &group.public_key.pk).unwrap();
+        let key = signature::PublicKey::new(&verify::ED25519, &group.public_key.pk);
 
         for test in group.tests {
             summary.start(&test);
 
-            let result = key.verify(&test.msg, &test.sig);
+            // rind refuses a small-order key, which verifies forgeries.
+            if test.flags.iter().any(|flag| flag == "SmallOrderPublicKey") {
+                assert_eq!(test.result, ExpectedResult::Acceptable);
+                let err = key.as_ref().unwrap_err().to_string();
+                assert!(err.contains("small-order"), "{err}");
+                continue;
+            }
+
+            let result = key.as_ref().unwrap().verify(&test.msg, &test.sig);
             match (test.result, result) {
-                // "acceptable" cases are small- and mixed-order public keys
+                // "acceptable" cases are mixed-order public keys
                 (ExpectedResult::Valid | ExpectedResult::Acceptable, Ok(())) => {}
                 (
                     ExpectedResult::Invalid | ExpectedResult::Acceptable,

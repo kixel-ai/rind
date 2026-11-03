@@ -902,6 +902,69 @@ mod ed25519 {
             );
         }
     }
+
+    /// libsodium's small-order encodings: each `y` of a small-order point
+    /// that fits in 255 bits, with either sign.
+    fn small_order() -> impl Iterator<Item = [u8; 32]> {
+        [
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            "0100000000000000000000000000000000000000000000000000000000000000",
+            "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+            "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+            "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+            "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+            "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+        ]
+        .into_iter()
+        .flat_map(|y| {
+            let y: [u8; 32] = hex::decode(y).unwrap().try_into().unwrap();
+            [y, {
+                let mut negative = y;
+                negative[31] |= 0x80;
+                negative
+            }]
+        })
+    }
+
+    #[test]
+    fn small_order_public_keys() {
+        // aws-lc-rs verifies a signature nobody made on each small-order point,
+        // `S = 0` with `R = -[k]A`, itself of small order; rind refuses every
+        // encoding. With the identity as `A`, `R` is the identity for any
+        // message.
+        let identity = small_order().nth(2).unwrap();
+        let forged = [&identity[..], &[0; 32]].concat();
+        UnparsedPublicKey::new(&ED25519, identity)
+            .verify(b"any message", &forged)
+            .unwrap();
+
+        // `k` depends on `R`, so search the small-order points for one that
+        // is `-[k]A`, which each is with odds of one in `A`'s order.
+        let points: Vec<_> = small_order().collect();
+        for public in small_order() {
+            assert_eq!(
+                signature::PublicKey::new(&signature::verify::ED25519, &public)
+                    .unwrap_err()
+                    .to_string(),
+                "a key was rejected: a small-order point"
+            );
+            let theirs = UnparsedPublicKey::new(&ED25519, public);
+            let forged = (0u8..=255).any(|message| {
+                points.iter().any(|r| {
+                    let forged = [&r[..], &[0; 32]].concat();
+                    theirs.verify(&[message], &forged).is_ok()
+                })
+            });
+            // aws-lc-rs verifies nothing on a non-canonical encoding, a sign on
+            // `x = 0` or a `y` of `p` or `p + 1`, so the two differ on the eight
+            // points alone.
+            let canonical = !matches!(
+                (public[0], public[31]),
+                (0x01 | 0xec, 0x80..) | (0xed | 0xee, _)
+            );
+            assert_eq!(forged, canonical, "{public:x?}");
+        }
+    }
 }
 
 mod rsa {

@@ -35,6 +35,8 @@
 //! - Where ring takes a [`rand::SecureRandom`] to generate a key or sign,
 //!   rind draws from the system random source itself, as
 //!   [`rand::SystemRandom`], the only `SecureRandom`, does.
+//! - An Ed25519 public key of small order verifies no signature, where
+//!   ring verifies some that nobody made on it.
 //! - A [`error::KeyRejected`]'s `Display` gives rind's reason, not ring's
 //!   name for it, which ring documents as changing between releases.
 //! - rind panics on a CPU missing a feature it requires, and ring's
