@@ -5,7 +5,7 @@
 use core::fmt;
 
 use super::hash::{Hash, HashContext, LegacySha1, Sha256, Sha384, Sha512};
-use crate::low::{Zeroable, ct, ct_equal, zeroise_value};
+use crate::low::{Entry, Zeroable, ct, ct_equal, zeroise_value};
 use crate::mid::{sha1, sha2};
 
 /// A hash function, chosen by one of this module's constants.
@@ -66,6 +66,7 @@ pub static SHA512_256: Algorithm = Algorithm {
 
 /// Hashes `data` in one go.
 pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
+    let _entry = Entry::new_secret();
     match algorithm.id {
         Id::Sha1 => LegacySha1::hash(data),
         Id::Sha256 => Sha256::hash(data),
@@ -138,11 +139,13 @@ impl Context {
 
     /// Adds `data` to the message.
     pub fn update(&mut self, data: &[u8]) {
+        let _entry = Entry::new_secret();
         self.0.update(data);
     }
 
     /// Returns the digest of the message.
     pub fn finish(self) -> Digest {
+        let _entry = Entry::new_secret();
         self.0.finish()
     }
 }

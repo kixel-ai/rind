@@ -9,7 +9,7 @@ use core::num::NonZeroU32;
 use super::hash::Hash;
 use super::hmac::{self, HmacKey, Keyed};
 use crate::Error;
-use crate::low::{ct, ct_equal};
+use crate::low::{Entry, ct, ct_equal};
 
 /// A PBKDF2 algorithm, chosen by one of this module's constants.
 #[derive(Debug)]
@@ -44,6 +44,7 @@ impl Secret {
     /// Fails with [`Error::WrongLength`], leaving `out` unchanged, if `out`
     /// is empty or longer than PBKDF2 allows.
     pub fn derive(&self, iterations: NonZeroU32, salt: &[u8], out: &mut [u8]) -> Result<(), Error> {
+        let _entry = Entry::new_secret();
         self.check_len(out.len())?;
         self.blocks(iterations, salt, out.len(), |offset, block| {
             out[offset..offset + block.len()].copy_from_slice(block);
@@ -64,6 +65,7 @@ impl Secret {
         salt: &[u8],
         previously_derived: &[u8],
     ) -> Result<(), Error> {
+        let _entry = Entry::new_secret();
         if previously_derived.len() < self.0.algorithm().tag_len() {
             return Err(Error::WrongLength);
         }

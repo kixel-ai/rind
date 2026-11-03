@@ -6,8 +6,7 @@
 //! Its collision resistance is broken, so it must not be used where that
 //! matters, such as in signatures.
 
-use crate::low::cpu::verify_cpu_features;
-use crate::low::{Blockwise, compress_padded};
+use crate::low::{Blockwise, Entry, compress_padded};
 
 /// SHA1's chaining value after a whole number of blocks.
 ///
@@ -41,7 +40,7 @@ impl Sha1State {
     }
 
     fn compress(h: &mut [u32; 5], blocks: &[u8]) {
-        verify_cpu_features();
+        Entry::assert_held();
         crate::low::sha1_compress_blocks(h, blocks);
     }
 
