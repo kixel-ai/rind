@@ -37,7 +37,6 @@ ml-kem = { version = "0.3", features = ["getrandom"] }
 p256 = { version = "0.14", features = ["ecdh", "getrandom"] }
 p384 = { version = "0.14", features = ["ecdh", "getrandom"] }
 p521 = { version = "0.14", features = ["ecdh", "getrandom"] }
-pbkdf2 = "0.13"
 proptest = "1.5.0"
 ring = "0.17"
 rind-jsonwebtoken = { path = "../rind-jsonwebtoken" }
