@@ -92,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [rsa2048, rsa3072, rsa4096]
+        test: [rsa2048, rsa3072, rsa4096, aes128_gcm, aes256_gcm]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

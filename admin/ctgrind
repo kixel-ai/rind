@@ -12,9 +12,11 @@ set -e
 # the armv7 build never takes its ARMv8 crypto extension path here, and that
 # assembly goes unchecked. It passes `AT_HWCAP`, so the NEON code is checked.
 #
-# Valgrind (through 3.27) decodes no AVX-512 instruction and hides AVX-512
-# from `cpuid`, so rind's AVX-512 AES-GCM, ML-KEM, and RSA paths go unchecked
-# here. `admin/ct-sde` checks the RSA one under Intel SDE.
+# Valgrind (through 3.27) decodes no AVX-512, VAES, VPCLMULQDQ, or SHA
+# instruction and hides them from `cpuid`, so rind's AES-GCM on VAES, SHA-1
+# and SHA-256 on the SHA extensions, and AVX-512 ML-KEM and RSA go unchecked
+# here. `admin/ct-sde` checks the AVX-512 AES-GCM and RSA under Intel SDE;
+# ML-KEM's AVX-512 code samples only the public matrix.
 #
 # Release builds keep line tables so memcheck names inlined frames, which
 # the suppressions match.
