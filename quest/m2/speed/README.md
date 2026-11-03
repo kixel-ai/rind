@@ -48,3 +48,4 @@ settled; don't ask them again. The chosen option is marked ✅.
 ## Required
 
 - [x86_64 SHA-256 of 64 B messages as fast as ring](/quest/m2/speed/sha256-64b.md) - one-block SHA-256 without the extra copies
+- [ChaCha20 header protection on Zen 5 as fast as aws-lc-rs](/quest/m2/speed/chacha-hp-zen5.md) - the 1.89 gap natively on Zen 5 found or fixed
