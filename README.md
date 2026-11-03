@@ -357,7 +357,10 @@ multiplication and squaring, which are rind's. LLVM compiles fiat-crypto's
 call, between its interleaved carry chains; rind's carry in 64-bit
 accumulators (`umaal`) instead, in 560 instructions run to fiat-crypto's
 1,375. fiat-crypto cannot generate an unsaturated P256, as it does P521:
-its bounds checks fail at every 32-bit limb count from 9 to 16.
+its bounds checks fail at every 32-bit limb count from 9 to 16. armv7's
+P384 runs rind's Montgomery multiplication and squaring the same way, in
+1,151 instructions to fiat-crypto's 2,254, over fiat-crypto's other field
+and scalar arithmetic.
 
 P384 base point multiplication uses a comb of 20 tables of 16 affine points
 (a 30KB constant table) over 5-bit Booth windows, as aws-lc does. Variable
