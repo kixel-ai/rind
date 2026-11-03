@@ -288,9 +288,9 @@ impl HaveAvx {
 /// Proof that the CPU has SSSE3, which aws-lc's vpaes, GHASH, ChaCha20,
 /// SHA-1, and SHA-256 routines for CPUs without AES-NI or AVX2 use.
 ///
-/// Without it, aws-lc's integer ChaCha20, SHA-1, and SHA-256 routines, and
-/// ports of its constant-time AES and GHASH in SSE2 and integer code, run
-/// instead.
+/// Without it, aws-lc's integer SHA-1 and SHA-256 routines, ports of its
+/// constant-time AES and GHASH in SSE2 and integer code, and HACL*'s ChaCha20
+/// rounds run instead.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveSsse3(());
 

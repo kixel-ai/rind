@@ -44,8 +44,8 @@ Targets, refused rather than falling back:
   adx, aws-lc's SSSE3 and AVX ChaCha20 and SHA and portable ML-KEM arithmetic
   without avx2, aws-lc's RSAZ for RSA-2048 with avx2 but without adx, rind's
   SSE-encoded AES-GCM intrinsics and aws-lc's AES-NI CTR, aws-lc's vpaes and SSSE3 GHASH without aes and pclmulqdq, and
-  ports of aws-lc's SSE2 AES and integer GHASH and its integer ChaCha20,
-  SHA-1, and SHA-256 without ssse3, chosen once per process; aarch64 needs
+  ports of aws-lc's SSE2 AES and integer GHASH, its integer SHA-1 and
+  SHA-256, and HACL*'s ChaCha20 without ssse3, chosen once per process; aarch64 needs
   neon. aarch64 CPUs
   without the crypto extension (Raspberry Pi 4, CM4, Zero 2 W) run aws-lc's
   NEON AES and GHASH and scalar SHA-1 and SHA-256, chosen once per process,

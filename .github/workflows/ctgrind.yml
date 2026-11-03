@@ -45,7 +45,7 @@ jobs:
   # denies AES-NI, PCLMULQDQ, and SSE4.1, for aws-lc's vpaes and SSSE3 GHASH,
   # and ChaCha20 and Poly1305 in separate passes, as the first Core 2s run,
   # and the `no-ssse3` row SSSE3, for aws-lc's SSE2 AES, integer GHASH,
-  # ChaCha20, SHA-1, and SHA-256, as `qemu64` runs. Valgrind already hides
+  # SHA-1, and SHA-256, and HACL*'s ChaCha20 rounds, as `qemu64` runs. Valgrind already hides
   # VAES and the SHA extensions, so their denials only keep each row the CPU
   # it names. The denial takes `--cfg rind_cpu_disable`, so the release build
   # stays the code that ships.
