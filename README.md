@@ -135,7 +135,8 @@ and ring's providers. RSA key generation, whose time swings by up to 3x from
 run to run, stays out of the ratios. The nightly `bench` workflow times every
 cell and keeps each benchmark's numbers in its summary. These are from
 [run 41378010740], and the P-256, P-384, and P-521 cells from
-[run 41399702862], except armv7's P-256, from [run 41518446383]; a change
+[run 41399702862], except armv7's P-256, from [run 41518446383], and armv7's P-384, from
+[run 41552280502]; a change
 that moves a cell refreshes it.
 ML-KEM-768's cells, except armv7's from [run 41516604217], are from
 [run 41400124007], whose x86_64 job drew an EPYC 9V74 (Zen 4) and no AVX2 job
@@ -218,7 +219,7 @@ HKDF rows from [run 41519474246], the other SHA and HMAC cells from
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
 | Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
 | P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.99 | 0.58 fiat-crypto ✓ + rind ⚡ + Graviola ⚡ |
-| P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | **1.03** fiat-crypto ✓ + rind ⚡ |
+| P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | 0.44 fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | 0.64 s2n-bignum ✓ + rind ⚡ | 0.65 | **1.04** fiat-crypto ✓ + rind ⚡ |
 | ML-KEM-768 | **1.04** s2n-bignum ✓ + Graviola ⚡ | 0.93 | 0.68 mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ |
 | RSA signatures, key generation | 0.97 s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | 0.97 | **1.34** aws-lc ⚡ + Graviola ⚡ + rind ⚡ |
@@ -287,6 +288,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41469252502]: https://github.com/moq-dev/rind/actions/runs/41469252502
 [run 41485960394]: https://github.com/moq-dev/rind/actions/runs/41485960394
 [run 41518446383]: https://github.com/moq-dev/rind/actions/runs/41518446383
+[run 41552280502]: https://github.com/moq-dev/rind/actions/runs/41552280502
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
