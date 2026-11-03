@@ -452,8 +452,8 @@ fn sqr_row<const I: usize>(t: &mut [u32; 24], x: &[u32; 12]) {
 /// i adds `m p 2^(32i)` for word i's value m, which zeroes it: m added at
 /// words i + 1 and i + 12, and subtracted at i + 3 and i + 4.  Those gather
 /// in signed 64-bit columns, each carried into the next only when its step
-/// reaches it, so no carry chain runs across another.  Column k collects
-/// two additions and two subtractions of a word, and a carry of -2 to 3
+/// reaches it, so no carry chain runs across another.  Column k holds its
+/// word of t, two words added and two subtracted, and a carry of -2 to 3
 /// from column k - 1, so it stays within [-2^33, 3 * 2^32] and carries -2
 /// to 3 itself.  The result is below 2p < 2^385.
 fn reduce_p(t: &[u32; 24]) -> [u32; 12] {
