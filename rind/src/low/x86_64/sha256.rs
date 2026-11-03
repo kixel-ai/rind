@@ -3,15 +3,19 @@
 
 use core::arch::x86_64::*;
 
+/// Compresses `blocks`, then `more`, in one call, so a hash's padding needs
+/// no copy of the message's last whole block to join it.
 pub(in crate::low) fn sha256_compress_blocks_shaext(
     state: &mut [u32; 8],
     blocks: &[u8],
+    more: &[u8],
     _token: super::cpu::HaveSha256,
 ) {
     debug_assert!(blocks.len().is_multiple_of(64));
+    debug_assert!(more.len().is_multiple_of(64));
     // SAFETY: `_token` proves the caller checked the `sha`, `ssse3`, and
     // `sse4.1` features
-    unsafe { sha256(state, blocks) }
+    unsafe { sha256(state, blocks, more) }
 }
 
 macro_rules! k {
@@ -49,7 +53,7 @@ macro_rules! round {
 }
 
 #[target_feature(enable = "sha,sse4.1,ssse3")]
-fn sha256(state: &mut [u32; 8], blocks: &[u8]) {
+fn sha256(state: &mut [u32; 8], blocks: &[u8], more: &[u8]) {
     let little_endian_shuffle = _mm_set_epi64x(0x0c0d0e0f08090a0b, 0x0405060700010203);
 
     // SAFETY: `state` is 8 32-bit words and readable
@@ -82,8 +86,9 @@ fn sha256(state: &mut [u32; 8], blocks: &[u8]) {
     let k14 = k!(14);
     let k15 = k!(15);
 
-    let (chunks, _) = blocks.as_chunks::<64>();
-    for block in chunks {
+    let (blocks, _) = blocks.as_chunks::<64>();
+    let (more, _) = more.as_chunks::<64>();
+    for block in blocks.iter().chain(more) {
         let state0_prev = state0;
         let state1_prev = state1;
 
@@ -496,7 +501,7 @@ static K: Aligned = Aligned([
 mod tests {
     use super::*;
     use crate::low::generic;
-    use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSsse3};
+    use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSha256, HaveSsse3};
 
     const START: [u32; 8] = [
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
@@ -506,10 +511,12 @@ mod tests {
     // The SHA extensions, AVX2, SSSE3, and the vendor hide all but one path from
     // every other test, so each the CPU can run is checked against the
     // portable code directly: odd and even block counts, with distinct bytes
-    // in every block.
+    // in every block, and the SHA extensions' blocks split at every boundary
+    // between its two runs.
     #[test]
     fn paths_match_generic() {
         let (ssse3, avx, avx2) = (HaveSsse3::check(), HaveAvx::check(), HaveAvx2::check());
+        let sha = HaveSha256::check();
         let blocks: Vec<u8> = (0..5 * 64u32)
             .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
             .collect();
@@ -535,6 +542,14 @@ mod tests {
                 let mut got = START;
                 sha256_compress_blocks_avx2(&mut got, blocks, token);
                 assert_eq!(got, wanted, "avx2, {n} blocks");
+            }
+            if let Some(token) = sha {
+                for split in 0..=n {
+                    let (blocks, more) = blocks.split_at(split * 64);
+                    let mut got = START;
+                    sha256_compress_blocks_shaext(&mut got, blocks, more, token);
+                    assert_eq!(got, wanted, "shaext, {n} blocks split at {split}");
+                }
             }
         }
     }

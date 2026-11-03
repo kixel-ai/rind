@@ -7,7 +7,7 @@
 //! matters, such as in signatures.
 
 use crate::low::cpu::verify_cpu_features;
-use crate::low::{Blockwise, pad_message};
+use crate::low::{Blockwise, compress_padded};
 
 /// SHA1's chaining value after a whole number of blocks.
 ///
@@ -59,12 +59,9 @@ impl Sha1State {
         // two stores, which the SHA extensions' 16-byte load of it then
         // waits on instead of forwarding.
         let mut h = self.h;
-        let mut last = [[0u8; BLOCK_SZ]; 2];
-        let (blocks, last) = pad_message(message, bits.to_be_bytes(), &mut last);
-        if !blocks.is_empty() {
-            Self::compress(&mut h, blocks);
-        }
-        Self::compress(&mut h, last);
+        compress_padded::<BLOCK_SZ, _>(message, bits.to_be_bytes(), |blocks| {
+            Self::compress(&mut h, blocks)
+        });
 
         let mut r = [0u8; Sha1Context::OUTPUT_SZ];
         let (chunks, _) = r.as_chunks_mut::<4>();
