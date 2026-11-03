@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12](https://github.com/moq-dev/rind/compare/rind-v0.1.11...rind-v0.1.12) - 2026-11-03
+
+### Other
+
+- *(xchacha20poly1305)* run HChaCha20 in general-purpose registers ([#285](https://github.com/moq-dev/rind/pull/285))
+- *(sha256)* compress a message's whole blocks in place with SHA-NI ([#282](https://github.com/moq-dev/rind/pull/282))
+- README's Algorithms table shows current numbers and the reason for each accepted gap ([#283](https://github.com/moq-dev/rind/pull/283))
+- *(p384)* multiply armv7 P-384 with rind's Montgomery multiplication ([#273](https://github.com/moq-dev/rind/pull/273))
+- *(x86_64)* check VAES-AVX2 AES-GCM and SHA-NI HMAC's constant time under SDE ([#279](https://github.com/moq-dev/rind/pull/279))
+- *(mlkem)* run rind's ML-KEM on armv7 over OpenSSL's Keccak-f ([#254](https://github.com/moq-dev/rind/pull/254))
+- *(x86_64)* check AVX-512 AES-GCM's constant time under SDE ([#276](https://github.com/moq-dev/rind/pull/276))
+
 ## [0.1.11](https://github.com/moq-dev/rind/compare/rind-v0.1.10...rind-v0.1.11) - 2026-11-03
 
 ### Fixed
