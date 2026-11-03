@@ -19,7 +19,8 @@ body from after its label through its return, for `naked_asm!` in a naked
 function. rustc then emits the symbol, section, and alignment directives for
 the object format, so aws-lc's `linux` flavor serves ELF and COFF, and its
 Apple flavor, which spells alignment and page relocations differently, serves
-Mach-O. The tables move to Rust statics, written as array literals beside the
+Mach-O. The `linux` flavor opens with aws-lc's alignment for the routine,
+which raises rustc's. The tables move to Rust statics, written as array literals beside the
 routines, which the routines reach through `sym` operands; a label inside a
 table becomes the table's operand plus the label's offset. A `packed` table
 runs on through changes of width, written as bytes, for routines that load
@@ -789,6 +790,13 @@ def import_64(aws_lc):
                 joined.append(alignment(lines, other) + [f"{local}{other}:"] + text[: end + 1])
             for label, name in entries:
                 text = [line for line in body(lines, label, local, inner + labels) if line.split() not in dropped]
+                # rustc aligns a naked function to only 4 bytes, but on ELF
+                # and COFF gives each its own section, so aws-lc's alignment
+                # at the body's start raises the section's and pads nothing.
+                # Mach-O shares one section, where it would pad after the
+                # label, in the path of every call.
+                if flavor == "linux":
+                    text = alignment(lines, label[:-1]) + text
                 carried = spec.get("carries", {}).get(name, [])
                 for other in carried:
                     text += alignment(lines, other) + [f"{local}{other}:"] + body(lines, f"{other}:", local)
