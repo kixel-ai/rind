@@ -330,7 +330,8 @@ def run(args):
     result["libraries"] = {
         lib: {crate: ", ".join(locked.get(crate, ["?"])) for crate in crates} for lib, crates in CRATES.items()
     }
-    result["libraries"]["openssl"]["library"] = output([openssl, "version"], env)
+    # The OpenSSL the benchmarks link, beside its crates.
+    result["libraries"]["openssl"]["linked"] = output([openssl, "version"], env)
 
     bench = cargo + ["bench", "-p", "rind-bench", "--features", "__bench_openssl"]
     subprocess.run(bench + ["--no-run"], env=env, check=True)
@@ -491,6 +492,8 @@ def summary(args):
             print(f"- `{h['host']}`: {h['cpu']['model']}, {h['os']}, {h['toolchain']['rustc']}{noisy}")
         else:
             print(f"- `{h['host']}`: not measured, {h['status']}: {h['reason']}")
+    print()
+    print("Each cell is rind's time, then that over the fastest other library's, and which library that is.")
     print()
     print("| operation | " + " | ".join(h["host"] for h in measured) + " |")
     print("|---|" + "---|" * len(measured))
