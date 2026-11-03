@@ -47,6 +47,5 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [armv7 P-521 multiply without carry-flag spills](/quest/m2/speed/armv7-p521-mul.md) - armv7 P-521 off fiat-crypto if a non-spilling multiply is clearly faster
 - [x86_64 SHA-256 of 64 B messages as fast as ring](/quest/m2/speed/sha256-64b.md) - one-block SHA-256 without the extra copies
 - [README's Algorithms table shows current numbers and the reason for each accepted gap](/quest/m2/speed/readme-gaps.md) - fresh cells, and each accepted gap explained
