@@ -436,7 +436,9 @@ mod aead {
     use proptest::prelude::*;
     use proptest::sample::Index;
     use rind::Error;
-    use rind::aead::{AES_128_GCM, AES_256_GCM, Algorithm, CHACHA20_POLY1305, Key, Nonce};
+    use rind::aead::{
+        AES_128_GCM, AES_256_GCM, Algorithm, CHACHA20_POLY1305, Key, Nonce, RandomizedNonceKey,
+    };
 
     /// Seals on both sides and compares, then opens aws-lc-rs's output,
     /// first with one bit of its ciphertext or tag flipped if `flip` is set.
@@ -530,6 +532,68 @@ mod aead {
             flip in any::<Option<Index>>(),
         ) {
             check(&CHACHA20_POLY1305, &theirs::CHACHA20_POLY1305, &key, nonce, &aad, &msg, flip)?;
+        }
+
+        // aws-lc-rs has no XChaCha20-Poly1305, so this seals with aws-lc's
+        // under the nonce rind picked, and opens that, as `check` does.
+        #[test]
+        fn xchacha20_poly1305(
+            key in prop_oneof![Just([0; 32]), Just([0xff; 32]), any::<[u8; 32]>()],
+            aad in vec(any::<u8>(), 0..100),
+            msg in vec(any::<u8>(), 0..1100),
+            flip in any::<Option<Index>>(),
+        ) {
+            let ours = RandomizedNonceKey::new(&key);
+            let mut ours_sealed = msg.clone();
+            let nonce = ours.seal_in_place_append_tag(&aad, &mut ours_sealed).unwrap();
+
+            let mut theirs_sealed = msg.clone();
+            theirs_sealed.extend([0; 16]);
+            let (out, tag) = theirs_sealed.split_at_mut(msg.len());
+            let mut tag_len = 0;
+            // SAFETY: each pointer and length describes a live buffer, and
+            // the context is freed once, after its last use.
+            let sealed = unsafe {
+                let ctx = aws_lc_sys::EVP_AEAD_CTX_new(
+                    aws_lc_sys::EVP_aead_xchacha20_poly1305(),
+                    key.as_ptr(),
+                    key.len(),
+                    tag.len(),
+                );
+                assert!(!ctx.is_null());
+                let sealed = aws_lc_sys::EVP_AEAD_CTX_seal_scatter(
+                    ctx,
+                    out.as_mut_ptr(),
+                    tag.as_mut_ptr(),
+                    &mut tag_len,
+                    tag.len(),
+                    nonce.as_ref().as_ptr(),
+                    nonce.as_ref().len(),
+                    msg.as_ptr(),
+                    msg.len(),
+                    core::ptr::null(),
+                    0,
+                    aad.as_ptr(),
+                    aad.len(),
+                );
+                aws_lc_sys::EVP_AEAD_CTX_free(ctx);
+                sealed
+            };
+            prop_assert_eq!((sealed, tag_len), (1, 16));
+            prop_assert_eq!(&ours_sealed, &theirs_sealed);
+
+            if let Some(flip) = flip {
+                let index = flip.index(theirs_sealed.len());
+                theirs_sealed[index] ^= 1;
+            }
+            let result = ours
+                .open_in_place(nonce, &aad, &mut theirs_sealed)
+                .map(|plain| plain.to_vec());
+            if flip.is_some() {
+                prop_assert_eq!(result, Err(Error::DecryptFailed));
+            } else {
+                prop_assert_eq!(result, Ok(msg));
+            }
         }
     }
 }

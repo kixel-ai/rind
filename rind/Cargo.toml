@@ -36,6 +36,8 @@ libc = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 aws-lc-rs = { version = "1.16", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
+# aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
+aws-lc-sys = { version = "0.47", default-features = false }
 # Checks armv7's NIST curve arithmetic against s2n-bignum's on the other arches.
 fiat-crypto = { version = "0.3", default-features = false }
 hex = { version = "0.4", features = ["serde"] }

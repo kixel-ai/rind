@@ -2871,6 +2871,7 @@ name = "rind"
 version = "0.1.11"
 dependencies = [
  "aws-lc-rs",
+ "aws-lc-sys",
  "cfg-if",
  "crabgrind 0.4.0",
  "curve25519-dalek",
