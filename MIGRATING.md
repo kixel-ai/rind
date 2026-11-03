@@ -199,6 +199,9 @@ ring has no `kem`.
 
 `PublicKey::new` refuses a compressed ECDSA point and a
 `SubjectPublicKeyInfo`, both of which aws-lc-rs takes.
+It also refuses an Ed25519 key of small order, as libsodium does, which
+aws-lc-rs and ring take: with the identity as the key, `R` the identity and
+`S = 0` verify any message. No honest key has small order.
 
 An ECDSA key pair's loaders take its public key uncompressed or compressed,
 as aws-lc-rs does, but refuse a hybrid point, which aws-lc-rs takes; ring,

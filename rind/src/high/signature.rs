@@ -176,7 +176,8 @@ impl PublicKey {
     ///
     /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
     /// `RSAPublicKey` DER, and Ed25519 keys are their 32 bytes. A compressed
-    /// ECDSA point is refused: no consumer sends one.
+    /// ECDSA point is refused: no consumer sends one. So is an Ed25519 point
+    /// of small order, which verifies signatures nobody made.
     pub fn new(
         algorithm: &'static impl AsRef<VerificationAlgorithm>,
         bytes: &[u8],
