@@ -37,17 +37,18 @@ jobs:
   # check s2n-bignum's ADX routines, so this job denies it to check what
   # CPUs without ADX run: their `_alt` twins, and aws-lc's Montgomery
   # multiplication for RSA. The `no-adx` row keeps AVX2, as Haswell does, for
-  # aws-lc's RSAZ exponentiation of RSA-2048, and denies VAES, as Haswell
-  # lacks it, for aws-lc's AVX AES-GCM. The `no-avx` row denies AVX, the
-  # SHA extensions, and the vendor too, for what CPUs such as Westmere run:
-  # aws-lc's SSE4.1 ChaCha20-Poly1305 and SSSE3 ChaCha20, SHA-1, and SHA-256,
-  # the portable ML-KEM arithmetic, the SSE2 selects, rind's AES-GCM and GHASH
-  # intrinsics without VEX encoding, and aws-lc's AES-NI CTR. The `no-aes` row
-  # also denies AES-NI, PCLMULQDQ, and SSE4.1, for aws-lc's vpaes and SSSE3
-  # GHASH, and ChaCha20 and Poly1305 in separate passes, as the first Core 2s
-  # run, and the `no-ssse3` row SSSE3, for aws-lc's SSE2 AES, integer GHASH,
-  # ChaCha20, SHA-1, and SHA-256, as `qemu64` runs. The denial takes `--cfg
-  # rind_cpu_disable`, so the release build stays the code that ships.
+  # aws-lc's RSAZ exponentiation of RSA-2048. The `no-avx` row denies AVX and
+  # the vendor too, for what CPUs such as Westmere run: aws-lc's SSE4.1
+  # ChaCha20-Poly1305 and SSSE3 ChaCha20, SHA-1, and SHA-256, the portable
+  # ML-KEM arithmetic, the SSE2 selects, rind's AES-GCM and GHASH intrinsics
+  # without VEX encoding, and aws-lc's AES-NI CTR. The `no-aes` row also
+  # denies AES-NI, PCLMULQDQ, and SSE4.1, for aws-lc's vpaes and SSSE3 GHASH,
+  # and ChaCha20 and Poly1305 in separate passes, as the first Core 2s run,
+  # and the `no-ssse3` row SSSE3, for aws-lc's SSE2 AES, integer GHASH,
+  # ChaCha20, SHA-1, and SHA-256, as `qemu64` runs. Valgrind already hides
+  # VAES and the SHA extensions, so their denials only keep each row the CPU
+  # it names. The denial takes `--cfg rind_cpu_disable`, so the release build
+  # stays the code that ships.
   x86_64-portable:
     name: x86_64-portable (${{ matrix.cpu }})
     strategy:
@@ -84,15 +85,16 @@ jobs:
           RIND_CPU_DISABLE_adx: 1
           RIND_TEST_X86_BMI2_ADX: 0
 
-  # Valgrind runs no AVX-512, so `admin/ct-sde` compares Intel SDE traces of
-  # those paths for two secrets instead. One job per test, since RSA-4096's
-  # traces alone take about an hour.
+  # Valgrind runs no AVX-512, VAES, VPCLMULQDQ, or SHA instruction, so
+  # `admin/ct-sde` compares Intel SDE traces of those paths for two secrets
+  # instead. One job per test, since RSA-4096's traces alone take about an
+  # hour.
   x86_64-sde:
     name: x86_64-sde (${{ matrix.test }})
     strategy:
       fail-fast: false
       matrix:
-        test: [rsa2048, rsa3072, rsa4096, aes128_gcm, aes256_gcm]
+        test: [rsa2048, rsa3072, rsa4096, aes128_gcm, aes256_gcm, aes_gcm_vaes_avx2, hmac]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

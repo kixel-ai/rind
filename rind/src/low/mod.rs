@@ -85,6 +85,8 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::aes::AesKey;
         pub(crate) use x86_64::aes_ctr;
         pub(crate) use x86_64::aes_gcm;
+        #[cfg(test)]
+        pub(crate) use x86_64::ct_sde;
         pub(crate) use x86_64::bignum_add::bignum_add;
         pub(crate) use x86_64::bignum_add_p256::bignum_add_p256;
         pub(crate) use x86_64::bignum_add_p384::bignum_add_p384;

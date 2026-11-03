@@ -117,7 +117,8 @@ On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 with NEON alone, and with NEON denied.
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
 constant-time checks under valgrind, and `nix develop .#sde --command
-admin/ct-sde` those of the AVX-512 code valgrind cannot run, under Intel SDE.
+admin/ct-sde` those of the AVX-512, VAES, and SHA extension code valgrind
+cannot run, under Intel SDE.
 
 ## Algorithms
 

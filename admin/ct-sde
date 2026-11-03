@@ -2,15 +2,15 @@
 
 # Usage: admin/ct-sde [filter]
 #
-# The constant-time check for code valgrind cannot run, such as AVX-512 (see
-# `admin/ctgrind`). Each rind test named `ct_sde...` derives its secrets
-# from a seed and marks the call it checks. This runs each one whose name
-# contains `filter` twice under Intel SDE's Sapphire Rapids model, with
-# different seeds, and fails unless SDE's debugtraces of the marked call
-# name the same instruction and memory addresses in the same order. The
-# traces stream through pipes and are compared as they arrive, so no run
-# stores one. It cannot see variable-time instructions, which take the same
-# addresses whatever their operands.
+# The constant-time check for code valgrind cannot run, such as AVX-512 and
+# VAES (see `admin/ctgrind`). Each rind test named `ct_sde...` derives its
+# secrets from a seed and marks the call it checks. This runs each one whose
+# name contains `filter` twice under its Intel SDE CPU model, with different
+# seeds, and fails unless SDE's debugtraces of the marked call name the same
+# instruction and memory addresses in the same order. The traces stream
+# through pipes and are compared as they arrive, so no run stores one. It
+# cannot see variable-time instructions, which take the same addresses
+# whatever their operands.
 #
 # The `ct_sde_planted_...` tests leak their seed, and run every time. They
 # must differ, so a harness that traces nothing, or compares nothing, fails.
@@ -25,6 +25,9 @@ import collections, itertools, json, os, re, subprocess, sys, tempfile
 SEEDS = ["0123456789abcdef", "fedcba9876543210"]
 # `rind/src/low/x86_64/ct_sde.rs` marks the call between these.
 MARKS = ["52430001:repeat", "52430002:repeat"]
+# The SDE CPU model for tests whose names contain each key, else Sapphire
+# Rapids. Each test asserts that its model takes the path it checks.
+MODELS = {"vaes_avx2": "-adl"}  # Alder Lake: VAES without AVX-512.
 # Far below where the program maps its thread stacks and heaps.
 PIN_MEMORY = "0x100000000000:0x200000000000"
 
@@ -91,6 +94,10 @@ def is_planted(name):
     return name.split("::")[-1].startswith("ct_sde_planted")
 
 
+def model(name):
+    return next((m for key, m in MODELS.items() if key in name), "-spr")
+
+
 def compare(exe, name, tmp):
     """Traces `name` once for each seed, and returns where the traces differ,
     with the lines before it, or None, and how many lines they agreed on."""
@@ -100,7 +107,7 @@ def compare(exe, name, tmp):
         # A pipe rather than a named one, so that if SDE fails, the trace
         # ends rather than waits for SDE to open it.
         r, w = os.pipe()
-        cmd = ["setarch", "-R", "sde", "-spr", "-p", "-pin_memory_range"]
+        cmd = ["setarch", "-R", "sde", model(name), "-p", "-pin_memory_range"]
         cmd += ["-p", PIN_MEMORY, "-debugtrace"]
         cmd += ["-dt_out", "/dev/fd/{}".format(w)]
         cmd += ["-start_ssc_mark", MARKS[0], "-stop_ssc_mark", MARKS[1], "--"]

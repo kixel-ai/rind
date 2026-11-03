@@ -671,32 +671,61 @@ mod tests {
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
     fn ct_sde_aes128_gcm() {
-        trace(16);
+        trace_avx512(16);
     }
 
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
     fn ct_sde_aes256_gcm() {
-        trace(32);
+        trace_avx512(32);
     }
 
-    fn trace(key_len: usize) {
+    fn trace_avx512(key_len: usize) {
         let mut rng = Rng(ct_sde::seed());
-        let mut bytes = |n: usize| -> Vec<u8> { (0..n).map(|_| rng.next() as u8).collect() };
-        let key = bytes(key_len);
-        let (key, table) = ct_sde::traced(|| {
+        let (key, table) = traced_key(&mut rng, key_len);
+        assert!(matches!(table, GhashTable::Avx512(_)), "AVX-512 VAES");
+        for len in [AVX512_MINIMUM_CIPHER_LEN, AVX512_KERNEL_MINIMUM_CIPHER_LEN].map(|n| n + 200) {
+            traced_seal_open(&mut rng, &key, &table, len);
+        }
+    }
+
+    // The VAES-AVX2 key setup and BoringSSL's 256-bit kernel, both ways, for
+    // each key size, as `trace_avx512`. The message takes the kernel's 8-block
+    // loop and a tail of 7 blocks, then a partial block of 8 bytes.
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_aes_gcm_vaes_avx2() {
+        let mut rng = Rng(ct_sde::seed());
+        let len = VAES_AVX2_MINIMUM_CIPHER_LEN + 7 * 16 + 8;
+        for key_len in [16, 32] {
+            let (key, table) = traced_key(&mut rng, key_len);
+            assert!(matches!(table, GhashTable::VaesAvx2(..)), "VAES-AVX2");
+            traced_seal_open(&mut rng, &key, &table, len);
+        }
+    }
+
+    fn bytes(rng: &mut Rng, n: usize) -> Vec<u8> {
+        (0..n).map(|_| rng.next() as u8).collect()
+    }
+
+    /// Makes the key and GHASH table for a secret key, traced.
+    fn traced_key(rng: &mut Rng, key_len: usize) -> (AesKey, GhashTable) {
+        let key = bytes(rng, key_len);
+        ct_sde::traced(|| {
             let key = AesKey::new(&key);
             let mut h = [0u8; 16];
             key.encrypt_block(&mut h);
             (key, GhashTable::new(u128::from_be_bytes(h)))
-        });
-        assert!(matches!(table, GhashTable::Avx512(_)), "AVX-512 VAES");
-        for len in [AVX512_MINIMUM_CIPHER_LEN, AVX512_KERNEL_MINIMUM_CIPHER_LEN].map(|n| n + 200) {
-            let nonce = bytes(12).try_into().unwrap();
-            let aad = bytes(300);
-            let mut msg = bytes(len);
-            ct_sde::traced(|| seal(&key, &table, &nonce, &aad, &mut msg));
-            ct_sde::traced(|| open(&key, &table, &nonce, &aad, &mut msg));
-        }
+        })
+    }
+
+    /// Seals and opens a secret message of `len` bytes, under a secret nonce
+    /// and 300 bytes of secret AAD, each traced.
+    fn traced_seal_open(rng: &mut Rng, key: &AesKey, table: &GhashTable, len: usize) {
+        let nonce = bytes(rng, 12).try_into().unwrap();
+        let aad = bytes(rng, 300);
+        let mut msg = bytes(rng, len);
+        ct_sde::traced(|| seal(key, table, &nonce, &aad, &mut msg));
+        ct_sde::traced(|| open(key, table, &nonce, &aad, &mut msg));
     }
 }
