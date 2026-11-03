@@ -250,6 +250,8 @@ def main():
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("builds", nargs="*", metavar="BUILD", help=", ".join(BUILDS))
     args = parser.parse_args()
+    if args.runs < 1:
+        parser.error("--runs must be at least 1")
     args.builds = args.builds or list(BUILDS)
     for name in args.builds:
         if name not in BUILDS:
