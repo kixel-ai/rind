@@ -5,11 +5,14 @@
 A rind release on crates.io carries everything
 [MoQ](https://github.com/moq-dev/moq) needs to take all its cryptography from
 rind, so no MoQ build compiles C crypto: the new primitives, the CPU check, the
-armv7 backend, and every `rind-*` adapter. Each adapter's operations pass
+armv7 backend, and every `rind-*` adapter MoQ uses. Each adapter's operations pass
 rind's tests on x86_64, aarch64, and armv7 alike; an operation missing on one
 arch does not count as covered.
 
-MoQ's [migration epic](https://github.com/moq-dev/moq/blob/main/quest/m2/rind/README.md)
+MoQ drops moq-relay's ACME for now (maintainer, 2026-11-03), so
+`rind-instant-acme` and the instant-acme release it waits on moved to m3.
+
+MoQ's [migration epic](https://github.com/moq-dev/moq/blob/main/quest/m1/rind/README.md)
 switches each area once the rind pieces it uses are on crates.io.
 
 ## Plan
@@ -75,5 +78,4 @@ RustCrypto dependency.
 
 ## Required
 
-- [instant-acme 0.9 is released](/quest/m1/moq/instant-acme-release.md) - waiting on the release with a pluggable `CryptoProvider`
-- [Publish rind-instant-acme](/quest/m1/moq/instant-acme-publish.md) - switch to the 0.9 release and publish
+- [MoQ runs on rind](/quest/m1/moq/moq-on-rind.md) - waiting on MoQ to finish its migration

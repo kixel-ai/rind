@@ -19,6 +19,7 @@ on:
       - coverage
       - ctgrind
       - fuzz
+      - Pullfrog
       - quality lints
       - Queue
       - Release

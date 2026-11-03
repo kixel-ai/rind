@@ -10,7 +10,9 @@ once a 0.9 release holds that API.
 
 ## Plan
 
-moq-relay replaces rustls-acme with instant-acme because rustls-acme
+Moved out of m1 by the maintainer on 2026-11-03: MoQ drops moq-relay's ACME
+for now, so its migration no longer waits on this. moq-relay will replace
+rustls-acme with instant-acme when ACME returns, because rustls-acme
 hard-wires ring or aws-lc-rs with no provider hook
 ([FlorianUekermann/rustls-acme#62](https://github.com/FlorianUekermann/rustls-acme/issues/62)).
 To advance it, ask upstream about a release date or what still blocks one.
