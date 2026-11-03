@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+
+# Usage: admin/ct-qemu [filter]
+#
+# The constant-time check for armv7's crypto extension, which valgrind hides
+# from the program (see `admin/ctgrind`), as `admin/ct-sde` is for x86_64's
+# extensions. Each rind test named `ct_qemu...` derives its secrets from a
+# seed and marks the calls it checks. This runs each one whose name contains
+# `filter` twice under qemu-arm's `max` CPU, which has the extension, with
+# different seeds, and fails unless `admin/ct-qemu-plugin.c` traces the same
+# instruction and memory addresses in the same order between the marks. The
+# traces stream through pipes and are compared as they arrive, so no run
+# stores one. It cannot see variable-time instructions, which take the same
+# addresses whatever their operands.
+#
+# The `ct_qemu_planted_...` tests leak their seed, and run every time. They
+# must differ, so a harness that traces nothing, or compares nothing, fails.
+#
+# Run it in `nix develop .#ct-qemu`, which builds the plugin. qemu-user maps
+# the program's stack and heap at the same guest addresses each run, so ASLR
+# moves nothing the trace records.
+
+import collections, json, os, struct, subprocess, sys, tempfile
+
+SEEDS = ["0123456789abcdef", "fedcba9876543210"]
+TARGET = "armv7-unknown-linux-gnueabihf"
+# The plugin's records: a kind, a size, padding, and a 32-bit address.
+RECORD = struct.Struct("<cBxxI")
+# Records compared at a time.
+CHUNK = 1 << 16
+
+
+def build():
+    out = subprocess.run(
+        ["cargo", "test", "-p", "rind", "--lib", "--release", "--no-run"]
+        + ["--target", TARGET, "--message-format=json-render-diagnostics"],
+        stdout=subprocess.PIPE,
+        check=True,
+        encoding="utf-8",
+    ).stdout
+    for line in out.splitlines():
+        js = json.loads(line)
+        if js.get("reason") == "compiler-artifact" and js.get("executable"):
+            if js["target"]["name"] == "rind":
+                return js["executable"]
+    sys.exit("ct-qemu: no rind test binary")
+
+
+def tests(exe, filter):
+    out = subprocess.run(
+        ["qemu-arm", "-cpu", "max", exe, "--list", "--ignored", "--format", "terse"],
+        stdout=subprocess.PIPE,
+        check=True,
+        encoding="utf-8",
+    ).stdout
+    names = [line.removesuffix(": test") for line in out.splitlines()]
+    names = [n for n in names if n.split("::")[-1].startswith("ct_qemu")]
+    planted = [n for n in names if is_planted(n)]
+    return planted + [n for n in names if filter in n and not is_planted(n)]
+
+
+def is_planted(name):
+    return name.split("::")[-1].startswith("ct_qemu_planted")
+
+
+def describe(record):
+    kind, size, addr = RECORD.unpack_from(record)
+    return "{} {} {:#010x}".format(kind.decode(), size, addr)
+
+
+def compare(exe, name, tmp, plugin):
+    """Traces `name` once for each seed, and returns where the traces differ,
+    with the records before it, or None, and how many records they agreed
+    on."""
+    procs = []
+    files = []
+    for i, seed in enumerate(SEEDS):
+        # A pipe rather than a named one, so that if qemu fails, the trace
+        # ends rather than waits for qemu to open it.
+        r, w = os.pipe()
+        cmd = ["qemu-arm", "-cpu", "max"]
+        cmd += ["-plugin", "{},out=/dev/fd/{}".format(plugin, w), exe]
+        cmd += ["--ignored", "--exact", name, "--test-threads=1", "-q"]
+        # The seeds have the same length, so the environment, and so
+        # everything above it on the stack, lies at the same addresses.
+        env = dict(os.environ, RIND_CT_QEMU_SEED=seed)
+        log = open(os.path.join(tmp, "log{}".format(i)), "w+")
+        proc = subprocess.Popen(cmd, env=env, stdout=log, stderr=log, pass_fds=[w])
+        os.close(w)
+        procs.append((proc, log))
+        files.append(open(r, "rb"))
+
+    size = RECORD.size
+    records = 0
+    prev = b""
+    diff = None
+    while True:
+        a, b = (f.read(CHUNK * size) for f in files)
+        if a != b:
+            n = min(len(a), len(b))
+            i = next(i for i in range(n + 1) if i == n or a[i] != b[i]) // size
+            records += i
+            seen = (prev + a[: i * size])[-8 * size :]
+            context = [seen[j : j + size] for j in range(0, len(seen), size)]
+            ends = [describe(x[i * size :]) if len(x) > i * size else "(end)" for x in (a, b)]
+            diff = (context, *ends)
+            break
+        if not a:
+            break
+        records += len(a) // size
+        prev = a
+
+    for proc, log in procs:
+        if diff:
+            proc.kill()
+        elif proc.wait() != 0:
+            log.seek(0)
+            sys.exit("ct-qemu: {} failed under qemu:\n{}".format(name, log.read()))
+    for f in files:
+        f.close()
+    for proc, _ in procs:
+        proc.wait()
+    return diff, records
+
+
+def main():
+    sys.stdout.reconfigure(line_buffering=True)
+    plugin = os.environ.get("RIND_CT_QEMU_PLUGIN")
+    if not plugin:
+        sys.exit("ct-qemu: run it in `nix develop .#ct-qemu`")
+    filter = sys.argv[1] if len(sys.argv) > 1 else ""
+    exe = build()
+    names = tests(exe, filter)
+    if all(is_planted(n) for n in names):
+        sys.exit("ct-qemu: no ct_qemu test matches {!r}".format(filter))
+
+    failed = False
+    for name in names:
+        with tempfile.TemporaryDirectory() as tmp:
+            diff, records = compare(exe, name, tmp, plugin)
+        planted = is_planted(name)
+        if records == 0:
+            print("FAIL {}: traced nothing".format(name))
+            failed = True
+        elif diff and not planted:
+            context, a, b = diff
+            print("FAIL {}: traces differ after {} records".format(name, records))
+            for record in context:
+                print("    " + describe(record))
+            print("  - " + a)
+            print("  + " + b)
+            failed = True
+        elif not diff and planted:
+            print("FAIL {}: a planted leak traced the same".format(name))
+            failed = True
+        else:
+            print("ok   {}: {} records".format(name, records))
+    sys.exit(failed)
+
+
+main()

@@ -8,4 +8,3 @@ does not block it.
 ## Required
 
 - [Fastest at every algorithm](/quest/m2/speed/README.md) - every algorithm on every path as fast as any permissive source
-- [armv7's crypto-extension assembly is checked for constant time](/quest/m2/armv7-crypto-ext-ct.md) - the path valgrind can't see gets a trace comparison

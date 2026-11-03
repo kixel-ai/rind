@@ -117,9 +117,11 @@ On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
 with NEON alone, and with NEON denied.
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
-constant-time checks under valgrind, and `nix develop .#sde --command
+constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, and SHA extension code valgrind
-cannot run, under Intel SDE.
+cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
+admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
+qemu.
 
 ## Algorithms
 

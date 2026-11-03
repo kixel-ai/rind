@@ -366,6 +366,25 @@ mod tests {
         }
     }
 
+    // HMAC-SHA1 and HMAC-SHA256 on the crypto extension, which valgrind hides
+    // from armv7, as `ct_sde_hmac`, for `admin/ct-qemu`.
+    #[cfg(target_arch = "arm")]
+    #[test]
+    #[ignore = "admin/ct-qemu runs it under qemu-arm"]
+    fn ct_qemu_hmac() {
+        use crate::low::{HaveCryptoExt, ct_qemu};
+
+        assert!(HaveCryptoExt::check().is_some(), "the crypto extension");
+        let seed = ct_qemu::seed().to_le_bytes();
+        let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
+        for algorithm in [&HMAC_SHA1, &HMAC_SHA256] {
+            for key_len in [16, 200] {
+                let (key, message) = (bytes(key_len), bytes(300));
+                ct_qemu::traced(|| sign(&Key::new(algorithm, &key), &message));
+            }
+        }
+    }
+
     #[test]
     fn cavp() {
         #[derive(Debug, Default)]
