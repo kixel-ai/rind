@@ -588,9 +588,11 @@ const BYTESWAP_512_EPI64: __m512i = unsafe {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::x86_64::adx_mux::tests::Rng;
     use crate::low::x86_64::aes_gcm_avx::AvxKernel;
     use crate::low::x86_64::aes_nohw::NohwKey;
     use crate::low::x86_64::cpu::{HaveAesHardware, HaveAvxMovbeForAesGcm, HaveSsse3};
+    use crate::low::x86_64::ct_sde;
     use crate::low::x86_64::ghash_nohw::NohwTable;
     use crate::low::x86_64::ghash_ssse3_x86_64::Ssse3Table;
     use crate::low::x86_64::vpaes_x86_64::VpaesKey;
@@ -659,6 +661,42 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    // The AVX-512 key setup, by-16 loop, and BoringSSL kernel, both ways,
+    // with a secret key, nonce, AAD, and message, for `admin/ct-sde`. Each
+    // message takes its path's 16-block loop and a masked tail of 12 blocks
+    // and 8 bytes, and the AAD the 512-bit GHASH and then a partial block.
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_aes128_gcm() {
+        trace(16);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_aes256_gcm() {
+        trace(32);
+    }
+
+    fn trace(key_len: usize) {
+        let mut rng = Rng(ct_sde::seed());
+        let mut bytes = |n: usize| -> Vec<u8> { (0..n).map(|_| rng.next() as u8).collect() };
+        let key = bytes(key_len);
+        let (key, table) = ct_sde::traced(|| {
+            let key = AesKey::new(&key);
+            let mut h = [0u8; 16];
+            key.encrypt_block(&mut h);
+            (key, GhashTable::new(u128::from_be_bytes(h)))
+        });
+        assert!(matches!(table, GhashTable::Avx512(_)), "AVX-512 VAES");
+        for len in [AVX512_MINIMUM_CIPHER_LEN, AVX512_KERNEL_MINIMUM_CIPHER_LEN].map(|n| n + 200) {
+            let nonce = bytes(12).try_into().unwrap();
+            let aad = bytes(300);
+            let mut msg = bytes(len);
+            ct_sde::traced(|| seal(&key, &table, &nonce, &aad, &mut msg));
+            ct_sde::traced(|| open(&key, &table, &nonce, &aad, &mut msg));
         }
     }
 }
