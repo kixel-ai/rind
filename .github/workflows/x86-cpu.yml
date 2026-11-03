@@ -40,8 +40,8 @@ jobs:
       # `admin/x86-cpus`.
 
       # Prescott, a Pentium 4, lacks SSSE3, so it runs every slowest path:
-      # aws-lc's SSE2 AES and integer GHASH, ChaCha20, SHA-1, and SHA-256, the
-      # portable ML-KEM arithmetic, s2n-bignum's `_alt` routines, and aws-lc's
+      # aws-lc's SSE2 AES and integer GHASH, SHA-1, and SHA-256, HACL*'s
+      # ChaCha20 rounds, the portable ML-KEM arithmetic, s2n-bignum's `_alt` routines, and aws-lc's
       # Montgomery multiplication.
       - name: Check Prescott
         run: nix develop .#sde --command cargo test --release
