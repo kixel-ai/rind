@@ -139,7 +139,8 @@ impl Context {
 
     /// Adds `data` to the message.
     pub fn update(&mut self, data: &[u8]) {
-        let _entry = Entry::new_secret();
+        // The compressors enter instead, so an update that only buffers skips
+        // the cost of enabling DIT.
         self.0.update(data);
     }
 

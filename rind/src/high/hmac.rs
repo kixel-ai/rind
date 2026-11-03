@@ -189,7 +189,8 @@ impl Context {
 
     /// Adds `data` to the message.
     pub fn update(&mut self, data: &[u8]) {
-        let _entry = Entry::new_secret();
+        // The compressors enter instead, so an update that only buffers skips
+        // the cost of enabling DIT.
         match &mut self.0 {
             Streaming::Sha1(hmac) => hmac.update(data),
             Streaming::Sha256(hmac) => hmac.update(data),

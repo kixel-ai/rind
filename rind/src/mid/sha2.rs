@@ -35,6 +35,9 @@ impl Sha256State {
     pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
         debug_assert!(blocks.len().is_multiple_of(Sha256Context::BLOCK_SZ));
         if !blocks.is_empty() {
+            // `digest::Context::update` and `hmac::Context::update` leave
+            // entering to here.
+            let _entry = Entry::new_secret();
             Self::compress(&mut self.h, blocks);
             self.nblocks = self
                 .nblocks
@@ -241,6 +244,9 @@ impl Sha512State {
     pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
         debug_assert!(blocks.len().is_multiple_of(Sha512Context::BLOCK_SZ));
         if !blocks.is_empty() {
+            // `digest::Context::update` and `hmac::Context::update` leave
+            // entering to here.
+            let _entry = Entry::new_secret();
             Self::compress(&mut self.h, blocks);
             self.nblocks = self
                 .nblocks
