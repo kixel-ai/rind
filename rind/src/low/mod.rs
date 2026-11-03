@@ -64,9 +64,9 @@ pub(crate) use entry::Entry;
 #[cfg(target_arch = "x86_64")]
 pub(crate) use generic::blockwise::pad_message;
 pub(crate) use generic::blockwise::{Blockwise, compress_padded};
+pub(crate) use generic::chacha20::hchacha20;
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
-pub(crate) use generic::chacha20::hchacha20;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
 pub(crate) use generic::zeroise::{Zeroable, zeroise, zeroise_value};
