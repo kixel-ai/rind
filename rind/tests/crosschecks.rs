@@ -260,6 +260,37 @@ mod cipher {
             prop_assert_eq!(ours, theirs);
         }
     }
+
+    // Every length through the backends' boundaries, at once and split into
+    // two calls at each block boundary.
+    #[test]
+    fn chacha20_every_length() {
+        let key = core::array::from_fn(|i| i as u8);
+        let nonce = core::array::from_fn(|i| (i * 7) as u8);
+        let mut theirs = vec![0u8; 600];
+        let _tag = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, &key).unwrap())
+            .seal_in_place_separate_tag(
+                Nonce::assume_unique_for_key(nonce),
+                Aad::empty(),
+                &mut theirs,
+            )
+            .unwrap();
+
+        let ours = ChaCha20::new(key);
+        for len in 0..=600 {
+            let mut at_once = vec![0u8; len];
+            ours.apply_keystream(&nonce, 1, &mut at_once).unwrap();
+            assert_eq!(at_once, theirs[..len], "{len} bytes");
+            for split in (64..len).step_by(64) {
+                let mut split_out = vec![0u8; len];
+                let (first, second) = split_out.split_at_mut(split);
+                ours.apply_keystream(&nonce, 1, first).unwrap();
+                ours.apply_keystream(&nonce, 1 + split as u32 / 64, second)
+                    .unwrap();
+                assert_eq!(split_out, theirs[..len], "{len} bytes, split at {split}");
+            }
+        }
+    }
 }
 
 mod hkdf {

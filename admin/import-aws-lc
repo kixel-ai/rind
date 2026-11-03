@@ -267,7 +267,7 @@ IMPORTS_64 = [
         "perlasm": "crypto/chacha/asm/chacha-x86_64.pl",
         "copyright": "Copyright 2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["zero", "rot16"],
-        "routines": ["ChaCha20_ctr32_nohw", "ChaCha20_ctr32_ssse3_4x"],
+        "routines": ["ChaCha20_ctr32_ssse3_4x"],
     },
     # The routines aws-lc's `bn_mul_mont` picks from, by width and CPU.
     # `bn_sqrx8x_internal` loads the two scratch words after the 2n-word

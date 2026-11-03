@@ -5,10 +5,11 @@
 //
 // ChaCha20's rounds, from HACL*'s verified `Hacl_Chacha20` as
 // libcrux-chacha20poly1305 0.0.10 ships it (`src/hacl/chacha20.rs`), for
-// HChaCha20 on every backend and a single block on x86_64 with AVX2. They run
-// in general-purpose registers, as aws-lc's integer routines do: a single
-// block packed into vector registers is one serial chain, which Zen 5's
-// two-cycle vector latency makes twice as slow.
+// HChaCha20 on every backend and for x86_64's ChaCha20: one block, up to 128
+// bytes without AVX2, and every length without SSSE3. They run in
+// general-purpose registers, as aws-lc's integer routines do: a single block
+// packed into vector registers is one serial chain, which Zen 5's two-cycle
+// vector latency makes twice as slow.
 
 #[inline]
 fn quarter_round(st: &mut [u32], a: u32, b: u32, c: u32, d: u32) {
