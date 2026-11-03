@@ -730,8 +730,11 @@ def header(comment, spec, source):
 
 
 def write(path, lines):
-    with open(path, "w") as f:
+    # Renamed into place, so a failure partway leaves the committed file whole.
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
         f.write("\n".join(lines) + "\n")
+    os.replace(tmp, path)
 
 
 def import_arm(aws_lc):

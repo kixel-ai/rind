@@ -1,0 +1,44 @@
+name: regenerate
+
+# Re-runs every importer and generator at the upstream revision it pins and
+# fails on any difference from the committed code. Too slow for `just ci`, so
+# it runs nightly and on pull requests that change a generator or a pin.
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - admin/**
+      - thirdparty/s2n-bignum
+      - .github/workflows/regenerate.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regenerate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # admin/parse-asm calls the cross tools by their Debian names, which the
+      # dev shell's PATH falls through to. The image ships the x86_64 ones,
+      # and the perl OpenSSL's perlasm runs on.
+      - name: Install cross tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cpp-aarch64-linux-gnu binutils-aarch64-linux-gnu
+
+      - uses: ./.github/actions/nix
+
+      - name: Regenerate
+        run: nix develop --command admin/regenerate
