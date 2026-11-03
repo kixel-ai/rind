@@ -282,18 +282,33 @@ impl<C: Curve> SigningKey<C> {
             random,
         );
 
-        let (k, r) = loop {
-            let k = C::generate_random_key(&mut rng)?;
-            let x = k.public_key_x_scalar();
-            if !x.is_zero() {
-                break (k, x);
-            }
-        };
-        let s = self.private_key.raw_ecdsa_sign(&k, &e, &r);
+        let (r, s) = self.sign_with_nonces(&e, &mut rng)?;
 
         r.write_bytes(&mut output[..C::Scalar::LEN_BYTES]);
         s.write_bytes(&mut output[C::Scalar::LEN_BYTES..]);
         Ok(&output[..C::Scalar::LEN_BYTES * 2])
+    }
+
+    /// Sign the message representative `e`, returning `(r, s)`.
+    ///
+    /// Draws nonces from `nonces` until both `r` and `s` are nonzero, as
+    /// FIPS 186-5 section 6.4.1 requires.
+    fn sign_with_nonces(
+        &self,
+        e: &C::Scalar,
+        nonces: &mut dyn RandomSource,
+    ) -> Result<(C::Scalar, C::Scalar), Error> {
+        loop {
+            let k = C::generate_random_key(nonces)?;
+            let r = k.public_key_x_scalar();
+            if r.is_zero() {
+                continue;
+            }
+            let s = self.private_key.raw_ecdsa_sign(&k, e, &r);
+            if !s.is_zero() {
+                return Ok((r, s));
+            }
+        }
     }
 }
 
@@ -498,6 +513,52 @@ mod tests {
 
         let k = SigningKey::<curve::P521>::generate().unwrap();
         check_sign_verify::<curve::P521>(k.private_key);
+    }
+
+    #[test]
+    fn sign_retries_when_s_is_zero() {
+        use crate::mid::p256::{Scalar, StaticPrivateKey};
+
+        let k1 = [0x11u8; 32];
+        let k2 = [0x22u8; 32];
+        let e = Scalar::from_bytes_checked(&[0x33; 32]).unwrap();
+        let r1 = StaticPrivateKey::from_bytes(&k1)
+            .unwrap()
+            .public_key_x_scalar();
+
+        // d = -e / r1 zeroes s = (e + r1 * d) / k1 for the first nonce.
+        // raw_ecdsa_sign computes d as (0 + (n - 1) * e) / r1.
+        let n_minus_1 = Scalar::from_bytes_checked(
+            &hex::decode("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632550")
+                .unwrap(),
+        )
+        .unwrap();
+        let d = StaticPrivateKey::from_bytes(&e.as_bytes())
+            .unwrap()
+            .raw_ecdsa_sign(
+                &StaticPrivateKey::from_bytes(&r1.as_bytes()).unwrap(),
+                &Scalar::from_bytes_reduced(&[0; 32]).unwrap(),
+                &n_minus_1,
+            );
+        let sk =
+            SigningKey::<curve::P256>::new(StaticPrivateKey::from_bytes(&d.as_bytes()).unwrap())
+                .unwrap();
+        let k1_key = StaticPrivateKey::from_bytes(&k1).unwrap();
+        assert!(sk.private_key.raw_ecdsa_sign(&k1_key, &e, &r1).is_zero());
+
+        let nonces = [k1, k2].concat();
+        let (r, s) = sk
+            .sign_with_nonces(&e, &mut SliceRandomSource(&nonces))
+            .unwrap();
+        let r2 = StaticPrivateKey::from_bytes(&k2)
+            .unwrap()
+            .public_key_x_scalar();
+        assert_eq!(r.as_bytes(), r2.as_bytes());
+        VerifyingKey::<curve::P256>::from_x962_uncompressed(sk.public_key_uncompressed())
+            .unwrap()
+            .public_key
+            .raw_ecdsa_verify(&r, &s, &e)
+            .unwrap();
     }
 
     fn check_sign_verify<C: Curve>(private_key: C::PrivateKey) {
