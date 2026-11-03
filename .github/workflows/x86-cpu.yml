@@ -58,6 +58,7 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 0
 
       # Merom, the first Core 2, adds SSSE3 but not SSE4.1 or AES-NI, so it
       # runs aws-lc's vpaes and SSSE3 GHASH, ChaCha20, SHA-1, and SHA-256,
@@ -77,6 +78,7 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 0
 
       # Nehalem adds SSE4.1, so ChaCha20-Poly1305 runs in one pass, but still
       # lacks AES-NI, so it otherwise runs Merom's paths. Penryn selects the
@@ -96,6 +98,7 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 0
 
       # Westmere adds AES-NI and PCLMULQDQ without AVX, so rind's AES-GCM and
       # GHASH intrinsics run without VEX encoding. Silvermont selects the same
@@ -115,6 +118,7 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 0
 
       # Goldmont, an Atom, runs Westmere's paths, but SHA-1 and SHA-256 on
       # its SHA extensions. Goldmont Plus, Tremont, and Snow Ridge select the
@@ -134,6 +138,7 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 0
 
       # Sandy Bridge lacks AVX2, MOVBE, BMI2, and ADX, so rind's AES-GCM
       # intrinsics, aws-lc's AVX SHA and SSSE3 ChaCha20 routines, the portable
@@ -154,6 +159,7 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 0
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 0
 
       # Haswell lacks ADX and VAES, so s2n-bignum's `_alt` routines, aws-lc's
       # Montgomery multiplication, its RSAZ exponentiation for RSA-2048, and
@@ -173,6 +179,7 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 0
 
       # Skylake server has AVX-512 but neither SHA nor VAES, so it runs the
       # AVX2 kernels with s2n-bignum's BMI2 and ADX routines, and aws-lc's AVX
@@ -193,9 +200,11 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 0
 
-      # Cannon Lake adds SHA, but lacks VAES and AVX-512 VBMI2, so it runs
-      # Skylake server's paths with SHA-1 and SHA-256 on the SHA extensions.
+      # Cannon Lake adds SHA and AVX-512 IFMA, but lacks VAES and AVX-512
+      # VBMI2, so it runs Skylake server's paths with SHA-1 and SHA-256 on the
+      # SHA extensions, and RSA on aws-lc's dual AVX-512 RSAZ.
       - name: Check Cannon Lake
         run: nix develop .#sde --command cargo test --release
         env:
@@ -211,6 +220,7 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 1
 
       # Alder Lake adds VAES without AVX-512, so AES-GCM runs on 256-bit
       # vectors. Meteor, Raptor, Arrow, Lunar, and Panther Lake, and Sierra
@@ -230,6 +240,7 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 0
 
       # Granite Rapids limited to 256-bit AVX10 hides AVX-512F, so it selects
       # Alder Lake's paths, checking that rind takes no AVX-512 path there.
@@ -248,9 +259,10 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 0
           RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 0
 
-      # Diamond Rapids selects every path, including AVX-512 AES-GCM and
-      # ML-KEM. Ice Lake, Ice Lake server, Tiger Lake, and Sapphire, Emerald,
+      # Diamond Rapids selects every path, including AVX-512 AES-GCM, ML-KEM,
+      # and RSA. Ice Lake, Ice Lake server, Tiger Lake, and Sapphire, Emerald,
       # and Granite Rapids select the same paths.
       - name: Check Diamond Rapids
         run: nix develop .#sde --command cargo test --release
@@ -267,3 +279,4 @@ jobs:
           RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
           RIND_TEST_X86_AVX512_AES_GCM: 1
           RIND_TEST_X86_AVX512_ML_KEM: 1
+          RIND_TEST_X86_AVX512_RSA: 1

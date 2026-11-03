@@ -47,7 +47,4 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [AES-GCM key setup as fast as the fastest source](/quest/m2/speed/aes-gcm-key-setup.md) - 1.13-1.66x today
-- [x86_64 RSA with AVX-512 IFMA](/quest/m2/speed/x86-rsa-ifma.md) - aws-lc's AVX-512 RSA is up to 3.56x faster
 - [armv7 P-384 multiply without carry-flag spills](/quest/m2/speed/armv7-p384-mul.md) - only if more than ~10% faster than fiat-crypto
-- [Imported routines start at aws-lc's alignment](/quest/m2/speed/import-entry-alignment.md) - top-level entries aligned like aws-lc, if it measures faster

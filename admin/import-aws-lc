@@ -19,11 +19,13 @@ body from after its label through its return, for `naked_asm!` in a naked
 function. rustc then emits the symbol, section, and alignment directives for
 the object format, so aws-lc's `linux` flavor serves ELF and COFF, and its
 Apple flavor, which spells alignment and page relocations differently, serves
-Mach-O. The tables move to Rust statics, written as array literals beside the
+Mach-O. The `linux` flavor opens with aws-lc's alignment for the routine,
+which raises rustc's. The tables move to Rust statics, written as array literals beside the
 routines, which the routines reach through `sym` operands; a label inside a
 table becomes the table's operand plus the label's offset. A `packed` table
 runs on through changes of width, written as bytes, for routines that load
-across its labels. Helpers, the local routines the others `bl` to, become
+across its labels. An import's `tables_of` names an earlier import whose
+tables match its own, which it checks and writes none of. Helpers, the local routines the others `bl` to, become
 naked functions of their own, reached the same way, as are the routines of
 another import that a routine `calls`. An `inner` label, an entry point
 inside a routine that falls through to it, does not end the routine, which
@@ -343,6 +345,28 @@ IMPORTS_64 = [
             "rsaz_1024_gather5_avx2",
         ],
     },
+    # RSAZ's dual exponentiation, which aws-lc runs for the CRT of RSA-2048,
+    # 3072, and 4096 with AVX-512 IFMA: products on 256-bit vectors over
+    # 52-bit limbs, two moduli at once, and the gather of a table entry for
+    # each. `ones` runs on through `zeros`. The three sizes' tables match, so
+    # the 3k and 4k imports check theirs against the 2k one's and write none.
+    *[
+        {
+            "arch": "x86_64",
+            "source": f"rsaz-{size}-avx512.S",
+            "tag": f"rsaz_{size}",
+            "perlasm": f"crypto/fipsmodule/bn/asm/rsaz-{size}-avx512.pl",
+            "notice": [
+                "Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.",
+                "Copyright (c) 2020-2021, Intel Corporation. All Rights Reserved.",
+                "SPDX-License-Identifier: Apache-2.0",
+            ],
+            "tables": ["mask52x4", "ones"],
+            **({} if size == "2k" else {"tables_of": "rsaz-2k-avx512"}),
+            "routines": [f"rsaz_amm52x{digits}_x2_ifma256", f"extract_multiplier_2x{digits}_win5"],
+        }
+        for size, digits in [("2k", 20), ("3k", 30), ("4k", 40)]
+    ],
     # Of those, these are AES and GHASH for CPUs without AVX, or without
     # AES-NI and PCLMULQDQ.
     {
@@ -756,6 +780,11 @@ def import_64(aws_lc):
                 if flavor == "linux":
                     per_row = 16 // width
                     rows = [f"    {', '.join(values[i : i + per_row])}," for i in range(0, len(values), per_row)]
+                    if "tables_of" in spec:
+                        with open(os.path.join(out_dir, f"{spec['tables_of']}.{operand}.rs")) as f:
+                            if f.read().splitlines()[-len(rows) - 2 :] != ["["] + rows + ["]"]:
+                                sys.exit(f"{stem}: {operand} differs from {spec['tables_of']}'s")
+                        continue
                     rs = os.path.join(out_dir, f"{stem}.{operand}.rs")
                     write(rs, header("//", spec, source) + ["["] + rows + ["]"])
 
@@ -789,6 +818,13 @@ def import_64(aws_lc):
                 joined.append(alignment(lines, other) + [f"{local}{other}:"] + text[: end + 1])
             for label, name in entries:
                 text = [line for line in body(lines, label, local, inner + labels) if line.split() not in dropped]
+                # rustc aligns a naked function to only 4 bytes, but on ELF
+                # and COFF gives each its own section, so aws-lc's alignment
+                # at the body's start raises the section's and pads nothing.
+                # Mach-O shares one section, where it would pad after the
+                # label, in the path of every call.
+                if flavor == "linux":
+                    text = alignment(lines, label[:-1]) + text
                 carried = spec.get("carries", {}).get(name, [])
                 for other in carried:
                     text += alignment(lines, other) + [f"{local}{other}:"] + body(lines, f"{other}:", local)

@@ -394,6 +394,46 @@ impl<const N: usize> PosInt<N> {
         r
     }
 
+    /// Computes each of `pair`, as [`Self::mod_exp`] does: two at once by
+    /// aws-lc's dual RSAZ where it is the fastest, on x86_64 CPUs with
+    /// AVX-512 IFMA, for moduli of 16, 24, or 32 words each, and exponents
+    /// no wider.
+    pub(crate) fn mod_exp_pair(pair: [ModExp<'_, N>; 2]) -> [Self; 2] {
+        #[cfg(target_arch = "x86_64")]
+        if let Some(r) = Self::mod_exp_pair_rsaz(&pair) {
+            return r;
+        }
+
+        pair.map(|x| x.base.mod_exp(x.e, x.n, x.n_montifier, x.n_0))
+    }
+
+    /// [`Self::mod_exp_pair`] by aws-lc's dual RSAZ, which takes every word
+    /// of `e` to `n`'s width, so the trace depends on none of the values.
+    #[cfg(target_arch = "x86_64")]
+    fn mod_exp_pair_rsaz(pair: &[ModExp<'_, N>; 2]) -> Option<[Self; 2]> {
+        let k = pair[0].n.used;
+        if pair.iter().any(|x| x.n.used != k || x.e.used > k) {
+            return None;
+        }
+        let rsaz = low::RsazAvx512::check(k)?;
+        // Each word above `used` is zero.
+        let mut r = [Self::zero(), Self::zero()];
+        let [r0, r1] = &mut r;
+        r0.used = k;
+        r1.used = k;
+        rsaz.mod_exp(
+            [&mut r0.words[..k], &mut r1.words[..k]],
+            pair.each_ref().map(|x| low::Operands {
+                x: &x.base.words[..k],
+                e: &x.e.words[..k],
+                m: &x.n.words[..k],
+                rr: &x.n_montifier.words[..k],
+                n0: x.n_0,
+            }),
+        );
+        Some(r)
+    }
+
     /// Computes `self` ^ `e` mod `n`.
     ///
     /// `self` is not in the montgomery domain, and neither is the result.
@@ -403,7 +443,7 @@ impl<const N: usize> PosInt<N> {
     ///
     /// This is done in a side-channel-free way, with respect to the values of `self`, `e`,
     /// `n` and `n_0`.  The instruction trace depends only on `e.used` and `n.used`.
-    pub(crate) fn mod_exp(&self, e: &Self, n: &Self, n_montifier: &Self, n_0: u64) -> Self {
+    fn mod_exp(&self, e: &Self, n: &Self, n_montifier: &Self, n_0: u64) -> Self {
         #[cfg(target_arch = "x86_64")]
         if let Some(r) = self.mod_exp_rsaz(e, n, n_montifier, n_0) {
             return r;
@@ -640,6 +680,16 @@ impl<const N: usize> PosInt<N> {
 
 // All-zero bytes are a valid zero.
 impl<const N: usize> low::Zeroable for PosInt<N> {}
+
+/// `base` ^ `e` mod `n`, one of a pair for [`PosInt::mod_exp_pair`], where
+/// `n_montifier` is `n.montifier()` and `n_0` is `n.mont_neg_inverse()`.
+pub(crate) struct ModExp<'a, const N: usize> {
+    pub(crate) base: &'a PosInt<N>,
+    pub(crate) e: &'a PosInt<N>,
+    pub(crate) n: &'a PosInt<N>,
+    pub(crate) n_montifier: &'a PosInt<N>,
+    pub(crate) n_0: u64,
+}
 
 /// A `SecretPosInt` is a `PosInt` containing long-term key material.
 ///
