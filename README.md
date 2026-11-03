@@ -185,7 +185,8 @@ Intel CPU its verified ✓ AVX SHA-384 and SHA-512.
   `poly1305_vec.c`, which rind doesn't port for CPUs older than Westmere.
   16 KB messages trail most.
 - XChaCha20-Poly1305 without AVX2: sealing 32 B takes 676 ns to aws-lc-rs's
-  598 on the EPYC 9V45, while ChaCha20-Poly1305 is level there.
+  598 on the EPYC 9V45, while ChaCha20-Poly1305 is level there. [A
+  quest][xchacha-zen5] tracks the gap.
 - SHA-256, HMAC, and handshakes without AVX2, and AES-GCM without AES-NI:
   noise. Each is one benchmark (SHA-256 of 1200 B, HMAC-SHA1 of 1350 B under a
   reused key, the full handshake with an Ed25519 key, AES-128-GCM key setup)
@@ -281,6 +282,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [rind-rustls]: https://crates.io/crates/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
 [quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
+[xchacha-zen5]: https://github.com/moq-dev/rind/blob/main/quest/m2/speed/xchacha-zen5.md
 [migrating]: https://github.com/moq-dev/rind/blob/main/MIGRATING.md
 
 ## Assorted technical details
