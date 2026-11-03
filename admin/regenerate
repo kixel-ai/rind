@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Re-runs every importer and generator at the upstream revision it pins, and
+# fails if the generated code differs from the committed code or a committed
+# file is one nothing generates.
+#
+# Usage: admin/regenerate
+#
+# Fetches each upstream shallowly into .tmp/upstream. Needs perl, for
+# OpenSSL's perlasm, and the cross tools admin/parse-asm calls by their Debian
+# names: x86_64-linux-gnu-{cpp,as,objdump} and aarch64-linux-gnu-{cpp,as,objdump}.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+upstream=.tmp/upstream
+
+# Checks out the revision that `script` pins as its REV.
+fetch() {
+    local dir=$upstream/$1 url=$2 script=$3 rev
+    rev=$(sed -n 's/^REV = "\([0-9a-f]\{40\}\)"$/\1/p' "$script")
+    if [[ -z "$rev" ]]; then
+        echo "admin/regenerate: $script pins no REV" >&2
+        return 1
+    fi
+    # A directory that is not its own repository resolves to rind's.
+    if [[ "$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" != "$PWD/$dir" ||
+        "$(git -C "$dir" rev-parse HEAD)" != "$rev" ]]; then
+        rm -rf "$dir"
+        git init -q "$dir"
+        git -C "$dir" fetch -q --depth 1 "$url" "$rev"
+        git -C "$dir" -c advice.detachedHead=false checkout -q FETCH_HEAD
+    fi
+}
+
+fetch aws-lc https://github.com/aws/aws-lc admin/import-aws-lc
+fetch boringssl https://github.com/google/boringssl admin/import-boringssl
+fetch openssl https://github.com/openssl/openssl admin/import-openssl
+# s2n-bignum's pin is its submodule commit.
+git submodule update --init --depth 1 thirdparty/s2n-bignum
+
+# Deleted first, so a file nothing regenerates shows as deleted.
+find rind/src/low/*/aws_lc rind/src/low/*/boringssl rind/src/low/*/openssl -type f -delete
+grep -rlxZ '// generated source. do not edit.' rind/src | xargs -0 rm --
+
+admin/import-aws-lc "$upstream/aws-lc"
+admin/import-boringssl "$upstream/boringssl"
+admin/import-openssl "$upstream/openssl"
+(cd admin/parse-asm && ./all.sh >/dev/null)
+admin/p256-precomp
+admin/p384-precomp
+admin/p521-precomp
+
+if [[ -n "$(git status --porcelain -- rind/src)" ]]; then
+    git status --short -- rind/src >&2
+    git --no-pager diff -- rind/src >&2
+    echo "admin/regenerate: the generated code differs from the committed code" >&2
+    exit 1
+fi
+echo "admin/regenerate: the generated code matches the committed code"
