@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""Measure what each crypto library costs to build, on this host.
+
+Usage: admin/build-cost [--runs N] [BUILD...]
+
+For each build of a fixture in admin/build-cost-fixtures, prints JSON with the
+cold `cargo build --release` time of each run (empty target directory, warm
+download cache), the stripped binary's size, and which build tools it needed.
+Run it in the dev shell (`nix develop`) so the toolchain matches CI. It uses
+cargo's default job count unless CARGO_BUILD_JOBS is set, and refuses to start
+on a busy host, since either would skew the times.
+
+A tool is needed when the build invokes it and fails with it denied. The C
+compiler counts only when it compiles: rustc links through it on every build.
+"""
+
+import argparse
+import json
+import os
+import platform
+import shlex
+import shutil
+import statistics
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+FIXTURES = ROOT / "admin" / "build-cost-fixtures"
+SCRATCH = ROOT / ".tmp" / "build-cost"
+
+# Name, fixture, and features. The openssl crate links the system's OpenSSL
+# unless vendored, which builds it from source.
+BUILDS = {
+    "rind": ("rind", []),
+    "aws-lc-rs": ("aws-lc-rs", []),
+    "ring": ("ring", []),
+    "rustcrypto": ("rustcrypto", []),
+    "graviola": ("graviola", []),
+    "libcrux": ("libcrux", []),
+    "openssl": ("openssl", []),
+    "openssl-vendored": ("openssl", ["vendored"]),
+    "rustls-rind": ("rustls", ["rind"]),
+    "rustls-aws-lc-rs": ("rustls", ["aws-lc-rs"]),
+    "rustls-ring": ("rustls", ["ring"]),
+}
+
+# Each tool, and the executable names a build may invoke it by.
+TOOLS = {
+    "cc": ["cc", "gcc", "clang", "c++", "g++", "clang++"],
+    "cmake": ["cmake"],
+    "nasm": ["nasm"],
+    "perl": ["perl"],
+    "go": ["go"],
+    "make": ["make", "gmake"],
+    "pkg-config": ["pkg-config"],
+}
+
+# A C compiler invocation with one of these compiles; any other links.
+COMPILE_FLAGS = ("-c", "-S", "-E")
+
+# Above this 1-minute load average per CPU, other work would skew the times.
+BUSY_LOAD = 0.25
+
+
+def log(message):
+    print(message, file=sys.stderr, flush=True)
+
+
+def build_env():
+    """The environment for every build, free of settings that change its cost."""
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(("CARGO_PROFILE_", "CARGO_TARGET_", "CARGO_BUILD_"))
+        and k not in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_INCREMENTAL")
+    }
+    # An empty wrapper overrides one set in a cargo config, such as a cache.
+    env["RUSTC_WRAPPER"] = ""
+    env["RUSTC_WORKSPACE_WRAPPER"] = ""
+    # "default" overrides a `build.jobs` in a cargo config.
+    env["CARGO_BUILD_JOBS"] = os.environ.get("CARGO_BUILD_JOBS", "default")
+    return env
+
+
+def cpus():
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count()
+
+
+def output(*cmd):
+    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout.strip()
+
+
+def host_info(env):
+    if sys.platform == "darwin":
+        cpu = output("sysctl", "-n", "machdep.cpu.brand_string")
+    else:
+        cpu = next(
+            (
+                line.split(":", 1)[1].strip()
+                for line in Path("/proc/cpuinfo").read_text().splitlines()
+                if line.startswith("model name")
+            ),
+            platform.processor(),
+        )
+    return {
+        "hostname": platform.node(),
+        "os": f"{platform.system()} {platform.release()}",
+        "arch": platform.machine(),
+        "cpu": cpu,
+        "cpus": cpus(),
+        "jobs": env["CARGO_BUILD_JOBS"],
+        "rustc": output("rustc", "--version"),
+        "cc": output("cc", "--version").splitlines()[0],
+    }
+
+
+def make_shims(directory, record, deny, env):
+    """Shims that record each tool's invocations, or fail them for `deny`."""
+    directory.mkdir(parents=True)
+    path = env["PATH"]
+    for tool, names in TOOLS.items():
+        for name in names:
+            real = shutil.which(name, path=path)
+            run = f'exec {shlex.quote(real)} "$@"' if real else "exit 127"
+            refuse = "exit 127" if tool == deny else run
+            if tool == "cc":
+                # Record and deny only compiles, so linking still works.
+                flags = " | ".join(COMPILE_FLAGS)
+                body = (
+                    'for arg in "$@"; do\n'
+                    f'    case "$arg" in {flags})\n'
+                    f"        echo {tool} >>{shlex.quote(str(record))}\n"
+                    f"        {refuse} ;;\n"
+                    "    esac\n"
+                    "done\n"
+                    f"{run}\n"
+                )
+            else:
+                body = f"echo {tool} >>{shlex.quote(str(record))}\n{refuse}\n"
+            shim = directory / name
+            shim.write_text(f"#!/bin/sh\n{body}")
+            shim.chmod(0o755)
+    traced = dict(env, PATH=f"{directory}{os.pathsep}{path}")
+    # A compiler named by an absolute path would bypass the shims.
+    for var in ("CC", "CXX"):
+        if os.path.isabs(traced.get(var, "")):
+            traced[var] = Path(traced[var]).name
+    return traced
+
+
+def cargo_build(name, env, target):
+    fixture, features = BUILDS[name]
+    shutil.rmtree(target, ignore_errors=True)
+    cmd = [
+        "cargo",
+        "build",
+        "--release",
+        "--frozen",
+        "--manifest-path",
+        str(FIXTURES / fixture / "Cargo.toml"),
+        "--target-dir",
+        str(target),
+    ]
+    if features:
+        cmd += ["--features", ",".join(features)]
+    start = time.monotonic()
+    result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    return time.monotonic() - start, result
+
+
+def tools_needed(name, env, scratch):
+    """Trace one build's tools, then rebuild without each to see if it needs it."""
+    record = scratch / "trace" / "invoked"
+    shims = make_shims(scratch / "trace" / "shims", record, None, env)
+    _, result = cargo_build(name, shims, scratch / "target")
+    if result.returncode != 0:
+        sys.exit(f"{name}: traced build failed:\n{result.stderr}")
+    invoked = sorted(set(record.read_text().split())) if record.exists() else []
+
+    needed = []
+    for tool in invoked:
+        if not any(shutil.which(n, path=env["PATH"]) for n in TOOLS[tool]):
+            continue  # Probed for but absent, and the build still succeeded.
+        log(f"{name}: building without {tool}")
+        denied = make_shims(scratch / f"deny-{tool}", scratch / "ignored", tool, env)
+        _, result = cargo_build(name, denied, scratch / "target")
+        if result.returncode != 0:
+            needed.append(tool)
+    return needed
+
+
+def packages(name, env):
+    """Every package the build compiles, as `name@version`."""
+    fixture, features = BUILDS[name]
+    cmd = ["cargo", "tree", "--frozen", "--edges", "normal,build", "--prefix", "none"]
+    cmd += ["--format", "{p}", "--manifest-path", str(FIXTURES / fixture / "Cargo.toml")]
+    if features:
+        cmd += ["--features", ",".join(features)]
+    tree = subprocess.run(cmd, env=env, check=True, capture_output=True, text=True).stdout
+    # Each line is `name vVERSION`, then a path or `(*)` for some.
+    return sorted({"@".join(line.split()[:2]).replace("@v", "@") for line in tree.splitlines()})
+
+
+def measure(name, runs, env):
+    fixture, _ = BUILDS[name]
+    scratch = SCRATCH / name
+    shutil.rmtree(scratch, ignore_errors=True)
+    target = scratch / "target"
+
+    # The traced build runs first, untimed, so that the timed ones find the
+    # sources already unpacked.
+    log(f"{name}: tracing tools")
+    tools = tools_needed(name, env, scratch)
+
+    seconds = []
+    loads = []
+    for run in range(runs):
+        log(f"{name}: build {run + 1} of {runs}")
+        loads.append(round(os.getloadavg()[0], 1))
+        elapsed, result = cargo_build(name, env, target)
+        if result.returncode != 0:
+            sys.exit(f"{name}: build failed:\n{result.stderr}")
+        seconds.append(round(elapsed, 2))
+
+    binary = target / "release" / f"build-cost-{fixture}"
+    subprocess.run([binary], check=True, capture_output=True)
+    stripped = scratch / "stripped"
+    shutil.copy(binary, stripped)
+    subprocess.run(["strip", stripped], check=True)
+    result = {
+        "name": name,
+        "seconds": seconds,
+        "median_seconds": statistics.median(seconds),
+        # Each build's starting load average, since other work skews its time.
+        "loads": loads,
+        "stripped_bytes": stripped.stat().st_size,
+        "tools": tools,
+        "packages": packages(name, env),
+    }
+    shutil.rmtree(scratch)
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--runs", type=int, default=3)
+    parser.add_argument("builds", nargs="*", metavar="BUILD", help=", ".join(BUILDS))
+    args = parser.parse_args()
+    args.builds = args.builds or list(BUILDS)
+    for name in args.builds:
+        if name not in BUILDS:
+            parser.error(f"unknown build {name}; pick from {', '.join(BUILDS)}")
+
+    load = os.getloadavg()[0]
+    if load > BUSY_LOAD * cpus():
+        sys.exit(f"error: host is busy (load average {load:.1f} on {cpus()} CPUs)")
+
+    env = build_env()
+    host = host_info(env)
+
+    # Resolve and download now, so that no build waits on the network.
+    for fixture in sorted({BUILDS[name][0] for name in args.builds}):
+        manifest = str(FIXTURES / fixture / "Cargo.toml")
+        subprocess.run(["cargo", "generate-lockfile", "--manifest-path", manifest], env=env, check=True)
+        subprocess.run(["cargo", "fetch", "--manifest-path", manifest], env=env, check=True)
+
+    builds = [measure(name, args.runs, env) for name in args.builds]
+    json.dump({"host": host, "runs": args.runs, "builds": builds}, sys.stdout, indent=2)
+    print()
+
+
+if __name__ == "__main__":
+    main()

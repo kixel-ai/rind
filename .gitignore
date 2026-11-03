@@ -1,3 +1,4 @@
 target/
 .direnv/
 .tmp/
+admin/build-cost-fixtures/*/Cargo.lock
