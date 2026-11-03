@@ -49,3 +49,4 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 - [x86_64 SHA-256 of 64 B messages as fast as ring](/quest/m2/speed/sha256-64b.md) - one-block SHA-256 without the extra copies
 - [README's Algorithms table shows current numbers and the reason for each accepted gap](/quest/m2/speed/readme-gaps.md) - fresh cells, and each accepted gap explained
+- [XChaCha20-Poly1305 small messages on Zen 5 as fast as aws-lc-rs](/quest/m2/speed/xchacha-zen5.md) - the 1.13 gap at 32 B found or fixed
