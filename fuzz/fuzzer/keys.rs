@@ -8,9 +8,12 @@
 use aws_lc_rs::encoding::{AsBigEndian, AsDer};
 use aws_lc_rs::signature::KeyPair as _;
 use aws_lc_rs::{kem as their_kem, rsa as their_rsa, signature as theirs};
+use der::{element, elements, sequence, spki, trailing};
 use libfuzzer_sys::fuzz_target;
 use rind::kem as our_kem;
 use rind::signature::{self as ours, sign, verify};
+
+mod der;
 
 fuzz_target!(|data: &[u8]| {
     let Some((&loader, input)) = data.split_first() else {
@@ -153,52 +156,6 @@ fn agree<A, B, E: std::fmt::Debug>(
             "rind took an input aws-lc-rs refused: {theirs:?}"
         ),
     }
-}
-
-/// The DER element starting `input`: its tag, its contents, and the bytes
-/// after it.
-fn element(input: &[u8]) -> Option<(u8, &[u8], &[u8])> {
-    let (&tag, rest) = input.split_first()?;
-    let (&first, rest) = rest.split_first()?;
-    let (len, rest) = match first {
-        0..=0x7f => (usize::from(first), rest),
-        0x81..=0x84 => {
-            let (len, rest) = rest.split_at_checked(usize::from(first & 0x7f))?;
-            let len = len.iter().fold(0, |len, &b| len << 8 | usize::from(b));
-            (len, rest)
-        }
-        _ => return None,
-    };
-    let (contents, rest) = rest.split_at_checked(len)?;
-    Some((tag, contents, rest))
-}
-
-/// The tags and contents of the DER elements in `contents`, up to the first
-/// that does not parse.
-fn elements(mut contents: &[u8]) -> impl Iterator<Item = (u8, &[u8])> {
-    std::iter::from_fn(move || {
-        let (tag, inner, rest) = element(contents)?;
-        contents = rest;
-        Some((tag, inner))
-    })
-}
-
-/// The contents of the sequence starting `input`.
-fn sequence(input: &[u8]) -> Option<&[u8]> {
-    element(input).and_then(|(tag, contents, _)| (tag == 0x30).then_some(contents))
-}
-
-/// Whether bytes follow the DER element starting `input`, which aws-lc-rs
-/// ignores and rind refuses as malformed.
-fn trailing(input: &[u8]) -> bool {
-    element(input).is_some_and(|(_, _, rest)| !rest.is_empty())
-}
-
-/// Whether `input` is shaped like a `SubjectPublicKeyInfo`: a sequence whose
-/// first element is a sequence, the algorithm identifier. aws-lc-rs takes one
-/// wherever it takes a public key, and rind only the raw key.
-fn spki(input: &[u8]) -> bool {
-    sequence(input).is_some_and(|contents| contents.first() == Some(&0x30))
 }
 
 /// Whether `input` is a PKCS#8 version 2 document without a public key, which
