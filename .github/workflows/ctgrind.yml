@@ -84,6 +84,30 @@ jobs:
           RIND_CPU_DISABLE_adx: 1
           RIND_TEST_X86_BMI2_ADX: 0
 
+  # Valgrind runs no AVX-512, so `admin/ct-sde` compares Intel SDE traces of
+  # those paths for two secrets instead. One job per test, since RSA-4096's
+  # traces alone take about an hour.
+  x86_64-sde:
+    name: x86_64-sde (${{ matrix.test }})
+    strategy:
+      fail-fast: false
+      matrix:
+        test: [rsa2048, rsa3072, rsa4096, aes128_gcm, aes256_gcm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      # As in x86-cpu.yml, for the dev shell's SDE sandbox.
+      - name: Allow user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: ct-sde
+        run: nix develop .#sde --command admin/ct-sde ${{ matrix.test }}
+
   # The arm64 runner's core has the crypto extension, so this job denies it
   # to check vpaes, NEON GHASH, and the scalar SHA-1 and SHA-256 that cores
   # without it run. The denial takes `--cfg rind_cpu_disable`, as above.
@@ -116,15 +140,23 @@ jobs:
   # build can only add findings in code that does not. Valgrind runs every
   # thread on one core, so the suites run as parallel jobs instead.
   #
+  # The `no-neon` row denies NEON to check the code cores without it run, such
+  # as OpenSSL's integer Keccak-f. The denial takes `--cfg rind_cpu_disable`,
+  # as above.
+  #
   # Ubuntu's armhf valgrind rather than `devShells.ctgrind`: nixpkgs caches no
   # armhf valgrind for an arm64 host, and building it builds its gdb too.
   armv7:
-    name: armv7 (${{ matrix.suite }})
+    name: armv7 (${{ matrix.suite }}${{ matrix.neon == '0' && ', no-neon' || '' }})
     strategy:
       # One suite's failure says nothing about the others.
       fail-fast: false
       matrix:
         suite: [unit, wycheproof, adapters]
+        neon: ["1"]
+        include:
+          - suite: unit
+            neon: "0"
 
     runs-on: ubuntu-24.04-arm
     steps:
@@ -146,11 +178,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6:armhf valgrind:armhf
 
+      # A denial set to any value takes effect, so only the `no-neon` row sets
+      # one.
       - name: ctgrind tests
-        run: admin/ctgrind ${{ matrix.suite }} --target armv7-unknown-linux-gnueabihf --release
+        run: |
+          if [ "$RIND_TEST_ARM_NEON" = 0 ]; then
+            export RIND_CPU_DISABLE_neon=1 RUSTFLAGS='--cfg rind_cpu_disable'
+          fi
+          admin/ctgrind ${{ matrix.suite }} --target armv7-unknown-linux-gnueabihf --release
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
           CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
           CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
-          RIND_TEST_ARM_NEON: 1
+          RIND_TEST_ARM_NEON: ${{ matrix.neon }}
           RIND_TEST_ARM_CRYPTO_EXT: 0

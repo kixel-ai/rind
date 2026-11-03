@@ -69,8 +69,8 @@
           armv7-cc = pkgs.pkgsCross.armv7l-hf-multiplatform.stdenv.cc;
           armv7-prefix = "${armv7-cc}/bin/${armv7-cc.targetPrefix}";
 
-          # Intel SDE, which `x86-cpu.yml`, `coverage.yml`, and `admin/x86-cpu`
-          # run to emulate Intel CPU models. Its license allows use and
+          # Intel SDE, which `x86-cpu.yml`, `coverage.yml`, `admin/x86-cpu`,
+          # and `admin/ct-sde` run to emulate Intel CPU models. Its license allows use and
           # redistribution only unmodified, so its 64-bit launcher runs as
           # shipped in an FHS sandbox for its /lib64 loader, rather than
           # patched for Nix. The kit's `sde` launcher is 32-bit; `sde64` takes
@@ -224,7 +224,8 @@
             };
           }
           # `x86-cpu.yml` and `admin/x86-cpu sde-scan` run the tests and
-          # `rind-cpuid` under `sde` in it. SDE runs only on x86_64.
+          # `rind-cpuid` under `sde` in it, and `admin/ct-sde` traces them.
+          # SDE runs only on x86_64.
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             sde = pkgs.mkShell {
               packages = with pkgs; [
@@ -235,6 +236,8 @@
                 openssl
                 python3
                 sde
+                # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
+                util-linux
               ];
 
               shellHook = sde-certs;

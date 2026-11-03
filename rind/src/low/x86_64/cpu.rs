@@ -196,6 +196,20 @@ impl HaveAvx512ForMlKem {
     }
 }
 
+/// Proof that the CPU has AVX-512 IFMA, with the F, DQ, BW, and VL that
+/// aws-lc's `CRYPTO_is_AVX512IFMA_capable` also asks for, and BMI2: what
+/// aws-lc's dual RSAZ exponentiation runs.
+///
+/// Without it, RSA's CRT runs its two exponentiations one at a time.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvx512ForRsa(());
+
+impl HaveAvx512ForRsa {
+    pub(crate) fn check() -> Option<Self> {
+        has(AVX512F | AVX512DQ | AVX512IFMA | AVX512BW | AVX512VL | BMI2).then_some(Self(()))
+    }
+}
+
 /// Token type reflecting the check for CPU features needed for SHA1 using SHA-NI,
 /// and the SSSE3 and SSE4.1 its rounds also use
 ///
@@ -335,6 +349,8 @@ const AVX512VBMI2: u32 = 1 << 14;
 const SHA: u32 = 1 << 15;
 const SSE41: u32 = 1 << 16;
 const MOVBE: u32 = 1 << 17;
+const AVX512DQ: u32 = 1 << 18;
+const AVX512IFMA: u32 = 1 << 19;
 const INTEL: u32 = 1 << 30;
 /// What rind's AVX2 kernels use, for [`HaveAvx2`].
 const AVX2_KERNELS: u32 = AVX | AVX2 | BMI2 | POPCNT | SSSE3;
@@ -410,6 +426,8 @@ fn detect() -> u32 {
         | detect!("avx", AVX)
         | detect!("avx2", AVX2)
         | detect!("avx512f", AVX512F)
+        | detect!("avx512dq", AVX512DQ)
+        | detect!("avx512ifma", AVX512IFMA)
         | detect!("avx512bw", AVX512BW)
         | detect!("avx512vl", AVX512VL)
         | detect!("avx512vbmi", AVX512VBMI)
@@ -505,6 +523,9 @@ mod tests {
         }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX512_ML_KEM") {
             assert_eq!(HaveAvx512ForMlKem::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX512_RSA") {
+            assert_eq!(HaveAvx512ForRsa::check().is_some(), expected == "1");
         }
     }
 }

@@ -871,9 +871,9 @@ dependencies = [
 
 [[package]]
 name = "ctutils"
-version = "0.4.7"
+version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2376ffd6f96d8a9db59875b4b6b0237d6900b5baf64279714e05493ce64828a"
+checksum = "261af4dc7a06ea8a527a8717d8cbba3417530d6ea14e1edb3de6b67806be474f"
 dependencies = [
  "cmov",
  "subtle",
@@ -2498,9 +2498,9 @@ dependencies = [
 
 [[package]]
 name = "pkcs1"
-version = "0.8.0-rc.5"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f485dbafe293ea6ccaa7d82bc591651a796eb8a9aec3df040b057b706073dbc3"
+checksum = "6250dd7321adbe93d12b750aee0ced159fd13e77f625edcdf1cb6f83cd99f650"
 dependencies = [
  "der 0.8.3",
  "spki 0.8.1",
@@ -2868,7 +2868,7 @@ dependencies = [
 
 [[package]]
 name = "rind"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "aws-lc-rs",
  "cfg-if",
@@ -2881,7 +2881,6 @@ dependencies = [
  "libcrux-aes",
  "libcrux-hacl-rs",
  "libcrux-macros",
- "libcrux-ml-kem",
  "libcrux-poly1305",
  "libcrux-traits",
  "proptest",
@@ -2934,7 +2933,7 @@ dependencies = [
 
 [[package]]
 name = "rind-dimpl"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -2972,7 +2971,7 @@ dependencies = [
 
 [[package]]
 name = "rind-jsonwebtoken"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -2984,7 +2983,7 @@ dependencies = [
 
 [[package]]
 name = "rind-object-store"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "async-trait",
  "aws-lc-rs",
@@ -2998,7 +2997,7 @@ dependencies = [
 
 [[package]]
 name = "rind-rcgen"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "crabgrind 0.4.0",
  "rcgen",
@@ -3011,7 +3010,7 @@ dependencies = [
 
 [[package]]
 name = "rind-ring"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3026,7 +3025,7 @@ dependencies = [
 
 [[package]]
 name = "rind-rustls"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3067,7 +3066,7 @@ dependencies = [
  "crypto-bigint",
  "crypto-primes",
  "digest 0.11.3",
- "pkcs1 0.8.0-rc.5",
+ "pkcs1 0.8.0",
  "pkcs8 0.11.0",
  "rand_core 0.10.1",
  "sha2",

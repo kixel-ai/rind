@@ -47,8 +47,3 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [AES-GCM key setup as fast as the fastest source](/quest/m2/speed/aes-gcm-key-setup.md) - 1.13-1.66x today
-- [ML-KEM-768 encapsulation as fast as the fastest source](/quest/m2/speed/mlkem-encaps.md) - armv7 1.05x and aarch64 1.04x today
-- [x86_64 RSA with AVX-512 IFMA](/quest/m2/speed/x86-rsa-ifma.md) - aws-lc's AVX-512 RSA is up to 3.56x faster
-- [Imported routines start at aws-lc's alignment](/quest/m2/speed/import-entry-alignment.md) - top-level entries aligned like aws-lc, if it measures faster
-- [AES-128-GCM 16 KB bench measures the cipher](/quest/m2/speed/aes128-16k-bench.md) - the bench's 3x AES-128 anomaly on the EPYC 7763
