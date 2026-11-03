@@ -90,6 +90,39 @@
             }/sde64";
           };
 
+          # `admin/parse-asm` calls cpp, as, and objdump by their Debian names,
+          # as s2n-bignum's Makefiles do. Each maps to the target's tools,
+          # native where the host matches, so the disassembly it reads can't
+          # change unless nixpkgs does.
+          debian-cross-tools = pkgs.runCommand "debian-cross-tools" { } (
+            ''
+              mkdir -p $out/bin
+            ''
+            +
+              pkgs.lib.concatMapStrings
+                (
+                  { arch, cross }:
+                  let
+                    cc = cross.stdenv.cc;
+                  in
+                  ''
+                    ln -s ${cc.cc}/bin/${cc.targetPrefix}cpp $out/bin/${arch}-linux-gnu-cpp
+                    ln -s ${cc.bintools.bintools}/bin/${cc.targetPrefix}as $out/bin/${arch}-linux-gnu-as
+                    ln -s ${cc.bintools.bintools}/bin/${cc.targetPrefix}objdump $out/bin/${arch}-linux-gnu-objdump
+                  ''
+                )
+                [
+                  {
+                    arch = "x86_64";
+                    cross = pkgs.pkgsCross.gnu64;
+                  }
+                  {
+                    arch = "aarch64";
+                    cross = pkgs.pkgsCross.aarch64-multiplatform;
+                  }
+                ]
+          );
+
           # Otherwise cargo exports the host's OpenSSL CA paths, which on
           # Ubuntu lie under the /usr the SDE sandbox replaces, and the tests
           # that load the system's roots find none. A shell hook, since `nix
@@ -193,6 +226,20 @@
               ];
 
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+            };
+
+            # `admin/regenerate` and the regenerate workflow run in it. A
+            # separate shell because the aarch64 cross compiler, for its cpp,
+            # adds about 500 MB.
+            regenerate = pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override { extensions = [ "rustfmt" ]; })
+                pkgs.git
+                pkgs.python3
+                # OpenSSL's perlasm.
+                pkgs.perl
+                debian-cross-tools
+              ];
             };
 
             # `just armv7` enters it to lint and test the armv7 build under
