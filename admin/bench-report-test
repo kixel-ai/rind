@@ -12,6 +12,8 @@ import sys
 import tempfile
 import unittest
 
+# The script has no .py name to cache bytecode under.
+sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 loader = importlib.machinery.SourceFileLoader("bench_report", os.path.join(HERE, "bench-report"))
 spec = importlib.util.spec_from_loader("bench_report", loader)
