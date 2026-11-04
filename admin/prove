@@ -44,7 +44,8 @@ fi
 sed -n '/^```rust$/,/^```$/{//!p}' proofs/Rind/Aarch64/P256Dispatch.lean >"$out/p256-dispatch.rs"
 diff -u --label P256Dispatch.lean --label rind/src "$out/p256-dispatch.rs" \
     <(items rind/src/high/agreement.rs 'pub static ECDH_P256:'
-    items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn')
+    items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn'
+    items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {')
 
 # The X25519 path, and aarch64's P-256 path, from `high::agreement`'s `Agree`
 # impls down to s2n-bignum's routines. `low` is opaque: its routines are inline

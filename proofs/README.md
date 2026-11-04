@@ -30,9 +30,9 @@ writes for aarch64:
 P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
 `Rind/Aarch64/P256.lean`:
 
-- `p256_generate`: the key's scalar is the 32 drawn bytes, read big-endian,
-  if they are in [1, n), and otherwise, or if the draw fails, the key is
-  refused;
+- `p256_generate`: the key's scalar is the first of up to 64 draws whose
+  bytes, read big-endian, are in [1, n), and the key is refused if a draw
+  fails before one is, or none is;
 - `p256_public_key`: the public key is the X9.62 uncompressed encoding of the
   scalar times G, for a scalar whose multiple is a finite point on the curve;
 - `p256_agree`: a peer key is refused unless it is a 65-byte uncompressed

@@ -34,12 +34,22 @@ pub static ECDH_P256: Algorithm = Algorithm {
         Err(Error::RngFailed)
     }
 
+impl RandomSource for SystemRandom {
+    fn fill(&mut self, out: &mut [u8]) -> Result<(), Error> {
+        getrandom::fill(out).map_err(|_| Error::RngFailed)
+    }
+}
+
 ```
 
-The model departs from the Rust in three ways, and adds no axiom:
+The model departs from the Rust in four ways, and adds no axiom:
 
 - `rng` is the `SystemRandom` that `new_random` passes, the only source key
-  agreement draws from, and its `fill` is the translated one.
+  agreement draws from.
+- Its `fill` calls on the system source, `getrandom::fill`, which the
+  translation models as a function of its buffer alone, so each call would
+  return the same bytes. The loop's `i`th call is instead `draw i`, opaque, so
+  successive draws are independent.
 - `low::ct::secret_slice`, a ctgrind marker that computes nothing, is left out.
 - P-256's `Agree` impl's `random` calls `new_random`, which the translation
   leaves opaque, so `ECDH_P256` uses that impl with `random` replaced by this
@@ -48,27 +58,34 @@ The model departs from the Rust in three ways, and adds no axiom:
 
 namespace rind.aarch64
 
-/-- The loop of `p256::PrivateKey::generate`, with `n` draws left. -/
-def mid.p256.PrivateKey.generate_loop :
+/-- What the system source, `getrandom::fill`, writes to the buffer it is
+given on the `i`th draw of one key generation, and whether it failed. Opaque:
+the functional spec leaves the draws out. -/
+opaque mid.p256.PrivateKey.draw :
+    Nat → Slice Std.U8 → Result ((core.result.Result Unit getrandom.error.Error) × Slice Std.U8)
+
+/-- The loop of `p256::PrivateKey::generate`, from its `i`th draw, with `n`
+draws left. -/
+def mid.p256.PrivateKey.generate_loop (i : Nat) :
     Nat → Result (core.result.Result mid.p256.PrivateKey error.Error)
   | 0 => ok (.Err .RngFailed)
   | n + 1 => do
     let r := Array.repeat 32#usize 0#u8
     let (s, to_slice_mut_back) ← lift (Array.to_slice_mut r)
-    let (r1, _, s1) ← mid.rng.SystemRandom.Insts.RindMidRngRandomSource.fill () s
+    let (r1, s1) ← mid.p256.PrivateKey.draw i s
     match r1 with
-    | .Err e => ok (.Err e)
+    | .Err _ => ok (.Err .RngFailed)
     | .Ok () =>
       let p ← mid.p256.PrivateKey.from_bytes (to_slice_mut_back s1).to_slice
       match p with
       | .Ok p => ok (.Ok p)
-      | .Err _ => mid.p256.PrivateKey.generate_loop n
+      | .Err _ => mid.p256.PrivateKey.generate_loop (i + 1) n
 
 /-- `p256::PrivateKey::generate(&mut SystemRandom)`, which `new_random` is. -/
 def mid.p256.PrivateKey.generate :
     Result (core.result.Result mid.p256.PrivateKey error.Error) := do
   let _ ← low.entry.Entry.new_secret
-  mid.p256.PrivateKey.generate_loop 64
+  mid.p256.PrivateKey.generate_loop 0 64
 
 /-- The `ECDH_P256` static. -/
 def high.agreement.ECDH_P256 : high.agreement.Algorithm where

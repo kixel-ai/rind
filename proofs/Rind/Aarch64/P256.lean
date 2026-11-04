@@ -44,6 +44,21 @@ def p256Agreement (k : Nat) (peer : List U8) (r : core.result.Result high.agreem
       else r = .Err (.KeyRejected .WrongLength)
     else r = .Err (.KeyRejected .Compressed)
 
+/-- P-256 key generation's outcome, for the system source's successive
+draws: the first of `n` draws, from the `i`th, whose bytes, read big-endian,
+are a scalar in [1, n), unless a draw fails first; refused if none is. -/
+def p256Keygen (draws : Nat → core.result.Result Unit getrandom.error.Error × Slice U8) (i : Nat) :
+    Nat → core.result.Result high.agreement.PrivateKey error.Error → Prop
+  | 0, key => key = .Err .RngFailed
+  | n + 1, key =>
+    match draws i with
+    | (.Err _, _) => key = .Err .RngFailed
+    | (.Ok _, out) =>
+      if 0 < beNat out.val ∧ beNat out.val < n256 then
+        ∃ k : high.agreement.Keyed mid.p256.PrivateKey,
+          key = .Ok (.P256 k) ∧ wordsNat k.key.scalar.val = beNat out.val
+      else p256Keygen draws (i + 1) n key
+
 /-! The P-256 lemmas' own namespace keeps their names apart from X25519's. -/
 namespace P256
 
@@ -922,42 +937,40 @@ theorem encode_public_spec (h : Runs) (ht : Tabulated) (k : mid.p256.PrivateKey)
   · rw [hbv]; exact ha4
   · rw [hbv]; exact hac
 
-theorem generate_loop_spec (r : core.result.Result Unit getrandom.error.Error)
-    (out : Slice U8) (hout : out.length = 32)
-    (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) (n : Nat) :
-    mid.p256.PrivateKey.generate_loop (n + 1) ⦃ key =>
-      match r with
-      | .Ok _ =>
-        if 0 < beNat out.val ∧ beNat out.val < n256 then
-          ∃ k : mid.p256.PrivateKey, key = core.result.Result.Ok k ∧ wordsNat k.scalar.val = beNat out.val
-        else key = core.result.Result.Err error.Error.RngFailed
-      | .Err _ => key = core.result.Result.Err error.Error.RngFailed ⦄ := by
-  induction n with
-  | zero | succ n ih =>
+/-- A generated key, as `Keyed::generate` wraps it. -/
+def wrapKey : core.result.Result mid.p256.PrivateKey error.Error →
+    core.result.Result high.agreement.PrivateKey error.Error
+  | .Ok key => .Ok (.P256 { key, ops := () })
+  | .Err e => .Err e
+
+theorem generate_loop_spec (draws : Nat → core.result.Result Unit getrandom.error.Error × Slice U8)
+    (hdraw : ∀ i, mid.p256.PrivateKey.draw i (Array.repeat 32#usize 0#u8).to_slice = ok (draws i))
+    (hlen : ∀ i, (draws i).2.length = 32) (n i : Nat) :
+    mid.p256.PrivateKey.generate_loop i n ⦃ key => p256Keygen draws i n (wrapKey key) ⦄ := by
+  induction n generalizing i with
+  | zero => simp [mid.p256.PrivateKey.generate_loop, p256Keygen, wrapKey]
+  | succ n ih =>
     unfold mid.p256.PrivateKey.generate_loop
-    have hf : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice ⦃ p => p = (r, out) ⦄ := by
-      rw [hfill]; simp [WP.spec_ok]
-    simp only [Array.to_slice_mut, lift, mid.rng.SystemRandom.Insts.RindMidRngRandomSource.fill, bind_ok]
-    step with hf as ⟨p, hp⟩
-    subst hp
+    simp only [Array.to_slice_mut, lift, bind_ok]
+    have hf : mid.p256.PrivateKey.draw i (Array.repeat 32#usize 0#u8).to_slice ⦃ p => p = draws i ⦄ := by
+      rw [hdraw]; simp [WP.spec_ok]
+    step with hf as ⟨r, out, hd⟩
+    simp only [p256Keygen, ← hd]
+    have hout : out.length = 32 := by simpa [← hd] using hlen i
     have hfrom : ((Array.repeat 32#usize 0#u8).from_slice out).to_slice.val = out.val := by
       simp [Array.from_slice, hout]
     have hl : ((Array.repeat 32#usize 0#u8).from_slice out).to_slice.length = 32 := by
       simp only [Slice.length, hfrom]; simpa [Slice.length] using hout
     rcases r with _ | e
-    · simp only [core.result.Result.map_err]
+    · simp only
       step with from_bytes_spec _ hl as ⟨p, hp⟩
       rw [hfrom] at hp
       split_ifs at hp ⊢ with hr
       · obtain ⟨k, rfl, hk⟩ := hp
-        simp [hk]
+        simp [wrapKey, hk]
       · subst hp
-        simp only
-        first
-          | (simp [mid.p256.PrivateKey.generate_loop]; done)
-          | (apply WP.spec_mono ih; intro key hkey; simpa [hr] using hkey)
-    · simp [core.result.Result.map_err,
-        mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once]
+        exact ih (i + 1)
+    · simp [wrapKey]
 
 end P256
 
@@ -965,33 +978,21 @@ open P256
 
 /-! ## The agreement API, `high::agreement`, through the modelled dispatch -/
 
-/-- A generated P-256 key's scalar is the 32 bytes the random source drew,
-read big-endian, if that is in [1, n); otherwise, or if the draw failed, key
-generation is refused. The draw itself is outside the functional spec, which
-gives every one of the 64 draws the same bytes. -/
-theorem p256_generate (h : Runs) (r : core.result.Result Unit getrandom.error.Error)
-    (out : Slice U8) (hout : out.length = 32)
-    (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) :
-    high.agreement.PrivateKey.generate high.agreement.ECDH_P256 ⦃ key =>
-      match r with
-      | .Ok _ =>
-        if 0 < beNat out.val ∧ beNat out.val < n256 then
-          ∃ k : high.agreement.Keyed mid.p256.PrivateKey,
-            key = core.result.Result.Ok (high.agreement.Private.P256 k) ∧
-              wordsNat k.key.scalar.val = beNat out.val
-        else key = core.result.Result.Err error.Error.RngFailed
-      | .Err _ => key = core.result.Result.Err error.Error.RngFailed ⦄ := by
+/-- A generated P-256 key's scalar is the first of up to 64 draws from the
+system source whose bytes, read big-endian, are in [1, n), and key generation
+is refused if a draw fails before one is, or none is. The draws themselves are
+outside the functional spec. -/
+theorem p256_generate (h : Runs) (draws : Nat → core.result.Result Unit getrandom.error.Error × Slice U8)
+    (hdraw : ∀ i, mid.p256.PrivateKey.draw i (Array.repeat 32#usize 0#u8).to_slice = ok (draws i))
+    (hlen : ∀ i, (draws i).2.length = 32) :
+    high.agreement.PrivateKey.generate high.agreement.ECDH_P256 ⦃ key => p256Keygen draws 0 64 key ⦄ := by
   unfold high.agreement.PrivateKey.generate high.agreement.ECDH_P256 high.agreement.Keyed.generate
     mid.p256.PrivateKey.generate
   simp only
   step as ⟨_⟩
-  step with generate_loop_spec r out hout hfill 63 as ⟨key, hkey⟩
-  rcases r with _ | _ <;> simp only at hkey ⊢
-  · split_ifs at hkey ⊢
-    · obtain ⟨k, rfl, hk⟩ := hkey
-      simp [mid.p256.PrivateKey.Insts.RindHighAgreementAgree.wrap, hk]
-    · simp [hkey]
-  · simp [hkey]
+  step with generate_loop_spec draws hdraw hlen 64 0 as ⟨key, hkey⟩
+  rcases key with k | e <;>
+    simpa [wrapKey, mid.p256.PrivateKey.Insts.RindHighAgreementAgree.wrap] using hkey
 
 /-- A P-256 key's public key: X9.62's uncompressed encoding of its scalar
 times the generator, for a scalar whose multiple is a finite point on the
