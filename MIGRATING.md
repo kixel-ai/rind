@@ -315,7 +315,7 @@ rind-rustls mirrors the layout of rustls's own providers.
 | `Ticketer::new()` | the same, which also refuses a CPU missing a feature |
 | `CryptoProvider { .., ..default_provider() }`, to trim it | `..empty_provider()?`, since `default_provider()` links every algorithm |
 | `sign::any_supported_type(&der)` | `sign::ANY_SUPPORTED_TYPE.load_private_key(der)`, a `KeyProvider` |
-| `sign::any_ecdsa_type`, `sign::any_eddsa_type` | a `KeyProvider` per key type: `sign::ECDSA_P256`, `ECDSA_P384`, `ECDSA_P521`, `ED25519`, and `RSA` |
+| `sign::any_ecdsa_type`, `sign::any_eddsa_type` | a `KeyProvider` per key type: `sign::ECDSA_P256`, `ECDSA_P384`, `ECDSA_P521`, `ED25519`, and `RSA`, combined by `sign::AnyOf(&[sign::ECDSA_P256, sign::ECDSA_P384, sign::ECDSA_P521])` for any ECDSA key |
 | rustls-webpki's `aws_lc_rs::ECDSA_P256_SHA256` and its siblings | `verify::` the same name, less any RSA key-size infix or `_LEGACY_KEY`; `SUPPORTED_SIG_ALGS` holds them all |
 | `hpke` | none |
 

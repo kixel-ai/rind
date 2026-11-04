@@ -13,6 +13,9 @@ use rustls::crypto::KeyProvider;
 use rustls::pki_types::{PrivateKeyDer, SubjectPublicKeyInfoDer};
 use rustls::sign::{self, SigningKey};
 
+mod any_of;
+pub use any_of::AnyOf;
+
 /// Loads RSA, ECDSA, and Ed25519 keys, as [`default_provider`](crate::default_provider) does.
 pub static ANY_SUPPORTED_TYPE: &dyn KeyProvider = &Keys(&[
     &RsaKeys,
@@ -466,6 +469,34 @@ mod tests {
                 }
             }
         }
+    }
+
+    // A combination loads each of its key types and refuses the rest,
+    // naming why each of its providers refused.
+    #[test]
+    fn test_any_of() {
+        static KEYS: AnyOf = AnyOf(&[ECDSA_P256, ED25519]);
+        let pkcs8 = |pem: &[u8]| PrivateKeyDer::from_pem_slice(pem).unwrap();
+        for key in [
+            include_bytes!("../tests/keys/ecdsa-p256/end.key").as_slice(),
+            include_bytes!("../tests/keys/ed25519/end.key"),
+        ] {
+            assert!(KEYS.load_private_key(pkcs8(key)).is_ok());
+        }
+        for key in [
+            include_bytes!("../tests/keys/ecdsa-p384/end.key").as_slice(),
+            include_bytes!("../tests/keys/rsa-2048/end.key"),
+        ] {
+            let err = KEYS.load_private_key(pkcs8(key)).unwrap_err();
+            let err = err.to_string();
+            assert!(err.contains("as ECDSA_NISTP256_SHA256"), "{err}");
+            assert!(err.contains("as Ed25519"), "{err}");
+        }
+        assert!(
+            AnyOf(&[])
+                .load_private_key(pkcs8(include_bytes!("../tests/keys/ed25519/end.key")))
+                .is_err()
+        );
     }
 
     #[test]
