@@ -30,7 +30,7 @@ theorem as_flattened_mut_spec {T : Type} {N : Usize} (s : Slice (Std.Array T N))
 
 /-- `pad`'s length: the rest, the 0x80 byte, the zeros, and the length fill
 one or two whole blocks. -/
-theorem padded_eq {N L n : Nat} (hN : 0 < N) (hL : L + 1 ≤ N) (hr : n + 1 + L ≤ 2 * N) :
+theorem padded_eq {N L n : Nat} (_hN : 0 < N) (hL : L + 1 ≤ N) (hr : n + 1 + L ≤ 2 * N) :
     (if n % N + 1 + L ≤ N then n / N * N + N else n / N * N + 2 * N) =
       n + 1 + L + padZeros N L n := by
   unfold padZeros
@@ -48,7 +48,7 @@ theorem padded_eq {N L n : Nat} (hN : 0 < N) (hL : L + 1 ≤ N) (hr : n + 1 + L 
       rw [h4, Nat.mod_eq_of_lt (by omega)]; simp [h3]; omega
   · have h1 : n / N = 1 := Nat.div_eq_of_lt_le (by omega) (by omega)
     have h2 : n % N = n - N := by rw [Nat.mod_eq_sub_mod h, Nat.mod_eq_of_lt (by omega)]
-    rw [h1, h2, if_pos (show n - N + 1 + L ≤ N by omega)]
+    rw [h1, h2, ite_eq_left (show n - N + 1 + L ≤ N by omega)]
     rcases Nat.lt_or_ge (n + 1 + L) (2 * N) with h3 | h3
     · have h4 : (n + 1 + L) % N = n + 1 + L - N := by
         rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]
@@ -77,7 +77,7 @@ theorem pad_list (r len : List U8) (P : Nat) (hP : r.length + 1 + len.length ≤
     ⟨P - len.length - 1 - r.length, by omega⟩
   have hA : (List.replicate (r.length + 1 + Z + len.length) 0#u8).setSlice! 0 r =
       r ++ List.replicate (Z + len.length + 1) 0#u8 := by
-    rw [setSlice!_eq _ _ _ (by simp <;> omega)]
+    rw [setSlice!_eq _ _ _ (by simp; omega)]
     simp only [List.take_zero, List.nil_append, Nat.zero_add, List.drop_replicate]
     congr 2
     omega
@@ -124,7 +124,7 @@ theorem pad_spec {N L : Usize} (rest : Slice U8) (length : Std.Array U8 L)
       step as ⟨x, hx⟩
       step as ⟨y, hy⟩
       step as ⟨z, hz⟩
-      rw [hz, hy, hx, hlen, ← hpad, if_pos hc']
+      rw [hz, hy, hx, hlen, ← hpad, ite_eq_left hc']
     · rename_i hc
       have hc' : ¬ rest.length % N.val + 1 + L.val ≤ N.val := by
         have := hc; simp only [UScalar.le_equiv] at this; simp only [hlen] at *; omega
@@ -132,7 +132,7 @@ theorem pad_spec {N L : Usize} (rest : Slice U8) (length : Std.Array U8 L)
       step as ⟨y, hy⟩
       step as ⟨w, hw⟩
       step as ⟨z, hz⟩
-      rw [hz, hy, hx, hlen, hw, ← hpad, if_neg hc']
+      rw [hz, hy, hx, hlen, hw, ← hpad, ite_eq_right hc']
   · intro padded hP
     step*
     · simp only [s4_post1, last3_post, s5_post, Slice.length, Slice.set_val_eq, List.length_set,
@@ -327,7 +327,7 @@ theorem complete_blocks_spec {C S : Type} {N : Usize}
         rw [i3_post, i2_post, i1_post, hl1] at this
         simp only [Slice.length] at *
         omega
-      have hrlen : rest.len.val = rest.val.length := by simp [Slice.len, Slice.length]
+      have hrlen : rest.len.val = rest.val.length := by simp [Slice.len]
       have hml := Nat.mod_lt (bytes1.length - 1) hN
       have hal : a.val.length = N.val := by simp
       refine ⟨?_, q' ++ whole.val, hst2, ?_⟩
@@ -384,8 +384,8 @@ theorem blocks_append {n : Nat} (hn : 0 < n) (a b : List Byte) (ha : a.length % 
       rw [List.nil_append, blocks_nil, List.nil_append]
     · have hka : n ≤ a.length := by
         have := Nat.le_of_dvd (by omega) (Nat.dvd_of_mod_eq_zero ha); omega
-      rw [rind.spec.blocks, if_pos ⟨hn, by simp; omega⟩, rind.spec.blocks.eq_def n a,
-        if_pos ⟨hn, hka⟩, List.take_append_of_le_length hka, List.drop_append_of_le_length hka,
+      rw [rind.spec.blocks, ite_eq_left ⟨hn, by simp; omega⟩, rind.spec.blocks.eq_def n a,
+        ite_eq_left ⟨hn, hka⟩, List.take_append_of_le_length hka, List.drop_append_of_le_length hka,
         ih (k - n) (by omega) (a.drop n) (by simp; rw [Nat.sub_mod_eq_zero_of_mod_eq]; simp [ha]) (by simp; omega)]
       rfl
 

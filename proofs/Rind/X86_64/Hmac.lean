@@ -24,17 +24,17 @@ theorem xorFrom_step (c : U8) (S : Slice U8) (i : Nat) (hi : i < S.length) :
   rw [List.getElem_set]
   by_cases h : i = j
   · subst h; simp
-  · rw [if_neg h, List.getElem_mapIdx, List.getElem_mapIdx]
+  · rw [ite_eq_right h, List.getElem_mapIdx, List.getElem_mapIdx]
     by_cases hj : i + 1 ≤ j
-    · rw [if_pos hj, if_pos (by omega)]
-    · rw [if_neg hj, if_neg (by omega)]
+    · rw [ite_eq_left hj, ite_eq_left (by omega)]
+    · rw [ite_eq_right hj, ite_eq_right (by omega)]
 
 theorem xorFrom_end (c : U8) (S : Slice U8) : xorFrom c S S.length = S := by
   apply Slice.ext
   simp only [xorFrom, Slice.from_val]
   apply List.ext_getElem (by simp)
   intro j h1 h2
-  rw [List.getElem_mapIdx, if_neg (by simp only [List.length_mapIdx, Slice.length] at h1 ⊢; omega)]
+  rw [List.getElem_mapIdx, ite_eq_right (by simp only [List.length_mapIdx, Slice.length] at h1 ⊢; omega)]
 
 theorem new_loop0_spec (S : Slice U8)
     (back : core.slice.iter.IterMut U8 → core.slice.iter.IterMut U8) :
@@ -189,7 +189,7 @@ theorem hmac_key_new_spec (hs : HashSpec inst H B L max Abs CAbs) (key : Slice U
       refine ⟨by rw [h1, hkb1], ?_⟩
       rw [h2, hX]
       simp only [keyBlock, bv, List.map_append, List.map_replicate, List.length_map]
-      rw [if_neg (by simp only [GT.gt, UScalar.lt_equiv] at hgt; omega)]
+      rw [ite_eq_right (by simp only [GT.gt, UScalar.lt_equiv] at hgt; omega)]
       have : List.map (fun x => x.bv) s2.val = H (List.map (fun x => x.bv) key.val) := by
         simp only [bv] at hk2 hs2b; rw [hs2b, hk2]
       rw [this, hHL]
@@ -208,10 +208,10 @@ theorem hmac_key_new_spec (hs : HashSpec inst H B L max Abs CAbs) (key : Slice U
       refine ⟨by rw [h1, hkb1], ?_⟩
       rw [h2, hX]
       simp only [keyBlock, bv, List.map_append, List.map_replicate, List.length_map]
-      rw [if_pos hle', List.length_map]
+      rw [ite_eq_left hle', List.length_map]
       rfl
   · rintro kb1 ⟨hkb1', hkb1''⟩
-    simp only [core.slice.Slice.iter_mut, bind_tc_ok, bind_ok]
+    simp only [core.slice.Slice.iter_mut, bind_ok]
     step*
     have hs1l : s1.val.length = B := by
       rw [s1_post, hkb1', List.length_take]; simp; omega

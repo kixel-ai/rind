@@ -157,7 +157,6 @@ theorem sha256_finish_with_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha2.Sha
   simp only at o_post
   have hz : z.val = P.length := by rw [o_post.2.1, hi, hn]
   simp only [core.option.Option.and_then,
-    mid.sha2.Sha256State.finish_with.closure.Insts.CoreOpsFunctionFnOnceTupleU64OptionU64,
     mid.sha2.Sha256State.finish_with.closure.Insts.CoreOpsFunctionFnOnceTupleU64OptionU64.call_once]
   step*
   have hx : x.val = message.length := by rw [x_post, ← hml]; simp
@@ -433,7 +432,6 @@ theorem sha1_finish_with_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha1.Sha1S
   simp only at o_post
   have hz : z.val = P.length := by rw [o_post.2.1, hi, hn]
   simp only [core.option.Option.and_then,
-    mid.sha1.Sha1State.finish_with.closure.Insts.CoreOpsFunctionFnOnceTupleU64OptionU64,
     mid.sha1.Sha1State.finish_with.closure.Insts.CoreOpsFunctionFnOnceTupleU64OptionU64.call_once]
   step*
   have hx : x.val = message.length := by rw [x_post, ← hml]; simp
