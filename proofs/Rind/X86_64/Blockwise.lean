@@ -155,4 +155,97 @@ theorem pad_spec {N L : Usize} (rest : Slice U8) (length : Std.Array U8 L)
           padZeros N length.val.length rest.val.length := by rw [hL']; omega
       rw [Slice.from_val, pad_list _ _ _ (by rw [hL']; omega), hz]
 
+/-- The padding of `x` bytes ends on a block boundary. -/
+theorem pad_mod {N L : Nat} (x : Nat) (hN : 0 < N) : (x + 1 + L + padZeros N L x) % N = 0 := by
+  unfold padZeros
+  have hr := Nat.mod_lt (x + 1 + L) hN
+  rw [Nat.add_mod, Nat.mod_mod]
+  rcases Nat.eq_zero_or_pos ((x + 1 + L) % N) with h | h
+  · rw [h, Nat.sub_zero, Nat.mod_self]; simp
+  · rw [Nat.mod_eq_of_lt (show N - (x + 1 + L) % N < N by omega),
+      show (x + 1 + L) % N + (N - (x + 1 + L) % N) = N by omega, Nat.mod_self]
+
+/-- Dropping whole blocks off the front leaves the padding unchanged. -/
+theorem padZeros_sub {N L n start : Nat} (h : start % N = 0) (hs : start ≤ n) :
+    padZeros N L (n - start) = padZeros N L n := by
+  unfold padZeros
+  obtain ⟨q, rfl⟩ := Nat.dvd_of_mod_eq_zero h
+  rw [show n + 1 + L = n - N * q + 1 + L + N * q by omega, Nat.add_mul_mod_self_left]
+
+theorem compress_padded_spec {C S : Type} {N L : Usize}
+    (inst : low.generic.blockwise.Compress C S) (R : List U8 → S → Prop) (bound : Nat)
+    (hC : ∀ p s (b : Slice U8), R p s → b.length % N.val = 0 → p.length + b.length ≤ bound →
+      inst.compress s b ⦃ s' => R (p ++ b.val) s' ⦄)
+    (p : List U8) (message : Slice U8) (length : Std.Array U8 L) (state : S) (hR : R p state)
+    (hN : 0 < N.val) (hN2 : 2 * N.val ≤ Usize.max) (hL : L.val + 1 ≤ N.val)
+    (hb : p.length + message.length + 1 + L.val + padZeros N L message.length ≤ bound) :
+    low.generic.blockwise.compress_padded N inst message length state ⦃ s' =>
+      R (p ++ message.val ++ [128#u8] ++ List.replicate (padZeros N L message.length) 0#u8 ++
+        length.val) s' ⦄ := by
+  unfold low.generic.blockwise.compress_padded
+  have hlen : message.len.val = message.length := by simp [Slice.len, Slice.length]
+  have hmod := Nat.mod_add_div message.length N.val
+  have hlt := Nat.mod_lt message.length hN
+  step*
+  apply WP.spec_bind (Pₘ := fun (start : Usize) => start.val % N.val = 0 ∧
+    start.val ≤ message.length ∧ message.length - start.val + 1 + L.val ≤ 2 * N.val)
+  · have hq : (N.val * (message.length / N.val)) % N.val = 0 := Nat.mul_mod_right _ _
+    have hq1 : (N.val * (message.length / N.val) - N.val) % N.val = 0 := by
+      rw [← Nat.mul_sub_one]; exact Nat.mul_mod_right _ _
+    simp only [hlen] at tail_post
+    split
+    · rename_i hc
+      have hc' : message.length % N.val + 1 + L.val ≤ N.val := by
+        simp only [UScalar.le_equiv] at hc; omega
+      split
+      · rename_i hge
+        have hge' : N.val ≤ message.length := by
+          simp only [GE.ge, UScalar.le_equiv] at hge; omega
+        have hNq : N.val ≤ N.val * (message.length / N.val) :=
+          Nat.le_mul_of_pos_right _ (Nat.div_pos hge' hN)
+        step as ⟨i5, h5⟩
+        step as ⟨st, hst⟩
+        have : st.val = N.val * (message.length / N.val) - N.val := by omega
+        exact ⟨by rw [this]; exact hq1, by omega, by omega⟩
+      · rename_i hge
+        have hge' : ¬ N.val ≤ message.length := by
+          simp only [GE.ge, UScalar.le_equiv] at hge; omega
+        step as ⟨st, hst⟩
+        have : st.val = N.val * (message.length / N.val) := by omega
+        exact ⟨by rw [this]; exact hq, by omega, by omega⟩
+    · rename_i hc
+      have hc' : ¬ message.length % N.val + 1 + L.val ≤ N.val := by
+        simp only [UScalar.le_equiv] at hc; omega
+      step as ⟨st, hst⟩
+      have : st.val = N.val * (message.length / N.val) := by omega
+      exact ⟨by rw [this]; exact hq, by omega, by omega⟩
+  · intro start ⟨hs0, hs1, hs2⟩
+    step*
+    apply WP.spec_bind (Pₘ := fun s1 => R (p ++ blocks.val) s1)
+    · split
+      · rename_i hb0
+        have : blocks.val = [] := by
+          rw [b_post] at hb0; exact List.eq_nil_of_length_eq_zero hb0
+        simp only [this, List.append_nil, WP.spec_ok, hR]
+      · exact hC _ _ _ hR (by rw [blocks_post]; exact hs0) (by rw [blocks_post]; omega)
+    · intro s1 hs1R
+      have hpz : padZeros N.val L.val rest.length = padZeros N.val L.val message.length := by
+        rw [blocks_post1]; exact padZeros_sub hs0 hs1
+      step with pad_spec rest length hN hN2 hL (by rw [blocks_post1]; omega) as ⟨s, _, hs⟩
+      have hsl : s.length = rest.length + 1 + L.val + padZeros N.val L.val rest.length := by
+        simp only [Slice.length] at *; rw [hs]; simp; omega
+      apply WP.spec_mono (hC _ _ _ hs1R ?_ ?_)
+      · intro s' h
+        rw [hs, hpz, blocks_post3, blocks_post2] at h
+        simp only [List.append_assoc] at h ⊢
+        rw [← List.append_assoc (List.take _ _), List.take_append_drop] at h
+        exact h
+      · rw [hsl]; exact pad_mod _ hN
+      · have h1 := blocks_post
+        have h2 := blocks_post1
+        have h3 := hsl
+        have h4 := hpz
+        simp only [List.length_append, Slice.length] at *
+        omega
+
 end rind.x86_64
