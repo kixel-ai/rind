@@ -1,0 +1,11 @@
+[package]
+name = "build-cost-graviola"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Its own workspace, so it resolves and builds alone.
+[workspace]
+
+[dependencies]
+graviola = "0.4"

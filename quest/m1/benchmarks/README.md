@@ -23,6 +23,5 @@ The epic's own remaining work, once its children merge: that triage.
 
 ## Required
 
-- [Build cost is measured](/quest/m1/benchmarks/build-cost.md) - cold build time, binary size, and build dependencies, per library and per rustls provider
 - [BENCHMARKS.md is generated](/quest/m1/benchmarks/report.md) - the heatmaps, ✓ marks, build cost, and CPU tiers
 - [The README sells rind and links the report](/quest/m1/benchmarks/readme.md) - a short pitch and headline numbers, with the numbers' single home in the report

@@ -12,7 +12,5 @@ See the [epic](/quest/m1/benchmarks/README.md) for the settled decisions and the
 - Keep the ✓ data in one checked-in table (library, operation, platform, proof source), so a ✓ is reviewed like code.
 - The CPU-tier heatmap reads the nightly bench run's results. Once it exists, the README Algorithms table drops its ratios and the speed epic points to the report as its scoreboard.
 - Each section says when and on which commit it was measured.
-
-## Required
-
-- [Build cost is measured](/quest/m1/benchmarks/build-cost.md) - the build numbers this renders
+- `admin/bench-report` runs `admin/build-cost` on each host after the speed benchmarks, not alongside them, since both skew each other's times, and renders its JSON. The openssl build links the system's OpenSSL, so its binary size excludes the library; openssl-vendored is the static figure.
+- CI runs a `cargo check` of the build-cost fixtures that use rind (the minimal binary and the rind-rustls client), so a rind API change can't silently break them before the next report run (maintainer, 2026-11-03).
