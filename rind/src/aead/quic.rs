@@ -85,14 +85,16 @@ impl HeaderProtectionKey {
 /// matching on [`Key`] then names no cipher's code.
 struct Masker<C: Mask> {
     key: C,
-    mask: ZeroableRef<fn(&C, &[u8; SAMPLE_LEN]) -> [u8; 5]>,
+    mask: ZeroableRef<MaskFn<C>>,
 }
+
+type MaskFn<C> = fn(&C, &[u8; SAMPLE_LEN]) -> [u8; 5];
 
 impl<C: Mask> Masker<C> {
     fn new(key: C) -> Self {
         Self {
             key,
-            mask: ZeroableRef::new(const { &(C::mask as fn(&C, &[u8; SAMPLE_LEN]) -> [u8; 5]) }),
+            mask: ZeroableRef::new(const { &(C::mask as MaskFn<C>) }),
         }
     }
 

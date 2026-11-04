@@ -137,6 +137,10 @@ impl fmt::Debug for Verification {
 /// Verifies with a key: `(key, signature, message)`.
 type Verify<K> = fn(&K, &[u8], &[u8]) -> Result<(), Error>;
 
+/// Signs a message into the start of an output and returns the signature:
+/// `(key, output, message)`.
+type Sign<K> = for<'a> fn(&K, &'a mut [u8], &[u8]) -> Result<&'a [u8], Error>;
+
 /// A parsed key and the function that verifies with it, which only its
 /// algorithm's static names: matching on [`Parsed`] then names no
 /// algorithm's code.
@@ -454,8 +458,8 @@ trait Encoding {
 
     fn sign<'a, C: Curve, H: SignatureHash>(
         key: &ecdsa::SigningKey<C>,
-        message: &[u8],
         output: &'a mut [u8],
+        message: &[u8],
     ) -> Result<&'a [u8], Error>;
 }
 
@@ -473,8 +477,8 @@ impl Encoding for Asn1 {
 
     fn sign<'a, C: Curve, H: SignatureHash>(
         key: &ecdsa::SigningKey<C>,
-        message: &[u8],
         output: &'a mut [u8],
+        message: &[u8],
     ) -> Result<&'a [u8], Error> {
         key.sign_asn1::<H>(message, output)
     }
@@ -494,8 +498,8 @@ impl Encoding for Fixed {
 
     fn sign<'a, C: Curve, H: SignatureHash>(
         key: &ecdsa::SigningKey<C>,
-        message: &[u8],
         output: &'a mut [u8],
+        message: &[u8],
     ) -> Result<&'a [u8], Error> {
         key.sign::<H>(message, output)
     }
@@ -618,7 +622,7 @@ struct EcdsaPair<C: EcdsaCurve> {
 type Write<K> = for<'a> fn(&K, &'a mut [u8]) -> Result<&'a [u8], Error>;
 
 struct EcdsaOps<C: EcdsaCurve> {
-    sign: for<'a> fn(&ecdsa::SigningKey<C>, &[u8], &'a mut [u8]) -> Result<&'a [u8], Error>,
+    sign: Sign<ecdsa::SigningKey<C>>,
     verify: Verify<ecdsa::VerifyingKey<C>>,
     to_pkcs8: Write<ecdsa::SigningKey<C>>,
     to_scalar: Write<ecdsa::SigningKey<C>>,
@@ -737,8 +741,8 @@ impl EcdsaKeyPair {
         Buffer::write(|output| {
             on_ecdsa!(self, |pair| (pair.ops.get().sign)(
                 &pair.signing,
-                message,
-                output
+                output,
+                message
             ))
         })
         .map(Signature)
@@ -810,13 +814,10 @@ struct RsaScheme {
     hash: HashId,
 }
 
-/// Signs a message into the start of an output: `(key, output, message)`.
-type RsaSign = for<'a> fn(&rsa::SigningKey, &'a mut [u8], &[u8]) -> Result<&'a [u8], Error>;
-
 // Only constant functions call these, so a static names only its own
 // scheme's code, as `with_ecdsa!` does.
 impl RsaScheme {
-    const fn signer(self) -> RsaSign {
+    const fn signer(self) -> Sign<rsa::SigningKey> {
         match (self.padding, self.hash) {
             (RsaPadding::Pkcs1, HashId::Sha256) => rsa::SigningKey::sign_pkcs1_sha256,
             (RsaPadding::Pkcs1, HashId::Sha384) => rsa::SigningKey::sign_pkcs1_sha384,
@@ -864,7 +865,7 @@ struct Rsa {
     verification: RsaVerification,
     min_bits: usize,
     verify: Verify<rsa::VerifyingKey>,
-    parse: fn(Rsa, &[u8]) -> Result<PublicKey, Error>,
+    parse: fn(Self, &[u8]) -> Result<PublicKey, Error>,
 }
 
 impl fmt::Debug for Rsa {
@@ -932,7 +933,7 @@ impl<B: AsRef<[u8]>> RsaPublicKeyComponents<B> {
 pub struct RsaSigningAlgorithm {
     scheme: RsaScheme,
     // The only paths to the scheme's code, as `Verification`'s.
-    sign: RsaSign,
+    sign: Sign<rsa::SigningKey>,
     verify: Verify<rsa::VerifyingKey>,
 }
 

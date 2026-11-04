@@ -143,28 +143,28 @@ impl fmt::Debug for Algorithm {
 pub static HMAC_SHA1: Algorithm = Algorithm {
     id: Id::Sha1,
     tag_len: sha1::Sha1Context::OUTPUT_SZ,
-    key: Keying::<LegacySha1>::new,
+    key: Keying::<LegacySha1>::with_key,
 };
 
 /// HMAC-SHA256.
 pub static HMAC_SHA256: Algorithm = Algorithm {
     id: Id::Sha256,
     tag_len: sha2::Sha256Context::OUTPUT_SZ,
-    key: Keying::<Sha256>::new,
+    key: Keying::<Sha256>::with_key,
 };
 
 /// HMAC-SHA384.
 pub static HMAC_SHA384: Algorithm = Algorithm {
     id: Id::Sha384,
     tag_len: sha2::Sha384Context::OUTPUT_SZ,
-    key: Keying::<Sha384>::new,
+    key: Keying::<Sha384>::with_key,
 };
 
 /// HMAC-SHA512.
 pub static HMAC_SHA512: Algorithm = Algorithm {
     id: Id::Sha512,
     tag_len: sha2::Sha512Context::OUTPUT_SZ,
-    key: Keying::<Sha512>::new,
+    key: Keying::<Sha512>::with_key,
 };
 
 /// An HMAC key, keyed once and reused for every message; wiped on drop.
@@ -373,7 +373,7 @@ impl<H: HmacHash> Clone for Keying<H> {
 }
 
 impl<H: HmacHash> Keying<H> {
-    fn new(key: &[u8]) -> Keyed {
+    fn with_key(key: &[u8]) -> Keyed {
         H::keyed(Self {
             key: HmacKey::new(key),
             ops: ZeroableRef::new(

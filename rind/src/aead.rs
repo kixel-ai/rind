@@ -39,7 +39,7 @@ pub struct Algorithm {
     id: AlgorithmId,
     // The only path to the cipher's code, so a binary links only the ciphers
     // whose algorithms it names.
-    new: fn(&[u8]) -> Inner,
+    expand: fn(&[u8]) -> Inner,
 }
 
 impl fmt::Debug for Algorithm {
@@ -78,19 +78,19 @@ impl Algorithm {
 /// AES-128 in GCM mode, with a 16-byte key.
 pub static AES_128_GCM: Algorithm = Algorithm {
     id: AlgorithmId::Aes128Gcm,
-    new: Sealer::<AesGcm>::new,
+    expand: Sealer::<AesGcm>::expand,
 };
 
 /// AES-256 in GCM mode, with a 32-byte key.
 pub static AES_256_GCM: Algorithm = Algorithm {
     id: AlgorithmId::Aes256Gcm,
-    new: Sealer::<AesGcm>::new,
+    expand: Sealer::<AesGcm>::expand,
 };
 
 /// ChaCha20-Poly1305 from RFC 8439, with a 32-byte key.
 pub static CHACHA20_POLY1305: Algorithm = Algorithm {
     id: AlgorithmId::ChaCha20Poly1305,
-    new: Sealer::<ChaCha20Poly1305>::new,
+    expand: Sealer::<ChaCha20Poly1305>::expand,
 };
 
 /// An AEAD key that seals with any nonce the caller gives it; wiped on drop.
@@ -109,7 +109,7 @@ impl Key {
             return Err(Error::WrongLength);
         }
 
-        Ok(Self((algorithm.new)(key)))
+        Ok(Self((algorithm.expand)(key)))
     }
 
     /// Encrypts `in_out` in place and returns the tag.
@@ -208,9 +208,15 @@ struct Sealer<C: Cipher> {
     ops: ZeroableRef<Ops<C>>,
 }
 
+/// Seals in place: `(key, nonce, aad, in_out, tag)`.
+type Seal<C> = fn(&C, &[u8; NONCE_LEN], &[u8], &mut [u8], &mut [u8; TAG_LEN]) -> Result<(), Error>;
+
+/// Opens in place: `(key, nonce, aad, in_out, tag)`.
+type Open<C> = fn(&C, &[u8; NONCE_LEN], &[u8], &mut [u8], &[u8; TAG_LEN]) -> Result<(), Error>;
+
 struct Ops<C> {
-    seal: fn(&C, &[u8; NONCE_LEN], &[u8], &mut [u8], &mut [u8; TAG_LEN]) -> Result<(), Error>,
-    open: fn(&C, &[u8; NONCE_LEN], &[u8], &mut [u8], &[u8; TAG_LEN]) -> Result<(), Error>,
+    seal: Seal<C>,
+    open: Open<C>,
 }
 
 /// A cipher's key, as an [`Inner`] variant holds it.
@@ -244,7 +250,7 @@ impl<C: Cipher> Sealer<C> {
     /// builds it in the caller's slot: two layers in one function, as
     /// `Ok(Key(Inner::AesGcm(..)))`, copied the whole key twice.
     #[inline(never)]
-    fn new(key: &[u8]) -> Inner {
+    fn expand(key: &[u8]) -> Inner {
         C::inner(Self {
             key: ManuallyDrop::new(C::new(key)),
             ops: ZeroableRef::new(
