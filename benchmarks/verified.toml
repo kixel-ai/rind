@@ -31,7 +31,8 @@
 # rind: X25519 and Ed25519 run only s2n-bignum routines; point encoding is
 # rind's Rust. rind pads SHA-512 in its own Rust, so its verified aws-lc block
 # function earns no ✓, and every other operation runs some unverified
-# arithmetic, such as P-256's base-point table or the RSA exponentiation.
+# arithmetic, such as P-256 ECDH's Jacobian-to-affine conversion or the RSA
+# exponentiation.
 [[verified]]
 library = "rind"
 operations = ["x25519-ecdh"]
