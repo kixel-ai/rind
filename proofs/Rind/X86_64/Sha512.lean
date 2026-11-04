@@ -345,4 +345,71 @@ theorem complete_blocks_spec (h : RunsSha512) (bw : low.generic.blockwise.Blockw
     · rw [hk, hall, hback', hs4, Slice.len_val, take_setSlice!_zero _ _ (by rw [hbl, hrl, hi3n]; omega),
         whole_post3]
 
+/-- A SHA-512 context, from initial value `iv`, that has hashed `m`: its state
+is the chaining value after the whole blocks it compressed, and its buffer
+holds the rest. -/
+def Hashed (iv : List U64) (c : mid.sha2.Sha512Context) (m : List U8) : Prop :=
+  c.blockwise.used.val ≤ 128 ∧ m.length = 128 * c.state.nblocks.val + c.blockwise.used.val ∧
+    c.state.h.val = compress iv (m.take (128 * c.state.nblocks.val)) ∧
+    c.blockwise.buffer.val.take c.blockwise.used.val = m.drop (128 * c.state.nblocks.val)
+
+/-- `update` adds `bytes` to what the context has hashed. -/
+theorem context_update_spec (h : RunsSha512) (iv : List U64) (c : mid.sha2.Sha512Context)
+    (m : List U8) (bytes : Slice U8) (hc : Hashed iv c m) (hl : m.length + bytes.length < 2 ^ 64) :
+    mid.sha2.Sha512Context.update c bytes ⦃ c' => Hashed iv c' (m ++ bytes.val) ⦄ := by
+  obtain ⟨hu, hm, hh, hb⟩ := hc
+  simp only [Slice.length] at hl
+  unfold mid.sha2.Sha512Context.update low.generic.blockwise.Blockwise.update
+  have hbl : (c.blockwise.buffer.val).length = 128 := c.blockwise.buffer.property
+  have hbytes : bytes.len.val = bytes.val.length := Slice.len_val _
+  have hn128 : 128 * c.state.nblocks.val ≤ m.length := by omega
+  have htake : (m ++ bytes.val).take (128 * c.state.nblocks.val) = m.take (128 * c.state.nblocks.val) :=
+    List.take_append_of_le_length hn128
+  have hdrop : (m ++ bytes.val).drop (128 * c.state.nblocks.val) =
+      m.drop (128 * c.state.nblocks.val) ++ bytes.val := List.drop_append_of_le_length hn128
+  step*
+  split
+  · rename_i hshort
+    have hshort' : bytes.val.length ≤ 128 - c.blockwise.used.val := by
+      have : bytes.len.val ≤ x.val := hshort
+      omega
+    step as ⟨i3, hi3⟩
+    step as ⟨i5, hi5⟩
+    step as ⟨sb, hs, hsl, hback⟩
+    obtain ⟨s, back⟩ := sb
+    simp only at hs hsl hback ⊢
+    step as ⟨s1, hs1⟩
+    · rw [hsl, hi5, Slice.len_val]; omega
+    simp only [Hashed]
+    refine ⟨by omega, ?_, ?_, ?_⟩
+    · simp only [List.length_append]; omega
+    · rw [htake, hh]
+    · rw [hdrop, ← hb, hi3, hbytes, hback, hs1]
+      exact take_setSlice! c.blockwise.buffer.val bytes.val c.blockwise.used.val (by omega)
+  · rename_i hlong
+    have hlong' : 128 < c.blockwise.used.val + bytes.val.length := by
+      have : ¬ bytes.len.val ≤ x.val := hlong
+      omega
+    step with complete_blocks_spec h c.blockwise bytes c.state hu hlong' (by simp only [Slice.length] at *; omega)
+      as ⟨bw', st', hst, hst', hbu, hbb⟩
+    rw [hb] at hst hst' hbu hbb
+    generalize hA : m.drop (128 * c.state.nblocks.val) ++ bytes.val = A at hst hst' hbu hbb
+    have hAl : A.length = c.blockwise.used.val + bytes.val.length := by
+      rw [← hA]; simp only [List.length_append, List.length_drop]; omega
+    have hk : (A.length - 1) / 128 * 128 % 128 = 0 := by omega
+    have hpre : (m ++ bytes.val).take (128 * c.state.nblocks.val + (A.length - 1) / 128 * 128) =
+        m.take (128 * c.state.nblocks.val) ++ A.take ((A.length - 1) / 128 * 128) := by
+      rw [List.take_add, htake, hdrop, hA]
+    have hsuf : (m ++ bytes.val).drop (128 * c.state.nblocks.val + (A.length - 1) / 128 * 128) =
+        A.drop ((A.length - 1) / 128 * 128) := by
+      rw [← List.drop_drop, hdrop, hA]
+    simp only [Hashed]
+    refine ⟨by omega, ?_, ?_, ?_⟩
+    · rw [hst']; simp only [List.length_append]; omega
+    · rw [hst', show 128 * (c.state.nblocks.val + (A.length - 1) / 128 * 128 / 128) =
+          128 * c.state.nblocks.val + (A.length - 1) / 128 * 128 by omega, hpre, hst, hh,
+        compress_append _ _ _ (by simp; omega)]
+    · rw [hst', show 128 * (c.state.nblocks.val + (A.length - 1) / 128 * 128 / 128) =
+          128 * c.state.nblocks.val + (A.length - 1) / 128 * 128 by omega, hsuf, hbb]
+
 end rind.x86_64
