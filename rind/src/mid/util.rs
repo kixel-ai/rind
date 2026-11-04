@@ -49,11 +49,15 @@ little_endian!(
     u64x8_to_little_endian
 );
 
+// Indexes rather than reversing `chunks_exact` and `chunks_exact_mut`, which
+// Aeneas cannot translate, so `proofs/` can prove P-256's encoding. The
+// compiled code is the same.
 macro_rules! big_endian {
     ([u64; $N:literal], $fn_array_to:ident, $fn_slice_to:ident, $fn_slice_any_size_to:ident, $fn_to_bytes:ident) => {
         pub(crate) fn $fn_array_to(b: &[u8; $N * 8]) -> [u64; $N] {
             let mut r = [0; $N];
-            for (ir, b) in (0..$N).zip(b.chunks_exact(8).rev()) {
+            for ir in 0..$N {
+                let b = &b[($N - 1 - ir) * 8..($N - ir) * 8];
                 r[ir] = u64::from_be_bytes(b.try_into().unwrap());
             }
             r
@@ -101,8 +105,8 @@ macro_rules! big_endian {
 
         pub(crate) fn $fn_to_bytes(v: &[u64; $N]) -> [u8; $N * 8] {
             let mut r = [0u8; $N * 8];
-            for (iv, rb) in (0..$N).zip(r.chunks_exact_mut(8).rev()) {
-                rb.copy_from_slice(&v[iv].to_be_bytes());
+            for iv in 0..$N {
+                r[($N - 1 - iv) * 8..($N - iv) * 8].copy_from_slice(&v[iv].to_be_bytes());
             }
             r
         }

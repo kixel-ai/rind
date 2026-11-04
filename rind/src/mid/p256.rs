@@ -257,8 +257,18 @@ impl AffineMontPoint {
         let y = util::big_endian_slice_to_u64x4(y).unwrap();
 
         // A coordinate at or above p would be reduced, giving the point a
-        // second encoding.  Public, so this need not be constant time.
-        let below_p = |v: &[u64; 4]| v.iter().rev().lt(CURVE_PRIME.iter().rev());
+        // second encoding.  Public, so this need not be constant time.  A
+        // loop from the top limb rather than `Iterator::lt`, which Aeneas
+        // cannot translate; the compiled code is the same.
+        let below_p = |v: &[u64; 4]| {
+            for i in 0..4 {
+                let j = 3 - i;
+                if v[j] != CURVE_PRIME[j] {
+                    return v[j] < CURVE_PRIME[j];
+                }
+            }
+            false
+        };
         if !below_p(&x) || !below_p(&y) {
             return Err(KeyFormatError::NotOnCurve.into());
         }

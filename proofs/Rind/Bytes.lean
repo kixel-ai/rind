@@ -121,3 +121,67 @@ theorem take_setSlice! {α : Type _} (r s : List α) (i : Nat) (hs : i + s.lengt
   simp only [List.setSlice!, hmin, List.take_length, List.append_assoc, List.take_append, hti,
     Nat.add_sub_cancel_left, List.take_take]
   simp
+
+/-! Big-endian, as little-endian reversed. -/
+
+/-- `u64::from_be_bytes` reads its bytes as a big-endian number. -/
+theorem val_of_fromBEBytes (a : List U8) (i : U64) {h}
+    (hi : i.bv = (BitVec.fromBEBytes (a.map U8.bv)).cast h) : i.val = beNat a := by
+  show i.bv.toNat = _
+  rw [hi, BitVec.toNat_cast, BitVec.fromBEBytes, BitVec.toNat_cast, toNat_fromLEBytes]
+  simp [beNat, leNat, List.map_map, List.map_reverse, Function.comp_def]
+
+/-- `u64::to_be_bytes` writes the number its word holds. -/
+theorem beNat_toBEBytes (x : U64) :
+    beNat (x.bv.toBEBytes.map (@UScalar.mk UScalarTy.U8)) = x.val := by
+  simp only [beNat, BitVec.toBEBytes, List.map_reverse, List.reverse_reverse, leNat_toLEBytes]
+
+theorem beNat_append (a b : List U8) : beNat (a ++ b) = beNat a * 256 ^ b.length + beNat b := by
+  simp only [beNat, leNat, List.reverse_append, List.map_append, Nat.ofDigits_append,
+    List.length_map, List.length_reverse]
+  ring
+
+theorem beNat_lt (a : List U8) : beNat a < 256 ^ a.length := by
+  simp only [beNat, leNat]
+  have := Nat.ofDigits_lt_base_pow_length (b := 256) (l := a.reverse.map (·.val)) (by norm_num)
+    (by simp only [List.mem_map]; rintro _ ⟨x, -, rfl⟩; exact x.hBounds)
+  simpa using this
+
+theorem wordsNat_four (w : List U64) (hl : w.length = 4) :
+    wordsNat w = w[0]!.val + 2 ^ 64 * (w[1]!.val + 2 ^ 64 * (w[2]!.val + 2 ^ 64 * w[3]!.val)) := by
+  match w, hl with
+  | [a, b, c, d], _ => simp [wordsNat, Nat.ofDigits]
+
+theorem slice_append_slice {α : Type _} (l : List α) (a b c : Nat) (hab : a ≤ b) (hbc : b ≤ c) :
+    l.slice a b ++ l.slice b c = l.slice a c := by
+  simp only [List.slice]
+  rw [show c - a = (b - a) + (c - b) by omega, List.take_add, List.drop_drop,
+    show a + (b - a) = b by omega]
+
+theorem length_slice {α : Type _} (l : List α) (a b : Nat) (h : b ≤ l.length) :
+    (l.slice a b).length = b - a := by
+  simp only [List.slice, List.length_take, List.length_drop]
+  omega
+
+/-- 32 big-endian bytes encode the number their 8-byte chunks do as limbs, most
+significant first. -/
+theorem beNat_32 (b : List U8) (hl : b.length = 32) :
+    beNat b = beNat (b.slice 24 32) + 2 ^ 64 * (beNat (b.slice 16 24) +
+      2 ^ 64 * (beNat (b.slice 8 16) + 2 ^ 64 * beNat (b.slice 0 8))) := by
+  have hb : b = b.slice 0 8 ++ b.slice 8 16 ++ b.slice 16 24 ++ b.slice 24 32 := by
+    rw [slice_append_slice _ 0 8 16 (by omega) (by omega),
+      slice_append_slice _ 0 16 24 (by omega) (by omega),
+      slice_append_slice _ 0 24 32 (by omega) (by omega)]
+    simp [List.slice, List.take_of_length_le, hl]
+  conv_lhs => rw [hb]
+  simp only [beNat_append, length_slice b _ _ (by omega : 32 ≤ b.length), length_slice b _ _ (by omega : 24 ≤ b.length),
+    length_slice b _ _ (by omega : 16 ≤ b.length)]
+  ring
+
+theorem setSlice!_append {α : Type _} (A B C B' : List α) (h : B'.length = B.length) :
+    (A ++ B ++ C).setSlice! A.length B' = A ++ B' ++ C := by
+  have hmin : min B'.length ((A ++ B ++ C).length - A.length) = B'.length := by
+    simp [h]
+  simp only [List.setSlice!]
+  rw [hmin, List.take_of_length_le (le_refl _), List.append_assoc A B C, List.take_left' rfl,
+    ← List.drop_drop, List.drop_left' rfl, List.drop_left' h.symm, List.append_assoc]

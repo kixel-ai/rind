@@ -28,6 +28,49 @@ opaque low.aarch64.curve25519_x25519.curve25519_x25519
 opaque low.aarch64.bignum_eq.bignum_eq
   : Slice Std.U64 → Slice Std.U64 → Result Bool
 
+opaque low.aarch64.bignum_tomont_p256.bignum_tomont_p256
+  : Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.aarch64.bignum_demont_p256.bignum_demont_p256
+  : Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.aarch64.bignum_add_p256.bignum_add_p256
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Result (Array Std.U64 4#usize)
+
+opaque low.aarch64.bignum_montmul_p256.bignum_montmul_p256
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Result (Array Std.U64 4#usize)
+
+opaque low.aarch64.bignum_montsqr_p256.bignum_montsqr_p256
+  : Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.aarch64.bignum_mod_n256.bignum_mod_n256
+  : Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.aarch64.p256_scalarmul.p256_scalarmul
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
+    Result (Array Std.U64 8#usize)
+
+opaque low.aarch64.p256_scalarmulbase.p256_scalarmulbase
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Array (Array Std.U64
+    256#usize) 43#usize → Result (Array Std.U64 8#usize)
+
+/-! P-256's generator table, which `admin/p256-precomp` writes. -/
+
+opaque mid.p256.precomp.CURVE_GENERATOR_PRECOMP
+  : Result (Array (Array Std.U64 256#usize) 43#usize)
+
+/-! P-256's key generation, which draws through a `dyn RandomSource`:
+`Rind.Aarch64.P256Dispatch` models it. -/
+
+opaque mid.p256.PrivateKey.new_random
+  : Result (core.result.Result mid.p256.PrivateKey error.Error)
+
 /-! The entry guard and CPU dispatch, which read no input. -/
 
 opaque low.entry.Entry.new_secret : Result low.entry.Entry
@@ -47,7 +90,7 @@ opaque low.aarch64.sha1.sha1_compress_blocks
 opaque low.aarch64.sha256.sha256_compress_blocks
   : Array Std.U32 8#usize → Slice Std.U8 → Result (Array Std.U32 8#usize)
 
-/-! The other curves, which X25519's results never depend on. -/
+/-! The other curves, which X25519's and P-256's results never depend on. -/
 
 opaque mid.p521.PrivateKey.new_random
   : Result (core.result.Result mid.p521.PrivateKey error.Error)
@@ -55,17 +98,11 @@ opaque mid.p521.PrivateKey.new_random
 opaque mid.p384.PrivateKey.new_random
   : Result (core.result.Result mid.p384.PrivateKey error.Error)
 
-opaque mid.p256.PrivateKey.new_random
-  : Result (core.result.Result mid.p256.PrivateKey error.Error)
-
 opaque mid.p521.PrivateKey.public_key_uncompressed
   : mid.p521.PrivateKey → Result (Array Std.U8 133#usize)
 
 opaque mid.p384.PrivateKey.public_key_uncompressed
   : mid.p384.PrivateKey → Result (Array Std.U8 97#usize)
-
-opaque mid.p256.PrivateKey.public_key_uncompressed
-  : mid.p256.PrivateKey → Result (Array Std.U8 65#usize)
 
 opaque mid.p521.PrivateKey.diffie_hellman
   :
@@ -83,12 +120,9 @@ opaque mid.p384.PrivateKey.diffie_hellman
 opaque mid.p384.PublicKey.from_x962_uncompressed
   : Slice Std.U8 → Result (core.result.Result mid.p384.PublicKey error.Error)
 
-opaque mid.p256.PrivateKey.diffie_hellman
-  :
-  mid.p256.PrivateKey → mid.p256.PublicKey → Result (core.result.Result
-    mid.p256.SharedSecret error.Error)
+/-! AES, whose header protection no proof covers. -/
 
-opaque mid.p256.PublicKey.from_x962_uncompressed
-  : Slice Std.U8 → Result (core.result.Result mid.p256.PublicKey error.Error)
+opaque mid.aes.Aes.encrypt_block
+  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
 
 end rind.aarch64
