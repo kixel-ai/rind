@@ -254,6 +254,92 @@ theorem hmac_key_new_spec (hs : HashSpec inst H B L max Abs CAbs) (key : Slice U
       funext x
       exact xor_pads x
 
+theorem keyBlock_length (hs : HashSpec inst H B L max Abs CAbs) (key : List Byte) :
+    (keyBlock H B key).length = B := by
+  obtain ⟨hLB, -, -, -, hHL⟩ := hs.out
+  unfold keyBlock
+  split <;> simp [hHL] <;> omega
+
+theorem hmac_def (key text : List Byte) :
+    hmac H B key text = H ((keyBlock H B key).map (· ^^^ 0x5c) ++
+      H ((keyBlock H B key).map (· ^^^ 0x36) ++ text)) := rfl
+
+/-- The tag of `message` under the key `k` holds is HMAC's. -/
+theorem hmac_sign_spec (hs : HashSpec inst H B L max Abs CAbs) (key : List Byte)
+    (k : high.hmac.HmacKey Self C S) (hk : HmacKeyed Abs H B key k) (m : Slice U8)
+    (hm : B + m.length ≤ max) :
+    high.hmac.HmacKey.sign inst k m ⦃ d =>
+      d.algorithm.output_len.val = L ∧ digestBytes d = hmac H B key (bv m.val) ⦄ := by
+  obtain ⟨ki, ko, hi, ho, hbi, hbo⟩ := hk
+  obtain ⟨hLB, hL64, -, hBmax, -⟩ := hs.out
+  have hkil : ki.length = B := by
+    have := congrArg List.length hbi; simp [bv, keyBlock_length hs] at this; exact this
+  have hkol : ko.length = B := by
+    have := congrArg List.length hbo; simp [bv, keyBlock_length hs] at this; exact this
+  unfold high.hmac.HmacKey.sign
+  apply WP.spec_bind (hs.finish_with ki k.inner m hi (by omega))
+  rintro d1 ⟨hd1l, hd1⟩
+  step with digest_as_ref_spec d1 (by omega) as ⟨s, hsl, hsb⟩
+  apply WP.spec_mono (hs.finish_with ko k.outer s ho (by omega))
+  rintro d ⟨hdl, hd⟩
+  refine ⟨hdl, ?_⟩
+  rw [hd, hmac_def, ← hbo, ← hbi]
+  simp only [bv, List.map_append] at hsb hd1 ⊢
+  rw [hsb, hd1]
+
+/-- `h` is a tag computation under `key` that has been given `p`. -/
+def HmacCtx (CAbs : List U8 → C → Prop) (Abs : List U8 → S → Prop) (H : List Byte → List Byte)
+    (B : Nat) (key : List Byte) (p : List U8) {Self : Type} (h : high.hmac.Hmac Self C S) : Prop :=
+  ∃ ki ko : List U8, CAbs (ki ++ p) h.inner ∧ Abs ko h.outer ∧ ki.length = B ∧ ko.length = B ∧
+    bv ki = (keyBlock H B key).map (· ^^^ 0x36) ∧ bv ko = (keyBlock H B key).map (· ^^^ 0x5c)
+
+theorem hmac_start_spec (hs : HashSpec inst H B L max Abs CAbs) (key : List Byte)
+    (k : high.hmac.HmacKey Self C S) (hk : HmacKeyed Abs H B key k) :
+    high.hmac.HmacKey.start inst k ⦃ h => HmacCtx CAbs Abs H B key [] h ⦄ := by
+  obtain ⟨ki, ko, hi, ho, hbi, hbo⟩ := hk
+  have hkil : ki.length = B := by
+    have := congrArg List.length hbi; simp [bv, keyBlock_length hs] at this; exact this
+  have hkol : ko.length = B := by
+    have := congrArg List.length hbo; simp [bv, keyBlock_length hs] at this; exact this
+  unfold high.hmac.HmacKey.start
+  apply WP.spec_bind (hs.resume ki k.inner hi)
+  intro c hc
+  apply WP.spec_bind (hs.clone ko k.outer ho)
+  intro o hoc
+  simp only [WP.spec_ok]
+  exact ⟨ki, ko, by simpa using hc, hoc, hkil, hkol, hbi, hbo⟩
+
+theorem hmac_update_spec (hs : HashSpec inst H B L max Abs CAbs) (key : List Byte) (p : List U8)
+    {T : Type} (asRef : core.convert.AsRef T (Slice U8)) (h : high.hmac.Hmac Self C S)
+    (hh : HmacCtx CAbs Abs H B key p h) (bytes : T) (b : Slice U8)
+    (hb : asRef.as_ref bytes = ok b) (hm : B + p.length + b.length ≤ max) :
+    high.hmac.Hmac.update inst asRef h bytes ⦃ h' => HmacCtx CAbs Abs H B key (p ++ b.val) h' ⦄ := by
+  obtain ⟨ki, ko, hi, ho, hkil, hkol, hbi, hbo⟩ := hh
+  unfold high.hmac.Hmac.update
+  rw [hb, bind_ok]
+  apply WP.spec_bind (hs.update (ki ++ p) h.inner b hi (by
+    simp only [Slice.length] at hm ⊢; simp only [List.length_append]; omega))
+  intro c hc
+  simp only [WP.spec_ok]
+  exact ⟨ki, ko, by simpa using hc, ho, hkil, hkol, hbi, hbo⟩
+
+theorem hmac_finish_spec (hs : HashSpec inst H B L max Abs CAbs) (key : List Byte) (p : List U8)
+    (h : high.hmac.Hmac Self C S) (hh : HmacCtx CAbs Abs H B key p h) (hm : B + p.length ≤ max) :
+    high.hmac.Hmac.finish inst h ⦃ d =>
+      d.algorithm.output_len.val = L ∧ digestBytes d = hmac H B key (bv p) ⦄ := by
+  obtain ⟨ki, ko, hi, ho, hkil, hkol, hbi, hbo⟩ := hh
+  obtain ⟨hLB, hL64, -, hBmax, -⟩ := hs.out
+  unfold high.hmac.Hmac.finish
+  apply WP.spec_bind (hs.finish (ki ++ p) h.inner hi (by simp; omega))
+  rintro d1 ⟨hd1l, hd1⟩
+  step with digest_as_ref_spec d1 (by omega) as ⟨s, hsl, hsb⟩
+  apply WP.spec_mono (hs.finish_with ko h.outer s ho (by omega))
+  rintro d ⟨hdl, hd⟩
+  refine ⟨hdl, ?_⟩
+  rw [hd, hmac_def, ← hbo, ← hbi]
+  simp only [bv, List.map_append] at hsb hd1 ⊢
+  rw [hsb, hd1]
+
 end
 
 end rind.x86_64
