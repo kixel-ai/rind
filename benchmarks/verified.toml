@@ -2,11 +2,11 @@
 # BENCHMARKS.md marks with a ✓. `admin/bench-report render` reads it and
 # refuses an entry that names no library, operation, or CPU feature it knows.
 #
-# An entry earns its ✓ when a machine-checked proof shows that the code
+# An entry earns its ✓ when a machine-checked proof shows that all the code
 # computing the operation gives the specified result for every input, in the
 # version that library ships, on that architecture and CPU: the cipher and its
-# mode, the hash over every block, the whole scalar multiplication or modular
-# exponentiation. Parsing, encoding, randomness, and the hash inside a
+# mode, the hash over every block with its padding, the whole scalar
+# multiplication or modular exponentiation. Parsing, encoding, randomness, and the hash inside a
 # signature (its own row) are left out. A proof of memory safety, panic
 # freedom, or secret independence alone earns none, nor one covering only some
 # of the arithmetic, such as field operations under unverified point formulas.

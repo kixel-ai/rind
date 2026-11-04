@@ -1150,7 +1150,8 @@ def report(hosts, tiers, verified):
         "",
         "How long rind and the usual Rust crypto libraries take for the same operations, on four machines, "
         "and what each costs to build. Every library runs its native path on each host. "
-        "A ✓ marks code that a published formal proof covers, as [Verified code](#verified-code) lists.",
+        "A ✓ marks an operation whose whole computation a published formal proof covers, as "
+        "[Verified code](#verified-code) lists.",
         "",
         "## Hosts",
         "",
@@ -1263,11 +1264,11 @@ def report(hosts, tiers, verified):
     md += [
         "## Verified code",
         "",
-        "A ✓ means a published, machine-checked proof shows that the code computing the operation, as that "
-        "library runs it on that host, gives the specified result for every input: the cipher and its mode, "
-        "the hash over every block, the whole scalar multiplication or exponentiation. Parsing, encoding, "
-        "randomness, and the hash inside a signature are left out. Proofs of memory safety alone, or of only "
-        "some of the arithmetic, earn no ✓. `benchmarks/verified.toml` holds this table.",
+        "A ✓ means a published, machine-checked proof shows that all the code computing the operation, as "
+        "that library runs it on that host, gives the specified result for every input: the cipher and its "
+        "mode, the hash over every block with its padding, the whole scalar multiplication or exponentiation. "
+        "Parsing, encoding, randomness, and the hash inside a signature are left out. Proofs of memory safety "
+        "alone, or of only some of the arithmetic, earn no ✓. `benchmarks/verified.toml` holds this table.",
         "",
         "| Library | Operations | Platform | Proof |",
         "|---|---|---|---|",
