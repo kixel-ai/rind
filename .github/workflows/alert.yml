@@ -19,6 +19,7 @@ on:
       - coverage
       - ctgrind
       - fuzz
+      - prove
       - Pullfrog
       - quality lints
       - Queue
