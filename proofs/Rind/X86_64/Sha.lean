@@ -406,4 +406,208 @@ theorem sha256_hashSpec (hb : ShaBlocks) :
       high.hash.HashBlock.new, mid.sha2.Sha256Context.BLOCK_SZ]
     simp
 
+/-! ## SHA-1, as SHA-256 above -/
+
+/-! ## `mid::sha1::Sha1State` -/
+
+/-- A SHA-1 state that has absorbed `P`, a whole number of blocks. -/
+def Sha1Absorbed (P : List U8) (s : mid.sha1.Sha1State) : Prop :=
+  Absorbed sha1.compress sha1.H0 P s.h ∧ s.nblocks.val * 64 = P.length
+
+theorem sha1_finish_with_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha1.Sha1State)
+    (message : Slice U8) (hs : Sha1Absorbed P s)
+    (hlen : 8 * (P.length + message.length) ≤ U64.max) :
+    mid.sha1.Sha1State.finish_with s message ⦃ r =>
+      bv r.val = sha1.hash (bv (P ++ message.val)) ⦄ := by
+  obtain ⟨⟨hh, hP⟩, hn⟩ := hs
+  have hml : message.len.val = message.length := by simp [Slice.len, Slice.length]
+  unfold mid.sha1.Sha1State.finish_with
+  step*
+  have hi : i.val = 64 := by
+    rw [i_post]
+    simp [mid.sha1.Sha1State.finish_with.BLOCK_SZ, mid.sha1.Sha1Context.BLOCK_SZ]
+  rcases o with _ | z
+  · simp only at o_post; rw [hi] at o_post; omega
+  simp only at o_post
+  have hz : z.val = P.length := by rw [o_post.2.1, hi, hn]
+  simp only [core.option.Option.and_then,
+    mid.sha1.Sha1State.finish_with.closure.Insts.CoreOpsFunctionFnOnceTupleU64OptionU64,
+    mid.sha1.Sha1State.finish_with.closure.Insts.CoreOpsFunctionFnOnceTupleU64OptionU64.call_once]
+  step*
+  have hx : x.val = message.length := by rw [x_post, ← hml]; simp
+  have ha := U64.checked_add_bv_spec z x
+  rcases hz2 : z.checked_add x with _ | z2
+  · rw [hz2] at ha; simp only at ha; omega
+  rw [hz2] at ha
+  simp only at ha
+  simp only [mid.sha1.Sha1State.finish_with.closure_1.Insts.CoreOpsFunctionFnOnceTupleU64OptionU64.call_once,
+    bind_ok]
+  have hm := U64.checked_mul_bv_spec z2 8#u64
+  have h8 : (8#u64).val = 8 := by simp
+  rcases hz3 : z2.checked_mul 8#u64 with _ | bits
+  · rw [hz3] at hm; simp only at hm; rw [h8] at hm; omega
+  rw [hz3] at hm
+  simp only at hm
+  have hbits : bits.val = 8 * (P.length + message.length) := by rw [hm.2.1, h8, ha.2.1]; omega
+  simp only [core.option.Option.expect, Result.ofOption, bind_ok]
+  step*
+  step with compress_padded_spec (N := 64#usize)
+    mid.sha1.Sha1State.Insts.RindLowGenericBlockwiseCompressArrayU325
+    (Absorbed sha1.compress sha1.H0) (P.length + message.length + 9 + 64)
+    (fun p s b hR hl _ => by
+      apply WP.spec_mono (sha1_block_spec hb s b hl)
+      intro h' hh
+      exact absorbed_append hR hl hh)
+    P message a s.h ⟨hh, hP⟩ (by decide) (by scalar_tac) (by decide)
+    (by have h64 : (64#usize).val = 64 := by simp
+        have h8 : (8#usize).val = 8 := by simp
+        have := padZeros_lt (64#usize).val (8#usize).val message.length (by omega)
+        omega) as ⟨h', hh'⟩
+  simp only [core.slice.Slice.iter]
+  step*
+  have hv : (h'.val).length = 5 := h'.property
+  apply WP.spec_mono (sha1_out_loop_spec iter _ h'.val hv ?_ ?_ ?_ ?_)
+  · intro r hr
+    rw [hr, bv_flatMap_beBytes, hh'.1, a_post, pad_bv P message.val bits hP hbits]
+    rfl
+  all_goals simp [iter_post, iter_post1, s_post, Array.val_to_slice]
+
+theorem sha1_update_blocks_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha1.Sha1State)
+    (blk : Slice U8) (hs : Sha1Absorbed P s) (hl : blk.length % 64 = 0)
+    (hbound : P.length + blk.length ≤ U64.max) :
+    mid.sha1.Sha1State.update_blocks s blk ⦃ s' => Sha1Absorbed (P ++ blk.val) s' ⦄ := by
+  obtain ⟨hh, hn⟩ := hs
+  have hbl : blk.len.val = blk.length := by simp [Slice.len, Slice.length]
+  have h64 : mid.sha1.Sha1Context.BLOCK_SZ.val = 64 := by simp [mid.sha1.Sha1Context.BLOCK_SZ]
+  obtain ⟨e, he⟩ := hb.entry
+  unfold mid.sha1.Sha1State.update_blocks
+  step*
+  case h2 =>
+    rw [he, bind_ok]
+    step with sha1_block_spec hb s.h blk hl as ⟨a, ha⟩
+    step*
+    have hi3 : i3.val = blk.length / 64 := by
+      rw [i3_post]; simp only [UScalar.cast_val_eq, i2_post, hbl, h64]
+      apply Nat.mod_eq_of_lt; scalar_tac
+    simp only [lift, bind_ok, WP.spec_ok]
+    refine ⟨absorbed_append hh hl ha, ?_⟩
+    simp only
+    rw [saturating_add_val _ _ (by rw [hi3]; omega), hi3, List.length_append]
+    simp only [Slice.length] at *
+    omega
+  all_goals
+    rename_i h0
+    have : blk.val = [] := List.eq_nil_of_length_eq_zero (by simpa [b1_post] using h0)
+    simp only [this, List.append_nil]
+    exact ⟨hh, hn⟩
+
+theorem sha1_new_spec : mid.sha1.Sha1State.new ⦃ s => Sha1Absorbed [] s ⦄ := by
+  unfold mid.sha1.Sha1State.new
+  simp only [WP.spec_ok]
+  refine ⟨⟨?_, by simp⟩, by simp⟩
+  rw [bv, List.map_nil, blocks_nil, List.foldl_nil]
+  simp [words, Std.Array.make, sha1.H0]
+
+/-! ## `mid::sha1::Sha1Context` -/
+
+/-- A SHA-1 context that has been given `p`. -/
+def Sha1Ctx (p : List U8) (c : mid.sha1.Sha1Context) : Prop :=
+  Buffered Sha1Absorbed p c.blockwise c.state
+
+theorem sha1_resume_spec (P : List U8) (s : mid.sha1.Sha1State) (hs : Sha1Absorbed P s) :
+    mid.sha1.Sha1Context.resume s ⦃ c => Sha1Ctx P c ⦄ := by
+  unfold mid.sha1.Sha1Context.resume
+  step with blockwise_new_spec as ⟨bw, hbw⟩
+  exact ⟨by simp [hbw], P, hs, by simp [hbw]⟩
+
+theorem sha1_ctx_update_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha1.Sha1Context)
+    (bytes : Slice U8) (hc : Sha1Ctx p c) (hlen : p.length + bytes.length ≤ maxInput) :
+    mid.sha1.Sha1Context.update c bytes ⦃ c' => Sha1Ctx (p ++ bytes.val) c' ⦄ := by
+  unfold mid.sha1.Sha1Context.update
+  step with update_spec (N := 64#usize)
+    mid.sha1.Sha1Context.Insts.RindLowGenericBlockwiseCompressSha1State Sha1Absorbed maxInput
+    (fun p s b hs hl hb' => sha1_update_blocks_spec hb p s b hs hl
+      (by unfold maxInput at hb'; omega))
+    p c.blockwise bytes c.state hc (by decide) hlen as ⟨bw, s', h⟩
+  exact h
+
+theorem sha1_ctx_finish_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha1.Sha1Context)
+    (hc : Sha1Ctx p c) (hlen : p.length ≤ maxInput) :
+    mid.sha1.Sha1Context.finish c ⦃ r => bv r.val = sha1.hash (bv p) ⦄ := by
+  obtain ⟨hu, q, hq, hqp⟩ := hc
+  unfold mid.sha1.Sha1Context.finish
+  step with buffered_spec c.blockwise hu as ⟨m, hm⟩
+  have hpl : q.length + m.length = p.length := by
+    rw [← hqp]; simp only [Slice.length, hm, List.length_append]
+  have := sha1_finish_with_spec hb q c.state m hq (by unfold maxInput at hlen; omega)
+  rw [hm, hqp] at this
+  exact this
+
+theorem sha1_compress_length (H : List (BitVec 32)) (b : List Byte) (h : H.length = 5) :
+    (sha1.compress H b).length = 5 := by
+  simp only [sha1.compress, List.length_zipWith, h]
+  rw [show 80 = 79 + 1 from rfl, List.range_succ, List.foldl_append]
+  simp
+
+theorem sha1_hash_length (m : List Byte) : (sha1.hash m).length = 20 := by
+  simp only [sha1.hash, List.length_flatMap, BitVec.toBEBytes_length]
+  rw [List.map_const', List.sum_replicate,
+    foldl_length _ 5 sha1_compress_length _ _ (by simp [sha1.H0])]
+  rfl
+
+/-- SHA-1's `Hash` impl computes FIPS 180-4's SHA-1, given `ShaBlocks`. -/
+theorem sha1_hashSpec (hb : ShaBlocks) :
+    HashSpec high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State sha1.hash 64 20
+      maxInput Sha1Absorbed Sha1Ctx where
+  out := ⟨by decide, by decide, by decide, by unfold maxInput; scalar_tac, sha1_hash_length⟩
+  initial := by
+    simp only [high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.initial]
+    step with sha1_new_spec as ⟨s, hs⟩
+    exact hs
+  update_blocks := fun p s b hs hl hm => by
+    simp only [high.hash.Sha1State.Insts.RindHighHashHashStateSha1Context.update_blocks]
+    step with sha1_update_blocks_spec hb p s b hs hl (by unfold maxInput at hm; omega) as ⟨s', h⟩
+    exact h
+  finish_with := fun p s m hs hm => by
+    simp only [high.hash.Sha1State.Insts.RindHighHashHashStateSha1Context.finish_with,
+      high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.ALGORITHM, high.digest.SHA1]
+    step with sha1_finish_with_spec hb p s m hs (by unfold maxInput at hm; omega) as ⟨r, hr⟩
+    step*
+    apply WP.spec_mono (digest_new_spec _ s (by rw [s_post]; simp) (by simp))
+    rintro d ⟨hd1, hd2⟩
+    refine ⟨by rw [hd1]; simp, ?_⟩
+    rw [hd2, s_post, Array.val_to_slice, hr]
+  clone := fun p s hs => by
+    simp only [high.hash.Sha1State.Insts.CoreCloneClone.clone,
+      mid.sha1.Sha1State.Insts.CoreCloneClone.clone]
+    step*
+    simp only [core.clone.impls.CloneU64.clone, lift, bind_ok, WP.spec_ok]
+    rw [← x_post]
+    exact hs
+  resume := fun p s hs => by
+    simp only [high.hash.Sha1State.Insts.RindHighHashHashStateSha1Context.resume,
+      mid.sha1.Sha1State.Insts.CoreCloneClone.clone]
+    step*
+    simp only [core.clone.impls.CloneU64.clone, lift, bind_ok]
+    rw [← x_post]
+    step with sha1_resume_spec p _ hs as ⟨c, hc⟩
+    exact hc
+  update := fun p c b hc hm => by
+    simp only [high.hash.Sha1Context.Insts.RindHighHashHashContext.update]
+    step with sha1_ctx_update_spec hb p c b hc hm as ⟨c', h⟩
+    exact h
+  finish := fun p c hc hm => by
+    simp only [high.hash.Sha1Context.Insts.RindHighHashHashContext.finish,
+      high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.ALGORITHM, high.digest.SHA1]
+    step with sha1_ctx_finish_spec hb p c hc hm as ⟨r, hr⟩
+    step*
+    apply WP.spec_mono (digest_new_spec _ s (by rw [s_post]; simp) (by simp))
+    rintro d ⟨hd1, hd2⟩
+    refine ⟨by rw [hd1]; simp, ?_⟩
+    rw [hd2, s_post, Array.val_to_slice, hr]
+  zeroed_block := by
+    simp only [high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.zeroed_block,
+      high.hash.HashBlock.new, mid.sha1.Sha1Context.BLOCK_SZ]
+    simp
+
 end rind.x86_64
