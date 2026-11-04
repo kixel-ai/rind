@@ -2,7 +2,7 @@
 
 ## Goal
 
-P-256 ECDH on aarch64 earns the report's ✓: rind's Rust around s2n-bignum's proven `p256_scalarmulbase_alt` and `p256_scalarmul_alt` (byte conversion, the X9.62 point decoding and curve check, the Montgomery conversions, and the result's fault check) is proven in `proofs/`, as X25519 is.
+P-256 ECDH on aarch64 earns the report's ✓: rind's Rust around s2n-bignum's proven `p256_scalarmulbase_alt` and `p256_scalarmul_alt` (byte conversion, the X9.62 point decoding and curve check, the Montgomery conversions, and the result's fault check) is proven with Aeneas → Lean in `proofs/`, as X25519 is, under [the epic's composition rule](/quest/m3/verified/README.md).
 
 ## Plan
 

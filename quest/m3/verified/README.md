@@ -10,6 +10,7 @@ Decided with the maintainer on 2026-11-03, after the [benchmark report](/quest/m
 
 - Scope: an m3 epic that starts with an audit ✅ / only the two known proofs / the same epic in m2.
 - The audit ([moq-dev/rind#318](https://github.com/moq-dev/rind/pull/318)) lists what each path runs, what is proven, and the cheapest route to a proof for each gap. Plan quests from its report, starting with the most common operations.
+- Rust proof tool (decided with the maintainer on 2026-11-04, from [moq-dev/rind#326](https://github.com/moq-dev/rind/pull/326)): Aeneas → Lean ✅ / hax → F*. Every proof of rind's Rust uses it under the composition rule below; a later quest does not reopen the choice.
 - There are three routes, chosen per gap:
   - switch to an existing verified source (s2n-bignum, HACL*/libcrux, fiat-crypto), subject to the ~10% speed rule in `AGENTS.md`;
   - prove rind's own Rust with Aeneas to Lean, in `proofs/` (see its README), under the composition rule below;
