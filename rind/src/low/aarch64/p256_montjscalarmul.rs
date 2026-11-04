@@ -127,6 +127,7 @@ macro_rules! movbig {
 /// point at infinity (either because the input point was or because the
 /// scalar was a multiple of p_256) then the output is guaranteed to
 /// represent the point at infinity, i.e. to have its z coordinate zero.
+#[inline(never)]
 pub(crate) fn p256_montjscalarmul(res: &mut [u64; 12], scalar: &[u64; 4], point: &[u64; 12]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

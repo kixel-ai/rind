@@ -239,6 +239,7 @@ macro_rules! vmask {
 /// This function is constant-time with respect to the value of `idx`. This is
 /// achieved by reading the whole table and using the bit-masking to get the
 /// `idx`-th row.
+#[inline(never)]
 pub(crate) fn bignum_copy_row_from_table_32(z: &mut [u64], table: &[u64], height: u64, index: u64) {
     debug_assert!(z.len() == 32);
     debug_assert!(crate::low::ct::into_public(index) < height);

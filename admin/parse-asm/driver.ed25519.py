@@ -57,7 +57,7 @@ if __name__ == "__main__":
         generated("../../rind/src/low/x86_64/edwards25519_scalarmulbase.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
-        d.add_const_symbol("edwards25519_scalarmulbase_constant")
+        d.add_const_symbol("edwards25519_scalarmulbase_constant", shared=True)
         d.emit_rust_function(
             "edwards25519_scalarmulbase",
             parameter_map=[
@@ -78,7 +78,10 @@ if __name__ == "__main__":
         ) as output,
     ):
         d = RustDriver(output, Architecture_amd64)
-        d.add_const_symbol("edwards25519_scalarmulbase_alt_constant")
+        d.add_const_symbol(
+            "edwards25519_scalarmulbase_alt_constant",
+            same_as="super::edwards25519_scalarmulbase::edwards25519_scalarmulbase_constant",
+        )
         d.emit_rust_function(
             "edwards25519_scalarmulbase_alt",
             parameter_map=[
@@ -99,7 +102,7 @@ if __name__ == "__main__":
         ) as output,
     ):
         d = RustDriver(output, Architecture_amd64)
-        d.add_const_symbol("edwards25519_scalarmuldouble_constant")
+        d.add_const_symbol("edwards25519_scalarmuldouble_constant", shared=True)
         d.emit_rust_function(
             "edwards25519_scalarmuldouble",
             parameter_map=[
@@ -123,7 +126,10 @@ if __name__ == "__main__":
         ) as output,
     ):
         d = RustDriver(output, Architecture_amd64)
-        d.add_const_symbol("edwards25519_scalarmuldouble_alt_constant")
+        d.add_const_symbol(
+            "edwards25519_scalarmuldouble_alt_constant",
+            same_as="super::edwards25519_scalarmuldouble::edwards25519_scalarmuldouble_constant",
+        )
         d.emit_rust_function(
             "edwards25519_scalarmuldouble_alt",
             parameter_map=[

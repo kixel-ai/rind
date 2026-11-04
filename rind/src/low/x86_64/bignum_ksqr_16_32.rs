@@ -26,6 +26,7 @@ use crate::low::macros::*;
 ///
 /// In this x86 code the final temporary space argument t is unused, but
 /// it is retained in the prototype above for API consistency with ARM.
+#[inline(never)]
 pub(crate) fn bignum_ksqr_16_32(z: &mut [u64], x: &[u64], t: &mut [u64; 24]) {
     debug_assert!(z.len() == 32);
     debug_assert!(x.len() == 16);

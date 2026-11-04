@@ -1,16 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::fmt;
+
 use crate::Error;
 use crate::cipher::{self, Aes, ChaCha20};
-use crate::low::{Zeroable, zeroise_value};
+use crate::low::{Zeroable, ZeroableRef, zeroise_value};
 
 /// The length of a header-protection sample, in bytes, for every algorithm.
 pub const SAMPLE_LEN: usize = 16;
 
 /// A header-protection cipher, which fixes the key length a key must have.
-#[derive(Debug)]
 pub struct Algorithm {
     id: AlgorithmId,
+    // The only path to the cipher's code, so a binary links only the ciphers
+    // whose algorithms it names.
+    new: fn(&[u8]) -> Result<Key, Error>,
+}
+
+impl fmt::Debug for Algorithm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Algorithm").field("id", &self.id).finish()
+    }
 }
 
 #[derive(Debug)]
@@ -33,16 +43,22 @@ impl Algorithm {
 /// AES-128 header protection, which QUIC pairs with AES-128-GCM.
 pub static AES_128: Algorithm = Algorithm {
     id: AlgorithmId::Aes128,
+    new: |key| Ok(Key::Aes(Masker::new(Aes::new(&cipher::AES_128, key)?))),
 };
 
 /// AES-256 header protection, which QUIC pairs with AES-256-GCM.
 pub static AES_256: Algorithm = Algorithm {
     id: AlgorithmId::Aes256,
+    new: |key| Ok(Key::Aes(Masker::new(Aes::new(&cipher::AES_256, key)?))),
 };
 
 /// ChaCha20 header protection, which QUIC pairs with ChaCha20-Poly1305.
 pub static CHACHA20: Algorithm = Algorithm {
     id: AlgorithmId::ChaCha20,
+    new: |key| {
+        let key = key.try_into().map_err(|_| Error::WrongLength)?;
+        Ok(Key::ChaCha20(Masker::new(ChaCha20::new(key))))
+    },
 };
 
 /// A header-protection key, expanded once for its algorithm and wiped on drop.
@@ -52,32 +68,62 @@ impl HeaderProtectionKey {
     /// Expands `key` for `algorithm`, failing with [`Error::WrongLength`] if
     /// it is not [`Algorithm::key_len`] bytes.
     pub fn new(algorithm: &'static Algorithm, key: &[u8]) -> Result<Self, Error> {
-        Ok(Self(match algorithm.id {
-            AlgorithmId::Aes128 => Key::Aes(Aes::new(&cipher::AES_128, key)?),
-            AlgorithmId::Aes256 => Key::Aes(Aes::new(&cipher::AES_256, key)?),
-            AlgorithmId::ChaCha20 => Key::ChaCha20(ChaCha20::new(
-                key.try_into().map_err(|_| Error::WrongLength)?,
-            )),
-        }))
+        Ok(Self((algorithm.new)(key)?))
     }
 
     /// Computes the mask for `sample`: its first byte masks the packet's first
     /// byte, and the rest mask the packet number.
     pub fn mask(&self, sample: &[u8; SAMPLE_LEN]) -> [u8; 5] {
         match &self.0 {
-            // RFC 9001 section 5.4.3
-            Key::Aes(key) => {
-                let mut block = *sample;
-                key.encrypt_block(&mut block);
-                core::array::from_fn(|i| block[i])
-            }
-            Key::ChaCha20(key) => key.header_protection_mask(sample),
+            Key::Aes(key) => key.mask(sample),
+            Key::ChaCha20(key) => key.mask(sample),
         }
     }
 }
 
-// All-zero is the `Aes` variant with an all-zero key, which `Zeroable` requires
-// to be valid: every field is a plain integer or vector.
+/// A key with its cipher's mask, which it reaches only through `mask`:
+/// matching on [`Key`] then names no cipher's code.
+struct Masker<C: Mask> {
+    key: C,
+    mask: ZeroableRef<fn(&C, &[u8; SAMPLE_LEN]) -> [u8; 5]>,
+}
+
+impl<C: Mask> Masker<C> {
+    fn new(key: C) -> Self {
+        Self {
+            key,
+            mask: ZeroableRef::new(const { &(C::mask as fn(&C, &[u8; SAMPLE_LEN]) -> [u8; 5]) }),
+        }
+    }
+
+    fn mask(&self, sample: &[u8; SAMPLE_LEN]) -> [u8; 5] {
+        (self.mask.get())(&self.key, sample)
+    }
+}
+
+/// A cipher that masks QUIC headers.
+trait Mask: 'static {
+    fn mask(&self, sample: &[u8; SAMPLE_LEN]) -> [u8; 5];
+}
+
+impl Mask for Aes {
+    // RFC 9001 section 5.4.3
+    fn mask(&self, sample: &[u8; SAMPLE_LEN]) -> [u8; 5] {
+        let mut block = *sample;
+        self.encrypt_block(&mut block);
+        core::array::from_fn(|i| block[i])
+    }
+}
+
+impl Mask for ChaCha20 {
+    fn mask(&self, sample: &[u8; SAMPLE_LEN]) -> [u8; 5] {
+        self.header_protection_mask(sample)
+    }
+}
+
+// All-zero is the `Aes` variant with an all-zero key and a `None`
+// `ZeroableRef`, which `Zeroable` requires to be valid: every other field is a
+// plain integer or vector.
 //
 // Boxing the AES key schedule would allocate for every key to save space only
 // on ChaCha20 keys; the 32-bit arm schedule is small, so the lint is allowed
@@ -85,8 +131,8 @@ impl HeaderProtectionKey {
 #[allow(clippy::large_enum_variant)]
 #[repr(u8)]
 enum Key {
-    Aes(Aes),
-    ChaCha20(ChaCha20),
+    Aes(Masker<Aes>),
+    ChaCha20(Masker<ChaCha20>),
 }
 
 impl Drop for Key {

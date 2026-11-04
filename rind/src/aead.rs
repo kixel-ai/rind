@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::fmt;
 use core::mem::ManuallyDrop;
 
 use crate::Error;
-use crate::low::{Zeroable, zeroise_value};
+use crate::low::{Zeroable, ZeroableRef, zeroise_value};
 use crate::mid::aes_gcm::AesGcm;
 use crate::mid::chacha20poly1305::ChaCha20Poly1305;
 use crate::mid::rng::{RandomSource, SystemRandom};
@@ -34,9 +35,17 @@ const NONCE_LEN: usize = 12;
 const TAG_LEN: usize = 16;
 
 /// An AEAD algorithm, which fixes the key length a key must have.
-#[derive(Debug)]
 pub struct Algorithm {
     id: AlgorithmId,
+    // The only path to the cipher's code, so a binary links only the ciphers
+    // whose algorithms it names.
+    new: fn(&[u8]) -> Inner,
+}
+
+impl fmt::Debug for Algorithm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Algorithm").field("id", &self.id).finish()
+    }
 }
 
 #[derive(Debug)]
@@ -69,16 +78,19 @@ impl Algorithm {
 /// AES-128 in GCM mode, with a 16-byte key.
 pub static AES_128_GCM: Algorithm = Algorithm {
     id: AlgorithmId::Aes128Gcm,
+    new: Sealer::<AesGcm>::new,
 };
 
 /// AES-256 in GCM mode, with a 32-byte key.
 pub static AES_256_GCM: Algorithm = Algorithm {
     id: AlgorithmId::Aes256Gcm,
+    new: Sealer::<AesGcm>::new,
 };
 
 /// ChaCha20-Poly1305 from RFC 8439, with a 32-byte key.
 pub static CHACHA20_POLY1305: Algorithm = Algorithm {
     id: AlgorithmId::ChaCha20Poly1305,
+    new: Sealer::<ChaCha20Poly1305>::new,
 };
 
 /// An AEAD key that seals with any nonce the caller gives it; wiped on drop.
@@ -97,7 +109,7 @@ impl Key {
             return Err(Error::WrongLength);
         }
 
-        Ok(Self(Inner::new(algorithm, key)))
+        Ok(Self((algorithm.new)(key)))
     }
 
     /// Encrypts `in_out` in place and returns the tag.
@@ -114,8 +126,8 @@ impl Key {
     ) -> Result<Tag, Error> {
         let mut tag = [0u8; TAG_LEN];
         match &self.0 {
-            Inner::AesGcm(key) => key.encrypt(&nonce.0, aad, in_out, &mut tag),
-            Inner::ChaCha20Poly1305(key) => key.encrypt(&nonce.0, aad, in_out, &mut tag),
+            Inner::AesGcm(key) => key.seal(&nonce.0, aad, in_out, &mut tag),
+            Inner::ChaCha20Poly1305(key) => key.seal(&nonce.0, aad, in_out, &mut tag),
         }?;
         Ok(Tag(tag))
     }
@@ -166,17 +178,18 @@ impl Key {
         in_out: &'a mut [u8],
     ) -> Result<&'a mut [u8], Error> {
         match &self.0 {
-            Inner::AesGcm(key) => key.decrypt(&nonce.0, aad, in_out, &tag.0),
-            Inner::ChaCha20Poly1305(key) => key.decrypt(&nonce.0, aad, in_out, &tag.0),
+            Inner::AesGcm(key) => key.open(&nonce.0, aad, in_out, &tag.0),
+            Inner::ChaCha20Poly1305(key) => key.open(&nonce.0, aad, in_out, &tag.0),
         }?;
         Ok(in_out)
     }
 }
 
-// All-zero is the `AesGcm` variant with an all-zero key and table, which
-// `Zeroable` requires to be valid: every field is a plain integer or vector.
-// Neither variant owns memory beyond itself, so its drop does nothing but wipe
-// what `Inner`'s drop wipes anyway; `ManuallyDrop` skips that second pass.
+// All-zero is the `AesGcm` variant with an all-zero key and table and a
+// `None` `ZeroableRef`, which `Zeroable` requires to be valid: every other
+// field is a plain integer or vector. Neither cipher owns memory beyond
+// itself, so its drop does nothing but wipe what `Inner`'s drop wipes anyway;
+// `ManuallyDrop` skips that second pass.
 //
 // Boxing the AES-GCM table would allocate for every key to save space only on
 // ChaCha20-Poly1305 keys; the 32-bit arm table is small, so the lint is allowed
@@ -184,26 +197,145 @@ impl Key {
 #[allow(clippy::large_enum_variant)]
 #[repr(u8)]
 enum Inner {
-    AesGcm(ManuallyDrop<AesGcm>),
-    ChaCha20Poly1305(ManuallyDrop<ChaCha20Poly1305>),
+    AesGcm(Sealer<AesGcm>),
+    ChaCha20Poly1305(Sealer<ChaCha20Poly1305>),
 }
 
-impl Inner {
-    /// Expands `key`, which the caller has checked is `algorithm`'s length.
+/// An expanded key with its cipher's code, which it reaches only through
+/// `ops`: matching on [`Inner`] then names no cipher's code.
+struct Sealer<C: Cipher> {
+    key: ManuallyDrop<C>,
+    ops: ZeroableRef<Ops<C>>,
+}
+
+struct Ops<C> {
+    seal: fn(&C, &[u8; NONCE_LEN], &[u8], &mut [u8], &mut [u8; TAG_LEN]) -> Result<(), Error>,
+    open: fn(&C, &[u8; NONCE_LEN], &[u8], &mut [u8], &[u8; TAG_LEN]) -> Result<(), Error>,
+}
+
+/// A cipher's key, as an [`Inner`] variant holds it.
+trait Cipher: Sized + 'static {
+    /// Expands `key`, which the caller has checked is the algorithm's length.
+    fn new(key: &[u8]) -> Self;
+
+    fn inner(sealer: Sealer<Self>) -> Inner;
+
+    fn seal(
+        &self,
+        nonce: &[u8; NONCE_LEN],
+        aad: &[u8],
+        in_out: &mut [u8],
+        tag: &mut [u8; TAG_LEN],
+    ) -> Result<(), Error>;
+
+    fn open(
+        &self,
+        nonce: &[u8; NONCE_LEN],
+        aad: &[u8],
+        in_out: &mut [u8],
+        tag: &[u8; TAG_LEN],
+    ) -> Result<(), Error>;
+}
+
+impl<C: Cipher> Sealer<C> {
+    /// Expands `key` into an [`Inner`].
     ///
     /// Not inlined, so each function wraps a value in one layer, and LLVM
     /// builds it in the caller's slot: two layers in one function, as
     /// `Ok(Key(Inner::AesGcm(..)))`, copied the whole key twice.
     #[inline(never)]
-    fn new(algorithm: &Algorithm, key: &[u8]) -> Self {
-        match algorithm.id {
-            AlgorithmId::Aes128Gcm | AlgorithmId::Aes256Gcm => {
-                Self::AesGcm(ManuallyDrop::new(AesGcm::new(key)))
-            }
-            AlgorithmId::ChaCha20Poly1305 => Self::ChaCha20Poly1305(ManuallyDrop::new(
-                ChaCha20Poly1305::new(key.try_into().unwrap()),
-            )),
-        }
+    fn new(key: &[u8]) -> Inner {
+        C::inner(Self {
+            key: ManuallyDrop::new(C::new(key)),
+            ops: ZeroableRef::new(
+                const {
+                    &Ops {
+                        seal: C::seal,
+                        open: C::open,
+                    }
+                },
+            ),
+        })
+    }
+
+    fn seal(
+        &self,
+        nonce: &[u8; NONCE_LEN],
+        aad: &[u8],
+        in_out: &mut [u8],
+        tag: &mut [u8; TAG_LEN],
+    ) -> Result<(), Error> {
+        (self.ops.get().seal)(&self.key, nonce, aad, in_out, tag)
+    }
+
+    fn open(
+        &self,
+        nonce: &[u8; NONCE_LEN],
+        aad: &[u8],
+        in_out: &mut [u8],
+        tag: &[u8; TAG_LEN],
+    ) -> Result<(), Error> {
+        (self.ops.get().open)(&self.key, nonce, aad, in_out, tag)
+    }
+}
+
+impl Cipher for AesGcm {
+    fn new(key: &[u8]) -> Self {
+        Self::new(key)
+    }
+
+    fn inner(sealer: Sealer<Self>) -> Inner {
+        Inner::AesGcm(sealer)
+    }
+
+    fn seal(
+        &self,
+        nonce: &[u8; NONCE_LEN],
+        aad: &[u8],
+        in_out: &mut [u8],
+        tag: &mut [u8; TAG_LEN],
+    ) -> Result<(), Error> {
+        self.encrypt(nonce, aad, in_out, tag)
+    }
+
+    fn open(
+        &self,
+        nonce: &[u8; NONCE_LEN],
+        aad: &[u8],
+        in_out: &mut [u8],
+        tag: &[u8; TAG_LEN],
+    ) -> Result<(), Error> {
+        self.decrypt(nonce, aad, in_out, tag)
+    }
+}
+
+impl Cipher for ChaCha20Poly1305 {
+    fn new(key: &[u8]) -> Self {
+        Self::new(key.try_into().unwrap())
+    }
+
+    fn inner(sealer: Sealer<Self>) -> Inner {
+        Inner::ChaCha20Poly1305(sealer)
+    }
+
+    fn seal(
+        &self,
+        nonce: &[u8; NONCE_LEN],
+        aad: &[u8],
+        in_out: &mut [u8],
+        tag: &mut [u8; TAG_LEN],
+    ) -> Result<(), Error> {
+        self.encrypt(nonce, aad, in_out, tag)
+    }
+
+    fn open(
+        &self,
+        nonce: &[u8; NONCE_LEN],
+        aad: &[u8],
+        in_out: &mut [u8],
+        tag: &[u8; TAG_LEN],
+    ) -> Result<(), Error> {
+        self.decrypt(nonce, aad, in_out, tag)
     }
 }
 

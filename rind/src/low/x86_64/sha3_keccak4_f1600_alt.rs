@@ -36,6 +36,7 @@ use crate::low::macros::*;
 /// and is fully specified here:
 ///
 ///   https://keccak.team/files/Keccak-reference-3.0.pdf
+#[inline(never)]
 pub(crate) fn sha3_keccak4_f1600(
     a: &mut [[u64; 25]; 4],
     rc: &[u64; 24],

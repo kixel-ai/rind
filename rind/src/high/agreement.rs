@@ -9,6 +9,9 @@ use crate::mid::{p256, p384, p521, x25519};
 /// A key agreement algorithm: a curve and its public key encoding.
 pub struct Algorithm {
     id: AlgorithmId,
+    // The only path to the curve's code, so a binary links only the curves
+    // whose algorithms it names.
+    generate: fn() -> Result<Private, Error>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -30,6 +33,7 @@ impl fmt::Debug for Algorithm {
 /// See [RFC7748](https://datatracker.ietf.org/doc/html/rfc7748).
 pub static X25519: Algorithm = Algorithm {
     id: AlgorithmId::X25519,
+    generate: Keyed::<x25519::PrivateKey>::generate,
 };
 
 /// ECDH on P-256, with X9.62 uncompressed public keys.
@@ -37,6 +41,7 @@ pub static X25519: Algorithm = Algorithm {
 /// P-256 is also known as "NISTP256", "prime256v1", or "secp256r1".
 pub static ECDH_P256: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP256,
+    generate: Keyed::<p256::PrivateKey>::generate,
 };
 
 /// ECDH on P-384, with X9.62 uncompressed public keys.
@@ -44,6 +49,7 @@ pub static ECDH_P256: Algorithm = Algorithm {
 /// P-384 is also known as "NISTP384", or "secp384r1".
 pub static ECDH_P384: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP384,
+    generate: Keyed::<p384::PrivateKey>::generate,
 };
 
 /// ECDH on P-521, with X9.62 uncompressed public keys.
@@ -51,6 +57,7 @@ pub static ECDH_P384: Algorithm = Algorithm {
 /// P-521 is also known as "NISTP521", or "secp521r1".
 pub static ECDH_P521: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP521,
+    generate: Keyed::<p521::PrivateKey>::generate,
 };
 
 /// A private key used for one key agreement, wiped on drop.
@@ -59,14 +66,14 @@ pub static ECDH_P521: Algorithm = Algorithm {
 pub struct PrivateKey(Private);
 
 // `repr(u8)` puts `X25519` at tag zero, and every variant's key is plain
-// words, so all-bits-zero is a valid value and `Drop` can wipe the tag and
-// any unused tail along with the key.
+// words beside a `ZeroableRef`, so all-bits-zero is a valid value and `Drop`
+// can wipe the tag and any unused tail along with the key.
 #[repr(u8)]
 enum Private {
-    X25519(x25519::PrivateKey),
-    P256(p256::PrivateKey),
-    P384(p384::PrivateKey),
-    P521(p521::PrivateKey),
+    X25519(Keyed<x25519::PrivateKey>),
+    P256(Keyed<p256::PrivateKey>),
+    P384(Keyed<p384::PrivateKey>),
+    P521(Keyed<p521::PrivateKey>),
 }
 
 impl low::Zeroable for Private {}
@@ -74,29 +81,17 @@ impl low::Zeroable for Private {}
 impl PrivateKey {
     /// Generates a private key for `algorithm` from the system random source.
     pub fn generate(algorithm: &'static Algorithm) -> Result<Self, Error> {
-        Ok(Self(match algorithm.id {
-            AlgorithmId::X25519 => Private::X25519(x25519::PrivateKey::new_random()?),
-            AlgorithmId::EcdhP256 => Private::P256(p256::PrivateKey::new_random()?),
-            AlgorithmId::EcdhP384 => Private::P384(p384::PrivateKey::new_random()?),
-            AlgorithmId::EcdhP521 => Private::P521(p521::PrivateKey::new_random()?),
-        }))
+        Ok(Self((algorithm.generate)()?))
     }
 
     /// Returns the public key to send to the peer.
     pub fn public_key(&self) -> PublicKey {
-        let mut public = PublicKey {
-            bytes: [0; PublicKey::MAX_LEN],
-            len: 0,
-        };
-        let encoded: &[u8] = match &self.0 {
-            Private::X25519(key) => &key.public_key().as_bytes(),
-            Private::P256(key) => &key.public_key_uncompressed(),
-            Private::P384(key) => &key.public_key_uncompressed(),
-            Private::P521(key) => &key.public_key_uncompressed(),
-        };
-        public.bytes[..encoded.len()].copy_from_slice(encoded);
-        public.len = encoded.len();
-        public
+        match &self.0 {
+            Private::X25519(key) => key.public_key(),
+            Private::P256(key) => key.public_key(),
+            Private::P384(key) => key.public_key(),
+            Private::P521(key) => key.public_key(),
+        }
     }
 
     /// Agrees on a secret with the peer's encoded public key, consuming this key.
@@ -107,19 +102,11 @@ impl PrivateKey {
     /// ([RFC7748 section 6.1](https://datatracker.ietf.org/doc/html/rfc7748#section-6.1)).
     pub fn agree(self, peer: &[u8]) -> Result<SharedSecret, Error> {
         Ok(SharedSecret(match &self.0 {
-            Private::X25519(key) => {
-                Secret::X25519(key.diffie_hellman(&x25519::PublicKey::try_from_slice(peer)?)?)
-            }
-            Private::P256(key) => {
-                Secret::P256(key.diffie_hellman(&p256::PublicKey::from_x962_uncompressed(peer)?)?)
-            }
-            Private::P384(key) => {
-                Secret::P384(key.diffie_hellman(&p384::PublicKey::from_x962_uncompressed(peer)?)?)
-            }
-            Private::P521(key) => {
-                Secret::P521(key.diffie_hellman(&p521::PublicKey::from_x962_uncompressed(peer)?)?)
-            }
-        }))
+            Private::X25519(key) => key.agree(peer),
+            Private::P256(key) => key.agree(peer),
+            Private::P384(key) => key.agree(peer),
+            Private::P521(key) => key.agree(peer),
+        }?))
     }
 }
 
@@ -135,6 +122,100 @@ impl fmt::Debug for PrivateKey {
     }
 }
 
+/// A curve's private key, as key agreement runs it.
+trait Agree: Sized + 'static {
+    fn random() -> Result<Self, Error>;
+
+    fn wrap(key: Keyed<Self>) -> Private;
+
+    fn encode_public(&self) -> PublicKey;
+
+    fn agree(&self, peer: &[u8]) -> Result<Secret, Error>;
+}
+
+/// A private key with its curve's code, which it reaches only through
+/// `ops`: matching on [`Private`] then names no curve's code.
+struct Keyed<K: Agree> {
+    key: K,
+    ops: low::ZeroableRef<Ops<K>>,
+}
+
+struct Ops<K> {
+    public_key: fn(&K) -> PublicKey,
+    agree: fn(&K, &[u8]) -> Result<Secret, Error>,
+}
+
+impl<K: Agree> Keyed<K> {
+    fn generate() -> Result<Private, Error> {
+        Ok(K::wrap(Self {
+            key: K::random()?,
+            ops: low::ZeroableRef::new(
+                const {
+                    &Ops {
+                        public_key: K::encode_public,
+                        agree: K::agree,
+                    }
+                },
+            ),
+        }))
+    }
+
+    fn public_key(&self) -> PublicKey {
+        (self.ops.get().public_key)(&self.key)
+    }
+
+    fn agree(&self, peer: &[u8]) -> Result<Secret, Error> {
+        (self.ops.get().agree)(&self.key, peer)
+    }
+}
+
+impl Agree for x25519::PrivateKey {
+    fn random() -> Result<Self, Error> {
+        Self::new_random()
+    }
+
+    fn wrap(key: Keyed<Self>) -> Private {
+        Private::X25519(key)
+    }
+
+    fn encode_public(&self) -> PublicKey {
+        PublicKey::new(&self.public_key().as_bytes())
+    }
+
+    fn agree(&self, peer: &[u8]) -> Result<Secret, Error> {
+        let peer = x25519::PublicKey::try_from_slice(peer)?;
+        Ok(Secret::X25519(self.diffie_hellman(&peer)?))
+    }
+}
+
+/// Implements [`Agree`] for a NIST curve's private key.
+macro_rules! nist_curve {
+    ($curve:ident, $variant:ident) => {
+        impl Agree for $curve::PrivateKey {
+            fn random() -> Result<Self, Error> {
+                Self::new_random()
+            }
+
+            fn wrap(key: Keyed<Self>) -> Private {
+                Private::$variant(key)
+            }
+
+            fn encode_public(&self) -> PublicKey {
+                PublicKey::new(&self.public_key_uncompressed())
+            }
+
+            fn agree(&self, peer: &[u8]) -> Result<Secret, Error> {
+                let peer = $curve::PublicKey::from_x962_uncompressed(peer)?;
+                Ok(Secret::$variant(self.diffie_hellman(&peer)?))
+            }
+        }
+    };
+}
+
+nist_curve!(p256, P256);
+nist_curve!(p384, P384);
+nist_curve!(p521, P521);
+
 /// Our public key: 32 bytes for X25519, or an X9.62 uncompressed point.
 #[derive(Clone)]
 pub struct PublicKey {
@@ -145,6 +226,15 @@ pub struct PublicKey {
 impl PublicKey {
     // P-521's uncompressed point.
     const MAX_LEN: usize = p521::PublicKey::BYTES;
+
+    fn new(encoded: &[u8]) -> Self {
+        let mut public = Self {
+            bytes: [0; Self::MAX_LEN],
+            len: encoded.len(),
+        };
+        public.bytes[..encoded.len()].copy_from_slice(encoded);
+        public
+    }
 }
 
 impl AsRef<[u8]> for PublicKey {

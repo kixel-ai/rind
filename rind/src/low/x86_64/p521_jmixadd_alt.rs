@@ -1097,6 +1097,7 @@ macro_rules! copy9 {
 /// mod p_521, that the z coordinate of p1 is nonzero and that neither
 /// p1 =~= p2 or p1 =~= -p2, where "=~=" means "represents the same affine
 /// point as".
+#[inline(never)]
 pub(crate) fn p521_jmixadd_alt(p3: &mut [u64; 27], p1: &[u64; 27], p2: &[u64; 18]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

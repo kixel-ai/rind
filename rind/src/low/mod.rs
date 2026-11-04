@@ -69,7 +69,7 @@ pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
-pub(crate) use generic::zeroise::{Zeroable, zeroise, zeroise_value};
+pub(crate) use generic::zeroise::{Zeroable, ZeroableRef, zeroise, zeroise_value};
 pub(crate) use posint::{ModExp, PosInt, SecretPosInt};
 
 #[cfg(all(test, not(target_arch = "arm")))]
