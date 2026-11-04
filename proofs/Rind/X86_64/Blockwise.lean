@@ -248,4 +248,31 @@ theorem compress_padded_spec {C S : Type} {N L : Usize}
         simp only [List.length_append, Slice.length] at *
         omega
 
+theorem pad_message_spec {N L : Usize} (message : Slice U8) (length : Std.Array U8 L)
+    (hN : 0 < N.val) (hN2 : 2 * N.val ≤ Usize.max) (hL : L.val + 1 ≤ N.val) :
+    low.generic.blockwise.pad_message message length
+      (Std.Array.repeat 2#usize (Std.Array.repeat N 0#u8)) ⦃ r _ =>
+      r.1.length % N.val = 0 ∧ r.2.length % N.val = 0 ∧
+      r.1.val ++ r.2.val = message.val ++ [128#u8] ++
+        List.replicate (padZeros N L message.length) 0#u8 ++ length.val ⦄ := by
+  unfold low.generic.blockwise.pad_message
+  have hlen : message.len.val = message.length := by simp [Slice.len, Slice.length]
+  have hmod := Nat.mod_add_div message.length N.val
+  have hlt := Nat.mod_lt message.length hN
+  have hdm := Nat.div_mul_le_self message.length N.val
+  step*
+  have hst : i2.val = N.val * (message.length / N.val) := by
+    rw [i2_post, i1_post, hlen, Nat.mul_comm]
+  have hpz : padZeros N.val L.val rest.length = padZeros N.val L.val message.length := by
+    rw [blocks_post1, hst]
+    exact padZeros_sub (Nat.mul_mod_right _ _) (by omega)
+  step with pad_spec rest length hN hN2 hL (by rw [blocks_post1, hst]; omega) as ⟨s, _, hs⟩
+  refine ⟨by rw [blocks_post, hst]; exact Nat.mul_mod_right _ _, ?_, ?_⟩
+  · have : s.length = rest.length + 1 + L.val + padZeros N.val L.val rest.length := by
+      simp only [Slice.length] at *; rw [hs]; simp; omega
+    rw [this]; exact pad_mod _ hN
+  · rw [hs, hpz, blocks_post2, blocks_post3]
+    simp only [List.append_assoc]
+    rw [← List.append_assoc (List.take _ _), List.take_append_drop]
+
 end rind.x86_64
