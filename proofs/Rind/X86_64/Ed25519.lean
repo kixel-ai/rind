@@ -911,4 +911,22 @@ theorem ed25519_from_seed_and_public_key (h : Runs) (hs : RunsSha512) (seed pk :
     simp [core.result.Result.Insts.CoreOpsTry.branch,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
 
+/-- A buffer of an array, widened, holds the array's bytes. -/
+theorem widen_as_ref {N : Usize} (M : Usize) (b : Std.Array U8 N) (hM : N.val ≤ M.val) :
+    (do
+      let w ← high.signature.Buffer.widen M { bytes := b, len := N }
+      high.signature.Buffer.Insts.CoreConvertAsRefSliceU8.as_ref w) ⦃ s => s.val = b.val ⦄ := by
+  unfold high.signature.Buffer.widen high.signature.Buffer.new
+    high.signature.Buffer.Insts.CoreConvertAsRefSliceU8.as_ref
+  step*
+  obtain ⟨sl, back⟩ := x
+  simp only at x_post x_post1 x_post2 ⊢
+  step*
+  subst_vars
+  have hb : b.val.length = N.val := b.property
+  have hr : (Array.repeat M 0#u8).val.length = M.val := (Array.repeat M 0#u8).property
+  have := take_setSlice! (Array.repeat M 0#u8).val b.val 0 (by omega)
+  rw [s_post, Array.val_to_slice, x_post2, Array.val_to_slice, List.slice]
+  simpa [hb] using this
+
 end rind.x86_64
