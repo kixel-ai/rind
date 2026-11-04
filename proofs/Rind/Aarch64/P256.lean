@@ -1,4 +1,5 @@
 import Rind.Aarch64.S2nBignum
+import Rind.Aarch64.P256Dispatch
 import Rind.Bytes
 import Mathlib.Tactic.LinearCombination
 open Aeneas Aeneas.Std Result rind.spec
@@ -871,5 +872,84 @@ theorem as_bytes_uncompressed_spec (pt : mid.p256.AffineMontPoint) (hx : (pairNa
     simp only [feNat] at fe1_post fe3_post
     rw [fe1_post, fe3_post, fe_post, fe2_post, pairNat_drop _ hl]
     rfl
+
+theorem public_key_uncompressed_spec (h : Runs) (ht : Tabulated) (k : mid.p256.PrivateKey) (x y : Nat)
+    (hq : p256Pow p256G (wordsNat k.scalar.val) = some (x, y)) (hc : p256OnCurve (some (x, y))) :
+    mid.p256.PrivateKey.public_key_uncompressed k ⦃ b =>
+      b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄ := by
+  unfold mid.p256.PrivateKey.public_key_uncompressed
+  step
+  step with public_point_spec h ht k x y hq hc as ⟨pt, hpt⟩
+  have hp : 0 < p256 := by simp [p256]
+  step with as_bytes_uncompressed_spec pt (by rw [hpt]; exact Nat.mod_lt _ hp)
+    (by rw [hpt]; exact Nat.mod_lt _ hp) as ⟨b, hb4, hbc⟩
+  refine ⟨hb4, ?_⟩
+  rw [hbc, hpt]
+  simp only [rinv_tomont _ hc.1, rinv_tomont _ hc.2.1]
+
+theorem encode_public_spec (h : Runs) (ht : Tabulated) (k : mid.p256.PrivateKey) (x y : Nat)
+    (hq : p256Pow p256G (wordsNat k.scalar.val) = some (x, y)) (hc : p256OnCurve (some (x, y))) :
+    (do
+      let pk ← mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_public k
+      high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
+      b.length = 65 ∧ b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄ := by
+  unfold mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_public high.agreement.PublicKey.new
+    high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
+  step with public_key_uncompressed_spec h ht k x y hq hc as ⟨a, ha4, hac⟩
+  step as ⟨sl, hsl⟩
+  subst hsl
+  have hlen : a.to_slice.len.val = 65 := by simp
+  step as ⟨sb, hs, hsl, hback⟩
+  obtain ⟨s, back⟩ := sb
+  simp only at hs hsl hback ⊢
+  step as ⟨x', hx⟩
+  step as ⟨b, hb, hbl⟩
+  have ha65 : (a.val).length = 65 := a.property
+  have hz : (Array.repeat 133#usize 0#u8).val.length = 133 := (Array.repeat 133#usize 0#u8).property
+  have hbv : b.val = a.val := by
+    have := take_setSlice! (Array.repeat 133#usize 0#u8).val a.val 0 (by omega)
+    rw [hb, Array.val_to_slice, hback, hx, Array.val_to_slice, hlen, List.slice]
+    simp only [ha65, Nat.zero_add, List.take_zero, List.nil_append] at this
+    simp only [List.drop_zero, Nat.sub_zero, this]
+  refine ⟨by rw [hbl, hlen], ?_, ?_⟩
+  · rw [hbv]; exact ha4
+  · rw [hbv]; exact hac
+
+theorem generate_loop_spec (h : Runs) (r : core.result.Result Unit getrandom.error.Error)
+    (out : Slice U8) (hout : out.length = 32)
+    (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) (n : Nat) :
+    mid.p256.PrivateKey.generate_loop (n + 1) ⦃ key =>
+      match r with
+      | .Ok _ =>
+        if 0 < beNat out.val ∧ beNat out.val < n256 then
+          ∃ k : mid.p256.PrivateKey, key = core.result.Result.Ok k ∧ wordsNat k.scalar.val = beNat out.val
+        else key = core.result.Result.Err error.Error.RngFailed
+      | .Err _ => key = core.result.Result.Err error.Error.RngFailed ⦄ := by
+  induction n with
+  | zero | succ n ih =>
+    unfold mid.p256.PrivateKey.generate_loop
+    have hf : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice ⦃ p => p = (r, out) ⦄ := by
+      rw [hfill]; simp [WP.spec_ok]
+    simp only [Array.to_slice_mut, lift, mid.rng.SystemRandom.Insts.RindMidRngRandomSource.fill, bind_ok]
+    step with hf as ⟨p, hp⟩
+    subst hp
+    have hfrom : ((Array.repeat 32#usize 0#u8).from_slice out).to_slice.val = out.val := by
+      simp [Array.from_slice, hout]
+    have hl : ((Array.repeat 32#usize 0#u8).from_slice out).to_slice.length = 32 := by
+      simp only [Slice.length, hfrom]; simpa [Slice.length] using hout
+    rcases r with _ | e
+    · simp only [core.result.Result.map_err, bind_ok]
+      step with from_bytes_spec _ hl as ⟨p, hp⟩
+      rw [hfrom] at hp
+      split_ifs at hp ⊢ with hr
+      · obtain ⟨k, rfl, hk⟩ := hp
+        simp [hk]
+      · subst hp
+        simp only
+        first
+          | (simp [mid.p256.PrivateKey.generate_loop]; done)
+          | (apply WP.spec_mono ih; intro key hkey; simpa [hr] using hkey)
+    · simp [core.result.Result.map_err,
+        mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once]
 
 end rind.aarch64
