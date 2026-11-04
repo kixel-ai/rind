@@ -296,9 +296,8 @@ mod tests {
                 }
                 let round_keys_len = 16 * (key_len / 4 + 7);
                 // SAFETY: `hw_key` begins with its round keys.
-                let ours = unsafe {
-                    core::slice::from_raw_parts(hw_key.as_aes_key(), round_keys_len)
-                };
+                let ours =
+                    unsafe { core::slice::from_raw_parts(hw_key.as_aes_key(), round_keys_len) };
                 assert_eq!(ours, &vale_keys[..round_keys_len], "{key:02x?}");
 
                 let mut h = [0u8; 16];
