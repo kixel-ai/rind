@@ -4,7 +4,15 @@ import Rind.Bytes
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
-# SHA-512, SHA-384, and SHA-512/256, proven from rind's digest API to aws-lc's contract
+# The SHA-512 family, proven from rind's digest API to aws-lc's contract
+
+`sha512_family_digest` and `sha512_family_context` state what the digest API
+returns for SHA-384, SHA-512, and SHA-512/256, in terms of `Rind.Sha2`'s spec,
+through the dispatch `Rind.X86_64.DigestDispatch` models. Below them, a
+context's state holds the chaining value after the whole blocks it has
+compressed and its buffer the rest (`Hashed`), and finishing pads that rest
+and compresses it as FIPS 180-4 does. `admin/prove` writes the aarch64 proof
+from this file by renaming the target.
 -/
 
 namespace rind.x86_64

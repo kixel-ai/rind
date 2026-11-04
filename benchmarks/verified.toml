@@ -34,12 +34,16 @@
 # graviola has none. Its X25519 and Ed25519 run only s2n-bignum's verified
 # routines, but convert between bytes and limbs in unverified Rust.
 #
-# rind: X25519 alone, whose Rust `proofs/` proves against s2n-bignum's
-# routines. Its Ed25519 and aarch64 P-256 ECDH also run only s2n-bignum's
-# routines, under unverified Rust that clamps, encodes points, and pads
-# SHA-512, or decodes and checks points. Every other rind operation runs
-# unverified code too, such as SHA-256's block function or x86_64 P-256 ECDH's
-# Jacobian-to-affine conversion.
+# rind: X25519, and SHA-512 where its block routine's proof states the
+# routine's result, whose Rust `proofs/` proves against s2n-bignum's and
+# aws-lc-verification's theorems. On aarch64 with the SHA-512 instructions,
+# NSym's proof of aws-lc's routine for them asserts the digest in registers
+# before the store to the state, and on AMD's x86_64 CPUs rind runs aws-lc's
+# unproven scalar routine. Its Ed25519 and aarch64 P-256 ECDH also run only
+# s2n-bignum's routines, under unverified Rust that clamps, encodes points,
+# and composes SHA-512, or decodes and checks points. Every other rind
+# operation runs unverified code too, such as SHA-256's block function or
+# x86_64 P-256 ECDH's Jacobian-to-affine conversion.
 [[verified]]
 library = "rind"
 operations = ["x25519-ecdh"]
@@ -53,6 +57,22 @@ operations = ["x25519-ecdh"]
 arch = "aarch64"
 proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's dispatch table holds its own curve's functions, the only table rind builds, of its agreement API's X25519 down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of curve25519_x25519_alt, curve25519_x25519base_alt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/X25519.lean"
+
+[[verified]]
+library = "rind"
+operations = ["sha512/*"]
+arch = "x86_64"
+cpu = ["intel", "avx", "ssse3"]
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha512.lean"
+
+[[verified]]
+library = "rind"
+operations = ["sha512/*"]
+arch = "aarch64"
+cpu = ["!sha3"]
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_nohw, which rind runs without the SHA-512 instructions, composed with aws-lc-verification's NSym proof of that routine, with its ArmSpecGap caveat, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha512.lean"
 
 # aws-lc-rs: SHA-512 alone. Its X25519 and Ed25519 call the same s2n-bignum
 # routines from unverified C, which clamps the scalar, refuses X25519's

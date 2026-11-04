@@ -21,9 +21,9 @@ pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
         return;
     }
     match avx() {
-        // SAFETY: `blocks` is not empty.
+        // SAFETY: `blocks` is a whole number of blocks, and not empty.
         Some(avx) => unsafe { compress_avx(avx, state, blocks) },
-        // SAFETY: `blocks` is not empty.
+        // SAFETY: `blocks` is a whole number of blocks, and not empty.
         None => unsafe { compress_nohw(state, blocks) },
     }
 }
@@ -40,7 +40,7 @@ fn avx() -> Option<HaveAvx> {
 ///
 /// # Safety
 ///
-/// `blocks` must not be empty.
+/// `blocks` must hold at least one whole block.
 unsafe fn compress_avx(_: HaveAvx, state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one, and the
     // token proves AVX.
@@ -51,7 +51,7 @@ unsafe fn compress_avx(_: HaveAvx, state: &mut [u64; 8], blocks: &[u8]) {
 ///
 /// # Safety
 ///
-/// `blocks` must not be empty.
+/// `blocks` must hold at least one whole block.
 unsafe fn compress_nohw(state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one.
     unsafe { sha512_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 128) }

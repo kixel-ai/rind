@@ -5,7 +5,8 @@
 //! and scalar code otherwise.
 //!
 //! aws-lc-verification's NSym proofs cover both routines, as aws-lc builds
-//! them.
+//! them, though the proof of the one for the SHA-512 instructions ends with
+//! the result in registers, before the routine stores it.
 
 use super::cpu::HaveSha3;
 
@@ -17,9 +18,9 @@ pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
         return;
     }
     match HaveSha3::check() {
-        // SAFETY: `blocks` is not empty.
+        // SAFETY: `blocks` is a whole number of blocks, and not empty.
         Some(sha3) => unsafe { compress_hw(sha3, state, blocks) },
-        // SAFETY: `blocks` is not empty.
+        // SAFETY: `blocks` is a whole number of blocks, and not empty.
         None => unsafe { compress_nohw(state, blocks) },
     }
 }
@@ -29,7 +30,7 @@ pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
 ///
 /// # Safety
 ///
-/// `blocks` must not be empty.
+/// `blocks` must hold at least one whole block.
 unsafe fn compress_hw(_: HaveSha3, state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one, and the
     // token proves the CPU has the SHA-512 instructions, which Rust's `sha3`
@@ -41,7 +42,7 @@ unsafe fn compress_hw(_: HaveSha3, state: &mut [u64; 8], blocks: &[u8]) {
 ///
 /// # Safety
 ///
-/// `blocks` must not be empty.
+/// `blocks` must hold at least one whole block.
 unsafe fn compress_nohw(state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one.
     unsafe { sha512_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 128) }
