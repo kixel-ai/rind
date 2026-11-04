@@ -152,6 +152,80 @@
           # Ubuntu lie under the /usr the SDE sandbox replaces, and the tests
           # that load the system's roots find none. A shell hook, since `nix
           # develop` keeps the caller's SSL_CERT_FILE over `env`.
+          # Charon and Aeneas, which `admin/prove` runs to translate rind's
+          # Rust to Lean, from Aeneas's nightly release, which ships the two
+          # built together. Bump the tag, both hashes, and `rust-charon` with
+          # `proofs/lakefile.toml`'s Aeneas revision.
+          aeneas-release = "nightly-2026.11.03-ab34bd2";
+          aeneas-tarball = {
+            x86_64-linux = {
+              arch = "x86_64";
+              hash = "sha256-7Q4zbFBtrTfk4cU/bMTW1ZWdfjr6sv1Vrq0oB3VlH14=";
+            };
+            aarch64-linux = {
+              arch = "aarch64";
+              hash = "sha256-010M/V6/mqFYvTEvLPOoB2ppHyewhgX2Zk39twWtF14=";
+            };
+          };
+
+          # The nightly Charon's driver links against: its `rust-toolchain`.
+          rust-charon = pkgs.rust-bin.nightly."2026-09-17".minimal.override {
+            extensions = [
+              "rustc-dev"
+              "rust-src"
+              "llvm-tools"
+              "miri"
+            ];
+            targets = [
+              "x86_64-unknown-linux-gnu"
+              "aarch64-unknown-linux-gnu"
+            ];
+          };
+
+          # The standard library with full MIR, which Charon reads, for the
+          # targets `admin/prove` translates; as Charon's own flake builds it.
+          charon-sysroots = pkgs.runCommand "charon-sysroots" { nativeBuildInputs = [ rust-charon ]; } ''
+            export HOME=$NIX_BUILD_TOP/home CARGO_HOME=$NIX_BUILD_TOP/cargo CARGO_NET_OFFLINE=true
+            mkdir -p $HOME $CARGO_HOME
+            cat > $CARGO_HOME/config.toml <<END
+            [source.crates-io]
+            replace-with = "vendored-sources"
+            [source.vendored-sources]
+            directory = "$(rustc --print sysroot)/lib/rustlib/src/rust/library/vendor"
+            END
+            for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+              sysroot=$(cargo miri setup --target=$target --print-sysroot)
+            done
+            mkdir -p $out
+            cp -a $sysroot/. $out/
+          '';
+
+          aeneas = pkgs.stdenv.mkDerivation {
+            pname = "aeneas";
+            version = aeneas-release;
+            src = pkgs.fetchurl {
+              url = "https://github.com/AeneasVerif/aeneas/releases/download/${aeneas-release}/aeneas-linux-${aeneas-tarball.${system}.arch}.tar.gz";
+              inherit (aeneas-tarball.${system}) hash;
+            };
+            sourceRoot = ".";
+            unpackCmd = "tar xzf $curSrc aeneas charon charon-driver";
+            nativeBuildInputs = [
+              pkgs.autoPatchelfHook
+              pkgs.makeWrapper
+            ];
+            buildInputs = [
+              rust-charon
+              pkgs.stdenv.cc.cc.lib
+            ];
+            installPhase = ''
+              install -Dm755 -t $out/bin aeneas charon charon-driver
+              wrapProgram $out/bin/charon \
+                --set CHARON_TOOLCHAIN_IS_IN_PATH 1 \
+                --set CHARON_MIRI_SYSROOTS ${charon-sysroots} \
+                --prefix PATH : ${rust-charon}/bin
+            '';
+          };
+
           sde-certs = ''
             export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
           '';
@@ -239,6 +313,19 @@
           }
           # Linux only, since valgrind and qemu-user need a Linux host.
           // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            # `admin/prove` and the prove workflow run in it. Linux only, as
+            # Aeneas releases for it. Lake fetches the Lean toolchain that
+            # `proofs/lean-toolchain` names, whose bundled `leantar` reads
+            # Mathlib's cache, which nixpkgs' Lean cannot.
+            prove = pkgs.mkShell {
+              packages = [
+                aeneas
+                pkgs.elan
+                pkgs.git
+                pkgs.curl
+              ];
+            };
+
             # `admin/ctgrind` and the ctgrind workflow run in it. A separate
             # shell because crabgrind's bindgen needs libclang, which no other
             # job does.

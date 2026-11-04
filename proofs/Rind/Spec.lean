@@ -1,6 +1,8 @@
-import Aeneas
-import Mathlib.Data.Nat.Digits.Defs
+module
+public import Aeneas
+public import Mathlib.Data.Nat.Digits.Defs
 open Aeneas Aeneas.Std
+@[expose] public section
 
 /-!
 # What rind's X25519 computes
