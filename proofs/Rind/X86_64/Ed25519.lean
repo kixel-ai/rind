@@ -813,4 +813,51 @@ theorem high_verify_spec (h : Runs) (hs : RunsSha512) (vk : high.ed25519.Ed25519
       high.ed25519.Ed25519VerifyingKey.verify.closure.Insts.CoreOpsFunctionFnOnceTupleTryFromSliceErrorError.call_once,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, hn]
 
+theorem high_seed_from_bytes_spec (h : Runs) (hs : RunsSha512) (seed : Slice U8) :
+    high.ed25519.Ed25519SigningKey.from_bytes seed ⦃ r =>
+      if seed.length = 32 then ∃ k, r = .Ok k ∧ SeedKey k seed.val
+      else r = .Err (.KeyRejected .WrongLength) ⦄ := by
+  unfold high.ed25519.Ed25519SigningKey.from_bytes
+  step
+  step with core.array.TryFromArrayCopySlice.try_from.step 32#usize core.marker.CopyU8 seed as ⟨r, hr⟩
+  by_cases hl : seed.length = 32
+  · simp only [hl, ↓reduceIte]
+    rcases r with a | e
+    · obtain ⟨ha, -⟩ := hr
+      simp only [core.result.Result.map,
+        high.ed25519.Ed25519SigningKey.from_bytes.closure.Insts.CoreOpsFunctionFnOnceTupleArrayU832Ed25519SigningKey,
+        high.ed25519.Ed25519SigningKey.from_bytes.closure.Insts.CoreOpsFunctionFnOnceTupleArrayU832Ed25519SigningKey.call_once]
+      step with from_seed_spec h hs a as ⟨k, hk⟩
+      simp only [core.result.Result.map_err]
+      rw [ha] at hk
+      simp [hk]
+    · exact absurd hl hr
+  · simp only [hl, ↓reduceIte]
+    rcases r with a | e
+    · have := a.property
+      exact absurd (by simp_all [Slice.length]) hl
+    · simp [core.result.Result.map, core.result.Result.map_err,
+        high.ed25519.Ed25519SigningKey.from_bytes.closure_1.Insts.CoreOpsFunctionFnOnceTupleTryFromSliceErrorError,
+        high.ed25519.Ed25519SigningKey.from_bytes.closure_1.Insts.CoreOpsFunctionFnOnceTupleTryFromSliceErrorError.call_once,
+        core.convert.IntoFrom.into, error.Error.Insts.CoreConvertFromKeyFormatError.from]
+
+theorem high_generate_spec (h : Runs) (hs : RunsSha512) (r : core.result.Result Unit getrandom.error.Error)
+    (out : Slice U8) (hout : out.length = 32)
+    (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) :
+    high.ed25519.Ed25519SigningKey.generate ⦃ key =>
+      match r with
+      | .Ok _ => ∃ k, key = core.result.Result.Ok k ∧ SeedKey k out.val
+      | .Err _ => key = core.result.Result.Err error.Error.RngFailed ⦄ := by
+  unfold high.ed25519.Ed25519SigningKey.generate mid.rng.SystemRandom.Insts.RindMidRngRandomSource.fill
+  rcases r with _ | e <;> simp only [Array.to_slice_mut, lift] <;> step <;> rw [hfill]
+  · simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch]
+    have hfrom : ((Array.repeat 32#usize 0#u8).from_slice out).val = out.val := by
+      simp [Array.from_slice, hout]
+    step with from_seed_spec h hs _ as ⟨k, hk⟩
+    rw [hfrom] at hk
+    simp [hk]
+  · simp [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch,
+      mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
+
 end rind.x86_64
