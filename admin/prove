@@ -16,14 +16,18 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 out=.tmp/prove
 mkdir -p "$out"
 
-# `Dispatch.lean` quotes the Rust it models. Fail if that Rust has changed, so
-# the model is reviewed with every change to it: print each quoted item, from
-# the line that starts it to its closing line at column 0, then a blank line.
+# `Dispatch.lean` and `P256Dispatch.lean` quote the Rust they model. Fail if
+# that Rust has changed, so the model is reviewed with every change to it:
+# print the first item each line starts, from that line to the closing one at
+# its indentation, then a blank line.
 items() {
     local file=$1
     shift
     for start in "$@"; do
-        awk -v s="$start" 'index($0, s) == 1 { p = 1 } p { print } p && (/^}/ || /^[^ }].*;$/) { p = 0; print "" }' "$file"
+        awk -v s="$start" '
+            !p && index($0, s) == 1 { p = 1; ind = substr($0, 1, match($0, /[^ ]/) - 1) }
+            p { print }
+            p && (index($0, ind "}") == 1 || (ind == "" && /^[^ }].*;$/)) { print ""; exit }' "$file"
     done
 }
 sed -n '/^```rust$/,/^```$/{//!p}' proofs/Rind/X86_64/Dispatch.lean >"$out/dispatch.rs"
@@ -37,17 +41,26 @@ if [ "$(grep -ow Ops rind/src/high/agreement.rs | wc -l)" != "$(grep -ow Ops "$o
     echo "rind/src/high/agreement.rs names Ops outside Dispatch.lean's quote" >&2
     exit 1
 fi
+sed -n '/^```rust$/,/^```$/{//!p}' proofs/Rind/Aarch64/P256Dispatch.lean >"$out/p256-dispatch.rs"
+diff -u --label P256Dispatch.lean --label rind/src "$out/p256-dispatch.rs" \
+    <(items rind/src/high/agreement.rs 'pub static ECDH_P256:'
+    items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn'
+    items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {')
 
-# The X25519 path from `high::agreement`'s `Agree` impls down to s2n-bignum's
-# routines. `low` is opaque: its routines are inline assembly, whose proven
-# contracts `proofs/Rind/<Arch>/S2nBignum.lean` states. The x86_64 BMI2/ADX
-# dispatch and the constant-time markers are Rust, so they are translated. The
-# other curves' functions are opaque; their types are kept, since the
-# agreement enums hold them.
+# The X25519 path, and aarch64's P-256 path, from `high::agreement`'s `Agree`
+# impls down to s2n-bignum's routines. `low` is opaque: its routines are inline
+# assembly, whose proven contracts `proofs/Rind/<Arch>/S2nBignum.lean` states.
+# The x86_64 BMI2/ADX dispatch and the constant-time markers are Rust, so they
+# are translated. The other curves' functions are opaque; their types are
+# kept, since the agreement enums hold them.
 #
 # Aeneas cannot translate function pointers, through which `PrivateKey`
 # reaches each curve's `Agree` impl, so the translation starts below that
-# dispatch, and `proofs/Rind/X86_64/Dispatch.lean` models it by hand.
+# dispatch, and `proofs/Rind/X86_64/Dispatch.lean` models it by hand. P-256's
+# key generation draws through a `dyn RandomSource`, so it is opaque too, and
+# `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the translated
+# `PrivateKey::from_bytes`. The generator table is opaque: the theorems
+# assume what s2n-bignum's proof does of it.
 extract() {
     local arch=$1 dir=$2
     shift 2
@@ -62,7 +75,6 @@ extract() {
         --start-from crate::high::agreement::AlgorithmId \
         --opaque crate::high::agreement::Ops \
         --opaque crate::low \
-        --opaque 'crate::mid::p256::_::_' \
         --opaque 'crate::mid::p384::_::_' \
         --opaque 'crate::mid::p521::_::_' \
         --include 'crate::mid::p521::_::BYTES' \
@@ -78,9 +90,14 @@ extract() {
 }
 
 extract x86_64 X86_64 \
+    --opaque 'crate::mid::p256::_::_' \
     --include crate::low::x86_64::adx_mux::curve25519_x25519 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base
-extract aarch64 Aarch64
+extract aarch64 Aarch64 \
+    --start-from crate::mid::p256::PrivateKey::from_bytes \
+    --opaque 'crate::mid::p256::_::generate' \
+    --opaque 'crate::mid::p256::_::new_random' \
+    --opaque crate::mid::p256::precomp
 
 for file in Dispatch X25519; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"

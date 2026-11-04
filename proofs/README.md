@@ -26,14 +26,40 @@ writes for aarch64:
 - `x25519_shared_secret`: the secret's bytes are those.
 
 `rfcx25519` is HOL Light's RFC 7748 X25519, clamping and masking included.
+
+P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
+`Rind/Aarch64/P256.lean`:
+
+- `p256_generate`: the key's scalar is the first of up to 64 draws whose
+  bytes, read big-endian, are in [1, n), and the key is refused if a draw
+  fails before one is, or none is;
+- `p256_public_key`: the public key is the X9.62 uncompressed encoding of the
+  scalar times G, for a scalar whose multiple is a finite point on the curve;
+- `p256_agree`: a peer key is refused unless it is a 65-byte uncompressed
+  point whose coordinates are below p and on the curve, and otherwise the
+  secret is the 32 big-endian bytes of the x-coordinate of the scalar times
+  that point, or a fault unless that is a finite point on the curve;
+- `p256_shared_secret`: the secret's bytes are those.
+
+`p256Pow` is HOL Light's `group_pow p256_group`. That a scalar in [1, n) times
+a point on the curve is a finite point on the curve, so the public key's
+hypothesis always holds and the fault never happens, is the group's theory,
+which these theorems do not import.
+
 Each theorem assumes `Runs`: rind's CPU-feature checks pass, which no input
-affects. `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
+affects. `p256_public_key` also assumes `Tabulated`: rind's generator table
+holds the multiples of G that s2n-bignum's proof of `p256_scalarmulbase`
+assumes, which the `base_point_precomp` test checks.
+`Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
 (`Algorithm`'s `generate` and `Keyed`'s `Ops`), which Aeneas cannot translate.
 `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in Lean definitions
-beside the Rust they model. `admin/prove` fails if that quote no longer
-matches the source, or if the source names `Ops` outside it.
+beside the Rust they model. P-256's key generation draws through a
+`dyn RandomSource`, which Aeneas cannot translate either, and
+`Rind/Aarch64/P256Dispatch.lean` models it and the `ECDH_P256` static the same
+way. `admin/prove` fails if either quote no longer matches the source, or if
+the source names `Ops` outside the first.
 
 ## Layout
 
@@ -48,9 +74,11 @@ matches the source, or if the source names `Ops` outside it.
   lemmas.
 - `Rind/X86_64/Dispatch.lean`: the hand model of the agreement API's
   dispatch.
-- `Rind/X86_64/X25519.lean`: the proof.
+- `Rind/X86_64/X25519.lean`: the X25519 proof.
 - `admin/prove` copies both `Rind/X86_64/` files to `Rind/Aarch64/` with the
   target renamed.
+- `Rind/Aarch64/P256Dispatch.lean` and `Rind/Aarch64/P256.lean`: the hand
+  model of P-256's key generation, and the P-256 proof.
 
 ## Trust base
 
@@ -58,10 +86,15 @@ Beyond Lean's kernel:
 
 - Charon and Aeneas's translation, and Aeneas's models of `core`, with
   `Rind/Core.lean`'s.
-- That `Rind/X86_64/Dispatch.lean` computes what the Rust it quotes does. It
-  adds no axiom.
+- That `Rind/X86_64/Dispatch.lean` and `Rind/Aarch64/P256Dispatch.lean`
+  compute what the Rust they quote does. They add no axiom.
 - The restatement of each s2n-bignum theorem as an axiom, under the
   composition rule in the [verification epic](/quest/m3/verified/README.md).
+  It lets a group-membership fact a proof must decide be its defining
+  equation, so `group_carrier p256_group` is the curve equation that HOL
+  Light's
+  [`P256_GROUP`](https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/nistp256.ml#L82)
+  proves it is.
 - That rind's inline assembly is s2n-bignum's object code, as for
   `benchmarks/verified.toml`'s other s2n-bignum entries.
 - The translation ignores drops, which here wipe keys and restore CPU state,
