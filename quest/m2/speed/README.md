@@ -1,4 +1,4 @@
-# Fastest at every algorithm
+# [L] Fastest at every algorithm
 
 ## Goal
 
@@ -44,7 +44,3 @@ settled; don't ask them again. The chosen option is marked ✅.
   fastest baseline, refreshed by the audit and each gap quest; the nightly
   job's summary keeps the live numbers ✅ / nightly summary only / a separate
   BENCHMARKS.md.
-
-## Required
-
-- [ECDSA verification adds in affine form](/quest/m2/speed/ecdsa-verify-affine.md) - cheaper mixed additions repay the equal-point checks
