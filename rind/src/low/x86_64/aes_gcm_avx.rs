@@ -6,26 +6,28 @@
 //!
 //! Vale proves that `gcm{128,256}_{encrypt,decrypt}_opt` compute AES-GCM, tag
 //! check included, for every AAD and message under 2^32 bytes, in place, from
-//! the round keys of its key expansion, the GHASH key powers of its
-//! `keyhash_init`, and the counter block of its `compute_iv`, which rind runs
-//! for them. The Rust here does what EverCrypt's proven Low* wrapper,
-//! `Vale.Wrapper.X64.GCMencryptOpt`, does around them: it copies the partial
-//! blocks of the message and AAD to scratch, and picks the six-block loop's
-//! share of the message.
+//! the counter block of its `compute_iv`, which rind runs for them, and from
+//! round keys and GHASH key powers in the layout its own key expansion and
+//! `keyhash_init` write. rind computes those two itself, since Vale's setup
+//! takes about twice as long, and the tests check them against Vale's byte
+//! for byte. The rest of the Rust here does what EverCrypt's proven Low*
+//! wrapper, `Vale.Wrapper.X64.GCMencryptOpt`, does around the routines: it
+//! copies the partial blocks of the message and AAD to scratch, and picks the
+//! six-block loop's share of the message.
+//!
+//! The layout the proof assumes, from that wrapper's preconditions and
+//! `Vale.AES.OptPublic.hkeys_reqs_pub`:
+//! - the round keys are FIPS 197's, each as its 16 bytes in order, as
+//!   [`HwKey`] holds them;
+//! - the eight GHASH key powers are H, H^2, E_K(0) byte-reversed, H^3, H^4,
+//!   zero, H^5, and H^6, each H^n as Vale's `gf128_power h n` (`shift_key_1`
+//!   of H^n), the form [`ClmulTable`] holds.
 
 use core::arch::x86_64::__m128i;
 
 use super::aes::HwKey;
-use super::cpu::{HaveAvx512ForAesGcm, HaveAvxMovbeForAesGcm, HaveVaesAvx2ForAesGcm};
-
-/// Where the CPU runs Vale's AES-GCM: with AVX and MOVBE, but without the
-/// VAES that BoringSSL's kernels need.
-pub(crate) fn token() -> Option<HaveAvxMovbeForAesGcm> {
-    match (HaveAvx512ForAesGcm::check(), HaveVaesAvx2ForAesGcm::check()) {
-        (None, None) => HaveAvxMovbeForAesGcm::check(),
-        _ => None,
-    }
-}
+use super::cpu::HaveAvxMovbeForAesGcm;
+use super::ghash::ClmulTable;
 
 /// The routines with the GHASH key powers they read.
 pub(crate) struct AvxKernel {
@@ -34,30 +36,12 @@ pub(crate) struct AvxKernel {
 }
 
 impl AvxKernel {
-    /// The kernel for `key`, whose round keys [`expand_128`] or
-    /// [`expand_256`] made.
-    pub(crate) fn new(key: &HwKey, token: HaveAvxMovbeForAesGcm) -> Self {
-        let mut hkeys = [0u8; 128];
-        // SAFETY: `key` is its round keys, which the routines read, and
-        // `hkeys` the 128 bytes they write. The token proves the CPU has
-        // AES-NI, PCLMULQDQ, and AVX.
-        unsafe {
-            match key {
-                HwKey::Aes128(_) => aes128_keyhash_init(key.as_aes_key(), hkeys.as_mut_ptr()),
-                HwKey::Aes256(_) => aes256_keyhash_init(key.as_aes_key(), hkeys.as_mut_ptr()),
-            };
-        }
+    /// The kernel for the GHASH key `h`, whose powers `table` holds.
+    pub(crate) fn new(table: &ClmulTable, h: u128, token: HaveAvxMovbeForAesGcm) -> Self {
         Self {
-            // SAFETY: any 128 bytes are eight vectors.
-            hkeys: unsafe { core::mem::transmute::<[u8; 128], [__m128i; 8]>(hkeys) },
+            hkeys: table.vale_hkeys(h),
             _token: token,
         }
-    }
-
-    /// The GHASH key powers: H, H^2, a Karatsuba term, H^3, H^4, unused, H^5,
-    /// and H^6, as [`super::ghash::ClmulTable`] represents them.
-    pub(crate) fn hkeys(&self) -> &[__m128i; 8] {
-        &self.hkeys
     }
 
     /// Encrypts `inout` in place under `nonce`, and returns its tag. `aad`
@@ -170,21 +154,6 @@ impl AvxKernel {
     }
 }
 
-/// Expands `key` into `out` by Vale's key expansion, which the AES-GCM
-/// routines' proofs assume made their round keys.
-pub(crate) fn expand_128(key: &[u8; 16], out: &mut [__m128i; 11], _: HaveAvxMovbeForAesGcm) {
-    // SAFETY: `key` is 16 readable bytes and `out` the 176 the routine
-    // writes. The token proves the CPU has AES-NI and AVX.
-    unsafe { aes128_key_expansion(key.as_ptr(), out.as_mut_ptr().cast()) };
-}
-
-/// [`expand_128`] for AES-256.
-pub(crate) fn expand_256(key: &[u8; 32], out: &mut [__m128i; 15], _: HaveAvxMovbeForAesGcm) {
-    // SAFETY: `key` is 32 readable bytes and `out` the 240 the routine
-    // writes. The token proves the CPU has AES-NI and AVX.
-    unsafe { aes256_key_expansion(key.as_ptr(), out.as_mut_ptr().cast()) };
-}
-
 /// Declares a routine as a naked function over Vale's text. Each takes the
 /// System V ABI on every OS, since its text is Vale's ELF and Mach-O flavors.
 macro_rules! routine {
@@ -205,9 +174,14 @@ macro_rules! routine {
     };
 }
 
+// Vale's own setup, which the tests check rind's against.
+#[cfg(test)]
 routine!(aes128_key_expansion(key: *const u8, round_keys: *mut u8));
+#[cfg(test)]
 routine!(aes256_key_expansion(key: *const u8, round_keys: *mut u8));
+#[cfg(test)]
 routine!(aes128_keyhash_init(round_keys: *const u8, hkeys: *mut u8));
+#[cfg(test)]
 routine!(aes256_keyhash_init(round_keys: *const u8, hkeys: *mut u8));
 routine!(compute_iv_stdcall(
     iv: *const u8,
@@ -273,3 +247,68 @@ aead!(
     gcm128_decrypt_opt,
     gcm256_decrypt_opt
 );
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use crate::low::x86_64::adx_mux::tests::Rng;
+    use crate::low::x86_64::aes::AesKey;
+    use crate::low::x86_64::cpu::HaveAesHardware;
+
+    // rind's round keys and GHASH key powers are the bytes Vale's own setup
+    // writes, the layout its proof assumes: for each key size, the all-zero
+    // and all-ones keys and random ones, whose H spans both values of the
+    // top bit the multiply by x carries out.
+    #[test]
+    fn setup_matches_vale() {
+        let (Some(token), Some(hw)) = (HaveAvxMovbeForAesGcm::check(), HaveAesHardware::check())
+        else {
+            return;
+        };
+        let mut rng = Rng(1);
+        for key_len in [16, 32] {
+            let mut keys = vec![vec![0u8; key_len], vec![0xff; key_len]];
+            keys.extend((0..64).map(|_| (0..key_len).map(|_| rng.next() as u8).collect()));
+            for key in keys {
+                let key_schedule = AesKey::new(&key);
+                let AesKey::Hw(hw_key) = &key_schedule else {
+                    unreachable!()
+                };
+                let mut vale_keys = [0u8; 240];
+                let mut vale_hkeys = [0u8; 128];
+                // SAFETY: `key` is `key_len` readable bytes, `vale_keys` the
+                // round keys' 16 * (rounds + 1) bytes, and `vale_hkeys` the
+                // 128 bytes `keyhash_init` writes. The token proves the CPU
+                // has AES-NI, PCLMULQDQ, and AVX.
+                unsafe {
+                    let (rk, hk) = (vale_keys.as_mut_ptr(), vale_hkeys.as_mut_ptr());
+                    match key_len {
+                        16 => {
+                            aes128_key_expansion(key.as_ptr(), rk);
+                            aes128_keyhash_init(rk, hk);
+                        }
+                        _ => {
+                            aes256_key_expansion(key.as_ptr(), rk);
+                            aes256_keyhash_init(rk, hk);
+                        }
+                    }
+                }
+                let round_keys_len = 16 * (key_len / 4 + 7);
+                // SAFETY: `hw_key` begins with its round keys.
+                let ours = unsafe {
+                    core::slice::from_raw_parts(hw_key.as_aes_key(), round_keys_len)
+                };
+                assert_eq!(ours, &vale_keys[..round_keys_len], "{key:02x?}");
+
+                let mut h = [0u8; 16];
+                hw_key.encrypt_block(&mut h);
+                let h = u128::from_be_bytes(h);
+                let kernel = AvxKernel::new(&ClmulTable::new(h, hw), h, token);
+                // SAFETY: any eight vectors are 128 bytes.
+                let ours = unsafe { core::mem::transmute::<[__m128i; 8], [u8; 128]>(kernel.hkeys) };
+                assert_eq!(ours, vale_hkeys, "{key:02x?}");
+            }
+        }
+    }
+}

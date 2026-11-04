@@ -610,8 +610,8 @@ mod tests {
     // Every other test sees only the path the CPU picks, so the slower ones
     // are checked against it here, under a key `admin/ctgrind` keeps secret:
     // the by-8 PCLMULQDQ kernel, which a CPU with VAES runs only for short
-    // messages, Vale's AES-GCM and the by-8 kernel over its GHASH key powers,
-    // vpaes with SSSE3 GHASH, and SSE2 AES with integer GHASH. Each key size, and AAD and message lengths around the
+    // messages, Vale's AES-GCM, vpaes with SSSE3 GHASH, and SSE2 AES with
+    // integer GHASH. Each key size, and AAD and message lengths around the
     // block, six-, eight-, and sixteen-block boundaries and the minimums of
     // Vale's six-block loop, both ways, with a tag wrong in either half, and
     // one long enough to carry out of the counter's low byte.
@@ -626,9 +626,9 @@ mod tests {
             let key = bytes(key_len, 1);
             ct::secret_slice(&key);
             let fast = AesKey::new(&key);
-            let fast_table = GhashTable::new(&fast);
             let mut h = [0u8; 16];
             fast.encrypt_block(&mut h);
+            let fast_table = GhashTable::new(u128::from_be_bytes(h));
             let mut slow = vec![(
                 AesKey::Nohw(NohwKey::new(&key)),
                 GhashTable::Nohw(NohwTable::new(&h)),
@@ -643,18 +643,10 @@ mod tests {
                 let clmul = ClmulTable::new(u128::from_be_bytes(h), hw);
                 slow.push((AesKey::new(&key), GhashTable::Clmul(clmul)));
                 if let Some(token) = HaveAvxMovbeForAesGcm::check() {
-                    let key_bytes = &key;
-                    let key = AesKey::new(key_bytes);
-                    let AesKey::Hw(hw_key) = &key else {
-                        unreachable!()
-                    };
-                    let kernel = AvxKernel::new(hw_key, token);
-                    // The by-8 path over the powers Vale computed, as an AAD
-                    // or message of 2^32 bytes runs it.
-                    let from_vale = ClmulTable::from_vale(kernel.hkeys(), hw);
-                    slow.push((AesKey::new(key_bytes), GhashTable::Clmul(from_vale)));
-                    let clmul = ClmulTable::new(u128::from_be_bytes(h), hw);
-                    slow.push((key, GhashTable::Avx(clmul, kernel)));
+                    let h = u128::from_be_bytes(h);
+                    let clmul = ClmulTable::new(h, hw);
+                    let kernel = AvxKernel::new(&clmul, h, token);
+                    slow.push((AesKey::new(&key), GhashTable::Avx(clmul, kernel)));
                 }
             }
 
@@ -746,8 +738,9 @@ mod tests {
         let key = bytes(rng, key_len);
         ct_sde::traced(|| {
             let key = AesKey::new(&key);
-            let table = GhashTable::new(&key);
-            (key, table)
+            let mut h = [0u8; 16];
+            key.encrypt_block(&mut h);
+            (key, GhashTable::new(u128::from_be_bytes(h)))
         })
     }
 

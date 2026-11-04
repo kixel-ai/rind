@@ -27,7 +27,9 @@ impl AesGcm {
     pub(crate) fn new(key: &[u8]) -> Self {
         let _entry = Entry::new_secret();
         let key = expand_key(key);
-        let gh = GhashTable::new(&key);
+        let mut h = [0u8; 16];
+        key.encrypt_block(&mut h);
+        let gh = GhashTable::new(u128::from_be_bytes(h));
 
         Self { key, gh }
     }
