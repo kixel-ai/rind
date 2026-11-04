@@ -9,7 +9,7 @@ use core::arch::x86_64::*;
 
 use super::aes_gcm_avx;
 use super::aes_nohw::NohwKey;
-use super::cpu::{HaveAesHardware, HaveAvxMovbeForAesGcm, HaveSsse3};
+use super::cpu::{HaveAesHardware, HaveSsse3};
 use super::vpaes_x86_64::VpaesKey;
 use crate::low;
 
@@ -169,8 +169,8 @@ pub(crate) struct AesKey128 {
 impl AesKey128 {
     pub(crate) fn new(key: &[u8; 16], _: HaveAesHardware) -> Self {
         let mut round_keys = [zero(); (10 + 1)];
-        // Vale's where its AES-GCM can run, whose proof assumes its keys.
-        match HaveAvxMovbeForAesGcm::check() {
+        // Vale's where its AES-GCM runs, whose proof assumes its keys.
+        match aes_gcm_avx::token() {
             Some(token) => aes_gcm_avx::expand_128(key, &mut round_keys, token),
             // SAFETY: the token proves the CPU has AES-NI and SSSE3.
             None => unsafe { aes128_expand(key, &mut round_keys) },
@@ -209,7 +209,7 @@ const _: () = assert!(core::mem::offset_of!(AesKey256, rounds) == 240);
 impl AesKey256 {
     pub(crate) fn new(key: &[u8; 32], _: HaveAesHardware) -> Self {
         let mut round_keys = [zero(); 14 + 1];
-        match HaveAvxMovbeForAesGcm::check() {
+        match aes_gcm_avx::token() {
             Some(token) => aes_gcm_avx::expand_256(key, &mut round_keys, token),
             // SAFETY: the token proves the CPU has AES-NI and SSSE3.
             None => unsafe { aes256_expand(key, &mut round_keys) },

@@ -16,7 +16,16 @@
 use core::arch::x86_64::__m128i;
 
 use super::aes::HwKey;
-use super::cpu::HaveAvxMovbeForAesGcm;
+use super::cpu::{HaveAvx512ForAesGcm, HaveAvxMovbeForAesGcm, HaveVaesAvx2ForAesGcm};
+
+/// Where the CPU runs Vale's AES-GCM: with AVX and MOVBE, but without the
+/// VAES that BoringSSL's kernels need.
+pub(crate) fn token() -> Option<HaveAvxMovbeForAesGcm> {
+    match (HaveAvx512ForAesGcm::check(), HaveVaesAvx2ForAesGcm::check()) {
+        (None, None) => HaveAvxMovbeForAesGcm::check(),
+        _ => None,
+    }
+}
 
 /// The routines with the GHASH key powers they read.
 pub(crate) struct AvxKernel {

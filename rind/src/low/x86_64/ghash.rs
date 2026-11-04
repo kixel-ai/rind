@@ -13,11 +13,9 @@ use core::arch::x86_64::*;
 use core::mem;
 
 use super::aes::{AesKey, HwKey};
-use super::aes_gcm_avx::AvxKernel;
+use super::aes_gcm_avx::{self, AvxKernel};
 use super::aes_gcm_vaes::VaesKernel;
-use super::cpu::{
-    HaveAesHardware, HaveAvx512ForAesGcm, HaveAvxMovbeForAesGcm, HaveSsse3, HaveVaesAvx2ForAesGcm,
-};
+use super::cpu::{HaveAesHardware, HaveAvx512ForAesGcm, HaveSsse3, HaveVaesAvx2ForAesGcm};
 use super::ghash_nohw::NohwTable;
 use super::ghash_ssse3_x86_64::Ssse3Table;
 use crate::low;
@@ -100,7 +98,7 @@ impl GhashTable {
             let vaes = VaesKernel::avx2(h, token);
             return Self::VaesAvx2(ClmulTable::from_powers(vaes.powers(), hw), vaes);
         }
-        if let (Some(token), Some(key)) = (HaveAvxMovbeForAesGcm::check(), key) {
+        if let (Some(token), Some(key)) = (aes_gcm_avx::token(), key) {
             return Self::Avx(ClmulTable::new(h, hw), AvxKernel::new(key, token));
         }
         Self::Clmul(ClmulTable::new(h, hw))
