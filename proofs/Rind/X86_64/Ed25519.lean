@@ -221,7 +221,6 @@ theorem splice_top_bit (y3 xb i i1 y31 : U64) (hy : y3.val < 2 ^ 63)
 
 /-- `compress` writes s2n-bignum's `ed25519_encode` of the point's coordinates,
 for a y-coordinate below 2²⁵⁵. -/
-@[step]
 theorem point_compress_spec (p : Std.Array U64 8#usize) (hy : (pairNat p.val).2 < 2 ^ 255) :
     mid.ed25519.EdwardsPoint.compress p ⦃ c =>
       leNat c.val = 2 ^ 255 * ((pairNat p.val).1 % 2) + (pairNat p.val).2 ⦄ := by
@@ -363,6 +362,16 @@ theorem try_from_shared_spec {T : Type} (N : Usize) (s : Slice T) :
   by_cases h : s.len = N
   · simp [h, hl.mp h]
   · simp [h, mt hl.mpr h]
+
+/-- `<[T; N]>::try_from(&[T])` of a slice of `N` elements. -/
+@[step]
+theorem try_from_copy_ok {T : Type} (N : Usize) (inst : core.marker.Copy T) (s : Slice T)
+    (h : s.length = N.val) :
+    core.array.TryFromArrayCopySlice.try_from N inst s ⦃ r => ∃ a, r = .Ok a ∧ a.val = s.val ⦄ := by
+  apply WP.spec_mono (core.array.TryFromArrayCopySlice.try_from.step N inst s)
+  rintro (a | e) hr
+  · exact ⟨a, rfl, hr.1⟩
+  · exact absurd h hr
 
 /-- `<&[T; N]>::try_from(&[T])` of a slice of `N` elements. -/
 @[step]
@@ -644,5 +653,64 @@ theorem copy_from_ok (N : Usize) (bytes : Slice U8) (h : bytes.length ≤ N.val)
   simp only [core.slice.Slice.get_mut, core.slice.index.SliceIndexRangeToUsizeSlice,
     core.slice.index.SliceIndexRangeToUsizeSlice.get_mut, hle, ↓reduceIte]
   step*
+
+/-! ## Signing, `mid::ed25519::SigningKey` -/
+
+@[step]
+theorem unreduced_base_mul_spec (h : Runs) (k : Std.Array U64 4#usize) :
+    mid.ed25519.UnreducedScalar.base_mul k ⦃ p => pairNat p.val = edModEncodePair (edPow edB (wordsNat k.val)) ⦄ := by
+  unfold mid.ed25519.UnreducedScalar.base_mul
+  step*
+
+@[step]
+theorem base_mul_spec (h : Runs) (k : Std.Array U64 4#usize) :
+    mid.ed25519.Scalar.base_mul k ⦃ p => pairNat p.val = edModEncodePair (edPow edB (wordsNat k.val)) ⦄ := by
+  unfold mid.ed25519.Scalar.base_mul
+  step*
+
+@[step]
+theorem madd_spec (h : Runs) (x y c : Std.Array U64 4#usize) :
+    mid.ed25519.Scalar.madd_n25519 x y c ⦃ z =>
+      wordsNat z.val = (wordsNat x.val * wordsNat y.val + wordsNat c.val) % n25519 ⦄ := by
+  unfold mid.ed25519.Scalar.madd_n25519
+  step*
+
+/-- A signing key whose private key is the 32-byte `seed`: RFC 8032 5.1.5's
+expansion of it, with the public key's point as s2n-bignum writes it. -/
+def SeedKey (k : mid.ed25519.SigningKey) (seed : List U8) : Prop :=
+  k.seed.val = seed ∧ wordsNat k.s.val = ed25519Scalar seed ∧ k.prefix.val = (sha512 seed).drop 32 ∧
+    k.verifying_key.bytes.val = ed25519PublicKey seed ∧
+    pairNat k.verifying_key.point.val = edModEncodePair (edPow edB (ed25519Scalar seed))
+
+/-- The bytes `compress` writes for a point are its encoding's. -/
+theorem compress_bytes_spec (p : Std.Array U64 8#usize) (P : EdPoint)
+    (hp : pairNat p.val = edModEncodePair P) :
+    mid.ed25519.EdwardsPoint.compress p ⦃ c => c.val = leBytesOf 32 (edEncode P) ⦄ := by
+  apply WP.spec_mono (compress_point_spec p P hp)
+  intro c hc
+  have := leBytesOf_leNat c.val
+  rw [c.property, hc] at this
+  exact this.symm
+
+theorem from_seed_spec (h : Runs) (hs : RunsSha512) (seed : Std.Array U8 32#usize) :
+    mid.ed25519.SigningKey.from_seed seed ⦃ k => SeedKey k seed.val ⦄ := by
+  unfold mid.ed25519.SigningKey.from_seed low.ct.into_public low.ct.secret_slice
+  step
+  step with context_new_spec as ⟨c, hc⟩
+  step as ⟨s1, hs1⟩
+  step with context_update_spec hs _ c [] s1 hc (by simp [Slice.length, hs1]) as ⟨c1, hc1⟩
+  step with context_finish_spec hs _ c1 _ hc1 as ⟨hh, hhv⟩
+  step*
+  step with compress_bytes_spec point _ point_post as ⟨cey, hcey⟩
+  simp only [r_post, r1_post, core.result.Result.Ok.injEq] at *
+  have hH : hh.val = sha512 seed.val := by rw [hhv, hs1]; simp [sha512, Array.val_to_slice]
+  have hl64 : (sha512 seed.val).length = 64 := by rw [← hH]; exact hh.property
+  have hs3' : wordsNat s3.val = ed25519Scalar seed.val := by
+    rw [s3_post, ed25519Scalar]
+    simp_all [List.slice, Array.val_to_slice]
+  refine ⟨rfl, hs3', ?_, ?_, ?_⟩
+  · simp_all [List.slice, Array.val_to_slice]
+  · rw [hcey, hs3']; rfl
+  · rw [point_post, hs3']
 
 end rind.x86_64
