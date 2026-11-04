@@ -3,8 +3,9 @@
 # `proofs/Rind/<Arch>/{Types,Funs}.lean`, then checks every proof in `proofs/`.
 #
 # Each target's translation is its own namespace, but they share global names,
-# so no Lean module imports both. The aarch64 dispatch model and X25519 proof
-# are the x86_64 ones with the target renamed, which this writes too.
+# so no Lean module imports both. The aarch64 hand models and its X25519 and
+# SHA-512 proofs are the x86_64 ones with the target renamed, which this
+# writes too.
 #
 # Usage: admin/prove
 #
@@ -16,7 +17,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 out=.tmp/prove
 mkdir -p "$out"
 
-# `Dispatch.lean` quotes the Rust it models. Fail if that Rust has changed, so
+# Each hand model quotes the Rust it models. Fail if that Rust has changed, so
 # the model is reviewed with every change to it: print each quoted item, from
 # the line that starts it to its closing line at column 0, then a blank line.
 items() {
@@ -26,25 +27,45 @@ items() {
         awk -v s="$start" 'index($0, s) == 1 { p = 1 } p { print } p && (/^}/ || /^[^ }].*;$/) { p = 0; print "" }' "$file"
     done
 }
-sed -n '/^```rust$/,/^```$/{//!p}' proofs/Rind/X86_64/Dispatch.lean >"$out/dispatch.rs"
-diff -u --label Dispatch.lean --label rind/src "$out/dispatch.rs" \
-    <(items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
+check_quote() {
+    local model=$1
+    shift
+    sed -n '/^```rust$/,/^```$/{//!p}' "proofs/Rind/X86_64/$model.lean" >"$out/$model.rs"
+    diff -u --label "$model.lean" --label rind/src "$out/$model.rs" <("$@")
+}
+agreement_items() {
+    items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
         'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {'
-    items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {')
-# The model's `Ops<K>` holds nothing, since the quoted `Keyed::generate` builds
-# the only one. That holds while the quote has every mention of `Ops`.
-if [ "$(grep -ow Ops rind/src/high/agreement.rs | wc -l)" != "$(grep -ow Ops "$out/dispatch.rs" | wc -l)" ]; then
-    echo "rind/src/high/agreement.rs names Ops outside Dispatch.lean's quote" >&2
-    exit 1
-fi
+    items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {'
+}
+check_quote Dispatch agreement_items
+check_quote DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
+    'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
+    'pub static SHA512_256:'
+check_quote DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
+    'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {'
+# The models' `Ops` hold nothing, since the quoted constructor builds the only
+# one, and their `Algorithm` is which static it is. That holds while each
+# quote has every mention of `Ops`, and every `Algorithm` the source builds.
+complete() {
+    local pattern=$1 file=$2 model=$3
+    if [ "$(grep -o "$pattern" "$file" | wc -l)" != "$(grep -o "$pattern" "$out/$model.rs" | wc -l)" ]; then
+        echo "$file has $pattern outside $model.lean's quote" >&2
+        exit 1
+    fi
+}
+complete '\bOps\b' rind/src/high/agreement.rs Dispatch
+complete '\bOps\b' rind/src/high/digest.rs DigestDispatch
+complete '= Algorithm {' rind/src/high/digest.rs DigestAlgorithm
 
 # The X25519 path from `high::agreement`'s `Agree` impls down to s2n-bignum's
-# routines, and the SHA-512 family's from `high::digest`'s contexts and
-# `high::hash`'s impls down to aws-lc's routines. `low` is opaque: its routines are inline assembly, whose proven
-# contracts `proofs/Rind/<Arch>/S2nBignum.lean` states. The x86_64 BMI2/ADX
-# dispatch and the constant-time markers are Rust, so they are translated. The
-# other curves' functions are opaque; their types are kept, since the
-# agreement enums hold them.
+# routines, and the SHA-512 family's from `high::digest` and `high::hash` down
+# to aws-lc's. `low` is opaque: its routines are inline assembly, whose proven
+# contracts `proofs/Rind/<Arch>/{S2nBignum,AwsLc}.lean` state. The x86_64
+# BMI2/ADX dispatch, the SHA-512 dispatch, the padding and buffering in
+# `low::generic::blockwise`, and the constant-time markers are Rust, so they
+# are translated. The other curves' functions are opaque; their types are
+# kept, since the agreement enums hold them.
 #
 # Aeneas cannot translate function pointers, through which `PrivateKey`
 # reaches each curve's `Agree` impl and `digest::Context` each hash's, so the
@@ -107,7 +128,7 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base
 extract aarch64 Aarch64
 
-for file in Dispatch X25519; do
+for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 

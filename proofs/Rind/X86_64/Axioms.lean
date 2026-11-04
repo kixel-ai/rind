@@ -1,9 +1,11 @@
 import Rind.X86_64.X25519
+import Rind.X86_64.Sha512
 open rind.x86_64
 
 /-!
-The axioms each X25519 theorem rests on, beyond Lean's own: s2n-bignum's
-contracts in `Rind.X86_64.S2nBignum`, and nothing else. A change here is a change
+The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
+in `Rind.X86_64.S2nBignum` for X25519, aws-lc's in `Rind.X86_64.AwsLc` for the
+SHA-512 family, and nothing else. A change here is a change
 to the trust base.
 -/
 
@@ -31,3 +33,11 @@ to the trust base.
 /-- info: 'rind.x86_64.x25519_shared_secret' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms x25519_shared_secret
+
+/-- info: 'rind.x86_64.sha512_family_digest' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms sha512_family_digest
+
+/-- info: 'rind.x86_64.sha512_family_context' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms sha512_family_context
