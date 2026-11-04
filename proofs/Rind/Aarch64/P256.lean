@@ -529,10 +529,11 @@ theorem from_x962_spec (bytes : Slice U8) :
       have h4 : b0 ≠ 4#u8 := fun h => hne (by rw [h]; exact UScalar.eq_of_val_eq rfl)
       simp [WP.spec_ok, h4]
 
+theorem tomont_mod (x : Nat) : 2 ^ 256 * (x % p256) % p256 = 2 ^ 256 * x % p256 := by
+  rw [Nat.mul_mod, Nat.mul_mod (2 ^ 256) x, Nat.mod_mod]
+
 theorem rinv_tomont_mod (x : Nat) : p256RInv * (2 ^ 256 * x % p256) % p256 = x % p256 := by
-  have h : 2 ^ 256 * x % p256 = 2 ^ 256 * (x % p256) % p256 := by
-    rw [Nat.mul_mod, Nat.mul_mod (2 ^ 256) (x % p256), Nat.mod_mod]
-  rw [h, rinv_tomont _ (Nat.mod_lt _ (by simp [p256]))]
+  rw [← tomont_mod, rinv_tomont _ (Nat.mod_lt _ (by simp [p256]))]
 
 @[step]
 theorem multiply_spec (pt : mid.p256.AffineMontPoint) (k : mid.p256.Scalar) (P : P256Point)
@@ -773,5 +774,102 @@ theorem from_bytes_spec (bytes : Slice U8) (hl : bytes.length = 32) :
       low.ct.into_secret, hsc]
   · subst hr
     simp [core.result.Result.map]
+
+theorem onCurve_G : p256OnCurve p256G := by
+  simp only [p256OnCurve, p256G, p256, b256]; decide
+
+@[step]
+theorem base_multiply_spec (ht : Tabulated) (k : mid.p256.Scalar) :
+    mid.p256.AffineMontPoint.base_multiply k ⦃ q =>
+      ∃ rx ry, p256AffineZ (rx, ry) (p256Pow p256G (wordsNat k.val)) ∧
+        pairNat q.xy.val = (2 ^ 256 * rx % p256, 2 ^ 256 * ry % p256) ⦄ := by
+  obtain ⟨t, ht, htab⟩ := ht
+  unfold mid.p256.AffineMontPoint.base_multiply
+  simp only [ht, bind_ok]
+  step*
+  · simp [mid.p256.AffineMontPoint.X]
+  · simp [mid.p256.AffineMontPoint.X]
+  · rcases r with a | _
+    · exact ⟨a, rfl⟩
+    · exact absurd (by simp [s_post1, mid.p256.AffineMontPoint.X]) r_post
+  · simp [mid.p256.AffineMontPoint.Y]
+  · simp [mid.p256.AffineMontPoint.Y]
+  · rcases r1 with a | _
+    · exact ⟨a, rfl⟩
+    · exact absurd (by simp [s1_post1, mid.p256.AffineMontPoint.Y]) r1_post
+  · subst r_post
+    obtain ⟨ha, -⟩ := r_post
+    subst r1_post
+    obtain ⟨ha1, -⟩ := r1_post
+    have h8 : (xy1.val).length = 8 := xy1.property
+    have hxa : feNat a1 = (pairNat xy1.val).1 := by
+      simp [feNat, ha, s_post, mid.p256.AffineMontPoint.X, List.slice, pairNat]
+    have hya : feNat a2 = (pairNat xy1.val).2 := by
+      rw [pairNat_drop _ h8]
+      simp [feNat, ha1, s1_post, mid.p256.AffineMontPoint.Y, List.slice, List.take_of_length_le, h8]
+    refine ⟨(pairNat xy1.val).1, (pairNat xy1.val).2, xy1_post _ onCurve_G htab, ?_⟩
+    rw [q_post, pairNat_append _ _ fe.property fe1.property, ← hxa, ← hya]
+    exact Prod.ext fe_post fe1_post
+
+theorem public_point_spec (h : Runs) (ht : Tabulated) (k : mid.p256.PrivateKey) (x y : Nat)
+    (hq : p256Pow p256G (wordsNat k.scalar.val) = some (x, y)) (hc : p256OnCurve (some (x, y))) :
+    mid.p256.PrivateKey.public_point k ⦃ pt =>
+      pairNat pt.xy.val = (2 ^ 256 * x % p256, 2 ^ 256 * y % p256) ⦄ := by
+  unfold mid.p256.PrivateKey.public_point low.ct.into_public
+  step with base_multiply_spec ht k.scalar as ⟨q, rx, ry, hz, hqq⟩
+  unfold p256AffineZ at hz
+  split_ifs at hz with h0
+  · rw [hz] at hq; cases hq
+  · rw [hz] at hq
+    simp only [Option.some.injEq, Prod.mk.injEq] at hq
+    obtain ⟨rfl, rfl⟩ := hq
+    step as ⟨b, hb⟩
+    rw [hqq] at hb
+    simp only [rinv_tomont_mod] at hb
+    have hbt : b = true := hb.mpr hc
+    subst hbt
+    step
+    rw [hqq, tomont_mod, tomont_mod]
+
+theorem as_bytes_uncompressed_spec (pt : mid.p256.AffineMontPoint) (hx : (pairNat pt.xy.val).1 < p256)
+    (hy : (pairNat pt.xy.val).2 < p256) :
+    mid.p256.AffineMontPoint.as_bytes_uncompressed pt ⦃ b =>
+      b.val.head? = some 4#u8 ∧
+        x962Coords b.val = (p256RInv * (pairNat pt.xy.val).1 % p256, p256RInv * (pairNat pt.xy.val).2 % p256) ⦄ := by
+  have hl : (pt.xy.val).length = 8 := pt.xy.property
+  unfold mid.p256.AffineMontPoint.as_bytes_uncompressed
+  simp only [mid.p256.FieldElement.BYTES]
+  have h65 : (Array.repeat 65#usize 0#u8).val.length = 65 := by simp [Array.repeat]
+  step*
+  · have hsl : s.length = 65 := by simp [Slice.length, s_post, Array.repeat]
+    rw [indicator_post1, hsl]; simp
+  · simpa [feNat, fe_post, pairNat] using hx
+  · simp [x_post, s1_post]
+  · simpa [feNat, fe2_post, pairNat_drop _ hl] using hy
+  · have hsl : s.length = 65 := by simp [Slice.length, s_post, Array.repeat]
+    simp [x_post1, indicator_post1, hsl, s2_post]
+  · have hsl : s.length = 65 := by simp [Slice.length, s_post, Array.repeat]
+    have hxyl : xy.length = 64 := by rw [indicator_post1, hsl]
+    have ha32 : (a.val).length = 32 := a.property
+    have ha132 : (a1.val).length = 32 := a1.property
+    obtain ⟨hxy, hxyl'⟩ := x_post4 x1 y1 (by simp [x1_post, s1_post])
+      (by simp [y1_post, s2_post, hxyl])
+    obtain ⟨hall, hall'⟩ := indicator_post4 indicator1 (split_at_mut_back1 (x1, y1))
+      (by simp [indicator1_post, indicator_post]) (by rw [hxyl', hxyl, hsl])
+    have hind : indicator1.val = [4#u8] := by
+      rw [indicator1_post, Slice.set_val_eq, indicator_post2, s_post]
+      simp [Array.repeat]
+    rw [to_slice_mut_back_post, Array.from_slice_val _ _ (by rw [← Slice.length, hall', hsl]; rfl), hall, hind,
+      hxy, x1_post, y1_post, s1_post, s2_post, Array.val_to_slice, Array.val_to_slice]
+    refine ⟨rfl, ?_⟩
+    simp only [x962Coords]
+    have h1 : ([4#u8] ++ (a.val ++ a1.val)).slice 1 33 = a.val := by
+      simp [List.slice, List.take_left' ha32]
+    have h2 : ([4#u8] ++ (a.val ++ a1.val)).slice 33 65 = a1.val := by
+      simp [List.slice, List.drop_left' ha32, List.take_of_length_le, ha132]
+    rw [h1, h2, a_post, a1_post]
+    simp only [feNat] at fe1_post fe3_post
+    rw [fe1_post, fe3_post, fe_post, fe2_post, pairNat_drop _ hl]
+    rfl
 
 end rind.aarch64
