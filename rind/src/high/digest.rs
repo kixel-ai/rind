@@ -275,7 +275,7 @@ impl Digest {
     }
 
     pub(crate) fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.value[..self.algorithm.output_len]
+        &mut self.value[..self.algorithm.output_len()]
     }
 
     /// Constant-time equality, `other` may not be truncated.
@@ -286,7 +286,7 @@ impl Digest {
 
 impl AsRef<[u8]> for Digest {
     fn as_ref(&self) -> &[u8] {
-        &self.value[..self.algorithm.output_len]
+        &self.value[..self.algorithm.output_len()]
     }
 }
 

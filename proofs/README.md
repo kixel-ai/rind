@@ -92,10 +92,29 @@ cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
 Lean definitions beside the Rust they model. P-256's key generation draws
 through a `dyn RandomSource`, which Aeneas cannot translate either, and
 `Rind/Aarch64/P256Dispatch.lean` models it and the `ECDH_P256` static the same
-way. `high::digest` holds function pointers too, so `Rind/X86_64/Digest.lean`
-models its `Algorithm` and `Digest` the same way. `admin/prove` fails if any
-quote no longer matches the source, or if the source names `Ops`, builds a
-`Masker`, or writes its `mask` outside the first.
+way.
+
+SHA-384, SHA-512, and SHA-512/256, from the digest API to aws-lc's block
+routine, in `Rind/X86_64/Sha512.lean`, which `admin/prove` also writes for
+aarch64:
+
+- `sha512_family_digest`: `digest`'s bytes are the hash of the message;
+- `sha512_family_context`: a `Context` given the message in any chunks, then
+  finished, returns its hash, for messages under 2^64 bytes.
+
+The hash is cryptol-specs' FIPS 180-4 SHA-512, in `Rind/Sha2.lean`, with its
+block compression `processBlock_Common` opaque. Each theorem assumes
+`RunsSha512`: on x86_64 that rind picks aws-lc's AVX routine, on an Intel CPU
+with AVX, and on aarch64 its scalar routine, on a CPU without the SHA-512
+instructions; those are the routines whose proofs state their result. The
+digest API reaches each hash through function pointers too, which
+`Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
+models the `Algorithm` statics that hold them.
+
+`admin/prove` fails if a hand model's quote no longer matches the source, if
+the source names `Ops`, builds a `Masker`, or writes its `mask` outside the
+dispatch models' quotes, or if it builds a digest `Algorithm` outside
+`DigestAlgorithm.lean`'s.
 
 ## Layout
 
@@ -104,22 +123,23 @@ quote no longer matches the source, or if the source names `Ops`, builds a
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
   translation leaves opaque, and models of the few `core` items Aeneas's
   library lacks.
-- `Rind/<Arch>/S2nBignum.lean`: s2n-bignum's theorems, restated as axioms
-  about the routines' Rust wrappers.
-- `Rind/Spec.lean` and `Rind/Bytes.lean`: the spec and byte-conversion
-  lemmas.
-- `Rind/HashSpec.lean`: SHA-1, SHA-256, HMAC, HKDF, and PBKDF2, and
-  `Rind/HashSpecTest.lean`, their known-answer tests.
-- `Rind/X86_64/Dispatch.lean`: the hand model of the agreement and
-  header-protection APIs' dispatch, and `Rind/X86_64/Digest.lean`, of
-  `high::digest`.
-- `Rind/X86_64/X25519.lean`, `Rind/X86_64/ChaCha20.lean`, and
-  `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`: the X25519, ChaCha20, and hash and
-  HMAC proofs.
+- `Rind/<Arch>/S2nBignum.lean` and `Rind/<Arch>/AwsLc.lean`: s2n-bignum's and
+  aws-lc-verification's theorems, restated as axioms about the routines' Rust
+  wrappers.
+- `Rind/Spec.lean` and `Rind/Bytes.lean`: the elliptic-curve and ChaCha20
+  specs and byte-conversion lemmas; `Rind/Sha2.lean` and
+  `Rind/Sha2Lemmas.lean`: SHA-512's; `Rind/HashSpec.lean`: SHA-1's,
+  SHA-256's, HMAC's, HKDF's, and PBKDF2's, and `Rind/HashSpecTest.lean`, their
+  known-answer tests.
+- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm}.lean`: the hand
+  models of the agreement, header-protection, and digest APIs' dispatch.
+- `Rind/X86_64/{X25519,Sha512,ChaCha20}.lean`: the X25519, SHA-512, and
+  ChaCha20 proofs, and `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`, SHA-1's,
+  SHA-256's, and HMAC's.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, and their padded last blocks.
-- `admin/prove` copies the other `Rind/X86_64/` files to `Rind/Aarch64/` with
-  the target renamed.
+- `admin/prove` copies the other `Rind/X86_64/` models and proofs to
+  `Rind/Aarch64/` with the target renamed.
 - `Rind/Aarch64/P256Dispatch.lean` and `Rind/Aarch64/P256.lean`: the hand
   model of P-256's key generation, and the P-256 proof.
 
@@ -129,20 +149,22 @@ Beyond Lean's kernel:
 
 - Charon and Aeneas's translation, and Aeneas's models of `core`, with
   `Rind/Core.lean`'s.
-- That `Rind/X86_64/Dispatch.lean`, `Rind/X86_64/Digest.lean`, and
-  `Rind/Aarch64/P256Dispatch.lean` compute what the Rust they quote does. They
-  add no axiom.
+- That each hand model computes what the Rust it quotes does. They add no
+  axiom.
 - That `Rind/HashSpec.lean` transliterates FIPS 180-4, RFC 2104, RFC 5869,
   and RFC 8018.
-- The restatement of each s2n-bignum theorem as an axiom, under the
-  composition rule in the [verification epic](/quest/m3/verified/README.md).
-  It lets a group-membership fact a proof must decide be its defining
-  equation, so `group_carrier p256_group` is the curve equation that HOL
-  Light's
+- The restatement of each s2n-bignum and aws-lc-verification theorem as an
+  axiom, under the composition rule in the
+  [verification epic](/quest/m3/verified/README.md), and on aarch64 the
+  caveats aws-lc-verification lists for its NSym proof. It lets a
+  group-membership fact a proof must decide be its defining equation, so
+  `group_carrier p256_group` is the curve equation that HOL Light's
   [`P256_GROUP`](https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/nistp256.ml#L82)
   proves it is.
+- That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
+  `processBlock_Common`.
 - That `Rind/Spec.lean`'s ChaCha20 transliterates RFC 8439 and RFC 9001.
-- That rind's inline assembly is s2n-bignum's object code, as for
-  `benchmarks/verified.toml`'s other s2n-bignum entries.
-- The translation ignores drops, which here wipe keys and restore CPU state,
-  and computes nothing an output depends on.
+- That rind's inline assembly is s2n-bignum's and aws-lc's object code, as for
+  `benchmarks/verified.toml`'s other entries.
+- The translation ignores drops, which here wipe keys and hash contexts and
+  restore CPU state, and computes nothing an output depends on.

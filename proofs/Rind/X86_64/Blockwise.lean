@@ -17,16 +17,12 @@ def padZeros (N L n : Nat) : Nat := (N - (n + 1 + L) % N) % N
 
 @[step]
 theorem as_flattened_mut_spec {T : Type} {N : Usize} (s : Slice (Std.Array T N))
-    (h : s.length * N.val ≤ Usize.max) :
-    core.slice.SliceArray.as_flattened_mut s ⦃ f _ =>
-      f.val = (s.val.map (·.val)).flatten ⦄ := by
-  have hl : ((s.val.map (·.val)).flatten).length = s.length * N.val := by
-    rw [List.length_flatten, List.map_map]
-    have : ∀ a ∈ s.val, ((·.length) ∘ (·.val) : Std.Array T N → Nat) a = N.val := by simp
-    rw [List.map_congr_left this]
-    simp
+    (h : (s.val.flatMap (·.val)).length ≤ Usize.max) :
+    core.slice.SliceArray.as_flattened_mut s ⦃ f _ => f.val = s.val.flatMap (·.val) ⦄ := by
   unfold core.slice.SliceArray.as_flattened_mut
-  simp only [hl, h, ↓reduceDIte, WP.spec_ok, WP.uncurry'_pair, Slice.from_val]
+  simp only
+  rw [dite_eq_left_of_eq_true (eq_true h)]
+  simp
 
 /-- `pad`'s length: the rest, the 0x80 byte, the zeros, and the length fill
 one or two whole blocks. -/
@@ -108,7 +104,7 @@ theorem pad_spec {N L : Usize} (rest : Slice U8) (length : Std.Array U8 L)
   have hd : rest.length / N.val ≤ 1 :=
     Nat.le_of_lt_succ (Nat.div_lt_of_lt_mul (by omega))
   have hdm := Nat.div_mul_le_self rest.length N.val
-  have hzero : ((Std.Array.repeat 2#usize (Std.Array.repeat N 0#u8)).val.map (·.val)).flatten =
+  have hzero : (Std.Array.repeat 2#usize (Std.Array.repeat N 0#u8)).val.flatMap (·.val) =
       List.replicate (2 * N.val) 0#u8 := by
     simp only [Std.Array.repeat, Std.Array.from_val, Nat.two_mul]
     simp [List.replicate_succ]

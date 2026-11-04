@@ -6,7 +6,7 @@
 //! Its collision resistance is broken, so it must not be used where that
 //! matters, such as in signatures.
 
-use crate::low::{Blockwise, Compress, Entry, compress_padded};
+use crate::low::{Blockwise, Entry, UpdateBlocks, pad, split_tail};
 
 /// SHA1's chaining value after a whole number of blocks.
 ///
@@ -28,18 +28,9 @@ impl Sha1State {
         }
     }
 
-    /// Add `blocks`, a whole number of blocks, to the hash computation.
-    pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
-        debug_assert!(blocks.len().is_multiple_of(Sha1Context::BLOCK_SZ));
-        if !blocks.is_empty() {
-            // `digest::Context::update` and `hmac::Context::update` leave
-            // entering to here.
-            let _entry = Entry::new_secret();
-            Self::compress(&mut self.h, blocks);
-            self.nblocks = self
-                .nblocks
-                .saturating_add((blocks.len() / Sha1Context::BLOCK_SZ) as u64);
-        }
+    fn compress(h: &mut [u32; 5], blocks: &[u8]) {
+        Entry::assert_held();
+        crate::low::sha1_compress_blocks(h, blocks);
     }
 
     /// The hash of the input so far followed by `message`, leaving this state as it was.
@@ -56,7 +47,12 @@ impl Sha1State {
         // two stores, which the SHA extensions' 16-byte load of it then
         // waits on instead of forwarding.
         let mut h = self.h;
-        compress_padded::<Self, _, BLOCK_SZ, _>(message, bits.to_be_bytes(), &mut h);
+        let (blocks, rest) = split_tail::<BLOCK_SZ, 8>(message);
+        if !blocks.is_empty() {
+            Self::compress(&mut h, blocks);
+        }
+        let mut last = [[0u8; BLOCK_SZ]; 2];
+        Self::compress(&mut h, pad(rest, bits.to_be_bytes(), &mut last));
 
         // Indexes rather than zipping `as_chunks_mut`, which Aeneas cannot
         // translate, so `proofs/` can prove the encoding.
@@ -68,10 +64,18 @@ impl Sha1State {
     }
 }
 
-impl Compress<[u32; 5]> for Sha1State {
-    fn compress(h: &mut [u32; 5], blocks: &[u8]) {
-        Entry::assert_held();
-        crate::low::sha1_compress_blocks(h, blocks);
+impl UpdateBlocks for Sha1State {
+    fn update_blocks(&mut self, blocks: &[u8]) {
+        debug_assert!(blocks.len().is_multiple_of(Sha1Context::BLOCK_SZ));
+        if !blocks.is_empty() {
+            // `digest::Context::update` and `hmac::Context::update` leave
+            // entering to here.
+            let _entry = Entry::new_secret();
+            Self::compress(&mut self.h, blocks);
+            self.nblocks = self
+                .nblocks
+                .saturating_add((blocks.len() / Sha1Context::BLOCK_SZ) as u64);
+        }
     }
 }
 
@@ -98,7 +102,7 @@ impl Sha1Context {
 
     /// Add `bytes` to the ongoing hash computation.
     pub(crate) fn update(&mut self, bytes: &[u8]) {
-        self.blockwise.update::<Self, _>(bytes, &mut self.state);
+        self.blockwise.update(bytes, &mut self.state);
     }
 
     /// Complete the SHA1 computation, returning the hash output.
@@ -111,12 +115,6 @@ impl Sha1Context {
 
     /// The output size of SHA1.
     pub(crate) const OUTPUT_SZ: usize = 20;
-}
-
-impl Compress<Sha1State> for Sha1Context {
-    fn compress(state: &mut Sha1State, blocks: &[u8]) {
-        state.update_blocks(blocks);
-    }
 }
 
 #[cfg(test)]
