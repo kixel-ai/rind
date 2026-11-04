@@ -69,7 +69,7 @@ pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
-pub(crate) use generic::zeroise::{Zeroable, zeroise, zeroise_value};
+pub(crate) use generic::zeroise::{Zeroable, ZeroableRef, zeroise, zeroise_value};
 pub(crate) use posint::{ModExp, PosInt, SecretPosInt};
 
 #[cfg(all(test, not(target_arch = "arm")))]
@@ -203,6 +203,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::bignum_demont_p384::bignum_demont_p384;
         pub(crate) use aarch64::bignum_digitsize::bignum_digitsize;
         pub(crate) use aarch64::bignum_eq::bignum_eq;
+        #[cfg(test)]
         pub(crate) use aarch64::bignum_inv_p256::bignum_inv_p256;
         pub(crate) use aarch64::bignum_inv_p384::bignum_inv_p384;
         pub(crate) use aarch64::bignum_inv_p521::bignum_inv_p521;
@@ -253,7 +254,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::p256_montjadd::p256_montjadd;
         pub(crate) use aarch64::p256_montjdouble::p256_montjdouble;
         pub(crate) use aarch64::p256_montjmixadd::p256_montjmixadd;
-        pub(crate) use aarch64::p256_montjscalarmul::p256_montjscalarmul;
+        pub(crate) use aarch64::p256_scalarmul::p256_scalarmul;
         pub(crate) use aarch64::p256_scalarmulbase::p256_scalarmulbase;
         pub(crate) use aarch64::p384_montjadd::p384_montjadd;
         pub(crate) use aarch64::p384_montjmixadd::p384_montjmixadd;

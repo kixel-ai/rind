@@ -151,6 +151,7 @@ macro_rules! montreds {
 ///
 /// Does z := (x^2 / 2^384) mod p_384, assuming x^2 <= 2^384 * p_384, which is
 /// guaranteed in particular if x < p_384 initially (the "intended" case).
+#[inline(never)]
 pub(crate) fn bignum_montsqr_p384_alt(z: &mut [u64; 6], x: &[u64; 6]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

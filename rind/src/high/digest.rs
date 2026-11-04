@@ -4,15 +4,21 @@
 
 use core::fmt;
 
-use super::hash::{Hash, HashContext, LegacySha1, Sha256, Sha384, Sha512};
-use crate::low::{Entry, Zeroable, ct, ct_equal, zeroise_value};
+use super::hash::{
+    Hash, HashContext, LegacySha1, Sha1Context, Sha256, Sha256Context, Sha384, Sha384Context,
+    Sha512, Sha512Context,
+};
+use crate::low::{Entry, Zeroable, ZeroableRef, ct, ct_equal, zeroise_value};
 use crate::mid::{sha1, sha2};
 
 /// A hash function, chosen by one of this module's constants.
-#[derive(Debug)]
 pub struct Algorithm {
     id: Id,
     output_len: usize,
+    // The only paths to the hash's code, so a binary links only the hashes
+    // whose algorithms it names.
+    hash: fn(&[u8]) -> Digest,
+    start: fn() -> State,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -31,6 +37,15 @@ impl Algorithm {
     }
 }
 
+impl fmt::Debug for Algorithm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Algorithm")
+            .field("id", &self.id)
+            .field("output_len", &self.output_len)
+            .finish()
+    }
+}
+
 /// SHA-1, for legacy protocols only: its collision resistance is broken.
 ///
 /// HMAC-SHA1 does not rely on collision resistance, and remains required by
@@ -38,45 +53,49 @@ impl Algorithm {
 pub static SHA1: Algorithm = Algorithm {
     id: Id::Sha1,
     output_len: sha1::Sha1Context::OUTPUT_SZ,
+    hash: LegacySha1::hash,
+    start: Hashing::<Sha1Context>::start,
 };
 
 /// SHA-256, from [FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
 pub static SHA256: Algorithm = Algorithm {
     id: Id::Sha256,
     output_len: sha2::Sha256Context::OUTPUT_SZ,
+    hash: Sha256::hash,
+    start: Hashing::<Sha256Context>::start,
 };
 
 /// SHA-384, from [FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
 pub static SHA384: Algorithm = Algorithm {
     id: Id::Sha384,
     output_len: sha2::Sha384Context::OUTPUT_SZ,
+    hash: Sha384::hash,
+    start: Hashing::<Sha384Context>::start,
 };
 
 /// SHA-512, from [FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
 pub static SHA512: Algorithm = Algorithm {
     id: Id::Sha512,
     output_len: sha2::Sha512Context::OUTPUT_SZ,
+    hash: Sha512::hash,
+    start: Hashing::<Sha512Context>::start,
 };
 
 /// SHA-512/256: SHA-512 with its own initial value, truncated to 256 bits, from [FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
 pub static SHA512_256: Algorithm = Algorithm {
     id: Id::Sha512_256,
     output_len: sha2::Sha512_256Context::OUTPUT_SZ,
+    hash: |data| {
+        let output = sha2::Sha512_256Context::INITIAL.finish_with(data);
+        Digest::new(&SHA512_256, &sha2::Sha512_256Context::truncate(&output))
+    },
+    start: Hashing::<Sha512_256Context>::start,
 };
 
 /// Hashes `data` in one go.
 pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
     let _entry = Entry::new_secret();
-    match algorithm.id {
-        Id::Sha1 => LegacySha1::hash(data),
-        Id::Sha256 => Sha256::hash(data),
-        Id::Sha384 => Sha384::hash(data),
-        Id::Sha512 => Sha512::hash(data),
-        Id::Sha512_256 => Digest::new(
-            &SHA512_256,
-            &sha2::Sha512_256Context::truncate(&sha2::Sha512_256Context::INITIAL.finish_with(data)),
-        ),
-    }
+    (algorithm.hash)(data)
 }
 
 /// An in-progress hash computation, wiped on drop.
@@ -86,55 +105,127 @@ pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
 pub struct Context(State);
 
 // `repr(u8)` puts `Sha1` at tag zero, and every context is plain integers and
-// bytes, so all-bits-zero is a valid value.
+// bytes beside a `ZeroableRef`, so all-bits-zero is a valid value.
 #[derive(Clone)]
 #[repr(u8)]
 enum State {
-    Sha1(<LegacySha1 as Hash>::Context),
-    Sha256(<Sha256 as Hash>::Context),
-    Sha384(<Sha384 as Hash>::Context),
-    Sha512(<Sha512 as Hash>::Context),
-    Sha512_256(sha2::Sha512_256Context),
+    Sha1(Hashing<Sha1Context>),
+    Sha256(Hashing<Sha256Context>),
+    Sha384(Hashing<Sha384Context>),
+    Sha512(Hashing<Sha512Context>),
+    Sha512_256(Hashing<Sha512_256Context>),
 }
 
 impl State {
-    fn new(algorithm: &'static Algorithm) -> Self {
-        match algorithm.id {
-            Id::Sha1 => Self::Sha1(LegacySha1::new()),
-            Id::Sha256 => Self::Sha256(Sha256::new()),
-            Id::Sha384 => Self::Sha384(Sha384::new()),
-            Id::Sha512 => Self::Sha512(Sha512::new()),
-            Id::Sha512_256 => Self::Sha512_256(sha2::Sha512_256Context::new()),
-        }
-    }
-
     fn update(&mut self, data: &[u8]) {
         match self {
-            Self::Sha1(ctx) => ctx.update(data),
-            Self::Sha256(ctx) => ctx.update(data),
-            Self::Sha384(ctx) => ctx.update(data),
-            Self::Sha512(ctx) => ctx.update(data),
-            Self::Sha512_256(ctx) => ctx.update(data),
+            Self::Sha1(hashing) => hashing.update(data),
+            Self::Sha256(hashing) => hashing.update(data),
+            Self::Sha384(hashing) => hashing.update(data),
+            Self::Sha512(hashing) => hashing.update(data),
+            Self::Sha512_256(hashing) => hashing.update(data),
         }
     }
 
     fn finish(&self) -> Digest {
         match self {
-            Self::Sha1(ctx) => ctx.finish(),
-            Self::Sha256(ctx) => ctx.finish(),
-            Self::Sha384(ctx) => ctx.finish(),
-            Self::Sha512(ctx) => ctx.finish(),
-            Self::Sha512_256(ctx) => Digest::new(&SHA512_256, &ctx.finish()),
+            Self::Sha1(hashing) => hashing.finish(),
+            Self::Sha256(hashing) => hashing.finish(),
+            Self::Sha384(hashing) => hashing.finish(),
+            Self::Sha512(hashing) => hashing.finish(),
+            Self::Sha512_256(hashing) => hashing.finish(),
         }
     }
 }
 
 impl Zeroable for State {}
 
+/// A hash context with its hash's code, which it reaches only through
+/// `ops`: matching on [`State`] then names no hash's code.
+#[derive(Clone)]
+struct Hashing<C: Variant> {
+    context: C,
+    ops: ZeroableRef<Ops<C>>,
+}
+
+struct Ops<C> {
+    update: fn(&mut C, &[u8]),
+    finish: fn(&C) -> Digest,
+}
+
+impl<C: Variant> Hashing<C> {
+    fn start() -> State {
+        C::state(Self {
+            context: C::new(),
+            ops: ZeroableRef::new(
+                const {
+                    &Ops {
+                        update: C::update,
+                        finish: C::finish,
+                    }
+                },
+            ),
+        })
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        (self.ops.get().update)(&mut self.context, data)
+    }
+
+    fn finish(&self) -> Digest {
+        (self.ops.get().finish)(&self.context)
+    }
+}
+
+/// A hash's context, as a [`State`] variant holds it.
+trait Variant: HashContext + 'static {
+    fn new() -> Self;
+
+    fn state(hashing: Hashing<Self>) -> State;
+}
+
+macro_rules! variant {
+    ($context:ty, $variant:ident, $new:expr) => {
+        impl Variant for $context {
+            fn new() -> Self {
+                $new
+            }
+
+            fn state(hashing: Hashing<Self>) -> State {
+                State::$variant(hashing)
+            }
+        }
+    };
+}
+
+variant!(Sha1Context, Sha1, LegacySha1::new());
+variant!(Sha256Context, Sha256, Sha256::new());
+variant!(Sha384Context, Sha384, Sha384::new());
+variant!(Sha512Context, Sha512, Sha512::new());
+variant!(
+    Sha512_256Context,
+    Sha512_256,
+    Sha512_256Context(sha2::Sha512_256Context::new())
+);
+
+/// SHA-512/256's context, which no [`Hash`] has.
+#[derive(Clone)]
+struct Sha512_256Context(sha2::Sha512_256Context);
+
+impl HashContext for Sha512_256Context {
+    fn update(&mut self, bytes: &[u8]) {
+        self.0.update(bytes)
+    }
+
+    fn finish(&self) -> Digest {
+        Digest::new(&SHA512_256, &self.0.finish())
+    }
+}
+
 impl Context {
     /// Starts hashing with `algorithm`.
     pub fn new(algorithm: &'static Algorithm) -> Self {
-        Self(State::new(algorithm))
+        Self((algorithm.start)())
     }
 
     /// Adds `data` to the message.

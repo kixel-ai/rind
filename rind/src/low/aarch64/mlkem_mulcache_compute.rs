@@ -42,6 +42,7 @@ use crate::low::macros::*;
 /// to tables of zeta-related constants whose definitions can be found in
 /// the mlkem-native repo (mlkem/native/aarch64/src/aarch64_zetas.c) or
 /// our "tests/test.c", as "mulcache_zetas" and "mulcache_zetas_twisted"
+#[inline(never)]
 pub(crate) fn mlkem_mulcache_compute(
     x: &mut [i16; 128],
     a: &[i16; 256],

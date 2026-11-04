@@ -534,6 +534,7 @@ macro_rules! load_k25519 {
 /// but the conventional usage is that they *are* already reduced.
 /// The scalars can be arbitrary 256-bit numbers but may also be
 /// considered as implicitly reduced modulo the group order.
+#[inline(never)]
 pub(crate) fn edwards25519_scalarmuldouble(
     res: &mut [u64; 8],
     scalar: &[u64; 4],

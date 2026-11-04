@@ -75,6 +75,7 @@ macro_rules! mulpade {
 ///
 /// Does z := (x^2 / 2^256) mod p_256, assuming x^2 <= 2^256 * p_256, which is
 /// guaranteed in particular if x < p_256 initially (the "intended" case).
+#[inline(never)]
 pub(crate) fn bignum_montsqr_p256_alt(z: &mut [u64; 4], x: &[u64; 4]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

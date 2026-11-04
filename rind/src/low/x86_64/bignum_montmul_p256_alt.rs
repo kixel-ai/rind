@@ -86,6 +86,7 @@ macro_rules! mulpade {
 /// Does z := (2^{-256} * x * y) mod p_256, assuming that the inputs x and y
 /// satisfy x * y <= 2^256 * p_256 (in particular this is true if we are in
 /// the "usual" case x < p_256 and y < p_256).
+#[inline(never)]
 pub(crate) fn bignum_montmul_p256_alt(z: &mut [u64; 4], x: &[u64; 4], y: &[u64; 4]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

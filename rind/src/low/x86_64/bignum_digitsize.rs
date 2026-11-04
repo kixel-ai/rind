@@ -48,6 +48,7 @@ macro_rules! j {
 /// Input x[k]; output function return
 ///
 /// In the case of a zero bignum as input the result is 0
+#[inline(never)]
 pub(crate) fn bignum_digitsize(z: &[u64]) -> usize {
     let ret: u64;
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
