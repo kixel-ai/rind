@@ -483,4 +483,75 @@ theorem mid_verify_spec (h : Runs) (hs : RunsSha512) (vk : mid.ed25519.Verifying
     simp [core.option.Option.ok_or, core.result.Result.Insts.CoreOpsTry.branch,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, hn]
 
+/-! ## Parsing keys, `mid::ed25519` and `high::ed25519` -/
+
+open Classical in
+@[step]
+theorem decompress_from_spec (h : Runs) (c : Std.Array U8 32#usize) :
+    mid.ed25519.EdwardsPoint.decompress_from c ⦃ r =>
+      if edValidEncode (leNat c.val) then
+        ∃ pt, r = .Ok pt ∧ pairNat pt.val = edModEncodePair (edDecode (leNat c.val))
+      else r = .Err (.KeyRejected .NotOnCurve) ⦄ := by
+  unfold mid.ed25519.EdwardsPoint.decompress_from
+  step*
+  have hv : ¬ edValidEncode (leNat c.val) := fun hv => ‹¬b = true› (b_post.mpr hv)
+  simp [hv, error.Error.Insts.CoreConvertFromKeyFormatError.from]
+
+open Classical in
+theorem mid_from_bytes_spec (h : Runs) (hs : RunsSha512) (bytes : Slice U8) :
+    mid.ed25519.VerifyingKey.from_bytes bytes ⦃ r =>
+      if bytes.length = 32 then
+        if edValidEncode (leNat bytes.val) then
+          ∃ vk, r = .Ok vk ∧ vk.bytes.val = bytes.val ∧
+            pairNat vk.point.val = edModEncodePair (edDecode (leNat bytes.val))
+        else r = .Err (.KeyRejected .NotOnCurve)
+      else r = .Err (.KeyRejected .WrongLength) ⦄ := by
+  unfold mid.ed25519.VerifyingKey.from_bytes
+  step
+  step with try_from_shared_spec 32#usize bytes as ⟨r, hr⟩
+  by_cases hl : bytes.length = 32
+  · simp only [hl, ↓reduceIte] at hr ⊢
+    obtain ⟨a, rfl, ha⟩ := hr
+    simp only
+    step as ⟨r1, hr1⟩
+    rw [ha] at hr1
+    split_ifs at hr1 ⊢ with hv
+    · obtain ⟨pt, rfl, hpt⟩ := hr1
+      simp [core.result.Result.map,
+        mid.ed25519.VerifyingKey.from_bytes.closure.Insts.CoreOpsFunctionFnOnceTupleEdwardsPointVerifyingKey,
+        mid.ed25519.VerifyingKey.from_bytes.closure.Insts.CoreOpsFunctionFnOnceTupleEdwardsPointVerifyingKey.call_once,
+        ha, hpt]
+    · subst hr1
+      simp [core.result.Result.map]
+  · simp only [hl, ↓reduceIte] at hr ⊢
+    obtain ⟨e, rfl⟩ := hr
+    simp [core.convert.IntoFrom.into, error.Error.Insts.CoreConvertFromKeyFormatError.from]
+
+theorem has_small_order_loop_spec (y : Std.Array U64 4#usize)
+    (it : core.slice.iter.Iter (Std.Array U64 4#usize)) (found : Bool) :
+    high.ed25519.has_small_order_loop it y found ⦃ b =>
+      b = (found || (it.slice.val.drop it.i).any fun c => decide (wordsNat y.val = wordsNat c.val)) ⦄ := by
+  unfold high.ed25519.has_small_order_loop
+  apply loop.spec_decr_nat (fun x => x.1.slice.val.length - x.1.i)
+    (fun x => x.1.slice = it.slice ∧
+      (x.2 || (x.1.slice.val.drop x.1.i).any fun c => decide (wordsNat y.val = wordsNat c.val)) =
+      (found || (it.slice.val.drop it.i).any fun c => decide (wordsNat y.val = wordsNat c.val)))
+  · rintro ⟨it', f⟩ ⟨hsl, hinv⟩
+    simp only at hsl hinv ⊢
+    unfold high.ed25519.has_small_order_loop.body
+    simp only [core.slice.iter.IteratorSliceIter.next]
+    split
+    · rename_i hlt
+      have hlt' : it'.i < it'.slice.val.length := by simpa [Slice.len] using hlt
+      step*
+      refine ⟨hsl, ?_, by omega⟩
+      rw [← hinv, List.drop_eq_getElem_cons hlt', List.any_cons, b_post, s_post, s1_post,
+        Array.val_to_slice, Array.val_to_slice, Bool.or_assoc]
+      rfl
+    · rename_i hge
+      have hge' : it'.slice.val.length ≤ it'.i := by simpa [Slice.len] using hge
+      rw [← hinv, List.drop_eq_nil_of_le hge']
+      simp
+  · exact ⟨rfl, rfl⟩
+
 end rind.x86_64
