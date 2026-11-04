@@ -5,10 +5,15 @@
 # `p256::tests::base_point_precomp` test then checks them against.
 #
 # Row j of a table with window w holds i * 2^(w * j) * G for i in
-# 1..=2^(w - 1), as affine points with Montgomery coordinates, each 4
+# 1..=2^(w - 1), as affine points with Montgomery coordinates below P, each 4
 # little-endian 64-bit words: on x86_64, the layout aws-lc's
 # `ecp_nistz256_point_mul_base` reads with w = 7, and elsewhere, the one
 # s2n-bignum's `p256_scalarmulbase` reads with a block size of 6.
+#
+# The 6-bit table is exactly the `p256_tabulates G 6` that s2n-bignum's proof
+# of `p256_scalarmulbase_alt` assumes (arm/proofs/p256_scalarmulbase_alt.ml),
+# with P and G HOL Light's `p_256` and `G_256` (EC/nistp256.ml), so that proof
+# covers rind's aarch64 base-point multiplication.
 
 import pathlib
 
@@ -18,8 +23,8 @@ GY = 0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5
 
 
 def add(p1, p2):
-    # Affine addition; never reaches infinity, since the table only holds
-    # multiples below the group order.
+    # Affine addition. No multiple in the tables is 0 mod the prime group
+    # order, so no sum reaches infinity, which would raise: 0 has no inverse.
     (x1, y1), (x2, y2) = p1, p2
     if p1 == p2:
         m = (3 * x1 * x1 - 3) * pow(2 * y1, -1, P)
