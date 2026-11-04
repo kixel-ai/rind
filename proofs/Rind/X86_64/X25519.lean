@@ -1,13 +1,14 @@
 import Rind.X86_64.S2nBignum
+import Rind.X86_64.Dispatch
 import Rind.Bytes
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
 # X25519, proven from rind's agreement API to s2n-bignum's contracts
 
-The `x25519_*` theorems state what the agreement API's X25519 impl returns,
-in terms of `rfcx25519`. `admin/prove` writes the aarch64 proof from this
-file by renaming the target.
+The `x25519_*` theorems state what the agreement API returns for X25519, in
+terms of `rfcx25519`, through the dispatch `Rind.X86_64.Dispatch` models.
+`admin/prove` writes the aarch64 proof from this file by renaming the target.
 -/
 
 namespace rind.x86_64
@@ -225,14 +226,9 @@ theorem diffie_hellman_spec (h : Runs) (k : mid.x25519.PrivateKey) (peer : mid.x
     rw [s_post, Array.val_to_slice, res1_post, hz] at b1_post
     simp_all
 
-/-! ## The agreement API's X25519 impl, `high::agreement`
+/-! ## The agreement API's X25519 impl, `high::agreement` -/
 
-`PrivateKey` reaches these through function pointers, which Aeneas cannot
-translate, so that dispatch is opaque and these theorems start below it. -/
-
-/-- An X25519 key's public key: the u-coordinate of its scalar times the base
-point, as RFC 7748's 32 little-endian bytes. -/
-theorem x25519_public_key (h : Runs) (k : mid.x25519.PrivateKey) :
+theorem encode_public_spec (h : Runs) (k : mid.x25519.PrivateKey) :
     (do
       let pk ← mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_public k
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
@@ -257,10 +253,7 @@ theorem x25519_public_key (h : Runs) (k : mid.x25519.PrivateKey) :
   simp only [ha32, Nat.zero_add, List.take_zero, List.nil_append] at this
   simp only [List.drop_zero, Nat.sub_zero, this, ha, hpk]
 
-/-- An X25519 agreement with the peer's encoded public key: refused unless it
-is 32 bytes, refused for the all-zero output of a small-order point, and
-otherwise RFC 7748's X25519 of this key's scalar and the peer's u-coordinate. -/
-theorem x25519_agree (h : Runs) (k : mid.x25519.PrivateKey) (peer : Slice U8) :
+theorem agree_spec (h : Runs) (k : mid.x25519.PrivateKey) (peer : Slice U8) :
     mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.agree k peer ⦃ r =>
       if peer.length = 32 then
         if rfcx25519 (wordsNat k.val) (leNat peer.val) = 0 then
@@ -285,16 +278,7 @@ theorem x25519_agree (h : Runs) (k : mid.x25519.PrivateKey) (peer : Slice U8) :
     simp [core.result.Result.Insts.CoreOpsTry.branch,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
 
-/-- The shared secret's bytes are the ones `x25519_agree` states. -/
-theorem x25519_shared_secret (s : mid.x25519.SharedSecret) :
-    high.agreement.SharedSecret.Insts.CoreConvertAsRefSliceU8.as_ref (.X25519 s) ⦃ b =>
-      b.val = s.val ⦄ := by
-  simp [high.agreement.SharedSecret.Insts.CoreConvertAsRefSliceU8.as_ref, Array.val_to_slice]
-
-/-- A generated X25519 key's scalar is the 32 bytes the random source drew,
-read little-endian, and a failed draw is refused. The draw itself is outside
-the functional spec. -/
-theorem x25519_generate (h : Runs) (r : core.result.Result Unit getrandom.error.Error)
+theorem random_spec (h : Runs) (r : core.result.Result Unit getrandom.error.Error)
     (out : Slice U8) (hout : out.length = 32)
     (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) :
     mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.random ⦃ key =>
@@ -313,3 +297,58 @@ theorem x25519_generate (h : Runs) (r : core.result.Result Unit getrandom.error.
       mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
 
+/-! ## The agreement API, `high::agreement`, through the modelled dispatch -/
+
+/-- A generated X25519 key's scalar is the 32 bytes the random source drew,
+read little-endian, and a failed draw is refused. The draw itself is outside
+the functional spec. -/
+theorem x25519_generate (h : Runs) (r : core.result.Result Unit getrandom.error.Error)
+    (out : Slice U8) (hout : out.length = 32)
+    (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) :
+    high.agreement.PrivateKey.generate high.agreement.X25519 ⦃ key =>
+      match r with
+      | .Ok _ => ∃ k : high.agreement.Keyed mid.x25519.PrivateKey,
+        key = core.result.Result.Ok (high.agreement.Private.X25519 k) ∧
+          wordsNat k.key.val = leNat out.val
+      | .Err _ => key = core.result.Result.Err error.Error.RngFailed ⦄ := by
+  unfold high.agreement.PrivateKey.generate high.agreement.X25519 high.agreement.Keyed.generate
+  step with random_spec h r out hout hfill as ⟨key, hkey⟩
+  rcases r with _ | _ <;> simp only at hkey
+  · obtain ⟨k, rfl, hk⟩ := hkey
+    simp [mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.wrap, hk]
+  · simp [hkey]
+
+/-- An X25519 key's public key: the u-coordinate of its scalar times the base
+point, as RFC 7748's 32 little-endian bytes. -/
+theorem x25519_public_key (h : Runs) (k : high.agreement.Keyed mid.x25519.PrivateKey) :
+    (do
+      let pk ← high.agreement.PrivateKey.public_key (.X25519 k)
+      high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
+      b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.key.val) 9 ⦄ := by
+  unfold high.agreement.PrivateKey.public_key high.agreement.Keyed.public_key
+  exact encode_public_spec h k.key
+
+/-- An X25519 agreement with the peer's encoded public key: refused unless it
+is 32 bytes, refused for the all-zero output of a small-order point, and
+otherwise RFC 7748's X25519 of this key's scalar and the peer's u-coordinate. -/
+theorem x25519_agree (h : Runs) (k : high.agreement.Keyed mid.x25519.PrivateKey)
+    (peer : Slice U8) :
+    high.agreement.PrivateKey.agree (.X25519 k) peer ⦃ r =>
+      if peer.length = 32 then
+        if rfcx25519 (wordsNat k.key.val) (leNat peer.val) = 0 then
+          r = .Err (.KeyRejected .SmallOrder)
+        else ∃ s, r = .Ok (.X25519 s) ∧ leNat s.val = rfcx25519 (wordsNat k.key.val) (leNat peer.val)
+      else r = .Err (.KeyRejected .WrongLength) ⦄ := by
+  unfold high.agreement.PrivateKey.agree high.agreement.Keyed.agree
+  step with agree_spec h k.key peer as ⟨r, hr⟩
+  split_ifs at hr ⊢ <;> first
+    | (subst hr; simp)
+    | (obtain ⟨s, rfl, hs⟩ := hr; simp [hs])
+
+/-- The shared secret's bytes are the ones `x25519_agree` states. -/
+theorem x25519_shared_secret (s : mid.x25519.SharedSecret) :
+    high.agreement.SharedSecret.Insts.CoreConvertAsRefSliceU8.as_ref (.X25519 s) ⦃ b =>
+      b.val = s.val ⦄ := by
+  simp [high.agreement.SharedSecret.Insts.CoreConvertAsRefSliceU8.as_ref, Array.val_to_slice]
+
+end rind.x86_64

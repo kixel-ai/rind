@@ -5,20 +5,20 @@ public import Rind.Core
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
-/-! The rind types the aarch64 translation leaves opaque. -/
+/-! The rind types the aarch64 translation leaves opaque. `Rind.Aarch64.Dispatch` models the last two. -/
 
 namespace rind.aarch64
 
 /-- The entry guard every operation holds, which changes no value. -/
 opaque low.entry.Entry : Type
 
-/-- A key agreement algorithm, which holds its curve's code as a function pointer. -/
-opaque high.agreement.Algorithm : Type
+/-- A `&'static T` that a wiped value may hold, as `Rind.Aarch64.Dispatch` models it:
+the `T`, since only the drop that wipes it leaves it `None`. -/
+@[reducible] def low.generic.zeroise.ZeroableRef (T : Type) : Type := T
 
-/-- A curve's key agreement functions, as function pointers. -/
-opaque high.agreement.Ops (K : Type) : Type
-
-/-- A `&'static T` that a wiped value may hold. -/
-opaque low.generic.zeroise.ZeroableRef (T : Type) : Type
+/-- A curve's key agreement functions, as `Rind.Aarch64.Dispatch` models them:
+nothing, since `Keyed::generate` builds the only one, of `K`'s own `Agree`
+functions, which the model calls directly. -/
+@[reducible] def high.agreement.Ops (_K : Type) : Type := Unit
 
 end rind.aarch64

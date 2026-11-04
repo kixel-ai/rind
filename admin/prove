@@ -3,8 +3,8 @@
 # `proofs/Rind/<Arch>/{Types,Funs}.lean`, then checks every proof in `proofs/`.
 #
 # Each target's translation is its own namespace, but they share global names,
-# so no Lean module imports both. The aarch64 X25519 proof is the x86_64 one
-# with the target renamed, which this writes too.
+# so no Lean module imports both. The aarch64 dispatch model and X25519 proof
+# are the x86_64 ones with the target renamed, which this writes too.
 #
 # Usage: admin/prove
 #
@@ -16,45 +16,57 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 out=.tmp/prove
 mkdir -p "$out"
 
-# The X25519 path from `high::agreement`'s X25519 `Agree` impl down to
-# s2n-bignum's routines. `low` is opaque: its routines are inline assembly,
-# whose proven contracts `proofs/Rind/<Arch>/S2nBignum.lean` states. The x86_64 BMI2/ADX
-# dispatch and the constant-time markers are Rust, so they are translated.
-# The other curves' functions are opaque; their types are kept, since the
+# `Dispatch.lean` quotes the Rust it models. Fail if that Rust has changed, so
+# the model is reviewed with every change to it: print each quoted item, from
+# the line that starts it to its closing line at column 0, then a blank line.
+items() {
+    local file=$1
+    shift
+    for start in "$@"; do
+        awk -v s="$start" 'index($0, s) == 1 { p = 1 } p { print } p && (/^}/ || /^[^ }].*;$/) { p = 0; print "" }' "$file"
+    done
+}
+sed -n '/^```rust$/,/^```$/{//!p}' proofs/Rind/X86_64/Dispatch.lean >"$out/dispatch.rs"
+diff -u --label Dispatch.lean --label rind/src "$out/dispatch.rs" \
+    <(items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
+        'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {'
+    items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {')
+# The model's `Ops<K>` holds nothing, since the quoted `Keyed::generate` builds
+# the only one. That holds while the quote has every mention of `Ops`.
+if [ "$(grep -ow Ops rind/src/high/agreement.rs | wc -l)" != "$(grep -ow Ops "$out/dispatch.rs" | wc -l)" ]; then
+    echo "rind/src/high/agreement.rs names Ops outside Dispatch.lean's quote" >&2
+    exit 1
+fi
+
+# The X25519 path from `high::agreement`'s `Agree` impls down to s2n-bignum's
+# routines. `low` is opaque: its routines are inline assembly, whose proven
+# contracts `proofs/Rind/<Arch>/S2nBignum.lean` states. The x86_64 BMI2/ADX
+# dispatch and the constant-time markers are Rust, so they are translated. The
+# other curves' functions are opaque; their types are kept, since the
 # agreement enums hold them.
 #
-# Aeneas cannot translate function pointers, through which `high::agreement`
-# reaches each curve, so that dispatch is opaque: `Algorithm`, `Ops`, the
-# statics, and `PrivateKey`'s and `Keyed`'s methods. Charon cannot yet name an
-# inherent impl's methods apart from a trait impl's, and an opaque pattern wins
-# a tie, so every impl item there is opaque and the `Agree` impls and
-# `PublicKey`'s and `SharedSecret`'s items are named back in.
+# Aeneas cannot translate function pointers, through which `PrivateKey`
+# reaches each curve's `Agree` impl, so the translation starts below that
+# dispatch, and `proofs/Rind/X86_64/Dispatch.lean` models it by hand.
 extract() {
     local arch=$1 dir=$2
     shift 2
     (cd rind && charon cargo --preset=aeneas \
-        --start-from crate::high::agreement \
+        --start-from '{impl crate::high::agreement::Agree for crate::mid::x25519::PrivateKey}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::mid::p256::PrivateKey}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::mid::p384::PrivateKey}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::mid::p521::PrivateKey}' \
+        --start-from '{impl core::convert::AsRef for crate::high::agreement::PublicKey}' \
+        --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}' \
+        --start-from crate::high::agreement::PrivateKey \
+        --start-from crate::high::agreement::AlgorithmId \
+        --opaque crate::high::agreement::Ops \
         --opaque crate::low \
         --opaque 'crate::mid::p256::_::_' \
         --opaque 'crate::mid::p384::_::_' \
         --opaque 'crate::mid::p521::_::_' \
-        --opaque '{impl core::fmt::Debug for _}::fmt' \
         --include 'crate::mid::p521::_::BYTES' \
         --include crate::low::ct \
-        --opaque crate::high::agreement::Algorithm \
-        --opaque crate::high::agreement::Ops \
-        --opaque crate::high::agreement::X25519 \
-        --opaque crate::high::agreement::ECDH_P256 \
-        --opaque crate::high::agreement::ECDH_P384 \
-        --opaque crate::high::agreement::ECDH_P521 \
-        --opaque 'crate::high::agreement::_::_' \
-        --include 'crate::high::agreement::{crate::high::agreement::Agree}::agree' \
-        --include 'crate::high::agreement::_::random' \
-        --include 'crate::high::agreement::_::wrap' \
-        --include 'crate::high::agreement::_::encode_public' \
-        --include 'crate::high::agreement::_::new' \
-        --include 'crate::high::agreement::_::MAX_LEN' \
-        --include 'crate::high::agreement::_::as_ref' \
         "$@" \
         --dest-file "$PWD/../$out/$arch.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
@@ -70,7 +82,9 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base
 extract aarch64 Aarch64
 
-sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' proofs/Rind/X86_64/X25519.lean >proofs/Rind/Aarch64/X25519.lean
+for file in Dispatch X25519; do
+    sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
+done
 
 cd proofs
 lake exe cache get

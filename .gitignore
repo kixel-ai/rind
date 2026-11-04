@@ -7,3 +7,4 @@ proofs/.lake/
 proofs/Rind/*/Types.lean
 proofs/Rind/*/Funs.lean
 proofs/Rind/Aarch64/X25519.lean
+proofs/Rind/Aarch64/Dispatch.lean
