@@ -4,8 +4,9 @@
 //! and `aesni_gcm_decrypt`, imported by `admin/import-aws-lc`, which
 //! interleave AES-CTR and GHASH over six blocks at a time.
 //!
-//! aws-lc-verification's SAW proofs cover them as aws-lc builds them, for
-//! AES-256 and whole blocks, not rind's copy. They support in-place use.
+//! Neither is formally verified: aws-lc-verification's SAW proof of them is
+//! disabled, and held only for aws-lc up to 7bdae64, with AES-256, whole
+//! blocks, a 12-byte IV, and no additional data. They support in-place use.
 
 use core::arch::x86_64::__m128i;
 
