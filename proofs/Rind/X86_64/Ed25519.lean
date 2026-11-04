@@ -395,4 +395,92 @@ theorem negate_spec (p : Std.Array U64 8#usize) (hx : (pairNat p.val).1 ≤ p255
   rw [x_neg1_post (by rw [hpx]; exact hx), hpx]
   simp [pairNat]
 
+/-- `&[u8] == [u8; N]`. -/
+@[step]
+theorem slice_eq_array_spec {N : Usize} (s : Slice U8) (a : Std.Array U8 N) :
+    Shared0Slice.Insts.CoreCmpPartialEqArray.eq core.cmp.PartialEqU8 s a ⦃ b => b ↔ s.val = a.val ⦄ := by
+  unfold Shared0Slice.Insts.CoreCmpPartialEqArray.eq
+  apply WP.spec_mono (core.slice.cmp.PartialEqSlice.eq_homo_spec _ s a.to_slice
+    (fun x y => by simp [core.cmp.PartialEqU8, liftFun2]))
+  intro b hb
+  rw [hb, Slice.eq_iff, Array.val_to_slice]
+
+/-- `[u8] == [u8]`. -/
+@[step]
+theorem slice_eq_spec (s t : Slice U8) :
+    core.slice.cmp.PartialEqSlice.eq core.cmp.PartialEqU8 s t ⦃ b => b ↔ s.val = t.val ⦄ := by
+  apply WP.spec_mono (core.slice.cmp.PartialEqSlice.eq_homo_spec _ s t
+    (fun x y => by simp [core.cmp.PartialEqU8, liftFun2]))
+  intro b hb
+  rw [hb, Slice.eq_iff]
+
+@[step]
+theorem scalarmuldouble_spec (h : Runs) (k : Std.Array U64 4#usize) (pt : Std.Array U64 8#usize)
+    (b : Std.Array U64 4#usize) :
+    mid.ed25519.EdwardsPoint.scalarmuldouble k pt b ⦃ r =>
+      ∀ P, edOnCurve P → edModDecodePair (pairNat pt.val) = P →
+        pairNat r.val = edModEncodePair (edMul (edPow P (wordsNat k.val)) (edPow edB (wordsNat b.val))) ⦄ := by
+  unfold mid.ed25519.EdwardsPoint.scalarmuldouble
+  step*
+
+theorem edModEncode_lt_pow (x : Int) : edModEncode x < 2 ^ 255 :=
+  lt_of_lt_of_le (edModEncode_lt x) (by norm_num [p25519])
+
+/-- `compress` of the coordinates s2n-bignum writes for a point is its
+encoding. -/
+theorem compress_point_spec (p : Std.Array U64 8#usize) (P : EdPoint)
+    (hp : pairNat p.val = edModEncodePair P) :
+    mid.ed25519.EdwardsPoint.compress p ⦃ c => leNat c.val = edEncode P ⦄ := by
+  apply WP.spec_mono (point_compress_spec p (by rw [hp]; exact edModEncode_lt_pow _))
+  intro c hc
+  rw [hc, hp]
+  rfl
+
+open Classical in
+/-- `verify` with a key whose point is `A`, a point of the group, and whose
+bytes are `vk.bytes`: RFC 8032's verification. -/
+theorem mid_verify_spec (h : Runs) (hs : RunsSha512) (vk : mid.ed25519.VerifyingKey) (A : EdPoint)
+    (hA : edOnCurve A) (hp : pairNat vk.point.val = edModEncodePair A)
+    (sig : Std.Array U8 64#usize) (msg : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
+    mid.ed25519.VerifyingKey.verify vk sig msg ⦃ r =>
+      r = if ed25519Verifies A vk.bytes.val msg.val sig.val then
+        (.Ok () : core.result.Result Unit error.Error) else .Err .BadSignature ⦄ := by
+  unfold mid.ed25519.VerifyingKey.verify
+  have hsig : sig.val.length = 64 := sig.property
+  step*
+  simp only [r_post, core.result.Result.Ok.injEq] at *
+  have hs2 : s2.val = sig.val.drop 32 := by simp_all [Array.val_to_slice]
+  have hr : r_sig.val = sig.val.take 32 := by simp_all [Array.val_to_slice]
+  rw [hs2] at o_post
+  by_cases hS : leNat (sig.val.drop 32) < n25519
+  · simp only [hS, ↓reduceIte] at o_post
+    obtain ⟨S, rfl, hSv⟩ := o_post
+    simp only [core.option.Option.ok_or, core.result.Result.Insts.CoreOpsTry.branch]
+    step as ⟨s3, hs3⟩
+    step with ed25519_digest_spec hs r_sig s3 msg (by simp [Slice.length, hs3] at *; omega)
+      as ⟨k, hk⟩
+    step as ⟨k1, hk1⟩
+    step with negate_spec vk.point (by rw [hp]; exact (edModEncode_lt _).le) as ⟨ep, hep⟩
+    step as ⟨ep1, hep1⟩
+    have hR := hep1 (edNeg A) (edOnCurve_neg A hA) (by rw [hep, hp]; exact neg_decode A hA)
+    step with compress_point_spec ep1 _ hR as ⟨r2, hr2⟩
+    step as ⟨b, hb⟩
+    have hr2l : r2.val.length = 32 := r2.property
+    have hiff : r_sig.val = r2.val ↔ ed25519Verifies A vk.bytes.val msg.val sig.val := by
+      rw [hk1, hk, hSv, hs3, Array.val_to_slice] at hr2
+      rw [ed25519Verifies, ← hr]
+      constructor
+      · intro he
+        refine ⟨hsig, hS, ?_⟩
+        rw [← hr2, he]
+      · rintro ⟨-, -, he⟩
+        exact leNat_inj _ _ (by simp [hr2l, r_sig_post]) (by rw [he, hr2])
+    rw [← hiff, ← hb]
+    split <;> simp_all
+  · simp only [hS, ↓reduceIte] at o_post
+    subst o_post
+    have hn : ¬ ed25519Verifies A vk.bytes.val msg.val sig.val := fun ⟨_, h, _⟩ => hS h
+    simp [core.option.Option.ok_or, core.result.Result.Insts.CoreOpsTry.branch,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, hn]
+
 end rind.x86_64
