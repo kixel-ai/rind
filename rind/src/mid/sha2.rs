@@ -6,8 +6,7 @@
 //! This is SHA256, SHA384, SHA512, and SHA512/256.
 //! These are all described in [FIPS180](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
 
-use crate::low::cpu::verify_cpu_features;
-use crate::low::{Blockwise, compress_padded};
+use crate::low::{Blockwise, Entry, compress_padded};
 
 /// SHA256's chaining value after a whole number of blocks.
 ///
@@ -36,6 +35,9 @@ impl Sha256State {
     pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
         debug_assert!(blocks.len().is_multiple_of(Sha256Context::BLOCK_SZ));
         if !blocks.is_empty() {
+            // `digest::Context::update` and `hmac::Context::update` leave
+            // entering to here.
+            let _entry = Entry::new_secret();
             Self::compress(&mut self.h, blocks);
             self.nblocks = self
                 .nblocks
@@ -44,7 +46,7 @@ impl Sha256State {
     }
 
     fn compress(h: &mut [u32; 8], blocks: &[u8]) {
-        verify_cpu_features();
+        Entry::assert_held();
         crate::low::sha256_compress_blocks(h, blocks);
     }
 
@@ -62,7 +64,7 @@ impl Sha256State {
         // two stores, which the SHA extensions' 16-byte load of it then
         // waits on instead of forwarding.
         let mut h = self.h;
-        verify_cpu_features();
+        Entry::assert_held();
         crate::low::sha256_compress_padded(&mut h, message, bits.to_be_bytes());
 
         let mut r = [0u8; Sha256Context::OUTPUT_SZ];
@@ -242,6 +244,9 @@ impl Sha512State {
     pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
         debug_assert!(blocks.len().is_multiple_of(Sha512Context::BLOCK_SZ));
         if !blocks.is_empty() {
+            // `digest::Context::update` and `hmac::Context::update` leave
+            // entering to here.
+            let _entry = Entry::new_secret();
             Self::compress(&mut self.h, blocks);
             self.nblocks = self
                 .nblocks
@@ -250,7 +255,7 @@ impl Sha512State {
     }
 
     fn compress(h: &mut [u64; 8], blocks: &[u8]) {
-        verify_cpu_features();
+        Entry::assert_held();
         crate::low::sha512_compress_blocks(h, blocks);
     }
 

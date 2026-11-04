@@ -16,4 +16,3 @@ See the [epic](/quest/m1/benchmarks/README.md) for the settled decisions and the
 
 ## Required
 
-- [Benchmarks run on every host for every library](/quest/m1/benchmarks/hosts.md) - the results this renders

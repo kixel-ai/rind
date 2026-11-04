@@ -3,6 +3,23 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 
+/// libcrux's RSA-PSS key, which holds the modulus and private exponent
+/// alone, so it signs without the CRT.
+fn libcrux_key(private_key: &[u8]) -> libcrux_rsa::PrivateKey<256> {
+    use rsa::pkcs1::DecodeRsaPrivateKey;
+    use rsa::traits::{PrivateKeyParts, PublicKeyParts};
+    let key = rsa::RsaPrivateKey::from_pkcs1_der(private_key).unwrap();
+    let be = |bytes: &[u8]| {
+        let mut out = [0u8; 256];
+        out[256 - bytes.len()..].copy_from_slice(bytes);
+        out
+    };
+    libcrux_rsa::PrivateKey::<256>::from_components(
+        be(&key.n_bytes()),
+        be(&key.d().to_be_bytes_trimmed_vartime()),
+    )
+}
+
 fn rsa2048_pkcs1_sha256_sign(c: &mut Criterion) {
     let private_key = include_bytes!("../../rind/src/high/rsa/rsa2048.der");
     let message =
@@ -57,6 +74,30 @@ fn rsa2048_pkcs1_sha256_sign(c: &mut Criterion) {
             black_box(key.sign(&sign::RSA_PKCS1_SHA256, message)).unwrap();
         })
     });
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    group.bench_function("graviola", |b| {
+        let key = graviola::signing::rsa::SigningKey::from_pkcs1_der(private_key).unwrap();
+
+        b.iter(|| {
+            let mut signature = [0u8; 256];
+            black_box(key.sign_pkcs1_sha256(&mut signature, message).unwrap());
+        })
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        use openssl::hash::MessageDigest;
+        use openssl::pkey::PKey;
+        use openssl::rsa::Rsa;
+        use openssl::sign::Signer;
+        let key = PKey::from_rsa(Rsa::private_key_from_der(private_key).unwrap()).unwrap();
+
+        b.iter(|| {
+            let mut signer = Signer::new(MessageDigest::sha256(), &key).unwrap();
+            black_box(signer.sign_oneshot_to_vec(message).unwrap());
+        })
+    });
 }
 
 fn rsa2048_pss_sha256_sign(c: &mut Criterion) {
@@ -97,6 +138,66 @@ fn rsa2048_pss_sha256_sign(c: &mut Criterion) {
 
         b.iter(|| {
             black_box(key.sign(&sign::RSA_PSS_SHA256, message)).unwrap();
+        })
+    });
+
+    group.bench_function("rustcrypto", |b| {
+        use getrandom::{SysRng, rand_core::UnwrapErr};
+        use rsa::pkcs1::DecodeRsaPrivateKey;
+        use rsa::signature::RandomizedSigner;
+        let key = rsa::pss::SigningKey::<sha2::Sha256>::new(
+            rsa::RsaPrivateKey::from_pkcs1_der(private_key).unwrap(),
+        );
+
+        b.iter(|| {
+            black_box(key.sign_with_rng(&mut UnwrapErr(SysRng), message));
+        });
+    });
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    group.bench_function("graviola", |b| {
+        let key = graviola::signing::rsa::SigningKey::from_pkcs1_der(private_key).unwrap();
+
+        b.iter(|| {
+            let mut signature = [0u8; 256];
+            black_box(key.sign_pss_sha256(&mut signature, message).unwrap());
+        })
+    });
+
+    group.bench_function("libcrux", |b| {
+        let key = libcrux_key(private_key);
+
+        b.iter(|| {
+            let mut salt = [0u8; 32];
+            getrandom::fill(&mut salt).unwrap();
+            let mut signature = [0u8; 256];
+            libcrux_rsa::sign_2048(
+                libcrux_rsa::DigestAlgorithm::Sha2_256,
+                &key,
+                message,
+                &salt,
+                &mut signature,
+            )
+            .unwrap();
+            black_box(signature);
+        })
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        use openssl::hash::MessageDigest;
+        use openssl::pkey::PKey;
+        use openssl::rsa::{Padding, Rsa};
+        use openssl::sign::{RsaPssSaltlen, Signer};
+        let key = PKey::from_rsa(Rsa::private_key_from_der(private_key).unwrap()).unwrap();
+
+        b.iter(|| {
+            let mut signer = Signer::new(MessageDigest::sha256(), &key).unwrap();
+            signer.set_rsa_padding(Padding::PKCS1_PSS).unwrap();
+            signer
+                .set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)
+                .unwrap();
+            black_box(signer.sign_oneshot_to_vec(message).unwrap());
         })
     });
 }

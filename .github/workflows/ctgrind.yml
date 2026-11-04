@@ -136,7 +136,8 @@ jobs:
   # The arm64 runner executes 32-bit ARM natively, so an armhf valgrind checks
   # the armv7 build without emulation. Its core has NEON and the crypto
   # extension, but valgrind hides `AT_HWCAP2` from the program, so the NEON
-  # code is checked here and the extension's is not (see `admin/ctgrind`).
+  # code is checked here and the extension's by `armv7-qemu` (see
+  # `admin/ctgrind`).
   #
   # Release only: constant time matters in the code that ships, and a debug
   # build can only add findings in code that does not. Valgrind runs every
@@ -194,3 +195,18 @@ jobs:
           CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
           RIND_TEST_ARM_NEON: ${{ matrix.neon }}
           RIND_TEST_ARM_CRYPTO_EXT: 0
+
+  # Valgrind hides armv7's crypto extension, so `admin/ct-qemu` compares
+  # qemu-arm traces of its AES, GHASH, SHA-1, and SHA-256 for two secrets
+  # instead, as `x86_64-sde` does with SDE.
+  armv7-qemu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      - name: ct-qemu
+        run: nix develop .#ct-qemu --command admin/ct-qemu

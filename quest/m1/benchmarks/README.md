@@ -23,6 +23,5 @@ The epic's own remaining work, once its children merge: that triage.
 
 ## Required
 
-- [Benchmarks run on every host for every library](/quest/m1/benchmarks/hosts.md) - rind-bench covers each operation per library, and one script runs it over ssh
 - [BENCHMARKS.md is generated](/quest/m1/benchmarks/report.md) - the heatmaps, ✓ marks, build cost, and CPU tiers
 - [The README sells rind and links the report](/quest/m1/benchmarks/readme.md) - a short pitch and headline numbers, with the numbers' single home in the report

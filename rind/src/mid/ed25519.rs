@@ -113,6 +113,7 @@ pub(crate) struct VerifyingKey {
 
 impl VerifyingKey {
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        low::Entry::assert_held();
         let Ok(bytes) = bytes.try_into() else {
             return Err(KeyFormatError::WrongLength.into());
         };
