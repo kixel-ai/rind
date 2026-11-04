@@ -24,4 +24,4 @@ Building the multiples with mixed additions needs 2P affine, which costs an inve
 - For the parse-time inversion: first-use Jacobian ✅ / isomorphic curve / accept the gap.
 
 [moq-dev/rind#340](https://github.com/moq-dev/rind/pull/340) keeps only P at parse: a key's first verification computes P, 3P, ..., 15P in Jacobian form per call and adds them with full additions behind #324's x comparisons, and its second builds P to 31P, affine by one shared inversion, into the cache.
-By count, a first verification still costs about 5 field operations per P digit more than before #324 (the x comparison, and #324's 2 per G digit), against main's one inversion, so it may land level with main rather than at pre-#324; its bench runs decide.
+By count, a first verification still costs more than before #324: 3 field operations per P digit for the x comparison and #324's 2 per G digit, about 200 on P-256, against main's one inversion. So it may land level with main rather than at pre-#324; its bench runs decide.
