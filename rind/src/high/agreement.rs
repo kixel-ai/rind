@@ -314,8 +314,82 @@ mod tests {
         }
     }
 
-    // A fixed private key needs crate access, so this differential test lives
-    // here rather than beside the other curves' in `tests/crosschecks.rs`.
+    // A fixed private key needs crate access, so these differential tests
+    // live here rather than beside the other curves' in `tests/crosschecks.rs`.
+    mod p256_crosscheck {
+        use aws_lc_rs::agreement::{self, ECDH_P256, PrivateKey, UnparsedPublicKey};
+        use proptest::prelude::*;
+
+        use super::*;
+
+        /// n - 1, the largest P-256 private key.
+        const N_MINUS_1: [u8; 32] = [
+            0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2,
+            0xfc, 0x63, 0x25, 0x50,
+        ];
+
+        /// (n - 1) / 2, the largest scalar `p256_scalarmul` leaves unnegated.
+        const HALF_N: [u8; 32] = [
+            0x7f, 0xff, 0xff, 0xff, 0x80, 0x00, 0x00, 0x00, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xde, 0x73, 0x7d, 0x56, 0xd3, 0x8b, 0xcf, 0x42, 0x79, 0xdc, 0xe5, 0x61,
+            0x7e, 0x31, 0x92, 0xa8,
+        ];
+
+        /// `x + d`, for a last byte that neither carries nor borrows.
+        fn add_small(mut x: [u8; 32], d: i8) -> [u8; 32] {
+            x[31] = x[31].checked_add_signed(d).unwrap();
+            x
+        }
+
+        /// A private key, biased to 1, n - 1, and either side of n / 2,
+        /// where the scalar multiplication negates it.
+        fn scalar() -> impl Strategy<Value = [u8; 32]> {
+            let small = |k| add_small([0; 32], k);
+            prop_oneof![
+                // Below n, as its first byte is.
+                4 => any::<[u8; 32]>().prop_map(|mut k| {
+                    k[0] %= 0xff;
+                    k
+                }),
+                1 => prop_oneof![
+                    Just(small(1)),
+                    Just(small(2)),
+                    Just(add_small(N_MINUS_1, -1)),
+                    Just(N_MINUS_1),
+                    Just(HALF_N),
+                    Just(add_small(HALF_N, 1)),
+                ],
+            ]
+        }
+
+        proptest! {
+            #[test]
+            fn ecdh(private in scalar(), peer in scalar()) {
+                let peer = PrivateKey::from_private_key(&ECDH_P256, &peer)
+                    .unwrap()
+                    .compute_public_key()
+                    .unwrap();
+                let theirs = PrivateKey::from_private_key(&ECDH_P256, &private).unwrap();
+                let theirs_secret = agreement::agree(
+                    &theirs,
+                    UnparsedPublicKey::new(&ECDH_P256, peer.as_ref()),
+                    (),
+                    |secret| Ok(secret.to_vec()),
+                )
+                .unwrap();
+
+                let ours = p256::StaticPrivateKey::from_bytes(&private).unwrap();
+                let theirs_public = theirs.compute_public_key().unwrap();
+                prop_assert_eq!(&ours.public_key_uncompressed()[..], theirs_public.as_ref());
+                let ours_secret = ours
+                    .diffie_hellman(&p256::PublicKey::from_x962_uncompressed(peer.as_ref()).unwrap())
+                    .unwrap();
+                prop_assert_eq!(&low::ct::into_public(ours_secret.0)[..], &theirs_secret[..]);
+            }
+        }
+    }
+
     mod x25519_crosscheck {
         use aws_lc_rs::agreement::{self, PrivateKey, UnparsedPublicKey, X25519};
         use proptest::prelude::*;

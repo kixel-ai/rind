@@ -31,11 +31,12 @@
 # ring, RustCrypto + dalek, and OpenSSL have none: at most their field
 # arithmetic is verified, under unverified point formulas or ladders.
 #
-# rind and graviola have none. Their X25519 and Ed25519 run only s2n-bignum's
-# verified routines, but convert between bytes and limbs in unverified Rust,
-# and Ed25519 also clamps, encodes points, and pads SHA-512 there. Every
-# other rind operation runs unverified code too, such as SHA-256's block
-# function or P-256 ECDH's Jacobian-to-affine conversion.
+# rind and graviola have none. Their X25519 and Ed25519, and rind's aarch64
+# P-256 ECDH, run only s2n-bignum's verified routines, but convert between
+# bytes and limbs in unverified Rust, where Ed25519 also clamps, encodes
+# points, and pads SHA-512, and P-256 decodes and checks points. Every other
+# rind operation runs unverified code too, such as SHA-256's block function
+# or x86_64 P-256 ECDH's Jacobian-to-affine conversion.
 
 # aws-lc-rs: SHA-512 alone. Its X25519 and Ed25519 call the same s2n-bignum
 # routines from unverified C, which clamps the scalar, refuses X25519's

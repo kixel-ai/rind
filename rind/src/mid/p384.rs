@@ -376,6 +376,8 @@ impl AffineMontPoint {
             };
         }
 
+        // Each sum adds distinct multiples below n, none at infinity, as
+        // `p384_montjadd` requires.
         r[index!(1)] = JacobianMontPoint::from_affine(self);
         r[index!(2)] = r[index!(1)].double();
         r[index!(3)] = r[index!(1)].add(&r[index!(2)]);
@@ -495,8 +497,17 @@ impl JacobianMontPoint {
 
     /// `scalar * point`, by Booth-recoded 5-bit windows over the point's
     /// multiples.
+    ///
+    /// No addition doubles, which `p384_montjadd` cannot.  Before each, the
+    /// accumulator is 32m P and the table point d P, for the nonnegative
+    /// value m of the windows above and a digit d of at most 16.  So they
+    /// are equal only if 32m - d is zero, when both are at infinity, or n,
+    /// when the windows so far are worth 32m + d = n + 2d.  Below n, that
+    /// needs the last window, a negative d, and n = -d mod 32, which the
+    /// assertion below rules out.
     #[cfg(target_arch = "arm")]
     fn multiply(scalar: &Scalar, point: &AffineMontPoint) -> Self {
+        const { assert!(CURVE_ORDER[0] % 32 > 16) };
         let precomp = point.public_precomp_w5();
         let mut terms = scalar.reversed_booth_recoded_w5();
 
@@ -535,7 +546,7 @@ impl JacobianMontPoint {
             if *p_digit != 0 {
                 let sign = u8::from(*p_digit < 0);
                 let tmp = Self::lookup_w5::<false>(precomp, p_digit.unsigned_abs(), sign);
-                result = Self::public_add_fast(&result, &tmp);
+                result = Self::public_add(&result, &tmp);
             }
             if *g_digit != 0 {
                 let mut tmp =
@@ -571,8 +582,10 @@ impl JacobianMontPoint {
         AffineMontPoint::from_xy(x, y)
     }
 
-    /// `a + b`, for any points, including at infinity, equal, or opposite,
-    /// which `p384_montjadd` does not handle.
+    /// `a + b`, for any points, including at infinity, equal, or opposite.
+    ///
+    /// `p384_montjadd` is proven only for unequal points, so points with the
+    /// same x never reach it.
     fn public_add(a: &Self, b: &Self) -> Self {
         if a.public_is_infinity() {
             return *b;
@@ -595,26 +608,23 @@ impl JacobianMontPoint {
         }
     }
 
-    /// `a + b`, for any points, by [`Self::public_add`] only when they turn
-    /// out to be equal or opposite.
-    ///
-    /// The formulas give such points a zero z, as they do infinity, so
-    /// only a zero z from two points not at infinity takes the slow path.
-    fn public_add_fast(a: &Self, b: &Self) -> Self {
-        let sum = a.add(b);
-        match sum.public_is_infinity() && !a.public_is_infinity() && !b.public_is_infinity() {
-            true => Self::public_add(a, b),
-            false => sum,
-        }
-    }
-
-    /// `self + p`, for any points, as [`Self::public_add_fast`] does.
+    /// `self + p`, for any points, as [`Self::public_add`] does for
+    /// `p384_montjmixadd`.
     fn public_add_affine(&self, p: &AffineMontPoint) -> Self {
-        let mut sum = Self::infinity();
-        low::p384_montjmixadd(&mut sum.xyz, &self.xyz, &p.xy);
-        match sum.public_is_infinity() && !self.public_is_infinity() {
-            true => Self::public_add(self, &Self::from_affine(p)),
-            false => sum,
+        if self.public_is_infinity() {
+            return Self::from_affine(p);
+        }
+
+        // `p` scaled to this point's z.
+        let z2 = self.z().mont_sqr();
+        if !p.x().mont_mul(&z2).public_eq(&self.x()) {
+            let mut sum = Self::infinity();
+            low::p384_montjmixadd(&mut sum.xyz, &self.xyz, &p.xy);
+            return sum;
+        }
+        match p.y().mont_mul(&z2.mont_mul(&self.z())).public_eq(&self.y()) {
+            true => self.double(),
+            false => Self::infinity(),
         }
     }
 
@@ -1204,8 +1214,9 @@ mod tests {
 
     #[test]
     fn twin_multiply_exceptional() {
-        // With P = G, the accumulator meets the point it adds: equal, which
-        // must double, or opposite, which must give infinity.
+        // The accumulator meets the point it adds: equal, which must double,
+        // or opposite, which must give infinity. With P = G it meets G's
+        // multiples, and with P = 2G, P's.
         let precomp = CURVE_GENERATOR.public_precomp_w5();
         let n_minus = |k: u64| {
             let mut s = CURVE_ORDER;
@@ -1221,6 +1232,23 @@ mod tests {
             (n_minus(1), n_minus(1)),
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
+            assert_eq!(
+                JacobianMontPoint::public_twin_multiply(&g, &p, &precomp)
+                    .as_affine()
+                    .xy,
+                expected
+            );
+        }
+
+        let p2 = JacobianMontPoint::from_affine(&CURVE_GENERATOR)
+            .double()
+            .as_affine();
+        let precomp = p2.public_precomp_w5();
+        for (g, p) in [
+            (Scalar::small_u64(2), Scalar::small_u64(1)),
+            (Scalar::small_u64(6), Scalar::small_u64(3)),
+        ] {
+            let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p).add(&p)).xy;
             assert_eq!(
                 JacobianMontPoint::public_twin_multiply(&g, &p, &precomp)
                     .as_affine()
