@@ -3,143 +3,39 @@
 
 use core::arch::x86_64::*;
 
-/// Compresses `blocks`, then `more`, in one call, so a hash's padding needs
-/// no copy of the message's last whole block to join it.
+/// SHA-256 on the SHA extensions, with Vale's proven `sha256_update` from
+/// HACL*, imported by `admin/import-hacl`.
 pub(in crate::low) fn sha256_compress_blocks_shaext(
     state: &mut [u32; 8],
     blocks: &[u8],
-    more: &[u8],
     _token: super::cpu::HaveSha256,
 ) {
     debug_assert!(blocks.len().is_multiple_of(64));
-    debug_assert!(more.len().is_multiple_of(64));
-    // SAFETY: `_token` proves the caller checked the `sha`, `ssse3`, and
-    // `sse4.1` features
-    unsafe { sha256(state, blocks, more) }
+    // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, apart from
+    // `state` as the proof requires, `K` is the round constants it requires,
+    // and `_token` proves the `sha`, `ssse3`, and `sse4.1` features.
+    unsafe { sha256_update(state, blocks.as_ptr(), blocks.len() / 64, &K.0) }
 }
 
-macro_rules! k {
-    ($k:literal) => {
-        // SAFETY: `$k` is a compile-time constant and results in a valid index
-        // into the const table `K`.  `K` has proper alignment for this aligned
-        // load.
-        unsafe { _mm_load_si128(K.0.as_ptr().add($k * 4).cast()) }
-    };
-}
-
-macro_rules! round {
-    ($msg_cur:ident, $state0:ident, $state1:ident, $k:ident) => {
-        let msg = _mm_add_epi32($msg_cur, $k);
-        $state1 = _mm_sha256rnds2_epu32($state1, $state0, msg);
-        let msg = _mm_shuffle_epi32(msg, 0b00_00_11_10);
-        $state0 = _mm_sha256rnds2_epu32($state0, $state1, msg);
-    };
-
-    ($msg_cur:ident, $msg_prev:ident, $state0:ident, $state1:ident, $k:ident) => {
-        round!($msg_cur, $state0, $state1, $k);
-        let $msg_prev = _mm_sha256msg1_epu32($msg_prev, $msg_cur);
-    };
-
-    ($msg_cur:ident, $msg_prev:ident, $msg_next:ident, $state0:ident, $state1:ident, $k:ident) => {
-        let msg = _mm_add_epi32($msg_cur, $k);
-        $state1 = _mm_sha256rnds2_epu32($state1, $state0, msg);
-        let tmp = _mm_alignr_epi8($msg_cur, $msg_prev, 4);
-        let $msg_next = _mm_add_epi32($msg_next, tmp);
-        let $msg_next = _mm_sha256msg2_epu32($msg_next, $msg_cur);
-        let msg = _mm_shuffle_epi32(msg, 0b00_00_11_10);
-        $state0 = _mm_sha256rnds2_epu32($state0, $state1, msg);
-        let $msg_prev = _mm_sha256msg1_epu32($msg_prev, $msg_cur);
-    };
-}
-
-#[target_feature(enable = "sha,sse4.1,ssse3")]
-fn sha256(state: &mut [u32; 8], blocks: &[u8], more: &[u8]) {
-    let little_endian_shuffle = _mm_set_epi64x(0x0c0d0e0f08090a0b, 0x0405060700010203);
-
-    // SAFETY: `state` is 8 32-bit words and readable
-    let (state0, state1) = unsafe {
-        (
-            _mm_loadu_si128(state[0..4].as_ptr().cast()),
-            _mm_loadu_si128(state[4..8].as_ptr().cast()),
-        )
-    };
-
-    let tmp = _mm_shuffle_epi32(state0, 0b10_11_00_01);
-    let state1 = _mm_shuffle_epi32(state1, 0b00_01_10_11);
-    let mut state0 = _mm_alignr_epi8(tmp, state1, 8);
-    let mut state1 = _mm_blend_epi16(state1, tmp, 0xf0);
-
-    let k0 = k!(0);
-    let k1 = k!(1);
-    let k2 = k!(2);
-    let k3 = k!(3);
-    let k4 = k!(4);
-    let k5 = k!(5);
-    let k6 = k!(6);
-    let k7 = k!(7);
-    let k8 = k!(8);
-    let k9 = k!(9);
-    let k10 = k!(10);
-    let k11 = k!(11);
-    let k12 = k!(12);
-    let k13 = k!(13);
-    let k14 = k!(14);
-    let k15 = k!(15);
-
-    let (blocks, _) = blocks.as_chunks::<64>();
-    let (more, _) = more.as_chunks::<64>();
-    for block in blocks.iter().chain(more) {
-        let state0_prev = state0;
-        let state1_prev = state1;
-
-        // SAFETY: `block` is 64 bytes and readable
-        let (msg0, msg1, msg2, msg3) = unsafe {
-            (
-                _mm_loadu_si128(block[0..].as_ptr().cast()),
-                _mm_loadu_si128(block[16..].as_ptr().cast()),
-                _mm_loadu_si128(block[32..].as_ptr().cast()),
-                _mm_loadu_si128(block[48..].as_ptr().cast()),
-            )
-        };
-
-        let msg0 = _mm_shuffle_epi8(msg0, little_endian_shuffle);
-        let msg1 = _mm_shuffle_epi8(msg1, little_endian_shuffle);
-        let msg2 = _mm_shuffle_epi8(msg2, little_endian_shuffle);
-        let msg3 = _mm_shuffle_epi8(msg3, little_endian_shuffle);
-
-        round!(msg0, state0, state1, k0);
-        round!(msg1, msg0, state0, state1, k1);
-        round!(msg2, msg1, state0, state1, k2);
-        round!(msg3, msg2, msg0, state0, state1, k3);
-        round!(msg0, msg3, msg1, state0, state1, k4);
-        round!(msg1, msg0, msg2, state0, state1, k5);
-        round!(msg2, msg1, msg3, state0, state1, k6);
-        round!(msg3, msg2, msg0, state0, state1, k7);
-        round!(msg0, msg3, msg1, state0, state1, k8);
-        round!(msg1, msg0, msg2, state0, state1, k9);
-        round!(msg2, msg1, msg3, state0, state1, k10);
-        round!(msg3, msg2, msg0, state0, state1, k11);
-        round!(msg0, msg3, msg1, state0, state1, k12);
-        round!(msg1, msg0, msg2, state0, state1, k13);
-        round!(msg2, msg1, msg3, state0, state1, k14);
-        round!(msg3, state0, state1, k15);
-        let _ = msg1;
-        let _ = msg0;
-
-        state0 = _mm_add_epi32(state0, state0_prev);
-        state1 = _mm_add_epi32(state1, state1_prev);
-    }
-
-    let tmp = _mm_shuffle_epi32(state0, 0b00_01_10_11);
-    let state1 = _mm_shuffle_epi32(state1, 0b10_11_00_01);
-    let state0 = _mm_blend_epi16(tmp, state1, 0xf0);
-    let state1 = _mm_alignr_epi8(state1, tmp, 8);
-
-    // SAFETY: `state` is 8 32-bit words and writable
-    unsafe {
-        _mm_storeu_si128(state[0..4].as_mut_ptr().cast(), state0);
-        _mm_storeu_si128(state[4..8].as_mut_ptr().cast(), state1);
-    }
+// Vale proves the routine for the System V ABI, which it takes on every OS,
+// as the aws-lc routines below do.
+#[unsafe(naked)]
+unsafe extern "sysv64" fn sha256_update(
+    state: *mut [u32; 8],
+    data: *const u8,
+    blocks: usize,
+    k: *const [u32; 64],
+) {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        include_str!("hacl/sha256_update.linux.s"),
+        options(att_syntax)
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("hacl/sha256_update.apple.s"),
+        options(att_syntax)
+    );
 }
 
 /// SHA-256 without the SHA extensions on Intel, with aws-lc's
@@ -511,8 +407,7 @@ mod tests {
     // The SHA extensions, AVX2, SSSE3, and the vendor hide all but one path from
     // every other test, so each the CPU can run is checked against the
     // portable code directly: odd and even block counts, with distinct bytes
-    // in every block, and the SHA extensions' blocks split at every boundary
-    // between its two runs.
+    // in every block.
     #[test]
     fn paths_match_generic() {
         let (ssse3, avx, avx2) = (HaveSsse3::check(), HaveAvx::check(), HaveAvx2::check());
@@ -544,12 +439,9 @@ mod tests {
                 assert_eq!(got, wanted, "avx2, {n} blocks");
             }
             if let Some(token) = sha {
-                for split in 0..=n {
-                    let (blocks, more) = blocks.split_at(split * 64);
-                    let mut got = START;
-                    sha256_compress_blocks_shaext(&mut got, blocks, more, token);
-                    assert_eq!(got, wanted, "shaext, {n} blocks split at {split}");
-                }
+                let mut got = START;
+                sha256_compress_blocks_shaext(&mut got, blocks, token);
+                assert_eq!(got, wanted, "shaext, {n} blocks");
             }
         }
     }

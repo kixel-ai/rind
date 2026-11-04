@@ -29,8 +29,9 @@
 # arithmetic is verified, under unverified point formulas or ladders.
 
 # rind: X25519 and Ed25519 run only s2n-bignum routines; point encoding is
-# rind's Rust. rind pads SHA-512 in its own Rust, so its verified aws-lc block
-# function earns no ✓, and every other operation runs some unverified
+# rind's Rust. rind pads SHA-256 and SHA-512 in its own Rust, so their
+# verified block functions, Vale's SHA-256 on x86_64 with the SHA extensions
+# and aws-lc's SHA-512, earn no ✓, and every other operation runs some unverified
 # arithmetic, such as P-256 ECDH's Jacobian-to-affine conversion or the RSA
 # exponentiation.
 [[verified]]
