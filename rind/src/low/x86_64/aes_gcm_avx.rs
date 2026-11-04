@@ -54,6 +54,12 @@ impl AvxKernel {
         }
     }
 
+    /// The GHASH key powers: H, H^2, a Karatsuba term, H^3, H^4, unused, H^5,
+    /// and H^6, as [`super::ghash::ClmulTable`] represents them.
+    pub(crate) fn hkeys(&self) -> &[__m128i; 8] {
+        &self.hkeys
+    }
+
     /// Encrypts `inout` in place under `nonce`, and returns its tag. `aad`
     /// and `inout` are each shorter than 2^32 bytes.
     pub(crate) fn seal(

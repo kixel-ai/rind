@@ -12,7 +12,7 @@
 use core::arch::x86_64::*;
 use core::mem;
 
-use super::aes::{AesKey, HwKey};
+use super::aes::AesKey;
 use super::aes_gcm_avx::{self, AvxKernel};
 use super::aes_gcm_vaes::VaesKernel;
 use super::cpu::{HaveAesHardware, HaveAvx512ForAesGcm, HaveSsse3, HaveVaesAvx2ForAesGcm};
@@ -73,18 +73,20 @@ pub(crate) enum GhashTable {
 impl GhashTable {
     /// The table for `key`'s GHASH key.
     pub(crate) fn new(key: &AesKey) -> Self {
+        if let (AesKey::Hw(key), Some(token), Some(hw)) =
+            (key, aes_gcm_avx::token(), HaveAesHardware::check())
+        {
+            let kernel = AvxKernel::new(key, token);
+            return Self::Avx(ClmulTable::from_vale(kernel.hkeys(), hw), kernel);
+        }
         let mut h = [0u8; 16];
         key.encrypt_block(&mut h);
-        let key = match key {
-            AesKey::Hw(key) => Some(key),
-            _ => None,
-        };
-        Self::for_hash_key(u128::from_be_bytes(h), key)
+        Self::for_hash_key(u128::from_be_bytes(h))
     }
 
-    /// The table the CPU picks for the GHASH key `h`, which is Vale's only
-    /// given the AES-NI `key` its GHASH key powers come from.
-    fn for_hash_key(h: u128, key: Option<&HwKey>) -> Self {
+    /// The table the CPU picks for the GHASH key `h`, but for Vale's, whose
+    /// GHASH key powers come from the AES key.
+    fn for_hash_key(h: u128) -> Self {
         let Some(hw) = HaveAesHardware::check() else {
             return match HaveSsse3::check() {
                 Some(token) => Self::Ssse3(Ssse3Table::new(&h.to_be_bytes(), token)),
@@ -97,9 +99,6 @@ impl GhashTable {
         if let Some(token) = HaveVaesAvx2ForAesGcm::check() {
             let vaes = VaesKernel::avx2(h, token);
             return Self::VaesAvx2(ClmulTable::from_powers(vaes.powers(), hw), vaes);
-        }
-        if let (Some(token), Some(key)) = (aes_gcm_avx::token(), key) {
-            return Self::Avx(ClmulTable::new(h, hw), AvxKernel::new(key, token));
         }
         Self::Clmul(ClmulTable::new(h, hw))
     }
@@ -141,6 +140,14 @@ impl ClmulTable {
         }
         // SAFETY: the token proves the CPU has PCLMULQDQ.
         unsafe { Self::with_powers(&powers) }
+    }
+
+    /// The table for the powers Vale's AES-GCM computes, H to H^6, so only
+    /// H^7 and H^8 are multiplied.
+    pub(crate) fn from_vale(hkeys: &[__m128i; 8], _: HaveAesHardware) -> Self {
+        let [h, h2, _, h3, h4, _, h5, h6] = *hkeys;
+        // SAFETY: the token proves the CPU has PCLMULQDQ.
+        unsafe { Self::with_powers(&[h, h2, h3, h4, h5, h6, _mul(h6, h), _mul(h4, h4)]) }
     }
 
     /// H to H^8, multiplied as a tree, so the longest chain of dependent
@@ -651,8 +658,9 @@ mod tests {
         check(k, &pattern);
     }
 
-    // Checks the table the CPU picks, and every slower one it can run: the
-    // integer and SSSE3 tables, and PCLMULQDQ where the CPU picks VAES.
+    // Checks the table the CPU picks for a bare GHASH key, and every slower
+    // one it can run: the integer and SSSE3 tables, and PCLMULQDQ where the
+    // CPU picks VAES.
     fn check(key: u128, input: &[u8]) {
         println!("check: input={input:02x?}");
         let tb = model::GhashTable::new(key);
@@ -661,7 +669,7 @@ mod tests {
         let fb = b.into_bytes();
 
         let mut tables = vec![
-            GhashTable::for_hash_key(key, None),
+            GhashTable::for_hash_key(key),
             GhashTable::Nohw(NohwTable::new(&key.to_be_bytes())),
         ];
         if let Some(token) = HaveSsse3::check() {
