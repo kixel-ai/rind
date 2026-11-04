@@ -9,4 +9,3 @@ all its cryptography from rind, on every target MoQ releases, and publishes it.
 
 - [rind covers MoQ](/quest/m1/moq/README.md) - the primitives, CPU check, armv7 backend, and `rind-*` adapters MoQ needs, verified and released
 - [Benchmark report on real hardware](/quest/m1/benchmarks/README.md) - BENCHMARKS.md compares rind with the usual libraries on four machines, with build cost and ✓ for verified code, linked from a README that sells rind
-- [rind-rustls lets a caller build a lean provider](/quest/m1/rustls-lean-provider.md) - a rustls client links only the algorithms it uses

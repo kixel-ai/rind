@@ -313,7 +313,11 @@ rind-rustls mirrors the layout of rustls's own providers.
 | `kx_group::X25519`, `SECP256R1`, `SECP384R1`, `X25519MLKEM768`, `SECP256R1MLKEM768`, `MLKEM768` | the same, plus `SECP521R1` |
 | `kx_group::MLKEM1024` | none; [rustls provider parity](quest/m3/parity/rustls.md) |
 | `Ticketer::new()` | the same, which also refuses a CPU missing a feature |
-| `sign::any_supported_type` and the other `sign` loaders, `hpke` | none; load keys through the provider's `key_provider` |
+| `CryptoProvider { .., ..default_provider() }`, to trim it | `..empty_provider()?`, since `default_provider()` links every algorithm |
+| `sign::any_supported_type(&der)` | `sign::ANY_SUPPORTED_TYPE.load_private_key(der)`, a `KeyProvider` |
+| `sign::any_ecdsa_type`, `sign::any_eddsa_type` | a `KeyProvider` per key type: `sign::ECDSA_P256`, `ECDSA_P384`, `ECDSA_P521`, `ED25519`, and `RSA` |
+| rustls-webpki's `aws_lc_rs::ECDSA_P256_SHA256` and its siblings | `verify::` the same name, less any RSA key-size infix or `_LEGACY_KEY`; `SUPPORTED_SIG_ALGS` holds them all |
+| `hpke` | none |
 
 rind-rustls signs with RSA, ECDSA P-256, P-384, and P-521, and Ed25519 keys,
 and verifies what aws-lc-rs's provider does, short of ML-DSA, which it neither
@@ -368,7 +372,7 @@ install ring's if nothing is installed first.
 | Crate | What ties it | On rind |
 |---|---|---|
 | rustls 0.23 | `ring` and `aws_lc_rs` features pick a provider | **rind-rustls**: `default-features = false`, `std`, `tls12` |
-| rustls-webpki 0.103 | `ring` and `aws-lc-rs` fill `ALL_VERIFICATION_ALGS` | **rind-rustls**: no features; direct callers pass the provider's `signature_verification_algorithms.all` |
+| rustls-webpki 0.103 | `ring` and `aws-lc-rs` fill `ALL_VERIFICATION_ALGS` | **rind-rustls**: no features; direct callers pass `rind_rustls::SUPPORTED_SIG_ALGS.all` |
 | rustls-platform-verifier 0.7 | none | **rind-rustls**: `Verifier::new(provider)` |
 | tokio-rustls 0.26, futures-rustls 0.26 | default `aws_lc_rs` | **rind-rustls**: `default-features = false`, `logging`, `tls12` |
 | hyper-rustls 0.27 | default `aws-lc-rs` | **rind-rustls**: `default-features = false` and a `with_provider_and_*` builder; `with_native_roots()` and its siblings need ring or aws-lc-rs |
