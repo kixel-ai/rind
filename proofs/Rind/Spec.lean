@@ -5,11 +5,12 @@ open Aeneas Aeneas.Std
 @[expose] public section
 
 /-!
-# What rind's X25519 and P-256 compute
+# What rind computes
 
 The functional spec the proofs state rind's results against: how bytes and
 limbs encode numbers, X25519 itself, and the P-256 group, each as HOL Light
-defines it for s2n-bignum's theorems.
+defines it for s2n-bignum's theorems, and ChaCha20's block function and QUIC
+header protection, transliterated from their RFCs.
 -/
 
 namespace rind.spec
@@ -81,5 +82,66 @@ def p256G : P256Point :=
 It is opaque here: nothing is assumed of it beyond the routine contracts in
 `Rind.Aarch64.S2nBignum`, which restate s2n-bignum's theorems about it. -/
 opaque p256Pow : P256Point → Nat → P256Point
+
+/-! ## ChaCha20 and QUIC header protection -/
+
+namespace chacha20
+
+/-- A 32-bit word of ChaCha20's state. -/
+abbrev Word := BitVec 32
+
+/-- RFC 8439 section 2.1's quarter round on four words. -/
+def qr (a b c d : Word) : Word × Word × Word × Word :=
+  let a := a + b
+  let d := (d ^^^ a).rotateLeft 16
+  let c := c + d
+  let b := (b ^^^ c).rotateLeft 12
+  let a := a + b
+  let d := (d ^^^ a).rotateLeft 8
+  let c := c + d
+  let b := (b ^^^ c).rotateLeft 7
+  (a, b, c, d)
+
+/-- RFC 8439 section 2.2's quarter round on state words `x`, `y`, `z`, and `w`. -/
+def quarterRound (s : List Word) (x y z w : Nat) : List Word :=
+  let (a, b, c, d) := qr s[x]! s[y]! s[z]! s[w]!
+  (((s.set x a).set y b).set z c).set w d
+
+/-- RFC 8439 section 2.3.1's `inner_block`: the column rounds, then the
+diagonal rounds. -/
+def innerBlock (s : List Word) : List Word :=
+  let s := quarterRound s 0 4 8 12
+  let s := quarterRound s 1 5 9 13
+  let s := quarterRound s 2 6 10 14
+  let s := quarterRound s 3 7 11 15
+  let s := quarterRound s 0 5 10 15
+  let s := quarterRound s 1 6 11 12
+  let s := quarterRound s 2 7 8 13
+  quarterRound s 3 4 9 14
+
+/-- The word whose little-endian bytes these are. -/
+def le32 (b0 b1 b2 b3 : BitVec 8) : Word := BitVec.fromLEBytes [b0, b1, b2, b3]
+
+/-- `bytes` as little-endian words, four bytes each. -/
+def words (bytes : List (BitVec 8)) : List Word :=
+  (List.range (bytes.length / 4)).map fun i =>
+    le32 bytes[4 * i]! bytes[4 * i + 1]! bytes[4 * i + 2]! bytes[4 * i + 3]!
+
+/-- RFC 8439 section 2.3's ChaCha20 block function: the 64-byte keystream
+block for a 32-byte key, a block counter, and a 12-byte nonce. -/
+def block (key : List (BitVec 8)) (counter : Word) (nonce : List (BitVec 8)) : List (BitVec 8) :=
+  let state := [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574] ++ words key ++ [counter] ++
+    words nonce
+  let working := innerBlock^[10] state
+  (List.zipWith (· + ·) working state).flatMap BitVec.toLEBytes
+
+/-- RFC 9001 section 5.4.4's ChaCha20 header-protection mask: ChaCha20 under
+the header-protection key of five zero bytes, so the keystream's first five,
+with the sample's first four bytes as the little-endian block counter and the
+rest as the nonce. -/
+def headerProtectionMask (key sample : List (BitVec 8)) : List (BitVec 8) :=
+  (block key (le32 sample[0]! sample[1]! sample[2]! sample[3]!) (sample.drop 4)).take 5
+
+end chacha20
 
 end rind.spec

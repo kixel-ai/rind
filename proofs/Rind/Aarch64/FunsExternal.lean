@@ -107,4 +107,9 @@ opaque mid.p384.PrivateKey.diffie_hellman
 opaque mid.p384.PublicKey.from_x962_uncompressed
   : Slice Std.U8 → Result (core.result.Result mid.p384.PublicKey error.Error)
 
+/-! AES, whose header protection no proof covers. -/
+
+opaque mid.aes.Aes.encrypt_block
+  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
+
 end rind.aarch64
