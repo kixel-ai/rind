@@ -350,4 +350,49 @@ theorem try_from_le_bytes_spec (x : Std.Array U8 32#usize) :
   simp only [core.bool.Bool.then_some]
   split_ifs at i_post with hlt <;> simp_all
 
+/-! ## Verification, `mid::ed25519::VerifyingKey` -/
+
+/-- `<&[T; N]>::try_from(&[T])`, which Aeneas's library gives no spec. -/
+theorem try_from_shared_spec {T : Type} (N : Usize) (s : Slice T) :
+    core.array.TryFromSharedArraySlice.try_from N s ⦃ r =>
+      if s.length = N.val then ∃ a, r = .Ok a ∧ a.val = s.val else ∃ e, r = .Err e ⦄ := by
+  unfold core.array.TryFromSharedArraySlice.try_from
+  have hl : s.len = N ↔ s.length = N.val := by
+    rw [← Slice.len_val]
+    exact ⟨fun h => by rw [h], fun h => UScalar.eq_of_val_eq h⟩
+  by_cases h : s.len = N
+  · simp [h, hl.mp h]
+  · simp [h, mt hl.mpr h]
+
+/-- `<&[T; N]>::try_from(&[T])` of a slice of `N` elements. -/
+@[step]
+theorem try_from_shared_ok {T : Type} (N : Usize) (s : Slice T) (h : s.length = N.val) :
+    core.array.TryFromSharedArraySlice.try_from N s ⦃ r => ∃ a, r = .Ok a ∧ a.val = s.val ⦄ := by
+  apply WP.spec_mono (try_from_shared_spec N s)
+  intro r hr
+  simpa [h] using hr
+
+@[step]
+theorem negate_spec (p : Std.Array U64 8#usize) (hx : (pairNat p.val).1 ≤ p25519) :
+    mid.ed25519.EdwardsPoint.negate p ⦃ q =>
+      pairNat q.val = ((p25519 - (pairNat p.val).1) % p25519, (pairNat p.val).2) ⦄ := by
+  unfold mid.ed25519.EdwardsPoint.negate
+  step*
+  simp only [r_post, core.result.Result.Ok.injEq] at *
+  have hl8 : p.val.length = 8 := p.property
+  have hn4 : x_neg1.val.length = 4 := x_neg1.property
+  have hx4 : x.val = p.val.take 4 := by simp_all [List.slice, Array.val_to_slice]
+  have hout : (index_mut_back1 s6).val = x_neg1.val ++ p.val.drop 4 := by
+    have hz : (Array.repeat 8#usize 0#u64).val = [] ++ List.replicate 8 0#u64 := by simp [Array.repeat]
+    rw [s4_post2, s1_post2, s6_post, s5_post, s3_post, s2_post, Array.val_to_slice, hz,
+      setSlice!_at [] _ _ 0 rfl (by simp [hn4])]
+    simp only [List.nil_append, Array.val_to_slice, hn4]
+    rw [setSlice!_at _ _ _ 4 hn4 (by simp)]
+    simp
+  have hpx : wordsNat x.val = (pairNat p.val).1 := by simp [pairNat, hx4]
+  rw [hout]
+  simp only [pairNat, List.take_left' hn4, List.drop_left' hn4]
+  rw [x_neg1_post (by rw [hpx]; exact hx), hpx]
+  simp [pairNat]
+
 end rind.x86_64
