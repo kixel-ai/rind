@@ -160,7 +160,6 @@ theorem finish_with_spec (h : RunsSha512) (self : mid.sha2.Sha512State) (message
   have hn : self.nblocks.val < 2 ^ 64 := self.nblocks.hBounds
   have hm : message.length < 2 ^ 64 := slice_length_lt message
   step*
-  all_goals (try (simp only [hB, hL] at *; scalar_tac))
   have hbits : bits.val = 8 * (128 * self.nblocks.val + message.length) := by
     rw [bits_post, i5_post, i2_post, i_post, i1_post, hB, i4_post, hL]; ring
   have hh : (if b = true then ok self.h else mid.sha2.Sha512State.compress self.h blocks) ⦃ h' =>
@@ -189,5 +188,161 @@ theorem finish_with_spec (h : RunsSha512) (self : mid.sha2.Sha512State) (message
       rw [s_post, a1_post, hbv, padAfter, ← blocks_post2, ← blocks_post]
       simp only [List.append_assoc, Slice.length, List.cons_append, hml]
     all_goals simp [iter_post, iter_post1, s1_post, Array.val_to_slice]
+
+/-! ## Updating, `mid::sha2::Sha512Context::update` -/
+
+@[step]
+theorem saturating_add_spec (x y : U64) (h : x.val + y.val < 2 ^ 64) :
+    lift (core.num.U64.saturating_add x y) ⦃ z => z.val = x.val + y.val ⦄ := by
+  simp only [lift, WP.spec_ok, core.num.U64.saturating_add, UScalar.saturating_add]
+  show (BitVec.ofNat _ _).toNat = _
+  rw [BitVec.toNat_ofNat, min_eq_right (by simp [U64.max_eq]; omega)]
+  simp; omega
+
+/-- `update_blocks` compresses whole blocks and counts them. -/
+@[step]
+theorem update_blocks_spec (h : RunsSha512) (st : mid.sha2.Sha512State) (blocks : Slice U8)
+    (hm : blocks.length % 128 = 0) (hn : st.nblocks.val + blocks.length / 128 < 2 ^ 64) :
+    mid.sha2.Sha512State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks st blocks ⦃ st' =>
+      st'.h.val = compress st.h.val blocks.val ∧
+        st'.nblocks.val = st.nblocks.val + blocks.length / 128 ⦄ := by
+  unfold mid.sha2.Sha512State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks
+  have hB : mid.sha2.Sha512Context.BLOCK_SZ.val = 128 := by simp [mid.sha2.Sha512Context.BLOCK_SZ]
+  step*
+  rename_i hb
+  have h0 : blocks.length = 0 := by simpa [hb] using b1_post
+  simp [compress_short _ _ (by omega : blocks.length < 128), h0]
+
+/-- The state after an optional `update_blocks`, skipped for no blocks. -/
+theorem update_blocks_if_spec (h : RunsSha512) (b : Bool) (st : mid.sha2.Sha512State)
+    (blocks : Slice U8) (hb : (b = true) = (blocks.length = 0)) (hm : blocks.length % 128 = 0)
+    (hn : st.nblocks.val + blocks.length / 128 < 2 ^ 64) :
+    (if b = true then ok st
+      else mid.sha2.Sha512State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks st blocks)
+      ⦃ st' => st'.h.val = compress st.h.val blocks.val ∧
+        st'.nblocks.val = st.nblocks.val + blocks.length / 128 ⦄ := by
+  split
+  · rename_i hb'
+    have h0 : blocks.length = 0 := by simpa [hb'] using hb
+    simp [compress_short _ _ (by omega : blocks.length < 128), h0]
+  · step*
+
+/-- `omega` once every slice length reads as its list's. -/
+macro "len_omega" : tactic => `(tactic| (try simp only [Slice.length, Slice.len_val] at *) <;> omega)
+
+theorem setSlice!_fill {α : Type _} (buf hd : List α) (u : Nat) (h : u + hd.length = buf.length) :
+    buf.setSlice! u hd = buf.take u ++ hd := by
+  simp only [List.setSlice!, show min hd.length (buf.length - u) = hd.length by omega,
+    List.take_of_length_le (le_refl _), List.drop_eq_nil_of_le (show buf.length ≤ u + hd.length by omega),
+    List.append_nil]
+
+theorem take_setSlice!_zero {α : Type _} (buf r : List α) (h : r.length ≤ buf.length) :
+    (buf.setSlice! 0 r).take r.length = r := by
+  have := take_setSlice! buf r 0 (by omega)
+  simpa using this
+
+/-- `complete_blocks` compresses the buffered bytes and `bytes` up to their
+last 1 to 128 bytes, which it buffers. -/
+theorem complete_blocks_spec (h : RunsSha512) (bw : low.generic.blockwise.Blockwise 128#usize)
+    (bytes : Slice U8) (st : mid.sha2.Sha512State) (hu : bw.used.val ≤ 128)
+    (hlong : 128 < bw.used.val + bytes.length)
+    (hn : st.nblocks.val + (bw.used.val + bytes.length) / 128 < 2 ^ 64) :
+    low.generic.blockwise.Blockwise.complete_blocks
+      mid.sha2.Sha512State.Insts.RindLowGenericBlockwiseUpdateBlocks bw bytes st ⦃ bw' st' =>
+      let all := bw.buffer.val.take bw.used.val ++ bytes.val
+      let k := (all.length - 1) / 128 * 128
+      st'.h.val = compress st.h.val (all.take k) ∧ st'.nblocks.val = st.nblocks.val + k / 128 ∧
+        bw'.used.val = all.length - k ∧ bw'.buffer.val.take bw'.used.val = all.drop k ⦄ := by
+  unfold low.generic.blockwise.Blockwise.complete_blocks
+  have hbl : (bw.buffer.val).length = 128 := bw.buffer.property
+  have hlen : (bw.buffer.val.take bw.used.val ++ bytes.val).length = bw.used.val + bytes.length := by
+    simp [Slice.length]; omega
+  split
+  · rename_i hpos
+    step as ⟨i, hi, hi'⟩
+    step as ⟨hr, hhl, hrl, hhv, hrv⟩
+    obtain ⟨head, rest1⟩ := hr
+    simp only at *
+    step as ⟨sb, hsv, hsl, hback⟩
+    obtain ⟨s, back⟩ := sb
+    simp only at *
+    step as ⟨s1, hs1⟩
+    step as ⟨s2, hs2⟩
+    have hhead : head.val.length = 128 - bw.used.val := by
+      simp only [Slice.length] at hhl; omega
+    have hfull : (back s1).val = bw.buffer.val.take bw.used.val ++ head.val := by
+      rw [hback, hs1, setSlice!_fill _ _ _ (by omega)]
+    have hs2l : s2.length = 128 := by
+      simp only [hs2, Slice.length, Array.val_to_slice, hfull, List.length_append, List.length_take,
+        hhead, hbl]; omega
+    step with update_blocks_spec h st s2 (by omega) (by omega) as ⟨st1, hst1, hst1'⟩
+    step as ⟨i1, hi1, hi1'⟩
+    step as ⟨i2, hi2⟩
+    step as ⟨i3, hi3⟩
+    step as ⟨whole, rest, hwl, hrl2, hwv, hrv2⟩
+    step as ⟨b, hb⟩
+    have hr1 : rest1.len.val = rest1.length := by simp
+    have hi1n : i1.val = rest1.length - 1 := by rw [hi1, hr1]
+    have hrest1 : rest1.length ≥ 1 := by rw [← hr1]; exact hi1'
+    have hwl' : whole.length = (rest1.length - 1) / 128 * 128 := by rw [hwl, hi3, hi2, hi1n]
+    have hrl' : rest.length = rest1.length - (rest1.length - 1) / 128 * 128 := by
+      rw [hrl2, hi3, hi2, hi1n]
+    have hi3n : i3.val = (rest1.length - 1) / 128 * 128 := by rw [hi3, hi2, hi1n]
+    have hpos' : bw.used.val > 0 := hpos
+    have hk : ((bw.buffer.val.take bw.used.val ++ bytes.val).length - 1) / 128 * 128 = 128 + i3.val := by
+      rw [hlen, hi3n]; len_omega
+    step with update_blocks_if_spec h b st1 whole hb (by len_omega)
+      (by rw [hst1', hs2l]; len_omega) as ⟨st2, hst2, hst2'⟩
+    step as ⟨s3, back3, hsv', hsl', hback'⟩
+    step as ⟨s4, hs4⟩
+    have hA : (bw.buffer.val.take bw.used.val).length = bw.used.val := by simp [hbl]; omega
+    have hiu : i.val + bw.used.val = 128 := by omega
+    have hrest : rest.val = bytes.val.drop (i.val + i3.val) := by
+      rw [hrv2, hrv, List.drop_drop, Nat.add_comm]
+    have hsplit : (bw.buffer.val.take bw.used.val ++ bytes.val).take (128 + i3.val) =
+        (bw.buffer.val.take bw.used.val ++ head.val) ++ whole.val := by
+      rw [List.take_append, List.take_of_length_le (by omega), hA,
+        show 128 + i3.val - bw.used.val = i.val + i3.val by omega, List.take_add, hhv, hwv, hrv,
+        List.append_assoc]
+    have hdrop : (bw.buffer.val.take bw.used.val ++ bytes.val).drop (128 + i3.val) = rest.val := by
+      rw [List.drop_append, List.drop_of_length_le (by omega), List.nil_append, hA,
+        show 128 + i3.val - bw.used.val = i.val + i3.val by omega, hrest]
+    have hfl : (bw.buffer.val.take bw.used.val ++ head.val).length = 128 := by
+      rw [List.length_append, hA]; exact (show head.val.length = i.val from hhl) ▸ (by omega)
+    have hrestl : rest.val.length = rest1.val.length - i3.val := hrl2
+    have hr1l : rest1.val.length = bytes.val.length - i.val := hrl
+    refine ⟨?_, ?_, ?_, ?_⟩
+    · rw [hk, hsplit, hst2, hst1, hs2, Array.val_to_slice, hfull]
+      exact (compress_append _ _ _ (by rw [hfl])).symm
+    · rw [hk, hst2', hst1', hs2l, hwl', ← hi3n]; omega
+    · rw [hk, hlen, Slice.len_val]
+      show rest.val.length = _
+      simp only [Slice.length] at hr1l ⊢
+      omega
+    · have hb128 : ((back s1).val).length = 128 := (back s1).property
+      rw [hk, hdrop, hback', hs4, Slice.len_val, take_setSlice!_zero _ _ (by
+        rw [hb128, hrestl, hi3n]; simp only [Slice.length] at hrest1 ⊢; omega)]
+  · rename_i hneg
+    have hu0 : bw.used.val = 0 := by
+      have : ¬ bw.used.val > 0 := hneg
+      omega
+    step*
+    have hall : bw.buffer.val.take bw.used.val ++ bytes.val = bytes.val := by simp [hu0]
+    have hi3n : i3.val = (bytes.val.length - 1) / 128 * 128 := by
+      rw [i3_post, i2_post, i1_post, Slice.len_val]
+    have hk : ((bw.buffer.val.take bw.used.val ++ bytes.val).length - 1) / 128 * 128 = i3.val := by
+      rw [hall, hi3n]
+    have hwl : whole.val.length = i3.val := whole_post
+    have hrl : rest.val.length = bytes.val.length - i3.val := whole_post1
+    step with update_blocks_if_spec h b st whole b_post (by rw [whole_post, hi3n]; omega)
+      (by rw [whole_post, hi3n]; simp only [Slice.length, hu0] at hn ⊢; omega) as ⟨st2, hst2, hst2'⟩
+    step as ⟨s3, back3, hsv', hsl', hback'⟩
+    step as ⟨s4, hs4⟩
+    refine ⟨?_, ?_, ?_, ?_⟩
+    · rw [hk, hall, hst2, whole_post2]
+    · rw [hk, hst2', whole_post]
+    · rw [hk, hall, Slice.len_val]; exact hrl
+    · rw [hk, hall, hback', hs4, Slice.len_val, take_setSlice!_zero _ _ (by rw [hbl, hrl, hi3n]; omega),
+        whole_post3]
 
 end rind.x86_64
