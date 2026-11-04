@@ -37,9 +37,10 @@
 # rind: X25519 alone, whose Rust `proofs/` proves against s2n-bignum's
 # routines. Its Ed25519 and aarch64 P-256 ECDH also run only s2n-bignum's
 # routines, under unverified Rust that clamps, encodes points, and pads
-# SHA-512, or decodes and checks points. Every other rind operation runs
-# unverified code too, such as SHA-256's block function or x86_64 P-256 ECDH's
-# Jacobian-to-affine conversion.
+# SHA-512, or decodes and checks points. `proofs/` proves SHA-256's and
+# HMAC-SHA256's padding and glue, but not the SHA-256 block function under
+# them. Every other rind operation runs unverified code too, such as x86_64
+# P-256 ECDH's Jacobian-to-affine conversion.
 [[verified]]
 library = "rind"
 operations = ["x25519-ecdh"]

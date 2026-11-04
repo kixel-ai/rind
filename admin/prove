@@ -3,8 +3,9 @@
 # `proofs/Rind/<Arch>/{Types,Funs}.lean`, then checks every proof in `proofs/`.
 #
 # Each target's translation is its own namespace, but they share global names,
-# so no Lean module imports both. The aarch64 dispatch model and X25519 proof
-# are the x86_64 ones with the target renamed, which this writes too.
+# so no Lean module imports both. The aarch64 hand models and proofs are the
+# x86_64 ones with the target renamed, which this writes too, except for each
+# target's own `ShaBlocks.lean`.
 #
 # Usage: admin/prove
 #
@@ -37,6 +38,12 @@ if [ "$(grep -ow Ops rind/src/high/agreement.rs | wc -l)" != "$(grep -ow Ops "$o
     echo "rind/src/high/agreement.rs names Ops outside Dispatch.lean's quote" >&2
     exit 1
 fi
+
+# `Digest.lean` models `high::digest`'s algorithms and digests the same way.
+sed -n '/^```rust$/,/^```$/{//!p}' proofs/Rind/X86_64/Digest.lean >"$out/digest.rs"
+diff -u --label Digest.lean --label rind/src "$out/digest.rs" \
+    <(items rind/src/high/digest.rs 'pub struct Algorithm {' 'enum Id {' 'pub static SHA1:' \
+        'pub static SHA256:' 'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {')
 
 # The X25519 path from `high::agreement`'s `Agree` impls down to s2n-bignum's
 # routines. `low` is opaque: its routines are inline assembly, whose proven
@@ -101,7 +108,7 @@ extract aarch64 Aarch64 \
     --include crate::low::aarch64::sha256 \
     --opaque crate::low::aarch64::sha256::sha256_compress_blocks
 
-for file in Dispatch X25519 Digest Blockwise Sha Hmac; do
+for file in Dispatch X25519 Digest Blockwise Sha Hmac HashAxioms; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 
