@@ -202,8 +202,7 @@ theorem leNat_append (a b : List U8) : leNat (a ++ b) = leNat a + 256 ^ a.length
 
 theorem setSlice!_at {α : Type _} (X R S : List α) (i : Nat) (hX : X.length = i)
     (h : S.length ≤ R.length) : (X ++ R).setSlice! i S = X ++ S ++ R.drop S.length := by
-  have hmin : min S.length ((X ++ R).length - i) = S.length := by simp; omega
-  simp only [List.setSlice!, hmin, ← hX, List.drop_append]
+  simp only [List.setSlice!, ← hX, List.drop_append]
   simp [min_eq_left h]
 
 theorem splice_top_bit (y3 xb i i1 y31 : U64) (hy : y3.val < 2 ^ 63)
@@ -260,5 +259,95 @@ theorem point_compress_spec (p : Std.Array U64 8#usize) (hy : (pairNat p.val).2 
     leNat_toLEBytes, hy31]
   have : xb.val % 2 < 2 := Nat.mod_lt _ (by norm_num)
   omega
+
+/-! ## Points, `Rind.Ed25519` -/
+
+theorem edModEncode_lt (x : Int) : edModEncode x < p25519 := by
+  unfold edModEncode
+  have h0 := Int.emod_nonneg x (show (p25519 : Int) ≠ 0 by decide)
+  have h1 := Int.emod_lt_of_pos x (show (0 : Int) < p25519 by decide)
+  omega
+
+theorem edModEncode_of_onCurve (x : Int) (h0 : 0 ≤ x) (h1 : x < p25519) : (edModEncode x : Int) = x := by
+  unfold edModEncode
+  rw [Int.emod_eq_of_lt h0 h1]
+  omega
+
+/-- The negation of a point of the group is in the group. -/
+theorem edOnCurve_neg (P : EdPoint) (h : edOnCurve P) : edOnCurve (edNeg P) := by
+  obtain ⟨x, y⟩ := P
+  obtain ⟨-, -, hy0, hy1, he⟩ := h
+  have hq : (-x) % (p25519 : Int) ≡ -x [ZMOD p25519] := Int.mod_modEq _ _
+  have hq2 : ((-x) % (p25519 : Int)) ^ 2 ≡ x ^ 2 [ZMOD p25519] := by
+    simpa [neg_sq] using hq.pow 2
+  refine ⟨Int.emod_nonneg _ (by decide), Int.emod_lt_of_pos _ (by decide), hy0, hy1, ?_⟩
+  show e25519 * ((-x) % (p25519 : Int)) ^ 2 + y ^ 2 ≡
+    1 + d25519 * ((-x) % (p25519 : Int)) ^ 2 * y ^ 2 [ZMOD p25519]
+  calc _ ≡ e25519 * x ^ 2 + y ^ 2 [ZMOD p25519] := (hq2.mul_left _).add_right _
+    _ ≡ 1 + d25519 * x ^ 2 * y ^ 2 [ZMOD p25519] := he
+    _ ≡ _ [ZMOD p25519] := ((hq2.symm.mul_left _).mul_right _).add_left _
+
+/-- A valid encoding decodes to a point of the group that encodes as it. -/
+theorem edDecode_spec (n : Nat) (h : edValidEncode n) :
+    edOnCurve (edDecode n) ∧ edEncode (edDecode n) = n :=
+  Classical.epsilon_spec h
+
+/-- The coordinates `negate` writes for a point of the group are its
+negation's. -/
+theorem neg_decode (A : EdPoint) (hA : edOnCurve A) :
+    edModDecodePair ((p25519 - edModEncode A.1) % p25519, edModEncode A.2) = edNeg A := by
+  obtain ⟨x, y⟩ := A
+  obtain ⟨hx0, hx1, hy0, hy1, -⟩ := hA
+  have hx := edModEncode_of_onCurve x hx0 hx1
+  have hy := edModEncode_of_onCurve y hy0 hy1
+  have hp : p25519 = 57896044618658097711785492504343953926634992332820282019728792003956564819949 := by
+    norm_num [p25519]
+  simp only [edModDecodePair, edNeg, Prod.mk.injEq]
+  simp only at hx1 hy1
+  have he : edModEncode x < p25519 := edModEncode_lt x
+  rw [hp] at hx1 hy1 he ⊢
+  constructor <;> omega
+
+/-! ## Hashing, `mid::ed25519::ed25519_digest` -/
+
+theorem context_new_spec : mid.sha2.Sha512Context.new ⦃ c => Hashed sha512Iv c [] ⦄ := by
+  unfold mid.sha2.Sha512Context.new
+  step with sha512_initial_spec as ⟨st, hh, hn⟩
+  exact resume_spec _ st hh hn
+
+@[step]
+theorem ed25519_digest_spec (h : RunsSha512) (x1 x2 x3 : Slice U8)
+    (hl : x1.length + x2.length + x3.length < 2 ^ 64) :
+    mid.ed25519.ed25519_digest x1 x2 x3 ⦃ d => d.val = sha512 (x1.val ++ x2.val ++ x3.val) ⦄ := by
+  unfold mid.ed25519.ed25519_digest
+  simp only [Slice.length] at hl
+  step with context_new_spec as ⟨c, hc⟩
+  step with context_update_spec h _ c [] x1 hc (by simp [Slice.length]; omega) as ⟨c1, hc1⟩
+  step with context_update_spec h _ c1 _ x2 hc1 (by simp [Slice.length]; omega) as ⟨c2, hc2⟩
+  step with context_update_spec h _ c2 _ x3 hc2 (by simp [Slice.length]; omega) as ⟨c3, hc3⟩
+  step with context_finish_spec h _ c3 _ hc3 as ⟨d, hd⟩
+  simpa [sha512] using hd
+
+/-! ## Scalars, `mid::ed25519::Scalar` -/
+
+@[step]
+theorem reduce_spec (x : Std.Array U8 64#usize) :
+    mid.ed25519.Scalar.reduce_from_le_bytes x ⦃ s => wordsNat s.val = leNat x.val % n25519 ⦄ := by
+  unfold mid.ed25519.Scalar.reduce_from_le_bytes
+  step*
+
+theorem wordsNat_ORDER : wordsNat mid.ed25519.ORDER.val = n25519 := by
+  unfold mid.ed25519.ORDER
+  simp [wordsNat, Nat.ofDigits, n25519]
+
+@[step]
+theorem try_from_le_bytes_spec (x : Std.Array U8 32#usize) :
+    mid.ed25519.Scalar.try_from_le_bytes x ⦃ o =>
+      if leNat x.val < n25519 then ∃ s, o = some s ∧ wordsNat s.val = leNat x.val else o = none ⦄ := by
+  unfold mid.ed25519.Scalar.try_from_le_bytes
+  step*
+  rw [s1_post, s2_post, Array.val_to_slice, Array.val_to_slice, s_post, wordsNat_ORDER] at i_post
+  simp only [core.bool.Bool.then_some]
+  split_ifs at i_post with hlt <;> simp_all
 
 end rind.x86_64
