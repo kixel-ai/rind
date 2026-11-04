@@ -187,4 +187,41 @@ theorem sha256_finish_with_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha2.Sha
     rfl
   all_goals simp [iter_post, iter_post1, s_post, Array.val_to_slice]
 
+theorem saturating_add_val (x y : U64) (h : x.val + y.val ≤ U64.max) :
+    (core.num.U64.saturating_add x y).val = x.val + y.val := by
+  simp only [core.num.U64.saturating_add, UScalar.saturating_add]
+  rw [Nat.min_eq_right (by simpa [U64.max] using h)]
+  show (BitVec.ofNat 64 _).toNat = _
+  simp only [BitVec.toNat_ofNat]
+  exact Nat.mod_eq_of_lt (by scalar_tac)
+
+theorem sha256_update_blocks_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha2.Sha256State)
+    (blk : Slice U8) (hs : Sha256Absorbed P s) (hl : blk.length % 64 = 0)
+    (hbound : P.length + blk.length ≤ U64.max) :
+    mid.sha2.Sha256State.update_blocks s blk ⦃ s' => Sha256Absorbed (P ++ blk.val) s' ⦄ := by
+  obtain ⟨hh, hn⟩ := hs
+  have hbl : blk.len.val = blk.length := by simp [Slice.len, Slice.length]
+  have h64 : mid.sha2.Sha256Context.BLOCK_SZ.val = 64 := by simp [mid.sha2.Sha256Context.BLOCK_SZ]
+  obtain ⟨e, he⟩ := hb.entry
+  unfold mid.sha2.Sha256State.update_blocks
+  step*
+  case h2 =>
+    rw [he, bind_ok]
+    step with sha256_block_spec hb s.h blk hl as ⟨a, ha⟩
+    step*
+    have hi3 : i3.val = blk.length / 64 := by
+      rw [i3_post]; simp only [UScalar.cast_val_eq, i2_post, hbl, h64]
+      apply Nat.mod_eq_of_lt; scalar_tac
+    simp only [lift, bind_ok, WP.spec_ok]
+    refine ⟨absorbed_append hh hl ha, ?_⟩
+    simp only
+    rw [saturating_add_val _ _ (by rw [hi3]; omega), hi3, List.length_append]
+    simp only [Slice.length] at *
+    omega
+  all_goals
+    rename_i h0
+    have : blk.val = [] := List.eq_nil_of_length_eq_zero (by simpa [b1_post] using h0)
+    simp only [this, List.append_nil]
+    exact ⟨hh, hn⟩
+
 end rind.x86_64
