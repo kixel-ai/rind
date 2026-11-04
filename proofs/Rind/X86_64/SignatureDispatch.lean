@@ -221,8 +221,9 @@ The model departs from the Rust in five ways, and adds no axiom:
   `PublicKey::verify` do for them.
 - `?` is a `match`, since each error it passes on is already an `Error`.
 
-`Debug` is not modelled: it computes no result. Drops are not modelled, as
-everywhere in the translation. `rsa::MAX_PUBLIC_KEY_LEN` is 8192 / 8 + 64 =
+`PublicKey`'s `Debug` is quoted only so that check sees its mention, and not
+modelled: it computes no result. Drops are not modelled, as everywhere in the
+translation. `rsa::MAX_PUBLIC_KEY_LEN` is 8192 / 8 + 64 =
 1088.
 -/
 
