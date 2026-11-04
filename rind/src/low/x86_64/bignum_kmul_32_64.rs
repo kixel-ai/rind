@@ -31,6 +31,7 @@ use crate::low::macros::*;
 /// internally and using temporary buffer t for intermediate results. The size
 /// of 96 is an overstatement for compatibility with the ARM version; it
 /// actually only uses 65 elements of t (64 + 1 for a stashed sign).
+#[inline(never)]
 pub(crate) fn bignum_kmul_32_64(z: &mut [u64], x: &[u64], y: &[u64], t: &mut [u64; 96]) {
     debug_assert!(z.len() == 64);
     debug_assert!(x.len() == 32);

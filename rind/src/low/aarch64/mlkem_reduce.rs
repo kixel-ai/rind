@@ -28,6 +28,7 @@ use crate::low::macros::*;
 /// integers modulo 3329 with the result being 0 <= r < 3329, in-place.
 /// This is intended for use when that array represents polynomial
 /// coefficients for ML-KEM, but that is not relevant to its operation.
+#[inline(never)]
 pub(crate) fn mlkem_reduce(a: &mut [i16; 256]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

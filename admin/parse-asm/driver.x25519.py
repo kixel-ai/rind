@@ -46,7 +46,7 @@ if __name__ == "__main__":
         generated("../../rind/src/low/x86_64/curve25519_x25519base.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
-        d.add_const_symbol("curve25519_x25519base_constant")
+        d.add_const_symbol("curve25519_x25519base_constant", shared=True)
         d.emit_rust_function(
             "curve25519_x25519base",
             parameter_map=[
@@ -64,7 +64,10 @@ if __name__ == "__main__":
         generated("../../rind/src/low/x86_64/curve25519_x25519base_alt.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
-        d.add_const_symbol("curve25519_x25519base_alt_constant")
+        d.add_const_symbol(
+            "curve25519_x25519base_alt_constant",
+            same_as="super::curve25519_x25519base::curve25519_x25519base_constant",
+        )
         d.emit_rust_function(
             "curve25519_x25519base_alt",
             parameter_map=[

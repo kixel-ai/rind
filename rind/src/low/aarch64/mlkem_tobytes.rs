@@ -26,6 +26,7 @@ use crate::low::macros::*;
 /// This accepts an array of 256 16-bit numbers assumed to be in the range
 /// 0 <= a[i] < 2^12 (typically they will be < 3329, the ML-KEM prime).
 /// It packs them into the output array as 12-bit unsigned numbers.
+#[inline(never)]
 pub(crate) fn mlkem_tobytes(r: &mut [u8; 384], a: &[i16; 256]) {
     debug_assert!((a.as_ptr() as usize).is_multiple_of(32));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.

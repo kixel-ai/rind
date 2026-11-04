@@ -28,6 +28,7 @@ use crate::low::macros::*;
 /// integers modulo 3329 into Montgomery form, giving a signed result
 /// satisfying (output[i] == 2^16 * input[i]) (mod 3329), without full
 /// modular reduction but with |output[i]| < 3329 guaranteed.
+#[inline(never)]
 pub(crate) fn mlkem_tomont(a: &mut [i16; 256]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

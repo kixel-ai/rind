@@ -115,6 +115,7 @@ use crate::low::macros::*;
 ///
 /// This routine does not enforce the NIST GCM message limit.
 /// Callers must ensure the cumulative message length does not exceed 2^36 - 32 bytes (2^39 - 256 bits).
+#[inline(never)]
 #[target_feature(enable = "aes,sha3")]
 pub(crate) unsafe fn aes256_gcm_enc_alt(
     inout: *mut [u8; 16],

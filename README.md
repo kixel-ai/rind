@@ -187,14 +187,15 @@ on an EPYC 9V74 (Zen 4), and no AVX2 on an EPYC 9V45 (Zen 5). The
 ChaCha20-Poly1305 cell without AVX2 is from [run 41585945720], on an EPYC 7763,
 the x86_64 ChaCha20 header-protection cell from [run 41678532920], and the
 no AES-NI and SSE2 ChaCha20-Poly1305 cells from [run 41697909102], both on an
-EPYC 9V74.
+EPYC 9V74, and the x86_64 AES-GCM cell from [run 41753572116], on an EPYC
+9V45.
 Intel CPUs with AVX but without SHA-NI run [aws-lc]'s AVX SHA-256, and its
 AVX SHA-1 if they lack AVX2 too, and every Intel CPU with AVX runs its
 verified ✓ AVX SHA-384 and SHA-512.
 
 | Algorithm | x86_64 | no ADX | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|---|
-| AES-GCM | 0.99 BoringSSL ⚡ + Graviola |  | 1.01 aws-lc + Graviola | 0.95 Graviola | **1.03** aws-lc + rind | 0.82 |
+| AES-GCM | **1.04** BoringSSL ⚡ + Graviola |  | 1.01 aws-lc + Graviola | 0.95 Graviola | **1.03** aws-lc + rind | 0.82 |
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 1.00 | 0.99 | 1.00 aws-lc | 0.79 |
 | ChaCha20 (header protection) | 0.96 HACL* ✓ + rind |  |  |  |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ |  | 1.00 |  | **1.20** HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | **1.03** HACL* ✓ + Graviola ⚡ |
@@ -221,6 +222,9 @@ verified ✓ AVX SHA-384 and SHA-512.
   words, `bn_mul_mont_gather5`, which fuse a faster gather into the product.
   RSA-2048 signing takes 1.08 of ring's time and 1.04 of aws-lc-rs's, and
   RSA-2056 1.07 of aws-lc-rs's without ADX and 1.03 without AVX2.
+- AES-GCM key setup: AES-128 takes 99 ns to ring's 96. A key reaches its
+  cipher through an indirect call, so that a binary links only the ciphers it
+  names; the call adds about 3 ns per key or 32 B seal.
 - P-256 without ADX: verification runs s2n-bignum's verified routines, 1.05 of
   aws-lc's `ecp_nistz256`, within the 10% rind accepts for verified code.
 - ChaCha20-Poly1305 without AES-NI and on SSE2, which lack SSE4.1: rind runs
@@ -236,12 +240,13 @@ aarch64 runs a Neoverse-N2, with the crypto extension and the SHA-512 and
 SHA-3 instructions; no crypto denies them, as a Raspberry Pi 4 lacks them.
 armv7 runs on the same core in 32-bit mode, with NEON and the crypto
 extension; without them it runs the code [Symmetric
-cryptography](#symmetric-cryptography) names.
+cryptography](#symmetric-cryptography) names. The aarch64 AES block cell is
+from [run 41753572116].
 
 | Algorithm | aarch64 | no crypto | armv7 |
 |---|---|---|---|
 | AES-GCM | **1.07** s2n-bignum + Graviola | 1.02 aws-lc + rind | 0.99 |
-| AES block, AES-CTR | 0.99 Graviola + rind | 1.00 aws-lc | 0.99 |
+| AES block, AES-CTR | **1.06** Graviola + rind | 1.00 aws-lc | 0.99 |
 | ChaCha20 (header protection) | 1.01 Graviola | 0.94 | 0.87 aws-lc ⚡ |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.00 aws-lc ⚡ | 1.00 | 0.99 |
 | SHA-1 | 1.01 rind | 1.00 aws-lc | 1.00 |
@@ -262,6 +267,8 @@ cryptography](#symmetric-cryptography) names.
 
 - AES-GCM on aarch64: sealing 32 B with AES-128 takes 79 ns to ring's 74;
   opening and every larger size lead.
+- QUIC header protection with AES-128 on aarch64: 5.7 ns to aws-lc-rs's 5.4,
+  for the same indirect call as AES-GCM key setup on x86_64.
 - P-521 on armv7: verification takes 1.04 of aws-lc-rs's time, and both run
   [fiat-crypto]'s field arithmetic, which spills no carry flag there. A
   `umaal` multiply ran more instructions in [#281], so rind keeps the verified
@@ -323,6 +330,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41657617706]: https://github.com/moq-dev/rind/actions/runs/41657617706
 [run 41678532920]: https://github.com/moq-dev/rind/actions/runs/41678532920
 [run 41697909102]: https://github.com/moq-dev/rind/actions/runs/41697909102
+[run 41753572116]: https://github.com/moq-dev/rind/actions/runs/41753572116
 [#224]: https://github.com/moq-dev/rind/pull/224
 [#281]: https://github.com/moq-dev/rind/pull/281
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE

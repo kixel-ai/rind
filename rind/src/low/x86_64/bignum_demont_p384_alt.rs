@@ -76,6 +76,7 @@ macro_rules! montreds {
 ///
 /// This assumes the input is < p_384 for correctness. If this is not the case,
 /// use the variant "bignum_deamont_p384" instead.
+#[inline(never)]
 pub(crate) fn bignum_demont_p384_alt(z: &mut [u64; 6], x: &[u64; 6]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

@@ -792,6 +792,7 @@ macro_rules! movbig {
 /// Assuming the 9-digit input x is coprime to p_521, i.e. is not divisible
 /// by it, returns z < p_521 such that x * z == 1 (mod p_521). Note that
 /// x does not need to be reduced modulo p_521, but the output always is.
+#[inline(never)]
 pub(crate) fn bignum_inv_p521(z: &mut [u64; 9], x: &[u64; 9]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

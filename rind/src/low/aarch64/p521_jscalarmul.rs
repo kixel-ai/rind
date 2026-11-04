@@ -128,6 +128,7 @@ macro_rules! movbig {
 /// point at infinity (either because the input point was or because the
 /// scalar was a multiple of p_521) then the output is guaranteed to
 /// represent the point at infinity, i.e. to have its z coordinate zero.
+#[inline(never)]
 pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point: &[u64; 27]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

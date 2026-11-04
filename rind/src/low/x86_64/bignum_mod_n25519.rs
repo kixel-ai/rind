@@ -73,6 +73,7 @@ macro_rules! q {
 ///
 /// Reduction is modulo the order of the curve25519/edwards25519 basepoint,
 /// which is n_25519 = 2^252 + 27742317777372353535851937790883648493
+#[inline(never)]
 pub(crate) fn bignum_mod_n25519(z: &mut [u64; 4], x: &[u64]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
