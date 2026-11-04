@@ -1,0 +1,109 @@
+module
+public import Aeneas
+public import Rind.Aarch64.Types
+@[expose] public section
+open Aeneas Aeneas.Std Result
+set_option linter.dupNamespace false
+
+/-!
+The rind functions the aarch64 translation leaves opaque. No proof assumes anything
+about them beyond what `Rind.Aarch64.S2nBignum` states for s2n-bignum's routines
+and what each theorem takes as a hypothesis.
+-/
+
+namespace rind.aarch64
+
+/-! s2n-bignum's routines, transliterated to inline assembly. -/
+
+axiom low.aarch64.curve25519_x25519base.curve25519_x25519base
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64
+    4#usize)
+
+axiom low.aarch64.curve25519_x25519.curve25519_x25519
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Result (Array Std.U64 4#usize)
+
+axiom low.aarch64.bignum_eq.bignum_eq
+  : Slice Std.U64 → Slice Std.U64 → Result Bool
+
+/-! The entry guard and CPU dispatch, which read no input. -/
+
+axiom low.entry.Entry.new_secret : Result low.entry.Entry
+
+axiom low.entry.Entry.new_public : Result low.entry.Entry
+
+/-! The other curves, the wipe on drop, and formatting, which X25519 never runs. -/
+
+axiom low.generic.zeroise.zeroise_value
+  {T : Type _} (ZeroableInst : low.generic.zeroise.Zeroable T) : T → Result T
+
+axiom mid.p521.PrivateKey.new_random
+  : Result (core.result.Result mid.p521.PrivateKey error.Error)
+
+axiom mid.p384.PrivateKey.new_random
+  : Result (core.result.Result mid.p384.PrivateKey error.Error)
+
+axiom mid.p256.PrivateKey.new_random
+  : Result (core.result.Result mid.p256.PrivateKey error.Error)
+
+axiom mid.p521.PrivateKey.public_key_uncompressed
+  : mid.p521.PrivateKey → Result (Array Std.U8 133#usize)
+
+axiom mid.p384.PrivateKey.public_key_uncompressed
+  : mid.p384.PrivateKey → Result (Array Std.U8 97#usize)
+
+axiom mid.p256.PrivateKey.public_key_uncompressed
+  : mid.p256.PrivateKey → Result (Array Std.U8 65#usize)
+
+axiom mid.p521.PrivateKey.diffie_hellman
+  :
+  mid.p521.PrivateKey → mid.p521.PublicKey → Result (core.result.Result
+    mid.p521.SharedSecret error.Error)
+
+axiom mid.p521.PublicKey.from_x962_uncompressed
+  : Slice Std.U8 → Result (core.result.Result mid.p521.PublicKey error.Error)
+
+axiom mid.p384.PrivateKey.diffie_hellman
+  :
+  mid.p384.PrivateKey → mid.p384.PublicKey → Result (core.result.Result
+    mid.p384.SharedSecret error.Error)
+
+axiom mid.p384.PublicKey.from_x962_uncompressed
+  : Slice Std.U8 → Result (core.result.Result mid.p384.PublicKey error.Error)
+
+axiom mid.p256.PrivateKey.diffie_hellman
+  :
+  mid.p256.PrivateKey → mid.p256.PublicKey → Result (core.result.Result
+    mid.p256.SharedSecret error.Error)
+
+axiom mid.p256.PublicKey.from_x962_uncompressed
+  : Slice Std.U8 → Result (core.result.Result mid.p256.PublicKey error.Error)
+
+axiom high.agreement.AlgorithmId.Insts.CoreFmtDebug.fmt
+  :
+  high.agreement.AlgorithmId → core.fmt.Formatter → Result
+    ((core.result.Result Unit core.fmt.Error) × core.fmt.Formatter)
+
+axiom high.agreement.Algorithm.Insts.CoreFmtDebug.fmt
+  :
+  high.agreement.Algorithm → core.fmt.Formatter → Result
+    ((core.result.Result Unit core.fmt.Error) × core.fmt.Formatter)
+
+axiom high.agreement.PrivateKey.Insts.CoreFmtDebug.fmt
+  :
+  high.agreement.PrivateKey → core.fmt.Formatter → Result
+    ((core.result.Result Unit core.fmt.Error) × core.fmt.Formatter)
+
+axiom high.agreement.PublicKey.Insts.CoreFmtDebug.fmt
+  :
+  high.agreement.PublicKey → core.fmt.Formatter → Result
+    ((core.result.Result Unit core.fmt.Error) × core.fmt.Formatter)
+
+axiom high.agreement.SharedSecret.Insts.CoreFmtDebug.fmt
+  :
+  high.agreement.SharedSecret → core.fmt.Formatter → Result
+    ((core.result.Result Unit core.fmt.Error) × core.fmt.Formatter)
+
+end rind.aarch64

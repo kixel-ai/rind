@@ -23,11 +23,13 @@ macro_rules! little_endian {
             Some($fn_array_to(&as_array))
         }
 
+        // Indexes rather than zipping `chunks_exact_mut`, which Aeneas cannot
+        // translate, so `proofs/` can prove X25519's encoding.
         #[allow(dead_code)]
         pub(crate) fn $fn_to_bytes(v: &[u64; $N]) -> [u8; $N * 8] {
             let mut r = [0u8; $N * 8];
-            for (iv, rb) in (0..$N).zip(r.chunks_exact_mut(8)) {
-                rb.copy_from_slice(&v[iv].to_le_bytes());
+            for (i, word) in v.iter().enumerate() {
+                r[i * 8..(i + 1) * 8].copy_from_slice(&word.to_le_bytes());
             }
             r
         }
