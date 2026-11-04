@@ -412,4 +412,76 @@ theorem context_update_spec (h : RunsSha512) (iv : List U64) (c : mid.sha2.Sha51
     · rw [hst', show 128 * (c.state.nblocks.val + (A.length - 1) / 128 * 128 / 128) =
           128 * c.state.nblocks.val + (A.length - 1) / 128 * 128 by omega, hsuf, hbb]
 
+/-! ## Starting and finishing contexts -/
+
+theorem sha512_initial_spec :
+    mid.sha2.Sha512State.new ⦃ st => st.h.val = sha512Iv ∧ st.nblocks.val = 0 ⦄ := by
+  simp [mid.sha2.Sha512State.new, mid.sha2.Sha512State.with_h, sha512Iv]
+
+theorem sha384_initial_spec :
+    mid.sha2.Sha384Context.INITIAL ⦃ st => st.h.val = sha384Iv ∧ st.nblocks.val = 0 ⦄ := by
+  simp [mid.sha2.Sha384Context.INITIAL, mid.sha2.Sha512State.with_h, sha384Iv]
+
+theorem sha512_256_initial_spec :
+    mid.sha2.Sha512_256Context.INITIAL ⦃ st => st.h.val = sha512_256Iv ∧ st.nblocks.val = 0 ⦄ := by
+  simp [mid.sha2.Sha512_256Context.INITIAL, mid.sha2.Sha512State.with_h, sha512_256Iv]
+
+/-- A context resumed from an initial value has hashed nothing. -/
+theorem resume_spec (iv : List U64) (st : mid.sha2.Sha512State) (hh : st.h.val = iv)
+    (hn : st.nblocks.val = 0) :
+    mid.sha2.Sha512Context.resume st ⦃ c => Hashed iv c [] ⦄ := by
+  simp [mid.sha2.Sha512Context.resume, low.generic.blockwise.Blockwise.new, Hashed, hh, hn]
+
+/-- `finish` is the hash of what the context has hashed. -/
+theorem context_finish_spec (h : RunsSha512) (iv : List U64) (c : mid.sha2.Sha512Context)
+    (m : List U8) (hc : Hashed iv c m) :
+    mid.sha2.Sha512Context.finish c ⦃ r => r.val = sha512Words iv m ⦄ := by
+  obtain ⟨hu, hm, hh, hb⟩ := hc
+  unfold mid.sha2.Sha512Context.finish low.generic.blockwise.Blockwise.buffered
+  have hbl : (c.blockwise.buffer.val).length = 128 := c.blockwise.buffer.property
+  step*
+  have hs : s.val = m.drop (128 * c.state.nblocks.val) := by
+    rw [s_post, ← hb, List.slice]; simp
+  have ht : (m.take (128 * c.state.nblocks.val)).length = 128 * c.state.nblocks.val := by
+    simp; omega
+  rw [r_post, hs, hh, ← compress_append _ _ _ (by rw [ht]; omega), sha512Words,
+    ← List.take_append_drop (128 * c.state.nblocks.val) m, pad_append _ _ (by rw [ht]; omega),
+    List.take_append_drop, ht]
+
+theorem sha384_truncate_spec (a : Std.Array U8 64#usize) :
+    mid.sha2.Sha384Context.truncate a ⦃ t => t.val = a.val.take 48 ⦄ := by
+  have ha : (a.val).length = 64 := a.property
+  simp [mid.sha2.Sha384Context.truncate, core.slice.Slice.first_chunk, lift, Array.to_slice, ha,
+    core.option.Option.unwrap]
+
+theorem sha512_256_truncate_spec (a : Std.Array U8 64#usize) :
+    mid.sha2.Sha512_256Context.truncate a ⦃ t => t.val = a.val.take 32 ⦄ := by
+  have ha : (a.val).length = 64 := a.property
+  simp [mid.sha2.Sha512_256Context.truncate, core.slice.Slice.first_chunk, lift, Array.to_slice, ha,
+    core.option.Option.unwrap]
+
+/-- A digest's bytes are the value it was built from, at its algorithm's length. -/
+theorem digest_new_as_ref (alg : high.digest.Algorithm) (v : Slice U8)
+    (n : Usize) (hv : high.digest.Algorithm.output_len alg = ok n) (hn : n.val = v.length)
+    (h64 : v.length ≤ 64) :
+    (do
+      let d ← high.digest.Digest.new alg v
+      high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d) ⦃ b => b.val = v.val ⦄ := by
+  unfold high.digest.Digest.new high.digest.Digest.zeroed high.digest.Digest.as_mut
+    high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref
+  have hlen : alg.output_len ⦃ x => x = n ⦄ := by simp [hv]
+  step with hlen as ⟨x, hx⟩
+  subst hx
+  step as ⟨sb, hs, hsl, hback⟩
+  obtain ⟨s, back⟩ := sb
+  simp only at hs hsl hback ⊢
+  step as ⟨s1, hs1⟩
+  step with hlen as ⟨y, hy⟩
+  subst hy
+  step as ⟨b, hb, hbl⟩
+  have hz : ((Std.Array.repeat 64#usize 0#u8).val).length = 64 := by simp
+  rw [hb, Array.val_to_slice, hback, hs1, List.slice, List.drop_zero, Nat.sub_zero, hn]
+  have := take_setSlice! (Std.Array.repeat 64#usize 0#u8).val v.val 0 (by simp only [Slice.length] at h64; omega)
+  simpa using this
+
 end rind.x86_64
