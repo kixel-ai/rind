@@ -25,6 +25,7 @@ use crate::low::macros::*;
 ///
 /// Functionally equivalent to bignum_emontredc (see that file for more detail).
 /// But in general assumes that the input k is a multiple of 8.
+#[inline(never)]
 pub(crate) fn bignum_emontredc_8n(z: &mut [u64], m: &[u64], w: u64) -> u64 {
     let ret: u64;
     debug_assert!(z.len() == m.len() * 2);

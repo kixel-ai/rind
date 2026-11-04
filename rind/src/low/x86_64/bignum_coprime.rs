@@ -263,6 +263,7 @@ macro_rules! arg4 {
 /// Here bignum x is m digits long, y is n digits long and the temporary
 /// buffer t needs to be 2 * max(m,n) digits long. The return value is
 /// 1 if coprime(x,y) and 0 otherwise.
+#[inline(never)]
 pub(crate) fn bignum_coprime(x: &[u64], y: &[u64], t: &mut [u64]) -> bool {
     let ret: u64;
     debug_assert!(t.len() >= 2 * core::cmp::max(x.len(), y.len()));

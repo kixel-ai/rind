@@ -59,6 +59,7 @@ macro_rules! j {
 ///
 /// In principle this has a precondition k < 2^58, but obviously that
 /// is always true in practice because of address space limitations.
+#[inline(never)]
 pub(crate) fn bignum_bitsize(x: &[u64]) -> usize {
     let ret: u64;
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.

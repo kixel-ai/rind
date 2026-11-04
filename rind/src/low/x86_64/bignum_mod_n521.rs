@@ -92,6 +92,7 @@ macro_rules! qshort {
 /// Input x[9]; output z[9]
 ///
 /// Reduction is modulo the group order of the NIST curve P-521.
+#[inline(never)]
 pub(crate) fn bignum_mod_n521(z: &mut [u64; 9], x: &[u64; 9]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

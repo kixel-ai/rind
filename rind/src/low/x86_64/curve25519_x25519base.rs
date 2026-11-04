@@ -366,6 +366,7 @@ macro_rules! double_twice4 {
 /// Given a scalar n, returns the X coordinate of n * G where G = (9,...) is
 /// the standard generator. The scalar is first slightly modified/mangled
 /// as specified in the relevant RFC (https://www.rfc-editor.org/rfc/rfc7748).
+#[inline(never)]
 pub(crate) fn curve25519_x25519base(res: &mut [u64; 4], scalar: &[u64; 4]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
@@ -2300,7 +2301,7 @@ pub(crate) fn curve25519_x25519base(res: &mut [u64; 4], scalar: &[u64; 4]) {
 // The precomputed data (all read-only).
 // ****************************************************************************
 
-static curve25519_x25519base_constant: [u64; 6072] = [
+pub(super) static curve25519_x25519base_constant: [u64; 6072] = [
     // 2^254 * G and (2^254 + 8) * G in extended-projective coordinates
     // but with z = 1 assumed and hence left out, so they are (X,Y,T) only.
     0x251037f7cf4e861d,

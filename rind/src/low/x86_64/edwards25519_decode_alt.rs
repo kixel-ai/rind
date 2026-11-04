@@ -97,6 +97,7 @@ macro_rules! Q8 { () => { Q!("(25 * " N!() ")") } }
 ///    There is no x such that (x,y) is on the curve
 ///  * y^2 = 1 and top bit of input is set
 ///    Cannot be the canonical encoding of (0,1) or (0,-1)
+#[inline(never)]
 pub(crate) fn edwards25519_decode_alt(z: &mut [u64; 8], c: &[u8; 32]) -> bool {
     let ret: u64;
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.

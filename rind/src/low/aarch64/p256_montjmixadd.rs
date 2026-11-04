@@ -442,6 +442,7 @@ macro_rules! sub_p256 {
 /// A Jacobian triple (x',y',z') represents affine point (x/z^2,y/z^3).
 /// The "mixed" part means that p2 only has x and y coordinates, with the
 /// implicit z coordinate assumed to be the identity.
+#[inline(never)]
 pub(crate) fn p256_montjmixadd(p3: &mut [u64; 12], p1: &[u64; 12], p2: &[u64; 8]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

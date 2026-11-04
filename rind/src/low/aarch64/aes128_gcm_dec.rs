@@ -79,6 +79,7 @@ use crate::low::macros::*;
 /// nothing beyond the first 96 bytes is read. The reference implementation in
 /// tests/ref_aes_gcm.c (ref_gcm_init_htable) constructs the full table
 /// independently.
+#[inline(never)]
 #[target_feature(enable = "aes")]
 pub(crate) unsafe fn aes128_gcm_dec(
     inout: *mut [u8; 16],

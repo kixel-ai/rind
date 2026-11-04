@@ -231,6 +231,7 @@ macro_rules! e8 {
 /// k-digit (digit=64 bits) "z := a^-1 mod b" (modular inverse of a modulo b)
 /// using t as a temporary buffer (t at least 3*k words = 24*k bytes), and
 /// assuming that a and b are coprime *and* that b is an odd number > 1.
+#[inline(never)]
 pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], t: &mut [u64]) {
     debug_assert!(z.len() == a.len());
     debug_assert!(z.len() == b.len());

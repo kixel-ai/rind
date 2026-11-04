@@ -122,6 +122,7 @@ macro_rules! e8 {
 /// Does z := (x / 2^{64k}) mod m, hence mapping out of Montgomery domain.
 /// In other words, this is a k-fold Montgomery reduction with same-size input.
 /// This can handle almost-Montgomery inputs, i.e. any k-digit bignum.
+#[inline(never)]
 pub(crate) fn bignum_demont(z: &mut [u64], x: &[u64], m: &[u64]) {
     debug_assert!(z.len() == x.len());
     debug_assert!(z.len() == m.len());
