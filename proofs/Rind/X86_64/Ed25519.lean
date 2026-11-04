@@ -150,27 +150,48 @@ theorem le_to_u64x8_spec (b : Std.Array U8 64#usize) :
 
 /-! ## Clamping and encoding, `mid::ed25519` -/
 
-theorem clear_low3 (a : U64) : (a &&& ~~~7#u64).val = a.val / 8 * 8 := by
-  have hb : a.bv &&& ~~~7#64 = (a.bv >>> 3) <<< 3 := by bv_decide
-  have h : (a &&& ~~~7#u64).val = ((a.bv >>> 3) <<< 3).toNat := by
-    rw [← hb]; rfl
-  rw [h, BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight, Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
-  have : a.bv.toNat = a.val := rfl
-  have ha : a.val < 2 ^ 64 := a.hBounds
-  rw [this]
-  omega
+theorem u64_size : U64.size = 2 ^ 64 := by
+  rw [U64.size_def, U64.numBits_def]; rfl
 
-theorem set_bit254 (d i3 i7 : U64) (h3 : i3.bv = 1#64 <<< 63) (h7 : i7.bv = 1#64 <<< 62) :
+theorem val_not (x : U64) : (~~~x).val = 2 ^ 64 - 1 - x.val := by
+  show (~~~x.bv).toNat = _
+  rw [BitVec.toNat_not]
+  rfl
+
+theorem clear_low3 (a : U64) : (a &&& ~~~7#u64).val = a.val / 8 * 8 := by
+  rw [UScalar.val_and, val_not]
+  apply Nat.eq_of_testBit_eq
+  intro i
+  have ha : a.val < 2 ^ 64 := a.hBounds
+  have h8 : a.val / 8 * 8 = (a.val >>> 3) <<< 3 := by
+    rw [Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
+  have hm : (2 ^ 64 - 1 - (7#u64).val : Nat) = (2 ^ 61 - 1) <<< 3 := by
+    rw [Nat.shiftLeft_eq]; decide
+  rw [h8, hm, Nat.testBit_and, Nat.testBit_shiftLeft, Nat.testBit_shiftLeft, Nat.testBit_shiftRight,
+    Nat.testBit_two_pow_sub_one]
+  by_cases hi : 3 ≤ i
+  · rw [show 3 + (i - 3) = i by omega]
+    by_cases h64 : i < 64
+    · simp [hi, show i - 3 < 61 by omega]
+    · have : a.val.testBit i = false :=
+        Nat.testBit_lt_two_pow (lt_of_lt_of_le ha (Nat.pow_le_pow_right (by norm_num) (by omega)))
+      simp [hi, show ¬ i - 3 < 61 by omega, this]
+  · simp [hi]
+
+theorem set_bit254 (d i3 i7 : U64) (h3 : i3.val = 2 ^ 63) (h7 : i7.val = 2 ^ 62) :
     ((d &&& ~~~i3) ||| i7).val = 2 ^ 62 + d.val % 2 ^ 62 := by
-  have hb : (d.bv &&& ~~~i3.bv) ||| i7.bv = (d.bv &&& 0x3fffffffffffffff#64) + 0x4000000000000000#64 := by
-    rw [h3, h7]; bv_decide
-  have h : ((d &&& ~~~i3) ||| i7).val = ((d.bv &&& 0x3fffffffffffffff#64) + 0x4000000000000000#64).toNat := by
-    rw [← hb]; rfl
-  have : d.bv.toNat = d.val := rfl
-  rw [h, BitVec.toNat_add, BitVec.toNat_and, this,
-    show (0x3fffffffffffffff#64).toNat = 2 ^ 62 - 1 by decide, Nat.and_two_pow_sub_one_eq_mod]
-  simp only [BitVec.toNat_ofNat]
-  omega
+  rw [UScalar.val_or, UScalar.val_and, val_not, h3, h7, Nat.add_comm,
+    ← Nat.or_two_pow_eq_add_of_lt (Nat.mod_lt _ (by norm_num))]
+  apply Nat.eq_of_testBit_eq
+  intro i
+  rw [show (2 ^ 64 - 1 - 2 ^ 63 : Nat) = 2 ^ 63 - 1 by norm_num]
+  simp only [Nat.testBit_or, Nat.testBit_and, Nat.testBit_two_pow_sub_one, Nat.testBit_mod_two_pow,
+    Nat.testBit_two_pow]
+  by_cases h62 : i < 62
+  · simp [h62, show i < 63 by omega, show (62 : Nat) ≠ i by omega]
+  · by_cases he : i = 62
+    · subst he; simp
+    · simp [h62, show ¬ i < 63 by omega, show (62 : Nat) ≠ i by omega]
 
 @[step]
 theorem clamp_spec (x : Std.Array U8 32#usize) :
@@ -188,7 +209,7 @@ theorem clamp_spec (x : Std.Array U8 32#usize) :
     simp [Std.Array.set_val_eq, i6_post, i5_post, x2_post, hl]
   have h9 : i9.val = 2 ^ 62 + d.val % 2 ^ 62 := by
     rw [i9_post, h8]
-    exact set_bit254 d i3 i7 (by simpa using i3_post1) (by simpa using i7_post1)
+    exact set_bit254 d i3 i7 (by rw [i3_post, u64_size]; decide) (by rw [i7_post, u64_size]; decide)
   have hW : leNat x.val = a.val + 2 ^ 64 * (b.val + 2 ^ 64 * (c.val + 2 ^ 64 * d.val)) := by
     rw [← x1_post, wordsNat_four _ (by simp [hl])]; simp [hl]
   have hX : wordsNat x4.val = i2.val + 2 ^ 64 * (b.val + 2 ^ 64 * (c.val + 2 ^ 64 * i9.val)) := by
@@ -210,18 +231,14 @@ theorem setSlice!_at {α : Type _} (X R S : List α) (i : Nat) (hX : X.length = 
   simp [min_eq_left h]
 
 theorem splice_top_bit (y3 xb i i1 y31 : U64) (hy : y3.val < 2 ^ 63)
-    (hi : i.bv = y3.bv &&& 0x7fffffffffffffff#64) (hi1 : i1.bv = xb.bv <<< 63)
-    (hy31 : y31.bv = i.bv ||| i1.bv) : y31.val = y3.val + 2 ^ 63 * (xb.val % 2) := by
-  have hb : y31.bv = (y3.bv &&& 0x7fffffffffffffff#64) + ((xb.bv &&& 1#64) <<< 63) := by
-    rw [hy31, hi, hi1]; bv_decide
-  have h : y31.val = y31.bv.toNat := rfl
-  have hy3 : y3.bv.toNat = y3.val := rfl
-  have hxb : xb.bv.toNat = xb.val := rfl
-  rw [h, hb, BitVec.toNat_add, BitVec.toNat_and, BitVec.toNat_shiftLeft, BitVec.toNat_and, hy3, hxb,
-    show (0x7fffffffffffffff#64).toNat = 2 ^ 63 - 1 by decide, show (1#64).toNat = 2 ^ 1 - 1 by decide,
-    Nat.and_two_pow_sub_one_eq_mod, Nat.and_two_pow_sub_one_eq_mod, Nat.shiftLeft_eq]
-  have : xb.val % 2 < 2 := Nat.mod_lt _ (by norm_num)
-  omega
+    (hi : i.val = (y3 &&& 9223372036854775807#u64).val) (hi1 : i1.val = (xb.val <<< 63) % U64.size)
+    (hy31 : y31.val = (i ||| i1).val) : y31.val = y3.val + 2 ^ 63 * (xb.val % 2) := by
+  rw [hy31, UScalar.val_or, hi, hi1, UScalar.val_and,
+    show (9223372036854775807#u64).val = 2 ^ 63 - 1 by decide, Nat.and_two_pow_sub_one_eq_mod,
+    Nat.mod_eq_of_lt hy, Nat.shiftLeft_eq, u64_size,
+    show xb.val * 2 ^ 63 % 2 ^ 64 = 2 ^ 63 * (xb.val % 2) by
+      rw [show (2 : Nat) ^ 64 = 2 ^ 63 * 2 by norm_num, Nat.mul_comm, Nat.mul_mod_mul_left],
+    Nat.or_comm, ← Nat.two_pow_add_eq_or_of_lt hy, Nat.add_comm]
 
 /-- `compress` writes s2n-bignum's `ed25519_encode` of the point's coordinates,
 for a y-coordinate below 2²⁵⁵. -/
@@ -244,7 +261,7 @@ theorem point_compress_spec (p : Std.Array U64 8#usize) (hy : (pairNat p.val).2 
   have h1 : y1.val < 2 ^ 64 := y1.hBounds
   have h2 : y2.val < 2 ^ 64 := y2.hBounds
   have hw3 : y3.val < 2 ^ 63 := by omega
-  have hy31 := splice_top_bit y3 xb i i1 y31 hw3 i_post1 i1_post1 y31_post1
+  have hy31 := splice_top_bit y3 xb i i1 y31 hw3 i_post i1_post y31_post
   have hz : (Array.repeat 32#usize 0#u8).val = [] ++ List.replicate 32 0#u8 := by simp [Array.repeat]
   have ha : ∀ a : Std.Array U8 8#usize, a.val.length = 8 := fun a => a.property
   have hout : (index_mut_back3 s11).val = a1.val ++ a3.val ++ a5.val ++ a7.val := by
@@ -428,7 +445,7 @@ theorem slice_eq_spec (s t : Slice U8) :
   rw [hb, Slice.eq_iff]
 
 @[step]
-theorem scalarmuldouble_spec (h : Runs) (k : Std.Array U64 4#usize) (pt : Std.Array U64 8#usize)
+theorem scalarmuldouble_spec (_h : Runs) (k : Std.Array U64 4#usize) (pt : Std.Array U64 8#usize)
     (b : Std.Array U64 4#usize) :
     mid.ed25519.EdwardsPoint.scalarmuldouble k pt b ⦃ r =>
       ∀ P, edOnCurve P → edModDecodePair (pairNat pt.val) = P →
@@ -500,7 +517,7 @@ theorem mid_verify_spec (h : Runs) (hs : RunsSha512) (vk : mid.ed25519.Verifying
 
 open Classical in
 @[step]
-theorem decompress_from_spec (h : Runs) (c : Std.Array U8 32#usize) :
+theorem decompress_from_spec (_h : Runs) (c : Std.Array U8 32#usize) :
     mid.ed25519.EdwardsPoint.decompress_from c ⦃ r =>
       if edValidEncode (leNat c.val) then
         ∃ pt, r = .Ok pt ∧ pairNat pt.val = edModEncodePair (edDecode (leNat c.val))
@@ -659,19 +676,19 @@ theorem copy_from_ok (N : Usize) (bytes : Slice U8) (h : bytes.length ≤ N.val)
 /-! ## Signing, `mid::ed25519::SigningKey` -/
 
 @[step]
-theorem unreduced_base_mul_spec (h : Runs) (k : Std.Array U64 4#usize) :
+theorem unreduced_base_mul_spec (_h : Runs) (k : Std.Array U64 4#usize) :
     mid.ed25519.UnreducedScalar.base_mul k ⦃ p => pairNat p.val = edModEncodePair (edPow edB (wordsNat k.val)) ⦄ := by
   unfold mid.ed25519.UnreducedScalar.base_mul
   step*
 
 @[step]
-theorem base_mul_spec (h : Runs) (k : Std.Array U64 4#usize) :
+theorem base_mul_spec (_h : Runs) (k : Std.Array U64 4#usize) :
     mid.ed25519.Scalar.base_mul k ⦃ p => pairNat p.val = edModEncodePair (edPow edB (wordsNat k.val)) ⦄ := by
   unfold mid.ed25519.Scalar.base_mul
   step*
 
 @[step]
-theorem madd_spec (h : Runs) (x y c : Std.Array U64 4#usize) :
+theorem madd_spec (_h : Runs) (x y c : Std.Array U64 4#usize) :
     mid.ed25519.Scalar.madd_n25519 x y c ⦃ z =>
       wordsNat z.val = (wordsNat x.val * wordsNat y.val + wordsNat c.val) % n25519 ⦄ := by
   unfold mid.ed25519.Scalar.madd_n25519
