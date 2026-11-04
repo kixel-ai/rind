@@ -20,3 +20,4 @@ Decided with the maintainer on 2026-11-03, after the [benchmark report](/quest/m
 
 - [Verification audit](/quest/m3/verified/audit.md) - what is and isn't proven on every path, with a recommended route per gap
 - [SHA-512 padding is proven](/quest/m3/verified/sha512-padding.md) - rind's SHA-512 earns the ✓ its verified block function already has
+- [aarch64 P-256 ECDH is proven end to end](/quest/m3/verified/p256-ecdh.md) - agreement runs s2n-bignum's proven affine-to-affine multiply
