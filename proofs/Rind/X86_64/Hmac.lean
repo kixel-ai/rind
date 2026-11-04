@@ -95,4 +95,165 @@ theorem new_loop1_spec (S : Slice U8)
       exact hb
   · exact ⟨rfl, by simp, rfl⟩
 
+@[step]
+theorem hashBlock_deref_spec (hb : high.hash.HashBlock) (h : hb.len.val ≤ 128) :
+    high.hash.HashBlock.Insts.CoreOpsDerefDerefSliceU8.deref hb ⦃ s =>
+      s.val = hb.buf.val.take hb.len.val ⦄ := by
+  unfold high.hash.HashBlock.Insts.CoreOpsDerefDerefSliceU8.deref
+  step*
+  simp_all [List.slice]
+
+@[step]
+theorem hashBlock_deref_mut_spec (hb : high.hash.HashBlock) (h : hb.len.val ≤ 128) :
+    high.hash.HashBlock.Insts.CoreOpsDerefDerefMutSliceU8.deref_mut hb ⦃ s back =>
+      s.val = hb.buf.val.take hb.len.val ∧ ∀ s' : Slice U8, s'.length = hb.len.val →
+        (back s').len = hb.len ∧ (back s').buf.val.take hb.len.val = s'.val ⦄ := by
+  unfold high.hash.HashBlock.Insts.CoreOpsDerefDerefMutSliceU8.deref_mut
+  step*
+  refine ⟨by simp_all [List.slice], fun s' hs' => ?_⟩
+  have hbl : hb.buf.val.length = 128 := by simp
+  rw [s_post2, setSlice!_eq _ _ _ (by simp only [Slice.length] at hs'; omega)]
+  simp only [List.take_zero, List.nil_append, Nat.zero_add]
+  rw [List.take_left' (by simp only [Slice.length] at hs'; omega)]
+
+theorem bv_xorFrom (c : U8) (S : Slice U8) :
+    bv (xorFrom c S 0).val = (bv S.val).map (· ^^^ c.bv) := by
+  simp only [xorFrom, Slice.from_val, bv]
+  apply List.ext_getElem (by simp)
+  intro j h1 h2
+  simp only [List.getElem_mapIdx, List.getElem_map, Nat.zero_le, ↓reduceIte]
+  rfl
+
+theorem xor_pads (x : BitVec UScalarTy.U8.numBits) :
+    x ^^^ (54#u8).bv ^^^ (92#u8 ^^^ 54#u8).bv = x ^^^ 0x5c := by
+  rw [BitVec.xor_assoc]
+  congr 1
+
+section
+variable {Self C S : Type} {inst : high.hash.Hash Self C S} {H : List Byte → List Byte}
+  {B L max : Nat} {Abs : List U8 → S → Prop} {CAbs : List U8 → C → Prop}
+
+theorem HashSpec.hash_spec (hs : HashSpec inst H B L max Abs CAbs) (m : Slice U8)
+    (hm : m.length ≤ max) :
+    inst.hash m ⦃ d => d.algorithm.output_len.val = L ∧ digestBytes d = H (bv m.val) ⦄ := by
+  rw [hs.hash_default]
+  unfold high.hash.Hash.hash.default
+  apply WP.spec_bind hs.initial
+  intro s0 h0
+  have := hs.finish_with [] s0 m h0 (by simpa using hm)
+  simpa using this
+
+/-- HACL*'s `Spec.Agile.HMAC.wrap`: a key longer than a block hashed, then
+zero-padded to a block. -/
+def keyBlock (H : List Byte → List Byte) (B : Nat) (key : List Byte) : List Byte :=
+  let key := if key.length ≤ B then key else H key
+  key ++ List.replicate (B - key.length) 0
+
+/-- `k`'s keyed states have absorbed `key`'s block XOR HMAC's two pads. -/
+def HmacKeyed (Abs : List U8 → S → Prop) (H : List Byte → List Byte) (B : Nat)
+    (key : List Byte) {Self C : Type} (k : high.hmac.HmacKey Self C S) : Prop :=
+  ∃ ki ko : List U8, Abs ki k.inner ∧ Abs ko k.outer ∧
+    bv ki = (keyBlock H B key).map (· ^^^ 0x36) ∧ bv ko = (keyBlock H B key).map (· ^^^ 0x5c)
+
+theorem hmac_key_new_spec (hs : HashSpec inst H B L max Abs CAbs) (key : Slice U8)
+    (hk : key.length ≤ max) :
+    high.hmac.HmacKey.new inst key ⦃ k => HmacKeyed Abs H B (bv key.val) k ⦄ := by
+  obtain ⟨hLB, hL64, hB128, hBmax, hHL⟩ := hs.out
+  unfold high.hmac.HmacKey.new
+  apply WP.spec_bind hs.zeroed_block
+  rintro kb ⟨hkb1, hkb2⟩
+  step*
+  have hkl : key.len.val = key.length := by simp [Slice.len, Slice.length]
+  have hkl' : key.len.val = key.val.length := hkl
+  have hsl : s.len.val = B := by
+    simp only [Slice.len]; simp [s_post, hkb1, hkb2]; omega
+  apply WP.spec_bind (Pₘ := fun (kb1 : high.hash.HashBlock) => kb1.len.val = B ∧
+    bv (kb1.buf.val.take B) = keyBlock H B (bv key.val))
+  · split
+    · rename_i hgt
+      have hgt' : B < key.length := by simp only [GT.gt, UScalar.lt_equiv] at hgt; omega
+      apply WP.spec_bind (hs.hash_spec key hk)
+      rintro hkey ⟨hk1, hk2⟩
+      step*
+      step with digest_as_ref_spec hkey (by omega) as ⟨s2, hs2l, hs2b⟩
+      step*
+      have hs1 : s1.val = List.replicate B 0#u8 := by
+        rw [s1_post, hkb1, hkb2, List.take_replicate, Nat.min_eq_left hB128]
+      have hs2l' : s2.val.length = L := by rw [← hk1]; exact hs2l
+      have hX : (index_mut_back s4).val = s2.val ++ List.replicate (B - L) 0#u8 := by
+        rw [s3_post2, s4_post, hs1, setSlice!_eq _ _ _ (by simp; omega)]
+        simp only [List.take_zero, List.nil_append, Nat.zero_add, List.drop_replicate, hs2l']
+      obtain ⟨h1, h2⟩ := s1_post1 (index_mut_back s4)
+        (by show (index_mut_back s4).val.length = _; rw [hX, hkb1]; simp; omega)
+      rw [hkb1] at h2
+      refine ⟨by rw [h1, hkb1], ?_⟩
+      rw [h2, hX]
+      simp only [keyBlock, bv, List.map_append, List.map_replicate, List.length_map]
+      rw [if_neg (by simp only [GT.gt, UScalar.lt_equiv] at hgt; omega)]
+      have : List.map (fun x => x.bv) s2.val = H (List.map (fun x => x.bv) key.val) := by
+        simp only [bv] at hk2 hs2b; rw [hs2b, hk2]
+      rw [this, hHL]
+      try rfl
+    · rename_i hle
+      have hle' : key.val.length ≤ B := by simp only [GT.gt, UScalar.lt_equiv] at hle; omega
+      step*
+      have hs1 : s1.val = List.replicate B 0#u8 := by
+        rw [s1_post, hkb1, hkb2, List.take_replicate, Nat.min_eq_left hB128]
+      have hX : (index_mut_back s3).val = key.val ++ List.replicate (B - key.length) 0#u8 := by
+        rw [s2_post2, s3_post, hs1, setSlice!_eq _ _ _ (by simp; omega)]
+        simp only [List.take_zero, List.nil_append, Nat.zero_add, List.drop_replicate]
+      obtain ⟨h1, h2⟩ := s1_post1 (index_mut_back s3)
+        (by show (index_mut_back s3).val.length = _; rw [hX, hkb1]; simp; omega)
+      rw [hkb1] at h2
+      refine ⟨by rw [h1, hkb1], ?_⟩
+      rw [h2, hX]
+      simp only [keyBlock, bv, List.map_append, List.map_replicate, List.length_map]
+      rw [if_pos hle', List.length_map]
+      rfl
+  · rintro kb1 ⟨hkb1', hkb1''⟩
+    simp only [core.slice.Slice.iter_mut, bind_tc_ok, bind_ok]
+    step*
+    have hs1l : s1.val.length = B := by
+      rw [s1_post, hkb1', List.length_take]; simp; omega
+    have hxl : ∀ c, (xorFrom c s1 0).length = kb1.len.val := by
+      intro c; simp only [xorFrom, Slice.length, Slice.from_val, List.length_mapIdx]; omega
+    step with new_loop0_spec s1 (fun im => im) as ⟨bk, hbk⟩
+    apply WP.spec_bind hs.initial
+    intro inner hinner
+    obtain ⟨h1, h2⟩ := s1_post1 bk.slice (by rw [hbk]; exact hxl _)
+    step*
+    have hs3 : s3.val = (xorFrom 54#u8 s1 0).val := by rw [s3_post, h1, h2, hbk]
+    have hs3l : s3.length = B := by
+      simp only [Slice.length]; rw [hs3]; have := hxl 54#u8; simp only [Slice.length] at this; omega
+    apply WP.spec_bind (hs.update_blocks [] inner s3 hinner (by rw [hs3l, Nat.mod_self])
+      (by simp only [List.length_nil]; omega))
+    intro inner1 hinner1
+    step*
+    have hs4 : s4.val = (xorFrom 54#u8 s1 0).val := by rw [s4_post, h1, h2, hbk]
+    have hs4l : s4.length = kb1.len.val := by
+      simp only [Slice.length]; rw [hs4]; have := hxl 54#u8; simp only [Slice.length] at this; omega
+    step with new_loop1_spec s4 (fun im => im) as ⟨im, b1, hb1⟩
+    obtain ⟨h1', h2'⟩ := s4_post1 (b1 im).slice (by
+      rw [hb1]; simp only [xorFrom, Slice.length, Slice.from_val, List.length_mapIdx]
+      rw [h1]; simp only [Slice.length] at hs4l; exact hs4l)
+    step*
+    have hs6 : s6.val = (xorFrom (92#u8 ^^^ 54#u8) s4 0).val := by
+      rw [s6_post, h1', h2', hb1]
+    have hs6l : s6.length = B := by
+      simp only [Slice.length]; rw [hs6]; simp only [xorFrom, Slice.from_val, List.length_mapIdx]
+      simp only [Slice.length] at hs4l; omega
+    apply WP.spec_bind (hs.update_blocks [] inner s6 hinner (by rw [hs6l, Nat.mod_self])
+      (by simp only [List.length_nil]; omega))
+    intro outer houter
+    simp only [WP.spec_ok]
+    have hK : bv s1.val = keyBlock H B (bv key.val) := by rw [s1_post, hkb1']; exact hkb1''
+    refine ⟨s3.val, s6.val, by simpa using hinner1, by simpa using houter, ?_, ?_⟩
+    · rw [hs3, bv_xorFrom, hK]; rfl
+    · rw [hs6, bv_xorFrom, hs4, bv_xorFrom, hK, List.map_map]
+      congr 1
+      funext x
+      exact xor_pads x
+
+end
+
 end rind.x86_64
