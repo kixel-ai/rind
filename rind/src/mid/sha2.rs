@@ -6,7 +6,7 @@
 //! This is SHA256, SHA384, SHA512, and SHA512/256.
 //! These are all described in [FIPS180](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
 
-use crate::low::{Blockwise, Entry, compress_padded};
+use crate::low::{Blockwise, Entry, UpdateBlocks, pad, split_tail};
 
 /// SHA256's chaining value after a whole number of blocks.
 ///
@@ -28,20 +28,6 @@ impl Sha256State {
                 0x5be0cd19,
             ],
             nblocks: 0,
-        }
-    }
-
-    /// Add `blocks`, a whole number of blocks, to the hash computation.
-    pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
-        debug_assert!(blocks.len().is_multiple_of(Sha256Context::BLOCK_SZ));
-        if !blocks.is_empty() {
-            // `digest::Context::update` and `hmac::Context::update` leave
-            // entering to here.
-            let _entry = Entry::new_secret();
-            Self::compress(&mut self.h, blocks);
-            self.nblocks = self
-                .nblocks
-                .saturating_add((blocks.len() / Sha256Context::BLOCK_SZ) as u64);
         }
     }
 
@@ -76,6 +62,21 @@ impl Sha256State {
     }
 }
 
+impl UpdateBlocks for Sha256State {
+    fn update_blocks(&mut self, blocks: &[u8]) {
+        debug_assert!(blocks.len().is_multiple_of(Sha256Context::BLOCK_SZ));
+        if !blocks.is_empty() {
+            // `digest::Context::update` and `hmac::Context::update` leave
+            // entering to here.
+            let _entry = Entry::new_secret();
+            Self::compress(&mut self.h, blocks);
+            self.nblocks = self
+                .nblocks
+                .saturating_add((blocks.len() / Sha256Context::BLOCK_SZ) as u64);
+        }
+    }
+}
+
 /// A context for incremental computation of SHA256.
 #[derive(Clone)]
 pub(crate) struct Sha256Context {
@@ -99,8 +100,7 @@ impl Sha256Context {
 
     /// Add `bytes` to the ongoing hash computation.
     pub(crate) fn update(&mut self, bytes: &[u8]) {
-        self.blockwise
-            .update(bytes, |blocks| self.state.update_blocks(blocks));
+        self.blockwise.update(bytes, &mut self.state);
     }
 
     /// Complete the SHA256 computation, returning the hash output.
@@ -240,20 +240,6 @@ impl Sha512State {
         Self { h, nblocks: 0 }
     }
 
-    /// Add `blocks`, a whole number of blocks, to the hash computation.
-    pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
-        debug_assert!(blocks.len().is_multiple_of(Sha512Context::BLOCK_SZ));
-        if !blocks.is_empty() {
-            // `digest::Context::update` and `hmac::Context::update` leave
-            // entering to here.
-            let _entry = Entry::new_secret();
-            Self::compress(&mut self.h, blocks);
-            self.nblocks = self
-                .nblocks
-                .saturating_add((blocks.len() / Sha512Context::BLOCK_SZ) as u64);
-        }
-    }
-
     fn compress(h: &mut [u64; 8], blocks: &[u8]) {
         Entry::assert_held();
         crate::low::sha512_compress_blocks(h, blocks);
@@ -267,17 +253,37 @@ impl Sha512State {
         // Copies `h` alone: copying the whole state can leave it straddling
         // two stores, which the SHA extensions' 16-byte load of it then
         // waits on instead of forwarding.
+        // `compress_padded`, without the closure Aeneas cannot translate.
         let mut h = self.h;
-        compress_padded::<BLOCK_SZ, _>(message, bits.to_be_bytes(), |blocks| {
-            Self::compress(&mut h, blocks)
-        });
+        let (blocks, rest) = split_tail::<BLOCK_SZ, 16>(message);
+        if !blocks.is_empty() {
+            Self::compress(&mut h, blocks);
+        }
+        let mut last = [[0u8; BLOCK_SZ]; 2];
+        Self::compress(&mut h, pad(rest, bits.to_be_bytes(), &mut last));
 
+        // Indexes rather than zipping `as_chunks_mut`, which Aeneas cannot
+        // translate, so `proofs/` can prove SHA-512.
         let mut r = [0u8; Sha512Context::OUTPUT_SZ];
-        let (chunks, _) = r.as_chunks_mut::<8>();
-        for (out, word) in chunks.iter_mut().zip(h.iter()) {
-            out.copy_from_slice(&word.to_be_bytes());
+        for (i, word) in h.iter().enumerate() {
+            r[i * 8..(i + 1) * 8].copy_from_slice(&word.to_be_bytes());
         }
         r
+    }
+}
+
+impl UpdateBlocks for Sha512State {
+    fn update_blocks(&mut self, blocks: &[u8]) {
+        debug_assert!(blocks.len().is_multiple_of(Sha512Context::BLOCK_SZ));
+        if !blocks.is_empty() {
+            // `digest::Context::update` and `hmac::Context::update` leave
+            // entering to here.
+            let _entry = Entry::new_secret();
+            Self::compress(&mut self.h, blocks);
+            self.nblocks = self
+                .nblocks
+                .saturating_add((blocks.len() / Sha512Context::BLOCK_SZ) as u64);
+        }
     }
 }
 
@@ -304,8 +310,7 @@ impl Sha512Context {
 
     /// Add `bytes` to the ongoing hash computation.
     pub(crate) fn update(&mut self, bytes: &[u8]) {
-        self.blockwise
-            .update(bytes, |blocks| self.state.update_blocks(blocks));
+        self.blockwise.update(bytes, &mut self.state);
     }
 
     /// Complete the SHA512 computation, returning the hash output.

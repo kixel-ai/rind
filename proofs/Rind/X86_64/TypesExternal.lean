@@ -1,11 +1,13 @@
 module
 public import Aeneas
 public import Rind.Core
+public import Rind.X86_64.DigestAlgorithm
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
-/-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch` models the last two. -/
+/-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch` and `Rind.X86_64.DigestDispatch`
+model the last three, and `Rind.X86_64.DigestAlgorithm` `Algorithm`. -/
 
 namespace rind.x86_64
 
@@ -15,6 +17,9 @@ opaque low.entry.Entry : Type
 /-- The token proving the CPU has BMI2 and ADX. -/
 opaque low.x86_64.cpu.HaveBmi2Adx : Type
 
+/-- The token proving the CPU has AVX and SSSE3. -/
+opaque low.x86_64.cpu.HaveAvx : Type
+
 /-- A `&'static T` that a wiped value may hold, as `Rind.X86_64.Dispatch` models it:
 the `T`, since only the drop that wipes it leaves it `None`. -/
 @[reducible] def low.generic.zeroise.ZeroableRef (T : Type) : Type := T
@@ -23,5 +28,10 @@ the `T`, since only the drop that wipes it leaves it `None`. -/
 nothing, since `Keyed::generate` builds the only one, of `K`'s own `Agree`
 functions, which the model calls directly. -/
 @[reducible] def high.agreement.Ops (_K : Type) : Type := Unit
+
+/-- A hash's context functions, as `Rind.X86_64.DigestDispatch` models them:
+nothing, since `Hashing::start` builds the only one, of `C`'s own
+`HashContext` functions, which the model calls directly. -/
+@[reducible] def high.digest.Ops (_C : Type) : Type := Unit
 
 end rind.x86_64

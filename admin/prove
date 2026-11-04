@@ -39,15 +39,19 @@ if [ "$(grep -ow Ops rind/src/high/agreement.rs | wc -l)" != "$(grep -ow Ops "$o
 fi
 
 # The X25519 path from `high::agreement`'s `Agree` impls down to s2n-bignum's
-# routines. `low` is opaque: its routines are inline assembly, whose proven
+# routines, and the SHA-512 family's from `high::digest`'s contexts and
+# `high::hash`'s impls down to aws-lc's routines. `low` is opaque: its routines are inline assembly, whose proven
 # contracts `proofs/Rind/<Arch>/S2nBignum.lean` states. The x86_64 BMI2/ADX
 # dispatch and the constant-time markers are Rust, so they are translated. The
 # other curves' functions are opaque; their types are kept, since the
 # agreement enums hold them.
 #
 # Aeneas cannot translate function pointers, through which `PrivateKey`
-# reaches each curve's `Agree` impl, so the translation starts below that
-# dispatch, and `proofs/Rind/X86_64/Dispatch.lean` models it by hand.
+# reaches each curve's `Agree` impl and `digest::Context` each hash's, so the
+# translation starts below that dispatch, and `proofs/Rind/X86_64/Dispatch.lean`
+# and `DigestDispatch.lean` model it by hand. `digest::Algorithm` holds them,
+# so it is opaque too, and `DigestAlgorithm.lean` models it. SHA-1's and
+# SHA-256's code is opaque: no theorem is about it.
 extract() {
     local arch=$1 dir=$2
     shift 2
@@ -60,13 +64,34 @@ extract() {
         --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}' \
         --start-from crate::high::agreement::PrivateKey \
         --start-from crate::high::agreement::AlgorithmId \
+        --start-from '{impl crate::high::digest::Variant for _}' \
+        --start-from '{impl crate::high::hash::Hash for _}' \
+        --start-from '{impl core::convert::AsRef for crate::high::digest::Digest}' \
+        --start-from crate::high::digest::Context \
+        --start-from crate::mid::sha2::Sha512_256Context::truncate \
         --opaque crate::high::agreement::Ops \
+        --opaque crate::high::digest::Ops \
+        --opaque crate::high::digest::Algorithm \
+        --opaque 'crate::high::digest::_::output_len' \
+        --opaque crate::high::digest::SHA1 \
+        --opaque crate::high::digest::SHA256 \
+        --opaque crate::high::digest::SHA384 \
+        --opaque crate::high::digest::SHA512 \
+        --opaque crate::high::digest::SHA512_256 \
+        --opaque '{impl crate::high::hash::Hash for crate::high::hash::LegacySha1}' \
+        --opaque '{impl crate::high::hash::Hash for crate::high::hash::Sha256}' \
+        --opaque '{impl crate::high::hash::HashContext for crate::high::hash::Sha1Context}' \
+        --opaque '{impl crate::high::hash::HashContext for crate::high::hash::Sha256Context}' \
+        --opaque '{impl crate::high::hash::HashState for crate::high::hash::Sha1State}' \
+        --opaque '{impl crate::high::hash::HashState for crate::high::hash::Sha256State}' \
         --opaque crate::low \
         --opaque 'crate::mid::p256::_::_' \
         --opaque 'crate::mid::p384::_::_' \
         --opaque 'crate::mid::p521::_::_' \
         --include 'crate::mid::p521::_::BYTES' \
         --include crate::low::ct \
+        --include crate::low::generic::blockwise \
+        --include "crate::low::$arch::sha512::sha512_compress_blocks" \
         "$@" \
         --dest-file "$PWD/../$out/$arch.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")

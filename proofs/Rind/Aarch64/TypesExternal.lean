@@ -1,16 +1,21 @@
 module
 public import Aeneas
 public import Rind.Core
+public import Rind.Aarch64.DigestAlgorithm
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
-/-! The rind types the aarch64 translation leaves opaque. `Rind.Aarch64.Dispatch` models the last two. -/
+/-! The rind types the aarch64 translation leaves opaque. `Rind.Aarch64.Dispatch` and `Rind.Aarch64.DigestDispatch`
+model the last three, and `Rind.Aarch64.DigestAlgorithm` `Algorithm`. -/
 
 namespace rind.aarch64
 
 /-- The entry guard every operation holds, which changes no value. -/
 opaque low.entry.Entry : Type
+
+/-- The token proving the CPU has the SHA-512 instructions. -/
+opaque low.aarch64.cpu.HaveSha3 : Type
 
 /-- A `&'static T` that a wiped value may hold, as `Rind.Aarch64.Dispatch` models it:
 the `T`, since only the drop that wipes it leaves it `None`. -/
@@ -20,5 +25,10 @@ the `T`, since only the drop that wipes it leaves it `None`. -/
 nothing, since `Keyed::generate` builds the only one, of `K`'s own `Agree`
 functions, which the model calls directly. -/
 @[reducible] def high.agreement.Ops (_K : Type) : Type := Unit
+
+/-- A hash's context functions, as `Rind.Aarch64.DigestDispatch` models them:
+nothing, since `Hashing::start` builds the only one, of `C`'s own
+`HashContext` functions, which the model calls directly. -/
+@[reducible] def high.digest.Ops (_C : Type) : Type := Unit
 
 end rind.aarch64
