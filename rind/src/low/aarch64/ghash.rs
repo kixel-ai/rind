@@ -9,6 +9,7 @@
 use core::arch::aarch64::*;
 use core::mem;
 
+use super::aes::AesKey;
 use super::cpu::{HaveCryptoExt, HaveSha3};
 use super::ghash_neon_armv8::NeonTable;
 use crate::low;
@@ -20,7 +21,11 @@ pub(crate) enum GhashTable {
 }
 
 impl GhashTable {
-    pub(crate) fn new(h: u128) -> Self {
+    /// The table for `key`'s GHASH key.
+    pub(crate) fn new(key: &AesKey) -> Self {
+        let mut h = [0u8; 16];
+        key.encrypt_block(&mut h);
+        let h = u128::from_be_bytes(h);
         match HaveCryptoExt::check() {
             Some(token) => Self::Pmull(PmullTable::new(h, token)),
             None => Self::Neon(NeonTable::new(&h.to_be_bytes())),

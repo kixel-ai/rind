@@ -4,7 +4,7 @@
 use super::aes::{check_gcm_lengths, expand_key};
 use crate::Error;
 use crate::low::ghash::GhashTable;
-use crate::low::{self, AesKey, Entry, aes_gcm, ct_equal};
+use crate::low::{self, AesKey, Entry, aes_gcm};
 
 /// An AES-GCM key.
 ///
@@ -27,9 +27,7 @@ impl AesGcm {
     pub(crate) fn new(key: &[u8]) -> Self {
         let _entry = Entry::new_secret();
         let key = expand_key(key);
-        let mut h = [0u8; 16];
-        key.encrypt_block(&mut h);
-        let gh = GhashTable::new(u128::from_be_bytes(h));
+        let gh = GhashTable::new(&key);
 
         Self { key, gh }
     }
@@ -85,9 +83,9 @@ impl AesGcm {
     ) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
-        let actual_tag = aes_gcm::open(&self.key, &self.gh, nonce, aad, cipher_inout);
+        let valid = aes_gcm::open(&self.key, &self.gh, nonce, aad, cipher_inout, tag);
 
-        if low::ct::into_public(ct_equal(&actual_tag, tag)) {
+        if low::ct::into_public(valid) {
             low::ct::public_slice(cipher_inout);
             Ok(())
         } else {

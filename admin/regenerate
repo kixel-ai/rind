@@ -35,16 +35,18 @@ fetch() {
 fetch aws-lc https://github.com/aws/aws-lc admin/import-aws-lc
 fetch boringssl https://github.com/google/boringssl admin/import-boringssl
 fetch openssl https://github.com/openssl/openssl admin/import-openssl
+fetch hacl-star https://github.com/hacl-star/hacl-star admin/import-hacl
 # s2n-bignum's pin is its submodule commit.
 git submodule update --init --depth 1 thirdparty/s2n-bignum
 
 # Deleted first, so a file nothing regenerates shows as deleted.
-find rind/src/low/*/aws_lc rind/src/low/*/boringssl rind/src/low/*/openssl -type f -delete
+find rind/src/low/*/aws_lc rind/src/low/*/boringssl rind/src/low/*/openssl rind/src/low/*/hacl -type f -delete
 grep -rlxZ '// generated source. do not edit.' rind/src | xargs -0 rm --
 
 admin/import-aws-lc "$upstream/aws-lc"
 admin/import-boringssl "$upstream/boringssl"
 admin/import-openssl "$upstream/openssl"
+admin/import-hacl "$upstream/hacl-star"
 (cd admin/parse-asm && ./all.sh >/dev/null)
 admin/p256-precomp
 admin/p384-precomp

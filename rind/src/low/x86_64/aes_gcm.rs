@@ -8,9 +8,10 @@ use core::mem;
 
 use super::aes::{AesKey, HwKey};
 use super::aes_ctr;
-use super::aes_gcm_vaes::add_to_counter;
+use super::aes_gcm_avx::AvxKernel;
 use super::cpu::HaveAvx512ForAesGcm;
 use super::ghash::{self, ClmulTable, Ghash, GhashTable, GhashTableAvx512};
+use crate::low::ct_equal;
 
 /// Encrypts `cipher_inout` in place under `nonce`, and returns its tag.
 pub(crate) fn seal(
@@ -20,19 +21,43 @@ pub(crate) fn seal(
     aad: &[u8],
     cipher_inout: &mut [u8],
 ) -> [u8; 16] {
+    if let Some((hw_key, kernel)) = vale(key, table, aad, cipher_inout) {
+        return kernel.seal(hw_key, nonce, aad, cipher_inout);
+    }
     tagged::<true>(key, table, nonce, aad, cipher_inout)
 }
 
-/// Decrypts `cipher_inout` in place under `nonce`, and returns the tag it
-/// should carry.
+/// Decrypts `cipher_inout` in place under `nonce`, and returns whether `tag`
+/// is its tag, a secret.
 pub(crate) fn open(
     key: &AesKey,
     table: &GhashTable,
     nonce: &[u8; 12],
     aad: &[u8],
     cipher_inout: &mut [u8],
-) -> [u8; 16] {
-    tagged::<false>(key, table, nonce, aad, cipher_inout)
+    tag: &[u8; 16],
+) -> bool {
+    if let Some((hw_key, kernel)) = vale(key, table, aad, cipher_inout) {
+        return kernel.open(hw_key, nonce, aad, cipher_inout, tag);
+    }
+    ct_equal(&tagged::<false>(key, table, nonce, aad, cipher_inout), tag)
+}
+
+/// Vale's AES-GCM, where the CPU runs it and its proof covers the lengths.
+fn vale<'a>(
+    key: &'a AesKey,
+    table: &'a GhashTable,
+    aad: &[u8],
+    cipher_inout: &[u8],
+) -> Option<(&'a HwKey, &'a AvxKernel)> {
+    match (key, table) {
+        (AesKey::Hw(hw_key), GhashTable::Avx(_, kernel))
+            if u32::try_from(aad.len()).is_ok() && u32::try_from(cipher_inout.len()).is_ok() =>
+        {
+            Some((hw_key, kernel))
+        }
+        _ => None,
+    }
 }
 
 fn tagged<const ENC: bool>(
@@ -95,15 +120,6 @@ fn cipher<const ENC: bool>(
         GhashTable::VaesAvx2(_, vaes) if len >= VAES_AVX2_MINIMUM_CIPHER_LEN => {
             ghash.add(aad);
             return vaes.cipher::<ENC>(hw_key, initial_counter, ghash, cipher_inout);
-        }
-        GhashTable::Avx(table, kernel) if len >= avx_minimum_cipher_len(ENC) => {
-            ghash.add(aad);
-            let done = kernel.cipher::<ENC>(hw_key, initial_counter, ghash, cipher_inout);
-            // The kernel took `done / 16` counter blocks, and the rest follow.
-            let y = add_to_counter(initial_counter, (done / 16) as u32);
-            // SAFETY: only a `HaveAesHardware` token builds `hw_key` and
-            // `table`, proving AES-NI, PCLMULQDQ, and SSSE3.
-            return unsafe { by8::<ENC>(hw_key, table, ghash, &y, &[], &mut cipher_inout[done..]) };
         }
         GhashTable::Clmul(table)
         | GhashTable::VaesAvx2(table, _)
@@ -474,12 +490,6 @@ const AVX512_MINIMUM_CIPHER_LEN: usize = 16 * 16;
 /// setup costs more on short ones.
 const AVX512_KERNEL_MINIMUM_CIPHER_LEN: usize = 2048;
 
-/// The fewest message bytes aws-lc's AVX routine takes: it keeps two
-/// six-block batches of keystream ahead when encrypting.
-const fn avx_minimum_cipher_len(enc: bool) -> usize {
-    if enc { 18 * 16 } else { 6 * 16 }
-}
-
 /// How many message bytes BoringSSL's 256-bit kernel needs to beat the AVX
 /// path, whose single blocks are quicker for short messages.
 const VAES_AVX2_MINIMUM_CIPHER_LEN: usize = 16 * 16;
@@ -588,8 +598,8 @@ const BYTESWAP_512_EPI64: __m512i = unsafe {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::ct;
     use crate::low::x86_64::adx_mux::tests::Rng;
-    use crate::low::x86_64::aes_gcm_avx::AvxKernel;
     use crate::low::x86_64::aes_nohw::NohwKey;
     use crate::low::x86_64::cpu::{HaveAesHardware, HaveAvxMovbeForAesGcm, HaveSsse3};
     use crate::low::x86_64::ct_sde;
@@ -598,11 +608,12 @@ mod tests {
     use crate::low::x86_64::vpaes_x86_64::VpaesKey;
 
     // Every other test sees only the path the CPU picks, so the slower ones
-    // are checked against it here: the by-8 PCLMULQDQ kernel, which a CPU
-    // with VAES runs only for short messages, aws-lc's AVX routine, vpaes
-    // with SSSE3 GHASH, and SSE2 AES with integer GHASH. Each key size, and
-    // AAD and message lengths around the block, six-, eight-, and
-    // sixteen-block boundaries and the AVX routine's minimums, both ways, and
+    // are checked against it here, under a key `admin/ctgrind` keeps secret:
+    // the by-8 PCLMULQDQ kernel, which a CPU with VAES runs only for short
+    // messages, Vale's AES-GCM, vpaes with SSSE3 GHASH, and SSE2 AES with
+    // integer GHASH. Each key size, and AAD and message lengths around the
+    // block, six-, eight-, and sixteen-block boundaries and the minimums of
+    // Vale's six-block loop, both ways, with a tag wrong in either half, and
     // one long enough to carry out of the counter's low byte.
     #[test]
     fn paths_match() {
@@ -613,10 +624,11 @@ mod tests {
         };
         for key_len in [16, 32] {
             let key = bytes(key_len, 1);
+            ct::secret_slice(&key);
             let fast = AesKey::new(&key);
+            let fast_table = GhashTable::new(&fast);
             let mut h = [0u8; 16];
             fast.encrypt_block(&mut h);
-            let fast_table = GhashTable::new(u128::from_be_bytes(h));
             let mut slow = vec![(
                 AesKey::Nohw(NohwKey::new(&key)),
                 GhashTable::Nohw(NohwTable::new(&h)),
@@ -631,9 +643,13 @@ mod tests {
                 let clmul = ClmulTable::new(u128::from_be_bytes(h), hw);
                 slow.push((AesKey::new(&key), GhashTable::Clmul(clmul)));
                 if let Some(token) = HaveAvxMovbeForAesGcm::check() {
+                    let key = AesKey::new(&key);
+                    let AesKey::Hw(hw_key) = &key else {
+                        unreachable!()
+                    };
+                    let kernel = AvxKernel::new(hw_key, token);
                     let clmul = ClmulTable::new(u128::from_be_bytes(h), hw);
-                    let kernel = AvxKernel::new(&clmul, token);
-                    slow.push((AesKey::new(&key), GhashTable::Avx(clmul, kernel)));
+                    slow.push((key, GhashTable::Avx(clmul, kernel)));
                 }
             }
 
@@ -647,17 +663,29 @@ mod tests {
                     let plain = bytes(msg_len, 3);
 
                     let mut want = plain.clone();
-                    let want_tag = seal(&fast, &fast_table, &nonce, &aad, &mut want);
+                    let want_tag =
+                        ct::into_public(seal(&fast, &fast_table, &nonce, &aad, &mut want));
+                    ct::public_slice(&want);
                     for (key, table) in &slow {
                         let mut got = plain.clone();
-                        let tag = seal(key, table, &nonce, &aad, &mut got);
+                        let tag = ct::into_public(seal(key, table, &nonce, &aad, &mut got));
+                        ct::public_slice(&got);
                         let what = format!("{key_len} {aad_len} {msg_len}");
                         assert_eq!(got, want, "{what}");
                         assert_eq!(tag, want_tag, "{what}");
 
-                        let tag = open(key, table, &nonce, &aad, &mut got);
+                        let valid = open(key, table, &nonce, &aad, &mut got, &want_tag);
+                        ct::public_slice(&got);
+                        assert!(ct::into_public(valid), "{what}");
                         assert_eq!(got, plain, "{what}");
-                        assert_eq!(tag, want_tag, "{what}");
+
+                        for byte in [0, 15] {
+                            let mut wrong = want_tag;
+                            wrong[byte] ^= 1;
+                            let mut got = want.clone();
+                            let valid = open(key, table, &nonce, &aad, &mut got, &wrong);
+                            assert!(!ct::into_public(valid), "{what}, byte {byte}");
+                        }
                     }
                 }
             }
@@ -713,9 +741,8 @@ mod tests {
         let key = bytes(rng, key_len);
         ct_sde::traced(|| {
             let key = AesKey::new(&key);
-            let mut h = [0u8; 16];
-            key.encrypt_block(&mut h);
-            (key, GhashTable::new(u128::from_be_bytes(h)))
+            let table = GhashTable::new(&key);
+            (key, table)
         })
     }
 
@@ -725,7 +752,7 @@ mod tests {
         let nonce = bytes(rng, 12).try_into().unwrap();
         let aad = bytes(rng, 300);
         let mut msg = bytes(rng, len);
-        ct_sde::traced(|| seal(key, table, &nonce, &aad, &mut msg));
-        ct_sde::traced(|| open(key, table, &nonce, &aad, &mut msg));
+        let tag = ct_sde::traced(|| seal(key, table, &nonce, &aad, &mut msg));
+        ct_sde::traced(|| open(key, table, &nonce, &aad, &mut msg, &tag));
     }
 }
