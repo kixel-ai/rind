@@ -536,47 +536,23 @@ impl JacobianPoint {
             if *p_digit != 0 {
                 let sign = u8::from(*p_digit < 0);
                 let term = Self::public_lookup_w5(precomp, p_digit.unsigned_abs(), sign);
-                result = Self::public_add_fast(&result, &term);
+                result = Self::public_add(&result, &term);
             }
             if *g_digit != 0 {
                 let mut term = AffinePoint::public_lookup_comb(g_multiples, g_digit.unsigned_abs());
                 if *g_digit < 0 {
                     term.negate_y();
                 }
-                result = match result.public_is_infinity() {
-                    true => Self::from_affine(&term),
-                    false => match result.add_affine(&term) {
-                        sum if sum.public_is_infinity() => {
-                            Self::public_add(&result, &Self::from_affine(&term))
-                        }
-                        sum => sum,
-                    },
-                };
+                result = result.public_add_affine(&term);
             }
         }
         result
     }
 
-    /// `a + b`, for any points, by [`Self::public_add`] only when they turn
-    /// out to be equal or opposite.
-    ///
-    /// For such points `p521_jadd`, which requires neither, computes a zero
-    /// z, as its z is the product of both z's and the difference of the x's
-    /// scaled to it.
-    fn public_add_fast(a: &Self, b: &Self) -> Self {
-        if a.public_is_infinity() {
-            return *b;
-        }
-        if b.public_is_infinity() {
-            return *a;
-        }
-        match a.add(b) {
-            sum if sum.public_is_infinity() => Self::public_add(a, b),
-            sum => sum,
-        }
-    }
-
     /// `a + b`, for any points, including at infinity, equal, or opposite.
+    ///
+    /// `p521_jadd` is proven only for unequal points, so points with the
+    /// same x never reach it.
     fn public_add(a: &Self, b: &Self) -> Self {
         if a.public_is_infinity() {
             return *b;
@@ -595,6 +571,24 @@ impl JacobianPoint {
         let by = b.y().mul(&az2.mul(&a.z()));
         match ay.public_eq(&by) {
             true => a.double(),
+            false => Self::infinity(),
+        }
+    }
+
+    /// `self + p`, for any points, as [`Self::public_add`] does for
+    /// `p521_jmixadd`.
+    fn public_add_affine(&self, p: &AffinePoint) -> Self {
+        if self.public_is_infinity() {
+            return Self::from_affine(p);
+        }
+
+        // `p` scaled to this point's z.
+        let z2 = self.z().sqr();
+        if !p.x().mul(&z2).public_eq(&self.x()) {
+            return self.add_affine(p);
+        }
+        match p.y().mul(&z2.mul(&self.z())).public_eq(&self.y()) {
+            true => self.double(),
             false => Self::infinity(),
         }
     }
@@ -1128,8 +1122,9 @@ mod tests {
 
     #[test]
     fn twin_multiply_exceptional() {
-        // With P = G, the accumulator meets the point it adds: equal, which
-        // must double, or opposite, which must give infinity.
+        // The accumulator meets the point it adds: equal, which must double,
+        // or opposite, which must give infinity. With P = G it meets G's
+        // multiples, and with P = 2G, P's.
         let precomp = CURVE_GENERATOR.public_precomp_w5();
         for (g, p) in [
             (Scalar::small_u64(1), Scalar::small_u64(1)),
@@ -1140,6 +1135,23 @@ mod tests {
             (n_minus(1), n_minus(1)),
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
+            assert_eq!(
+                JacobianPoint::public_twin_multiply(&g, &p, &precomp)
+                    .as_affine()
+                    .xy,
+                expected
+            );
+        }
+
+        let p2 = JacobianPoint::from_affine(&CURVE_GENERATOR)
+            .double()
+            .as_affine();
+        let precomp = p2.public_precomp_w5();
+        for (g, p) in [
+            (Scalar::small_u64(2), Scalar::small_u64(1)),
+            (Scalar::small_u64(6), Scalar::small_u64(3)),
+        ] {
+            let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p).add(&p)).xy;
             assert_eq!(
                 JacobianPoint::public_twin_multiply(&g, &p, &precomp)
                     .as_affine()
