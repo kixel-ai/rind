@@ -7,8 +7,7 @@
 
 use core::ops::Range;
 
-use crate::low::cpu::verify_cpu_features;
-use crate::low::{Blockwise, sha3_keccak_f1600, sha3_keccak_nof4_f1600, sha3_keccak4_f1600};
+use crate::low::{Blockwise, Entry, sha3_keccak_f1600, sha3_keccak_nof4_f1600, sha3_keccak4_f1600};
 
 /// A context for incremental computation of SHA3-256.
 pub(crate) struct Sha3_256Context {
@@ -192,7 +191,7 @@ impl<const R: usize> SqueezingSponge<R> {
 
     /// Squeeze into `output`.
     pub(crate) fn squeeze(&mut self, output: &mut [u8]) {
-        verify_cpu_features();
+        Entry::assert_held();
         for chunk in output.chunks_mut(R) {
             sha3_keccak_f1600(&mut self.s, &RC);
             self.squeeze_current(chunk);
@@ -353,7 +352,7 @@ impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
     }
 
     fn absorb(&mut self, bytes: &[u8]) {
-        verify_cpu_features();
+        Entry::assert_held();
         let bytes = self.buffer.add_leading(bytes);
 
         if let Some(block) = self.buffer.take() {
@@ -379,7 +378,7 @@ impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
     /// Pad the final block and add it to the state, owing its Keccak-f;
     /// nothing more may be absorbed.
     fn pad_final(&mut self) {
-        verify_cpu_features();
+        Entry::assert_held();
         match R - self.buffer.used() {
             1 => {
                 self.buffer.add_leading(&[PAD | 0x80]);

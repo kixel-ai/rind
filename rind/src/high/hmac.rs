@@ -8,7 +8,7 @@
 use super::digest::Digest;
 use super::hash::{Hash, HashContext, HashState, LegacySha1, Sha256, Sha384, Sha512};
 use crate::Error;
-use crate::low::{Zeroable, zeroise_value};
+use crate::low::{Entry, Zeroable, zeroise_value};
 
 /// HMAC's keyed hash states, each one key block in, using hash function `H`.
 pub(crate) struct HmacKey<H: Hash> {
@@ -150,6 +150,7 @@ pub struct Key(pub(super) Keyed);
 impl Key {
     /// Keys `algorithm` with `key_value`, which may be any length.
     pub fn new(algorithm: &'static Algorithm, key_value: &[u8]) -> Self {
+        let _entry = Entry::new_secret();
         Self(match algorithm.0 {
             Id::Sha1 => Keyed::Sha1(HmacKey::new(key_value)),
             Id::Sha256 => Keyed::Sha256(HmacKey::new(key_value)),
@@ -188,6 +189,8 @@ impl Context {
 
     /// Adds `data` to the message.
     pub fn update(&mut self, data: &[u8]) {
+        // The compressors enter instead, so an update that only buffers skips
+        // the cost of enabling DIT.
         match &mut self.0 {
             Streaming::Sha1(hmac) => hmac.update(data),
             Streaming::Sha256(hmac) => hmac.update(data),
@@ -198,6 +201,7 @@ impl Context {
 
     /// Returns the tag of the message.
     pub fn sign(self) -> Tag {
+        let _entry = Entry::new_secret();
         Tag(match &self.0 {
             Streaming::Sha1(hmac) => hmac.finish(),
             Streaming::Sha256(hmac) => hmac.finish(),
@@ -209,6 +213,7 @@ impl Context {
 
 /// Returns the tag of `data` under `key`.
 pub fn sign(key: &Key, data: &[u8]) -> Tag {
+    let _entry = Entry::new_secret();
     Tag(key.0.sign(data))
 }
 
@@ -216,6 +221,7 @@ pub fn sign(key: &Key, data: &[u8]) -> Tag {
 ///
 /// Fails with [`Error::BadSignature`] otherwise, including for a truncated tag.
 pub fn verify(key: &Key, data: &[u8], tag: &[u8]) -> Result<(), Error> {
+    let _entry = Entry::new_secret();
     match key.0.sign(data).ct_equal(tag) {
         true => Ok(()),
         false => Err(Error::BadSignature),

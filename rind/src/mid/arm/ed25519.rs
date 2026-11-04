@@ -108,6 +108,7 @@ impl VerifyingKey {
     /// canonical, as s2n-bignum's `edwards25519_decode` does on the other
     /// backends.
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        low::Entry::assert_held();
         let bytes: [u8; 32] = bytes.try_into().map_err(|_| KeyFormatError::WrongLength)?;
 
         // dalek reduces `y` modulo `p`, and takes a set sign bit on `x = 0`

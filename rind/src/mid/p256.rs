@@ -46,6 +46,7 @@ pub(crate) struct VerifyingKey {
 impl VerifyingKey {
     /// Create a [`VerifyingKey`] as [`PublicKey::from_x962_uncompressed`] does.
     pub(crate) fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
+        low::Entry::assert_held();
         let PublicKey { point } = PublicKey::from_x962_uncompressed(bytes)?;
         Ok(Self {
             odd_multiples: point.public_odd_multiples(),
