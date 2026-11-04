@@ -1,5 +1,5 @@
 <h1 align="center">rind</h1>
-<img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png" alt="rind: the spiky green shell of a graviola fruit">
+<img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png" alt="rind: a curled strip of spiky green graviola peel shaped like a lowercase r">
 
 > **rind** distills great cryptography into a **pure-Rust** library for
 > [rustls](https://github.com/rustls/rustls) and
@@ -45,7 +45,7 @@ to their authors, including [s2n-bignum], [HACL\*], [libcrux], [fiat-crypto],
 and the other projects listed under [Sources](#sources).
 
 The rind logo is a tribute to [Graviola's fruit illustration][graviola-logo],
-reimagined as its protective rind.
+reimagined as a curled strip of its protective rind.
 
 ## Status
 
