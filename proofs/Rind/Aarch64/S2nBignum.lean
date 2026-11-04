@@ -10,8 +10,8 @@ rind transliterates (9f2cd960), about the opaque Rust wrapper
 `admin/parse-asm` generates around that routine. rind's aarch64 X25519 runs
 the `_alt` sources under the plain names. The theorem's preconditions hold
 for every call from safe Rust: the `&mut` result cannot overlap an input or
-the routine's code, the routine's stack lies below the caller's frame, and
-the ABI keeps the stack pointer 16-byte aligned. Its total correctness
+the routine's code or table, the routine's stack lies below the caller's
+frame, and the ABI keeps the stack pointer 16-byte aligned. Its total correctness
 (`ensures`) gives the `ok`.
 
 The restatement, and that rind's inline assembly is s2n-bignum's object code
@@ -42,6 +42,121 @@ https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959e
 @[step]
 axiom bignum_eq_spec (x y : Slice U64) :
     low.aarch64.bignum_eq.bignum_eq x y ⦃ b => b = decide (wordsNat x.val = wordsNat y.val) ⦄
+
+/-! ### P-256
+
+rind's aarch64 P-256 runs the `_alt` scalar multiplications under the plain
+names, and the other routines' plain sources. -/
+
+/-- HOL Light's `inverse_mod p_256 (2 EXP 256)`: the number below `p256`
+that 2²⁵⁶ times is 1 mod `p256`, which `p256RInv_spec` checks, and which is
+unique since `p256` is odd. -/
+def p256RInv : Nat :=
+  115792089183396302114378112356516095823261736990586219612555396166510339686400
+
+theorem p256RInv_spec : p256RInv < p256 ∧ 2 ^ 256 * p256RInv % p256 = 1 := by
+  simp only [p256RInv, p256]; decide
+
+/-- The two coordinates at `xy` as HOL Light's `bignum_pair_from_memory (xy,4)`
+reads them. -/
+def pairNat (xy : List U64) : Nat × Nat :=
+  (wordsNat (xy.take 4), wordsNat ((xy.drop 4).take 4))
+
+/-- `affinepoint_p256 xy P`: `P` is the point whose coordinates are `xy`'s,
+reduced mod `p256` (`modular_decode`),
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_scalarmul_alt.ml#L6433 -/
+def p256Affine (xy : Nat × Nat) (P : P256Point) : Prop :=
+  P = some (xy.1 % p256, xy.2 % p256)
+
+/-- `affinepointz_p256 xy P`: as `p256Affine`, except that (0, 0) is the point
+at infinity,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_scalarmul_alt.ml#L6437 -/
+def p256AffineZ (xy : Nat × Nat) (P : P256Point) : Prop :=
+  if xy.1 = 0 ∧ xy.2 = 0 then P = none else P = some (xy.1 % p256, xy.2 % p256)
+
+/-- `represents2_p256 P xy`: `xy` are `P`'s coordinates in Montgomery form
+(`montgomery_decode`), each below `p256`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_montjmixadd_alt.ml#L1951 -/
+def p256Represents2 (P : P256Point) (xy : Nat × Nat) : Prop :=
+  xy.1 < p256 ∧ xy.2 < p256 ∧ some (p256RInv * xy.1 % p256, p256RInv * xy.2 % p256) = P
+
+/-- `p256_tabulates P 6 tab len tabulation`, for the table rind passes: entry
+`j` of row `i`, counting entries from 1, represents `P` times 2⁶ⁱ·j. Its length
+condition, (256 / 6 + 1) · 2⁵ · 64 ≤ len, is the type's 43 rows of 256 words,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_scalarmulbase_alt.ml#L3063 -/
+def p256Tabulates (P : P256Point) (table : Std.Array (Std.Array U64 256#usize) 43#usize) : Prop :=
+  ∀ i < 43, ∀ j, 1 ≤ j → j ≤ 32 →
+    p256Represents2 (p256Pow P (2 ^ (6 * i) * j)) (pairNat ((table.val[i]!).val.drop (8 * (j - 1))))
+
+/-- `BIGNUM_TOMONT_P256_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_tomont_p256.ml#L415 -/
+@[step]
+axiom bignum_tomont_p256_spec (z x : Std.Array U64 4#usize) :
+    low.aarch64.bignum_tomont_p256.bignum_tomont_p256 z x ⦃ r =>
+      wordsNat r.val = 2 ^ 256 * wordsNat x.val % p256 ⦄
+
+/-- `BIGNUM_DEMONT_P256_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_demont_p256.ml#L117 -/
+@[step]
+axiom bignum_demont_p256_spec (z x : Std.Array U64 4#usize) :
+    low.aarch64.bignum_demont_p256.bignum_demont_p256 z x ⦃ r =>
+      wordsNat x.val < p256 → wordsNat r.val = p256RInv * wordsNat x.val % p256 ⦄
+
+/-- `BIGNUM_ADD_P256_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_add_p256.ml#L107 -/
+@[step]
+axiom bignum_add_p256_spec (z x y : Std.Array U64 4#usize) :
+    low.aarch64.bignum_add_p256.bignum_add_p256 z x y ⦃ r =>
+      wordsNat x.val < p256 → wordsNat y.val < p256 →
+        wordsNat r.val = (wordsNat x.val + wordsNat y.val) % p256 ⦄
+
+/-- `BIGNUM_MONTMUL_P256_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_montmul_p256.ml#L1753 -/
+@[step]
+axiom bignum_montmul_p256_spec (z x y : Std.Array U64 4#usize) :
+    low.aarch64.bignum_montmul_p256.bignum_montmul_p256 z x y ⦃ r =>
+      wordsNat x.val * wordsNat y.val ≤ 2 ^ 256 * p256 →
+        wordsNat r.val = p256RInv * wordsNat x.val * wordsNat y.val % p256 ⦄
+
+/-- `BIGNUM_MONTSQR_P256_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_montsqr_p256.ml#L1231 -/
+@[step]
+axiom bignum_montsqr_p256_spec (z x : Std.Array U64 4#usize) :
+    low.aarch64.bignum_montsqr_p256.bignum_montsqr_p256 z x ⦃ r =>
+      wordsNat x.val ^ 2 ≤ 2 ^ 256 * p256 →
+        wordsNat r.val = p256RInv * wordsNat x.val ^ 2 % p256 ⦄
+
+/-- `BIGNUM_MOD_N256_4_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_mod_n256_4.ml#L110 -/
+@[step]
+axiom bignum_mod_n256_spec (z x : Std.Array U64 4#usize) :
+    low.aarch64.bignum_mod_n256.bignum_mod_n256 z x ⦃ r =>
+      wordsNat r.val = wordsNat x.val % n256 ⦄
+
+/-- `P256_SCALARMUL_ALT_SUBROUTINE_CORRECT`, whose stack frame is 1248 bytes,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_scalarmul_alt.ml#L7459 -/
+@[step]
+axiom p256_scalarmul_spec (res : Std.Array U64 8#usize) (scalar : Std.Array U64 4#usize)
+    (point : Std.Array U64 8#usize) :
+    low.aarch64.p256_scalarmul.p256_scalarmul res scalar point ⦃ r =>
+      ∀ P, p256OnCurve P → p256Affine (pairNat point.val) P →
+        p256AffineZ (pairNat r.val) (p256Pow P (wordsNat scalar.val)) ⦄
+
+/-- `P256_SCALARMULBASE_ALT_SUBROUTINE_CORRECT`, with the block size 6 the
+wrapper passes and a table it reads but cannot overlap,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_scalarmulbase_alt.ml#L4059 -/
+@[step]
+axiom p256_scalarmulbase_spec (res : Std.Array U64 8#usize) (scalar : Std.Array U64 4#usize)
+    (table : Std.Array (Std.Array U64 256#usize) 43#usize) :
+    low.aarch64.p256_scalarmulbase.p256_scalarmulbase res scalar table ⦃ r =>
+      ∀ P, p256OnCurve P → p256Tabulates P table →
+        p256AffineZ (pairNat r.val) (p256Pow P (wordsNat scalar.val)) ⦄
+
+/-- rind's generator table holds the multiples of G that s2n-bignum's
+`p256_scalarmulbase` proof assumes. `admin/p256-precomp` writes it, and the
+`base_point_precomp` test checks it. -/
+def Tabulated : Prop :=
+  ∃ t, mid.p256.precomp.CURVE_GENERATOR_PRECOMP = ok t ∧ p256Tabulates p256G t
 
 /-- rind runs on this CPU: its entry guards' CPU-feature checks pass. Neither
 reads an input. -/
