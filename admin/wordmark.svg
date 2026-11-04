@@ -20,7 +20,7 @@
     </g>
   </g>
   <!-- Paths keep the lettering independent of installed fonts. -->
-  <g id="ind" fill="#fff">
+  <g id="ind" fill="#fff" transform="translate(704 1125) scale(1.12) translate(-794 -1125)">
     <circle cx="829" cy="805" r="36"/>
     <rect x="794" y="860" width="70" height="265" rx="35"/>
     <path d="M905 895 A35 35 0 0 1 975 895 V899 C997 870 1024 860 1054 860 C1112 860 1145 910 1145 970 V1090 A35 35 0 0 1 1075 1090 V976 C1075 942 1062 940 1042 940 C1002 940 975 970 975 1007 V1090 A35 35 0 0 1 905 1090Z"/>
