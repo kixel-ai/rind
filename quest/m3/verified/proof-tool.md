@@ -10,4 +10,4 @@ Planned with the maintainer on 2026-11-03 from the [audit](/quest/m3/verified/RE
 
 - Compare Aeneas→Lean and hax→F* (and any other mature option) on rind's code: what they accept (unsafe, inline asm calls, const generics), CI cost, and maintenance. Recommend one with a decision prompt in the PR.
 - Define how a Rust proof relies on an imported routine's theorem (state its contract as an axiom matching the HOL Light or Vale statement), and record that rule in the epic.
-- Run the proof in CI, outside the `just ci` gate if it is slow, and add X25519's ✓ entries to `benchmarks/verified.toml`.
+- Run the proof in CI, outside the `just ci` gate if it is slow, and add X25519's ✓ entries to `benchmarks/verified.toml`, including x86_64 without BMI2 and ADX, where the proven `_alt` routines run.
