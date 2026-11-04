@@ -89,9 +89,12 @@ Beyond Lean's kernel:
 - That `Rind/X86_64/Dispatch.lean` and `Rind/Aarch64/P256Dispatch.lean`
   compute what the Rust they quote does. They add no axiom.
 - The restatement of each s2n-bignum theorem as an axiom, under the
-  composition rule in the [verification epic](/quest/m3/verified/README.md),
-  with `group_carrier p256_group` read as the curve equation that HOL Light's
-  `P256_GROUP` proves it is.
+  composition rule in the [verification epic](/quest/m3/verified/README.md).
+  It lets a group-membership fact a proof must decide be its defining
+  equation, so `group_carrier p256_group` is the curve equation that HOL
+  Light's
+  [`P256_GROUP`](https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/nistp256.ml#L82)
+  proves it is.
 - That rind's inline assembly is s2n-bignum's object code, as for
   `benchmarks/verified.toml`'s other s2n-bignum entries.
 - The translation ignores drops, which here wipe keys and restore CPU state,

@@ -57,7 +57,11 @@ abbrev P256Point := Option (Nat × Nat)
 /-- Whether a point is in `group_carrier p256_group`, which `P256_GROUP`
 shows is `weierstrass_curve (integer_mod_ring p_256, ring_neg (integer_mod_ring
 p_256) (&3), &b_256)`: infinity, or coordinates in the field that satisfy
-y² = x³ - 3x + b, with `integer_mod_ring`'s arithmetic mod `p256`. -/
+y² = x³ - 3x + b, with `integer_mod_ring`'s arithmetic mod `p256`,
+https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/nistp256.ml#L82
+
+The proofs must decide this membership, so the composition rule lets it be
+this defining equation rather than an opaque set. -/
 def p256OnCurve : P256Point → Prop
   | none => True
   | some (x, y) => x < p256 ∧ y < p256 ∧ y ^ 2 % p256 = (x ^ 3 + (p256 - 3) * x + b256) % p256
