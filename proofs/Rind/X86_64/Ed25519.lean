@@ -860,4 +860,55 @@ theorem high_generate_spec (h : Runs) (hs : RunsSha512) (r : core.result.Result 
       mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
 
+/-! ## The signature API, `high::signature`, through the modelled dispatch -/
+
+/-- A generated key pair's private key is the 32 bytes the random source drew,
+and a failed draw is refused. The draw itself is outside the functional spec. -/
+theorem ed25519_generate (h : Runs) (hs : RunsSha512) (r : core.result.Result Unit getrandom.error.Error)
+    (out : Slice U8) (hout : out.length = 32)
+    (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) :
+    high.signature.Ed25519KeyPair.generate ⦃ kp =>
+      match r with
+      | .Ok _ => ∃ k, kp = core.result.Result.Ok k ∧ KeyPairOf k out.val
+      | .Err _ => kp = core.result.Result.Err error.Error.RngFailed ⦄ := by
+  unfold high.signature.Ed25519KeyPair.generate
+  step with high_generate_spec h hs r out hout hfill as ⟨key, hkey⟩
+  rcases r with _ | _ <;> simp only at hkey ⊢
+  · obtain ⟨k, rfl, hk⟩ := hkey
+    simp only [core.result.Result.Insts.CoreOpsTry.branch]
+    step with key_pair_new_spec h k out.val hk as ⟨kp, hkp1, hkp2⟩
+    exact ⟨kp, rfl, by rw [hkp1]; exact hk, hkp2⟩
+  · subst hkey
+    simp [core.result.Result.Insts.CoreOpsTry.branch,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
+
+open Classical in
+/-- A key pair loaded from a seed and the public key it claims: refused unless
+the seed is 32 bytes and the public key is the seed's, and otherwise its
+private key is the seed. -/
+theorem ed25519_from_seed_and_public_key (h : Runs) (hs : RunsSha512) (seed pk : Slice U8) :
+    high.signature.Ed25519KeyPair.from_seed_and_public_key seed pk ⦃ r =>
+      if seed.length = 32 then
+        if ed25519PublicKey seed.val = pk.val then ∃ kp, r = .Ok kp ∧ KeyPairOf kp seed.val
+        else r = .Err (.KeyRejected .MismatchedPublicKey)
+      else r = .Err (.KeyRejected .WrongLength) ⦄ := by
+  unfold high.signature.Ed25519KeyPair.from_seed_and_public_key
+  step with high_seed_from_bytes_spec h hs seed as ⟨r, hr⟩
+  by_cases hl : seed.length = 32
+  · simp only [hl, ↓reduceIte] at hr ⊢
+    obtain ⟨k, rfl, hk⟩ := hr
+    simp only [core.result.Result.Insts.CoreOpsTry.branch]
+    step with key_pair_new_spec h k seed.val hk as ⟨kp, hkp1, hkp2⟩
+    step*
+    all_goals rw [s_post, Array.val_to_slice, hkp2] at b_post
+    · have he : ed25519PublicKey seed.val = pk.val := b_post.mp ‹_›
+      simp only [he, ↓reduceIte]
+      exact ⟨kp, rfl, by rw [hkp1]; exact hk, hkp2⟩
+    · have he : ¬ ed25519PublicKey seed.val = pk.val := fun he => ‹¬b = true› (b_post.mpr he)
+      simp [he, error.Error.Insts.CoreConvertFromKeyFormatError.from]
+  · simp only [hl, ↓reduceIte] at hr ⊢
+    subst hr
+    simp [core.result.Result.Insts.CoreOpsTry.branch,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
+
 end rind.x86_64
