@@ -1,5 +1,5 @@
 //! <h1 align="center">rind-rcgen</h1>
-//! <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/picture.png">
+//! <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png">
 //!
 //! This crate provides a signing key for [rcgen](https://github.com/rustls/rcgen), backed by [rind](https://github.com/moq-dev/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
 //! It generates and loads ECDSA P-256 and P-384 and Ed25519 keys, and loads RSA keys.
