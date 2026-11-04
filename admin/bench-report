@@ -3,14 +3,23 @@
 
 Usage:
   admin/bench-report collect [--commit REV] [--host NAME]... [--out DIR]
+  admin/bench-report nightly
+  admin/bench-report render [--from DIR] [--check]
   admin/bench-report summary DIR
 
 `collect` copies one commit to each host in turn, builds rind-bench there with
 the pinned toolchain, and times every operation in OPERATIONS for every
-library that offers it. It runs here for the host this is, and over ssh for
-the others. A host that is busy, unreachable, or fails is recorded and
-skipped, never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
+library that offers it, then measures each library's build cost with
+admin/build-cost. It runs here for the host this is, and over ssh for the
+others. A host that is busy, unreachable, or fails is recorded and skipped,
+never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
 `<host>.json` per host, with its CPU, OS, toolchain, and library versions.
+
+`nightly` saves the latest nightly `bench` run's results on main, with gh, as
+the report's CPU tiers. `render` writes BENCHMARKS.md and its SVGs from
+benchmarks/data and the verified code in benchmarks/verified.toml, first
+importing each measured host of a collection given by `--from`. `--check`
+fails if they are out of date instead.
 
 `summary` prints a Markdown table of a collection: rind's time per operation
 and host, against the fastest other library's.
@@ -21,6 +30,7 @@ written to DIR are measurements, not history: rerun `collect` to refresh them.
 
 import argparse
 import datetime
+import fnmatch
 import glob
 import json
 import os
@@ -33,6 +43,7 @@ import socket
 import subprocess
 import sys
 import time
+import tomllib
 
 # The report's hosts, in the order they run. `jobs` caps the build: nixos2 is
 # a shared 15 GB machine that more jobs run out of memory.
@@ -56,64 +67,78 @@ REMOTE_DIR = ".cache/rind-bench-report"
 # that a host's run takes about half an hour.
 CRITERION_ARGS = ["--noplot", "--warm-up-time", "1", "--measurement-time", "3"]
 
-# The report's operations, most common first, as criterion IDs with `{lib}`
-# in the library's place. Each is timed for every library rind-bench has a
-# row for.
-OPERATIONS = [
-    # TLS 1.3, with both peers in one process.
-    "rustls-full-handshake-group/x25519mlkem768/{lib}",
-    "rustls-full-handshake-group/x25519/{lib}",
-    "rustls-full-handshake-group/secp256r1/{lib}",
-    "rustls-full-handshake-key/ed25519/{lib}",
-    "rustls-full-handshake-key/rsa-2048/{lib}",
-    "rustls-resumed-handshake/x25519/{lib}",
-    "rustls-bulk/aes128-gcm/{lib}",
-    "rustls-bulk/aes256-gcm/{lib}",
-    "rustls-bulk/chacha20poly1305/{lib}",
-    # AEADs.
-    *(
-        f"{aead}/{{lib}}/{size}"
-        for aead in [
-            "aes128-gcm",
-            "aes128-gcm-open",
-            "aes256-gcm",
-            "aes256-gcm-open",
-            "chacha20poly1305",
-            "xchacha20poly1305",
-        ]
-        for size in ["32B", "1350B", "16KB"]
+# The report's operations by section, most common first, as criterion IDs
+# with `{lib}` in the library's place. Each is timed for every library
+# rind-bench has a row for.
+SECTIONS = [
+    # Both peers in one process.
+    (
+        "TLS 1.3 with rustls",
+        [
+            "rustls-full-handshake-group/x25519mlkem768/{lib}",
+            "rustls-full-handshake-group/x25519/{lib}",
+            "rustls-full-handshake-group/secp256r1/{lib}",
+            "rustls-full-handshake-key/ed25519/{lib}",
+            "rustls-full-handshake-key/rsa-2048/{lib}",
+            "rustls-resumed-handshake/x25519/{lib}",
+            "rustls-bulk/aes128-gcm/{lib}",
+            "rustls-bulk/aes256-gcm/{lib}",
+            "rustls-bulk/chacha20poly1305/{lib}",
+        ],
     ),
-    # Key agreement.
-    "x25519-ecdh/{lib}",
-    "p256-ecdh/{lib}",
-    # Signatures.
-    "ed25519-sign/{lib}",
-    "ed25519-verify/{lib}",
-    "p256-ecdsa-sign/{lib}",
-    "p256-ecdsa-verify/{lib}",
-    # Hashes and KDFs.
-    *(f"{hash}/{{lib}}/{size}" for hash in ["sha256", "sha512"] for size in ["64B", "1350B", "16KB"]),
-    "hmac-sha256/{lib}/64B",
-    "hmac-sha256/{lib}/1350B",
-    "hkdf-sha256/extract-expand/{lib}",
-    "hkdf-sha256/expand/{lib}",
-    # RSA.
-    "rsa2048-pkcs1-sha256-sign/{lib}",
-    "rsa2048-pkcs1-sha256-verify/{lib}",
-    "rsa2048-pss-sha256-sign/{lib}",
-    "rsa2048-pss-sha256-verify/{lib}",
-    # ML-KEM.
-    "mlkem768-keygen/{lib}",
-    "mlkem768-encaps/{lib}",
-    "mlkem768-decaps/{lib}",
-    # P-384 and P-521.
-    "p384-ecdh/{lib}",
-    "p384-ecdsa-sign/{lib}",
-    "p384-ecdsa-verify/{lib}",
-    "p521-ecdh/{lib}",
-    "p521-ecdsa-sign/{lib}",
-    "p521-ecdsa-verify/{lib}",
+    (
+        "AEADs",
+        [
+            f"{aead}/{{lib}}/{size}"
+            for aead in [
+                "aes128-gcm",
+                "aes128-gcm-open",
+                "aes256-gcm",
+                "aes256-gcm-open",
+                "chacha20poly1305",
+                "xchacha20poly1305",
+            ]
+            for size in ["32B", "1350B", "16KB"]
+        ],
+    ),
+    ("Key agreement", ["x25519-ecdh/{lib}", "p256-ecdh/{lib}"]),
+    (
+        "Signatures",
+        ["ed25519-sign/{lib}", "ed25519-verify/{lib}", "p256-ecdsa-sign/{lib}", "p256-ecdsa-verify/{lib}"],
+    ),
+    (
+        "Hashes and KDFs",
+        [
+            *(f"{hash}/{{lib}}/{size}" for hash in ["sha256", "sha512"] for size in ["64B", "1350B", "16KB"]),
+            "hmac-sha256/{lib}/64B",
+            "hmac-sha256/{lib}/1350B",
+            "hkdf-sha256/extract-expand/{lib}",
+            "hkdf-sha256/expand/{lib}",
+        ],
+    ),
+    (
+        "RSA",
+        [
+            "rsa2048-pkcs1-sha256-sign/{lib}",
+            "rsa2048-pkcs1-sha256-verify/{lib}",
+            "rsa2048-pss-sha256-sign/{lib}",
+            "rsa2048-pss-sha256-verify/{lib}",
+        ],
+    ),
+    ("ML-KEM", ["mlkem768-keygen/{lib}", "mlkem768-encaps/{lib}", "mlkem768-decaps/{lib}"]),
+    (
+        "P-384 and P-521",
+        [
+            "p384-ecdh/{lib}",
+            "p384-ecdsa-sign/{lib}",
+            "p384-ecdsa-verify/{lib}",
+            "p521-ecdh/{lib}",
+            "p521-ecdsa-sign/{lib}",
+            "p521-ecdsa-verify/{lib}",
+        ],
+    ),
 ]
+OPERATIONS = [op for _, ops in SECTIONS for op in ops]
 
 # Each library's name in the report, from the row names rind-bench keeps for
 # the history of its older benchmarks.
@@ -391,13 +416,32 @@ def run(args):
         )
     order = {op: i for i, op in enumerate(OPERATIONS)}
     results.sort(key=lambda r: (order[r["operation"]], r["library"]))
+    finished = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     finish(
         "ok",
-        finished=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        finished=finished,
         criterion_args=criterion_args,
         load=load,
         results=results,
+        build_cost=build_cost(env, args.jobs),
     )
+
+
+def build_cost(env, jobs):
+    """admin/build-cost's measurements on this host, after the benchmarks so
+    that neither skews the other's times."""
+    env = dict(env, CARGO_BUILD_JOBS=str(jobs))
+    if sys.platform == "darwin":
+        env["RUSTUP_TOOLCHAIN"] = pinned_toolchain()
+    started = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    proc = subprocess.run(
+        [sys.executable, os.path.join(ROOT, "admin", "build-cost")], env=env, capture_output=True, text=True
+    )
+    if proc.returncode != 0:
+        lines = proc.stderr.strip().splitlines() or ["no output"]
+        print(proc.stderr, file=sys.stderr)
+        return {"status": "failed", "started": started, "reason": lines[-1]}
+    return {"status": "ok", "started": started, **json.loads(proc.stdout)}
 
 
 # --- collection -------------------------------------------------------------
@@ -513,6 +557,850 @@ def summary(args):
         print(f"| {op.replace('/{lib}', '')} | " + " | ".join(cells) + " |")
 
 
+# --- report -----------------------------------------------------------------
+
+REPORT = os.path.join(ROOT, "BENCHMARKS.md")
+# The report's SVGs, and its inputs: each host's result, the nightly CPU
+# tiers, and the table of verified code.
+REPORT_DIR = os.path.join(ROOT, "benchmarks")
+DATA_DIR = os.path.join(REPORT_DIR, "data")
+VERIFIED = os.path.join(REPORT_DIR, "verified.toml")
+REPO = "moq-dev/rind"
+
+# The report's columns, in order, by library.
+COLUMNS = {
+    "rind": "rind",
+    "aws-lc-rs": "aws-lc-rs",
+    "ring": "ring",
+    "rustcrypto": "RustCrypto + dalek",
+    "graviola": "graviola",
+    "libcrux": "libcrux",
+    "openssl": "OpenSSL",
+}
+
+# Each operation's label, by its row name without a message size.
+NAMES = {
+    "rustls-full-handshake-group/x25519mlkem768": "full handshake, X25519MLKEM768",
+    "rustls-full-handshake-group/x25519": "full handshake, X25519",
+    "rustls-full-handshake-group/secp256r1": "full handshake, P-256",
+    "rustls-full-handshake-key/ed25519": "full handshake, Ed25519 certificate",
+    "rustls-full-handshake-key/rsa-2048": "full handshake, RSA-2048 certificate",
+    "rustls-resumed-handshake/x25519": "resumed handshake, X25519",
+    "rustls-bulk/aes128-gcm": "1 MB transfer, AES-128-GCM",
+    "rustls-bulk/aes256-gcm": "1 MB transfer, AES-256-GCM",
+    "rustls-bulk/chacha20poly1305": "1 MB transfer, ChaCha20-Poly1305",
+    "aes128-gcm": "AES-128-GCM seal",
+    "aes128-gcm-open": "AES-128-GCM open",
+    "aes256-gcm": "AES-256-GCM seal",
+    "aes256-gcm-open": "AES-256-GCM open",
+    "chacha20poly1305": "ChaCha20-Poly1305 seal",
+    "xchacha20poly1305": "XChaCha20-Poly1305 seal",
+    "x25519-ecdh": "X25519",
+    "p256-ecdh": "P-256 ECDH",
+    "ed25519-sign": "Ed25519 sign",
+    "ed25519-verify": "Ed25519 verify",
+    "p256-ecdsa-sign": "P-256 ECDSA sign",
+    "p256-ecdsa-verify": "P-256 ECDSA verify",
+    "sha256": "SHA-256",
+    "sha512": "SHA-512",
+    "hmac-sha256": "HMAC-SHA256",
+    "hkdf-sha256/extract-expand": "HKDF-SHA256 extract and expand",
+    "hkdf-sha256/expand": "HKDF-SHA256 expand",
+    "rsa2048-pkcs1-sha256-sign": "RSA-2048 PKCS#1 sign",
+    "rsa2048-pkcs1-sha256-verify": "RSA-2048 PKCS#1 verify",
+    "rsa2048-pss-sha256-sign": "RSA-2048 PSS sign",
+    "rsa2048-pss-sha256-verify": "RSA-2048 PSS verify",
+    "mlkem768-keygen": "ML-KEM-768 key generation",
+    "mlkem768-encaps": "ML-KEM-768 encapsulate",
+    "mlkem768-decaps": "ML-KEM-768 decapsulate",
+    "p384-ecdh": "P-384 ECDH",
+    "p384-ecdsa-sign": "P-384 ECDSA sign",
+    "p384-ecdsa-verify": "P-384 ECDSA verify",
+    "p521-ecdh": "P-521 ECDH",
+    "p521-ecdsa-sign": "P-521 ECDSA sign",
+    "p521-ecdsa-verify": "P-521 ECDSA verify",
+}
+
+# Each build of admin/build-cost, as the report names it.
+BUILDS = {
+    "rind": "rind",
+    "aws-lc-rs": "aws-lc-rs",
+    "ring": "ring",
+    "rustcrypto": "RustCrypto + dalek",
+    "graviola": "graviola",
+    "libcrux": "libcrux",
+    "openssl": "OpenSSL, the system's, linked dynamically",
+    "openssl-vendored": "OpenSSL, vendored",
+    "rustls-rind": "rustls + rind-rustls",
+    "rustls-aws-lc-rs": "rustls + aws-lc-rs",
+    "rustls-ring": "rustls + ring",
+}
+
+# The CPU features a ✓ may require, as rind-cpuid names them.
+CPU_FEATURES = {
+    "x86_64": {
+        "intel", "adx", "aes", "vaes", "pclmulqdq", "vpclmulqdq", "bmi2", "movbe", "popcnt", "ssse3", "sse4.1",
+        "avx", "avx2", "avx512f", "avx512dq", "avx512ifma", "avx512bw", "avx512vl", "avx512vbmi", "avx512vbmi2",
+        "sha",
+    },
+    "aarch64": {"aes", "dit", "neon", "pmull", "sha2", "sha3"},
+}
+
+# The nightly bench's columns, by target, portability, and denied tier, as
+# bench.yml's `native` matrix defines them.
+TIERS = [
+    (("x86_64-unknown-linux-gnu", False, ""), "x86_64"),
+    (("x86_64-unknown-linux-gnu", True, "no-adx"), "no ADX"),
+    (("x86_64-unknown-linux-gnu", True, ""), "no AVX2"),
+    (("x86_64-unknown-linux-gnu", True, "no-avx"), "no AVX"),
+    (("x86_64-unknown-linux-gnu", True, "no-aes"), "no AES-NI"),
+    (("x86_64-unknown-linux-gnu", True, "no-ssse3"), "SSE2"),
+    (("aarch64-unknown-linux-gnu", False, ""), "aarch64"),
+    (("aarch64-unknown-linux-gnu", True, ""), "no crypto"),
+    (("armv7-unknown-linux-gnueabihf", False, ""), "armv7"),
+]
+
+# The libraries the nightly bench times rind against.
+BASELINES = ["aws-lc-rs", "ring"]
+
+# The CPU-tier rows, as patterns over a nightly benchmark ID with `*` in the
+# library's place. RSA key generation varies too much from run to run to rank.
+TIER_ROWS = [
+    ("AES-GCM", r"aes(128|256)-gcm(-open)?/"),
+    ("AES block, AES-CTR", r"(aes(128|256)-ctr|quic-header-protection/aes(128|256))/"),
+    ("ChaCha20 (header protection)", r"quic-header-protection/chacha20/"),
+    ("ChaCha20-Poly1305, XChaCha20-Poly1305", r"x?chacha20poly1305/"),
+    ("SHA-1", r"sha1/"),
+    ("SHA-256", r"sha256(-updates)?/"),
+    ("SHA-384, SHA-512, SHA-512/256", r"sha(384|512|512-256)/"),
+    ("HMAC", r"hmac-"),
+    ("HKDF", r"hkdf-"),
+    ("PBKDF2", r"pbkdf2-"),
+    ("X25519", r"x25519-"),
+    ("Ed25519", r"ed25519-"),
+    ("P-256 ECDH, ECDSA", r"p256-"),
+    ("P-384 ECDH, ECDSA", r"p384-"),
+    ("P-521 ECDH, ECDSA", r"p521-"),
+    ("ML-KEM-768", r"mlkem768-"),
+    ("RSA signatures", r"rsa\d+-(pkcs1|pss|load)"),
+    ("rind-rustls handshakes", r"rustls-(full|resumed)-"),
+    ("rind-rustls 1 MB transfer", r"rustls-bulk/"),
+]
+
+# A time over the fastest library's, binned. The first bin is within the
+# ~10% the report treats as no gap.
+SPEED_BINS = [1.1, 1.25, 1.5, 2, 4, 8]
+SPEED_LABELS = ["fastest, or within 10%", "to 1.25×", "to 1.5×", "to 2×", "to 4×", "to 8×", "over 8×"]
+
+# rind's time over the fastest baseline's, binned around the ~2% noise.
+TIER_BINS = [0.8, 0.9, 0.98, 1.02, 1.1, 1.25]
+TIER_LABELS = ["under 0.8", "to 0.9", "to 0.98", "even", "to 1.1", "to 1.25", "over 1.25"]
+
+# Each theme's colors. Speed is one blue ramp, darkest for the fastest on
+# light and lightest on dark, so that the fastest stands out on either. The
+# tiers diverge from a neutral gray: blue where rind leads, red where it
+# trails.
+THEMES = {
+    "light": {
+        "ink": "#0b0b0b",
+        "muted": "#52514e",
+        "rule": "#c3c2b7",
+        "speed": ["#0d366b", "#184f95", "#256abf", "#3987e5", "#6da7ec", "#9ec5f4", "#cde2fb"],
+        "tier": ["#184f95", "#3987e5", "#b7d3f6", "#f0efec", "#f6c4b5", "#e5735a", "#b3321f"],
+    },
+    "dark": {
+        "ink": "#f0efec",
+        "muted": "#c3c2b7",
+        "rule": "#383835",
+        "speed": ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#2a78d6", "#1c5cab", "#184f95"],
+        "tier": ["#6da7ec", "#2a78d6", "#184f95", "#383835", "#8a2f1f", "#c4452c", "#ec7a63"],
+    },
+}
+FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+
+
+def row_name(op):
+    return op.replace("/{lib}", "")
+
+
+def label(row):
+    m = re.fullmatch(r"(.+)/(\d+)(K?B)", row)
+    if m:
+        return f"{NAMES[m.group(1)]}, {m.group(2)} {m.group(3)}"
+    return NAMES[row]
+
+
+def bin_of(value, edges):
+    return next((i for i, edge in enumerate(edges) if value <= edge), len(edges))
+
+
+def host_arch(host):
+    arch = host["cpu"]["arch"]
+    return {"arm64": "aarch64", "amd64": "x86_64"}.get(arch, arch)
+
+
+def host_os(host):
+    return "macos" if host["os"].startswith("macOS") else "linux"
+
+
+def load_verified(path=VERIFIED):
+    """The table of verified code, refusing an entry that names nothing."""
+    with open(path, "rb") as f:
+        entries = tomllib.load(f).get("verified", [])
+    rows = [row_name(op) for op in OPERATIONS]
+    required = {"library", "operations", "proof", "link"}
+    optional = {"arch", "cpu", "os"}
+    for i, e in enumerate(entries, 1):
+        where = f"{os.path.relpath(path, ROOT)}: entry {i}"
+        if set(e) - required - optional:
+            fail(f"{where}: unknown keys {', '.join(sorted(set(e) - required - optional))}")
+        if required - set(e):
+            fail(f"{where}: missing {', '.join(sorted(required - set(e)))}")
+        if e["library"] not in COLUMNS:
+            fail(f"{where}: unknown library {e['library']}")
+        if e.get("arch", "x86_64") not in CPU_FEATURES:
+            fail(f"{where}: unknown arch {e['arch']}")
+        if "cpu" in e and "arch" not in e:
+            fail(f"{where}: CPU features need an arch")
+        for feature in e.get("cpu", []):
+            if feature.removeprefix("!") not in CPU_FEATURES[e["arch"]]:
+                fail(f"{where}: unknown {e['arch']} CPU feature {feature}")
+        if e.get("os", "linux") not in ("linux", "macos"):
+            fail(f"{where}: unknown os {e['os']}")
+        for pattern in e["operations"]:
+            if not fnmatch.filter(rows, pattern):
+                fail(f"{where}: {pattern} names no operation")
+        if not e["link"].startswith("https://"):
+            fail(f"{where}: the link is not https")
+    return entries
+
+
+def proof_for(verified, library, row, host):
+    """The entry that verifies a library's code for an operation on a host."""
+    cpuid = host.get("rind_cpu", {}).get("cpuid", {})
+    for e in verified:
+        if e["library"] != library or e.get("arch", host_arch(host)) != host_arch(host):
+            continue
+        if e.get("os", host_os(host)) != host_os(host):
+            continue
+        if not all(cpuid.get(f.removeprefix("!")) == (0 if f.startswith("!") else 1) for f in e.get("cpu", [])):
+            continue
+        if any(fnmatch.fnmatchcase(row, p) for p in e["operations"]):
+            return e
+    return None
+
+
+def load_hosts(directory):
+    hosts = {}
+    for name in HOSTS:
+        path = os.path.join(directory, f"{name}.json")
+        if os.path.exists(path):
+            with open(path) as f:
+                hosts[name] = json.load(f)
+    return hosts
+
+
+def times(host):
+    """Each operation's time by library on a host, by row name."""
+    out = {}
+    for r in host["results"]:
+        out.setdefault(row_name(r["operation"]), {})[r["library"]] = r["ns"]
+    return out
+
+
+def tier_rows(tier):
+    """rind's time over the fastest baseline's, per benchmark of a tier."""
+    out = {}
+    for key, libs in tier["benchmarks"].items():
+        base = {lib: ns for lib, ns in libs.items() if lib in BASELINES}
+        if "rind" in libs and base:
+            best = min(base, key=base.get)
+            out[key] = (libs["rind"] / base[best], libs["rind"], best, base[best])
+    return out
+
+
+def tier_cells(tiers):
+    """Each CPU-tier row's worst benchmark per tier, as (key, ratio, ...)."""
+    cells = {}
+    for t in tiers["tiers"]:
+        column = dict(TIERS).get((t["target"], t["portable"], t["tier"]))
+        if column is None:
+            fail(f"nightly results name an unknown tier: {t['target']} {t['tier']}")
+        for key, value in tier_rows(t).items():
+            row = next((name for name, pattern in TIER_ROWS if re.match(pattern, key)), None)
+            if row is None:
+                continue
+            worst = cells.get((row, column))
+            if worst is None or value[0] > worst[1][0]:
+                cells[(row, column)] = (key, value)
+    return cells
+
+
+# --- SVG --------------------------------------------------------------------
+
+
+def esc(text):
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def text_width(text, size):
+    # A sans-serif's average advance; layout only needs an upper bound.
+    return len(text) * size * 0.6
+
+
+def luminance(color):
+    def channel(c):
+        c = int(c, 16) / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (channel(color[i : i + 2]) for i in (1, 3, 5))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def ink_on(fill):
+    """Black or white, whichever contrasts more with the fill."""
+    lum = luminance(fill)
+    return "#0b0b0b" if (lum + 0.05) / 0.05 > 1.05 / (lum + 0.05) else "#ffffff"
+
+
+class Svg:
+    def __init__(self, theme):
+        self.theme = THEMES[theme]
+        self.items = []
+
+    def text(self, x, y, text, size=12, anchor="start", weight="normal", color="ink"):
+        fill = self.theme.get(color, color)
+        self.items.append(
+            f'<text x="{x:.1f}" y="{y:.1f}" font-size="{size}" text-anchor="{anchor}" '
+            f'font-weight="{weight}" fill="{fill}">{esc(text)}</text>'
+        )
+
+    def rect(self, x, y, w, h, fill, title=None, stroke=None):
+        attrs = f'x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="2"'
+        if fill:
+            attrs += f' fill="{fill}"'
+        else:
+            attrs += ' fill="none"'
+        if stroke:
+            attrs += f' stroke="{self.theme.get(stroke, stroke)}" stroke-dasharray="2 2"'
+        if title:
+            self.items.append(f"<rect {attrs}><title>{esc(title)}</title></rect>")
+        else:
+            self.items.append(f"<rect {attrs}/>")
+
+    def line(self, x1, y1, x2, y2):
+        self.items.append(
+            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{self.theme["rule"]}"/>'
+        )
+
+    def render(self, width, height, title):
+        return "\n".join(
+            [
+                f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{height:.0f}" '
+                f'viewBox="0 0 {width:.0f} {height:.0f}" font-family="{esc(FONT)}" role="img">',
+                f"<title>{esc(title)}</title>",
+                *self.items,
+                "</svg>",
+                "",
+            ]
+        )
+
+
+def speed_legend(svg, x, y, extra=()):
+    """The speed bins' swatches in one row, then any (mark, meaning) pairs."""
+    for i, name in enumerate(SPEED_LABELS):
+        svg.rect(x, y - 10, 12, 12, svg.theme["speed"][i])
+        svg.text(x + 16, y, name, size=11, color="muted")
+        x += 16 + text_width(name, 11) + 12
+    for mark, meaning in extra:
+        svg.text(x, y, mark, size=12, weight="bold")
+        svg.text(x + 14, y, meaning, size=11, color="muted")
+        x += 14 + text_width(meaning, 11) + 12
+    return x
+
+
+SQUARE = 14
+GAP = 2
+ROW = 20
+SECTION = 26
+
+
+def grid_layout():
+    """The label column's width and the grid's top, below its header."""
+    label_width = max(text_width(label(row_name(op)), 12) for op in OPERATIONS) + 16
+    return label_width, 66
+
+
+def column_headers(svg, x0, y, cell_width, names):
+    for i, name in enumerate(names):
+        cx = x0 + i * cell_width + cell_width / 2
+        words = name.split(" + ")
+        if len(words) == 2:
+            svg.text(cx, y - 14, words[0], anchor="middle", weight="bold")
+            svg.text(cx, y, "+ " + words[1], anchor="middle", weight="bold")
+        else:
+            svg.text(cx, y, name, anchor="middle", weight="bold")
+
+
+def overview_svg(hosts, verified, theme):
+    """Operations by library, each cell a square per host, colored by its time
+    over the fastest library's on that host."""
+    svg = Svg(theme)
+    cell = len(HOSTS) * SQUARE + (len(HOSTS) - 1) * GAP + 18
+    label_width, top = grid_layout()
+    host_times = {name: times(h) for name, h in hosts.items()}
+
+    x = speed_legend(svg, 12, 18, [("✓", "verified code")])
+    width = max(x, label_width + cell * len(COLUMNS) + 12)
+    svg.text(12, 38, "Each cell's squares, left to right: " + ", ".join(HOSTS) + ".", size=11, color="muted")
+    column_headers(svg, label_width, top, cell, list(COLUMNS.values()))
+
+    y = top + 8
+    for section, ops in SECTIONS:
+        y += SECTION
+        svg.text(12, y - 8, section, weight="bold")
+        svg.line(12, y - 4, width - 12, y - 4)
+        for op in ops:
+            row = row_name(op)
+            svg.text(12, y + 14, label(row))
+            for c, lib in enumerate(COLUMNS):
+                x = label_width + c * cell + 9
+                for h, name in enumerate(HOSTS):
+                    sx = x + h * (SQUARE + GAP)
+                    if name not in hosts:
+                        svg.rect(sx, y + 3, SQUARE, SQUARE, None, f"{name}: not measured", stroke="rule")
+                        continue
+                    libs = host_times[name].get(row, {})
+                    if lib not in libs:
+                        continue
+                    ratio = libs[lib] / min(libs.values())
+                    fill = svg.theme["speed"][bin_of(ratio, SPEED_BINS)]
+                    proof = proof_for(verified, lib, row, hosts[name])
+                    title = f"{label(row)}, {COLUMNS[lib]} on {name}: {human(libs[lib])}, {ratio:.2f}× the fastest"
+                    if proof:
+                        title += f"; verified: {proof['proof']}"
+                    svg.rect(sx, y + 3, SQUARE, SQUARE, fill, title)
+                    if proof:
+                        svg.text(sx + SQUARE / 2, y + 14, "✓", size=10, anchor="middle", weight="bold", color=ink_on(fill))
+            y += ROW
+    return svg.render(width, y + 12, "Time over the fastest library's, by operation, library, and host")
+
+
+def host_svg(name, host, verified, theme):
+    """One host's times by operation and library, colored by each over the
+    fastest library's."""
+    svg = Svg(theme)
+    cell = 92
+    label_width, top = grid_layout()
+    width = label_width + cell * len(COLUMNS) + 12
+    x = speed_legend(svg, 12, 18, [("✓", "verified code")])
+    width = max(width, x)
+    svg.text(12, 38, f"{name}: {host['cpu']['model']}", size=11, color="muted")
+    column_headers(svg, label_width, top, cell, list(COLUMNS.values()))
+    host_times = times(host)
+
+    y = top + 8
+    for section, ops in SECTIONS:
+        y += SECTION
+        svg.text(12, y - 8, section, weight="bold")
+        svg.line(12, y - 4, width - 12, y - 4)
+        for op in ops:
+            row = row_name(op)
+            libs = host_times.get(row, {})
+            svg.text(12, y + 14, label(row))
+            for c, lib in enumerate(COLUMNS):
+                x = label_width + c * cell + 2
+                if lib not in libs:
+                    continue
+                ratio = libs[lib] / min(libs.values())
+                fill = svg.theme["speed"][bin_of(ratio, SPEED_BINS)]
+                proof = proof_for(verified, lib, row, host)
+                title = f"{label(row)}, {COLUMNS[lib]}: {human(libs[lib])}, {ratio:.2f}× the fastest"
+                if proof:
+                    title += f"; verified: {proof['proof']}"
+                svg.rect(x, y + 1, cell - 4, ROW - 2, fill, title)
+                text = human(libs[lib]) + (" ✓" if proof else "")
+                svg.text(x + (cell - 4) / 2, y + 14, text, size=11, anchor="middle", color=ink_on(fill))
+            y += ROW
+    return svg.render(width, y + 12, f"Times on {name}, by operation and library")
+
+
+def tiers_svg(tiers, theme):
+    """rind's time over the fastest baseline's per CPU tier, in the benchmark
+    of each row where rind trails most."""
+    svg = Svg(theme)
+    cells = tier_cells(tiers)
+    columns = [name for _, name in TIERS]
+    cell = 74
+    label_width = max(text_width(name, 12) for name, _ in TIER_ROWS) + 16
+    top = 52
+    width = label_width + cell * len(columns) + 12
+    x = 12
+    for i, name in enumerate(TIER_LABELS):
+        svg.rect(x, 8, 12, 12, svg.theme["tier"][i])
+        svg.text(x + 16, 18, name, size=11, color="muted")
+        x += 16 + text_width(name, 11) + 12
+    width = max(width, x)
+    column_headers(svg, label_width, top, cell, columns)
+    y = top + 10
+    for row, _ in TIER_ROWS:
+        svg.text(12, y + 14, row)
+        for c, column in enumerate(columns):
+            found = cells.get((row, column))
+            if found is None:
+                continue
+            key, (ratio, rind, best, best_ns) = found
+            fill = svg.theme["tier"][bin_of(ratio, TIER_BINS)]
+            title = f"{row} on {column}: {key} takes {human(rind)} with rind, {human(best_ns)} with {best}"
+            x = label_width + c * cell + 2
+            svg.rect(x, y + 1, cell - 4, ROW - 2, fill, title)
+            svg.text(x + (cell - 4) / 2, y + 14, f"{ratio:.2f}", size=11, anchor="middle", color=ink_on(fill))
+        y += ROW
+    return svg.render(width, y + 12, "rind's time over the fastest of aws-lc-rs and ring, by CPU tier")
+
+
+# --- Markdown ---------------------------------------------------------------
+
+
+def picture(name, alt):
+    return [
+        "<picture>",
+        f'  <source media="(prefers-color-scheme: dark)" srcset="benchmarks/{name}-dark.svg">',
+        f'  <img alt="{esc(alt)}" src="benchmarks/{name}.svg">',
+        "</picture>",
+    ]
+
+
+def commit_link(commit):
+    return f"[`{commit[:8]}`](https://github.com/{REPO}/commit/{commit})"
+
+
+def measured(host):
+    noisy = ", noisy" if host.get("load", {}).get("noisy") else ""
+    return f"{host['started'][:10]} at {commit_link(host['commit'])}{noisy}"
+
+
+def platform_of(entry):
+    words = [entry.get("arch", "any architecture")]
+    has = [f for f in entry.get("cpu", []) if not f.startswith("!")]
+    lacks = [f.removeprefix("!") for f in entry.get("cpu", []) if f.startswith("!")]
+    if has:
+        words.append("with " + ", ".join(has))
+    if lacks:
+        words.append("without " + ", ".join(lacks))
+    if "os" in entry:
+        words.append({"linux": "on Linux", "macos": "on macOS"}[entry["os"]])
+    return " ".join(words)
+
+
+def host_table(host, verified):
+    host_times = times(host)
+    lines = ["| Operation | " + " | ".join(COLUMNS.values()) + " |", "|---|" + "---|" * len(COLUMNS)]
+    for op in OPERATIONS:
+        row = row_name(op)
+        libs = host_times.get(row, {})
+        cells = []
+        for lib in COLUMNS:
+            if lib not in libs:
+                cells.append("-")
+                continue
+            check = " ✓" if proof_for(verified, lib, row, host) else ""
+            cells.append(f"{human(libs[lib])}{check}")
+        lines.append(f"| {label(row)} | " + " | ".join(cells) + " |")
+    return lines
+
+
+def build_table(cost):
+    lines = [
+        "| Build | Wall s (range) | CPU s | Stripped MB | Tools needed | Crates |",
+        "|---|---|---|---|---|---|",
+    ]
+    for b in cost["builds"]:
+        spread = f"{min(b['seconds']):.1f} to {max(b['seconds']):.1f}"
+        lines.append(
+            f"| {BUILDS.get(b['name'], b['name'])} | {b['median_seconds']:.1f} ({spread}) "
+            f"| {b['median_cpu_seconds']:.0f} | {b['stripped_bytes'] / 1e6:.2f} "
+            f"| {', '.join(b['tools']) or 'none'} | {len(b['packages'])} |"
+        )
+    return lines
+
+
+def tier_table(tiers):
+    columns = [name for _, name in TIERS]
+    by_key = {}
+    for t in tiers["tiers"]:
+        column = dict(TIERS)[(t["target"], t["portable"], t["tier"])]
+        for key, (ratio, *_) in tier_rows(t).items():
+            by_key.setdefault(key, {})[column] = ratio
+    lines = ["| Benchmark | " + " | ".join(columns) + " |", "|---|" + "---|" * len(columns)]
+    for key in sorted(by_key):
+        lines.append(
+            f"| `{key}` | " + " | ".join(f"{by_key[key][c]:.2f}" if c in by_key[key] else "" for c in columns) + " |"
+        )
+    return lines
+
+
+def report(hosts, tiers, verified):
+    """BENCHMARKS.md and its SVGs, by path."""
+    files = {}
+    md = [
+        "# Benchmarks",
+        "",
+        "<!-- Generated by `admin/bench-report render` from benchmarks/data and benchmarks/verified.toml. -->",
+        "",
+        "How long rind and the usual Rust crypto libraries take for the same operations, on four machines, "
+        "and what each costs to build. Every library runs its native path on each host. "
+        "A ✓ marks an operation whose whole computation a published formal proof covers, as "
+        "[Verified code](#verified-code) lists.",
+        "",
+        "## Hosts",
+        "",
+        "| Host | CPU | OS | Measured |",
+        "|---|---|---|---|",
+    ]
+    for name in HOSTS:
+        if name in hosts:
+            h = hosts[name]
+            md.append(f"| `{name}` | {h['cpu']['model']} | {h['os']} | {measured(h)} |")
+        else:
+            md.append(f"| `{name}` | | | not measured yet |")
+    md += [
+        "",
+        "Each host builds with the pinned toolchain, in the Nix dev shell on Linux, and runs "
+        "`admin/bench-report` only when idle. Times are criterion's estimates.",
+        "",
+        "## Speed",
+        "",
+        "Each row is one operation and each column one library. Each cell holds a square per host, colored by "
+        "that library's time over the fastest library's on the same host, as the legend shows. A ✓ in a square "
+        "marks verified code. Each square's tooltip, in the SVG opened on its own, gives its time; the tables "
+        "below each host give them all. A library with no square doesn't offer the operation"
+        + (", and a dashed square marks a host not measured yet." if len(hosts) < len(HOSTS) else "."),
+        "",
+        *picture("overview", "Time over the fastest library's, by operation, library, and host"),
+        "",
+    ]
+    for theme, suffix in (("light", ""), ("dark", "-dark")):
+        files[f"overview{suffix}.svg"] = overview_svg(hosts, verified, theme)
+    for name in HOSTS:
+        if name not in hosts:
+            continue
+        h = hosts[name]
+        md += [
+            f"### `{name}`: {h['cpu']['model']}",
+            "",
+            f"Measured {measured(h)}, on {h['os']} with {h['toolchain']['rustc']}.",
+            "",
+            *picture(name, f"Times on {name}"),
+            "",
+            "<details>",
+            f"<summary>Times on {name}</summary>",
+            "",
+            *host_table(h, verified),
+            "",
+            "</details>",
+            "",
+        ]
+        for theme, suffix in (("light", ""), ("dark", "-dark")):
+            files[f"{name}{suffix}.svg"] = host_svg(name, h, verified, theme)
+
+    md += [
+        "## Build cost",
+        "",
+        "A cold `cargo build --release` of a minimal binary per library (AES-128-GCM, SHA-256, ECDSA P-256, "
+        "and X25519) and of a rustls client per provider, by `admin/build-cost`: the median of three builds "
+        "with an empty target directory and a warm download cache, their CPU time, the stripped binary's size, "
+        "the build tools it needs beyond rustc and a linker, and the crates it compiles. The system OpenSSL "
+        "build leaves the library itself out of its size; the vendored build is the static figure.",
+        "",
+    ]
+    for name in HOSTS:
+        cost = hosts.get(name, {}).get("build_cost")
+        if not cost:
+            continue
+        md += [f"### `{name}`", ""]
+        if cost["status"] != "ok":
+            md += [f"Not measured: {cost['reason']}", ""]
+            continue
+        md += [
+            f"Measured {cost['started'][:10]} at {commit_link(hosts[name]['commit'])}, "
+            f"with {cost['host']['rustc']}, {cost['host']['cc']}, and {cost['host']['jobs']} jobs.",
+            "",
+            *build_table(cost),
+            "",
+        ]
+
+    md += ["## CPU tiers", ""]
+    if tiers is None:
+        md += ["No nightly results yet.", ""]
+    else:
+        cpus = sorted({t["cpu"] for t in tiers["tiers"]})
+        md += [
+            "GitHub's runners, timed by the nightly `bench` workflow with CPU features denied as `bench.yml` "
+            "describes: x86_64 runs every feature, and each column to its right denies more (no ADX: ADX; "
+            "no AVX2: also AVX2, BMI2, SHA-NI, AVX-512, VAES, and VPCLMULQDQ; no AVX: also AVX; no AES-NI: "
+            "also AES-NI, PCLMULQDQ, and SSE4.1; SSE2: also SSSE3). aarch64 runs with the crypto extension, "
+            "no crypto without it, and armv7 in 32-bit mode on the same core. Each cell is rind's time over "
+            "the fastest of aws-lc-rs and ring (aws-lc-rs alone where a feature is denied, since ring can't "
+            "be denied one), in the row's benchmark where rind trails most. An empty cell runs the same code "
+            "as the one to its left, so it isn't timed.",
+            "",
+            f"From [run {tiers['run']}]({tiers['url']}), {tiers['date'][:10]} at {commit_link(tiers['commit'])}, "
+            f"on {', '.join(cpus)}.",
+            "",
+            *picture("tiers", "rind's time over the fastest of aws-lc-rs and ring, by CPU tier"),
+            "",
+            "<details>",
+            "<summary>Every benchmark</summary>",
+            "",
+            *tier_table(tiers),
+            "",
+            "</details>",
+            "",
+        ]
+        for theme, suffix in (("light", ""), ("dark", "-dark")):
+            files[f"tiers{suffix}.svg"] = tiers_svg(tiers, theme)
+
+    md += [
+        "## Verified code",
+        "",
+        "A ✓ means a published, machine-checked proof shows that all the code computing the operation, as "
+        "that library runs it on that host, gives the specified result for every input: the cipher and its "
+        "mode, the hash over every block with its padding, the whole scalar multiplication or exponentiation. "
+        "Parsing, encoding, randomness, and the hash inside a signature are left out. Proofs of memory safety "
+        "alone, or of only some of the arithmetic, earn no ✓. `benchmarks/verified.toml` holds this table.",
+        "",
+        "| Library | Operations | Platform | Proof |",
+        "|---|---|---|---|",
+    ]
+    for e in verified:
+        ops = ", ".join(f"`{p}`" for p in e["operations"])
+        md.append(f"| {COLUMNS[e['library']]} | {ops} | {platform_of(e)} | [{e['proof']}]({e['link']}) |")
+    md.append("")
+    files = {os.path.join(REPORT_DIR, k): v for k, v in files.items()}
+    files[REPORT] = "\n".join(md)
+    return files
+
+
+def import_hosts(directory):
+    """Copies a collection's measured hosts into the report's data."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    for name in HOSTS:
+        path = os.path.join(directory, f"{name}.json")
+        if not os.path.exists(path):
+            continue
+        with open(path) as f:
+            host = json.load(f)
+        if host["status"] != "ok":
+            print(f"bench-report: {name}: not imported, {host['status']}: {host['reason']}", file=sys.stderr)
+            continue
+        shutil.copy(path, os.path.join(DATA_DIR, f"{name}.json"))
+
+
+def render(args):
+    if args.collection:
+        import_hosts(args.collection)
+    hosts = load_hosts(DATA_DIR)
+    tiers_path = os.path.join(DATA_DIR, "tiers.json")
+    tiers = None
+    if os.path.exists(tiers_path):
+        with open(tiers_path) as f:
+            tiers = json.load(f)
+    verified = load_verified()
+    generated = sorted(glob.glob(os.path.join(REPORT_DIR, "*.svg")))
+    if os.path.exists(REPORT):
+        generated.append(REPORT)
+    if not hosts and tiers is None:
+        if args.check and generated:
+            fail("BENCHMARKS.md and its SVGs exist without results in benchmarks/data")
+        if not args.check:
+            fail("no results in benchmarks/data: run `collect`, then `render --from DIR`")
+        return
+    files = report(hosts, tiers, verified)
+    if args.check:
+        stale = [p for p in files if not os.path.exists(p) or open(p).read() != files[p]]
+        stale += [p for p in generated if p not in files]
+        if stale:
+            fail("out of date, rerun `admin/bench-report render`: " + ", ".join(os.path.relpath(p, ROOT) for p in stale))
+        return
+    for path in generated:
+        if path not in files:
+            os.remove(path)
+    os.makedirs(REPORT_DIR, exist_ok=True)
+    for path, content in files.items():
+        with open(path, "w") as f:
+            f.write(content)
+    print(os.path.relpath(REPORT, ROOT))
+
+
+def significant(ns):
+    return float(f"{ns:.4g}")
+
+
+def nightly(args):
+    """Saves the latest nightly bench's results on main as the CPU tiers,
+    from a run that timed every tier, since the report reads an empty cell as
+    code that tier shares with the one to its left."""
+    runs = json.loads(
+        output(
+            ["gh", "run", "list", "--repo", REPO, "--workflow", "bench.yml", "--branch", "main", "--event"]
+            + ["schedule", "--limit", "20", "--json", "databaseId,headSha,createdAt,url,status"]
+        )
+    )
+    scratch = os.path.join(ROOT, ".tmp", "bench-report", "nightly")
+    incomplete = []
+    for run in runs:
+        if run["status"] != "completed":
+            continue
+        shutil.rmtree(scratch, ignore_errors=True)
+        got = subprocess.run(
+            ["gh", "run", "download", str(run["databaseId"]), "--repo", REPO, "--pattern", "bench-*"]
+            + ["--dir", scratch],
+            capture_output=True,
+        )
+        paths = sorted(glob.glob(os.path.join(scratch, "*", "bench-results.json")))
+        if got.returncode != 0 or not paths:
+            continue
+        tiers = []
+        for path in paths:
+            with open(path) as f:
+                saved = json.load(f)
+            benchmarks = {}
+            for r in saved["results"]:
+                parts = r["id"].split("/")
+                lib = next((p for p in parts if p == "rind" or p in BASELINES), None)
+                if lib is None:
+                    continue
+                key = "/".join("*" if p == lib else p for p in parts)
+                benchmarks.setdefault(key, {})[lib] = significant(r["ns"])
+            tiers.append({k: saved[k] for k in ("target", "portable", "tier", "cpu")} | {"benchmarks": benchmarks})
+        order = {key: i for i, (key, _) in enumerate(TIERS)}
+        missing = set(order) - {(t["target"], t["portable"], t["tier"]) for t in tiers}
+        if missing:
+            incomplete.append(f"{run['databaseId']} lacks {', '.join(dict(TIERS)[k] for k in sorted(missing))}")
+            continue
+        tiers.sort(key=lambda t: order.get((t["target"], t["portable"], t["tier"]), len(order)))
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(os.path.join(DATA_DIR, "tiers.json"), "w") as f:
+            json.dump(
+                {
+                    "schema": 1,
+                    "run": run["databaseId"],
+                    "url": run["url"],
+                    "commit": run["headSha"],
+                    "date": run["createdAt"],
+                    "tiers": tiers,
+                },
+                f,
+                indent=1,
+            )
+            f.write("\n")
+        shutil.rmtree(scratch)
+        print(f"bench-report: tiers from run {run['databaseId']}", file=sys.stderr)
+        return
+    fail("no completed nightly bench run on main timed every tier" + "".join(f"; run {r}" for r in incomplete))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -526,6 +1414,14 @@ def main():
     p = sub.add_parser("summary", help="print a collection's rind-versus-fastest table")
     p.add_argument("dir")
     p.set_defaults(func=summary)
+
+    p = sub.add_parser("render", help="write BENCHMARKS.md and its SVGs from benchmarks/data")
+    p.add_argument("--from", dest="collection", metavar="DIR", help="first import a collection's measured hosts")
+    p.add_argument("--check", action="store_true", help="fail if BENCHMARKS.md or its SVGs are out of date")
+    p.set_defaults(func=render)
+
+    p = sub.add_parser("nightly", help="save the latest nightly bench's results as the CPU tiers")
+    p.set_defaults(func=nightly)
 
     p = sub.add_parser("run", help="the host side of collect")
     p.add_argument("--host", required=True)

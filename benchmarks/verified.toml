@@ -1,0 +1,243 @@
+# The code each library runs that a published formal proof covers, which
+# BENCHMARKS.md marks with a ✓. `admin/bench-report render` reads it and
+# refuses an entry that names no library, operation, or CPU feature it knows.
+#
+# An entry earns its ✓ when a machine-checked proof shows that all the code
+# computing the operation gives the specified result for every input, in the
+# version that library ships, on that architecture and CPU: the cipher and its
+# mode, the hash over every block with its padding, the whole scalar
+# multiplication or modular exponentiation. Parsing, encoding, randomness, and the hash inside a
+# signature (its own row) are left out. A proof of memory safety, panic
+# freedom, or secret independence alone earns none, nor one covering only some
+# of the arithmetic, such as field operations under unverified point formulas.
+# s2n-bignum's proofs check its own object code and HACL*'s its C, so code
+# copied from s2n-bignum or compiled from HACL* counts, as README's Sources
+# table says.
+#
+# Each entry:
+#   library     rind, aws-lc-rs, ring, rustcrypto, graviola, libcrux, or openssl
+#   operations  report rows, as admin/bench-report's OPERATIONS without the
+#               library; `*` matches any message size
+#   arch        optional: x86_64 or aarch64, unless the code is the same on both
+#   cpu         optional: features the host has, or lacks with a leading `!`,
+#               as rind-cpuid names them; needs an arch
+#   os          optional: linux or macos, where the code differs by OS
+#   proof       whose proof, of which routines, and any restriction
+#   link        the proof itself
+#
+# ring, RustCrypto + dalek, and OpenSSL have none: at most their field
+# arithmetic is verified, under unverified point formulas or ladders.
+
+# rind: X25519 and Ed25519 run only s2n-bignum routines; point encoding is
+# rind's Rust. rind pads SHA-512 in its own Rust, so its verified aws-lc block
+# function earns no ✓, and every other operation runs some unverified
+# arithmetic, such as P-256's base-point table or the RSA exponentiation.
+[[verified]]
+library = "rind"
+operations = ["x25519-ecdh"]
+arch = "x86_64"
+cpu = ["bmi2", "adx"]
+proof = "s2n-bignum's HOL Light proofs of curve25519_x25519 and curve25519_x25519base, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/curve25519_x25519.ml"
+
+[[verified]]
+library = "rind"
+operations = ["x25519-ecdh"]
+arch = "aarch64"
+proof = "s2n-bignum's HOL Light proofs of curve25519_x25519_alt and curve25519_x25519base_alt, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/curve25519_x25519_alt.ml"
+
+[[verified]]
+library = "rind"
+operations = ["ed25519-sign"]
+arch = "x86_64"
+cpu = ["bmi2", "adx"]
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmulbase, bignum_mod_n25519, and bignum_madd_n25519, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_scalarmulbase.ml"
+
+[[verified]]
+library = "rind"
+operations = ["ed25519-sign"]
+arch = "aarch64"
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmulbase_alt, bignum_mod_n25519, and bignum_madd_n25519_alt, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/edwards25519_scalarmulbase_alt.ml"
+
+[[verified]]
+library = "rind"
+operations = ["ed25519-verify"]
+arch = "x86_64"
+cpu = ["bmi2", "adx"]
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmuldouble, edwards25519_decode, bignum_mod_n25519, and bignum_neg_p25519, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_scalarmuldouble.ml"
+
+[[verified]]
+library = "rind"
+operations = ["ed25519-verify"]
+arch = "aarch64"
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmuldouble_alt, edwards25519_decode_alt, bignum_mod_n25519, and bignum_neg_p25519, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/edwards25519_scalarmuldouble_alt.ml"
+
+# aws-lc-rs: aws-lc 5.12.0 builds X25519 and Ed25519 from s2n-bignum only
+# with assembly on Linux, Apple, and the BSDs; Windows runs unverified C.
+[[verified]]
+library = "aws-lc-rs"
+operations = ["x25519-ecdh"]
+arch = "x86_64"
+os = "linux"
+proof = "s2n-bignum's HOL Light proofs of curve25519_x25519_byte and curve25519_x25519base_byte, or their _alt forms without BMI2 and ADX, at 4d1356a7, the revision aws-lc 5.12.0 imports"
+link = "https://github.com/awslabs/s2n-bignum/blob/4d1356a7470663c752660a59375dc3a9ef548428/x86/proofs/curve25519_x25519.ml"
+
+[[verified]]
+library = "aws-lc-rs"
+operations = ["x25519-ecdh"]
+arch = "aarch64"
+os = "macos"
+proof = "s2n-bignum's HOL Light proofs of curve25519_x25519_byte_alt and curve25519_x25519base_byte_alt, which aws-lc picks on Apple cores, at 4d1356a7"
+link = "https://github.com/awslabs/s2n-bignum/blob/4d1356a7470663c752660a59375dc3a9ef548428/arm/proofs/curve25519_x25519_byte_alt.ml"
+
+[[verified]]
+library = "aws-lc-rs"
+operations = ["ed25519-sign"]
+arch = "x86_64"
+os = "linux"
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmulbase, bignum_mod_n25519, and bignum_madd_n25519, or their _alt forms without BMI2 and ADX, at 4d1356a7"
+link = "https://github.com/awslabs/s2n-bignum/blob/4d1356a7470663c752660a59375dc3a9ef548428/x86/proofs/edwards25519_scalarmulbase.ml"
+
+[[verified]]
+library = "aws-lc-rs"
+operations = ["ed25519-sign"]
+arch = "aarch64"
+os = "macos"
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmulbase_alt, bignum_mod_n25519, and bignum_madd_n25519_alt, which aws-lc picks on Apple cores, at 4d1356a7"
+link = "https://github.com/awslabs/s2n-bignum/blob/4d1356a7470663c752660a59375dc3a9ef548428/arm/proofs/edwards25519_scalarmulbase_alt.ml"
+
+[[verified]]
+library = "aws-lc-rs"
+operations = ["ed25519-verify"]
+arch = "x86_64"
+os = "linux"
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmuldouble, edwards25519_decode, bignum_neg_p25519, and bignum_mod_n25519, or their _alt forms without BMI2 and ADX, at 4d1356a7"
+link = "https://github.com/awslabs/s2n-bignum/blob/4d1356a7470663c752660a59375dc3a9ef548428/x86/proofs/edwards25519_scalarmuldouble.ml"
+
+[[verified]]
+library = "aws-lc-rs"
+operations = ["ed25519-verify"]
+arch = "aarch64"
+os = "macos"
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmuldouble_alt, edwards25519_decode_alt, bignum_neg_p25519, and bignum_mod_n25519, which aws-lc picks on Apple cores, at 4d1356a7"
+link = "https://github.com/awslabs/s2n-bignum/blob/4d1356a7470663c752660a59375dc3a9ef548428/arm/proofs/edwards25519_scalarmuldouble_alt.ml"
+
+[[verified]]
+library = "aws-lc-rs"
+operations = ["sha512/*"]
+arch = "x86_64"
+cpu = ["intel", "avx", "ssse3"]
+proof = "aws-lc-verification's SAW proof of SHA-512 through EVP_Digest, padding included, over sha512_block_data_order_avx, which aws-lc runs only on Intel; of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps"
+link = "https://github.com/awslabs/aws-lc-verification/blob/797302470c1703cbb1a3a6fa98daffef0bfd3d80/SAW/proof/SHA512/verify-SHA512-x86.saw"
+
+[[verified]]
+library = "aws-lc-rs"
+operations = ["sha512/*"]
+arch = "aarch64"
+cpu = ["sha3"]
+proof = "aws-lc-verification's NSym proof of sha512_block_data_order_hw and SAW proof of the C around it, with its ArmSpecGap and NoInline caveats; of a Linux build of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps"
+link = "https://github.com/awslabs/aws-lc-verification/tree/797302470c1703cbb1a3a6fa98daffef0bfd3d80/NSym/proof/proofs/SHA512"
+
+# graviola: the same s2n-bignum routines as rind, from the s2n-bignum
+# revision graviola 0.4.3 pins.
+[[verified]]
+library = "graviola"
+operations = ["x25519-ecdh"]
+arch = "x86_64"
+cpu = ["bmi2", "adx"]
+proof = "s2n-bignum's HOL Light proofs of curve25519_x25519 and curve25519_x25519base, of s2n-bignum's own object code at 4320f649, which graviola 0.4.3 transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/4320f649c46dbd32b60871d5dbd8d097a7ce1c48/x86/proofs/curve25519_x25519.ml"
+
+[[verified]]
+library = "graviola"
+operations = ["x25519-ecdh"]
+arch = "aarch64"
+proof = "s2n-bignum's HOL Light proofs of curve25519_x25519_alt and curve25519_x25519base_alt, of s2n-bignum's own object code at 4320f649, which graviola 0.4.3 transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/4320f649c46dbd32b60871d5dbd8d097a7ce1c48/arm/proofs/curve25519_x25519_alt.ml"
+
+[[verified]]
+library = "graviola"
+operations = ["ed25519-sign"]
+arch = "x86_64"
+cpu = ["bmi2", "adx"]
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmulbase, bignum_mod_n25519, and bignum_madd_n25519, of s2n-bignum's own object code at 4320f649, which graviola 0.4.3 transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/4320f649c46dbd32b60871d5dbd8d097a7ce1c48/x86/proofs/edwards25519_scalarmulbase.ml"
+
+[[verified]]
+library = "graviola"
+operations = ["ed25519-sign"]
+arch = "aarch64"
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmulbase_alt, bignum_mod_n25519, and bignum_madd_n25519_alt, of s2n-bignum's own object code at 4320f649, which graviola 0.4.3 transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/4320f649c46dbd32b60871d5dbd8d097a7ce1c48/arm/proofs/edwards25519_scalarmulbase_alt.ml"
+
+[[verified]]
+library = "graviola"
+operations = ["ed25519-verify"]
+arch = "x86_64"
+cpu = ["bmi2", "adx"]
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmuldouble, edwards25519_decode, bignum_neg_p25519, and bignum_mod_n25519, of s2n-bignum's own object code at 4320f649, which graviola 0.4.3 transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/4320f649c46dbd32b60871d5dbd8d097a7ce1c48/x86/proofs/edwards25519_scalarmuldouble.ml"
+
+[[verified]]
+library = "graviola"
+operations = ["ed25519-verify"]
+arch = "aarch64"
+proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmuldouble_alt, edwards25519_decode_alt, bignum_neg_p25519, and bignum_mod_n25519, of s2n-bignum's own object code at 4320f649, which graviola 0.4.3 transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/4320f649c46dbd32b60871d5dbd8d097a7ce1c48/arm/proofs/edwards25519_scalarmuldouble_alt.ml"
+
+# libcrux: portable Rust that KaRaMeL generates from HACL*, with no CPU
+# dispatch. libcrux records no HACL* revision, so these link to HACL*'s main
+# branch as of 2026-11-03. Its ML-KEM proofs are partial, its XChaCha20
+# construction is unverified Rust, and its AES is pre-verification.
+[[verified]]
+library = "libcrux"
+operations = ["sha256/*", "sha512/*"]
+proof = "HACL*'s F* proof of Hacl.Streaming.SHA2's hash_256 and hash_512, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/streaming/Hacl.Streaming.SHA2.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["hmac-sha256/*"]
+proof = "HACL*'s F* proof of Hacl.HMAC's compute_sha2_256, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/hmac/Hacl.HMAC.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["hkdf-sha256/*"]
+proof = "HACL*'s F* proof of Hacl.HKDF's extract_sha2_256 and expand_sha2_256, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/hkdf/Hacl.HKDF.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["chacha20poly1305/*"]
+proof = "HACL*'s F* proof of Hacl.Chacha20Poly1305_32, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/chacha20poly1305/Hacl.Chacha20Poly1305_32.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["x25519-ecdh"]
+proof = "HACL*'s F* proof of Hacl.Curve25519_51's secret_to_public and ecdh, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/curve25519/Hacl.Curve25519_51.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["ed25519-sign", "ed25519-verify"]
+proof = "HACL*'s F* proof of Hacl.Ed25519's sign and verify, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/ed25519/Hacl.Ed25519.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["p256-ecdh", "p256-ecdsa-sign", "p256-ecdsa-verify"]
+proof = "HACL*'s F* proof of Hacl.P256's dh_initiator, dh_responder, ecdsa_sign_p256_sha2, and ecdsa_verif_p256_sha2, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/ecdsap256/Hacl.P256.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["rsa2048-pss-sha256-sign", "rsa2048-pss-sha256-verify"]
+proof = "HACL*'s F* proof of Hacl.RSAPSS's rsapss_skey_sign and rsapss_pkey_verify, signing without the CRT, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/rsapss/Hacl.RSAPSS.fst"

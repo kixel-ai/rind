@@ -137,9 +137,13 @@ Run performance benchmarks:
 cargo bench
 ```
 
-`admin/bench-report collect` runs the report's benchmarks on each benchmark
-host in turn over ssh, skipping any that is busy, and writes their results
-and the hosts' details as JSON under `.tmp/bench-report/`.
+`admin/bench-report collect` runs the report's benchmarks, then
+`admin/build-cost`, on each benchmark host in turn over ssh, skipping any
+that is busy, and writes their results and the hosts' details as JSON under
+`.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly
+`bench` run's results, and `admin/bench-report render --from DIR` copies a
+collection's measured hosts into `benchmarks/data/` and writes
+`BENCHMARKS.md` and its SVGs from them and `benchmarks/verified.toml`.
 
 With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
 toolchain, and `just check` runs CI's gate over what the branch changed.
