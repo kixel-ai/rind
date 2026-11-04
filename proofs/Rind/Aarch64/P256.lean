@@ -6,9 +6,46 @@ open Aeneas Aeneas.Std Result rind.spec
 
 /-!
 # aarch64 P-256 ECDH, proven from rind's agreement API to s2n-bignum's contracts
+
+The `p256_*` theorems state what the agreement API returns for `ECDH_P256`, in
+terms of `p256Pow`, HOL Light's `group_pow p256_group`, through the dispatch
+`Rind.Aarch64.Dispatch` and `Rind.Aarch64.P256Dispatch` model. rind keeps
+points in Montgomery form, which `mont_on_curve` relates to the curve
+equation, and s2n-bignum's routines take and return plain coordinates.
 -/
 
 namespace rind.aarch64
+
+/-! ## What the theorems state -/
+
+/-- The coordinates an encoded point names, read big-endian after its tag byte. -/
+def x962Coords (bytes : List U8) : Nat × Nat :=
+  (beNat (bytes.slice 1 33), beNat (bytes.slice 33 65))
+
+/-- P-256 ECDH's outcome, for scalar `k` and the peer's encoded key: refused
+unless it is an X9.62 uncompressed point on the curve, with coordinates below
+`p256`, and otherwise the x-coordinate of `k` times that point, or a fault
+unless that is a finite point on the curve, as it always is for `k` in
+[1, n). -/
+def p256Agreement (k : Nat) (peer : List U8) (r : core.result.Result high.agreement.Secret error.Error) :
+    Prop :=
+  match peer.head? with
+  | none => r = .Err (.KeyRejected .WrongLength)
+  | some b0 =>
+    if b0 = 4#u8 then
+      if peer.length = 65 then
+        if p256OnCurve (some (x962Coords peer)) then
+          match p256Pow (some (x962Coords peer)) k with
+          | some (x, y) =>
+            if p256OnCurve (some (x, y)) then ∃ s, r = .Ok (.P256 s) ∧ beNat s.val = x
+            else r = .Err .Fault
+          | none => r = .Err .Fault
+        else r = .Err (.KeyRejected .NotOnCurve)
+      else r = .Err (.KeyRejected .WrongLength)
+    else r = .Err (.KeyRejected .Compressed)
+
+/-! The P-256 lemmas' own namespace keeps their names apart from X25519's. -/
+namespace P256
 
 /-! ## Byte and limb conversions, `mid::util` -/
 
@@ -130,7 +167,7 @@ theorem u64x4_to_be_spec (v : Std.Array U64 4#usize) :
     simp only [List.reverse_cons, List.reverse_nil, List.nil_append, List.cons_append,
       List.flatMap_cons, List.flatMap_nil, List.append_nil, beNat_append, length_beBytes,
       beNat_beBytes, wordsNat, List.map_cons, List.map_nil, Nat.ofDigits_cons, Nat.ofDigits_nil,
-      List.append_assoc, List.singleton_append, List.length_append]
+      List.length_append]
     ring
 
 @[step]
@@ -330,8 +367,7 @@ theorem on_curve_spec (pt : mid.p256.AffineMontPoint) (hx : (pairNat pt.xy.val).
 
 theorem pairNat_append (a b : List U64) (ha : a.length = 4) (hb : b.length = 4) :
     pairNat (a ++ b) = (wordsNat a, wordsNat b) := by
-  simp [pairNat, List.take_append_of_le_length, ha, List.drop_append_of_le_length,
-    List.take_of_length_le, hb]
+  simp [pairNat, ha, List.take_of_length_le, hb]
 
 theorem rinv_tomont (x : Nat) (hx : x < p256) : p256RInv * (2 ^ 256 * x % p256) % p256 = x := by
   rw [Nat.mul_mod, Nat.mod_mod, ← Nat.mul_mod, ← Nat.mul_assoc, Nat.mul_mod,
@@ -354,7 +390,7 @@ theorem lt_p256_of_top (v : List U64) (hv : v.length = 4) (s : Nat) (hs : s < 4)
     have hb := b.hBounds
     have hc := c.hBounds
     have hd := d.hBounds
-    simp only [UScalar.size, UScalarTy.numBits] at ha hb hc hd
+    simp only [UScalarTy.numBits] at ha hb hc hd
     simp only [CURVE_PRIME_val, UScalar.eq_equiv] at heq hne ⊢
     simp only [wordsNat, List.map_cons, List.map_nil, Nat.ofDigits_cons, Nat.ofDigits_nil, p256]
     rcases (by omega : s = 0 ∨ s = 1 ∨ s = 2 ∨ s = 3) with rfl | rfl | rfl | rfl
@@ -430,10 +466,6 @@ theorem below_p_spec (v : Std.Array U64 4#usize) :
       () v ⦃ b => (b ↔ wordsNat v.val < p256) ⦄ :=
   below_p_loop_spec v _ (by simp) (by simp) (by simp)
 
-/-- The coordinates an encoded point names, read big-endian after its tag byte. -/
-def x962Coords (bytes : List U8) : Nat × Nat :=
-  (beNat (bytes.slice 1 33), beNat (bytes.slice 33 65))
-
 theorem from_x962_spec (bytes : Slice U8) :
     mid.p256.AffineMontPoint.from_x962_uncompressed bytes ⦃ r =>
       match bytes.val.head? with
@@ -448,8 +480,7 @@ theorem from_x962_spec (bytes : Slice U8) :
         else r = .Err (.KeyRejected .Compressed) ⦄ := by
   unfold mid.p256.AffineMontPoint.from_x962_uncompressed
   simp only [core.slice.Slice.first, core.convert.IntoFrom.into,
-    error.Error.Insts.CoreConvertFromKeyFormatError, error.Error.Insts.CoreConvertFromKeyFormatError.from,
-    bind_tc_ok]
+    error.Error.Insts.CoreConvertFromKeyFormatError.from]
   rcases hb : bytes.val.head? with _ | b0
   · simp
   · simp only [bind_ok]
@@ -470,12 +501,12 @@ theorem from_x962_spec (bytes : Slice U8) :
         have hyl : y.length = 32 := by
           simp only [Slice.length, hy, hxy, List.length_drop]; simp [Slice.length] at hl; omega
         step as ⟨o1, ho1⟩
-        rw [if_pos hxl] at ho1
+        simp only [hxl, ↓reduceIte] at ho1
         obtain ⟨x1, rfl, hx1⟩ := ho1
         step as ⟨x1', hx1'⟩
         cases hx1'
         step as ⟨o2, ho2⟩
-        rw [if_pos hyl] at ho2
+        simp only [hyl, ↓reduceIte] at ho2
         obtain ⟨y1, rfl, hy1⟩ := ho2
         step as ⟨y1', hy1'⟩
         cases hy1'
@@ -641,38 +672,16 @@ theorem public_from_x962_spec (h : Runs) (bytes : Slice U8) :
   rcases hb : bytes.val.head? with _ | b0
   · simp only [hb] at hr
     subst hr
-    simp [core.convert.FromSame]
+    simp
   · simp only [hb] at hr ⊢
     by_cases h4 : b0 = 4#u8 <;> simp only [h4, ↓reduceIte] at hr ⊢
     · by_cases hl : bytes.length = 65 <;> simp only [hl, ↓reduceIte] at hr ⊢
       · by_cases hon : p256OnCurve (some (x962Coords bytes.val)) <;> simp only [hon, ↓reduceIte] at hr ⊢
         · obtain ⟨pt, rfl, hpt⟩ := hr
           simp [hpt]
-        · subst hr; simp [core.convert.FromSame]
-      · subst hr; simp [core.convert.FromSame]
-    · subst hr; simp [core.convert.FromSame]
-
-/-- P-256 ECDH's outcome, for scalar `k` and the peer's encoded key: refused
-unless it is an X9.62 uncompressed point on the curve, with coordinates below
-`p256`, and otherwise the x-coordinate of `k` times that point, or a fault
-unless that is a finite point on the curve, as it always is for `k` in
-[1, n). -/
-def p256Agreement (k : Nat) (peer : List U8) (r : core.result.Result high.agreement.Secret error.Error) :
-    Prop :=
-  match peer.head? with
-  | none => r = .Err (.KeyRejected .WrongLength)
-  | some b0 =>
-    if b0 = 4#u8 then
-      if peer.length = 65 then
-        if p256OnCurve (some (x962Coords peer)) then
-          match p256Pow (some (x962Coords peer)) k with
-          | some (x, y) =>
-            if p256OnCurve (some (x, y)) then ∃ s, r = .Ok (.P256 s) ∧ beNat s.val = x
-            else r = .Err .Fault
-          | none => r = .Err .Fault
-        else r = .Err (.KeyRejected .NotOnCurve)
-      else r = .Err (.KeyRejected .WrongLength)
-    else r = .Err (.KeyRejected .Compressed)
+        · subst hr; simp
+      · subst hr; simp
+    · subst hr; simp
 
 theorem agree_spec (h : Runs) (k : mid.p256.PrivateKey) (peer : Slice U8) :
     mid.p256.PrivateKey.Insts.RindHighAgreementAgree.agree k peer ⦃ r =>
@@ -684,7 +693,7 @@ theorem agree_spec (h : Runs) (k : mid.p256.PrivateKey) (peer : Slice U8) :
   rcases hb : peer.val.head? with _ | b0
   · simp only [hb] at hr
     subst hr
-    simp [core.convert.FromSame]
+    simp
   · simp only [hb] at hr ⊢
     by_cases h4 : b0 = 4#u8 <;> simp only [h4, ↓reduceIte] at hr ⊢
     · by_cases hl : peer.length = 65 <;> simp only [hl, ↓reduceIte] at hr ⊢
@@ -694,14 +703,14 @@ theorem agree_spec (h : Runs) (k : mid.p256.PrivateKey) (peer : Slice U8) :
           step with diffie_hellman_spec h k pk _ hon hpk as ⟨r1, hr1⟩
           rcases hq : p256Pow (some (x962Coords peer.val)) (wordsNat k.scalar.val) with _ | ⟨x, y⟩ <;>
             simp only [hq] at hr1 ⊢
-          · subst hr1; simp [core.convert.FromSame]
+          · subst hr1; simp
           · by_cases hc : p256OnCurve (some (x, y)) <;> simp only [hc, ↓reduceIte] at hr1 ⊢
             · obtain ⟨s, rfl, hs⟩ := hr1
               simp [hs]
-            · subst hr1; simp [core.convert.FromSame]
-        · subst hr; simp [core.convert.FromSame]
-      · subst hr; simp [core.convert.FromSame]
-    · subst hr; simp [core.convert.FromSame]
+            · subst hr1; simp
+        · subst hr; simp
+      · subst hr; simp
+    · subst hr; simp
 
 /-! ## Key generation -/
 
@@ -724,8 +733,7 @@ theorem into_range_check_spec (sc : mid.p256.Scalar) :
       else r = .Err (.KeyRejected .ScalarOutOfRange) ⦄ := by
   unfold mid.p256.Scalar.into_range_check mid.p256.Scalar.is_zero
     mid.p256.Scalar.Insts.CoreDefaultDefault.default core.default.DefaultArray.default low.ct.into_public
-  simp only [core.convert.IntoFrom.into, error.Error.Insts.CoreConvertFromKeyFormatError,
-    error.Error.Insts.CoreConvertFromKeyFormatError.from]
+  simp only [core.convert.IntoFrom.into, error.Error.Insts.CoreConvertFromKeyFormatError.from]
   step as ⟨red, hred⟩
   step as ⟨b, hb⟩
   step as ⟨b1, hb1⟩
@@ -770,7 +778,6 @@ theorem from_bytes_spec (bytes : Slice U8) (hl : bytes.length = 32) :
   split_ifs at hr ⊢
   · obtain ⟨sc, rfl, hsc⟩ := hr
     simp [core.result.Result.map,
-      mid.p256.PrivateKey.from_bytes.closure.Insts.CoreOpsFunctionFnOnceTupleScalarPrivateKey,
       mid.p256.PrivateKey.from_bytes.closure.Insts.CoreOpsFunctionFnOnceTupleScalarPrivateKey.call_once,
       low.ct.into_secret, hsc]
   · subst hr
@@ -915,7 +922,7 @@ theorem encode_public_spec (h : Runs) (ht : Tabulated) (k : mid.p256.PrivateKey)
   · rw [hbv]; exact ha4
   · rw [hbv]; exact hac
 
-theorem generate_loop_spec (h : Runs) (r : core.result.Result Unit getrandom.error.Error)
+theorem generate_loop_spec (r : core.result.Result Unit getrandom.error.Error)
     (out : Slice U8) (hout : out.length = 32)
     (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) (n : Nat) :
     mid.p256.PrivateKey.generate_loop (n + 1) ⦃ key =>
@@ -938,7 +945,7 @@ theorem generate_loop_spec (h : Runs) (r : core.result.Result Unit getrandom.err
     have hl : ((Array.repeat 32#usize 0#u8).from_slice out).to_slice.length = 32 := by
       simp only [Slice.length, hfrom]; simpa [Slice.length] using hout
     rcases r with _ | e
-    · simp only [core.result.Result.map_err, bind_ok]
+    · simp only [core.result.Result.map_err]
       step with from_bytes_spec _ hl as ⟨p, hp⟩
       rw [hfrom] at hp
       split_ifs at hp ⊢ with hr
@@ -951,5 +958,67 @@ theorem generate_loop_spec (h : Runs) (r : core.result.Result Unit getrandom.err
           | (apply WP.spec_mono ih; intro key hkey; simpa [hr] using hkey)
     · simp [core.result.Result.map_err,
         mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once]
+
+end P256
+
+open P256
+
+/-! ## The agreement API, `high::agreement`, through the modelled dispatch -/
+
+/-- A generated P-256 key's scalar is the 32 bytes the random source drew,
+read big-endian, if that is in [1, n); otherwise, or if the draw failed, key
+generation is refused. The draw itself is outside the functional spec, which
+gives every one of the 64 draws the same bytes. -/
+theorem p256_generate (h : Runs) (r : core.result.Result Unit getrandom.error.Error)
+    (out : Slice U8) (hout : out.length = 32)
+    (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) :
+    high.agreement.PrivateKey.generate high.agreement.ECDH_P256 ⦃ key =>
+      match r with
+      | .Ok _ =>
+        if 0 < beNat out.val ∧ beNat out.val < n256 then
+          ∃ k : high.agreement.Keyed mid.p256.PrivateKey,
+            key = core.result.Result.Ok (high.agreement.Private.P256 k) ∧
+              wordsNat k.key.scalar.val = beNat out.val
+        else key = core.result.Result.Err error.Error.RngFailed
+      | .Err _ => key = core.result.Result.Err error.Error.RngFailed ⦄ := by
+  unfold high.agreement.PrivateKey.generate high.agreement.ECDH_P256 high.agreement.Keyed.generate
+    mid.p256.PrivateKey.generate
+  simp only
+  step as ⟨_⟩
+  step with generate_loop_spec r out hout hfill 63 as ⟨key, hkey⟩
+  rcases r with _ | _ <;> simp only at hkey ⊢
+  · split_ifs at hkey ⊢
+    · obtain ⟨k, rfl, hk⟩ := hkey
+      simp [mid.p256.PrivateKey.Insts.RindHighAgreementAgree.wrap, hk]
+    · simp [hkey]
+  · simp [hkey]
+
+/-- A P-256 key's public key: X9.62's uncompressed encoding of its scalar
+times the generator, for a scalar whose multiple is a finite point on the
+curve, as every scalar in [1, n) gives. -/
+theorem p256_public_key (h : Runs) (ht : Tabulated) (k : high.agreement.Keyed mid.p256.PrivateKey)
+    (x y : Nat) (hq : p256Pow p256G (wordsNat k.key.scalar.val) = some (x, y))
+    (hc : p256OnCurve (some (x, y))) :
+    (do
+      let pk ← high.agreement.PrivateKey.public_key (.P256 k)
+      high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
+      b.length = 65 ∧ b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄ := by
+  unfold high.agreement.PrivateKey.public_key high.agreement.Keyed.public_key
+  exact encode_public_spec h ht k.key x y hq hc
+
+/-- A P-256 agreement with the peer's encoded public key: `p256Agreement` of
+this key's scalar. -/
+theorem p256_agree (h : Runs) (k : high.agreement.Keyed mid.p256.PrivateKey) (peer : Slice U8) :
+    high.agreement.PrivateKey.agree (.P256 k) peer ⦃ r =>
+      p256Agreement (wordsNat k.key.scalar.val) peer.val r ⦄ := by
+  unfold high.agreement.PrivateKey.agree high.agreement.Keyed.agree
+  step with agree_spec h k.key peer as ⟨r, hr⟩
+  rcases r with s | e <;> simpa using hr
+
+/-- The shared secret's bytes are the ones `p256_agree` states. -/
+theorem p256_shared_secret (s : mid.p256.SharedSecret) :
+    high.agreement.SharedSecret.Insts.CoreConvertAsRefSliceU8.as_ref (.P256 s) ⦃ b =>
+      b.val = s.val ⦄ := by
+  simp [high.agreement.SharedSecret.Insts.CoreConvertAsRefSliceU8.as_ref, Array.val_to_slice]
 
 end rind.aarch64
