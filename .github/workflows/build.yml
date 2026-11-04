@@ -59,8 +59,8 @@ jobs:
           # test software fallbacks for sha1 and sha256, and the scalar sha512 that
           # CPUs other than Intel run
           env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 cargo test
-          # test avx2/aesni aes-gcm & ML-KEM without avx512, and RSA's CRT one
-          # exponentiation at a time on a runner with AVX-512 IFMA
+          # test Vale's aes-gcm and avx2 ML-KEM without avx512 or vaes, and
+          # RSA's CRT one exponentiation at a time on a runner with AVX-512 IFMA
           env RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 RIND_TEST_X86_AVX512_RSA=0 cargo test
           # test s2n-bignum's _alt routines, and aws-lc's Montgomery
           # multiplication and RSAZ exponentiation, for CPUs with AVX2 but

@@ -60,8 +60,8 @@ pub(crate) enum GhashTable {
     /// VAES without AVX-512: the PCLMULQDQ path for short messages, and
     /// BoringSSL's 256-bit kernel for long ones.
     VaesAvx2(ClmulTable, VaesKernel),
-    /// AVX and MOVBE without VAES: the PCLMULQDQ path for short messages and
-    /// tails, and aws-lc's `aesni_gcm` routine for the rest.
+    /// AVX and MOVBE without VAES: Vale's AES-GCM, and the PCLMULQDQ path
+    /// for an AAD or message of 2^32 bytes or more, beyond Vale's proof.
     Avx(ClmulTable, AvxKernel),
     Avx512(GhashTableAvx512),
     /// SSSE3's, which the table picks when the CPU lacks AES-NI or
@@ -88,7 +88,7 @@ impl GhashTable {
         }
         if let Some(token) = HaveAvxMovbeForAesGcm::check() {
             let table = ClmulTable::new(h, hw);
-            let kernel = AvxKernel::new(&table, token);
+            let kernel = AvxKernel::new(&table, h, token);
             return Self::Avx(table, kernel);
         }
 
@@ -153,15 +153,11 @@ impl ClmulTable {
         }
     }
 
-    /// H^1 to H^6 as aws-lc's `gcm_init_avx` lays them out, in the same
-    /// representation: each pair of powers, then a vector of their Karatsuba
-    /// middle terms, the lower power's in its low half.
-    pub(crate) fn aws_lc_htable(&self) -> [__m128i; 9] {
+    /// The GHASH key powers in the layout Vale's AES-GCM reads, for the
+    /// GHASH key `h` this table was made from.
+    pub(crate) fn vale_hkeys(&self, h: u128) -> [__m128i; 8] {
         let [h1, h2, h3, h4, h5, h6, ..] = self.powers;
-        let [x1, x2, x3, x4, x5, x6, ..] = self.powers_xor;
-        // SAFETY: every x86_64 CPU has SSE2
-        let k = |lo, hi| unsafe { _mm_unpacklo_epi64(lo, hi) };
-        [h1, h2, k(x1, x2), h3, h4, k(x3, x4), h5, h6, k(x5, x6)]
+        [h1, h2, u128_to_m128i(h), h3, h4, zero(), h5, h6]
     }
 
     /// Hashes `bytes` into `current`.

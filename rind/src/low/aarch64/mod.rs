@@ -28,8 +28,6 @@ pub(crate) mod bignum_demont_p256;
 pub(crate) mod bignum_demont_p384;
 pub(crate) mod bignum_digitsize;
 pub(crate) mod bignum_eq;
-// Only tests make a P-256 point affine; `p256_scalarmul` inverts itself.
-#[cfg(test)]
 pub(crate) mod bignum_inv_p256;
 pub(crate) mod bignum_inv_p384;
 pub(crate) mod bignum_inv_p521;

@@ -9,7 +9,7 @@ use super::aes256_gcm_dec_alt::aes256_gcm_dec_alt;
 use super::aes256_gcm_enc::aes256_gcm_enc;
 use super::aes256_gcm_enc_alt::aes256_gcm_enc_alt;
 use crate::low::ghash::{Ghash, GhashTable};
-use crate::low::{AesKey, aes_ctr};
+use crate::low::{AesKey, aes_ctr, ct_equal};
 
 /// Encrypts `cipher_inout` in place under `nonce`, and returns its tag.
 pub(crate) fn seal(
@@ -22,16 +22,17 @@ pub(crate) fn seal(
     tagged::<true>(key, table, nonce, aad, cipher_inout)
 }
 
-/// Decrypts `cipher_inout` in place under `nonce`, and returns the tag it
-/// should carry.
+/// Decrypts `cipher_inout` in place under `nonce`, and returns whether `tag`
+/// is its tag, a secret.
 pub(crate) fn open(
     key: &AesKey,
     table: &GhashTable,
     nonce: &[u8; 12],
     aad: &[u8],
     cipher_inout: &mut [u8],
-) -> [u8; 16] {
-    tagged::<false>(key, table, nonce, aad, cipher_inout)
+    tag: &[u8; 16],
+) -> bool {
+    ct_equal(&tagged::<false>(key, table, nonce, aad, cipher_inout), tag)
 }
 
 fn tagged<const ENC: bool>(
@@ -222,9 +223,11 @@ mod tests {
                     assert_eq!(got, want, "{what}");
                     assert_eq!(tag, want_tag, "{what}");
 
-                    let tag = open(&vpaes, &neon, &nonce, &aad, &mut got);
+                    assert!(
+                        open(&vpaes, &neon, &nonce, &aad, &mut got, &want_tag),
+                        "{what}"
+                    );
                     assert_eq!(got, plain, "{what}");
-                    assert_eq!(tag, want_tag, "{what}");
                 }
             }
         }

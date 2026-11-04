@@ -40,7 +40,7 @@ impl PublicKey {
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
     /// P, 3P, ..., 15P.
-    odd_multiples: [JacobianMontPoint; 8],
+    odd_multiples: [AffineMontPoint; 8],
 }
 
 impl VerifyingKey {
@@ -343,16 +343,33 @@ impl AffineMontPoint {
         self.xy[Self::Y].copy_from_slice(&neg_y.0);
     }
 
-    /// P, 3P, ..., 15P: the odd multiples a width-5 NAF digit picks.
+    /// P, 3P, ..., 15P: the odd multiples a width-5 NAF digit picks, in
+    /// affine form so that each is added by `p256_montjmixadd`.
     ///
     /// Each sum adds 2P to an odd multiple below n, never equal, as
-    /// `p256_montjadd` requires.
-    fn public_odd_multiples(&self) -> [JacobianMontPoint; 8] {
+    /// `p256_montjadd` requires.  None is at infinity, so one inversion of
+    /// the product of their z's converts them all (Montgomery's trick).
+    fn public_odd_multiples(&self) -> [Self; 8] {
         let p = JacobianMontPoint::from_affine(self);
         let p2 = p.double();
-        let mut r = [p; 8];
-        for i in 1..r.len() {
-            r[i] = r[i - 1].add(&p2);
+        let mut multiples = [p; 8];
+        for i in 1..multiples.len() {
+            multiples[i] = multiples[i - 1].add(&p2);
+        }
+
+        // `prefix[i]` is the product of the z's before `multiples[i]`.
+        let mut prefix = [CURVE_ONE_MONT; 8];
+        for i in 1..prefix.len() {
+            prefix[i] = prefix[i - 1].mont_mul(&multiples[i - 1].z());
+        }
+        let product = prefix[7].mont_mul(&multiples[7].z());
+        let mut inv = product.demont().inv().as_mont();
+
+        let mut r = [Self::default(); 8];
+        for i in (0..r.len()).rev() {
+            // `inv` is the inverse of the z's up to `multiples[i]`.
+            r[i] = multiples[i].as_affine_by(&inv.mont_mul(&prefix[i]));
+            inv = inv.mont_mul(&multiples[i].z());
         }
         r
     }
@@ -507,7 +524,7 @@ impl JacobianMontPoint {
     /// One chain of doublings serves both: P's digits are a width-5 NAF
     /// over `odd_multiples`, and G's a width-6 NAF over the generator
     /// table's first row, which holds G to at least 32G.
-    fn public_twin_multiply(g: &Scalar, p: &Scalar, odd_multiples: &[Self; 8]) -> Self {
+    fn public_twin_multiply(g: &Scalar, p: &Scalar, odd_multiples: &[AffineMontPoint; 8]) -> Self {
         let g_digits = g.public_naf::<6>();
         let p_digits = p.public_naf::<5>();
         let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP[0][..];
@@ -522,7 +539,7 @@ impl JacobianMontPoint {
                 if *p_digit < 0 {
                     tmp.negate_y();
                 }
-                result = Self::public_add(&result, &tmp);
+                result = result.public_add_affine(&tmp);
             }
             if *g_digit != 0 {
                 let mut tmp = AffineMontPoint::public_lookup(g_multiples, g_digit.unsigned_abs());
@@ -545,12 +562,16 @@ impl JacobianMontPoint {
     // aarch64's `p256_scalarmul` makes its result affine itself.
     #[cfg(any(test, not(target_arch = "aarch64")))]
     fn as_affine(&self) -> AffineMontPoint {
-        // recover (x, y) from (x / z ^ 2, x / z ^ 3, z)
         // inversion calculated outside montgomery domain
         // (benchmarked vs addition chain in montgomery)
-        let z_inv = self.z().demont().inv().as_mont();
+        self.as_affine_by(&self.z().demont().inv().as_mont())
+    }
+
+    /// This point in affine form, given the inverse of its z.
+    fn as_affine_by(&self, z_inv: &FieldElement) -> AffineMontPoint {
+        // recover (x, y) from (x / z ^ 2, x / z ^ 3, z)
         let z2_inv = z_inv.mont_sqr();
-        let z3_inv = z2_inv.mont_mul(&z_inv);
+        let z3_inv = z2_inv.mont_mul(z_inv);
 
         let x = self.x().mont_mul(&z2_inv);
         let y = self.y().mont_mul(&z3_inv);
@@ -558,34 +579,10 @@ impl JacobianMontPoint {
         AffineMontPoint::from_xy(x, y)
     }
 
-    /// `a + b`, for any points, including at infinity, equal, or opposite.
+    /// `self + p`, for any points, including at infinity, equal, or opposite.
     ///
-    /// `p256_montjadd` is proven only for unequal points, so points with the
-    /// same x never reach it.
-    fn public_add(a: &Self, b: &Self) -> Self {
-        if a.public_is_infinity() {
-            return *b;
-        }
-        if b.public_is_infinity() {
-            return *a;
-        }
-
-        // Both points scaled to the product of their z's.
-        let (az2, bz2) = (a.z().mont_sqr(), b.z().mont_sqr());
-        let same_x = a.x().mont_mul(&bz2).public_eq(&b.x().mont_mul(&az2));
-        if !same_x {
-            return a.add(b);
-        }
-        let ay = a.y().mont_mul(&bz2.mont_mul(&b.z()));
-        let by = b.y().mont_mul(&az2.mont_mul(&a.z()));
-        match ay.public_eq(&by) {
-            true => a.double(),
-            false => Self::infinity(),
-        }
-    }
-
-    /// `self + p`, for any points, as [`Self::public_add`] does for
-    /// `p256_montjmixadd`.
+    /// `p256_montjmixadd` is proven only for unequal points, so points with
+    /// the same x never reach it.
     fn public_add_affine(&self, p: &AffineMontPoint) -> Self {
         if self.public_is_infinity() {
             return Self::from_affine(p);
@@ -671,11 +668,6 @@ impl JacobianMontPoint {
         low::bignum_mux(select, &mut r.xyz[..], &p1.xyz[..], &p0.xyz[..]);
         r
     }
-
-    fn negate_y(&mut self) {
-        let neg_y = self.y().negate_mod_p();
-        self.xyz[Self::Y].copy_from_slice(&neg_y.0);
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -684,7 +676,6 @@ struct FieldElement([u64; 4]);
 impl FieldElement {
     const BYTES: usize = 32;
 
-    #[cfg(any(test, not(target_arch = "aarch64")))]
     fn inv(&self) -> Self {
         let mut r = Self::default();
         low::bignum_inv_p256(&mut r.0, &self.0);
