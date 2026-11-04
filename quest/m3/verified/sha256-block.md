@@ -17,3 +17,7 @@ Route, once #450 merges:
 2. Otherwise, freeze LLVM's output for today's routine as assembly and prove it on #450's spec in HOL Light, adding to s2n-bignum's x86_64 model any instruction that output uses and #450 does not add.
 
 aarch64 is accepted for now and revisited once #450 merges, since its FIPS 180-4 spec is what a proof of aws-lc's `sha256_block_data_order_hw` would reuse (see the epic).
+
+## Required
+
+- [s2n-bignum's SHA-256 spec has merged](/quest/m3/s2n-bignum-sha2-spec.md) - the spec and proven routine this route starts from
