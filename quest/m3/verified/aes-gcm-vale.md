@@ -14,8 +14,4 @@ The maintainer chose performance first: Vale's own key expansion and `keyhash_in
 - the key expansion equals FIPS 197's (Vale's `key_to_round_keys_LE`), stored as each round key's 16 bytes in order;
 - the eight powers are `hkeys_reqs_pub`'s: `gf128_power h n` for H to H^6 in slots 0, 1, 3, 4, 6, and 7, E_K(0) byte-reversed in slot 2, and zero in slot 5.
 
-Prove that Rust with the chosen tool, stating the routines' contracts as its axioms, then add the ✓ entries to `benchmarks/verified.toml`.
-
-## Required
-
-- [A Rust proof tool, proven on X25519](/quest/m3/verified/proof-tool.md) - the tool and composition rule this uses
+Prove that Rust with Aeneas → Lean in `proofs/`, Vale's theorems entering as axioms under [the epic's composition rule](/quest/m3/verified/README.md), then add the ✓ entries to `benchmarks/verified.toml`.

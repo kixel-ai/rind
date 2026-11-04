@@ -10,6 +10,30 @@ fn provider() -> CryptoProvider {
     rind_rustls::default_provider().unwrap()
 }
 
+/// One TLS 1.3 suite, X25519, and ECDSA P-256 alone, so it reaches only a
+/// host whose whole chain signs with P-256.
+#[cfg(feature = "rind-lean")]
+fn provider() -> CryptoProvider {
+    use rind_rustls::{cipher_suite, kx_group, sign, verify};
+    use rustls::SignatureScheme;
+    use rustls::crypto::WebPkiSupportedAlgorithms;
+
+    static P256: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
+        all: &[verify::ECDSA_P256_SHA256],
+        mapping: &[(
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+            &[verify::ECDSA_P256_SHA256],
+        )],
+    };
+    CryptoProvider {
+        cipher_suites: vec![cipher_suite::TLS13_AES_128_GCM_SHA256],
+        kx_groups: vec![kx_group::X25519],
+        signature_verification_algorithms: P256,
+        key_provider: sign::ECDSA_P256,
+        ..rind_rustls::empty_provider().unwrap()
+    }
+}
+
 #[cfg(feature = "aws-lc-rs")]
 fn provider() -> CryptoProvider {
     rustls::crypto::aws_lc_rs::default_provider()

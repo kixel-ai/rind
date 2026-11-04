@@ -1,159 +1,124 @@
 use core::fmt;
 
 use rind::signature::{self, VerificationAlgorithm, verify};
-use rustls::SignatureScheme;
-use rustls::crypto::WebPkiSupportedAlgorithms;
 use rustls::pki_types::{
     AlgorithmIdentifier, InvalidSignature, SignatureVerificationAlgorithm, alg_id,
 };
 
-pub(crate) static ALGORITHMS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
-    all: &[
-        ECDSA_P256_SHA512,
-        ECDSA_P256_SHA384,
-        ECDSA_P256_SHA256,
-        ECDSA_P384_SHA512,
-        ECDSA_P384_SHA384,
-        ECDSA_P384_SHA256,
-        ECDSA_P521_SHA512,
-        ECDSA_P521_SHA384,
-        ECDSA_P521_SHA256,
-        ED25519,
-        RSA_PSS_SHA512,
-        RSA_PSS_SHA384,
-        RSA_PSS_SHA256,
-        RSA_PKCS1_SHA512,
-        RSA_PKCS1_SHA384,
-        RSA_PKCS1_SHA256,
-        RSA_PKCS1_SHA512_ABSENT_PARAMS,
-        RSA_PKCS1_SHA384_ABSENT_PARAMS,
-        RSA_PKCS1_SHA256_ABSENT_PARAMS,
-    ],
-    // TLS 1.2 lets any curve sign with any of these hashes, so each lists
-    // every curve; TLS 1.3 binds the curve and uses only the first.
-    mapping: &[
-        (
-            SignatureScheme::ECDSA_NISTP256_SHA256,
-            &[ECDSA_P256_SHA256, ECDSA_P384_SHA256, ECDSA_P521_SHA256],
-        ),
-        (
-            SignatureScheme::ECDSA_NISTP384_SHA384,
-            &[ECDSA_P384_SHA384, ECDSA_P256_SHA384, ECDSA_P521_SHA384],
-        ),
-        (
-            SignatureScheme::ECDSA_NISTP521_SHA512,
-            &[ECDSA_P521_SHA512, ECDSA_P384_SHA512, ECDSA_P256_SHA512],
-        ),
-        (SignatureScheme::ED25519, &[ED25519]),
-        (SignatureScheme::RSA_PSS_SHA512, &[RSA_PSS_SHA512]),
-        (SignatureScheme::RSA_PSS_SHA384, &[RSA_PSS_SHA384]),
-        (SignatureScheme::RSA_PSS_SHA256, &[RSA_PSS_SHA256]),
-        (SignatureScheme::RSA_PKCS1_SHA512, &[RSA_PKCS1_SHA512]),
-        (SignatureScheme::RSA_PKCS1_SHA384, &[RSA_PKCS1_SHA384]),
-        (SignatureScheme::RSA_PKCS1_SHA256, &[RSA_PKCS1_SHA256]),
-    ],
-};
-
-static ECDSA_P256_SHA256: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies ECDSA signatures by P-256 keys over SHA-256.
+pub static ECDSA_P256_SHA256: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::ECDSA_P256,
     signature_alg_id: alg_id::ECDSA_SHA256,
     algorithm: &verify::ECDSA_P256_SHA256_ASN1,
 };
 
-static ECDSA_P256_SHA384: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies ECDSA signatures by P-256 keys over SHA-384.
+pub static ECDSA_P256_SHA384: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::ECDSA_P256,
     signature_alg_id: alg_id::ECDSA_SHA384,
     algorithm: &verify::ECDSA_P256_SHA384_ASN1,
 };
 
-static ECDSA_P256_SHA512: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies ECDSA signatures by P-256 keys over SHA-512.
+pub static ECDSA_P256_SHA512: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::ECDSA_P256,
     signature_alg_id: alg_id::ECDSA_SHA512,
     algorithm: &verify::ECDSA_P256_SHA512_ASN1,
 };
 
-static ECDSA_P384_SHA256: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies ECDSA signatures by P-384 keys over SHA-256.
+pub static ECDSA_P384_SHA256: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::ECDSA_P384,
     signature_alg_id: alg_id::ECDSA_SHA256,
     algorithm: &verify::ECDSA_P384_SHA256_ASN1,
 };
 
-static ECDSA_P384_SHA384: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies ECDSA signatures by P-384 keys over SHA-384.
+pub static ECDSA_P384_SHA384: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::ECDSA_P384,
     signature_alg_id: alg_id::ECDSA_SHA384,
     algorithm: &verify::ECDSA_P384_SHA384_ASN1,
 };
 
-static ECDSA_P384_SHA512: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies ECDSA signatures by P-384 keys over SHA-512.
+pub static ECDSA_P384_SHA512: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::ECDSA_P384,
     signature_alg_id: alg_id::ECDSA_SHA512,
     algorithm: &verify::ECDSA_P384_SHA512_ASN1,
 };
 
-static ECDSA_P521_SHA256: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies ECDSA signatures by P-521 keys over SHA-256.
+pub static ECDSA_P521_SHA256: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::ECDSA_P521,
     signature_alg_id: alg_id::ECDSA_SHA256,
     algorithm: &verify::ECDSA_P521_SHA256_ASN1,
 };
 
-static ECDSA_P521_SHA384: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies ECDSA signatures by P-521 keys over SHA-384.
+pub static ECDSA_P521_SHA384: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::ECDSA_P521,
     signature_alg_id: alg_id::ECDSA_SHA384,
     algorithm: &verify::ECDSA_P521_SHA384_ASN1,
 };
 
-static ECDSA_P521_SHA512: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies ECDSA signatures by P-521 keys over SHA-512.
+pub static ECDSA_P521_SHA512: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::ECDSA_P521,
     signature_alg_id: alg_id::ECDSA_SHA512,
     algorithm: &verify::ECDSA_P521_SHA512_ASN1,
 };
 
-static ED25519: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies Ed25519 signatures.
+pub static ED25519: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::ED25519,
     signature_alg_id: alg_id::ED25519,
     algorithm: &verify::ED25519,
 };
 
-static RSA_PSS_SHA256: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies RSASSA-PSS signatures over SHA-256 by 2048- to 8192-bit RSA keys.
+pub static RSA_PSS_SHA256: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PSS_SHA256,
     algorithm: &verify::RSA_PSS_SHA256,
 };
 
-static RSA_PSS_SHA384: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies RSASSA-PSS signatures over SHA-384 by 2048- to 8192-bit RSA keys.
+pub static RSA_PSS_SHA384: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PSS_SHA384,
     algorithm: &verify::RSA_PSS_SHA384,
 };
 
-static RSA_PSS_SHA512: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies RSASSA-PSS signatures over SHA-512 by 2048- to 8192-bit RSA keys.
+pub static RSA_PSS_SHA512: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PSS_SHA512,
     algorithm: &verify::RSA_PSS_SHA512,
 };
 
-static RSA_PKCS1_SHA256: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies RSASSA-PKCS1-v1_5 signatures over SHA-256 by 2048- to 8192-bit RSA keys.
+pub static RSA_PKCS1_SHA256: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PKCS1_SHA256,
     algorithm: &verify::RSA_PKCS1_SHA256,
 };
 
-static RSA_PKCS1_SHA384: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies RSASSA-PKCS1-v1_5 signatures over SHA-384 by 2048- to 8192-bit RSA keys.
+pub static RSA_PKCS1_SHA384: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PKCS1_SHA384,
     algorithm: &verify::RSA_PKCS1_SHA384,
 };
 
-static RSA_PKCS1_SHA512: &dyn SignatureVerificationAlgorithm = &Verify {
+/// Verifies RSASSA-PKCS1-v1_5 signatures over SHA-512 by 2048- to 8192-bit RSA keys.
+pub static RSA_PKCS1_SHA512: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PKCS1_SHA512,
     algorithm: &verify::RSA_PKCS1_SHA512,
 };
 
-// Certificates that omit the NULL parameters RFC 4055 requires after these
-// OIDs, which webpki and aws-lc-rs accept too.
-
-static RSA_PKCS1_SHA256_ABSENT_PARAMS: &dyn SignatureVerificationAlgorithm = &Verify {
+/// [`RSA_PKCS1_SHA256`] for certificates that omit RFC 4055's NULL parameters, as webpki allows.
+pub static RSA_PKCS1_SHA256_ABSENT_PARAMS: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     // sha256WithRSAEncryption
     signature_alg_id: AlgorithmIdentifier::from_slice(&[
@@ -162,7 +127,8 @@ static RSA_PKCS1_SHA256_ABSENT_PARAMS: &dyn SignatureVerificationAlgorithm = &Ve
     algorithm: &verify::RSA_PKCS1_SHA256,
 };
 
-static RSA_PKCS1_SHA384_ABSENT_PARAMS: &dyn SignatureVerificationAlgorithm = &Verify {
+/// [`RSA_PKCS1_SHA384`] for certificates that omit RFC 4055's NULL parameters, as webpki allows.
+pub static RSA_PKCS1_SHA384_ABSENT_PARAMS: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     // sha384WithRSAEncryption
     signature_alg_id: AlgorithmIdentifier::from_slice(&[
@@ -171,7 +137,8 @@ static RSA_PKCS1_SHA384_ABSENT_PARAMS: &dyn SignatureVerificationAlgorithm = &Ve
     algorithm: &verify::RSA_PKCS1_SHA384,
 };
 
-static RSA_PKCS1_SHA512_ABSENT_PARAMS: &dyn SignatureVerificationAlgorithm = &Verify {
+/// [`RSA_PKCS1_SHA512`] for certificates that omit RFC 4055's NULL parameters, as webpki allows.
+pub static RSA_PKCS1_SHA512_ABSENT_PARAMS: &dyn SignatureVerificationAlgorithm = &Verify {
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     // sha512WithRSAEncryption
     signature_alg_id: AlgorithmIdentifier::from_slice(&[
@@ -227,6 +194,7 @@ impl SignatureVerificationAlgorithm for Verify {
 mod tests {
     use rind::rand;
     use rind::signature::{EcdsaKeyPair, Ed25519KeyPair, RsaKeyPair, sign};
+    use rustls::SignatureScheme;
 
     use super::*;
 
@@ -240,7 +208,7 @@ mod tests {
     // entry only, so that entry must be for the scheme's curve.
     #[test]
     fn test_ecdsa_scheme_curves() {
-        for (scheme, algorithms) in ALGORITHMS.mapping {
+        for (scheme, algorithms) in crate::SUPPORTED_SIG_ALGS.mapping {
             let curve = match scheme {
                 SignatureScheme::ECDSA_NISTP256_SHA256 => alg_id::ECDSA_P256,
                 SignatureScheme::ECDSA_NISTP384_SHA384 => alg_id::ECDSA_P384,
@@ -396,7 +364,7 @@ mod tests {
     // Like rustls's own providers: `all` holds no algorithm twice.
     #[test]
     fn test_no_duplicate_algorithms() {
-        let ids = ALGORITHMS
+        let ids = crate::SUPPORTED_SIG_ALGS
             .all
             .iter()
             .map(|alg| (alg.public_key_alg_id(), alg.signature_alg_id()))

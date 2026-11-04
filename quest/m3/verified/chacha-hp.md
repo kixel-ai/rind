@@ -6,8 +6,4 @@ QUIC ChaCha20 header protection earns the report's ✓ on x86_64, where it runs 
 
 ## Plan
 
-Planned with the maintainer on 2026-11-03 from the audit. Prove the single-block wrappers with the chosen tool; measure HACL*'s rounds for header protection on aarch64 and armv7 on the GitHub runners before switching.
-
-## Required
-
-- [A Rust proof tool, proven on X25519](/quest/m3/verified/proof-tool.md) - the tool and composition rule this uses
+Planned with the maintainer on 2026-11-03 from the audit. Prove the single-block wrappers with Aeneas → Lean in `proofs/`, HACL*'s rounds entering through one axiom under [the epic's composition rule](/quest/m3/verified/README.md); measure HACL*'s rounds for header protection on aarch64 and armv7 on the GitHub runners before switching.

@@ -156,6 +156,8 @@ admin/ct-sde` those of the AVX-512, VAES, and SHA extension code valgrind
 cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
 admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
 qemu.
+`nix develop .#prove --command admin/prove` translates the Rust under proof to
+Lean with Aeneas and checks the proofs in [`proofs/`](proofs/README.md).
 
 ## Algorithms
 

@@ -31,12 +31,28 @@
 # ring, RustCrypto + dalek, and OpenSSL have none: at most their field
 # arithmetic is verified, under unverified point formulas or ladders.
 #
-# rind and graviola have none. Their X25519 and Ed25519, and rind's aarch64
-# P-256 ECDH, run only s2n-bignum's verified routines, but convert between
-# bytes and limbs in unverified Rust, where Ed25519 also clamps, encodes
-# points, and pads SHA-512, and P-256 decodes and checks points. Every other
-# rind operation runs unverified code too, such as SHA-256's block function
-# or x86_64 P-256 ECDH's Jacobian-to-affine conversion.
+# graviola has none. Its X25519 and Ed25519 run only s2n-bignum's verified
+# routines, but convert between bytes and limbs in unverified Rust.
+#
+# rind: X25519 alone, whose Rust `proofs/` proves against s2n-bignum's
+# routines. Its Ed25519 and aarch64 P-256 ECDH also run only s2n-bignum's
+# routines, under unverified Rust that clamps, encodes points, and pads
+# SHA-512, or decodes and checks points. Every other rind operation runs
+# unverified code too, such as SHA-256's block function or x86_64 P-256 ECDH's
+# Jacobian-to-affine conversion.
+[[verified]]
+library = "rind"
+operations = ["x25519-ecdh"]
+arch = "x86_64"
+proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's dispatch table holds its own curve's functions, the only table rind builds, of its agreement API's X25519 down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of curve25519_x25519, curve25519_x25519base, their _alt forms without BMI2 and ADX, and bignum_eq, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/X25519.lean"
+
+[[verified]]
+library = "rind"
+operations = ["x25519-ecdh"]
+arch = "aarch64"
+proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's dispatch table holds its own curve's functions, the only table rind builds, of its agreement API's X25519 down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of curve25519_x25519_alt, curve25519_x25519base_alt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/X25519.lean"
 
 # aws-lc-rs: SHA-512 alone. Its X25519 and Ed25519 call the same s2n-bignum
 # routines from unverified C, which clamps the scalar, refuses X25519's

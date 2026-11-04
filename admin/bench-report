@@ -632,6 +632,7 @@ BUILDS = {
     "openssl": "OpenSSL, the system's, linked dynamically",
     "openssl-vendored": "OpenSSL, vendored",
     "rustls-rind": "rustls + rind-rustls",
+    "rustls-rind-lean": "rustls + rind-rustls, one TLS 1.3 suite, X25519, and P-256",
     "rustls-aws-lc-rs": "rustls + aws-lc-rs",
     "rustls-ring": "rustls + ring",
 }
@@ -1208,7 +1209,8 @@ def report(hosts, tiers, verified):
         "## Build cost",
         "",
         "A cold `cargo build --release` of a minimal binary per library (AES-128-GCM, SHA-256, ECDSA P-256, "
-        "and X25519) and of a rustls client per provider, by `admin/build-cost`: the median of three builds "
+        "and X25519) and of a rustls client per provider, plus one whose rind-rustls provider holds only those, "
+        "by `admin/build-cost`: the median of three builds "
         "with an empty target directory and a warm download cache, their CPU time, the stripped binary's size, "
         "the build tools it needs beyond rustc and a linker, and the crates it compiles. The system OpenSSL "
         "build leaves the library itself out of its size; the vendored build is the static figure.",
