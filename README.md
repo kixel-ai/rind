@@ -185,10 +185,11 @@ AES-NI also AES-NI, PCLMULQDQ, and SSE4.1 (Core 2); and SSE2 also SSSE3.
 GitHub's pool ran no AVX and SSE2 on an EPYC 7763 too, no ADX and no AES-NI
 on an EPYC 9V74 (Zen 4), and no AVX2 on an EPYC 9V45 (Zen 5). The
 ChaCha20-Poly1305 cell without AVX2 is from [run 41585945720], on an EPYC 7763,
-the x86_64 ChaCha20 header-protection cell from [run 41678532920], and the
-no AES-NI and SSE2 ChaCha20-Poly1305 cells from [run 41697909102], both on an
-EPYC 9V74, the x86_64 AES-GCM cell from [run 41753572116], on an EPYC 9V45,
-and the no-AVX2 AES-GCM cell from [run 41787189365], on a Xeon 6973P-C.
+the x86_64 ChaCha20 header-protection cell from [run 41861521276], on an EPYC
+7763 too, the no AES-NI and SSE2 ChaCha20-Poly1305 cells from
+[run 41697909102], on an EPYC 9V74, the x86_64 AES-GCM cell from
+[run 41753572116], on an EPYC 9V45, and the no-AVX2 AES-GCM cell from
+[run 41787189365], on a Xeon 6973P-C.
 Intel CPUs with AVX but without SHA-NI run [aws-lc]'s AVX SHA-256, and its
 AVX SHA-1 if they lack AVX2 too, and every Intel CPU with AVX runs its
 verified ✓ AVX SHA-384 and SHA-512.
@@ -197,7 +198,7 @@ verified ✓ AVX SHA-384 and SHA-512.
 |---|---|---|---|---|---|---|
 | AES-GCM | **1.04** BoringSSL ⚡ + Graviola |  | 1.02 HACL* ✓ + rind | 0.95 Graviola | **1.03** aws-lc + rind | 0.82 |
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 1.00 | 0.99 | 1.00 aws-lc | 0.79 |
-| ChaCha20 (header protection) | 0.96 HACL* ✓ + rind |  |  |  |  |  |
+| ChaCha20 (header protection) | 0.82 HACL* ✓ + rind |  |  |  |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ |  | 1.00 |  | **1.20** HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | **1.03** HACL* ✓ + Graviola ⚡ |
 | SHA-1 | 1.00 rind |  | 1.00 aws-lc | 1.00 |  | 1.00 |
 | SHA-256 | 1.02 Graviola ⚡ |  | **1.05** aws-lc ⚡ | 1.01 |  | 1.01 |
@@ -247,13 +248,14 @@ SHA-3 instructions; no crypto denies them, as a Raspberry Pi 4 lacks them.
 armv7 runs on the same core in 32-bit mode, with NEON and the crypto
 extension; without them it runs the code [Symmetric
 cryptography](#symmetric-cryptography) names. The aarch64 AES block cell is
-from [run 41753572116].
+from [run 41753572116], and the ChaCha20 header-protection cells from
+[run 41861521276].
 
 | Algorithm | aarch64 | no crypto | armv7 |
 |---|---|---|---|
 | AES-GCM | **1.07** s2n-bignum + Graviola | 1.02 aws-lc + rind | 0.99 |
 | AES block, AES-CTR | **1.06** Graviola + rind | 1.00 aws-lc | 0.99 |
-| ChaCha20 (header protection) | 1.01 Graviola | 0.94 | 0.87 aws-lc ⚡ |
+| ChaCha20 (header protection) | 0.88 HACL* ✓ + rind | 0.82 | 0.70 |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.00 aws-lc ⚡ | 1.00 | 0.99 |
 | SHA-1 | 1.01 rind | 1.00 aws-lc | 1.00 |
 | SHA-256 | 1.02 aws-lc ⚡ | 1.00 aws-lc | 0.99 aws-lc ⚡ |
@@ -338,6 +340,8 @@ different one, updates this table and [LICENSE] in the same PR.
 [run 41678532920]: https://github.com/moq-dev/rind/actions/runs/41678532920
 [run 41697909102]: https://github.com/moq-dev/rind/actions/runs/41697909102
 [run 41753572116]: https://github.com/moq-dev/rind/actions/runs/41753572116
+[run 41861521276]: https://github.com/moq-dev/rind/actions/runs/41861521276
+[run 41861526675]: https://github.com/moq-dev/rind/actions/runs/41861526675
 [#224]: https://github.com/moq-dev/rind/pull/224
 [#281]: https://github.com/moq-dev/rind/pull/281
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
@@ -611,7 +615,9 @@ aws-lc-rs's time on an EPYC 9V74 and 0.96 on a Xeon Platinum 8573C in
 QUIC header protection runs HACL*'s verified rounds in general-purpose
 registers on every architecture, one block straight from the key and sample,
 and `proofs/` proves it end to end against RFC 9001 and RFC 8439, the rounds
-included.
+included. On a Neoverse-N2 it took 0.87 of the time of the code it replaced,
+Graviola's NEON block, on aarch64, and 0.79 of aws-lc's `chacha-armv4` on
+armv7, in [run 41861521276] against [run 41861526675].
 
 HChaCha20, for XChaCha20, runs HACL*'s verified rounds in general-purpose
 registers on every architecture, as aws-lc does: one block in vector
