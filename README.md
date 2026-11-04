@@ -404,7 +404,9 @@ by its SSE2 or AVX2 routine and added by its mixed addition, with `mulq` or
 with BMI2 and ADX, as aws-lc's `ecp_nistz256_point_mul_base` runs them. On
 aarch64 it is s2n-bignum's `p256_scalarmulbase`, over 6-bit Booth windows and
 a table of each window's 32 multiples (an 88KB constant table). Variable
-point multiplication is s2n-bignum's `p256_montjscalarmul`.
+point multiplication is s2n-bignum's `p256_montjscalarmul` on x86_64, and on
+aarch64 its `p256_scalarmul`, whose proof covers the conversion back to
+affine coordinates.
 
 armv7 runs the aarch64 algorithms for P256 in portable Rust, over
 fiat-crypto's field and scalar arithmetic, except its Montgomery
