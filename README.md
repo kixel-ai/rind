@@ -1,5 +1,5 @@
 <h1 align="center">rind</h1>
-<img width="40%" align="right" src="admin/logo.png" alt="rind: the spiky green shell of a graviola fruit">
+<img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png" alt="rind: the spiky green shell of a graviola fruit">
 
 > **rind** distills great cryptography into a **pure-Rust** library for
 > [rustls](https://github.com/rustls/rustls) and
