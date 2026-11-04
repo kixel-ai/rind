@@ -26,3 +26,10 @@ Decided with the maintainer on 2026-11-03, after the [benchmark report](/quest/m
 
 - [SHA-512 padding is proven](/quest/m3/verified/sha512-padding.md) - rind's SHA-512 earns the ✓ its verified block function already has
 - [aarch64 P-256 ECDH is proven end to end](/quest/m3/verified/p256-ecdh.md) - agreement runs s2n-bignum's proven affine-to-affine multiply
+- [A Rust proof tool, proven on X25519](/quest/m3/verified/proof-tool.md) - the chosen tool and composition rule, and X25519's first ✓
+- [Ed25519 is proven end to end](/quest/m3/verified/ed25519.md) - s2n-bignum's encoder and proven glue
+- [ChaCha20 header protection is proven](/quest/m3/verified/chacha-hp.md) - HACL*'s rounds and a proven wrapper
+- [The hash and KDF glue is proven](/quest/m3/verified/hash-glue.md) - SHA padding, HMAC, HKDF, PBKDF2, and the constant-time compare
+- [SHA-256 block functions are proven](/quest/m3/verified/sha256-block.md) - Vale on x86_64 and a proof or switch on aarch64
+- [x86_64 AES-GCM runs a proven AEAD](/quest/m3/verified/aes-gcm-vale.md) - HACL*'s Vale AES-GCM if it is fast enough
+- [armv7 ChaCha20-Poly1305 and SHA-512 run proven code where it is fast enough](/quest/m3/verified/armv7-libcrux.md) - libcrux on armv7
