@@ -45,7 +45,8 @@ to their authors, including [s2n-bignum], [HACL\*], [libcrux], [fiat-crypto],
 and the other projects listed under [Sources](#sources).
 
 The rind logo is a tribute to [Graviola's fruit illustration][graviola-logo],
-reimagined as a curled strip of its protective rind.
+reimagined as a curled strip of its protective rind. A [wordmark][rind-wordmark]
+adds `ind` after the peel-shaped `r`.
 
 ## Status
 
@@ -293,6 +294,7 @@ different one, updates this table and [LICENSE] in the same PR.
 
 [Graviola]: https://github.com/ctz/graviola
 [graviola-logo]: https://github.com/ctz/graviola/blob/main/admin/picture.png
+[rind-wordmark]: https://raw.githubusercontent.com/moq-dev/rind/main/admin/wordmark.png
 [aws-lc-rs]: https://github.com/aws/aws-lc-rs
 [cifra]: https://github.com/ctz/cifra
 [s2n-bignum]: https://github.com/awslabs/s2n-bignum
