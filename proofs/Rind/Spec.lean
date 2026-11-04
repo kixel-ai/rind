@@ -62,6 +62,11 @@ def p256OnCurve : P256Point → Prop
   | none => True
   | some (x, y) => x < p256 ∧ y < p256 ∧ y ^ 2 % p256 = (x ^ 3 + (p256 - 3) * x + b256) % p256
 
+instance : DecidablePred p256OnCurve := fun P =>
+  match P with
+  | none => isTrue trivial
+  | some (x, y) => inferInstanceAs (Decidable (x < p256 ∧ y < p256 ∧ _))
+
 /-- `G_256`, the generator. -/
 def p256G : P256Point :=
   some (0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296,

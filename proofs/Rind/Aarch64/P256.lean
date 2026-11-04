@@ -327,4 +327,206 @@ theorem on_curve_spec (pt : mid.p256.AffineMontPoint) (hx : (pairNat pt.xy.val).
   simp only [feNat] at hl' hr3 hr2 hr1 hr0
   rw [hl', hr3, hr2, hr1, hr0]
 
+theorem pairNat_append (a b : List U64) (ha : a.length = 4) (hb : b.length = 4) :
+    pairNat (a ++ b) = (wordsNat a, wordsNat b) := by
+  simp [pairNat, List.take_append_of_le_length, ha, List.drop_append_of_le_length,
+    List.take_of_length_le, hb]
+
+theorem rinv_tomont (x : Nat) (hx : x < p256) : p256RInv * (2 ^ 256 * x % p256) % p256 = x := by
+  rw [Nat.mul_mod, Nat.mod_mod, ← Nat.mul_mod, ← Nat.mul_assoc, Nat.mul_mod,
+    Nat.mul_comm p256RInv, p256RInv_spec.2, one_mul, Nat.mod_mod, Nat.mod_eq_of_lt hx]
+
+/-- The limbs of `CURVE_PRIME`, most significant last. -/
+theorem CURVE_PRIME_val : mid.p256.CURVE_PRIME.val =
+    [18446744073709551615#u64, 4294967295#u64, 0#u64, 18446744069414584321#u64] := by
+  simp [mid.p256.CURVE_PRIME, Array.make]
+
+/-- Comparing limbs from the top, the first that differ decide which number
+is smaller. -/
+theorem lt_p256_of_top (v : List U64) (hv : v.length = 4) (s : Nat) (hs : s < 4)
+    (heq : ∀ k < s, v[3 - k]! = mid.p256.CURVE_PRIME.val[3 - k]!)
+    (hne : v[3 - s]! ≠ mid.p256.CURVE_PRIME.val[3 - s]!) :
+    wordsNat v < p256 ↔ v[3 - s]!.val < (mid.p256.CURVE_PRIME.val[3 - s]!).val := by
+  match v, hv with
+  | [a, b, c, d], _ =>
+    have ha := a.hBounds
+    have hb := b.hBounds
+    have hc := c.hBounds
+    have hd := d.hBounds
+    simp only [UScalar.size, UScalarTy.numBits] at ha hb hc hd
+    simp only [CURVE_PRIME_val, UScalar.eq_equiv] at heq hne ⊢
+    simp only [wordsNat, List.map_cons, List.map_nil, Nat.ofDigits_cons, Nat.ofDigits_nil, p256]
+    rcases (by omega : s = 0 ∨ s = 1 ∨ s = 2 ∨ s = 3) with rfl | rfl | rfl | rfl
+    · simp at hne ⊢; omega
+    · have e3 := heq 0 (by omega)
+      simp at hne e3 ⊢; omega
+    · have e3 := heq 0 (by omega)
+      have e2 := heq 1 (by omega)
+      simp at hne e3 e2 ⊢; omega
+    · have e3 := heq 0 (by omega)
+      have e2 := heq 1 (by omega)
+      have e1 := heq 2 (by omega)
+      simp at hne e3 e2 e1 ⊢; omega
+
+theorem getElem_eq_getElem! {α : Type _} [Inhabited α] (l : List α) (i : Nat) (h : i < l.length) :
+    l[i] = l[i]! := by
+  simp [List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem h]
+
+theorem wordsNat_CURVE_PRIME : wordsNat mid.p256.CURVE_PRIME.val = p256 := by
+  simp only [CURVE_PRIME_val, wordsNat, p256]; decide
+
+theorem below_p_loop_spec (v : Std.Array U64 4#usize) (iter : core.ops.range.Range Std.Usize)
+    (hs : iter.start.val ≤ 4) (he : iter.end.val = 4)
+    (heq : ∀ k < iter.start.val, v.val[3 - k]! = mid.p256.CURVE_PRIME.val[3 - k]!) :
+    mid.p256.AffineMontPoint.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnTupleShared0ArrayU644Bool.call_loop
+      iter v ⦃ b => (b ↔ wordsNat v.val < p256) ⦄ := by
+  have hv : (v.val).length = 4 := v.property
+  unfold mid.p256.AffineMontPoint.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnTupleShared0ArrayU644Bool.call_loop
+  apply loop.spec_decr_nat (fun x => 4 - x.start.val)
+    (fun x => x.start.val ≤ 4 ∧ x.end.val = 4 ∧
+      ∀ k < x.start.val, v.val[3 - k]! = mid.p256.CURVE_PRIME.val[3 - k]!)
+  · rintro it ⟨hs, he, heq⟩
+    unfold mid.p256.AffineMontPoint.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnTupleShared0ArrayU644Bool.call_loop.body
+    step as ⟨o, iter1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step*
+      · rename_i hne
+        have hj : j.val < 4 := by omega
+        have hne' : v.val[3 - it.start.val]! ≠ mid.p256.CURVE_PRIME.val[3 - it.start.val]! := by
+          rw [← j_post, ← getElem_eq_getElem! _ _ (by omega), ← getElem_eq_getElem! _ _ (by simp [CURVE_PRIME_val]; omega),
+            ← i1_post, ← i2_post]
+          simpa using hne
+        rw [lt_p256_of_top v.val hv _ (by omega) heq hne', decide_eq_true_iff, UScalar.lt_equiv, i1_post,
+          i2_post, ← j_post, getElem_eq_getElem! _ _ (by omega),
+          getElem_eq_getElem! _ _ (by simp [CURVE_PRIME_val]; omega)]
+      · rename_i heq1
+        refine ⟨by omega, by simp [he1, he], ?_, by omega⟩
+        intro k hk
+        by_cases hks : k = it.start.val
+        · subst hks
+          rw [← j_post, ← getElem_eq_getElem! _ _ (by omega), ← getElem_eq_getElem! _ _ (by simp [CURVE_PRIME_val]; omega),
+            ← i1_post, ← i2_post]
+          exact UScalar.eq_of_val_eq (by simpa using heq1)
+        · exact heq k (by omega)
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only [WP.spec_ok, Bool.false_eq_true, false_iff, not_lt]
+      have hall : v.val = mid.p256.CURVE_PRIME.val := by
+        apply List.ext_getElem! (by simp [hv, CURVE_PRIME_val])
+        intro n
+        by_cases hn : n < 4
+        · have := heq (3 - n) (by omega)
+          rwa [show 3 - (3 - n) = n by omega] at this
+        · simp [List.getElem!_eq_getElem?_getD, List.getElem?_eq_none (by omega : v.val.length ≤ n),
+            List.getElem?_eq_none (by simp [CURVE_PRIME_val]; omega : mid.p256.CURVE_PRIME.val.length ≤ n)]
+      rw [hall, wordsNat_CURVE_PRIME]
+  · exact ⟨hs, he, heq⟩
+
+@[step]
+theorem below_p_spec (v : Std.Array U64 4#usize) :
+    mid.p256.AffineMontPoint.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnTupleShared0ArrayU644Bool.call
+      () v ⦃ b => (b ↔ wordsNat v.val < p256) ⦄ :=
+  below_p_loop_spec v _ (by simp) (by simp) (by simp)
+
+/-- The coordinates an encoded point names, read big-endian after its tag byte. -/
+def x962Coords (bytes : List U8) : Nat × Nat :=
+  (beNat (bytes.slice 1 33), beNat (bytes.slice 33 65))
+
+theorem from_x962_spec (bytes : Slice U8) :
+    mid.p256.AffineMontPoint.from_x962_uncompressed bytes ⦃ r =>
+      match bytes.val.head? with
+      | none => r = .Err (.KeyRejected .WrongLength)
+      | some b0 =>
+        if b0 = 4#u8 then
+          if bytes.length = 65 then
+            if p256OnCurve (some (x962Coords bytes.val)) then
+              ∃ pt, r = .Ok pt ∧ p256Represents2 (some (x962Coords bytes.val)) (pairNat pt.xy.val)
+            else r = .Err (.KeyRejected .NotOnCurve)
+          else r = .Err (.KeyRejected .WrongLength)
+        else r = .Err (.KeyRejected .Compressed) ⦄ := by
+  unfold mid.p256.AffineMontPoint.from_x962_uncompressed
+  simp only [core.slice.Slice.first, core.convert.IntoFrom.into,
+    error.Error.Insts.CoreConvertFromKeyFormatError, error.Error.Insts.CoreConvertFromKeyFormatError.from,
+    bind_tc_ok]
+  rcases hb : bytes.val.head? with _ | b0
+  · simp
+  · simp only [bind_ok]
+    split
+    · have h4 : (4#8#uscalar : U8) = 4#u8 := UScalar.eq_of_val_eq rfl
+      simp only [h4, ↓reduceIte]
+      simp only [mid.p256.PublicKey.BYTES, mid.p256.FieldElement.BYTES]
+      step as ⟨i1, hi1⟩
+      step as ⟨i2, hi2⟩
+      by_cases hl : bytes.length = 65
+      · have hlen : (bytes.len != i2) = false := by
+          simp only [bne_eq_false_iff_eq]
+          apply UScalar.eq_of_val_eq
+          simp [Slice.len, hi2, hi1]; simpa [Slice.length] using hl
+        simp only [hlen, Bool.false_eq_true, ↓reduceIte, hl]
+        step as ⟨_, xy, _, _, _, hxy⟩
+        step as ⟨x, y, hxl, _, hx, hy⟩
+        have hyl : y.length = 32 := by
+          simp only [Slice.length, hy, hxy, List.length_drop]; simp [Slice.length] at hl; omega
+        step as ⟨o1, ho1⟩
+        rw [if_pos hxl] at ho1
+        obtain ⟨x1, rfl, hx1⟩ := ho1
+        step as ⟨x1', hx1'⟩
+        cases hx1'
+        step as ⟨o2, ho2⟩
+        rw [if_pos hyl] at ho2
+        obtain ⟨y1, rfl, hy1⟩ := ho2
+        step as ⟨y1', hy1'⟩
+        cases hy1'
+        have hc : x962Coords bytes.val = (wordsNat x1.val, wordsNat y1.val) := by
+          rw [hx1, hy1, hx, hy, hxy, x962Coords]
+          simp only [List.slice, List.drop_drop]
+          simp [Slice.length] at hl
+          congr 2
+          rw [List.take_of_length_le (by simp; omega)]
+        rw [hc]
+        step as ⟨bx, hbx⟩
+        by_cases hxp : wordsNat x1.val < p256
+        · simp only [hxp, iff_true] at hbx
+          simp only [hbx, ↓reduceIte]
+          step as ⟨by', hby⟩
+          by_cases hyp : wordsNat y1.val < p256
+          · simp only [hyp, iff_true] at hby
+            simp only [hby, ↓reduceIte]
+            step as ⟨fx, hfx⟩
+            step as ⟨fy, hfy⟩
+            step as ⟨pt, hpt⟩
+            have hpn : pairNat pt.xy.val = (feNat fx, feNat fy) := by
+              rw [hpt, pairNat_append _ _ fx.property fy.property]
+            have hfxp : feNat fx < p256 := fe_lt_p256 _ _ hfx
+            have hfyp : feNat fy < p256 := fe_lt_p256 _ _ hfy
+            step as ⟨oc, hoc⟩
+            rw [hpn, hfx, hfy, rinv_tomont _ hxp, rinv_tomont _ hyp] at hoc
+            split
+            · rename_i hon
+              have hc : p256OnCurve (some (wordsNat x1.val, wordsNat y1.val)) := hoc.mp hon
+              simp only [WP.spec_ok, hc, ↓reduceIte]
+              refine ⟨pt, rfl, ?_⟩
+              rw [hpn]
+              refine ⟨hfxp, hfyp, ?_⟩
+              rw [hfx, hfy, rinv_tomont _ hxp, rinv_tomont _ hyp]
+            · rename_i hon
+              have hc : ¬ p256OnCurve (some (wordsNat x1.val, wordsNat y1.val)) := fun h => hon (hoc.mpr h)
+              simp [WP.spec_ok, hc]
+          · simp only [hyp, iff_false] at hby
+            have hon : ¬ p256OnCurve (some (wordsNat x1.val, wordsNat y1.val)) := fun h => hyp h.2.1
+            simp [hby, WP.spec_ok, hon]
+        · simp only [hxp, iff_false] at hbx
+          have hon : ¬ p256OnCurve (some (wordsNat x1.val, wordsNat y1.val)) := fun h => hxp h.1
+          simp [hbx, WP.spec_ok, hon]
+      · have hlen : (bytes.len != i2) = true := by
+          simp only [bne_iff_ne, ne_eq]
+          intro h; apply hl
+          have := congrArg UScalar.val h
+          simp [Slice.len, hi2, hi1] at this; simpa [Slice.length] using this
+        simp [hlen, hl, WP.spec_ok]
+    · rename_i hne
+      have h4 : b0 ≠ 4#u8 := fun h => hne (by rw [h]; exact UScalar.eq_of_val_eq rfl)
+      simp [WP.spec_ok, h4]
+
 end rind.aarch64
