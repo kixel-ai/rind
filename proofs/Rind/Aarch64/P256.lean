@@ -701,4 +701,77 @@ theorem agree_spec (h : Runs) (k : mid.p256.PrivateKey) (peer : Slice U8) :
       · subst hr; simp [core.convert.FromSame]
     · subst hr; simp [core.convert.FromSame]
 
+/-! ## Key generation -/
+
+@[step]
+theorem private_eq_spec (a b : mid.p256.Scalar) :
+    mid.p256.Scalar.private_eq a b ⦃ r => r = decide (wordsNat a.val = wordsNat b.val) ⦄ := by
+  unfold mid.p256.Scalar.private_eq
+  step*
+
+@[step]
+theorem reduce_mod_n_spec (a : mid.p256.Scalar) :
+    mid.p256.Scalar.reduce_mod_n a ⦃ r => wordsNat r.val = wordsNat a.val % n256 ⦄ := by
+  unfold mid.p256.Scalar.reduce_mod_n mid.p256.Scalar.Insts.CoreDefaultDefault.default
+    core.default.DefaultArray.default
+  step*
+
+theorem into_range_check_spec (sc : mid.p256.Scalar) :
+    mid.p256.Scalar.into_range_check sc ⦃ r =>
+      if 0 < wordsNat sc.val ∧ wordsNat sc.val < n256 then r = .Ok sc
+      else r = .Err (.KeyRejected .ScalarOutOfRange) ⦄ := by
+  unfold mid.p256.Scalar.into_range_check mid.p256.Scalar.is_zero
+    mid.p256.Scalar.Insts.CoreDefaultDefault.default core.default.DefaultArray.default low.ct.into_public
+  simp only [core.convert.IntoFrom.into, error.Error.Insts.CoreConvertFromKeyFormatError,
+    error.Error.Insts.CoreConvertFromKeyFormatError.from]
+  step as ⟨red, hred⟩
+  step as ⟨b, hb⟩
+  step as ⟨b1, hb1⟩
+  have hn : 0 < n256 := by simp [n256]
+  have hbv : b = decide (wordsNat sc.val < n256) := by
+    rw [hb, hred]; exact decide_eq_decide.mpr (Nat.mod_eq_iff_lt (by omega))
+  have hb1v : b1 = decide (wordsNat sc.val = 0) := by
+    rw [hb1]; congr 2
+  subst hbv hb1v
+  by_cases hr : 0 < wordsNat sc.val ∧ wordsNat sc.val < n256
+  · have h0 : wordsNat sc.val ≠ 0 := by omega
+    simp [hr, h0]
+  · simp only [hr, ↓reduceIte]
+    by_cases h0 : wordsNat sc.val = 0
+    · simp [h0]
+    · have : ¬ wordsNat sc.val < n256 := fun h => hr ⟨by omega, h⟩
+      simp [this, h0]
+
+theorem from_bytes_checked_spec (bytes : Slice U8) (hl : bytes.length = 32) :
+    mid.p256.Scalar.from_bytes_checked bytes ⦃ r =>
+      if 0 < beNat bytes.val ∧ beNat bytes.val < n256 then
+        ∃ sc, r = .Ok sc ∧ wordsNat sc.val = beNat bytes.val
+      else r = .Err (.KeyRejected .ScalarOutOfRange) ⦄ := by
+  unfold mid.p256.Scalar.from_bytes_checked
+  apply WP.spec_bind (be_any_size_32_spec bytes hl)
+  rintro o ⟨w, rfl, hw⟩
+  simp only [core.option.Option.ok_or, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
+  apply WP.spec_mono (into_range_check_spec w)
+  intro r hr
+  rw [hw] at hr
+  split_ifs at hr ⊢
+  · exact ⟨w, hr, hw⟩
+  · exact hr
+
+theorem from_bytes_spec (bytes : Slice U8) (hl : bytes.length = 32) :
+    mid.p256.PrivateKey.from_bytes bytes ⦃ r =>
+      if 0 < beNat bytes.val ∧ beNat bytes.val < n256 then
+        ∃ k, r = .Ok k ∧ wordsNat k.scalar.val = beNat bytes.val
+      else r = .Err (.KeyRejected .ScalarOutOfRange) ⦄ := by
+  unfold mid.p256.PrivateKey.from_bytes
+  step with from_bytes_checked_spec bytes hl as ⟨r, hr⟩
+  split_ifs at hr ⊢
+  · obtain ⟨sc, rfl, hsc⟩ := hr
+    simp [core.result.Result.map,
+      mid.p256.PrivateKey.from_bytes.closure.Insts.CoreOpsFunctionFnOnceTupleScalarPrivateKey,
+      mid.p256.PrivateKey.from_bytes.closure.Insts.CoreOpsFunctionFnOnceTupleScalarPrivateKey.call_once,
+      low.ct.into_secret, hsc]
+  · subst hr
+    simp [core.result.Result.map]
+
 end rind.aarch64
