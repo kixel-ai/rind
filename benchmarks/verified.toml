@@ -1,0 +1,109 @@
+# The code each library runs that a published formal proof covers, which
+# BENCHMARKS.md marks with a ✓. `admin/bench-report render` reads it and
+# refuses an entry that names no library, operation, or CPU feature it knows.
+#
+# An entry earns its ✓ when a machine-checked proof shows that all the code
+# computing the operation gives the specified result for every input, in the
+# version that library ships, on that architecture and CPU: the cipher and its
+# mode, the hash over every block with its padding, the whole scalar
+# multiplication or modular exponentiation, and the glue around them, such as
+# clamping, byte conversion, and point encoding. Parsing DER key and signature
+# containers (SPKI, PKCS#8, PKCS#1), randomness, and the message hash a
+# signature takes (its own row) are left out; a hash inside the scheme, as in
+# Ed25519, is not. A proof of memory safety, panic freedom, or secret
+# independence alone earns none, nor one covering only some of the code, such
+# as field operations under unverified point formulas, or a verified routine
+# under unverified glue. s2n-bignum's proofs check its own object code and
+# HACL*'s its C, so code copied from s2n-bignum or compiled from HACL* counts,
+# as README's Sources table says.
+#
+# Each entry:
+#   library     rind, aws-lc-rs, ring, rustcrypto, graviola, libcrux, or openssl
+#   operations  report rows, as admin/bench-report's OPERATIONS without the
+#               library; `*` matches any message size
+#   arch        optional: x86_64 or aarch64, unless the code is the same on both
+#   cpu         optional: features the host has, or lacks with a leading `!`,
+#               as rind-cpuid names them; needs an arch
+#   os          optional: linux or macos, where the code differs by OS
+#   proof       whose proof, of which routines, and any restriction
+#   link        the proof itself
+#
+# ring, RustCrypto + dalek, and OpenSSL have none: at most their field
+# arithmetic is verified, under unverified point formulas or ladders.
+#
+# rind and graviola have none. Their X25519 and Ed25519 run only s2n-bignum's
+# verified routines, but convert between bytes and limbs in unverified Rust,
+# and Ed25519 also clamps, encodes points, and pads SHA-512 there. Every
+# other rind operation runs unverified code too, such as SHA-256's block
+# function or P-256 ECDH's Jacobian-to-affine conversion.
+
+# aws-lc-rs: SHA-512 alone. Its X25519 and Ed25519 call the same s2n-bignum
+# routines from unverified C, which clamps the scalar, refuses X25519's
+# all-zero secret, and composes Ed25519's SHA-512.
+[[verified]]
+library = "aws-lc-rs"
+operations = ["sha512/*"]
+arch = "x86_64"
+cpu = ["intel", "avx", "ssse3"]
+proof = "aws-lc-verification's SAW proof of SHA-512 through EVP_Digest, padding included, over sha512_block_data_order_avx, which aws-lc runs only on Intel; of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps"
+link = "https://github.com/awslabs/aws-lc-verification/blob/797302470c1703cbb1a3a6fa98daffef0bfd3d80/SAW/proof/SHA512/verify-SHA512-x86.saw"
+
+[[verified]]
+library = "aws-lc-rs"
+operations = ["sha512/*"]
+arch = "aarch64"
+cpu = ["sha3"]
+proof = "aws-lc-verification's NSym proof of sha512_block_data_order_hw and SAW proof of the C around it, with its ArmSpecGap and NoInline caveats; of a Linux build of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps"
+link = "https://github.com/awslabs/aws-lc-verification/tree/797302470c1703cbb1a3a6fa98daffef0bfd3d80/NSym/proof/proofs/SHA512"
+
+# libcrux: portable Rust that KaRaMeL generates from HACL*, with no CPU
+# dispatch. libcrux records no HACL* revision, so these link to HACL*'s main
+# branch as of 2026-11-03. Its ML-KEM proofs are partial, its XChaCha20
+# construction is unverified Rust, and its AES is pre-verification.
+[[verified]]
+library = "libcrux"
+operations = ["sha256/*", "sha512/*"]
+proof = "HACL*'s F* proof of Hacl.Streaming.SHA2's hash_256 and hash_512, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/streaming/Hacl.Streaming.SHA2.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["hmac-sha256/*"]
+proof = "HACL*'s F* proof of Hacl.HMAC's compute_sha2_256, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/hmac/Hacl.HMAC.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["hkdf-sha256/*"]
+proof = "HACL*'s F* proof of Hacl.HKDF's extract_sha2_256 and expand_sha2_256, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/hkdf/Hacl.HKDF.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["chacha20poly1305/*"]
+proof = "HACL*'s F* proof of Hacl.Chacha20Poly1305_32, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/chacha20poly1305/Hacl.Chacha20Poly1305_32.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["x25519-ecdh"]
+proof = "HACL*'s F* proof of Hacl.Curve25519_51's secret_to_public and ecdh, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/curve25519/Hacl.Curve25519_51.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["ed25519-sign", "ed25519-verify"]
+proof = "HACL*'s F* proof of Hacl.Ed25519's sign and verify, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/ed25519/Hacl.Ed25519.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["p256-ecdh", "p256-ecdsa-sign", "p256-ecdsa-verify"]
+proof = "HACL*'s F* proof of Hacl.P256's dh_initiator, dh_responder, ecdsa_sign_p256_sha2, and ecdsa_verif_p256_sha2, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/ecdsap256/Hacl.P256.fst"
+
+[[verified]]
+library = "libcrux"
+operations = ["rsa2048-pss-sha256-sign", "rsa2048-pss-sha256-verify"]
+proof = "HACL*'s F* proof of Hacl.RSAPSS's rsapss_skey_sign and rsapss_pkey_verify, signing without the CRT, compiled to Rust by an unverified step"
+link = "https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/rsapss/Hacl.RSAPSS.fst"

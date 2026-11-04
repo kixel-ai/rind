@@ -205,6 +205,30 @@ jobs:
           ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_INCLUDE_DIR: /usr/include
           ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_LIB_DIR: /usr/lib/arm-linux-gnueabihf
 
+      # Every benchmark's estimate, which `admin/bench-report nightly` turns
+      # into BENCHMARKS.md's CPU-tier heatmap.
+      - name: Save results
+        shell: bash
+        run: |
+          find target/criterion -path '*/new/benchmark.json' | sort |
+            while read -r f; do
+              jq -c --slurpfile e "${f%benchmark.json}estimates.json" \
+                '{id: .full_id, ns: ($e[0].slope // $e[0].mean).point_estimate}' "$f"
+            done |
+            jq -s --arg target "$TARGET" --argjson portable "$PORTABLE" --arg tier "$TIER" \
+              --arg cpu "$(lscpu | sed -n 's/^Model name: *//p' | head -n1)" --arg commit "$GITHUB_SHA" \
+              '{schema: 1, target: $target, portable: $portable, tier: $tier, cpu: $cpu, commit: $commit, results: .}' \
+              >bench-results.json
+        env:
+          TARGET: ${{ matrix.target }}
+          PORTABLE: ${{ matrix.portable && 'true' || 'false' }}
+          TIER: ${{ matrix.cpu }}
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-${{ matrix.target }}${{ matrix.portable && '-portable' || '' }}${{ matrix.cpu && format('-{0}', matrix.cpu) || '' }}
+          path: bench-results.json
+
       # One row per benchmark, in run order, with rind's time over the fastest
       # baseline's.
       - name: Summarize

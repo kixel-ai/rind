@@ -1002,8 +1002,8 @@ impl RsaKeyPair {
     /// Generates a key pair of `size` from the system random source.
     ///
     /// This is slow: about 30 milliseconds for 2048 bits, and 15 seconds or
-    /// more for 8192 bits, with no upper bound. It is also not side-channel
-    /// safe, so avoid it in untrusted multi-tenant or physical environments.
+    /// more for 8192 bits, with no upper bound. Its timing reveals only which
+    /// candidate primes it discards.
     pub fn generate(size: RsaKeySize) -> Result<Self, Error> {
         Self::new(rsa::SigningKey::generate(size)?)
     }

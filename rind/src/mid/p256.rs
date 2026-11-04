@@ -362,6 +362,10 @@ impl AffineMontPoint {
 
     /// `scalar * G`, by s2n-bignum's `p256_scalarmulbase` over the
     /// generator table.
+    ///
+    /// Its proof, which covers the aarch64 routine, assumes the table holds
+    /// exactly the multiples of G that `admin/p256-precomp` writes, and
+    /// returns plain affine coordinates.
     #[cfg(not(target_arch = "x86_64"))]
     fn base_multiply(scalar: &Scalar) -> Self {
         let mut xy = [0; 8];

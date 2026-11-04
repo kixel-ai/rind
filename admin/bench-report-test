@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""Tests admin/bench-report's rendering on synthetic results.
+
+Usage: admin/bench-report-test
+"""
+
+import importlib.machinery
+import importlib.util
+import os
+import re
+import sys
+import tempfile
+import unittest
+
+# The script has no .py name to cache bytecode under.
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.abspath(__file__))
+loader = importlib.machinery.SourceFileLoader("bench_report", os.path.join(HERE, "bench-report"))
+spec = importlib.util.spec_from_loader("bench_report", loader)
+br = importlib.util.module_from_spec(spec)
+loader.exec_module(br)
+
+ZEN3 = {"intel": 0, "adx": 1, "aes": 1, "vaes": 1, "avx2": 1, "sha": 1}
+COFFEE_LAKE = {"intel": 1, "adx": 1, "aes": 1, "vaes": 0, "avx2": 1, "sha": 0}
+
+
+def host(name, arch, os_name, cpuid, results):
+    return {
+        "schema": 1,
+        "host": name,
+        "commit": "0123456789abcdef0123456789abcdef01234567",
+        "started": "2026-11-03T02:00:00+00:00",
+        "status": "ok",
+        "cpu": {"model": f"{name} CPU", "arch": arch, "logical_cpus": 8},
+        "os": os_name,
+        "toolchain": {"rustc": "rustc 1.98.1"},
+        "rind_cpu": {"cpuid": cpuid},
+        "load": {"noisy": False},
+        "results": [{"operation": op, "library": lib, "ns": ns} for op, lib, ns in results],
+    }
+
+
+def hosts():
+    return {
+        "nixos": host(
+            "nixos",
+            "x86_64",
+            "NixOS (Linux 6.18)",
+            ZEN3,
+            [
+                ("x25519-ecdh/{lib}", "rind", 30000.0),
+                ("x25519-ecdh/{lib}", "ring", 33000.0),
+                ("x25519-ecdh/{lib}", "openssl", 300000.0),
+                ("aes256-gcm/{lib}/16KB", "rind", 1000.0),
+                ("aes256-gcm/{lib}/16KB", "aws-lc-rs", 1500.0),
+            ],
+        ),
+        "nixos2": host(
+            "nixos2",
+            "x86_64",
+            "NixOS (Linux 6.18)",
+            COFFEE_LAKE,
+            [
+                ("aes256-gcm/{lib}/16KB", "rind", 2000.0),
+                ("aes256-gcm/{lib}/16KB", "aws-lc-rs", 2100.0),
+            ],
+        ),
+        "kixtop": host(
+            "kixtop",
+            "arm64",
+            "macOS 15.1 (24.1.0)",
+            {"aes": 1, "pmull": 1, "sha2": 1, "sha3": 1},
+            [("x25519-ecdh/{lib}", "rind", 20000.0), ("x25519-ecdh/{lib}", "ring", 40000.0)],
+        ),
+    }
+
+
+VERIFIED = [
+    {
+        "library": "rind",
+        "operations": ["x25519-ecdh"],
+        "arch": "x86_64",
+        "cpu": ["adx"],
+        "proof": "x86 proof",
+        "link": "https://example.com/x86",
+    },
+    {
+        "library": "rind",
+        "operations": ["aes256-gcm/*"],
+        "arch": "x86_64",
+        "cpu": ["!vaes"],
+        "proof": "aes proof",
+        "link": "https://example.com/aes",
+    },
+    {"library": "ring", "operations": ["x25519-ecdh"], "proof": "any-arch proof", "link": "https://example.com/any"},
+    {
+        "library": "rind",
+        "operations": ["x25519-ecdh"],
+        "arch": "aarch64",
+        "os": "linux",
+        "proof": "linux-only proof",
+        "link": "https://example.com/arm",
+    },
+]
+
+TIERS = {
+    "schema": 1,
+    "run": 1,
+    "url": "https://github.com/moq-dev/rind/actions/runs/1",
+    "commit": "fedcba9876543210fedcba9876543210fedcba98",
+    "date": "2026-11-02T18:00:00Z",
+    "tiers": [
+        {
+            "target": "x86_64-unknown-linux-gnu",
+            "portable": False,
+            "tier": "",
+            "cpu": "AMD EPYC 7763",
+            "benchmarks": {
+                "sha256/*/64B": {"rind": 100.0, "aws-lc-rs": 105.0, "ring": 95.0},
+                "sha256/*/16KB": {"rind": 1000.0, "aws-lc-rs": 990.0, "ring": 1200.0},
+                "rsa2048-key-generation/*": {"rind": 9e7, "aws-lc-rs": 1e7},
+                "jwt-ES256-sign/*": {"rind": 9e3, "aws-lc-rs": 1e3},
+            },
+        },
+        {
+            "target": "x86_64-unknown-linux-gnu",
+            "portable": True,
+            "tier": "no-aes",
+            "cpu": "AMD EPYC 9V74",
+            "benchmarks": {"aes128-gcm/*/1350B": {"rind": 500.0, "aws-lc-rs": 1000.0}},
+        },
+    ],
+}
+
+
+def squares(svg):
+    """Each square's tooltip."""
+    return re.findall(r"<rect [^>]*><title>([^<]*)</title></rect>", svg)
+
+
+class Render(unittest.TestCase):
+    def test_overview_marks_each_measured_square(self):
+        svg = br.overview_svg(hosts(), VERIFIED, "light")
+        titles = squares(svg)
+        # nixos: x25519 3 + aes 2; nixos2: aes 2; kixtop: x25519 2; desktop
+        # unmeasured: one outline per library and operation.
+        self.assertEqual(sum("not measured" not in t for t in titles), 9)
+        self.assertEqual(sum(t == "desktop: not measured" for t in titles), len(br.OPERATIONS) * len(br.COLUMNS))
+        self.assertIn("X25519, OpenSSL on nixos: 300.00 µs, 10.00× the fastest", titles)
+        self.assertIn("X25519, ring on nixos: 33.00 µs, 1.10× the fastest; verified: any-arch proof", titles)
+
+    def test_verified_follows_cpu_and_os(self):
+        titles = [t for t in squares(br.overview_svg(hosts(), VERIFIED, "dark")) if "verified" in t]
+        # Zen 3 has ADX but VAES; Coffee Lake lacks VAES; kixtop is macOS;
+        # an entry without an arch holds on both.
+        self.assertEqual(
+            sorted(titles),
+            [
+                "AES-256-GCM seal, 16 KB, rind on nixos2: 2.00 µs, 1.00× the fastest; verified: aes proof",
+                "X25519, rind on nixos: 30.00 µs, 1.00× the fastest; verified: x86 proof",
+                "X25519, ring on kixtop: 40.00 µs, 2.00× the fastest; verified: any-arch proof",
+                "X25519, ring on nixos: 33.00 µs, 1.10× the fastest; verified: any-arch proof",
+            ],
+        )
+
+    def test_fastest_bin_holds_within_ten_percent(self):
+        self.assertEqual(br.bin_of(1.0, br.SPEED_BINS), 0)
+        self.assertEqual(br.bin_of(1.1, br.SPEED_BINS), 0)
+        self.assertEqual(br.bin_of(1.11, br.SPEED_BINS), 1)
+        self.assertEqual(br.bin_of(10, br.SPEED_BINS), len(br.SPEED_BINS))
+
+    def test_tier_cell_is_the_worst_benchmark_and_skips_key_generation(self):
+        cells = br.tier_cells(TIERS)
+        key, (ratio, *_) = cells[("SHA-256", "x86_64")]
+        self.assertEqual((key, round(ratio, 4)), ("sha256/*/64B", round(100 / 95, 4)))
+        self.assertEqual(cells[("AES-GCM", "no AES-NI")][1][0], 0.5)
+        self.assertNotIn(("RSA signatures", "x86_64"), cells)
+        self.assertEqual(len(cells), 2)
+
+    def test_report_states_what_is_not_measured(self):
+        files = br.report(hosts(), None, VERIFIED)
+        md = files[br.REPORT]
+        self.assertIn("| `desktop` | | | not measured yet |", md)
+        self.assertIn("No nightly results yet.", md)
+        self.assertEqual(
+            sorted(os.path.basename(p) for p in files if p.endswith(".svg")),
+            sorted(f"{n}{s}.svg" for n in ["overview", "nixos", "nixos2", "kixtop"] for s in ["", "-dark"]),
+        )
+        self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | - | - | - | 300.00 µs |", md)
+
+    def test_svgs_are_well_formed(self):
+        import xml.etree.ElementTree as ET
+
+        files = br.report(hosts(), TIERS, VERIFIED)
+        for path, content in files.items():
+            if path.endswith(".svg"):
+                ET.fromstring(content)
+
+
+class Verified(unittest.TestCase):
+    def load(self, text):
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
+            f.write(text)
+        try:
+            return br.load_verified(f.name)
+        finally:
+            os.unlink(f.name)
+
+    def entry(self, **fields):
+        base = {
+            "library": '"rind"',
+            "operations": '["x25519-ecdh"]',
+            "arch": '"x86_64"',
+            "proof": '"p"',
+            "link": '"https://example.com"',
+        }
+        base.update(fields)
+        return "[[verified]]\n" + "".join(f"{k} = {v}\n" for k, v in base.items() if v is not None)
+
+    def test_accepts_a_valid_entry(self):
+        self.assertEqual(len(self.load(self.entry(cpu='["adx", "!vaes"]'))), 1)
+        self.assertEqual(len(self.load(self.entry(arch=None))), 1)
+
+    def test_refuses_what_names_nothing(self):
+        for fields in [
+            {"library": '"rustls"'},
+            {"operations": '["x25519"]'},
+            {"operations": '["aes256-gcm/8B"]'},
+            {"arch": '"armv7"'},
+            {"arch": None, "cpu": '["adx"]'},
+            {"cpu": '["sha2"]'},
+            {"os": '"windows"'},
+            {"link": '"http://example.com"'},
+            {"proof": None},
+            {"platform": '"x86_64"'},
+        ]:
+            with self.subTest(fields=fields), self.assertRaises(SystemExit):
+                self.load(self.entry(**fields))
+
+    def test_checked_in_table_loads(self):
+        br.load_verified()
+
+
+if __name__ == "__main__":
+    sys.exit(unittest.main())

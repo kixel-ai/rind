@@ -1,16 +1,14 @@
-# [M] BENCHMARKS.md is generated
+# [S] BENCHMARKS.md is published
 
 ## Goal
 
-`admin/bench-report` turns the collected results into `BENCHMARKS.md` and its SVGs: the overview heatmap, each host's numeric heatmap, the build-cost tables, and the CPU-tier heatmap from the latest nightly, with a ✓ on every verified cell.
+`BENCHMARKS.md` and its SVGs, rendered by `admin/bench-report` from a full collection on all four hosts and the latest nightly CPU tiers, are committed. The README's Algorithms table drops its ratios, and the [speed epic](/quest/m2/speed/README.md) points to the report's CPU tiers as its scoreboard.
 
 ## Plan
 
-See the [epic](/quest/m1/benchmarks/README.md) for the settled decisions and the layout.
+See the [epic](/quest/m1/benchmarks/README.md) for the settled decisions and the layout. The renderer, the verified-code table (`benchmarks/verified.toml`), the nightly's saved results, and CI's `cargo check` of the build-cost fixtures landed in [moq-dev/rind#316](https://github.com/moq-dev/rind/pull/316). What remains needs real results:
 
-- GitHub doesn't render colored table cells, so the overview is an SVG with a `<title>` per square for its number. The per-host heatmaps are SVGs too, each followed by a plain table of the numbers inside `<details>`.
-- Keep the ✓ data in one checked-in table (library, operation, platform, proof source), so a ✓ is reviewed like code.
-- The CPU-tier heatmap reads the nightly bench run's results. Once it exists, the README Algorithms table drops its ratios and the speed epic points to the report as its scoreboard.
-- Each section says when and on which commit it was measured.
-- `admin/bench-report` runs `admin/build-cost` on each host after the speed benchmarks, not alongside them, since both skew each other's times, and renders its JSON. The openssl build links the system's OpenSSL, so its binary size excludes the library; openssl-vendored is the static figure.
-- CI runs a `cargo check` of the build-cost fixtures that use rind (the minimal binary and the rind-rustls client), so a rind API change can't silently break them before the next report run (maintainer, 2026-11-03).
+- Wait until a nightly `bench` run on main has uploaded its `bench-*` artifacts, then run `admin/bench-report nightly`.
+- Run `admin/bench-report collect` while the hosts are quiet; it runs `admin/build-cost` on each host after the benchmarks. Accept `kixtop`'s ssh host key first. Its macOS path (rustup, Homebrew OpenSSL, `top`, and `admin/build-cost` there) has never run, so fix what the first run finds.
+- `admin/bench-report render --from .tmp/bench-report/<commit>`, then look at every SVG on GitHub in light and dark mode before committing `BENCHMARKS.md` and `benchmarks/`.
+- Recheck `benchmarks/verified.toml` against each host's recorded CPU features: a ✓ that lands on no square, or a host whose dispatch the table didn't foresee, is a bug in the table.
