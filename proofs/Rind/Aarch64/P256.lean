@@ -529,4 +529,94 @@ theorem from_x962_spec (bytes : Slice U8) :
       have h4 : b0 ≠ 4#u8 := fun h => hne (by rw [h]; exact UScalar.eq_of_val_eq rfl)
       simp [WP.spec_ok, h4]
 
+theorem rinv_tomont_mod (x : Nat) : p256RInv * (2 ^ 256 * x % p256) % p256 = x % p256 := by
+  have h : 2 ^ 256 * x % p256 = 2 ^ 256 * (x % p256) % p256 := by
+    rw [Nat.mul_mod, Nat.mul_mod (2 ^ 256) (x % p256), Nat.mod_mod]
+  rw [h, rinv_tomont _ (Nat.mod_lt _ (by simp [p256]))]
+
+@[step]
+theorem multiply_spec (pt : mid.p256.AffineMontPoint) (k : mid.p256.Scalar) (P : P256Point)
+    (hP : p256OnCurve P) (hrep : p256Represents2 P (pairNat pt.xy.val)) :
+    mid.p256.AffineMontPoint.multiply pt k ⦃ q =>
+      ∃ rx ry, p256AffineZ (rx, ry) (p256Pow P (wordsNat k.val)) ∧
+        pairNat q.xy.val = (2 ^ 256 * rx % p256, 2 ^ 256 * ry % p256) ⦄ := by
+  obtain ⟨hX, hY, rfl⟩ := hrep
+  have hl : (pt.xy.val).length = 8 := pt.xy.property
+  unfold mid.p256.AffineMontPoint.multiply
+  step as ⟨fx, hfx⟩
+  step as ⟨dx, hdx⟩
+  · simpa [feNat, hfx, pairNat] using hX
+  step as ⟨fy, hfy⟩
+  step as ⟨dy, hdy⟩
+  · simpa [feNat, hfy, pairNat_drop _ hl] using hY
+  step as ⟨q0, hq0⟩
+  step*
+  · simp [mid.p256.AffineMontPoint.X]
+  · simp [mid.p256.AffineMontPoint.X]
+  · rcases r with a | _
+    · exact ⟨a, rfl⟩
+    · exact absurd (by simp [s_post1, mid.p256.AffineMontPoint.X]) r_post
+  · simp [mid.p256.AffineMontPoint.Y]
+  · simp [mid.p256.AffineMontPoint.Y]
+  · rcases r1 with a | _
+    · exact ⟨a, rfl⟩
+    · exact absurd (by simp [s1_post1, mid.p256.AffineMontPoint.Y]) r1_post
+  · subst r_post
+    obtain ⟨ha, -⟩ := r_post
+    subst r1_post
+    obtain ⟨ha1, -⟩ := r1_post
+    have h8 : (xy1.val).length = 8 := xy1.property
+    have hxa : feNat a = (pairNat xy1.val).1 := by
+      simp [feNat, ha, s_post, mid.p256.AffineMontPoint.X, List.slice, pairNat]
+    have hya : feNat a1 = (pairNat xy1.val).2 := by
+      rw [pairNat_drop _ h8]
+      simp [feNat, ha1, s1_post, mid.p256.AffineMontPoint.Y, List.slice, List.take_of_length_le, h8]
+    refine ⟨(pairNat xy1.val).1, (pairNat xy1.val).2, xy1_post _ hP ?_, ?_⟩
+    · rw [hq0, pairNat_append _ _ dx.property dy.property, p256Affine]
+      simp only [feNat] at hdx hdy
+      rw [hdx, hdy, hfx, hfy, Nat.mod_mod, Nat.mod_mod, pairNat_drop _ hl]
+      rfl
+    · rw [q_post, pairNat_append _ _ fe4.property fe5.property, ← hxa, ← hya]
+      exact Prod.ext fe4_post fe5_post
+
+theorem not_onCurve_zero : ¬ p256OnCurve (some (0, 0)) := by
+  simp [p256OnCurve, p256, b256]
+
+@[step]
+theorem diffie_hellman_spec (h : Runs) (k : mid.p256.PrivateKey) (peer : mid.p256.PublicKey) (P : P256Point)
+    (hP : p256OnCurve P) (hrep : p256Represents2 P (pairNat peer.point.xy.val)) :
+    mid.p256.PrivateKey.diffie_hellman k peer ⦃ r =>
+      match p256Pow P (wordsNat k.scalar.val) with
+      | some (x, y) =>
+        if p256OnCurve (some (x, y)) then ∃ s, r = .Ok s ∧ beNat s.val = x else r = .Err .Fault
+      | none => r = .Err .Fault ⦄ := by
+  unfold mid.p256.PrivateKey.diffie_hellman low.ct.into_public
+  step
+  step with multiply_spec _ _ P hP hrep as ⟨q, rx, ry, hz, hq⟩
+  have hl : (q.xy.val).length = 8 := q.xy.property
+  step as ⟨b, hb⟩
+  rw [hq] at hb
+  simp only [rinv_tomont_mod] at hb
+  unfold p256AffineZ at hz
+  split_ifs at hz with h0
+  · obtain ⟨rfl, rfl⟩ := h0
+    rw [hz]
+    simp only [Nat.zero_mod, not_onCurve_zero, iff_false] at hb
+    simp [hb]
+  · rw [hz]
+    simp only
+    by_cases hc : p256OnCurve (some (rx % p256, ry % p256))
+    · have hbt : b = true := hb.mpr hc
+      simp only [hbt, hc, ↓reduceIte]
+      step as ⟨fx, hfx⟩
+      have hx := congrArg Prod.fst hq
+      simp only [pairNat] at hx
+      step as ⟨dx, hdx⟩
+      step as ⟨sb, hsb⟩
+      refine ⟨sb, rfl, ?_⟩
+      simp only [feNat] at hdx
+      rw [hsb, hdx, hfx, hx, rinv_tomont_mod]
+    · have hbf : b = false := by simpa [hc] using hb
+      simp [hbf, hc]
+
 end rind.aarch64
