@@ -47,4 +47,4 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [ECDSA verification adds in affine form](/quest/m2/speed/ecdsa-verify-affine.md) - cheaper mixed additions repay the equal-point checks
+- [ECDSA verification at or below its cost before #324](/quest/m2/speed/ecdsa-verify-affine.md) - a width-6 NAF for the public key recovers the rest of the equal-point checks' cost
