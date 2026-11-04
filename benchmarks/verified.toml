@@ -28,25 +28,25 @@
 # ring, RustCrypto + dalek, and OpenSSL have none: at most their field
 # arithmetic is verified, under unverified point formulas or ladders.
 
-# rind: X25519 and Ed25519 run only s2n-bignum routines; point encoding is
-# rind's Rust. rind pads SHA-512 in its own Rust, so its verified aws-lc block
-# function earns no ✓, and every other operation runs some unverified
-# arithmetic, such as P-256 ECDH's Jacobian-to-affine conversion or the RSA
-# exponentiation.
+# rind: X25519 and Ed25519 run only s2n-bignum routines. X25519's Rust, its
+# byte conversions and zero check, is proven in `proofs/` against them;
+# Ed25519's point encoding is unproven Rust. rind pads SHA-512 in its own
+# Rust, so its verified aws-lc block function earns no ✓, and every other
+# operation runs some unverified arithmetic, such as P-256 ECDH's
+# Jacobian-to-affine conversion or the RSA exponentiation.
 [[verified]]
 library = "rind"
 operations = ["x25519-ecdh"]
 arch = "x86_64"
-cpu = ["bmi2", "adx"]
-proof = "s2n-bignum's HOL Light proofs of curve25519_x25519 and curve25519_x25519base, of s2n-bignum's own object code, which rind transliterates"
-link = "https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/curve25519_x25519.ml"
+proof = "rind's Lean proof, through Aeneas, of its agreement API's X25519 down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of curve25519_x25519, curve25519_x25519base, their _alt forms without BMI2 and ADX, and bignum_eq, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/X25519.lean"
 
 [[verified]]
 library = "rind"
 operations = ["x25519-ecdh"]
 arch = "aarch64"
-proof = "s2n-bignum's HOL Light proofs of curve25519_x25519_alt and curve25519_x25519base_alt, of s2n-bignum's own object code, which rind transliterates"
-link = "https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/curve25519_x25519_alt.ml"
+proof = "rind's Lean proof, through Aeneas, of its agreement API's X25519 down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of curve25519_x25519_alt, curve25519_x25519base_alt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/X25519.lean"
 
 [[verified]]
 library = "rind"
