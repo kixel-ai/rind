@@ -1,5 +1,6 @@
 import Rind.X86_64.X25519
 import Rind.X86_64.Sha512
+import Rind.X86_64.ChaCha20
 open rind.x86_64
 
 /-!
@@ -41,3 +42,11 @@ to the trust base.
 /-- info: 'rind.x86_64.sha512_family_context' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
 #guard_msgs in
 #print axioms sha512_family_context
+
+/-- info: 'rind.x86_64.chacha20_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms chacha20_new
+
+/-- info: 'rind.x86_64.chacha20_mask' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms chacha20_mask

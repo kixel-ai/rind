@@ -163,4 +163,9 @@ opaque high.hash.Sha256State.Insts.RindHighHashHashStateSha256Context.finish_wit
 opaque high.hash.Sha256State.Insts.RindHighHashHashStateSha256Context.resume
   : high.hash.Sha256State → Result high.hash.Sha256Context
 
+/-! AES, whose header protection no proof covers. -/
+
+opaque mid.aes.Aes.encrypt_block
+  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
+
 end rind.x86_64

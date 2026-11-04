@@ -101,6 +101,10 @@ SECTIONS = [
             for size in ["32B", "1350B", "16KB"]
         ],
     ),
+    (
+        "QUIC header protection",
+        [f"quic-header-protection/{cipher}/{{lib}}" for cipher in ["aes128", "aes256", "chacha20"]],
+    ),
     ("Key agreement", ["x25519-ecdh/{lib}", "p256-ecdh/{lib}"]),
     (
         "Signatures",
@@ -595,6 +599,9 @@ NAMES = {
     "aes256-gcm-open": "AES-256-GCM open",
     "chacha20poly1305": "ChaCha20-Poly1305 seal",
     "xchacha20poly1305": "XChaCha20-Poly1305 seal",
+    "quic-header-protection/aes128": "AES-128 header protection",
+    "quic-header-protection/aes256": "AES-256 header protection",
+    "quic-header-protection/chacha20": "ChaCha20 header protection",
     "x25519-ecdh": "X25519",
     "p256-ecdh": "P-256 ECDH",
     "ed25519-sign": "Ed25519 sign",

@@ -6,8 +6,9 @@ public import Rind.X86_64.DigestAlgorithm
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
-/-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch` and `Rind.X86_64.DigestDispatch`
-model the last three, and `Rind.X86_64.DigestAlgorithm` `Algorithm`. -/
+/-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch` and
+`Rind.X86_64.DigestDispatch` model the last four, and `Rind.X86_64.DigestAlgorithm`
+`Algorithm`. -/
 
 namespace rind.x86_64
 
@@ -20,6 +21,9 @@ opaque low.x86_64.cpu.HaveBmi2Adx : Type
 /-- The token proving the CPU has AVX and SSSE3. -/
 opaque low.x86_64.cpu.HaveAvx : Type
 
+/-- An AES key, whose header protection no proof covers. -/
+opaque mid.aes.Aes : Type
+
 /-- A `&'static T` that a wiped value may hold, as `Rind.X86_64.Dispatch` models it:
 the `T`, since only the drop that wipes it leaves it `None`. -/
 @[reducible] def low.generic.zeroise.ZeroableRef (T : Type) : Type := T
@@ -28,6 +32,11 @@ the `T`, since only the drop that wipes it leaves it `None`. -/
 nothing, since `Keyed::generate` builds the only one, of `K`'s own `Agree`
 functions, which the model calls directly. -/
 @[reducible] def high.agreement.Ops (_K : Type) : Type := Unit
+
+/-- A header-protection key with its cipher's mask, as `Rind.X86_64.Dispatch` models it:
+the key, since `Masker::new` builds every one with `C`'s own `mask`, which the
+model calls directly. -/
+@[reducible] def aead.quic.Masker (C : Type) : Type := C
 
 /-- A hash's context functions, as `Rind.X86_64.DigestDispatch` models them:
 nothing, since `Hashing::start` builds the only one, of `C`'s own
