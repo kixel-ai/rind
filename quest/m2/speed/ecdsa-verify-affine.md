@@ -15,7 +15,8 @@ Decided with the maintainer on 2026-11-04. The chosen option is marked ✅.
 - Land #331 now as a strict improvement over main ✅ / hold it until fully recovered.
 - Convert the multiples at key parse ✅ / per verify.
 
-Next lever: a width-6 NAF for the key's digits, 16 affine odd multiples (P, 3P, ..., 31P) under the same one shared inversion.
-That cuts P additions by about 14% (about 43 to 37 per P-256 verify), at the cost of 8 more Jacobian additions and the larger batch conversion at key parse, and doubles the key's table (P-256's `VerifyingKey` from 512 to 1024 bytes).
-Measure it against pre-#324 on the GitHub bench runners, with bench branches for this change and for `ea4381e8` dispatched together, comparing ratios within each run.
-Keep #324's equal-point handling; mixed addition has the same proof contract.
+[moq-dev/rind#334](https://github.com/moq-dev/rind/pull/334) takes the key's digits from a width-6 NAF over 16 affine odd multiples (P, 3P, ..., 31P) under the same one shared inversion, cutting P additions by about a seventh (about 43 to 37 per P-256 verify), and keeps #324's equal-point handling.
+Its bench runs, dispatched together, measure it against main and pre-#324: [this change](https://github.com/moq-dev/rind/actions/runs/41846927501), [main](https://github.com/moq-dev/rind/actions/runs/41846932619), and [pre-#324](https://github.com/moq-dev/rind/actions/runs/41846938684).
+By count it should win the `*-ecdsa-verify-parsed` rows by about 2% and lose about as much on the `*-ecdsa-verify` rows, which also parse the key and so pay 8 more full additions and the larger batch conversion; the aarch64 `p256-ecdsa-verify` row is one of those.
+
+If width 6 does not pay overall, the parse-time table is the remaining cost: building the multiples with mixed additions needs 2P affine, which costs an inversion, or an isomorphic curve as libsecp256k1 does, which s2n-bignum's addition proofs do not cover.
