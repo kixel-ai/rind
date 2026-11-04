@@ -48,3 +48,76 @@ theorem toNat_fromLEBytes : ∀ (l : List (BitVec 8)),
       Nat.mod_eq_of_lt hBs, Nat.lor_comm, show B * 2 ^ 8 = 2 ^ 8 * B by ring,
       ← Nat.two_pow_add_eq_or_of_lt hb]
     ring
+
+/-- `u64::from_le_bytes` reads its bytes as a little-endian number. -/
+theorem val_of_fromLEBytes (a : List U8) (i : U64) {h}
+    (hi : i.bv = (BitVec.fromLEBytes (a.map U8.bv)).cast h) : i.val = leNat a := by
+  show i.bv.toNat = _
+  rw [hi, BitVec.toNat_cast, toNat_fromLEBytes]
+  simp [leNat, List.map_map, Function.comp_def]
+
+/-- `u64::to_le_bytes` writes the number its word holds. -/
+theorem leNat_toLEBytes (x : U64) :
+    leNat (x.bv.toLEBytes.map (@UScalar.mk UScalarTy.U8)) = x.val := by
+  show _ = x.bv.toNat
+  rw [← ofDigits_toLEBytes x.bv]
+  simp only [leNat, List.map_map, Function.comp_def]
+  rfl
+
+theorem toChunksExact_flatten {α : Type _} (n : Nat) (hn : 0 < n) (l : List α) :
+    (List.toChunksExact n hn l).1.flatten ++ (List.toChunksExact n hn l).2 = l := by
+  unfold List.toChunksExact
+  split
+  · simp
+  · have := toChunksExact_flatten n hn (l.drop n)
+    simp only [List.flatten_cons, List.append_assoc, this, List.take_append_drop]
+termination_by l.length
+decreasing_by simp; omega
+
+theorem toChunksExact_length {α : Type _} (n : Nat) (hn : 0 < n) (l : List α) :
+    ∀ c ∈ (List.toChunksExact n hn l).1, c.length = n := by
+  unfold List.toChunksExact
+  split
+  · simp
+  · rename_i h
+    simp only [List.mem_cons]
+    rintro c (rfl | hc)
+    · simp; omega
+    · exact toChunksExact_length n hn (l.drop n) c hc
+termination_by l.length
+decreasing_by simp; omega
+
+theorem toChunksExact_remainder {α : Type _} (n : Nat) (hn : 0 < n) (l : List α) :
+    (List.toChunksExact n hn l).2.length < n := by
+  unfold List.toChunksExact
+  split
+  · simpa
+  · exact toChunksExact_remainder n hn (l.drop n)
+termination_by l.length
+decreasing_by simp; omega
+
+/-- Bytes in 8-byte chunks encode the number their chunks' values do as limbs. -/
+theorem leNat_flatten (L : List (List U8)) (h : ∀ c ∈ L, c.length = 8) :
+    leNat L.flatten = Nat.ofDigits (2 ^ 64) (L.map leNat) := by
+  induction L with
+  | nil => simp [leNat]
+  | cons c L ih =>
+    rw [List.flatten_cons, List.map_cons, Nat.ofDigits_cons, ← ih (fun c' hc' => h c' (by simp [hc']))]
+    simp only [leNat, List.map_append, Nat.ofDigits_append, List.length_map, h c (by simp)]
+    norm_num
+
+theorem length_flatten_of_length {α : Type _} (L : List (List α)) (n : Nat)
+    (h : ∀ c ∈ L, c.length = n) : L.flatten.length = n * L.length := by
+  induction L with
+  | nil => simp
+  | cons c L ih =>
+    rw [List.flatten_cons, List.length_append, h c (by simp), ih (fun c' hc' => h c' (by simp [hc']))]
+    simp [Nat.mul_succ]; omega
+
+theorem take_setSlice! {α : Type _} (r s : List α) (i : Nat) (hs : i + s.length ≤ r.length) :
+    (r.setSlice! i s).take (i + s.length) = r.take i ++ s := by
+  have hmin : min s.length (r.length - i) = s.length := by omega
+  have hti : (r.take i).length = i := by simp; omega
+  simp only [List.setSlice!, hmin, List.take_length, List.append_assoc, List.take_append, hti,
+    Nat.add_sub_cancel_left, List.take_take]
+  simp
