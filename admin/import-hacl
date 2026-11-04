@@ -11,6 +11,11 @@ the `linux` flavor serves ELF and COFF and the `darwin` one Mach-O. The text
 is Vale's line for line but each label, which Vale numbers across the file,
 gains the flavor's local prefix and an `aesgcm_` tag, since the blocks share
 an assembler scope. The routines load no tables and call nothing.
+
+The files carry Apache-2.0: HACL*'s README releases the repository under it,
+and OpenSSL now releases aesni-gcm-x86_64, which the AEAD routines port, under
+it too. vale/code/thirdPartyPorts/OpenSSL/README.md still names the OpenSSL
+license, which held for the OpenSSL 1.1.1-dev that Vale ported.
 """
 
 import importlib.machinery
@@ -31,9 +36,10 @@ loader.exec_module(aws_lc)
 SOURCE = "aesgcm-x86_64"
 TAG = "aesgcm"
 
-# The key expansion, the GHASH key powers, the counter block, and the AEAD
-# itself, for each key size. Not `gctr*_bytes`, which only EverCrypt's CTR
-# mode calls.
+# The AEAD itself and its counter block, for each key size, and the key
+# expansion and GHASH key powers, which rind computes itself and its tests
+# check against these. Not `gctr*_bytes`, which only EverCrypt's CTR mode
+# calls.
 ROUTINES = [
     "aes128_key_expansion",
     "aes256_key_expansion",
