@@ -47,6 +47,27 @@ def core.option.Option.Insts.CoreOpsTry_traitFromResidualOptionNever.from_residu
     (T : Type _) (_ : Option Never) : Result (Option T) :=
   ok none
 
+/-- `<[T]>::first_chunk::<N>`: the first `N` elements, if there are that many. -/
+def core.slice.Slice.first_chunk {T : Type _} (N : Std.Usize) (s : Slice T) :
+    Result (Option (Array T N)) :=
+  if h : N.val ≤ s.length then
+    Std.Result.ok (some (Array.from (s.val.take N.val) (by simp [Slice.length] at h; simp [h])))
+  else Std.Result.ok none
+
+/-- `<[[T; N]]>::as_flattened_mut`: the arrays' elements in order, which write
+back to them `N` at a time. Rust's length never overflows for an element with
+a size, so the failure is unreachable. -/
+def core.slice.SliceArray.as_flattened_mut {T : Type _} {N : Std.Usize} (s : Slice (Array T N)) :
+    Result ((Slice T) × (Slice T → Slice (Array T N))) :=
+  let flat := s.val.flatMap (·.val)
+  if h : flat.length ≤ Usize.max then
+    Std.Result.ok (Slice.from flat h, fun t =>
+      Slice.from (s.val.mapIdx fun i a =>
+        a.from_slice (Slice.from ((t.val.drop (i * N.val)).take N.val)
+          (by have := t.property; simp only [List.length_take, List.length_drop]; omega)))
+        (by simp))
+  else Std.Result.fail .panic
+
 /-- `getrandom`'s error. -/
 opaque getrandom.error.Error : Type
 

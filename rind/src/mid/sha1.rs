@@ -6,7 +6,7 @@
 //! Its collision resistance is broken, so it must not be used where that
 //! matters, such as in signatures.
 
-use crate::low::{Blockwise, Entry, compress_padded};
+use crate::low::{Blockwise, Entry, UpdateBlocks, compress_padded};
 
 /// SHA1's chaining value after a whole number of blocks.
 ///
@@ -25,20 +25,6 @@ impl Sha1State {
         Self {
             h: [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0],
             nblocks: 0,
-        }
-    }
-
-    /// Add `blocks`, a whole number of blocks, to the hash computation.
-    pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
-        debug_assert!(blocks.len().is_multiple_of(Sha1Context::BLOCK_SZ));
-        if !blocks.is_empty() {
-            // `digest::Context::update` and `hmac::Context::update` leave
-            // entering to here.
-            let _entry = Entry::new_secret();
-            Self::compress(&mut self.h, blocks);
-            self.nblocks = self
-                .nblocks
-                .saturating_add((blocks.len() / Sha1Context::BLOCK_SZ) as u64);
         }
     }
 
@@ -74,6 +60,21 @@ impl Sha1State {
     }
 }
 
+impl UpdateBlocks for Sha1State {
+    fn update_blocks(&mut self, blocks: &[u8]) {
+        debug_assert!(blocks.len().is_multiple_of(Sha1Context::BLOCK_SZ));
+        if !blocks.is_empty() {
+            // `digest::Context::update` and `hmac::Context::update` leave
+            // entering to here.
+            let _entry = Entry::new_secret();
+            Self::compress(&mut self.h, blocks);
+            self.nblocks = self
+                .nblocks
+                .saturating_add((blocks.len() / Sha1Context::BLOCK_SZ) as u64);
+        }
+    }
+}
+
 /// A context for incremental computation of SHA1.
 #[derive(Clone)]
 pub(crate) struct Sha1Context {
@@ -97,8 +98,7 @@ impl Sha1Context {
 
     /// Add `bytes` to the ongoing hash computation.
     pub(crate) fn update(&mut self, bytes: &[u8]) {
-        self.blockwise
-            .update(bytes, |blocks| self.state.update_blocks(blocks));
+        self.blockwise.update(bytes, &mut self.state);
     }
 
     /// Complete the SHA1 computation, returning the hash output.

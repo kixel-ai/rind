@@ -1,11 +1,14 @@
 module
 public import Aeneas
 public import Rind.Core
+public import Rind.X86_64.DigestAlgorithm
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
-/-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch` models the last three. -/
+/-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch` and
+`Rind.X86_64.DigestDispatch` model the last four, and `Rind.X86_64.DigestAlgorithm`
+`Algorithm`. -/
 
 namespace rind.x86_64
 
@@ -14,6 +17,9 @@ opaque low.entry.Entry : Type
 
 /-- The token proving the CPU has BMI2 and ADX. -/
 opaque low.x86_64.cpu.HaveBmi2Adx : Type
+
+/-- The token proving the CPU has AVX and SSSE3. -/
+opaque low.x86_64.cpu.HaveAvx : Type
 
 /-- An AES key, whose header protection no proof covers. -/
 opaque mid.aes.Aes : Type
@@ -31,5 +37,10 @@ functions, which the model calls directly. -/
 the key, since `Masker::new` builds every one with `C`'s own `mask`, which the
 model calls directly. -/
 @[reducible] def aead.quic.Masker (C : Type) : Type := C
+
+/-- A hash's context functions, as `Rind.X86_64.DigestDispatch` models them:
+nothing, since `Hashing::start` builds the only one, of `C`'s own
+`HashContext` functions, which the model calls directly. -/
+@[reducible] def high.digest.Ops (_C : Type) : Type := Unit
 
 end rind.x86_64

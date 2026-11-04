@@ -1,16 +1,22 @@
 module
 public import Aeneas
 public import Rind.Core
+public import Rind.Aarch64.DigestAlgorithm
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
-/-! The rind types the aarch64 translation leaves opaque. `Rind.Aarch64.Dispatch` models the last three. -/
+/-! The rind types the aarch64 translation leaves opaque. `Rind.Aarch64.Dispatch` and
+`Rind.Aarch64.DigestDispatch` model the last four, and `Rind.Aarch64.DigestAlgorithm`
+`Algorithm`. -/
 
 namespace rind.aarch64
 
 /-- The entry guard every operation holds, which changes no value. -/
 opaque low.entry.Entry : Type
+
+/-- The token proving the CPU has the SHA-512 instructions. -/
+opaque low.aarch64.cpu.HaveSha3 : Type
 
 /-- An AES key, whose header protection no proof covers. -/
 opaque mid.aes.Aes : Type
@@ -28,5 +34,10 @@ functions, which the model calls directly. -/
 the key, since `Masker::new` builds every one with `C`'s own `mask`, which the
 model calls directly. -/
 @[reducible] def aead.quic.Masker (C : Type) : Type := C
+
+/-- A hash's context functions, as `Rind.Aarch64.DigestDispatch` models them:
+nothing, since `Hashing::start` builds the only one, of `C`'s own
+`HashContext` functions, which the model calls directly. -/
+@[reducible] def high.digest.Ops (_C : Type) : Type := Unit
 
 end rind.aarch64

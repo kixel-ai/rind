@@ -3,9 +3,9 @@
 # `proofs/Rind/<Arch>/{Types,Funs}.lean`, then checks every proof in `proofs/`.
 #
 # Each target's translation is its own namespace, but they share global names,
-# so no Lean module imports both. The aarch64 dispatch model and X25519 and
-# ChaCha20 proofs are the x86_64 ones with the target renamed, which this
-# writes too.
+# so no Lean module imports both. The aarch64 hand models and its X25519,
+# SHA-512, and ChaCha20 proofs are the x86_64 ones with the target renamed,
+# which this writes too.
 #
 # Usage: admin/prove
 #
@@ -17,10 +17,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 out=.tmp/prove
 mkdir -p "$out"
 
-# `Dispatch.lean` and `P256Dispatch.lean` quote the Rust they model. Fail if
-# that Rust has changed, so the model is reviewed with every change to it:
-# print the first item each line starts, from that line to the closing one at
-# its indentation, then a blank line.
+# Each hand model quotes the Rust it models. Fail if that Rust has changed, so
+# the model is reviewed with every change to it: print the first item each line
+# starts, from that line to the closing one at its indentation, then a blank
+# line.
 items() {
     local file=$1
     shift
@@ -31,53 +31,71 @@ items() {
             p && (index($0, ind "}") == 1 || (ind == "" && /^[^ }].*;$/)) { print ""; exit }' "$file"
     done
 }
-sed -n '/^```rust$/,/^```$/{//!p}' proofs/Rind/X86_64/Dispatch.lean >"$out/dispatch.rs"
+check_quote() {
+    local path=$1 model=${1#*/}
+    shift
+    sed -n '/^```rust$/,/^```$/{//!p}' "proofs/Rind/$path.lean" >"$out/$model.rs"
+    diff -u --label "$model.lean" --label rind/src "$out/$model.rs" <("$@")
+}
 items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
     'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {' >"$out/agreement.rs"
 items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {' >"$out/zeroise.rs"
 items rind/src/aead/quic.rs 'pub struct Algorithm ' 'pub static CHACHA20:' \
     'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' 'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
-diff -u --label Dispatch.lean --label rind/src "$out/dispatch.rs" \
-    <(cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic.rs")
-# The model's `Ops<K>` holds nothing, since the quoted `Keyed::generate`
-# builds the only one, and its `Masker<C>` only the key, since the quoted
-# `Masker::new` builds each with `C::mask`. That holds while the quotes have
-# every match of these: each mention of `Ops`, and each `Masker` literal,
-# `impl` on `Masker`, and write to a `mask` field, which only `quic.rs` can
-# make.
+check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic.rs"
+p256_items() {
+    items rind/src/high/agreement.rs 'pub static ECDH_P256:'
+    items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn'
+    items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
+}
+check_quote Aarch64/P256Dispatch p256_items
+check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
+    'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
+    'pub static SHA512_256:'
+check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
+    'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {'
+# The models' `Ops` hold nothing, since the quoted constructor builds the only
+# one; `Masker<C>` holds only the key, since the quoted `Masker::new` builds
+# each with `C::mask`; and a digest `Algorithm` is which static it is. That
+# holds while the quotes have every match of these: each mention of `Ops`,
+# each `Masker` literal, `impl` on `Masker`, and write to a `mask` field, which
+# only `quic.rs` can make, and each `Algorithm` the source builds.
 only_quoted() {
     local file=$1 quote=$2 pattern=$3
     if [ "$(grep -oE "$pattern" "$file" | wc -l)" != "$(grep -oE "$pattern" "$quote" | wc -l)" ]; then
-        echo "$file matches $pattern outside Dispatch.lean's quote" >&2
+        echo "$file matches $pattern outside $quote" >&2
         exit 1
     fi
 }
 only_quoted rind/src/high/agreement.rs "$out/agreement.rs" '\bOps\b'
 only_quoted rind/src/aead/quic.rs "$out/quic.rs" 'Masker(<[^>]*>)? *\{'
 only_quoted rind/src/aead/quic.rs "$out/quic.rs" '\.mask *=[^=]'
-sed -n '/^```rust$/,/^```$/{//!p}' proofs/Rind/Aarch64/P256Dispatch.lean >"$out/p256-dispatch.rs"
-diff -u --label P256Dispatch.lean --label rind/src "$out/p256-dispatch.rs" \
-    <(items rind/src/high/agreement.rs 'pub static ECDH_P256:'
-    items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn'
-    items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {')
+only_quoted rind/src/high/digest.rs "$out/DigestDispatch.rs" '\bOps\b'
+only_quoted rind/src/high/digest.rs "$out/DigestAlgorithm.rs" '= Algorithm \{'
 
 # The X25519 path, and aarch64's P-256 path, from `high::agreement`'s `Agree`
-# impls down to s2n-bignum's routines. `low` is opaque: its routines are inline
-# assembly, whose proven contracts `proofs/Rind/<Arch>/S2nBignum.lean` states.
-# The x86_64 BMI2/ADX dispatch and the constant-time markers are Rust, so they
+# impls down to s2n-bignum's routines, and the SHA-512 family's from
+# `high::digest` and `high::hash` down to aws-lc's. `low` is opaque: its
+# routines are inline assembly, whose proven contracts
+# `proofs/Rind/<Arch>/{S2nBignum,AwsLc}.lean` state. The x86_64 BMI2/ADX
+# dispatch, the SHA-512 dispatch, the padding and buffering in
+# `low::generic::blockwise`, and the constant-time markers are Rust, so they
 # are translated. The other curves' functions are opaque; their types are
 # kept, since the agreement enums hold them. Then ChaCha20 header protection
 # from its `Mask` impl down to HACL*'s rounds, which are Rust and translated
 # too; AES's key and block cipher are opaque.
 #
 # Aeneas cannot translate function pointers, through which `PrivateKey`
-# reaches each curve's `Agree` impl and `HeaderProtectionKey` each cipher's
-# `Mask` impl, so the translation starts below that dispatch, and
-# `proofs/Rind/X86_64/Dispatch.lean` models it by hand. P-256's key generation
-# draws through a `dyn RandomSource`, so it is opaque too, and
+# reaches each curve's `Agree` impl, `HeaderProtectionKey` each cipher's
+# `Mask` impl, and `digest::Context` each hash's, so the translation starts
+# below that dispatch, and `proofs/Rind/X86_64/Dispatch.lean` and
+# `DigestDispatch.lean` model it by hand. `digest::Algorithm` holds them, so it
+# is opaque too, and `DigestAlgorithm.lean` models it. SHA-1's and SHA-256's
+# code is opaque: no theorem is about it. P-256's key generation draws through
+# a `dyn RandomSource`, so it is opaque too, and
 # `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the translated
-# `PrivateKey::from_bytes`. The generator table is opaque: the theorems
-# assume what s2n-bignum's proof does of it.
+# `PrivateKey::from_bytes`. The generator table is opaque: the theorems assume
+# what s2n-bignum's proof does of it.
 extract() {
     local arch=$1 dir=$2
     shift 2
@@ -90,6 +108,11 @@ extract() {
         --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}' \
         --start-from crate::high::agreement::PrivateKey \
         --start-from crate::high::agreement::AlgorithmId \
+        --start-from '{impl crate::high::digest::Variant for _}' \
+        --start-from '{impl crate::high::hash::Hash for _}' \
+        --start-from '{impl core::convert::AsRef for crate::high::digest::Digest}' \
+        --start-from crate::high::digest::Context \
+        --start-from crate::mid::sha2::Sha512_256Context::truncate \
         --start-from '{impl crate::aead::quic::Mask for crate::mid::chacha20::ChaCha20}' \
         --start-from '{impl crate::aead::quic::Mask for crate::mid::aes::Aes}' \
         --start-from crate::aead::quic::HeaderProtectionKey \
@@ -98,12 +121,28 @@ extract() {
         --opaque crate::high::agreement::Ops \
         --opaque crate::aead::quic::Masker \
         --opaque crate::mid::aes \
+        --opaque crate::high::digest::Ops \
+        --opaque crate::high::digest::Algorithm \
+        --opaque 'crate::high::digest::_::output_len' \
+        --opaque crate::high::digest::SHA1 \
+        --opaque crate::high::digest::SHA256 \
+        --opaque crate::high::digest::SHA384 \
+        --opaque crate::high::digest::SHA512 \
+        --opaque crate::high::digest::SHA512_256 \
+        --opaque '{impl crate::high::hash::Hash for crate::high::hash::LegacySha1}' \
+        --opaque '{impl crate::high::hash::Hash for crate::high::hash::Sha256}' \
+        --opaque '{impl crate::high::hash::HashContext for crate::high::hash::Sha1Context}' \
+        --opaque '{impl crate::high::hash::HashContext for crate::high::hash::Sha256Context}' \
+        --opaque '{impl crate::high::hash::HashState for crate::high::hash::Sha1State}' \
+        --opaque '{impl crate::high::hash::HashState for crate::high::hash::Sha256State}' \
         --opaque crate::low \
         --opaque 'crate::mid::p384::_::_' \
         --opaque 'crate::mid::p521::_::_' \
         --include 'crate::mid::p521::_::BYTES' \
         --include crate::low::ct \
+        --include crate::low::generic::blockwise \
         --include crate::low::generic::chacha20 \
+        --include "crate::low::$arch::sha512::sha512_compress_blocks" \
         "$@" \
         --dest-file "$PWD/../$out/$arch.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
@@ -124,7 +163,7 @@ extract aarch64 Aarch64 \
     --opaque 'crate::mid::p256::_::new_random' \
     --opaque crate::mid::p256::precomp
 
-for file in Dispatch X25519 ChaCha20; do
+for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 

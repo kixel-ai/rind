@@ -8,14 +8,15 @@ Close it when every `*-ecdsa-verify` and `*-ecdsa-verify-parsed` row is at or be
 ## Plan
 
 [moq-dev/rind#331](https://github.com/moq-dev/rind/pull/331) converts the public key's odd multiples P, 3P, ..., 15P to affine form at key parse (one shared inversion), so each P digit is a mixed addition.
-It beats main on every curve and target, but in its bench runs (rind / aws-lc-rs within each run) a few rows still trail pre-#324: aarch64 `p256-ecdsa-verify` 1.034 vs 0.960, and x86_64 no-ADX `p256-ecdsa-verify-parsed` 1.069 vs 0.974, the latter across different CPUs.
 
 Decided with the maintainer on 2026-11-04. The chosen option is marked ✅.
 
 - Land #331 now as a strict improvement over main ✅ / hold it until fully recovered.
 - Convert the multiples at key parse ✅ / per verify.
+- For a width-6 NAF over P's digits: defer the extra multiples past a key's first verification ✅ / build them at key parse / drop width 6.
 
-Next lever: a width-6 NAF for the key's digits, 16 affine odd multiples (P, 3P, ..., 31P) under the same one shared inversion.
-That cuts P additions by about 14% (about 43 to 37 per P-256 verify), at the cost of 8 more Jacobian additions and the larger batch conversion at key parse, and doubles the key's table (P-256's `VerifyingKey` from 512 to 1024 bytes).
-Measure it against pre-#324 on the GitHub bench runners, with bench branches for this change and for `ea4381e8` dispatched together, comparing ratios within each run.
-Keep #324's equal-point handling; mixed addition has the same proof contract.
+A width-6 NAF over 16 affine multiples built at parse won every `*-ecdsa-verify-parsed` row back to pre-#324 (aarch64 P-256 0.935 vs 0.939), but cost 1-3% over main on the `*-ecdsa-verify` rows, which parse the key for each verification ([width 6](https://github.com/moq-dev/rind/actions/runs/41846927501), [main](https://github.com/moq-dev/rind/actions/runs/41846932619), [pre-#324](https://github.com/moq-dev/rind/actions/runs/41846938684)).
+[moq-dev/rind#334](https://github.com/moq-dev/rind/pull/334) keeps #331's parse and builds 17P, ..., 31P on a key's second verification instead, so a key verified once costs what it does on main.
+
+What remains is the `*-ecdsa-verify` rows, still 5-10% over pre-#324 (aarch64 P-256 1.028 vs 0.961): the parse-time table's inversion.
+Building the multiples with mixed additions needs 2P affine, which costs an inversion, or an isomorphic curve as libsecp256k1 does, which s2n-bignum's addition proofs do not cover.

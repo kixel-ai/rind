@@ -4,6 +4,7 @@
 use core::ops::{Deref, DerefMut};
 
 use super::digest::{Algorithm, Digest, SHA1, SHA256, SHA384, SHA512};
+use crate::low::UpdateBlocks;
 use crate::mid::{sha1, sha2};
 
 /// One block of hash function input.
