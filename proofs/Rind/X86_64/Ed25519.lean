@@ -601,4 +601,48 @@ theorem has_small_order_spec (bytes : Slice U8) :
   · subst ho
     simp [hl]
 
+open Classical in
+theorem high_from_bytes_spec (h : Runs) (hs : RunsSha512) (bytes : Slice U8) :
+    high.ed25519.Ed25519VerifyingKey.from_bytes bytes ⦃ r =>
+      if bytes.length ≠ 32 then r = .Err (.KeyRejected .WrongLength)
+      else if leNat bytes.val % 2 ^ 255 ∈ edSmallOrderY then r = .Err (.KeyRejected .SmallOrder)
+      else if edValidEncode (leNat bytes.val) then
+        ∃ vk, r = .Ok vk ∧ vk.bytes.val = bytes.val ∧
+          pairNat vk.point.val = edModEncodePair (edDecode (leNat bytes.val))
+      else r = .Err (.KeyRejected .NotOnCurve) ⦄ := by
+  unfold high.ed25519.Ed25519VerifyingKey.from_bytes
+  step
+  step as ⟨b, hb⟩
+  by_cases hl : bytes.length = 32
+  · by_cases hso : leNat bytes.val % 2 ^ 255 ∈ edSmallOrderY
+    · simp only [hb, hl, hso, and_self, decide_true, ↓reduceIte, ne_eq, not_true_eq_false]
+      simp [error.Error.Insts.CoreConvertFromKeyFormatError.from]
+    · simp only [hb, hl, hso, and_false, decide_false, Bool.false_eq_true, ↓reduceIte, ne_eq,
+        not_true_eq_false]
+      step with mid_from_bytes_spec h hs bytes as ⟨r, hr⟩
+      simp only [hl, ↓reduceIte] at hr
+      split_ifs at hr ⊢ with hv
+      · obtain ⟨vk, rfl, hvb, hvp⟩ := hr
+        simp [core.result.Result.map, P.Insts.CoreOpsFunctionFnOnceTupleVerifyingKeyEd25519VerifyingKey,
+          P.Insts.CoreOpsFunctionFnOnceTupleVerifyingKeyEd25519VerifyingKey.call_once,
+          high.ed25519.Ed25519VerifyingKey.constructor, hvb, hvp]
+      · subst hr
+        simp [core.result.Result.map]
+  · simp only [hb, hl, false_and, decide_false, Bool.false_eq_true, ↓reduceIte, ne_eq, not_false_eq_true]
+    step with mid_from_bytes_spec h hs bytes as ⟨r, hr⟩
+    simp only [hl, ↓reduceIte] at hr
+    subst hr
+    simp [core.result.Result.map]
+
+theorem copy_from_ok (N : Usize) (bytes : Slice U8) (h : bytes.length ≤ N.val) :
+    high.signature.Buffer.copy_from N bytes ⦃ r => ∃ b, r = .Ok b ⦄ := by
+  unfold high.signature.Buffer.copy_from high.signature.Buffer.new
+  step*
+  have hle : bytes.len ≤ s.length := by
+    have : s.length = N.val := by simp [Slice.length, s_post]
+    scalar_tac
+  simp only [core.slice.Slice.get_mut, core.slice.index.SliceIndexRangeToUsizeSlice,
+    core.slice.index.SliceIndexRangeToUsizeSlice.get_mut, hle, ↓reduceIte]
+  step*
+
 end rind.x86_64
