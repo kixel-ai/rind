@@ -28,7 +28,6 @@ and host, against the fastest other library's.
 written to DIR are measurements, not history: rerun `collect` to refresh them.
 """
 
-
 import argparse
 import datetime
 import fnmatch
@@ -1091,7 +1090,7 @@ def platform_of(entry):
     return " ".join(words)
 
 
-def host_table(name, host, verified):
+def host_table(host, verified):
     host_times = times(host)
     lines = ["| Operation | " + " | ".join(COLUMNS.values()) + " |", "|---|" + "---|" * len(COLUMNS)]
     for op in OPERATIONS:
@@ -1169,9 +1168,10 @@ def report(hosts, tiers, verified):
         "## Speed",
         "",
         "Each row is one operation and each column one library. Each cell holds a square per host, colored by "
-        "that library's time over the fastest library's on the same host: darker is faster. A ✓ in a square "
+        "that library's time over the fastest library's on the same host, as the legend shows. A ✓ in a square "
         "marks verified code. Each square's tooltip, in the SVG opened on its own, gives its time; the tables "
-        "below each host give them all. A library with no square doesn't offer the operation.",
+        "below each host give them all. A library with no square doesn't offer the operation"
+        + (", and a dashed square marks a host not measured yet." if len(hosts) < len(HOSTS) else "."),
         "",
         *picture("overview", "Time over the fastest library's, by operation, library, and host"),
         "",
@@ -1192,7 +1192,7 @@ def report(hosts, tiers, verified):
             "<details>",
             f"<summary>Times on {name}</summary>",
             "",
-            *host_table(name, h, verified),
+            *host_table(h, verified),
             "",
             "</details>",
             "",
@@ -1239,8 +1239,7 @@ def report(hosts, tiers, verified):
             "no crypto without it, and armv7 in 32-bit mode on the same core. Each cell is rind's time over "
             "the fastest of aws-lc-rs and ring (aws-lc-rs alone where a feature is denied, since ring can't "
             "be denied one), in the row's benchmark where rind trails most. An empty cell runs the same code "
-            "as the one to its left, so it isn't timed. This is the "
-            "[speed epic](quest/m2/speed/README.md)'s scoreboard.",
+            "as the one to its left, so it isn't timed.",
             "",
             f"From [run {tiers['run']}]({tiers['url']}), {tiers['date'][:10]} at {commit_link(tiers['commit'])}, "
             f"on {', '.join(cpus)}.",
