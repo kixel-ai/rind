@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 //! 32-bit ARM, backed by libcrux's portable Rust, by aws-lc's assembly for
-//! ChaCha20 and RSA's Montgomery multiplication, for Poly1305 and SHA-512
-//! where the CPU has NEON, and for the ARMv8 crypto extension where the CPU
-//! has it, and by OpenSSL's for Keccak-f.
+//! ChaCha20, SHA-512, and RSA's Montgomery multiplication, for Poly1305 where
+//! the CPU has NEON, and for the ARMv8 crypto extension where the CPU has it,
+//! and by OpenSSL's for Keccak-f.
 //!
 //! libcrux exposes only a few operations at this layer's granularity.  The
 //! rest are swapped in `mid`, where libcrux's whole operations fit, except
@@ -33,7 +33,6 @@ pub(crate) mod aes_ctr;
 pub(crate) mod aesv8_armx;
 pub(crate) mod bignum_eq;
 pub(crate) mod chacha20;
-pub(crate) mod chacha20poly1305;
 mod chacha_armv4;
 pub(crate) mod cpu;
 #[cfg(test)]
@@ -42,5 +41,6 @@ pub(crate) mod curve25519;
 pub(crate) mod ghashv8_armx;
 pub(crate) mod keccak1600_armv4;
 pub(crate) mod mont;
+pub(crate) mod poly1305;
 mod poly1305_arm;
 pub(crate) mod sha_armv4;
