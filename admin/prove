@@ -101,7 +101,7 @@ extract aarch64 Aarch64 \
     --include crate::low::aarch64::sha256 \
     --opaque crate::low::aarch64::sha256::sha256_compress_blocks
 
-for file in Dispatch X25519 Digest Sha Hmac; do
+for file in Dispatch X25519 Digest Blockwise Sha Hmac; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 

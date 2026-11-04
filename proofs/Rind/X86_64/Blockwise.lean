@@ -155,6 +155,8 @@ theorem pad_spec {N L : Usize} (rest : Slice U8) (length : Std.Array U8 L)
           padZeros N length.val.length rest.val.length := by rw [hL']; omega
       rw [Slice.from_val, pad_list _ _ _ (by rw [hL']; omega), hz]
 
+theorem padZeros_lt (N L n : Nat) (hN : 0 < N) : padZeros N L n < N := Nat.mod_lt _ hN
+
 /-- The padding of `x` bytes ends on a block boundary. -/
 theorem pad_mod {N L : Nat} (x : Nat) (hN : 0 < N) : (x + 1 + L + padZeros N L x) % N = 0 := by
   unfold padZeros
@@ -247,33 +249,6 @@ theorem compress_padded_spec {C S : Type} {N L : Usize}
         have h4 := hpz
         simp only [List.length_append, Slice.length] at *
         omega
-
-theorem pad_message_spec {N L : Usize} (message : Slice U8) (length : Std.Array U8 L)
-    (hN : 0 < N.val) (hN2 : 2 * N.val ≤ Usize.max) (hL : L.val + 1 ≤ N.val) :
-    low.generic.blockwise.pad_message message length
-      (Std.Array.repeat 2#usize (Std.Array.repeat N 0#u8)) ⦃ r _ =>
-      r.1.length % N.val = 0 ∧ r.2.length % N.val = 0 ∧
-      r.1.val ++ r.2.val = message.val ++ [128#u8] ++
-        List.replicate (padZeros N L message.length) 0#u8 ++ length.val ⦄ := by
-  unfold low.generic.blockwise.pad_message
-  have hlen : message.len.val = message.length := by simp [Slice.len, Slice.length]
-  have hmod := Nat.mod_add_div message.length N.val
-  have hlt := Nat.mod_lt message.length hN
-  have hdm := Nat.div_mul_le_self message.length N.val
-  step*
-  have hst : i2.val = N.val * (message.length / N.val) := by
-    rw [i2_post, i1_post, hlen, Nat.mul_comm]
-  have hpz : padZeros N.val L.val rest.length = padZeros N.val L.val message.length := by
-    rw [blocks_post1, hst]
-    exact padZeros_sub (Nat.mul_mod_right _ _) (by omega)
-  step with pad_spec rest length hN hN2 hL (by rw [blocks_post1, hst]; omega) as ⟨s, _, hs⟩
-  refine ⟨by rw [blocks_post, hst]; exact Nat.mul_mod_right _ _, ?_, ?_⟩
-  · have : s.length = rest.length + 1 + L.val + padZeros N.val L.val rest.length := by
-      simp only [Slice.length] at *; rw [hs]; simp; omega
-    rw [this]; exact pad_mod _ hN
-  · rw [hs, hpz, blocks_post2, blocks_post3]
-    simp only [List.append_assoc]
-    rw [← List.append_assoc (List.take _ _), List.take_append_drop]
 
 /-- `bw` holds the input `p` that `s` has not absorbed, by `R`, up to a block. -/
 def Buffered {N : Usize} {S : Type} (R : List U8 → S → Prop) (p : List U8)
@@ -386,5 +361,54 @@ theorem update_spec {C S : Type} {N : Usize}
     simp only
     rw [s_post2, s1_post, setSlice!_eq _ _ _ (by scalar_tac),
       List.take_left' (by simp; scalar_tac), ← hqp, List.append_assoc]
+
+/-! ## Hash values over whole blocks -/
+
+/-- Translated bytes as the spec reads them. -/
+def bv (l : List U8) : List Byte := l.map (·.bv)
+
+/-- Translated words as the spec reads them. -/
+def words (l : List U32) : List (BitVec 32) := l.map (·.bv)
+
+theorem blocks_nil (n : Nat) : rind.spec.blocks n [] = [] := by
+  unfold rind.spec.blocks; simp; omega
+
+theorem blocks_append {n : Nat} (hn : 0 < n) (a b : List Byte) (ha : a.length % n = 0) :
+    rind.spec.blocks n (a ++ b) = rind.spec.blocks n a ++ rind.spec.blocks n b := by
+  induction h : a.length using Nat.strong_induction_on generalizing a with
+  | _ k ih =>
+    rcases Nat.eq_zero_or_pos k with hk | hk
+    · subst hk
+      have : a = [] := List.eq_nil_of_length_eq_zero h
+      subst this
+      rw [List.nil_append, blocks_nil, List.nil_append]
+    · have hka : n ≤ a.length := by
+        have := Nat.le_of_dvd (by omega) (Nat.dvd_of_mod_eq_zero ha); omega
+      rw [rind.spec.blocks, if_pos ⟨hn, by simp; omega⟩, rind.spec.blocks.eq_def n a,
+        if_pos ⟨hn, hka⟩, List.take_append_of_le_length hka, List.drop_append_of_le_length hka,
+        ih (k - n) (by omega) (a.drop n) (by simp; rw [Nat.sub_mod_eq_zero_of_mod_eq]; simp [ha]) (by simp; omega)]
+      rfl
+
+/-- A routine that adds whole blocks to a hash value as `compress`, a block
+function, does. -/
+def Compresses {n : Usize} (compress : List (BitVec 32) → List Byte → List (BitVec 32))
+    (f : Std.Array U32 n → Slice U8 → Result (Std.Array U32 n)) : Prop :=
+  ∀ h (b : Slice U8), b.length % 64 = 0 →
+    f h b ⦃ h' => words h'.val = (rind.spec.blocks 64 (bv b.val)).foldl compress (words h.val) ⦄
+
+/-- Hash value `h` has absorbed `p`, whole blocks from `h0` by `compress`. -/
+def Absorbed {n : Usize} (compress : List (BitVec 32) → List Byte → List (BitVec 32))
+    (h0 : List (BitVec 32)) (p : List U8) (h : Std.Array U32 n) : Prop :=
+  words h.val = (rind.spec.blocks 64 (bv p)).foldl compress h0 ∧ p.length % 64 = 0
+
+theorem absorbed_append {n : Usize} {compress : List (BitVec 32) → List Byte → List (BitVec 32)}
+    {h0 : List (BitVec 32)} {p : List U8} {h h' : Std.Array U32 n} {b : List U8}
+    (hR : Absorbed compress h0 p h) (hb : b.length % 64 = 0)
+    (hh : words h'.val = (rind.spec.blocks 64 (bv b)).foldl compress (words h.val)) :
+    Absorbed compress h0 (p ++ b) h' := by
+  refine ⟨?_, by simp [Nat.add_mod, hR.2, hb]⟩
+  rw [hh, hR.1]
+  unfold bv
+  rw [List.map_append, blocks_append (by decide) _ _ (by simp [hR.2]), List.foldl_append]
 
 end rind.x86_64
