@@ -1,4 +1,4 @@
-# Fastest at every algorithm
+# [L] Fastest at every algorithm
 
 ## Goal
 
@@ -44,7 +44,3 @@ settled; don't ask them again. The chosen option is marked ✅.
   fastest baseline, refreshed by the audit and each gap quest; the nightly
   job's summary keeps the live numbers ✅ / nightly summary only / a separate
   BENCHMARKS.md.
-
-## Required
-
-- [ECDSA verification at or below its cost before #324](/quest/m2/speed/ecdsa-verify-affine.md) - a width-6 NAF for the public key recovers the rest of the equal-point checks' cost

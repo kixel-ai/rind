@@ -455,6 +455,10 @@ also builds 17Q to 31Q, so that `u2`'s digits widen to 6 from then on: a key
 verified once never pays for them. s2n-bignum's point
 additions are proven only for unequal points, so each addition first
 compares x's and settles equal or opposite points by cases.
+Those checks cost a key parsed and verified once, as TLS does with each
+certificate key, about 5-6% against verifying without them (aarch64 and
+x86_64 P-256 runs 41907443804 and 41907448202); keys verified more than once
+are faster than before.
 
 ECDSA follows RFC6979 for generation of `k`, but adds additional non-critical random input.
 We do this to avoid the theoretical fragility of RFC6979 under fault conditions.
