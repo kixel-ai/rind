@@ -5,11 +5,13 @@
 //
 // ChaCha20's rounds, from HACL*'s verified `Hacl_Chacha20` as
 // libcrux-chacha20poly1305 0.0.10 ships it (`src/hacl/chacha20.rs`), for
-// HChaCha20 on every backend and for x86_64's ChaCha20: one block, up to 128
-// bytes without AVX2, and every length without SSSE3. They run in
-// general-purpose registers, as aws-lc's integer routines do: a single block
-// packed into vector registers is one serial chain, which Zen 5's two-cycle
-// vector latency makes twice as slow.
+// HChaCha20 and QUIC header protection on every backend and for x86_64's
+// ChaCha20: one block, up to 128 bytes without AVX2, and every length without
+// SSSE3. They run in general-purpose registers, as aws-lc's integer routines
+// do: a single block packed into vector registers is one serial chain, which
+// Zen 5's two-cycle vector latency makes twice as slow.
+//
+// `proofs/` proves `chacha20_block` against RFC 8439, these rounds included.
 
 #[inline]
 fn quarter_round(st: &mut [u32], a: u32, b: u32, c: u32, d: u32) {
@@ -73,18 +75,38 @@ fn rounds(st: &mut [u32]) {
     double_round(st)
 }
 
+/// ChaCha20's constant, "expand 32-byte k" as little-endian words.
+const SIGMA: [u32; 4] = [0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574];
+
+/// ChaCha20's state for `key` and `nonce`: the constant, then the key and the
+/// nonce as little-endian words.
+//
+// Indexes rather than splitting into chunks, which Aeneas cannot translate,
+// so `proofs/` can prove `chacha20_block`.
+#[inline]
+fn state(key: &[u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
+    let mut st = [0u32; 16];
+    st[..4].copy_from_slice(&SIGMA);
+    for i in 0..8 {
+        st[4 + i] =
+            u32::from_le_bytes([key[4 * i], key[4 * i + 1], key[4 * i + 2], key[4 * i + 3]]);
+    }
+    for i in 0..4 {
+        st[12 + i] = u32::from_le_bytes([
+            nonce[4 * i],
+            nonce[4 * i + 1],
+            nonce[4 * i + 2],
+            nonce[4 * i + 3],
+        ]);
+    }
+    st
+}
+
 /// HChaCha20 of `key` and `nonce`, for XChaCha20's subkey: the ChaCha20
 /// rounds without the final addition, keeping words 0-3 and 12-15, as
 /// draft-irtf-cfrg-xchacha-03 specifies.
 pub(crate) fn hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
-    let mut st = [0u32; 16];
-    let input = [b"expand 32-byte k", &key[..16], &key[16..], nonce];
-    for (s, b) in st
-        .iter_mut()
-        .zip(input.iter().flat_map(|b| b.as_chunks::<4>().0))
-    {
-        *s = u32::from_le_bytes(*b);
-    }
+    let mut st = state(key, nonce);
     rounds(&mut st);
     let mut out = [0u8; 32];
     for (o, w) in out
@@ -94,6 +116,20 @@ pub(crate) fn hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
         .zip(st[..4].iter().chain(&st[12..]))
     {
         *o = w.to_le_bytes();
+    }
+    out
+}
+
+/// ChaCha20's keystream block for `key` and `counter_nonce`, the
+/// little-endian block counter then the 96-bit nonce (RFC 8439 section 2.3).
+#[inline]
+pub(crate) fn chacha20_block(key: &[u8; 32], counter_nonce: &[u8; 16]) -> [u8; 64] {
+    let input = state(key, counter_nonce);
+    let mut st = input;
+    rounds(&mut st);
+    let mut out = [0u8; 64];
+    for i in 0..16 {
+        out[4 * i..4 * (i + 1)].copy_from_slice(&st[i].wrapping_add(input[i]).to_le_bytes());
     }
     out
 }
