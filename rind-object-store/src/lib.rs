@@ -1,5 +1,5 @@
 //! <h1 align="center">rind-object-store</h1>
-//! <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/picture.png">
+//! <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png">
 //!
 //! This crate provides a [`CryptoProvider`] for [object_store](https://github.com/apache/arrow-rs-object-store), backed by [rind](https://github.com/moq-dev/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
 //! It signs S3, Azure, and GCS requests.
