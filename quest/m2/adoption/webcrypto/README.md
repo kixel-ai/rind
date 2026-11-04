@@ -16,9 +16,10 @@ Decided with the maintainer on 2026-11-04, in a planning interview:
   in m2 ✅ / kept deferred in the m3 parity epic.
 - MD5: added under a `legacy` module, as SHA-1 is ✅ / refused, leaving
   llrt on RustCrypto's md-5.
-- Deno is not a target (maintainer: Deno is deprecated), so nothing here is
-  added only for Deno's WebCrypto (SLH-DSA, Argon2, KMAC, KangarooTwelve,
-  TurboSHAKE, AES-OCB, X448, and Ed448 stay out).
+- Nothing here is added only for Deno or Servo (maintainer: Deno is
+  deprecated); they use this set once it lands, and their SLH-DSA, Argon2,
+  KMAC, KangarooTwelve, TurboSHAKE, AES-OCB, X448, and Ed448 stay on
+  RustCrypto.
 - Each child follows `AGENTS.md` for a new primitive (verified source where
   one exists, Wycheproof, differential tests against aws-lc-rs, ctgrind, a
   benchmark, every backend) and updates its `MIGRATING.md` rows.
