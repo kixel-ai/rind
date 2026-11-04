@@ -9,7 +9,8 @@ open Aeneas Aeneas.Std Result rind.spec
 Each axiom restates one of s2n-bignum's HOL Light theorems, at the revision
 rind transliterates (9f2cd960), about the opaque Rust wrapper
 `admin/parse-asm` generates around that routine. rind's aarch64 X25519 runs
-the `_alt` sources under the plain names. The theorem's preconditions hold
+the `_alt` sources under the plain names, and so does its Ed25519 for the
+scalar multiplications, decoding, and `bignum_madd_n25519`. The theorem's preconditions hold
 for every call from safe Rust: the `&mut` result cannot overlap an input or
 the routine's code or table, the routine's stack lies below the caller's
 frame, and the ABI keeps the stack pointer 16-byte aligned. Its total correctness
@@ -56,7 +57,8 @@ axiom edwards25519_decode_spec (z : Std.Array U64 8#usize) (c : Std.Array U8 32#
         (edValidEncode (leNat c.val) → pairNat r.2.val = edModEncodePair (edDecode (leNat c.val))) ⦄
 
 /-- `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_CORRECT`, whose `tables`
-precondition holds because rind's copy of the constant table is s2n-bignum's,
+preconditions hold because rind links s2n-bignum's constant table, which the
+routine addresses PC-relative,
 https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/edwards25519_scalarmulbase_alt.ml#L3870 -/
 @[step]
 axiom edwards25519_scalarmulbase_spec (res : Std.Array U64 8#usize)
@@ -65,7 +67,8 @@ axiom edwards25519_scalarmulbase_spec (res : Std.Array U64 8#usize)
       pairNat r.val = edModEncodePair (edPow edB (wordsNat scalar.val)) ⦄
 
 /-- `EDWARDS25519_SCALARMULDOUBLE_ALT_SUBROUTINE_CORRECT`, whose `tables`
-precondition holds because rind's copy of the constant table is s2n-bignum's,
+preconditions hold because rind links s2n-bignum's constant table, which the
+routine addresses PC-relative,
 https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/edwards25519_scalarmuldouble_alt.ml#L8432 -/
 @[step]
 axiom edwards25519_scalarmuldouble_spec (res : Std.Array U64 8#usize)

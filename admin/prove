@@ -4,8 +4,8 @@
 #
 # Each target's translation is its own namespace, but they share global names,
 # so no Lean module imports both. The aarch64 hand models and its X25519,
-# SHA-512, and ChaCha20 proofs are the x86_64 ones with the target renamed,
-# which this writes too.
+# SHA-512, ChaCha20, and Ed25519 proofs are the x86_64 ones with the target
+# renamed, which this writes too.
 #
 # Usage: admin/prove
 #
@@ -94,14 +94,19 @@ only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Parsed::Ed25
 # are translated. The other curves' functions are opaque; their types are
 # kept, since the agreement enums hold them. Then ChaCha20 header protection
 # from its `Mask` impl down to HACL*'s rounds, which are Rust and translated
-# too; AES's key and block cipher are opaque.
+# too; AES's key and block cipher are opaque. Then Ed25519 from
+# `high::signature`'s key pair and `high::ed25519` down to s2n-bignum's
+# routines and the SHA-512 context.
 #
 # Aeneas cannot translate function pointers, through which `PrivateKey`
 # reaches each curve's `Agree` impl, `HeaderProtectionKey` each cipher's
-# `Mask` impl, and `digest::Context` each hash's, so the translation starts
-# below that dispatch, and `proofs/Rind/X86_64/Dispatch.lean` and
-# `DigestDispatch.lean` model it by hand. `digest::Algorithm` holds them, so it
-# is opaque too, and `DigestAlgorithm.lean` models it. SHA-1's and SHA-256's
+# `Mask` impl, `digest::Context` each hash's, and `signature::PublicKey` each
+# algorithm's parser and verifier, so the translation starts below that
+# dispatch, and `proofs/Rind/X86_64/Dispatch.lean`, `DigestDispatch.lean`, and
+# `SignatureDispatch.lean` model it by hand. `digest::Algorithm` holds the
+# digest API's, so it is opaque too, and `DigestAlgorithm.lean` models it;
+# `signature::PublicKey` holds the signature API's, so no translated function
+# reaches it, and `SignatureDispatch.lean` defines it. SHA-1's and SHA-256's
 # code is opaque: no theorem is about it. P-256's key generation draws through
 # a `dyn RandomSource`, so it is opaque too, and
 # `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the translated

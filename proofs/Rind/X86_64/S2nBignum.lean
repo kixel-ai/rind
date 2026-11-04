@@ -66,7 +66,8 @@ axiom edwards25519_decode_spec (z : Std.Array U64 8#usize) (c : Std.Array U8 32#
         (edValidEncode (leNat c.val) → pairNat r.2.val = edModEncodePair (edDecode (leNat c.val))) ⦄
 
 /-- `EDWARDS25519_SCALARMULBASE_SUBROUTINE_CORRECT`, whose `tables`
-precondition holds because rind's copy of the constant table is s2n-bignum's,
+preconditions hold because rind links s2n-bignum's constant table, which the
+routine addresses PC-relative,
 https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_scalarmulbase.ml#L5312 -/
 @[step]
 axiom edwards25519_scalarmulbase_spec (res : Std.Array U64 8#usize)
@@ -75,7 +76,8 @@ axiom edwards25519_scalarmulbase_spec (res : Std.Array U64 8#usize)
       pairNat r.val = edModEncodePair (edPow edB (wordsNat scalar.val)) ⦄
 
 /-- `EDWARDS25519_SCALARMULDOUBLE_SUBROUTINE_CORRECT`, whose `tables`
-precondition holds because rind's copy of the constant table is s2n-bignum's,
+preconditions hold because rind links s2n-bignum's constant table, which the
+routine addresses PC-relative,
 https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_scalarmuldouble.ml#L11800 -/
 @[step]
 axiom edwards25519_scalarmuldouble_spec (res : Std.Array U64 8#usize)
@@ -104,7 +106,8 @@ axiom edwards25519_decode_alt_spec (z : Std.Array U64 8#usize) (c : Std.Array U8
         (edValidEncode (leNat c.val) → pairNat r.2.val = edModEncodePair (edDecode (leNat c.val))) ⦄
 
 /-- `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_CORRECT`, whose `tables`
-precondition holds because rind's copy of the constant table is s2n-bignum's,
+preconditions hold because rind links s2n-bignum's constant table, which the
+routine addresses PC-relative,
 https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_scalarmulbase_alt.ml#L5418 -/
 @[step]
 axiom edwards25519_scalarmulbase_alt_spec (res : Std.Array U64 8#usize)
@@ -113,7 +116,8 @@ axiom edwards25519_scalarmulbase_alt_spec (res : Std.Array U64 8#usize)
       pairNat r.val = edModEncodePair (edPow edB (wordsNat scalar.val)) ⦄
 
 /-- `EDWARDS25519_SCALARMULDOUBLE_ALT_SUBROUTINE_CORRECT`, whose `tables`
-precondition holds because rind's copy of the constant table is s2n-bignum's,
+preconditions hold because rind links s2n-bignum's constant table, which the
+routine addresses PC-relative,
 https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_scalarmuldouble_alt.ml#L11872 -/
 @[step]
 axiom edwards25519_scalarmuldouble_alt_spec (res : Std.Array U64 8#usize)
