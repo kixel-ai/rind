@@ -173,7 +173,8 @@ The model departs from the Rust in four ways, and adds no axiom:
   `map_err(|_| Error::WrongLength)?` a `match` returning that error.
 
 Drops are not modelled, as everywhere in the translation. Of the algorithm
-statics, only `X25519` and `CHACHA20` are.
+statics, only `X25519` and `CHACHA20` are here; `Rind.Aarch64.P256Dispatch`
+models `ECDH_P256` on aarch64.
 -/
 
 namespace rind.x86_64

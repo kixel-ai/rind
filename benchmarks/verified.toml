@@ -34,13 +34,13 @@
 # graviola has none. Its X25519 and Ed25519 run only s2n-bignum's verified
 # routines, but convert between bytes and limbs in unverified Rust.
 #
-# rind: X25519, whose Rust `proofs/` proves against s2n-bignum's routines, and
-# ChaCha20 header protection, whose Rust `proofs/` proves against RFC 8439,
-# HACL*'s rounds included. Its Ed25519 and aarch64 P-256 ECDH also run only
-# s2n-bignum's routines, under unverified Rust that clamps, encodes points,
-# and pads SHA-512, or decodes and checks points. Every other rind operation runs
-# unverified code too, such as SHA-256's block function or x86_64 P-256 ECDH's
-# Jacobian-to-affine conversion.
+# rind: X25519, and P-256 ECDH on aarch64, whose Rust `proofs/` proves against
+# s2n-bignum's routines, and ChaCha20 header protection, whose Rust `proofs/`
+# proves against RFC 8439, HACL*'s rounds included. Its Ed25519 also runs only
+# s2n-bignum's routines, under unverified Rust that clamps, encodes points, and
+# pads SHA-512. Every other rind operation runs unverified code too, such as
+# SHA-256's block function or x86_64 P-256 ECDH's Jacobian-to-affine
+# conversion.
 [[verified]]
 library = "rind"
 operations = ["x25519-ecdh"]
@@ -54,6 +54,13 @@ operations = ["x25519-ecdh"]
 arch = "aarch64"
 proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's dispatch table holds its own curve's functions, the only table rind builds, of its agreement API's X25519 down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of curve25519_x25519_alt, curve25519_x25519base_alt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/X25519.lean"
+
+[[verified]]
+library = "rind"
+operations = ["p256-ecdh"]
+arch = "aarch64"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, and bignum_eq, of s2n-bignum's own object code, which rind transliterates; assuming, as s2n-bignum's proof does, that rind's generator table holds the multiples of G, which a test checks"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/P256.lean"
 
 [[verified]]
 library = "rind"
