@@ -331,6 +331,7 @@ structure HashSpec {Self C S : Type} (inst : high.hash.Hash Self C S)
   finish : ∀ p c, CAbs p c → p.length ≤ max → inst.HashContextInst.finish c ⦃ d =>
     d.algorithm.output_len.val = L ∧ digestBytes d = H (bv p) ⦄
   zeroed_block : inst.zeroed_block ⦃ hb => hb.len.val = B ∧ hb.buf.val = List.replicate 128 0#u8 ⦄
+  hash_default : inst.hash = high.hash.Hash.hash.default inst
 
 theorem sha256_compress_length (H : List (BitVec 32)) (b : List Byte) (h : H.length = 8) :
     (sha256.compress H b).length = 8 := by
@@ -405,6 +406,7 @@ theorem sha256_hashSpec (hb : ShaBlocks) :
     simp only [high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.zeroed_block,
       high.hash.HashBlock.new, mid.sha2.Sha256Context.BLOCK_SZ]
     simp
+  hash_default := rfl
 
 /-! ## SHA-1, as SHA-256 above -/
 
@@ -609,5 +611,6 @@ theorem sha1_hashSpec (hb : ShaBlocks) :
     simp only [high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.zeroed_block,
       high.hash.HashBlock.new, mid.sha1.Sha1Context.BLOCK_SZ]
     simp
+  hash_default := rfl
 
 end rind.x86_64
