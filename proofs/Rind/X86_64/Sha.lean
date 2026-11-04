@@ -224,4 +224,60 @@ theorem sha256_update_blocks_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha2.S
     simp only [this, List.append_nil]
     exact ⟨hh, hn⟩
 
+theorem sha256_new_spec : mid.sha2.Sha256State.new ⦃ s => Sha256Absorbed [] s ⦄ := by
+  unfold mid.sha2.Sha256State.new
+  simp only [WP.spec_ok]
+  refine ⟨⟨?_, by simp⟩, by simp⟩
+  rw [bv, List.map_nil, blocks_nil, List.foldl_nil]
+  simp [words, Std.Array.make, sha256.H0]
+
+/-! ## `mid::sha2::Sha256Context` -/
+
+/-- A SHA-256 context that has been given `p`. -/
+def Sha256Ctx (p : List U8) (c : mid.sha2.Sha256Context) : Prop :=
+  Buffered Sha256Absorbed p c.blockwise c.state
+
+/-- How long a SHA-256 input may be: its length in bits fits the padding. -/
+def maxInput : Nat := U64.max / 8
+
+theorem blockwise_new_spec (N : Usize) :
+    low.generic.blockwise.Blockwise.new N ⦃ bw => bw.used.val = 0 ⦄ := by
+  unfold low.generic.blockwise.Blockwise.new
+  simp
+
+theorem buffered_spec {N : Usize} (bw : low.generic.blockwise.Blockwise N) (h : bw.used.val ≤ N.val) :
+    low.generic.blockwise.Blockwise.buffered bw ⦃ s => s.val = bw.buffer.val.take bw.used.val ⦄ := by
+  unfold low.generic.blockwise.Blockwise.buffered
+  step*
+  simp_all [List.slice]
+
+theorem sha256_resume_spec (P : List U8) (s : mid.sha2.Sha256State) (hs : Sha256Absorbed P s) :
+    mid.sha2.Sha256Context.resume s ⦃ c => Sha256Ctx P c ⦄ := by
+  unfold mid.sha2.Sha256Context.resume
+  step with blockwise_new_spec as ⟨bw, hbw⟩
+  exact ⟨by simp [hbw], P, hs, by simp [hbw]⟩
+
+theorem sha256_ctx_update_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha2.Sha256Context)
+    (bytes : Slice U8) (hc : Sha256Ctx p c) (hlen : p.length + bytes.length ≤ maxInput) :
+    mid.sha2.Sha256Context.update c bytes ⦃ c' => Sha256Ctx (p ++ bytes.val) c' ⦄ := by
+  unfold mid.sha2.Sha256Context.update
+  step with update_spec (N := 64#usize)
+    mid.sha2.Sha256Context.Insts.RindLowGenericBlockwiseCompressSha256State Sha256Absorbed maxInput
+    (fun p s b hs hl hb' => sha256_update_blocks_spec hb p s b hs hl
+      (by unfold maxInput at hb'; omega))
+    p c.blockwise bytes c.state hc (by decide) hlen as ⟨bw, s', h⟩
+  exact h
+
+theorem sha256_ctx_finish_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha2.Sha256Context)
+    (hc : Sha256Ctx p c) (hlen : p.length ≤ maxInput) :
+    mid.sha2.Sha256Context.finish c ⦃ r => bv r.val = sha256.hash (bv p) ⦄ := by
+  obtain ⟨hu, q, hq, hqp⟩ := hc
+  unfold mid.sha2.Sha256Context.finish
+  step with buffered_spec c.blockwise hu as ⟨m, hm⟩
+  have hpl : q.length + m.length = p.length := by
+    rw [← hqp]; simp only [Slice.length, hm, List.length_append]
+  have := sha256_finish_with_spec hb q c.state m hq (by unfold maxInput at hlen; omega)
+  rw [hm, hqp] at this
+  exact this
+
 end rind.x86_64
