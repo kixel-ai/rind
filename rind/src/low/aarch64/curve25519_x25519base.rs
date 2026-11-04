@@ -385,6 +385,7 @@ macro_rules! double_twice4 {
 /// Given a scalar n, returns the X coordinate of n * G where G = (9,...) is
 /// the standard generator. The scalar is first slightly modified/mangled
 /// as specified in the relevant RFC (https://www.rfc-editor.org/rfc/rfc7748).
+#[inline(never)]
 pub(crate) fn curve25519_x25519base(res: &mut [u64; 4], scalar: &[u64; 4]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

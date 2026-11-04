@@ -51,6 +51,7 @@ use crate::low::macros::*;
 /// This operation is at the core of SHA3 and is fully specified here:
 ///
 ///   https://keccak.team/files/Keccak-reference-3.0.pdf
+#[inline(never)]
 #[target_feature(enable = "sha3")]
 pub(crate) fn sha3_keccak2_f1600(a: &mut [[u64; 25]; 2], rc: &[u64; 24]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.

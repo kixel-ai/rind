@@ -43,6 +43,7 @@ use crate::low::macros::*;
 /// perform base multiplication of polynomials efficiently. The The second
 /// parameter is expected to point to a table of constants whose definitions
 /// can be found in the mlkem-native repo or our "tests/test.c".
+#[inline(never)]
 pub(crate) fn mlkem_mulcache_compute(x: &mut [i16; 128], a: &[i16; 256], qdata: &[i16; 624]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

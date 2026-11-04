@@ -147,6 +147,7 @@ macro_rules! jshort {
 /// is the lowest (p+k) digits of x, assuming x' <= 2^{64p} * m. That is,
 /// p-fold Montgomery reduction w.r.t. a k-digit modulus m giving a k-digit
 /// answer.
+#[inline(never)]
 pub(crate) fn bignum_montredc(z: &mut [u64], x: &[u64], m: &[u64], p: u64) {
     debug_assert!(z.len() == m.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.

@@ -1040,6 +1040,7 @@ macro_rules! divstep59 {
 /// x does not need to be reduced modulo p_256, but the output always is.
 /// If the input is divisible (i.e. is 0 or p_256), then there can be no
 /// modular inverse and z = 0 is returned.
+#[inline(never)]
 pub(crate) fn bignum_inv_p256(z: &mut [u64; 4], x: &[u64; 4]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
