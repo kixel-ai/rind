@@ -344,6 +344,9 @@ impl AffineMontPoint {
     }
 
     /// P, 3P, ..., 15P: the odd multiples a width-5 NAF digit picks.
+    ///
+    /// Each sum adds 2P to an odd multiple below n, never equal, as
+    /// `p256_montjadd` requires.
     fn public_odd_multiples(&self) -> [JacobianMontPoint; 8] {
         let p = JacobianMontPoint::from_affine(self);
         let p2 = p.double();
@@ -519,7 +522,7 @@ impl JacobianMontPoint {
                 if *p_digit < 0 {
                     tmp.negate_y();
                 }
-                result = Self::public_add_fast(&result, &tmp);
+                result = Self::public_add(&result, &tmp);
             }
             if *g_digit != 0 {
                 let mut tmp = AffineMontPoint::public_lookup(g_multiples, g_digit.unsigned_abs());
@@ -555,8 +558,10 @@ impl JacobianMontPoint {
         AffineMontPoint::from_xy(x, y)
     }
 
-    /// `a + b`, for any points, including at infinity, equal, or opposite,
-    /// which `p256_montjadd` does not handle.
+    /// `a + b`, for any points, including at infinity, equal, or opposite.
+    ///
+    /// `p256_montjadd` is proven only for unequal points, so points with the
+    /// same x never reach it.
     fn public_add(a: &Self, b: &Self) -> Self {
         if a.public_is_infinity() {
             return *b;
@@ -579,26 +584,23 @@ impl JacobianMontPoint {
         }
     }
 
-    /// `a + b`, for any points, by [`Self::public_add`] only when they turn
-    /// out to be equal or opposite.
-    ///
-    /// The formulas give such points a zero z, as they do infinity, so
-    /// only a zero z from two points not at infinity takes the slow path.
-    fn public_add_fast(a: &Self, b: &Self) -> Self {
-        let sum = a.add(b);
-        match sum.public_is_infinity() && !a.public_is_infinity() && !b.public_is_infinity() {
-            true => Self::public_add(a, b),
-            false => sum,
-        }
-    }
-
-    /// `self + p`, for any points, as [`Self::public_add_fast`] does.
+    /// `self + p`, for any points, as [`Self::public_add`] does for
+    /// `p256_montjmixadd`.
     fn public_add_affine(&self, p: &AffineMontPoint) -> Self {
-        let mut sum = *self;
-        sum.add_inplace_affine(p);
-        match sum.public_is_infinity() && !self.public_is_infinity() {
-            true => Self::public_add(self, &Self::from_affine(p)),
-            false => sum,
+        if self.public_is_infinity() {
+            return Self::from_affine(p);
+        }
+
+        // `p` scaled to this point's z.
+        let z2 = self.z().mont_sqr();
+        if !p.x().mont_mul(&z2).public_eq(&self.x()) {
+            let mut sum = *self;
+            sum.add_inplace_affine(p);
+            return sum;
+        }
+        match p.y().mont_mul(&z2.mont_mul(&self.z())).public_eq(&self.y()) {
+            true => self.double(),
+            false => Self::infinity(),
         }
     }
 
@@ -1124,8 +1126,9 @@ mod tests {
 
     #[test]
     fn twin_multiply_exceptional() {
-        // With P = G, the accumulator meets the point it adds: equal, which
-        // must double, or opposite, which must give infinity.
+        // The accumulator meets the point it adds: equal, which must double,
+        // or opposite, which must give infinity. With P = G it meets G's
+        // multiples, and with P = 2G, P's.
         let odd_multiples = CURVE_GENERATOR.public_odd_multiples();
         let n_minus = |k: u64| {
             let mut s = CURVE_ORDER;
@@ -1142,6 +1145,23 @@ mod tests {
             (Scalar([0, 0, 0, 1 << 63]), Scalar([0, 0, 0, 1 << 63])),
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
+            assert_eq!(
+                JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples)
+                    .as_affine()
+                    .xy,
+                expected
+            );
+        }
+
+        let p2 = JacobianMontPoint::from_affine(&CURVE_GENERATOR)
+            .double()
+            .as_affine();
+        let odd_multiples = p2.public_odd_multiples();
+        for (g, p) in [
+            (Scalar::small_u64(2), Scalar::small_u64(1)),
+            (Scalar::small_u64(6), Scalar::small_u64(3)),
+        ] {
+            let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p).add(&p)).xy;
             assert_eq!(
                 JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples)
                     .as_affine()
