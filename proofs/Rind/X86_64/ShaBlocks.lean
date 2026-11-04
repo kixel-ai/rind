@@ -58,9 +58,9 @@ theorem sha256_block_spec (hb : ShaBlocks) : Compresses sha256.compress mid.sha2
 
 /-- SHA-1's block function as `Sha1State` calls it. -/
 theorem sha1_block_spec (hb : ShaBlocks) :
-    Compresses sha1.compress mid.sha1.Sha1State.Insts.RindLowGenericBlockwiseCompressArrayU325.compress := by
+    Compresses sha1.compress mid.sha1.Sha1State.compress := by
   intro h b hl
-  unfold mid.sha1.Sha1State.Insts.RindLowGenericBlockwiseCompressArrayU325.compress
+  unfold mid.sha1.Sha1State.compress
   rw [hb.held]
   simpa using hb.sha1 h b hl
 
@@ -103,18 +103,31 @@ theorem sha256_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.
   obtain ⟨p, hp⟩ := hb.path
   unfold low.x86_64.sha256_mux.sha256_compress_padded
   rw [hp]
-  have generic := compress_padded_spec (N := 64#usize)
-    low.x86_64.sha256_mux.Blocks.Insts.RindLowGenericBlockwiseCompressArrayU328
-    (Absorbed sha256.compress sha256.H0) (P.length + message.length + 9 + 64)
-    (fun p s b hR hl _ => by
-      apply WP.spec_mono (sha256_compress_blocks_spec hb s b hl)
-      intro h' hh
-      exact absorbed_append hR hl hh)
-    P message length state hR (by decide) (by scalar_tac) (by decide)
-    (by have h64 : (64#usize).val = 64 := by simp
-        have h8 : (8#usize).val = 8 := by simp
-        have := padZeros_lt (64#usize).val (8#usize).val message.length (by omega)
-        omega)
+  have tail : ∀ blocks rest : Slice U8, blocks.length % (64#usize).val = 0 ∧
+      blocks.val ++ rest.val = message.val ∧ rest.length + 1 + (8#usize).val ≤ 2 * (64#usize).val ∧
+      padZeros (64#usize).val (8#usize).val rest.length =
+        padZeros (64#usize).val (8#usize).val message.length →
+      (do
+        let b ← core.slice.Slice.is_empty blocks
+        let state1 ← if b then ok state else low.x86_64.sha256_mux.sha256_compress_blocks state blocks
+        let a := Std.Array.repeat 64#usize 0#u8
+        let last := Std.Array.repeat 2#usize a
+        let (s, _) ← low.generic.blockwise.pad rest length last
+        low.x86_64.sha256_mux.sha256_compress_blocks state1 s) ⦃ h' =>
+        Absorbed sha256.compress sha256.H0
+          (P ++ message.val ++ [128#u8] ++ List.replicate (padZeros 64 8 message.length) 0#u8 ++
+            length.val) h' ⦄ :=
+    fun blocks rest hs => compress_tail_spec low.x86_64.sha256_mux.sha256_compress_blocks
+      (Absorbed sha256.compress sha256.H0) (P.length + message.length + 9 + 64)
+      (fun p s b hR hl _ => by
+        apply WP.spec_mono (sha256_compress_blocks_spec hb s b hl)
+        intro h' hh
+        exact absorbed_append hR hl hh)
+      P message blocks rest length state hR (by decide) (by scalar_tac) (by decide) hs
+      (by have h64 : (64#usize).val = 64 := by simp
+          have h8 : (8#usize).val = 8 := by simp
+          have := padZeros_lt (64#usize).val (8#usize).val message.length (by omega)
+          omega)
   cases p with
   | Shaext t =>
     simp only [bind_ok]
@@ -126,9 +139,25 @@ theorem sha256_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.
       (by simp only [Slice.length] at h1 h2; simp [Nat.add_mod, h1, h2]) hh
     rw [h3] at this
     simpa [List.append_assoc] using this
-  | Avx t => simpa using generic
-  | Avx2 t => simpa using generic
-  | Ssse3 t => simpa using generic
-  | Nohw => simpa using generic
+  | Avx t =>
+    simp only [bind_ok]
+    step with split_tail_spec (N := 64#usize) (L := 8#usize) message (by decide) (by scalar_tac)
+      (by decide) as ⟨bl, re, hs1, hs2, hs3, hs4⟩
+    exact tail bl re ⟨hs1, hs2, hs3, hs4⟩
+  | Avx2 t =>
+    simp only [bind_ok]
+    step with split_tail_spec (N := 64#usize) (L := 8#usize) message (by decide) (by scalar_tac)
+      (by decide) as ⟨bl, re, hs1, hs2, hs3, hs4⟩
+    exact tail bl re ⟨hs1, hs2, hs3, hs4⟩
+  | Ssse3 t =>
+    simp only [bind_ok]
+    step with split_tail_spec (N := 64#usize) (L := 8#usize) message (by decide) (by scalar_tac)
+      (by decide) as ⟨bl, re, hs1, hs2, hs3, hs4⟩
+    exact tail bl re ⟨hs1, hs2, hs3, hs4⟩
+  | Nohw =>
+    simp only [bind_ok]
+    step with split_tail_spec (N := 64#usize) (L := 8#usize) message (by decide) (by scalar_tac)
+      (by decide) as ⟨bl, re, hs1, hs2, hs3, hs4⟩
+    exact tail bl re ⟨hs1, hs2, hs3, hs4⟩
 
 end rind.x86_64

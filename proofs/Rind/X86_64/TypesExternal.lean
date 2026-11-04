@@ -8,7 +8,7 @@ set_option linter.dupNamespace false
 
 /-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch` and
 `Rind.X86_64.DigestDispatch` model the last four, and `Rind.X86_64.DigestAlgorithm`
-`Algorithm`. -/
+`Algorithm` and `Digest`. -/
 
 namespace rind.x86_64
 

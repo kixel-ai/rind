@@ -52,7 +52,7 @@ p256_items() {
 check_quote Aarch64/P256Dispatch p256_items
 check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
-    'pub static SHA512_256:'
+    'pub static SHA512_256:' 'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {'
 check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
     'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {'
 # The models' `Ops` hold nothing, since the quoted constructor builds the only
@@ -128,6 +128,11 @@ extract() {
         --opaque crate::mid::aes \
         --opaque crate::high::digest::Ops \
         --opaque crate::high::digest::Algorithm \
+        --opaque crate::high::digest::Digest \
+        --opaque 'crate::high::digest::_::zeroed' \
+        --opaque 'crate::high::digest::_::as_mut' \
+        --opaque 'crate::high::digest::_::ct_equal' \
+        --opaque 'crate::high::digest::_::as_ref' \
         --opaque 'crate::high::digest::_::output_len' \
         --opaque crate::high::digest::SHA1 \
         --opaque crate::high::digest::SHA256 \

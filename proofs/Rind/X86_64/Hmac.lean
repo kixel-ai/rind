@@ -135,7 +135,7 @@ variable {Self C S : Type} {inst : high.hash.Hash Self C S} {H : List Byte → L
 
 theorem HashSpec.hash_spec (hs : HashSpec inst H B L max Abs CAbs) (m : Slice U8)
     (hm : m.length ≤ max) :
-    inst.hash m ⦃ d => d.algorithm.output_len.val = L ∧ digestBytes d = H (bv m.val) ⦄ := by
+    inst.hash m ⦃ d => outLen d.algorithm = L ∧ digestBytes d = H (bv m.val) ⦄ := by
   rw [hs.hash_default]
   unfold high.hash.Hash.hash.default
   apply WP.spec_bind hs.initial
@@ -175,7 +175,7 @@ theorem hmac_key_new_spec (hs : HashSpec inst H B L max Abs CAbs) (key : Slice U
       apply WP.spec_bind (hs.hash_spec key hk)
       rintro hkey ⟨hk1, hk2⟩
       step*
-      step with digest_as_ref_spec hkey (by omega) as ⟨s2, hs2l, hs2b⟩
+      step with digest_as_ref_spec hkey as ⟨s2, hs2l, hs2b⟩
       step*
       have hs1 : s1.val = List.replicate B 0#u8 := by
         rw [s1_post, hkb1, hkb2, List.take_replicate, Nat.min_eq_left hB128]
@@ -269,7 +269,7 @@ theorem hmac_sign_spec (hs : HashSpec inst H B L max Abs CAbs) (key : List Byte)
     (k : high.hmac.HmacKey Self C S) (hk : HmacKeyed Abs H B key k) (m : Slice U8)
     (hm : B + m.length ≤ max) :
     high.hmac.HmacKey.sign inst k m ⦃ d =>
-      d.algorithm.output_len.val = L ∧ digestBytes d = hmac H B key (bv m.val) ⦄ := by
+      outLen d.algorithm = L ∧ digestBytes d = hmac H B key (bv m.val) ⦄ := by
   obtain ⟨ki, ko, hi, ho, hbi, hbo⟩ := hk
   obtain ⟨hLB, hL64, -, hBmax, -⟩ := hs.out
   have hkil : ki.length = B := by
@@ -279,7 +279,7 @@ theorem hmac_sign_spec (hs : HashSpec inst H B L max Abs CAbs) (key : List Byte)
   unfold high.hmac.HmacKey.sign
   apply WP.spec_bind (hs.finish_with ki k.inner m hi (by omega))
   rintro d1 ⟨hd1l, hd1⟩
-  step with digest_as_ref_spec d1 (by omega) as ⟨s, hsl, hsb⟩
+  step with digest_as_ref_spec d1 as ⟨s, hsl, hsb⟩
   apply WP.spec_mono (hs.finish_with ko k.outer s ho (by omega))
   rintro d ⟨hdl, hd⟩
   refine ⟨hdl, ?_⟩
@@ -326,13 +326,13 @@ theorem hmac_update_spec (hs : HashSpec inst H B L max Abs CAbs) (key : List Byt
 theorem hmac_finish_spec (hs : HashSpec inst H B L max Abs CAbs) (key : List Byte) (p : List U8)
     (h : high.hmac.Hmac Self C S) (hh : HmacCtx CAbs Abs H B key p h) (hm : B + p.length ≤ max) :
     high.hmac.Hmac.finish inst h ⦃ d =>
-      d.algorithm.output_len.val = L ∧ digestBytes d = hmac H B key (bv p) ⦄ := by
+      outLen d.algorithm = L ∧ digestBytes d = hmac H B key (bv p) ⦄ := by
   obtain ⟨ki, ko, hi, ho, hkil, hkol, hbi, hbo⟩ := hh
   obtain ⟨hLB, hL64, -, hBmax, -⟩ := hs.out
   unfold high.hmac.Hmac.finish
   apply WP.spec_bind (hs.finish (ki ++ p) h.inner hi (by simp; omega))
   rintro d1 ⟨hd1l, hd1⟩
-  step with digest_as_ref_spec d1 (by omega) as ⟨s, hsl, hsb⟩
+  step with digest_as_ref_spec d1 as ⟨s, hsl, hsb⟩
   apply WP.spec_mono (hs.finish_with ko h.outer s ho (by omega))
   rintro d ⟨hdl, hd⟩
   refine ⟨hdl, ?_⟩

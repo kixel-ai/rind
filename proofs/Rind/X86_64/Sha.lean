@@ -197,12 +197,12 @@ theorem saturating_add_val (x y : U64) (h : x.val + y.val ≤ U64.max) :
 theorem sha256_update_blocks_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha2.Sha256State)
     (blk : Slice U8) (hs : Sha256Absorbed P s) (hl : blk.length % 64 = 0)
     (hbound : P.length + blk.length ≤ U64.max) :
-    mid.sha2.Sha256State.update_blocks s blk ⦃ s' => Sha256Absorbed (P ++ blk.val) s' ⦄ := by
+    mid.sha2.Sha256State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks s blk ⦃ s' => Sha256Absorbed (P ++ blk.val) s' ⦄ := by
   obtain ⟨hh, hn⟩ := hs
   have hbl : blk.len.val = blk.length := by simp [Slice.len, Slice.length]
   have h64 : mid.sha2.Sha256Context.BLOCK_SZ.val = 64 := by simp [mid.sha2.Sha256Context.BLOCK_SZ]
   obtain ⟨e, he⟩ := hb.entry
-  unfold mid.sha2.Sha256State.update_blocks
+  unfold mid.sha2.Sha256State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks
   step*
   case h2 =>
     rw [he, bind_ok]
@@ -261,7 +261,7 @@ theorem sha256_ctx_update_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha2.Sha2
     mid.sha2.Sha256Context.update c bytes ⦃ c' => Sha256Ctx (p ++ bytes.val) c' ⦄ := by
   unfold mid.sha2.Sha256Context.update
   step with update_spec (N := 64#usize)
-    mid.sha2.Sha256Context.Insts.RindLowGenericBlockwiseCompressSha256State Sha256Absorbed maxInput
+    mid.sha2.Sha256State.Insts.RindLowGenericBlockwiseUpdateBlocks Sha256Absorbed maxInput
     (fun p s b hs hl hb' => sha256_update_blocks_spec hb p s b hs hl
       (by unfold maxInput at hb'; omega))
     p c.blockwise bytes c.state hc (by decide) hlen as ⟨bw, s', h⟩
@@ -281,14 +281,27 @@ theorem sha256_ctx_finish_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha2.Sha2
 
 /-! ## The digest model -/
 
+/-- An algorithm's output length. -/
+def outLen : high.digest.Algorithm → Nat
+  | .SHA1 => 20
+  | .SHA256 => 32
+  | .SHA384 => 48
+  | .SHA512 => 64
+  | .SHA512_256 => 32
+
+theorem output_len_eq (a : high.digest.Algorithm) :
+    ∃ n, a.output_len = ok n ∧ n.val = outLen a ∧ n.val ≤ 64 := by
+  cases a <;> refine ⟨_, rfl, ?_, ?_⟩ <;> simp [outLen]
+
 /-- The bytes a digest holds, as `as_ref` reads them. -/
 def digestBytes (d : high.digest.Digest) : List Byte :=
-  bv (d.value.val.take d.algorithm.output_len.val)
+  bv (d.value.val.take (outLen d.algorithm))
 
-theorem digest_new_spec (a : high.digest.Algorithm) (v : Slice U8)
-    (hv : v.length = a.output_len.val) (h64 : a.output_len.val ≤ 64) :
+theorem digest_new_spec (a : high.digest.Algorithm) (v : Slice U8) (hv : v.length = outLen a) :
     high.digest.Digest.new a v ⦃ d => d.algorithm = a ∧ digestBytes d = bv v.val ⦄ := by
+  obtain ⟨n, hn, hnv, hn64⟩ := output_len_eq a
   unfold high.digest.Digest.new high.digest.Digest.zeroed high.digest.Digest.as_mut
+  simp only [hn, bind_ok]
   step*
   rcases x with ⟨sl, back⟩
   simp only at x_post x_post1 x_post2 ⊢
@@ -298,14 +311,19 @@ theorem digest_new_spec (a : high.digest.Algorithm) (v : Slice U8)
   simp only [List.take_zero, List.nil_append, Nat.zero_add]
   rw [List.take_left' (by simp only [Slice.length] at hv; omega)]
 
-theorem digest_as_ref_spec (d : high.digest.Digest) (h64 : d.algorithm.output_len.val ≤ 64) :
+theorem digest_as_ref_spec (d : high.digest.Digest) :
     high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d ⦃ s =>
-      s.length = d.algorithm.output_len.val ∧ bv s.val = digestBytes d ⦄ := by
+      s.length = outLen d.algorithm ∧ bv s.val = digestBytes d ⦄ := by
+  obtain ⟨n, hn, hnv, hn64⟩ := output_len_eq d.algorithm
   unfold high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref
+  simp only [hn, bind_ok]
   step*
-  refine ⟨s_post1, ?_⟩
-  rw [digestBytes, s_post]
+  refine ⟨by rw [s_post1, hnv], ?_⟩
+  rw [digestBytes, s_post, ← hnv]
   simp [List.slice, Array.val_to_slice]
+
+theorem outLen_le (a : high.digest.Algorithm) : outLen a ≤ 64 := by
+  obtain ⟨n, -, hnv, hn64⟩ := output_len_eq a; omega
 
 /-! ## The `Hash` impls, `high::hash` -/
 
@@ -322,13 +340,13 @@ structure HashSpec {Self C S : Type} (inst : high.hash.Hash Self C S)
     inst.HashStateInst.update_blocks s b ⦃ s' => Abs (p ++ b.val) s' ⦄
   finish_with : ∀ p s (m : Slice U8), Abs p s → p.length + m.length ≤ max →
     inst.HashStateInst.finish_with s m ⦃ d =>
-      d.algorithm.output_len.val = L ∧ digestBytes d = H (bv (p ++ m.val)) ⦄
+      outLen d.algorithm = L ∧ digestBytes d = H (bv (p ++ m.val)) ⦄
   clone : ∀ p s, Abs p s → inst.HashStateInst.corecloneCloneInst.clone s ⦃ s' => Abs p s' ⦄
   resume : ∀ p s, Abs p s → inst.HashStateInst.resume s ⦃ c => CAbs p c ⦄
   update : ∀ p c (b : Slice U8), CAbs p c → p.length + b.length ≤ max →
     inst.HashContextInst.update c b ⦃ c' => CAbs (p ++ b.val) c' ⦄
   finish : ∀ p c, CAbs p c → p.length ≤ max → inst.HashContextInst.finish c ⦃ d =>
-    d.algorithm.output_len.val = L ∧ digestBytes d = H (bv p) ⦄
+    outLen d.algorithm = L ∧ digestBytes d = H (bv p) ⦄
   zeroed_block : inst.zeroed_block ⦃ hb => hb.len.val = B ∧ hb.buf.val = List.replicate 128 0#u8 ⦄
   hash_default : inst.hash = high.hash.Hash.hash.default inst
 
@@ -369,9 +387,9 @@ theorem sha256_hashSpec (hb : ShaBlocks) :
       high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.ALGORITHM, high.digest.SHA256]
     step with sha256_finish_with_spec hb p s m hs (by unfold maxInput at hm; omega) as ⟨r, hr⟩
     step*
-    apply WP.spec_mono (digest_new_spec _ s (by rw [s_post]; simp) (by simp))
+    apply WP.spec_mono (digest_new_spec _ s (by rw [s_post]; simp [outLen]))
     rintro d ⟨hd1, hd2⟩
-    refine ⟨by rw [hd1]; simp, ?_⟩
+    refine ⟨by rw [hd1]; rfl, ?_⟩
     rw [hd2, s_post, Array.val_to_slice, hr]
   clone := fun p s hs => by
     simp only [high.hash.Sha256State.Insts.CoreCloneClone.clone,
@@ -397,9 +415,9 @@ theorem sha256_hashSpec (hb : ShaBlocks) :
       high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.ALGORITHM, high.digest.SHA256]
     step with sha256_ctx_finish_spec hb p c hc hm as ⟨r, hr⟩
     step*
-    apply WP.spec_mono (digest_new_spec _ s (by rw [s_post]; simp) (by simp))
+    apply WP.spec_mono (digest_new_spec _ s (by rw [s_post]; simp [outLen]))
     rintro d ⟨hd1, hd2⟩
-    refine ⟨by rw [hd1]; simp, ?_⟩
+    refine ⟨by rw [hd1]; rfl, ?_⟩
     rw [hd2, s_post, Array.val_to_slice, hr]
   zeroed_block := by
     simp only [high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.zeroed_block,
@@ -451,36 +469,57 @@ theorem sha1_finish_with_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha1.Sha1S
   have hbits : bits.val = 8 * (P.length + message.length) := by rw [hm.2.1, h8, ha.2.1]; omega
   simp only [core.option.Option.expect, Result.ofOption, bind_ok]
   step*
-  step with compress_padded_spec (N := 64#usize)
-    mid.sha1.Sha1State.Insts.RindLowGenericBlockwiseCompressArrayU325
-    (Absorbed sha1.compress sha1.H0) (P.length + message.length + 9 + 64)
-    (fun p s b hR hl _ => by
-      apply WP.spec_mono (sha1_block_spec hb s b hl)
-      intro h' hh
-      exact absorbed_append hR hl hh)
-    P message a s.h ⟨hh, hP⟩ (by decide) (by scalar_tac) (by decide)
-    (by have h64 : (64#usize).val = 64 := by simp
-        have h8 : (8#usize).val = 8 := by simp
-        have := padZeros_lt (64#usize).val (8#usize).val message.length (by omega)
-        omega) as ⟨h', hh'⟩
+  have hR : Absorbed sha1.compress sha1.H0 P s.h := ⟨hh, hP⟩
+  apply WP.spec_bind (Pₘ := fun h => Absorbed sha1.compress sha1.H0 (P ++ blocks.val) h)
+  · split
+    · rename_i hb0
+      have : blocks.val = [] := by
+        rw [b_post] at hb0; exact List.eq_nil_of_length_eq_zero hb0
+      simp only [this, List.append_nil, WP.spec_ok]
+      exact hR
+    · apply WP.spec_mono (sha1_block_spec hb s.h blocks blocks_post)
+      intro h1 hh1
+      exact absorbed_append hR blocks_post hh1
+  intro h1 hh1
+  step*
+  step with pad_spec (N := 64#usize) rest a1 (by decide) (by scalar_tac) (by decide)
+    (by simpa using blocks_post2) as ⟨pd, _, hpd⟩
+  have hpl : pd.length % 64 = 0 := by
+    have := pad_mod (N := 64) (L := 8) rest.length (by decide)
+    have hl8 : a1.val.length = 8 := by simp
+    simp only [Slice.length] at this ⊢
+    rw [hpd]
+    simp only [List.length_append, List.length_cons, List.length_replicate, List.length_nil, hl8,
+      Slice.length]
+    omega
+  apply WP.spec_bind (sha1_block_spec hb h1 pd hpl)
+  intro h' hh'0
+  have hh' := absorbed_append hh1 hpl hh'0
+  have hmsg : P ++ blocks.val ++ pd.val = P ++ message.val ++ [128#u8] ++
+      List.replicate (padZeros 64 8 message.length) 0#u8 ++ a1.val := by
+    rw [hpd, ← blocks_post1]
+    have := blocks_post3
+    rw [this]
+    simp [List.append_assoc]
+  rw [hmsg] at hh'
   simp only [core.slice.Slice.iter]
   step*
   have hv : (h'.val).length = 5 := h'.property
   apply WP.spec_mono (sha1_out_loop_spec iter _ h'.val hv ?_ ?_ ?_ ?_)
   · intro r hr
-    rw [hr, bv_flatMap_beBytes, hh'.1, a_post, pad_bv P message.val bits hP hbits]
+    rw [hr, bv_flatMap_beBytes, hh'.1, a1_post, pad_bv P message.val bits hP hbits]
     rfl
-  all_goals simp [iter_post, iter_post1, s_post, Array.val_to_slice]
+  all_goals simp [iter_post, iter_post1, s1_post, Array.val_to_slice]
 
 theorem sha1_update_blocks_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha1.Sha1State)
     (blk : Slice U8) (hs : Sha1Absorbed P s) (hl : blk.length % 64 = 0)
     (hbound : P.length + blk.length ≤ U64.max) :
-    mid.sha1.Sha1State.update_blocks s blk ⦃ s' => Sha1Absorbed (P ++ blk.val) s' ⦄ := by
+    mid.sha1.Sha1State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks s blk ⦃ s' => Sha1Absorbed (P ++ blk.val) s' ⦄ := by
   obtain ⟨hh, hn⟩ := hs
   have hbl : blk.len.val = blk.length := by simp [Slice.len, Slice.length]
   have h64 : mid.sha1.Sha1Context.BLOCK_SZ.val = 64 := by simp [mid.sha1.Sha1Context.BLOCK_SZ]
   obtain ⟨e, he⟩ := hb.entry
-  unfold mid.sha1.Sha1State.update_blocks
+  unfold mid.sha1.Sha1State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks
   step*
   case h2 =>
     rw [he, bind_ok]
@@ -525,7 +564,7 @@ theorem sha1_ctx_update_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha1.Sha1Co
     mid.sha1.Sha1Context.update c bytes ⦃ c' => Sha1Ctx (p ++ bytes.val) c' ⦄ := by
   unfold mid.sha1.Sha1Context.update
   step with update_spec (N := 64#usize)
-    mid.sha1.Sha1Context.Insts.RindLowGenericBlockwiseCompressSha1State Sha1Absorbed maxInput
+    mid.sha1.Sha1State.Insts.RindLowGenericBlockwiseUpdateBlocks Sha1Absorbed maxInput
     (fun p s b hs hl hb' => sha1_update_blocks_spec hb p s b hs hl
       (by unfold maxInput at hb'; omega))
     p c.blockwise bytes c.state hc (by decide) hlen as ⟨bw, s', h⟩
@@ -573,9 +612,9 @@ theorem sha1_hashSpec (hb : ShaBlocks) :
       high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.ALGORITHM, high.digest.SHA1]
     step with sha1_finish_with_spec hb p s m hs (by unfold maxInput at hm; omega) as ⟨r, hr⟩
     step*
-    apply WP.spec_mono (digest_new_spec _ s (by rw [s_post]; simp) (by simp))
+    apply WP.spec_mono (digest_new_spec _ s (by rw [s_post]; simp [outLen]))
     rintro d ⟨hd1, hd2⟩
-    refine ⟨by rw [hd1]; simp, ?_⟩
+    refine ⟨by rw [hd1]; rfl, ?_⟩
     rw [hd2, s_post, Array.val_to_slice, hr]
   clone := fun p s hs => by
     simp only [high.hash.Sha1State.Insts.CoreCloneClone.clone,
@@ -601,9 +640,9 @@ theorem sha1_hashSpec (hb : ShaBlocks) :
       high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.ALGORITHM, high.digest.SHA1]
     step with sha1_ctx_finish_spec hb p c hc hm as ⟨r, hr⟩
     step*
-    apply WP.spec_mono (digest_new_spec _ s (by rw [s_post]; simp) (by simp))
+    apply WP.spec_mono (digest_new_spec _ s (by rw [s_post]; simp [outLen]))
     rintro d ⟨hd1, hd2⟩
-    refine ⟨by rw [hd1]; simp, ?_⟩
+    refine ⟨by rw [hd1]; rfl, ?_⟩
     rw [hd2, s_post, Array.val_to_slice, hr]
   zeroed_block := by
     simp only [high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.zeroed_block,

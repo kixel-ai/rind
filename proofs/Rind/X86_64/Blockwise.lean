@@ -5,8 +5,9 @@ open Aeneas Aeneas.Std Result
 /-!
 # Merkle-Damgard padding and buffering, `low::generic::blockwise`
 
-What `pad`, `compress_padded`, and `Blockwise` compute, for any hash whose
-`Compress` impl adds whole blocks to what its state has absorbed.
+What `split_tail`, `pad`, and `Blockwise` compute, for any hash whose block
+function, or `UpdateBlocks` impl, adds whole blocks to what its state has
+absorbed.
 -/
 
 namespace rind.x86_64
@@ -170,17 +171,16 @@ theorem padZeros_sub {N L n start : Nat} (h : start % N = 0) (hs : start ≤ n) 
   obtain ⟨q, rfl⟩ := Nat.dvd_of_mod_eq_zero h
   rw [show n + 1 + L = n - N * q + 1 + L + N * q by omega, Nat.add_mul_mod_self_left]
 
-theorem compress_padded_spec {C S : Type} {N L : Usize}
-    (inst : low.generic.blockwise.Compress C S) (R : List U8 → S → Prop) (bound : Nat)
-    (hC : ∀ p s (b : Slice U8), R p s → b.length % N.val = 0 → p.length + b.length ≤ bound →
-      inst.compress s b ⦃ s' => R (p ++ b.val) s' ⦄)
-    (p : List U8) (message : Slice U8) (length : Std.Array U8 L) (state : S) (hR : R p state)
-    (hN : 0 < N.val) (hN2 : 2 * N.val ≤ Usize.max) (hL : L.val + 1 ≤ N.val)
-    (hb : p.length + message.length + 1 + L.val + padZeros N L message.length ≤ bound) :
-    low.generic.blockwise.compress_padded N inst message length state ⦃ s' =>
-      R (p ++ message.val ++ [128#u8] ++ List.replicate (padZeros N L message.length) 0#u8 ++
-        length.val) s' ⦄ := by
-  unfold low.generic.blockwise.compress_padded
+/-- `split_tail` leaves whole blocks, then a rest that `pad` fits in two
+blocks, padded as the whole message would be. -/
+@[step]
+theorem split_tail_spec {N L : Usize} (message : Slice U8) (hN : 0 < N.val)
+    (hN2 : 2 * N.val ≤ Usize.max) (hL : L.val + 1 ≤ N.val) :
+    low.generic.blockwise.split_tail N L message ⦃ blocks rest =>
+      blocks.length % N.val = 0 ∧ blocks.val ++ rest.val = message.val ∧
+      rest.length + 1 + L.val ≤ 2 * N.val ∧
+      padZeros N L rest.length = padZeros N L message.length ⦄ := by
+  unfold low.generic.blockwise.split_tail
   have hlen : message.len.val = message.length := by simp [Slice.len, Slice.length]
   have hmod := Nat.mod_add_div message.length N.val
   have hlt := Nat.mod_lt message.length hN
@@ -219,42 +219,66 @@ theorem compress_padded_spec {C S : Type} {N L : Usize}
       exact ⟨by rw [this]; exact hq, by omega, by omega⟩
   · intro start ⟨hs0, hs1, hs2⟩
     step*
-    apply WP.spec_bind (Pₘ := fun s1 => R (p ++ blocks.val) s1)
-    · split
-      · rename_i hb0
-        have : blocks.val = [] := by
-          rw [b_post] at hb0; exact List.eq_nil_of_length_eq_zero hb0
-        simp only [this, List.append_nil, WP.spec_ok, hR]
-      · exact hC _ _ _ hR (by rw [blocks_post]; exact hs0) (by rw [blocks_post]; omega)
-    · intro s1 hs1R
-      have hpz : padZeros N.val L.val rest.length = padZeros N.val L.val message.length := by
-        rw [blocks_post1]; exact padZeros_sub hs0 hs1
-      step with pad_spec rest length hN hN2 hL (by rw [blocks_post1]; omega) as ⟨s, _, hs⟩
-      have hsl : s.length = rest.length + 1 + L.val + padZeros N.val L.val rest.length := by
-        simp only [Slice.length] at *; rw [hs]; simp; omega
-      apply WP.spec_mono (hC _ _ _ hs1R ?_ ?_)
-      · intro s' h
-        rw [hs, hpz, blocks_post3, blocks_post2] at h
-        simp only [List.append_assoc] at h ⊢
-        rw [← List.append_assoc (List.take _ _), List.take_append_drop] at h
-        exact h
-      · rw [hsl]; exact pad_mod _ hN
-      · have h1 := blocks_post
-        have h2 := blocks_post1
-        have h3 := hsl
-        have h4 := hpz
-        simp only [List.length_append, Slice.length] at *
-        omega
+    refine ⟨by rw [blocks_post]; exact hs0, ?_, by rw [blocks_post1]; omega, ?_⟩
+    · rw [blocks_post2, blocks_post3, List.take_append_drop]
+    · rw [blocks_post1]; exact padZeros_sub hs0 hs1
+
+/-- What a hash does after `split_tail`: compresses the whole blocks, if any,
+then the rest with its padding. -/
+theorem compress_tail_spec {S : Type} {N L : Usize} (F : S → Slice U8 → Result S)
+    (R : List U8 → S → Prop) (bound : Nat)
+    (hC : ∀ p s (b : Slice U8), R p s → b.length % N.val = 0 → p.length + b.length ≤ bound →
+      F s b ⦃ s' => R (p ++ b.val) s' ⦄)
+    (p : List U8) (message blocks rest : Slice U8) (length : Std.Array U8 L) (state : S)
+    (hR : R p state) (hN : 0 < N.val) (hN2 : 2 * N.val ≤ Usize.max) (hL : L.val + 1 ≤ N.val)
+    (hsplit : blocks.length % N.val = 0 ∧ blocks.val ++ rest.val = message.val ∧
+      rest.length + 1 + L.val ≤ 2 * N.val ∧
+      padZeros N L rest.length = padZeros N L message.length)
+    (hb : p.length + message.length + 1 + L.val + padZeros N L message.length ≤ bound) :
+    (do
+      let b ← core.slice.Slice.is_empty blocks
+      let state1 ← if b then ok state else F state blocks
+      let a := Std.Array.repeat N 0#u8
+      let last := Std.Array.repeat 2#usize a
+      let (s, _) ← low.generic.blockwise.pad rest length last
+      F state1 s) ⦃ s' =>
+      R (p ++ message.val ++ [128#u8] ++ List.replicate (padZeros N L message.length) 0#u8 ++
+        length.val) s' ⦄ := by
+  obtain ⟨hbl, hbr, hrl, hpz⟩ := hsplit
+  have hml : message.length = blocks.length + rest.length := by
+    simp only [Slice.length]; rw [← hbr, List.length_append]
+  step*
+  apply WP.spec_bind (Pₘ := fun s1 => R (p ++ blocks.val) s1)
+  · split
+    · rename_i hb0
+      have : blocks.val = [] := by
+        rw [b_post] at hb0; exact List.eq_nil_of_length_eq_zero hb0
+      simp only [this, List.append_nil, WP.spec_ok, hR]
+    · exact hC _ _ _ hR hbl (by omega)
+  · intro s1 hs1R
+    step with pad_spec rest length hN hN2 hL hrl as ⟨s, _, hs⟩
+    have hsl : s.length = rest.length + 1 + L.val + padZeros N.val L.val rest.length := by
+      simp only [Slice.length] at *; rw [hs]; simp; omega
+    apply WP.spec_mono (hC _ _ _ hs1R ?_ ?_)
+    · intro s' h
+      rw [hs, hpz] at h
+      simp only [List.append_assoc] at h ⊢
+      rw [← hbr]
+      simpa only [List.append_assoc] using h
+    · rw [hsl]; exact pad_mod _ hN
+    · have h3 := hsl
+      simp only [List.length_append, Slice.length] at *
+      omega
 
 /-- `bw` holds the input `p` that `s` has not absorbed, by `R`, up to a block. -/
 def Buffered {N : Usize} {S : Type} (R : List U8 → S → Prop) (p : List U8)
     (bw : low.generic.blockwise.Blockwise N) (s : S) : Prop :=
   bw.used.val ≤ N.val ∧ ∃ q, R q s ∧ q ++ bw.buffer.val.take bw.used.val = p
 
-theorem complete_blocks_spec {C S : Type} {N : Usize}
-    (inst : low.generic.blockwise.Compress C S) (R : List U8 → S → Prop) (bound : Nat)
+theorem complete_blocks_spec {S : Type} {N : Usize}
+    (inst : low.generic.blockwise.UpdateBlocks S) (R : List U8 → S → Prop) (bound : Nat)
     (hC : ∀ p s (b : Slice U8), R p s → b.length % N.val = 0 → p.length + b.length ≤ bound →
-      inst.compress s b ⦃ s' => R (p ++ b.val) s' ⦄)
+      inst.update_blocks s b ⦃ s' => R (p ++ b.val) s' ⦄)
     (p : List U8) (bw : low.generic.blockwise.Blockwise N) (bytes : Slice U8) (state : S)
     (hB : Buffered R p bw state) (hN : 0 < N.val)
     (hlong : N.val - bw.used.val < bytes.length) (hb : p.length + bytes.length ≤ bound) :
@@ -335,10 +359,10 @@ theorem complete_blocks_spec {C S : Type} {N : Usize}
         rw [List.take_left' rfl, List.append_assoc, whole_post2, whole_post3,
           List.take_append_drop, hqb]
 
-theorem update_spec {C S : Type} {N : Usize}
-    (inst : low.generic.blockwise.Compress C S) (R : List U8 → S → Prop) (bound : Nat)
+theorem update_spec {S : Type} {N : Usize}
+    (inst : low.generic.blockwise.UpdateBlocks S) (R : List U8 → S → Prop) (bound : Nat)
     (hC : ∀ p s (b : Slice U8), R p s → b.length % N.val = 0 → p.length + b.length ≤ bound →
-      inst.compress s b ⦃ s' => R (p ++ b.val) s' ⦄)
+      inst.update_blocks s b ⦃ s' => R (p ++ b.val) s' ⦄)
     (p : List U8) (bw : low.generic.blockwise.Blockwise N) (bytes : Slice U8) (state : S)
     (hB : Buffered R p bw state) (hN : 0 < N.val) (hb : p.length + bytes.length ≤ bound) :
     low.generic.blockwise.Blockwise.update inst bw bytes state ⦃ bw' s' =>
