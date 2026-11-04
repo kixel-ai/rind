@@ -1337,7 +1337,9 @@ def significant(ns):
 
 
 def nightly(args):
-    """Saves the latest nightly bench's results on main as the CPU tiers."""
+    """Saves the latest nightly bench's results on main as the CPU tiers,
+    from a run that timed every tier, since the report reads an empty cell as
+    code that tier shares with the one to its left."""
     runs = json.loads(
         output(
             ["gh", "run", "list", "--repo", REPO, "--workflow", "bench.yml", "--branch", "main", "--event"]
@@ -1345,6 +1347,7 @@ def nightly(args):
         )
     )
     scratch = os.path.join(ROOT, ".tmp", "bench-report", "nightly")
+    incomplete = []
     for run in runs:
         if run["status"] != "completed":
             continue
@@ -1371,6 +1374,10 @@ def nightly(args):
                 benchmarks.setdefault(key, {})[lib] = significant(r["ns"])
             tiers.append({k: saved[k] for k in ("target", "portable", "tier", "cpu")} | {"benchmarks": benchmarks})
         order = {key: i for i, (key, _) in enumerate(TIERS)}
+        missing = set(order) - {(t["target"], t["portable"], t["tier"]) for t in tiers}
+        if missing:
+            incomplete.append(f"{run['databaseId']} lacks {', '.join(dict(TIERS)[k] for k in sorted(missing))}")
+            continue
         tiers.sort(key=lambda t: order.get((t["target"], t["portable"], t["tier"]), len(order)))
         os.makedirs(DATA_DIR, exist_ok=True)
         with open(os.path.join(DATA_DIR, "tiers.json"), "w") as f:
@@ -1390,7 +1397,7 @@ def nightly(args):
         shutil.rmtree(scratch)
         print(f"bench-report: tiers from run {run['databaseId']}", file=sys.stderr)
         return
-    fail("no completed nightly bench run on main has results")
+    fail("no completed nightly bench run on main timed every tier" + "".join(f"; run {r}" for r in incomplete))
 
 
 def main():
