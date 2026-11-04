@@ -758,4 +758,59 @@ theorem mid_sign_spec (h : Runs) (hs : RunsSha512) (k : mid.ed25519.SigningKey) 
     Array.val_to_slice, hrw, hrh, hs0, hs1, Array.val_to_slice, Array.val_to_slice, hkp]
   simp [ed25519Sign, Std.Array.empty]
 
+/-! ## The Ed25519 keys, `high::ed25519` -/
+
+theorem high_sign_spec (h : Runs) (hs : RunsSha512) (k : high.ed25519.Ed25519SigningKey) (seed : List U8)
+    (hk : SeedKey k seed) (msg : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
+    high.ed25519.Ed25519SigningKey.sign k msg ⦃ sig => sig.val = ed25519Sign seed msg.val ⦄ := by
+  unfold high.ed25519.Ed25519SigningKey.sign
+  step
+  exact mid_sign_spec h hs k seed hk msg hm
+
+theorem high_public_key_spec (h : Runs) (k : high.ed25519.Ed25519SigningKey) :
+    high.ed25519.Ed25519SigningKey.public_key k ⦃ vk => vk = k.verifying_key ⦄ := by
+  unfold high.ed25519.Ed25519SigningKey.public_key mid.ed25519.SigningKey.impl.verifying_key
+    mid.ed25519.VerifyingKey.Insts.CoreCloneClone.clone mid.ed25519.EdwardsPoint.Insts.CoreCloneClone.clone
+  step*
+  subst_vars
+  rfl
+
+theorem key_pair_new_spec (h : Runs) (k : high.ed25519.Ed25519SigningKey) (seed : List U8)
+    (hk : SeedKey k seed) :
+    high.signature.Ed25519KeyPair.new k ⦃ kp => kp.key = k ∧ kp.public_key.val = ed25519PublicKey seed ⦄ := by
+  unfold high.signature.Ed25519KeyPair.new high.ed25519.Ed25519VerifyingKey.as_bytes
+    mid.ed25519.VerifyingKey.as_bytes
+  step with high_public_key_spec h k as ⟨vk, hvk⟩
+  rw [hvk]
+  exact hk.2.2.2.1
+
+/-- A key pair whose private key is the 32-byte `seed`. -/
+def KeyPairOf (kp : high.signature.Ed25519KeyPair) (seed : List U8) : Prop :=
+  SeedKey kp.key seed ∧ kp.public_key.val = ed25519PublicKey seed
+
+open Classical in
+theorem high_verify_spec (h : Runs) (hs : RunsSha512) (vk : high.ed25519.Ed25519VerifyingKey) (A : EdPoint)
+    (hA : edOnCurve A) (hp : pairNat vk.point.val = edModEncodePair A) (sig msg : Slice U8)
+    (hm : msg.length + 64 < 2 ^ 64) :
+    high.ed25519.Ed25519VerifyingKey.verify vk sig msg ⦃ r =>
+      r = if ed25519Verifies A vk.bytes.val msg.val sig.val then
+        (.Ok () : core.result.Result Unit error.Error) else .Err .BadSignature ⦄ := by
+  unfold high.ed25519.Ed25519VerifyingKey.verify
+  step
+  step with try_from_shared_spec 64#usize sig as ⟨r, hr⟩
+  by_cases hl : sig.length = 64
+  · simp only [hl, ↓reduceIte] at hr
+    obtain ⟨a, rfl, ha⟩ := hr
+    simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch]
+    step*
+    step with mid_verify_spec h hs vk A hA hp a msg hm as ⟨r, hr⟩
+    rw [hr, ha]
+  · simp only [hl, ↓reduceIte] at hr
+    obtain ⟨e, rfl⟩ := hr
+    have hn : ¬ ed25519Verifies A vk.bytes.val msg.val sig.val := fun ⟨h64, _⟩ => hl h64
+    simp [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch,
+      high.ed25519.Ed25519VerifyingKey.verify.closure.Insts.CoreOpsFunctionFnOnceTupleTryFromSliceErrorError,
+      high.ed25519.Ed25519VerifyingKey.verify.closure.Insts.CoreOpsFunctionFnOnceTupleTryFromSliceErrorError.call_once,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, hn]
+
 end rind.x86_64
