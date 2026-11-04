@@ -447,10 +447,12 @@ it reaches.
 
 ECDSA verification computes `u1 G + u2 Q` in one chain of doublings, as
 aws-lc does, adding terms from width-5 non-adjacent forms of the public
-scalars: `u2`'s over the public key's odd multiples, computed once when the
-key is parsed and made affine by one batched inversion, and `u1`'s over the
-first row of the base point table, at width 6 for P256, as its aarch64 row
-holds 32 multiples, so every addition is a mixed one. s2n-bignum's point
+scalars: `u2`'s over the public key's odd multiples, computed when the key is
+parsed and made affine by one batched inversion, and `u1`'s over the first
+row of the base point table, at width 6 for P256, as its aarch64 row holds 32
+multiples, so every addition is a mixed one. A key's second verification
+also builds 17Q to 31Q, so that `u2`'s digits widen to 6 from then on: a key
+verified once never pays for them. s2n-bignum's point
 additions are proven only for unequal points, so each addition first
 compares x's and settles equal or opposite points by cases.
 
