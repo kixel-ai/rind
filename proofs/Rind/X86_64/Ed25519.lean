@@ -527,6 +527,7 @@ theorem mid_from_bytes_spec (h : Runs) (hs : RunsSha512) (bytes : Slice U8) :
     obtain ⟨e, rfl⟩ := hr
     simp [core.convert.IntoFrom.into, error.Error.Insts.CoreConvertFromKeyFormatError.from]
 
+@[step]
 theorem has_small_order_loop_spec (y : Std.Array U64 4#usize)
     (it : core.slice.iter.Iter (Std.Array U64 4#usize)) (found : Bool) :
     high.ed25519.has_small_order_loop it y found ⦃ b =>
@@ -553,5 +554,51 @@ theorem has_small_order_loop_spec (y : Std.Array U64 4#usize)
       rw [← hinv, List.drop_eq_nil_of_le hge']
       simp
   · exact ⟨rfl, rfl⟩
+
+@[step]
+theorem small_order_y_spec :
+    high.ed25519.has_small_order.SMALL_ORDER_Y ⦃ t => t.val.map (fun c => wordsNat c.val) = edSmallOrderY ⦄ := by
+  unfold high.ed25519.has_small_order.SMALL_ORDER_Y high.ed25519.has_small_order.near_p
+  step*
+  simp_all [Std.Array.make, Std.Array.repeat, wordsNat, Nat.ofDigits, edSmallOrderY, p25519, U64.rMax]
+
+theorem any_eq_mem (l : List (Std.Array U64 4#usize)) (Y : Nat) :
+    (l.any fun c => decide (Y = wordsNat c.val)) = decide (Y ∈ l.map fun c => wordsNat c.val) := by
+  induction l with
+  | nil => simp
+  | cons c l ih => simp [ih]
+
+/-- `has_small_order` refuses the 32-byte encodings whose y-coordinate, the
+low 255 bits, is in libsodium's list. -/
+@[step]
+theorem has_small_order_spec (bytes : Slice U8) :
+    high.ed25519.has_small_order bytes ⦃ b =>
+      b = decide (bytes.length = 32 ∧ leNat bytes.val % 2 ^ 255 ∈ edSmallOrderY) ⦄ := by
+  unfold high.ed25519.has_small_order
+  step as ⟨o, ho⟩
+  split_ifs at ho with hl
+  · obtain ⟨y, rfl, hy⟩ := ho
+    simp only [SharedArray.Insts.CoreIterTraitsCollectIntoIteratorSharedIter.into_iter]
+    step*
+    have hi : i.val = 2 ^ 63 - 1 := by rw [i_post]; decide
+    have hi2 : i2.val = i1.val % 2 ^ 63 := by
+      rw [i2_post, UScalar.val_and, hi, Nat.and_two_pow_sub_one_eq_mod]
+    have hl4 : y.val.length = 4 := y.property
+    obtain ⟨l, hl'⟩ : ∃ l, y.val = l := ⟨_, rfl⟩
+    rcases l with _ | ⟨w0, _ | ⟨w1, _ | ⟨w2, _ | ⟨w3, _ | ⟨e, l⟩⟩⟩⟩⟩ <;> simp [hl'] at hl4
+    have ha : wordsNat a.val = leNat bytes.val % 2 ^ 255 := by
+      rw [← hy, a_post]
+      simp [i1_post, hl'] at hi2
+      simp [Std.Array.set_val_eq, hl', wordsNat, Nat.ofDigits, hi2]
+      have h0 : w0.val < 2 ^ 64 := w0.hBounds
+      have h1 : w1.val < 2 ^ 64 := w1.hBounds
+      have h2 : w2.val < 2 ^ 64 := w2.hBounds
+      have h3 : w3.val < 2 ^ 64 := w3.hBounds
+      omega
+    rw [b_post, List.drop_zero, Slice.from_val, Bool.false_or, ← ha, ← «rind.spec.edSmallOrderY_post»,
+      any_eq_mem]
+    simp [hl]
+  · subst ho
+    simp [hl]
 
 end rind.x86_64
