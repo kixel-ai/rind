@@ -107,7 +107,7 @@ impl PrivateKey {
     /// Returns a [`SharedSecret`].  May return an error in fault conditions.
     pub(crate) fn diffie_hellman(&self, peer: &PublicKey) -> Result<SharedSecret, Error> {
         let _entry = low::Entry::new_secret();
-        let result = JacobianMontPoint::multiply(&self.scalar, &peer.point).as_affine();
+        let result = peer.point.multiply(&self.scalar);
         match low::ct::into_public(result.on_curve()) {
             true => Ok(SharedSecret(util::u64x4_to_big_endian(
                 &result.x().demont().0,
@@ -344,6 +344,9 @@ impl AffineMontPoint {
     }
 
     /// P, 3P, ..., 15P: the odd multiples a width-5 NAF digit picks.
+    ///
+    /// Each sum adds 2P to an odd multiple below n, never equal, as
+    /// `p256_montjadd` requires.
     fn public_odd_multiples(&self) -> [JacobianMontPoint; 8] {
         let p = JacobianMontPoint::from_affine(self);
         let p2 = p.double();
@@ -352,6 +355,28 @@ impl AffineMontPoint {
             r[i] = r[i - 1].add(&p2);
         }
         r
+    }
+
+    /// `scalar * self`, by s2n-bignum's `p256_montjscalarmul`.
+    #[cfg(not(target_arch = "aarch64"))]
+    fn multiply(&self, scalar: &Scalar) -> Self {
+        JacobianMontPoint::multiply(scalar, self).as_affine()
+    }
+
+    /// `scalar * self`, by s2n-bignum's `p256_scalarmul`.
+    ///
+    /// Its proof covers the aarch64 routine from affine input to affine
+    /// output, inversion included, for any scalar and a point on the curve,
+    /// which `self` is. It takes and returns plain coordinates, the result
+    /// proven only mod p, which `as_mont` reduces.
+    #[cfg(target_arch = "aarch64")]
+    fn multiply(&self, scalar: &Scalar) -> Self {
+        let point = Self::from_xy(self.x().demont(), self.y().demont());
+        let mut xy = [0; 8];
+        low::p256_scalarmul(&mut xy, &scalar.0, &point.xy);
+        let x = FieldElement(xy[Self::X].try_into().unwrap());
+        let y = FieldElement(xy[Self::Y].try_into().unwrap());
+        Self::from_xy(x.as_mont(), y.as_mont())
     }
 
     /// `scalar * G`, by aws-lc's routines over the generator table.
@@ -433,6 +458,7 @@ impl JacobianMontPoint {
     }
 
     /// `scalar * point`, by s2n-bignum's `p256_montjscalarmul`.
+    #[cfg(not(target_arch = "aarch64"))]
     fn multiply(scalar: &Scalar, point: &AffineMontPoint) -> Self {
         let mut r = Self::zero();
         low::p256_montjscalarmul(&mut r.xyz, &scalar.0, &Self::from_affine(point).xyz);
@@ -496,7 +522,7 @@ impl JacobianMontPoint {
                 if *p_digit < 0 {
                     tmp.negate_y();
                 }
-                result = Self::public_add_fast(&result, &tmp);
+                result = Self::public_add(&result, &tmp);
             }
             if *g_digit != 0 {
                 let mut tmp = AffineMontPoint::public_lookup(g_multiples, g_digit.unsigned_abs());
@@ -516,6 +542,8 @@ impl JacobianMontPoint {
         Self { xyz }
     }
 
+    // aarch64's `p256_scalarmul` makes its result affine itself.
+    #[cfg(any(test, not(target_arch = "aarch64")))]
     fn as_affine(&self) -> AffineMontPoint {
         // recover (x, y) from (x / z ^ 2, x / z ^ 3, z)
         // inversion calculated outside montgomery domain
@@ -530,8 +558,10 @@ impl JacobianMontPoint {
         AffineMontPoint::from_xy(x, y)
     }
 
-    /// `a + b`, for any points, including at infinity, equal, or opposite,
-    /// which `p256_montjadd` does not handle.
+    /// `a + b`, for any points, including at infinity, equal, or opposite.
+    ///
+    /// `p256_montjadd` is proven only for unequal points, so points with the
+    /// same x never reach it.
     fn public_add(a: &Self, b: &Self) -> Self {
         if a.public_is_infinity() {
             return *b;
@@ -554,26 +584,23 @@ impl JacobianMontPoint {
         }
     }
 
-    /// `a + b`, for any points, by [`Self::public_add`] only when they turn
-    /// out to be equal or opposite.
-    ///
-    /// The formulas give such points a zero z, as they do infinity, so
-    /// only a zero z from two points not at infinity takes the slow path.
-    fn public_add_fast(a: &Self, b: &Self) -> Self {
-        let sum = a.add(b);
-        match sum.public_is_infinity() && !a.public_is_infinity() && !b.public_is_infinity() {
-            true => Self::public_add(a, b),
-            false => sum,
-        }
-    }
-
-    /// `self + p`, for any points, as [`Self::public_add_fast`] does.
+    /// `self + p`, for any points, as [`Self::public_add`] does for
+    /// `p256_montjmixadd`.
     fn public_add_affine(&self, p: &AffineMontPoint) -> Self {
-        let mut sum = *self;
-        sum.add_inplace_affine(p);
-        match sum.public_is_infinity() && !self.public_is_infinity() {
-            true => Self::public_add(self, &Self::from_affine(p)),
-            false => sum,
+        if self.public_is_infinity() {
+            return Self::from_affine(p);
+        }
+
+        // `p` scaled to this point's z.
+        let z2 = self.z().mont_sqr();
+        if !p.x().mont_mul(&z2).public_eq(&self.x()) {
+            let mut sum = *self;
+            sum.add_inplace_affine(p);
+            return sum;
+        }
+        match p.y().mont_mul(&z2.mont_mul(&self.z())).public_eq(&self.y()) {
+            true => self.double(),
+            false => Self::infinity(),
         }
     }
 
@@ -657,6 +684,7 @@ struct FieldElement([u64; 4]);
 impl FieldElement {
     const BYTES: usize = 32;
 
+    #[cfg(any(test, not(target_arch = "aarch64")))]
     fn inv(&self) -> Self {
         let mut r = Self::default();
         low::bignum_inv_p256(&mut r.0, &self.0);
@@ -1092,19 +1120,15 @@ mod tests {
                     expected
                 );
             }
-            assert_eq!(
-                JacobianMontPoint::multiply(&scalar, &CURVE_GENERATOR)
-                    .as_affine()
-                    .xy,
-                expected
-            );
+            assert_eq!(CURVE_GENERATOR.multiply(&scalar).xy, expected);
         }
     }
 
     #[test]
     fn twin_multiply_exceptional() {
-        // With P = G, the accumulator meets the point it adds: equal, which
-        // must double, or opposite, which must give infinity.
+        // The accumulator meets the point it adds: equal, which must double,
+        // or opposite, which must give infinity. With P = G it meets G's
+        // multiples, and with P = 2G, P's.
         let odd_multiples = CURVE_GENERATOR.public_odd_multiples();
         let n_minus = |k: u64| {
             let mut s = CURVE_ORDER;
@@ -1121,6 +1145,23 @@ mod tests {
             (Scalar([0, 0, 0, 1 << 63]), Scalar([0, 0, 0, 1 << 63])),
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
+            assert_eq!(
+                JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples)
+                    .as_affine()
+                    .xy,
+                expected
+            );
+        }
+
+        let p2 = JacobianMontPoint::from_affine(&CURVE_GENERATOR)
+            .double()
+            .as_affine();
+        let odd_multiples = p2.public_odd_multiples();
+        for (g, p) in [
+            (Scalar::small_u64(2), Scalar::small_u64(1)),
+            (Scalar::small_u64(6), Scalar::small_u64(3)),
+        ] {
+            let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p).add(&p)).xy;
             assert_eq!(
                 JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples)
                     .as_affine()

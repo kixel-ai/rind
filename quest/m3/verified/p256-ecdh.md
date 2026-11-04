@@ -2,12 +2,8 @@
 
 ## Goal
 
-On aarch64, P-256 ECDH agreement runs s2n-bignum's `p256_scalarmul_alt`, whose proof covers affine input to affine output including the inversion, so the whole agreement is proven and earns the benchmark report's ✓, unless that is more than about 10% slower than today's path.
+P-256 ECDH on aarch64 earns the report's ✓: rind's Rust around s2n-bignum's proven `p256_scalarmulbase_alt` and `p256_scalarmul_alt` (byte conversion, the X9.62 point decoding and curve check, the Montgomery conversions, and the result's fault check) is proven in `proofs/`, as X25519 is.
 
 ## Plan
 
-Planned with the maintainer on 2026-11-03 from [moq-dev/rind#319](https://github.com/moq-dev/rind/pull/319), which showed key generation is already fully proven on aarch64 but agreement converts to affine in rind's own Rust (`JacobianMontPoint::as_affine`).
-
-- Import `p256_scalarmul_alt` (and check its caller-side assumptions), route aarch64 agreement through it, and keep public-key validation where it is.
-- Measure against the current path on the GitHub arm64 runner with a branch and base branch (not `main`), and apply the ~10% verified-code rule.
-- Add the `p256-ecdh` aarch64 entry to `benchmarks/verified.toml`, citing the proof.
+Planned with the maintainer on 2026-11-03 from [moq-dev/rind#319](https://github.com/moq-dev/rind/pull/319). [moq-dev/rind#321](https://github.com/moq-dev/rind/pull/321) moved agreement onto `p256_scalarmul_alt`, whose proof covers affine input to affine output, inversion included, with no slowdown on the arm64 runner. The strict ✓ rule ([moq-dev/rind#325](https://github.com/moq-dev/rind/pull/325)) also counts that glue, so the `benchmarks/verified.toml` entry waits on its proof. The entry cites the routines' pinned proofs and the glue's.

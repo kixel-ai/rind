@@ -953,8 +953,36 @@ mod tests {
         Some(r)
     }
 
-    fn same_point(a: &[u64; 12], b: &[u64; 12]) -> bool {
-        affine(a) == affine(b)
+    /// (x / z^2, y / z^3) outside the Montgomery domain, or (0, 0) at
+    /// infinity, as `p256_scalarmul` returns a point.
+    fn plain_affine(p: &[u64; 12]) -> [u64; 8] {
+        let mut r = [0; 8];
+        if let Some(xy) = affine(p) {
+            let (out, _) = r.as_chunks_mut::<4>();
+            let (xy, _) = xy.as_chunks::<4>();
+            low::bignum_demont_p256(&mut out[0], &xy[0]);
+            low::bignum_demont_p256(&mut out[1], &xy[1]);
+        }
+        r
+    }
+
+    /// `scalar * point` by s2n-bignum, as `plain_affine` gives it.
+    #[cfg(target_arch = "x86_64")]
+    fn s2n_multiply(scalar: &[u64; 4], point: &[u64; 12]) -> [u64; 8] {
+        let mut r = [0; 12];
+        low::p256_montjscalarmul(&mut r, scalar, point);
+        plain_affine(&r)
+    }
+
+    /// `scalar * point` by s2n-bignum, as `plain_affine` gives it.  aarch64
+    /// runs only its affine `p256_scalarmul`, which cannot take infinity.
+    #[cfg(target_arch = "aarch64")]
+    fn s2n_multiply(scalar: &[u64; 4], point: &[u64; 12]) -> [u64; 8] {
+        let mut r = [0; 8];
+        if affine(point).is_some() {
+            low::p256_scalarmul(&mut r, scalar, &plain_affine(point));
+        }
+        r
     }
 
     /// `p256_scalarmulbase`'s table for G: row i holds 2^(6i) j G for j
@@ -1073,11 +1101,10 @@ mod tests {
 
         #[test]
         fn scalar_multiply(k in raw(), p in point()) {
-            let (mut ours, mut theirs) = ([0; 12], [0; 12]);
+            let mut ours = [0; 12];
             p256_montjscalarmul(&mut ours, &into_secret(k), &into_secret(p));
-            low::p256_montjscalarmul(&mut theirs, &k, &p);
             let ours = into_public(ours);
-            prop_assert!(same_point(&ours, &theirs));
+            prop_assert_eq!(plain_affine(&ours), s2n_multiply(&k, &p));
         }
 
         #[test]
@@ -1121,10 +1148,9 @@ mod tests {
             add_small(N, -1),
             [1, 0, 0, 0],
         ] {
-            let (mut ours, mut theirs) = ([0; 12], [0; 12]);
+            let mut ours = [0; 12];
             p256_montjscalarmul(&mut ours, &k, &GENERATOR);
-            low::p256_montjscalarmul(&mut theirs, &k, &GENERATOR);
-            assert!(same_point(&ours, &theirs), "{k:x?}");
+            assert_eq!(plain_affine(&ours), s2n_multiply(&k, &GENERATOR), "{k:x?}");
         }
     }
 
@@ -1147,19 +1173,11 @@ mod tests {
             scalars.push(k);
         }
         // x86_64 has no s2n-bignum `p256_scalarmulbase`, so this checks
-        // against its variable point multiplication of G, made affine
-        // outside the Montgomery domain.
+        // against its variable point multiplication of G.
         for k in scalars {
-            let (mut ours, mut product) = ([0; 8], [0; 12]);
+            let mut ours = [0; 8];
             p256_scalarmulbase(&mut ours, &into_secret(k), &table);
-            low::p256_montjscalarmul(&mut product, &k, &GENERATOR);
-            let mut theirs = [0; 8];
-            if let Some(xy) = affine(&product) {
-                let (out, _) = theirs.as_chunks_mut::<4>();
-                low::bignum_demont_p256(&mut out[0], xy[..4].try_into().unwrap());
-                low::bignum_demont_p256(&mut out[1], xy[4..].try_into().unwrap());
-            }
-            assert_eq!(into_public(ours), theirs, "{k:x?}");
+            assert_eq!(into_public(ours), s2n_multiply(&k, &GENERATOR), "{k:x?}");
         }
     }
 

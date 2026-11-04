@@ -307,10 +307,7 @@ impl SigningKey {
     /// Key generation is a slow process, especially for larger key sizes.  As an indication,
     /// an 2048-bit key takes about 30 milliseconds, while an 8192-bit key may take 15 seconds or more.
     /// The time required is non-deterministic, and does not have an upper bound.
-    ///
-    /// # Warning
-    /// Unlike other private key operations in rind, RSA key generation is not side-channel safe.
-    /// Avoid generating keys in untrusted multi-tenant or physical environments.
+    /// It is constant in the primes, revealing only which candidates are discarded.
     pub(crate) fn generate(size: RsaKeySize) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
         rsa_priv::RsaPrivateKey::generate(size, &mut SystemRandom, &mut SystemRandom)

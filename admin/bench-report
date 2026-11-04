@@ -1266,9 +1266,11 @@ def report(hosts, tiers, verified):
         "",
         "A ✓ means a published, machine-checked proof shows that all the code computing the operation, as "
         "that library runs it on that host, gives the specified result for every input: the cipher and its "
-        "mode, the hash over every block with its padding, the whole scalar multiplication or exponentiation. "
-        "Parsing, encoding, randomness, and the hash inside a signature are left out. Proofs of memory safety "
-        "alone, or of only some of the arithmetic, earn no ✓. `benchmarks/verified.toml` holds this table.",
+        "mode, the hash over every block with its padding, the whole scalar multiplication or exponentiation, "
+        "and the glue around them, such as clamping, byte conversion, and point encoding. Parsing DER key and "
+        "signature containers, randomness, and the message hash a signature takes are left out. Proofs of "
+        "memory safety alone, or of only some of the code, earn no ✓. `benchmarks/verified.toml` holds this "
+        "table.",
         "",
         "| Library | Operations | Platform | Proof |",
         "|---|---|---|---|",
