@@ -39,8 +39,11 @@ impl PublicKey {
 /// never needs them.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
-    /// P, 3P, ..., 31P.
-    odd_multiples: [AffineMontPoint; 16],
+    /// P, 3P, ..., 15P.
+    odd_multiples: [AffineMontPoint; 8],
+    /// 17P, 19P, ..., 31P, which widen P's digits but pay for building
+    /// only once a key is reused.
+    more_odd_multiples: low::ReuseCache<[AffineMontPoint; 8]>,
 }
 
 impl VerifyingKey {
@@ -50,6 +53,7 @@ impl VerifyingKey {
         let PublicKey { point } = PublicKey::from_x962_uncompressed(bytes)?;
         Ok(Self {
             odd_multiples: point.public_odd_multiples(),
+            more_odd_multiples: low::ReuseCache::new(),
         })
     }
 
@@ -61,7 +65,15 @@ impl VerifyingKey {
 
         // 5. Compute: R = (xR, yR) = u1 G + u2 QU
         //  If R = O, output "invalid" and stop.
-        let point = JacobianMontPoint::public_twin_multiply(&u1, &u2, &self.odd_multiples);
+        let more = self
+            .more_odd_multiples
+            .get_or_build(|| AffineMontPoint::public_more_odd_multiples(&self.odd_multiples));
+        let point = match more {
+            Some(more) => {
+                JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples, more])
+            }
+            None => JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples]),
+        };
 
         if point.public_is_infinity() {
             return Err(Error::BadSignature);
@@ -366,35 +378,30 @@ impl AffineMontPoint {
         self.xy[Self::Y].copy_from_slice(&result.0);
     }
 
-    /// P, 3P, ..., 31P: the odd multiples a width-6 NAF digit picks, in
+    /// P, 3P, ..., 15P: the odd multiples a width-5 NAF digit picks, in
     /// affine form so that each is added by `p384_montjmixadd`.
     ///
     /// Each sum adds 2P to an odd multiple below n, never equal, as
-    /// `p384_montjadd` requires.  None is at infinity, so one inversion of
-    /// the product of their z's converts them all (Montgomery's trick).
-    fn public_odd_multiples(&self) -> [Self; 16] {
+    /// `p384_montjadd` requires, and none is at infinity.
+    fn public_odd_multiples(&self) -> [Self; 8] {
         let p = JacobianMontPoint::from_affine(self);
         let p2 = p.double();
-        let mut multiples = [p; 16];
+        let mut multiples = [p; 8];
         for i in 1..multiples.len() {
             multiples[i] = multiples[i - 1].add(&p2);
         }
+        JacobianMontPoint::public_batch_as_affine(&multiples)
+    }
 
-        // `prefix[i]` is the product of the z's before `multiples[i]`.
-        let mut prefix = [CURVE_ONE_MONT; 16];
-        for i in 1..prefix.len() {
-            prefix[i] = prefix[i - 1].mont_mul(&multiples[i - 1].z());
-        }
-        let product = prefix[15].mont_mul(&multiples[15].z());
-        let mut inv = product.demont().inv().as_mont();
-
-        let mut r = [Self::default(); 16];
-        for i in (0..r.len()).rev() {
-            // `inv` is the inverse of the z's up to `multiples[i]`.
-            r[i] = multiples[i].as_affine_by(&inv.mont_mul(&prefix[i]));
-            inv = inv.mont_mul(&multiples[i].z());
-        }
-        r
+    /// 17P, 19P, ..., 31P, given P, 3P, ..., 15P: the rest of the odd
+    /// multiples a width-6 NAF digit picks.
+    ///
+    /// Each is 16P = 15P + P plus one of those, so no sum adds equal points,
+    /// as `p384_montjmixadd` requires, and none is at infinity.
+    fn public_more_odd_multiples(odd_multiples: &[Self; 8]) -> [Self; 8] {
+        let p16 = JacobianMontPoint::from_affine(&odd_multiples[7]).add_affine(&odd_multiples[0]);
+        let multiples = odd_multiples.map(|multiple| p16.add_affine(&multiple));
+        JacobianMontPoint::public_batch_as_affine(&multiples)
     }
 
     #[cfg(target_arch = "arm")]
@@ -559,15 +566,23 @@ impl JacobianMontPoint {
         result
     }
 
-    /// `g * G + p * P` for public scalars, given P's odd multiples.
+    /// `g * G + p * P` for public scalars, given P's odd multiples in rows
+    /// of 8.
     ///
-    /// One chain of doublings serves both: P's digits are a width-6 NAF
-    /// over `odd_multiples`, and G's a width-5 NAF over the first comb
-    /// table, which holds G to 16G.
-    fn public_twin_multiply(g: &Scalar, p: &Scalar, odd_multiples: &[AffineMontPoint; 16]) -> Self {
+    /// One chain of doublings serves both: P's digits are a NAF over
+    /// `odd_multiples`, width 5 for one row and 6 for two, and G's a width-5
+    /// NAF over the first comb table, which holds G to 16G.
+    fn public_twin_multiply(
+        g: &Scalar,
+        p: &Scalar,
+        odd_multiples: &[&[AffineMontPoint; 8]],
+    ) -> Self {
         let (mut g_digits, mut p_digits) = ([0; 385], [0; 385]);
         util::public_naf::<5>(&g.0, &mut g_digits);
-        util::public_naf::<6>(&p.0, &mut p_digits);
+        match odd_multiples.len() {
+            1 => util::public_naf::<5>(&p.0, &mut p_digits),
+            _ => util::public_naf::<6>(&p.0, &mut p_digits),
+        }
         let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP_COMB[0];
 
         let mut result = Self::infinity();
@@ -576,7 +591,8 @@ impl JacobianMontPoint {
                 result = result.double();
             }
             if *p_digit != 0 {
-                let mut tmp = odd_multiples[usize::from(p_digit.unsigned_abs() / 2)];
+                let i = usize::from(p_digit.unsigned_abs() / 2);
+                let mut tmp = odd_multiples[i / 8][i % 8];
                 if *p_digit < 0 {
                     tmp.negate_y();
                 }
@@ -607,6 +623,25 @@ impl JacobianMontPoint {
         self.as_affine_by(&self.z().demont().inv().as_mont())
     }
 
+    /// `points` in affine form, none at infinity, by one inversion of the
+    /// product of their z's (Montgomery's trick).
+    fn public_batch_as_affine(points: &[Self; 8]) -> [AffineMontPoint; 8] {
+        // `prefix[i]` is the product of the z's before `points[i]`.
+        let mut prefix = [CURVE_ONE_MONT; 8];
+        for i in 1..prefix.len() {
+            prefix[i] = prefix[i - 1].mont_mul(&points[i - 1].z());
+        }
+        let mut inv = prefix[7].mont_mul(&points[7].z()).demont().inv().as_mont();
+
+        let mut r = [AffineMontPoint::default(); 8];
+        for i in (0..r.len()).rev() {
+            // `inv` is the inverse of the z's up to `points[i]`.
+            r[i] = points[i].as_affine_by(&inv.mont_mul(&prefix[i]));
+            inv = inv.mont_mul(&points[i].z());
+        }
+        r
+    }
+
     /// This point in affine form, given the inverse of its z.
     fn as_affine_by(&self, z_inv: &FieldElement) -> AffineMontPoint {
         // recover (x, y) from (x / z ^ 2, x / z ^ 3, z)
@@ -631,9 +666,7 @@ impl JacobianMontPoint {
         // `p` scaled to this point's z.
         let z2 = self.z().mont_sqr();
         if !p.x().mont_mul(&z2).public_eq(&self.x()) {
-            let mut sum = Self::infinity();
-            low::p384_montjmixadd(&mut sum.xyz, &self.xyz, &p.xy);
-            return sum;
+            return self.add_affine(p);
         }
         match p.y().mont_mul(&z2.mont_mul(&self.z())).public_eq(&self.y()) {
             true => self.double(),
@@ -692,6 +725,13 @@ impl JacobianMontPoint {
         low::p384_montjmixadd(&mut r.xyz, &self.xyz, &p.xy);
         // `p384_montjmixadd` cannot take an affine point at infinity.
         *self = Self::select(self, &r, digit);
+    }
+
+    #[must_use]
+    fn add_affine(&self, p: &AffineMontPoint) -> Self {
+        let mut r = Self::infinity();
+        low::p384_montjmixadd(&mut r.xyz, &self.xyz, &p.xy);
+        r
     }
 
     #[must_use]
@@ -1170,11 +1210,13 @@ mod tests {
         };
         let point = CURVE_GENERATOR.slow_multiply(&Scalar::small_u64(5));
         let odd_multiples = point.public_odd_multiples();
+        let more = AffineMontPoint::public_more_odd_multiples(&odd_multiples);
         for scalar in [
             Scalar::small_u64(1),
             Scalar::small_u64(2),
             Scalar::small_u64(16),
             Scalar::small_u64(17),
+            Scalar::small_u64(33),
             Scalar::small_u64(99999999),
             Scalar([0, 0, 0, 0, 0, 1 << 63]),
             n_minus(1),
@@ -1186,18 +1228,20 @@ mod tests {
                 expected
             );
             let zero = Scalar::default();
-            assert_eq!(
-                JacobianMontPoint::public_twin_multiply(&zero, &scalar, &odd_multiples)
-                    .as_affine()
-                    .xy,
-                expected
-            );
-            assert_eq!(
-                JacobianMontPoint::public_twin_multiply(&scalar, &zero, &odd_multiples)
-                    .as_affine()
-                    .xy,
-                CURVE_GENERATOR.slow_multiply(&scalar).xy
-            );
+            for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
+                assert_eq!(
+                    JacobianMontPoint::public_twin_multiply(&zero, &scalar, rows)
+                        .as_affine()
+                        .xy,
+                    expected
+                );
+                assert_eq!(
+                    JacobianMontPoint::public_twin_multiply(&scalar, &zero, rows)
+                        .as_affine()
+                        .xy,
+                    CURVE_GENERATOR.slow_multiply(&scalar).xy
+                );
+            }
         }
     }
 
@@ -1207,6 +1251,7 @@ mod tests {
         // or opposite, which must give infinity. With P = G it meets G's
         // multiples, and with P = 2G, P's.
         let odd_multiples = CURVE_GENERATOR.public_odd_multiples();
+        let more = AffineMontPoint::public_more_odd_multiples(&odd_multiples);
         let n_minus = |k: u64| {
             let mut s = CURVE_ORDER;
             s[0] -= k;
@@ -1221,29 +1266,34 @@ mod tests {
             (n_minus(1), n_minus(1)),
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
-            assert_eq!(
-                JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples)
-                    .as_affine()
-                    .xy,
-                expected
-            );
+            for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
+                assert_eq!(
+                    JacobianMontPoint::public_twin_multiply(&g, &p, rows)
+                        .as_affine()
+                        .xy,
+                    expected
+                );
+            }
         }
 
         let p2 = JacobianMontPoint::from_affine(&CURVE_GENERATOR)
             .double()
             .as_affine();
         let odd_multiples = p2.public_odd_multiples();
+        let more = AffineMontPoint::public_more_odd_multiples(&odd_multiples);
         for (g, p) in [
             (Scalar::small_u64(2), Scalar::small_u64(1)),
             (Scalar::small_u64(6), Scalar::small_u64(3)),
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p).add(&p)).xy;
-            assert_eq!(
-                JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples)
-                    .as_affine()
-                    .xy,
-                expected
-            );
+            for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
+                assert_eq!(
+                    JacobianMontPoint::public_twin_multiply(&g, &p, rows)
+                        .as_affine()
+                        .xy,
+                    expected
+                );
+            }
         }
     }
 
