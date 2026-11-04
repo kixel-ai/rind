@@ -24,4 +24,4 @@ The epic's own remaining work, once its children merge: that triage.
 ## Required
 
 - [BENCHMARKS.md is published](/quest/m1/benchmarks/report.md) - the heatmaps, ✓ marks, build cost, and CPU tiers, rendered from real results on all four hosts
-- [The README sells rind and links the report](/quest/m1/benchmarks/readme.md) - a short pitch and headline numbers, with the numbers' single home in the report
+- [The README sells rind and links the details](/quest/m1/benchmarks/readme.md) - a short marketing README with headline numbers, usage, and the migration prompt; the numbers live in the report and the details in linked docs

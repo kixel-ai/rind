@@ -48,3 +48,4 @@ settled; don't ask them again. The chosen option is marked ✅.
 ## Required
 
 - [ECDSA verification at or below its cost before #324](/quest/m2/speed/ecdsa-verify-affine.md) - a width-6 NAF for the public key recovers the rest of the equal-point checks' cost
+- [RSA-2048 signing as fast as aws-lc-rs](/quest/m2/speed/rsa-2048.md) - RSA signing at aws-lc-rs's speed on every host, for RS256 JWTs
