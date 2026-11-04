@@ -39,8 +39,8 @@ impl PublicKey {
 /// never needs them.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
-    /// P, 3P, ..., 15P.
-    odd_multiples: [AffineMontPoint; 8],
+    /// P, 3P, ..., 31P.
+    odd_multiples: [AffineMontPoint; 16],
 }
 
 impl VerifyingKey {
@@ -343,29 +343,29 @@ impl AffineMontPoint {
         self.xy[Self::Y].copy_from_slice(&neg_y.0);
     }
 
-    /// P, 3P, ..., 15P: the odd multiples a width-5 NAF digit picks, in
+    /// P, 3P, ..., 31P: the odd multiples a width-6 NAF digit picks, in
     /// affine form so that each is added by `p256_montjmixadd`.
     ///
     /// Each sum adds 2P to an odd multiple below n, never equal, as
     /// `p256_montjadd` requires.  None is at infinity, so one inversion of
     /// the product of their z's converts them all (Montgomery's trick).
-    fn public_odd_multiples(&self) -> [Self; 8] {
+    fn public_odd_multiples(&self) -> [Self; 16] {
         let p = JacobianMontPoint::from_affine(self);
         let p2 = p.double();
-        let mut multiples = [p; 8];
+        let mut multiples = [p; 16];
         for i in 1..multiples.len() {
             multiples[i] = multiples[i - 1].add(&p2);
         }
 
         // `prefix[i]` is the product of the z's before `multiples[i]`.
-        let mut prefix = [CURVE_ONE_MONT; 8];
+        let mut prefix = [CURVE_ONE_MONT; 16];
         for i in 1..prefix.len() {
             prefix[i] = prefix[i - 1].mont_mul(&multiples[i - 1].z());
         }
-        let product = prefix[7].mont_mul(&multiples[7].z());
+        let product = prefix[15].mont_mul(&multiples[15].z());
         let mut inv = product.demont().inv().as_mont();
 
-        let mut r = [Self::default(); 8];
+        let mut r = [Self::default(); 16];
         for i in (0..r.len()).rev() {
             // `inv` is the inverse of the z's up to `multiples[i]`.
             r[i] = multiples[i].as_affine_by(&inv.mont_mul(&prefix[i]));
@@ -521,12 +521,12 @@ impl JacobianMontPoint {
 
     /// `g * G + p * P` for public scalars, given P's odd multiples.
     ///
-    /// One chain of doublings serves both: P's digits are a width-5 NAF
-    /// over `odd_multiples`, and G's a width-6 NAF over the generator
-    /// table's first row, which holds G to at least 32G.
-    fn public_twin_multiply(g: &Scalar, p: &Scalar, odd_multiples: &[AffineMontPoint; 8]) -> Self {
+    /// One chain of doublings serves both, each scalar's digits a width-6
+    /// NAF: over `odd_multiples` for P, and over the generator table's first
+    /// row, which holds G to at least 32G, for G.
+    fn public_twin_multiply(g: &Scalar, p: &Scalar, odd_multiples: &[AffineMontPoint; 16]) -> Self {
         let g_digits = g.public_naf::<6>();
-        let p_digits = p.public_naf::<5>();
+        let p_digits = p.public_naf::<6>();
         let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP[0][..];
 
         let mut result = Self::infinity();
