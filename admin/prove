@@ -18,19 +18,23 @@ out=.tmp/prove
 mkdir -p "$out"
 
 # Each hand model quotes the Rust it models. Fail if that Rust has changed, so
-# the model is reviewed with every change to it: print each quoted item, from
-# the line that starts it to its closing line at column 0, then a blank line.
+# the model is reviewed with every change to it: print the first item each line
+# starts, from that line to the closing one at its indentation, then a blank
+# line.
 items() {
     local file=$1
     shift
     for start in "$@"; do
-        awk -v s="$start" 'index($0, s) == 1 { p = 1 } p { print } p && (/^}/ || /^[^ }].*;$/) { p = 0; print "" }' "$file"
+        awk -v s="$start" '
+            !p && index($0, s) == 1 { p = 1; ind = substr($0, 1, match($0, /[^ ]/) - 1) }
+            p { print }
+            p && (index($0, ind "}") == 1 || (ind == "" && /^[^ }].*;$/)) { print ""; exit }' "$file"
     done
 }
 check_quote() {
-    local model=$1
+    local path=$1 model=${1#*/}
     shift
-    sed -n '/^```rust$/,/^```$/{//!p}' "proofs/Rind/X86_64/$model.lean" >"$out/$model.rs"
+    sed -n '/^```rust$/,/^```$/{//!p}' "proofs/Rind/$path.lean" >"$out/$model.rs"
     diff -u --label "$model.lean" --label rind/src "$out/$model.rs" <("$@")
 }
 agreement_items() {
@@ -38,11 +42,17 @@ agreement_items() {
         'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {'
     items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {'
 }
-check_quote Dispatch agreement_items
-check_quote DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
+p256_items() {
+    items rind/src/high/agreement.rs 'pub static ECDH_P256:'
+    items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn'
+    items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
+}
+check_quote X86_64/Dispatch agreement_items
+check_quote Aarch64/P256Dispatch p256_items
+check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
     'pub static SHA512_256:'
-check_quote DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
+check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
     'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {'
 # The models' `Ops` hold nothing, since the quoted constructor builds the only
 # one, and their `Algorithm` is which static it is. That holds while each
@@ -58,11 +68,12 @@ complete '\bOps\b' rind/src/high/agreement.rs Dispatch
 complete '\bOps\b' rind/src/high/digest.rs DigestDispatch
 complete '= Algorithm {' rind/src/high/digest.rs DigestAlgorithm
 
-# The X25519 path from `high::agreement`'s `Agree` impls down to s2n-bignum's
-# routines, and the SHA-512 family's from `high::digest` and `high::hash` down
-# to aws-lc's. `low` is opaque: its routines are inline assembly, whose proven
-# contracts `proofs/Rind/<Arch>/{S2nBignum,AwsLc}.lean` state. The x86_64
-# BMI2/ADX dispatch, the SHA-512 dispatch, the padding and buffering in
+# The X25519 path, and aarch64's P-256 path, from `high::agreement`'s `Agree`
+# impls down to s2n-bignum's routines, and the SHA-512 family's from
+# `high::digest` and `high::hash` down to aws-lc's. `low` is opaque: its
+# routines are inline assembly, whose proven contracts
+# `proofs/Rind/<Arch>/{S2nBignum,AwsLc}.lean` state. The x86_64 BMI2/ADX
+# dispatch, the SHA-512 dispatch, the padding and buffering in
 # `low::generic::blockwise`, and the constant-time markers are Rust, so they
 # are translated. The other curves' functions are opaque; their types are
 # kept, since the agreement enums hold them.
@@ -72,7 +83,11 @@ complete '= Algorithm {' rind/src/high/digest.rs DigestAlgorithm
 # translation starts below that dispatch, and `proofs/Rind/X86_64/Dispatch.lean`
 # and `DigestDispatch.lean` model it by hand. `digest::Algorithm` holds them,
 # so it is opaque too, and `DigestAlgorithm.lean` models it. SHA-1's and
-# SHA-256's code is opaque: no theorem is about it.
+# SHA-256's code is opaque: no theorem is about it. P-256's key generation
+# draws through a `dyn RandomSource`, so it is opaque too, and
+# `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the translated
+# `PrivateKey::from_bytes`. The generator table is opaque: the theorems assume
+# what s2n-bignum's proof does of it.
 extract() {
     local arch=$1 dir=$2
     shift 2
@@ -106,7 +121,6 @@ extract() {
         --opaque '{impl crate::high::hash::HashState for crate::high::hash::Sha1State}' \
         --opaque '{impl crate::high::hash::HashState for crate::high::hash::Sha256State}' \
         --opaque crate::low \
-        --opaque 'crate::mid::p256::_::_' \
         --opaque 'crate::mid::p384::_::_' \
         --opaque 'crate::mid::p521::_::_' \
         --include 'crate::mid::p521::_::BYTES' \
@@ -124,9 +138,14 @@ extract() {
 }
 
 extract x86_64 X86_64 \
+    --opaque 'crate::mid::p256::_::_' \
     --include crate::low::x86_64::adx_mux::curve25519_x25519 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base
-extract aarch64 Aarch64
+extract aarch64 Aarch64 \
+    --start-from crate::mid::p256::PrivateKey::from_bytes \
+    --opaque 'crate::mid::p256::_::generate' \
+    --opaque 'crate::mid::p256::_::new_random' \
+    --opaque crate::mid::p256::precomp
 
 for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"

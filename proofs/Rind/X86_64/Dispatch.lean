@@ -112,7 +112,8 @@ The model departs from the Rust in three ways, and adds no axiom:
 - `?` is a `match`, since each error it passes on is already an `Error`.
 
 Drops are not modelled, as everywhere in the translation. Of the four
-algorithm statics, only `X25519` is.
+algorithm statics, only `X25519` is here; `Rind.Aarch64.P256Dispatch` models
+`ECDH_P256` on aarch64.
 -/
 
 namespace rind.x86_64

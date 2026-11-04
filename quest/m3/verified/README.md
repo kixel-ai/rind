@@ -12,6 +12,7 @@ Decided with the maintainer on 2026-11-03, after the [benchmark report](/quest/m
 - The audit ([moq-dev/rind#318](https://github.com/moq-dev/rind/pull/318)) lists what each path runs, what is proven, and the cheapest route to a proof for each gap. Plan quests from its report, starting with the most common operations.
 - Rust proof tool (decided with the maintainer on 2026-11-04, from [moq-dev/rind#326](https://github.com/moq-dev/rind/pull/326)): Aeneas → Lean ✅ / hax → F*. Every proof of rind's Rust uses it under the composition rule below; a later quest does not reopen the choice.
 - Rust that Aeneas cannot translate on a proven path (decided with the maintainer on 2026-11-04, for the agreement API's function-pointer dispatch): model it by hand ✅ / withdraw the ✓ until Aeneas translates it / keep the ✓ and list the gap. The model is retired once Aeneas translates function pointers.
+- aarch64 P-256's ✓ with its generator table unproven (decided with the maintainer on 2026-11-04, from [moq-dev/rind#336](https://github.com/moq-dev/rind/pull/336)): keep the ✓ with the assumption stated in `benchmarks/verified.toml` ✅ / prove the table first. [The table's proof](/quest/m3/verified/p256-table-lean.md) retires it.
 - There are three routes, chosen per gap:
   - switch to an existing verified source (s2n-bignum, HACL*/libcrux, fiat-crypto), subject to the ~10% speed rule in `AGENTS.md`;
   - prove rind's own Rust with Aeneas to Lean, in `proofs/` (see its README), under the composition rule below;
@@ -20,12 +21,13 @@ Decided with the maintainer on 2026-11-03, after the [benchmark report](/quest/m
   - The axiom is about the opaque Rust wrapper around that routine, and states the theorem's postcondition over the wrapper's arguments and result as the Lean model reads them (`wordsNat` for HOL Light's `bignum_from_memory`), and nothing more. Its docstring names the theorem and links it at the pinned revision.
   - Each precondition of the theorem holds for every call safe Rust can make (no aliasing, the ABI's stack alignment), or becomes a hypothesis of the axiom.
   - A function the theorem's statement names, such as `rfcx25519`, is an `opaque` Lean constant whose docstring cites its definition; no proof assumes more about it.
+  - A group-membership fact a proof must decide, such as a point being in `group_carrier p256_group`, may be stated as its defining equation, citing the pinned HOL Light theorem it follows from (`P256_GROUP`) (decided with the maintainer on 2026-11-04: amend the rule ✅ / a separate axiom / drop the ✓).
   - Every other untranslated item is `opaque`, not an axiom. A fact a proof needs about one, such as rind's CPU checks passing, is a hypothesis of the theorem.
   - Rust on the path that Aeneas cannot translate, such as function-pointer dispatch, is modelled by hand in Lean definitions, never axioms. The model's file quotes the Rust it models, and `admin/prove` fails when the quote no longer matches the source.
   - `Axioms.lean` pins, with `#guard_msgs`, the axioms each top-level theorem rests on, so growing the trust base fails the build.
   - Trusted: each restatement, each hand model, the translation and Aeneas's models of `core`, and the transliteration, as for the other s2n-bignum entries.
-- Audit summary (2026-11-03): under the strict rule no rind operation earned a ✓. X25519 on x86_64 and aarch64 now does, through `proofs/`, and so do SHA-384/512 on Intel x86_64 and on aarch64 without the SHA-512 instructions.
-  - Closest, where every core routine is proven and only rind's Rust glue is not: ChaCha20 header protection on x86_64 (HACL*'s rounds in a 45-line wrapper), Ed25519 on aarch64 and Intel x86_64 (encoding, clamping, and small-order refusal), ML-KEM-768 on aarch64 (the FIPS 203 construction and SHA-3 sponge), AES-GCM on x86_64 with AVX and MOVBE but no VAES (HACL*'s Vale AES-GCM under rind's key expansion, H-power computation, and about 30 lines that copy the partial blocks and split the message), and P-256 on aarch64 (ECDH's byte conversion and point checks, which [aarch64 P-256 ECDH is proven end to end](/quest/m3/verified/p256-ecdh.md) proves, and the ECDSA glue; key generation is already proven end to end).
+- Audit summary (2026-11-03): under the strict rule no rind operation earned a ✓. X25519 on x86_64 and aarch64, P-256 ECDH on aarch64, and SHA-384/512 on Intel x86_64 and on aarch64 without the SHA-512 instructions now do, through `proofs/`.
+  - Closest, where every core routine is proven and only rind's Rust glue is not: ChaCha20 header protection on x86_64 (HACL*'s rounds in a 45-line wrapper), Ed25519 on aarch64 and Intel x86_64 (encoding, clamping, and small-order refusal), ML-KEM-768 on aarch64 (the FIPS 203 construction and SHA-3 sponge), AES-GCM on x86_64 with AVX and MOVBE but no VAES (HACL*'s Vale AES-GCM under rind's key expansion, H-power computation, and about 30 lines that copy the partial blocks and split the message), and P-256 ECDSA on aarch64 (its signing and verification glue).
   - Unproven core code on common paths: every SHA-256 block function; x86_64 SHA-512 on AMD; the final store of aarch64's SHA-512 routine for the SHA-512 instructions, which NSym's proof stops short of; AES-GCM's glue and in-place use on aarch64; every SIMD ChaCha20-Poly1305; x86_64 P-256 generator multiplication; RSA products off x86_64 ADX.
   - Glue to prove with a Rust tool: SHA-1 and SHA-256 padding, HMAC, HKDF, PBKDF2, the AEAD compositions, the ECDSA verification double multiplication, RSA's exponentiation and EMSA, ML-KEM's construction and sponge. The constant-time compare loops are inline asm, better proven in s2n-bignum's HOL Light.
   - Verified alternatives worth measuring: s2n-bignum's `edwards25519_encode` and its x86_64 `p256_scalarmul` for agreement, SymCrypt's Aeneas-verified ML-KEM and Formosa's mlkem-libjade.
@@ -36,9 +38,10 @@ Decided with the maintainer on 2026-11-03, after the [benchmark report](/quest/m
 
 ## Required
 
-- [aarch64 P-256 ECDH is proven end to end](/quest/m3/verified/p256-ecdh.md) - the Rust glue around s2n-bignum's proven multiplies
 - [Ed25519 is proven end to end](/quest/m3/verified/ed25519.md) - s2n-bignum's encoder and proven glue
+- [aarch64 P-256 ECDSA is proven end to end](/quest/m3/verified/p256-ecdsa.md) - sign's `s` and verify's twin multiplication, over s2n-bignum
 - [ChaCha20 header protection is proven](/quest/m3/verified/chacha-hp.md) - HACL*'s rounds and a proven wrapper
 - [The hash and KDF glue is proven](/quest/m3/verified/hash-glue.md) - SHA padding, HMAC, HKDF, PBKDF2, and the constant-time compare
 - [x86_64 SHA-NI SHA-256 block function is proven](/quest/m3/verified/sha256-block.md) - today's routine proven on s2n-bignum's SHA-256 spec, or a proven one as fast
 - [x86_64 AES-GCM's Vale glue is proven](/quest/m3/verified/aes-gcm-vale.md) - the ✓ for the Vale AES-GCM that tier runs
+- [rind's P-256 base-point table is proven in Lean](/quest/m3/verified/p256-table-lean.md) - retires the generator-table hypothesis of P-256's ✓

@@ -26,14 +26,39 @@ writes for aarch64:
 - `x25519_shared_secret`: the secret's bytes are those.
 
 `rfcx25519` is HOL Light's RFC 7748 X25519, clamping and masking included.
+
+P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
+`Rind/Aarch64/P256.lean`:
+
+- `p256_generate`: the key's scalar is the first of up to 64 draws whose
+  bytes, read big-endian, are in [1, n), and the key is refused if a draw
+  fails before one is, or none is;
+- `p256_public_key`: the public key is the X9.62 uncompressed encoding of the
+  scalar times G, for a scalar whose multiple is a finite point on the curve;
+- `p256_agree`: a peer key is refused unless it is a 65-byte uncompressed
+  point whose coordinates are below p and on the curve, and otherwise the
+  secret is the 32 big-endian bytes of the x-coordinate of the scalar times
+  that point, or a fault unless that is a finite point on the curve;
+- `p256_shared_secret`: the secret's bytes are those.
+
+`p256Pow` is HOL Light's `group_pow p256_group`. That a scalar in [1, n) times
+a point on the curve is a finite point on the curve, so the public key's
+hypothesis always holds and the fault never happens, is the group's theory,
+which these theorems do not import.
+
 Each theorem assumes `Runs`: rind's CPU-feature checks pass, which no input
-affects. `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
+affects. `p256_public_key` also assumes `Tabulated`: rind's generator table
+holds the multiples of G that s2n-bignum's proof of `p256_scalarmulbase`
+assumes, which the `base_point_precomp` test checks.
+`Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
 (`Algorithm`'s `generate` and `Keyed`'s `Ops`), which Aeneas cannot translate.
 `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in Lean definitions
-beside the Rust they model. `admin/prove` fails if that quote no longer
-matches the source, or if the source names `Ops` outside it.
+beside the Rust they model. P-256's key generation draws through a
+`dyn RandomSource`, which Aeneas cannot translate either, and
+`Rind/Aarch64/P256Dispatch.lean` models it and the `ECDH_P256` static the same
+way.
 
 SHA-384, SHA-512, and SHA-512/256, from the digest API to aws-lc's block
 routine, in `Rind/X86_64/Sha512.lean`, which `admin/prove` also writes for
@@ -52,6 +77,10 @@ digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
 models the `Algorithm` statics that hold them.
 
+`admin/prove` fails if a hand model's quote no longer matches the source, if
+the source names `Ops` outside the dispatch models' quotes, or if it builds a
+digest `Algorithm` outside `DigestAlgorithm.lean`'s.
+
 ## Layout
 
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
@@ -62,13 +91,16 @@ models the `Algorithm` statics that hold them.
 - `Rind/<Arch>/S2nBignum.lean` and `Rind/<Arch>/AwsLc.lean`: s2n-bignum's and
   aws-lc-verification's theorems, restated as axioms about the routines' Rust
   wrappers.
-- `Rind/Spec.lean` and `Rind/Bytes.lean`: X25519's spec and byte-conversion
-  lemmas; `Rind/Sha2.lean` and `Rind/Sha2Lemmas.lean`: SHA-512's.
+- `Rind/Spec.lean` and `Rind/Bytes.lean`: the elliptic-curve specs and
+  byte-conversion lemmas; `Rind/Sha2.lean` and `Rind/Sha2Lemmas.lean`:
+  SHA-512's.
 - `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm}.lean`: the hand
   models of the agreement and digest APIs' dispatch.
-- `Rind/X86_64/{X25519,Sha512}.lean`: the proofs.
+- `Rind/X86_64/{X25519,Sha512}.lean`: the X25519 and SHA-512 proofs.
 - `admin/prove` copies the `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
+- `Rind/Aarch64/P256Dispatch.lean` and `Rind/Aarch64/P256.lean`: the hand
+  model of P-256's key generation, and the P-256 proof.
 
 ## Trust base
 
@@ -81,7 +113,11 @@ Beyond Lean's kernel:
 - The restatement of each s2n-bignum and aws-lc-verification theorem as an
   axiom, under the composition rule in the
   [verification epic](/quest/m3/verified/README.md), and on aarch64 the
-  caveats aws-lc-verification lists for its NSym proof.
+  caveats aws-lc-verification lists for its NSym proof. It lets a
+  group-membership fact a proof must decide be its defining equation, so
+  `group_carrier p256_group` is the curve equation that HOL Light's
+  [`P256_GROUP`](https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/nistp256.ml#L82)
+  proves it is.
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
   `processBlock_Common`.
 - That rind's inline assembly is s2n-bignum's and aws-lc's object code, as for
