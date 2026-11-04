@@ -3,8 +3,8 @@
 # `proofs/Rind/<Arch>/{Types,Funs}.lean`, then checks every proof in `proofs/`.
 #
 # Each target's translation is its own namespace, but they share global names,
-# so no Lean module imports both. The aarch64 dispatch model and X25519 proof
-# are the x86_64 ones with the target renamed, which this writes too.
+# so no Lean module imports both. The aarch64 dispatch model and proofs are the
+# x86_64 ones with the target renamed, which this writes too.
 #
 # Usage: admin/prove
 #
@@ -27,27 +27,43 @@ items() {
     done
 }
 sed -n '/^```rust$/,/^```$/{//!p}' proofs/Rind/X86_64/Dispatch.lean >"$out/dispatch.rs"
+items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
+    'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {' >"$out/agreement.rs"
+items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {' >"$out/zeroise.rs"
+items rind/src/aead/quic.rs 'pub struct Algorithm ' 'pub static CHACHA20:' \
+    'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' 'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
 diff -u --label Dispatch.lean --label rind/src "$out/dispatch.rs" \
-    <(items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
-        'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {'
-    items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {')
-# The model's `Ops<K>` holds nothing, since the quoted `Keyed::generate` builds
-# the only one. That holds while the quote has every mention of `Ops`.
-if [ "$(grep -ow Ops rind/src/high/agreement.rs | wc -l)" != "$(grep -ow Ops "$out/dispatch.rs" | wc -l)" ]; then
-    echo "rind/src/high/agreement.rs names Ops outside Dispatch.lean's quote" >&2
-    exit 1
-fi
+    <(cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic.rs")
+# The model's `Ops<K>` holds nothing, since the quoted `Keyed::generate`
+# builds the only one, and its `Masker<C>` only the key, since the quoted
+# `Masker::new` builds each with `C::mask`. That holds while the quotes have
+# every match of these: each mention of `Ops`, and each `Masker` literal,
+# `impl` on `Masker`, and write to a `mask` field, which only `quic.rs` can
+# make.
+only_quoted() {
+    local file=$1 quote=$2 pattern=$3
+    if [ "$(grep -oE "$pattern" "$file" | wc -l)" != "$(grep -oE "$pattern" "$quote" | wc -l)" ]; then
+        echo "$file matches $pattern outside Dispatch.lean's quote" >&2
+        exit 1
+    fi
+}
+only_quoted rind/src/high/agreement.rs "$out/agreement.rs" '\bOps\b'
+only_quoted rind/src/aead/quic.rs "$out/quic.rs" 'Masker(<[^>]*>)? *\{'
+only_quoted rind/src/aead/quic.rs "$out/quic.rs" '\.mask *=[^=]'
 
 # The X25519 path from `high::agreement`'s `Agree` impls down to s2n-bignum's
 # routines. `low` is opaque: its routines are inline assembly, whose proven
 # contracts `proofs/Rind/<Arch>/S2nBignum.lean` states. The x86_64 BMI2/ADX
 # dispatch and the constant-time markers are Rust, so they are translated. The
 # other curves' functions are opaque; their types are kept, since the
-# agreement enums hold them.
+# agreement enums hold them. Then ChaCha20 header protection from its `Mask`
+# impl down to HACL*'s rounds, which are Rust and translated too; AES's key
+# and block cipher are opaque.
 #
 # Aeneas cannot translate function pointers, through which `PrivateKey`
-# reaches each curve's `Agree` impl, so the translation starts below that
-# dispatch, and `proofs/Rind/X86_64/Dispatch.lean` models it by hand.
+# reaches each curve's `Agree` impl and `HeaderProtectionKey` each cipher's
+# `Mask` impl, so the translation starts below that dispatch, and
+# `proofs/Rind/X86_64/Dispatch.lean` models it by hand.
 extract() {
     local arch=$1 dir=$2
     shift 2
@@ -60,13 +76,21 @@ extract() {
         --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}' \
         --start-from crate::high::agreement::PrivateKey \
         --start-from crate::high::agreement::AlgorithmId \
+        --start-from '{impl crate::aead::quic::Mask for crate::mid::chacha20::ChaCha20}' \
+        --start-from '{impl crate::aead::quic::Mask for crate::mid::aes::Aes}' \
+        --start-from crate::aead::quic::HeaderProtectionKey \
+        --start-from crate::aead::quic::AlgorithmId \
+        --start-from crate::mid::chacha20::ChaCha20::new \
         --opaque crate::high::agreement::Ops \
+        --opaque crate::aead::quic::Masker \
+        --opaque crate::mid::aes \
         --opaque crate::low \
         --opaque 'crate::mid::p256::_::_' \
         --opaque 'crate::mid::p384::_::_' \
         --opaque 'crate::mid::p521::_::_' \
         --include 'crate::mid::p521::_::BYTES' \
         --include crate::low::ct \
+        --include crate::low::generic::chacha20 \
         "$@" \
         --dest-file "$PWD/../$out/$arch.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
@@ -82,7 +106,7 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base
 extract aarch64 Aarch64
 
-for file in Dispatch X25519; do
+for file in Dispatch X25519 ChaCha20; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 

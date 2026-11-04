@@ -26,14 +26,30 @@ writes for aarch64:
 - `x25519_shared_secret`: the secret's bytes are those.
 
 `rfcx25519` is HOL Light's RFC 7748 X25519, clamping and masking included.
-Each theorem assumes `Runs`: rind's CPU-feature checks pass, which no input
-affects. `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
+
+ChaCha20 QUIC header protection on x86_64 and aarch64, from
+`HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
+
+- `chacha20_new`: a key that is not 32 bytes is refused, and otherwise the
+  key holds its bytes;
+- `chacha20_mask`: the mask is RFC 9001's, the first five bytes of RFC 8439's
+  keystream block for the key, with the sample's first four bytes as the
+  little-endian block counter and the rest as the nonce.
+
+HACL*'s rounds are Rust, so they are translated and proven with the rest, and
+no axiom stands in for HACL*'s proof of them.
+
+Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
+pass, which no input affects. `Rind/<Arch>/Axioms.lean` checks the axioms each
+theorem rests on.
 
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
-(`Algorithm`'s `generate` and `Keyed`'s `Ops`), which Aeneas cannot translate.
-`Rind/X86_64/Dispatch.lean` models that dispatch by hand, in Lean definitions
-beside the Rust they model. `admin/prove` fails if that quote no longer
-matches the source, or if the source names `Ops` outside it.
+(`Algorithm`'s `generate` and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
+cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
+cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
+Lean definitions beside the Rust they model. `admin/prove` fails if that quote
+no longer matches the source, or if the source names `Ops`, builds a
+`Masker`, or writes its `mask` outside it.
 
 ## Layout
 
@@ -46,11 +62,11 @@ matches the source, or if the source names `Ops` outside it.
   about the routines' Rust wrappers.
 - `Rind/Spec.lean` and `Rind/Bytes.lean`: the spec and byte-conversion
   lemmas.
-- `Rind/X86_64/Dispatch.lean`: the hand model of the agreement API's
-  dispatch.
-- `Rind/X86_64/X25519.lean`: the proof.
-- `admin/prove` copies both `Rind/X86_64/` files to `Rind/Aarch64/` with the
-  target renamed.
+- `Rind/X86_64/Dispatch.lean`: the hand model of the agreement and
+  header-protection APIs' dispatch.
+- `Rind/X86_64/X25519.lean` and `Rind/X86_64/ChaCha20.lean`: the proofs.
+- `admin/prove` copies those three `Rind/X86_64/` files to `Rind/Aarch64/`
+  with the target renamed.
 
 ## Trust base
 
@@ -62,6 +78,7 @@ Beyond Lean's kernel:
   adds no axiom.
 - The restatement of each s2n-bignum theorem as an axiom, under the
   composition rule in the [verification epic](/quest/m3/verified/README.md).
+- That `Rind/Spec.lean`'s ChaCha20 transliterates RFC 8439 and RFC 9001.
 - That rind's inline assembly is s2n-bignum's object code, as for
   `benchmarks/verified.toml`'s other s2n-bignum entries.
 - The translation ignores drops, which here wipe keys and restore CPU state,

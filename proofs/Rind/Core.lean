@@ -8,7 +8,8 @@ open Aeneas Aeneas.Std Result
 
 Models of the `core` items rind's translation calls that Aeneas's library
 lacks, each following the Rust standard library, and opaque declarations for
-the random source, whose draw the functional spec leaves out.
+the random source, whose draw the functional spec leaves out, and for
+`core::array::from_fn`, which only AES's header protection calls.
 -/
 
 /-- `Result::ok`. -/
@@ -34,3 +35,7 @@ opaque getrandom.error.Error : Type
 /-- `getrandom::fill`, the system random source. -/
 opaque getrandom.fill :
   Slice Std.U8 → Result ((core.result.Result Unit getrandom.error.Error) × (Slice Std.U8))
+
+/-- `core::array::from_fn`. -/
+opaque core.array.from_fn {T F : Type _} (N : Std.Usize)
+    (_ : core.ops.function.FnMut F Std.Usize T) : F → Result (Array T N)
