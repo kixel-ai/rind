@@ -81,9 +81,14 @@ arch = "aarch64"
 proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, and bignum_eq, of s2n-bignum's own object code, which rind transliterates; assuming, as s2n-bignum's proof does, that rind's generator table holds the multiples of G, which a test checks"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/P256.lean"
 
-# aws-lc-rs: SHA-512 alone. Its X25519 and Ed25519 call the same s2n-bignum
-# routines from unverified C, which clamps the scalar, refuses X25519's
-# all-zero secret, and composes Ed25519's SHA-512.
+# aws-lc-rs: SHA-512 on Intel x86_64 alone. On aarch64, NSym's proof of
+# sha512_block_data_order_hw asserts the digest in registers at its loop's
+# exit, and the store to the state is outside it
+# (https://github.com/awslabs/aws-lc-verification/blob/797302470c1703cbb1a3a6fa98daffef0bfd3d80/NSym/proof/proofs/SHA512/sha512_block_armv8_unbounded.ml#L138),
+# so the SAW proof of the C around it rests on an unproven result. Its X25519
+# and Ed25519 call the same s2n-bignum routines from unverified C, which
+# clamps the scalar, refuses X25519's all-zero secret, and composes Ed25519's
+# SHA-512.
 [[verified]]
 library = "aws-lc-rs"
 operations = ["sha512/*"]
@@ -91,14 +96,6 @@ arch = "x86_64"
 cpu = ["intel", "avx", "ssse3"]
 proof = "aws-lc-verification's SAW proof of SHA-512 through EVP_Digest, padding included, over sha512_block_data_order_avx, which aws-lc runs only on Intel; of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps"
 link = "https://github.com/awslabs/aws-lc-verification/blob/797302470c1703cbb1a3a6fa98daffef0bfd3d80/SAW/proof/SHA512/verify-SHA512-x86.saw"
-
-[[verified]]
-library = "aws-lc-rs"
-operations = ["sha512/*"]
-arch = "aarch64"
-cpu = ["sha3"]
-proof = "aws-lc-verification's NSym proof of sha512_block_data_order_hw and SAW proof of the C around it, with its ArmSpecGap and NoInline caveats; of a Linux build of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps"
-link = "https://github.com/awslabs/aws-lc-verification/tree/797302470c1703cbb1a3a6fa98daffef0bfd3d80/NSym/proof/proofs/SHA512"
 
 # libcrux: portable Rust that KaRaMeL generates from HACL*, with no CPU
 # dispatch. libcrux records no HACL* revision, so these link to HACL*'s main
