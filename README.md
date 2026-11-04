@@ -1,16 +1,17 @@
 <h1 align="center">rind</h1>
-<img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/picture.png">
+<img width="40%" align="right" src="admin/logo.png" alt="rind: the spiky green shell of a graviola fruit">
 
-> **rind** is a compendium of **high quality**,
-> **fast** and **easy to build** cryptography for Rust, aimed
-> at use with [rustls](https://github.com/rustls/rustls) and
+> **rind** distills great cryptography into a **pure-Rust** library for
+> [rustls](https://github.com/rustls/rustls) and
 > [MoQ](https://github.com/moq-dev/moq).
 
-rind began as a fork of [Graviola](https://github.com/ctz/graviola) by Joe
-Birr-Pixton, and no longer tracks it. It adds what MoQ needs to drop C
-cryptography entirely; the plan lives in [`quest/`][quests]. Coming from
-ring or aws-lc-rs? [MIGRATING.md][migrating] maps their API to rind's, and
-[rind-ring][] offers ring's API as is.
+rind began as a fork of [Graviola] by Joe Birr-Pixton, and no longer tracks
+it. Its goal is to close the gap between C-free builds and the algorithm
+coverage, compatibility, and performance MoQ needs, by bringing together
+work from Graviola, [AWS-LC][aws-lc], and other excellent projects. The plan
+lives in [`quest/`][quests]. Coming from ring or [aws-lc-rs]?
+[MIGRATING.md][migrating] maps their API to rind's, and [rind-ring][] offers
+ring's API as is.
 
 *High quality*: rind incorporates assembler routines
 from the [s2n-bignum] project.  These have been formally proven
@@ -23,6 +24,28 @@ OpenSSL.
 
 *Easy and fast to build*: no C compiler, assembler or other tooling
 needed: just the Rust compiler.  Compiles in seconds.
+
+## Built on great work
+
+**[Graviola] is an outstanding project.** Joe Birr-Pixton and its
+contributors built a fast, carefully designed cryptography library with
+a refreshingly simple Rust-only build. rind owes Graviola its starting
+point, much of its code, and the example it follows. If Graviola covers
+your needs, please give it a look and support its authors.
+
+**[aws-lc-rs] is excellent, too.** It is the library we would use if we did
+not need to build without C. AWS-LC supplies many of rind's implementations;
+aws-lc-rs is our reference for behavior, differential tests, and performance.
+Its authors' engineering and care set a standard rind works to meet.
+
+rind builds on cryptography written by people much smarter than us. Its
+contribution is to distill and integrate their work for MoQ's needs. The
+credit for the underlying algorithms, implementations, and proofs belongs
+to their authors, including [s2n-bignum], [HACL\*], [libcrux], [fiat-crypto],
+and the other projects listed under [Sources](#sources).
+
+The rind logo is a tribute to [Graviola's fruit illustration][graviola-logo],
+reimagined as its protective rind.
 
 ## Status
 
@@ -269,6 +292,8 @@ A change that copies code from a new source, or moves an algorithm to a
 different one, updates this table and [LICENSE] in the same PR.
 
 [Graviola]: https://github.com/ctz/graviola
+[graviola-logo]: https://github.com/ctz/graviola/blob/main/admin/picture.png
+[aws-lc-rs]: https://github.com/aws/aws-lc-rs
 [cifra]: https://github.com/ctz/cifra
 [s2n-bignum]: https://github.com/awslabs/s2n-bignum
 [HACL\*]: https://github.com/hacl-star/hacl-star
