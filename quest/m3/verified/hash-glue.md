@@ -15,8 +15,8 @@ What remains:
 - HKDF and PBKDF2 call that hand-modelled HMAC API, but Aeneas emits one `Funs.lean` whose external declarations precede it, so translated code cannot call a model built on translated code. A second translation pass for the KDFs, with the first pass and the model opaque below it, avoids hand-modelling them.
 - PBKDF2's `blocks` takes a closure that captures `&mut`, which Aeneas mistranslates; rewrite it as `Blockwise` was, keeping release codegen.
 - The constant-time compares (`ct_compare_bytes`, behind `hmac::verify` and `pbkdf2::Secret::verify`).
+- HMAC over SHA-384 and SHA-512: their `Hash` impls meet `HashSpec` from `proofs/Rind/X86_64/Sha512.lean`'s theorems, whose SHA-512-specific padding and buffering lemmas `Blockwise.lean`'s generic ones can replace.
 
 ## Related
 
 - [x86_64 SHA-NI SHA-256 block function is proven](/quest/m3/verified/sha256-block.md) - discharges `ShaBlocks` for SHA-256 on that tier
-- [SHA-512 padding is proven](/quest/m3/verified/sha512-padding.md) - SHA-384 and SHA-512 can meet `HashSpec` the same way, for HMAC over them

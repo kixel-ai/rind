@@ -109,7 +109,8 @@ with AVX, and on aarch64 its scalar routine, on a CPU without the SHA-512
 instructions; those are the routines whose proofs state their result. The
 digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
-models the `Algorithm` statics that hold them.
+models the `Algorithm` statics that hold them, and `Digest`, whose
+`&'static Algorithm` Aeneas cannot end a borrow of `Digest` across.
 
 `admin/prove` fails if a hand model's quote no longer matches the source, if
 the source names `Ops`, builds a `Masker`, or writes its `mask` outside the
