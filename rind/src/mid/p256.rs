@@ -719,7 +719,7 @@ trait Term: Copy {
 
 impl Term for AffineMontPoint {
     fn negate_y(&mut self) {
-        AffineMontPoint::negate_y(self);
+        Self::negate_y(self);
     }
 
     fn public_add_to(&self, sum: &JacobianMontPoint) -> JacobianMontPoint {

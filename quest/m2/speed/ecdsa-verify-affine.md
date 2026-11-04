@@ -18,5 +18,10 @@ Decided with the maintainer on 2026-11-04. The chosen option is marked ✅.
 A width-6 NAF over 16 affine multiples built at parse won every `*-ecdsa-verify-parsed` row back to pre-#324 (aarch64 P-256 0.935 vs 0.939), but cost 1-3% over main on the `*-ecdsa-verify` rows, which parse the key for each verification ([width 6](https://github.com/moq-dev/rind/actions/runs/41846927501), [main](https://github.com/moq-dev/rind/actions/runs/41846932619), [pre-#324](https://github.com/moq-dev/rind/actions/runs/41846938684)).
 [moq-dev/rind#334](https://github.com/moq-dev/rind/pull/334) keeps #331's parse and builds 17P, ..., 31P on a key's second verification instead, so a key verified once costs what it does on main.
 
-What remains is the `*-ecdsa-verify` rows, still 5-10% over pre-#324 (aarch64 P-256 1.028 vs 0.961): the parse-time table's inversion.
+What remained was the `*-ecdsa-verify` rows, still 5-10% over pre-#324 (aarch64 P-256 1.024 vs 0.962): the parse-time table's inversion.
 Building the multiples with mixed additions needs 2P affine, which costs an inversion, or an isomorphic curve as libsecp256k1 does, which s2n-bignum's addition proofs do not cover.
+
+- For the parse-time inversion: first-use Jacobian ✅ / isomorphic curve / accept the gap.
+
+[moq-dev/rind#340](https://github.com/moq-dev/rind/pull/340) keeps only P at parse: a key's first verification computes P, 3P, ..., 15P in Jacobian form per call and adds them with full additions behind #324's x comparisons, and its second builds P to 31P, affine by one shared inversion, into the cache.
+By count, a first verification still costs about 5 field operations per P digit more than before #324 (the x comparison, and #324's 2 per G digit), against main's one inversion, so it may land level with main rather than at pre-#324; its bench runs decide.
