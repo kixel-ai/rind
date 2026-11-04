@@ -6,15 +6,14 @@ computation is proven. [Charon](https://github.com/AeneasVerif/charon) and
 [Aeneas](https://github.com/AeneasVerif/aeneas) translate the Rust to Lean, and
 the theorems are about that translation.
 
-`nix develop .#prove --command admin/prove` translates the Rust, fails if the
-translation differs from the committed one, and checks every proof. The
-`prove` workflow runs it nightly and on pull requests that change the Rust
-under proof or these files.
+`nix develop .#prove --command admin/prove` translates the Rust and checks
+every proof against the translation. The `prove` workflow runs it nightly and
+on pull requests that change rind's source or these files.
 
 ## What is proven
 
 X25519 on x86_64 and aarch64, from the agreement API to s2n-bignum's routines,
-in `Rind/<Arch>/X25519.lean`:
+in `Rind/X86_64/X25519.lean`, which `admin/prove` also writes for aarch64:
 
 - `x25519_generate`: the key's scalar is the 32 drawn bytes, read
   little-endian, and a failed draw is refused;
@@ -31,8 +30,8 @@ affects. `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
 ## Layout
 
-- `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove
-  --write` regenerates.
+- `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
+  writes and git ignores.
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
   translation leaves opaque, and models of the few `core` items Aeneas's
   library lacks.
@@ -40,8 +39,8 @@ affects. `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
   about the routines' Rust wrappers.
 - `Rind/Spec.lean` and `Rind/Bytes.lean`: the spec and byte-conversion
   lemmas.
-- `Rind/X86_64/X25519.lean`: the proof, which `admin/prove` copies to aarch64
-  with the target renamed.
+- `Rind/X86_64/X25519.lean`: the proof, which `admin/prove` copies to
+  `Rind/Aarch64/` with the target renamed.
 
 ## Trust base
 

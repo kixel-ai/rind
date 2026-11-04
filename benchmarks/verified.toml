@@ -52,7 +52,7 @@ library = "rind"
 operations = ["x25519-ecdh"]
 arch = "aarch64"
 proof = "rind's Lean proof, through Aeneas, of its agreement API's X25519 down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of curve25519_x25519_alt, curve25519_x25519base_alt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates"
-link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/X25519.lean"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/X25519.lean"
 
 # aws-lc-rs: SHA-512 alone. Its X25519 and Ed25519 call the same s2n-bignum
 # routines from unverified C, which clamps the scalar, refuses X25519's
