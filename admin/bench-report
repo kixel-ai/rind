@@ -748,17 +748,20 @@ def load_verified(path=VERIFIED):
     with open(path, "rb") as f:
         entries = tomllib.load(f).get("verified", [])
     rows = [row_name(op) for op in OPERATIONS]
-    required = {"library", "operations", "arch", "proof", "link"}
+    required = {"library", "operations", "proof", "link"}
+    optional = {"arch", "cpu", "os"}
     for i, e in enumerate(entries, 1):
         where = f"{os.path.relpath(path, ROOT)}: entry {i}"
-        if set(e) - required - {"cpu", "os"}:
-            fail(f"{where}: unknown keys {', '.join(sorted(set(e) - required - {'cpu', 'os'}))}")
+        if set(e) - required - optional:
+            fail(f"{where}: unknown keys {', '.join(sorted(set(e) - required - optional))}")
         if required - set(e):
             fail(f"{where}: missing {', '.join(sorted(required - set(e)))}")
         if e["library"] not in COLUMNS:
             fail(f"{where}: unknown library {e['library']}")
-        if e["arch"] not in CPU_FEATURES:
+        if e.get("arch", "x86_64") not in CPU_FEATURES:
             fail(f"{where}: unknown arch {e['arch']}")
+        if "cpu" in e and "arch" not in e:
+            fail(f"{where}: CPU features need an arch")
         for feature in e.get("cpu", []):
             if feature.removeprefix("!") not in CPU_FEATURES[e["arch"]]:
                 fail(f"{where}: unknown {e['arch']} CPU feature {feature}")
@@ -776,7 +779,7 @@ def proof_for(verified, library, row, host):
     """The entry that verifies a library's code for an operation on a host."""
     cpuid = host.get("rind_cpu", {}).get("cpuid", {})
     for e in verified:
-        if e["library"] != library or e["arch"] != host_arch(host):
+        if e["library"] != library or e.get("arch", host_arch(host)) != host_arch(host):
             continue
         if e.get("os", host_os(host)) != host_os(host):
             continue
@@ -1078,7 +1081,7 @@ def measured(host):
 
 
 def platform_of(entry):
-    words = [entry["arch"]]
+    words = [entry.get("arch", "any architecture")]
     has = [f for f in entry.get("cpu", []) if not f.startswith("!")]
     lacks = [f.removeprefix("!") for f in entry.get("cpu", []) if f.startswith("!")]
     if has:

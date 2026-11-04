@@ -92,6 +92,7 @@ VERIFIED = [
         "proof": "aes proof",
         "link": "https://example.com/aes",
     },
+    {"library": "ring", "operations": ["x25519-ecdh"], "proof": "any-arch proof", "link": "https://example.com/any"},
     {
         "library": "rind",
         "operations": ["x25519-ecdh"],
@@ -146,16 +147,19 @@ class Render(unittest.TestCase):
         self.assertEqual(sum("not measured" not in t for t in titles), 9)
         self.assertEqual(sum(t == "desktop: not measured" for t in titles), len(br.OPERATIONS) * len(br.COLUMNS))
         self.assertIn("X25519, OpenSSL on nixos: 300.00 µs, 10.00× the fastest", titles)
-        self.assertIn("X25519, ring on nixos: 33.00 µs, 1.10× the fastest", titles)
+        self.assertIn("X25519, ring on nixos: 33.00 µs, 1.10× the fastest; verified: any-arch proof", titles)
 
     def test_verified_follows_cpu_and_os(self):
         titles = [t for t in squares(br.overview_svg(hosts(), VERIFIED, "dark")) if "verified" in t]
-        # Zen 3 has ADX but VAES; Coffee Lake lacks VAES; kixtop is macOS.
+        # Zen 3 has ADX but VAES; Coffee Lake lacks VAES; kixtop is macOS;
+        # an entry without an arch holds on both.
         self.assertEqual(
             sorted(titles),
             [
                 "AES-256-GCM seal, 16 KB, rind on nixos2: 2.00 µs, 1.00× the fastest; verified: aes proof",
                 "X25519, rind on nixos: 30.00 µs, 1.00× the fastest; verified: x86 proof",
+                "X25519, ring on kixtop: 40.00 µs, 2.00× the fastest; verified: any-arch proof",
+                "X25519, ring on nixos: 33.00 µs, 1.10× the fastest; verified: any-arch proof",
             ],
         )
 
@@ -182,7 +186,7 @@ class Render(unittest.TestCase):
             sorted(os.path.basename(p) for p in files if p.endswith(".svg")),
             sorted(f"{n}{s}.svg" for n in ["overview", "nixos", "nixos2", "kixtop"] for s in ["", "-dark"]),
         )
-        self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs | - | - | - | 300.00 µs |", md)
+        self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | - | - | - | 300.00 µs |", md)
 
     def test_svgs_are_well_formed(self):
         import xml.etree.ElementTree as ET
@@ -215,6 +219,7 @@ class Verified(unittest.TestCase):
 
     def test_accepts_a_valid_entry(self):
         self.assertEqual(len(self.load(self.entry(cpu='["adx", "!vaes"]'))), 1)
+        self.assertEqual(len(self.load(self.entry(arch=None))), 1)
 
     def test_refuses_what_names_nothing(self):
         for fields in [
@@ -222,6 +227,7 @@ class Verified(unittest.TestCase):
             {"operations": '["x25519"]'},
             {"operations": '["aes256-gcm/8B"]'},
             {"arch": '"armv7"'},
+            {"arch": None, "cpu": '["adx"]'},
             {"cpu": '["sha2"]'},
             {"os": '"windows"'},
             {"link": '"http://example.com"'},
