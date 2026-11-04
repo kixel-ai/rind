@@ -19,16 +19,16 @@ mkdir -p "$out"
 
 # Each hand model quotes the Rust it models. Fail if that Rust has changed, so
 # the model is reviewed with every change to it: print the first item each line
-# starts, from that line to the closing one at its indentation, then a blank
-# line.
+# starts, from that line to the closing one at its indentation, or to the `;`
+# that ends an item whose first line ends with `=`, then a blank line.
 items() {
     local file=$1
     shift
     for start in "$@"; do
         awk -v s="$start" '
-            !p && index($0, s) == 1 { p = 1; ind = substr($0, 1, match($0, /[^ ]/) - 1) }
+            !p && index($0, s) == 1 { p = 1; ind = substr($0, 1, match($0, /[^ ]/) - 1); eq = /=$/ }
             p { print }
-            p && (index($0, ind "}") == 1 || (ind == "" && /^[^ }].*;$/)) { print ""; exit }' "$file"
+            p && (index($0, ind "}") == 1 || (ind == "" && /^[^ }].*;$/) || (eq && /;$/)) { print ""; exit }' "$file"
     done
 }
 check_quote() {
@@ -54,12 +54,21 @@ check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Alg
     'pub static SHA512_256:'
 check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
     'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {'
+check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
+    'pub struct VerificationAlgorithm(' 'enum Verification {' 'type Verify<K> =' \
+    'struct Verifier<K> {' 'impl<K> Verifier<K> {' 'pub struct PublicKey {' 'enum Parsed {' \
+    'impl PublicKey {' 'impl AsRef<[u8]> for PublicKey {' 'impl fmt::Debug for PublicKey {' \
+    'impl Ed25519KeyPair {' 'fn parse_ed25519(' '    pub static ED25519:'
 # The models' `Ops` hold nothing, since the quoted constructor builds the only
 # one; `Masker<C>` holds only the key, since the quoted `Masker::new` builds
 # each with `C::mask`; and a digest `Algorithm` is which static it is. That
 # holds while the quotes have every match of these: each mention of `Ops`,
 # each `Masker` literal, `impl` on `Masker`, and write to a `mask` field, which
-# only `quic.rs` can make, and each `Algorithm` the source builds.
+# only `quic.rs` can make, and each `Algorithm` the source builds. Likewise
+# `Verification::Ed25519` holds nothing and `Parsed::Ed25519` only its key,
+# while the quotes have every mention of each: `ED25519` builds the only one
+# of the first, with `parse_ed25519`, and each of the second has
+# `Ed25519VerifyingKey::verify`.
 only_quoted() {
     local file=$1 quote=$2 pattern=$3
     if [ "$(grep -oE "$pattern" "$file" | wc -l)" != "$(grep -oE "$pattern" "$quote" | wc -l)" ]; then
@@ -72,6 +81,8 @@ only_quoted rind/src/aead/quic.rs "$out/quic.rs" 'Masker(<[^>]*>)? *\{'
 only_quoted rind/src/aead/quic.rs "$out/quic.rs" '\.mask *=[^=]'
 only_quoted rind/src/high/digest.rs "$out/DigestDispatch.rs" '\bOps\b'
 only_quoted rind/src/high/digest.rs "$out/DigestAlgorithm.rs" '= Algorithm \{'
+only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Verification::Ed25519\('
+only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Parsed::Ed25519\('
 
 # The X25519 path, and aarch64's P-256 path, from `high::agreement`'s `Agree`
 # impls down to s2n-bignum's routines, and the SHA-512 family's from
@@ -118,6 +129,18 @@ extract() {
         --start-from crate::aead::quic::HeaderProtectionKey \
         --start-from crate::aead::quic::AlgorithmId \
         --start-from crate::mid::chacha20::ChaCha20::new \
+        --start-from crate::high::ed25519::Ed25519VerifyingKey::from_bytes \
+        --start-from crate::high::ed25519::Ed25519VerifyingKey::verify \
+        --start-from crate::high::ed25519::Ed25519VerifyingKey::as_bytes \
+        --start-from crate::high::ed25519::Ed25519SigningKey::generate \
+        --start-from crate::high::ed25519::Ed25519SigningKey::from_bytes \
+        --start-from crate::high::ed25519::Ed25519SigningKey::sign \
+        --start-from crate::high::ed25519::Ed25519SigningKey::public_key \
+        --start-from crate::high::signature::Ed25519KeyPair::generate \
+        --start-from crate::high::signature::Ed25519KeyPair::from_seed_and_public_key \
+        --start-from crate::high::signature::Ed25519KeyPair::sign \
+        --start-from '{impl core::convert::AsRef for crate::high::signature::Signature}' \
+        --start-from crate::high::signature::Buffer::copy_from \
         --opaque crate::high::agreement::Ops \
         --opaque crate::aead::quic::Masker \
         --opaque crate::mid::aes \
@@ -156,14 +179,18 @@ extract() {
 extract x86_64 X86_64 \
     --opaque 'crate::mid::p256::_::_' \
     --include crate::low::x86_64::adx_mux::curve25519_x25519 \
-    --include crate::low::x86_64::adx_mux::curve25519_x25519base
+    --include crate::low::x86_64::adx_mux::curve25519_x25519base \
+    --include crate::low::x86_64::adx_mux::edwards25519_decode \
+    --include crate::low::x86_64::adx_mux::edwards25519_scalarmulbase \
+    --include crate::low::x86_64::adx_mux::edwards25519_scalarmuldouble \
+    --include crate::low::x86_64::adx_mux::bignum_madd_n25519
 extract aarch64 Aarch64 \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
     --opaque crate::mid::p256::precomp
 
-for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20; do
+for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 

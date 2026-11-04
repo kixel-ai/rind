@@ -59,13 +59,14 @@ impl<const N: usize> Buffer<N> {
         }
     }
 
+    // `let else` rather than `ok_or(..)?` on the `&mut` span, whose
+    // translation `proofs/` cannot check. The compiled code is the same.
     fn copy_from(bytes: &[u8]) -> Result<Self, Error> {
         let mut buffer = Self::new();
-        buffer
-            .bytes
-            .get_mut(..bytes.len())
-            .ok_or(Error::WrongLength)?
-            .copy_from_slice(bytes);
+        let Some(span) = buffer.bytes.get_mut(..bytes.len()) else {
+            return Err(Error::WrongLength);
+        };
+        span.copy_from_slice(bytes);
         buffer.len = bytes.len();
         Ok(buffer)
     }

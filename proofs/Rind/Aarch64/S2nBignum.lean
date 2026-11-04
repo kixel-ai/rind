@@ -1,5 +1,6 @@
 import Rind.Aarch64.Funs
 import Rind.Spec
+import Rind.Ed25519
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
@@ -43,6 +44,67 @@ https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959e
 axiom bignum_eq_spec (x y : Slice U64) :
     low.aarch64.bignum_eq.bignum_eq x y ⦃ b => b = decide (wordsNat x.val = wordsNat y.val) ⦄
 
+/-! ### Ed25519 -/
+
+/-- `EDWARDS25519_DECODE_ALT_SUBROUTINE_CORRECT`, whose 0 for a valid
+encoding the wrapper returns as `true`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/edwards25519_decode_alt.ml#L1703 -/
+@[step]
+axiom edwards25519_decode_spec (z : Std.Array U64 8#usize) (c : Std.Array U8 32#usize) :
+    low.aarch64.edwards25519_decode.edwards25519_decode z c ⦃ r =>
+      (r.1 = true ↔ edValidEncode (leNat c.val)) ∧
+        (edValidEncode (leNat c.val) → pairNat r.2.val = edModEncodePair (edDecode (leNat c.val))) ⦄
+
+/-- `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_CORRECT`, whose `tables`
+precondition holds because rind's copy of the constant table is s2n-bignum's,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/edwards25519_scalarmulbase_alt.ml#L3870 -/
+@[step]
+axiom edwards25519_scalarmulbase_spec (res : Std.Array U64 8#usize)
+    (scalar : Std.Array U64 4#usize) :
+    low.aarch64.edwards25519_scalarmulbase.edwards25519_scalarmulbase res scalar ⦃ r =>
+      pairNat r.val = edModEncodePair (edPow edB (wordsNat scalar.val)) ⦄
+
+/-- `EDWARDS25519_SCALARMULDOUBLE_ALT_SUBROUTINE_CORRECT`, whose `tables`
+precondition holds because rind's copy of the constant table is s2n-bignum's,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/edwards25519_scalarmuldouble_alt.ml#L8432 -/
+@[step]
+axiom edwards25519_scalarmuldouble_spec (res : Std.Array U64 8#usize)
+    (scalar : Std.Array U64 4#usize) (point : Std.Array U64 8#usize)
+    (bscalar : Std.Array U64 4#usize) :
+    low.aarch64.edwards25519_scalarmuldouble.edwards25519_scalarmuldouble res scalar point
+      bscalar ⦃ r =>
+      ∀ P, edOnCurve P → edModDecodePair (pairNat point.val) = P →
+        pairNat r.val =
+          edModEncodePair (edMul (edPow P (wordsNat scalar.val)) (edPow edB (wordsNat bscalar.val))) ⦄
+
+/-- `BIGNUM_MADD_N25519_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_madd_n25519_alt.ml#L829 -/
+@[step]
+axiom bignum_madd_n25519_spec (z x y c : Std.Array U64 4#usize) :
+    low.aarch64.bignum_madd_n25519.bignum_madd_n25519 z x y c ⦃ r =>
+      wordsNat r.val = (wordsNat x.val * wordsNat y.val + wordsNat c.val) % n25519 ⦄
+
+/-- `BIGNUM_MOD_N25519_SUBROUTINE_CORRECT`, for the slice's length as `k`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_mod_n25519.ml#L434 -/
+@[step]
+axiom bignum_mod_n25519_spec (z : Std.Array U64 4#usize) (x : Slice U64) :
+    low.aarch64.bignum_mod_n25519.bignum_mod_n25519 z x ⦃ r =>
+      wordsNat r.val = wordsNat x.val % n25519 ⦄
+
+/-- `BIGNUM_NEG_P25519_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_neg_p25519.ml#L90 -/
+@[step]
+axiom bignum_neg_p25519_spec (z x : Std.Array U64 4#usize) :
+    low.aarch64.bignum_neg_p25519.bignum_neg_p25519 z x ⦃ r =>
+      wordsNat x.val ≤ p25519 → wordsNat r.val = (p25519 - wordsNat x.val) % p25519 ⦄
+
+/-- `BIGNUM_LT_SUBROUTINE_CORRECT`, for the slices' lengths as `m` and `n`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_lt.ml#L346 -/
+@[step]
+axiom bignum_cmp_lt_spec (x y : Slice U64) :
+    low.aarch64.bignum_cmp_lt.bignum_cmp_lt x y ⦃ r =>
+      r.val = if wordsNat x.val < wordsNat y.val then 1 else 0 ⦄
+
 /-! ### P-256
 
 rind's aarch64 P-256 runs the `_alt` scalar multiplications under the plain
@@ -56,11 +118,6 @@ def p256RInv : Nat :=
 
 theorem p256RInv_spec : p256RInv < p256 ∧ 2 ^ 256 * p256RInv % p256 = 1 := by
   simp only [p256RInv, p256]; decide
-
-/-- The two coordinates at `xy` as HOL Light's `bignum_pair_from_memory (xy,4)`
-reads them. -/
-def pairNat (xy : List U64) : Nat × Nat :=
-  (wordsNat (xy.take 4), wordsNat ((xy.drop 4).take 4))
 
 /-- `affinepoint_p256 xy P`: `P` is the point whose coordinates are `xy`'s,
 reduced mod `p256` (`modular_decode`),
