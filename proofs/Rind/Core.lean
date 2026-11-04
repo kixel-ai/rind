@@ -29,8 +29,8 @@ def core.option.Option.Insts.CoreOpsTry_traitFromResidualOptionNever.from_residu
   ok none
 
 /-- `getrandom`'s error. -/
-axiom getrandom.error.Error : Type
+opaque getrandom.error.Error : Type
 
 /-- `getrandom::fill`, the system random source. -/
-axiom getrandom.fill :
+opaque getrandom.fill :
   Slice Std.U8 → Result ((core.result.Result Unit getrandom.error.Error) × (Slice Std.U8))

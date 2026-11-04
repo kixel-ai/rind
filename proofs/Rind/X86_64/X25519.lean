@@ -1,8 +1,18 @@
-import Rind.X86_64.Funs
+import Rind.X86_64.S2nBignum
 import Rind.Bytes
 open Aeneas Aeneas.Std Result rind.spec
 
+/-!
+# X25519, proven from rind's public API to s2n-bignum's contracts
+
+The `x25519_*` theorems state what rind's agreement API returns for X25519,
+in terms of `rfcx25519`. `admin/prove` writes the aarch64 proof from this
+file by renaming the target.
+-/
+
 namespace rind.x86_64
+
+/-! ## Byte and limb conversions, `mid::util` -/
 
 theorem le_to_u64x4_loop_spec
     (z : core.iter.adapters.zip.Zip (core.ops.range.Range Std.Usize) (core.slice.iter.ChunksExact Std.U8))
@@ -53,6 +63,7 @@ theorem le_to_u64x4_loop_spec
       simpa [WP.spec_ok] using hF
   · exact ⟨hs, he, hc, h8, hF⟩
 
+@[step]
 theorem le_to_u64x4_spec (b : Std.Array U8 32#usize) :
     mid.util.little_endian_to_u64x4 b ⦃ w => wordsNat w.val = leNat b.val ⦄ := by
   unfold mid.util.little_endian_to_u64x4
@@ -133,6 +144,7 @@ theorem u64x4_to_le_loop_spec
       simpa [WP.spec_ok] using hr
   · exact ⟨hV, hi, hk, hr⟩
 
+@[step]
 theorem u64x4_to_le_spec (v : Std.Array U64 4#usize) :
     mid.util.u64x4_to_little_endian v ⦃ b => leNat b.val = wordsNat v.val ⦄ := by
   unfold mid.util.u64x4_to_little_endian
@@ -149,3 +161,150 @@ theorem u64x4_to_le_spec (v : Std.Array U64 4#usize) :
     intro w _
     exact leNat_toLEBytes w
   all_goals simp [iter_post, iter_post1, s_post, Array.val_to_slice]
+
+@[step]
+theorem le_slice_to_u64x4_spec (s : Slice U8) :
+    mid.util.little_endian_slice_to_u64x4 s ⦃ o =>
+      if s.length = 32 then ∃ w, o = some w ∧ wordsNat w.val = leNat s.val else o = none ⦄ := by
+  unfold mid.util.little_endian_slice_to_u64x4
+  step*
+  rcases r with a | _
+  · obtain ⟨ha, hl⟩ := r_post
+    simp only [core.result.Result.ok, core.option.Option.Insts.CoreOpsTry_traitTry.branch]
+    step*
+  · simp [core.result.Result.ok, core.option.Option.Insts.CoreOpsTry_traitTry.branch,
+      core.option.Option.Insts.CoreOpsTry_traitFromResidualOptionNever.from_residual, r_post]
+
+/-! ## `mid::x25519` -/
+
+@[step]
+theorem public_key_spec (h : Runs) (k : mid.x25519.PrivateKey) :
+    mid.x25519.PrivateKey.public_key k ⦃ pk => wordsNat pk.val = rfcx25519 (wordsNat k.val) 9 ⦄ := by
+  unfold mid.x25519.PrivateKey.public_key low.ct.into_public
+  step*
+
+@[step]
+theorem as_bytes_spec (h : Runs) (pk : mid.x25519.PublicKey) :
+    mid.x25519.PublicKey.as_bytes pk ⦃ b => leNat b.val = wordsNat pk.val ⦄ := by
+  unfold mid.x25519.PublicKey.as_bytes
+  step*
+
+@[step]
+theorem try_from_slice_spec (h : Runs) (b : Slice U8) :
+    mid.x25519.PublicKey.try_from_slice b ⦃ r =>
+      if b.length = 32 then ∃ pk, r = .Ok pk ∧ wordsNat pk.val = leNat b.val
+      else r = .Err (.KeyRejected .WrongLength) ⦄ := by
+  unfold mid.x25519.PublicKey.try_from_slice
+  step
+  step as ⟨o, ho⟩
+  simp only [core.option.Option.map,
+    P.Insts.CoreOpsFunctionFnOnceTupleArrayU644PublicKey.call_once, mid.x25519.PublicKey.constructor,
+    error.Error.Insts.CoreConvertFromKeyFormatError.from, core.option.Option.ok_or]
+  split_ifs at ho with hb
+  · obtain ⟨w, rfl, hw⟩ := ho
+    simp [hb, hw]
+  · subst ho
+    simp [hb]
+
+theorem wordsNat_ZERO : wordsNat mid.x25519.ZERO.val = 0 := by
+  unfold mid.x25519.ZERO
+  simp [wordsNat, Array.repeat, Nat.ofDigits]
+
+@[step]
+theorem diffie_hellman_spec (h : Runs) (k : mid.x25519.PrivateKey) (peer : mid.x25519.PublicKey) :
+    mid.x25519.PrivateKey.diffie_hellman k peer ⦃ r =>
+      if rfcx25519 (wordsNat k.val) (wordsNat peer.val) = 0 then r = .Err (.KeyRejected .SmallOrder)
+      else ∃ s, r = .Ok s ∧ leNat s.val = rfcx25519 (wordsNat k.val) (wordsNat peer.val) ⦄ := by
+  unfold mid.x25519.PrivateKey.diffie_hellman low.ct.into_public
+  step*
+  · have hz : wordsNat s1.val = 0 := by rw [s1_post, Array.val_to_slice, wordsNat_ZERO]
+    rw [s_post, Array.val_to_slice, res1_post, hz] at b1_post
+    simp only [error.Error.Insts.CoreConvertFromKeyFormatError.from]
+    simp_all
+  · have hz : wordsNat s1.val = 0 := by rw [s1_post, Array.val_to_slice, wordsNat_ZERO]
+    rw [s_post, Array.val_to_slice, res1_post, hz] at b1_post
+    simp_all
+
+/-! ## The agreement API, `high::agreement` -/
+
+/-- An X25519 key's public key: the u-coordinate of its scalar times the base
+point, as RFC 7748's 32 little-endian bytes. -/
+theorem x25519_public_key (h : Runs) (k : mid.x25519.PrivateKey) :
+    (do
+      let pk ← high.agreement.PrivateKey.public_key (.X25519 k)
+      high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
+      b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.val) 9 ⦄ := by
+  unfold high.agreement.PrivateKey.public_key high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
+  step as ⟨pk, hpk⟩
+  step as ⟨a, ha⟩
+  have hlen : a.to_slice.len.val = 32 := by simp
+  step as ⟨sb, hs, hsl, hback⟩
+  obtain ⟨s, back⟩ := sb
+  simp only at hs hsl hback ⊢
+  step as ⟨x, hx⟩
+  step as ⟨b, hb, hbl⟩
+  have ha32 : (a.val).length = 32 := a.property
+  have hz : (Array.repeat 133#usize 0#u8).val.length = 133 := (Array.repeat 133#usize 0#u8).property
+  refine ⟨by rw [hbl, hlen], ?_⟩
+  have := take_setSlice! (Array.repeat 133#usize 0#u8).val a.val 0 (by omega)
+  rw [hb, Array.val_to_slice, hback, hx, Array.val_to_slice, hlen, List.slice]
+  simp only [ha32, Nat.zero_add, List.take_zero, List.nil_append] at this
+  simp only [List.drop_zero, Nat.sub_zero, this, ha, hpk]
+
+/-- An X25519 agreement with the peer's encoded public key: refused unless it
+is 32 bytes, refused for the all-zero output of a small-order point, and
+otherwise RFC 7748's X25519 of this key's scalar and the peer's u-coordinate. -/
+theorem x25519_agree (h : Runs) (k : mid.x25519.PrivateKey) (peer : Slice U8) :
+    high.agreement.PrivateKey.agree (.X25519 k) peer ⦃ r =>
+      if peer.length = 32 then
+        if rfcx25519 (wordsNat k.val) (leNat peer.val) = 0 then
+          r = .Err (.KeyRejected .SmallOrder)
+        else ∃ s, r = .Ok (.X25519 s) ∧ leNat s.val = rfcx25519 (wordsNat k.val) (leNat peer.val)
+      else r = .Err (.KeyRejected .WrongLength) ⦄ := by
+  unfold high.agreement.PrivateKey.agree
+  step as ⟨r, hr⟩
+  by_cases hp : peer.length = 32
+  · simp only [hp, ↓reduceIte] at hr ⊢
+    obtain ⟨pk, rfl, hpk⟩ := hr
+    simp only [core.result.Result.Insts.CoreOpsTry.branch]
+    step as ⟨r1, hr1⟩
+    rw [hpk] at hr1
+    split_ifs at hr1 ⊢ with hz
+    · subst hr1
+      simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
+    · obtain ⟨sec, rfl, hsec⟩ := hr1
+      simp [hsec]
+  · simp only [hp, ↓reduceIte] at hr ⊢
+    subst hr
+    simp [core.result.Result.Insts.CoreOpsTry.branch,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
+
+/-- The shared secret's bytes are the ones `x25519_agree` states. -/
+theorem x25519_shared_secret (s : mid.x25519.SharedSecret) :
+    high.agreement.SharedSecret.Insts.CoreConvertAsRefSliceU8.as_ref (.X25519 s) ⦃ b =>
+      b.val = s.val ⦄ := by
+  simp [high.agreement.SharedSecret.Insts.CoreConvertAsRefSliceU8.as_ref, Array.val_to_slice]
+
+/-- A generated X25519 key's scalar is the 32 bytes the random source drew,
+read little-endian, and a failed draw is refused. The draw itself is outside
+the functional spec. -/
+theorem x25519_generate (h : Runs) (r : core.result.Result Unit getrandom.error.Error)
+    (out : Slice U8) (hout : out.length = 32)
+    (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) :
+    high.agreement.PrivateKey.generate high.agreement.X25519 ⦃ key =>
+      match r with
+      | .Ok _ => ∃ k, key = core.result.Result.Ok (high.agreement.Private.X25519 k) ∧
+          wordsNat k.val = leNat out.val
+      | .Err _ => key = core.result.Result.Err error.Error.RngFailed ⦄ := by
+  unfold high.agreement.PrivateKey.generate high.agreement.X25519 mid.x25519.PrivateKey.new_random
+    mid.rng.SystemRandom.Insts.RindMidRngRandomSource.fill low.ct.into_secret
+  rcases r with _ | e <;> simp only [Array.to_slice_mut, lift] <;> step <;> rw [hfill]
+  · simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch]
+    have hfrom : ((Array.repeat 32#usize 0#u8).from_slice out).val = out.val := by
+      simp [Array.from_slice, hout]
+    step as ⟨k, hk⟩
+    simp [hk, hfrom]
+  · simp [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch,
+      mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
+

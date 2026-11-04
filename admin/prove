@@ -3,6 +3,10 @@
 # the translation differs from the committed `proofs/Rind/<Arch>/{Types,Funs}.lean`,
 # then checks every proof in `proofs/`.
 #
+# Each target's translation is its own namespace, but they share global names,
+# so no Lean module imports both. The aarch64 X25519 proof is the x86_64 one
+# with the target renamed, and is checked to be.
+#
 # Usage: admin/prove [--write]
 #
 # `--write` replaces the committed translation instead of comparing, for a
@@ -55,6 +59,14 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base
 extract aarch64 Aarch64
+
+sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' proofs/Rind/X86_64/X25519.lean >"$out/X25519.lean"
+if ((write)); then
+    cp "$out/X25519.lean" proofs/Rind/Aarch64/X25519.lean
+elif ! diff -u proofs/Rind/Aarch64/X25519.lean "$out/X25519.lean" >&2; then
+    echo "admin/prove: proofs/Rind/Aarch64/X25519.lean is not proofs/Rind/X86_64/X25519.lean for aarch64; run admin/prove --write" >&2
+    exit 1
+fi
 
 cd proofs
 lake exe cache get

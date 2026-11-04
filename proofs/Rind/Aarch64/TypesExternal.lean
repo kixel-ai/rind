@@ -10,6 +10,6 @@ set_option linter.dupNamespace false
 namespace rind.aarch64
 
 /-- The entry guard every operation holds, which changes no value. -/
-axiom low.entry.Entry : Type
+opaque low.entry.Entry : Type
 
 end rind.aarch64
