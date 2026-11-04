@@ -9,6 +9,8 @@
 //! RFC 8439, Wycheproof, aws-lc-rs, and separate ChaCha20 and Poly1305
 //! passes.
 
+use crate::low::ct_equal;
+
 /// Encrypts `inout` in place, returning the tag over `aad` and the ciphertext.
 pub(crate) fn seal(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
     let mut data = Data::new(key, nonce);
@@ -20,14 +22,19 @@ pub(crate) fn seal(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8
     data.tag()
 }
 
-/// Decrypts `inout` in place, returning the tag over `aad` and the
-/// ciphertext, which the caller checks.
-pub(crate) fn open(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
+/// Decrypts `inout` in place, returning whether `tag` is right.
+pub(crate) fn open(
+    key: &[u8; 32],
+    nonce: &[u8; 12],
+    aad: &[u8],
+    inout: &mut [u8],
+    tag: &[u8; 16],
+) -> bool {
     let mut data = Data::new(key, nonce);
     let ptr = inout.as_mut_ptr();
     // SAFETY: as in `seal`.
     unsafe { chacha20_poly1305_open(ptr, ptr, inout.len(), aad.as_ptr(), aad.len(), &mut data) };
-    data.tag()
+    ct_equal(&data.tag(), tag)
 }
 
 /// The routines' argument block: aws-lc's `chacha20_poly1305_seal_data`,
@@ -147,9 +154,11 @@ mod tests {
             ct::public_slice(&ours);
             assert_eq!(ours_tag, tag, "seal tag, {len} bytes, {aad_len} of AAD");
             assert_eq!(ours, sealed, "seal, {len} bytes, {aad_len} of AAD");
-            let ours_tag = ct::into_public(open(&key, &nonce, aad, &mut ours));
+            assert!(
+                ct::into_public(open(&key, &nonce, aad, &mut ours, &tag)),
+                "open tag, {len} bytes, {aad_len} of AAD"
+            );
             ct::public_slice(&ours);
-            assert_eq!(ours_tag, tag, "open tag, {len} bytes, {aad_len} of AAD");
             assert_eq!(ours, input[..len], "open, {len} bytes, {aad_len} of AAD");
         }
     }

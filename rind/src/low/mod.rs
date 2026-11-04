@@ -19,7 +19,7 @@ mod generic {
     pub(crate) mod chacha20;
     // Where no one-pass routine runs, and in aarch64 tests to check it
     // against.
-    #[cfg(any(target_arch = "arm", target_arch = "x86_64", test))]
+    #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
     pub(crate) mod chacha20poly1305;
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
@@ -286,8 +286,7 @@ cfg_if::cfg_if! {
         pub(crate) use arm::ct_qemu;
         pub(crate) use arm::ghashv8_armx::GhashTable;
         pub(crate) use arm::chacha20;
-        pub(crate) use generic::chacha20poly1305;
-        pub(crate) use arm::poly1305;
+        pub(crate) use arm::chacha20poly1305;
         pub(crate) use arm::bignum_eq::bignum_eq;
         pub(crate) use arm::curve25519::{curve25519_x25519, curve25519_x25519base};
         pub(crate) use arm::mont::{mont_mul, mont_sqr};
@@ -319,7 +318,7 @@ cfg_if::cfg_if! {
         };
         // SHA-1 and SHA-256 use the crypto extension where present, else rind's
         // portable SHA, since libcrux has no SHA-1 and rind's SHA-256 is faster
-        // than libcrux's. SHA-512 is aws-lc's, NEON or scalar.
+        // than libcrux's. SHA-512 is aws-lc's with NEON, else HACL*'s.
         pub(crate) use generic::mlkem::{mlkem_compress_d4, mlkem_compress_d10, mlkem_frombytes, mlkem_unpack};
         pub(crate) use generic::mlkem_poly::{
             mlkem_basemul_k3, mlkem_intt, mlkem_mulcache_compute, mlkem_ntt, mlkem_reduce,

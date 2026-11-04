@@ -32,4 +32,3 @@ Decided with the maintainer on 2026-11-03, after the [benchmark report](/quest/m
 - [The hash and KDF glue is proven](/quest/m3/verified/hash-glue.md) - SHA padding, HMAC, HKDF, PBKDF2, and the constant-time compare
 - [SHA-256 block functions are proven](/quest/m3/verified/sha256-block.md) - Vale on x86_64 and a proof or switch on aarch64
 - [x86_64 AES-GCM runs a proven AEAD](/quest/m3/verified/aes-gcm-vale.md) - HACL*'s Vale AES-GCM if it is fast enough
-- [armv7 ChaCha20-Poly1305 and SHA-512 run proven code where it is fast enough](/quest/m3/verified/armv7-libcrux.md) - libcrux on armv7

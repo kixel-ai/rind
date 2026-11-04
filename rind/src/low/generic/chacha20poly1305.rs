@@ -12,12 +12,17 @@ pub(crate) fn seal(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8
     cipher(key, nonce, aad, inout, true)
 }
 
-/// Decrypts `inout` in place, returning the tag over `aad` and the
-/// ciphertext, which the caller checks.
+/// Decrypts `inout` in place, returning whether `tag` is right.
 // aarch64 tests compare only `seal` with the one-pass routine.
-#[cfg(any(target_arch = "arm", target_arch = "x86_64"))]
-pub(crate) fn open(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
-    cipher(key, nonce, aad, inout, false)
+#[cfg(target_arch = "x86_64")]
+pub(crate) fn open(
+    key: &[u8; 32],
+    nonce: &[u8; 12],
+    aad: &[u8],
+    inout: &mut [u8],
+    tag: &[u8; 16],
+) -> bool {
+    crate::low::ct_equal(&cipher(key, nonce, aad, inout, false), tag)
 }
 
 fn cipher(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8], seal: bool) -> [u8; 16] {

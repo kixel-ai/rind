@@ -3,13 +3,15 @@
 //! SHA-1 and SHA-256 compression with the AArch32 crypto extension where the
 //! CPU has it, using aws-lc's `sha1-armv4-large` and `sha256-armv4` routines,
 //! and rind's portable code otherwise. SHA-512 compression with aws-lc's
-//! `sha512-armv4` routines: NEON where the CPU has it, and scalar code
-//! otherwise.
+//! `sha512-armv4` NEON routine where the CPU has NEON, and HACL*'s verified
+//! `Hacl_Hash_SHA2`, as libcrux-sha2 ships it, otherwise.
 //!
 //! The assembly is aws-lc's, imported by `admin/import-aws-lc`. It is not
 //! formally verified: its correctness rests on its use and testing in OpenSSL,
 //! BoringSSL, and aws-lc, and on rind's tests of it against the portable code,
-//! CAVP, and aws-lc-rs.
+//! HACL*, CAVP, and aws-lc-rs.
+
+use libcrux_sha2::hacl::sha512_update_nblocks;
 
 use super::cpu::{HaveCryptoExt, HaveNeon};
 use crate::low::generic;
@@ -20,9 +22,6 @@ unsafe extern "C" {
 
     #[link_name = aws_lc_symbol!("sha256_block_data_order_hw")]
     fn sha256_block_data_order_hw(state: *mut [u32; 8], data: *const u8, blocks: usize);
-
-    #[link_name = aws_lc_symbol!("sha512_block_data_order_nohw")]
-    fn sha512_block_data_order_nohw(state: *mut [u64; 8], data: *const u8, blocks: usize);
 
     #[link_name = aws_lc_symbol!("sha512_block_data_order_neon")]
     fn sha512_block_data_order_neon(state: *mut [u64; 8], data: *const u8, blocks: usize);
@@ -39,7 +38,6 @@ core::arch::global_asm!(
     ".fpu vfpv3",
     sha1_block_data_order_hw = sym sha1_block_data_order_hw,
     sha256_block_data_order_hw = sym sha256_block_data_order_hw,
-    sha512_block_data_order_nohw = sym sha512_block_data_order_nohw,
     sha512_block_data_order_neon = sym sha512_block_data_order_neon,
 );
 
@@ -80,18 +78,17 @@ pub(crate) fn sha256_compress_padded(state: &mut [u32; 8], message: &[u8], lengt
 
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
     debug_assert!(blocks.len().is_multiple_of(128));
-    // Both routines run their loop at least once, so zero blocks would read
-    // past `blocks`.
-    if blocks.is_empty() {
-        return;
-    }
-    let (data, num) = (blocks.as_ptr(), blocks.len() / 128);
     match HaveNeon::check() {
-        // SAFETY: `blocks` is `num` readable blocks, and the token proves the
-        // CPU has NEON.
-        Some(_) => unsafe { sha512_block_data_order_neon(state, data, num) },
-        // SAFETY: `blocks` is `num` readable blocks.
-        None => unsafe { sha512_block_data_order_nohw(state, data, num) },
+        // The routine runs its loop at least once, so zero blocks would read
+        // past `blocks`.
+        Some(_) if !blocks.is_empty() => {
+            // SAFETY: `blocks` is `blocks.len() / 128` readable blocks, and
+            // the token proves the CPU has NEON.
+            unsafe { sha512_block_data_order_neon(state, blocks.as_ptr(), blocks.len() / 128) }
+        }
+        Some(_) => {}
+        // `usize` is 32 bits here, so the length fits.
+        None => sha512_update_nblocks(blocks.len() as u32, blocks, state),
     }
 }
 
@@ -133,9 +130,9 @@ mod tests {
         }
     }
 
-    // Likewise for SHA-512's two routines, against each other.
+    // Likewise for SHA-512's NEON routine, against HACL*'s.
     #[test]
-    fn sha512_neon_matches_nohw() {
+    fn sha512_neon_matches_hacl() {
         if HaveNeon::check().is_none() {
             return;
         }
@@ -154,11 +151,9 @@ mod tests {
                 0x5be0cd19137e2179,
             ];
             let mut got = want;
+            sha512_update_nblocks(n as u32 * 128, &blocks, &mut want);
             // SAFETY: `blocks` holds at least `n` blocks, and the CPU has NEON.
-            unsafe {
-                sha512_block_data_order_nohw(&mut want, blocks.as_ptr(), n);
-                sha512_block_data_order_neon(&mut got, blocks.as_ptr(), n);
-            }
+            unsafe { sha512_block_data_order_neon(&mut got, blocks.as_ptr(), n) };
             assert_eq!(got, want, "{n} blocks");
         }
     }
