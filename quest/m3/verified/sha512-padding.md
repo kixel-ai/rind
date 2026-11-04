@@ -10,3 +10,7 @@ Planned with the maintainer on 2026-11-03, from [moq-dev/rind#316](https://githu
 
 - Prefer reusing an existing proof (aws-lc's SAW proofs of its own SHA-512, or HACL*'s) by matching that implementation's padding exactly, over writing a new proof.
 - Otherwise, prove rind's padding with a Rust verification tool, and keep the proof in CI.
+
+## Required
+
+- [A Rust proof tool, proven on X25519](/quest/m3/verified/proof-tool.md) - the tool and composition rule this uses
