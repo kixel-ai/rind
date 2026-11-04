@@ -12,8 +12,9 @@ on pull requests that change rind's source or these files.
 
 ## What is proven
 
-X25519 on x86_64 and aarch64, from the agreement API to s2n-bignum's routines,
-in `Rind/X86_64/X25519.lean`, which `admin/prove` also writes for aarch64:
+X25519 on x86_64 and aarch64, from the agreement API's X25519 `Agree` impl to
+s2n-bignum's routines, in `Rind/X86_64/X25519.lean`, which `admin/prove` also
+writes for aarch64:
 
 - `x25519_generate`: the key's scalar is the 32 drawn bytes, read
   little-endian, and a failed draw is refused;
@@ -27,6 +28,10 @@ in `Rind/X86_64/X25519.lean`, which `admin/prove` also writes for aarch64:
 `rfcx25519` is HOL Light's RFC 7748 X25519, clamping and masking included.
 Each theorem assumes `Runs`: rind's CPU-feature checks pass, which no input
 affects. `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
+
+Unproven: `PrivateKey` reaches the `Agree` impl through function pointers
+(`Algorithm`'s `generate` and `Keyed`'s `Ops`), which Aeneas cannot translate,
+so that dispatch is opaque.
 
 ## Layout
 

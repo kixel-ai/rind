@@ -3,9 +3,9 @@ import Rind.Bytes
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
-# X25519, proven from rind's public API to s2n-bignum's contracts
+# X25519, proven from rind's agreement API to s2n-bignum's contracts
 
-The `x25519_*` theorems state what rind's agreement API returns for X25519,
+The `x25519_*` theorems state what the agreement API's X25519 impl returns,
 in terms of `rfcx25519`. `admin/prove` writes the aarch64 proof from this
 file by renaming the target.
 -/
@@ -225,18 +225,24 @@ theorem diffie_hellman_spec (h : Runs) (k : mid.x25519.PrivateKey) (peer : mid.x
     rw [s_post, Array.val_to_slice, res1_post, hz] at b1_post
     simp_all
 
-/-! ## The agreement API, `high::agreement` -/
+/-! ## The agreement API's X25519 impl, `high::agreement`
+
+`PrivateKey` reaches these through function pointers, which Aeneas cannot
+translate, so that dispatch is opaque and these theorems start below it. -/
 
 /-- An X25519 key's public key: the u-coordinate of its scalar times the base
 point, as RFC 7748's 32 little-endian bytes. -/
 theorem x25519_public_key (h : Runs) (k : mid.x25519.PrivateKey) :
     (do
-      let pk ← high.agreement.PrivateKey.public_key (.X25519 k)
+      let pk ← mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_public k
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
       b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.val) 9 ⦄ := by
-  unfold high.agreement.PrivateKey.public_key high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
+  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_public high.agreement.PublicKey.new
+    high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
   step as ⟨pk, hpk⟩
   step as ⟨a, ha⟩
+  step as ⟨sl, hsl⟩
+  subst hsl
   have hlen : a.to_slice.len.val = 32 := by simp
   step as ⟨sb, hs, hsl, hback⟩
   obtain ⟨s, back⟩ := sb
@@ -255,13 +261,13 @@ theorem x25519_public_key (h : Runs) (k : mid.x25519.PrivateKey) :
 is 32 bytes, refused for the all-zero output of a small-order point, and
 otherwise RFC 7748's X25519 of this key's scalar and the peer's u-coordinate. -/
 theorem x25519_agree (h : Runs) (k : mid.x25519.PrivateKey) (peer : Slice U8) :
-    high.agreement.PrivateKey.agree (.X25519 k) peer ⦃ r =>
+    mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.agree k peer ⦃ r =>
       if peer.length = 32 then
         if rfcx25519 (wordsNat k.val) (leNat peer.val) = 0 then
           r = .Err (.KeyRejected .SmallOrder)
         else ∃ s, r = .Ok (.X25519 s) ∧ leNat s.val = rfcx25519 (wordsNat k.val) (leNat peer.val)
       else r = .Err (.KeyRejected .WrongLength) ⦄ := by
-  unfold high.agreement.PrivateKey.agree
+  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.agree
   step as ⟨r, hr⟩
   by_cases hp : peer.length = 32
   · simp only [hp, ↓reduceIte] at hr ⊢
@@ -291,12 +297,11 @@ the functional spec. -/
 theorem x25519_generate (h : Runs) (r : core.result.Result Unit getrandom.error.Error)
     (out : Slice U8) (hout : out.length = 32)
     (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) :
-    high.agreement.PrivateKey.generate high.agreement.X25519 ⦃ key =>
+    mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.random ⦃ key =>
       match r with
-      | .Ok _ => ∃ k, key = core.result.Result.Ok (high.agreement.Private.X25519 k) ∧
-          wordsNat k.val = leNat out.val
+      | .Ok _ => ∃ k, key = core.result.Result.Ok k ∧ wordsNat k.val = leNat out.val
       | .Err _ => key = core.result.Result.Err error.Error.RngFailed ⦄ := by
-  unfold high.agreement.PrivateKey.generate high.agreement.X25519 mid.x25519.PrivateKey.new_random
+  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.random mid.x25519.PrivateKey.new_random
     mid.rng.SystemRandom.Insts.RindMidRngRandomSource.fill low.ct.into_secret
   rcases r with _ | e <;> simp only [Array.to_slice_mut, lift] <;> step <;> rw [hfill]
   · simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch]

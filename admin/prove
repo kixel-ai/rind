@@ -16,12 +16,19 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 out=.tmp/prove
 mkdir -p "$out"
 
-# The X25519 path from rind's public agreement API down to s2n-bignum's
-# routines. `low` is opaque: its routines are inline assembly, whose proven
-# contracts `proofs/Rind/<Arch>/S2nBignum.lean` states. The x86_64 BMI2/ADX
+# The X25519 path from `high::agreement`'s X25519 `Agree` impl down to
+# s2n-bignum's routines. `low` is opaque: its routines are inline assembly,
+# whose proven contracts `proofs/Rind/<Arch>/S2nBignum.lean` states. The x86_64 BMI2/ADX
 # dispatch and the constant-time markers are Rust, so they are translated.
 # The other curves' functions are opaque; their types are kept, since the
 # agreement enums hold them.
+#
+# Aeneas cannot translate function pointers, through which `high::agreement`
+# reaches each curve, so that dispatch is opaque: `Algorithm`, `Ops`, the
+# statics, and `PrivateKey`'s and `Keyed`'s methods. Charon cannot yet name an
+# inherent impl's methods apart from a trait impl's, and an opaque pattern wins
+# a tie, so every impl item there is opaque and the `Agree` impls and
+# `PublicKey`'s and `SharedSecret`'s items are named back in.
 extract() {
     local arch=$1 dir=$2
     shift 2
@@ -34,6 +41,20 @@ extract() {
         --opaque '{impl core::fmt::Debug for _}::fmt' \
         --include 'crate::mid::p521::_::BYTES' \
         --include crate::low::ct \
+        --opaque crate::high::agreement::Algorithm \
+        --opaque crate::high::agreement::Ops \
+        --opaque crate::high::agreement::X25519 \
+        --opaque crate::high::agreement::ECDH_P256 \
+        --opaque crate::high::agreement::ECDH_P384 \
+        --opaque crate::high::agreement::ECDH_P521 \
+        --opaque 'crate::high::agreement::_::_' \
+        --include 'crate::high::agreement::{crate::high::agreement::Agree}::agree' \
+        --include 'crate::high::agreement::_::random' \
+        --include 'crate::high::agreement::_::wrap' \
+        --include 'crate::high::agreement::_::encode_public' \
+        --include 'crate::high::agreement::_::new' \
+        --include 'crate::high::agreement::_::MAX_LEN' \
+        --include 'crate::high::agreement::_::as_ref' \
         "$@" \
         --dest-file "$PWD/../$out/$arch.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
