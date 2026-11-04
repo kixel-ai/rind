@@ -619,4 +619,86 @@ theorem diffie_hellman_spec (h : Runs) (k : mid.p256.PrivateKey) (peer : mid.p25
     · have hbf : b = false := by simpa [hc] using hb
       simp [hbf, hc]
 
+theorem public_from_x962_spec (h : Runs) (bytes : Slice U8) :
+    mid.p256.PublicKey.from_x962_uncompressed bytes ⦃ r =>
+      match bytes.val.head? with
+      | none => r = .Err (.KeyRejected .WrongLength)
+      | some b0 =>
+        if b0 = 4#u8 then
+          if bytes.length = 65 then
+            if p256OnCurve (some (x962Coords bytes.val)) then
+              ∃ pk, r = .Ok pk ∧ p256Represents2 (some (x962Coords bytes.val)) (pairNat pk.point.xy.val)
+            else r = .Err (.KeyRejected .NotOnCurve)
+          else r = .Err (.KeyRejected .WrongLength)
+        else r = .Err (.KeyRejected .Compressed) ⦄ := by
+  unfold mid.p256.PublicKey.from_x962_uncompressed
+  step
+  step with from_x962_spec bytes as ⟨r, hr⟩
+  simp only [core.result.Result.Insts.CoreOpsTry.branch,
+    core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
+  rcases hb : bytes.val.head? with _ | b0
+  · simp only [hb] at hr
+    subst hr
+    simp [core.convert.FromSame]
+  · simp only [hb] at hr ⊢
+    by_cases h4 : b0 = 4#u8 <;> simp only [h4, ↓reduceIte] at hr ⊢
+    · by_cases hl : bytes.length = 65 <;> simp only [hl, ↓reduceIte] at hr ⊢
+      · by_cases hon : p256OnCurve (some (x962Coords bytes.val)) <;> simp only [hon, ↓reduceIte] at hr ⊢
+        · obtain ⟨pt, rfl, hpt⟩ := hr
+          simp [hpt]
+        · subst hr; simp [core.convert.FromSame]
+      · subst hr; simp [core.convert.FromSame]
+    · subst hr; simp [core.convert.FromSame]
+
+/-- P-256 ECDH's outcome, for scalar `k` and the peer's encoded key: refused
+unless it is an X9.62 uncompressed point on the curve, with coordinates below
+`p256`, and otherwise the x-coordinate of `k` times that point, or a fault
+unless that is a finite point on the curve, as it always is for `k` in
+[1, n). -/
+def p256Agreement (k : Nat) (peer : List U8) (r : core.result.Result high.agreement.Secret error.Error) :
+    Prop :=
+  match peer.head? with
+  | none => r = .Err (.KeyRejected .WrongLength)
+  | some b0 =>
+    if b0 = 4#u8 then
+      if peer.length = 65 then
+        if p256OnCurve (some (x962Coords peer)) then
+          match p256Pow (some (x962Coords peer)) k with
+          | some (x, y) =>
+            if p256OnCurve (some (x, y)) then ∃ s, r = .Ok (.P256 s) ∧ beNat s.val = x
+            else r = .Err .Fault
+          | none => r = .Err .Fault
+        else r = .Err (.KeyRejected .NotOnCurve)
+      else r = .Err (.KeyRejected .WrongLength)
+    else r = .Err (.KeyRejected .Compressed)
+
+theorem agree_spec (h : Runs) (k : mid.p256.PrivateKey) (peer : Slice U8) :
+    mid.p256.PrivateKey.Insts.RindHighAgreementAgree.agree k peer ⦃ r =>
+      p256Agreement (wordsNat k.scalar.val) peer.val r ⦄ := by
+  unfold mid.p256.PrivateKey.Insts.RindHighAgreementAgree.agree p256Agreement
+  step with public_from_x962_spec h peer as ⟨r, hr⟩
+  simp only [core.result.Result.Insts.CoreOpsTry.branch,
+    core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
+  rcases hb : peer.val.head? with _ | b0
+  · simp only [hb] at hr
+    subst hr
+    simp [core.convert.FromSame]
+  · simp only [hb] at hr ⊢
+    by_cases h4 : b0 = 4#u8 <;> simp only [h4, ↓reduceIte] at hr ⊢
+    · by_cases hl : peer.length = 65 <;> simp only [hl, ↓reduceIte] at hr ⊢
+      · by_cases hon : p256OnCurve (some (x962Coords peer.val)) <;> simp only [hon, ↓reduceIte] at hr ⊢
+        · obtain ⟨pk, rfl, hpk⟩ := hr
+          simp only
+          step with diffie_hellman_spec h k pk _ hon hpk as ⟨r1, hr1⟩
+          rcases hq : p256Pow (some (x962Coords peer.val)) (wordsNat k.scalar.val) with _ | ⟨x, y⟩ <;>
+            simp only [hq] at hr1 ⊢
+          · subst hr1; simp [core.convert.FromSame]
+          · by_cases hc : p256OnCurve (some (x, y)) <;> simp only [hc, ↓reduceIte] at hr1 ⊢
+            · obtain ⟨s, rfl, hs⟩ := hr1
+              simp [hs]
+            · subst hr1; simp [core.convert.FromSame]
+        · subst hr; simp [core.convert.FromSame]
+      · subst hr; simp [core.convert.FromSame]
+    · subst hr; simp [core.convert.FromSame]
+
 end rind.aarch64
