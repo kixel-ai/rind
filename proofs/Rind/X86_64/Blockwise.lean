@@ -275,4 +275,116 @@ theorem pad_message_spec {N L : Usize} (message : Slice U8) (length : Std.Array 
     simp only [List.append_assoc]
     rw [← List.append_assoc (List.take _ _), List.take_append_drop]
 
+/-- `bw` holds the input `p` that `s` has not absorbed, by `R`, up to a block. -/
+def Buffered {N : Usize} {S : Type} (R : List U8 → S → Prop) (p : List U8)
+    (bw : low.generic.blockwise.Blockwise N) (s : S) : Prop :=
+  bw.used.val ≤ N.val ∧ ∃ q, R q s ∧ q ++ bw.buffer.val.take bw.used.val = p
+
+theorem complete_blocks_spec {C S : Type} {N : Usize}
+    (inst : low.generic.blockwise.Compress C S) (R : List U8 → S → Prop) (bound : Nat)
+    (hC : ∀ p s (b : Slice U8), R p s → b.length % N.val = 0 → p.length + b.length ≤ bound →
+      inst.compress s b ⦃ s' => R (p ++ b.val) s' ⦄)
+    (p : List U8) (bw : low.generic.blockwise.Blockwise N) (bytes : Slice U8) (state : S)
+    (hB : Buffered R p bw state) (hN : 0 < N.val)
+    (hlong : N.val - bw.used.val < bytes.length) (hb : p.length + bytes.length ≤ bound) :
+    low.generic.blockwise.Blockwise.complete_blocks inst bw bytes state ⦃ bw' s' =>
+      Buffered R (p ++ bytes.val) bw' s' ⦄ := by
+  obtain ⟨hu, q, hq, hqp⟩ := hB
+  unfold low.generic.blockwise.Blockwise.complete_blocks
+  apply WP.spec_bind (Pₘ := fun (r : Std.Array U8 N × Slice U8 × S) =>
+    ∃ q', R q' r.2.2 ∧ q' ++ r.2.1.val = p ++ bytes.val ∧ 0 < r.2.1.length)
+  · split
+    · rename_i hpos
+      have hbl : bw.buffer.val.length = N.val := by simp
+      step*
+      all_goals
+        have h2 : s2.val = bw.buffer.val.take bw.used.val ++ head.val := by
+          rw [s2_post, Std.Array.to_slice, Slice.from_val, s_post2, s1_post,
+            setSlice!_eq _ _ _ (by simp only [Slice.length] at head_post; omega),
+            List.drop_eq_nil_of_le (by simp only [Slice.length] at head_post; omega)]
+          simp
+      all_goals
+        have hs2 : s2.val.length = N.val := by
+          have := head_post
+          simp only [Slice.length] at this
+          rw [h2, List.length_append, List.length_take, hbl, this, i_post]; omega
+      · simp only [Slice.length]; rw [hs2, Nat.mod_self]
+      · have hp : p.length = q.length + bw.used.val := by rw [← hqp]; simp; omega
+        simp only [Slice.length] at hb hlong ⊢
+        rw [hs2]; omega
+      · refine ⟨q ++ s2.val, state2_post, ?_, ?_⟩
+        · rw [h2, head_post3, head_post2, ← hqp]
+          simp only [List.append_assoc]
+          rw [List.take_append_drop]
+        · have := head_post1
+          simp only [Slice.length] at this hlong ⊢
+          omega
+    · rename_i hpos
+      have h0 : bw.used.val = 0 := by scalar_tac
+      simp only [WP.spec_ok]
+      refine ⟨q, hq, ?_, by omega⟩
+      rw [← hqp, h0]; simp
+  · rintro ⟨a, bytes1, state1⟩ ⟨q', hq', hqb, hpos⟩
+    simp only at hq' hqb hpos
+    have hl1 : bytes1.len.val = bytes1.length := by simp [Slice.len, Slice.length]
+    have hdm := Nat.div_mul_le_self (bytes1.length - 1) N.val
+    have hmod := Nat.mod_add_div' (bytes1.length - 1) N.val
+    have hlt := Nat.mod_lt (bytes1.length - 1) hN
+    have hlen := congrArg List.length hqb
+    simp only [List.length_append] at hlen
+    step*
+    apply WP.spec_bind (Pₘ := fun st2 => R (q' ++ whole.val) st2)
+    · split
+      · rename_i hb0
+        have : whole.val = [] := by
+          rw [b_post] at hb0; exact List.eq_nil_of_length_eq_zero hb0
+        simp only [this, List.append_nil, WP.spec_ok, hq']
+      · apply hC _ _ _ hq'
+        · rw [whole_post, i3_post]; exact Nat.mul_mod_left _ _
+        · have := whole_post
+          rw [this, i3_post, i2_post, i1_post, hl1]
+          simp only [Slice.length] at *
+          omega
+    · intro st2 hst2
+      step*
+      have hrl : rest.val.length = (bytes1.length - 1) % N.val + 1 := by
+        have := whole_post1
+        rw [i3_post, i2_post, i1_post, hl1] at this
+        simp only [Slice.length] at *
+        omega
+      have hrlen : rest.len.val = rest.val.length := by simp [Slice.len, Slice.length]
+      have hml := Nat.mod_lt (bytes1.length - 1) hN
+      have hal : a.val.length = N.val := by simp
+      refine ⟨?_, q' ++ whole.val, hst2, ?_⟩
+      · show rest.len.val ≤ N.val
+        omega
+      · simp only
+        rw [s_post2, s1_post, setSlice!_eq _ _ _ (by omega), hrlen]
+        simp only [List.take_zero, List.nil_append, Nat.zero_add]
+        rw [List.take_left' rfl, List.append_assoc, whole_post2, whole_post3,
+          List.take_append_drop, hqb]
+
+theorem update_spec {C S : Type} {N : Usize}
+    (inst : low.generic.blockwise.Compress C S) (R : List U8 → S → Prop) (bound : Nat)
+    (hC : ∀ p s (b : Slice U8), R p s → b.length % N.val = 0 → p.length + b.length ≤ bound →
+      inst.compress s b ⦃ s' => R (p ++ b.val) s' ⦄)
+    (p : List U8) (bw : low.generic.blockwise.Blockwise N) (bytes : Slice U8) (state : S)
+    (hB : Buffered R p bw state) (hN : 0 < N.val) (hb : p.length + bytes.length ≤ bound) :
+    low.generic.blockwise.Blockwise.update inst bw bytes state ⦃ bw' s' =>
+      Buffered R (p ++ bytes.val) bw' s' ⦄ := by
+  have hB' := hB
+  obtain ⟨hu, q, hq, hqp⟩ := hB'
+  have hbl : bw.buffer.val.length = N.val := by simp
+  have hl : bytes.len.val = bytes.length := by simp [Slice.len, Slice.length]
+  unfold low.generic.blockwise.Blockwise.update
+  step*
+  case h2 =>
+    exact complete_blocks_spec inst R bound hC p bw bytes state hB hN
+      (by simp only [UScalar.le_equiv] at *; omega) hb
+  · scalar_tac
+  · refine ⟨by scalar_tac, q, hq, ?_⟩
+    simp only
+    rw [s_post2, s1_post, setSlice!_eq _ _ _ (by scalar_tac),
+      List.take_left' (by simp; scalar_tac), ← hqp, List.append_assoc]
+
 end rind.x86_64
