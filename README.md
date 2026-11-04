@@ -192,7 +192,7 @@ verified ✓ AVX SHA-384 and SHA-512.
 
 | Algorithm | x86_64 | no ADX | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|---|
-| AES-GCM | 0.99 BoringSSL ⚡ + Graviola |  | 1.01 HACL* ✓ + rind | 0.95 Graviola | **1.03** aws-lc + rind | 0.82 |
+| AES-GCM | 0.99 BoringSSL ⚡ + Graviola |  | **1.61** HACL* ✓ + rind | 0.95 Graviola | **1.03** aws-lc + rind | 0.82 |
 | AES block, AES-CTR | 1.00 Graviola + aws-lc |  | 1.00 | 0.99 | 1.00 aws-lc | 0.79 |
 | ChaCha20 (header protection) | 0.96 HACL* ✓ + rind |  |  |  |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.01 aws-lc ⚡ |  | 1.00 |  | **1.20** HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | **1.03** HACL* ✓ + Graviola ⚡ |
@@ -219,6 +219,10 @@ verified ✓ AVX SHA-384 and SHA-512.
   words, `bn_mul_mont_gather5`, which fuse a faster gather into the product.
   RSA-2048 signing takes 1.08 of ring's time and 1.04 of aws-lc-rs's, and
   RSA-2056 1.07 of aws-lc-rs's without ADX and 1.03 without AVX2.
+- AES-GCM without AVX2: [HACL\*]'s Vale AES-GCM runs its own key expansion
+  and GHASH key setup, which its proof assumes, so AES-128-GCM key setup
+  takes 1.61 of aws-lc-rs's time (201 ns to 125) in [run 41763960104], on an
+  EPYC 9V45. Sealing and opening take 0.83-1.03 of its time.
 - P-256 without ADX: verification runs s2n-bignum's verified routines, 1.05 of
   aws-lc's `ecp_nistz256`, within the 10% rind accepts for verified code.
 - ChaCha20-Poly1305 without AES-NI and on SSE2, which lack SSE4.1: rind runs
@@ -317,6 +321,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [run 41572396019]: https://github.com/moq-dev/rind/actions/runs/41572396019
 [run 41550703300]: https://github.com/moq-dev/rind/actions/runs/41550703300
+[run 41763960104]: https://github.com/moq-dev/rind/actions/runs/41763960104
 [run 41585945720]: https://github.com/moq-dev/rind/actions/runs/41585945720
 [run 41657617706]: https://github.com/moq-dev/rind/actions/runs/41657617706
 [run 41678532920]: https://github.com/moq-dev/rind/actions/runs/41678532920
