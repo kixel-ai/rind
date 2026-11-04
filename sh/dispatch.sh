@@ -61,6 +61,10 @@ declare -A scope=(
     [inplace]='^(rind/src/low/|admin/parse-asm/)'
     # COMPATIBILITY.md is generated from the CPU scans.
     [compat]='^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))'
+    # BENCHMARKS.md is generated from the results and the verified-code table.
+    [bench]='^(BENCHMARKS\.md$|benchmarks/|admin/bench-report)'
+    # admin/build-cost builds these against rind's API, so they break with it.
+    [fixtures]='^(rind/|rind-rustls/|Cargo\.toml$|admin/build-cost-fixtures/(rind|rustls)/)'
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
@@ -84,6 +88,8 @@ declare -A tools=(
     [cross]='cargo'
     [inplace]='python3'
     [compat]='python3'
+    [bench]='python3'
+    [fixtures]='cargo'
     [quest]='quest'
     [gh]='actionlint yq jq'
     [hooks]='shellcheck'
@@ -95,7 +101,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs cross deny license inplace compat quest gh hooks shell nix) ;;
+    check) modules=(rs cross deny license inplace compat bench fixtures quest gh hooks shell nix) ;;
     fix) modules=(rs compat nix) ;;
 esac
 
@@ -188,6 +194,15 @@ for module in "${selected[@]}"; do
         check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
         check:compat) python3 admin/x86-cpu markdown-table | diff -u COMPATIBILITY.md - ;;
         fix:compat) python3 admin/x86-cpu markdown-table >COMPATIBILITY.md ;;
+        check:bench)
+            python3 admin/bench-report-test
+            python3 admin/bench-report render --check
+            ;;
+        # Each fixture is its own workspace and resolves its own lockfile.
+        check:fixtures)
+            cargo check --manifest-path admin/build-cost-fixtures/rind/Cargo.toml --target-dir target
+            cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind --target-dir target
+            ;;
         check:gh)
             actionlint
             sh/alert.sh check
