@@ -18,6 +18,10 @@ namespace rind.x86_64
 
 /-! ## Bytes and limbs -/
 
+@[simp]
+theorem length_leBytesOf (k n : Nat) : (leBytesOf k n).length = k := by
+  simp [leBytesOf]
+
 theorem leBytesOf_succ (k n : Nat) :
     leBytesOf (k + 1) n = @UScalar.mk UScalarTy.U8 (BitVec.ofNat 8 n) :: leBytesOf k (n / 256) := by
   simp only [leBytesOf, List.range_succ_eq_map, List.map_cons, List.map_map]
@@ -712,5 +716,46 @@ theorem from_seed_spec (h : Runs) (hs : RunsSha512) (seed : Std.Array U8 32#usiz
   · simp_all [List.slice, Array.val_to_slice]
   · rw [hcey, hs3']; rfl
   · rw [point_post, hs3']
+
+/-- `sign` with a key whose private key is `seed`: RFC 8032's signature. -/
+theorem mid_sign_spec (h : Runs) (hs : RunsSha512) (k : mid.ed25519.SigningKey) (seed : List U8)
+    (hk : SeedKey k seed) (msg : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
+    mid.ed25519.SigningKey.sign k msg ⦃ sig => sig.val = ed25519Sign seed msg.val ⦄ := by
+  obtain ⟨-, hks, hkp, hkb, -⟩ := hk
+  unfold mid.ed25519.SigningKey.sign low.ct.into_public mid.ed25519.SigningKey.impl.verifying_key
+    mid.ed25519.VerifyingKey.as_bytes mid.ed25519.Scalar.to_le_bytes
+  step as ⟨s, hs0⟩
+  step as ⟨s1, hs1⟩
+  step with ed25519_digest_spec hs s msg s1 (by simp [Slice.length, hs0, hs1] at *; omega) as ⟨rh, hrh⟩
+  step as ⟨rw', hrw⟩
+  step as ⟨s2, hs2⟩
+  step as ⟨r, hr⟩
+  step as ⟨rb, hrb⟩
+  step with compress_bytes_spec rb _ hrb as ⟨sr, hsr⟩
+  step as ⟨s3, hs3⟩
+  step as ⟨s4, hs4⟩
+  step with ed25519_digest_spec hs s3 s4 msg (by simp [Slice.length, hs3, hs4, hsr] at *; omega)
+    as ⟨kh, hkh⟩
+  step as ⟨k1, hk1⟩
+  step as ⟨S, hS⟩
+  step*
+  · have : a4.val.length = 32 := a4.property
+    simp_all [Slice.length]
+  have hsrl : sr.val.length = 32 := sr.property
+  have ha4l : a4.val.length = 32 := a4.property
+  have hsig : (index_mut_back1 s11).val = sr.val ++ a4.val := by
+    have hz : (Array.repeat 64#usize 0#u8).val = [] ++ List.replicate 64 0#u8 := by simp [Array.repeat]
+    rw [s9_post2, s6_post2, s11_post, s10_post, s8_post, s7_post, hz, Array.val_to_slice,
+      setSlice!_at [] _ _ 0 rfl (by simp [hsrl])]
+    simp only [List.nil_append, Array.val_to_slice]
+    rw [setSlice!_at _ _ _ 32 hsrl (by simp [ha4l, hsrl])]
+    simp [ha4l, hsrl]
+  have ha4 : a4.val = leBytesOf 32 (wordsNat S.val) := by
+    have := leBytesOf_leNat a4.val
+    rw [ha4l, a4_post] at this
+    exact this.symm
+  rw [hsig, ha4, hS, hk1, hkh, hs3, hs4, Array.val_to_slice, Array.val_to_slice, hsr, hkb, hks, hr, hs2,
+    Array.val_to_slice, hrw, hrh, hs0, hs1, Array.val_to_slice, Array.val_to_slice, hkp]
+  simp [ed25519Sign, Std.Array.empty]
 
 end rind.x86_64
