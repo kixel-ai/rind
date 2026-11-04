@@ -14,10 +14,9 @@ Decided with the maintainer on 2026-11-03, after the [benchmark report](/quest/m
   - switch to an existing verified source (s2n-bignum, HACL*/libcrux, fiat-crypto), subject to the ~10% speed rule in `AGENTS.md`;
   - prove rind's own Rust, for example with hax to F* or with Aeneas;
   - accept the gap and document it.
-- Known unproven parts today: the glue around verified cores (SHA padding, HMAC, HKDF, AEAD composition, the ECDSA and RSA protocol layers, P-256 ECDH's Jacobian-to-affine conversion, DER parsing) and the unverified imported assembly (aws-lc's AES-GCM, ChaCha20, P-256 generator multiplication, and RSAZ; mlkem-native's ML-KEM; OpenSSL's Keccak).
+- Known unproven parts today: the glue around verified cores (SHA padding, HMAC, HKDF, AEAD composition, the ECDSA and RSA protocol layers, x86_64's P-256 ECDH Jacobian-to-affine conversion, DER parsing) and the unverified imported assembly (aws-lc's AES-GCM, ChaCha20, P-256 generator multiplication, and RSAZ; mlkem-native's ML-KEM; OpenSSL's Keccak).
 
 ## Required
 
 - [Verification audit](/quest/m3/verified/audit.md) - what is and isn't proven on every path, with a recommended route per gap
 - [SHA-512 padding is proven](/quest/m3/verified/sha512-padding.md) - rind's SHA-512 earns the ✓ its verified block function already has
-- [aarch64 P-256 ECDH is proven end to end](/quest/m3/verified/p256-ecdh.md) - agreement runs s2n-bignum's proven affine-to-affine multiply

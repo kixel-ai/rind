@@ -913,19 +913,19 @@ if __name__ == "__main__":
         parse_file(input, d)
 
     with (
-        open("../../thirdparty/s2n-bignum/arm/p256/p256_montjscalarmul_alt.S") as input,
-        generated("../../rind/src/low/aarch64/p256_montjscalarmul.rs") as output,
+        open("../../thirdparty/s2n-bignum/arm/p256/p256_scalarmul_alt.S") as input,
+        generated("../../rind/src/low/aarch64/p256_scalarmul.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
-            "p256_montjscalarmul_alt",
+            "p256_scalarmul_alt",
             parameter_map=[
                 ("inout", "res.as_mut_ptr() => _"),
                 ("inout", "scalar.as_ptr() => _"),
                 ("inout", "point.as_ptr() => _"),
             ],
-            hoist=["proc", "Lp256_montjscalarmul_alt_p256_montjdouble", "ret"],
-            rust_decl="fn p256_montjscalarmul(res: &mut [u64; 12], scalar: &[u64; 4], point: &[u64; 12])",
+            hoist=["proc", "Lp256_scalarmul_alt_local_p256_montjmixadd", "ret"],
+            rust_decl="fn p256_scalarmul(res: &mut [u64; 8], scalar: &[u64; 4], point: &[u64; 8])",
         )
         parse_file(input, d)
 

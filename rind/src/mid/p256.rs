@@ -107,7 +107,7 @@ impl PrivateKey {
     /// Returns a [`SharedSecret`].  May return an error in fault conditions.
     pub(crate) fn diffie_hellman(&self, peer: &PublicKey) -> Result<SharedSecret, Error> {
         let _entry = low::Entry::new_secret();
-        let result = JacobianMontPoint::multiply(&self.scalar, &peer.point).as_affine();
+        let result = peer.point.multiply(&self.scalar);
         match low::ct::into_public(result.on_curve()) {
             true => Ok(SharedSecret(util::u64x4_to_big_endian(
                 &result.x().demont().0,
@@ -354,6 +354,28 @@ impl AffineMontPoint {
         r
     }
 
+    /// `scalar * self`, by s2n-bignum's `p256_montjscalarmul`.
+    #[cfg(not(target_arch = "aarch64"))]
+    fn multiply(&self, scalar: &Scalar) -> Self {
+        JacobianMontPoint::multiply(scalar, self).as_affine()
+    }
+
+    /// `scalar * self`, by s2n-bignum's `p256_scalarmul`.
+    ///
+    /// Its proof covers the aarch64 routine from affine input to affine
+    /// output, inversion included, for any scalar and a point on the curve,
+    /// which `self` is. It takes and returns plain coordinates, the result
+    /// proven only mod p, which `as_mont` reduces.
+    #[cfg(target_arch = "aarch64")]
+    fn multiply(&self, scalar: &Scalar) -> Self {
+        let point = Self::from_xy(self.x().demont(), self.y().demont());
+        let mut xy = [0; 8];
+        low::p256_scalarmul(&mut xy, &scalar.0, &point.xy);
+        let x = FieldElement(xy[Self::X].try_into().unwrap());
+        let y = FieldElement(xy[Self::Y].try_into().unwrap());
+        Self::from_xy(x.as_mont(), y.as_mont())
+    }
+
     /// `scalar * G`, by aws-lc's routines over the generator table.
     #[cfg(target_arch = "x86_64")]
     fn base_multiply(scalar: &Scalar) -> Self {
@@ -433,6 +455,7 @@ impl JacobianMontPoint {
     }
 
     /// `scalar * point`, by s2n-bignum's `p256_montjscalarmul`.
+    #[cfg(not(target_arch = "aarch64"))]
     fn multiply(scalar: &Scalar, point: &AffineMontPoint) -> Self {
         let mut r = Self::zero();
         low::p256_montjscalarmul(&mut r.xyz, &scalar.0, &Self::from_affine(point).xyz);
@@ -516,6 +539,8 @@ impl JacobianMontPoint {
         Self { xyz }
     }
 
+    // aarch64's `p256_scalarmul` makes its result affine itself.
+    #[cfg(any(test, not(target_arch = "aarch64")))]
     fn as_affine(&self) -> AffineMontPoint {
         // recover (x, y) from (x / z ^ 2, x / z ^ 3, z)
         // inversion calculated outside montgomery domain
@@ -657,6 +682,7 @@ struct FieldElement([u64; 4]);
 impl FieldElement {
     const BYTES: usize = 32;
 
+    #[cfg(any(test, not(target_arch = "aarch64")))]
     fn inv(&self) -> Self {
         let mut r = Self::default();
         low::bignum_inv_p256(&mut r.0, &self.0);
@@ -1092,12 +1118,7 @@ mod tests {
                     expected
                 );
             }
-            assert_eq!(
-                JacobianMontPoint::multiply(&scalar, &CURVE_GENERATOR)
-                    .as_affine()
-                    .xy,
-                expected
-            );
+            assert_eq!(CURVE_GENERATOR.multiply(&scalar).xy, expected);
         }
     }
 

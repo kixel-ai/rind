@@ -28,11 +28,11 @@
 # ring, RustCrypto + dalek, and OpenSSL have none: at most their field
 # arithmetic is verified, under unverified point formulas or ladders.
 
-# rind: X25519 and Ed25519 run only s2n-bignum routines; point encoding is
-# rind's Rust. rind pads SHA-512 in its own Rust, so its verified aws-lc block
-# function earns no ✓, and every other operation runs some unverified
-# arithmetic, such as P-256 ECDH's Jacobian-to-affine conversion or the RSA
-# exponentiation.
+# rind: X25519, Ed25519, and aarch64's P-256 ECDH run only s2n-bignum
+# routines; point encoding is rind's Rust. rind pads SHA-512 in its own Rust,
+# so its verified aws-lc block function earns no ✓, and every other operation
+# runs some unverified arithmetic, such as x86_64's P-256 generator
+# multiplication or the RSA exponentiation.
 [[verified]]
 library = "rind"
 operations = ["x25519-ecdh"]
@@ -77,6 +77,13 @@ operations = ["ed25519-verify"]
 arch = "aarch64"
 proof = "s2n-bignum's HOL Light proofs of edwards25519_scalarmuldouble_alt, edwards25519_decode_alt, bignum_mod_n25519, and bignum_neg_p25519, of s2n-bignum's own object code, which rind transliterates"
 link = "https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/edwards25519_scalarmuldouble_alt.ml"
+
+[[verified]]
+library = "rind"
+operations = ["p256-ecdh"]
+arch = "aarch64"
+proof = "s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, over the table admin/p256-precomp writes, p256_scalarmul_alt, and the bignum_tomont_p256 and bignum_demont_p256 that convert their coordinates, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_scalarmul_alt.ml"
 
 # aws-lc-rs: aws-lc 5.12.0 builds X25519 and Ed25519 from s2n-bignum only
 # with assembly on Linux, Apple, and the BSDs; Windows runs unverified C.
