@@ -530,6 +530,7 @@ class RustDriver:
         return_map=[],
         return_value=None,
         assertions=[],
+        allow_inline=False,
         func_attrs="",
         hoist=None,
         several_exits=False,
@@ -542,6 +543,7 @@ class RustDriver:
             return_map=return_map,
             return_value=return_value,
             assertions=assertions,
+            allow_inline=allow_inline,
             func_attrs=func_attrs,
             hoist=hoist,
             several_exits=several_exits,
@@ -625,6 +627,7 @@ class RustFormatter(Dispatcher):
         return_map=[],
         return_value=None,
         assertions=[],
+        allow_inline=False,
         func_attrs="",
         hoist=None,
         several_exits=False,
@@ -637,6 +640,7 @@ class RustFormatter(Dispatcher):
             return_map,
             rust_decl,
             return_value,
+            allow_inline,
             hoist,
             assertions,
             func_attrs,
@@ -848,6 +852,7 @@ use crate::low::macros::*;
                     return_map,
                     rust_decl,
                     return_value,
+                    allow_inline,
                     hoist,
                     assertions,
                     func_attrs,
@@ -877,7 +882,10 @@ use crate::low::macros::*;
 
                 # LLVM costs inline assembly as free, so it would copy a
                 # routine of thousands of instructions into every caller.
-                print("#[inline(never)]", file=self.output)
+                # `allow_inline` is for a routine called in a hot loop whose
+                # call costs more than its copies.
+                if not allow_inline:
+                    print("#[inline(never)]", file=self.output)
 
                 print(
                     """%spub(crate) %s {

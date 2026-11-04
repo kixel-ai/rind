@@ -255,6 +255,8 @@ if __name__ == "__main__":
                 "z.len() == y.len()",
                 "z.len() == m.len()",
             ],
+            # `PosInt::reduce_even` calls it once or twice per bit.
+            allow_inline=True,
         )
         parse_file(input, d)
 
@@ -821,6 +823,8 @@ if __name__ == "__main__":
                 "z.len() == y.len()",
                 "z.len() == m.len()",
             ],
+            # `PosInt::reduce_even` calls it once or twice per bit.
+            allow_inline=True,
         )
         parse_file(input, d)
 
