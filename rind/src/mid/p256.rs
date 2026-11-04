@@ -676,7 +676,6 @@ struct FieldElement([u64; 4]);
 impl FieldElement {
     const BYTES: usize = 32;
 
-    #[cfg(any(test, not(target_arch = "aarch64")))]
     fn inv(&self) -> Self {
         let mut r = Self::default();
         low::bignum_inv_p256(&mut r.0, &self.0);
