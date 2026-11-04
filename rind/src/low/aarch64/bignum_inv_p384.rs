@@ -851,6 +851,7 @@ macro_rules! divstep59 {
 /// x does not need to be reduced modulo p_384, but the output always is.
 /// If the input is divisible (i.e. is 0 or p_384), then there can be no
 /// modular inverse and z = 0 is returned.
+#[inline(never)]
 pub(crate) fn bignum_inv_p384(z: &mut [u64; 6], x: &[u64; 6]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

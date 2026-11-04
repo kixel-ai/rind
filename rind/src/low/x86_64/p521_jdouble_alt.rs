@@ -1818,6 +1818,7 @@ macro_rules! cmsub41_p521 {
 /// A Jacobian triple (x,y,z) represents affine point (x/z^2,y/z^3).
 /// It is assumed that all coordinates of the input point are fully
 /// reduced mod p_521 and that the z coordinate is not zero.
+#[inline(never)]
 pub(crate) fn p521_jdouble_alt(p3: &mut [u64; 27], p1: &[u64; 27]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

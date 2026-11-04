@@ -85,6 +85,7 @@ macro_rules! movbig {
 /// Input x[4]; output z[4]
 ///
 /// Reduction is modulo the group order of the NIST curve P-256.
+#[inline(never)]
 pub(crate) fn bignum_mod_n256(z: &mut [u64; 4], x: &[u64; 4]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

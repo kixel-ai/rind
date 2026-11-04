@@ -395,6 +395,7 @@ macro_rules! double_twice4 {
 ///
 /// Given a scalar n, returns point (X,Y) = n * B where B = (...,4/5) is
 /// the standard basepoint for the edwards25519 (Ed25519) curve.
+#[inline(never)]
 pub(crate) fn edwards25519_scalarmulbase(res: &mut [u64; 8], scalar: &[u64; 4]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

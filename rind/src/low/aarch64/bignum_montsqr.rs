@@ -141,6 +141,7 @@ macro_rules! e8 {
 ///
 /// Does z := (x^2 / 2^{64k}) mod m, assuming x^2 <= 2^{64k} * m, which is
 /// guaranteed in particular if x < m initially (the "intended" case).
+#[inline(never)]
 pub(crate) fn bignum_montsqr(z: &mut [u64], x: &[u64], m: &[u64]) {
     debug_assert!(z.len() == x.len());
     debug_assert!(z.len() == m.len());

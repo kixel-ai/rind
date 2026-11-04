@@ -481,6 +481,7 @@ macro_rules! load_k25519 {
 /// but the conventional usage is that they *are* already reduced.
 /// The scalars can be arbitrary 256-bit numbers but may also be
 /// considered as implicitly reduced modulo the group order.
+#[inline(never)]
 pub(crate) fn edwards25519_scalarmuldouble(
     res: &mut [u64; 8],
     scalar: &[u64; 4],
@@ -3555,7 +3556,7 @@ pub(crate) fn edwards25519_scalarmuldouble(
 // Precomputed table of multiples of generator for edwards25519
 // all in precomputed extended-projective (y-x,x+y,2*d*x*y) triples.
 
-static edwards25519_scalarmuldouble_constant: [u64; 96] = [
+pub(super) static edwards25519_scalarmuldouble_constant: [u64; 96] = [
     // 1 * G
     0x9d103905d740913e,
     0xfd399f05d140beb3,

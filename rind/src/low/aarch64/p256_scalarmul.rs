@@ -87,6 +87,7 @@ macro_rules! movbig {
 /// curve P-256, returns the point (X,Y) = n * P. The input and output
 /// are affine points, and in the case of the point at infinity as
 /// the result, (0,0) is returned.
+#[inline(never)]
 pub(crate) fn p256_scalarmul(res: &mut [u64; 8], scalar: &[u64; 4], point: &[u64; 8]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

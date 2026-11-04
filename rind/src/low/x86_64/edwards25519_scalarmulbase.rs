@@ -366,6 +366,7 @@ macro_rules! double_twice4 {
 ///
 /// Given a scalar n, returns point (X,Y) = n * B where B = (...,4/5) is
 /// the standard basepoint for the edwards25519 (Ed25519) curve.
+#[inline(never)]
 pub(crate) fn edwards25519_scalarmulbase(res: &mut [u64; 8], scalar: &[u64; 4]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
@@ -2341,7 +2342,7 @@ pub(crate) fn edwards25519_scalarmulbase(res: &mut [u64; 8], scalar: &[u64; 4]) 
 // The precomputed data (all read-only).
 // ****************************************************************************
 
-static edwards25519_scalarmulbase_constant: [u64; 6072] = [
+pub(super) static edwards25519_scalarmulbase_constant: [u64; 6072] = [
     // 0 * B = 0 and 2^251 * B in extended-projective coordinates
     // but with Z = 1 assumed and hence left out, so they are (X,Y,T) only.
     0x0000000000000000,

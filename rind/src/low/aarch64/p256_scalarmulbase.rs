@@ -114,6 +114,7 @@ macro_rules! movbig {
 /// the multiple 2^{blocksize * i} * j * P is stored at
 /// tab[8 * (B * i + (j - 1))], considered as uint64_t pointers
 /// or tab + 64 * (B * i + (j - 1)) as byte pointers.
+#[inline(never)]
 pub(crate) fn p256_scalarmulbase(res: &mut [u64; 8], scalar: &[u64; 4], table: &[[u64; 256]; 43]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

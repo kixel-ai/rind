@@ -53,6 +53,7 @@ use crate::low::macros::*;
 ///
 /// All input elements are assumed <= 2^12 and the bts are
 /// assumed to be as computed by mlkem_mulcache_compute.
+#[inline(never)]
 pub(crate) fn mlkem_basemul_k3(
     r: &mut [i16; 256],
     a: &[i16; 768],

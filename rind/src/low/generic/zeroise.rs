@@ -18,6 +18,31 @@ pub(crate) fn zeroise_value<T: Zeroable>(v: &mut T) {
 /// Marker trait for types who have valid all-bits-zero values.
 pub(crate) trait Zeroable {}
 
+/// A `&'static T` that a wiped value may hold: all-bits-zero is `None`.
+///
+/// It is `Some` from construction until the drop that wipes it.
+pub(crate) struct ZeroableRef<T: 'static>(Option<&'static T>);
+
+impl<T> ZeroableRef<T> {
+    pub(crate) const fn new(value: &'static T) -> Self {
+        Self(Some(value))
+    }
+
+    pub(crate) fn get(&self) -> &'static T {
+        self.0.expect("wiped only on drop")
+    }
+}
+
+impl<T> Clone for ZeroableRef<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for ZeroableRef<T> {}
+
+impl<T> Zeroable for ZeroableRef<T> {}
+
 impl Zeroable for u8 {}
 impl Zeroable for i16 {}
 impl Zeroable for u32 {}

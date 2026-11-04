@@ -107,6 +107,7 @@ macro_rules! selectblock_y {
 /// point at infinity (either because the input point was or because the
 /// scalar was a multiple of p_384) then the output is guaranteed to
 /// represent the point at infinity, i.e. to have its z coordinate zero.
+#[inline(never)]
 pub(crate) fn p384_montjscalarmul(res: &mut [u64; 18], scalar: &[u64; 6], point: &[u64; 18]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

@@ -62,6 +62,7 @@ macro_rules! wshort {
 ///
 /// In principle this has a precondition k < 2^58, but obviously that
 /// is always true in practice because of address space limitations
+#[inline(never)]
 pub(crate) fn bignum_ctz(x: &[u64]) -> usize {
     let ret: u64;
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
