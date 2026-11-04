@@ -1,4 +1,5 @@
 import Rind.X86_64.AwsLc
+import Rind.X86_64.DigestDispatch
 import Rind.Bytes
 open Aeneas Aeneas.Std Result rind.spec
 
@@ -483,5 +484,215 @@ theorem digest_new_as_ref (alg : high.digest.Algorithm) (v : Slice U8)
   rw [hb, Array.val_to_slice, hback, hs1, List.slice, List.drop_zero, Nat.sub_zero, hn]
   have := take_setSlice! (Std.Array.repeat 64#usize 0#u8).val v.val 0 (by simp only [Slice.length] at h64; omega)
   simpa using this
+
+/-- `finish_with` from an initial value hashes the message. -/
+theorem finish_initial_spec (h : RunsSha512) (iv : List U64) (st : mid.sha2.Sha512State)
+    (hh : st.h.val = iv) (hn : st.nblocks.val = 0) (data : Slice U8) :
+    mid.sha2.Sha512State.finish_with st data ⦃ r => r.val = sha512Words iv data.val ⦄ := by
+  apply WP.spec_mono (finish_with_spec h st data)
+  intro r hr
+  rw [hr, hh, hn, sha512Words, show pad data.val = [] ++ padAfter 0 data.val from
+    pad_append [] data.val rfl]
+  simp
+
+/-! ## The digest API, `high::digest`, through the modelled dispatch -/
+
+/-- SHA-512 of `data` in one call: `digest(&SHA512, data)`'s bytes. -/
+theorem sha512_digest (h : RunsSha512) (data : Slice U8) :
+    (do
+      let d ← high.digest.digest .SHA512 data
+      high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d) ⦃ b => b.val = sha512 data.val ⦄ := by
+  unfold high.digest.digest high.digest.Algorithm.hash high.hash.Hash.hash.default
+  simp only [high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.initial,
+    high.hash.Sha512State.Insts.RindHighHashHashStateSha512Context.finish_with,
+    high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.ALGORITHM, high.digest.SHA512]
+  step*
+  step with sha512_initial_spec as ⟨st, hh, hn⟩
+  step with finish_initial_spec h _ st hh hn data as ⟨r, hr⟩
+  step as ⟨sl, hsl⟩
+  have hl : sl.length = 64 := by simp [hsl]
+  apply WP.spec_mono (digest_new_as_ref .SHA512 sl 64#usize rfl (by simp [hl]) (by simp [hl]))
+  intro b hb
+  rw [hb, hsl, Array.val_to_slice, hr, sha512]
+
+/-- SHA-384 of `data` in one call: `digest(&SHA384, data)`'s bytes. -/
+theorem sha384_digest (h : RunsSha512) (data : Slice U8) :
+    (do
+      let d ← high.digest.digest .SHA384 data
+      high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d) ⦃ b => b.val = sha384 data.val ⦄ := by
+  unfold high.digest.digest high.digest.Algorithm.hash high.hash.Hash.hash.default
+  simp only [high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.initial,
+    high.hash.Sha384State.Insts.RindHighHashHashStateSha384Context.finish_with,
+    high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.ALGORITHM, high.digest.SHA384]
+  step*
+  step with sha384_initial_spec as ⟨st, hh, hn⟩
+  step with finish_initial_spec h _ st hh hn data as ⟨r, hr⟩
+  step with sha384_truncate_spec as ⟨t, ht⟩
+  step as ⟨sl, hsl⟩
+  have hl : sl.length = 48 := by simp [hsl]
+  apply WP.spec_mono (digest_new_as_ref .SHA384 sl 48#usize rfl (by simp [hl]) (by simp [hl]))
+  intro b hb
+  rw [hb, hsl, Array.val_to_slice, ht, hr, sha384]
+
+/-- SHA-512/256 of `data` in one call: `digest(&SHA512_256, data)`'s bytes. -/
+theorem sha512_256_digest (h : RunsSha512) (data : Slice U8) :
+    (do
+      let d ← high.digest.digest .SHA512_256 data
+      high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d) ⦃ b =>
+      b.val = sha512_256 data.val ⦄ := by
+  unfold high.digest.digest high.digest.Algorithm.hash
+  simp only [high.digest.SHA512_256]
+  step*
+  step with sha512_256_initial_spec as ⟨st, hh, hn⟩
+  step with finish_initial_spec h _ st hh hn data as ⟨r, hr⟩
+  step with sha512_256_truncate_spec as ⟨t, ht⟩
+  apply WP.spec_mono (digest_new_as_ref .SHA512_256 _ 32#usize rfl (by simp) (by simp))
+  intro b hb
+  rw [hb, Array.val_to_slice, ht, hr, sha512_256]
+
+/-- What each SHA-512 family algorithm of the digest API computes. -/
+def sha512Family : high.digest.Algorithm → Option (List U8 → List U8)
+  | .SHA384 => some sha384
+  | .SHA512 => some sha512
+  | .SHA512_256 => some sha512_256
+  | _ => none
+
+/-- A digest context of `algorithm`, in the SHA-512 family, that has hashed `m`. -/
+def ContextHashed (c : high.digest.Context) (algorithm : high.digest.Algorithm) (m : List U8) :
+    Prop :=
+  match c, algorithm with
+  | .Sha384 hs, .SHA384 => Hashed sha384Iv hs.context.inner m
+  | .Sha512 hs, .SHA512 => Hashed sha512Iv hs.context m
+  | .Sha512_256 hs, .SHA512_256 => Hashed sha512_256Iv hs.context.inner m
+  | _, _ => False
+
+/-- `Context::new` starts a context that has hashed nothing. -/
+theorem context_new (algorithm : high.digest.Algorithm) (f : List U8 → List U8)
+    (hf : sha512Family algorithm = some f) :
+    high.digest.Context.new algorithm ⦃ c => ContextHashed c algorithm [] ⦄ := by
+  cases algorithm <;> simp only [sha512Family, reduceCtorEq] at hf <;>
+    simp only [high.digest.Context.new, high.digest.Algorithm.start, high.digest.Hashing.start]
+  · simp only [high.hash.Sha384Context.Insts.RindHighDigestVariant.new,
+      high.hash.Sha384Context.Insts.RindHighDigestVariant.state,
+      high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.new,
+      mid.sha2.Sha384Context.new, mid.sha2.Sha384Context.resume]
+    step with sha384_initial_spec as ⟨st, hh, hn⟩
+    step with resume_spec _ st hh hn as ⟨c, hc⟩
+    simpa [ContextHashed] using hc
+  · simp only [high.hash.Sha512Context.Insts.RindHighDigestVariant.new,
+      high.hash.Sha512Context.Insts.RindHighDigestVariant.state,
+      high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.new,
+      mid.sha2.Sha512Context.new]
+    step with sha512_initial_spec as ⟨st, hh, hn⟩
+    step with resume_spec _ st hh hn as ⟨c, hc⟩
+    simpa [ContextHashed] using hc
+  · simp only [high.digest.Sha512_256Context.Insts.RindHighDigestVariant.new,
+      high.digest.Sha512_256Context.Insts.RindHighDigestVariant.state,
+      mid.sha2.Sha512_256Context.new]
+    step with sha512_256_initial_spec as ⟨st, hh, hn⟩
+    step with resume_spec _ st hh hn as ⟨c, hc⟩
+    simpa [ContextHashed] using hc
+
+/-- `Context::update` adds `data` to what the context has hashed. -/
+theorem context_update (h : RunsSha512) (c : high.digest.Context) (algorithm : high.digest.Algorithm)
+    (m : List U8) (data : Slice U8) (hc : ContextHashed c algorithm m)
+    (hl : m.length + data.length < 2 ^ 64) :
+    high.digest.Context.update c data ⦃ c' => ContextHashed c' algorithm (m ++ data.val) ⦄ := by
+  unfold high.digest.Context.update high.digest.State.update high.digest.Hashing.update
+  rcases c with hs | hs | hs | hs | hs <;> cases algorithm <;> simp only [ContextHashed] at hc ⊢
+  · simp only [high.hash.Sha384Context.Insts.RindHighHashHashContext.update, mid.sha2.Sha384Context.update]
+    step with context_update_spec h _ _ _ data hc hl as ⟨c', hc'⟩
+    simpa [ContextHashed] using hc'
+  · simp only [high.hash.Sha512Context.Insts.RindHighHashHashContext.update]
+    step with context_update_spec h _ _ _ data hc hl as ⟨c', hc'⟩
+    simpa [ContextHashed] using hc'
+  · simp only [high.digest.Sha512_256Context.Insts.RindHighHashHashContext.update,
+      mid.sha2.Sha512_256Context.update]
+    step with context_update_spec h _ _ _ data hc hl as ⟨c', hc'⟩
+    simpa [ContextHashed] using hc'
+
+/-- `Context::finish` returns the digest of what the context has hashed. -/
+theorem context_finish (h : RunsSha512) (c : high.digest.Context) (algorithm : high.digest.Algorithm)
+    (f : List U8 → List U8) (hf : sha512Family algorithm = some f) (m : List U8)
+    (hc : ContextHashed c algorithm m) :
+    (do
+      let d ← high.digest.Context.finish c
+      high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d) ⦃ b => b.val = f m ⦄ := by
+  unfold high.digest.Context.finish high.digest.State.finish high.digest.Hashing.finish
+  rcases c with hs | hs | hs | hs | hs <;> cases algorithm <;>
+    simp only [ContextHashed, sha512Family, Option.some.injEq] at hc hf ⊢ <;> subst hf
+  · simp only [high.hash.Sha384Context.Insts.RindHighHashHashContext.finish, mid.sha2.Sha384Context.finish,
+      high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.ALGORITHM, high.digest.SHA384]
+    step*
+    step with context_finish_spec h _ _ _ hc as ⟨r, hr⟩
+    step with sha384_truncate_spec as ⟨t, ht⟩
+    step as ⟨sl, hsl⟩
+    have hl : sl.length = 48 := by simp [hsl]
+    apply WP.spec_mono (digest_new_as_ref .SHA384 sl 48#usize rfl (by simp [hl]) (by simp [hl]))
+    intro b hb
+    rw [hb, hsl, Array.val_to_slice, ht, hr, sha384]
+  · simp only [high.hash.Sha512Context.Insts.RindHighHashHashContext.finish,
+      high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.ALGORITHM, high.digest.SHA512]
+    step*
+    step with context_finish_spec h _ _ _ hc as ⟨r, hr⟩
+    step as ⟨sl, hsl⟩
+    have hl : sl.length = 64 := by simp [hsl]
+    apply WP.spec_mono (digest_new_as_ref .SHA512 sl 64#usize rfl (by simp [hl]) (by simp [hl]))
+    intro b hb
+    rw [hb, hsl, Array.val_to_slice, hr, sha512]
+  · simp only [high.digest.Sha512_256Context.Insts.RindHighHashHashContext.finish,
+      mid.sha2.Sha512_256Context.finish, high.digest.SHA512_256]
+    step*
+    step with context_finish_spec h _ _ _ hc as ⟨r, hr⟩
+    step with sha512_256_truncate_spec as ⟨t, ht⟩
+    step as ⟨sl, hsl⟩
+    have hl : sl.length = 32 := by simp [hsl]
+    apply WP.spec_mono (digest_new_as_ref .SHA512_256 sl 32#usize rfl (by simp [hl]) (by simp [hl]))
+    intro b hb
+    rw [hb, hsl, Array.val_to_slice, ht, hr, sha512_256]
+
+/-- Updating a context with each chunk in turn adds their concatenation. -/
+theorem context_updates (h : RunsSha512) (algorithm : high.digest.Algorithm)
+    (chunks : List (Slice U8)) (c : high.digest.Context) (m : List U8)
+    (hc : ContextHashed c algorithm m) (hl : m.length + (chunks.flatMap (·.val)).length < 2 ^ 64) :
+    chunks.foldlM high.digest.Context.update c ⦃ c' =>
+      ContextHashed c' algorithm (m ++ chunks.flatMap (·.val)) ⦄ := by
+  induction chunks generalizing c m with
+  | nil =>
+    show (ok c : Result _) ⦃ c' => ContextHashed c' algorithm (m ++ []) ⦄
+    simpa [WP.spec_ok] using hc
+  | cons x xs ih =>
+    simp only [List.foldlM_cons, List.flatMap_cons, List.length_append] at hl ⊢
+    step with context_update h c algorithm m x hc (by simp only [Slice.length]; omega) as ⟨c', hc'⟩
+    apply WP.spec_mono (ih c' _ hc' (by simp only [List.length_append]; omega))
+    intro r hr
+    simpa [List.append_assoc] using hr
+
+/-- The SHA-512 family through a context: `Context::new`, an `update` with each
+of `chunks` in turn, and `finish` return the hash of their concatenation, for
+any message shorter than 2^64 bytes. -/
+theorem sha512_family_context (h : RunsSha512) (algorithm : high.digest.Algorithm)
+    (f : List U8 → List U8) (hf : sha512Family algorithm = some f) (chunks : List (Slice U8))
+    (hl : (chunks.flatMap (·.val)).length < 2 ^ 64) :
+    (do
+      let c ← high.digest.Context.new algorithm
+      let c ← chunks.foldlM high.digest.Context.update c
+      let d ← high.digest.Context.finish c
+      high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d) ⦃ b =>
+      b.val = f (chunks.flatMap (·.val)) ⦄ := by
+  step with context_new algorithm f hf as ⟨c, hc⟩
+  step with context_updates h algorithm chunks c [] hc (by simpa using hl) as ⟨c', hc'⟩
+  simpa using context_finish h c' algorithm f hf _ hc'
+
+/-- The SHA-512 family in one call: `digest`'s bytes are the hash of `data`. -/
+theorem sha512_family_digest (h : RunsSha512) (algorithm : high.digest.Algorithm)
+    (f : List U8 → List U8) (hf : sha512Family algorithm = some f) (data : Slice U8) :
+    (do
+      let d ← high.digest.digest algorithm data
+      high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d) ⦃ b => b.val = f data.val ⦄ := by
+  cases algorithm <;> simp only [sha512Family, reduceCtorEq, Option.some.injEq] at hf <;> subst hf
+  · exact sha384_digest h data
+  · exact sha512_digest h data
+  · exact sha512_256_digest h data
 
 end rind.x86_64
