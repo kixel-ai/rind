@@ -15,5 +15,4 @@ See the [epic](/quest/m1/benchmarks/README.md) for the settled decisions and the
 
 ## Required
 
-- [Benchmarks run on every host for every library](/quest/m1/benchmarks/hosts.md) - the results this renders
 - [Build cost is measured](/quest/m1/benchmarks/build-cost.md) - the build numbers this renders

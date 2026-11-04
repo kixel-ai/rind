@@ -69,6 +69,45 @@
           armv7-cc = pkgs.pkgsCross.armv7l-hf-multiplatform.stdenv.cc;
           armv7-prefix = "${armv7-cc}/bin/${armv7-cc.targetPrefix}";
 
+          armv7-shell = {
+            packages = [
+              (rust-stable.minimal.override {
+                extensions = [ "clippy" ];
+                targets = [
+                  "armv7-unknown-linux-gnueabihf"
+                  "armv7-linux-androideabi"
+                ];
+              })
+              armv7-cc
+              pkgs.qemu-user
+            ];
+
+            env = {
+              CC_armv7_unknown_linux_gnueabihf = "${armv7-prefix}cc";
+              CXX_armv7_unknown_linux_gnueabihf = "${armv7-prefix}c++";
+              AR_armv7_unknown_linux_gnueabihf = "${armv7-prefix}ar";
+              CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER = "${armv7-prefix}cc";
+              # The wrapper links against the store's armhf glibc by absolute
+              # path, so qemu needs no sysroot.
+              CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER = "qemu-arm";
+            };
+          };
+
+          # The tracer `admin/ct-qemu` loads into qemu-arm, built against the
+          # plugin API of the qemu-user the `armv7` shell runs.
+          ct-qemu-plugin = pkgs.stdenv.mkDerivation {
+            name = "ct-qemu-plugin";
+            src = ./admin/ct-qemu-plugin.c;
+            dontUnpack = true;
+            nativeBuildInputs = [ pkgs.pkg-config ];
+            buildInputs = [ pkgs.glib ];
+            buildPhase = ''
+              $CC -O2 -shared -fPIC -Wall -Werror -I${pkgs.qemu-user}/include \
+                $(pkg-config --cflags glib-2.0) -o ct-qemu-plugin.so $src
+            '';
+            installPhase = "install -D ct-qemu-plugin.so $out/lib/ct-qemu-plugin.so";
+          };
+
           # Intel SDE, which `x86-cpu.yml`, `coverage.yml`, `admin/x86-cpu`,
           # and `admin/ct-sde` run to emulate Intel CPU models. Its license allows use and
           # redistribution only unmodified, so its 64-bit launcher runs as
@@ -89,6 +128,25 @@
               }
             }/sde64";
           };
+
+          # `admin/parse-asm` calls cpp, as, and objdump by their Debian names,
+          # as s2n-bignum's Makefiles do. Each maps to the target's tools,
+          # native where the host matches, so the disassembly it reads can't
+          # change unless nixpkgs does.
+          debian-cross-tools =
+            let
+              link = arch: cross: ''
+                ln -s ${cross.stdenv.cc.cc}/bin/${cross.stdenv.cc.targetPrefix}cpp $out/bin/${arch}-linux-gnu-cpp
+                for tool in as objdump; do
+                  ln -s ${cross.stdenv.cc.bintools.bintools}/bin/${cross.stdenv.cc.targetPrefix}$tool $out/bin/${arch}-linux-gnu-$tool
+                done
+              '';
+            in
+            pkgs.runCommand "debian-cross-tools" { } ''
+              mkdir -p $out/bin
+              ${link "x86_64" pkgs.pkgsCross.gnu64}
+              ${link "aarch64" pkgs.pkgsCross.aarch64-multiplatform}
+            '';
 
           # Otherwise cargo exports the host's OpenSSL CA paths, which on
           # Ubuntu lie under the /usr the SDE sandbox replaces, and the tests
@@ -195,33 +253,37 @@
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
             };
 
+            # `admin/regenerate` and the regenerate workflow run in it. A
+            # separate shell because the aarch64 cross compiler, for its cpp,
+            # adds about 500 MB.
+            regenerate = pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override { extensions = [ "rustfmt" ]; })
+                pkgs.git
+                pkgs.python3
+                # OpenSSL's perlasm.
+                pkgs.perl
+                debian-cross-tools
+              ];
+            };
+
             # `just armv7` enters it to lint and test the armv7 build under
             # qemu. A separate shell because the ARM C toolchain, qemu-user,
             # and the armv7 standard libraries add about 700 MB, which every
             # other CI job would download.
-            armv7 = pkgs.mkShell {
-              packages = [
-                (rust-stable.minimal.override {
-                  extensions = [ "clippy" ];
-                  targets = [
-                    "armv7-unknown-linux-gnueabihf"
-                    "armv7-linux-androideabi"
-                  ];
-                })
-                armv7-cc
-                pkgs.qemu-user
-              ];
+            armv7 = pkgs.mkShell armv7-shell;
 
-              env = {
-                CC_armv7_unknown_linux_gnueabihf = "${armv7-prefix}cc";
-                CXX_armv7_unknown_linux_gnueabihf = "${armv7-prefix}c++";
-                AR_armv7_unknown_linux_gnueabihf = "${armv7-prefix}ar";
-                CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER = "${armv7-prefix}cc";
-                # The wrapper links against the store's armhf glibc by absolute
-                # path, so qemu needs no sysroot.
-                CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER = "qemu-arm";
-              };
-            };
+            # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
+            # plugin it adds to the `armv7` shell.
+            ct-qemu = pkgs.mkShell (
+              armv7-shell
+              // {
+                packages = armv7-shell.packages ++ [ pkgs.python3 ];
+                env = armv7-shell.env // {
+                  RIND_CT_QEMU_PLUGIN = "${ct-qemu-plugin}/lib/ct-qemu-plugin.so";
+                };
+              }
+            );
           }
           # `x86-cpu.yml` and `admin/x86-cpu sde-scan` run the tests and
           # `rind-cpuid` under `sde` in it, and `admin/ct-sde` traces them.

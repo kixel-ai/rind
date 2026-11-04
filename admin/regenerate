@@ -5,9 +5,10 @@
 #
 # Usage: admin/regenerate
 #
-# Fetches each upstream shallowly into .tmp/upstream. Needs perl, for
-# OpenSSL's perlasm, and the cross tools admin/parse-asm calls by their Debian
-# names: x86_64-linux-gnu-{cpp,as,objdump} and aarch64-linux-gnu-{cpp,as,objdump}.
+# Fetches each upstream shallowly into .tmp/upstream. Run it in the flake's
+# `regenerate` dev shell, which pins the cross tools admin/parse-asm calls and
+# the perl OpenSSL's perlasm runs on: `nix develop .#regenerate --command
+# admin/regenerate`.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

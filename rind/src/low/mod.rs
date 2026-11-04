@@ -282,6 +282,8 @@ cfg_if::cfg_if! {
         pub(crate) use arm::aes_ctr;
         pub(crate) use arm::aesv8_armx::AesHwKey;
         pub(crate) use arm::cpu::HaveCryptoExt;
+        #[cfg(test)]
+        pub(crate) use arm::ct_qemu;
         pub(crate) use arm::ghashv8_armx::GhashTable;
         pub(crate) use arm::chacha20;
         pub(crate) use generic::chacha20poly1305;

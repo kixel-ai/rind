@@ -18,7 +18,8 @@ to correctly implement the desired mathematical operation.
 
 *Fast*: rind beats or is competitive with other cryptography
 libraries for Rust.  `cargo bench` compares it with aws-lc-rs, *ring*,
-and RustCrypto.
+RustCrypto, Graviola, libcrux, and, with the `__bench_openssl` feature,
+OpenSSL.
 
 *Easy and fast to build*: no C compiler, assembler or other tooling
 needed: just the Rust compiler.  Compiles in seconds.
@@ -111,15 +112,21 @@ Run performance benchmarks:
 cargo bench
 ```
 
+`admin/bench-report collect` runs the report's benchmarks on each benchmark
+host in turn over ssh, skipping any that is busy, and writes their results
+and the hosts' details as JSON under `.tmp/bench-report/`.
+
 With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
 toolchain, and `just check` runs CI's gate over what the branch changed.
 On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
 with NEON alone, and with NEON denied.
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
-constant-time checks under valgrind, and `nix develop .#sde --command
+constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, and SHA extension code valgrind
-cannot run, under Intel SDE.
+cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
+admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
+qemu.
 
 ## Algorithms
 
