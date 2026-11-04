@@ -48,6 +48,11 @@ fi
 # Aeneas cannot translate function pointers, through which `PrivateKey`
 # reaches each curve's `Agree` impl, so the translation starts below that
 # dispatch, and `proofs/Rind/X86_64/Dispatch.lean` models it by hand.
+#
+# Then SHA-1 and SHA-256's padding and finalization, from their `Hash` impls
+# down to the block functions, which are opaque, and HMAC's keyed states over
+# any hash. `high::digest` holds function pointers too, so it is opaque, and
+# `proofs/Rind/X86_64/Digest.lean` models what the rest calls of it.
 extract() {
     local arch=$1 dir=$2
     shift 2
@@ -60,13 +65,23 @@ extract() {
         --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}' \
         --start-from crate::high::agreement::PrivateKey \
         --start-from crate::high::agreement::AlgorithmId \
+        --start-from '{impl crate::high::hash::Hash for crate::high::hash::LegacySha1}' \
+        --start-from '{impl crate::high::hash::Hash for crate::high::hash::Sha256}' \
+        --start-from '{impl crate::high::hash::HashState for crate::high::hash::Sha1State}' \
+        --start-from '{impl crate::high::hash::HashState for crate::high::hash::Sha256State}' \
+        --start-from '{impl crate::high::hash::HashContext for crate::high::hash::Sha1Context}' \
+        --start-from '{impl crate::high::hash::HashContext for crate::high::hash::Sha256Context}' \
+        --start-from 'crate::high::hmac::HmacKey::_' \
+        --start-from 'crate::high::hmac::Hmac::_' \
         --opaque crate::high::agreement::Ops \
+        --opaque crate::high::digest \
         --opaque crate::low \
         --opaque 'crate::mid::p256::_::_' \
         --opaque 'crate::mid::p384::_::_' \
         --opaque 'crate::mid::p521::_::_' \
         --include 'crate::mid::p521::_::BYTES' \
         --include crate::low::ct \
+        --include crate::low::generic::blockwise \
         "$@" \
         --dest-file "$PWD/../$out/$arch.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
@@ -79,10 +94,14 @@ extract() {
 
 extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519 \
-    --include crate::low::x86_64::adx_mux::curve25519_x25519base
-extract aarch64 Aarch64
+    --include crate::low::x86_64::adx_mux::curve25519_x25519base \
+    --include crate::low::x86_64::sha256_mux \
+    --opaque crate::low::x86_64::sha256_mux::path
+extract aarch64 Aarch64 \
+    --include crate::low::aarch64::sha256 \
+    --opaque crate::low::aarch64::sha256::sha256_compress_blocks
 
-for file in Dispatch X25519; do
+for file in Dispatch X25519 Digest Sha Hmac; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 

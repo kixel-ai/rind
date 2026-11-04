@@ -73,9 +73,16 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
 
 /// Compresses the end of `message`, padded and closed by `length`.
 pub(crate) fn sha256_compress_padded(state: &mut [u32; 8], message: &[u8], length: [u8; 8]) {
-    crate::low::compress_padded::<64, 8>(message, length, |blocks| {
-        sha256_compress_blocks(state, blocks)
-    });
+    crate::low::compress_padded::<Blocks, _, 64, 8>(message, length, state);
+}
+
+/// [`sha256_compress_blocks`], for [`crate::low::compress_padded`].
+struct Blocks;
+
+impl crate::low::Compress<[u32; 8]> for Blocks {
+    fn compress(state: &mut [u32; 8], blocks: &[u8]) {
+        sha256_compress_blocks(state, blocks);
+    }
 }
 
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {

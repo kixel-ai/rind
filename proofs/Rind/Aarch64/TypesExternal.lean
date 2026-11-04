@@ -1,11 +1,12 @@
 module
 public import Aeneas
 public import Rind.Core
+public import Rind.Aarch64.Digest
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
-/-! The rind types the aarch64 translation leaves opaque. `Rind.Aarch64.Dispatch` models the last two. -/
+/-! The rind types the aarch64 translation leaves opaque, beside `Rind.Aarch64.Digest`'s. `Rind.Aarch64.Dispatch` models the last two. -/
 
 namespace rind.aarch64
 

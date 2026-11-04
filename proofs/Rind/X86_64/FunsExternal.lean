@@ -47,6 +47,36 @@ opaque low.entry.Entry.new_public : Result low.entry.Entry
 opaque low.x86_64.cpu.HaveBmi2Adx.check
   : Result (Option low.x86_64.cpu.HaveBmi2Adx)
 
+/-- The debug check that the caller holds an entry guard. -/
+opaque low.entry.Entry.assert_held : Result Unit
+
+/-- The SHA-256 routine the CPU runs, picked once. -/
+opaque low.x86_64.sha256_mux.path : Result low.x86_64.sha256_mux.Path
+
+/-! SHA-1 and SHA-256's block functions, whose contracts `Rind.X86_64.ShaBlocks`
+states as hypotheses. SHA-1's dispatch caches its pick in a `OnceLock`, which
+Aeneas cannot translate. -/
+
+opaque low.x86_64.sha1_mux.sha1_compress_blocks
+  : Array Std.U32 5#usize → Slice Std.U8 → Result (Array Std.U32 5#usize)
+
+opaque low.x86_64.sha256.sha256_compress_blocks_shaext
+  : Array Std.U32 8#usize → Slice Std.U8 → Slice Std.U8 → low.x86_64.cpu.HaveSha256 →
+    Result (Array Std.U32 8#usize)
+
+opaque low.x86_64.sha256.sha256_compress_blocks_avx
+  : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.cpu.HaveAvx → Result (Array Std.U32 8#usize)
+
+opaque low.x86_64.sha256.sha256_compress_blocks_avx2
+  : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.cpu.HaveAvx2 → Result (Array Std.U32 8#usize)
+
+opaque low.x86_64.sha256.sha256_compress_blocks_ssse3
+  : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.cpu.HaveSsse3 →
+    Result (Array Std.U32 8#usize)
+
+opaque low.x86_64.sha256.sha256_compress_blocks_nohw
+  : Array Std.U32 8#usize → Slice Std.U8 → Result (Array Std.U32 8#usize)
+
 /-! The other curves, which X25519's results never depend on. -/
 
 opaque mid.p521.PrivateKey.new_random

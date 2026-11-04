@@ -6,7 +6,7 @@
 //! This is SHA256, SHA384, SHA512, and SHA512/256.
 //! These are all described in [FIPS180](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
 
-use crate::low::{Blockwise, Entry, compress_padded};
+use crate::low::{Blockwise, Compress, Entry, compress_padded};
 
 /// SHA256's chaining value after a whole number of blocks.
 ///
@@ -67,10 +67,11 @@ impl Sha256State {
         Entry::assert_held();
         crate::low::sha256_compress_padded(&mut h, message, bits.to_be_bytes());
 
+        // Indexes rather than zipping `as_chunks_mut`, which Aeneas cannot
+        // translate, so `proofs/` can prove the encoding.
         let mut r = [0u8; Sha256Context::OUTPUT_SZ];
-        let (chunks, _) = r.as_chunks_mut::<4>();
-        for (out, word) in chunks.iter_mut().zip(h.iter()) {
-            out.copy_from_slice(&word.to_be_bytes());
+        for (i, word) in h.iter().enumerate() {
+            r[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
         }
         r
     }
@@ -99,8 +100,7 @@ impl Sha256Context {
 
     /// Add `bytes` to the ongoing hash computation.
     pub(crate) fn update(&mut self, bytes: &[u8]) {
-        self.blockwise
-            .update(bytes, |blocks| self.state.update_blocks(blocks));
+        self.blockwise.update::<Self, _>(bytes, &mut self.state);
     }
 
     /// Complete the SHA256 computation, returning the hash output.
@@ -113,6 +113,12 @@ impl Sha256Context {
 
     /// The output size of SHA256.
     pub(crate) const OUTPUT_SZ: usize = 32;
+}
+
+impl Compress<Sha256State> for Sha256Context {
+    fn compress(state: &mut Sha256State, blocks: &[u8]) {
+        state.update_blocks(blocks);
+    }
 }
 
 /// A context for incremental computation of SHA384.
@@ -254,11 +260,6 @@ impl Sha512State {
         }
     }
 
-    fn compress(h: &mut [u64; 8], blocks: &[u8]) {
-        Entry::assert_held();
-        crate::low::sha512_compress_blocks(h, blocks);
-    }
-
     /// The hash of the input so far followed by `message`, leaving this state as it was.
     pub(crate) fn finish_with(&self, message: &[u8]) -> [u8; Sha512Context::OUTPUT_SZ] {
         const BLOCK_SZ: usize = Sha512Context::BLOCK_SZ;
@@ -268,9 +269,7 @@ impl Sha512State {
         // two stores, which the SHA extensions' 16-byte load of it then
         // waits on instead of forwarding.
         let mut h = self.h;
-        compress_padded::<BLOCK_SZ, _>(message, bits.to_be_bytes(), |blocks| {
-            Self::compress(&mut h, blocks)
-        });
+        compress_padded::<Self, _, BLOCK_SZ, _>(message, bits.to_be_bytes(), &mut h);
 
         let mut r = [0u8; Sha512Context::OUTPUT_SZ];
         let (chunks, _) = r.as_chunks_mut::<8>();
@@ -278,6 +277,13 @@ impl Sha512State {
             out.copy_from_slice(&word.to_be_bytes());
         }
         r
+    }
+}
+
+impl Compress<[u64; 8]> for Sha512State {
+    fn compress(h: &mut [u64; 8], blocks: &[u8]) {
+        Entry::assert_held();
+        crate::low::sha512_compress_blocks(h, blocks);
     }
 }
 
@@ -304,8 +310,7 @@ impl Sha512Context {
 
     /// Add `bytes` to the ongoing hash computation.
     pub(crate) fn update(&mut self, bytes: &[u8]) {
-        self.blockwise
-            .update(bytes, |blocks| self.state.update_blocks(blocks));
+        self.blockwise.update::<Self, _>(bytes, &mut self.state);
     }
 
     /// Complete the SHA512 computation, returning the hash output.
@@ -318,6 +323,12 @@ impl Sha512Context {
 
     /// The output size of SHA512.
     pub(crate) const OUTPUT_SZ: usize = 64;
+}
+
+impl Compress<Sha512State> for Sha512Context {
+    fn compress(state: &mut Sha512State, blocks: &[u8]) {
+        state.update_blocks(blocks);
+    }
 }
 
 #[cfg(test)]

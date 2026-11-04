@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use crate::low::x86_64;
 use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSha256, HaveSsse3, is_intel};
-use crate::low::{compress_padded, pad_message};
+use crate::low::{Compress, compress_padded, pad_message};
 
 /// The SHA-256 routine this CPU runs, with the proof it may.
 #[derive(Clone, Copy)]
@@ -42,9 +42,16 @@ pub(crate) fn sha256_compress_padded(state: &mut [u32; 8], message: &[u8], lengt
             let (blocks, last) = pad_message(message, length, &mut last);
             x86_64::sha256::sha256_compress_blocks_shaext(state, blocks, last, token);
         }
-        _ => compress_padded::<64, 8>(message, length, |blocks| {
-            sha256_compress_blocks(state, blocks)
-        }),
+        _ => compress_padded::<Blocks, _, 64, 8>(message, length, state),
+    }
+}
+
+/// [`sha256_compress_blocks`], for [`compress_padded`].
+struct Blocks;
+
+impl Compress<[u32; 8]> for Blocks {
+    fn compress(state: &mut [u32; 8], blocks: &[u8]) {
+        sha256_compress_blocks(state, blocks);
     }
 }
 

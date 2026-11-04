@@ -1,11 +1,12 @@
 module
 public import Aeneas
 public import Rind.Core
+public import Rind.X86_64.Digest
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
-/-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch` models the last two. -/
+/-! The rind types the x86_64 translation leaves opaque, beside `Rind.X86_64.Digest`'s. `Rind.X86_64.Dispatch` models the last two. -/
 
 namespace rind.x86_64
 
@@ -14,6 +15,12 @@ opaque low.entry.Entry : Type
 
 /-- The token proving the CPU has BMI2 and ADX. -/
 opaque low.x86_64.cpu.HaveBmi2Adx : Type
+
+/-- The tokens proving the CPU has what each SHA-256 routine needs. -/
+opaque low.x86_64.cpu.HaveSha256 : Type
+opaque low.x86_64.cpu.HaveAvx : Type
+opaque low.x86_64.cpu.HaveAvx2 : Type
+opaque low.x86_64.cpu.HaveSsse3 : Type
 
 /-- A `&'static T` that a wiped value may hold, as `Rind.X86_64.Dispatch` models it:
 the `T`, since only the drop that wipes it leaves it `None`. -/
