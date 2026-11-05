@@ -35,7 +35,9 @@ Repo:
   bump never forces a rind major bump. The prefix keeps them grouped under
   rind's own name rather than borrowing the consumer's.
 - MoQ vendors str0m and dimpl and ports rind's str0m provider into that copy,
-  so rind has no str0m adapter. `rind-dimpl` stays published for other dimpl
+  so rind has no str0m adapter for MoQ. A published one for other str0m
+  users is [planned](/quest/m2/adoption/rind-str0m.md) (maintainer,
+  2026-11-04). `rind-dimpl` stays published for other dimpl
   users (maintainer, 2026-10-31).
 
 Targets, refused rather than falling back:

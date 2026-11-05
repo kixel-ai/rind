@@ -23,7 +23,8 @@ renames [rind-ring](#rind-ring), ring's API on rind, to `ring`.
 | `digest(alg, data)`, `Context::{new, update, finish}`, `Digest`'s bytes | the same |
 | `SHA256`, `SHA384`, `SHA512`, `SHA512_256` | the same |
 | `SHA1_FOR_LEGACY_USE_ONLY` | `legacy::SHA1` |
-| `SHA224`, `SHA3_256`, `SHA3_384`, `SHA3_512` (not in ring) | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `SHA224` (not in ring) | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `SHA3_256`, `SHA3_384`, `SHA3_512` (not in ring) | none; [SHA-3](quest/m2/adoption/webcrypto/sha3.md) |
 | `Algorithm::output_len()` | the same |
 | `Algorithm::block_len()`, `chaining_len()`, `MAX_BLOCK_LEN`, `MAX_CHAINING_LEN`, `MAX_OUTPUT_LEN`, `SHA*_OUTPUT_LEN` | none; `output_len()` gives each length |
 | `Context::algorithm()`, `Digest::algorithm()` | none |
@@ -89,7 +90,8 @@ reuses it. `verify` refuses a stored value shorter than the HMAC output with
 | `Algorithm::{key_len, tag_len, nonce_len}` | the same |
 | `NONCE_LEN`, `MAX_TAG_LEN`, `algorithm()` on each key | none; the `Algorithm` methods give each length |
 | `AES_128_GCM`, `AES_256_GCM`, `CHACHA20_POLY1305` | the same |
-| `AES_192_GCM`, `AES_128_GCM_SIV`, `AES_256_GCM_SIV` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `AES_192_GCM` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |
+| `AES_128_GCM_SIV`, `AES_256_GCM_SIV` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | `RandomizedNonceKey::new(&AES_256_GCM, key)`, with 96-bit random nonces | `RandomizedNonceKey::new(&key)`, XChaCha20-Poly1305 with 192-bit random nonces, which never collide in practice |
 | `RandomizedNonceKey::{seal_in_place_append_tag, open_in_place}` | the same, with the nonce a `RandomNonce` |
 | `RandomizedNonceKey::seal_in_place_separate_tag` | none |
@@ -118,7 +120,9 @@ protocols with their own integrity protection need. ring has none.
 | `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))`, `decrypt` | `apply_keystream(nonce, counter, in_out)?`, with `iv` as a 12-byte nonce and a big-endian 32-bit counter, refused rather than carried into the nonce when it would wrap |
 | `AES_128`, `AES_256` | the same |
 | `EncryptingKey::encrypt`, which picks a random IV | none: pick the nonce with `rand::fill` |
-| `AES_192`, `DES_EDE3_FOR_LEGACY_USE_ONLY` and the other DES, the CBC, ECB, CFB, and OFB modes, `PaddedBlockEncryptingKey`, `PaddedBlockDecryptingKey`, `StreamingEncryptingKey`, `StreamingDecryptingKey` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `AES_192` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |
+| The CBC mode, `PaddedBlockEncryptingKey`, `PaddedBlockDecryptingKey` | none; [AES-CBC](quest/m2/adoption/webcrypto/aes-cbc.md) |
+| `DES_EDE3_FOR_LEGACY_USE_ONLY` and the other DES, the ECB, CFB, and OFB modes, `StreamingEncryptingKey`, `StreamingDecryptingKey` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | none | `Aes::new(&alg, key)?.encrypt_block(block)`, one AES block |
 | none | `ChaCha20::new(key).apply_keystream(nonce, counter, in_out)?` |
 
@@ -170,7 +174,8 @@ ring has no `kem`.
 | `EcdsaSigningAlgorithm`, `RsaEncoding`, `RsaSignatureEncoding` | `EcdsaSigningAlgorithm`, `RsaSigningAlgorithm` |
 | `ECDSA_P256_SHA256_ASN1_SIGNING` and the other `_SIGNING` | `sign::ECDSA_P256_SHA256_ASN1` |
 | `ECDSA_P256_SHA256_ASN1`, `ED25519`, and the other verification constants | `verify::ECDSA_P256_SHA256_ASN1`, `verify::ED25519` |
-| ECDSA with SHA-1, SHA-224, or SHA-3, on secp256k1 (`P256K1`), or P-521 signing or `_FIXED` with another hash than SHA-512 | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| ECDSA signing, or `_FIXED`, with another SHA-2 hash than the curve's own | none; [ECDSA over any curve and hash](quest/m2/adoption/webcrypto/ecdsa-pairings.md) |
+| ECDSA with SHA-1, SHA-224, or SHA-3, or on secp256k1 (`P256K1`) | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | `RSA_PKCS1_SHA256`, `RSA_PSS_SHA256`, and their SHA-384 and SHA-512 | `sign::RSA_PKCS1_SHA256`, `sign::RSA_PSS_SHA256`, and so on |
 | `RSA_PKCS1_2048_8192_SHA256`, `RSA_PSS_2048_8192_SHA256`, and their SHA-384 and SHA-512 | `verify::RSA_PKCS1_SHA256`, `verify::RSA_PSS_SHA256`, and so on |
 | `RSA_PKCS1_3072_8192_SHA384` | `verify::legacy::RSA_PKCS1_3072_SHA384` |
@@ -222,7 +227,7 @@ rind signs and verifies with RSA through `signature`, and encrypts with none.
 
 | aws-lc-rs | rind |
 |---|---|
-| `OaepPublicEncryptingKey`, `OaepPrivateDecryptingKey`, `OAEP_SHA256_MGF1SHA256` and the other OAEP items, `PublicEncryptingKey`, `PrivateDecryptingKey`, `EncryptionAlgorithmId` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `OaepPublicEncryptingKey`, `OaepPrivateDecryptingKey`, `OAEP_SHA256_MGF1SHA256` and the other OAEP items, `PublicEncryptingKey`, `PrivateDecryptingKey`, `EncryptionAlgorithmId` | none; [RSA-OAEP](quest/m2/adoption/webcrypto/rsa-oaep.md) |
 | `Pkcs1PublicEncryptingKey`, `Pkcs1PrivateDecryptingKey` | none: PKCS#1 v1.5 encryption invites padding-oracle attacks |
 
 ## constant_time
@@ -274,7 +279,8 @@ the README's Limitations): it panics on a CPU below it.
 
 | aws-lc-rs | rind |
 |---|---|
-| `cmac`, `key_wrap`, `kdf` (KBKDF and SSKDF), `tls_prf` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `key_wrap` | none; [AES key wrap](quest/m2/adoption/webcrypto/aes-kw.md) |
+| `cmac`, `kdf` (KBKDF and SSKDF), `tls_prf` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | `pkcs8::Document` | `signature::Pkcs8`, `signature::Spki` |
 | `encoding`'s `AsDer`, `AsBigEndian`, and `AsRawBytes` | `to_pkcs8()` and `to_spki()`; an ECDSA key pair's `to_scalar()` and an Ed25519 key pair's `to_seed()`; other raw keys none |
 | `io::Positive`, `io::der`, `iv::FixedLength`, `test`, `test_file!`, `unstable`, and ring's `deprecated_test` | none |

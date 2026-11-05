@@ -2,7 +2,7 @@
 
 ## Goal
 
-A refresh of [BENCHMARKS.md](/BENCHMARKS.md) at or after [moq-dev/rind#351](https://github.com/moq-dev/rind/pull/351) shows RSA-2048 PKCS#1 and PSS signing, and the full handshake under an RSA-2048 certificate, within 10% of the fastest library on `nixos`, `desktop`, and `nixos2`, and this gap's entry leaves `benchmarks/gaps.toml`.
+A refresh of [BENCHMARKS.md](/BENCHMARKS.md) at or after [moq-dev/rind#351](https://github.com/moq-dev/rind/pull/351) shows RSA-2048 PKCS#1 and PSS signing, and the full handshake under an RSA-2048 certificate, within 10% of the fastest library on `nixos`, `desktop`, and `nixos2`, and this gap's entry leaves `benchmarks/gaps.toml`. JWT's RS256, the most common JWT algorithm, reaches the [adoption epic](/quest/m2/adoption/README.md)'s Bun, pyrind, and llrt through it.
 
 ## Plan
 
