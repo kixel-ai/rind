@@ -2277,7 +2277,8 @@ nonce in [1, n), neither zero; refused if the output is short or the nonce
 source fails. -/
 def ecdsaSignOutcome (d e : Nat) (outLen : Nat)
     (r : core.result.Result (Slice U8) error.Error × Slice U8) : Prop :=
-  (∀ out, r.1 = .Ok out → out.length = 64 ∧ r.2.val.take 64 = out.val ∧ ∃ k, 0 < k ∧ k < n256 ∧
+  (∀ out, r.1 = .Ok out → out.length = 64 ∧ r.2.length = outLen ∧ r.2.val.take 64 = out.val ∧
+    ∃ k, 0 < k ∧ k < n256 ∧
     ecdsaP256Sign d k e = some (beNat (out.val.take 32), beNat (out.val.drop 32)) ∧
     beNat (out.val.take 32) ≠ 0 ∧ beNat (out.val.drop 32) ≠ 0) ∧
   ∀ err, r.1 = .Err err → (outLen < 64 ∧ err = .WrongLength) ∨ err = .RngFailed
@@ -2365,10 +2366,12 @@ theorem rfc6979_spec (hG : P256Laws) (h : Runs) (hdrbg : Drbg) {H Ctx St : Type}
       rw [hs10, h8, hi2]; simp [List.slice, hs7l', hs9l']
     refine ⟨fun out hout => ?_, fun err h => nomatch h⟩
     cases hout
-    refine ⟨by simp [Slice.length, hv, hs7l', hs9l'], ?_, k, hk0, hk, ?_⟩
-    · have hb8 : (back8 s9).val.length = 64 := by simp [h8, hs7l', hs9l']
-      have hb8l : (back8 s9).length = i1.val := by simp only [Slice.length, hb8, hi1]
-      simp only [hb8l, ↓reduceDIte, Slice.from_val]
+    have hb8 : (back8 s9).val.length = 64 := by simp [h8, hs7l', hs9l']
+    have hb8l : (back8 s9).length = i1.val := by simp only [Slice.length, hb8, hi1]
+    refine ⟨by simp [Slice.length, hv, hs7l', hs9l'], ?_, ?_, k, hk0, hk, ?_⟩
+    · simp only [hb8l, ↓reduceDIte]
+      simp [Slice.length]
+    · simp only [hb8l, ↓reduceDIte, Slice.from_val]
       have := take_setSlice! sig.val (back8 s9).val 0 (by omega)
       simp only [zero_add, hb8, List.take_zero, List.nil_append] at this
       rw [this, hv, h8]

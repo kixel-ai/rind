@@ -532,9 +532,9 @@ def high.signature.Buffer.write (N : Std.Usize)
     Result (core.result.Result (high.signature.Buffer N) error.Error) := do
   let buffer ← high.signature.Buffer.new N
   let (s, to_slice_mut_back) ← lift (Array.to_slice_mut buffer.bytes)
-  let (r, s1) ← write s
-  match r with
-  | .Ok span => ok (.Ok { bytes := to_slice_mut_back s1, len := span.len })
+  let r ← write s
+  match r.1 with
+  | .Ok span => ok (.Ok { bytes := to_slice_mut_back r.2, len := span.len })
   | .Err e => ok (.Err e)
 
 /-- `parse_ecdsa::<P256, Sha256, Fixed>`, whose `Verifier`'s `verify` is
