@@ -20,6 +20,11 @@ under Required land, so X25519 and ECDH move in the same PR, the PEM
 regression is gone, and the blog post introducing rind is out ✅ / post the
 prototype now / open an issue on oven-sh/bun first.
 
+Decided by the maintainer on 2026-11-05, later: the first Bun PR also waits
+for rind 0.2.0, released after an API audit, for ECDSA over a precomputed
+digest, and for Bun's key parsing on rind, so it lands the whole move at once
+on a stable API ✅ / post once the first four prerequisites land.
+
 The prototype is branch `claude/rind-asymmetric` of
 [kixelated/bun](https://github.com/kixelated/bun/tree/claude/rind-asymmetric),
 and its PR text, with the measurements, is in
@@ -29,11 +34,12 @@ and its PR text, with the measurements, is in
 - Moved: Ed25519 (1.3x to 1.7x end to end) and P-384 and P-521 ECDSA with
   the curve's hash (2.4x to 16x). Keys stay BoringSSL's for import and
   export; Bun caches a rind key pair built from the raw key.
-- Not yet: P-256 (rind signs 1.4x faster but generates keys at 0.6x), and
-  X25519 and ECDH, which rind's ephemeral-only agreement API cannot hold as
-  WebCrypto and node:crypto keys, though rind leads at both. The Required
-  quests close both, and the PEM regression (Ed25519 signing from a key
-  parsed on every call, 0.93x). ECDSA with another hash stays on BoringSSL.
+- Not yet, each closed by a quest under Required: P-256 (rind signs 1.4x
+  faster but generates keys at 0.6x); X25519 and ECDH, which rind's
+  ephemeral-only agreement API cannot hold as WebCrypto and node:crypto keys,
+  though rind leads at both; ECDSA with another hash and node's
+  `createSign`/`createVerify`; and key import and export, BoringSSL's P-384
+  PKCS#8 import alone taking 670 µs.
 
 Once Bun merges it, a native `Bun.jwt`
 ([oven-sh/bun#27727](https://github.com/oven-sh/bun/issues/27727)) on rind is
@@ -47,6 +53,8 @@ a natural follow-up.
 ## Required
 
 - [Agreement keys that can be stored and reused](/quest/m1/agreement-stored-keys.md) - X25519 and ECDH join the Bun PR
-- [Loading an Ed25519 key costs less than a signature](/quest/m1/ed25519-key-load.md) - closes the PR's one regression, Ed25519 signing from PEM
 - [P-256 key generation as fast as BoringSSL](/quest/m1/p256-keygen.md) - P-256 joins the PR's other curves
+- [ECDSA over a precomputed digest](/quest/m1/ecdsa-prehash.md) - other hash pairings and node's `createSign`/`createVerify` join the PR
+- [Bun parses its moved keys with rind](/quest/m1/bun-key-parsing.md) - the PR's key import and export run on rind
+- [rind 0.2.0 is released](/quest/m1/release-0.2.md) - the PR depends on the audited API
 - [rind's launch blog post is published](/quest/m1/launch-post.md) - the post the Bun PR links
