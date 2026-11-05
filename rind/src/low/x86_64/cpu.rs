@@ -524,6 +524,9 @@ mod tests {
             assert_eq!(HaveSha256::check().is_some(), expected == "1");
             assert_eq!(HaveSha1::check().is_some(), expected == "1");
         }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_SHA512") {
+            assert_eq!(HaveSha512::check().is_some(), expected == "1");
+        }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_VAES_AES_GCM") {
             assert_eq!(HaveVaesAvx2ForAesGcm::check().is_some(), expected == "1");
         }
