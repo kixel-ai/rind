@@ -13,3 +13,4 @@ Bun's fastest asymmetric operations run on rind, ahead of Bun writing its own.
 - [aarch64 Windows runs with DIT](/quest/m1/windows-arm-dit.md) - constant-time mode where Bun ships Windows on Arm
 - [A prompt migrates a repo to rind](/quest/m1/migration-prompt.md) - a copy-paste prompt has an agent move a repo to rind and report build time, size, and benchmarks before and after
 - [The README shows how to use rind and links the details](/quest/m1/readme-restructure.md) - usage, the migration prompt, and an invitation to AI contributors, with the details in linked docs
+- [aarch64 Linux under Hyper-V runs with DIT](/quest/m1/linux-hyperv-dit.md) - Azure Cobalt hides DIT from the kernel
