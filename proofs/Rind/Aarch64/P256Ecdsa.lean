@@ -2055,6 +2055,27 @@ theorem ecdsa_verify_spec (hG : P256Group) (h : Runs) (ht : Tabulated) (hc : Cac
       have := congrArg UScalar.val he; simp [Slice.len, hi2] at this; simpa [Slice.length] using this
     simp only [hne, ↓reduceIte, WP.spec_ok, hlen, false_and, not_false_eq_true, true_and, reduceCtorEq, or_true]
 
+/-- `ecdsa::VerifyingKey::from_x962_uncompressed` at P-256. -/
+theorem ecdsa_vk_from_x962_spec (hG : P256Group) (h : Runs) (hheld : Held) (hc : Cached) (bytes : Slice U8) :
+    high.ecdsa.VerifyingKey.from_x962_uncompressed P256C bytes ⦃ r =>
+      x962Outcome bytes.val (fun key => VKey (some (x962Coords bytes.val)) key.public_key) r ⦄ := by
+  unfold high.ecdsa.VerifyingKey.from_x962_uncompressed
+  step
+  simp only [P256C, high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar,
+    mid.p256.VerifyingKey.Insts.RindHighCurvePublicKeyScalar,
+    mid.p256.VerifyingKey.Insts.RindHighCurvePublicKeyScalar.from_x962_uncompressed]
+  step with vk_from_x962_spec hG h hheld hc bytes as ⟨r, hr⟩
+  simp only [core.result.Result.map,
+    high.ecdsa.VerifyingKey.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnOnceTupleClause0_PublicKeyVerifyingKey,
+    high.ecdsa.VerifyingKey.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnOnceTupleClause0_PublicKeyVerifyingKey.call_once]
+  unfold x962Outcome at hr ⊢
+  rcases hb : bytes.val.head? with _ | b0
+  · simp only [hb] at hr; subst hr; simp
+  · simp only [hb] at hr ⊢
+    split_ifs at hr ⊢
+    · obtain ⟨k, rfl, hk⟩ := hr; simp [hk]
+    all_goals (subst hr; simp)
+
 end P256
 
 end rind.aarch64
