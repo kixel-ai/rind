@@ -1188,6 +1188,41 @@ theorem twin_loop_spec (hG : P256Group) (t : Std.Array (Std.Array U64 256#usize)
       rwa [h0, List.drop_zero, List.drop_zero] at hres
   · exact ⟨hs, he, rfl, hres⟩
 
+theorem twin_multiply_spec (hG : P256Group) (ht : Tabulated) (g p : mid.p256.Scalar) (Q : P256Point)
+    (hQ : p256OnCurve Q) (odd : Std.Array mid.p256.AffineMontPoint 8#usize) (hodd : OddMultiples Q 1 odd)
+    (more : Option (Std.Array mid.p256.AffineMontPoint 8#usize))
+    (hmore : ∀ m, more = some m → OddMultiples Q 17 m) :
+    mid.p256.JacobianMontPoint.public_twin_multiply g p odd more ⦃ r =>
+      jrep (twin p256G Q (scNat g) (scNat p)) r ⦄ := by
+  obtain ⟨t, ht, htab⟩ := ht
+  unfold mid.p256.JacobianMontPoint.public_twin_multiply
+  step with scalar_naf_spec 6#u32 (by simp) g as ⟨gd, hgv, hgd⟩
+  apply WP.spec_bind (Pₘ := fun pd : Std.Array I8 257#usize => nafVal pd.val = scNat p ∧
+    ∀ j < 257, nafDigit (if more = none then 16 else 32) (pd.val[j]!).val)
+  · rcases more with _ | m
+    · simp only
+      apply WP.spec_mono (scalar_naf_spec 5#u32 (by simp) p)
+      intro pd hpd; simpa using hpd
+    · simp only
+      apply WP.spec_mono (scalar_naf_spec 6#u32 (by simp) p)
+      intro pd hpd; simpa using hpd
+  intro pd ⟨hpv, hpd⟩
+  simp only [ht, bind_ok, core.array.Array.index, core.ops.index.IndexSlice, core.slice.index.Slice.index,
+    core.slice.index.SliceIndexRangeFullSlice, core.slice.index.SliceIndexRangeFullSlice.index]
+  step as ⟨a1, ha1⟩
+  step*
+  have hgl : gd.val.length = 257 := gd.property
+  have hpl : pd.val.length = 257 := pd.property
+  have hend : iter.iter.end.val = 257 := by rw [iter_post]; simp [s_post, Slice.len, hgl]
+  apply WP.spec_mono (twin_loop_spec hG t htab Q hQ odd hodd more hmore gd pd hgd hpd a1.to_slice
+    (by rw [Array.val_to_slice, ha1, getElem_eq_getElem! _ _ (by simp)]) iter (by rw [iter_post]; rfl)
+    (by omega) result (by
+      rw [hend, List.drop_of_length_le (by omega), List.drop_of_length_le (by omega)]
+      simp only [nafVal, Int.ofNat_zero]
+      rw [hG.twin_zero p256G Q P256.onCurve_G hQ]; exact result_post))
+  intro r hr
+  rwa [hgv, hpv] at hr
+
 end P256
 
 end rind.aarch64
