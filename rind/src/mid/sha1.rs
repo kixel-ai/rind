@@ -33,6 +33,21 @@ impl Sha1State {
         crate::low::sha1_compress_blocks(h, blocks);
     }
 
+    /// Compresses the end of `message`, padded and closed by `length`.
+    // Out of line, so `finish_with` stays small enough to inline and write
+    // the digest in place. Out of line itself, it returns the digest through
+    // memory, and its caller's copy into a `Digest` loads across its stores,
+    // which misses store forwarding.
+    #[inline(never)]
+    fn compress_padded(h: &mut [u32; 5], message: &[u8], length: [u8; 8]) {
+        let (blocks, rest) = split_tail::<{ Sha1Context::BLOCK_SZ }, 8>(message);
+        if !blocks.is_empty() {
+            Self::compress(h, blocks);
+        }
+        let mut last = [[0u8; Sha1Context::BLOCK_SZ]; 2];
+        Self::compress(h, pad(rest, length, &mut last));
+    }
+
     /// The hash of the input so far followed by `message`, leaving this state as it was.
     pub(crate) fn finish_with(&self, message: &[u8]) -> [u8; Sha1Context::OUTPUT_SZ] {
         const BLOCK_SZ: usize = Sha1Context::BLOCK_SZ;
@@ -47,12 +62,7 @@ impl Sha1State {
         // two stores, which the SHA extensions' 16-byte load of it then
         // waits on instead of forwarding.
         let mut h = self.h;
-        let (blocks, rest) = split_tail::<BLOCK_SZ, 8>(message);
-        if !blocks.is_empty() {
-            Self::compress(&mut h, blocks);
-        }
-        let mut last = [[0u8; BLOCK_SZ]; 2];
-        Self::compress(&mut h, pad(rest, bits.to_be_bytes(), &mut last));
+        Self::compress_padded(&mut h, message, bits.to_be_bytes());
 
         // Indexes rather than zipping `as_chunks_mut`, which Aeneas cannot
         // translate, so `proofs/` can prove the encoding.

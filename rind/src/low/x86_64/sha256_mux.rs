@@ -30,6 +30,8 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
 }
 
 /// Compresses the end of `message`, padded and closed by `length`.
+// Out of line, as `Sha1State::compress_padded` is, so `finish_with` inlines.
+#[inline(never)]
 pub(crate) fn sha256_compress_padded(state: &mut [u32; 8], message: &[u8], length: [u8; 8]) {
     match path() {
         // The routine takes the padding as blocks of its own, so the message's

@@ -433,6 +433,29 @@ theorem sha256_hashSpec (hb : ShaBlocks) :
 def Sha1Absorbed (P : List U8) (s : mid.sha1.Sha1State) : Prop :=
   Absorbed sha1.compress sha1.H0 P s.h ∧ s.nblocks.val * 64 = P.length
 
+/-- SHA-1's padded last blocks. -/
+theorem sha1_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 5#usize)
+    (message : Slice U8) (length : Std.Array U8 8#usize)
+    (hR : Absorbed sha1.compress sha1.H0 P state) :
+    mid.sha1.Sha1State.compress_padded state message length ⦃ h' =>
+      Absorbed sha1.compress sha1.H0
+        (P ++ message.val ++ [128#u8] ++ List.replicate (padZeros 64 8 message.length) 0#u8 ++
+          length.val) h' ⦄ := by
+  unfold mid.sha1.Sha1State.compress_padded
+  step with split_tail_spec (N := 64#usize) (L := 8#usize) message (by decide) (by scalar_tac)
+    (by decide) as ⟨bl, re, hs1, hs2, hs3, hs4⟩
+  exact compress_tail_spec mid.sha1.Sha1State.compress (Absorbed sha1.compress sha1.H0)
+    (P.length + message.length + 9 + 64)
+    (fun p s b hR hl _ => by
+      apply WP.spec_mono (sha1_block_spec hb s b hl)
+      intro h' hh
+      exact absorbed_append hR hl hh)
+    P message bl re length state hR (by decide) (by scalar_tac) (by decide) ⟨hs1, hs2, hs3, hs4⟩
+    (by have h64 : (64#usize).val = 64 := by simp
+        have h8 : (8#usize).val = 8 := by simp
+        have := padZeros_lt (64#usize).val (8#usize).val message.length (by omega)
+        omega)
+
 theorem sha1_finish_with_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha1.Sha1State)
     (message : Slice U8) (hs : Sha1Absorbed P s)
     (hlen : 8 * (P.length + message.length) ≤ U64.max) :
@@ -469,47 +492,15 @@ theorem sha1_finish_with_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha1.Sha1S
   have hbits : bits.val = 8 * (P.length + message.length) := by rw [hm.2.1, h8, ha.2.1]; omega
   simp only [core.option.Option.expect, Result.ofOption, bind_ok]
   step*
-  have hR : Absorbed sha1.compress sha1.H0 P s.h := ⟨hh, hP⟩
-  apply WP.spec_bind (Pₘ := fun h => Absorbed sha1.compress sha1.H0 (P ++ blocks.val) h)
-  · split
-    · rename_i hb0
-      have : blocks.val = [] := by
-        rw [b_post] at hb0; exact List.eq_nil_of_length_eq_zero hb0
-      simp only [this, List.append_nil, WP.spec_ok]
-      exact hR
-    · apply WP.spec_mono (sha1_block_spec hb s.h blocks blocks_post)
-      intro h1 hh1
-      exact absorbed_append hR blocks_post hh1
-  intro h1 hh1
-  step*
-  step with pad_spec (N := 64#usize) rest a1 (by decide) (by scalar_tac) (by decide)
-    (by simpa using blocks_post2) as ⟨pd, _, hpd⟩
-  have hpl : pd.length % 64 = 0 := by
-    have := pad_mod (N := 64) (L := 8) rest.length (by decide)
-    have hl8 : a1.val.length = 8 := by simp
-    simp only [Slice.length] at this ⊢
-    rw [hpd]
-    simp only [List.length_append, List.length_cons, List.length_replicate, List.length_nil, hl8,
-      Slice.length]
-    omega
-  apply WP.spec_bind (sha1_block_spec hb h1 pd hpl)
-  intro h' hh'0
-  have hh' := absorbed_append hh1 hpl hh'0
-  have hmsg : P ++ blocks.val ++ pd.val = P ++ message.val ++ [128#u8] ++
-      List.replicate (padZeros 64 8 message.length) 0#u8 ++ a1.val := by
-    rw [hpd, ← blocks_post1]
-    have := blocks_post3
-    rw [this]
-    simp [List.append_assoc]
-  rw [hmsg] at hh'
+  step with sha1_compress_padded_spec hb P s.h message a ⟨hh, hP⟩ as ⟨h', hh'⟩
   simp only [core.slice.Slice.iter]
   step*
   have hv : (h'.val).length = 5 := h'.property
   apply WP.spec_mono (sha1_out_loop_spec iter _ h'.val hv ?_ ?_ ?_ ?_)
   · intro r hr
-    rw [hr, bv_flatMap_beBytes, hh'.1, a1_post, pad_bv P message.val bits hP hbits]
+    rw [hr, bv_flatMap_beBytes, hh'.1, a_post, pad_bv P message.val bits hP hbits]
     rfl
-  all_goals simp [iter_post, iter_post1, s1_post, Array.val_to_slice]
+  all_goals simp [iter_post, iter_post1, s_post, Array.val_to_slice]
 
 theorem sha1_update_blocks_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha1.Sha1State)
     (blk : Slice U8) (hs : Sha1Absorbed P s) (hl : blk.length % 64 = 0)
