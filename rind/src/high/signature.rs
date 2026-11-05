@@ -905,7 +905,7 @@ pub enum RsaPssSaltLength {
     /// shorter than the modulus when its bit length is one more than a
     /// multiple of eight, less the hash's length and two.
     Max,
-    /// This many bytes, which a modulus too short for refuses.
+    /// This many bytes, refusing a modulus too short for them.
     Custom(u16),
 }
 
