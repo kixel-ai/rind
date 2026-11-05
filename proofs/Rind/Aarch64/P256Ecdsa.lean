@@ -997,6 +997,197 @@ theorem lookup_spec (row : Slice U64) (hrow : row.length = 256) (idx : U8) (h1 :
   simp only [WP.spec_ok, Slice.from_val, List.getElem_ofFn, Array.from_val, Fin.val_cast, pairNat_take8]
   congr 2; rw [hi1, hiv]; ring
 
+@[step]
+theorem unsigned_abs_spec (x : I8) : core.num.I8.unsigned_abs x ⦃ r => r.val = x.val.natAbs ⦄ := by
+  unfold core.num.I8.unsigned_abs
+  simp only [WP.spec_ok]
+  have := x.hBounds
+  simp only [IScalarTy.numBits] at this
+  show (BitVec.ofNat 8 x.val.natAbs).toNat = _
+  rw [BitVec.toNat_ofNat]; omega
+
+instance : Inhabited mid.p256.AffineMontPoint := ⟨⟨Array.repeat 8#usize 0#u64⟩⟩
+
+/-- `odd` holds Q's odd multiples from `base`: entry i is Q times 2i + base. -/
+def OddMultiples (Q : P256Point) (base : Nat) (odd : Std.Array mid.p256.AffineMontPoint 8#usize) : Prop :=
+  ∀ i < 8, p256Represents2 (p256Pow Q (2 * i + base)) (pairNat (odd.val[i]!).xy.val)
+
+theorem nafVal_drop (l : List I8) (i : Nat) (hi : i < l.length) :
+    nafVal (l.drop i) = (l[i]!).val + 2 * nafVal (l.drop (i + 1)) := by
+  rw [List.drop_eq_getElem_cons hi, nafVal, getElem_eq_getElem! _ _ hi]
+
+theorem i8_natAbs (d : I8) (A : Int) (hA : A = 16 ∨ A = 32) (hd : nafDigit A d.val) (hne : d.val ≠ 0) :
+    d.val.natAbs % 2 = 1 ∧ d.val.natAbs < A.toNat := by
+  rcases hd with h | ⟨h1, h2, h3⟩
+  · exact absurd h hne
+  · rcases hA with rfl | rfl <;> omega
+
+/-- The point a nonzero digit names, as the twin multiplication looks it up. -/
+theorem digit_point (hG : P256Group) (P : P256Point) (hP : p256OnCurve P) (d : I8) (pt : mid.p256.AffineMontPoint)
+    (hpt : p256Represents2 (p256Pow P d.val.natAbs) (pairNat pt.xy.val)) :
+    (if d < 0#i8 then mid.p256.AffineMontPoint.negate_y pt else ok pt) ⦃ r =>
+      p256Represents2 (p256ZPow P d.val) (pairNat r.xy.val) ⦄ := by
+  split
+  · rename_i hneg
+    have hneg' : d.val < 0 := by simpa using (IScalar.lt_equiv _ _).mp hneg
+    apply WP.spec_mono (negate_y_spec pt _ hpt)
+    intro r hr
+    rwa [← hG.zpow_natCast, hG.neg_zpow P hP, show -(d.val.natAbs : Int) = d.val by omega] at hr
+  · rename_i hpos
+    have hpos' : ¬ d.val < 0 := fun h => hpos ((IScalar.lt_equiv _ _).mpr (by simpa using h))
+    simp only [WP.spec_ok]
+    rwa [← hG.zpow_natCast, show (d.val.natAbs : Int) = d.val by omega] at hpt
+
+theorem twin_loop_spec (hG : P256Group) (t : Std.Array (Std.Array U64 256#usize) 43#usize)
+    (htab : p256Tabulates p256G t) (Q : P256Point) (hQ : p256OnCurve Q)
+    (odd : Std.Array mid.p256.AffineMontPoint 8#usize) (hodd : OddMultiples Q 1 odd)
+    (more : Option (Std.Array mid.p256.AffineMontPoint 8#usize))
+    (hmore : ∀ m, more = some m → OddMultiples Q 17 m)
+    (g p : Std.Array I8 257#usize) (hg : ∀ j < 257, nafDigit 32 (g.val[j]!).val)
+    (hp : ∀ j < 257, nafDigit (if more = none then 16 else 32) (p.val[j]!).val)
+    (gm : Slice U64) (hgm : gm.val = (t.val[0]!).val)
+    (iter : core.iter.adapters.rev.Rev (core.ops.range.Range Usize)) (hs : iter.iter.start.val = 0)
+    (he : iter.iter.end.val ≤ 257) (result : mid.p256.JacobianMontPoint)
+    (hres : jrep (twin p256G Q (nafVal (g.val.drop iter.iter.end.val)) (nafVal (p.val.drop iter.iter.end.val)))
+      result) :
+    mid.p256.JacobianMontPoint.public_twin_multiply_loop iter odd more g p gm result ⦃ r =>
+      jrep (twin p256G Q (nafVal g.val) (nafVal p.val)) r ⦄ := by
+  unfold mid.p256.JacobianMontPoint.public_twin_multiply_loop
+  have hGc := P256.onCurve_G
+  apply loop.spec_decr_nat (fun x => x.1.iter.end.val)
+    (fun x => x.1.iter.start.val = 0 ∧ x.1.iter.end.val ≤ 257 ∧ x.2.1 = more ∧
+      jrep (twin p256G Q (nafVal (g.val.drop x.1.iter.end.val)) (nafVal (p.val.drop x.1.iter.end.val))) x.2.2)
+  · rintro ⟨it, m1, res⟩ ⟨hs, he, hm1, hres⟩
+    simp only at hs he hm1 hres ⊢
+    rw [hm1]
+    unfold mid.p256.JacobianMontPoint.public_twin_multiply_loop.body
+    step as ⟨o, it1, hst, ho⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, he1⟩ := ho
+      simp only
+      set A := nafVal (g.val.drop it.iter.end.val)
+      set B := nafVal (p.val.drop it.iter.end.val)
+      have hi : it1.iter.end.val < 257 := by omega
+      have hgl : g.val.length = 257 := g.property
+      have hpl : p.val.length = 257 := p.property
+      step as ⟨gd, hgd⟩
+      step as ⟨pd, hpd⟩
+      have hgd' : gd = g.val[it1.iter.end.val]! := by rw [hgd, getElem_eq_getElem! _ _ (by omega)]
+      have hpd' : pd = p.val[it1.iter.end.val]! := by rw [hpd, getElem_eq_getElem! _ _ (by omega)]
+      step with is_infinity_spec res _ hres as ⟨b, hb⟩
+      have hT := hG.twin_onCurve p256G Q hGc hQ
+      apply WP.spec_bind (Pₘ := fun r1 => jrep (twin p256G Q (2 * A) (2 * B)) r1)
+      · split
+        · rename_i hbt
+          simp only [WP.spec_ok]
+          have h0 := hb.mp hbt
+          rw [← hG.twin_double p256G Q hGc hQ, h0, hG.mul_none none trivial, ← h0]
+          exact hres
+        · step with double_spec res _ hres as ⟨r1, hr1⟩
+          rwa [hG.twin_double p256G Q hGc hQ] at hr1
+      intro r1 hr1
+      apply WP.spec_bind (Pₘ := fun x : Option (Std.Array mid.p256.AffineMontPoint 8#usize) ×
+          mid.p256.JacobianMontPoint => x.1 = more ∧ jrep (twin p256G Q (2 * A) (2 * B + pd.val)) x.2)
+      · split
+        · rename_i hpne
+          have hpv : pd.val ≠ 0 := by
+            intro h
+            have : pd = 0#i8 := (IScalar.eq_equiv _ _).mpr (by rw [h]; rfl)
+            simp [this] at hpne
+          have hdig := hp it1.iter.end.val hi
+          rw [← hpd'] at hdig
+          have hA' : (if more = none then (16 : Int) else 32) = 16 ∨ (if more = none then (16 : Int) else 32) = 32 := by
+            split <;> simp
+          obtain ⟨hodd', hlt'⟩ := i8_natAbs pd _ hA' hdig hpv
+          step as ⟨i1, hi1⟩
+          step as ⟨i2, hi2⟩
+          simp only [lift, bind_ok]
+          generalize hi3 : core.convert.num.FromUsizeU8.from i2 = i3
+          have hi3v : i3.val = pd.val.natAbs / 2 := by
+            rw [← hi3, core.convert.num.FromUsizeU8.from_val_eq, hi2, hi1]
+          have h2i3 : 2 * i3.val + 1 = pd.val.natAbs := by omega
+          apply WP.spec_bind (Pₘ := fun tmp : mid.p256.AffineMontPoint =>
+            p256Represents2 (p256Pow Q pd.val.natAbs) (pairNat tmp.xy.val))
+          · rcases hmo : more with _ | m
+            · simp only [hmo, ↓reduceIte] at hlt'
+              have h8 : i3.val < 8 := by omega
+              step as ⟨tmp, htmp⟩
+              rw [htmp, getElem_eq_getElem! _ _ (by simp; omega), ← h2i3]
+              exact hodd _ h8
+            · simp only [hmo, reduceCtorEq, ↓reduceIte] at hlt'
+              simp only
+              split
+              · rename_i hge
+                have hge' : 8 ≤ i3.val := by simpa using hge
+                step as ⟨i4, hi4⟩
+                step as ⟨tmp, htmp⟩
+                rw [htmp, getElem_eq_getElem! _ _ (by simp; omega)]
+                have := hmore m hmo (i4.val) (by omega)
+                rwa [show 2 * i4.val + 17 = pd.val.natAbs by omega] at this
+              · rename_i hge
+                have h8 : i3.val < 8 := by simp at hge; omega
+                step as ⟨tmp, htmp⟩
+                rw [htmp, getElem_eq_getElem! _ _ (by simp; omega), ← h2i3]
+                exact hodd _ h8
+          intro tmp htmp
+          step with digit_point hG Q hQ pd tmp htmp as ⟨tmp1, htmp1⟩
+          step with add_affine_spec hG r1 tmp1 _ _ (hT _ _) (hG.zpow_onCurve Q hQ _) hr1 htmp1 as ⟨r3, hr3⟩
+          rw [hG.twin_add_right p256G Q hGc hQ] at hr3
+          first | exact hr3 | exact ⟨rfl, hr3⟩ | exact ⟨trivial, hr3⟩
+        · rename_i hpe
+          simp only [WP.spec_ok]
+          have : pd.val = 0 := by simpa using hpe
+          rw [this, add_zero]
+          exact ⟨trivial, hr1⟩
+      rintro ⟨m2, r2⟩ ⟨hm2, hr2⟩
+      simp only at hm2 hr2 ⊢
+      rw [hm2]
+      have hie : it1.iter.end.val + 1 = it.iter.end.val := he1
+      have hA' : nafVal (g.val.drop it1.iter.end.val) = gd.val + 2 * A := by
+        rw [nafVal_drop _ _ (by omega), hie, hgd']
+      have hB' : nafVal (p.val.drop it1.iter.end.val) = pd.val + 2 * B := by
+        rw [nafVal_drop _ _ (by omega), hie, hpd']
+      have hfin : ∀ r, jrep (twin p256G Q (2 * A + gd.val) (2 * B + pd.val)) r →
+          it1.iter.start.val = 0 ∧ it1.iter.end.val ≤ 257 ∧
+            jrep (twin p256G Q (nafVal (g.val.drop it1.iter.end.val)) (nafVal (p.val.drop it1.iter.end.val))) r ∧
+            it1.iter.end.val < it.iter.end.val := by
+        intro r hr
+        refine ⟨by rw [hst]; exact hs, by omega, ?_, by omega⟩
+        rw [hA', hB', add_comm (gd.val), add_comm (pd.val)]; exact hr
+      split
+      · rename_i hgne
+        have hgv : gd.val ≠ 0 := by
+          intro h
+          have : gd = 0#i8 := (IScalar.eq_equiv _ _).mpr (by rw [h]; rfl)
+          simp [this] at hgne
+        have hdig := hg it1.iter.end.val hi
+        rw [← hgd'] at hdig
+        obtain ⟨hodd', hlt'⟩ := i8_natAbs gd 32 (by simp) hdig hgv
+        step as ⟨i1, hi1⟩
+        have hgml : gm.length = 256 := by
+          rw [Slice.length, hgm]; exact (t.val[0]!).property
+        step with lookup_spec gm hgml i1 (by rw [hi1]; omega) (by rw [hi1]; simp at hlt'; omega) as ⟨tmp, htmp⟩
+        have htab0 := htab 0 (by norm_num) i1.val (by rw [hi1]; omega) (by rw [hi1]; simp at hlt'; omega)
+        have hrep : p256Represents2 (p256Pow p256G gd.val.natAbs) (pairNat tmp.xy.val) := by
+          rw [htmp, hgm, ← hi1]; simpa using htab0
+        step with digit_point hG p256G hGc gd tmp hrep as ⟨tmp1, htmp1⟩
+        step with add_affine_spec hG r2 tmp1 _ _ (hT _ _) (hG.zpow_onCurve p256G hGc _) hr2 htmp1 as
+          ⟨r3, hr3⟩
+        rw [hG.twin_add_left p256G Q hGc hQ] at hr3
+        have h := hfin r3 hr3
+        first | exact h | exact ⟨h.1, h.2.1, rfl, h.2.2⟩
+      · rename_i hge
+        have : gd.val = 0 := by simpa using hge
+        have h := hfin r2 (by rw [this, add_zero]; exact hr2)
+        show WP.spec (ok (ControlFlow.cont (it1, more, r2))) _
+        rw [WP.spec_ok]
+        exact ⟨h.1, h.2.1, rfl, h.2.2⟩
+    · rw [ho]
+      simp only [WP.spec_ok]
+      have h0 : it.iter.end.val = 0 := by omega
+      rwa [h0, List.drop_zero, List.drop_zero] at hres
+  · exact ⟨hs, he, rfl, hres⟩
+
 end P256
 
 end rind.aarch64
