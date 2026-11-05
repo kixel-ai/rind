@@ -288,6 +288,9 @@ def outLen : high.digest.Algorithm → Nat
   | .SHA384 => 48
   | .SHA512 => 64
   | .SHA512_256 => 32
+  | .SHA3_256 => 32
+  | .SHA3_384 => 48
+  | .SHA3_512 => 64
 
 theorem output_len_eq (a : high.digest.Algorithm) :
     ∃ n, a.output_len = ok n ∧ n.val = outLen a ∧ n.val ≤ 64 := by

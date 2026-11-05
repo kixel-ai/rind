@@ -68,12 +68,7 @@ impl VerifyingKey {
         let more = self
             .more_odd_multiples
             .get_or_build(|| AffineMontPoint::public_more_odd_multiples(&self.odd_multiples));
-        let point = match more {
-            Some(more) => {
-                JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples, more])
-            }
-            None => JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples]),
-        };
+        let point = JacobianMontPoint::public_twin_multiply(&u1, &u2, &self.odd_multiples, more);
 
         if point.public_is_infinity() {
             return Err(Error::BadSignature);
@@ -269,19 +264,8 @@ impl AffineMontPoint {
         let y = util::big_endian_slice_to_u64x4(y).unwrap();
 
         // A coordinate at or above p would be reduced, giving the point a
-        // second encoding.  Public, so this need not be constant time.  A
-        // loop from the top limb rather than `Iterator::lt`, which Aeneas
-        // cannot translate; the compiled code is the same.
-        let below_p = |v: &[u64; 4]| {
-            for i in 0..4 {
-                let j = 3 - i;
-                if v[j] != CURVE_PRIME[j] {
-                    return v[j] < CURVE_PRIME[j];
-                }
-            }
-            false
-        };
-        if !below_p(&x) || !below_p(&y) {
+        // second encoding.
+        if !public_below_p(&x) || !public_below_p(&y) {
             return Err(KeyFormatError::NotOnCurve.into());
         }
 
@@ -541,33 +525,40 @@ impl JacobianMontPoint {
         result
     }
 
-    /// `g * G + p * P` for public scalars, given P's odd multiples in rows
-    /// of 8.
+    /// `g * G + p * P` for public scalars, given P, 3P, ..., 15P, and 17P,
+    /// ..., 31P if `more` holds them.
     ///
-    /// One chain of doublings serves both: P's digits are a NAF over
-    /// `odd_multiples`, width 5 for one row and 6 for two, and G's a width-6
-    /// NAF over the generator table's first row, which holds G to at least
-    /// 32G.
+    /// One chain of doublings serves both: P's digits are a NAF over its odd
+    /// multiples, width 5 without `more` and 6 with it, and G's a width-6 NAF
+    /// over the generator table's first row, which holds G to at least 32G.
+    ///
+    /// The rows are two arguments, and the digits indexed rather than zipped,
+    /// as Aeneas cannot translate a slice of borrowed rows or the zip.
     fn public_twin_multiply(
         g: &Scalar,
         p: &Scalar,
-        odd_multiples: &[&[AffineMontPoint; 8]],
+        odd_multiples: &[AffineMontPoint; 8],
+        more: Option<&[AffineMontPoint; 8]>,
     ) -> Self {
         let g_digits = g.public_naf::<6>();
-        let p_digits = match odd_multiples.len() {
-            1 => p.public_naf::<5>(),
-            _ => p.public_naf::<6>(),
+        let p_digits = match more {
+            None => p.public_naf::<5>(),
+            Some(_) => p.public_naf::<6>(),
         };
         let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP[0][..];
 
         let mut result = Self::infinity();
-        for (g_digit, p_digit) in g_digits.iter().zip(&p_digits).rev() {
+        for i in (0..g_digits.len()).rev() {
+            let (g_digit, p_digit) = (&g_digits[i], &p_digits[i]);
             if !result.public_is_infinity() {
                 result = result.double();
             }
             if *p_digit != 0 {
                 let i = usize::from(p_digit.unsigned_abs() / 2);
-                let mut tmp = odd_multiples[i / 8][i % 8];
+                let mut tmp = match more {
+                    Some(more) if i >= 8 => more[i - 8],
+                    _ => odd_multiples[i],
+                };
                 if *p_digit < 0 {
                     tmp.negate_y();
                 }
@@ -667,13 +658,13 @@ impl JacobianMontPoint {
         }
         let mut r_plus_n = [0; 4];
         let mut carry = false;
-        for (sum, (r, n)) in r_plus_n.iter_mut().zip(r.0.iter().zip(CURVE_ORDER)) {
-            let (s, c1) = r.overflowing_add(n);
+        for i in 0..4 {
+            let (s, c1) = r.0[i].overflowing_add(CURVE_ORDER[i]);
             let (s, c2) = s.overflowing_add(u64::from(carry));
-            *sum = s;
+            r_plus_n[i] = s;
             carry = c1 | c2;
         }
-        !carry && r_plus_n.iter().rev().lt(CURVE_PRIME.iter().rev()) && is(r_plus_n)
+        !carry && public_below_p(&r_plus_n) && is(r_plus_n)
     }
 
     #[must_use]
@@ -720,6 +711,20 @@ impl JacobianMontPoint {
         low::bignum_mux(select, &mut r.xyz[..], &p1.xyz[..], &p0.xyz[..]);
         r
     }
+}
+
+/// Whether `v` is below p, for public `v`.
+///
+/// A loop from the top limb rather than `Iterator::lt`, which Aeneas cannot
+/// translate; the compiled code is the same.
+fn public_below_p(v: &[u64; 4]) -> bool {
+    for i in 0..4 {
+        let j = 3 - i;
+        if v[j] != CURVE_PRIME[j] {
+            return v[j] < CURVE_PRIME[j];
+        }
+    }
+    false
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -1156,10 +1161,10 @@ mod tests {
             let odd_multiples = CURVE_GENERATOR.public_odd_multiples();
             let more = AffineMontPoint::public_more_odd_multiples(&odd_multiples);
             let zero = Scalar::default();
-            for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
+            for more in [None, Some(&more)] {
                 for (g, p) in [(&scalar, &zero), (&zero, &scalar)] {
                     assert_eq!(
-                        JacobianMontPoint::public_twin_multiply(g, p, rows)
+                        JacobianMontPoint::public_twin_multiply(g, p, &odd_multiples, more)
                             .as_affine()
                             .xy,
                         expected
@@ -1192,9 +1197,9 @@ mod tests {
             (Scalar([0, 0, 0, 1 << 63]), Scalar([0, 0, 0, 1 << 63])),
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
-            for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
+            for more in [None, Some(&more)] {
                 assert_eq!(
-                    JacobianMontPoint::public_twin_multiply(&g, &p, rows)
+                    JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples, more)
                         .as_affine()
                         .xy,
                     expected
@@ -1212,9 +1217,9 @@ mod tests {
             (Scalar::small_u64(6), Scalar::small_u64(3)),
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p).add(&p)).xy;
-            for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
+            for more in [None, Some(&more)] {
                 assert_eq!(
-                    JacobianMontPoint::public_twin_multiply(&g, &p, rows)
+                    JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples, more)
                         .as_affine()
                         .xy,
                     expected

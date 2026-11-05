@@ -24,7 +24,7 @@ mod generic {
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
     pub(super) mod ctr;
-    #[cfg(all(test, not(target_arch = "arm")))]
+    #[cfg(test)]
     pub(crate) mod ghash;
     pub(crate) mod mlkem;
     #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
@@ -68,6 +68,8 @@ pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, split_tail};
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
+#[cfg(all(test, target_arch = "arm"))]
+pub(crate) use generic::ghash::gcm_model;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
 pub(crate) use generic::reuse_cache::ReuseCache;
@@ -287,6 +289,7 @@ cfg_if::cfg_if! {
         #[cfg(test)]
         pub(crate) use arm::ct_qemu;
         pub(crate) use arm::ghashv8_armx::GhashTable;
+        pub(crate) use arm::ghash_nohw::NohwTable;
         pub(crate) use arm::chacha20;
         pub(crate) use generic::chacha20poly1305;
         pub(crate) use arm::poly1305;

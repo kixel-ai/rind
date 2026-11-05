@@ -1,6 +1,7 @@
 module
 public import Aeneas
 public import Mathlib.Data.Nat.Digits.Defs
+public import Mathlib.Data.ZMod.Basic
 open Aeneas Aeneas.Std
 @[expose] public section
 
@@ -125,6 +126,34 @@ https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f
 noncomputable def p256Pow (P : P256Point) : Nat → P256Point
   | 0 => none
   | n + 1 => p256Add P (p256Pow P n)
+
+/-- `weierstrass_neg (integer_mod_ring p_256, ring_neg (integer_mod_ring p_256)
+(&3), &b_256) P`, which `P256_GROUP` shows is `group_inv p256_group P`: y
+negated mod p. -/
+def p256Neg : P256Point → P256Point
+  | none => none
+  | some (x, y) => some (x, (p256 - y % p256) % p256)
+
+/-- FIPS 186-5 section 6.4.1's P-256 ECDSA signature `(r, s)` under private key
+`d`, with per-message secret `k`, of the hash's integer `e`: r is the
+x-coordinate of kG mod n, and s is (e + rd)/k mod n. A rind signature is this
+for the first `k` whose `r` and `s` are both nonzero. -/
+noncomputable def ecdsaP256Sign (d k e : Nat) : Option (Nat × Nat) :=
+  match p256Pow p256G k with
+  | some (x, _) =>
+    some (x % n256, (((e + x % n256 * d : Nat) : ZMod n256) * (k : ZMod n256)⁻¹).val)
+  | none => none
+
+/-- FIPS 186-5 section 6.4.2's P-256 ECDSA verification of `(r, s)` over the
+hash's integer `e` under the public key `Q`: r and s are in [1, n), and
+u₁G + u₂Q, for u₁ = e/s and u₂ = r/s mod n, is a finite point whose
+x-coordinate mod n is r. -/
+def ecdsaP256Verifies (Q : P256Point) (e r s : Nat) : Prop :=
+  0 < r ∧ r < n256 ∧ 0 < s ∧ s < n256 ∧
+    match p256Add (p256Pow p256G (((e : ZMod n256) * (s : ZMod n256)⁻¹).val))
+        (p256Pow Q (((r : ZMod n256) * (s : ZMod n256)⁻¹).val)) with
+    | some (x, _) => x % n256 = r
+    | none => False
 
 /-! ## ChaCha20 and QUIC header protection -/
 
