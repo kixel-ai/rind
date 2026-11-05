@@ -4,8 +4,9 @@ use std::io::BufReader;
 use rind::Error;
 use rind::aead::{
     AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce, RandomNonce, RandomizedNonceKey, Tag,
+    gcm,
 };
-use rind::cipher::ChaCha20;
+use rind::cipher::{AES_128, AES_256, ChaCha20};
 use rind::signature::verify::legacy;
 use rind::signature::{self, RsaVerificationAlgorithm, sign, verify};
 use rind::{hkdf, hmac, pbkdf2};
@@ -380,7 +381,19 @@ fn test_verify_ecdsa() {
 
 #[test]
 fn test_aes_gcm() {
-    let data_file = File::open("../thirdparty/wycheproof/testvectors_v1/aes_gcm_test.json")
+    aes_gcm("aes_gcm_test.json", false);
+}
+
+#[test]
+fn test_aes_gmac() {
+    aes_gcm("aes_gmac_test.json", true);
+}
+
+/// Runs a file of AES-GCM tests, or of GMAC's if `gmac`, whose message is the
+/// AAD of an empty one, through `gcm::Key`, and those with 96-bit IVs through
+/// `aead::Key` too.
+fn aes_gcm(file: &str, gmac: bool) {
+    let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
         .expect("failed to open data file");
 
     let reader = BufReader::new(data_file);
@@ -393,111 +406,75 @@ fn test_aes_gcm() {
         for test in group.tests {
             summary.start(&test);
 
-            let algorithm = match test.key.len() {
-                16 => &AES_128_GCM,
-                32 => &AES_256_GCM,
+            let (algorithm, aes) = match test.key.len() {
+                16 => (&AES_128_GCM, &AES_128),
+                32 => (&AES_256_GCM, &AES_256),
                 24 => {
                     summary.skipped("aes-192 not supported");
                     continue;
                 }
                 len => panic!("unexpected key length {len}"),
             };
-            let ctx = Key::new(algorithm, &test.key).unwrap();
-            let iv: [u8; 12] = match test.iv.try_into() {
-                Ok(iv) => iv,
-                Err(_) => {
-                    summary.skipped("gcm nonces must be 96 bits");
-                    continue;
-                }
+            let (aad, msg, ct) = match gmac {
+                true => (&test.msg[..], &[][..], &[][..]),
+                false => (&test.aad[..], &test.msg[..], &test.ct[..]),
             };
-            let nonce = || Nonce::assume_unique_for_key(iv);
+            let valid = test.result == ExpectedResult::Valid;
+            // A tag of another length, or an empty IV, for which GCM is
+            // undefined.
+            let malformed = test.tag.len() != 16 || test.iv.is_empty();
 
-            // try decrypt
-            let mut msg = test.ct.clone();
-            let result = Tag::try_from(test.tag.as_slice()).and_then(|tag| {
-                ctx.open_in_place_separate_tag(nonce(), &test.aad, tag, &mut msg)
-                    .map(|_| ())
-            });
+            if let Ok(iv) = <[u8; 12]>::try_from(test.iv.as_slice()) {
+                let ctx = Key::new(algorithm, &test.key).unwrap();
+                let nonce = || Nonce::assume_unique_for_key(iv);
 
-            match (test.result, &result) {
-                (ExpectedResult::Valid, Ok(())) => {
-                    assert_eq!(msg, test.msg);
+                let mut got = ct.to_vec();
+                let result = Tag::try_from(test.tag.as_slice()).and_then(|tag| {
+                    ctx.open_in_place_separate_tag(nonce(), aad, tag, &mut got)
+                        .map(|_| ())
+                });
+                check_open(valid, malformed, result);
+                if valid {
+                    assert_eq!(got, msg);
                 }
-                (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {}
-                (ExpectedResult::Invalid, Err(Error::WrongLength)) if test.tag.len() != 16 => {}
-                _ => panic!("expected {:?} got {:?}", test.result, result.err()),
+
+                let mut got = msg.to_vec();
+                let tag = ctx
+                    .seal_in_place_separate_tag(nonce(), aad, &mut got)
+                    .unwrap();
+                if valid {
+                    assert_eq!((&got[..], tag.as_ref()), (ct, &test.tag[..]));
+                }
             }
 
-            // and encrypt
-            let mut ct = test.msg.clone();
-            let tag = ctx
-                .seal_in_place_separate_tag(nonce(), &test.aad, &mut ct)
-                .unwrap();
+            let ctx = gcm::Key::new(aes, &test.key, gcm::TagLength::Full).unwrap();
+            let mut got = ct.to_vec();
+            let result = ctx
+                .open_in_place_separate_tag(&test.iv, aad, &test.tag, &mut got)
+                .map(|_| ());
+            check_open(valid, malformed, result);
+            if valid {
+                assert_eq!(got, msg);
+            }
 
-            if test.result == ExpectedResult::Valid {
-                assert_eq!(ct, test.ct);
-                assert_eq!(tag.as_ref(), &test.tag[..]);
+            let mut got = msg.to_vec();
+            match ctx.seal_in_place_separate_tag(&test.iv, aad, &mut got) {
+                Ok(tag) if valid => assert_eq!((&got[..], tag.as_ref()), (ct, &test.tag[..])),
+                Ok(_) => assert!(!test.iv.is_empty()),
+                Err(Error::WrongLength) => assert!(test.iv.is_empty()),
+                Err(e) => panic!("sealing failed with {e:?}"),
             }
         }
     }
 }
 
-#[test]
-fn test_aes_gmac() {
-    let data_file = File::open("../thirdparty/wycheproof/testvectors_v1/aes_gmac_test.json")
-        .expect("failed to open data file");
-
-    let reader = BufReader::new(data_file);
-    let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
-    let mut summary = Summary::new();
-
-    for group in tests.groups {
-        summary.group(&group);
-
-        for test in group.tests {
-            summary.start(&test);
-
-            let algorithm = match test.key.len() {
-                16 => &AES_128_GCM,
-                32 => &AES_256_GCM,
-                24 => {
-                    summary.skipped("aes-192 not supported");
-                    continue;
-                }
-                len => panic!("unexpected key length {len}"),
-            };
-            let ctx = Key::new(algorithm, &test.key).unwrap();
-            let iv: [u8; 12] = match test.iv.try_into() {
-                Ok(iv) => iv,
-                Err(_) => {
-                    summary.skipped("gcm nonces must be 96 bits");
-                    continue;
-                }
-            };
-            let nonce = || Nonce::assume_unique_for_key(iv);
-
-            // try decrypt
-            let result = Tag::try_from(test.tag.as_slice()).and_then(|tag| {
-                ctx.open_in_place_separate_tag(nonce(), &test.msg, tag, &mut [])
-                    .map(|_| ())
-            });
-
-            match (test.result, &result) {
-                (ExpectedResult::Valid, Ok(())) => {}
-                (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {}
-                (ExpectedResult::Invalid, Err(Error::WrongLength)) if test.tag.len() != 16 => {}
-                _ => panic!("expected {:?} got {:?}", test.result, result.err()),
-            }
-
-            // and encrypt
-            let tag = ctx
-                .seal_in_place_separate_tag(nonce(), &test.msg, &mut [])
-                .unwrap();
-
-            if test.result == ExpectedResult::Valid {
-                assert_eq!(tag.as_ref(), &test.tag[..]);
-            }
-        }
+/// Checks an open's result: an invalid test fails to authenticate, or is
+/// refused as malformed.
+fn check_open(valid: bool, malformed: bool, result: Result<(), Error>) {
+    match (valid, result) {
+        (true, Ok(())) | (false, Err(Error::DecryptFailed)) => {}
+        (false, Err(Error::WrongLength)) if malformed => {}
+        (_, result) => panic!("expected valid {valid}, got {result:?}"),
     }
 }
 
