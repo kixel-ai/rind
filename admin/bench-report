@@ -1199,7 +1199,8 @@ def report(hosts, tiers, verified):
             "Each row is one operation and each column one library. Each cell holds a square per host, colored "
             "by that library's time over the fastest library's on the same host, as the legend shows. A ✓ in a "
             "square marks verified code. Each square's tooltip, in the SVG opened on its own, gives its time; "
-            "the tables below each host give them all. A library with no square doesn't offer the operation.",
+            "the tables below each host give them all. A library with no square doesn't offer the operation, or "
+            "the host didn't time it, as its section says.",
             "",
             *picture("overview", "Time over the fastest library's, by operation, library, and host"),
             "",
@@ -1210,11 +1211,13 @@ def report(hosts, tiers, verified):
         if name not in hosts:
             continue
         h = hosts[name]
+        untimed = [label(row_name(op)) for op in OPERATIONS if row_name(op) not in times(h)]
         md += [
             f"### `{name}`: {h['cpu']['model']}",
             "",
             f"Measured {measured(h)}, on {h['os']} with {h['toolchain']['rustc']}.",
             "",
+            *([f"Not timed on `{name}`: {', '.join(untimed)}.", ""] if untimed else []),
             *picture(name, f"Times on {name}"),
             "",
             "<details>",

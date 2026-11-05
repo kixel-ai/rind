@@ -184,6 +184,7 @@ class Render(unittest.TestCase):
         files = br.report(hosts(), None, VERIFIED)
         md = files[br.REPORT]
         self.assertIn("on three machines", md)
+        self.assertIn("Not timed on `kixtop`: full handshake, X25519MLKEM768, ", md)
         self.assertIn("Not measured yet: `desktop`.", md)
         self.assertNotIn("`desktop` |", md)
         self.assertIn("No nightly results yet.", md)

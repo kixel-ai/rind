@@ -9,7 +9,7 @@ A `BENCHMARKS.md` linked from the README shows how rind compares with the usual 
 Planned with the maintainer on 2026-11-03. Settled; don't ask again (✅ is the chosen option):
 
 - Hosts: `nixos` (Ryzen 9 5900XT, Zen 3), `desktop` (Core Ultra 7 270K Plus, Arrow Lake), `nixos2` (i7-8700, Coffee Lake), and `kixtop` (Apple Silicon Mac, aarch64 macOS; accept its ssh host key once). Each runs its native path.
-- First publication (maintainer, 2026-11-04): publish with `nixos` and `nixos2` and the nightly CPU tiers, since `desktop` was busy all day and `kixtop`'s ssh timed out. The [recurring refresh](/quest/m3/bench-report-refresh.md) adds them once it finds them quiet and reachable; the report names the hosts not measured yet.
+- First publication (maintainer, 2026-11-04): publish with the hosts that are quiet and reachable, plus the nightly CPU tiers, rather than wait for all four. It shipped with `nixos`, `desktop`, and `nixos2`, whose fresh run stayed blocked by other work so its result is from an earlier commit; `kixtop`'s ssh timed out. The [recurring refresh](/quest/m3/bench-report-refresh.md) adds `kixtop`; the report names the hosts not measured yet.
 - Libraries: rind, aws-lc-rs, ring, RustCrypto with dalek, graviola, libcrux, and OpenSSL ✅, each wherever it offers the operation.
 - Format: BENCHMARKS.md with generated, committed SVGs ✅ / a GitHub Pages site.
 - Layout: an overview heatmap with operations as rows and libraries as columns, where each cell holds four small squares, one per host, colored by time relative to the fastest on that host. Below it, each host's numeric heatmap in a collapsed `<details>` ✅ / per-host tables only / a rind-centric summary / the overview only. Mockups were reviewed in this planning session.
