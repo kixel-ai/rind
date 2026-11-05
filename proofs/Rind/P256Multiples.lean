@@ -90,7 +90,7 @@ include h
 theorem pow_eq_nsmul (P : P256Curve) (k : Nat) :
     letI := h.group
     p256Pow P.1 k = (k • P).1 := by
-  letI := h.group
+  let := h.group
   induction k with
   | zero => rw [h.pow_zero, zero_smul]; rfl
   | succ k ih =>
@@ -100,7 +100,7 @@ theorem pow_eq_nsmul (P : P256Curve) (k : Nat) :
 theorem zpow_eq_zsmul (P : P256Curve) (z : Int) :
     letI := h.group
     p256ZPow P.1 z = (z • P).1 := by
-  letI := h.group
+  let := h.group
   cases z with
   | ofNat k => simp only [p256ZPow, Int.ofNat_eq_natCast, natCast_zsmul]; exact h.pow_eq_nsmul P k
   | negSucc k =>
@@ -110,23 +110,24 @@ theorem zpow_eq_zsmul (P : P256Curve) (z : Int) :
 theorem zpow_onCurve (P : P256Point) (hP : p256OnCurve P) (z : Int) : p256OnCurve (p256ZPow P z) := by
   rw [h.zpow_eq_zsmul ⟨P, hP⟩]; exact Subtype.property _
 
+omit h in
 theorem zpow_natCast (P : P256Point) (k : Nat) : p256ZPow P k = p256Pow P k := rfl
 
 theorem mul_zpow (P : P256Point) (hP : p256OnCurve P) (a b : Int) :
     p256Add (p256ZPow P a) (p256ZPow P b) = p256ZPow P (a + b) := by
-  letI := h.group
+  let := h.group
   rw [h.zpow_eq_zsmul ⟨P, hP⟩, h.zpow_eq_zsmul ⟨P, hP⟩, h.zpow_eq_zsmul ⟨P, hP⟩, add_zsmul]
   rfl
 
 theorem neg_zpow (P : P256Point) (hP : p256OnCurve P) (a : Int) :
     p256Neg (p256ZPow P a) = p256ZPow P (-a) := by
-  letI := h.group
+  let := h.group
   rw [h.zpow_eq_zsmul ⟨P, hP⟩, h.zpow_eq_zsmul ⟨P, hP⟩, neg_zsmul]
   rfl
 
 theorem twin_zero (G Q : P256Point) (hG : p256OnCurve G) (hQ : p256OnCurve Q) :
     twin G Q 0 0 = none := by
-  letI := h.group
+  let := h.group
   unfold twin
   rw [h.zpow_eq_zsmul ⟨G, hG⟩, h.zpow_eq_zsmul ⟨Q, hQ⟩, zero_smul, zero_smul]
   exact h.mul_none none trivial
@@ -137,7 +138,7 @@ theorem twin_onCurve (G Q : P256Point) (hG : p256OnCurve G) (hQ : p256OnCurve Q)
 
 theorem twin_double (G Q : P256Point) (hG : p256OnCurve G) (hQ : p256OnCurve Q) (a b : Int) :
     p256Add (twin G Q a b) (twin G Q a b) = twin G Q (2 * a) (2 * b) := by
-  letI := h.group
+  let := h.group
   have e : ∀ c d, twin G Q c d = ((c • (⟨G, hG⟩ : P256Curve)) + d • (⟨Q, hQ⟩ : P256Curve)).1 := by
     intro c d
     unfold twin
@@ -151,7 +152,7 @@ theorem twin_double (G Q : P256Point) (hG : p256OnCurve G) (hQ : p256OnCurve Q) 
 
 theorem twin_add_left (G Q : P256Point) (hG : p256OnCurve G) (hQ : p256OnCurve Q) (a b d : Int) :
     p256Add (twin G Q a b) (p256ZPow G d) = twin G Q (a + d) b := by
-  letI := h.group
+  let := h.group
   unfold twin
   rw [h.zpow_eq_zsmul ⟨G, hG⟩, h.zpow_eq_zsmul ⟨Q, hQ⟩, h.zpow_eq_zsmul ⟨G, hG⟩,
     h.zpow_eq_zsmul ⟨G, hG⟩]
@@ -162,7 +163,7 @@ theorem twin_add_left (G Q : P256Point) (hG : p256OnCurve G) (hQ : p256OnCurve Q
 
 theorem twin_add_right (G Q : P256Point) (hG : p256OnCurve G) (hQ : p256OnCurve Q) (a b d : Int) :
     p256Add (twin G Q a b) (p256ZPow Q d) = twin G Q a (b + d) := by
-  letI := h.group
+  let := h.group
   unfold twin
   rw [h.zpow_eq_zsmul ⟨G, hG⟩, h.zpow_eq_zsmul ⟨Q, hQ⟩, h.zpow_eq_zsmul ⟨Q, hQ⟩,
     h.zpow_eq_zsmul ⟨Q, hQ⟩]
@@ -174,11 +175,11 @@ theorem twin_add_right (G Q : P256Point) (hG : p256OnCurve G) (hQ : p256OnCurve 
 /-- A finite point's multiples are finite below its order, n. -/
 theorem zpow_ne_none (P : P256Point) (hP : p256OnCurve P) (hne : P ≠ none) (z : Int)
     (hz0 : z ≠ 0) (hz : z.natAbs < n256) : p256ZPow P z ≠ none := by
-  letI := h.group
+  let := h.group
   have hpos : 0 < z.natAbs := Int.natAbs_pos.mpr hz0
   rcases Int.natAbs_eq z with hz' | hz'
-  · rw [hz', h.zpow_natCast]; exact h.order P hP hne _ hpos hz
-  · rw [hz', ← h.neg_zpow P hP, h.zpow_natCast]
+  · rw [hz', P256Laws.zpow_natCast]; exact h.order P hP hne _ hpos hz
+  · rw [hz', ← h.neg_zpow P hP, P256Laws.zpow_natCast]
     intro hn
     apply h.order P hP hne _ hpos hz
     have := congrArg p256Neg hn
@@ -193,11 +194,11 @@ theorem zpow_ne (P : P256Point) (hP : p256OnCurve P) (hne : P ≠ none) (a b : I
   intro heq
   apply h.zpow_ne_none P hP hne (a - b) (sub_ne_zero.mpr hab) hn
   rw [sub_eq_add_neg, ← h.mul_zpow P hP, heq, h.mul_zpow P hP, add_neg_cancel]
-  letI := h.group
+  let := h.group
   rw [h.zpow_eq_zsmul ⟨P, hP⟩, zero_smul]; rfl
 
 theorem zpow_one (P : P256Point) (hP : p256OnCurve P) : p256ZPow P 1 = P := by
-  letI := h.group
+  let := h.group
   rw [h.zpow_eq_zsmul ⟨P, hP⟩, one_zsmul]
 
 end P256Laws

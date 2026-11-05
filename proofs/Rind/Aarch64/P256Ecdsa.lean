@@ -303,7 +303,7 @@ theorem tripleNat_eq (pt : mid.p256.JacobianMontPoint) (fx fy fz : mid.p256.Fiel
     (hx : fx.val = (pt.xyz.val.drop 0).take 4) (hy : fy.val = (pt.xyz.val.drop 4).take 4)
     (hz : fz.val = (pt.xyz.val.drop 8).take 4) :
     tripleNat pt.xyz.val = (feNat fx, feNat fy, feNat fz) := by
-  simp only [tripleNat, feNat, hx, hy, hz, List.drop_zero, List.drop_drop]
+  simp only [tripleNat, feNat, hx, hy, hz, List.drop_zero]
 
 theorem jrep_iff (P : P256Point) (pt : mid.p256.JacobianMontPoint) (fx fy fz : mid.p256.FieldElement)
     (hx : fx.val = (pt.xyz.val.drop 0).take 4) (hy : fy.val = (pt.xyz.val.drop 4).take 4)
@@ -466,8 +466,8 @@ theorem add_affine_spec (hG : P256Laws) (pt : mid.p256.JacobianMontPoint) (p : m
     set X := (tripleNat pt.xyz.val).1
     set Y := (tripleNat pt.xyz.val).2.1
     set Z := (tripleNat pt.xyz.val).2.2
-    have hZ0 : dec Z ≠ 0 := fun h => hP1 (by rw [← hP1eq, if_pos h])
-    rw [if_neg hZ0] at hP1eq
+    have hZ0 : dec Z ≠ 0 := fun h => hP1 (by rw [← hP1eq, ite_eq_left h])
+    rw [ite_eq_right hZ0] at hP1eq
     set px := (pairNat p.xy.val).1
     set py := (pairNat p.xy.val).2
     have hlt : ∀ x, x % p256 < p256 := fun x => Nat.mod_lt _ p256_pos
@@ -499,7 +499,7 @@ theorem add_affine_spec (hG : P256Laws) (pt : mid.p256.JacobianMontPoint) (p : m
           dec_mont_mul, hz2, dec_mont_sqr, hfzZ, hfe4y, val_inj,
           eq_mul_inv_iff_mul_eq₀ (pow_ne_zero 3 hZ0)]
         constructor <;> intro h <;> linear_combination h
-      have hP1' : jrep P1 pt := ⟨hX, hY, hZ, by rw [ofJacobian_dec, if_neg hZ0, hP1eq]⟩
+      have hP1' : jrep P1 pt := ⟨hX, hY, hZ, by rw [ofJacobian_dec, ite_eq_right hZ0, hP1eq]⟩
       split
       · rename_i hb2t
         have heq : P1 = P2 := by rw [← hP1eq, hP2, hxe, hyeq.mp hb2t]
@@ -522,7 +522,7 @@ theorem add_affine_spec (hG : P256Laws) (pt : mid.p256.JacobianMontPoint) (p : m
         intro h
         simp only [Option.some.injEq, Prod.mk.injEq] at h
         exact hb1f (hxeq.mpr h.1.symm)
-      step with add_inplace_affine_spec pt p P1 P2 ⟨hX, hY, hZ, by rw [ofJacobian_dec, if_neg hZ0, hP1eq]⟩ h2 hne
+      step with add_inplace_affine_spec pt p P1 P2 ⟨hX, hY, hZ, by rw [ofJacobian_dec, ite_eq_right hZ0, hP1eq]⟩ h2 hne
         as ⟨r, hr⟩
       exact hr
 
@@ -662,7 +662,7 @@ def nafInv (w : Nat) (K : Nat) (s : Nat) (digits : List I8) (window : Int) : Pro
 
 theorem nafVal_take_succ (l : List I8) (i : Nat) (hi : i < l.length) (d : I8) :
     nafVal ((l.set i d).take (i + 1)) = nafVal (l.take i) + 2 ^ i * d.val := by
-  rw [List.take_succ, List.getElem?_set_self hi, List.take_set_of_le (by omega), nafVal_append,
+  rw [List.take_add_one, List.getElem?_set_self hi, List.take_set_of_le (by omega), nafVal_append,
     List.length_take, Nat.min_eq_left (by omega)]
   simp [nafVal]
 
@@ -697,12 +697,13 @@ theorem naf_inv_step (w K i : Nat) (hw : w = 5 ∨ w = 6) (hi : i < 257) (ds : L
     by_cases hji : j = i
     · subst hji
       have : (ds.set j dd)[j]! = dd := by
-        simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, show j < ds.length by omega]
+        simp [show j < ds.length by omega]
       rw [this]; exact hd
     · have : (ds.set i dd)[j]! = ds[j]! := by
-        simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, Ne.symm hji]
+        simp [List.getElem!_eq_getElem?_getD, Ne.symm hji]
       rw [this]; exact hdig j (by omega)
 
+set_option exponentiation.threshold 257 in
 theorem naf_loop_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (k : Slice U64) (hk : k.length = 4)
     (iter : core.ops.range.Range Usize) (digits : Slice I8) (window : I32)
     (he : iter.end.val = 257) (hs : iter.start.val ≤ 257)
@@ -753,7 +754,6 @@ theorem naf_loop_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (k : Slice U64) (
             step as ⟨i4, hi4⟩
             step as ⟨s', hs'⟩
             · (try rw [hback]); (try simp only [Slice.length, Slice.set_val_eq, List.length_set]); (try omega)
-            try simp only [WP.spec_ok, true_and]
             have hi4v : i4.val = win.val := by
               rw [hi4, IScalar.cast_val_eq]
               exact Int.bmod_eq_of_le (by simp; omega) (by simp; omega)
@@ -772,7 +772,6 @@ theorem naf_loop_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (k : Slice U64) (
             step as ⟨i4, hi4⟩
             step as ⟨s', hs'⟩
             · (try rw [hback]); (try simp only [Slice.length, Slice.set_val_eq, List.length_set]); (try omega)
-            try simp only [WP.spec_ok, true_and]
             have hi4v : i4.val = d.val := by
               rw [hi4, IScalar.cast_val_eq]
               exact Int.bmod_eq_of_le (by rw [hd, hi5v]; simp; omega) (by rw [hd, hi5v]; simp; omega)
@@ -860,7 +859,7 @@ theorem naf_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (k : Slice U64) (hk : 
     rw [hi1, Nat.shiftLeft_eq, one_mul]; apply Nat.mod_eq_of_lt
     rcases hW with h | h <;> rw [h] <;> norm_num [U64.size, U64.numBits]
   step as ⟨i2, hi2⟩
-  · rw [hi1v]; (try simp); (try exact Nat.one_le_two_pow)
+  · rw [hi1v]; (try simp)
   step as ⟨i3, hi3, _⟩
   step as ⟨win, hwin⟩
   have hK : wordsNat k.val < 2 ^ 256 := by
@@ -965,14 +964,14 @@ theorem rev_next_spec (r : core.iter.adapters.rev.Rev (core.ops.range.Range Usiz
         (if r.iter.start.val < r.iter.end.val then o = some r'.iter.end ∧ r'.iter.end.val + 1 = r.iter.end.val
           else o = none) ⦄ := by
   unfold core.iter.adapters.rev.Rev.Insts.CoreIterTraitsIteratorIterator.next
-  simp only [core.ops.range.Range.Insts.DoubleEndedIterator,
+  simp only [
     core.ops.range.Range.Insts.CoreIterTraitsDoubleEndedIterator.next_back, core.iter.range.StepUsize,
     core.iter.range.UScalarStep, core.iter.range.UScalarStep.backward_checked]
   by_cases hlt : r.iter.start.val < r.iter.end.val
   · have hb : liftFun2 core.cmp.impls.PartialOrdUsize.lt r.iter.start r.iter.end = ok true := by
       simp [liftFun2, core.cmp.impls.PartialOrdUsize.lt, hlt]
     have h1 : (1#usize).val ≤ r.iter.end.val := by simp; omega
-    simp only [hb, bind_ok, ↓reduceIte, h1, ↓reduceDIte, WP.spec_ok, hlt, true_and]
+    simp only [hb, bind_ok, ↓reduceIte, h1, ↓reduceDIte, hlt]
     simp [UScalar.ofNatCore_val_eq]; omega
   · have hb : liftFun2 core.cmp.impls.PartialOrdUsize.lt r.iter.start r.iter.end = ok false := by
       simp [liftFun2, core.cmp.impls.PartialOrdUsize.lt, hlt]
@@ -995,7 +994,7 @@ theorem lookup_spec (row : Slice U64) (hrow : row.length = 256) (idx : U8) (h1 :
   step as ⟨a, ha⟩
   · simp only [Slice.length, Slice.from_val, List.length_ofFn]; omega
   rw [ha]
-  simp only [WP.spec_ok, Slice.from_val, List.getElem_ofFn, Array.from_val, Fin.val_cast, pairNat_take8]
+  simp only [Slice.from_val, List.getElem_ofFn, Array.from_val, Fin.val_cast, pairNat_take8]
   congr 2; rw [hi1, hiv]; ring
 
 @[step]
@@ -1033,11 +1032,11 @@ theorem digit_point (hG : P256Laws) (P : P256Point) (hP : p256OnCurve P) (d : I8
     have hneg' : d.val < 0 := by simpa using (IScalar.lt_equiv _ _).mp hneg
     apply WP.spec_mono (negate_y_spec pt _ hpt)
     intro r hr
-    rwa [← hG.zpow_natCast, hG.neg_zpow P hP, show -(d.val.natAbs : Int) = d.val by omega] at hr
+    rwa [← P256Laws.zpow_natCast, hG.neg_zpow P hP, show -(d.val.natAbs : Int) = d.val by omega] at hr
   · rename_i hpos
     have hpos' : ¬ d.val < 0 := fun h => hpos ((IScalar.lt_equiv _ _).mpr (by simpa using h))
     simp only [WP.spec_ok]
-    rwa [← hG.zpow_natCast, show (d.val.natAbs : Int) = d.val by omega] at hpt
+    rwa [← P256Laws.zpow_natCast, show (d.val.natAbs : Int) = d.val by omega] at hpt
 
 theorem twin_loop_spec (hG : P256Laws) (t : Std.Array (Std.Array U64 256#usize) 43#usize)
     (htab : p256Tabulates p256G t) (Q : P256Point) (hQ : p256OnCurve Q)
@@ -1134,7 +1133,7 @@ theorem twin_loop_spec (hG : P256Laws) (t : Std.Array (Std.Array U64 256#usize) 
           step with digit_point hG Q hQ pd tmp htmp as ⟨tmp1, htmp1⟩
           step with add_affine_spec hG r1 tmp1 _ _ (hT _ _) (hG.zpow_onCurve Q hQ _) hr1 htmp1 as ⟨r3, hr3⟩
           rw [hG.twin_add_right p256G Q hGc hQ] at hr3
-          first | exact hr3 | exact ⟨rfl, hr3⟩ | exact ⟨trivial, hr3⟩
+          exact hr3
         · rename_i hpe
           simp only [WP.spec_ok]
           have : pd.val = 0 := by simpa using hpe
@@ -1176,7 +1175,7 @@ theorem twin_loop_spec (hG : P256Laws) (t : Std.Array (Std.Array U64 256#usize) 
           ⟨r3, hr3⟩
         rw [hG.twin_add_left p256G Q hGc hQ] at hr3
         have h := hfin r3 hr3
-        first | exact h | exact ⟨h.1, h.2.1, rfl, h.2.2⟩
+        exact h
       · rename_i hge
         have : gd.val = 0 := by simpa using hge
         have h := hfin r2 (by rw [this, add_zero]; exact hr2)
@@ -1219,7 +1218,7 @@ theorem twin_multiply_spec (hG : P256Laws) (g p : mid.p256.Scalar) (Q : P256Poin
     (by rw [Array.val_to_slice, ha1, getElem_eq_getElem! _ _ (by simp)]) iter (by rw [iter_post]; rfl)
     (by omega) result (by
       rw [hend, List.drop_of_length_le (by omega), List.drop_of_length_le (by omega)]
-      simp only [nafVal, Int.ofNat_zero]
+      simp only [nafVal]
       rw [hG.twin_zero p256G Q p256OnCurve_G hQ]; exact result_post))
   intro r hr
   rwa [hgv, hpv] at hr
@@ -1228,10 +1227,10 @@ theorem twin_multiply_spec (hG : P256Laws) (g p : mid.p256.Scalar) (Q : P256Poin
 
 theorem wordsNat_take_succ (l : List U64) (i : Nat) (hi : i < l.length) :
     wordsNat (l.take (i + 1)) = wordsNat (l.take i) + 2 ^ (64 * i) * (l[i]!).val := by
-  rw [List.take_succ, List.getElem?_eq_getElem hi, Option.toList_some, wordsNat, List.map_append,
+  rw [List.take_add_one, List.getElem?_eq_getElem hi, Option.toList_some, wordsNat, List.map_append,
     Nat.ofDigits_append, List.length_map, List.length_take, Nat.min_eq_left (by omega), ← wordsNat,
     getElem_eq_getElem! _ _ hi, ← pow_mul]
-  simp [Nat.ofDigits]
+  simp []
 
 theorem x_is_loop_spec (a : Std.Array U64 4#usize) (iter : core.ops.range.Range Usize)
     (rpn : Std.Array U64 4#usize) (carry : Bool) (hs : iter.start.val ≤ 4) (he : iter.end.val = 4)
@@ -1278,15 +1277,13 @@ theorem x_is_loop_spec (a : Std.Array U64 4#usize) (iter : core.ops.range.Range 
       have hsum : s1.val + 2 ^ 64 * (c1 || c2).toNat = i1.val + i2.val + c.toNat := by
         have hb1 := i1.hBounds; have hb2 := i2.hBounds; have hbs := s'.hBounds
         simp only [UScalarTy.numBits] at hb1 hb2 hbs
-        try rw [hc] at h2
         rw [hsize, hmax] at h1 h2
         have hcv : c.toNat ≤ 1 := by cases c <;> decide
         generalize (2 : Nat) ^ 64 = M at *
         split_ifs at h1 with g1 <;> split_ifs at h2 with g2 <;> obtain ⟨e1, rfl⟩ := h1 <;>
-          obtain ⟨e2, rfl⟩ := h2 <;> simp only [Bool.or_true, Bool.true_or, Bool.or_false, Bool.toNat_true,
+          obtain ⟨e2, rfl⟩ := h2 <;> simp only [Bool.or_true, Bool.or_false, Bool.toNat_true,
             Bool.toNat_false] <;> omega
       step as ⟨a1, ha1⟩
-      try simp only [WP.spec_ok]
       refine ⟨by omega, by rw [he1]; exact he, ?_, by omega⟩
       have hi4 : it.start.val < 4 := by omega
       have hal1 : (a1.val).length = 4 := a1.property
@@ -1296,7 +1293,7 @@ theorem x_is_loop_spec (a : Std.Array U64 4#usize) (iter : core.ops.range.Range 
       have htk : a1.val.take it.start.val = r.val.take it.start.val := by
         rw [hset, List.take_set_of_le (by omega)]
       have hgi : (a1.val[it.start.val]!) = s1 := by
-        rw [hset]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, hrl, hi4]
+        rw [hset]; simp [hrl, hi4]
       rw [htk, hgi, ← getElem_eq_getElem! _ _ (by omega), ← getElem_eq_getElem! _ _ (by omega), ← hi1, ← hi2,
         show 64 * (it.start.val + 1) = 64 * it.start.val + 64 by ring, pow_add]
       have e : 2 ^ (64 * it.start.val) * s1.val + 2 ^ (64 * it.start.val) * 2 ^ 64 * (c1 || c2).toNat =
@@ -1492,14 +1489,14 @@ theorem batch_loop0_spec (pts : Std.Array mid.p256.JacobianMontPoint 8#usize)
       by_cases hji : j = it.start.val
       · subst hji
         have : a.val[it.start.val]! = fe2 := by
-          rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, hprl, show it.start.val < 8 by omega]
+          rw [hav]; simp [hprl, show it.start.val < 8 by omega]
         rw [this, hfe2]
         refine ⟨Nat.mod_lt _ p256_pos, ?_⟩
         rw [dec_mont_mul, hfev, hfzv, show it.start.val = (it.start.val - 1) + 1 by omega,
           Finset.prod_range_succ]
         simp
       · have : a.val[j]! = pr.val[j]! := by
-          rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, Ne.symm hji]
+          rw [hav]; simp [List.getElem!_eq_getElem?_getD, Ne.symm hji]
         rw [this]; exact hpr j (by omega)
     · obtain ⟨rfl, hst⟩ := ho
       simp only [WP.spec_ok]
@@ -1572,14 +1569,14 @@ theorem batch_loop1_spec (pts : Std.Array mid.p256.JacobianMontPoint 8#usize) (P
         by_cases hji : j = i
         · rw [hji]
           have : a.val[i]! = amp := by
-            rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, hrl, hi8]
+            rw [hav]; simp [hrl, hi8]
           rw [this]; exact hamp
         · have : a.val[j]! = rr.val[j]! := by
-            rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, Ne.symm hji]
+            rw [hav]; simp [List.getElem!_eq_getElem?_getD, Ne.symm hji]
           rw [this]; exact hrr j (by omega) hj8
       have hit1 : it1.iter.start.val = 0 := by rw [hst]; exact hs
       have hiv1l : feNat iv1 < p256 := by rw [hiv1]; exact hlt _
-      first | exact ⟨hit1, by omega, ⟨hiv1l, hiv1v⟩, hfin, by omega⟩ | exact ⟨hit1, by omega, hiv1l, hiv1v, hfin, by omega⟩
+      exact ⟨hit1, by omega, hiv1l, hiv1v, hfin, by omega⟩
     · rw [ho]
       simp only [WP.spec_ok]
       intro j hj; exact hrr j (by omega) hj
@@ -1629,7 +1626,7 @@ theorem batch_spec (pts : Std.Array mid.p256.JacobianMontPoint 8#usize) (Ps : Na
     rw [← hf2v]; exact (inv_eq_of_mul_eq_one_right this).symm
   step with as_mont_spec f3 as ⟨iv, hiv⟩
   simp only [mid.p256.AffineMontPoint.Insts.CoreDefaultDefault.default, core.default.DefaultArray.default,
-    bind_ok]
+    ]
   step as ⟨sl1, hsl1⟩
   step as ⟨it, hit⟩
   apply batch_loop1_spec pts Ps h pre hpre it (by rw [hit]; rfl) (by rw [hit]; simp [hsl1, Slice.len])
@@ -1674,12 +1671,12 @@ theorem odd_loop_spec (hG : P256Laws) (Q : P256Point) (hQ : p256OnCurve Q) (hQne
       by_cases hji : j = it.start.val
       · rw [hji]
         have : a.val[it.start.val]! = s1 := by
-          rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, hml, show it.start.val < 8 by omega]
+          rw [hav]; simp [hml, show it.start.val < 8 by omega]
         rw [this]
         have e : (2 * ((it.start.val - 1 : Nat) : Int) + 1 + 2) = 2 * (it.start.val : Int) + 1 := by omega
         rwa [e] at hs1'
       · have : a.val[j]! = mm.val[j]! := by
-          rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, Ne.symm hji]
+          rw [hav]; simp [List.getElem!_eq_getElem?_getD, Ne.symm hji]
         rw [this]; exact hmm j (by omega)
     · obtain ⟨rfl, hst⟩ := ho
       simp only [WP.spec_ok]
@@ -1709,7 +1706,7 @@ theorem odd_multiples_spec (hG : P256Laws) (pt : mid.p256.AffineMontPoint) (Q : 
     (fun j hj => ⟨hm j hj, hG.zpow_ne_none Q hQ hQne _ (by omega) (by omega)⟩))
   intro r hr j hj
   have := hr j hj
-  rwa [show (2 * (j : Int) + 1) = ((2 * j + 1 : Nat) : Int) by push_cast; ring, hG.zpow_natCast] at this
+  rwa [show (2 * (j : Int) + 1) = ((2 * j + 1 : Nat) : Int) by push_cast; ring, P256Laws.zpow_natCast] at this
 
 theorem map_go_spec (c : mid.p256.JacobianMontPoint) (l : List mid.p256.AffineMontPoint)
     (P : mid.p256.AffineMontPoint → mid.p256.JacobianMontPoint → Prop)
@@ -1725,7 +1722,7 @@ theorem map_go_spec (c : mid.p256.JacobianMontPoint) (l : List mid.p256.AffineMo
       mid.p256.AffineMontPoint.public_more_odd_multiples.closure.Insts.CoreOpsFunctionFnMutTupleAffineMontPointJacobianMontPoint.call_mut]
     step with h x (by simp) as ⟨r, hr⟩
     step with ih (fun y hy => h y (by simp [hy])) as ⟨ys, hyl, hys⟩
-    simp only [WP.spec_ok, List.length_cons, hyl, true_and]
+    simp only [List.length_cons, hyl, true_and]
     intro i hi
     cases i with
     | zero => simpa using hr
@@ -1738,7 +1735,7 @@ theorem more_odd_spec (hG : P256Laws) (Q : P256Point) (hQ : p256OnCurve Q) (hQne
   unfold mid.p256.AffineMontPoint.public_more_odd_multiples
   have hn := n256_big
   have hol : odd.val.length = 8 := odd.property
-  have hz : ∀ k : Nat, p256Pow Q k = p256ZPow Q k := fun k => (hG.zpow_natCast Q k).symm
+  have hz : ∀ k : Nat, p256Pow Q k = p256ZPow Q k := fun k => (P256Laws.zpow_natCast Q k).symm
   step as ⟨a7, ha7⟩
   have h7 := hodd 7 (by norm_num)
   rw [← getElem_eq_getElem! _ _ (by omega), ← ha7, hz] at h7
@@ -1764,7 +1761,7 @@ theorem more_odd_spec (hG : P256Laws) (Q : P256Point) (hQ : p256OnCurve Q) (hQne
       exact this) as ⟨l, hll, hl⟩
   rw [hol] at hll
   have hll' : l.length = (8#usize).val := hll
-  rw [dif_pos hll']
+  rw [dite_eq_left hll']
   simp only [bind_ok]
   apply WP.spec_mono (batch_spec (Array.from l hll') (fun j => p256ZPow Q (16 + (2 * j + 1))) (by
     intro j hj
@@ -1869,25 +1866,24 @@ theorem raw_verify_spec (hG : P256Laws) (hc : Cached) (key : mid.p256.VerifyingK
       (p256Pow Q ((scNat r : ZMod n256) * (scNat s : ZMod n256)⁻¹).val) with _ | ⟨x, y⟩
   · rw [hT] at hpt
     step with is_infinity_spec pt none hpt as ⟨b, hb⟩
-    rw [if_pos (hb.mpr trivial)]
+    rw [ite_eq_left (hb.mpr trivial)]
     simp only [WP.spec_ok]
     right
     simp
   · rw [hT] at hpt
     step with is_infinity_spec pt _ hpt as ⟨b, hb⟩
     have hbf : ¬ b = true := fun h => by cases hb.mp h
-    rw [if_neg hbf]
+    rw [ite_eq_right hbf]
     step with x_is_spec pt x y hpt r hr as ⟨b1, hb1⟩
     split
     · rename_i h1
       rw [WP.spec_ok]
       left
-      first | exact ⟨⟨hr0, hr, hs0, hs, hb1.mp h1⟩, rfl⟩ | exact ⟨hr0, hr, hs0, hs, hb1.mp h1, rfl⟩ |
-        exact ⟨⟨hr0, hr, hs0, hs, hb1.mp h1⟩, trivial⟩
+      exact ⟨hr0, hr, hs0, hs, hb1.mp h1, rfl⟩
     · rename_i h1
       rw [WP.spec_ok]
       right
-      first | exact ⟨fun h => h1 (hb1.mpr h.2.2.2.2), rfl⟩ | exact ⟨fun h => h1 (hb1.mpr h.2.2.2.2), trivial⟩
+      exact ⟨fun h => h1 (hb1.mpr h.2.2.2.2), rfl⟩
 
 /-! ## Verifying keys, `mid::p256::VerifyingKey` -/
 
@@ -1964,7 +1960,7 @@ theorem hash_to_scalar_spec (dg : Slice U8) (hdg : 32 ≤ dg.length) :
     high.ecdsa.hash_to_scalar P256C dg ⦃ r =>
       ∃ e, r = .Ok e ∧ scNat e = beNat (dg.val.take 32) % n256 ⦄ := by
   unfold high.ecdsa.hash_to_scalar
-  simp only [mid.p256.Scalar.Insts.RindHighCurveScalar.LEN_BYTES, mid.p256.Scalar.BYTES, bind_tc_ok,
+  simp only [mid.p256.Scalar.Insts.RindHighCurveScalar.LEN_BYTES, mid.p256.Scalar.BYTES, 
     bind_ok]
   apply WP.spec_bind (Pₘ := fun h32 : Slice U8 => h32.val = dg.val.take 32)
   · split
@@ -2006,21 +2002,21 @@ theorem ecdsa_verify_spec (hG : P256Laws) (h : Runs) (hc : Cached) {H Ctx St : T
     step with from_bytes_checked_spec sr hsrl as ⟨rr, hrr⟩
     rw [hsrv] at hrr
     simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch,
-      high.ecdsa.VerifyingKey.verify.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError,
+      
       high.ecdsa.VerifyingKey.verify.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
-      high.ecdsa.VerifyingKey.verify.closure_1.Insts.CoreOpsFunctionFnOnceTupleErrorError,
+      
       high.ecdsa.VerifyingKey.verify.closure_1.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
     by_cases hra : 0 < beNat (sig.val.take 32) ∧ beNat (sig.val.take 32) < n256
-    · rw [if_pos hra] at hrr
+    · rw [ite_eq_left hra] at hrr
       obtain ⟨scr, rfl, hscr⟩ := hrr
       simp only [bind_ok]
       step as ⟨ss, hss, hssl⟩
-      have hssv : ss.val = sig.val.drop 32 := by simp [hss, List.slice, hsl]
+      have hssv : ss.val = sig.val.drop 32 := by simp [hss]
       step with from_bytes_checked_spec ss (by rw [hssl]; simp only [Slice.length]; omega) as ⟨rs, hrs⟩
       rw [hssv] at hrs
       by_cases hsa : 0 < beNat (sig.val.drop 32) ∧ beNat (sig.val.drop 32) < n256
-      · rw [if_pos hsa] at hrs
+      · rw [ite_eq_left hsa] at hrs
         obtain ⟨scs, rfl, hscs⟩ := hrs
         simp only [bind_ok]
         rw [hd]
@@ -2029,7 +2025,7 @@ theorem ecdsa_verify_spec (hG : P256Laws) (h : Runs) (hc : Cached) {H Ctx St : T
         simp only [bind_ok]
         step with hash_to_scalar_spec dg hdg as ⟨r4, e, hr4, he⟩
         subst hr4
-        simp only [bind_tc_ok, bind_ok, mid.p256.VerifyingKey.Insts.RindHighCurvePublicKeyScalar.raw_ecdsa_verify]
+        simp only [bind_ok, mid.p256.VerifyingKey.Insts.RindHighCurvePublicKeyScalar.raw_ecdsa_verify]
         obtain ⟨hQ, hQne, hodd⟩ := hk
         apply WP.spec_mono (raw_verify_spec hG hc key.public_key Q hQ hQne hodd scr scs e
           (by unfold scNat; rw [hscr]; exact hra.1) (by unfold scNat; rw [hscr]; exact hra.2)
@@ -2041,12 +2037,12 @@ theorem ecdsa_verify_spec (hG : P256Laws) (h : Runs) (hc : Cached) {H Ctx St : T
         rcases hr with ⟨hv, rfl⟩ | ⟨hv, rfl⟩
         · left; exact ⟨hv, rfl⟩
         · right; exact ⟨hv, rfl⟩
-      · rw [if_neg hsa] at hrs
+      · rw [ite_eq_right hsa] at hrs
         subst hrs
-        simp only [bind_tc_ok, bind_ok, WP.spec_ok]
+        simp only [bind_ok, WP.spec_ok]
         right
         exact ⟨fun hv => hsa ⟨hv.2.2.1, hv.2.2.2.1⟩, trivial⟩
-    · rw [if_neg hra] at hrr
+    · rw [ite_eq_right hra] at hrr
       subst hrr
       simp only [bind_tc_ok, bind_ok, WP.spec_ok]
       right
@@ -2054,7 +2050,7 @@ theorem ecdsa_verify_spec (hG : P256Laws) (h : Runs) (hc : Cached) {H Ctx St : T
   · have hne : (sig.len != i2) = true := by
       simp only [bne_iff_ne, ne_eq]; intro he; apply hlen
       have := congrArg UScalar.val he; simp [Slice.len, hi2] at this; simpa [Slice.length] using this
-    simp only [hne, ↓reduceIte, WP.spec_ok, hlen, false_and, not_false_eq_true, true_and, reduceCtorEq, or_true]
+    simp only [hne, ↓reduceIte, WP.spec_ok, hlen, false_and, not_false_eq_true, true_and, or_true]
 
 /-- `ecdsa::VerifyingKey::from_x962_uncompressed` at P-256. -/
 theorem ecdsa_vk_from_x962_spec (hG : P256Laws) (h : Runs) (hheld : Held) (hc : Cached) (bytes : Slice U8) :
@@ -2062,12 +2058,12 @@ theorem ecdsa_vk_from_x962_spec (hG : P256Laws) (h : Runs) (hheld : Held) (hc : 
       x962Outcome bytes.val (fun key => VKey (some (x962Coords bytes.val)) key.public_key) r ⦄ := by
   unfold high.ecdsa.VerifyingKey.from_x962_uncompressed
   step
-  simp only [P256C, high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar,
+  simp only [P256C, 
     mid.p256.VerifyingKey.Insts.RindHighCurvePublicKeyScalar,
     mid.p256.VerifyingKey.Insts.RindHighCurvePublicKeyScalar.from_x962_uncompressed]
   step with vk_from_x962_spec hG h hheld hc bytes as ⟨r, hr⟩
   simp only [core.result.Result.map,
-    high.ecdsa.VerifyingKey.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnOnceTupleClause0_PublicKeyVerifyingKey,
+    
     high.ecdsa.VerifyingKey.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnOnceTupleClause0_PublicKeyVerifyingKey.call_once]
   unfold x962Outcome at hr ⊢
   rcases hb : bytes.val.head? with _ | b0
@@ -2120,7 +2116,7 @@ theorem g_mult (hG : P256Laws) (k : Nat) (hk0 : 0 < k) (hk : k < n256) :
     ∃ x y, p256Pow p256G k = some (x, y) ∧ p256OnCurve (some (x, y)) := by
   have hc := hG.zpow_onCurve p256G p256OnCurve_G k
   have hne := hG.zpow_ne_none p256G p256OnCurve_G (by simp [p256G]) k (by omega) (by simpa using hk)
-  rw [hG.zpow_natCast] at hc hne
+  rw [P256Laws.zpow_natCast] at hc hne
   rcases hq : p256Pow p256G k with _ | ⟨x, y⟩
   · exact absurd hq hne
   · rw [hq] at hc; exact ⟨x, y, rfl, hc⟩
@@ -2176,7 +2172,7 @@ theorem static_generate_spec (h : Runs) {T : Type} (inst : mid.rng.RandomSource 
 theorem sign_nonces_spec (hG : P256Laws) (h : Runs) {T : Type}
     (inst : mid.rng.RandomSource T) (hdr : Draws inst)
     (key : high.ecdsa.SigningKey high.curve.P256 mid.p256.StaticPrivateKey mid.p256.VerifyingKey mid.p256.Scalar)
-    (hd0 : 0 < scNat key.private_key.scalar) (hd : scNat key.private_key.scalar < n256)
+    (hd : scNat key.private_key.scalar < n256)
     (e : mid.p256.Scalar) (he : scNat e < n256) (rng : T) :
     high.ecdsa.SigningKey.sign_with_nonces_loop P256C inst key e rng ⦃ res =>
       (∀ rs, res.1 = .Ok rs → ∃ k, 0 < k ∧ k < n256 ∧
@@ -2188,25 +2184,25 @@ theorem sign_nonces_spec (hG : P256Laws) (h : Runs) {T : Type}
   intros loop' ih x
   simp only
   unfold high.ecdsa.SigningKey.sign_with_nonces_loop.body
-  simp only [P256C, high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar,
-    mid.p256.StaticPrivateKey.Insts.RindHighCurvePrivateKeyScalar,
+  simp only [
+    
     mid.p256.StaticPrivateKey.Insts.RindHighCurvePrivateKeyScalar.public_key_x_scalar,
     mid.p256.StaticPrivateKey.Insts.RindHighCurvePrivateKeyScalar.raw_ecdsa_sign,
-    mid.p256.Scalar.Insts.RindHighCurveScalar, mid.p256.Scalar.Insts.RindHighCurveScalar.is_zero,
-    Std.bind_assoc_eq]
+    mid.p256.Scalar.Insts.RindHighCurveScalar.is_zero,
+    ]
   step with static_generate_spec h inst hdr x as ⟨res, hres⟩
   obtain ⟨hok, herr⟩ := hres
   obtain ⟨rr, nx⟩ := res
   simp only at hok herr ⊢
   rcases rr with k | err
   · obtain ⟨hk0, hk⟩ := hok k rfl
-    simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_tc_ok, bind_ok]
+    simp only [core.result.Result.Insts.CoreOpsTry.branch]
     obtain ⟨x, y, hq, hc⟩ := g_mult hG _ hk0 hk
     step with x_scalar_spec k h x y hq hc as ⟨r1, hr1⟩
     step as ⟨b, hb⟩
     split
     · rename_i hbt
-      simp only [bind_tc_ok, bind_ok]
+      simp only [bind_ok]
       exact ih nx
     · rename_i hbf
       have hr0 : scNat r1 ≠ 0 := fun h0 => hbf (hb.mpr h0)
@@ -2214,11 +2210,11 @@ theorem sign_nonces_spec (hG : P256Laws) (h : Runs) {T : Type}
         as ⟨s1, hs1⟩
       step as ⟨b1, hb1⟩
       split
-      · simp only [bind_tc_ok, bind_ok]
+      · simp only [bind_ok]
         exact ih nx
       · rename_i hb1f
         have hs0 : scNat s1 ≠ 0 := fun h0 => hb1f (hb1.mpr h0)
-        simp only [bind_tc_ok, bind_ok, WP.dspec_ok]
+        simp only [bind_ok, WP.dspec_ok]
         refine ⟨fun rs hrs => ?_, fun err h => by cases h⟩
         cases hrs
         refine ⟨scNat k.scalar, hk0, hk, ?_, hr0, hs0⟩
@@ -2244,10 +2240,10 @@ theorem encode_spec (k : mid.p256.StaticPrivateKey) (out : Slice U8) (hl : 32 �
     mid.p256.StaticPrivateKey.Insts.RindHighCurvePrivateKeyScalar.encode k out ⦃ r =>
       ∃ sl, r.1 = .Ok sl ⦄ := by
   unfold mid.p256.StaticPrivateKey.Insts.RindHighCurvePrivateKeyScalar.encode
-  simp only [core.slice.Slice.get_mut, core.slice.index.SliceIndexRangeUsizeSlice,
+  simp only [core.slice.Slice.get_mut, 
     core.slice.index.SliceIndexRangeUsizeSlice.get_mut]
-  rw [if_pos (by simp; omega)]
-  simp only [bind_tc_ok, bind_ok, mid.p256.StaticPrivateKey.secret_bytes, mid.p256.Scalar.as_bytes]
+  rw [ite_eq_left (by simp; omega)]
+  simp only [bind_ok, mid.p256.StaticPrivateKey.secret_bytes, mid.p256.Scalar.as_bytes]
   step*
 
 end P256
@@ -2267,7 +2263,7 @@ theorem Drbg.draws_spec (hdrbg : Drbg) {H C S : Type} (inst : high.hash.Hash H C
     Draws (high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource inst) := by
   intro g s
   obtain ⟨g', s', hf⟩ := hdrbg.draws inst g s
-  simp [high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource, hf]
+  simp [hf]
 
 namespace P256
 
@@ -2284,8 +2280,8 @@ def ecdsaSignOutcome (d e : Nat) (outLen : Nat)
   ∀ err, r.1 = .Err err → (outLen < 64 ∧ err = .WrongLength) ∨ err = .RngFailed
 
 theorem p256c_len : P256C.ScalarInst.LEN_BYTES = ok 32#usize := by
-  simp only [P256C, high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar,
-    mid.p256.Scalar.Insts.RindHighCurveScalar, mid.p256.Scalar.Insts.RindHighCurveScalar.LEN_BYTES,
+  simp only [
+    mid.p256.Scalar.Insts.RindHighCurveScalar.LEN_BYTES,
     mid.p256.Scalar.BYTES]
 
 theorem get_mut_rangeTo (s : Slice U8) (r : core.ops.range.RangeTo Usize) :
@@ -2295,7 +2291,7 @@ theorem get_mut_rangeTo (s : Slice U8) (r : core.ops.range.RangeTo Usize) :
 theorem rfc6979_spec (hG : P256Laws) (h : Runs) (hdrbg : Drbg) {H Ctx St : Type}
     (hinst : high.hash.Hash H Ctx St)
     (key : high.ecdsa.SigningKey high.curve.P256 mid.p256.StaticPrivateKey mid.p256.VerifyingKey mid.p256.Scalar)
-    (hd0 : 0 < scNat key.private_key.scalar) (hd : scNat key.private_key.scalar < n256)
+    (hd : scNat key.private_key.scalar < n256)
     (msg random sig dg : Slice U8) (d : high.digest.Digest) (hhash : hinst.hash msg = ok d)
     (hdg' : high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = ok dg) (hdg : 32 ≤ dg.length) :
     high.ecdsa.SigningKey.rfc6979_sign_with_random P256C hinst key msg random sig ⦃ r =>
@@ -2309,36 +2305,36 @@ theorem rfc6979_spec (hG : P256Laws) (h : Runs) (hdrbg : Drbg) {H Ctx St : Type}
   have hsl' : sig.val.length = sig.length := rfl
   by_cases hlen : 64 ≤ sig.length
   swap
-  · rw [if_neg (by rw [hi1]; simp; omega)]
+  · rw [ite_eq_right (by rw [hi1]; simp; omega)]
     simp only [uncurry, bind_ok, WP.dspec_ok, ecdsaSignOutcome]
     refine ⟨(fun out h => nomatch h), fun err h => ?_⟩
     cases h; left; exact ⟨by omega, rfl⟩
-  rw [if_pos (by rw [hi1]; simp; omega)]
-  simp only [uncurry, bind_tc_ok, bind_ok]
+  rw [ite_eq_left (by rw [hi1]; simp; omega)]
+  simp only [uncurry, bind_ok]
   rw [hhash]
-  simp only [bind_tc_ok, bind_ok]
+  simp only [bind_ok]
   step as ⟨s, back, hs, hback⟩
   step with encode_spec key.private_key s (by simp [Slice.length, hs, Array.repeat]) as ⟨er, eb, sl, hsl⟩
   rw [hsl]
-  simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_tc_ok, bind_ok]
+  simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
   rw [hdg']
-  simp only [bind_tc_ok, bind_ok]
+  simp only [bind_ok]
   step with hash_to_scalar_spec dg hdg as ⟨r1, e, hr1, he⟩
   subst hr1
-  simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_tc_ok, bind_ok]
+  simp only [bind_ok]
   step as ⟨s2, back2, hs2, hs2l, hback2⟩
   step with write_bytes_spec e s2 (by simp [Slice.length, hs2, Array.repeat, List.slice]) as ⟨s3, hs3l, hs3⟩
   step as ⟨s4, hs4, hs4l⟩
   obtain ⟨g, hg⟩ := hdrbg.seeds hinst sl s4 random
   rw [hg]
   simp only [bind_ok, high.ecdsa.SigningKey.sign_with_nonces]
-  apply WP.dspec_bind (sign_nonces_spec hG h _ (hdrbg.draws_spec hinst) key hd0 hd e (by rw [he]; exact Nat.mod_lt _ n256_pos) g)
+  apply WP.dspec_bind (sign_nonces_spec hG h _ (hdrbg.draws_spec hinst) key hd e (by rw [he]; exact Nat.mod_lt _ n256_pos) g)
   rintro ⟨r2, g2⟩ ⟨hr2ok, hr2err⟩
   simp only at hr2ok hr2err
   simp only [uncurry]
   rcases r2 with ⟨rr, ss⟩ | err
   · obtain ⟨k, hk0, hk, hsign, hr0, hs0⟩ := hr2ok _ rfl
-    simp only [bind_tc_ok, bind_ok]
+    simp only [bind_ok]
     step as ⟨s6, back6, hs6, hs6l, hback6⟩
     step with write_bytes_spec rr s6 (by rw [hs6l]) as ⟨s7, hs7l, hs7⟩
     set O := List.slice 0 i1.val sig.val with hOdef
@@ -2377,7 +2373,7 @@ theorem rfc6979_spec (hG : P256Laws) (h : Runs) (hdrbg : Drbg) {H Ctx St : Type}
       rw [this, hv, h8]
     rw [hv, List.take_left' hs7l', List.drop_left' hs7l', hs7, hs9, ← he]
     exact ⟨hsign, hr0, hs0⟩
-  · simp only [bind_tc_ok, bind_ok, uncurry,
+  · simp only [bind_tc_ok, bind_ok, 
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, WP.dspec_ok, ecdsaSignOutcome]
     refine ⟨(fun out h => nomatch h), fun e2 h => ?_⟩
     cases h; right; exact hr2err _ rfl
@@ -2394,7 +2390,7 @@ namespace P256
 theorem ecdsa_sign_spec (hG : P256Laws) (h : Runs) (hdrbg : Drbg) (hfill : Fills)
     {H Ctx St : Type} (hinst : high.hash.SignatureHash H Ctx St)
     (key : high.ecdsa.SigningKey high.curve.P256 mid.p256.StaticPrivateKey mid.p256.VerifyingKey mid.p256.Scalar)
-    (hd0 : 0 < scNat key.private_key.scalar) (hd : scNat key.private_key.scalar < n256)
+    (hd : scNat key.private_key.scalar < n256)
     (msg sig dg : Slice U8) (d : high.digest.Digest) (hhash : hinst.HashInst.hash msg = ok d)
     (hdg' : high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = ok dg) (hdg : 32 ≤ dg.length) :
     high.ecdsa.SigningKey.sign P256C hinst key msg sig ⦃ r =>
@@ -2404,15 +2400,15 @@ theorem ecdsa_sign_spec (hG : P256Laws) (h : Runs) (hdrbg : Drbg) (hfill : Fills
   step as ⟨rs, back, hrs, hback⟩
   obtain ⟨⟨fr, fs⟩, hf⟩ := hfill rs
   rw [hf]
-  simp only [bind_tc_ok, bind_ok, uncurry]
+  simp only [bind_ok, uncurry]
   rcases fr with _ | ferr
-  · simp only [core.result.Result.map_err, bind_tc_ok, bind_ok, core.result.Result.Insts.CoreOpsTry.branch]
+  · simp only [core.result.Result.map_err, bind_ok, core.result.Result.Insts.CoreOpsTry.branch]
     step as ⟨rnd, hrnd⟩
-    exact rfc6979_spec hG h hdrbg hinst.HashInst key hd0 hd msg rnd sig dg d hhash hdg' hdg
+    exact rfc6979_spec hG h hdrbg hinst.HashInst key hd msg rnd sig dg d hhash hdg' hdg
   · simp only [core.result.Result.map_err, bind_tc_ok, bind_ok, core.result.Result.Insts.CoreOpsTry.branch,
-      mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError,
+      
       mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
-      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, WP.dspec_ok, ecdsaSignOutcome]
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, ecdsaSignOutcome]
     simp
 
 end P256
