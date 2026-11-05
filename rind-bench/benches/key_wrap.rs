@@ -1,8 +1,8 @@
 mod criterion;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
-// Wrapping and unwrapping a 16- and a 32-byte key, each from the KEK's bytes:
-// aws-lc-rs's `KeyWrap` consumes its key, so every call expands it again.
+// Wrapping and unwrapping a 16- and a 32-byte key, each from the KEK's bytes,
+// as pyca and JWE use a KEK: aws-lc-rs's `KeyWrap` consumes its key anyway.
 fn bench_key_wrap(c: &mut Criterion) {
     for (name, kek_len) in [("aes128-kw", 16), ("aes256-kw", 32)] {
         let kek = &[0x42u8; 32][..kek_len];

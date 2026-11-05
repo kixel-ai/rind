@@ -2,7 +2,7 @@
 
 use crate::Error;
 use crate::cipher::Algorithm;
-use crate::low::{self, AesDecKey, AesKey, Entry, ct_equal};
+use crate::low::{self, AesDecKey, AesKey, Entry, Zeroable, ct_equal, zeroise_value};
 
 /// RFC 3394's default initial value, which unwrapping checks.
 const IV: [u8; 8] = [0xa6; 8];
@@ -12,9 +12,13 @@ const IV: [u8; 8] = [0xa6; 8];
 ///
 /// Wrapping is deterministic and authenticated: a wrapped key that was
 /// altered fails to unwrap.
+///
+/// Each call expands the schedule it needs, as aws-lc does: a KEK usually
+/// wraps or unwraps once, as pyca's functions and JWE use it, and holding
+/// both schedules would cost that call a second expansion.
 pub struct AesKek {
-    enc: AesKey,
-    dec: AesDecKey,
+    key: [u8; 32],
+    key_len: usize,
 }
 
 impl AesKek {
@@ -27,13 +31,16 @@ impl AesKek {
         }
         // Mark a copy: the caller's buffer may be shared, or a promoted constant.
         let mut copy = [0u8; 32];
-        let copy = &mut copy[..key.len()];
-        copy.copy_from_slice(key);
-        low::ct::secret_slice(copy);
+        copy[..key.len()].copy_from_slice(key);
+        low::ct::secret_slice(&copy);
         Ok(Self {
-            enc: AesKey::new(copy),
-            dec: AesDecKey::new(copy),
+            key: copy,
+            key_len: key.len(),
         })
+    }
+
+    fn key(&self) -> &[u8] {
+        &self.key[..self.key_len]
     }
 
     /// Wraps `key` into `wrapped`, which must be 8 bytes longer.
@@ -50,6 +57,7 @@ impl AesKek {
         r.copy_from_slice(key);
         low::ct::secret_slice(r);
 
+        let aes = AesKey::new(self.key());
         // `block` is A followed by each R[i] in turn.
         let mut block = [0u8; 16];
         block[..8].copy_from_slice(&IV);
@@ -58,7 +66,7 @@ impl AesKek {
             for r_i in r.as_chunks_mut::<8>().0 {
                 t += 1;
                 block[8..].copy_from_slice(r_i);
-                self.enc.encrypt_block(&mut block);
+                aes.encrypt_block(&mut block);
                 xor_counter(&mut block, t);
                 r_i.copy_from_slice(&block[8..]);
             }
@@ -86,6 +94,7 @@ impl AesKek {
         let (a, c) = wrapped.split_at(8);
         key.copy_from_slice(c);
 
+        let aes = AesDecKey::new(self.key());
         let mut block = [0u8; 16];
         block[..8].copy_from_slice(a);
         let r = key.as_chunks_mut::<8>().0;
@@ -95,7 +104,7 @@ impl AesKek {
                 xor_counter(&mut block, t);
                 t -= 1;
                 block[8..].copy_from_slice(r_i);
-                self.dec.decrypt_block(&mut block);
+                aes.decrypt_block(&mut block);
                 r_i.copy_from_slice(&block[8..]);
             }
         }
@@ -111,11 +120,19 @@ impl AesKek {
     }
 }
 
-/// XORs the step counter `t`, big-endian, into A.
-fn xor_counter(block: &mut [u8; 16], t: u64) {
-    for (a, t) in block.iter_mut().zip(t.to_be_bytes()) {
-        *a ^= t;
+impl Drop for AesKek {
+    fn drop(&mut self) {
+        zeroise_value(self);
     }
+}
+
+impl Zeroable for AesKek {}
+
+/// XORs the step counter `t`, big-endian, into A.
+#[inline]
+fn xor_counter(block: &mut [u8; 16], t: u64) {
+    let a: &mut [u8; 8] = block.first_chunk_mut().unwrap();
+    *a = (u64::from_ne_bytes(*a) ^ t.to_be()).to_ne_bytes();
 }
 
 #[cfg(test)]
@@ -218,7 +235,10 @@ mod tests {
         for algorithm in [&AES_128, &AES_256] {
             let kek_bytes = bytes(algorithm.key_len);
             let kek = ct_qemu::traced(|| AesKek::new(algorithm, &kek_bytes).unwrap());
-            assert!(matches!(kek.dec, AesDecKey::Hw(_)), "the crypto extension");
+            assert!(
+                matches!(AesDecKey::new(kek.key()), AesDecKey::Hw(_)),
+                "the crypto extension"
+            );
 
             let key = bytes(32);
             let mut wrapped = [0u8; 40];
