@@ -187,6 +187,29 @@ fn keygen(c: &mut Criterion) {
     });
 }
 
+fn ecdsa_keygen(c: &mut Criterion) {
+    let mut group = c.benchmark_group("p256-ecdsa-keygen");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("aws-lc-rs", |b| {
+        use aws_lc_rs::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair};
+
+        b.iter(|| {
+            let key = EcdsaKeyPair::generate(&ECDSA_P256_SHA256_FIXED_SIGNING).unwrap();
+            black_box(key.public_key().as_ref());
+        })
+    });
+
+    group.bench_function("rind", |b| {
+        use rind::signature::{EcdsaKeyPair, sign};
+
+        b.iter(|| {
+            let key = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_FIXED).unwrap();
+            black_box(key.public_key().as_ref());
+        })
+    });
+}
+
 fn ecdsa_verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("p256-ecdsa-verify");
     group.throughput(Throughput::Elements(1));
@@ -410,5 +433,5 @@ fn ecdsa_sign(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, ecdh, keygen, ecdsa_verify, ecdsa_sign);
+criterion_group!(benches, ecdh, keygen, ecdsa_keygen, ecdsa_verify, ecdsa_sign);
 criterion_main!(benches);
