@@ -73,9 +73,7 @@ impl VerifyingKey {
             .more_odd_multiples
             .get_or_build(|| AffinePoint::public_more_odd_multiples(&odd_multiples));
         let point = match more {
-            Some(more) => {
-                JacobianPoint::public_twin_multiply(&u1, &u2, &[&odd_multiples, more])
-            }
+            Some(more) => JacobianPoint::public_twin_multiply(&u1, &u2, &[&odd_multiples, more]),
             None => JacobianPoint::public_twin_multiply(&u1, &u2, &[&odd_multiples]),
         };
 

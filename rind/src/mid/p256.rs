@@ -435,9 +435,11 @@ impl AffineMontPoint {
         }
     }
 
-    /// Negates `y` if `negate` is 1, in constant time.
+    /// Becomes `row`'s point `digit - 1`, or zeros for a zero `digit`, with
+    /// `y` negated if `negate` is 1, in constant time.
     #[cfg(target_arch = "x86_64")]
-    fn negate_y_if(&mut self, negate: u8) {
+    fn select_w7(&mut self, row: &low::P256GeneratorRow, digit: u8, negate: u8) {
+        low::p256_select_w7(&mut self.xy, row, digit);
         let y = self.y();
         low::bignum_mux(
             negate.into(),
@@ -505,18 +507,13 @@ impl JacobianMontPoint {
         let mut windows = precomp::CURVE_GENERATOR_PRECOMP
             .iter()
             .zip(scalar.booth_recoded::<BASE_WINDOW>());
-        let lookup = |row, digit, sign| {
-            let mut point = AffineMontPoint {
-                xy: low::p256_select_w7(row, digit),
-            };
-            point.negate_y_if(sign);
-            point
-        };
+        let mut point = AffineMontPoint::default();
 
         // unwrap: the number of windows is constant. The first point is
         // infinity, with a zero `z`, when its digit is zero.
         let (row, (digit, sign)) = windows.next().unwrap();
-        let mut result = Self::from_affine(&lookup(row, digit, sign));
+        point.select_w7(row, digit, sign);
+        let mut result = Self::from_affine(&point);
         low::bignum_mux(
             digit.into(),
             &mut result.xyz[Self::Z],
@@ -525,7 +522,8 @@ impl JacobianMontPoint {
         );
 
         for (row, (digit, sign)) in windows {
-            result.xyz = low::p256_point_add_affine(&result.xyz, &lookup(row, digit, sign).xy);
+            point.select_w7(row, digit, sign);
+            low::p256_point_add_affine(&mut result.xyz, &point.xy);
         }
         result
     }
