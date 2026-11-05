@@ -38,7 +38,17 @@ opaque low.x86_64.curve25519_x25519.curve25519_x25519
   Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
     Result (Array Std.U64 4#usize)
 
-/-! aws-lc's SHA-512 routines, behind their Rust wrappers. -/
+/-! OpenSSL's and aws-lc's SHA-512 routines, behind their Rust wrappers. -/
+
+opaque low.x86_64.sha512.compress_sha512ext
+  :
+  low.x86_64.cpu.HaveSha512 → Array Std.U64 8#usize → Slice Std.U8 → Result
+    (Array Std.U64 8#usize)
+
+opaque low.x86_64.sha512.compress_avx2
+  :
+  low.x86_64.cpu.HaveAvx2 → Array Std.U64 8#usize → Slice Std.U8 → Result
+    (Array Std.U64 8#usize)
 
 opaque low.x86_64.sha512.compress_avx
   :
@@ -116,7 +126,7 @@ opaque low.entry.Entry.new_public : Result low.entry.Entry
 /-- Whether an entry guard is held, which a debug build asserts. -/
 opaque low.entry.Entry.assert_held : Result Unit
 
-opaque low.x86_64.sha512.avx : Result (Option low.x86_64.cpu.HaveAvx)
+opaque low.x86_64.sha512.path : Result low.x86_64.sha512.Path
 
 opaque low.x86_64.cpu.HaveBmi2Adx.check
   : Result (Option low.x86_64.cpu.HaveBmi2Adx)

@@ -194,7 +194,9 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmuldouble \
     --include crate::low::x86_64::adx_mux::bignum_madd_n25519 \
     --include crate::low::x86_64::sha256_mux \
-    --opaque crate::low::x86_64::sha256_mux::path
+    --opaque crate::low::x86_64::sha256_mux::path \
+    --include crate::low::x86_64::sha512::Path \
+    --opaque crate::low::x86_64::sha512::path
 extract aarch64 Aarch64 \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
     --opaque 'crate::mid::p256::_::generate' \

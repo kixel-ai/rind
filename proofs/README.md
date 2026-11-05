@@ -107,7 +107,7 @@ aarch64:
 The hash is cryptol-specs' FIPS 180-4 SHA-512, in `Rind/Sha2.lean`, with its
 block compression `processBlock_Common` opaque. Each theorem assumes
 `RunsSha512`: on x86_64 that rind picks aws-lc's AVX routine, on an Intel CPU
-with AVX, and on aarch64 its scalar routine, on a CPU without the SHA-512
+with AVX but without AVX2, and on aarch64 its scalar routine, on a CPU without the SHA-512
 instructions; those are the routines whose proofs state their result. The
 digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
