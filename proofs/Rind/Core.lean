@@ -104,6 +104,42 @@ def Shared0Slice.Insts.CoreCmpPartialEqArray.eq {T U : Type _} {N : Std.Usize}
     (inst : core.cmp.PartialEq T U) (s : Slice T) (a : Array U N) : Result Bool :=
   core.slice.cmp.PartialEqSlice.eq inst s a.to_slice
 
+/-- `i8::unsigned_abs`. -/
+def core.num.I8.unsigned_abs (x : Std.I8) : Result Std.U8 :=
+  Std.Result.ok ⟨BitVec.ofNat 8 x.val.natAbs⟩
+
+/-- `<[T]>::as_chunks::<N>`: the slice's leading `N`-element chunks, and what
+is left. It panics for `N` of zero. -/
+def core.slice.Slice.as_chunks {T : Type _} (N : Std.Usize) (s : Slice T) :
+    Result ((Slice (Array T N)) × (Slice T)) :=
+  if N.val = 0 then Std.Result.fail .panic
+  else
+    let k := s.length / N.val
+    have hk : k * N.val ≤ s.length := Nat.div_mul_le_self _ _
+    Std.Result.ok
+      (Slice.from (List.ofFn fun i : Fin k =>
+          Array.from ((s.val.drop (i.val * N.val)).take N.val) (by
+            have : (i.val + 1) * N.val ≤ k * N.val := Nat.mul_le_mul_right _ i.isLt
+            simp only [List.length_take, List.length_drop, Slice.length] at hk ⊢
+            rw [Nat.add_mul, Nat.one_mul] at this
+            omega))
+        (by have := s.property; simp only [List.length_ofFn]
+            exact le_trans (Nat.div_le_self _ _) this),
+       Slice.from (s.val.drop (k * N.val)) (by have := s.property; simp; omega))
+
+/-- `<[T]>::last`. -/
+def core.slice.Slice.last {T : Type _} (s : Slice T) : Result (Option T) :=
+  Std.Result.ok s.val.getLast?
+
+/-- `<&u64 as Shr<usize>>::shr`, which overflows for a shift of 64 or more,
+as `u64`'s own does. -/
+def Shared0U64.Insts.CoreOpsBitShrUsizeU64.shr (x : Std.U64) (y : Std.Usize) : Result Std.U64 :=
+  x >>> y
+
+/-- `<&u8 as BitAnd<u8>>::bitand`. -/
+def Shared0U8.Insts.CoreOpsBitBitAndU8U8.bitand (x y : Std.U8) : Result Std.U8 :=
+  Std.Result.ok (x &&& y)
+
 /-- `getrandom`'s error. -/
 opaque getrandom.error.Error : Type
 

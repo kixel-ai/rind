@@ -37,7 +37,3 @@ keep in m2.
   Node's crypto tests are the bar.
 - A native `Bun.jwt` ([oven-sh/bun#27727](https://github.com/oven-sh/bun/issues/27727))
   on rind is a natural follow-up; suggest it if this lands.
-
-## Required
-
-- [rind builds on every platform its packages ship](/quest/m1/platforms.md) - Bun ships Windows on aarch64 and musl

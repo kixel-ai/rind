@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13](https://github.com/moq-dev/rind/compare/rind-rustls-v0.1.12...rind-rustls-v0.1.13) - 2026-11-05
+
+### Added
+
+- *(rind-rustls)* build a lean provider from per-algorithm exports ([#332](https://github.com/moq-dev/rind/pull/332))
+
+### Other
+
+- add rind logos and credit upstream projects ([#313](https://github.com/moq-dev/rind/pull/313))
+
 ## [0.1.12](https://github.com/moq-dev/rind/compare/rind-rustls-v0.1.11...rind-rustls-v0.1.12) - 2026-11-03
 
 ### Other

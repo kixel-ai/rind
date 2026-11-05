@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13](https://github.com/moq-dev/rind/compare/rind-v0.1.12...rind-v0.1.13) - 2026-11-05
+
+### Added
+
+- *(proofs)* prove x86_64 AES-GCM on Vale's tier end to end with Aeneas and Lean ([#344](https://github.com/moq-dev/rind/pull/344))
+- *(proofs)* prove SHA-1, SHA-256, and HMAC's glue with Aeneas and Lean ([#338](https://github.com/moq-dev/rind/pull/338))
+- *(proofs)* prove aarch64 P-256's generator table in Lean ([#343](https://github.com/moq-dev/rind/pull/343))
+- *(bench)* publish BENCHMARKS.md from three hosts and the nightly CPU tiers ([#347](https://github.com/moq-dev/rind/pull/347))
+- *(proofs)* prove Ed25519 end to end with Aeneas and Lean ([#339](https://github.com/moq-dev/rind/pull/339))
+- *(proofs)* prove SHA-384 and SHA-512 end to end with Aeneas and Lean ([#337](https://github.com/moq-dev/rind/pull/337))
+- *(proofs)* prove ChaCha20 header protection end to end with Aeneas and Lean ([#335](https://github.com/moq-dev/rind/pull/335))
+- *(proofs)* prove aarch64 P-256 ECDH end to end ([#336](https://github.com/moq-dev/rind/pull/336))
+- *(proofs)* prove X25519 end to end with Aeneas and Lean ([#326](https://github.com/moq-dev/rind/pull/326))
+- *(p256)* run aarch64 ECDH through s2n-bignum's proven p256_scalarmul ([#321](https://github.com/moq-dev/rind/pull/321))
+- *(admin)* render BENCHMARKS.md from the benchmark results ([#316](https://github.com/moq-dev/rind/pull/316))
+- *(bench)* time every library on every host ([#309](https://github.com/moq-dev/rind/pull/309))
+
+### Fixed
+
+- *(p256, p384, p521)* verify ECDSA without adding equal points ([#324](https://github.com/moq-dev/rind/pull/324))
+- enter the entry guard in hashing, HMAC, HKDF, PBKDF2, and constant-time comparison ([#299](https://github.com/moq-dev/rind/pull/299))
+- *(x86_64)* compute prefetch's stride address with wrapping arithmetic ([#301](https://github.com/moq-dev/rind/pull/301))
+- *(ecdsa)* draw a new nonce when s is zero ([#300](https://github.com/moq-dev/rind/pull/300))
+- *(ed25519)* [**breaking**] refuse public keys of small order ([#298](https://github.com/moq-dev/rind/pull/298))
+
+### Other
+
+- *(release)* ship rind 0.1.13 and rind-ring 0.1.12 as patch releases ([#355](https://github.com/moq-dev/rind/pull/355))
+- *(sha2)* run OpenSSL's AVX2 and SHA512-instruction SHA-2 routines on x86_64 ([#353](https://github.com/moq-dev/rind/pull/353))
+- *(x86_64)* gather RSA's window entries by AVX2 ([#351](https://github.com/moq-dev/rind/pull/351))
+- *(quest)* plan adoption beyond MoQ, a marketing README, and m4 ([#341](https://github.com/moq-dev/rind/pull/341))
+- *(readme)* open with why to use rind and a generated headline chart ([#350](https://github.com/moq-dev/rind/pull/350))
+- *(quest)* triage the report's speed gaps into quests and recorded reasons ([#348](https://github.com/moq-dev/rind/pull/348))
+- *(quest)* close ECDSA verify speed with the equal-point cost accepted ([#345](https://github.com/moq-dev/rind/pull/345))
+- *(p256, p384, p521)* widen a reused ECDSA key's NAF to width 6 from its second verification ([#334](https://github.com/moq-dev/rind/pull/334))
+- *(p256, p384, p521)* add the public key's multiples to ECDSA verification in affine form ([#331](https://github.com/moq-dev/rind/pull/331))
+- *(aes-gcm)* run HACL*'s Vale AES-GCM on x86_64 with AVX and MOVBE ([#329](https://github.com/moq-dev/rind/pull/329))
+- link only the algorithms a binary names, and never inline assembly routines ([#315](https://github.com/moq-dev/rind/pull/315))
+- mark ✓ only where a current proof covers the code ([#325](https://github.com/moq-dev/rind/pull/325))
+- *(p256)* show rind's aarch64 base-point table meets s2n-bignum's proof ([#319](https://github.com/moq-dev/rind/pull/319))
+- add rind logos and credit upstream projects ([#313](https://github.com/moq-dev/rind/pull/313))
+- *(ctgrind)* check armv7's crypto extension for constant time under qemu ([#311](https://github.com/moq-dev/rind/pull/311))
+- check every import regenerates exactly at its pin, and write generated files atomically ([#304](https://github.com/moq-dev/rind/pull/304))
+- *(chacha20)* run HACL*'s verified rounds where x86_64 ran aws-lc's integer ChaCha20 ([#293](https://github.com/moq-dev/rind/pull/293))
+- *(chacha20)* run one block in general-purpose registers on x86_64 ([#287](https://github.com/moq-dev/rind/pull/287))
+
 ## [0.1.12](https://github.com/moq-dev/rind/compare/rind-v0.1.11...rind-v0.1.12) - 2026-11-03
 
 ### Other

@@ -87,6 +87,7 @@ pub(crate) mod edwards25519_scalarmulbase_alt;
 pub(crate) mod edwards25519_scalarmuldouble;
 pub(crate) mod edwards25519_scalarmuldouble_alt;
 pub(crate) mod ghash;
+#[path = "../generic/ghash_nohw.rs"]
 pub(crate) mod ghash_nohw;
 pub(crate) mod ghash_ssse3_x86_64;
 pub(crate) mod mlkem;

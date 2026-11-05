@@ -20,9 +20,10 @@ fn ed25519_key_generation() {
     }
 }
 
-// Every length to three of the larger blocks, so each tail lands on both
-// sides of the length field for both block sizes. One-shot, and in updates
-// that end on each block boundary, which leave a whole block buffered.
+// Every length to three of SHA-2's larger blocks, so each tail lands on both
+// sides of the length field for both block sizes, and SHA-3's padding lands
+// in one byte, two, or a block of its own. One-shot, and in updates that end
+// on each block boundary, which leave SHA-2 a whole block buffered.
 #[test]
 fn hashes_every_length() {
     let message: Vec<u8> = (0..3 * 128 + 1).map(|i| (i * 7 + 3) as u8).collect();
@@ -36,6 +37,9 @@ fn hashes_every_length() {
         (&rind::digest::SHA384, &digest::SHA384, 128),
         (&rind::digest::SHA512, &digest::SHA512, 128),
         (&rind::digest::SHA512_256, &digest::SHA512_256, 128),
+        (&rind::digest::SHA3_256, &digest::SHA3_256, 136),
+        (&rind::digest::SHA3_384, &digest::SHA3_384, 104),
+        (&rind::digest::SHA3_512, &digest::SHA3_512, 72),
     ] {
         for len in 0..=message.len() {
             let message = &message[..len];
@@ -72,6 +76,9 @@ proptest! {
             (&rind::digest::SHA384, &digest::SHA384),
             (&rind::digest::SHA512, &digest::SHA512),
             (&rind::digest::SHA512_256, &digest::SHA512_256),
+            (&rind::digest::SHA3_256, &digest::SHA3_256),
+            (&rind::digest::SHA3_384, &digest::SHA3_384),
+            (&rind::digest::SHA3_512, &digest::SHA3_512),
         ] {
             let mut ctx = rind::digest::Context::new(ours);
             let mut start = 0;
@@ -139,7 +146,6 @@ mod cipher {
     use aws_lc_rs::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, Nonce, UnboundKey, quic};
     use aws_lc_rs::cipher::{AES_128, AES_256, EncryptingKey, EncryptionContext, UnboundCipherKey};
     use proptest::prelude::*;
-    use rind::Error;
     use rind::cipher::{self, Aes, AesCtr, ChaCha20};
 
     fn aes_key() -> impl Strategy<Value = Vec<u8>> {
@@ -162,9 +168,16 @@ mod cipher {
         UnboundCipherKey::new(alg, key).unwrap()
     }
 
-    // Counters near the top of the range exercise the wrap refusal.
-    fn counter() -> impl Strategy<Value = u32> {
-        prop_oneof![any::<u32>(), (u32::MAX - 80)..=u32::MAX]
+    // Counter blocks near a 32-bit or the 128-bit wrap exercise the carries.
+    fn counter_block() -> impl Strategy<Value = [u8; 16]> {
+        prop_oneof![
+            any::<[u8; 16]>(),
+            (any::<u128>(), (u32::MAX - 80)..=u32::MAX)
+                .prop_map(
+                    |(high, low)| (high & !u128::from(u32::MAX) | u128::from(low)).to_be_bytes()
+                ),
+            ((u128::MAX - 80)..=u128::MAX).prop_map(u128::to_be_bytes),
+        ]
     }
 
     proptest! {
@@ -184,33 +197,21 @@ mod cipher {
         #[test]
         fn aes_ctr(
             key in aes_key(),
-            nonce in any::<[u8; 12]>(),
-            counter in counter(),
+            counter_block in counter_block(),
             msg in prop::collection::vec(any::<u8>(), 0..1100),
         ) {
+            // aws-lc-rs's counter is the whole block
             let mut ours = msg.clone();
-            let result = AesCtr::new(rind_aes_algorithm(&key), &key)
+            AesCtr::new(rind_aes_algorithm(&key), &key, 128)
                 .unwrap()
-                .apply_keystream(&nonce, counter, &mut ours);
+                .apply_keystream(&counter_block, &mut ours)
+                .unwrap();
 
-            // aws-lc-rs carries into the nonce where we refuse, so compare only
-            // what we accept.
-            let blocks = msg.len().div_ceil(16) as u64;
-            if u64::from(counter) + blocks > 1 << 32 {
-                prop_assert_eq!(result, Err(Error::WrongLength));
-                prop_assert_eq!(ours, msg);
-                return Ok(());
-            }
-            result.unwrap();
-
-            let mut iv = [0u8; 16];
-            iv[..12].copy_from_slice(&nonce);
-            iv[12..].copy_from_slice(&counter.to_be_bytes());
             let mut theirs = msg.clone();
             if !theirs.is_empty() {
                 EncryptingKey::ctr(aws_aes_key(&key))
                     .unwrap()
-                    .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(iv.into()))
+                    .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(counter_block.into()))
                     .unwrap();
             }
             prop_assert_eq!(ours, theirs);
@@ -468,8 +469,19 @@ mod aead {
     use proptest::sample::Index;
     use rind::Error;
     use rind::aead::{
-        AES_128_GCM, AES_256_GCM, Algorithm, CHACHA20_POLY1305, Key, Nonce, RandomizedNonceKey,
+        AES_128_GCM, AES_256_GCM, Algorithm, CHACHA20_POLY1305, Key, Nonce, RandomizedNonceKey, gcm,
     };
+    use rind::cipher::{AES_128, AES_256};
+
+    const TAG_LENGTHS: [gcm::TagLength; 7] = [
+        gcm::TagLength::Full,
+        gcm::TagLength::Truncated120,
+        gcm::TagLength::Truncated112,
+        gcm::TagLength::Truncated104,
+        gcm::TagLength::Truncated96,
+        gcm::TagLength::Truncated64,
+        gcm::TagLength::Truncated32,
+    ];
 
     /// Seals on both sides and compares, then opens aws-lc-rs's output,
     /// first with one bit of its ciphertext or tag flipped if `flip` is set.
@@ -563,6 +575,73 @@ mod aead {
             flip in any::<Option<Index>>(),
         ) {
             check(&CHACHA20_POLY1305, &theirs::CHACHA20_POLY1305, &key, nonce, &aad, &msg, flip)?;
+        }
+
+        // aws-lc-rs takes only 96-bit nonces and full tags, so this seals
+        // with aws-lc's AES-GCM under an IV of any length and each tag
+        // length, then opens that, as `check` does.
+        #[test]
+        fn aes_gcm_any_iv(
+            key in prop_oneof![vec(any::<u8>(), 16), vec(any::<u8>(), 32)],
+            iv in prop_oneof![vec(any::<u8>(), 12), vec(any::<u8>(), 1..80)],
+            tag_len in proptest::sample::select(&TAG_LENGTHS[..]),
+            aad in vec(any::<u8>(), 0..100),
+            msg in vec(any::<u8>(), 0..1100),
+            flip in any::<Option<Index>>(),
+        ) {
+            let aes = if key.len() == 16 { &AES_128 } else { &AES_256 };
+            let ours = gcm::Key::new(aes, &key, tag_len).unwrap();
+            let mut ours_sealed = msg.clone();
+            ours.seal_in_place_append_tag(&iv, &aad, &mut ours_sealed).unwrap();
+
+            let mut theirs_sealed = msg.clone();
+            theirs_sealed.extend([0; 16]);
+            let (out, tag) = theirs_sealed.split_at_mut(msg.len());
+            let tag = &mut tag[..ours.tag_len()];
+            let mut written = 0;
+            // SAFETY: each pointer and length describes a live buffer, and
+            // the context is freed once, after its last use.
+            let sealed = unsafe {
+                let aead = match key.len() {
+                    16 => aws_lc_sys::EVP_aead_aes_128_gcm(),
+                    _ => aws_lc_sys::EVP_aead_aes_256_gcm(),
+                };
+                let ctx = aws_lc_sys::EVP_AEAD_CTX_new(aead, key.as_ptr(), key.len(), tag.len());
+                assert!(!ctx.is_null());
+                let sealed = aws_lc_sys::EVP_AEAD_CTX_seal_scatter(
+                    ctx,
+                    out.as_mut_ptr(),
+                    tag.as_mut_ptr(),
+                    &mut written,
+                    tag.len(),
+                    iv.as_ptr(),
+                    iv.len(),
+                    msg.as_ptr(),
+                    msg.len(),
+                    core::ptr::null(),
+                    0,
+                    aad.as_ptr(),
+                    aad.len(),
+                );
+                aws_lc_sys::EVP_AEAD_CTX_free(ctx);
+                sealed
+            };
+            prop_assert_eq!((sealed, written), (1, ours.tag_len()));
+            theirs_sealed.truncate(msg.len() + ours.tag_len());
+            prop_assert_eq!(&ours_sealed, &theirs_sealed);
+
+            if let Some(flip) = flip {
+                let index = flip.index(theirs_sealed.len());
+                theirs_sealed[index] ^= 1;
+            }
+            let result = ours
+                .open_in_place(&iv, &aad, &mut theirs_sealed)
+                .map(|plain| plain.to_vec());
+            if flip.is_some() {
+                prop_assert_eq!(result, Err(Error::DecryptFailed));
+            } else {
+                prop_assert_eq!(result, Ok(msg));
+            }
         }
 
         // aws-lc-rs has no XChaCha20-Poly1305, so this seals with aws-lc's

@@ -24,7 +24,7 @@ renames [rind-ring](#rind-ring), ring's API on rind, to `ring`.
 | `SHA256`, `SHA384`, `SHA512`, `SHA512_256` | the same |
 | `SHA1_FOR_LEGACY_USE_ONLY` | `legacy::SHA1` |
 | `SHA224` (not in ring) | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
-| `SHA3_256`, `SHA3_384`, `SHA3_512` (not in ring) | none; [SHA-3](quest/m2/adoption/webcrypto/sha3.md) |
+| `SHA3_256`, `SHA3_384`, `SHA3_512` (not in ring) | the same |
 | `Algorithm::output_len()` | the same |
 | `Algorithm::block_len()`, `chaining_len()`, `MAX_BLOCK_LEN`, `MAX_CHAINING_LEN`, `MAX_OUTPUT_LEN`, `SHA*_OUTPUT_LEN` | none; `output_len()` gives each length |
 | `Context::algorithm()`, `Digest::algorithm()` | none |
@@ -92,6 +92,7 @@ reuses it. `verify` refuses a stored value shorter than the HMAC output with
 | `AES_128_GCM`, `AES_256_GCM`, `CHACHA20_POLY1305` | the same |
 | `AES_192_GCM` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |
 | `AES_128_GCM_SIV`, `AES_256_GCM_SIV` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| none | `gcm::Key::new(&cipher::AES_128, key, TagLength::Full)?`, for AES-GCM under an IV of any length, or with a tag cut to one of `TagLength`'s, as WebCrypto takes; its methods are `Key`'s, with `iv: &[u8]` for the nonce |
 | `RandomizedNonceKey::new(&AES_256_GCM, key)`, with 96-bit random nonces | `RandomizedNonceKey::new(&key)`, XChaCha20-Poly1305 with 192-bit random nonces, which never collide in practice |
 | `RandomizedNonceKey::{seal_in_place_append_tag, open_in_place}` | the same, with the nonce a `RandomNonce` |
 | `RandomizedNonceKey::seal_in_place_separate_tag` | none |
@@ -116,8 +117,8 @@ protocols with their own integrity protection need. ring has none.
 
 | aws-lc-rs | rind |
 |---|---|
-| `UnboundCipherKey::new(&AES_128, key)` and `EncryptingKey::ctr` or `DecryptingKey::ctr` | `AesCtr::new(&AES_128, key)?` |
-| `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))`, `decrypt` | `apply_keystream(nonce, counter, in_out)?`, with `iv` as a 12-byte nonce and a big-endian 32-bit counter, refused rather than carried into the nonce when it would wrap |
+| `UnboundCipherKey::new(&AES_128, key)` and `EncryptingKey::ctr` or `DecryptingKey::ctr` | `AesCtr::new(&AES_128, key, 128)?`, whose last argument is how many of the counter block's rightmost bits count, as WebCrypto's `length` |
+| `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))`, `decrypt` | `apply_keystream(&iv, in_out)?`, with `iv` the `[u8; 16]` counter block |
 | `AES_128`, `AES_256` | the same |
 | `EncryptingKey::encrypt`, which picks a random IV | none: pick the nonce with `rand::fill` |
 | `AES_192` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |
