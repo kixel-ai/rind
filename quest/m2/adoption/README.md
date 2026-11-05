@@ -47,6 +47,10 @@ don't ask again (✅ is the chosen option):
 - Other-language packages live in this workspace as `rind-<consumer>` crates
   released by its CI ✅ / separate repositories; each language gets rind's own
   API and a second package with the popular library's interface ✅.
+- rind-rustls's `default_provider()` keeps aws-lc-rs's algorithm list,
+  P-521 included ✅ / drop P-521 as ring does (decided 2026-11-05 on
+  [#375](https://github.com/moq-dev/rind/pull/375), which has the sizes): it
+  is already smaller than aws-lc-rs's provider.
 - Whatever these consumers need from rind itself is planned now: the
   [WebCrypto set](/quest/m2/adoption/webcrypto/README.md), platform coverage,
   and [RSA-2048 speed](/quest/m2/speed/x86-rsa2048-sign.md) in the speed epic.
