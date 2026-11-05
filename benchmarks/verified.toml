@@ -79,7 +79,7 @@ link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha512.lean
 library = "rind"
 operations = ["p256-ecdh"]
 arch = "aarch64"
-proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, and bignum_eq, of s2n-bignum's own object code, which rind transliterates; assuming, as s2n-bignum's proof does, that rind's generator table holds the multiples of G, which a test checks"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, with rind's generator table proven to hold the multiples of G that s2n-bignum's proof assumes"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/P256.lean"
 
 [[verified]]

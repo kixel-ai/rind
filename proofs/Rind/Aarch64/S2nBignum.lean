@@ -152,12 +152,6 @@ axiom p256_scalarmulbase_spec (res : Std.Array U64 8#usize) (scalar : Std.Array 
       ∀ P, p256OnCurve P → p256Tabulates P table →
         p256AffineZ (pairNat r.val) (p256Pow P (wordsNat scalar.val)) ⦄
 
-/-- rind's generator table holds the multiples of G that s2n-bignum's
-`p256_scalarmulbase` proof assumes. `admin/p256-precomp` writes it, and the
-`base_point_precomp` test checks it. -/
-def Tabulated : Prop :=
-  ∃ t, mid.p256.precomp.CURVE_GENERATOR_PRECOMP = ok t ∧ p256Tabulates p256G t
-
 /-- rind runs on this CPU: its entry guards' CPU-feature checks pass. Neither
 reads an input. -/
 def Runs : Prop :=

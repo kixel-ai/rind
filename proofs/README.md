@@ -41,10 +41,12 @@ P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
   that point, or a fault unless that is a finite point on the curve;
 - `p256_shared_secret`: the secret's bytes are those.
 
-`p256Pow` is HOL Light's `group_pow p256_group`. That a scalar in [1, n) times
-a point on the curve is a finite point on the curve, so the public key's
-hypothesis always holds and the fault never happens, is the group's theory,
-which these theorems do not import.
+`p256Pow` is HOL Light's `group_pow p256_group`, defined as HOL Light does,
+and `Rind/P256Group.lean` proves it is multiplication in Mathlib's group of
+points on the curve. That a scalar in [1, n) times a point on the curve is a
+finite point on the curve, so the public key's hypothesis always holds and the
+fault never happens, needs the point's order, which these theorems do not
+prove.
 
 ChaCha20 QUIC header protection on x86_64 and aarch64, from
 `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
@@ -59,9 +61,9 @@ HACL*'s rounds are Rust, so they are translated and proven with the rest, and
 no axiom stands in for HACL*'s proof of them.
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
-pass, which no input affects. `p256_public_key` also assumes `Tabulated`:
+pass, which no input affects. `Rind/Aarch64/P256Table.lean` proves that
 rind's generator table holds the multiples of G that s2n-bignum's proof of
-`p256_scalarmulbase` assumes, which the `base_point_precomp` test checks.
+`p256_scalarmulbase` assumes, so `p256_public_key` assumes nothing of it.
 `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
@@ -114,8 +116,11 @@ dispatch models' quotes, or if it builds a digest `Algorithm` outside
   ChaCha20 proofs.
 - `admin/prove` copies the `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
-- `Rind/Aarch64/P256Dispatch.lean` and `Rind/Aarch64/P256.lean`: the hand
-  model of P-256's key generation, and the P-256 proof.
+- `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate, and
+  that `p256Add` is the addition of Mathlib's group of points on the curve.
+- `Rind/Aarch64/P256Dispatch.lean`, `Rind/Aarch64/P256Table.lean`, and
+  `Rind/Aarch64/P256.lean`: the hand model of P-256's key generation, the
+  generator table's proof, and the P-256 proof.
 
 ## Trust base
 
@@ -132,7 +137,11 @@ Beyond Lean's kernel:
   group-membership fact a proof must decide be its defining equation, so
   `group_carrier p256_group` is the curve equation that HOL Light's
   [`P256_GROUP`](https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/nistp256.ml#L82)
-  proves it is.
+  proves it is. A function a proof must compute, such as `group_pow
+  p256_group`, is its HOL Light definition, transliterated, rather than
+  opaque, so `p256Add`, `p256Pow`, and `p256Inv` in `Rind/Spec.lean` are
+  trusted to be `weierstrass_add`, `group_pow`, and `ring_inv` on
+  `p256_group`.
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
   `processBlock_Common`.
 - That `Rind/Spec.lean`'s ChaCha20 transliterates RFC 8439 and RFC 9001.
