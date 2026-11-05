@@ -28,6 +28,11 @@ def beNat (bytes : List U8) : Nat :=
 def wordsNat (words : List U64) : Nat :=
   Nat.ofDigits (2 ^ 64) (words.map (·.val))
 
+/-- The two coordinates at `xy` as HOL Light's `bignum_pair_from_memory (xy,4)`
+reads them. -/
+def pairNat (xy : List U64) : Nat × Nat :=
+  (wordsNat (xy.take 4), wordsNat ((xy.drop 4).take 4))
+
 /-- RFC 7748's X25519 of a scalar and a u-coordinate, each read as a number,
 including the scalar's clamping and the u-coordinate's top-bit mask: HOL
 Light's `rfcx25519`, defined in `EC/x25519.ml` at

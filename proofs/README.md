@@ -92,10 +92,43 @@ digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
 models the `Algorithm` statics that hold them.
 
+Ed25519 on x86_64 and aarch64, from the signature API's `Ed25519KeyPair` and
+`PublicKey` to s2n-bignum's routines and the SHA-512 proof above, in
+`Rind/X86_64/Ed25519.lean`, which `admin/prove` also writes for aarch64:
+
+- `ed25519_generate`: the key pair's seed is the 32 drawn bytes, and a failed
+  draw is refused;
+- `ed25519_from_seed_and_public_key`: a seed that is not 32 bytes is refused,
+  so is a public key that is not the seed's, and otherwise the key pair's
+  seed is the seed;
+- `ed25519_sign`: the signature's bytes are RFC 8032's PureEd25519 signature
+  of the message under the seed;
+- `ed25519_key_pair_public_key`: the public key's bytes are RFC 8032's public
+  key of the seed;
+- `ed25519_public_key_new`: a public key is refused unless it is 32 bytes,
+  refused if its low 255 bits are one of libsodium's seven small-order
+  y-coordinates, refused unless it encodes a point of the group, and
+  otherwise its `verify` accepts exactly the signatures RFC 8032 verifies with
+  that point: 64 bytes, S below L, and R the encoding of SB - kA;
+- `ed25519_key_pair_verify`: a key pair's public key verifies the same way,
+  with its point the base point times its secret scalar, for a scalar whose
+  multiple is a point of the group.
+
+The spec, in `Rind/Ed25519.lean`, is RFC 8032 over HOL Light's
+`edwards25519_group`, whose multiplication and power stay opaque, with
+s2n-bignum's `ed25519_encode` and `ed25519_decode` of its points. Each theorem
+assumes `Runs` and `RunsSha512`, and each with a message bounds it at
+2^64 - 64 bytes. That a multiple of the base point is a point of the group,
+which `ed25519_key_pair_verify` assumes, is the group's theory, which these
+theorems do not import. `PublicKey` reaches each algorithm's key parser, and
+each parsed key its verification, through function pointers, which
+`Rind/X86_64/SignatureDispatch.lean` models.
+
 `admin/prove` fails if a hand model's quote no longer matches the source, if
 the source names `Ops`, builds a `Masker`, or writes its `mask` outside the
-dispatch models' quotes, or if it builds a digest `Algorithm` outside
-`DigestAlgorithm.lean`'s.
+dispatch models' quotes, if it builds a digest `Algorithm` outside
+`DigestAlgorithm.lean`'s, or if it mentions `Verification::Ed25519(` or
+`Parsed::Ed25519(` outside `SignatureDispatch.lean`'s.
 
 ## Layout
 
@@ -109,11 +142,12 @@ dispatch models' quotes, or if it builds a digest `Algorithm` outside
   wrappers.
 - `Rind/Spec.lean` and `Rind/Bytes.lean`: the elliptic-curve and ChaCha20
   specs and byte-conversion lemmas; `Rind/Sha2.lean` and
-  `Rind/Sha2Lemmas.lean`: SHA-512's.
-- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm}.lean`: the hand
-  models of the agreement, header-protection, and digest APIs' dispatch.
-- `Rind/X86_64/{X25519,Sha512,ChaCha20}.lean`: the X25519, SHA-512, and
-  ChaCha20 proofs.
+  `Rind/Sha2Lemmas.lean`: SHA-512's; `Rind/Ed25519.lean`: Ed25519's.
+- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch}.lean`:
+  the hand models of the agreement, header-protection, digest, and signature
+  APIs' dispatch.
+- `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
+  ChaCha20, and Ed25519 proofs.
 - `admin/prove` copies the `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
 - `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate, and
@@ -137,14 +171,18 @@ Beyond Lean's kernel:
   group-membership fact a proof must decide be its defining equation, so
   `group_carrier p256_group` is the curve equation that HOL Light's
   [`P256_GROUP`](https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/nistp256.ml#L82)
-  proves it is. A function a proof must compute, such as `group_pow
-  p256_group`, is its HOL Light definition, transliterated, rather than
-  opaque, so `p256Add`, `p256Pow`, and `p256Inv` in `Rind/Spec.lean` are
-  trusted to be `weierstrass_add`, `group_pow`, and `ring_inv` on
-  `p256_group`.
+  proves it is, and `group_carrier edwards25519_group` the one
+  [`EDWARDS25519_GROUP`](https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/edwards25519.ml#L92)
+  does. A function a proof must compute, such as `group_pow p256_group`, is
+  its HOL Light definition, transliterated, rather than opaque, so `p256Add`,
+  `p256Pow`, and `p256Inv` in `Rind/Spec.lean` are trusted to be
+  `weierstrass_add`, `group_pow`, and `ring_inv` on `p256_group`.
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
   `processBlock_Common`.
-- That `Rind/Spec.lean`'s ChaCha20 transliterates RFC 8439 and RFC 9001.
+- That `Rind/Spec.lean`'s ChaCha20 transliterates RFC 8439 and RFC 9001, and
+  `Rind/Ed25519.lean` RFC 8032 and s2n-bignum's encoding and decoding of
+  edwards25519 points, whose `ed25519_decode` picks by Hilbert's choice as
+  Lean's `Classical.epsilon` does.
 - That rind's inline assembly is s2n-bignum's and aws-lc's object code, as for
   `benchmarks/verified.toml`'s other entries.
 - The translation ignores drops, which here wipe keys and hash contexts and

@@ -207,7 +207,7 @@ verified ✓ AVX SHA-384 and SHA-512.
 | HKDF | 0.95 rind ⚡ |  | 0.88 |  |  |  |
 | PBKDF2 | 1.02 rind |  | 0.93 |  |  |  |
 | X25519 | 1.01 s2n-bignum ✓ | 1.01 | 1.01 |  |  |  |
-| Ed25519 | 1.02 s2n-bignum ✓ + Graviola ⚡ | 1.00 | 1.01 |  |  |  |
+| Ed25519 | 1.02 s2n-bignum ✓ + Graviola | 1.00 | 1.01 |  |  |  |
 | P-256 ECDH, ECDSA | 0.99 s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ | **1.05** | 1.01 |  |  |  |
 | P-384 ECDH, ECDSA | 0.90 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.92 | 0.91 |  |  |  |
 | P-521 ECDH, ECDSA | 0.94 s2n-bignum ✓ + rind ⚡ | 0.95 | 0.98 |  |  |  |
@@ -264,7 +264,7 @@ from [run 41753572116], and the ChaCha20 header-protection cells from
 | HKDF | 0.88 rind ⚡ | 0.89 | 1.01 |
 | PBKDF2 | 0.93 rind | 0.93 | 1.00 |
 | X25519 | 0.81 s2n-bignum ✓ | 0.80 | 0.79 BoringSSL ⚡ + curve25519-dalek ⚡ |
-| Ed25519 | 0.89 s2n-bignum ✓ + Graviola ⚡ | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
+| Ed25519 | 0.89 s2n-bignum ✓ + Graviola | 0.77 | 0.88 curve25519-dalek ⚡ + rind ⚡ |
 | P-256 ECDH, ECDSA | 1.02 s2n-bignum ✓ + Graviola ⚡ | 0.98 | 0.65 fiat-crypto ✓ + rind ⚡ + Graviola ⚡ |
 | P-384 ECDH, ECDSA | 0.78 s2n-bignum ✓ + rind ⚡ + Graviola ⚡ | 0.78 | 0.44 fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | 0.65 s2n-bignum ✓ + rind ⚡ | 0.64 | **1.04** fiat-crypto ✓ + rind ⚡ |
@@ -455,6 +455,10 @@ also builds 17Q to 31Q, so that `u2`'s digits widen to 6 from then on: a key
 verified once never pays for them. s2n-bignum's point
 additions are proven only for unequal points, so each addition first
 compares x's and settles equal or opposite points by cases.
+Those checks cost a key parsed and verified once, as TLS does with each
+certificate key, about 5-6% against verifying without them (aarch64 and
+x86_64 P-256 runs 41907443804 and 41907448202); keys verified more than once
+are faster than before.
 
 ECDSA follows RFC6979 for generation of `k`, but adds additional non-critical random input.
 We do this to avoid the theoretical fragility of RFC6979 under fault conditions.
