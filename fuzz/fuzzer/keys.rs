@@ -281,7 +281,9 @@ fn ecdh_scalar(
 
 /// aws-lc-rs's agreement API takes no X25519 PKCS#8, so this checks that a
 /// key rind loads re-encodes to input it loads again as the same key, and
-/// to the input itself for a v1 document with nothing after it.
+/// to the input itself for a v1 document of only its three required fields,
+/// with nothing after it: attributes, which the loader skips, are not
+/// written back.
 fn x25519_pkcs8(input: &[u8]) {
     let Ok(ours) = ours_ecdh::PrivateKey::from_pkcs8(&ours_ecdh::X25519, input) else {
         return;
@@ -289,8 +291,8 @@ fn x25519_pkcs8(input: &[u8]) {
     let pkcs8 = ours.to_pkcs8();
     let again = ours_ecdh::PrivateKey::from_pkcs8(&ours_ecdh::X25519, pkcs8.as_ref()).unwrap();
     assert_eq!(again.public_key().as_ref(), ours.public_key().as_ref());
-    let v1 = elements(sequence(input).unwrap()).next() == Some((0x02, &[0][..]));
-    if v1 && !trailing(input) {
+    let fields: Vec<_> = elements(sequence(input).unwrap()).collect();
+    if fields.len() == 3 && fields[0] == (0x02, &[0][..]) && !trailing(input) {
         assert_eq!(pkcs8.as_ref(), input);
     }
 }
