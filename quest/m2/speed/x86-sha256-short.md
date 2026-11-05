@@ -8,7 +8,8 @@ SHA-256 of a 64 B message on x86_64 with the SHA extensions is level with RustCr
 
 Planned on 2026-11-04 from the first [BENCHMARKS.md](/BENCHMARKS.md) (the maintainer delegated the gap triage).
 
-- rind's time at 64 B over RustCrypto's is 1.38 on `nixos` (Zen 3, 80 ns against 58) and 1.44 on `desktop` (Arrow Lake, 56 ns against 39); over graviola's, 1.18 and 1.40. From 1350 B rind is level. Short hashes dominate HMAC and HKDF in a TLS handshake.
-- The closed sha256-64b quest only reached ring. rind runs graviola's SHA-NI block routine, so the 13-16 ns rind spends over graviola is glue around it: the `digest::Context`, the entry guard, buffering, padding, and finishing. On Zen 3, RustCrypto is 9 ns faster than graviola as well, so its block routine or finish is worth reading too.
-- [moq-dev/rind#338](https://github.com/moq-dev/rind/pull/338) proves SHA-256's glue with Aeneas and Lean. Once it merges, keep the glue translatable by Aeneas and its proofs passing.
+- [moq-dev/rind#352](https://github.com/moq-dev/rind/pull/352) finishes SHA-256 on the SHA extensions in registers, padding and digest encoding included. rind's 32 B hash is now faster than graviola's, and its HMAC-SHA256 and HKDF-SHA256 are ahead of RustCrypto's. 64 B through `digest::Context` is still behind: 76 ns on `nixos` (Zen 3) against RustCrypto's 59 and graviola's 67.
+- What remains is the context, not the hash: `digest::digest` of 64 B is faster than RustCrypto's. `Context::finish(self)` moves the 224-byte context through libc's `memcpy`, whose 32-byte loads cannot forward from the narrower stores `new` and `update` just made. Each hash then waits for the previous one's SHA chain to retire. rustc keeps that copy while `Context` has drop glue (its wipe) or its address reaches the hashes' code through `Ops`' function pointers.
+- Closing it changes the digest API's design, which is the maintainer's call: [moq-dev/rind#352](https://github.com/moq-dev/rind/pull/352) lists the options, with the cycles each would save.
+- Keep the glue translatable by Aeneas and `admin/prove` passing on x86_64 and aarch64.
 - Measure on the GitHub runners and the report's hosts, and remove this gap's entry from `benchmarks/gaps.toml` when the report's refresh shows it closed.
