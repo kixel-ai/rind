@@ -10,7 +10,6 @@ Bun's fastest asymmetric operations run on rind, ahead of Bun writing its own.
 
 - [Bun runs its fastest asymmetric crypto on rind](/quest/m1/bun.md) - Ed25519, X25519, and the NIST curves in Bun on rind, before Bun writes its own
 - [Agreement keys that can be stored and reused](/quest/m1/agreement-stored-keys.md) - X25519 and ECDH for Bun
-- [Loading an Ed25519 key costs less than a signature](/quest/m1/ed25519-key-load.md) - Bun's per-call PEM path
 - [P-256 key generation as fast as BoringSSL](/quest/m1/p256-keygen.md) - so P-256 joins Bun's other curves
 - [ECDSA over a precomputed digest](/quest/m1/ecdsa-prehash.md) - node's createSign and other hash pairings in Bun
 - [Bun parses its moved keys with rind](/quest/m1/bun-key-parsing.md) - Bun's key import, 670 µs for P-384 today
