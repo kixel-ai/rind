@@ -34,4 +34,4 @@ Guidance:
 
 ## Required
 
-- [rind builds on every platform its packages ship](/quest/m2/adoption/platforms.md) - the wheels' targets
+- [rind builds on every platform its packages ship](/quest/m1/platforms.md) - the wheels' targets

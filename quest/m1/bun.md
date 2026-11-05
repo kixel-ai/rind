@@ -6,14 +6,19 @@ A PR to [Bun](https://github.com/oven-sh/bun), with numbers, moves the
 operations where rind measures clearly faster than Bun's BoringSSL onto rind,
 expected to be:
 Ed25519 and X25519, and ECDSA and ECDH on P-384 and P-521, in WebCrypto and
-node:crypto, plus SHA-3 in `CryptoHasher`, which Bun takes from RustCrypto
-today. `sha3-224`, outside aws-lc-rs's set, stays on RustCrypto.
+node:crypto. SHA-3 in `CryptoHasher` follows in
+[its own quest](/quest/m2/adoption/bun-sha3.md).
 
 ## Plan
 
 Decided with the maintainer on 2026-11-04: a prototype PR with measurements
 ✅ / an issue asking first / only new APIs such as `Bun.jwt`. Posting it is
 the maintainer's call; prepare the branch and the PR text, then ask.
+
+Prioritized into m1 by the maintainer on 2026-11-05: Bun may write its own
+cryptography soon, which would close the opening. Platforms first ✅, then
+this, with SHA-3 split off / start now on the targets rind builds today /
+keep in m2.
 
 - Bun is Rust since its rewrite from Zig
   ([oven-sh/bun#30412](https://github.com/oven-sh/bun/pull/30412), merged in
@@ -35,5 +40,4 @@ the maintainer's call; prepare the branch and the PR text, then ask.
 
 ## Required
 
-- [rind builds on every platform its packages ship](/quest/m2/adoption/platforms.md) - Bun ships Windows on aarch64 and musl
-- [SHA-3](/quest/m2/adoption/webcrypto/sha3.md) - the SHA-3 digests `CryptoHasher` needs
+- [rind builds on every platform its packages ship](/quest/m1/platforms.md) - Bun ships Windows on aarch64 and musl

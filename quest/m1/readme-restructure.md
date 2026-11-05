@@ -2,7 +2,7 @@
 
 ## Goal
 
-After [the pitch and headline](/quest/m1/benchmarks/readme.md), the README
+After [the pitch and headline](https://github.com/moq-dev/rind/pull/350), the README
 shows a visitor how to use rind (rind-rustls, the direct API, and the other
 adapters), carries the copy-paste migration prompt, and invites AI reviews
 and contributions through the quest skills. Everything a visitor doesn't need
@@ -34,5 +34,4 @@ Guidance:
 
 ## Required
 
-- [The README sells rind and links the report](/quest/m1/benchmarks/readme.md) - the pitch and headline this builds on
 - [A prompt migrates a repo to rind](/quest/m1/migration-prompt.md) - the copy-paste prompt the README carries

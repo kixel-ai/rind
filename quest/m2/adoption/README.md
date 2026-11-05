@@ -55,10 +55,9 @@ don't ask again (✅ is the chosen option):
 
 - [rustls lists rind-rustls](/quest/m2/adoption/rustls-providers.md) - an entry in rustls's third-party provider list
 - [rusty-s3 offers rind](/quest/m2/adoption/rusty-s3.md) - a `rind` feature beside its `graviola` one
-- [rind builds on every platform its packages ship](/quest/m2/adoption/platforms.md) - CI covers aarch64 Windows, musl, iOS, and Android
 - [rind-str0m](/quest/m2/adoption/rind-str0m.md) - str0m's `CryptoProvider` on rind
 - [quinn's rustls support works with any provider](/quest/m2/adoption/quinn.md) - quinn-proto stops forcing ring or aws-lc-rs
-- [Bun runs its fastest asymmetric crypto on rind](/quest/m2/adoption/bun.md) - Ed25519, X25519, P-384, P-521, and SHA-3 in Bun on rind
+- [Bun's CryptoHasher takes SHA-3 from rind](/quest/m2/adoption/bun-sha3.md) - SHA-3 in Bun on rind, after the m1 Bun PR
 - [pyrind on PyPI](/quest/m2/adoption/pyrind.md) - rind for Python with its own API
 - [Lemmy's federation signs and verifies with rind](/quest/m2/adoption/lemmy.md) - activitypub-federation-rust's HTTP signatures off the `rsa` crate
 - [rind-snow](/quest/m2/adoption/rind-snow.md) - snow's `CryptoResolver` on rind, for rathole and other Noise users
