@@ -52,11 +52,7 @@ impl AesCtr {
     ///
     /// Fails with [`Error::WrongLength`] if `key` is not that algorithm's key
     /// length, or if `counter_bits` is not 1 to 128.
-    pub fn new(
-        algorithm: &'static Algorithm,
-        key: &[u8],
-        counter_bits: u8,
-    ) -> Result<Self, Error> {
+    pub fn new(algorithm: &'static Algorithm, key: &[u8], counter_bits: u8) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
         if key.len() != algorithm.key_len || !(1..=128).contains(&counter_bits) {
             return Err(Error::WrongLength);
@@ -375,8 +371,7 @@ mod tests {
                         }
                     }
                     let mut got = msg;
-                    ctr.apply_keystream(&block.to_be_bytes(), &mut got)
-                        .unwrap();
+                    ctr.apply_keystream(&block.to_be_bytes(), &mut got).unwrap();
                     assert_eq!(got, want, "{what}");
                 }
             }
