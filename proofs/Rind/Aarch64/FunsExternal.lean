@@ -60,11 +60,6 @@ opaque low.aarch64.p256_scalarmulbase.p256_scalarmulbase
   Array Std.U64 8#usize → Array Std.U64 4#usize → Array (Array Std.U64
     256#usize) 43#usize → Result (Array Std.U64 8#usize)
 
-/-! P-256's generator table, which `admin/p256-precomp` writes. -/
-
-opaque mid.p256.precomp.CURVE_GENERATOR_PRECOMP
-  : Result (Array (Array Std.U64 256#usize) 43#usize)
-
 /-! P-256's key generation, which draws through a `dyn RandomSource`:
 `Rind.Aarch64.P256Dispatch` models it. -/
 
@@ -131,6 +126,16 @@ opaque low.entry.Entry.assert_held : Result Unit
 
 opaque low.aarch64.cpu.HaveSha3.check : Result (Option low.aarch64.cpu.HaveSha3)
 
+/-! SHA-1 and SHA-256's block functions, whose contracts `Rind.Aarch64.ShaBlocks`
+states as hypotheses. Each picks between aws-lc's routines by the CPU through
+raw pointers, which Aeneas cannot translate. -/
+
+opaque low.aarch64.sha1.sha1_compress_blocks
+  : Array Std.U32 5#usize → Slice Std.U8 → Result (Array Std.U32 5#usize)
+
+opaque low.aarch64.sha256.sha256_compress_blocks
+  : Array Std.U32 8#usize → Slice Std.U8 → Result (Array Std.U32 8#usize)
+
 /-! The other curves, which X25519's and P-256's results never depend on. -/
 
 opaque mid.p521.PrivateKey.new_random
@@ -160,62 +165,6 @@ opaque mid.p384.PrivateKey.diffie_hellman
 
 opaque mid.p384.PublicKey.from_x962_uncompressed
   : Slice Std.U8 → Result (core.result.Result mid.p384.PublicKey error.Error)
-
-/-! SHA-1 and SHA-256, which no theorem is about. -/
-
-opaque high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.ALGORITHM
-  : Result high.digest.Algorithm
-
-opaque high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.initial
-  : Result high.hash.Sha1State
-
-opaque high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.new
-  : Result high.hash.Sha1Context
-
-opaque high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.zeroed_block
-  : Result high.hash.HashBlock
-
-opaque high.hash.Sha1Context.Insts.RindHighHashHashContext.update
-  : high.hash.Sha1Context → Slice Std.U8 → Result high.hash.Sha1Context
-
-opaque high.hash.Sha1Context.Insts.RindHighHashHashContext.finish
-  : high.hash.Sha1Context → Result high.digest.Digest
-
-opaque high.hash.Sha1State.Insts.RindHighHashHashStateSha1Context.update_blocks
-  : high.hash.Sha1State → Slice Std.U8 → Result high.hash.Sha1State
-
-opaque high.hash.Sha1State.Insts.RindHighHashHashStateSha1Context.finish_with
-  : high.hash.Sha1State → Slice Std.U8 → Result high.digest.Digest
-
-opaque high.hash.Sha1State.Insts.RindHighHashHashStateSha1Context.resume
-  : high.hash.Sha1State → Result high.hash.Sha1Context
-
-opaque high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.ALGORITHM
-  : Result high.digest.Algorithm
-
-opaque high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.initial
-  : Result high.hash.Sha256State
-
-opaque high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.new
-  : Result high.hash.Sha256Context
-
-opaque high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.zeroed_block
-  : Result high.hash.HashBlock
-
-opaque high.hash.Sha256Context.Insts.RindHighHashHashContext.update
-  : high.hash.Sha256Context → Slice Std.U8 → Result high.hash.Sha256Context
-
-opaque high.hash.Sha256Context.Insts.RindHighHashHashContext.finish
-  : high.hash.Sha256Context → Result high.digest.Digest
-
-opaque high.hash.Sha256State.Insts.RindHighHashHashStateSha256Context.update_blocks
-  : high.hash.Sha256State → Slice Std.U8 → Result high.hash.Sha256State
-
-opaque high.hash.Sha256State.Insts.RindHighHashHashStateSha256Context.finish_with
-  : high.hash.Sha256State → Slice Std.U8 → Result high.digest.Digest
-
-opaque high.hash.Sha256State.Insts.RindHighHashHashStateSha256Context.resume
-  : high.hash.Sha256State → Result high.hash.Sha256Context
 
 /-! AES, whose header protection no proof covers. -/
 

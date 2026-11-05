@@ -143,7 +143,9 @@ that is busy, and writes their results and the hosts' details as JSON under
 `.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly
 `bench` run's results, and `admin/bench-report render --from DIR` copies a
 collection's measured hosts into `benchmarks/data/` and writes
-`BENCHMARKS.md` and its SVGs from them and `benchmarks/verified.toml`.
+`BENCHMARKS.md` and its SVGs from them, `benchmarks/verified.toml`, and
+`benchmarks/gaps.toml`, which must hold a quest or a reason for every gap
+over 10%.
 
 With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
 toolchain, and `just check` runs CI's gate over what the branch changed.

@@ -8,8 +8,9 @@ open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch`,
-`Rind.X86_64.DigestDispatch`, and `Rind.X86_64.AeadDispatch` model the last five, and
-`Rind.X86_64.DigestAlgorithm` `Algorithm`; `Rind.X86_64.Simd` models `__m128i`. -/
+`Rind.X86_64.DigestDispatch`, and `Rind.X86_64.AeadDispatch` model the last five,
+`Rind.X86_64.DigestAlgorithm` `Algorithm` and `Digest`, and `Rind.X86_64.Simd`
+`__m128i`. -/
 
 namespace rind.x86_64
 
@@ -19,8 +20,12 @@ opaque low.entry.Entry : Type
 /-- The token proving the CPU has BMI2 and ADX. -/
 opaque low.x86_64.cpu.HaveBmi2Adx : Type
 
-/-- The token proving the CPU has AVX and SSSE3. -/
+/-- The tokens proving the CPU has what each SHA-256 routine needs: the SHA
+extensions, AVX and SSSE3, AVX2, and SSSE3. -/
+opaque low.x86_64.cpu.HaveSha256 : Type
 opaque low.x86_64.cpu.HaveAvx : Type
+opaque low.x86_64.cpu.HaveAvx2 : Type
+opaque low.x86_64.cpu.HaveSsse3 : Type
 
 /-- An AES key, whose header protection no proof covers. -/
 opaque mid.aes.Aes : Type
@@ -37,9 +42,6 @@ opaque low.x86_64.cpu.HaveVaesAvx2ForAesGcm : Type
 
 /-- The token proving the CPU has AVX-512 for AES-GCM. -/
 opaque low.x86_64.cpu.HaveAvx512ForAesGcm : Type
-
-/-- The token proving the CPU has SSSE3. -/
-opaque low.x86_64.cpu.HaveSsse3 : Type
 
 /-- The AES keys and GHASH tables of the tiers no proof covers. -/
 opaque low.x86_64.vpaes_x86_64.VpaesKey : Type

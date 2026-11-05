@@ -41,10 +41,12 @@ P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
   that point, or a fault unless that is a finite point on the curve;
 - `p256_shared_secret`: the secret's bytes are those.
 
-`p256Pow` is HOL Light's `group_pow p256_group`. That a scalar in [1, n) times
-a point on the curve is a finite point on the curve, so the public key's
-hypothesis always holds and the fault never happens, is the group's theory,
-which these theorems do not import.
+`p256Pow` is HOL Light's `group_pow p256_group`, defined as HOL Light does,
+and `Rind/P256Group.lean` proves it is multiplication in Mathlib's group of
+points on the curve. That a scalar in [1, n) times a point on the curve is a
+finite point on the curve, so the public key's hypothesis always holds and the
+fault never happens, needs the point's order, which these theorems do not
+prove.
 
 ChaCha20 QUIC header protection on x86_64 and aarch64, from
 `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
@@ -59,10 +61,31 @@ HACL*'s rounds are Rust, so they are translated and proven with the rest, and
 no axiom stands in for HACL*'s proof of them.
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
-pass, which no input affects. `p256_public_key` also assumes `Tabulated`:
+pass, which no input affects. `Rind/Aarch64/P256Table.lean` proves that
 rind's generator table holds the multiples of G that s2n-bignum's proof of
-`p256_scalarmulbase` assumes, which the `base_point_precomp` test checks.
+`p256_scalarmulbase` assumes, so `p256_public_key` assumes nothing of it.
 `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
+
+SHA-1 and SHA-256's padding and finalization, and HMAC's keyed states over
+any hash, on x86_64 and aarch64, in `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
+against FIPS 180-4 and RFC 2104 as `Rind/HashSpec.lean` transliterates them:
+
+- `sha256_hash`, `sha1_hash`: a message's digest, one-shot, and
+  `sha256_hashSpec`, `sha1_hashSpec`: every method of each `Hash` impl,
+  streaming included;
+- `hmac_key_new_spec`, `hmac_sign_spec`, `hmac_start_spec`,
+  `hmac_update_spec`, `hmac_finish_spec`: `HmacKey` and `Hmac` over any hash
+  meeting `HashSpec`, and `hmac_sha256_sign`, `hmac_sha1_sign` over SHA-256
+  and SHA-1.
+
+No proof covers a SHA-1 or SHA-256 block function rind runs on either target,
+so these theorems take `ShaBlocks` as a hypothesis, in each target's own
+`Rind/<Arch>/ShaBlocks.lean`: each routine computes FIPS 180-4's block
+function, and rind's checks pass. They add no axiom, which
+`Rind/<Arch>/HashAxioms.lean` checks. An input is at most `maxInput`
+(2^61 - 1) bytes, under FIPS 180-4's 2^64-bit limit. `Rind/HashSpecTest.lean`
+checks the transliterations against FIPS 180-4's, RFC 4231's, RFC 5869's, and
+RFC 6070's vectors.
 
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
 (`Algorithm`'s `generate` and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
@@ -88,7 +111,8 @@ with AVX, and on aarch64 its scalar routine, on a CPU without the SHA-512
 instructions; those are the routines whose proofs state their result. The
 digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
-models the `Algorithm` statics that hold them.
+models the `Algorithm` statics that hold them, and `Digest`, whose
+`&'static Algorithm` Aeneas cannot end a borrow of `Digest` across.
 
 Ed25519 on x86_64 and aarch64, from the signature API's `Ed25519KeyPair` and
 `PublicKey` to s2n-bignum's routines and the SHA-512 proof above, in
@@ -169,18 +193,26 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
 - `Rind/Spec.lean` and `Rind/Bytes.lean`: the elliptic-curve and ChaCha20
   specs and byte-conversion lemmas; `Rind/Sha2.lean` and
   `Rind/Sha2Lemmas.lean`: SHA-512's; `Rind/Ed25519.lean`: Ed25519's;
-  `Rind/Vale.lean`, `Rind/ValeBytes.lean`, and `Rind/Gf128.lean`: Vale's AES
-  and GF(2^128) specs and their lemmas.
+  `Rind/HashSpec.lean`: SHA-1's, SHA-256's, HMAC's, HKDF's, and PBKDF2's, and
+  `Rind/HashSpecTest.lean`, their known-answer tests; `Rind/Vale.lean`,
+  `Rind/ValeBytes.lean`, and `Rind/Gf128.lean`: Vale's AES and GF(2^128) specs
+  and their lemmas.
 - `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch}.lean`:
   the hand models of the agreement, header-protection, digest, signature, and
   AEAD APIs' dispatch.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
-  ChaCha20, and Ed25519 proofs; `Rind/X86_64/{AesKey,Ghash,AesGcmGlue,AesGcm}.lean`:
+  ChaCha20, and Ed25519 proofs, and `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
+  SHA-1's, SHA-256's, and HMAC's; `Rind/X86_64/{AesKey,Ghash,AesGcmGlue,AesGcm}.lean`:
   the AES-GCM proof, on x86_64 alone.
-- `admin/prove` copies the `Rind/X86_64/` models and proofs to
+- `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
+  target, and their padded last blocks.
+- `admin/prove` copies the other `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
-- `Rind/Aarch64/P256Dispatch.lean` and `Rind/Aarch64/P256.lean`: the hand
-  model of P-256's key generation, and the P-256 proof.
+- `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate, and
+  that `p256Add` is the addition of Mathlib's group of points on the curve.
+- `Rind/Aarch64/P256Dispatch.lean`, `Rind/Aarch64/P256Table.lean`, and
+  `Rind/Aarch64/P256.lean`: the hand model of P-256's key generation, the
+  generator table's proof, and the P-256 proof.
 
 ## Trust base
 
@@ -190,6 +222,8 @@ Beyond Lean's kernel:
   `Rind/Core.lean`'s.
 - That each hand model computes what the Rust it quotes does. They add no
   axiom.
+- That `Rind/HashSpec.lean` transliterates FIPS 180-4, RFC 2104, RFC 5869,
+  and RFC 8018.
 - The restatement of each s2n-bignum and aws-lc-verification theorem as an
   axiom, under the composition rule in the
   [verification epic](/quest/m3/verified/README.md), and on aarch64 the
@@ -199,7 +233,10 @@ Beyond Lean's kernel:
   [`P256_GROUP`](https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/nistp256.ml#L82)
   proves it is, and `group_carrier edwards25519_group` the one
   [`EDWARDS25519_GROUP`](https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/edwards25519.ml#L92)
-  does.
+  does. A function a proof must compute, such as `group_pow p256_group`, is
+  its HOL Light definition, transliterated, rather than opaque, so `p256Add`,
+  `p256Pow`, and `p256Inv` in `Rind/Spec.lean` are trusted to be
+  `weierstrass_add`, `group_pow`, and `ring_inv` on `p256_group`.
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
   `processBlock_Common`.
 - That `Rind/Spec.lean`'s ChaCha20 transliterates RFC 8439 and RFC 9001, and
