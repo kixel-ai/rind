@@ -1223,6 +1223,92 @@ theorem twin_multiply_spec (hG : P256Group) (ht : Tabulated) (g p : mid.p256.Sca
   intro r hr
   rwa [hgv, hpv] at hr
 
+/-! ## The x-coordinate check, `JacobianMontPoint::public_x_is` -/
+
+theorem wordsNat_take_succ (l : List U64) (i : Nat) (hi : i < l.length) :
+    wordsNat (l.take (i + 1)) = wordsNat (l.take i) + 2 ^ (64 * i) * (l[i]!).val := by
+  rw [List.take_succ, List.getElem?_eq_getElem hi, Option.toList_some, wordsNat, List.map_append,
+    Nat.ofDigits_append, List.length_map, List.length_take, Nat.min_eq_left (by omega), ← wordsNat,
+    getElem_eq_getElem! _ _ hi, ← pow_mul]
+  simp [Nat.ofDigits]
+
+theorem x_is_loop_spec (a : Std.Array U64 4#usize) (iter : core.ops.range.Range Usize)
+    (rpn : Std.Array U64 4#usize) (carry : Bool) (hs : iter.start.val ≤ 4) (he : iter.end.val = 4)
+    (hinv : wordsNat (rpn.val.take iter.start.val) + 2 ^ (64 * iter.start.val) * carry.toNat =
+      wordsNat (a.val.take iter.start.val) + wordsNat (mid.p256.CURVE_ORDER.val.take iter.start.val)) :
+    mid.p256.JacobianMontPoint.public_x_is_loop iter a rpn carry ⦃ r =>
+      wordsNat r.1.val + 2 ^ 256 * r.2.toNat = wordsNat a.val + n256 ⦄ := by
+  unfold mid.p256.JacobianMontPoint.public_x_is_loop
+  have hal : a.val.length = 4 := a.property
+  have hnl : mid.p256.CURVE_ORDER.val.length = 4 := mid.p256.CURVE_ORDER.property
+  apply loop.spec_decr_nat (fun x => 4 - x.1.start.val)
+    (fun x => x.1.start.val ≤ 4 ∧ x.1.end.val = 4 ∧
+      wordsNat (x.2.1.val.take x.1.start.val) + 2 ^ (64 * x.1.start.val) * x.2.2.toNat =
+        wordsNat (a.val.take x.1.start.val) + wordsNat (mid.p256.CURVE_ORDER.val.take x.1.start.val))
+  · rintro ⟨it, r, c⟩ ⟨hs, he, hinv⟩
+    simp only at hs he hinv ⊢
+    unfold mid.p256.JacobianMontPoint.public_x_is_loop.body
+    have hrl : r.val.length = 4 := r.property
+    step as ⟨o, iter1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨i1, hi1⟩
+      step as ⟨i2, hi2⟩
+      have h1 := core.num.U64.overflowing_add_eq i1 i2
+      rcases hsc : core.num.U64.overflowing_add i1 i2 with ⟨s', c1⟩
+      rw [hsc] at h1
+      simp only [lift, bind_ok]
+      have h2 := core.num.U64.overflowing_add_eq s' (core.convert.num.FromU64Bool.from c)
+      rcases hsc2 : core.num.U64.overflowing_add s' (core.convert.num.FromU64Bool.from c) with ⟨s1, c2⟩
+      rw [hsc2] at h2
+      simp only at h1 h2
+      change (do
+        let a1 ← r.update it.start (core.num.U64.overflowing_add s' (core.convert.num.FromU64Bool.from c)).1
+        ok (ControlFlow.cont (iter1, a1,
+          c1 || (core.num.U64.overflowing_add s' (core.convert.num.FromU64Bool.from c)).2))) ⦃ _ ⦄
+      rw [hsc2]
+      dsimp only
+      have hc : (core.convert.num.FromU64Bool.from c).val = c.toNat := by
+        cases c <;> rfl
+      simp only [hc] at h1 h2 ⊢
+      have hsize : UScalar.size .U64 = 2 ^ 64 := by simp [U64.size_def, U64.numBits]
+      have hmax : UScalar.max .U64 = 2 ^ 64 - 1 := by simp [U64.max_def, U64.numBits]
+      have hsum : s1.val + 2 ^ 64 * (c1 || c2).toNat = i1.val + i2.val + c.toNat := by
+        have hb1 := i1.hBounds; have hb2 := i2.hBounds; have hbs := s'.hBounds
+        simp only [UScalarTy.numBits] at hb1 hb2 hbs
+        try rw [hc] at h2
+        rw [hsize, hmax] at h1 h2
+        have hcv : c.toNat ≤ 1 := by cases c <;> decide
+        generalize (2 : Nat) ^ 64 = M at *
+        split_ifs at h1 with g1 <;> split_ifs at h2 with g2 <;> obtain ⟨e1, rfl⟩ := h1 <;>
+          obtain ⟨e2, rfl⟩ := h2 <;> simp only [Bool.or_true, Bool.true_or, Bool.or_false, Bool.toNat_true,
+            Bool.toNat_false] <;> omega
+      step as ⟨a1, ha1⟩
+      try simp only [WP.spec_ok]
+      refine ⟨by omega, by rw [he1]; exact he, ?_, by omega⟩
+      have hi4 : it.start.val < 4 := by omega
+      have hal1 : (a1.val).length = 4 := a1.property
+      have hset : a1.val = r.val.set it.start.val s1 := by rw [ha1, Std.Array.set_val_eq]
+      rw [hst, wordsNat_take_succ _ _ (by omega), wordsNat_take_succ _ _ (by omega),
+        wordsNat_take_succ _ _ (by omega)]
+      have htk : a1.val.take it.start.val = r.val.take it.start.val := by
+        rw [hset, List.take_set_of_le (by omega)]
+      have hgi : (a1.val[it.start.val]!) = s1 := by
+        rw [hset]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, hrl, hi4]
+      rw [htk, hgi, ← getElem_eq_getElem! _ _ (by omega), ← getElem_eq_getElem! _ _ (by omega), ← hi1, ← hi2,
+        show 64 * (it.start.val + 1) = 64 * it.start.val + 64 by ring, pow_add]
+      have e : 2 ^ (64 * it.start.val) * s1.val + 2 ^ (64 * it.start.val) * 2 ^ 64 * (c1 || c2).toNat =
+          2 ^ (64 * it.start.val) * (i1.val + i2.val + c.toNat) := by rw [← hsum]; ring
+      linear_combination e + hinv
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only [WP.spec_ok]
+      have h4 : it.start.val = 4 := by omega
+      rw [h4, List.take_of_length_le (by omega), List.take_of_length_le (by omega),
+        List.take_of_length_le (by omega), CURVE_ORDER_val] at hinv
+      exact hinv
+  · exact ⟨hs, he, hinv⟩
+
 end P256
 
 end rind.aarch64
