@@ -74,6 +74,16 @@ def core.slice.SliceArray.as_flattened_mut {T : Type _} {N : Std.Usize} (s : Sli
         (by simp))
   else Std.Result.fail .panic
 
+/-- `bool::then_some`. -/
+def core.bool.Bool.then_some {T : Type _} (b : Bool) (t : T) : Result (Option T) :=
+  Std.Result.ok (if b then some t else none)
+
+/-- `<&[T] as PartialEq<[U; N]>>::eq`: the slice compared with the whole
+array, as slices. -/
+def Shared0Slice.Insts.CoreCmpPartialEqArray.eq {T U : Type _} {N : Std.Usize}
+    (inst : core.cmp.PartialEq T U) (s : Slice T) (a : Array U N) : Result Bool :=
+  core.slice.cmp.PartialEqSlice.eq inst s a.to_slice
+
 /-- `getrandom`'s error. -/
 opaque getrandom.error.Error : Type
 

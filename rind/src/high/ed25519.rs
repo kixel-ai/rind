@@ -6,8 +6,8 @@ use crate::error::KeyFormatError;
 use crate::high::asn1::{self, Type, pkix};
 use crate::high::pkcs8;
 use crate::low::{self, Entry, ct};
-use crate::mid::ed25519;
 use crate::mid::rng::{RandomSource, SystemRandom};
+use crate::mid::{ed25519, util};
 
 /// An Ed25519 verification public key.
 #[derive(Debug)]
@@ -75,50 +75,48 @@ impl Ed25519VerifyingKey {
 /// These are libsodium's `ge25519_has_small_order` encodings, compared, as
 /// there, in constant time and without the sign bit of `x`: the eight points
 /// of order dividing 8, then `y = p` and `y = p + 1`, the only `y` of a
-/// small-order point whose non-canonical `y + p` fits in 255 bits.
+/// small-order point whose non-canonical `y + p` fits in 255 bits. Each is
+/// compared as little-endian limbs with s2n-bignum's proven `bignum_eq`.
 fn has_small_order(bytes: &[u8]) -> bool {
-    const SMALL_ORDER_Y: [[u8; 32]; 7] = [
+    const SMALL_ORDER_Y: [[u64; 4]; 7] = [
         // `y = 0`, order 4.
-        [0; 32],
+        [0; 4],
         // `y = 1`, the identity.
-        {
-            let mut y = [0; 32];
-            y[0] = 1;
-            y
-        },
+        [1, 0, 0, 0],
         // Order 8.
         [
-            0x26, 0xe8, 0x95, 0x8f, 0xc2, 0xb2, 0x27, 0xb0, 0x45, 0xc3, 0xf4, 0x89, 0xf2, 0xef,
-            0x98, 0xf0, 0xd5, 0xdf, 0xac, 0x05, 0xd3, 0xc6, 0x33, 0x39, 0xb1, 0x38, 0x02, 0x88,
-            0x6d, 0x53, 0xfc, 0x05,
+            0xb027b2c28f95e826,
+            0xf098eff289f4c345,
+            0x3933c6d305acdfd5,
+            0x05fc536d880238b1,
         ],
         // Order 8.
         [
-            0xc7, 0x17, 0x6a, 0x70, 0x3d, 0x4d, 0xd8, 0x4f, 0xba, 0x3c, 0x0b, 0x76, 0x0d, 0x10,
-            0x67, 0x0f, 0x2a, 0x20, 0x53, 0xfa, 0x2c, 0x39, 0xcc, 0xc6, 0x4e, 0xc7, 0xfd, 0x77,
-            0x92, 0xac, 0x03, 0x7a,
+            0x4fd84d3d706a17c7,
+            0x0f67100d760b3cba,
+            0xc6cc392cfa53202a,
+            0x7a03ac9277fdc74e,
         ],
         // `y = p - 1`, order 2, then `y = p` and `y = p + 1`.
-        near_p(0xec),
-        near_p(0xed),
-        near_p(0xee),
+        near_p(0xffffffffffffffec),
+        near_p(0xffffffffffffffed),
+        near_p(0xffffffffffffffee),
     ];
 
-    /// `p = 2^255 - 19`, little-endian, with its lowest byte `low`.
-    const fn near_p(low: u8) -> [u8; 32] {
-        let mut y = [0xff; 32];
-        y[0] = low;
-        y[31] = 0x7f;
-        y
+    /// `p = 2^255 - 19`, as limbs, with its lowest limb `low`.
+    const fn near_p(low: u64) -> [u64; 4] {
+        [low, u64::MAX, u64::MAX, u64::MAX >> 1]
     }
 
-    let Ok(mut y) = <[u8; 32]>::try_from(bytes) else {
+    let Some(mut y) = util::little_endian_slice_to_u64x4(bytes) else {
         return false;
     };
-    y[31] &= 0x7f;
-    SMALL_ORDER_Y
-        .iter()
-        .fold(false, |found, small| found | low::ct_equal(&y, small))
+    y[3] &= u64::MAX >> 1;
+    let mut found = false;
+    for small in &SMALL_ORDER_Y {
+        found |= low::bignum_eq(&y, small);
+    }
+    found
 }
 
 /// An Ed25519 signing private key.

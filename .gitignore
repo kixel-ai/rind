@@ -16,3 +16,5 @@ proofs/Rind/Aarch64/Blockwise.lean
 proofs/Rind/Aarch64/Sha.lean
 proofs/Rind/Aarch64/Hmac.lean
 proofs/Rind/Aarch64/HashAxioms.lean
+proofs/Rind/Aarch64/SignatureDispatch.lean
+proofs/Rind/Aarch64/Ed25519.lean
