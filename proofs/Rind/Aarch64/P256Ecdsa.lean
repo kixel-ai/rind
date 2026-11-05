@@ -615,6 +615,132 @@ theorem bit_spec (k : Slice U64) (hk : k.length = 4) (i : Usize) :
   · rw [ite_eq_right_iff.mpr (fun h => absurd h hq), List.getElem?_eq_none (by omega)]
     simp
 
+theorem i32_bv (x : I32) : x.bv = BitVec.ofInt IScalarTy.I32.numBits x.val :=
+  BitVec.ofInt_toInt.symm
+
+theorem i32_and_one (x : I32) (hx0 : 0 ≤ x.val) (hx : x.val ≤ 64) : (x &&& 1#i32).val = x.val % 2 := by
+  have h : (x &&& 1#i32).val = (BitVec.ofInt IScalarTy.I32.numBits x.val &&& (1#i32).bv).toInt := by
+    rw [← i32_bv]; rfl
+  rw [h]
+  generalize x.val = v at hx0 hx ⊢
+  interval_cases v <;> decide
+
+theorem M_facts (i w : Nat) (hw : w = 5 ∨ w = 6) (hi : i < 257) :
+    ((∃ t, ((2 ^ 256 / 2 ^ i : Nat) : Int) = 2 * 2 ^ (w - 1) * t) ∨
+        ((2 ^ 256 / 2 ^ i : Nat) : Int) ≤ 2 ^ (w - 1)) ∧
+      (((2 ^ 256 / 2 ^ i : Nat) : Int) % 2 = 0 ∨ ((2 ^ 256 / 2 ^ i : Nat) : Int) ≤ 1) ∧
+      ((2 ^ 256 / 2 ^ i : Nat) : Int) / 2 = ((2 ^ 256 / 2 ^ (i + 1) : Nat) : Int) := by
+  have hpow : 2 ^ 256 / 2 ^ i = 2 ^ (256 - i) := Nat.pow_div (by omega) (by norm_num)
+  have hpow1 : 2 ^ 256 / 2 ^ (i + 1) = 2 ^ 256 / 2 ^ i / 2 := by
+    rw [Nat.div_div_eq_div_mul, ← Nat.pow_succ]
+  rw [hpow1, hpow]
+  refine ⟨?_, ?_, ?_⟩
+  · by_cases h : w ≤ 256 - i
+    · left
+      refine ⟨2 ^ (256 - i - w), ?_⟩
+      push_cast
+      rw [← pow_succ', ← pow_add]
+      congr 1; omega
+    · right
+      push_cast
+      exact pow_le_pow_right₀ (by norm_num) (by omega)
+  · by_cases h : 256 - i = 0
+    · right; rw [h]; norm_num
+    · left; push_cast
+      rw [show 256 - i = (256 - i - 1) + 1 by omega, pow_succ]; simp
+  · push_cast
+    norm_cast
+
+/-- The NAF loop's state after `s` digits: the digits so far name `k` but for
+the remainder `w` + 2^W·⌊k / 2^(s+W)⌋ times 2^s, which is at most 2^(256-s). -/
+def nafInv (w : Nat) (K : Nat) (s : Nat) (digits : List I8) (window : Int) : Prop :=
+  digits.length = 257 ∧ 0 ≤ window ∧ window ≤ 2 * 2 ^ (w - 1) ∧
+    (K : Int) = nafVal (digits.take s) + 2 ^ s * (window + 2 * 2 ^ (w - 1) * ((K / 2 ^ (s + w) : Nat) : Int)) ∧
+    window + 2 * 2 ^ (w - 1) * ((K / 2 ^ (s + w) : Nat) : Int) ≤ ((2 ^ 256 / 2 ^ s : Nat) : Int) ∧
+    ∀ j < s, nafDigit (2 ^ (w - 1)) (digits[j]!).val
+
+theorem nafVal_take_succ (l : List I8) (i : Nat) (hi : i < l.length) (d : I8) :
+    nafVal ((l.set i d).take (i + 1)) = nafVal (l.take i) + 2 ^ i * d.val := by
+  rw [List.take_succ, List.getElem?_set_self hi, List.take_set_of_le (by omega), nafVal_append,
+    List.length_take, Nat.min_eq_left (by omega)]
+  simp [nafVal]
+
+theorem naf_inv_step (w K i : Nat) (hw : w = 5 ∨ w = 6) (hi : i < 257) (ds : List I8) (win : Int)
+    (hinv : nafInv w K i ds win) (dd : I8)
+    (hdd : dd.val = if win % 2 = 1 then (if win < 2 ^ (w - 1) then win else win - 2 * 2 ^ (w - 1)) else 0) :
+    nafInv w K (i + 1) (ds.set i dd)
+      ((win - dd.val) / 2 + ((K / 2 ^ (i + w) % 2 : Nat) : Int) * 2 ^ (w - 1)) := by
+  obtain ⟨hlen, hw0, hw2, hsum, hbound, hdig⟩ := hinv
+  have hA : (2 : Int) ^ (w - 1) = 16 ∨ (2 : Int) ^ (w - 1) = 32 := by
+    rcases hw with rfl | rfl <;> norm_num
+  have hH : ((K / 2 ^ (i + w) : Nat) : Int) =
+      ((K / 2 ^ (i + w) % 2 : Nat) : Int) + 2 * ((K / 2 ^ (i + 1 + w) : Nat) : Int) := by
+    have : K / 2 ^ (i + 1 + w) = K / 2 ^ (i + w) / 2 := by
+      rw [Nat.div_div_eq_div_mul, ← Nat.pow_succ]; congr 2; omega
+    rw [this]; push_cast; omega
+  have hb : ((K / 2 ^ (i + w) % 2 : Nat) : Int) = 0 ∨ ((K / 2 ^ (i + w) % 2 : Nat) : Int) = 1 := by
+    have := Nat.mod_lt (K / 2 ^ (i + w)) (by norm_num : 2 > 0); omega
+  obtain ⟨hM1, hM2, hM3⟩ := M_facts i w hw hi
+  obtain ⟨hd, hw0', hw2', hR, hR'⟩ := naf_step _ _ _ _ _ _ hA hw0 hw2 hH hb (by positivity) hbound hM1 hM2
+  rw [← hdd] at hd hw0' hw2' hR hR'
+  rw [hM3] at hR'
+  refine ⟨by simp [hlen], hw0', hw2', ?_, hR', ?_⟩
+  · rw [nafVal_take_succ _ _ (by omega), pow_succ]
+    have e : (2 : Int) ^ i * (win + 2 * 2 ^ (w - 1) * ((K / 2 ^ (i + w) : Nat) : Int)) =
+        2 ^ i * dd.val + 2 ^ i * (2 * ((win - dd.val) / 2 + ((K / 2 ^ (i + w) % 2 : Nat) : Int) * 2 ^ (w - 1) +
+          2 * 2 ^ (w - 1) * ((K / 2 ^ (i + 1 + w) : Nat) : Int))) := by
+      rw [← hR]; ring
+    rw [hsum, e, show i + 1 + w = i + w + 1 by omega]
+    ring
+  · intro j hj
+    by_cases hji : j = i
+    · subst hji
+      have : (ds.set j dd)[j]! = dd := by
+        simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, show j < ds.length by omega]
+      rw [this]; exact hd
+    · have : (ds.set i dd)[j]! = ds[j]! := by
+        simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, Ne.symm hji]
+      rw [this]; exact hdig j (by omega)
+
+theorem naf_loop_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (k : Slice U64) (hk : k.length = 4)
+    (iter : core.ops.range.Range Usize) (digits : Slice I8) (window : I32)
+    (he : iter.end.val = 257) (hs : iter.start.val ≤ 257)
+    (hinv : nafInv W.val (wordsNat k.val) iter.start.val digits.val window.val) :
+    mid.util.public_naf_loop W iter k digits window ⦃ r =>
+      r.length = 257 ∧ nafVal r.val = wordsNat k.val ∧ ∀ j < 257, nafDigit (2 ^ (W.val - 1)) (r.val[j]!).val ⦄ := by
+  unfold mid.util.public_naf_loop
+  apply loop.spec_decr_nat (fun x => 257 - x.1.start.val)
+    (fun x => x.1.end.val = 257 ∧ x.1.start.val ≤ 257 ∧ nafInv W.val (wordsNat k.val) x.1.start.val x.2.1.val x.2.2.val)
+  · rintro ⟨it, ds, win⟩ ⟨he, hs, hinv⟩
+    simp only at he hs hinv ⊢
+    obtain ⟨hlen, hw0, hw, hsum, hbound, hdig⟩ := hinv
+    unfold mid.util.public_naf_loop.body
+    step as ⟨o, iter1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      sorry
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only [WP.spec_ok]
+      have h257 : it.start.val = 257 := by omega
+      rw [h257] at hsum hbound hdig
+      have hz : (2 ^ 256 / 2 ^ 257 : Nat) = 0 := Nat.div_eq_of_lt (Nat.pow_lt_pow_right (by norm_num) (by norm_num))
+      rw [hz] at hbound
+      have hK : wordsNat k.val / 2 ^ (257 + W.val) = 0 := Nat.div_eq_of_lt (by
+        calc wordsNat k.val < 2 ^ 256 := by
+              rw [wordsNat_four _ hk]
+              have := (k.val[0]!).hBounds; have := (k.val[1]!).hBounds
+              have := (k.val[2]!).hBounds; have := (k.val[3]!).hBounds
+              simp only [UScalarTy.numBits, Nat.reducePow] at *; omega
+          _ ≤ 2 ^ (257 + W.val) := Nat.pow_le_pow_right (by norm_num) (by omega))
+      rw [hK] at hsum hbound
+      refine ⟨hlen, ?_, hdig⟩
+      have hwz : win.val = 0 := by push_cast at hbound; omega
+      rw [hwz] at hsum
+      rw [List.take_of_length_le (by rw [hlen])] at hsum
+      simp at hsum; omega
+  · exact ⟨he, hs, hinv⟩
+
 end P256
 
 end rind.aarch64
