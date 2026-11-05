@@ -714,8 +714,9 @@ The modules:
 - `kem`: ML-KEM-768.
 - `rsa`: RSA-OAEP encryption and decryption, with SHA-1 under `legacy`.
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
-  Ed25519 key pairs and verification, plus RSA keys given as their
-  components, and SHA-1 and 1024-bit RSA for verifying old signatures.
+  Ed25519 key pairs and verification, plus ECDSA over a `digest` the caller
+  computed, with any SHA-2 hash, RSA keys given as their components, and
+  SHA-1 and 1024-bit RSA for verifying old signatures.
 - `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, SHA-512/256,
   SHA3-256, SHA3-384, and SHA3-512.
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.

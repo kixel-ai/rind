@@ -230,6 +230,37 @@ impl<C: Curve> SigningKey<C> {
         Self::fixed_to_asn1(fixed_sig, asn1_signature)
     }
 
+    /// ECDSA signing of `digest`, a hash of the message, returning a
+    /// fixed-length signature, as [`Self::sign()`] does for a message.
+    ///
+    /// `digest` may be any length: one longer than the scalar is truncated to
+    /// its leftmost bits. The nonce comes from HMAC_DRBG over `H`, which
+    /// need not be the digest's hash: RFC 6979 uses the message's for its
+    /// test vectors, but any PRF serves.
+    pub(crate) fn sign_digest<'a, H: Hash>(
+        &self,
+        digest: &[u8],
+        signature: &'a mut [u8],
+    ) -> Result<&'a [u8], Error> {
+        let _entry = Entry::new_secret();
+        let mut random = [0u8; 16];
+        SystemRandom.fill(&mut random)?;
+        self.rfc6979_sign_digest_with_random::<H>(digest, &random, signature)
+    }
+
+    /// [`Self::sign_digest()`], returning a DER-encoded ASN.1 signature.
+    pub(crate) fn sign_asn1_digest<'a, H: Hash>(
+        &self,
+        digest: &[u8],
+        asn1_signature: &'a mut [u8],
+    ) -> Result<&'a [u8], Error> {
+        let _entry = Entry::new_secret();
+        let mut fixed_sig = [0u8; MAX_SCALAR_LEN * 2];
+        let fixed_sig = self.sign_digest::<H>(digest, &mut fixed_sig)?;
+
+        Self::fixed_to_asn1(fixed_sig, asn1_signature)
+    }
+
     fn fixed_to_asn1<'a>(
         fixed_signature: &[u8],
         asn1_signature: &'a mut [u8],
@@ -274,6 +305,39 @@ impl<C: Curve> SigningKey<C> {
         let encoded_private_key = self.private_key.encode(&mut encoded_private_key_buf)?;
 
         let e = hash_to_scalar::<C>(hash.as_ref())?;
+        let mut e_bytes = [0u8; MAX_SCALAR_LEN];
+        e.write_bytes(&mut e_bytes[..C::Scalar::LEN_BYTES]);
+        let mut rng = HmacDrbg::<H>::new(
+            encoded_private_key,
+            &e_bytes[..C::Scalar::LEN_BYTES],
+            random,
+        );
+
+        let (r, s) = self.sign_with_nonces(&e, &mut rng)?;
+
+        r.write_bytes(&mut output[..C::Scalar::LEN_BYTES]);
+        s.write_bytes(&mut output[C::Scalar::LEN_BYTES..]);
+        Ok(&output[..C::Scalar::LEN_BYTES * 2])
+    }
+
+    /// [`Self::rfc6979_sign_with_random()`] for a message already hashed.
+    ///
+    /// That function does not call this one, as `proofs/` checks its
+    /// translation as it stands.
+    fn rfc6979_sign_digest_with_random<'a, H: Hash>(
+        &self,
+        digest: &[u8],
+        random: &[u8],
+        signature: &'a mut [u8],
+    ) -> Result<&'a [u8], Error> {
+        let Some(output) = signature.get_mut(..C::Scalar::LEN_BYTES * 2) else {
+            return Err(Error::WrongLength);
+        };
+
+        let mut encoded_private_key_buf = [0u8; MAX_SCALAR_LEN];
+        let encoded_private_key = self.private_key.encode(&mut encoded_private_key_buf)?;
+
+        let e = hash_to_scalar::<C>(digest)?;
         let mut e_bytes = [0u8; MAX_SCALAR_LEN];
         e.write_bytes(&mut e_bytes[..C::Scalar::LEN_BYTES]);
         let mut rng = HmacDrbg::<H>::new(
@@ -378,16 +442,49 @@ impl<C: Curve> VerifyingKey<C> {
         signature: &[u8],
     ) -> Result<(), Error> {
         let _entry = Entry::new_public();
+        let mut fixed = [0u8; MAX_SCALAR_LEN * 2];
+        self.verify::<H>(message, Self::asn1_to_fixed(signature, &mut fixed)?)
+    }
+
+    /// Verify an ECDSA fixed-length signature over `digest`, a hash of the
+    /// message, as [`Self::verify()`] does over a message.
+    ///
+    /// That function does not call this one, as `proofs/` checks its
+    /// translation as it stands.
+    pub(crate) fn verify_digest(&self, digest: &[u8], signature: &[u8]) -> Result<(), Error> {
+        let _entry = Entry::new_public();
+        if signature.len() != C::Scalar::LEN_BYTES * 2 {
+            return Err(Error::BadSignature);
+        }
+
+        let r = C::Scalar::from_bytes_checked(&signature[..C::Scalar::LEN_BYTES])
+            .map_err(|_| Error::BadSignature)?;
+        let s = C::Scalar::from_bytes_checked(&signature[C::Scalar::LEN_BYTES..])
+            .map_err(|_| Error::BadSignature)?;
+        let e = hash_to_scalar::<C>(digest)?;
+        self.public_key.raw_ecdsa_verify(&r, &s, &e)
+    }
+
+    /// [`Self::verify_digest()`] of an ASN.1-encoded signature.
+    pub(crate) fn verify_asn1_digest(&self, digest: &[u8], signature: &[u8]) -> Result<(), Error> {
+        let _entry = Entry::new_public();
+        let mut fixed = [0u8; MAX_SCALAR_LEN * 2];
+        self.verify_digest(digest, Self::asn1_to_fixed(signature, &mut fixed)?)
+    }
+
+    /// Converts an ASN.1 signature to fixed length in `fixed`, returning the
+    /// used span.
+    fn asn1_to_fixed<'a>(signature: &[u8], fixed: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let sig =
             asn1::pkix::EcdsaSigValue::from_bytes(signature).map_err(|_| Error::BadSignature)?;
         if sig.r.is_negative() || sig.s.is_negative() {
             return Err(Error::BadSignature);
         }
 
-        let fixed = &mut [0u8; MAX_SCALAR_LEN * 2][..C::Scalar::LEN_BYTES * 2];
+        let fixed = &mut fixed[..C::Scalar::LEN_BYTES * 2];
         write_fixed(&mut fixed[..C::Scalar::LEN_BYTES], sig.r.as_ref())?;
         write_fixed(&mut fixed[C::Scalar::LEN_BYTES..], sig.s.as_ref())?;
-        self.verify::<H>(message, fixed)
+        Ok(fixed)
     }
 }
 
@@ -788,6 +885,56 @@ mod tests {
             ]
         );
         v.verify::<hash::Sha256>(b"wv[vnX", &signature).unwrap();
+    }
+
+    // The digest path repeats the message path, which `proofs/` checks as
+    // it stands, so the two must agree, here on RFC 6979's A.2.5, A.2.6,
+    // and A.2.7 keys and messages.
+    #[test]
+    fn digest_signing_matches_message_signing() {
+        fn check<C: Curve>(private_key: &str) {
+            let private_key =
+                C::PrivateKey::from_bytes(&hex::decode(private_key).unwrap()).unwrap();
+            let mut public_key = [0u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN];
+            let public_key = private_key
+                .public_key_encode_uncompressed(&mut public_key)
+                .unwrap();
+            let v = VerifyingKey::<C>::from_x962_uncompressed(public_key).unwrap();
+            let k = SigningKey::<C>::new(private_key).unwrap();
+            for message in [&b"sample"[..], b"test"] {
+                let (mut ours, mut wanted) = ([0u8; 132], [0u8; 132]);
+                let wanted = k
+                    .rfc6979_sign_with_random::<hash::Sha512>(message, &[], &mut wanted)
+                    .unwrap();
+                let digest = hash::Sha512::hash(message);
+                let ours = k
+                    .rfc6979_sign_digest_with_random::<hash::Sha512>(
+                        digest.as_ref(),
+                        &[],
+                        &mut ours,
+                    )
+                    .unwrap();
+                assert_eq!(ours, wanted);
+                v.verify_digest(digest.as_ref(), ours).unwrap();
+                v.verify::<hash::Sha512>(message, ours).unwrap();
+
+                let mut asn1 = [0u8; 160];
+                let asn1 = SigningKey::<C>::fixed_to_asn1(ours, &mut asn1).unwrap();
+                v.verify_asn1_digest(digest.as_ref(), asn1).unwrap();
+                assert_eq!(
+                    v.verify_digest(hash::Sha512::hash(b"other").as_ref(), ours),
+                    Err(Error::BadSignature)
+                );
+            }
+        }
+
+        check::<curve::P256>("c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721");
+        check::<curve::P384>(
+            "6b9d3dad2e1b8c1c05b19875b6659f4de23c3b667bf297ba9aa47740787137d896d5724e4c70a825f872c9ea60d2edf5",
+        );
+        check::<curve::P521>(
+            "00fad06daa62ba3b25d2fb40133da757205de67f5bb0018fee8c86e1b68c7e75caa896eb32f1f47c70855836a6d16fcc1466f6d8fbec67db89ec0c08b0e996b83538",
+        );
     }
 
     #[test]
