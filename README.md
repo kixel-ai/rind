@@ -508,7 +508,7 @@ x86_64 CPUs with AVX2, which run OpenSSL's: its routine for the SHA512
 instructions where the CPU has them, 5.4x faster than aws-lc's AVX routine on
 Arrow Lake, and its AVX2 routine otherwise, which aws-lc leaves out: 1.18x
 faster than aws-lc's AVX routine on an i7-8700 and 1.15x on Arrow Lake, and
-faster than its scalar one on AMD's Zen 3. Without AVX2, aws-lc's AVX routine
+1.47x faster than its scalar one on AMD's Zen 3. Without AVX2, aws-lc's AVX routine
 runs on Intel and its scalar routine on other CPUs, as aws-lc picks: the AVX
 routine is 1.1x faster than the scalar one on Intel, and 1.5x slower on AMD's
 Zen. On aarch64, its routine for the SHA-512 instructions where the CPU

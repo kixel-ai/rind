@@ -52,4 +52,3 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 - [x86_64 RSA-2048 signing as fast as ring and graviola](/quest/m2/speed/x86-rsa2048-sign.md) - 2048-bit signing, and the RSA certificate handshake with it, level on x86_64 with ADX
 - [x86_64 SHA-256 of short messages as fast as RustCrypto](/quest/m2/speed/x86-sha256-short.md) - 64 B SHA-256 with the SHA extensions level with RustCrypto and graviola
-- [x86_64 SHA-2 bulk as fast as OpenSSL](/quest/m2/speed/x86-sha2-bulk.md) - SHA-512, and SHA-256 without the SHA extensions, level with OpenSSL at 16 KB

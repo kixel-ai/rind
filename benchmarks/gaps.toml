@@ -26,17 +26,17 @@ quest = "/quest/m2/speed/x86-sha256-short.md"
 [[gap]]
 operations = ["sha512/16KB"]
 on = ["nixos", "desktop", "nixos2"]
-quest = "/quest/m2/speed/x86-sha2-bulk.md"
+reason = "Closed by [#353](https://github.com/moq-dev/rind/pull/353), after this data: CPUs with AVX2 run OpenSSL's AVX2 routine, the one OpenSSL runs on `nixos2`, and those with the SHA512 instructions OpenSSL's routine for them. Interleaved runs measured rind at 0.96× OpenSSL's time on `nixos` and 0.22× on `desktop`. The next refresh drops this entry."
 
 [[gap]]
 operations = ["sha256/16KB"]
 on = ["nixos2"]
-quest = "/quest/m2/speed/x86-sha2-bulk.md"
+reason = "Closed by [#353](https://github.com/moq-dev/rind/pull/353), after this data: CPUs with AVX2 but without the SHA extensions run OpenSSL's AVX2 routine, the one OpenSSL runs on `nixos2`. The next refresh drops this entry."
 
 [[gap]]
 operations = ["sha512/1350B"]
 on = ["nixos"]
-reason = "Noise: rind is level with the fastest at 64 B and with all but OpenSSL at 16 KB, and aws-lc-rs and RustCrypto read as slow at this size in the same run."
+reason = "Closed by [#353](https://github.com/moq-dev/rind/pull/353), after this data: Zen 3 runs OpenSSL's AVX2 routine rather than aws-lc's scalar one, which interleaved runs measured at 0.84× OpenSSL's time at this size. The next refresh drops this entry."
 
 [[gap]]
 operations = ["ed25519-verify", "mlkem768-encaps"]

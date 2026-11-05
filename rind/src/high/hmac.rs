@@ -516,7 +516,10 @@ mod tests {
         use crate::low::ct_sde;
 
         assert!(is_x86_feature_detected!("sha"), "the SHA extensions");
-        assert!(is_x86_feature_detected!("sha512"), "the SHA512 instructions");
+        assert!(
+            is_x86_feature_detected!("sha512"),
+            "the SHA512 instructions"
+        );
         let seed = ct_sde::seed().to_le_bytes();
         let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
         for algorithm in [&HMAC_SHA1, &HMAC_SHA256, &HMAC_SHA384, &HMAC_SHA512] {
