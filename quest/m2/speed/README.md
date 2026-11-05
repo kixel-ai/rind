@@ -44,7 +44,7 @@ settled; don't ask them again. The chosen option is marked ✅.
 - Scoreboard: BENCHMARKS.md's CPU tiers, which `admin/bench-report nightly`
   and `render` regenerate from the nightly bench, show each path's ratio to
   the fastest baseline; the nightly job's summary keeps the live numbers ✅
-  (maintainer, 2026-11-03, in the [benchmarks epic](/quest/m1/benchmarks/README.md):
+  (maintainer, 2026-11-03, while planning the benchmark report:
   moved from README's Algorithms table, which keeps only the sources) /
   README's Algorithms table / nightly summary only.
 

@@ -6,7 +6,7 @@ Every operation rind exports, on every path, runs code whose whole computation i
 
 ## Plan
 
-Decided with the maintainer on 2026-11-03, after the [benchmark report](/quest/m1/benchmarks/README.md) adopted its strict ✓ rule: a ✓ needs the whole computation proven, padding and protocol glue included.
+Decided with the maintainer on 2026-11-03, after the benchmark report (`BENCHMARKS.md`) adopted its strict ✓ rule: a ✓ needs the whole computation proven, padding and protocol glue included.
 
 - Scope: an m3 epic that starts with an audit ✅ / only the two known proofs / the same epic in m2.
 - The audit ([moq-dev/rind#318](https://github.com/moq-dev/rind/pull/318)) lists what each path runs, what is proven, and the cheapest route to a proof for each gap. Plan quests from its report, starting with the most common operations.
