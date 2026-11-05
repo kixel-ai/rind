@@ -1408,6 +1408,45 @@ theorem x_is_spec (pt : mid.p256.JacobianMontPoint) (x y : Nat) (h : jrep (some 
         · simp only [scNat] at h hrpn ⊢
           exact absurd (hb1.mpr (by omega)) hb1f
 
+/-! ## Affine conversion, `JacobianMontPoint::public_batch_as_affine` -/
+
+/-- A finite point's Jacobian coordinates, as their values: z is nonzero and
+the point is (x/z², y/z³). -/
+theorem jrep_some (P : P256Point) (pt : mid.p256.JacobianMontPoint) (h : jrep P pt) (hne : P ≠ none) :
+    (tripleNat pt.xyz.val).1 < p256 ∧ (tripleNat pt.xyz.val).2.1 < p256 ∧ (tripleNat pt.xyz.val).2.2 < p256 ∧
+      dec (tripleNat pt.xyz.val).2.2 ≠ 0 ∧
+      P = some ((dec (tripleNat pt.xyz.val).1 * (dec (tripleNat pt.xyz.val).2.2 ^ 2)⁻¹).val,
+        (dec (tripleNat pt.xyz.val).2.1 * (dec (tripleNat pt.xyz.val).2.2 ^ 3)⁻¹).val) := by
+  obtain ⟨hX, hY, hZ, hP⟩ := h
+  rw [ofJacobian_dec] at hP
+  have hZ0 : dec (tripleNat pt.xyz.val).2.2 ≠ 0 := fun h0 => by
+    rw [ite_eq_left_iff.mpr (fun h => absurd h0 h)] at hP; exact hne hP.symm
+  rw [ite_eq_right_iff.mpr (fun h => absurd h hZ0)] at hP
+  exact ⟨hX, hY, hZ, hZ0, hP.symm⟩
+
+theorem as_affine_by_spec (pt : mid.p256.JacobianMontPoint) (P : P256Point) (h : jrep P pt) (hne : P ≠ none)
+    (zi : mid.p256.FieldElement) (hzi : feNat zi < p256)
+    (hinv : dec (feNat zi) = (dec (tripleNat pt.xyz.val).2.2)⁻¹) :
+    mid.p256.JacobianMontPoint.as_affine_by pt zi ⦃ a => p256Represents2 P (pairNat a.xy.val) ⦄ := by
+  obtain ⟨hX, hY, hZ, hZ0, rfl⟩ := jrep_some P pt h hne
+  have hlt : ∀ x, x % p256 < p256 := fun x => Nat.mod_lt _ p256_pos
+  unfold mid.p256.JacobianMontPoint.as_affine_by
+  step with mont_sqr_spec zi hzi as ⟨z2, hz2⟩
+  step with mont_mul_spec z2 zi (by rw [hz2]; exact hlt _) hzi as ⟨z3, hz3⟩
+  step as ⟨fx, hfx⟩
+  have hfxX : feNat fx = (tripleNat pt.xyz.val).1 := by simp [tripleNat, feNat, hfx]
+  step with mont_mul_spec fx z2 (by rw [hfxX]; exact hX) (by rw [hz2]; exact hlt _) as ⟨x, hx⟩
+  step as ⟨fy, hfy⟩
+  have hfyY : feNat fy = (tripleNat pt.xyz.val).2.1 := by simp [tripleNat, feNat, hfy]
+  step with mont_mul_spec fy z3 (by rw [hfyY]; exact hY) (by rw [hz3]; exact hlt _) as ⟨y, hy⟩
+  step as ⟨a, ha⟩
+  rw [ha, pairNat_append _ _ x.property y.property]
+  refine ⟨by rw [show wordsNat x.val = feNat x from rfl, hx]; exact hlt _,
+    by rw [show wordsNat y.val = feNat y from rfl, hy]; exact hlt _, ?_⟩
+  rw [show wordsNat x.val = feNat x from rfl, show wordsNat y.val = feNat y from rfl, val_dec, val_dec, hx, hy,
+    dec_mont_mul, dec_mont_mul, hz3, hz2, dec_mont_mul, dec_mont_sqr, hinv, hfxX, hfyY]
+  congr 3 <;> field_simp
+
 /-! ## Raw verification, `VerifyingKey::raw_ecdsa_verify` -/
 
 /-- The odd multiples a key's cache builds: 17Q to 31Q, from its Q to 15Q. -/
