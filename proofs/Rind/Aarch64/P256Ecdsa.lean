@@ -840,6 +840,59 @@ theorem naf_loop_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (k : Slice U64) (
       simp at hsum; omega
   · exact ⟨he, hs, hinv⟩
 
+theorem wordsNat_mod (l : List U64) (hl : l.length = 4) (w : Nat) (hw : w ≤ 64) :
+    wordsNat l % 2 ^ w = (l[0]!).val % 2 ^ w := by
+  rw [wordsNat_four l hl]
+  have h : 2 ^ 64 = 2 ^ w * 2 ^ (64 - w) := by rw [← Nat.pow_add]; congr 1; omega
+  rw [h, Nat.mul_assoc, Nat.add_mul_mod_self_left]
+
+theorem naf_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (k : Slice U64) (hk : k.length = 4)
+    (digits : Slice I8) (hd : digits.length = 257) :
+    mid.util.public_naf W k digits ⦃ r =>
+      r.length = 257 ∧ nafVal r.val = wordsNat k.val ∧ ∀ j < 257, nafDigit (2 ^ (W.val - 1)) (r.val[j]!).val ⦄ := by
+  unfold mid.util.public_naf
+  have hkl : k.val.length = 4 := hk
+  step as ⟨i, hi⟩
+  step as ⟨i1, hi1, _⟩
+  · omega
+  have hi1v : i1.val = 2 ^ W.val := by
+    rw [hi1, Nat.shiftLeft_eq, one_mul]; apply Nat.mod_eq_of_lt
+    rcases hW with h | h <;> rw [h] <;> norm_num [U64.size, U64.numBits]
+  step as ⟨i2, hi2⟩
+  · rw [hi1v]; (try simp); (try exact Nat.one_le_two_pow)
+  step as ⟨i3, hi3, _⟩
+  step as ⟨win, hwin⟩
+  have hK : wordsNat k.val < 2 ^ 256 := by
+    rw [wordsNat_four _ hk]
+    have := (k.val[0]!).hBounds; have := (k.val[1]!).hBounds
+    have := (k.val[2]!).hBounds; have := (k.val[3]!).hBounds
+    simp only [UScalarTy.numBits, Nat.reducePow] at *; omega
+  have hW64 : W.val ≤ 64 := by omega
+  have hi3v : i3.val = wordsNat k.val % 2 ^ W.val := by
+    rw [hi3, UScalar.val_and, hi2, hi1v, Nat.and_two_pow_sub_one_eq_mod, hi,
+      wordsNat_mod _ hkl _ hW64]
+    (try rw [getElem_eq_getElem! _ _ (by omega)])
+  have hA2 : (2 : Nat) ^ W.val = 2 * 2 ^ (W.val - 1) := by rw [← pow_succ']; congr 1; omega
+  have hwinv : win.val = ((wordsNat k.val % 2 ^ W.val : Nat) : Int) := by
+    rw [hwin, UScalar.hcast_val_eq, hi3v]
+    apply Int.bmod_eq_of_le <;>
+      · have := Nat.mod_lt (wordsNat k.val) (show 2 ^ W.val > 0 by positivity)
+        rcases hW with h | h <;> rw [h] at this ⊢ <;> norm_num [IScalarTy.numBits] at this ⊢ <;> omega
+  apply naf_loop_spec W hW k hk _ digits win (by simp [Slice.len, hd]) (by simp)
+  have hA2' : (2 : Int) * 2 ^ (W.val - 1) = ((2 ^ W.val : Nat) : Int) := by
+    rw [hA2]; push_cast; ring
+  have h0 : (0#usize).val = 0 := rfl
+  refine ⟨hd, ?_, ?_, ?_, ?_, fun j hj => absurd hj (by simp)⟩
+  · rw [hwinv]; positivity
+  · rw [hwinv, hA2']
+    exact_mod_cast (Nat.mod_lt (wordsNat k.val) (show 2 ^ W.val > 0 by positivity)).le
+  · rw [h0, List.take_zero, Nat.zero_add, hwinv, hA2']
+    simp only [nafVal, pow_zero, one_mul, zero_add]
+    exact_mod_cast (Nat.mod_add_div _ _).symm
+  · rw [h0, Nat.zero_add, hwinv, hA2', pow_zero, Nat.div_one]
+    exact_mod_cast (show wordsNat k.val % 2 ^ W.val + 2 ^ W.val * (wordsNat k.val / 2 ^ W.val) ≤ 2 ^ 256 by
+      rw [Nat.mod_add_div]; omega)
+
 end P256
 
 end rind.aarch64
