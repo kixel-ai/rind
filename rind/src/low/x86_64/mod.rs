@@ -3,6 +3,7 @@
 
 pub(crate) mod adx_mux;
 pub(crate) mod aes;
+pub(crate) mod aes_cbc;
 pub(crate) mod aes_ctr;
 pub(crate) mod aes_gcm;
 pub(crate) mod aes_gcm_avx;
