@@ -282,6 +282,11 @@ impl PublicKey {
     /// algorithm's, which still fixes the curve and the signature's encoding.
     /// Another hash, or a key other than ECDSA, is refused as
     /// [`Error::Unsupported`].
+    ///
+    /// So unlike [`Self::verify`], this does not pin the hash: hash with the
+    /// one your protocol names, never one the signed data or its sender
+    /// picks. A signature over one SHA-2 hash verifies over another only
+    /// for a message whose digest collides with it, which no one can find.
     pub fn verify_digest(&self, digest: &Digest, signature: &[u8]) -> Result<(), Error> {
         let digest = signed_digest(digest)?;
         match &self.key {
