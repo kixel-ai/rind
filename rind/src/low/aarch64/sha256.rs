@@ -28,10 +28,15 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
 }
 
 /// Compresses the end of `message`, padded and closed by `length`.
+// Out of line, as `Sha1State::compress_padded` is, so `finish_with` inlines.
+#[inline(never)]
 pub(crate) fn sha256_compress_padded(state: &mut [u32; 8], message: &[u8], length: [u8; 8]) {
-    crate::low::compress_padded::<64, 8>(message, length, |blocks| {
-        sha256_compress_blocks(state, blocks)
-    });
+    let (blocks, rest) = crate::low::split_tail::<64, 8>(message);
+    if !blocks.is_empty() {
+        sha256_compress_blocks(state, blocks);
+    }
+    let mut last = [[0u8; 64]; 2];
+    sha256_compress_blocks(state, crate::low::pad(rest, length, &mut last));
 }
 
 /// The round constants, then a zero that ends the scalar routine's rounds.

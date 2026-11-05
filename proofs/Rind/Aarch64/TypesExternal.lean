@@ -8,7 +8,7 @@ set_option linter.dupNamespace false
 
 /-! The rind types the aarch64 translation leaves opaque. `Rind.Aarch64.Dispatch` and
 `Rind.Aarch64.DigestDispatch` model the last four, and `Rind.Aarch64.DigestAlgorithm`
-`Algorithm`. -/
+`Algorithm` and `Digest`. -/
 
 namespace rind.aarch64
 
