@@ -92,6 +92,7 @@ reuses it. `verify` refuses a stored value shorter than the HMAC output with
 | `AES_128_GCM`, `AES_256_GCM`, `CHACHA20_POLY1305` | the same |
 | `AES_192_GCM` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |
 | `AES_128_GCM_SIV`, `AES_256_GCM_SIV` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| none | `gcm::Key::new(&cipher::AES_128, key, TagLength::Full)?`, for AES-GCM under an IV of any length, or with a tag cut to one of `TagLength`'s, as WebCrypto takes; its methods are `Key`'s, with `iv: &[u8]` for the nonce |
 | `RandomizedNonceKey::new(&AES_256_GCM, key)`, with 96-bit random nonces | `RandomizedNonceKey::new(&key)`, XChaCha20-Poly1305 with 192-bit random nonces, which never collide in practice |
 | `RandomizedNonceKey::{seal_in_place_append_tag, open_in_place}` | the same, with the nonce a `RandomNonce` |
 | `RandomizedNonceKey::seal_in_place_separate_tag` | none |

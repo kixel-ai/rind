@@ -587,7 +587,8 @@ mod tests {
 
         // The counter's wrap, which `tagged` reaches only through an IV's
         // hash, so the parts' own CTR is checked from a counter block about
-        // to wrap.
+        // to wrap: within one call, and across two split at a block, as
+        // `tagged`'s chunks are.
         let composed = Portable::new(&[7; 16]).composed();
         let mut y0 = [3u8; 16];
         y0[12..].copy_from_slice(&0xffff_fffeu32.to_be_bytes());
@@ -595,14 +596,14 @@ mod tests {
         let (want, _) = gcm_model(|b| composed.encrypt_block(b), &y0, &[], &plain);
         let mut got = plain.clone();
         let mut next = add32(&y0, 1);
-        next = composed.ctr(&next, &mut got[..50]);
-        composed.ctr(&next, &mut got[50..]);
+        next = composed.ctr(&next, &mut got[..48]);
+        composed.ctr(&next, &mut got[48..]);
         assert_eq!(got, want);
         if let Some(token) = HaveCryptoExt::check() {
             let hw = Hw::new(&[7; 16], token);
             let mut got = plain.clone();
-            let next = hw.ctr(&add32(&y0, 1), &mut got[..50]);
-            hw.ctr(&next, &mut got[50..]);
+            let next = hw.ctr(&add32(&y0, 1), &mut got[..48]);
+            hw.ctr(&next, &mut got[48..]);
             assert_eq!(got, want);
         }
 
