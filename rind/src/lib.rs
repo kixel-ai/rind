@@ -83,7 +83,8 @@ pub mod doc {
 /// ```
 pub mod agreement {
     pub use crate::high::agreement::{
-        Algorithm, ECDH_P256, ECDH_P384, ECDH_P521, PrivateKey, PublicKey, SharedSecret, X25519,
+        Algorithm, ECDH_P256, ECDH_P384, ECDH_P521, PrivateKey, PublicKey, Scalar, SharedSecret,
+        X25519,
     };
 }
 

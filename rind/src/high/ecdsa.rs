@@ -7,9 +7,9 @@ use super::curve::{
 };
 use super::hash::{Hash, SignatureHash};
 use super::hmac_drbg::HmacDrbg;
-use super::pkcs8;
+use super::sec1;
 use crate::error::{Error, KeyFormatError};
-use crate::low::{Entry, ct};
+use crate::low::Entry;
 use crate::mid::rng::{RandomSource, SystemRandom};
 
 /// An ECDSA signing key, on curve `C`.
@@ -44,12 +44,7 @@ impl<C: Curve> SigningKey<C> {
     /// Load an ECDSA private key in PKCS#8 format.
     pub(crate) fn from_pkcs8_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        pkcs8::Key::decode(
-            bytes,
-            &asn1::oid::id_ecPublicKey,
-            Some(asn1::Any::ObjectId(C::oid())),
-        )
-        .and_then(|k| Self::from_sec1_der(k.v1_private_key()?))
+        Self::from_decoded(sec1::decode_pkcs8(bytes, &C::oid())?)
     }
 
     /// Encode this private key in PKCS#8 DER format.
@@ -59,42 +54,30 @@ impl<C: Curve> SigningKey<C> {
     /// to contain the full encoding.
     pub(crate) fn to_pkcs8_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let _entry = Entry::new_secret();
-
-        let mut sec1_buf = [0u8; MAX_SCALAR_LEN + MAX_UNCOMPRESSED_PUBLIC_KEY_LEN + 128];
-        let sec1 = self.to_sec1_der_detail(None, &mut sec1_buf)?;
-
-        pkcs8::Key::construct(
-            sec1,
-            None,
-            asn1::oid::id_ecPublicKey.clone(),
-            Some(asn1::Any::ObjectId(C::oid())),
+        let mut private_key = [0u8; MAX_SCALAR_LEN];
+        let private_key = self.private_key.encode(&mut private_key)?;
+        sec1::encode_pkcs8(
+            private_key,
+            self.public_key_uncompressed(),
+            C::oid(),
+            output,
         )
-        .encode(output)
     }
 
     /// Load an ECDSA private key in SEC.1 format.
     pub(crate) fn from_sec1_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        let ecpk = asn1::pkix::EcPrivateKey::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
+        Self::from_decoded(sec1::decode(bytes, &C::oid())?)
+    }
 
-        // nb. ecpk.version has one variant, so if it decoded property it is guaranteed
-        // to be EcPrivateKeyVer::ecPrivkeyVer1
-
-        match ecpk.parameters.inner() {
-            Some(x) if x == &C::oid() => {}
-            None => {}
-            _ => return Err(KeyFormatError::MismatchedSec1Curve.into()),
+    fn from_decoded(decoded: sec1::Decoded<'_>) -> Result<Self, Error> {
+        let key = Self::new(C::PrivateKey::from_bytes(decoded.private_key)?)?;
+        match decoded.public_key {
+            Some(public_key) if !sec1::is_public_key(key.public_key_uncompressed(), public_key) => {
+                Err(KeyFormatError::MismatchedSec1PublicKey.into())
+            }
+            _ => Ok(key),
         }
-
-        let key = Self::new(C::PrivateKey::from_bytes(ecpk.privateKey.as_octets())?)?;
-
-        if let Some(expected_public_key) = ecpk.publicKey.inner()
-            && !key.is_public_key(expected_public_key.as_octets())
-        {
-            return Err(KeyFormatError::MismatchedSec1PublicKey.into());
-        }
-
-        Ok(key)
     }
 
     /// Load an ECDSA private key from its fixed-length big-endian scalar,
@@ -110,29 +93,9 @@ impl<C: Curve> SigningKey<C> {
         }
 
         let key = Self::new(C::PrivateKey::from_bytes(private_key)?)?;
-        match key.is_public_key(public_key) {
+        match sec1::is_public_key(key.public_key_uncompressed(), public_key) {
             true => Ok(key),
             false => Err(KeyFormatError::MismatchedPublicKey.into()),
-        }
-    }
-
-    /// Whether `encoded`, an X9.62 uncompressed or compressed point, is this
-    /// key's public key.
-    ///
-    /// A compressed point is `x` and the parity of `y`, which name at most
-    /// one point, so comparing them with this key's matches exactly the
-    /// encodings that decompress to it, with no square root. A hybrid point
-    /// is refused.
-    fn is_public_key(&self, encoded: &[u8]) -> bool {
-        let Some((_, xy)) = self.public_key_uncompressed().split_first() else {
-            return false;
-        };
-        let (x, y) = xy.split_at(xy.len() / 2);
-        match encoded.split_first() {
-            Some((&tag @ (0x02 | 0x03), compressed)) => {
-                compressed == x && y.last().is_some_and(|y| tag == 0x02 | (y & 1))
-            }
-            _ => encoded == self.public_key_uncompressed(),
         }
     }
 
@@ -146,34 +109,6 @@ impl<C: Curve> SigningKey<C> {
     /// This private key's public key, as an X9.62 uncompressed point.
     pub(crate) fn public_key_uncompressed(&self) -> &[u8] {
         &self.public_key[..self.public_key_len]
-    }
-
-    fn to_sec1_der_detail<'a>(
-        &self,
-        parameters: Option<asn1::ObjectId>,
-        output: &'a mut [u8],
-    ) -> Result<&'a [u8], Error> {
-        let mut encoded_private_key_buf = [0u8; MAX_SCALAR_LEN];
-        let encoded_private_key = self.private_key.encode(&mut encoded_private_key_buf)?;
-
-        let ecpk = asn1::pkix::EcPrivateKey {
-            version: asn1::pkix::EcPrivateKeyVer::ecPrivkeyVer1,
-            privateKey: asn1::OctetString::new(encoded_private_key),
-            parameters: match parameters {
-                Some(x) => x.into(),
-                None => asn1::Context::absent(),
-            },
-            publicKey: asn1::BitString::new(self.public_key_uncompressed()).into(),
-        };
-
-        let used = ecpk
-            .encode(&mut asn1::Encoder::new(output))
-            .map_err(|_| Error::WrongLength)?;
-
-        // The caller owns the encoding, as with the key's `as_bytes`.
-        let output = output.get(..used).ok_or(Error::WrongLength)?;
-        ct::public_slice(output);
-        Ok(output)
     }
 
     /// Encode this private key's corresponding public key in SubjectPublicKeyInfo DER format.
@@ -608,10 +543,18 @@ mod tests {
         let loaded = SigningKey::<C>::from_sec1_der(sec1_der).unwrap();
         let mut buf = [0u8; 256];
         assert!(buf.len() > sec1_der.len());
-        let encoded = loaded.to_sec1_der_detail(Some(C::oid()), &mut buf).unwrap();
+        let mut scalar = [0u8; MAX_SCALAR_LEN];
+        let scalar = loaded.to_scalar(&mut scalar).unwrap();
+        let public_key = loaded.public_key_uncompressed();
+        let encoded = sec1::encode(scalar, public_key, Some(C::oid()), &mut buf).unwrap();
         assert_eq!(sec1_der, encoded);
         assert_eq!(
-            loaded.to_sec1_der_detail(Some(C::oid()), &mut buf[..sec1_der.len() - 1]),
+            sec1::encode(
+                scalar,
+                public_key,
+                Some(C::oid()),
+                &mut buf[..sec1_der.len() - 1]
+            ),
             Err(Error::WrongLength)
         );
     }
