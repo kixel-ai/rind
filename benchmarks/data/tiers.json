@@ -1,0 +1,5302 @@
+{
+ "schema": 1,
+ "run": 41932862737,
+ "url": "https://github.com/moq-dev/rind/actions/runs/41932862737",
+ "commit": "33bcf0e9fcbca76c991cee74ae6be0b31408902d",
+ "date": "2026-11-04T23:19:58Z",
+ "tiers": [
+  {
+   "target": "x86_64-unknown-linux-gnu",
+   "portable": false,
+   "tier": "",
+   "cpu": "AMD EPYC 9V74 80-Core Processor",
+   "benchmarks": {
+    "aes128-ctr/*/1200B": {
+     "aws-lc-rs": 165.1,
+     "rind": 141.6
+    },
+    "aes128-ctr/*/1350B": {
+     "aws-lc-rs": 199.9,
+     "rind": 176.0
+    },
+    "aes128-ctr/*/16KB": {
+     "aws-lc-rs": 1723.0,
+     "rind": 1696.0
+    },
+    "aes128-ctr/*/32B": {
+     "aws-lc-rs": 44.9,
+     "rind": 20.26
+    },
+    "aes128-gcm-open/*/1200B": {
+     "aws-lc-rs": 248.9,
+     "rind": 164.2,
+     "ring": 224.4
+    },
+    "aes128-gcm-open/*/1350B": {
+     "aws-lc-rs": 274.4,
+     "rind": 199.7,
+     "ring": 273.2
+    },
+    "aes128-gcm-open/*/16KB": {
+     "aws-lc-rs": 1661.0,
+     "rind": 1458.0,
+     "ring": 1823.0
+    },
+    "aes128-gcm-open/*/32B": {
+     "aws-lc-rs": 94.9,
+     "rind": 55.03,
+     "ring": 99.81
+    },
+    "aes128-gcm/*/1200B": {
+     "aws-lc-rs": 224.6,
+     "rind": 154.2,
+     "ring": 190.5
+    },
+    "aes128-gcm/*/1350B": {
+     "aws-lc-rs": 248.6,
+     "rind": 176.2,
+     "ring": 234.3
+    },
+    "aes128-gcm/*/16KB": {
+     "aws-lc-rs": 1452.0,
+     "rind": 1289.0,
+     "ring": 1713.0
+    },
+    "aes128-gcm/*/32B": {
+     "aws-lc-rs": 92.25,
+     "rind": 43.72,
+     "ring": 72.44
+    },
+    "aes128-gcm/*/key": {
+     "aws-lc-rs": 139.2,
+     "rind": 130.3,
+     "ring": 142.7
+    },
+    "aes256-ctr/*/1200B": {
+     "aws-lc-rs": 191.8,
+     "rind": 168.7
+    },
+    "aes256-ctr/*/1350B": {
+     "aws-lc-rs": 232.5,
+     "rind": 208.6
+    },
+    "aes256-ctr/*/16KB": {
+     "aws-lc-rs": 1999.0,
+     "rind": 1979.0
+    },
+    "aes256-ctr/*/32B": {
+     "aws-lc-rs": 49.19,
+     "rind": 24.67
+    },
+    "aes256-gcm-open/*/1200B": {
+     "aws-lc-rs": 270.7,
+     "rind": 187.1,
+     "ring": 241.1
+    },
+    "aes256-gcm-open/*/1350B": {
+     "aws-lc-rs": 298.3,
+     "rind": 211.6,
+     "ring": 275.9
+    },
+    "aes256-gcm-open/*/16KB": {
+     "aws-lc-rs": 1875.0,
+     "rind": 1708.0,
+     "ring": 1962.0
+    },
+    "aes256-gcm-open/*/32B": {
+     "aws-lc-rs": 98.59,
+     "rind": 60.84,
+     "ring": 102.3
+    },
+    "aes256-gcm/*/1200B": {
+     "aws-lc-rs": 246.4,
+     "rind": 182.8,
+     "ring": 211.0
+    },
+    "aes256-gcm/*/1350B": {
+     "aws-lc-rs": 272.0,
+     "rind": 208.2,
+     "ring": 260.0
+    },
+    "aes256-gcm/*/16KB": {
+     "aws-lc-rs": 1665.0,
+     "rind": 1498.0,
+     "ring": 1936.0
+    },
+    "aes256-gcm/*/32B": {
+     "aws-lc-rs": 98.62,
+     "rind": 48.6,
+     "ring": 76.32
+    },
+    "aes256-gcm/*/key": {
+     "aws-lc-rs": 144.9,
+     "rind": 129.9,
+     "ring": 147.1
+    },
+    "chacha20poly1305/*/1200B": {
+     "aws-lc-rs": 626.0,
+     "rind": 614.2,
+     "ring": 621.7
+    },
+    "chacha20poly1305/*/1350B": {
+     "aws-lc-rs": 715.2,
+     "rind": 712.8,
+     "ring": 708.9
+    },
+    "chacha20poly1305/*/16KB": {
+     "aws-lc-rs": 6215.0,
+     "rind": 6199.0,
+     "ring": 6188.0
+    },
+    "chacha20poly1305/*/32B": {
+     "aws-lc-rs": 171.8,
+     "rind": 162.7,
+     "ring": 167.4
+    },
+    "ed25519-keygen/*": {
+     "aws-lc-rs": 8238.0,
+     "rind": 8448.0,
+     "ring": 22910.0
+    },
+    "ed25519-sign/*": {
+     "aws-lc-rs": 8254.0,
+     "rind": 7803.0,
+     "ring": 22750.0
+    },
+    "ed25519-verify/*": {
+     "aws-lc-rs": 36120.0,
+     "rind": 36220.0,
+     "ring": 42810.0
+    },
+    "hkdf-sha1/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 521.6,
+     "rind": 386.6,
+     "ring": 997.4
+    },
+    "hkdf-sha1/expand/*": {
+     "aws-lc-rs": 373.6,
+     "rind": 249.1,
+     "ring": 813.3
+    },
+    "hkdf-sha1/extract-expand/*": {
+     "aws-lc-rs": 639.1,
+     "rind": 503.7,
+     "ring": 1908.0
+    },
+    "hkdf-sha256/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 422.2,
+     "rind": 275.9,
+     "ring": 377.6
+    },
+    "hkdf-sha256/expand/*": {
+     "aws-lc-rs": 273.6,
+     "rind": 138.3,
+     "ring": 197.8
+    },
+    "hkdf-sha256/extract-expand/*": {
+     "aws-lc-rs": 552.9,
+     "rind": 404.9,
+     "ring": 561.4
+    },
+    "hkdf-sha384/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 1174.0,
+     "rind": 632.7,
+     "ring": 730.4
+    },
+    "hkdf-sha384/expand/*": {
+     "aws-lc-rs": 1028.0,
+     "rind": 492.0,
+     "ring": 544.3
+    },
+    "hkdf-sha384/extract-expand/*": {
+     "aws-lc-rs": 2059.0,
+     "rind": 1852.0,
+     "ring": 1999.0
+    },
+    "hkdf-sha512/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 1192.0,
+     "rind": 617.9,
+     "ring": 726.5
+    },
+    "hkdf-sha512/expand/*": {
+     "aws-lc-rs": 1028.0,
+     "rind": 479.6,
+     "ring": 545.9
+    },
+    "hkdf-sha512/extract-expand/*": {
+     "aws-lc-rs": 2072.0,
+     "rind": 1826.0,
+     "ring": 2000.0
+    },
+    "hmac-sha1/*/1200B": {
+     "aws-lc-rs": 939.1,
+     "rind": 775.2,
+     "ring": 3273.0
+    },
+    "hmac-sha1/*/1350B": {
+     "aws-lc-rs": 1041.0,
+     "rind": 882.5,
+     "ring": 3701.0
+    },
+    "hmac-sha1/*/16KB": {
+     "aws-lc-rs": 8796.0,
+     "rind": 8660.0,
+     "ring": 36780.0
+    },
+    "hmac-sha1/*/32B": {
+     "aws-lc-rs": 351.4,
+     "rind": 180.2,
+     "ring": 718.4
+    },
+    "hmac-sha1/*/64B": {
+     "aws-lc-rs": 378.7,
+     "rind": 209.2,
+     "ring": 856.8
+    },
+    "hmac-sha1/*/8KB": {
+     "aws-lc-rs": 4571.0,
+     "rind": 4425.0,
+     "ring": 18770.0
+    },
+    "hmac-sha1/*/reused-key/1200B": {
+     "aws-lc-rs": 794.5,
+     "rind": 665.8,
+     "ring": 2934.0
+    },
+    "hmac-sha1/*/reused-key/1350B": {
+     "aws-lc-rs": 895.8,
+     "rind": 771.8,
+     "ring": 3367.0
+    },
+    "hmac-sha1/*/reused-key/16KB": {
+     "aws-lc-rs": 8649.0,
+     "rind": 8551.0,
+     "ring": 36550.0
+    },
+    "hmac-sha1/*/reused-key/32B": {
+     "aws-lc-rs": 208.1,
+     "rind": 103.1,
+     "ring": 396.4
+    },
+    "hmac-sha1/*/reused-key/64B": {
+     "aws-lc-rs": 231.6,
+     "rind": 108.3,
+     "ring": 538.7
+    },
+    "hmac-sha1/*/reused-key/8KB": {
+     "aws-lc-rs": 4432.0,
+     "rind": 4310.0,
+     "ring": 18430.0
+    },
+    "hmac-sha256/*/1200B": {
+     "aws-lc-rs": 991.0,
+     "rind": 792.9,
+     "ring": 887.6
+    },
+    "hmac-sha256/*/1350B": {
+     "aws-lc-rs": 1101.0,
+     "rind": 902.0,
+     "ring": 1000.0
+    },
+    "hmac-sha256/*/16KB": {
+     "aws-lc-rs": 9374.0,
+     "rind": 9189.0,
+     "ring": 9270.0
+    },
+    "hmac-sha256/*/32B": {
+     "aws-lc-rs": 362.6,
+     "rind": 175.2,
+     "ring": 251.7
+    },
+    "hmac-sha256/*/64B": {
+     "aws-lc-rs": 393.7,
+     "rind": 193.7,
+     "ring": 284.5
+    },
+    "hmac-sha256/*/8KB": {
+     "aws-lc-rs": 4868.0,
+     "rind": 4676.0,
+     "ring": 4763.0
+    },
+    "hmac-sha256/*/reused-key/1200B": {
+     "aws-lc-rs": 839.1,
+     "rind": 721.2,
+     "ring": 800.6
+    },
+    "hmac-sha256/*/reused-key/1350B": {
+     "aws-lc-rs": 951.7,
+     "rind": 825.6,
+     "ring": 911.4
+    },
+    "hmac-sha256/*/reused-key/16KB": {
+     "aws-lc-rs": 9220.0,
+     "rind": 9117.0,
+     "ring": 9187.0
+    },
+    "hmac-sha256/*/reused-key/32B": {
+     "aws-lc-rs": 211.2,
+     "rind": 110.7,
+     "ring": 177.4
+    },
+    "hmac-sha256/*/reused-key/64B": {
+     "aws-lc-rs": 240.5,
+     "rind": 119.9,
+     "ring": 197.2
+    },
+    "hmac-sha256/*/reused-key/8KB": {
+     "aws-lc-rs": 4714.0,
+     "rind": 4618.0,
+     "ring": 4674.0
+    },
+    "hmac-sha384/*/1200B": {
+     "aws-lc-rs": 2996.0,
+     "rind": 2774.0,
+     "ring": 2860.0
+    },
+    "hmac-sha384/*/1350B": {
+     "aws-lc-rs": 3197.0,
+     "rind": 2982.0,
+     "ring": 3070.0
+    },
+    "hmac-sha384/*/16KB": {
+     "aws-lc-rs": 27820.0,
+     "rind": 27580.0,
+     "ring": 27720.0
+    },
+    "hmac-sha384/*/32B": {
+     "aws-lc-rs": 1112.0,
+     "rind": 896.4,
+     "ring": 982.6
+    },
+    "hmac-sha384/*/64B": {
+     "aws-lc-rs": 1111.0,
+     "rind": 893.7,
+     "ring": 982.5
+    },
+    "hmac-sha384/*/8KB": {
+     "aws-lc-rs": 14450.0,
+     "rind": 14230.0,
+     "ring": 14360.0
+    },
+    "hmac-sha384/*/reused-key/1200B": {
+     "aws-lc-rs": 2461.0,
+     "rind": 2328.0,
+     "ring": 2397.0
+    },
+    "hmac-sha384/*/reused-key/1350B": {
+     "aws-lc-rs": 2667.0,
+     "rind": 2545.0,
+     "ring": 2606.0
+    },
+    "hmac-sha384/*/reused-key/16KB": {
+     "aws-lc-rs": 27290.0,
+     "rind": 27140.0,
+     "ring": 27240.0
+    },
+    "hmac-sha384/*/reused-key/32B": {
+     "aws-lc-rs": 578.2,
+     "rind": 455.0,
+     "ring": 514.2
+    },
+    "hmac-sha384/*/reused-key/64B": {
+     "aws-lc-rs": 579.0,
+     "rind": 453.1,
+     "ring": 515.0
+    },
+    "hmac-sha384/*/reused-key/8KB": {
+     "aws-lc-rs": 13940.0,
+     "rind": 13900.0,
+     "ring": 13930.0
+    },
+    "jwt-eddsa-sign/*/load": {
+     "aws-lc-rs": 7840.0,
+     "rind": 7642.0
+    },
+    "jwt-eddsa-sign/*/token": {
+     "aws-lc-rs": 16630.0,
+     "rind": 15880.0
+    },
+    "jwt-eddsa-verify/*/load": {
+     "aws-lc-rs": 50.19,
+     "rind": 3292.0
+    },
+    "jwt-eddsa-verify/*/token": {
+     "aws-lc-rs": 36630.0,
+     "rind": 36610.0
+    },
+    "jwt-es256-sign/*/load": {
+     "aws-lc-rs": 9847.0,
+     "rind": 12820.0
+    },
+    "jwt-es256-sign/*/token": {
+     "aws-lc-rs": 25560.0,
+     "rind": 25400.0
+    },
+    "jwt-es256-verify/*/load": {
+     "aws-lc-rs": 60.43,
+     "rind": 4134.0
+    },
+    "jwt-es256-verify/*/token": {
+     "aws-lc-rs": 50590.0,
+     "rind": 50350.0
+    },
+    "jwt-es384-sign/*/load": {
+     "aws-lc-rs": 50550.0,
+     "rind": 41560.0
+    },
+    "jwt-es384-sign/*/token": {
+     "aws-lc-rs": 133100.0,
+     "rind": 86660.0
+    },
+    "jwt-es384-verify/*/load": {
+     "aws-lc-rs": 69.59,
+     "rind": 7867.0
+    },
+    "jwt-es384-verify/*/token": {
+     "aws-lc-rs": 193700.0,
+     "rind": 159400.0
+    },
+    "jwt-hs256-sign/*/load": {
+     "aws-lc-rs": 237.0,
+     "rind": 96.0
+    },
+    "jwt-hs256-sign/*/token": {
+     "aws-lc-rs": 516.3,
+     "rind": 276.3
+    },
+    "jwt-hs256-verify/*/load": {
+     "aws-lc-rs": 237.9,
+     "rind": 95.19
+    },
+    "jwt-hs256-verify/*/token": {
+     "aws-lc-rs": 505.3,
+     "rind": 282.2
+    },
+    "jwt-rs256-sign/*/load": {
+     "aws-lc-rs": 244.3,
+     "rind": 61110.0
+    },
+    "jwt-rs256-sign/*/token": {
+     "aws-lc-rs": 644600.0,
+     "rind": 287600.0
+    },
+    "jwt-rs256-verify/*/load": {
+     "aws-lc-rs": 125.8,
+     "rind": 2222.0
+    },
+    "jwt-rs256-verify/*/token": {
+     "aws-lc-rs": 17850.0,
+     "rind": 14900.0
+    },
+    "mlkem768-combined/*": {
+     "aws-lc-rs": 42730.0,
+     "rind": 26830.0
+    },
+    "mlkem768-decaps/*": {
+     "aws-lc-rs": 15800.0,
+     "rind": 7622.0
+    },
+    "mlkem768-encaps/*": {
+     "aws-lc-rs": 13450.0,
+     "rind": 9815.0
+    },
+    "mlkem768-keygen/*": {
+     "aws-lc-rs": 12950.0,
+     "rind": 9603.0
+    },
+    "p256-ecdh/*": {
+     "aws-lc-rs": 53540.0,
+     "rind": 51710.0,
+     "ring": 55910.0
+    },
+    "p256-ecdsa-sign/*": {
+     "aws-lc-rs": 15560.0,
+     "rind": 12340.0,
+     "ring": 16980.0
+    },
+    "p256-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 49040.0,
+     "rind": 45680.0
+    },
+    "p256-ecdsa-verify/*": {
+     "aws-lc-rs": 50250.0,
+     "rind": 51270.0,
+     "ring": 52090.0
+    },
+    "p256-keygen/*": {
+     "aws-lc-rs": 9002.0,
+     "rind": 8948.0,
+     "ring": 11200.0
+    },
+    "p384-ecdh/*": {
+     "aws-lc-rs": 187200.0,
+     "rind": 170100.0,
+     "ring": 748700.0
+    },
+    "p384-ecdsa-sign/*": {
+     "aws-lc-rs": 81820.0,
+     "rind": 44680.0,
+     "ring": 402400.0
+    },
+    "p384-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 193600.0,
+     "rind": 148500.0
+    },
+    "p384-ecdsa-verify/*": {
+     "aws-lc-rs": 195300.0,
+     "rind": 160800.0,
+     "ring": 724800.0
+    },
+    "p384-keygen/*": {
+     "aws-lc-rs": 49320.0,
+     "rind": 35130.0,
+     "ring": 373800.0
+    },
+    "p521-ecdh/*": {
+     "aws-lc-rs": 311200.0,
+     "rind": 289200.0
+    },
+    "p521-ecdsa-sign/*": {
+     "aws-lc-rs": 164000.0,
+     "rind": 74480.0
+    },
+    "p521-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 333600.0,
+     "rind": 236600.0
+    },
+    "p521-ecdsa-verify/*": {
+     "aws-lc-rs": 335800.0,
+     "rind": 252000.0
+    },
+    "p521-keygen/*": {
+     "aws-lc-rs": 78710.0,
+     "rind": 60930.0
+    },
+    "pbkdf2-sha1/*": {
+     "aws-lc-rs": 111200.0,
+     "rind": 111200.0,
+     "ring": 399700.0
+    },
+    "pbkdf2-sha256/*": {
+     "aws-lc-rs": 113500.0,
+     "rind": 117500.0,
+     "ring": 180100.0
+    },
+    "pbkdf2-sha384/*": {
+     "aws-lc-rs": 490500.0,
+     "rind": 461500.0,
+     "ring": 517800.0
+    },
+    "pbkdf2-sha512/*": {
+     "aws-lc-rs": 492600.0,
+     "rind": 470000.0,
+     "ring": 519900.0
+    },
+    "quic-header-protection/aes128/*": {
+     "aws-lc-rs": 7.099,
+     "rind": 4.036,
+     "ring": 7.698
+    },
+    "quic-header-protection/aes256/*": {
+     "aws-lc-rs": 9.287,
+     "rind": 4.87,
+     "ring": 10.12
+    },
+    "quic-header-protection/chacha20/*": {
+     "aws-lc-rs": 112.2,
+     "rind": 83.37,
+     "ring": 104.0
+    },
+    "rsa1024-pkcs1-sha1-verify/*": {
+     "aws-lc-rs": 6281.0,
+     "rind": 4673.0,
+     "ring": 6191.0
+    },
+    "rsa2048-key-generation/*": {
+     "aws-lc-rs": 67260000.0,
+     "rind": 43640000.0
+    },
+    "rsa2048-load/*": {
+     "aws-lc-rs": 152800.0,
+     "rind": 61150.0
+    },
+    "rsa2048-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 242200.0,
+     "rind": 225700.0,
+     "ring": 563200.0
+    },
+    "rsa2048-pkcs1-sha256-verify-parsed/*": {
+     "aws-lc-rs": 15350.0,
+     "rind": 12580.0
+    },
+    "rsa2048-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 17770.0,
+     "rind": 14790.0,
+     "ring": 20680.0
+    },
+    "rsa2048-pss-sha256-sign/*": {
+     "aws-lc-rs": 242800.0,
+     "rind": 226800.0,
+     "ring": 565100.0
+    },
+    "rsa2048-pss-sha256-verify/*": {
+     "aws-lc-rs": 18390.0,
+     "rind": 15460.0,
+     "ring": 21450.0
+    },
+    "rsa2056-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1242000.0,
+     "rind": 1296000.0
+    },
+    "rsa2056-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 33140.0,
+     "rind": 31300.0,
+     "ring": 45290.0
+    },
+    "rsa2560-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1469000.0,
+     "rind": 1430000.0
+    },
+    "rsa3072-key-generation/*": {
+     "aws-lc-rs": 263100000.0,
+     "rind": 207700000.0
+    },
+    "rsa3072-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 691700.0,
+     "rind": 662900.0,
+     "ring": 1732000.0
+    },
+    "rsa3072-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 36870.0,
+     "rind": 33680.0,
+     "ring": 44650.0
+    },
+    "rsa4096-key-generation/*": {
+     "aws-lc-rs": 350600000.0,
+     "rind": 714700000.0
+    },
+    "rsa4096-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1454000.0,
+     "rind": 1406000.0,
+     "ring": 3948000.0
+    },
+    "rsa4096-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 62560.0,
+     "rind": 58610.0,
+     "ring": 77430.0
+    },
+    "rsa6144-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 13130000.0,
+     "rind": 12660000.0
+    },
+    "rsa6144-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 136700.0,
+     "rind": 129000.0,
+     "ring": 171600.0
+    },
+    "rsa8192-load/*": {
+     "aws-lc-rs": 1927000.0,
+     "rind": 839400.0
+    },
+    "rsa8192-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 30780000.0,
+     "rind": 29360000.0
+    },
+    "rsa8192-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 237900.0,
+     "rind": 226000.0,
+     "ring": 302100.0
+    },
+    "rustls-bulk/aes128-gcm/*": {
+     "aws-lc-rs": 335900.0,
+     "rind": 318700.0,
+     "ring": 363400.0
+    },
+    "rustls-bulk/aes256-gcm/*": {
+     "aws-lc-rs": 362600.0,
+     "rind": 346000.0,
+     "ring": 388200.0
+    },
+    "rustls-bulk/chacha20poly1305/*": {
+     "aws-lc-rs": 942800.0,
+     "rind": 927100.0,
+     "ring": 941300.0
+    },
+    "rustls-full-handshake-group/secp256r1/*": {
+     "aws-lc-rs": 380700.0,
+     "rind": 313900.0,
+     "ring": 369300.0
+    },
+    "rustls-full-handshake-group/secp384r1/*": {
+     "aws-lc-rs": 654400.0,
+     "rind": 553000.0,
+     "ring": 1726000.0
+    },
+    "rustls-full-handshake-group/secp521r1/*": {
+     "rind": 795300.0
+    },
+    "rustls-full-handshake-group/x25519/*": {
+     "aws-lc-rs": 336800.0,
+     "rind": 275600.0,
+     "ring": 375400.0
+    },
+    "rustls-full-handshake-group/x25519mlkem768/*": {
+     "aws-lc-rs": 395200.0,
+     "rind": 308900.0
+    },
+    "rustls-full-handshake-key/ecdsa-p256/*": {
+     "aws-lc-rs": 338200.0,
+     "rind": 274900.0,
+     "ring": 375500.0
+    },
+    "rustls-full-handshake-key/ecdsa-p384/*": {
+     "aws-lc-rs": 846100.0,
+     "rind": 639900.0,
+     "ring": 2730000.0
+    },
+    "rustls-full-handshake-key/ecdsa-p521/*": {
+     "aws-lc-rs": 1361000.0,
+     "rind": 960200.0
+    },
+    "rustls-full-handshake-key/ed25519/*": {
+     "aws-lc-rs": 285100.0,
+     "rind": 226700.0,
+     "ring": 355800.0
+    },
+    "rustls-full-handshake-key/rsa-2048/*": {
+     "aws-lc-rs": 475200.0,
+     "rind": 386700.0,
+     "ring": 838900.0
+    },
+    "rustls-full-handshake-key/rsa-3072/*": {
+     "aws-lc-rs": 995800.0,
+     "rind": 887500.0,
+     "ring": 2093000.0
+    },
+    "rustls-full-handshake-key/rsa-4096/*": {
+     "aws-lc-rs": 1836000.0,
+     "rind": 1716000.0,
+     "ring": 4424000.0
+    },
+    "rustls-resumed-handshake/secp256r1/*": {
+     "aws-lc-rs": 214900.0,
+     "rind": 145800.0,
+     "ring": 194800.0
+    },
+    "rustls-resumed-handshake/secp384r1/*": {
+     "aws-lc-rs": 485600.0,
+     "rind": 383500.0,
+     "ring": 1550000.0
+    },
+    "rustls-resumed-handshake/secp521r1/*": {
+     "rind": 624800.0
+    },
+    "rustls-resumed-handshake/x25519/*": {
+     "aws-lc-rs": 170600.0,
+     "rind": 105400.0,
+     "ring": 201500.0
+    },
+    "rustls-resumed-handshake/x25519mlkem768/*": {
+     "aws-lc-rs": 228000.0,
+     "rind": 138600.0
+    },
+    "sha1/*/1200B": {
+     "aws-lc-rs": 670.4,
+     "rind": 641.3,
+     "ring": 2736.0
+    },
+    "sha1/*/1350B": {
+     "aws-lc-rs": 774.4,
+     "rind": 739.3,
+     "ring": 3170.0
+    },
+    "sha1/*/16KB": {
+     "aws-lc-rs": 8543.0,
+     "rind": 8527.0,
+     "ring": 36270.0
+    },
+    "sha1/*/32B": {
+     "aws-lc-rs": 81.86,
+     "rind": 64.29,
+     "ring": 194.6
+    },
+    "sha1/*/64B": {
+     "aws-lc-rs": 115.3,
+     "rind": 99.47,
+     "ring": 334.4
+    },
+    "sha1/*/8KB": {
+     "aws-lc-rs": 4319.0,
+     "rind": 4287.0,
+     "ring": 18310.0
+    },
+    "sha256-updates/*/16B": {
+     "aws-lc-rs": 3209.0,
+     "rind": 2613.0
+    },
+    "sha256-updates/*/1B": {
+     "aws-lc-rs": 22300.0,
+     "rind": 18090.0
+    },
+    "sha256/*/1200B": {
+     "aws-lc-rs": 716.9,
+     "rind": 693.9,
+     "ring": 702.3
+    },
+    "sha256/*/1350B": {
+     "aws-lc-rs": 826.7,
+     "rind": 800.5,
+     "ring": 814.1
+    },
+    "sha256/*/16KB": {
+     "aws-lc-rs": 9098.0,
+     "rind": 9078.0,
+     "ring": 9103.0
+    },
+    "sha256/*/32B": {
+     "aws-lc-rs": 81.96,
+     "rind": 70.81,
+     "ring": 82.48
+    },
+    "sha256/*/64B": {
+     "aws-lc-rs": 119.4,
+     "rind": 103.6,
+     "ring": 98.52
+    },
+    "sha256/*/8KB": {
+     "aws-lc-rs": 4621.0,
+     "rind": 4562.0,
+     "ring": 4609.0
+    },
+    "sha512-256/*/1200B": {
+     "aws-lc-rs": 2156.0,
+     "rind": 2135.0,
+     "ring": 2137.0
+    },
+    "sha512-256/*/1350B": {
+     "aws-lc-rs": 2352.0,
+     "rind": 2350.0,
+     "ring": 2347.0
+    },
+    "sha512-256/*/16KB": {
+     "aws-lc-rs": 27000.0,
+     "rind": 26960.0,
+     "ring": 26990.0
+    },
+    "sha512-256/*/32B": {
+     "aws-lc-rs": 264.6,
+     "rind": 259.3,
+     "ring": 253.8
+    },
+    "sha512-256/*/64B": {
+     "aws-lc-rs": 264.9,
+     "rind": 260.2,
+     "ring": 256.1
+    },
+    "sha512-256/*/8KB": {
+     "aws-lc-rs": 13600.0,
+     "rind": 13590.0,
+     "ring": 13600.0
+    },
+    "sha512/*/1200B": {
+     "aws-lc-rs": 2148.0,
+     "rind": 2125.0,
+     "ring": 2163.0
+    },
+    "sha512/*/1350B": {
+     "aws-lc-rs": 2352.0,
+     "rind": 2340.0,
+     "ring": 2348.0
+    },
+    "sha512/*/16KB": {
+     "aws-lc-rs": 26970.0,
+     "rind": 26940.0,
+     "ring": 26970.0
+    },
+    "sha512/*/32B": {
+     "aws-lc-rs": 268.5,
+     "rind": 244.0,
+     "ring": 253.8
+    },
+    "sha512/*/64B": {
+     "aws-lc-rs": 266.0,
+     "rind": 245.0,
+     "ring": 255.4
+    },
+    "sha512/*/8KB": {
+     "aws-lc-rs": 13610.0,
+     "rind": 13600.0,
+     "ring": 13620.0
+    },
+    "x25519-ecdh/*": {
+     "aws-lc-rs": 32130.0,
+     "rind": 31950.0,
+     "ring": 59380.0
+    },
+    "x25519-keygen/*": {
+     "aws-lc-rs": 7741.0,
+     "rind": 7851.0,
+     "ring": 22610.0
+    },
+    "xchacha20poly1305/*/1200B": {
+     "aws-lc-rs": 1287.0,
+     "rind": 1281.0
+    },
+    "xchacha20poly1305/*/1350B": {
+     "aws-lc-rs": 1385.0,
+     "rind": 1377.0
+    },
+    "xchacha20poly1305/*/16KB": {
+     "aws-lc-rs": 6919.0,
+     "rind": 6919.0
+    },
+    "xchacha20poly1305/*/32B": {
+     "aws-lc-rs": 834.7,
+     "rind": 815.7
+    }
+   }
+  },
+  {
+   "target": "x86_64-unknown-linux-gnu",
+   "portable": true,
+   "tier": "no-adx",
+   "cpu": "Intel(R) Xeon(R) 6975P-C",
+   "benchmarks": {
+    "ed25519-keygen/*": {
+     "aws-lc-rs": 7969.0,
+     "rind": 7912.0
+    },
+    "ed25519-sign/*": {
+     "aws-lc-rs": 7826.0,
+     "rind": 7469.0
+    },
+    "ed25519-verify/*": {
+     "aws-lc-rs": 36180.0,
+     "rind": 36470.0
+    },
+    "p256-ecdh/*": {
+     "aws-lc-rs": 53200.0,
+     "rind": 51460.0
+    },
+    "p256-ecdsa-sign/*": {
+     "aws-lc-rs": 14970.0,
+     "rind": 11260.0
+    },
+    "p256-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 44440.0,
+     "rind": 46180.0
+    },
+    "p256-ecdsa-verify/*": {
+     "aws-lc-rs": 45340.0,
+     "rind": 51800.0
+    },
+    "p256-keygen/*": {
+     "aws-lc-rs": 8496.0,
+     "rind": 8110.0
+    },
+    "p384-ecdh/*": {
+     "aws-lc-rs": 183600.0,
+     "rind": 168900.0
+    },
+    "p384-ecdsa-sign/*": {
+     "aws-lc-rs": 70310.0,
+     "rind": 43420.0
+    },
+    "p384-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 186800.0,
+     "rind": 152400.0
+    },
+    "p384-ecdsa-verify/*": {
+     "aws-lc-rs": 188300.0,
+     "rind": 164200.0
+    },
+    "p384-keygen/*": {
+     "aws-lc-rs": 45950.0,
+     "rind": 34030.0
+    },
+    "p521-ecdh/*": {
+     "aws-lc-rs": 302300.0,
+     "rind": 281700.0
+    },
+    "p521-ecdsa-sign/*": {
+     "aws-lc-rs": 141700.0,
+     "rind": 72650.0
+    },
+    "p521-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 308400.0,
+     "rind": 237000.0
+    },
+    "p521-ecdsa-verify/*": {
+     "aws-lc-rs": 309900.0,
+     "rind": 254300.0
+    },
+    "p521-keygen/*": {
+     "aws-lc-rs": 79370.0,
+     "rind": 60740.0
+    },
+    "rsa1024-pkcs1-sha1-verify/*": {
+     "aws-lc-rs": 6199.0,
+     "rind": 4884.0
+    },
+    "rsa2048-key-generation/*": {
+     "aws-lc-rs": 57940000.0,
+     "rind": 40980000.0
+    },
+    "rsa2048-load/*": {
+     "aws-lc-rs": 131000.0,
+     "rind": 57380.0
+    },
+    "rsa2048-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 502700.0,
+     "rind": 240400.0
+    },
+    "rsa2048-pkcs1-sha256-verify-parsed/*": {
+     "aws-lc-rs": 16620.0,
+     "rind": 15050.0
+    },
+    "rsa2048-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 18830.0,
+     "rind": 17030.0
+    },
+    "rsa2048-pss-sha256-sign/*": {
+     "aws-lc-rs": 503400.0,
+     "rind": 241400.0
+    },
+    "rsa2048-pss-sha256-verify/*": {
+     "aws-lc-rs": 19350.0,
+     "rind": 17590.0
+    },
+    "rsa2056-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 940900.0,
+     "rind": 1028000.0
+    },
+    "rsa2056-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 26520.0,
+     "rind": 24550.0
+    },
+    "rsa2560-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1472000.0,
+     "rind": 1587000.0
+    },
+    "rsa3072-key-generation/*": {
+     "aws-lc-rs": 227500000.0,
+     "rind": 206100000.0
+    },
+    "rsa3072-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1906000.0,
+     "rind": 680000.0
+    },
+    "rsa3072-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 39410.0,
+     "rind": 37050.0
+    },
+    "rsa4096-key-generation/*": {
+     "aws-lc-rs": 527500000.0,
+     "rind": 652300000.0
+    },
+    "rsa4096-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 4389000.0,
+     "rind": 1378000.0
+    },
+    "rsa4096-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 68670.0,
+     "rind": 65400.0
+    },
+    "rsa6144-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 14760000.0,
+     "rind": 14320000.0
+    },
+    "rsa6144-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 152400.0,
+     "rind": 146100.0
+    },
+    "rsa8192-load/*": {
+     "aws-lc-rs": 1947000.0,
+     "rind": 1051000.0
+    },
+    "rsa8192-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 35060000.0,
+     "rind": 33810000.0
+    },
+    "rsa8192-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 269300.0,
+     "rind": 258400.0
+    },
+    "x25519-ecdh/*": {
+     "aws-lc-rs": 30620.0,
+     "rind": 30330.0
+    },
+    "x25519-keygen/*": {
+     "aws-lc-rs": 7464.0,
+     "rind": 7396.0
+    }
+   }
+  },
+  {
+   "target": "x86_64-unknown-linux-gnu",
+   "portable": true,
+   "tier": "",
+   "cpu": "AMD EPYC 7763 64-Core Processor",
+   "benchmarks": {
+    "aes128-ctr/*/1200B": {
+     "aws-lc-rs": 186.8,
+     "rind": 159.1
+    },
+    "aes128-ctr/*/1350B": {
+     "aws-lc-rs": 224.7,
+     "rind": 199.0
+    },
+    "aes128-ctr/*/16KB": {
+     "aws-lc-rs": 1953.0,
+     "rind": 1917.0
+    },
+    "aes128-ctr/*/32B": {
+     "aws-lc-rs": 50.09,
+     "rind": 23.03
+    },
+    "aes128-gcm-open/*/1200B": {
+     "aws-lc-rs": 422.4,
+     "rind": 348.9
+    },
+    "aes128-gcm-open/*/1350B": {
+     "aws-lc-rs": 472.2,
+     "rind": 387.5
+    },
+    "aes128-gcm-open/*/16KB": {
+     "aws-lc-rs": 4127.0,
+     "rind": 4146.0
+    },
+    "aes128-gcm-open/*/32B": {
+     "aws-lc-rs": 133.4,
+     "rind": 49.15
+    },
+    "aes128-gcm/*/1200B": {
+     "aws-lc-rs": 404.0,
+     "rind": 336.0
+    },
+    "aes128-gcm/*/1350B": {
+     "aws-lc-rs": 449.5,
+     "rind": 380.9
+    },
+    "aes128-gcm/*/16KB": {
+     "aws-lc-rs": 3911.0,
+     "rind": 4009.0
+    },
+    "aes128-gcm/*/32B": {
+     "aws-lc-rs": 133.8,
+     "rind": 58.99
+    },
+    "aes128-gcm/*/key": {
+     "aws-lc-rs": 167.6,
+     "rind": 141.6
+    },
+    "aes256-ctr/*/1200B": {
+     "aws-lc-rs": 220.1,
+     "rind": 191.3
+    },
+    "aes256-ctr/*/1350B": {
+     "aws-lc-rs": 269.6,
+     "rind": 237.9
+    },
+    "aes256-ctr/*/16KB": {
+     "aws-lc-rs": 2266.0,
+     "rind": 2257.0
+    },
+    "aes256-ctr/*/32B": {
+     "aws-lc-rs": 55.71,
+     "rind": 27.52
+    },
+    "aes256-gcm-open/*/1200B": {
+     "aws-lc-rs": 450.8,
+     "rind": 374.5
+    },
+    "aes256-gcm-open/*/1350B": {
+     "aws-lc-rs": 506.3,
+     "rind": 409.1
+    },
+    "aes256-gcm-open/*/16KB": {
+     "aws-lc-rs": 4396.0,
+     "rind": 4464.0
+    },
+    "aes256-gcm-open/*/32B": {
+     "aws-lc-rs": 147.0,
+     "rind": 56.09
+    },
+    "aes256-gcm/*/1200B": {
+     "aws-lc-rs": 436.5,
+     "rind": 375.8
+    },
+    "aes256-gcm/*/1350B": {
+     "aws-lc-rs": 483.1,
+     "rind": 414.4
+    },
+    "aes256-gcm/*/16KB": {
+     "aws-lc-rs": 4220.0,
+     "rind": 4284.0
+    },
+    "aes256-gcm/*/32B": {
+     "aws-lc-rs": 143.7,
+     "rind": 69.14
+    },
+    "aes256-gcm/*/key": {
+     "aws-lc-rs": 174.2,
+     "rind": 143.5
+    },
+    "chacha20poly1305/*/1200B": {
+     "aws-lc-rs": 1050.0,
+     "rind": 1045.0
+    },
+    "chacha20poly1305/*/1350B": {
+     "aws-lc-rs": 1188.0,
+     "rind": 1178.0
+    },
+    "chacha20poly1305/*/16KB": {
+     "aws-lc-rs": 12320.0,
+     "rind": 12400.0
+    },
+    "chacha20poly1305/*/32B": {
+     "aws-lc-rs": 199.4,
+     "rind": 187.6
+    },
+    "ed25519-keygen/*": {
+     "aws-lc-rs": 10550.0,
+     "rind": 10790.0
+    },
+    "ed25519-sign/*": {
+     "aws-lc-rs": 10510.0,
+     "rind": 10050.0
+    },
+    "ed25519-verify/*": {
+     "aws-lc-rs": 50130.0,
+     "rind": 50030.0
+    },
+    "hkdf-sha1/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 938.5,
+     "rind": 596.3
+    },
+    "hkdf-sha1/expand/*": {
+     "aws-lc-rs": 745.2,
+     "rind": 424.4
+    },
+    "hkdf-sha1/extract-expand/*": {
+     "aws-lc-rs": 1294.0,
+     "rind": 927.4
+    },
+    "hkdf-sha256/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 1009.0,
+     "rind": 540.0
+    },
+    "hkdf-sha256/expand/*": {
+     "aws-lc-rs": 814.4,
+     "rind": 378.6
+    },
+    "hkdf-sha256/extract-expand/*": {
+     "aws-lc-rs": 1662.0,
+     "rind": 1359.0
+    },
+    "hkdf-sha384/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 1410.0,
+     "rind": 745.4
+    },
+    "hkdf-sha384/expand/*": {
+     "aws-lc-rs": 1211.0,
+     "rind": 570.9
+    },
+    "hkdf-sha384/extract-expand/*": {
+     "aws-lc-rs": 2475.0,
+     "rind": 2111.0
+    },
+    "hkdf-sha512/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 1401.0,
+     "rind": 717.8
+    },
+    "hkdf-sha512/expand/*": {
+     "aws-lc-rs": 1198.0,
+     "rind": 558.3
+    },
+    "hkdf-sha512/extract-expand/*": {
+     "aws-lc-rs": 2442.0,
+     "rind": 2069.0
+    },
+    "hmac-sha1/*/1200B": {
+     "aws-lc-rs": 1726.0,
+     "rind": 1468.0
+    },
+    "hmac-sha1/*/1350B": {
+     "aws-lc-rs": 1965.0,
+     "rind": 1694.0
+    },
+    "hmac-sha1/*/16KB": {
+     "aws-lc-rs": 16970.0,
+     "rind": 16620.0
+    },
+    "hmac-sha1/*/32B": {
+     "aws-lc-rs": 627.6,
+     "rind": 342.2
+    },
+    "hmac-sha1/*/64B": {
+     "aws-lc-rs": 697.6,
+     "rind": 403.4
+    },
+    "hmac-sha1/*/8KB": {
+     "aws-lc-rs": 8806.0,
+     "rind": 8522.0
+    },
+    "hmac-sha1/*/reused-key/1200B": {
+     "aws-lc-rs": 1482.0,
+     "rind": 1311.0
+    },
+    "hmac-sha1/*/reused-key/1350B": {
+     "aws-lc-rs": 1702.0,
+     "rind": 1519.0
+    },
+    "hmac-sha1/*/reused-key/16KB": {
+     "aws-lc-rs": 16690.0,
+     "rind": 16370.0
+    },
+    "hmac-sha1/*/reused-key/32B": {
+     "aws-lc-rs": 331.1,
+     "rind": 178.0
+    },
+    "hmac-sha1/*/reused-key/64B": {
+     "aws-lc-rs": 397.1,
+     "rind": 229.0
+    },
+    "hmac-sha1/*/reused-key/8KB": {
+     "aws-lc-rs": 8551.0,
+     "rind": 8314.0
+    },
+    "hmac-sha256/*/1200B": {
+     "aws-lc-rs": 3528.0,
+     "rind": 3270.0
+    },
+    "hmac-sha256/*/1350B": {
+     "aws-lc-rs": 3946.0,
+     "rind": 3666.0
+    },
+    "hmac-sha256/*/16KB": {
+     "aws-lc-rs": 37430.0,
+     "rind": 37430.0
+    },
+    "hmac-sha256/*/32B": {
+     "aws-lc-rs": 946.5,
+     "rind": 655.5
+    },
+    "hmac-sha256/*/64B": {
+     "aws-lc-rs": 1094.0,
+     "rind": 801.0
+    },
+    "hmac-sha256/*/8KB": {
+     "aws-lc-rs": 19330.0,
+     "rind": 19170.0
+    },
+    "hmac-sha256/*/reused-key/1200B": {
+     "aws-lc-rs": 3066.0,
+     "rind": 2910.0
+    },
+    "hmac-sha256/*/reused-key/1350B": {
+     "aws-lc-rs": 3478.0,
+     "rind": 3360.0
+    },
+    "hmac-sha256/*/reused-key/16KB": {
+     "aws-lc-rs": 36660.0,
+     "rind": 37530.0
+    },
+    "hmac-sha256/*/reused-key/32B": {
+     "aws-lc-rs": 488.8,
+     "rind": 339.0
+    },
+    "hmac-sha256/*/reused-key/64B": {
+     "aws-lc-rs": 639.9,
+     "rind": 478.7
+    },
+    "hmac-sha256/*/reused-key/8KB": {
+     "aws-lc-rs": 18800.0,
+     "rind": 18840.0
+    },
+    "hmac-sha384/*/1200B": {
+     "aws-lc-rs": 3466.0,
+     "rind": 3165.0
+    },
+    "hmac-sha384/*/1350B": {
+     "aws-lc-rs": 3720.0,
+     "rind": 3396.0
+    },
+    "hmac-sha384/*/16KB": {
+     "aws-lc-rs": 31340.0,
+     "rind": 31410.0
+    },
+    "hmac-sha384/*/32B": {
+     "aws-lc-rs": 1338.0,
+     "rind": 1026.0
+    },
+    "hmac-sha384/*/64B": {
+     "aws-lc-rs": 1322.0,
+     "rind": 1012.0
+    },
+    "hmac-sha384/*/8KB": {
+     "aws-lc-rs": 16340.0,
+     "rind": 16280.0
+    },
+    "hmac-sha384/*/reused-key/1200B": {
+     "aws-lc-rs": 2795.0,
+     "rind": 2634.0
+    },
+    "hmac-sha384/*/reused-key/1350B": {
+     "aws-lc-rs": 3041.0,
+     "rind": 2881.0
+    },
+    "hmac-sha384/*/reused-key/16KB": {
+     "aws-lc-rs": 31020.0,
+     "rind": 30730.0
+    },
+    "hmac-sha384/*/reused-key/32B": {
+     "aws-lc-rs": 691.9,
+     "rind": 516.8
+    },
+    "hmac-sha384/*/reused-key/64B": {
+     "aws-lc-rs": 686.2,
+     "rind": 523.8
+    },
+    "hmac-sha384/*/reused-key/8KB": {
+     "aws-lc-rs": 15850.0,
+     "rind": 15680.0
+    },
+    "jwt-eddsa-sign/*/load": {
+     "aws-lc-rs": 10030.0,
+     "rind": 9786.0
+    },
+    "jwt-eddsa-sign/*/token": {
+     "aws-lc-rs": 21230.0,
+     "rind": 20290.0
+    },
+    "jwt-eddsa-verify/*/load": {
+     "aws-lc-rs": 61.42,
+     "rind": 4974.0
+    },
+    "jwt-eddsa-verify/*/token": {
+     "aws-lc-rs": 49950.0,
+     "rind": 50510.0
+    },
+    "jwt-es256-sign/*/load": {
+     "aws-lc-rs": 12900.0,
+     "rind": 16690.0
+    },
+    "jwt-es256-sign/*/token": {
+     "aws-lc-rs": 33330.0,
+     "rind": 36330.0
+    },
+    "jwt-es256-verify/*/load": {
+     "aws-lc-rs": 74.31,
+     "rind": 5382.0
+    },
+    "jwt-es256-verify/*/token": {
+     "aws-lc-rs": 64090.0,
+     "rind": 67360.0
+    },
+    "jwt-es384-sign/*/load": {
+     "aws-lc-rs": 64310.0,
+     "rind": 54610.0
+    },
+    "jwt-es384-sign/*/token": {
+     "aws-lc-rs": 168900.0,
+     "rind": 114300.0
+    },
+    "jwt-es384-verify/*/load": {
+     "aws-lc-rs": 82.7,
+     "rind": 10090.0
+    },
+    "jwt-es384-verify/*/token": {
+     "aws-lc-rs": 251200.0,
+     "rind": 210000.0
+    },
+    "jwt-hs256-sign/*/load": {
+     "aws-lc-rs": 525.8,
+     "rind": 343.8
+    },
+    "jwt-hs256-sign/*/token": {
+     "aws-lc-rs": 1336.0,
+     "rind": 978.6
+    },
+    "jwt-hs256-verify/*/load": {
+     "aws-lc-rs": 527.9,
+     "rind": 347.0
+    },
+    "jwt-hs256-verify/*/token": {
+     "aws-lc-rs": 1300.0,
+     "rind": 988.4
+    },
+    "jwt-rs256-sign/*/load": {
+     "aws-lc-rs": 269.9,
+     "rind": 74030.0
+    },
+    "jwt-rs256-sign/*/token": {
+     "aws-lc-rs": 1402000.0,
+     "rind": 951400.0
+    },
+    "jwt-rs256-verify/*/load": {
+     "aws-lc-rs": 145.8,
+     "rind": 2880.0
+    },
+    "jwt-rs256-verify/*/token": {
+     "aws-lc-rs": 28080.0,
+     "rind": 26060.0
+    },
+    "mlkem768-combined/*": {
+     "aws-lc-rs": 108100.0,
+     "rind": 84060.0
+    },
+    "mlkem768-decaps/*": {
+     "aws-lc-rs": 39520.0,
+     "rind": 22680.0
+    },
+    "mlkem768-encaps/*": {
+     "aws-lc-rs": 33330.0,
+     "rind": 29260.0
+    },
+    "mlkem768-keygen/*": {
+     "aws-lc-rs": 32910.0,
+     "rind": 29570.0
+    },
+    "p256-ecdh/*": {
+     "aws-lc-rs": 72870.0,
+     "rind": 70050.0
+    },
+    "p256-ecdsa-sign/*": {
+     "aws-lc-rs": 20220.0,
+     "rind": 19200.0
+    },
+    "p256-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 62140.0,
+     "rind": 60400.0
+    },
+    "p256-ecdsa-verify/*": {
+     "aws-lc-rs": 63570.0,
+     "rind": 67660.0
+    },
+    "p256-keygen/*": {
+     "aws-lc-rs": 11810.0,
+     "rind": 11730.0
+    },
+    "p384-ecdh/*": {
+     "aws-lc-rs": 250000.0,
+     "rind": 229700.0
+    },
+    "p384-ecdsa-sign/*": {
+     "aws-lc-rs": 102400.0,
+     "rind": 58650.0
+    },
+    "p384-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 252600.0,
+     "rind": 197200.0
+    },
+    "p384-ecdsa-verify/*": {
+     "aws-lc-rs": 254900.0,
+     "rind": 212500.0
+    },
+    "p384-keygen/*": {
+     "aws-lc-rs": 64200.0,
+     "rind": 46630.0
+    },
+    "p521-ecdh/*": {
+     "aws-lc-rs": 447200.0,
+     "rind": 422000.0
+    },
+    "p521-ecdsa-sign/*": {
+     "aws-lc-rs": 208000.0,
+     "rind": 103600.0
+    },
+    "p521-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 460500.0,
+     "rind": 351000.0
+    },
+    "p521-ecdsa-verify/*": {
+     "aws-lc-rs": 462100.0,
+     "rind": 371700.0
+    },
+    "p521-keygen/*": {
+     "aws-lc-rs": 108500.0,
+     "rind": 88120.0
+    },
+    "pbkdf2-sha1/*": {
+     "aws-lc-rs": 220300.0,
+     "rind": 186100.0
+    },
+    "pbkdf2-sha256/*": {
+     "aws-lc-rs": 371900.0,
+     "rind": 348000.0
+    },
+    "pbkdf2-sha384/*": {
+     "aws-lc-rs": 587600.0,
+     "rind": 530400.0
+    },
+    "pbkdf2-sha512/*": {
+     "aws-lc-rs": 591200.0,
+     "rind": 516500.0
+    },
+    "quic-header-protection/aes128/*": {
+     "aws-lc-rs": 8.632,
+     "rind": 5.844
+    },
+    "quic-header-protection/aes256/*": {
+     "aws-lc-rs": 11.55,
+     "rind": 8.569
+    },
+    "quic-header-protection/chacha20/*": {
+     "aws-lc-rs": 117.7,
+     "rind": 92.82
+    },
+    "rsa1024-pkcs1-sha1-verify/*": {
+     "aws-lc-rs": 9346.0,
+     "rind": 7273.0
+    },
+    "rsa2048-key-generation/*": {
+     "aws-lc-rs": 86260000.0,
+     "rind": 62700000.0
+    },
+    "rsa2048-load/*": {
+     "aws-lc-rs": 188400.0,
+     "rind": 73870.0
+    },
+    "rsa2048-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 902800.0,
+     "rind": 880900.0
+    },
+    "rsa2048-pkcs1-sha256-verify-parsed/*": {
+     "aws-lc-rs": 24720.0,
+     "rind": 22660.0
+    },
+    "rsa2048-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 27750.0,
+     "rind": 25180.0
+    },
+    "rsa2048-pss-sha256-sign/*": {
+     "aws-lc-rs": 900500.0,
+     "rind": 884900.0
+    },
+    "rsa2048-pss-sha256-verify/*": {
+     "aws-lc-rs": 29540.0,
+     "rind": 26850.0
+    },
+    "rsa2056-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1453000.0,
+     "rind": 1485000.0
+    },
+    "rsa2056-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 39710.0,
+     "rind": 36180.0
+    },
+    "rsa2560-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 2204000.0,
+     "rind": 2265000.0
+    },
+    "rsa3072-key-generation/*": {
+     "aws-lc-rs": 372700000.0,
+     "rind": 298400000.0
+    },
+    "rsa3072-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 2821000.0,
+     "rind": 2796000.0
+    },
+    "rsa3072-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 57790.0,
+     "rind": 54250.0
+    },
+    "rsa4096-key-generation/*": {
+     "aws-lc-rs": 694500000.0,
+     "rind": 1124000000.0
+    },
+    "rsa4096-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 6510000.0,
+     "rind": 6432000.0
+    },
+    "rsa4096-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 99790.0,
+     "rind": 95160.0
+    },
+    "rsa6144-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 21510000.0,
+     "rind": 21010000.0
+    },
+    "rsa6144-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 219700.0,
+     "rind": 209900.0
+    },
+    "rsa8192-load/*": {
+     "aws-lc-rs": 2405000.0,
+     "rind": 999100.0
+    },
+    "rsa8192-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 50230000.0,
+     "rind": 48980000.0
+    },
+    "rsa8192-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 385000.0,
+     "rind": 371900.0
+    },
+    "rustls-bulk/aes128-gcm/*": {
+     "aws-lc-rs": 665000.0,
+     "rind": 673300.0
+    },
+    "rustls-bulk/aes256-gcm/*": {
+     "aws-lc-rs": 703800.0,
+     "rind": 713100.0
+    },
+    "rustls-bulk/chacha20poly1305/*": {
+     "aws-lc-rs": 1731000.0,
+     "rind": 1733000.0
+    },
+    "rustls-full-handshake-group/secp256r1/*": {
+     "aws-lc-rs": 503800.0,
+     "rind": 455700.0
+    },
+    "rustls-full-handshake-group/secp384r1/*": {
+     "aws-lc-rs": 868500.0,
+     "rind": 776600.0
+    },
+    "rustls-full-handshake-group/secp521r1/*": {
+     "rind": 1175000.0
+    },
+    "rustls-full-handshake-group/x25519/*": {
+     "aws-lc-rs": 442800.0,
+     "rind": 401200.0
+    },
+    "rustls-full-handshake-group/x25519mlkem768/*": {
+     "aws-lc-rs": 576900.0,
+     "rind": 507100.0
+    },
+    "rustls-full-handshake-key/ecdsa-p256/*": {
+     "aws-lc-rs": 442400.0,
+     "rind": 400800.0
+    },
+    "rustls-full-handshake-key/ecdsa-p384/*": {
+     "aws-lc-rs": 1101000.0,
+     "rind": 880800.0
+    },
+    "rustls-full-handshake-key/ecdsa-p521/*": {
+     "aws-lc-rs": 1853000.0,
+     "rind": 1414000.0
+    },
+    "rustls-full-handshake-key/ed25519/*": {
+     "aws-lc-rs": 382200.0,
+     "rind": 334400.0
+    },
+    "rustls-full-handshake-key/rsa-2048/*": {
+     "aws-lc-rs": 1232000.0,
+     "rind": 1152000.0
+    },
+    "rustls-full-handshake-key/rsa-3072/*": {
+     "aws-lc-rs": 3242000.0,
+     "rind": 3140000.0
+    },
+    "rustls-full-handshake-key/rsa-4096/*": {
+     "aws-lc-rs": 6988000.0,
+     "rind": 6864000.0
+    },
+    "rustls-resumed-handshake/secp256r1/*": {
+     "aws-lc-rs": 286000.0,
+     "rind": 224300.0
+    },
+    "rustls-resumed-handshake/secp384r1/*": {
+     "aws-lc-rs": 646700.0,
+     "rind": 543900.0
+    },
+    "rustls-resumed-handshake/secp521r1/*": {
+     "rind": 938200.0
+    },
+    "rustls-resumed-handshake/x25519/*": {
+     "aws-lc-rs": 224700.0,
+     "rind": 166900.0
+    },
+    "rustls-resumed-handshake/x25519mlkem768/*": {
+     "aws-lc-rs": 359700.0,
+     "rind": 276300.0
+    },
+    "sha1/*/1200B": {
+     "aws-lc-rs": 1295.0,
+     "rind": 1256.0
+    },
+    "sha1/*/1350B": {
+     "aws-lc-rs": 1493.0,
+     "rind": 1459.0
+    },
+    "sha1/*/16KB": {
+     "aws-lc-rs": 16410.0,
+     "rind": 16680.0
+    },
+    "sha1/*/32B": {
+     "aws-lc-rs": 152.5,
+     "rind": 106.7
+    },
+    "sha1/*/64B": {
+     "aws-lc-rs": 218.4,
+     "rind": 168.4
+    },
+    "sha1/*/8KB": {
+     "aws-lc-rs": 8328.0,
+     "rind": 8239.0
+    },
+    "sha256-updates/*/16B": {
+     "aws-lc-rs": 11180.0,
+     "rind": 10820.0
+    },
+    "sha256-updates/*/1B": {
+     "aws-lc-rs": 42050.0,
+     "rind": 32690.0
+    },
+    "sha256/*/1200B": {
+     "aws-lc-rs": 2800.0,
+     "rind": 2784.0
+    },
+    "sha256/*/1350B": {
+     "aws-lc-rs": 3241.0,
+     "rind": 3240.0
+    },
+    "sha256/*/16KB": {
+     "aws-lc-rs": 36990.0,
+     "rind": 37340.0
+    },
+    "sha256/*/32B": {
+     "aws-lc-rs": 219.7,
+     "rind": 187.7
+    },
+    "sha256/*/64B": {
+     "aws-lc-rs": 366.9,
+     "rind": 332.2
+    },
+    "sha256/*/8KB": {
+     "aws-lc-rs": 18520.0,
+     "rind": 18720.0
+    },
+    "sha512-256/*/1200B": {
+     "aws-lc-rs": 2478.0,
+     "rind": 2429.0
+    },
+    "sha512-256/*/1350B": {
+     "aws-lc-rs": 2725.0,
+     "rind": 2672.0
+    },
+    "sha512-256/*/16KB": {
+     "aws-lc-rs": 30410.0,
+     "rind": 30240.0
+    },
+    "sha512-256/*/32B": {
+     "aws-lc-rs": 341.1,
+     "rind": 297.6
+    },
+    "sha512-256/*/64B": {
+     "aws-lc-rs": 340.8,
+     "rind": 297.3
+    },
+    "sha512-256/*/8KB": {
+     "aws-lc-rs": 15440.0,
+     "rind": 15270.0
+    },
+    "sha512/*/1200B": {
+     "aws-lc-rs": 2476.0,
+     "rind": 2406.0
+    },
+    "sha512/*/1350B": {
+     "aws-lc-rs": 2709.0,
+     "rind": 2653.0
+    },
+    "sha512/*/16KB": {
+     "aws-lc-rs": 30680.0,
+     "rind": 30490.0
+    },
+    "sha512/*/32B": {
+     "aws-lc-rs": 341.5,
+     "rind": 281.9
+    },
+    "sha512/*/64B": {
+     "aws-lc-rs": 342.1,
+     "rind": 280.7
+    },
+    "sha512/*/8KB": {
+     "aws-lc-rs": 15540.0,
+     "rind": 15450.0
+    },
+    "x25519-ecdh/*": {
+     "aws-lc-rs": 43810.0,
+     "rind": 43430.0
+    },
+    "x25519-keygen/*": {
+     "aws-lc-rs": 9978.0,
+     "rind": 9907.0
+    },
+    "xchacha20poly1305/*/1200B": {
+     "aws-lc-rs": 1739.0,
+     "rind": 1716.0
+    },
+    "xchacha20poly1305/*/1350B": {
+     "aws-lc-rs": 1867.0,
+     "rind": 1841.0
+    },
+    "xchacha20poly1305/*/16KB": {
+     "aws-lc-rs": 12900.0,
+     "rind": 12940.0
+    },
+    "xchacha20poly1305/*/32B": {
+     "aws-lc-rs": 825.5,
+     "rind": 821.2
+    }
+   }
+  },
+  {
+   "target": "x86_64-unknown-linux-gnu",
+   "portable": true,
+   "tier": "no-avx",
+   "cpu": "AMD EPYC 7763 64-Core Processor",
+   "benchmarks": {
+    "aes128-ctr/*/1200B": {
+     "aws-lc-rs": 191.0,
+     "rind": 163.7
+    },
+    "aes128-ctr/*/1350B": {
+     "aws-lc-rs": 229.5,
+     "rind": 203.1
+    },
+    "aes128-ctr/*/16KB": {
+     "aws-lc-rs": 1982.0,
+     "rind": 1955.0
+    },
+    "aes128-ctr/*/32B": {
+     "aws-lc-rs": 51.4,
+     "rind": 23.45
+    },
+    "aes128-gcm-open/*/1200B": {
+     "aws-lc-rs": 479.6,
+     "rind": 354.7
+    },
+    "aes128-gcm-open/*/1350B": {
+     "aws-lc-rs": 550.3,
+     "rind": 405.8
+    },
+    "aes128-gcm-open/*/16KB": {
+     "aws-lc-rs": 4823.0,
+     "rind": 4073.0
+    },
+    "aes128-gcm-open/*/32B": {
+     "aws-lc-rs": 133.3,
+     "rind": 68.86
+    },
+    "aes128-gcm/*/1200B": {
+     "aws-lc-rs": 449.1,
+     "rind": 331.9
+    },
+    "aes128-gcm/*/1350B": {
+     "aws-lc-rs": 506.1,
+     "rind": 389.0
+    },
+    "aes128-gcm/*/16KB": {
+     "aws-lc-rs": 4606.0,
+     "rind": 3917.0
+    },
+    "aes128-gcm/*/32B": {
+     "aws-lc-rs": 130.6,
+     "rind": 55.21
+    },
+    "aes128-gcm/*/key": {
+     "aws-lc-rs": 146.7,
+     "rind": 124.7
+    },
+    "aes256-ctr/*/1200B": {
+     "aws-lc-rs": 222.8,
+     "rind": 193.9
+    },
+    "aes256-ctr/*/1350B": {
+     "aws-lc-rs": 269.9,
+     "rind": 242.4
+    },
+    "aes256-ctr/*/16KB": {
+     "aws-lc-rs": 2324.0,
+     "rind": 2306.0
+    },
+    "aes256-ctr/*/32B": {
+     "aws-lc-rs": 56.82,
+     "rind": 28.51
+    },
+    "aes256-gcm-open/*/1200B": {
+     "aws-lc-rs": 515.8,
+     "rind": 403.8
+    },
+    "aes256-gcm-open/*/1350B": {
+     "aws-lc-rs": 593.1,
+     "rind": 459.4
+    },
+    "aes256-gcm-open/*/16KB": {
+     "aws-lc-rs": 5176.0,
+     "rind": 4632.0
+    },
+    "aes256-gcm-open/*/32B": {
+     "aws-lc-rs": 143.2,
+     "rind": 75.77
+    },
+    "aes256-gcm/*/1200B": {
+     "aws-lc-rs": 486.1,
+     "rind": 387.3
+    },
+    "aes256-gcm/*/1350B": {
+     "aws-lc-rs": 548.3,
+     "rind": 443.6
+    },
+    "aes256-gcm/*/16KB": {
+     "aws-lc-rs": 4970.0,
+     "rind": 4537.0
+    },
+    "aes256-gcm/*/32B": {
+     "aws-lc-rs": 141.4,
+     "rind": 64.17
+    },
+    "aes256-gcm/*/key": {
+     "aws-lc-rs": 155.9,
+     "rind": 127.7
+    },
+    "quic-header-protection/aes128/*": {
+     "aws-lc-rs": 9.896,
+     "rind": 5.923
+    },
+    "quic-header-protection/aes256/*": {
+     "aws-lc-rs": 12.67,
+     "rind": 8.717
+    },
+    "quic-header-protection/chacha20/*": {
+     "aws-lc-rs": 119.9,
+     "rind": 92.8
+    },
+    "sha1/*/1200B": {
+     "aws-lc-rs": 1302.0,
+     "rind": 1259.0
+    },
+    "sha1/*/1350B": {
+     "aws-lc-rs": 1497.0,
+     "rind": 1457.0
+    },
+    "sha1/*/16KB": {
+     "aws-lc-rs": 16510.0,
+     "rind": 16450.0
+    },
+    "sha1/*/32B": {
+     "aws-lc-rs": 154.2,
+     "rind": 106.0
+    },
+    "sha1/*/64B": {
+     "aws-lc-rs": 219.8,
+     "rind": 168.5
+    },
+    "sha1/*/8KB": {
+     "aws-lc-rs": 8315.0,
+     "rind": 8271.0
+    },
+    "sha256-updates/*/16B": {
+     "aws-lc-rs": 11170.0,
+     "rind": 10740.0
+    },
+    "sha256-updates/*/1B": {
+     "aws-lc-rs": 38970.0,
+     "rind": 34080.0
+    },
+    "sha256/*/1200B": {
+     "aws-lc-rs": 2809.0,
+     "rind": 2808.0
+    },
+    "sha256/*/1350B": {
+     "aws-lc-rs": 3252.0,
+     "rind": 3247.0
+    },
+    "sha256/*/16KB": {
+     "aws-lc-rs": 36990.0,
+     "rind": 37340.0
+    },
+    "sha256/*/32B": {
+     "aws-lc-rs": 223.1,
+     "rind": 189.8
+    },
+    "sha256/*/64B": {
+     "aws-lc-rs": 368.4,
+     "rind": 332.7
+    },
+    "sha256/*/8KB": {
+     "aws-lc-rs": 18610.0,
+     "rind": 18770.0
+    },
+    "sha512-256/*/1200B": {
+     "aws-lc-rs": 2481.0,
+     "rind": 2433.0
+    },
+    "sha512-256/*/1350B": {
+     "aws-lc-rs": 2719.0,
+     "rind": 2681.0
+    },
+    "sha512-256/*/16KB": {
+     "aws-lc-rs": 30790.0,
+     "rind": 30720.0
+    },
+    "sha512-256/*/32B": {
+     "aws-lc-rs": 337.8,
+     "rind": 300.9
+    },
+    "sha512-256/*/64B": {
+     "aws-lc-rs": 338.5,
+     "rind": 297.9
+    },
+    "sha512-256/*/8KB": {
+     "aws-lc-rs": 15500.0,
+     "rind": 15550.0
+    },
+    "sha512/*/1200B": {
+     "aws-lc-rs": 2489.0,
+     "rind": 2422.0
+    },
+    "sha512/*/1350B": {
+     "aws-lc-rs": 2717.0,
+     "rind": 2664.0
+    },
+    "sha512/*/16KB": {
+     "aws-lc-rs": 30710.0,
+     "rind": 30650.0
+    },
+    "sha512/*/32B": {
+     "aws-lc-rs": 340.5,
+     "rind": 282.1
+    },
+    "sha512/*/64B": {
+     "aws-lc-rs": 341.1,
+     "rind": 282.9
+    },
+    "sha512/*/8KB": {
+     "aws-lc-rs": 15530.0,
+     "rind": 15440.0
+    }
+   }
+  },
+  {
+   "target": "x86_64-unknown-linux-gnu",
+   "portable": true,
+   "tier": "no-aes",
+   "cpu": "AMD EPYC 9V74 80-Core Processor",
+   "benchmarks": {
+    "aes128-ctr/*/1200B": {
+     "aws-lc-rs": 2523.0,
+     "rind": 2427.0
+    },
+    "aes128-ctr/*/1350B": {
+     "aws-lc-rs": 2773.0,
+     "rind": 2756.0
+    },
+    "aes128-ctr/*/16KB": {
+     "aws-lc-rs": 33840.0,
+     "rind": 31320.0
+    },
+    "aes128-ctr/*/32B": {
+     "aws-lc-rs": 101.5,
+     "rind": 80.4
+    },
+    "aes128-gcm-open/*/1200B": {
+     "aws-lc-rs": 4982.0,
+     "rind": 4964.0
+    },
+    "aes128-gcm-open/*/1350B": {
+     "aws-lc-rs": 5644.0,
+     "rind": 5665.0
+    },
+    "aes128-gcm-open/*/16KB": {
+     "aws-lc-rs": 66680.0,
+     "rind": 66730.0
+    },
+    "aes128-gcm-open/*/32B": {
+     "aws-lc-rs": 330.9,
+     "rind": 318.2
+    },
+    "aes128-gcm/*/1200B": {
+     "aws-lc-rs": 4920.0,
+     "rind": 4903.0
+    },
+    "aes128-gcm/*/1350B": {
+     "aws-lc-rs": 5560.0,
+     "rind": 5583.0
+    },
+    "aes128-gcm/*/16KB": {
+     "aws-lc-rs": 64310.0,
+     "rind": 64690.0
+    },
+    "aes128-gcm/*/32B": {
+     "aws-lc-rs": 321.3,
+     "rind": 301.6
+    },
+    "aes128-gcm/*/key": {
+     "aws-lc-rs": 240.8,
+     "rind": 231.7
+    },
+    "aes256-ctr/*/1200B": {
+     "aws-lc-rs": 3457.0,
+     "rind": 3478.0
+    },
+    "aes256-ctr/*/1350B": {
+     "aws-lc-rs": 3799.0,
+     "rind": 3853.0
+    },
+    "aes256-ctr/*/16KB": {
+     "aws-lc-rs": 49940.0,
+     "rind": 48530.0
+    },
+    "aes256-ctr/*/32B": {
+     "aws-lc-rs": 121.6,
+     "rind": 100.1
+    },
+    "aes256-gcm-open/*/1200B": {
+     "aws-lc-rs": 6482.0,
+     "rind": 6344.0
+    },
+    "aes256-gcm-open/*/1350B": {
+     "aws-lc-rs": 7149.0,
+     "rind": 7118.0
+    },
+    "aes256-gcm-open/*/16KB": {
+     "aws-lc-rs": 81250.0,
+     "rind": 82920.0
+    },
+    "aes256-gcm-open/*/32B": {
+     "aws-lc-rs": 405.6,
+     "rind": 380.2
+    },
+    "aes256-gcm/*/1200B": {
+     "aws-lc-rs": 6009.0,
+     "rind": 5939.0
+    },
+    "aes256-gcm/*/1350B": {
+     "aws-lc-rs": 6685.0,
+     "rind": 6717.0
+    },
+    "aes256-gcm/*/16KB": {
+     "aws-lc-rs": 77730.0,
+     "rind": 78440.0
+    },
+    "aes256-gcm/*/32B": {
+     "aws-lc-rs": 366.8,
+     "rind": 350.3
+    },
+    "aes256-gcm/*/key": {
+     "aws-lc-rs": 274.9,
+     "rind": 264.6
+    },
+    "chacha20poly1305/*/1200B": {
+     "aws-lc-rs": 1349.0,
+     "rind": 1459.0
+    },
+    "chacha20poly1305/*/1350B": {
+     "aws-lc-rs": 1539.0,
+     "rind": 1670.0
+    },
+    "chacha20poly1305/*/16KB": {
+     "aws-lc-rs": 14310.0,
+     "rind": 16800.0
+    },
+    "chacha20poly1305/*/32B": {
+     "aws-lc-rs": 390.7,
+     "rind": 287.0
+    },
+    "quic-header-protection/aes128/*": {
+     "aws-lc-rs": 49.91,
+     "rind": 52.75
+    },
+    "quic-header-protection/aes256/*": {
+     "aws-lc-rs": 72.32,
+     "rind": 75.05
+    },
+    "quic-header-protection/chacha20/*": {
+     "aws-lc-rs": 115.0,
+     "rind": 87.12
+    },
+    "xchacha20poly1305/*/1200B": {
+     "aws-lc-rs": 2044.0,
+     "rind": 2087.0
+    },
+    "xchacha20poly1305/*/1350B": {
+     "aws-lc-rs": 2181.0,
+     "rind": 2344.0
+    },
+    "xchacha20poly1305/*/16KB": {
+     "aws-lc-rs": 15400.0,
+     "rind": 18050.0
+    },
+    "xchacha20poly1305/*/32B": {
+     "aws-lc-rs": 1026.0,
+     "rind": 968.6
+    }
+   }
+  },
+  {
+   "target": "x86_64-unknown-linux-gnu",
+   "portable": true,
+   "tier": "no-ssse3",
+   "cpu": "AMD EPYC 9V74 80-Core Processor",
+   "benchmarks": {
+    "aes128-ctr/*/1200B": {
+     "aws-lc-rs": 3889.0,
+     "rind": 2982.0
+    },
+    "aes128-ctr/*/1350B": {
+     "aws-lc-rs": 4730.0,
+     "rind": 3650.0
+    },
+    "aes128-ctr/*/16KB": {
+     "aws-lc-rs": 48720.0,
+     "rind": 37140.0
+    },
+    "aes128-ctr/*/32B": {
+     "aws-lc-rs": 477.9,
+     "rind": 367.0
+    },
+    "aes128-gcm-open/*/1200B": {
+     "aws-lc-rs": 8006.0,
+     "rind": 6295.0
+    },
+    "aes128-gcm-open/*/1350B": {
+     "aws-lc-rs": 9252.0,
+     "rind": 7346.0
+    },
+    "aes128-gcm-open/*/16KB": {
+     "aws-lc-rs": 96970.0,
+     "rind": 75370.0
+    },
+    "aes128-gcm-open/*/32B": {
+     "aws-lc-rs": 1202.0,
+     "rind": 943.3
+    },
+    "aes128-gcm/*/1200B": {
+     "aws-lc-rs": 7921.0,
+     "rind": 6276.0
+    },
+    "aes128-gcm/*/1350B": {
+     "aws-lc-rs": 9223.0,
+     "rind": 7272.0
+    },
+    "aes128-gcm/*/16KB": {
+     "aws-lc-rs": 96500.0,
+     "rind": 75060.0
+    },
+    "aes128-gcm/*/32B": {
+     "aws-lc-rs": 1190.0,
+     "rind": 932.2
+    },
+    "aes128-gcm/*/key": {
+     "aws-lc-rs": 788.3,
+     "rind": 650.2
+    },
+    "aes256-ctr/*/1200B": {
+     "aws-lc-rs": 5233.0,
+     "rind": 4040.0
+    },
+    "aes256-ctr/*/1350B": {
+     "aws-lc-rs": 6357.0,
+     "rind": 4926.0
+    },
+    "aes256-ctr/*/16KB": {
+     "aws-lc-rs": 65960.0,
+     "rind": 50540.0
+    },
+    "aes256-ctr/*/32B": {
+     "aws-lc-rs": 633.2,
+     "rind": 488.8
+    },
+    "aes256-gcm-open/*/1200B": {
+     "aws-lc-rs": 9508.0,
+     "rind": 7490.0
+    },
+    "aes256-gcm-open/*/1350B": {
+     "aws-lc-rs": 11080.0,
+     "rind": 8751.0
+    },
+    "aes256-gcm-open/*/16KB": {
+     "aws-lc-rs": 114300.0,
+     "rind": 88980.0
+    },
+    "aes256-gcm-open/*/32B": {
+     "aws-lc-rs": 1529.0,
+     "rind": 1185.0
+    },
+    "aes256-gcm/*/1200B": {
+     "aws-lc-rs": 9449.0,
+     "rind": 7459.0
+    },
+    "aes256-gcm/*/1350B": {
+     "aws-lc-rs": 11030.0,
+     "rind": 8746.0
+    },
+    "aes256-gcm/*/16KB": {
+     "aws-lc-rs": 114000.0,
+     "rind": 88650.0
+    },
+    "aes256-gcm/*/32B": {
+     "aws-lc-rs": 1518.0,
+     "rind": 1193.0
+    },
+    "aes256-gcm/*/key": {
+     "aws-lc-rs": 1173.0,
+     "rind": 843.4
+    },
+    "chacha20poly1305/*/1200B": {
+     "aws-lc-rs": 2412.0,
+     "rind": 2419.0
+    },
+    "chacha20poly1305/*/1350B": {
+     "aws-lc-rs": 2746.0,
+     "rind": 2761.0
+    },
+    "chacha20poly1305/*/16KB": {
+     "aws-lc-rs": 29330.0,
+     "rind": 30690.0
+    },
+    "chacha20poly1305/*/32B": {
+     "aws-lc-rs": 366.3,
+     "rind": 265.7
+    },
+    "quic-header-protection/aes128/*": {
+     "aws-lc-rs": 429.6,
+     "rind": 344.8
+    },
+    "quic-header-protection/aes256/*": {
+     "aws-lc-rs": 589.4,
+     "rind": 463.9
+    },
+    "quic-header-protection/chacha20/*": {
+     "aws-lc-rs": 112.5,
+     "rind": 83.42
+    },
+    "sha1/*/1200B": {
+     "aws-lc-rs": 1429.0,
+     "rind": 1406.0
+    },
+    "sha1/*/1350B": {
+     "aws-lc-rs": 1668.0,
+     "rind": 1631.0
+    },
+    "sha1/*/16KB": {
+     "aws-lc-rs": 18760.0,
+     "rind": 18750.0
+    },
+    "sha1/*/32B": {
+     "aws-lc-rs": 122.7,
+     "rind": 105.5
+    },
+    "sha1/*/64B": {
+     "aws-lc-rs": 200.8,
+     "rind": 180.1
+    },
+    "sha1/*/8KB": {
+     "aws-lc-rs": 9392.0,
+     "rind": 9419.0
+    },
+    "sha256-updates/*/16B": {
+     "aws-lc-rs": 12060.0,
+     "rind": 11680.0
+    },
+    "sha256-updates/*/1B": {
+     "aws-lc-rs": 31190.0,
+     "rind": 27380.0
+    },
+    "sha256/*/1200B": {
+     "aws-lc-rs": 3180.0,
+     "rind": 3162.0
+    },
+    "sha256/*/1350B": {
+     "aws-lc-rs": 3674.0,
+     "rind": 3661.0
+    },
+    "sha256/*/16KB": {
+     "aws-lc-rs": 42340.0,
+     "rind": 42350.0
+    },
+    "sha256/*/32B": {
+     "aws-lc-rs": 229.2,
+     "rind": 202.6
+    },
+    "sha256/*/64B": {
+     "aws-lc-rs": 385.7,
+     "rind": 371.5
+    },
+    "sha256/*/8KB": {
+     "aws-lc-rs": 21270.0,
+     "rind": 21270.0
+    },
+    "sha512-256/*/1200B": {
+     "aws-lc-rs": 2145.0,
+     "rind": 2141.0
+    },
+    "sha512-256/*/1350B": {
+     "aws-lc-rs": 2364.0,
+     "rind": 2352.0
+    },
+    "sha512-256/*/16KB": {
+     "aws-lc-rs": 26960.0,
+     "rind": 26970.0
+    },
+    "sha512-256/*/32B": {
+     "aws-lc-rs": 266.4,
+     "rind": 260.1
+    },
+    "sha512-256/*/64B": {
+     "aws-lc-rs": 265.3,
+     "rind": 261.5
+    },
+    "sha512-256/*/8KB": {
+     "aws-lc-rs": 13600.0,
+     "rind": 13610.0
+    },
+    "sha512/*/1200B": {
+     "aws-lc-rs": 2147.0,
+     "rind": 2122.0
+    },
+    "sha512/*/1350B": {
+     "aws-lc-rs": 2356.0,
+     "rind": 2338.0
+    },
+    "sha512/*/16KB": {
+     "aws-lc-rs": 27330.0,
+     "rind": 26940.0
+    },
+    "sha512/*/32B": {
+     "aws-lc-rs": 267.8,
+     "rind": 246.2
+    },
+    "sha512/*/64B": {
+     "aws-lc-rs": 268.2,
+     "rind": 246.8
+    },
+    "sha512/*/8KB": {
+     "aws-lc-rs": 13610.0,
+     "rind": 13590.0
+    },
+    "xchacha20poly1305/*/1200B": {
+     "aws-lc-rs": 3097.0,
+     "rind": 3089.0
+    },
+    "xchacha20poly1305/*/1350B": {
+     "aws-lc-rs": 3422.0,
+     "rind": 3425.0
+    },
+    "xchacha20poly1305/*/16KB": {
+     "aws-lc-rs": 29980.0,
+     "rind": 31390.0
+    },
+    "xchacha20poly1305/*/32B": {
+     "aws-lc-rs": 1006.0,
+     "rind": 934.6
+    }
+   }
+  },
+  {
+   "target": "aarch64-unknown-linux-gnu",
+   "portable": false,
+   "tier": "",
+   "cpu": "Neoverse-N2",
+   "benchmarks": {
+    "aes128-ctr/*/1200B": {
+     "aws-lc-rs": 227.4,
+     "rind": 199.2
+    },
+    "aes128-ctr/*/1350B": {
+     "aws-lc-rs": 265.0,
+     "rind": 218.8
+    },
+    "aes128-ctr/*/16KB": {
+     "aws-lc-rs": 2733.0,
+     "rind": 2536.0
+    },
+    "aes128-ctr/*/32B": {
+     "aws-lc-rs": 35.78,
+     "rind": 23.46
+    },
+    "aes128-gcm-open/*/1200B": {
+     "aws-lc-rs": 419.0,
+     "rind": 362.6,
+     "ring": 418.1
+    },
+    "aes128-gcm-open/*/1350B": {
+     "aws-lc-rs": 477.4,
+     "rind": 410.5,
+     "ring": 473.5
+    },
+    "aes128-gcm-open/*/16KB": {
+     "aws-lc-rs": 4676.0,
+     "rind": 3983.0,
+     "ring": 4781.0
+    },
+    "aes128-gcm-open/*/32B": {
+     "aws-lc-rs": 86.14,
+     "rind": 79.0,
+     "ring": 86.08
+    },
+    "aes128-gcm/*/1200B": {
+     "aws-lc-rs": 421.0,
+     "rind": 346.6,
+     "ring": 399.0
+    },
+    "aes128-gcm/*/1350B": {
+     "aws-lc-rs": 477.7,
+     "rind": 403.6,
+     "ring": 463.7
+    },
+    "aes128-gcm/*/16KB": {
+     "aws-lc-rs": 4725.0,
+     "rind": 3775.0,
+     "ring": 4668.0
+    },
+    "aes128-gcm/*/32B": {
+     "aws-lc-rs": 83.74,
+     "rind": 79.06,
+     "ring": 73.91
+    },
+    "aes128-gcm/*/key": {
+     "aws-lc-rs": 122.2,
+     "rind": 112.2,
+     "ring": 133.4
+    },
+    "aes256-ctr/*/1200B": {
+     "aws-lc-rs": 274.0,
+     "rind": 246.8
+    },
+    "aes256-ctr/*/1350B": {
+     "aws-lc-rs": 319.6,
+     "rind": 272.1
+    },
+    "aes256-ctr/*/16KB": {
+     "aws-lc-rs": 3379.0,
+     "rind": 3140.0
+    },
+    "aes256-ctr/*/32B": {
+     "aws-lc-rs": 38.04,
+     "rind": 28.37
+    },
+    "aes256-gcm-open/*/1200B": {
+     "aws-lc-rs": 472.0,
+     "rind": 397.3,
+     "ring": 460.5
+    },
+    "aes256-gcm-open/*/1350B": {
+     "aws-lc-rs": 537.9,
+     "rind": 452.5,
+     "ring": 522.5
+    },
+    "aes256-gcm-open/*/16KB": {
+     "aws-lc-rs": 5380.0,
+     "rind": 4284.0,
+     "ring": 5341.0
+    },
+    "aes256-gcm-open/*/32B": {
+     "aws-lc-rs": 90.78,
+     "rind": 78.97,
+     "ring": 88.91
+    },
+    "aes256-gcm/*/1200B": {
+     "aws-lc-rs": 463.8,
+     "rind": 372.5,
+     "ring": 446.9
+    },
+    "aes256-gcm/*/1350B": {
+     "aws-lc-rs": 528.1,
+     "rind": 428.4,
+     "ring": 516.0
+    },
+    "aes256-gcm/*/16KB": {
+     "aws-lc-rs": 5285.0,
+     "rind": 4045.0,
+     "ring": 5277.0
+    },
+    "aes256-gcm/*/32B": {
+     "aws-lc-rs": 87.98,
+     "rind": 77.3,
+     "ring": 78.38
+    },
+    "aes256-gcm/*/key": {
+     "aws-lc-rs": 122.3,
+     "rind": 109.1,
+     "ring": 132.9
+    },
+    "chacha20poly1305/*/1200B": {
+     "aws-lc-rs": 1214.0,
+     "rind": 1202.0,
+     "ring": 1203.0
+    },
+    "chacha20poly1305/*/1350B": {
+     "aws-lc-rs": 1443.0,
+     "rind": 1430.0,
+     "ring": 1432.0
+    },
+    "chacha20poly1305/*/16KB": {
+     "aws-lc-rs": 14230.0,
+     "rind": 14220.0,
+     "ring": 14220.0
+    },
+    "chacha20poly1305/*/32B": {
+     "aws-lc-rs": 246.6,
+     "rind": 234.5,
+     "ring": 237.2
+    },
+    "ed25519-keygen/*": {
+     "aws-lc-rs": 10470.0,
+     "rind": 8399.0,
+     "ring": 17220.0
+    },
+    "ed25519-sign/*": {
+     "aws-lc-rs": 10390.0,
+     "rind": 7607.0,
+     "ring": 17230.0
+    },
+    "ed25519-verify/*": {
+     "aws-lc-rs": 54330.0,
+     "rind": 38980.0,
+     "ring": 43470.0
+    },
+    "hkdf-sha1/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 524.2,
+     "rind": 343.4,
+     "ring": 839.7
+    },
+    "hkdf-sha1/expand/*": {
+     "aws-lc-rs": 398.5,
+     "rind": 221.1,
+     "ring": 699.6
+    },
+    "hkdf-sha1/extract-expand/*": {
+     "aws-lc-rs": 708.6,
+     "rind": 477.6,
+     "ring": 1593.0
+    },
+    "hkdf-sha256/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 366.6,
+     "rind": 226.6,
+     "ring": 302.9
+    },
+    "hkdf-sha256/expand/*": {
+     "aws-lc-rs": 242.3,
+     "rind": 110.0,
+     "ring": 159.7
+    },
+    "hkdf-sha256/extract-expand/*": {
+     "aws-lc-rs": 539.9,
+     "rind": 343.0,
+     "ring": 475.6
+    },
+    "hkdf-sha384/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 674.5,
+     "rind": 374.4,
+     "ring": 437.6
+    },
+    "hkdf-sha384/expand/*": {
+     "aws-lc-rs": 550.5,
+     "rind": 255.4,
+     "ring": 298.2
+    },
+    "hkdf-sha384/extract-expand/*": {
+     "aws-lc-rs": 1148.0,
+     "rind": 963.5,
+     "ring": 1066.0
+    },
+    "hkdf-sha512/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 665.8,
+     "rind": 369.2,
+     "ring": 437.0
+    },
+    "hkdf-sha512/expand/*": {
+     "aws-lc-rs": 546.1,
+     "rind": 250.6,
+     "ring": 297.9
+    },
+    "hkdf-sha512/extract-expand/*": {
+     "aws-lc-rs": 1141.0,
+     "rind": 932.9,
+     "ring": 1066.0
+    },
+    "hmac-sha1/*/1200B": {
+     "aws-lc-rs": 909.3,
+     "rind": 731.7,
+     "ring": 2786.0
+    },
+    "hmac-sha1/*/1350B": {
+     "aws-lc-rs": 1004.0,
+     "rind": 827.3,
+     "ring": 3144.0
+    },
+    "hmac-sha1/*/16KB": {
+     "aws-lc-rs": 8213.0,
+     "rind": 8097.0,
+     "ring": 31320.0
+    },
+    "hmac-sha1/*/32B": {
+     "aws-lc-rs": 366.4,
+     "rind": 170.3,
+     "ring": 627.1
+    },
+    "hmac-sha1/*/64B": {
+     "aws-lc-rs": 392.1,
+     "rind": 198.3,
+     "ring": 742.8
+    },
+    "hmac-sha1/*/8KB": {
+     "aws-lc-rs": 4290.0,
+     "rind": 4136.0,
+     "ring": 15970.0
+    },
+    "hmac-sha1/*/reused-key/1200B": {
+     "aws-lc-rs": 760.2,
+     "rind": 648.5,
+     "ring": 2501.0
+    },
+    "hmac-sha1/*/reused-key/1350B": {
+     "aws-lc-rs": 853.4,
+     "rind": 744.1,
+     "ring": 2862.0
+    },
+    "hmac-sha1/*/reused-key/16KB": {
+     "aws-lc-rs": 8055.0,
+     "rind": 8013.0,
+     "ring": 31110.0
+    },
+    "hmac-sha1/*/reused-key/32B": {
+     "aws-lc-rs": 204.5,
+     "rind": 89.03,
+     "ring": 335.5
+    },
+    "hmac-sha1/*/reused-key/64B": {
+     "aws-lc-rs": 236.4,
+     "rind": 117.4,
+     "ring": 453.3
+    },
+    "hmac-sha1/*/reused-key/8KB": {
+     "aws-lc-rs": 4132.0,
+     "rind": 4053.0,
+     "ring": 15730.0
+    },
+    "hmac-sha256/*/1200B": {
+     "aws-lc-rs": 864.6,
+     "rind": 690.6,
+     "ring": 752.1
+    },
+    "hmac-sha256/*/1350B": {
+     "aws-lc-rs": 956.3,
+     "rind": 780.9,
+     "ring": 843.3
+    },
+    "hmac-sha256/*/16KB": {
+     "aws-lc-rs": 7888.0,
+     "rind": 7704.0,
+     "ring": 7772.0
+    },
+    "hmac-sha256/*/32B": {
+     "aws-lc-rs": 339.9,
+     "rind": 155.3,
+     "ring": 221.3
+    },
+    "hmac-sha256/*/64B": {
+     "aws-lc-rs": 369.5,
+     "rind": 183.1,
+     "ring": 245.6
+    },
+    "hmac-sha256/*/8KB": {
+     "aws-lc-rs": 4115.0,
+     "rind": 3933.0,
+     "ring": 3999.0
+    },
+    "hmac-sha256/*/reused-key/1200B": {
+     "aws-lc-rs": 722.4,
+     "rind": 618.8,
+     "ring": 673.6
+    },
+    "hmac-sha256/*/reused-key/1350B": {
+     "aws-lc-rs": 813.8,
+     "rind": 708.5,
+     "ring": 764.7
+    },
+    "hmac-sha256/*/reused-key/16KB": {
+     "aws-lc-rs": 7740.0,
+     "rind": 7632.0,
+     "ring": 7693.0
+    },
+    "hmac-sha256/*/reused-key/32B": {
+     "aws-lc-rs": 192.9,
+     "rind": 83.36,
+     "ring": 142.1
+    },
+    "hmac-sha256/*/reused-key/64B": {
+     "aws-lc-rs": 224.5,
+     "rind": 112.2,
+     "ring": 169.8
+    },
+    "hmac-sha256/*/reused-key/8KB": {
+     "aws-lc-rs": 3968.0,
+     "rind": 3860.0,
+     "ring": 3919.0
+    },
+    "hmac-sha384/*/1200B": {
+     "aws-lc-rs": 1509.0,
+     "rind": 1328.0,
+     "ring": 1379.0
+    },
+    "hmac-sha384/*/1350B": {
+     "aws-lc-rs": 1605.0,
+     "rind": 1424.0,
+     "ring": 1481.0
+    },
+    "hmac-sha384/*/16KB": {
+     "aws-lc-rs": 12990.0,
+     "rind": 12790.0,
+     "ring": 12850.0
+    },
+    "hmac-sha384/*/32B": {
+     "aws-lc-rs": 640.1,
+     "rind": 448.4,
+     "ring": 519.5
+    },
+    "hmac-sha384/*/64B": {
+     "aws-lc-rs": 640.9,
+     "rind": 448.7,
+     "ring": 517.6
+    },
+    "hmac-sha384/*/8KB": {
+     "aws-lc-rs": 6816.0,
+     "rind": 6622.0,
+     "ring": 6682.0
+    },
+    "hmac-sha384/*/reused-key/1200B": {
+     "aws-lc-rs": 1208.0,
+     "rind": 1112.0,
+     "ring": 1146.0
+    },
+    "hmac-sha384/*/reused-key/1350B": {
+     "aws-lc-rs": 1305.0,
+     "rind": 1209.0,
+     "ring": 1248.0
+    },
+    "hmac-sha384/*/reused-key/16KB": {
+     "aws-lc-rs": 12680.0,
+     "rind": 12580.0,
+     "ring": 12620.0
+    },
+    "hmac-sha384/*/reused-key/32B": {
+     "aws-lc-rs": 338.7,
+     "rind": 229.6,
+     "ring": 284.9
+    },
+    "hmac-sha384/*/reused-key/64B": {
+     "aws-lc-rs": 337.9,
+     "rind": 230.1,
+     "ring": 282.9
+    },
+    "hmac-sha384/*/reused-key/8KB": {
+     "aws-lc-rs": 6509.0,
+     "rind": 6409.0,
+     "ring": 6453.0
+    },
+    "jwt-eddsa-sign/*/load": {
+     "aws-lc-rs": 10210.0,
+     "rind": 7558.0
+    },
+    "jwt-eddsa-sign/*/token": {
+     "aws-lc-rs": 20990.0,
+     "rind": 15420.0
+    },
+    "jwt-eddsa-verify/*/load": {
+     "aws-lc-rs": 56.4,
+     "rind": 3307.0
+    },
+    "jwt-eddsa-verify/*/token": {
+     "aws-lc-rs": 54550.0,
+     "rind": 39240.0
+    },
+    "jwt-es256-sign/*/load": {
+     "aws-lc-rs": 10750.0,
+     "rind": 14400.0
+    },
+    "jwt-es256-sign/*/token": {
+     "aws-lc-rs": 27230.0,
+     "rind": 27900.0
+    },
+    "jwt-es256-verify/*/load": {
+     "aws-lc-rs": 76.59,
+     "rind": 4367.0
+    },
+    "jwt-es256-verify/*/token": {
+     "aws-lc-rs": 53270.0,
+     "rind": 53670.0
+    },
+    "jwt-es384-sign/*/load": {
+     "aws-lc-rs": 63720.0,
+     "rind": 49030.0
+    },
+    "jwt-es384-sign/*/token": {
+     "aws-lc-rs": 158600.0,
+     "rind": 96230.0
+    },
+    "jwt-es384-verify/*/load": {
+     "aws-lc-rs": 95.92,
+     "rind": 8988.0
+    },
+    "jwt-es384-verify/*/token": {
+     "aws-lc-rs": 253900.0,
+     "rind": 180700.0
+    },
+    "jwt-hs256-sign/*/load": {
+     "aws-lc-rs": 213.7,
+     "rind": 88.38
+    },
+    "jwt-hs256-sign/*/token": {
+     "aws-lc-rs": 484.2,
+     "rind": 250.9
+    },
+    "jwt-hs256-verify/*/load": {
+     "aws-lc-rs": 210.9,
+     "rind": 86.69
+    },
+    "jwt-hs256-verify/*/token": {
+     "aws-lc-rs": 492.0,
+     "rind": 250.0
+    },
+    "jwt-rs256-sign/*/load": {
+     "aws-lc-rs": 428.9,
+     "rind": 64780.0
+    },
+    "jwt-rs256-sign/*/token": {
+     "aws-lc-rs": 1550000.0,
+     "rind": 686600.0
+    },
+    "jwt-rs256-verify/*/load": {
+     "aws-lc-rs": 205.3,
+     "rind": 2844.0
+    },
+    "jwt-rs256-verify/*/token": {
+     "aws-lc-rs": 31380.0,
+     "rind": 18870.0
+    },
+    "mlkem768-combined/*": {
+     "aws-lc-rs": 63400.0,
+     "rind": 50770.0
+    },
+    "mlkem768-decaps/*": {
+     "aws-lc-rs": 24400.0,
+     "rind": 12680.0
+    },
+    "mlkem768-encaps/*": {
+     "aws-lc-rs": 19780.0,
+     "rind": 19560.0
+    },
+    "mlkem768-keygen/*": {
+     "aws-lc-rs": 18620.0,
+     "rind": 18320.0
+    },
+    "p256-ecdh/*": {
+     "aws-lc-rs": 72110.0,
+     "rind": 55640.0,
+     "ring": 59860.0
+    },
+    "p256-ecdsa-sign/*": {
+     "aws-lc-rs": 16280.0,
+     "rind": 13260.0,
+     "ring": 17600.0
+    },
+    "p256-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 52080.0,
+     "rind": 48630.0
+    },
+    "p256-ecdsa-verify/*": {
+     "aws-lc-rs": 53020.0,
+     "rind": 54280.0,
+     "ring": 55200.0
+    },
+    "p256-keygen/*": {
+     "aws-lc-rs": 10050.0,
+     "rind": 10250.0,
+     "ring": 12190.0
+    },
+    "p384-ecdh/*": {
+     "aws-lc-rs": 249600.0,
+     "rind": 194600.0,
+     "ring": 726300.0
+    },
+    "p384-ecdsa-sign/*": {
+     "aws-lc-rs": 95390.0,
+     "rind": 46940.0,
+     "ring": 391200.0
+    },
+    "p384-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 251900.0,
+     "rind": 168200.0
+    },
+    "p384-ecdsa-verify/*": {
+     "aws-lc-rs": 253600.0,
+     "rind": 181700.0,
+     "ring": 704200.0
+    },
+    "p384-keygen/*": {
+     "aws-lc-rs": 62860.0,
+     "rind": 40440.0,
+     "ring": 363000.0
+    },
+    "p521-ecdh/*": {
+     "aws-lc-rs": 484000.0,
+     "rind": 314200.0
+    },
+    "p521-ecdsa-sign/*": {
+     "aws-lc-rs": 206700.0,
+     "rind": 78890.0
+    },
+    "p521-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 498600.0,
+     "rind": 261600.0
+    },
+    "p521-ecdsa-verify/*": {
+     "aws-lc-rs": 501000.0,
+     "rind": 278000.0
+    },
+    "p521-keygen/*": {
+     "aws-lc-rs": 116800.0,
+     "rind": 69810.0
+    },
+    "pbkdf2-sha1/*": {
+     "aws-lc-rs": 111500.0,
+     "rind": 93550.0,
+     "ring": 334100.0
+    },
+    "pbkdf2-sha256/*": {
+     "aws-lc-rs": 100500.0,
+     "rind": 85370.0,
+     "ring": 140500.0
+    },
+    "pbkdf2-sha384/*": {
+     "aws-lc-rs": 241600.0,
+     "rind": 232000.0,
+     "ring": 282900.0
+    },
+    "pbkdf2-sha512/*": {
+     "aws-lc-rs": 243900.0,
+     "rind": 226200.0,
+     "ring": 281700.0
+    },
+    "quic-header-protection/aes128/*": {
+     "aws-lc-rs": 5.422,
+     "rind": 5.772,
+     "ring": 10.8
+    },
+    "quic-header-protection/aes256/*": {
+     "aws-lc-rs": 6.792,
+     "rind": 5.945,
+     "ring": 12.97
+    },
+    "quic-header-protection/chacha20/*": {
+     "aws-lc-rs": 117.9,
+     "rind": 97.12,
+     "ring": 110.0
+    },
+    "rsa1024-pkcs1-sha1-verify/*": {
+     "aws-lc-rs": 10410.0,
+     "rind": 5581.0,
+     "ring": 6816.0
+    },
+    "rsa2048-key-generation/*": {
+     "aws-lc-rs": 105300000.0,
+     "rind": 46170000.0
+    },
+    "rsa2048-load/*": {
+     "aws-lc-rs": 149200.0,
+     "rind": 64510.0
+    },
+    "rsa2048-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1132000.0,
+     "rind": 620600.0,
+     "ring": 727300.0
+    },
+    "rsa2048-pkcs1-sha256-verify-parsed/*": {
+     "aws-lc-rs": 28170.0,
+     "rind": 15960.0
+    },
+    "rsa2048-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 31140.0,
+     "rind": 18710.0,
+     "ring": 23830.0
+    },
+    "rsa2048-pss-sha256-sign/*": {
+     "aws-lc-rs": 1133000.0,
+     "rind": 621500.0,
+     "ring": 730700.0
+    },
+    "rsa2048-pss-sha256-verify/*": {
+     "aws-lc-rs": 31730.0,
+     "rind": 19240.0,
+     "ring": 24690.0
+    },
+    "rsa2056-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1472000.0,
+     "rind": 1454000.0
+    },
+    "rsa2056-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 37170.0,
+     "rind": 35150.0,
+     "ring": 49900.0
+    },
+    "rsa2560-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1700000.0,
+     "rind": 1621000.0
+    },
+    "rsa3072-key-generation/*": {
+     "aws-lc-rs": 494500000.0,
+     "rind": 222500000.0
+    },
+    "rsa3072-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 3979000.0,
+     "rind": 2019000.0,
+     "ring": 2211000.0
+    },
+    "rsa3072-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 72950.0,
+     "rind": 40090.0,
+     "ring": 52010.0
+    },
+    "rsa4096-key-generation/*": {
+     "aws-lc-rs": 1175000000.0,
+     "rind": 668300000.0
+    },
+    "rsa4096-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 7617000.0,
+     "rind": 4553000.0,
+     "ring": 4963000.0
+    },
+    "rsa4096-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 124900.0,
+     "rind": 69530.0,
+     "ring": 91140.0
+    },
+    "rsa6144-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 28680000.0,
+     "rind": 15070000.0
+    },
+    "rsa6144-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 270700.0,
+     "rind": 152900.0,
+     "ring": 202300.0
+    },
+    "rsa8192-load/*": {
+     "aws-lc-rs": 1741000.0,
+     "rind": 843500.0
+    },
+    "rsa8192-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 66860000.0,
+     "rind": 35120000.0
+    },
+    "rsa8192-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 472600.0,
+     "rind": 268700.0,
+     "ring": 357200.0
+    },
+    "rustls-bulk/aes128-gcm/*": {
+     "aws-lc-rs": 705100.0,
+     "rind": 598600.0,
+     "ring": 710700.0
+    },
+    "rustls-bulk/aes256-gcm/*": {
+     "aws-lc-rs": 786700.0,
+     "rind": 634400.0,
+     "ring": 782600.0
+    },
+    "rustls-bulk/chacha20poly1305/*": {
+     "aws-lc-rs": 1944000.0,
+     "rind": 1942000.0,
+     "ring": 1942000.0
+    },
+    "rustls-full-handshake-group/secp256r1/*": {
+     "aws-lc-rs": 394000.0,
+     "rind": 329500.0,
+     "ring": 359800.0
+    },
+    "rustls-full-handshake-group/secp384r1/*": {
+     "aws-lc-rs": 760400.0,
+     "rind": 612700.0,
+     "ring": 1706000.0
+    },
+    "rustls-full-handshake-group/secp521r1/*": {
+     "rind": 855400.0
+    },
+    "rustls-full-handshake-group/x25519/*": {
+     "aws-lc-rs": 335100.0,
+     "rind": 289100.0,
+     "ring": 344600.0
+    },
+    "rustls-full-handshake-group/x25519mlkem768/*": {
+     "aws-lc-rs": 408800.0,
+     "rind": 350900.0
+    },
+    "rustls-full-handshake-key/ecdsa-p256/*": {
+     "aws-lc-rs": 336400.0,
+     "rind": 288800.0,
+     "ring": 345400.0
+    },
+    "rustls-full-handshake-key/ecdsa-p384/*": {
+     "aws-lc-rs": 1017000.0,
+     "rind": 711100.0,
+     "ring": 2684000.0
+    },
+    "rustls-full-handshake-key/ecdsa-p521/*": {
+     "aws-lc-rs": 1893000.0,
+     "rind": 1049000.0
+    },
+    "rustls-full-handshake-key/ed25519/*": {
+     "aws-lc-rs": 329900.0,
+     "rind": 237100.0,
+     "ring": 308300.0
+    },
+    "rustls-full-handshake-key/rsa-2048/*": {
+     "aws-lc-rs": 1399000.0,
+     "rind": 800600.0,
+     "ring": 967500.0
+    },
+    "rustls-full-handshake-key/rsa-3072/*": {
+     "aws-lc-rs": 4359000.0,
+     "rind": 2270000.0,
+     "ring": 2549000.0
+    },
+    "rustls-full-handshake-key/rsa-4096/*": {
+     "aws-lc-rs": 8097000.0,
+     "rind": 4900000.0,
+     "ring": 5420000.0
+    },
+    "rustls-resumed-handshake/secp256r1/*": {
+     "aws-lc-rs": 218000.0,
+     "rind": 152100.0,
+     "ring": 177100.0
+    },
+    "rustls-resumed-handshake/secp384r1/*": {
+     "aws-lc-rs": 577200.0,
+     "rind": 432300.0,
+     "ring": 1522000.0
+    },
+    "rustls-resumed-handshake/secp521r1/*": {
+     "rind": 674200.0
+    },
+    "rustls-resumed-handshake/x25519/*": {
+     "aws-lc-rs": 155500.0,
+     "rind": 108200.0,
+     "ring": 160700.0
+    },
+    "rustls-resumed-handshake/x25519mlkem768/*": {
+     "aws-lc-rs": 232200.0,
+     "rind": 171700.0
+    },
+    "sha1/*/1200B": {
+     "aws-lc-rs": 646.6,
+     "rind": 611.9,
+     "ring": 2335.0
+    },
+    "sha1/*/1350B": {
+     "aws-lc-rs": 740.9,
+     "rind": 707.4,
+     "ring": 2699.0
+    },
+    "sha1/*/16KB": {
+     "aws-lc-rs": 7942.0,
+     "rind": 7979.0,
+     "ring": 30950.0
+    },
+    "sha1/*/32B": {
+     "aws-lc-rs": 87.9,
+     "rind": 53.78,
+     "ring": 169.2
+    },
+    "sha1/*/64B": {
+     "aws-lc-rs": 119.3,
+     "rind": 83.14,
+     "ring": 285.7
+    },
+    "sha1/*/8KB": {
+     "aws-lc-rs": 4018.0,
+     "rind": 4015.0,
+     "ring": 15560.0
+    },
+    "sha256-updates/*/16B": {
+     "aws-lc-rs": 3282.0,
+     "rind": 2718.0
+    },
+    "sha256-updates/*/1B": {
+     "aws-lc-rs": 27690.0,
+     "rind": 16620.0
+    },
+    "sha256/*/1200B": {
+     "aws-lc-rs": 624.7,
+     "rind": 591.5,
+     "ring": 583.3
+    },
+    "sha256/*/1350B": {
+     "aws-lc-rs": 714.0,
+     "rind": 681.7,
+     "ring": 691.6
+    },
+    "sha256/*/16KB": {
+     "aws-lc-rs": 7636.0,
+     "rind": 7605.0,
+     "ring": 7617.0
+    },
+    "sha256/*/32B": {
+     "aws-lc-rs": 85.39,
+     "rind": 56.09,
+     "ring": 69.02
+    },
+    "sha256/*/64B": {
+     "aws-lc-rs": 115.8,
+     "rind": 84.58,
+     "ring": 94.7
+    },
+    "sha256/*/8KB": {
+     "aws-lc-rs": 3864.0,
+     "rind": 3833.0,
+     "ring": 3846.0
+    },
+    "sha512-256/*/1200B": {
+     "aws-lc-rs": 1036.0,
+     "rind": 1001.0,
+     "ring": 1007.0
+    },
+    "sha512-256/*/1350B": {
+     "aws-lc-rs": 1130.0,
+     "rind": 1102.0,
+     "ring": 1103.0
+    },
+    "sha512-256/*/16KB": {
+     "aws-lc-rs": 12510.0,
+     "rind": 12470.0,
+     "ring": 12480.0
+    },
+    "sha512-256/*/32B": {
+     "aws-lc-rs": 161.7,
+     "rind": 129.5,
+     "ring": 140.5
+    },
+    "sha512-256/*/64B": {
+     "aws-lc-rs": 161.5,
+     "rind": 130.0,
+     "ring": 138.7
+    },
+    "sha512-256/*/8KB": {
+     "aws-lc-rs": 6337.0,
+     "rind": 6303.0,
+     "ring": 6311.0
+    },
+    "sha512/*/1200B": {
+     "aws-lc-rs": 1038.0,
+     "rind": 999.1,
+     "ring": 1009.0
+    },
+    "sha512/*/1350B": {
+     "aws-lc-rs": 1132.0,
+     "rind": 1100.0,
+     "ring": 1104.0
+    },
+    "sha512/*/16KB": {
+     "aws-lc-rs": 12510.0,
+     "rind": 12470.0,
+     "ring": 12480.0
+    },
+    "sha512/*/32B": {
+     "aws-lc-rs": 162.5,
+     "rind": 126.0,
+     "ring": 141.2
+    },
+    "sha512/*/64B": {
+     "aws-lc-rs": 162.4,
+     "rind": 127.3,
+     "ring": 140.2
+    },
+    "sha512/*/8KB": {
+     "aws-lc-rs": 6339.0,
+     "rind": 6299.0,
+     "ring": 6312.0
+    },
+    "x25519-ecdh/*": {
+     "aws-lc-rs": 42540.0,
+     "rind": 34340.0,
+     "ring": 52140.0
+    },
+    "x25519-keygen/*": {
+     "aws-lc-rs": 10080.0,
+     "rind": 7682.0,
+     "ring": 17020.0
+    },
+    "xchacha20poly1305/*/1200B": {
+     "aws-lc-rs": 1702.0,
+     "rind": 1704.0
+    },
+    "xchacha20poly1305/*/1350B": {
+     "aws-lc-rs": 1931.0,
+     "rind": 1933.0
+    },
+    "xchacha20poly1305/*/16KB": {
+     "aws-lc-rs": 14720.0,
+     "rind": 14730.0
+    },
+    "xchacha20poly1305/*/32B": {
+     "aws-lc-rs": 721.8,
+     "rind": 724.4
+    }
+   }
+  },
+  {
+   "target": "aarch64-unknown-linux-gnu",
+   "portable": true,
+   "tier": "",
+   "cpu": "Neoverse-N2",
+   "benchmarks": {
+    "aes128-ctr/*/1200B": {
+     "aws-lc-rs": 3142.0,
+     "rind": 3120.0
+    },
+    "aes128-ctr/*/1350B": {
+     "aws-lc-rs": 3570.0,
+     "rind": 3535.0
+    },
+    "aes128-ctr/*/16KB": {
+     "aws-lc-rs": 42140.0,
+     "rind": 42160.0
+    },
+    "aes128-ctr/*/32B": {
+     "aws-lc-rs": 111.5,
+     "rind": 86.34
+    },
+    "aes128-gcm-open/*/1200B": {
+     "aws-lc-rs": 5512.0,
+     "rind": 5488.0
+    },
+    "aes128-gcm-open/*/1350B": {
+     "aws-lc-rs": 6235.0,
+     "rind": 6206.0
+    },
+    "aes128-gcm-open/*/16KB": {
+     "aws-lc-rs": 72290.0,
+     "rind": 71950.0
+    },
+    "aes128-gcm-open/*/32B": {
+     "aws-lc-rs": 340.2,
+     "rind": 340.4
+    },
+    "aes128-gcm/*/1200B": {
+     "aws-lc-rs": 5493.0,
+     "rind": 5474.0
+    },
+    "aes128-gcm/*/1350B": {
+     "aws-lc-rs": 6204.0,
+     "rind": 6187.0
+    },
+    "aes128-gcm/*/16KB": {
+     "aws-lc-rs": 72080.0,
+     "rind": 71730.0
+    },
+    "aes128-gcm/*/32B": {
+     "aws-lc-rs": 338.7,
+     "rind": 344.7
+    },
+    "aes128-gcm/*/key": {
+     "aws-lc-rs": 210.1,
+     "rind": 205.3
+    },
+    "aes256-ctr/*/1200B": {
+     "aws-lc-rs": 4395.0,
+     "rind": 4371.0
+    },
+    "aes256-ctr/*/1350B": {
+     "aws-lc-rs": 4985.0,
+     "rind": 4951.0
+    },
+    "aes256-ctr/*/16KB": {
+     "aws-lc-rs": 59080.0,
+     "rind": 59050.0
+    },
+    "aes256-ctr/*/32B": {
+     "aws-lc-rs": 144.3,
+     "rind": 119.3
+    },
+    "aes256-gcm-open/*/1200B": {
+     "aws-lc-rs": 6793.0,
+     "rind": 6770.0
+    },
+    "aes256-gcm-open/*/1350B": {
+     "aws-lc-rs": 7680.0,
+     "rind": 7652.0
+    },
+    "aes256-gcm-open/*/16KB": {
+     "aws-lc-rs": 89230.0,
+     "rind": 88890.0
+    },
+    "aes256-gcm-open/*/32B": {
+     "aws-lc-rs": 403.1,
+     "rind": 403.2
+    },
+    "aes256-gcm/*/1200B": {
+     "aws-lc-rs": 6775.0,
+     "rind": 6758.0
+    },
+    "aes256-gcm/*/1350B": {
+     "aws-lc-rs": 7649.0,
+     "rind": 7637.0
+    },
+    "aes256-gcm/*/16KB": {
+     "aws-lc-rs": 89000.0,
+     "rind": 88720.0
+    },
+    "aes256-gcm/*/32B": {
+     "aws-lc-rs": 401.8,
+     "rind": 407.9
+    },
+    "aes256-gcm/*/key": {
+     "aws-lc-rs": 257.5,
+     "rind": 251.0
+    },
+    "chacha20poly1305/*/1200B": {
+     "aws-lc-rs": 1213.0,
+     "rind": 1201.0
+    },
+    "chacha20poly1305/*/1350B": {
+     "aws-lc-rs": 1442.0,
+     "rind": 1430.0
+    },
+    "chacha20poly1305/*/16KB": {
+     "aws-lc-rs": 14230.0,
+     "rind": 14220.0
+    },
+    "chacha20poly1305/*/32B": {
+     "aws-lc-rs": 246.1,
+     "rind": 234.2
+    },
+    "ed25519-keygen/*": {
+     "aws-lc-rs": 11040.0,
+     "rind": 8528.0
+    },
+    "ed25519-sign/*": {
+     "aws-lc-rs": 10630.0,
+     "rind": 7763.0
+    },
+    "ed25519-verify/*": {
+     "aws-lc-rs": 54420.0,
+     "rind": 38950.0
+    },
+    "hkdf-sha1/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 939.6,
+     "rind": 678.1
+    },
+    "hkdf-sha1/expand/*": {
+     "aws-lc-rs": 672.8,
+     "rind": 408.1
+    },
+    "hkdf-sha1/extract-expand/*": {
+     "aws-lc-rs": 1186.0,
+     "rind": 974.3
+    },
+    "hkdf-sha256/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 978.6,
+     "rind": 609.2
+    },
+    "hkdf-sha256/expand/*": {
+     "aws-lc-rs": 714.2,
+     "rind": 342.5
+    },
+    "hkdf-sha256/extract-expand/*": {
+     "aws-lc-rs": 1488.0,
+     "rind": 1286.0
+    },
+    "hkdf-sha384/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 1138.0,
+     "rind": 688.5
+    },
+    "hkdf-sha384/expand/*": {
+     "aws-lc-rs": 868.5,
+     "rind": 421.5
+    },
+    "hkdf-sha384/extract-expand/*": {
+     "aws-lc-rs": 1800.0,
+     "rind": 1607.0
+    },
+    "hkdf-sha512/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 1137.0,
+     "rind": 685.5
+    },
+    "hkdf-sha512/expand/*": {
+     "aws-lc-rs": 869.3,
+     "rind": 419.0
+    },
+    "hkdf-sha512/extract-expand/*": {
+     "aws-lc-rs": 1800.0,
+     "rind": 1598.0
+    },
+    "hmac-sha1/*/1200B": {
+     "aws-lc-rs": 1968.0,
+     "rind": 1798.0
+    },
+    "hmac-sha1/*/1350B": {
+     "aws-lc-rs": 2211.0,
+     "rind": 2036.0
+    },
+    "hmac-sha1/*/16KB": {
+     "aws-lc-rs": 20840.0,
+     "rind": 20670.0
+    },
+    "hmac-sha1/*/32B": {
+     "aws-lc-rs": 543.4,
+     "rind": 369.0
+    },
+    "hmac-sha1/*/64B": {
+     "aws-lc-rs": 619.3,
+     "rind": 449.4
+    },
+    "hmac-sha1/*/8KB": {
+     "aws-lc-rs": 10690.0,
+     "rind": 10520.0
+    },
+    "hmac-sha1/*/reused-key/1200B": {
+     "aws-lc-rs": 1722.0,
+     "rind": 1610.0
+    },
+    "hmac-sha1/*/reused-key/1350B": {
+     "aws-lc-rs": 1963.0,
+     "rind": 1848.0
+    },
+    "hmac-sha1/*/reused-key/16KB": {
+     "aws-lc-rs": 20590.0,
+     "rind": 20490.0
+    },
+    "hmac-sha1/*/reused-key/32B": {
+     "aws-lc-rs": 292.2,
+     "rind": 181.9
+    },
+    "hmac-sha1/*/reused-key/64B": {
+     "aws-lc-rs": 374.3,
+     "rind": 262.3
+    },
+    "hmac-sha1/*/reused-key/8KB": {
+     "aws-lc-rs": 10450.0,
+     "rind": 10330.0
+    },
+    "hmac-sha256/*/1200B": {
+     "aws-lc-rs": 3351.0,
+     "rind": 3179.0
+    },
+    "hmac-sha256/*/1350B": {
+     "aws-lc-rs": 3780.0,
+     "rind": 3606.0
+    },
+    "hmac-sha256/*/16KB": {
+     "aws-lc-rs": 37110.0,
+     "rind": 36910.0
+    },
+    "hmac-sha256/*/32B": {
+     "aws-lc-rs": 799.9,
+     "rind": 626.2
+    },
+    "hmac-sha256/*/64B": {
+     "aws-lc-rs": 940.1,
+     "rind": 768.0
+    },
+    "hmac-sha256/*/8KB": {
+     "aws-lc-rs": 18950.0,
+     "rind": 18780.0
+    },
+    "hmac-sha256/*/reused-key/1200B": {
+     "aws-lc-rs": 2981.0,
+     "rind": 2862.0
+    },
+    "hmac-sha256/*/reused-key/1350B": {
+     "aws-lc-rs": 3407.0,
+     "rind": 3288.0
+    },
+    "hmac-sha256/*/reused-key/16KB": {
+     "aws-lc-rs": 36730.0,
+     "rind": 36600.0
+    },
+    "hmac-sha256/*/reused-key/32B": {
+     "aws-lc-rs": 424.1,
+     "rind": 309.0
+    },
+    "hmac-sha256/*/reused-key/64B": {
+     "aws-lc-rs": 568.8,
+     "rind": 451.2
+    },
+    "hmac-sha256/*/reused-key/8KB": {
+     "aws-lc-rs": 18590.0,
+     "rind": 18460.0
+    },
+    "hmac-sha384/*/1200B": {
+     "aws-lc-rs": 2560.0,
+     "rind": 2393.0
+    },
+    "hmac-sha384/*/1350B": {
+     "aws-lc-rs": 2740.0,
+     "rind": 2571.0
+    },
+    "hmac-sha384/*/16KB": {
+     "aws-lc-rs": 23800.0,
+     "rind": 23610.0
+    },
+    "hmac-sha384/*/32B": {
+     "aws-lc-rs": 955.2,
+     "rind": 784.4
+    },
+    "hmac-sha384/*/64B": {
+     "aws-lc-rs": 956.0,
+     "rind": 784.7
+    },
+    "hmac-sha384/*/8KB": {
+     "aws-lc-rs": 12380.0,
+     "rind": 12200.0
+    },
+    "hmac-sha384/*/reused-key/1200B": {
+     "aws-lc-rs": 2110.0,
+     "rind": 1998.0
+    },
+    "hmac-sha384/*/reused-key/1350B": {
+     "aws-lc-rs": 2289.0,
+     "rind": 2176.0
+    },
+    "hmac-sha384/*/reused-key/16KB": {
+     "aws-lc-rs": 23350.0,
+     "rind": 23220.0
+    },
+    "hmac-sha384/*/reused-key/32B": {
+     "aws-lc-rs": 499.7,
+     "rind": 388.6
+    },
+    "hmac-sha384/*/reused-key/64B": {
+     "aws-lc-rs": 500.2,
+     "rind": 388.7
+    },
+    "hmac-sha384/*/reused-key/8KB": {
+     "aws-lc-rs": 11930.0,
+     "rind": 11810.0
+    },
+    "jwt-eddsa-sign/*/load": {
+     "aws-lc-rs": 10310.0,
+     "rind": 7629.0
+    },
+    "jwt-eddsa-sign/*/token": {
+     "aws-lc-rs": 21500.0,
+     "rind": 15800.0
+    },
+    "jwt-eddsa-verify/*/load": {
+     "aws-lc-rs": 56.31,
+     "rind": 3311.0
+    },
+    "jwt-eddsa-verify/*/token": {
+     "aws-lc-rs": 54720.0,
+     "rind": 39400.0
+    },
+    "jwt-es256-sign/*/load": {
+     "aws-lc-rs": 10780.0,
+     "rind": 14370.0
+    },
+    "jwt-es256-sign/*/token": {
+     "aws-lc-rs": 28570.0,
+     "rind": 31650.0
+    },
+    "jwt-es256-verify/*/load": {
+     "aws-lc-rs": 76.59,
+     "rind": 4370.0
+    },
+    "jwt-es256-verify/*/token": {
+     "aws-lc-rs": 53390.0,
+     "rind": 54170.0
+    },
+    "jwt-es384-sign/*/load": {
+     "aws-lc-rs": 63660.0,
+     "rind": 48910.0
+    },
+    "jwt-es384-sign/*/token": {
+     "aws-lc-rs": 159900.0,
+     "rind": 98530.0
+    },
+    "jwt-es384-verify/*/load": {
+     "aws-lc-rs": 95.8,
+     "rind": 9015.0
+    },
+    "jwt-es384-verify/*/token": {
+     "aws-lc-rs": 249200.0,
+     "rind": 178800.0
+    },
+    "jwt-hs256-sign/*/load": {
+     "aws-lc-rs": 460.2,
+     "rind": 339.3
+    },
+    "jwt-hs256-sign/*/token": {
+     "aws-lc-rs": 1171.0,
+     "rind": 949.1
+    },
+    "jwt-hs256-verify/*/load": {
+     "aws-lc-rs": 454.3,
+     "rind": 338.1
+    },
+    "jwt-hs256-verify/*/token": {
+     "aws-lc-rs": 1173.0,
+     "rind": 954.6
+    },
+    "jwt-rs256-sign/*/load": {
+     "aws-lc-rs": 429.0,
+     "rind": 64760.0
+    },
+    "jwt-rs256-sign/*/token": {
+     "aws-lc-rs": 1553000.0,
+     "rind": 686700.0
+    },
+    "jwt-rs256-verify/*/load": {
+     "aws-lc-rs": 205.2,
+     "rind": 2844.0
+    },
+    "jwt-rs256-verify/*/token": {
+     "aws-lc-rs": 31770.0,
+     "rind": 19220.0
+    },
+    "mlkem768-combined/*": {
+     "aws-lc-rs": 55550.0,
+     "rind": 40370.0
+    },
+    "mlkem768-decaps/*": {
+     "aws-lc-rs": 20170.0,
+     "rind": 9914.0
+    },
+    "mlkem768-encaps/*": {
+     "aws-lc-rs": 17940.0,
+     "rind": 15650.0
+    },
+    "mlkem768-keygen/*": {
+     "aws-lc-rs": 16870.0,
+     "rind": 14660.0
+    },
+    "p256-ecdh/*": {
+     "aws-lc-rs": 72900.0,
+     "rind": 55680.0
+    },
+    "p256-ecdsa-sign/*": {
+     "aws-lc-rs": 17270.0,
+     "rind": 16890.0
+    },
+    "p256-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 52160.0,
+     "rind": 48550.0
+    },
+    "p256-ecdsa-verify/*": {
+     "aws-lc-rs": 53060.0,
+     "rind": 54270.0
+    },
+    "p256-keygen/*": {
+     "aws-lc-rs": 10870.0,
+     "rind": 10250.0
+    },
+    "p384-ecdh/*": {
+     "aws-lc-rs": 249900.0,
+     "rind": 194600.0
+    },
+    "p384-ecdsa-sign/*": {
+     "aws-lc-rs": 95730.0,
+     "rind": 49030.0
+    },
+    "p384-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 251900.0,
+     "rind": 168000.0
+    },
+    "p384-ecdsa-verify/*": {
+     "aws-lc-rs": 253800.0,
+     "rind": 181900.0
+    },
+    "p384-keygen/*": {
+     "aws-lc-rs": 63170.0,
+     "rind": 40010.0
+    },
+    "p521-ecdh/*": {
+     "aws-lc-rs": 485900.0,
+     "rind": 314100.0
+    },
+    "p521-ecdsa-sign/*": {
+     "aws-lc-rs": 208400.0,
+     "rind": 81540.0
+    },
+    "p521-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 499400.0,
+     "rind": 262000.0
+    },
+    "p521-ecdsa-verify/*": {
+     "aws-lc-rs": 501800.0,
+     "rind": 278400.0
+    },
+    "p521-keygen/*": {
+     "aws-lc-rs": 119100.0,
+     "rind": 69490.0
+    },
+    "pbkdf2-sha1/*": {
+     "aws-lc-rs": 203700.0,
+     "rind": 185400.0
+    },
+    "pbkdf2-sha256/*": {
+     "aws-lc-rs": 335200.0,
+     "rind": 308300.0
+    },
+    "pbkdf2-sha384/*": {
+     "aws-lc-rs": 413800.0,
+     "rind": 389900.0
+    },
+    "pbkdf2-sha512/*": {
+     "aws-lc-rs": 415600.0,
+     "rind": 385100.0
+    },
+    "quic-header-protection/aes128/*": {
+     "aws-lc-rs": 68.04,
+     "rind": 68.52
+    },
+    "quic-header-protection/aes256/*": {
+     "aws-lc-rs": 98.37,
+     "rind": 98.56
+    },
+    "quic-header-protection/chacha20/*": {
+     "aws-lc-rs": 118.0,
+     "rind": 97.11
+    },
+    "rsa1024-pkcs1-sha1-verify/*": {
+     "aws-lc-rs": 10460.0,
+     "rind": 5638.0
+    },
+    "rsa2048-key-generation/*": {
+     "aws-lc-rs": 95130000.0,
+     "rind": 45750000.0
+    },
+    "rsa2048-load/*": {
+     "aws-lc-rs": 149600.0,
+     "rind": 64300.0
+    },
+    "rsa2048-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1133000.0,
+     "rind": 621300.0
+    },
+    "rsa2048-pkcs1-sha256-verify-parsed/*": {
+     "aws-lc-rs": 28290.0,
+     "rind": 16070.0
+    },
+    "rsa2048-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 31280.0,
+     "rind": 18840.0
+    },
+    "rsa2048-pss-sha256-sign/*": {
+     "aws-lc-rs": 1135000.0,
+     "rind": 623200.0
+    },
+    "rsa2048-pss-sha256-verify/*": {
+     "aws-lc-rs": 32970.0,
+     "rind": 20360.0
+    },
+    "rsa2056-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1473000.0,
+     "rind": 1432000.0
+    },
+    "rsa2056-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 37300.0,
+     "rind": 35260.0
+    },
+    "rsa2560-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 1700000.0,
+     "rind": 1620000.0
+    },
+    "rsa3072-key-generation/*": {
+     "aws-lc-rs": 417900000.0,
+     "rind": 206400000.0
+    },
+    "rsa3072-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 3981000.0,
+     "rind": 2019000.0
+    },
+    "rsa3072-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 73060.0,
+     "rind": 40220.0
+    },
+    "rsa4096-key-generation/*": {
+     "aws-lc-rs": 847200000.0,
+     "rind": 499600000.0
+    },
+    "rsa4096-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 7621000.0,
+     "rind": 4552000.0
+    },
+    "rsa4096-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 125000.0,
+     "rind": 69660.0
+    },
+    "rsa6144-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 28680000.0,
+     "rind": 15110000.0
+    },
+    "rsa6144-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 270700.0,
+     "rind": 153000.0
+    },
+    "rsa8192-load/*": {
+     "aws-lc-rs": 1760000.0,
+     "rind": 842200.0
+    },
+    "rsa8192-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 66920000.0,
+     "rind": 35130000.0
+    },
+    "rsa8192-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 473000.0,
+     "rind": 268900.0
+    },
+    "rustls-bulk/aes128-gcm/*": {
+     "aws-lc-rs": 9359000.0,
+     "rind": 9319000.0
+    },
+    "rustls-bulk/aes256-gcm/*": {
+     "aws-lc-rs": 11530000.0,
+     "rind": 11490000.0
+    },
+    "rustls-bulk/chacha20poly1305/*": {
+     "aws-lc-rs": 1945000.0,
+     "rind": 1942000.0
+    },
+    "rustls-full-handshake-group/secp256r1/*": {
+     "aws-lc-rs": 450300.0,
+     "rind": 366500.0
+    },
+    "rustls-full-handshake-group/secp384r1/*": {
+     "aws-lc-rs": 811700.0,
+     "rind": 650000.0
+    },
+    "rustls-full-handshake-group/secp521r1/*": {
+     "rind": 894100.0
+    },
+    "rustls-full-handshake-group/x25519/*": {
+     "aws-lc-rs": 386000.0,
+     "rind": 323100.0
+    },
+    "rustls-full-handshake-group/x25519mlkem768/*": {
+     "aws-lc-rs": 459400.0,
+     "rind": 384700.0
+    },
+    "rustls-full-handshake-key/ecdsa-p256/*": {
+     "aws-lc-rs": 387000.0,
+     "rind": 323700.0
+    },
+    "rustls-full-handshake-key/ecdsa-p384/*": {
+     "aws-lc-rs": 1064000.0,
+     "rind": 740300.0
+    },
+    "rustls-full-handshake-key/ecdsa-p521/*": {
+     "aws-lc-rs": 1945000.0,
+     "rind": 1079000.0
+    },
+    "rustls-full-handshake-key/ed25519/*": {
+     "aws-lc-rs": 377400.0,
+     "rind": 266900.0
+    },
+    "rustls-full-handshake-key/rsa-2048/*": {
+     "aws-lc-rs": 1461000.0,
+     "rind": 834300.0
+    },
+    "rustls-full-handshake-key/rsa-3072/*": {
+     "aws-lc-rs": 4433000.0,
+     "rind": 2309000.0
+    },
+    "rustls-full-handshake-key/rsa-4096/*": {
+     "aws-lc-rs": 8176000.0,
+     "rind": 4939000.0
+    },
+    "rustls-resumed-handshake/secp256r1/*": {
+     "aws-lc-rs": 257200.0,
+     "rind": 180700.0
+    },
+    "rustls-resumed-handshake/secp384r1/*": {
+     "aws-lc-rs": 616000.0,
+     "rind": 460900.0
+    },
+    "rustls-resumed-handshake/secp521r1/*": {
+     "rind": 706000.0
+    },
+    "rustls-resumed-handshake/x25519/*": {
+     "aws-lc-rs": 191700.0,
+     "rind": 135400.0
+    },
+    "rustls-resumed-handshake/x25519mlkem768/*": {
+     "aws-lc-rs": 262800.0,
+     "rind": 198600.0
+    },
+    "sha1/*/1200B": {
+     "aws-lc-rs": 1568.0,
+     "rind": 1535.0
+    },
+    "sha1/*/1350B": {
+     "aws-lc-rs": 1805.0,
+     "rind": 1776.0
+    },
+    "sha1/*/16KB": {
+     "aws-lc-rs": 20440.0,
+     "rind": 20410.0
+    },
+    "sha1/*/32B": {
+     "aws-lc-rs": 140.3,
+     "rind": 101.9
+    },
+    "sha1/*/64B": {
+     "aws-lc-rs": 219.9,
+     "rind": 180.9
+    },
+    "sha1/*/8KB": {
+     "aws-lc-rs": 10290.0,
+     "rind": 10260.0
+    },
+    "sha256-updates/*/16B": {
+     "aws-lc-rs": 11070.0,
+     "rind": 10580.0
+    },
+    "sha256-updates/*/1B": {
+     "aws-lc-rs": 35600.0,
+     "rind": 24620.0
+    },
+    "sha256/*/1200B": {
+     "aws-lc-rs": 2760.0,
+     "rind": 2727.0
+    },
+    "sha256/*/1350B": {
+     "aws-lc-rs": 3186.0,
+     "rind": 3154.0
+    },
+    "sha256/*/16KB": {
+     "aws-lc-rs": 36480.0,
+     "rind": 36460.0
+    },
+    "sha256/*/32B": {
+     "aws-lc-rs": 207.5,
+     "rind": 168.9
+    },
+    "sha256/*/64B": {
+     "aws-lc-rs": 350.7,
+     "rind": 311.6
+    },
+    "sha256/*/8KB": {
+     "aws-lc-rs": 18350.0,
+     "rind": 18330.0
+    },
+    "sha512-256/*/1200B": {
+     "aws-lc-rs": 1854.0,
+     "rind": 1823.0
+    },
+    "sha512-256/*/1350B": {
+     "aws-lc-rs": 2033.0,
+     "rind": 2006.0
+    },
+    "sha512-256/*/16KB": {
+     "aws-lc-rs": 23100.0,
+     "rind": 23040.0
+    },
+    "sha512-256/*/32B": {
+     "aws-lc-rs": 245.2,
+     "rind": 210.9
+    },
+    "sha512-256/*/64B": {
+     "aws-lc-rs": 245.5,
+     "rind": 211.4
+    },
+    "sha512-256/*/8KB": {
+     "aws-lc-rs": 11670.0,
+     "rind": 11640.0
+    },
+    "sha512/*/1200B": {
+     "aws-lc-rs": 1856.0,
+     "rind": 1822.0
+    },
+    "sha512/*/1350B": {
+     "aws-lc-rs": 2035.0,
+     "rind": 2004.0
+    },
+    "sha512/*/16KB": {
+     "aws-lc-rs": 23100.0,
+     "rind": 23050.0
+    },
+    "sha512/*/32B": {
+     "aws-lc-rs": 247.4,
+     "rind": 206.8
+    },
+    "sha512/*/64B": {
+     "aws-lc-rs": 247.5,
+     "rind": 206.9
+    },
+    "sha512/*/8KB": {
+     "aws-lc-rs": 11670.0,
+     "rind": 11630.0
+    },
+    "x25519-ecdh/*": {
+     "aws-lc-rs": 42970.0,
+     "rind": 34310.0
+    },
+    "x25519-keygen/*": {
+     "aws-lc-rs": 10570.0,
+     "rind": 7669.0
+    },
+    "xchacha20poly1305/*/1200B": {
+     "aws-lc-rs": 1702.0,
+     "rind": 1707.0
+    },
+    "xchacha20poly1305/*/1350B": {
+     "aws-lc-rs": 1929.0,
+     "rind": 1937.0
+    },
+    "xchacha20poly1305/*/16KB": {
+     "aws-lc-rs": 14720.0,
+     "rind": 14730.0
+    },
+    "xchacha20poly1305/*/32B": {
+     "aws-lc-rs": 721.1,
+     "rind": 731.9
+    }
+   }
+  },
+  {
+   "target": "armv7-unknown-linux-gnueabihf",
+   "portable": false,
+   "tier": "",
+   "cpu": "Neoverse-N2",
+   "benchmarks": {
+    "aes128-ctr/*/1200B": {
+     "aws-lc-rs": 329.4,
+     "rind": 290.6
+    },
+    "aes128-ctr/*/1350B": {
+     "aws-lc-rs": 387.1,
+     "rind": 343.6
+    },
+    "aes128-ctr/*/16KB": {
+     "aws-lc-rs": 3901.0,
+     "rind": 3839.0
+    },
+    "aes128-ctr/*/32B": {
+     "aws-lc-rs": 53.25,
+     "rind": 15.03
+    },
+    "aes128-gcm-open/*/1200B": {
+     "aws-lc-rs": 717.1,
+     "rind": 662.4,
+     "ring": 6323.0
+    },
+    "aes128-gcm-open/*/1350B": {
+     "aws-lc-rs": 812.7,
+     "rind": 760.3,
+     "ring": 7333.0
+    },
+    "aes128-gcm-open/*/16KB": {
+     "aws-lc-rs": 8294.0,
+     "rind": 8208.0,
+     "ring": 76810.0
+    },
+    "aes128-gcm-open/*/32B": {
+     "aws-lc-rs": 143.6,
+     "rind": 84.16,
+     "ring": 779.5
+    },
+    "aes128-gcm/*/1200B": {
+     "aws-lc-rs": 685.9,
+     "rind": 625.5,
+     "ring": 6265.0
+    },
+    "aes128-gcm/*/1350B": {
+     "aws-lc-rs": 773.9,
+     "rind": 718.3,
+     "ring": 7278.0
+    },
+    "aes128-gcm/*/16KB": {
+     "aws-lc-rs": 7896.0,
+     "rind": 7800.0,
+     "ring": 76340.0
+    },
+    "aes128-gcm/*/32B": {
+     "aws-lc-rs": 137.9,
+     "rind": 77.5,
+     "ring": 767.1
+    },
+    "aes128-gcm/*/key": {
+     "aws-lc-rs": 227.4,
+     "rind": 175.2,
+     "ring": 502.6
+    },
+    "aes256-ctr/*/1200B": {
+     "aws-lc-rs": 408.1,
+     "rind": 371.7
+    },
+    "aes256-ctr/*/1350B": {
+     "aws-lc-rs": 479.0,
+     "rind": 437.6
+    },
+    "aes256-ctr/*/16KB": {
+     "aws-lc-rs": 4985.0,
+     "rind": 4948.0
+    },
+    "aes256-ctr/*/32B": {
+     "aws-lc-rs": 56.35,
+     "rind": 17.7
+    },
+    "aes256-gcm-open/*/1200B": {
+     "aws-lc-rs": 798.2,
+     "rind": 747.4,
+     "ring": 7755.0
+    },
+    "aes256-gcm-open/*/1350B": {
+     "aws-lc-rs": 905.7,
+     "rind": 856.2,
+     "ring": 9035.0
+    },
+    "aes256-gcm-open/*/16KB": {
+     "aws-lc-rs": 9379.0,
+     "rind": 9322.0,
+     "ring": 93470.0
+    },
+    "aes256-gcm-open/*/32B": {
+     "aws-lc-rs": 148.9,
+     "rind": 87.82,
+     "ring": 989.8
+    },
+    "aes256-gcm/*/1200B": {
+     "aws-lc-rs": 766.1,
+     "rind": 706.5,
+     "ring": 7703.0
+    },
+    "aes256-gcm/*/1350B": {
+     "aws-lc-rs": 866.0,
+     "rind": 811.0,
+     "ring": 8981.0
+    },
+    "aes256-gcm/*/16KB": {
+     "aws-lc-rs": 8985.0,
+     "rind": 8915.0,
+     "ring": 92980.0
+    },
+    "aes256-gcm/*/32B": {
+     "aws-lc-rs": 143.7,
+     "rind": 79.35,
+     "ring": 978.4
+    },
+    "aes256-gcm/*/key": {
+     "aws-lc-rs": 229.0,
+     "rind": 181.4,
+     "ring": 624.2
+    },
+    "chacha20poly1305/*/1200B": {
+     "aws-lc-rs": 2244.0,
+     "rind": 2142.0,
+     "ring": 2236.0
+    },
+    "chacha20poly1305/*/1350B": {
+     "aws-lc-rs": 2516.0,
+     "rind": 2384.0,
+     "ring": 2538.0
+    },
+    "chacha20poly1305/*/16KB": {
+     "aws-lc-rs": 23420.0,
+     "rind": 23220.0,
+     "ring": 23410.0
+    },
+    "chacha20poly1305/*/32B": {
+     "aws-lc-rs": 610.1,
+     "rind": 512.5,
+     "ring": 596.2
+    },
+    "ed25519-keygen/*": {
+     "aws-lc-rs": 68110.0,
+     "rind": 48580.0,
+     "ring": 89790.0
+    },
+    "ed25519-sign/*": {
+     "aws-lc-rs": 69230.0,
+     "rind": 47950.0,
+     "ring": 90480.0
+    },
+    "ed25519-verify/*": {
+     "aws-lc-rs": 220100.0,
+     "rind": 140300.0,
+     "ring": 159500.0
+    },
+    "hkdf-sha1/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 864.1,
+     "rind": 536.9,
+     "ring": 1719.0
+    },
+    "hkdf-sha1/expand/*": {
+     "aws-lc-rs": 628.6,
+     "rind": 340.2,
+     "ring": 1082.0
+    },
+    "hkdf-sha1/extract-expand/*": {
+     "aws-lc-rs": 1148.0,
+     "rind": 745.9,
+     "ring": 2473.0
+    },
+    "hkdf-sha256/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 681.3,
+     "rind": 370.3,
+     "ring": 1128.0
+    },
+    "hkdf-sha256/expand/*": {
+     "aws-lc-rs": 465.0,
+     "rind": 174.0,
+     "ring": 482.1
+    },
+    "hkdf-sha256/extract-expand/*": {
+     "aws-lc-rs": 991.2,
+     "rind": 574.2,
+     "ring": 1719.0
+    },
+    "hkdf-sha384/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 2475.0,
+     "rind": 1304.0,
+     "ring": 1772.0
+    },
+    "hkdf-sha384/expand/*": {
+     "aws-lc-rs": 2259.0,
+     "rind": 1106.0,
+     "ring": 1130.0
+    },
+    "hkdf-sha384/extract-expand/*": {
+     "aws-lc-rs": 4578.0,
+     "rind": 4388.0,
+     "ring": 4362.0
+    },
+    "hkdf-sha512/expand-aes-256-gcm-key/*": {
+     "aws-lc-rs": 2474.0,
+     "rind": 1291.0,
+     "ring": 1771.0
+    },
+    "hkdf-sha512/expand/*": {
+     "aws-lc-rs": 2258.0,
+     "rind": 1094.0,
+     "ring": 1130.0
+    },
+    "hkdf-sha512/extract-expand/*": {
+     "aws-lc-rs": 4577.0,
+     "rind": 4322.0,
+     "ring": 4371.0
+    },
+    "hmac-sha1/*/1200B": {
+     "aws-lc-rs": 1153.0,
+     "rind": 704.5,
+     "ring": 4217.0
+    },
+    "hmac-sha1/*/1350B": {
+     "aws-lc-rs": 1230.0,
+     "rind": 779.2,
+     "ring": 4761.0
+    },
+    "hmac-sha1/*/16KB": {
+     "aws-lc-rs": 7118.0,
+     "rind": 6700.0,
+     "ring": 47250.0
+    },
+    "hmac-sha1/*/32B": {
+     "aws-lc-rs": 703.4,
+     "rind": 250.6,
+     "ring": 963.8
+    },
+    "hmac-sha1/*/64B": {
+     "aws-lc-rs": 729.4,
+     "rind": 275.9,
+     "ring": 1139.0
+    },
+    "hmac-sha1/*/8KB": {
+     "aws-lc-rs": 3912.0,
+     "rind": 3474.0,
+     "ring": 24100.0
+    },
+    "hmac-sha1/*/reused-key/1200B": {
+     "aws-lc-rs": 846.7,
+     "rind": 559.6,
+     "ring": 3766.0
+    },
+    "hmac-sha1/*/reused-key/1350B": {
+     "aws-lc-rs": 924.0,
+     "rind": 634.2,
+     "ring": 4308.0
+    },
+    "hmac-sha1/*/reused-key/16KB": {
+     "aws-lc-rs": 6813.0,
+     "rind": 6555.0,
+     "ring": 46790.0
+    },
+    "hmac-sha1/*/reused-key/32B": {
+     "aws-lc-rs": 399.4,
+     "rind": 105.4,
+     "ring": 511.9
+    },
+    "hmac-sha1/*/reused-key/64B": {
+     "aws-lc-rs": 424.8,
+     "rind": 130.9,
+     "ring": 687.8
+    },
+    "hmac-sha1/*/reused-key/8KB": {
+     "aws-lc-rs": 3607.0,
+     "rind": 3329.0,
+     "ring": 23650.0
+    },
+    "hmac-sha256/*/1200B": {
+     "aws-lc-rs": 1239.0,
+     "rind": 800.5,
+     "ring": 3644.0
+    },
+    "hmac-sha256/*/1350B": {
+     "aws-lc-rs": 1331.0,
+     "rind": 888.4,
+     "ring": 4108.0
+    },
+    "hmac-sha256/*/16KB": {
+     "aws-lc-rs": 8326.0,
+     "rind": 7882.0,
+     "ring": 39740.0
+    },
+    "hmac-sha256/*/32B": {
+     "aws-lc-rs": 710.8,
+     "rind": 268.9,
+     "ring": 908.0
+    },
+    "hmac-sha256/*/64B": {
+     "aws-lc-rs": 736.7,
+     "rind": 297.9,
+     "ring": 1047.0
+    },
+    "hmac-sha256/*/8KB": {
+     "aws-lc-rs": 4517.0,
+     "rind": 4072.0,
+     "ring": 20330.0
+    },
+    "hmac-sha256/*/reused-key/1200B": {
+     "aws-lc-rs": 931.7,
+     "rind": 638.6,
+     "ring": 3219.0
+    },
+    "hmac-sha256/*/reused-key/1350B": {
+     "aws-lc-rs": 1023.0,
+     "rind": 726.8,
+     "ring": 3677.0
+    },
+    "hmac-sha256/*/reused-key/16KB": {
+     "aws-lc-rs": 8020.0,
+     "rind": 7720.0,
+     "ring": 39330.0
+    },
+    "hmac-sha256/*/reused-key/32B": {
+     "aws-lc-rs": 404.6,
+     "rind": 106.1,
+     "ring": 490.8
+    },
+    "hmac-sha256/*/reused-key/64B": {
+     "aws-lc-rs": 428.7,
+     "rind": 135.5,
+     "ring": 630.1
+    },
+    "hmac-sha256/*/reused-key/8KB": {
+     "aws-lc-rs": 4209.0,
+     "rind": 3910.0,
+     "ring": 19910.0
+    },
+    "hmac-sha384/*/1200B": {
+     "aws-lc-rs": 6780.0,
+     "rind": 6450.0,
+     "ring": 6467.0
+    },
+    "hmac-sha384/*/1350B": {
+     "aws-lc-rs": 7257.0,
+     "rind": 6927.0,
+     "ring": 6939.0
+    },
+    "hmac-sha384/*/16KB": {
+     "aws-lc-rs": 63250.0,
+     "rind": 62940.0,
+     "ring": 62940.0
+    },
+    "hmac-sha384/*/32B": {
+     "aws-lc-rs": 2511.0,
+     "rind": 2171.0,
+     "ring": 2200.0
+    },
+    "hmac-sha384/*/64B": {
+     "aws-lc-rs": 2510.0,
+     "rind": 2173.0,
+     "ring": 2198.0
+    },
+    "hmac-sha384/*/8KB": {
+     "aws-lc-rs": 32880.0,
+     "rind": 32540.0,
+     "ring": 32600.0
+    },
+    "hmac-sha384/*/reused-key/1200B": {
+     "aws-lc-rs": 5573.0,
+     "rind": 5304.0,
+     "ring": 5370.0
+    },
+    "hmac-sha384/*/reused-key/1350B": {
+     "aws-lc-rs": 6048.0,
+     "rind": 5779.0,
+     "ring": 5843.0
+    },
+    "hmac-sha384/*/reused-key/16KB": {
+     "aws-lc-rs": 62070.0,
+     "rind": 61790.0,
+     "ring": 61850.0
+    },
+    "hmac-sha384/*/reused-key/32B": {
+     "aws-lc-rs": 1304.0,
+     "rind": 1025.0,
+     "ring": 1103.0
+    },
+    "hmac-sha384/*/reused-key/64B": {
+     "aws-lc-rs": 1305.0,
+     "rind": 1025.0,
+     "ring": 1102.0
+    },
+    "hmac-sha384/*/reused-key/8KB": {
+     "aws-lc-rs": 31670.0,
+     "rind": 31390.0,
+     "ring": 31470.0
+    },
+    "jwt-eddsa-sign/*/load": {
+     "aws-lc-rs": 68590.0,
+     "rind": 47230.0
+    },
+    "jwt-eddsa-sign/*/token": {
+     "aws-lc-rs": 139900.0,
+     "rind": 96320.0
+    },
+    "jwt-eddsa-verify/*/load": {
+     "aws-lc-rs": 74.05,
+     "rind": 10390.0
+    },
+    "jwt-eddsa-verify/*/token": {
+     "aws-lc-rs": 223100.0,
+     "rind": 140100.0
+    },
+    "jwt-es256-sign/*/load": {
+     "aws-lc-rs": 188700.0,
+     "rind": 99630.0
+    },
+    "jwt-es256-sign/*/token": {
+     "aws-lc-rs": 416800.0,
+     "rind": 198700.0
+    },
+    "jwt-es256-verify/*/load": {
+     "aws-lc-rs": 104.1,
+     "rind": 31910.0
+    },
+    "jwt-es256-verify/*/token": {
+     "aws-lc-rs": 528300.0,
+     "rind": 364600.0
+    },
+    "jwt-es384-sign/*/load": {
+     "aws-lc-rs": 589200.0,
+     "rind": 238900.0
+    },
+    "jwt-es384-sign/*/token": {
+     "aws-lc-rs": 1298000.0,
+     "rind": 511400.0
+    },
+    "jwt-es384-verify/*/load": {
+     "aws-lc-rs": 133.3,
+     "rind": 61380.0
+    },
+    "jwt-es384-verify/*/token": {
+     "aws-lc-rs": 1841000.0,
+     "rind": 837500.0
+    },
+    "jwt-hs256-sign/*/load": {
+     "aws-lc-rs": 448.7,
+     "rind": 188.5
+    },
+    "jwt-hs256-sign/*/token": {
+     "aws-lc-rs": 904.9,
+     "rind": 362.8
+    },
+    "jwt-hs256-verify/*/load": {
+     "aws-lc-rs": 433.9,
+     "rind": 187.0
+    },
+    "jwt-hs256-verify/*/token": {
+     "aws-lc-rs": 896.6,
+     "rind": 363.8
+    },
+    "jwt-rs256-sign/*/load": {
+     "aws-lc-rs": 809.7,
+     "rind": 350300.0
+    },
+    "jwt-rs256-sign/*/token": {
+     "aws-lc-rs": 4043000.0,
+     "rind": 2976000.0
+    },
+    "jwt-rs256-verify/*/load": {
+     "aws-lc-rs": 225.2,
+     "rind": 15540.0
+    },
+    "jwt-rs256-verify/*/token": {
+     "aws-lc-rs": 74680.0,
+     "rind": 70480.0
+    },
+    "mlkem768-combined/*": {
+     "aws-lc-rs": 271000.0,
+     "rind": 148700.0
+    },
+    "mlkem768-decaps/*": {
+     "aws-lc-rs": 103500.0,
+     "rind": 37080.0
+    },
+    "mlkem768-encaps/*": {
+     "aws-lc-rs": 84330.0,
+     "rind": 57460.0
+    },
+    "mlkem768-keygen/*": {
+     "aws-lc-rs": 79460.0,
+     "rind": 53750.0
+    },
+    "p256-ecdh/*": {
+     "aws-lc-rs": 706700.0,
+     "rind": 383200.0,
+     "ring": 664100.0
+    },
+    "p256-ecdsa-sign/*": {
+     "aws-lc-rs": 215100.0,
+     "rind": 98570.0,
+     "ring": 214200.0
+    },
+    "p256-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 523100.0,
+     "rind": 328100.0
+    },
+    "p256-ecdsa-verify/*": {
+     "aws-lc-rs": 527000.0,
+     "rind": 367900.0,
+     "ring": 632200.0
+    },
+    "p256-keygen/*": {
+     "aws-lc-rs": 173100.0,
+     "rind": 67990.0,
+     "ring": 178100.0
+    },
+    "p384-ecdh/*": {
+     "aws-lc-rs": 2408000.0,
+     "rind": 890400.0,
+     "ring": 2765000.0
+    },
+    "p384-ecdsa-sign/*": {
+     "aws-lc-rs": 682600.0,
+     "rind": 271700.0,
+     "ring": 1494000.0
+    },
+    "p384-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 1858000.0,
+     "rind": 761500.0
+    },
+    "p384-ecdsa-verify/*": {
+     "aws-lc-rs": 1864000.0,
+     "rind": 838800.0,
+     "ring": 2678000.0
+    },
+    "p384-keygen/*": {
+     "aws-lc-rs": 559300.0,
+     "rind": 177800.0,
+     "ring": 1382000.0
+    },
+    "p521-ecdh/*": {
+     "aws-lc-rs": 1770000.0,
+     "rind": 1366000.0
+    },
+    "p521-ecdsa-sign/*": {
+     "aws-lc-rs": 838200.0,
+     "rind": 582600.0
+    },
+    "p521-ecdsa-verify-parsed/*": {
+     "aws-lc-rs": 1413000.0,
+     "rind": 1425000.0
+    },
+    "p521-ecdsa-verify/*": {
+     "aws-lc-rs": 1418000.0,
+     "rind": 1533000.0
+    },
+    "p521-keygen/*": {
+     "aws-lc-rs": 521100.0,
+     "rind": 335300.0
+    },
+    "pbkdf2-sha1/*": {
+     "aws-lc-rs": 147200.0,
+     "rind": 117100.0,
+     "ring": 498200.0
+    },
+    "pbkdf2-sha256/*": {
+     "aws-lc-rs": 154400.0,
+     "rind": 125500.0,
+     "ring": 457200.0
+    },
+    "pbkdf2-sha384/*": {
+     "aws-lc-rs": 1057000.0,
+     "rind": 1055000.0,
+     "ring": 1113000.0
+    },
+    "pbkdf2-sha512/*": {
+     "aws-lc-rs": 1052000.0,
+     "rind": 1052000.0,
+     "ring": 1118000.0
+    },
+    "quic-header-protection/aes128/*": {
+     "aws-lc-rs": 15.45,
+     "rind": 15.7,
+     "ring": 221.7
+    },
+    "quic-header-protection/aes256/*": {
+     "aws-lc-rs": 17.48,
+     "rind": 18.02,
+     "ring": 299.5
+    },
+    "quic-header-protection/chacha20/*": {
+     "aws-lc-rs": 131.1,
+     "rind": 86.22,
+     "ring": 122.8
+    },
+    "rsa1024-pkcs1-sha1-verify/*": {
+     "aws-lc-rs": 24930.0,
+     "rind": 24120.0,
+     "ring": 25300.0
+    },
+    "rsa2048-key-generation/*": {
+     "aws-lc-rs": 252800000.0,
+     "rind": 330100000.0
+    },
+    "rsa2048-load/*": {
+     "aws-lc-rs": 572800.0,
+     "rind": 352000.0
+    },
+    "rsa2048-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 2704000.0,
+     "rind": 2625000.0,
+     "ring": 2669000.0
+    },
+    "rsa2048-pkcs1-sha256-verify-parsed/*": {
+     "aws-lc-rs": 60620.0,
+     "rind": 54890.0
+    },
+    "rsa2048-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 74870.0,
+     "rind": 70430.0,
+     "ring": 83050.0
+    },
+    "rsa2048-pss-sha256-sign/*": {
+     "aws-lc-rs": 2705000.0,
+     "rind": 2627000.0,
+     "ring": 2672000.0
+    },
+    "rsa2048-pss-sha256-verify/*": {
+     "aws-lc-rs": 75570.0,
+     "rind": 71000.0,
+     "ring": 85470.0
+    },
+    "rsa2056-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 5124000.0,
+     "rind": 5222000.0
+    },
+    "rsa2056-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 141200.0,
+     "rind": 139200.0,
+     "ring": 172000.0
+    },
+    "rsa2560-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 4807000.0,
+     "rind": 4657000.0
+    },
+    "rsa3072-key-generation/*": {
+     "aws-lc-rs": 911400000.0,
+     "rind": 744700000.0
+    },
+    "rsa3072-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 7837000.0,
+     "rind": 7535000.0,
+     "ring": 7654000.0
+    },
+    "rsa3072-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 152000.0,
+     "rind": 140600.0,
+     "ring": 174400.0
+    },
+    "rsa4096-key-generation/*": {
+     "aws-lc-rs": 2146000000.0,
+     "rind": 3210000000.0
+    },
+    "rsa4096-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 17070000.0,
+     "rind": 16290000.0,
+     "ring": 16510000.0
+    },
+    "rsa4096-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 257400.0,
+     "rind": 235000.0,
+     "ring": 299200.0
+    },
+    "rsa6144-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 55960000.0,
+     "rind": 49910000.0
+    },
+    "rsa6144-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 550100.0,
+     "rind": 494500.0,
+     "ring": 649600.0
+    },
+    "rsa8192-load/*": {
+     "aws-lc-rs": 7878000.0,
+     "rind": 4683000.0
+    },
+    "rsa8192-pkcs1-sha256-sign/*": {
+     "aws-lc-rs": 122800000.0,
+     "rind": 112400000.0
+    },
+    "rsa8192-pkcs1-sha256-verify/*": {
+     "aws-lc-rs": 954600.0,
+     "rind": 850300.0,
+     "ring": 1134000.0
+    },
+    "rustls-bulk/aes128-gcm/*": {
+     "aws-lc-rs": 1299000.0,
+     "rind": 1287000.0,
+     "ring": 10120000.0
+    },
+    "rustls-bulk/aes256-gcm/*": {
+     "aws-lc-rs": 1439000.0,
+     "rind": 1429000.0,
+     "ring": 12260000.0
+    },
+    "rustls-bulk/chacha20poly1305/*": {
+     "aws-lc-rs": 3304000.0,
+     "rind": 3279000.0,
+     "ring": 3294000.0
+    },
+    "rustls-full-handshake-group/secp256r1/*": {
+     "aws-lc-rs": 3421000.0,
+     "rind": 2023000.0,
+     "ring": 3601000.0
+    },
+    "rustls-full-handshake-group/secp384r1/*": {
+     "aws-lc-rs": 6831000.0,
+     "rind": 3040000.0,
+     "ring": 7774000.0
+    },
+    "rustls-full-handshake-group/secp521r1/*": {
+     "rind": 3996000.0
+    },
+    "rustls-full-handshake-group/x25519/*": {
+     "aws-lc-rs": 2514000.0,
+     "rind": 1510000.0,
+     "ring": 2604000.0
+    },
+    "rustls-full-handshake-group/x25519mlkem768/*": {
+     "aws-lc-rs": 2818000.0,
+     "rind": 1677000.0
+    },
+    "rustls-full-handshake-key/ecdsa-p256/*": {
+     "aws-lc-rs": 2512000.0,
+     "rind": 1509000.0,
+     "ring": 2603000.0
+    },
+    "rustls-full-handshake-key/ecdsa-p384/*": {
+     "aws-lc-rs": 6974000.0,
+     "rind": 3104000.0,
+     "ring": 9984000.0
+    },
+    "rustls-full-handshake-key/ecdsa-p521/*": {
+     "aws-lc-rs": 5802000.0,
+     "rind": 5557000.0
+    },
+    "rustls-full-handshake-key/ed25519/*": {
+     "aws-lc-rs": 1444000.0,
+     "rind": 776100.0,
+     "ring": 1064000.0
+    },
+    "rustls-full-handshake-key/rsa-2048/*": {
+     "aws-lc-rs": 3657000.0,
+     "rind": 3165000.0,
+     "ring": 3456000.0
+    },
+    "rustls-full-handshake-key/rsa-3072/*": {
+     "aws-lc-rs": 8883000.0,
+     "rind": 8298000.0,
+     "ring": 8741000.0
+    },
+    "rustls-full-handshake-key/rsa-4096/*": {
+     "aws-lc-rs": 18050000.0,
+     "rind": 17350000.0,
+     "ring": 18000000.0
+    },
+    "rustls-resumed-handshake/secp256r1/*": {
+     "aws-lc-rs": 1642000.0,
+     "rind": 825200.0,
+     "ring": 1494000.0
+    },
+    "rustls-resumed-handshake/secp384r1/*": {
+     "aws-lc-rs": 5055000.0,
+     "rind": 1840000.0,
+     "ring": 5671000.0
+    },
+    "rustls-resumed-handshake/secp521r1/*": {
+     "rind": 2793000.0
+    },
+    "rustls-resumed-handshake/x25519/*": {
+     "aws-lc-rs": 730200.0,
+     "rind": 310800.0,
+     "ring": 496500.0
+    },
+    "rustls-resumed-handshake/x25519mlkem768/*": {
+     "aws-lc-rs": 1038000.0,
+     "rind": 470800.0
+    },
+    "sha1/*/1200B": {
+     "aws-lc-rs": 584.3,
+     "rind": 550.3,
+     "ring": 3508.0
+    },
+    "sha1/*/1350B": {
+     "aws-lc-rs": 659.3,
+     "rind": 622.8,
+     "ring": 4051.0
+    },
+    "sha1/*/16KB": {
+     "aws-lc-rs": 6546.0,
+     "rind": 6547.0,
+     "ring": 46510.0
+    },
+    "sha1/*/32B": {
+     "aws-lc-rs": 138.0,
+     "rind": 93.88,
+     "ring": 256.3
+    },
+    "sha1/*/64B": {
+     "aws-lc-rs": 159.1,
+     "rind": 119.2,
+     "ring": 432.6
+    },
+    "sha1/*/8KB": {
+     "aws-lc-rs": 3340.0,
+     "rind": 3322.0,
+     "ring": 23380.0
+    },
+    "sha256-updates/*/16B": {
+     "aws-lc-rs": 4622.0,
+     "rind": 3395.0
+    },
+    "sha256-updates/*/1B": {
+     "aws-lc-rs": 41030.0,
+     "rind": 20940.0
+    },
+    "sha256/*/1200B": {
+     "aws-lc-rs": 666.7,
+     "rind": 629.8,
+     "ring": 2969.0
+    },
+    "sha256/*/1350B": {
+     "aws-lc-rs": 755.4,
+     "rind": 717.9,
+     "ring": 3425.0
+    },
+    "sha256/*/16KB": {
+     "aws-lc-rs": 7750.0,
+     "rind": 7713.0,
+     "ring": 39060.0
+    },
+    "sha256/*/32B": {
+     "aws-lc-rs": 139.1,
+     "rind": 94.93,
+     "ring": 230.3
+    },
+    "sha256/*/64B": {
+     "aws-lc-rs": 159.7,
+     "rind": 124.6,
+     "ring": 384.3
+    },
+    "sha256/*/8KB": {
+     "aws-lc-rs": 3940.0,
+     "rind": 3903.0,
+     "ring": 19610.0
+    },
+    "sha512-256/*/1200B": {
+     "aws-lc-rs": 4865.0,
+     "rind": 4843.0,
+     "ring": 4818.0
+    },
+    "sha512-256/*/1350B": {
+     "aws-lc-rs": 5338.0,
+     "rind": 5318.0,
+     "ring": 5294.0
+    },
+    "sha512-256/*/16KB": {
+     "aws-lc-rs": 61340.0,
+     "rind": 61330.0,
+     "ring": 61330.0
+    },
+    "sha512-256/*/32B": {
+     "aws-lc-rs": 588.3,
+     "rind": 562.6,
+     "ring": 551.4
+    },
+    "sha512-256/*/64B": {
+     "aws-lc-rs": 587.8,
+     "rind": 562.1,
+     "ring": 551.0
+    },
+    "sha512-256/*/8KB": {
+     "aws-lc-rs": 30980.0,
+     "rind": 30950.0,
+     "ring": 30920.0
+    },
+    "sha512/*/1200B": {
+     "aws-lc-rs": 4860.0,
+     "rind": 4825.0,
+     "ring": 4819.0
+    },
+    "sha512/*/1350B": {
+     "aws-lc-rs": 5334.0,
+     "rind": 5299.0,
+     "ring": 5293.0
+    },
+    "sha512/*/16KB": {
+     "aws-lc-rs": 61380.0,
+     "rind": 61310.0,
+     "ring": 61330.0
+    },
+    "sha512/*/32B": {
+     "aws-lc-rs": 588.3,
+     "rind": 548.4,
+     "ring": 551.4
+    },
+    "sha512/*/64B": {
+     "aws-lc-rs": 587.9,
+     "rind": 548.4,
+     "ring": 550.9
+    },
+    "sha512/*/8KB": {
+     "aws-lc-rs": 30980.0,
+     "rind": 30940.0,
+     "ring": 30930.0
+    },
+    "x25519-ecdh/*": {
+     "aws-lc-rs": 257300.0,
+     "rind": 127500.0,
+     "ring": 161400.0
+    },
+    "x25519-keygen/*": {
+     "aws-lc-rs": 67600.0,
+     "rind": 46900.0,
+     "ring": 80700.0
+    },
+    "xchacha20poly1305/*/1200B": {
+     "aws-lc-rs": 2750.0,
+     "rind": 2608.0
+    },
+    "xchacha20poly1305/*/1350B": {
+     "aws-lc-rs": 3012.0,
+     "rind": 2852.0
+    },
+    "xchacha20poly1305/*/16KB": {
+     "aws-lc-rs": 23930.0,
+     "rind": 23690.0
+    },
+    "xchacha20poly1305/*/32B": {
+     "aws-lc-rs": 1101.0,
+     "rind": 981.8
+    }
+   }
+  }
+ ]
+}

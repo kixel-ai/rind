@@ -6,7 +6,7 @@ Every algorithm rind exports, on every path it runs (x86_64's fast path and
 its no-ADX, no-AVX2, no-AES-NI, and SSE2 tiers; aarch64 with and without the
 crypto extensions; armv7), is at least as fast as the fastest permissively
 licensed source usable from Rust, or the gap is recorded with its reason.
-README's Algorithms table shows where each stands.
+BENCHMARKS.md's CPU tiers show where each stands.
 
 ## Plan
 
@@ -40,7 +40,9 @@ settled; don't ask them again. The chosen option is marked ✅.
   primitives only / also every adapter.
 - Symmetric sizes: 32 B, 1200 B, 1350 B, and 16 KB, plus 64 B and 8 KB for
   hashes; a gap at any size counts ✅ / a full power-of-two sweep.
-- Scoreboard: README's Algorithms table gains each path's ratio to the
-  fastest baseline, refreshed by the audit and each gap quest; the nightly
-  job's summary keeps the live numbers ✅ / nightly summary only / a separate
-  BENCHMARKS.md.
+- Scoreboard: BENCHMARKS.md's CPU tiers, which `admin/bench-report nightly`
+  and `render` regenerate from the nightly bench, show each path's ratio to
+  the fastest baseline; the nightly job's summary keeps the live numbers ✅
+  (maintainer, 2026-11-03, in the [benchmarks epic](/quest/m1/benchmarks/README.md):
+  moved from README's Algorithms table, which keeps only the sources) /
+  README's Algorithms table / nightly summary only.
