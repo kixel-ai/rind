@@ -202,18 +202,18 @@ Not timed on `nixos2`: AES-128 header protection, AES-256 header protection, Cha
 | 1 MB transfer, AES-128-GCM | 433.16 µs | 453.78 µs | 469.65 µs | - | 578.33 µs | - | 496.82 µs |
 | 1 MB transfer, AES-256-GCM | 544.93 µs | 553.29 µs | 544.73 µs | - | 697.29 µs | - | 609.96 µs |
 | 1 MB transfer, ChaCha20-Poly1305 | 924.76 µs | 932.29 µs | 928.70 µs | - | 1.64 ms | - | 1.00 ms |
-| AES-128-GCM seal, 32 B | 42 ns | 89 ns | 72 ns | 101 ns | 72 ns | 290 ns | 161 ns |
-| AES-128-GCM seal, 1350 B | 264 ns | 287 ns | 280 ns | 556 ns | 403 ns | 3.41 µs | 362 ns |
-| AES-128-GCM seal, 16 KB | 2.38 µs | 2.46 µs | 2.38 µs | 5.63 µs | 3.84 µs | 38.50 µs | 2.53 µs |
-| AES-128-GCM open, 32 B | 50 ns | 95 ns | 79 ns | 106 ns | 68 ns | 305 ns | 156 ns |
-| AES-128-GCM open, 1350 B | 261 ns | 297 ns | 278 ns | 569 ns | 362 ns | 3.63 µs | 360 ns |
-| AES-128-GCM open, 16 KB | 2.58 µs | 2.63 µs | 2.59 µs | 5.81 µs | 3.41 µs | 39.83 µs | 2.70 µs |
-| AES-256-GCM seal, 32 B | 46 ns | 96 ns | 76 ns | 109 ns | 80 ns | 343 ns | 167 ns |
-| AES-256-GCM seal, 1350 B | 343 ns | 364 ns | 356 ns | 648 ns | 485 ns | 4.49 µs | 438 ns |
-| AES-256-GCM seal, 16 KB | 3.24 µs | 3.32 µs | 3.25 µs | 6.54 µs | 4.72 µs | 50.79 µs | 3.35 µs |
-| AES-256-GCM open, 32 B | 57 ns | 104 ns | 83 ns | 118 ns | 79 ns | 385 ns | 173 ns |
-| AES-256-GCM open, 1350 B | 351 ns | 391 ns | 371 ns | 672 ns | 456 ns | 4.55 µs | 436 ns |
-| AES-256-GCM open, 16 KB | 3.58 µs | 3.56 µs | 3.59 µs | 6.77 µs | 4.38 µs | 50.89 µs | 3.64 µs |
+| AES-128-GCM seal, 32 B | 42 ns ✓ | 89 ns | 72 ns | 101 ns | 72 ns | 290 ns | 161 ns |
+| AES-128-GCM seal, 1350 B | 264 ns ✓ | 287 ns | 280 ns | 556 ns | 403 ns | 3.41 µs | 362 ns |
+| AES-128-GCM seal, 16 KB | 2.38 µs ✓ | 2.46 µs | 2.38 µs | 5.63 µs | 3.84 µs | 38.50 µs | 2.53 µs |
+| AES-128-GCM open, 32 B | 50 ns ✓ | 95 ns | 79 ns | 106 ns | 68 ns | 305 ns | 156 ns |
+| AES-128-GCM open, 1350 B | 261 ns ✓ | 297 ns | 278 ns | 569 ns | 362 ns | 3.63 µs | 360 ns |
+| AES-128-GCM open, 16 KB | 2.58 µs ✓ | 2.63 µs | 2.59 µs | 5.81 µs | 3.41 µs | 39.83 µs | 2.70 µs |
+| AES-256-GCM seal, 32 B | 46 ns ✓ | 96 ns | 76 ns | 109 ns | 80 ns | 343 ns | 167 ns |
+| AES-256-GCM seal, 1350 B | 343 ns ✓ | 364 ns | 356 ns | 648 ns | 485 ns | 4.49 µs | 438 ns |
+| AES-256-GCM seal, 16 KB | 3.24 µs ✓ | 3.32 µs | 3.25 µs | 6.54 µs | 4.72 µs | 50.79 µs | 3.35 µs |
+| AES-256-GCM open, 32 B | 57 ns ✓ | 104 ns | 83 ns | 118 ns | 79 ns | 385 ns | 173 ns |
+| AES-256-GCM open, 1350 B | 351 ns ✓ | 391 ns | 371 ns | 672 ns | 456 ns | 4.55 µs | 436 ns |
+| AES-256-GCM open, 16 KB | 3.58 µs ✓ | 3.56 µs | 3.59 µs | 6.77 µs | 4.38 µs | 50.89 µs | 3.64 µs |
 | ChaCha20-Poly1305 seal, 32 B | 124 ns | 141 ns | 130 ns | 1.16 µs | 222 ns | 274 ns ✓ | 325 ns |
 | ChaCha20-Poly1305 seal, 1350 B | 691 ns | 700 ns | 686 ns | 2.08 µs | 1.24 µs | 3.08 µs ✓ | 933 ns |
 | ChaCha20-Poly1305 seal, 16 KB | 6.35 µs | 6.43 µs | 6.39 µs | 12.38 µs | 11.98 µs | 34.70 µs ✓ | 6.41 µs |
@@ -548,6 +548,7 @@ A ✓ means a published, machine-checked proof shows that all the code computing
 | rind | `p256-ecdh` | aarch64 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, and bignum_eq, of s2n-bignum's own object code, which rind transliterates; assuming, as s2n-bignum's proof does, that rind's generator table holds the multiples of G, which a test checks](https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/P256.lean) |
 | rind | `quic-header-protection/chacha20` | x86_64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean) |
 | rind | `quic-header-protection/chacha20` | aarch64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean) |
+| rind | `aes128-gcm/*`, `aes128-gcm-open/*`, `aes256-gcm/*`, `aes256-gcm-open/*` | x86_64 with aes, pclmulqdq, ssse3, sse4.1, avx, movbe without vaes | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/AesGcm.lean) |
 | aws-lc-rs | `sha512/*` | x86_64 with intel, avx, ssse3 | [aws-lc-verification's SAW proof of SHA-512 through EVP_Digest, padding included, over sha512_block_data_order_avx, which aws-lc runs only on Intel; of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps](https://github.com/awslabs/aws-lc-verification/blob/797302470c1703cbb1a3a6fa98daffef0bfd3d80/SAW/proof/SHA512/verify-SHA512-x86.saw) |
 | libcrux | `sha256/*`, `sha512/*` | any architecture | [HACL*'s F* proof of Hacl.Streaming.SHA2's hash_256 and hash_512, compiled to Rust by an unverified step](https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/streaming/Hacl.Streaming.SHA2.fst) |
 | libcrux | `hmac-sha256/*` | any architecture | [HACL*'s F* proof of Hacl.HMAC's compute_sha2_256, compiled to Rust by an unverified step](https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/hmac/Hacl.HMAC.fst) |
