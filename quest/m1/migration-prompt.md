@@ -32,8 +32,8 @@ Guidance:
   maps each item). `cargo tree -i` finds where each comes from.
 - Check the project's release targets first: rind builds only on x86_64,
   aarch64, and armv7, and CI does not yet test iOS or Android (see
-  [platforms](/quest/m1/platforms.md)), so a project that ships
-  others stops with that reason rather than migrating part way. Build each
+  [mobile platforms](/quest/m2/adoption/platforms-mobile.md)), so a project
+  that ships others stops with that reason rather than migrating part way. Build each
   release target before reporting success.
 - A dependency that hard-wires ring or aws-lc-rs with no hook is reported, not
   patched around.
