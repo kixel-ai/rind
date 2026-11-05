@@ -12,13 +12,13 @@ it at the end. Work only in their repository and its ignored scratch space.
 
 Start from a clean checkout of the default branch, and note its commit.
 
-1. Find where ring and aws-lc-rs come from, for every feature set the project
-   releases:
+1. Find where ring and aws-lc-rs come from, with the default features and
+   each feature set the project's release or CI builds:
 
    ```sh
-   cargo tree --target all -e normal,build -i ring
-   cargo tree --target all -e normal,build -i aws-lc-rs
-   cargo tree --target all -e normal,build -i aws-lc-sys
+   cargo tree --locked --target all -e normal,build -i ring
+   cargo tree --locked --target all -e normal,build -i aws-lc-rs
+   cargo tree --locked --target all -e normal,build -i aws-lc-sys
    ```
 
    Each path reaches them in one of four ways:
@@ -36,24 +36,24 @@ Start from a clean checkout of the default branch, and note its commit.
    them. Dev-dependencies may keep ring; only what ships must move.
 
 2. Find the release targets: the CI release workflow, `dist-workspace.toml`
-   or `[workspace.metadata.dist]`, `Cross.toml`, and the README's install
-   section. rind compiles only for x86_64, aarch64, and 32-bit ARM, so i686,
+   or `[workspace.metadata.dist]`, `Cross.toml`, and the install docs. rind compiles only for x86_64, aarch64, and 32-bit ARM, so i686,
    wasm32, riscv64, and every other architecture fail to build. Within those
    three, a target rind's CI does not cover yet, such as musl, aarch64
    Windows, iOS, Android, or ARM older than ARMv7, may still fail: step 4
    builds each one.
 
-3. Note the project's `rust-version`. rind needs the one in its
-   [Cargo.toml]'s `[workspace.package]`.
+3. Compare the project's `rust-version` with the latest rind release's,
+   which `cargo info rind` prints. If the project's is older, ask the user
+   whether to raise it, and stop if they decline.
 
 Stop here, before changing anything, if a release target is on another
-architecture, a dependency hard-wires ring or aws-lc-rs in what ships, the
-project's `rust-version` is older than rind's, or the project calls an item
-rind lacks: one [MIGRATING.md] maps to none or, through ring's API, one
-[rind-ring's README] leaves out. Report the reason in the format of step 5,
-naming the dependency path or the item, then make the offers in step 6. Do
-not patch around a dependency or migrate part of the graph: a build that
-still links ring or aws-lc-rs gains nothing.
+architecture, a dependency hard-wires ring or aws-lc-rs in what ships, or the
+project calls an item rind lacks: one [MIGRATING.md] maps to none or, through
+ring's API, one [rind-ring's README] leaves out. Check every condition, then
+report each that holds in the format of step 5, without the table, naming the
+target, dependency path, or item, and make the offers in step 6. Do not patch
+around a dependency or migrate part of the graph: a build that still links
+ring or aws-lc-rs gains nothing.
 
 ## 2. Measure before
 
@@ -111,10 +111,9 @@ Commit as you go, with messages in the project's style.
 
 ## 4. Verify and measure after
 
-1. Confirm nothing that ships links ring or aws-lc-rs: the three
-   `cargo tree` commands from the survey print nothing, or only
-   dev-dependencies. Each `-i` reports "did not match any packages" once
-   the crate is gone from the lockfile.
+1. Confirm nothing that ships links ring or aws-lc-rs: for each feature set,
+   the three `cargo tree` commands from the survey print no dependency path,
+   or only dev-dependencies.
 2. Build each release target, adding its standard library with
    `rustup target add` where you can. Where the host has the target's linker,
    run the release build with `--target`. Otherwise run
@@ -151,7 +150,9 @@ Reply with this report, filling in every row:
   built, or failed.
 - **How it moved**: each path from the survey, and what changed for it.
 - **Still linked**: dev-dependencies that keep ring or aws-lc-rs, or none.
-- **Breaking changes**: for a library, any change its users see, or none.
+- **Breaking changes**: any change users see, such as a raised
+  `rust-version`, ring's types changed in a public API, or architectures
+  that built from source before and no longer do, or none.
 - **rind gaps**: anything missing, slower, or harder than it should be, or
   none.
 - **Host**: CPU, OS, and `rustc --version`.
@@ -176,4 +177,3 @@ Ask the user, and do each only if they agree:
 
 [MIGRATING.md]: https://raw.githubusercontent.com/moq-dev/rind/main/MIGRATING.md
 [rind-ring's README]: https://raw.githubusercontent.com/moq-dev/rind/main/rind-ring/README.md
-[Cargo.toml]: https://raw.githubusercontent.com/moq-dev/rind/main/Cargo.toml
