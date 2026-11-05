@@ -171,4 +171,18 @@ opaque mid.p384.PublicKey.from_x962_uncompressed
 opaque mid.aes.Aes.encrypt_block
   : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
 
+/-! SHA-3, whose sponge no proof covers. -/
+
+opaque mid.sha3.Sha3Context.new
+  (R : Std.Usize) (OUT : Std.Usize) : Result (mid.sha3.Sha3Context R OUT)
+
+opaque mid.sha3.Sha3Context.update {R : Std.Usize} {OUT : Std.Usize}
+  : mid.sha3.Sha3Context R OUT → Slice Std.U8 → Result (mid.sha3.Sha3Context R OUT)
+
+opaque mid.sha3.Sha3Context.finish {R : Std.Usize} {OUT : Std.Usize}
+  : mid.sha3.Sha3Context R OUT → Result (Array Std.U8 OUT)
+
+opaque mid.sha3.Sha3Context.Insts.CoreCloneClone.clone {R : Std.Usize} {OUT : Std.Usize}
+  : mid.sha3.Sha3Context R OUT → Result (mid.sha3.Sha3Context R OUT)
+
 end rind.aarch64

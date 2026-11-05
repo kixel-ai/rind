@@ -52,9 +52,10 @@ p256_items() {
 check_quote Aarch64/P256Dispatch p256_items
 check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
-    'pub static SHA512_256:' 'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {'
+    'pub static SHA512_256:' 'pub static SHA3_256:' 'pub static SHA3_384:' 'pub static SHA3_512:' \
+    'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {'
 check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
-    'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {'
+    'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {' 'fn one_shot<'
 check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
     'pub struct VerificationAlgorithm(' 'enum Verification {' 'type Verify<K> =' \
     'struct Verifier<K> {' 'impl<K> Verifier<K> {' 'pub struct PublicKey {' 'enum Parsed {' \
@@ -109,6 +110,7 @@ only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Parsed::Ed25
 # `signature::PublicKey` holds the signature API's, so no translated function
 # reaches it, and `SignatureDispatch.lean` defines it. SHA-1's and SHA-256's
 # padding is translated down to their block functions, which are opaque.
+# SHA-3's sponge, which no proof covers, is opaque.
 # P-256's key generation draws through a `dyn RandomSource`, so it is opaque
 # too, and `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the
 # translated `PrivateKey::from_bytes`. The generator table is translated, so
@@ -167,6 +169,10 @@ extract() {
         --opaque crate::high::digest::SHA384 \
         --opaque crate::high::digest::SHA512 \
         --opaque crate::high::digest::SHA512_256 \
+        --opaque crate::high::digest::SHA3_256 \
+        --opaque crate::high::digest::SHA3_384 \
+        --opaque crate::high::digest::SHA3_512 \
+        --opaque crate::mid::sha3 \
         --opaque crate::low \
         --opaque 'crate::mid::p384::_::_' \
         --opaque 'crate::mid::p521::_::_' \
