@@ -127,7 +127,7 @@ impl State {
         }
     }
 
-    fn finish(&self) -> Digest {
+    fn finish(&mut self) -> Digest {
         match self {
             Self::Sha1(hashing) => hashing.finish(),
             Self::Sha256(hashing) => hashing.finish(),
@@ -150,7 +150,7 @@ struct Hashing<C: Variant> {
 
 struct Ops<C> {
     update: fn(&mut C, &[u8]),
-    finish: fn(&C) -> Digest,
+    finish: fn(&mut C) -> Digest,
 }
 
 impl<C: Variant> Hashing<C> {
@@ -161,7 +161,7 @@ impl<C: Variant> Hashing<C> {
                 const {
                     &Ops {
                         update: C::update,
-                        finish: C::finish,
+                        finish: C::finish_reset,
                     }
                 },
             ),
@@ -172,8 +172,8 @@ impl<C: Variant> Hashing<C> {
         (self.ops.get().update)(&mut self.context, data)
     }
 
-    fn finish(&self) -> Digest {
-        (self.ops.get().finish)(&self.context)
+    fn finish(&mut self) -> Digest {
+        (self.ops.get().finish)(&mut self.context)
     }
 }
 
@@ -182,6 +182,13 @@ trait Variant: HashContext + 'static {
     fn new() -> Self;
 
     fn state(hashing: Hashing<Self>) -> State;
+
+    /// The digest of the message so far, leaving `self` as [`Self::new`] does.
+    fn finish_reset(&mut self) -> Digest {
+        let digest = self.finish();
+        *self = Self::new();
+        digest
+    }
 }
 
 macro_rules! variant {
@@ -235,8 +242,8 @@ impl Context {
         self.0.update(data);
     }
 
-    /// Returns the digest of the message.
-    pub fn finish(self) -> Digest {
+    /// Returns the digest of the message, and starts a new one with the same algorithm.
+    pub fn finish(&mut self) -> Digest {
         let _entry = Entry::new_secret();
         self.0.finish()
     }
@@ -363,6 +370,24 @@ mod tests {
                     message_bytes: 0,
                 },
             );
+        }
+    }
+
+    // `finish` leaves a fresh context: each message after it hashes alone,
+    // whether a partial block, several blocks, or nothing was left buffered.
+    #[test]
+    fn finish_resets() {
+        for algorithm in [&SHA1, &SHA256, &SHA384, &SHA512, &SHA512_256] {
+            let mut ctx = Context::new(algorithm);
+            for message in [&[0x61u8; 3][..], &[0x62; 300], &[], &[0x63; 128]] {
+                ctx.update(message);
+                assert_eq!(
+                    ctx.finish().as_ref(),
+                    digest(algorithm, message).as_ref(),
+                    "{algorithm:?}, {} bytes",
+                    message.len()
+                );
+            }
         }
     }
 

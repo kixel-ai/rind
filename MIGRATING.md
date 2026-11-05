@@ -20,7 +20,8 @@ renames [rind-ring](#rind-ring), ring's API on rind, to `ring`.
 
 | aws-lc-rs | rind |
 |---|---|
-| `digest(alg, data)`, `Context::{new, update, finish}`, `Digest`'s bytes | the same |
+| `digest(alg, data)`, `Context::{new, update}`, `Digest`'s bytes | the same |
+| `Context::finish(self)` | `Context::finish(&mut self)`, which leaves the context fresh to hash another message; bind the context `mut` |
 | `SHA256`, `SHA384`, `SHA512`, `SHA512_256` | the same |
 | `SHA1_FOR_LEGACY_USE_ONLY` | `legacy::SHA1` |
 | `SHA224` (not in ring) | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |

@@ -65,7 +65,7 @@ check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' '
     'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \
     'pub struct Nonce(' 'impl Nonce {' 'pub struct Tag('
 check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
-    'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {'
+    'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {' 'trait Variant:'
 check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
     'pub struct VerificationAlgorithm(' 'enum Verification {' 'type Verify<K> =' \
     'struct Verifier<K> {' 'impl<K> Verifier<K> {' 'pub struct PublicKey {' 'enum Parsed {' \
