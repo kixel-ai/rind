@@ -55,7 +55,6 @@ don't ask again (✅ is the chosen option):
 
 - [rustls lists rind-rustls](/quest/m2/adoption/rustls-providers.md) - an entry in rustls's third-party provider list
 - [rusty-s3 offers rind](/quest/m2/adoption/rusty-s3.md) - a `rind` feature beside its `graviola` one
-- [rind-rustls adds little to a binary](/quest/m2/adoption/rind-rustls-size.md) - 3.4 MB today, mostly P-384 and P-521
 - [rind-str0m](/quest/m2/adoption/rind-str0m.md) - str0m's `CryptoProvider` on rind
 - [quinn's rustls support works with any provider](/quest/m2/adoption/quinn.md) - quinn-proto stops forcing ring or aws-lc-rs
 - [Bun's CryptoHasher takes SHA-3 from rind](/quest/m2/adoption/bun-sha3.md) - SHA-3 in Bun on rind, after the m1 Bun PR
