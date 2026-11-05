@@ -909,7 +909,7 @@ theorem encode_public_spec (h : Runs) (k : mid.p256.PrivateKey) (x y : Nat)
       let pk ← mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_public k
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
       b.length = 65 ∧ b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄ := by
-  unfold mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_public high.agreement.PublicKey.new
+  unfold mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_public high.agreement.PublicKey.from_encoding
     high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
   step with public_key_uncompressed_spec h k x y hq hc as ⟨a, ha4, hac⟩
   step as ⟨sl, hsl⟩

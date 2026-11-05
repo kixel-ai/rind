@@ -17,12 +17,14 @@ pub struct Algorithm {
     // whose algorithms it names.
     generate: fn() -> Result<Private, Error>,
     load: fn(Source<'_>) -> Result<Private, Error>,
+    parse_public: fn(&[u8]) -> Result<PublicKey, Error>,
 }
 
 pub static X25519: Algorithm = Algorithm {
     id: AlgorithmId::X25519,
     generate: Keyed::<x25519::PrivateKey>::generate,
     load: Keyed::<x25519::PrivateKey>::load,
+    parse_public: x25519_public_key,
 };
 
 impl PrivateKey {
@@ -75,6 +77,8 @@ impl PrivateKey {
     /// is malformed or off the curve, and so is X25519's all-zero output from
     /// a small-order point
     /// ([RFC7748 section 6.1](https://datatracker.ietf.org/doc/html/rfc7748#section-6.1)).
+    /// A NIST curve's key is an uncompressed point, as TLS sends it;
+    /// [`PublicKey::new`] decompresses a compressed one.
     pub fn agree(&self, peer: &[u8]) -> Result<SharedSecret, Error> {
         Ok(SharedSecret(match &self.0 {
             Private::X25519(key) => key.agree(peer),
@@ -230,7 +234,7 @@ impl<C: Mask> Masker<C> {
 
 ```
 
-The model departs from the Rust in five ways, and adds no axiom:
+The model departs from the Rust in six ways, and adds no axiom:
 
 - `Ops<K>` holds nothing, and `Keyed`'s methods call `K`'s `encode_public` and
   `agree` directly: `Ops` is private to `high::agreement`, whose only value of
@@ -238,6 +242,9 @@ The model departs from the Rust in five ways, and adds no axiom:
   quote holds every mention of `Ops` there.
 - `PrivateKey::to_pkcs8` and `to_scalar`, and `Keyed`'s, are left out: no
   theorem states what they return.
+- `Algorithm`'s `parse_public`, which only `PublicKey::new` and `from_spki`
+  read, is left out, so no static here sets it: no theorem is about loading a
+  peer's key, and `agree` takes the peer's bytes.
 - `Masker<C>` is its key, and `Masker::mask` calls `C`'s `mask` directly:
   `Masker`'s fields are private to `aead::quic`, where only `Masker::new`
   builds one, with `C::mask`. `admin/prove` checks that the quote holds every

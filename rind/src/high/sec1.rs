@@ -9,6 +9,30 @@ use super::pkcs8;
 use crate::error::{Error, KeyFormatError};
 use crate::low::ct;
 
+/// The longest `ECPrivateKey`: P-521's scalar and uncompressed point, and
+/// its curve.
+pub(crate) const MAX_LEN: usize = MAX_SCALAR_LEN + MAX_UNCOMPRESSED_PUBLIC_KEY_LEN + 128;
+
+/// Decompresses an X9.62 compressed point on one curve to its uncompressed
+/// encoding, written to the start of the output.
+pub(crate) type Decompress = for<'a> fn(&[u8], &'a mut [u8]) -> Result<&'a [u8], Error>;
+
+/// `encoded`, an X9.62 point, as its uncompressed encoding: itself, for the
+/// curve's parser to check, or the compressed point `decompress` checks and
+/// decompresses into `output`. A hybrid point is refused, as BoringSSL does.
+pub(crate) fn uncompressed<'a>(
+    encoded: &'a [u8],
+    decompress: Decompress,
+    output: &'a mut [u8],
+) -> Result<&'a [u8], Error> {
+    match encoded.first() {
+        Some(0x04) => Ok(encoded),
+        Some(0x02 | 0x03) => decompress(encoded, output),
+        Some(_) => Err(KeyFormatError::PointEncoding.into()),
+        None => Err(KeyFormatError::WrongLength.into()),
+    }
+}
+
 /// A decoded `ECPrivateKey`: its scalar's bytes, and the public key it
 /// carries, if any.
 pub(crate) struct Decoded<'a> {
@@ -87,7 +111,7 @@ pub(crate) fn encode_pkcs8<'a>(
     curve: asn1::ObjectId,
     output: &'a mut [u8],
 ) -> Result<&'a [u8], Error> {
-    let mut sec1_buf = [0u8; MAX_SCALAR_LEN + MAX_UNCOMPRESSED_PUBLIC_KEY_LEN + 128];
+    let mut sec1_buf = [0u8; MAX_LEN];
     let sec1 = encode(private_key, public_key, None, &mut sec1_buf)?;
 
     pkcs8::Key::construct(

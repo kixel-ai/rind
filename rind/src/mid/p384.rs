@@ -30,6 +30,20 @@ impl PublicKey {
         let point = AffineMontPoint::from_x962_uncompressed(bytes)?;
         Ok(Self { point })
     }
+
+    /// Decompress an X9.62 compressed point to its uncompressed encoding,
+    /// written to the start of `output`, which
+    /// [`Self::from_x962_uncompressed`] takes.
+    ///
+    /// An error is returned unless `bytes` is 49 bytes with tag 2 or 3, its
+    /// `x` is below the field prime, and a point on the curve has that `x`.
+    pub(crate) fn decompress<'a>(bytes: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        let _entry = low::Entry::new_public();
+        let point = AffineMontPoint::from_x962_compressed(bytes)?;
+        let output = output.get_mut(..Self::BYTES).ok_or(Error::WrongLength)?;
+        output.copy_from_slice(&point.as_bytes_uncompressed());
+        Ok(output)
+    }
 }
 
 /// A P-384 public key for ECDSA verification.
@@ -276,6 +290,42 @@ impl AffineMontPoint {
         }
 
         Ok(point)
+    }
+
+    /// Decodes an X9.62 compressed point: `x`, and the parity of `y`.
+    ///
+    /// p is 3 mod 4, so a square's root is its `(p + 1) / 4`th power
+    /// (Euler's criterion). The root is squared back, so an `x` with no
+    /// point is refused rather than given one. No point of a curve of prime
+    /// order has `y = 0`, so `y` and `p - y` differ in parity.
+    fn from_x962_compressed(bytes: &[u8]) -> Result<Self, Error> {
+        let (tag, x) = match bytes.split_first() {
+            Some((&tag @ (0x02 | 0x03), x)) => (tag, x),
+            Some(_) => return Err(KeyFormatError::PointEncoding.into()),
+            None => return Err(KeyFormatError::WrongLength.into()),
+        };
+        let x = util::big_endian_slice_to_u64x6(x).ok_or(KeyFormatError::WrongLength)?;
+        if !x.iter().rev().lt(CURVE_PRIME.iter().rev()) {
+            return Err(KeyFormatError::NotOnCurve.into());
+        }
+
+        let x = FieldElement(x).as_mont();
+        let rhs = x
+            .mont_sqr()
+            .add(&CURVE_A_MONT)
+            .mont_mul(&x)
+            .add(&CURVE_B_MONT);
+        let y = rhs.mont_sqrt_candidate();
+        if !y.mont_sqr().public_eq(&rhs) {
+            return Err(KeyFormatError::NotOnCurve.into());
+        }
+
+        let y = y.demont();
+        let y = match y.0[0] & 1 == u64::from(tag & 1) {
+            true => y,
+            false => y.negate_mod_p(),
+        };
+        Ok(Self::from_xy(x, y.as_mont()))
     }
 
     fn x_scalar(&self) -> Scalar {
@@ -793,6 +843,38 @@ impl FieldElement {
         let mut r = Self::default();
         low::bignum_montmul_p384(&mut r.0, &self.0, &other.0);
         r
+    }
+
+    /// `n` Montgomery squarings mod p384
+    fn mont_sqr_n(&self, n: usize) -> Self {
+        let mut r = *self;
+        for _ in 0..n {
+            r = r.mont_sqr();
+        }
+        r
+    }
+
+    /// `self` to the `(p + 1) / 4`th power, in Montgomery form. That is
+    /// `(2^255 - 1) * 2^127 + (2^32 - 1) * 2^94 + 2^30`: 255 set bits, a clear
+    /// one, 32 set, 63 clear, one set, and 30 clear, so `xN = self^(2^N - 1)`
+    /// builds `x255` and `x32`.
+    fn mont_sqrt_candidate(&self) -> Self {
+        let x2 = self.mont_sqr_n(1).mont_mul(self);
+        let x3 = x2.mont_sqr_n(1).mont_mul(self);
+        let x6 = x3.mont_sqr_n(3).mont_mul(&x3);
+        let x12 = x6.mont_sqr_n(6).mont_mul(&x6);
+        let x15 = x12.mont_sqr_n(3).mont_mul(&x3);
+        let x30 = x15.mont_sqr_n(15).mont_mul(&x15);
+        let x32 = x30.mont_sqr_n(2).mont_mul(&x2);
+        let x60 = x30.mont_sqr_n(30).mont_mul(&x30);
+        let x120 = x60.mont_sqr_n(60).mont_mul(&x60);
+        let x240 = x120.mont_sqr_n(120).mont_mul(&x120);
+        let x255 = x240.mont_sqr_n(15).mont_mul(&x15);
+        x255.mont_sqr_n(33)
+            .mont_mul(&x32)
+            .mont_sqr_n(64)
+            .mont_mul(self)
+            .mont_sqr_n(30)
     }
 
     /// Remove one montgomery factor

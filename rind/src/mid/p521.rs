@@ -29,6 +29,20 @@ impl PublicKey {
         let point = AffinePoint::from_x962_uncompressed(bytes)?;
         Ok(Self { point })
     }
+
+    /// Decompress an X9.62 compressed point to its uncompressed encoding,
+    /// written to the start of `output`, which
+    /// [`Self::from_x962_uncompressed`] takes.
+    ///
+    /// An error is returned unless `bytes` is 67 bytes with tag 2 or 3, its
+    /// `x` is below the field prime, and a point on the curve has that `x`.
+    pub(crate) fn decompress<'a>(bytes: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        let _entry = low::Entry::new_public();
+        let point = AffinePoint::from_x962_compressed(bytes)?;
+        let output = output.get_mut(..Self::BYTES).ok_or(Error::WrongLength)?;
+        output.copy_from_slice(&point.as_bytes_uncompressed());
+        Ok(output)
+    }
 }
 
 /// A P-521 public key for ECDSA verification.
@@ -288,6 +302,44 @@ impl AffinePoint {
         }
 
         Ok(point)
+    }
+
+    /// Decodes an X9.62 compressed point: `x`, and the parity of `y`.
+    ///
+    /// p is `2^521 - 1`, 3 mod 4, so a square's root is its
+    /// `(p + 1) / 4 = 2^519`th power (Euler's criterion). The root is squared
+    /// back, so an `x` with no point is refused rather than given one. No
+    /// point of a curve of prime order has `y = 0`, so `y` and `p - y` differ
+    /// in parity.
+    fn from_x962_compressed(bytes: &[u8]) -> Result<Self, Error> {
+        let (tag, x) = match bytes.split_first() {
+            Some((&tag @ (0x02 | 0x03), x)) => (tag, x),
+            Some(_) => return Err(KeyFormatError::PointEncoding.into()),
+            None => return Err(KeyFormatError::WrongLength.into()),
+        };
+        if x.len() != FieldElement::BYTES {
+            return Err(KeyFormatError::WrongLength.into());
+        }
+        let x = util::big_endian_slice_any_size_to_u64x9(x).unwrap();
+        if !x.iter().rev().lt(CURVE_PRIME.iter().rev()) {
+            return Err(KeyFormatError::NotOnCurve.into());
+        }
+
+        let x = FieldElement(x);
+        let rhs = x.sqr().add(&CURVE_A).mul(&x).add(&CURVE_B);
+        let mut y = rhs;
+        for _ in 0..519 {
+            y = y.sqr();
+        }
+        if !y.sqr().public_eq(&rhs) {
+            return Err(KeyFormatError::NotOnCurve.into());
+        }
+
+        let y = match y.0[0] & 1 == u64::from(tag & 1) {
+            true => y,
+            false => y.negate(),
+        };
+        Ok(Self::from_xy(x, y))
     }
 
     fn x_scalar(&self) -> Scalar {
