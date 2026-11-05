@@ -28,8 +28,8 @@ fn bench_aes_ctr(c: &mut Criterion) {
             group.bench_function(BenchmarkId::new("rind", size_name), |b| {
                 use rind::cipher::{AES_128, AES_256, AesCtr};
                 let algorithm = if key_len == 16 { &AES_128 } else { &AES_256 };
-                let key = AesCtr::new(algorithm, key).unwrap();
-                b.iter(|| key.apply_keystream(&iv, 128, &mut buf).unwrap());
+                let key = AesCtr::new(algorithm, key, 128).unwrap();
+                b.iter(|| key.apply_keystream(&iv, &mut buf).unwrap());
             });
         }
     }

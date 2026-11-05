@@ -195,9 +195,9 @@ mod cipher {
         ) {
             // aws-lc-rs's counter is the whole block
             let mut ours = msg.clone();
-            AesCtr::new(rind_aes_algorithm(&key), &key)
+            AesCtr::new(rind_aes_algorithm(&key), &key, 128)
                 .unwrap()
-                .apply_keystream(&counter_block, 128, &mut ours)
+                .apply_keystream(&counter_block, &mut ours)
                 .unwrap();
 
             let mut theirs = msg.clone();

@@ -116,8 +116,8 @@ protocols with their own integrity protection need. ring has none.
 
 | aws-lc-rs | rind |
 |---|---|
-| `UnboundCipherKey::new(&AES_128, key)` and `EncryptingKey::ctr` or `DecryptingKey::ctr` | `AesCtr::new(&AES_128, key)?` |
-| `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))`, `decrypt` | `apply_keystream(&iv, 128, in_out)?`, whose second argument is how many of the block's rightmost bits count, as WebCrypto's `length` |
+| `UnboundCipherKey::new(&AES_128, key)` and `EncryptingKey::ctr` or `DecryptingKey::ctr` | `AesCtr::new(&AES_128, key, 128)?`, whose last argument is how many of the counter block's rightmost bits count, as WebCrypto's `length` |
+| `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))`, `decrypt` | `apply_keystream(&iv, in_out)?`, with `iv` the `[u8; 16]` counter block |
 | `AES_128`, `AES_256` | the same |
 | `EncryptingKey::encrypt`, which picks a random IV | none: pick the nonce with `rand::fill` |
 | `AES_192` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |

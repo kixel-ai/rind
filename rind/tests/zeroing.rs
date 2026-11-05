@@ -194,7 +194,7 @@ fn cipher() {
     for (algorithm, len) in [(&AES_128, 16), (&AES_256, 32)] {
         let key = &[0xffu8; 32][..len];
         check_zeroed_on_drop(Box::pin(Aes::new(algorithm, key).unwrap()));
-        check_zeroed_on_drop(Box::pin(AesCtr::new(algorithm, key).unwrap()));
+        check_zeroed_on_drop(Box::pin(AesCtr::new(algorithm, key, 128).unwrap()));
     }
     check_zeroed_on_drop(Box::pin(ChaCha20::new([0xffu8; 32])));
 }
