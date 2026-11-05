@@ -48,6 +48,11 @@ pub static AES_256_GCM: Algorithm = Algorithm {
     expand: Sealer::<AesGcm>::expand,
 };
 
+pub static CHACHA20_POLY1305: Algorithm = Algorithm {
+    id: AlgorithmId::ChaCha20Poly1305,
+    expand: Sealer::<ChaCha20Poly1305>::expand,
+};
+
 impl Key {
     /// Expands `key` for `algorithm`, failing with [`Error::WrongLength`] if
     /// it is not [`Algorithm::key_len`] bytes.
@@ -206,7 +211,8 @@ The model departs from the Rust in five ways, and adds no axiom:
 - `Sealer<C>` is its key, and `Sealer`'s `seal` and `open` call `C`'s
   directly: `Sealer` and `Ops` are private to `aead`, where only
   `Sealer::expand` builds one, of `C::seal` and `C::open`. `admin/prove`
-  checks that the quote holds every mention of `Ops` there.
+  checks that the quote holds every mention of `Ops` there, and every
+  `Algorithm` it builds.
 - `ManuallyDrop<C>` and `ZeroableRef<T>` are their `T`: drops are not
   modelled, as everywhere in the translation.
 - `?` is a `match`, since each error it passes on is already an `Error`.
@@ -216,7 +222,8 @@ The model departs from the Rust in five ways, and adds no axiom:
   modelled: it seals as `seal_in_place_separate_tag` does, then appends the
   tag.
 
-Of the algorithm statics, only `AES_128_GCM` and `AES_256_GCM` are here.
+Of the algorithm statics, only `AES_128_GCM` and `AES_256_GCM` are modelled;
+`CHACHA20_POLY1305` is quoted so the check sees every `Algorithm`.
 -/
 
 namespace rind.x86_64
