@@ -1635,6 +1635,81 @@ theorem batch_spec (pts : Std.Array mid.p256.JacobianMontPoint 8#usize) (Ps : Na
     iv ⟨by rw [hiv]; exact hlt _, by rw [hiv, dec_tomont, hf3v, hit]; simp [hsl1, Slice.len]⟩
   intro j hj; rw [hit] at hj; simp [hsl1, Slice.len] at hj; omega
 
+/-! ## A key's odd multiples, `AffineMontPoint::public_odd_multiples` -/
+
+theorem n256_big : 64 < n256 := by unfold n256; decide
+
+theorem odd_loop_spec (hG : P256Group) (Q : P256Point) (hQ : p256OnCurve Q) (hQne : Q ≠ none)
+    (p2 : mid.p256.JacobianMontPoint) (hp2 : jrep (p256ZPow Q 2) p2) (iter : core.ops.range.Range Usize)
+    (m : Std.Array mid.p256.JacobianMontPoint 8#usize) (hs1 : 1 ≤ iter.start.val) (hs : iter.start.val ≤ 8)
+    (he : iter.end.val = 8) (hm : ∀ j : Nat, j < iter.start.val → jrep (p256ZPow Q (2 * (j : Int) + 1)) (m.val[j]!)) :
+    mid.p256.AffineMontPoint.public_odd_multiples_loop iter p2 m ⦃ r =>
+      ∀ j : Nat, j < 8 → jrep (p256ZPow Q (2 * (j : Int) + 1)) (r.val[j]!) ⦄ := by
+  unfold mid.p256.AffineMontPoint.public_odd_multiples_loop
+  have hn := n256_big
+  apply loop.spec_decr_nat (fun x => 8 - x.1.start.val)
+    (fun x => 1 ≤ x.1.start.val ∧ x.1.start.val ≤ 8 ∧ x.1.end.val = 8 ∧
+      ∀ j : Nat, j < x.1.start.val → jrep (p256ZPow Q (2 * (j : Int) + 1)) (x.2.val[j]!))
+  · rintro ⟨it, mm⟩ ⟨hs1, hs, he, hmm⟩
+    simp only at hs1 hs he hmm ⊢
+    unfold mid.p256.AffineMontPoint.public_odd_multiples_loop.body
+    have hml : mm.val.length = 8 := mm.property
+    step as ⟨o, iter1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨i1, hi1⟩
+      step as ⟨jmp, hjmp⟩
+      have hjmp' : jmp = mm.val[it.start.val - 1]! := by rw [hjmp, getElem_eq_getElem! _ _ (by omega), hi1]
+      have hj := hmm (it.start.val - 1) (by omega)
+      rw [← hjmp'] at hj
+      step with jac_add_spec jmp p2 _ _ hj hp2 (fun h => absurd h (hG.zpow_ne Q hQ hQne _ _
+        (by omega) (by omega))) as ⟨s1, hs1'⟩
+      rw [hG.mul_zpow Q hQ] at hs1'
+      step as ⟨a, ha⟩
+      refine ⟨by omega, by omega, by rw [he1]; exact he, ?_, by omega⟩
+      have hav : a.val = mm.val.set it.start.val s1 := by rw [ha, Std.Array.set_val_eq]
+      intro j hj'
+      by_cases hji : j = it.start.val
+      · rw [hji]
+        have : a.val[it.start.val]! = s1 := by
+          rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, hml, show it.start.val < 8 by omega]
+        rw [this]
+        have e : (2 * ((it.start.val - 1 : Nat) : Int) + 1 + 2) = 2 * (it.start.val : Int) + 1 := by omega
+        rwa [e] at hs1'
+      · have : a.val[j]! = mm.val[j]! := by
+          rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, Ne.symm hji]
+        rw [this]; exact hmm j (by omega)
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only [WP.spec_ok]
+      intro j hj; exact hmm j (by omega)
+  · exact ⟨hs1, hs, he, hm⟩
+
+theorem odd_multiples_spec (hG : P256Group) (pt : mid.p256.AffineMontPoint) (Q : P256Point)
+    (hQ : p256OnCurve Q) (hQne : Q ≠ none) (h : p256Represents2 Q (pairNat pt.xy.val)) :
+    mid.p256.AffineMontPoint.public_odd_multiples pt ⦃ m => OddMultiples Q 1 m ⦄ := by
+  unfold mid.p256.AffineMontPoint.public_odd_multiples
+  have hn := n256_big
+  step with from_affine_spec pt Q h as ⟨p, hp⟩
+  step with double_spec p Q hp as ⟨p2, hp2⟩
+  have hQ1 := hG.zpow_one Q hQ
+  rw [← hQ1, hG.mul_zpow Q hQ] at hp2
+  rw [← hQ1] at hp
+  step as ⟨sl, hsl⟩
+  step with odd_loop_spec hG Q hQ hQne p2 hp2 { start := 1#usize, «end» := Slice.len sl }
+    (Array.repeat 8#usize p) (by simp) (by simp) (by simp [hsl, Slice.len])
+    (by
+      intro j hj
+      have hj0 : j = 0 := by simp at hj; omega
+      subst hj0
+      have : (Array.repeat 8#usize p).val[0]! = p := by simp [Array.repeat]
+      rw [this]; simpa using hp) as ⟨m, hm⟩
+  apply WP.spec_mono (batch_spec m (fun j => p256ZPow Q (2 * j + 1))
+    (fun j hj => ⟨hm j hj, hG.zpow_ne_none Q hQ hQne _ (by omega) (by omega)⟩))
+  intro r hr j hj
+  have := hr j hj
+  rwa [show (2 * (j : Int) + 1) = ((2 * j + 1 : Nat) : Int) by push_cast; ring, hG.zpow_natCast] at this
+
 /-! ## Raw verification, `VerifyingKey::raw_ecdsa_verify` -/
 
 /-- The odd multiples a key's cache builds: 17Q to 31Q, from its Q to 15Q. -/

@@ -179,6 +179,20 @@ theorem zpow_ne_none (P : P256Point) (hP : p256OnCurve P) (hne : P ≠ none) (z 
     | none => rfl
     | some _ => rw [hq] at hn; simp [p256Neg] at hn
 
+/-- Distinct multiples of a finite point are distinct when they differ by less
+than its order. -/
+theorem zpow_ne (P : P256Point) (hP : p256OnCurve P) (hne : P ≠ none) (a b : Int) (hab : a ≠ b)
+    (hn : (a - b).natAbs < n256) : p256ZPow P a ≠ p256ZPow P b := by
+  intro heq
+  apply h.zpow_ne_none P hP hne (a - b) (sub_ne_zero.mpr hab) hn
+  rw [sub_eq_add_neg, ← h.mul_zpow P hP, heq, h.mul_zpow P hP, add_neg_cancel]
+  letI := h.group
+  rw [h.zpow_eq_zsmul ⟨P, hP⟩, zero_smul]; rfl
+
+theorem zpow_one (P : P256Point) (hP : p256OnCurve P) : p256ZPow P 1 = P := by
+  letI := h.group
+  rw [h.zpow_eq_zsmul ⟨P, hP⟩, one_zsmul]
+
 end P256Group
 
 end rind.spec
