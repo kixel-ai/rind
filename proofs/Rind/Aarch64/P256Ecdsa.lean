@@ -525,6 +525,96 @@ theorem add_affine_spec (hG : P256Group) (pt : mid.p256.JacobianMontPoint) (p : 
         as ⟨r, hr⟩
       exact hr
 
+/-! ## Non-adjacent form, `mid::util::public_naf` -/
+
+/-- The integer that little-endian signed digits name: d₀ + 2d₁ + 4d₂ + ⋯. -/
+def nafVal : List I8 → Int
+  | [] => 0
+  | d :: ds => d.val + 2 * nafVal ds
+
+theorem nafVal_append (l1 l2 : List I8) : nafVal (l1 ++ l2) = nafVal l1 + 2 ^ l1.length * nafVal l2 := by
+  induction l1 with
+  | nil => simp [nafVal]
+  | cons d ds ih => simp only [List.cons_append, nafVal, ih, List.length_cons, pow_succ]; ring
+
+/-- A digit of a width-`W` NAF: zero, or odd and below 2^(W-1) in magnitude. -/
+def nafDigit (A : Int) (d : Int) : Prop := d = 0 ∨ (d % 2 = 1 ∧ -A < d ∧ d < A)
+
+/-- One digit of the NAF, for `A` = 2^(W-1): the window `w` of the remainder
+`R` = w + 2A·H yields digit `d`, and the next window and remainder halve what
+is left, which stays within the halved bound `M`. -/
+theorem naf_step (A w H b H' M : Int) (hA : A = 16 ∨ A = 32) (hw0 : 0 ≤ w) (hw : w ≤ 2 * A)
+    (hH : H = b + 2 * H') (hb : b = 0 ∨ b = 1) (hH' : 0 ≤ H')
+    (hR : w + 2 * A * H ≤ M) (hM : (∃ t, M = 2 * A * t) ∨ M ≤ A) (hM2 : M % 2 = 0 ∨ M ≤ 1) :
+    let d := if w % 2 = 1 then (if w < A then w else w - 2 * A) else 0
+    let w'' := (w - d) / 2 + b * A
+    nafDigit A d ∧ 0 ≤ w'' ∧ w'' ≤ 2 * A ∧
+      w + 2 * A * H - d = 2 * (w'' + 2 * A * H') ∧ w'' + 2 * A * H' ≤ M / 2 := by
+  intro d w''
+  subst hH
+  obtain rfl | rfl := hA <;> obtain rfl | rfl := hb <;> rcases hM with ⟨t, rfl⟩ | hM <;>
+    simp only [d, w'', nafDigit] <;> split_ifs <;> omega
+
+theorem div_split_hi (a X r : Nat) (ha : a < 2 ^ 64) : (a + 2 ^ 64 * X) / 2 ^ (64 + r) = X / 2 ^ r := by
+  rw [Nat.pow_add, ← Nat.div_div_eq_div_mul, Nat.add_mul_div_left _ _ (by positivity),
+    Nat.div_eq_of_lt ha, Nat.zero_add]
+
+theorem div_split_lo (a X r : Nat) (hr : r < 64) : (a + 2 ^ 64 * X) / 2 ^ r % 2 = a / 2 ^ r % 2 := by
+  have h : 2 ^ 64 * X = 2 ^ r * (2 * (2 ^ (63 - r) * X)) := by
+    rw [← Nat.mul_assoc, ← Nat.mul_assoc, ← Nat.pow_succ, ← Nat.pow_add]; congr 2; omega
+  rw [h, Nat.add_mul_div_left _ _ (by positivity), Nat.add_mul_mod_self_left]
+
+/-- Bit `i` of a number's four limbs is bit `i % 64` of limb `i / 64`, or zero
+above them. -/
+theorem wordsNat_bit (l : List U64) (hl : l.length = 4) (i : Nat) :
+    wordsNat l / 2 ^ i % 2 = if i / 64 < 4 then (l[i / 64]!).val / 2 ^ (i % 64) % 2 else 0 := by
+  rw [wordsNat_four l hl]
+  have h0 := (l[0]!).hBounds; have h1 := (l[1]!).hBounds
+  have h2 := (l[2]!).hBounds; have h3 := (l[3]!).hBounds
+  simp only [UScalarTy.numBits] at h0 h1 h2 h3
+  have hi : i = 64 * (i / 64) + i % 64 := (Nat.div_add_mod i 64).symm
+  have hr : i % 64 < 64 := Nat.mod_lt _ (by norm_num)
+  generalize i / 64 = q at hi ⊢
+  generalize i % 64 = r at hi hr ⊢
+  subst hi
+  rcases (by omega : q = 0 ∨ q = 1 ∨ q = 2 ∨ q = 3 ∨ 4 ≤ q) with rfl | rfl | rfl | rfl | hq
+  · simp only [Nat.mul_zero, Nat.zero_add, show 0 < 4 from by norm_num, ↓reduceIte]
+    exact div_split_lo _ _ _ hr
+  · simp only [Nat.mul_one, show 1 < 4 from by norm_num, ↓reduceIte]
+    rw [div_split_hi _ _ _ h0]; exact div_split_lo _ _ _ hr
+  · simp only [show 2 < 4 from by norm_num, ↓reduceIte, show 64 * 2 + r = 64 + (64 + r) by omega]
+    rw [div_split_hi _ _ _ h0, div_split_hi _ _ _ h1]; exact div_split_lo _ _ _ hr
+  · simp only [show 3 < 4 from by norm_num, ↓reduceIte, show 64 * 3 + r = 64 + (64 + (64 + r)) by omega]
+    rw [div_split_hi _ _ _ h0, div_split_hi _ _ _ h1, div_split_hi _ _ _ h2]
+  · simp only [show ¬ q < 4 by omega, ↓reduceIte]
+    rw [Nat.div_eq_of_lt]
+    calc _ < 2 ^ 256 := by simp only [Nat.reducePow] at *; omega
+      _ ≤ 2 ^ (64 * q + r) := Nat.pow_le_pow_right (by norm_num) (by omega)
+
+@[step]
+theorem bit_spec (k : Slice U64) (hk : k.length = 4) (i : Usize) :
+    mid.util.bit k i ⦃ r => r.val = ((wordsNat k.val / 2 ^ i.val % 2 : Nat) : Int) ⦄ := by
+  unfold mid.util.bit Shared0U64.Insts.CoreOpsBitShrUsizeU64.shr
+  rw [wordsNat_bit _ hk]
+  step as ⟨i1, hi1⟩
+  simp only [core.slice.Slice.get, core.slice.index.Usize.get, bind_ok, Slice.getElem?_Usize_eq, hi1]
+  have hkl : k.val.length = 4 := hk
+  by_cases hq : i.val / 64 < 4
+  · rw [ite_eq_left_iff.mpr (fun h => absurd hq h), List.getElem?_eq_getElem (by omega)]
+    simp only
+    step as ⟨i2, hi2⟩
+    step as ⟨i3, hi3, _⟩
+    step as ⟨i4, hi4, _⟩
+    simp only [UScalar.hcast_val_eq]
+    rw [hi4, UScalar.val_and, hi3, hi2, Nat.shiftRight_eq_div_pow, show (1#u64 : U64).val = 1 from rfl,
+      Nat.and_one_is_mod, getElem_eq_getElem! _ _ (by omega)]
+    have hv : (k.val[i.val / 64]!).val / 2 ^ (i.val % 64) % 2 < 2 := Nat.mod_lt _ (by norm_num)
+    generalize (k.val[i.val / 64]!).val / 2 ^ (i.val % 64) % 2 = v at hv ⊢
+    simp only [Int.bmod, IScalarTy.numBits]
+    interval_cases v <;> decide
+  · rw [ite_eq_right_iff.mpr (fun h => absurd h hq), List.getElem?_eq_none (by omega)]
+    simp
+
 end P256
 
 end rind.aarch64
