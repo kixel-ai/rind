@@ -29,6 +29,7 @@ macro_rules! aws_lc_symbol {
 }
 
 pub(crate) mod aes;
+pub(crate) mod aes_cbc;
 pub(crate) mod aes_ctr;
 pub(crate) mod aesv8_armx;
 pub(crate) mod bignum_eq;
@@ -38,6 +39,8 @@ pub(crate) mod cpu;
 #[cfg(test)]
 pub(crate) mod ct_qemu;
 pub(crate) mod curve25519;
+#[path = "../generic/ghash_nohw.rs"]
+pub(crate) mod ghash_nohw;
 pub(crate) mod ghashv8_armx;
 pub(crate) mod keccak1600_armv4;
 pub(crate) mod mont;

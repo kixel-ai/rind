@@ -3,6 +3,7 @@
 
 pub(crate) mod adx_mux;
 pub(crate) mod aes;
+pub(crate) mod aes_cbc;
 pub(crate) mod aes_ctr;
 pub(crate) mod aes_gcm;
 pub(crate) mod aes_gcm_avx;
@@ -87,6 +88,7 @@ pub(crate) mod edwards25519_scalarmulbase_alt;
 pub(crate) mod edwards25519_scalarmuldouble;
 pub(crate) mod edwards25519_scalarmuldouble_alt;
 pub(crate) mod ghash;
+#[path = "../generic/ghash_nohw.rs"]
 pub(crate) mod ghash_nohw;
 pub(crate) mod ghash_ssse3_x86_64;
 pub(crate) mod mlkem;

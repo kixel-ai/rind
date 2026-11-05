@@ -4,7 +4,7 @@
 //! AES on SSE2 alone, for CPUs without SSSE3: aws-lc's
 //! `crypto/fipsmodule/aes/aes_nohw.c` at commit
 //! 91c93a8eb860e51482a871a8772cb9b1b310baea, in Rust, in its SSE2
-//! configuration and encrypting only.
+//! configuration.
 //!
 //! It bitslices eight blocks into eight 128-bit words and computes the S-box
 //! as a circuit of ANDs and XORs, so no branch or memory index depends on the
@@ -25,8 +25,8 @@ use core::arch::x86_64::*;
 
 use crate::low;
 
-/// An expanded AES-128 or AES-256 encryption key: aws-lc's `AES_KEY`, the
-/// compact round keys and the round count.
+/// An expanded AES-128 or AES-256 key: aws-lc's `AES_KEY`, the compact
+/// round keys and the round count, which encryption and decryption share.
 ///
 /// Each call bitslices the round keys again, as aws-lc does: holding them
 /// bitsliced would take 1.9 KiB, which every `AesKey` would then occupy, on
@@ -49,6 +49,12 @@ impl NohwKey {
         unsafe { encrypt(self, inout) }
     }
 
+    /// Decrypts one block in place.
+    pub(crate) fn decrypt_block(&self, inout: &mut [u8; 16]) {
+        // SAFETY: every x86_64 CPU has SSE2
+        unsafe { decrypt(self, inout) }
+    }
+
     /// XORs counter-mode keystream into whole blocks.
     ///
     /// The counter blocks are `ivec`, then `ivec` with its last four bytes,
@@ -56,6 +62,20 @@ impl NohwKey {
     pub(crate) fn ctr32(&self, ivec: &[u8; 16], inout: &mut [[u8; 16]]) {
         // SAFETY: every x86_64 CPU has SSE2
         unsafe { ctr32_encrypt_blocks(self, ivec, inout) }
+    }
+
+    /// Encrypts whole blocks in place in CBC mode, the first chained from
+    /// `iv`.
+    pub(crate) fn cbc_encrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        // SAFETY: every x86_64 CPU has SSE2
+        unsafe { cbc_encrypt(self, iv, blocks) }
+    }
+
+    /// Decrypts whole blocks in place in CBC mode, the first chained from
+    /// `iv`.
+    pub(crate) fn cbc_decrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        // SAFETY: every x86_64 CPU has SSE2
+        unsafe { cbc_decrypt(self, iv, blocks) }
     }
 }
 
@@ -334,6 +354,37 @@ fn sub_bytes(batch: &mut Batch) {
     batch.w[7] = s0;
 }
 
+/// Inverts the affine transform of the S-box, FIPS 197 section 5.1.1 step 2.
+#[target_feature(enable = "sse2")]
+fn sub_bytes_inv_affine(batch: &mut Batch) {
+    let [a0, a1, a2, a3, a4, a5, a6, a7] = batch.w;
+
+    // Apply the circulant [0 0 1 0 0 1 0 1], the inverse of the circulant
+    // [1 0 0 0 1 1 1 1].
+    let b0 = xor(a2, xor(a5, a7));
+    let b1 = xor(a3, xor(a6, a0));
+    let b2 = xor(a4, xor(a7, a1));
+    let b3 = xor(a5, xor(a0, a2));
+    let b4 = xor(a6, xor(a1, a3));
+    let b5 = xor(a7, xor(a2, a4));
+    let b6 = xor(a0, xor(a3, a5));
+    let b7 = xor(a1, xor(a4, a6));
+
+    // XOR 0x05, the circulant applied to 0x63, which has lower Hamming
+    // weight than XORing 0x63 before it.
+    batch.w = [not(b0), b1, not(b2), b3, b4, b5, b6, b7];
+}
+
+/// The inverse S-box from the forward one, as
+/// <https://www.bearssl.org/constanttime.html#aes> describes: the S-box is
+/// `S(x) = A(Inv(x))`, so `InvS(x) = Inv(InvA(x)) = InvA(S(InvA(x)))`.
+#[target_feature(enable = "sse2")]
+fn inv_sub_bytes(batch: &mut Batch) {
+    sub_bytes_inv_affine(batch);
+    sub_bytes(batch);
+    sub_bytes_inv_affine(batch);
+}
+
 /// Rotates the columns in each row of `v` right by `n`. A macro because the
 /// byte shifts take constant counts.
 macro_rules! rotate_cols_right {
@@ -355,6 +406,20 @@ fn shift_rows(batch: &mut Batch) {
         let row1 = rotate_cols_right!(row1, 1);
         let row2 = rotate_cols_right!(row2, 2);
         let row3 = rotate_cols_right!(row3, 3);
+        *w = or(or(row0, row1), or(row2, row3));
+    }
+}
+
+#[target_feature(enable = "sse2")]
+fn inv_shift_rows(batch: &mut Batch) {
+    for w in &mut batch.w {
+        let row0 = and(*w, _mm_set1_epi32(0x000000ff));
+        let row1 = and(*w, _mm_set1_epi32(0x0000ff00));
+        let row2 = and(*w, _mm_set1_epi32(0x00ff0000));
+        let row3 = and(*w, _mm_set1_epi32(0xff000000u32 as i32));
+        let row1 = rotate_cols_right!(row1, 3);
+        let row2 = rotate_cols_right!(row2, 2);
+        let row3 = rotate_cols_right!(row3, 1);
         *w = or(or(row0, row1), or(row2, row3));
     }
 }
@@ -412,6 +477,46 @@ fn mix_columns(batch: &mut Batch) {
     batch.w[7] = xor(xor(a6_r6, r7), rotate_rows_twice(a7_r7));
 }
 
+/// InvMixColumns, by bsaes-x86_64's decomposition, credited to Jussi
+/// Kivilinna, into a [05 00 04 00] step and then MixColumns:
+///
+/// ```text
+/// | 0e 0b 0d 09 |   | 02 03 01 01 |   | 05 00 04 00 |
+/// | 09 0e 0b 0d | = | 01 02 03 01 | x | 00 05 00 04 |
+/// | 0d 09 0e 0b |   | 01 01 02 03 |   | 04 00 05 00 |
+/// | 0b 0d 09 0e |   | 03 01 01 02 |   | 00 04 00 05 |
+/// ```
+#[target_feature(enable = "sse2")]
+fn inv_mix_columns(batch: &mut Batch) {
+    let [a0, a1, a2, a3, a4, a5, a6, a7] = batch.w;
+
+    // Each byte becomes 05·a_ij ⊕ 04·a_i(j+2) = 04·(a_ij ⊕ a_i(j+2)) ⊕ a_ij,
+    // where a_i(j+2) is a rotation of the rows by two, and multiplying by
+    // 04 maps bits (b0..b7) to (a6, a6^a7, a0^a7, a1^a6, a2^a6^a7, a3^a7,
+    // a4, a5).
+    let a0_r0 = xor(a0, rotate_rows_twice(a0));
+    let a1_r1 = xor(a1, rotate_rows_twice(a1));
+    let a2_r2 = xor(a2, rotate_rows_twice(a2));
+    let a3_r3 = xor(a3, rotate_rows_twice(a3));
+    let a4_r4 = xor(a4, rotate_rows_twice(a4));
+    let a5_r5 = xor(a5, rotate_rows_twice(a5));
+    let a6_r6 = xor(a6, rotate_rows_twice(a6));
+    let a7_r7 = xor(a7, rotate_rows_twice(a7));
+
+    batch.w = [
+        xor(a0, a6_r6),
+        xor(a1, xor(a6_r6, a7_r7)),
+        xor(a2, xor(a0_r0, a7_r7)),
+        xor(a3, xor(a1_r1, a6_r6)),
+        xor(xor(a4, a2_r2), xor(a6_r6, a7_r7)),
+        xor(a5, xor(a3_r3, a7_r7)),
+        xor(a6, a4_r4),
+        xor(a7, a5_r5),
+    ];
+
+    mix_columns(batch);
+}
+
 #[target_feature(enable = "sse2")]
 fn encrypt_batch(keys: &[Batch], batch: &mut Batch) {
     let (first, rest) = keys.split_first().unwrap();
@@ -426,6 +531,22 @@ fn encrypt_batch(keys: &[Batch], batch: &mut Batch) {
     sub_bytes(batch);
     shift_rows(batch);
     add_round_key(batch, last);
+}
+
+#[target_feature(enable = "sse2")]
+fn decrypt_batch(keys: &[Batch], batch: &mut Batch) {
+    let (first, rest) = keys.split_first().unwrap();
+    let (last, middle) = rest.split_last().unwrap();
+    add_round_key(batch, last);
+    inv_shift_rows(batch);
+    inv_sub_bytes(batch);
+    for round_key in middle.iter().rev() {
+        add_round_key(batch, round_key);
+        inv_mix_columns(batch);
+        inv_shift_rows(batch);
+        inv_sub_bytes(batch);
+    }
+    add_round_key(batch, first);
 }
 
 // Key schedule.
@@ -553,6 +674,14 @@ fn encrypt(key: &NohwKey, inout: &mut [u8; 16]) {
 }
 
 #[target_feature(enable = "sse2")]
+fn decrypt(key: &NohwKey, inout: &mut [u8; 16]) {
+    let sched = expand_round_keys(key);
+    let mut batch = to_batch(core::slice::from_ref(inout));
+    decrypt_batch(&sched[..=key.rounds], &mut batch);
+    from_batch(core::slice::from_mut(inout), &batch);
+}
+
+#[target_feature(enable = "sse2")]
 fn ctr32_encrypt_blocks(key: &NohwKey, ivec: &[u8; 16], inout: &mut [[u8; 16]]) {
     if inout.is_empty() {
         return;
@@ -583,6 +712,56 @@ fn ctr32_encrypt_blocks(key: &NohwKey, ivec: &[u8; 16], inout: &mut [[u8; 16]]) 
         }
 
         ctr = ctr.wrapping_add(BATCH_SIZE as u32);
+    }
+}
+
+/// CBC encryption is not parallelizable, so each block takes a batch of its
+/// own.
+#[target_feature(enable = "sse2")]
+fn cbc_encrypt(key: &NohwKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+    if blocks.is_empty() {
+        return;
+    }
+    let sched = expand_round_keys(key);
+    let sched = &sched[..=key.rounds];
+
+    let mut prev = *iv;
+    for block in blocks {
+        for (b, p) in block.iter_mut().zip(prev) {
+            *b ^= p;
+        }
+        let mut batch = to_batch(core::slice::from_ref(block));
+        encrypt_batch(sched, &mut batch);
+        from_batch(core::slice::from_mut(block), &batch);
+        prev = *block;
+    }
+}
+
+#[target_feature(enable = "sse2")]
+fn cbc_decrypt(key: &NohwKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+    if blocks.is_empty() {
+        return;
+    }
+    let sched = expand_round_keys(key);
+    let sched = &sched[..=key.rounds];
+
+    let mut prev = *iv;
+    for chunk in blocks.chunks_mut(BATCH_SIZE) {
+        // Copy the ciphertext, which the next block chains from, before
+        // decrypting in place.
+        let mut copy = [[0u8; 16]; BATCH_SIZE];
+        copy[..chunk.len()].copy_from_slice(chunk);
+
+        let mut batch = to_batch(chunk);
+        decrypt_batch(sched, &mut batch);
+        from_batch(chunk, &batch);
+
+        for (block, ct) in chunk.iter_mut().zip(&copy) {
+            for (b, p) in block.iter_mut().zip(prev) {
+                *b ^= p;
+            }
+            prev = *ct;
+        }
     }
 }
 

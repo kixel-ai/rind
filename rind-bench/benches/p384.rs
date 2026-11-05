@@ -273,6 +273,34 @@ fn ecdsa_verify(c: &mut Criterion) {
             public_key.verify(message, signature).unwrap();
         })
     });
+    group.finish();
+
+    // A digest the caller computed, as node's `createVerify` holds it.
+    let mut group = c.benchmark_group("p384-ecdsa-verify-digest");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("aws-lc-rs", |b| {
+        use aws_lc_rs::{digest, signature};
+        let public_key =
+            signature::ParsedPublicKey::new(&signature::ECDSA_P384_SHA384_FIXED, public_key)
+                .unwrap();
+        let digest = digest::digest(&digest::SHA384, message);
+
+        b.iter(|| {
+            public_key.verify_digest_sig(&digest, signature).unwrap();
+        })
+    });
+
+    group.bench_function("rind", |b| {
+        use rind::digest;
+        use rind::signature::{PublicKey, verify};
+        let public_key = PublicKey::new(&verify::ECDSA_P384_SHA384_FIXED, public_key).unwrap();
+        let digest = digest::digest(&digest::SHA384, message);
+
+        b.iter(|| {
+            public_key.verify_digest(&digest, signature).unwrap();
+        })
+    });
 }
 
 fn ecdsa_sign(c: &mut Criterion) {
@@ -366,7 +394,72 @@ fn ecdsa_sign(c: &mut Criterion) {
         let signing_key = curve.generate();
         b.iter(|| black_box(curve.sign(&signing_key, message)));
     });
+    group.finish();
+
+    // A digest the caller computed, as node's `createSign` holds it.
+    let mut group = c.benchmark_group("p384-ecdsa-sign-digest");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("aws-lc-rs", |b| {
+        use aws_lc_rs::{digest, rand, signature};
+        let private_key = signature::EcdsaKeyPair::generate_pkcs8(
+            &signature::ECDSA_P384_SHA384_FIXED_SIGNING,
+            &rand::SystemRandom::new(),
+        )
+        .unwrap();
+        let private_key = signature::EcdsaKeyPair::from_pkcs8(
+            &signature::ECDSA_P384_SHA384_FIXED_SIGNING,
+            private_key.as_ref(),
+        )
+        .unwrap();
+        let digest = digest::digest(&digest::SHA384, message);
+
+        b.iter(|| {
+            black_box(private_key.sign_digest(&digest).unwrap());
+        })
+    });
+
+    group.bench_function("rind", |b| {
+        use rind::digest;
+        use rind::signature::{EcdsaKeyPair, sign};
+        let signing_key = EcdsaKeyPair::generate(&sign::ECDSA_P384_SHA384_FIXED).unwrap();
+        let digest = digest::digest(&digest::SHA384, message);
+
+        b.iter(|| {
+            black_box(signing_key.sign_digest(&digest).unwrap());
+        });
+    });
 }
 
-criterion_group!(benches, ecdh, keygen, ecdsa_verify, ecdsa_sign);
+// Agree with a stored key, loaded once, as WebCrypto's `deriveBits` and
+// node's `ECDH` do: the variable-base multiplication alone.
+fn stored(c: &mut Criterion) {
+    let mut group = c.benchmark_group("p384-ecdh-stored");
+    group.throughput(Throughput::Elements(1));
+    let public_key: &[u8] = PUBLIC_KEY;
+    let scalar = [1u8; 48];
+
+    group.bench_function("aws-lc-rs", |b| {
+        use aws_lc_rs::{agreement, error};
+        let key = agreement::PrivateKey::from_private_key(&agreement::ECDH_P384, &scalar).unwrap();
+
+        b.iter(|| {
+            let peer = agreement::UnparsedPublicKey::new(&agreement::ECDH_P384, public_key);
+            agreement::agree(&key, peer, error::Unspecified, |key_material| {
+                black_box(key_material);
+                Ok(())
+            })
+            .unwrap();
+        })
+    });
+
+    group.bench_function("rind", |b| {
+        use rind::agreement::*;
+        let key = PrivateKey::from_private_key(&ECDH_P384, &scalar).unwrap();
+
+        b.iter(|| black_box(key.agree(public_key).unwrap()))
+    });
+}
+
+criterion_group!(benches, ecdh, keygen, ecdsa_verify, ecdsa_sign, stored);
 criterion_main!(benches);

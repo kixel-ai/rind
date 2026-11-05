@@ -136,7 +136,7 @@ theorem is_public_key_spec (key : P256SigningKey) (hl : key.public_key_len.val =
   have hxyl : xy.length = 64 := by
     have := congrArg List.length hxy; simp [h133] at this; omega
   rw [hxy]
-  unfold high.ecdsa.SigningKey.is_public_key
+  unfold high.ecdsa.SigningKey.is_public_key high.sec1.is_public_key
   step with public_key_bytes_spec key hl as ⟨s, hs⟩
   rw [hxy] at hs
   step with split_first_spec s as ⟨o, ho⟩
@@ -177,7 +177,7 @@ theorem is_public_key_spec (key : P256SigningKey) (hl : key.public_key_len.val =
           if b = true then do
               let o2 ← core.slice.Slice.last y
               core.option.Option.is_some_and
-                (high.ecdsa.SigningKey.is_public_key.closure.Insts.CoreOpsFunctionFnOnceTupleShared0U8Bool P256C)
+                high.sec1.is_public_key.closure.Insts.CoreOpsFunctionFnOnceTupleShared0U8Bool
                 o2 t
             else ok false) ⦃ b => b = true ↔ t :: rest = four :: xy ∨ t :: rest = c :: x.val ⦄ := by
       intro t ht
@@ -187,7 +187,7 @@ theorem is_public_key_spec (key : P256SigningKey) (hl : key.public_key_len.val =
       · have hr : rest = x.val := hb.mp ‹_›
         simp only [core.slice.Slice.last, bind_ok, hy, core.option.Option.is_some_and,
           
-          high.ecdsa.SigningKey.is_public_key.closure.Insts.CoreOpsFunctionFnOnceTupleShared0U8Bool.call_once,
+          high.sec1.is_public_key.closure.Insts.CoreOpsFunctionFnOnceTupleShared0U8Bool.call_once,
           Shared0U8.Insts.CoreOpsBitBitAndU8U8.bitand, lift, WP.spec_ok, hc]
         simp [hr, ht]
       · have hr : rest ≠ x.val := fun h => ‹¬b = true› (hb.mpr h)
@@ -317,7 +317,7 @@ theorem load_tail_spec (hG : P256Laws) (h : Runs) (hheld : Held) (hc : Cached)
   simp only
   step with buffer_as_ref_spec b (by rw [point_post1, hpkl]; decide) as ⟨sl, hsl⟩
   have hslv : sl.val = signing.public_key.val.take 65 := by rw [hsl, point_post1, point_post2, hpkv]
-  step with ecdsa_vk_from_x962_spec hG h hheld hc sl as ⟨vr, hvr⟩
+  step with ecdsa_vk_from_x962_spec h hheld hc sl as ⟨vr, hvr⟩
   obtain ⟨hl65, h4, hq⟩ := hpk
   obtain ⟨x, y, hxy, hon⟩ := g_mult hG d hd0 hd
   rw [hq] at hxy
@@ -350,17 +350,17 @@ def Sha256E (msg : Slice U8) (e : Nat) : Prop :=
 
 namespace P256
 
-/-- A verifying key's clone has its odd multiples. -/
+/-- A verifying key's clone has its point. -/
 theorem vk_clone_spec (hc : Cached) (v : P256VerifyingKey) :
     high.ecdsa.VerifyingKey.Insts.CoreCloneClone.clone P256C mid.p256.VerifyingKey.Insts.CoreCloneClone v
-      ⦃ v' => v'.public_key.odd_multiples = v.public_key.odd_multiples ⦄ := by
+      ⦃ v' => v'.public_key.point = v.public_key.point ⦄ := by
   unfold high.ecdsa.VerifyingKey.Insts.CoreCloneClone.clone
-  simp only [mid.p256.VerifyingKey.Insts.CoreCloneClone.clone]
-  step with core.array.CloneArray.clone_spec mid.p256.AffineMontPoint.Insts.CoreCloneClone _ (fun x _ => rfl)
-    as ⟨a, ha⟩
-  obtain ⟨c', hc'⟩ := hc.clone v.public_key.more_odd_multiples
-  rw [hc']
-  simp [ha]
+  simp only [mid.p256.VerifyingKey.Insts.CoreCloneClone.clone,
+    mid.p256.AffineMontPoint.Insts.CoreCloneClone.clone, bind_ok]
+  obtain ⟨c', hc'⟩ := hc.clone v.public_key.odd_multiples
+  obtain ⟨c'', hc''⟩ := hc.clone v.public_key.more_odd_multiples
+  rw [hc', hc'']
+  simp
 
 /-- `Buffer::widen`. -/
 theorem widen_buffer_spec {N : Usize} (M : Usize) (w : high.signature.Buffer N) (hM : N.val ≤ M.val) :
@@ -553,7 +553,7 @@ theorem p256_ecdsa_public_key_new (ho : P256Order) (h : Runs) (hheld : Held) (hc
   unfold high.signature.PublicKey.new high.signature.verify.ECDSA_P256_SHA256_FIXED
     high.signature.parse_ecdsa_p256_sha256_fixed
   simp only
-  step with ecdsa_vk_from_x962_spec hG h hheld hc bytes as ⟨r, hr⟩
+  step with ecdsa_vk_from_x962_spec h hheld hc bytes as ⟨r, hr⟩
   unfold x962Outcome at hr ⊢
   rcases hb : bytes.val.head? with _ | b0
   · simp only [hb] at hr ⊢; subst hr; simp

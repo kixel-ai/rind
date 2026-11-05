@@ -489,8 +489,13 @@ pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
 #[target_feature(enable = "sse")]
 #[inline]
 pub(crate) fn prefetch<T>(table: &[T], stride: usize) {
-    _mm_prefetch(table.as_ptr().cast(), _MM_HINT_T0);
-    _mm_prefetch(table.as_ptr().wrapping_add(stride).cast(), _MM_HINT_T0);
+    // `_mm_prefetch` is safe on newer Rust but `unsafe` on the 1.90 MSRV.
+    #[allow(unused_unsafe)]
+    // SAFETY: a prefetch never faults and is not architecturally visible.
+    unsafe {
+        _mm_prefetch(table.as_ptr().cast(), _MM_HINT_T0);
+        _mm_prefetch(table.as_ptr().wrapping_add(stride).cast(), _MM_HINT_T0);
+    }
 }
 
 #[cfg(test)]

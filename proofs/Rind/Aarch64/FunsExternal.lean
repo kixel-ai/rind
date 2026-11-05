@@ -171,13 +171,19 @@ opaque high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource.fill
     Result ((core.result.Result Unit error.Error) × (high.hmac_drbg.HmacDrbg H
     Clause0_Context Clause0_State) × (Slice Std.U8))
 
-/-! The verifying key's cache of 17P, ..., 31P, which ECDSA verification's
-theorems take what they need of as a hypothesis. -/
+/-! The verifying key's caches of P, ..., 15P and 17P, ..., 31P, which ECDSA
+verification's theorems take what they need of as a hypothesis. -/
 
 opaque low.generic.reuse_cache.ReuseCache.new
   {T : Type _} (coremarkerCopyInst : core.marker.Copy T)
   (coredefaultDefaultInst : core.default.Default T) :
   Result (low.generic.reuse_cache.ReuseCache T)
+
+opaque low.generic.reuse_cache.ReuseCache.get_or_build_now
+  {T : Type _} {T1 : Type _} (coremarkerCopyInst : core.marker.Copy T)
+  (coredefaultDefaultInst : core.default.Default T)
+  (coreopsfunctionFnOnceT1TupleTInst : core.ops.function.FnOnce T1 Unit T) :
+  low.generic.reuse_cache.ReuseCache T → T1 → Result T
 
 opaque low.generic.reuse_cache.ReuseCache.get_or_build
   {T : Type _} {T1 : Type _} (coremarkerCopyInst : core.marker.Copy T)
@@ -252,5 +258,69 @@ opaque mid.p384.PublicKey.from_x962_uncompressed
 
 opaque mid.aes.Aes.encrypt_block
   : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
+
+/-! SHA-3, whose sponge no proof covers. -/
+
+opaque mid.sha3.Sha3Context.new
+  (R : Std.Usize) (OUT : Std.Usize) : Result (mid.sha3.Sha3Context R OUT)
+
+opaque mid.sha3.Sha3Context.update {R : Std.Usize} {OUT : Std.Usize}
+  : mid.sha3.Sha3Context R OUT → Slice Std.U8 → Result (mid.sha3.Sha3Context R OUT)
+
+opaque mid.sha3.Sha3Context.finish {R : Std.Usize} {OUT : Std.Usize}
+  : mid.sha3.Sha3Context R OUT → Result (Array Std.U8 OUT)
+
+opaque mid.sha3.Sha3Context.Insts.CoreCloneClone.clone {R : Std.Usize} {OUT : Std.Usize}
+  : mid.sha3.Sha3Context R OUT → Result (mid.sha3.Sha3Context R OUT)
+
+/-! Agreement key encodings, and loading on the curves no theorem loads a key
+on, whose DER no proof covers. -/
+
+opaque high.agreement.x25519_from_pkcs8
+  : Slice Std.U8 → Result (core.result.Result mid.x25519.PrivateKey error.Error)
+
+opaque high.sec1.decode
+  : Slice Std.U8 → high.asn1.ObjectId → Result (core.result.Result high.sec1.Decoded error.Error)
+
+opaque high.sec1.decode_pkcs8
+  : Slice Std.U8 → high.asn1.ObjectId → Result (core.result.Result high.sec1.Decoded error.Error)
+
+opaque mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+  : mid.x25519.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+  : mid.x25519.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+  : mid.p256.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+  : mid.p256.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+  : mid.p384.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+  : mid.p384.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+  : mid.p521.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+  : mid.p521.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.load
+  : high.agreement.Source → Result (core.result.Result mid.p384.PrivateKey error.Error)
+
+opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.load
+  : high.agreement.Source → Result (core.result.Result mid.p521.PrivateKey error.Error)
 
 end rind.aarch64

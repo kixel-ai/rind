@@ -223,7 +223,7 @@ opaque low.x86_64.cpu.HaveSsse3.check : Result (Option low.x86_64.cpu.HaveSsse3)
 /-- The SHA-256 routine the CPU runs, picked once. -/
 opaque low.x86_64.sha256_mux.path : Result low.x86_64.sha256_mux.Path
 
-/-! SHA-1 and SHA-256's block functions, whose contracts `Rind.X86_64.ShaBlocks`
+/-! SHA-1 and SHA-256's block and finishing functions, whose contracts `Rind.X86_64.ShaBlocks`
 states as hypotheses. SHA-1's dispatch caches its pick in a `OnceLock`, which
 Aeneas cannot translate. -/
 
@@ -231,8 +231,12 @@ opaque low.x86_64.sha1_mux.sha1_compress_blocks
   : Array Std.U32 5#usize → Slice Std.U8 → Result (Array Std.U32 5#usize)
 
 opaque low.x86_64.sha256.sha256_compress_blocks_shaext
-  : Array Std.U32 8#usize → Slice Std.U8 → Slice Std.U8 → low.x86_64.cpu.HaveSha256 →
+  : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.cpu.HaveSha256 →
     Result (Array Std.U32 8#usize)
+
+opaque low.x86_64.sha256.sha256_finish_shaext
+  : Array Std.U32 8#usize → Slice Std.U8 → Array Std.U8 64#usize → Std.Usize →
+    Array Std.U8 8#usize → low.x86_64.cpu.HaveSha256 → Result (Array Std.U8 32#usize)
 
 opaque low.x86_64.sha256.sha256_compress_blocks_avx
   : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.cpu.HaveAvx → Result (Array Std.U32 8#usize)
@@ -295,5 +299,66 @@ opaque mid.p256.PublicKey.from_x962_uncompressed
 
 opaque mid.aes.Aes.encrypt_block
   : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
+
+/-! SHA-3, whose sponge no proof covers. -/
+
+opaque mid.sha3.Sha3Context.new
+  (R : Std.Usize) (OUT : Std.Usize) : Result (mid.sha3.Sha3Context R OUT)
+
+opaque mid.sha3.Sha3Context.update {R : Std.Usize} {OUT : Std.Usize}
+  : mid.sha3.Sha3Context R OUT → Slice Std.U8 → Result (mid.sha3.Sha3Context R OUT)
+
+opaque mid.sha3.Sha3Context.finish {R : Std.Usize} {OUT : Std.Usize}
+  : mid.sha3.Sha3Context R OUT → Result (Array Std.U8 OUT)
+
+opaque mid.sha3.Sha3Context.Insts.CoreCloneClone.clone {R : Std.Usize} {OUT : Std.Usize}
+  : mid.sha3.Sha3Context R OUT → Result (mid.sha3.Sha3Context R OUT)
+
+/-! Agreement key encodings, and loading on the curves no theorem loads a key
+on, whose DER no proof covers. -/
+
+opaque high.agreement.x25519_from_pkcs8
+  : Slice Std.U8 → Result (core.result.Result mid.x25519.PrivateKey error.Error)
+
+opaque mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+  : mid.x25519.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+  : mid.x25519.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+  : mid.p256.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+  : mid.p256.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+  : mid.p384.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+  : mid.p384.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+  : mid.p521.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+  : mid.p521.PrivateKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
+
+opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.load
+  : high.agreement.Source → Result (core.result.Result mid.p384.PrivateKey error.Error)
+
+opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.load
+  : high.agreement.Source → Result (core.result.Result mid.p521.PrivateKey error.Error)
+
+opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.load
+  : high.agreement.Source → Result (core.result.Result mid.p256.PrivateKey error.Error)
 
 end rind.x86_64

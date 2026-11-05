@@ -68,7 +68,9 @@ impl<const N: usize> Buffer<N> {
 
     /// Runs `write`, which writes to the start of its argument and returns
     /// the written span.
-    fn write(write: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Result<Self, Error> {
+    pub(super) fn write(
+        write: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>,
+    ) -> Result<Self, Error> {
         let mut buffer = Self::new();
         buffer.len = write(&mut buffer.bytes)?.len();
         Ok(buffer)
@@ -88,7 +90,7 @@ impl<const N: usize> Buffer<N> {
     ///
     /// Every `N` holds the encoding of the largest key a loader accepts, so
     /// an encoder that runs out of room is a bug in rind, not bad input.
-    fn encode(encode: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Self {
+    pub(super) fn encode(encode: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Self {
         Self::write(encode).expect("sized for the largest key")
     }
 }
@@ -165,6 +167,19 @@ trait Encoding {
         output: &'a mut [u8],
         message: &[u8],
     ) -> Result<&'a [u8], Error>;
+
+    fn verify_digest<C: Curve>(
+        key: &ecdsa::VerifyingKey<C>,
+        signature: &[u8],
+        digest: &[u8],
+    ) -> Result<(), Error>;
+
+    /// Signs `digest`, drawing the nonce through `H`.
+    fn sign_digest<'a, C: Curve, H: SignatureHash>(
+        key: &ecdsa::SigningKey<C>,
+        output: &'a mut [u8],
+        digest: &[u8],
+    ) -> Result<&'a [u8], Error>;
 }
 
 impl Encoding for Fixed {
@@ -183,10 +198,26 @@ impl Encoding for Fixed {
     ) -> Result<&'a [u8], Error> {
         key.sign::<H>(message, output)
     }
+
+    fn verify_digest<C: Curve>(
+        key: &ecdsa::VerifyingKey<C>,
+        signature: &[u8],
+        digest: &[u8],
+    ) -> Result<(), Error> {
+        key.verify_digest(digest, signature)
+    }
+
+    fn sign_digest<'a, C: Curve, H: SignatureHash>(
+        key: &ecdsa::SigningKey<C>,
+        output: &'a mut [u8],
+        digest: &[u8],
+    ) -> Result<&'a [u8], Error> {
+        key.sign_digest::<H>(digest, output)
+    }
 }
 
 trait EcdsaCurve: Curve<PublicKey: Clone> + Sized + 'static {
-    fn parsed(key: Verifier<ecdsa::VerifyingKey<Self>>, ecdsa: Ecdsa) -> Parsed;
+    fn parsed(key: EcdsaVerifier<Self>, ecdsa: Ecdsa) -> Parsed;
 
     fn key(pair: EcdsaPair<Self>) -> EcdsaKey;
 }
@@ -194,7 +225,7 @@ trait EcdsaCurve: Curve<PublicKey: Clone> + Sized + 'static {
 macro_rules! ecdsa_curve {
     ($curve:ident, $parsed:ident) => {
         impl EcdsaCurve for $curve {
-            fn parsed(key: Verifier<ecdsa::VerifyingKey<Self>>, ecdsa: Ecdsa) -> Parsed {
+            fn parsed(key: EcdsaVerifier<Self>, ecdsa: Ecdsa) -> Parsed {
                 Parsed::$parsed(key, ecdsa)
             }
 
@@ -207,13 +238,30 @@ macro_rules! ecdsa_curve {
 
 ecdsa_curve!(P256, EcdsaP256);
 
+struct EcdsaVerifier<C: Curve> {
+    key: ecdsa::VerifyingKey<C>,
+    verify: Verify<ecdsa::VerifyingKey<C>>,
+    verify_digest: Verify<ecdsa::VerifyingKey<C>>,
+}
+
+impl<C: Curve> EcdsaVerifier<C> {
+    fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
+        (self.verify)(&self.key, signature, message)
+    }
+
+    fn verify_digest(&self, digest: &[u8], signature: &[u8]) -> Result<(), Error> {
+        (self.verify_digest)(&self.key, signature, digest)
+    }
+}
+
 fn parse_ecdsa<C: EcdsaCurve, H: SignatureHash, E: Encoding>(
     ecdsa: Ecdsa,
     bytes: &[u8],
 ) -> Result<Parsed, Error> {
-    let key = Verifier {
+    let key = EcdsaVerifier {
         key: ecdsa::VerifyingKey::from_x962_uncompressed(bytes)?,
         verify: E::verify::<C, H>,
+        verify_digest: E::verify_digest::<C>,
     };
     Ok(C::parsed(key, ecdsa))
 }
@@ -229,12 +277,17 @@ const fn ecdsa_verification(
         encoding,
     };
     let parse = with_ecdsa!(ecdsa, |C, H, E| parse_ecdsa::<C, H, E> as _);
-    VerificationAlgorithm(Verification::Ecdsa(ecdsa, parse))
+    let decompress: sec1::Decompress = match curve {
+        CurveId::P256 => p256::PublicKey::decompress,
+        CurveId::P384 => p384::PublicKey::decompress,
+        CurveId::P521 => p521::PublicKey::decompress,
+    };
+    VerificationAlgorithm(Verification::Ecdsa(ecdsa, parse, decompress))
 }
 
 const fn ecdsa_signing(verification: &VerificationAlgorithm) -> EcdsaSigningAlgorithm {
     match verification.0 {
-        Verification::Ecdsa(ecdsa, _) => EcdsaSigningAlgorithm {
+        Verification::Ecdsa(ecdsa, ..) => EcdsaSigningAlgorithm {
             ecdsa,
             load: with_ecdsa!(ecdsa, |C, H, E| EcdsaKeyPair::load::<C, H, E> as _),
         },
@@ -280,7 +333,9 @@ type Write<K> = for<'a> fn(&K, &'a mut [u8]) -> Result<&'a [u8], Error>;
 
 struct EcdsaOps<C: EcdsaCurve> {
     sign: Sign<ecdsa::SigningKey<C>>,
+    sign_digest: Sign<ecdsa::SigningKey<C>>,
     verify: Verify<ecdsa::VerifyingKey<C>>,
+    verify_digest: Verify<ecdsa::VerifyingKey<C>>,
     to_pkcs8: Write<ecdsa::SigningKey<C>>,
     to_scalar: Write<ecdsa::SigningKey<C>>,
     to_spki: Write<ecdsa::SigningKey<C>>,
@@ -288,9 +343,10 @@ struct EcdsaOps<C: EcdsaCurve> {
 
 impl<C: EcdsaCurve> EcdsaPair<C> {
     fn public_key(&self, ecdsa: Ecdsa) -> Parsed {
-        let key = Verifier {
+        let key = EcdsaVerifier {
             key: self.verifying.clone(),
             verify: self.ops.get().verify,
+            verify_digest: self.ops.get().verify_digest,
         };
         C::parsed(key, ecdsa)
     }
@@ -366,7 +422,9 @@ impl EcdsaKeyPair {
         let ops = const {
             &EcdsaOps {
                 sign: E::sign::<C, H>,
+                sign_digest: E::sign_digest::<C, H>,
                 verify: E::verify::<C, H>,
+                verify_digest: E::verify_digest::<C>,
                 to_pkcs8: ecdsa::SigningKey::to_pkcs8_der,
                 to_scalar: ecdsa::SigningKey::to_scalar,
                 to_spki: ecdsa::SigningKey::to_spki_der,
@@ -403,6 +461,25 @@ impl EcdsaKeyPair {
         .map(Signature)
     }
 
+    /// Signs the message `digest` hashes, with a fresh nonce.
+    ///
+    /// The digest's hash, SHA-256, SHA-384, or SHA-512, replaces the
+    /// algorithm's, which still fixes the signature's encoding, so
+    /// [`Self::public_key`] verifies the signature over the message only if
+    /// the hashes match; [`PublicKey::verify_digest`] verifies it in any
+    /// case. Another hash is refused as [`Error::Unsupported`].
+    pub fn sign_digest(&self, digest: &Digest) -> Result<Signature, Error> {
+        let digest = signed_digest(digest)?;
+        Buffer::write(|output| {
+            on_ecdsa!(self, |pair| (pair.ops.get().sign_digest)(
+                &pair.signing,
+                output,
+                digest
+            ))
+        })
+        .map(Signature)
+    }
+
     /// Encodes the private key as PKCS#8.
     pub fn to_pkcs8(&self) -> Pkcs8 {
         Pkcs8(Buffer::encode(|output| {
@@ -424,6 +501,20 @@ impl EcdsaKeyPair {
                 &pair.signing,
                 output
             ))
+        }))
+    }
+
+    /// Encodes the private key as a SEC1 (RFC 5915) `ECPrivateKey` naming
+    /// its curve and holding its public key, as OpenSSL writes it.
+    ///
+    /// This is what [`Self::from_sec1`] loads; [`Self::to_pkcs8`] holds the
+    /// same `ECPrivateKey` without its curve, which PKCS#8 names instead.
+    pub fn to_sec1(&self) -> Sec1 {
+        let _entry = low::Entry::new_secret();
+        let scalar = self.to_scalar();
+        let curve = curve_oid(self.algorithm.curve);
+        Sec1(Buffer::encode(|output| {
+            sec1::encode(scalar.as_ref(), self.point.as_ref(), Some(curve), output)
         }))
     }
 
@@ -455,9 +546,11 @@ The model departs from the Rust in these ways, and adds no axiom:
   `PublicKey::new` does for it: `with_ecdsa!` gives it
   `parse_ecdsa::<P256, Sha256, Fixed>`, then the key's bytes are copied.
 - That parser's `Parsed::EcdsaP256` is `Parsed::Other`, holding what
-  `PublicKey::verify` does for it: `Fixed::verify::<P256, Sha256>`, which is
-  `VerifyingKey::verify::<Sha256>`. Its `Ecdsa`, read only by `Debug`, is
-  left out.
+  `PublicKey::verify` does for it: its `EcdsaVerifier`'s `verify`,
+  `Fixed::verify::<P256, Sha256>`, which is `VerifyingKey::verify::<Sha256>`.
+  Its `verify_digest`, read only by `PublicKey::verify_digest`, which no
+  theorem here is about, and its `Ecdsa`, read only by `Debug`, are left
+  out.
 - An `EcdsaSigningAlgorithm` is the `load` it holds, applied to its `Ecdsa`;
   `with_ecdsa!` gives `sign::ECDSA_P256_SHA256_FIXED`
   `EcdsaKeyPair::load::<P256, Sha256, Fixed>`.
@@ -470,8 +563,9 @@ The model departs from the Rust in these ways, and adds no axiom:
   of these. Every other key is `Other`, holding what `sign` and `public_key`
   do for it, and `ZeroableRef`, which holds the ops, is left out.
 - `EcdsaKeyPair`'s `algorithm`, read only by `Debug` and the `Parsed` it
-  passes to, is left out, as are the `to_*` encoders, which no theorem here
-  is about.
+  passes to, is left out, as are `sign_digest` and the `to_*` encoders, which
+  no theorem here is about, and the ops' `sign_digest` and `verify_digest`,
+  which only `sign_digest` and `verify_digest` read.
 - `Buffer::write` takes `write` as a Lean function, as Aeneas cannot
   translate a closure that returns a borrow of its argument.
 - PKCS#8 and SEC1 loading, DER the ✓ leaves out, is opaque.

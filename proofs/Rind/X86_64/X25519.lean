@@ -207,6 +207,23 @@ theorem try_from_slice_spec (h : Runs) (b : Slice U8) :
   · subst ho
     simp [hb]
 
+@[step]
+theorem from_bytes_spec (h : Runs) (b : Slice U8) :
+    mid.x25519.PrivateKey.from_bytes b ⦃ r =>
+      if b.length = 32 then ∃ k, r = .Ok k ∧ wordsNat k.val = leNat b.val
+      else r = .Err (.KeyRejected .WrongLength) ⦄ := by
+  unfold mid.x25519.PrivateKey.from_bytes low.ct.secret_slice
+  step
+  step as ⟨o, ho⟩
+  simp only [core.option.Option.map,
+    P.Insts.CoreOpsFunctionFnOnceTupleArrayU644PrivateKey.call_once, mid.x25519.PrivateKey.constructor,
+    error.Error.Insts.CoreConvertFromKeyFormatError.from, core.option.Option.ok_or]
+  split_ifs at ho with hb
+  · obtain ⟨w, rfl, hw⟩ := ho
+    simp [hb, hw]
+  · subst ho
+    simp [hb]
+
 theorem wordsNat_ZERO : wordsNat mid.x25519.ZERO.val = 0 := by
   unfold mid.x25519.ZERO
   simp [wordsNat, Array.repeat, Nat.ofDigits]
@@ -233,7 +250,7 @@ theorem encode_public_spec (h : Runs) (k : mid.x25519.PrivateKey) :
       let pk ← mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_public k
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
       b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.val) 9 ⦄ := by
-  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_public high.agreement.PublicKey.new
+  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_public high.agreement.PublicKey.from_encoding
     high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
   step as ⟨pk, hpk⟩
   step as ⟨a, ha⟩
@@ -297,6 +314,13 @@ theorem random_spec (h : Runs) (r : core.result.Result Unit getrandom.error.Erro
       mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
 
+theorem load_scalar_spec (h : Runs) (b : Slice U8) :
+    mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.load (.Scalar b) ⦃ r =>
+      if b.length = 32 then ∃ k, r = .Ok k ∧ wordsNat k.val = leNat b.val
+      else r = .Err (.KeyRejected .WrongLength) ⦄ := by
+  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.load
+  exact from_bytes_spec h b
+
 /-! ## The agreement API, `high::agreement`, through the modelled dispatch -/
 
 /-- A generated X25519 key's scalar is the 32 bytes the random source drew,
@@ -312,11 +336,30 @@ theorem x25519_generate (h : Runs) (r : core.result.Result Unit getrandom.error.
           wordsNat k.key.val = leNat out.val
       | .Err _ => key = core.result.Result.Err error.Error.RngFailed ⦄ := by
   unfold high.agreement.PrivateKey.generate high.agreement.X25519 high.agreement.Keyed.generate
+    high.agreement.Keyed.new
   step with random_spec h r out hout hfill as ⟨key, hkey⟩
   rcases r with _ | _ <;> simp only at hkey
   · obtain ⟨k, rfl, hk⟩ := hkey
     simp [mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.wrap, hk]
   · simp [hkey]
+
+/-- An X25519 key loaded from its scalar is refused unless it is 32 bytes, and
+otherwise is those bytes, read little-endian, as `x25519_generate`'s is the
+random source's. -/
+theorem x25519_from_private_key (h : Runs) (b : Slice U8) :
+    high.agreement.PrivateKey.from_private_key high.agreement.X25519 b ⦃ key =>
+      if b.length = 32 then ∃ k : high.agreement.Keyed mid.x25519.PrivateKey,
+        key = core.result.Result.Ok (high.agreement.Private.X25519 k) ∧
+          wordsNat k.key.val = leNat b.val
+      else key = core.result.Result.Err (.KeyRejected .WrongLength) ⦄ := by
+  unfold high.agreement.PrivateKey.from_private_key high.agreement.PrivateKey.load
+    high.agreement.X25519 high.agreement.Keyed.load high.agreement.Keyed.new
+  step with load_scalar_spec h b as ⟨r, hr⟩
+  split_ifs at hr ⊢
+  · obtain ⟨k, rfl, hk⟩ := hr
+    simp [mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.wrap, hk]
+  · subst hr
+    simp
 
 /-- An X25519 key's public key: the u-coordinate of its scalar times the base
 point, as RFC 7748's 32 little-endian bytes. -/

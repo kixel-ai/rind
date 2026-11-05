@@ -9,8 +9,9 @@ Bun's fastest asymmetric operations run on rind, ahead of Bun writing its own.
 ## Required
 
 - [Bun runs its fastest asymmetric crypto on rind](/quest/m1/bun.md) - Ed25519, X25519, P-384, and P-521 in Bun on rind, before Bun writes its own
+- [Bun parses its moved keys with rind](/quest/m1/bun-key-parsing.md) - Bun's key import, 670 µs for P-384 today
+- [rind's public API is audited before 0.2.0](/quest/m1/api-audit.md) - every public item against AGENTS.md's API rules
+- [rind 0.2.0 is released](/quest/m1/release-0.2.md) - the audited API on crates.io for Bun and MoQ
+- [rind's launch blog post is published](/quest/m1/launch-post.md) - the Bun PR waits on it
 - [rind covers MoQ](/quest/m1/moq/README.md) - the primitives, CPU check, armv7 backend, and `rind-*` adapters MoQ needs, verified and released
-- [rind builds on its declared rust-version](/quest/m1/msrv.md) - the 1.90 build fails at `_mm_prefetch`
-- [aarch64 Windows runs with DIT](/quest/m1/windows-arm-dit.md) - constant-time mode where Bun ships Windows on Arm
-- [A prompt migrates a repo to rind](/quest/m1/migration-prompt.md) - a copy-paste prompt has an agent move a repo to rind and report build time, size, and benchmarks before and after
 - [The README shows how to use rind and links the details](/quest/m1/readme-restructure.md) - usage, the migration prompt, and an invitation to AI contributors, with the details in linked docs

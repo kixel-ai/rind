@@ -235,6 +235,45 @@ fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
     });
 }
 
+fn rsa2048_oaep_sha256_encrypt(c: &mut Criterion) {
+    use rind::rsa::{DecryptingKey, OAEP_SHA256};
+    let private_key = DecryptingKey::from_pkcs1(
+        &OAEP_SHA256,
+        include_bytes!("../../rind/src/high/rsa/rsa2048.der"),
+    )
+    .unwrap();
+    let public_key = private_key.public_key();
+    let message = [0u8; 32];
+
+    let mut group = c.benchmark_group("rsa2048-oaep-sha256-encrypt");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("aws-lc-rs", |b| {
+        use aws_lc_rs::rsa::{
+            OAEP_SHA256_MGF1SHA256, OaepPublicEncryptingKey, PublicEncryptingKey,
+        };
+        let key = OaepPublicEncryptingKey::new(
+            PublicEncryptingKey::from_der(private_key.to_spki().as_ref()).unwrap(),
+        )
+        .unwrap();
+
+        b.iter(|| {
+            let mut ciphertext = [0u8; 256];
+            black_box(key.encrypt(&OAEP_SHA256_MGF1SHA256, &message, &mut ciphertext, None))
+                .unwrap();
+        })
+    });
+
+    group.bench_function("rind", |b| {
+        use rind::rsa::EncryptingKey;
+        let key = EncryptingKey::new(&OAEP_SHA256, public_key.as_ref()).unwrap();
+
+        b.iter(|| {
+            black_box(key.encrypt(&message, b"")).unwrap();
+        })
+    });
+}
+
 /// Parses a PKCS#1 public key and verifies a PKCS#1 v1.5 or PSS signature
 /// over SHA-256 with it, through OpenSSL.
 #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
@@ -334,6 +373,7 @@ criterion_group!(
     rsa2048_pkcs1_sha256_verify,
     rsa1024_pkcs1_sha1_verify,
     rsa2048_pss_sha256_verify,
-    rsa_pkcs1_sha256_verify_sizes
+    rsa_pkcs1_sha256_verify_sizes,
+    rsa2048_oaep_sha256_encrypt
 );
 criterion_main!(benches);

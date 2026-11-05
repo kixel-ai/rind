@@ -2,7 +2,7 @@ mod criterion;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 fn bench_aes_ctr(c: &mut Criterion) {
-    let nonce = [0u8; 12];
+    let iv = [0u8; 16];
 
     for (name, key_len) in [("aes128-ctr", 16), ("aes256-ctr", 32)] {
         let key = &[0u8; 32][..key_len];
@@ -20,8 +20,6 @@ fn bench_aes_ctr(c: &mut Criterion) {
                 let algorithm = if key_len == 16 { &AES_128 } else { &AES_256 };
                 let key =
                     EncryptingKey::ctr(UnboundCipherKey::new(algorithm, key).unwrap()).unwrap();
-                let mut iv = [0u8; 16];
-                iv[..12].copy_from_slice(&nonce);
                 b.iter(|| {
                     key.less_safe_encrypt(&mut buf, EncryptionContext::Iv128(iv.into()))
                         .unwrap()
@@ -30,9 +28,70 @@ fn bench_aes_ctr(c: &mut Criterion) {
             group.bench_function(BenchmarkId::new("rind", size_name), |b| {
                 use rind::cipher::{AES_128, AES_256, AesCtr};
                 let algorithm = if key_len == 16 { &AES_128 } else { &AES_256 };
-                let key = AesCtr::new(algorithm, key).unwrap();
-                b.iter(|| key.apply_keystream(&nonce, 0, &mut buf).unwrap());
+                let key = AesCtr::new(algorithm, key, 128).unwrap();
+                b.iter(|| key.apply_keystream(&iv, &mut buf).unwrap());
             });
+        }
+    }
+}
+
+// AES-CBC with PKCS#7 padding, as WebCrypto runs it. Each iteration copies
+// the input into a buffer of kept capacity, since both directions work in
+// place and decryption consumes its ciphertext; the copy is the same for
+// both libraries.
+fn bench_aes_cbc(c: &mut Criterion) {
+    let iv = [0u8; 16];
+
+    for (name, key_len) in [("aes128-cbc", 16), ("aes256-cbc", 32)] {
+        let key = &[0u8; 32][..key_len];
+        for op in ["encrypt", "decrypt"] {
+            let mut group = c.benchmark_group(format!("{name}-{op}"));
+            for (size, size_name) in criterion::SIZES {
+                use rind::cipher::{AES_128, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey};
+                let algorithm = if key_len == 16 { &AES_128 } else { &AES_256 };
+                let mut ct = vec![0u8; size];
+                AesCbcEncryptingKey::new(algorithm, key)
+                    .unwrap()
+                    .encrypt(&iv, &mut ct);
+                let input = if op == "encrypt" { vec![0u8; size] } else { ct };
+                let mut buf = Vec::with_capacity(size + 16);
+                group.throughput(Throughput::Bytes(size as u64));
+
+                group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
+                    use aws_lc_rs::cipher::{
+                        AES_128, AES_256, DecryptionContext, EncryptionContext,
+                        PaddedBlockDecryptingKey, PaddedBlockEncryptingKey, UnboundCipherKey,
+                    };
+                    let algorithm = if key_len == 16 { &AES_128 } else { &AES_256 };
+                    let key = || UnboundCipherKey::new(algorithm, key).unwrap();
+                    let enc = PaddedBlockEncryptingKey::cbc_pkcs7(key()).unwrap();
+                    let dec = PaddedBlockDecryptingKey::cbc_pkcs7(key()).unwrap();
+                    b.iter(|| {
+                        buf.clear();
+                        buf.extend_from_slice(&input);
+                        if op == "encrypt" {
+                            enc.less_safe_encrypt(&mut buf, EncryptionContext::Iv128(iv.into()))
+                                .unwrap();
+                        } else {
+                            dec.decrypt(&mut buf, DecryptionContext::Iv128(iv.into()))
+                                .unwrap();
+                        }
+                    });
+                });
+                group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+                    let enc = AesCbcEncryptingKey::new(algorithm, key).unwrap();
+                    let dec = AesCbcDecryptingKey::new(algorithm, key).unwrap();
+                    b.iter(|| {
+                        buf.clear();
+                        buf.extend_from_slice(&input);
+                        if op == "encrypt" {
+                            enc.encrypt(&iv, &mut buf);
+                        } else {
+                            dec.decrypt(&iv, &mut buf).unwrap();
+                        }
+                    });
+                });
+            }
         }
     }
 }
@@ -77,5 +136,10 @@ fn bench_header_protection(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_aes_ctr, bench_header_protection);
+criterion_group!(
+    benches,
+    bench_aes_ctr,
+    bench_aes_cbc,
+    bench_header_protection
+);
 criterion_main!(benches);

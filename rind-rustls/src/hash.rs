@@ -45,7 +45,7 @@ impl hash::Context for Context {
         Box::new(Self(self.0.clone()))
     }
 
-    fn finish(self: Box<Self>) -> hash::Output {
+    fn finish(mut self: Box<Self>) -> hash::Output {
         hash::Output::new(self.0.finish().as_ref())
     }
 

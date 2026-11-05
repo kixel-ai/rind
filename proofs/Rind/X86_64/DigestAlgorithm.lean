@@ -71,6 +71,27 @@ pub static SHA512_256: Algorithm = Algorithm {
     start: Hashing::<Sha512_256Context>::start,
 };
 
+pub static SHA3_256: Algorithm = Algorithm {
+    id: Id::Sha3_256,
+    output_len: sha3::Sha3_256Context::OUTPUT_SZ,
+    hash: one_shot::<Sha3_256Context>,
+    start: Hashing::<Sha3_256Context>::start,
+};
+
+pub static SHA3_384: Algorithm = Algorithm {
+    id: Id::Sha3_384,
+    output_len: sha3::Sha3_384Context::OUTPUT_SZ,
+    hash: one_shot::<Sha3_384Context>,
+    start: Hashing::<Sha3_384Context>::start,
+};
+
+pub static SHA3_512: Algorithm = Algorithm {
+    id: Id::Sha3_512,
+    output_len: sha3::Sha3_512Context::OUTPUT_SZ,
+    hash: one_shot::<Sha3_512Context>,
+    start: Hashing::<Sha3_512Context>::start,
+};
+
 pub struct Digest {
     algorithm: &'static Algorithm,
     value: [u8; MAX_OUTPUT_LEN],
@@ -100,6 +121,12 @@ impl Digest {
     pub(crate) fn ct_equal(&self, other: &[u8]) -> bool {
         ct::into_public(ct_equal(self.as_ref(), other))
     }
+
+    /// Whether a signature takes this digest: SHA-256, SHA-384, or SHA-512,
+    /// as signatures over a message take.
+    pub(crate) fn signs(&self) -> bool {
+        matches!(self.algorithm.id, Id::Sha256 | Id::Sha384 | Id::Sha512)
+    }
 }
 
 impl AsRef<[u8]> for Digest {
@@ -127,6 +154,9 @@ inductive high.digest.Algorithm where
   | SHA384
   | SHA512
   | SHA512_256
+  | SHA3_256
+  | SHA3_384
+  | SHA3_512
 deriving DecidableEq
 
 /-- `Algorithm::output_len`. -/
@@ -136,6 +166,9 @@ def high.digest.Algorithm.output_len : high.digest.Algorithm → Result Std.Usiz
   | .SHA384 => ok 48#usize
   | .SHA512 => ok 64#usize
   | .SHA512_256 => ok 32#usize
+  | .SHA3_256 => ok 32#usize
+  | .SHA3_384 => ok 48#usize
+  | .SHA3_512 => ok 64#usize
 
 /-- The `SHA1` static. -/
 def high.digest.SHA1 : Result high.digest.Algorithm := ok .SHA1
@@ -151,6 +184,15 @@ def high.digest.SHA512 : Result high.digest.Algorithm := ok .SHA512
 
 /-- The `SHA512_256` static. -/
 def high.digest.SHA512_256 : Result high.digest.Algorithm := ok .SHA512_256
+
+/-- The `SHA3_256` static. -/
+def high.digest.SHA3_256 : Result high.digest.Algorithm := ok .SHA3_256
+
+/-- The `SHA3_384` static. -/
+def high.digest.SHA3_384 : Result high.digest.Algorithm := ok .SHA3_384
+
+/-- The `SHA3_512` static. -/
+def high.digest.SHA3_512 : Result high.digest.Algorithm := ok .SHA3_512
 
 /-- `Digest`. -/
 structure high.digest.Digest where

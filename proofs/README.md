@@ -18,6 +18,8 @@ writes for aarch64:
 
 - `x25519_generate`: the key's scalar is the 32 drawn bytes, read
   little-endian, and a failed draw is refused;
+- `x25519_from_private_key`: a loaded key's scalar is the 32 given bytes, read
+  little-endian, and any other length is refused;
 - `x25519_public_key`: the public key is the 32 little-endian bytes of
   `rfcx25519(scalar, 9)`;
 - `x25519_agree`: a peer key that is not 32 bytes is refused, so is an
@@ -33,6 +35,8 @@ P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
 - `p256_generate`: the key's scalar is the first of up to 64 draws whose
   bytes, read big-endian, are in [1, n), and the key is refused if a draw
   fails before one is, or none is;
+- `p256_from_private_key`: a loaded key's scalar is the 32 given bytes, read
+  big-endian, refused unless they are 32 bytes and in [1, n);
 - `p256_public_key`: the public key is the X9.62 uncompressed encoding of the
   scalar times G, for a scalar whose multiple is a finite point on the curve;
 - `p256_agree`: a peer key is refused unless it is a 65-byte uncompressed
@@ -89,9 +93,9 @@ with 16 bytes from the system source; its update takes a slice of borrowed
 slices, which Aeneas cannot translate, so it is opaque, and the theorems
 assume `Drbg`: it seeds and draws without panicking, and a draw never fails.
 They also assume `Fills`, that the system source returns, `Held`, that the
-entry guard holds, and `Cached`: a verifying key's lock-free cache of 17P to
-31P, whose atomics Aeneas cannot translate, is built from the key's own
-multiples.
+entry guard holds, and `Cached`: a verifying key's lock-free caches of P to
+15P and 17P to 31P, whose atomics Aeneas cannot translate, are built from the
+key's own point.
 
 ChaCha20 QUIC header protection on x86_64 and aarch64, from
 `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
@@ -126,14 +130,15 @@ against FIPS 180-4 and RFC 2104 as `Rind/HashSpec.lean` transliterates them:
 No proof covers a SHA-1 or SHA-256 block function rind runs on either target,
 so these theorems take `ShaBlocks` as a hypothesis, in each target's own
 `Rind/<Arch>/ShaBlocks.lean`: each routine computes FIPS 180-4's block
-function, and rind's checks pass. They add no axiom, which
+function, x86_64's SHA extensions' finishing routine pads and encodes as
+FIPS 180-4 does, and rind's checks pass. They add no axiom, which
 `Rind/<Arch>/HashAxioms.lean` checks. An input is at most `maxInput`
 (2^61 - 1) bytes, under FIPS 180-4's 2^64-bit limit. `Rind/HashSpecTest.lean`
 checks the transliterations against FIPS 180-4's, RFC 4231's, RFC 5869's, and
 RFC 6070's vectors.
 
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
-(`Algorithm`'s `generate` and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
+(`Algorithm`'s `generate` and `load`, and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
 cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
 cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
 Lean definitions beside the Rust they model. P-256's key generation draws
@@ -256,7 +261,7 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   SHA-1's, SHA-256's, and HMAC's; `Rind/X86_64/{AesKey,Ghash,AesGcmGlue,AesGcm}.lean`:
   the AES-GCM proof, on x86_64 alone.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
-  target, and their padded last blocks.
+  target, and SHA-256's padded last blocks and finish.
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
 - `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate, and

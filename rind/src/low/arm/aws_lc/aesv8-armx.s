@@ -183,6 +183,52 @@
 	bx	lr
 .cfi_endproc
 .size	{aes_hw_set_encrypt_key},.-{aes_hw_set_encrypt_key}
+.globl	{aes_hw_set_decrypt_key}
+.hidden	{aes_hw_set_decrypt_key}
+.type	{aes_hw_set_decrypt_key},%function
+.align	5
+{aes_hw_set_decrypt_key}:
+.cfi_startproc
+	stmdb	sp!,{{r4,lr}}
+.cfi_def_cfa_offset	8
+.cfi_offset	r4, -8
+.cfi_offset	lr, -4
+	bl	.Laes_enc_key
+
+	cmp	r0,#0
+	bne	.Laes_dec_key_abort
+
+	sub	r2,r2,#240		@ restore original r2
+	mov	r4,#-16
+	add	r0,r2,r12,lsl#4	@ end of key schedule
+
+	vld1.32	{{q0}},[r2]
+	vld1.32	{{q1}},[r0]
+	vst1.32	{{q0}},[r0],r4
+	vst1.32	{{q1}},[r2]!
+
+.Laes_oop_imc:
+	vld1.32	{{q0}},[r2]
+	vld1.32	{{q1}},[r0]
+.byte	0xc0,0x03,0xb0,0xf3	@ aesimc q0,q0
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+	vst1.32	{{q0}},[r0],r4
+	vst1.32	{{q1}},[r2]!
+	cmp	r0,r2
+	bhi	.Laes_oop_imc
+
+	vld1.32	{{q0}},[r2]
+.byte	0xc0,0x03,0xb0,0xf3	@ aesimc q0,q0
+	vst1.32	{{q0}},[r0]
+
+	eor	r0,r0,r0		@ return value
+.Laes_dec_key_abort:
+	ldmia	sp!,{{r4,pc}}
+.cfi_restore	r4
+.cfi_restore	lr
+.cfi_def_cfa_offset	0
+.cfi_endproc
+.size	{aes_hw_set_decrypt_key},.-{aes_hw_set_decrypt_key}
 .globl	{aes_hw_encrypt}
 .hidden	{aes_hw_encrypt}
 .type	{aes_hw_encrypt},%function
@@ -216,6 +262,39 @@
 	bx	lr
 .cfi_endproc
 .size	{aes_hw_encrypt},.-{aes_hw_encrypt}
+.globl	{aes_hw_decrypt}
+.hidden	{aes_hw_decrypt}
+.type	{aes_hw_decrypt},%function
+.align	5
+{aes_hw_decrypt}:
+.cfi_startproc
+	
+	ldr	r3,[r2,#240]
+	vld1.32	{{q0}},[r2]!
+	vld1.8	{{q2}},[r0]
+	sub	r3,r3,#2
+	vld1.32	{{q1}},[r2]!
+
+.Laes_oop_dec:
+.byte	0x40,0x43,0xb0,0xf3	@ aesd q2,q0
+.byte	0xc4,0x43,0xb0,0xf3	@ aesimc q2,q2
+	vld1.32	{{q0}},[r2]!
+	subs	r3,r3,#2
+.byte	0x42,0x43,0xb0,0xf3	@ aesd q2,q1
+.byte	0xc4,0x43,0xb0,0xf3	@ aesimc q2,q2
+	vld1.32	{{q1}},[r2]!
+	bgt	.Laes_oop_dec
+
+.byte	0x40,0x43,0xb0,0xf3	@ aesd q2,q0
+.byte	0xc4,0x43,0xb0,0xf3	@ aesimc q2,q2
+	vld1.32	{{q0}},[r2]
+.byte	0x42,0x43,0xb0,0xf3	@ aesd q2,q1
+	veor	q2,q2,q0
+
+	vst1.8	{{q2}},[r1]
+	bx	lr
+.cfi_endproc
+.size	{aes_hw_decrypt},.-{aes_hw_decrypt}
 .globl	{aes_hw_ctr32_encrypt_blocks}
 .hidden	{aes_hw_ctr32_encrypt_blocks}
 .type	{aes_hw_ctr32_encrypt_blocks},%function
@@ -453,3 +532,330 @@
 .cfi_def_cfa_offset	0
 .cfi_endproc
 .size	{aes_hw_ctr32_encrypt_blocks},.-{aes_hw_ctr32_encrypt_blocks}
+.globl	{aes_hw_cbc_encrypt}
+.hidden	{aes_hw_cbc_encrypt}
+.type	{aes_hw_cbc_encrypt},%function
+.align	5
+{aes_hw_cbc_encrypt}:
+.cfi_startproc
+	mov	ip,sp
+	stmdb	sp!,{{r4,r5,r6,r7,r8,lr}}
+.cfi_def_cfa_offset	24
+.cfi_offset	r4, -24
+.cfi_offset	r5, -20
+.cfi_offset	r6, -16
+.cfi_offset	r7, -12
+.cfi_offset	r8, -8
+.cfi_offset	lr, -4
+	vstmdb	sp!,{{d8,d9,d10,d11,d12,d13,d14,d15}}            @ ABI specification says so
+.cfi_def_cfa_offset	88
+.cfi_offset	d8, -88
+.cfi_offset	d9, -80
+.cfi_offset	d10, -72
+.cfi_offset	d11, -64
+.cfi_offset	d12, -56
+.cfi_offset	d13, -48
+.cfi_offset	d14, -40
+.cfi_offset	d15, -32
+	ldmia	ip,{{r4,r5}}		@ load remaining args
+	subs	r2,r2,#16
+	mov	r8,#16
+	blo	.Laes_cbc_abort
+	moveq	r8,#0
+
+	cmp	r5,#0			@ en- or decrypting?
+	ldr	r5,[r3,#240]
+	and	r2,r2,#-16
+	vld1.8	{{q6}},[r4]
+	vld1.8	{{q0}},[r0],r8
+
+	vld1.32	{{q8,q9}},[r3]		@ load key schedule...
+	sub	r5,r5,#6
+	add	r7,r3,r5,lsl#4	@ pointer to last 7 round keys
+	sub	r5,r5,#2
+	vld1.32	{{q10,q11}},[r7]!
+	vld1.32	{{q12,q13}},[r7]!
+	vld1.32	{{q14,q15}},[r7]!
+	vld1.32	{{q7}},[r7]
+
+	add	r7,r3,#32
+	mov	r6,r5
+	beq	.Laes_cbc_dec
+
+	cmp	r5,#2
+	veor	q0,q0,q6
+	veor	q5,q8,q7
+	beq	.Laes_cbc_enc128
+
+	vld1.32	{{q2,q3}},[r7]
+	add	r7,r3,#16
+	add	r6,r3,#16*4
+	add	r12,r3,#16*5
+.byte	0x20,0x03,0xb0,0xf3	@ aese q0,q8
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	add	r14,r3,#16*6
+	add	r3,r3,#16*7
+	b	.Laes_enter_cbc_enc
+
+.align	4
+.Laes_oop_cbc_enc:
+.byte	0x20,0x03,0xb0,0xf3	@ aese q0,q8
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	vst1.8	{{q6}},[r1]!
+.Laes_enter_cbc_enc:
+.byte	0x22,0x03,0xb0,0xf3	@ aese q0,q9
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+.byte	0x04,0x03,0xb0,0xf3	@ aese q0,q2
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	vld1.32	{{q8}},[r6]
+	cmp	r5,#4
+.byte	0x06,0x03,0xb0,0xf3	@ aese q0,q3
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	vld1.32	{{q9}},[r12]
+	beq	.Laes_cbc_enc192
+
+.byte	0x20,0x03,0xb0,0xf3	@ aese q0,q8
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	vld1.32	{{q8}},[r14]
+.byte	0x22,0x03,0xb0,0xf3	@ aese q0,q9
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	vld1.32	{{q9}},[r3]
+	nop
+
+.Laes_cbc_enc192:
+.byte	0x20,0x03,0xb0,0xf3	@ aese q0,q8
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	subs	r2,r2,#16
+.byte	0x22,0x03,0xb0,0xf3	@ aese q0,q9
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	moveq	r8,#0
+.byte	0x24,0x03,0xb0,0xf3	@ aese q0,q10
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+.byte	0x26,0x03,0xb0,0xf3	@ aese q0,q11
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	vld1.8	{{q8}},[r0],r8
+.byte	0x28,0x03,0xb0,0xf3	@ aese q0,q12
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	veor	q8,q8,q5
+.byte	0x2a,0x03,0xb0,0xf3	@ aese q0,q13
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	vld1.32	{{q9}},[r7]		@ re-pre-load rndkey[1]
+.byte	0x2c,0x03,0xb0,0xf3	@ aese q0,q14
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+.byte	0x2e,0x03,0xb0,0xf3	@ aese q0,q15
+	veor	q6,q0,q7
+	bhs	.Laes_oop_cbc_enc
+
+	vst1.8	{{q6}},[r1]!
+	b	.Laes_cbc_done
+
+.align	5
+.Laes_cbc_enc128:
+	vld1.32	{{q2,q3}},[r7]
+.byte	0x20,0x03,0xb0,0xf3	@ aese q0,q8
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	b	.Laes_enter_cbc_enc128
+.Laes_oop_cbc_enc128:
+.byte	0x20,0x03,0xb0,0xf3	@ aese q0,q8
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	vst1.8	{{q6}},[r1]!
+.Laes_enter_cbc_enc128:
+.byte	0x22,0x03,0xb0,0xf3	@ aese q0,q9
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	subs	r2,r2,#16
+.byte	0x04,0x03,0xb0,0xf3	@ aese q0,q2
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	moveq	r8,#0
+.byte	0x06,0x03,0xb0,0xf3	@ aese q0,q3
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+.byte	0x24,0x03,0xb0,0xf3	@ aese q0,q10
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+.byte	0x26,0x03,0xb0,0xf3	@ aese q0,q11
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	vld1.8	{{q8}},[r0],r8
+.byte	0x28,0x03,0xb0,0xf3	@ aese q0,q12
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+.byte	0x2a,0x03,0xb0,0xf3	@ aese q0,q13
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+.byte	0x2c,0x03,0xb0,0xf3	@ aese q0,q14
+.byte	0x80,0x03,0xb0,0xf3	@ aesmc q0,q0
+	veor	q8,q8,q5
+.byte	0x2e,0x03,0xb0,0xf3	@ aese q0,q15
+	veor	q6,q0,q7
+	bhs	.Laes_oop_cbc_enc128
+
+	vst1.8	{{q6}},[r1]!
+	b	.Laes_cbc_done
+.align	5
+.Laes_cbc_dec:
+	vld1.8	{{q10}},[r0]!
+	subs	r2,r2,#32		@ bias
+	add	r6,r5,#2
+	vorr	q3,q0,q0
+	vorr	q1,q0,q0
+	vorr	q11,q10,q10
+	blo	.Laes_cbc_dec_tail
+
+	vorr	q1,q10,q10
+	vld1.8	{{q10}},[r0]!
+	vorr	q2,q0,q0
+	vorr	q3,q1,q1
+	vorr	q11,q10,q10
+
+.Laes_oop3x_cbc_dec:
+.byte	0x60,0x03,0xb0,0xf3	@ aesd q0,q8
+.byte	0xc0,0x03,0xb0,0xf3	@ aesimc q0,q0
+.byte	0x60,0x23,0xb0,0xf3	@ aesd q1,q8
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x60,0x43,0xf0,0xf3	@ aesd q10,q8
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	vld1.32	{{q8}},[r7]!
+	subs	r6,r6,#2
+.byte	0x62,0x03,0xb0,0xf3	@ aesd q0,q9
+.byte	0xc0,0x03,0xb0,0xf3	@ aesimc q0,q0
+.byte	0x62,0x23,0xb0,0xf3	@ aesd q1,q9
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x62,0x43,0xf0,0xf3	@ aesd q10,q9
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	vld1.32	{{q9}},[r7]!
+	bgt	.Laes_oop3x_cbc_dec
+
+.byte	0x60,0x03,0xb0,0xf3	@ aesd q0,q8
+.byte	0xc0,0x03,0xb0,0xf3	@ aesimc q0,q0
+.byte	0x60,0x23,0xb0,0xf3	@ aesd q1,q8
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x60,0x43,0xf0,0xf3	@ aesd q10,q8
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	veor	q4,q6,q7
+	subs	r2,r2,#0x30
+	veor	q5,q2,q7
+	movlo	r6,r2			@ r6, r6, is zero at this point
+.byte	0x62,0x03,0xb0,0xf3	@ aesd q0,q9
+.byte	0xc0,0x03,0xb0,0xf3	@ aesimc q0,q0
+.byte	0x62,0x23,0xb0,0xf3	@ aesd q1,q9
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x62,0x43,0xf0,0xf3	@ aesd q10,q9
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	veor	q9,q3,q7
+	add	r0,r0,r6		@ r0 is adjusted in such way that
+					@ at exit from the loop q1-q10
+					@ are loaded with last "words"
+	vorr	q6,q11,q11
+	mov	r7,r3
+.byte	0x68,0x03,0xb0,0xf3	@ aesd q0,q12
+.byte	0xc0,0x03,0xb0,0xf3	@ aesimc q0,q0
+.byte	0x68,0x23,0xb0,0xf3	@ aesd q1,q12
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x68,0x43,0xf0,0xf3	@ aesd q10,q12
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	vld1.8	{{q2}},[r0]!
+.byte	0x6a,0x03,0xb0,0xf3	@ aesd q0,q13
+.byte	0xc0,0x03,0xb0,0xf3	@ aesimc q0,q0
+.byte	0x6a,0x23,0xb0,0xf3	@ aesd q1,q13
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x6a,0x43,0xf0,0xf3	@ aesd q10,q13
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	vld1.8	{{q3}},[r0]!
+.byte	0x6c,0x03,0xb0,0xf3	@ aesd q0,q14
+.byte	0xc0,0x03,0xb0,0xf3	@ aesimc q0,q0
+.byte	0x6c,0x23,0xb0,0xf3	@ aesd q1,q14
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x6c,0x43,0xf0,0xf3	@ aesd q10,q14
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	vld1.8	{{q11}},[r0]!
+.byte	0x6e,0x03,0xb0,0xf3	@ aesd q0,q15
+.byte	0x6e,0x23,0xb0,0xf3	@ aesd q1,q15
+.byte	0x6e,0x43,0xf0,0xf3	@ aesd q10,q15
+	vld1.32	{{q8}},[r7]!	@ re-pre-load rndkey[0]
+	add	r6,r5,#2
+	veor	q4,q4,q0
+	veor	q5,q5,q1
+	veor	q10,q10,q9
+	vld1.32	{{q9}},[r7]!	@ re-pre-load rndkey[1]
+	vst1.8	{{q4}},[r1]!
+	vorr	q0,q2,q2
+	vst1.8	{{q5}},[r1]!
+	vorr	q1,q3,q3
+	vst1.8	{{q10}},[r1]!
+	vorr	q10,q11,q11
+	bhs	.Laes_oop3x_cbc_dec
+
+	cmn	r2,#0x30
+	beq	.Laes_cbc_done
+	nop
+
+.Laes_cbc_dec_tail:
+.byte	0x60,0x23,0xb0,0xf3	@ aesd q1,q8
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x60,0x43,0xf0,0xf3	@ aesd q10,q8
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	vld1.32	{{q8}},[r7]!
+	subs	r6,r6,#2
+.byte	0x62,0x23,0xb0,0xf3	@ aesd q1,q9
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x62,0x43,0xf0,0xf3	@ aesd q10,q9
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	vld1.32	{{q9}},[r7]!
+	bgt	.Laes_cbc_dec_tail
+
+.byte	0x60,0x23,0xb0,0xf3	@ aesd q1,q8
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x60,0x43,0xf0,0xf3	@ aesd q10,q8
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+.byte	0x62,0x23,0xb0,0xf3	@ aesd q1,q9
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x62,0x43,0xf0,0xf3	@ aesd q10,q9
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+.byte	0x68,0x23,0xb0,0xf3	@ aesd q1,q12
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x68,0x43,0xf0,0xf3	@ aesd q10,q12
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	cmn	r2,#0x20
+.byte	0x6a,0x23,0xb0,0xf3	@ aesd q1,q13
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x6a,0x43,0xf0,0xf3	@ aesd q10,q13
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	veor	q5,q6,q7
+.byte	0x6c,0x23,0xb0,0xf3	@ aesd q1,q14
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+.byte	0x6c,0x43,0xf0,0xf3	@ aesd q10,q14
+.byte	0xe4,0x43,0xf0,0xf3	@ aesimc q10,q10
+	veor	q9,q3,q7
+.byte	0x6e,0x23,0xb0,0xf3	@ aesd q1,q15
+.byte	0x6e,0x43,0xf0,0xf3	@ aesd q10,q15
+	beq	.Laes_cbc_dec_one
+	veor	q5,q5,q1
+	veor	q9,q9,q10
+	vorr	q6,q11,q11
+	vst1.8	{{q5}},[r1]!
+	vst1.8	{{q9}},[r1]!
+	b	.Laes_cbc_done
+
+.Laes_cbc_dec_one:
+	veor	q5,q5,q10
+	vorr	q6,q11,q11
+	vst1.8	{{q5}},[r1]!
+
+.Laes_cbc_done:
+	vst1.8	{{q6}},[r4]
+.Laes_cbc_abort:
+	vldmia	sp!,{{d8,d9,d10,d11,d12,d13,d14,d15}}
+.cfi_restore	d8
+.cfi_restore	d9
+.cfi_restore	d10
+.cfi_restore	d11
+.cfi_restore	d12
+.cfi_restore	d13
+.cfi_restore	d14
+.cfi_restore	d15
+.cfi_def_cfa_offset	24
+	ldmia	sp!,{{r4,r5,r6,r7,r8,pc}}
+.cfi_restore	r4
+.cfi_restore	r5
+.cfi_restore	r6
+.cfi_restore	r7
+.cfi_restore	r8
+.cfi_restore	lr
+.cfi_def_cfa_offset	0
+.cfi_endproc
+.size	{aes_hw_cbc_encrypt},.-{aes_hw_cbc_encrypt}

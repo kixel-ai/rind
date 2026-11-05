@@ -10,7 +10,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
-aws-lc-rs = { version = "1.16", features = ["non-fips", "ring-io"], default-features = false }
+aws-lc-rs = { version = "1.19", features = ["non-fips", "ring-io"], default-features = false }
 # aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
 aws-lc-sys = { version = "0.47", default-features = false }
 # Tells which Ed25519 keys are of small order, which rind refuses.
@@ -29,6 +29,13 @@ bench = false
 [[bin]]
 name = "sha2"
 path = "fuzzer/sha2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sha3"
+path = "fuzzer/sha3.rs"
 test = false
 doc = false
 bench = false
@@ -76,6 +83,20 @@ doc = false
 bench = false
 
 [[bin]]
+name = "aes_cbc"
+path = "fuzzer/aes_cbc.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "key_wrap"
+path = "fuzzer/key_wrap.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "xchacha"
 path = "fuzzer/xchacha.rs"
 test = false
@@ -85,6 +106,13 @@ bench = false
 [[bin]]
 name = "kem"
 path = "fuzzer/kem.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "oaep"
+path = "fuzzer/oaep.rs"
 test = false
 doc = false
 bench = false

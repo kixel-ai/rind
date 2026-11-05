@@ -38,28 +38,29 @@ impl Sha256State {
 
     /// The hash of the input so far followed by `message`, leaving this state as it was.
     pub(crate) fn finish_with(&self, message: &[u8]) -> [u8; Sha256Context::OUTPUT_SZ] {
+        let length = self.length(message.len());
+        Entry::assert_held();
+        crate::low::sha256_finish(&self.h, message, length)
+    }
+
+    /// The hash of the input so far followed by the first `used` bytes of
+    /// `block`, leaving this state as it was.
+    fn finish_block(&self, block: &[u8; 64], used: usize) -> [u8; Sha256Context::OUTPUT_SZ] {
+        let length = self.length(used);
+        Entry::assert_held();
+        crate::low::sha256_finish_block(&self.h, block, used, length)
+    }
+
+    /// The padding's length field for the input so far followed by `more` bytes.
+    fn length(&self, more: usize) -> [u8; 8] {
         const BLOCK_SZ: usize = Sha256Context::BLOCK_SZ;
         let bits = self
             .nblocks
             .checked_mul(BLOCK_SZ as u64)
-            .and_then(|bytes| bytes.checked_add(message.len() as u64))
+            .and_then(|bytes| bytes.checked_add(more as u64))
             .and_then(|bytes| bytes.checked_mul(8))
             .expect("excess data processed by hash function");
-
-        // Copies `h` alone: copying the whole state can leave it straddling
-        // two stores, which the SHA extensions' 16-byte load of it then
-        // waits on instead of forwarding.
-        let mut h = self.h;
-        Entry::assert_held();
-        crate::low::sha256_compress_padded(&mut h, message, bits.to_be_bytes());
-
-        // Indexes rather than zipping `as_chunks_mut`, which Aeneas cannot
-        // translate, so `proofs/` can prove the encoding.
-        let mut r = [0u8; Sha256Context::OUTPUT_SZ];
-        for (i, word) in h.iter().enumerate() {
-            r[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
-        }
-        r
+        bits.to_be_bytes()
     }
 }
 
@@ -106,7 +107,8 @@ impl Sha256Context {
 
     /// Complete the SHA256 computation, returning the hash output.
     pub(crate) fn finish(&self) -> [u8; Self::OUTPUT_SZ] {
-        self.state.finish_with(self.blockwise.buffered())
+        self.state
+            .finish_block(self.blockwise.buffer(), self.blockwise.used())
     }
 
     /// The internal block size of SHA256.

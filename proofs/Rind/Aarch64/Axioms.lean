@@ -17,6 +17,10 @@ else. A change here is a change to the trust base.
 #guard_msgs in
 #print axioms x25519_generate
 
+/-- info: 'rind.aarch64.x25519_from_private_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms x25519_from_private_key
+
 /-- info: 'rind.aarch64.x25519_public_key' depends on axioms: [propext, Classical.choice, Quot.sound, curve25519_x25519base_spec] -/
 #guard_msgs in
 #print axioms x25519_public_key
@@ -40,6 +44,14 @@ else. A change here is a change to the trust base.
  bignum_mod_n256_spec] -/
 #guard_msgs in
 #print axioms p256_generate
+
+/-- info: 'rind.aarch64.p256_from_private_key' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_eq_spec,
+ bignum_mod_n256_spec] -/
+#guard_msgs in
+#print axioms p256_from_private_key
 
 /-- info: 'rind.aarch64.p256_public_key' depends on axioms: [propext,
  Classical.choice,
@@ -147,13 +159,10 @@ else. A change here is a change to the trust base.
  bignum_add_p256_spec,
  bignum_demont_p256_spec,
  bignum_eq_spec,
- bignum_inv_p256_spec,
  bignum_mod_n256_spec,
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_spec,
  bignum_tomont_p256_spec,
- p256_montjadd_spec,
- p256_montjdouble_spec,
  p256_scalarmulbase_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_generate
@@ -164,13 +173,10 @@ else. A change here is a change to the trust base.
  bignum_add_p256_spec,
  bignum_demont_p256_spec,
  bignum_eq_spec,
- bignum_inv_p256_spec,
  bignum_mod_n256_spec,
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_spec,
  bignum_tomont_p256_spec,
- p256_montjadd_spec,
- p256_montjdouble_spec,
  p256_scalarmulbase_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_from_private_key_and_public_key
@@ -211,6 +217,7 @@ else. A change here is a change to the trust base.
  bignum_montsqr_p256_spec,
  bignum_neg_p256_spec,
  bignum_tomont_p256_spec,
+ p256_montjadd_spec,
  p256_montjdouble_spec,
  p256_montjmixadd_spec] -/
 #guard_msgs in

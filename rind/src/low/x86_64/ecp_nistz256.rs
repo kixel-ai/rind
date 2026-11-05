@@ -28,41 +28,39 @@ impl core::ops::Deref for P256GeneratorRow {
     }
 }
 
-/// Returns `row`'s point `index - 1`, or zeros for an `index` of 0 or above
-/// 64, reading every point.
+/// Writes `row`'s point `index - 1` to `out`, or zeros for an `index` of 0 or
+/// above 64, reading every point.
 ///
 /// `index` is secret, so not even a debug build asserts on it.
-pub(crate) fn p256_select_w7(row: &P256GeneratorRow, index: u8) -> [u64; 8] {
-    let mut r = [0; 8];
-    // SAFETY: `r` is one writable point and `row` 64 readable points, as
+pub(crate) fn p256_select_w7(out: &mut [u64; 8], row: &P256GeneratorRow, index: u8) {
+    // SAFETY: `out` is one writable point and `row` 64 readable points, as
     // aligned as the routines load them. The AVX2 routine runs only where the
     // token proves AVX2, and the other needs only SSE2.
     unsafe {
         match HaveAvx2::check() {
-            Some(_) => ecp_nistz256_avx2_select_w7(&mut r, row, index.into()),
-            None => ecp_nistz256_select_w7(&mut r, row, index.into()),
+            Some(_) => ecp_nistz256_avx2_select_w7(out, row, index.into()),
+            None => ecp_nistz256_select_w7(out, row, index.into()),
         }
     }
-    r
 }
 
-/// Returns the Jacobian `p1` plus the affine `p2`, both in Montgomery form.
+/// Adds the affine `p2` to the Jacobian `p1`, both in Montgomery form.
 ///
 /// Either may be infinity: `p1` with a zero `z`, `p2` as all zeros. They must
 /// not be the same point, which this does not double.
-pub(crate) fn p256_point_add_affine(p1: &[u64; 12], p2: &[u64; 8]) -> [u64; 12] {
-    let mut r = [0; 12];
-    // SAFETY: `r` is one writable Jacobian point, `p1` one readable Jacobian
-    // point, and `p2` one readable affine point; the routines load them
+pub(crate) fn p256_point_add_affine(p1: &mut [u64; 12], p2: &[u64; 8]) {
+    let p1 = core::ptr::from_mut(p1);
+    // SAFETY: `p1` is one readable and writable Jacobian point, which the
+    // routines read in full before writing, as aws-lc's in-place calls rely
+    // on, and `p2` one readable affine point; the routines load them
     // unaligned. The BMI2 and ADX routine runs only where the token proves
     // both, and the other needs only SSE2.
     unsafe {
         match HaveBmi2Adx::check() {
-            Some(_) => ecp_nistz256_point_add_affinex(&mut r, p1, p2),
-            None => ecp_nistz256_point_add_affine(&mut r, p1, p2),
+            Some(_) => ecp_nistz256_point_add_affinex(p1, p1, p2),
+            None => ecp_nistz256_point_add_affine(p1, p1, p2),
         }
     }
-    r
 }
 
 /// aws-lc's `.Lpoly`, the field prime, as the multiplications load it.
@@ -203,7 +201,8 @@ mod tests {
             p1[8] |= 1;
             let mut s2n = [0; 12];
             super::super::adx_mux::p256_montjmixadd(&mut s2n, &p1, &p2);
-            assert_eq!(p256_point_add_affine(&p1, &p2), s2n);
+            p256_point_add_affine(&mut p1, &p2);
+            assert_eq!(p1, s2n);
         }
     }
 }
