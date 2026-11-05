@@ -966,6 +966,26 @@ theorem generate_loop_spec (draws : Nat → core.result.Result Unit getrandom.er
         exact ih (i + 1)
     · simp [wrapKey]
 
+theorem load_scalar_spec (h : Runs) (b : Slice U8) :
+    mid.p256.PrivateKey.Insts.RindHighAgreementAgree.load (.Scalar b) ⦃ r =>
+      if b.length = 32 then
+        if 0 < beNat b.val ∧ beNat b.val < n256 then
+          ∃ k, r = .Ok k ∧ wordsNat k.scalar.val = beNat b.val
+        else r = .Err (.KeyRejected .ScalarOutOfRange)
+      else r = .Err (.KeyRejected .WrongLength) ⦄ := by
+  unfold mid.p256.PrivateKey.Insts.RindHighAgreementAgree.load
+  step as ⟨_⟩
+  by_cases hl : b.length = 32
+  · have hlen : Slice.len b = mid.p256.Scalar.BYTES := by
+      apply UScalar.eq_of_val_eq
+      simpa [Slice.len, Slice.length, mid.p256.Scalar.BYTES] using hl
+    simp only [hlen, ↓reduceIte, hl]
+    exact from_bytes_spec b hl
+  · have hlen : ¬ Slice.len b = mid.p256.Scalar.BYTES := by
+      intro h'
+      exact hl (by simpa [Slice.len, Slice.length, mid.p256.Scalar.BYTES] using congrArg UScalar.val h')
+    simp [hlen, hl, core.convert.IntoFrom.into, error.Error.Insts.CoreConvertFromKeyFormatError.from]
+
 end P256
 
 open P256
@@ -1003,23 +1023,15 @@ theorem p256_from_private_key (h : Runs) (b : Slice U8) :
       else key = core.result.Result.Err (.KeyRejected .WrongLength) ⦄ := by
   unfold high.agreement.PrivateKey.from_private_key high.agreement.PrivateKey.load
     high.agreement.ECDH_P256 high.agreement.Keyed.load high.agreement.Keyed.new
-    mid.p256.PrivateKey.Insts.RindHighAgreementAgree.load
-  step
-  by_cases hl : b.length = 32
-  · have hlen : Slice.len b = mid.p256.Scalar.BYTES := by
-      apply UScalar.eq_of_val_eq
-      simpa [Slice.len, Slice.length, mid.p256.Scalar.BYTES] using hl
-    simp only [hlen, ↓reduceIte, hl]
-    step with from_bytes_spec b hl as ⟨r, hr⟩
-    split_ifs at hr ⊢
-    · obtain ⟨k, rfl, hk⟩ := hr
-      simp [mid.p256.PrivateKey.Insts.RindHighAgreementAgree.wrap, hk]
-    · subst hr
-      simp
-  · have hlen : Slice.len b ≠ mid.p256.Scalar.BYTES := by
-      intro h'
-      exact hl (by simpa [Slice.len, Slice.length, mid.p256.Scalar.BYTES] using congrArg UScalar.val h')
-    simp [hlen, hl, error.Error.Insts.CoreConvertFromKeyFormatError.from]
+  simp only
+  step with load_scalar_spec h b as ⟨r, hr⟩
+  split_ifs at hr ⊢
+  · obtain ⟨k, rfl, hk⟩ := hr
+    simp [mid.p256.PrivateKey.Insts.RindHighAgreementAgree.wrap, hk]
+  · subst hr
+    simp
+  · subst hr
+    simp
 
 /-- A P-256 key's public key: X9.62's uncompressed encoding of its scalar
 times the generator, for a scalar whose multiple is a finite point on the

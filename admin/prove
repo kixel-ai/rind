@@ -199,12 +199,14 @@ extract() {
         --opaque crate::high::agreement::Ops \
         --opaque crate::high::agreement::x25519_from_pkcs8 \
         --opaque crate::high::agreement::x25519_to_pkcs8 \
-        --opaque crate::high::asn1 \
-        --opaque crate::high::pkcs8 \
         --opaque crate::high::sec1::decode \
         --opaque crate::high::sec1::decode_pkcs8 \
         --opaque crate::high::sec1::encode \
         --opaque crate::high::sec1::encode_pkcs8 \
+        --opaque 'crate::high::agreement::_::encode_pkcs8' \
+        --opaque 'crate::high::agreement::_::encode_scalar' \
+        --opaque '{impl crate::high::agreement::Agree for crate::mid::p384::PrivateKey}::load' \
+        --opaque '{impl crate::high::agreement::Agree for crate::mid::p521::PrivateKey}::load' \
         --opaque crate::aead::quic::Masker \
         --opaque crate::mid::aes \
         --opaque crate::high::digest::Ops \
@@ -243,6 +245,7 @@ extract() {
 }
 
 extract x86_64 X86_64 \
+    --opaque '{impl crate::high::agreement::Agree for crate::mid::p256::PrivateKey}::load' \
     --opaque 'crate::mid::p256::_::_' \
     --include crate::low::x86_64::adx_mux::curve25519_x25519 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base \
