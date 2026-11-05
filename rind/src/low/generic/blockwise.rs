@@ -52,6 +52,8 @@ impl<const N: usize> Blockwise<N> {
         self.used = rest.len();
     }
 
+    // Only Poly1305 uses it.
+    #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
     pub(crate) fn add_leading<'a>(&mut self, bytes: &'a [u8]) -> &'a [u8] {
         if self.used == 0 {
             return bytes;
@@ -65,6 +67,8 @@ impl<const N: usize> Blockwise<N> {
         returned
     }
 
+    // Only Poly1305 uses it.
+    #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
     pub(crate) fn take(&mut self) -> Option<[u8; N]> {
         if self.used == N {
             self.used = 0;
@@ -89,6 +93,8 @@ impl<const N: usize> Blockwise<N> {
         &self.buffer[..self.used]
     }
 
+    // Only Poly1305 uses it.
+    #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
     pub(crate) fn add_trailing(&mut self, trailing: &[u8]) {
         self.buffer[..trailing.len()].copy_from_slice(trailing);
         self.used += trailing.len();
