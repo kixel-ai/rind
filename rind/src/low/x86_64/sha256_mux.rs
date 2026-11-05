@@ -64,10 +64,10 @@ fn path() -> Path {
 fn pick() -> Path {
     if let Some(token) = HaveSha256::check() {
         Path::Shaext(token)
-    } else if let Some(token) = HaveAvx::check().filter(|_| is_intel()) {
-        Path::Avx(token)
     } else if let Some(token) = HaveAvx2::check() {
         Path::Avx2(token)
+    } else if let Some(token) = HaveAvx::check().filter(|_| is_intel()) {
+        Path::Avx(token)
     } else if let Some(token) = HaveSsse3::check() {
         Path::Ssse3(token)
     } else {

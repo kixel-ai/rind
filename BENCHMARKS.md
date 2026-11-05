@@ -147,16 +147,16 @@ Measured 2026-11-05 at [`6024d155`](https://github.com/moq-dev/rind/commit/6024d
 | ChaCha20 header protection | 54 ns ✓ | 69 ns | 61 ns | - | - | - | - |
 | X25519 | 17.94 µs ✓ | 19.14 µs | 35.19 µs | 36.03 µs | 18.25 µs | 42.71 µs ✓ | 33.93 µs |
 | P-256 ECDH | 29.99 µs | 32.02 µs | 34.21 µs | 120.66 µs | 32.86 µs | 168.88 µs ✓ | 52.96 µs |
-| Ed25519 sign | 4.29 µs ✓ | 4.44 µs | 13.30 µs | 9.56 µs | 4.37 µs | 29.05 µs ✓ | 13.47 µs |
-| Ed25519 verify | 21.87 µs ✓ | 21.82 µs | 26.51 µs | 22.15 µs | 21.56 µs | 41.91 µs ✓ | 45.62 µs |
+| Ed25519 sign | 4.29 µs | 4.44 µs | 13.30 µs | 9.56 µs | 4.37 µs | 29.05 µs ✓ | 13.47 µs |
+| Ed25519 verify | 21.87 µs | 21.82 µs | 26.51 µs | 22.15 µs | 21.56 µs | 41.91 µs ✓ | 45.62 µs |
 | P-256 ECDSA sign | 7.08 µs | 12.42 µs | 12.38 µs | 31.49 µs | 8.81 µs | 60.93 µs ✓ | 14.37 µs |
 | P-256 ECDSA verify | 30.78 µs | 30.34 µs | 33.20 µs | 102.68 µs | 32.93 µs | 146.39 µs ✓ | 46.07 µs |
 | SHA-256, 64 B | 56 ns | 57 ns | 57 ns | 39 ns | 40 ns | 212 ns ✓ | 157 ns |
 | SHA-256, 1350 B | 298 ns | 311 ns | 299 ns | 292 ns | 298 ns | 2.30 µs ✓ | 412 ns |
 | SHA-256, 16 KB | 3.21 µs | 3.23 µs | 3.22 µs | 3.21 µs | 3.22 µs | 26.37 µs ✓ | 3.38 µs |
-| SHA-512, 64 B | 132 ns ✓ | 133 ns ✓ | 139 ns | 125 ns | 146 ns | 163 ns ✓ | 227 ns |
-| SHA-512, 1350 B | 1.23 µs ✓ | 1.26 µs ✓ | 1.26 µs | 1.17 µs | 1.50 µs | 1.72 µs ✓ | 1.19 µs |
-| SHA-512, 16 KB | 14.31 µs ✓ | 14.09 µs ✓ | 14.09 µs | 13.36 µs | 17.62 µs | 19.80 µs ✓ | 12.30 µs |
+| SHA-512, 64 B | 132 ns | 133 ns ✓ | 139 ns | 125 ns | 146 ns | 163 ns ✓ | 227 ns |
+| SHA-512, 1350 B | 1.23 µs | 1.26 µs ✓ | 1.26 µs | 1.17 µs | 1.50 µs | 1.72 µs ✓ | 1.19 µs |
+| SHA-512, 16 KB | 14.31 µs | 14.09 µs ✓ | 14.09 µs | 13.36 µs | 17.62 µs | 19.80 µs ✓ | 12.30 µs |
 | HMAC-SHA256, 64 B | 87 ns | 177 ns | 143 ns | 103 ns | 109 ns | 547 ns ✓ | 1.54 µs |
 | HMAC-SHA256, 1350 B | 340 ns | 433 ns | 396 ns | 355 ns | 364 ns | 2.78 µs ✓ | 1.80 µs |
 | HKDF-SHA256 extract and expand | 192 ns | 290 ns | 300 ns | 221 ns | - | 971 ns ✓ | 1.73 µs |
@@ -225,16 +225,16 @@ Not timed on `nixos2`: AES-128 header protection, AES-256 header protection, Cha
 | ChaCha20 header protection | - | - | - | - | - | - | - |
 | X25519 | 26.86 µs ✓ | 33.12 µs | 55.23 µs | 60.51 µs | 25.17 µs | 73.49 µs ✓ | 55.22 µs |
 | P-256 ECDH | 46.60 µs | 56.11 µs | 51.77 µs | 252.15 µs | 50.53 µs | 304.85 µs ✓ | 87.27 µs |
-| Ed25519 sign | 7.09 µs ✓ | 7.54 µs | 22.05 µs | 16.08 µs | 7.27 µs | 49.67 µs ✓ | 28.46 µs |
-| Ed25519 verify | 31.59 µs ✓ | 31.57 µs | 41.59 µs | 27.88 µs | 31.39 µs | 64.33 µs ✓ | 93.95 µs |
+| Ed25519 sign | 7.09 µs | 7.54 µs | 22.05 µs | 16.08 µs | 7.27 µs | 49.67 µs ✓ | 28.46 µs |
+| Ed25519 verify | 31.59 µs | 31.57 µs | 41.59 µs | 27.88 µs | 31.39 µs | 64.33 µs ✓ | 93.95 µs |
 | P-256 ECDSA sign | 15.72 µs | 22.35 µs | 16.56 µs | 78.32 µs | 23.27 µs | 115.07 µs ✓ | 28.83 µs |
 | P-256 ECDSA verify | 47.33 µs | 47.11 µs | 47.60 µs | 211.46 µs | 48.45 µs | 262.54 µs ✓ | 74.70 µs |
 | SHA-256, 64 B | 276 ns | 313 ns | 289 ns | 483 ns | 579 ns | 487 ns ✓ | 514 ns |
 | SHA-256, 1350 B | 2.88 µs | 2.98 µs | 2.83 µs | 5.33 µs | 6.11 µs | 5.27 µs ✓ | 2.69 µs |
 | SHA-256, 16 KB | 31.57 µs | 31.63 µs | 31.56 µs | 58.88 µs | 69.99 µs | 61.29 µs ✓ | 28.35 µs |
-| SHA-512, 64 B | 200 ns ✓ | 233 ns ✓ | 204 ns | 272 ns | 237 ns | 290 ns ✓ | 436 ns |
-| SHA-512, 1350 B | 1.95 µs ✓ | 1.98 µs ✓ | 1.95 µs | 2.68 µs | 2.35 µs | 3.08 µs ✓ | 1.92 µs |
-| SHA-512, 16 KB | 21.82 µs ✓ | 21.95 µs ✓ | 22.31 µs | 31.08 µs | 27.35 µs | 35.63 µs ✓ | 19.04 µs |
+| SHA-512, 64 B | 200 ns | 233 ns ✓ | 204 ns | 272 ns | 237 ns | 290 ns ✓ | 436 ns |
+| SHA-512, 1350 B | 1.95 µs | 1.98 µs ✓ | 1.95 µs | 2.68 µs | 2.35 µs | 3.08 µs ✓ | 1.92 µs |
+| SHA-512, 16 KB | 21.82 µs | 21.95 µs ✓ | 22.31 µs | 31.08 µs | 27.35 µs | 35.63 µs ✓ | 19.04 µs |
 | HMAC-SHA256, 64 B | 690 ns | 840 ns | 746 ns | 1.25 µs | 1.47 µs | 1.22 µs ✓ | 3.90 µs |
 | HMAC-SHA256, 1350 B | 3.29 µs | 3.49 µs | 3.39 µs | 6.54 µs | 7.49 µs | 7.14 µs ✓ | 6.24 µs |
 | HKDF-SHA256 extract and expand | 1.18 µs | 1.35 µs | 1.26 µs | 2.11 µs | - | 2.17 µs ✓ | 4.68 µs |
@@ -539,11 +539,11 @@ Each operation where another library is more than 10% faster than rind, on a hos
 
 | Operation | On | rind's time over the fastest | Decision |
 |---|---|---|---|
-| RSA-2048 PKCS#1 sign, RSA-2048 PSS sign, full handshake, RSA-2048 certificate | `nixos`, `desktop`, `nixos2` | 1.11× to 1.31× (graviola, ring) | [x86_64 RSA-2048 signing as fast as ring and graviola](quest/m2/speed/x86-rsa2048-sign.md) |
+| RSA-2048 PKCS#1 sign, RSA-2048 PSS sign, full handshake, RSA-2048 certificate | `nixos`, `desktop`, `nixos2` | 1.11× to 1.31× (graviola, ring) | [Confirm x86_64 RSA-2048 signing level in the report](quest/m2/speed/x86-rsa2048-sign.md) |
 | SHA-256, 64 B | `nixos`, `desktop` | 1.38× to 1.44× (RustCrypto + dalek) | [x86_64 SHA-256 of short messages as fast as RustCrypto](quest/m2/speed/x86-sha256-short.md) |
-| SHA-512, 16 KB | `nixos`, `desktop`, `nixos2` | 1.15× to 1.37× (OpenSSL) | [x86_64 SHA-2 bulk as fast as OpenSSL](quest/m2/speed/x86-sha2-bulk.md) |
-| SHA-256, 16 KB | `nixos2` | 1.11× (OpenSSL) | [x86_64 SHA-2 bulk as fast as OpenSSL](quest/m2/speed/x86-sha2-bulk.md) |
-| SHA-512, 1350 B | `nixos` | 1.83× (OpenSSL) | Noise: rind is level with the fastest at 64 B and with all but OpenSSL at 16 KB, and aws-lc-rs and RustCrypto read as slow at this size in the same run. |
+| SHA-512, 16 KB | `nixos`, `desktop`, `nixos2` | 1.15× to 1.37× (OpenSSL) | Closed by [#353](https://github.com/moq-dev/rind/pull/353), after this data: CPUs with AVX2 run OpenSSL's AVX2 routine, the one OpenSSL runs on `nixos2`, and those with the SHA512 instructions OpenSSL's routine for them. Interleaved runs measured rind at 0.96× OpenSSL's time on `nixos` and 0.22× on `desktop`. The next refresh drops this entry. |
+| SHA-256, 16 KB | `nixos2` | 1.11× (OpenSSL) | Closed by [#353](https://github.com/moq-dev/rind/pull/353), after this data: CPUs with AVX2 but without the SHA extensions run OpenSSL's AVX2 routine, the one OpenSSL runs on `nixos2`. The next refresh drops this entry. |
+| SHA-512, 1350 B | `nixos` | 1.83× (OpenSSL) | Closed by [#353](https://github.com/moq-dev/rind/pull/353), after this data: Zen 3 runs OpenSSL's AVX2 routine rather than aws-lc's scalar one, which interleaved runs measured at 0.84× OpenSSL's time at this size. The next refresh drops this entry. |
 | Ed25519 verify, ML-KEM-768 encapsulate | `nixos2` | 1.13× to 1.23× (RustCrypto + dalek, graviola) | From an older run than the other hosts', before [#339](https://github.com/moq-dev/rind/pull/339) reworked Ed25519 for its proof. Neither shows on the other hosts, and the next refresh rechecks both. |
 | `p256-ecdsa-verify/*` | no ADX tier | 1.14× (aws-lc-rs) | Only CPUs older than Broadwell and Zen lack ADX, and there rind runs s2n-bignum's verified `_alt` routines. |
 | `chacha20poly1305/*/16KB`, `xchacha20poly1305/*/16KB` | no AES-NI tier | 1.17× (aws-lc-rs) | Without SSE4.1 rind runs Graviola's scalar Poly1305 rather than port BoringSSL's SSE2 `poly1305_vec.c` for CPUs older than Westmere, as README records. |
@@ -556,9 +556,9 @@ A ✓ means a published, machine-checked proof shows that all the code computing
 |---|---|---|---|
 | rind | `x25519-ecdh` | x86_64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's dispatch table holds its own curve's functions, the only table rind builds, of its agreement API's X25519 down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of curve25519_x25519, curve25519_x25519base, their _alt forms without BMI2 and ADX, and bignum_eq, of s2n-bignum's own object code, which rind transliterates](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/X25519.lean) |
 | rind | `x25519-ecdh` | aarch64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's dispatch table holds its own curve's functions, the only table rind builds, of its agreement API's X25519 down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of curve25519_x25519_alt, curve25519_x25519base_alt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/X25519.lean) |
-| rind | `sha512/*` | x86_64 with intel, avx, ssse3 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha512.lean) |
+| rind | `sha512/*` | x86_64 with intel, avx, ssse3 without avx2 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel's CPUs without AVX2, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha512.lean) |
 | rind | `sha512/*` | aarch64 without sha3 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_nohw, which rind runs without the SHA-512 instructions, composed with aws-lc-verification's NSym proof of that routine, with its ArmSpecGap caveat, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha512.lean) |
-| rind | `ed25519-sign`, `ed25519-verify` | x86_64 with intel, avx, ssse3 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key loading, signing, and verification, small-order key refusal included, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel, composed with s2n-bignum's HOL Light proofs of edwards25519_decode, edwards25519_scalarmulbase, edwards25519_scalarmuldouble, bignum_madd_n25519, their _alt forms without BMI2 and ADX, bignum_mod_n25519, bignum_neg_p25519, bignum_lt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, and aws-lc-verification's SAW proof of that SHA-512 routine](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Ed25519.lean) |
+| rind | `ed25519-sign`, `ed25519-verify` | x86_64 with intel, avx, ssse3 without avx2 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key loading, signing, and verification, small-order key refusal included, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel's CPUs without AVX2, composed with s2n-bignum's HOL Light proofs of edwards25519_decode, edwards25519_scalarmulbase, edwards25519_scalarmuldouble, bignum_madd_n25519, their _alt forms without BMI2 and ADX, bignum_mod_n25519, bignum_neg_p25519, bignum_lt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, and aws-lc-verification's SAW proof of that SHA-512 routine](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Ed25519.lean) |
 | rind | `ed25519-sign`, `ed25519-verify` | aarch64 without sha3 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key loading, signing, and verification, small-order key refusal included, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_nohw, which rind runs without the SHA-512 instructions, composed with s2n-bignum's HOL Light proofs of edwards25519_decode_alt, edwards25519_scalarmulbase_alt, edwards25519_scalarmuldouble_alt, bignum_madd_n25519_alt, bignum_mod_n25519, bignum_neg_p25519, bignum_lt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, and aws-lc-verification's NSym proof of that SHA-512 routine, with its ArmSpecGap caveat](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Ed25519.lean) |
 | rind | `p256-ecdh` | aarch64 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, with rind's generator table proven to hold the multiples of G that s2n-bignum's proof assumes](https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/P256.lean) |
 | rind | `quic-header-protection/chacha20` | x86_64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean) |

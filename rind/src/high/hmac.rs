@@ -505,9 +505,10 @@ mod tests {
         }
     }
 
-    // HMAC-SHA1 and HMAC-SHA256 on the SHA extensions, which valgrind cannot
-    // run, with a secret key and message, for `admin/ct-sde`. The longer key
-    // is hashed first, and the message ends in a partial block.
+    // HMAC-SHA1 and HMAC-SHA256 on the SHA extensions, and HMAC-SHA384 and
+    // HMAC-SHA512 on the SHA512 instructions, which valgrind cannot run, with
+    // a secret key and message, for `admin/ct-sde`. The longer key is hashed
+    // first, and the message ends in a partial block.
     #[cfg(target_arch = "x86_64")]
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
@@ -515,9 +516,13 @@ mod tests {
         use crate::low::ct_sde;
 
         assert!(is_x86_feature_detected!("sha"), "the SHA extensions");
+        assert!(
+            is_x86_feature_detected!("sha512"),
+            "the SHA512 instructions"
+        );
         let seed = ct_sde::seed().to_le_bytes();
         let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
-        for algorithm in [&HMAC_SHA1, &HMAC_SHA256] {
+        for algorithm in [&HMAC_SHA1, &HMAC_SHA256, &HMAC_SHA384, &HMAC_SHA512] {
             for key_len in [16, 200] {
                 let (key, message) = (bytes(key_len), bytes(300));
                 ct_sde::traced(|| sign(&Key::new(algorithm, &key), &message));
