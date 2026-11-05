@@ -53,6 +53,17 @@ check_quote Aarch64/P256Dispatch p256_items
 check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
     'pub static SHA512_256:' 'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {'
+aes_ni_items() {
+    items rind/src/low/x86_64/aes.rs 'const RCON' 'fn aes128_expand(' 'fn aes256_expand(' \
+        'fn sub_rot_word(' 'fn xor_prefix(' 'fn zero()' 'fn aes128_block(' 'fn aes256_block('
+    items rind/src/low/x86_64/ghash.rs 'fn u128_to_m128i(' 'const GF128_POLY_HI:' \
+        'const GF128_POLY_CARRY_MASK:'
+}
+check_quote X86_64/AesNi aes_ni_items
+check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
+    'pub static AES_128_GCM:' 'pub static AES_256_GCM:' 'pub static CHACHA20_POLY1305:' 'impl Key {' \
+    'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \
+    'pub struct Nonce(' 'impl Nonce {' 'pub struct Tag('
 check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
     'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {'
 check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
@@ -69,7 +80,10 @@ check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
 # `Verification::Ed25519` holds nothing and `Parsed::Ed25519` only its key,
 # while the quotes have every mention of each: `ED25519` builds the only one
 # of the first, with `parse_ed25519`, and each of the second has
-# `Ed25519VerifyingKey::verify`.
+# `Ed25519VerifyingKey::verify`. An AEAD `Sealer<C>` is its key, since the
+# quoted `Sealer::expand` builds every `Ops`, of `C`'s own functions, while
+# the quote has each mention of `Ops` in `aead.rs` and each `Algorithm` it
+# builds.
 only_quoted() {
     local file=$1 quote=$2 pattern=$3
     if [ "$(grep -oE "$pattern" "$file" | wc -l)" != "$(grep -oE "$pattern" "$quote" | wc -l)" ]; then
@@ -84,6 +98,8 @@ only_quoted rind/src/high/digest.rs "$out/DigestDispatch.rs" '\bOps\b'
 only_quoted rind/src/high/digest.rs "$out/DigestAlgorithm.rs" '= Algorithm \{'
 only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Verification::Ed25519\('
 only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Parsed::Ed25519\('
+only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '\bOps\b'
+only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 
 # The X25519 path, and aarch64's P-256 path, from `high::agreement`'s `Agree`
 # impls down to s2n-bignum's routines, and the SHA-512 family's from
@@ -194,7 +210,41 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmuldouble \
     --include crate::low::x86_64::adx_mux::bignum_madd_n25519 \
     --include crate::low::x86_64::sha256_mux \
-    --opaque crate::low::x86_64::sha256_mux::path
+    --opaque crate::low::x86_64::sha256_mux::path \
+    --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
+    --start-from crate::aead::Key \
+    --start-from crate::aead::AlgorithmId \
+    --opaque crate::aead::Algorithm \
+    --opaque crate::aead::Sealer \
+    --opaque crate::aead::Ops \
+    --start-from '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}' \
+    --opaque '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}::_' \
+    --include crate::mid::aes::expand_key \
+    --include crate::mid::aes::check_gcm_lengths \
+    --include crate::mid::aes::check_counter \
+    --include crate::low::x86_64::aes \
+    --opaque crate::low::x86_64::aes::aes128_expand \
+    --opaque crate::low::x86_64::aes::aes256_expand \
+    --opaque crate::low::x86_64::aes::aes128_block \
+    --opaque crate::low::x86_64::aes::aes256_block \
+    --opaque crate::low::x86_64::aes::HwKey::round_keys_512 \
+    --opaque crate::low::x86_64::aes::RoundKeys512 \
+    --include crate::low::x86_64::ghash \
+    --opaque '{crate::low::x86_64::ghash::GhashTableAvx512}::new' \
+    --opaque 'crate::low::x86_64::ghash::_::from_powers' \
+    --opaque 'crate::low::x86_64::ghash::_::add' \
+    --opaque 'crate::low::x86_64::ghash::_::add_tail' \
+    --opaque 'crate::low::x86_64::ghash::_::mul_h' \
+    --opaque crate::low::x86_64::ghash::Ghash \
+    --opaque crate::low::x86_64::ghash::u128_to_m128i \
+    --opaque crate::low::x86_64::ghash::GF128_POLY_HI \
+    --opaque crate::low::x86_64::ghash::GF128_POLY_CARRY_MASK \
+    --include crate::low::x86_64::aes_gcm::seal \
+    --include crate::low::x86_64::aes_gcm::open \
+    --include crate::low::x86_64::aes_gcm::vale \
+    --include crate::low::x86_64::aes_gcm_avx \
+    --opaque crate::low::x86_64::aes_gcm_avx::counter_block \
+    --opaque crate::low::x86_64::aes_gcm_avx::aead
 extract aarch64 Aarch64 \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
     --opaque 'crate::mid::p256::_::generate' \
@@ -207,6 +257,7 @@ for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20 Signa
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 
+[ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
 cd proofs
 lake exe cache get
 lake build
