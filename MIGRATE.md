@@ -115,10 +115,12 @@ Commit as you go, with messages in the project's style.
    `cargo tree` commands from the survey print nothing, or only
    dev-dependencies. Each `-i` reports "did not match any packages" once
    the crate is gone from the lockfile.
-2. Build each release target. Where the host has the target's linker, run
-   the release build with `--target`. Otherwise run
+2. Build each release target, adding its standard library with
+   `rustup target add` where you can. Where the host has the target's linker,
+   run the release build with `--target`. Otherwise run
    `cargo build --release --target <target> -p rind`, which assembles rind
-   without linking, and report that target as built but not linked. A target
+   without linking, and report the target as built but not linked. Report a
+   target whose standard library you cannot install as not built. A target
    that fails to build stops the migration: report it as a rind gap.
 3. Repeat every measurement from step 2, the same way.
 4. Run the project's own lints and checks, such as clippy, `cargo fmt`, and
@@ -145,17 +147,19 @@ Reply with this report, filling in every row:
 | Tests (`<command>`) | <passed>/<total> | <passed>/<total> | |
 | `<benchmark>` | <time> | <time> | <percent> |
 
-**Release targets**: each target, and built, built without linking, or failed.
-**How it moved**: each path from the survey, and what changed for it.
-**Still linked**: dev-dependencies that keep ring or aws-lc-rs, or none.
-**Breaking changes**: for a library, any change its users see, or none.
-**rind gaps**: anything missing, slower, or harder than it should be, or none.
-**Host**: CPU, OS, and `rustc --version`.
+- **Release targets**: each target, and built, built without linking, not
+  built, or failed.
+- **How it moved**: each path from the survey, and what changed for it.
+- **Still linked**: dev-dependencies that keep ring or aws-lc-rs, or none.
+- **Breaking changes**: for a library, any change its users see, or none.
+- **rind gaps**: anything missing, slower, or harder than it should be, or
+  none.
+- **Host**: CPU, OS, and `rustc --version`.
 ```
 
 Give a percentage as the change from before to after, negative when rind is
-smaller or faster. Mark a timing that varied by more than a few percent
-between runs as noisy.
+smaller or faster. Leave out a row that does not apply, such as a binary for
+a library, and say why below the table.
 
 ## 6. Offer
 
@@ -165,8 +169,8 @@ Ask the user, and do each only if they agree:
    as its description.
 2. **File an issue on [moq-dev/rind](https://github.com/moq-dev/rind/issues)**
    for each rind gap. Search its open issues and the plans under
-   [`quest/`](https://github.com/moq-dev/rind/tree/main/quest) first, and comment on a match instead of filing a
-   duplicate. Each issue names the repository, the item or target, and how
+   [`quest/`](https://github.com/moq-dev/rind/tree/main/quest) first, and
+   comment on a match instead of filing a duplicate. Each issue names the repository, the item or target, and how
    the project uses it, and ends with `(Written by <your model>)`.
 
 [MIGRATING.md]: https://raw.githubusercontent.com/moq-dev/rind/main/MIGRATING.md
