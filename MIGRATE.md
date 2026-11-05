@@ -170,8 +170,9 @@ Ask the user, and do each only if they agree:
 2. **File an issue on [moq-dev/rind](https://github.com/moq-dev/rind/issues)**
    for each rind gap. Search its open issues and the plans under
    [`quest/`](https://github.com/moq-dev/rind/tree/main/quest) first, and
-   comment on a match instead of filing a duplicate. Each issue names the repository, the item or target, and how
-   the project uses it, and ends with `(Written by <your model>)`.
+   comment on a match instead of filing a duplicate. Each issue names the
+   repository, the item or target, and how the project uses it, and ends
+   with `(Written by <your model>)`.
 
 [MIGRATING.md]: https://raw.githubusercontent.com/moq-dev/rind/main/MIGRATING.md
 [rind-ring's README]: https://raw.githubusercontent.com/moq-dev/rind/main/rind-ring/README.md
