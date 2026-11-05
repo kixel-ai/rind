@@ -1932,6 +1932,129 @@ theorem vk_from_x962_spec (hG : P256Group) (h : Runs) (hheld : Held) (hc : Cache
       · subst hr; simp
     · subst hr; simp
 
+/-! ## The generic ECDSA layer, `high::ecdsa`, at P-256 -/
+
+/-- P-256's `Curve` impl. -/
+abbrev P256C := high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar
+
+theorem from_bytes_reduced_spec (bytes : Slice U8) (hl : bytes.length = 32) :
+    mid.p256.Scalar.Insts.RindHighCurveScalar.from_bytes_reduced bytes ⦃ sc =>
+      scNat sc = beNat bytes.val % n256 ⦄ := by
+  unfold mid.p256.Scalar.Insts.RindHighCurveScalar.from_bytes_reduced mid.p256.Scalar.from_bytes_reduced
+  step with be_any_size_32_spec bytes hl as ⟨o, w, ho, hw⟩
+  subst ho
+  simp only [core.option.Option.ok_or, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
+  step as ⟨r, hr⟩
+  simp only [core.result.Result.unwrap, WP.spec_ok]
+  simp only [scNat] at *
+  rw [hr, hw]
+
+/-- Signature verification's outcome under the key `Q`, for the message's
+digest `dg`: accepted if `sig` is 64 bytes, its halves big-endian r and s,
+that verify over the digest's first 32 bytes, and otherwise refused. -/
+def ecdsaVerifyOutcome (Q : P256Point) (dg sig : List U8) (r : core.result.Result Unit error.Error) : Prop :=
+  (sig.length = 64 ∧ ecdsaP256Verifies Q (beNat (dg.take 32) % n256) (beNat (sig.take 32)) (beNat (sig.drop 32)) ∧
+    r = .Ok ()) ∨
+  (¬ (sig.length = 64 ∧
+      ecdsaP256Verifies Q (beNat (dg.take 32) % n256) (beNat (sig.take 32)) (beNat (sig.drop 32))) ∧
+    r = .Err .BadSignature)
+
+theorem hash_to_scalar_spec (dg : Slice U8) (hdg : 32 ≤ dg.length) :
+    high.ecdsa.hash_to_scalar P256C dg ⦃ r =>
+      ∃ e, r = .Ok e ∧ scNat e = beNat (dg.val.take 32) % n256 ⦄ := by
+  unfold high.ecdsa.hash_to_scalar
+  simp only [mid.p256.Scalar.Insts.RindHighCurveScalar.LEN_BYTES, mid.p256.Scalar.BYTES, bind_tc_ok,
+    bind_ok]
+  apply WP.spec_bind (Pₘ := fun h32 : Slice U8 => h32.val = dg.val.take 32)
+  · split
+    · step as ⟨h32, hh32, _⟩
+      simp [hh32, List.slice]
+    · rename_i hle
+      simp only [WP.spec_ok]
+      rw [List.take_of_length_le]
+      have : ¬ dg.length > 32 := by simpa [Slice.len] using hle
+      simp only [Slice.length] at hdg this ⊢; omega
+  intro h32 hh32
+  have hl : h32.length = 32 := by
+    simp only [Slice.length, hh32, List.length_take]; simp only [Slice.length] at hdg; omega
+  step with from_bytes_reduced_spec h32 hl as ⟨e, he⟩
+  rw [hh32] at he
+  exact ⟨e, rfl, he⟩
+
+theorem ecdsa_verify_spec (hG : P256Group) (h : Runs) (ht : Tabulated) (hc : Cached) {H Ctx St : Type}
+    (hinst : high.hash.SignatureHash H Ctx St)
+    (key : high.ecdsa.VerifyingKey high.curve.P256 mid.p256.StaticPrivateKey mid.p256.VerifyingKey mid.p256.Scalar)
+    (Q : P256Point) (hk : VKey Q key.public_key) (msg sig dg : Slice U8)
+    (d : high.digest.Digest) (hd : hinst.HashInst.hash msg = ok d)
+    (hdg' : high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = ok dg) (hdg : 32 ≤ dg.length) :
+    high.ecdsa.VerifyingKey.verify P256C hinst key msg sig ⦃ r => ecdsaVerifyOutcome Q dg.val sig.val r ⦄ := by
+  unfold high.ecdsa.VerifyingKey.verify
+  step
+  simp only [mid.p256.Scalar.Insts.RindHighCurveScalar.LEN_BYTES, mid.p256.Scalar.BYTES]
+  step as ⟨i2, hi2⟩
+  unfold ecdsaVerifyOutcome
+  by_cases hlen : sig.length = 64
+  · have hne : (sig.len != i2) = false := by
+      simp only [bne_eq_false_iff_eq]; apply UScalar.eq_of_val_eq; simp [Slice.len, hi2]
+      simpa [Slice.length] using hlen
+    simp only [hne, Bool.false_eq_true, ↓reduceIte, hlen, true_and]
+    have hsl : sig.val.length = 64 := hlen
+    step as ⟨sr, hsr, hsrl⟩
+    have hsrv : sr.val = sig.val.take 32 := by rw [hsr]; simp [List.slice]
+    unfold mid.p256.Scalar.Insts.RindHighCurveScalar.from_bytes_checked
+    step with from_bytes_checked_spec sr hsrl as ⟨rr, hrr⟩
+    rw [hsrv] at hrr
+    simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch,
+      high.ecdsa.VerifyingKey.verify.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError,
+      high.ecdsa.VerifyingKey.verify.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
+      high.ecdsa.VerifyingKey.verify.closure_1.Insts.CoreOpsFunctionFnOnceTupleErrorError,
+      high.ecdsa.VerifyingKey.verify.closure_1.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
+    by_cases hra : 0 < beNat (sig.val.take 32) ∧ beNat (sig.val.take 32) < n256
+    · rw [if_pos hra] at hrr
+      obtain ⟨scr, rfl, hscr⟩ := hrr
+      simp only [bind_ok]
+      step as ⟨ss, hss, hssl⟩
+      have hssv : ss.val = sig.val.drop 32 := by simp [hss, List.slice, hsl]
+      step with from_bytes_checked_spec ss (by rw [hssl]; simp only [Slice.length]; omega) as ⟨rs, hrs⟩
+      rw [hssv] at hrs
+      by_cases hsa : 0 < beNat (sig.val.drop 32) ∧ beNat (sig.val.drop 32) < n256
+      · rw [if_pos hsa] at hrs
+        obtain ⟨scs, rfl, hscs⟩ := hrs
+        simp only [bind_ok]
+        rw [hd]
+        simp only [bind_ok]
+        rw [hdg']
+        simp only [bind_ok]
+        step with hash_to_scalar_spec dg hdg as ⟨r4, e, hr4, he⟩
+        subst hr4
+        simp only [bind_tc_ok, bind_ok, mid.p256.VerifyingKey.Insts.RindHighCurvePublicKeyScalar.raw_ecdsa_verify]
+        obtain ⟨hQ, hQne, hodd⟩ := hk
+        apply WP.spec_mono (raw_verify_spec hG ht hc key.public_key Q hQ hQne hodd scr scs e
+          (by unfold scNat; rw [hscr]; exact hra.1) (by unfold scNat; rw [hscr]; exact hra.2)
+          (by unfold scNat; rw [hscs]; exact hsa.1) (by unfold scNat; rw [hscs]; exact hsa.2)
+          (by rw [he]; exact Nat.mod_lt _ n256_pos))
+        intro r hr
+        simp only [scNat] at hr he
+        rw [hscr, hscs, he] at hr
+        rcases hr with ⟨hv, rfl⟩ | ⟨hv, rfl⟩
+        · left; exact ⟨hv, rfl⟩
+        · right; exact ⟨hv, rfl⟩
+      · rw [if_neg hsa] at hrs
+        subst hrs
+        simp only [bind_tc_ok, bind_ok, WP.spec_ok]
+        right
+        exact ⟨fun hv => hsa ⟨hv.2.2.1, hv.2.2.2.1⟩, trivial⟩
+    · rw [if_neg hra] at hrr
+      subst hrr
+      simp only [bind_tc_ok, bind_ok, WP.spec_ok]
+      right
+      exact ⟨fun hv => hra ⟨hv.1, hv.2.1⟩, rfl⟩
+  · have hne : (sig.len != i2) = true := by
+      simp only [bne_iff_ne, ne_eq]; intro he; apply hlen
+      have := congrArg UScalar.val he; simp [Slice.len, hi2] at this; simpa [Slice.length] using this
+    simp only [hne, ↓reduceIte, WP.spec_ok, hlen, false_and, not_false_eq_true, true_and, reduceCtorEq, or_true]
+
 end P256
 
 end rind.aarch64
