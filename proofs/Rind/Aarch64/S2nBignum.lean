@@ -193,6 +193,117 @@ axiom bignum_mod_n256_spec (z x : Std.Array U64 4#usize) :
     low.aarch64.bignum_mod_n256.bignum_mod_n256 z x ⦃ r =>
       wordsNat r.val = wordsNat x.val % n256 ⦄
 
+/-- `BIGNUM_INV_P256_SUBROUTINE_CORRECT`, with `inverse_mod p_256 n` stated
+as what it is: the number below p that n times is 1 mod p,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_inv_p256.ml#L3120 -/
+@[step]
+axiom bignum_inv_p256_spec (z x : Std.Array U64 4#usize) :
+    low.aarch64.bignum_inv_p256.bignum_inv_p256 z x ⦃ r =>
+      wordsNat r.val < p256 ∧
+        (wordsNat x.val % p256 = 0 → wordsNat r.val = 0) ∧
+        (wordsNat x.val % p256 ≠ 0 → wordsNat x.val * wordsNat r.val % p256 = 1) ⦄
+
+/-- `BIGNUM_NEG_P256_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_neg_p256.ml#L92 -/
+@[step]
+axiom bignum_neg_p256_spec (z x : Std.Array U64 4#usize) :
+    low.aarch64.bignum_neg_p256.bignum_neg_p256 z x ⦃ r =>
+      wordsNat x.val ≤ p256 → wordsNat r.val = (p256 - wordsNat x.val) % p256 ⦄
+
+/-- The three coordinates at `xyz` as HOL Light's
+`bignum_triple_from_memory (xyz,4)` reads them. -/
+def tripleNat (xyz : List U64) : Nat × Nat × Nat :=
+  (wordsNat (xyz.take 4), wordsNat ((xyz.drop 4).take 4), wordsNat ((xyz.drop 8).take 4))
+
+/-- `weierstrass_of_jacobian (integer_mod_ring p_256) (x, y, z)`: infinity for
+z of zero, and otherwise (x / z², y / z³) in the field of integers mod p, whose
+inverses `ZMod`'s are,
+https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/jacobian.ml#L21 -/
+def p256OfJacobian (x y z : Nat) : P256Point :=
+  if z = 0 then none
+  else some (((x : ZMod p256) * ((z : ZMod p256) ^ 2)⁻¹).val, ((y : ZMod p256) * ((z : ZMod p256) ^ 3)⁻¹).val)
+
+/-- `represents_p256 P (x, y, z)`: each coordinate is below p, and the
+Jacobian point their Montgomery forms decode to (`montgomery_decode`) is `P`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_montjadd_alt.ml#L2505 -/
+def p256Represents (P : P256Point) (xyz : Nat × Nat × Nat) : Prop :=
+  xyz.1 < p256 ∧ xyz.2.1 < p256 ∧ xyz.2.2 < p256 ∧
+    p256OfJacobian (p256RInv * xyz.1 % p256) (p256RInv * xyz.2.1 % p256)
+      (p256RInv * xyz.2.2 % p256) = P
+
+/-- `P256_MONTJADD_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_montjadd_alt.ml#L2677 -/
+@[step]
+axiom p256_montjadd_spec (p3 p1 p2 : Std.Array U64 12#usize) :
+    low.aarch64.p256_montjadd.p256_montjadd p3 p1 p2 ⦃ r =>
+      ∀ P1 P2, p256Represents P1 (tripleNat p1.val) → p256Represents P2 (tripleNat p2.val) →
+        (P1 = P2 → P2 = none) → p256Represents (p256Add P1 P2) (tripleNat r.val) ⦄
+
+/-- `P256_MONTJDOUBLE_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_montjdouble_alt.ml#L2341 -/
+@[step]
+axiom p256_montjdouble_spec (p3 p1 : Std.Array U64 12#usize) :
+    low.aarch64.p256_montjdouble.p256_montjdouble p3 p1 ⦃ r =>
+      ∀ P, p256Represents P (tripleNat p1.val) → p256Represents (p256Add P P) (tripleNat r.val) ⦄
+
+/-- `P256_MONTJMIXADD_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_montjmixadd_alt.ml#L2104 -/
+@[step]
+axiom p256_montjmixadd_spec (p3 p1 : Std.Array U64 12#usize) (p2 : Std.Array U64 8#usize) :
+    low.aarch64.p256_montjmixadd.p256_montjmixadd p3 p1 p2 ⦃ r =>
+      ∀ P1 P2, p256Represents P1 (tripleNat p1.val) → p256Represents2 P2 (pairNat p2.val) →
+        P1 ≠ P2 → p256Represents (p256Add P1 P2) (tripleNat r.val) ⦄
+
+/-! ### Generic modular arithmetic
+
+Each routine reads its inputs at the result's length `k`, so a theorem
+assumes the inputs have it, and its `&mut` result keeps it, as Rust's do.
+`inverse_mod m (2^(64k))` is stated as what it is, for odd `m`: any `i` with
+2^(64k)·i ≡ 1 (mod m), which are all congruent. -/
+
+/-- `BIGNUM_MODADD_SUBROUTINE_CORRECT`, whose precondition that each input is
+below `m` the theorem's callers establish,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_modadd.ml#L319 -/
+@[step]
+axiom bignum_modadd_spec (z x y m : Slice U64) (hx : x.length = z.length)
+    (hy : y.length = z.length) (hm : m.length = z.length)
+    (ha : wordsNat x.val < wordsNat m.val) (hb : wordsNat y.val < wordsNat m.val) :
+    low.aarch64.bignum_modadd.bignum_modadd z x y m ⦃ r =>
+      r.length = z.length ∧ wordsNat r.val = (wordsNat x.val + wordsNat y.val) % wordsNat m.val ⦄
+
+/-- `BIGNUM_MONTMUL_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_montmul.ml#L844 -/
+@[step]
+axiom bignum_montmul_spec (z x y m : Slice U64) (hx : x.length = z.length)
+    (hy : y.length = z.length) (hm : m.length = z.length) :
+    low.aarch64.bignum_montmul.bignum_montmul z x y m ⦃ r =>
+      r.length = z.length ∧
+        (wordsNat m.val % 2 = 1 → wordsNat x.val * wordsNat y.val ≤ 2 ^ (64 * z.length) * wordsNat m.val →
+          ∀ i, 2 ^ (64 * z.length) * i % wordsNat m.val = 1 % wordsNat m.val →
+            wordsNat r.val = i * wordsNat x.val * wordsNat y.val % wordsNat m.val) ⦄
+
+/-- `BIGNUM_DEMONT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_demont.ml#L672 -/
+@[step]
+axiom bignum_demont_spec (z x m : Slice U64) (hx : x.length = z.length)
+    (hm : m.length = z.length) :
+    low.aarch64.bignum_demont.bignum_demont z x m ⦃ r =>
+      r.length = z.length ∧
+        (wordsNat m.val % 2 = 1 →
+          ∀ i, 2 ^ (64 * z.length) * i % wordsNat m.val = 1 % wordsNat m.val →
+            wordsNat r.val = i * wordsNat x.val % wordsNat m.val) ⦄
+
+/-- `BIGNUM_MODINV_SUBROUTINE_CORRECT`, with its temporary buffer `w` of at
+least 3k words,
+https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/bignum_modinv.ml#L4890 -/
+@[step]
+axiom bignum_modinv_spec (z a b w : Slice U64) (ha : a.length = z.length)
+    (hb : b.length = z.length) (hw : 3 * z.length ≤ w.length) :
+    low.aarch64.bignum_modinv.bignum_modinv z a b w ⦃ r =>
+      r.1.length = z.length ∧
+        (Nat.Coprime (wordsNat a.val) (wordsNat b.val) → wordsNat b.val % 2 = 1 → wordsNat b.val ≠ 1 →
+          wordsNat r.1.val < wordsNat b.val ∧ wordsNat a.val * wordsNat r.1.val % wordsNat b.val = 1) ⦄
+
 /-- `P256_SCALARMUL_ALT_SUBROUTINE_CORRECT`, whose stack frame is 1248 bytes,
 https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_scalarmul_alt.ml#L7459 -/
 @[step]

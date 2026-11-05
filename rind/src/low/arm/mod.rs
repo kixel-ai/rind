@@ -38,6 +38,8 @@ pub(crate) mod cpu;
 #[cfg(test)]
 pub(crate) mod ct_qemu;
 pub(crate) mod curve25519;
+#[path = "../generic/ghash_nohw.rs"]
+pub(crate) mod ghash_nohw;
 pub(crate) mod ghashv8_armx;
 pub(crate) mod keccak1600_armv4;
 pub(crate) mod mont;
