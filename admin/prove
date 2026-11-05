@@ -50,6 +50,21 @@ p256_items() {
     items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
 }
 check_quote Aarch64/P256Dispatch p256_items
+ecdsa_items() {
+    items rind/src/high/curve.rs 'impl Curve for P256 {'
+    items rind/src/mid/p256.rs '    pub(crate) fn generate(rng: &mut dyn'
+    items <(sed -n '/^impl StaticPrivateKey {/,/^}/p' rind/src/mid/p256.rs) '    pub(crate) fn generate('
+    items rind/src/high/signature.rs 'impl<const N: usize> Buffer<N> {' 'macro_rules! with_hash {' \
+        'struct Ecdsa {' 'macro_rules! with_ecdsa {' 'macro_rules! with_curve {' 'trait Encoding {' \
+        'impl Encoding for Fixed {' 'trait EcdsaCurve:' 'macro_rules! ecdsa_curve {' \
+        'ecdsa_curve!(P256, EcdsaP256);' 'fn parse_ecdsa<' 'const fn ecdsa_verification(' \
+        'const fn ecdsa_signing(' 'pub struct EcdsaSigningAlgorithm {' 'enum EcdsaSource<' \
+        'pub struct EcdsaKeyPair {' 'enum EcdsaKey {' 'struct EcdsaPair<' 'type Write<K> =' \
+        'struct EcdsaOps<' 'impl<C: EcdsaCurve> EcdsaPair<C> {' 'macro_rules! on_ecdsa {' \
+        'impl EcdsaKeyPair {' '    pub static ECDSA_P256_SHA256_FIXED: EcdsaSigningAlgorithm' \
+        '    pub static ECDSA_P256_SHA256_FIXED: VerificationAlgorithm'
+}
+check_quote Aarch64/EcdsaDispatch ecdsa_items
 check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
     'pub static SHA512_256:' 'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {'
@@ -69,7 +84,10 @@ check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
 # `Verification::Ed25519` holds nothing and `Parsed::Ed25519` only its key,
 # while the quotes have every mention of each: `ED25519` builds the only one
 # of the first, with `parse_ed25519`, and each of the second has
-# `Ed25519VerifyingKey::verify`.
+# `Ed25519VerifyingKey::verify`. ECDSA's keys are modelled for P-256 with
+# SHA-256 and fixed-length signatures, which holds while the quotes have each
+# `Verification::Ecdsa`, `EcdsaP256`, and `EcdsaKey::`, each `EcdsaOps` and
+# `EcdsaPair` built, which `load` alone builds, and each read of their `ops`.
 only_quoted() {
     local file=$1 quote=$2 pattern=$3
     if [ "$(grep -oE "$pattern" "$file" | wc -l)" != "$(grep -oE "$pattern" "$quote" | wc -l)" ]; then
@@ -84,6 +102,12 @@ only_quoted rind/src/high/digest.rs "$out/DigestDispatch.rs" '\bOps\b'
 only_quoted rind/src/high/digest.rs "$out/DigestAlgorithm.rs" '= Algorithm \{'
 only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Verification::Ed25519\('
 only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Parsed::Ed25519\('
+cat "$out/SignatureDispatch.rs" "$out/EcdsaDispatch.rs" >"$out/signature.rs"
+only_quoted rind/src/high/signature.rs "$out/signature.rs" 'Verification::Ecdsa\('
+only_quoted rind/src/high/signature.rs "$out/signature.rs" 'EcdsaP256\b'
+only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" 'EcdsaKey::'
+only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" 'Ecdsa(Ops|Pair) \{'
+only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" '\.ops\b'
 
 # The X25519 path, and aarch64's P-256 path, from `high::agreement`'s `Agree`
 # impls down to s2n-bignum's routines, and the SHA-512 family's from
@@ -111,7 +135,9 @@ only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Parsed::Ed25
 # padding is translated down to their block functions, which are opaque.
 # P-256's key generation draws through a `dyn RandomSource`, so it is opaque
 # too, and `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the
-# translated `PrivateKey::from_bytes`. The generator table is translated, so
+# translated `PrivateKey::from_bytes`, as `EcdsaDispatch.lean` does for ECDSA,
+# with the signature API's ECDSA key pairs and statics, which hold function
+# pointers too. The generator table is translated, so
 # `proofs/Rind/Aarch64/P256Table.lean` can prove it holds what s2n-bignum's
 # proof assumes. HMAC's keyed states are translated over any hash, and its
 # `Key` and `Context`, which hold function pointers, are not.
@@ -200,6 +226,10 @@ extract aarch64 Aarch64 \
     --start-from crate::high::ecdsa::VerifyingKey::from_x962_uncompressed \
     --start-from crate::high::ecdsa::VerifyingKey::verify \
     --start-from crate::high::ecdsa::SigningKey::new \
+    --start-from crate::high::ecdsa::SigningKey::generate \
+    --start-from '{impl core::clone::Clone for crate::high::ecdsa::VerifyingKey<_>}' \
+    --start-from '{impl core::clone::Clone for crate::mid::p256::VerifyingKey}' \
+    --start-from '{impl crate::high::hash::SignatureHash for crate::high::hash::Sha256}' \
     --start-from crate::high::ecdsa::SigningKey::from_private_key_and_public_key \
     --start-from crate::high::ecdsa::SigningKey::public_key_uncompressed \
     --start-from crate::high::ecdsa::SigningKey::sign \

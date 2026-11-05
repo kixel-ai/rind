@@ -185,6 +185,12 @@ opaque low.generic.reuse_cache.ReuseCache.get_or_build
   (coreopsfunctionFnOnceT1TupleTInst : core.ops.function.FnOnce T1 Unit T) :
   low.generic.reuse_cache.ReuseCache T → T1 → Result (Option T)
 
+opaque low.generic.reuse_cache.ReuseCache.Insts.CoreCloneClone.clone
+  {T : Type _} (coremarkerCopyInst : core.marker.Copy T)
+  (coredefaultDefaultInst : core.default.Default T) :
+  low.generic.reuse_cache.ReuseCache T → Result
+    (low.generic.reuse_cache.ReuseCache T)
+
 /-! The wipe a drop runs, which no theorem calls. -/
 
 opaque low.generic.zeroise.zeroise

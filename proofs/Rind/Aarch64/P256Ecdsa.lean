@@ -1,4 +1,5 @@
 import Rind.Aarch64.P256
+import Rind.Aarch64.EcdsaDispatch
 import Rind.P256Multiples
 open Aeneas Aeneas.Std Result rind.spec
 
@@ -1785,21 +1786,24 @@ as every caller holds one; release builds compile it out. -/
 def Held : Prop := low.entry.Entry.assert_held = ok ()
 
 /-- A verifying key's cache of 17P, ..., 31P, whose atomics Aeneas cannot
-translate: `ReuseCache::new` returns an empty cache, and once built the cache
+translate: `ReuseCache::new` returns an empty cache, once built the cache
 holds what its build returns from the key's own P, ..., 15P, since
 `get_or_build` returns `None` or `build`'s value and a key's odd multiples
-never change after it is parsed. -/
-def Cached : Prop :=
-  (∃ c, low.generic.reuse_cache.ReuseCache.new
+never change after it is parsed, and a clone, which copies a built value, returns. -/
+structure Cached : Prop where
+  new : ∃ c, low.generic.reuse_cache.ReuseCache.new
       (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
-      (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault) = ok c) ∧
-  ∀ key : mid.p256.VerifyingKey,
+      (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault) = ok c
+  get_or_build : ∀ key : mid.p256.VerifyingKey,
     low.generic.reuse_cache.ReuseCache.get_or_build
       (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
       (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault)
       mid.p256.VerifyingKey.raw_ecdsa_verify.closure.Insts.CoreOpsFunctionFnOnceTupleArrayAffineMontPoint8
       key.more_odd_multiples key ⦃ r =>
       r = none ∨ ∃ m, mid.p256.AffineMontPoint.public_more_odd_multiples key.odd_multiples = ok m ∧ r = some m ⦄
+  clone : ∀ c, ∃ c', low.generic.reuse_cache.ReuseCache.Insts.CoreCloneClone.clone
+      (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
+      (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault) c = ok c'
 
 namespace P256
 
@@ -1823,7 +1827,7 @@ theorem raw_verify_spec (hG : P256Laws) (hc : Cached) (key : mid.p256.VerifyingK
   step with scalar_as_mont_spec r hr as ⟨rm, hrm⟩
   step with scalar_mont_mul_spec sm rm (by rw [hsm]; exact hlt _) (by rw [hrm]; exact hlt _) as ⟨s5, hs5⟩
   step as ⟨u2, hu2⟩
-  step with hc.2 key as ⟨more, hmore⟩
+  step with hc.get_or_build key as ⟨more, hmore⟩
   have hs' : (scNat s : ZMod n256) ≠ 0 := by
     rw [Ne, ZMod.natCast_eq_zero_iff]; exact Nat.not_dvd_of_pos_of_lt hs0 hs
   have hsinv : (scNat si : ZMod n256) = (scNat s : ZMod n256)⁻¹ := by
@@ -1924,7 +1928,7 @@ theorem vk_from_x962_spec (hG : P256Laws) (h : Runs) (hheld : Held) (hc : Cached
         · obtain ⟨pk, rfl, hpk⟩ := hr
           simp only
           step with odd_multiples_spec hG pk.point _ hon (by simp) hpk as ⟨m, hm⟩
-          obtain ⟨c, hcv⟩ := hc.1
+          obtain ⟨c, hcv⟩ := hc.new
           rw [hcv]
           simp only [bind_ok, WP.spec_ok]
           exact ⟨_, rfl, hon, by simp, hm⟩
@@ -1933,9 +1937,6 @@ theorem vk_from_x962_spec (hG : P256Laws) (h : Runs) (hheld : Held) (hc : Cached
     · subst hr; simp
 
 /-! ## The generic ECDSA layer, `high::ecdsa`, at P-256 -/
-
-/-- P-256's `Curve` impl. -/
-abbrev P256C := high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar
 
 theorem from_bytes_reduced_spec (bytes : Slice U8) (hl : bytes.length = 32) :
     mid.p256.Scalar.Insts.RindHighCurveScalar.from_bytes_reduced bytes ⦃ sc =>
@@ -2126,22 +2127,54 @@ theorem g_mult (hG : P256Laws) (k : Nat) (hk0 : 0 < k) (hk : k < n256) :
 
 end P256
 
-/-- P-256's key generation for ECDSA's nonces, which draws through a `dyn
-RandomSource` and so stays opaque: it returns a key in [1, n) or refuses with
-`RngFailed`, as `Rind.Aarch64.P256Dispatch` models the same loop doing over the
-system source. -/
-def KeyGen : Prop :=
-  ∀ {T : Type} (inst : mid.rng.RandomSource T) (rng : T),
-    high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.generate_random_key inst rng
-      ⦃ res => (∀ k, res.1 = .Ok k → 0 < wordsNat k.scalar.val ∧ wordsNat k.scalar.val < n256) ∧
-        ∀ e, res.1 = .Err e → e = .RngFailed ⦄
+/-- A random source whose draws return without panicking, and fail only with
+`RngFailed`. -/
+def Draws {T : Type} (inst : mid.rng.RandomSource T) : Prop :=
+  ∀ rng s, inst.fill rng s ⦃ r => ∀ e, r.1 = .Err e → e = .RngFailed ⦄
 
 namespace P256
 
+/-- A generated key is in [1, n), and generation refuses only with `RngFailed`. -/
+def Keygen (res : core.result.Result mid.p256.PrivateKey error.Error) : Prop :=
+  (∀ k, res = .Ok k → 0 < wordsNat k.scalar.val ∧ wordsNat k.scalar.val < n256) ∧
+    ∀ e, res = .Err e → e = .RngFailed
+
+theorem generate_from_loop_spec {T : Type} (inst : mid.rng.RandomSource T) (hd : Draws inst) (n : Nat)
+    (rng : T) : mid.p256.PrivateKey.generate_from_loop inst n rng ⦃ res => Keygen res.1 ⦄ := by
+  induction n generalizing rng with
+  | zero => simp [mid.p256.PrivateKey.generate_from_loop, Keygen]
+  | succ n ih =>
+    simp only [mid.p256.PrivateKey.generate_from_loop, Array.to_slice_mut, lift, bind_ok]
+    apply WP.spec_bind (hd rng _)
+    rintro ⟨r1, rng1, s1⟩ hr1
+    rcases r1 with _ | e
+    · have hl : ((Array.repeat 32#usize 0#u8).from_slice s1).to_slice.length = 32 := by simp [Slice.length]
+      step with from_bytes_spec _ hl as ⟨p, hp⟩
+      split_ifs at hp with hin
+      · obtain ⟨k, rfl, hk⟩ := hp
+        show (ok (core.result.Result.Ok k, rng1) : Result _) ⦃ res => Keygen res.1 ⦄
+        simp only [WP.spec_ok, Keygen]
+        refine ⟨fun k' hk' => ?_, fun e h => nomatch h⟩
+        cases hk'
+        rw [hk]; exact hin
+      · subst hp
+        exact ih rng1
+    · show (ok (core.result.Result.Err e, rng1) : Result _) ⦃ res => Keygen res.1 ⦄
+      simp only [WP.spec_ok, Keygen]
+      exact ⟨fun k h => (nomatch h), fun e' h => by cases h; exact hr1 e rfl⟩
+
+/-- `p256::StaticPrivateKey::generate`, P-256's `generate_random_key`. -/
+theorem static_generate_spec (h : Runs) {T : Type} (inst : mid.rng.RandomSource T) (hd : Draws inst)
+    (rng : T) : mid.p256.StaticPrivateKey.generate inst rng ⦃ res => Keygen res.1 ⦄ := by
+  unfold mid.p256.StaticPrivateKey.generate
+  step
+  step
+  exact generate_from_loop_spec inst hd 64 rng
+
 /-- The nonce loop: if it returns a signature, it is (r, s) for some nonce in
 [1, n), with neither zero. -/
-theorem sign_nonces_spec (hG : P256Laws) (h : Runs) (hkg : KeyGen) {T : Type}
-    (inst : mid.rng.RandomSource T)
+theorem sign_nonces_spec (hG : P256Laws) (h : Runs) {T : Type}
+    (inst : mid.rng.RandomSource T) (hdr : Draws inst)
     (key : high.ecdsa.SigningKey high.curve.P256 mid.p256.StaticPrivateKey mid.p256.VerifyingKey mid.p256.Scalar)
     (hd0 : 0 < scNat key.private_key.scalar) (hd : scNat key.private_key.scalar < n256)
     (e : mid.p256.Scalar) (he : scNat e < n256) (rng : T) :
@@ -2161,7 +2194,8 @@ theorem sign_nonces_spec (hG : P256Laws) (h : Runs) (hkg : KeyGen) {T : Type}
     mid.p256.StaticPrivateKey.Insts.RindHighCurvePrivateKeyScalar.raw_ecdsa_sign,
     mid.p256.Scalar.Insts.RindHighCurveScalar, mid.p256.Scalar.Insts.RindHighCurveScalar.is_zero,
     Std.bind_assoc_eq]
-  step with hkg inst x as ⟨res, hok, herr⟩
+  step with static_generate_spec h inst hdr x as ⟨res, hres⟩
+  obtain ⟨hok, herr⟩ := hres
   obtain ⟨rr, nx⟩ := res
   simp only at hok herr ⊢
   rcases rr with k | err
@@ -2219,20 +2253,34 @@ theorem encode_spec (k : mid.p256.StaticPrivateKey) (out : Slice U8) (hl : 32 �
 end P256
 
 /-- The HMAC-DRBG an ECDSA signature draws its nonces from, which the
-translation leaves opaque, is seeded without panicking. -/
-def DrbgSeeds : Prop :=
-  ∀ {H C S : Type} (inst : high.hash.Hash H C S) (a b c : Slice U8), ∃ g, high.hmac_drbg.HmacDrbg.new inst a b c = ok g
+translation leaves opaque, since its update takes a slice of borrowed slices:
+it is seeded, and draws, without panicking, and a draw never fails. A draw
+asserts that its reseed counter, one more than the draws it has made, is below
+2⁴⁸. -/
+structure Drbg : Prop where
+  seeds : ∀ {H C S : Type} (inst : high.hash.Hash H C S) (a b c : Slice U8),
+    ∃ g, high.hmac_drbg.HmacDrbg.new inst a b c = ok g
+  draws : ∀ {H C S : Type} (inst : high.hash.Hash H C S) g (s : Slice U8),
+    ∃ g' s', high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource.fill inst g s = ok (.Ok (), g', s')
+
+theorem Drbg.draws_spec (hdrbg : Drbg) {H C S : Type} (inst : high.hash.Hash H C S) :
+    Draws (high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource inst) := by
+  intro g s
+  obtain ⟨g', s', hf⟩ := hdrbg.draws inst g s
+  simp [high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource, hf]
 
 namespace P256
 
 /-- An ECDSA signature's outcome, for private key `d` and the hash's integer
-`e`: 64 bytes, the big-endian r and s of some nonce in [1, n), neither zero;
-refused if the output is short or the nonce source fails. -/
-def ecdsaSignOutcome (d e : Nat) (outLen : Nat) (r : core.result.Result (Slice U8) error.Error) : Prop :=
-  (∀ out, r = .Ok out → out.length = 64 ∧ ∃ k, 0 < k ∧ k < n256 ∧
+`e`: 64 bytes at the start of the output, the big-endian r and s of some
+nonce in [1, n), neither zero; refused if the output is short or the nonce
+source fails. -/
+def ecdsaSignOutcome (d e : Nat) (outLen : Nat)
+    (r : core.result.Result (Slice U8) error.Error × Slice U8) : Prop :=
+  (∀ out, r.1 = .Ok out → out.length = 64 ∧ r.2.val.take 64 = out.val ∧ ∃ k, 0 < k ∧ k < n256 ∧
     ecdsaP256Sign d k e = some (beNat (out.val.take 32), beNat (out.val.drop 32)) ∧
     beNat (out.val.take 32) ≠ 0 ∧ beNat (out.val.drop 32) ≠ 0) ∧
-  ∀ err, r = .Err err → (outLen < 64 ∧ err = .WrongLength) ∨ err = .RngFailed
+  ∀ err, r.1 = .Err err → (outLen < 64 ∧ err = .WrongLength) ∨ err = .RngFailed
 
 theorem p256c_len : P256C.ScalarInst.LEN_BYTES = ok 32#usize := by
   simp only [P256C, high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar,
@@ -2243,14 +2291,14 @@ theorem get_mut_rangeTo (s : Slice U8) (r : core.ops.range.RangeTo Usize) :
     core.slice.Slice.get_mut (core.slice.index.SliceIndexRangeToUsizeSlice U8) s r =
       core.slice.index.SliceIndexRangeToUsizeSlice.get_mut r s := rfl
 
-theorem rfc6979_spec (hG : P256Laws) (h : Runs) (hkg : KeyGen) (hdrbg : DrbgSeeds) {H Ctx St : Type}
+theorem rfc6979_spec (hG : P256Laws) (h : Runs) (hdrbg : Drbg) {H Ctx St : Type}
     (hinst : high.hash.Hash H Ctx St)
     (key : high.ecdsa.SigningKey high.curve.P256 mid.p256.StaticPrivateKey mid.p256.VerifyingKey mid.p256.Scalar)
     (hd0 : 0 < scNat key.private_key.scalar) (hd : scNat key.private_key.scalar < n256)
     (msg random sig dg : Slice U8) (d : high.digest.Digest) (hhash : hinst.hash msg = ok d)
     (hdg' : high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = ok dg) (hdg : 32 ≤ dg.length) :
     high.ecdsa.SigningKey.rfc6979_sign_with_random P256C hinst key msg random sig ⦃ r =>
-      ecdsaSignOutcome (scNat key.private_key.scalar) (beNat (dg.val.take 32) % n256) sig.length r.1 ⦄div := by
+      ecdsaSignOutcome (scNat key.private_key.scalar) (beNat (dg.val.take 32) % n256) sig.length r ⦄div := by
   unfold high.ecdsa.SigningKey.rfc6979_sign_with_random
   rw [p256c_len]
   simp only [bind_ok]
@@ -2280,10 +2328,10 @@ theorem rfc6979_spec (hG : P256Laws) (h : Runs) (hkg : KeyGen) (hdrbg : DrbgSeed
   step as ⟨s2, back2, hs2, hs2l, hback2⟩
   step with write_bytes_spec e s2 (by simp [Slice.length, hs2, Array.repeat, List.slice]) as ⟨s3, hs3l, hs3⟩
   step as ⟨s4, hs4, hs4l⟩
-  obtain ⟨g, hg⟩ := hdrbg hinst sl s4 random
+  obtain ⟨g, hg⟩ := hdrbg.seeds hinst sl s4 random
   rw [hg]
   simp only [bind_ok, high.ecdsa.SigningKey.sign_with_nonces]
-  apply WP.dspec_bind (sign_nonces_spec hG h hkg _ key hd0 hd e (by rw [he]; exact Nat.mod_lt _ n256_pos) g)
+  apply WP.dspec_bind (sign_nonces_spec hG h _ (hdrbg.draws_spec hinst) key hd0 hd e (by rw [he]; exact Nat.mod_lt _ n256_pos) g)
   rintro ⟨r2, g2⟩ ⟨hr2ok, hr2err⟩
   simp only at hr2ok hr2err
   simp only [uncurry]
@@ -2317,7 +2365,13 @@ theorem rfc6979_spec (hG : P256Laws) (h : Runs) (hkg : KeyGen) (hdrbg : DrbgSeed
       rw [hs10, h8, hi2]; simp [List.slice, hs7l', hs9l']
     refine ⟨fun out hout => ?_, fun err h => nomatch h⟩
     cases hout
-    refine ⟨by simp [Slice.length, hv, hs7l', hs9l'], k, hk0, hk, ?_⟩
+    refine ⟨by simp [Slice.length, hv, hs7l', hs9l'], ?_, k, hk0, hk, ?_⟩
+    · have hb8 : (back8 s9).val.length = 64 := by simp [h8, hs7l', hs9l']
+      have hb8l : (back8 s9).length = i1.val := by simp only [Slice.length, hb8, hi1]
+      simp only [hb8l, ↓reduceDIte, Slice.from_val]
+      have := take_setSlice! sig.val (back8 s9).val 0 (by omega)
+      simp only [zero_add, hb8, List.take_zero, List.nil_append] at this
+      rw [this, hv, h8]
     rw [hv, List.take_left' hs7l', List.drop_left' hs7l', hs7, hs9, ← he]
     exact ⟨hsign, hr0, hs0⟩
   · simp only [bind_tc_ok, bind_ok, uncurry,
@@ -2334,14 +2388,14 @@ def Fills : Prop := ∀ s : Slice U8, ∃ r, getrandom.fill s = ok r
 namespace P256
 
 /-- `ecdsa::SigningKey::sign` at P-256. -/
-theorem ecdsa_sign_spec (hG : P256Laws) (h : Runs) (hkg : KeyGen) (hdrbg : DrbgSeeds) (hfill : Fills)
+theorem ecdsa_sign_spec (hG : P256Laws) (h : Runs) (hdrbg : Drbg) (hfill : Fills)
     {H Ctx St : Type} (hinst : high.hash.SignatureHash H Ctx St)
     (key : high.ecdsa.SigningKey high.curve.P256 mid.p256.StaticPrivateKey mid.p256.VerifyingKey mid.p256.Scalar)
     (hd0 : 0 < scNat key.private_key.scalar) (hd : scNat key.private_key.scalar < n256)
     (msg sig dg : Slice U8) (d : high.digest.Digest) (hhash : hinst.HashInst.hash msg = ok d)
     (hdg' : high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = ok dg) (hdg : 32 ≤ dg.length) :
     high.ecdsa.SigningKey.sign P256C hinst key msg sig ⦃ r =>
-      ecdsaSignOutcome (scNat key.private_key.scalar) (beNat (dg.val.take 32) % n256) sig.length r.1 ⦄div := by
+      ecdsaSignOutcome (scNat key.private_key.scalar) (beNat (dg.val.take 32) % n256) sig.length r ⦄div := by
   unfold high.ecdsa.SigningKey.sign mid.rng.SystemRandom.Insts.RindMidRngRandomSource.fill
   step
   step as ⟨rs, back, hrs, hback⟩
@@ -2351,7 +2405,7 @@ theorem ecdsa_sign_spec (hG : P256Laws) (h : Runs) (hkg : KeyGen) (hdrbg : DrbgS
   rcases fr with _ | ferr
   · simp only [core.result.Result.map_err, bind_tc_ok, bind_ok, core.result.Result.Insts.CoreOpsTry.branch]
     step as ⟨rnd, hrnd⟩
-    exact rfc6979_spec hG h hkg hdrbg hinst.HashInst key hd0 hd msg rnd sig dg d hhash hdg' hdg
+    exact rfc6979_spec hG h hdrbg hinst.HashInst key hd0 hd msg rnd sig dg d hhash hdg' hdg
   · simp only [core.result.Result.map_err, bind_tc_ok, bind_ok, core.result.Result.Insts.CoreOpsTry.branch,
       mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError,
       mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
