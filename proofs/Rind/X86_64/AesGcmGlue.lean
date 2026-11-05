@@ -58,8 +58,8 @@ set_option hygiene false in
 macro "cipher_finish" : tactic => `(tactic| (
   dsimp only at result_post2 result_post3
   first
-  | exact Prod.ext (hout.trans result_post2) result_post3
-  | exact ⟨hout.trans result_post2, result_post3⟩))
+  | exact ⟨hblen, Prod.ext (hout.trans result_post2) result_post3⟩
+  | exact ⟨hblen, hout.trans result_post2, result_post3⟩))
 
 theorem ite_ok {α : Type} (c : Prop) [Decidable c] (a b : α) :
     (if c then ok a else ok b : Result α) = ok (if c then a else b) := by
@@ -127,7 +127,7 @@ macro "cipher_glue " ax:term:max " with " m:num : tactic => `(tactic| (
           (by rw [aad_whole_post, i3_post, Slice.len_val])
         rw [f7] at result_post2 result_post3
         rw [hm, ha] at result_post2 result_post3
-        obtain ⟨hback, -⟩ := blocks_post4 _ tail1 (result_post.trans blocks_post)
+        obtain ⟨hback, hblen⟩ := blocks_post4 _ tail1 (result_post.trans blocks_post)
           (by rw [tail1_post, s9_post1, Slice.len_val]; exact blocks_post1)
         have hx := result_post.trans blocks_post
         have hout : bvs (split_at_mut_back (b2.blocks, tail1)).val = messageBytes b2 inout.length := by
@@ -142,7 +142,7 @@ theorem cipher_encrypt_spec (alg : Algorithm) (key : low.x86_64.aes.HwKey) (kw :
     (nonce : Std.Array U8 12#usize) (aad inout : Slice U8) (tag : Std.Array U8 16#usize)
     (haad : aad.length < 2 ^ 32) (hin : inout.length < 2 ^ 32) :
     low.x86_64.aes_gcm_avx.AvxKernel.cipher true kernel key nonce aad inout tag ⦃ r =>
-      (bvs r.2.1.val, bvs r.2.2.val) =
+      r.2.1.length = inout.length ∧ (bvs r.2.1.val, bvs r.2.2.val) =
         gcmEncrypt alg (seqNat32ToSeqNat8LE kw) (bvs nonce.val) (bvs inout.val) (bvs aad.val) ⦄ := by
   obtain ⟨hkw, hkey, hh⟩ := hk
   have h2 : kernel.hkeys.val[2]! = reverseBytesQuad32 (aesEncrypt alg kw (mkfour 0 0 0 0)) := hh.2.2.2.1
@@ -164,7 +164,7 @@ theorem cipher_decrypt_spec (alg : Algorithm) (key : low.x86_64.aes.HwKey) (kw :
     low.x86_64.aes_gcm_avx.AvxKernel.cipher false kernel key nonce aad inout tag ⦃ r =>
       let out := gcmDecrypt alg (seqNat32ToSeqNat8LE kw) (bvs nonce.val) (bvs inout.val) (bvs aad.val)
         (bvs tag.val)
-      bvs r.2.1.val = out.1 ∧ (r.1.val = 0 ↔ out.2 = true) ⦄ := by
+      r.2.1.length = inout.length ∧ bvs r.2.1.val = out.1 ∧ (r.1.val = 0 ↔ out.2 = true) ⦄ := by
   obtain ⟨hkw, hkey, hh⟩ := hk
   have h2 : kernel.hkeys.val[2]! = reverseBytesQuad32 (aesEncrypt alg kw (mkfour 0 0 0 0)) := hh.2.2.2.1
   have hcb : hkeysReqsPub kernel.hkeys.val (reverseBytesQuad32 (reverseBytesQuad32 kernel.hkeys.val[2]!)) := by
