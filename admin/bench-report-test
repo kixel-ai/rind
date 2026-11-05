@@ -143,9 +143,12 @@ class Render(unittest.TestCase):
         svg = br.overview_svg(hosts(), VERIFIED, "light")
         titles = squares(svg)
         # nixos: x25519 3 + aes 2; nixos2: aes 2; kixtop: x25519 2; desktop
-        # unmeasured: one outline per library and operation.
-        self.assertEqual(sum("not measured" not in t for t in titles), 9)
-        self.assertEqual(sum(t == "desktop: not measured" for t in titles), len(br.OPERATIONS) * len(br.COLUMNS))
+        # is unmeasured, so it has no squares.
+        self.assertEqual(len(titles), 9)
+        self.assertIn("left to right: nixos, nixos2, kixtop.", svg)
+        # Only the libraries some host timed get a column.
+        self.assertIn(">OpenSSL<", svg)
+        self.assertNotIn(">graviola<", svg)
         self.assertIn("X25519, OpenSSL on nixos: 300.00 µs, 10.00× the fastest", titles)
         self.assertIn("X25519, ring on nixos: 33.00 µs, 1.10× the fastest; verified: any-arch proof", titles)
 
@@ -180,21 +183,28 @@ class Render(unittest.TestCase):
     def test_report_states_what_is_not_measured(self):
         files = br.report(hosts(), None, VERIFIED)
         md = files[br.REPORT]
-        self.assertIn("| `desktop` | | | not measured yet |", md)
+        self.assertIn("on three machines", md)
+        self.assertIn("Not measured yet: `desktop`.", md)
+        self.assertNotIn("`desktop` |", md)
         self.assertIn("No nightly results yet.", md)
         self.assertEqual(
             sorted(os.path.basename(p) for p in files if p.endswith(".svg")),
             sorted(f"{n}{s}.svg" for n in ["overview", "nixos", "nixos2", "kixtop"] for s in ["", "-dark"]),
         )
-        self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | - | - | - | 300.00 µs |", md)
+        self.assertIn("| Operation | rind | aws-lc-rs | ring | OpenSSL |", md)
+        self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | 300.00 µs |", md)
 
     def test_svgs_are_well_formed(self):
         import xml.etree.ElementTree as ET
 
-        files = br.report(hosts(), TIERS, VERIFIED)
-        for path, content in files.items():
-            if path.endswith(".svg"):
-                ET.fromstring(content)
+        everyone = hosts()
+        for names in [list(everyone), ["nixos2"], []]:
+            files = br.report({n: everyone[n] for n in names}, TIERS, VERIFIED)
+            with self.subTest(hosts=names):
+                self.assertEqual("## Speed" in files[br.REPORT], bool(names))
+                for path, content in files.items():
+                    if path.endswith(".svg"):
+                        ET.fromstring(content)
 
 
 class Verified(unittest.TestCase):
