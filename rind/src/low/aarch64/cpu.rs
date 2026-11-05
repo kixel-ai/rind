@@ -155,7 +155,10 @@ fn detect() -> u8 {
     #[cfg(not(any(windows, target_os = "linux")))]
     let dit = test_toggle("dit", detected!("dit"));
     #[cfg(target_os = "linux")]
-    let dit = test_toggle("dit", detected!("dit") || linux::cores_have_dit());
+    let dit = test_toggle(
+        "dit",
+        detected!("dit") || linux::cores_have_dit() == Some(true),
+    );
     #[cfg(windows)]
     let dit = test_toggle("dit", windows::executes_dit());
     (if neon { NEON } else { 0 })
@@ -170,29 +173,36 @@ fn detect() -> u8 {
 /// Probing the instruction instead would need a process-wide SIGILL handler.
 #[cfg(target_os = "linux")]
 mod linux {
-    pub(super) fn cores_have_dit() -> bool {
+    /// Whether every core the kernel can run on has DIT, or `None` if it can't
+    /// tell, without a readable `/sys` or with a CPU offline.
+    pub(super) fn cores_have_dit() -> Option<bool> {
         let read = |file: &str| std::fs::read_to_string(format!("/sys/devices/system/cpu/{file}"));
-        read("possible").is_ok_and(|possible| {
-            all_cores_have_dit(&possible, |cpu| {
-                let midr = read(&format!("cpu{cpu}/regs/identification/midr_el1")).ok()?;
-                u64::from_str_radix(midr.trim().strip_prefix("0x")?, 16).ok()
-            })
+        all_cores_have_dit(&read("possible").ok()?, |cpu| {
+            let midr = read(&format!("cpu{cpu}/regs/identification/midr_el1")).ok()?;
+            u64::from_str_radix(midr.trim().strip_prefix("0x")?, 16).ok()
         })
     }
 
     /// Whether every CPU in `possible`, the kernel's list of CPUs it may
     /// bring online, such as `0-3,8-11`, has a `MIDR_EL1` naming a core with
-    /// DIT. One offline now has no `MIDR_EL1` to read, so it fails the check.
-    pub(super) fn all_cores_have_dit(possible: &str, midr: impl Fn(u32) -> Option<u64>) -> bool {
-        possible.trim().split(',').all(|range| {
+    /// DIT. One offline now has no `MIDR_EL1` to read, so the answer is `None`.
+    pub(super) fn all_cores_have_dit(
+        possible: &str,
+        midr: impl Fn(u32) -> Option<u64>,
+    ) -> Option<bool> {
+        for range in possible.trim().split(',') {
             let (first, last) = range.split_once('-').unwrap_or((range, range));
-            match (first.parse::<u32>(), last.parse::<u32>()) {
-                (Ok(first), Ok(last)) if first <= last => {
-                    (first..=last).all(|cpu| midr(cpu).is_some_and(has_dit))
-                }
-                _ => false,
+            let (first, last) = (first.parse::<u32>().ok()?, last.parse::<u32>().ok()?);
+            if first > last {
+                return None;
             }
-        })
+            for cpu in first..=last {
+                if !has_dit(midr(cpu)?) {
+                    return Some(false);
+                }
+            }
+        }
+        Some(true)
     }
 
     /// Whether the core this `MIDR_EL1` names has DIT, which Armv8.4 made
@@ -436,11 +446,18 @@ mod tests {
     }
 
     // A core that runs `mrs DIT` has DIT, whatever its OS reports, so a
-    // child process runs it. Android's kernels report DIT, and rind trusts
-    // that report there, so the test does too.
+    // child process runs it. Where Linux hides DIT, rind can't tell the core
+    // without `/sys` or with a CPU offline, as README states, so the test
+    // can't either; a core missing from the table still fails it. Android's
+    // kernels report DIT, and rind trusts that report there, so the test does
+    // too.
     #[test]
     fn enables_dit_whenever_the_cpu_has_it() {
-        #[cfg(not(target_os = "android"))]
+        #[cfg(target_os = "linux")]
+        let has_dit = child_reads_dit()
+            && (std::arch::is_aarch64_feature_detected!("dit")
+                || linux::cores_have_dit().is_some());
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
         let has_dit = child_reads_dit();
         #[cfg(target_os = "android")]
         let has_dit = std::arch::is_aarch64_feature_detected!("dit");
@@ -470,19 +487,20 @@ mod tests {
         use linux::all_cores_have_dit;
         // Neoverse N2 r0p0, as on Cobalt 100, and r3p1; Neoverse N1.
         let n2 = |_| Some(0x410f_d490);
-        assert!(all_cores_have_dit("0-3\n", n2));
-        assert!(all_cores_have_dit("0,2-3", |_| Some(0x413f_d491)));
-        assert!(!all_cores_have_dit("0-3", |cpu| Some(if cpu == 2 {
-            0x413f_d0c1
-        } else {
-            0x410f_d490
-        })));
-        // An offline core has no MIDR to read.
-        assert!(!all_cores_have_dit("0-3,8-11", |cpu| (cpu < 4).then_some(0x410f_d490)));
+        assert_eq!(all_cores_have_dit("0-3\n", n2), Some(true));
+        assert_eq!(
+            all_cores_have_dit("0,2-3", |_| Some(0x413f_d491)),
+            Some(true)
+        );
+        let cpu2_n1 = |cpu| Some(if cpu == 2 { 0x413f_d0c1 } else { 0x410f_d490 });
+        assert_eq!(all_cores_have_dit("0-3", cpu2_n1), Some(false));
         // Another implementer's part number.
-        assert!(!all_cores_have_dit("0", |_| Some(0x510f_d490)));
+        assert_eq!(all_cores_have_dit("0", |_| Some(0x510f_d490)), Some(false));
+        // An offline core has no MIDR to read.
+        let offline = |cpu| (cpu < 4).then_some(0x410f_d490);
+        assert_eq!(all_cores_have_dit("0-3,8-11", offline), None);
         for malformed in ["", "\n", "3-0", "0-", "-3", "0,,1", "0-3-5", "a"] {
-            assert!(!all_cores_have_dit(malformed, n2), "{malformed:?}");
+            assert_eq!(all_cores_have_dit(malformed, n2), None, "{malformed:?}");
         }
     }
 
