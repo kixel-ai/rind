@@ -66,6 +66,27 @@ rind's generator table holds the multiples of G that s2n-bignum's proof of
 `p256_scalarmulbase` assumes, so `p256_public_key` assumes nothing of it.
 `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
+SHA-1 and SHA-256's padding and finalization, and HMAC's keyed states over
+any hash, on x86_64 and aarch64, in `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
+against FIPS 180-4 and RFC 2104 as `Rind/HashSpec.lean` transliterates them:
+
+- `sha256_hash`, `sha1_hash`: a message's digest, one-shot, and
+  `sha256_hashSpec`, `sha1_hashSpec`: every method of each `Hash` impl,
+  streaming included;
+- `hmac_key_new_spec`, `hmac_sign_spec`, `hmac_start_spec`,
+  `hmac_update_spec`, `hmac_finish_spec`: `HmacKey` and `Hmac` over any hash
+  meeting `HashSpec`, and `hmac_sha256_sign`, `hmac_sha1_sign` over SHA-256
+  and SHA-1.
+
+No proof covers a SHA-1 or SHA-256 block function rind runs on either target,
+so these theorems take `ShaBlocks` as a hypothesis, in each target's own
+`Rind/<Arch>/ShaBlocks.lean`: each routine computes FIPS 180-4's block
+function, and rind's checks pass. They add no axiom, which
+`Rind/<Arch>/HashAxioms.lean` checks. An input is at most `maxInput`
+(2^61 - 1) bytes, under FIPS 180-4's 2^64-bit limit. `Rind/HashSpecTest.lean`
+checks the transliterations against FIPS 180-4's, RFC 4231's, RFC 5869's, and
+RFC 6070's vectors.
+
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
 (`Algorithm`'s `generate` and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
 cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
@@ -90,7 +111,8 @@ with AVX, and on aarch64 its scalar routine, on a CPU without the SHA-512
 instructions; those are the routines whose proofs state their result. The
 digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
-models the `Algorithm` statics that hold them.
+models the `Algorithm` statics that hold them, and `Digest`, whose
+`&'static Algorithm` Aeneas cannot end a borrow of `Digest` across.
 
 Ed25519 on x86_64 and aarch64, from the signature API's `Ed25519KeyPair` and
 `PublicKey` to s2n-bignum's routines and the SHA-512 proof above, in
@@ -142,13 +164,18 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   wrappers.
 - `Rind/Spec.lean` and `Rind/Bytes.lean`: the elliptic-curve and ChaCha20
   specs and byte-conversion lemmas; `Rind/Sha2.lean` and
-  `Rind/Sha2Lemmas.lean`: SHA-512's; `Rind/Ed25519.lean`: Ed25519's.
+  `Rind/Sha2Lemmas.lean`: SHA-512's; `Rind/Ed25519.lean`: Ed25519's;
+  `Rind/HashSpec.lean`: SHA-1's, SHA-256's, HMAC's, HKDF's, and PBKDF2's, and
+  `Rind/HashSpecTest.lean`, their known-answer tests.
 - `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch}.lean`:
   the hand models of the agreement, header-protection, digest, and signature
   APIs' dispatch.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
-  ChaCha20, and Ed25519 proofs.
-- `admin/prove` copies the `Rind/X86_64/` models and proofs to
+  ChaCha20, and Ed25519 proofs, and `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
+  SHA-1's, SHA-256's, and HMAC's.
+- `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
+  target, and their padded last blocks.
+- `admin/prove` copies the other `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
 - `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate, and
   that `p256Add` is the addition of Mathlib's group of points on the curve.
@@ -164,6 +191,8 @@ Beyond Lean's kernel:
   `Rind/Core.lean`'s.
 - That each hand model computes what the Rust it quotes does. They add no
   axiom.
+- That `Rind/HashSpec.lean` transliterates FIPS 180-4, RFC 2104, RFC 5869,
+  and RFC 8018.
 - The restatement of each s2n-bignum and aws-lc-verification theorem as an
   axiom, under the composition rule in the
   [verification epic](/quest/m3/verified/README.md), and on aarch64 the
