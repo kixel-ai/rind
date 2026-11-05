@@ -12,6 +12,12 @@ the random source, whose draw the functional spec leaves out, and for
 `core::array::from_fn`, which only AES's header protection calls.
 -/
 
+/-- `Option::and_then`. -/
+def core.option.Option.and_then {T U F : Type _}
+    (inst : core.ops.function.FnOnce F T (Option U)) : Option T → F → Result (Option U)
+  | none, _ => ok none
+  | some x, f => inst.call_once f x
+
 /-- `Result::ok`. -/
 def core.result.Result.ok {T E : Type _} :
     core.result.Result T E → Result (Option T)

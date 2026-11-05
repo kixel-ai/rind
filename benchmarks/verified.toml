@@ -43,7 +43,8 @@
 # before the store to the state, and on AMD's x86_64 CPUs rind runs aws-lc's
 # unproven scalar routine, so neither SHA-512 nor Ed25519 earns the ✓ there.
 # Every other rind operation runs unverified code, such as SHA-256's block
-# function or x86_64 P-256 ECDH's Jacobian-to-affine conversion.
+# function, under padding and HMAC glue that `proofs/` proves, or x86_64 P-256
+# ECDH's Jacobian-to-affine conversion.
 [[verified]]
 library = "rind"
 operations = ["x25519-ecdh"]
