@@ -1309,6 +1309,105 @@ theorem x_is_loop_spec (a : Std.Array U64 4#usize) (iter : core.ops.range.Range 
       exact hinv
   · exact ⟨hs, he, hinv⟩
 
+theorem dec_tomont (v : Nat) : dec (2 ^ 256 * v % p256) = v := by
+  simp only [dec, cast_mod_p, Nat.cast_mul]
+  rw [← mul_assoc, mul_comm (p256RInv : ZMod p256), R_mul_RInv, one_mul]
+
+theorem x_is_closure_spec (pt : mid.p256.JacobianMontPoint) (z2 : mid.p256.FieldElement) (x : Nat)
+    (hx : x < p256) (hX : (tripleNat pt.xyz.val).1 < p256) (hz2 : feNat z2 < p256)
+    (heq : ∀ v : Nat, dec (feNat z2) * v = dec (tripleNat pt.xyz.val).1 ↔ (v : ZMod p256) = x)
+    (v : Std.Array U64 4#usize) :
+    mid.p256.JacobianMontPoint.public_x_is.closure.Insts.CoreOpsFunctionFnTupleArrayU644Bool.call (z2, pt) v
+      ⦃ b => b ↔ wordsNat v.val % p256 = x ⦄ := by
+  unfold mid.p256.JacobianMontPoint.public_x_is.closure.Insts.CoreOpsFunctionFnTupleArrayU644Bool.call
+  step with as_mont_spec v as ⟨fe1, hfe1⟩
+  step with mont_mul_spec fe1 z2 (by rw [hfe1]; exact Nat.mod_lt _ p256_pos) hz2 as ⟨fe2, hfe2⟩
+  step as ⟨fe3, hfe3⟩
+  have hfe3X : feNat fe3 = (tripleNat pt.xyz.val).1 := by simp [tripleNat, feNat, hfe3]
+  step as ⟨b, hb⟩
+  rw [hb, hfe3X, eq_of_dec _ _ (by rw [hfe2]; exact Nat.mod_lt _ p256_pos) hX, hfe2, dec_mont_mul, hfe1,
+    dec_tomont, mul_comm, heq, ← cast_mod_p, ZMod.natCast_eq_natCast_iff', Nat.mod_mod, Nat.mod_eq_of_lt hx]
+
+theorem p256_lt_two_n : p256 < 2 * n256 := by unfold p256 n256; decide
+theorem n256_lt_p256 : n256 < p256 := by unfold p256 n256; decide
+
+theorem x_is_spec (pt : mid.p256.JacobianMontPoint) (x y : Nat) (h : jrep (some (x, y)) pt)
+    (r : mid.p256.Scalar) (hr : scNat r < n256) :
+    mid.p256.JacobianMontPoint.public_x_is pt r ⦃ b => b ↔ x % n256 = scNat r ⦄ := by
+  obtain ⟨hX, hY, hZ, hP⟩ := h
+  rw [ofJacobian_dec] at hP
+  set X := (tripleNat pt.xyz.val).1
+  set Z := (tripleNat pt.xyz.val).2.2
+  have hZ0 : dec Z ≠ 0 := fun h0 => by rw [ite_eq_left_iff.mpr (fun h => absurd h0 h)] at hP; cases hP
+  rw [ite_eq_right_iff.mpr (fun h => absurd h hZ0)] at hP
+  simp only [Option.some.injEq, Prod.mk.injEq] at hP
+  obtain ⟨hxv, -⟩ := hP
+  have hx : x < p256 := by rw [← hxv]; exact ZMod.val_lt _
+  unfold mid.p256.JacobianMontPoint.public_x_is
+  step as ⟨fz, hfz⟩
+  have hfzZ : feNat fz = Z := by simp [Z, tripleNat, feNat, hfz]
+  step with mont_sqr_spec fz (by rw [hfzZ]; exact hZ) as ⟨z2, hz2⟩
+  have hz2p : feNat z2 < p256 := by rw [hz2]; exact Nat.mod_lt _ p256_pos
+  have heq : ∀ v : Nat, dec (feNat z2) * v = dec X ↔ (v : ZMod p256) = x := by
+    intro v
+    rw [hz2, dec_mont_sqr, hfzZ, ← hxv, ZMod.natCast_val, ZMod.cast_id', id,
+      eq_mul_inv_iff_mul_eq₀ (pow_ne_zero 2 hZ0), mul_comm]
+  have hrp : scNat r < p256 := lt_trans hr n256_lt_p256
+  have hp2n := p256_lt_two_n
+  have hmod : x % n256 = scNat r ↔ x = scNat r ∨ x = scNat r + n256 := by
+    constructor
+    · intro h
+      by_cases hxn : x < n256
+      · left; rw [← h, Nat.mod_eq_of_lt hxn]
+      · right; rw [← h, Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]; omega
+    · rintro (rfl | rfl)
+      · exact Nat.mod_eq_of_lt hr
+      · rw [Nat.add_mod_right, Nat.mod_eq_of_lt hr]
+  step with x_is_closure_spec pt z2 x hx hX hz2p heq r as ⟨b, hb⟩
+  rw [show wordsNat r.val % p256 = scNat r from Nat.mod_eq_of_lt hrp] at hb
+  rw [hmod]
+  split
+  · rename_i hbt
+    simp only [WP.spec_ok, true_iff]
+    exact Or.inl (hb.mp hbt).symm
+  · rename_i hbf
+    have hxr : x ≠ scNat r := fun h => hbf (hb.mpr h.symm)
+    step with x_is_loop_spec r { start := 0#usize, «end» := 4#usize } (Array.repeat 4#usize 0#u64) false
+      (by simp) (by simp) (by simp [wordsNat]) as ⟨rpn, carry, hrpn⟩
+    split
+    · rename_i hc
+      simp only [hc, Bool.toNat_true, Nat.mul_one] at hrpn
+      rw [WP.spec_ok]
+      refine ⟨fun h => absurd h (by simp), ?_⟩
+      rintro (h | h)
+      · exact absurd h hxr
+      · have hp := p256_lt
+        simp only [scNat] at h hrpn
+        generalize (2 : Nat) ^ 256 = M at *
+        omega
+    · rename_i hc
+      simp only [hc, Bool.toNat_false, Nat.mul_zero, Nat.add_zero] at hrpn
+      step with below_p_spec rpn as ⟨b1, hb1⟩
+      rw [hrpn] at hb1
+      split
+      · rename_i hb1t
+        have hlt := hb1.mp hb1t
+        step with x_is_closure_spec pt z2 x hx hX hz2p heq rpn as ⟨b2, hb2⟩
+        rw [hrpn, Nat.mod_eq_of_lt hlt] at hb2
+        rw [hb2]
+        constructor
+        · intro h; exact Or.inr h.symm
+        · rintro (h | h)
+          · exact absurd h hxr
+          · exact h.symm
+      · rename_i hb1f
+        rw [WP.spec_ok]
+        refine ⟨fun h => absurd h (by simp), ?_⟩
+        rintro (h | h)
+        · exact absurd h hxr
+        · simp only [scNat] at h hrpn ⊢
+          exact absurd (hb1.mpr (by omega)) hb1f
+
 end P256
 
 end rind.aarch64
