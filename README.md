@@ -221,7 +221,7 @@ SHA-512.
 | P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  |  |  |  |
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  |  |  |  |
 | ML-KEM-768 | s2n-bignum ✓ + mlkem-native ✓ + Graviola ⚡ | mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
-| RSA signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ + rind ⚡ | s2n-bignum ✓ + aws-lc ⚡ |  |  |  |
+| RSA signatures, OAEP, key generation | s2n-bignum ✓ + aws-lc ⚡ + rind ⚡ | s2n-bignum ✓ + aws-lc ⚡ |  |  |  |
 
 - RSA: x86_64 with ADX multiplies 1024- and 2048-bit moduli by
   [s2n-bignum]'s verified Karatsuba routines, as [#224] decided, rather than
@@ -270,7 +270,7 @@ the code [Symmetric cryptography](#symmetric-cryptography) names.
 | P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  | fiat-crypto ✓ + rind ⚡ |
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  | fiat-crypto ✓ + rind ⚡ |
 | ML-KEM-768 | s2n-bignum ✓ + Graviola ⚡ |  | mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ |
-| RSA signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ |  | aws-lc ⚡ + Graviola ⚡ + rind ⚡ |
+| RSA signatures, OAEP, key generation | s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ |  | aws-lc ⚡ + Graviola ⚡ + rind ⚡ |
 
 - AES header protection on aarch64 pays the same indirect call as AES-GCM
   key setup on x86_64.
@@ -391,14 +391,17 @@ and the term is selected by the exponent bits from the table of base powers in a
 On every architecture, the private operation is always followed by the public operation to verify the result
 (and the result compared in a side-channel-free way).
 
-Only RSA signing and verification are provided.  Signing keys have 2048- to
-8192-bit moduli; verification also takes 1024-bit moduli and SHA-1, but only
-under `signature::verify::legacy`.  Every key refuses a public exponent that
-is even, 1, or over 33 bits, and a private key whose components disagree is
-refused when it loads, as aws-lc's `RSA_check_key` does.  RSA encryption is not provided:
-OAEP is [planned](quest/m2/adoption/webcrypto/rsa-oaep.md) for the WebCrypto
-adopters, and PKCS#1 v1.5 encryption, which invites padding-oracle attacks,
-is refused.
+RSA signs and verifies with PKCS#1 v1.5 and PSS, and encrypts with OAEP on
+SHA-1, SHA-256, SHA-384, or SHA-512.  Private keys have 2048- to 8192-bit
+moduli; verification also takes 1024-bit moduli and SHA-1, but only under
+`signature::verify::legacy`.  Every key refuses a public exponent that is
+even, 1, or over 33 bits, and a private key whose components disagree is
+refused when it loads, as aws-lc's `RSA_check_key` does.  Public keys load
+from PKCS#1 `RSAPublicKey` or `SubjectPublicKeyInfo` DER, or from their
+modulus and exponent.  Each OAEP key is bound to one hash.  OAEP decryption is
+constant time through its padding check, and fails every malformed
+ciphertext with the same error, so it is no Manger oracle.  PKCS#1 v1.5
+encryption, which invites padding-oracle attacks, is refused.
 
 RSA key generation is supported for five fixed key sizes between 2048-8192-bits.
 All generated keys have e = 0x10001 and, as in aws-lc, d reduced mod
@@ -692,6 +695,7 @@ The modules:
   `A128KW` and `A256KW`.
 - `agreement`: ephemeral X25519 and ECDH on P-256, P-384, and P-521.
 - `kem`: ML-KEM-768.
+- `rsa`: RSA-OAEP encryption and decryption, with SHA-1 under `legacy`.
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
   Ed25519 key pairs and verification, plus RSA keys given as their
   components, and SHA-1 and 1024-bit RSA for verifying old signatures.
