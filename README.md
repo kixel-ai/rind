@@ -1,9 +1,36 @@
 <h1 align="center">rind</h1>
 <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png" alt="rind: a curled strip of spiky green graviola peel shaped like a lowercase r">
 
-> **rind** distills great cryptography into a **pure-Rust** library for
+> **rind** distills great cryptography into a pure-Rust library for
 > [rustls](https://github.com/rustls/rustls) and
-> [MoQ](https://github.com/moq-dev/moq).
+> [MoQ](https://github.com/moq-dev/moq), as fast as aws-lc-rs and ring and
+> built by rustc alone.
+
+- **No C toolchain.** rind's assembly lives in Rust source, so `cargo build`
+  needs only rustc and a linker: no C compiler, cmake, nasm, or perl, for
+  the host or a cross target. A rustls client builds faster over rind than
+  over aws-lc-rs or ring.
+- **Verified where it counts.** On x86_64 and aarch64, rind's elliptic-curve,
+  RSA, and ML-KEM arithmetic builds on [s2n-bignum]'s formally verified
+  assembly, and rind's own [Lean proofs][proofs] carry X25519 and Ed25519
+  from its API down to it, as [Verified code][verified] lists. rind prefers
+  verified code, and [Algorithms](#algorithms) marks ⚡ each place it runs
+  faster unverified code instead.
+- **As fast as aws-lc-rs and ring.** rind matches or beats both on nearly
+  every operation TLS and QUIC run, from the handshake to each packet's
+  AEAD. Where another library is ahead, as ring and aws-lc-rs are at
+  RSA-2048 signing on x86_64, [Known gaps][gaps] says so, with the quest that
+  closes the gap or the reason it stays.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/moq-dev/rind/main/benchmarks/headline-dark.svg">
+  <img alt="Time over rind's, for aws-lc-rs and ring, at a TLS 1.3 handshake, AES-128-GCM and ChaCha20-Poly1305 seals, X25519, P-256 ECDSA and RSA-2048 PSS signing, and a rustls client's build" src="https://raw.githubusercontent.com/moq-dev/rind/main/benchmarks/headline.svg">
+</picture>
+
+[BENCHMARKS.md][benchmarks] has the times behind this chart: every
+operation on each host and CPU tier, against aws-lc-rs, ring, RustCrypto,
+Graviola, libcrux, and OpenSSL, with each library's build time, binary size,
+and build tools.
 
 rind began as a fork of [Graviola] by Joe Birr-Pixton, and no longer tracks
 it. Its goal is to close the gap between C-free builds and the algorithm
@@ -12,18 +39,6 @@ work from Graviola, [AWS-LC][aws-lc], and other excellent projects. The plan
 lives in [`quest/`][quests]. Coming from ring or [aws-lc-rs]?
 [MIGRATING.md][migrating] maps their API to rind's, and [rind-ring][] offers
 ring's API as is.
-
-*High quality*: rind incorporates assembler routines
-from the [s2n-bignum] project.  These have been formally proven
-to correctly implement the desired mathematical operation.
-
-*Fast*: rind beats or is competitive with other cryptography
-libraries for Rust.  `cargo bench` compares it with aws-lc-rs, *ring*,
-RustCrypto, Graviola, libcrux, and, with the `__bench_openssl` feature,
-OpenSSL.
-
-*Easy and fast to build*: no C compiler, assembler or other tooling
-needed: just the Rust compiler.  Compiles in seconds.
 
 ## Built on great work
 
@@ -143,7 +158,7 @@ that is busy, and writes their results and the hosts' details as JSON under
 `.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly
 `bench` run's results, and `admin/bench-report render --from DIR` copies a
 collection's measured hosts into `benchmarks/data/` and writes
-`BENCHMARKS.md` and its SVGs from them, `benchmarks/verified.toml`, and
+`BENCHMARKS.md`, its SVGs, and this README's headline from them, `benchmarks/verified.toml`, and
 `benchmarks/gaps.toml`, which must hold a quest or a reason for every gap
 over 10%.
 
@@ -317,6 +332,10 @@ different one, updates this table and [LICENSE] in the same PR.
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
 [quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
 [migrating]: https://github.com/moq-dev/rind/blob/main/MIGRATING.md
+[benchmarks]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md
+[gaps]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#known-gaps
+[verified]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#verified-code
+[proofs]: https://github.com/moq-dev/rind/blob/main/proofs/README.md
 
 ## Assorted technical details
 

@@ -11,6 +11,5 @@ Bun's fastest asymmetric operations run on rind, ahead of Bun writing its own.
 - [Bun runs its fastest asymmetric crypto on rind](/quest/m1/bun.md) - Ed25519, X25519, P-384, and P-521 in Bun on rind, before Bun writes its own
 - [rind builds on every platform its packages ship](/quest/m1/platforms.md) - CI covers aarch64 Windows, musl, iOS, and Android, which Bun ships first
 - [rind covers MoQ](/quest/m1/moq/README.md) - the primitives, CPU check, armv7 backend, and `rind-*` adapters MoQ needs, verified and released
-- [Benchmark report on real hardware](/quest/m1/benchmarks/README.md) - BENCHMARKS.md compares rind with the usual libraries on real machines, with build cost and ✓ for verified code, linked from a README that sells rind
 - [A prompt migrates a repo to rind](/quest/m1/migration-prompt.md) - a copy-paste prompt has an agent move a repo to rind and report build time, size, and benchmarks before and after
 - [The README shows how to use rind and links the details](/quest/m1/readme-restructure.md) - usage, the migration prompt, and an invitation to AI contributors, with the details in linked docs
