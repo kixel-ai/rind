@@ -54,8 +54,11 @@ impl RsaPublicKey {
     }
 
     /// m = c ** e mod n
+    ///
+    /// Constant time in `c`, which is secret when encrypting or checking a
+    /// private operation, apart from whether it is below `n`.
     pub(crate) fn public_op(&self, mut c: RsaPosInt) -> Result<RsaPosInt, Error> {
-        if !c.less_than(&self.n) {
+        if !low::ct::into_public(c.less_than(&self.n)) {
             return Err(Error::WrongLength);
         }
         c.expand(&self.n);

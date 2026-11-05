@@ -20,7 +20,7 @@ pub enum Error {
     BadSignature,
 
     /// An AEAD ciphertext, its tag, or its associated data did not
-    /// authenticate.
+    /// authenticate, or an RSA-OAEP ciphertext did not decrypt.
     DecryptFailed,
 
     /// The system random source failed.
@@ -60,6 +60,7 @@ pub(crate) enum KeyFormatError {
     MismatchedRsaComponents,
     MismatchedSec1Curve,
     MismatchedSec1PublicKey,
+    MismatchedSpkiAlgorithm,
 }
 
 impl From<KeyFormatError> for Error {
@@ -107,6 +108,12 @@ impl core::fmt::Display for KeyRejected {
             }
             KeyFormatError::MismatchedSec1Curve => write!(f, "mismatched SEC1 curve"),
             KeyFormatError::MismatchedSec1PublicKey => write!(f, "mismatched SEC1 public key"),
+            KeyFormatError::MismatchedSpkiAlgorithm => {
+                write!(
+                    f,
+                    "a SubjectPublicKeyInfo of another algorithm than rsaEncryption"
+                )
+            }
         }
     }
 }

@@ -41,7 +41,7 @@ enum Parsed {
     EcdsaP256(Verifier<ecdsa::VerifyingKey<P256>>, Ecdsa),
     EcdsaP384(Verifier<ecdsa::VerifyingKey<P384>>, Ecdsa),
     EcdsaP521(Verifier<ecdsa::VerifyingKey<P521>>, Ecdsa),
-    Rsa(Verifier<rsa::VerifyingKey>, RsaVerification),
+    Rsa(RsaVerifier, RsaVerification),
     Ed25519(Verifier<Ed25519VerifyingKey>),
 }
 
@@ -50,13 +50,11 @@ impl PublicKey {
     /// refusing a malformed key before any signature arrives.
     ///
     /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
-    /// `RSAPublicKey` DER, and Ed25519 keys are their 32 bytes. A compressed
-    /// ECDSA point is refused: no consumer sends one. So is an Ed25519 point
-    /// of small order, which verifies signatures nobody made.
-    pub fn new(
-        algorithm: &'static impl AsRef<VerificationAlgorithm>,
-        bytes: &[u8],
-    ) -> Result<Self, Error> {
+    /// `RSAPublicKey` or `SubjectPublicKeyInfo` DER, and Ed25519 keys are
+    /// their 32 bytes. A compressed ECDSA point is refused: no consumer sends
+    /// one. So is an Ed25519 point of small order, which verifies signatures
+    /// nobody made.
+    pub fn new(algorithm: &impl AsRef<VerificationAlgorithm>, bytes: &[u8]) -> Result<Self, Error> {
         let key = match algorithm.as_ref().0 {
             Verification::Ecdsa(ecdsa, parse) => parse(ecdsa, bytes)?,
             Verification::Rsa(rsa) => return (rsa.parse)(rsa, bytes),
@@ -68,20 +66,21 @@ impl PublicKey {
         })
     }
 
-    /// Parses an RSA key's PKCS#1 DER for `rsa`.
+    /// Parses an RSA key's PKCS#1 or SPKI DER for `rsa`.
     fn parse_rsa(rsa: Rsa, bytes: &[u8]) -> Result<Self, Error> {
-        Self::rsa(rsa, rsa::VerifyingKey::from_pkcs1_der(bytes)?)
+        Self::rsa(rsa, rsa::VerifyingKey::from_der(bytes)?)
     }
 
     /// Binds an RSA key to `rsa`, refusing it below the algorithm's floor.
     ///
-    /// The encoding is the key's DER, whether it came as DER or components.
+    /// The encoding is the key's PKCS#1 DER, whether it came as PKCS#1,
+    /// SPKI, or components.
     fn rsa(rsa: Rsa, key: rsa::VerifyingKey) -> Result<Self, Error> {
         let key = rsa.check(key)?;
         Ok(Self {
             encoding: Buffer::write(|output| key.to_pkcs1_der(output))?,
             key: Parsed::Rsa(
-                Verifier {
+                RsaVerifier {
                     key,
                     verify: rsa.verify,
                 },
@@ -96,7 +95,9 @@ impl PublicKey {
             Parsed::EcdsaP256(key, _) => key.verify(message, signature),
             Parsed::EcdsaP384(key, _) => key.verify(message, signature),
             Parsed::EcdsaP521(key, _) => key.verify(message, signature),
-            Parsed::Rsa(key, _) => key.verify(message, signature),
+            Parsed::Rsa(key, verification) => {
+                (key.verify)(&key.key, verification.salt(), signature, message)
+            }
             Parsed::Ed25519(key) => key.verify(message, signature),
         }
     }

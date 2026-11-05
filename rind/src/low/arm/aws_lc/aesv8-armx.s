@@ -183,6 +183,52 @@
 	bx	lr
 .cfi_endproc
 .size	{aes_hw_set_encrypt_key},.-{aes_hw_set_encrypt_key}
+.globl	{aes_hw_set_decrypt_key}
+.hidden	{aes_hw_set_decrypt_key}
+.type	{aes_hw_set_decrypt_key},%function
+.align	5
+{aes_hw_set_decrypt_key}:
+.cfi_startproc
+	stmdb	sp!,{{r4,lr}}
+.cfi_def_cfa_offset	8
+.cfi_offset	r4, -8
+.cfi_offset	lr, -4
+	bl	.Laes_enc_key
+
+	cmp	r0,#0
+	bne	.Laes_dec_key_abort
+
+	sub	r2,r2,#240		@ restore original r2
+	mov	r4,#-16
+	add	r0,r2,r12,lsl#4	@ end of key schedule
+
+	vld1.32	{{q0}},[r2]
+	vld1.32	{{q1}},[r0]
+	vst1.32	{{q0}},[r0],r4
+	vst1.32	{{q1}},[r2]!
+
+.Laes_oop_imc:
+	vld1.32	{{q0}},[r2]
+	vld1.32	{{q1}},[r0]
+.byte	0xc0,0x03,0xb0,0xf3	@ aesimc q0,q0
+.byte	0xc2,0x23,0xb0,0xf3	@ aesimc q1,q1
+	vst1.32	{{q0}},[r0],r4
+	vst1.32	{{q1}},[r2]!
+	cmp	r0,r2
+	bhi	.Laes_oop_imc
+
+	vld1.32	{{q0}},[r2]
+.byte	0xc0,0x03,0xb0,0xf3	@ aesimc q0,q0
+	vst1.32	{{q0}},[r0]
+
+	eor	r0,r0,r0		@ return value
+.Laes_dec_key_abort:
+	ldmia	sp!,{{r4,pc}}
+.cfi_restore	r4
+.cfi_restore	lr
+.cfi_def_cfa_offset	0
+.cfi_endproc
+.size	{aes_hw_set_decrypt_key},.-{aes_hw_set_decrypt_key}
 .globl	{aes_hw_encrypt}
 .hidden	{aes_hw_encrypt}
 .type	{aes_hw_encrypt},%function
@@ -216,6 +262,39 @@
 	bx	lr
 .cfi_endproc
 .size	{aes_hw_encrypt},.-{aes_hw_encrypt}
+.globl	{aes_hw_decrypt}
+.hidden	{aes_hw_decrypt}
+.type	{aes_hw_decrypt},%function
+.align	5
+{aes_hw_decrypt}:
+.cfi_startproc
+	
+	ldr	r3,[r2,#240]
+	vld1.32	{{q0}},[r2]!
+	vld1.8	{{q2}},[r0]
+	sub	r3,r3,#2
+	vld1.32	{{q1}},[r2]!
+
+.Laes_oop_dec:
+.byte	0x40,0x43,0xb0,0xf3	@ aesd q2,q0
+.byte	0xc4,0x43,0xb0,0xf3	@ aesimc q2,q2
+	vld1.32	{{q0}},[r2]!
+	subs	r3,r3,#2
+.byte	0x42,0x43,0xb0,0xf3	@ aesd q2,q1
+.byte	0xc4,0x43,0xb0,0xf3	@ aesimc q2,q2
+	vld1.32	{{q1}},[r2]!
+	bgt	.Laes_oop_dec
+
+.byte	0x40,0x43,0xb0,0xf3	@ aesd q2,q0
+.byte	0xc4,0x43,0xb0,0xf3	@ aesimc q2,q2
+	vld1.32	{{q0}},[r2]
+.byte	0x42,0x43,0xb0,0xf3	@ aesd q2,q1
+	veor	q2,q2,q0
+
+	vst1.8	{{q2}},[r1]
+	bx	lr
+.cfi_endproc
+.size	{aes_hw_decrypt},.-{aes_hw_decrypt}
 .globl	{aes_hw_ctr32_encrypt_blocks}
 .hidden	{aes_hw_ctr32_encrypt_blocks}
 .type	{aes_hw_ctr32_encrypt_blocks},%function

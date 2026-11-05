@@ -15,16 +15,9 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
+    /// How many bytes [`Self::update`] holds.
     pub(crate) const fn used(&self) -> usize {
         self.used
-    }
-
-    pub(crate) fn add(&mut self, bytes: &[u8]) {
-        if self.used == 0 {
-            self.add_trailing(bytes);
-        } else {
-            self.add_leading(bytes);
-        }
     }
 
     /// Adds `bytes`, passing each run of whole blocks to `state` in order and
@@ -64,6 +57,8 @@ impl<const N: usize> Blockwise<N> {
         self.used = rest.len();
     }
 
+    // Only Poly1305 uses it.
+    #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
     pub(crate) fn add_leading<'a>(&mut self, bytes: &'a [u8]) -> &'a [u8] {
         if self.used == 0 {
             return bytes;
@@ -77,6 +72,8 @@ impl<const N: usize> Blockwise<N> {
         returned
     }
 
+    // Only Poly1305 uses it.
+    #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
     pub(crate) fn take(&mut self) -> Option<[u8; N]> {
         if self.used == N {
             self.used = 0;
@@ -96,11 +93,19 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
+    /// The whole buffer, whose first [`Self::used`] bytes are those
+    /// [`Self::buffered`] returns, so a routine can pad it in place.
+    pub(crate) fn buffer(&self) -> &[u8; N] {
+        &self.buffer
+    }
+
     /// The bytes [`Self::update`] holds, up to one whole block.
     pub(crate) fn buffered(&self) -> &[u8] {
         &self.buffer[..self.used]
     }
 
+    // Only Poly1305 uses it.
+    #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
     pub(crate) fn add_trailing(&mut self, trailing: &[u8]) {
         self.buffer[..trailing.len()].copy_from_slice(trailing);
         self.used += trailing.len();
@@ -132,19 +137,6 @@ pub(crate) fn split_tail<const N: usize, const L: usize>(message: &[u8]) -> (&[u
     message.split_at(start)
 }
 
-/// Pads `message` as [`split_tail`] and [`pad`] do, for a routine that takes
-/// the padding as a run of blocks of its own: returns the message's whole
-/// blocks, then its tail padded in `last`.
-#[cfg(target_arch = "x86_64")]
-pub(crate) fn pad_message<'m, 'l, const N: usize, const L: usize>(
-    message: &'m [u8],
-    length: [u8; L],
-    last: &'l mut [[u8; N]; 2],
-) -> (&'m [u8], &'l [u8]) {
-    let (blocks, rest) = message.split_at(message.len() / N * N);
-    (blocks, pad(rest, length, last))
-}
-
 /// `rest`, under two blocks, padded in `last`, which must be zeroed.
 pub(crate) fn pad<'l, const N: usize, const L: usize>(
     rest: &[u8],
@@ -161,4 +153,17 @@ pub(crate) fn pad<'l, const N: usize, const L: usize>(
     last[rest.len()] = 0x80;
     last[padded - L..].copy_from_slice(&length);
     last
+}
+
+/// SHA-256's digest of its chaining value `h`: each word, big-endian.
+// Indexes rather than zipping `as_chunks_mut`, which Aeneas cannot translate,
+// so `proofs/` can prove the encoding. Inline, so the digest is written where
+// its caller keeps it, rather than returned through memory a copy then loads.
+#[inline(always)]
+pub(crate) fn sha256_digest(h: &[u32; 8]) -> [u8; 32] {
+    let mut r = [0u8; 32];
+    for (i, word) in h.iter().enumerate() {
+        r[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
+    }
+    r
 }

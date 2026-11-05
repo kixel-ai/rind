@@ -50,5 +50,6 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
+- [SHA-1 and SHA-2 padding without a store-forwarding stall](/quest/m2/speed/sha-padding-stall.md) - short hashes, HMAC, and HKDF
+- [An x86_64 bench tier without AVX-512 IFMA](/quest/m2/speed/bench-no-ifma.md) - RSA A/Bs that measure the AVX2 path
 - [Confirm x86_64 RSA-2048 signing level in the report](/quest/m2/speed/x86-rsa2048-sign.md) - a report refresh shows 2048-bit signing, and the RSA certificate handshake with it, level on x86_64, and drops its gap
-- [x86_64 SHA-256 of short messages as fast as RustCrypto](/quest/m2/speed/x86-sha256-short.md) - 64 B SHA-256 with the SHA extensions level with RustCrypto and graviola

@@ -21,7 +21,7 @@ quest = "/quest/m2/speed/x86-rsa2048-sign.md"
 [[gap]]
 operations = ["sha256/64B"]
 on = ["nixos", "desktop"]
-quest = "/quest/m2/speed/x86-sha256-short.md"
+reason = "Narrowed by [#352](https://github.com/moq-dev/rind/pull/352), after this data: on the SHA extensions the last block is padded and the digest written in registers, and `digest::Context::finish` takes `&mut self`, so it no longer copies the context. Interleaved runs on `nixos` measured rind at 1.16× RustCrypto's time and 1.03× graviola's at 64 B, from 1.44×, and ahead of both at 32 B; `digest::digest` beats RustCrypto at 64 B. Most of the rest is the context's wipe on drop, which aws-lc does and RustCrypto does not: a build without it measured level with RustCrypto."
 
 [[gap]]
 operations = ["sha512/16KB"]

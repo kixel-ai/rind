@@ -6,7 +6,7 @@ use super::curve::{Curve, MAX_SCALAR_LEN, MAX_UNCOMPRESSED_PUBLIC_KEY_LEN, P256,
 use super::ecdsa;
 use super::ed25519::{Ed25519SigningKey, Ed25519VerifyingKey};
 use super::hash::{Sha256, Sha384, Sha512, SignatureHash};
-use super::rsa;
+use super::rsa::{self, PssSalt};
 use crate::error::{Error, KeyFormatError};
 use crate::low::{self, Zeroable};
 pub use crate::mid::rsa_key_size::RsaKeySize;
@@ -22,6 +22,17 @@ enum HashId {
     Sha256,
     Sha384,
     Sha512,
+}
+
+impl HashId {
+    /// The hash's output length, in bytes.
+    const fn len(self) -> usize {
+        match self {
+            Self::Sha256 => 32,
+            Self::Sha384 => 48,
+            Self::Sha512 => 64,
+        }
+    }
 }
 
 /// Runs `$body` with `$H` naming the hash type for `$hash`.
@@ -46,7 +57,7 @@ macro_rules! with_hash {
 
 /// Up to `N` bytes, as the owned encodings and signatures hold them.
 #[derive(Clone, Copy)]
-struct Buffer<const N: usize> {
+pub(super) struct Buffer<const N: usize> {
     bytes: [u8; N],
     len: usize,
 }
@@ -73,7 +84,9 @@ impl<const N: usize> Buffer<N> {
 
     /// Runs `write`, which writes to the start of its argument and returns
     /// the written span.
-    fn write(write: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Result<Self, Error> {
+    pub(super) fn write(
+        write: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>,
+    ) -> Result<Self, Error> {
         let mut buffer = Self::new();
         buffer.len = write(&mut buffer.bytes)?.len();
         Ok(buffer)
@@ -93,7 +106,7 @@ impl<const N: usize> Buffer<N> {
     ///
     /// Every `N` holds the encoding of the largest key a loader accepts, so
     /// an encoder that runs out of room is a bug in rind, not bad input.
-    fn encode(encode: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Self {
+    pub(super) fn encode(encode: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Self {
         Self::write(encode).expect("sized for the largest key")
     }
 }
@@ -189,7 +202,8 @@ impl fmt::Debug for RsaVerificationAlgorithm {
 
 /// A public key, bound to the one algorithm it verifies signatures with.
 ///
-/// Its bytes are its encoding, as [`PublicKey::new`] takes it.
+/// Its bytes are its encoding, as [`PublicKey::new`] takes it, but an RSA
+/// key's are always its PKCS#1 `RSAPublicKey` DER.
 pub struct PublicKey {
     key: Parsed,
     encoding: Buffer<{ rsa::MAX_PUBLIC_KEY_LEN }>,
@@ -200,7 +214,7 @@ enum Parsed {
     EcdsaP256(Verifier<ecdsa::VerifyingKey<P256>>, Ecdsa),
     EcdsaP384(Verifier<ecdsa::VerifyingKey<P384>>, Ecdsa),
     EcdsaP521(Verifier<ecdsa::VerifyingKey<P521>>, Ecdsa),
-    Rsa(Verifier<rsa::VerifyingKey>, RsaVerification),
+    Rsa(RsaVerifier, RsaVerification),
     Ed25519(Verifier<Ed25519VerifyingKey>),
 }
 
@@ -209,13 +223,11 @@ impl PublicKey {
     /// refusing a malformed key before any signature arrives.
     ///
     /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
-    /// `RSAPublicKey` DER, and Ed25519 keys are their 32 bytes. A compressed
-    /// ECDSA point is refused: no consumer sends one. So is an Ed25519 point
-    /// of small order, which verifies signatures nobody made.
-    pub fn new(
-        algorithm: &'static impl AsRef<VerificationAlgorithm>,
-        bytes: &[u8],
-    ) -> Result<Self, Error> {
+    /// `RSAPublicKey` or `SubjectPublicKeyInfo` DER, and Ed25519 keys are
+    /// their 32 bytes. A compressed ECDSA point is refused: no consumer sends
+    /// one. So is an Ed25519 point of small order, which verifies signatures
+    /// nobody made.
+    pub fn new(algorithm: &impl AsRef<VerificationAlgorithm>, bytes: &[u8]) -> Result<Self, Error> {
         let key = match algorithm.as_ref().0 {
             Verification::Ecdsa(ecdsa, parse) => parse(ecdsa, bytes)?,
             Verification::Rsa(rsa) => return (rsa.parse)(rsa, bytes),
@@ -227,20 +239,21 @@ impl PublicKey {
         })
     }
 
-    /// Parses an RSA key's PKCS#1 DER for `rsa`.
+    /// Parses an RSA key's PKCS#1 or SPKI DER for `rsa`.
     fn parse_rsa(rsa: Rsa, bytes: &[u8]) -> Result<Self, Error> {
-        Self::rsa(rsa, rsa::VerifyingKey::from_pkcs1_der(bytes)?)
+        Self::rsa(rsa, rsa::VerifyingKey::from_der(bytes)?)
     }
 
     /// Binds an RSA key to `rsa`, refusing it below the algorithm's floor.
     ///
-    /// The encoding is the key's DER, whether it came as DER or components.
+    /// The encoding is the key's PKCS#1 DER, whether it came as PKCS#1,
+    /// SPKI, or components.
     fn rsa(rsa: Rsa, key: rsa::VerifyingKey) -> Result<Self, Error> {
         let key = rsa.check(key)?;
         Ok(Self {
             encoding: Buffer::write(|output| key.to_pkcs1_der(output))?,
             key: Parsed::Rsa(
-                Verifier {
+                RsaVerifier {
                     key,
                     verify: rsa.verify,
                 },
@@ -255,7 +268,9 @@ impl PublicKey {
             Parsed::EcdsaP256(key, _) => key.verify(message, signature),
             Parsed::EcdsaP384(key, _) => key.verify(message, signature),
             Parsed::EcdsaP521(key, _) => key.verify(message, signature),
-            Parsed::Rsa(key, _) => key.verify(message, signature),
+            Parsed::Rsa(key, verification) => {
+                (key.verify)(&key.key, verification.salt(), signature, message)
+            }
             Parsed::Ed25519(key) => key.verify(message, signature),
         }
     }
@@ -304,7 +319,7 @@ impl fmt::Debug for Signature {
 }
 
 /// A private key encoded as PKCS#8 DER, wiped on drop.
-pub struct Pkcs8(Buffer<{ rsa::MAX_PKCS8_LEN }>);
+pub struct Pkcs8(pub(super) Buffer<{ rsa::MAX_PKCS8_LEN }>);
 
 impl AsRef<[u8]> for Pkcs8 {
     fn as_ref(&self) -> &[u8] {
@@ -326,7 +341,7 @@ impl Drop for Pkcs8 {
 
 /// A public key encoded as a `SubjectPublicKeyInfo` in DER.
 #[derive(Clone)]
-pub struct Spki(Buffer<{ rsa::MAX_SPKI_LEN }>);
+pub struct Spki(pub(super) Buffer<{ rsa::MAX_SPKI_LEN }>);
 
 impl AsRef<[u8]> for Spki {
     fn as_ref(&self) -> &[u8] {
@@ -805,8 +820,8 @@ impl Drop for EcdsaKeyPair {
 enum RsaPadding {
     /// RSASSA-PKCS1-v1_5.
     Pkcs1,
-    /// RSASSA-PSS, with MGF1 on the same hash and a salt of the hash's length.
-    Pss,
+    /// RSASSA-PSS, with MGF1 on the same hash and a salt of this length.
+    Pss(PssSalt),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -815,45 +830,123 @@ struct RsaScheme {
     hash: HashId,
 }
 
+/// Signs with an RSA key, taking a PSS salt length that PKCS#1 v1.5
+/// ignores: `(key, salt, output, message)`.
+type RsaSign =
+    for<'a> fn(&rsa::SigningKey, PssSalt, &'a mut [u8], &[u8]) -> Result<&'a [u8], Error>;
+
+/// Verifies with an RSA key, taking a PSS salt length, or `None` for any,
+/// that PKCS#1 v1.5 ignores: `(key, salt, signature, message)`.
+type RsaVerify = fn(&rsa::VerifyingKey, Option<PssSalt>, &[u8], &[u8]) -> Result<(), Error>;
+
+/// An RSA key and the function that verifies with it, as [`Verifier`]'s.
+struct RsaVerifier {
+    key: rsa::VerifyingKey,
+    verify: RsaVerify,
+}
+
 // Only constant functions call these, so a static names only its own
 // scheme's code, as `with_ecdsa!` does.
 impl RsaScheme {
-    const fn signer(self) -> Sign<rsa::SigningKey> {
-        match (self.padding, self.hash) {
-            (RsaPadding::Pkcs1, HashId::Sha256) => rsa::SigningKey::sign_pkcs1_sha256,
-            (RsaPadding::Pkcs1, HashId::Sha384) => rsa::SigningKey::sign_pkcs1_sha384,
-            (RsaPadding::Pkcs1, HashId::Sha512) => rsa::SigningKey::sign_pkcs1_sha512,
-            (RsaPadding::Pss, HashId::Sha256) => rsa::SigningKey::sign_pss_sha256,
-            (RsaPadding::Pss, HashId::Sha384) => rsa::SigningKey::sign_pss_sha384,
-            (RsaPadding::Pss, HashId::Sha512) => rsa::SigningKey::sign_pss_sha512,
+    const fn pss(hash: HashId, salt: PssSalt) -> Self {
+        Self {
+            padding: RsaPadding::Pss(salt),
+            hash,
         }
     }
 
-    const fn verifier(self) -> Verify<rsa::VerifyingKey> {
+    /// The PSS salt length, which PKCS#1 v1.5 ignores.
+    const fn salt(self) -> PssSalt {
+        match self.padding {
+            RsaPadding::Pkcs1 => PssSalt::Hash,
+            RsaPadding::Pss(salt) => salt,
+        }
+    }
+
+    const fn signer(self) -> RsaSign {
         match (self.padding, self.hash) {
-            (RsaPadding::Pkcs1, HashId::Sha256) => rsa::VerifyingKey::verify_pkcs1_sha256,
-            (RsaPadding::Pkcs1, HashId::Sha384) => rsa::VerifyingKey::verify_pkcs1_sha384,
-            (RsaPadding::Pkcs1, HashId::Sha512) => rsa::VerifyingKey::verify_pkcs1_sha512,
-            (RsaPadding::Pss, HashId::Sha256) => rsa::VerifyingKey::verify_pss_sha256,
-            (RsaPadding::Pss, HashId::Sha384) => rsa::VerifyingKey::verify_pss_sha384,
-            (RsaPadding::Pss, HashId::Sha512) => rsa::VerifyingKey::verify_pss_sha512,
+            (RsaPadding::Pkcs1, HashId::Sha256) => |key, _, out, m| key.sign_pkcs1_sha256(out, m),
+            (RsaPadding::Pkcs1, HashId::Sha384) => |key, _, out, m| key.sign_pkcs1_sha384(out, m),
+            (RsaPadding::Pkcs1, HashId::Sha512) => |key, _, out, m| key.sign_pkcs1_sha512(out, m),
+            (RsaPadding::Pss(_), HashId::Sha256) => rsa::SigningKey::sign_pss_sha256,
+            (RsaPadding::Pss(_), HashId::Sha384) => rsa::SigningKey::sign_pss_sha384,
+            (RsaPadding::Pss(_), HashId::Sha512) => rsa::SigningKey::sign_pss_sha512,
+        }
+    }
+
+    const fn verifier(self) -> RsaVerify {
+        match (self.padding, self.hash) {
+            (RsaPadding::Pkcs1, HashId::Sha256) => |key, _, s, m| key.verify_pkcs1_sha256(s, m),
+            (RsaPadding::Pkcs1, HashId::Sha384) => |key, _, s, m| key.verify_pkcs1_sha384(s, m),
+            (RsaPadding::Pkcs1, HashId::Sha512) => |key, _, s, m| key.verify_pkcs1_sha512(s, m),
+            (RsaPadding::Pss(_), HashId::Sha256) => rsa::VerifyingKey::verify_pss_sha256,
+            (RsaPadding::Pss(_), HashId::Sha384) => rsa::VerifyingKey::verify_pss_sha384,
+            (RsaPadding::Pss(_), HashId::Sha512) => rsa::VerifyingKey::verify_pss_sha512,
+        }
+    }
+
+    /// The smallest modulus whose PSS encoding fits the salt, if over
+    /// `min_bits`: RFC 8017 section 9.1.1 needs `ceil((bits - 1) / 8)`
+    /// bytes for the hash, the salt, and two more.
+    const fn min_bits(self, min_bits: usize) -> usize {
+        let salt = match self.padding {
+            RsaPadding::Pkcs1 => return min_bits,
+            RsaPadding::Pss(PssSalt::Hash) => self.hash.len(),
+            RsaPadding::Pss(PssSalt::Max) => 0,
+            RsaPadding::Pss(PssSalt::Len(len)) => len as usize,
+        };
+        let fits = 8 * (self.hash.len() + salt + 1) + 2;
+        if fits > min_bits { fits } else { min_bits }
+    }
+}
+
+/// How long an RSASSA-PSS salt is, beside the hash's length that the
+/// `RSA_PSS_*` algorithms use.
+///
+/// A signature verifies only with the salt length it was made with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RsaPssSaltLength {
+    /// The longest the modulus allows: the encoded message's length, a byte
+    /// shorter than the modulus when its bit length is one more than a
+    /// multiple of eight, less the hash's length and two.
+    Max,
+    /// This many bytes, refusing a modulus too short for them.
+    Custom(u16),
+}
+
+impl RsaPssSaltLength {
+    const fn salt(self) -> PssSalt {
+        match self {
+            Self::Max => PssSalt::Max,
+            Self::Custom(len) => PssSalt::Len(len),
         }
     }
 }
 
 /// What an RSA verification algorithm verifies: a scheme rind also signs
-/// with, or PKCS#1 v1.5 with SHA-1, which it only verifies.
+/// with, or PKCS#1 v1.5 with SHA-1 or PSS with any salt length, which it
+/// only verifies.
 #[derive(Clone, Copy, Debug)]
 enum RsaVerification {
     Scheme(RsaScheme),
     Pkcs1Sha1,
+    PssAnySalt(HashId),
 }
 
 impl RsaVerification {
-    const fn verifier(self) -> Verify<rsa::VerifyingKey> {
+    const fn verifier(self) -> RsaVerify {
         match self {
             Self::Scheme(scheme) => scheme.verifier(),
-            Self::Pkcs1Sha1 => rsa::VerifyingKey::verify_pkcs1_sha1,
+            Self::Pkcs1Sha1 => |key, _, s, m| key.verify_pkcs1_sha1(s, m),
+            Self::PssAnySalt(hash) => RsaScheme::pss(hash, PssSalt::Hash).verifier(),
+        }
+    }
+
+    /// The PSS salt length to verify, `None` for any.
+    fn salt(self) -> Option<PssSalt> {
+        match self {
+            Self::Scheme(scheme) => Some(scheme.salt()),
+            Self::Pkcs1Sha1 | Self::PssAnySalt(_) => None,
         }
     }
 }
@@ -865,7 +958,7 @@ impl RsaVerification {
 struct Rsa {
     verification: RsaVerification,
     min_bits: usize,
-    verify: Verify<rsa::VerifyingKey>,
+    verify: RsaVerify,
     parse: fn(Self, &[u8]) -> Result<PublicKey, Error>,
 }
 
@@ -889,7 +982,7 @@ impl Rsa {
 }
 
 const fn rsa_verification(scheme: RsaScheme, min_bits: usize) -> RsaVerificationAlgorithm {
-    rsa_algorithm(RsaVerification::Scheme(scheme), min_bits)
+    rsa_algorithm(RsaVerification::Scheme(scheme), scheme.min_bits(min_bits))
 }
 
 const fn rsa_sha1_verification(min_bits: usize) -> RsaVerificationAlgorithm {
@@ -921,10 +1014,7 @@ pub struct RsaPublicKeyComponents<B> {
 
 impl<B: AsRef<[u8]>> RsaPublicKeyComponents<B> {
     /// Parses this key for `algorithm`.
-    pub fn to_public_key(
-        &self,
-        algorithm: &'static RsaVerificationAlgorithm,
-    ) -> Result<PublicKey, Error> {
+    pub fn to_public_key(&self, algorithm: &RsaVerificationAlgorithm) -> Result<PublicKey, Error> {
         let key = rsa::VerifyingKey::from_components(self.n.as_ref(), self.e.as_ref())?;
         PublicKey::rsa(algorithm.rsa, key)
     }
@@ -934,8 +1024,54 @@ impl<B: AsRef<[u8]>> RsaPublicKeyComponents<B> {
 pub struct RsaSigningAlgorithm {
     scheme: RsaScheme,
     // The only paths to the scheme's code, as `Verification`'s.
-    sign: Sign<rsa::SigningKey>,
-    verify: Verify<rsa::VerifyingKey>,
+    sign: RsaSign,
+    verify: RsaVerify,
+}
+
+impl RsaSigningAlgorithm {
+    /// RSASSA-PSS with SHA-256, MGF1-SHA-256, and a salt of `salt_length`.
+    pub const fn pss_sha256(salt_length: RsaPssSaltLength) -> Self {
+        rsa_signing(RsaScheme::pss(HashId::Sha256, salt_length.salt()))
+    }
+
+    /// RSASSA-PSS with SHA-384, MGF1-SHA-384, and a salt of `salt_length`.
+    pub const fn pss_sha384(salt_length: RsaPssSaltLength) -> Self {
+        rsa_signing(RsaScheme::pss(HashId::Sha384, salt_length.salt()))
+    }
+
+    /// RSASSA-PSS with SHA-512, MGF1-SHA-512, and a salt of `salt_length`.
+    pub const fn pss_sha512(salt_length: RsaPssSaltLength) -> Self {
+        rsa_signing(RsaScheme::pss(HashId::Sha512, salt_length.salt()))
+    }
+}
+
+impl RsaVerificationAlgorithm {
+    /// RSASSA-PSS with SHA-256, MGF1-SHA-256, and a salt of `salt_length`,
+    /// for moduli of 2048 to 8192 bits long enough for it.
+    pub const fn pss_sha256(salt_length: RsaPssSaltLength) -> Self {
+        rsa_verification(
+            RsaScheme::pss(HashId::Sha256, salt_length.salt()),
+            RSA_MIN_BITS,
+        )
+    }
+
+    /// RSASSA-PSS with SHA-384, MGF1-SHA-384, and a salt of `salt_length`,
+    /// for moduli of 2048 to 8192 bits long enough for it.
+    pub const fn pss_sha384(salt_length: RsaPssSaltLength) -> Self {
+        rsa_verification(
+            RsaScheme::pss(HashId::Sha384, salt_length.salt()),
+            RSA_MIN_BITS,
+        )
+    }
+
+    /// RSASSA-PSS with SHA-512, MGF1-SHA-512, and a salt of `salt_length`,
+    /// for moduli of 2048 to 8192 bits long enough for it.
+    pub const fn pss_sha512(salt_length: RsaPssSaltLength) -> Self {
+        rsa_verification(
+            RsaScheme::pss(HashId::Sha512, salt_length.salt()),
+            RSA_MIN_BITS,
+        )
+    }
 }
 
 impl fmt::Debug for RsaSigningAlgorithm {
@@ -966,22 +1102,13 @@ const PKCS1_SHA512: RsaScheme = RsaScheme {
     padding: RsaPadding::Pkcs1,
     hash: HashId::Sha512,
 };
-const PSS_SHA256: RsaScheme = RsaScheme {
-    padding: RsaPadding::Pss,
-    hash: HashId::Sha256,
-};
-const PSS_SHA384: RsaScheme = RsaScheme {
-    padding: RsaPadding::Pss,
-    hash: HashId::Sha384,
-};
-const PSS_SHA512: RsaScheme = RsaScheme {
-    padding: RsaPadding::Pss,
-    hash: HashId::Sha512,
-};
+const PSS_SHA256: RsaScheme = RsaScheme::pss(HashId::Sha256, PssSalt::Hash);
+const PSS_SHA384: RsaScheme = RsaScheme::pss(HashId::Sha384, PssSalt::Hash);
+const PSS_SHA512: RsaScheme = RsaScheme::pss(HashId::Sha512, PssSalt::Hash);
 
 /// The smallest modulus a verification algorithm accepts, unless it is
 /// under [`verify::legacy`], and the smallest a key pair loads.
-const RSA_MIN_BITS: usize = 2048;
+pub(super) const RSA_MIN_BITS: usize = 2048;
 
 /// A two-prime RSA private key, with a modulus of 2048 to 8192 bits, and its public key.
 pub struct RsaKeyPair {
@@ -1032,12 +1159,15 @@ impl RsaKeyPair {
     ///
     /// Unlike an ECDSA key pair, an RSA key pair signs with any padding and
     /// hash, so the public key needs the one it verifies.
-    pub fn public_key(&self, algorithm: &'static RsaSigningAlgorithm) -> PublicKey {
+    pub fn public_key(&self, algorithm: &RsaSigningAlgorithm) -> PublicKey {
         // A key pair's modulus is at least `RSA_MIN_BITS`, the floor of the
-        // algorithm that verifies `algorithm`'s signatures.
+        // algorithm that verifies `algorithm`'s signatures. A PSS salt too
+        // long for the modulus raises that floor, which this does not check:
+        // `sign` refuses such a salt, and this key refuses every signature,
+        // as EMSA-PSS-VERIFY refuses the length.
         PublicKey {
             key: Parsed::Rsa(
-                Verifier {
+                RsaVerifier {
                     key: self.key.public_key(),
                     verify: algorithm.verify,
                 },
@@ -1048,16 +1178,18 @@ impl RsaKeyPair {
     }
 
     /// Signs `message` with `algorithm`, as long as the modulus.
+    ///
+    /// A PSS salt too long for the modulus is refused as the key's size.
     pub fn sign(
         &self,
-        algorithm: &'static RsaSigningAlgorithm,
+        algorithm: &RsaSigningAlgorithm,
         message: &[u8],
     ) -> Result<Signature, Error> {
         Buffer::write(|output| {
             let output = output
                 .get_mut(..self.key.modulus_len_bytes())
                 .ok_or(Error::WrongLength)?;
-            (algorithm.sign)(&self.key, output, message)
+            (algorithm.sign)(&self.key, algorithm.scheme.salt(), output, message)
         })
         .map(Signature)
     }
@@ -1308,6 +1440,18 @@ pub(crate) mod verify {
     /// RSASSA-PSS with SHA-512, MGF1-SHA-512, and a 64-byte salt, for moduli of 2048 to 8192 bits.
     pub static RSA_PSS_SHA512: RsaVerificationAlgorithm =
         rsa_verification(PSS_SHA512, RSA_MIN_BITS);
+
+    /// RSASSA-PSS with SHA-256, MGF1-SHA-256, and a salt of any length, for moduli of 2048 to 8192 bits.
+    pub static RSA_PSS_SHA256_ANY_SALT: RsaVerificationAlgorithm =
+        rsa_algorithm(RsaVerification::PssAnySalt(HashId::Sha256), RSA_MIN_BITS);
+
+    /// RSASSA-PSS with SHA-384, MGF1-SHA-384, and a salt of any length, for moduli of 2048 to 8192 bits.
+    pub static RSA_PSS_SHA384_ANY_SALT: RsaVerificationAlgorithm =
+        rsa_algorithm(RsaVerification::PssAnySalt(HashId::Sha384), RSA_MIN_BITS);
+
+    /// RSASSA-PSS with SHA-512, MGF1-SHA-512, and a salt of any length, for moduli of 2048 to 8192 bits.
+    pub static RSA_PSS_SHA512_ANY_SALT: RsaVerificationAlgorithm =
+        rsa_algorithm(RsaVerification::PssAnySalt(HashId::Sha512), RSA_MIN_BITS);
 
     /// Ed25519, with 32-byte public keys and 64-byte signatures.
     ///

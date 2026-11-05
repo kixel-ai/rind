@@ -1,21 +1,17 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use super::aes::{check_gcm_lengths, expand_key};
+use super::aes::{check_gcm_iv, check_gcm_lengths, expand_key};
 use crate::Error;
 use crate::low::ghash::GhashTable;
-use crate::low::{self, AesKey, Entry, aes_gcm};
+use crate::low::{self, AesKey, Entry, aes_gcm, ct_equal};
 
 /// An AES-GCM key.
 ///
 /// Making one of these is relatively expensive due to key
 /// expansion and precomputation.
 ///
-/// This implementation is limited to that which is commonly
-/// used:
-///
-/// - AES-192 is not supported, as it is rarely used.
-/// - Only nonces that are 12-bytes/96-bits are supported.
+/// AES-192 is not supported, as it is rarely used.
 pub(crate) struct AesGcm {
     key: AesKey,
     gh: GhashTable,
@@ -96,13 +92,67 @@ impl AesGcm {
             Err(Error::DecryptFailed)
         }
     }
+
+    /// Encrypts as [`Self::encrypt`] does, under an IV of any length, and
+    /// writes the first `tag_out.len()` bytes of the tag, at most 16. A
+    /// 96-bit IV and full tag are quicker through [`Self::encrypt`].
+    ///
+    /// Also fails with [`Error::WrongLength`] if `iv` is empty or 2^61
+    /// bytes or longer.
+    pub(crate) fn encrypt_any(
+        &self,
+        iv: &[u8],
+        aad: &[u8],
+        cipher_inout: &mut [u8],
+        tag_out: &mut [u8],
+    ) -> Result<(), Error> {
+        let _entry = Entry::new_secret();
+        check_gcm_iv(iv)?;
+        check_gcm_lengths(aad.len(), cipher_inout.len())?;
+        let y0 = aes_gcm::initial_counter(&self.gh, iv);
+        let tag = aes_gcm::tagged_from::<true>(&self.key, &self.gh, y0, aad, cipher_inout);
+        tag_out.copy_from_slice(&tag[..tag_out.len()]);
+
+        low::ct::public_slice(cipher_inout);
+        low::ct::public_slice(tag_out);
+        Ok(())
+    }
+
+    /// Decrypts and verifies as [`Self::decrypt`] does, under an IV of any
+    /// length, against `tag`, the first `tag.len()` bytes of the tag, at most
+    /// 16.
+    ///
+    /// Also fails with [`Error::WrongLength`], leaving `cipher_inout`
+    /// unchanged, if `iv` is empty or 2^61 bytes or longer.
+    pub(crate) fn decrypt_any(
+        &self,
+        iv: &[u8],
+        aad: &[u8],
+        cipher_inout: &mut [u8],
+        tag: &[u8],
+    ) -> Result<(), Error> {
+        let _entry = Entry::new_secret();
+        check_gcm_iv(iv)?;
+        check_gcm_lengths(aad.len(), cipher_inout.len())?;
+        let y0 = aes_gcm::initial_counter(&self.gh, iv);
+        let want = aes_gcm::tagged_from::<false>(&self.key, &self.gh, y0, aad, cipher_inout);
+        let valid = ct_equal(&want[..tag.len()], tag);
+
+        if low::ct::into_public(valid) {
+            low::ct::public_slice(cipher_inout);
+            Ok(())
+        } else {
+            // avoid unauthenticated plaintext leak
+            cipher_inout.fill(0x00);
+            Err(Error::DecryptFailed)
+        }
+    }
 }
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::test::*;
 
     #[test]
     fn smoketest() {
@@ -141,112 +191,5 @@ mod tests {
             .unwrap();
 
         assert_eq!(plain, &[b'p'; 4164]);
-    }
-
-    #[test]
-    fn cavp() {
-        #[derive(Default)]
-        struct State {
-            encrypt: bool,
-            key: Option<AesGcm>,
-            nonce: Vec<u8>,
-            ct: Vec<u8>,
-            aad: Vec<u8>,
-            pt: Vec<u8>,
-            tag: Vec<u8>,
-        }
-
-        impl CavpSink for State {
-            fn on_meta(&mut self, _meta: &str) {}
-
-            fn on_value(&mut self, name: &str, value: Value<'_>) {
-                match name {
-                    "Count" => println!("  test {}", value.int()),
-                    "Key" => self.key = Some(AesGcm::new(&value.bytes())),
-                    "IV" => self.nonce = value.bytes(),
-                    "CT" => self.ct = value.bytes(),
-                    "AAD" => self.aad = value.bytes(),
-                    "Tag" if !self.encrypt => self.tag = value.bytes(),
-                    "Tag" if self.encrypt => {
-                        if self.nonce.len() != 12 {
-                            println!("skip unhandled nonce len");
-                            return;
-                        }
-                        let mut got_tag = [0u8; 16];
-                        self.key
-                            .as_ref()
-                            .unwrap()
-                            .encrypt(
-                                &self.nonce[..].try_into().unwrap(),
-                                &self.aad,
-                                &mut self.pt,
-                                &mut got_tag,
-                            )
-                            .unwrap();
-                        assert_eq!(self.pt, self.ct);
-                        let tag = value.bytes();
-                        assert_eq!(&got_tag[..tag.len()], &tag[..]);
-                    }
-                    "FAIL" => {
-                        assert!(!self.encrypt);
-                        // A truncated tag never reaches `decrypt`: `aead::Tag` refuses it.
-                        if self.nonce.len() != 12 || self.tag.len() != 16 {
-                            println!("skip unhandled nonce/tag len");
-                            return;
-                        }
-                        assert_eq!(
-                            self.key
-                                .as_ref()
-                                .unwrap()
-                                .decrypt(
-                                    &self.nonce[..].try_into().unwrap(),
-                                    &self.aad,
-                                    &mut self.ct,
-                                    &self.tag[..].try_into().unwrap(),
-                                )
-                                .unwrap_err(),
-                            Error::DecryptFailed,
-                        );
-                    }
-                    "PT" if !self.encrypt => {
-                        if self.nonce.len() != 12 || self.tag.len() != 16 {
-                            println!("skip unhandled nonce/tag len");
-                            return;
-                        }
-                        self.key
-                            .as_ref()
-                            .unwrap()
-                            .decrypt(
-                                &self.nonce[..].try_into().expect("only 96-bit nonce"),
-                                &self.aad,
-                                &mut self.ct,
-                                &self.tag[..].try_into().unwrap(),
-                            )
-                            .unwrap();
-                        assert_eq!(self.ct, value.bytes());
-                    }
-                    "PT" if self.encrypt => self.pt = value.bytes(),
-                    _ => {
-                        todo!("unhandled value {name} = {value:?}");
-                    }
-                }
-            }
-        }
-
-        process_cavp(
-            "../thirdparty/cavp/gcm/gcmDecrypt128.rsp",
-            &mut State::default(),
-        );
-        process_cavp(
-            "../thirdparty/cavp/gcm/gcmDecrypt256.rsp",
-            &mut State::default(),
-        );
-
-        let mut state = State {
-            encrypt: true,
-            ..Default::default()
-        };
-        process_cavp("../thirdparty/cavp/gcm/gcmEncryptExtIV128.rsp", &mut state);
-        process_cavp("../thirdparty/cavp/gcm/gcmEncryptExtIV256.rsp", &mut state);
     }
 }

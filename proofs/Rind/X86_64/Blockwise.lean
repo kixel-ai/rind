@@ -1,5 +1,6 @@
 import Rind.X86_64.Funs
 import Rind.HashSpec
+import Rind.Bytes
 open Aeneas Aeneas.Std Result
 
 /-!
@@ -430,5 +431,98 @@ theorem absorbed_append {n : Usize} {compress : List (BitVec 32) → List Byte �
   rw [hh, hR.1]
   unfold bv
   rw [List.map_append, blocks_append (by decide) _ _ (by simp [hR.2]), List.foldl_append]
+
+/-! ## SHA-256's digest -/
+
+/-- The bytes `u32::to_be_bytes` writes. -/
+def beBytes (w : U32) : List U8 := w.bv.toBEBytes.map (@UScalar.mk UScalarTy.U8)
+
+theorem sha256_digest_loop_spec
+    (it : core.iter.adapters.enumerate.Enumerate (core.slice.iter.Iter Std.U32))
+    (r : Std.Array U8 32#usize) (V : List U32) (hVl : V.length = 8)
+    (hV : it.iter.slice.val = V) (hi : it.iter.i = it.count.val) (hk : it.count.val ≤ 8)
+    (hr : r.val.take (4 * it.count.val) = (V.take it.count.val).flatMap beBytes) :
+    low.generic.blockwise.sha256_digest_loop it r ⦃ r' => r'.val = V.flatMap beBytes ⦄ := by
+  unfold low.generic.blockwise.sha256_digest_loop
+  apply loop.spec_decr_nat (fun x => 8 - x.1.count.val)
+    (fun x => x.1.iter.slice.val = V ∧ x.1.iter.i = x.1.count.val ∧ x.1.count.val ≤ 8 ∧
+      x.2.val.take (4 * x.1.count.val) = (V.take x.1.count.val).flatMap beBytes)
+  · rintro ⟨it, r⟩ ⟨hV, hi, hk, hr⟩
+    simp only at hV hi hk hr ⊢
+    unfold low.generic.blockwise.sha256_digest_loop.body
+    simp only [core.iter.adapters.enumerate.IteratorEnumerate.next,
+      core.slice.iter.IteratorSliceIter.next]
+    have hsl : it.iter.slice.len.val = 8 := by simp [Slice.len, hV, hVl]
+    split
+    · rename_i hlt
+      have hk4 : it.count.val < 8 := by omega
+      step*
+      · rw [s_post1, s1_post]
+        simp [i3_post, i2_post, i1_post, Slice.length]
+        omega
+      · have ha8 : (a.val).length = 4 := a.property
+        have hw : it.iter.slice[it.iter.i] = V[it.count.val] := by
+          subst hV
+          show it.iter.slice.val[it.iter.i]'(by simp [Slice.len] at hlt; omega) = _
+          simp only [hi]
+        refine ⟨hV, by omega, by omega, ?_, by omega⟩
+        rw [s_post2, s2_post, s1_post]
+        have hr32 : (r.val).length = 32 := r.property
+        have := rind.spec.take_setSlice! r.val a.val (i1.val) (by rw [ha8, i1_post]; omega)
+        simp only [Array.val_to_slice, ha8] at this ⊢
+        rw [show 4 * x.val = i1.val + 4 by rw [x_post, i1_post]; ring, this, i1_post,
+          show it.count.val * 4 = 4 * it.count.val by ring, hr, x_post, List.take_add_one,
+          List.flatMap_append, List.getElem?_eq_getElem (by omega)]
+        simp [a_post, hw, beBytes]
+    · rename_i hlt
+      have hk4 : it.count.val = 8 := by omega
+      have hr32 : (r.val).length = 32 := r.property
+      rw [hk4, List.take_of_length_le (by omega), List.take_of_length_le (by omega)] at hr
+      simpa [WP.spec_ok] using hr
+  · exact ⟨hV, hi, hk, hr⟩
+
+theorem bv_flatMap_beBytes (V : List U32) :
+    bv (V.flatMap beBytes) = (words V).flatMap BitVec.toBEBytes := by
+  induction V with
+  | nil => rfl
+  | cons w V ih =>
+    simp only [List.flatMap_cons, bv, List.map_append, words, List.map_cons] at ih ⊢
+    rw [ih]
+    simp [beBytes, List.map_map, Function.comp_def]
+
+/-- The digest is the hash value's words, big-endian. -/
+theorem sha256_digest_spec (h : Std.Array U32 8#usize) :
+    low.generic.blockwise.sha256_digest h ⦃ r =>
+      bv r.val = (words h.val).flatMap BitVec.toBEBytes ⦄ := by
+  unfold low.generic.blockwise.sha256_digest
+  simp only [core.slice.Slice.iter]
+  step*
+  have hv : (h.val).length = 8 := h.property
+  apply WP.spec_mono (sha256_digest_loop_spec iter _ h.val hv ?_ ?_ ?_ ?_)
+  · intro r hr
+    rw [hr, bv_flatMap_beBytes]
+  all_goals simp [iter_post, iter_post1, s_post, Array.val_to_slice]
+
+/-- SHA-256's digest of `P`, whole blocks, then `m`, padded and closed by
+`length`. -/
+def sha256Finished (P m length : List U8) : List Byte :=
+  ((rind.spec.blocks 64 (bv (P ++ m ++ [128#u8] ++ List.replicate (padZeros 64 8 m.length) 0#u8 ++
+    length))).foldl rind.spec.sha256.compress rind.spec.sha256.H0).flatMap BitVec.toBEBytes
+
+/-- A routine's digest from a hash value that has absorbed `P`, over whole
+blocks `b` and then `rest`, is `P`'s followed by `b ++ rest`. -/
+theorem sha256Finished_split {P b rest length : List U8} {state : Std.Array U32 8#usize}
+    (hR : Absorbed rind.spec.sha256.compress rind.spec.sha256.H0 P state) (hb : b.length % 64 = 0) :
+    ((rind.spec.blocks 64 (bv (b ++ rest ++ [128#u8] ++
+      List.replicate (padZeros 64 8 rest.length) 0#u8 ++ length))).foldl rind.spec.sha256.compress
+        (words state.val)).flatMap BitVec.toBEBytes = sha256Finished P (b ++ rest) length := by
+  have hz : padZeros 64 8 (b ++ rest).length = padZeros 64 8 rest.length := by
+    have := padZeros_sub (N := 64) (L := 8) (n := (b ++ rest).length) (start := b.length) hb
+      (by simp)
+    rw [← this]
+    simp
+  unfold sha256Finished
+  rw [hz, hR.1, ← List.foldl_append, ← blocks_append (by decide) _ _ (by simp [bv, hR.2])]
+  simp [bv, List.map_append, List.append_assoc]
 
 end rind.x86_64

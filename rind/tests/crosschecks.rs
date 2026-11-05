@@ -20,9 +20,10 @@ fn ed25519_key_generation() {
     }
 }
 
-// Every length to three of the larger blocks, so each tail lands on both
-// sides of the length field for both block sizes. One-shot, and in updates
-// that end on each block boundary, which leave a whole block buffered.
+// Every length to three of SHA-2's larger blocks, so each tail lands on both
+// sides of the length field for both block sizes, and SHA-3's padding lands
+// in one byte, two, or a block of its own. One-shot, and in updates that end
+// on each block boundary, which leave SHA-2 a whole block buffered.
 #[test]
 fn hashes_every_length() {
     let message: Vec<u8> = (0..3 * 128 + 1).map(|i| (i * 7 + 3) as u8).collect();
@@ -36,6 +37,9 @@ fn hashes_every_length() {
         (&rind::digest::SHA384, &digest::SHA384, 128),
         (&rind::digest::SHA512, &digest::SHA512, 128),
         (&rind::digest::SHA512_256, &digest::SHA512_256, 128),
+        (&rind::digest::SHA3_256, &digest::SHA3_256, 136),
+        (&rind::digest::SHA3_384, &digest::SHA3_384, 104),
+        (&rind::digest::SHA3_512, &digest::SHA3_512, 72),
     ] {
         for len in 0..=message.len() {
             let message = &message[..len];
@@ -72,6 +76,9 @@ proptest! {
             (&rind::digest::SHA384, &digest::SHA384),
             (&rind::digest::SHA512, &digest::SHA512),
             (&rind::digest::SHA512_256, &digest::SHA512_256),
+            (&rind::digest::SHA3_256, &digest::SHA3_256),
+            (&rind::digest::SHA3_384, &digest::SHA3_384),
+            (&rind::digest::SHA3_512, &digest::SHA3_512),
         ] {
             let mut ctx = rind::digest::Context::new(ours);
             let mut start = 0;
@@ -139,7 +146,6 @@ mod cipher {
     use aws_lc_rs::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, Nonce, UnboundKey, quic};
     use aws_lc_rs::cipher::{AES_128, AES_256, EncryptingKey, EncryptionContext, UnboundCipherKey};
     use proptest::prelude::*;
-    use rind::Error;
     use rind::cipher::{self, Aes, AesCtr, ChaCha20};
 
     fn aes_key() -> impl Strategy<Value = Vec<u8>> {
@@ -162,9 +168,16 @@ mod cipher {
         UnboundCipherKey::new(alg, key).unwrap()
     }
 
-    // Counters near the top of the range exercise the wrap refusal.
-    fn counter() -> impl Strategy<Value = u32> {
-        prop_oneof![any::<u32>(), (u32::MAX - 80)..=u32::MAX]
+    // Counter blocks near a 32-bit or the 128-bit wrap exercise the carries.
+    fn counter_block() -> impl Strategy<Value = [u8; 16]> {
+        prop_oneof![
+            any::<[u8; 16]>(),
+            (any::<u128>(), (u32::MAX - 80)..=u32::MAX)
+                .prop_map(
+                    |(high, low)| (high & !u128::from(u32::MAX) | u128::from(low)).to_be_bytes()
+                ),
+            ((u128::MAX - 80)..=u128::MAX).prop_map(u128::to_be_bytes),
+        ]
     }
 
     proptest! {
@@ -184,33 +197,21 @@ mod cipher {
         #[test]
         fn aes_ctr(
             key in aes_key(),
-            nonce in any::<[u8; 12]>(),
-            counter in counter(),
+            counter_block in counter_block(),
             msg in prop::collection::vec(any::<u8>(), 0..1100),
         ) {
+            // aws-lc-rs's counter is the whole block
             let mut ours = msg.clone();
-            let result = AesCtr::new(rind_aes_algorithm(&key), &key)
+            AesCtr::new(rind_aes_algorithm(&key), &key, 128)
                 .unwrap()
-                .apply_keystream(&nonce, counter, &mut ours);
+                .apply_keystream(&counter_block, &mut ours)
+                .unwrap();
 
-            // aws-lc-rs carries into the nonce where we refuse, so compare only
-            // what we accept.
-            let blocks = msg.len().div_ceil(16) as u64;
-            if u64::from(counter) + blocks > 1 << 32 {
-                prop_assert_eq!(result, Err(Error::WrongLength));
-                prop_assert_eq!(ours, msg);
-                return Ok(());
-            }
-            result.unwrap();
-
-            let mut iv = [0u8; 16];
-            iv[..12].copy_from_slice(&nonce);
-            iv[12..].copy_from_slice(&counter.to_be_bytes());
             let mut theirs = msg.clone();
             if !theirs.is_empty() {
                 EncryptingKey::ctr(aws_aes_key(&key))
                     .unwrap()
-                    .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(iv.into()))
+                    .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(counter_block.into()))
                     .unwrap();
             }
             prop_assert_eq!(ours, theirs);
@@ -289,6 +290,53 @@ mod cipher {
                     .unwrap();
                 assert_eq!(split_out, theirs[..len], "{len} bytes, split at {split}");
             }
+        }
+    }
+}
+
+mod key_wrap {
+    use aws_lc_rs::key_wrap::{AES_128, AES_256, AesKek, KeyWrap};
+    use proptest::prelude::*;
+    use rind::Error;
+    use rind::key_wrap as ours;
+
+    fn kek() -> impl Strategy<Value = Vec<u8>> {
+        prop_oneof![
+            prop::collection::vec(any::<u8>(), 16),
+            prop::collection::vec(any::<u8>(), 32)
+        ]
+    }
+
+    // aws-lc-rs's wrapping consumes its key, so each call takes a new one.
+    fn theirs(kek: &[u8]) -> AesKek {
+        AesKek::new(if kek.len() == 16 { &AES_128 } else { &AES_256 }, kek).unwrap()
+    }
+
+    proptest! {
+        #[test]
+        fn wrap_and_unwrap(
+            kek in kek(),
+            key in (2..=12usize).prop_flat_map(|n| prop::collection::vec(any::<u8>(), 8 * n)),
+            flip in any::<prop::sample::Index>(),
+        ) {
+            let algorithm = if kek.len() == 16 { &ours::AES_128 } else { &ours::AES_256 };
+            let ours = ours::AesKek::new(algorithm, &kek).unwrap();
+
+            let mut wrapped = vec![0u8; key.len() + 8];
+            ours.wrap(&key, &mut wrapped).unwrap();
+            let mut wanted = vec![0u8; key.len() + 8];
+            theirs(&kek).wrap(&key, &mut wanted).unwrap();
+            prop_assert_eq!(&wrapped, &wanted);
+
+            let mut unwrapped = vec![0u8; key.len()];
+            ours.unwrap(&wrapped, &mut unwrapped).unwrap();
+            prop_assert_eq!(&unwrapped, &key);
+
+            // both refuse any single bit flipped
+            let bit = flip.index(wrapped.len() * 8);
+            wrapped[bit / 8] ^= 1 << (bit % 8);
+            prop_assert_eq!(ours.unwrap(&wrapped, &mut unwrapped), Err(Error::DecryptFailed));
+            prop_assert!(theirs(&kek).unwrap(&wrapped, &mut vec![0u8; key.len()]).is_err());
         }
     }
 }
@@ -468,8 +516,19 @@ mod aead {
     use proptest::sample::Index;
     use rind::Error;
     use rind::aead::{
-        AES_128_GCM, AES_256_GCM, Algorithm, CHACHA20_POLY1305, Key, Nonce, RandomizedNonceKey,
+        AES_128_GCM, AES_256_GCM, Algorithm, CHACHA20_POLY1305, Key, Nonce, RandomizedNonceKey, gcm,
     };
+    use rind::cipher::{AES_128, AES_256};
+
+    const TAG_LENGTHS: [gcm::TagLength; 7] = [
+        gcm::TagLength::Full,
+        gcm::TagLength::Truncated120,
+        gcm::TagLength::Truncated112,
+        gcm::TagLength::Truncated104,
+        gcm::TagLength::Truncated96,
+        gcm::TagLength::Truncated64,
+        gcm::TagLength::Truncated32,
+    ];
 
     /// Seals on both sides and compares, then opens aws-lc-rs's output,
     /// first with one bit of its ciphertext or tag flipped if `flip` is set.
@@ -563,6 +622,73 @@ mod aead {
             flip in any::<Option<Index>>(),
         ) {
             check(&CHACHA20_POLY1305, &theirs::CHACHA20_POLY1305, &key, nonce, &aad, &msg, flip)?;
+        }
+
+        // aws-lc-rs takes only 96-bit nonces and full tags, so this seals
+        // with aws-lc's AES-GCM under an IV of any length and each tag
+        // length, then opens that, as `check` does.
+        #[test]
+        fn aes_gcm_any_iv(
+            key in prop_oneof![vec(any::<u8>(), 16), vec(any::<u8>(), 32)],
+            iv in prop_oneof![vec(any::<u8>(), 12), vec(any::<u8>(), 1..80)],
+            tag_len in proptest::sample::select(&TAG_LENGTHS[..]),
+            aad in vec(any::<u8>(), 0..100),
+            msg in vec(any::<u8>(), 0..1100),
+            flip in any::<Option<Index>>(),
+        ) {
+            let aes = if key.len() == 16 { &AES_128 } else { &AES_256 };
+            let ours = gcm::Key::new(aes, &key, tag_len).unwrap();
+            let mut ours_sealed = msg.clone();
+            ours.seal_in_place_append_tag(&iv, &aad, &mut ours_sealed).unwrap();
+
+            let mut theirs_sealed = msg.clone();
+            theirs_sealed.extend([0; 16]);
+            let (out, tag) = theirs_sealed.split_at_mut(msg.len());
+            let tag = &mut tag[..ours.tag_len()];
+            let mut written = 0;
+            // SAFETY: each pointer and length describes a live buffer, and
+            // the context is freed once, after its last use.
+            let sealed = unsafe {
+                let aead = match key.len() {
+                    16 => aws_lc_sys::EVP_aead_aes_128_gcm(),
+                    _ => aws_lc_sys::EVP_aead_aes_256_gcm(),
+                };
+                let ctx = aws_lc_sys::EVP_AEAD_CTX_new(aead, key.as_ptr(), key.len(), tag.len());
+                assert!(!ctx.is_null());
+                let sealed = aws_lc_sys::EVP_AEAD_CTX_seal_scatter(
+                    ctx,
+                    out.as_mut_ptr(),
+                    tag.as_mut_ptr(),
+                    &mut written,
+                    tag.len(),
+                    iv.as_ptr(),
+                    iv.len(),
+                    msg.as_ptr(),
+                    msg.len(),
+                    core::ptr::null(),
+                    0,
+                    aad.as_ptr(),
+                    aad.len(),
+                );
+                aws_lc_sys::EVP_AEAD_CTX_free(ctx);
+                sealed
+            };
+            prop_assert_eq!((sealed, written), (1, ours.tag_len()));
+            theirs_sealed.truncate(msg.len() + ours.tag_len());
+            prop_assert_eq!(&ours_sealed, &theirs_sealed);
+
+            if let Some(flip) = flip {
+                let index = flip.index(theirs_sealed.len());
+                theirs_sealed[index] ^= 1;
+            }
+            let result = ours
+                .open_in_place(&iv, &aad, &mut theirs_sealed)
+                .map(|plain| plain.to_vec());
+            if flip.is_some() {
+                prop_assert_eq!(result, Err(Error::DecryptFailed));
+            } else {
+                prop_assert_eq!(result, Ok(msg));
+            }
         }
 
         // aws-lc-rs has no XChaCha20-Poly1305, so this seals with aws-lc's
@@ -973,11 +1099,15 @@ mod rsa {
     use aws_lc_rs::encoding::AsDer;
     use aws_lc_rs::rand::SystemRandom;
     use aws_lc_rs::rsa::{KeyPair, KeySize};
+    use aws_lc_rs::signature::RsaPssSaltLength as TheirsSaltLength;
     use aws_lc_rs::signature::{self, KeyPair as _, UnparsedPublicKey};
     use proptest::collection::vec;
     use proptest::prelude::*;
     use rind::Error;
-    use rind::signature::{RsaKeyPair, RsaKeySize, sign, verify};
+    use rind::signature::{
+        RsaKeyPair, RsaKeySize, RsaPssSaltLength, RsaSigningAlgorithm, RsaVerificationAlgorithm,
+        sign, verify,
+    };
 
     /// One padding and hash: each side's signing and verification constants.
     struct Scheme {
@@ -1157,6 +1287,115 @@ mod rsa {
         }
     }
 
+    /// One PSS hash with a chosen salt length: each side's constructor.
+    struct PssSalt {
+        ours_sign: fn(RsaPssSaltLength) -> RsaSigningAlgorithm,
+        ours_verify: fn(RsaPssSaltLength) -> RsaVerificationAlgorithm,
+        ours_any_salt: &'static RsaVerificationAlgorithm,
+        theirs_sign: fn(TheirsSaltLength) -> signature::RsaSignatureEncoding,
+        theirs_verify: fn(TheirsSaltLength) -> signature::RsaParameters,
+        hash_len: usize,
+    }
+
+    const PSS_SALTS: [PssSalt; 3] = [
+        PssSalt {
+            ours_sign: RsaSigningAlgorithm::pss_sha256,
+            ours_verify: RsaVerificationAlgorithm::pss_sha256,
+            ours_any_salt: &verify::RSA_PSS_SHA256_ANY_SALT,
+            theirs_sign: |salt| signature::RSA_PSS_SHA256.with_pss_salt_length(salt),
+            theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA256.with_pss_salt_length(salt),
+            hash_len: 32,
+        },
+        PssSalt {
+            ours_sign: RsaSigningAlgorithm::pss_sha384,
+            ours_verify: RsaVerificationAlgorithm::pss_sha384,
+            ours_any_salt: &verify::RSA_PSS_SHA384_ANY_SALT,
+            theirs_sign: |salt| signature::RSA_PSS_SHA384.with_pss_salt_length(salt),
+            theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA384.with_pss_salt_length(salt),
+            hash_len: 48,
+        },
+        PssSalt {
+            ours_sign: RsaSigningAlgorithm::pss_sha512,
+            ours_verify: RsaVerificationAlgorithm::pss_sha512,
+            ours_any_salt: &verify::RSA_PSS_SHA512_ANY_SALT,
+            theirs_sign: |salt| signature::RSA_PSS_SHA512.with_pss_salt_length(salt),
+            theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA512.with_pss_salt_length(salt),
+            hash_len: 64,
+        },
+    ];
+
+    // As `sign_verify`, a dozen private-key operations per key per case.
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(8))]
+
+        /// Each side verifies the other's PSS signatures with any salt length
+        /// the modulus allows, as does any-salt verification, and both refuse
+        /// one a byte longer.
+        #[test]
+        fn pss_salt_lengths(salt in any::<u16>(), message in vec(any::<u8>(), 0..300)) {
+            for theirs in &*THEIRS {
+                let ours = RsaKeyPair::from_pkcs8(theirs.as_der().unwrap().as_ref()).unwrap();
+                let public = theirs.public_key().as_ref();
+                let bits = signature::RsaParameters::public_modulus_len(public).unwrap() as usize;
+                let rng = SystemRandom::new();
+
+                for pss in &PSS_SALTS {
+                    let any_salt =
+                        rind::signature::PublicKey::new(pss.ours_any_salt, public).unwrap();
+                    // RFC 8017 section 9.1.1's `emLen - hLen - 2`.
+                    let max = u16::try_from((bits - 1).div_ceil(8) - pss.hash_len - 2).unwrap();
+                    let custom = salt % (max + 1);
+
+                    for (ours_salt, theirs_salt) in [
+                        (RsaPssSaltLength::Custom(custom), TheirsSaltLength::Custom(custom)),
+                        (RsaPssSaltLength::Max, TheirsSaltLength::Max),
+                        (RsaPssSaltLength::Custom(max + 1), TheirsSaltLength::Custom(max + 1)),
+                    ] {
+                        // aws-lc-rs takes only `'static` algorithms.
+                        let theirs_sign = Box::leak(Box::new((pss.theirs_sign)(theirs_salt)));
+                        let theirs_verify = Box::leak(Box::new((pss.theirs_verify)(theirs_salt)));
+                        let ours_sign = (pss.ours_sign)(ours_salt);
+                        let ours_verify = rind::signature::PublicKey::new(
+                            &(pss.ours_verify)(ours_salt),
+                            public,
+                        );
+
+                        let mut theirs_signature = vec![0u8; theirs.public_modulus_len()];
+                        let theirs_signed =
+                            theirs.sign(theirs_sign, &rng, &message, &mut theirs_signature);
+                        if ours_salt == RsaPssSaltLength::Custom(max + 1) {
+                            prop_assert!(theirs_signed.is_err());
+                            prop_assert!(matches!(
+                                ours.sign(&ours_sign, &message),
+                                Err(Error::KeyRejected(_))
+                            ));
+                            prop_assert!(matches!(ours_verify, Err(Error::KeyRejected(_))));
+                            continue;
+                        }
+                        theirs_signed.unwrap();
+                        let ours_verify = ours_verify.unwrap();
+                        let other_message = [&message[..], b"!"].concat();
+                        for verifier in [&ours_verify, &any_salt] {
+                            verifier.verify(&message, &theirs_signature).unwrap();
+                            prop_assert_eq!(
+                                verifier.verify(&other_message, &theirs_signature),
+                                Err(Error::BadSignature)
+                            );
+                        }
+
+                        let ours_signature = ours.sign(&ours_sign, &message).unwrap();
+                        UnparsedPublicKey::new(theirs_verify, public)
+                            .verify(&message, ours_signature.as_ref())
+                            .unwrap();
+                        ours.public_key(&ours_sign)
+                            .verify(&message, ours_signature.as_ref())
+                            .unwrap();
+                    }
+                }
+            }
+        }
+    }
+
     // Every verification algorithm, beside aws-lc-rs's of the same name.
     const VERIFICATION: [(
         &rind::signature::RsaVerificationAlgorithm,
@@ -1299,6 +1538,236 @@ mod rsa {
             rind::signature::PublicKey::new(&verify::RSA_PKCS1_SHA256, public),
             Err(Error::KeyRejected(_))
         ));
+    }
+
+    mod oaep {
+        use aws_lc_rs::encoding::{AsDer, PublicKeyX509Der};
+        use aws_lc_rs::rand::SystemRandom;
+        use aws_lc_rs::rsa::{
+            OAEP_SHA1_MGF1SHA1, OAEP_SHA256_MGF1SHA256, OAEP_SHA384_MGF1SHA384,
+            OAEP_SHA512_MGF1SHA512, OaepAlgorithm, OaepPrivateDecryptingKey,
+            OaepPublicEncryptingKey, PrivateDecryptingKey, PublicEncryptingKey,
+        };
+        use aws_lc_rs::signature::{self, KeyPair as _, UnparsedPublicKey};
+        use proptest::collection::vec;
+        use proptest::prelude::*;
+        use rind::Error;
+        use rind::rsa::{self as ours, DecryptingKey, EncryptingKey};
+        use rind::signature::verify;
+
+        use super::THEIRS;
+        use crate::der;
+
+        const ALGORITHMS: [(&ours::OaepAlgorithm, &OaepAlgorithm); 4] = [
+            (&ours::legacy::OAEP_SHA1, &OAEP_SHA1_MGF1SHA1),
+            (&ours::OAEP_SHA256, &OAEP_SHA256_MGF1SHA256),
+            (&ours::OAEP_SHA384, &OAEP_SHA384_MGF1SHA384),
+            (&ours::OAEP_SHA512, &OAEP_SHA512_MGF1SHA512),
+        ];
+
+        /// For each of `THEIRS` and each algorithm: our key, and aws-lc-rs's
+        /// and its public key, loaded from its PKCS#8.
+        fn keys() -> impl Iterator<
+            Item = (
+                &'static ours::OaepAlgorithm,
+                &'static OaepAlgorithm,
+                DecryptingKey,
+                OaepPrivateDecryptingKey,
+                PublicEncryptingKey,
+            ),
+        > {
+            THEIRS.iter().flat_map(|theirs| {
+                let pkcs8 = theirs.as_der().unwrap();
+                ALGORITHMS.map(|(ours_algorithm, theirs_algorithm)| {
+                    let ours = DecryptingKey::from_pkcs8(ours_algorithm, pkcs8.as_ref()).unwrap();
+                    let theirs = PrivateDecryptingKey::from_pkcs8(pkcs8.as_ref()).unwrap();
+                    let public = theirs.public_key();
+                    (
+                        ours_algorithm,
+                        theirs_algorithm,
+                        ours,
+                        OaepPrivateDecryptingKey::new(theirs).unwrap(),
+                        public,
+                    )
+                })
+            })
+        }
+
+        fn decrypt(
+            key: &OaepPrivateDecryptingKey,
+            algorithm: &'static OaepAlgorithm,
+            ciphertext: &[u8],
+            label: &[u8],
+        ) -> Option<Vec<u8>> {
+            let mut out = vec![0; key.min_output_size()];
+            let out = key
+                .decrypt(algorithm, ciphertext, &mut out, Some(label))
+                .ok()?;
+            Some(out.to_vec())
+        }
+
+        // Each case makes several private-key operations per key and
+        // algorithm, which are slow under emulation.
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(4))]
+
+            /// Each decrypts what the other encrypts, through the SPKI each
+            /// gives the other.
+            #[test]
+            fn encrypt_decrypt(
+                message in vec(any::<u8>(), 0..200),
+                label in vec(any::<u8>(), 0..40),
+            ) {
+                for (ours_algorithm, theirs_algorithm, ours, theirs, public) in keys() {
+                    let spki: PublicKeyX509Der<'_> = public.as_der().unwrap();
+                    let ours_spki = ours.to_spki();
+                    prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
+                    let ours_public = EncryptingKey::new(ours_algorithm, spki.as_ref()).unwrap();
+                    let theirs_public = OaepPublicEncryptingKey::new(
+                        PublicEncryptingKey::from_der(ours_spki.as_ref()).unwrap(),
+                    )
+                    .unwrap();
+
+                    let max = theirs_public.max_plaintext_size(theirs_algorithm);
+                    prop_assert_eq!(ours_public.max_message_len(), max);
+                    let message = &message[..message.len().min(max)];
+
+                    let ciphertext = ours_public.encrypt(message, &label).unwrap();
+                    let decrypted = decrypt(&theirs, theirs_algorithm, ciphertext.as_ref(), &label);
+                    prop_assert_eq!(decrypted.as_deref(), Some(message));
+
+                    let mut ciphertext = vec![0; theirs_public.ciphertext_size()];
+                    let ciphertext = theirs_public
+                        .encrypt(theirs_algorithm, message, &mut ciphertext, Some(&label))
+                        .unwrap();
+                    let decrypted = ours.decrypt(ciphertext, &label).unwrap();
+                    prop_assert_eq!(decrypted.as_ref(), message);
+                }
+            }
+
+            /// Both accept the same ciphertexts, tampered with or made up,
+            /// and decrypt them to the same message.
+            #[test]
+            fn decrypt_agrees(
+                flip in any::<prop::sample::Index>(),
+                bytes in vec(any::<u8>(), 256..=257),
+            ) {
+                for (_, theirs_algorithm, ours, theirs, _) in keys() {
+                    let ciphertext = ours.public_key().encrypt(b"message", b"").unwrap();
+                    let mut tampered = ciphertext.as_ref().to_vec();
+                    let i = flip.index(tampered.len());
+                    tampered[i] ^= 1;
+                    for ciphertext in [&tampered, &bytes] {
+                        let ours = ours.decrypt(ciphertext, b"");
+                        let theirs = decrypt(&theirs, theirs_algorithm, ciphertext, b"");
+                        match (&ours, &theirs) {
+                            (Ok(ours), Some(theirs)) => prop_assert_eq!(ours.as_ref(), &theirs[..]),
+                            (Err(Error::DecryptFailed), None) => {}
+                            _ => prop_assert!(false, "ours {:?}, theirs {:?}", ours, theirs),
+                        }
+                    }
+                }
+            }
+        }
+
+        /// RSA SPKI forms through `EncryptingKey::new` and
+        /// `signature::PublicKey::new`, each beside aws-lc-rs, which also
+        /// ignores the algorithm's parameters and bytes after the SPKI.
+        #[test]
+        fn spki_forms_agree() {
+            let theirs = &THEIRS[0];
+            let pkcs1 = theirs.public_key().as_ref();
+            let rsa_encryption = [
+                0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+            ];
+            let rsassa_pss = [
+                0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a,
+            ];
+            let ec_public_key = [0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01];
+            let rsa_null = [&rsa_encryption[..], &[0x05, 0x00]].concat();
+            let spki = |algorithm: &[u8], bits: &[u8]| {
+                der(0x30, &[der(0x30, algorithm), der(0x03, bits)].concat())
+            };
+            let key = [&[0][..], pkcs1].concat();
+
+            // Each form, whether rind takes it, and whether aws-lc-rs does.
+            let cases: [(&str, Vec<u8>, bool, bool); 9] = [
+                ("canonical", spki(&rsa_null, &key), true, true),
+                ("no parameters", spki(&rsa_encryption, &key), true, true),
+                (
+                    "empty-sequence parameters",
+                    spki(&[&rsa_encryption[..], &[0x30, 0x00]].concat(), &key),
+                    false,
+                    true,
+                ),
+                (
+                    "RSASSA-PSS",
+                    spki(&[&rsassa_pss[..], &[0x05, 0x00]].concat(), &key),
+                    false,
+                    false,
+                ),
+                (
+                    "EC",
+                    spki(&[&ec_public_key[..], &[0x05, 0x00]].concat(), &key),
+                    false,
+                    false,
+                ),
+                (
+                    "unused bits",
+                    spki(&rsa_null, &[&[1][..], pkcs1].concat()),
+                    false,
+                    false,
+                ),
+                ("empty bit string", spki(&rsa_null, &[]), false, false),
+                (
+                    "trailing data",
+                    [spki(&rsa_null, &key), vec![0]].concat(),
+                    false,
+                    true,
+                ),
+                (
+                    "trailing key data",
+                    spki(&rsa_null, &[&key[..], &[0]].concat()),
+                    false,
+                    false,
+                ),
+            ];
+            assert_eq!(cases[0].1, theirs.public_key().as_der().unwrap().as_ref());
+
+            let message = b"message";
+            let mut signature = vec![0; theirs.public_modulus_len()];
+            theirs
+                .sign(
+                    &signature::RSA_PKCS1_SHA256,
+                    &SystemRandom::new(),
+                    message,
+                    &mut signature,
+                )
+                .unwrap();
+
+            for (case, der, ours_take, theirs_take) in &cases {
+                assert_eq!(
+                    PublicEncryptingKey::from_der(der).is_ok(),
+                    *theirs_take,
+                    "{case}"
+                );
+                let ours = EncryptingKey::new(&ours::OAEP_SHA256, der);
+                assert_eq!(ours.is_ok(), *ours_take, "{case}: {ours:?}");
+                if let Ok(ours) = ours {
+                    assert_eq!(ours.as_ref(), pkcs1, "{case}");
+                }
+
+                let theirs = UnparsedPublicKey::new(&signature::RSA_PKCS1_2048_8192_SHA256, der)
+                    .verify(message, &signature);
+                assert_eq!(theirs.is_ok(), *theirs_take, "{case}");
+                let ours = rind::signature::PublicKey::new(&verify::RSA_PKCS1_SHA256, der);
+                assert_eq!(ours.is_ok(), *ours_take, "{case}: {ours:?}");
+                if let Ok(ours) = ours {
+                    assert_eq!(ours.as_ref(), pkcs1, "{case}");
+                    ours.verify(message, &signature).unwrap();
+                }
+            }
+        }
     }
 }
 

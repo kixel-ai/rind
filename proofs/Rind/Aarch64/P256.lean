@@ -430,15 +430,15 @@ theorem wordsNat_CURVE_PRIME : wordsNat mid.p256.CURVE_PRIME.val = p256 := by
 theorem below_p_loop_spec (v : Std.Array U64 4#usize) (iter : core.ops.range.Range Std.Usize)
     (hs : iter.start.val ≤ 4) (he : iter.end.val = 4)
     (heq : ∀ k < iter.start.val, v.val[3 - k]! = mid.p256.CURVE_PRIME.val[3 - k]!) :
-    mid.p256.AffineMontPoint.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnTupleShared0ArrayU644Bool.call_loop
+    mid.p256.public_below_p_loop
       iter v ⦃ b => (b ↔ wordsNat v.val < p256) ⦄ := by
   have hv : (v.val).length = 4 := v.property
-  unfold mid.p256.AffineMontPoint.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnTupleShared0ArrayU644Bool.call_loop
+  unfold mid.p256.public_below_p_loop
   apply loop.spec_decr_nat (fun x => 4 - x.start.val)
     (fun x => x.start.val ≤ 4 ∧ x.end.val = 4 ∧
       ∀ k < x.start.val, v.val[3 - k]! = mid.p256.CURVE_PRIME.val[3 - k]!)
   · rintro it ⟨hs, he, heq⟩
-    unfold mid.p256.AffineMontPoint.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnTupleShared0ArrayU644Bool.call_loop.body
+    unfold mid.p256.public_below_p_loop.body
     step as ⟨o, iter1, ho, he1⟩
     split_ifs at ho with hlt
     · obtain ⟨rfl, hst⟩ := ho
@@ -477,8 +477,7 @@ theorem below_p_loop_spec (v : Std.Array U64 4#usize) (iter : core.ops.range.Ran
 
 @[step]
 theorem below_p_spec (v : Std.Array U64 4#usize) :
-    mid.p256.AffineMontPoint.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnTupleShared0ArrayU644Bool.call
-      () v ⦃ b => (b ↔ wordsNat v.val < p256) ⦄ :=
+    mid.p256.public_below_p v ⦃ b => (b ↔ wordsNat v.val < p256) ⦄ :=
   below_p_loop_spec v _ (by simp) (by simp) (by simp)
 
 theorem from_x962_spec (bytes : Slice U8) :

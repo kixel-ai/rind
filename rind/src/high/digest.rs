@@ -9,7 +9,7 @@ use super::hash::{
     Sha512, Sha512Context,
 };
 use crate::low::{Entry, Zeroable, ZeroableRef, ct, ct_equal, zeroise_value};
-use crate::mid::{sha1, sha2};
+use crate::mid::{sha1, sha2, sha3};
 
 /// A hash function, chosen by one of this module's constants.
 pub struct Algorithm {
@@ -28,6 +28,9 @@ enum Id {
     Sha384,
     Sha512,
     Sha512_256,
+    Sha3_256,
+    Sha3_384,
+    Sha3_512,
 }
 
 impl Algorithm {
@@ -92,6 +95,30 @@ pub static SHA512_256: Algorithm = Algorithm {
     start: Hashing::<Sha512_256Context>::start,
 };
 
+/// SHA3-256, from [FIPS 202](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf).
+pub static SHA3_256: Algorithm = Algorithm {
+    id: Id::Sha3_256,
+    output_len: sha3::Sha3_256Context::OUTPUT_SZ,
+    hash: one_shot::<Sha3_256Context>,
+    start: Hashing::<Sha3_256Context>::start,
+};
+
+/// SHA3-384, from [FIPS 202](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf).
+pub static SHA3_384: Algorithm = Algorithm {
+    id: Id::Sha3_384,
+    output_len: sha3::Sha3_384Context::OUTPUT_SZ,
+    hash: one_shot::<Sha3_384Context>,
+    start: Hashing::<Sha3_384Context>::start,
+};
+
+/// SHA3-512, from [FIPS 202](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf).
+pub static SHA3_512: Algorithm = Algorithm {
+    id: Id::Sha3_512,
+    output_len: sha3::Sha3_512Context::OUTPUT_SZ,
+    hash: one_shot::<Sha3_512Context>,
+    start: Hashing::<Sha3_512Context>::start,
+};
+
 /// Hashes `data` in one go.
 pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
     let _entry = Entry::new_secret();
@@ -114,6 +141,9 @@ enum State {
     Sha384(Hashing<Sha384Context>),
     Sha512(Hashing<Sha512Context>),
     Sha512_256(Hashing<Sha512_256Context>),
+    Sha3_256(Hashing<Sha3_256Context>),
+    Sha3_384(Hashing<Sha3_384Context>),
+    Sha3_512(Hashing<Sha3_512Context>),
 }
 
 impl State {
@@ -124,16 +154,22 @@ impl State {
             Self::Sha384(hashing) => hashing.update(data),
             Self::Sha512(hashing) => hashing.update(data),
             Self::Sha512_256(hashing) => hashing.update(data),
+            Self::Sha3_256(hashing) => hashing.update(data),
+            Self::Sha3_384(hashing) => hashing.update(data),
+            Self::Sha3_512(hashing) => hashing.update(data),
         }
     }
 
-    fn finish(&self) -> Digest {
+    fn finish(&mut self) -> Digest {
         match self {
             Self::Sha1(hashing) => hashing.finish(),
             Self::Sha256(hashing) => hashing.finish(),
             Self::Sha384(hashing) => hashing.finish(),
             Self::Sha512(hashing) => hashing.finish(),
             Self::Sha512_256(hashing) => hashing.finish(),
+            Self::Sha3_256(hashing) => hashing.finish(),
+            Self::Sha3_384(hashing) => hashing.finish(),
+            Self::Sha3_512(hashing) => hashing.finish(),
         }
     }
 }
@@ -142,29 +178,33 @@ impl Zeroable for State {}
 
 /// A hash context with its hash's code, which it reaches only through
 /// `ops`: matching on [`State`] then names no hash's code.
+///
+/// `ops` comes first, so every variant holds it at one offset and the match
+/// folds to a single load rather than a jump per variant.
 #[derive(Clone)]
+#[repr(C)]
 struct Hashing<C: Variant> {
-    context: C,
     ops: ZeroableRef<Ops<C>>,
+    context: C,
 }
 
 struct Ops<C> {
     update: fn(&mut C, &[u8]),
-    finish: fn(&C) -> Digest,
+    finish: fn(&mut C) -> Digest,
 }
 
 impl<C: Variant> Hashing<C> {
     fn start() -> State {
         C::state(Self {
-            context: C::new(),
             ops: ZeroableRef::new(
                 const {
                     &Ops {
                         update: C::update,
-                        finish: C::finish,
+                        finish: C::finish_reset,
                     }
                 },
             ),
+            context: C::new(),
         })
     }
 
@@ -172,8 +212,8 @@ impl<C: Variant> Hashing<C> {
         (self.ops.get().update)(&mut self.context, data)
     }
 
-    fn finish(&self) -> Digest {
-        (self.ops.get().finish)(&self.context)
+    fn finish(&mut self) -> Digest {
+        (self.ops.get().finish)(&mut self.context)
     }
 }
 
@@ -182,6 +222,13 @@ trait Variant: HashContext + 'static {
     fn new() -> Self;
 
     fn state(hashing: Hashing<Self>) -> State;
+
+    /// The digest of the message so far, leaving `self` as [`Self::new`] does.
+    fn finish_reset(&mut self) -> Digest {
+        let digest = self.finish();
+        *self = Self::new();
+        digest
+    }
 }
 
 macro_rules! variant {
@@ -222,6 +269,38 @@ impl HashContext for Sha512_256Context {
     }
 }
 
+/// A SHA-3 context, which no [`Hash`] has: HMAC and signatures take only
+/// SHA-1 and SHA-2.
+macro_rules! sha3_context {
+    ($name:ident, $variant:ident, $algorithm:ident) => {
+        #[derive(Clone)]
+        struct $name(sha3::$name);
+
+        impl HashContext for $name {
+            fn update(&mut self, bytes: &[u8]) {
+                self.0.update(bytes)
+            }
+
+            fn finish(&self) -> Digest {
+                Digest::new(&$algorithm, &self.0.finish())
+            }
+        }
+
+        variant!($name, $variant, $name(sha3::$name::new()));
+    };
+}
+
+sha3_context!(Sha3_256Context, Sha3_256, SHA3_256);
+sha3_context!(Sha3_384Context, Sha3_384, SHA3_384);
+sha3_context!(Sha3_512Context, Sha3_512, SHA3_512);
+
+/// Hashes `data` with a fresh `C`, for an algorithm with no [`Hash`].
+fn one_shot<C: Variant>(data: &[u8]) -> Digest {
+    let mut context = C::new();
+    context.update(data);
+    context.finish()
+}
+
 impl Context {
     /// Starts hashing with `algorithm`.
     pub fn new(algorithm: &'static Algorithm) -> Self {
@@ -235,8 +314,8 @@ impl Context {
         self.0.update(data);
     }
 
-    /// Returns the digest of the message.
-    pub fn finish(self) -> Digest {
+    /// Returns the digest of the message, and starts a new one with the same algorithm.
+    pub fn finish(&mut self) -> Digest {
         let _entry = Entry::new_secret();
         self.0.finish()
     }
@@ -305,10 +384,47 @@ mod tests {
     use super::*;
     use crate::test::*;
 
+    #[test]
+    fn secret_message() {
+        // Under `admin/ctgrind`, nothing may branch on or index by the
+        // message, which ends in a partial block of each hash.
+        for algorithm in [
+            &SHA1,
+            &SHA256,
+            &SHA384,
+            &SHA512,
+            &SHA512_256,
+            &SHA3_256,
+            &SHA3_384,
+            &SHA3_512,
+        ] {
+            let message = [0xa5; 300];
+            let wanted = digest(algorithm, &message);
+
+            ct::secret_slice(&message);
+            let mut ctx = Context::new(algorithm);
+            ctx.update(&message[..100]);
+            ctx.update(&message[100..]);
+            let got = ct::into_public(ctx.finish());
+            assert_eq!(got.as_ref(), wanted.as_ref());
+            let got = ct::into_public(digest(algorithm, &message));
+            assert_eq!(got.as_ref(), wanted.as_ref());
+        }
+    }
+
+    fn is_sha3(algorithm: &Algorithm) -> bool {
+        matches!(algorithm.id, Id::Sha3_256 | Id::Sha3_384 | Id::Sha3_512)
+    }
+
     // CAVP's `[L = n]` header gives only the output length, which SHA-256
-    // and SHA-512/256 share, so each file names its algorithm.
+    // and SHA-512/256 share, so each file names its algorithm. SHA-3's files
+    // give it in bits, the others in bytes.
     fn check_meta(algorithm: &Algorithm, meta: &str) {
-        assert_eq!(meta, format!("L = {}", algorithm.output_len()));
+        let len = match is_sha3(algorithm) {
+            true => algorithm.output_len() * 8,
+            false => algorithm.output_len(),
+        };
+        assert_eq!(meta, format!("L = {len}"));
     }
 
     #[test]
@@ -354,6 +470,12 @@ mod tests {
                 &SHA512_256,
             ),
             ("../thirdparty/cavp/sha2/SHA512_256LongMsg.rsp", &SHA512_256),
+            ("../thirdparty/cavp/sha3/SHA3_256ShortMsg.rsp", &SHA3_256),
+            ("../thirdparty/cavp/sha3/SHA3_256LongMsg.rsp", &SHA3_256),
+            ("../thirdparty/cavp/sha3/SHA3_384ShortMsg.rsp", &SHA3_384),
+            ("../thirdparty/cavp/sha3/SHA3_384LongMsg.rsp", &SHA3_384),
+            ("../thirdparty/cavp/sha3/SHA3_512ShortMsg.rsp", &SHA3_512),
+            ("../thirdparty/cavp/sha3/SHA3_512LongMsg.rsp", &SHA3_512),
         ] {
             process_cavp(
                 file,
@@ -363,6 +485,33 @@ mod tests {
                     message_bytes: 0,
                 },
             );
+        }
+    }
+
+    // `finish` leaves a fresh context: each message after it hashes alone,
+    // whether a partial block, several blocks, or nothing was left buffered.
+    #[test]
+    fn finish_resets() {
+        for algorithm in [
+            &SHA1,
+            &SHA256,
+            &SHA384,
+            &SHA512,
+            &SHA512_256,
+            &SHA3_256,
+            &SHA3_384,
+            &SHA3_512,
+        ] {
+            let mut ctx = Context::new(algorithm);
+            for message in [&[0x61u8; 3][..], &[0x62; 300], &[], &[0x63; 128]] {
+                ctx.update(message);
+                assert_eq!(
+                    ctx.finish().as_ref(),
+                    digest(algorithm, message).as_ref(),
+                    "{algorithm:?}, {} bytes",
+                    message.len()
+                );
+            }
         }
     }
 
@@ -384,7 +533,10 @@ mod tests {
                     "Seed" => self.seed = value.bytes(),
                     "COUNT" => {}
                     "MD" => {
-                        self.seed = monte_carlo_1000(self.algorithm, &self.seed);
+                        self.seed = match is_sha3(self.algorithm) {
+                            true => sha3_monte_carlo_1000(self.algorithm, &self.seed),
+                            false => monte_carlo_1000(self.algorithm, &self.seed),
+                        };
                         assert_eq!(self.seed, value.bytes());
                     }
                     _ => todo!("{self:?} value {name} = {value:?}"),
@@ -406,6 +558,15 @@ mod tests {
             window[2].clone()
         }
 
+        // SHA3VS hashes each digest alone, rather than the last three.
+        fn sha3_monte_carlo_1000(algorithm: &'static Algorithm, seed: &[u8]) -> Vec<u8> {
+            let mut md = seed.to_vec();
+            for _ in 0..1000 {
+                md = digest(algorithm, &md).as_ref().to_vec();
+            }
+            md
+        }
+
         if std::env::var_os("SLOW_TESTS").is_some() {
             for (file, algorithm) in [
                 ("../thirdparty/cavp-sha1/SHA1Monte.rsp", &SHA1),
@@ -413,6 +574,9 @@ mod tests {
                 ("../thirdparty/cavp/sha2/SHA384Monte.rsp", &SHA384),
                 ("../thirdparty/cavp/sha2/SHA512Monte.rsp", &SHA512),
                 ("../thirdparty/cavp/sha2/SHA512_256Monte.rsp", &SHA512_256),
+                ("../thirdparty/cavp/sha3/SHA3_256Monte.rsp", &SHA3_256),
+                ("../thirdparty/cavp/sha3/SHA3_384Monte.rsp", &SHA3_384),
+                ("../thirdparty/cavp/sha3/SHA3_512Monte.rsp", &SHA3_512),
             ] {
                 process_cavp(
                     file,

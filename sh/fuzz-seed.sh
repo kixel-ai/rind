@@ -121,3 +121,13 @@ verify 19 rsa_pkcs1_2048_sig_gen_test.json SHA-1
 verify 20 rsa_pkcs1_1024_sig_gen_test.json SHA-1
 verify 21 rsa_pkcs1_1024_sig_gen_test.json SHA-256
 verify 23 rsa_signature_3072_sha384_test.json
+verify 24 rsa_pss_2048_sha256_mgf1_0_test.json
+verify 25 rsa_pss_4096_sha512_mgf1_64_test.json
+verify 26 rsa_pss_2048_sha256_mgf1_0_test.json
+verify 26 rsa_pss_2048_sha256_mgf1_32_test.json
+verify 26 rsa_pss_misc_test.json SHA-256
+verify 27 rsa_pss_2048_sha384_mgf1_48_test.json
+verify 27 rsa_pss_misc_test.json SHA-384
+verify 28 rsa_pss_4096_sha512_mgf1_32_test.json
+verify 28 rsa_pss_4096_sha512_mgf1_64_test.json
+verify 28 rsa_pss_misc_test.json SHA-512

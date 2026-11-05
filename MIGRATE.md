@@ -52,8 +52,8 @@ the old backend's feature in otherwise the same command.
    library's are the targets its CI builds. rind compiles only for x86_64,
    aarch64, and 32-bit ARM, so i686, wasm32, riscv64, and every other
    architecture fail to build. Within those three, a target rind's CI does
-   not cover yet, such as musl, aarch64 Windows, iOS, Android, or ARM older
-   than ARMv7, may still fail: step 3 builds each one. Distribution packages
+   not test yet, such as iOS, Android, or ARM older than ARMv7, may still
+   fail: step 3 builds each one. Distribution packages
    and `cargo install` build where the project does not; list what they lose
    under Breaking changes rather than stopping.
 
@@ -104,7 +104,9 @@ For each way the survey found:
   `ring = { package = "rind-ring", version = "<latest>" }`. A library, which
   keeps ring, adds `rind-ring` as an optional dependency instead, with
   `#[cfg(feature = "<its feature>")] extern crate rind_ring as ring;` at its
-  crate root.
+  crate root. rind-ring keeps ring's signatures, such as
+  `digest::Context::finish(self)`, so leave the code as it is: MIGRATING.md's
+  tables map to rind's own API, where `finish` takes `&mut self`.
 - **aws-lc-rs's API.** Port each call to rind's, using MIGRATING.md's tables.
 
 rind panics on a CPU missing a feature it requires. Depend on `rind` and call

@@ -1,8 +1,8 @@
 name: quality lints
 
 # Every job but the unstable rustfmt one runs the flake's pinned tools, so a
-# new stable release can't fail it. `just ci` already runs x86_64 clippy and
-# rustfmt on every merge.
+# new stable release can't fail it. `just ci` already runs x86_64 clippy,
+# rustfmt, and the MSRV check on every merge.
 on:
   schedule:
     - cron: "0 18 * * *"
@@ -16,24 +16,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  msrv:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/nix
-
-      - name: Check MSRV
-        run: nix develop .#msrv --command cargo build --workspace --lib --bins
-
-      # The x86_64 build above compiles only that backend, so check the others.
-      - name: Check MSRV (aarch64, armv7)
-        run: |
-          nix develop .#msrv --command cargo check -p rind --lib --locked --target aarch64-unknown-linux-gnu
-          nix develop .#msrv --command cargo check -p rind --lib --locked --target armv7-unknown-linux-gnueabihf
-
   checks:
     runs-on: ubuntu-latest
     steps:

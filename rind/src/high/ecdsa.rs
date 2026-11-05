@@ -264,9 +264,9 @@ impl<C: Curve> SigningKey<C> {
         random: &[u8],
         signature: &'a mut [u8],
     ) -> Result<&'a [u8], Error> {
-        let output = signature
-            .get_mut(..C::Scalar::LEN_BYTES * 2)
-            .ok_or(Error::WrongLength)?;
+        let Some(output) = signature.get_mut(..C::Scalar::LEN_BYTES * 2) else {
+            return Err(Error::WrongLength);
+        };
 
         let hash = H::hash(message);
 
@@ -296,7 +296,7 @@ impl<C: Curve> SigningKey<C> {
     fn sign_with_nonces(
         &self,
         e: &C::Scalar,
-        nonces: &mut dyn RandomSource,
+        nonces: &mut impl RandomSource,
     ) -> Result<(C::Scalar, C::Scalar), Error> {
         loop {
             let k = C::generate_random_key(nonces)?;

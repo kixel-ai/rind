@@ -50,9 +50,25 @@ p256_items() {
     items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
 }
 check_quote Aarch64/P256Dispatch p256_items
+ecdsa_items() {
+    items rind/src/high/curve.rs 'impl Curve for P256 {'
+    items rind/src/mid/p256.rs '    pub(crate) fn generate(rng: &mut dyn'
+    items <(sed -n '/^impl StaticPrivateKey {/,/^}/p' rind/src/mid/p256.rs) '    pub(crate) fn generate('
+    items rind/src/high/signature.rs 'impl<const N: usize> Buffer<N> {' 'macro_rules! with_hash {' \
+        'struct Ecdsa {' 'macro_rules! with_ecdsa {' 'macro_rules! with_curve {' 'trait Encoding {' \
+        'impl Encoding for Fixed {' 'trait EcdsaCurve:' 'macro_rules! ecdsa_curve {' \
+        'ecdsa_curve!(P256, EcdsaP256);' 'fn parse_ecdsa<' 'const fn ecdsa_verification(' \
+        'const fn ecdsa_signing(' 'pub struct EcdsaSigningAlgorithm {' 'enum EcdsaSource<' \
+        'pub struct EcdsaKeyPair {' 'enum EcdsaKey {' 'struct EcdsaPair<' 'type Write<K> =' \
+        'struct EcdsaOps<' 'impl<C: EcdsaCurve> EcdsaPair<C> {' 'macro_rules! on_ecdsa {' \
+        'impl EcdsaKeyPair {' '    pub static ECDSA_P256_SHA256_FIXED: EcdsaSigningAlgorithm' \
+        '    pub static ECDSA_P256_SHA256_FIXED: VerificationAlgorithm'
+}
+check_quote Aarch64/EcdsaDispatch ecdsa_items
 check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
-    'pub static SHA512_256:' 'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {'
+    'pub static SHA512_256:' 'pub static SHA3_256:' 'pub static SHA3_384:' 'pub static SHA3_512:' \
+    'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {'
 aes_ni_items() {
     items rind/src/low/x86_64/aes.rs 'const RCON' 'fn aes128_expand(' 'fn aes256_expand(' \
         'fn sub_rot_word(' 'fn xor_prefix(' 'fn zero()' 'fn aes128_block(' 'fn aes256_block('
@@ -65,7 +81,8 @@ check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' '
     'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \
     'pub struct Nonce(' 'impl Nonce {' 'pub struct Tag('
 check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
-    'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {'
+    'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {' 'fn one_shot<' \
+    'trait Variant:'
 check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
     'pub struct VerificationAlgorithm(' 'enum Verification {' 'type Verify<K> =' \
     'struct Verifier<K> {' 'impl<K> Verifier<K> {' 'pub struct PublicKey {' 'enum Parsed {' \
@@ -80,10 +97,13 @@ check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
 # `Verification::Ed25519` holds nothing and `Parsed::Ed25519` only its key,
 # while the quotes have every mention of each: `ED25519` builds the only one
 # of the first, with `parse_ed25519`, and each of the second has
-# `Ed25519VerifyingKey::verify`. An AEAD `Sealer<C>` is its key, since the
-# quoted `Sealer::expand` builds every `Ops`, of `C`'s own functions, while
-# the quote has each mention of `Ops` in `aead.rs` and each `Algorithm` it
-# builds.
+# `Ed25519VerifyingKey::verify`. ECDSA's keys are modelled for P-256 with
+# SHA-256 and fixed-length signatures, which holds while the quotes have each
+# `Verification::Ecdsa`, `EcdsaP256`, and `EcdsaKey::`, each `EcdsaOps` and
+# `EcdsaPair` built, which `load` alone builds, and each read of their `ops`.
+# An AEAD `Sealer<C>` is its key, since the quoted `Sealer::expand` builds
+# every `Ops`, of `C`'s own functions, while the quote has each mention of
+# `Ops` in `aead.rs` and each `Algorithm` it builds.
 only_quoted() {
     local file=$1 quote=$2 pattern=$3
     if [ "$(grep -oE "$pattern" "$file" | wc -l)" != "$(grep -oE "$pattern" "$quote" | wc -l)" ]; then
@@ -98,6 +118,12 @@ only_quoted rind/src/high/digest.rs "$out/DigestDispatch.rs" '\bOps\b'
 only_quoted rind/src/high/digest.rs "$out/DigestAlgorithm.rs" '= Algorithm \{'
 only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Verification::Ed25519\('
 only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Parsed::Ed25519\('
+cat "$out/SignatureDispatch.rs" "$out/EcdsaDispatch.rs" >"$out/signature.rs"
+only_quoted rind/src/high/signature.rs "$out/signature.rs" 'Verification::Ecdsa\('
+only_quoted rind/src/high/signature.rs "$out/signature.rs" 'EcdsaP256\b'
+only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" 'EcdsaKey::'
+only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" 'Ecdsa(Ops|Pair) \{'
+only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" '\.ops\b'
 only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '\bOps\b'
 only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 
@@ -125,9 +151,12 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # `signature::PublicKey` holds the signature API's, so no translated function
 # reaches it, and `SignatureDispatch.lean` defines it. SHA-1's and SHA-256's
 # padding is translated down to their block functions, which are opaque.
+# SHA-3's sponge, which no proof covers, is opaque.
 # P-256's key generation draws through a `dyn RandomSource`, so it is opaque
 # too, and `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the
-# translated `PrivateKey::from_bytes`. The generator table is translated, so
+# translated `PrivateKey::from_bytes`, as `EcdsaDispatch.lean` does for ECDSA,
+# with the signature API's ECDSA key pairs and statics, which hold function
+# pointers too. The generator table is translated, so
 # `proofs/Rind/Aarch64/P256Table.lean` can prove it holds what s2n-bignum's
 # proof assumes. HMAC's keyed states are translated over any hash, and its
 # `Key` and `Context`, which hold function pointers, are not.
@@ -183,6 +212,10 @@ extract() {
         --opaque crate::high::digest::SHA384 \
         --opaque crate::high::digest::SHA512 \
         --opaque crate::high::digest::SHA512_256 \
+        --opaque crate::high::digest::SHA3_256 \
+        --opaque crate::high::digest::SHA3_384 \
+        --opaque crate::high::digest::SHA3_512 \
+        --opaque crate::mid::sha3 \
         --opaque crate::low \
         --opaque 'crate::mid::p384::_::_' \
         --opaque 'crate::mid::p521::_::_' \
@@ -249,6 +282,25 @@ extract x86_64 X86_64 \
     --opaque crate::low::x86_64::aes_gcm_avx::aead
 extract aarch64 Aarch64 \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
+    --start-from crate::high::ecdsa::VerifyingKey::from_x962_uncompressed \
+    --start-from crate::high::ecdsa::VerifyingKey::verify \
+    --start-from crate::high::ecdsa::SigningKey::new \
+    --start-from crate::high::ecdsa::SigningKey::generate \
+    --start-from '{impl core::clone::Clone for crate::high::ecdsa::VerifyingKey<_>}' \
+    --start-from '{impl core::clone::Clone for crate::mid::p256::VerifyingKey}' \
+    --start-from '{impl crate::high::hash::SignatureHash for crate::high::hash::Sha256}' \
+    --start-from crate::high::ecdsa::SigningKey::from_private_key_and_public_key \
+    --start-from crate::high::ecdsa::SigningKey::public_key_uncompressed \
+    --start-from crate::high::ecdsa::SigningKey::sign \
+    --opaque crate::high::hmac_drbg \
+    --start-from crate::high::ecdsa::hash_to_scalar \
+    --start-from '{impl crate::high::curve::Curve for crate::high::curve::P256}' \
+    --start-from '{impl crate::high::curve::PrivateKey for crate::mid::p256::StaticPrivateKey}' \
+    --start-from '{impl crate::high::curve::PublicKey for crate::mid::p256::VerifyingKey}' \
+    --start-from '{impl crate::high::curve::Scalar for crate::mid::p256::Scalar}' \
+    --start-from crate::mid::p256::StaticPrivateKey::from_bytes \
+    --opaque 'crate::high::curve::_::generate_random_key' \
+    --opaque 'crate::high::curve::_::oid' \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
     --include crate::low::aarch64::sha256 \

@@ -116,6 +116,44 @@ pub mod kem {
     };
 }
 
+/// RSA encryption: RSA-OAEP with SHA-256, SHA-384, or SHA-512, and SHA-1
+/// under [`rsa::legacy`].
+///
+/// RSA signatures are under [`signature`]. PKCS#1 v1.5 encryption, which
+/// invites padding-oracle attacks, is refused.
+///
+/// ```
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::rsa::*;
+/// use rind::signature::RsaKeySize;
+///
+/// // The recipient generates a key, and sends its public key to the sender.
+/// let decrypting_key = DecryptingKey::generate(&OAEP_SHA256, RsaKeySize::Rsa2048)?;
+/// let public_key = decrypting_key.to_spki();
+///
+/// // The sender parses the public key for the same algorithm, and encrypts
+/// // a message to it.
+/// let encrypting_key = EncryptingKey::new(&OAEP_SHA256, public_key.as_ref())?;
+/// let ciphertext = encrypting_key.encrypt(b"hello", b"")?;
+///
+/// // The recipient decrypts it with the same label.
+/// let plaintext = decrypting_key.decrypt(ciphertext.as_ref(), b"")?;
+/// assert_eq!(plaintext.as_ref(), b"hello");
+/// # Ok(())
+/// # }
+/// ```
+pub mod rsa {
+    pub use crate::high::oaep::{
+        Ciphertext, DecryptingKey, EncryptingKey, OAEP_SHA256, OAEP_SHA384, OAEP_SHA512,
+        OaepAlgorithm, Plaintext,
+    };
+
+    /// RSA-OAEP with SHA-1, for protocols that still require it.
+    pub mod legacy {
+        pub use crate::high::oaep::OAEP_SHA1;
+    }
+}
+
 /// Public key signatures: ECDSA on P-256, P-384, and P-521, RSA, and Ed25519.
 ///
 /// A key pair signs with a [`signature::sign`] algorithm, and a peer's
@@ -137,8 +175,8 @@ pub mod kem {
 pub mod signature {
     pub use crate::high::signature::{
         EcdsaKeyPair, EcdsaScalar, EcdsaSigningAlgorithm, Ed25519KeyPair, Ed25519Seed, Pkcs8,
-        PublicKey, RsaKeyPair, RsaKeySize, RsaPublicKeyComponents, RsaSigningAlgorithm,
-        RsaVerificationAlgorithm, Signature, Spki, VerificationAlgorithm,
+        PublicKey, RsaKeyPair, RsaKeySize, RsaPssSaltLength, RsaPublicKeyComponents,
+        RsaSigningAlgorithm, RsaVerificationAlgorithm, Signature, Spki, VerificationAlgorithm,
     };
 
     /// Algorithms a key pair signs with.
@@ -162,8 +200,9 @@ pub mod signature {
             ECDSA_P256_SHA512_ASN1, ECDSA_P384_SHA256_ASN1, ECDSA_P384_SHA384_ASN1,
             ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA512_ASN1, ECDSA_P521_SHA256_ASN1,
             ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED, ED25519,
-            RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384,
-            RSA_PSS_SHA512,
+            RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256,
+            RSA_PSS_SHA256_ANY_SALT, RSA_PSS_SHA384, RSA_PSS_SHA384_ANY_SALT, RSA_PSS_SHA512,
+            RSA_PSS_SHA512_ANY_SALT,
         };
 
         /// RSA algorithms with another modulus floor, or SHA-1, for old keys
@@ -192,7 +231,8 @@ pub mod signature {
 /// ```
 pub mod digest {
     pub use super::high::digest::{
-        Algorithm, Context, Digest, SHA256, SHA384, SHA512, SHA512_256, digest,
+        Algorithm, Context, Digest, SHA3_256, SHA3_384, SHA3_512, SHA256, SHA384, SHA512,
+        SHA512_256, digest,
     };
 
     /// Hash functions only legacy protocols should use.
@@ -337,6 +377,27 @@ pub mod aead;
 ///
 /// Prefer [`aead`] unless a protocol requires one of these.
 pub mod cipher;
+
+/// Key wrapping with AES-KW, RFC 3394, as WebCrypto's `AES-KW` and JWE's
+/// `A128KW` and `A256KW` use it.
+///
+/// ```
+/// use rind::key_wrap::{AES_256, AesKek};
+///
+/// let kek = AesKek::new(&AES_256, &[0x42; 32]).unwrap();
+///
+/// let key = [0x24; 16];
+/// let mut wrapped = [0u8; 24];
+/// kek.wrap(&key, &mut wrapped).unwrap();
+///
+/// let mut unwrapped = [0u8; 16];
+/// kek.unwrap(&wrapped, &mut unwrapped).unwrap();
+/// assert_eq!(unwrapped, key);
+/// ```
+pub mod key_wrap {
+    pub use crate::cipher::{AES_128, AES_256};
+    pub use crate::mid::aes_kw::AesKek;
+}
 
 /// CPU support.
 ///
