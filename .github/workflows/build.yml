@@ -21,9 +21,14 @@ jobs:
             rustc: stable
           - os: ubuntu-latest
             rustc: nightly
+          # macos-latest is aarch64; macos-15-intel is the x86_64 runner.
           - os: macos-latest
             rustc: stable
+          - os: macos-15-intel
+            rustc: stable
           - os: windows-latest
+            rustc: stable
+          - os: windows-11-arm
             rustc: stable
           - os: ubuntu-24.04-arm
             rustc: stable
@@ -97,6 +102,46 @@ jobs:
           # without the crypto extension, such as the Raspberry Pi 4's; the
           # last variable fails the run that lands on the wrong path
           env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test
+
+  # musl runs the glibc build's code, so these test the packages consumers
+  # link, without the CPU feature passes. The bench and fuzz crates need C++
+  # built for musl, which musl-tools lacks.
+  musl:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      # The tests' aws-lc-rs dev-dependency builds C for the target.
+      - name: Install musl-gcc
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+          echo "CC_${CARGO_BUILD_TARGET//-/_}=musl-gcc" >> "$GITHUB_ENV"
+
+      - name: Run tests (debug)
+        run: cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme
+      - name: Run tests (release)
+        run: env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme --release
 
   # 32-bit ARM runs libcrux, or aws-lc's assembly for ChaCha20, NEON, and the
   # crypto extension. The recipe builds and lints Android and Linux gnueabihf,
