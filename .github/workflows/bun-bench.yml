@@ -1,0 +1,37 @@
+name: bun-bench
+on:
+  push:
+    branches: [bun-bench/harness]
+permissions:
+  contents: read
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Fetch Bun's BoringSSL
+        run: |
+          git init -q boringssl
+          git -C boringssl fetch -q --depth 1 https://github.com/oven-sh/boringssl.git 89a2ff2be775267283a2c8e35044e49ddab5e5aa
+          git -C boringssl checkout -q FETCH_HEAD
+      - name: Build
+        working-directory: bunbench
+        env:
+          CC: clang
+          CXX: clang++
+          BORINGSSL_DIR: ${{ github.workspace }}/boringssl
+        run: |
+          if [ "$(uname -m)" = x86_64 ]; then export RUSTFLAGS="-Ctarget-cpu=nehalem"; fi
+          clang --version | head -1
+          rustc --version
+          cargo build --release
+      - name: Run
+        working-directory: bunbench
+        run: |
+          { echo "### ${{ matrix.runner }}"; echo; (lscpu 2>/dev/null | grep "Model name" || sysctl -n machdep.cpu.brand_string); echo; ./target/release/bunbench; } | tee -a "$GITHUB_STEP_SUMMARY"
