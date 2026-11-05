@@ -48,13 +48,14 @@ impl PublicKey {
 
 /// A P-256 public key for ECDSA verification.
 ///
-/// It keeps the point's multiples, so verifying again with the same key
-/// skips computing them; Diffie-Hellman's [`PublicKey`] is used once and
-/// never needs them.
+/// It builds the point's multiples on its first verification and keeps
+/// them, so verifying again skips computing them, and a key never verified
+/// with, such as an ECDSA key pair's, never pays for them.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
+    point: AffineMontPoint,
     /// P, 3P, ..., 15P.
-    odd_multiples: [AffineMontPoint; 8],
+    odd_multiples: low::ReuseCache<[AffineMontPoint; 8]>,
     /// 17P, 19P, ..., 31P, which widen P's digits but pay for building
     /// only once a key is reused.
     more_odd_multiples: low::ReuseCache<[AffineMontPoint; 8]>,
@@ -66,7 +67,8 @@ impl VerifyingKey {
         low::Entry::assert_held();
         let PublicKey { point } = PublicKey::from_x962_uncompressed(bytes)?;
         Ok(Self {
-            odd_multiples: point.public_odd_multiples(),
+            point,
+            odd_multiples: low::ReuseCache::new(),
             more_odd_multiples: low::ReuseCache::new(),
         })
     }
@@ -79,10 +81,13 @@ impl VerifyingKey {
 
         // 5. Compute: R = (xR, yR) = u1 G + u2 QU
         //  If R = O, output "invalid" and stop.
+        let odd_multiples = self
+            .odd_multiples
+            .get_or_build_now(|| self.point.public_odd_multiples());
         let more = self
             .more_odd_multiples
-            .get_or_build(|| AffineMontPoint::public_more_odd_multiples(&self.odd_multiples));
-        let point = JacobianMontPoint::public_twin_multiply(&u1, &u2, &self.odd_multiples, more);
+            .get_or_build(|| AffineMontPoint::public_more_odd_multiples(&odd_multiples));
+        let point = JacobianMontPoint::public_twin_multiply(&u1, &u2, &odd_multiples, more);
 
         if point.public_is_infinity() {
             return Err(Error::BadSignature);
@@ -473,9 +478,11 @@ impl AffineMontPoint {
         }
     }
 
-    /// Negates `y` if `negate` is 1, in constant time.
+    /// Becomes `row`'s point `digit - 1`, or zeros for a zero `digit`, with
+    /// `y` negated if `negate` is 1, in constant time.
     #[cfg(target_arch = "x86_64")]
-    fn negate_y_if(&mut self, negate: u8) {
+    fn select_w7(&mut self, row: &low::P256GeneratorRow, digit: u8, negate: u8) {
+        low::p256_select_w7(&mut self.xy, row, digit);
         let y = self.y();
         low::bignum_mux(
             negate.into(),
@@ -543,18 +550,13 @@ impl JacobianMontPoint {
         let mut windows = precomp::CURVE_GENERATOR_PRECOMP
             .iter()
             .zip(scalar.booth_recoded::<BASE_WINDOW>());
-        let lookup = |row, digit, sign| {
-            let mut point = AffineMontPoint {
-                xy: low::p256_select_w7(row, digit),
-            };
-            point.negate_y_if(sign);
-            point
-        };
+        let mut point = AffineMontPoint::default();
 
         // unwrap: the number of windows is constant. The first point is
         // infinity, with a zero `z`, when its digit is zero.
         let (row, (digit, sign)) = windows.next().unwrap();
-        let mut result = Self::from_affine(&lookup(row, digit, sign));
+        point.select_w7(row, digit, sign);
+        let mut result = Self::from_affine(&point);
         low::bignum_mux(
             digit.into(),
             &mut result.xyz[Self::Z],
@@ -563,7 +565,8 @@ impl JacobianMontPoint {
         );
 
         for (row, (digit, sign)) in windows {
-            result.xyz = low::p256_point_add_affine(&result.xyz, &lookup(row, digit, sign).xy);
+            point.select_w7(row, digit, sign);
+            low::p256_point_add_affine(&mut result.xyz, &point.xy);
         }
         result
     }

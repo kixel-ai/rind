@@ -1818,22 +1818,33 @@ end P256
 as every caller holds one; release builds compile it out. -/
 def Held : Prop := low.entry.Entry.assert_held = ok ()
 
-/-- A verifying key's cache of 17P, ..., 31P, whose atomics Aeneas cannot
-translate: `ReuseCache::new` returns an empty cache, once built the cache
-holds what its build returns from the key's own P, ..., 15P, since
-`get_or_build` returns `None` or `build`'s value and a key's odd multiples
-never change after it is parsed, and a clone, which copies a built value, returns. -/
+/-- A verifying key's caches of P, ..., 15P and 17P, ..., 31P, whose atomics
+Aeneas cannot translate: `ReuseCache::new` returns a cache, each cache holds
+only what its build returns, built from the key's own point, which never
+changes after it is parsed, so whatever every such build's value satisfies,
+`get_or_build_now`'s value does, and `get_or_build`'s, unless `None`, and a
+clone, which copies a built value, returns. -/
 structure Cached : Prop where
   new : ∃ c, low.generic.reuse_cache.ReuseCache.new
       (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
       (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault) = ok c
-  get_or_build : ∀ key : mid.p256.VerifyingKey,
-    low.generic.reuse_cache.ReuseCache.get_or_build
+  get_or_build_now : ∀ (key : mid.p256.VerifyingKey) (P : Std.Array mid.p256.AffineMontPoint 8#usize → Prop),
+    mid.p256.AffineMontPoint.public_odd_multiples key.point ⦃ P ⦄ →
+    low.generic.reuse_cache.ReuseCache.get_or_build_now
       (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
       (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault)
       mid.p256.VerifyingKey.raw_ecdsa_verify.closure.Insts.CoreOpsFunctionFnOnceTupleArrayAffineMontPoint8
-      key.more_odd_multiples key ⦃ r =>
-      r = none ∨ ∃ m, mid.p256.AffineMontPoint.public_more_odd_multiples key.odd_multiples = ok m ∧ r = some m ⦄
+      key.odd_multiples key ⦃ P ⦄
+  get_or_build : ∀ (key : mid.p256.VerifyingKey) (odd : Std.Array mid.p256.AffineMontPoint 8#usize)
+      (P : Std.Array mid.p256.AffineMontPoint 8#usize → Prop),
+    mid.p256.AffineMontPoint.public_odd_multiples key.point ⦃ o =>
+      mid.p256.AffineMontPoint.public_more_odd_multiples o ⦃ P ⦄ ⦄ →
+    mid.p256.AffineMontPoint.public_more_odd_multiples odd ⦃ P ⦄ →
+    low.generic.reuse_cache.ReuseCache.get_or_build
+      (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
+      (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault)
+      mid.p256.VerifyingKey.raw_ecdsa_verify.closure_1.Insts.CoreOpsFunctionFnOnceTupleArrayAffineMontPoint8
+      key.more_odd_multiples odd ⦃ r => r = none ∨ ∃ m, r = some m ∧ P m ⦄
   clone : ∀ c, ∃ c', low.generic.reuse_cache.ReuseCache.Insts.CoreCloneClone.clone
       (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
       (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault) c = ok c'
@@ -1843,7 +1854,7 @@ namespace P256
 /-- The ECDSA verification a key's raw check computes, for `r`, `s`, and
 `e` the signature's scalars and the hash's. -/
 theorem raw_verify_spec (hG : P256Laws) (hc : Cached) (key : mid.p256.VerifyingKey)
-    (Q : P256Point) (hQ : p256OnCurve Q) (hQne : Q ≠ none) (hodd : OddMultiples Q 1 key.odd_multiples)
+    (Q : P256Point) (hQ : p256OnCurve Q) (hQne : Q ≠ none) (hpt : p256Represents2 Q (pairNat key.point.xy.val))
     (r s e : mid.p256.Scalar) (hr0 : 0 < scNat r) (hr : scNat r < n256) (hs0 : 0 < scNat s)
     (hs : scNat s < n256) (he : scNat e < n256) :
     mid.p256.VerifyingKey.raw_ecdsa_verify key r s e ⦃ res =>
@@ -1860,7 +1871,10 @@ theorem raw_verify_spec (hG : P256Laws) (hc : Cached) (key : mid.p256.VerifyingK
   step with scalar_as_mont_spec r hr as ⟨rm, hrm⟩
   step with scalar_mont_mul_spec sm rm (by rw [hsm]; exact hlt _) (by rw [hrm]; exact hlt _) as ⟨s5, hs5⟩
   step as ⟨u2, hu2⟩
-  step with hc.get_or_build key as ⟨more, hmore⟩
+  have hodd_spec := odd_multiples_spec hG key.point Q hQ hQne hpt
+  step with hc.get_or_build_now key _ hodd_spec as ⟨odd, hodd⟩
+  step with hc.get_or_build key odd _ (WP.spec_mono hodd_spec fun o ho => more_odd_spec hG Q hQ hQne o ho)
+    (more_odd_spec hG Q hQ hQne odd hodd) as ⟨more, hmore⟩
   have hs' : (scNat s : ZMod n256) ≠ 0 := by
     rw [Ne, ZMod.natCast_eq_zero_iff]; exact Nat.not_dvd_of_pos_of_lt hs0 hs
   have hsinv : (scNat si : ZMod n256) = (scNat s : ZMod n256)⁻¹ := by
@@ -1887,13 +1901,10 @@ theorem raw_verify_spec (hG : P256Laws) (hc : Cached) (key : mid.p256.VerifyingK
     linear_combination (scNat s : ZMod n256)⁻¹ * (scNat r : ZMod n256) * (t + 1) * hR
   have hmore' : ∀ m, more = some m → OddMultiples Q 17 m := by
     intro m hm
-    rcases hmore with h | ⟨m', hm', h⟩
+    rcases hmore with h | ⟨m', h, hm'⟩
     · rw [h] at hm; cases hm
-    · rw [h] at hm; cases hm
-      have := more_odd_spec hG Q hQ hQne key.odd_multiples hodd
-      rw [hm'] at this
-      simpa [WP.spec_ok] using this
-  step with twin_multiply_spec hG u1 u2 Q hQ key.odd_multiples hodd more hmore' as ⟨pt, hpt⟩
+    · rw [h] at hm; cases hm; exact hm'
+  step with twin_multiply_spec hG u1 u2 Q hQ odd hodd more hmore' as ⟨pt, hpt⟩
   rw [twin, show ((scNat u1 : Nat) : Int) = Int.ofNat (scNat u1) from rfl, show ((scNat u2 : Nat) : Int) = Int.ofNat (scNat u2) from rfl] at hpt
   simp only [p256ZPow] at hpt
   rw [hu1v, hu2v] at hpt
@@ -1939,9 +1950,9 @@ def x962Outcome {α : Type} (bytes : List U8) (good : α → Prop) (r : core.res
 
 /-- A verifying key for the point `Q`. -/
 def VKey (Q : P256Point) (key : mid.p256.VerifyingKey) : Prop :=
-  p256OnCurve Q ∧ Q ≠ none ∧ OddMultiples Q 1 key.odd_multiples
+  p256OnCurve Q ∧ Q ≠ none ∧ p256Represents2 Q (pairNat key.point.xy.val)
 
-theorem vk_from_x962_spec (hG : P256Laws) (h : Runs) (hheld : Held) (hc : Cached) (bytes : Slice U8) :
+theorem vk_from_x962_spec (h : Runs) (hheld : Held) (hc : Cached) (bytes : Slice U8) :
     mid.p256.VerifyingKey.from_x962_uncompressed bytes ⦃ r =>
       x962Outcome bytes.val (VKey (some (x962Coords bytes.val))) r ⦄ := by
   unfold mid.p256.VerifyingKey.from_x962_uncompressed
@@ -1959,11 +1970,10 @@ theorem vk_from_x962_spec (hG : P256Laws) (h : Runs) (hheld : Held) (hc : Cached
       · by_cases hon : p256OnCurve (some (x962Coords bytes.val)) <;> simp only [hon, ↓reduceIte] at hr ⊢
         · obtain ⟨pk, rfl, hpk⟩ := hr
           simp only
-          step with odd_multiples_spec hG pk.point _ hon (by simp) hpk as ⟨m, hm⟩
           obtain ⟨c, hcv⟩ := hc.new
           rw [hcv]
           simp only [bind_ok, WP.spec_ok]
-          exact ⟨_, rfl, hon, by simp, hm⟩
+          exact ⟨_, rfl, hon, by simp, hpk⟩
         · subst hr; simp
       · subst hr; simp
     · subst hr; simp
@@ -2062,8 +2072,8 @@ theorem ecdsa_verify_spec (hG : P256Laws) (h : Runs) (hc : Cached) {H Ctx St : T
         step with hash_to_scalar_spec dg hdg as ⟨r4, e, hr4, he⟩
         subst hr4
         simp only [bind_ok, mid.p256.VerifyingKey.Insts.RindHighCurvePublicKeyScalar.raw_ecdsa_verify]
-        obtain ⟨hQ, hQne, hodd⟩ := hk
-        apply WP.spec_mono (raw_verify_spec hG hc key.public_key Q hQ hQne hodd scr scs e
+        obtain ⟨hQ, hQne, hpt⟩ := hk
+        apply WP.spec_mono (raw_verify_spec hG hc key.public_key Q hQ hQne hpt scr scs e
           (by unfold scNat; rw [hscr]; exact hra.1) (by unfold scNat; rw [hscr]; exact hra.2)
           (by unfold scNat; rw [hscs]; exact hsa.1) (by unfold scNat; rw [hscs]; exact hsa.2)
           (by rw [he]; exact Nat.mod_lt _ n256_pos))
@@ -2089,7 +2099,7 @@ theorem ecdsa_verify_spec (hG : P256Laws) (h : Runs) (hc : Cached) {H Ctx St : T
     simp only [hne, ↓reduceIte, WP.spec_ok, hlen, false_and, not_false_eq_true, true_and, or_true]
 
 /-- `ecdsa::VerifyingKey::from_x962_uncompressed` at P-256. -/
-theorem ecdsa_vk_from_x962_spec (hG : P256Laws) (h : Runs) (hheld : Held) (hc : Cached) (bytes : Slice U8) :
+theorem ecdsa_vk_from_x962_spec (h : Runs) (hheld : Held) (hc : Cached) (bytes : Slice U8) :
     high.ecdsa.VerifyingKey.from_x962_uncompressed P256C bytes ⦃ r =>
       x962Outcome bytes.val (fun key => VKey (some (x962Coords bytes.val)) key.public_key) r ⦄ := by
   unfold high.ecdsa.VerifyingKey.from_x962_uncompressed
@@ -2097,7 +2107,7 @@ theorem ecdsa_vk_from_x962_spec (hG : P256Laws) (h : Runs) (hheld : Held) (hc : 
   simp only [P256C, 
     mid.p256.VerifyingKey.Insts.RindHighCurvePublicKeyScalar,
     mid.p256.VerifyingKey.Insts.RindHighCurvePublicKeyScalar.from_x962_uncompressed]
-  step with vk_from_x962_spec hG h hheld hc bytes as ⟨r, hr⟩
+  step with vk_from_x962_spec h hheld hc bytes as ⟨r, hr⟩
   simp only [core.result.Result.map,
     
     high.ecdsa.VerifyingKey.from_x962_uncompressed.closure.Insts.CoreOpsFunctionFnOnceTupleClause0_PublicKeyVerifyingKey.call_once]

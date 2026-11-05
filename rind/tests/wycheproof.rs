@@ -6,7 +6,7 @@ use rind::aead::{
     AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce, RandomNonce, RandomizedNonceKey, Tag,
     gcm,
 };
-use rind::cipher::{AES_128, AES_256, ChaCha20};
+use rind::cipher::{AES_128, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey, ChaCha20};
 use rind::key_wrap::{self, AesKek};
 use rind::rsa::{self, DecryptingKey, OaepAlgorithm};
 use rind::signature::verify::legacy;
@@ -625,6 +625,61 @@ fn check_open(valid: bool, malformed: bool, result: Result<(), Error>) {
         (true, Ok(())) | (false, Err(Error::DecryptFailed)) => {}
         (false, Err(Error::WrongLength)) if malformed => {}
         (_, result) => panic!("expected valid {valid}, got {result:?}"),
+    }
+}
+
+#[test]
+fn test_aes_cbc_pkcs7() {
+    let data_file = File::open("../thirdparty/wycheproof/testvectors_v1/aes_cbc_pkcs5_test.json")
+        .expect("failed to open data file");
+
+    let reader = BufReader::new(data_file);
+    let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
+    let mut summary = Summary::new();
+
+    for group in tests.groups {
+        summary.group(&group);
+
+        for test in group.tests {
+            summary.start(&test);
+
+            let algorithm = match test.key.len() {
+                16 => &AES_128,
+                32 => &AES_256,
+                24 => {
+                    summary.skipped("aes-192 not supported");
+                    continue;
+                }
+                len => panic!("unexpected key length {len}"),
+            };
+            let iv: [u8; 16] = test.iv[..].try_into().unwrap();
+            let enc = AesCbcEncryptingKey::new(algorithm, &test.key).unwrap();
+            let dec = AesCbcDecryptingKey::new(algorithm, &test.key).unwrap();
+
+            let mut in_out = test.ct.clone();
+            let result = dec.decrypt(&iv, &mut in_out).map(|pt| pt.to_vec());
+            match (test.result, result) {
+                (ExpectedResult::Valid, Ok(pt)) => {
+                    assert_eq!(pt, test.msg);
+                    let mut ct = test.msg.clone();
+                    enc.encrypt(&iv, &mut ct);
+                    assert_eq!(ct, test.ct);
+                }
+                // Every invalid test is a whole number of blocks whose
+                // padding is malformed, so decryption clears it.
+                (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {
+                    assert!(in_out.iter().all(|b| *b == 0));
+                }
+                (_, result) => panic!("expected {:?} got {:?}", test.result, result),
+            }
+
+            // Without padding, every ciphertext decrypts to the padded
+            // plaintext and encrypts back.
+            let mut in_out = test.ct.clone();
+            dec.decrypt_blocks(&iv, &mut in_out).unwrap();
+            enc.encrypt_blocks(&iv, &mut in_out).unwrap();
+            assert_eq!(in_out, test.ct);
+        }
     }
 }
 

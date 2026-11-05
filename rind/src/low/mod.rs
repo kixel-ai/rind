@@ -86,6 +86,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::chacha20;
         pub(crate) use x86_64::chacha20poly1305;
         pub(crate) use x86_64::aes::{AesDecKey, AesKey};
+        pub(crate) use x86_64::aes_cbc;
         pub(crate) use x86_64::aes_ctr;
         pub(crate) use x86_64::aes_gcm;
         #[cfg(test)]
@@ -187,6 +188,7 @@ cfg_if::cfg_if! {
 
         pub(in crate::low) use aarch64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
         pub(crate) use aarch64::aes::{AesDecKey, AesKey};
+        pub(crate) use aarch64::aes_cbc;
         pub(crate) use aarch64::aes_ctr;
         pub(crate) use aarch64::cpu::HaveCryptoExt;
         pub(crate) use aarch64::aes_gcm;
@@ -281,6 +283,7 @@ cfg_if::cfg_if! {
 
         pub(in crate::low) use arm::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
         pub(crate) use arm::aes::{AesDecKey, AesKey};
+        pub(crate) use arm::aes_cbc;
         pub(crate) use arm::aes_ctr;
         pub(crate) use arm::aesv8_armx::AesHwKey;
         pub(crate) use arm::cpu::HaveCryptoExt;
