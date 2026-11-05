@@ -50,7 +50,7 @@ import tomllib
 HOSTS = {
     "nixos": {"jobs": 16},
     "desktop": {"jobs": 12},
-    "nixos2": {"jobs": 2},
+    "nixos2": {"jobs": 3},
     "kixtop": {"jobs": 4},
 }
 
@@ -883,14 +883,8 @@ class Svg:
             f'font-weight="{weight}" fill="{fill}">{esc(text)}</text>'
         )
 
-    def rect(self, x, y, w, h, fill, title=None, stroke=None):
-        attrs = f'x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="2"'
-        if fill:
-            attrs += f' fill="{fill}"'
-        else:
-            attrs += ' fill="none"'
-        if stroke:
-            attrs += f' stroke="{self.theme.get(stroke, stroke)}" stroke-dasharray="2 2"'
+    def rect(self, x, y, w, h, fill, title=None):
+        attrs = f'x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="2" fill="{fill}"'
         if title:
             self.items.append(f"<rect {attrs}><title>{esc(title)}</title></rect>")
         else:
@@ -939,29 +933,47 @@ def grid_layout():
     return label_width, 66
 
 
+def columns(*hosts):
+    """The report's columns with a time on any of these hosts."""
+    timed = {r["library"] for h in hosts for r in h["results"]}
+    return [lib for lib in COLUMNS if lib in timed]
+
+
+def header_lines(name):
+    """A column header's lines, breaking a pair of libraries before its +."""
+    words = name.split(" + ")
+    return [words[0], "+ " + words[1]] if len(words) == 2 else [name]
+
+
+def header_width(names):
+    """The widest line of any column header."""
+    return max((text_width(line, 12) for name in names for line in header_lines(name)), default=0)
+
+
 def column_headers(svg, x0, y, cell_width, names):
     for i, name in enumerate(names):
         cx = x0 + i * cell_width + cell_width / 2
-        words = name.split(" + ")
-        if len(words) == 2:
-            svg.text(cx, y - 14, words[0], anchor="middle", weight="bold")
-            svg.text(cx, y, "+ " + words[1], anchor="middle", weight="bold")
-        else:
-            svg.text(cx, y, name, anchor="middle", weight="bold")
+        lines = header_lines(name)
+        for j, line in enumerate(lines):
+            svg.text(cx, y - 14 * (len(lines) - 1 - j), line, anchor="middle", weight="bold")
 
 
 def overview_svg(hosts, verified, theme):
     """Operations by library, each cell a square per host, colored by its time
     over the fastest library's on that host."""
     svg = Svg(theme)
-    cell = len(HOSTS) * SQUARE + (len(HOSTS) - 1) * GAP + 18
+    shown = [name for name in HOSTS if name in hosts]
+    libs_shown = columns(*hosts.values())
+    names = [COLUMNS[lib] for lib in libs_shown]
+    squares = len(shown) * SQUARE + (len(shown) - 1) * GAP
+    cell = max(squares + 18, header_width(names) + 12)
     label_width, top = grid_layout()
     host_times = {name: times(h) for name, h in hosts.items()}
 
     x = speed_legend(svg, 12, 18, [("✓", "verified code")])
-    width = max(x, label_width + cell * len(COLUMNS) + 12)
-    svg.text(12, 38, "Each cell's squares, left to right: " + ", ".join(HOSTS) + ".", size=11, color="muted")
-    column_headers(svg, label_width, top, cell, list(COLUMNS.values()))
+    width = max(x, label_width + cell * len(names) + 12)
+    svg.text(12, 38, "Each cell's squares, left to right: " + ", ".join(shown) + ".", size=11, color="muted")
+    column_headers(svg, label_width, top, cell, names)
 
     y = top + 8
     for section, ops in SECTIONS:
@@ -971,13 +983,10 @@ def overview_svg(hosts, verified, theme):
         for op in ops:
             row = row_name(op)
             svg.text(12, y + 14, label(row))
-            for c, lib in enumerate(COLUMNS):
-                x = label_width + c * cell + 9
-                for h, name in enumerate(HOSTS):
+            for c, lib in enumerate(libs_shown):
+                x = label_width + c * cell + (cell - squares) / 2
+                for h, name in enumerate(shown):
                     sx = x + h * (SQUARE + GAP)
-                    if name not in hosts:
-                        svg.rect(sx, y + 3, SQUARE, SQUARE, None, f"{name}: not measured", stroke="rule")
-                        continue
                     libs = host_times[name].get(row, {})
                     if lib not in libs:
                         continue
@@ -999,12 +1008,13 @@ def host_svg(name, host, verified, theme):
     fastest library's."""
     svg = Svg(theme)
     cell = 92
+    libs_shown = columns(host)
     label_width, top = grid_layout()
-    width = label_width + cell * len(COLUMNS) + 12
+    width = label_width + cell * len(libs_shown) + 12
     x = speed_legend(svg, 12, 18, [("✓", "verified code")])
     width = max(width, x)
     svg.text(12, 38, f"{name}: {host['cpu']['model']}", size=11, color="muted")
-    column_headers(svg, label_width, top, cell, list(COLUMNS.values()))
+    column_headers(svg, label_width, top, cell, [COLUMNS[lib] for lib in libs_shown])
     host_times = times(host)
 
     y = top + 8
@@ -1016,7 +1026,7 @@ def host_svg(name, host, verified, theme):
             row = row_name(op)
             libs = host_times.get(row, {})
             svg.text(12, y + 14, label(row))
-            for c, lib in enumerate(COLUMNS):
+            for c, lib in enumerate(libs_shown):
                 x = label_width + c * cell + 2
                 if lib not in libs:
                     continue
@@ -1103,12 +1113,16 @@ def platform_of(entry):
 
 def host_table(host, verified):
     host_times = times(host)
-    lines = ["| Operation | " + " | ".join(COLUMNS.values()) + " |", "|---|" + "---|" * len(COLUMNS)]
+    libs_shown = columns(host)
+    lines = [
+        "| Operation | " + " | ".join(COLUMNS[lib] for lib in libs_shown) + " |",
+        "|---|" + "---|" * len(libs_shown),
+    ]
     for op in OPERATIONS:
         row = row_name(op)
         libs = host_times.get(row, {})
         cells = []
-        for lib in COLUMNS:
+        for lib in libs_shown:
             if lib not in libs:
                 cells.append("-")
                 continue
@@ -1151,54 +1165,59 @@ def tier_table(tiers):
 def report(hosts, tiers, verified):
     """BENCHMARKS.md and its SVGs, by path."""
     files = {}
+    shown = [name for name in HOSTS if name in hosts]
+    missing = [f"`{name}`" for name in HOSTS if name not in hosts]
+    count = ["no", "one", "two", "three", "four"][len(shown)] if len(shown) <= 4 else str(len(shown))
     md = [
         "# Benchmarks",
         "",
         "<!-- Generated by `admin/bench-report render` from benchmarks/data and benchmarks/verified.toml. -->",
         "",
-        "How long rind and the usual Rust crypto libraries take for the same operations, on four machines, "
-        "and what each costs to build. Every library runs its native path on each host. "
-        "A ✓ marks an operation whose whole computation a published formal proof covers, as "
+        f"How long rind and the usual Rust crypto libraries take for the same operations, on {count} "
+        f"machine{'' if len(shown) == 1 else 's'}, and what each costs to build. Every library runs its native "
+        "path on each host. A ✓ marks an operation whose whole computation a published formal proof covers, as "
         "[Verified code](#verified-code) lists.",
         "",
         "## Hosts",
         "",
-        "| Host | CPU | OS | Measured |",
-        "|---|---|---|---|",
     ]
-    for name in HOSTS:
-        if name in hosts:
-            h = hosts[name]
-            md.append(f"| `{name}` | {h['cpu']['model']} | {h['os']} | {measured(h)} |")
-        else:
-            md.append(f"| `{name}` | | | not measured yet |")
+    if shown:
+        md += ["| Host | CPU | OS | Measured |", "|---|---|---|---|"]
+        md += [f"| `{n}` | {hosts[n]['cpu']['model']} | {hosts[n]['os']} | {measured(hosts[n])} |" for n in shown]
+        md.append("")
+    if missing:
+        md += [f"Not measured yet: {', '.join(missing)}.", ""]
     md += [
-        "",
         "Each host builds with the pinned toolchain, in the Nix dev shell on Linux, and runs "
         "`admin/bench-report` only when idle. Times are criterion's estimates.",
         "",
-        "## Speed",
-        "",
-        "Each row is one operation and each column one library. Each cell holds a square per host, colored by "
-        "that library's time over the fastest library's on the same host, as the legend shows. A ✓ in a square "
-        "marks verified code. Each square's tooltip, in the SVG opened on its own, gives its time; the tables "
-        "below each host give them all. A library with no square doesn't offer the operation"
-        + (", and a dashed square marks a host not measured yet." if len(hosts) < len(HOSTS) else "."),
-        "",
-        *picture("overview", "Time over the fastest library's, by operation, library, and host"),
-        "",
     ]
-    for theme, suffix in (("light", ""), ("dark", "-dark")):
-        files[f"overview{suffix}.svg"] = overview_svg(hosts, verified, theme)
+    if shown:
+        md += [
+            "## Speed",
+            "",
+            "Each row is one operation and each column one library. Each cell holds a square per host, colored "
+            "by that library's time over the fastest library's on the same host, as the legend shows. A ✓ in a "
+            "square marks verified code. Each square's tooltip, in the SVG opened on its own, gives its time; "
+            "the tables below each host give them all. A library with no square doesn't offer the operation, or "
+            "the host didn't time it, as its section says.",
+            "",
+            *picture("overview", "Time over the fastest library's, by operation, library, and host"),
+            "",
+        ]
+        for theme, suffix in (("light", ""), ("dark", "-dark")):
+            files[f"overview{suffix}.svg"] = overview_svg(hosts, verified, theme)
     for name in HOSTS:
         if name not in hosts:
             continue
         h = hosts[name]
+        untimed = [label(row_name(op)) for op in OPERATIONS if row_name(op) not in times(h)]
         md += [
             f"### `{name}`: {h['cpu']['model']}",
             "",
             f"Measured {measured(h)}, on {h['os']} with {h['toolchain']['rustc']}.",
             "",
+            *([f"Not timed on `{name}`: {', '.join(untimed)}.", ""] if untimed else []),
             *picture(name, f"Times on {name}"),
             "",
             "<details>",
@@ -1212,19 +1231,20 @@ def report(hosts, tiers, verified):
         for theme, suffix in (("light", ""), ("dark", "-dark")):
             files[f"{name}{suffix}.svg"] = host_svg(name, h, verified, theme)
 
-    md += [
-        "## Build cost",
-        "",
-        "A cold `cargo build --release` of a minimal binary per library (AES-128-GCM, SHA-256, ECDSA P-256, "
-        "and X25519) and of a rustls client per provider, plus one whose rind-rustls provider holds only those, "
-        "by `admin/build-cost`: the median of three builds "
-        "with an empty target directory and a warm download cache, their CPU time, the stripped binary's size, "
-        "the build tools it needs beyond rustc and a linker, and the crates it compiles. The system OpenSSL "
-        "build leaves the library itself out of its size; the vendored build is the static figure.",
-        "",
-    ]
-    for name in HOSTS:
-        cost = hosts.get(name, {}).get("build_cost")
+    if shown:
+        md += [
+            "## Build cost",
+            "",
+            "A cold `cargo build --release` of a minimal binary per library (AES-128-GCM, SHA-256, ECDSA P-256, "
+            "and X25519) and of a rustls client per provider, plus one whose rind-rustls provider holds only "
+            "those, by `admin/build-cost`: the median of three builds with an empty target directory and a warm "
+            "download cache, their CPU time, the stripped binary's size, the build tools it needs beyond rustc "
+            "and a linker, and the crates it compiles. The system OpenSSL build leaves the library itself out of "
+            "its size; the vendored build is the static figure.",
+            "",
+        ]
+    for name in shown:
+        cost = hosts[name].get("build_cost")
         if not cost:
             continue
         md += [f"### `{name}`", ""]
