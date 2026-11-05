@@ -3061,6 +3061,7 @@ dependencies = [
  "libcrux-ml-kem",
  "libcrux-rsa",
  "libcrux-sha2",
+ "libcrux-sha3",
  "ml-kem",
  "openssl",
  "openssl-sys",
@@ -3080,6 +3081,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
+ "sha3",
  "x25519-dalek",
 ]
 

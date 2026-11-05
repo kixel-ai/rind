@@ -9,14 +9,18 @@ use core::ops::Range;
 
 use crate::low::{Blockwise, Entry, sha3_keccak_f1600, sha3_keccak_nof4_f1600, sha3_keccak4_f1600};
 
-/// A context for incremental computation of SHA3-256.
-pub(crate) struct Sha3_256Context {
-    sponge: Sponge<SHA3_256_R_BYTES, SHA_PAD_BYTE>,
+/// A context for incremental computation of a SHA3 hash with an `R`-byte
+/// rate and an `OUT`-byte digest.
+#[derive(Clone)]
+pub(crate) struct Sha3Context<const R: usize, const OUT: usize> {
+    sponge: Sponge<R, SHA_PAD_BYTE>,
 }
 
-impl Sha3_256Context {
-    /// Start a new SHA3-256 hash computation.
+impl<const R: usize, const OUT: usize> Sha3Context<R, OUT> {
+    /// Start a new hash computation.
     pub(crate) const fn new() -> Self {
+        // FIPS 202 gives SHA3 a capacity of twice its digest length.
+        const { assert!(R == 200 - 2 * OUT) };
         Self {
             sponge: Sponge::new(),
         }
@@ -27,45 +31,25 @@ impl Sha3_256Context {
         self.sponge.absorb(bytes);
     }
 
-    /// Complete the SHA3-256 computation, returning the hash output.
-    pub(crate) fn finish(mut self) -> [u8; Self::OUTPUT_SZ] {
-        let mut digest = [0u8; Self::OUTPUT_SZ];
-        self.sponge.finish_single_squeeze(&mut digest);
+    /// Complete the computation, returning the hash output.
+    pub(crate) fn finish(&self) -> [u8; OUT] {
+        let mut digest = [0u8; OUT];
+        SqueezingSponge::<R>::new(self.sponge.padded_state()).squeeze(&mut digest);
         digest
     }
 
-    /// The output size of SHA3-256.
-    pub(crate) const OUTPUT_SZ: usize = 32;
+    /// The output size of this hash.
+    pub(crate) const OUTPUT_SZ: usize = OUT;
 }
 
-/// A context for incremental computation of SHA3-512.
-pub(crate) struct Sha3_512Context {
-    sponge: Sponge<SHA3_512_R_BYTES, SHA_PAD_BYTE>,
-}
+/// SHA3-256.
+pub(crate) type Sha3_256Context = Sha3Context<{ (1600 - 512) / 8 }, 32>;
 
-impl Sha3_512Context {
-    /// Start a new SHA3-512 hash computation.
-    pub(crate) const fn new() -> Self {
-        Self {
-            sponge: Sponge::new(),
-        }
-    }
+/// SHA3-384.
+pub(crate) type Sha3_384Context = Sha3Context<{ (1600 - 768) / 8 }, 48>;
 
-    /// Add `bytes` to the ongoing hash computation.
-    pub(crate) fn update(&mut self, bytes: &[u8]) {
-        self.sponge.absorb(bytes);
-    }
-
-    /// Complete the SHA3-512 computation, returning the hash output.
-    pub(crate) fn finish(mut self) -> [u8; Self::OUTPUT_SZ] {
-        let mut digest = [0u8; Self::OUTPUT_SZ];
-        self.sponge.finish_single_squeeze(&mut digest);
-        digest
-    }
-
-    /// The output size of SHA3-512.
-    pub(crate) const OUTPUT_SZ: usize = 64;
-}
+/// SHA3-512.
+pub(crate) type Sha3_512Context = Sha3Context<{ (1600 - 1024) / 8 }, 64>;
 
 /// This is SHAKE128.
 ///
@@ -179,6 +163,7 @@ impl Shake256 {
 
 /// A sponge that has absorbed its input and owes a Keccak-f before each
 /// output block, so a read never permutes for output it doesn't use.
+#[derive(Clone)]
 pub(crate) struct SqueezingSponge<const R: usize> {
     s: [u64; 25],
 }
@@ -329,6 +314,7 @@ impl SqueezingSponge4xShake128 {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Sponge<const R: usize, const PAD: u8> {
     sponge: SqueezingSponge<R>,
     buffer: Blockwise<R>,
@@ -347,65 +333,53 @@ impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
         for m in message {
             s.absorb(m);
         }
-        s.pad_final();
-        SqueezingSponge::new(s.sponge.s)
+        SqueezingSponge::new(s.padded_state())
     }
 
     fn absorb(&mut self, bytes: &[u8]) {
-        Entry::assert_held();
         let bytes = self.buffer.add_leading(bytes);
-
-        if let Some(block) = self.buffer.take() {
-            self.absorb_block(&block);
-        }
-
+        let block = self.buffer.take();
         let (blocks, remainder) = bytes.as_chunks();
-        for block in blocks {
-            self.absorb_block(block);
+
+        if block.is_some() || !blocks.is_empty() {
+            // `digest::Context::update` leaves entering to here, so an update
+            // that only buffers skips it.
+            let _entry = Entry::new_secret();
+            if let Some(block) = block {
+                self.absorb_block(&block);
+            }
+            for block in blocks {
+                self.absorb_block(block);
+            }
         }
 
         self.buffer.add_trailing(remainder);
     }
 
-    /// Pad and absorb the final block, then squeeze `output`, which must be below `R` in length.
-    fn finish_single_squeeze(&mut self, output: &mut [u8]) {
-        debug_assert!(output.len() < R);
-        self.pad_final();
-        sha3_keccak_f1600(&mut self.sponge.s, &RC);
-        self.sponge.squeeze_current(output);
-    }
+    /// The state with the padded final block added, owing its Keccak-f.
+    fn padded_state(&self) -> [u64; 25] {
+        // `absorb` leaves under a whole block buffered, so the padding fits.
+        let buffered = self.buffer.buffered();
+        let mut padded = [0u8; R];
+        padded[..buffered.len()].copy_from_slice(buffered);
+        padded[buffered.len()] = PAD;
+        padded[R - 1] |= 0x80;
 
-    /// Pad the final block and add it to the state, owing its Keccak-f;
-    /// nothing more may be absorbed.
-    fn pad_final(&mut self) {
-        Entry::assert_held();
-        match R - self.buffer.used() {
-            1 => {
-                self.buffer.add_leading(&[PAD | 0x80]);
-            }
-            2 => {
-                self.buffer.add_leading(&[PAD, 0x80]);
-            }
-            n => {
-                self.buffer.add(&[PAD]);
-                self.buffer.add_leading(&R_ZEROES[..n - 2]);
-                self.buffer.add_leading(&[0x80]);
-            }
-        }
-        let padded = self.buffer.take().unwrap();
-        self.add_block(&padded);
+        let mut s = self.sponge.s;
+        add_block(&mut s, &padded);
+        s
     }
 
     fn absorb_block(&mut self, block: &[u8; R]) {
-        self.add_block(block);
+        add_block(&mut self.sponge.s, block);
         sha3_keccak_f1600(&mut self.sponge.s, &RC);
     }
+}
 
-    fn add_block(&mut self, block: &[u8; R]) {
-        let (chunks, _) = block.as_chunks::<8>();
-        for (i, block) in chunks.iter().enumerate() {
-            self.sponge.s[i] ^= u64::from_le_bytes(*block);
-        }
+fn add_block<const R: usize>(s: &mut [u64; 25], block: &[u8; R]) {
+    let (chunks, _) = block.as_chunks::<8>();
+    for (s, block) in s.iter_mut().zip(chunks) {
+        *s ^= u64::from_le_bytes(*block);
     }
 }
 
@@ -436,13 +410,8 @@ const RC: [u64; 24] = [
     0x80000000_80008008,
 ];
 
-const R_ZEROES: [u8; SHAKE_128_R_BYTES] = [0; SHAKE_128_R_BYTES];
-
 pub(crate) const SHAKE_128_R_BYTES: usize = (1600 - 256) / 8;
 const SHAKE_256_R_BYTES: usize = (1600 - 512) / 8;
-
-const SHA3_256_R_BYTES: usize = (1600 - 512) / 8;
-const SHA3_512_R_BYTES: usize = (1600 - 1024) / 8;
 
 /// This is 0b01_1 in keccak bit ordering.
 ///
@@ -459,48 +428,8 @@ pub(crate) const SHAKE_PAD_BYTE: u8 = 0b0001_1111;
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use proptest::prelude::*;
-
     use super::*;
     use crate::test::*;
-
-    #[test]
-    fn hello() {
-        let mut ctx = Sha3_256Context::new();
-        ctx.update(b"hello");
-        assert_eq!(&ctx.finish(),
-                   b"\x33\x38\xbe\x69\x4f\x50\xc5\xf3\x38\x81\x49\x86\xcd\xf0\x68\x64\x53\xa8\x88\xb8\x4f\x42\x4d\x79\x2a\xf4\xb9\x20\x23\x98\xf3\x92");
-
-        let mut ctx = Sha3_512Context::new();
-        ctx.update(b"hello");
-        assert_eq!(&ctx.finish(),
-            b"\x75\xd5\x27\xc3\x68\xf2\xef\xe8\x48\xec\xf6\xb0\x73\xa3\x67\x67\x80\x08\x05\xe9\xee\xf2\xb1\x85\x7d\x5f\x98\x4f\x03\x6e\xb6\xdf\x89\x1d\x75\xf7\x2d\x9b\x15\x45\x18\xc1\xcd\x58\x83\x52\x86\xd1\xda\x9a\x38\xde\xba\x3d\xe9\x8b\x5a\x53\xe5\xed\x78\xa8\x49\x76");
-    }
-
-    proptest! {
-        #[test]
-        fn matches_aws_lc_rs(
-            message in prop::collection::vec(any::<u8>(), 0..1024),
-            split in any::<prop::sample::Index>(),
-        ) {
-            use aws_lc_rs::digest;
-
-            // Two updates split anywhere exercise the partial-block buffering.
-            let split = split.index(message.len() + 1);
-
-            let mut ctx = Sha3_256Context::new();
-            ctx.update(&message[..split]);
-            ctx.update(&message[split..]);
-            let wanted = digest::digest(&digest::SHA3_256, &message);
-            prop_assert_eq!(&ctx.finish()[..], wanted.as_ref());
-
-            let mut ctx = Sha3_512Context::new();
-            ctx.update(&message[..split]);
-            ctx.update(&message[split..]);
-            let wanted = digest::digest(&digest::SHA3_512, &message);
-            prop_assert_eq!(&ctx.finish()[..], wanted.as_ref());
-        }
-    }
 
     #[test]
     fn sha3_256_all_lengths() {
@@ -623,83 +552,6 @@ mod tests {
     }
 
     const SEED: &[u8; 32] = b"Damn right its better than yours";
-
-    #[test]
-    fn cavp_sha3() {
-        #[derive(Debug)]
-        enum Kind {
-            None,
-            Sha3_256,
-            Sha3_512,
-        }
-
-        #[derive(Debug)]
-        struct Cavp {
-            kind: Kind,
-            len: usize,
-            message: Vec<u8>,
-        }
-
-        impl Default for Cavp {
-            fn default() -> Self {
-                Self {
-                    kind: Kind::None,
-                    len: 0,
-                    message: Vec::new(),
-                }
-            }
-        }
-
-        impl CavpSink for Cavp {
-            fn on_meta(&mut self, meta: &str) {
-                self.kind = match meta {
-                    "L = 256" => Kind::Sha3_256,
-                    "L = 512" => Kind::Sha3_512,
-                    _ => panic!("unhandled {meta:?}"),
-                };
-            }
-
-            fn on_value(&mut self, name: &str, value: Value<'_>) {
-                match name {
-                    "Len" => self.len = (value.int() / 8) as usize,
-                    "Msg" => self.message = value.bytes(),
-                    "MD" => match self.kind {
-                        Kind::None => {}
-                        Kind::Sha3_256 => {
-                            let mut h = Sha3_256Context::new();
-                            h.update(&self.message[..self.len]);
-                            assert_eq!(value.bytes(), h.finish());
-                        }
-                        Kind::Sha3_512 => {
-                            let mut h = Sha3_512Context::new();
-                            h.update(&self.message[..self.len]);
-                            assert_eq!(value.bytes(), h.finish());
-                        }
-                    },
-                    _ => {
-                        todo!("{self:?} value {name} = {value:?}");
-                    }
-                }
-            }
-        }
-
-        process_cavp(
-            "../thirdparty/cavp/sha3/SHA3_256ShortMsg.rsp",
-            &mut Cavp::default(),
-        );
-        process_cavp(
-            "../thirdparty/cavp/sha3/SHA3_256LongMsg.rsp",
-            &mut Cavp::default(),
-        );
-        process_cavp(
-            "../thirdparty/cavp/sha3/SHA3_512ShortMsg.rsp",
-            &mut Cavp::default(),
-        );
-        process_cavp(
-            "../thirdparty/cavp/sha3/SHA3_512LongMsg.rsp",
-            &mut Cavp::default(),
-        );
-    }
 
     #[test]
     fn cavp_shake() {

@@ -126,10 +126,20 @@ fn mlkem768() {
 fn digest() {
     use rind::digest::*;
 
-    for algorithm in [&legacy::SHA1, &SHA256, &SHA384, &SHA512, &SHA512_256] {
-        // A partial block leaves message bytes buffered beside the state.
+    for algorithm in [
+        &legacy::SHA1,
+        &SHA256,
+        &SHA384,
+        &SHA512,
+        &SHA512_256,
+        &SHA3_256,
+        &SHA3_384,
+        &SHA3_512,
+    ] {
+        // Whole blocks change the state, and a partial one leaves message
+        // bytes buffered beside it.
         let mut ctx = Context::new(algorithm);
-        ctx.update(&[0xffu8; 3]);
+        ctx.update(&[0xffu8; 300]);
         check_zeroed_on_drop(Box::pin(ctx));
     }
 }

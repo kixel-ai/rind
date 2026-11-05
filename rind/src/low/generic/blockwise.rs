@@ -15,18 +15,6 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
-    pub(crate) const fn used(&self) -> usize {
-        self.used
-    }
-
-    pub(crate) fn add(&mut self, bytes: &[u8]) {
-        if self.used == 0 {
-            self.add_trailing(bytes);
-        } else {
-            self.add_leading(bytes);
-        }
-    }
-
     /// Adds `bytes`, passing each run of whole blocks to `state` in order and
     /// holding the rest: what is short of a whole block, or the last whole
     /// block until more follows, so a hash can compress it with its padding

@@ -20,9 +20,10 @@ fn ed25519_key_generation() {
     }
 }
 
-// Every length to three of the larger blocks, so each tail lands on both
-// sides of the length field for both block sizes. One-shot, and in updates
-// that end on each block boundary, which leave a whole block buffered.
+// Every length to three of SHA-2's larger blocks, so each tail lands on both
+// sides of the length field for both block sizes, and SHA-3's padding lands
+// in one byte, two, or a block of its own. One-shot, and in updates that end
+// on each block boundary, which leave SHA-2 a whole block buffered.
 #[test]
 fn hashes_every_length() {
     let message: Vec<u8> = (0..3 * 128 + 1).map(|i| (i * 7 + 3) as u8).collect();
@@ -36,6 +37,9 @@ fn hashes_every_length() {
         (&rind::digest::SHA384, &digest::SHA384, 128),
         (&rind::digest::SHA512, &digest::SHA512, 128),
         (&rind::digest::SHA512_256, &digest::SHA512_256, 128),
+        (&rind::digest::SHA3_256, &digest::SHA3_256, 136),
+        (&rind::digest::SHA3_384, &digest::SHA3_384, 104),
+        (&rind::digest::SHA3_512, &digest::SHA3_512, 72),
     ] {
         for len in 0..=message.len() {
             let message = &message[..len];
@@ -72,6 +76,9 @@ proptest! {
             (&rind::digest::SHA384, &digest::SHA384),
             (&rind::digest::SHA512, &digest::SHA512),
             (&rind::digest::SHA512_256, &digest::SHA512_256),
+            (&rind::digest::SHA3_256, &digest::SHA3_256),
+            (&rind::digest::SHA3_384, &digest::SHA3_384),
+            (&rind::digest::SHA3_512, &digest::SHA3_512),
         ] {
             let mut ctx = rind::digest::Context::new(ours);
             let mut start = 0;
