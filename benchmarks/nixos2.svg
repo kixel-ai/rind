@@ -127,8 +127,8 @@
 <text x="12.0" y="298.0" font-size="12" text-anchor="start" font-weight="bold" fill="#0b0b0b">AEADs</text>
 <line x1="12.0" y1="302.0" x2="919.2" y2="302.0" stroke="#c3c2b7"/>
 <text x="12.0" y="320.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-128-GCM seal, 32 B</text>
-<rect x="277.2" y="307.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM seal, 32 B, rind: 42 ns, 1.00× the fastest</title></rect>
-<text x="321.2" y="320.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">42 ns</text>
+<rect x="277.2" y="307.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM seal, 32 B, rind: 42 ns, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="320.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">42 ns ✓</text>
 <rect x="369.2" y="307.0" width="88.0" height="18.0" rx="2" fill="#6da7ec"><title>AES-128-GCM seal, 32 B, aws-lc-rs: 89 ns, 2.12× the fastest</title></rect>
 <text x="413.2" y="320.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">89 ns</text>
 <rect x="461.2" y="307.0" width="88.0" height="18.0" rx="2" fill="#3987e5"><title>AES-128-GCM seal, 32 B, ring: 72 ns, 1.71× the fastest</title></rect>
@@ -142,8 +142,8 @@
 <rect x="829.2" y="307.0" width="88.0" height="18.0" rx="2" fill="#6da7ec"><title>AES-128-GCM seal, 32 B, OpenSSL: 161 ns, 3.84× the fastest</title></rect>
 <text x="873.2" y="320.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">161 ns</text>
 <text x="12.0" y="340.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-128-GCM seal, 1350 B</text>
-<rect x="277.2" y="327.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM seal, 1350 B, rind: 264 ns, 1.00× the fastest</title></rect>
-<text x="321.2" y="340.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">264 ns</text>
+<rect x="277.2" y="327.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM seal, 1350 B, rind: 264 ns, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="340.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">264 ns ✓</text>
 <rect x="369.2" y="327.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM seal, 1350 B, aws-lc-rs: 287 ns, 1.09× the fastest</title></rect>
 <text x="413.2" y="340.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">287 ns</text>
 <rect x="461.2" y="327.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM seal, 1350 B, ring: 280 ns, 1.06× the fastest</title></rect>
@@ -157,8 +157,8 @@
 <rect x="829.2" y="327.0" width="88.0" height="18.0" rx="2" fill="#256abf"><title>AES-128-GCM seal, 1350 B, OpenSSL: 362 ns, 1.37× the fastest</title></rect>
 <text x="873.2" y="340.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">362 ns</text>
 <text x="12.0" y="360.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-128-GCM seal, 16 KB</text>
-<rect x="277.2" y="347.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM seal, 16 KB, rind: 2.38 µs, 1.00× the fastest</title></rect>
-<text x="321.2" y="360.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">2.38 µs</text>
+<rect x="277.2" y="347.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM seal, 16 KB, rind: 2.38 µs, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="360.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">2.38 µs ✓</text>
 <rect x="369.2" y="347.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM seal, 16 KB, aws-lc-rs: 2.46 µs, 1.04× the fastest</title></rect>
 <text x="413.2" y="360.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">2.46 µs</text>
 <rect x="461.2" y="347.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM seal, 16 KB, ring: 2.38 µs, 1.00× the fastest</title></rect>
@@ -172,8 +172,8 @@
 <rect x="829.2" y="347.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM seal, 16 KB, OpenSSL: 2.53 µs, 1.06× the fastest</title></rect>
 <text x="873.2" y="360.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">2.53 µs</text>
 <text x="12.0" y="380.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-128-GCM open, 32 B</text>
-<rect x="277.2" y="367.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM open, 32 B, rind: 50 ns, 1.00× the fastest</title></rect>
-<text x="321.2" y="380.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">50 ns</text>
+<rect x="277.2" y="367.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM open, 32 B, rind: 50 ns, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="380.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">50 ns ✓</text>
 <rect x="369.2" y="367.0" width="88.0" height="18.0" rx="2" fill="#3987e5"><title>AES-128-GCM open, 32 B, aws-lc-rs: 95 ns, 1.89× the fastest</title></rect>
 <text x="413.2" y="380.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">95 ns</text>
 <rect x="461.2" y="367.0" width="88.0" height="18.0" rx="2" fill="#3987e5"><title>AES-128-GCM open, 32 B, ring: 79 ns, 1.58× the fastest</title></rect>
@@ -187,8 +187,8 @@
 <rect x="829.2" y="367.0" width="88.0" height="18.0" rx="2" fill="#6da7ec"><title>AES-128-GCM open, 32 B, OpenSSL: 156 ns, 3.13× the fastest</title></rect>
 <text x="873.2" y="380.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">156 ns</text>
 <text x="12.0" y="400.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-128-GCM open, 1350 B</text>
-<rect x="277.2" y="387.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM open, 1350 B, rind: 261 ns, 1.00× the fastest</title></rect>
-<text x="321.2" y="400.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">261 ns</text>
+<rect x="277.2" y="387.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM open, 1350 B, rind: 261 ns, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="400.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">261 ns ✓</text>
 <rect x="369.2" y="387.0" width="88.0" height="18.0" rx="2" fill="#184f95"><title>AES-128-GCM open, 1350 B, aws-lc-rs: 297 ns, 1.14× the fastest</title></rect>
 <text x="413.2" y="400.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">297 ns</text>
 <rect x="461.2" y="387.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM open, 1350 B, ring: 278 ns, 1.07× the fastest</title></rect>
@@ -202,8 +202,8 @@
 <rect x="829.2" y="387.0" width="88.0" height="18.0" rx="2" fill="#256abf"><title>AES-128-GCM open, 1350 B, OpenSSL: 360 ns, 1.38× the fastest</title></rect>
 <text x="873.2" y="400.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">360 ns</text>
 <text x="12.0" y="420.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-128-GCM open, 16 KB</text>
-<rect x="277.2" y="407.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM open, 16 KB, rind: 2.58 µs, 1.00× the fastest</title></rect>
-<text x="321.2" y="420.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">2.58 µs</text>
+<rect x="277.2" y="407.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM open, 16 KB, rind: 2.58 µs, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="420.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">2.58 µs ✓</text>
 <rect x="369.2" y="407.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM open, 16 KB, aws-lc-rs: 2.63 µs, 1.02× the fastest</title></rect>
 <text x="413.2" y="420.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">2.63 µs</text>
 <rect x="461.2" y="407.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM open, 16 KB, ring: 2.59 µs, 1.00× the fastest</title></rect>
@@ -217,8 +217,8 @@
 <rect x="829.2" y="407.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-128-GCM open, 16 KB, OpenSSL: 2.70 µs, 1.05× the fastest</title></rect>
 <text x="873.2" y="420.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">2.70 µs</text>
 <text x="12.0" y="440.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-256-GCM seal, 32 B</text>
-<rect x="277.2" y="427.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM seal, 32 B, rind: 46 ns, 1.00× the fastest</title></rect>
-<text x="321.2" y="440.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">46 ns</text>
+<rect x="277.2" y="427.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM seal, 32 B, rind: 46 ns, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="440.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">46 ns ✓</text>
 <rect x="369.2" y="427.0" width="88.0" height="18.0" rx="2" fill="#6da7ec"><title>AES-256-GCM seal, 32 B, aws-lc-rs: 96 ns, 2.06× the fastest</title></rect>
 <text x="413.2" y="440.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">96 ns</text>
 <rect x="461.2" y="427.0" width="88.0" height="18.0" rx="2" fill="#3987e5"><title>AES-256-GCM seal, 32 B, ring: 76 ns, 1.64× the fastest</title></rect>
@@ -232,8 +232,8 @@
 <rect x="829.2" y="427.0" width="88.0" height="18.0" rx="2" fill="#6da7ec"><title>AES-256-GCM seal, 32 B, OpenSSL: 167 ns, 3.60× the fastest</title></rect>
 <text x="873.2" y="440.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">167 ns</text>
 <text x="12.0" y="460.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-256-GCM seal, 1350 B</text>
-<rect x="277.2" y="447.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM seal, 1350 B, rind: 343 ns, 1.00× the fastest</title></rect>
-<text x="321.2" y="460.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">343 ns</text>
+<rect x="277.2" y="447.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM seal, 1350 B, rind: 343 ns, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="460.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">343 ns ✓</text>
 <rect x="369.2" y="447.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM seal, 1350 B, aws-lc-rs: 364 ns, 1.06× the fastest</title></rect>
 <text x="413.2" y="460.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">364 ns</text>
 <rect x="461.2" y="447.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM seal, 1350 B, ring: 356 ns, 1.04× the fastest</title></rect>
@@ -247,8 +247,8 @@
 <rect x="829.2" y="447.0" width="88.0" height="18.0" rx="2" fill="#256abf"><title>AES-256-GCM seal, 1350 B, OpenSSL: 438 ns, 1.28× the fastest</title></rect>
 <text x="873.2" y="460.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">438 ns</text>
 <text x="12.0" y="480.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-256-GCM seal, 16 KB</text>
-<rect x="277.2" y="467.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM seal, 16 KB, rind: 3.24 µs, 1.00× the fastest</title></rect>
-<text x="321.2" y="480.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">3.24 µs</text>
+<rect x="277.2" y="467.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM seal, 16 KB, rind: 3.24 µs, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="480.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">3.24 µs ✓</text>
 <rect x="369.2" y="467.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM seal, 16 KB, aws-lc-rs: 3.32 µs, 1.02× the fastest</title></rect>
 <text x="413.2" y="480.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">3.32 µs</text>
 <rect x="461.2" y="467.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM seal, 16 KB, ring: 3.25 µs, 1.00× the fastest</title></rect>
@@ -262,8 +262,8 @@
 <rect x="829.2" y="467.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM seal, 16 KB, OpenSSL: 3.35 µs, 1.03× the fastest</title></rect>
 <text x="873.2" y="480.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">3.35 µs</text>
 <text x="12.0" y="500.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-256-GCM open, 32 B</text>
-<rect x="277.2" y="487.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM open, 32 B, rind: 57 ns, 1.00× the fastest</title></rect>
-<text x="321.2" y="500.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">57 ns</text>
+<rect x="277.2" y="487.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM open, 32 B, rind: 57 ns, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="500.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">57 ns ✓</text>
 <rect x="369.2" y="487.0" width="88.0" height="18.0" rx="2" fill="#3987e5"><title>AES-256-GCM open, 32 B, aws-lc-rs: 104 ns, 1.83× the fastest</title></rect>
 <text x="413.2" y="500.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">104 ns</text>
 <rect x="461.2" y="487.0" width="88.0" height="18.0" rx="2" fill="#256abf"><title>AES-256-GCM open, 32 B, ring: 83 ns, 1.45× the fastest</title></rect>
@@ -277,8 +277,8 @@
 <rect x="829.2" y="487.0" width="88.0" height="18.0" rx="2" fill="#6da7ec"><title>AES-256-GCM open, 32 B, OpenSSL: 173 ns, 3.05× the fastest</title></rect>
 <text x="873.2" y="500.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">173 ns</text>
 <text x="12.0" y="520.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-256-GCM open, 1350 B</text>
-<rect x="277.2" y="507.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM open, 1350 B, rind: 351 ns, 1.00× the fastest</title></rect>
-<text x="321.2" y="520.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">351 ns</text>
+<rect x="277.2" y="507.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM open, 1350 B, rind: 351 ns, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="520.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">351 ns ✓</text>
 <rect x="369.2" y="507.0" width="88.0" height="18.0" rx="2" fill="#184f95"><title>AES-256-GCM open, 1350 B, aws-lc-rs: 391 ns, 1.11× the fastest</title></rect>
 <text x="413.2" y="520.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">391 ns</text>
 <rect x="461.2" y="507.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM open, 1350 B, ring: 371 ns, 1.06× the fastest</title></rect>
@@ -292,8 +292,8 @@
 <rect x="829.2" y="507.0" width="88.0" height="18.0" rx="2" fill="#184f95"><title>AES-256-GCM open, 1350 B, OpenSSL: 436 ns, 1.24× the fastest</title></rect>
 <text x="873.2" y="520.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">436 ns</text>
 <text x="12.0" y="540.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">AES-256-GCM open, 16 KB</text>
-<rect x="277.2" y="527.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM open, 16 KB, rind: 3.58 µs, 1.01× the fastest</title></rect>
-<text x="321.2" y="540.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">3.58 µs</text>
+<rect x="277.2" y="527.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM open, 16 KB, rind: 3.58 µs, 1.01× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports</title></rect>
+<text x="321.2" y="540.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">3.58 µs ✓</text>
 <rect x="369.2" y="527.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM open, 16 KB, aws-lc-rs: 3.56 µs, 1.00× the fastest</title></rect>
 <text x="413.2" y="540.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">3.56 µs</text>
 <rect x="461.2" y="527.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>AES-256-GCM open, 16 KB, ring: 3.59 µs, 1.01× the fastest</title></rect>
