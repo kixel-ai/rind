@@ -23,6 +23,7 @@ fn main() {
         ("vaes", is_x86_feature_detected!("vaes")),
         ("pclmulqdq", is_x86_feature_detected!("pclmulqdq")),
         ("vpclmulqdq", is_x86_feature_detected!("vpclmulqdq")),
+        ("bmi1", is_x86_feature_detected!("bmi1")),
         ("bmi2", is_x86_feature_detected!("bmi2")),
         ("movbe", is_x86_feature_detected!("movbe")),
         ("popcnt", is_x86_feature_detected!("popcnt")),
@@ -38,6 +39,7 @@ fn main() {
         ("avx512vbmi", is_x86_feature_detected!("avx512vbmi")),
         ("avx512vbmi2", is_x86_feature_detected!("avx512vbmi2")),
         ("sha", is_x86_feature_detected!("sha")),
+        ("sha512", is_x86_feature_detected!("sha512")),
     ];
     let has = |name| cpuid.iter().any(|&(n, v)| n == name && v);
 
