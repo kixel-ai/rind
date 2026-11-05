@@ -7,9 +7,9 @@ use super::curve::{
 };
 use super::hash::{Hash, SignatureHash};
 use super::hmac_drbg::HmacDrbg;
-use super::pkcs8;
+use super::sec1;
 use crate::error::{Error, KeyFormatError};
-use crate::low::{Entry, ct};
+use crate::low::Entry;
 use crate::mid::rng::{RandomSource, SystemRandom};
 
 /// An ECDSA signing key, on curve `C`.
@@ -44,12 +44,7 @@ impl<C: Curve> SigningKey<C> {
     /// Load an ECDSA private key in PKCS#8 format.
     pub(crate) fn from_pkcs8_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        pkcs8::Key::decode(
-            bytes,
-            &asn1::oid::id_ecPublicKey,
-            Some(asn1::Any::ObjectId(C::oid())),
-        )
-        .and_then(|k| Self::from_sec1_der(k.v1_private_key()?))
+        Self::from_decoded(sec1::decode_pkcs8(bytes, &C::oid())?)
     }
 
     /// Encode this private key in PKCS#8 DER format.
@@ -59,42 +54,30 @@ impl<C: Curve> SigningKey<C> {
     /// to contain the full encoding.
     pub(crate) fn to_pkcs8_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let _entry = Entry::new_secret();
-
-        let mut sec1_buf = [0u8; MAX_SCALAR_LEN + MAX_UNCOMPRESSED_PUBLIC_KEY_LEN + 128];
-        let sec1 = self.to_sec1_der_detail(None, &mut sec1_buf)?;
-
-        pkcs8::Key::construct(
-            sec1,
-            None,
-            asn1::oid::id_ecPublicKey.clone(),
-            Some(asn1::Any::ObjectId(C::oid())),
+        let mut private_key = [0u8; MAX_SCALAR_LEN];
+        let private_key = self.private_key.encode(&mut private_key)?;
+        sec1::encode_pkcs8(
+            private_key,
+            self.public_key_uncompressed(),
+            C::oid(),
+            output,
         )
-        .encode(output)
     }
 
     /// Load an ECDSA private key in SEC.1 format.
     pub(crate) fn from_sec1_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        let ecpk = asn1::pkix::EcPrivateKey::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
+        Self::from_decoded(sec1::decode(bytes, &C::oid())?)
+    }
 
-        // nb. ecpk.version has one variant, so if it decoded property it is guaranteed
-        // to be EcPrivateKeyVer::ecPrivkeyVer1
-
-        match ecpk.parameters.inner() {
-            Some(x) if x == &C::oid() => {}
-            None => {}
-            _ => return Err(KeyFormatError::MismatchedSec1Curve.into()),
+    fn from_decoded(decoded: sec1::Decoded<'_>) -> Result<Self, Error> {
+        let key = Self::new(C::PrivateKey::from_bytes(decoded.private_key)?)?;
+        match decoded.public_key {
+            Some(public_key) if !key.is_public_key(public_key) => {
+                Err(KeyFormatError::MismatchedSec1PublicKey.into())
+            }
+            _ => Ok(key),
         }
-
-        let key = Self::new(C::PrivateKey::from_bytes(ecpk.privateKey.as_octets())?)?;
-
-        if let Some(expected_public_key) = ecpk.publicKey.inner()
-            && !key.is_public_key(expected_public_key.as_octets())
-        {
-            return Err(KeyFormatError::MismatchedSec1PublicKey.into());
-        }
-
-        Ok(key)
     }
 
     /// Load an ECDSA private key from its fixed-length big-endian scalar,
@@ -117,23 +100,9 @@ impl<C: Curve> SigningKey<C> {
     }
 
     /// Whether `encoded`, an X9.62 uncompressed or compressed point, is this
-    /// key's public key.
-    ///
-    /// A compressed point is `x` and the parity of `y`, which name at most
-    /// one point, so comparing them with this key's matches exactly the
-    /// encodings that decompress to it, with no square root. A hybrid point
-    /// is refused.
+    /// key's public key, as [`sec1::is_public_key`] decides.
     fn is_public_key(&self, encoded: &[u8]) -> bool {
-        let Some((_, xy)) = self.public_key_uncompressed().split_first() else {
-            return false;
-        };
-        let (x, y) = xy.split_at(xy.len() / 2);
-        match encoded.split_first() {
-            Some((&tag @ (0x02 | 0x03), compressed)) => {
-                compressed == x && y.last().is_some_and(|y| tag == 0x02 | (y & 1))
-            }
-            _ => encoded == self.public_key_uncompressed(),
-        }
+        sec1::is_public_key(self.public_key_uncompressed(), encoded)
     }
 
     /// Encode this private key as its fixed-length big-endian scalar, still
@@ -146,34 +115,6 @@ impl<C: Curve> SigningKey<C> {
     /// This private key's public key, as an X9.62 uncompressed point.
     pub(crate) fn public_key_uncompressed(&self) -> &[u8] {
         &self.public_key[..self.public_key_len]
-    }
-
-    fn to_sec1_der_detail<'a>(
-        &self,
-        parameters: Option<asn1::ObjectId>,
-        output: &'a mut [u8],
-    ) -> Result<&'a [u8], Error> {
-        let mut encoded_private_key_buf = [0u8; MAX_SCALAR_LEN];
-        let encoded_private_key = self.private_key.encode(&mut encoded_private_key_buf)?;
-
-        let ecpk = asn1::pkix::EcPrivateKey {
-            version: asn1::pkix::EcPrivateKeyVer::ecPrivkeyVer1,
-            privateKey: asn1::OctetString::new(encoded_private_key),
-            parameters: match parameters {
-                Some(x) => x.into(),
-                None => asn1::Context::absent(),
-            },
-            publicKey: asn1::BitString::new(self.public_key_uncompressed()).into(),
-        };
-
-        let used = ecpk
-            .encode(&mut asn1::Encoder::new(output))
-            .map_err(|_| Error::WrongLength)?;
-
-        // The caller owns the encoding, as with the key's `as_bytes`.
-        let output = output.get(..used).ok_or(Error::WrongLength)?;
-        ct::public_slice(output);
-        Ok(output)
     }
 
     /// Encode this private key's corresponding public key in SubjectPublicKeyInfo DER format.
@@ -230,6 +171,37 @@ impl<C: Curve> SigningKey<C> {
         Self::fixed_to_asn1(fixed_sig, asn1_signature)
     }
 
+    /// ECDSA signing of `digest`, a hash of the message, returning a
+    /// fixed-length signature, as [`Self::sign()`] does for a message.
+    ///
+    /// `digest` may be any length: one longer than the scalar is truncated to
+    /// its leftmost bits. The nonce comes from HMAC_DRBG over `H`, which
+    /// need not be the digest's hash: RFC 6979 uses the message's for its
+    /// test vectors, but any PRF serves.
+    pub(crate) fn sign_digest<'a, H: Hash>(
+        &self,
+        digest: &[u8],
+        signature: &'a mut [u8],
+    ) -> Result<&'a [u8], Error> {
+        let _entry = Entry::new_secret();
+        let mut random = [0u8; 16];
+        SystemRandom.fill(&mut random)?;
+        self.rfc6979_sign_digest_with_random::<H>(digest, &random, signature)
+    }
+
+    /// [`Self::sign_digest()`], returning a DER-encoded ASN.1 signature.
+    pub(crate) fn sign_asn1_digest<'a, H: Hash>(
+        &self,
+        digest: &[u8],
+        asn1_signature: &'a mut [u8],
+    ) -> Result<&'a [u8], Error> {
+        let _entry = Entry::new_secret();
+        let mut fixed_sig = [0u8; MAX_SCALAR_LEN * 2];
+        let fixed_sig = self.sign_digest::<H>(digest, &mut fixed_sig)?;
+
+        Self::fixed_to_asn1(fixed_sig, asn1_signature)
+    }
+
     fn fixed_to_asn1<'a>(
         fixed_signature: &[u8],
         asn1_signature: &'a mut [u8],
@@ -274,6 +246,39 @@ impl<C: Curve> SigningKey<C> {
         let encoded_private_key = self.private_key.encode(&mut encoded_private_key_buf)?;
 
         let e = hash_to_scalar::<C>(hash.as_ref())?;
+        let mut e_bytes = [0u8; MAX_SCALAR_LEN];
+        e.write_bytes(&mut e_bytes[..C::Scalar::LEN_BYTES]);
+        let mut rng = HmacDrbg::<H>::new(
+            encoded_private_key,
+            &e_bytes[..C::Scalar::LEN_BYTES],
+            random,
+        );
+
+        let (r, s) = self.sign_with_nonces(&e, &mut rng)?;
+
+        r.write_bytes(&mut output[..C::Scalar::LEN_BYTES]);
+        s.write_bytes(&mut output[C::Scalar::LEN_BYTES..]);
+        Ok(&output[..C::Scalar::LEN_BYTES * 2])
+    }
+
+    /// [`Self::rfc6979_sign_with_random()`] for a message already hashed.
+    ///
+    /// That function does not call this one, as `proofs/` checks its
+    /// translation as it stands.
+    fn rfc6979_sign_digest_with_random<'a, H: Hash>(
+        &self,
+        digest: &[u8],
+        random: &[u8],
+        signature: &'a mut [u8],
+    ) -> Result<&'a [u8], Error> {
+        let Some(output) = signature.get_mut(..C::Scalar::LEN_BYTES * 2) else {
+            return Err(Error::WrongLength);
+        };
+
+        let mut encoded_private_key_buf = [0u8; MAX_SCALAR_LEN];
+        let encoded_private_key = self.private_key.encode(&mut encoded_private_key_buf)?;
+
+        let e = hash_to_scalar::<C>(digest)?;
         let mut e_bytes = [0u8; MAX_SCALAR_LEN];
         e.write_bytes(&mut e_bytes[..C::Scalar::LEN_BYTES]);
         let mut rng = HmacDrbg::<H>::new(
@@ -378,16 +383,49 @@ impl<C: Curve> VerifyingKey<C> {
         signature: &[u8],
     ) -> Result<(), Error> {
         let _entry = Entry::new_public();
+        let mut fixed = [0u8; MAX_SCALAR_LEN * 2];
+        self.verify::<H>(message, Self::asn1_to_fixed(signature, &mut fixed)?)
+    }
+
+    /// Verify an ECDSA fixed-length signature over `digest`, a hash of the
+    /// message, as [`Self::verify()`] does over a message.
+    ///
+    /// That function does not call this one, as `proofs/` checks its
+    /// translation as it stands.
+    pub(crate) fn verify_digest(&self, digest: &[u8], signature: &[u8]) -> Result<(), Error> {
+        let _entry = Entry::new_public();
+        if signature.len() != C::Scalar::LEN_BYTES * 2 {
+            return Err(Error::BadSignature);
+        }
+
+        let r = C::Scalar::from_bytes_checked(&signature[..C::Scalar::LEN_BYTES])
+            .map_err(|_| Error::BadSignature)?;
+        let s = C::Scalar::from_bytes_checked(&signature[C::Scalar::LEN_BYTES..])
+            .map_err(|_| Error::BadSignature)?;
+        let e = hash_to_scalar::<C>(digest)?;
+        self.public_key.raw_ecdsa_verify(&r, &s, &e)
+    }
+
+    /// [`Self::verify_digest()`] of an ASN.1-encoded signature.
+    pub(crate) fn verify_asn1_digest(&self, digest: &[u8], signature: &[u8]) -> Result<(), Error> {
+        let _entry = Entry::new_public();
+        let mut fixed = [0u8; MAX_SCALAR_LEN * 2];
+        self.verify_digest(digest, Self::asn1_to_fixed(signature, &mut fixed)?)
+    }
+
+    /// Converts an ASN.1 signature to fixed length in `fixed`, returning the
+    /// used span.
+    fn asn1_to_fixed<'a>(signature: &[u8], fixed: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let sig =
             asn1::pkix::EcdsaSigValue::from_bytes(signature).map_err(|_| Error::BadSignature)?;
         if sig.r.is_negative() || sig.s.is_negative() {
             return Err(Error::BadSignature);
         }
 
-        let fixed = &mut [0u8; MAX_SCALAR_LEN * 2][..C::Scalar::LEN_BYTES * 2];
+        let fixed = &mut fixed[..C::Scalar::LEN_BYTES * 2];
         write_fixed(&mut fixed[..C::Scalar::LEN_BYTES], sig.r.as_ref())?;
         write_fixed(&mut fixed[C::Scalar::LEN_BYTES..], sig.s.as_ref())?;
-        self.verify::<H>(message, fixed)
+        Ok(fixed)
     }
 }
 
@@ -608,10 +646,18 @@ mod tests {
         let loaded = SigningKey::<C>::from_sec1_der(sec1_der).unwrap();
         let mut buf = [0u8; 256];
         assert!(buf.len() > sec1_der.len());
-        let encoded = loaded.to_sec1_der_detail(Some(C::oid()), &mut buf).unwrap();
+        let mut scalar = [0u8; MAX_SCALAR_LEN];
+        let scalar = loaded.to_scalar(&mut scalar).unwrap();
+        let public_key = loaded.public_key_uncompressed();
+        let encoded = sec1::encode(scalar, public_key, Some(C::oid()), &mut buf).unwrap();
         assert_eq!(sec1_der, encoded);
         assert_eq!(
-            loaded.to_sec1_der_detail(Some(C::oid()), &mut buf[..sec1_der.len() - 1]),
+            sec1::encode(
+                scalar,
+                public_key,
+                Some(C::oid()),
+                &mut buf[..sec1_der.len() - 1]
+            ),
             Err(Error::WrongLength)
         );
     }
@@ -788,6 +834,56 @@ mod tests {
             ]
         );
         v.verify::<hash::Sha256>(b"wv[vnX", &signature).unwrap();
+    }
+
+    // The digest path repeats the message path, which `proofs/` checks as
+    // it stands, so the two must agree, here on RFC 6979's A.2.5, A.2.6,
+    // and A.2.7 keys and messages.
+    #[test]
+    fn digest_signing_matches_message_signing() {
+        fn check<C: Curve>(private_key: &str) {
+            let private_key =
+                C::PrivateKey::from_bytes(&hex::decode(private_key).unwrap()).unwrap();
+            let mut public_key = [0u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN];
+            let public_key = private_key
+                .public_key_encode_uncompressed(&mut public_key)
+                .unwrap();
+            let v = VerifyingKey::<C>::from_x962_uncompressed(public_key).unwrap();
+            let k = SigningKey::<C>::new(private_key).unwrap();
+            for message in [&b"sample"[..], b"test"] {
+                let (mut ours, mut wanted) = ([0u8; 132], [0u8; 132]);
+                let wanted = k
+                    .rfc6979_sign_with_random::<hash::Sha512>(message, &[], &mut wanted)
+                    .unwrap();
+                let digest = hash::Sha512::hash(message);
+                let ours = k
+                    .rfc6979_sign_digest_with_random::<hash::Sha512>(
+                        digest.as_ref(),
+                        &[],
+                        &mut ours,
+                    )
+                    .unwrap();
+                assert_eq!(ours, wanted);
+                v.verify_digest(digest.as_ref(), ours).unwrap();
+                v.verify::<hash::Sha512>(message, ours).unwrap();
+
+                let mut asn1 = [0u8; 160];
+                let asn1 = SigningKey::<C>::fixed_to_asn1(ours, &mut asn1).unwrap();
+                v.verify_asn1_digest(digest.as_ref(), asn1).unwrap();
+                assert_eq!(
+                    v.verify_digest(hash::Sha512::hash(b"other").as_ref(), ours),
+                    Err(Error::BadSignature)
+                );
+            }
+        }
+
+        check::<curve::P256>("c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721");
+        check::<curve::P384>(
+            "6b9d3dad2e1b8c1c05b19875b6659f4de23c3b667bf297ba9aa47740787137d896d5724e4c70a825f872c9ea60d2edf5",
+        );
+        check::<curve::P521>(
+            "00fad06daa62ba3b25d2fb40133da757205de67f5bb0018fee8c86e1b68c7e75caa896eb32f1f47c70855836a6d16fcc1466f6d8fbec67db89ec0c08b0e996b83538",
+        );
     }
 
     #[test]

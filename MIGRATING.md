@@ -29,7 +29,7 @@ renames [rind-ring](#rind-ring), ring's API on rind, to `ring`.
 | `Algorithm::output_len()` | the same |
 | `Algorithm::block_len()`, `chaining_len()`, `MAX_BLOCK_LEN`, `MAX_CHAINING_LEN`, `MAX_OUTPUT_LEN`, `SHA*_OUTPUT_LEN` | none; `output_len()` gives each length |
 | `Context::algorithm()`, `Digest::algorithm()` | none |
-| `Digest::import_less_safe` | none |
+| `Digest::import_less_safe` | none: rind signs and verifies only digests it computed |
 
 ## hmac
 
@@ -132,22 +132,25 @@ protocols with their own integrity protection need. ring has none.
 
 ## agreement
 
-rind's agreement keys are ephemeral: each agrees once, and none loads or
-exports a private key.
-
 | aws-lc-rs | rind |
 |---|---|
 | `EphemeralPrivateKey::generate(alg, rng)`, `PrivateKey::generate(alg)` | `PrivateKey::generate(&alg)?` |
 | `compute_public_key()?` | `public_key()`, which cannot fail |
 | `agree_ephemeral(key, &UnparsedPublicKey::new(alg, peer), err, kdf)` | `key.agree(peer)?`, returning a `SharedSecret` wiped on drop |
-| `agree(&key, peer, err, kdf)` | `key.agree(peer)?`, which consumes the key |
+| `agree(&key, peer, err, kdf)` | `key.agree(peer)?`, which borrows the key, so it agrees again |
 | `UnparsedPublicKey`, `ParsedPublicKey`, `ParsedPublicKeyFormat` | none: `agree` parses the peer's bytes for the key's algorithm |
 | `PublicKey`'s bytes | `PublicKey`'s bytes: an uncompressed point, or X25519's 32 bytes |
 | `X25519`, `ECDH_P256`, `ECDH_P384`, `ECDH_P521` | the same |
-| `PrivateKey::from_private_key_der`, `from_private_key`, `as_der`, `as_be_bytes`, `PublicKey::as_der`, `as_be_bytes` | none: no consumer stores an agreement key |
+| `PrivateKey::from_private_key(alg, bytes)` | the same |
+| `PrivateKey::from_private_key_der(alg, der)` | `from_pkcs8(&alg, der)` or `from_sec1(&alg, der)`, whichever the caller holds |
+| `as_be_bytes()` to `EcPrivateKeyBin` or `Curve25519SeedBin` | `to_scalar()`, wiped on drop |
+| `AsDer<Pkcs8V1Der>::as_der()` | `to_pkcs8()`, which X25519 keys also have |
+| `AsDer<EcPrivateKeyRfc5915Der>::as_der()`, `PublicKey::as_der()`, `PublicKey::as_be_bytes()` | none |
 | `algorithm()` on each type | none |
 
 `agree` refuses a compressed or DER-encoded peer key, which aws-lc-rs takes.
+X25519 keys load from and encode to PKCS#8 (RFC 8410), which aws-lc-rs's
+agreement keys refuse.
 
 ## kem
 
@@ -170,7 +173,8 @@ ring has no `kem`.
 | `UnparsedPublicKey::new(alg, bytes).verify(m, s)` | `PublicKey::new(alg, bytes)?.verify(m, s)` |
 | `UnparsedPublicKey::parse`, `ParsedPublicKey::new(alg, bytes)`, `verify_sig` | `PublicKey::new(alg, bytes)`, `verify` |
 | `RsaPublicKeyComponents::verify(alg, m, s)`, `to_parsed_public_key(alg)` | `components.to_public_key(alg)?.verify(m, s)` |
-| `verify_digest`, `verify_digest_sig`, `sign_digest` | none: rind hashes the message itself |
+| `UnparsedPublicKey::verify_digest`, `ParsedPublicKey::verify_digest_sig`, `EcdsaKeyPair::sign_digest`, for ECDSA | `PublicKey::verify_digest`, `EcdsaKeyPair::sign_digest`, with SHA-256, SHA-384, or SHA-512; the digest's hash replaces the algorithm's, where aws-lc-rs refuses a mismatch |
+| `verify_digest` and `sign_digest` for RSA, and `verify_digest` for Ed25519 | none: `Error::Unsupported` |
 | `ParsedPublicKey::algorithm()`, `as_der()` | none; the key's bytes through `AsRef<[u8]>`, or a key pair's `to_spki()` |
 | `VerificationAlgorithm` trait, `EcdsaVerificationAlgorithm`, `EdDSAParameters` | `VerificationAlgorithm` |
 | `RsaParameters` | `RsaVerificationAlgorithm`, which `PublicKey::new` also takes |
@@ -182,7 +186,7 @@ ring has no `kem`.
 | `EcdsaSigningAlgorithm`, `RsaEncoding`, `RsaSignatureEncoding` | `EcdsaSigningAlgorithm`, `RsaSigningAlgorithm` |
 | `ECDSA_P256_SHA256_ASN1_SIGNING` and the other `_SIGNING` | `sign::ECDSA_P256_SHA256_ASN1` |
 | `ECDSA_P256_SHA256_ASN1`, `ED25519`, and the other verification constants | `verify::ECDSA_P256_SHA256_ASN1`, `verify::ED25519` |
-| ECDSA signing, or `_FIXED`, with another SHA-2 hash than the curve's own | none; [ECDSA over any curve and hash](quest/m2/adoption/webcrypto/ecdsa-pairings.md) |
+| ECDSA signing, or `_FIXED`, with another SHA-2 hash than the curve's own | `sign_digest(&digest::digest(&SHA384, m))` and `verify_digest`, with the curve's own constant for the encoding |
 | ECDSA with SHA-1, SHA-224, or SHA-3, or on secp256k1 (`P256K1`) | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | `RSA_PKCS1_SHA256`, `RSA_PSS_SHA256`, and their SHA-384 and SHA-512 | `sign::RSA_PKCS1_SHA256`, `sign::RSA_PSS_SHA256`, and so on |
 | `RSA_PKCS1_2048_8192_SHA256`, `RSA_PSS_2048_8192_SHA256`, and their SHA-384 and SHA-512 | `verify::RSA_PKCS1_SHA256`, `verify::RSA_PSS_SHA256`, and so on |
@@ -290,6 +294,7 @@ aws-lc-rs's `error::Unspecified` and `error::KeyRejected` become one
 | `Unspecified`, from `SystemRandom::fill` or `generate` | `Error::RngFailed` |
 | `Unspecified`, from `constant_time::verify_slices_are_equal` | `Error::NotEqual` |
 | `Unspecified`, from RSA signing or ECDH when an internal check fails | `Error::Fault` |
+| `Unspecified`, from `sign_digest` or `verify_digest` with a digest's hash or key the call does not take | `Error::Unsupported` |
 
 ## cpu
 

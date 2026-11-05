@@ -28,5 +28,4 @@ Decided with the maintainer on 2026-11-04, in a planning interview:
 
 - [RSA public keys export as SPKI](/quest/m2/adoption/webcrypto/rsa-spki-export.md) - WebCrypto exportKey("spki")
 - [AES-192](/quest/m2/adoption/webcrypto/aes-192.md) - 192-bit keys for every AES mode
-- [ECDSA over any curve and hash](/quest/m2/adoption/webcrypto/ecdsa-pairings.md) - signing with each curve and SHA-2 hash pairing
 - [MD5](/quest/m2/adoption/webcrypto/md5.md) - legacy MD5 for hashing APIs that offer it

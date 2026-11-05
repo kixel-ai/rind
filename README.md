@@ -711,12 +711,14 @@ The modules:
   protection and SRTP.
 - `key_wrap`: AES key wrap (RFC 3394), for WebCrypto's AES-KW and JWE's
   `A128KW` and `A256KW`.
-- `agreement`: ephemeral X25519 and ECDH on P-256, P-384, and P-521.
+- `agreement`: X25519 and ECDH on P-256, P-384, and P-521, with keys that
+  load from a scalar, PKCS#8, or SEC1, and export as a scalar or PKCS#8.
 - `kem`: ML-KEM-768.
 - `rsa`: RSA-OAEP encryption and decryption, with SHA-1 under `legacy`.
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
-  Ed25519 key pairs and verification, plus RSA keys given as their
-  components, and SHA-1 and 1024-bit RSA for verifying old signatures.
+  Ed25519 key pairs and verification, plus ECDSA over a `digest` the caller
+  computed, with any SHA-2 hash, RSA keys given as their components, and
+  SHA-1 and 1024-bit RSA for verifying old signatures.
 - `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, SHA-512/256,
   SHA3-256, SHA3-384, and SHA3-512.
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.

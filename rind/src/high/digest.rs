@@ -361,6 +361,12 @@ impl Digest {
     pub(crate) fn ct_equal(&self, other: &[u8]) -> bool {
         ct::into_public(ct_equal(self.as_ref(), other))
     }
+
+    /// Whether a signature takes this digest: SHA-256, SHA-384, or SHA-512,
+    /// as signatures over a message take.
+    pub(crate) fn signs(&self) -> bool {
+        matches!(self.algorithm.id, Id::Sha256 | Id::Sha384 | Id::Sha512)
+    }
 }
 
 impl AsRef<[u8]> for Digest {

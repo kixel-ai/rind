@@ -2279,7 +2279,8 @@ theorem encode_spec (k : mid.p256.StaticPrivateKey) (out : Slice U8) (hl : 32 â‰
   simp only [core.slice.Slice.get_mut, 
     core.slice.index.SliceIndexRangeUsizeSlice.get_mut]
   rw [ite_eq_left (by simp; omega)]
-  simp only [bind_ok, mid.p256.StaticPrivateKey.secret_bytes, mid.p256.Scalar.as_bytes]
+  simp only [bind_ok, mid.p256.StaticPrivateKey.secret_bytes, mid.p256.PrivateKey.secret_bytes,
+    mid.p256.Scalar.as_bytes]
   step*
 
 end P256
