@@ -1584,6 +1584,57 @@ theorem batch_loop1_spec (pts : Std.Array mid.p256.JacobianMontPoint 8#usize) (P
       intro j hj; exact hrr j (by omega) hj
   · exact ⟨hs, he, hinv, hr⟩
 
+theorem batch_spec (pts : Std.Array mid.p256.JacobianMontPoint 8#usize) (Ps : Nat → P256Point)
+    (h : ∀ j < 8, jrep (Ps j) (pts.val[j]!) ∧ Ps j ≠ none) :
+    mid.p256.JacobianMontPoint.public_batch_as_affine pts ⦃ r =>
+      ∀ j < 8, p256Represents2 (Ps j) (pairNat (r.val[j]!).xy.val) ⦄ := by
+  unfold mid.p256.JacobianMontPoint.public_batch_as_affine
+  have hlt : ∀ x, x % p256 < p256 := fun x => Nat.mod_lt _ p256_pos
+  have hptl : pts.val.length = 8 := pts.property
+  have hz : ∀ j < 8, (tripleNat (pts.val[j]!).xyz.val).2.2 < p256 := fun j hj => (h j hj).1.2.2.1
+  step as ⟨sl, hsl⟩
+  step with batch_loop0_spec pts hz { start := 1#usize, «end» := Slice.len sl }
+    (Array.repeat 8#usize mid.p256.CURVE_ONE_MONT) (by simp) (by simp) (by simp [hsl, Slice.len])
+    (by
+      intro j hj
+      have hj0 : j = 0 := by simp at hj; omega
+      subst hj0
+      have : (Array.repeat 8#usize mid.p256.CURVE_ONE_MONT).val[0]! = mid.p256.CURVE_ONE_MONT := by
+        simp [Array.repeat]
+      rw [this, CURVE_ONE_MONT_val, dec_one]
+      exact ⟨hlt _, by simp⟩) as ⟨pre, hpre⟩
+  step as ⟨fe, hfe⟩
+  step as ⟨jmp, hjmp⟩
+  step as ⟨fz, hfz⟩
+  have hfe' : fe = pre.val[7]! := by rw [hfe, getElem_eq_getElem! _ _ (by simp)]
+  have hjmp' : jmp = pts.val[7]! := by rw [hjmp, getElem_eq_getElem! _ _ (by simp)]
+  have hfzv : feNat fz = (tripleNat (pts.val[7]!).xyz.val).2.2 := by rw [← hjmp']; simp [tripleNat, feNat, hfz]
+  obtain ⟨hfel, hfev⟩ := hpre 7 (by norm_num)
+  rw [← hfe'] at hfel hfev
+  step with mont_mul_spec fe fz hfel (by rw [hfzv]; exact hz 7 (by norm_num)) as ⟨pr, hpr⟩
+  have hprv : dec (feNat pr) = ∏ t ∈ Finset.range 8, zv pts t := by
+    rw [hpr, dec_mont_mul, hfev, hfzv, Finset.prod_range_succ (fun t => zv pts t) 7]
+  have hp8 : ∏ t ∈ Finset.range 8, zv pts t ≠ 0 :=
+    Finset.prod_ne_zero_iff.mpr fun t ht => zv_ne_zero pts Ps h t (by simp at ht; omega)
+  step with demont_spec pr (by rw [hpr]; exact hlt _) as ⟨f2, hf2⟩
+  have hf2v : ((feNat f2 : Nat) : ZMod p256) = ∏ t ∈ Finset.range 8, zv pts t := by
+    rw [hf2, cast_mod_p, ← hprv]; push_cast; rfl
+  step as ⟨f3, hf3l, hf3, _⟩
+  have hf2nz : feNat f2 % p256 ≠ 0 := by
+    intro h0; apply hp8; rw [← hf2v, ← cast_mod_p, h0]; simp
+  have hf3v : ((feNat f3 : Nat) : ZMod p256) = (∏ t ∈ Finset.range 8, zv pts t)⁻¹ := by
+    have := congrArg (fun x : Nat => (x : ZMod p256)) (hf3 hf2nz)
+    simp only [Nat.cast_mul, ZMod.natCast_mod, Nat.cast_one] at this
+    rw [← hf2v]; exact (inv_eq_of_mul_eq_one_right this).symm
+  step with as_mont_spec f3 as ⟨iv, hiv⟩
+  simp only [mid.p256.AffineMontPoint.Insts.CoreDefaultDefault.default, core.default.DefaultArray.default,
+    bind_ok]
+  step as ⟨sl1, hsl1⟩
+  step as ⟨it, hit⟩
+  apply batch_loop1_spec pts Ps h pre hpre it (by rw [hit]; rfl) (by rw [hit]; simp [hsl1, Slice.len])
+    iv ⟨by rw [hiv]; exact hlt _, by rw [hiv, dec_tomont, hf3v, hit]; simp [hsl1, Slice.len]⟩
+  intro j hj; rw [hit] at hj; simp [hsl1, Slice.len] at hj; omega
+
 /-! ## Raw verification, `VerifyingKey::raw_ecdsa_verify` -/
 
 /-- The odd multiples a key's cache builds: 17Q to 31Q, from its Q to 15Q. -/
