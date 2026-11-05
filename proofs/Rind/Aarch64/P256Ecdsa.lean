@@ -2232,7 +2232,7 @@ def ecdsaSignOutcome (d e : Nat) (outLen : Nat) (r : core.result.Result (Slice U
   (∀ out, r = .Ok out → out.length = 64 ∧ ∃ k, 0 < k ∧ k < n256 ∧
     ecdsaP256Sign d k e = some (beNat (out.val.take 32), beNat (out.val.drop 32)) ∧
     beNat (out.val.take 32) ≠ 0 ∧ beNat (out.val.drop 32) ≠ 0) ∧
-  ∀ err, r = .Err err → (outLen < 64 ∧ err = .WrongLength) ∨ (64 ≤ outLen ∧ err = .RngFailed)
+  ∀ err, r = .Err err → (outLen < 64 ∧ err = .WrongLength) ∨ err = .RngFailed
 
 theorem p256c_len : P256C.ScalarInst.LEN_BYTES = ok 32#usize := by
   simp only [P256C, high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar,
@@ -2323,7 +2323,40 @@ theorem rfc6979_spec (hG : P256Laws) (h : Runs) (hkg : KeyGen) (hdrbg : DrbgSeed
   · simp only [bind_tc_ok, bind_ok, uncurry,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, WP.dspec_ok, ecdsaSignOutcome]
     refine ⟨(fun out h => nomatch h), fun e2 h => ?_⟩
-    cases h; right; exact ⟨hlen, hr2err _ rfl⟩
+    cases h; right; exact hr2err _ rfl
+
+end P256
+
+/-- The system random source, `getrandom::fill`, returns without panicking;
+what it draws the functional spec leaves out. -/
+def Fills : Prop := ∀ s : Slice U8, ∃ r, getrandom.fill s = ok r
+
+namespace P256
+
+/-- `ecdsa::SigningKey::sign` at P-256. -/
+theorem ecdsa_sign_spec (hG : P256Laws) (h : Runs) (hkg : KeyGen) (hdrbg : DrbgSeeds) (hfill : Fills)
+    {H Ctx St : Type} (hinst : high.hash.SignatureHash H Ctx St)
+    (key : high.ecdsa.SigningKey high.curve.P256 mid.p256.StaticPrivateKey mid.p256.VerifyingKey mid.p256.Scalar)
+    (hd0 : 0 < scNat key.private_key.scalar) (hd : scNat key.private_key.scalar < n256)
+    (msg sig dg : Slice U8) (d : high.digest.Digest) (hhash : hinst.HashInst.hash msg = ok d)
+    (hdg' : high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = ok dg) (hdg : 32 ≤ dg.length) :
+    high.ecdsa.SigningKey.sign P256C hinst key msg sig ⦃ r =>
+      ecdsaSignOutcome (scNat key.private_key.scalar) (beNat (dg.val.take 32) % n256) sig.length r.1 ⦄div := by
+  unfold high.ecdsa.SigningKey.sign mid.rng.SystemRandom.Insts.RindMidRngRandomSource.fill
+  step
+  step as ⟨rs, back, hrs, hback⟩
+  obtain ⟨⟨fr, fs⟩, hf⟩ := hfill rs
+  rw [hf]
+  simp only [bind_tc_ok, bind_ok, uncurry]
+  rcases fr with _ | ferr
+  · simp only [core.result.Result.map_err, bind_tc_ok, bind_ok, core.result.Result.Insts.CoreOpsTry.branch]
+    step as ⟨rnd, hrnd⟩
+    exact rfc6979_spec hG h hkg hdrbg hinst.HashInst key hd0 hd msg rnd sig dg d hhash hdg' hdg
+  · simp only [core.result.Result.map_err, bind_tc_ok, bind_ok, core.result.Result.Insts.CoreOpsTry.branch,
+      mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError,
+      mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, WP.dspec_ok, ecdsaSignOutcome]
+    simp
 
 end P256
 
