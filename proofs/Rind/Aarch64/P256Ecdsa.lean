@@ -2218,4 +2218,113 @@ theorem encode_spec (k : mid.p256.StaticPrivateKey) (out : Slice U8) (hl : 32 �
 
 end P256
 
+/-- The HMAC-DRBG an ECDSA signature draws its nonces from, which the
+translation leaves opaque, is seeded without panicking. -/
+def DrbgSeeds : Prop :=
+  ∀ {H C S : Type} (inst : high.hash.Hash H C S) (a b c : Slice U8), ∃ g, high.hmac_drbg.HmacDrbg.new inst a b c = ok g
+
+namespace P256
+
+/-- An ECDSA signature's outcome, for private key `d` and the hash's integer
+`e`: 64 bytes, the big-endian r and s of some nonce in [1, n), neither zero;
+refused if the output is short or the nonce source fails. -/
+def ecdsaSignOutcome (d e : Nat) (outLen : Nat) (r : core.result.Result (Slice U8) error.Error) : Prop :=
+  (∀ out, r = .Ok out → out.length = 64 ∧ ∃ k, 0 < k ∧ k < n256 ∧
+    ecdsaP256Sign d k e = some (beNat (out.val.take 32), beNat (out.val.drop 32)) ∧
+    beNat (out.val.take 32) ≠ 0 ∧ beNat (out.val.drop 32) ≠ 0) ∧
+  ∀ err, r = .Err err → (outLen < 64 ∧ err = .WrongLength) ∨ (64 ≤ outLen ∧ err = .RngFailed)
+
+theorem p256c_len : P256C.ScalarInst.LEN_BYTES = ok 32#usize := by
+  simp only [P256C, high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar,
+    mid.p256.Scalar.Insts.RindHighCurveScalar, mid.p256.Scalar.Insts.RindHighCurveScalar.LEN_BYTES,
+    mid.p256.Scalar.BYTES]
+
+theorem get_mut_rangeTo (s : Slice U8) (r : core.ops.range.RangeTo Usize) :
+    core.slice.Slice.get_mut (core.slice.index.SliceIndexRangeToUsizeSlice U8) s r =
+      core.slice.index.SliceIndexRangeToUsizeSlice.get_mut r s := rfl
+
+theorem rfc6979_spec (hG : P256Laws) (h : Runs) (hkg : KeyGen) (hdrbg : DrbgSeeds) {H Ctx St : Type}
+    (hinst : high.hash.Hash H Ctx St)
+    (key : high.ecdsa.SigningKey high.curve.P256 mid.p256.StaticPrivateKey mid.p256.VerifyingKey mid.p256.Scalar)
+    (hd0 : 0 < scNat key.private_key.scalar) (hd : scNat key.private_key.scalar < n256)
+    (msg random sig dg : Slice U8) (d : high.digest.Digest) (hhash : hinst.hash msg = ok d)
+    (hdg' : high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = ok dg) (hdg : 32 ≤ dg.length) :
+    high.ecdsa.SigningKey.rfc6979_sign_with_random P256C hinst key msg random sig ⦃ r =>
+      ecdsaSignOutcome (scNat key.private_key.scalar) (beNat (dg.val.take 32) % n256) sig.length r.1 ⦄div := by
+  unfold high.ecdsa.SigningKey.rfc6979_sign_with_random
+  rw [p256c_len]
+  simp only [bind_ok]
+  step as ⟨i1, hi1⟩
+  rw [get_mut_rangeTo]
+  unfold core.slice.index.SliceIndexRangeToUsizeSlice.get_mut
+  have hsl' : sig.val.length = sig.length := rfl
+  by_cases hlen : 64 ≤ sig.length
+  swap
+  · rw [if_neg (by rw [hi1]; simp; omega)]
+    simp only [uncurry, bind_ok, WP.dspec_ok, ecdsaSignOutcome]
+    refine ⟨(fun out h => nomatch h), fun err h => ?_⟩
+    cases h; left; exact ⟨by omega, rfl⟩
+  rw [if_pos (by rw [hi1]; simp; omega)]
+  simp only [uncurry, bind_tc_ok, bind_ok]
+  rw [hhash]
+  simp only [bind_tc_ok, bind_ok]
+  step as ⟨s, back, hs, hback⟩
+  step with encode_spec key.private_key s (by simp [Slice.length, hs, Array.repeat]) as ⟨er, eb, sl, hsl⟩
+  rw [hsl]
+  simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_tc_ok, bind_ok]
+  rw [hdg']
+  simp only [bind_tc_ok, bind_ok]
+  step with hash_to_scalar_spec dg hdg as ⟨r1, e, hr1, he⟩
+  subst hr1
+  simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_tc_ok, bind_ok]
+  step as ⟨s2, back2, hs2, hs2l, hback2⟩
+  step with write_bytes_spec e s2 (by simp [Slice.length, hs2, Array.repeat, List.slice]) as ⟨s3, hs3l, hs3⟩
+  step as ⟨s4, hs4, hs4l⟩
+  obtain ⟨g, hg⟩ := hdrbg hinst sl s4 random
+  rw [hg]
+  simp only [bind_ok, high.ecdsa.SigningKey.sign_with_nonces]
+  apply WP.dspec_bind (sign_nonces_spec hG h hkg _ key hd0 hd e (by rw [he]; exact Nat.mod_lt _ n256_pos) g)
+  rintro ⟨r2, g2⟩ ⟨hr2ok, hr2err⟩
+  simp only at hr2ok hr2err
+  simp only [uncurry]
+  rcases r2 with ⟨rr, ss⟩ | err
+  · obtain ⟨k, hk0, hk, hsign, hr0, hs0⟩ := hr2ok _ rfl
+    simp only [bind_tc_ok, bind_ok]
+    step as ⟨s6, back6, hs6, hs6l, hback6⟩
+    step with write_bytes_spec rr s6 (by rw [hs6l]) as ⟨s7, hs7l, hs7⟩
+    set O := List.slice 0 i1.val sig.val with hOdef
+    have hOl : O.length = 64 := by simp [hOdef, List.slice, hi1]; omega
+    have h6 : (back6 s7).val = s7.val ++ O.drop 32 := by
+      rw [hback6, Slice.from_val]
+      have := setSlice!_append [] (O.take 32) (O.drop 32) s7.val (by simp [Slice.length] at hs7l; simp [hs7l, hOl])
+      simp only [List.nil_append, List.take_append_drop, List.length_nil] at this
+      rw [← this]
+    have hs7l' : s7.val.length = 32 := hs7l
+    have hb6l : (back6 s7).val.length = 64 := by simp [h6, hs7l', hOl]
+    step as ⟨s8, back8, hs8, hs8l, hback8⟩
+    have hs8v : s8.length = 32 := by rw [hs8l]; simp only [Slice.length, hb6l]
+    step with write_bytes_spec ss s8 hs8v as ⟨s9, hs9l, hs9⟩
+    have h8 : (back8 s9).val = s7.val ++ s9.val := by
+      rw [hback8, h6]
+      have := setSlice!_append s7.val (O.drop 32) [] s9.val (by simp [Slice.length] at hs9l; simp [hs9l, hOl])
+      simp only [List.append_nil, hs7l'] at this
+      exact this
+    step as ⟨i2, hi2⟩
+    step as ⟨s10, hs10, hs10l⟩
+    simp only [WP.dspec_ok, ecdsaSignOutcome]
+    have hs9l' : s9.val.length = 32 := hs9l
+    have hv : s10.val = s7.val ++ s9.val := by
+      rw [hs10, h8, hi2]; simp [List.slice, hs7l', hs9l']
+    refine ⟨fun out hout => ?_, fun err h => nomatch h⟩
+    cases hout
+    refine ⟨by simp [Slice.length, hv, hs7l', hs9l'], k, hk0, hk, ?_⟩
+    rw [hv, List.take_left' hs7l', List.drop_left' hs7l', hs7, hs9, ← he]
+    exact ⟨hsign, hr0, hs0⟩
+  · simp only [bind_tc_ok, bind_ok, uncurry,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, WP.dspec_ok, ecdsaSignOutcome]
+    refine ⟨(fun out h => nomatch h), fun e2 h => ?_⟩
+    cases h; right; exact ⟨hlen, hr2err _ rfl⟩
+
+end P256
+
 end rind.aarch64
