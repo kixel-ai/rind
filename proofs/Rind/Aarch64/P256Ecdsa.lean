@@ -343,6 +343,78 @@ theorem is_infinity_spec (pt : mid.p256.JacobianMontPoint) (P : P256Point) (h : 
     have : dec (feNat fz) ≠ 0 := fun hd => hz0 ((eq_of_dec _ 0 hzp p256_pos).mpr (by rw [hd]; simp))
     simp [this] at hn
 
+theorem from_affine_val (p : mid.p256.AffineMontPoint) :
+    mid.p256.JacobianMontPoint.from_affine p ⦃ pt => pt.xyz.val = p.xy.val ++ mid.p256.CURVE_ONE_MONT.val ⦄ := by
+  unfold mid.p256.JacobianMontPoint.from_affine core.default.DefaultArray.default
+  have hl : (p.xy.val).length = 8 := p.xy.property
+  step*
+  · simp [mid.p256.JacobianMontPoint.XY]
+  · simp [mid.p256.JacobianMontPoint.XY]
+  · simp [s_post1, s1_post, mid.p256.JacobianMontPoint.XY, hl]
+  · simp [mid.p256.JacobianMontPoint.Z]
+  · simp [mid.p256.JacobianMontPoint.Z]
+  · simp [s3_post1, s4_post, mid.p256.JacobianMontPoint.Z, mid.p256.CURVE_ONE_MONT, Array.make]
+  · rw [s3_post2, s5_post, s4_post, s2_post, s_post2, s1_post]
+    simp only [mid.p256.JacobianMontPoint.XY, mid.p256.JacobianMontPoint.Z, Array.val_to_slice]
+    generalize p.xy.val = l at hl ⊢
+    match l, hl with
+    | [a, b, c, d, e, f, g, h], _ =>
+      simp [Array.repeat, mid.p256.CURVE_ONE_MONT, Array.make, List.setSlice!]
+
+theorem CURVE_ONE_MONT_val : feNat mid.p256.CURVE_ONE_MONT = 2 ^ 256 % p256 := by
+  simp only [feNat, mid.p256.CURVE_ONE_MONT, Array.make, wordsNat, p256]; decide
+
+theorem dec_one : dec (2 ^ 256 % p256) = 1 := by
+  rw [dec, cast_mod_p, mul_comm]; exact R_mul_RInv
+
+theorem tripleNat_append (a b : List U64) (ha : a.length = 8) (hb : b.length = 4) :
+    tripleNat (a ++ b) = ((pairNat a).1, (pairNat a).2, wordsNat b) := by
+  simp [tripleNat, pairNat, List.take_append, List.drop_append, ha, hb, List.take_of_length_le]
+
+/-- A pair of coordinates represents the point their values name. -/
+theorem rep2_dec (P : P256Point) (xy : Nat × Nat) (h : p256Represents2 P xy) :
+    xy.1 < p256 ∧ xy.2 < p256 ∧ P = some ((dec xy.1).val, (dec xy.2).val) := by
+  obtain ⟨h1, h2, h3⟩ := h
+  exact ⟨h1, h2, by rw [← h3, val_dec, val_dec]⟩
+
+@[step]
+theorem from_affine_spec (p : mid.p256.AffineMontPoint) (P : P256Point)
+    (h : p256Represents2 P (pairNat p.xy.val)) :
+    mid.p256.JacobianMontPoint.from_affine p ⦃ pt => jrep P pt ⦄ := by
+  apply WP.spec_mono (from_affine_val p)
+  intro pt hpt
+  obtain ⟨h1, h2, rfl⟩ := rep2_dec P _ h
+  rw [jrep, hpt, tripleNat_append _ _ p.xy.property mid.p256.CURVE_ONE_MONT.property, p256Represents]
+  refine ⟨h1, h2, ?_, ?_⟩
+  · rw [show wordsNat mid.p256.CURVE_ONE_MONT.val = feNat mid.p256.CURVE_ONE_MONT from rfl, CURVE_ONE_MONT_val]
+    exact Nat.mod_lt _ p256_pos
+  · rw [ofJacobian_dec, show wordsNat mid.p256.CURVE_ONE_MONT.val = feNat mid.p256.CURVE_ONE_MONT from rfl,
+      CURVE_ONE_MONT_val, dec_one]
+    simp
+
+@[step]
+theorem double_spec (pt : mid.p256.JacobianMontPoint) (P : P256Point) (h : jrep P pt) :
+    mid.p256.JacobianMontPoint.double pt ⦃ r => jrep (p256Mul P P) r ⦄ := by
+  unfold mid.p256.JacobianMontPoint.double mid.p256.JacobianMontPoint.zero
+  step*
+  exact a_post P h
+
+@[step]
+theorem add_inplace_affine_spec (pt : mid.p256.JacobianMontPoint) (p : mid.p256.AffineMontPoint)
+    (P1 P2 : P256Point) (h1 : jrep P1 pt) (h2 : p256Represents2 P2 (pairNat p.xy.val)) (hne : P1 ≠ P2) :
+    mid.p256.JacobianMontPoint.add_inplace_affine pt p ⦃ r => jrep (p256Mul P1 P2) r ⦄ := by
+  unfold mid.p256.JacobianMontPoint.add_inplace_affine
+  step*
+  exact a_post P1 P2 h1 h2 hne
+
+@[step]
+theorem jac_add_spec (pt q : mid.p256.JacobianMontPoint) (P1 P2 : P256Point) (h1 : jrep P1 pt)
+    (h2 : jrep P2 q) (hne : P1 = P2 → P2 = none) :
+    mid.p256.JacobianMontPoint.add pt q ⦃ r => jrep (p256Mul P1 P2) r ⦄ := by
+  unfold mid.p256.JacobianMontPoint.add
+  step*
+  exact a_post P1 P2 h1 h2 hne
+
 end P256
 
 end rind.aarch64
