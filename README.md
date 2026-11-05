@@ -693,8 +693,9 @@ run time. [MIGRATING.md][migrating] maps each ring and aws-lc-rs item to it.
   `from_sec1`, `to_spki`), and every private key returns its public half
   from `public_key()`.
 - Encodings, signatures, and shared secrets are owned values of fixed
-  capacity, such as `signature::Pkcs8`, rather than caller buffers or
-  allocations. Keys wipe their secrets on drop.
+  capacity, such as `encoding::Pkcs8`, rather than caller buffers or
+  allocations. Keys wipe their secrets on drop, and their `Debug` shows only
+  their algorithm.
 - No call takes a random source: rind draws from the system's when it needs
   one, and `rand::fill` gives callers the same.
 - Fallible calls return `rind::Error`, whose variant says which kind of call
@@ -713,7 +714,8 @@ The modules:
 - `agreement`: X25519 and ECDH on P-256, P-384, and P-521, with keys that
   load from a scalar, PKCS#8, or SEC1, and export as a scalar or PKCS#8.
 - `kem`: ML-KEM-768.
-- `rsa`: RSA-OAEP encryption and decryption, with SHA-1 under `legacy`.
+- `rsa`: RSA-OAEP encryption and decryption, with SHA-1 under `legacy`,
+  and the key sizes and public-key components both RSA modules take.
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
   Ed25519 key pairs and verification, plus ECDSA over a `digest` the caller
   computed, with any SHA-2 hash, RSA keys given as their components, and
@@ -723,6 +725,8 @@ The modules:
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.
 - `hkdf`: HKDF over those HMACs, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
 - `pbkdf2`: PBKDF2 over those HMACs, deriving or verifying a key from a password.
+- `encoding`: the PKCS#8 and `SubjectPublicKeyInfo` encodings every key
+  type exports.
 - `constant_time`: comparing secrets such as MACs without a timing leak.
 - `rand`: random bytes from the system.
 - `cpu`: the startup check for required CPU features, and whether AES runs

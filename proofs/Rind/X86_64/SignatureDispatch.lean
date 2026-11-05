@@ -66,6 +66,16 @@ impl PublicKey {
         })
     }
 
+    /// Loads an RSA key for `algorithm` from its big-endian modulus and
+    /// exponent, as a JWK carries them.
+    pub fn from_components(
+        algorithm: &RsaVerificationAlgorithm,
+        components: &PublicKeyComponents<impl AsRef<[u8]>>,
+    ) -> Result<Self, Error> {
+        let key = rsa::VerifyingKey::from_components(components.n.as_ref(), components.e.as_ref())?;
+        Self::rsa(algorithm.rsa, key)
+    }
+
     /// Parses an RSA key's PKCS#1 or SPKI DER for `rsa`.
     fn parse_rsa(rsa: Rsa, bytes: &[u8]) -> Result<Self, Error> {
         Self::rsa(rsa, rsa::VerifyingKey::from_der(bytes)?)

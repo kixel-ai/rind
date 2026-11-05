@@ -104,7 +104,7 @@ impl PrivateKey {
     /// curve's length and refused unless it is from 1 to n - 1.
     ///
     /// This suits a JWK's `d`; prefer [`Self::from_pkcs8`] for stored keys.
-    pub fn from_private_key(algorithm: &'static Algorithm, scalar: &[u8]) -> Result<Self, Error> {
+    pub fn from_scalar(algorithm: &'static Algorithm, scalar: &[u8]) -> Result<Self, Error> {
         Ok(Self((algorithm.load)(Source::Scalar(scalar))?))
     }
 
@@ -164,7 +164,7 @@ impl PrivateKey {
         }))
     }
 
-    /// Encodes the private key as the scalar [`Self::from_private_key`] loads.
+    /// Encodes the private key as the scalar [`Self::from_scalar`] loads.
     pub fn to_scalar(&self) -> Scalar {
         Scalar(Buffer::encode(|output| match &self.0 {
             Private::X25519(key) => key.to_scalar(output),
@@ -187,7 +187,7 @@ impl fmt::Debug for PrivateKey {
     }
 }
 
-/// A private key as its scalar, which [`PrivateKey::from_private_key`]
+/// A private key as its scalar, which [`PrivateKey::from_scalar`]
 /// loads, wiped on drop.
 pub struct Scalar(Buffer<MAX_SCALAR_LEN>);
 
@@ -541,7 +541,7 @@ mod tests {
             let scalar = key.to_scalar();
             let pkcs8 = key.to_pkcs8();
             for loaded in [
-                PrivateKey::from_private_key(algorithm, scalar.as_ref()).unwrap(),
+                PrivateKey::from_scalar(algorithm, scalar.as_ref()).unwrap(),
                 PrivateKey::from_pkcs8(algorithm, pkcs8.as_ref()).unwrap(),
             ] {
                 assert_eq!(loaded.public_key().as_ref(), key.public_key().as_ref());
@@ -568,7 +568,7 @@ mod tests {
             let scalar = key.to_scalar().as_ref().to_vec();
             low::ct::public_slice(&scalar);
             let mut encodings: Vec<(Load, Vec<u8>)> = vec![
-                (PrivateKey::from_private_key, scalar.clone()),
+                (PrivateKey::from_scalar, scalar.clone()),
                 (PrivateKey::from_pkcs8, key.to_pkcs8().as_ref().to_vec()),
             ];
             let curve = match algorithm.id {
@@ -667,7 +667,7 @@ mod tests {
         ] {
             for wrong in [0, len - 1, len + 1] {
                 assert_eq!(
-                    PrivateKey::from_private_key(algorithm, &vec![1; wrong]).err(),
+                    PrivateKey::from_scalar(algorithm, &vec![1; wrong]).err(),
                     Some(KeyFormatError::WrongLength.into()),
                 );
             }
@@ -694,7 +694,7 @@ mod tests {
         ] {
             for scalar in [vec![0; n.len()], n] {
                 assert_eq!(
-                    PrivateKey::from_private_key(algorithm, &scalar).err(),
+                    PrivateKey::from_scalar(algorithm, &scalar).err(),
                     Some(KeyFormatError::ScalarOutOfRange.into()),
                 );
             }
@@ -776,7 +776,7 @@ mod tests {
     fn check_nist_ecdh(file: &str, algorithm: &'static Algorithm, len: usize) {
         for test in wycheproof::<EcdhTest>(file) {
             let private =
-                PrivateKey::from_private_key(algorithm, &fixed_scalar(&test.private, len)).unwrap();
+                PrivateKey::from_scalar(algorithm, &fixed_scalar(&test.private, len)).unwrap();
             let result = private.agree(&test.public).map(|shared| public(&shared));
             // Point compression is unsupported.
             if test.has_flag("CompressedPublic") || test.has_flag("CompressedPoint") {
@@ -834,7 +834,7 @@ mod tests {
     #[test]
     fn wycheproof_x25519() {
         for test in wycheproof::<EcdhTest>("x25519_test.json") {
-            let private = PrivateKey::from_private_key(&X25519, &test.private).unwrap();
+            let private = PrivateKey::from_scalar(&X25519, &test.private).unwrap();
             check_x25519(&test, private.agree(&test.public).map(|s| public(&s)));
         }
     }

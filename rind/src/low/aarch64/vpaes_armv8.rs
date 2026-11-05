@@ -36,6 +36,15 @@ impl VpaesKey {
         r
     }
 
+    /// The key's length in bytes, from the `nbits / 32 + 5` rounds that
+    /// `vpaes_set_encrypt_key` stores.
+    pub(crate) fn key_len(&self) -> usize {
+        match self.rounds {
+            9 => 16,
+            _ => 32,
+        }
+    }
+
     /// Encrypts one block in place.
     pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
         // SAFETY: `inout` is one readable and writable block, which aws-lc

@@ -224,7 +224,7 @@ fn cipher() {
         check_zeroed_on_drop(Box::pin(Aes::new(algorithm, key).unwrap()));
         check_zeroed_on_drop(Box::pin(AesCtr::new(algorithm, key, 128).unwrap()));
     }
-    check_zeroed_on_drop(Box::pin(ChaCha20::new([0xffu8; 32])));
+    check_zeroed_on_drop(Box::pin(ChaCha20::new(&[0xffu8; 32])));
 }
 
 #[test]

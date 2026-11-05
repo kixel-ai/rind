@@ -253,7 +253,7 @@ fn ecdh_scalar(
     theirs_algorithm: &'static theirs_ecdh::Algorithm,
     input: &[u8],
 ) {
-    let ours = ours_ecdh::PrivateKey::from_private_key(ours_algorithm, input);
+    let ours = ours_ecdh::PrivateKey::from_scalar(ours_algorithm, input);
     let theirs = theirs_ecdh::PrivateKey::from_private_key(theirs_algorithm, input);
     agree(&ours, &theirs, Expect::Agree);
     let (Ok(ours), Ok(theirs)) = (ours, theirs) else {
@@ -301,7 +301,7 @@ fn ecdsa_scalar(curve: &Curve, input: &[u8]) {
     let Some((scalar, point)) = split(input) else {
         return;
     };
-    let ours = ours::EcdsaKeyPair::from_private_key_and_public_key(curve.ours, scalar, point);
+    let ours = ours::EcdsaKeyPair::from_scalar_and_public_key(curve.ours, scalar, point);
     let theirs = theirs::EcdsaKeyPair::from_private_key_and_public_key(curve.theirs, scalar, point);
     // aws-lc-rs takes leading zeros added or stripped, though its docs
     // require the curve's length.
@@ -343,8 +343,7 @@ fn agree_ecdsa(
     let (x, y) = point[1..].split_at(point.len() / 2);
     let compressed = [&[0x02 | (y[y.len() - 1] & 1)][..], x].concat();
     for point in [point, &compressed] {
-        ours::EcdsaKeyPair::from_private_key_and_public_key(curve.ours, scalar.as_ref(), point)
-            .unwrap();
+        ours::EcdsaKeyPair::from_scalar_and_public_key(curve.ours, scalar.as_ref(), point).unwrap();
         theirs::EcdsaKeyPair::from_private_key_and_public_key(curve.theirs, scalar.as_ref(), point)
             .unwrap();
     }
@@ -434,7 +433,7 @@ fn rsa_components(rsa: &Rsa, input: &[u8]) {
     let Some((n, e)) = split(input) else {
         return;
     };
-    let ours = ours::RsaPublicKeyComponents { n, e }.to_public_key(rsa.ours);
+    let ours = ours::PublicKey::from_components(rsa.ours, &rind::rsa::PublicKeyComponents { n, e });
     // aws-lc-rs checks components only when it verifies, so their key is the
     // same components as DER. Both refuse an empty component or a leading
     // zero, which DER cannot carry.
@@ -458,11 +457,11 @@ fn rsa_reencode(rsa: &Rsa, key: &ours::PublicKey) {
 
     let theirs = their_rsa::PublicKey::from_der(key.as_ref()).unwrap();
     let (n, e) = (theirs.modulus(), theirs.exponent());
-    let components = ours::RsaPublicKeyComponents {
+    let components = rind::rsa::PublicKeyComponents {
         n: n.big_endian_without_leading_zero(),
         e: e.big_endian_without_leading_zero(),
     };
-    let again = components.to_public_key(rsa.ours).unwrap();
+    let again = ours::PublicKey::from_components(rsa.ours, &components).unwrap();
     assert_eq!(again.as_ref(), key.as_ref());
 }
 

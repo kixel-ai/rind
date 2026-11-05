@@ -4,6 +4,8 @@
 //!
 //! HKDF is standardized in [RFC 5869](https://datatracker.ietf.org/doc/html/rfc5869).
 
+use core::fmt;
+
 use super::digest::{Digest, MAX_OUTPUT_LEN};
 use super::hmac;
 use crate::low::Entry;
@@ -42,6 +44,14 @@ impl Salt {
         let _entry = Entry::new_secret();
         let prk = hmac::sign(&self.0, secret);
         Prk(hmac::Key::new(self.0.algorithm(), prk.as_ref()))
+    }
+}
+
+impl fmt::Debug for Salt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Salt")
+            .field("algorithm", &self.0.id())
+            .finish_non_exhaustive()
     }
 }
 
@@ -128,11 +138,27 @@ impl sealed::Len for &'static hmac::Algorithm {
     }
 }
 
+impl fmt::Debug for Prk {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Prk")
+            .field("algorithm", &self.0.id())
+            .finish_non_exhaustive()
+    }
+}
+
 /// Key material from [`Prk::expand`], sized by `L`: fill a buffer for a `usize` length, or convert it into the key an algorithm names.
 pub struct Okm<'a, L: KeyType> {
     prk: &'a Prk,
     info: &'a [&'a [u8]],
     len: L,
+}
+
+impl<L: KeyType> fmt::Debug for Okm<'_, L> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Okm")
+            .field("algorithm", &self.prk.0.id())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Okm<'_, usize> {

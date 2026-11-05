@@ -328,6 +328,25 @@ impl Drop for Context {
     }
 }
 
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // An `Id`, not the static, so formatting links no hash's code.
+        let algorithm = match &self.0 {
+            State::Sha1(_) => Id::Sha1,
+            State::Sha256(_) => Id::Sha256,
+            State::Sha384(_) => Id::Sha384,
+            State::Sha512(_) => Id::Sha512,
+            State::Sha512_256(_) => Id::Sha512_256,
+            State::Sha3_256(_) => Id::Sha3_256,
+            State::Sha3_384(_) => Id::Sha3_384,
+            State::Sha3_512(_) => Id::Sha3_512,
+        };
+        f.debug_struct("Context")
+            .field("algorithm", &algorithm)
+            .finish_non_exhaustive()
+    }
+}
+
 /// The output of a hash function.
 #[derive(Clone)]
 pub struct Digest {

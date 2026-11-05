@@ -29,7 +29,7 @@ fn check(
     scalar: &[u8],
     peer: &[u8],
 ) {
-    let ours_key = ours::PrivateKey::from_private_key(ours_algorithm, scalar);
+    let ours_key = ours::PrivateKey::from_scalar(ours_algorithm, scalar);
     let theirs_key = theirs::PrivateKey::from_private_key(theirs_algorithm, scalar);
     assert_eq!(ours_key.is_ok(), theirs_key.is_ok());
     let (Ok(ours_key), Ok(theirs_key)) = (ours_key, theirs_key) else {

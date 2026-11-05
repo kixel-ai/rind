@@ -333,7 +333,7 @@ impl EcdsaKeyPair {
         rng: &dyn rand::SecureRandom,
     ) -> Result<Self, error::KeyRejected> {
         let _ = rng;
-        let key = rind::signature::EcdsaKeyPair::from_private_key_and_public_key(
+        let key = rind::signature::EcdsaKeyPair::from_scalar_and_public_key(
             alg.rind,
             private_key,
             public_key,

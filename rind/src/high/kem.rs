@@ -27,7 +27,7 @@ pub static ML_KEM_768: Algorithm = Algorithm {
     id: AlgorithmId::MlKem768,
 };
 
-/// A decapsulation key, used for one decapsulation and wiped on drop.
+/// A decapsulation key, which decapsulates any number of ciphertexts, wiped on drop.
 pub struct DecapsulationKey(mlkem768::DecapKey);
 
 impl DecapsulationKey {
@@ -47,12 +47,12 @@ impl DecapsulationKey {
         }
     }
 
-    /// Recovers the secret the peer encapsulated in `ciphertext`, consuming this key.
+    /// Recovers the secret the peer encapsulated in `ciphertext`.
     ///
     /// A ciphertext of the wrong length is refused. Any other tampering
     /// yields an unrelated secret (FIPS-203's implicit rejection), so the
     /// peer learns nothing until the secret is used.
-    pub fn decapsulate(self, ciphertext: &[u8]) -> Result<SharedSecret, Error> {
+    pub fn decapsulate(&self, ciphertext: &[u8]) -> Result<SharedSecret, Error> {
         let ciphertext: [u8; 1088] = ciphertext.try_into().map_err(|_| Error::WrongLength)?;
         Ok(SharedSecret(
             self.0.decaps(&mlkem768::Ciphertext::from(ciphertext)),

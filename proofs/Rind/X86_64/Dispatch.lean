@@ -36,7 +36,7 @@ impl PrivateKey {
     /// curve's length and refused unless it is from 1 to n - 1.
     ///
     /// This suits a JWK's `d`; prefer [`Self::from_pkcs8`] for stored keys.
-    pub fn from_private_key(algorithm: &'static Algorithm, scalar: &[u8]) -> Result<Self, Error> {
+    pub fn from_scalar(algorithm: &'static Algorithm, scalar: &[u8]) -> Result<Self, Error> {
         Ok(Self((algorithm.load)(Source::Scalar(scalar))?))
     }
 
@@ -96,7 +96,7 @@ impl PrivateKey {
         }))
     }
 
-    /// Encodes the private key as the scalar [`Self::from_private_key`] loads.
+    /// Encodes the private key as the scalar [`Self::from_scalar`] loads.
     pub fn to_scalar(&self) -> Scalar {
         Scalar(Buffer::encode(|output| match &self.0 {
             Private::X25519(key) => key.to_scalar(output),
@@ -311,7 +311,7 @@ def high.agreement.PrivateKey.generate (algorithm : high.agreement.Algorithm) :
   | .Ok key => ok (.Ok key)
   | .Err e => ok (.Err e)
 
-/-- `PrivateKey::from_private_key`, `from_pkcs8`, and `from_sec1`, each
+/-- `PrivateKey::from_scalar`, `from_pkcs8`, and `from_sec1`, each
 `algorithm.load` of its own `Source`. -/
 def high.agreement.PrivateKey.load (algorithm : high.agreement.Algorithm)
     (source : high.agreement.Source) :
@@ -321,8 +321,8 @@ def high.agreement.PrivateKey.load (algorithm : high.agreement.Algorithm)
   | .Ok key => ok (.Ok key)
   | .Err e => ok (.Err e)
 
-/-- `PrivateKey::from_private_key`. -/
-def high.agreement.PrivateKey.from_private_key (algorithm : high.agreement.Algorithm)
+/-- `PrivateKey::from_scalar`. -/
+def high.agreement.PrivateKey.from_scalar (algorithm : high.agreement.Algorithm)
     (scalar : Slice Std.U8) :
     Result (core.result.Result high.agreement.PrivateKey error.Error) :=
   high.agreement.PrivateKey.load algorithm (.Scalar scalar)

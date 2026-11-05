@@ -411,9 +411,9 @@ open Classical in
 refused unless the scalar is 32 bytes, in [1, n), and the public key is its
 uncompressed or compressed encoding, and otherwise its private scalar is the
 scalar. -/
-theorem p256_ecdsa_from_private_key_and_public_key (ho : P256Order) (h : Runs) (hheld : Held)
+theorem p256_ecdsa_from_scalar_and_public_key (ho : P256Order) (h : Runs) (hheld : Held)
     (hc : Cached) (sk pk : Slice U8) :
-    high.signature.EcdsaKeyPair.from_private_key_and_public_key high.signature.sign.ECDSA_P256_SHA256_FIXED
+    high.signature.EcdsaKeyPair.from_scalar_and_public_key high.signature.sign.ECDSA_P256_SHA256_FIXED
       sk pk ⦃ r =>
       if sk.length ≠ 32 then r = .Err (.KeyRejected .WrongLength)
       else if 0 < beNat sk.val ∧ beNat sk.val < n256 then
@@ -422,7 +422,7 @@ theorem p256_ecdsa_from_private_key_and_public_key (ho : P256Order) (h : Runs) (
           else r = .Err (.KeyRejected .MismatchedPublicKey)
       else r = .Err (.KeyRejected .ScalarOutOfRange) ⦄ := by
   have hG := P256Laws.of_order ho
-  unfold high.signature.EcdsaKeyPair.from_private_key_and_public_key high.signature.sign.ECDSA_P256_SHA256_FIXED
+  unfold high.signature.EcdsaKeyPair.from_scalar_and_public_key high.signature.sign.ECDSA_P256_SHA256_FIXED
     high.signature.EcdsaKeyPair.load_p256_sha256_fixed
   simp only
   step with from_scalar_spec hG h sk pk as ⟨r, hr⟩

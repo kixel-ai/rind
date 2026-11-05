@@ -346,13 +346,13 @@ theorem x25519_generate (h : Runs) (r : core.result.Result Unit getrandom.error.
 /-- An X25519 key loaded from its scalar is refused unless it is 32 bytes, and
 otherwise is those bytes, read little-endian, as `x25519_generate`'s is the
 random source's. -/
-theorem x25519_from_private_key (h : Runs) (b : Slice U8) :
-    high.agreement.PrivateKey.from_private_key high.agreement.X25519 b ⦃ key =>
+theorem x25519_from_scalar (h : Runs) (b : Slice U8) :
+    high.agreement.PrivateKey.from_scalar high.agreement.X25519 b ⦃ key =>
       if b.length = 32 then ∃ k : high.agreement.Keyed mid.x25519.PrivateKey,
         key = core.result.Result.Ok (high.agreement.Private.X25519 k) ∧
           wordsNat k.key.val = leNat b.val
       else key = core.result.Result.Err (.KeyRejected .WrongLength) ⦄ := by
-  unfold high.agreement.PrivateKey.from_private_key high.agreement.PrivateKey.load
+  unfold high.agreement.PrivateKey.from_scalar high.agreement.PrivateKey.load
     high.agreement.X25519 high.agreement.Keyed.load high.agreement.Keyed.new
   step with load_scalar_spec h b as ⟨r, hr⟩
   split_ifs at hr ⊢

@@ -10,7 +10,7 @@ use super::hash::{Sha256, Sha384, Sha512, SignatureHash};
 use super::rsa::{self, PssSalt};
 use crate::error::{Error, KeyFormatError};
 use crate::low::{self, Zeroable};
-pub use crate::mid::rsa_key_size::RsaKeySize;
+use crate::mid::rsa_key_size::RsaKeySize;
 use crate::mid::rsa_pub::MAX_PUBLIC_MODULUS_BYTES;
 
 /// The hash a signature algorithm applies to the message.
@@ -182,8 +182,8 @@ impl AsRef<Self> for VerificationAlgorithm {
     }
 }
 
-/// An RSA signature verification algorithm, which also parses
-/// [`RsaPublicKeyComponents`].
+/// An RSA signature verification algorithm, which
+/// [`PublicKey::from_components`] also takes.
 pub struct RsaVerificationAlgorithm {
     rsa: Rsa,
     algorithm: VerificationAlgorithm,
@@ -238,6 +238,16 @@ impl PublicKey {
             key,
             encoding: Buffer::copy_from(bytes)?,
         })
+    }
+
+    /// Loads an RSA key for `algorithm` from its big-endian modulus and
+    /// exponent, as a JWK carries them.
+    pub fn from_components(
+        algorithm: &RsaVerificationAlgorithm,
+        components: &PublicKeyComponents<impl AsRef<[u8]>>,
+    ) -> Result<Self, Error> {
+        let key = rsa::VerifyingKey::from_components(components.n.as_ref(), components.e.as_ref())?;
+        Self::rsa(algorithm.rsa, key)
     }
 
     /// Parses an RSA key's PKCS#1 or SPKI DER for `rsa`.
@@ -698,7 +708,7 @@ enum EcdsaSource<'a> {
     Pkcs8(&'a [u8]),
     Sec1(&'a [u8]),
     Scalar {
-        private_key: &'a [u8],
+        scalar: &'a [u8],
         public_key: &'a [u8],
     },
 }
@@ -792,15 +802,12 @@ impl EcdsaKeyPair {
     ///
     /// This suits a JWK's `d` and `x`/`y`; prefer [`Self::from_pkcs8`] for
     /// stored keys.
-    pub fn from_private_key_and_public_key(
+    pub fn from_scalar_and_public_key(
         algorithm: &'static EcdsaSigningAlgorithm,
-        private_key: &[u8],
+        scalar: &[u8],
         public_key: &[u8],
     ) -> Result<Self, Error> {
-        let source = EcdsaSource::Scalar {
-            private_key,
-            public_key,
-        };
+        let source = EcdsaSource::Scalar { scalar, public_key };
         (algorithm.load)(algorithm.ecdsa, source)
     }
 
@@ -814,10 +821,9 @@ impl EcdsaKeyPair {
             EcdsaSource::Generate => ecdsa::SigningKey::<C>::generate(),
             EcdsaSource::Pkcs8(der) => ecdsa::SigningKey::from_pkcs8_der(der),
             EcdsaSource::Sec1(der) => ecdsa::SigningKey::from_sec1_der(der),
-            EcdsaSource::Scalar {
-                private_key,
-                public_key,
-            } => ecdsa::SigningKey::from_private_key_and_public_key(private_key, public_key),
+            EcdsaSource::Scalar { scalar, public_key } => {
+                ecdsa::SigningKey::from_private_key_and_public_key(scalar, public_key)
+            }
         }?;
         let point = Buffer::copy_from(signing.public_key_uncompressed())?;
         let verifying = ecdsa::VerifyingKey::from_x962_uncompressed(point.as_ref())?;
@@ -895,7 +901,7 @@ impl EcdsaKeyPair {
     /// Encodes the private key as a big-endian scalar exactly the curve's
     /// length, as a JWK's `d` and SEC1's `privateKey` hold it.
     ///
-    /// This is what [`Self::from_private_key_and_public_key`] loads; prefer
+    /// This is what [`Self::from_scalar_and_public_key`] loads; prefer
     /// [`Self::to_pkcs8`] for stored keys.
     pub fn to_scalar(&self) -> EcdsaScalar {
         EcdsaScalar(Buffer::encode(|output| {
@@ -1123,19 +1129,11 @@ const fn rsa_algorithm(verification: RsaVerification, min_bits: usize) -> RsaVer
 /// An RSA public key as its big-endian modulus and exponent, as a JWK
 /// carries it, rather than DER.
 #[derive(Clone, Copy, Debug)]
-pub struct RsaPublicKeyComponents<B> {
+pub struct PublicKeyComponents<B> {
     /// The modulus, without leading zero bytes.
     pub n: B,
     /// The public exponent, without leading zero bytes.
     pub e: B,
-}
-
-impl<B: AsRef<[u8]>> RsaPublicKeyComponents<B> {
-    /// Parses this key for `algorithm`.
-    pub fn to_public_key(&self, algorithm: &RsaVerificationAlgorithm) -> Result<PublicKey, Error> {
-        let key = rsa::VerifyingKey::from_components(self.n.as_ref(), self.e.as_ref())?;
-        PublicKey::rsa(algorithm.rsa, key)
-    }
 }
 
 /// An RSA signing algorithm: a padding and a hash, for [`RsaKeyPair::sign`].
@@ -1843,7 +1841,7 @@ mod tests {
             let encoded = pair.public_key();
             let public = encoded.as_ref();
             let reloaded =
-                EcdsaKeyPair::from_private_key_and_public_key(signing, scalar, public).unwrap();
+                EcdsaKeyPair::from_scalar_and_public_key(signing, scalar, public).unwrap();
             assert_eq!(reloaded.public_key().as_ref(), public);
             assert_eq!(reloaded.to_pkcs8().as_ref(), pair.to_pkcs8().as_ref());
 
@@ -1851,13 +1849,13 @@ mod tests {
             // byte added or removed.
             let padded = [&[0][..], scalar].concat();
             assert_eq!(
-                rejected(EcdsaKeyPair::from_private_key_and_public_key(
+                rejected(EcdsaKeyPair::from_scalar_and_public_key(
                     signing, &padded, public
                 )),
                 KeyFormatError::WrongLength.into()
             );
             assert_eq!(
-                rejected(EcdsaKeyPair::from_private_key_and_public_key(
+                rejected(EcdsaKeyPair::from_scalar_and_public_key(
                     signing,
                     &scalar[1..],
                     public
@@ -1868,7 +1866,7 @@ mod tests {
             // Zero and anything at or above the order are refused.
             let zero = [0u8; MAX_SCALAR_LEN];
             assert_eq!(
-                rejected(EcdsaKeyPair::from_private_key_and_public_key(
+                rejected(EcdsaKeyPair::from_scalar_and_public_key(
                     signing,
                     &zero[..len],
                     public
@@ -1877,7 +1875,7 @@ mod tests {
             );
             let ones = [0xffu8; MAX_SCALAR_LEN];
             assert_eq!(
-                rejected(EcdsaKeyPair::from_private_key_and_public_key(
+                rejected(EcdsaKeyPair::from_scalar_and_public_key(
                     signing,
                     &ones[..len],
                     public
@@ -1889,7 +1887,7 @@ mod tests {
             let other = EcdsaKeyPair::generate(signing).unwrap().public_key();
             for public in [other.as_ref(), &public[..public.len() - 1]] {
                 assert_eq!(
-                    rejected(EcdsaKeyPair::from_private_key_and_public_key(
+                    rejected(EcdsaKeyPair::from_scalar_and_public_key(
                         signing, scalar, public
                     )),
                     KeyFormatError::MismatchedPublicKey.into()
@@ -2005,12 +2003,12 @@ mod tests {
         let parsed = pkix::RSAPublicKey::from_bytes(der.as_ref()).unwrap();
         let n = parsed.modulus.as_ref().strip_prefix(&[0]).unwrap();
         let e = parsed.publicExponent.as_ref();
-        let key = RsaPublicKeyComponents { n, e };
+        let key = PublicKeyComponents { n, e };
         for algorithm in [
             &verify::RSA_PKCS1_SHA256,
             &verify::legacy::RSA_PKCS1_1024_SHA256,
         ] {
-            let public_key = key.to_public_key(algorithm).unwrap();
+            let public_key = PublicKey::from_components(algorithm, &key).unwrap();
             assert_eq!(public_key.as_ref(), der.as_ref());
             public_key.verify(b"message", signature).unwrap();
             assert_eq!(
@@ -2023,7 +2021,7 @@ mod tests {
             &verify::legacy::RSA_PKCS1_1024_SHA512,
         ] {
             assert_eq!(
-                key.to_public_key(algorithm)
+                PublicKey::from_components(algorithm, &key)
                     .unwrap()
                     .verify(b"message", signature),
                 Err(Error::BadSignature)
@@ -2032,7 +2030,10 @@ mod tests {
 
         // A 2048-bit key is below this algorithm's floor, in either form.
         assert_eq!(
-            rejected(key.to_public_key(&verify::legacy::RSA_PKCS1_3072_SHA384)),
+            rejected(PublicKey::from_components(
+                &verify::legacy::RSA_PKCS1_3072_SHA384,
+                &key
+            )),
             KeyFormatError::RsaModulus.into()
         );
         assert_eq!(
@@ -2053,9 +2054,9 @@ mod tests {
             (n, &[], KeyFormatError::RsaExponent.into()),
         ];
         for (n, e, expected) in malformed {
-            let key = RsaPublicKeyComponents { n, e };
+            let key = PublicKeyComponents { n, e };
             assert_eq!(
-                rejected(key.to_public_key(&verify::RSA_PKCS1_SHA256)),
+                rejected(PublicKey::from_components(&verify::RSA_PKCS1_SHA256, &key)),
                 expected
             );
         }

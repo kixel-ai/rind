@@ -550,9 +550,10 @@ fn aes_gcm(file: &str, gmac: bool) {
             }
 
             let ctx = gcm::Key::new(aes, &test.key, gcm::TagLength::Full).unwrap();
+            let iv = || gcm::Iv::assume_unique_for_key(&test.iv);
             let mut got = ct.to_vec();
-            let result = ctx
-                .open_in_place_separate_tag(&test.iv, aad, &test.tag, &mut got)
+            let result = iv()
+                .and_then(|iv| ctx.open_in_place_separate_tag(iv, aad, &test.tag, &mut got))
                 .map(|_| ());
             check_open(valid, malformed, result);
             if valid {
@@ -560,7 +561,7 @@ fn aes_gcm(file: &str, gmac: bool) {
             }
 
             let mut got = msg.to_vec();
-            match ctx.seal_in_place_separate_tag(&test.iv, aad, &mut got) {
+            match iv().and_then(|iv| ctx.seal_in_place_separate_tag(iv, aad, &mut got)) {
                 Ok(tag) if valid => assert_eq!((&got[..], tag.as_ref()), (ct, &test.tag[..])),
                 Ok(_) => assert!(!test.iv.is_empty()),
                 Err(Error::WrongLength) => assert!(test.iv.is_empty()),
@@ -681,7 +682,7 @@ fn test_rsa_pkcs1_verify() {
                 other => panic!("unhandled sha {other:?}"),
             };
             let n = group.public_key.modulus.strip_prefix(&[0]).unwrap();
-            let components = signature::RsaPublicKeyComponents {
+            let components = rind::rsa::PublicKeyComponents {
                 n,
                 e: &group.public_key.public_exponent[..],
             };
@@ -691,25 +692,26 @@ fn test_rsa_pkcs1_verify() {
                 if group.key_size < min_bits {
                     assert!(matches!(key, Err(Error::KeyRejected(_))));
                     assert!(matches!(
-                        components.to_public_key(algorithm),
+                        signature::PublicKey::from_components(algorithm, &components),
                         Err(Error::KeyRejected(_))
                     ));
                     continue;
                 }
                 let key = key.unwrap();
-                let from_components = components.to_public_key(algorithm).unwrap();
+                let from_components =
+                    signature::PublicKey::from_components(algorithm, &components).unwrap();
                 assert_eq!(from_components.as_ref(), key.as_ref());
                 let from_spki =
                     signature::PublicKey::new(algorithm, &group.public_key_der).unwrap();
                 assert_eq!(from_spki.as_ref(), key.as_ref());
 
                 // The modulus with its sign byte is not minimal.
-                let signed = signature::RsaPublicKeyComponents {
+                let signed = rind::rsa::PublicKeyComponents {
                     n: &group.public_key.modulus[..],
                     e: components.e,
                 };
                 assert!(matches!(
-                    signed.to_public_key(algorithm),
+                    signature::PublicKey::from_components(algorithm, &signed),
                     Err(Error::KeyRejected(_))
                 ));
 
@@ -1124,7 +1126,7 @@ fn test_chacha20() {
                 continue;
             }
 
-            let ctx = ChaCha20::new(test.key.try_into().unwrap());
+            let ctx = ChaCha20::new(test.key.as_slice().try_into().unwrap());
             let counter = u32::from_le_bytes(test.initial_counter.try_into().unwrap());
 
             let mut buf = test.msg.clone();

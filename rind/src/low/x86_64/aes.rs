@@ -49,6 +49,16 @@ impl AesKey {
             Self::Nohw(key) => key.encrypt_block(inout),
         }
     }
+
+    /// The key's length in bytes, 16 or 32, which no API reads but `Debug`.
+    pub(crate) fn key_len(&self) -> usize {
+        match self {
+            Self::Hw(HwKey::Aes128(_)) => 16,
+            Self::Hw(HwKey::Aes256(_)) => 32,
+            Self::Vpaes(key) => key.key_len(),
+            Self::Nohw(key) => key.key_len(),
+        }
+    }
 }
 
 impl Drop for AesKey {
@@ -428,6 +438,18 @@ mod tests {
     use std::panic;
 
     use super::*;
+
+    #[test]
+    fn key_len() {
+        for key in [&[0u8; 16][..], &[0u8; 32]] {
+            assert_eq!(AesKey::new(key).key_len(), key.len());
+            if let Some(token) = HaveSsse3::check() {
+                let vpaes = AesKey::Vpaes(VpaesKey::new(key, token));
+                assert_eq!(vpaes.key_len(), key.len());
+            }
+            assert_eq!(AesKey::Nohw(NohwKey::new(key)).key_len(), key.len());
+        }
+    }
 
     fn to_u128(v: __m128i) -> u128 {
         let mut u = 0;

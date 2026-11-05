@@ -49,6 +49,15 @@ impl AesKey {
             Self::Vpaes(key) => key.encrypt_block(inout),
         }
     }
+
+    /// The key's length in bytes, 16 or 32, which no API reads but `Debug`.
+    pub(crate) fn key_len(&self) -> usize {
+        match self {
+            Self::Hw(HwKey::Aes128(_)) => 16,
+            Self::Hw(HwKey::Aes256(_)) => 32,
+            Self::Vpaes(key) => key.key_len(),
+        }
+    }
 }
 
 /// A key for the AES instructions.
@@ -483,6 +492,14 @@ mod tests {
 
     use super::*;
     use crate::low::aes_ctr;
+
+    #[test]
+    fn key_len() {
+        for key in [&[0u8; 16][..], &[0u8; 32]] {
+            assert_eq!(AesKey::new(key).key_len(), key.len());
+            assert_eq!(AesKey::Vpaes(VpaesKey::new(key)).key_len(), key.len());
+        }
+    }
 
     fn to_u128(v: uint8x16_t) -> u128 {
         let mut buf = [0u8; 16];
