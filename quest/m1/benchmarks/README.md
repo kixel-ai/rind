@@ -18,9 +18,9 @@ Planned with the maintainer on 2026-11-03. Settled; don't ask again (✅ is the 
 - Build cost: a cold `cargo build --release` of a minimal crate per library and of a rustls client per provider, the stripped binary size, and the build dependencies each needs (C compiler, cmake, nasm, perl) ✅, all four selected.
 - CPU tiers: a further heatmap, generated from the latest nightly bench on GitHub's runners (no AVX2, no AES-NI, SSE2, aarch64 without crypto, armv7), replaces the README Algorithms table's ratios as the [speed epic](/quest/m2/speed/README.md)'s scoreboard ✅ / keep the tier ratios in README.
 - Refresh: `admin/bench-report` runs everything over ssh and regenerates the report, and a recurring quest reruns it at the end of each milestone ✅ / script only.
-- Gaps (maintainer: "you decide"): once the first report lands, this epic triages every operation where a library beats rind by more than about 10% on a host's native path. A gap gets a speed-epic quest when the operation is common or the gap is large, or else a recorded reason in the report. The ~10% verified-code rule applies: verified code that is close stays.
+- Gaps (maintainer: "you decide"): every operation where a library beats rind by more than about 10% on a host's native path gets a speed-epic quest when the operation is common or the gap is large, or else a recorded reason in the report. The ~10% verified-code rule applies: verified code that is close stays. Triaged on 2026-11-04 from the first report: x86_64 RSA-2048 signing, short SHA-256, and SHA-2 bulk became [speed](/quest/m2/speed/README.md) quests, and the rest have reasons. `benchmarks/gaps.toml` holds each decision, BENCHMARKS.md's Known gaps shows them, and `admin/bench-report render` refuses a gap without one, so a refresh triages its new gaps.
 
-The epic's own remaining work, once its children merge: that triage.
+The epic has no work of its own left.
 
 ## Required
 
