@@ -57,7 +57,8 @@ ecdsa_items() {
     items rind/src/high/signature.rs 'impl<const N: usize> Buffer<N> {' 'macro_rules! with_hash {' \
         'struct Ecdsa {' 'macro_rules! with_ecdsa {' 'macro_rules! with_curve {' 'trait Encoding {' \
         'impl Encoding for Fixed {' 'trait EcdsaCurve:' 'macro_rules! ecdsa_curve {' \
-        'ecdsa_curve!(P256, EcdsaP256);' 'fn parse_ecdsa<' 'const fn ecdsa_verification(' \
+        'ecdsa_curve!(P256, EcdsaP256);' 'struct EcdsaVerifier<' 'impl<C: Curve> EcdsaVerifier<C> {' \
+        'fn parse_ecdsa<' 'const fn ecdsa_verification(' \
         'const fn ecdsa_signing(' 'pub struct EcdsaSigningAlgorithm {' 'enum EcdsaSource<' \
         'pub struct EcdsaKeyPair {' 'enum EcdsaKey {' 'struct EcdsaPair<' 'type Write<K> =' \
         'struct EcdsaOps<' 'impl<C: EcdsaCurve> EcdsaPair<C> {' 'macro_rules! on_ecdsa {' \

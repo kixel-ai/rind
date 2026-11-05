@@ -173,6 +173,34 @@ fn ecdsa_verify(c: &mut Criterion) {
             public_key.verify(MESSAGE, &signature).unwrap();
         })
     });
+    group.finish();
+
+    // A digest the caller computed, as node's `createVerify` holds it.
+    let mut group = c.benchmark_group("p521-ecdsa-verify-digest");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("aws-lc-rs", |b| {
+        use aws_lc_rs::{digest, signature};
+        let public_key =
+            signature::ParsedPublicKey::new(&signature::ECDSA_P521_SHA512_FIXED, &public_key)
+                .unwrap();
+        let digest = digest::digest(&digest::SHA512, MESSAGE);
+
+        b.iter(|| {
+            public_key.verify_digest_sig(&digest, &signature).unwrap();
+        })
+    });
+
+    group.bench_function("rind", |b| {
+        use rind::digest;
+        use rind::signature::{PublicKey, verify};
+        let public_key = PublicKey::new(&verify::ECDSA_P521_SHA512_FIXED, &public_key).unwrap();
+        let digest = digest::digest(&digest::SHA512, MESSAGE);
+
+        b.iter(|| {
+            public_key.verify_digest(&digest, &signature).unwrap();
+        })
+    });
 }
 
 fn ecdsa_sign(c: &mut Criterion) {
@@ -227,6 +255,41 @@ fn ecdsa_sign(c: &mut Criterion) {
         );
         let signing_key = curve.generate();
         b.iter(|| black_box(curve.sign(&signing_key, MESSAGE)));
+    });
+    group.finish();
+
+    // A digest the caller computed, as node's `createSign` holds it.
+    let mut group = c.benchmark_group("p521-ecdsa-sign-digest");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("aws-lc-rs", |b| {
+        use aws_lc_rs::{digest, rand, signature};
+        let private_key = signature::EcdsaKeyPair::generate_pkcs8(
+            &signature::ECDSA_P521_SHA512_FIXED_SIGNING,
+            &rand::SystemRandom::new(),
+        )
+        .unwrap();
+        let private_key = signature::EcdsaKeyPair::from_pkcs8(
+            &signature::ECDSA_P521_SHA512_FIXED_SIGNING,
+            private_key.as_ref(),
+        )
+        .unwrap();
+        let digest = digest::digest(&digest::SHA512, MESSAGE);
+
+        b.iter(|| {
+            black_box(private_key.sign_digest(&digest).unwrap());
+        })
+    });
+
+    group.bench_function("rind", |b| {
+        use rind::digest;
+        use rind::signature::{EcdsaKeyPair, sign};
+        let signing_key = EcdsaKeyPair::generate(&sign::ECDSA_P521_SHA512_FIXED).unwrap();
+        let digest = digest::digest(&digest::SHA512, MESSAGE);
+
+        b.iter(|| {
+            black_box(signing_key.sign_digest(&digest).unwrap());
+        });
     });
 }
 

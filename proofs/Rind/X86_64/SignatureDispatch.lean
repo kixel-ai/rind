@@ -38,9 +38,9 @@ pub struct PublicKey {
 }
 
 enum Parsed {
-    EcdsaP256(Verifier<ecdsa::VerifyingKey<P256>>, Ecdsa),
-    EcdsaP384(Verifier<ecdsa::VerifyingKey<P384>>, Ecdsa),
-    EcdsaP521(Verifier<ecdsa::VerifyingKey<P521>>, Ecdsa),
+    EcdsaP256(EcdsaVerifier<P256>, Ecdsa),
+    EcdsaP384(EcdsaVerifier<P384>, Ecdsa),
+    EcdsaP521(EcdsaVerifier<P521>, Ecdsa),
     Rsa(RsaVerifier, RsaVerification),
     Ed25519(Verifier<Ed25519VerifyingKey>),
 }
@@ -99,6 +99,27 @@ impl PublicKey {
                 (key.verify)(&key.key, verification.salt(), signature, message)
             }
             Parsed::Ed25519(key) => key.verify(message, signature),
+        }
+    }
+
+    /// Verifies an ECDSA `signature` over the message `digest` hashes.
+    ///
+    /// The digest's hash, SHA-256, SHA-384, or SHA-512, replaces the
+    /// algorithm's, which still fixes the curve and the signature's encoding.
+    /// Another hash, or a key other than ECDSA, is refused as
+    /// [`Error::Unsupported`].
+    ///
+    /// So unlike [`Self::verify`], this does not pin the hash: hash with the
+    /// one your protocol names, never one the signed data or its sender
+    /// picks. A signature over one SHA-2 hash verifies over another only
+    /// for a message whose digest collides with it, which no one can find.
+    pub fn verify_digest(&self, digest: &Digest, signature: &[u8]) -> Result<(), Error> {
+        let digest = signed_digest(digest)?;
+        match &self.key {
+            Parsed::EcdsaP256(key, _) => key.verify_digest(digest, signature),
+            Parsed::EcdsaP384(key, _) => key.verify_digest(digest, signature),
+            Parsed::EcdsaP521(key, _) => key.verify_digest(digest, signature),
+            Parsed::Rsa(..) | Parsed::Ed25519(_) => Err(Error::Unsupported),
         }
     }
 }
@@ -223,7 +244,8 @@ The model departs from the Rust in five ways, and adds no axiom:
 - `?` is a `match`, since each error it passes on is already an `Error`.
 
 `PublicKey`'s `Debug` is quoted only so that check sees its mention, and not
-modelled: it computes no result. Drops are not modelled, as everywhere in the
+modelled: it computes no result. Nor is `PublicKey::verify_digest`, which no
+theorem here is about, and which builds no `Parsed`. Drops are not modelled, as everywhere in the
 translation. `rsa::MAX_PUBLIC_KEY_LEN` is 8192 / 8 + 64 =
 1088.
 -/

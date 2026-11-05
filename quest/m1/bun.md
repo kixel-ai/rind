@@ -35,5 +35,13 @@ keep in m2.
   these key types need a representation of their own, with import and export
   (raw, PKCS#8, SPKI, JWK) matching Bun's behavior byte for byte. Bun's and
   Node's crypto tests are the bar.
+- Load an Ed25519 key parsed per call, as `crypto.sign(null, data, pem)`
+  does, on rind alone. The prototype's 0.93x there is a double load:
+  BoringSSL derives the public key from the seed when it parses the PEM, then
+  rind derives it again. Every library derives it at load, and must: signing
+  with a public key that is not the seed's leaks the private key, so rind
+  takes no unchecked public key. With rind loading alone, load plus sign is
+  1.65x BoringSSL's on an i7-8700, since rind's load is 1.6x faster
+  ([moq-dev/rind#373](https://github.com/moq-dev/rind/pull/373)).
 - A native `Bun.jwt` ([oven-sh/bun#27727](https://github.com/oven-sh/bun/issues/27727))
   on rind is a natural follow-up; suggest it if this lands.
