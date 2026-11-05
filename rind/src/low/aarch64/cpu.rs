@@ -195,22 +195,43 @@ mod linux {
         })
     }
 
-    /// Whether the core this `MIDR_EL1` names has DIT, which every Arm
-    /// architecture from Armv8.4 requires.
+    /// Whether the core this `MIDR_EL1` names has DIT, which Armv8.4 made
+    /// mandatory: the cores Linux's `arch/arm64/include/asm/cputype.h` names
+    /// that implement Armv8.4 or later.
     fn has_dit(midr: u64) -> bool {
         let implementer = (midr >> 24) & 0xff;
         let part = (midr >> 4) & 0xfff;
         match implementer {
-            // Arm's cores of Armv8.4 or later, numbered as in Linux's
-            // `arch/arm64/include/asm/cputype.h`.
+            // Arm's, all but the Armv8.2 Cortex-A78, A78C, X1, and X1C
+            // numbered among them.
             0x41 => matches!(
                 part,
                 0xd40 // Neoverse V1
+                | 0xd46 // Cortex-A510
+                | 0xd47 // Cortex-A710
+                | 0xd48 // Cortex-X2
                 | 0xd49 // Neoverse N2
+                | 0xd4d // Cortex-A715
+                | 0xd4e // Cortex-X3
                 | 0xd4f // Neoverse V2
+                | 0xd80 // Cortex-A520
+                | 0xd81 // Cortex-A720
+                | 0xd82 // Cortex-X4
+                | 0xd83 // Neoverse V3AE
                 | 0xd84 // Neoverse V3
+                | 0xd85 // Cortex-X925
+                | 0xd87 // Cortex-A725
+                | 0xd88 // Cortex-A520AE
+                | 0xd89 // Cortex-A720AE
+                | 0xd8a // C1-Nano
+                | 0xd8b // C1-Pro
+                | 0xd8c // C1-Ultra
                 | 0xd8e // Neoverse N3
+                | 0xd90 // C1-Premium
             ),
+            // Qualcomm's Oryon, as in the Snapdragon X, where WSL runs Linux
+            // under Hyper-V.
+            0x51 => part == 0x001,
             _ => false,
         }
     }

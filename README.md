@@ -98,8 +98,8 @@ Android are untested.
   rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Secret-dependent code
   runs with data-independent timing (DIT) where the core has it. Where
   Hyper-V hides DIT from Linux, as on Azure's Cobalt 100, rind knows it from
-  the core's model for Arm's Neoverse V1, N2, V2, V3, and N3, given a readable
-  `/sys` and every CPU online.
+  the core's model, for Arm's Armv8.4 and later cores and Qualcomm's Oryon,
+  given a readable `/sys` and every CPU online.
 - `x86_64` runs on every x86_64 CPU. Without `aes` and `pclmulqdq`, as on
   Core 2 and Nehalem, AES and GHASH run [aws-lc]'s SSSE3 assembly instead
   (see [Algorithms](#algorithms)), `rind::cpu::has_aes_hardware()` is false,
