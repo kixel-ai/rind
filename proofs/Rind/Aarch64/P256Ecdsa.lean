@@ -719,7 +719,71 @@ theorem naf_loop_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (k : Slice U64) (
     split_ifs at ho with hlt
     · obtain ⟨rfl, hst⟩ := ho
       simp only
-      sorry
+      have hi : it.start.val < ds.length := by simp [Slice.length, hlen]; omega
+      step with Slice.index_mut_usize_spec ds it.start hi as ⟨x, back, hx, hback⟩
+      step as ⟨i1, hi1, _⟩
+      have hA : (2 : Int) ^ (W.val - 1) = 16 ∨ (2 : Int) ^ (W.val - 1) = 32 := by
+        rcases hW with h | h <;> rw [h] <;> norm_num
+      rw [i32_and_one win hw0 (by omega)] at hi1
+      have hWv : (W.val : Int) = 5 ∨ (W.val : Int) = 6 := by omega
+      have hA2 : (2 : Int) ^ W.val = 2 * 2 ^ (W.val - 1) := by
+        rw [← pow_succ']; congr 1; omega
+      apply WP.spec_bind (Pₘ := fun r : Slice I8 × I32 × core.ops.range.Range Usize =>
+        r.2.2 = iter1 ∧ ∃ dd : I8, r.1.val = ds.val.set it.start.val dd ∧ r.2.1.val = win.val - dd.val ∧
+          dd.val = if win.val % 2 = 1 then (if win.val < 2 ^ (W.val - 1) then win.val
+            else win.val - 2 * 2 ^ (W.val - 1)) else 0)
+      · split
+        · rename_i hodd
+          have hodd' : win.val % 2 = 1 := by rw [← hi1, (IScalar.eq_equiv _ _).mp hodd]; rfl
+          step as ⟨i2, hi2⟩
+          step as ⟨i3, hi3, _⟩
+          · rw [hi2]; scalar_tac
+          have hi3v : i3.val = 2 ^ (W.val - 1) := by
+            rw [hi3, hi2, Int.shiftLeft_eq, one_mul]
+            rw [I32.size_def]
+            exact Int.bmod_eq_of_le (by rcases hA with h | h <;> rw [h] <;> norm_num [I32.numBits])
+              (by rcases hA with h | h <;> rw [h] <;> norm_num [I32.numBits])
+          have hset : ∀ (d : I8), ((back 0#i8).set it.start d).val = ds.val.set it.start.val d := by
+            intro d; rw [hback, Slice.set_val_eq, Slice.set_val_eq, List.set_set]
+          by_cases hlo : win.val < 2 ^ (W.val - 1)
+          · have hc : win < i3 := (IScalar.lt_equiv _ _).mpr (by rw [hi3v]; exact hlo)
+            rw [ite_eq_left_iff.mpr (fun h => absurd hc h)]
+            step as ⟨w2, hw2⟩
+            step as ⟨i4, hi4⟩
+            step as ⟨s', hs'⟩
+            · (try rw [hback]); (try simp only [Slice.length, Slice.set_val_eq, List.length_set]); (try omega)
+            try simp only [WP.spec_ok, true_and]
+            have hi4v : i4.val = win.val := by
+              rw [hi4, IScalar.cast_val_eq]
+              exact Int.bmod_eq_of_le (by simp; omega) (by simp; omega)
+            refine ⟨i4, by rw [hs', hset], by rw [hw2, hi4v], by rw [hi4v]; simp [hodd', hlo]⟩
+          · have hc : ¬ win < i3 := fun h => hlo (by rw [← hi3v]; exact (IScalar.lt_equiv _ _).mp h)
+            rw [ite_eq_right_iff.mpr (fun h => absurd h hc)]
+            step as ⟨i5, hi5, _⟩
+            · omega
+            have hi5v : i5.val = 2 * 2 ^ (W.val - 1) := by
+              rw [hi5, Int.shiftLeft_eq, one_mul]
+              rw [I32.size_def]
+              exact Int.bmod_eq_of_le (by rcases hA with h | h <;> rw [hA2, h] <;> norm_num [I32.numBits])
+                (by rcases hA with h | h <;> rw [hA2, h] <;> norm_num [I32.numBits]) |>.trans hA2
+            step as ⟨d, hd⟩
+            step as ⟨w2, hw2⟩
+            step as ⟨i4, hi4⟩
+            step as ⟨s', hs'⟩
+            · (try rw [hback]); (try simp only [Slice.length, Slice.set_val_eq, List.length_set]); (try omega)
+            try simp only [WP.spec_ok, true_and]
+            have hi4v : i4.val = d.val := by
+              rw [hi4, IScalar.cast_val_eq]
+              exact Int.bmod_eq_of_le (by rw [hd, hi5v]; simp; omega) (by rw [hd, hi5v]; simp; omega)
+            refine ⟨i4, by rw [hs', hset], by rw [hw2, hi4v], by rw [hi4v, hd, hi5v]; simp [hodd', hlo]⟩
+        · rename_i heven
+          have heven' : win.val % 2 = 0 := by
+            have : i1.val ≠ 1 := fun h => heven ((IScalar.eq_equiv _ _).mpr (by rw [h]; rfl))
+            omega
+          simp only [WP.spec_ok, true_and]
+          exact ⟨0#i8, by rw [hback, Slice.set_val_eq], by simp, by simp [heven']⟩
+      · rintro ⟨d1, w1, it2⟩ ⟨rfl, dd, hd1, hw1, hdd⟩
+        sorry
     · obtain ⟨rfl, hst⟩ := ho
       simp only [WP.spec_ok]
       have h257 : it.start.val = 257 := by omega
