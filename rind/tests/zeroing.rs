@@ -58,6 +58,20 @@ fn rsa() {
 }
 
 #[test]
+fn rsa_oaep() {
+    use rind::rsa::*;
+    let key = DecryptingKey::from_pkcs1(include_bytes!("../src/high/rsa/rsa8192.der")).unwrap();
+    let ciphertext = key
+        .public_key()
+        .encrypt(&OAEP_SHA256, &[0xa5; 900], b"")
+        .unwrap();
+    check_zeroed_on_drop(Box::pin(
+        key.decrypt(&OAEP_SHA256, ciphertext.as_ref(), b"").unwrap(),
+    ));
+    check_zeroed_on_drop(Box::pin(key));
+}
+
+#[test]
 fn ecdsa() {
     use rind::signature::{EcdsaKeyPair, sign};
     for (algorithm, pkcs8) in [

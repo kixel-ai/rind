@@ -1300,6 +1300,118 @@ mod rsa {
             Err(Error::KeyRejected(_))
         ));
     }
+
+    mod oaep {
+        use aws_lc_rs::encoding::{AsDer, PublicKeyX509Der};
+        use aws_lc_rs::rsa::{
+            OAEP_SHA1_MGF1SHA1, OAEP_SHA256_MGF1SHA256, OAEP_SHA384_MGF1SHA384,
+            OAEP_SHA512_MGF1SHA512, OaepAlgorithm, OaepPrivateDecryptingKey,
+            OaepPublicEncryptingKey, PrivateDecryptingKey, PublicEncryptingKey,
+        };
+        use proptest::collection::vec;
+        use proptest::prelude::*;
+        use rind::Error;
+        use rind::rsa::{self as ours, DecryptingKey, EncryptingKey};
+
+        use super::THEIRS;
+
+        const ALGORITHMS: [(&ours::OaepAlgorithm, &OaepAlgorithm); 4] = [
+            (&ours::legacy::OAEP_SHA1, &OAEP_SHA1_MGF1SHA1),
+            (&ours::OAEP_SHA256, &OAEP_SHA256_MGF1SHA256),
+            (&ours::OAEP_SHA384, &OAEP_SHA384_MGF1SHA384),
+            (&ours::OAEP_SHA512, &OAEP_SHA512_MGF1SHA512),
+        ];
+
+        /// Our key, and aws-lc-rs's and its public key, loaded from its PKCS#8.
+        fn keys()
+        -> impl Iterator<Item = (DecryptingKey, OaepPrivateDecryptingKey, PublicEncryptingKey)>
+        {
+            THEIRS.iter().map(|theirs| {
+                let pkcs8 = theirs.as_der().unwrap();
+                let ours = DecryptingKey::from_pkcs8(pkcs8.as_ref()).unwrap();
+                let theirs = PrivateDecryptingKey::from_pkcs8(pkcs8.as_ref()).unwrap();
+                let public = theirs.public_key();
+                (ours, OaepPrivateDecryptingKey::new(theirs).unwrap(), public)
+            })
+        }
+
+        fn decrypt(
+            key: &OaepPrivateDecryptingKey,
+            algorithm: &'static OaepAlgorithm,
+            ciphertext: &[u8],
+            label: &[u8],
+        ) -> Option<Vec<u8>> {
+            let mut out = vec![0; key.min_output_size()];
+            let out = key
+                .decrypt(algorithm, ciphertext, &mut out, Some(label))
+                .ok()?;
+            Some(out.to_vec())
+        }
+
+        // Each case makes several private-key operations per key and
+        // algorithm, which are slow under emulation.
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(4))]
+
+            /// Each decrypts what the other encrypts.
+            #[test]
+            fn encrypt_decrypt(
+                message in vec(any::<u8>(), 0..200),
+                label in vec(any::<u8>(), 0..40),
+            ) {
+                for (ours, theirs, public) in keys() {
+                    let spki: PublicKeyX509Der<'_> = public.as_der().unwrap();
+                    let ours_spki = ours.to_spki();
+                    prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
+                    let ours_public = EncryptingKey::new(ours.public_key().as_ref()).unwrap();
+                    let theirs_public = OaepPublicEncryptingKey::new(public).unwrap();
+
+                    for (ours_algorithm, theirs_algorithm) in ALGORITHMS {
+                        let max = theirs_public.max_plaintext_size(theirs_algorithm);
+                        prop_assert_eq!(ours_public.max_message_len(ours_algorithm), max);
+                        let message = &message[..message.len().min(max)];
+
+                        let ciphertext = ours_public.encrypt(ours_algorithm, message, &label).unwrap();
+                        let decrypted = decrypt(&theirs, theirs_algorithm, ciphertext.as_ref(), &label);
+                        prop_assert_eq!(decrypted.as_deref(), Some(message));
+
+                        let mut ciphertext = vec![0; theirs_public.ciphertext_size()];
+                        let ciphertext = theirs_public
+                            .encrypt(theirs_algorithm, message, &mut ciphertext, Some(&label))
+                            .unwrap();
+                        let decrypted = ours.decrypt(ours_algorithm, ciphertext, &label).unwrap();
+                        prop_assert_eq!(decrypted.as_ref(), message);
+                    }
+                }
+            }
+
+            /// Both accept the same ciphertexts, tampered with or made up,
+            /// and decrypt them to the same message.
+            #[test]
+            fn decrypt_agrees(
+                flip in any::<prop::sample::Index>(),
+                bytes in vec(any::<u8>(), 256..=257),
+            ) {
+                for (ours, theirs, _) in keys() {
+                    let public = EncryptingKey::new(ours.public_key().as_ref()).unwrap();
+                    for (ours_algorithm, theirs_algorithm) in ALGORITHMS {
+                        let mut tampered = public.encrypt(ours_algorithm, b"message", b"").unwrap().as_ref().to_vec();
+                        let i = flip.index(tampered.len());
+                        tampered[i] ^= 1;
+                        for ciphertext in [&tampered, &bytes] {
+                            let ours = ours.decrypt(ours_algorithm, ciphertext, b"");
+                            let theirs = decrypt(&theirs, theirs_algorithm, ciphertext, b"");
+                            match (&ours, &theirs) {
+                                (Ok(ours), Some(theirs)) => prop_assert_eq!(ours.as_ref(), &theirs[..]),
+                                (Err(Error::DecryptFailed), None) => {}
+                                _ => prop_assert!(false, "ours {:?}, theirs {:?}", ours, theirs),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 mod mlkem768 {

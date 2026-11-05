@@ -280,6 +280,56 @@ fn rsa_pkcs1_sha256_sign_sizes(c: &mut Criterion) {
     }
 }
 
+fn rsa2048_oaep_sha256_decrypt(c: &mut Criterion) {
+    // Encrypted here, since OAEP ciphertexts are randomized.
+    use rind::rsa::{DecryptingKey, OAEP_SHA256};
+    let private_key = include_bytes!("../../rind/src/high/rsa/rsa2048.der");
+    let message = [0u8; 32];
+    let ciphertext = DecryptingKey::from_pkcs1(private_key)
+        .unwrap()
+        .public_key()
+        .encrypt(&OAEP_SHA256, &message, b"")
+        .unwrap();
+    let ciphertext = ciphertext.as_ref();
+
+    let mut group = c.benchmark_group("rsa2048-oaep-sha256-decrypt");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("aws-lc-rs", |b| {
+        use aws_lc_rs::rsa::{
+            OAEP_SHA256_MGF1SHA256, OaepPrivateDecryptingKey, PrivateDecryptingKey,
+        };
+        let pkcs8 = DecryptingKey::from_pkcs1(private_key).unwrap().to_pkcs8();
+        let key = OaepPrivateDecryptingKey::new(
+            PrivateDecryptingKey::from_pkcs8(pkcs8.as_ref()).unwrap(),
+        )
+        .unwrap();
+
+        b.iter(|| {
+            let mut plaintext = [0u8; 256];
+            black_box(key.decrypt(&OAEP_SHA256_MGF1SHA256, ciphertext, &mut plaintext, None))
+                .unwrap();
+        })
+    });
+
+    group.bench_function("rustcrypto", |b| {
+        use rsa::pkcs1::DecodeRsaPrivateKey;
+        let key = rsa::RsaPrivateKey::from_pkcs1_der(private_key).unwrap();
+
+        b.iter(|| {
+            black_box(key.decrypt(rsa::Oaep::<sha2::Sha256>::new(), ciphertext)).unwrap();
+        });
+    });
+
+    group.bench_function("rind", |b| {
+        let key = DecryptingKey::from_pkcs1(private_key).unwrap();
+
+        b.iter(|| {
+            black_box(key.decrypt(&OAEP_SHA256, ciphertext, b"")).unwrap();
+        })
+    });
+}
+
 /// Loading a key checks its components agree, which should stay small next
 /// to a signature at every size.
 fn rsa_load(c: &mut Criterion) {
@@ -316,6 +366,7 @@ criterion_group!(
     rsa2048_pkcs1_sha256_sign,
     rsa2048_pss_sha256_sign,
     rsa_pkcs1_sha256_sign_sizes,
+    rsa2048_oaep_sha256_decrypt,
     rsa_load
 );
 criterion_main!(benches);

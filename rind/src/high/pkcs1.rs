@@ -1,8 +1,11 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::hint::black_box;
+
 use super::hash::{Hash, HashContext};
 use crate::Error;
+use crate::low::{ct, ct_equal};
 use crate::mid::rng::RandomSource;
 
 /// This is EMSA-PKCS1-v1_5-ENCODE
@@ -239,6 +242,157 @@ pub(crate) fn verify_pss_sig<H: Hash>(
     } else {
         Err(Error::BadSignature)
     }
+}
+
+/// The longest message EME-OAEP with `H` fits in `k` octets, the modulus
+/// length; RFC 8017 section 7.1.1, step 1b.
+pub(crate) fn oaep_max_message_len<H: Hash>(k: usize) -> usize {
+    k.saturating_sub(2 * H::zeroed_output().as_ref().len() + 2)
+}
+
+/// This is EME-OAEP encoding, RFC 8017 section 7.1.1, step 2.
+///
+/// `MGF` is `MGF1` with hash `H`.
+/// `out` is the output buffer of `k` octets, the modulus length.
+/// `message` is the plaintext, at most [`oaep_max_message_len`] octets.
+/// `rng` is used to generate the seed.
+pub(crate) fn encode_oaep<H: Hash>(
+    out: &mut [u8],
+    rng: &mut dyn RandomSource,
+    message: &[u8],
+    label: &[u8],
+) -> Result<(), Error> {
+    // 1b.  If mLen > k - 2hLen - 2, output "message too long" and stop.
+    let k = out.len();
+    let h_len = H::zeroed_output().as_ref().len();
+    if k < 2 * h_len + 2 || message.len() > oaep_max_message_len::<H>(k) {
+        return Err(Error::WrongLength);
+    }
+
+    // 2a.  Let lHash = Hash(L), an octet string of length hLen.
+    let l_hash = H::hash(label);
+
+    // 2b.  Generate a padding string PS consisting of k - mLen - 2hLen - 2
+    //      zero octets.  The length of PS may be zero.
+    // 2c.  Concatenate lHash, PS, a single octet with hexadecimal value
+    //      0x01, and the message M to form a data block DB of length
+    //      k - hLen - 1 octets as
+    //
+    //         DB = lHash || PS || 0x01 || M.
+    let (y, rest) = out.split_first_mut().unwrap();
+    let (seed, db) = rest.split_at_mut(h_len);
+    let (l_hash_out, ps_one_m) = db.split_at_mut(h_len);
+    let (ps_one, m_out) = ps_one_m.split_at_mut(ps_one_m.len() - message.len());
+    let (one, ps) = ps_one.split_last_mut().unwrap();
+    l_hash_out.copy_from_slice(l_hash.as_ref());
+    ps.fill(0x00);
+    *one = 0x01;
+    m_out.copy_from_slice(message);
+
+    // 2d.  Generate a random octet string seed of length hLen.
+    rng.fill(seed)?;
+
+    // 2e.  Let dbMask = MGF(seed, k - hLen - 1).
+    // 2f.  Let maskedDB = DB \xor dbMask.
+    mgf1_xor::<H>(seed, h_len, db);
+
+    // 2g.  Let seedMask = MGF(maskedDB, hLen).
+    // 2h.  Let maskedSeed = seed \xor seedMask.
+    mgf1_xor::<H>(db, h_len, seed);
+
+    // 2i.  Concatenate a single octet with hexadecimal value 0x00,
+    //      maskedSeed, and maskedDB to form an encoded message EM of
+    //      length k octets as
+    //
+    //         EM = 0x00 || maskedSeed || maskedDB.
+    *y = 0x00;
+    Ok(())
+}
+
+/// This is EME-OAEP decoding, RFC 8017 section 7.1.2, step 3, in constant
+/// time: [`Error::DecryptFailed`] is the only error, and it reveals nothing
+/// of `em` until the padding is found valid, so it is no Manger oracle.
+///
+/// `MGF` is `MGF1` with hash `H`.
+/// `em` is the input and temporary buffer of `k` octets, the modulus length.
+/// `out` receives the message, and must hold [`oaep_max_message_len`]
+/// octets.
+pub(crate) fn decode_oaep<'a, H: Hash>(
+    em: &mut [u8],
+    label: &[u8],
+    out: &'a mut [u8],
+) -> Result<&'a [u8], Error> {
+    // 1c.  If k < 2hLen + 2, output "decryption error" and stop.
+    let h_len = H::zeroed_output().as_ref().len();
+    if em.len() < 2 * h_len + 2 {
+        return Err(Error::DecryptFailed);
+    }
+
+    // 3a.  If the label L is not provided, let L be the empty string.  Let
+    //      lHash = Hash(L), an octet string of length hLen.
+    let l_hash = H::hash(label);
+
+    // 3b.  Separate the encoded message EM into a single octet Y, an octet
+    //      string maskedSeed of length hLen, and an octet string maskedDB
+    //      of length k - hLen - 1 as
+    //
+    //         EM = Y || maskedSeed || maskedDB.
+    let (y, rest) = em.split_first_mut().unwrap();
+    let (seed, db) = rest.split_at_mut(h_len);
+
+    // 3c.  Let seedMask = MGF(maskedDB, hLen).
+    // 3d.  Let seed = maskedSeed \xor seedMask.
+    mgf1_xor::<H>(db, h_len, seed);
+
+    // 3e.  Let dbMask = MGF(seed, k - hLen - 1).
+    // 3f.  Let DB = maskedDB \xor dbMask.
+    mgf1_xor::<H>(seed, h_len, db);
+
+    // 3g.  Separate DB into an octet string lHash' of length hLen, a
+    //      (possibly empty) padding string PS consisting of octets with
+    //      hexadecimal value 0x00, and a message M as
+    //
+    //         DB = lHash' || PS || 0x01 || M.
+    //
+    //      If there is no octet with hexadecimal value 0x01 to separate PS
+    //      from M, if lHash does not equal lHash', or if Y is nonzero,
+    //      output "decryption error" and stop.
+    //
+    // Each check folds into `bad`, an all-ones mask once any fails, and
+    // the 0x01 is found by a scan of every octet, so neither which check
+    // failed nor where PS ends shows until `bad` is revealed.
+    let (l_hash_prime, ps_one_m) = db.split_at(h_len);
+    let mut bad = !ct_mask(ct_equal(l_hash_prime, l_hash.as_ref())) | !ct_is_zero(*y);
+    let mut looking = u8::MAX;
+    let mut one_index = 0usize;
+    for (i, byte) in ps_one_m.iter().enumerate() {
+        let is_one = ct_is_zero(*byte ^ 0x01);
+        let found = black_box(looking & is_one);
+        one_index ^= (one_index ^ i) & usize::from(found & 1).wrapping_neg();
+        bad |= looking & !is_one & !ct_is_zero(*byte);
+        looking &= !is_one;
+    }
+    bad |= looking;
+
+    if ct::into_public(bad) != 0 {
+        return Err(Error::DecryptFailed);
+    }
+
+    // The message length is revealed by the plaintext anyway.
+    let m = &ps_one_m[ct::into_public(one_index) + 1..];
+    let out = out.get_mut(..m.len()).ok_or(Error::WrongLength)?;
+    out.copy_from_slice(m);
+    Ok(out)
+}
+
+/// All ones if `b` is zero, else zero, without a branch.
+fn ct_is_zero(b: u8) -> u8 {
+    (u32::from(black_box(b)).wrapping_sub(1) >> 8) as u8
+}
+
+/// All ones if `b`, else zero, without a branch.
+fn ct_mask(b: bool) -> u8 {
+    u8::from(black_box(b)).wrapping_neg()
 }
 
 /// Compute MGF1-H, and XOR the result into `out`.

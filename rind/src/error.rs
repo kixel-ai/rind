@@ -20,7 +20,7 @@ pub enum Error {
     BadSignature,
 
     /// An AEAD ciphertext, its tag, or its associated data did not
-    /// authenticate.
+    /// authenticate, or an RSA-OAEP ciphertext did not decrypt.
     DecryptFailed,
 
     /// The system random source failed.

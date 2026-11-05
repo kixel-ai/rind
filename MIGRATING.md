@@ -223,12 +223,26 @@ takes: RFC 5958 sets version 2 only when the public key is present.
 
 ## rsa
 
-rind signs and verifies with RSA through `signature`, and encrypts with none.
+rind signs and verifies with RSA through `signature`, and encrypts with
+RSA-OAEP through `rsa`. ring has no RSA encryption.
 
 | aws-lc-rs | rind |
 |---|---|
-| `OaepPublicEncryptingKey`, `OaepPrivateDecryptingKey`, `OAEP_SHA256_MGF1SHA256` and the other OAEP items, `PublicEncryptingKey`, `PrivateDecryptingKey`, `EncryptionAlgorithmId` | none; [RSA-OAEP](quest/m2/adoption/webcrypto/rsa-oaep.md) |
+| `PrivateDecryptingKey`, then `OaepPrivateDecryptingKey::new(key)` | `DecryptingKey`, which decrypts OAEP itself |
+| `PublicEncryptingKey`, then `OaepPublicEncryptingKey::new(key)` | `EncryptingKey`, which encrypts OAEP itself |
+| `PrivateDecryptingKey::from_pkcs8`, `generate(size)`, `as_der()` | `DecryptingKey::from_pkcs8`, `from_pkcs1`, `generate(size)`, `to_pkcs8()` |
+| `PrivateDecryptingKey::public_key()` | `public_key()`, an `EncryptingKey`; `to_spki()` for its `SubjectPublicKeyInfo` |
+| `PublicEncryptingKey::from_der(spki)` | `EncryptingKey::new(der)`, which takes PKCS#1 `RSAPublicKey` DER, or `EncryptingKey::from_components(&RsaPublicKeyComponents { n, e })` |
+| `OAEP_SHA256_MGF1SHA256`, `OAEP_SHA384_MGF1SHA384`, `OAEP_SHA512_MGF1SHA512` | `OAEP_SHA256`, `OAEP_SHA384`, `OAEP_SHA512` |
+| `OAEP_SHA1_MGF1SHA1` | `legacy::OAEP_SHA1` |
+| `encrypt(alg, m, &mut out, label)`, `decrypt(alg, c, &mut out, label)` | `encrypt(alg, m, label)`, `decrypt(alg, c, label)`, returning a `Ciphertext` or a `Plaintext` wiped on drop; `None` for the label is `b""` |
+| `max_plaintext_size(alg)` | `max_message_len(alg)` |
+| `ciphertext_size()`, `min_output_size()`, `key_size_bytes()`, `key_size_bits()`, `EncryptionAlgorithmId`, `OaepAlgorithm::id()` | none |
 | `Pkcs1PublicEncryptingKey`, `Pkcs1PrivateDecryptingKey` | none: PKCS#1 v1.5 encryption invites padding-oracle attacks |
+
+Every RSA-OAEP decryption failure, a ciphertext of the wrong length, not
+below the modulus, or with bad padding, is `Error::DecryptFailed`, as
+aws-lc-rs's is `Unspecified`. Both refuse keys below 2048 bits.
 
 ## constant_time
 

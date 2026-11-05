@@ -6,6 +6,7 @@ use rind::aead::{
     AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce, RandomNonce, RandomizedNonceKey, Tag,
 };
 use rind::cipher::ChaCha20;
+use rind::rsa::{self, DecryptingKey, OaepAlgorithm};
 use rind::signature::verify::legacy;
 use rind::signature::{self, RsaVerificationAlgorithm, sign, verify};
 use rind::{hkdf, hmac, pbkdf2};
@@ -46,6 +47,9 @@ struct TestGroup {
 
     #[serde(default, rename(deserialize = "sLen"))]
     salt_len: usize,
+
+    #[serde(default)]
+    mgf: String,
 
     tests: Vec<Test>,
 }
@@ -89,6 +93,8 @@ struct Test {
     iteration_count: u32,
     #[serde(default, with = "hex::serde")]
     dk: Vec<u8>,
+    #[serde(default, with = "hex::serde")]
+    label: Vec<u8>,
     #[serde(default)]
     flags: Vec<String>,
     result: ExpectedResult,
@@ -701,6 +707,72 @@ fn test_rsa_pkcs1_sign() {
                 // Every case is valid or acceptable (a small public exponent),
                 // and PKCS#1 v1.5 signing is deterministic.
                 assert_eq!(signature.as_ref(), test.sig);
+            }
+        }
+    }
+}
+
+#[test]
+fn test_rsa_oaep_decrypt() {
+    // Every file whose hash and MGF1 hash agree on one rind supports; the
+    // misc file mixes them, and holds keys below our 2048-bit minimum.
+    for file in &[
+        "rsa_oaep_2048_sha1_mgf1sha1_test.json",
+        "rsa_oaep_2048_sha256_mgf1sha256_test.json",
+        "rsa_oaep_2048_sha384_mgf1sha384_test.json",
+        "rsa_oaep_2048_sha512_mgf1sha512_test.json",
+        "rsa_oaep_3072_sha256_mgf1sha256_test.json",
+        "rsa_oaep_3072_sha512_mgf1sha512_test.json",
+        "rsa_oaep_4096_sha256_mgf1sha256_test.json",
+        "rsa_oaep_4096_sha512_mgf1sha512_test.json",
+        "rsa_oaep_misc_test.json",
+    ] {
+        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
+            .expect("failed to open data file");
+        println!("file: {data_file:?}");
+
+        let reader = BufReader::new(data_file);
+        let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
+        let mut summary = Summary::new();
+
+        for group in tests.groups {
+            summary.group(&group);
+            assert_eq!(group.mgf, "MGF1");
+
+            let algorithm: &'static OaepAlgorithm =
+                match (group.sha.as_ref(), group.mgf_sha.as_ref()) {
+                    ("SHA-1", "SHA-1") => &rsa::legacy::OAEP_SHA1,
+                    ("SHA-256", "SHA-256") => &rsa::OAEP_SHA256,
+                    ("SHA-384", "SHA-384") => &rsa::OAEP_SHA384,
+                    ("SHA-512", "SHA-512") => &rsa::OAEP_SHA512,
+                    other => {
+                        summary.skipped(&format!(
+                            "oaep with sha={} mgf={} not supported",
+                            other.0, other.1
+                        ));
+                        continue;
+                    }
+                };
+
+            let key = DecryptingKey::from_pkcs8(&group.private_key_pkcs8);
+            if group.key_size < 2048 {
+                assert!(matches!(key, Err(Error::KeyRejected(_))), "{key:?}");
+                summary.skipped("key below 2048 bits");
+                continue;
+            }
+            let key = key.unwrap();
+
+            for test in group.tests {
+                summary.start(&test);
+
+                let result = key.decrypt(algorithm, &test.ct, &test.label);
+                match (test.result, &result) {
+                    (ExpectedResult::Valid | ExpectedResult::Acceptable, Ok(plaintext)) => {
+                        assert_eq!(plaintext.as_ref(), test.msg)
+                    }
+                    (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {}
+                    _ => panic!("expected {:?} got {:?}", test.result, result),
+                }
             }
         }
     }
