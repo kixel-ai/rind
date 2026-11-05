@@ -42,7 +42,7 @@ fn tagged<const ENC: bool>(
     aad: &[u8],
     cipher_inout: &mut [u8],
 ) -> [u8; 16] {
-    tagged_from::<ENC>(key, table, &counter_block(nonce), aad, cipher_inout)
+    tagged_from::<ENC>(key, table, counter_block(nonce), aad, cipher_inout)
 }
 
 /// GCM's first counter block for a 96-bit nonce: the nonce, then 1.
@@ -79,15 +79,15 @@ fn lengths(aad: usize, msg: usize) -> [u8; 16] {
 pub(crate) fn tagged_from<const ENC: bool>(
     key: &AesKey,
     table: &GhashTable,
-    y0: &[u8; 16],
+    y0: [u8; 16],
     aad: &[u8],
     cipher_inout: &mut [u8],
 ) -> [u8; 16] {
     let mut ghash = Ghash::new(table);
-    cipher::<ENC>(key, &mut ghash, y0, aad, cipher_inout);
+    cipher::<ENC>(key, &mut ghash, &y0, aad, cipher_inout);
     ghash.add(&lengths(aad.len(), cipher_inout.len()));
 
-    let mut tag = *y0;
+    let mut tag = y0;
     key.encrypt_block(&mut tag);
     for (t, x) in tag.iter_mut().zip(ghash.into_bytes()) {
         *t ^= x;
@@ -303,10 +303,10 @@ mod tests {
                             gcm_model(|b| key.encrypt_block(b), &y0, &aad, &plain);
 
                         let mut got = plain.clone();
-                        let tag = tagged_from::<true>(key, table, &y0, &aad, &mut got);
+                        let tag = tagged_from::<true>(key, table, y0, &aad, &mut got);
                         assert_eq!((&got, tag), (&want, want_tag), "{what}");
 
-                        let tag = tagged_from::<false>(key, table, &y0, &aad, &mut got);
+                        let tag = tagged_from::<false>(key, table, y0, &aad, &mut got);
                         assert_eq!((&got, tag), (&plain, want_tag), "{what}");
                     }
                 }
