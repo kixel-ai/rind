@@ -893,6 +893,67 @@ theorem naf_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (k : Slice U64) (hk : 
     exact_mod_cast (show wordsNat k.val % 2 ^ W.val + 2 ^ W.val * (wordsNat k.val / 2 ^ W.val) ≤ 2 ^ 256 by
       rw [Nat.mod_add_div]; omega)
 
+@[step]
+theorem scalar_naf_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (s : mid.p256.Scalar) :
+    mid.p256.Scalar.public_naf W s ⦃ ds =>
+      nafVal ds.val = scNat s ∧ ∀ j < 257, nafDigit (2 ^ (W.val - 1)) (ds.val[j]!).val ⦄ := by
+  unfold mid.p256.Scalar.public_naf
+  step as ⟨sl, hsl⟩
+  step as ⟨s1, back, hs1, hback⟩
+  step with naf_spec W hW sl (by rw [hsl]; simp) s1
+      (by rw [Slice.length, hs1]; exact (Array.repeat 257#usize 0#i8).property) as
+    ⟨s2, hl2, hv2, hd2⟩
+  have hv : (back s2).val = s2.val := by
+    rw [hback]; exact Array.from_slice_val _ _ (by simpa [Slice.length] using hl2)
+  rw [hv, hsl] at *
+  exact ⟨by simpa [Array.val_to_slice] using hv2, hd2⟩
+
+theorem neg_val (v : ZMod p256) : (p256 - v.val % p256) % p256 = (-v).val := by
+  have h := natCast_neg_mod v.val
+  rw [ZMod.natCast_val, ZMod.cast_id', id] at h
+  rw [← h, ZMod.val_natCast, Nat.mod_eq_of_lt (Nat.mod_lt _ p256_pos)]
+
+theorem dec_neg (y : Nat) (hy : y < p256) : dec ((p256 - y) % p256) = -(dec y) := by
+  have := natCast_neg_mod y
+  rw [Nat.mod_eq_of_lt hy] at this
+  simp only [dec]; rw [this]; ring
+
+/-- `negate_y`: the point's opposite, `p256Neg`. -/
+@[step]
+theorem negate_y_spec (pt : mid.p256.AffineMontPoint) (P : P256Point)
+    (h : p256Represents2 P (pairNat pt.xy.val)) :
+    mid.p256.AffineMontPoint.negate_y pt ⦃ r => p256Represents2 (p256Neg P) (pairNat r.xy.val) ⦄ := by
+  unfold mid.p256.AffineMontPoint.negate_y
+  have hl : (pt.xy.val).length = 8 := pt.xy.property
+  obtain ⟨hx, hy, rfl⟩ := rep2_dec P _ h
+  step as ⟨fy, hfy⟩
+  have hfyv : feNat fy = (pairNat pt.xy.val).2 := by
+    simp [feNat, hfy, pairNat, List.take_of_length_le, hl]
+  step with fe_negate_spec fy (by rw [hfyv]; omega) as ⟨ny, hny⟩
+  step*
+  · simp [mid.p256.AffineMontPoint.Y]
+  · simp [mid.p256.AffineMontPoint.Y]
+  · simp [s_post1, s1_post, mid.p256.AffineMontPoint.Y]
+  · have hny' : ny.val.length = 4 := ny.property
+    have hv : (index_mut_back s2).val = pt.xy.val.take 4 ++ ny.val := by
+      rw [s_post2, s2_post, s1_post, Array.val_to_slice]
+      simp only [mid.p256.AffineMontPoint.Y]
+      generalize pt.xy.val = l at hl ⊢
+      match l, hl with
+      | [a, b, c, d, e, f, g, h'], _ =>
+        generalize ny.val = m at hny' ⊢
+        match m, hny' with
+        | [a', b', c', d'], _ => simp [List.setSlice!]
+    rw [hv, pairNat_append _ _ (by simp [hl]) hny']
+    simp only [p256Neg]
+    refine ⟨by simpa [pairNat] using hx, ?_, ?_⟩
+    · rw [show wordsNat ny.val = feNat ny from rfl, hny]; exact Nat.mod_lt _ p256_pos
+    · congr 2
+      · rw [val_dec]; rfl
+      · rw [show wordsNat ny.val = feNat ny from rfl, hny, hfyv, neg_val]
+        dsimp only
+        rw [val_dec, dec_neg _ hy]
+
 end P256
 
 end rind.aarch64
