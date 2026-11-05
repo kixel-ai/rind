@@ -103,7 +103,7 @@ pub(crate) fn encode_pkcs8<'a>(
 /// `uncompressed`.
 ///
 /// A compressed point is `x` and the parity of `y`, which name at most
-/// one point, so comparing them with this key's matches exactly the
+/// one point, so comparing them with `uncompressed`'s matches exactly the
 /// encodings that decompress to it, with no square root. A hybrid point
 /// is refused.
 pub(crate) fn is_public_key(uncompressed: &[u8], encoded: &[u8]) -> bool {

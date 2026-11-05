@@ -73,7 +73,7 @@ impl<C: Curve> SigningKey<C> {
     fn from_decoded(decoded: sec1::Decoded<'_>) -> Result<Self, Error> {
         let key = Self::new(C::PrivateKey::from_bytes(decoded.private_key)?)?;
         match decoded.public_key {
-            Some(public_key) if !sec1::is_public_key(key.public_key_uncompressed(), public_key) => {
+            Some(public_key) if !key.is_public_key(public_key) => {
                 Err(KeyFormatError::MismatchedSec1PublicKey.into())
             }
             _ => Ok(key),
@@ -93,10 +93,16 @@ impl<C: Curve> SigningKey<C> {
         }
 
         let key = Self::new(C::PrivateKey::from_bytes(private_key)?)?;
-        match sec1::is_public_key(key.public_key_uncompressed(), public_key) {
+        match key.is_public_key(public_key) {
             true => Ok(key),
             false => Err(KeyFormatError::MismatchedPublicKey.into()),
         }
+    }
+
+    /// Whether `encoded`, an X9.62 uncompressed or compressed point, is this
+    /// key's public key, as [`sec1::is_public_key`] decides.
+    fn is_public_key(&self, encoded: &[u8]) -> bool {
+        sec1::is_public_key(self.public_key_uncompressed(), encoded)
     }
 
     /// Encode this private key as its fixed-length big-endian scalar, still
