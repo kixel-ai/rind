@@ -15,8 +15,9 @@ The spec's preconditions hold for every call `compress_avx`'s safety contract
 allows: `state` and `blocks` are distinct allocations, `blocks` is a whole
 number of blocks, at least one, and the token proves AVX. Its precondition on
 `OPENSSL_ia32cap_P` names a global that rind's copy of the routine does not
-read. The routine's other code path, `sha512_block_data_order_nohw`, which
-rind runs on AMD's CPUs and those without AVX, has no proof.
+read. rind runs that routine only on Intel's CPUs with AVX but without AVX2;
+the others it runs, OpenSSL's for the SHA512 instructions and for AVX2 and
+aws-lc's scalar one, have no proof.
 
 The restatement, and that rind's naked function is aws-lc's object code with
 the wrapper passing the pointers and block count the spec names, are trusted.
@@ -37,11 +38,11 @@ axiom compress_avx_spec (t : low.x86_64.cpu.HaveAvx) (state : Std.Array U64 8#us
     low.x86_64.sha512.compress_avx t state blocks ⦃ r => r.val = compress state.val blocks.val ⦄
 
 /-- rind's SHA-512 runs aws-lc's AVX routine on this CPU, which is Intel's and
-has AVX and SSSE3, and its entry guard and the debug build's check that one
-is held pass. None reads an input. -/
+has AVX and SSSE3 but not AVX2, and its entry guard and the debug build's
+check that one is held pass. None reads an input. -/
 def RunsSha512 : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧ low.entry.Entry.assert_held = ok () ∧
-    ∃ t, low.x86_64.sha512.avx = ok (some t)
+    ∃ t, low.x86_64.sha512.path = ok (low.x86_64.sha512.Path.Avx t)
 
 @[step]
 theorem sha512_new_secret_spec (h : RunsSha512) : low.entry.Entry.new_secret ⦃ _ => True ⦄ := by
