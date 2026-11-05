@@ -383,9 +383,9 @@ install ring's if nothing is installed first.
 | tokio-rustls 0.26, futures-rustls 0.26 | default `aws_lc_rs` | **rind-rustls**: `default-features = false`, `logging`, `tls12` |
 | hyper-rustls 0.27 | default `aws-lc-rs` | **rind-rustls**: `default-features = false` and a `with_provider_and_*` builder; `with_native_roots()` and its siblings need ring or aws-lc-rs |
 | reqwest 0.13 | default `rustls` is aws-lc-rs | **rind-rustls**: `rustls-no-provider`, install. `http3` always enables aws-lc-rs |
-| ureq 3 | default `rustls` is ring | **rind-rustls**: `rustls-no-provider` (marked unstable) and `rustls-webpki-roots` or `platform-verifier`, install |
+| ureq 3 | default `rustls` is ring | **rind-rustls**: `rustls-no-provider` (marked unstable) and `rustls-webpki-roots`, or `platform-verifier` with the agent's roots set to `RootCerts::PlatformVerifier`, install |
 | axum-server 0.8 | `tls-rustls` is aws-lc-rs | **rind-rustls**: `tls-rustls-no-provider`, install |
-| actix-web 4, actix-tls 3, awc 3 | none | **rind-rustls**: `rustls-0_23`, with a server config built on rind-rustls; awc's client needs the provider installed |
+| actix-web 4, actix-tls 3, awc 3 | none | **rind-rustls**: `rustls-0_23`, with a server config built on rind-rustls; awc's default client needs `rustls-0_23-webpki-roots` or `rustls-0_23-native-roots`, install |
 | tonic 0.14 | `tls-ring`, `tls-aws-lc` | **rind-rustls**: `tls-native-roots` or `tls-webpki-roots` alone (a server-only build needs `_tls-any`), install |
 | tungstenite 0.30, tokio-tungstenite 0.30 | none | **rind-rustls**: a `rustls-tls-*-roots` feature, install |
 | tokio-websockets 0.13 | handshake SHA-1 from ring, aws-lc-rs, or OpenSSL | **rind-rustls**: `sha1_smol` and `rustls-bring-your-own-connector` |
