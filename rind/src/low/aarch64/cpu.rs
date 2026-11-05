@@ -152,14 +152,68 @@ fn detect() -> u8 {
         // Rust's `sha2` covers the SHA-1 instructions too.
         && test_toggle("sha2", detected!("sha2"));
     let sha3 = test_toggle("sha3", detected!("sha3"));
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "linux")))]
     let dit = test_toggle("dit", detected!("dit"));
+    #[cfg(target_os = "linux")]
+    let dit = test_toggle("dit", detected!("dit") || linux::cores_have_dit());
     #[cfg(windows)]
     let dit = test_toggle("dit", windows::executes_dit());
     (if neon { NEON } else { 0 })
         | (if crypto_ext { CRYPTO_EXT } else { 0 })
         | (if sha3 { SHA3 } else { 0 })
         | (if dit { DIT } else { 0 })
+}
+
+/// Hyper-V hides DIT from Linux too, so the kernel reports none on a core that
+/// has it, such as Azure's Cobalt 100. It passes each core's `MIDR_EL1`
+/// through, though, so this reads which core models the kernel can run on.
+/// Probing the instruction instead would need a process-wide SIGILL handler.
+#[cfg(target_os = "linux")]
+mod linux {
+    pub(super) fn cores_have_dit() -> bool {
+        let read = |file: &str| std::fs::read_to_string(format!("/sys/devices/system/cpu/{file}"));
+        read("possible").is_ok_and(|possible| {
+            all_cores_have_dit(&possible, |cpu| {
+                let midr = read(&format!("cpu{cpu}/regs/identification/midr_el1")).ok()?;
+                u64::from_str_radix(midr.trim().strip_prefix("0x")?, 16).ok()
+            })
+        })
+    }
+
+    /// Whether every CPU in `possible`, the kernel's list of CPUs it may
+    /// bring online, such as `0-3,8-11`, has a `MIDR_EL1` naming a core with
+    /// DIT. One offline now has no `MIDR_EL1` to read, so it fails the check.
+    pub(super) fn all_cores_have_dit(possible: &str, midr: impl Fn(u32) -> Option<u64>) -> bool {
+        possible.trim().split(',').all(|range| {
+            let (first, last) = range.split_once('-').unwrap_or((range, range));
+            match (first.parse::<u32>(), last.parse::<u32>()) {
+                (Ok(first), Ok(last)) if first <= last => {
+                    (first..=last).all(|cpu| midr(cpu).is_some_and(has_dit))
+                }
+                _ => false,
+            }
+        })
+    }
+
+    /// Whether the core this `MIDR_EL1` names has DIT, which every Arm
+    /// architecture from Armv8.4 requires.
+    fn has_dit(midr: u64) -> bool {
+        let implementer = (midr >> 24) & 0xff;
+        let part = (midr >> 4) & 0xfff;
+        match implementer {
+            // Arm's cores of Armv8.4 or later, numbered as in Linux's
+            // `arch/arm64/include/asm/cputype.h`.
+            0x41 => matches!(
+                part,
+                0xd40 // Neoverse V1
+                | 0xd49 // Neoverse N2
+                | 0xd4f // Neoverse V2
+                | 0xd84 // Neoverse V3
+                | 0xd8e // Neoverse N3
+            ),
+            _ => false,
+        }
+    }
 }
 
 /// Windows publishes no DIT flag: `IsProcessorFeaturePresent`, which Rust's
@@ -361,14 +415,13 @@ mod tests {
     }
 
     // A core that runs `mrs DIT` has DIT, whatever its OS reports, so a
-    // child process runs it. Linux reports DIT from `ID_AA64PFR0_EL1`, which
-    // Hyper-V clears on cores that have it, such as Azure's Cobalt 100, and
-    // rind trusts that report there, so the test does too.
+    // child process runs it. Android's kernels report DIT, and rind trusts
+    // that report there, so the test does too.
     #[test]
     fn enables_dit_whenever_the_cpu_has_it() {
-        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        #[cfg(not(target_os = "android"))]
         let has_dit = child_reads_dit();
-        #[cfg(any(target_os = "linux", target_os = "android"))]
+        #[cfg(target_os = "android")]
         let has_dit = std::arch::is_aarch64_feature_detected!("dit");
 
         let expected = test_toggle("dit", has_dit);
@@ -390,7 +443,29 @@ mod tests {
         }
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn needs_dit_on_every_possible_core() {
+        use linux::all_cores_have_dit;
+        // Neoverse N2 r0p0, as on Cobalt 100, and r3p1; Neoverse N1.
+        let n2 = |_| Some(0x410f_d490);
+        assert!(all_cores_have_dit("0-3\n", n2));
+        assert!(all_cores_have_dit("0,2-3", |_| Some(0x413f_d491)));
+        assert!(!all_cores_have_dit("0-3", |cpu| Some(if cpu == 2 {
+            0x413f_d0c1
+        } else {
+            0x410f_d490
+        })));
+        // An offline core has no MIDR to read.
+        assert!(!all_cores_have_dit("0-3,8-11", |cpu| (cpu < 4).then_some(0x410f_d490)));
+        // Another implementer's part number.
+        assert!(!all_cores_have_dit("0", |_| Some(0x510f_d490)));
+        for malformed in ["", "\n", "3-0", "0-", "-3", "0,,1", "0-3-5", "a"] {
+            assert!(!all_cores_have_dit(malformed, n2), "{malformed:?}");
+        }
+    }
+
+    #[cfg(not(target_os = "android"))]
     fn child_reads_dit() -> bool {
         let test = concat!(module_path!(), "::reads_dit");
         let test = test.split_once("::").unwrap().1;
