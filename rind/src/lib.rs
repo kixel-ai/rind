@@ -61,7 +61,7 @@ pub mod doc {
     pub use super::low::inline_assembly_safety;
 }
 
-/// Ephemeral key agreement: X25519, and ECDH on P-256, P-384, and P-521.
+/// Key agreement: X25519, and ECDH on P-256, P-384, and P-521.
 ///
 /// ```
 /// use rind::agreement::*;

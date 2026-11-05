@@ -141,7 +141,7 @@ protocols with their own integrity protection need. ring has none.
 | `X25519`, `ECDH_P256`, `ECDH_P384`, `ECDH_P521` | the same |
 | `PrivateKey::from_private_key(alg, bytes)` | the same |
 | `PrivateKey::from_private_key_der(alg, der)` | `from_pkcs8(&alg, der)` or `from_sec1(&alg, der)`, whichever the caller holds |
-| `as_be_bytes()` to `EcPrivateKeyBin` or `Curve25519SeedBin` | `to_scalar()`, wiped on drop |
+| `as_be_bytes()` to `EcPrivateKeyBin` or `Curve25519SeedBin` | `to_scalar()`, a `Scalar` wiped on drop |
 | `AsDer<Pkcs8V1Der>::as_der()` | `to_pkcs8()`, which X25519 keys also have |
 | `AsDer<EcPrivateKeyRfc5915Der>::as_der()`, `PublicKey::as_der()`, `PublicKey::as_be_bytes()` | none |
 | `algorithm()` on each type | none |
@@ -330,11 +330,12 @@ ring has none.
 ## Adapter crates
 
 Each `rind-*` crate stands in for a crate's aws-lc-rs or ring backend. rind
-panics on a CPU missing a feature it requires, so every adapter entry point
-that is a function refuses one with `rind::cpu::MissingFeature` instead. A
-static that the upstream crate requires, such as `DEFAULT_PROVIDER`, cannot,
-and neither can rind-ring, whose signatures are ring's, so call
-`rind::cpu::check()`, or rind-ring's `cpu::check()`, before using them.
+panics on a CPU missing a feature it requires, so every adapter function
+that builds a provider or ticketer refuses one with
+`rind::cpu::MissingFeature` instead. A static that the upstream crate
+requires, such as `DEFAULT_PROVIDER`, cannot; nor can rind-ring, whose
+signatures are ring's, or rind-rcgen's `KeyPair`, whose errors are rcgen's.
+Call `rind::cpu::check()`, or rind-ring's `cpu::check()`, before using them.
 
 ### rind-ring
 

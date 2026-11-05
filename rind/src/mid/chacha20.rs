@@ -13,7 +13,7 @@ pub struct ChaCha20 {
 }
 
 impl ChaCha20 {
-    /// Create a new [`ChaCha20`] from 32 bytes of key material.
+    /// Makes a key from 32 bytes of key material.
     pub fn new(key: [u8; 32]) -> Self {
         low::ct::secret_slice(&key);
         Self { key }
