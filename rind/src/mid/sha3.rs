@@ -7,7 +7,7 @@
 
 use core::ops::Range;
 
-use crate::low::{Blockwise, Entry, sha3_keccak_f1600, sha3_keccak_nof4_f1600, sha3_keccak4_f1600};
+use crate::low::{Entry, sha3_keccak_f1600, sha3_keccak_nof4_f1600, sha3_keccak4_f1600};
 
 /// A context for incremental computation of a SHA3 hash with an `R`-byte
 /// rate and an `OUT`-byte digest.
@@ -163,7 +163,6 @@ impl Shake256 {
 
 /// A sponge that has absorbed its input and owes a Keccak-f before each
 /// output block, so a read never permutes for output it doesn't use.
-#[derive(Clone)]
 pub(crate) struct SqueezingSponge<const R: usize> {
     s: [u64; 25],
 }
@@ -314,18 +313,18 @@ impl SqueezingSponge4xShake128 {
     }
 }
 
+/// A sponge absorbing input, XORed into the state as it arrives, so it needs
+/// no buffer.
 #[derive(Clone)]
 pub(crate) struct Sponge<const R: usize, const PAD: u8> {
-    sponge: SqueezingSponge<R>,
-    buffer: Blockwise<R>,
+    s: [u64; 25],
+    /// The bytes of the current block absorbed so far, under `R`.
+    used: usize,
 }
 
 impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
     const fn new() -> Self {
-        Self {
-            sponge: SqueezingSponge { s: [0; _] },
-            buffer: Blockwise::new(),
-        }
+        Self { s: [0; _], used: 0 }
     }
 
     pub(crate) fn new_for_message(message: &[&[u8]]) -> SqueezingSponge<R> {
@@ -337,50 +336,63 @@ impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
     }
 
     fn absorb(&mut self, bytes: &[u8]) {
-        let bytes = self.buffer.add_leading(bytes);
-        let block = self.buffer.take();
-        let (blocks, remainder) = bytes.as_chunks();
-
-        if block.is_some() || !blocks.is_empty() {
-            // `digest::Context::update` leaves entering to here, so an update
-            // that only buffers skips it.
-            let _entry = Entry::new_secret();
-            if let Some(block) = block {
-                self.absorb_block(&block);
-            }
-            for block in blocks {
-                self.absorb_block(block);
-            }
+        let room = R - self.used;
+        if bytes.len() < room {
+            add_bytes(&mut self.s, self.used, bytes);
+            self.used += bytes.len();
+            return;
         }
 
-        self.buffer.add_trailing(remainder);
+        // `digest::Context::update` leaves entering to here, so an update
+        // that completes no block skips it.
+        let _entry = Entry::new_secret();
+        let (head, bytes) = bytes.split_at(room);
+        add_bytes(&mut self.s, self.used, head);
+        sha3_keccak_f1600(&mut self.s, &RC);
+
+        let (blocks, rest) = bytes.as_chunks::<R>();
+        for block in blocks {
+            add_bytes(&mut self.s, 0, block);
+            sha3_keccak_f1600(&mut self.s, &RC);
+        }
+        add_bytes(&mut self.s, 0, rest);
+        self.used = rest.len();
     }
 
-    /// The state with the padded final block added, owing its Keccak-f.
+    /// The state with the final block's padding added, owing its Keccak-f.
     fn padded_state(&self) -> [u64; 25] {
-        // `absorb` leaves under a whole block buffered, so the padding fits.
-        let buffered = self.buffer.buffered();
-        let mut padded = [0u8; R];
-        padded[..buffered.len()].copy_from_slice(buffered);
-        padded[buffered.len()] = PAD;
-        padded[R - 1] |= 0x80;
-
-        let mut s = self.sponge.s;
-        add_block(&mut s, &padded);
+        let mut s = self.s;
+        add_bytes(&mut s, self.used, &[PAD]);
+        s[R / 8 - 1] ^= 0x80 << 56;
         s
-    }
-
-    fn absorb_block(&mut self, block: &[u8; R]) {
-        add_block(&mut self.sponge.s, block);
-        sha3_keccak_f1600(&mut self.sponge.s, &RC);
     }
 }
 
-fn add_block<const R: usize>(s: &mut [u64; 25], block: &[u8; R]) {
-    let (chunks, _) = block.as_chunks::<8>();
-    for (s, block) in s.iter_mut().zip(chunks) {
-        *s ^= u64::from_le_bytes(*block);
+/// XORs `bytes` into the state's little-endian lanes from byte `offset`.
+fn add_bytes(s: &mut [u64; 25], offset: usize, bytes: &[u8]) {
+    // Up to the next lane boundary, then whole lanes, then the rest.
+    let (lane, shift) = (offset / 8, offset % 8);
+    let lead = Ord::min((8 - shift) % 8, bytes.len());
+    let (head, bytes) = bytes.split_at(lead);
+    if !head.is_empty() {
+        s[lane] ^= partial_lane(head) << (8 * shift);
     }
+
+    let first = offset.div_ceil(8);
+    let (lanes, tail) = bytes.as_chunks::<8>();
+    for (s, lane) in s[first..].iter_mut().zip(lanes) {
+        *s ^= u64::from_le_bytes(*lane);
+    }
+    if !tail.is_empty() {
+        s[first + lanes.len()] ^= partial_lane(tail);
+    }
+}
+
+/// `bytes`, under eight, as the low bytes of a little-endian lane.
+fn partial_lane(bytes: &[u8]) -> u64 {
+    let mut lane = [0u8; 8];
+    lane[..bytes.len()].copy_from_slice(bytes);
+    u64::from_le_bytes(lane)
 }
 
 const RC: [u64; 24] = [
