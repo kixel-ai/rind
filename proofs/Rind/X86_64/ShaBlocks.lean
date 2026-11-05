@@ -205,41 +205,4 @@ theorem sha256_finish_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32
   | Ssse3 t => simp only [bind_ok]; exact sha256_finish_padded_spec hb P state message length hR
   | Nohw => simp only [bind_ok]; exact sha256_finish_padded_spec hb P state message length hR
 
-/-- SHA-256's digest of what `state` has absorbed followed by `block`'s first
-`used` bytes. -/
-theorem sha256_finish_block_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
-    (block : Std.Array U8 64#usize) (used : Usize) (length : Std.Array U8 8#usize)
-    (hR : Absorbed sha256.compress sha256.H0 P state) (hu : used.val ≤ 64) :
-    low.x86_64.sha256_mux.sha256_finish_block state block used length ⦃ r =>
-      bv r.val = sha256Finished P (block.val.take used.val) length.val ⦄ := by
-  obtain ⟨p, hp⟩ := hb.path
-  unfold low.x86_64.sha256_mux.sha256_finish_block
-  rw [hp]
-  have fallback :
-      (do
-        let s ← core.array.Array.index (core.ops.index.IndexSlice
-          (core.slice.index.SliceIndexRangeToUsizeSlice Std.U8)) block { «end» := used }
-        let state1 ← low.x86_64.sha256_mux.sha256_compress_padded state s length
-        low.generic.blockwise.sha256_digest state1) ⦃ r =>
-          bv r.val = sha256Finished P (block.val.take used.val) length.val ⦄ := by
-    step as ⟨s, hs⟩
-    apply WP.spec_mono (sha256_finish_padded_spec hb P state s length hR)
-    intro r hr
-    rw [hr, hs]
-    simp [List.slice]
-  cases p with
-  | Shaext t =>
-    simp only [bind_ok]
-    step as ⟨s, hs⟩
-    apply WP.spec_mono (hb.shaext_finish t state s length)
-    intro r hr
-    have := sha256Finished_split (b := []) (rest := s.val) (length := length.val) hR (by simp)
-    have hs' : s.val = block.val.take used.val := by rw [hs]; simp [List.slice]
-    rw [hr, ← hs']
-    simpa [Slice.length] using this
-  | Avx t => simp only [bind_ok]; exact fallback
-  | Avx2 t => simp only [bind_ok]; exact fallback
-  | Ssse3 t => simp only [bind_ok]; exact fallback
-  | Nohw => simp only [bind_ok]; exact fallback
-
 end rind.x86_64

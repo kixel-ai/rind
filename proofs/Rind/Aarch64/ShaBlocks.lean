@@ -109,18 +109,4 @@ theorem sha256_finish_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32
   rw [hr, hh'.1]
   rfl
 
-/-- SHA-256's digest of what `state` has absorbed followed by `block`'s first
-`used` bytes. -/
-theorem sha256_finish_block_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
-    (block : Std.Array U8 64#usize) (used : Usize) (length : Std.Array U8 8#usize)
-    (hR : Absorbed sha256.compress sha256.H0 P state) (hu : used.val ≤ 64) :
-    low.aarch64.sha256.sha256_finish_block state block used length ⦃ r =>
-      bv r.val = sha256Finished P (block.val.take used.val) length.val ⦄ := by
-  unfold low.aarch64.sha256.sha256_finish_block
-  step as ⟨s, hs⟩
-  apply WP.spec_mono (sha256_finish_spec hb P state s length hR)
-  intro r hr
-  rw [hr, hs]
-  simp [List.slice]
-
 end rind.aarch64

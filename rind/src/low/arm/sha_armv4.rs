@@ -104,18 +104,6 @@ pub(crate) fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -
     crate::low::sha256_digest(&h)
 }
 
-/// The digest of `state` followed by the first `used` bytes of `block`,
-/// padded and closed by `length`.
-#[inline]
-pub(crate) fn sha256_finish_block(
-    state: &[u32; 8],
-    block: &[u8; 64],
-    used: usize,
-    length: [u8; 8],
-) -> [u8; 32] {
-    sha256_finish(state, &block[..used], length)
-}
-
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
     debug_assert!(blocks.len().is_multiple_of(128));
     // Both routines run their loop at least once, so zero blocks would read

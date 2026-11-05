@@ -47,18 +47,6 @@ pub(crate) fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -
     crate::low::sha256_digest(&h)
 }
 
-/// The digest of `state` followed by the first `used` bytes of `block`,
-/// padded and closed by `length`.
-#[inline]
-pub(crate) fn sha256_finish_block(
-    state: &[u32; 8],
-    block: &[u8; 64],
-    used: usize,
-    length: [u8; 8],
-) -> [u8; 32] {
-    sha256_finish(state, &block[..used], length)
-}
-
 /// The round constants, then a zero that ends the scalar routine's rounds.
 #[repr(C, align(64))]
 struct Table([u32; 65]);

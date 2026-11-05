@@ -41,29 +41,6 @@ pub(crate) fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -
     }
 }
 
-/// The digest of `state` followed by the first `used` bytes of `block`,
-/// padded and closed by `length`.
-#[inline(never)]
-pub(crate) fn sha256_finish_block(
-    state: &[u32; 8],
-    block: &[u8; 64],
-    used: usize,
-    length: [u8; 8],
-) -> [u8; 32] {
-    match path() {
-        // The routine reads `block` where it is, so a context's buffer needs
-        // no copy.
-        Path::Shaext(token) => {
-            x86_64::sha256::sha256_finish_shaext(state, &block[..used], length, token)
-        }
-        _ => {
-            let mut h = *state;
-            sha256_compress_padded(&mut h, &block[..used], length);
-            sha256_digest(&h)
-        }
-    }
-}
-
 /// Compresses the end of `message`, padded and closed by `length`, on the
 /// routines that do not finish a hash themselves.
 fn sha256_compress_padded(state: &mut [u32; 8], message: &[u8], length: [u8; 8]) {

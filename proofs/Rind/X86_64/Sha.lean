@@ -138,21 +138,6 @@ theorem sha256_finish_with_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha2.Sha
   rw [hr, sha256Finished, hl, pad_bv P message.val bits hP (by rw [hbits, hml])]
   rfl
 
-theorem sha256_finish_block_spec' (hb : ShaBlocks) (P : List U8) (s : mid.sha2.Sha256State)
-    (block : Std.Array U8 64#usize) (used : Usize) (hs : Sha256Absorbed P s) (hu : used.val ≤ 64)
-    (hlen : 8 * (P.length + used.val) ≤ U64.max) :
-    mid.sha2.Sha256State.finish_block s block used ⦃ r =>
-      bv r.val = sha256.hash (bv (P ++ block.val.take used.val)) ⦄ := by
-  obtain ⟨⟨hh, hP⟩, hn⟩ := hs
-  unfold mid.sha2.Sha256State.finish_block
-  step with sha256_length_spec P s used hn hlen as ⟨l, bits, hbits, hl⟩
-  simp only [hb.held, bind_ok]
-  apply WP.spec_mono (sha256_finish_block_spec hb P s.h block used l ⟨hh, hP⟩ hu)
-  intro r hr
-  have htl : (block.val.take used.val).length = used.val := by simp; omega
-  rw [hr, sha256Finished, hl, pad_bv P _ bits hP (by rw [hbits, htl])]
-  rfl
-
 theorem saturating_add_val (x y : U64) (h : x.val + y.val ≤ U64.max) :
     (core.num.U64.saturating_add x y).val = x.val + y.val := by
   simp only [core.num.U64.saturating_add, UScalar.saturating_add]
@@ -239,16 +224,11 @@ theorem sha256_ctx_finish_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha2.Sha2
     mid.sha2.Sha256Context.finish c ⦃ r => bv r.val = sha256.hash (bv p) ⦄ := by
   obtain ⟨hu, q, hq, hqp⟩ := hc
   unfold mid.sha2.Sha256Context.finish
-  simp only [low.generic.blockwise.Blockwise.impl.buffer, low.generic.blockwise.Blockwise.impl.used,
-    bind_ok]
-  have hu64 : c.blockwise.used.val ≤ 64 := by simpa using hu
-  have hpl : q.length + c.blockwise.used.val = p.length := by
-    rw [← hqp]; simp only [List.length_append, List.length_take]
-    have : (c.blockwise.buffer.val).length = 64 := c.blockwise.buffer.property
-    omega
-  have := sha256_finish_block_spec' hb q c.state c.blockwise.buffer c.blockwise.used hq hu64
-    (by unfold maxInput at hlen; omega)
-  rw [hqp] at this
+  step with buffered_spec c.blockwise hu as ⟨m, hm⟩
+  have hpl : q.length + m.length = p.length := by
+    rw [← hqp]; simp only [Slice.length, hm, List.length_append]
+  have := sha256_finish_with_spec hb q c.state m hq (by unfold maxInput at hlen; omega)
+  rw [hm, hqp] at this
   exact this
 
 /-! ## The digest model -/
