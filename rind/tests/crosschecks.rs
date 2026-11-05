@@ -144,9 +144,13 @@ proptest! {
 
 mod cipher {
     use aws_lc_rs::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, Nonce, UnboundKey, quic};
-    use aws_lc_rs::cipher::{AES_128, AES_256, EncryptingKey, EncryptionContext, UnboundCipherKey};
+    use aws_lc_rs::cipher::{
+        AES_128, AES_256, DecryptingKey, DecryptionContext, EncryptingKey, EncryptionContext,
+        PaddedBlockDecryptingKey, PaddedBlockEncryptingKey, UnboundCipherKey,
+    };
     use proptest::prelude::*;
-    use rind::cipher::{self, Aes, AesCtr, ChaCha20};
+    use rind::Error;
+    use rind::cipher::{self, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, ChaCha20};
 
     fn aes_key() -> impl Strategy<Value = Vec<u8>> {
         prop_oneof![
@@ -215,6 +219,88 @@ mod cipher {
                     .unwrap();
             }
             prop_assert_eq!(ours, theirs);
+        }
+
+        // Both ways, then a ciphertext of whole blocks with its last two
+        // bytes forced, so that both well-formed and malformed padding come
+        // up often: rind decrypts or refuses each as aws-lc-rs does.
+        #[test]
+        fn aes_cbc_pkcs7(
+            key in aes_key(),
+            iv in any::<[u8; 16]>(),
+            msg in prop::collection::vec(any::<u8>(), 0..1100),
+            forged in (1..70usize).prop_flat_map(|n| prop::collection::vec(any::<u8>(), 16 * n)),
+            tail in (0u8..=17, 0u8..=2),
+        ) {
+            let algorithm = rind_aes_algorithm(&key);
+            let enc = AesCbcEncryptingKey::new(algorithm, &key).unwrap();
+            let dec = AesCbcDecryptingKey::new(algorithm, &key).unwrap();
+            let theirs_dec = PaddedBlockDecryptingKey::cbc_pkcs7(aws_aes_key(&key)).unwrap();
+
+            let mut ours = msg.clone();
+            enc.encrypt(&iv, &mut ours);
+            let mut theirs = msg.clone();
+            PaddedBlockEncryptingKey::cbc_pkcs7(aws_aes_key(&key))
+                .unwrap()
+                .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(iv.into()))
+                .unwrap();
+            prop_assert_eq!(&ours, &theirs);
+            prop_assert_eq!(dec.decrypt(&iv, &mut ours).unwrap(), &msg[..]);
+
+            // Choose the plaintext's last bytes, then encrypt it unpadded.
+            let mut forged = forged;
+            let len = forged.len();
+            forged[len - 1] = tail.0;
+            forged[len - 2] = if tail.1 == 0 { tail.0 } else { forged[len - 2] };
+            let mut ct = forged.clone();
+            enc.encrypt_blocks(&iv, &mut ct).unwrap();
+            let mut ours = ct.clone();
+            let ours = dec.decrypt(&iv, &mut ours).map(|pt| pt.to_vec());
+            let mut theirs = ct.clone();
+            let theirs = theirs_dec
+                .decrypt(&mut theirs, DecryptionContext::Iv128(iv.into()))
+                .map(|pt| pt.to_vec());
+            match (ours, theirs) {
+                (Ok(ours), Ok(theirs)) => prop_assert_eq!(ours, theirs),
+                (Err(Error::DecryptFailed), Err(_)) => {}
+                (ours, theirs) => prop_assert!(false, "rind {:?}, aws-lc-rs {:?}", ours, theirs),
+            }
+        }
+
+        #[test]
+        fn aes_cbc_unpadded(
+            key in aes_key(),
+            iv in any::<[u8; 16]>(),
+            msg in (0..70usize).prop_flat_map(|n| prop::collection::vec(any::<u8>(), 16 * n)),
+        ) {
+            let algorithm = rind_aes_algorithm(&key);
+            let mut ours = msg.clone();
+            AesCbcEncryptingKey::new(algorithm, &key)
+                .unwrap()
+                .encrypt_blocks(&iv, &mut ours)
+                .unwrap();
+
+            let mut theirs = msg.clone();
+            if !theirs.is_empty() {
+                EncryptingKey::cbc(aws_aes_key(&key))
+                    .unwrap()
+                    .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(iv.into()))
+                    .unwrap();
+            }
+            prop_assert_eq!(&ours, &theirs);
+
+            AesCbcDecryptingKey::new(algorithm, &key)
+                .unwrap()
+                .decrypt_blocks(&iv, &mut ours)
+                .unwrap();
+            prop_assert_eq!(&ours, &msg);
+            if !theirs.is_empty() {
+                DecryptingKey::cbc(aws_aes_key(&key))
+                    .unwrap()
+                    .decrypt(&mut theirs, DecryptionContext::Iv128(iv.into()))
+                    .unwrap();
+            }
+            prop_assert_eq!(&theirs, &msg);
         }
 
         #[test]

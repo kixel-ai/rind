@@ -223,6 +223,7 @@ SHA-512.
 | AES-GCM | BoringSSL ⚡ + Graviola | HACL* ✓ + rind | Graviola | aws-lc + rind |  |
 | AES block, AES-CTR | Graviola + aws-lc |  |  | aws-lc |  |
 | AES-KW | Graviola + rind |  |  | aws-lc + rind |  |
+| AES-CBC | Graviola + aws-lc + rind |  |  | aws-lc + rind |  |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | aws-lc ⚡ |  |  | HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | HACL* ✓ + Graviola ⚡ |
 | SHA-1 | rind | aws-lc |  |  |  |
@@ -271,7 +272,7 @@ the code [Symmetric cryptography](#symmetric-cryptography) names.
 |---|---|---|---|
 | AES-GCM | s2n-bignum + Graviola | aws-lc + rind |  |
 | AES block, AES-CTR | Graviola + rind | aws-lc |  |
-| AES-KW | Graviola + rind | aws-lc + rind |  |
+| AES-KW, AES-CBC | Graviola + rind | aws-lc + rind |  |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | aws-lc ⚡ |  |  |
 | SHA-1 | rind | aws-lc |  |

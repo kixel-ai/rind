@@ -112,7 +112,8 @@ aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
     bn_sqr8x_mont routines of x86_64-mont and bn_sqr8x_internal and
     bn_sqrx8x_internal of x86_64-mont5, and the rsaz_1024_*
     routines and tables of rsaz-avx2 (RSA); the
-    aes_hw_ctr32_encrypt_blocks routine of aesni-x86_64 (AES-CTR), the
+    aes_hw_ctr32_encrypt_blocks and aes_hw_cbc_encrypt routines of
+    aesni-x86_64 (AES-CTR and AES-CBC), the
     vpaes_* routines and table of vpaes-x86_64 (AES), and the
     ecp_nistz256_* routines and tables of p256-x86_64-asm (P-256); for
     aarch64, the bn_mul_mont routine of armv8-mont (RSA), the vpaes_*

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 pub use crate::mid::aes::{Aes, AesCtr};
+pub use crate::mid::aes_cbc::{AesCbcDecryptingKey, AesCbcEncryptingKey};
 pub use crate::mid::chacha20::ChaCha20;
 
 /// An AES key size, which fixes the key length a key must have.

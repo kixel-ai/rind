@@ -71,10 +71,10 @@ impl AesDecKey {
     pub(crate) fn new(key: &[u8]) -> Self {
         match (key.len(), HaveAesHardware::check(), HaveSsse3::check()) {
             (16, Some(token), _) => Self::Hw(HwDecKey::Aes128(
-                AesKey128::new(key.try_into().unwrap(), token).decryption_round_keys(),
+                AesKey128::new(key.try_into().unwrap(), token).inverse(),
             )),
             (32, Some(token), _) => Self::Hw(HwDecKey::Aes256(
-                AesKey256::new(key.try_into().unwrap(), token).decryption_round_keys(),
+                AesKey256::new(key.try_into().unwrap(), token).inverse(),
             )),
             (16 | 32, None, Some(token)) => Self::Vpaes(VpaesDecKey::new(key, token)),
             (16 | 32, None, None) => Self::Nohw(NohwKey::new(key)),
@@ -85,13 +85,9 @@ impl AesDecKey {
     pub(crate) fn decrypt_block(&self, inout: &mut [u8; 16]) {
         match self {
             // SAFETY: only a `HaveAesHardware` token builds the round keys.
-            Self::Hw(HwDecKey::Aes128(round_keys)) => unsafe {
-                hw_decrypt_block(round_keys, inout)
-            },
+            Self::Hw(HwDecKey::Aes128(key)) => unsafe { hw_decrypt_block(&key.round_keys, inout) },
             // SAFETY: as above.
-            Self::Hw(HwDecKey::Aes256(round_keys)) => unsafe {
-                hw_decrypt_block(round_keys, inout)
-            },
+            Self::Hw(HwDecKey::Aes256(key)) => unsafe { hw_decrypt_block(&key.round_keys, inout) },
             Self::Vpaes(key) => key.decrypt_block(inout),
             Self::Nohw(key) => key.decrypt_block(inout),
         }
@@ -108,10 +104,21 @@ impl low::generic::zeroise::Zeroable for AesDecKey {}
 
 /// AES-NI round keys for the equivalent inverse cipher, FIPS 197 section
 /// 5.3.5, which only a `HaveAesHardware` token builds: the encryption round
-/// keys reversed, all but the outer two through InvMixColumns.
+/// keys reversed, all but the outer two through InvMixColumns, laid out as
+/// aws-lc's `aes_hw_set_decrypt_key` writes them.
 pub(crate) enum HwDecKey {
-    Aes128([__m128i; 10 + 1]),
-    Aes256([__m128i; 14 + 1]),
+    Aes128(AesKey128),
+    Aes256(AesKey256),
+}
+
+impl HwDecKey {
+    /// This key as BoringSSL's `AES_KEY`, for its CBC decryption.
+    pub(crate) fn as_aes_key(&self) -> *const u8 {
+        match self {
+            Self::Aes128(a128) => (a128 as *const AesKey128).cast(),
+            Self::Aes256(a256) => (a256 as *const AesKey256).cast(),
+        }
+    }
 }
 
 /// A key for AES-NI.
@@ -241,9 +248,14 @@ impl AesKey128 {
         unsafe { aes128_block(&self.round_keys, inout) }
     }
 
-    fn decryption_round_keys(&self) -> [__m128i; 10 + 1] {
-        // SAFETY: only a `HaveAesHardware` token builds `self`.
-        unsafe { invert_round_keys(&self.round_keys) }
+    /// The inverse cipher's key, as [`HwDecKey`] holds it.
+    fn inverse(&self) -> Self {
+        Self {
+            // SAFETY: only a `HaveAesHardware` token builds `self`.
+            round_keys: unsafe { invert_round_keys(&self.round_keys) },
+            unused: [zero(); 4],
+            rounds: self.rounds,
+        }
     }
 }
 
@@ -284,9 +296,13 @@ impl AesKey256 {
         unsafe { aes256_block(&self.round_keys, inout) }
     }
 
-    fn decryption_round_keys(&self) -> [__m128i; 14 + 1] {
-        // SAFETY: only a `HaveAesHardware` token builds `self`.
-        unsafe { invert_round_keys(&self.round_keys) }
+    /// The inverse cipher's key, as [`HwDecKey`] holds it.
+    fn inverse(&self) -> Self {
+        Self {
+            // SAFETY: only a `HaveAesHardware` token builds `self`.
+            round_keys: unsafe { invert_round_keys(&self.round_keys) },
+            rounds: self.rounds,
+        }
     }
 }
 
@@ -625,10 +641,10 @@ mod tests {
             if let Some(token) = HaveAesHardware::check() {
                 paths.push(AesDecKey::Hw(match key_len {
                     16 => HwDecKey::Aes128(
-                        AesKey128::new(key[..].try_into().unwrap(), token).decryption_round_keys(),
+                        AesKey128::new(key[..].try_into().unwrap(), token).inverse(),
                     ),
                     _ => HwDecKey::Aes256(
-                        AesKey256::new(key[..].try_into().unwrap(), token).decryption_round_keys(),
+                        AesKey256::new(key[..].try_into().unwrap(), token).inverse(),
                     ),
                 }));
             }
