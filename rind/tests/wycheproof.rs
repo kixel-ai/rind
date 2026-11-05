@@ -7,6 +7,7 @@ use rind::aead::{
     gcm,
 };
 use rind::cipher::{AES_128, AES_256, ChaCha20};
+use rind::key_wrap::{self, AesKek};
 use rind::rsa::{self, DecryptingKey, OaepAlgorithm};
 use rind::signature::verify::legacy;
 use rind::signature::{self, RsaPssSaltLength, RsaVerificationAlgorithm, sign, verify};
@@ -485,6 +486,62 @@ fn check_open(valid: bool, malformed: bool, result: Result<(), Error>) {
         (true, Ok(())) | (false, Err(Error::DecryptFailed)) => {}
         (false, Err(Error::WrongLength)) if malformed => {}
         (_, result) => panic!("expected valid {valid}, got {result:?}"),
+    }
+}
+
+#[test]
+fn test_aes_wrap() {
+    let data_file = File::open("../thirdparty/wycheproof/testvectors_v1/aes_wrap_test.json")
+        .expect("failed to open data file");
+
+    let reader = BufReader::new(data_file);
+    let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
+    let mut summary = Summary::new();
+
+    for group in tests.groups {
+        summary.group(&group);
+
+        for test in group.tests {
+            summary.start(&test);
+
+            let algorithm = match test.key.len() {
+                16 => &key_wrap::AES_128,
+                32 => &key_wrap::AES_256,
+                24 => {
+                    summary.skipped("aes-192 not supported");
+                    continue;
+                }
+                len => panic!("unexpected key length {len}"),
+            };
+            let kek = AesKek::new(algorithm, &test.key).unwrap();
+
+            let mut key = vec![0xaa; test.ct.len().saturating_sub(8)];
+            let result = kek.unwrap(&test.ct, &mut key);
+            match (test.result, result) {
+                (ExpectedResult::Valid, Ok(())) => assert_eq!(key, test.msg),
+                // RFC 3394 wraps no key shorter than 16 bytes, which the
+                // acceptable tests are.
+                (
+                    ExpectedResult::Invalid | ExpectedResult::Acceptable,
+                    Err(Error::DecryptFailed),
+                ) => {
+                    assert!(key.iter().all(|b| *b == 0) || key.iter().all(|b| *b == 0xaa));
+                }
+                (_, result) => panic!("expected {:?} got {:?}", test.result, result),
+            }
+
+            let mut wrapped = vec![0u8; test.msg.len() + 8];
+            let result = kek.wrap(&test.msg, &mut wrapped);
+            let wrappable = test.msg.len() >= 16 && test.msg.len().is_multiple_of(8);
+            match (test.result, result) {
+                (ExpectedResult::Valid, Ok(())) => assert_eq!(wrapped, test.ct),
+                // a key wrapped and then altered
+                (ExpectedResult::Invalid, Ok(())) if wrappable => assert_ne!(wrapped, test.ct),
+                (ExpectedResult::Invalid | ExpectedResult::Acceptable, Err(Error::WrongLength))
+                    if !wrappable => {}
+                (_, result) => panic!("expected {:?} got {:?}", test.result, result),
+            }
+        }
     }
 }
 

@@ -161,9 +161,8 @@ aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
 
   - For x86_64, the gcm_ghash_ssse3 routine and tables of
     ghash-ssse3-x86_64 (GHASH), which aws-lc takes from BoringSSL;
-    aes_nohw.rs, which ports the encryption half of aws-lc's
-    crypto/fipsmodule/aes/aes_nohw.c (AES), in its SSE2 configuration, to
-    Rust; and, for x86_64 and 32-bit ARM, ghash_nohw.rs, which ports aws-lc's
+    aes_nohw.rs, which ports aws-lc's crypto/fipsmodule/aes/aes_nohw.c
+    (AES), in its SSE2 configuration, to Rust; and, for x86_64 and 32-bit ARM, ghash_nohw.rs, which ports aws-lc's
     crypto/fipsmodule/modes/gcm_nohw.c (GHASH) to Rust. aws-lc takes both
     C files from BoringSSL.
     Copyright (c) 2019, Google Inc.

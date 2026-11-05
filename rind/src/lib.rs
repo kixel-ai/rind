@@ -378,6 +378,27 @@ pub mod aead;
 /// Prefer [`aead`] unless a protocol requires one of these.
 pub mod cipher;
 
+/// Key wrapping with AES-KW, RFC 3394, as WebCrypto's `AES-KW` and JWE's
+/// `A128KW` and `A256KW` use it.
+///
+/// ```
+/// use rind::key_wrap::{AES_256, AesKek};
+///
+/// let kek = AesKek::new(&AES_256, &[0x42; 32]).unwrap();
+///
+/// let key = [0x24; 16];
+/// let mut wrapped = [0u8; 24];
+/// kek.wrap(&key, &mut wrapped).unwrap();
+///
+/// let mut unwrapped = [0u8; 16];
+/// kek.unwrap(&wrapped, &mut unwrapped).unwrap();
+/// assert_eq!(unwrapped, key);
+/// ```
+pub mod key_wrap {
+    pub use crate::cipher::{AES_128, AES_256};
+    pub use crate::mid::aes_kw::AesKek;
+}
+
 /// CPU support.
 ///
 /// Every operation panics on a CPU missing a feature rind requires. Check at

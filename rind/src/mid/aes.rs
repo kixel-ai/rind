@@ -157,6 +157,7 @@ pub(super) fn expand_key(key: &[u8]) -> AesKey {
 mod tests {
     use super::*;
     use crate::cipher::{AES_128, AES_256};
+    use crate::low::AesDecKey;
     use crate::test::*;
 
     fn algorithm(key: &[u8]) -> &'static Algorithm {
@@ -207,16 +208,22 @@ mod tests {
 
         impl State {
             fn check(&self) {
-                // MCT decryption chains the inverse cipher, which this API lacks.
-                if self.mct && self.decrypt {
-                    return;
+                let rounds = if self.mct { 1000 } else { 1 };
+                if self.decrypt {
+                    let aes = AesDecKey::new(&self.key);
+                    let mut block: [u8; 16] = self.ct[..].try_into().unwrap();
+                    for _ in 0..rounds {
+                        aes.decrypt_block(&mut block);
+                    }
+                    assert_eq!(block, &self.pt[..]);
+                } else {
+                    let aes = Aes::new(algorithm(&self.key), &self.key).unwrap();
+                    let mut block: [u8; 16] = self.pt[..].try_into().unwrap();
+                    for _ in 0..rounds {
+                        aes.encrypt_block(&mut block);
+                    }
+                    assert_eq!(block, &self.ct[..]);
                 }
-                let aes = Aes::new(algorithm(&self.key), &self.key).unwrap();
-                let mut block: [u8; 16] = self.pt[..].try_into().unwrap();
-                for _ in 0..if self.mct { 1000 } else { 1 } {
-                    aes.encrypt_block(&mut block);
-                }
-                assert_eq!(block, &self.ct[..]);
             }
         }
 

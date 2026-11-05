@@ -228,6 +228,15 @@ fn cipher() {
     check_zeroed_on_drop(Box::pin(ChaCha20::new([0xffu8; 32])));
 }
 
+#[test]
+fn key_wrap() {
+    use rind::key_wrap::{AES_128, AES_256, AesKek};
+    for (algorithm, len) in [(&AES_128, 16), (&AES_256, 32)] {
+        let key = &[0xffu8; 32][..len];
+        check_zeroed_on_drop(Box::pin(AesKek::new(algorithm, key).unwrap()));
+    }
+}
+
 fn check_zeroed_on_drop<T: Unpin>(value: Pin<Box<T>>) {
     let ptr = value.deref() as *const T as *const u8;
     let len = size_of::<T>();
