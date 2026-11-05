@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::fmt;
 use core::hint::black_box;
 
 use super::aes::expand_key;
 use crate::Error;
-use crate::cipher::Algorithm;
-use crate::low::{self, AesDecKey, AesKey, Entry, aes_cbc};
+use crate::cipher::{AES_128, AES_256, Algorithm};
+use crate::low::{self, AesDecKey, AesKey, Entry, Zeroable, aes_cbc, zeroise_value};
 
 /// An AES key that encrypts in CBC mode, as WebCrypto's AES-CBC, pyca's
 /// `modes.CBC`, and Dart's `AesCbc` do; wiped on drop.
@@ -19,7 +20,10 @@ use crate::low::{self, AesDecKey, AesKey, Entry, aes_cbc};
 /// Each message needs a fresh random IV from [`crate::rand::fill`]: an IV
 /// an attacker can predict, such as a counter, leaks whether a plaintext
 /// block equals one they chose.
-pub struct AesCbcEncryptingKey(AesKey);
+pub struct AesCbcEncryptingKey {
+    key: AesKey,
+    key_len: usize,
+}
 
 impl AesCbcEncryptingKey {
     /// Expands `key` for `algorithm`, failing with [`Error::WrongLength`] if
@@ -29,7 +33,10 @@ impl AesCbcEncryptingKey {
         if key.len() != algorithm.key_len {
             return Err(Error::WrongLength);
         }
-        Ok(Self(expand_key(key)))
+        Ok(Self {
+            key: expand_key(key),
+            key_len: key.len(),
+        })
     }
 
     /// Pads `in_out` with PKCS#7, 1 to 16 bytes each holding the count, and
@@ -59,7 +66,7 @@ impl AesCbcEncryptingKey {
 
     fn encrypt_in_place(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
         low::ct::secret_slice(blocks);
-        aes_cbc::encrypt(&self.0, iv, blocks);
+        aes_cbc::encrypt(&self.key, iv, blocks);
         low::ct::public_slice(blocks);
     }
 }
@@ -69,7 +76,10 @@ impl AesCbcEncryptingKey {
 /// Decryption is unauthenticated: check the MAC over the IV and ciphertext
 /// before decrypting, and never let a sender learn that decryption failed,
 /// or the error is a padding oracle. See [`AesCbcEncryptingKey`].
-pub struct AesCbcDecryptingKey(AesDecKey);
+pub struct AesCbcDecryptingKey {
+    key: AesDecKey,
+    key_len: usize,
+}
 
 impl AesCbcDecryptingKey {
     /// Expands `key` for `algorithm`, failing with [`Error::WrongLength`] if
@@ -84,7 +94,10 @@ impl AesCbcDecryptingKey {
         let copy_key = &mut copy[..key.len()];
         copy_key.copy_from_slice(key);
         low::ct::secret_slice(copy_key);
-        Ok(Self(AesDecKey::new(copy_key)))
+        Ok(Self {
+            key: AesDecKey::new(copy_key),
+            key_len: key.len(),
+        })
     }
 
     /// Decrypts `in_out` in place under `iv`, checks and removes its PKCS#7
@@ -101,7 +114,7 @@ impl AesCbcDecryptingKey {
         if blocks.is_empty() {
             return Err(Error::DecryptFailed);
         }
-        aes_cbc::decrypt(&self.0, iv, blocks);
+        aes_cbc::decrypt(&self.key, iv, blocks);
 
         let last = blocks.last().unwrap();
         let pad = last[15];
@@ -131,10 +144,49 @@ impl AesCbcDecryptingKey {
         let (blocks, []) = in_out.as_chunks_mut() else {
             return Err(Error::DecryptFailed);
         };
-        aes_cbc::decrypt(&self.0, iv, blocks);
+        aes_cbc::decrypt(&self.key, iv, blocks);
         low::ct::public_slice(blocks);
         Ok(())
     }
+}
+
+// The key length is not secret, but is wiped with the key so that the whole
+// value reads zero, as `AesCtr`'s counter width is.
+impl Drop for AesCbcEncryptingKey {
+    fn drop(&mut self) {
+        zeroise_value(self);
+    }
+}
+
+impl Zeroable for AesCbcEncryptingKey {}
+
+impl Drop for AesCbcDecryptingKey {
+    fn drop(&mut self) {
+        zeroise_value(self);
+    }
+}
+
+impl Zeroable for AesCbcDecryptingKey {}
+
+impl fmt::Debug for AesCbcEncryptingKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AesCbcEncryptingKey")
+            .field("algorithm", algorithm(self.key_len))
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for AesCbcDecryptingKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AesCbcDecryptingKey")
+            .field("algorithm", algorithm(self.key_len))
+            .finish_non_exhaustive()
+    }
+}
+
+/// The algorithm a checked key length is for.
+fn algorithm(key_len: usize) -> &'static Algorithm {
+    if key_len == 16 { &AES_128 } else { &AES_256 }
 }
 
 /// All ones if `a < b`, else zero, without a branch.
@@ -147,13 +199,11 @@ fn ct_mask_lt(a: u8, b: u8) -> u8 {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::cipher::{AES_128, AES_256};
 
     fn keys(key: &[u8]) -> (AesCbcEncryptingKey, AesCbcDecryptingKey) {
-        let algorithm = if key.len() == 16 { &AES_128 } else { &AES_256 };
         (
-            AesCbcEncryptingKey::new(algorithm, key).unwrap(),
-            AesCbcDecryptingKey::new(algorithm, key).unwrap(),
+            AesCbcEncryptingKey::new(algorithm(key.len()), key).unwrap(),
+            AesCbcDecryptingKey::new(algorithm(key.len()), key).unwrap(),
         )
     }
 
@@ -193,6 +243,19 @@ mod tests {
             assert_eq!(buf.len(), 80);
             assert_eq!(dec.decrypt(iv, &mut buf).unwrap(), pt);
         }
+    }
+
+    #[test]
+    fn debug_shows_only_the_algorithm() {
+        let (enc, dec) = keys(&[0x42; 32]);
+        assert_eq!(
+            format!("{enc:?}"),
+            "AesCbcEncryptingKey { algorithm: Algorithm { key_len: 32 }, .. }"
+        );
+        assert_eq!(
+            format!("{dec:?}"),
+            "AesCbcDecryptingKey { algorithm: Algorithm { key_len: 32 }, .. }"
+        );
     }
 
     #[test]
@@ -298,7 +361,7 @@ mod tests {
             let key = bytes(algorithm.key_len);
             let enc = ct_qemu::traced(|| AesCbcEncryptingKey::new(algorithm, &key).unwrap());
             let dec = ct_qemu::traced(|| AesCbcDecryptingKey::new(algorithm, &key).unwrap());
-            assert!(matches!(enc.0, AesKey::Hw(_)), "the crypto extension");
+            assert!(matches!(enc.key, AesKey::Hw(_)), "the crypto extension");
 
             let iv = bytes(16).try_into().unwrap();
             let mut msg = bytes(6 * 16 + 5);
