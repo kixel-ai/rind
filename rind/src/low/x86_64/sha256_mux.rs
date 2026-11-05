@@ -63,7 +63,11 @@ pub(crate) fn sha256_finish_block(
         Path::Shaext(token) => {
             x86_64::sha256::sha256_finish_shaext(state, &[], block, used, length, token)
         }
-        _ => sha256_finish(state, &block[..used], length),
+        _ => {
+            let mut h = *state;
+            sha256_compress_padded(&mut h, &block[..used], length);
+            sha256_digest(&h)
+        }
     }
 }
 
