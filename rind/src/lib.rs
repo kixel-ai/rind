@@ -116,6 +116,44 @@ pub mod kem {
     };
 }
 
+/// RSA encryption: RSA-OAEP with SHA-256, SHA-384, or SHA-512, and SHA-1
+/// under [`rsa::legacy`].
+///
+/// RSA signatures are under [`signature`]. PKCS#1 v1.5 encryption, which
+/// invites padding-oracle attacks, is refused.
+///
+/// ```
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::rsa::*;
+/// use rind::signature::RsaKeySize;
+///
+/// // The recipient generates a key, and sends its public key to the sender.
+/// let decrypting_key = DecryptingKey::generate(&OAEP_SHA256, RsaKeySize::Rsa2048)?;
+/// let public_key = decrypting_key.to_spki();
+///
+/// // The sender parses the public key for the same algorithm, and encrypts
+/// // a message to it.
+/// let encrypting_key = EncryptingKey::new(&OAEP_SHA256, public_key.as_ref())?;
+/// let ciphertext = encrypting_key.encrypt(b"hello", b"")?;
+///
+/// // The recipient decrypts it with the same label.
+/// let plaintext = decrypting_key.decrypt(ciphertext.as_ref(), b"")?;
+/// assert_eq!(plaintext.as_ref(), b"hello");
+/// # Ok(())
+/// # }
+/// ```
+pub mod rsa {
+    pub use crate::high::oaep::{
+        Ciphertext, DecryptingKey, EncryptingKey, OAEP_SHA256, OAEP_SHA384, OAEP_SHA512,
+        OaepAlgorithm, Plaintext,
+    };
+
+    /// RSA-OAEP with SHA-1, for protocols that still require it.
+    pub mod legacy {
+        pub use crate::high::oaep::OAEP_SHA1;
+    }
+}
+
 /// Public key signatures: ECDSA on P-256, P-384, and P-521, RSA, and Ed25519.
 ///
 /// A key pair signs with a [`signature::sign`] algorithm, and a peer's

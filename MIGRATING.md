@@ -117,8 +117,8 @@ protocols with their own integrity protection need. ring has none.
 
 | aws-lc-rs | rind |
 |---|---|
-| `UnboundCipherKey::new(&AES_128, key)` and `EncryptingKey::ctr` or `DecryptingKey::ctr` | `AesCtr::new(&AES_128, key)?` |
-| `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))`, `decrypt` | `apply_keystream(nonce, counter, in_out)?`, with `iv` as a 12-byte nonce and a big-endian 32-bit counter, refused rather than carried into the nonce when it would wrap |
+| `UnboundCipherKey::new(&AES_128, key)` and `EncryptingKey::ctr` or `DecryptingKey::ctr` | `AesCtr::new(&AES_128, key, 128)?`, whose last argument is how many of the counter block's rightmost bits count, as WebCrypto's `length` |
+| `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))`, `decrypt` | `apply_keystream(&iv, in_out)?`, with `iv` the `[u8; 16]` counter block |
 | `AES_128`, `AES_256` | the same |
 | `EncryptingKey::encrypt`, which picks a random IV | none: pick the nonce with `rand::fill` |
 | `AES_192` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |
@@ -199,12 +199,15 @@ ring has no `kem`.
 | `Ed25519KeyPair::seed()?.as_be_bytes()` (not in ring) | `to_seed()`, an `Ed25519Seed` wiped on drop |
 | `EcdsaKeyPair::private_key().as_der()`, `public_modulus_len()`, `algorithm()`, `generate_fips` | none |
 | `ED25519_PUBLIC_KEY_LEN` | none: always 32 |
-| `rsa::PublicKey::from_der` | `PublicKey::new(&verify::RSA_PKCS1_SHA256, der)`, for one algorithm and PKCS#1 DER |
+| `rsa::PublicKey::from_der` | `PublicKey::new(&verify::RSA_PKCS1_SHA256, der)`, for one algorithm and PKCS#1 or `SubjectPublicKeyInfo` DER |
 | `rsa::PublicKey::{modulus, exponent, modulus_len}`, `PublicKeyComponents::from(&key)` | none |
 | `PqdsaKeyPair`, `ML_DSA_65` and the other ML-DSA items | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 
-`PublicKey::new` refuses a compressed ECDSA point and a
-`SubjectPublicKeyInfo`, both of which aws-lc-rs takes.
+`PublicKey::new` refuses a compressed ECDSA point and an ECDSA or Ed25519
+`SubjectPublicKeyInfo`, which aws-lc-rs takes. It takes an RSA key as
+PKCS#1 or as a `SubjectPublicKeyInfo`, as aws-lc-rs does, but refuses the
+latter's `rsaEncryption` with parameters other than `NULL` or none, which
+aws-lc ignores, and an RSA key's bytes are always its PKCS#1 DER.
 It also refuses an Ed25519 key of small order, as libsodium does, which
 aws-lc-rs and ring take: with the identity as the key, `R` the identity and
 `S = 0` verify any message. No honest key has small order.
@@ -224,12 +227,28 @@ takes: RFC 5958 sets version 2 only when the public key is present.
 
 ## rsa
 
-rind signs and verifies with RSA through `signature`, and encrypts with none.
+rind signs and verifies with RSA through `signature`, and encrypts with
+RSA-OAEP through `rsa`. ring has no RSA encryption.
 
 | aws-lc-rs | rind |
 |---|---|
-| `OaepPublicEncryptingKey`, `OaepPrivateDecryptingKey`, `OAEP_SHA256_MGF1SHA256` and the other OAEP items, `PublicEncryptingKey`, `PrivateDecryptingKey`, `EncryptionAlgorithmId` | none; [RSA-OAEP](quest/m2/adoption/webcrypto/rsa-oaep.md) |
+| `PrivateDecryptingKey`, then `OaepPrivateDecryptingKey::new(key)` | `DecryptingKey`, which decrypts OAEP itself |
+| `PublicEncryptingKey`, then `OaepPublicEncryptingKey::new(key)` | `EncryptingKey`, which encrypts OAEP itself |
+| `PrivateDecryptingKey::from_pkcs8(der)`, `generate(size)`, `as_der()` | `DecryptingKey::from_pkcs8(alg, der)`, `from_pkcs1(alg, der)`, `generate(alg, size)`, `to_pkcs8()`, each key bound to one algorithm |
+| `PrivateDecryptingKey::public_key()` | `public_key()`, an `EncryptingKey` bound to the same algorithm; `to_spki()` for its `SubjectPublicKeyInfo` |
+| `PublicEncryptingKey::from_der(spki)` | `EncryptingKey::new(alg, der)`, which takes a `SubjectPublicKeyInfo` or PKCS#1 `RSAPublicKey`, or `EncryptingKey::from_components(alg, &RsaPublicKeyComponents { n, e })` |
+| `OAEP_SHA256_MGF1SHA256`, `OAEP_SHA384_MGF1SHA384`, `OAEP_SHA512_MGF1SHA512` | `OAEP_SHA256`, `OAEP_SHA384`, `OAEP_SHA512` |
+| `OAEP_SHA1_MGF1SHA1` | `legacy::OAEP_SHA1` |
+| `encrypt(alg, m, &mut out, label)`, `decrypt(alg, c, &mut out, label)` | `encrypt(m, label)`, `decrypt(c, label)` with the key's algorithm, returning a `Ciphertext` or a `Plaintext` wiped on drop; `None` for the label is `b""` |
+| `max_plaintext_size(alg)` | `max_message_len()` |
+| `ciphertext_size()`, `min_output_size()`, `key_size_bytes()`, `key_size_bits()`, `EncryptionAlgorithmId`, `OaepAlgorithm::id()` | none |
 | `Pkcs1PublicEncryptingKey`, `Pkcs1PrivateDecryptingKey` | none: PKCS#1 v1.5 encryption invites padding-oracle attacks |
+
+Every RSA-OAEP decryption failure, a ciphertext of the wrong length, not
+below the modulus, or with bad padding, is `Error::DecryptFailed`, as
+aws-lc-rs's is `Unspecified`. Both refuse keys below 2048 bits.
+`EncryptingKey::new` refuses a `SubjectPublicKeyInfo` as `PublicKey::new`
+does: with parameters other than `NULL` or none, or bytes after it.
 
 ## constant_time
 
