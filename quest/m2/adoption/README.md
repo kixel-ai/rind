@@ -22,7 +22,7 @@ don't ask again (✅ is the chosen option):
 - opendal needs no quest: it already ships
   `http-transport-reqwest-rustls-no-provider`
   ([apache/opendal#7582](https://github.com/apache/opendal/pull/7582)), which
-  the [migration prompt](/quest/m1/migration-prompt.md) can turn on.
+  the [migration prompt](/MIGRATE.md) can turn on.
 - Big names on RustCrypto are marketing wins, since rind is several times
   faster ([BENCHMARKS.md](/BENCHMARKS.md)'s `nixos2`, an i7-8700: RSA-2048
   verify about 4.7x, P-256 sign and ECDH about 5x, ChaCha20-Poly1305 per
