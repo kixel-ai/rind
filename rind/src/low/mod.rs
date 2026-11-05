@@ -62,9 +62,7 @@ mod entry;
 mod posint;
 
 pub(crate) use entry::Entry;
-#[cfg(target_arch = "x86_64")]
-pub(crate) use generic::blockwise::pad_message;
-pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, split_tail};
+pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, sha256_digest, split_tail};
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
@@ -87,7 +85,7 @@ cfg_if::cfg_if! {
         pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
         pub(crate) use x86_64::chacha20;
         pub(crate) use x86_64::chacha20poly1305;
-        pub(crate) use x86_64::aes::AesKey;
+        pub(crate) use x86_64::aes::{AesDecKey, AesKey};
         pub(crate) use x86_64::aes_ctr;
         pub(crate) use x86_64::aes_gcm;
         #[cfg(test)]
@@ -178,7 +176,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::p521_jmixadd;
         pub(crate) use x86_64::adx_mux::p521_jscalarmul;
         pub(crate) use x86_64::sha1_mux::sha1_compress_blocks;
-        pub(crate) use x86_64::sha256_mux::{sha256_compress_blocks, sha256_compress_padded};
+        pub(crate) use x86_64::sha256_mux::{sha256_compress_blocks, sha256_finish, sha256_finish_block};
         pub(crate) use x86_64::sha512::sha512_compress_blocks;
         pub(crate) use x86_64::sha3_keccak_f1600::sha3_keccak_f1600;
         pub(crate) use x86_64::sha3_keccak4_f1600_shim::sha3_keccak4_f1600;
@@ -188,7 +186,7 @@ cfg_if::cfg_if! {
         mod aarch64;
 
         pub(in crate::low) use aarch64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
-        pub(crate) use aarch64::aes::AesKey;
+        pub(crate) use aarch64::aes::{AesDecKey, AesKey};
         pub(crate) use aarch64::aes_ctr;
         pub(crate) use aarch64::cpu::HaveCryptoExt;
         pub(crate) use aarch64::aes_gcm;
@@ -268,7 +266,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::p521_jmixadd::p521_jmixadd;
         pub(crate) use aarch64::p521_jscalarmul::p521_jscalarmul;
         pub(crate) use aarch64::sha1::sha1_compress_blocks;
-        pub(crate) use aarch64::sha256::{sha256_compress_blocks, sha256_compress_padded};
+        pub(crate) use aarch64::sha256::{sha256_compress_blocks, sha256_finish, sha256_finish_block};
         pub(crate) use aarch64::sha3_keccak_f1600_mux::sha3_keccak_f1600;
         pub(crate) use aarch64::sha3_keccak4_f1600_mux::sha3_keccak4_f1600;
         pub(crate) use aarch64::sha3_keccak_nof4_f1600::sha3_keccak_nof4_f1600;
@@ -282,7 +280,7 @@ cfg_if::cfg_if! {
         mod arm;
 
         pub(in crate::low) use arm::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
-        pub(crate) use arm::aes::AesKey;
+        pub(crate) use arm::aes::{AesDecKey, AesKey};
         pub(crate) use arm::aes_ctr;
         pub(crate) use arm::aesv8_armx::AesHwKey;
         pub(crate) use arm::cpu::HaveCryptoExt;
@@ -335,7 +333,7 @@ cfg_if::cfg_if! {
             sha3_keccak4_f1600, sha3_keccak_f1600, sha3_keccak_nof4_f1600,
         };
         pub(crate) use arm::sha_armv4::{
-            sha1_compress_blocks, sha256_compress_blocks, sha256_compress_padded,
+            sha1_compress_blocks, sha256_compress_blocks, sha256_finish, sha256_finish_block,
             sha512_compress_blocks,
         };
     } else {

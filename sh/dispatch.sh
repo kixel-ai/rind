@@ -54,6 +54,8 @@ declare -A scope=(
     # Advisories, licenses, and sources move with any manifest or the policy.
     [deny]='(^|/)Cargo\.(toml|lock)$|^deny\.toml$'
     [license]='^(rind/src/|admin/scan-license$)'
+    # Dependents may build with the workspace's declared rust-version.
+    [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
     # rind's aarch64 and armv7 backends, which the host's own build skips.
     [cross]='^(rind/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$)'
     # s2n-bignum's proofs assume separate input and output, so the kernels
@@ -86,6 +88,7 @@ declare -A tools=(
     [check:rs]='cargo cargo-nextest jq'
     [deny]='cargo-deny'
     [license]='find grep'
+    [msrv]='nix cargo jq'
     [cross]='cargo'
     [inplace]='python3'
     [compat]='python3'
@@ -102,7 +105,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs cross deny license inplace compat bench fixtures quest gh hooks shell nix) ;;
+    check) modules=(rs msrv cross deny license inplace compat bench fixtures quest gh hooks shell nix) ;;
     fix) modules=(rs compat nix) ;;
 esac
 
@@ -182,6 +185,15 @@ for module in "${selected[@]}"; do
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all
             cargo clippy "${packages[@]}" --all-targets --fix --allow-dirty --allow-staged
+            ;;
+        # Plain `cargo check` covers the lib and bin targets, all a dependent
+        # builds.
+        check:msrv)
+            mapfile -t packages < <(sh/select.sh "$changed" "$all")
+            nix develop .#msrv --command cargo check "${packages[@]}" --locked
+            for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
+                nix develop .#msrv --command cargo check -p rind --lib --locked --target "$target"
+            done
             ;;
         check:cross)
             for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do

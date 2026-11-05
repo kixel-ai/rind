@@ -73,4 +73,31 @@ theorem sha256_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.
     (by decide) as ⟨bl, re, hs1, hs2, hs3, hs4⟩
   exact tail bl re ⟨hs1, hs2, hs3, hs4⟩
 
+/-- SHA-256's digest of what `state` has absorbed followed by `message`. -/
+theorem sha256_finish_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
+    (message : Slice U8) (length : Std.Array U8 8#usize)
+    (hR : Absorbed sha256.compress sha256.H0 P state) :
+    low.aarch64.sha256.sha256_finish state message length ⦃ r =>
+      bv r.val = sha256Finished P message.val length.val ⦄ := by
+  unfold low.aarch64.sha256.sha256_finish
+  step with sha256_compress_padded_spec hb P state message length hR as ⟨h', hh'⟩
+  apply WP.spec_mono (sha256_digest_spec h')
+  intro r hr
+  rw [hr, hh'.1]
+  rfl
+
+/-- SHA-256's digest of what `state` has absorbed followed by `block`'s first
+`used` bytes. -/
+theorem sha256_finish_block_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
+    (block : Std.Array U8 64#usize) (used : Usize) (length : Std.Array U8 8#usize)
+    (hR : Absorbed sha256.compress sha256.H0 P state) (hu : used.val ≤ 64) :
+    low.aarch64.sha256.sha256_finish_block state block used length ⦃ r =>
+      bv r.val = sha256Finished P (block.val.take used.val) length.val ⦄ := by
+  unfold low.aarch64.sha256.sha256_finish_block
+  step as ⟨s, hs⟩
+  apply WP.spec_mono (sha256_finish_spec hb P state s length hR)
+  intro r hr
+  rw [hr, hs]
+  simp [List.slice]
+
 end rind.aarch64

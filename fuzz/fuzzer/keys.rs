@@ -8,7 +8,7 @@
 use aws_lc_rs::encoding::{AsBigEndian, AsDer};
 use aws_lc_rs::signature::KeyPair as _;
 use aws_lc_rs::{kem as their_kem, rsa as their_rsa, signature as theirs};
-use der::{element, elements, sequence, spki, trailing};
+use der::{element, elements, sequence, spki, spki_parameters, trailing};
 use libfuzzer_sys::fuzz_target;
 use rind::kem as our_kem;
 use rind::signature::{self as ours, sign, verify};
@@ -332,7 +332,11 @@ fn their_rsa_public(rsa: &Rsa, der: &[u8]) -> Result<their_rsa::PublicKey, &'sta
 fn rsa_public(rsa: &Rsa, input: &[u8]) {
     let ours = ours::PublicKey::new(rsa.ours, input);
     let theirs = their_rsa_public(rsa, input);
-    agree(&ours, &theirs, (spki(input) || trailing(input)).into());
+    agree(
+        &ours,
+        &theirs,
+        (spki_parameters(input) || trailing(input)).into(),
+    );
     let Ok(ours) = ours else {
         return;
     };

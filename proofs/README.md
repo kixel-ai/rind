@@ -126,7 +126,8 @@ against FIPS 180-4 and RFC 2104 as `Rind/HashSpec.lean` transliterates them:
 No proof covers a SHA-1 or SHA-256 block function rind runs on either target,
 so these theorems take `ShaBlocks` as a hypothesis, in each target's own
 `Rind/<Arch>/ShaBlocks.lean`: each routine computes FIPS 180-4's block
-function, and rind's checks pass. They add no axiom, which
+function, x86_64's SHA extensions' finishing routine pads and encodes as
+FIPS 180-4 does, and rind's checks pass. They add no axiom, which
 `Rind/<Arch>/HashAxioms.lean` checks. An input is at most `maxInput`
 (2^61 - 1) bytes, under FIPS 180-4's 2^64-bit limit. `Rind/HashSpecTest.lean`
 checks the transliterations against FIPS 180-4's, RFC 4231's, RFC 5869's, and
@@ -256,7 +257,7 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   SHA-1's, SHA-256's, and HMAC's; `Rind/X86_64/{AesKey,Ghash,AesGcmGlue,AesGcm}.lean`:
   the AES-GCM proof, on x86_64 alone.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
-  target, and their padded last blocks.
+  target, and SHA-256's padded last blocks and finish.
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
 - `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate, and

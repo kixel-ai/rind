@@ -29,8 +29,8 @@ impl Context {
         self.0.update(data);
     }
 
-    /// Returns the digest of the message.
-    pub fn finish(self) -> Digest {
+    /// Returns the digest of the message, and starts a new one with the same algorithm.
+    pub fn finish(&mut self) -> Digest {
         let _entry = Entry::new_secret();
         self.0.finish()
     }
@@ -50,7 +50,7 @@ impl State {
         }
     }
 
-    fn finish(&self) -> Digest {
+    fn finish(&mut self) -> Digest {
         match self {
             Self::Sha1(hashing) => hashing.finish(),
             Self::Sha256(hashing) => hashing.finish(),
@@ -71,7 +71,7 @@ struct Hashing<C: Variant> {
 
 struct Ops<C> {
     update: fn(&mut C, &[u8]),
-    finish: fn(&C) -> Digest,
+    finish: fn(&mut C) -> Digest,
 }
 
 impl<C: Variant> Hashing<C> {
@@ -81,7 +81,7 @@ impl<C: Variant> Hashing<C> {
                 const {
                     &Ops {
                         update: C::update,
-                        finish: C::finish,
+                        finish: C::finish_reset,
                     }
                 },
             ),
@@ -93,8 +93,8 @@ impl<C: Variant> Hashing<C> {
         (self.ops.get().update)(&mut self.context, data)
     }
 
-    fn finish(&self) -> Digest {
-        (self.ops.get().finish)(&self.context)
+    fn finish(&mut self) -> Digest {
+        (self.ops.get().finish)(&mut self.context)
     }
 }
 
@@ -104,14 +104,27 @@ fn one_shot<C: Variant>(data: &[u8]) -> Digest {
     context.finish()
 }
 
+trait Variant: HashContext + 'static {
+    fn new() -> Self;
+
+    fn state(hashing: Hashing<Self>) -> State;
+
+    /// The digest of the message so far, leaving `self` as [`Self::new`] does.
+    fn finish_reset(&mut self) -> Digest {
+        let digest = self.finish();
+        *self = Self::new();
+        digest
+    }
+}
+
 ```
 
 The model departs from the Rust in three ways, and adds no axiom:
 
 - `Ops<C>` holds nothing, and `Hashing`'s methods call `C`'s `HashContext`
-  `update` and `finish` directly: `Ops` is private to `high::digest`, whose
-  only value of one is `Hashing::start`'s, of those two. `admin/prove` checks
-  that the quote holds every mention of `Ops` there.
+  `update` and `Variant` `finish_reset` directly: `Ops` is private to
+  `high::digest`, whose only value of one is `Hashing::start`'s, of those two.
+  `admin/prove` checks that the quote holds every mention of `Ops` there.
 - `Algorithm`'s `hash` and `start` are functions of which static it is,
   as `Rind.X86_64.DigestAlgorithm` models `Algorithm`, each the function that
   static holds there.
@@ -135,10 +148,11 @@ def high.digest.Hashing.update {C : Type} (VariantInst : high.digest.Variant C)
   let context ← VariantInst.hashHashContextInst.update self.context data
   ok { self with context }
 
-/-- `Hashing::<C>::finish`, whose `ops.finish` is `C::finish`. -/
+/-- `Hashing::<C>::finish`, whose `ops.finish` is `C::finish_reset`. -/
 def high.digest.Hashing.finish {C : Type} (VariantInst : high.digest.Variant C)
-    (self : high.digest.Hashing C) : Result high.digest.Digest :=
-  VariantInst.hashHashContextInst.finish self.context
+    (self : high.digest.Hashing C) : Result (high.digest.Digest × high.digest.Hashing C) := do
+  let (digest, context) ← VariantInst.finish_reset self.context
+  ok (digest, { self with context })
 
 /-- `one_shot::<C>`. -/
 def high.digest.one_shot {C : Type} (VariantInst : high.digest.Variant C) (data : Slice Std.U8) :
@@ -221,23 +235,41 @@ def high.digest.State.update (self : high.digest.State) (data : Slice Std.U8) :
     ok (.Sha3_512 hashing)
 
 /-- `State::finish`. -/
-def high.digest.State.finish (self : high.digest.State) : Result high.digest.Digest :=
+def high.digest.State.finish (self : high.digest.State) :
+    Result (high.digest.Digest × high.digest.State) :=
   match self with
-  | .Sha1 hashing => high.digest.Hashing.finish high.hash.Sha1Context.Insts.RindHighDigestVariant hashing
-  | .Sha256 hashing =>
-    high.digest.Hashing.finish high.hash.Sha256Context.Insts.RindHighDigestVariant hashing
-  | .Sha384 hashing =>
-    high.digest.Hashing.finish high.hash.Sha384Context.Insts.RindHighDigestVariant hashing
-  | .Sha512 hashing =>
-    high.digest.Hashing.finish high.hash.Sha512Context.Insts.RindHighDigestVariant hashing
-  | .Sha512_256 hashing =>
-    high.digest.Hashing.finish high.digest.Sha512_256Context.Insts.RindHighDigestVariant hashing
-  | .Sha3_256 hashing =>
-    high.digest.Hashing.finish high.digest.Sha3_256Context.Insts.RindHighDigestVariant hashing
-  | .Sha3_384 hashing =>
-    high.digest.Hashing.finish high.digest.Sha3_384Context.Insts.RindHighDigestVariant hashing
-  | .Sha3_512 hashing =>
-    high.digest.Hashing.finish high.digest.Sha3_512Context.Insts.RindHighDigestVariant hashing
+  | .Sha1 hashing => do
+    let (digest, hashing) ←
+      high.digest.Hashing.finish high.hash.Sha1Context.Insts.RindHighDigestVariant hashing
+    ok (digest, .Sha1 hashing)
+  | .Sha256 hashing => do
+    let (digest, hashing) ←
+      high.digest.Hashing.finish high.hash.Sha256Context.Insts.RindHighDigestVariant hashing
+    ok (digest, .Sha256 hashing)
+  | .Sha384 hashing => do
+    let (digest, hashing) ←
+      high.digest.Hashing.finish high.hash.Sha384Context.Insts.RindHighDigestVariant hashing
+    ok (digest, .Sha384 hashing)
+  | .Sha512 hashing => do
+    let (digest, hashing) ←
+      high.digest.Hashing.finish high.hash.Sha512Context.Insts.RindHighDigestVariant hashing
+    ok (digest, .Sha512 hashing)
+  | .Sha512_256 hashing => do
+    let (digest, hashing) ←
+      high.digest.Hashing.finish high.digest.Sha512_256Context.Insts.RindHighDigestVariant hashing
+    ok (digest, .Sha512_256 hashing)
+  | .Sha3_256 hashing => do
+    let (digest, hashing) ←
+      high.digest.Hashing.finish high.digest.Sha3_256Context.Insts.RindHighDigestVariant hashing
+    ok (digest, .Sha3_256 hashing)
+  | .Sha3_384 hashing => do
+    let (digest, hashing) ←
+      high.digest.Hashing.finish high.digest.Sha3_384Context.Insts.RindHighDigestVariant hashing
+    ok (digest, .Sha3_384 hashing)
+  | .Sha3_512 hashing => do
+    let (digest, hashing) ←
+      high.digest.Hashing.finish high.digest.Sha3_512Context.Insts.RindHighDigestVariant hashing
+    ok (digest, .Sha3_512 hashing)
 
 /-- `Context::new`. -/
 def high.digest.Context.new (algorithm : high.digest.Algorithm) : Result high.digest.Context :=
@@ -249,7 +281,8 @@ def high.digest.Context.update (self : high.digest.Context) (data : Slice Std.U8
   high.digest.State.update self data
 
 /-- `Context::finish`. -/
-def high.digest.Context.finish (self : high.digest.Context) : Result high.digest.Digest := do
+def high.digest.Context.finish (self : high.digest.Context) :
+    Result (high.digest.Digest × high.digest.Context) := do
   let _ ← low.entry.Entry.new_secret
   high.digest.State.finish self
 

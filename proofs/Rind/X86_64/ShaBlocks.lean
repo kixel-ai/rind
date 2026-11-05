@@ -21,9 +21,16 @@ structure ShaBlocks : Prop where
   held : low.entry.Entry.assert_held = ok ()
   path : ∃ p, low.x86_64.sha256_mux.path = ok p
   sha1 : Compresses sha1.compress low.x86_64.sha1_mux.sha1_compress_blocks
-  shaext : ∀ t h (b l : Slice U8), b.length % 64 = 0 → l.length % 64 = 0 →
-    low.x86_64.sha256.sha256_compress_blocks_shaext h b l t ⦃ h' =>
-      words h'.val = (blocks 64 (bv (b.val ++ l.val))).foldl sha256.compress (words h.val) ⦄
+  shaext : ∀ t, Compresses sha256.compress fun h b =>
+    low.x86_64.sha256.sha256_compress_blocks_shaext h b t
+  /-- The SHA extensions' finish: the blocks, then `last`'s first `used`
+  bytes padded and closed by `length`, and the result's words big-endian. -/
+  shaext_finish : ∀ t h (b : Slice U8) (last : Std.Array U8 64#usize) (used : Usize)
+    (length : Std.Array U8 8#usize), b.length % 64 = 0 → used.val ≤ 64 →
+    low.x86_64.sha256.sha256_finish_shaext h b last used length t ⦃ r =>
+      bv r.val = ((blocks 64 (bv (b.val ++ last.val.take used.val ++ [128#u8] ++
+        List.replicate (padZeros 64 8 used.val) 0#u8 ++ length.val))).foldl sha256.compress
+          (words h.val)).flatMap BitVec.toBEBytes ⦄
   avx : ∀ t, Compresses sha256.compress fun h b => low.x86_64.sha256.sha256_compress_blocks_avx h b t
   avx2 : ∀ t, Compresses sha256.compress fun h b =>
     low.x86_64.sha256.sha256_compress_blocks_avx2 h b t
@@ -38,12 +45,7 @@ theorem sha256_compress_blocks_spec (hb : ShaBlocks) :
   unfold low.x86_64.sha256_mux.sha256_compress_blocks
   rw [hp]
   cases p with
-  | Shaext t =>
-    step*
-    have hs : s.val = [] := by rw [s_post]; rfl
-    apply WP.spec_mono (hb.shaext t h b _ hl (by simp only [Slice.length, hs]; rfl))
-    intro h' hh
-    rw [hh, hs, List.append_nil]
+  | Shaext t => exact (by simpa using hb.shaext t h b hl)
   | Avx t => exact (by simpa using hb.avx t h b hl)
   | Avx2 t => exact (by simpa using hb.avx2 t h b hl)
   | Ssse3 t => exact (by simpa using hb.ssse3 t h b hl)
@@ -64,35 +66,8 @@ theorem sha1_block_spec (hb : ShaBlocks) :
   rw [hb.held]
   simpa using hb.sha1 h b hl
 
-theorem pad_message_spec {N L : Usize} (message : Slice U8) (length : Std.Array U8 L)
-    (hN : 0 < N.val) (hN2 : 2 * N.val ≤ Usize.max) (hL : L.val + 1 ≤ N.val) :
-    low.generic.blockwise.pad_message message length
-      (Std.Array.repeat 2#usize (Std.Array.repeat N 0#u8)) ⦃ r _ =>
-      r.1.length % N.val = 0 ∧ r.2.length % N.val = 0 ∧
-      r.1.val ++ r.2.val = message.val ++ [128#u8] ++
-        List.replicate (padZeros N L message.length) 0#u8 ++ length.val ⦄ := by
-  unfold low.generic.blockwise.pad_message
-  have hlen : message.len.val = message.length := by simp [Slice.len, Slice.length]
-  have hmod := Nat.mod_add_div message.length N.val
-  have hlt := Nat.mod_lt message.length hN
-  have hdm := Nat.div_mul_le_self message.length N.val
-  step*
-  have hst : i2.val = N.val * (message.length / N.val) := by
-    rw [i2_post, i1_post, hlen, Nat.mul_comm]
-  have hpz : padZeros N.val L.val rest.length = padZeros N.val L.val message.length := by
-    rw [blocks_post1, hst]
-    exact padZeros_sub (Nat.mul_mod_right _ _) (by omega)
-  step with pad_spec rest length hN hN2 hL (by rw [blocks_post1, hst]; omega) as ⟨s, _, hs⟩
-  refine ⟨by rw [blocks_post, hst]; exact Nat.mul_mod_right _ _, ?_, ?_⟩
-  · have : s.length = rest.length + 1 + L.val + padZeros N.val L.val rest.length := by
-      simp only [Slice.length] at *; rw [hs]; simp; omega
-    rw [this]; exact pad_mod _ hN
-  · rw [hs, hpz, blocks_post2, blocks_post3]
-    simp only [List.append_assoc]
-    rw [← List.append_assoc (List.take _ _), List.take_append_drop]
-
-/-- SHA-256's padded last blocks, which the SHA extensions' routine takes as a
-second run of blocks. -/
+/-- SHA-256's padded last blocks, on the routines that do not finish a hash
+themselves. -/
 theorem sha256_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
     (message : Slice U8) (length : Std.Array U8 8#usize)
     (hR : Absorbed sha256.compress sha256.H0 P state) :
@@ -100,9 +75,6 @@ theorem sha256_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.
       Absorbed sha256.compress sha256.H0
         (P ++ message.val ++ [128#u8] ++ List.replicate (padZeros 64 8 message.length) 0#u8 ++
           length.val) h' ⦄ := by
-  obtain ⟨p, hp⟩ := hb.path
-  unfold low.x86_64.sha256_mux.sha256_compress_padded
-  rw [hp]
   have tail : ∀ blocks rest : Slice U8, blocks.length % (64#usize).val = 0 ∧
       blocks.val ++ rest.val = message.val ∧ rest.length + 1 + (8#usize).val ≤ 2 * (64#usize).val ∧
       padZeros (64#usize).val (8#usize).val rest.length =
@@ -128,36 +100,95 @@ theorem sha256_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.
           have h8 : (8#usize).val = 8 := by simp
           have := padZeros_lt (64#usize).val (8#usize).val message.length (by omega)
           omega)
+  unfold low.x86_64.sha256_mux.sha256_compress_padded
+  step with split_tail_spec (N := 64#usize) (L := 8#usize) message (by decide) (by scalar_tac)
+    (by decide) as ⟨bl, re, hs1, hs2, hs3, hs4⟩
+  exact tail bl re ⟨hs1, hs2, hs3, hs4⟩
+
+/-- The routines that do not finish a hash: the padded last blocks, then the
+digest's encoding. -/
+theorem sha256_finish_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
+    (message : Slice U8) (length : Std.Array U8 8#usize)
+    (hR : Absorbed sha256.compress sha256.H0 P state) :
+    (do
+      let state1 ← low.x86_64.sha256_mux.sha256_compress_padded state message length
+      low.generic.blockwise.sha256_digest state1) ⦃ r =>
+        bv r.val = sha256Finished P message.val length.val ⦄ := by
+  step with sha256_compress_padded_spec hb P state message length hR as ⟨h', hh'⟩
+  apply WP.spec_mono (sha256_digest_spec h')
+  intro r hr
+  rw [hr, hh'.1]
+  rfl
+
+/-- SHA-256's digest of what `state` has absorbed followed by `message`. -/
+theorem sha256_finish_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
+    (message : Slice U8) (length : Std.Array U8 8#usize)
+    (hR : Absorbed sha256.compress sha256.H0 P state) :
+    low.x86_64.sha256_mux.sha256_finish state message length ⦃ r =>
+      bv r.val = sha256Finished P message.val length.val ⦄ := by
+  obtain ⟨p, hp⟩ := hb.path
+  unfold low.x86_64.sha256_mux.sha256_finish
+  rw [hp]
   cases p with
   | Shaext t =>
     simp only [bind_ok]
-    step with pad_message_spec message length (N := 64#usize) (by decide) (by scalar_tac) (by decide)
-      as ⟨bl, la, _, h1, h2, h3⟩
-    apply WP.spec_mono (hb.shaext t state bl la h1 h2)
-    intro h' hh
-    have := absorbed_append (b := bl.val ++ la.val) hR
-      (by simp only [Slice.length] at h1 h2; simp [Nat.add_mod, h1, h2]) hh
-    rw [h3] at this
-    simpa [List.append_assoc] using this
-  | Avx t =>
+    have hml : message.len.val = message.length := by simp [Slice.len, Slice.length]
+    step*
+    simp only [Slice.length] at blocks_post blocks_post1 hml
+    have hbl : (↑blocks : List U8).length % 64 = 0 := by rw [blocks_post, i2_post]; omega
+    have hrl : (↑rest : List U8).length < 64 := by rw [blocks_post1, i2_post, i1_post, hml]; omega
+    have hrl' : rest.len.val = (↑rest : List U8).length := by simp [Slice.len]
+    apply WP.spec_mono (hb.shaext_finish t state blocks _ _ length
+      (by simpa [Slice.length] using hbl) (by rw [hrl']; omega))
+    intro r hr
+    have hlast : (index_mut_back s1).val.take rest.len.val = rest.val := by
+      rw [s_post2, s1_post, hrl']
+      have := rind.spec.take_setSlice! (Array.repeat 64#usize 0#u8).val rest.val 0 (by simp; omega)
+      simpa using this
+    rw [hr, hlast, hrl', sha256Finished_split hR hbl, blocks_post2, blocks_post3,
+      List.take_append_drop]
+  | Avx t => simp only [bind_ok]; exact sha256_finish_padded_spec hb P state message length hR
+  | Avx2 t => simp only [bind_ok]; exact sha256_finish_padded_spec hb P state message length hR
+  | Ssse3 t => simp only [bind_ok]; exact sha256_finish_padded_spec hb P state message length hR
+  | Nohw => simp only [bind_ok]; exact sha256_finish_padded_spec hb P state message length hR
+
+/-- SHA-256's digest of what `state` has absorbed followed by `block`'s first
+`used` bytes. -/
+theorem sha256_finish_block_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
+    (block : Std.Array U8 64#usize) (used : Usize) (length : Std.Array U8 8#usize)
+    (hR : Absorbed sha256.compress sha256.H0 P state) (hu : used.val ≤ 64) :
+    low.x86_64.sha256_mux.sha256_finish_block state block used length ⦃ r =>
+      bv r.val = sha256Finished P (block.val.take used.val) length.val ⦄ := by
+  obtain ⟨p, hp⟩ := hb.path
+  unfold low.x86_64.sha256_mux.sha256_finish_block
+  rw [hp]
+  have fallback :
+      (do
+        let s ← core.array.Array.index (core.ops.index.IndexSlice
+          (core.slice.index.SliceIndexRangeToUsizeSlice Std.U8)) block { «end» := used }
+        let state1 ← low.x86_64.sha256_mux.sha256_compress_padded state s length
+        low.generic.blockwise.sha256_digest state1) ⦃ r =>
+          bv r.val = sha256Finished P (block.val.take used.val) length.val ⦄ := by
+    step as ⟨s, hs⟩
+    apply WP.spec_mono (sha256_finish_padded_spec hb P state s length hR)
+    intro r hr
+    rw [hr, hs]
+    simp [List.slice]
+  cases p with
+  | Shaext t =>
     simp only [bind_ok]
-    step with split_tail_spec (N := 64#usize) (L := 8#usize) message (by decide) (by scalar_tac)
-      (by decide) as ⟨bl, re, hs1, hs2, hs3, hs4⟩
-    exact tail bl re ⟨hs1, hs2, hs3, hs4⟩
-  | Avx2 t =>
-    simp only [bind_ok]
-    step with split_tail_spec (N := 64#usize) (L := 8#usize) message (by decide) (by scalar_tac)
-      (by decide) as ⟨bl, re, hs1, hs2, hs3, hs4⟩
-    exact tail bl re ⟨hs1, hs2, hs3, hs4⟩
-  | Ssse3 t =>
-    simp only [bind_ok]
-    step with split_tail_spec (N := 64#usize) (L := 8#usize) message (by decide) (by scalar_tac)
-      (by decide) as ⟨bl, re, hs1, hs2, hs3, hs4⟩
-    exact tail bl re ⟨hs1, hs2, hs3, hs4⟩
-  | Nohw =>
-    simp only [bind_ok]
-    step with split_tail_spec (N := 64#usize) (L := 8#usize) message (by decide) (by scalar_tac)
-      (by decide) as ⟨bl, re, hs1, hs2, hs3, hs4⟩
-    exact tail bl re ⟨hs1, hs2, hs3, hs4⟩
+    step*
+    have hs0 : s.val = [] := by rw [s_post]; rfl
+    apply WP.spec_mono (hb.shaext_finish t state s block used length (by simp [Slice.length, hs0]) hu)
+    intro r hr
+    have htl : (block.val.take used.val).length = used.val := by simp; omega
+    have := sha256Finished_split (b := []) (rest := block.val.take used.val) (length := length.val)
+      hR (by simp)
+    rw [hr, hs0]
+    simpa [htl] using this
+  | Avx t => simp only [bind_ok]; exact fallback
+  | Avx2 t => simp only [bind_ok]; exact fallback
+  | Ssse3 t => simp only [bind_ok]; exact fallback
+  | Nohw => simp only [bind_ok]; exact fallback
 
 end rind.x86_64

@@ -138,6 +138,10 @@ name = "cipher"
 harness = false
 
 [[bench]]
+name = "key_wrap"
+harness = false
+
+[[bench]]
 name = "pbkdf2"
 harness = false
 

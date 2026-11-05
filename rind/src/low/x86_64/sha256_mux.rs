@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use crate::low::x86_64;
 use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSha256, HaveSsse3, is_intel};
-use crate::low::{pad, pad_message, split_tail};
+use crate::low::{pad, sha256_digest, split_tail};
 
 /// The SHA-256 routine this CPU runs, with the proof it may.
 #[derive(Clone, Copy)]
@@ -19,9 +19,7 @@ enum Path {
 
 pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
     match path() {
-        Path::Shaext(token) => {
-            x86_64::sha256::sha256_compress_blocks_shaext(state, blocks, &[], token)
-        }
+        Path::Shaext(token) => x86_64::sha256::sha256_compress_blocks_shaext(state, blocks, token),
         Path::Avx(token) => x86_64::sha256::sha256_compress_blocks_avx(state, blocks, token),
         Path::Avx2(token) => x86_64::sha256::sha256_compress_blocks_avx2(state, blocks, token),
         Path::Ssse3(token) => x86_64::sha256::sha256_compress_blocks_ssse3(state, blocks, token),
@@ -29,30 +27,59 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
     }
 }
 
-/// Compresses the end of `message`, padded and closed by `length`.
+/// The digest of `state` followed by `message`, padded and closed by `length`.
 // Out of line, as `Sha1State::compress_padded` is, so `finish_with` inlines.
 #[inline(never)]
-pub(crate) fn sha256_compress_padded(state: &mut [u32; 8], message: &[u8], length: [u8; 8]) {
+pub(crate) fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -> [u8; 32] {
     match path() {
-        // The routine takes the padding as blocks of its own, so the message's
-        // whole blocks run from where they are in the same call. Joining them
-        // as the others do would copy the last, and on some cores, such as
-        // Arrow Lake, the routine's load of that copy waits for every older
-        // store, which costs more than the call it saves.
+        // The message's whole blocks run from where they are, and only its
+        // tail is copied, for the routine to pad.
         Path::Shaext(token) => {
-            let mut last = [[0u8; 64]; 2];
-            let (blocks, last) = pad_message(message, length, &mut last);
-            x86_64::sha256::sha256_compress_blocks_shaext(state, blocks, last, token);
+            let (blocks, rest) = message.split_at(message.len() / 64 * 64);
+            let mut last = [0u8; 64];
+            last[..rest.len()].copy_from_slice(rest);
+            x86_64::sha256::sha256_finish_shaext(state, blocks, &last, rest.len(), length, token)
         }
         _ => {
-            let (blocks, rest) = split_tail::<64, 8>(message);
-            if !blocks.is_empty() {
-                sha256_compress_blocks(state, blocks);
-            }
-            let mut last = [[0u8; 64]; 2];
-            sha256_compress_blocks(state, pad(rest, length, &mut last));
+            let mut h = *state;
+            sha256_compress_padded(&mut h, message, length);
+            sha256_digest(&h)
         }
     }
+}
+
+/// The digest of `state` followed by the first `used` bytes of `block`,
+/// padded and closed by `length`.
+#[inline(never)]
+pub(crate) fn sha256_finish_block(
+    state: &[u32; 8],
+    block: &[u8; 64],
+    used: usize,
+    length: [u8; 8],
+) -> [u8; 32] {
+    match path() {
+        // The routine pads `block` where it is, so a context's buffer needs
+        // no copy.
+        Path::Shaext(token) => {
+            x86_64::sha256::sha256_finish_shaext(state, &[], block, used, length, token)
+        }
+        _ => {
+            let mut h = *state;
+            sha256_compress_padded(&mut h, &block[..used], length);
+            sha256_digest(&h)
+        }
+    }
+}
+
+/// Compresses the end of `message`, padded and closed by `length`, on the
+/// routines that do not finish a hash themselves.
+fn sha256_compress_padded(state: &mut [u32; 8], message: &[u8], length: [u8; 8]) {
+    let (blocks, rest) = split_tail::<64, 8>(message);
+    if !blocks.is_empty() {
+        sha256_compress_blocks(state, blocks);
+    }
+    let mut last = [[0u8; 64]; 2];
+    sha256_compress_blocks(state, pad(rest, length, &mut last));
 }
 
 fn path() -> Path {
