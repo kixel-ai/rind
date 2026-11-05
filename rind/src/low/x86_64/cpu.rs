@@ -242,8 +242,8 @@ impl HaveSha256 {
     }
 }
 
-/// Proof that the CPU has AVX2, and the BMI2, POPCNT, and SSSE3 that rind's
-/// AVX2 kernels also use: ChaCha20, SHA-1, SHA-256, ML-KEM, the 4-way
+/// Proof that the CPU has AVX2, and the BMI1, BMI2, POPCNT, and SSSE3 that
+/// rind's AVX2 kernels also use: ChaCha20, SHA-1, SHA-2, ML-KEM, the 4-way
 /// Keccak-f, and the constant-time table selects.
 ///
 /// Without it, aws-lc's SSSE3, AVX, or scalar routines, a portable port of
@@ -255,6 +255,17 @@ pub(crate) struct HaveAvx2(());
 impl HaveAvx2 {
     pub(crate) fn check() -> Option<Self> {
         has(AVX2_KERNELS).then_some(Self(()))
+    }
+}
+
+/// Proof that the CPU has the SHA512 instructions, and the AVX2 that
+/// OpenSSL's routine for them also uses.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveSha512(());
+
+impl HaveSha512 {
+    pub(crate) fn check() -> Option<Self> {
+        has(SHA512 | AVX | AVX2).then_some(Self(()))
     }
 }
 
@@ -351,9 +362,11 @@ const SSE41: u32 = 1 << 16;
 const MOVBE: u32 = 1 << 17;
 const AVX512DQ: u32 = 1 << 18;
 const AVX512IFMA: u32 = 1 << 19;
+const BMI1: u32 = 1 << 20;
+const SHA512: u32 = 1 << 21;
 const INTEL: u32 = 1 << 30;
 /// What rind's AVX2 kernels use, for [`HaveAvx2`].
-const AVX2_KERNELS: u32 = AVX | AVX2 | BMI2 | POPCNT | SSSE3;
+const AVX2_KERNELS: u32 = AVX | AVX2 | BMI1 | BMI2 | POPCNT | SSSE3;
 /// What the AES-GCM kernels for wider vectors build on: the AVX2 ISA, and
 /// AES-NI and PCLMULQDQ for their key schedule and tail.
 const AES_GCM_BASE: u32 = AES | PCLMULQDQ | SSSE3 | AVX | AVX2;
@@ -419,6 +432,7 @@ fn detect() -> u32 {
         | detect!("vaes", VAES)
         | detect!("pclmulqdq", PCLMULQDQ)
         | detect!("vpclmulqdq", VPCLMULQDQ)
+        | detect!("bmi1", BMI1)
         | detect!("bmi2", BMI2)
         | detect!("popcnt", POPCNT)
         | detect!("ssse3", SSSE3)
@@ -433,6 +447,7 @@ fn detect() -> u32 {
         | detect!("avx512vbmi", AVX512VBMI)
         | detect!("avx512vbmi2", AVX512VBMI2)
         | detect!("sha", SHA)
+        | detect!("sha512", SHA512)
         | detect!("movbe", MOVBE)
 }
 
@@ -508,6 +523,9 @@ mod tests {
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_SHA") {
             assert_eq!(HaveSha256::check().is_some(), expected == "1");
             assert_eq!(HaveSha1::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_SHA512") {
+            assert_eq!(HaveSha512::check().is_some(), expected == "1");
         }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_VAES_AES_GCM") {
             assert_eq!(HaveVaesAvx2ForAesGcm::check().is_some(), expected == "1");

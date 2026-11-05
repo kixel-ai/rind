@@ -27,7 +27,10 @@ SEEDS = ["0123456789abcdef", "fedcba9876543210"]
 MARKS = ["52430001:repeat", "52430002:repeat"]
 # The SDE CPU model for tests whose names contain each key, else Sapphire
 # Rapids. Each test asserts that its model takes the path it checks.
-MODELS = {"vaes_avx2": "-adl"}  # Alder Lake: VAES without AVX-512.
+MODELS = {
+    "vaes_avx2": "-adl",  # Alder Lake: VAES without AVX-512.
+    "hmac": "-arl",  # Arrow Lake: the SHA extensions and SHA512 instructions.
+}
 # Far below where the program maps its thread stacks and heaps.
 PIN_MEMORY = "0x100000000000:0x200000000000"
 

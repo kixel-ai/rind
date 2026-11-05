@@ -43,11 +43,11 @@
 # theorems for AAD and messages under 2^32 bytes, every size the report
 # times. On aarch64 with the SHA-512 instructions, NSym's proof of aws-lc's
 # routine for them asserts the digest in registers before the store to the
-# state, and on AMD's x86_64 CPUs rind runs aws-lc's unproven scalar routine,
-# so neither SHA-512 nor Ed25519 earns the ✓ there. Every other rind
-# operation runs unverified code, such as SHA-256's block function, under
-# padding and HMAC glue that `proofs/` proves, or x86_64 P-256 ECDH's
-# Jacobian-to-affine conversion.
+# state, and on x86_64 CPUs with AVX2, or AMD's, rind runs OpenSSL's or
+# aws-lc's unproven routines, which are faster there, so neither SHA-512 nor
+# Ed25519 earns the ✓ there. Every other rind operation runs unverified code,
+# such as SHA-256's block function, under padding and HMAC glue that
+# `proofs/` proves, or x86_64 P-256 ECDH's Jacobian-to-affine conversion.
 [[verified]]
 library = "rind"
 operations = ["x25519-ecdh"]
@@ -66,8 +66,8 @@ link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/X25519.lean
 library = "rind"
 operations = ["sha512/*"]
 arch = "x86_64"
-cpu = ["intel", "avx", "ssse3"]
-proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps"
+cpu = ["intel", "avx", "ssse3", "!avx2"]
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel's CPUs without AVX2, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha512.lean"
 
 [[verified]]
@@ -82,8 +82,8 @@ link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha512.lean
 library = "rind"
 operations = ["ed25519-sign", "ed25519-verify"]
 arch = "x86_64"
-cpu = ["intel", "avx", "ssse3"]
-proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key loading, signing, and verification, small-order key refusal included, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel, composed with s2n-bignum's HOL Light proofs of edwards25519_decode, edwards25519_scalarmulbase, edwards25519_scalarmuldouble, bignum_madd_n25519, their _alt forms without BMI2 and ADX, bignum_mod_n25519, bignum_neg_p25519, bignum_lt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, and aws-lc-verification's SAW proof of that SHA-512 routine"
+cpu = ["intel", "avx", "ssse3", "!avx2"]
+proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key loading, signing, and verification, small-order key refusal included, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel's CPUs without AVX2, composed with s2n-bignum's HOL Light proofs of edwards25519_decode, edwards25519_scalarmulbase, edwards25519_scalarmuldouble, bignum_madd_n25519, their _alt forms without BMI2 and ADX, bignum_mod_n25519, bignum_neg_p25519, bignum_lt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, and aws-lc-verification's SAW proof of that SHA-512 routine"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Ed25519.lean"
 
 [[verified]]
