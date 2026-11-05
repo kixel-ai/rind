@@ -1780,11 +1780,19 @@ theorem more_odd_spec (hG : P256Group) (Q : P256Point) (hQ : p256OnCurve Q) (hQn
 
 end P256
 
-/-- A verifying key's cache of 17P, ..., 31P holds, once built, what its
-build returns from the key's own P, ..., 15P: `ReuseCache::get_or_build`
-returns `None` or `build`'s value, and a key's odd multiples never change
-after it is parsed, so every build of its cache returns the same. -/
+/-- rind's debug-only check that an operation holds its entry guard passes,
+as every caller holds one; release builds compile it out. -/
+def Held : Prop := low.entry.Entry.assert_held = ok ()
+
+/-- A verifying key's cache of 17P, ..., 31P, whose atomics Aeneas cannot
+translate: `ReuseCache::new` returns an empty cache, and once built the cache
+holds what its build returns from the key's own P, ..., 15P, since
+`get_or_build` returns `None` or `build`'s value and a key's odd multiples
+never change after it is parsed. -/
 def Cached : Prop :=
+  (∃ c, low.generic.reuse_cache.ReuseCache.new
+      (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
+      (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault) = ok c) ∧
   ∀ key : mid.p256.VerifyingKey,
     low.generic.reuse_cache.ReuseCache.get_or_build
       (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
@@ -1815,7 +1823,7 @@ theorem raw_verify_spec (hG : P256Group) (ht : Tabulated) (hc : Cached) (key : m
   step with scalar_as_mont_spec r hr as ⟨rm, hrm⟩
   step with scalar_mont_mul_spec sm rm (by rw [hsm]; exact hlt _) (by rw [hrm]; exact hlt _) as ⟨s5, hs5⟩
   step as ⟨u2, hu2⟩
-  step with hc key as ⟨more, hmore⟩
+  step with hc.2 key as ⟨more, hmore⟩
   have hs' : (scNat s : ZMod n256) ≠ 0 := by
     rw [Ne, ZMod.natCast_eq_zero_iff]; exact Nat.not_dvd_of_pos_of_lt hs0 hs
   have hsinv : (scNat si : ZMod n256) = (scNat s : ZMod n256)⁻¹ := by
@@ -1876,6 +1884,53 @@ theorem raw_verify_spec (hG : P256Group) (ht : Tabulated) (hc : Cached) (key : m
       rw [WP.spec_ok]
       right
       first | exact ⟨fun h => h1 (hb1.mpr h.2.2.2.2), rfl⟩ | exact ⟨fun h => h1 (hb1.mpr h.2.2.2.2), trivial⟩
+
+/-! ## Verifying keys, `mid::p256::VerifyingKey` -/
+
+/-- An X9.62 key's parse outcome: refused unless an uncompressed point on the
+curve, with coordinates below p, and otherwise `good` of what it builds. -/
+def x962Outcome {α : Type} (bytes : List U8) (good : α → Prop) (r : core.result.Result α error.Error) :
+    Prop :=
+  match bytes.head? with
+  | none => r = .Err (.KeyRejected .WrongLength)
+  | some b0 =>
+    if b0 = 4#u8 then
+      if bytes.length = 65 then
+        if p256OnCurve (some (x962Coords bytes)) then ∃ a, r = .Ok a ∧ good a
+        else r = .Err (.KeyRejected .NotOnCurve)
+      else r = .Err (.KeyRejected .WrongLength)
+    else r = .Err (.KeyRejected .Compressed)
+
+/-- A verifying key for the point `Q`. -/
+def VKey (Q : P256Point) (key : mid.p256.VerifyingKey) : Prop :=
+  p256OnCurve Q ∧ Q ≠ none ∧ OddMultiples Q 1 key.odd_multiples
+
+theorem vk_from_x962_spec (hG : P256Group) (h : Runs) (hheld : Held) (hc : Cached) (bytes : Slice U8) :
+    mid.p256.VerifyingKey.from_x962_uncompressed bytes ⦃ r =>
+      x962Outcome bytes.val (VKey (some (x962Coords bytes.val))) r ⦄ := by
+  unfold mid.p256.VerifyingKey.from_x962_uncompressed
+  rw [hheld]
+  simp only [bind_ok]
+  step with public_from_x962_spec h bytes as ⟨r, hr⟩
+  simp only [core.result.Result.Insts.CoreOpsTry.branch,
+    core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
+  unfold x962Outcome
+  rcases hb : bytes.val.head? with _ | b0
+  · simp only [hb] at hr; subst hr; simp
+  · simp only [hb] at hr ⊢
+    by_cases h4 : b0 = 4#u8 <;> simp only [h4, ↓reduceIte] at hr ⊢
+    · by_cases hl : bytes.length = 65 <;> simp only [hl, ↓reduceIte] at hr ⊢
+      · by_cases hon : p256OnCurve (some (x962Coords bytes.val)) <;> simp only [hon, ↓reduceIte] at hr ⊢
+        · obtain ⟨pk, rfl, hpk⟩ := hr
+          simp only
+          step with odd_multiples_spec hG pk.point _ hon (by simp) hpk as ⟨m, hm⟩
+          obtain ⟨c, hcv⟩ := hc.1
+          rw [hcv]
+          simp only [bind_ok, WP.spec_ok]
+          exact ⟨_, rfl, hon, by simp, hm⟩
+        · subst hr; simp
+      · subst hr; simp
+    · subst hr; simp
 
 end P256
 
