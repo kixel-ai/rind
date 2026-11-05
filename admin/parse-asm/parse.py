@@ -15,6 +15,7 @@ ASM = re.compile(
 )
 CONST = re.compile(r"\s?(?P<type>\.(quad|long))\s+(?P<value>((0x[0-9a-fA-F]+),?)+)")
 LABEL = re.compile(r"^(?P<name>(\.L)?[a-zA-Z0-9_]+):$")
+SET_SYMBOL = re.compile(r"^\.set\s+(?P<name>[a-z_]+),\s*(?P<value>.+)$")
 
 
 class Type(enum.StrEnum):
@@ -74,6 +75,50 @@ def merge_blank_lines(lines):
     return lines
 
 
+def unroll_repeats(lines):
+    # Writes out each `.rep` block in full, replacing the `#symbol` immediates
+    # its `.set` lines count with, since the Rust output has no assembler
+    # symbols.
+    symbols = {}
+
+    def substitute(line):
+        for name, value in symbols.items():
+            line = re.sub(r"#%s\b" % name, "#%d" % value, line)
+        return line
+
+    def set_symbol(line):
+        m = SET_SYMBOL.match(line.strip())
+        if m is None:
+            return False
+        value = m.group("value")
+        for name, v in symbols.items():
+            value = re.sub(r"\b%s\b" % name, str(v), value)
+        assert re.fullmatch(r"[0-9+\-*() ]+", value), value
+        symbols[m.group("name")] = eval(value)
+        return True
+
+    out = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.strip().startswith(".rep"):
+            _, count = line.split()
+            end = next(
+                j for j in range(i + 1, len(lines)) if lines[j].strip() == ".endr"
+            )
+            body = lines[i + 1 : end]
+            assert not any(b.strip().startswith(".rep") for b in body)
+            for _ in range(int(count)):
+                out.extend(substitute(b) for b in body if not set_symbol(b))
+            i = end + 1
+        elif not set_symbol(line):
+            out.append(substitute(line))
+            i += 1
+        else:
+            i += 1
+    return out
+
+
 def parse_file(f, visit):
     continuation = None
     contexts = []
@@ -124,6 +169,7 @@ def parse_file(f, visit):
     lines = f.readlines()
     lines = tidy_linewise(lines)
     lines = cpp.apply_lines(lines)
+    lines = unroll_repeats(lines)
     lines = merge_blank_lines(lines)
 
     for l in lines:
@@ -173,11 +219,6 @@ def parse_file(f, visit):
         elif l.startswith(".set"):
             _, name, value = l.split()
             visit(Type.DEFINE, name.strip(), value.strip())
-        elif l.startswith(".rep"):
-            _, arg = l.split()
-            contexts.append(("REP", int(arg)))
-        elif l.startswith(".endr"):
-            contexts.pop()
         elif l.replace(", ", ",").startswith('.section .note.GNU-stack,"",%progbits'):
             continue
         elif l.startswith("#include "):

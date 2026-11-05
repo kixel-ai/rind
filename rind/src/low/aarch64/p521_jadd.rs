@@ -763,6 +763,7 @@ macro_rules! sub_p521 {
 /// fully reduced mod p_521, that both z coordinates are nonzero and
 /// that neither p1 =~= p2 or p1 =~= -p2, where "=~=" means "represents
 /// the same affine point as".
+#[inline(never)]
 pub(crate) fn p521_jadd(p3: &mut [u64; 27], p1: &[u64; 27], p2: &[u64; 27]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

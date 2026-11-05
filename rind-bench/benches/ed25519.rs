@@ -51,6 +51,30 @@ fn keygen(c: &mut Criterion) {
             black_box(our_private_key.to_pkcs8());
         })
     });
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    group.bench_function("graviola", |b| {
+        let mut pkcs8 = [0u8; 128];
+        b.iter(|| {
+            let key = graviola::signing::eddsa::Ed25519SigningKey::generate().unwrap();
+            black_box(key.to_pkcs8_der(&mut pkcs8).unwrap());
+        })
+    });
+
+    // libcrux has no PKCS#8 encoding.
+    group.bench_function("libcrux", |b| {
+        b.iter(|| {
+            black_box(libcrux_ed25519::generate_key_pair(&mut getrandom::SysRng).unwrap());
+        })
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        b.iter(|| {
+            let key = openssl::pkey::PKey::generate_ed25519().unwrap();
+            black_box(key.private_key_to_pkcs8().unwrap());
+        })
+    });
 }
 
 fn verify(c: &mut Criterion) {
@@ -102,6 +126,36 @@ fn verify(c: &mut Criterion) {
                 .unwrap();
         })
     });
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    group.bench_function("graviola", |b| {
+        use graviola::signing::eddsa::Ed25519VerifyingKey;
+
+        b.iter(|| {
+            Ed25519VerifyingKey::from_bytes(public_key)
+                .unwrap()
+                .verify(signature, message)
+                .unwrap();
+        })
+    });
+
+    group.bench_function("libcrux", |b| {
+        b.iter(|| {
+            libcrux_ed25519::verify(message, public_key, signature).unwrap();
+        })
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        use openssl::pkey::{Id, PKey};
+        use openssl::sign::Verifier;
+
+        b.iter(|| {
+            let key = PKey::public_key_from_raw_bytes(public_key, Id::ED25519).unwrap();
+            let mut verifier = Verifier::new_without_digest(&key).unwrap();
+            assert!(verifier.verify_oneshot(signature, message).unwrap());
+        })
+    });
 }
 
 fn sign(c: &mut Criterion) {
@@ -149,6 +203,36 @@ fn sign(c: &mut Criterion) {
 
         b.iter(|| {
             black_box(signing_key.sign(message));
+        });
+    });
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    group.bench_function("graviola", |b| {
+        let signing_key = graviola::signing::eddsa::Ed25519SigningKey::generate().unwrap();
+
+        b.iter(|| {
+            black_box(signing_key.sign(message));
+        });
+    });
+
+    // libcrux signs with the seed alone, deriving the public key each time.
+    group.bench_function("libcrux", |b| {
+        let (signing_key, _) = libcrux_ed25519::generate_key_pair(&mut getrandom::SysRng).unwrap();
+        let signing_key = signing_key.into_bytes();
+
+        b.iter(|| {
+            black_box(libcrux_ed25519::sign(message, &signing_key).unwrap());
+        });
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        use openssl::sign::Signer;
+        let signing_key = openssl::pkey::PKey::generate_ed25519().unwrap();
+
+        b.iter(|| {
+            let mut signer = Signer::new_without_digest(&signing_key).unwrap();
+            black_box(signer.sign_oneshot_to_vec(message).unwrap());
         });
     });
 }

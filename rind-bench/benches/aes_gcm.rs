@@ -1,4 +1,6 @@
 mod criterion;
+#[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+mod ossl_aead;
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
@@ -106,6 +108,25 @@ fn aes128_gcm(c: &mut Criterion) {
             let key = Key::new(&AES_128_GCM, &key).unwrap();
             b.iter(|| test_rind_aes_gcm(&key, &nonce, &aad, &mut buf));
         });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
+            let key = graviola::aead::AesGcm::new(&key);
+            let mut tag = [0u8; 16];
+            b.iter(|| key.encrypt(&nonce, &aad, &mut buf, &mut tag));
+        });
+        // libcrux seals out of place.
+        group.bench_function(BenchmarkId::new("libcrux", size_name), |b| {
+            let key = libcrux_aes::AesGcm128Key::from(key);
+            let nonce = libcrux_aes::AesGcm128Nonce::from(nonce);
+            let mut tag = libcrux_aes::AesGcm128Tag::from([0u8; 16]);
+            let mut ct = vec![0u8; size];
+            b.iter(|| key.encrypt(&mut ct, &mut tag, &nonce, &aad, &buf).unwrap());
+        });
+        #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+        group.bench_function(BenchmarkId::new("openssl", size_name), |b| {
+            let mut key = ossl_aead::Sealer::new(openssl::cipher::Cipher::aes_128_gcm(), &key);
+            b.iter(|| key.seal(&nonce, &aad, &mut buf));
+        });
     }
 }
 
@@ -151,11 +172,80 @@ fn aes256_gcm(c: &mut Criterion) {
             let key = Key::new(&AES_256_GCM, &key).unwrap();
             b.iter(|| test_rind_aes_gcm(&key, &nonce, &aad, &mut buf));
         });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
+            let key = graviola::aead::AesGcm::new(&key);
+            let mut tag = [0u8; 16];
+            b.iter(|| key.encrypt(&nonce, &aad, &mut buf, &mut tag));
+        });
+        // libcrux seals out of place.
+        group.bench_function(BenchmarkId::new("libcrux", size_name), |b| {
+            let key = libcrux_aes::AesGcm256Key::from(key);
+            let nonce = libcrux_aes::AesGcm256Nonce::from(nonce);
+            let mut tag = libcrux_aes::AesGcm256Tag::from([0u8; 16]);
+            let mut ct = vec![0u8; size];
+            b.iter(|| key.encrypt(&mut ct, &mut tag, &nonce, &aad, &buf).unwrap());
+        });
+        #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+        group.bench_function(BenchmarkId::new("openssl", size_name), |b| {
+            let mut key = ossl_aead::Sealer::new(openssl::cipher::Cipher::aes_256_gcm(), &key);
+            b.iter(|| key.seal(&nonce, &aad, &mut buf));
+        });
+    }
+}
+
+/// What opening needs that differs by key size.
+trait KeySize {
+    type RustCrypto: aes_gcm::KeyInit
+        + aes_gcm::AeadInOut<
+            NonceSize = aes_gcm::aead::consts::U12,
+            TagSize = aes_gcm::aead::consts::U16,
+        >;
+
+    /// libcrux's open, out of place. Its key is the bare bytes, so building
+    /// one in each call costs only the copy.
+    fn libcrux(key: &[u8], nonce: &[u8; 12], aad: &[u8], ct: &[u8], tag: &[u8; 16], pt: &mut [u8]);
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    fn openssl() -> &'static openssl::cipher::CipherRef;
+}
+
+struct Aes128;
+
+impl KeySize for Aes128 {
+    type RustCrypto = aes_gcm::Aes128Gcm;
+
+    fn libcrux(key: &[u8], nonce: &[u8; 12], aad: &[u8], ct: &[u8], tag: &[u8; 16], pt: &mut [u8]) {
+        let key = libcrux_aes::AesGcm128Key::from(<[u8; 16]>::try_from(key).unwrap());
+        key.decrypt(pt, &(*nonce).into(), aad, ct, &(*tag).into())
+            .unwrap()
+    }
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    fn openssl() -> &'static openssl::cipher::CipherRef {
+        openssl::cipher::Cipher::aes_128_gcm()
+    }
+}
+
+struct Aes256;
+
+impl KeySize for Aes256 {
+    type RustCrypto = aes_gcm::Aes256Gcm;
+
+    fn libcrux(key: &[u8], nonce: &[u8; 12], aad: &[u8], ct: &[u8], tag: &[u8; 16], pt: &mut [u8]) {
+        let key = libcrux_aes::AesGcm256Key::from(<[u8; 32]>::try_from(key).unwrap());
+        key.decrypt(pt, &(*nonce).into(), aad, ct, &(*tag).into())
+            .unwrap()
+    }
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    fn openssl() -> &'static openssl::cipher::CipherRef {
+        openssl::cipher::Cipher::aes_256_gcm()
     }
 }
 
 // Decrypting and verifying each size's ciphertext, as a receiver pays.
-fn open(
+fn open<K: KeySize>(
     c: &mut Criterion,
     name: &str,
     key: &[u8],
@@ -227,11 +317,42 @@ fn open(
                     .unwrap();
             });
         });
+        group.bench_function(BenchmarkId::new("rustcrypto", size_name), |b| {
+            use aes_gcm::{AeadInOut, KeyInit};
+            let key = K::RustCrypto::new_from_slice(key).unwrap();
+            let tag = <&[u8; 16]>::try_from(tag.as_ref()).unwrap().into();
+            b.iter(|| {
+                pt.copy_from_slice(ct);
+                key.decrypt_inout_detached(&nonce.into(), &aad, pt.into(), tag)
+                    .unwrap();
+            });
+        });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
+            let key = graviola::aead::AesGcm::new(key);
+            b.iter(|| {
+                pt.copy_from_slice(ct);
+                key.decrypt(&nonce, &aad, pt, tag.as_ref()).unwrap();
+            });
+        });
+        // libcrux opens out of place, so it needs no copy.
+        group.bench_function(BenchmarkId::new("libcrux", size_name), |b| {
+            let tag = tag.as_ref().try_into().unwrap();
+            b.iter(|| K::libcrux(key, &nonce, &aad, ct, tag, pt));
+        });
+        #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+        group.bench_function(BenchmarkId::new("openssl", size_name), |b| {
+            let mut key = ossl_aead::Opener::new(K::openssl(), key);
+            b.iter(|| {
+                pt.copy_from_slice(ct);
+                key.open(&nonce, &aad, tag.as_ref(), pt);
+            });
+        });
     }
 }
 
 fn aes128_gcm_open(c: &mut Criterion) {
-    open(
+    open::<Aes128>(
         c,
         "aes128-gcm-open",
         &[0u8; 16],
@@ -242,7 +363,7 @@ fn aes128_gcm_open(c: &mut Criterion) {
 }
 
 fn aes256_gcm_open(c: &mut Criterion) {
-    open(
+    open::<Aes256>(
         c,
         "aes256-gcm-open",
         &[0u8; 32],

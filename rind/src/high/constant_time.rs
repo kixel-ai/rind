@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 use crate::Error;
-use crate::low::{ct, ct_equal};
+use crate::low::{Entry, ct, ct_equal};
 
 /// Checks in constant time that `a` and `b` hold the same bytes.
 ///
@@ -9,6 +9,7 @@ use crate::low::{ct, ct_equal};
 /// before either is read. Unequal contents fail with [`Error::NotEqual`],
 /// after reading every byte of both.
 pub fn verify(a: &[u8], b: &[u8]) -> Result<(), Error> {
+    let _entry = Entry::new_secret();
     if a.len() != b.len() {
         return Err(Error::WrongLength);
     }

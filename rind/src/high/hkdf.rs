@@ -4,9 +4,9 @@
 //!
 //! HKDF is standardized in [RFC 5869](https://datatracker.ietf.org/doc/html/rfc5869).
 
-use super::digest::MAX_OUTPUT_LEN;
-use super::hash::Hash;
-use super::hmac::{self, HmacKey, Keyed};
+use super::digest::{Digest, MAX_OUTPUT_LEN};
+use super::hmac;
+use crate::low::Entry;
 use crate::{Error, aead};
 
 /// An HKDF algorithm, chosen by one of this module's constants.
@@ -39,6 +39,7 @@ impl Salt {
 
     /// Extracts a pseudorandom key from `secret` (HKDF-Extract).
     pub fn extract(&self, secret: &[u8]) -> Prk {
+        let _entry = Entry::new_secret();
         let prk = hmac::sign(&self.0, secret);
         Prk(hmac::Key::new(self.0.algorithm(), prk.as_ref()))
     }
@@ -62,28 +63,20 @@ impl Prk {
     // Fills `out`, which must be at most 255 hash outputs: HKDF-Expand's
     // one-byte block counter limits it to 255 blocks.
     fn expand_into(&self, info: &[&[u8]], out: &mut [u8]) {
-        fn expand<H: Hash>(key: &HmacKey<H>, info: &[&[u8]], out: &mut [u8]) {
-            let mut block = H::zeroed_output();
-            let hash_len = block.as_ref().len();
-            for (counter, chunk) in (1..=255u8).zip(out.chunks_mut(hash_len)) {
-                let mut ctx = key.start();
-                if counter > 1 {
-                    ctx.update(&block);
-                }
-                for part in info {
-                    ctx.update(part);
-                }
-                ctx.update([counter]);
-                block = ctx.finish();
-                chunk.copy_from_slice(&block.as_ref()[..chunk.len()]);
+        let _entry = Entry::new_secret();
+        let mut block: Option<Digest> = None;
+        for (counter, chunk) in (1..=255u8).zip(out.chunks_mut(self.0.algorithm().tag_len())) {
+            let mut ctx = hmac::Context::with_key(&self.0);
+            if let Some(block) = &block {
+                ctx.update(block.as_ref());
             }
-        }
-
-        match &self.0.0 {
-            Keyed::Sha1(key) => expand(key, info, out),
-            Keyed::Sha256(key) => expand(key, info, out),
-            Keyed::Sha384(key) => expand(key, info, out),
-            Keyed::Sha512(key) => expand(key, info, out),
+            for part in info {
+                ctx.update(part);
+            }
+            ctx.update(&[counter]);
+            let tag = ctx.finish();
+            chunk.copy_from_slice(&tag.as_ref()[..chunk.len()]);
+            block = Some(tag);
         }
     }
 }

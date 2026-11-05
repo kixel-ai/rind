@@ -805,6 +805,7 @@ macro_rules! mux_4 {
 /// as specified in the relevant RFC (https://www.rfc-editor.org/rfc/rfc7748);
 /// in particular the lower three bits of n are set to zero. Does not implement
 /// the zero-check specified in Section 6.1.
+#[inline(never)]
 pub(crate) fn curve25519_x25519_alt(res: &mut [u64; 4], scalar: &[u64; 4], point: &[u64; 4]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

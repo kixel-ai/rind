@@ -8,101 +8,155 @@ use rind::signature::sign::{
 use rind::signature::{
     EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, RsaKeyPair, RsaSigningAlgorithm,
 };
-use rustls::pki_types::SubjectPublicKeyInfoDer;
-use rustls::{SignatureScheme, pki_types, sign};
+use rustls::SignatureScheme;
+use rustls::crypto::KeyProvider;
+use rustls::pki_types::{PrivateKeyDer, SubjectPublicKeyInfoDer};
+use rustls::sign::{self, SigningKey};
 
+mod any_of;
+pub use any_of::AnyOf;
+
+/// Loads RSA, ECDSA, and Ed25519 keys, as [`default_provider`](crate::default_provider) does.
+pub static ANY_SUPPORTED_TYPE: &dyn KeyProvider = &Keys(&[
+    &RsaKeys,
+    &ECDSA_P256_KEYS,
+    &ECDSA_P384_KEYS,
+    &ECDSA_P521_KEYS,
+    &Ed25519Keys,
+]);
+
+/// Loads RSA keys from PKCS#1 or PKCS#8.
+pub static RSA: &dyn KeyProvider = &Keys(&[&RsaKeys]);
+
+/// Loads ECDSA P-256 keys from PKCS#8 or SEC1.
+pub static ECDSA_P256: &dyn KeyProvider = &Keys(&[&ECDSA_P256_KEYS]);
+
+/// Loads ECDSA P-384 keys from PKCS#8 or SEC1.
+pub static ECDSA_P384: &dyn KeyProvider = &Keys(&[&ECDSA_P384_KEYS]);
+
+/// Loads ECDSA P-521 keys from PKCS#8 or SEC1.
+pub static ECDSA_P521: &dyn KeyProvider = &Keys(&[&ECDSA_P521_KEYS]);
+
+/// Loads Ed25519 keys from PKCS#8.
+pub static ED25519: &dyn KeyProvider = &Keys(&[&Ed25519Keys]);
+
+/// Loads no key, for a provider that never signs.
+pub(crate) static NONE: &dyn KeyProvider = &Keys(&[]);
+
+/// A key provider that loads a key as each of its types in turn, naming why
+/// each refused it. Only the types it names link into a binary.
 #[derive(Debug)]
-pub(super) struct Provider;
+struct Keys(&'static [&'static dyn Load]);
 
-impl rustls::crypto::KeyProvider for Provider {
+impl KeyProvider for Keys {
     fn load_private_key(
         &self,
-        key_der: pki_types::PrivateKeyDer<'static>,
-    ) -> Result<Arc<dyn sign::SigningKey>, rustls::Error> {
-        match key_der {
-            pki_types::PrivateKeyDer::Pkcs8(p8) => load_pkcs8(p8),
-            pki_types::PrivateKeyDer::Pkcs1(p1) => load_pkcs1(p1),
-            pki_types::PrivateKeyDer::Sec1(sec1) => load_sec1(sec1),
-            _ => Err(rustls::Error::General("unhandled private key".to_string())),
+        key_der: PrivateKeyDer<'static>,
+    ) -> Result<Arc<dyn SigningKey>, rustls::Error> {
+        let mut errors = Vec::with_capacity(self.0.len());
+        for keys in self.0 {
+            match keys.load(&key_der) {
+                Some(Ok(key)) => return Ok(key),
+                Some(Err(err)) => errors.push(err),
+                None => {}
+            }
         }
+
+        let encoding = match key_der {
+            PrivateKeyDer::Pkcs1(_) => "PKCS#1",
+            PrivateKeyDer::Sec1(_) => "SEC1",
+            PrivateKeyDer::Pkcs8(_) => "PKCS#8",
+            _ => "private",
+        };
+        Err(rustls::Error::General(match errors.is_empty() {
+            true => format!("unsupported {encoding} key"),
+            false => format!("unsupported {encoding} key: {}", errors.join("; ")),
+        }))
+    }
+}
+
+/// One key type's loader.
+trait Load: fmt::Debug + Sync {
+    /// Loads `der` as this type, naming the type in an error, or returns
+    /// `None` when this type never comes in `der`'s encoding.
+    fn load(&self, der: &PrivateKeyDer<'_>) -> Option<Result<Arc<dyn SigningKey>, String>>;
+}
+
+#[derive(Debug)]
+struct RsaKeys;
+
+impl Load for RsaKeys {
+    fn load(&self, der: &PrivateKeyDer<'_>) -> Option<Result<Arc<dyn SigningKey>, String>> {
+        let key = match der {
+            PrivateKeyDer::Pkcs1(der) => RsaKeyPair::from_pkcs1(der.secret_pkcs1_der()),
+            PrivateKeyDer::Pkcs8(der) => RsaKeyPair::from_pkcs8(der.secret_pkcs8_der()),
+            _ => return None,
+        };
+        Some(match key {
+            Ok(key) => Ok(Arc::new(Rsa(Arc::new(key)))),
+            Err(err) => Err(format!("as RSA: {err}")),
+        })
     }
 }
 
 /// Each curve's one scheme, since TLS 1.3 binds the hash to the curve.
-const ECDSA: [(&EcdsaSigningAlgorithm, SignatureScheme); 3] = [
-    (
-        &ECDSA_P256_SHA256_ASN1,
-        SignatureScheme::ECDSA_NISTP256_SHA256,
-    ),
-    (
-        &ECDSA_P384_SHA384_ASN1,
-        SignatureScheme::ECDSA_NISTP384_SHA384,
-    ),
-    (
-        &ECDSA_P521_SHA512_ASN1,
-        SignatureScheme::ECDSA_NISTP521_SHA512,
-    ),
-];
+static ECDSA_P256_KEYS: EcdsaKeys = EcdsaKeys {
+    algorithm: &ECDSA_P256_SHA256_ASN1,
+    scheme: SignatureScheme::ECDSA_NISTP256_SHA256,
+};
 
-/// Loads a PKCS#8 key as each supported type in turn, naming why each refused it.
-fn load_pkcs8(
-    key_der: pki_types::PrivatePkcs8KeyDer<'static>,
-) -> Result<Arc<dyn sign::SigningKey>, rustls::Error> {
-    let der = key_der.secret_pkcs8_der();
-    let rsa = match RsaKeyPair::from_pkcs8(der) {
-        Ok(rsa) => return Ok(Arc::new(Rsa(Arc::new(rsa)))),
-        Err(err) => err,
-    };
+static ECDSA_P384_KEYS: EcdsaKeys = EcdsaKeys {
+    algorithm: &ECDSA_P384_SHA384_ASN1,
+    scheme: SignatureScheme::ECDSA_NISTP384_SHA384,
+};
 
-    let mut ecdsa = Vec::with_capacity(ECDSA.len());
-    for (algorithm, scheme) in ECDSA {
-        match EcdsaKeyPair::from_pkcs8(algorithm, der) {
-            Ok(key) => return Ok(Arc::new(Ecdsa::new(key, scheme))),
-            Err(err) => ecdsa.push(format!("as {scheme:?}: {err}")),
-        }
-    }
+static ECDSA_P521_KEYS: EcdsaKeys = EcdsaKeys {
+    algorithm: &ECDSA_P521_SHA512_ASN1,
+    scheme: SignatureScheme::ECDSA_NISTP521_SHA512,
+};
 
-    let ed25519 = match Ed25519KeyPair::from_pkcs8(der) {
-        Ok(ed25519) => return Ok(Arc::new(Ed25519(Arc::new(ed25519)))),
-        Err(err) => err,
-    };
-
-    Err(rustls::Error::General(format!(
-        "unsupported PKCS#8 key: as RSA: {rsa}; {}; as Ed25519: {ed25519}",
-        ecdsa.join("; ")
-    )))
+#[derive(Debug)]
+struct EcdsaKeys {
+    algorithm: &'static EcdsaSigningAlgorithm,
+    scheme: SignatureScheme,
 }
 
-fn load_pkcs1(
-    key_der: pki_types::PrivatePkcs1KeyDer<'static>,
-) -> Result<Arc<dyn sign::SigningKey>, rustls::Error> {
-    let rsa = RsaKeyPair::from_pkcs1(key_der.secret_pkcs1_der())
-        .map_err(|err| rustls::Error::General(format!("cannot parse RSA key: {err}")))?;
-
-    Ok(Arc::new(Rsa(Arc::new(rsa))))
+impl Load for EcdsaKeys {
+    fn load(&self, der: &PrivateKeyDer<'_>) -> Option<Result<Arc<dyn SigningKey>, String>> {
+        let key = match der {
+            PrivateKeyDer::Sec1(der) => {
+                EcdsaKeyPair::from_sec1(self.algorithm, der.secret_sec1_der())
+            }
+            PrivateKeyDer::Pkcs8(der) => {
+                EcdsaKeyPair::from_pkcs8(self.algorithm, der.secret_pkcs8_der())
+            }
+            _ => return None,
+        };
+        Some(match key {
+            Ok(key) => Ok(Arc::new(Ecdsa::new(key, self.scheme))),
+            Err(err) => Err(format!("as {:?}: {err}", self.scheme)),
+        })
+    }
 }
 
-/// Loads a SEC1 key on each supported curve in turn, naming why each refused it.
-fn load_sec1(
-    key_der: pki_types::PrivateSec1KeyDer<'static>,
-) -> Result<Arc<dyn sign::SigningKey>, rustls::Error> {
-    let mut errors = Vec::with_capacity(ECDSA.len());
-    for (algorithm, scheme) in ECDSA {
-        match EcdsaKeyPair::from_sec1(algorithm, key_der.secret_sec1_der()) {
-            Ok(key) => return Ok(Arc::new(Ecdsa::new(key, scheme))),
-            Err(err) => errors.push(format!("as {scheme:?}: {err}")),
-        }
-    }
+#[derive(Debug)]
+struct Ed25519Keys;
 
-    Err(rustls::Error::General(format!(
-        "unsupported SEC1 key: {}",
-        errors.join("; ")
-    )))
+impl Load for Ed25519Keys {
+    fn load(&self, der: &PrivateKeyDer<'_>) -> Option<Result<Arc<dyn SigningKey>, String>> {
+        let PrivateKeyDer::Pkcs8(der) = der else {
+            return None;
+        };
+        Some(match Ed25519KeyPair::from_pkcs8(der.secret_pkcs8_der()) {
+            Ok(key) => Ok(Arc::new(Ed25519(Arc::new(key)))),
+            Err(err) => Err(format!("as Ed25519: {err}")),
+        })
+    }
 }
 
 /// The RSA schemes in preference order: PSS over PKCS#1, then the longest hash.
 /// SHA-1 is absent, so it is never chosen.
-const RSA: [(SignatureScheme, &RsaSigningAlgorithm); 6] = [
+const RSA_SCHEMES: [(SignatureScheme, &RsaSigningAlgorithm); 6] = [
     (SignatureScheme::RSA_PSS_SHA512, &RSA_PSS_SHA512),
     (SignatureScheme::RSA_PSS_SHA384, &RSA_PSS_SHA384),
     (SignatureScheme::RSA_PSS_SHA256, &RSA_PSS_SHA256),
@@ -118,7 +172,7 @@ impl sign::SigningKey for Rsa {
         &self,
         schemes: &[SignatureScheme],
     ) -> Option<Box<dyn sign::Signer + 'static>> {
-        let (scheme, padding) = RSA
+        let (scheme, padding) = RSA_SCHEMES
             .into_iter()
             .find(|(scheme, _)| schemes.contains(scheme))?;
         Some(Box::new(RsaSigner {
@@ -277,14 +331,14 @@ impl fmt::Debug for Ed25519 {
 
 #[cfg(test)]
 mod tests {
-    use rustls::crypto::KeyProvider;
-    use rustls::sign::SigningKey;
+    use rustls::pki_types;
+    use rustls::pki_types::pem::PemObject;
 
     use super::*;
 
     #[test]
     fn test_load_signing_key() {
-        let provider = Provider;
+        let provider = ANY_SUPPORTED_TYPE;
 
         // Valid inputs: RSA private keys in PKCS#1 and PKCS#8 DER format
         let rsa2048_pkcs1 = pki_types::PrivateKeyDer::Pkcs1(pki_types::PrivatePkcs1KeyDer::from(
@@ -361,6 +415,87 @@ mod tests {
                 "as ECDSA_NISTP256_SHA256: a key was rejected: mismatched SEC1 public key"
             ),
             "{err}"
+        );
+    }
+
+    // Each key type's provider loads its own type in each encoding it comes
+    // in, and refuses every other type's key.
+    #[test]
+    fn test_key_type_providers() {
+        let pkcs8 = |pem: &[u8]| PrivateKeyDer::from_pem_slice(pem).unwrap();
+        let sec1 = |der: &[u8]| PrivateKeyDer::Sec1(der.to_vec().into());
+        let pkcs1 = |der: &[u8]| PrivateKeyDer::Pkcs1(der.to_vec().into());
+        let types = [
+            (
+                RSA,
+                vec![
+                    pkcs8(include_bytes!("../tests/keys/rsa-2048/end.key")),
+                    pkcs1(include_bytes!("../../rind/src/high/rsa/rsa2048.der")),
+                ],
+            ),
+            (
+                ECDSA_P256,
+                vec![
+                    pkcs8(include_bytes!("../tests/keys/ecdsa-p256/end.key")),
+                    sec1(include_bytes!("../../rind/src/high/ecdsa/secp256r1.der")),
+                ],
+            ),
+            (
+                ECDSA_P384,
+                vec![
+                    pkcs8(include_bytes!("../tests/keys/ecdsa-p384/end.key")),
+                    sec1(include_bytes!("../../rind/src/high/ecdsa/secp384r1.der")),
+                ],
+            ),
+            (
+                ECDSA_P521,
+                vec![
+                    pkcs8(include_bytes!("../tests/keys/ecdsa-p521/end.key")),
+                    sec1(include_bytes!("../../rind/src/high/ecdsa/secp521r1.der")),
+                ],
+            ),
+            (
+                ED25519,
+                vec![pkcs8(include_bytes!("../tests/keys/ed25519/end.key"))],
+            ),
+        ];
+        for (i, (provider, _)) in types.iter().enumerate() {
+            for (j, (_, keys)) in types.iter().enumerate() {
+                for key in keys {
+                    let result = provider.load_private_key(key.clone_key());
+                    assert_eq!(result.is_ok(), i == j, "{provider:?} {key:?}");
+                    assert!(ANY_SUPPORTED_TYPE.load_private_key(key.clone_key()).is_ok());
+                    assert!(NONE.load_private_key(key.clone_key()).is_err());
+                }
+            }
+        }
+    }
+
+    // A combination loads each of its key types and refuses the rest,
+    // naming why each of its providers refused.
+    #[test]
+    fn test_any_of() {
+        static KEYS: AnyOf = AnyOf(&[ECDSA_P256, ED25519]);
+        let pkcs8 = |pem: &[u8]| PrivateKeyDer::from_pem_slice(pem).unwrap();
+        for key in [
+            include_bytes!("../tests/keys/ecdsa-p256/end.key").as_slice(),
+            include_bytes!("../tests/keys/ed25519/end.key"),
+        ] {
+            assert!(KEYS.load_private_key(pkcs8(key)).is_ok());
+        }
+        for key in [
+            include_bytes!("../tests/keys/ecdsa-p384/end.key").as_slice(),
+            include_bytes!("../tests/keys/rsa-2048/end.key"),
+        ] {
+            let err = KEYS.load_private_key(pkcs8(key)).unwrap_err();
+            let err = err.to_string();
+            assert!(err.contains("as ECDSA_NISTP256_SHA256"), "{err}");
+            assert!(err.contains("as Ed25519"), "{err}");
+        }
+        assert!(
+            AnyOf(&[])
+                .load_private_key(pkcs8(include_bytes!("../tests/keys/ed25519/end.key")))
+                .is_err()
         );
     }
 
@@ -443,7 +578,7 @@ mod tests {
 
         // Each chosen scheme signs.
         let message = vec![0u8; 64];
-        for (scheme, _) in RSA {
+        for (scheme, _) in RSA_SCHEMES {
             let signer = rsa.choose_scheme(&[scheme]).unwrap();
             assert_eq!(signer.sign(&message).unwrap().len(), 256);
             println!("{:?}", signer);
@@ -452,14 +587,15 @@ mod tests {
 
     #[test]
     fn test_ecdsa_signing_key() {
-        for (pkcs8, (algorithm, scheme)) in [
+        for (pkcs8, keys) in [
             &include_bytes!("../../rind/src/high/ecdsa/secp256r1.pkcs8.der")[..],
             &include_bytes!("../../rind/src/high/ecdsa/secp384r1.pkcs8.der")[..],
             &include_bytes!("../../rind/src/high/ecdsa/secp521r1.pkcs8.der")[..],
         ]
         .into_iter()
-        .zip(ECDSA)
+        .zip([&ECDSA_P256_KEYS, &ECDSA_P384_KEYS, &ECDSA_P521_KEYS])
         {
+            let EcdsaKeys { algorithm, scheme } = *keys;
             let ecdsa = Ecdsa::new(EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).unwrap(), scheme);
             println!("{:?}", ecdsa);
             assert_eq!(ecdsa.algorithm(), rustls::SignatureAlgorithm::ECDSA);

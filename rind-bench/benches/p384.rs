@@ -1,4 +1,6 @@
 mod criterion;
+#[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+mod ossl_ec;
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
@@ -86,6 +88,28 @@ fn ecdh(c: &mut Criterion) {
             let secret = our_private_key.agree(PUBLIC_KEY).unwrap();
             black_box(secret);
         })
+    });
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    group.bench_function("graviola", |b| {
+        use graviola::key_agreement::p384::{PrivateKey, PublicKey};
+
+        b.iter(|| {
+            let our_private_key = PrivateKey::new_random().unwrap();
+            black_box(our_private_key.public_key_uncompressed());
+
+            let peer = PublicKey::from_x962_uncompressed(PUBLIC_KEY).unwrap();
+            black_box(our_private_key.diffie_hellman(&peer).unwrap());
+        })
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        let mut curve = ossl_ec::Curve::new(
+            openssl::nid::Nid::SECP384R1,
+            openssl::hash::MessageDigest::sha384(),
+        );
+        b.iter(|| curve.ecdh(PUBLIC_KEY));
     });
 }
 
@@ -201,6 +225,29 @@ fn ecdsa_verify(c: &mut Criterion) {
                 .unwrap();
         })
     });
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    group.bench_function("graviola", |b| {
+        use graviola::hashing::Sha384;
+        use graviola::signing::ecdsa::{P384, VerifyingKey};
+
+        b.iter(|| {
+            VerifyingKey::<P384>::from_x962_uncompressed(public_key)
+                .unwrap()
+                .verify::<Sha384>(&[message], signature)
+                .unwrap();
+        })
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        let mut curve = ossl_ec::Curve::new(
+            openssl::nid::Nid::SECP384R1,
+            openssl::hash::MessageDigest::sha384(),
+        );
+        let signature = ossl_ec::Curve::der(signature);
+        b.iter(|| curve.verify(public_key, message, &signature));
+    });
     group.finish();
 
     // A key parsed once, as a JWT verifier holds it, keeps its multiplication table.
@@ -292,6 +339,32 @@ fn ecdsa_sign(c: &mut Criterion) {
         b.iter(|| {
             black_box(signing_key.sign(message).unwrap());
         });
+    });
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    group.bench_function("graviola", |b| {
+        use graviola::hashing::Sha384;
+        use graviola::signing::ecdsa::{P384, SigningKey};
+        let signing_key = SigningKey::<P384>::generate().unwrap();
+        let mut signature = [0u8; 96];
+
+        b.iter(|| {
+            black_box(
+                signing_key
+                    .sign::<Sha384>(&[message], &mut signature)
+                    .unwrap(),
+            );
+        });
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        let curve = ossl_ec::Curve::new(
+            openssl::nid::Nid::SECP384R1,
+            openssl::hash::MessageDigest::sha384(),
+        );
+        let signing_key = curve.generate();
+        b.iter(|| black_box(curve.sign(&signing_key, message)));
     });
 }
 

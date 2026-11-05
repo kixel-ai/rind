@@ -170,7 +170,7 @@ impl HaveVaesAvx2ForAesGcm {
 }
 
 /// Proof that the CPU has AVX and MOVBE, with AES-NI and PCLMULQDQ, which
-/// aws-lc's `aesni_gcm` routine uses.
+/// Vale's AES-GCM uses.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveAvxMovbeForAesGcm(());
 

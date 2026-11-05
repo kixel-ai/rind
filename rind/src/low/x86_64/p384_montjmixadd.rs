@@ -935,6 +935,7 @@ macro_rules! store6 {
 /// A Jacobian triple (x',y',z') represents affine point (x/z^2,y/z^3).
 /// The "mixed" part means that p2 only has x and y coordinates, with the
 /// implicit z coordinate assumed to be the identity.
+#[inline(never)]
 pub(crate) fn p384_montjmixadd(p3: &mut [u64; 18], p1: &[u64; 18], p2: &[u64; 12]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

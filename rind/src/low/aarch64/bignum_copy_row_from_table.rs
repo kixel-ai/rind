@@ -67,6 +67,7 @@ macro_rules! j {
 /// This function is constant-time with respect to the value of `idx`. This is
 /// achieved by reading the whole table and using the bit-masking to get the
 /// `idx`-th row.
+#[inline(never)]
 pub(crate) fn bignum_copy_row_from_table(
     z: &mut [u64],
     table: &[u64],

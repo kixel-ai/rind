@@ -29,6 +29,7 @@ use crate::low::macros::*;
 /// in bitreversed order. The second parameter is expected to point to a
 /// table of constants whose definitions can be found in the mlkem-native
 /// repo or our "tests/test.c".
+#[inline(never)]
 pub(crate) fn mlkem_ntt(a: &mut [i16; 256], qdata: &[i16; 624]) {
     debug_assert!((a.as_mut_ptr() as usize).is_multiple_of(32));
     debug_assert!((qdata.as_ptr() as usize).is_multiple_of(32));

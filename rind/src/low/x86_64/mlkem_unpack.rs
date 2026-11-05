@@ -23,6 +23,7 @@ use crate::low::macros::*;
 /// Input a[256] (signed 16-bit words); output a[256] (signed 16-bit words)
 ///
 /// This accepts an array of 256 16-bit numbers and reorders them.
+#[inline(never)]
 pub(crate) fn mlkem_unpack(a: &mut [i16; 256]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

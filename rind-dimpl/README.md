@@ -1,5 +1,5 @@
 <h1 align="center">rind-dimpl</h1>
-<img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/picture.png">
+<img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png">
 
 [![Latest release](https://img.shields.io/crates/v/rind-dimpl)](https://crates.io/crates/rind-dimpl)
 [![Documentation](https://img.shields.io/docsrs/rind-dimpl)](https://docs.rs/rind-dimpl/)

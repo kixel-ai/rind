@@ -1,5 +1,5 @@
 //! <h1 align="center">rind-instant-acme</h1>
-//! <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/picture.png">
+//! <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png">
 //!
 //! This crate provides a [`CryptoProvider`] for [instant-acme](https://github.com/djc/instant-acme), backed by [rind](https://github.com/moq-dev/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
 //!

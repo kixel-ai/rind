@@ -1,9 +1,10 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use crate::low::ct_compare_bytes;
+use crate::low::{Entry, ct_compare_bytes};
 
 pub(crate) fn ct_equal(a: &[u8], b: &[u8]) -> bool {
+    Entry::assert_held();
     if a.len() != b.len() {
         return false;
     }

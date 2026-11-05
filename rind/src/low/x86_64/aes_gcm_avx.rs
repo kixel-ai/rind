@@ -1,123 +1,313 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! AES-GCM on AVX and MOVBE without VAES, with aws-lc's `aesni_gcm_encrypt`
-//! and `aesni_gcm_decrypt`, imported by `admin/import-aws-lc`, which
-//! interleave AES-CTR and GHASH over six blocks at a time.
+//! AES-GCM on AVX and MOVBE without VAES, with HACL*'s Vale AES-GCM,
+//! imported by `admin/import-hacl`, which interleaves AES-CTR and GHASH over
+//! six blocks at a time as OpenSSL's `aesni_gcm` does.
 //!
-//! aws-lc-verification's SAW proofs cover them as aws-lc builds them, for
-//! AES-256 and whole blocks, not rind's copy. They support in-place use.
+//! Vale proves that `gcm{128,256}_{encrypt,decrypt}_opt` compute AES-GCM, tag
+//! check included, for every AAD and message under 2^32 bytes, in place, from
+//! the counter block of its `compute_iv`, which rind runs for them, and from
+//! round keys and GHASH key powers in the layout its own key expansion and
+//! `keyhash_init` write. rind computes those two itself, since Vale's setup
+//! takes about twice as long, and the tests check them against Vale's byte
+//! for byte. The rest of the Rust here does what EverCrypt's proven Low*
+//! wrapper, `Vale.Wrapper.X64.GCMencryptOpt`, does around the routines: it
+//! copies the partial blocks of the message and AAD to scratch, and picks the
+//! six-block loop's share of the message.
+//!
+//! The layout the proof assumes, from that wrapper's preconditions and
+//! `Vale.AES.OptPublic.hkeys_reqs_pub`:
+//! - the round keys are FIPS 197's, each as its 16 bytes in order, as
+//!   [`HwKey`] holds them;
+//! - the eight GHASH key powers are H, H^2, E_K(0) byte-reversed, H^3, H^4,
+//!   zero, H^5, and H^6, each H^n as Vale's `gf128_power h n` (`shift_key_1`
+//!   of H^n), the form [`ClmulTable`] holds.
 
 use core::arch::x86_64::__m128i;
 
 use super::aes::HwKey;
-use super::aes_gcm_vaes::add_to_counter;
 use super::cpu::HaveAvxMovbeForAesGcm;
-use super::ghash::{ClmulTable, Ghash};
+use super::ghash::ClmulTable;
 
 /// The routines with the GHASH key powers they read.
 pub(crate) struct AvxKernel {
-    htable: [__m128i; 9],
+    hkeys: [__m128i; 8],
     _token: HaveAvxMovbeForAesGcm,
 }
 
 impl AvxKernel {
-    /// The kernel for `table`'s GHASH key.
-    pub(crate) fn new(table: &ClmulTable, token: HaveAvxMovbeForAesGcm) -> Self {
+    /// The kernel for the GHASH key `h`, whose powers `table` holds.
+    pub(crate) fn new(table: &ClmulTable, h: u128, token: HaveAvxMovbeForAesGcm) -> Self {
         Self {
-            htable: table.aws_lc_htable(),
+            hkeys: table.vale_hkeys(h),
             _token: token,
         }
     }
 
-    /// Encrypts (if `ENC`) or decrypts a prefix of `inout` in place, from the
-    /// counter block after `y0`, folding the ciphertext into `ghash`, and
-    /// returns its length, a multiple of 96 bytes: zero below 288 bytes to
-    /// encrypt or 96 to decrypt.
-    pub(crate) fn cipher<const ENC: bool>(
+    /// Encrypts `inout` in place under `nonce`, and returns its tag. `aad`
+    /// and `inout` are each shorter than 2^32 bytes.
+    pub(crate) fn seal(
         &self,
         key: &HwKey,
-        y0: &[u8; 16],
-        ghash: &mut Ghash<'_>,
+        nonce: &[u8; 12],
+        aad: &[u8],
         inout: &mut [u8],
-    ) -> usize {
-        let mut ivec = add_to_counter(y0, 1);
-        let mut xi = ghash.xi();
-        let (inout, len, key, htable) = (
-            inout.as_mut_ptr(),
-            inout.len(),
-            key.as_aes_key(),
-            &self.htable,
-        );
-        // SAFETY: `inout` is `len` readable and writable bytes, which the
-        // routines support in place, `key` is an `AES_KEY`, and `htable` the
-        // nine vectors they read. The token proves the CPU has AES-NI,
-        // PCLMULQDQ, AVX, and MOVBE.
-        let done = unsafe {
-            match ENC {
-                true => aesni_gcm_encrypt(inout, inout, len, key, &mut ivec, htable, &mut xi),
-                false => aesni_gcm_decrypt(inout, inout, len, key, &mut ivec, htable, &mut xi),
-            }
+    ) -> [u8; 16] {
+        let mut tag = [0u8; 16];
+        self.cipher::<true>(key, nonce, aad, inout, &mut tag);
+        tag
+    }
+
+    /// Decrypts `inout` in place under `nonce`, and returns whether `tag` is
+    /// its tag. `aad` and `inout` are each shorter than 2^32 bytes.
+    pub(crate) fn open(
+        &self,
+        key: &HwKey,
+        nonce: &[u8; 12],
+        aad: &[u8],
+        inout: &mut [u8],
+        tag: &[u8; 16],
+    ) -> bool {
+        let mut tag = *tag;
+        self.cipher::<false>(key, nonce, aad, inout, &mut tag) == 0
+    }
+
+    /// Runs the encrypting or decrypting routine, which writes the tag to, or
+    /// checks it against, `tag`, and returns the decrypting one's result.
+    fn cipher<const ENC: bool>(
+        &self,
+        key: &HwKey,
+        nonce: &[u8; 12],
+        aad: &[u8],
+        inout: &mut [u8],
+        tag: &mut [u8; 16],
+    ) -> u64 {
+        debug_assert!(u32::try_from(aad.len()).is_ok() && u32::try_from(inout.len()).is_ok());
+        let hkeys = self.hkeys.as_ptr().cast::<u8>();
+
+        // The counter block, which `compute_iv` reads a 96-bit nonce from
+        // and writes over.
+        let mut iv = [0u8; 16];
+        iv[..12].copy_from_slice(nonce);
+        let iv = iv.as_mut_ptr();
+        // SAFETY: `nonce` is 12 bytes, `iv` 16 writable ones, and `hkeys`
+        // the GHASH key powers. The token proves the CPU has PCLMULQDQ and
+        // AVX.
+        unsafe { compute_iv_stdcall(nonce.as_ptr(), 12, 0, iv, iv, hkeys) };
+
+        // The AAD's and message's partial blocks, then the routines' own.
+        let mut scratch = [0u8; 16 + 16 + 144];
+        let (aad_partial, rest) = scratch.split_at_mut(16);
+        let (partial, scratch) = rest.split_at_mut(16);
+        let aad_whole = aad.len() / 16 * 16;
+        aad_partial[..aad.len() - aad_whole].copy_from_slice(&aad[aad_whole..]);
+        let len = inout.len();
+        let (blocks, tail) = inout.split_at_mut(len / 16 * 16);
+        partial[..tail.len()].copy_from_slice(tail);
+
+        // The six-block loop's share, which must be 18 blocks or more to
+        // encrypt, or 6 to decrypt.
+        let six = match blocks.len() / 96 * 6 {
+            n if n >= if ENC { 18 } else { 6 } => n,
+            _ => 0,
         };
-        ghash.set_xi(&xi);
-        done
+        let ones = blocks.len() / 16 - six;
+        let blocks = blocks.as_mut_ptr();
+        let routine: Aead = match (ENC, key) {
+            (true, HwKey::Aes128(_)) => gcm128_encrypt_opt,
+            (true, HwKey::Aes256(_)) => gcm256_encrypt_opt,
+            (false, HwKey::Aes128(_)) => gcm128_decrypt_opt,
+            (false, HwKey::Aes256(_)) => gcm256_decrypt_opt,
+        };
+        // SAFETY: the routine reads `aad`'s whole blocks and `aad_partial`,
+        // and reads and writes in place `inout`'s whole blocks, the first
+        // `six` in its six-block loop and the `ones` after them one at a
+        // time, then `partial`. `key` is its round keys, `iv` the counter
+        // block, and `hkeys` the GHASH key powers; `scratch` is the 144 bytes
+        // it may write, and `tag` the 16 it writes or reads. The token proves
+        // the CPU has AES-NI, PCLMULQDQ, AVX, and MOVBE.
+        let result = unsafe {
+            let rest = blocks.add(six * 16);
+            routine(
+                aad.as_ptr(),
+                aad.len() as u64,
+                (aad_whole / 16) as u64,
+                key.as_aes_key(),
+                iv,
+                hkeys,
+                aad_partial.as_ptr(),
+                blocks,
+                blocks,
+                six as u64,
+                rest,
+                rest,
+                ones as u64,
+                partial.as_mut_ptr(),
+                len as u64,
+                scratch.as_mut_ptr(),
+                tag.as_mut_ptr(),
+            )
+        };
+        let tail_len = tail.len();
+        tail.copy_from_slice(&partial[..tail_len]);
+        result
     }
 }
 
-/// The routines' constants, which they load at offsets from the first.
-#[repr(C, align(64))]
-struct Table([u8; 144]);
-
-static BSWAP_MASK: Table = Table(include!("aws_lc/aesni-gcm-x86_64.bswap_mask.rs"));
-
-/// Declares a routine as a naked function over aws-lc's text, binding the
-/// table and helpers through the `sym` operands listed. Each takes the System
-/// V ABI on every OS, since its text is aws-lc's ELF and Mach-O flavors.
+/// Declares a routine as a naked function over Vale's text. Each takes the
+/// System V ABI on every OS, since its text is Vale's ELF and Mach-O flavors.
 macro_rules! routine {
-    ($name:ident($($arg:ident: $ty:ty),*) $(-> $ret:ty)? { $($op:ident = $sym:ident),* }) => {
+    ($name:ident($($arg:ident: $ty:ty),*) $(-> $ret:ty)?) => {
         #[unsafe(naked)]
         unsafe extern "sysv64" fn $name($($arg: $ty),*) $(-> $ret)? {
             #[cfg(not(target_vendor = "apple"))]
             core::arch::naked_asm!(
-                include_str!(concat!("aws_lc/", stringify!($name), ".linux.s"))
-                $(, $op = sym $sym)*,
+                include_str!(concat!("hacl/", stringify!($name), ".linux.s")),
                 options(att_syntax),
             );
             #[cfg(target_vendor = "apple")]
             core::arch::naked_asm!(
-                include_str!(concat!("aws_lc/", stringify!($name), ".apple.s"))
-                $(, $op = sym $sym)*,
+                include_str!(concat!("hacl/", stringify!($name), ".apple.s")),
                 options(att_syntax),
             );
         }
     };
 }
 
-routine!(aesni_gcm_encrypt(
-    input: *const u8,
-    output: *mut u8,
-    len: usize,
-    key: *const u8,
-    ivec: *mut [u8; 16],
-    htable: *const [__m128i; 9],
-    xi: *mut [u8; 16]
-) -> usize {
-    bswap_mask = BSWAP_MASK,
-    aesni_ctr32_6x = aesni_ctr32_6x,
-    aesni_ctr32_ghash_6x = aesni_ctr32_ghash_6x
-});
-routine!(aesni_gcm_decrypt(
-    input: *const u8,
-    output: *mut u8,
-    len: usize,
-    key: *const u8,
-    ivec: *mut [u8; 16],
-    htable: *const [__m128i; 9],
-    xi: *mut [u8; 16]
-) -> usize {
-    bswap_mask = BSWAP_MASK,
-    aesni_ctr32_ghash_6x = aesni_ctr32_ghash_6x
-});
-// Helpers with aws-lc's own register convention, which only the routines
-// above call.
-routine!(aesni_ctr32_6x() {});
-routine!(aesni_ctr32_ghash_6x() {});
+// Vale's own setup, which the tests check rind's against.
+#[cfg(test)]
+routine!(aes128_key_expansion(key: *const u8, round_keys: *mut u8));
+#[cfg(test)]
+routine!(aes256_key_expansion(key: *const u8, round_keys: *mut u8));
+#[cfg(test)]
+routine!(aes128_keyhash_init(round_keys: *const u8, hkeys: *mut u8));
+#[cfg(test)]
+routine!(aes256_keyhash_init(round_keys: *const u8, hkeys: *mut u8));
+routine!(compute_iv_stdcall(
+    iv: *const u8,
+    iv_len: u64,
+    iv_blocks: u64,
+    j0: *mut u8,
+    extra: *const u8,
+    hkeys: *const u8
+));
+
+/// The AEAD routines' arguments: the AAD, its length and whole blocks, the
+/// round keys, the counter block, the GHASH key powers, and the AAD's
+/// partial block; the six-block loop's input, output, and blocks, then the
+/// one-block loop's; the message's partial block, the message's length,
+/// scratch, and the tag. Decryption returns zero if the tag matches.
+type Aead = unsafe extern "sysv64" fn(
+    *const u8,
+    u64,
+    u64,
+    *const u8,
+    *mut u8,
+    *const u8,
+    *const u8,
+    *mut u8,
+    *mut u8,
+    u64,
+    *mut u8,
+    *mut u8,
+    u64,
+    *mut u8,
+    u64,
+    *mut u8,
+    *mut u8,
+) -> u64;
+
+macro_rules! aead {
+    ($($name:ident),*) => {$(
+        routine!($name(
+            aad: *const u8,
+            aad_len: u64,
+            aad_blocks: u64,
+            round_keys: *const u8,
+            iv: *mut u8,
+            hkeys: *const u8,
+            aad_partial: *const u8,
+            six_in: *mut u8,
+            six_out: *mut u8,
+            six_blocks: u64,
+            one_in: *mut u8,
+            one_out: *mut u8,
+            one_blocks: u64,
+            partial: *mut u8,
+            len: u64,
+            scratch: *mut u8,
+            tag: *mut u8
+        ) -> u64);
+    )*};
+}
+
+aead!(
+    gcm128_encrypt_opt,
+    gcm256_encrypt_opt,
+    gcm128_decrypt_opt,
+    gcm256_decrypt_opt
+);
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use crate::low::x86_64::adx_mux::tests::Rng;
+    use crate::low::x86_64::aes::AesKey;
+    use crate::low::x86_64::cpu::HaveAesHardware;
+
+    // rind's round keys and GHASH key powers are the bytes Vale's own setup
+    // writes, the layout its proof assumes: for each key size, the all-zero
+    // and all-ones keys and random ones, whose H spans both values of the
+    // top bit the multiply by x carries out.
+    #[test]
+    fn setup_matches_vale() {
+        let (Some(token), Some(hw)) = (HaveAvxMovbeForAesGcm::check(), HaveAesHardware::check())
+        else {
+            return;
+        };
+        let mut rng = Rng(1);
+        for key_len in [16, 32] {
+            let mut keys = vec![vec![0u8; key_len], vec![0xff; key_len]];
+            keys.extend((0..64).map(|_| (0..key_len).map(|_| rng.next() as u8).collect()));
+            for key in keys {
+                let key_schedule = AesKey::new(&key);
+                let AesKey::Hw(hw_key) = &key_schedule else {
+                    unreachable!()
+                };
+                let mut vale_keys = [0u8; 240];
+                let mut vale_hkeys = [0u8; 128];
+                // SAFETY: `key` is `key_len` readable bytes, `vale_keys` the
+                // round keys' 16 * (rounds + 1) bytes, and `vale_hkeys` the
+                // 128 bytes `keyhash_init` writes. The token proves the CPU
+                // has AES-NI, PCLMULQDQ, and AVX.
+                unsafe {
+                    let (rk, hk) = (vale_keys.as_mut_ptr(), vale_hkeys.as_mut_ptr());
+                    match key_len {
+                        16 => {
+                            aes128_key_expansion(key.as_ptr(), rk);
+                            aes128_keyhash_init(rk, hk);
+                        }
+                        _ => {
+                            aes256_key_expansion(key.as_ptr(), rk);
+                            aes256_keyhash_init(rk, hk);
+                        }
+                    }
+                }
+                let round_keys_len = 16 * (key_len / 4 + 7);
+                // SAFETY: `hw_key` begins with its round keys.
+                let ours =
+                    unsafe { core::slice::from_raw_parts(hw_key.as_aes_key(), round_keys_len) };
+                assert_eq!(ours, &vale_keys[..round_keys_len], "{key:02x?}");
+
+                let mut h = [0u8; 16];
+                hw_key.encrypt_block(&mut h);
+                let h = u128::from_be_bytes(h);
+                let kernel = AvxKernel::new(&ClmulTable::new(h, hw), h, token);
+                // SAFETY: any eight vectors are 128 bytes.
+                let ours = unsafe { core::mem::transmute::<[__m128i; 8], [u8; 128]>(kernel.hkeys) };
+                assert_eq!(ours, vale_hkeys, "{key:02x?}");
+            }
+        }
+    }
+}

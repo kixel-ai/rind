@@ -35,6 +35,8 @@ pub(crate) mod bignum_eq;
 pub(crate) mod chacha20;
 mod chacha_armv4;
 pub(crate) mod cpu;
+#[cfg(test)]
+pub(crate) mod ct_qemu;
 pub(crate) mod curve25519;
 pub(crate) mod ghashv8_armx;
 pub(crate) mod keccak1600_armv4;

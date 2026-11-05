@@ -53,6 +53,21 @@ fn rsa2048_pkcs1_sha256_verify(c: &mut Criterion) {
             black_box(peer_public_key.verify(message, signature)).unwrap();
         })
     });
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    group.bench_function("graviola", |b| {
+        use graviola::signing::rsa::VerifyingKey;
+
+        b.iter(|| {
+            let peer_public_key = VerifyingKey::from_pkcs1_der(public_key).unwrap();
+            black_box(peer_public_key.verify_pkcs1_sha256(signature, message)).unwrap();
+        })
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        b.iter(|| openssl_verify(public_key, false, message, signature));
+    });
     group.finish();
 
     // A key parsed once, as a JWT verifier holds it, keeps its setup.
@@ -167,6 +182,76 @@ fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
             black_box(peer_public_key.verify(message, signature)).unwrap();
         })
     });
+
+    group.bench_function("rustcrypto", |b| {
+        use rsa::pkcs1::DecodeRsaPublicKey;
+        use rsa::signature::Verifier;
+
+        b.iter(|| {
+            let peer_public_key = rsa::pss::VerifyingKey::<sha2::Sha256>::new(
+                rsa::RsaPublicKey::from_pkcs1_der(public_key).unwrap(),
+            );
+            let signature = rsa::pss::Signature::try_from(signature).unwrap();
+            black_box(peer_public_key.verify(message, &signature)).unwrap();
+        });
+    });
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    group.bench_function("graviola", |b| {
+        use graviola::signing::rsa::VerifyingKey;
+
+        b.iter(|| {
+            let peer_public_key = VerifyingKey::from_pkcs1_der(public_key).unwrap();
+            black_box(peer_public_key.verify_pss_sha256(signature, message)).unwrap();
+        })
+    });
+
+    // libcrux takes the bare modulus and assumes the exponent 65537.
+    group.bench_function("libcrux", |b| {
+        use rsa::pkcs1::DecodeRsaPublicKey;
+        use rsa::traits::PublicKeyParts;
+        let n = rsa::RsaPublicKey::from_pkcs1_der(public_key)
+            .unwrap()
+            .n_bytes();
+        let signature = signature.try_into().unwrap();
+
+        b.iter(|| {
+            let peer_public_key =
+                libcrux_rsa::PublicKey::<256>::from(<[u8; 256]>::try_from(&*n).unwrap());
+            libcrux_rsa::verify_2048(
+                libcrux_rsa::DigestAlgorithm::Sha2_256,
+                &peer_public_key,
+                message,
+                32,
+                signature,
+            )
+            .unwrap();
+        })
+    });
+
+    #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+    group.bench_function("openssl", |b| {
+        b.iter(|| openssl_verify(public_key, true, message, signature));
+    });
+}
+
+/// Parses a PKCS#1 public key and verifies a PKCS#1 v1.5 or PSS signature
+/// over SHA-256 with it, through OpenSSL.
+#[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+fn openssl_verify(public_key: &[u8], pss: bool, message: &[u8], signature: &[u8]) {
+    use openssl::hash::MessageDigest;
+    use openssl::pkey::PKey;
+    use openssl::rsa::{Padding, Rsa};
+    use openssl::sign::{RsaPssSaltlen, Verifier};
+    let key = PKey::from_rsa(Rsa::public_key_from_der_pkcs1(public_key).unwrap()).unwrap();
+    let mut verifier = Verifier::new(MessageDigest::sha256(), &key).unwrap();
+    if pss {
+        verifier.set_rsa_padding(Padding::PKCS1_PSS).unwrap();
+        verifier
+            .set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)
+            .unwrap();
+    }
+    assert!(verifier.verify_oneshot(signature, message).unwrap());
 }
 
 /// Verification at the other sizes, whose moduli take a different Montgomery

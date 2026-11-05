@@ -6,8 +6,7 @@
 //! Its collision resistance is broken, so it must not be used where that
 //! matters, such as in signatures.
 
-use crate::low::cpu::verify_cpu_features;
-use crate::low::{Blockwise, compress_padded};
+use crate::low::{Blockwise, Entry, UpdateBlocks, pad, split_tail};
 
 /// SHA1's chaining value after a whole number of blocks.
 ///
@@ -29,20 +28,24 @@ impl Sha1State {
         }
     }
 
-    /// Add `blocks`, a whole number of blocks, to the hash computation.
-    pub(crate) fn update_blocks(&mut self, blocks: &[u8]) {
-        debug_assert!(blocks.len().is_multiple_of(Sha1Context::BLOCK_SZ));
-        if !blocks.is_empty() {
-            Self::compress(&mut self.h, blocks);
-            self.nblocks = self
-                .nblocks
-                .saturating_add((blocks.len() / Sha1Context::BLOCK_SZ) as u64);
-        }
+    fn compress(h: &mut [u32; 5], blocks: &[u8]) {
+        Entry::assert_held();
+        crate::low::sha1_compress_blocks(h, blocks);
     }
 
-    fn compress(h: &mut [u32; 5], blocks: &[u8]) {
-        verify_cpu_features();
-        crate::low::sha1_compress_blocks(h, blocks);
+    /// Compresses the end of `message`, padded and closed by `length`.
+    // Out of line, so `finish_with` stays small enough to inline and write
+    // the digest in place. Out of line itself, it returns the digest through
+    // memory, and its caller's copy into a `Digest` loads across its stores,
+    // which misses store forwarding.
+    #[inline(never)]
+    fn compress_padded(h: &mut [u32; 5], message: &[u8], length: [u8; 8]) {
+        let (blocks, rest) = split_tail::<{ Sha1Context::BLOCK_SZ }, 8>(message);
+        if !blocks.is_empty() {
+            Self::compress(h, blocks);
+        }
+        let mut last = [[0u8; Sha1Context::BLOCK_SZ]; 2];
+        Self::compress(h, pad(rest, length, &mut last));
     }
 
     /// The hash of the input so far followed by `message`, leaving this state as it was.
@@ -59,16 +62,30 @@ impl Sha1State {
         // two stores, which the SHA extensions' 16-byte load of it then
         // waits on instead of forwarding.
         let mut h = self.h;
-        compress_padded::<BLOCK_SZ, _>(message, bits.to_be_bytes(), |blocks| {
-            Self::compress(&mut h, blocks)
-        });
+        Self::compress_padded(&mut h, message, bits.to_be_bytes());
 
+        // Indexes rather than zipping `as_chunks_mut`, which Aeneas cannot
+        // translate, so `proofs/` can prove the encoding.
         let mut r = [0u8; Sha1Context::OUTPUT_SZ];
-        let (chunks, _) = r.as_chunks_mut::<4>();
-        for (out, word) in chunks.iter_mut().zip(h.iter()) {
-            out.copy_from_slice(&word.to_be_bytes());
+        for (i, word) in h.iter().enumerate() {
+            r[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
         }
         r
+    }
+}
+
+impl UpdateBlocks for Sha1State {
+    fn update_blocks(&mut self, blocks: &[u8]) {
+        debug_assert!(blocks.len().is_multiple_of(Sha1Context::BLOCK_SZ));
+        if !blocks.is_empty() {
+            // `digest::Context::update` and `hmac::Context::update` leave
+            // entering to here.
+            let _entry = Entry::new_secret();
+            Self::compress(&mut self.h, blocks);
+            self.nblocks = self
+                .nblocks
+                .saturating_add((blocks.len() / Sha1Context::BLOCK_SZ) as u64);
+        }
     }
 }
 
@@ -95,8 +112,7 @@ impl Sha1Context {
 
     /// Add `bytes` to the ongoing hash computation.
     pub(crate) fn update(&mut self, bytes: &[u8]) {
-        self.blockwise
-            .update(bytes, |blocks| self.state.update_blocks(blocks));
+        self.blockwise.update(bytes, &mut self.state);
     }
 
     /// Complete the SHA1 computation, returning the hash output.

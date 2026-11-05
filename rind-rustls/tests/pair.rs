@@ -64,6 +64,50 @@ fn all_suites() {
 }
 
 #[test]
+fn lean_provider() {
+    let lean = Arc::new(lean());
+    let full = Arc::new(aws_lc_rs_provider::default_provider());
+    let key_type = KeyType::EcdsaP256;
+    for (client, server) in [
+        (lean.clone(), lean.clone()),
+        (lean.clone(), full.clone()),
+        (full, lean.clone()),
+    ] {
+        let kind = exercise(
+            client_config(client, key_type),
+            server_config(server, key_type),
+        );
+        assert_eq!(kind, HandshakeKind::Full);
+    }
+
+    // It signs with no other key type.
+    let p384 = KeyType::EcdsaP384;
+    assert!(CertifiedKey::from_der(p384.cert_chain(), p384.key(), &lean).is_err());
+}
+
+/// One TLS 1.3 suite, X25519, and ECDSA P-256 alone.
+fn lean() -> CryptoProvider {
+    use rind_rustls::{cipher_suite, kx_group, sign, verify};
+    use rustls::SignatureScheme;
+    use rustls::crypto::WebPkiSupportedAlgorithms;
+
+    static P256: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
+        all: &[verify::ECDSA_P256_SHA256],
+        mapping: &[(
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+            &[verify::ECDSA_P256_SHA256],
+        )],
+    };
+    CryptoProvider {
+        cipher_suites: vec![cipher_suite::TLS13_AES_128_GCM_SHA256],
+        kx_groups: vec![kx_group::X25519],
+        signature_verification_algorithms: P256,
+        key_provider: sign::ECDSA_P256,
+        ..rind_rustls::empty_provider().unwrap()
+    }
+}
+
+#[test]
 fn all_key_exchanges() {
     let tls13 = rind_rustls::cipher_suite::TLS13_AES_128_GCM_SHA256;
     let tls12 = rind_rustls::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256;

@@ -59,6 +59,7 @@ macro_rules! d {
 /// Negate modulo p_25519, z := (-x) mod p_25519, assuming x reduced
 ///
 /// Input x[4]; output z[4]
+#[inline(never)]
 pub(crate) fn bignum_neg_p25519(z: &mut [u64; 4], x: &[u64; 4]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

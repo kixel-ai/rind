@@ -1,3 +1,20 @@
 target/
 .direnv/
 .tmp/
+admin/build-cost-fixtures/*/Cargo.lock
+proofs/.lake/
+# What admin/prove writes.
+proofs/Rind/*/Types.lean
+proofs/Rind/*/Funs.lean
+proofs/Rind/Aarch64/X25519.lean
+proofs/Rind/Aarch64/Dispatch.lean
+proofs/Rind/Aarch64/DigestAlgorithm.lean
+proofs/Rind/Aarch64/DigestDispatch.lean
+proofs/Rind/Aarch64/Sha512.lean
+proofs/Rind/Aarch64/ChaCha20.lean
+proofs/Rind/Aarch64/Blockwise.lean
+proofs/Rind/Aarch64/Sha.lean
+proofs/Rind/Aarch64/Hmac.lean
+proofs/Rind/Aarch64/HashAxioms.lean
+proofs/Rind/Aarch64/SignatureDispatch.lean
+proofs/Rind/Aarch64/Ed25519.lean

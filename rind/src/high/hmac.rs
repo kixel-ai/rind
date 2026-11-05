@@ -5,10 +5,13 @@
 //!
 //! HMAC is standardized in [FIPS 198](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.198-1.pdf).
 
+use core::fmt;
+
 use super::digest::Digest;
 use super::hash::{Hash, HashContext, HashState, LegacySha1, Sha256, Sha384, Sha512};
 use crate::Error;
-use crate::low::{Zeroable, zeroise_value};
+use crate::low::{Entry, Zeroable, ZeroableRef, zeroise_value};
+use crate::mid::{sha1, sha2};
 
 /// HMAC's keyed hash states, each one key block in, using hash function `H`.
 pub(crate) struct HmacKey<H: Hash> {
@@ -103,8 +106,13 @@ impl<H: Hash> Hmac<H> {
 }
 
 /// An HMAC algorithm, chosen by one of this module's constants.
-#[derive(Debug)]
-pub struct Algorithm(Id);
+pub struct Algorithm {
+    id: Id,
+    tag_len: usize,
+    // The only path to the hash's code, so a binary links only the hashes
+    // whose algorithms it names.
+    key: fn(&[u8]) -> Keyed,
+}
 
 // Only the digests HMAC offers, so a key is made for every value.
 #[derive(Clone, Copy, Debug)]
@@ -118,13 +126,13 @@ enum Id {
 impl Algorithm {
     /// The length of this algorithm's tag, in bytes.
     pub fn tag_len(&self) -> usize {
-        match self.0 {
-            Id::Sha1 => LegacySha1::ALGORITHM,
-            Id::Sha256 => Sha256::ALGORITHM,
-            Id::Sha384 => Sha384::ALGORITHM,
-            Id::Sha512 => Sha512::ALGORITHM,
-        }
-        .output_len()
+        self.tag_len
+    }
+}
+
+impl fmt::Debug for Algorithm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Algorithm").field(&self.id).finish()
     }
 }
 
@@ -132,39 +140,56 @@ impl Algorithm {
 ///
 /// HMAC does not rely on SHA-1's broken collision resistance, and STUN
 /// (RFC 8489) and SRTP (RFC 3711) still require it.
-pub static HMAC_SHA1: Algorithm = Algorithm(Id::Sha1);
+pub static HMAC_SHA1: Algorithm = Algorithm {
+    id: Id::Sha1,
+    tag_len: sha1::Sha1Context::OUTPUT_SZ,
+    key: Keying::<LegacySha1>::with_key,
+};
 
 /// HMAC-SHA256.
-pub static HMAC_SHA256: Algorithm = Algorithm(Id::Sha256);
+pub static HMAC_SHA256: Algorithm = Algorithm {
+    id: Id::Sha256,
+    tag_len: sha2::Sha256Context::OUTPUT_SZ,
+    key: Keying::<Sha256>::with_key,
+};
 
 /// HMAC-SHA384.
-pub static HMAC_SHA384: Algorithm = Algorithm(Id::Sha384);
+pub static HMAC_SHA384: Algorithm = Algorithm {
+    id: Id::Sha384,
+    tag_len: sha2::Sha384Context::OUTPUT_SZ,
+    key: Keying::<Sha384>::with_key,
+};
 
 /// HMAC-SHA512.
-pub static HMAC_SHA512: Algorithm = Algorithm(Id::Sha512);
+pub static HMAC_SHA512: Algorithm = Algorithm {
+    id: Id::Sha512,
+    tag_len: sha2::Sha512Context::OUTPUT_SZ,
+    key: Keying::<Sha512>::with_key,
+};
 
 /// An HMAC key, keyed once and reused for every message; wiped on drop.
 #[derive(Clone)]
-pub struct Key(pub(super) Keyed);
+pub struct Key(Keyed);
 
 impl Key {
     /// Keys `algorithm` with `key_value`, which may be any length.
     pub fn new(algorithm: &'static Algorithm, key_value: &[u8]) -> Self {
-        Self(match algorithm.0 {
-            Id::Sha1 => Keyed::Sha1(HmacKey::new(key_value)),
-            Id::Sha256 => Keyed::Sha256(HmacKey::new(key_value)),
-            Id::Sha384 => Keyed::Sha384(HmacKey::new(key_value)),
-            Id::Sha512 => Keyed::Sha512(HmacKey::new(key_value)),
-        })
+        let _entry = Entry::new_secret();
+        Self((algorithm.key)(key_value))
+    }
+
+    /// The tag of `data`, for callers that have entered.
+    pub(super) fn tag(&self, data: &[u8]) -> Digest {
+        self.0.sign(data)
     }
 
     /// The algorithm this key was made for.
     pub fn algorithm(&self) -> &'static Algorithm {
-        match self.0 {
-            Keyed::Sha1(_) => &HMAC_SHA1,
-            Keyed::Sha256(_) => &HMAC_SHA256,
-            Keyed::Sha384(_) => &HMAC_SHA384,
-            Keyed::Sha512(_) => &HMAC_SHA512,
+        match &self.0 {
+            Keyed::Sha1(key) => key.ops.get().algorithm,
+            Keyed::Sha256(key) => key.ops.get().algorithm,
+            Keyed::Sha384(key) => key.ops.get().algorithm,
+            Keyed::Sha512(key) => key.ops.get().algorithm,
         }
     }
 }
@@ -179,15 +204,17 @@ impl Context {
     /// Starts a tag computation under `key`.
     pub fn with_key(key: &Key) -> Self {
         Self(match &key.0 {
-            Keyed::Sha1(key) => Streaming::Sha1(key.start()),
-            Keyed::Sha256(key) => Streaming::Sha256(key.start()),
-            Keyed::Sha384(key) => Streaming::Sha384(key.start()),
-            Keyed::Sha512(key) => Streaming::Sha512(key.start()),
+            Keyed::Sha1(key) => key.start(),
+            Keyed::Sha256(key) => key.start(),
+            Keyed::Sha384(key) => key.start(),
+            Keyed::Sha512(key) => key.start(),
         })
     }
 
     /// Adds `data` to the message.
     pub fn update(&mut self, data: &[u8]) {
+        // The compressors enter instead, so an update that only buffers skips
+        // the cost of enabling DIT.
         match &mut self.0 {
             Streaming::Sha1(hmac) => hmac.update(data),
             Streaming::Sha256(hmac) => hmac.update(data),
@@ -198,17 +225,24 @@ impl Context {
 
     /// Returns the tag of the message.
     pub fn sign(self) -> Tag {
-        Tag(match &self.0 {
+        let _entry = Entry::new_secret();
+        Tag(self.finish())
+    }
+
+    /// The tag of the message so far, for callers that have entered.
+    pub(super) fn finish(&self) -> Digest {
+        match &self.0 {
             Streaming::Sha1(hmac) => hmac.finish(),
             Streaming::Sha256(hmac) => hmac.finish(),
             Streaming::Sha384(hmac) => hmac.finish(),
             Streaming::Sha512(hmac) => hmac.finish(),
-        })
+        }
     }
 }
 
 /// Returns the tag of `data` under `key`.
 pub fn sign(key: &Key, data: &[u8]) -> Tag {
+    let _entry = Entry::new_secret();
     Tag(key.0.sign(data))
 }
 
@@ -216,6 +250,7 @@ pub fn sign(key: &Key, data: &[u8]) -> Tag {
 ///
 /// Fails with [`Error::BadSignature`] otherwise, including for a truncated tag.
 pub fn verify(key: &Key, data: &[u8], tag: &[u8]) -> Result<(), Error> {
+    let _entry = Entry::new_secret();
     match key.0.sign(data).ct_equal(tag) {
         true => Ok(()),
         false => Err(Error::BadSignature),
@@ -232,15 +267,16 @@ impl AsRef<[u8]> for Tag {
     }
 }
 
-// All-zero is the `Sha1` variant with all-zero hash states, which
-// `Zeroable` allows: every field is a plain integer or byte array.
+// All-zero is the `Sha1` variant with all-zero hash states and a `None`
+// `ZeroableRef`, which `Zeroable` allows: every other field is a plain integer
+// or byte array.
 #[derive(Clone)]
 #[repr(u8)]
-pub(super) enum Keyed {
-    Sha1(HmacKey<LegacySha1>),
-    Sha256(HmacKey<Sha256>),
-    Sha384(HmacKey<Sha384>),
-    Sha512(HmacKey<Sha512>),
+enum Keyed {
+    Sha1(Keying<LegacySha1>),
+    Sha256(Keying<Sha256>),
+    Sha384(Keying<Sha384>),
+    Sha512(Keying<Sha512>),
 }
 
 impl Keyed {
@@ -268,10 +304,10 @@ impl Zeroable for Keyed {}
 #[derive(Clone)]
 #[repr(u8)]
 enum Streaming {
-    Sha1(Hmac<LegacySha1>),
-    Sha256(Hmac<Sha256>),
-    Sha384(Hmac<Sha384>),
-    Sha512(Hmac<Sha512>),
+    Sha1(Tagging<LegacySha1>),
+    Sha256(Tagging<Sha256>),
+    Sha384(Tagging<Sha384>),
+    Sha512(Tagging<Sha512>),
 }
 
 // Neither the hash context nor the keyed outer state wipes itself.
@@ -282,6 +318,129 @@ impl Drop for Streaming {
 }
 
 impl Zeroable for Streaming {}
+
+/// A hash HMAC offers, and its places in [`Keyed`] and [`Streaming`].
+trait HmacHash: Hash + Sized + 'static {
+    const HMAC: &'static Algorithm;
+
+    fn keyed(key: Keying<Self>) -> Keyed;
+
+    fn streaming(hmac: Tagging<Self>) -> Streaming;
+}
+
+macro_rules! hmac_hash {
+    ($hash:ident, $variant:ident, $algorithm:ident) => {
+        impl HmacHash for $hash {
+            const HMAC: &'static Algorithm = &$algorithm;
+
+            fn keyed(key: Keying<Self>) -> Keyed {
+                Keyed::$variant(key)
+            }
+
+            fn streaming(hmac: Tagging<Self>) -> Streaming {
+                Streaming::$variant(hmac)
+            }
+        }
+    };
+}
+
+hmac_hash!(LegacySha1, Sha1, HMAC_SHA1);
+hmac_hash!(Sha256, Sha256, HMAC_SHA256);
+hmac_hash!(Sha384, Sha384, HMAC_SHA384);
+hmac_hash!(Sha512, Sha512, HMAC_SHA512);
+
+/// A key with its hash's code, which it reaches only through `ops`:
+/// matching on [`Keyed`] then names no hash's code.
+struct Keying<H: HmacHash> {
+    key: HmacKey<H>,
+    ops: ZeroableRef<KeyOps<H>>,
+}
+
+struct KeyOps<H: HmacHash> {
+    algorithm: &'static Algorithm,
+    sign: fn(&HmacKey<H>, &[u8]) -> Digest,
+    start: fn(&HmacKey<H>) -> Streaming,
+}
+
+// Not derived, as for `HmacKey`.
+impl<H: HmacHash> Clone for Keying<H> {
+    fn clone(&self) -> Self {
+        Self {
+            key: self.key.clone(),
+            ops: self.ops,
+        }
+    }
+}
+
+impl<H: HmacHash> Keying<H> {
+    fn with_key(key: &[u8]) -> Keyed {
+        H::keyed(Self {
+            key: HmacKey::new(key),
+            ops: ZeroableRef::new(
+                const {
+                    &KeyOps {
+                        algorithm: H::HMAC,
+                        sign: HmacKey::sign,
+                        start: Tagging::start,
+                    }
+                },
+            ),
+        })
+    }
+
+    fn sign(&self, data: &[u8]) -> Digest {
+        (self.ops.get().sign)(&self.key, data)
+    }
+
+    fn start(&self) -> Streaming {
+        (self.ops.get().start)(&self.key)
+    }
+}
+
+/// An in-progress computation with its hash's code, as [`Keying`].
+struct Tagging<H: HmacHash> {
+    hmac: Hmac<H>,
+    ops: ZeroableRef<TagOps<H>>,
+}
+
+struct TagOps<H: HmacHash> {
+    update: fn(&mut Hmac<H>, &[u8]),
+    finish: fn(&Hmac<H>) -> Digest,
+}
+
+// Not derived, as for `HmacKey`.
+impl<H: HmacHash> Clone for Tagging<H> {
+    fn clone(&self) -> Self {
+        Self {
+            hmac: self.hmac.clone(),
+            ops: self.ops,
+        }
+    }
+}
+
+impl<H: HmacHash> Tagging<H> {
+    fn start(key: &HmacKey<H>) -> Streaming {
+        H::streaming(Self {
+            hmac: key.start(),
+            ops: ZeroableRef::new(
+                const {
+                    &TagOps {
+                        update: |hmac, data| hmac.update(data),
+                        finish: Hmac::finish,
+                    }
+                },
+            ),
+        })
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        (self.ops.get().update)(&mut self.hmac, data)
+    }
+
+    fn finish(&self) -> Digest {
+        (self.ops.get().finish)(&self.hmac)
+    }
+}
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -362,6 +521,25 @@ mod tests {
             for key_len in [16, 200] {
                 let (key, message) = (bytes(key_len), bytes(300));
                 ct_sde::traced(|| sign(&Key::new(algorithm, &key), &message));
+            }
+        }
+    }
+
+    // HMAC-SHA1 and HMAC-SHA256 on the crypto extension, which valgrind hides
+    // from armv7, as `ct_sde_hmac`, for `admin/ct-qemu`.
+    #[cfg(target_arch = "arm")]
+    #[test]
+    #[ignore = "admin/ct-qemu runs it under qemu-arm"]
+    fn ct_qemu_hmac() {
+        use crate::low::{HaveCryptoExt, ct_qemu};
+
+        assert!(HaveCryptoExt::check().is_some(), "the crypto extension");
+        let seed = ct_qemu::seed().to_le_bytes();
+        let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
+        for algorithm in [&HMAC_SHA1, &HMAC_SHA256] {
+            for key_len in [16, 200] {
+                let (key, message) = (bytes(key_len), bytes(300));
+                ct_qemu::traced(|| sign(&Key::new(algorithm, &key), &message));
             }
         }
     }

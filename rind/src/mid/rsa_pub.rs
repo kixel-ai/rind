@@ -18,6 +18,7 @@ impl low::Zeroable for RsaPublicKey {}
 
 impl RsaPublicKey {
     pub(crate) fn new(n: RsaPosInt, e: u64) -> Result<Self, Error> {
+        low::Entry::assert_held();
         if n.is_even()
             || !(MIN_PUBLIC_MODULUS_BITS..=MAX_PUBLIC_MODULUS_BITS).contains(&n.len_bits())
         {

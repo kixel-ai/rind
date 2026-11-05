@@ -2,6 +2,7 @@ from driver import (
     Architecture_aarch64,
     Architecture_amd64,
     RustDriver,
+    generated,
 )
 from parse import parse_file
 
@@ -9,7 +10,7 @@ from parse import parse_file
 def emit(arch, source_dir, out_dir, source, name, rust_decl, parameters, hoist=None):
     with (
         open(f"../../thirdparty/s2n-bignum/{source_dir}/p521/{source}.S") as input,
-        open(f"../../rind/src/low/{out_dir}/{name}.rs", "w") as output,
+        generated(f"../../rind/src/low/{out_dir}/{name}.rs") as output,
     ):
         d = RustDriver(output, arch)
         d.emit_rust_function(

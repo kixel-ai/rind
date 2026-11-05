@@ -32,6 +32,7 @@ use crate::low::macros::*;
 /// and is fully specified here:
 ///
 ///   https://keccak.team/files/Keccak-reference-3.0.pdf
+#[inline(never)]
 pub(crate) fn sha3_keccak_f1600(a: &mut [u64; 25], rc: &[u64; 24]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

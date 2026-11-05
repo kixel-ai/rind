@@ -1,0 +1,20 @@
+[package]
+name = "build-cost-rustls"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Its own workspace, so it resolves and builds alone.
+[workspace]
+
+# Build with exactly one provider's feature.
+[features]
+rind = ["dep:rind-rustls"]
+rind-lean = ["dep:rind-rustls"]
+aws-lc-rs = ["rustls/aws_lc_rs"]
+ring = ["rustls/ring"]
+
+[dependencies]
+rind-rustls = { path = "../../../rind-rustls", optional = true }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }
+webpki-roots = "1"

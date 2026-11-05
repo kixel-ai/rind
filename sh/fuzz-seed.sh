@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Seed the `keys` fuzz target's corpus from the test keys: each seed is the
-# loader's selector byte (see fuzz/fuzzer/keys.rs) followed by a key.
+# Seed the fuzz corpora that take encoded input: `keys` from the test keys,
+# each seed the loader's selector byte (see fuzz/fuzzer/keys.rs) followed by a
+# key, and `verify` from Wycheproof's signatures (see fuzz/fuzzer/verify.rs).
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -72,3 +73,51 @@ pkcs8_v2 12 "$rsa/rsa2048.pkcs8.der" "$field"
 : >"$field"
 pkcs8_v2 2 "$ecdsa/secp521r1.pkcs8.der" "$field"
 pkcs8_v2 12 "$rsa/rsa3072.pkcs8.der" "$field"
+
+corpus=fuzz/corpus/verify
+mkdir -p "$corpus"
+wycheproof=thirdparty/wycheproof/testvectors_v1
+
+# verify SELECTOR FILE [SHA]: a seed for each test in the Wycheproof FILE, or
+# in its groups hashing with SHA: the selector byte, then the key and the
+# signature, each after its 16-bit length, then the message.
+verify() {
+    local selector=$1 file=$2 sha=${3:-} id seed
+    jq -r --arg selector "$(printf %02x "$selector")" --arg sha "$sha" '
+        def hex16: (length / 2) as $n
+            | [4096, 256, 16, 1] | map(($n / . | floor) % 16 | "0123456789abcdef"[.:. + 1]) | join("");
+        .testGroups[] | select($sha == "" or .sha == $sha)
+        | (.publicKey.uncompressed // .publicKey.pk // .publicKeyAsn // .keyAsn) as $key
+        | .tests[]
+        | "\(.tcId) \($selector + ($key | hex16) + $key + (.sig | hex16) + .sig + .msg | ascii_upcase)"
+    ' "$wycheproof/$file" | while read -r id seed; do
+        basenc --base16 -d <<<"$seed" >"$corpus/$selector-${file%_test.json}${sha:+-$sha}-$id"
+    done
+}
+
+verify 0 ed25519_test.json
+verify 1 ecdsa_secp256r1_sha256_test.json
+verify 3 ecdsa_secp256r1_sha512_test.json
+verify 4 ecdsa_secp384r1_sha256_test.json
+verify 5 ecdsa_secp384r1_sha384_test.json
+verify 6 ecdsa_secp384r1_sha512_test.json
+verify 9 ecdsa_secp521r1_sha512_test.json
+verify 10 ecdsa_secp256r1_sha256_p1363_test.json
+verify 11 ecdsa_secp384r1_sha384_p1363_test.json
+verify 12 ecdsa_secp521r1_sha512_p1363_test.json
+for bits in 2048 3072 4096 8192; do
+    verify 13 "rsa_signature_${bits}_sha256_test.json"
+    verify 15 "rsa_signature_${bits}_sha512_test.json"
+done
+for bits in 2048 4096 8192; do
+    verify 14 "rsa_signature_${bits}_sha384_test.json"
+done
+verify 16 rsa_pss_2048_sha256_mgf1_32_test.json
+verify 16 rsa_pss_4096_sha256_mgf1_32_test.json
+verify 17 rsa_pss_2048_sha384_mgf1_48_test.json
+verify 17 rsa_pss_4096_sha384_mgf1_48_test.json
+verify 18 rsa_pss_4096_sha512_mgf1_64_test.json
+verify 19 rsa_pkcs1_2048_sig_gen_test.json SHA-1
+verify 20 rsa_pkcs1_1024_sig_gen_test.json SHA-1
+verify 21 rsa_pkcs1_1024_sig_gen_test.json SHA-256
+verify 23 rsa_signature_3072_sha384_test.json
