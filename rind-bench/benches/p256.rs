@@ -526,5 +526,13 @@ fn stored(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, ecdh, keygen, ecdsa_keygen, ecdsa_verify, ecdsa_sign, stored);
+criterion_group!(
+    benches,
+    ecdh,
+    keygen,
+    ecdsa_keygen,
+    ecdsa_verify,
+    ecdsa_sign,
+    stored
+);
 criterion_main!(benches);
