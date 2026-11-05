@@ -26,14 +26,6 @@ theorem carry_mask_bit (k : Nat) : (257870231182273679361785313768096399361#128)
   by_cases hk : k < 128
   · interval_cases k <;> decide
   · rw [BitVec.getLsbD_of_ge _ _ (by omega)]
-    simp only [beq_iff_eq, Bool.or_eq_true, eq_comm (a := false), Bool.or_eq_false_iff, beq_eq_false_iff_ne]
-    omega
-
-theorem carry_bit (k : Nat) : (0xc2000000000000000000000000000001#128).getLsbD k =
-    (k == 0 || k == 121 || k == 126 || k == 127) := by
-  by_cases hk : k < 128
-  · interval_cases k <;> decide
-  · rw [BitVec.getLsbD_of_ge _ _ (by omega)]
     simp only [eq_comm (a := false), Bool.or_eq_false_iff, beq_eq_false_iff_ne]
     omega
 
@@ -53,7 +45,7 @@ theorem big_endian_eq (h : BitVec 128) : low.x86_64.ghash.gf128_big_endian h = o
   by_cases hb : h.getLsbD 127 <;>
     interval_cases i <;>
     simp only [BitVec.getLsbD_xor, BitVec.getLsbD_and, BitVec.getLsbD_append, BitVec.getLsbD_extractLsb',
-      BitVec.getLsbD_shiftLeft, BitVec.getLsbD_sshiftRight, carry_mask_bit, carry_bit, BitVec.msb_eq_getLsbD_last,
+      BitVec.getLsbD_shiftLeft, BitVec.getLsbD_sshiftRight, carry_mask_bit, BitVec.msb_eq_getLsbD_last,
       ] <;>
     simp (config := { decide := true }) [hb, ← BitVec.getLsbD_eq_getElem]
 
@@ -115,7 +107,7 @@ theorem map_ok {T F U : Type} {N : Std.Usize} (inst : core.ops.function.FnMut F 
   simp only [hr, bind_ok]
   have hlen : r.length = N.val := by simp only [List.length_nil, zero_add] at hl; rw [hl, Std.Array.property]
   show ∃ r', (if h : r.length = N.val then ok (Std.Array.from r h) else fail .panic) = ok r'
-  rw [dif_pos hlen]
+  rw [dite_eq_left hlen]
   exact ⟨_, rfl⟩
 
 theorem clmul_new_eq (h : Std.U128) (hw : low.x86_64.cpu.HaveAesHardware) :

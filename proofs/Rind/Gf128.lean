@@ -72,7 +72,7 @@ theorem toPoly_shift (a : BitVec 64) (k : ℕ) (hk : k < 64) :
   ext j
   simp only [coeff_toPoly, coeff_X_pow_mul', BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth]
   by_cases h1 : k ≤ j
-  · simp only [h1, ite_true, coeff_toPoly]
+  · simp only [h1, ite_true]
     by_cases h2 : j < 128
     · simp [h2, show ¬ j < k by omega, show j - k < 128 by omega]
     · rw [BitVec.getLsbD_of_ge a (j - k) (by omega)]; simp [h2]
@@ -101,8 +101,8 @@ theorem toPoly_halves (x : BitVec 128) : toPoly x = toPoly (lo x) + X ^ 64 * toP
   simp only [coeff_add, coeff_toPoly, coeff_X_pow_mul', lo, hi, BitVec.getLsbD_extractLsb']
   by_cases h : j < 64
   · simp [h, show ¬ 64 ≤ j by omega]
-  · simp only [h, decide_false, Bool.false_and, show 64 ≤ j by omega, ite_true, coeff_toPoly,
-      BitVec.getLsbD_extractLsb', Bool.false_eq_true, ite_false, zero_add]
+  · simp only [h, decide_false, Bool.false_and, show 64 ≤ j by omega, ite_true,
+      Bool.false_eq_true, ite_false, zero_add]
     by_cases h2 : j - 64 < 64
     · simp [h2, show 64 + (j - 64) = j by omega]
     · rw [BitVec.getLsbD_of_ge x j (by omega)]; simp [h2]
@@ -197,7 +197,7 @@ theorem coeff_sum_C_mul_X_pow (f : ℕ → ZMod 2) (n j : ℕ) :
 
 theorem coeff_reverse (a : P) (n j : ℕ) :
     (reverse a n).coeff j = if j ≤ n then a.coeff (n - j) else 0 := by
-  rw [reverse, coeff_sum_C_mul_X_pow]; simp [Nat.lt_succ_iff]
+  rw [reverse, coeff_sum_C_mul_X_pow]; simp
 
 theorem coeff_mask (a : P) (n j : ℕ) : (mask a n).coeff j = if j < n then a.coeff j else 0 :=
   coeff_sum_C_mul_X_pow _ n j
@@ -222,11 +222,11 @@ theorem reverse_eq_reflect {p : P} (h : Small p) : reverse p 127 = reflect 127 p
   ext j
   rw [coeff_reverse, coeff_reflect]
   by_cases hj : j ≤ 127
-  · rw [if_pos hj, revAt_le hj]
-  · rw [if_neg hj, revAt_eq_self_of_lt (by omega), h.coeff (by omega)]
+  · rw [ite_eq_left hj, revAt_le hj]
+  · rw [ite_eq_right hj, revAt_eq_self_of_lt (by omega), h.coeff (by omega)]
 
 theorem small_reverse (p : P) : Small (reverse p 127) :=
-  small_of_coeff fun j hj => by rw [coeff_reverse, if_neg (by omega)]
+  small_of_coeff fun j hj => by rw [coeff_reverse, ite_eq_right (by omega)]
 
 theorem zmod2_cases (c : ZMod 2) : c = 0 ∨ c = 1 := by revert c; decide
 
@@ -234,7 +234,7 @@ theorem coeff_low (m : ℕ) : (gf128ModulusLowTerms).coeff m =
     if m = 0 ∨ m = 1 ∨ m = 2 ∨ m = 7 then 1 else 0 := by
   simp only [gf128ModulusLowTerms, coeff_add, coeff_one, coeff_X, coeff_X_pow]
   by_cases h0 : m = 0 <;> by_cases h1 : m = 1 <;> by_cases h2 : m = 2 <;> by_cases h7 : m = 7 <;>
-    simp_all <;> omega
+    simp_all
 
 theorem coeff_shiftKey1 (x : P) (k : ℕ) : (shiftKey1 128 gf128ModulusLowTerms x).coeff k =
     (if k < 128 ∧ k ≠ 0 then x.coeff (k - 1) else 0) +
@@ -257,16 +257,16 @@ theorem coeff_shiftKey1 (x : P) (k : ℕ) : (shiftKey1 128 gf128ModulusLowTerms 
       · simp only [hk, ite_true]
         by_cases h0 : k = 0 <;> by_cases h1 : k = 121 <;> by_cases h2 : k = 126 <;>
           by_cases h3 : k = 127 <;> simp_all
-        rw [if_neg (by omega), if_neg (by omega)]; rfl
+        rw [ite_eq_right (by omega), ite_eq_right (by omega)]; rfl
       · simp only [hk, ite_false]
-        rw [if_neg (by omega)]
+        rw [ite_eq_right (by omega)]
 
 theorem coeff_reflect127 (p : P) (j : ℕ) :
     (reflect 127 p).coeff j = if j ≤ 127 then p.coeff (127 - j) else p.coeff j := by
   rw [coeff_reflect]
   by_cases h : j ≤ 127
-  · rw [revAt_le h, if_pos h]
-  · rw [revAt_eq_self_of_lt (by omega), if_neg h]
+  · rw [revAt_le h, ite_eq_left h]
+  · rw [revAt_eq_self_of_lt (by omega), ite_eq_right h]
 
 theorem coeff_modulus (j : ℕ) : gf128Modulus.coeff j =
     (if j = 128 then 1 else 0) + if j = 0 ∨ j = 1 ∨ j = 2 ∨ j = 7 then 1 else 0 := by
@@ -283,13 +283,12 @@ theorem shiftKey_reflect (x : P) (hx : Small x) :
   · rw [coeff_X_mul, coeff_reflect127, coeff_reflect127]
     simp only [coeff_shiftKey1]
     by_cases hj : j ≤ 127
-    · rw [if_pos hj]
+    · rw [ite_eq_left hj]
       have h128 := hx.coeff (le_refl 128)
       interval_cases j <;> rcases zmod2_cases (x.coeff 127) with h | h <;>
         simp [h, h128, CharTwo.add_self_eq_zero] <;> generalize x.coeff _ = c <;> revert c <;> decide
-    · rw [if_neg hj, if_neg (by omega), hx.coeff (show 128 ≤ j + 1 by omega)]
-      simp only [show ¬ (j < 128 ∧ j ≠ 0) by omega, ite_false,
-        show ¬ (j = 0 ∨ j = 121 ∨ j = 126 ∨ j = 127) by omega,
+    · rw [ite_eq_right hj, ite_eq_right (by omega), hx.coeff (show 128 ≤ j + 1 by omega)]
+      simp only [ite_false, show ¬ (j = 0 ∨ j = 121 ∨ j = 126 ∨ j = 127) by omega,
         show ¬ (j + 1 = 0 ∨ j + 1 = 1 ∨ j + 1 = 2 ∨ j + 1 = 7) by omega,
         show ¬ (j + 1 = 128) by omega]
       simp only [mul_zero, add_zero, zero_add]
@@ -362,7 +361,7 @@ theorem small_mod (p : P) : Small (p %ₘ gf128Modulus) := by
 
 theorem small_shiftKey1 (x : P) : Small (shiftKey1 128 gf128ModulusLowTerms x) :=
   small_of_coeff fun j hj => by
-    rw [coeff_shiftKey1, if_neg (by omega), if_neg (by omega)]; simp
+    rw [coeff_shiftKey1, ite_eq_right (by omega), ite_eq_right (by omega)]; simp
 
 /-- Two polynomials of degree below 128 that `gf128Modulus` divides the difference of are equal. -/
 theorem eq_of_dvd {p q : P} (hp : Small p) (hq : Small q) (h : gf128Modulus ∣ p - q) : p = q := by
@@ -404,7 +403,7 @@ theorem mul_shiftKey1 (x y : P) (hx : Small x) (hy : Small y) (a b : BitVec 128)
     have h0 : m (X * (X ^ 127 + X ^ 6 + X + 1)) + 1 = 0 := by
       rw [← map_one m, ← map_add, hp]; exact AdjoinRoot.mk_self
     have h2 : (2 : AdjoinRoot gf128Modulus) = 0 := by
-      have := congrArg m two_eq_zero_P; rwa [map_zero, map_ofNat] at this
+      have := congrArg m two_eq_zero_P; rw [map_zero, map_ofNat] at this; assumption
     rw [map_mul] at h0
     linear_combination h0 - h2
   have key : m (reflect 127 (shiftKey1 128 gf128ModulusLowTerms (gf128MulRev x y))) =
@@ -470,14 +469,14 @@ theorem toPoly_skBV (h : BitVec 128) :
       by_cases h0 : k = 0
       · subst h0; simp
       · interval_cases k <;> simp_all [bool_zmod]
-    · simp only [hb, Bool.false_eq_true, ite_false, zero_mul, add_zero, Bool.xor_false]
+    · simp only [hb, Bool.false_eq_true, ite_false, zero_mul, add_zero]
       by_cases h0 : k = 0
       · subst h0; simp
       · simp [hk, h0, show ¬ k < 1 by omega]
   · rw [BitVec.getLsbD_of_ge _ k (by omega)]
     simp only [show ¬ k < 128 by omega, decide_false, Bool.false_and, Bool.false_xor, false_and,
       ite_false, zero_add]
-    rw [if_neg (show ¬ (k = 0 ∨ k = 121 ∨ k = 126 ∨ k = 127) by omega)]
+    rw [ite_eq_right (show ¬ (k = 0 ∨ k = 121 ∨ k = 126 ∨ k = 127) by omega)]
     simp
 
 theorem gPower_succ (a : P) {n : ℕ} (hn : 1 ≤ n) : gPower a (n + 1) = gf128MulRev a (gPower a n) := by

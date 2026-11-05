@@ -11,7 +11,7 @@ theorem setSlice!_zero {α : Type} (l l' : List α) (h : l'.length ≤ l.length)
 /-- Whole blocks then the partial block, zero-padded into 16 bytes, cut to
 the length, are the bytes they came from. -/
 theorem take_blocks_partial (l p : List U8) (n : Nat) (hp : p.length = 16) (hn : l.length - n ≤ 16)
-    (hn' : n ≤ l.length) :
+    (_ : n ≤ l.length) :
     (bvs (l.take n) ++ bvs (p.setSlice! 0 (l.drop n))).take l.length = bvs l := by
   rw [setSlice!_zero _ _ (by simp; omega)]
   simp only [bvs, ← List.map_append, ← List.map_take]

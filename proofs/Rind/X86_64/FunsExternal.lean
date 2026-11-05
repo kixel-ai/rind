@@ -106,6 +106,23 @@ opaque low.x86_64.aes_gcm_vaes.VaesKernel.avx2
 opaque low.generic.zeroise.zeroise_value {T : Type} (ZeroableInst : low.generic.zeroise.Zeroable T) :
   T → Result T
 
+/-! ChaCha20-Poly1305's AEAD, which no theorem here is about. -/
+
+opaque mid.chacha20poly1305.ChaCha20Poly1305.Insts.RindAeadCipher.new
+  : Slice Std.U8 → Result mid.chacha20poly1305.ChaCha20Poly1305
+
+opaque mid.chacha20poly1305.ChaCha20Poly1305.Insts.RindAeadCipher.inner
+  : aead.Sealer mid.chacha20poly1305.ChaCha20Poly1305 → Result aead.Inner
+
+opaque mid.chacha20poly1305.ChaCha20Poly1305.Insts.RindAeadCipher.seal
+  : mid.chacha20poly1305.ChaCha20Poly1305 → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Std.Array Std.U8 16#usize →
+    Result ((core.result.Result Unit error.Error) × (Slice Std.U8) × (Std.Array Std.U8 16#usize))
+
+opaque mid.chacha20poly1305.ChaCha20Poly1305.Insts.RindAeadCipher.open
+  : mid.chacha20poly1305.ChaCha20Poly1305 → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Std.Array Std.U8 16#usize → Result ((core.result.Result Unit error.Error) × (Slice Std.U8))
+
 /-! The entry guard and CPU dispatch, which read no input. -/
 
 opaque low.entry.Entry.new_secret : Result low.entry.Entry

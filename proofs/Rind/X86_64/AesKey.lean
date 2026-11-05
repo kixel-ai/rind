@@ -102,7 +102,7 @@ theorem getElem!_append_left' {α : Type} [Inhabited α] (l1 l2 : List α) {i : 
 
 theorem getElem!_append_last {α : Type} [Inhabited α] (l : List α) (x : α) {i : Nat} (h : i = l.length) :
     (l ++ [x])[i]! = x := by
-  subst h; simp [List.getElem!_eq_getElem?_getD]
+  subst h; simp
 
 theorem expandKey_succ (alg : Algorithm) (key : List (BitVec 32)) (n : Nat) :
     ∃ x, expandKey alg key (n + 1) = expandKey alg key n ++ [x] := by
@@ -190,13 +190,13 @@ theorem roundKey128_succ (key : List (BitVec 32)) (r : Nat) :
   have k7 := keyWord_rec .AES_128 key (i := 4 * (r + 1) + 3) (by show 4 ≤ _; omega)
   have hnk : nk .AES_128 = 4 := rfl
   rw [hnk] at k4 k5 k6 k7
-  rw [if_pos (by omega), show 4 * (r + 1) / 4 - 1 = r by omega, show 4 * (r + 1) - 4 = 4 * r by omega,
+  rw [ite_eq_left (by omega), show 4 * (r + 1) / 4 - 1 = r by omega, show 4 * (r + 1) - 4 = 4 * r by omega,
     show 4 * (r + 1) - 1 = 4 * r + 3 by omega] at k4
-  rw [if_neg (by omega), if_neg (by omega), show 4 * (r + 1) + 1 - 4 = 4 * r + 1 by omega,
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 4 * (r + 1) + 1 - 4 = 4 * r + 1 by omega,
     show 4 * (r + 1) + 1 - 1 = 4 * (r + 1) by omega] at k5
-  rw [if_neg (by omega), if_neg (by omega), show 4 * (r + 1) + 2 - 4 = 4 * r + 2 by omega,
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 4 * (r + 1) + 2 - 4 = 4 * r + 2 by omega,
     show 4 * (r + 1) + 2 - 1 = 4 * (r + 1) + 1 by omega] at k6
-  rw [if_neg (by omega), if_neg (by omega), show 4 * (r + 1) + 3 - 4 = 4 * r + 3 by omega,
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 4 * (r + 1) + 3 - 4 = 4 * r + 3 by omega,
     show 4 * (r + 1) + 3 - 1 = 4 * (r + 1) + 2 by omega] at k7
   rw [k7, k6, k5, k4]
 
@@ -244,12 +244,12 @@ theorem load_eq_mkfour (l : List (BitVec 8)) (hl : l.length = 16) :
   rw [byte_leBytesToQuad32 _ hi, byte_mkfour _ _ _ _ hi]
   have hb : i % 4 < 4 := Nat.mod_lt _ (by decide)
   by_cases h1 : i < 4
-  · rw [if_pos h1, wbyte_seqNat8ToSeqNat32LE l (i := 0) (by omega) hb]; congr 1; omega
+  · rw [ite_eq_left h1, wbyte_seqNat8ToSeqNat32LE l (i := 0) (by omega) hb]; congr 1; omega
   by_cases h2 : i < 8
-  · rw [if_neg h1, if_pos h2, wbyte_seqNat8ToSeqNat32LE l (i := 1) (by omega) hb]; congr 1; omega
+  · rw [ite_eq_right h1, ite_eq_left h2, wbyte_seqNat8ToSeqNat32LE l (i := 1) (by omega) hb]; congr 1; omega
   by_cases h3 : i < 12
-  · rw [if_neg h1, if_neg h2, if_pos h3, wbyte_seqNat8ToSeqNat32LE l (i := 2) (by omega) hb]; congr 1; omega
-  · rw [if_neg h1, if_neg h2, if_neg h3, wbyte_seqNat8ToSeqNat32LE l (i := 3) (by omega) hb]; congr 1; omega
+  · rw [ite_eq_right h1, ite_eq_right h2, ite_eq_left h3, wbyte_seqNat8ToSeqNat32LE l (i := 2) (by omega) hb]; congr 1; omega
+  · rw [ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, wbyte_seqNat8ToSeqNat32LE l (i := 3) (by omega) hb]; congr 1; omega
 
 theorem seqNat8ToSeqNat32LE_length (l : List (BitVec 8)) :
     (seqNat8ToSeqNat32LE l).length = l.length / 4 := by simp [seqNat8ToSeqNat32LE]
@@ -270,7 +270,7 @@ theorem aes128_expand_spec (key : Std.Array Std.U8 16#usize)
   simp only [Nat.sub_self, List.drop_zero] at hloop
   unfold low.x86_64.aes.aes128_expand
   simp only [h0, hloop, bind_ok]
-  rw [dif_pos (by simp)]
+  rw [dite_eq_left (by simp)]
   refine ⟨_, rfl, ?_⟩
   rw [Std.Array.from_val, keyToRoundKeys_eq]
   rfl
@@ -285,13 +285,13 @@ theorem load_words (l l' : List (BitVec 8)) (q : Nat) (hl : 16 * q + 16 ≤ l.le
   rw [byte_leBytesToQuad32 _ hi, byte_mkfour _ _ _ _ hi, hl' i hi]
   have hb : i % 4 < 4 := Nat.mod_lt _ (by decide)
   by_cases h1 : i < 4
-  · rw [if_pos h1, wbyte_seqNat8ToSeqNat32LE l (i := 4 * q) (by omega) hb]; congr 1; omega
+  · rw [ite_eq_left h1, wbyte_seqNat8ToSeqNat32LE l (i := 4 * q) (by omega) hb]; congr 1; omega
   by_cases h2 : i < 8
-  · rw [if_neg h1, if_pos h2, wbyte_seqNat8ToSeqNat32LE l (i := 4 * q + 1) (by omega) hb]; congr 1; omega
+  · rw [ite_eq_right h1, ite_eq_left h2, wbyte_seqNat8ToSeqNat32LE l (i := 4 * q + 1) (by omega) hb]; congr 1; omega
   by_cases h3 : i < 12
-  · rw [if_neg h1, if_neg h2, if_pos h3, wbyte_seqNat8ToSeqNat32LE l (i := 4 * q + 2) (by omega) hb]
+  · rw [ite_eq_right h1, ite_eq_right h2, ite_eq_left h3, wbyte_seqNat8ToSeqNat32LE l (i := 4 * q + 2) (by omega) hb]
     congr 1; omega
-  · rw [if_neg h1, if_neg h2, if_neg h3, wbyte_seqNat8ToSeqNat32LE l (i := 4 * q + 3) (by omega) hb]
+  · rw [ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, wbyte_seqNat8ToSeqNat32LE l (i := 4 * q + 3) (by omega) hb]
     congr 1; omega
 
 theorem roundKey256_even (key : List (BitVec 32)) (s : Nat) :
@@ -310,14 +310,14 @@ theorem roundKey256_even (key : List (BitVec 32)) (s : Nat) :
   have k2 := keyWord_rec .AES_256 key (i := 4 * (2 * s + 2) + 2) (by rw [hnk]; omega)
   have k3 := keyWord_rec .AES_256 key (i := 4 * (2 * s + 2) + 3) (by rw [hnk]; omega)
   rw [hnk] at k0 k1 k2 k3
-  rw [if_pos (by omega), show 4 * (2 * s + 2) / 8 - 1 = s by omega,
+  rw [ite_eq_left (by omega), show 4 * (2 * s + 2) / 8 - 1 = s by omega,
     show 4 * (2 * s + 2) - 8 = 4 * (2 * s) by omega,
     show 4 * (2 * s + 2) - 1 = 4 * (2 * s + 1) + 3 by omega] at k0
-  rw [if_neg (by omega), if_neg (by omega), show 4 * (2 * s + 2) + 1 - 8 = 4 * (2 * s) + 1 by omega,
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 4 * (2 * s + 2) + 1 - 8 = 4 * (2 * s) + 1 by omega,
     show 4 * (2 * s + 2) + 1 - 1 = 4 * (2 * s + 2) by omega] at k1
-  rw [if_neg (by omega), if_neg (by omega), show 4 * (2 * s + 2) + 2 - 8 = 4 * (2 * s) + 2 by omega,
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 4 * (2 * s + 2) + 2 - 8 = 4 * (2 * s) + 2 by omega,
     show 4 * (2 * s + 2) + 2 - 1 = 4 * (2 * s + 2) + 1 by omega] at k2
-  rw [if_neg (by omega), if_neg (by omega), show 4 * (2 * s + 2) + 3 - 8 = 4 * (2 * s) + 3 by omega,
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 4 * (2 * s + 2) + 3 - 8 = 4 * (2 * s) + 3 by omega,
     show 4 * (2 * s + 2) + 3 - 1 = 4 * (2 * s + 2) + 2 by omega] at k3
   rw [k3, k2, k1, k0]
 
@@ -337,13 +337,13 @@ theorem roundKey256_odd (key : List (BitVec 32)) (s : Nat) :
   have k2 := keyWord_rec .AES_256 key (i := 4 * (2 * s + 3) + 2) (by rw [hnk]; omega)
   have k3 := keyWord_rec .AES_256 key (i := 4 * (2 * s + 3) + 3) (by rw [hnk]; omega)
   rw [hnk] at k0 k1 k2 k3
-  rw [if_neg (by omega), if_pos (by omega), show 4 * (2 * s + 3) - 8 = 4 * (2 * s + 1) by omega,
+  rw [ite_eq_right (by omega), ite_eq_left (by omega), show 4 * (2 * s + 3) - 8 = 4 * (2 * s + 1) by omega,
     show 4 * (2 * s + 3) - 1 = 4 * (2 * s + 2) + 3 by omega] at k0
-  rw [if_neg (by omega), if_neg (by omega), show 4 * (2 * s + 3) + 1 - 8 = 4 * (2 * s + 1) + 1 by omega,
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 4 * (2 * s + 3) + 1 - 8 = 4 * (2 * s + 1) + 1 by omega,
     show 4 * (2 * s + 3) + 1 - 1 = 4 * (2 * s + 3) by omega] at k1
-  rw [if_neg (by omega), if_neg (by omega), show 4 * (2 * s + 3) + 2 - 8 = 4 * (2 * s + 1) + 2 by omega,
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 4 * (2 * s + 3) + 2 - 8 = 4 * (2 * s + 1) + 2 by omega,
     show 4 * (2 * s + 3) + 2 - 1 = 4 * (2 * s + 3) + 1 by omega] at k2
-  rw [if_neg (by omega), if_neg (by omega), show 4 * (2 * s + 3) + 3 - 8 = 4 * (2 * s + 1) + 3 by omega,
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 4 * (2 * s + 3) + 3 - 8 = 4 * (2 * s + 1) + 3 by omega,
     show 4 * (2 * s + 3) + 3 - 1 = 4 * (2 * s + 3) + 2 by omega] at k3
   rw [k3, k2, k1, k0]
 
@@ -420,7 +420,7 @@ theorem aes256_expand_spec (key : Std.Array Std.U8 32#usize)
   simp only [Nat.sub_self, List.drop_zero, Nat.mul_zero, Nat.zero_add] at hloop
   unfold low.x86_64.aes.aes256_expand
   simp only [h0, h1, hloop, bind_ok]
-  rw [dif_pos (by simp)]
+  rw [dite_eq_left (by simp)]
   refine ⟨_, rfl, ?_⟩
   rw [Std.Array.from_val, keyToRoundKeys_eq]
   rfl
@@ -464,7 +464,7 @@ theorem load_zero : low.x86_64.aes.load (Std.Array.repeat 16#usize 0#u8).val = m
   rw [getLsbD_leBytesToQuad32 _ hk]
   have : k / 8 < 16 := by omega
   simp only [List.getElem!_eq_getElem?_getD, List.getElem?_map, List.getElem?_replicate]
-  rw [if_pos (by simpa using this)]
+  rw [ite_eq_left (by simpa using this)]
   simp [mkfour]
 
 /-- A block read big-endian, as `u128::from_be_bytes` reads `store`'s bytes, is

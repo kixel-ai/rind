@@ -9,11 +9,13 @@
 //! the counter block of its `compute_iv`, which rind runs for them, and from
 //! round keys and GHASH key powers in the layout its own key expansion and
 //! `keyhash_init` write. rind computes those two itself, since Vale's setup
-//! takes about twice as long, and the tests check them against Vale's byte
-//! for byte. The rest of the Rust here does what EverCrypt's proven Low*
-//! wrapper, `Vale.Wrapper.X64.GCMencryptOpt`, does around the routines: it
-//! copies the partial blocks of the message and AAD to scratch, and picks the
-//! six-block loop's share of the message.
+//! takes about twice as long; `proofs/` proves them so, and the tests check
+//! them against Vale's byte for byte. The rest of the Rust here does what
+//! EverCrypt's proven Low* wrapper, `Vale.Wrapper.X64.GCMencryptOpt`, does
+//! around the routines: it copies the partial blocks of the message and AAD
+//! to scratch, and picks the six-block loop's share of the message.
+//! `proofs/` proves that too, over `counter_block` and `aead`, the only code
+//! here that calls a routine.
 //!
 //! The layout the proof assumes, from that wrapper's preconditions and
 //! `Vale.AES.OptPublic.hkeys_reqs_pub`:

@@ -90,6 +90,31 @@ digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
 models the `Algorithm` statics that hold them.
 
+AES-128-GCM and AES-256-GCM on x86_64 CPUs with AVX and MOVBE but no VAES,
+from the AEAD API's `Key` to HACL*'s Vale AES-GCM routines, in
+`Rind/X86_64/AesGcm.lean`:
+
+- `aes_gcm_new`: a key that is not the algorithm's length is refused, and
+  otherwise the key holds FIPS 197's round keys for its bytes, as Vale's
+  `key_to_round_keys_LE` lays them out, and the GHASH key powers Vale's
+  `hkeys_reqs_pub` requires of `E_K(0)`;
+- `aes_gcm_seal`: for AAD and messages under 2^32 bytes, the ciphertext in
+  place and the tag are Vale's `gcm_encrypt_LE` of the key, nonce, message,
+  and AAD;
+- `aes_gcm_open_separate_tag` and `aes_gcm_open`: for those lengths, the
+  call succeeds exactly when Vale's `gcm_decrypt_LE` accepts the tag, leaving
+  its plaintext in place, and otherwise fails, leaving zeros.
+
+Longer AAD or messages run the by-8 code, which no proof covers. The key
+setup is rind's: its AES-NI key expansion and block cipher, and its
+PCLMULQDQ GHASH key powers, whose Karatsuba product and reduction
+`Rind/Gf128.lean` proves to be Vale's `gf128_mul_rev` of the shifted keys
+(`mul_shiftKey1`). The rest is the Rust around Vale's routines, which copies
+the partial blocks and picks the six-block loop's share, as EverCrypt's proven
+Low* wrapper does. The theorems assume `RunsValeAesGcm`: rind's CPU-feature
+checks pick Vale's tier. `Rind/X86_64/AeadDispatch.lean` models the AEAD API's
+function pointers (`Algorithm`'s `expand` and `Sealer`'s `Ops`).
+
 `admin/prove` fails if a hand model's quote no longer matches the source, if
 the source names `Ops`, builds a `Masker`, or writes its `mask` outside the
 dispatch models' quotes, or if it builds a digest `Algorithm` outside
@@ -102,16 +127,22 @@ dispatch models' quotes, or if it builds a digest `Algorithm` outside
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
   translation leaves opaque, and models of the few `core` items Aeneas's
   library lacks.
-- `Rind/<Arch>/S2nBignum.lean` and `Rind/<Arch>/AwsLc.lean`: s2n-bignum's and
-  aws-lc-verification's theorems, restated as axioms about the routines' Rust
-  wrappers.
+- `Rind/<Arch>/S2nBignum.lean`, `Rind/<Arch>/AwsLc.lean`, and
+  `Rind/X86_64/ValeAesGcm.lean`: s2n-bignum's, aws-lc-verification's, and
+  Vale's theorems, restated as axioms about the routines' Rust wrappers.
+- `Rind/X86_64/Simd.lean` and `Rind/X86_64/AesNi.lean`: models of the x86_64
+  intrinsics rind's AES-GCM setup calls, and of its AES-NI key expansion and
+  block cipher, which load and store through raw pointers.
 - `Rind/Spec.lean` and `Rind/Bytes.lean`: the elliptic-curve and ChaCha20
   specs and byte-conversion lemmas; `Rind/Sha2.lean` and
-  `Rind/Sha2Lemmas.lean`: SHA-512's.
-- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm}.lean`: the hand
-  models of the agreement, header-protection, and digest APIs' dispatch.
+  `Rind/Sha2Lemmas.lean`: SHA-512's; `Rind/Vale.lean`, `Rind/ValeBytes.lean`,
+  and `Rind/Gf128.lean`: Vale's AES and GF(2^128) specs and their lemmas.
+- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,AeadDispatch}.lean`:
+  the hand models of the agreement, header-protection, digest, and AEAD APIs'
+  dispatch.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20}.lean`: the X25519, SHA-512, and
-  ChaCha20 proofs.
+  ChaCha20 proofs; `Rind/X86_64/{AesKey,Ghash,AesGcmGlue,AesGcm}.lean`: the
+  AES-GCM proof, on x86_64 alone.
 - `admin/prove` copies the `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
 - `Rind/Aarch64/P256Dispatch.lean` and `Rind/Aarch64/P256.lean`: the hand
@@ -136,7 +167,13 @@ Beyond Lean's kernel:
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
   `processBlock_Common`.
 - That `Rind/Spec.lean`'s ChaCha20 transliterates RFC 8439 and RFC 9001.
-- That rind's inline assembly is s2n-bignum's and aws-lc's object code, as for
-  `benchmarks/verified.toml`'s other entries.
+- That `Rind/Vale.lean` transliterates Vale's AES and GF(2^128) specs and
+  `hkeys_reqs_pub`, with the round functions Vale's AES spec assumes read as
+  FIPS 197's, the S-box and `MixColumns` opaque.
+- That `Rind/X86_64/Simd.lean`'s intrinsics compute what Intel's manual
+  defines their instructions to, as an instruction model is trusted for
+  s2n-bignum's and Vale's own proofs.
+- That rind's inline assembly is s2n-bignum's, aws-lc's, and Vale's object
+  code, as for `benchmarks/verified.toml`'s other entries.
 - The translation ignores drops, which here wipe keys and hash contexts and
   restore CPU state, and computes nothing an output depends on.

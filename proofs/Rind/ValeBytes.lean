@@ -22,7 +22,7 @@ theorem getElem!_range_map {α : Type} [Inhabited α] (f : Nat → α) {n i : Na
 
 theorem getLsbD_byte (q : Quad32) (i : Nat) {j : Nat} (hj : j < 8) :
     (byte q i).getLsbD j = q.getLsbD (8 * i + j) := by
-  simp [byte, BitVec.getLsbD_extractLsb', hj]
+  simp [byte, hj]
 
 theorem getLsbD_ofBytes (f : Nat → BitVec 8) {k : Nat} (hk : k < 128) :
     (ofBytes f).getLsbD k = (f (k / 8)).getLsbD (k % 8) := by
@@ -115,5 +115,41 @@ theorem wbyte_rotWord (w : BitVec 32) {b : Nat} (hb : b < 4) :
 theorem subBytes_shiftRows (q : Quad32) : subBytes (shiftRows q) = shiftRows (subBytes q) := by
   apply eq_of_byte_eq; intro i hi
   rw [byte_subBytes _ hi, byte_shiftRows _ hi, byte_shiftRows _ hi, byte_subBytes _ (by omega)]
+
+theorem seqNat8ToSeqNat32LE_cons4 (a b c d : BitVec 8) (rest : List (BitVec 8)) :
+    seqNat8ToSeqNat32LE (a :: b :: c :: d :: rest) =
+      (BitVec.fromLEBytes [a, b, c, d]).setWidth 32 :: seqNat8ToSeqNat32LE rest := by
+  simp only [seqNat8ToSeqNat32LE, List.length_cons, show (rest.length + 1 + 1 + 1 + 1) / 4 =
+    rest.length / 4 + 1 by omega, List.range_succ_eq_map, List.map_cons, List.map_map]
+  congr 1
+
+theorem byte_word (l : List (BitVec 8)) {k : Nat} (hk : k < 4) :
+    ((BitVec.fromLEBytes l).setWidth 32).extractLsb' (8 * k) 8 = l[k]! := by
+  apply BitVec.eq_of_getLsbD_eq; intro j hj
+  rw [BitVec.getLsbD_extractLsb', decide_eq_true hj, Bool.true_and, BitVec.getLsbD_setWidth,
+    decide_eq_true (by omega), Bool.true_and]
+  have := BitVec.fromLEBytes_getElem! l (8 * k + j)
+  rw [BitVec.getElem!_eq_testBit_toNat] at this
+  rw [← BitVec.testBit_toNat, this, ← BitVec.testBit_toNat, show (8 * k + j) / 8 = k by omega,
+    show (8 * k + j) % 8 = j by omega]
+
+theorem bytes_word (a b c d : BitVec 8) :
+    (List.range 4).map (fun i => ((BitVec.fromLEBytes [a, b, c, d]).setWidth 32).extractLsb' (8 * i) 8) =
+      [a, b, c, d] := by
+  apply List.ext_getElem (by simp)
+  intro k h1 h2
+  simp only [List.length_map, List.length_range] at h1
+  rw [List.getElem_map, List.getElem_range, byte_word _ h1]
+  simp [h1]
+
+/-- Vale's key words read back to the key's bytes. -/
+theorem seqNat32ToSeqNat8LE_seqNat8ToSeqNat32LE : ∀ (l : List (BitVec 8)), l.length % 4 = 0 →
+    seqNat32ToSeqNat8LE (seqNat8ToSeqNat32LE l) = l
+  | [], _ => rfl
+  | [_], h | [_, _], h | [_, _, _], h => by simp at h
+  | a :: b :: c :: d :: rest, h => by
+    rw [seqNat8ToSeqNat32LE_cons4, seqNat32ToSeqNat8LE, List.flatMap_cons, ← seqNat32ToSeqNat8LE,
+      seqNat32ToSeqNat8LE_seqNat8ToSeqNat32LE rest (by simp at h; omega), bytes_word]
+    rfl
 
 end rind.vale

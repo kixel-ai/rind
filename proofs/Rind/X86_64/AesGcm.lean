@@ -1,6 +1,7 @@
 import Rind.X86_64.AesGcmGlue
 import Rind.X86_64.AesKey
 import Rind.X86_64.Ghash
+import Rind.X86_64.AeadDispatch
 open Aeneas Aeneas.Std Result rind.vale
 
 namespace rind.x86_64
@@ -38,7 +39,7 @@ theorem expand_key128_spec (h : RunsValeAesGcm) (key : Slice U8) (hk : key.lengt
   step*
   have hl : copy_key1.len.val = 16 := by rw [Slice.len_val, copy_key1_post]; exact hk
   have hl' : copy_key1.len = 16#usize := by scalar_tac
-  simp only [low.ct.secret_slice, hhw, hss, bind_ok, hl, core.array.TryFromSharedArraySlice.try_from,
+  simp only [low.ct.secret_slice, hhw, hss, bind_ok, core.array.TryFromSharedArraySlice.try_from,
     hl', ↓reduceDIte, core.result.Result.unwrap, low.x86_64.aes.zero,
     core.core_arch.x86.sse2._mm_setzero_si128]
   apply WP.spec_bind (aes128_expand_step _ _)
@@ -55,7 +56,7 @@ theorem expand_key256_spec (h : RunsValeAesGcm) (key : Slice U8) (hk : key.lengt
   step*
   have hl : copy_key1.len.val = 32 := by rw [Slice.len_val, copy_key1_post]; exact hk
   have hl' : copy_key1.len = 32#usize := by scalar_tac
-  simp only [low.ct.secret_slice, hhw, hss, bind_ok, hl, core.array.TryFromSharedArraySlice.try_from,
+  simp only [low.ct.secret_slice, hhw, hss, bind_ok, core.array.TryFromSharedArraySlice.try_from,
     hl', ↓reduceDIte, core.result.Result.unwrap, low.x86_64.aes.zero,
     core.core_arch.x86.sse2._mm_setzero_si128]
   apply WP.spec_bind (aes256_expand_step _ _)
@@ -117,7 +118,7 @@ theorem aes_gcm_new_spec (h : RunsValeAesGcm) (alg : Algorithm) (key : Slice U8)
   · simp only [Std.Array.make_val]
     have := valeHkeys_spec (core.num.U128.from_be_bytes
       (low.x86_64.aes.store (aesEncrypt alg kw (mkfour 0 0 0 0)))).bv
-    rwa [from_be_bytes_store] at this ⊢
+    rw [from_be_bytes_store] at this ⊢; assumption
 
 @[step]
 theorem public_slice_spec {T : Type} (s : Slice T) : low.ct.public_slice s ⦃ _ => True ⦄ := by
@@ -128,7 +129,7 @@ theorem check_gcm_lengths_spec (aad msg : Usize) (haad : aad.val < 2 ^ 32) (hmsg
     mid.aes.check_gcm_lengths aad msg ⦃ r => r = .Ok () ⦄ := by
   unfold mid.aes.check_gcm_lengths mid.aes.check_counter core.num.Usize.div_ceil
   step*
-  rw [dif_neg (by decide)]
+  rw [dite_eq_right (by decide)]
   simp only [lift, bind_ok]
   step*
 
@@ -193,12 +194,118 @@ theorem aes_gcm_decrypt_spec (he : ∃ e, low.entry.Entry.new_secret = ok e) (al
     by_cases hi : i = 0#u64
     · have h2 : (gcmDecrypt alg (seqNat32ToSeqNat8LE kw) (bvs nonce.val) (bvs inout.val) (bvs aad.val)
           (bvs tag.val)).2 = true := hok.1 (by rw [hi]; rfl)
-      simp only [hi, decide_true, ite_true, h2]
+      simp only [hi, ite_true, h2]
       step*
     · have h2 : (gcmDecrypt alg (seqNat32ToSeqNat8LE kw) (bvs nonce.val) (bvs inout.val) (bvs aad.val)
           (bvs tag.val)).2 = false := by
         rw [Bool.eq_false_iff]; intro h; exact hi (by scalar_tac)
-      simp only [hi, decide_false, Bool.false_eq_true, ite_false, h2]
+      simp only [Bool.false_eq_true, ite_false, h2]
       step*
+
+/-! ## The AEAD API -/
+
+/-- An AEAD key holding AES-GCM on Vale's tier for the key bytes `key` and `alg`. -/
+def KeyReady (alg : Algorithm) (key : List (BitVec 8)) (k : aead.Key) : Prop :=
+  key.length = 4 * nk alg ∧ ∃ g, k = .AesGcm g ∧ Ready alg (seqNat8ToSeqNat32LE key) g
+
+theorem aes_gcm_new (h : RunsValeAesGcm) (alg : Algorithm) (algorithm : aead.Algorithm)
+    (halg : (algorithm = aead.AES_128_GCM ∧ alg = .AES_128) ∨ (algorithm = aead.AES_256_GCM ∧ alg = .AES_256))
+    (key : Slice U8) :
+    aead.Key.new algorithm key ⦃ r =>
+      if key.length = 4 * nk alg then ∃ k, r = .Ok k ∧ KeyReady alg (bvs key.val) k
+      else r = .Err .WrongLength ⦄ := by
+  have hlen : algorithm.key_len.val = 4 * nk alg := by
+    rcases halg with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ <;> rfl
+  unfold aead.Key.new
+  by_cases hk : key.length = 4 * nk alg
+  · have hne : ¬ key.len ≠ algorithm.key_len := by
+      intro hne; apply hne; scalar_tac
+    rw [ite_eq_right hne]
+    have hexp : algorithm.expand = aead.Sealer.expand mid.aes_gcm.AesGcm.Insts.RindAeadCipher := by
+      rcases halg with ⟨rfl, -⟩ | ⟨rfl, -⟩ <;> rfl
+    have hkl : KeyLen alg key.length := by
+      rcases halg with ⟨-, rfl⟩ | ⟨-, rfl⟩ <;> simp_all [nk, KeyLen]
+    have hx : aead.Sealer.expand mid.aes_gcm.AesGcm.Insts.RindAeadCipher key ⦃ i =>
+        ∃ g, i = .AesGcm g ∧ Ready alg (seqNat8ToSeqNat32LE (bvs key.val)) g ⦄ := by
+      unfold aead.Sealer.expand
+      apply WP.spec_bind (aes_gcm_new_spec h alg key hkl)
+      intro g hg
+      exact (WP.spec_ok _).2 ⟨g, rfl, hg⟩
+    rw [hexp]
+    apply WP.spec_bind hx
+    rintro _ ⟨g, rfl, hg⟩
+    refine (WP.spec_ok _).2 ?_
+    rw [ite_eq_left hk]
+    exact ⟨_, rfl, by simp [hk, bvs], g, rfl, hg⟩
+  · have hne : key.len ≠ algorithm.key_len := by intro he; apply hk; rw [← hlen, ← he]; simp
+    rw [ite_eq_left hne]
+    refine (WP.spec_ok _).2 ?_
+    rw [ite_eq_right hk]
+
+theorem key_bytes (alg : Algorithm) (key : List (BitVec 8)) (h : key.length = 4 * nk alg) :
+    seqNat32ToSeqNat8LE (seqNat8ToSeqNat32LE key) = key :=
+  seqNat32ToSeqNat8LE_seqNat8ToSeqNat32LE key (by omega)
+
+theorem aes_gcm_seal (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
+    (key : List (BitVec 8)) (k : aead.Key) (hk : KeyReady alg key k) (nonce : aead.Nonce) (aad in_out : Slice U8)
+    (haad : aad.length < 2 ^ 32) (hin : in_out.length < 2 ^ 32) :
+    k.seal_in_place_separate_tag nonce aad in_out ⦃ r =>
+      ∃ tag, r.1 = .Ok tag ∧ r.2.length = in_out.length ∧
+        (bvs r.2.val, bvs tag.bytes.val) = gcmEncrypt alg key (bvs nonce.bytes.val) (bvs in_out.val) (bvs aad.val) ⦄ := by
+  obtain ⟨hkl, g, rfl, hg⟩ := hk
+  unfold aead.Key.seal_in_place_separate_tag aead.Sealer.seal
+  simp only [mid.aes_gcm.AesGcm.Insts.RindAeadCipher.seal]
+  apply WP.spec_bind (aes_gcm_encrypt_spec he alg _ g hg nonce.bytes aad in_out _ haad hin)
+  rintro ⟨r, out, tag⟩ ⟨rfl, hlen, hout⟩
+  rw [key_bytes alg key hkl] at hout
+  exact (WP.spec_ok _).2 ⟨⟨tag⟩, rfl, hlen, hout⟩
+
+theorem aes_gcm_open_separate_tag (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
+    (key : List (BitVec 8)) (k : aead.Key) (hk : KeyReady alg key k) (nonce : aead.Nonce) (aad : Slice U8)
+    (tag : aead.Tag) (in_out : Slice U8) (haad : aad.length < 2 ^ 32) (hin : in_out.length < 2 ^ 32) :
+    k.open_in_place_separate_tag nonce aad tag in_out ⦃ r =>
+      let out := gcmDecrypt alg key (bvs nonce.bytes.val) (bvs in_out.val) (bvs aad.val) (bvs tag.bytes.val)
+      if out.2 then r.1 = .Ok r.2 ∧ bvs r.2.val = out.1
+      else r.1 = .Err .DecryptFailed ∧ r.2.val = List.replicate in_out.length 0#u8 ⦄ := by
+  obtain ⟨hkl, g, rfl, hg⟩ := hk
+  unfold aead.Key.open_in_place_separate_tag aead.Sealer.open
+  simp only [mid.aes_gcm.AesGcm.Insts.RindAeadCipher.open]
+  apply WP.spec_bind (aes_gcm_decrypt_spec he alg _ g hg nonce.bytes aad in_out tag.bytes haad hin)
+  rintro ⟨r, out⟩ hr
+  rw [key_bytes alg key hkl] at hr
+  dsimp only at hr
+  split at hr
+  · obtain ⟨rfl, hout⟩ := hr
+    refine (WP.spec_ok _).2 ?_
+    simp_all
+  · obtain ⟨rfl, hout⟩ := hr
+    refine (WP.spec_ok _).2 ?_
+    simp_all
+
+theorem aes_gcm_open (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
+    (key : List (BitVec 8)) (k : aead.Key) (hk : KeyReady alg key k) (nonce : aead.Nonce) (aad in_out : Slice U8)
+    (haad : aad.length < 2 ^ 32) (hin : in_out.length < 2 ^ 32) :
+    k.open_in_place nonce aad in_out ⦃ r =>
+      if in_out.length < 16 then r.1 = .Err .DecryptFailed else
+      let out := gcmDecrypt alg key (bvs nonce.bytes.val) (bvs (in_out.val.take (in_out.length - 16)))
+        (bvs aad.val) (bvs (in_out.val.drop (in_out.length - 16)))
+      if out.2 then r.1 = .Ok r.2 ∧ bvs r.2.val = out.1
+      else r.1 = .Err .DecryptFailed ∧ r.2.val = List.replicate (in_out.length - 16) 0#u8 ⦄ := by
+  unfold aead.Key.open_in_place
+  by_cases hs : in_out.length < 16
+  · rw [ite_eq_left hs]
+    exact (WP.spec_ok _).2 (by rw [ite_eq_left hs])
+  · rw [ite_eq_right hs]
+    have hd : (in_out.val.drop (in_out.length - 16)).length = 16 := by simp [Slice.length] at *; omega
+    rw [dite_eq_left hd]
+    apply WP.spec_mono (aes_gcm_open_separate_tag he alg key k hk nonce aad _ _ haad (by
+      rw [Slice.length, Slice.from_val, List.length_take]; omega))
+    intro r hr
+    rw [ite_eq_right hs]
+    simp only [Slice.from_val, Std.Array.from_val] at hr
+    have hl : ∀ h, (Slice.from (List.take (in_out.length - 16) in_out.val) h).length = in_out.length - 16 := by
+      intro h; rw [Slice.length, Slice.from_val, List.length_take]; simp only [Slice.length] at *; omega
+    rw [hl] at hr
+    exact hr
 
 end rind.x86_64

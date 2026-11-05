@@ -166,10 +166,12 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base \
     --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
     --start-from crate::aead::Key \
+    --start-from crate::aead::AlgorithmId \
     --opaque crate::aead::Algorithm \
     --opaque crate::aead::Sealer \
     --opaque crate::aead::Ops \
-    --opaque '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}' \
+    --start-from '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}' \
+    --opaque '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}::_' \
     --include crate::mid::aes::expand_key \
     --include crate::mid::aes::check_gcm_lengths \
     --include crate::mid::aes::check_counter \

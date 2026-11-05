@@ -2,6 +2,7 @@ module
 public import Aeneas
 public import Rind.Vale
 @[expose] public section
+set_option linter.style.nameCheck false
 open Aeneas Aeneas.Std Result
 
 /-!
