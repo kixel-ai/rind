@@ -10,7 +10,7 @@
 
 use aws_lc_rs::signature::{self as theirs, UnparsedPublicKey};
 use curve25519_dalek::edwards::CompressedEdwardsY;
-use der::{spki, trailing};
+use der::{spki_parameters, trailing};
 use libfuzzer_sys::fuzz_target;
 use rind::signature::{PublicKey, VerificationAlgorithm, verify};
 
@@ -191,9 +191,9 @@ fn refused(kind: Kind, key: &[u8]) -> bool {
         // aws-lc-rs also takes a `SubjectPublicKeyInfo`, and a compressed or
         // hybrid point; rind takes only the uncompressed point.
         Kind::Ecdsa => key.first() != Some(&4),
-        // aws-lc-rs also takes a `SubjectPublicKeyInfo`, and ignores bytes
-        // after the key.
-        Kind::Rsa => spki(key) || trailing(key),
+        // aws-lc-rs ignores a `SubjectPublicKeyInfo`'s parameters, and
+        // bytes after the key.
+        Kind::Rsa => spki_parameters(key) || trailing(key),
         // aws-lc-rs also takes a `SubjectPublicKeyInfo`, any length but 32,
         // and rind refuses a key of small order, under which signatures
         // nobody made verify.

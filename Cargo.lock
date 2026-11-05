@@ -3061,6 +3061,7 @@ dependencies = [
  "libcrux-ml-kem",
  "libcrux-rsa",
  "libcrux-sha2",
+ "libcrux-sha3",
  "ml-kem",
  "openssl",
  "openssl-sys",
@@ -3080,6 +3081,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
+ "sha3",
  "x25519-dalek",
 ]
 
@@ -3092,7 +3094,7 @@ dependencies = [
 
 [[package]]
 name = "rind-dimpl"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3132,7 +3134,7 @@ dependencies = [
 
 [[package]]
 name = "rind-jsonwebtoken"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3144,7 +3146,7 @@ dependencies = [
 
 [[package]]
 name = "rind-object-store"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "async-trait",
  "aws-lc-rs",
@@ -3158,7 +3160,7 @@ dependencies = [
 
 [[package]]
 name = "rind-rcgen"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "crabgrind 0.4.0",
  "rcgen",
@@ -3186,7 +3188,7 @@ dependencies = [
 
 [[package]]
 name = "rind-rustls"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3916,9 +3918,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.25.17+spec-1.1.0"
+version = "0.25.18+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3641d5bbb5349a79e1020a242d251efbc546ad8048d133958323ce9c40a9c9c"
+checksum = "1ec6e78bd70db9420d8d212fa9dc97f116448a1ceff5d00eabb991d407e21396"
 dependencies = [
  "indexmap",
  "toml_datetime",
@@ -4366,9 +4368,9 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "winnow"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+checksum = "8c3b93199df0ab874cdf0c6a94f0a0dc3423fe41f1cafb62b8bd7b1deb277aef"
 dependencies = [
  "memchr",
 ]

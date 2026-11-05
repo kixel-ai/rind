@@ -11,7 +11,7 @@
 use core::arch::aarch64::*;
 
 use super::cpu::HaveCryptoExt;
-use super::vpaes_armv8::VpaesKey;
+use super::vpaes_armv8::{VpaesDecKey, VpaesKey};
 use crate::low;
 
 pub(crate) enum AesKey {
@@ -65,6 +65,58 @@ impl Drop for AesKey {
 
 impl low::generic::zeroise::Zeroable for AesKey {}
 
+/// An AES key that decrypts, on the path [`AesKey`] picks for the CPU.
+pub(crate) enum AesDecKey {
+    Hw(HwDecKey),
+    Vpaes(VpaesDecKey),
+}
+
+impl AesDecKey {
+    /// Expands `key`, which must be 16 or 32 bytes.
+    pub(crate) fn new(key: &[u8]) -> Self {
+        match (key.len(), HaveCryptoExt::check()) {
+            (16, Some(token)) => Self::Hw(HwDecKey::Aes128(
+                AesKey128::new(key.try_into().unwrap(), token).decryption_round_keys(),
+            )),
+            (32, Some(token)) => Self::Hw(HwDecKey::Aes256(
+                AesKey256::new(key.try_into().unwrap(), token).decryption_round_keys(),
+            )),
+            (16 | 32, None) => Self::Vpaes(VpaesDecKey::new(key)),
+            _ => unreachable!("callers check the AES key length"),
+        }
+    }
+
+    pub(crate) fn decrypt_block(&self, inout: &mut [u8; 16]) {
+        match self {
+            // SAFETY: only a `HaveCryptoExt` token builds the round keys.
+            Self::Hw(HwDecKey::Aes128(round_keys)) => unsafe {
+                hw_decrypt_block(round_keys, inout)
+            },
+            // SAFETY: as above.
+            Self::Hw(HwDecKey::Aes256(round_keys)) => unsafe {
+                hw_decrypt_block(round_keys, inout)
+            },
+            Self::Vpaes(key) => key.decrypt_block(inout),
+        }
+    }
+}
+
+impl Drop for AesDecKey {
+    fn drop(&mut self) {
+        low::zeroise_value(self);
+    }
+}
+
+impl low::generic::zeroise::Zeroable for AesDecKey {}
+
+/// Round keys for `aesd` in the equivalent inverse cipher, FIPS 197 section
+/// 5.3.5, which only a `HaveCryptoExt` token builds: the encryption round
+/// keys reversed, all but the outer two through InvMixColumns.
+pub(crate) enum HwDecKey {
+    Aes128([uint8x16_t; 10 + 1]),
+    Aes256([uint8x16_t; 14 + 1]),
+}
+
 /// An AES-128 key for the AES instructions, which only a `HaveCryptoExt`
 /// token builds.
 pub(crate) struct AesKey128 {
@@ -86,6 +138,11 @@ impl AesKey128 {
 
     pub(crate) fn round_keys(&self) -> &[uint8x16_t; 11] {
         &self.round_keys
+    }
+
+    fn decryption_round_keys(&self) -> [uint8x16_t; 10 + 1] {
+        // SAFETY: only a `HaveCryptoExt` token builds `self`.
+        unsafe { invert_round_keys(&self.round_keys) }
     }
 }
 
@@ -110,6 +167,11 @@ impl AesKey256 {
 
     pub(crate) fn round_keys(&self) -> &[uint8x16_t; 15] {
         &self.round_keys
+    }
+
+    fn decryption_round_keys(&self) -> [uint8x16_t; 14 + 1] {
+        // SAFETY: only a `HaveCryptoExt` token builds `self`.
+        unsafe { invert_round_keys(&self.round_keys) }
     }
 }
 
@@ -180,6 +242,31 @@ fn sub_rot_word(t: uint8x16_t, rcon: u32) -> uint8x16_t {
 fn xor_prefix(t: uint8x16_t) -> uint8x16_t {
     let t = veorq_u8(t, vextq_u8::<12>(zero(), t));
     veorq_u8(t, vextq_u8::<8>(zero(), t))
+}
+
+/// The round keys for `aesd` from those for `aese`.
+#[target_feature(enable = "aes")]
+fn invert_round_keys<const N: usize>(round_keys: &[uint8x16_t; N]) -> [uint8x16_t; N] {
+    let mut out = [zero(); N];
+    out[0] = round_keys[N - 1];
+    for i in 1..N - 1 {
+        out[i] = vaesimcq_u8(round_keys[N - 1 - i]);
+    }
+    out[N - 1] = round_keys[0];
+    out
+}
+
+#[target_feature(enable = "aes")]
+fn hw_decrypt_block<const N: usize>(round_keys: &[uint8x16_t; N], block_inout: &mut [u8; 16]) {
+    // SAFETY: `block_inout` is 16 bytes and readable
+    let mut block = unsafe { vld1q_u8(block_inout.as_ptr()) };
+    block = vaesdq_u8(block, round_keys[0]);
+    for round_key in &round_keys[1..N - 1] {
+        block = vaesdq_u8(vaesimcq_u8(block), *round_key);
+    }
+    block = veorq_u8(block, round_keys[N - 1]);
+    // SAFETY: `block_inout` is 16 bytes and writable
+    unsafe { vst1q_u8(block_inout.as_mut_ptr(), block) };
 }
 
 #[target_feature(enable = "aes")]
@@ -581,6 +668,45 @@ mod tests {
                     assert_eq!(
                         got, want,
                         "{key_len}-byte key, counter {counter}, {len} bytes"
+                    );
+                }
+            }
+        }
+    }
+
+    // Each decryption path the CPU offers must invert encryption, which the
+    // tests above hold to AES on every path.
+    #[test]
+    fn every_path_decrypts() {
+        let bytes = |n: usize, seed: u32| -> Vec<u8> {
+            (0..n as u32)
+                .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
+                .collect()
+        };
+        for (key_len, seed) in [16, 32].into_iter().zip(1..) {
+            let key = bytes(key_len, seed);
+            let enc = AesKey::new(&key);
+            let mut paths = vec![AesDecKey::Vpaes(VpaesDecKey::new(&key))];
+            if let Some(token) = HaveCryptoExt::check() {
+                paths.push(AesDecKey::Hw(match key_len {
+                    16 => HwDecKey::Aes128(
+                        AesKey128::new(key[..].try_into().unwrap(), token).decryption_round_keys(),
+                    ),
+                    _ => HwDecKey::Aes256(
+                        AesKey256::new(key[..].try_into().unwrap(), token).decryption_round_keys(),
+                    ),
+                }));
+            }
+            for block_seed in 0..4 {
+                let block: [u8; 16] = bytes(16, block_seed).try_into().unwrap();
+                let mut ct = block;
+                enc.encrypt_block(&mut ct);
+                for (i, dec) in paths.iter().enumerate() {
+                    let mut pt = ct;
+                    dec.decrypt_block(&mut pt);
+                    assert_eq!(
+                        pt, block,
+                        "{key_len}-byte key, path {i}, block {block_seed}"
                     );
                 }
             }

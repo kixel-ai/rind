@@ -34,6 +34,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "sha3"
+path = "fuzzer/sha3.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "aead"
 path = "fuzzer/aead.rs"
 test = false
@@ -76,6 +83,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "key_wrap"
+path = "fuzzer/key_wrap.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "xchacha"
 path = "fuzzer/xchacha.rs"
 test = false
@@ -85,6 +99,13 @@ bench = false
 [[bin]]
 name = "kem"
 path = "fuzzer/kem.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "oaep"
+path = "fuzzer/oaep.rs"
 test = false
 doc = false
 bench = false

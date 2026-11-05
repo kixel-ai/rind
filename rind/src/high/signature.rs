@@ -46,7 +46,7 @@ macro_rules! with_hash {
 
 /// Up to `N` bytes, as the owned encodings and signatures hold them.
 #[derive(Clone, Copy)]
-struct Buffer<const N: usize> {
+pub(super) struct Buffer<const N: usize> {
     bytes: [u8; N],
     len: usize,
 }
@@ -73,7 +73,9 @@ impl<const N: usize> Buffer<N> {
 
     /// Runs `write`, which writes to the start of its argument and returns
     /// the written span.
-    fn write(write: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Result<Self, Error> {
+    pub(super) fn write(
+        write: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>,
+    ) -> Result<Self, Error> {
         let mut buffer = Self::new();
         buffer.len = write(&mut buffer.bytes)?.len();
         Ok(buffer)
@@ -93,7 +95,7 @@ impl<const N: usize> Buffer<N> {
     ///
     /// Every `N` holds the encoding of the largest key a loader accepts, so
     /// an encoder that runs out of room is a bug in rind, not bad input.
-    fn encode(encode: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Self {
+    pub(super) fn encode(encode: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Self {
         Self::write(encode).expect("sized for the largest key")
     }
 }
@@ -189,7 +191,8 @@ impl fmt::Debug for RsaVerificationAlgorithm {
 
 /// A public key, bound to the one algorithm it verifies signatures with.
 ///
-/// Its bytes are its encoding, as [`PublicKey::new`] takes it.
+/// Its bytes are its encoding, as [`PublicKey::new`] takes it, but an RSA
+/// key's are always its PKCS#1 `RSAPublicKey` DER.
 pub struct PublicKey {
     key: Parsed,
     encoding: Buffer<{ rsa::MAX_PUBLIC_KEY_LEN }>,
@@ -209,9 +212,10 @@ impl PublicKey {
     /// refusing a malformed key before any signature arrives.
     ///
     /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
-    /// `RSAPublicKey` DER, and Ed25519 keys are their 32 bytes. A compressed
-    /// ECDSA point is refused: no consumer sends one. So is an Ed25519 point
-    /// of small order, which verifies signatures nobody made.
+    /// `RSAPublicKey` or `SubjectPublicKeyInfo` DER, and Ed25519 keys are
+    /// their 32 bytes. A compressed ECDSA point is refused: no consumer sends
+    /// one. So is an Ed25519 point of small order, which verifies signatures
+    /// nobody made.
     pub fn new(
         algorithm: &'static impl AsRef<VerificationAlgorithm>,
         bytes: &[u8],
@@ -227,14 +231,15 @@ impl PublicKey {
         })
     }
 
-    /// Parses an RSA key's PKCS#1 DER for `rsa`.
+    /// Parses an RSA key's PKCS#1 or SPKI DER for `rsa`.
     fn parse_rsa(rsa: Rsa, bytes: &[u8]) -> Result<Self, Error> {
-        Self::rsa(rsa, rsa::VerifyingKey::from_pkcs1_der(bytes)?)
+        Self::rsa(rsa, rsa::VerifyingKey::from_der(bytes)?)
     }
 
     /// Binds an RSA key to `rsa`, refusing it below the algorithm's floor.
     ///
-    /// The encoding is the key's DER, whether it came as DER or components.
+    /// The encoding is the key's PKCS#1 DER, whether it came as PKCS#1,
+    /// SPKI, or components.
     fn rsa(rsa: Rsa, key: rsa::VerifyingKey) -> Result<Self, Error> {
         let key = rsa.check(key)?;
         Ok(Self {
@@ -304,7 +309,7 @@ impl fmt::Debug for Signature {
 }
 
 /// A private key encoded as PKCS#8 DER, wiped on drop.
-pub struct Pkcs8(Buffer<{ rsa::MAX_PKCS8_LEN }>);
+pub struct Pkcs8(pub(super) Buffer<{ rsa::MAX_PKCS8_LEN }>);
 
 impl AsRef<[u8]> for Pkcs8 {
     fn as_ref(&self) -> &[u8] {
@@ -326,7 +331,7 @@ impl Drop for Pkcs8 {
 
 /// A public key encoded as a `SubjectPublicKeyInfo` in DER.
 #[derive(Clone)]
-pub struct Spki(Buffer<{ rsa::MAX_SPKI_LEN }>);
+pub struct Spki(pub(super) Buffer<{ rsa::MAX_SPKI_LEN }>);
 
 impl AsRef<[u8]> for Spki {
     fn as_ref(&self) -> &[u8] {
@@ -981,7 +986,7 @@ const PSS_SHA512: RsaScheme = RsaScheme {
 
 /// The smallest modulus a verification algorithm accepts, unless it is
 /// under [`verify::legacy`], and the smallest a key pair loads.
-const RSA_MIN_BITS: usize = 2048;
+pub(super) const RSA_MIN_BITS: usize = 2048;
 
 /// A two-prime RSA private key, with a modulus of 2048 to 8192 bits, and its public key.
 pub struct RsaKeyPair {

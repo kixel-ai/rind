@@ -48,6 +48,51 @@ finite point on the curve, so the public key's hypothesis always holds and the
 fault never happens, needs the point's order, which these theorems do not
 prove.
 
+P-256 ECDSA with SHA-256 and fixed-length signatures on aarch64, from the
+signature API's `EcdsaKeyPair` and `PublicKey` to s2n-bignum's routines, in
+`Rind/Aarch64/P256Signature.lean` over `Rind/Aarch64/P256Ecdsa.lean`:
+
+- `p256_ecdsa_generate`: the key pair's scalar is in [1, n), and generation
+  is refused only if the system source's draws fail;
+- `p256_ecdsa_from_private_key_and_public_key`: a scalar that is not 32 bytes
+  is refused, so is one outside [1, n), and so is a public key that is neither
+  X9.62 encoding, uncompressed or compressed, of the scalar times G, and
+  otherwise the key pair's scalar is the scalar;
+- `p256_ecdsa_sign`: a signature signing returns is 64 bytes, the big-endian
+  r and s of the ECDSA signature of the message's SHA-256 under the scalar,
+  for some nonce in [1, n), neither zero, and signing is refused only if the
+  nonce's random input cannot be drawn;
+- `p256_ecdsa_key_pair_public_key`: the public key's bytes are the X9.62
+  uncompressed encoding of the scalar times G;
+- `p256_ecdsa_public_key_new`: a public key is refused unless it is a 65-byte
+  uncompressed point whose coordinates are below p and on the curve, and
+  otherwise its `verify` accepts exactly the signatures ECDSA verifies with
+  that point: 64 bytes, r and s in [1, n), and the x-coordinate of
+  e/s·G + r/s·Q, a finite point, equal to r mod n;
+- `p256_ecdsa_key_pair_verify`: a key pair's public key verifies the same
+  way, with its point the scalar times G.
+
+`ecdsaP256Sign` and `ecdsaP256Verifies` in `Rind/Spec.lean` are FIPS 186-5's,
+over `p256Pow` and `p256Add`. `Rind/P256Multiples.lean` proves, from
+`Rind/P256Group.lean`'s group, the laws by which the twin multiplication's
+windowed sum is e/s·G + r/s·Q, and `Rind/N256Prime.lean` that n is prime, so
+every nonzero scalar has an inverse. The laws need one more fact, which the
+theorems take as `P256Order`: every finite point on the curve has order n, as
+HOL Light's `P256_GROUP_ELEMENT_ORDER` proves from the group's size, which
+Mathlib cannot count yet. The message's SHA-256 is the digest rind's
+`Sha256` impl computes (`Sha256E`), which `sha256_hash` proves is FIPS
+180-4's in a module these cannot import, as `Rind/HashSpec.lean` and
+`Rind/Sha2.lean` share names. Signing draws nonces until r and s are both
+nonzero, with no bound, so `p256_ecdsa_sign` says what a returned signature
+is, not that one returns. The nonces come from RFC 6979's HMAC-DRBG, hedged
+with 16 bytes from the system source; its update takes a slice of borrowed
+slices, which Aeneas cannot translate, so it is opaque, and the theorems
+assume `Drbg`: it seeds and draws without panicking, and a draw never fails.
+They also assume `Fills`, that the system source returns, `Held`, that the
+entry guard holds, and `Cached`: a verifying key's lock-free cache of 17P to
+31P, whose atomics Aeneas cannot translate, is built from the key's own
+multiples.
+
 ChaCha20 QUIC header protection on x86_64 and aarch64, from
 `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
 
@@ -95,7 +140,11 @@ cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
 Lean definitions beside the Rust they model. P-256's key generation draws
 through a `dyn RandomSource`, which Aeneas cannot translate either, and
 `Rind/Aarch64/P256Dispatch.lean` models it and the `ECDH_P256` static the same
-way.
+way. The signature API's `EcdsaKeyPair` reaches each curve's code, and
+`PublicKey` each ECDSA key's parser and verifier, through function pointers,
+and P-256's ECDSA key generation draws through a `dyn RandomSource`;
+`Rind/Aarch64/EcdsaDispatch.lean` models them for P-256 with SHA-256 and
+fixed-length signatures.
 
 SHA-384, SHA-512, and SHA-512/256, from the digest API to aws-lc's block
 routine, in `Rind/X86_64/Sha512.lean`, which `admin/prove` also writes for
@@ -175,8 +224,10 @@ function pointers (`Algorithm`'s `expand` and `Sealer`'s `Ops`).
 `admin/prove` fails if a hand model's quote no longer matches the source, if
 the source names `Ops`, builds a `Masker`, or writes its `mask` outside the
 dispatch models' quotes, if it builds a digest `Algorithm` outside
-`DigestAlgorithm.lean`'s, or if it mentions `Verification::Ed25519(` or
-`Parsed::Ed25519(` outside `SignatureDispatch.lean`'s.
+`DigestAlgorithm.lean`'s, if it mentions `Verification::Ed25519(` or
+`Parsed::Ed25519(` outside `SignatureDispatch.lean`'s, or if it mentions
+`Verification::Ecdsa(`, `EcdsaP256`, or `EcdsaKey::`, builds an `EcdsaOps` or
+`EcdsaPair`, or reads an `ops` outside the signature models' quotes.
 
 ## Layout
 
@@ -210,10 +261,16 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
 - `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate, and
-  that `p256Add` is the addition of Mathlib's group of points on the curve.
+  that `p256Add` is the addition of Mathlib's group of points on the curve;
+  `Rind/N256Prime.lean`: that `n256` is prime; `Rind/P256Multiples.lean`: the
+  group laws and multiples ECDSA's twin multiplication relies on.
 - `Rind/Aarch64/P256Dispatch.lean`, `Rind/Aarch64/P256Table.lean`, and
   `Rind/Aarch64/P256.lean`: the hand model of P-256's key generation, the
-  generator table's proof, and the P-256 proof.
+  generator table's proof, and the P-256 ECDH proof.
+- `Rind/Aarch64/EcdsaDispatch.lean`, `Rind/Aarch64/P256Ecdsa.lean`, and
+  `Rind/Aarch64/P256Signature.lean`: the hand model of ECDSA's dispatch and
+  key generation, the proof of `high::ecdsa` and `mid::p256`'s ECDSA at
+  P-256, and the signature API's theorems.
 
 ## Trust base
 
@@ -240,7 +297,8 @@ Beyond Lean's kernel:
   `weierstrass_add`, `group_pow`, and `ring_inv` on `p256_group`.
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
   `processBlock_Common`.
-- That `Rind/Spec.lean`'s ChaCha20 transliterates RFC 8439 and RFC 9001, and
+- That `Rind/Spec.lean`'s ChaCha20 transliterates RFC 8439 and RFC 9001, its
+  ECDSA FIPS 186-5, and
   `Rind/Ed25519.lean` RFC 8032 and s2n-bignum's encoding and decoding of
   edwards25519 points, whose `ed25519_decode` picks by Hilbert's choice as
   Lean's `Classical.epsilon` does.

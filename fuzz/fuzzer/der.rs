@@ -44,7 +44,17 @@ pub fn trailing(input: &[u8]) -> bool {
 
 /// Whether `input` is shaped like a `SubjectPublicKeyInfo`: a sequence whose
 /// first element is a sequence, the algorithm identifier. aws-lc-rs takes one
-/// wherever it takes a public key, and rind only the raw key.
+/// wherever it takes a public key, and rind only an RSA key's.
 pub fn spki(input: &[u8]) -> bool {
     sequence(input).is_some_and(|contents| contents.first() == Some(&0x30))
+}
+
+/// Whether `input` is a `SubjectPublicKeyInfo` whose algorithm identifier
+/// holds more after its object identifier than the `NULL` parameters or
+/// none. aws-lc ignores whatever follows it, and rind refuses it.
+pub fn spki_parameters(input: &[u8]) -> bool {
+    sequence(input)
+        .and_then(sequence)
+        .and_then(element)
+        .is_some_and(|(_, _, parameters)| !matches!(parameters, [] | [0x05, 0x00]))
 }

@@ -15,4 +15,3 @@ path on Bun's targets, and move only what rind does faster.
 ## Required
 
 - [Bun runs its fastest asymmetric crypto on rind](/quest/m1/bun.md) - the Bun integration this extends
-- [SHA-3](/quest/m2/adoption/webcrypto/sha3.md) - the digests

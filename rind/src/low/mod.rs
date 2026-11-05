@@ -24,7 +24,7 @@ mod generic {
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
     pub(super) mod ctr;
-    #[cfg(all(test, not(target_arch = "arm")))]
+    #[cfg(test)]
     pub(crate) mod ghash;
     pub(crate) mod mlkem;
     #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
@@ -66,6 +66,8 @@ pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, sha256_digest,
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
+#[cfg(all(test, target_arch = "arm"))]
+pub(crate) use generic::ghash::gcm_model;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
 pub(crate) use generic::reuse_cache::ReuseCache;
@@ -83,7 +85,7 @@ cfg_if::cfg_if! {
         pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
         pub(crate) use x86_64::chacha20;
         pub(crate) use x86_64::chacha20poly1305;
-        pub(crate) use x86_64::aes::AesKey;
+        pub(crate) use x86_64::aes::{AesDecKey, AesKey};
         pub(crate) use x86_64::aes_ctr;
         pub(crate) use x86_64::aes_gcm;
         #[cfg(test)]
@@ -184,7 +186,7 @@ cfg_if::cfg_if! {
         mod aarch64;
 
         pub(in crate::low) use aarch64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
-        pub(crate) use aarch64::aes::AesKey;
+        pub(crate) use aarch64::aes::{AesDecKey, AesKey};
         pub(crate) use aarch64::aes_ctr;
         pub(crate) use aarch64::cpu::HaveCryptoExt;
         pub(crate) use aarch64::aes_gcm;
@@ -278,13 +280,14 @@ cfg_if::cfg_if! {
         mod arm;
 
         pub(in crate::low) use arm::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
-        pub(crate) use arm::aes::AesKey;
+        pub(crate) use arm::aes::{AesDecKey, AesKey};
         pub(crate) use arm::aes_ctr;
         pub(crate) use arm::aesv8_armx::AesHwKey;
         pub(crate) use arm::cpu::HaveCryptoExt;
         #[cfg(test)]
         pub(crate) use arm::ct_qemu;
         pub(crate) use arm::ghashv8_armx::GhashTable;
+        pub(crate) use arm::ghash_nohw::NohwTable;
         pub(crate) use arm::chacha20;
         pub(crate) use generic::chacha20poly1305;
         pub(crate) use arm::poly1305;

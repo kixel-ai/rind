@@ -31,6 +31,26 @@ use crate::mid::xchacha20poly1305::XChaCha20Poly1305;
 /// ```
 pub mod quic;
 
+/// AES-GCM with an IV of any length and a tag of any length NIST allows, for
+/// APIs such as WebCrypto's that let the caller pick them.
+///
+/// ```
+/// use rind::aead::gcm::*;
+/// use rind::cipher::AES_128;
+///
+/// let key = Key::new(&AES_128, &[0x42; 16], TagLength::Truncated96).unwrap();
+///
+/// let mut in_out = b"hello".to_vec();
+/// let iv = [7; 16];
+/// key.seal_in_place_append_tag(&iv, b"header", &mut in_out)
+///     .unwrap();
+/// assert_eq!(in_out.len(), 5 + 12);
+///
+/// let plaintext = key.open_in_place(&iv, b"header", &mut in_out).unwrap();
+/// assert_eq!(plaintext, b"hello");
+/// ```
+pub mod gcm;
+
 const NONCE_LEN: usize = 12;
 const TAG_LEN: usize = 16;
 
