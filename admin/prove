@@ -217,6 +217,8 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::bignum_madd_n25519 \
     --include crate::low::x86_64::sha256_mux \
     --opaque crate::low::x86_64::sha256_mux::path \
+    --include crate::low::x86_64::sha512::Path \
+    --opaque crate::low::x86_64::sha512::path \
     --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
     --start-from crate::aead::Key \
     --start-from crate::aead::AlgorithmId \
