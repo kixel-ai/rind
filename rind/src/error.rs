@@ -32,6 +32,10 @@ pub enum Error {
     /// An internal consistency check failed, from a hardware fault or a rind
     /// bug, which the caller cannot fix.
     Fault,
+
+    /// A call was given an algorithm it does not take, such as a SHA-1
+    /// digest to sign, or a digest for a key that verifies only messages.
+    Unsupported,
 }
 
 /// Why a key was refused, which its `Display` describes.
@@ -128,6 +132,7 @@ impl core::fmt::Display for Error {
             Self::RngFailed => write!(f, "the system random source failed"),
             Self::NotEqual => write!(f, "values compared in constant time were not equal"),
             Self::Fault => write!(f, "an internal consistency check failed"),
+            Self::Unsupported => write!(f, "an algorithm the call does not take"),
         }
     }
 }

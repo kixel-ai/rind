@@ -2214,3 +2214,87 @@ mod ecdh_scalars {
         }
     }
 }
+
+/// ECDSA over a digest: aws-lc-rs verifies what rind signs over each curve,
+/// hash, and encoding it has an algorithm for, and rind verifies what
+/// aws-lc-rs signs over a digest, with an algorithm whose hash is not the
+/// digest's, since the digest names its hash.
+mod ecdsa_digest {
+    use aws_lc_rs::digest as theirs_digest;
+    use aws_lc_rs::rand::SystemRandom;
+    use aws_lc_rs::signature::{self as theirs, KeyPair, UnparsedPublicKey};
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use rind::digest::{self, SHA256, SHA384, SHA512};
+    use rind::signature::{self, sign, verify};
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(8))]
+
+        #[test]
+        fn theirs_verify_ours(message in vec(any::<u8>(), 0..300)) {
+            let cases: [(_, _, &'static theirs::EcdsaVerificationAlgorithm); 14] = [
+                (&sign::ECDSA_P256_SHA256_ASN1, &SHA256, &theirs::ECDSA_P256_SHA256_ASN1),
+                (&sign::ECDSA_P256_SHA256_ASN1, &SHA384, &theirs::ECDSA_P256_SHA384_ASN1),
+                (&sign::ECDSA_P256_SHA256_ASN1, &SHA512, &theirs::ECDSA_P256_SHA512_ASN1),
+                (&sign::ECDSA_P256_SHA256_FIXED, &SHA256, &theirs::ECDSA_P256_SHA256_FIXED),
+                (&sign::ECDSA_P384_SHA384_ASN1, &SHA256, &theirs::ECDSA_P384_SHA256_ASN1),
+                (&sign::ECDSA_P384_SHA384_ASN1, &SHA384, &theirs::ECDSA_P384_SHA384_ASN1),
+                (&sign::ECDSA_P384_SHA384_ASN1, &SHA512, &theirs::ECDSA_P384_SHA512_ASN1),
+                (&sign::ECDSA_P384_SHA384_FIXED, &SHA384, &theirs::ECDSA_P384_SHA384_FIXED),
+                (&sign::ECDSA_P521_SHA512_ASN1, &SHA256, &theirs::ECDSA_P521_SHA256_ASN1),
+                (&sign::ECDSA_P521_SHA512_ASN1, &SHA384, &theirs::ECDSA_P521_SHA384_ASN1),
+                (&sign::ECDSA_P521_SHA512_ASN1, &SHA512, &theirs::ECDSA_P521_SHA512_ASN1),
+                (&sign::ECDSA_P521_SHA512_FIXED, &SHA256, &theirs::ECDSA_P521_SHA256_FIXED),
+                (&sign::ECDSA_P521_SHA512_FIXED, &SHA384, &theirs::ECDSA_P521_SHA384_FIXED),
+                (&sign::ECDSA_P521_SHA512_FIXED, &SHA512, &theirs::ECDSA_P521_SHA512_FIXED),
+            ];
+            for (signing, hash, theirs) in cases {
+                let ours = signature::EcdsaKeyPair::generate(signing).unwrap();
+                let signature = ours.sign_digest(&digest::digest(hash, &message)).unwrap();
+                let public_key = ours.public_key();
+                let verifier = UnparsedPublicKey::new(theirs, public_key.as_ref());
+                prop_assert!(
+                    verifier.verify(&message, signature.as_ref()).is_ok(),
+                    "{:?} {:?}", signing, hash
+                );
+                prop_assert!(verifier.verify(b"other", signature.as_ref()).is_err());
+            }
+        }
+
+        #[test]
+        fn ours_verify_theirs(message in vec(any::<u8>(), 0..300)) {
+            let cases: [(&'static theirs::EcdsaSigningAlgorithm, _, _, _); 10] = [
+                (&theirs::ECDSA_P256_SHA256_ASN1_SIGNING, &theirs_digest::SHA256, &SHA256, &verify::ECDSA_P256_SHA256_ASN1),
+                (&theirs::ECDSA_P256_SHA256_FIXED_SIGNING, &theirs_digest::SHA256, &SHA256, &verify::ECDSA_P256_SHA256_FIXED),
+                (&theirs::ECDSA_P384_SHA384_ASN1_SIGNING, &theirs_digest::SHA384, &SHA384, &verify::ECDSA_P384_SHA384_ASN1),
+                (&theirs::ECDSA_P384_SHA384_FIXED_SIGNING, &theirs_digest::SHA384, &SHA384, &verify::ECDSA_P384_SHA384_FIXED),
+                (&theirs::ECDSA_P521_SHA256_ASN1_SIGNING, &theirs_digest::SHA256, &SHA256, &verify::ECDSA_P521_SHA512_ASN1),
+                (&theirs::ECDSA_P521_SHA256_FIXED_SIGNING, &theirs_digest::SHA256, &SHA256, &verify::ECDSA_P521_SHA512_FIXED),
+                (&theirs::ECDSA_P521_SHA384_ASN1_SIGNING, &theirs_digest::SHA384, &SHA384, &verify::ECDSA_P521_SHA512_ASN1),
+                (&theirs::ECDSA_P521_SHA384_FIXED_SIGNING, &theirs_digest::SHA384, &SHA384, &verify::ECDSA_P521_SHA512_FIXED),
+                (&theirs::ECDSA_P521_SHA512_ASN1_SIGNING, &theirs_digest::SHA512, &SHA512, &verify::ECDSA_P521_SHA512_ASN1),
+                (&theirs::ECDSA_P521_SHA512_FIXED_SIGNING, &theirs_digest::SHA512, &SHA512, &verify::ECDSA_P521_SHA512_FIXED),
+            ];
+            for (signing, theirs_hash, ours_hash, verification) in cases {
+                let theirs = theirs::EcdsaKeyPair::generate(signing).unwrap();
+                let signature = theirs
+                    .sign_digest(&theirs_digest::digest(theirs_hash, &message))
+                    .unwrap();
+                // A signature over the message is one over its digest too.
+                let over_message = theirs.sign(&SystemRandom::new(), &message).unwrap();
+                let verifier =
+                    signature::PublicKey::new(verification, theirs.public_key().as_ref()).unwrap();
+                let digest = digest::digest(ours_hash, &message);
+                for signature in [signature.as_ref(), over_message.as_ref()] {
+                    prop_assert!(
+                        verifier.verify_digest(&digest, signature).is_ok(),
+                        "{:?}", signing
+                    );
+                    let other = digest::digest(ours_hash, b"other");
+                    prop_assert!(verifier.verify_digest(&other, signature).is_err());
+                }
+            }
+        }
+    }
+}

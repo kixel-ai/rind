@@ -40,6 +40,19 @@ lives in [`quest/`][quests]. Coming from ring or [aws-lc-rs]?
 [MIGRATING.md][migrating] maps their API to rind's, and [rind-ring][] offers
 ring's API as is.
 
+## Migrating with an agent
+
+Paste this into your coding agent, in your repository:
+
+```text
+Move this repository from ring or aws-lc-rs to rind, following
+https://raw.githubusercontent.com/moq-dev/rind/main/MIGRATE.md
+```
+
+It migrates on a local branch, reports the build time, binary size,
+benchmarks, and tests before and after, and asks before opening a PR or
+filing an issue.
+
 ## Built on great work
 
 **[Graviola] is an outstanding project.** Joe Birr-Pixton and its
@@ -96,8 +109,10 @@ Android are untested.
   run [aws-lc]'s NEON and scalar assembly instead (see
   [Algorithms](#algorithms)), `rind::cpu::has_aes_hardware()` is false, and
   rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Secret-dependent code
-  runs with data-independent timing (DIT) where the core has it, unless
-  Hyper-V hides it from Linux, as on Azure's Cobalt 100.
+  runs with data-independent timing (DIT) where the core has it. Where
+  Hyper-V hides DIT from Linux, as on Azure's Cobalt 100, rind knows it from
+  the core's model, for Arm's Armv8.4 and later cores and Qualcomm's Oryon,
+  given a readable `/sys` and every CPU online.
 - `x86_64` runs on every x86_64 CPU. Without `aes` and `pclmulqdq`, as on
   Core 2 and Nehalem, AES and GHASH run [aws-lc]'s SSSE3 assembly instead
   (see [Algorithms](#algorithms)), `rind::cpu::has_aes_hardware()` is false,
@@ -700,8 +715,9 @@ The modules:
 - `kem`: ML-KEM-768.
 - `rsa`: RSA-OAEP encryption and decryption, with SHA-1 under `legacy`.
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
-  Ed25519 key pairs and verification, plus RSA keys given as their
-  components, and SHA-1 and 1024-bit RSA for verifying old signatures.
+  Ed25519 key pairs and verification, plus ECDSA over a `digest` the caller
+  computed, with any SHA-2 hash, RSA keys given as their components, and
+  SHA-1 and 1024-bit RSA for verifying old signatures.
 - `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, SHA-512/256,
   SHA3-256, SHA3-384, and SHA3-512.
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.
