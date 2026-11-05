@@ -539,7 +539,7 @@ Each operation where another library is more than 10% faster than rind, on a hos
 
 | Operation | On | rind's time over the fastest | Decision |
 |---|---|---|---|
-| RSA-2048 PKCS#1 sign, RSA-2048 PSS sign, full handshake, RSA-2048 certificate | `nixos`, `desktop`, `nixos2` | 1.11× to 1.31× (graviola, ring) | [x86_64 RSA-2048 signing as fast as ring and graviola](quest/m2/speed/x86-rsa2048-sign.md) |
+| RSA-2048 PKCS#1 sign, RSA-2048 PSS sign, full handshake, RSA-2048 certificate | `nixos`, `desktop`, `nixos2` | 1.11× to 1.31× (graviola, ring) | [Confirm x86_64 RSA-2048 signing level in the report](quest/m2/speed/x86-rsa2048-sign.md) |
 | SHA-256, 64 B | `nixos`, `desktop` | 1.38× to 1.44× (RustCrypto + dalek) | [x86_64 SHA-256 of short messages as fast as RustCrypto](quest/m2/speed/x86-sha256-short.md) |
 | SHA-512, 16 KB | `nixos`, `desktop`, `nixos2` | 1.15× to 1.37× (OpenSSL) | [x86_64 SHA-2 bulk as fast as OpenSSL](quest/m2/speed/x86-sha2-bulk.md) |
 | SHA-256, 16 KB | `nixos2` | 1.11× (OpenSSL) | [x86_64 SHA-2 bulk as fast as OpenSSL](quest/m2/speed/x86-sha2-bulk.md) |
