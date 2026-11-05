@@ -1099,11 +1099,15 @@ mod rsa {
     use aws_lc_rs::encoding::AsDer;
     use aws_lc_rs::rand::SystemRandom;
     use aws_lc_rs::rsa::{KeyPair, KeySize};
+    use aws_lc_rs::signature::RsaPssSaltLength as TheirsSaltLength;
     use aws_lc_rs::signature::{self, KeyPair as _, UnparsedPublicKey};
     use proptest::collection::vec;
     use proptest::prelude::*;
     use rind::Error;
-    use rind::signature::{RsaKeyPair, RsaKeySize, sign, verify};
+    use rind::signature::{
+        RsaKeyPair, RsaKeySize, RsaPssSaltLength, RsaSigningAlgorithm, RsaVerificationAlgorithm,
+        sign, verify,
+    };
 
     /// One padding and hash: each side's signing and verification constants.
     struct Scheme {
@@ -1278,6 +1282,115 @@ mod rsa {
                         verifier.verify(&[&message[..], b"!"].concat(), &theirs_signature),
                         Err(Error::BadSignature)
                     );
+                }
+            }
+        }
+    }
+
+    /// One PSS hash with a chosen salt length: each side's constructor.
+    struct PssSalt {
+        ours_sign: fn(RsaPssSaltLength) -> RsaSigningAlgorithm,
+        ours_verify: fn(RsaPssSaltLength) -> RsaVerificationAlgorithm,
+        ours_any_salt: &'static RsaVerificationAlgorithm,
+        theirs_sign: fn(TheirsSaltLength) -> signature::RsaSignatureEncoding,
+        theirs_verify: fn(TheirsSaltLength) -> signature::RsaParameters,
+        hash_len: usize,
+    }
+
+    const PSS_SALTS: [PssSalt; 3] = [
+        PssSalt {
+            ours_sign: RsaSigningAlgorithm::pss_sha256,
+            ours_verify: RsaVerificationAlgorithm::pss_sha256,
+            ours_any_salt: &verify::RSA_PSS_SHA256_ANY_SALT,
+            theirs_sign: |salt| signature::RSA_PSS_SHA256.with_pss_salt_length(salt),
+            theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA256.with_pss_salt_length(salt),
+            hash_len: 32,
+        },
+        PssSalt {
+            ours_sign: RsaSigningAlgorithm::pss_sha384,
+            ours_verify: RsaVerificationAlgorithm::pss_sha384,
+            ours_any_salt: &verify::RSA_PSS_SHA384_ANY_SALT,
+            theirs_sign: |salt| signature::RSA_PSS_SHA384.with_pss_salt_length(salt),
+            theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA384.with_pss_salt_length(salt),
+            hash_len: 48,
+        },
+        PssSalt {
+            ours_sign: RsaSigningAlgorithm::pss_sha512,
+            ours_verify: RsaVerificationAlgorithm::pss_sha512,
+            ours_any_salt: &verify::RSA_PSS_SHA512_ANY_SALT,
+            theirs_sign: |salt| signature::RSA_PSS_SHA512.with_pss_salt_length(salt),
+            theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA512.with_pss_salt_length(salt),
+            hash_len: 64,
+        },
+    ];
+
+    // As `sign_verify`, a dozen private-key operations per key per case.
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(8))]
+
+        /// Each side verifies the other's PSS signatures with any salt length
+        /// the modulus allows, as does any-salt verification, and both refuse
+        /// one a byte longer.
+        #[test]
+        fn pss_salt_lengths(salt in any::<u16>(), message in vec(any::<u8>(), 0..300)) {
+            for theirs in &*THEIRS {
+                let ours = RsaKeyPair::from_pkcs8(theirs.as_der().unwrap().as_ref()).unwrap();
+                let public = theirs.public_key().as_ref();
+                let bits = signature::RsaParameters::public_modulus_len(public).unwrap() as usize;
+                let rng = SystemRandom::new();
+
+                for pss in &PSS_SALTS {
+                    let any_salt =
+                        rind::signature::PublicKey::new(pss.ours_any_salt, public).unwrap();
+                    // RFC 8017 section 9.1.1's `emLen - hLen - 2`.
+                    let max = u16::try_from((bits - 1).div_ceil(8) - pss.hash_len - 2).unwrap();
+                    let custom = salt % (max + 1);
+
+                    for (ours_salt, theirs_salt) in [
+                        (RsaPssSaltLength::Custom(custom), TheirsSaltLength::Custom(custom)),
+                        (RsaPssSaltLength::Max, TheirsSaltLength::Max),
+                        (RsaPssSaltLength::Custom(max + 1), TheirsSaltLength::Custom(max + 1)),
+                    ] {
+                        // aws-lc-rs takes only `'static` algorithms.
+                        let theirs_sign = Box::leak(Box::new((pss.theirs_sign)(theirs_salt)));
+                        let theirs_verify = Box::leak(Box::new((pss.theirs_verify)(theirs_salt)));
+                        let ours_sign = (pss.ours_sign)(ours_salt);
+                        let ours_verify = rind::signature::PublicKey::new(
+                            &(pss.ours_verify)(ours_salt),
+                            public,
+                        );
+
+                        let mut theirs_signature = vec![0u8; theirs.public_modulus_len()];
+                        let theirs_signed =
+                            theirs.sign(theirs_sign, &rng, &message, &mut theirs_signature);
+                        if ours_salt == RsaPssSaltLength::Custom(max + 1) {
+                            prop_assert!(theirs_signed.is_err());
+                            prop_assert!(matches!(
+                                ours.sign(&ours_sign, &message),
+                                Err(Error::KeyRejected(_))
+                            ));
+                            prop_assert!(matches!(ours_verify, Err(Error::KeyRejected(_))));
+                            continue;
+                        }
+                        theirs_signed.unwrap();
+                        let ours_verify = ours_verify.unwrap();
+                        let other_message = [&message[..], b"!"].concat();
+                        for verifier in [&ours_verify, &any_salt] {
+                            verifier.verify(&message, &theirs_signature).unwrap();
+                            prop_assert_eq!(
+                                verifier.verify(&other_message, &theirs_signature),
+                                Err(Error::BadSignature)
+                            );
+                        }
+
+                        let ours_signature = ours.sign(&ours_sign, &message).unwrap();
+                        UnparsedPublicKey::new(theirs_verify, public)
+                            .verify(&message, ours_signature.as_ref())
+                            .unwrap();
+                        ours.public_key(&ours_sign)
+                            .verify(&message, ours_signature.as_ref())
+                            .unwrap();
+                    }
                 }
             }
         }

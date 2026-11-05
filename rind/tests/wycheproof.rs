@@ -10,7 +10,7 @@ use rind::cipher::{AES_128, AES_256, ChaCha20};
 use rind::key_wrap::{self, AesKek};
 use rind::rsa::{self, DecryptingKey, OaepAlgorithm};
 use rind::signature::verify::legacy;
-use rind::signature::{self, RsaVerificationAlgorithm, sign, verify};
+use rind::signature::{self, RsaPssSaltLength, RsaVerificationAlgorithm, sign, verify};
 use rind::{hkdf, hmac, pbkdf2};
 use serde::Deserialize;
 
@@ -822,11 +822,13 @@ fn test_rsa_oaep_decrypt() {
 #[test]
 fn test_rsa_pss_verify() {
     for file in &[
+        "rsa_pss_2048_sha256_mgf1_0_test.json",
         "rsa_pss_2048_sha256_mgf1_32_test.json",
         "rsa_pss_2048_sha384_mgf1_48_test.json",
         "rsa_pss_3072_sha256_mgf1_32_test.json",
         "rsa_pss_4096_sha256_mgf1_32_test.json",
         "rsa_pss_4096_sha384_mgf1_48_test.json",
+        "rsa_pss_4096_sha512_mgf1_32_test.json",
         "rsa_pss_4096_sha512_mgf1_64_test.json",
         "rsa_pss_misc_test.json",
     ] {
@@ -841,20 +843,41 @@ fn test_rsa_pss_verify() {
         for group in tests.groups {
             summary.group(&group);
 
-            let algorithm = match (group.sha.as_ref(), group.mgf_sha.as_ref(), group.salt_len) {
-                ("SHA-256", "SHA-256", 32) => &verify::RSA_PSS_SHA256,
-                ("SHA-384", "SHA-384", 48) => &verify::RSA_PSS_SHA384,
-                ("SHA-512", "SHA-512", 64) => &verify::RSA_PSS_SHA512,
+            type Pss = fn(RsaPssSaltLength) -> RsaVerificationAlgorithm;
+            let (pss, any_salt): (Pss, _) = match (group.sha.as_ref(), group.mgf_sha.as_ref()) {
+                ("SHA-256", "SHA-256") => (
+                    RsaVerificationAlgorithm::pss_sha256,
+                    &verify::RSA_PSS_SHA256_ANY_SALT,
+                ),
+                ("SHA-384", "SHA-384") => (
+                    RsaVerificationAlgorithm::pss_sha384,
+                    &verify::RSA_PSS_SHA384_ANY_SALT,
+                ),
+                ("SHA-512", "SHA-512") => (
+                    RsaVerificationAlgorithm::pss_sha512,
+                    &verify::RSA_PSS_SHA512_ANY_SALT,
+                ),
                 other => {
                     summary.skipped(&format!(
-                        "pss with sha={} mgf={} salt_len={} not supported",
-                        other.0, other.1, other.2
+                        "pss with sha={} mgf={} not supported",
+                        other.0, other.1
                     ));
                     continue;
                 }
             };
             // Loaded from its SPKI; the PKCS#1 tests load the raw key.
-            let key = signature::PublicKey::new(algorithm, &group.public_key_der).unwrap();
+            let spki = &group.public_key_der;
+            let salt = |len: usize| pss(RsaPssSaltLength::Custom(len.try_into().unwrap()));
+            let key = signature::PublicKey::new(&salt(group.salt_len), spki).unwrap();
+            let any_salt_key = signature::PublicKey::new(any_salt, spki).unwrap();
+            // The hash-length salt has its own constant, which must agree.
+            let hash_salt_key = match (group.sha.as_ref(), group.salt_len) {
+                ("SHA-256", 32) => Some(&verify::RSA_PSS_SHA256),
+                ("SHA-384", 48) => Some(&verify::RSA_PSS_SHA384),
+                ("SHA-512", 64) => Some(&verify::RSA_PSS_SHA512),
+                _ => None,
+            }
+            .map(|algorithm| signature::PublicKey::new(algorithm, spki).unwrap());
 
             for test in group.tests {
                 summary.start(&test);
@@ -867,6 +890,27 @@ fn test_rsa_pss_verify() {
                         Err(Error::BadSignature),
                     ) => {}
                     _ => panic!("expected {:?} got {:?}", test.result, result.err()),
+                }
+                if let Some(hash_salt_key) = &hash_salt_key {
+                    assert_eq!(hash_salt_key.verify(&test.msg, &test.sig), result);
+                }
+
+                // These are well formed with another salt length, which
+                // verifies them.
+                match test
+                    .comment
+                    .as_deref()
+                    .and_then(|c| c.strip_prefix("s_len changed to "))
+                {
+                    Some(len) => {
+                        let len = len.parse().unwrap();
+                        signature::PublicKey::new(&salt(len), spki)
+                            .unwrap()
+                            .verify(&test.msg, &test.sig)
+                            .unwrap();
+                        any_salt_key.verify(&test.msg, &test.sig).unwrap();
+                    }
+                    None => assert_eq!(any_salt_key.verify(&test.msg, &test.sig), result),
                 }
             }
         }

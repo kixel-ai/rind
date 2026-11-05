@@ -41,7 +41,7 @@ enum Parsed {
     EcdsaP256(Verifier<ecdsa::VerifyingKey<P256>>, Ecdsa),
     EcdsaP384(Verifier<ecdsa::VerifyingKey<P384>>, Ecdsa),
     EcdsaP521(Verifier<ecdsa::VerifyingKey<P521>>, Ecdsa),
-    Rsa(Verifier<rsa::VerifyingKey>, RsaVerification),
+    Rsa(RsaVerifier, RsaVerification),
     Ed25519(Verifier<Ed25519VerifyingKey>),
 }
 
@@ -54,10 +54,7 @@ impl PublicKey {
     /// their 32 bytes. A compressed ECDSA point is refused: no consumer sends
     /// one. So is an Ed25519 point of small order, which verifies signatures
     /// nobody made.
-    pub fn new(
-        algorithm: &'static impl AsRef<VerificationAlgorithm>,
-        bytes: &[u8],
-    ) -> Result<Self, Error> {
+    pub fn new(algorithm: &impl AsRef<VerificationAlgorithm>, bytes: &[u8]) -> Result<Self, Error> {
         let key = match algorithm.as_ref().0 {
             Verification::Ecdsa(ecdsa, parse) => parse(ecdsa, bytes)?,
             Verification::Rsa(rsa) => return (rsa.parse)(rsa, bytes),
@@ -83,7 +80,7 @@ impl PublicKey {
         Ok(Self {
             encoding: Buffer::write(|output| key.to_pkcs1_der(output))?,
             key: Parsed::Rsa(
-                Verifier {
+                RsaVerifier {
                     key,
                     verify: rsa.verify,
                 },
@@ -98,7 +95,9 @@ impl PublicKey {
             Parsed::EcdsaP256(key, _) => key.verify(message, signature),
             Parsed::EcdsaP384(key, _) => key.verify(message, signature),
             Parsed::EcdsaP521(key, _) => key.verify(message, signature),
-            Parsed::Rsa(key, _) => key.verify(message, signature),
+            Parsed::Rsa(key, verification) => {
+                (key.verify)(&key.key, verification.salt(), signature, message)
+            }
             Parsed::Ed25519(key) => key.verify(message, signature),
         }
     }
