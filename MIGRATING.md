@@ -329,7 +329,7 @@ panics on a CPU missing a feature it requires, so every adapter entry point
 that is a function refuses one with `rind::cpu::MissingFeature` instead. A
 static that the upstream crate requires, such as `DEFAULT_PROVIDER`, cannot,
 and neither can rind-ring, whose signatures are ring's, so call
-`rind::cpu::check()` before using them.
+`rind::cpu::check()`, or rind-ring's `cpu::check()`, before using them.
 
 ### rind-ring
 
@@ -338,7 +338,9 @@ in with `ring = { package = "rind-ring", version = "0.1" }` and no code
 changes. The rename reaches only that crate: a dependency that names ring,
 such as rustls with its `ring` feature, still builds ring, since Cargo cannot
 patch it with a crate of another name. It panics wherever ring panics, so
-its signatures stay ring's. Its [README](rind-ring/README.md) lists the
+its signatures stay ring's, and adds rind's `cpu` module, so the renamed
+crate refuses an unsupported CPU with `ring::cpu::check()` without depending
+on rind. Its [README](rind-ring/README.md) lists the
 items it leaves out and the inputs it refuses where ring takes them.
 
 ### rind-rustls
