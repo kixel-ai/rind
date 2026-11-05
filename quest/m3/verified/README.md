@@ -6,7 +6,7 @@ Every operation rind exports, on every path, runs code whose whole computation i
 
 ## Plan
 
-Decided with the maintainer on 2026-11-03, after the [benchmark report](/quest/m1/benchmarks/README.md) adopted its strict ✓ rule: a ✓ needs the whole computation proven, padding and protocol glue included.
+Decided with the maintainer on 2026-11-03, after the benchmark report (`BENCHMARKS.md`) adopted its strict ✓ rule: a ✓ needs the whole computation proven, padding and protocol glue included.
 
 - Scope: an m3 epic that starts with an audit ✅ / only the two known proofs / the same epic in m2.
 - The audit ([moq-dev/rind#318](https://github.com/moq-dev/rind/pull/318)) lists what each path runs, what is proven, and the cheapest route to a proof for each gap. Plan quests from its report, starting with the most common operations.
@@ -43,4 +43,6 @@ Decided with the maintainer on 2026-11-03, after the [benchmark report](/quest/m
 - [The hash and KDF glue is proven](/quest/m3/verified/hash-glue.md) - the HMAC, HKDF, PBKDF2, and digest APIs over the proven SHA and HMAC core, and the constant-time compare
 - [x86_64 SHA-NI SHA-256 block function is proven](/quest/m3/verified/sha256-block.md) - today's routine proven on s2n-bignum's SHA-256 spec, or a proven one as fast
 - [x86_64 AES-GCM's Vale glue is proven](/quest/m3/verified/aes-gcm-vale.md) - the ✓ for the Vale AES-GCM that tier runs
+- [AES-GCM's seal_in_place_append_tag is proven on the Vale tier](/quest/m3/verified/aes-gcm-append-tag.md) - the last seal the AEAD API offers
+- [AES-GCM of 2^32 bytes and more is proven on the Vale tier](/quest/m3/verified/aes-gcm-vale-long.md) - drops the ✓'s size caveat
 - [P-256's generator is proven to have order n](/quest/m3/verified/p256-generator-order.md) - drops the finite-multiple hypothesis from key generation, the public key, and signing
