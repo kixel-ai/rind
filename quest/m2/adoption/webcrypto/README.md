@@ -28,7 +28,6 @@ Decided with the maintainer on 2026-11-04, in a planning interview:
 
 - [AES-CBC](/quest/m2/adoption/webcrypto/aes-cbc.md) - AES-CBC with PKCS#7 padding
 - [AES-GCM with any IV and tag length](/quest/m2/adoption/webcrypto/aes-gcm-params.md) - WebCrypto's IV lengths and truncated tags
-- [AES-CTR with any counter length](/quest/m2/adoption/webcrypto/aes-ctr.md) - WebCrypto's 16-byte counter block and counter width
 - [AES-192](/quest/m2/adoption/webcrypto/aes-192.md) - 192-bit keys for every AES mode
 - [AES key wrap](/quest/m2/adoption/webcrypto/aes-kw.md) - RFC 3394 AES-KW
 - [RSA-OAEP](/quest/m2/adoption/webcrypto/rsa-oaep.md) - RSA-OAEP encryption and decryption

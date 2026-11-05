@@ -139,7 +139,6 @@ mod cipher {
     use aws_lc_rs::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, Nonce, UnboundKey, quic};
     use aws_lc_rs::cipher::{AES_128, AES_256, EncryptingKey, EncryptionContext, UnboundCipherKey};
     use proptest::prelude::*;
-    use rind::Error;
     use rind::cipher::{self, Aes, AesCtr, ChaCha20};
 
     fn aes_key() -> impl Strategy<Value = Vec<u8>> {
@@ -162,9 +161,16 @@ mod cipher {
         UnboundCipherKey::new(alg, key).unwrap()
     }
 
-    // Counters near the top of the range exercise the wrap refusal.
-    fn counter() -> impl Strategy<Value = u32> {
-        prop_oneof![any::<u32>(), (u32::MAX - 80)..=u32::MAX]
+    // Counter blocks near a 32-bit or the 128-bit wrap exercise the carries.
+    fn counter_block() -> impl Strategy<Value = [u8; 16]> {
+        prop_oneof![
+            any::<[u8; 16]>(),
+            (any::<u128>(), (u32::MAX - 80)..=u32::MAX)
+                .prop_map(
+                    |(high, low)| (high & !u128::from(u32::MAX) | u128::from(low)).to_be_bytes()
+                ),
+            ((u128::MAX - 80)..=u128::MAX).prop_map(u128::to_be_bytes),
+        ]
     }
 
     proptest! {
@@ -184,33 +190,21 @@ mod cipher {
         #[test]
         fn aes_ctr(
             key in aes_key(),
-            nonce in any::<[u8; 12]>(),
-            counter in counter(),
+            counter_block in counter_block(),
             msg in prop::collection::vec(any::<u8>(), 0..1100),
         ) {
+            // aws-lc-rs's counter is the whole block
             let mut ours = msg.clone();
-            let result = AesCtr::new(rind_aes_algorithm(&key), &key)
+            AesCtr::new(rind_aes_algorithm(&key), &key)
                 .unwrap()
-                .apply_keystream(&nonce, counter, &mut ours);
+                .apply_keystream(&counter_block, 128, &mut ours)
+                .unwrap();
 
-            // aws-lc-rs carries into the nonce where we refuse, so compare only
-            // what we accept.
-            let blocks = msg.len().div_ceil(16) as u64;
-            if u64::from(counter) + blocks > 1 << 32 {
-                prop_assert_eq!(result, Err(Error::WrongLength));
-                prop_assert_eq!(ours, msg);
-                return Ok(());
-            }
-            result.unwrap();
-
-            let mut iv = [0u8; 16];
-            iv[..12].copy_from_slice(&nonce);
-            iv[12..].copy_from_slice(&counter.to_be_bytes());
             let mut theirs = msg.clone();
             if !theirs.is_empty() {
                 EncryptingKey::ctr(aws_aes_key(&key))
                     .unwrap()
-                    .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(iv.into()))
+                    .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(counter_block.into()))
                     .unwrap();
             }
             prop_assert_eq!(ours, theirs);

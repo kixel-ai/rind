@@ -2,7 +2,7 @@ mod criterion;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 fn bench_aes_ctr(c: &mut Criterion) {
-    let nonce = [0u8; 12];
+    let iv = [0u8; 16];
 
     for (name, key_len) in [("aes128-ctr", 16), ("aes256-ctr", 32)] {
         let key = &[0u8; 32][..key_len];
@@ -20,8 +20,6 @@ fn bench_aes_ctr(c: &mut Criterion) {
                 let algorithm = if key_len == 16 { &AES_128 } else { &AES_256 };
                 let key =
                     EncryptingKey::ctr(UnboundCipherKey::new(algorithm, key).unwrap()).unwrap();
-                let mut iv = [0u8; 16];
-                iv[..12].copy_from_slice(&nonce);
                 b.iter(|| {
                     key.less_safe_encrypt(&mut buf, EncryptionContext::Iv128(iv.into()))
                         .unwrap()
@@ -31,7 +29,7 @@ fn bench_aes_ctr(c: &mut Criterion) {
                 use rind::cipher::{AES_128, AES_256, AesCtr};
                 let algorithm = if key_len == 16 { &AES_128 } else { &AES_256 };
                 let key = AesCtr::new(algorithm, key).unwrap();
-                b.iter(|| key.apply_keystream(&nonce, 0, &mut buf).unwrap());
+                b.iter(|| key.apply_keystream(&iv, 128, &mut buf).unwrap());
             });
         }
     }

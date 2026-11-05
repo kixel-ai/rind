@@ -31,11 +31,13 @@ impl Aes {
     }
 }
 
-/// An AES key for counter mode, with a 96-bit nonce and a 32-bit block counter.
+/// An AES key for counter mode.
 ///
-/// Each counter block is the nonce followed by the big-endian counter, as in
-/// RFC 3686 and SRTP's AES-CM. Counter mode is unauthenticated, so pair it with
-/// a MAC.
+/// Each call takes a 16-byte counter block whose rightmost `counter_bits` bits
+/// are a big-endian counter, incremented per block and wrapping within those
+/// bits, as WebCrypto's AES-CTR defines it. RFC 3686 and SRTP's AES-CM use 32
+/// bits; pyca's and aws-lc-rs's CTR use 128. Counter mode is unauthenticated,
+/// so pair it with a MAC.
 pub struct AesCtr(AesKey);
 
 impl AesCtr {
@@ -49,37 +51,57 @@ impl AesCtr {
         Ok(Self(expand_key(key)))
     }
 
-    /// XORs the keystream for `nonce`, starting at block `counter`, into `inout`.
+    /// XORs the keystream from `counter_block` into `inout`, incrementing its
+    /// rightmost `counter_bits` bits.
     ///
-    /// Encryption and decryption are the same operation. The nonce and counter
-    /// are not secret.
+    /// Encryption and decryption are the same operation. The counter block is
+    /// not secret.
     ///
-    /// Fails with [`Error::WrongLength`], leaving `inout` unchanged, if `inout`
-    /// needs more blocks than remain before the counter wraps: wrapping would
-    /// repeat keystream.
+    /// Fails with [`Error::WrongLength`], leaving `inout` unchanged, if
+    /// `counter_bits` is not 1 to 128, or if `inout` needs more than
+    /// 2^`counter_bits` blocks: the counter would wrap onto a block already
+    /// used, repeating keystream.
     pub fn apply_keystream(
         &self,
-        nonce: &[u8; 12],
-        counter: u32,
+        counter_block: &[u8; 16],
+        counter_bits: u8,
         inout: &mut [u8],
     ) -> Result<(), Error> {
         let _entry = Entry::new_secret();
-        check_counter(counter, inout.len())?;
+        if !(1..=128).contains(&counter_bits) {
+            return Err(Error::WrongLength);
+        }
+        let blocks = inout.len().div_ceil(16) as u128;
+        if counter_bits < 128 && blocks > 1 << counter_bits {
+            return Err(Error::WrongLength);
+        }
         low::ct::secret_slice(inout);
 
-        low::aes_ctr::apply(&self.0, nonce, counter, inout);
+        // The backends increment the low 32 bits, wrapping within them, so
+        // split the message where those wrap or the counter does first.
+        let counter_mask = u128::MAX >> (128 - counter_bits);
+        let word_mask = counter_mask & u128::from(u32::MAX);
+        let mut block = u128::from_be_bytes(*counter_block);
+        let mut rest = &mut *inout;
+        while !rest.is_empty() {
+            let segment_blocks = (word_mask - (block & word_mask) + 1) as u64;
+            let len = match usize::try_from(segment_blocks * 16) {
+                Ok(len) if len < rest.len() => len,
+                _ => rest.len(),
+            };
+            let (segment, next) = rest.split_at_mut(len);
+            let bytes = block.to_be_bytes();
+            let (nonce, counter) = bytes.split_first_chunk::<12>().unwrap();
+            let counter = u32::from_be_bytes(counter.try_into().unwrap());
+            low::aes_ctr::apply(&self.0, nonce, counter, segment);
+
+            let counter = block.wrapping_add(segment_blocks.into());
+            block = (block & !counter_mask) | (counter & counter_mask);
+            rest = next;
+        }
         low::ct::public_slice(inout);
         Ok(())
     }
-}
-
-/// Fails with [`Error::WrongLength`] if `len` bytes need more blocks than
-/// remain from block `counter` before the 32-bit counter wraps.
-fn check_counter(counter: u32, len: usize) -> Result<(), Error> {
-    if u64::from(counter) + len.div_ceil(16) as u64 > 1 << 32 {
-        return Err(Error::WrongLength);
-    }
-    Ok(())
 }
 
 /// Fails with [`Error::WrongLength`] if an AES-GCM message is past its limits.
@@ -87,10 +109,10 @@ fn check_counter(counter: u32, len: usize) -> Result<(), Error> {
 /// Its counter blocks start at 2, after the tag's, and the AAD's bit length
 /// must fit in 64 bits.
 pub(super) fn check_gcm_lengths(aad: usize, msg: usize) -> Result<(), Error> {
-    if aad as u64 >= 1 << 61 {
+    if aad as u64 >= 1 << 61 || msg.div_ceil(16) as u64 + 2 > 1 << 32 {
         return Err(Error::WrongLength);
     }
-    check_counter(2, msg)
+    Ok(())
 }
 
 /// Expands `key`, which the caller has checked is 16 or 32 bytes.
@@ -218,9 +240,37 @@ mod tests {
         ] {
             let key = hex::decode(key).unwrap();
             let ctr = AesCtr::new(algorithm(&key), &key).unwrap();
-            let nonce: [u8; 12] = hex::decode(nonce).unwrap().try_into().unwrap();
+            let block = hex::decode(format!("{nonce}00000001")).unwrap();
             let mut buf: Vec<u8> = (0u8..36).collect();
-            ctr.apply_keystream(&nonce, 1, &mut buf).unwrap();
+            ctr.apply_keystream(&block.try_into().unwrap(), 32, &mut buf)
+                .unwrap();
+            assert_eq!(hex::encode(&buf), ct);
+        }
+    }
+
+    #[test]
+    fn sp800_38a() {
+        // F.5.1 and F.5.5, CTR-AES128.Encrypt and CTR-AES256.Encrypt
+        let pt = "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51\
+                  30c81c46a35ce411e5fbc1191a0a52eff69f2445df4f9b17ad2b417be66c3710";
+        for (key, ct) in [
+            (
+                "2b7e151628aed2a6abf7158809cf4f3c",
+                "874d6191b620e3261bef6864990db6ce9806f66b7970fdff8617187bb9fffdff\
+                 5ae4df3edbd5d35e5b4f09020db03eab1e031dda2fbe03d1792170a0f3009cee",
+            ),
+            (
+                "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4",
+                "601ec313775789a5b7a7f504bbf3d228f443e3ca4d62b59aca84e990cacaf5c5\
+                 2b0930daa23de94ce87017ba2d84988ddfc9c58db67aada613c2dd08457941a6",
+            ),
+        ] {
+            let key = hex::decode(key).unwrap();
+            let ctr = AesCtr::new(algorithm(&key), &key).unwrap();
+            let block = hex::decode("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff").unwrap();
+            let mut buf = hex::decode(pt).unwrap();
+            ctr.apply_keystream(&block.try_into().unwrap(), 128, &mut buf)
+                .unwrap();
             assert_eq!(hex::encode(&buf), ct);
         }
     }
@@ -244,45 +294,87 @@ mod tests {
             let key = hex::decode(key).unwrap();
             let ctr = AesCtr::new(algorithm(&key), &key).unwrap();
             let iv = hex::decode("f0f1f2f3f4f5f6f7f8f9fafbfcfd0000").unwrap();
-            let (nonce, counter) = iv.split_at(12);
             let mut keystream = vec![0u8; 65282 * 16];
-            ctr.apply_keystream(
-                nonce.try_into().unwrap(),
-                u32::from_be_bytes(counter.try_into().unwrap()),
-                &mut keystream,
-            )
-            .unwrap();
+            ctr.apply_keystream(&iv.try_into().unwrap(), 128, &mut keystream)
+                .unwrap();
             assert_eq!(hex::encode(&keystream[..48]), first);
             assert_eq!(hex::encode(&keystream[keystream.len() - 48..]), last);
         }
     }
 
+    // Every counter width against a model encrypting one counter block at a
+    // time, from counters that wrap the counter or carry out of the backends'
+    // 32-bit word, with the bits above the counter set so a carry into them
+    // shows.
     #[test]
-    fn aes_ctr_refuses_counter_wrap() {
+    fn counter_bits_match_model() {
         let key = [0x42u8; 16];
         let ctr = AesCtr::new(&AES_128, &key).unwrap();
-        let nonce = [0x24u8; 12];
+        let aes = Aes::new(&AES_128, &key).unwrap();
+        let fixed = u128::from_be_bytes([0xa5; 16]);
+        for bits in [1u8, 2, 7, 8, 16, 31, 32, 33, 63, 64, 96, 127, 128] {
+            let mask = u128::MAX >> (128 - bits);
+            let max_blocks = 1u128.checked_shl(bits.into()).unwrap_or(u128::MAX);
+            let starts = [
+                0,
+                1,
+                mask.wrapping_sub(3) & mask,
+                mask,
+                ((1 << 32) - 3) & mask,
+            ];
+            for start in starts {
+                let lens: [usize; 12] = [0, 1, 15, 16, 17, 32, 33, 64, 127, 128, 129, 300];
+                for len in lens
+                    .into_iter()
+                    .filter(|len| len.div_ceil(16) as u128 <= max_blocks)
+                {
+                    let what = format!("{bits} bits from {start:#x}, {len} bytes");
+                    let block = (fixed & !mask) | start;
+                    let msg: Vec<u8> = (0..len).map(|i| i as u8).collect();
+                    let mut want = msg.clone();
+                    for (i, chunk) in (0u128..).zip(want.chunks_mut(16)) {
+                        let mut keystream =
+                            ((block & !mask) | (block.wrapping_add(i) & mask)).to_be_bytes();
+                        aes.encrypt_block(&mut keystream);
+                        for (b, k) in chunk.iter_mut().zip(keystream) {
+                            *b ^= k;
+                        }
+                    }
+                    let mut got = msg;
+                    ctr.apply_keystream(&block.to_be_bytes(), bits, &mut got)
+                        .unwrap();
+                    assert_eq!(got, want, "{what}");
+                }
+            }
+        }
+    }
 
-        let mut last_block = [0u8; 16];
-        last_block[..12].copy_from_slice(&nonce);
-        last_block[12..].copy_from_slice(&[0xff; 4]);
-        Aes::new(&AES_128, &key)
-            .unwrap()
-            .encrypt_block(&mut last_block);
-
-        // the final counter value is usable, without carrying into the nonce
-        for (counter, len) in [(u32::MAX, 16), (u32::MAX - 7, 128), (u32::MAX - 8, 129)] {
-            let mut buf = vec![0u8; len];
-            ctr.apply_keystream(&nonce, counter, &mut buf).unwrap();
-            let offset = (u32::MAX - counter) as usize * 16;
-            assert_eq!(buf[offset..], last_block[..len - offset]);
+    #[test]
+    fn aes_ctr_refuses_counter_reuse() {
+        let ctr = AesCtr::new(&AES_128, &[0x42; 16]).unwrap();
+        let block = [0xff; 16];
+        for bits in [0, 129, u8::MAX] {
+            let mut buf = [0xaa; 16];
+            assert_eq!(
+                ctr.apply_keystream(&block, bits, &mut buf),
+                Err(Error::WrongLength),
+                "{bits} bits"
+            );
+            assert_eq!(buf, [0xaa; 16], "refused call wrote output");
         }
 
-        for (counter, len) in [(u32::MAX, 17), (u32::MAX - 7, 129)] {
-            let mut buf = vec![0xaau8; len];
+        // 2^bits blocks wrap onto the first one only when one more is needed
+        for bits in [1u8, 4, 8] {
+            let max = 16 << bits;
+            for len in [max - 15, max] {
+                ctr.apply_keystream(&block, bits, &mut vec![0; len])
+                    .unwrap();
+            }
+            let mut buf = vec![0xaa; max + 1];
             assert_eq!(
-                ctr.apply_keystream(&nonce, counter, &mut buf),
-                Err(Error::WrongLength)
+                ctr.apply_keystream(&block, bits, &mut buf),
+                Err(Error::WrongLength),
+                "{bits} bits"
             );
             assert!(buf.iter().all(|b| *b == 0xaa), "refused call wrote output");
         }
@@ -321,9 +413,10 @@ mod tests {
 
             let mut block = bytes(16).try_into().unwrap();
             ct_qemu::traced(|| aes.encrypt_block(&mut block));
-            let nonce = bytes(12).try_into().unwrap();
+            let mut counter_block: [u8; 16] = bytes(16).try_into().unwrap();
+            counter_block[12..].copy_from_slice(&7u32.to_be_bytes());
             let mut msg = bytes(5 * 16 + 8);
-            ct_qemu::traced(|| ctr.apply_keystream(&nonce, 7, &mut msg)).unwrap();
+            ct_qemu::traced(|| ctr.apply_keystream(&counter_block, 32, &mut msg)).unwrap();
         }
     }
 }
