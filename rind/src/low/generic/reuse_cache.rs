@@ -11,8 +11,8 @@ const USED_ONCE: u8 = 1;
 const BUILDING: u8 = 2;
 const READY: u8 = 3;
 
-/// A public value built on its owner's second use, so an owner used once
-/// never pays for it.
+/// A public value its owner builds once and keeps: on the first use that
+/// needs it, or on the second use, so an owner used once never pays for it.
 ///
 /// No use waits: one built on another thread is not there yet.
 pub(crate) struct ReuseCache<T> {
@@ -20,9 +20,9 @@ pub(crate) struct ReuseCache<T> {
     value: UnsafeCell<T>,
 }
 
-// SAFETY: `value` is written once, by the one thread that moves `state` from
-// `USED_ONCE` to `BUILDING`, and read only once `state` is `READY`, which
-// that thread stores with release ordering after writing it.
+// SAFETY: `value` is written once, by the one thread that moves `state` up
+// to `BUILDING`, and read only once `state` is `READY`, which that thread
+// stores with release ordering after writing it.
 unsafe impl<T: Send + Sync> Sync for ReuseCache<T> {}
 
 // A panicking `build` leaves `state` at `BUILDING`, so `value` is never read.
@@ -57,6 +57,28 @@ impl<T: Copy + Default> ReuseCache<T> {
             }
             _ => self.get(),
         }
+    }
+
+    /// The value, built with `build` if no use has kept it yet; one racing
+    /// another thread's build builds its own copy.
+    pub(crate) fn get_or_build_now(&self, build: impl FnOnce() -> T) -> T {
+        if let Some(value) = self.get() {
+            return *value;
+        }
+        let value = build();
+        let state = self.state.load(Ordering::Relaxed);
+        if state < BUILDING
+            && self
+                .state
+                .compare_exchange(state, BUILDING, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+        {
+            // SAFETY: winning the exchange makes this the only writer, and no
+            // reader reads before `READY`.
+            unsafe { *self.value.get() = value };
+            self.state.store(READY, Ordering::Release);
+        }
+        value
     }
 
     fn get(&self) -> Option<&T> {
@@ -98,5 +120,18 @@ mod tests {
         assert_eq!(cache.get_or_build(|| 7), Some(&7));
         assert_eq!(cache.get_or_build(|| unreachable!()), Some(&7));
         assert_eq!(cache.clone().get_or_build(|| unreachable!()), Some(&7));
+    }
+
+    #[test]
+    fn builds_now_on_first_use() {
+        let cache = ReuseCache::<u64>::new();
+        assert_eq!(cache.get_or_build_now(|| 7), 7);
+        assert_eq!(cache.get_or_build_now(|| unreachable!()), 7);
+        assert_eq!(cache.get_or_build(|| unreachable!()), Some(&7));
+
+        let cache = ReuseCache::<u64>::new();
+        assert_eq!(cache.get_or_build(|| unreachable!()), None);
+        assert_eq!(cache.get_or_build_now(|| 7), 7);
+        assert_eq!(cache.clone().get_or_build_now(|| unreachable!()), 7);
     }
 }

@@ -34,13 +34,14 @@ impl PublicKey {
 
 /// A P-384 public key for ECDSA verification.
 ///
-/// It keeps the point's multiples, so verifying again with the same key
-/// skips computing them; Diffie-Hellman's [`PublicKey`] is used once and
-/// never needs them.
+/// It builds the point's multiples on its first verification and keeps
+/// them, so verifying again skips computing them, and a key never verified
+/// with, such as an ECDSA key pair's, never pays for them.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
+    point: AffineMontPoint,
     /// P, 3P, ..., 15P.
-    odd_multiples: [AffineMontPoint; 8],
+    odd_multiples: low::ReuseCache<[AffineMontPoint; 8]>,
     /// 17P, 19P, ..., 31P, which widen P's digits but pay for building
     /// only once a key is reused.
     more_odd_multiples: low::ReuseCache<[AffineMontPoint; 8]>,
@@ -52,7 +53,8 @@ impl VerifyingKey {
         low::Entry::assert_held();
         let PublicKey { point } = PublicKey::from_x962_uncompressed(bytes)?;
         Ok(Self {
-            odd_multiples: point.public_odd_multiples(),
+            point,
+            odd_multiples: low::ReuseCache::new(),
             more_odd_multiples: low::ReuseCache::new(),
         })
     }
@@ -65,14 +67,17 @@ impl VerifyingKey {
 
         // 5. Compute: R = (xR, yR) = u1 G + u2 QU
         //  If R = O, output "invalid" and stop.
+        let odd_multiples = self
+            .odd_multiples
+            .get_or_build_now(|| self.point.public_odd_multiples());
         let more = self
             .more_odd_multiples
-            .get_or_build(|| AffineMontPoint::public_more_odd_multiples(&self.odd_multiples));
+            .get_or_build(|| AffineMontPoint::public_more_odd_multiples(&odd_multiples));
         let point = match more {
             Some(more) => {
-                JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples, more])
+                JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&odd_multiples, more])
             }
-            None => JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples]),
+            None => JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&odd_multiples]),
         };
 
         if point.public_is_infinity() {
