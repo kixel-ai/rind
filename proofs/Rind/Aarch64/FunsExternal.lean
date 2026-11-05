@@ -60,11 +60,6 @@ opaque low.aarch64.p256_scalarmulbase.p256_scalarmulbase
   Array Std.U64 8#usize → Array Std.U64 4#usize → Array (Array Std.U64
     256#usize) 43#usize → Result (Array Std.U64 8#usize)
 
-/-! P-256's generator table, which `admin/p256-precomp` writes. -/
-
-opaque mid.p256.precomp.CURVE_GENERATOR_PRECOMP
-  : Result (Array (Array Std.U64 256#usize) 43#usize)
-
 /-! P-256's key generation, which draws through a `dyn RandomSource`:
 `Rind.Aarch64.P256Dispatch` models it. -/
 
