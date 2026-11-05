@@ -545,7 +545,7 @@ mod tests {
     // message, as an IV other than 96 bits may hash to.
     #[test]
     fn compositions_match_model() {
-        use crate::low::generic::ghash::gcm_model;
+        use crate::low::gcm_model;
 
         let bytes = |n: usize, seed: u32| -> Vec<u8> {
             (0..n as u32)

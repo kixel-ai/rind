@@ -68,6 +68,8 @@ pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, split_tail};
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
+#[cfg(all(test, target_arch = "arm"))]
+pub(crate) use generic::ghash::gcm_model;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
 pub(crate) use generic::reuse_cache::ReuseCache;
