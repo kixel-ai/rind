@@ -340,10 +340,7 @@ fn x25519_from_pkcs8(der: &[u8]) -> Result<x25519::PrivateKey, Error> {
 
 /// Encodes an X25519 key as RFC 8410's PKCS#8 v1, which, as aws-lc and
 /// OpenSSL write it, carries no public key to compute.
-fn x25519_to_pkcs8<'a>(
-    key: &x25519::PrivateKey,
-    output: &'a mut [u8],
-) -> Result<&'a [u8], Error> {
+fn x25519_to_pkcs8<'a>(key: &x25519::PrivateKey, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
     let _entry = low::Entry::new_secret();
     let mut private_key = [0u8; 34];
     let len = asn1::OctetString::new(&key.secret_bytes())
@@ -527,7 +524,10 @@ mod tests {
             let bob_secret = public(&bob.agree(alice_public.as_ref()).unwrap());
             assert_eq!(alice_secret, bob_secret);
             // A key agrees again, with the same result.
-            assert_eq!(public(&alice.agree(bob_public.as_ref()).unwrap()), alice_secret);
+            assert_eq!(
+                public(&alice.agree(bob_public.as_ref()).unwrap()),
+                alice_secret
+            );
         }
     }
 
@@ -659,7 +659,12 @@ mod tests {
 
     #[test]
     fn refuses_scalars() {
-        for (algorithm, len) in [(&X25519, 32), (&ECDH_P256, 32), (&ECDH_P384, 48), (&ECDH_P521, 66)] {
+        for (algorithm, len) in [
+            (&X25519, 32),
+            (&ECDH_P256, 32),
+            (&ECDH_P384, 48),
+            (&ECDH_P521, 66),
+        ] {
             for wrong in [0, len - 1, len + 1] {
                 assert_eq!(
                     PrivateKey::from_private_key(algorithm, &vec![1; wrong]).err(),
@@ -707,7 +712,9 @@ mod tests {
         // with another.
         let v2 = |public_key: &[u8]| {
             [
-                &[0x30, 0x51, 0x02, 0x01, 0x01, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e][..],
+                &[
+                    0x30, 0x51, 0x02, 0x01, 0x01, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e,
+                ][..],
                 &[0x04, 0x22, 0x04, 0x20],
                 scalar.as_ref(),
                 &[0x81, 0x21, 0x00],
@@ -726,8 +733,7 @@ mod tests {
 
         // An Ed25519 key, and an X25519 key to a NIST curve, are refused.
         assert_eq!(
-            PrivateKey::from_pkcs8(&X25519, include_bytes!("asn1/testdata/ed25519-p8v1.bin"))
-                .err(),
+            PrivateKey::from_pkcs8(&X25519, include_bytes!("asn1/testdata/ed25519-p8v1.bin")).err(),
             Some(KeyFormatError::MismatchedPkcs8Algorithm.into())
         );
         assert_eq!(
@@ -759,7 +765,10 @@ mod tests {
     /// Wycheproof's private key, an integer that may have a sign byte or
     /// fewer bytes than the curve's scalar, at the scalar's length.
     fn fixed_scalar(private: &[u8], len: usize) -> Vec<u8> {
-        let start = private.iter().position(|b| *b != 0).unwrap_or(private.len());
+        let start = private
+            .iter()
+            .position(|b| *b != 0)
+            .unwrap_or(private.len());
         let digits = &private[start..];
         [vec![0; len - digits.len()], digits.to_vec()].concat()
     }
@@ -767,8 +776,7 @@ mod tests {
     fn check_nist_ecdh(file: &str, algorithm: &'static Algorithm, len: usize) {
         for test in wycheproof::<EcdhTest>(file) {
             let private =
-                PrivateKey::from_private_key(algorithm, &fixed_scalar(&test.private, len))
-                    .unwrap();
+                PrivateKey::from_private_key(algorithm, &fixed_scalar(&test.private, len)).unwrap();
             let result = private.agree(&test.public).map(|shared| public(&shared));
             // Point compression is unsupported.
             if test.has_flag("CompressedPublic") || test.has_flag("CompressedPoint") {

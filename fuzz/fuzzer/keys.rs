@@ -219,13 +219,20 @@ fn ecdsa_pkcs8(curve: &Curve, input: &[u8]) {
 
 /// An agreement key loads exactly the encodings an ECDSA key pair does, as
 /// the same key.
-fn same_key(ecdsa: &Result<ours::EcdsaKeyPair, rind::Error>, ecdh: &Result<ours_ecdh::PrivateKey, rind::Error>) {
+fn same_key(
+    ecdsa: &Result<ours::EcdsaKeyPair, rind::Error>,
+    ecdh: &Result<ours_ecdh::PrivateKey, rind::Error>,
+) {
     match (ecdsa, ecdh) {
         (Ok(ecdsa), Ok(ecdh)) => {
             assert_eq!(ecdsa.public_key().as_ref(), ecdh.public_key().as_ref());
         }
         (Err(ecdsa), Err(ecdh)) => assert_eq!(ecdsa, ecdh),
-        (ecdsa, ecdh) => panic!("ECDSA: {:?}, ECDH: {:?}", ecdsa.as_ref().err(), ecdh.as_ref().err()),
+        (ecdsa, ecdh) => panic!(
+            "ECDSA: {:?}, ECDH: {:?}",
+            ecdsa.as_ref().err(),
+            ecdh.as_ref().err()
+        ),
     }
 }
 
@@ -262,9 +269,13 @@ fn ecdh_scalar(
     let again = ours_ecdh::PrivateKey::from_pkcs8(ours_algorithm, pkcs8.as_ref()).unwrap();
     assert_eq!(again.public_key().as_ref(), theirs_public.as_ref());
     if theirs_algorithm != &theirs_ecdh::X25519 {
-        let theirs = theirs_ecdh::PrivateKey::from_private_key_der(theirs_algorithm, pkcs8.as_ref())
-            .unwrap();
-        assert_eq!(theirs.compute_public_key().unwrap().as_ref(), theirs_public.as_ref());
+        let theirs =
+            theirs_ecdh::PrivateKey::from_private_key_der(theirs_algorithm, pkcs8.as_ref())
+                .unwrap();
+        assert_eq!(
+            theirs.compute_public_key().unwrap().as_ref(),
+            theirs_public.as_ref()
+        );
     }
 }
 

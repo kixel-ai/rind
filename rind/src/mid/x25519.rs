@@ -214,8 +214,10 @@ mod tests {
     fn random_keys() {
         let key1 = PrivateKey::new_random().unwrap();
         let key2 = PrivateKey::new_random().unwrap();
-        assert_ne!(low::ct::into_public(key1.secret_bytes()),
-            low::ct::into_public(key2.secret_bytes()));
+        assert_ne!(
+            low::ct::into_public(key1.secret_bytes()),
+            low::ct::into_public(key2.secret_bytes())
+        );
         assert_eq!(
             key1.diffie_hellman(&key2.public_key()).unwrap().as_bytes(),
             key2.diffie_hellman(&key1.public_key()).unwrap().as_bytes()
