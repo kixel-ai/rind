@@ -7,7 +7,3 @@ The Vale tier's AES-GCM proof covers `seal_in_place_append_tag` too, so every se
 ## Plan
 
 [moq-dev/rind#344](https://github.com/moq-dev/rind/pull/344) proves `seal_in_place_separate_tag` and both opens. `seal_in_place_append_tag` is generic over `Extend`, which Aeneas does not translate as written. Prove it as `seal_in_place_separate_tag` followed by appending the tag, through a hand model of the generic call quoted and checked by `admin/prove` like the other dispatch models, or reshape the Rust so Aeneas translates it with unchanged release codegen.
-
-## Required
-
-- [x86_64 AES-GCM's Vale glue is proven](/quest/m3/verified/aes-gcm-vale.md) - the proof this extends

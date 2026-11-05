@@ -1,14 +1,16 @@
 import Rind.X86_64.X25519
 import Rind.X86_64.Sha512
 import Rind.X86_64.ChaCha20
+import Rind.X86_64.AesGcm
 import Rind.X86_64.Ed25519
 open rind.x86_64
 
 /-!
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
 in `Rind.X86_64.S2nBignum` for X25519 and Ed25519, aws-lc's in
-`Rind.X86_64.AwsLc` for the SHA-512 family and Ed25519's hashes, and nothing
-else. A change here is a change to the trust base.
+`Rind.X86_64.AwsLc` for the SHA-512 family and Ed25519's hashes, Vale's in
+`Rind.X86_64.ValeAesGcm` for AES-GCM, and nothing else. A change here is a
+change to the trust base.
 -/
 
 /-- info: 'rind.x86_64.x25519_generate' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -51,6 +53,37 @@ else. A change here is a change to the trust base.
 /-- info: 'rind.x86_64.chacha20_mask' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms chacha20_mask
+
+/-- info: 'rind.x86_64.aes_gcm_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_gcm_new
+
+/-- info: 'rind.x86_64.aes_gcm_seal' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ counter_block_spec,
+ gcm128_encrypt_opt_spec,
+ gcm256_encrypt_opt_spec] -/
+#guard_msgs in
+#print axioms aes_gcm_seal
+
+/-- info: 'rind.x86_64.aes_gcm_open_separate_tag' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ counter_block_spec,
+ gcm128_decrypt_opt_spec,
+ gcm256_decrypt_opt_spec] -/
+#guard_msgs in
+#print axioms aes_gcm_open_separate_tag
+
+/-- info: 'rind.x86_64.aes_gcm_open' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ counter_block_spec,
+ gcm128_decrypt_opt_spec,
+ gcm256_decrypt_opt_spec] -/
+#guard_msgs in
+#print axioms aes_gcm_open
 
 /-- info: 'rind.x86_64.ed25519_generate' depends on axioms: [propext,
  Classical.choice,

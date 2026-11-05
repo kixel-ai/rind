@@ -11,7 +11,3 @@ The Vale glue's proof ([moq-dev/rind#344](https://github.com/moq-dev/rind/pull/3
 - Prefer keeping Vale for long inputs: call its routines on chunks below 2^32 bytes with the counter and GHASH state carried across, if its contracts allow resuming, and prove the chunking. That deletes the by-8 fallback on this tier.
 - Otherwise prove the by-8 path, or ask the maintainer whether to refuse such inputs there. Refusing breaks AES-GCM's 2^36 - 32 byte limit, which aws-lc-rs accepts.
 - Long inputs are rare, so their speed matters less than the common sizes, but measure them against today's path anyway.
-
-## Required
-
-- [x86_64 AES-GCM's Vale glue is proven](/quest/m3/verified/aes-gcm-vale.md) - the proof this extends
