@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+# Translates rind's Rust under proof to Lean with Charon and Aeneas, into
+# `proofs/Rind/<Arch>/{Types,Funs}.lean`, then checks every proof in `proofs/`.
+#
+# Each target's translation is its own namespace, but they share global names,
+# so no Lean module imports both. The aarch64 hand models and its X25519,
+# SHA-512, ChaCha20, Ed25519, and SHA-1, SHA-256, and HMAC proofs are the
+# x86_64 ones with the target renamed, which this writes too, all but each
+# target's own `ShaBlocks.lean`.
+#
+# Usage: admin/prove
+#
+# Run it in the flake's `prove` dev shell: `nix develop .#prove --command
+# admin/prove`.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+out=.tmp/prove
+mkdir -p "$out"
+
+# Each hand model quotes the Rust it models. Fail if that Rust has changed, so
+# the model is reviewed with every change to it: print the first item each line
+# starts, from that line to the closing one at its indentation, or to the `;`
+# that ends an item whose first line ends with `=`, then a blank line.
+items() {
+    local file=$1
+    shift
+    for start in "$@"; do
+        awk -v s="$start" '
+            !p && index($0, s) == 1 { p = 1; ind = substr($0, 1, match($0, /[^ ]/) - 1); eq = /=$/ }
+            p { print }
+            p && (index($0, ind "}") == 1 || (ind == "" && /^[^ }].*;$/) || (eq && /;$/)) { print ""; exit }' "$file"
+    done
+}
+check_quote() {
+    local path=$1 model=${1#*/}
+    shift
+    sed -n '/^```rust$/,/^```$/{//!p}' "proofs/Rind/$path.lean" >"$out/$model.rs"
+    diff -u --label "$model.lean" --label rind/src "$out/$model.rs" <("$@")
+}
+items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
+    'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {' >"$out/agreement.rs"
+items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {' >"$out/zeroise.rs"
+items rind/src/aead/quic.rs 'pub struct Algorithm ' 'pub static CHACHA20:' \
+    'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' 'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
+check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic.rs"
+p256_items() {
+    items rind/src/high/agreement.rs 'pub static ECDH_P256:'
+    items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn'
+    items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
+}
+check_quote Aarch64/P256Dispatch p256_items
+check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
+    'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
+    'pub static SHA512_256:' 'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {'
+check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
+    'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {'
+check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
+    'pub struct VerificationAlgorithm(' 'enum Verification {' 'type Verify<K> =' \
+    'struct Verifier<K> {' 'impl<K> Verifier<K> {' 'pub struct PublicKey {' 'enum Parsed {' \
+    'impl PublicKey {' 'impl AsRef<[u8]> for PublicKey {' 'impl fmt::Debug for PublicKey {' \
+    'impl Ed25519KeyPair {' 'fn parse_ed25519(' '    pub static ED25519:'
+# The models' `Ops` hold nothing, since the quoted constructor builds the only
+# one; `Masker<C>` holds only the key, since the quoted `Masker::new` builds
+# each with `C::mask`; and a digest `Algorithm` is which static it is. That
+# holds while the quotes have every match of these: each mention of `Ops`,
+# each `Masker` literal, `impl` on `Masker`, and write to a `mask` field, which
+# only `quic.rs` can make, and each `Algorithm` the source builds. Likewise
+# `Verification::Ed25519` holds nothing and `Parsed::Ed25519` only its key,
+# while the quotes have every mention of each: `ED25519` builds the only one
+# of the first, with `parse_ed25519`, and each of the second has
+# `Ed25519VerifyingKey::verify`.
+only_quoted() {
+    local file=$1 quote=$2 pattern=$3
+    if [ "$(grep -oE "$pattern" "$file" | wc -l)" != "$(grep -oE "$pattern" "$quote" | wc -l)" ]; then
+        echo "$file matches $pattern outside $quote" >&2
+        exit 1
+    fi
+}
+only_quoted rind/src/high/agreement.rs "$out/agreement.rs" '\bOps\b'
+only_quoted rind/src/aead/quic.rs "$out/quic.rs" 'Masker(<[^>]*>)? *\{'
+only_quoted rind/src/aead/quic.rs "$out/quic.rs" '\.mask *=[^=]'
+only_quoted rind/src/high/digest.rs "$out/DigestDispatch.rs" '\bOps\b'
+only_quoted rind/src/high/digest.rs "$out/DigestAlgorithm.rs" '= Algorithm \{'
+only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Verification::Ed25519\('
+only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Parsed::Ed25519\('
+
+# The X25519 path, and aarch64's P-256 path, from `high::agreement`'s `Agree`
+# impls down to s2n-bignum's routines, and the SHA-512 family's from
+# `high::digest` and `high::hash` down to aws-lc's. `low` is opaque: its
+# routines are inline assembly, whose proven contracts
+# `proofs/Rind/<Arch>/{S2nBignum,AwsLc}.lean` state. The x86_64 BMI2/ADX
+# dispatch, the SHA-512 dispatch, the padding and buffering in
+# `low::generic::blockwise`, and the constant-time markers are Rust, so they
+# are translated. The other curves' functions are opaque; their types are
+# kept, since the agreement enums hold them. Then ChaCha20 header protection
+# from its `Mask` impl down to HACL*'s rounds, which are Rust and translated
+# too; AES's key and block cipher are opaque. Then Ed25519 from
+# `high::signature`'s key pair and `high::ed25519` down to s2n-bignum's
+# routines and the SHA-512 context.
+#
+# Aeneas cannot translate function pointers, through which `PrivateKey`
+# reaches each curve's `Agree` impl, `HeaderProtectionKey` each cipher's
+# `Mask` impl, `digest::Context` each hash's, and `signature::PublicKey` each
+# algorithm's parser and verifier, so the translation starts below that
+# dispatch, and `proofs/Rind/X86_64/Dispatch.lean`, `DigestDispatch.lean`, and
+# `SignatureDispatch.lean` model it by hand. `digest::Algorithm` holds the
+# digest API's, so it is opaque too, and `DigestAlgorithm.lean` models it;
+# `signature::PublicKey` holds the signature API's, so no translated function
+# reaches it, and `SignatureDispatch.lean` defines it. SHA-1's and SHA-256's
+# padding is translated down to their block functions, which are opaque.
+# P-256's key generation draws through a `dyn RandomSource`, so it is opaque
+# too, and `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the
+# translated `PrivateKey::from_bytes`. The generator table is translated, so
+# `proofs/Rind/Aarch64/P256Table.lean` can prove it holds what s2n-bignum's
+# proof assumes. HMAC's keyed states are translated over any hash, and its
+# `Key` and `Context`, which hold function pointers, are not.
+extract() {
+    local arch=$1 dir=$2
+    shift 2
+    (cd rind && charon cargo --preset=aeneas \
+        --start-from '{impl crate::high::agreement::Agree for crate::mid::x25519::PrivateKey}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::mid::p256::PrivateKey}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::mid::p384::PrivateKey}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::mid::p521::PrivateKey}' \
+        --start-from '{impl core::convert::AsRef for crate::high::agreement::PublicKey}' \
+        --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}' \
+        --start-from crate::high::agreement::PrivateKey \
+        --start-from crate::high::agreement::AlgorithmId \
+        --start-from '{impl crate::high::digest::Variant for _}' \
+        --start-from '{impl crate::high::hash::Hash for _}' \
+        --start-from '{impl core::convert::AsRef for crate::high::digest::Digest}' \
+        --start-from crate::high::digest::Context \
+        --start-from crate::mid::sha2::Sha512_256Context::truncate \
+        --start-from '{impl crate::aead::quic::Mask for crate::mid::chacha20::ChaCha20}' \
+        --start-from '{impl crate::aead::quic::Mask for crate::mid::aes::Aes}' \
+        --start-from crate::aead::quic::HeaderProtectionKey \
+        --start-from crate::aead::quic::AlgorithmId \
+        --start-from crate::mid::chacha20::ChaCha20::new \
+        --start-from 'crate::high::hmac::HmacKey::_' \
+        --start-from 'crate::high::hmac::Hmac::_' \
+        --start-from crate::high::ed25519::Ed25519VerifyingKey::from_bytes \
+        --start-from crate::high::ed25519::Ed25519VerifyingKey::verify \
+        --start-from crate::high::ed25519::Ed25519VerifyingKey::as_bytes \
+        --start-from crate::high::ed25519::Ed25519SigningKey::generate \
+        --start-from crate::high::ed25519::Ed25519SigningKey::from_bytes \
+        --start-from crate::high::ed25519::Ed25519SigningKey::sign \
+        --start-from crate::high::ed25519::Ed25519SigningKey::public_key \
+        --start-from crate::high::signature::Ed25519KeyPair::generate \
+        --start-from crate::high::signature::Ed25519KeyPair::from_seed_and_public_key \
+        --start-from crate::high::signature::Ed25519KeyPair::sign \
+        --start-from '{impl core::convert::AsRef for crate::high::signature::Signature}' \
+        --start-from crate::high::signature::Buffer::copy_from \
+        --opaque crate::high::agreement::Ops \
+        --opaque crate::aead::quic::Masker \
+        --opaque crate::mid::aes \
+        --opaque crate::high::digest::Ops \
+        --opaque crate::high::digest::Algorithm \
+        --opaque crate::high::digest::Digest \
+        --opaque 'crate::high::digest::_::zeroed' \
+        --opaque 'crate::high::digest::_::as_mut' \
+        --opaque 'crate::high::digest::_::ct_equal' \
+        --opaque 'crate::high::digest::_::as_ref' \
+        --opaque 'crate::high::digest::_::output_len' \
+        --opaque crate::high::digest::SHA1 \
+        --opaque crate::high::digest::SHA256 \
+        --opaque crate::high::digest::SHA384 \
+        --opaque crate::high::digest::SHA512 \
+        --opaque crate::high::digest::SHA512_256 \
+        --opaque crate::low \
+        --opaque 'crate::mid::p384::_::_' \
+        --opaque 'crate::mid::p521::_::_' \
+        --include 'crate::mid::p521::_::BYTES' \
+        --include crate::low::ct \
+        --include crate::low::generic::blockwise \
+        --include crate::low::generic::chacha20 \
+        --include "crate::low::$arch::sha512::sha512_compress_blocks" \
+        "$@" \
+        --dest-file "$PWD/../$out/$arch.llbc" \
+        -- -p rind --lib --target "$arch-unknown-linux-gnu")
+    rm -rf "$out/lean"
+    aeneas -backend lean -split-files -abort-on-error \
+        -no-progress-bar -dest "$out/lean" -subdir "Rind/$dir" \
+        -namespace "rind.$arch" "$out/$arch.llbc"
+    cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
+}
+
+extract x86_64 X86_64 \
+    --opaque 'crate::mid::p256::_::_' \
+    --include crate::low::x86_64::adx_mux::curve25519_x25519 \
+    --include crate::low::x86_64::adx_mux::curve25519_x25519base \
+    --include crate::low::x86_64::adx_mux::edwards25519_decode \
+    --include crate::low::x86_64::adx_mux::edwards25519_scalarmulbase \
+    --include crate::low::x86_64::adx_mux::edwards25519_scalarmuldouble \
+    --include crate::low::x86_64::adx_mux::bignum_madd_n25519 \
+    --include crate::low::x86_64::sha256_mux \
+    --opaque crate::low::x86_64::sha256_mux::path
+extract aarch64 Aarch64 \
+    --start-from crate::mid::p256::PrivateKey::from_bytes \
+    --opaque 'crate::mid::p256::_::generate' \
+    --opaque 'crate::mid::p256::_::new_random' \
+    --include crate::low::aarch64::sha256 \
+    --opaque crate::low::aarch64::sha256::sha256_compress_blocks
+
+for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
+    Blockwise Sha Hmac HashAxioms; do
+    sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
+done
+
+cd proofs
+lake exe cache get
+lake build

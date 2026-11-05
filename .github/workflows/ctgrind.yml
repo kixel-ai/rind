@@ -22,7 +22,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -65,7 +65,7 @@ jobs:
             deny: RIND_CPU_DISABLE_ssse3=1 RIND_TEST_X86_SSSE3=0 RIND_TEST_X86_SSE41=0 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=0
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -97,7 +97,7 @@ jobs:
         test: [rsa2048, rsa3072, rsa4096, aes128_gcm, aes256_gcm, aes_gcm_vaes_avx2, hmac]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -116,7 +116,7 @@ jobs:
   aarch64-portable:
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -136,7 +136,8 @@ jobs:
   # The arm64 runner executes 32-bit ARM natively, so an armhf valgrind checks
   # the armv7 build without emulation. Its core has NEON and the crypto
   # extension, but valgrind hides `AT_HWCAP2` from the program, so the NEON
-  # code is checked here and the extension's is not (see `admin/ctgrind`).
+  # code is checked here and the extension's by `armv7-qemu` (see
+  # `admin/ctgrind`).
   #
   # Release only: constant time matters in the code that ships, and a debug
   # build can only add findings in code that does not. Valgrind runs every
@@ -162,14 +163,14 @@ jobs:
 
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - uses: ./.github/actions/vectors
 
       - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
           targets: armv7-unknown-linux-gnueabihf
@@ -194,3 +195,18 @@ jobs:
           CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
           RIND_TEST_ARM_NEON: ${{ matrix.neon }}
           RIND_TEST_ARM_CRYPTO_EXT: 0
+
+  # Valgrind hides armv7's crypto extension, so `admin/ct-qemu` compares
+  # qemu-arm traces of its AES, GHASH, SHA-1, and SHA-256 for two secrets
+  # instead, as `x86_64-sde` does with SDE.
+  armv7-qemu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      - name: ct-qemu
+        run: nix develop .#ct-qemu --command admin/ct-qemu

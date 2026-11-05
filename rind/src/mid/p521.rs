@@ -37,15 +37,21 @@ impl PublicKey {
 /// skips computing them.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
-    precomp_w5: JacobianPointTableW5,
+    /// P, 3P, ..., 15P.
+    odd_multiples: [AffinePoint; 8],
+    /// 17P, 19P, ..., 31P, which widen P's digits but pay for building
+    /// only once a key is reused.
+    more_odd_multiples: low::ReuseCache<[AffinePoint; 8]>,
 }
 
 impl VerifyingKey {
     /// Create a [`VerifyingKey`] as [`PublicKey::from_x962_uncompressed`] does.
     pub(crate) fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
+        low::Entry::assert_held();
         let PublicKey { point } = PublicKey::from_x962_uncompressed(bytes)?;
         Ok(Self {
-            precomp_w5: point.public_precomp_w5(),
+            odd_multiples: point.public_odd_multiples(),
+            more_odd_multiples: low::ReuseCache::new(),
         })
     }
 
@@ -57,7 +63,15 @@ impl VerifyingKey {
 
         // 5. Compute: R = (xR, yR) = u1 G + u2 QU
         //  If R = O, output "invalid" and stop.
-        let point = JacobianPoint::public_twin_multiply(&u1, &u2, &self.precomp_w5);
+        let more = self
+            .more_odd_multiples
+            .get_or_build(|| AffinePoint::public_more_odd_multiples(&self.odd_multiples));
+        let point = match more {
+            Some(more) => {
+                JacobianPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples, more])
+            }
+            None => JacobianPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples]),
+        };
 
         if point.public_is_infinity() {
             return Err(Error::BadSignature);
@@ -336,13 +350,13 @@ impl AffinePoint {
     #[cfg(test)]
     fn slow_multiply(&self, scalar: &Scalar) -> Self {
         let mut result = JacobianPoint::infinity();
-        let mut j = JacobianPoint::from_affine(self);
+        let mut j = *self;
 
         for bit in scalar.bits() {
             if bit == 1 {
-                result = JacobianPoint::public_add(&result, &j);
+                result = result.public_add_affine(&j);
             }
-            j = j.double();
+            j = JacobianPoint::from_affine(&j).double().as_affine();
         }
 
         result.as_affine()
@@ -375,44 +389,30 @@ impl AffinePoint {
         self.xy[Self::Y].copy_from_slice(&result.0);
     }
 
-    fn public_precomp_w5(&self) -> JacobianPointTableW5 {
-        let mut r = [JacobianPoint::infinity(); 16];
-
-        // indices into r are intuitively 1-based; index i contains i * G,
-        // and 0 * G is not useful to store.
-        macro_rules! index {
-            ($i:literal) => {
-                $i - 1
-            };
+    /// P, 3P, ..., 15P: the odd multiples a width-5 NAF digit picks, in
+    /// affine form so that each is added by `p521_jmixadd`.
+    ///
+    /// Each sum adds 2P to an odd multiple below n, never equal, as
+    /// `p521_jadd` requires, and none is at infinity.
+    fn public_odd_multiples(&self) -> [Self; 8] {
+        let p = JacobianPoint::from_affine(self);
+        let p2 = p.double();
+        let mut multiples = [p; 8];
+        for i in 1..multiples.len() {
+            multiples[i] = multiples[i - 1].add(&p2);
         }
+        JacobianPoint::public_batch_as_affine(&multiples)
+    }
 
-        // Each sum adds distinct multiples below n, none at infinity, as
-        // `p521_jadd` requires.
-        r[index!(1)] = JacobianPoint::from_affine(self);
-        r[index!(2)] = r[index!(1)].double();
-        r[index!(3)] = r[index!(1)].add(&r[index!(2)]);
-        r[index!(4)] = r[index!(2)].double();
-        r[index!(5)] = r[index!(1)].add(&r[index!(4)]);
-        r[index!(6)] = r[index!(3)].double();
-        r[index!(7)] = r[index!(1)].add(&r[index!(6)]);
-        r[index!(8)] = r[index!(4)].double();
-        r[index!(9)] = r[index!(1)].add(&r[index!(8)]);
-        r[index!(10)] = r[index!(5)].double();
-        r[index!(11)] = r[index!(1)].add(&r[index!(10)]);
-        r[index!(12)] = r[index!(6)].double();
-        r[index!(13)] = r[index!(1)].add(&r[index!(12)]);
-        r[index!(14)] = r[index!(7)].double();
-        r[index!(15)] = r[index!(1)].add(&r[index!(14)]);
-        r[index!(16)] = r[index!(8)].double();
-
-        let mut t = [0; 432];
-
-        let (chunks, _) = t.as_chunks_mut::<27>();
-        for (out, rr) in chunks.iter_mut().zip(r) {
-            out.copy_from_slice(&rr.xyz);
-        }
-
-        t
+    /// 17P, 19P, ..., 31P, given P, 3P, ..., 15P: the rest of the odd
+    /// multiples a width-6 NAF digit picks.
+    ///
+    /// Each is 16P = 15P + P plus one of those, so no sum adds equal points,
+    /// as `p521_jmixadd` requires, and none is at infinity.
+    fn public_more_odd_multiples(odd_multiples: &[Self; 8]) -> [Self; 8] {
+        let p16 = JacobianPoint::from_affine(&odd_multiples[7]).add_affine(&odd_multiples[0]);
+        let multiples = odd_multiples.map(|multiple| p16.add_affine(&multiple));
+        JacobianPoint::public_batch_as_affine(&multiples)
     }
 }
 
@@ -514,16 +514,19 @@ impl JacobianPoint {
         r
     }
 
-    /// `g * G + p * P` for public scalars, from `P`'s multiples in
-    /// `precomp`.
+    /// `g * G + p * P` for public scalars, given P's odd multiples in rows
+    /// of 8.
     ///
-    /// One chain of doublings serves both, each scalar's digits a width-5
-    /// NAF: over `precomp` for P, and over the first comb table, which holds
-    /// G to 16G, for G.
-    fn public_twin_multiply(g: &Scalar, p: &Scalar, precomp: &JacobianPointTableW5) -> Self {
+    /// One chain of doublings serves both: P's digits are a NAF over
+    /// `odd_multiples`, width 5 for one row and 6 for two, and G's a width-5
+    /// NAF over the first comb table, which holds G to 16G.
+    fn public_twin_multiply(g: &Scalar, p: &Scalar, odd_multiples: &[&[AffinePoint; 8]]) -> Self {
         let (mut g_digits, mut p_digits) = ([0; 522], [0; 522]);
         util::public_naf::<5>(&g.0, &mut g_digits);
-        util::public_naf::<5>(&p.0, &mut p_digits);
+        match odd_multiples.len() {
+            1 => util::public_naf::<5>(&p.0, &mut p_digits),
+            _ => util::public_naf::<6>(&p.0, &mut p_digits),
+        }
         let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP_COMB[0];
 
         let mut result = Self::infinity();
@@ -533,67 +536,40 @@ impl JacobianPoint {
                 result = result.double();
             }
             if *p_digit != 0 {
-                let sign = u8::from(*p_digit < 0);
-                let term = Self::public_lookup_w5(precomp, p_digit.unsigned_abs(), sign);
-                result = Self::public_add_fast(&result, &term);
+                let i = usize::from(p_digit.unsigned_abs() / 2);
+                let mut term = odd_multiples[i / 8][i % 8];
+                if *p_digit < 0 {
+                    term.negate_y();
+                }
+                result = result.public_add_affine(&term);
             }
             if *g_digit != 0 {
                 let mut term = AffinePoint::public_lookup_comb(g_multiples, g_digit.unsigned_abs());
                 if *g_digit < 0 {
                     term.negate_y();
                 }
-                result = match result.public_is_infinity() {
-                    true => Self::from_affine(&term),
-                    false => match result.add_affine(&term) {
-                        sum if sum.public_is_infinity() => {
-                            Self::public_add(&result, &Self::from_affine(&term))
-                        }
-                        sum => sum,
-                    },
-                };
+                result = result.public_add_affine(&term);
             }
         }
         result
     }
 
-    /// `a + b`, for any points, by [`Self::public_add`] only when they turn
-    /// out to be equal or opposite.
+    /// `self + p`, for any points, including at infinity, equal, or opposite.
     ///
-    /// For such points `p521_jadd`, which requires neither, computes a zero
-    /// z, as its z is the product of both z's and the difference of the x's
-    /// scaled to it.
-    fn public_add_fast(a: &Self, b: &Self) -> Self {
-        if a.public_is_infinity() {
-            return *b;
-        }
-        if b.public_is_infinity() {
-            return *a;
-        }
-        match a.add(b) {
-            sum if sum.public_is_infinity() => Self::public_add(a, b),
-            sum => sum,
-        }
-    }
-
-    /// `a + b`, for any points, including at infinity, equal, or opposite.
-    fn public_add(a: &Self, b: &Self) -> Self {
-        if a.public_is_infinity() {
-            return *b;
-        }
-        if b.public_is_infinity() {
-            return *a;
+    /// `p521_jmixadd` is proven only for unequal points, so points with the
+    /// same x never reach it.
+    fn public_add_affine(&self, p: &AffinePoint) -> Self {
+        if self.public_is_infinity() {
+            return Self::from_affine(p);
         }
 
-        // Both points scaled to the product of their z's.
-        let (az2, bz2) = (a.z().sqr(), b.z().sqr());
-        let same_x = a.x().mul(&bz2).public_eq(&b.x().mul(&az2));
-        if !same_x {
-            return a.add(b);
+        // `p` scaled to this point's z.
+        let z2 = self.z().sqr();
+        if !p.x().mul(&z2).public_eq(&self.x()) {
+            return self.add_affine(p);
         }
-        let ay = a.y().mul(&bz2.mul(&b.z()));
-        let by = b.y().mul(&az2.mul(&a.z()));
-        match ay.public_eq(&by) {
-            true => a.double(),
+        match p.y().mul(&z2.mul(&self.z())).public_eq(&self.y()) {
+            true => self.double(),
             false => Self::infinity(),
         }
     }
@@ -606,10 +582,33 @@ impl JacobianPoint {
     }
 
     fn as_affine(&self) -> AffinePoint {
+        self.as_affine_by(&self.z().inv())
+    }
+
+    /// `points` in affine form, none at infinity, by one inversion of the
+    /// product of their z's (Montgomery's trick).
+    fn public_batch_as_affine(points: &[Self; 8]) -> [AffinePoint; 8] {
+        // `prefix[i]` is the product of the z's before `points[i]`.
+        let mut prefix = [CURVE_ONE; 8];
+        for i in 1..prefix.len() {
+            prefix[i] = prefix[i - 1].mul(&points[i - 1].z());
+        }
+        let mut inv = prefix[7].mul(&points[7].z()).inv();
+
+        let mut r = [AffinePoint::default(); 8];
+        for i in (0..r.len()).rev() {
+            // `inv` is the inverse of the z's up to `points[i]`.
+            r[i] = points[i].as_affine_by(&inv.mul(&prefix[i]));
+            inv = inv.mul(&points[i].z());
+        }
+        r
+    }
+
+    /// This point in affine form, given the inverse of its z.
+    fn as_affine_by(&self, z_inv: &FieldElement) -> AffinePoint {
         // recover (x, y) from (x / z ^ 2, x / z ^ 3, z)
-        let z_inv = self.z().inv();
         let z2_inv = z_inv.sqr();
-        let z3_inv = z2_inv.mul(&z_inv);
+        let z3_inv = z2_inv.mul(z_inv);
 
         let x = self.x().mul(&z2_inv);
         let y = self.y().mul(&z3_inv);
@@ -667,21 +666,6 @@ impl JacobianPoint {
         let mut r = Self::infinity();
         let select = select as u64;
         low::bignum_mux(select, &mut r.xyz[..], &p1.xyz[..], &p0.xyz[..]);
-        r
-    }
-
-    /// Returns `table[index - 1]`, negated if `sign` is set, or infinity
-    /// for a zero `index`.
-    fn public_lookup_w5(table: &JacobianPointTableW5, index: u8, sign: u8) -> Self {
-        let mut r = Self::infinity();
-        if index > 0 {
-            let offs = (index - 1) as usize * 27;
-            r.xyz.copy_from_slice(&table[offs..offs + 27]);
-            if sign > 0 {
-                let neg_y = r.y().negate();
-                r.xyz[Self::Y].copy_from_slice(&neg_y.0);
-            }
-        }
         r
     }
 }
@@ -944,9 +928,6 @@ impl Iterator for BoothRecodeW5 {
     }
 }
 
-/// 16 jacobian points
-type JacobianPointTableW5 = [u64; 432];
-
 /// 27 tables of 16 affine points
 type AffinePointTableComb = [[u64; 288]; 27];
 
@@ -1067,7 +1048,9 @@ mod tests {
     #[test]
     fn multiplications_match_double_and_add() {
         let point = CURVE_GENERATOR.slow_multiply(&Scalar::small_u64(5));
-        let precomp = point.public_precomp_w5();
+        let odd_multiples = point.public_odd_multiples();
+        let more = AffinePoint::public_more_odd_multiples(&odd_multiples);
+        let both = [&[&odd_multiples][..], &[&odd_multiples, &more]];
         for scalar in edge_scalars() {
             let expected = point.slow_multiply(&scalar).xy;
             assert_eq!(
@@ -1075,29 +1058,33 @@ mod tests {
                 expected
             );
             let zero = Scalar::default();
-            assert_eq!(
-                JacobianPoint::public_twin_multiply(&zero, &scalar, &precomp)
-                    .as_affine()
-                    .xy,
-                expected
-            );
+            for rows in both {
+                assert_eq!(
+                    JacobianPoint::public_twin_multiply(&zero, &scalar, rows)
+                        .as_affine()
+                        .xy,
+                    expected
+                );
+            }
 
             let expected = CURVE_GENERATOR.slow_multiply(&scalar).xy;
             assert_eq!(
                 JacobianPoint::base_multiply(&scalar).as_affine().xy,
                 expected
             );
-            assert_eq!(
-                JacobianPoint::public_twin_multiply(&scalar, &zero, &precomp)
-                    .as_affine()
-                    .xy,
-                expected
-            );
+            for rows in both {
+                assert_eq!(
+                    JacobianPoint::public_twin_multiply(&scalar, &zero, rows)
+                        .as_affine()
+                        .xy,
+                    expected
+                );
+            }
         }
     }
 
     #[test]
-    fn public_add_edges() {
+    fn public_add_affine_edges() {
         let g = JacobianPoint::from_affine(&CURVE_GENERATOR);
         let g2 = g.double();
         let negate = |p: &JacobianPoint| {
@@ -1109,27 +1096,33 @@ mod tests {
         let g2_again = g2.double().add(&negate(&g2));
         assert_ne!(g2_again.z().0, g2.z().0);
         let infinity = JacobianPoint::infinity();
+        let mut neg_g = CURVE_GENERATOR;
+        neg_g.negate_y();
 
         assert_eq!(
-            JacobianPoint::public_add(&g, &g).as_affine().xy,
+            g.public_add_affine(&CURVE_GENERATOR).as_affine().xy,
             g2.as_affine().xy
         );
         assert_eq!(
-            JacobianPoint::public_add(&g2, &g2_again).as_affine().xy,
+            g2_again.public_add_affine(&g2.as_affine()).as_affine().xy,
             g2.double().as_affine().xy
         );
-        assert!(JacobianPoint::public_add(&g2, &negate(&g2_again)).public_is_infinity());
-        assert!(JacobianPoint::public_add(&g, &negate(&g)).public_is_infinity());
-        assert_eq!(JacobianPoint::public_add(&g, &infinity).xyz, g.xyz);
-        assert_eq!(JacobianPoint::public_add(&infinity, &g).xyz, g.xyz);
-        assert!(JacobianPoint::public_add(&infinity, &infinity).public_is_infinity());
+        assert!(
+            negate(&g2_again)
+                .public_add_affine(&g2.as_affine())
+                .public_is_infinity()
+        );
+        assert!(g.public_add_affine(&neg_g).public_is_infinity());
+        assert_eq!(infinity.public_add_affine(&CURVE_GENERATOR).xyz, g.xyz);
     }
 
     #[test]
     fn twin_multiply_exceptional() {
-        // With P = G, the accumulator meets the point it adds: equal, which
-        // must double, or opposite, which must give infinity.
-        let precomp = CURVE_GENERATOR.public_precomp_w5();
+        // The accumulator meets the point it adds: equal, which must double,
+        // or opposite, which must give infinity. With P = G it meets G's
+        // multiples, and with P = 2G, P's.
+        let odd_multiples = CURVE_GENERATOR.public_odd_multiples();
+        let more = AffinePoint::public_more_odd_multiples(&odd_multiples);
         for (g, p) in [
             (Scalar::small_u64(1), Scalar::small_u64(1)),
             (Scalar::small_u64(3), Scalar::small_u64(3)),
@@ -1139,12 +1132,34 @@ mod tests {
             (n_minus(1), n_minus(1)),
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
-            assert_eq!(
-                JacobianPoint::public_twin_multiply(&g, &p, &precomp)
-                    .as_affine()
-                    .xy,
-                expected
-            );
+            for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
+                assert_eq!(
+                    JacobianPoint::public_twin_multiply(&g, &p, rows)
+                        .as_affine()
+                        .xy,
+                    expected
+                );
+            }
+        }
+
+        let p2 = JacobianPoint::from_affine(&CURVE_GENERATOR)
+            .double()
+            .as_affine();
+        let odd_multiples = p2.public_odd_multiples();
+        let more = AffinePoint::public_more_odd_multiples(&odd_multiples);
+        for (g, p) in [
+            (Scalar::small_u64(2), Scalar::small_u64(1)),
+            (Scalar::small_u64(6), Scalar::small_u64(3)),
+        ] {
+            let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p).add(&p)).xy;
+            for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
+                assert_eq!(
+                    JacobianPoint::public_twin_multiply(&g, &p, rows)
+                        .as_affine()
+                        .xy,
+                    expected
+                );
+            }
         }
     }
 

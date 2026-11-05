@@ -21,3 +21,6 @@ quest names how to check it and is deleted once it holds.
 - [armv7 raw ciphers from libcrux](/quest/m3/libcrux-ciphers.md) - drop rind's copy once libcrux exports its AES
 - [libcrux exports its raw ciphers](/quest/m3/libcrux-ciphers-exported.md) - waiting on a libcrux release that exports them
 - [ring and aws-lc-rs parity](/quest/m3/parity/README.md) - switch from ring or aws-lc-rs to rind: algorithms, `rind-ring`, and rustls parity
+- [Benchmark report refresh, end of m2](/quest/m3/bench-report-refresh.md) - recurring rerun of the report on all four hosts
+- [Every computation rind runs is formally verified](/quest/m3/verified/README.md) - an audit, then a proof or a verified source for every gap
+- [s2n-bignum's SHA-256 spec has merged](/quest/m3/s2n-bignum-sha2-spec.md) - waiting on awslabs/s2n-bignum#450

@@ -1,5 +1,5 @@
 //! <h1 align="center">rind-rustls</h1>
-//! <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/picture.png">
+//! <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png">
 //!
 //! This crate provides an integration between [rustls](https://github.com/rustls/rustls) and [rind](https://github.com/moq-dev/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
 //!
@@ -14,29 +14,58 @@
 //!
 //! And then use rustls as normal.
 //!
-//! rind panics on a CPU missing a feature it requires, so [`default_provider`]
-//! and [`Ticketer::new`] check first and return an error instead. To build a
-//! provider from this crate's statics, call [`rind::cpu::check`] first.
+//! A binary links only the algorithms its provider names, so one that needs
+//! few fills in [`empty_provider`] with just those:
+//!
+//! ```rust
+//! use rind_rustls::{cipher_suite, kx_group, sign, verify};
+//! use rustls::SignatureScheme;
+//! use rustls::crypto::{CryptoProvider, WebPkiSupportedAlgorithms};
+//!
+//! static P256: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
+//!     all: &[verify::ECDSA_P256_SHA256],
+//!     mapping: &[(
+//!         SignatureScheme::ECDSA_NISTP256_SHA256,
+//!         &[verify::ECDSA_P256_SHA256],
+//!     )],
+//! };
+//!
+//! # fn main() -> Result<(), rind::cpu::MissingFeature> {
+//! let provider = CryptoProvider {
+//!     cipher_suites: vec![cipher_suite::TLS13_AES_128_GCM_SHA256],
+//!     kx_groups: vec![kx_group::X25519],
+//!     signature_verification_algorithms: P256,
+//!     key_provider: sign::ECDSA_P256,
+//!     ..rind_rustls::empty_provider()?
+//! };
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! rind panics on a CPU missing a feature it requires, so [`default_provider`],
+//! [`empty_provider`], and [`Ticketer::new`] check first and return an error
+//! instead. Build any provider from this crate's statics on [`empty_provider`].
 
+use rustls::SignatureScheme;
 use rustls::SupportedCipherSuite;
-use rustls::crypto::{CryptoProvider, SupportedKxGroup};
+use rustls::crypto::{CryptoProvider, SupportedKxGroup, WebPkiSupportedAlgorithms};
 
 mod aead;
 mod hash;
 mod hmac;
 mod quic;
-mod sign;
-mod verify;
 
 /// Every cipher suite this crate supports.
-///
-/// Call [`rind::cpu::check`] before using these directly.
 pub mod cipher_suite;
 
 /// Every key exchange group this crate supports.
-///
-/// Call [`rind::cpu::check`] before using these directly.
 pub mod kx_group;
+
+/// A key provider per signing key type this crate supports.
+pub mod sign;
+
+/// Every signature verification algorithm this crate supports.
+pub mod verify;
 
 mod ticketer;
 pub use ticketer::Ticketer;
@@ -49,7 +78,7 @@ pub use ticketer::Ticketer;
 /// schemes, short of ML-DSA.
 /// It prefers ChaCha20-Poly1305 where rind runs AES without CPU instructions.
 pub fn default_provider() -> Result<CryptoProvider, rind::cpu::MissingFeature> {
-    rind::cpu::check()?;
+    let empty = empty_provider()?;
     let cipher_suites = if rind::cpu::has_aes_hardware() {
         DEFAULT_CIPHER_SUITES
     } else {
@@ -58,9 +87,28 @@ pub fn default_provider() -> Result<CryptoProvider, rind::cpu::MissingFeature> {
     Ok(CryptoProvider {
         cipher_suites: cipher_suites.to_vec(),
         kx_groups: DEFAULT_KX_GROUPS.to_vec(),
-        signature_verification_algorithms: verify::ALGORITHMS,
+        signature_verification_algorithms: SUPPORTED_SIG_ALGS,
+        key_provider: sign::ANY_SUPPORTED_TYPE,
+        ..empty
+    })
+}
+
+/// Returns a rustls [`CryptoProvider`] with rind's random numbers and nothing
+/// else, to fill in with this crate's statics, or the CPU feature rind
+/// requires that this CPU lacks.
+///
+/// It loads no private key until given a [`sign`] key provider.
+pub fn empty_provider() -> Result<CryptoProvider, rind::cpu::MissingFeature> {
+    rind::cpu::check()?;
+    Ok(CryptoProvider {
+        cipher_suites: Vec::new(),
+        kx_groups: Vec::new(),
+        signature_verification_algorithms: WebPkiSupportedAlgorithms {
+            all: &[],
+            mapping: &[],
+        },
         secure_random: &RngProvider,
-        key_provider: &sign::Provider,
+        key_provider: sign::NONE,
     })
 }
 
@@ -113,6 +161,76 @@ pub static ALL_KX_GROUPS: &[&dyn SupportedKxGroup] = &[
     kx_group::SECP521R1,
     kx_group::MLKEM768,
 ];
+
+/// Every signature verification algorithm this crate supports, in the order
+/// [`default_provider`] verifies with them.
+pub static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
+    all: &[
+        verify::ECDSA_P256_SHA512,
+        verify::ECDSA_P256_SHA384,
+        verify::ECDSA_P256_SHA256,
+        verify::ECDSA_P384_SHA512,
+        verify::ECDSA_P384_SHA384,
+        verify::ECDSA_P384_SHA256,
+        verify::ECDSA_P521_SHA512,
+        verify::ECDSA_P521_SHA384,
+        verify::ECDSA_P521_SHA256,
+        verify::ED25519,
+        verify::RSA_PSS_SHA512,
+        verify::RSA_PSS_SHA384,
+        verify::RSA_PSS_SHA256,
+        verify::RSA_PKCS1_SHA512,
+        verify::RSA_PKCS1_SHA384,
+        verify::RSA_PKCS1_SHA256,
+        verify::RSA_PKCS1_SHA512_ABSENT_PARAMS,
+        verify::RSA_PKCS1_SHA384_ABSENT_PARAMS,
+        verify::RSA_PKCS1_SHA256_ABSENT_PARAMS,
+    ],
+    // TLS 1.2 lets any curve sign with any of these hashes, so each lists
+    // every curve; TLS 1.3 binds the curve and uses only the first.
+    mapping: &[
+        (
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+            &[
+                verify::ECDSA_P256_SHA256,
+                verify::ECDSA_P384_SHA256,
+                verify::ECDSA_P521_SHA256,
+            ],
+        ),
+        (
+            SignatureScheme::ECDSA_NISTP384_SHA384,
+            &[
+                verify::ECDSA_P384_SHA384,
+                verify::ECDSA_P256_SHA384,
+                verify::ECDSA_P521_SHA384,
+            ],
+        ),
+        (
+            SignatureScheme::ECDSA_NISTP521_SHA512,
+            &[
+                verify::ECDSA_P521_SHA512,
+                verify::ECDSA_P384_SHA512,
+                verify::ECDSA_P256_SHA512,
+            ],
+        ),
+        (SignatureScheme::ED25519, &[verify::ED25519]),
+        (SignatureScheme::RSA_PSS_SHA512, &[verify::RSA_PSS_SHA512]),
+        (SignatureScheme::RSA_PSS_SHA384, &[verify::RSA_PSS_SHA384]),
+        (SignatureScheme::RSA_PSS_SHA256, &[verify::RSA_PSS_SHA256]),
+        (
+            SignatureScheme::RSA_PKCS1_SHA512,
+            &[verify::RSA_PKCS1_SHA512],
+        ),
+        (
+            SignatureScheme::RSA_PKCS1_SHA384,
+            &[verify::RSA_PKCS1_SHA384],
+        ),
+        (
+            SignatureScheme::RSA_PKCS1_SHA256,
+            &[verify::RSA_PKCS1_SHA256],
+        ),
+    ],
+};
 
 #[derive(Debug)]
 struct RngProvider;

@@ -4,6 +4,13 @@
 use super::cpu::verify_cpu_features;
 use super::{enter_cpu_state, leave_cpu_state};
 
+#[cfg(all(debug_assertions, not(test)))]
+std::thread_local! {
+    // This thread's live `Entry`s, for `Entry::assert_held`. Unit tests call
+    // internals with no public function above them, so they don't count.
+    static HELD: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+}
+
 /// One of these should be made at library entry points: every `pub` function.
 ///
 /// Trivial conversions, accessors (ie, functions which do no actual computation)
@@ -20,6 +27,8 @@ impl Entry {
     #[must_use]
     pub(crate) fn new_public() -> Self {
         verify_cpu_features();
+        #[cfg(all(debug_assertions, not(test)))]
+        HELD.set(HELD.get() + 1);
 
         Self {
             secret: false,
@@ -35,16 +44,29 @@ impl Entry {
     pub(crate) fn new_secret() -> Self {
         verify_cpu_features();
         let cpu_state = enter_cpu_state();
+        #[cfg(all(debug_assertions, not(test)))]
+        HELD.set(HELD.get() + 1);
 
         Self {
             secret: true,
             cpu_state,
         }
     }
+
+    /// Panics in a debug build unless this thread holds an `Entry`.
+    ///
+    /// Primitives that make no `Entry` of their own call this, so a test
+    /// reaching one through a public function that skipped its `Entry` fails.
+    pub(crate) fn assert_held() {
+        #[cfg(all(debug_assertions, not(test)))]
+        assert!(HELD.get() > 0, "computing outside an `Entry`");
+    }
 }
 
 impl Drop for Entry {
     fn drop(&mut self) {
+        #[cfg(all(debug_assertions, not(test)))]
+        HELD.set(HELD.get() - 1);
         if self.secret {
             leave_cpu_state(self.cpu_state);
         }

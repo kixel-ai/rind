@@ -1,0 +1,15 @@
+[package]
+name = "build-cost-openssl"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Its own workspace, so it resolves and builds alone.
+[workspace]
+
+[dependencies]
+openssl = "0.10"
+
+[features]
+# Builds OpenSSL from source and links it statically, rather than linking the system's.
+vendored = ["openssl/vendored"]

@@ -142,6 +142,7 @@ macro_rules! reduce0 {
 /// n_25519 = 2^252 + 27742317777372353535851937790883648493, the
 /// order of the curve25519/edwards25519 basepoint. The result z
 /// and the inputs x, y and c are all 4 digits (256 bits).
+#[inline(never)]
 pub(crate) fn bignum_madd_n25519(z: &mut [u64; 4], x: &[u64; 4], y: &[u64; 4], c: &[u64; 4]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

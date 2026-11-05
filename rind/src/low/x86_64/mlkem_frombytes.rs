@@ -25,6 +25,7 @@ use crate::low::macros::*;
 ///
 /// This accepts an array of 384 bytes and unpacks them into 256 16-bit numbers
 /// in the range 0 <= a[i] < 2^12 (typically they will be < 3329, the ML-KEM prime).
+#[inline(never)]
 pub(crate) fn mlkem_frombytes(r: &mut [i16; 256], a: &[u8; 384]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

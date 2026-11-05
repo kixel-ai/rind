@@ -2,13 +2,14 @@ from driver import (
     Architecture_aarch64,
     Architecture_amd64,
     RustDriver,
+    generated,
 )
 from parse import parse_file
 
 if __name__ == "__main__":
     with (
         open("../../thirdparty/s2n-bignum/x86/mlkem/mlkem_ntt.S") as input,
-        open("../../rind/src/low/x86_64/mlkem_ntt.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/mlkem_ntt.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -27,7 +28,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/mlkem/mlkem_intt.S") as input,
-        open("../../rind/src/low/x86_64/mlkem_intt.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/mlkem_intt.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -46,7 +47,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/mlkem/mlkem_tobytes.S") as input,
-        open("../../rind/src/low/x86_64/mlkem_tobytes.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/mlkem_tobytes.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -64,7 +65,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/mlkem/mlkem_frombytes.S") as input,
-        open("../../rind/src/low/x86_64/mlkem_frombytes.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/mlkem_frombytes.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -79,7 +80,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/mlkem/mlkem_tomont.S") as input,
-        open("../../rind/src/low/x86_64/mlkem_tomont.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/mlkem_tomont.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -93,7 +94,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/mlkem/mlkem_unpack.S") as input,
-        open("../../rind/src/low/x86_64/mlkem_unpack.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/mlkem_unpack.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -107,7 +108,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/mlkem/mlkem_mulcache_compute.S") as input,
-        open("../../rind/src/low/x86_64/mlkem_mulcache_compute.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/mlkem_mulcache_compute.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -123,7 +124,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/mlkem/mlkem_basemul_k3.S") as input,
-        open("../../rind/src/low/x86_64/mlkem_basemul_k3.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/mlkem_basemul_k3.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -140,7 +141,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/x86/mlkem/mlkem_reduce.S") as input,
-        open("../../rind/src/low/x86_64/mlkem_reduce.rs", "w") as output,
+        generated("../../rind/src/low/x86_64/mlkem_reduce.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -156,9 +157,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/x86/mlkem/mlkem_rej_uniform_VARIABLE_TIME.S"
         ) as input,
-        open(
-            "../../rind/src/low/x86_64/mlkem_rej_uniform_vartime.rs", "w"
-        ) as output,
+        generated("../../rind/src/low/x86_64/mlkem_rej_uniform_vartime.rs") as output,
     ):
         d = RustDriver(output, Architecture_amd64)
         d.emit_rust_function(
@@ -177,7 +176,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/mlkem/mlkem_ntt.S") as input,
-        open("../../rind/src/low/aarch64/mlkem_ntt.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/mlkem_ntt.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -198,7 +197,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/mlkem/mlkem_intt.S") as input,
-        open("../../rind/src/low/aarch64/mlkem_intt.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/mlkem_intt.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -219,7 +218,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/mlkem/mlkem_tobytes.S") as input,
-        open("../../rind/src/low/aarch64/mlkem_tobytes.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/mlkem_tobytes.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -237,7 +236,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/mlkem/mlkem_tomont.S") as input,
-        open("../../rind/src/low/aarch64/mlkem_tomont.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/mlkem_tomont.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -251,7 +250,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/mlkem/mlkem_mulcache_compute.S") as input,
-        open("../../rind/src/low/aarch64/mlkem_mulcache_compute.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/mlkem_mulcache_compute.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -268,7 +267,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/mlkem/mlkem_basemul_k3.S") as input,
-        open("../../rind/src/low/aarch64/mlkem_basemul_k3.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/mlkem_basemul_k3.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -285,7 +284,7 @@ if __name__ == "__main__":
 
     with (
         open("../../thirdparty/s2n-bignum/arm/mlkem/mlkem_reduce.S") as input,
-        open("../../rind/src/low/aarch64/mlkem_reduce.rs", "w") as output,
+        generated("../../rind/src/low/aarch64/mlkem_reduce.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(
@@ -301,9 +300,7 @@ if __name__ == "__main__":
         open(
             "../../thirdparty/s2n-bignum/arm/mlkem/mlkem_rej_uniform_VARIABLE_TIME.S"
         ) as input,
-        open(
-            "../../rind/src/low/aarch64/mlkem_rej_uniform_vartime.rs", "w"
-        ) as output,
+        generated("../../rind/src/low/aarch64/mlkem_rej_uniform_vartime.rs") as output,
     ):
         d = RustDriver(output, Architecture_aarch64)
         d.emit_rust_function(

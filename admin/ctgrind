@@ -9,8 +9,9 @@ set -e
 # Pass `--target armv7-unknown-linux-gnueabihf` on a host that executes
 # 32-bit ARM natively, such as an arm64 one, with an armhf valgrind.
 # Valgrind passes `AT_HWCAP2` only to ppc64 programs (3.22 through 3.28), so
-# the armv7 build never takes its ARMv8 crypto extension path here, and that
-# assembly goes unchecked. It passes `AT_HWCAP`, so the NEON code is checked.
+# the armv7 build never takes its ARMv8 crypto extension path here;
+# `admin/ct-qemu` checks that under qemu-arm. It passes `AT_HWCAP`, so the
+# NEON code is checked.
 #
 # Valgrind (through 3.27) decodes no AVX-512, VAES, VPCLMULQDQ, or SHA
 # instruction and hides them from `cpuid`, so rind's AES-GCM on VAES, SHA-1

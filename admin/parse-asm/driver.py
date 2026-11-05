@@ -1,4 +1,6 @@
+import contextlib
 import copy
+import os
 import re
 import string
 import subprocess
@@ -6,6 +8,20 @@ from functools import reduce
 from io import StringIO
 
 from parse import Type, is_comment, register_from_token, tokenise
+
+
+@contextlib.contextmanager
+def generated(path):
+    """Opens a file that replaces `path` only once the block completes, so
+    a tool that is missing or fails leaves the committed file whole."""
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w") as output:
+            yield output
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
 
 
 class Architecture:
@@ -514,7 +530,7 @@ class RustDriver:
         return_map=[],
         return_value=None,
         assertions=[],
-        allow_inline=True,
+        allow_inline=False,
         func_attrs="",
         hoist=None,
         several_exits=False,
@@ -533,8 +549,8 @@ class RustDriver:
             several_exits=several_exits,
         )
 
-    def add_const_symbol(self, sym):
-        self.formatter.add_const_symbol(sym)
+    def add_const_symbol(self, sym, shared=False, same_as=None):
+        self.formatter.add_const_symbol(sym, shared=shared, same_as=same_as)
 
     def set_att_syntax(self, att_syntax):
         self.formatter.set_att_syntax(att_syntax)
@@ -590,6 +606,8 @@ class RustFormatter(Dispatcher):
         self.constant_syms = set()
         self.constant_sym_alignment = {}
         self.constant_sym_rename = {}
+        self.constant_sym_shared = set()
+        self.constant_sym_same_as = {}
         self.current_constant_array = None
         self.current_function_comment = []
         self.emitted_page_aligned_types = set()
@@ -609,7 +627,7 @@ class RustFormatter(Dispatcher):
         return_map=[],
         return_value=None,
         assertions=[],
-        allow_inline=True,
+        allow_inline=False,
         func_attrs="",
         hoist=None,
         several_exits=False,
@@ -647,9 +665,20 @@ use crate::low::macros::*;
             file=self.output,
         )
 
-    def add_const_symbol(self, sym):
+    def add_const_symbol(self, sym, shared=False, same_as=None):
+        """
+        Declares the constant array `sym`.
+
+        A `shared` one is visible to sibling modules. One the `same_as` path
+        names is not emitted: its routine uses that identical array instead,
+        so a binary holds one copy.
+        """
         self.constant_syms.add(sym)
         self.constant_sym_rename[sym] = sym
+        if shared:
+            self.constant_sym_shared.add(sym)
+        if same_as:
+            self.constant_sym_same_as[sym] = same_as
 
         if self.arch.constant_reference_page_offs:
             self.constant_sym_rename[sym + "@PAGE"] = sym
@@ -851,6 +880,10 @@ use crate::low::macros::*;
                     print("/// " + c, file=self.output)
                 self.current_function_comment = []
 
+                # LLVM costs inline assembly as free, so it would copy a
+                # routine of thousands of instructions into every caller.
+                # `allow_inline` is for a routine called in a hot loop whose
+                # call costs more than its copies.
                 if not allow_inline:
                     print("#[inline(never)]", file=self.output)
 
@@ -1019,6 +1052,8 @@ use crate::low::macros::*;
         if self.current_constant_array:
             ca = self.current_constant_array
             self.current_constant_array = None
+            if ca.name in self.constant_sym_same_as:
+                return
 
             rust_type = {
                 ".byte": "u8",
@@ -1030,8 +1065,9 @@ use crate::low::macros::*;
 
             rust_type = array_type
 
+            visibility = "pub(super) " if ca.name in self.constant_sym_shared else ""
             print(
-                "static %s: %s = [" % (ca.name, rust_type),
+                "%sstatic %s: %s = [" % (visibility, ca.name, rust_type),
                 file=self.output,
             )
             for line in ca.lines:
@@ -1089,7 +1125,10 @@ use crate::low::macros::*;
             arg_regs.add(reg)
 
         for c in sorted(self.function_state.referenced_constant_syms):
-            print("%s = sym %s," % (c, c), file=self.output)
+            print(
+                "%s = sym %s," % (c, self.constant_sym_same_as.get(c, c)),
+                file=self.output,
+            )
 
         print("// clobbers", file=self.output)
         for c in sorted(self.function_state.clobbers):

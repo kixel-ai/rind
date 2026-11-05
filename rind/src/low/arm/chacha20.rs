@@ -7,7 +7,9 @@
 // libcrux-chacha20poly1305 0.0.10 ships it (`src/hacl/chacha20.rs`), less
 // the module paths, since libcrux does not export them. The keystream is
 // aws-lc's, in `chacha_armv4`, which measured faster than HACL*'s block
-// function at every length.
+// function at every message length. QUIC header protection's lone block
+// skips this setup and runs HACL*'s rounds in `generic::chacha20`, which took
+// 0.79 of `chacha_armv4`'s time for it on a Neoverse-N2.
 
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]

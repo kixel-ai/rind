@@ -946,6 +946,7 @@ macro_rules! cmsub38_p384 {
 /// Does p3 := 2 * p1 where all points are regarded as Jacobian triples with
 /// each coordinate in the Montgomery domain, i.e. x' = (2^384 * x) mod p_384.
 /// A Jacobian triple (x',y',z') represents affine point (x/z^2,y/z^3).
+#[inline(never)]
 pub(crate) fn p384_montjdouble(p3: &mut [u64; 18], p1: &[u64; 18]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

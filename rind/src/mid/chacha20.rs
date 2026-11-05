@@ -52,8 +52,8 @@ impl ChaCha20 {
     /// never wraps the counter, so this cannot fail.
     pub(crate) fn header_protection_mask(&self, sample: &[u8; 16]) -> [u8; 5] {
         let _entry = Entry::new_secret();
-        let mut mask = [0u8; 5];
-        low::chacha20::ChaCha20::new(&self.key, sample).cipher(&mut mask);
+        let block = low::chacha20_block(&self.key, sample);
+        let mask = [block[0], block[1], block[2], block[3], block[4]];
         low::ct::public_slice(&mask);
         mask
     }

@@ -107,6 +107,7 @@ macro_rules! combadd2 {
 /// Square modulo p_521, z := (x^2) mod p_521, assuming x reduced
 ///
 /// Input x[9]; output z[9]
+#[inline(never)]
 pub(crate) fn bignum_sqr_p521_alt(z: &mut [u64; 9], x: &[u64; 9]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {

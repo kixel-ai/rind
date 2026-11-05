@@ -1,0 +1,22 @@
+[package]
+name = "build-cost-libcrux"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Its own workspace, so it resolves and builds alone.
+[workspace]
+
+[dependencies]
+getrandom = { version = "0.4", features = ["sys_rng"] }
+libcrux-aesgcm = "0.0.8"
+libcrux-ecdh = "0.0.9"
+libcrux-ecdsa = "0.0.9"
+libcrux-sha2 = "0.0.9"
+
+# The AES-NI and NEON implementations, which runtime detection picks over the portable one.
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+libcrux-aesgcm = { version = "0.0.8", features = ["simd256"] }
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+libcrux-aesgcm = { version = "0.0.8", features = ["simd128"] }

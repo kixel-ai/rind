@@ -6,10 +6,9 @@
 
 use core::num::NonZeroU32;
 
-use super::hash::Hash;
-use super::hmac::{self, HmacKey, Keyed};
+use super::hmac;
 use crate::Error;
-use crate::low::{ct, ct_equal};
+use crate::low::{Entry, ct, ct_equal};
 
 /// A PBKDF2 algorithm, chosen by one of this module's constants.
 #[derive(Debug)]
@@ -44,6 +43,7 @@ impl Secret {
     /// Fails with [`Error::WrongLength`], leaving `out` unchanged, if `out`
     /// is empty or longer than PBKDF2 allows.
     pub fn derive(&self, iterations: NonZeroU32, salt: &[u8], out: &mut [u8]) -> Result<(), Error> {
+        let _entry = Entry::new_secret();
         self.check_len(out.len())?;
         self.blocks(iterations, salt, out.len(), |offset, block| {
             out[offset..offset + block.len()].copy_from_slice(block);
@@ -64,6 +64,7 @@ impl Secret {
         salt: &[u8],
         previously_derived: &[u8],
     ) -> Result<(), Error> {
+        let _entry = Entry::new_secret();
         if previously_derived.len() < self.0.algorithm().tag_len() {
             return Err(Error::WrongLength);
         }
@@ -100,39 +101,24 @@ impl Secret {
         iterations: NonZeroU32,
         salt: &[u8],
         len: usize,
-        sink: impl FnMut(usize, &[u8]),
+        mut sink: impl FnMut(usize, &[u8]),
     ) {
-        fn blocks<H: Hash>(
-            key: &HmacKey<H>,
-            iterations: NonZeroU32,
-            salt: &[u8],
-            len: usize,
-            mut sink: impl FnMut(usize, &[u8]),
-        ) {
-            let mut salted = key.start();
-            salted.update(salt);
+        let mut salted = hmac::Context::with_key(&self.0);
+        salted.update(salt);
 
-            let hash_len = H::zeroed_output().as_ref().len();
-            for (index, offset) in (1..=u32::MAX).zip((0..len).step_by(hash_len)) {
-                let mut ctx = salted.clone();
-                ctx.update(index.to_be_bytes());
-                let mut u = ctx.finish();
-                let mut t = u.clone();
-                for _ in 1..iterations.get() {
-                    u = key.sign(u.as_ref());
-                    for (t, u) in t.as_mut().iter_mut().zip(u.as_ref()) {
-                        *t ^= u;
-                    }
+        let hash_len = self.0.algorithm().tag_len();
+        for (index, offset) in (1..=u32::MAX).zip((0..len).step_by(hash_len)) {
+            let mut ctx = salted.clone();
+            ctx.update(&index.to_be_bytes());
+            let mut u = ctx.finish();
+            let mut t = u.clone();
+            for _ in 1..iterations.get() {
+                u = self.0.tag(u.as_ref());
+                for (t, u) in t.as_mut().iter_mut().zip(u.as_ref()) {
+                    *t ^= u;
                 }
-                sink(offset, &t.as_ref()[..hash_len.min(len - offset)]);
             }
-        }
-
-        match &self.0.0 {
-            Keyed::Sha1(key) => blocks(key, iterations, salt, len, sink),
-            Keyed::Sha256(key) => blocks(key, iterations, salt, len, sink),
-            Keyed::Sha384(key) => blocks(key, iterations, salt, len, sink),
-            Keyed::Sha512(key) => blocks(key, iterations, salt, len, sink),
+            sink(offset, &t.as_ref()[..hash_len.min(len - offset)]);
         }
     }
 }

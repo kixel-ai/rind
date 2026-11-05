@@ -98,6 +98,29 @@ fn sha256(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
             b.iter(|| test_rind_sha256(input))
         });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        group.bench_with_input(
+            BenchmarkId::new("graviola", size_name),
+            &input,
+            |b, input| {
+                b.iter(|| {
+                    let mut ctx = graviola::hashing::sha2::Sha256Context::new();
+                    ctx.update(input);
+                    black_box(ctx.finish())
+                })
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new("libcrux", size_name),
+            &input,
+            |b, input| b.iter(|| black_box(libcrux_sha2::sha256(input))),
+        );
+        #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+        group.bench_with_input(
+            BenchmarkId::new("openssl", size_name),
+            &input,
+            |b, input| b.iter(|| black_box(openssl::sha::sha256(input))),
+        );
     }
 }
 
@@ -123,6 +146,29 @@ fn sha512(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
             b.iter(|| test_rind_sha512(input))
         });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        group.bench_with_input(
+            BenchmarkId::new("graviola", size_name),
+            &input,
+            |b, input| {
+                b.iter(|| {
+                    let mut ctx = graviola::hashing::sha2::Sha512Context::new();
+                    ctx.update(input);
+                    black_box(ctx.finish())
+                })
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new("libcrux", size_name),
+            &input,
+            |b, input| b.iter(|| black_box(libcrux_sha2::sha512(input))),
+        );
+        #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+        group.bench_with_input(
+            BenchmarkId::new("openssl", size_name),
+            &input,
+            |b, input| b.iter(|| black_box(openssl::sha::sha512(input))),
+        );
     }
 }
 

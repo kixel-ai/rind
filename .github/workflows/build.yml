@@ -30,14 +30,14 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - uses: ./.github/actions/vectors
 
       - name: Install ${{ matrix.rustc }} toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: ${{ matrix.rustc }}
 
@@ -59,8 +59,8 @@ jobs:
           # test software fallbacks for sha1 and sha256, and the scalar sha512 that
           # CPUs other than Intel run
           env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 cargo test
-          # test avx2/aesni aes-gcm & ML-KEM without avx512, and RSA's CRT one
-          # exponentiation at a time on a runner with AVX-512 IFMA
+          # test Vale's aes-gcm and avx2 ML-KEM without avx512 or vaes, and
+          # RSA's CRT one exponentiation at a time on a runner with AVX-512 IFMA
           env RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 RIND_TEST_X86_AVX512_RSA=0 cargo test
           # test s2n-bignum's _alt routines, and aws-lc's Montgomery
           # multiplication and RSAZ exponentiation, for CPUs with AVX2 but
@@ -105,7 +105,7 @@ jobs:
   armv7:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 

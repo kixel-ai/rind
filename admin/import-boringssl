@@ -89,17 +89,19 @@ def import_x86_64(boringssl):
             copyright = ["Copyright 2024 The BoringSSL Authors"]
             origin = f"{source}, which BoringSSL generates from crypto/fipsmodule/aes/asm/{spec['source']}.pl."
 
-            operands = {local + name: name for name in spec["tables"]}
+            operands = {local + name: (name, 0) for name in spec["tables"]}
             for name in spec["routines"]:
-                body = aws_lc.body(lines, f"{prefix}{name}:")
-                text = aws_lc.escape(body, operands, local, spec["tag"])
+                body = aws_lc.body(lines, f"{prefix}{name}:", local)
+                text = aws_lc.escape(body, operands, local, spec["tag"], arch["comment"])
                 out = os.path.join(out_dir, f"{name}.{flavor}.s")
                 aws_lc.write(out, header(arch["comment"], copyright, origin) + list(text))
 
             if flavor != "linux":
                 continue
             for name in spec["tables"]:
-                values = aws_lc.table(lines, f"{local}{name}:")
+                values, width, offsets = aws_lc.table(lines, f"{local}{name}:", local)
+                # Each label inside it starts the next table.
+                values = values[: min(offsets.values(), default=len(values) * width) // width]
                 rows = [f"    {', '.join(values[i : i + 2])}," for i in range(0, len(values), 2)]
                 out = os.path.join(out_dir, f"{spec['source']}.{name}.rs")
                 aws_lc.write(out, header("//", copyright, origin) + ["["] + rows + ["]"])
@@ -113,8 +115,8 @@ def import_arm(boringssl):
         while not lines[0].strip() or lines[0].startswith("//"):
             lines.pop(0)
 
-        operands = {name: name for name in spec["routines"]}
-        text = aws_lc.escape(lines, operands, "._", spec["tag"])
+        operands = {name: (name, 0) for name in spec["routines"]}
+        text = aws_lc.escape(lines, operands, "._", spec["tag"], "@")
         out = os.path.join(out_dir, os.path.basename(spec["source"]).removesuffix(".S") + ".s")
         aws_lc.write(out, header("@", spec["copyright"], f"{spec['source']}.") + list(text))
 

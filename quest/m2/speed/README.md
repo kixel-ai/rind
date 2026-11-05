@@ -1,4 +1,4 @@
-# [L] Fastest at every algorithm
+# Fastest at every algorithm
 
 ## Goal
 
@@ -6,7 +6,8 @@ Every algorithm rind exports, on every path it runs (x86_64's fast path and
 its no-ADX, no-AVX2, no-AES-NI, and SSE2 tiers; aarch64 with and without the
 crypto extensions; armv7), is at least as fast as the fastest permissively
 licensed source usable from Rust, or the gap is recorded with its reason.
-README's Algorithms table shows where each stands.
+BENCHMARKS.md's CPU tiers show where each stands, and its Known gaps, from
+`benchmarks/gaps.toml`, each gap's quest or reason.
 
 ## Plan
 
@@ -40,7 +41,15 @@ settled; don't ask them again. The chosen option is marked ✅.
   primitives only / also every adapter.
 - Symmetric sizes: 32 B, 1200 B, 1350 B, and 16 KB, plus 64 B and 8 KB for
   hashes; a gap at any size counts ✅ / a full power-of-two sweep.
-- Scoreboard: README's Algorithms table gains each path's ratio to the
-  fastest baseline, refreshed by the audit and each gap quest; the nightly
-  job's summary keeps the live numbers ✅ / nightly summary only / a separate
-  BENCHMARKS.md.
+- Scoreboard: BENCHMARKS.md's CPU tiers, which `admin/bench-report nightly`
+  and `render` regenerate from the nightly bench, show each path's ratio to
+  the fastest baseline; the nightly job's summary keeps the live numbers ✅
+  (maintainer, 2026-11-03, in the [benchmarks epic](/quest/m1/benchmarks/README.md):
+  moved from README's Algorithms table, which keeps only the sources) /
+  README's Algorithms table / nightly summary only.
+
+## Required
+
+- [x86_64 RSA-2048 signing as fast as ring and graviola](/quest/m2/speed/x86-rsa2048-sign.md) - 2048-bit signing, and the RSA certificate handshake with it, level on x86_64 with ADX
+- [x86_64 SHA-256 of short messages as fast as RustCrypto](/quest/m2/speed/x86-sha256-short.md) - 64 B SHA-256 with the SHA extensions level with RustCrypto and graviola
+- [x86_64 SHA-2 bulk as fast as OpenSSL](/quest/m2/speed/x86-sha2-bulk.md) - SHA-512, and SHA-256 without the SHA extensions, level with OpenSSL at 16 KB

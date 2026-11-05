@@ -49,6 +49,7 @@ mod generic {
     pub(crate) mod poly1305;
     // armv7's SHA1 and SHA256, also built in x86_64 tests to check the vector
     // paths against.
+    pub(super) mod reuse_cache;
     #[cfg(any(target_arch = "arm", all(test, target_arch = "x86_64")))]
     pub(super) mod sha1;
     #[cfg(any(target_arch = "arm", all(test, target_arch = "x86_64")))]
@@ -63,13 +64,14 @@ mod posint;
 pub(crate) use entry::Entry;
 #[cfg(target_arch = "x86_64")]
 pub(crate) use generic::blockwise::pad_message;
-pub(crate) use generic::blockwise::{Blockwise, compress_padded};
-pub(crate) use generic::chacha20::hchacha20;
+pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, split_tail};
+pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
-pub(crate) use generic::zeroise::{Zeroable, zeroise, zeroise_value};
+pub(crate) use generic::reuse_cache::ReuseCache;
+pub(crate) use generic::zeroise::{Zeroable, ZeroableRef, zeroise, zeroise_value};
 pub(crate) use posint::{ModExp, PosInt, SecretPosInt};
 
 #[cfg(all(test, not(target_arch = "arm")))]
@@ -253,7 +255,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::p256_montjadd::p256_montjadd;
         pub(crate) use aarch64::p256_montjdouble::p256_montjdouble;
         pub(crate) use aarch64::p256_montjmixadd::p256_montjmixadd;
-        pub(crate) use aarch64::p256_montjscalarmul::p256_montjscalarmul;
+        pub(crate) use aarch64::p256_scalarmul::p256_scalarmul;
         pub(crate) use aarch64::p256_scalarmulbase::p256_scalarmulbase;
         pub(crate) use aarch64::p384_montjadd::p384_montjadd;
         pub(crate) use aarch64::p384_montjmixadd::p384_montjmixadd;
@@ -282,6 +284,8 @@ cfg_if::cfg_if! {
         pub(crate) use arm::aes_ctr;
         pub(crate) use arm::aesv8_armx::AesHwKey;
         pub(crate) use arm::cpu::HaveCryptoExt;
+        #[cfg(test)]
+        pub(crate) use arm::ct_qemu;
         pub(crate) use arm::ghashv8_armx::GhashTable;
         pub(crate) use arm::chacha20;
         pub(crate) use generic::chacha20poly1305;
