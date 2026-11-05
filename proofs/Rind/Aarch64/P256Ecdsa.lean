@@ -954,6 +954,49 @@ theorem negate_y_spec (pt : mid.p256.AffineMontPoint) (P : P256Point)
         dsimp only
         rw [val_dec, dec_neg _ hy]
 
+/-! ## Twin multiplication, `JacobianMontPoint::public_twin_multiply` -/
+
+@[step]
+theorem rev_next_spec (r : core.iter.adapters.rev.Rev (core.ops.range.Range Usize)) :
+    core.iter.adapters.rev.Rev.Insts.CoreIterTraitsIteratorIterator.next
+      (core.ops.range.Range.Insts.DoubleEndedIterator core.iter.range.StepUsize) r ⦃ o r' =>
+      r'.iter.start = r.iter.start ∧
+        (if r.iter.start.val < r.iter.end.val then o = some r'.iter.end ∧ r'.iter.end.val + 1 = r.iter.end.val
+          else o = none) ⦄ := by
+  unfold core.iter.adapters.rev.Rev.Insts.CoreIterTraitsIteratorIterator.next
+  simp only [core.ops.range.Range.Insts.DoubleEndedIterator,
+    core.ops.range.Range.Insts.CoreIterTraitsDoubleEndedIterator.next_back, core.iter.range.StepUsize,
+    core.iter.range.UScalarStep, core.iter.range.UScalarStep.backward_checked]
+  by_cases hlt : r.iter.start.val < r.iter.end.val
+  · have hb : liftFun2 core.cmp.impls.PartialOrdUsize.lt r.iter.start r.iter.end = ok true := by
+      simp [liftFun2, core.cmp.impls.PartialOrdUsize.lt, hlt]
+    have h1 : (1#usize).val ≤ r.iter.end.val := by simp; omega
+    simp only [hb, bind_ok, ↓reduceIte, h1, ↓reduceDIte, WP.spec_ok, hlt, true_and]
+    simp [UScalar.ofNatCore_val_eq]; omega
+  · have hb : liftFun2 core.cmp.impls.PartialOrdUsize.lt r.iter.start r.iter.end = ok false := by
+      simp [liftFun2, core.cmp.impls.PartialOrdUsize.lt, hlt]
+    simp [hb, hlt, WP.spec_ok]
+
+theorem pairNat_take8 (l : List U64) : pairNat (l.take 8) = pairNat l := by
+  simp [pairNat, List.take_take, List.drop_take]
+
+theorem lookup_spec (row : Slice U64) (hrow : row.length = 256) (idx : U8) (h1 : 1 ≤ idx.val)
+    (h32 : idx.val ≤ 32) :
+    mid.p256.AffineMontPoint.public_lookup row idx ⦃ pt =>
+      pairNat pt.xy.val = pairNat (row.val.drop (8 * (idx.val - 1))) ⦄ := by
+  unfold mid.p256.AffineMontPoint.public_lookup core.slice.Slice.as_chunks
+  have h8 : (8#usize).val = 8 := rfl
+  simp only [h8, show (8 : Nat) ≠ 0 by norm_num, ↓reduceIte, bind_ok, hrow,
+    show (256 : Nat) / 8 = 32 by norm_num]
+  step as ⟨i, hi⟩
+  step as ⟨i1, hi1⟩
+  have hiv : i.val = idx.val := by rw [hi, UScalar.cast_val_eq]; apply Nat.mod_eq_of_lt; scalar_tac
+  step as ⟨a, ha⟩
+  · simp only [Slice.length, Slice.from_val, List.length_ofFn]; omega
+  rw [ha]
+  simp only [WP.spec_ok, Slice.from_val, List.getElem_ofFn, Array.from_val, Fin.val_cast, pairNat_take8]
+  congr 2; rw [hi1, hiv]; ring
+
 end P256
 
 end rind.aarch64
