@@ -1,10 +1,10 @@
 <h1 align="center">rind</h1>
 <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png" alt="rind: a curled strip of spiky green graviola peel shaped like a lowercase r">
 
-> **rind** is pure-Rust cryptography for
+> **rind** distills great cryptography into a pure-Rust library for
 > [rustls](https://github.com/rustls/rustls) and
-> [MoQ](https://github.com/moq-dev/moq): as fast as aws-lc-rs and ring,
-> verified where it counts, and built by rustc alone.
+> [MoQ](https://github.com/moq-dev/moq), as fast as aws-lc-rs and ring and
+> built by rustc alone.
 
 - **No C toolchain.** rind's assembly lives in Rust source, so `cargo build`
   needs only rustc and a linker: no C compiler, cmake, nasm, or perl, for
