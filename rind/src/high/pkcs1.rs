@@ -289,8 +289,10 @@ pub(crate) fn encode_oaep<H: Hash>(
     *one = 0x01;
     m_out.copy_from_slice(message);
 
-    // 2d.  Generate a random octet string seed of length hLen.
+    // 2d.  Generate a random octet string seed of length hLen.  It
+    //      unmasks the message, so it is as secret.
     rng.fill(seed)?;
+    ct::secret_slice(seed);
 
     // 2e.  Let dbMask = MGF(seed, k - hLen - 1).
     // 2f.  Let maskedDB = DB \xor dbMask.
