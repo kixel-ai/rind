@@ -200,13 +200,15 @@ verified ✓ AVX SHA-384 and SHA-512.
 | P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  |  |  |  |
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  |  |  |  |
 | ML-KEM-768 | s2n-bignum ✓ + mlkem-native ✓ + Graviola ⚡ | mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
-| RSA signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ |  |  |  |  |
+| RSA signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ + rind ⚡ | s2n-bignum ✓ + aws-lc ⚡ |  |  |  |
 
-- RSA: x86_64 gathers each window entry by [s2n-bignum]'s verified
-  `bignum_copy_row_from_table`, and with ADX multiplies 1024- and 2048-bit
-  moduli by its verified Karatsuba routines, as [#224] decided, rather than
-  by [aws-lc]'s `bn_powerx5` or, at widths that aren't a multiple of eight
-  words, `bn_mul_mont_gather5`, which fuse a faster gather into the product.
+- RSA: x86_64 with ADX multiplies 1024- and 2048-bit moduli by
+  [s2n-bignum]'s verified Karatsuba routines, as [#224] decided, rather than
+  by [aws-lc]'s `bn_powerx5`, which led by up to 6% on an i7-8700 and trailed
+  on Zen 3 and Zen 5. Without AVX2, it gathers each window entry by
+  s2n-bignum's verified `bignum_copy_row_from_table` rather than, at widths
+  that aren't a multiple of eight words, `bn_mul_mont_gather5`, which fuses
+  a faster gather into the product.
 - AES-GCM without AVX2: [HACL\*]'s Vale AES-GCM seals and opens under rind's
   key setup. On an i7-8700 (Coffee Lake), against the aws-lc and Graviola code
   it replaced, AES-128 and AES-256 key setup fell from 101 and 105 ns to 97
@@ -342,7 +344,8 @@ prime of RSA-2048 runs aws-lc's RSAZ, as aws-lc does there: Montgomery
 products on AVX2 over 29-bit limbs, and a 5-bit fixed window whose table
 entry is gathered by masking all 32 entries. Otherwise x86_64 runs aws-lc's
 5-bit window, as `BN_mod_exp_mont_consttime` does, gathering each entry by
-s2n-bignum's verified routine, which reads every entry. For moduli of a
+masking all 32 entries with AVX2, and otherwise by s2n-bignum's verified
+routine, which reads every entry. For moduli of a
 multiple of 512 bits other than 1024 and 2048 bits with ADX, it runs aws-lc's
 `bn_power5` instead: five squarings and the product by an entry gathered by
 masking all 32, in one call.
