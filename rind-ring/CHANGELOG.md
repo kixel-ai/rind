@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.11...rind-ring-v0.1.12) - 2026-11-05
+
+### Fixed
+
+- *(ed25519)* [**breaking**] refuse public keys of small order ([#298](https://github.com/moq-dev/rind/pull/298))
+
+### Other
+
+- *(release)* ship rind 0.1.13 and rind-ring 0.1.12 as patch releases ([#355](https://github.com/moq-dev/rind/pull/355))
+- add rind logos and credit upstream projects ([#313](https://github.com/moq-dev/rind/pull/313))
+
 ## [0.1.11](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.10...rind-ring-v0.1.11) - 2026-11-03
 
 ### Other

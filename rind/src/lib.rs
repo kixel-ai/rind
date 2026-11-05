@@ -192,7 +192,8 @@ pub mod signature {
 /// ```
 pub mod digest {
     pub use super::high::digest::{
-        Algorithm, Context, Digest, SHA256, SHA384, SHA512, SHA512_256, digest,
+        Algorithm, Context, Digest, SHA3_256, SHA3_384, SHA3_512, SHA256, SHA384, SHA512,
+        SHA512_256, digest,
     };
 
     /// Hash functions only legacy protocols should use.

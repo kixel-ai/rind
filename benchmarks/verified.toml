@@ -34,11 +34,11 @@
 # graviola has none. Its X25519 and Ed25519 run only s2n-bignum's verified
 # routines, but convert between bytes and limbs in unverified Rust.
 #
-# rind: X25519, P-256 ECDH on aarch64, and SHA-512 and Ed25519 where the
-# SHA-512 block routine's proof states the routine's result, whose Rust
-# `proofs/` proves against s2n-bignum's and aws-lc-verification's theorems,
-# ChaCha20 header protection, whose Rust `proofs/` proves against RFC 8439,
-# HACL*'s rounds included, and AES-GCM on x86_64 with AVX and MOVBE but no
+# rind: X25519, P-256 ECDH and ECDSA on aarch64, and SHA-512 and Ed25519
+# where the SHA-512 block routine's proof states the routine's result, whose
+# Rust `proofs/` proves against s2n-bignum's and aws-lc-verification's
+# theorems, ChaCha20 header protection, whose Rust `proofs/` proves against
+# RFC 8439, HACL*'s rounds included, and AES-GCM on x86_64 with AVX and MOVBE but no
 # VAES, whose Rust, key setup included, `proofs/` proves against Vale's
 # theorems for AAD and messages under 2^32 bytes, every size the report
 # times. On aarch64 with the SHA-512 instructions, NSym's proof of aws-lc's
@@ -100,6 +100,13 @@ operations = ["p256-ecdh"]
 arch = "aarch64"
 proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, with rind's generator table proven to hold the multiples of G that s2n-bignum's proof assumes"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/P256.lean"
+
+[[verified]]
+library = "rind"
+operations = ["p256-ecdsa-sign", "p256-ecdsa-verify"]
+arch = "aarch64"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of the nonces' draws through a dyn RandomSource, which Aeneas cannot translate, of its signature API's P-256 ECDSA with SHA-256 and fixed-length signatures, key generation and loading, signing, and verification, down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_montjadd_alt, p256_montjdouble_alt, p256_montjmixadd_alt, bignum_inv_p256, bignum_neg_p256, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, bignum_modadd, bignum_montmul, bignum_demont, bignum_modinv, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, with the group laws its twin multiplication relies on proven from Mathlib's, assuming HOL Light's P256_GROUP_ELEMENT_ORDER, that every finite point has order n, and proving a signature right when signing returns, as its nonce loop has no bound"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/P256Signature.lean"
 
 [[verified]]
 library = "rind"

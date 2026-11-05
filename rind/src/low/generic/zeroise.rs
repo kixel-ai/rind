@@ -47,6 +47,7 @@ impl Zeroable for u8 {}
 impl Zeroable for i16 {}
 impl Zeroable for u32 {}
 impl Zeroable for u64 {}
+impl Zeroable for u128 {}
 impl Zeroable for usize {}
 
 #[cfg(target_arch = "x86_64")]
