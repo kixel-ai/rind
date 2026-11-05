@@ -1710,13 +1710,73 @@ theorem odd_multiples_spec (hG : P256Group) (pt : mid.p256.AffineMontPoint) (Q :
   have := hr j hj
   rwa [show (2 * (j : Int) + 1) = ((2 * j + 1 : Nat) : Int) by push_cast; ring, hG.zpow_natCast] at this
 
-/-! ## Raw verification, `VerifyingKey::raw_ecdsa_verify` -/
+theorem map_go_spec (c : mid.p256.JacobianMontPoint) (l : List mid.p256.AffineMontPoint)
+    (P : mid.p256.AffineMontPoint → mid.p256.JacobianMontPoint → Prop)
+    (h : ∀ x ∈ l, mid.p256.JacobianMontPoint.add_inplace_affine c x ⦃ r => P x r ⦄) :
+    core.array.Array.map.go
+      mid.p256.AffineMontPoint.public_more_odd_multiples.closure.Insts.CoreOpsFunctionFnMutTupleAffineMontPointJacobianMontPoint
+      l c ⦃ res => res.length = l.length ∧ ∀ i < l.length, P l[i]! res[i]! ⦄ := by
+  induction l with
+  | nil => simp [core.array.Array.map.go, WP.spec_ok]
+  | cons x xs ih =>
+    unfold core.array.Array.map.go
+    simp only [mid.p256.AffineMontPoint.public_more_odd_multiples.closure.Insts.CoreOpsFunctionFnMutTupleAffineMontPointJacobianMontPoint,
+      mid.p256.AffineMontPoint.public_more_odd_multiples.closure.Insts.CoreOpsFunctionFnMutTupleAffineMontPointJacobianMontPoint.call_mut]
+    step with h x (by simp) as ⟨r, hr⟩
+    step with ih (fun y hy => h y (by simp [hy])) as ⟨ys, hyl, hys⟩
+    simp only [WP.spec_ok, List.length_cons, hyl, true_and]
+    intro i hi
+    cases i with
+    | zero => simpa using hr
+    | succ i => simpa using hys i (by omega)
 
 /-- The odd multiples a key's cache builds: 17Q to 31Q, from its Q to 15Q. -/
 theorem more_odd_spec (hG : P256Group) (Q : P256Point) (hQ : p256OnCurve Q) (hQne : Q ≠ none)
     (odd : Std.Array mid.p256.AffineMontPoint 8#usize) (hodd : OddMultiples Q 1 odd) :
     mid.p256.AffineMontPoint.public_more_odd_multiples odd ⦃ m => OddMultiples Q 17 m ⦄ := by
-  sorry
+  unfold mid.p256.AffineMontPoint.public_more_odd_multiples
+  have hn := n256_big
+  have hol : odd.val.length = 8 := odd.property
+  have hz : ∀ k : Nat, p256Pow Q k = p256ZPow Q k := fun k => (hG.zpow_natCast Q k).symm
+  step as ⟨a7, ha7⟩
+  have h7 := hodd 7 (by norm_num)
+  rw [← getElem_eq_getElem! _ _ (by omega), ← ha7, hz] at h7
+  step with from_affine_spec a7 _ h7 as ⟨p16, hp16⟩
+  step as ⟨a0, ha0⟩
+  have h0 := hodd 0 (by norm_num)
+  rw [← getElem_eq_getElem! _ _ (by omega), ← ha0, hz] at h0
+  step with add_inplace_affine_spec p16 a0 _ _ hp16 h0
+    (hG.zpow_ne Q hQ hQne _ _ (by norm_num) (by norm_num; omega)) as ⟨p161, hp161⟩
+  rw [hG.mul_zpow Q hQ] at hp161
+  unfold core.array.Array.map
+  step with map_go_spec p161 odd.val
+    (fun x r => ∀ k : Nat, 1 ≤ k → k ≤ 15 → p256Represents2 (p256ZPow Q k) (pairNat x.xy.val) →
+      jrep (p256ZPow Q (16 + k)) r)
+    (by
+      intro x _
+      unfold mid.p256.JacobianMontPoint.add_inplace_affine
+      step as ⟨inf, hinf⟩
+      step as ⟨a, ha⟩
+      intro k hk1 hk15 hrep
+      have := ha _ _ hp161 hrep (hG.zpow_ne Q hQ hQne _ _ (by omega) (by omega))
+      rw [hG.mul_zpow Q hQ] at this
+      exact this) as ⟨l, hll, hl⟩
+  rw [hol] at hll
+  have hll' : l.length = (8#usize).val := hll
+  rw [dif_pos hll']
+  simp only [bind_ok]
+  apply WP.spec_mono (batch_spec (Array.from l hll') (fun j => p256ZPow Q (16 + (2 * j + 1))) (by
+    intro j hj
+    refine ⟨?_, hG.zpow_ne_none Q hQ hQne _ (by omega) (by omega)⟩
+    have hj' := hodd j hj
+    rw [hz] at hj'
+    have := hl j (by omega) (2 * j + 1) (by omega) (by omega) (by push_cast at hj' ⊢; exact hj')
+    simpa [Array.from_val] using this))
+  intro r hr j hj
+  have := hr j hj
+  rwa [show (16 + (2 * (j : Int) + 1)) = ((2 * j + 17 : Nat) : Int) by push_cast; ring, ← hz] at this
+
+/-! ## Raw verification, `VerifyingKey::raw_ecdsa_verify` -/
 
 end P256
 
