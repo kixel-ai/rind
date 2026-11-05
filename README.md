@@ -390,7 +390,9 @@ SHA-1, SHA-256, SHA-384, or SHA-512.  Private keys have 2048- to 8192-bit
 moduli; verification also takes 1024-bit moduli and SHA-1, but only under
 `signature::verify::legacy`.  Every key refuses a public exponent that is
 even, 1, or over 33 bits, and a private key whose components disagree is
-refused when it loads, as aws-lc's `RSA_check_key` does.  OAEP decryption is
+refused when it loads, as aws-lc's `RSA_check_key` does.  Public keys load
+from PKCS#1 `RSAPublicKey` or `SubjectPublicKeyInfo` DER, or from their
+modulus and exponent.  Each OAEP key is bound to one hash.  OAEP decryption is
 constant time through its padding check, and fails every malformed
 ciphertext with the same error, so it is no Manger oracle.  PKCS#1 v1.5
 encryption, which invites padding-oracle attacks, is refused.

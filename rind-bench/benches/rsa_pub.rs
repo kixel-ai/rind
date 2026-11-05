@@ -237,8 +237,11 @@ fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
 
 fn rsa2048_oaep_sha256_encrypt(c: &mut Criterion) {
     use rind::rsa::{DecryptingKey, OAEP_SHA256};
-    let private_key =
-        DecryptingKey::from_pkcs1(include_bytes!("../../rind/src/high/rsa/rsa2048.der")).unwrap();
+    let private_key = DecryptingKey::from_pkcs1(
+        &OAEP_SHA256,
+        include_bytes!("../../rind/src/high/rsa/rsa2048.der"),
+    )
+    .unwrap();
     let public_key = private_key.public_key();
     let message = [0u8; 32];
 
@@ -263,10 +266,10 @@ fn rsa2048_oaep_sha256_encrypt(c: &mut Criterion) {
 
     group.bench_function("rind", |b| {
         use rind::rsa::EncryptingKey;
-        let key = EncryptingKey::new(public_key.as_ref()).unwrap();
+        let key = EncryptingKey::new(&OAEP_SHA256, public_key.as_ref()).unwrap();
 
         b.iter(|| {
-            black_box(key.encrypt(&OAEP_SHA256, &message, b"")).unwrap();
+            black_box(key.encrypt(&message, b"")).unwrap();
         })
     });
 }

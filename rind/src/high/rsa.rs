@@ -53,12 +53,38 @@ impl VerifyingKey {
         Ok(Self(rsa_pub::RsaPublicKey::new(n, public_exponent(e)?)?))
     }
 
+    /// Decodes an RSA public key from PKCS#1 `RSAPublicKey` or
+    /// `SubjectPublicKeyInfo` DER, as aws-lc-rs takes either.
+    pub(crate) fn from_der(bytes: &[u8]) -> Result<Self, Error> {
+        match asn1::opens_nested_sequence(bytes) {
+            true => Self::from_spki_der(bytes),
+            false => Self::from_pkcs1_der(bytes),
+        }
+    }
+
+    /// Decodes an RSA public key from `SubjectPublicKeyInfo` DER, whose
+    /// algorithm must be `rsaEncryption` with `NULL` parameters, as
+    /// RFC 3279 section 2.3.1 requires, or none, which aws-lc also takes.
+    fn from_spki_der(bytes: &[u8]) -> Result<Self, Error> {
+        let _entry = Entry::new_public();
+        let spki = pkix::SubjectPublicKeyInfo::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
+        if spki.algorithm.algorithm != asn1::oid::rsaEncryption
+            || !matches!(
+                spki.algorithm.parameters,
+                None | Some(asn1::Any::Null(asn1::Null))
+            )
+        {
+            return Err(KeyFormatError::MismatchedSpkiAlgorithm.into());
+        }
+        Self::from_pkcs1_der(spki.subjectPublicKey.as_octets())
+    }
+
     /// Decodes an RSA public verification key from PKCS#1 DER format.
     ///
     /// This format is defined in
     /// [RFC8017](https://datatracker.ietf.org/doc/html/rfc8017#appendix-A.1.1)
     /// (and earlier standards, including the original PKCS#1 standard).
-    pub(crate) fn from_pkcs1_der(bytes: &[u8]) -> Result<Self, Error> {
+    fn from_pkcs1_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_public();
         let decoded = pkix::RSAPublicKey::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
 

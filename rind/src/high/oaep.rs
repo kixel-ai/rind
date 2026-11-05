@@ -65,132 +65,162 @@ pub static OAEP_SHA512: OaepAlgorithm = oaep::<Sha512>(OaepHash::Sha512);
 /// protocols should use SHA-256.
 pub static OAEP_SHA1: OaepAlgorithm = oaep::<LegacySha1>(OaepHash::Sha1);
 
-/// A two-prime RSA private key, with a modulus of 2048 to 8192 bits, that
-/// decrypts RSA-OAEP.
-pub struct DecryptingKey(rsa::SigningKey);
+/// A two-prime RSA private key, with a modulus of 2048 to 8192 bits, bound
+/// to the one RSA-OAEP algorithm it decrypts.
+pub struct DecryptingKey {
+    key: rsa::SigningKey,
+    algorithm: AlgorithmRef,
+}
+
+/// The key's algorithm.
+// Aligned like the private key's words, so on 32-bit targets the key's
+// padding falls inside this value, which `DecryptingKey`'s drop wipes whole,
+// rather than after it, where `tests/zeroing.rs` finds stale bytes.
+#[derive(Clone, Copy)]
+#[repr(align(8))]
+struct AlgorithmRef(low::ZeroableRef<OaepAlgorithm>);
+
+impl low::Zeroable for AlgorithmRef {}
 
 impl DecryptingKey {
-    /// Generates a key of `size` from the system random source.
+    /// Generates a key of `size` for `algorithm` from the system random
+    /// source.
     ///
     /// This is slow: about 30 milliseconds for 2048 bits, and 15 seconds or
     /// more for 8192 bits, with no upper bound. Its timing reveals only which
     /// candidate primes it discards.
-    pub fn generate(size: RsaKeySize) -> Result<Self, Error> {
-        rsa::SigningKey::generate(size).map(Self)
+    pub fn generate(algorithm: &'static OaepAlgorithm, size: RsaKeySize) -> Result<Self, Error> {
+        Ok(Self::new(algorithm, rsa::SigningKey::generate(size)?))
     }
 
-    /// Loads a PKCS#8 v1 `rsaEncryption` private key.
-    pub fn from_pkcs8(der: &[u8]) -> Result<Self, Error> {
-        rsa::SigningKey::from_pkcs8_der(der).map(Self)
+    /// Loads a PKCS#8 v1 `rsaEncryption` private key for `algorithm`.
+    pub fn from_pkcs8(algorithm: &'static OaepAlgorithm, der: &[u8]) -> Result<Self, Error> {
+        Ok(Self::new(algorithm, rsa::SigningKey::from_pkcs8_der(der)?))
     }
 
-    /// Loads a PKCS#1 `RSAPrivateKey`.
-    pub fn from_pkcs1(der: &[u8]) -> Result<Self, Error> {
-        rsa::SigningKey::from_pkcs1_der(der).map(Self)
+    /// Loads a PKCS#1 `RSAPrivateKey` for `algorithm`.
+    pub fn from_pkcs1(algorithm: &'static OaepAlgorithm, der: &[u8]) -> Result<Self, Error> {
+        Ok(Self::new(algorithm, rsa::SigningKey::from_pkcs1_der(der)?))
     }
 
-    /// Returns the public key, which encrypts to this key.
+    fn new(algorithm: &'static OaepAlgorithm, key: rsa::SigningKey) -> Self {
+        Self {
+            key,
+            algorithm: AlgorithmRef(low::ZeroableRef::new(algorithm)),
+        }
+    }
+
+    fn algorithm(&self) -> &'static OaepAlgorithm {
+        self.algorithm.0.get()
+    }
+
+    /// Returns the public key, which encrypts to this key with its
+    /// algorithm.
     pub fn public_key(&self) -> EncryptingKey {
-        EncryptingKey::new_unchecked(self.0.public_key())
+        // A private key's modulus is at least 2048 bits.
+        EncryptingKey::new_unchecked(self.algorithm(), self.key.public_key())
     }
 
-    /// Decrypts `ciphertext` with `algorithm`, which must be the algorithm
-    /// and `label` the label it was encrypted with.
+    /// Decrypts `ciphertext`, which must have been encrypted with `label`.
     ///
     /// Every malformed ciphertext, of the wrong length, not below the
     /// modulus, or with bad padding, fails with the same
     /// [`Error::DecryptFailed`], and bad padding takes as long to find as
     /// good, so a caller that reveals the failure is no padding oracle.
-    pub fn decrypt(
-        &self,
-        algorithm: &'static OaepAlgorithm,
-        ciphertext: &[u8],
-        label: &[u8],
-    ) -> Result<Plaintext, Error> {
-        Buffer::write(|output| (algorithm.decrypt)(&self.0, output, ciphertext, label))
+    pub fn decrypt(&self, ciphertext: &[u8], label: &[u8]) -> Result<Plaintext, Error> {
+        Buffer::write(|output| (self.algorithm().decrypt)(&self.key, output, ciphertext, label))
             .map(Plaintext)
     }
 
     /// Encodes the private key as PKCS#8.
     pub fn to_pkcs8(&self) -> Pkcs8 {
-        Pkcs8(Buffer::encode(|output| self.0.to_pkcs8_der(output)))
+        Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(output)))
     }
 
     /// Encodes the public key as a `SubjectPublicKeyInfo`.
     pub fn to_spki(&self) -> Spki {
         Spki(Buffer::encode(|output| {
-            self.0.public_key().to_spki_der(output)
+            self.key.public_key().to_spki_der(output)
         }))
     }
 }
 
 impl fmt::Debug for DecryptingKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DecryptingKey").finish_non_exhaustive()
+        f.debug_struct("DecryptingKey")
+            .field("algorithm", self.algorithm())
+            .finish_non_exhaustive()
     }
 }
 
-/// An RSA public key, with a modulus of 2048 to 8192 bits, that encrypts
-/// RSA-OAEP.
+impl Drop for DecryptingKey {
+    fn drop(&mut self) {
+        // The private key wipes itself. Wiping this, which is not secret,
+        // lets `tests/zeroing.rs` check every byte.
+        low::zeroise_value(&mut self.algorithm);
+    }
+}
+
+/// An RSA public key, with a modulus of 2048 to 8192 bits, bound to the one
+/// RSA-OAEP algorithm it encrypts with.
 ///
-/// Its bytes are its PKCS#1 `RSAPublicKey` DER.
+/// Its bytes are its PKCS#1 `RSAPublicKey` DER, however it was given.
 pub struct EncryptingKey {
     key: rsa::VerifyingKey,
+    algorithm: &'static OaepAlgorithm,
     encoding: Buffer<{ rsa::MAX_PUBLIC_KEY_LEN }>,
 }
 
 impl EncryptingKey {
-    /// Parses a PKCS#1 `RSAPublicKey`.
-    pub fn new(der: &[u8]) -> Result<Self, Error> {
-        Self::checked(rsa::VerifyingKey::from_pkcs1_der(der)?)
+    /// Parses a PKCS#1 `RSAPublicKey` or a `SubjectPublicKeyInfo` for
+    /// `algorithm`.
+    pub fn new(algorithm: &'static OaepAlgorithm, der: &[u8]) -> Result<Self, Error> {
+        Self::checked(algorithm, rsa::VerifyingKey::from_der(der)?)
     }
 
-    /// Loads a key from its big-endian modulus and exponent, as a JWK
-    /// carries them.
+    /// Loads a key for `algorithm` from its big-endian modulus and exponent,
+    /// as a JWK carries them.
     pub fn from_components(
+        algorithm: &'static OaepAlgorithm,
         components: &RsaPublicKeyComponents<impl AsRef<[u8]>>,
     ) -> Result<Self, Error> {
-        Self::checked(rsa::VerifyingKey::from_components(
-            components.n.as_ref(),
-            components.e.as_ref(),
-        )?)
+        Self::checked(
+            algorithm,
+            rsa::VerifyingKey::from_components(components.n.as_ref(), components.e.as_ref())?,
+        )
     }
 
     /// Refuses a key below 2048 bits, which [`rsa::VerifyingKey`] takes for
     /// legacy verification.
-    fn checked(key: rsa::VerifyingKey) -> Result<Self, Error> {
+    fn checked(algorithm: &'static OaepAlgorithm, key: rsa::VerifyingKey) -> Result<Self, Error> {
         match key.modulus_len_bits() >= RSA_MIN_BITS {
-            true => Ok(Self::new_unchecked(key)),
+            true => Ok(Self::new_unchecked(algorithm, key)),
             false => Err(KeyFormatError::RsaModulus.into()),
         }
     }
 
-    fn new_unchecked(key: rsa::VerifyingKey) -> Self {
+    fn new_unchecked(algorithm: &'static OaepAlgorithm, key: rsa::VerifyingKey) -> Self {
         Self {
             encoding: Buffer::encode(|output| key.to_pkcs1_der(output)),
+            algorithm,
             key,
         }
     }
 
-    /// Encrypts `message` with `algorithm` and `label`, which may be empty,
-    /// returning a ciphertext as long as the modulus.
+    /// Encrypts `message` with `label`, which may be empty, returning a
+    /// ciphertext as long as the modulus.
     ///
     /// A message longer than [`Self::max_message_len`] fails with
     /// [`Error::WrongLength`].
-    pub fn encrypt(
-        &self,
-        algorithm: &'static OaepAlgorithm,
-        message: &[u8],
-        label: &[u8],
-    ) -> Result<Ciphertext, Error> {
-        Buffer::write(|output| (algorithm.encrypt)(&self.key, output, message, label))
+    pub fn encrypt(&self, message: &[u8], label: &[u8]) -> Result<Ciphertext, Error> {
+        Buffer::write(|output| (self.algorithm.encrypt)(&self.key, output, message, label))
             .map(Ciphertext)
     }
 
-    /// Returns the longest message this key encrypts with `algorithm`: the
-    /// modulus length, less twice the hash length and two.
-    pub fn max_message_len(&self, algorithm: &'static OaepAlgorithm) -> usize {
-        (algorithm.max_message_len)(self.key.modulus_len_bits().div_ceil(8))
+    /// Returns the longest message this key encrypts: the modulus length,
+    /// less twice the hash length and two.
+    pub fn max_message_len(&self) -> usize {
+        (self.algorithm.max_message_len)(self.key.modulus_len_bits().div_ceil(8))
     }
 }
 
@@ -202,8 +232,9 @@ impl AsRef<[u8]> for EncryptingKey {
 
 impl fmt::Debug for EncryptingKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("EncryptingKey")
-            .field(&self.as_ref())
+        f.debug_struct("EncryptingKey")
+            .field("algorithm", self.algorithm)
+            .field("bytes", &self.as_ref())
             .finish()
     }
 }
@@ -255,36 +286,12 @@ mod tests {
 
     /// Keys whose modulus fills a whole number of words, or not, or bytes:
     /// at 2049 bits EM's first octet holds the modulus's top bit.
-    fn keys() -> [DecryptingKey; 4] {
-        [
-            DecryptingKey::from_pkcs1(include_bytes!("rsa/rsa2048.der")).unwrap(),
-            DecryptingKey::from_pkcs8(include_bytes!("rsa/rsa2049.pkcs8.der")).unwrap(),
-            DecryptingKey::from_pkcs8(include_bytes!("rsa/rsa2056.pkcs8.der")).unwrap(),
-            DecryptingKey::from_pkcs1(include_bytes!("rsa/rsa4096.der")).unwrap(),
-        ]
-    }
-
-    #[test]
-    fn round_trip() {
-        for key in keys() {
-            let public = EncryptingKey::new(key.public_key().as_ref()).unwrap();
-            for algorithm in ALGORITHMS {
-                let max = public.max_message_len(algorithm);
-                for (len, label) in [(0, &b""[..]), (1, b"label"), (max, b"")] {
-                    let message = vec![0xa5; len];
-                    let ciphertext = public.encrypt(algorithm, &message, label).unwrap();
-                    assert_eq!(ciphertext.as_ref().len(), max + 2 * hash_len(algorithm) + 2);
-                    let plaintext = key.decrypt(algorithm, ciphertext.as_ref(), label).unwrap();
-                    ct::public_slice(plaintext.as_ref());
-                    assert_eq!(plaintext.as_ref(), message);
-                }
-                assert_eq!(
-                    public.encrypt(algorithm, &vec![0; max + 1], b"").err(),
-                    Some(Error::WrongLength)
-                );
-            }
-        }
-    }
+    const KEYS: [&[u8]; 4] = [
+        include_bytes!("rsa/rsa2048.pkcs8.der"),
+        include_bytes!("rsa/rsa2049.pkcs8.der"),
+        include_bytes!("rsa/rsa2056.pkcs8.der"),
+        include_bytes!("rsa/rsa4096.pkcs8.der"),
+    ];
 
     fn hash_len(algorithm: &OaepAlgorithm) -> usize {
         match algorithm.hash {
@@ -295,12 +302,43 @@ mod tests {
         }
     }
 
+    #[test]
+    fn round_trip() {
+        for der in KEYS {
+            for algorithm in ALGORITHMS {
+                let key = DecryptingKey::from_pkcs8(algorithm, der).unwrap();
+                // Through its PKCS#1 bytes and its SPKI, as a peer gets it.
+                let spki = key.to_spki();
+                for public in [
+                    EncryptingKey::new(algorithm, key.public_key().as_ref()).unwrap(),
+                    EncryptingKey::new(algorithm, spki.as_ref()).unwrap(),
+                ] {
+                    assert_eq!(public.as_ref(), key.public_key().as_ref());
+                    let max = public.max_message_len();
+                    for (len, label) in [(0, &b""[..]), (1, b"label"), (max, b"")] {
+                        let message = vec![0xa5; len];
+                        let ciphertext = public.encrypt(&message, label).unwrap();
+                        assert_eq!(ciphertext.as_ref().len(), max + 2 * hash_len(algorithm) + 2);
+                        let plaintext = key.decrypt(ciphertext.as_ref(), label).unwrap();
+                        ct::public_slice(plaintext.as_ref());
+                        assert_eq!(plaintext.as_ref(), message);
+                    }
+                    assert_eq!(
+                        public.encrypt(&vec![0; max + 1], b"").err(),
+                        Some(Error::WrongLength)
+                    );
+                }
+            }
+        }
+    }
+
     /// Each way a ciphertext can be wrong fails the same way.
     #[test]
     fn every_failure_is_the_same() {
-        let key = DecryptingKey::from_pkcs1(include_bytes!("rsa/rsa2048.der")).unwrap();
+        let der = include_bytes!("rsa/rsa2048.der");
+        let key = DecryptingKey::from_pkcs1(&OAEP_SHA256, der).unwrap();
         let public = key.public_key();
-        let ciphertext = public.encrypt(&OAEP_SHA256, b"message", b"label").unwrap();
+        let ciphertext = public.encrypt(b"message", b"label").unwrap();
         let ciphertext = ciphertext.as_ref();
 
         let mut flipped = ciphertext.to_vec();
@@ -309,24 +347,31 @@ mod tests {
         // the exponent.
         let modulus = &public.as_ref()[9..265];
 
-        for (ciphertext, algorithm, label) in [
-            (ciphertext, &OAEP_SHA256, &b"other"[..]),
-            (ciphertext, &OAEP_SHA256, b""),
-            (ciphertext, &OAEP_SHA384, b"label"),
-            (&flipped, &OAEP_SHA256, b"label"),
-            (&ciphertext[1..], &OAEP_SHA256, b"label"),
-            (&[ciphertext, &[0]].concat(), &OAEP_SHA256, b"label"),
-            (&[0; 256], &OAEP_SHA256, b"label"),
-            (modulus, &OAEP_SHA256, b"label"),
-            (&[0xff; 256], &OAEP_SHA256, b"label"),
-            (&[], &OAEP_SHA256, b"label"),
+        for (ciphertext, label) in [
+            (ciphertext, &b"other"[..]),
+            (ciphertext, b""),
+            (&flipped, b"label"),
+            (&ciphertext[1..], b"label"),
+            (&[ciphertext, &[0]].concat(), b"label"),
+            (&[0; 256], b"label"),
+            (modulus, b"label"),
+            (&[0xff; 256], b"label"),
+            (&[], b"label"),
         ] {
             assert_eq!(
-                key.decrypt(algorithm, ciphertext, label).err(),
+                key.decrypt(ciphertext, label).err(),
                 Some(Error::DecryptFailed)
             );
         }
-        let plaintext = key.decrypt(&OAEP_SHA256, ciphertext, b"label").unwrap();
+
+        // The same key bound to another hash.
+        let other = DecryptingKey::from_pkcs1(&OAEP_SHA384, der).unwrap();
+        assert_eq!(
+            other.decrypt(ciphertext, b"label").err(),
+            Some(Error::DecryptFailed)
+        );
+
+        let plaintext = key.decrypt(ciphertext, b"label").unwrap();
         ct::public_slice(plaintext.as_ref());
         assert_eq!(plaintext.as_ref(), b"message");
     }
@@ -334,26 +379,24 @@ mod tests {
     #[test]
     fn refuses_small_public_keys() {
         assert_eq!(
-            EncryptingKey::new(include_bytes!("rsa/rsa2047.pub.der")).err(),
+            EncryptingKey::new(&OAEP_SHA256, include_bytes!("rsa/rsa2047.pub.der")).err(),
             Some(KeyFormatError::RsaModulus.into())
         );
     }
 
     /// Under `admin/ctgrind`, memcheck fails this if encryption branches on
-    /// or indexes by the message, or decryption by the key or the decrypted
-    /// value, before its padding is found valid.
+    /// or indexes by the message or seed, or decryption by the key or the
+    /// decrypted value, before its padding is found valid.
     #[test]
     fn stays_secret() {
-        let key = DecryptingKey::from_pkcs8(include_bytes!("rsa/rsa2049.pkcs8.der")).unwrap();
-        let public = key.public_key();
         for algorithm in ALGORITHMS {
+            let key = DecryptingKey::from_pkcs8(algorithm, include_bytes!("rsa/rsa2049.pkcs8.der"))
+                .unwrap();
             let message = [0x5a; 32];
             ct::secret_slice(&message);
-            let ciphertext = public.encrypt(algorithm, &message, b"label").unwrap();
+            let ciphertext = key.public_key().encrypt(&message, b"label").unwrap();
 
-            let plaintext = key
-                .decrypt(algorithm, ciphertext.as_ref(), b"label")
-                .unwrap();
+            let plaintext = key.decrypt(ciphertext.as_ref(), b"label").unwrap();
             ct::public_slice(plaintext.as_ref());
             assert_eq!(plaintext.as_ref(), [0x5a; 32]);
 
@@ -368,7 +411,7 @@ mod tests {
                 (&unencrypted, b"label"),
             ] {
                 assert_eq!(
-                    key.decrypt(algorithm, ciphertext, label).err(),
+                    key.decrypt(ciphertext, label).err(),
                     Some(Error::DecryptFailed)
                 );
             }

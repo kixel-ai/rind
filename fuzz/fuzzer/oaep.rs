@@ -17,15 +17,23 @@ mod edit;
 
 const PKCS8: &[u8] = include_bytes!("../../rind/src/high/rsa/rsa2048.pkcs8.der");
 
+/// Each side's algorithms, ours bound to our key.
+const ALGORITHMS: [(&ours::OaepAlgorithm, &theirs::OaepAlgorithm); 4] = [
+    (&ours::legacy::OAEP_SHA1, &theirs::OAEP_SHA1_MGF1SHA1),
+    (&ours::OAEP_SHA256, &theirs::OAEP_SHA256_MGF1SHA256),
+    (&ours::OAEP_SHA384, &theirs::OAEP_SHA384_MGF1SHA384),
+    (&ours::OAEP_SHA512, &theirs::OAEP_SHA512_MGF1SHA512),
+];
+
 static KEYS: LazyLock<(
-    ours::DecryptingKey,
+    [ours::DecryptingKey; 4],
     OaepPrivateDecryptingKey,
     OaepPublicEncryptingKey,
 )> = LazyLock::new(|| {
     let theirs = theirs::PrivateDecryptingKey::from_pkcs8(PKCS8).unwrap();
     let public = OaepPublicEncryptingKey::new(theirs.public_key()).unwrap();
     (
-        ours::DecryptingKey::from_pkcs8(PKCS8).unwrap(),
+        ALGORITHMS.map(|(algorithm, _)| ours::DecryptingKey::from_pkcs8(algorithm, PKCS8).unwrap()),
         OaepPrivateDecryptingKey::new(theirs).unwrap(),
         public,
     )
@@ -40,13 +48,10 @@ struct Input {
 }
 
 fuzz_target!(|input: Input| {
-    let (ours_algorithm, theirs_algorithm) = match input.algorithm % 4 {
-        0 => (&ours::legacy::OAEP_SHA1, &theirs::OAEP_SHA1_MGF1SHA1),
-        1 => (&ours::OAEP_SHA256, &theirs::OAEP_SHA256_MGF1SHA256),
-        2 => (&ours::OAEP_SHA384, &theirs::OAEP_SHA384_MGF1SHA384),
-        _ => (&ours::OAEP_SHA512, &theirs::OAEP_SHA512_MGF1SHA512),
-    };
+    let index = usize::from(input.algorithm % 4);
+    let theirs_algorithm = ALGORITHMS[index].1;
     let (ours, theirs, public) = &*KEYS;
+    let ours = &ours[index];
 
     let message = &input.message[..input
         .message
@@ -72,7 +77,7 @@ fuzz_target!(|input: Input| {
             Some(&input.label),
         )
         .ok();
-    match ours.decrypt(ours_algorithm, &ciphertext, &input.label) {
+    match ours.decrypt(&ciphertext, &input.label) {
         Ok(ours) => assert_eq!(Some(ours.as_ref()), expected.as_deref()),
         Err(e) => {
             assert_eq!(e, rind::Error::DecryptFailed);

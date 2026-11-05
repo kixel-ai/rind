@@ -191,7 +191,8 @@ impl fmt::Debug for RsaVerificationAlgorithm {
 
 /// A public key, bound to the one algorithm it verifies signatures with.
 ///
-/// Its bytes are its encoding, as [`PublicKey::new`] takes it.
+/// Its bytes are its encoding, as [`PublicKey::new`] takes it, but an RSA
+/// key's are always its PKCS#1 `RSAPublicKey` DER.
 pub struct PublicKey {
     key: Parsed,
     encoding: Buffer<{ rsa::MAX_PUBLIC_KEY_LEN }>,
@@ -211,9 +212,10 @@ impl PublicKey {
     /// refusing a malformed key before any signature arrives.
     ///
     /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
-    /// `RSAPublicKey` DER, and Ed25519 keys are their 32 bytes. A compressed
-    /// ECDSA point is refused: no consumer sends one. So is an Ed25519 point
-    /// of small order, which verifies signatures nobody made.
+    /// `RSAPublicKey` or `SubjectPublicKeyInfo` DER, and Ed25519 keys are
+    /// their 32 bytes. A compressed ECDSA point is refused: no consumer sends
+    /// one. So is an Ed25519 point of small order, which verifies signatures
+    /// nobody made.
     pub fn new(
         algorithm: &'static impl AsRef<VerificationAlgorithm>,
         bytes: &[u8],
@@ -229,14 +231,15 @@ impl PublicKey {
         })
     }
 
-    /// Parses an RSA key's PKCS#1 DER for `rsa`.
+    /// Parses an RSA key's PKCS#1 or SPKI DER for `rsa`.
     fn parse_rsa(rsa: Rsa, bytes: &[u8]) -> Result<Self, Error> {
-        Self::rsa(rsa, rsa::VerifyingKey::from_pkcs1_der(bytes)?)
+        Self::rsa(rsa, rsa::VerifyingKey::from_der(bytes)?)
     }
 
     /// Binds an RSA key to `rsa`, refusing it below the algorithm's floor.
     ///
-    /// The encoding is the key's DER, whether it came as DER or components.
+    /// The encoding is the key's PKCS#1 DER, whether it came as PKCS#1,
+    /// SPKI, or components.
     fn rsa(rsa: Rsa, key: rsa::VerifyingKey) -> Result<Self, Error> {
         let key = rsa.check(key)?;
         Ok(Self {

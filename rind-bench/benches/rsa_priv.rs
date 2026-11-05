@@ -285,10 +285,10 @@ fn rsa2048_oaep_sha256_decrypt(c: &mut Criterion) {
     use rind::rsa::{DecryptingKey, OAEP_SHA256};
     let private_key = include_bytes!("../../rind/src/high/rsa/rsa2048.der");
     let message = [0u8; 32];
-    let ciphertext = DecryptingKey::from_pkcs1(private_key)
+    let ciphertext = DecryptingKey::from_pkcs1(&OAEP_SHA256, private_key)
         .unwrap()
         .public_key()
-        .encrypt(&OAEP_SHA256, &message, b"")
+        .encrypt(&message, b"")
         .unwrap();
     let ciphertext = ciphertext.as_ref();
 
@@ -299,7 +299,9 @@ fn rsa2048_oaep_sha256_decrypt(c: &mut Criterion) {
         use aws_lc_rs::rsa::{
             OAEP_SHA256_MGF1SHA256, OaepPrivateDecryptingKey, PrivateDecryptingKey,
         };
-        let pkcs8 = DecryptingKey::from_pkcs1(private_key).unwrap().to_pkcs8();
+        let pkcs8 = DecryptingKey::from_pkcs1(&OAEP_SHA256, private_key)
+            .unwrap()
+            .to_pkcs8();
         let key = OaepPrivateDecryptingKey::new(
             PrivateDecryptingKey::from_pkcs8(pkcs8.as_ref()).unwrap(),
         )
@@ -322,10 +324,10 @@ fn rsa2048_oaep_sha256_decrypt(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
-        let key = DecryptingKey::from_pkcs1(private_key).unwrap();
+        let key = DecryptingKey::from_pkcs1(&OAEP_SHA256, private_key).unwrap();
 
         b.iter(|| {
-            black_box(key.decrypt(&OAEP_SHA256, ciphertext, b"")).unwrap();
+            black_box(key.decrypt(ciphertext, b"")).unwrap();
         })
     });
 }

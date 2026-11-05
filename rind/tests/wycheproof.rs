@@ -29,6 +29,10 @@ struct TestGroup {
     #[serde(default, rename(deserialize = "publicKeyAsn"), with = "hex::serde")]
     public_key_asn: Vec<u8>,
 
+    // The same key as a `SubjectPublicKeyInfo`.
+    #[serde(default, rename(deserialize = "publicKeyDer"), with = "hex::serde")]
+    public_key_der: Vec<u8>,
+
     // The PKCS#1 public key of a signing group.
     #[serde(default, rename(deserialize = "keyAsn"), with = "hex::serde")]
     key_asn: Vec<u8>,
@@ -570,6 +574,9 @@ fn test_rsa_pkcs1_verify() {
                 let key = key.unwrap();
                 let from_components = components.to_public_key(algorithm).unwrap();
                 assert_eq!(from_components.as_ref(), key.as_ref());
+                let from_spki =
+                    signature::PublicKey::new(algorithm, &group.public_key_der).unwrap();
+                assert_eq!(from_spki.as_ref(), key.as_ref());
 
                 // The modulus with its sign byte is not minimal.
                 let signed = signature::RsaPublicKeyComponents {
@@ -754,7 +761,7 @@ fn test_rsa_oaep_decrypt() {
                     }
                 };
 
-            let key = DecryptingKey::from_pkcs8(&group.private_key_pkcs8);
+            let key = DecryptingKey::from_pkcs8(algorithm, &group.private_key_pkcs8);
             if group.key_size < 2048 {
                 assert!(matches!(key, Err(Error::KeyRejected(_))), "{key:?}");
                 summary.skipped("key below 2048 bits");
@@ -765,7 +772,7 @@ fn test_rsa_oaep_decrypt() {
             for test in group.tests {
                 summary.start(&test);
 
-                let result = key.decrypt(algorithm, &test.ct, &test.label);
+                let result = key.decrypt(&test.ct, &test.label);
                 match (test.result, &result) {
                     (ExpectedResult::Valid | ExpectedResult::Acceptable, Ok(plaintext)) => {
                         assert_eq!(plaintext.as_ref(), test.msg)
@@ -812,7 +819,8 @@ fn test_rsa_pss_verify() {
                     continue;
                 }
             };
-            let key = signature::PublicKey::new(algorithm, &group.public_key_asn).unwrap();
+            // Loaded from its SPKI; the PKCS#1 tests load the raw key.
+            let key = signature::PublicKey::new(algorithm, &group.public_key_der).unwrap();
 
             for test in group.tests {
                 summary.start(&test);

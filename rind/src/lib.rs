@@ -128,15 +128,16 @@ pub mod kem {
 /// use rind::signature::RsaKeySize;
 ///
 /// // The recipient generates a key, and sends its public key to the sender.
-/// let decrypting_key = DecryptingKey::generate(RsaKeySize::Rsa2048)?;
-/// let public_key = decrypting_key.public_key();
+/// let decrypting_key = DecryptingKey::generate(&OAEP_SHA256, RsaKeySize::Rsa2048)?;
+/// let public_key = decrypting_key.to_spki();
 ///
-/// // The sender parses the public key and encrypts a message to it.
-/// let encrypting_key = EncryptingKey::new(public_key.as_ref())?;
-/// let ciphertext = encrypting_key.encrypt(&OAEP_SHA256, b"hello", b"")?;
+/// // The sender parses the public key for the same algorithm, and encrypts
+/// // a message to it.
+/// let encrypting_key = EncryptingKey::new(&OAEP_SHA256, public_key.as_ref())?;
+/// let ciphertext = encrypting_key.encrypt(b"hello", b"")?;
 ///
-/// // The recipient decrypts it with the same algorithm and label.
-/// let plaintext = decrypting_key.decrypt(&OAEP_SHA256, ciphertext.as_ref(), b"")?;
+/// // The recipient decrypts it with the same label.
+/// let plaintext = decrypting_key.decrypt(ciphertext.as_ref(), b"")?;
 /// assert_eq!(plaintext.as_ref(), b"hello");
 /// # Ok(())
 /// # }
