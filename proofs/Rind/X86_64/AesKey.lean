@@ -425,4 +425,56 @@ theorem aes256_expand_spec (key : Std.Array Std.U8 32#usize)
   rw [Std.Array.from_val, keyToRoundKeys_eq]
   rfl
 
+/-! ## The block cipher -/
+
+theorem aesenc_eq (s k : BitVec 128) : core.core_arch.x86.aes._mm_aesenc_si128 s k = ok (evalRound s k) := by
+  simp only [core.core_arch.x86.aes._mm_aesenc_si128, evalRound, subBytes_shiftRows]
+
+theorem aesenclast_eq (s k : BitVec 128) :
+    core.core_arch.x86.aes._mm_aesenclast_si128 s k = ok (shiftRows (subBytes s) ^^^ k) := by
+  simp only [core.core_arch.x86.aes._mm_aesenclast_si128, subBytes_shiftRows]
+
+/-- `aes128_block` encrypts with the round keys `rk` as Vale's `eval_cipher` does. -/
+theorem aes128_block_spec (rk : Std.Array core.core_arch.x86.__m128i 11#usize) (b : Std.Array Std.U8 16#usize) :
+    low.x86_64.aes.aes128_block rk b =
+      ok (low.x86_64.aes.store (evalCipher .AES_128 (low.x86_64.aes.load b.val) rk.val)) := by
+  have hl := rk.property
+  unfold low.x86_64.aes.aes128_block
+  generalize rk.val = l at hl ⊢
+  match l, hl with
+  | [k0, k1, k2, k3, k4, k5, k6, k7, k8, k9, k10], _ =>
+    simp [low.x86_64.aes.rounds, aesenc_eq, aesenclast_eq,
+      core.core_arch.x86.sse2._mm_xor_si128, evalCipher, evalRounds, nr]
+
+/-- `aes256_block` encrypts with the round keys `rk` as Vale's `eval_cipher` does. -/
+theorem aes256_block_spec (rk : Std.Array core.core_arch.x86.__m128i 15#usize) (b : Std.Array Std.U8 16#usize) :
+    low.x86_64.aes.aes256_block rk b =
+      ok (low.x86_64.aes.store (evalCipher .AES_256 (low.x86_64.aes.load b.val) rk.val)) := by
+  have hl := rk.property
+  unfold low.x86_64.aes.aes256_block
+  generalize rk.val = l at hl ⊢
+  match l, hl with
+  | [k0, k1, k2, k3, k4, k5, k6, k7, k8, k9, k10, k11, k12, k13, k14], _ =>
+    simp [low.x86_64.aes.rounds, aesenc_eq, aesenclast_eq,
+      core.core_arch.x86.sse2._mm_xor_si128, evalCipher, evalRounds, nr]
+
+theorem load_zero : low.x86_64.aes.load (Std.Array.repeat 16#usize 0#u8).val = mkfour 0 0 0 0 := by
+  simp only [low.x86_64.aes.load, Std.Array.repeat_val]
+  apply BitVec.eq_of_getLsbD_eq; intro k hk
+  rw [getLsbD_leBytesToQuad32 _ hk]
+  have : k / 8 < 16 := by omega
+  simp only [List.getElem!_eq_getElem?_getD, List.getElem?_map, List.getElem?_replicate]
+  rw [if_pos (by simpa using this)]
+  simp [mkfour]
+
+/-- A block read big-endian, as `u128::from_be_bytes` reads `store`'s bytes, is
+Vale's `reverse_bytes_quad32` of it. -/
+theorem from_be_bytes_store (q : BitVec 128) :
+    (core.num.U128.from_be_bytes (low.x86_64.aes.store q)).bv = reverseBytesQuad32 q := by
+  apply BitVec.eq_of_getLsbD_eq; intro k hk
+  have e : (low.x86_64.aes.store q).val.map U8.bv = leQuad32ToBytes q := by
+    simp [low.x86_64.aes.store, Std.Array.from_val, Function.comp_def]
+  simp only [core.num.U128.from_be_bytes, reverseBytesQuad32, leBytesToQuad32, BitVec.fromBEBytes]
+  rw [BitVec.getLsbD_setWidth, decide_eq_true hk, Bool.true_and, BitVec.getLsbD_cast, BitVec.getLsbD_cast, e]
+
 end rind.x86_64
