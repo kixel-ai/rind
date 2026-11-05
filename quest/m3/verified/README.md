@@ -27,8 +27,8 @@ Decided with the maintainer on 2026-11-03, after the benchmark report (`BENCHMAR
   - Rust on the path that Aeneas cannot translate, such as function-pointer dispatch, is modelled by hand in Lean definitions, never axioms. The model's file quotes the Rust it models, and `admin/prove` fails when the quote no longer matches the source.
   - `Axioms.lean` pins, with `#guard_msgs`, the axioms each top-level theorem rests on, so growing the trust base fails the build.
   - Trusted: each restatement, each hand model, the translation and Aeneas's models of `core`, and the transliteration, as for the other s2n-bignum entries.
-- Audit summary (2026-11-03): under the strict rule no rind operation earned a ✓. X25519 and ChaCha20 header protection on x86_64 and aarch64, P-256 ECDH and ECDSA on aarch64, and SHA-384/512 and Ed25519 on Intel x86_64 and on aarch64 without the SHA-512 instructions now do, through `proofs/`.
-  - Closest, where every core routine is proven and only rind's Rust glue is not: ML-KEM-768 on aarch64 (the FIPS 203 construction and SHA-3 sponge) and AES-GCM on x86_64 with AVX and MOVBE but no VAES (HACL*'s Vale AES-GCM under rind's key expansion, H-power computation, and about 30 lines that copy the partial blocks and split the message).
+- Audit summary (2026-11-03): under the strict rule no rind operation earned a ✓. X25519 and ChaCha20 header protection on x86_64 and aarch64, P-256 ECDH and ECDSA on aarch64, SHA-384/512 and Ed25519 on Intel x86_64 and on aarch64 without the SHA-512 instructions, and AES-GCM on x86_64 with AVX and MOVBE but no VAES, for AAD and messages under 2^32 bytes, now do, through `proofs/`.
+  - Closest, where every core routine is proven and only rind's Rust glue is not: ML-KEM-768 on aarch64 (the FIPS 203 construction and SHA-3 sponge).
   - Unproven core code on common paths: every SHA-256 block function; x86_64 SHA-512 on AMD; the final store of aarch64's SHA-512 routine for the SHA-512 instructions, which NSym's proof stops short of; AES-GCM's glue and in-place use on aarch64; every SIMD ChaCha20-Poly1305; x86_64 P-256 generator multiplication; RSA products off x86_64 ADX.
   - Glue to prove with a Rust tool: the HMAC and digest APIs over SHA-1 and SHA-256 (their padding and HMAC's keyed states are proven), HKDF, PBKDF2, the AEAD compositions, RSA's exponentiation and EMSA, ML-KEM's construction and sponge. The constant-time compare loops are inline asm, better proven in s2n-bignum's HOL Light.
   - Verified alternatives worth measuring: s2n-bignum's `edwards25519_encode` and its x86_64 `p256_scalarmul` for agreement, SymCrypt's Aeneas-verified ML-KEM and Formosa's mlkem-libjade.
@@ -41,7 +41,6 @@ Decided with the maintainer on 2026-11-03, after the benchmark report (`BENCHMAR
 
 - [The hash and KDF glue is proven](/quest/m3/verified/hash-glue.md) - the HMAC, HKDF, PBKDF2, and digest APIs over the proven SHA and HMAC core, and the constant-time compare
 - [x86_64 SHA-NI SHA-256 block function is proven](/quest/m3/verified/sha256-block.md) - today's routine proven on s2n-bignum's SHA-256 spec, or a proven one as fast
-- [x86_64 AES-GCM's Vale glue is proven](/quest/m3/verified/aes-gcm-vale.md) - the ✓ for the Vale AES-GCM that tier runs
 - [AES-GCM's seal_in_place_append_tag is proven on the Vale tier](/quest/m3/verified/aes-gcm-append-tag.md) - the last seal the AEAD API offers
 - [AES-GCM of 2^32 bytes and more is proven on the Vale tier](/quest/m3/verified/aes-gcm-vale-long.md) - drops the ✓'s size caveat
 - [P-256's generator is proven to have order n](/quest/m3/verified/p256-generator-order.md) - drops the finite-multiple hypothesis from key generation, the public key, and signing
