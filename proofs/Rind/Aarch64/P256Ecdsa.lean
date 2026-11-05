@@ -783,7 +783,42 @@ theorem naf_loop_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (k : Slice U64) (
           simp only [WP.spec_ok, true_and]
           exact ⟨0#i8, by rw [hback, Slice.set_val_eq], by simp, by simp [heven']⟩
       · rintro ⟨d1, w1, it2⟩ ⟨rfl, dd, hd1, hw1, hdd⟩
-        sorry
+        have hnew := naf_inv_step W.val (wordsNat k.val) it.start.val hW (by omega) ds.val win.val
+          ⟨hlen, hw0, hw, hsum, hbound, hdig⟩ dd hdd
+        have hw1r : 0 ≤ w1.val ∧ w1.val ≤ 2 * 2 ^ (W.val - 1) := by
+          rw [hw1, hdd]; rcases hA with h | h <;> rw [h] <;> split_ifs <;> omega
+        step as ⟨i2, hi2, _⟩
+        step as ⟨i3, hi3⟩
+        have hi3v : i3.val = W.val := by
+          rw [hi3, UScalar.cast_val_eq]; apply Nat.mod_eq_of_lt; scalar_tac
+        step as ⟨i4, hi4⟩
+        · rw [hi3v]; scalar_tac
+        step with bit_spec k hk i4 as ⟨i5, hi5⟩
+        step as ⟨i6, hi6⟩
+        step as ⟨i7, hi7, _⟩
+        · rw [hi6]; omega
+        have hi2v : i2.val = w1.val / 2 := by rw [hi2, Int.shiftRight_eq_div_pow]; norm_num
+        have hbit : i5.val = ((wordsNat k.val / 2 ^ (it.start.val + W.val) % 2 : Nat) : Int) := by
+          rw [hi5, hi4, hi3v]
+        have hb01 : i5.val = 0 ∨ i5.val = 1 := by
+          rw [hbit]; have := Nat.mod_lt (wordsNat k.val / 2 ^ (it.start.val + W.val)) (by norm_num : 2 > 0)
+          omega
+        have hi7v : i7.val = i5.val * 2 ^ (W.val - 1) := by
+          rw [hi7, Int.shiftLeft_eq, hi6, I32.size_def]
+          apply Int.bmod_eq_of_le <;> rcases hb01 with h | h <;> rw [h] <;>
+            rcases hA with h' | h' <;> rw [h'] <;> norm_num [I32.numBits]
+        step as ⟨w3, hw3⟩
+        · rw [hi2v, hi7v]; rcases hb01 with h | h <;> rw [h] <;> rcases hA with h' | h' <;> rw [h'] <;>
+            scalar_tac
+        simp only at he1 hst
+        refine ⟨by rw [he1]; exact he, by omega, ?_, by omega⟩
+        rw [show it2.start.val = it.start.val + 1 by omega]
+        have hd1' : d1.val = ds.val.set it.start.val dd := hd1
+        have hw3' : w3.val = (win.val - dd.val) / 2 +
+            ((wordsNat k.val / 2 ^ (it.start.val + W.val) % 2 : Nat) : Int) * 2 ^ (W.val - 1) := by
+          rw [hw3, hi2v, hi7v, hw1, hbit]
+        rw [hd1', hw3']
+        exact hnew
     · obtain ⟨rfl, hst⟩ := ho
       simp only [WP.spec_ok]
       have h257 : it.start.val = 257 := by omega
