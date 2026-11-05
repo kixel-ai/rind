@@ -442,8 +442,8 @@
 <text x="12.0" y="836.0" font-size="12" text-anchor="start" font-weight="bold" fill="#0b0b0b">Signatures</text>
 <line x1="12.0" y1="840.0" x2="919.2" y2="840.0" stroke="#c3c2b7"/>
 <text x="12.0" y="858.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">Ed25519 sign</text>
-<rect x="277.2" y="845.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>Ed25519 sign, rind: 4.29 µs, 1.00× the fastest; verified: rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key loading, signing, and verification, small-order key refusal included, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel, composed with s2n-bignum's HOL Light proofs of edwards25519_decode, edwards25519_scalarmulbase, edwards25519_scalarmuldouble, bignum_madd_n25519, their _alt forms without BMI2 and ADX, bignum_mod_n25519, bignum_neg_p25519, bignum_lt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, and aws-lc-verification's SAW proof of that SHA-512 routine</title></rect>
-<text x="321.2" y="858.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">4.29 µs ✓</text>
+<rect x="277.2" y="845.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>Ed25519 sign, rind: 4.29 µs, 1.00× the fastest</title></rect>
+<text x="321.2" y="858.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">4.29 µs</text>
 <rect x="369.2" y="845.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>Ed25519 sign, aws-lc-rs: 4.44 µs, 1.04× the fastest</title></rect>
 <text x="413.2" y="858.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">4.44 µs</text>
 <rect x="461.2" y="845.0" width="88.0" height="18.0" rx="2" fill="#6da7ec"><title>Ed25519 sign, ring: 13.30 µs, 3.10× the fastest</title></rect>
@@ -457,8 +457,8 @@
 <rect x="829.2" y="845.0" width="88.0" height="18.0" rx="2" fill="#6da7ec"><title>Ed25519 sign, OpenSSL: 13.47 µs, 3.14× the fastest</title></rect>
 <text x="873.2" y="858.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">13.47 µs</text>
 <text x="12.0" y="878.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">Ed25519 verify</text>
-<rect x="277.2" y="865.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>Ed25519 verify, rind: 21.87 µs, 1.01× the fastest; verified: rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key loading, signing, and verification, small-order key refusal included, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel, composed with s2n-bignum's HOL Light proofs of edwards25519_decode, edwards25519_scalarmulbase, edwards25519_scalarmuldouble, bignum_madd_n25519, their _alt forms without BMI2 and ADX, bignum_mod_n25519, bignum_neg_p25519, bignum_lt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, and aws-lc-verification's SAW proof of that SHA-512 routine</title></rect>
-<text x="321.2" y="878.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">21.87 µs ✓</text>
+<rect x="277.2" y="865.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>Ed25519 verify, rind: 21.87 µs, 1.01× the fastest</title></rect>
+<text x="321.2" y="878.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">21.87 µs</text>
 <rect x="369.2" y="865.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>Ed25519 verify, aws-lc-rs: 21.82 µs, 1.01× the fastest</title></rect>
 <text x="413.2" y="878.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">21.82 µs</text>
 <rect x="461.2" y="865.0" width="88.0" height="18.0" rx="2" fill="#184f95"><title>Ed25519 verify, ring: 26.51 µs, 1.23× the fastest</title></rect>
@@ -549,8 +549,8 @@
 <rect x="829.2" y="991.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>SHA-256, 16 KB, OpenSSL: 3.38 µs, 1.05× the fastest</title></rect>
 <text x="873.2" y="1004.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">3.38 µs</text>
 <text x="12.0" y="1024.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">SHA-512, 64 B</text>
-<rect x="277.2" y="1011.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>SHA-512, 64 B, rind: 132 ns, 1.05× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps</title></rect>
-<text x="321.2" y="1024.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">132 ns ✓</text>
+<rect x="277.2" y="1011.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>SHA-512, 64 B, rind: 132 ns, 1.05× the fastest</title></rect>
+<text x="321.2" y="1024.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">132 ns</text>
 <rect x="369.2" y="1011.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>SHA-512, 64 B, aws-lc-rs: 133 ns, 1.06× the fastest; verified: aws-lc-verification's SAW proof of SHA-512 through EVP_Digest, padding included, over sha512_block_data_order_avx, which aws-lc runs only on Intel; of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps</title></rect>
 <text x="413.2" y="1024.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">133 ns ✓</text>
 <rect x="461.2" y="1011.0" width="88.0" height="18.0" rx="2" fill="#184f95"><title>SHA-512, 64 B, ring: 139 ns, 1.11× the fastest</title></rect>
@@ -564,8 +564,8 @@
 <rect x="829.2" y="1011.0" width="88.0" height="18.0" rx="2" fill="#3987e5"><title>SHA-512, 64 B, OpenSSL: 227 ns, 1.81× the fastest</title></rect>
 <text x="873.2" y="1024.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">227 ns</text>
 <text x="12.0" y="1044.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">SHA-512, 1350 B</text>
-<rect x="277.2" y="1031.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>SHA-512, 1350 B, rind: 1.23 µs, 1.05× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps</title></rect>
-<text x="321.2" y="1044.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">1.23 µs ✓</text>
+<rect x="277.2" y="1031.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>SHA-512, 1350 B, rind: 1.23 µs, 1.05× the fastest</title></rect>
+<text x="321.2" y="1044.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">1.23 µs</text>
 <rect x="369.2" y="1031.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>SHA-512, 1350 B, aws-lc-rs: 1.26 µs, 1.08× the fastest; verified: aws-lc-verification's SAW proof of SHA-512 through EVP_Digest, padding included, over sha512_block_data_order_avx, which aws-lc runs only on Intel; of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps</title></rect>
 <text x="413.2" y="1044.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">1.26 µs ✓</text>
 <rect x="461.2" y="1031.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>SHA-512, 1350 B, ring: 1.26 µs, 1.07× the fastest</title></rect>
@@ -579,8 +579,8 @@
 <rect x="829.2" y="1031.0" width="88.0" height="18.0" rx="2" fill="#0d366b"><title>SHA-512, 1350 B, OpenSSL: 1.19 µs, 1.02× the fastest</title></rect>
 <text x="873.2" y="1044.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">1.19 µs</text>
 <text x="12.0" y="1064.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">SHA-512, 16 KB</text>
-<rect x="277.2" y="1051.0" width="88.0" height="18.0" rx="2" fill="#184f95"><title>SHA-512, 16 KB, rind: 14.31 µs, 1.16× the fastest; verified: rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps</title></rect>
-<text x="321.2" y="1064.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">14.31 µs ✓</text>
+<rect x="277.2" y="1051.0" width="88.0" height="18.0" rx="2" fill="#184f95"><title>SHA-512, 16 KB, rind: 14.31 µs, 1.16× the fastest</title></rect>
+<text x="321.2" y="1064.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">14.31 µs</text>
 <rect x="369.2" y="1051.0" width="88.0" height="18.0" rx="2" fill="#184f95"><title>SHA-512, 16 KB, aws-lc-rs: 14.09 µs, 1.15× the fastest; verified: aws-lc-verification's SAW proof of SHA-512 through EVP_Digest, padding included, over sha512_block_data_order_avx, which aws-lc runs only on Intel; of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps</title></rect>
 <text x="413.2" y="1064.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">14.09 µs ✓</text>
 <rect x="461.2" y="1051.0" width="88.0" height="18.0" rx="2" fill="#184f95"><title>SHA-512, 16 KB, ring: 14.09 µs, 1.15× the fastest</title></rect>

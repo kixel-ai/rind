@@ -56,8 +56,8 @@ jobs:
       - name: Artificial CPU feature tests (x86_64)
         if: runner.arch == 'X64'
         run: |
-          # test software fallbacks for sha1 and sha256, and the scalar sha512 that
-          # CPUs other than Intel run
+          # test rind's AVX2 SHA-1 and OpenSSL's AVX2 SHA-256 for CPUs without
+          # the SHA extensions
           env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 cargo test
           # test Vale's aes-gcm and avx2 ML-KEM without avx512 or vaes, and
           # RSA's CRT one exponentiation at a time on a runner with AVX-512 IFMA
@@ -68,8 +68,9 @@ jobs:
           # run that lands on the wrong path
           env RIND_CPU_DISABLE_adx=1 RIND_TEST_X86_BMI2_ADX=0 RIND_TEST_X86_AVX2=1 cargo test
           # test aws-lc's SSE4.1 ChaCha20-Poly1305, its SSSE3 ChaCha20, SHA-1,
-          # and SHA-256, the portable ML-KEM arithmetic, and the SSE2 selects
-          # for CPUs without AVX2, such as AMD's Bulldozer and Jaguar;
+          # and SHA-256, its scalar SHA-512, the portable ML-KEM arithmetic,
+          # and the SSE2 selects for CPUs without AVX2, such as AMD's Bulldozer
+          # and Jaguar;
           # x86-cpu's Sandy Bridge run covers aws-lc's AVX SHA routines, which
           # Intel's cores run there
           env RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_SSE41=1 cargo test
