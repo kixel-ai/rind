@@ -178,10 +178,14 @@ impl Zeroable for State {}
 
 /// A hash context with its hash's code, which it reaches only through
 /// `ops`: matching on [`State`] then names no hash's code.
+///
+/// `ops` comes first, so every variant holds it at one offset and the match
+/// folds to a single load rather than a jump per variant.
 #[derive(Clone)]
+#[repr(C)]
 struct Hashing<C: Variant> {
-    context: C,
     ops: ZeroableRef<Ops<C>>,
+    context: C,
 }
 
 struct Ops<C> {
@@ -192,7 +196,6 @@ struct Ops<C> {
 impl<C: Variant> Hashing<C> {
     fn start() -> State {
         C::state(Self {
-            context: C::new(),
             ops: ZeroableRef::new(
                 const {
                     &Ops {
@@ -201,6 +204,7 @@ impl<C: Variant> Hashing<C> {
                     }
                 },
             ),
+            context: C::new(),
         })
     }
 
