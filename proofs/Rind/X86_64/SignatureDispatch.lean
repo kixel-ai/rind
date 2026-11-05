@@ -112,10 +112,7 @@ impl PublicKey {
             Parsed::EcdsaP256(..) => ec(P256::oid()),
             Parsed::EcdsaP384(..) => ec(P384::oid()),
             Parsed::EcdsaP521(..) => ec(P521::oid()),
-            Parsed::Rsa(..) => (
-                &asn1::oid::rsaEncryption,
-                Some(asn1::Any::Null(asn1::Null)),
-            ),
+            Parsed::Rsa(..) => (&asn1::oid::rsaEncryption, Some(asn1::Any::Null(asn1::Null))),
             Parsed::Ed25519(_) => (&asn1::oid::id_ed25519, None),
         };
         Spki(Buffer::encode(|output| {
@@ -265,7 +262,9 @@ impl Ed25519KeyPair {
     /// Encodes the private key as PKCS#8 v1 (RFC 8410), its seed without its
     /// public key, as OpenSSL and BoringSSL write it.
     pub fn to_pkcs8v1(&self) -> Pkcs8 {
-        Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(false, output)))
+        Pkcs8(Buffer::encode(|output| {
+            self.key.to_pkcs8_der(false, output)
+        }))
     }
 
     /// Returns the private key's 32-byte seed, as a JWK's `d` holds it.
