@@ -947,7 +947,7 @@ def header_lines(name):
 
 def header_width(names):
     """The widest line of any column header."""
-    return max(text_width(line, 12) for name in names for line in header_lines(name))
+    return max((text_width(line, 12) for name in names for line in header_lines(name)), default=0)
 
 
 def column_headers(svg, x0, y, cell_width, names):
