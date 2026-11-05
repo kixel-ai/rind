@@ -64,7 +64,7 @@ mod posint;
 pub(crate) use entry::Entry;
 #[cfg(target_arch = "x86_64")]
 pub(crate) use generic::blockwise::pad_message;
-pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, compress_padded, pad, split_tail};
+pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, split_tail};
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;

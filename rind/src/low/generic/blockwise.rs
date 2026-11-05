@@ -116,27 +116,12 @@ pub(crate) trait UpdateBlocks {
     fn update_blocks(&mut self, blocks: &[u8]);
 }
 
-/// Compresses the end of `message` for a Merkle-Damgard hash of `N`-byte
-/// blocks, padded with a 0x80 byte, zeroes, and `length`, through `compress`,
-/// which takes whole blocks.
-pub(crate) fn compress_padded<const N: usize, const L: usize>(
-    message: &[u8],
-    length: [u8; L],
-    mut compress: impl FnMut(&[u8]),
-) {
-    let (blocks, rest) = split_tail::<N, L>(message);
-    if !blocks.is_empty() {
-        compress(blocks);
-    }
-    let mut last = [[0u8; N]; 2];
-    compress(pad(rest, length, &mut last));
-}
-
-/// Splits `message` as [`compress_padded`] compresses it: the whole blocks
-/// to compress first, then the rest, under two blocks, to pad. Where the
-/// padding fits after the message's last whole block, the rest takes that
-/// block too, so one call compresses both, and the routine's entry and exit
-/// and the chaining value's trip through memory come once fewer.
+/// Splits the end of `message`, for a Merkle-Damgard hash of `N`-byte blocks
+/// closed by an `L`-byte length: the whole blocks to compress first, then the
+/// rest, under two blocks, for [`pad`]. Where the padding fits after the
+/// message's last whole block, the rest takes that block too, so one call
+/// compresses both, and the routine's entry and exit and the chaining value's
+/// trip through memory come once fewer.
 pub(crate) fn split_tail<const N: usize, const L: usize>(message: &[u8]) -> (&[u8], &[u8]) {
     let tail = message.len() % N;
     let start = if tail + 1 + L <= N && message.len() >= N {
@@ -147,9 +132,9 @@ pub(crate) fn split_tail<const N: usize, const L: usize>(message: &[u8]) -> (&[u
     message.split_at(start)
 }
 
-/// Pads `message` as [`compress_padded`] does, for a routine that takes the
-/// padding as a run of blocks of its own: returns the message's whole blocks,
-/// then its tail padded in `last`.
+/// Pads `message` as [`split_tail`] and [`pad`] do, for a routine that takes
+/// the padding as a run of blocks of its own: returns the message's whole
+/// blocks, then its tail padded in `last`.
 #[cfg(target_arch = "x86_64")]
 pub(crate) fn pad_message<'m, 'l, const N: usize, const L: usize>(
     message: &'m [u8],

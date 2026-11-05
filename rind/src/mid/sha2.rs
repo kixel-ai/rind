@@ -53,10 +53,11 @@ impl Sha256State {
         Entry::assert_held();
         crate::low::sha256_compress_padded(&mut h, message, bits.to_be_bytes());
 
+        // Indexes rather than zipping `as_chunks_mut`, which Aeneas cannot
+        // translate, so `proofs/` can prove the encoding.
         let mut r = [0u8; Sha256Context::OUTPUT_SZ];
-        let (chunks, _) = r.as_chunks_mut::<4>();
-        for (out, word) in chunks.iter_mut().zip(h.iter()) {
-            out.copy_from_slice(&word.to_be_bytes());
+        for (i, word) in h.iter().enumerate() {
+            r[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
         }
         r
     }
@@ -253,7 +254,6 @@ impl Sha512State {
         // Copies `h` alone: copying the whole state can leave it straddling
         // two stores, which the SHA extensions' 16-byte load of it then
         // waits on instead of forwarding.
-        // `compress_padded`, without the closure Aeneas cannot translate.
         let mut h = self.h;
         let (blocks, rest) = split_tail::<BLOCK_SZ, 16>(message);
         if !blocks.is_empty() {
