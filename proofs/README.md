@@ -89,9 +89,9 @@ with 16 bytes from the system source; its update takes a slice of borrowed
 slices, which Aeneas cannot translate, so it is opaque, and the theorems
 assume `Drbg`: it seeds and draws without panicking, and a draw never fails.
 They also assume `Fills`, that the system source returns, `Held`, that the
-entry guard holds, and `Cached`: a verifying key's lock-free cache of 17P to
-31P, whose atomics Aeneas cannot translate, is built from the key's own
-multiples.
+entry guard holds, and `Cached`: a verifying key's lock-free caches of P to
+15P and 17P to 31P, whose atomics Aeneas cannot translate, are built from the
+key's own point.
 
 ChaCha20 QUIC header protection on x86_64 and aarch64, from
 `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:

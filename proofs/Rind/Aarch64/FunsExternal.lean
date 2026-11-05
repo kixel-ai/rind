@@ -171,13 +171,19 @@ opaque high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource.fill
     Result ((core.result.Result Unit error.Error) × (high.hmac_drbg.HmacDrbg H
     Clause0_Context Clause0_State) × (Slice Std.U8))
 
-/-! The verifying key's cache of 17P, ..., 31P, which ECDSA verification's
-theorems take what they need of as a hypothesis. -/
+/-! The verifying key's caches of P, ..., 15P and 17P, ..., 31P, which ECDSA
+verification's theorems take what they need of as a hypothesis. -/
 
 opaque low.generic.reuse_cache.ReuseCache.new
   {T : Type _} (coremarkerCopyInst : core.marker.Copy T)
   (coredefaultDefaultInst : core.default.Default T) :
   Result (low.generic.reuse_cache.ReuseCache T)
+
+opaque low.generic.reuse_cache.ReuseCache.get_or_build_now
+  {T : Type _} {T1 : Type _} (coremarkerCopyInst : core.marker.Copy T)
+  (coredefaultDefaultInst : core.default.Default T)
+  (coreopsfunctionFnOnceT1TupleTInst : core.ops.function.FnOnce T1 Unit T) :
+  low.generic.reuse_cache.ReuseCache T → T1 → Result T
 
 opaque low.generic.reuse_cache.ReuseCache.get_or_build
   {T : Type _} {T1 : Type _} (coremarkerCopyInst : core.marker.Copy T)

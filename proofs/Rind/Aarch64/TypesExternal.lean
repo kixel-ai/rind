@@ -18,7 +18,7 @@ opaque low.entry.Entry : Type
 /-- The token proving the CPU has the SHA-512 instructions. -/
 opaque low.aarch64.cpu.HaveSha3 : Type
 
-/-- A value built on its owner's second use, whose atomics Aeneas cannot
+/-- A value its owner builds once and keeps, whose atomics Aeneas cannot
 translate. -/
 opaque low.generic.reuse_cache.ReuseCache (T : Type) : Type
 
