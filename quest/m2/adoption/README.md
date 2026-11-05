@@ -55,6 +55,9 @@ don't ask again (✅ is the chosen option):
 
 - [rustls lists rind-rustls](/quest/m2/adoption/rustls-providers.md) - an entry in rustls's third-party provider list
 - [rusty-s3 offers rind](/quest/m2/adoption/rusty-s3.md) - a `rind` feature beside its `graviola` one
+- [rind-rustls adds little to a binary](/quest/m2/adoption/rind-rustls-size.md) - 3.4 MB today, mostly P-384 and P-521
+- [rind's test-only features add no packages to dependents' lockfiles](/quest/m2/adoption/ctgrind-deps.md) - `__ctgrind`'s optional dependencies
+- [rind-ring exposes rind's CPU check](/quest/m2/adoption/rind-ring-cpu.md) - no direct rind dependency for it
 - [rind-str0m](/quest/m2/adoption/rind-str0m.md) - str0m's `CryptoProvider` on rind
 - [quinn's rustls support works with any provider](/quest/m2/adoption/quinn.md) - quinn-proto stops forcing ring or aws-lc-rs
 - [Bun's CryptoHasher takes SHA-3 from rind](/quest/m2/adoption/bun-sha3.md) - SHA-3 in Bun on rind, after the m1 Bun PR
@@ -71,6 +74,7 @@ don't ask again (✅ is the chosen option):
 - [rind for Dart and Flutter](/quest/m2/adoption/rind-dart.md) - the `rind` package on pub.dev
 - [rind as a Dart `cryptography` backend](/quest/m2/adoption/rind-dart-cryptography.md) - the `cryptography` package's interface on rind
 - [Apache Iggy encrypts streams with rind](/quest/m2/adoption/iggy.md) - its AES-256-GCM message encryption on rind
+- [AES key wrap with padding](/quest/m2/adoption/aes-kwp.md) - RFC 5649, for pyca-compatible pyrind
 - [librespot builds rustls without ring](/quest/m2/adoption/librespot.md) - users pick their rustls provider
 - [rind-rustls supports rustls 0.24](/quest/m2/adoption/rind-rustls-0.24.md) - a release on 0.24 soon after it ships
 - [rustls 0.24 is released](/quest/m2/adoption/rustls-0.24-release.md) - waiting on the release
