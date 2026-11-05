@@ -88,6 +88,16 @@ def core.num.Usize.div_ceil (a b : Std.Usize) : Result Std.Usize :=
     rw [hc, show a.val + (c + 1) - 1 = a.val + c by omega]
     nlinarith [Nat.mul_le_mul_left c (show 1 ≤ N by omega)]))
 
+/-- `bool::then_some`. -/
+def core.bool.Bool.then_some {T : Type _} (b : Bool) (t : T) : Result (Option T) :=
+  Std.Result.ok (if b then some t else none)
+
+/-- `<&[T] as PartialEq<[U; N]>>::eq`: the slice compared with the whole
+array, as slices. -/
+def Shared0Slice.Insts.CoreCmpPartialEqArray.eq {T U : Type _} {N : Std.Usize}
+    (inst : core.cmp.PartialEq T U) (s : Slice T) (a : Array U N) : Result Bool :=
+  core.slice.cmp.PartialEqSlice.eq inst s a.to_slice
+
 /-- `getrandom`'s error. -/
 opaque getrandom.error.Error : Type
 

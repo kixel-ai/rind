@@ -9,8 +9,9 @@ set_option linter.dupNamespace false
 /-!
 The rind functions the x86_64 translation leaves opaque, beside those
 `Rind.X86_64.AesNi` models. No proof assumes anything about them beyond what
-`Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, and `Rind.X86_64.ValeAesGcm` state for
-s2n-bignum's, aws-lc's, and Vale's routines and what each theorem takes as a hypothesis.
+`Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, and `Rind.X86_64.ValeAesGcm`
+state for s2n-bignum's, aws-lc's, and Vale's routines and what each theorem
+takes as a hypothesis.
 -/
 
 namespace rind.x86_64
@@ -122,6 +123,65 @@ opaque mid.chacha20poly1305.ChaCha20Poly1305.Insts.RindAeadCipher.seal
 opaque mid.chacha20poly1305.ChaCha20Poly1305.Insts.RindAeadCipher.open
   : mid.chacha20poly1305.ChaCha20Poly1305 → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
     Std.Array Std.U8 16#usize → Result ((core.result.Result Unit error.Error) × (Slice Std.U8))
+
+/-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
+
+opaque low.x86_64.edwards25519_decode.edwards25519_decode
+  :
+  Array Std.U64 8#usize → Array Std.U8 32#usize → Result (Bool × (Array
+    Std.U64 8#usize))
+
+opaque low.x86_64.edwards25519_scalarmulbase.edwards25519_scalarmulbase
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Result (Array Std.U64
+    8#usize)
+
+opaque low.x86_64.edwards25519_scalarmuldouble.edwards25519_scalarmuldouble
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
+    Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
+
+opaque low.x86_64.bignum_madd_n25519.bignum_madd_n25519
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.edwards25519_decode_alt.edwards25519_decode_alt
+  :
+  Array Std.U64 8#usize → Array Std.U8 32#usize → Result (Bool × (Array
+    Std.U64 8#usize))
+
+opaque low.x86_64.edwards25519_scalarmulbase_alt.edwards25519_scalarmulbase_alt
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Result (Array Std.U64
+    8#usize)
+
+opaque low.x86_64.edwards25519_scalarmuldouble_alt.edwards25519_scalarmuldouble_alt
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
+    Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
+
+opaque low.x86_64.bignum_madd_n25519_alt.bignum_madd_n25519_alt
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.bignum_mod_n25519.bignum_mod_n25519
+  : Array Std.U64 4#usize → Slice Std.U64 → Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.bignum_neg_p25519.bignum_neg_p25519
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64
+    4#usize)
+
+opaque low.x86_64.bignum_cmp_lt.bignum_cmp_lt
+  : Slice Std.U64 → Slice Std.U64 → Result Std.U64
+
+/-! The wipe a drop runs, which no theorem calls. -/
+
+opaque low.generic.zeroise.zeroise
+  {T : Type _} (ZeroableInst : low.generic.zeroise.Zeroable T) :
+  Slice T → Result (Slice T)
 
 /-! The entry guard and CPU dispatch, which read no input. -/
 

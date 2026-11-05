@@ -81,6 +81,45 @@ opaque low.aarch64.sha512.compress_hw
 opaque low.aarch64.sha512.compress_nohw
   : Array Std.U64 8#usize → Slice Std.U8 → Result (Array Std.U64 8#usize)
 
+/-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
+
+opaque low.aarch64.edwards25519_decode.edwards25519_decode
+  :
+  Array Std.U64 8#usize → Array Std.U8 32#usize → Result (Bool × (Array
+    Std.U64 8#usize))
+
+opaque low.aarch64.edwards25519_scalarmulbase.edwards25519_scalarmulbase
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Result (Array Std.U64
+    8#usize)
+
+opaque low.aarch64.edwards25519_scalarmuldouble.edwards25519_scalarmuldouble
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
+    Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
+
+opaque low.aarch64.bignum_madd_n25519.bignum_madd_n25519
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.aarch64.bignum_mod_n25519.bignum_mod_n25519
+  : Array Std.U64 4#usize → Slice Std.U64 → Result (Array Std.U64 4#usize)
+
+opaque low.aarch64.bignum_neg_p25519.bignum_neg_p25519
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64
+    4#usize)
+
+opaque low.aarch64.bignum_cmp_lt.bignum_cmp_lt
+  : Slice Std.U64 → Slice Std.U64 → Result Std.U64
+
+/-! The wipe a drop runs, which no theorem calls. -/
+
+opaque low.generic.zeroise.zeroise
+  {T : Type _} (ZeroableInst : low.generic.zeroise.Zeroable T) :
+  Slice T → Result (Slice T)
+
 /-! The entry guard and CPU dispatch, which read no input. -/
 
 opaque low.entry.Entry.new_secret : Result low.entry.Entry
