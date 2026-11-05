@@ -17,9 +17,11 @@ never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
 
 `nightly` saves the latest nightly `bench` run's results on main, with gh, as
 the report's CPU tiers. `render` writes BENCHMARKS.md and its SVGs from
-benchmarks/data and the verified code in benchmarks/verified.toml, first
-importing each measured host of a collection given by `--from`. `--check`
-fails if they are out of date instead.
+benchmarks/data, the verified code in benchmarks/verified.toml, and the
+decision on each gap in benchmarks/gaps.toml, first importing each measured
+host of a collection given by `--from`. It fails on a gap over 10% without a
+decision, or a decision whose gap is gone. `--check` fails if they are out of
+date instead.
 
 `summary` prints a Markdown table of a collection: rind's time per operation
 and host, against the fastest other library's.
@@ -569,6 +571,7 @@ REPORT = os.path.join(ROOT, "BENCHMARKS.md")
 REPORT_DIR = os.path.join(ROOT, "benchmarks")
 DATA_DIR = os.path.join(REPORT_DIR, "data")
 VERIFIED = os.path.join(REPORT_DIR, "verified.toml")
+GAPS = os.path.join(REPORT_DIR, "gaps.toml")
 REPO = "moq-dev/rind"
 
 # The report's columns, in order, by library.
@@ -695,9 +698,12 @@ TIER_ROWS = [
     ("rind-rustls 1 MB transfer", r"rustls-bulk/"),
 ]
 
-# A time over the fastest library's, binned. The first bin is within the
-# ~10% the report treats as no gap.
-SPEED_BINS = [1.1, 1.25, 1.5, 2, 4, 8]
+# rind's time over the fastest library's above which benchmarks/gaps.toml
+# must hold a decision, the ~10% the speed epic treats as level.
+SLOWER = 1.1
+
+# A time over the fastest library's, binned. The first bin is no gap.
+SPEED_BINS = [SLOWER, 1.25, 1.5, 2, 4, 8]
 SPEED_LABELS = ["fastest, or within 10%", "to 1.25×", "to 1.5×", "to 2×", "to 4×", "to 8×", "over 8×"]
 
 # rind's time over the fastest baseline's, binned around the ~2% noise.
@@ -827,21 +833,102 @@ def tier_rows(tier):
     return out
 
 
+def tier_column(tier):
+    column = dict(TIERS).get((tier["target"], tier["portable"], tier["tier"]))
+    if column is None:
+        fail(f"nightly results name an unknown tier: {tier['target']} {tier['tier']}")
+    return column
+
+
+def tier_row(key):
+    """The CPU-tier row a nightly benchmark belongs to, if it is ranked."""
+    return next((name for name, pattern in TIER_ROWS if re.match(pattern, key)), None)
+
+
 def tier_cells(tiers):
     """Each CPU-tier row's worst benchmark per tier, as (key, ratio, ...)."""
     cells = {}
     for t in tiers["tiers"]:
-        column = dict(TIERS).get((t["target"], t["portable"], t["tier"]))
-        if column is None:
-            fail(f"nightly results name an unknown tier: {t['target']} {t['tier']}")
+        column = tier_column(t)
         for key, value in tier_rows(t).items():
-            row = next((name for name, pattern in TIER_ROWS if re.match(pattern, key)), None)
+            row = tier_row(key)
             if row is None:
                 continue
             worst = cells.get((row, column))
             if worst is None or value[0] > worst[1][0]:
                 cells[(row, column)] = (key, value)
     return cells
+
+
+def gaps_of(hosts, tiers):
+    """Each operation where another library beats rind by more than SLOWER, by
+    (operation, host or tier), as (ratio, fastest library)."""
+    out = {}
+    for name, host in hosts.items():
+        for row, libs in times(host).items():
+            others = {lib: ns for lib, ns in libs.items() if lib != "rind"}
+            if "rind" in libs and others:
+                best = min(others, key=others.get)
+                if libs["rind"] / others[best] > SLOWER:
+                    out[(row, name)] = (libs["rind"] / others[best], best)
+    for t in tiers["tiers"] if tiers else []:
+        column = tier_column(t)
+        for key, (ratio, _, best, _) in tier_rows(t).items():
+            if ratio > SLOWER and tier_row(key):
+                out[(key, column)] = (ratio, best)
+    return out
+
+
+def load_gaps(hosts, tiers, path=GAPS):
+    """The decision on each gap, with the gaps it covers, refusing a gap
+    without one and an entry that names something other than a gap."""
+    with open(path, "rb") as f:
+        entries = tomllib.load(f).get("gap", [])
+    found = gaps_of(hosts, tiers)
+    out = []
+    for i, e in enumerate(entries, 1):
+        where = f"{os.path.relpath(path, ROOT)}: entry {i}"
+        keys = {"operations", "on", "quest", "reason"}
+        if set(e) - keys:
+            fail(f"{where}: unknown keys {', '.join(sorted(set(e) - keys))}")
+        if not {"operations", "on"} <= set(e):
+            fail(f"{where}: needs operations and on")
+        if ("quest" in e) == ("reason" in e):
+            fail(f"{where}: needs a quest or a reason, not both")
+        if "quest" in e and not (e["quest"].startswith("/quest/") and os.path.isfile(ROOT + e["quest"])):
+            fail(f"{where}: no quest at {e['quest']}")
+        covered = {}
+        for op in e["operations"]:
+            for place in e["on"]:
+                if (op, place) not in found:
+                    fail(f"{where}: {op} on {place} is no gap over 10%; update or remove the entry")
+                covered[(op, place)] = found.pop((op, place))
+        out.append((e, covered))
+    if found:
+        fail(
+            f"gaps over 10% without a decision in {os.path.relpath(path, ROOT)}: "
+            + ", ".join(f"{op} on {place} ({ratio:.2f}× {lib})" for (op, place), (ratio, lib) in sorted(found.items()))
+        )
+    return out
+
+
+def quest_title(path):
+    with open(ROOT + path) as f:
+        return re.sub(r"^# (\[\w+\] )?", "", f.readline().strip())
+
+
+def gap_table(gaps):
+    rows = {row_name(op) for op in OPERATIONS}
+    lines = ["| Operation | On | rind's time over the fastest | Decision |", "|---|---|---|---|"]
+    for e, covered in gaps:
+        ops = ", ".join(label(op) if op in rows else f"`{op}`" for op in e["operations"])
+        on = ", ".join(f"`{p}`" if p in HOSTS else f"{p} tier" for p in e["on"])
+        ratios = [ratio for ratio, _ in covered.values()]
+        spread = f"{min(ratios):.2f}×" + (f" to {max(ratios):.2f}×" if max(ratios) - min(ratios) >= 0.005 else "")
+        fastest = ", ".join(sorted({COLUMNS[lib] for _, lib in covered.values()}))
+        decision = f"[{quest_title(e['quest'])}]({e['quest'][1:]})" if "quest" in e else e["reason"]
+        lines.append(f"| {ops} | {on} | {spread} ({fastest}) | {decision} |")
+    return lines
 
 
 # --- SVG --------------------------------------------------------------------
@@ -1162,7 +1249,7 @@ def tier_table(tiers):
     return lines
 
 
-def report(hosts, tiers, verified):
+def report(hosts, tiers, verified, gaps):
     """BENCHMARKS.md and its SVGs, by path."""
     files = {}
     shown = [name for name in HOSTS if name in hosts]
@@ -1171,7 +1258,8 @@ def report(hosts, tiers, verified):
     md = [
         "# Benchmarks",
         "",
-        "<!-- Generated by `admin/bench-report render` from benchmarks/data and benchmarks/verified.toml. -->",
+        "<!-- Generated by `admin/bench-report render` from benchmarks/data, benchmarks/verified.toml, and "
+        "benchmarks/gaps.toml. -->",
         "",
         f"How long rind and the usual Rust crypto libraries take for the same operations, on {count} "
         f"machine{'' if len(shown) == 1 else 's'}, and what each costs to build. Every library runs its native "
@@ -1291,6 +1379,15 @@ def report(hosts, tiers, verified):
             files[f"tiers{suffix}.svg"] = tiers_svg(tiers, theme)
 
     md += [
+        "## Known gaps",
+        "",
+        "Each operation where another library is more than 10% faster than rind, on a host's native path or a "
+        "CPU tier, and what is decided: a [speed](quest/m2/speed/README.md) quest that closes it, or the reason "
+        "it stays. `benchmarks/gaps.toml` holds this table, and `admin/bench-report render` refuses a gap it "
+        "lacks or an entry that is no longer a gap.",
+        "",
+        *(gap_table(gaps) if gaps else ["None."]),
+        "",
         "## Verified code",
         "",
         "A ✓ means a published, machine-checked proof shows that all the code computing the operation, as "
@@ -1347,7 +1444,7 @@ def render(args):
         if not args.check:
             fail("no results in benchmarks/data: run `collect`, then `render --from DIR`")
         return
-    files = report(hosts, tiers, verified)
+    files = report(hosts, tiers, verified, load_gaps(hosts, tiers))
     if args.check:
         stale = [p for p in files if not os.path.exists(p) or open(p).read() != files[p]]
         stale += [p for p in generated if p not in files]
