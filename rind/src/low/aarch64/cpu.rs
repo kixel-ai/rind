@@ -304,7 +304,7 @@ mod dit {
     }
 
     #[target_feature(enable = "dit")]
-    fn write(on: u32) {
+    pub(super) fn write(on: u32) {
         if on > 0 {
             // SAFETY: `msr DIT, _` is defined only if `dit` cpu feature is supported
             unsafe { core::arch::asm!("msr DIT, #1") }
@@ -374,14 +374,19 @@ mod tests {
         let expected = test_toggle("dit", has_dit);
         assert_eq!(features() & DIT != 0, expected);
         if has_dit {
-            // SAFETY: this core has DIT.
-            let before = unsafe { dit::read() };
-            let entry = crate::low::Entry::new_secret();
+            // SAFETY: this core has DIT. Cleared, so only an `Entry` can set
+            // it.
+            unsafe { dit::write(0) };
+            let outer = crate::low::Entry::new_secret();
             // SAFETY: as above.
-            assert_eq!(unsafe { dit::read() }, before | expected as u32);
-            drop(entry);
+            assert_eq!(unsafe { dit::read() }, expected as u32);
+            // A nested `Entry` leaves DIT to the outer one.
+            drop(crate::low::Entry::new_secret());
             // SAFETY: as above.
-            assert_eq!(unsafe { dit::read() }, before);
+            assert_eq!(unsafe { dit::read() }, expected as u32);
+            drop(outer);
+            // SAFETY: as above.
+            assert_eq!(unsafe { dit::read() }, 0);
         }
     }
 
