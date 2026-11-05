@@ -2103,6 +2103,98 @@ theorem x_scalar_spec (k : mid.p256.StaticPrivateKey) (h : Runs) (ht : Tabulated
   intro r hr
   rw [hr, hslv]
 
+@[step]
+theorem is_zero_spec (a : mid.p256.Scalar) :
+    mid.p256.Scalar.is_zero a ⦃ b => b ↔ scNat a = 0 ⦄ := by
+  unfold mid.p256.Scalar.is_zero mid.p256.Scalar.Insts.CoreDefaultDefault.default
+    core.default.DefaultArray.default
+  step as ⟨b, hb⟩
+  have : wordsNat (Array.repeat 4#usize core.default.DefaultU64.default).val = 0 := by
+    simp [wordsNat, Array.repeat, Nat.ofDigits, core.default.DefaultU64.default]
+  rw [hb, this]
+  simp [scNat]
+
+/-- A multiple of G by a scalar in [1, n) is a finite point of the curve. -/
+theorem g_mult (hG : P256Group) (k : Nat) (hk0 : 0 < k) (hk : k < n256) :
+    ∃ x y, p256Pow p256G k = some (x, y) ∧ p256OnCurve (some (x, y)) := by
+  have hc := hG.zpow_onCurve p256G onCurve_G k
+  have hne := hG.zpow_ne_none p256G onCurve_G (by simp [p256G]) k (by omega) (by simpa using hk)
+  rw [hG.zpow_natCast] at hc hne
+  rcases hq : p256Pow p256G k with _ | ⟨x, y⟩
+  · exact absurd hq hne
+  · rw [hq] at hc; exact ⟨x, y, rfl, hc⟩
+
+end P256
+
+/-- P-256's key generation for ECDSA's nonces, which draws through a `dyn
+RandomSource` and so stays opaque: it returns a key in [1, n) or refuses with
+`RngFailed`, as `Rind.Aarch64.P256Dispatch` models the same loop doing over the
+system source. -/
+def KeyGen : Prop :=
+  ∀ {T : Type} (inst : mid.rng.RandomSource T) (rng : T),
+    high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.generate_random_key inst rng
+      ⦃ res => (∀ k, res.1 = .Ok k → 0 < wordsNat k.scalar.val ∧ wordsNat k.scalar.val < n256) ∧
+        ∀ e, res.1 = .Err e → e = .RngFailed ⦄
+
+namespace P256
+
+/-- The nonce loop: if it returns a signature, it is (r, s) for some nonce in
+[1, n), with neither zero. -/
+theorem sign_nonces_spec (hG : P256Group) (h : Runs) (ht : Tabulated) (hkg : KeyGen) {T : Type}
+    (inst : mid.rng.RandomSource T)
+    (key : high.ecdsa.SigningKey high.curve.P256 mid.p256.StaticPrivateKey mid.p256.VerifyingKey mid.p256.Scalar)
+    (hd0 : 0 < scNat key.private_key.scalar) (hd : scNat key.private_key.scalar < n256)
+    (e : mid.p256.Scalar) (he : scNat e < n256) (rng : T) :
+    high.ecdsa.SigningKey.sign_with_nonces_loop P256C inst key e rng ⦃ res =>
+      (∀ rs, res.1 = .Ok rs → ∃ k, 0 < k ∧ k < n256 ∧
+        ecdsaP256Sign (scNat key.private_key.scalar) k (scNat e) = some (scNat rs.1, scNat rs.2) ∧
+        scNat rs.1 ≠ 0 ∧ scNat rs.2 ≠ 0) ∧ ∀ err, res.1 = .Err err → err = .RngFailed ⦄div := by
+  unfold high.ecdsa.SigningKey.sign_with_nonces_loop
+  revert rng
+  dspec_induction loop
+  intros loop' ih x
+  simp only
+  unfold high.ecdsa.SigningKey.sign_with_nonces_loop.body
+  simp only [P256C, high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar,
+    mid.p256.StaticPrivateKey.Insts.RindHighCurvePrivateKeyScalar,
+    mid.p256.StaticPrivateKey.Insts.RindHighCurvePrivateKeyScalar.public_key_x_scalar,
+    mid.p256.StaticPrivateKey.Insts.RindHighCurvePrivateKeyScalar.raw_ecdsa_sign,
+    mid.p256.Scalar.Insts.RindHighCurveScalar, mid.p256.Scalar.Insts.RindHighCurveScalar.is_zero,
+    Std.bind_assoc_eq]
+  step with hkg inst x as ⟨res, hok, herr⟩
+  obtain ⟨rr, nx⟩ := res
+  simp only at hok herr ⊢
+  rcases rr with k | err
+  · obtain ⟨hk0, hk⟩ := hok k rfl
+    simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_tc_ok, bind_ok]
+    obtain ⟨x, y, hq, hc⟩ := g_mult hG _ hk0 hk
+    step with x_scalar_spec k h ht x y hq hc as ⟨r1, hr1⟩
+    step as ⟨b, hb⟩
+    split
+    · rename_i hbt
+      simp only [bind_tc_ok, bind_ok]
+      exact ih nx
+    · rename_i hbf
+      have hr0 : scNat r1 ≠ 0 := fun h0 => hbf (hb.mpr h0)
+      step with raw_ecdsa_sign_spec key.private_key k e r1 hd hk0 hk he (by rw [hr1]; exact Nat.mod_lt _ n256_pos)
+        as ⟨s1, hs1⟩
+      step as ⟨b1, hb1⟩
+      split
+      · simp only [bind_tc_ok, bind_ok]
+        exact ih nx
+      · rename_i hb1f
+        have hs0 : scNat s1 ≠ 0 := fun h0 => hb1f (hb1.mpr h0)
+        simp only [bind_tc_ok, bind_ok, WP.dspec_ok]
+        refine ⟨fun rs hrs => ?_, fun err h => by cases h⟩
+        cases hrs
+        refine ⟨scNat k.scalar, hk0, hk, ?_, hr0, hs0⟩
+        simp only [ecdsaP256Sign, hq, hr1, hs1]
+  · simp only [uncurry, core.result.Result.Insts.CoreOpsTry.branch, bind_tc_ok, bind_ok,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, WP.dspec_ok]
+    refine ⟨(fun rs h => nomatch h), fun e2 h => ?_⟩
+    simp only [core.convert.FromSame.from, core.result.Result.Err.injEq] at h
+    rw [← h]; exact herr err rfl
+
 end P256
 
 end rind.aarch64

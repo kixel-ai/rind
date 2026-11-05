@@ -161,6 +161,21 @@ opaque high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScala
 opaque high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
   : Result high.asn1.ObjectId
 
+/-! The HMAC-DRBG an ECDSA signature draws its nonces from. -/
+
+opaque high.hmac_drbg.HmacDrbg.new
+  {H : Type _} {Clause0_Context : Type _} {Clause0_State : Type _}
+  (hashHashInst : high.hash.Hash H Clause0_Context Clause0_State) :
+  Slice Std.U8 → Slice Std.U8 → Slice Std.U8 →
+    Result (high.hmac_drbg.HmacDrbg H Clause0_Context Clause0_State)
+
+opaque high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource.fill
+  {H : Type _} {Clause0_Context : Type _} {Clause0_State : Type _}
+  (hashHashInst : high.hash.Hash H Clause0_Context Clause0_State) :
+  high.hmac_drbg.HmacDrbg H Clause0_Context Clause0_State → Slice Std.U8 →
+    Result ((core.result.Result Unit error.Error) × (high.hmac_drbg.HmacDrbg H
+    Clause0_Context Clause0_State) × (Slice Std.U8))
+
 /-! The verifying key's cache of 17P, ..., 31P, which ECDSA verification's
 theorems take what they need of as a hypothesis. -/
 

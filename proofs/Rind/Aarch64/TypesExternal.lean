@@ -22,6 +22,10 @@ opaque low.aarch64.cpu.HaveSha3 : Type
 translate. -/
 opaque low.generic.reuse_cache.ReuseCache (T : Type) : Type
 
+/-- The HMAC-DRBG an ECDSA signature draws its nonces from, whose output the
+functional spec leaves out. -/
+opaque high.hmac_drbg.HmacDrbg (H : Type _) (Clause0_Context : Type _) (Clause0_State : Type _) : Type
+
 /-- An AES key, whose header protection no proof covers. -/
 opaque mid.aes.Aes : Type
 

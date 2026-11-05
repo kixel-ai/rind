@@ -196,6 +196,8 @@ extract aarch64 Aarch64 \
     --start-from crate::high::ecdsa::SigningKey::new \
     --start-from crate::high::ecdsa::SigningKey::from_private_key_and_public_key \
     --start-from crate::high::ecdsa::SigningKey::public_key_uncompressed \
+    --start-from crate::high::ecdsa::SigningKey::sign \
+    --opaque crate::high::hmac_drbg \
     --start-from crate::high::ecdsa::hash_to_scalar \
     --start-from '{impl crate::high::curve::Curve for crate::high::curve::P256}' \
     --start-from '{impl crate::high::curve::PrivateKey for crate::mid::p256::StaticPrivateKey}' \
