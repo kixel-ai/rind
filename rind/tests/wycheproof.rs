@@ -7,6 +7,7 @@ use rind::aead::{
     gcm,
 };
 use rind::cipher::{AES_128, AES_256, ChaCha20};
+use rind::rsa::{self, DecryptingKey, OaepAlgorithm};
 use rind::signature::verify::legacy;
 use rind::signature::{self, RsaPssSaltLength, RsaVerificationAlgorithm, sign, verify};
 use rind::{hkdf, hmac, pbkdf2};
@@ -29,6 +30,10 @@ struct TestGroup {
     #[serde(default, rename(deserialize = "publicKeyAsn"), with = "hex::serde")]
     public_key_asn: Vec<u8>,
 
+    // The same key as a `SubjectPublicKeyInfo`.
+    #[serde(default, rename(deserialize = "publicKeyDer"), with = "hex::serde")]
+    public_key_der: Vec<u8>,
+
     // The PKCS#1 public key of a signing group.
     #[serde(default, rename(deserialize = "keyAsn"), with = "hex::serde")]
     key_asn: Vec<u8>,
@@ -47,6 +52,9 @@ struct TestGroup {
 
     #[serde(default, rename(deserialize = "sLen"))]
     salt_len: usize,
+
+    #[serde(default)]
+    mgf: String,
 
     tests: Vec<Test>,
 }
@@ -90,6 +98,8 @@ struct Test {
     iteration_count: u32,
     #[serde(default, with = "hex::serde")]
     dk: Vec<u8>,
+    #[serde(default, with = "hex::serde")]
+    label: Vec<u8>,
     #[serde(default)]
     flags: Vec<String>,
     result: ExpectedResult,
@@ -541,6 +551,9 @@ fn test_rsa_pkcs1_verify() {
                 let key = key.unwrap();
                 let from_components = components.to_public_key(algorithm).unwrap();
                 assert_eq!(from_components.as_ref(), key.as_ref());
+                let from_spki =
+                    signature::PublicKey::new(algorithm, &group.public_key_der).unwrap();
+                assert_eq!(from_spki.as_ref(), key.as_ref());
 
                 // The modulus with its sign byte is not minimal.
                 let signed = signature::RsaPublicKeyComponents {
@@ -684,6 +697,72 @@ fn test_rsa_pkcs1_sign() {
 }
 
 #[test]
+fn test_rsa_oaep_decrypt() {
+    // Every file whose hash and MGF1 hash agree on one rind supports; the
+    // misc file mixes them, and holds keys below our 2048-bit minimum.
+    for file in &[
+        "rsa_oaep_2048_sha1_mgf1sha1_test.json",
+        "rsa_oaep_2048_sha256_mgf1sha256_test.json",
+        "rsa_oaep_2048_sha384_mgf1sha384_test.json",
+        "rsa_oaep_2048_sha512_mgf1sha512_test.json",
+        "rsa_oaep_3072_sha256_mgf1sha256_test.json",
+        "rsa_oaep_3072_sha512_mgf1sha512_test.json",
+        "rsa_oaep_4096_sha256_mgf1sha256_test.json",
+        "rsa_oaep_4096_sha512_mgf1sha512_test.json",
+        "rsa_oaep_misc_test.json",
+    ] {
+        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
+            .expect("failed to open data file");
+        println!("file: {data_file:?}");
+
+        let reader = BufReader::new(data_file);
+        let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
+        let mut summary = Summary::new();
+
+        for group in tests.groups {
+            summary.group(&group);
+            assert_eq!(group.mgf, "MGF1");
+
+            let algorithm: &'static OaepAlgorithm =
+                match (group.sha.as_ref(), group.mgf_sha.as_ref()) {
+                    ("SHA-1", "SHA-1") => &rsa::legacy::OAEP_SHA1,
+                    ("SHA-256", "SHA-256") => &rsa::OAEP_SHA256,
+                    ("SHA-384", "SHA-384") => &rsa::OAEP_SHA384,
+                    ("SHA-512", "SHA-512") => &rsa::OAEP_SHA512,
+                    other => {
+                        summary.skipped(&format!(
+                            "oaep with sha={} mgf={} not supported",
+                            other.0, other.1
+                        ));
+                        continue;
+                    }
+                };
+
+            let key = DecryptingKey::from_pkcs8(algorithm, &group.private_key_pkcs8);
+            if group.key_size < 2048 {
+                assert!(matches!(key, Err(Error::KeyRejected(_))), "{key:?}");
+                summary.skipped("key below 2048 bits");
+                continue;
+            }
+            let key = key.unwrap();
+
+            for test in group.tests {
+                summary.start(&test);
+
+                let result = key.decrypt(&test.ct, &test.label);
+                match (test.result, &result) {
+                    (ExpectedResult::Valid | ExpectedResult::Acceptable, Ok(plaintext)) => {
+                        assert_eq!(plaintext.as_ref(), test.msg)
+                    }
+                    (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {}
+                    _ => panic!("expected {:?} got {:?}", test.result, result),
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn test_rsa_pss_verify() {
     for file in &[
         "rsa_pss_2048_sha256_mgf1_0_test.json",
@@ -729,10 +808,11 @@ fn test_rsa_pss_verify() {
                     continue;
                 }
             };
+            // Loaded from its SPKI; the PKCS#1 tests load the raw key.
+            let spki = &group.public_key_der;
             let salt = |len: usize| pss(RsaPssSaltLength::Custom(len.try_into().unwrap()));
-            let key =
-                signature::PublicKey::new(&salt(group.salt_len), &group.public_key_asn).unwrap();
-            let any_salt_key = signature::PublicKey::new(any_salt, &group.public_key_asn).unwrap();
+            let key = signature::PublicKey::new(&salt(group.salt_len), spki).unwrap();
+            let any_salt_key = signature::PublicKey::new(any_salt, spki).unwrap();
             // The hash-length salt has its own constant, which must agree.
             let hash_salt_key = match (group.sha.as_ref(), group.salt_len) {
                 ("SHA-256", 32) => Some(&verify::RSA_PSS_SHA256),
@@ -740,7 +820,7 @@ fn test_rsa_pss_verify() {
                 ("SHA-512", 64) => Some(&verify::RSA_PSS_SHA512),
                 _ => None,
             }
-            .map(|algorithm| signature::PublicKey::new(algorithm, &group.public_key_asn).unwrap());
+            .map(|algorithm| signature::PublicKey::new(algorithm, spki).unwrap());
 
             for test in group.tests {
                 summary.start(&test);
@@ -767,7 +847,7 @@ fn test_rsa_pss_verify() {
                 {
                     Some(len) => {
                         let len = len.parse().unwrap();
-                        signature::PublicKey::new(&salt(len), &group.public_key_asn)
+                        signature::PublicKey::new(&salt(len), spki)
                             .unwrap()
                             .verify(&test.msg, &test.sig)
                             .unwrap();

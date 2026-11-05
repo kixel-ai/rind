@@ -29,6 +29,5 @@ Decided with the maintainer on 2026-11-04, in a planning interview:
 - [AES-CBC](/quest/m2/adoption/webcrypto/aes-cbc.md) - AES-CBC with PKCS#7 padding
 - [AES-192](/quest/m2/adoption/webcrypto/aes-192.md) - 192-bit keys for every AES mode
 - [AES key wrap](/quest/m2/adoption/webcrypto/aes-kw.md) - RFC 3394 AES-KW
-- [RSA-OAEP](/quest/m2/adoption/webcrypto/rsa-oaep.md) - RSA-OAEP encryption and decryption
 - [ECDSA over any curve and hash](/quest/m2/adoption/webcrypto/ecdsa-pairings.md) - signing with each curve and SHA-2 hash pairing
 - [MD5](/quest/m2/adoption/webcrypto/md5.md) - legacy MD5 for hashing APIs that offer it

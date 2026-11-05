@@ -6,8 +6,7 @@ use crate::error::KeyFormatError;
 use crate::high::asn1::{self, Type, pkix};
 use crate::high::hash::{self, Hash};
 use crate::high::{pkcs1, pkcs8};
-use crate::low::Entry;
-use crate::low::PosInt;
+use crate::low::{Entry, PosInt, ct};
 use crate::mid::rng::SystemRandom;
 use crate::mid::rsa_key_size::RsaKeySize;
 use crate::mid::{rsa_priv, rsa_pub};
@@ -77,12 +76,38 @@ impl VerifyingKey {
         Ok(Self(rsa_pub::RsaPublicKey::new(n, public_exponent(e)?)?))
     }
 
+    /// Decodes an RSA public key from PKCS#1 `RSAPublicKey` or
+    /// `SubjectPublicKeyInfo` DER, as aws-lc-rs takes either.
+    pub(crate) fn from_der(bytes: &[u8]) -> Result<Self, Error> {
+        match asn1::opens_nested_sequence(bytes) {
+            true => Self::from_spki_der(bytes),
+            false => Self::from_pkcs1_der(bytes),
+        }
+    }
+
+    /// Decodes an RSA public key from `SubjectPublicKeyInfo` DER, whose
+    /// algorithm must be `rsaEncryption` with `NULL` parameters, as
+    /// RFC 3279 section 2.3.1 requires, or none, which aws-lc also takes.
+    fn from_spki_der(bytes: &[u8]) -> Result<Self, Error> {
+        let _entry = Entry::new_public();
+        let spki = pkix::SubjectPublicKeyInfo::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
+        if spki.algorithm.algorithm != asn1::oid::rsaEncryption
+            || !matches!(
+                spki.algorithm.parameters,
+                None | Some(asn1::Any::Null(asn1::Null))
+            )
+        {
+            return Err(KeyFormatError::MismatchedSpkiAlgorithm.into());
+        }
+        Self::from_pkcs1_der(spki.subjectPublicKey.as_octets())
+    }
+
     /// Decodes an RSA public verification key from PKCS#1 DER format.
     ///
     /// This format is defined in
     /// [RFC8017](https://datatracker.ietf.org/doc/html/rfc8017#appendix-A.1.1)
     /// (and earlier standards, including the original PKCS#1 standard).
-    pub(crate) fn from_pkcs1_der(bytes: &[u8]) -> Result<Self, Error> {
+    fn from_pkcs1_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_public();
         let decoded = pkix::RSAPublicKey::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
 
@@ -328,6 +353,43 @@ impl VerifyingKey {
 
         let s_len = salt.map(|salt| salt.len(em.len(), hash.as_ref().len()));
         pkcs1::verify_pss_sig::<H>(em, em_bits, hash.as_ref(), s_len)
+    }
+
+    /// Encrypts `message` with RSAES-OAEP, using `H` and MGF1 with `H`,
+    /// into the front of `ciphertext`, as long as the modulus.
+    ///
+    /// A message longer than [`pkcs1::oaep_max_message_len`] is refused
+    /// with [`Error::WrongLength`].
+    ///
+    /// RSAES-OAEP is described in
+    /// [RFC8017](https://datatracker.ietf.org/doc/html/rfc8017#section-7.1.1).
+    pub(crate) fn encrypt_oaep<'a, H: Hash>(
+        &self,
+        ciphertext: &'a mut [u8],
+        message: &[u8],
+        label: &[u8],
+    ) -> Result<&'a [u8], Error> {
+        let _entry = Entry::new_secret();
+        let k = self.0.modulus_len_bytes();
+        let ciphertext = ciphertext.get_mut(..k).ok_or(Error::WrongLength)?;
+
+        let mut em = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        let em = &mut em[..k];
+        pkcs1::encode_oaep::<H>(em, &mut SystemRandom, message, label)?;
+
+        // The encoded message is secret, so it is read at the modulus's
+        // width rather than by `PosInt::from_bytes`, which skips its
+        // leading zeros.
+        let mut words = [0u64; rsa_pub::MAX_PUBLIC_MODULUS_BYTES / 8];
+        let words = &mut words[..k.div_ceil(8)];
+        for (word, bytes) in words.iter_mut().zip(em.rchunks(8)) {
+            *word = bytes.iter().fold(0, |w, b| w << 8 | u64::from(*b));
+        }
+        let m = PosInt::from_words(words)?;
+
+        // `m` is below the modulus, as EM's first octet is zero.
+        let c = ct::into_public(self.0.public_op(m)?);
+        i2osp(&c, ciphertext).map(|c| &*c)
     }
 }
 
@@ -605,7 +667,7 @@ impl SigningKey {
         pkcs1::encode_pkcs1_sig(m, digest_info, hash);
 
         let m = PosInt::from_bytes(m)?;
-        let c = self.0.private_op(&m)?;
+        let c = ct::into_public(self.0.private_op(&m)?);
         self.to_signature(&c, signature)
     }
 
@@ -631,8 +693,49 @@ impl SigningKey {
         let s_len = salt.len(em.len(), hash.as_ref().len());
         pkcs1::encode_pss_sig::<H>(em, em_bits, &mut SystemRandom, hash.as_ref(), s_len)?;
         let m = PosInt::from_bytes(em)?;
-        let c = self.0.private_op(&m)?;
+        let c = ct::into_public(self.0.private_op(&m)?);
         self.to_signature(&c, signature)
+    }
+
+    /// Decrypts `ciphertext` with RSAES-OAEP, using `H` and MGF1 with `H`,
+    /// into the front of `plaintext`, which must hold
+    /// [`pkcs1::oaep_max_message_len`] bytes.
+    ///
+    /// Every failure but [`Error::Fault`] is [`Error::DecryptFailed`],
+    /// which reveals nothing of the decrypted value.
+    ///
+    /// RSAES-OAEP is described in
+    /// [RFC8017](https://datatracker.ietf.org/doc/html/rfc8017#section-7.1.2).
+    pub(crate) fn decrypt_oaep<'a, H: Hash>(
+        &self,
+        plaintext: &'a mut [u8],
+        ciphertext: &[u8],
+        label: &[u8],
+    ) -> Result<&'a [u8], Error> {
+        let _entry = Entry::new_secret();
+        // 1b.  If the length of the ciphertext C is not k octets, output
+        //      "decryption error" and stop.
+        let k = self.0.modulus_len_bytes();
+        if ciphertext.len() != k {
+            return Err(Error::DecryptFailed);
+        }
+
+        // 2a.  Convert the ciphertext C to an integer ciphertext
+        //      representative c.
+        // 2b.  Apply the RSADP decryption primitive, which refuses a c not
+        //      below the modulus.
+        let c = PosInt::from_bytes(ciphertext).map_err(|_| Error::DecryptFailed)?;
+        let m = self.0.private_op(&c).map_err(|e| match e {
+            Error::Fault => Error::Fault,
+            _ => Error::DecryptFailed,
+        })?;
+
+        // 2c.  Convert the message representative m to an encoded message
+        //      EM of length k octets, which `m` below the modulus fits.
+        let mut em = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        let em = i2osp(&m, &mut em[..k])?;
+
+        pkcs1::decode_oaep::<H>(em, label, plaintext)
     }
 
     /// Writes `c` to the front of `signature` in exactly the modulus length.
@@ -650,11 +753,13 @@ impl SigningKey {
 
 /// This is I2OSP: writes `x` to all of `out`, big-endian, however many of its
 /// leading bytes are zero, and refuses an `x` that does not fit.
+///
+/// Constant time in `x`, apart from whether it fits.
 fn i2osp<'a, const N: usize>(x: &PosInt<N>, out: &'a mut [u8]) -> Result<&'a mut [u8], Error> {
     let mut bytes = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
     let bytes = x.to_bytes(&mut bytes)?;
     let (excess, bytes) = bytes.split_at(bytes.len().saturating_sub(out.len()));
-    if excess.iter().any(|b| *b != 0) {
+    if ct::into_public(excess.iter().fold(0, |acc, b| acc | b)) != 0 {
         return Err(Error::WrongLength);
     }
 
@@ -1254,7 +1359,7 @@ mod tests {
         let s = sub(&mul(&key.q, &key.iqmp), &[1]);
         let m = PosInt::from_bytes(&s).unwrap();
         let m = private_key.0.public_key().public_op(m).unwrap();
-        let signature = private_key.0.private_op(&m).unwrap();
+        let signature = ct::into_public(private_key.0.private_op(&m).unwrap());
         assert_eq!(trim(i2osp(&signature, &mut [0u8; 256]).unwrap()), s);
     }
 

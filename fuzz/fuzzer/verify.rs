@@ -12,7 +12,7 @@
 use aws_lc_rs::digest;
 use aws_lc_rs::signature::{self as theirs, UnparsedPublicKey};
 use curve25519_dalek::edwards::CompressedEdwardsY;
-use der::{spki, trailing};
+use der::{spki_parameters, trailing};
 use libfuzzer_sys::fuzz_target;
 use rind::signature::{
     PublicKey, RsaPssSaltLength, RsaVerificationAlgorithm, VerificationAlgorithm, verify,
@@ -79,9 +79,9 @@ fn pss_any_salt(
     let digest = digest::digest(hash, message);
     let digest = digest.as_ref();
     // SAFETY: each pointer is valid for its length, and the key, which
-    // `RSA_public_key_from_bytes` allocates, is freed once.
+    // `parse_rsa` allocates, is freed once.
     unsafe {
-        let rsa = aws_lc_sys::RSA_public_key_from_bytes(key.as_ptr(), key.len());
+        let rsa = parse_rsa(key);
         if rsa.is_null() {
             return false;
         }
@@ -99,6 +99,33 @@ fn pss_any_salt(
         aws_lc_sys::RSA_free(rsa);
         accepted
     }
+}
+
+/// aws-lc-rs's `parse_rsa_public_key`: an `RSAPublicKey`, or else a
+/// `SubjectPublicKeyInfo` of an RSA or RSA-PSS key; null if neither.
+///
+/// # Safety
+///
+/// The caller frees a key this returns with `RSA_free`.
+unsafe fn parse_rsa(key: &[u8]) -> *mut aws_lc_sys::RSA {
+    let rsa = aws_lc_sys::RSA_public_key_from_bytes(key.as_ptr(), key.len());
+    if !rsa.is_null() {
+        return rsa;
+    }
+    let mut cbs = std::mem::MaybeUninit::uninit();
+    aws_lc_sys::CBS_init(cbs.as_mut_ptr(), key.as_ptr(), key.len());
+    let pkey = aws_lc_sys::EVP_parse_public_key(cbs.as_mut_ptr());
+    if pkey.is_null() {
+        return std::ptr::null_mut();
+    }
+    let rsa = match aws_lc_sys::EVP_PKEY_id(pkey) {
+        aws_lc_sys::EVP_PKEY_RSA | aws_lc_sys::EVP_PKEY_RSA_PSS => {
+            aws_lc_sys::EVP_PKEY_get1_RSA(pkey)
+        }
+        _ => std::ptr::null_mut(),
+    };
+    aws_lc_sys::EVP_PKEY_free(pkey);
+    rsa
 }
 
 #[derive(Clone, Copy)]
@@ -277,9 +304,9 @@ fn refused(kind: Kind, key: &[u8]) -> bool {
         // aws-lc-rs also takes a `SubjectPublicKeyInfo`, and a compressed or
         // hybrid point; rind takes only the uncompressed point.
         Kind::Ecdsa => key.first() != Some(&4),
-        // aws-lc-rs also takes a `SubjectPublicKeyInfo`, and ignores bytes
-        // after the key.
-        Kind::Rsa => spki(key) || trailing(key),
+        // aws-lc-rs ignores a `SubjectPublicKeyInfo`'s parameters, and
+        // bytes after the key.
+        Kind::Rsa => spki_parameters(key) || trailing(key),
         // aws-lc-rs also takes a `SubjectPublicKeyInfo`, any length but 32,
         // and rind refuses a key of small order, under which signatures
         // nobody made verify.
