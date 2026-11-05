@@ -2195,6 +2195,27 @@ theorem sign_nonces_spec (hG : P256Laws) (h : Runs) (hkg : KeyGen) {T : Type}
     simp only [core.convert.FromSame.from, core.result.Result.Err.injEq] at h
     rw [← h]; exact herr err rfl
 
+@[step]
+theorem write_bytes_spec (sc : mid.p256.Scalar) (target : Slice U8) (hl : target.length = 32) :
+    mid.p256.Scalar.Insts.RindHighCurveScalar.write_bytes sc target ⦃ r =>
+      r.length = 32 ∧ beNat r.val = scNat sc ⦄ := by
+  unfold mid.p256.Scalar.Insts.RindHighCurveScalar.write_bytes mid.p256.Scalar.as_bytes
+  step as ⟨a, ha⟩
+  step as ⟨sl, hsl⟩
+  step as ⟨r, hr⟩
+  refine ⟨by simp [Slice.length, hr, hsl], ?_⟩
+  rw [hr, hsl, Array.val_to_slice, ha]
+
+theorem encode_spec (k : mid.p256.StaticPrivateKey) (out : Slice U8) (hl : 32 ≤ out.length) :
+    mid.p256.StaticPrivateKey.Insts.RindHighCurvePrivateKeyScalar.encode k out ⦃ r =>
+      ∃ sl, r.1 = .Ok sl ⦄ := by
+  unfold mid.p256.StaticPrivateKey.Insts.RindHighCurvePrivateKeyScalar.encode
+  simp only [core.slice.Slice.get_mut, core.slice.index.SliceIndexRangeUsizeSlice,
+    core.slice.index.SliceIndexRangeUsizeSlice.get_mut]
+  rw [if_pos (by simp; omega)]
+  simp only [bind_tc_ok, bind_ok, mid.p256.StaticPrivateKey.secret_bytes, mid.p256.Scalar.as_bytes]
+  step*
+
 end P256
 
 end rind.aarch64
