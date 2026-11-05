@@ -214,8 +214,8 @@ verified ✓ AVX SHA-384 and SHA-512.
 - AES-GCM key setup: a key reaches its cipher through an indirect call, so
   that a binary links only the ciphers it names; the call adds about 3 ns per
   key or 32 B seal.
-- P-256 without ADX: verification runs s2n-bignum's verified routines, within
-  the 10% of aws-lc's `ecp_nistz256` that rind accepts for verified code.
+- P-256 without ADX: verification runs s2n-bignum's verified routines rather
+  than aws-lc's `ecp_nistz256`.
 - ChaCha20-Poly1305 without AES-NI and on SSE2, which lack SSE4.1: rind runs
   Graviola's scalar Poly1305 there, and aws-lc BoringSSL's SSE2
   `poly1305_vec.c`, which rind doesn't port for CPUs older than Westmere.
