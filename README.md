@@ -127,8 +127,8 @@ but there is also a public API for general-purpose use.
   aws-lc's assembly, and so does Poly1305 where the CPU has NEON. SHA-384,
   SHA-512, and SHA-512/256 always run aws-lc's assembly, with NEON where the
   CPU has it, and with NEON, X25519's shared secret runs [BoringSSL]'s
-  assembly. ML-KEM's Keccak-f runs [OpenSSL]'s assembly, on NEON where the
-  CPU has it.
+  assembly. SHA-3's and ML-KEM's Keccak-f runs [OpenSSL]'s assembly, on NEON
+  where the CPU has it.
 
 Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
 at startup to get an error naming the missing feature instead.
@@ -206,6 +206,7 @@ verified ✓ AVX SHA-384 and SHA-512.
 | SHA-1 | rind | aws-lc |  |  |  |
 | SHA-256 | Graviola ⚡ | aws-lc ⚡ |  |  |  |
 | SHA-384, SHA-512, SHA-512/256 | aws-lc ⚡ |  |  |  |  |
+| SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  |  |  |  |
 | HMAC | Graviola ⚡ |  |  |  |  |
 | HKDF | rind ⚡ |  |  |  |  |
 | PBKDF2 | rind |  |  |  |  |
@@ -251,6 +252,7 @@ the code [Symmetric cryptography](#symmetric-cryptography) names.
 | SHA-1 | rind | aws-lc |  |
 | SHA-256 | aws-lc ⚡ | aws-lc | aws-lc ⚡ |
 | SHA-384, SHA-512, SHA-512/256 | aws-lc | aws-lc ✓ | aws-lc ⚡ |
+| SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  | OpenSSL ⚡ + Graviola |
 | HMAC | Graviola ⚡ |  |  |
 | HKDF | rind ⚡ |  |  |
 | PBKDF2 | rind |  |  |
@@ -527,6 +529,9 @@ AMD's Zen. On aarch64, its routine for the SHA-512 instructions where the CPU
 has them, and its scalar routine otherwise; on 32-bit `arm`, its NEON routine
 where the CPU has NEON, and its scalar routine otherwise.
 
+SHA3-256, SHA3-384, and SHA3-512 run Graviola's sponge over the Keccak-f
+ML-KEM uses (see [ML-KEM-768](#ml-kem-768)), one state at a time.
+
 x86_64 decides once per process whether the CPU has AES-NI and PCLMULQDQ,
 and SSSE3. Without the first two, as on Core 2 and Nehalem, AES and AES-CTR
 run aws-lc's `vpaes-x86_64` assembly and GHASH its `ghash-ssse3-x86_64`,
@@ -667,8 +672,9 @@ The modules:
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
   Ed25519 key pairs and verification, plus RSA keys given as their
   components, and SHA-1 and 1024-bit RSA for verifying old signatures.
-- `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, and SHA-512/256.
-- `hmac`: HMAC over those digests, keyed once and reused.
+- `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, SHA-512/256,
+  SHA3-256, SHA3-384, and SHA3-512.
+- `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.
 - `hkdf`: HKDF over those HMACs, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
 - `pbkdf2`: PBKDF2 over those HMACs, deriving or verifying a key from a password.
 - `constant_time`: comparing secrets such as MACs without a timing leak.

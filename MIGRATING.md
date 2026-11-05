@@ -24,7 +24,7 @@ renames [rind-ring](#rind-ring), ring's API on rind, to `ring`.
 | `SHA256`, `SHA384`, `SHA512`, `SHA512_256` | the same |
 | `SHA1_FOR_LEGACY_USE_ONLY` | `legacy::SHA1` |
 | `SHA224` (not in ring) | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
-| `SHA3_256`, `SHA3_384`, `SHA3_512` (not in ring) | none; [SHA-3](quest/m2/adoption/webcrypto/sha3.md) |
+| `SHA3_256`, `SHA3_384`, `SHA3_512` (not in ring) | the same |
 | `Algorithm::output_len()` | the same |
 | `Algorithm::block_len()`, `chaining_len()`, `MAX_BLOCK_LEN`, `MAX_CHAINING_LEN`, `MAX_OUTPUT_LEN`, `SHA*_OUTPUT_LEN` | none; `output_len()` gives each length |
 | `Context::algorithm()`, `Digest::algorithm()` | none |
