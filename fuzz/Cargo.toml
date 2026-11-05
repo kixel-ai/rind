@@ -10,7 +10,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
-aws-lc-rs = { version = "1.16", features = ["non-fips", "ring-io"], default-features = false }
+aws-lc-rs = { version = "1.19", features = ["non-fips", "ring-io"], default-features = false }
 # aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
 aws-lc-sys = { version = "0.47", default-features = false }
 # Tells which Ed25519 keys are of small order, which rind refuses.

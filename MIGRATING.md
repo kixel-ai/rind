@@ -170,7 +170,11 @@ ring has no `kem`.
 | `ParsedPublicKey::algorithm()`, `as_der()` | none; the key's bytes through `AsRef<[u8]>`, or a key pair's `to_spki()` |
 | `VerificationAlgorithm` trait, `EcdsaVerificationAlgorithm`, `EdDSAParameters` | `VerificationAlgorithm` |
 | `RsaParameters` | `RsaVerificationAlgorithm`, which `PublicKey::new` also takes |
-| `RsaParameters::{with_pss_salt_length, public_modulus_len, min_modulus_len, max_modulus_len}`, `RsaPssSaltLength` | none: a PSS salt is as long as its digest, aws-lc-rs's default |
+| `RSA_PSS_2048_8192_SHA256.with_pss_salt_length(RsaPssSaltLength::Custom(n))`, `Max`, and their SHA-384 and SHA-512 | `RsaVerificationAlgorithm::pss_sha256(RsaPssSaltLength::Custom(n))`, `Max`, and so on, which take the salt at run time too |
+| `RSA_PSS_SHA256.with_pss_salt_length(..)` and their SHA-384 and SHA-512 | `RsaSigningAlgorithm::pss_sha256(..)` and so on |
+| `RsaPssSaltLength::Digest` | `sign::RSA_PSS_SHA256`, `verify::RSA_PSS_SHA256`, and so on |
+| OpenSSL's `RSA_PSS_SALTLEN_AUTO`, pyca's `PSS.AUTO` (not in aws-lc-rs) | `verify::RSA_PSS_SHA256_ANY_SALT` and so on |
+| `RsaParameters::{public_modulus_len, min_modulus_len, max_modulus_len}` | none |
 | `EcdsaSigningAlgorithm`, `RsaEncoding`, `RsaSignatureEncoding` | `EcdsaSigningAlgorithm`, `RsaSigningAlgorithm` |
 | `ECDSA_P256_SHA256_ASN1_SIGNING` and the other `_SIGNING` | `sign::ECDSA_P256_SHA256_ASN1` |
 | `ECDSA_P256_SHA256_ASN1`, `ED25519`, and the other verification constants | `verify::ECDSA_P256_SHA256_ASN1`, `verify::ED25519` |

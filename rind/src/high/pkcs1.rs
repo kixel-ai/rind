@@ -3,6 +3,7 @@
 
 use super::hash::{Hash, HashContext};
 use crate::Error;
+use crate::error::KeyFormatError;
 use crate::mid::rng::RandomSource;
 
 /// This is EMSA-PKCS1-v1_5-ENCODE
@@ -77,17 +78,19 @@ pub(crate) static DIGESTINFO_SHA512: &[u8] = &[
 
 /// This is EMSA-PSS-ENCODE.
 ///
-/// `sLen` is fixed as `hLen`.
 /// `MGF` is `MGF1` with hash `H`.
 /// `out` is the output buffer of `emLen = ceil(emBits / 8)` octets, where
 /// `em_bits` is one less than the modulus bit length.
 /// `hash` is the message hash, made by the caller using `H`.
-/// `rng` is used to generate the salt.
+/// `s_len` is the salt length, which `rng` fills.
+///
+/// A salt too long for `emLen` is refused as the key's size.
 pub(crate) fn encode_pss_sig<H: Hash>(
     out: &mut [u8],
     em_bits: usize,
     rng: &mut dyn RandomSource,
     hash: &[u8],
+    s_len: usize,
 ) -> Result<(), Error> {
     // 1.  If the length of M is greater than the input limitation for the
     //     hash function (2^61 - 1 octets for SHA-1), output "message too
@@ -96,22 +99,32 @@ pub(crate) fn encode_pss_sig<H: Hash>(
     // (by caller)
 
     // 3.  If emLen < hLen + sLen + 2, output "encoding error" and stop.
-    let s_len = hash.len();
     let h_len = hash.len();
     let em_len = out.len();
-    assert!(em_len >= h_len + s_len + 2);
+    if em_len < h_len + s_len + 2 {
+        return Err(KeyFormatError::RsaModulus.into());
+    }
+
+    // 7.  Generate an octet string PS consisting of emLen - sLen - hLen - 2
+    //     zero octets.  The length of PS may be 0.
+    // 8.  Let DB = PS || 0x01 || salt; DB is an octet string of length
+    //     emLen - hLen - 1.
+    // (laid out first, so step 4 writes the salt in place)
+    let (db, h_bc) = out.split_at_mut(em_len - h_len - 1);
+    let (ps, ps_sep_salt) = db.split_at_mut(em_len - s_len - h_len - 2);
+    let (ps_sep, salt) = ps_sep_salt.split_first_mut().unwrap();
+    ps.fill(0x00);
+    *ps_sep = 0x01;
 
     // 4.  Generate a random octet string salt of length sLen; if sLen = 0,
     //     then salt is the empty string.
-    let mut salt = H::zeroed_output();
-    assert_eq!(salt.as_ref().len(), s_len);
-    rng.fill(salt.as_mut())?;
+    rng.fill(salt)?;
 
     // 5.  Let
     //       M' = (0x)00 00 00 00 00 00 00 00 || mHash || salt;
     //     M' is an octet string of length 8 + hLen + sLen with eight
     //     initial zero octets.
-    let m_prime = [&[0u8; 8], hash, salt.as_ref()];
+    let m_prime = [&[0u8; 8], hash, &*salt];
 
     // 6.  Let H = Hash(M'), an octet string of length hLen.
     let mut ctx = H::new();
@@ -120,17 +133,6 @@ pub(crate) fn encode_pss_sig<H: Hash>(
     }
     let h = ctx.finish();
     assert_eq!(h.as_ref().len(), h_len);
-
-    // 7.  Generate an octet string PS consisting of emLen - sLen - hLen - 2
-    //     zero octets.  The length of PS may be 0.
-    // 8.  Let DB = PS || 0x01 || salt; DB is an octet string of length
-    //     emLen - hLen - 1.
-    let (db, h_bc) = out.split_at_mut(em_len - h_len - 1);
-    let (ps, ps_sep_salt) = db.split_at_mut(em_len - s_len - h_len - 2);
-    let (ps_sep, salt_out) = ps_sep_salt.split_first_mut().unwrap();
-    ps.fill(0x00);
-    *ps_sep = 0x01;
-    salt_out.copy_from_slice(salt.as_ref());
 
     // 9.  Let dbMask = MGF(H, emLen - hLen - 1).
     // 10. Let maskedDB = DB \xor dbMask.
@@ -151,18 +153,21 @@ pub(crate) fn encode_pss_sig<H: Hash>(
 
 /// This is EMSA-PSS-VERIFY.
 ///
-/// `sLen` is fixed as `hLen`, like `encode_pss_sig`.
-///
 /// `MGF` is `MGF1` with hash `H`.
 ///
 /// `em` is the input and temporary buffer of `emLen = ceil(emBits / 8)`
 /// octets, where `em_bits` is one less than the modulus bit length.
 ///
 /// `m_hash` is the message hash, made by the caller using `H`.
+///
+/// `s_len` is the salt length, or `None` to take any, as the signature's
+/// padding has it: the salt is public, so finding its end needs no constant
+/// time.
 pub(crate) fn verify_pss_sig<H: Hash>(
     em: &mut [u8],
     em_bits: usize,
     m_hash: &[u8],
+    s_len: Option<usize>,
 ) -> Result<(), Error> {
     // 1.   If the length of M is greater than the input limitation for
     //      the hash function (2^61 - 1 octets for SHA-1), output
@@ -174,8 +179,7 @@ pub(crate) fn verify_pss_sig<H: Hash>(
     let em_len = em.len();
     let top_mask = u8::MAX >> (8 * em_len - em_bits);
     let h_len = m_hash.len();
-    let s_len = h_len;
-    if em_len < h_len + s_len + 2 {
+    if em_len < h_len + s_len.unwrap_or(0) + 2 {
         return Err(Error::BadSignature);
     }
 
@@ -211,7 +215,15 @@ pub(crate) fn verify_pss_sig<H: Hash>(
     //      leftmost position is "position 1") does not have hexadecimal
     //      value 0x01, output "inconsistent" and stop.
     // 11.  Let salt be the last sLen octets of DB.
-    let (zeroes, one_salt) = db.split_at(em_len - h_len - s_len - 2);
+    // (with any sLen, PS runs to the first nonzero octet)
+    let ps_len = match s_len {
+        Some(s_len) => em_len - h_len - s_len - 2,
+        None => db
+            .iter()
+            .position(|b| *b != 0x00)
+            .ok_or(Error::BadSignature)?,
+    };
+    let (zeroes, one_salt) = db.split_at(ps_len);
     let (one, salt) = one_salt.split_first().unwrap();
     if zeroes.iter().any(|z| *z != 0x00) || *one != 0x01 {
         return Err(Error::BadSignature);
@@ -299,7 +311,7 @@ mod tests {
         );
         let hash = b"\xe3\xb0\xc4\x42\x98\xfc\x1c\x14\x9a\xfb\xf4\xc8\x99\x6f\xb9\x24\
                      \x27\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55";
-        encode_pss_sig::<hash::Sha256>(&mut buf, 2047, &mut seed, hash).unwrap();
+        encode_pss_sig::<hash::Sha256>(&mut buf, 2047, &mut seed, hash, 32).unwrap();
 
         assert_eq!(
             buf,
@@ -326,6 +338,7 @@ mod tests {
             ],
         );
 
-        verify_pss_sig::<hash::Sha256>(&mut buf, 2047, hash).unwrap();
+        verify_pss_sig::<hash::Sha256>(&mut buf.clone(), 2047, hash, Some(32)).unwrap();
+        verify_pss_sig::<hash::Sha256>(&mut buf, 2047, hash, None).unwrap();
     }
 }

@@ -137,8 +137,8 @@ pub mod kem {
 pub mod signature {
     pub use crate::high::signature::{
         EcdsaKeyPair, EcdsaScalar, EcdsaSigningAlgorithm, Ed25519KeyPair, Ed25519Seed, Pkcs8,
-        PublicKey, RsaKeyPair, RsaKeySize, RsaPublicKeyComponents, RsaSigningAlgorithm,
-        RsaVerificationAlgorithm, Signature, Spki, VerificationAlgorithm,
+        PublicKey, RsaKeyPair, RsaKeySize, RsaPssSaltLength, RsaPublicKeyComponents,
+        RsaSigningAlgorithm, RsaVerificationAlgorithm, Signature, Spki, VerificationAlgorithm,
     };
 
     /// Algorithms a key pair signs with.
@@ -162,8 +162,9 @@ pub mod signature {
             ECDSA_P256_SHA512_ASN1, ECDSA_P384_SHA256_ASN1, ECDSA_P384_SHA384_ASN1,
             ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA512_ASN1, ECDSA_P521_SHA256_ASN1,
             ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED, ED25519,
-            RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384,
-            RSA_PSS_SHA512,
+            RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256,
+            RSA_PSS_SHA256_ANY_SALT, RSA_PSS_SHA384, RSA_PSS_SHA384_ANY_SALT, RSA_PSS_SHA512,
+            RSA_PSS_SHA512_ANY_SALT,
         };
 
         /// RSA algorithms with another modulus floor, or SHA-1, for old keys

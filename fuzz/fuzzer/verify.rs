@@ -12,7 +12,9 @@ use aws_lc_rs::signature::{self as theirs, UnparsedPublicKey};
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use der::{spki, trailing};
 use libfuzzer_sys::fuzz_target;
-use rind::signature::{PublicKey, VerificationAlgorithm, verify};
+use rind::signature::{
+    PublicKey, RsaPssSaltLength, RsaVerificationAlgorithm, VerificationAlgorithm, verify,
+};
 
 mod der;
 
@@ -181,9 +183,29 @@ fn algorithm(
             &theirs::RSA_PKCS1_3072_8192_SHA384,
             Kind::Rsa,
         ),
+        24 => (
+            OURS_PSS_SHA256_NO_SALT.as_ref(),
+            &THEIRS_PSS_SHA256_NO_SALT,
+            Kind::Rsa,
+        ),
+        25 => (
+            OURS_PSS_SHA512_MAX_SALT.as_ref(),
+            &THEIRS_PSS_SHA512_MAX_SALT,
+            Kind::Rsa,
+        ),
         _ => return None,
     })
 }
+
+// PSS with salt lengths other than the hash's, at both ends of the range.
+static OURS_PSS_SHA256_NO_SALT: RsaVerificationAlgorithm =
+    RsaVerificationAlgorithm::pss_sha256(RsaPssSaltLength::Custom(0));
+static THEIRS_PSS_SHA256_NO_SALT: theirs::RsaParameters =
+    theirs::RSA_PSS_2048_8192_SHA256.with_pss_salt_length(theirs::RsaPssSaltLength::Custom(0));
+static OURS_PSS_SHA512_MAX_SALT: RsaVerificationAlgorithm =
+    RsaVerificationAlgorithm::pss_sha512(RsaPssSaltLength::Max);
+static THEIRS_PSS_SHA512_MAX_SALT: theirs::RsaParameters =
+    theirs::RSA_PSS_2048_8192_SHA512.with_pss_salt_length(theirs::RsaPssSaltLength::Max);
 
 /// Whether rind refuses `key` by design where aws-lc-rs takes it.
 fn refused(kind: Kind, key: &[u8]) -> bool {
