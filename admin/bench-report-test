@@ -210,6 +210,7 @@ class Render(unittest.TestCase):
         # timed none of the rest.
         self.assertEqual([name for name, _, _ in br.headline_rows(everyone)], ["X25519", "cold build of a rustls client"])
         self.assertIn("over nixos and kixtop (aarch64 and x86_64)", svg)
+        self.assertIn("<title>Time over rind's for common TLS and QUIC operations", svg)
         self.assertIn("X25519, ring: nixos 33.00 µs, 1.10× rind's; kixtop 40.00 µs, 2.00× rind's", squares(svg))
         self.assertIn(">1.48×<", svg)
         self.assertIn(">2.00×, needs cc<", svg)

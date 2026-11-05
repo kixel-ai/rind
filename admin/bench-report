@@ -1261,11 +1261,11 @@ def headline_svg(hosts, theme):
                 continue
             ratios = [r for _, r, _ in per[lib]]
             mean = math.exp(sum(math.log(r) for r in ratios) / len(ratios))
-            title = f"{name}, {COLUMNS[lib]}: " + "; ".join(
+            tip = f"{name}, {COLUMNS[lib]}: " + "; ".join(
                 f"{host} {value}, {r:.2f}× rind's" for host, r, value in per[lib]
             )
             fill = svg.theme["rind" if lib == "rind" else "other"]
-            svg.rect(x0, by + (bar_row - bar) / 2, bars * mean / top, bar, fill, title)
+            svg.rect(x0, by + (bar_row - bar) / 2, bars * mean / top, bar, fill, tip)
             lo, hi = x0 + bars * min(ratios) / top, x0 + bars * max(ratios) / top
             if hi - lo >= 1:
                 mid = by + bar_row / 2

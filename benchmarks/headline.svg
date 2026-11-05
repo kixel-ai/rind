@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="743" height="504" viewBox="0 0 743 504" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img">
-<title>cold build of a rustls client, ring: nixos 10.1 s, 2.10× rind's; desktop 7.5 s, 2.15× rind's; nixos2 22.9 s, 1.38× rind's</title>
+<title>Time over rind's for common TLS and QUIC operations and a rustls client's build</title>
 <text x="12.0" y="18.0" font-size="13" text-anchor="start" font-weight="bold" fill="#0b0b0b">Time over rind's: shorter is faster</text>
 <text x="12.0" y="36.0" font-size="11" text-anchor="start" font-weight="normal" fill="#52514e">The geometric mean over nixos, desktop, and nixos2 (x86_64), with a whisker across them. BENCHMARKS.md has every time.</text>
 <line x1="12.0" y1="52.0" x2="731.4" y2="52.0" stroke="#c3c2b7"/>
