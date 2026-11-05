@@ -390,13 +390,13 @@ mod tests {
             let message = [0xa5; 300];
             let wanted = digest(algorithm, &message);
 
-            crate::low::ct::secret_slice(&message);
+            ct::secret_slice(&message);
             let mut ctx = Context::new(algorithm);
             ctx.update(&message[..100]);
             ctx.update(&message[100..]);
-            let got = crate::low::ct::into_public(ctx.finish());
+            let got = ct::into_public(ctx.finish());
             assert_eq!(got.as_ref(), wanted.as_ref());
-            let got = crate::low::ct::into_public(digest(algorithm, &message));
+            let got = ct::into_public(digest(algorithm, &message));
             assert_eq!(got.as_ref(), wanted.as_ref());
         }
     }
