@@ -296,7 +296,7 @@ impl<C: Curve> SigningKey<C> {
     fn sign_with_nonces(
         &self,
         e: &C::Scalar,
-        nonces: &mut dyn RandomSource,
+        nonces: &mut impl RandomSource,
     ) -> Result<(C::Scalar, C::Scalar), Error> {
         loop {
             let k = C::generate_random_key(nonces)?;

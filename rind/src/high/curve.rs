@@ -26,7 +26,7 @@ pub(crate) trait Curve {
     fn oid() -> asn1::ObjectId;
 
     /// Generate a random `PrivateKey`
-    fn generate_random_key(rng: &mut dyn RandomSource) -> Result<Self::PrivateKey, Error>;
+    fn generate_random_key(rng: &mut impl RandomSource) -> Result<Self::PrivateKey, Error>;
 }
 
 /// A generic elliptic curve private key scalar, whose curve's scalars are `S`.
@@ -134,7 +134,7 @@ impl Curve for P256 {
         asn1::oid::id_prime256v1.clone()
     }
 
-    fn generate_random_key(rng: &mut dyn RandomSource) -> Result<p256::StaticPrivateKey, Error> {
+    fn generate_random_key(rng: &mut impl RandomSource) -> Result<p256::StaticPrivateKey, Error> {
         p256::StaticPrivateKey::generate(rng)
     }
 }
@@ -222,7 +222,7 @@ impl Curve for P384 {
         asn1::oid::secp384r1.clone()
     }
 
-    fn generate_random_key(rng: &mut dyn RandomSource) -> Result<p384::StaticPrivateKey, Error> {
+    fn generate_random_key(rng: &mut impl RandomSource) -> Result<p384::StaticPrivateKey, Error> {
         p384::StaticPrivateKey::generate(rng)
     }
 }
@@ -310,7 +310,7 @@ impl Curve for P521 {
         asn1::oid::secp521r1.clone()
     }
 
-    fn generate_random_key(rng: &mut dyn RandomSource) -> Result<p521::StaticPrivateKey, Error> {
+    fn generate_random_key(rng: &mut impl RandomSource) -> Result<p521::StaticPrivateKey, Error> {
         p521::StaticPrivateKey::generate(rng)
     }
 }

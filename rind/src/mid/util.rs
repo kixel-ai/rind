@@ -142,23 +142,32 @@ big_endian!(
 ///
 /// The digits follow `k`'s bits, so it must not be secret.
 pub(crate) fn public_naf<const W: u32>(k: &[u64], digits: &mut [i8]) {
-    let bit = |i: usize| match k.get(i / 64) {
-        Some(word) => ((word >> (i % 64)) & 1) as i32,
-        None => 0,
-    };
     // The low W bits of what remains of k, above the digits written.
     let mut window = (k[0] & ((1 << W) - 1)) as i32;
-    for (i, digit) in digits.iter_mut().enumerate() {
-        *digit = 0;
+    // Indexed rather than `iter_mut`, which Aeneas cannot translate.
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..digits.len() {
+        digits[i] = 0;
         if window & 1 == 1 {
             let d = match window < 1 << (W - 1) {
                 true => window,
                 false => window - (1 << W),
             };
             window -= d;
-            *digit = d as i8;
+            digits[i] = d as i8;
         }
-        window = (window >> 1) + (bit(i + W as usize) << (W - 1));
+        window = (window >> 1) + (bit(k, i + W as usize) << (W - 1));
+    }
+}
+
+/// Bit `i` of `k`, zero above its top.
+///
+/// A function rather than a closure in [`public_naf`], whose `W` Aeneas then
+/// cannot place.
+fn bit(k: &[u64], i: usize) -> i32 {
+    match k.get(i / 64) {
+        Some(word) => ((word >> (i % 64)) & 1) as i32,
+        None => 0,
     }
 }
 
