@@ -1447,6 +1447,143 @@ theorem as_affine_by_spec (pt : mid.p256.JacobianMontPoint) (P : P256Point) (h :
     dec_mont_mul, dec_mont_mul, hz3, hz2, dec_mont_mul, dec_mont_sqr, hinv, hfxX, hfyY]
   congr 3 <;> field_simp
 
+instance : Inhabited mid.p256.JacobianMontPoint := ⟨⟨Array.repeat 12#usize 0#u64⟩⟩
+
+/-- The value of the z of point `j`. -/
+abbrev zv (pts : Std.Array mid.p256.JacobianMontPoint 8#usize) (j : Nat) : ZMod p256 :=
+  dec (tripleNat (pts.val[j]!).xyz.val).2.2
+
+theorem batch_loop0_spec (pts : Std.Array mid.p256.JacobianMontPoint 8#usize)
+    (hz : ∀ j < 8, (tripleNat (pts.val[j]!).xyz.val).2.2 < p256)
+    (iter : core.ops.range.Range Usize) (pre : Std.Array mid.p256.FieldElement 8#usize)
+    (hs1 : 1 ≤ iter.start.val) (hs : iter.start.val ≤ 8) (he : iter.end.val = 8)
+    (hpre : ∀ j < iter.start.val, feNat (pre.val[j]!) < p256 ∧ dec (feNat (pre.val[j]!)) = ∏ t ∈ Finset.range j, zv pts t) :
+    mid.p256.JacobianMontPoint.public_batch_as_affine_loop0 iter pts pre ⦃ r =>
+      ∀ j < 8, feNat (r.val[j]!) < p256 ∧ dec (feNat (r.val[j]!)) = ∏ t ∈ Finset.range j, zv pts t ⦄ := by
+  unfold mid.p256.JacobianMontPoint.public_batch_as_affine_loop0
+  apply loop.spec_decr_nat (fun x => 8 - x.1.start.val)
+    (fun x => 1 ≤ x.1.start.val ∧ x.1.start.val ≤ 8 ∧ x.1.end.val = 8 ∧
+      ∀ j < x.1.start.val, feNat (x.2.val[j]!) < p256 ∧ dec (feNat (x.2.val[j]!)) = ∏ t ∈ Finset.range j, zv pts t)
+  · rintro ⟨it, pr⟩ ⟨hs1, hs, he, hpr⟩
+    simp only at hs1 hs he hpr ⊢
+    unfold mid.p256.JacobianMontPoint.public_batch_as_affine_loop0.body
+    have hprl : pr.val.length = 8 := pr.property
+    have hptl : pts.val.length = 8 := pts.property
+    step as ⟨o, iter1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨i1, hi1⟩
+      step as ⟨fe, hfe⟩
+      step as ⟨jmp, hjmp⟩
+      step as ⟨fz, hfz⟩
+      have hfe' : fe = pr.val[it.start.val - 1]! := by rw [hfe, getElem_eq_getElem! _ _ (by omega), hi1]
+      have hjmp' : jmp = pts.val[it.start.val - 1]! := by rw [hjmp, getElem_eq_getElem! _ _ (by omega), hi1]
+      have hfzv : feNat fz = (tripleNat (pts.val[it.start.val - 1]!).xyz.val).2.2 := by
+        rw [← hjmp']; simp [tripleNat, feNat, hfz]
+      obtain ⟨hfelt, hfev⟩ := hpr (it.start.val - 1) (by omega)
+      rw [← hfe'] at hfelt hfev
+      step with mont_mul_spec fe fz hfelt (by rw [hfzv]; exact hz _ (by omega)) as ⟨fe2, hfe2⟩
+      step as ⟨a, ha⟩
+      refine ⟨by omega, by omega, by rw [he1]; exact he, ?_, by omega⟩
+      intro j hj
+      have hav : a.val = pr.val.set it.start.val fe2 := by rw [ha, Std.Array.set_val_eq]
+      by_cases hji : j = it.start.val
+      · subst hji
+        have : a.val[it.start.val]! = fe2 := by
+          rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, hprl, show it.start.val < 8 by omega]
+        rw [this, hfe2]
+        refine ⟨Nat.mod_lt _ p256_pos, ?_⟩
+        rw [dec_mont_mul, hfev, hfzv, show it.start.val = (it.start.val - 1) + 1 by omega,
+          Finset.prod_range_succ]
+        simp
+      · have : a.val[j]! = pr.val[j]! := by
+          rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, Ne.symm hji]
+        rw [this]; exact hpr j (by omega)
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only [WP.spec_ok]
+      intro j hj; exact hpr j (by omega)
+  · exact ⟨hs1, hs, he, hpre⟩
+
+theorem zv_ne_zero (pts : Std.Array mid.p256.JacobianMontPoint 8#usize) (Ps : Nat → P256Point)
+    (h : ∀ j < 8, jrep (Ps j) (pts.val[j]!) ∧ Ps j ≠ none) (j : Nat) (hj : j < 8) : zv pts j ≠ 0 :=
+  (jrep_some _ _ (h j hj).1 (h j hj).2).2.2.2.1
+
+theorem batch_loop1_spec (pts : Std.Array mid.p256.JacobianMontPoint 8#usize) (Ps : Nat → P256Point)
+    (h : ∀ j < 8, jrep (Ps j) (pts.val[j]!) ∧ Ps j ≠ none) (pre : Std.Array mid.p256.FieldElement 8#usize)
+    (hpre : ∀ j < 8, feNat (pre.val[j]!) < p256 ∧ dec (feNat (pre.val[j]!)) = ∏ t ∈ Finset.range j, zv pts t)
+    (iter : core.iter.adapters.rev.Rev (core.ops.range.Range Usize)) (hs : iter.iter.start.val = 0)
+    (he : iter.iter.end.val ≤ 8) (inv : mid.p256.FieldElement)
+    (hinv : feNat inv < p256 ∧ dec (feNat inv) = (∏ t ∈ Finset.range iter.iter.end.val, zv pts t)⁻¹)
+    (r : Std.Array mid.p256.AffineMontPoint 8#usize)
+    (hr : ∀ j, iter.iter.end.val ≤ j → j < 8 → p256Represents2 (Ps j) (pairNat (r.val[j]!).xy.val)) :
+    mid.p256.JacobianMontPoint.public_batch_as_affine_loop1 iter pts pre inv r ⦃ r' =>
+      ∀ j < 8, p256Represents2 (Ps j) (pairNat (r'.val[j]!).xy.val) ⦄ := by
+  unfold mid.p256.JacobianMontPoint.public_batch_as_affine_loop1
+  have hlt : ∀ x, x % p256 < p256 := fun x => Nat.mod_lt _ p256_pos
+  apply loop.spec_decr_nat (fun x => x.1.iter.end.val)
+    (fun x => x.1.iter.start.val = 0 ∧ x.1.iter.end.val ≤ 8 ∧
+      (feNat x.2.1 < p256 ∧ dec (feNat x.2.1) = (∏ t ∈ Finset.range x.1.iter.end.val, zv pts t)⁻¹) ∧
+      ∀ j, x.1.iter.end.val ≤ j → j < 8 → p256Represents2 (Ps j) (pairNat (x.2.2.val[j]!).xy.val))
+  · rintro ⟨it, iv, rr⟩ ⟨hs, he, ⟨hivl, hiv⟩, hrr⟩
+    simp only at hs he hivl hiv hrr ⊢
+    unfold mid.p256.JacobianMontPoint.public_batch_as_affine_loop1.body
+    have hrl : rr.val.length = 8 := rr.property
+    have hptl : pts.val.length = 8 := pts.property
+    have hprl : pre.val.length = 8 := pre.property
+    step as ⟨o, it1, hst, ho⟩
+    split_ifs at ho with hlt'
+    · obtain ⟨rfl, he1⟩ := ho
+      simp only
+      set i := it1.iter.end.val
+      have hi8 : i < 8 := by omega
+      step as ⟨jmp, hjmp⟩
+      step as ⟨fe, hfe⟩
+      have hjmp' : jmp = pts.val[i]! := by rw [hjmp, getElem_eq_getElem! _ _ (by omega)]
+      have hfe' : fe = pre.val[i]! := by rw [hfe, getElem_eq_getElem! _ _ (by omega)]
+      obtain ⟨hfel, hfev⟩ := hpre i hi8
+      rw [← hfe'] at hfel hfev
+      step with mont_mul_spec iv fe hivl hfel as ⟨fe1, hfe1⟩
+      have hzi : dec (feNat fe1) = (dec (tripleNat jmp.xyz.val).2.2)⁻¹ := by
+        rw [hfe1, dec_mont_mul, hiv, hfev, ← he1, Finset.prod_range_succ, hjmp']
+        have := zv_ne_zero pts Ps h i hi8
+        have hp : ∏ t ∈ Finset.range i, zv pts t ≠ 0 :=
+          Finset.prod_ne_zero_iff.mpr fun t ht => zv_ne_zero pts Ps h t (by simp at ht; omega)
+        field_simp
+      obtain ⟨hj1, hj2⟩ := h i hi8
+      rw [← hjmp'] at hj1
+      step with as_affine_by_spec jmp (Ps i) hj1 hj2 fe1 (by rw [hfe1]; exact hlt _) hzi as ⟨amp, hamp⟩
+      step as ⟨a, ha⟩
+      step as ⟨fz, hfz⟩
+      have hfzv : feNat fz = (tripleNat jmp.xyz.val).2.2 := by simp [tripleNat, feNat, hfz]
+      have hzl : feNat fz < p256 := by rw [hfzv]; exact (jrep_some _ _ hj1 hj2).2.2.1
+      step with mont_mul_spec iv fz hivl hzl as ⟨iv1, hiv1⟩
+      have hiv1v : dec (feNat iv1) = (∏ t ∈ Finset.range i, zv pts t)⁻¹ := by
+        rw [hiv1, dec_mont_mul, hiv, hfzv, ← he1, Finset.prod_range_succ, hjmp']
+        have := zv_ne_zero pts Ps h i hi8
+        have hp : ∏ t ∈ Finset.range i, zv pts t ≠ 0 :=
+          Finset.prod_ne_zero_iff.mpr fun t ht => zv_ne_zero pts Ps h t (by simp at ht; omega)
+        field_simp
+        try exact div_self this
+      have hfin : ∀ j, i ≤ j → j < 8 → p256Represents2 (Ps j) (pairNat (a.val[j]!).xy.val) := by
+        have hav : a.val = rr.val.set i amp := by rw [ha, Std.Array.set_val_eq]
+        intro j hj1' hj8
+        by_cases hji : j = i
+        · rw [hji]
+          have : a.val[i]! = amp := by
+            rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, hrl, hi8]
+          rw [this]; exact hamp
+        · have : a.val[j]! = rr.val[j]! := by
+            rw [hav]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_set, Ne.symm hji]
+          rw [this]; exact hrr j (by omega) hj8
+      have hit1 : it1.iter.start.val = 0 := by rw [hst]; exact hs
+      have hiv1l : feNat iv1 < p256 := by rw [hiv1]; exact hlt _
+      first | exact ⟨hit1, by omega, ⟨hiv1l, hiv1v⟩, hfin, by omega⟩ | exact ⟨hit1, by omega, hiv1l, hiv1v, hfin, by omega⟩
+    · rw [ho]
+      simp only [WP.spec_ok]
+      intro j hj; exact hrr j (by omega) hj
+  · exact ⟨hs, he, hinv, hr⟩
+
 /-! ## Raw verification, `VerifyingKey::raw_ecdsa_verify` -/
 
 /-- The odd multiples a key's cache builds: 17Q to 31Q, from its Q to 15Q. -/
