@@ -19,9 +19,14 @@ don't ask again (✅ is the chosen option):
   Swift, Zig, and C libraries are out: they need OpenSSL's breadth or FIPS,
   which [m4](/quest/m4/README.md) holds, and rind wins there only on
   asymmetric ECC.
+- opendal needs no quest: it already ships
+  `http-transport-reqwest-rustls-no-provider`
+  ([apache/opendal#7582](https://github.com/apache/opendal/pull/7582)), which
+  the [migration prompt](/quest/m1/migration-prompt.md) can turn on.
 - Big names on RustCrypto are marketing wins, since rind is several times
-  faster (on an i7-8700: RSA-2048 verify about 4.5x, P-256 sign and ECDH
-  about 5x, ChaCha20-Poly1305 per packet about 3x, AES-GCM about 2x): Deno,
+  faster ([BENCHMARKS.md](/BENCHMARKS.md)'s `nixos2`, an i7-8700: RSA-2048
+  verify about 4.7x, P-256 sign and ECDH about 5x, ChaCha20-Poly1305 per
+  packet about 3x, AES-GCM about 2x): Deno,
   Servo, Lemmy, tailscale-rs, snow's users, and Apache Iggy ✅. Deno is in
   for the marketing win though the maintainer considers it deprecated, and
   nothing is added to rind only for it. Considered and left out: RustFS
@@ -30,8 +35,8 @@ don't ask again (✅ is the chosen option):
   Bitwarden and Matrix (need wasm).
 - No rind-graviola ✅: build it only if big crates use graviola directly.
   None does; every notable graviola user (llrt, rusty-s3, wtx, oxish) picks it
-  with an optional feature, and Cargo cannot patch a renamed dependency, so
-  a `rind` feature beside theirs is the path.
+  with an optional feature, and `[patch]` cannot swap in a crate of another
+  name, so a `rind` feature beside theirs is the path.
 - Upstream PRs, issues, and discussions are outward-facing: each quest
   prepares the change and its text, then asks the maintainer before posting
   ✅ / starting the quest authorizes it. Posts carry the AI marker.
@@ -44,7 +49,7 @@ don't ask again (✅ is the chosen option):
   API and a second package with the popular library's interface ✅.
 - Whatever these consumers need from rind itself is planned now: the
   [WebCrypto set](/quest/m2/adoption/webcrypto/README.md), platform coverage,
-  and [RSA-2048 speed](/quest/m2/speed/rsa-2048.md) in the speed epic.
+  and [RSA-2048 speed](/quest/m2/speed/x86-rsa2048-sign.md) in the speed epic.
 
 ## Required
 
@@ -67,7 +72,6 @@ don't ask again (✅ is the chosen option):
 - [rind for Dart and Flutter](/quest/m2/adoption/rind-dart.md) - the `rind` package on pub.dev
 - [rind as a Dart `cryptography` backend](/quest/m2/adoption/rind-dart-cryptography.md) - the `cryptography` package's interface on rind
 - [Apache Iggy encrypts streams with rind](/quest/m2/adoption/iggy.md) - its AES-256-GCM message encryption on rind
-- [opendal builds rustls without a provider](/quest/m2/adoption/opendal.md) - a provider-neutral rustls feature
 - [librespot builds rustls without ring](/quest/m2/adoption/librespot.md) - users pick their rustls provider
 - [rind-rustls supports rustls 0.24](/quest/m2/adoption/rind-rustls-0.24.md) - a release on 0.24 soon after it ships
 - [rustls 0.24 is released](/quest/m2/adoption/rustls-0.24-release.md) - waiting on the release

@@ -8,8 +8,9 @@ consumer needs it.
 
 ## Plan
 
-- Decryption reports a padding failure the same way, and in the same time, as
-  any other failure, so it is no padding oracle. CBC is unauthenticated; the
-  docs say to pair it with a MAC.
+- Decryption checks the padding in constant time and reports its failure as
+  any other failure. That leaks nothing beyond the result, but unauthenticated
+  CBC is still a padding oracle to anyone who can submit ciphertexts, so the
+  docs say to verify a MAC over the ciphertext first, or use an AEAD.
 - Encryption is serial, decryption parallel: take the fastest permissive
   source per backend (aws-lc's assembly where it exists).

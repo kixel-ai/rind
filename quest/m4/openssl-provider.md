@@ -15,7 +15,9 @@ Planned by the maintainer on 2026-11-04 in m4.
 - OpenSSL's property queries pick the provider per algorithm at fetch time,
   set by configuration: that is a choice made at setup, not a runtime
   fallback, so the default provider keeps every algorithm rind does not
-  register.
+  register. The documented `openssl.cnf` activates `default` beside rind,
+  since activating any provider stops OpenSSL loading it implicitly, and
+  prefers rind with `default_properties = ?provider=rind`.
 - Register only what measures faster, on `openssl speed` and on a Node and a
   Python workload, and keys must round-trip through OpenSSL's encoders and
   decoders so mixed use works.

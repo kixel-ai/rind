@@ -12,7 +12,7 @@ Decided with the maintainer on 2026-11-04, in a planning interview.
 
 - Servo is moving its WebCrypto from aws-lc-rs to RustCrypto for one Rust
   ecosystem ([servo/servo#49215](https://github.com/servo/servo/issues/49215)),
-  and RustCrypto's pbkdf2 already times out in WPT
+  and RustCrypto's pbkdf2 already times out in WPT in unoptimized builds
   ([servo/servo#49227](https://github.com/servo/servo/pull/49227)). The pitch
   is pure Rust at aws-lc's speed. Read #49215's reasons first: if they rule
   out a second library, raise it before building anything.

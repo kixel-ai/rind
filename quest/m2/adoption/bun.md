@@ -6,7 +6,7 @@ A PR to [Bun](https://github.com/oven-sh/bun), with numbers, moves the
 operations where rind is clearly faster than Bun's BoringSSL onto rind:
 Ed25519 and X25519, and ECDSA and ECDH on P-384 and P-521, in WebCrypto and
 node:crypto, plus SHA-3 in `CryptoHasher`, which Bun takes from RustCrypto
-today.
+today. `sha3-224`, outside aws-lc-rs's set, stays on RustCrypto.
 
 ## Plan
 
@@ -14,11 +14,12 @@ Decided with the maintainer on 2026-11-04: a prototype PR with measurements
 ✅ / an issue asking first / only new APIs such as `Bun.jwt`. Posting it is
 the maintainer's call; prepare the branch and the PR text, then ask.
 
-- Bun is Rust since v1.4 ([oven-sh/bun#30412](https://github.com/oven-sh/bun/pull/30412)),
-  so rind is a plain crate dependency. BoringSSL stays for TLS and everything
+- Bun is Rust since its rewrite from Zig
+  ([oven-sh/bun#30412](https://github.com/oven-sh/bun/pull/30412), merged in
+  May 2026), so rind is a plain crate dependency. BoringSSL stays for TLS and everything
   else.
 - Move an operation only where rind measures faster on Bun's own targets; on
-  an i7-8700, rind's Ed25519 signs about 3x faster than ring's BoringSSL code,
+  an i7-8700, rind's Ed25519 signs about 3x faster than BoringSSL,
   and P-384 about 9x. P-256 is near parity and stays unless it measures
   ahead.
 - The hard part is keys: node:crypto passes `EVP_PKEY` through ncrypto, so

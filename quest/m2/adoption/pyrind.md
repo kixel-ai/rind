@@ -22,7 +22,9 @@ Decided with the maintainer on 2026-11-04, in a planning interview:
 
 Guidance:
 
-- Use the stable ABI (abi3) so one wheel per platform covers every Python;
+- Use the stable ABI (abi3) so one wheel per platform covers every CPython
+  from the oldest still supported; PyPy cannot load abi3 wheels, so decide
+  when starting whether it gets its own wheels or the sdist;
   publish with PyPI trusted publishing, keeping release credentials as the
   [m0 credentials quest](/quest/m0/confine-release-credentials.md) decides.
 - Measure per-call cost from Python against `cryptography`, `hashlib`, and

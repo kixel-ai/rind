@@ -48,6 +48,65 @@ opaque low.x86_64.sha512.compress_avx
 opaque low.x86_64.sha512.compress_nohw
   : Array Std.U64 8#usize → Slice Std.U8 → Result (Array Std.U64 8#usize)
 
+/-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
+
+opaque low.x86_64.edwards25519_decode.edwards25519_decode
+  :
+  Array Std.U64 8#usize → Array Std.U8 32#usize → Result (Bool × (Array
+    Std.U64 8#usize))
+
+opaque low.x86_64.edwards25519_scalarmulbase.edwards25519_scalarmulbase
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Result (Array Std.U64
+    8#usize)
+
+opaque low.x86_64.edwards25519_scalarmuldouble.edwards25519_scalarmuldouble
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
+    Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
+
+opaque low.x86_64.bignum_madd_n25519.bignum_madd_n25519
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.edwards25519_decode_alt.edwards25519_decode_alt
+  :
+  Array Std.U64 8#usize → Array Std.U8 32#usize → Result (Bool × (Array
+    Std.U64 8#usize))
+
+opaque low.x86_64.edwards25519_scalarmulbase_alt.edwards25519_scalarmulbase_alt
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Result (Array Std.U64
+    8#usize)
+
+opaque low.x86_64.edwards25519_scalarmuldouble_alt.edwards25519_scalarmuldouble_alt
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
+    Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
+
+opaque low.x86_64.bignum_madd_n25519_alt.bignum_madd_n25519_alt
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.bignum_mod_n25519.bignum_mod_n25519
+  : Array Std.U64 4#usize → Slice Std.U64 → Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.bignum_neg_p25519.bignum_neg_p25519
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64
+    4#usize)
+
+opaque low.x86_64.bignum_cmp_lt.bignum_cmp_lt
+  : Slice Std.U64 → Slice Std.U64 → Result Std.U64
+
+/-! The wipe a drop runs, which no theorem calls. -/
+
+opaque low.generic.zeroise.zeroise
+  {T : Type _} (ZeroableInst : low.generic.zeroise.Zeroable T) :
+  Slice T → Result (Slice T)
+
 /-! The entry guard and CPU dispatch, which read no input. -/
 
 opaque low.entry.Entry.new_secret : Result low.entry.Entry
@@ -62,6 +121,32 @@ opaque low.x86_64.sha512.avx : Result (Option low.x86_64.cpu.HaveAvx)
 opaque low.x86_64.cpu.HaveBmi2Adx.check
   : Result (Option low.x86_64.cpu.HaveBmi2Adx)
 
+/-- The SHA-256 routine the CPU runs, picked once. -/
+opaque low.x86_64.sha256_mux.path : Result low.x86_64.sha256_mux.Path
+
+/-! SHA-1 and SHA-256's block functions, whose contracts `Rind.X86_64.ShaBlocks`
+states as hypotheses. SHA-1's dispatch caches its pick in a `OnceLock`, which
+Aeneas cannot translate. -/
+
+opaque low.x86_64.sha1_mux.sha1_compress_blocks
+  : Array Std.U32 5#usize → Slice Std.U8 → Result (Array Std.U32 5#usize)
+
+opaque low.x86_64.sha256.sha256_compress_blocks_shaext
+  : Array Std.U32 8#usize → Slice Std.U8 → Slice Std.U8 → low.x86_64.cpu.HaveSha256 →
+    Result (Array Std.U32 8#usize)
+
+opaque low.x86_64.sha256.sha256_compress_blocks_avx
+  : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.cpu.HaveAvx → Result (Array Std.U32 8#usize)
+
+opaque low.x86_64.sha256.sha256_compress_blocks_avx2
+  : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.cpu.HaveAvx2 → Result (Array Std.U32 8#usize)
+
+opaque low.x86_64.sha256.sha256_compress_blocks_ssse3
+  : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.cpu.HaveSsse3 →
+    Result (Array Std.U32 8#usize)
+
+opaque low.x86_64.sha256.sha256_compress_blocks_nohw
+  : Array Std.U32 8#usize → Slice Std.U8 → Result (Array Std.U32 8#usize)
 
 /-! The other curves, which X25519's results never depend on. -/
 
@@ -106,62 +191,6 @@ opaque mid.p256.PrivateKey.diffie_hellman
 
 opaque mid.p256.PublicKey.from_x962_uncompressed
   : Slice Std.U8 → Result (core.result.Result mid.p256.PublicKey error.Error)
-
-/-! SHA-1 and SHA-256, which no theorem is about. -/
-
-opaque high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.ALGORITHM
-  : Result high.digest.Algorithm
-
-opaque high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.initial
-  : Result high.hash.Sha1State
-
-opaque high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.new
-  : Result high.hash.Sha1Context
-
-opaque high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State.zeroed_block
-  : Result high.hash.HashBlock
-
-opaque high.hash.Sha1Context.Insts.RindHighHashHashContext.update
-  : high.hash.Sha1Context → Slice Std.U8 → Result high.hash.Sha1Context
-
-opaque high.hash.Sha1Context.Insts.RindHighHashHashContext.finish
-  : high.hash.Sha1Context → Result high.digest.Digest
-
-opaque high.hash.Sha1State.Insts.RindHighHashHashStateSha1Context.update_blocks
-  : high.hash.Sha1State → Slice Std.U8 → Result high.hash.Sha1State
-
-opaque high.hash.Sha1State.Insts.RindHighHashHashStateSha1Context.finish_with
-  : high.hash.Sha1State → Slice Std.U8 → Result high.digest.Digest
-
-opaque high.hash.Sha1State.Insts.RindHighHashHashStateSha1Context.resume
-  : high.hash.Sha1State → Result high.hash.Sha1Context
-
-opaque high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.ALGORITHM
-  : Result high.digest.Algorithm
-
-opaque high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.initial
-  : Result high.hash.Sha256State
-
-opaque high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.new
-  : Result high.hash.Sha256Context
-
-opaque high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.zeroed_block
-  : Result high.hash.HashBlock
-
-opaque high.hash.Sha256Context.Insts.RindHighHashHashContext.update
-  : high.hash.Sha256Context → Slice Std.U8 → Result high.hash.Sha256Context
-
-opaque high.hash.Sha256Context.Insts.RindHighHashHashContext.finish
-  : high.hash.Sha256Context → Result high.digest.Digest
-
-opaque high.hash.Sha256State.Insts.RindHighHashHashStateSha256Context.update_blocks
-  : high.hash.Sha256State → Slice Std.U8 → Result high.hash.Sha256State
-
-opaque high.hash.Sha256State.Insts.RindHighHashHashStateSha256Context.finish_with
-  : high.hash.Sha256State → Slice Std.U8 → Result high.digest.Digest
-
-opaque high.hash.Sha256State.Insts.RindHighHashHashStateSha256Context.resume
-  : high.hash.Sha256State → Result high.hash.Sha256Context
 
 /-! AES, whose header protection no proof covers. -/
 

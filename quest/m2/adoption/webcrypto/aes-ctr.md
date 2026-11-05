@@ -3,8 +3,10 @@
 ## Goal
 
 rind applies AES-CTR over WebCrypto's 16-byte counter block, incrementing
-only its rightmost `length` bits (1 to 128) and refusing a message that would
-wrap them, as WebCrypto's `AesCtrParams` and pyca's `modes.CTR` define it.
+only its rightmost `length` bits (1 to 128) and wrapping them within those
+bits, as WebCrypto's `AesCtrParams` and pyca's `modes.CTR` define it. It
+refuses a message longer than 2^`length` blocks, which would repeat a counter
+block, as Chromium does; the spec sets no limit.
 
 ## Plan
 

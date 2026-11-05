@@ -12,6 +12,12 @@ the random source, whose draw the functional spec leaves out, and for
 `core::array::from_fn`, which only AES's header protection calls.
 -/
 
+/-- `Option::and_then`. -/
+def core.option.Option.and_then {T U F : Type _}
+    (inst : core.ops.function.FnOnce F T (Option U)) : Option T → F → Result (Option U)
+  | none, _ => ok none
+  | some x, f => inst.call_once f x
+
 /-- `Result::ok`. -/
 def core.result.Result.ok {T E : Type _} :
     core.result.Result T E → Result (Option T)
@@ -67,6 +73,16 @@ def core.slice.SliceArray.as_flattened_mut {T : Type _} {N : Std.Usize} (s : Sli
           (by have := t.property; simp only [List.length_take, List.length_drop]; omega)))
         (by simp))
   else Std.Result.fail .panic
+
+/-- `bool::then_some`. -/
+def core.bool.Bool.then_some {T : Type _} (b : Bool) (t : T) : Result (Option T) :=
+  Std.Result.ok (if b then some t else none)
+
+/-- `<&[T] as PartialEq<[U; N]>>::eq`: the slice compared with the whole
+array, as slices. -/
+def Shared0Slice.Insts.CoreCmpPartialEqArray.eq {T U : Type _} {N : Std.Usize}
+    (inst : core.cmp.PartialEq T U) (s : Slice T) (a : Array U N) : Result Bool :=
+  core.slice.cmp.PartialEqSlice.eq inst s a.to_slice
 
 /-- `getrandom`'s error. -/
 opaque getrandom.error.Error : Type

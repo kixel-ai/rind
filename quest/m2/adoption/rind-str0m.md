@@ -10,7 +10,8 @@ without the slow RustCrypto path.
 ## Plan
 
 - Decided with the maintainer on 2026-11-04: this reverses the 2026-10-31
-  call that rind has no str0m adapter. That call held because MoQ vendors
+  call in the [MoQ epic](/quest/m1/moq/README.md) that rind has no str0m
+  adapter. That call held because MoQ vendors
   str0m and carries its own provider; str0m (2.9M downloads) is still the
   strongest Rust lead with a hook rind can fill without upstream changes.
 - Build it on rind-dimpl for DTLS, with SRTP's AES-GCM and AES-CM on rind.

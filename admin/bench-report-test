@@ -6,6 +6,7 @@ Usage: admin/bench-report-test
 
 import importlib.machinery
 import importlib.util
+import json
 import os
 import re
 import sys
@@ -143,9 +144,12 @@ class Render(unittest.TestCase):
         svg = br.overview_svg(hosts(), VERIFIED, "light")
         titles = squares(svg)
         # nixos: x25519 3 + aes 2; nixos2: aes 2; kixtop: x25519 2; desktop
-        # unmeasured: one outline per library and operation.
-        self.assertEqual(sum("not measured" not in t for t in titles), 9)
-        self.assertEqual(sum(t == "desktop: not measured" for t in titles), len(br.OPERATIONS) * len(br.COLUMNS))
+        # is unmeasured, so it has no squares.
+        self.assertEqual(len(titles), 9)
+        self.assertIn("left to right: nixos, nixos2, kixtop.", svg)
+        # Only the libraries some host timed get a column.
+        self.assertIn(">OpenSSL<", svg)
+        self.assertNotIn(">graviola<", svg)
         self.assertIn("X25519, OpenSSL on nixos: 300.00 µs, 10.00× the fastest", titles)
         self.assertIn("X25519, ring on nixos: 33.00 µs, 1.10× the fastest; verified: any-arch proof", titles)
 
@@ -178,23 +182,31 @@ class Render(unittest.TestCase):
         self.assertEqual(len(cells), 2)
 
     def test_report_states_what_is_not_measured(self):
-        files = br.report(hosts(), None, VERIFIED)
+        files = br.report(hosts(), None, VERIFIED, [])
         md = files[br.REPORT]
-        self.assertIn("| `desktop` | | | not measured yet |", md)
+        self.assertIn("on three machines", md)
+        self.assertIn("Not timed on `kixtop`: full handshake, X25519MLKEM768, ", md)
+        self.assertIn("Not measured yet: `desktop`.", md)
+        self.assertNotIn("`desktop` |", md)
         self.assertIn("No nightly results yet.", md)
         self.assertEqual(
             sorted(os.path.basename(p) for p in files if p.endswith(".svg")),
             sorted(f"{n}{s}.svg" for n in ["overview", "nixos", "nixos2", "kixtop"] for s in ["", "-dark"]),
         )
-        self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | - | - | - | 300.00 µs |", md)
+        self.assertIn("| Operation | rind | aws-lc-rs | ring | OpenSSL |", md)
+        self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | 300.00 µs |", md)
 
     def test_svgs_are_well_formed(self):
         import xml.etree.ElementTree as ET
 
-        files = br.report(hosts(), TIERS, VERIFIED)
-        for path, content in files.items():
-            if path.endswith(".svg"):
-                ET.fromstring(content)
+        everyone = hosts()
+        for names in [list(everyone), ["nixos2"], []]:
+            files = br.report({n: everyone[n] for n in names}, TIERS, VERIFIED, [])
+            with self.subTest(hosts=names):
+                self.assertEqual("## Speed" in files[br.REPORT], bool(names))
+                for path, content in files.items():
+                    if path.endswith(".svg"):
+                        ET.fromstring(content)
 
 
 class Verified(unittest.TestCase):
@@ -239,6 +251,65 @@ class Verified(unittest.TestCase):
 
     def test_checked_in_table_loads(self):
         br.load_verified()
+
+
+class Gaps(unittest.TestCase):
+    def setUp(self):
+        # X25519 is 1.5x ring's on nixos, and SHA-256 at 64 B 1.25x ring's on
+        # the x86_64 tier; the rest stay within 10%.
+        self.hosts = hosts()
+        self.hosts["nixos"]["results"][1]["ns"] = 20000.0
+        self.tiers = {**TIERS, "tiers": [dict(t) for t in TIERS["tiers"]]}
+        self.tiers["tiers"][0]["benchmarks"] = {"sha256/*/64B": {"rind": 100.0, "ring": 80.0}}
+
+    def load(self, *entries):
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
+            f.write("".join("[[gap]]\n" + "".join(f"{k} = {v}\n" for k, v in e.items()) for e in entries))
+        try:
+            return br.load_gaps(self.hosts, self.tiers, f.name)
+        finally:
+            os.unlink(f.name)
+
+    X25519 = {"operations": '["x25519-ecdh"]', "on": '["nixos"]', "quest": '"/quest/m2/speed/README.md"'}
+    SHA256 = {"operations": '["sha256/*/64B"]', "on": '["x86_64"]', "reason": '"r"'}
+
+    def test_every_gap_needs_a_decision(self):
+        gaps = self.load(self.X25519, self.SHA256)
+        self.assertEqual([round(r, 2) for _, c in gaps for r, _ in c.values()], [1.5, 1.25])
+        table = "\n".join(br.gap_table(gaps))
+        self.assertIn("| X25519 | `nixos` | 1.50× (ring) | [Fastest at every algorithm](quest/m2/speed/README.md) |", table)
+        self.assertIn("| `sha256/*/64B` | x86_64 tier | 1.25× (ring) | r |", table)
+        for entries in [[self.X25519], [self.SHA256], []]:
+            with self.subTest(entries=entries), self.assertRaises(SystemExit):
+                self.load(*entries)
+
+    def test_refuses_an_entry_that_is_no_gap(self):
+        for extra in [
+            {"operations": '["x25519-ecdh"]', "on": '["kixtop"]', "reason": '"r"'},
+            {"operations": '["aes256-gcm/16KB"]', "on": '["nixos"]', "reason": '"r"'},
+            {"operations": '["sha256/*/16KB"]', "on": '["x86_64"]', "reason": '"r"'},
+            {"operations": '["x25519-ecdh"]', "on": '["desktop"]', "reason": '"r"'},
+        ]:
+            with self.subTest(extra=extra), self.assertRaises(SystemExit):
+                self.load(self.X25519, self.SHA256, extra)
+
+    def test_refuses_a_malformed_entry(self):
+        for fields in [
+            {"quest": '"/quest/m2/speed/missing.md"'},
+            {"quest": '"/README.md"'},
+            {"reason": '"r"'},
+            {"quest": None},
+            {"on": None},
+            {"host": '"nixos"'},
+        ]:
+            entry = {k: v for k, v in {**self.X25519, **fields}.items() if v is not None}
+            with self.subTest(fields=fields), self.assertRaises(SystemExit):
+                self.load(entry, self.SHA256)
+
+    def test_checked_in_table_matches_the_data(self):
+        tiers = os.path.join(br.DATA_DIR, "tiers.json")
+        with open(tiers) as f:
+            br.load_gaps(br.load_hosts(br.DATA_DIR), json.load(f))
 
 
 if __name__ == "__main__":

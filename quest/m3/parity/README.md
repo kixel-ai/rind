@@ -21,8 +21,9 @@ Decided by the maintainer on 2026-10-30:
   `rind-ring`, which panics wherever ring panics so its signatures match
   ring's (maintainer, 2026-10-31); rind itself never panics on caller input.
 - ring's algorithm set first. aws-lc-rs's extras wait for a consumer.
-- FIPS validation and an OpenSSL provider, once out of reach, are planned in
-  [m4](/quest/m4/README.md) (maintainer, 2026-11-04).
+- An OpenSSL provider, once out of reach, is planned in
+  [m4](/quest/m4/README.md), and FIPS validation scoped there (maintainer,
+  2026-11-04).
 - Each new primitive follows `AGENTS.md`: a verified source where one
   exists, Wycheproof vectors, differential tests against aws-lc-rs, ctgrind,
   and a benchmark, on every backend.

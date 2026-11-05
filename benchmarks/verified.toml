@@ -34,16 +34,16 @@
 # graviola has none. Its X25519 and Ed25519 run only s2n-bignum's verified
 # routines, but convert between bytes and limbs in unverified Rust.
 #
-# rind: X25519, P-256 ECDH on aarch64, and SHA-512 where its block routine's
-# proof states the routine's result, whose Rust `proofs/` proves against
-# s2n-bignum's and aws-lc-verification's theorems, and ChaCha20 header
-# protection, whose Rust `proofs/` proves against RFC 8439, HACL*'s rounds
-# included. On aarch64 with the SHA-512 instructions, NSym's proof of aws-lc's
-# routine for them asserts the digest in registers before the store to the
-# state, and on AMD's x86_64 CPUs rind runs aws-lc's unproven scalar routine.
-# Its Ed25519 also runs only s2n-bignum's routines, under unverified Rust that
-# clamps, encodes points, and composes SHA-512. Every other rind operation
-# runs unverified code too, such as SHA-256's block function or x86_64 P-256
+# rind: X25519, P-256 ECDH on aarch64, and SHA-512 and Ed25519 where the
+# SHA-512 block routine's proof states the routine's result, whose Rust
+# `proofs/` proves against s2n-bignum's and aws-lc-verification's theorems,
+# and ChaCha20 header protection, whose Rust `proofs/` proves against RFC
+# 8439, HACL*'s rounds included. On aarch64 with the SHA-512 instructions,
+# NSym's proof of aws-lc's routine for them asserts the digest in registers
+# before the store to the state, and on AMD's x86_64 CPUs rind runs aws-lc's
+# unproven scalar routine, so neither SHA-512 nor Ed25519 earns the ✓ there.
+# Every other rind operation runs unverified code, such as SHA-256's block
+# function, under padding and HMAC glue that `proofs/` proves, or x86_64 P-256
 # ECDH's Jacobian-to-affine conversion.
 [[verified]]
 library = "rind"
@@ -77,9 +77,25 @@ link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha512.lean
 
 [[verified]]
 library = "rind"
+operations = ["ed25519-sign", "ed25519-verify"]
+arch = "x86_64"
+cpu = ["intel", "avx", "ssse3"]
+proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key loading, signing, and verification, small-order key refusal included, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel, composed with s2n-bignum's HOL Light proofs of edwards25519_decode, edwards25519_scalarmulbase, edwards25519_scalarmuldouble, bignum_madd_n25519, their _alt forms without BMI2 and ADX, bignum_mod_n25519, bignum_neg_p25519, bignum_lt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, and aws-lc-verification's SAW proof of that SHA-512 routine"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Ed25519.lean"
+
+[[verified]]
+library = "rind"
+operations = ["ed25519-sign", "ed25519-verify"]
+arch = "aarch64"
+cpu = ["!sha3"]
+proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key loading, signing, and verification, small-order key refusal included, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_nohw, which rind runs without the SHA-512 instructions, composed with s2n-bignum's HOL Light proofs of edwards25519_decode_alt, edwards25519_scalarmulbase_alt, edwards25519_scalarmuldouble_alt, bignum_madd_n25519_alt, bignum_mod_n25519, bignum_neg_p25519, bignum_lt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, and aws-lc-verification's NSym proof of that SHA-512 routine, with its ArmSpecGap caveat"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Ed25519.lean"
+
+[[verified]]
+library = "rind"
 operations = ["p256-ecdh"]
 arch = "aarch64"
-proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, and bignum_eq, of s2n-bignum's own object code, which rind transliterates; assuming, as s2n-bignum's proof does, that rind's generator table holds the multiples of G, which a test checks"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, with rind's generator table proven to hold the multiples of G that s2n-bignum's proof assumes"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/P256.lean"
 
 [[verified]]
