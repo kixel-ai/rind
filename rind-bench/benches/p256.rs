@@ -433,5 +433,12 @@ fn ecdsa_sign(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, ecdh, keygen, ecdsa_keygen, ecdsa_verify, ecdsa_sign);
+criterion_group!(
+    benches,
+    ecdh,
+    keygen,
+    ecdsa_keygen,
+    ecdsa_verify,
+    ecdsa_sign
+);
 criterion_main!(benches);
