@@ -40,6 +40,19 @@ lives in [`quest/`][quests]. Coming from ring or [aws-lc-rs]?
 [MIGRATING.md][migrating] maps their API to rind's, and [rind-ring][] offers
 ring's API as is.
 
+## Migrating with an agent
+
+Paste this into your coding agent, in your repository:
+
+```text
+Move this repository from ring or aws-lc-rs to rind, following
+https://raw.githubusercontent.com/moq-dev/rind/main/MIGRATE.md
+```
+
+It migrates on a local branch, reports the build time, binary size,
+benchmarks, and tests before and after, and asks before opening a PR or
+filing an issue.
+
 ## Built on great work
 
 **[Graviola] is an outstanding project.** Joe Birr-Pixton and its

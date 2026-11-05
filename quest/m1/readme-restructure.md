@@ -18,7 +18,7 @@ don't ask again (✅ is the chosen option):
   [moq-dev/rind#341](https://github.com/moq-dev/rind/pull/341), so that
   quest's PR finishes against an unchanged target ✅ / one quest owns the
   whole README.
-- Migration: the README carries the [migration prompt](/quest/m1/migration-prompt.md)
+- Migration: the README carries the [migration prompt](/MIGRATE.md)
   as is.
 - Contributing: the README says AI reviews and contributions are welcome:
   run `/quest-plan` to propose a change, or `/quest-start` to take a backlog
@@ -31,7 +31,3 @@ Guidance:
 - The moved sections keep their content, and the Algorithms table keeps its
   sources and ✓ columns. Pick the files and names; fix every link into the
   moved sections, including from quests, `MIGRATING.md`, and crate READMEs.
-
-## Required
-
-- [A prompt migrates a repo to rind](/quest/m1/migration-prompt.md) - the copy-paste prompt the README carries

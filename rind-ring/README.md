@@ -43,7 +43,7 @@ And these behave differently:
 - A `error::KeyRejected`'s `Display` gives rind's reason, not ring's
   name for it, which ring documents as changing between releases.
 - rind panics on a CPU missing a feature it requires, and ring's
-  signatures have no way to report one, so call `rind::cpu::check()` at
-  startup.
+  signatures have no way to report one, so call `cpu::check()` at
+  startup. `cpu` is rind's own, which ring lacks.
 
 License: Apache-2.0 OR ISC OR MIT-0
