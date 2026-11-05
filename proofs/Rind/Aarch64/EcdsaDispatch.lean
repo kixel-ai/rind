@@ -68,7 +68,9 @@ impl<const N: usize> Buffer<N> {
 
     /// Runs `write`, which writes to the start of its argument and returns
     /// the written span.
-    fn write(write: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Result<Self, Error> {
+    pub(super) fn write(
+        write: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>,
+    ) -> Result<Self, Error> {
         let mut buffer = Self::new();
         buffer.len = write(&mut buffer.bytes)?.len();
         Ok(buffer)
@@ -88,7 +90,7 @@ impl<const N: usize> Buffer<N> {
     ///
     /// Every `N` holds the encoding of the largest key a loader accepts, so
     /// an encoder that runs out of room is a bug in rind, not bad input.
-    fn encode(encode: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Self {
+    pub(super) fn encode(encode: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Self {
         Self::write(encode).expect("sized for the largest key")
     }
 }
