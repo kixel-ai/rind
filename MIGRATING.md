@@ -29,7 +29,7 @@ renames [rind-ring](#rind-ring), ring's API on rind, to `ring`.
 | `Algorithm::output_len()` | the same |
 | `Algorithm::block_len()`, `chaining_len()`, `MAX_BLOCK_LEN`, `MAX_CHAINING_LEN`, `MAX_OUTPUT_LEN`, `SHA*_OUTPUT_LEN` | none; `output_len()` gives each length |
 | `Context::algorithm()`, `Digest::algorithm()` | none |
-| `Digest::import_less_safe` | none |
+| `Digest::import_less_safe` | none: rind signs and verifies only digests it computed |
 
 ## hmac
 
@@ -168,7 +168,8 @@ ring has no `kem`.
 | `UnparsedPublicKey::new(alg, bytes).verify(m, s)` | `PublicKey::new(alg, bytes)?.verify(m, s)` |
 | `UnparsedPublicKey::parse`, `ParsedPublicKey::new(alg, bytes)`, `verify_sig` | `PublicKey::new(alg, bytes)`, `verify` |
 | `RsaPublicKeyComponents::verify(alg, m, s)`, `to_parsed_public_key(alg)` | `components.to_public_key(alg)?.verify(m, s)` |
-| `verify_digest`, `verify_digest_sig`, `sign_digest` | none: rind hashes the message itself |
+| `UnparsedPublicKey::verify_digest`, `ParsedPublicKey::verify_digest_sig`, `EcdsaKeyPair::sign_digest`, for ECDSA | `PublicKey::verify_digest`, `EcdsaKeyPair::sign_digest`, with SHA-256, SHA-384, or SHA-512; the digest's hash replaces the algorithm's, where aws-lc-rs refuses a mismatch |
+| `verify_digest` and `sign_digest` for RSA, and `verify_digest` for Ed25519 | none: `Error::Unsupported` |
 | `ParsedPublicKey::algorithm()`, `as_der()` | none; the key's bytes through `AsRef<[u8]>`, or a key pair's `to_spki()` |
 | `VerificationAlgorithm` trait, `EcdsaVerificationAlgorithm`, `EdDSAParameters` | `VerificationAlgorithm` |
 | `RsaParameters` | `RsaVerificationAlgorithm`, which `PublicKey::new` also takes |
@@ -180,7 +181,7 @@ ring has no `kem`.
 | `EcdsaSigningAlgorithm`, `RsaEncoding`, `RsaSignatureEncoding` | `EcdsaSigningAlgorithm`, `RsaSigningAlgorithm` |
 | `ECDSA_P256_SHA256_ASN1_SIGNING` and the other `_SIGNING` | `sign::ECDSA_P256_SHA256_ASN1` |
 | `ECDSA_P256_SHA256_ASN1`, `ED25519`, and the other verification constants | `verify::ECDSA_P256_SHA256_ASN1`, `verify::ED25519` |
-| ECDSA signing, or `_FIXED`, with another SHA-2 hash than the curve's own | none; [ECDSA over any curve and hash](quest/m2/adoption/webcrypto/ecdsa-pairings.md) |
+| ECDSA signing, or `_FIXED`, with another SHA-2 hash than the curve's own | `sign_digest(&digest::digest(&SHA384, m))` and `verify_digest`, with the curve's own constant for the encoding |
 | ECDSA with SHA-1, SHA-224, or SHA-3, or on secp256k1 (`P256K1`) | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | `RSA_PKCS1_SHA256`, `RSA_PSS_SHA256`, and their SHA-384 and SHA-512 | `sign::RSA_PKCS1_SHA256`, `sign::RSA_PSS_SHA256`, and so on |
 | `RSA_PKCS1_2048_8192_SHA256`, `RSA_PSS_2048_8192_SHA256`, and their SHA-384 and SHA-512 | `verify::RSA_PKCS1_SHA256`, `verify::RSA_PSS_SHA256`, and so on |
@@ -288,6 +289,7 @@ aws-lc-rs's `error::Unspecified` and `error::KeyRejected` become one
 | `Unspecified`, from `SystemRandom::fill` or `generate` | `Error::RngFailed` |
 | `Unspecified`, from `constant_time::verify_slices_are_equal` | `Error::NotEqual` |
 | `Unspecified`, from RSA signing or ECDH when an internal check fails | `Error::Fault` |
+| `Unspecified`, from `sign_digest` or `verify_digest` with a digest's hash or key the call does not take | `Error::Unsupported` |
 
 ## cpu
 
@@ -329,7 +331,7 @@ panics on a CPU missing a feature it requires, so every adapter entry point
 that is a function refuses one with `rind::cpu::MissingFeature` instead. A
 static that the upstream crate requires, such as `DEFAULT_PROVIDER`, cannot,
 and neither can rind-ring, whose signatures are ring's, so call
-`rind::cpu::check()` before using them.
+`rind::cpu::check()`, or rind-ring's `cpu::check()`, before using them.
 
 ### rind-ring
 
@@ -338,7 +340,9 @@ in with `ring = { package = "rind-ring", version = "0.1" }` and no code
 changes. The rename reaches only that crate: a dependency that names ring,
 such as rustls with its `ring` feature, still builds ring, since Cargo cannot
 patch it with a crate of another name. It panics wherever ring panics, so
-its signatures stay ring's. Its [README](rind-ring/README.md) lists the
+its signatures stay ring's, and adds rind's `cpu` module, so the renamed
+crate refuses an unsupported CPU with `ring::cpu::check()` without depending
+on rind. Its [README](rind-ring/README.md) lists the
 items it leaves out and the inputs it refuses where ring takes them.
 
 ### rind-rustls
@@ -419,9 +423,9 @@ install ring's if nothing is installed first.
 | tokio-rustls 0.26, futures-rustls 0.26 | default `aws_lc_rs` | **rind-rustls**: `default-features = false`, `logging`, `tls12` |
 | hyper-rustls 0.27 | default `aws-lc-rs` | **rind-rustls**: `default-features = false` and a `with_provider_and_*` builder; `with_native_roots()` and its siblings need ring or aws-lc-rs |
 | reqwest 0.13 | default `rustls` is aws-lc-rs | **rind-rustls**: `rustls-no-provider`, install. `http3` always enables aws-lc-rs |
-| ureq 3 | default `rustls` is ring | **rind-rustls**: `rustls-no-provider` (marked unstable) and a roots feature |
+| ureq 3 | default `rustls` is ring | **rind-rustls**: `rustls-no-provider` (marked unstable) and `rustls-webpki-roots`, or `platform-verifier` with the agent's roots set to `RootCerts::PlatformVerifier`, install |
 | axum-server 0.8 | `tls-rustls` is aws-lc-rs | **rind-rustls**: `tls-rustls-no-provider`, install |
-| actix-web 4, actix-tls 3 | none | **rind-rustls**: `rustls-0_23`, with a config built on rind-rustls |
+| actix-web 4, actix-tls 3, awc 3 | none | **rind-rustls**: `rustls-0_23`, with a server config built on rind-rustls; awc's default client needs `rustls-0_23-webpki-roots` or `rustls-0_23-native-roots`, install |
 | tonic 0.14 | `tls-ring`, `tls-aws-lc` | **rind-rustls**: `tls-native-roots` or `tls-webpki-roots` alone (a server-only build needs `_tls-any`), install |
 | tungstenite 0.30, tokio-tungstenite 0.30 | none | **rind-rustls**: a `rustls-tls-*-roots` feature, install |
 | tokio-websockets 0.13 | handshake SHA-1 from ring, aws-lc-rs, or OpenSSL | **rind-rustls**: `sha1_smol` and `rustls-bring-your-own-connector` |

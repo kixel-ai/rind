@@ -391,6 +391,97 @@ fn test_verify_ecdsa() {
 }
 
 #[test]
+fn test_verify_ecdsa_digest() {
+    use rind::digest::{self, SHA256, SHA384, SHA512};
+
+    // Each file whose curve rind has and whose hash its signatures take,
+    // with an algorithm for its curve and encoding: the digest names the hash.
+    for (file, algorithm, hash) in [
+        (
+            "ecdsa_secp256r1_sha256_p1363_test.json",
+            &verify::ECDSA_P256_SHA256_FIXED,
+            &SHA256,
+        ),
+        (
+            "ecdsa_secp256r1_sha256_test.json",
+            &verify::ECDSA_P256_SHA256_ASN1,
+            &SHA256,
+        ),
+        (
+            "ecdsa_secp256r1_sha512_p1363_test.json",
+            &verify::ECDSA_P256_SHA256_FIXED,
+            &SHA512,
+        ),
+        (
+            "ecdsa_secp256r1_sha512_test.json",
+            &verify::ECDSA_P256_SHA256_ASN1,
+            &SHA512,
+        ),
+        (
+            "ecdsa_secp384r1_sha256_test.json",
+            &verify::ECDSA_P384_SHA384_ASN1,
+            &SHA256,
+        ),
+        (
+            "ecdsa_secp384r1_sha384_p1363_test.json",
+            &verify::ECDSA_P384_SHA384_FIXED,
+            &SHA384,
+        ),
+        (
+            "ecdsa_secp384r1_sha384_test.json",
+            &verify::ECDSA_P384_SHA384_ASN1,
+            &SHA384,
+        ),
+        (
+            "ecdsa_secp384r1_sha512_p1363_test.json",
+            &verify::ECDSA_P384_SHA384_FIXED,
+            &SHA512,
+        ),
+        (
+            "ecdsa_secp384r1_sha512_test.json",
+            &verify::ECDSA_P384_SHA384_ASN1,
+            &SHA512,
+        ),
+        (
+            "ecdsa_secp521r1_sha512_p1363_test.json",
+            &verify::ECDSA_P521_SHA512_FIXED,
+            &SHA512,
+        ),
+        (
+            "ecdsa_secp521r1_sha512_test.json",
+            &verify::ECDSA_P521_SHA512_ASN1,
+            &SHA512,
+        ),
+    ] {
+        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
+            .unwrap_or_else(|_| panic!("failed to open data file {}", file));
+
+        let reader = BufReader::new(data_file);
+        let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
+        let mut summary = Summary::new();
+
+        for group in tests.groups {
+            summary.group(&group);
+
+            let public_key =
+                signature::PublicKey::new(algorithm, &group.public_key.uncompressed).unwrap();
+
+            for test in group.tests {
+                summary.start(&test);
+
+                let digest = digest::digest(hash, &test.msg);
+                let result = public_key.verify_digest(&digest, &test.sig);
+                match (test.result, result) {
+                    (ExpectedResult::Valid, Ok(())) => {}
+                    (ExpectedResult::Invalid, Err(Error::BadSignature)) => {}
+                    _ => panic!("{file}: expected {:?} got {:?}", test.result, result),
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn test_aes_gcm() {
     aes_gcm("aes_gcm_test.json", false);
 }

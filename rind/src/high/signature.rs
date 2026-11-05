@@ -3,6 +3,7 @@
 use core::fmt;
 
 use super::curve::{Curve, MAX_SCALAR_LEN, MAX_UNCOMPRESSED_PUBLIC_KEY_LEN, P256, P384, P521};
+use super::digest::Digest;
 use super::ecdsa;
 use super::ed25519::{Ed25519SigningKey, Ed25519VerifyingKey};
 use super::hash::{Sha256, Sha384, Sha512, SignatureHash};
@@ -211,9 +212,9 @@ pub struct PublicKey {
 
 #[allow(clippy::large_enum_variant)]
 enum Parsed {
-    EcdsaP256(Verifier<ecdsa::VerifyingKey<P256>>, Ecdsa),
-    EcdsaP384(Verifier<ecdsa::VerifyingKey<P384>>, Ecdsa),
-    EcdsaP521(Verifier<ecdsa::VerifyingKey<P521>>, Ecdsa),
+    EcdsaP256(EcdsaVerifier<P256>, Ecdsa),
+    EcdsaP384(EcdsaVerifier<P384>, Ecdsa),
+    EcdsaP521(EcdsaVerifier<P521>, Ecdsa),
     Rsa(RsaVerifier, RsaVerification),
     Ed25519(Verifier<Ed25519VerifyingKey>),
 }
@@ -273,6 +274,35 @@ impl PublicKey {
             }
             Parsed::Ed25519(key) => key.verify(message, signature),
         }
+    }
+
+    /// Verifies an ECDSA `signature` over the message `digest` hashes.
+    ///
+    /// The digest's hash, SHA-256, SHA-384, or SHA-512, replaces the
+    /// algorithm's, which still fixes the curve and the signature's encoding.
+    /// Another hash, or a key other than ECDSA, is refused as
+    /// [`Error::Unsupported`].
+    ///
+    /// So unlike [`Self::verify`], this does not pin the hash: hash with the
+    /// one your protocol names, never one the signed data or its sender
+    /// picks. A signature over one SHA-2 hash verifies over another only
+    /// for a message whose digest collides with it, which no one can find.
+    pub fn verify_digest(&self, digest: &Digest, signature: &[u8]) -> Result<(), Error> {
+        let digest = signed_digest(digest)?;
+        match &self.key {
+            Parsed::EcdsaP256(key, _) => key.verify_digest(digest, signature),
+            Parsed::EcdsaP384(key, _) => key.verify_digest(digest, signature),
+            Parsed::EcdsaP521(key, _) => key.verify_digest(digest, signature),
+            Parsed::Rsa(..) | Parsed::Ed25519(_) => Err(Error::Unsupported),
+        }
+    }
+}
+
+/// The bytes of `digest`, refused unless a signature takes its hash.
+fn signed_digest(digest: &Digest) -> Result<&[u8], Error> {
+    match digest.signs() {
+        true => Ok(digest.as_ref()),
+        false => Err(Error::Unsupported),
     }
 }
 
@@ -477,6 +507,19 @@ trait Encoding {
         output: &'a mut [u8],
         message: &[u8],
     ) -> Result<&'a [u8], Error>;
+
+    fn verify_digest<C: Curve>(
+        key: &ecdsa::VerifyingKey<C>,
+        signature: &[u8],
+        digest: &[u8],
+    ) -> Result<(), Error>;
+
+    /// Signs `digest`, drawing the nonce through `H`.
+    fn sign_digest<'a, C: Curve, H: SignatureHash>(
+        key: &ecdsa::SigningKey<C>,
+        output: &'a mut [u8],
+        digest: &[u8],
+    ) -> Result<&'a [u8], Error>;
 }
 
 /// [`EcdsaEncoding::Asn1`].
@@ -497,6 +540,22 @@ impl Encoding for Asn1 {
         message: &[u8],
     ) -> Result<&'a [u8], Error> {
         key.sign_asn1::<H>(message, output)
+    }
+
+    fn verify_digest<C: Curve>(
+        key: &ecdsa::VerifyingKey<C>,
+        signature: &[u8],
+        digest: &[u8],
+    ) -> Result<(), Error> {
+        key.verify_asn1_digest(digest, signature)
+    }
+
+    fn sign_digest<'a, C: Curve, H: SignatureHash>(
+        key: &ecdsa::SigningKey<C>,
+        output: &'a mut [u8],
+        digest: &[u8],
+    ) -> Result<&'a [u8], Error> {
+        key.sign_asn1_digest::<H>(digest, output)
     }
 }
 
@@ -519,11 +578,27 @@ impl Encoding for Fixed {
     ) -> Result<&'a [u8], Error> {
         key.sign::<H>(message, output)
     }
+
+    fn verify_digest<C: Curve>(
+        key: &ecdsa::VerifyingKey<C>,
+        signature: &[u8],
+        digest: &[u8],
+    ) -> Result<(), Error> {
+        key.verify_digest(digest, signature)
+    }
+
+    fn sign_digest<'a, C: Curve, H: SignatureHash>(
+        key: &ecdsa::SigningKey<C>,
+        output: &'a mut [u8],
+        digest: &[u8],
+    ) -> Result<&'a [u8], Error> {
+        key.sign_digest::<H>(digest, output)
+    }
 }
 
 /// A curve's place in [`Parsed`] and [`EcdsaKey`].
 trait EcdsaCurve: Curve<PublicKey: Clone> + Sized + 'static {
-    fn parsed(key: Verifier<ecdsa::VerifyingKey<Self>>, ecdsa: Ecdsa) -> Parsed;
+    fn parsed(key: EcdsaVerifier<Self>, ecdsa: Ecdsa) -> Parsed;
 
     fn key(pair: EcdsaPair<Self>) -> EcdsaKey;
 }
@@ -531,7 +606,7 @@ trait EcdsaCurve: Curve<PublicKey: Clone> + Sized + 'static {
 macro_rules! ecdsa_curve {
     ($curve:ident, $parsed:ident) => {
         impl EcdsaCurve for $curve {
-            fn parsed(key: Verifier<ecdsa::VerifyingKey<Self>>, ecdsa: Ecdsa) -> Parsed {
+            fn parsed(key: EcdsaVerifier<Self>, ecdsa: Ecdsa) -> Parsed {
                 Parsed::$parsed(key, ecdsa)
             }
 
@@ -546,13 +621,32 @@ ecdsa_curve!(P256, EcdsaP256);
 ecdsa_curve!(P384, EcdsaP384);
 ecdsa_curve!(P521, EcdsaP521);
 
+/// An ECDSA key and the functions that verify a message and a digest with
+/// it, as [`Verifier`]'s.
+struct EcdsaVerifier<C: Curve> {
+    key: ecdsa::VerifyingKey<C>,
+    verify: Verify<ecdsa::VerifyingKey<C>>,
+    verify_digest: Verify<ecdsa::VerifyingKey<C>>,
+}
+
+impl<C: Curve> EcdsaVerifier<C> {
+    fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
+        (self.verify)(&self.key, signature, message)
+    }
+
+    fn verify_digest(&self, digest: &[u8], signature: &[u8]) -> Result<(), Error> {
+        (self.verify_digest)(&self.key, signature, digest)
+    }
+}
+
 fn parse_ecdsa<C: EcdsaCurve, H: SignatureHash, E: Encoding>(
     ecdsa: Ecdsa,
     bytes: &[u8],
 ) -> Result<Parsed, Error> {
-    let key = Verifier {
+    let key = EcdsaVerifier {
         key: ecdsa::VerifyingKey::from_x962_uncompressed(bytes)?,
         verify: E::verify::<C, H>,
+        verify_digest: E::verify_digest::<C>,
     };
     Ok(C::parsed(key, ecdsa))
 }
@@ -639,7 +733,9 @@ type Write<K> = for<'a> fn(&K, &'a mut [u8]) -> Result<&'a [u8], Error>;
 
 struct EcdsaOps<C: EcdsaCurve> {
     sign: Sign<ecdsa::SigningKey<C>>,
+    sign_digest: Sign<ecdsa::SigningKey<C>>,
     verify: Verify<ecdsa::VerifyingKey<C>>,
+    verify_digest: Verify<ecdsa::VerifyingKey<C>>,
     to_pkcs8: Write<ecdsa::SigningKey<C>>,
     to_scalar: Write<ecdsa::SigningKey<C>>,
     to_spki: Write<ecdsa::SigningKey<C>>,
@@ -647,9 +743,10 @@ struct EcdsaOps<C: EcdsaCurve> {
 
 impl<C: EcdsaCurve> EcdsaPair<C> {
     fn public_key(&self, ecdsa: Ecdsa) -> Parsed {
-        let key = Verifier {
+        let key = EcdsaVerifier {
             key: self.verifying.clone(),
             verify: self.ops.get().verify,
+            verify_digest: self.ops.get().verify_digest,
         };
         C::parsed(key, ecdsa)
     }
@@ -727,7 +824,9 @@ impl EcdsaKeyPair {
         let ops = const {
             &EcdsaOps {
                 sign: E::sign::<C, H>,
+                sign_digest: E::sign_digest::<C, H>,
                 verify: E::verify::<C, H>,
+                verify_digest: E::verify_digest::<C>,
                 to_pkcs8: ecdsa::SigningKey::to_pkcs8_der,
                 to_scalar: ecdsa::SigningKey::to_scalar,
                 to_spki: ecdsa::SigningKey::to_spki_der,
@@ -759,6 +858,25 @@ impl EcdsaKeyPair {
                 &pair.signing,
                 output,
                 message
+            ))
+        })
+        .map(Signature)
+    }
+
+    /// Signs the message `digest` hashes, with a fresh nonce.
+    ///
+    /// The digest's hash, SHA-256, SHA-384, or SHA-512, replaces the
+    /// algorithm's, which still fixes the signature's encoding, so
+    /// [`Self::public_key`] verifies the signature over the message only if
+    /// the hashes match; [`PublicKey::verify_digest`] verifies it in any
+    /// case. Another hash is refused as [`Error::Unsupported`].
+    pub fn sign_digest(&self, digest: &Digest) -> Result<Signature, Error> {
+        let digest = signed_digest(digest)?;
+        Buffer::write(|output| {
+            on_ecdsa!(self, |pair| (pair.ops.get().sign_digest)(
+                &pair.signing,
+                output,
+                digest
             ))
         })
         .map(Signature)
@@ -1601,6 +1719,87 @@ mod tests {
             assert_eq!(
                 verifier.verify(b"other", signature.as_ref()),
                 Err(Error::BadSignature)
+            );
+        }
+    }
+
+    #[test]
+    fn ecdsa_signs_and_verifies_any_digest() {
+        use crate::high::digest::{self, SHA256, SHA384, SHA512};
+        use crate::low::ct;
+
+        for signing in ECDSA_SIGNING {
+            let pair = EcdsaKeyPair::generate(signing).unwrap();
+            let encoded = pair.public_key();
+            for algorithm in [&SHA256, &SHA384, &SHA512] {
+                // Under `admin/ctgrind`, nothing may branch on or index by
+                // the digest, nor the key, which its hooks mark secret.
+                let message = [0xa5; 100];
+                ct::secret_slice(&message);
+                let digest = digest::digest(algorithm, &message);
+                let signature = ct::into_public(pair.sign_digest(&digest).unwrap());
+                let digest = ct::into_public(digest);
+
+                encoded
+                    .verify_digest(&digest, signature.as_ref())
+                    .unwrap_or_else(|_| panic!("{signing:?} {algorithm:?}"));
+                let other = digest::digest(algorithm, b"other");
+                assert_eq!(
+                    encoded.verify_digest(&other, signature.as_ref()),
+                    Err(Error::BadSignature)
+                );
+
+                // The key pair's own hash verifies a message only if the
+                // digest was of that hash.
+                let hash = with_hash!(signing.ecdsa.hash, |H| {
+                    <H as crate::high::hash::Hash>::ALGORITHM
+                });
+                let message = ct::into_public(message);
+                assert_eq!(
+                    encoded.verify(&message, signature.as_ref()).is_ok(),
+                    core::ptr::eq(algorithm, hash),
+                    "{signing:?} {algorithm:?}"
+                );
+            }
+
+            // A signature over a message verifies over its digest.
+            let signature = pair.sign(b"message").unwrap();
+            let hash = with_hash!(signing.ecdsa.hash, |H| {
+                <H as crate::high::hash::Hash>::ALGORITHM
+            });
+            encoded
+                .verify_digest(&digest::digest(hash, b"message"), signature.as_ref())
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn digests_refused_as_unsupported() {
+        use crate::high::digest::{self, SHA1, SHA3_256, SHA3_384, SHA3_512, SHA256, SHA512_256};
+
+        let sha256 = digest::digest(&SHA256, b"message");
+        for signing in ECDSA_SIGNING {
+            let pair = EcdsaKeyPair::generate(signing).unwrap();
+            let signature = pair.sign_digest(&sha256).unwrap();
+            for algorithm in [&SHA1, &SHA512_256, &SHA3_256, &SHA3_384, &SHA3_512] {
+                let digest = digest::digest(algorithm, b"message");
+                assert_eq!(rejected(pair.sign_digest(&digest)), Error::Unsupported);
+                assert_eq!(
+                    pair.public_key().verify_digest(&digest, signature.as_ref()),
+                    Err(Error::Unsupported)
+                );
+            }
+        }
+
+        // Ed25519 signs messages, not digests, and RSA has no digest API yet.
+        let ed25519 = Ed25519KeyPair::generate().unwrap().public_key();
+        let rsa = RsaKeyPair::from_pkcs1(include_bytes!("rsa/rsa2048.der"))
+            .unwrap()
+            .public_key(&sign::RSA_PKCS1_SHA256);
+        for key in [ed25519, rsa] {
+            assert_eq!(
+                key.verify_digest(&sha256, &[0; 64]),
+                Err(Error::Unsupported)
             );
         }
     }

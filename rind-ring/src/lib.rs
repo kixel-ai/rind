@@ -40,8 +40,8 @@
 //! - A [`error::KeyRejected`]'s `Display` gives rind's reason, not ring's
 //!   name for it, which ring documents as changing between releases.
 //! - rind panics on a CPU missing a feature it requires, and ring's
-//!   signatures have no way to report one, so call `rind::cpu::check()` at
-//!   startup.
+//!   signatures have no way to report one, so call [`cpu::check()`] at
+//!   startup. [`cpu`] is rind's own, which ring lacks.
 
 // ring's API has these shapes, which a drop-in keeps.
 #![allow(clippy::len_without_is_empty, clippy::new_without_default)]
@@ -51,6 +51,8 @@ use core::fmt;
 
 pub mod aead;
 pub mod agreement;
+/// rind's CPU check, for refusing an unsupported CPU at startup instead of panicking.
+pub use rind::cpu;
 #[doc(hidden)]
 #[deprecated(note = "ring deprecates it too; compare with `hmac::verify` or a constant-time crate")]
 pub mod deprecated_constant_time;
