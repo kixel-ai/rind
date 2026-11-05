@@ -104,21 +104,6 @@ def Shared0Slice.Insts.CoreCmpPartialEqArray.eq {T U : Type _} {N : Std.Usize}
     (inst : core.cmp.PartialEq T U) (s : Slice T) (a : Array U N) : Result Bool :=
   core.slice.cmp.PartialEqSlice.eq inst s a.to_slice
 
-/-- The elements of `l` mapped by `f` in order, which each call may update. -/
-def core.array.Array.map.go {T F U : Type _} (inst : core.ops.function.FnMut F T U) :
-    List T → F → Result (List U)
-  | [], _ => Std.Result.ok []
-  | x :: xs, f => do
-    let (y, f) ← inst.call_mut f x
-    let ys ← core.array.Array.map.go inst xs f
-    Std.Result.ok (y :: ys)
-
-/-- `<[T; N]>::map`: `f` applied to each element in order. -/
-def core.array.Array.map {T F U : Type _} {N : Std.Usize}
-    (inst : core.ops.function.FnMut F T U) (a : Array T N) (f : F) : Result (Array U N) := do
-  let l ← core.array.Array.map.go inst a.val f
-  if h : l.length = N.val then Std.Result.ok (Array.from l h) else Std.Result.fail .panic
-
 /-- `i8::unsigned_abs`. -/
 def core.num.I8.unsigned_abs (x : Std.I8) : Result Std.U8 :=
   Std.Result.ok ⟨BitVec.ofNat 8 x.val.natAbs⟩

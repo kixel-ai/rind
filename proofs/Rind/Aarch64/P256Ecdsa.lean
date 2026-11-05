@@ -1708,25 +1708,61 @@ theorem odd_multiples_spec (hG : P256Laws) (pt : mid.p256.AffineMontPoint) (Q : 
   have := hr j hj
   rwa [show (2 * (j : Int) + 1) = ((2 * j + 1 : Nat) : Int) by push_cast; ring, P256Laws.zpow_natCast] at this
 
-theorem map_go_spec (c : mid.p256.JacobianMontPoint) (l : List mid.p256.AffineMontPoint)
-    (P : mid.p256.AffineMontPoint → mid.p256.JacobianMontPoint → Prop)
-    (h : ∀ x ∈ l, mid.p256.JacobianMontPoint.add_inplace_affine c x ⦃ r => P x r ⦄) :
-    core.array.Array.map.go
-      mid.p256.AffineMontPoint.public_more_odd_multiples.closure.Insts.CoreOpsFunctionFnMutTupleAffineMontPointJacobianMontPoint
-      l c ⦃ res => res.length = l.length ∧ ∀ i < l.length, P l[i]! res[i]! ⦄ := by
-  induction l with
-  | nil => simp [core.array.Array.map.go, WP.spec_ok]
+/-- `<[T; N]>::map`'s fold, for a step that keeps the closure: each element
+goes to its image, after `acc`. -/
+theorem map_fold_spec {T F U : Type} [Inhabited T] [Inhabited U] (g : List U × F → T → Result (List U × F))
+    (f : F) (P : T → U → Prop) (l : List T)
+    (hg : ∀ x ∈ l, ∀ acc, g (acc, f) x ⦃ r => ∃ y, r = (acc ++ [y], f) ∧ P x y ⦄) (acc : List U) :
+    l.foldlM g (acc, f) ⦃ res =>
+      res.1.length = acc.length + l.length ∧ res.1.take acc.length = acc ∧
+        ∀ i < l.length, P l[i]! res.1[acc.length + i]! ⦄ := by
+  induction l generalizing acc with
+  | nil =>
+    show (ok (acc, f) : Result _) ⦃ _ ⦄
+    simp [WP.spec_ok]
   | cons x xs ih =>
-    unfold core.array.Array.map.go
-    simp only [mid.p256.AffineMontPoint.public_more_odd_multiples.closure.Insts.CoreOpsFunctionFnMutTupleAffineMontPointJacobianMontPoint,
-      mid.p256.AffineMontPoint.public_more_odd_multiples.closure.Insts.CoreOpsFunctionFnMutTupleAffineMontPointJacobianMontPoint.call_mut]
-    step with h x (by simp) as ⟨r, hr⟩
-    step with ih (fun y hy => h y (by simp [hy])) as ⟨ys, hyl, hys⟩
-    simp only [List.length_cons, hyl, true_and]
-    intro i hi
-    cases i with
-    | zero => simpa using hr
-    | succ i => simpa using hys i (by omega)
+    show Std.bind (g (acc, f) x) (fun s => List.foldlM g s xs) ⦃ _ ⦄
+    apply WP.spec_bind (hg x (by simp) acc)
+    rintro _ ⟨y, rfl, hP⟩
+    apply WP.spec_mono (ih (fun z hz => hg z (by simp [hz])) (acc ++ [y]))
+    rintro ⟨r, _⟩ ⟨hl, ht, hall⟩
+    simp only [List.length_append, List.length_cons, List.length_nil] at hl ht hall ⊢
+    have hres : r = acc ++ y :: r.drop (acc.length + 1) := by
+      conv_lhs => rw [← List.take_append_drop (acc.length + 1) r, ht]
+      simp
+    refine ⟨by omega, ?_, ?_⟩
+    · rw [hres]; simp
+    · intro i hi
+      cases i with
+      | zero =>
+        have : r[acc.length]! = y := by rw [hres]; simp
+        simpa [this] using hP
+      | succ i =>
+        have := hall i (by omega)
+        simpa [show acc.length + 1 + i = acc.length + (i + 1) by omega] using this
+
+/-- `<[T; N]>::map`, for a closure that keeps its state. -/
+theorem map_spec {T F U : Type} [Inhabited T] [Inhabited U] {N : Usize} (inst : core.ops.function.FnMut F T U)
+    (a : Std.Array T N) (f : F) (P : T → U → Prop)
+    (h : ∀ x ∈ a.val, inst.call_mut f x ⦃ r => P x r.1 ∧ r.2 = f ⦄) :
+    core.array.Array.map inst a f ⦃ r => ∀ i < N.val, P a.val[i]! r.val[i]! ⦄ := by
+  unfold core.array.Array.map
+  have hf := map_fold_spec (fun (acc, f) x => do
+    let (y, f) ← inst.call_mut f x
+    ok (acc ++ [y], f)) f P a.val (fun x hx acc => by
+      simp only
+      step with h x hx as ⟨y, g, hy, hg⟩
+      exact ⟨y, rfl, hg, hy⟩) []
+  apply WP.spec_bind hf
+  rintro ⟨l, g⟩ ⟨hl, -, hall⟩
+  replace hl : l.length = a.val.length := by simpa using hl
+  replace hall : ∀ i < a.val.length, P a.val[i]! l[i]! := by simpa using hall
+  show (if h : l.length = N.val then ok (Array.from l h) else fail Error.panic) ⦃ _ ⦄
+  have hl' : l.length = N.val := by rw [hl]; exact a.property
+  simp only [dite_eq_left hl', WP.spec_ok]
+  intro i hi
+  have := hall i (by rw [a.property]; exact hi)
+  simpa [Array.from_val] using this
 
 /-- The odd multiples a key's cache builds: 17Q to 31Q, from its Q to 15Q. -/
 theorem more_odd_spec (hG : P256Laws) (Q : P256Point) (hQ : p256OnCurve Q) (hQne : Q ≠ none)
@@ -1746,30 +1782,30 @@ theorem more_odd_spec (hG : P256Laws) (Q : P256Point) (hQ : p256OnCurve Q) (hQne
   step with add_inplace_affine_spec p16 a0 _ _ hp16 h0
     (hG.zpow_ne Q hQ hQne _ _ (by norm_num) (by norm_num; omega)) as ⟨p161, hp161⟩
   rw [hG.mul_zpow Q hQ] at hp161
-  unfold core.array.Array.map
-  step with map_go_spec p161 odd.val
-    (fun x r => ∀ k : Nat, 1 ≤ k → k ≤ 15 → p256Represents2 (p256ZPow Q k) (pairNat x.xy.val) →
-      jrep (p256ZPow Q (16 + k)) r)
-    (by
-      intro x _
-      unfold mid.p256.JacobianMontPoint.add_inplace_affine
-      step as ⟨inf, hinf⟩
-      step as ⟨a, ha⟩
-      intro k hk1 hk15 hrep
-      have := ha _ _ hp161 hrep (hG.zpow_ne Q hQ hQne _ _ (by omega) (by omega))
-      rw [hG.mul_zpow Q hQ] at this
-      exact this) as ⟨l, hll, hl⟩
-  rw [hol] at hll
-  have hll' : l.length = (8#usize).val := hll
-  rw [dite_eq_left hll']
-  simp only [bind_ok]
-  apply WP.spec_mono (batch_spec (Array.from l hll') (fun j => p256ZPow Q (16 + (2 * j + 1))) (by
+  have hadd : ∀ x, mid.p256.JacobianMontPoint.add_inplace_affine p161 x ⦃ r =>
+      ∀ k : Nat, 1 ≤ k → k ≤ 15 → p256Represents2 (p256ZPow Q k) (pairNat x.xy.val) →
+        jrep (p256ZPow Q (16 + k)) r ⦄ := by
+    intro x
+    unfold mid.p256.JacobianMontPoint.add_inplace_affine
+    step as ⟨inf, hinf⟩
+    step as ⟨a, ha⟩
+    intro k hk1 hk15 hrep
+    have := ha _ _ hp161 hrep (hG.zpow_ne Q hQ hQne _ _ (by omega) (by omega))
+    rw [hG.mul_zpow Q hQ] at this
+    exact this
+  step with map_spec
+    mid.p256.AffineMontPoint.public_more_odd_multiples.closure.Insts.CoreOpsFunctionFnMutTupleAffineMontPointJacobianMontPoint
+    odd p161 (fun x r => ∀ k : Nat, 1 ≤ k → k ≤ 15 → p256Represents2 (p256ZPow Q k) (pairNat x.xy.val) →
+      jrep (p256ZPow Q (16 + k)) r) (fun x _ => by
+    simp only [mid.p256.AffineMontPoint.public_more_odd_multiples.closure.Insts.CoreOpsFunctionFnMutTupleAffineMontPointJacobianMontPoint.call_mut]
+    step with hadd x as ⟨r, hr⟩
+    exact hr) as ⟨l, hl⟩
+  apply WP.spec_mono (batch_spec l (fun j => p256ZPow Q (16 + (2 * j + 1))) (by
     intro j hj
     refine ⟨?_, hG.zpow_ne_none Q hQ hQne _ (by omega) (by omega)⟩
     have hj' := hodd j hj
     rw [hz] at hj'
-    have := hl j (by omega) (2 * j + 1) (by omega) (by omega) (by push_cast at hj' ⊢; exact hj')
-    simpa [Array.from_val] using this))
+    exact hl j (by simpa using hj) (2 * j + 1) (by omega) (by omega) (by push_cast at hj' ⊢; exact hj')))
   intro r hr j hj
   have := hr j hj
   rwa [show (16 + (2 * (j : Int) + 1)) = ((2 * j + 17 : Nat) : Int) by push_cast; ring, ← hz] at this
