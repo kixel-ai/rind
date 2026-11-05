@@ -19,16 +19,16 @@ mkdir -p "$out"
 
 # Each hand model quotes the Rust it models. Fail if that Rust has changed, so
 # the model is reviewed with every change to it: print the first item each line
-# starts, from that line to the closing one at its indentation, then a blank
-# line.
+# starts, from that line to the closing one at its indentation, or a `const`'s
+# to its `;`, then a blank line.
 items() {
     local file=$1
     shift
     for start in "$@"; do
         awk -v s="$start" '
-            !p && index($0, s) == 1 { p = 1; ind = substr($0, 1, match($0, /[^ ]/) - 1) }
+            !p && index($0, s) == 1 { p = 1; c = index($0, "const ") == 1; ind = substr($0, 1, match($0, /[^ ]/) - 1) }
             p { print }
-            p && (index($0, ind "}") == 1 || (ind == "" && /^[^ }].*;$/)) { print ""; exit }' "$file"
+            p && (index($0, ind "}") == 1 || (ind == "" && /^[^ }].*;$/) || (c && /;$/)) { print ""; exit }' "$file"
     done
 }
 check_quote() {
@@ -52,6 +52,13 @@ check_quote Aarch64/P256Dispatch p256_items
 check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
     'pub static SHA512_256:'
+aes_ni_items() {
+    items rind/src/low/x86_64/aes.rs 'const RCON' 'fn aes128_expand(' 'fn aes256_expand(' \
+        'fn sub_rot_word(' 'fn xor_prefix(' 'fn zero()' 'fn aes128_block(' 'fn aes256_block('
+    items rind/src/low/x86_64/ghash.rs 'fn u128_to_m128i(' 'const GF128_POLY_HI:' \
+        'const GF128_POLY_CARRY_MASK:'
+}
+check_quote X86_64/AesNi aes_ni_items
 check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
     'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {'
 # The models' `Ops` hold nothing, since the quoted constructor builds the only
@@ -156,7 +163,39 @@ extract() {
 extract x86_64 X86_64 \
     --opaque 'crate::mid::p256::_::_' \
     --include crate::low::x86_64::adx_mux::curve25519_x25519 \
-    --include crate::low::x86_64::adx_mux::curve25519_x25519base
+    --include crate::low::x86_64::adx_mux::curve25519_x25519base \
+    --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
+    --start-from crate::aead::Key \
+    --opaque crate::aead::Algorithm \
+    --opaque crate::aead::Sealer \
+    --opaque crate::aead::Ops \
+    --opaque '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}' \
+    --include crate::mid::aes::expand_key \
+    --include crate::mid::aes::check_gcm_lengths \
+    --include crate::mid::aes::check_counter \
+    --include crate::low::x86_64::aes \
+    --opaque crate::low::x86_64::aes::aes128_expand \
+    --opaque crate::low::x86_64::aes::aes256_expand \
+    --opaque crate::low::x86_64::aes::aes128_block \
+    --opaque crate::low::x86_64::aes::aes256_block \
+    --opaque crate::low::x86_64::aes::HwKey::round_keys_512 \
+    --opaque crate::low::x86_64::aes::RoundKeys512 \
+    --include crate::low::x86_64::ghash \
+    --opaque '{crate::low::x86_64::ghash::GhashTableAvx512}::new' \
+    --opaque 'crate::low::x86_64::ghash::_::from_powers' \
+    --opaque 'crate::low::x86_64::ghash::_::add' \
+    --opaque 'crate::low::x86_64::ghash::_::add_tail' \
+    --opaque 'crate::low::x86_64::ghash::_::mul_h' \
+    --opaque crate::low::x86_64::ghash::Ghash \
+    --opaque crate::low::x86_64::ghash::u128_to_m128i \
+    --opaque crate::low::x86_64::ghash::GF128_POLY_HI \
+    --opaque crate::low::x86_64::ghash::GF128_POLY_CARRY_MASK \
+    --include crate::low::x86_64::aes_gcm::seal \
+    --include crate::low::x86_64::aes_gcm::open \
+    --include crate::low::x86_64::aes_gcm::vale \
+    --include crate::low::x86_64::aes_gcm_avx \
+    --opaque crate::low::x86_64::aes_gcm_avx::counter_block \
+    --opaque crate::low::x86_64::aes_gcm_avx::aead
 extract aarch64 Aarch64 \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
     --opaque 'crate::mid::p256::_::generate' \
@@ -167,6 +206,7 @@ for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 
+[ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
 cd proofs
 lake exe cache get
 lake build
