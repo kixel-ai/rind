@@ -97,11 +97,6 @@ opaque low.aarch64.bignum_modinv.bignum_modinv
   Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 →
     Result ((Slice Std.U64) × (Slice Std.U64))
 
-/-! P-256's generator table, which `admin/p256-precomp` writes. -/
-
-opaque mid.p256.precomp.CURVE_GENERATOR_PRECOMP
-  : Result (Array (Array Std.U64 256#usize) 43#usize)
-
 /-! P-256's key generation, which draws through a `dyn RandomSource`:
 `Rind.Aarch64.P256Dispatch` models it. -/
 

@@ -1,0 +1,54 @@
+# The decision on every gap: each operation where another library beats rind
+# by more than 10%, on a host in benchmarks/data or a CPU tier of the nightly
+# bench. BENCHMARKS.md lists them under Known gaps. `admin/bench-report
+# render` refuses a gap without an entry, and an entry that names no gap, so
+# a refresh that opens or closes one must update this file.
+#
+# Each entry:
+#   operations  report rows on a host, as admin/bench-report's OPERATIONS
+#               without the library; nightly benchmark IDs on a tier, as the
+#               report's tier table shows them
+#   on          hosts, or CPU tiers as the report's tier columns name them;
+#               every operation must be a gap on every one
+#   quest       the speed quest that closes it, or
+#   reason      why it stays
+
+[[gap]]
+operations = ["rsa2048-pkcs1-sha256-sign", "rsa2048-pss-sha256-sign", "rustls-full-handshake-key/rsa-2048"]
+on = ["nixos", "desktop", "nixos2"]
+quest = "/quest/m2/speed/x86-rsa2048-sign.md"
+
+[[gap]]
+operations = ["sha256/64B"]
+on = ["nixos", "desktop"]
+quest = "/quest/m2/speed/x86-sha256-short.md"
+
+[[gap]]
+operations = ["sha512/16KB"]
+on = ["nixos", "desktop", "nixos2"]
+quest = "/quest/m2/speed/x86-sha2-bulk.md"
+
+[[gap]]
+operations = ["sha256/16KB"]
+on = ["nixos2"]
+quest = "/quest/m2/speed/x86-sha2-bulk.md"
+
+[[gap]]
+operations = ["sha512/1350B"]
+on = ["nixos"]
+reason = "Noise: rind is level with the fastest at 64 B and with all but OpenSSL at 16 KB, and aws-lc-rs and RustCrypto read as slow at this size in the same run."
+
+[[gap]]
+operations = ["ed25519-verify", "mlkem768-encaps"]
+on = ["nixos2"]
+reason = "From an older run than the other hosts', before [#339](https://github.com/moq-dev/rind/pull/339) reworked Ed25519 for its proof. Neither shows on the other hosts, and the next refresh rechecks both."
+
+[[gap]]
+operations = ["p256-ecdsa-verify/*"]
+on = ["no ADX"]
+reason = "Only CPUs older than Broadwell and Zen lack ADX, and there rind runs s2n-bignum's verified `_alt` routines."
+
+[[gap]]
+operations = ["chacha20poly1305/*/16KB", "xchacha20poly1305/*/16KB"]
+on = ["no AES-NI"]
+reason = "Without SSE4.1 rind runs Graviola's scalar Poly1305 rather than port BoringSSL's SSE2 `poly1305_vec.c` for CPUs older than Westmere, as README records."

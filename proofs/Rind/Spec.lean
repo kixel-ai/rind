@@ -83,18 +83,49 @@ def p256G : P256Point :=
   some (0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296,
     0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5)
 
-/-- `group_pow p256_group P n`, the point `P` multiplied by `n`.
+/-! The group law, transliterated from HOL Light's definitions: `group_mul
+p256_group` is `weierstrass_add (integer_mod_ring p_256, ring_neg
+(integer_mod_ring p_256) (&3), &b_256)` by `P256_GROUP`, above. The field's
+operations are `integer_mod_ring`'s on numbers below `p256`,
+https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/Library/ringtheory.ml#L16887 -/
 
-It is opaque here: nothing is assumed of it beyond the routine contracts in
-`Rind.Aarch64.S2nBignum`, which restate s2n-bignum's theorems about it. -/
-opaque p256Pow : P256Point → Nat → P256Point
+/-- `ring_sub (integer_mod_ring p_256)`: `(a - b) rem p_256`, which is never
+negative. -/
+def p256Sub (a b : Nat) : Nat := (a + (p256 - b % p256)) % p256
 
-/-- `group_mul p256_group P Q`, the sum of two points.
+/-- `ring_inv (integer_mod_ring p_256)`: the number below `p256` that `a` times
+is 1 mod `p256`, if `a` is a field element with one, and otherwise 0,
+https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/Library/ringtheory.ml#L1970 -/
+noncomputable def p256Inv (a : Nat) : Nat :=
+  haveI := Classical.propDecidable
+  if h : a < p256 ∧ ∃ x, x < p256 ∧ a * x % p256 = 1 then Classical.choose h.2 else 0
 
-It is opaque here: nothing is assumed of it beyond the routine contracts in
-`Rind.Aarch64.S2nBignum`, which restate s2n-bignum's theorems about it, and
-what a theorem takes as a hypothesis. -/
-opaque p256Mul : P256Point → P256Point → P256Point
+/-- `weierstrass_add` on `p256_group`'s curve, with `ring_div` as the product
+with `p256Inv`, `ring_of_num` 2 and 3 as themselves, and `a` as `p256 - 3`,
+https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/weierstrass.ml#L33 -/
+noncomputable def p256Add : P256Point → P256Point → P256Point
+  | none, q => q
+  | p, none => p
+  | some (x1, y1), some (x2, y2) =>
+    if x1 = x2 then
+      if y1 = y2 ∧ y1 ≠ 0 then
+        let m := (3 * (x1 ^ 2 % p256) % p256 + (p256 - 3)) % p256 * p256Inv (2 * y1 % p256) % p256
+        let x3 := p256Sub (m ^ 2 % p256) (2 * x1 % p256)
+        let y3 := p256Sub (m * p256Sub x1 x3 % p256) y1
+        some (x3, y3)
+      else none
+    else
+      let m := p256Sub y2 y1 * p256Inv (p256Sub x2 x1) % p256
+      let x3 := p256Sub (m ^ 2 % p256) ((x1 + x2) % p256)
+      let y3 := p256Sub (m * p256Sub x1 x3 % p256) y1
+      some (x3, y3)
+
+/-- `group_pow p256_group P n`, the point `P` multiplied by `n`: `group_pow`'s
+definition, `P` times the multiple below,
+https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/Library/grouptheory.ml#L376 -/
+noncomputable def p256Pow (P : P256Point) : Nat → P256Point
+  | 0 => none
+  | n + 1 => p256Add P (p256Pow P n)
 
 /-- `weierstrass_neg (integer_mod_ring p_256, ring_neg (integer_mod_ring p_256)
 (&3), &b_256) P`, which `P256_GROUP` shows is `group_inv p256_group P`: y
@@ -107,7 +138,7 @@ def p256Neg : P256Point → P256Point
 `d`, with per-message secret `k`, of the hash's integer `e`: r is the
 x-coordinate of kG mod n, and s is (e + rd)/k mod n. A rind signature is this
 for the first `k` whose `r` and `s` are both nonzero. -/
-def ecdsaP256Sign (d k e : Nat) : Option (Nat × Nat) :=
+noncomputable def ecdsaP256Sign (d k e : Nat) : Option (Nat × Nat) :=
   match p256Pow p256G k with
   | some (x, _) =>
     some (x % n256, (((e + x % n256 * d : Nat) : ZMod n256) * (k : ZMod n256)⁻¹).val)
@@ -119,7 +150,7 @@ u₁G + u₂Q, for u₁ = e/s and u₂ = r/s mod n, is a finite point whose
 x-coordinate mod n is r. -/
 def ecdsaP256Verifies (Q : P256Point) (e r s : Nat) : Prop :=
   0 < r ∧ r < n256 ∧ 0 < s ∧ s < n256 ∧
-    match p256Mul (p256Pow p256G (((e : ZMod n256) * (s : ZMod n256)⁻¹).val))
+    match p256Add (p256Pow p256G (((e : ZMod n256) * (s : ZMod n256)⁻¹).val))
         (p256Pow Q (((r : ZMod n256) * (s : ZMod n256)⁻¹).val)) with
     | some (x, _) => x % n256 = r
     | none => False

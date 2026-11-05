@@ -1,4 +1,4 @@
-import Rind.Aarch64.S2nBignum
+import Rind.Aarch64.P256Table
 import Rind.Aarch64.P256Dispatch
 import Rind.Bytes
 import Mathlib.Tactic.LinearCombination
@@ -797,17 +797,12 @@ theorem from_bytes_spec (bytes : Slice U8) (hl : bytes.length = 32) :
   · subst hr
     simp [core.result.Result.map]
 
-theorem onCurve_G : p256OnCurve p256G := by
-  simp only [p256OnCurve, p256G, p256, b256]; decide
-
 @[step]
-theorem base_multiply_spec (ht : Tabulated) (k : mid.p256.Scalar) :
+theorem base_multiply_spec (k : mid.p256.Scalar) :
     mid.p256.AffineMontPoint.base_multiply k ⦃ q =>
       ∃ rx ry, p256AffineZ (rx, ry) (p256Pow p256G (wordsNat k.val)) ∧
         pairNat q.xy.val = (2 ^ 256 * rx % p256, 2 ^ 256 * ry % p256) ⦄ := by
-  obtain ⟨t, ht, htab⟩ := ht
   unfold mid.p256.AffineMontPoint.base_multiply
-  simp only [ht, bind_ok]
   step*
   · simp [mid.p256.AffineMontPoint.X]
   · simp [mid.p256.AffineMontPoint.X]
@@ -824,21 +819,21 @@ theorem base_multiply_spec (ht : Tabulated) (k : mid.p256.Scalar) :
     subst r1_post
     obtain ⟨ha1, -⟩ := r1_post
     have h8 : (xy1.val).length = 8 := xy1.property
-    have hxa : feNat a1 = (pairNat xy1.val).1 := by
+    have hxa : feNat a = (pairNat xy1.val).1 := by
       simp [feNat, ha, s_post, mid.p256.AffineMontPoint.X, List.slice, pairNat]
-    have hya : feNat a2 = (pairNat xy1.val).2 := by
+    have hya : feNat a1 = (pairNat xy1.val).2 := by
       rw [pairNat_drop _ h8]
       simp [feNat, ha1, s1_post, mid.p256.AffineMontPoint.Y, List.slice, List.take_of_length_le, h8]
-    refine ⟨(pairNat xy1.val).1, (pairNat xy1.val).2, xy1_post _ onCurve_G htab, ?_⟩
+    refine ⟨(pairNat xy1.val).1, (pairNat xy1.val).2, xy1_post _ p256OnCurve_G tabulated, ?_⟩
     rw [q_post, pairNat_append _ _ fe.property fe1.property, ← hxa, ← hya]
     exact Prod.ext fe_post fe1_post
 
-theorem public_point_spec (h : Runs) (ht : Tabulated) (k : mid.p256.PrivateKey) (x y : Nat)
+theorem public_point_spec (h : Runs) (k : mid.p256.PrivateKey) (x y : Nat)
     (hq : p256Pow p256G (wordsNat k.scalar.val) = some (x, y)) (hc : p256OnCurve (some (x, y))) :
     mid.p256.PrivateKey.public_point k ⦃ pt =>
       pairNat pt.xy.val = (2 ^ 256 * x % p256, 2 ^ 256 * y % p256) ⦄ := by
   unfold mid.p256.PrivateKey.public_point low.ct.into_public
-  step with base_multiply_spec ht k.scalar as ⟨q, rx, ry, hz, hqq⟩
+  step with base_multiply_spec k.scalar as ⟨q, rx, ry, hz, hqq⟩
   unfold p256AffineZ at hz
   split_ifs at hz with h0
   · rw [hz] at hq; cases hq
@@ -894,13 +889,13 @@ theorem as_bytes_uncompressed_spec (pt : mid.p256.AffineMontPoint) (hx : (pairNa
     rw [fe1_post, fe3_post, fe_post, fe2_post, pairNat_drop _ hl]
     rfl
 
-theorem public_key_uncompressed_spec (h : Runs) (ht : Tabulated) (k : mid.p256.PrivateKey) (x y : Nat)
+theorem public_key_uncompressed_spec (h : Runs) (k : mid.p256.PrivateKey) (x y : Nat)
     (hq : p256Pow p256G (wordsNat k.scalar.val) = some (x, y)) (hc : p256OnCurve (some (x, y))) :
     mid.p256.PrivateKey.public_key_uncompressed k ⦃ b =>
       b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄ := by
   unfold mid.p256.PrivateKey.public_key_uncompressed
   step
-  step with public_point_spec h ht k x y hq hc as ⟨pt, hpt⟩
+  step with public_point_spec h k x y hq hc as ⟨pt, hpt⟩
   have hp : 0 < p256 := by simp [p256]
   step with as_bytes_uncompressed_spec pt (by rw [hpt]; exact Nat.mod_lt _ hp)
     (by rw [hpt]; exact Nat.mod_lt _ hp) as ⟨b, hb4, hbc⟩
@@ -908,7 +903,7 @@ theorem public_key_uncompressed_spec (h : Runs) (ht : Tabulated) (k : mid.p256.P
   rw [hbc, hpt]
   simp only [rinv_tomont _ hc.1, rinv_tomont _ hc.2.1]
 
-theorem encode_public_spec (h : Runs) (ht : Tabulated) (k : mid.p256.PrivateKey) (x y : Nat)
+theorem encode_public_spec (h : Runs) (k : mid.p256.PrivateKey) (x y : Nat)
     (hq : p256Pow p256G (wordsNat k.scalar.val) = some (x, y)) (hc : p256OnCurve (some (x, y))) :
     (do
       let pk ← mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_public k
@@ -916,7 +911,7 @@ theorem encode_public_spec (h : Runs) (ht : Tabulated) (k : mid.p256.PrivateKey)
       b.length = 65 ∧ b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄ := by
   unfold mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_public high.agreement.PublicKey.new
     high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
-  step with public_key_uncompressed_spec h ht k x y hq hc as ⟨a, ha4, hac⟩
+  step with public_key_uncompressed_spec h k x y hq hc as ⟨a, ha4, hac⟩
   step as ⟨sl, hsl⟩
   subst hsl
   have hlen : a.to_slice.len.val = 65 := by simp
@@ -996,7 +991,7 @@ theorem p256_generate (h : Runs) (draws : Nat → core.result.Result Unit getran
 /-- A P-256 key's public key: X9.62's uncompressed encoding of its scalar
 times the generator, for a scalar whose multiple is a finite point on the
 curve, as every scalar in [1, n) gives. -/
-theorem p256_public_key (h : Runs) (ht : Tabulated) (k : high.agreement.Keyed mid.p256.PrivateKey)
+theorem p256_public_key (h : Runs) (k : high.agreement.Keyed mid.p256.PrivateKey)
     (x y : Nat) (hq : p256Pow p256G (wordsNat k.key.scalar.val) = some (x, y))
     (hc : p256OnCurve (some (x, y))) :
     (do
@@ -1004,7 +999,7 @@ theorem p256_public_key (h : Runs) (ht : Tabulated) (k : high.agreement.Keyed mi
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
       b.length = 65 ∧ b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄ := by
   unfold high.agreement.PrivateKey.public_key high.agreement.Keyed.public_key
-  exact encode_public_spec h ht k.key x y hq hc
+  exact encode_public_spec h k.key x y hq hc
 
 /-- A P-256 agreement with the peer's encoded public key: `p256Agreement` of
 this key's scalar. -/

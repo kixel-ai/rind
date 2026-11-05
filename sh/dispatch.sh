@@ -61,8 +61,9 @@ declare -A scope=(
     [inplace]='^(rind/src/low/|admin/parse-asm/)'
     # COMPATIBILITY.md is generated from the CPU scans.
     [compat]='^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))'
-    # BENCHMARKS.md is generated from the results and the verified-code table.
-    [bench]='^(BENCHMARKS\.md$|benchmarks/|admin/bench-report)'
+    # BENCHMARKS.md is generated from the results, the verified-code table,
+    # and the gap decisions, which link the quests that close them.
+    [bench]='^(BENCHMARKS\.md$|benchmarks/|admin/bench-report|quest/)'
     # admin/build-cost builds these against rind's API, so they break with it.
     [fixtures]='^(rind/|rind-rustls/|Cargo\.toml$|admin/build-cost-fixtures/(rind|rustls)/)'
     # Quest documents form one graph, so any change validates the whole tree,

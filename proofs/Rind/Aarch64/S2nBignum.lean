@@ -237,14 +237,14 @@ https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959e
 axiom p256_montjadd_spec (p3 p1 p2 : Std.Array U64 12#usize) :
     low.aarch64.p256_montjadd.p256_montjadd p3 p1 p2 ⦃ r =>
       ∀ P1 P2, p256Represents P1 (tripleNat p1.val) → p256Represents P2 (tripleNat p2.val) →
-        (P1 = P2 → P2 = none) → p256Represents (p256Mul P1 P2) (tripleNat r.val) ⦄
+        (P1 = P2 → P2 = none) → p256Represents (p256Add P1 P2) (tripleNat r.val) ⦄
 
 /-- `P256_MONTJDOUBLE_ALT_SUBROUTINE_CORRECT`,
 https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_montjdouble_alt.ml#L2341 -/
 @[step]
 axiom p256_montjdouble_spec (p3 p1 : Std.Array U64 12#usize) :
     low.aarch64.p256_montjdouble.p256_montjdouble p3 p1 ⦃ r =>
-      ∀ P, p256Represents P (tripleNat p1.val) → p256Represents (p256Mul P P) (tripleNat r.val) ⦄
+      ∀ P, p256Represents P (tripleNat p1.val) → p256Represents (p256Add P P) (tripleNat r.val) ⦄
 
 /-- `P256_MONTJMIXADD_ALT_SUBROUTINE_CORRECT`,
 https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/arm/proofs/p256_montjmixadd_alt.ml#L2104 -/
@@ -252,7 +252,7 @@ https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959e
 axiom p256_montjmixadd_spec (p3 p1 : Std.Array U64 12#usize) (p2 : Std.Array U64 8#usize) :
     low.aarch64.p256_montjmixadd.p256_montjmixadd p3 p1 p2 ⦃ r =>
       ∀ P1 P2, p256Represents P1 (tripleNat p1.val) → p256Represents2 P2 (pairNat p2.val) →
-        P1 ≠ P2 → p256Represents (p256Mul P1 P2) (tripleNat r.val) ⦄
+        P1 ≠ P2 → p256Represents (p256Add P1 P2) (tripleNat r.val) ⦄
 
 /-! ### Generic modular arithmetic
 
@@ -322,12 +322,6 @@ axiom p256_scalarmulbase_spec (res : Std.Array U64 8#usize) (scalar : Std.Array 
     low.aarch64.p256_scalarmulbase.p256_scalarmulbase res scalar table ⦃ r =>
       ∀ P, p256OnCurve P → p256Tabulates P table →
         p256AffineZ (pairNat r.val) (p256Pow P (wordsNat scalar.val)) ⦄
-
-/-- rind's generator table holds the multiples of G that s2n-bignum's
-`p256_scalarmulbase` proof assumes. `admin/p256-precomp` writes it, and the
-`base_point_precomp` test checks it. -/
-def Tabulated : Prop :=
-  ∃ t, mid.p256.precomp.CURVE_GENERATOR_PRECOMP = ok t ∧ p256Tabulates p256G t
 
 /-- rind runs on this CPU: its entry guards' CPU-feature checks pass. Neither
 reads an input. -/
