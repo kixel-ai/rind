@@ -14,8 +14,14 @@ unsafe extern "C" {
     #[link_name = aws_lc_symbol!("aes_hw_set_encrypt_key")]
     fn aes_hw_set_encrypt_key(user_key: *const u8, bits: i32, key: *mut AesHwKey) -> i32;
 
+    #[link_name = aws_lc_symbol!("aes_hw_set_decrypt_key")]
+    fn aes_hw_set_decrypt_key(user_key: *const u8, bits: i32, key: *mut AesHwDecKey) -> i32;
+
     #[link_name = aws_lc_symbol!("aes_hw_encrypt")]
     fn aes_hw_encrypt(input: *const u8, output: *mut u8, key: *const AesHwKey);
+
+    #[link_name = aws_lc_symbol!("aes_hw_decrypt")]
+    fn aes_hw_decrypt(input: *const u8, output: *mut u8, key: *const AesHwDecKey);
 
     #[link_name = aws_lc_symbol!("aes_hw_ctr32_encrypt_blocks")]
     fn aes_hw_ctr32_encrypt_blocks(
@@ -38,7 +44,9 @@ core::arch::global_asm!(
     include_str!("aws_lc/aesv8-armx.s"),
     ".fpu vfpv3",
     aes_hw_set_encrypt_key = sym aes_hw_set_encrypt_key,
+    aes_hw_set_decrypt_key = sym aes_hw_set_decrypt_key,
     aes_hw_encrypt = sym aes_hw_encrypt,
+    aes_hw_decrypt = sym aes_hw_decrypt,
     aes_hw_ctr32_encrypt_blocks = sym aes_hw_ctr32_encrypt_blocks,
 );
 
@@ -52,18 +60,13 @@ pub(crate) struct AesHwKey {
 impl AesHwKey {
     /// Expands a 16- or 32-byte key.
     pub(crate) fn new(key: &[u8], _: HaveCryptoExt) -> Self {
-        let bits = match key.len() {
-            16 => 128,
-            32 => 256,
-            _ => unreachable!("callers check the AES key length"),
-        };
         let mut r = Self {
             rd_key: [0; 60],
             rounds: 0,
         };
-        // SAFETY: `key` holds `bits / 8` bytes and `r` is an `AES_KEY`. The
-        // token proves the CPU has the AES instructions.
-        let ret = unsafe { aes_hw_set_encrypt_key(key.as_ptr(), bits, &mut r) };
+        // SAFETY: `key` holds `key_bits(key) / 8` bytes and `r` is an
+        // `AES_KEY`. The token proves the CPU has the AES instructions.
+        let ret = unsafe { aes_hw_set_encrypt_key(key.as_ptr(), key_bits(key), &mut r) };
         // aws-lc refuses only a null pointer or another key size.
         debug_assert_eq!(ret, 0);
         r
@@ -102,3 +105,50 @@ impl Drop for AesHwKey {
 }
 
 impl low::generic::zeroise::Zeroable for AesHwKey {}
+
+/// An expanded AES-128 or AES-256 decryption key: aws-lc's `AES_KEY`.
+#[repr(C, align(16))]
+pub(crate) struct AesHwDecKey {
+    rd_key: [u32; 60],
+    rounds: u32,
+}
+
+impl AesHwDecKey {
+    /// Expands a 16- or 32-byte key.
+    pub(crate) fn new(key: &[u8], _: HaveCryptoExt) -> Self {
+        let mut r = Self {
+            rd_key: [0; 60],
+            rounds: 0,
+        };
+        // SAFETY: `key` holds `key_bits(key) / 8` bytes and `r` is an
+        // `AES_KEY`. The token proves the CPU has the AES instructions.
+        let ret = unsafe { aes_hw_set_decrypt_key(key.as_ptr(), key_bits(key), &mut r) };
+        // aws-lc refuses only a null pointer or another key size.
+        debug_assert_eq!(ret, 0);
+        r
+    }
+
+    /// Decrypts one block in place.
+    pub(crate) fn decrypt_block(&self, inout: &mut [u8; 16]) {
+        // SAFETY: `inout` is one readable and writable block, which aws-lc
+        // allows to alias. Only a `HaveCryptoExt` token builds `self`.
+        unsafe { aes_hw_decrypt(inout.as_ptr(), inout.as_mut_ptr(), self) }
+    }
+}
+
+impl Drop for AesHwDecKey {
+    fn drop(&mut self) {
+        low::zeroise_value(self);
+    }
+}
+
+impl low::generic::zeroise::Zeroable for AesHwDecKey {}
+
+/// `key`'s length in bits, which aws-lc's key schedules take.
+fn key_bits(key: &[u8]) -> i32 {
+    match key.len() {
+        16 => 128,
+        32 => 256,
+        _ => unreachable!("callers check the AES key length"),
+    }
+}

@@ -275,11 +275,22 @@ the README's Limitations): it panics on a CPU below it.
 | none | `cpu::check()`, at startup, returns `cpu::MissingFeature` naming the feature |
 | none | `cpu::has_aes_hardware()`, for preferring ChaCha20-Poly1305 where AES runs in software |
 
+## key_wrap
+
+ring has none.
+
+| aws-lc-rs | rind |
+|---|---|
+| `AesKek::new(&AES_128, key)?`, `AES_128`, `AES_256` | the same |
+| `KeyWrap::wrap(kek, key, output)?`, which consumes the key and takes any longer `output` | `kek.wrap(key, wrapped)?`, which borrows it and takes `wrapped` exactly 8 bytes longer than `key` |
+| `KeyWrap::unwrap(kek, wrapped, output)?` | `kek.unwrap(wrapped, key)?`, with `key` exactly 8 bytes shorter than `wrapped`, cleared if it fails to verify |
+| `KeyWrapPadded`, RFC 5649's padded variant | none |
+| `BlockCipherId`, `AesKek::block_cipher_id()` | none |
+
 ## Other modules
 
 | aws-lc-rs | rind |
 |---|---|
-| `key_wrap` | none; [AES key wrap](quest/m2/adoption/webcrypto/aes-kw.md) |
 | `cmac`, `kdf` (KBKDF and SSKDF), `tls_prf` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | `pkcs8::Document` | `signature::Pkcs8`, `signature::Spki` |
 | `encoding`'s `AsDer`, `AsBigEndian`, and `AsRawBytes` | `to_pkcs8()` and `to_spki()`; an ECDSA key pair's `to_scalar()` and an Ed25519 key pair's `to_seed()`; other raw keys none |

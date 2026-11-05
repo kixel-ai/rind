@@ -7,12 +7,16 @@
 // from `src/aes.rs` and `src/ctr/aes{128,256}_ctr.rs`. armv7's AES-GCM runs the same code inside
 // libcrux-aes, which does not export it.
 //
+// libcrux-aes only encrypts, so the inverse cipher is rind's, in the same
+// representation: aws-lc's `aes_nohw.c` builds InvSubBytes from the forward
+// S-box and InvMixColumns from MixColumns, and the steps below follow it.
+//
 // Every operation is on bitsliced `u16` lanes with no secret-dependent branch or
 // table index.
 
 #![allow(clippy::needless_range_loop)]
 
-use super::aesv8_armx::AesHwKey;
+use super::aesv8_armx::{AesHwDecKey, AesHwKey};
 use super::cpu::HaveCryptoExt;
 use crate::low;
 
@@ -355,6 +359,74 @@ fn mix_columns_state(st: &mut State) {
     st[4] ^= last_col;
 }
 
+/// Inverts the affine transform of the S-box, FIPS 197 section 5.1.1 step 2,
+/// with the circulant [0 0 1 0 0 1 0 1] and then 0x05, the circulant applied
+/// to 0x63.
+#[inline]
+fn sub_bytes_inv_affine(st: &mut State) {
+    let [a0, a1, a2, a3, a4, a5, a6, a7] = *st;
+    *st = [
+        !(a2 ^ a5 ^ a7),
+        a3 ^ a6 ^ a0,
+        !(a4 ^ a7 ^ a1),
+        a5 ^ a0 ^ a2,
+        a6 ^ a1 ^ a3,
+        a7 ^ a2 ^ a4,
+        a0 ^ a3 ^ a5,
+        a1 ^ a4 ^ a6,
+    ];
+}
+
+/// The inverse S-box from the forward one: the S-box is `S(x) = A(Inv(x))`,
+/// so `InvS(x) = Inv(InvA(x)) = InvA(S(InvA(x)))`.
+#[inline]
+fn inv_sub_bytes_state(st: &mut State) {
+    sub_bytes_inv_affine(st);
+    sub_bytes_state(st);
+    sub_bytes_inv_affine(st);
+}
+
+/// Bit `4 * column + row` of each lane is that byte of the block, so this
+/// rotates row `r` right by `r` columns, undoing [`shift_row_u16`].
+#[inline]
+fn inv_shift_row_u16(input: u16) -> u16 {
+    (input & 0x1111)
+        | ((input & 0x0222) << 4)
+        | ((input & 0x2000) >> 12)
+        | ((input & 0x4400) >> 8)
+        | ((input & 0x0044) << 8)
+        | ((input & 0x8880) >> 4)
+        | ((input & 0x0008) << 12)
+}
+
+#[inline]
+fn inv_shift_rows_state(st: &mut State) {
+    for lane in st {
+        *lane = inv_shift_row_u16(*lane);
+    }
+}
+
+/// InvMixColumns as a [05 00 04 00] step and then MixColumns, by the
+/// decomposition bsaes-x86_64 credits to Jussi Kivilinna.
+#[inline]
+fn inv_mix_columns_state(st: &mut State) {
+    // Each byte becomes 04·(a_r ⊕ a_(r+2)) ⊕ a_r, for row r of its column.
+    let rotate_rows_twice = |x: u16| ((x & 0xcccc) >> 2) | ((x & 0x3333) << 2);
+    let a = *st;
+    let r = a.map(|x| x ^ rotate_rows_twice(x));
+    *st = [
+        a[0] ^ r[6],
+        a[1] ^ r[6] ^ r[7],
+        a[2] ^ r[0] ^ r[7],
+        a[3] ^ r[1] ^ r[6],
+        a[4] ^ r[2] ^ r[6] ^ r[7],
+        a[5] ^ r[3] ^ r[7],
+        a[6] ^ r[4],
+        a[7] ^ r[5],
+    ];
+    mix_columns_state(st);
+}
+
 #[inline]
 fn xor_key1_state(st: &mut State, k: &State) {
     st[0] ^= k[0];
@@ -508,6 +580,42 @@ impl Drop for AesKey {
 
 impl low::generic::zeroise::Zeroable for AesKey {}
 
+/// An AES key that decrypts, on the path [`AesKey`] picks for the CPU. The
+/// portable inverse cipher runs the encryption round keys backwards.
+pub(crate) enum AesDecKey {
+    Aes128([State; 11]),
+    Aes256([State; 15]),
+    Hw(AesHwDecKey),
+}
+
+impl AesDecKey {
+    /// Expands `key`, which must be 16 or 32 bytes.
+    pub(crate) fn new(key: &[u8]) -> Self {
+        match (key.len(), HaveCryptoExt::check()) {
+            (16 | 32, Some(token)) => Self::Hw(AesHwDecKey::new(key, token)),
+            (16, None) => Self::Aes128(key_expansion128(key)),
+            (32, None) => Self::Aes256(key_expansion256(key)),
+            _ => unreachable!("callers check the AES key length"),
+        }
+    }
+
+    pub(crate) fn decrypt_block(&self, inout: &mut [u8; 16]) {
+        match self {
+            Self::Aes128(keyex) => block_decipher(keyex, inout),
+            Self::Aes256(keyex) => block_decipher(keyex, inout),
+            Self::Hw(key) => key.decrypt_block(inout),
+        }
+    }
+}
+
+impl Drop for AesDecKey {
+    fn drop(&mut self) {
+        low::zeroise_value(self);
+    }
+}
+
+impl low::generic::zeroise::Zeroable for AesDecKey {}
+
 fn block_cipher<const NUM_KEYS: usize>(keyex: &[State; NUM_KEYS], inout: &mut [u8; 16]) {
     let mut st = new_state();
     transpose_u8x16(inout, &mut st);
@@ -517,6 +625,24 @@ fn block_cipher<const NUM_KEYS: usize>(keyex: &[State; NUM_KEYS], inout: &mut [u
         aes_enc(&mut st, key);
     }
     aes_enc_last(&mut st, &keyex[NUM_KEYS - 1]);
+
+    transpose_u16x8(&st, inout);
+}
+
+fn block_decipher<const NUM_KEYS: usize>(keyex: &[State; NUM_KEYS], inout: &mut [u8; 16]) {
+    let mut st = new_state();
+    transpose_u8x16(inout, &mut st);
+
+    xor_key1_state(&mut st, &keyex[NUM_KEYS - 1]);
+    inv_shift_rows_state(&mut st);
+    inv_sub_bytes_state(&mut st);
+    for key in keyex[1..NUM_KEYS - 1].iter().rev() {
+        xor_key1_state(&mut st, key);
+        inv_mix_columns_state(&mut st);
+        inv_shift_rows_state(&mut st);
+        inv_sub_bytes_state(&mut st);
+    }
+    xor_key1_state(&mut st, &keyex[0]);
 
     transpose_u16x8(&st, inout);
 }
@@ -598,6 +724,41 @@ mod tests {
                     assert_eq!(
                         got, want,
                         "{key_len}-byte key, counter {counter}, {len} bytes"
+                    );
+                }
+            }
+        }
+    }
+
+    // Each decryption path the CPU offers must invert encryption, which the
+    // tests above hold to AES on every path.
+    #[test]
+    fn every_path_decrypts() {
+        let bytes = |n: usize, seed: u32| -> Vec<u8> {
+            (0..n as u32)
+                .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
+                .collect()
+        };
+        for (key_len, seed) in [16, 32].into_iter().zip(1..) {
+            let key = bytes(key_len, seed);
+            let enc = AesKey::new(&key);
+            let mut paths = vec![match key_len {
+                16 => AesDecKey::Aes128(key_expansion128(&key)),
+                _ => AesDecKey::Aes256(key_expansion256(&key)),
+            }];
+            if let Some(token) = HaveCryptoExt::check() {
+                paths.push(AesDecKey::Hw(AesHwDecKey::new(&key, token)));
+            }
+            for block_seed in 0..4 {
+                let block: [u8; 16] = bytes(16, block_seed).try_into().unwrap();
+                let mut ct = block;
+                enc.encrypt_block(&mut ct);
+                for (i, dec) in paths.iter().enumerate() {
+                    let mut pt = ct;
+                    dec.decrypt_block(&mut pt);
+                    assert_eq!(
+                        pt, block,
+                        "{key_len}-byte key, path {i}, block {block_seed}"
                     );
                 }
             }

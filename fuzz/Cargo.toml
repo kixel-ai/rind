@@ -76,6 +76,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "key_wrap"
+path = "fuzzer/key_wrap.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "xchacha"
 path = "fuzzer/xchacha.rs"
 test = false

@@ -23,18 +23,14 @@ pub(crate) struct VpaesKey {
 impl VpaesKey {
     /// Expands a 16- or 32-byte key.
     pub(crate) fn new(key: &[u8]) -> Self {
-        let bits = match key.len() {
-            16 => 128,
-            32 => 256,
-            _ => unreachable!("callers check the AES key length"),
-        };
         let mut r = Self {
             rd_key: [0; 60],
             rounds: 0,
         };
-        // SAFETY: `key` holds `bits / 8` bytes and `r` is an `AES_KEY`. The
+        // SAFETY: `key` holds `key_bits(key) / 8` bytes and `r` is an
+        // `AES_KEY`. The
         // routines need only NEON, which rind requires.
-        let ret = unsafe { vpaes_set_encrypt_key(key.as_ptr(), bits, &mut r) };
+        let ret = unsafe { vpaes_set_encrypt_key(key.as_ptr(), key_bits(key), &mut r) };
         // aws-lc's always succeeds.
         debug_assert_eq!(ret, 0);
         r
@@ -75,6 +71,55 @@ impl Drop for VpaesKey {
 
 impl low::generic::zeroise::Zeroable for VpaesKey {}
 
+/// An expanded AES-128 or AES-256 decryption key, in vpaes's own format:
+/// aws-lc's `AES_KEY`.
+#[repr(C, align(16))]
+pub(crate) struct VpaesDecKey {
+    rd_key: [u32; 60],
+    rounds: u32,
+}
+
+impl VpaesDecKey {
+    /// Expands a 16- or 32-byte key.
+    pub(crate) fn new(key: &[u8]) -> Self {
+        let mut r = Self {
+            rd_key: [0; 60],
+            rounds: 0,
+        };
+        // SAFETY: `key` holds `key_bits(key) / 8` bytes and `r` is an
+        // `AES_KEY`. The
+        // routines need only NEON, which rind requires.
+        let ret = unsafe { vpaes_set_decrypt_key(key.as_ptr(), key_bits(key), &mut r) };
+        // aws-lc's always succeeds.
+        debug_assert_eq!(ret, 0);
+        r
+    }
+
+    /// Decrypts one block in place.
+    pub(crate) fn decrypt_block(&self, inout: &mut [u8; 16]) {
+        // SAFETY: `inout` is one readable and writable block, which aws-lc
+        // allows to alias, and `self` an expanded decryption key.
+        unsafe { vpaes_decrypt(inout.as_ptr(), inout.as_mut_ptr(), self) }
+    }
+}
+
+impl Drop for VpaesDecKey {
+    fn drop(&mut self) {
+        low::zeroise_value(self);
+    }
+}
+
+impl low::generic::zeroise::Zeroable for VpaesDecKey {}
+
+/// `key`'s length in bits, which vpaes's key schedules take.
+fn key_bits(key: &[u8]) -> u32 {
+    match key.len() {
+        16 => 128,
+        32 => 256,
+        _ => unreachable!("callers check the AES key length"),
+    }
+}
+
 /// aws-lc's `_vpaes_consts`. `_vpaes_schedule_mangle` steps through its
 /// `.Lk_sr` rows by masking an address, which needs them 128-byte aligned.
 #[repr(C, align(128))]
@@ -105,9 +150,16 @@ macro_rules! vpaes_routine {
 vpaes_routine!(vpaes_set_encrypt_key(user_key: *const u8, bits: u32, key: *mut VpaesKey) -> i32 {
     vpaes_schedule_core = vpaes_schedule_core
 });
+vpaes_routine!(vpaes_set_decrypt_key(user_key: *const u8, bits: u32, key: *mut VpaesDecKey) -> i32 {
+    vpaes_schedule_core = vpaes_schedule_core
+});
 vpaes_routine!(vpaes_encrypt(input: *const u8, output: *mut u8, key: *const VpaesKey) {
     vpaes_encrypt_preheat = vpaes_encrypt_preheat,
     vpaes_encrypt_core = vpaes_encrypt_core
+});
+vpaes_routine!(vpaes_decrypt(input: *const u8, output: *mut u8, key: *const VpaesDecKey) {
+    vpaes_decrypt_preheat = vpaes_decrypt_preheat,
+    vpaes_decrypt_core = vpaes_decrypt_core
 });
 vpaes_routine!(vpaes_ctr32_encrypt_blocks(
     input: *const u8,
@@ -126,6 +178,8 @@ vpaes_routine!(vpaes_ctr32_encrypt_blocks(
 vpaes_routine!(vpaes_encrypt_preheat() { vpaes_consts = VPAES_CONSTS });
 vpaes_routine!(vpaes_encrypt_core() { vpaes_consts = VPAES_CONSTS });
 vpaes_routine!(vpaes_encrypt_2x() { vpaes_consts = VPAES_CONSTS });
+vpaes_routine!(vpaes_decrypt_preheat() { vpaes_consts = VPAES_CONSTS });
+vpaes_routine!(vpaes_decrypt_core() { vpaes_consts = VPAES_CONSTS });
 vpaes_routine!(vpaes_key_preheat() { vpaes_consts = VPAES_CONSTS });
 vpaes_routine!(vpaes_schedule_core() {
     vpaes_consts = VPAES_CONSTS,
