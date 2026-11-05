@@ -2,16 +2,22 @@
 
 use core::fmt;
 
-use crate::error::Error;
+use super::asn1::{self, Type};
+use super::curve::{self, Curve, MAX_SCALAR_LEN};
+use super::pkcs8;
+use super::sec1;
+use super::signature::{Buffer, Pkcs8};
+use crate::error::{Error, KeyFormatError};
 use crate::low;
 use crate::mid::{p256, p384, p521, x25519};
 
 /// A key agreement algorithm: a curve and its public key encoding.
 pub struct Algorithm {
     id: AlgorithmId,
-    // The only path to the curve's code, so a binary links only the curves
+    // The only paths to the curve's code, so a binary links only the curves
     // whose algorithms it names.
     generate: fn() -> Result<Private, Error>,
+    load: fn(Source<'_>) -> Result<Private, Error>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -34,6 +40,7 @@ impl fmt::Debug for Algorithm {
 pub static X25519: Algorithm = Algorithm {
     id: AlgorithmId::X25519,
     generate: Keyed::<x25519::PrivateKey>::generate,
+    load: Keyed::<x25519::PrivateKey>::load,
 };
 
 /// ECDH on P-256, with X9.62 uncompressed public keys.
@@ -42,6 +49,7 @@ pub static X25519: Algorithm = Algorithm {
 pub static ECDH_P256: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP256,
     generate: Keyed::<p256::PrivateKey>::generate,
+    load: Keyed::<p256::PrivateKey>::load,
 };
 
 /// ECDH on P-384, with X9.62 uncompressed public keys.
@@ -50,6 +58,7 @@ pub static ECDH_P256: Algorithm = Algorithm {
 pub static ECDH_P384: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP384,
     generate: Keyed::<p384::PrivateKey>::generate,
+    load: Keyed::<p384::PrivateKey>::load,
 };
 
 /// ECDH on P-521, with X9.62 uncompressed public keys.
@@ -58,11 +67,10 @@ pub static ECDH_P384: Algorithm = Algorithm {
 pub static ECDH_P521: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP521,
     generate: Keyed::<p521::PrivateKey>::generate,
+    load: Keyed::<p521::PrivateKey>::load,
 };
 
-/// A private key used for one key agreement, wiped on drop.
-///
-/// There is no static private key: no consumer agrees twice with one key.
+/// A private key, which agrees with any number of peers, wiped on drop.
 pub struct PrivateKey(Private);
 
 // `repr(u8)` puts `X25519` at tag zero, and every variant's key is plain
@@ -78,10 +86,45 @@ enum Private {
 
 impl low::Zeroable for Private {}
 
+/// An encoded private key, as one of [`PrivateKey`]'s loaders takes it.
+enum Source<'a> {
+    Scalar(&'a [u8]),
+    Pkcs8(&'a [u8]),
+    Sec1(&'a [u8]),
+}
+
 impl PrivateKey {
     /// Generates a private key for `algorithm` from the system random source.
     pub fn generate(algorithm: &'static Algorithm) -> Result<Self, Error> {
         Ok(Self((algorithm.generate)()?))
+    }
+
+    /// Loads a private key for `algorithm` from its scalar: X25519's 32
+    /// bytes, any value, or a NIST curve's big-endian scalar, exactly the
+    /// curve's length and refused unless it is from 1 to n - 1.
+    ///
+    /// This suits a JWK's `d`; prefer [`Self::from_pkcs8`] for stored keys.
+    pub fn from_private_key(algorithm: &'static Algorithm, scalar: &[u8]) -> Result<Self, Error> {
+        Ok(Self((algorithm.load)(Source::Scalar(scalar))?))
+    }
+
+    /// Loads a PKCS#8 private key for `algorithm`.
+    ///
+    /// X25519 takes RFC 8410's, v1 or v2, refused if a v2 public key does
+    /// not match; a NIST curve takes v1 `ECPrivateKey` on its curve, as
+    /// [`EcdsaKeyPair::from_pkcs8`](crate::signature::EcdsaKeyPair::from_pkcs8)
+    /// does.
+    pub fn from_pkcs8(algorithm: &'static Algorithm, der: &[u8]) -> Result<Self, Error> {
+        Ok(Self((algorithm.load)(Source::Pkcs8(der))?))
+    }
+
+    /// Loads a SEC1 (RFC 5915) `ECPrivateKey` on `algorithm`'s curve, as
+    /// [`EcdsaKeyPair::from_sec1`](crate::signature::EcdsaKeyPair::from_sec1)
+    /// does.
+    ///
+    /// X25519 has no SEC1 encoding, so it refuses every key.
+    pub fn from_sec1(algorithm: &'static Algorithm, der: &[u8]) -> Result<Self, Error> {
+        Ok(Self((algorithm.load)(Source::Sec1(der))?))
     }
 
     /// Returns the public key to send to the peer.
@@ -94,19 +137,41 @@ impl PrivateKey {
         }
     }
 
-    /// Agrees on a secret with the peer's encoded public key, consuming this key.
+    /// Agrees on a secret with the peer's encoded public key.
     ///
     /// The peer's key is parsed for this key's algorithm, and refused if it
     /// is malformed or off the curve, and so is X25519's all-zero output from
     /// a small-order point
     /// ([RFC7748 section 6.1](https://datatracker.ietf.org/doc/html/rfc7748#section-6.1)).
-    pub fn agree(self, peer: &[u8]) -> Result<SharedSecret, Error> {
+    pub fn agree(&self, peer: &[u8]) -> Result<SharedSecret, Error> {
         Ok(SharedSecret(match &self.0 {
             Private::X25519(key) => key.agree(peer),
             Private::P256(key) => key.agree(peer),
             Private::P384(key) => key.agree(peer),
             Private::P521(key) => key.agree(peer),
         }?))
+    }
+
+    /// Encodes the private key as PKCS#8: v1 for X25519, and for a NIST
+    /// curve as [`EcdsaKeyPair::to_pkcs8`](crate::signature::EcdsaKeyPair::to_pkcs8)
+    /// does, with its public key.
+    pub fn to_pkcs8(&self) -> Pkcs8 {
+        Pkcs8(Buffer::encode(|output| match &self.0 {
+            Private::X25519(key) => key.to_pkcs8(output),
+            Private::P256(key) => key.to_pkcs8(output),
+            Private::P384(key) => key.to_pkcs8(output),
+            Private::P521(key) => key.to_pkcs8(output),
+        }))
+    }
+
+    /// Encodes the private key as the scalar [`Self::from_private_key`] loads.
+    pub fn to_scalar(&self) -> Scalar {
+        Scalar(Buffer::encode(|output| match &self.0 {
+            Private::X25519(key) => key.to_scalar(output),
+            Private::P256(key) => key.to_scalar(output),
+            Private::P384(key) => key.to_scalar(output),
+            Private::P521(key) => key.to_scalar(output),
+        }))
     }
 }
 
@@ -122,15 +187,46 @@ impl fmt::Debug for PrivateKey {
     }
 }
 
+/// A private key as its scalar, which [`PrivateKey::from_private_key`]
+/// loads, wiped on drop.
+pub struct Scalar(Buffer<MAX_SCALAR_LEN>);
+
+impl AsRef<[u8]> for Scalar {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl fmt::Debug for Scalar {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Scalar").finish_non_exhaustive()
+    }
+}
+
+impl Drop for Scalar {
+    fn drop(&mut self) {
+        low::zeroise_value(&mut self.0);
+    }
+}
+
+/// Writes to the start of an output and returns the written span.
+type Write<K> = for<'a> fn(&K, &'a mut [u8]) -> Result<&'a [u8], Error>;
+
 /// A curve's private key, as key agreement runs it.
 trait Agree: Sized + 'static {
     fn random() -> Result<Self, Error>;
+
+    fn load(source: Source<'_>) -> Result<Self, Error>;
 
     fn wrap(key: Keyed<Self>) -> Private;
 
     fn encode_public(&self) -> PublicKey;
 
     fn agree(&self, peer: &[u8]) -> Result<Secret, Error>;
+
+    fn encode_pkcs8<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error>;
+
+    fn encode_scalar<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error>;
 }
 
 /// A private key with its curve's code, which it reaches only through
@@ -143,21 +239,33 @@ struct Keyed<K: Agree> {
 struct Ops<K> {
     public_key: fn(&K) -> PublicKey,
     agree: fn(&K, &[u8]) -> Result<Secret, Error>,
+    to_pkcs8: Write<K>,
+    to_scalar: Write<K>,
 }
 
 impl<K: Agree> Keyed<K> {
     fn generate() -> Result<Private, Error> {
-        Ok(K::wrap(Self {
-            key: K::random()?,
+        Ok(K::wrap(Self::new(K::random()?)))
+    }
+
+    fn load(source: Source<'_>) -> Result<Private, Error> {
+        Ok(K::wrap(Self::new(K::load(source)?)))
+    }
+
+    fn new(key: K) -> Self {
+        Self {
+            key,
             ops: low::ZeroableRef::new(
                 const {
                     &Ops {
                         public_key: K::encode_public,
                         agree: K::agree,
+                        to_pkcs8: K::encode_pkcs8,
+                        to_scalar: K::encode_scalar,
                     }
                 },
             ),
-        }))
+        }
     }
 
     fn public_key(&self) -> PublicKey {
@@ -167,11 +275,27 @@ impl<K: Agree> Keyed<K> {
     fn agree(&self, peer: &[u8]) -> Result<Secret, Error> {
         (self.ops.get().agree)(&self.key, peer)
     }
+
+    fn to_pkcs8<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        (self.ops.get().to_pkcs8)(&self.key, output)
+    }
+
+    fn to_scalar<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        (self.ops.get().to_scalar)(&self.key, output)
+    }
 }
 
 impl Agree for x25519::PrivateKey {
     fn random() -> Result<Self, Error> {
         Self::new_random()
+    }
+
+    fn load(source: Source<'_>) -> Result<Self, Error> {
+        match source {
+            Source::Scalar(scalar) => Self::from_bytes(scalar),
+            Source::Pkcs8(der) => x25519_from_pkcs8(der),
+            Source::Sec1(_) => Err(KeyFormatError::MismatchedSec1Curve.into()),
+        }
     }
 
     fn wrap(key: Keyed<Self>) -> Private {
@@ -186,14 +310,81 @@ impl Agree for x25519::PrivateKey {
         let peer = x25519::PublicKey::try_from_slice(peer)?;
         Ok(Secret::X25519(self.diffie_hellman(&peer)?))
     }
+
+    fn encode_pkcs8<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        x25519_to_pkcs8(self, output)
+    }
+
+    fn encode_scalar<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        let output = output.get_mut(..32).ok_or(Error::WrongLength)?;
+        output.copy_from_slice(&self.secret_bytes());
+        Ok(output)
+    }
+}
+
+/// Loads an RFC 8410 PKCS#8 X25519 key, whose `privateKey` holds an
+/// `OCTET STRING` of the key's 32 bytes, checking a v2 key's public key.
+fn x25519_from_pkcs8(der: &[u8]) -> Result<x25519::PrivateKey, Error> {
+    let _entry = low::Entry::new_secret();
+    let p8 = pkcs8::Key::decode(der, &asn1::oid::id_X25519, None)?;
+    let key = asn1::OctetString::from_bytes(p8.private_key())
+        .map_err(|e| Error::from(KeyFormatError::Asn1(e)))
+        .and_then(|key| x25519::PrivateKey::from_bytes(key.as_octets()))?;
+    match p8.public_key() {
+        Some(public_key) if public_key != key.public_key().as_bytes() => {
+            Err(KeyFormatError::MismatchedPkcs8PublicKey.into())
+        }
+        _ => Ok(key),
+    }
+}
+
+/// Encodes an X25519 key as RFC 8410's PKCS#8 v1, which, as aws-lc and
+/// OpenSSL write it, carries no public key to compute.
+fn x25519_to_pkcs8<'a>(key: &x25519::PrivateKey, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+    let _entry = low::Entry::new_secret();
+    let mut private_key = [0u8; 34];
+    let len = asn1::OctetString::new(&key.secret_bytes())
+        .encode(&mut asn1::Encoder::new(&mut private_key))
+        .map_err(|_| Error::WrongLength)?;
+    let encoded = pkcs8::Key::construct(
+        &private_key[..len],
+        None,
+        asn1::oid::id_X25519.clone(),
+        None,
+    )
+    .encode(output)?;
+    // The caller owns the encoding, as with the key's scalar.
+    low::ct::public_slice(encoded);
+    Ok(encoded)
 }
 
 /// Implements [`Agree`] for a NIST curve's private key.
 macro_rules! nist_curve {
-    ($curve:ident, $variant:ident) => {
+    ($curve:ident, $variant:ident, $curve_type:ty) => {
         impl Agree for $curve::PrivateKey {
             fn random() -> Result<Self, Error> {
                 Self::new_random()
+            }
+
+            fn load(source: Source<'_>) -> Result<Self, Error> {
+                let _entry = low::Entry::new_secret();
+                let decoded = match source {
+                    Source::Scalar(scalar) if scalar.len() == $curve::Scalar::BYTES => {
+                        return Self::from_bytes(scalar);
+                    }
+                    Source::Scalar(_) => return Err(KeyFormatError::WrongLength.into()),
+                    Source::Pkcs8(der) => sec1::decode_pkcs8(der, &<$curve_type>::oid())?,
+                    Source::Sec1(der) => sec1::decode(der, &<$curve_type>::oid())?,
+                };
+                let key = Self::from_bytes(decoded.private_key)?;
+                match decoded.public_key {
+                    Some(public_key)
+                        if !sec1::is_public_key(&key.public_key_uncompressed(), public_key) =>
+                    {
+                        Err(KeyFormatError::MismatchedSec1PublicKey.into())
+                    }
+                    _ => Ok(key),
+                }
             }
 
             fn wrap(key: Keyed<Self>) -> Private {
@@ -208,13 +399,31 @@ macro_rules! nist_curve {
                 let peer = $curve::PublicKey::from_x962_uncompressed(peer)?;
                 Ok(Secret::$variant(self.diffie_hellman(&peer)?))
             }
+
+            fn encode_pkcs8<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+                let _entry = low::Entry::new_secret();
+                sec1::encode_pkcs8(
+                    &self.secret_bytes(),
+                    &self.public_key_uncompressed(),
+                    <$curve_type>::oid(),
+                    output,
+                )
+            }
+
+            fn encode_scalar<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+                let output = output
+                    .get_mut(..$curve::Scalar::BYTES)
+                    .ok_or(Error::WrongLength)?;
+                output.copy_from_slice(&self.secret_bytes());
+                Ok(output)
+            }
         }
     };
 }
 
-nist_curve!(p256, P256);
-nist_curve!(p384, P384);
-nist_curve!(p521, P521);
+nist_curve!(p256, P256, curve::P256);
+nist_curve!(p384, P384, curve::P384);
+nist_curve!(p521, P521, curve::P521);
 
 /// Our public key: 32 bytes for X25519, or an X9.62 uncompressed point.
 #[derive(Clone)]
@@ -292,23 +501,245 @@ mod tests {
     use serde::Deserialize;
 
     use super::*;
-    use crate::error::KeyFormatError;
+    use crate::high::signature::{EcdsaKeyPair, sign};
     use crate::test::{Expected, wycheproof};
+
+    const ALGORITHMS: [&Algorithm; 4] = [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521];
+
+    fn public(secret: &SharedSecret) -> Vec<u8> {
+        let secret = secret.as_ref().to_vec();
+        low::ct::public_slice(&secret);
+        secret
+    }
 
     #[test]
     fn agrees() {
-        for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
+        for algorithm in ALGORITHMS {
             let alice = PrivateKey::generate(algorithm).unwrap();
             let bob = PrivateKey::generate(algorithm).unwrap();
             let alice_public = alice.public_key();
             let bob_public = bob.public_key();
 
-            let alice_secret = alice.agree(bob_public.as_ref()).unwrap();
-            let bob_secret = bob.agree(alice_public.as_ref()).unwrap();
-            low::ct::public_slice(alice_secret.as_ref());
-            low::ct::public_slice(bob_secret.as_ref());
-            assert_eq!(alice_secret.as_ref(), bob_secret.as_ref());
+            let alice_secret = public(&alice.agree(bob_public.as_ref()).unwrap());
+            let bob_secret = public(&bob.agree(alice_public.as_ref()).unwrap());
+            assert_eq!(alice_secret, bob_secret);
+            // A key agrees again, with the same result.
+            assert_eq!(
+                public(&alice.agree(bob_public.as_ref()).unwrap()),
+                alice_secret
+            );
         }
+    }
+
+    #[test]
+    fn round_trips() {
+        for algorithm in ALGORITHMS {
+            let key = PrivateKey::generate(algorithm).unwrap();
+            let peer = PrivateKey::generate(algorithm).unwrap().public_key();
+            let secret = public(&key.agree(peer.as_ref()).unwrap());
+
+            let scalar = key.to_scalar();
+            let pkcs8 = key.to_pkcs8();
+            for loaded in [
+                PrivateKey::from_private_key(algorithm, scalar.as_ref()).unwrap(),
+                PrivateKey::from_pkcs8(algorithm, pkcs8.as_ref()).unwrap(),
+            ] {
+                assert_eq!(loaded.public_key().as_ref(), key.public_key().as_ref());
+                assert_eq!(public(&loaded.agree(peer.as_ref()).unwrap()), secret);
+                let (loaded_scalar, loaded_pkcs8) = (loaded.to_scalar(), loaded.to_pkcs8());
+                low::ct::public_slice(loaded_scalar.as_ref());
+                // Loading marks the input's scalar secret.
+                low::ct::public_slice(scalar.as_ref());
+                low::ct::public_slice(pkcs8.as_ref());
+                assert_eq!(loaded_scalar.as_ref(), scalar.as_ref());
+                assert_eq!(loaded_pkcs8.as_ref(), pkcs8.as_ref());
+            }
+        }
+    }
+
+    /// Each loader, with the scalar inside its encoding marked secret, so
+    /// that ctgrind checks parsing it branches on nothing secret.
+    #[test]
+    fn loads_in_constant_time() {
+        type Load = fn(&'static Algorithm, &[u8]) -> Result<PrivateKey, Error>;
+        for algorithm in ALGORITHMS {
+            let key = PrivateKey::generate(algorithm).unwrap();
+            let peer = PrivateKey::generate(algorithm).unwrap().public_key();
+            let scalar = key.to_scalar().as_ref().to_vec();
+            low::ct::public_slice(&scalar);
+            let mut encodings: Vec<(Load, Vec<u8>)> = vec![
+                (PrivateKey::from_private_key, scalar.clone()),
+                (PrivateKey::from_pkcs8, key.to_pkcs8().as_ref().to_vec()),
+            ];
+            let curve = match algorithm.id {
+                AlgorithmId::X25519 => None,
+                AlgorithmId::EcdhP256 => Some(curve::P256::oid()),
+                AlgorithmId::EcdhP384 => Some(curve::P384::oid()),
+                AlgorithmId::EcdhP521 => Some(curve::P521::oid()),
+            };
+            if let Some(curve) = curve {
+                let mut sec1 = [0; 256];
+                let sec1 = sec1::encode(&scalar, key.public_key().as_ref(), Some(curve), &mut sec1);
+                encodings.push((PrivateKey::from_sec1, sec1.unwrap().to_vec()));
+            }
+
+            for (load, encoding) in encodings {
+                let at = encoding
+                    .windows(scalar.len())
+                    .position(|w| w == scalar)
+                    .unwrap();
+                low::ct::secret_slice(&encoding[at..at + scalar.len()]);
+                let loaded = load(algorithm, &encoding).unwrap();
+                public(&loaded.agree(peer.as_ref()).unwrap());
+            }
+        }
+    }
+
+    #[test]
+    fn loads_ecdsa_keys() {
+        for (algorithm, signing, pkcs8, sec1) in [
+            (
+                &ECDH_P256,
+                &sign::ECDSA_P256_SHA256_ASN1,
+                &include_bytes!("ecdsa/secp256r1.pkcs8.der")[..],
+                &include_bytes!("ecdsa/secp256r1.der")[..],
+            ),
+            (
+                &ECDH_P384,
+                &sign::ECDSA_P384_SHA384_ASN1,
+                &include_bytes!("ecdsa/secp384r1.pkcs8.der")[..],
+                &include_bytes!("ecdsa/secp384r1.der")[..],
+            ),
+            (
+                &ECDH_P521,
+                &sign::ECDSA_P521_SHA512_ASN1,
+                &include_bytes!("ecdsa/secp521r1.pkcs8.der")[..],
+                &include_bytes!("ecdsa/secp521r1.der")[..],
+            ),
+        ] {
+            let ecdsa = EcdsaKeyPair::from_pkcs8(signing, pkcs8).unwrap();
+            let from_pkcs8 = PrivateKey::from_pkcs8(algorithm, pkcs8).unwrap();
+            let from_sec1 = PrivateKey::from_sec1(algorithm, sec1).unwrap();
+            for key in [&from_pkcs8, &from_sec1] {
+                assert_eq!(key.public_key().as_ref(), ecdsa.public_key().as_ref());
+                assert_eq!(key.to_pkcs8().as_ref(), ecdsa.to_pkcs8().as_ref());
+            }
+            // Another curve's key, and each NIST encoding to X25519, are
+            // refused.
+            for other in [&ECDH_P256, &ECDH_P384, &ECDH_P521] {
+                if !core::ptr::eq(other, algorithm) {
+                    assert_eq!(
+                        PrivateKey::from_pkcs8(other, pkcs8).err(),
+                        Some(KeyFormatError::MismatchedPkcs8Parameters.into())
+                    );
+                    assert_eq!(
+                        PrivateKey::from_sec1(other, sec1).err(),
+                        Some(KeyFormatError::MismatchedSec1Curve.into())
+                    );
+                }
+            }
+            assert_eq!(
+                PrivateKey::from_pkcs8(&X25519, pkcs8).err(),
+                Some(KeyFormatError::MismatchedPkcs8Algorithm.into())
+            );
+            assert_eq!(
+                PrivateKey::from_sec1(&X25519, sec1).err(),
+                Some(KeyFormatError::MismatchedSec1Curve.into())
+            );
+        }
+        assert_eq!(
+            PrivateKey::from_sec1(
+                &ECDH_P256,
+                include_bytes!("ecdsa/secp256r1.wrong-public-key.der")
+            )
+            .err(),
+            Some(KeyFormatError::MismatchedSec1PublicKey.into())
+        );
+    }
+
+    #[test]
+    fn refuses_scalars() {
+        for (algorithm, len) in [
+            (&X25519, 32),
+            (&ECDH_P256, 32),
+            (&ECDH_P384, 48),
+            (&ECDH_P521, 66),
+        ] {
+            for wrong in [0, len - 1, len + 1] {
+                assert_eq!(
+                    PrivateKey::from_private_key(algorithm, &vec![1; wrong]).err(),
+                    Some(KeyFormatError::WrongLength.into()),
+                );
+            }
+        }
+        // Zero, and n, the smallest scalar not below it.
+        let n = |hex: &str| hex::decode(hex).unwrap();
+        for (algorithm, n) in [
+            (
+                &ECDH_P256,
+                n("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551"),
+            ),
+            (
+                &ECDH_P384,
+                n(
+                    "ffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973",
+                ),
+            ),
+            (
+                &ECDH_P521,
+                n(
+                    "01fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa51868783bf2f966b7fcc0148f709a5d03bb5c9b8899c47aebb6fb71e91386409",
+                ),
+            ),
+        ] {
+            for scalar in [vec![0; n.len()], n] {
+                assert_eq!(
+                    PrivateKey::from_private_key(algorithm, &scalar).err(),
+                    Some(KeyFormatError::ScalarOutOfRange.into()),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn x25519_pkcs8() {
+        let key = PrivateKey::generate(&X25519).unwrap();
+        let scalar = key.to_scalar();
+        low::ct::public_slice(scalar.as_ref());
+        let public_key = key.public_key();
+
+        // v2, with its public key, loads as the same key, and is refused
+        // with another.
+        let v2 = |public_key: &[u8]| {
+            [
+                &[
+                    0x30, 0x51, 0x02, 0x01, 0x01, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e,
+                ][..],
+                &[0x04, 0x22, 0x04, 0x20],
+                scalar.as_ref(),
+                &[0x81, 0x21, 0x00],
+                public_key,
+            ]
+            .concat()
+        };
+        let loaded = PrivateKey::from_pkcs8(&X25519, &v2(public_key.as_ref())).unwrap();
+        assert_eq!(loaded.public_key().as_ref(), public_key.as_ref());
+        assert_eq!(loaded.to_pkcs8().as_ref(), key.to_pkcs8().as_ref());
+        let other = PrivateKey::generate(&X25519).unwrap().public_key();
+        assert_eq!(
+            PrivateKey::from_pkcs8(&X25519, &v2(other.as_ref())).err(),
+            Some(KeyFormatError::MismatchedPkcs8PublicKey.into())
+        );
+
+        // An Ed25519 key, and an X25519 key to a NIST curve, are refused.
+        assert_eq!(
+            PrivateKey::from_pkcs8(&X25519, include_bytes!("asn1/testdata/ed25519-p8v1.bin")).err(),
+            Some(KeyFormatError::MismatchedPkcs8Algorithm.into())
+        );
+        assert_eq!(
+            PrivateKey::from_pkcs8(&ECDH_P256, key.to_pkcs8().as_ref()).err(),
+            Some(KeyFormatError::MismatchedPkcs8Algorithm.into())
+        );
     }
 
     #[derive(Deserialize, Debug)]
@@ -331,9 +762,22 @@ mod tests {
         }
     }
 
-    fn check_nist_ecdh(file: &str, agree: impl Fn(&EcdhTest) -> Result<Vec<u8>, Error>) {
+    /// Wycheproof's private key, an integer that may have a sign byte or
+    /// fewer bytes than the curve's scalar, at the scalar's length.
+    fn fixed_scalar(private: &[u8], len: usize) -> Vec<u8> {
+        let start = private
+            .iter()
+            .position(|b| *b != 0)
+            .unwrap_or(private.len());
+        let digits = &private[start..];
+        [vec![0; len - digits.len()], digits.to_vec()].concat()
+    }
+
+    fn check_nist_ecdh(file: &str, algorithm: &'static Algorithm, len: usize) {
         for test in wycheproof::<EcdhTest>(file) {
-            let result = agree(&test);
+            let private =
+                PrivateKey::from_private_key(algorithm, &fixed_scalar(&test.private, len)).unwrap();
+            let result = private.agree(&test.public).map(|shared| public(&shared));
             // Point compression is unsupported.
             if test.has_flag("CompressedPublic") || test.has_flag("CompressedPoint") {
                 assert_eq!(
@@ -360,175 +804,56 @@ mod tests {
 
     #[test]
     fn wycheproof_p256() {
-        check_nist_ecdh("ecdh_secp256r1_ecpoint_test.json", |test| {
-            let private = p256::StaticPrivateKey::from_bytes(&test.private).unwrap();
-            let peer = p256::PublicKey::from_x962_uncompressed(&test.public)?;
-            Ok(low::ct::into_public(private.diffie_hellman(&peer)?.0).to_vec())
-        });
+        check_nist_ecdh("ecdh_secp256r1_ecpoint_test.json", &ECDH_P256, 32);
     }
 
     #[test]
     fn wycheproof_p384() {
-        check_nist_ecdh("ecdh_secp384r1_ecpoint_test.json", |test| {
-            let private = p384::StaticPrivateKey::from_bytes(&test.private).unwrap();
-            let peer = p384::PublicKey::from_x962_uncompressed(&test.public)?;
-            Ok(low::ct::into_public(private.diffie_hellman(&peer)?.0).to_vec())
-        });
+        check_nist_ecdh("ecdh_secp384r1_ecpoint_test.json", &ECDH_P384, 48);
     }
 
     #[test]
     fn wycheproof_p521() {
-        check_nist_ecdh("ecdh_secp521r1_ecpoint_test.json", |test| {
-            let private = p521::StaticPrivateKey::from_bytes(&test.private).unwrap();
-            let peer = p521::PublicKey::from_x962_uncompressed(&test.public)?;
-            Ok(low::ct::into_public(private.diffie_hellman(&peer)?.0).to_vec())
-        });
+        check_nist_ecdh("ecdh_secp521r1_ecpoint_test.json", &ECDH_P521, 66);
+    }
+
+    fn check_x25519(test: &EcdhTest, result: Result<Vec<u8>, Error>) {
+        match (test.result, &result) {
+            (Expected::Acceptable, Err(e))
+                if test.has_flag("ZeroSharedSecret") && *e == KeyFormatError::SmallOrder.into() => {
+            }
+            (Expected::Invalid, Err(_))
+                if test.has_flag("InvalidPublic") || test.has_flag("MissingOctetString") => {}
+            (Expected::Valid | Expected::Acceptable, Ok(shared)) => {
+                assert_eq!(shared, &test.shared, "{}", test.id)
+            }
+            _ => panic!("{}: expected {:?} got {:?}", test.id, test.result, result),
+        }
     }
 
     #[test]
     fn wycheproof_x25519() {
         for test in wycheproof::<EcdhTest>("x25519_test.json") {
-            let private = x25519::StaticPrivateKey::try_from_slice(&test.private).unwrap();
-            let result = x25519::PublicKey::try_from_slice(&test.public)
-                .and_then(|peer| private.diffie_hellman(&peer))
-                .map(|shared| low::ct::into_public(shared.0));
-            match (test.result, &result) {
-                (Expected::Acceptable, Err(e))
-                    if test.has_flag("ZeroSharedSecret")
-                        && *e == KeyFormatError::SmallOrder.into() => {}
-                (Expected::Valid | Expected::Acceptable, Ok(shared)) => {
-                    assert_eq!(&shared[..], &test.shared, "{}", test.id)
-                }
-                _ => panic!("{}: expected {:?} got {:?}", test.id, test.result, result),
-            }
+            let private = PrivateKey::from_private_key(&X25519, &test.private).unwrap();
+            check_x25519(&test, private.agree(&test.public).map(|s| public(&s)));
         }
     }
 
-    // A fixed private key needs crate access, so these differential tests
-    // live here rather than beside the other curves' in `tests/crosschecks.rs`.
-    mod p256_crosscheck {
-        use aws_lc_rs::agreement::{self, ECDH_P256, PrivateKey, UnparsedPublicKey};
-        use proptest::prelude::*;
-
-        use super::*;
-
-        /// n - 1, the largest P-256 private key.
-        const N_MINUS_1: [u8; 32] = [
-            0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-            0xff, 0xff, 0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2,
-            0xfc, 0x63, 0x25, 0x50,
+    /// Private keys in PKCS#8, and public keys in SPKI, which only the test
+    /// parses: its fixed prefix, then the 32 bytes.
+    #[test]
+    fn wycheproof_x25519_pkcs8() {
+        const SPKI_PREFIX: [u8; 12] = [
+            0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x03, 0x21, 0x00,
         ];
-
-        /// (n - 1) / 2, the largest scalar `p256_scalarmul` leaves unnegated.
-        const HALF_N: [u8; 32] = [
-            0x7f, 0xff, 0xff, 0xff, 0x80, 0x00, 0x00, 0x00, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff,
-            0xff, 0xff, 0xde, 0x73, 0x7d, 0x56, 0xd3, 0x8b, 0xcf, 0x42, 0x79, 0xdc, 0xe5, 0x61,
-            0x7e, 0x31, 0x92, 0xa8,
-        ];
-
-        /// `x + d`, for a last byte that neither carries nor borrows.
-        fn add_small(mut x: [u8; 32], d: i8) -> [u8; 32] {
-            x[31] = x[31].checked_add_signed(d).unwrap();
-            x
-        }
-
-        /// A private key, biased to 1, n - 1, and either side of n / 2,
-        /// where the scalar multiplication negates it.
-        fn scalar() -> impl Strategy<Value = [u8; 32]> {
-            let small = |k| add_small([0; 32], k);
-            prop_oneof![
-                // Below n, as its first byte is.
-                4 => any::<[u8; 32]>().prop_map(|mut k| {
-                    k[0] %= 0xff;
-                    k
-                }),
-                1 => prop_oneof![
-                    Just(small(1)),
-                    Just(small(2)),
-                    Just(add_small(N_MINUS_1, -1)),
-                    Just(N_MINUS_1),
-                    Just(HALF_N),
-                    Just(add_small(HALF_N, 1)),
-                ],
-            ]
-        }
-
-        proptest! {
-            #[test]
-            fn ecdh(private in scalar(), peer in scalar()) {
-                let peer = PrivateKey::from_private_key(&ECDH_P256, &peer)
-                    .unwrap()
-                    .compute_public_key()
-                    .unwrap();
-                let theirs = PrivateKey::from_private_key(&ECDH_P256, &private).unwrap();
-                let theirs_secret = agreement::agree(
-                    &theirs,
-                    UnparsedPublicKey::new(&ECDH_P256, peer.as_ref()),
-                    (),
-                    |secret| Ok(secret.to_vec()),
-                )
-                .unwrap();
-
-                let ours = p256::StaticPrivateKey::from_bytes(&private).unwrap();
-                let theirs_public = theirs.compute_public_key().unwrap();
-                prop_assert_eq!(&ours.public_key_uncompressed()[..], theirs_public.as_ref());
-                let ours_secret = ours
-                    .diffie_hellman(&p256::PublicKey::from_x962_uncompressed(peer.as_ref()).unwrap())
-                    .unwrap();
-                prop_assert_eq!(&low::ct::into_public(ours_secret.0)[..], &theirs_secret[..]);
-            }
-        }
-    }
-
-    mod x25519_crosscheck {
-        use aws_lc_rs::agreement::{self, PrivateKey, UnparsedPublicKey, X25519};
-        use proptest::prelude::*;
-
-        use super::*;
-
-        // Any 32 bytes is a private key or a peer's u-coordinate, including
-        // coordinates at or above the field prime. The fixed peers have small
-        // order, which both sides refuse for the all-zero secret they give.
-        fn peer() -> impl Strategy<Value = [u8; 32]> {
-            let mut one = [0u8; 32];
-            one[0] = 1;
-            prop_oneof![
-                8 => any::<[u8; 32]>(),
-                1 => Just([0u8; 32]),
-                1 => Just(one),
-            ]
-        }
-
-        proptest! {
-            #[test]
-            fn ecdh(private in any::<[u8; 32]>(), peer in peer()) {
-                // rind marks its copy secret, which aws-lc-rs's must not be.
-                let ours_private = private;
-                let ours = x25519::StaticPrivateKey::from_array(&ours_private);
-                let theirs = PrivateKey::from_private_key(&X25519, &private).unwrap();
-                let theirs_public = theirs.compute_public_key().unwrap();
-                prop_assert_eq!(&ours.public_key().as_bytes()[..], theirs_public.as_ref());
-
-                let ours_secret = ours
-                    .diffie_hellman(&x25519::PublicKey::from_array(&peer))
-                    .map(|secret| low::ct::into_public(secret.0));
-                let theirs_secret = agreement::agree(
-                    &theirs,
-                    UnparsedPublicKey::new(&X25519, peer),
-                    (),
-                    |secret| Ok(secret.to_vec()),
-                );
-                match (ours_secret, theirs_secret) {
-                    (Ok(ours), Ok(theirs)) => prop_assert_eq!(&ours[..], &theirs[..]),
-                    (Err(_), Err(())) => {}
-                    (ours, theirs) => prop_assert!(
-                        false,
-                        "rind gave {:?}, aws-lc-rs {:?}",
-                        ours.err(),
-                        theirs.err()
-                    ),
+        for test in wycheproof::<EcdhTest>("x25519_asn_test.json") {
+            let result = PrivateKey::from_pkcs8(&X25519, &test.private).and_then(|private| {
+                match test.public.strip_prefix(&SPKI_PREFIX[..]) {
+                    Some(peer) if peer.len() == 32 => private.agree(peer).map(|s| public(&s)),
+                    _ => Err(KeyFormatError::WrongLength.into()),
                 }
-            }
+            });
+            check_x25519(&test, result);
         }
     }
 }

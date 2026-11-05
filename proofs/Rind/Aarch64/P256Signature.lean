@@ -136,7 +136,7 @@ theorem is_public_key_spec (key : P256SigningKey) (hl : key.public_key_len.val =
   have hxyl : xy.length = 64 := by
     have := congrArg List.length hxy; simp [h133] at this; omega
   rw [hxy]
-  unfold high.ecdsa.SigningKey.is_public_key
+  unfold high.ecdsa.SigningKey.is_public_key high.sec1.is_public_key
   step with public_key_bytes_spec key hl as ⟨s, hs⟩
   rw [hxy] at hs
   step with split_first_spec s as ⟨o, ho⟩
@@ -177,7 +177,7 @@ theorem is_public_key_spec (key : P256SigningKey) (hl : key.public_key_len.val =
           if b = true then do
               let o2 ← core.slice.Slice.last y
               core.option.Option.is_some_and
-                (high.ecdsa.SigningKey.is_public_key.closure.Insts.CoreOpsFunctionFnOnceTupleShared0U8Bool P256C)
+                high.sec1.is_public_key.closure.Insts.CoreOpsFunctionFnOnceTupleShared0U8Bool
                 o2 t
             else ok false) ⦃ b => b = true ↔ t :: rest = four :: xy ∨ t :: rest = c :: x.val ⦄ := by
       intro t ht
@@ -187,7 +187,7 @@ theorem is_public_key_spec (key : P256SigningKey) (hl : key.public_key_len.val =
       · have hr : rest = x.val := hb.mp ‹_›
         simp only [core.slice.Slice.last, bind_ok, hy, core.option.Option.is_some_and,
           
-          high.ecdsa.SigningKey.is_public_key.closure.Insts.CoreOpsFunctionFnOnceTupleShared0U8Bool.call_once,
+          high.sec1.is_public_key.closure.Insts.CoreOpsFunctionFnOnceTupleShared0U8Bool.call_once,
           Shared0U8.Insts.CoreOpsBitBitAndU8U8.bitand, lift, WP.spec_ok, hc]
         simp [hr, ht]
       · have hr : rest ≠ x.val := fun h => ‹¬b = true› (hb.mpr h)

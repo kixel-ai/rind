@@ -18,6 +18,8 @@ writes for aarch64:
 
 - `x25519_generate`: the key's scalar is the 32 drawn bytes, read
   little-endian, and a failed draw is refused;
+- `x25519_from_private_key`: a loaded key's scalar is the 32 given bytes, read
+  little-endian, and any other length is refused;
 - `x25519_public_key`: the public key is the 32 little-endian bytes of
   `rfcx25519(scalar, 9)`;
 - `x25519_agree`: a peer key that is not 32 bytes is refused, so is an
@@ -33,6 +35,8 @@ P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
 - `p256_generate`: the key's scalar is the first of up to 64 draws whose
   bytes, read big-endian, are in [1, n), and the key is refused if a draw
   fails before one is, or none is;
+- `p256_from_private_key`: a loaded key's scalar is the 32 given bytes, read
+  big-endian, refused unless they are 32 bytes and in [1, n);
 - `p256_public_key`: the public key is the X9.62 uncompressed encoding of the
   scalar times G, for a scalar whose multiple is a finite point on the curve;
 - `p256_agree`: a peer key is refused unless it is a 65-byte uncompressed
@@ -134,7 +138,7 @@ checks the transliterations against FIPS 180-4's, RFC 4231's, RFC 5869's, and
 RFC 6070's vectors.
 
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
-(`Algorithm`'s `generate` and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
+(`Algorithm`'s `generate` and `load`, and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
 cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
 cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
 Lean definitions beside the Rust they model. P-256's key generation draws

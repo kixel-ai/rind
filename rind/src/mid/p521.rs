@@ -93,11 +93,11 @@ impl VerifyingKey {
     }
 }
 
-/// A P-521 ephemeral private key.
+/// A P-521 private key.
 ///
-/// `agreement::PrivateKey` uses one for a single Diffie-Hellman
-/// operation. It is not wiped on drop: the public keys holding one wipe it,
-/// and an ECDSA nonce is one too, which lives only for the signing call.
+/// `agreement::PrivateKey` holds one for Diffie-Hellman. It is not wiped on
+/// drop: the public keys holding one wipe it, and an ECDSA nonce is one too,
+/// which lives only for the signing call.
 pub(crate) struct PrivateKey {
     scalar: Scalar,
 }
@@ -167,10 +167,16 @@ impl PrivateKey {
         Err(Error::RngFailed)
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    /// Decode a private key as [`StaticPrivateKey::from_bytes`] does.
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         Scalar::from_bytes_checked(bytes).map(|scalar| Self {
             scalar: low::ct::into_secret(scalar),
         })
+    }
+
+    /// Return a fixed-length encoding of this private key's value, still secret.
+    pub(crate) fn secret_bytes(&self) -> [u8; Scalar::BYTES] {
+        self.scalar.as_bytes()
     }
 }
 
@@ -182,8 +188,7 @@ impl fmt::Debug for PrivateKey {
 
 /// A P-521 static private key.
 ///
-/// This backs ECDSA, so it can be serialized and deserialized. Its
-/// Diffie-Hellman operation is only for tests with known scalars.
+/// This backs ECDSA, so it can be serialized and deserialized.
 pub(crate) struct StaticPrivateKey(PrivateKey);
 
 impl StaticPrivateKey {
@@ -209,7 +214,7 @@ impl StaticPrivateKey {
 
     /// Return a fixed-length encoding of this private key's value, still secret.
     pub(crate) fn secret_bytes(&self) -> [u8; Scalar::BYTES] {
-        self.0.scalar.as_bytes()
+        self.0.secret_bytes()
     }
 
     /// Derive the corresponding public key, and return it in
@@ -217,18 +222,6 @@ impl StaticPrivateKey {
     pub(crate) fn public_key_uncompressed(&self) -> [u8; PublicKey::BYTES] {
         let _entry = low::Entry::new_secret();
         self.0.public_point().as_bytes_uncompressed()
-    }
-
-    /// Do the Diffie-Hellman operation.
-    ///
-    /// `peer` is the peer's public key (and this type means it was
-    /// already checked to be on the curve.)
-    ///
-    /// Returns a [`SharedSecret`].  May return an error in fault conditions.
-    #[cfg(test)]
-    pub(crate) fn diffie_hellman(&self, peer: &PublicKey) -> Result<SharedSecret, Error> {
-        let _entry = low::Entry::new_secret();
-        self.0.diffie_hellman(peer)
     }
 
     pub(crate) fn public_key_x_scalar(&self) -> Scalar {

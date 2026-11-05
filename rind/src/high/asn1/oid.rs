@@ -62,5 +62,9 @@ asn1_oid! {
 }
 
 asn1_oid! {
+    id_X25519 OBJECT IDENTIFIER ::= { 1 3 101 110 }
+}
+
+asn1_oid! {
     id_ed25519 OBJECT IDENTIFIER ::= { 1 3 101 112 }
 }
