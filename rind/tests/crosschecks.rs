@@ -1244,6 +1244,7 @@ mod rsa {
     struct PssSalt {
         ours_sign: fn(RsaPssSaltLength) -> RsaSigningAlgorithm,
         ours_verify: fn(RsaPssSaltLength) -> RsaVerificationAlgorithm,
+        ours_any_salt: &'static RsaVerificationAlgorithm,
         theirs_sign: fn(TheirsSaltLength) -> signature::RsaSignatureEncoding,
         theirs_verify: fn(TheirsSaltLength) -> signature::RsaParameters,
         hash_len: usize,
@@ -1253,6 +1254,7 @@ mod rsa {
         PssSalt {
             ours_sign: RsaSigningAlgorithm::pss_sha256,
             ours_verify: RsaVerificationAlgorithm::pss_sha256,
+            ours_any_salt: &verify::RSA_PSS_SHA256_ANY_SALT,
             theirs_sign: |salt| signature::RSA_PSS_SHA256.with_pss_salt_length(salt),
             theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA256.with_pss_salt_length(salt),
             hash_len: 32,
@@ -1260,6 +1262,7 @@ mod rsa {
         PssSalt {
             ours_sign: RsaSigningAlgorithm::pss_sha384,
             ours_verify: RsaVerificationAlgorithm::pss_sha384,
+            ours_any_salt: &verify::RSA_PSS_SHA384_ANY_SALT,
             theirs_sign: |salt| signature::RSA_PSS_SHA384.with_pss_salt_length(salt),
             theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA384.with_pss_salt_length(salt),
             hash_len: 48,
@@ -1267,6 +1270,7 @@ mod rsa {
         PssSalt {
             ours_sign: RsaSigningAlgorithm::pss_sha512,
             ours_verify: RsaVerificationAlgorithm::pss_sha512,
+            ours_any_salt: &verify::RSA_PSS_SHA512_ANY_SALT,
             theirs_sign: |salt| signature::RSA_PSS_SHA512.with_pss_salt_length(salt),
             theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA512.with_pss_salt_length(salt),
             hash_len: 64,
@@ -1278,7 +1282,8 @@ mod rsa {
         #![proptest_config(ProptestConfig::with_cases(8))]
 
         /// Each side verifies the other's PSS signatures with any salt length
-        /// the modulus allows, and both refuse one a byte longer.
+        /// the modulus allows, as does any-salt verification, and both refuse
+        /// one a byte longer.
         #[test]
         fn pss_salt_lengths(salt in any::<u16>(), message in vec(any::<u8>(), 0..300)) {
             for theirs in &*THEIRS {
@@ -1288,6 +1293,8 @@ mod rsa {
                 let rng = SystemRandom::new();
 
                 for pss in &PSS_SALTS {
+                    let any_salt =
+                        rind::signature::PublicKey::new(pss.ours_any_salt, public).unwrap();
                     // RFC 8017 section 9.1.1's `emLen - hLen - 2`.
                     let max = u16::try_from((bits - 1).div_ceil(8) - pss.hash_len - 2).unwrap();
                     let custom = salt % (max + 1);
@@ -1320,11 +1327,14 @@ mod rsa {
                         }
                         theirs_signed.unwrap();
                         let ours_verify = ours_verify.unwrap();
-                        ours_verify.verify(&message, &theirs_signature).unwrap();
-                        prop_assert_eq!(
-                            ours_verify.verify(&[&message[..], b"!"].concat(), &theirs_signature),
-                            Err(Error::BadSignature)
-                        );
+                        let other_message = [&message[..], b"!"].concat();
+                        for verifier in [&ours_verify, &any_salt] {
+                            verifier.verify(&message, &theirs_signature).unwrap();
+                            prop_assert_eq!(
+                                verifier.verify(&other_message, &theirs_signature),
+                                Err(Error::BadSignature)
+                            );
+                        }
 
                         let ours_signature = ours.sign(&ours_sign, &message).unwrap();
                         UnparsedPublicKey::new(theirs_verify, public)

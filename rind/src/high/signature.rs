@@ -1156,8 +1156,10 @@ impl RsaKeyPair {
     /// hash, so the public key needs the one it verifies.
     pub fn public_key(&self, algorithm: &RsaSigningAlgorithm) -> PublicKey {
         // A key pair's modulus is at least `RSA_MIN_BITS`, the floor of the
-        // algorithm that verifies `algorithm`'s signatures, unless its PSS
-        // salt is too long for it, which `sign` refuses.
+        // algorithm that verifies `algorithm`'s signatures. A PSS salt too
+        // long for the modulus raises that floor, which this does not check:
+        // `sign` refuses such a salt, and this key refuses every signature,
+        // as EMSA-PSS-VERIFY refuses the length.
         PublicKey {
             key: Parsed::Rsa(
                 RsaVerifier {
