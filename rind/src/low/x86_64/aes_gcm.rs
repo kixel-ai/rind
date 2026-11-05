@@ -720,7 +720,9 @@ mod tests {
     // An IV other than 96 bits hashes to a counter block whose 32-bit
     // counter may wrap within one message, as GCM's increment does mod 2^32
     // without carrying into the rest of the block: on every path, at lengths
-    // that wrap within each kernel's loop and tail, or not at all.
+    // that wrap within each kernel's loop and tail, or not at all. Last, a
+    // 17-byte IV's counter block, which is secret, as it hashes under the
+    // key, for `admin/ctgrind`.
     #[test]
     fn counter_wraps() {
         let bytes = |n: usize, seed: u32| -> Vec<u8> {
@@ -751,13 +753,21 @@ mod tests {
             paths.push((fast, GhashTable::new(u128::from_be_bytes(h))));
 
             for (key, table) in &paths {
-                for start in [0xffff_ffffu32, 0xffff_fffe, 0xffff_ff00, 0xffff_f000, 7] {
+                let starts = [0xffff_ffffu32, 0xffff_fffe, 0xffff_ff00, 0xffff_f000, 7];
+                for start in starts.map(Some).into_iter().chain([None]) {
                     for msg_len in [16, 17, 100, 128, 300, 1000, 2400, 5000] {
-                        let mut y0: [u8; 16] = bytes(16, msg_len as u32).try_into().unwrap();
-                        y0[12..].copy_from_slice(&start.to_be_bytes());
+                        let y0 = match start {
+                            Some(start) => {
+                                let mut y0: [u8; 16] =
+                                    bytes(16, msg_len as u32).try_into().unwrap();
+                                y0[12..].copy_from_slice(&start.to_be_bytes());
+                                y0
+                            }
+                            None => initial_counter(table, &bytes(17, msg_len as u32)),
+                        };
                         let aad = bytes(17, 2);
                         let plain = bytes(msg_len, 3);
-                        let what = format!("{key_len} {start:x} {msg_len}");
+                        let what = format!("{key_len} {start:x?} {msg_len}");
                         let (want, want_tag) =
                             gcm_model(|b| key.encrypt_block(b), &y0, &aad, &plain);
                         ct::public_slice(&want);
