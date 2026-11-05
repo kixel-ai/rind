@@ -1408,6 +1408,113 @@ theorem x_is_spec (pt : mid.p256.JacobianMontPoint) (x y : Nat) (h : jrep (some 
         · simp only [scNat] at h hrpn ⊢
           exact absurd (hb1.mpr (by omega)) hb1f
 
+/-! ## Raw verification, `VerifyingKey::raw_ecdsa_verify` -/
+
+/-- The odd multiples a key's cache builds: 17Q to 31Q, from its Q to 15Q. -/
+theorem more_odd_spec (hG : P256Group) (Q : P256Point) (hQ : p256OnCurve Q) (hQne : Q ≠ none)
+    (odd : Std.Array mid.p256.AffineMontPoint 8#usize) (hodd : OddMultiples Q 1 odd) :
+    mid.p256.AffineMontPoint.public_more_odd_multiples odd ⦃ m => OddMultiples Q 17 m ⦄ := by
+  sorry
+
+end P256
+
+/-- A verifying key's cache of 17P, ..., 31P holds, once built, what its
+build returns from the key's own P, ..., 15P: `ReuseCache::get_or_build`
+returns `None` or `build`'s value, and a key's odd multiples never change
+after it is parsed, so every build of its cache returns the same. -/
+def Cached : Prop :=
+  ∀ key : mid.p256.VerifyingKey,
+    low.generic.reuse_cache.ReuseCache.get_or_build
+      (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
+      (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault)
+      mid.p256.VerifyingKey.raw_ecdsa_verify.closure.Insts.CoreOpsFunctionFnOnceTupleArrayAffineMontPoint8
+      key.more_odd_multiples key ⦃ r =>
+      r = none ∨ ∃ m, mid.p256.AffineMontPoint.public_more_odd_multiples key.odd_multiples = ok m ∧ r = some m ⦄
+
+namespace P256
+
+/-- The ECDSA verification a key's raw check computes, for `r`, `s`, and
+`e` the signature's scalars and the hash's. -/
+theorem raw_verify_spec (hG : P256Group) (ht : Tabulated) (hc : Cached) (key : mid.p256.VerifyingKey)
+    (Q : P256Point) (hQ : p256OnCurve Q) (hQne : Q ≠ none) (hodd : OddMultiples Q 1 key.odd_multiples)
+    (r s e : mid.p256.Scalar) (hr0 : 0 < scNat r) (hr : scNat r < n256) (hs0 : 0 < scNat s)
+    (hs : scNat s < n256) (he : scNat e < n256) :
+    mid.p256.VerifyingKey.raw_ecdsa_verify key r s e ⦃ res =>
+      (ecdsaP256Verifies Q (scNat e) (scNat r) (scNat s) ∧ res = core.result.Result.Ok ()) ∨
+        (¬ ecdsaP256Verifies Q (scNat e) (scNat r) (scNat s) ∧
+          res = core.result.Result.Err error.Error.BadSignature) ⦄ := by
+  unfold mid.p256.VerifyingKey.raw_ecdsa_verify
+  have hlt : ∀ x, x % n256 < n256 := fun x => Nat.mod_lt _ n256_pos
+  step with scalar_inv_spec s hs0 hs as ⟨si, hsi, hssi⟩
+  step with scalar_as_mont_spec si hsi as ⟨sm, hsm⟩
+  step with scalar_as_mont_spec e he as ⟨em, hem⟩
+  step with scalar_mont_mul_spec sm em (by rw [hsm]; exact hlt _) (by rw [hem]; exact hlt _) as ⟨s3, hs3⟩
+  step as ⟨u1, hu1⟩
+  step with scalar_as_mont_spec r hr as ⟨rm, hrm⟩
+  step with scalar_mont_mul_spec sm rm (by rw [hsm]; exact hlt _) (by rw [hrm]; exact hlt _) as ⟨s5, hs5⟩
+  step as ⟨u2, hu2⟩
+  step with hc key as ⟨more, hmore⟩
+  have hs' : (scNat s : ZMod n256) ≠ 0 := by
+    rw [Ne, ZMod.natCast_eq_zero_iff]; exact Nat.not_dvd_of_pos_of_lt hs0 hs
+  have hsinv : (scNat si : ZMod n256) = (scNat s : ZMod n256)⁻¹ := by
+    have := congrArg (fun x : Nat => (x : ZMod n256)) hssi
+    simp only [Nat.cast_mul, ZMod.natCast_mod, Nat.cast_one] at this
+    exact (inv_eq_of_mul_eq_one_right this).symm
+  have hR := RInv_mul
+  push_cast at hR
+  have hu1v : scNat u1 = ((scNat e : ZMod n256) * (scNat s : ZMod n256)⁻¹).val := by
+    apply val_of_eq _ _ (by rw [hu1]; exact hlt _)
+    simp only [scNat] at *
+    rw [hu1, hs3, hsm, hem]
+    push_cast [ZMod.natCast_mod]
+    rw [hsinv]
+    set t : ZMod n256 := (2 ^ 256 : ZMod n256) * (n256RInv : ZMod n256)
+    linear_combination (scNat s : ZMod n256)⁻¹ * (scNat e : ZMod n256) * (t + 1) * hR
+  have hu2v : scNat u2 = ((scNat r : ZMod n256) * (scNat s : ZMod n256)⁻¹).val := by
+    apply val_of_eq _ _ (by rw [hu2]; exact hlt _)
+    simp only [scNat] at *
+    rw [hu2, hs5, hsm, hrm]
+    push_cast [ZMod.natCast_mod]
+    rw [hsinv]
+    set t : ZMod n256 := (2 ^ 256 : ZMod n256) * (n256RInv : ZMod n256)
+    linear_combination (scNat s : ZMod n256)⁻¹ * (scNat r : ZMod n256) * (t + 1) * hR
+  have hmore' : ∀ m, more = some m → OddMultiples Q 17 m := by
+    intro m hm
+    rcases hmore with h | ⟨m', hm', h⟩
+    · rw [h] at hm; cases hm
+    · rw [h] at hm; cases hm
+      have := more_odd_spec hG Q hQ hQne key.odd_multiples hodd
+      rw [hm'] at this
+      simpa [WP.spec_ok] using this
+  step with twin_multiply_spec hG ht u1 u2 Q hQ key.odd_multiples hodd more hmore' as ⟨pt, hpt⟩
+  rw [twin, show ((scNat u1 : Nat) : Int) = Int.ofNat (scNat u1) from rfl, show ((scNat u2 : Nat) : Int) = Int.ofNat (scNat u2) from rfl] at hpt
+  simp only [p256ZPow] at hpt
+  rw [hu1v, hu2v] at hpt
+  unfold ecdsaP256Verifies
+  rcases hT : p256Mul (p256Pow p256G ((scNat e : ZMod n256) * (scNat s : ZMod n256)⁻¹).val)
+      (p256Pow Q ((scNat r : ZMod n256) * (scNat s : ZMod n256)⁻¹).val) with _ | ⟨x, y⟩
+  · rw [hT] at hpt
+    step with is_infinity_spec pt none hpt as ⟨b, hb⟩
+    rw [if_pos (hb.mpr trivial)]
+    simp only [WP.spec_ok]
+    right
+    simp
+  · rw [hT] at hpt
+    step with is_infinity_spec pt _ hpt as ⟨b, hb⟩
+    have hbf : ¬ b = true := fun h => by cases hb.mp h
+    rw [if_neg hbf]
+    step with x_is_spec pt x y hpt r hr as ⟨b1, hb1⟩
+    split
+    · rename_i h1
+      rw [WP.spec_ok]
+      left
+      first | exact ⟨⟨hr0, hr, hs0, hs, hb1.mp h1⟩, rfl⟩ | exact ⟨hr0, hr, hs0, hs, hb1.mp h1, rfl⟩ |
+        exact ⟨⟨hr0, hr, hs0, hs, hb1.mp h1⟩, trivial⟩
+    · rename_i h1
+      rw [WP.spec_ok]
+      right
+      first | exact ⟨fun h => h1 (hb1.mpr h.2.2.2.2), rfl⟩ | exact ⟨fun h => h1 (hb1.mpr h.2.2.2.2), trivial⟩
+
 end P256
 
 end rind.aarch64
