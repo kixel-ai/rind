@@ -16,10 +16,11 @@ never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
 `<host>.json` per host, with its CPU, OS, toolchain, and library versions.
 
 `nightly` saves the latest nightly `bench` run's results on main, with gh, as
-the report's CPU tiers. `render` writes BENCHMARKS.md and its SVGs from
-benchmarks/data, the verified code in benchmarks/verified.toml, and the
-decision on each gap in benchmarks/gaps.toml, first importing each measured
-host of a collection given by `--from`. It fails on a gap over 10% without a
+the report's CPU tiers. `render` writes BENCHMARKS.md, its SVGs, and the
+README's headline SVG from benchmarks/data, the verified code in
+benchmarks/verified.toml, and the decision on each gap in
+benchmarks/gaps.toml, first importing each measured host of a collection
+given by `--from`. It fails on a gap over 10% without a
 decision, or a decision whose gap is gone. `--check` fails if they are out of
 date instead.
 
@@ -35,6 +36,7 @@ import datetime
 import fnmatch
 import glob
 import json
+import math
 import os
 import platform
 import re
@@ -647,6 +649,24 @@ BUILDS = {
     "rustls-ring": "rustls + ring",
 }
 
+# The README's headline: one row per job TLS 1.3 and QUIC do most, by row
+# name. The handshake runs both peers whole; then each AEAD at a QUIC
+# packet's size, the usual key agreement, and the server's signature with
+# the two most common certificate keys.
+HEADLINE = [
+    "rustls-full-handshake-group/x25519mlkem768",
+    "aes128-gcm/1350B",
+    "chacha20poly1305/1350B",
+    "x25519-ecdh",
+    "p256-ecdsa-sign",
+    "rsa2048-pss-sha256-sign",
+]
+
+# The headline's libraries, and its build row: a rustls client over each
+# one's provider.
+HEADLINE_LIBRARIES = ["rind", "aws-lc-rs", "ring"]
+HEADLINE_BUILDS = {"rind": "rustls-rind", "aws-lc-rs": "rustls-aws-lc-rs", "ring": "rustls-ring"}
+
 # The CPU features a ✓ may require, as rind-cpuid names them.
 CPU_FEATURES = {
     "x86_64": {
@@ -713,7 +733,7 @@ TIER_LABELS = ["under 0.8", "to 0.9", "to 0.98", "even", "to 1.1", "to 1.25", "o
 # Each theme's colors. Speed is one blue ramp, darkest for the fastest on
 # light and lightest on dark, so that the fastest stands out on either. The
 # tiers diverge from a neutral gray: blue where rind leads, red where it
-# trails.
+# trails. The headline's bars are blue for rind and gray for the rest.
 THEMES = {
     "light": {
         "ink": "#0b0b0b",
@@ -721,6 +741,8 @@ THEMES = {
         "rule": "#c3c2b7",
         "speed": ["#0d366b", "#184f95", "#256abf", "#3987e5", "#6da7ec", "#9ec5f4", "#cde2fb"],
         "tier": ["#184f95", "#3987e5", "#b7d3f6", "#f0efec", "#f6c4b5", "#e5735a", "#b3321f"],
+        "rind": "#2a78d6",
+        "other": "#8f8e86",
     },
     "dark": {
         "ink": "#f0efec",
@@ -728,6 +750,8 @@ THEMES = {
         "rule": "#383835",
         "speed": ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#2a78d6", "#1c5cab", "#184f95"],
         "tier": ["#6da7ec", "#2a78d6", "#184f95", "#383835", "#8a2f1f", "#c4452c", "#ec7a63"],
+        "rind": "#3987e5",
+        "other": "#6b6a64",
     },
 }
 FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
@@ -977,9 +1001,9 @@ class Svg:
         else:
             self.items.append(f"<rect {attrs}/>")
 
-    def line(self, x1, y1, x2, y2):
+    def line(self, x1, y1, x2, y2, color="rule"):
         self.items.append(
-            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{self.theme["rule"]}"/>'
+            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{self.theme[color]}"/>'
         )
 
     def render(self, width, height, title):
@@ -1164,6 +1188,98 @@ def tiers_svg(tiers, theme):
     return svg.render(width, y + 12, "rind's time over the fastest of aws-lc-rs and ring, by CPU tier")
 
 
+def and_list(words):
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + ("," if len(words) > 2 else "") + " and " + words[-1]
+
+
+def headline_rows(hosts):
+    """Each headline row's label, each library's (host, time over rind's,
+    time) on every host that timed both, and the build tools each needs."""
+    rows = []
+    for row in HEADLINE:
+        per = {}
+        for name in HOSTS:
+            libs = times(hosts[name]).get(row, {}) if name in hosts else {}
+            for lib in HEADLINE_LIBRARIES:
+                if "rind" in libs and lib in libs:
+                    per.setdefault(lib, []).append((name, libs[lib] / libs["rind"], human(libs[lib])))
+        rows.append((label(row), per, {}))
+    per, tools = {}, {}
+    for name in HOSTS:
+        cost = hosts.get(name, {}).get("build_cost") or {}
+        builds = {b["name"]: b for b in cost.get("builds", [])} if cost.get("status") == "ok" else {}
+        if HEADLINE_BUILDS["rind"] not in builds:
+            continue
+        rind = builds[HEADLINE_BUILDS["rind"]]["median_seconds"]
+        for lib, build in HEADLINE_BUILDS.items():
+            if build in builds:
+                seconds = builds[build]["median_seconds"]
+                per.setdefault(lib, []).append((name, seconds / rind, f"{seconds:.1f} s"))
+                tools[lib] = builds[build]["tools"]
+    rows.append(("cold build of a rustls client", per, tools))
+    return [r for r in rows if "rind" in r[1]]
+
+
+def headline_svg(hosts, theme):
+    """The README's headline: each library's time over rind's for the
+    HEADLINE operations and a rustls client's build, as the geometric mean
+    over the hosts with a whisker across them."""
+    svg = Svg(theme)
+    rows = headline_rows(hosts)
+    title = "Time over rind's for common TLS and QUIC operations and a rustls client's build"
+    if not rows:
+        svg.text(12, 18, "No host has timed the headline's operations yet.", color="muted")
+        return svg.render(320, 28, title)
+    timed = {host for _, per, _ in rows for found in per.values() for host, _, _ in found}
+    shown = [name for name in HOSTS if name in timed]
+    arches = sorted({host_arch(hosts[name]) for name in shown})
+    bar_row, bar, bars = 16, 12, 300
+    label_width = max(text_width(name, 12) for name, _, _ in rows) + 16
+    name_width = max(text_width(COLUMNS[lib], 11) for lib in HEADLINE_LIBRARIES) + 10
+    x0 = 12 + label_width + name_width
+    width = x0 + bars + 130
+    svg.text(12, 18, "Time over rind's: shorter is faster", size=13, weight="bold")
+    svg.text(
+        12,
+        36,
+        f"The geometric mean over {and_list(shown)} ({and_list(arches)}), with a whisker across them. "
+        "BENCHMARKS.md has every time.",
+        size=11,
+        color="muted",
+    )
+    y = 52
+    for name, per, tools in rows:
+        top = max(r for found in per.values() for _, r, _ in found)
+        svg.line(12, y, width - 12, y)
+        y += 8
+        svg.text(12, y + len(HEADLINE_LIBRARIES) * bar_row / 2 + 4, name)
+        for i, lib in enumerate(HEADLINE_LIBRARIES):
+            by = y + i * bar_row
+            svg.text(12 + label_width, by + 11, COLUMNS[lib], size=11, color="muted")
+            if lib not in per:
+                svg.text(x0, by + 11, "not offered", size=11, color="muted")
+                continue
+            ratios = [r for _, r, _ in per[lib]]
+            mean = math.exp(sum(math.log(r) for r in ratios) / len(ratios))
+            title = f"{name}, {COLUMNS[lib]}: " + "; ".join(
+                f"{host} {value}, {r:.2f}× rind's" for host, r, value in per[lib]
+            )
+            fill = svg.theme["rind" if lib == "rind" else "other"]
+            svg.rect(x0, by + (bar_row - bar) / 2, bars * mean / top, bar, fill, title)
+            lo, hi = x0 + bars * min(ratios) / top, x0 + bars * max(ratios) / top
+            if hi - lo >= 1:
+                mid = by + bar_row / 2
+                svg.line(lo, mid, hi, mid, color="ink")
+                svg.line(lo, mid - 3, lo, mid + 3, color="ink")
+                svg.line(hi, mid - 3, hi, mid + 3, color="ink")
+            text = "1×" if lib == "rind" else f"{mean:.2f}×"
+            if tools.get(lib):
+                text += ", needs " + ", ".join(tools[lib])
+            svg.text(max(hi, x0 + bars * mean / top) + 6, by + 12, text, size=11)
+        y += len(HEADLINE_LIBRARIES) * bar_row + 8
+    return svg.render(width, y + 4, title)
+
+
 # --- Markdown ---------------------------------------------------------------
 
 
@@ -1250,7 +1366,7 @@ def tier_table(tiers):
 
 
 def report(hosts, tiers, verified, gaps):
-    """BENCHMARKS.md and its SVGs, by path."""
+    """BENCHMARKS.md, its SVGs, and the README's headline, by path."""
     files = {}
     shown = [name for name in HOSTS if name in hosts]
     missing = [f"`{name}`" for name in HOSTS if name not in hosts]
@@ -1295,6 +1411,7 @@ def report(hosts, tiers, verified, gaps):
         ]
         for theme, suffix in (("light", ""), ("dark", "-dark")):
             files[f"overview{suffix}.svg"] = overview_svg(hosts, verified, theme)
+            files[f"headline{suffix}.svg"] = headline_svg(hosts, theme)
     for name in HOSTS:
         if name not in hosts:
             continue
