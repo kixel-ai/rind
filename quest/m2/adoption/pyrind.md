@@ -31,7 +31,3 @@ Guidance:
   `hmac`, and publish the numbers with the package; the pitch is these
   numbers.
 - Platforms rind refuses get no wheel; there is no pure-Python fallback.
-
-## Required
-
-- [rind builds on every platform its packages ship](/quest/m1/platforms.md) - the wheels' targets

@@ -96,8 +96,9 @@ jobs:
       - name: Artificial CPU feature tests (aarch64)
         if: runner.arch == 'ARM64'
         run: |
-          # test the AES-256-GCM and Keccak-f kernels for cores without SHA3
-          env RIND_CPU_DISABLE_sha3=1 cargo test
+          # test the AES-256-GCM and Keccak-f kernels for cores without SHA3,
+          # failing a run whose OS hides the crypto extension
+          env RIND_CPU_DISABLE_sha3=1 RIND_TEST_ARM_CRYPTO_EXT=1 cargo test
           # test vpaes, NEON GHASH, and scalar SHA-1 and SHA-256 for cores
           # without the crypto extension, such as the Raspberry Pi 4's; the
           # last variable fails the run that lands on the wrong path

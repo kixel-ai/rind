@@ -29,4 +29,4 @@ Guidance:
 
 ## Required
 
-- [rind builds on every platform its packages ship](/quest/m1/platforms.md) - the Android and iOS targets
+- [rind builds and passes its tests on iOS and Android](/quest/m1/platforms.md) - the Android and iOS targets

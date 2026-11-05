@@ -85,7 +85,9 @@ but there is also a public API for general-purpose use.
 
 ## Limitations
 
-`aarch64`, `x86_64`, and 32-bit `arm` architectures only.
+`aarch64`, `x86_64`, and 32-bit `arm` architectures only. CI tests Linux
+(glibc and musl), macOS, and Windows on `x86_64` and `aarch64`; iOS and
+Android are untested.
 
 - `aarch64` requires the `neon` CPU feature. Where the CPU has the crypto
   extension (`aes`, `pmull`, and `sha2`), as the Raspberry Pi 5 and most
