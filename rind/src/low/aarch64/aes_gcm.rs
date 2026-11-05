@@ -42,19 +42,49 @@ fn tagged<const ENC: bool>(
     aad: &[u8],
     cipher_inout: &mut [u8],
 ) -> [u8; 16] {
+    tagged_from::<ENC>(key, table, &counter_block(nonce), aad, cipher_inout)
+}
+
+/// GCM's first counter block for a 96-bit nonce: the nonce, then 1.
+fn counter_block(nonce: &[u8; 12]) -> [u8; 16] {
     let mut y0 = [0u8; 16];
     y0[..12].copy_from_slice(nonce);
     y0[15] = 0x01;
+    y0
+}
 
+/// GCM's first counter block for `iv`, of any length but zero: the 96-bit
+/// nonce's, or else the GHASH of `iv` and its bit length.
+pub(crate) fn initial_counter(table: &GhashTable, iv: &[u8]) -> [u8; 16] {
+    if let Ok(nonce) = iv.try_into() {
+        return counter_block(nonce);
+    }
     let mut ghash = Ghash::new(table);
-    cipher::<ENC>(key, &mut ghash, &y0, aad, cipher_inout);
+    ghash.add(iv);
+    ghash.add(&lengths(0, iv.len()));
+    ghash.into_bytes()
+}
 
-    let mut lengths = [0u8; 16];
-    lengths[..8].copy_from_slice(&((aad.len() * 8) as u64).to_be_bytes());
-    lengths[8..].copy_from_slice(&((cipher_inout.len() * 8) as u64).to_be_bytes());
-    ghash.add(&lengths);
+/// GCM's last GHASH block: the bit lengths of the AAD and the message.
+fn lengths(aad: usize, msg: usize) -> [u8; 16] {
+    (((aad as u128 * 8) << 64) | (msg as u128 * 8)).to_be_bytes()
+}
 
-    let mut tag = y0;
+/// Encrypts (if `ENC`) or decrypts `cipher_inout` in place from the counter
+/// block `y0`, and returns its tag.
+#[inline]
+pub(crate) fn tagged_from<const ENC: bool>(
+    key: &AesKey,
+    table: &GhashTable,
+    y0: &[u8; 16],
+    aad: &[u8],
+    cipher_inout: &mut [u8],
+) -> [u8; 16] {
+    let mut ghash = Ghash::new(table);
+    cipher::<ENC>(key, &mut ghash, y0, aad, cipher_inout);
+    ghash.add(&lengths(aad.len(), cipher_inout.len()));
+
+    let mut tag = *y0;
     key.encrypt_block(&mut tag);
     for (t, x) in tag.iter_mut().zip(ghash.into_bytes()) {
         *t ^= x;
@@ -185,6 +215,7 @@ mod tests {
     use crate::low::aarch64::ghash::PmullTable;
     use crate::low::aarch64::ghash_neon_armv8::NeonTable;
     use crate::low::aarch64::vpaes_armv8::VpaesKey;
+    use crate::low::generic::ghash::gcm_model;
 
     // Every other test sees only the path the CPU picks, so the stitched
     // kernels are checked against vpaes and NEON GHASH here: each key size,
@@ -228,6 +259,52 @@ mod tests {
                         "{what}"
                     );
                     assert_eq!(got, plain, "{what}");
+                }
+            }
+        }
+    }
+
+    // An IV other than 96 bits hashes to a counter block whose 32-bit
+    // counter may wrap within one message, as GCM's increment does mod 2^32
+    // without carrying into the rest of the block: on both paths, at lengths
+    // that wrap within the kernels' eight- and four-block loops and tails,
+    // or not at all.
+    #[test]
+    fn counter_wraps() {
+        let bytes = |n: usize, seed: u32| -> Vec<u8> {
+            (0..n as u32)
+                .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
+                .collect()
+        };
+        for key_len in [16, 32] {
+            let key = bytes(key_len, 1);
+            let vpaes = AesKey::Vpaes(VpaesKey::new(&key));
+            let mut h = [0u8; 16];
+            vpaes.encrypt_block(&mut h);
+            let mut paths = vec![(vpaes, GhashTable::Neon(NeonTable::new(&h)))];
+            if let Some(token) = HaveCryptoExt::check() {
+                let pmull = PmullTable::new(u128::from_be_bytes(h), token);
+                paths.push((AesKey::new(&key), GhashTable::Pmull(pmull)));
+            }
+
+            for (key, table) in &paths {
+                for start in [0xffff_ffffu32, 0xffff_fffe, 0xffff_fff9, 0xffff_ff00, 7] {
+                    for msg_len in [16, 17, 100, 128, 300, 1000] {
+                        let mut y0: [u8; 16] = bytes(16, msg_len as u32).try_into().unwrap();
+                        y0[12..].copy_from_slice(&start.to_be_bytes());
+                        let aad = bytes(17, 2);
+                        let plain = bytes(msg_len, 3);
+                        let what = format!("{key_len} {start:x} {msg_len}");
+                        let (want, want_tag) =
+                            gcm_model(|b| key.encrypt_block(b), &y0, &aad, &plain);
+
+                        let mut got = plain.clone();
+                        let tag = tagged_from::<true>(key, table, &y0, &aad, &mut got);
+                        assert_eq!((&got, tag), (&want, want_tag), "{what}");
+
+                        let tag = tagged_from::<false>(key, table, &y0, &aad, &mut got);
+                        assert_eq!((&got, tag), (&plain, want_tag), "{what}");
+                    }
                 }
             }
         }

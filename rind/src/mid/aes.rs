@@ -93,6 +93,15 @@ pub(super) fn check_gcm_lengths(aad: usize, msg: usize) -> Result<(), Error> {
     check_counter(2, msg)
 }
 
+/// Fails with [`Error::WrongLength`] unless `iv` is an AES-GCM IV: not
+/// empty, and with a bit length that fits in 64 bits.
+pub(super) fn check_gcm_iv(iv: &[u8]) -> Result<(), Error> {
+    if iv.is_empty() || iv.len() as u64 >= 1 << 61 {
+        return Err(Error::WrongLength);
+    }
+    Ok(())
+}
+
 /// Expands `key`, which the caller has checked is 16 or 32 bytes.
 pub(super) fn expand_key(key: &[u8]) -> AesKey {
     // Mark a copy: the caller's buffer may be shared, or a promoted constant.

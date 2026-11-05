@@ -4,19 +4,16 @@ use libcrux_aes::aes_gcm_128::portable::PortableAesGcm128;
 use libcrux_aes::aes_gcm_256::portable::PortableAesGcm256;
 use libcrux_traits::aead::arrayref::Aead;
 
-use super::aes::check_gcm_lengths;
+use super::aes::{check_gcm_iv, check_gcm_lengths};
 use crate::Error;
 use crate::low::{
-    self, AesHwKey, Entry, GhashTable, HaveCryptoExt, ct_equal, zeroise, zeroise_value,
+    self, AesHwKey, AesKey, Entry, GhashTable, HaveCryptoExt, NohwTable, ct_equal, zeroise,
+    zeroise_value,
 };
 
 /// An AES-GCM key.
 ///
-/// This implementation is limited to that which is commonly
-/// used:
-///
-/// - AES-192 is not supported, as it is rarely used.
-/// - Only nonces that are 12-bytes/96-bits are supported.
+/// AES-192 is not supported, as it is rarely used.
 // A process only ever builds one variant, so boxing would buy nothing.
 #[expect(clippy::large_enum_variant)]
 pub(crate) enum AesGcm {
@@ -108,6 +105,73 @@ impl AesGcm {
             Err(Error::DecryptFailed)
         }
     }
+
+    /// Encrypts as [`Self::encrypt`] does, under an IV of any length, and
+    /// writes the first `tag_out.len()` bytes of the tag, at most 16.
+    ///
+    /// Also fails with [`Error::WrongLength`] if `iv` is empty or 2^61
+    /// bytes or longer.
+    pub(crate) fn encrypt_any(
+        &self,
+        iv: &[u8],
+        aad: &[u8],
+        cipher_inout: &mut [u8],
+        tag_out: &mut [u8],
+    ) -> Result<(), Error> {
+        let _entry = Entry::new_secret();
+        check_gcm_iv(iv)?;
+        check_gcm_lengths(aad.len(), cipher_inout.len())?;
+        let mut tag = [0u8; 16];
+        match (self, iv.try_into()) {
+            (Self::Portable(key), Ok(nonce)) => key.encrypt(nonce, aad, cipher_inout, &mut tag)?,
+            (Self::Portable(key), Err(_)) => {
+                tag = key.composed().tagged::<true>(iv, aad, cipher_inout);
+            }
+            (Self::Hw(key), _) => tag = key.tagged::<true>(iv, aad, cipher_inout),
+        }
+        tag_out.copy_from_slice(&tag[..tag_out.len()]);
+        low::ct::public_slice(cipher_inout);
+        low::ct::public_slice(tag_out);
+        Ok(())
+    }
+
+    /// Decrypts and verifies as [`Self::decrypt`] does, under an IV of any
+    /// length, against `tag`, the first `tag.len()` bytes of the tag, at most
+    /// 16.
+    ///
+    /// Also fails with [`Error::WrongLength`], leaving `cipher_inout`
+    /// unchanged, if `iv` is empty or 2^61 bytes or longer.
+    pub(crate) fn decrypt_any(
+        &self,
+        iv: &[u8],
+        aad: &[u8],
+        cipher_inout: &mut [u8],
+        tag: &[u8],
+    ) -> Result<(), Error> {
+        let _entry = Entry::new_secret();
+        check_gcm_iv(iv)?;
+        check_gcm_lengths(aad.len(), cipher_inout.len())?;
+        let valid = match (self, iv.try_into(), tag.try_into()) {
+            (Self::Portable(key), Ok(nonce), Ok(tag)) => key.decrypt(nonce, aad, cipher_inout, tag),
+            (Self::Portable(key), ..) => {
+                let want = key.composed().tagged::<false>(iv, aad, cipher_inout);
+                ct_equal(&want[..tag.len()], tag)
+            }
+            (Self::Hw(key), ..) => ct_equal(
+                &key.tagged::<false>(iv, aad, cipher_inout)[..tag.len()],
+                tag,
+            ),
+        };
+
+        if low::ct::into_public(valid) {
+            low::ct::public_slice(cipher_inout);
+            Ok(())
+        } else {
+            // avoid unauthenticated plaintext leak
+            cipher_inout.fill(0x00);
+            Err(Error::DecryptFailed)
+        }
+    }
 }
 
 /// libcrux's portable AES-GCM, for CPUs without the crypto extension.
@@ -173,6 +237,20 @@ impl Portable {
         }
         .is_ok()
     }
+
+    /// rind's portable AES and aws-lc's integer GHASH, for IVs libcrux does
+    /// not take, which start the counter anywhere, and for truncated tags,
+    /// which its tag check does not take. Built for each call, as libcrux
+    /// expands the key for each.
+    fn composed(&self) -> Composed {
+        let key = AesKey::new(&self.key[..self.key_len]);
+        let mut h = [0u8; 16];
+        key.encrypt_block(&mut h);
+        Composed {
+            table: NohwTable::new(&h),
+            key,
+        }
+    }
 }
 
 impl Drop for Portable {
@@ -209,14 +287,7 @@ impl Hw {
         cipher_inout: &mut [u8],
         tag_out: &mut [u8; 16],
     ) {
-        let mut xi = [0u8; 16];
-        self.ghash(&mut xi, aad);
-        let mut counter = 2;
-        for chunk in cipher_inout.chunks_mut(Self::CHUNK) {
-            counter = self.ctr(nonce, counter, chunk);
-            self.ghash(&mut xi, chunk);
-        }
-        *tag_out = self.tag(nonce, xi, aad.len(), cipher_inout.len());
+        *tag_out = self.tagged::<true>(nonce, aad, cipher_inout);
     }
 
     /// Decrypts in place, returning whether `tag` is right.
@@ -227,67 +298,165 @@ impl Hw {
         cipher_inout: &mut [u8],
         tag: &[u8; 16],
     ) -> bool {
-        let mut xi = [0u8; 16];
-        self.ghash(&mut xi, aad);
-        let mut counter = 2;
-        for chunk in cipher_inout.chunks_mut(Self::CHUNK) {
-            self.ghash(&mut xi, chunk);
-            counter = self.ctr(nonce, counter, chunk);
-        }
-        ct_equal(&self.tag(nonce, xi, aad.len(), cipher_inout.len()), tag)
+        ct_equal(&self.tagged::<false>(nonce, aad, cipher_inout), tag)
     }
+}
 
-    /// XORs the keystream from block `counter` into `inout`, returning the
-    /// next block's counter.
-    fn ctr(&self, nonce: &[u8; 12], counter: u32, inout: &mut [u8]) -> u32 {
-        let mut ivec = [0u8; 16];
-        ivec[..12].copy_from_slice(nonce);
-        ivec[12..].copy_from_slice(&counter.to_be_bytes());
+/// The AES and GHASH a GCM composed of separate passes runs.
+trait Parts {
+    /// GHASH's key powers.
+    type Table: Ghash;
 
-        let (blocks, tail) = inout.as_chunks_mut::<16>();
-        self.key.ctr32(&ivec, blocks);
-        // `check_gcm_lengths` keeps the counter from wrapping.
-        let counter = counter + blocks.len() as u32;
-        if tail.is_empty() {
-            return counter;
-        }
+    fn table(&self) -> &Self::Table;
 
-        ivec[12..].copy_from_slice(&counter.to_be_bytes());
-        self.key.encrypt_block(&mut ivec);
-        for (b, k) in tail.iter_mut().zip(ivec) {
-            *b ^= k;
-        }
-        counter + 1
-    }
+    fn encrypt_block(&self, block: &mut [u8; 16]);
 
-    /// Folds `data` into `xi`, padding its last block with zeroes.
-    fn ghash(&self, xi: &mut [u8; 16], data: &[u8]) {
-        let (blocks, tail) = data.as_chunks::<16>();
-        self.table.ghash(xi, blocks);
-        if !tail.is_empty() {
-            let mut last = [0u8; 16];
-            last[..tail.len()].copy_from_slice(tail);
-            self.table.ghash(xi, &[last]);
-        }
-    }
+    /// XORs the keystream from counter block `ivec` into `blocks`,
+    /// incrementing its last four bytes with 32-bit wrapping.
+    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]);
 
-    /// Finishes GHASH with the bit lengths, then masks it with the first
-    /// counter block's keystream.
-    fn tag(&self, nonce: &[u8; 12], mut xi: [u8; 16], aad: usize, msg: usize) -> [u8; 16] {
-        let mut lengths = [0u8; 16];
-        lengths[..8].copy_from_slice(&((aad as u64) * 8).to_be_bytes());
-        lengths[8..].copy_from_slice(&((msg as u64) * 8).to_be_bytes());
-        self.table.ghash(&mut xi, &[lengths]);
-
+    /// Encrypts (if `ENC`) or decrypts `inout` in place under `iv`, of any
+    /// length, and returns its tag.
+    fn tagged<const ENC: bool>(&self, iv: &[u8], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
+        let table = self.table();
         let mut y0 = [0u8; 16];
-        y0[..12].copy_from_slice(nonce);
-        y0[15] = 1;
-        self.key.encrypt_block(&mut y0);
+        match iv.try_into() {
+            Ok(nonce) => {
+                let nonce: &[u8; 12] = nonce;
+                y0[..12].copy_from_slice(nonce);
+                y0[15] = 1;
+            }
+            Err(_) => {
+                ghash(table, &mut y0, iv);
+                table.ghash(&mut y0, &[lengths(0, iv.len())]);
+            }
+        }
+
+        let mut xi = [0u8; 16];
+        ghash(table, &mut xi, aad);
+        let mut counter = add32(&y0, 1);
+        for chunk in inout.chunks_mut(Hw::CHUNK) {
+            if !ENC {
+                ghash(table, &mut xi, chunk);
+            }
+            counter = self.ctr(&counter, chunk);
+            if ENC {
+                ghash(table, &mut xi, chunk);
+            }
+        }
+
+        // Finishes GHASH with the bit lengths, then masks it with the first
+        // counter block's keystream.
+        table.ghash(&mut xi, &[lengths(aad.len(), inout.len())]);
+        self.encrypt_block(&mut y0);
         for (x, e) in xi.iter_mut().zip(y0) {
             *x ^= e;
         }
         xi
     }
+
+    /// XORs the keystream from counter block `ivec` into `inout`, returning
+    /// the next counter block.
+    fn ctr(&self, ivec: &[u8; 16], inout: &mut [u8]) -> [u8; 16] {
+        let (blocks, tail) = inout.as_chunks_mut::<16>();
+        self.ctr32(ivec, blocks);
+        let mut ivec = add32(ivec, blocks.len() as u32);
+        if tail.is_empty() {
+            return ivec;
+        }
+
+        let next = add32(&ivec, 1);
+        self.encrypt_block(&mut ivec);
+        for (b, k) in tail.iter_mut().zip(ivec) {
+            *b ^= k;
+        }
+        next
+    }
+}
+
+/// GHASH over whole blocks.
+trait Ghash {
+    fn ghash(&self, xi: &mut [u8; 16], input: &[[u8; 16]]);
+}
+
+impl Ghash for GhashTable {
+    fn ghash(&self, xi: &mut [u8; 16], input: &[[u8; 16]]) {
+        self.ghash(xi, input);
+    }
+}
+
+impl Ghash for NohwTable {
+    fn ghash(&self, xi: &mut [u8; 16], input: &[[u8; 16]]) {
+        self.ghash(xi, input);
+    }
+}
+
+impl Parts for Hw {
+    type Table = GhashTable;
+
+    fn table(&self) -> &GhashTable {
+        &self.table
+    }
+
+    fn encrypt_block(&self, block: &mut [u8; 16]) {
+        self.key.encrypt_block(block);
+    }
+
+    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        self.key.ctr32(ivec, blocks);
+    }
+}
+
+/// See [`Portable::composed`].
+struct Composed {
+    key: AesKey,
+    table: NohwTable,
+}
+
+impl Parts for Composed {
+    type Table = NohwTable;
+
+    fn table(&self) -> &NohwTable {
+        &self.table
+    }
+
+    fn encrypt_block(&self, block: &mut [u8; 16]) {
+        self.key.encrypt_block(block);
+    }
+
+    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        for (i, block) in (0u32..).zip(blocks) {
+            let mut keystream = add32(ivec, i);
+            self.key.encrypt_block(&mut keystream);
+            for (b, k) in block.iter_mut().zip(keystream) {
+                *b ^= k;
+            }
+        }
+    }
+}
+
+/// Folds `data` into `xi`, padding its last block with zeroes.
+fn ghash(table: &impl Ghash, xi: &mut [u8; 16], data: &[u8]) {
+    let (blocks, tail) = data.as_chunks::<16>();
+    table.ghash(xi, blocks);
+    if !tail.is_empty() {
+        let mut last = [0u8; 16];
+        last[..tail.len()].copy_from_slice(tail);
+        table.ghash(xi, &[last]);
+    }
+}
+
+/// GCM's last GHASH block: the bit lengths of the AAD and the message.
+fn lengths(aad: usize, msg: usize) -> [u8; 16] {
+    (((aad as u128 * 8) << 64) | (msg as u128 * 8)).to_be_bytes()
+}
+
+/// `block` with `n` added to its big-endian counter in its last four bytes,
+/// modulo 2^32, as GCM increments it.
+fn add32(block: &[u8; 16], n: u32) -> [u8; 16] {
+    let b = u128::from_be_bytes(*block);
+    let ctr = (b as u32).wrapping_add(n);
+    (b & !0xffff_ffff | u128::from(ctr)).to_be_bytes()
 }
 
 #[cfg(test)]
@@ -366,6 +535,90 @@ mod tests {
                     assert!(!hw.decrypt(&nonce, &aad, &mut want, &want_tag));
                 }
             }
+        }
+    }
+
+    // The crypto extension's composition and the portable one rind runs
+    // for IVs libcrux does not take, against GCM by the book: each key size,
+    // IVs of 1, 12, and 17 bytes, message lengths around the block and chunk
+    // boundaries, and counter blocks whose 32-bit counter wraps within the
+    // message, as an IV other than 96 bits may hash to.
+    #[test]
+    fn compositions_match_model() {
+        use crate::low::generic::ghash::gcm_model;
+
+        let bytes = |n: usize, seed: u32| -> Vec<u8> {
+            (0..n as u32)
+                .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
+                .collect()
+        };
+        for key_len in [16, 32] {
+            let raw = bytes(key_len, 1);
+            let composed = Portable::new(&raw).composed();
+            let hw = HaveCryptoExt::check().map(|token| Hw::new(&raw, token));
+            let encrypt = |b: &mut [u8; 16]| composed.encrypt_block(b);
+            let aad = bytes(17, 2);
+            for msg_len in [0, 1, 16, 17, 100, 3071, 3073] {
+                let plain = bytes(msg_len, 3);
+                let what = format!("{key_len} {msg_len}");
+                let mut runs = vec![];
+                for iv_len in [1, 12, 17] {
+                    let iv = bytes(iv_len, msg_len as u32);
+                    let mut y0 = [0u8; 16];
+                    if iv_len == 12 {
+                        y0[..12].copy_from_slice(&iv);
+                        y0[15] = 1;
+                    } else {
+                        ghash(composed.table(), &mut y0, &iv);
+                        composed.table().ghash(&mut y0, &[lengths(0, iv_len)]);
+                    }
+                    runs.push((iv, y0));
+                }
+
+                for (iv, y0) in runs {
+                    let want = gcm_model(encrypt, &y0, &aad, &plain);
+                    check(&composed, &iv, &aad, &plain, &want, &what);
+                    if let Some(hw) = &hw {
+                        check(hw, &iv, &aad, &plain, &want, &what);
+                    }
+                }
+            }
+        }
+
+        // The counter's wrap, which `tagged` reaches only through an IV's
+        // hash, so the parts' own CTR is checked from a counter block about
+        // to wrap.
+        let composed = Portable::new(&[7; 16]).composed();
+        let mut y0 = [3u8; 16];
+        y0[12..].copy_from_slice(&0xffff_fffeu32.to_be_bytes());
+        let plain = bytes(100, 4);
+        let (want, _) = gcm_model(|b| composed.encrypt_block(b), &y0, &[], &plain);
+        let mut got = plain.clone();
+        let mut next = add32(&y0, 1);
+        next = composed.ctr(&next, &mut got[..50]);
+        composed.ctr(&next, &mut got[50..]);
+        assert_eq!(got, want);
+        if let Some(token) = HaveCryptoExt::check() {
+            let hw = Hw::new(&[7; 16], token);
+            let mut got = plain.clone();
+            let next = hw.ctr(&add32(&y0, 1), &mut got[..50]);
+            hw.ctr(&next, &mut got[50..]);
+            assert_eq!(got, want);
+        }
+
+        fn check(
+            parts: &impl Parts,
+            iv: &[u8],
+            aad: &[u8],
+            plain: &[u8],
+            (want, want_tag): &(Vec<u8>, [u8; 16]),
+            what: &str,
+        ) {
+            let mut got = plain.to_vec();
+            let tag = parts.tagged::<true>(iv, aad, &mut got);
+            assert_eq!((&got, &tag), (want, want_tag), "{what}");
+            let tag = parts.tagged::<false>(iv, aad, &mut got);
+            assert_eq!((&got[..], &tag), (plain, want_tag), "{what}");
         }
     }
 

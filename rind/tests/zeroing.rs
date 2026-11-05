@@ -181,6 +181,14 @@ fn aead() {
     }
     check_zeroed_on_drop(Box::pin(RandomizedNonceKey::new(&[0xffu8; 32])));
 
+    use rind::aead::gcm::{self, TagLength};
+    use rind::cipher;
+    for (algorithm, len) in [(&cipher::AES_128, 16), (&cipher::AES_256, 32)] {
+        let key = &[0xffu8; 32][..len];
+        let key = gcm::Key::new(algorithm, key, TagLength::Truncated32).unwrap();
+        check_zeroed_on_drop(Box::pin(key));
+    }
+
     use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};
     for algorithm in [&AES_128, &AES_256, &CHACHA20] {
         let key = &[0xffu8; 32][..algorithm.key_len()];

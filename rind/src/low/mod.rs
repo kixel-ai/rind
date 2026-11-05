@@ -24,7 +24,7 @@ mod generic {
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
     pub(super) mod ctr;
-    #[cfg(all(test, not(target_arch = "arm")))]
+    #[cfg(test)]
     pub(crate) mod ghash;
     pub(crate) mod mlkem;
     #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
@@ -287,6 +287,7 @@ cfg_if::cfg_if! {
         #[cfg(test)]
         pub(crate) use arm::ct_qemu;
         pub(crate) use arm::ghashv8_armx::GhashTable;
+        pub(crate) use arm::ghash_nohw::NohwTable;
         pub(crate) use arm::chacha20;
         pub(crate) use generic::chacha20poly1305;
         pub(crate) use arm::poly1305;
