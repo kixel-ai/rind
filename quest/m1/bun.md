@@ -1,39 +1,38 @@
-# [L] Bun runs its fastest asymmetric crypto on rind
+# [S] Bun runs its fastest asymmetric crypto on rind
 
 ## Goal
 
 A PR to [Bun](https://github.com/oven-sh/bun), with numbers, moves the
 operations where rind measures clearly faster than Bun's BoringSSL onto rind,
-expected to be:
-Ed25519 and X25519, and ECDSA and ECDH on P-384 and P-521, in WebCrypto and
-node:crypto. SHA-3 in `CryptoHasher` follows in
-[its own quest](/quest/m2/adoption/bun-sha3.md).
+and Bun merges it: Ed25519, and ECDSA on P-384 and P-521 (sign, verify, and
+key generation), in WebCrypto and node:crypto. SHA-3 in `CryptoHasher`
+follows in [its own quest](/quest/m2/adoption/bun-sha3.md).
 
 ## Plan
 
 Decided with the maintainer on 2026-11-04: a prototype PR with measurements
 ✅ / an issue asking first / only new APIs such as `Bun.jwt`. Posting it is
-the maintainer's call; prepare the branch and the PR text, then ask.
+the maintainer's call.
 
-Prioritized into m1 by the maintainer on 2026-11-05: Bun may write its own
-cryptography soon, which would close the opening. Platforms first ✅, then
-this, with SHA-3 split off / start now on the targets rind builds today /
-keep in m2.
+The prototype is branch `claude/rind-asymmetric` of
+[kixelated/bun](https://github.com/kixelated/bun/tree/claude/rind-asymmetric),
+and its PR text, with the measurements, is in
+[moq-dev/rind#368](https://github.com/moq-dev/rind/pull/368). Measured on
+2026-11-05 against Bun's own BoringSSL build:
 
-- Bun is Rust since its rewrite from Zig
-  ([oven-sh/bun#30412](https://github.com/oven-sh/bun/pull/30412), merged in
-  May 2026), so rind is a plain crate dependency. BoringSSL stays for TLS and everything
-  else.
-- Move an operation only where rind measures faster than Bun's own BoringSSL
-  build on Bun's targets. The report has no BoringSSL column: on its i7-8700
-  (`nixos2`), rind signs Ed25519 about 3x and P-384 about 9x faster than ring,
-  which runs BoringSSL's code for both, but only at parity (Ed25519) and 2.1x
-  (P-384) against aws-lc-rs, whose versions diverged. Measure first; drop any
-  operation from the Goal that isn't clearly ahead. P-256 is near parity and
-  stays unless it measures ahead.
-- The hard part is keys: node:crypto passes `EVP_PKEY` through ncrypto, so
-  these key types need a representation of their own, with import and export
-  (raw, PKCS#8, SPKI, JWK) matching Bun's behavior byte for byte. Bun's and
-  Node's crypto tests are the bar.
-- A native `Bun.jwt` ([oven-sh/bun#27727](https://github.com/oven-sh/bun/issues/27727))
-  on rind is a natural follow-up; suggest it if this lands.
+- Moved: Ed25519 (1.3x to 1.7x end to end) and P-384 and P-521 ECDSA with
+  the curve's hash (2.4x to 16x). Keys stay BoringSSL's for import and
+  export; Bun caches a rind key pair built from the raw key.
+- Stays: P-256 (rind signs 1.4x faster but generates keys at 0.6x), ECDSA
+  with another hash, and X25519 and ECDH, which rind's ephemeral-only
+  agreement API cannot hold as WebCrypto and node:crypto keys, though rind
+  leads at both.
+
+Once Bun merges it, a native `Bun.jwt`
+([oven-sh/bun#27727](https://github.com/oven-sh/bun/issues/27727)) on rind is
+a natural follow-up.
+
+## Waiting
+
+- Maintainer: post the prototype PR to oven-sh/bun from `kixelated/bun:claude/rind-asymmetric` with the text in moq-dev/rind#368, or decide not to; no agent may post to oven-sh/bun. Check for an open PR on oven-sh/bun from that branch.
+- oven-sh/bun: review and merge the PR; check its state.
