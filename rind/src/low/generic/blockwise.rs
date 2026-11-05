@@ -158,7 +158,9 @@ pub(crate) fn pad<'l, const N: usize, const L: usize>(
 
 /// SHA-256's digest of its chaining value `h`: each word, big-endian.
 // Indexes rather than zipping `as_chunks_mut`, which Aeneas cannot translate,
-// so `proofs/` can prove the encoding.
+// so `proofs/` can prove the encoding. Inline, so the digest is written where
+// its caller keeps it, rather than returned through memory a copy then loads.
+#[inline(always)]
 pub(crate) fn sha256_digest(h: &[u32; 8]) -> [u8; 32] {
     let mut r = [0u8; 32];
     for (i, word) in h.iter().enumerate() {
