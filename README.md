@@ -93,7 +93,9 @@ but there is also a public API for general-purpose use.
   instructions. Without it, as on the Raspberry Pi 4, CM4, and Zero 2 W, they
   run [aws-lc]'s NEON and scalar assembly instead (see
   [Algorithms](#algorithms)), `rind::cpu::has_aes_hardware()` is false, and
-  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305.
+  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Secret-dependent code
+  runs with data-independent timing (DIT) where the core has it, unless
+  Hyper-V hides it from Linux, as on Azure's Cobalt 100.
 - `x86_64` runs on every x86_64 CPU. Without `aes` and `pclmulqdq`, as on
   Core 2 and Nehalem, AES and GHASH run [aws-lc]'s SSSE3 assembly instead
   (see [Algorithms](#algorithms)), `rind::cpu::has_aes_hardware()` is false,
