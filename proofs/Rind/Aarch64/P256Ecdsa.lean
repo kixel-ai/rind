@@ -2076,6 +2076,33 @@ theorem ecdsa_vk_from_x962_spec (hG : P256Group) (h : Runs) (hheld : Held) (hc :
     · obtain ⟨k, rfl, hk⟩ := hr; simp [hk]
     all_goals (subst hr; simp)
 
+/-! ## Signing's r, `StaticPrivateKey::public_key_x_scalar` -/
+
+theorem x_scalar_spec (k : mid.p256.StaticPrivateKey) (h : Runs) (ht : Tabulated) (x y : Nat)
+    (hq : p256Pow p256G (scNat k.scalar) = some (x, y)) (hc : p256OnCurve (some (x, y))) :
+    mid.p256.StaticPrivateKey.public_key_x_scalar k ⦃ r => scNat r = x % n256 ⦄ := by
+  unfold mid.p256.StaticPrivateKey.public_key_x_scalar mid.p256.AffineMontPoint.x_scalar
+  step
+  step with public_point_spec h ht k x y hq hc as ⟨pt, hpt⟩
+  have hp : 0 < p256 := p256_pos
+  step with as_bytes_uncompressed_spec pt (by rw [hpt]; exact Nat.mod_lt _ hp)
+    (by rw [hpt]; exact Nat.mod_lt _ hp) as ⟨b, hb4, hbc⟩
+  rw [hpt] at hbc
+  simp only [rinv_tomont _ hc.1, rinv_tomont _ hc.2.1] at hbc
+  simp only [mid.p256.Scalar.BYTES]
+  step as ⟨i, hi⟩
+  step as ⟨sl, hsl, hsll⟩
+  have hbl : b.val.length = 65 := b.property
+  have hslv : beNat sl.val = x := by
+    have := congrArg Prod.fst hbc
+    simp only [x962Coords] at this
+    rw [← this, hsl, Array.val_to_slice]
+    simp [hi]
+  show mid.p256.Scalar.Insts.RindHighCurveScalar.from_bytes_reduced sl ⦃ _ ⦄
+  apply WP.spec_mono (from_bytes_reduced_spec sl (by rw [hsll]; simp [hi]))
+  intro r hr
+  rw [hr, hslv]
+
 end P256
 
 end rind.aarch64
