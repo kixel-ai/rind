@@ -7,9 +7,12 @@
 
 use aws_lc_rs::encoding::{AsBigEndian, AsDer};
 use aws_lc_rs::signature::KeyPair as _;
-use aws_lc_rs::{kem as their_kem, rsa as their_rsa, signature as theirs};
+use aws_lc_rs::{
+    agreement as theirs_ecdh, kem as their_kem, rsa as their_rsa, signature as theirs,
+};
 use der::{element, elements, sequence, spki, spki_parameters, trailing};
 use libfuzzer_sys::fuzz_target;
+use rind::agreement as ours_ecdh;
 use rind::kem as our_kem;
 use rind::signature::{self as ours, sign, verify};
 
@@ -54,6 +57,11 @@ fuzz_target!(|data: &[u8]| {
         21 => ed25519_seed(input),
         22 => ed25519_public(input),
         23 => mlkem_public(input),
+        24 => ecdh_scalar(&ours_ecdh::X25519, &theirs_ecdh::X25519, input),
+        25 => ecdh_scalar(&ours_ecdh::ECDH_P256, &theirs_ecdh::ECDH_P256, input),
+        26 => ecdh_scalar(&ours_ecdh::ECDH_P384, &theirs_ecdh::ECDH_P384, input),
+        27 => ecdh_scalar(&ours_ecdh::ECDH_P521, &theirs_ecdh::ECDH_P521, input),
+        28 => x25519_pkcs8(input),
         _ => {}
     }
 });
@@ -61,6 +69,7 @@ fuzz_target!(|data: &[u8]| {
 /// One curve's algorithms on each side, and its scalar's length.
 struct Curve {
     ours: &'static ours::EcdsaSigningAlgorithm,
+    ours_ecdh: &'static ours_ecdh::Algorithm,
     ours_verify: &'static ours::VerificationAlgorithm,
     theirs: &'static theirs::EcdsaSigningAlgorithm,
     theirs_verify: &'static theirs::EcdsaVerificationAlgorithm,
@@ -68,6 +77,7 @@ struct Curve {
 }
 
 const P256: Curve = Curve {
+    ours_ecdh: &ours_ecdh::ECDH_P256,
     ours: &sign::ECDSA_P256_SHA256_ASN1,
     ours_verify: &verify::ECDSA_P256_SHA256_ASN1,
     theirs: &theirs::ECDSA_P256_SHA256_ASN1_SIGNING,
@@ -76,6 +86,7 @@ const P256: Curve = Curve {
 };
 
 const P384: Curve = Curve {
+    ours_ecdh: &ours_ecdh::ECDH_P384,
     ours: &sign::ECDSA_P384_SHA384_ASN1,
     ours_verify: &verify::ECDSA_P384_SHA384_ASN1,
     theirs: &theirs::ECDSA_P384_SHA384_ASN1_SIGNING,
@@ -84,6 +95,7 @@ const P384: Curve = Curve {
 };
 
 const P521: Curve = Curve {
+    ours_ecdh: &ours_ecdh::ECDH_P521,
     ours: &sign::ECDSA_P521_SHA512_ASN1,
     ours_verify: &verify::ECDSA_P521_SHA512_ASN1,
     theirs: &theirs::ECDSA_P521_SHA512_ASN1_SIGNING,
@@ -200,7 +212,28 @@ fn ecdsa_pkcs8(curve: &Curve, input: &[u8]) {
     let theirs = theirs::EcdsaKeyPair::from_pkcs8(curve.theirs, input);
     let point = pkcs8_private_key(input).and_then(sec1_public_key);
     let refused = trailing(input) || v2_without_public_key(input) || point.is_some_and(hybrid);
+    let ecdh = ours_ecdh::PrivateKey::from_pkcs8(curve.ours_ecdh, input);
+    same_key(&ours, &ecdh);
     agree_ecdsa(curve, ours, theirs, refused.into());
+}
+
+/// An agreement key loads exactly the encodings an ECDSA key pair does, as
+/// the same key.
+fn same_key(
+    ecdsa: &Result<ours::EcdsaKeyPair, rind::Error>,
+    ecdh: &Result<ours_ecdh::PrivateKey, rind::Error>,
+) {
+    match (ecdsa, ecdh) {
+        (Ok(ecdsa), Ok(ecdh)) => {
+            assert_eq!(ecdsa.public_key().as_ref(), ecdh.public_key().as_ref());
+        }
+        (Err(ecdsa), Err(ecdh)) => assert_eq!(ecdsa, ecdh),
+        (ecdsa, ecdh) => panic!(
+            "ECDSA: {:?}, ECDH: {:?}",
+            ecdsa.as_ref().err(),
+            ecdh.as_ref().err()
+        ),
+    }
 }
 
 fn ecdsa_sec1(curve: &Curve, input: &[u8]) {
@@ -210,7 +243,58 @@ fn ecdsa_sec1(curve: &Curve, input: &[u8]) {
     // of the two it holds.
     let pkcs8 = theirs::EcdsaKeyPair::from_pkcs8(curve.theirs, input).is_ok();
     let refused = pkcs8 || trailing(input) || sec1_public_key(input).is_some_and(hybrid);
+    let ecdh = ours_ecdh::PrivateKey::from_sec1(curve.ours_ecdh, input);
+    same_key(&ours, &ecdh);
     agree_ecdsa(curve, ours, theirs, refused.into());
+}
+
+fn ecdh_scalar(
+    ours_algorithm: &'static ours_ecdh::Algorithm,
+    theirs_algorithm: &'static theirs_ecdh::Algorithm,
+    input: &[u8],
+) {
+    let ours = ours_ecdh::PrivateKey::from_private_key(ours_algorithm, input);
+    let theirs = theirs_ecdh::PrivateKey::from_private_key(theirs_algorithm, input);
+    agree(&ours, &theirs, Expect::Agree);
+    let (Ok(ours), Ok(theirs)) = (ours, theirs) else {
+        return;
+    };
+    let theirs_public = theirs.compute_public_key().unwrap();
+    assert_eq!(ours.public_key().as_ref(), theirs_public.as_ref());
+    assert_eq!(ours.to_scalar().as_ref(), input);
+
+    // PKCS#8 loads again as the same key, on both sides for a NIST curve,
+    // whose PKCS#8 aws-lc-rs takes.
+    let pkcs8 = ours.to_pkcs8();
+    let again = ours_ecdh::PrivateKey::from_pkcs8(ours_algorithm, pkcs8.as_ref()).unwrap();
+    assert_eq!(again.public_key().as_ref(), theirs_public.as_ref());
+    if theirs_algorithm != &theirs_ecdh::X25519 {
+        let theirs =
+            theirs_ecdh::PrivateKey::from_private_key_der(theirs_algorithm, pkcs8.as_ref())
+                .unwrap();
+        assert_eq!(
+            theirs.compute_public_key().unwrap().as_ref(),
+            theirs_public.as_ref()
+        );
+    }
+}
+
+/// aws-lc-rs's agreement API takes no X25519 PKCS#8, so this checks that a
+/// key rind loads re-encodes to input it loads again as the same key, and
+/// to the input itself for a v1 document of only its three required fields,
+/// with nothing after it: attributes, which the loader skips, are not
+/// written back.
+fn x25519_pkcs8(input: &[u8]) {
+    let Ok(ours) = ours_ecdh::PrivateKey::from_pkcs8(&ours_ecdh::X25519, input) else {
+        return;
+    };
+    let pkcs8 = ours.to_pkcs8();
+    let again = ours_ecdh::PrivateKey::from_pkcs8(&ours_ecdh::X25519, pkcs8.as_ref()).unwrap();
+    assert_eq!(again.public_key().as_ref(), ours.public_key().as_ref());
+    let fields: Vec<_> = elements(sequence(input).unwrap()).collect();
+    if fields.len() == 3 && fields[0] == (0x02, &[0][..]) && !trailing(input) {
+        assert_eq!(pkcs8.as_ref(), input);
+    }
 }
 
 fn ecdsa_scalar(curve: &Curve, input: &[u8]) {

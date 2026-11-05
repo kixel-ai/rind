@@ -109,12 +109,11 @@ fn ecdh() {
     for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
         let key = PrivateKey::generate(algorithm).unwrap();
         let peer = PrivateKey::generate(algorithm).unwrap().public_key();
-        check_zeroed_on_drop(Box::pin(
-            PrivateKey::generate(algorithm)
-                .unwrap()
-                .agree(peer.as_ref())
-                .unwrap(),
-        ));
+        check_zeroed_on_drop(Box::pin(key.agree(peer.as_ref()).unwrap()));
+        check_zeroed_on_drop(Box::pin(key.to_scalar()));
+        check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
+        let loaded = PrivateKey::from_pkcs8(algorithm, key.to_pkcs8().as_ref()).unwrap();
+        check_zeroed_on_drop(Box::pin(loaded));
         check_zeroed_on_drop(Box::pin(key));
     }
 }

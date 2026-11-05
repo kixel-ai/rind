@@ -21,48 +21,37 @@ fuzz_target!(|op: Operation| {
     }
 });
 
-// rind only has ephemeral keys, so the fuzzer picks aws-lc-rs's scalar and
-// the peer key, and rind's scalar is random.
+// Both load the fuzzed scalar, which checks our base and variable-base
+// multiplication against aws-lc-rs's, and agree with the fuzzed peer key.
 fn check(
     ours_algorithm: &'static ours::Algorithm,
     theirs_algorithm: &'static theirs::Algorithm,
     scalar: &[u8],
     peer: &[u8],
 ) {
-    // Both accept or refuse the same peer key, whatever their own scalar.
-    let ours_result = ours::PrivateKey::generate(ours_algorithm)
-        .unwrap()
-        .agree(peer);
-    let theirs_result = theirs::agree_ephemeral(
-        theirs::EphemeralPrivateKey::generate(
-            theirs_algorithm,
-            &aws_lc_rs::rand::SystemRandom::new(),
-        )
-        .unwrap(),
-        theirs::UnparsedPublicKey::new(theirs_algorithm, peer),
-        (),
-        |_| Ok(()),
-    );
-    assert_eq!(ours_result.is_ok(), theirs_result.is_ok());
-
-    // Agreeing with aws-lc-rs's key for the fuzzed scalar checks our base
-    // and variable-base multiplication against its.
-    let Ok(theirs_key) = theirs::PrivateKey::from_private_key(theirs_algorithm, scalar) else {
+    let ours_key = ours::PrivateKey::from_private_key(ours_algorithm, scalar);
+    let theirs_key = theirs::PrivateKey::from_private_key(theirs_algorithm, scalar);
+    assert_eq!(ours_key.is_ok(), theirs_key.is_ok());
+    let (Ok(ours_key), Ok(theirs_key)) = (ours_key, theirs_key) else {
         return;
     };
-    let ours_key = ours::PrivateKey::generate(ours_algorithm).unwrap();
     let ours_public = ours_key.public_key();
     let theirs_public = theirs_key.compute_public_key().unwrap();
+    assert_eq!(ours_public.as_ref(), theirs_public.as_ref());
 
-    let ours_secret = ours_key.agree(theirs_public.as_ref()).unwrap();
+    // Both accept or refuse the same peer key, and agree on the secret.
+    let ours_secret = ours_key.agree(peer);
     let theirs_secret = theirs::agree(
         &theirs_key,
-        theirs::UnparsedPublicKey::new(theirs_algorithm, ours_public.as_ref()),
+        theirs::UnparsedPublicKey::new(theirs_algorithm, peer),
         (),
         |secret| Ok(secret.to_vec()),
-    )
-    .unwrap();
-    assert_eq!(ours_secret.as_ref(), &theirs_secret[..]);
+    );
+    match (ours_secret, theirs_secret) {
+        (Ok(ours), Ok(theirs)) => assert_eq!(ours.as_ref(), &theirs[..]),
+        (Err(_), Err(())) => {}
+        (ours, theirs) => panic!("rind: {:?}, aws-lc-rs: {:?}", ours.err(), theirs.err()),
+    }
 }
 
 #[derive(Arbitrary, Debug)]
