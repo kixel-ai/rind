@@ -67,7 +67,7 @@ fn tagged<const ENC: bool>(
     aad: &[u8],
     cipher_inout: &mut [u8],
 ) -> [u8; 16] {
-    tagged_from::<ENC>(key, table, &counter_block(nonce), aad, cipher_inout)
+    tagged_from::<ENC>(key, table, counter_block(nonce), aad, cipher_inout)
 }
 
 /// GCM's first counter block for `iv`, of any length but zero: the 96-bit
@@ -84,15 +84,17 @@ pub(crate) fn initial_counter(table: &GhashTable, iv: &[u8]) -> [u8; 16] {
 
 /// Encrypts (if `ENC`) or decrypts `cipher_inout` in place from the counter
 /// block `y0`, and returns its tag.
-#[inline]
+///
+/// Inlined, as is `cipher`, so `tagged` compiles as when it was the only
+/// caller.
+#[inline(always)]
 pub(crate) fn tagged_from<const ENC: bool>(
     key: &AesKey,
     table: &GhashTable,
-    y0: &[u8; 16],
+    y0: [u8; 16],
     aad: &[u8],
     cipher_inout: &mut [u8],
 ) -> [u8; 16] {
-    let y0 = *y0;
     let mut ghash = Ghash::new(table);
     cipher::<ENC>(key, &mut ghash, &y0, aad, cipher_inout);
     ghash.add_lengths(aad.len(), cipher_inout.len());
@@ -117,6 +119,7 @@ fn counter_block(nonce: &[u8; 12]) -> [u8; 16] {
 
 // AES-GCM encrypt (if `ENC` is `true`) or decrypt, on the fastest path for
 // the CPU the key and GHASH table were made on and the message's length.
+#[inline(always)]
 fn cipher<const ENC: bool>(
     key: &AesKey,
     ghash: &mut Ghash<'_>,
@@ -773,12 +776,12 @@ mod tests {
                         ct::public_slice(&want);
 
                         let mut got = plain.clone();
-                        let tag = tagged_from::<true>(key, table, &y0, &aad, &mut got);
+                        let tag = tagged_from::<true>(key, table, y0, &aad, &mut got);
                         ct::public_slice(&got);
                         assert_eq!(got, want, "{what}");
                         assert_eq!(ct::into_public(tag), ct::into_public(want_tag), "{what}");
 
-                        let tag = tagged_from::<false>(key, table, &y0, &aad, &mut got);
+                        let tag = tagged_from::<false>(key, table, y0, &aad, &mut got);
                         ct::public_slice(&got);
                         assert_eq!(got, plain, "{what}");
                         assert_eq!(ct::into_public(tag), ct::into_public(want_tag), "{what}");

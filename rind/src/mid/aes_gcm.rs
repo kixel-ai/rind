@@ -94,7 +94,8 @@ impl AesGcm {
     }
 
     /// Encrypts as [`Self::encrypt`] does, under an IV of any length, and
-    /// writes the first `tag_out.len()` bytes of the tag, at most 16.
+    /// writes the first `tag_out.len()` bytes of the tag, at most 16. A
+    /// 96-bit IV and full tag are quicker through [`Self::encrypt`].
     ///
     /// Also fails with [`Error::WrongLength`] if `iv` is empty or 2^61
     /// bytes or longer.
@@ -108,13 +109,8 @@ impl AesGcm {
         let _entry = Entry::new_secret();
         check_gcm_iv(iv)?;
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
-        let tag = match iv.try_into() {
-            Ok(nonce) => aes_gcm::seal(&self.key, &self.gh, nonce, aad, cipher_inout),
-            Err(_) => {
-                let y0 = aes_gcm::initial_counter(&self.gh, iv);
-                aes_gcm::tagged_from::<true>(&self.key, &self.gh, &y0, aad, cipher_inout)
-            }
-        };
+        let y0 = aes_gcm::initial_counter(&self.gh, iv);
+        let tag = aes_gcm::tagged_from::<true>(&self.key, &self.gh, y0, aad, cipher_inout);
         tag_out.copy_from_slice(&tag[..tag_out.len()]);
 
         low::ct::public_slice(cipher_inout);
@@ -138,17 +134,9 @@ impl AesGcm {
         let _entry = Entry::new_secret();
         check_gcm_iv(iv)?;
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
-        let valid = match (iv.try_into(), tag.try_into()) {
-            (Ok(nonce), Ok(tag)) => {
-                aes_gcm::open(&self.key, &self.gh, nonce, aad, cipher_inout, tag)
-            }
-            _ => {
-                let y0 = aes_gcm::initial_counter(&self.gh, iv);
-                let want =
-                    aes_gcm::tagged_from::<false>(&self.key, &self.gh, &y0, aad, cipher_inout);
-                ct_equal(&want[..tag.len()], tag)
-            }
-        };
+        let y0 = aes_gcm::initial_counter(&self.gh, iv);
+        let want = aes_gcm::tagged_from::<false>(&self.key, &self.gh, y0, aad, cipher_inout);
+        let valid = ct_equal(&want[..tag.len()], tag);
 
         if low::ct::into_public(valid) {
             low::ct::public_slice(cipher_inout);

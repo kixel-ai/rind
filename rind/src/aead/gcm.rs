@@ -2,6 +2,7 @@
 
 use core::mem::ManuallyDrop;
 
+use super::{AES_128_GCM, AES_256_GCM, Inner, Nonce};
 use crate::Error;
 use crate::cipher::Algorithm;
 use crate::low::{Zeroable, zeroise_value};
@@ -55,11 +56,13 @@ impl TagLength {
 /// which weakens its bounds. The caller owns IV uniqueness, as for a
 /// [`super::Nonce`].
 pub struct Key {
-    key: ManuallyDrop<AesGcm>,
+    // An `aead::Key`, so a 96-bit IV takes its path, the one `proofs/` covers
+    // on x86_64, compiled as when it had no other caller.
+    key: ManuallyDrop<super::Key>,
     tag_len: TagLength,
 }
 
-// All-zero is an AES-GCM key of zeroes and a full tag, as `Zeroable`
+// All-zero is an `aead::Key` of zeroes and a full tag, as `Zeroable`
 // requires. The key owns no memory beyond itself, so its own drop would only
 // wipe what this one does; `ManuallyDrop` skips that second pass.
 impl Drop for Key {
@@ -79,13 +82,24 @@ impl Key {
         key: &[u8],
         tag_len: TagLength,
     ) -> Result<Self, Error> {
+        let aead = match algorithm.key_len {
+            16 => &AES_128_GCM,
+            _ => &AES_256_GCM,
+        };
         if key.len() != algorithm.key_len {
             return Err(Error::WrongLength);
         }
         Ok(Self {
-            key: ManuallyDrop::new(AesGcm::new(key)),
+            key: ManuallyDrop::new(super::Key::new(aead, key)?),
             tag_len,
         })
+    }
+
+    fn aes_gcm(&self) -> &AesGcm {
+        match &self.key.0 {
+            Inner::AesGcm(sealer) => &sealer.key,
+            Inner::ChaCha20Poly1305(_) => unreachable!("`new` expands only AES"),
+        }
     }
 
     /// The length of this key's tags, in bytes.
@@ -108,8 +122,16 @@ impl Key {
             bytes: [0; 16],
             len: self.tag_len(),
         };
-        self.key
-            .encrypt_any(iv, aad, in_out, &mut tag.bytes[..tag.len])?;
+        match iv.try_into() {
+            Ok(nonce) => {
+                let nonce = Nonce::assume_unique_for_key(nonce);
+                tag.bytes = self.key.seal_in_place_separate_tag(nonce, aad, in_out)?.0;
+            }
+            Err(_) => {
+                self.aes_gcm()
+                    .encrypt_any(iv, aad, in_out, &mut tag.bytes[..tag.len])?;
+            }
+        }
         Ok(tag)
     }
 
@@ -147,7 +169,7 @@ impl Key {
             .checked_sub(self.tag_len())
             .ok_or(Error::DecryptFailed)?;
         let (in_out, tag) = in_out.split_at_mut(at);
-        self.key.decrypt_any(iv, aad, in_out, tag)?;
+        self.open(iv, aad, tag, in_out)?;
         Ok(in_out)
     }
 
@@ -168,8 +190,21 @@ impl Key {
         if tag.len() != self.tag_len() {
             return Err(Error::WrongLength);
         }
-        self.key.decrypt_any(iv, aad, in_out, tag)?;
+        self.open(iv, aad, tag, in_out)?;
         Ok(in_out)
+    }
+
+    /// Opens `in_out` against `tag`, of this key's length.
+    fn open(&self, iv: &[u8], aad: &[u8], tag: &[u8], in_out: &mut [u8]) -> Result<(), Error> {
+        match (iv.try_into(), tag.try_into()) {
+            (Ok(nonce), Ok(tag)) => {
+                let nonce = Nonce::assume_unique_for_key(nonce);
+                self.key
+                    .open_in_place_separate_tag(nonce, aad, super::Tag(tag), in_out)?;
+            }
+            _ => self.aes_gcm().decrypt_any(iv, aad, in_out, tag)?,
+        }
+        Ok(())
     }
 }
 

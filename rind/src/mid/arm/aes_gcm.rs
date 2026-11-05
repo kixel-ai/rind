@@ -107,7 +107,8 @@ impl AesGcm {
     }
 
     /// Encrypts as [`Self::encrypt`] does, under an IV of any length, and
-    /// writes the first `tag_out.len()` bytes of the tag, at most 16.
+    /// writes the first `tag_out.len()` bytes of the tag, at most 16. A
+    /// 96-bit IV and full tag are quicker through [`Self::encrypt`].
     ///
     /// Also fails with [`Error::WrongLength`] if `iv` is empty or 2^61
     /// bytes or longer.
@@ -121,14 +122,10 @@ impl AesGcm {
         let _entry = Entry::new_secret();
         check_gcm_iv(iv)?;
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
-        let mut tag = [0u8; 16];
-        match (self, iv.try_into()) {
-            (Self::Portable(key), Ok(nonce)) => key.encrypt(nonce, aad, cipher_inout, &mut tag)?,
-            (Self::Portable(key), Err(_)) => {
-                tag = key.composed().tagged::<true>(iv, aad, cipher_inout);
-            }
-            (Self::Hw(key), _) => tag = key.tagged::<true>(iv, aad, cipher_inout),
-        }
+        let tag = match self {
+            Self::Portable(key) => key.composed().tagged::<true>(iv, aad, cipher_inout),
+            Self::Hw(key) => key.tagged::<true>(iv, aad, cipher_inout),
+        };
         tag_out.copy_from_slice(&tag[..tag_out.len()]);
         low::ct::public_slice(cipher_inout);
         low::ct::public_slice(tag_out);
@@ -151,17 +148,11 @@ impl AesGcm {
         let _entry = Entry::new_secret();
         check_gcm_iv(iv)?;
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
-        let valid = match (self, iv.try_into(), tag.try_into()) {
-            (Self::Portable(key), Ok(nonce), Ok(tag)) => key.decrypt(nonce, aad, cipher_inout, tag),
-            (Self::Portable(key), ..) => {
-                let want = key.composed().tagged::<false>(iv, aad, cipher_inout);
-                ct_equal(&want[..tag.len()], tag)
-            }
-            (Self::Hw(key), ..) => ct_equal(
-                &key.tagged::<false>(iv, aad, cipher_inout)[..tag.len()],
-                tag,
-            ),
+        let want = match self {
+            Self::Portable(key) => key.composed().tagged::<false>(iv, aad, cipher_inout),
+            Self::Hw(key) => key.tagged::<false>(iv, aad, cipher_inout),
         };
+        let valid = ct_equal(&want[..tag.len()], tag);
 
         if low::ct::into_public(valid) {
             low::ct::public_slice(cipher_inout);
@@ -238,10 +229,10 @@ impl Portable {
         .is_ok()
     }
 
-    /// rind's portable AES and aws-lc's integer GHASH, for IVs libcrux does
-    /// not take, which start the counter anywhere, and for truncated tags,
-    /// which its tag check does not take. Built for each call, as libcrux
-    /// expands the key for each.
+    /// The bitsliced AES rind copies from libcrux and aws-lc's integer
+    /// GHASH, for IVs libcrux does not take, which start the counter
+    /// anywhere, and for truncated tags, which its tag check does not take.
+    /// Built for each call, as libcrux expands the key for each.
     fn composed(&self) -> Composed {
         let key = AesKey::new(&self.key[..self.key_len]);
         let mut h = [0u8; 16];

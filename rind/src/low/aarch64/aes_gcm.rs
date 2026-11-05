@@ -72,7 +72,10 @@ fn lengths(aad: usize, msg: usize) -> [u8; 16] {
 
 /// Encrypts (if `ENC`) or decrypts `cipher_inout` in place from the counter
 /// block `y0`, and returns its tag.
-#[inline]
+///
+/// Inlined, as is `cipher`, so `tagged` compiles as when it was the only
+/// caller.
+#[inline(always)]
 pub(crate) fn tagged_from<const ENC: bool>(
     key: &AesKey,
     table: &GhashTable,
@@ -93,6 +96,7 @@ pub(crate) fn tagged_from<const ENC: bool>(
 }
 
 // AES-GCM encrypt (if `ENC` is `true`) or decrypt.
+#[inline(always)]
 fn cipher<const ENC: bool>(
     key: &AesKey,
     ghash: &mut Ghash<'_>,
