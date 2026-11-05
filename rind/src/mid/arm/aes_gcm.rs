@@ -615,7 +615,7 @@ mod tests {
     }
 
     // The crypto extension's key setup, GHASH, and AES-CTR, both ways, for
-    // each key size, with a secret key, nonce, AAD, and message, for
+    // each key size, with a secret key, nonce or IV, AAD, and message, for
     // `admin/ct-qemu`. The message spans a GHASH chunk, then 5 blocks, which
     // take the CTR routine's 3-block loop and 2-block tail, and a partial
     // block; the AAD is an even run of blocks and a partial one.
@@ -637,6 +637,13 @@ mod tests {
             let mut tag = [0u8; 16];
             ct_qemu::traced(|| gcm.encrypt(&nonce, &aad, &mut msg, &mut tag)).unwrap();
             ct_qemu::traced(|| gcm.decrypt(&nonce, &aad, &mut msg, &tag)).unwrap();
+
+            // An IV other than 96 bits, which hashes to a secret counter
+            // block, and a truncated tag.
+            let iv = bytes(17);
+            let mut tag = [0u8; 12];
+            ct_qemu::traced(|| gcm.encrypt_any(&iv, &aad, &mut msg, &mut tag)).unwrap();
+            ct_qemu::traced(|| gcm.decrypt_any(&iv, &aad, &mut msg, &tag)).unwrap();
         }
     }
 }
