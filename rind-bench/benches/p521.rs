@@ -230,5 +230,35 @@ fn ecdsa_sign(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, ecdh, keygen, ecdsa_verify, ecdsa_sign);
+// Agree with a stored key, loaded once, as WebCrypto's `deriveBits` and
+// node's `ECDH` do: the variable-base multiplication alone.
+fn stored(c: &mut Criterion) {
+    let mut group = c.benchmark_group("p521-ecdh-stored");
+    group.throughput(Throughput::Elements(1));
+    let public_key: &[u8] = &hex::decode(PUBLIC_KEY).unwrap();
+    let scalar = [1u8; 66];
+
+    group.bench_function("aws-lc-rs", |b| {
+        use aws_lc_rs::{agreement, error};
+        let key = agreement::PrivateKey::from_private_key(&agreement::ECDH_P521, &scalar).unwrap();
+
+        b.iter(|| {
+            let peer = agreement::UnparsedPublicKey::new(&agreement::ECDH_P521, public_key);
+            agreement::agree(&key, peer, error::Unspecified, |key_material| {
+                black_box(key_material);
+                Ok(())
+            })
+            .unwrap();
+        })
+    });
+
+    group.bench_function("rind", |b| {
+        use rind::agreement::*;
+        let key = PrivateKey::from_private_key(&ECDH_P521, &scalar).unwrap();
+
+        b.iter(|| black_box(key.agree(public_key).unwrap()))
+    });
+}
+
+criterion_group!(benches, ecdh, keygen, ecdsa_verify, ecdsa_sign, stored);
 criterion_main!(benches);

@@ -130,22 +130,25 @@ protocols with their own integrity protection need. ring has none.
 
 ## agreement
 
-rind's agreement keys are ephemeral: each agrees once, and none loads or
-exports a private key.
-
 | aws-lc-rs | rind |
 |---|---|
 | `EphemeralPrivateKey::generate(alg, rng)`, `PrivateKey::generate(alg)` | `PrivateKey::generate(&alg)?` |
 | `compute_public_key()?` | `public_key()`, which cannot fail |
 | `agree_ephemeral(key, &UnparsedPublicKey::new(alg, peer), err, kdf)` | `key.agree(peer)?`, returning a `SharedSecret` wiped on drop |
-| `agree(&key, peer, err, kdf)` | `key.agree(peer)?`, which consumes the key |
+| `agree(&key, peer, err, kdf)` | `key.agree(peer)?`, which borrows the key, so it agrees again |
 | `UnparsedPublicKey`, `ParsedPublicKey`, `ParsedPublicKeyFormat` | none: `agree` parses the peer's bytes for the key's algorithm |
 | `PublicKey`'s bytes | `PublicKey`'s bytes: an uncompressed point, or X25519's 32 bytes |
 | `X25519`, `ECDH_P256`, `ECDH_P384`, `ECDH_P521` | the same |
-| `PrivateKey::from_private_key_der`, `from_private_key`, `as_der`, `as_be_bytes`, `PublicKey::as_der`, `as_be_bytes` | none: no consumer stores an agreement key |
+| `PrivateKey::from_private_key(alg, bytes)` | the same |
+| `PrivateKey::from_private_key_der(alg, der)` | `from_pkcs8(&alg, der)` or `from_sec1(&alg, der)`, whichever the caller holds |
+| `as_be_bytes()` to `EcPrivateKeyBin` or `Curve25519SeedBin` | `to_scalar()`, wiped on drop |
+| `AsDer<Pkcs8V1Der>::as_der()` | `to_pkcs8()`, which X25519 keys also have |
+| `AsDer<EcPrivateKeyRfc5915Der>::as_der()`, `PublicKey::as_der()`, `PublicKey::as_be_bytes()` | none |
 | `algorithm()` on each type | none |
 
 `agree` refuses a compressed or DER-encoded peer key, which aws-lc-rs takes.
+X25519 keys load from and encode to PKCS#8 (RFC 8410), which aws-lc-rs's
+agreement keys refuse.
 
 ## kem
 
