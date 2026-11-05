@@ -99,8 +99,8 @@ impl DecryptingKey {
     ///
     /// Every malformed ciphertext, of the wrong length, not below the
     /// modulus, or with bad padding, fails with the same
-    /// [`Error::DecryptFailed`] in the same time, so a caller that reveals
-    /// the failure is no padding oracle.
+    /// [`Error::DecryptFailed`], and bad padding takes as long to find as
+    /// good, so a caller that reveals the failure is no padding oracle.
     pub fn decrypt(
         &self,
         algorithm: &'static OaepAlgorithm,
@@ -275,6 +275,7 @@ mod tests {
                     let ciphertext = public.encrypt(algorithm, &message, label).unwrap();
                     assert_eq!(ciphertext.as_ref().len(), max + 2 * hash_len(algorithm) + 2);
                     let plaintext = key.decrypt(algorithm, ciphertext.as_ref(), label).unwrap();
+                    ct::public_slice(plaintext.as_ref());
                     assert_eq!(plaintext.as_ref(), message);
                 }
                 assert_eq!(
@@ -325,12 +326,9 @@ mod tests {
                 Some(Error::DecryptFailed)
             );
         }
-        assert_eq!(
-            key.decrypt(&OAEP_SHA256, ciphertext, b"label")
-                .unwrap()
-                .as_ref(),
-            b"message"
-        );
+        let plaintext = key.decrypt(&OAEP_SHA256, ciphertext, b"label").unwrap();
+        ct::public_slice(plaintext.as_ref());
+        assert_eq!(plaintext.as_ref(), b"message");
     }
 
     #[test]

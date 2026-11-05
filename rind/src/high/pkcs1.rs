@@ -310,8 +310,9 @@ pub(crate) fn encode_oaep<H: Hash>(
 }
 
 /// This is EME-OAEP decoding, RFC 8017 section 7.1.2, step 3, in constant
-/// time: [`Error::DecryptFailed`] is the only error, and it reveals nothing
-/// of `em` until the padding is found valid, so it is no Manger oracle.
+/// time: every bad `em` fails with [`Error::DecryptFailed`], which reveals
+/// nothing of `em` until the padding is found valid, so it is no Manger
+/// oracle.
 ///
 /// `MGF` is `MGF1` with hash `H`.
 /// `em` is the input and temporary buffer of `k` octets, the modulus length.
