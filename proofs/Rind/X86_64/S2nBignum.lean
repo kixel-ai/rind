@@ -7,7 +7,7 @@ open Aeneas Aeneas.Std Result rind.spec
 # s2n-bignum's contracts on x86_64
 
 Each axiom restates one of s2n-bignum's HOL Light theorems, at the revision
-rind transliterates (9f2cd960), about the opaque Rust wrapper
+rind transliterates (b4f17ee7), about the opaque Rust wrapper
 `admin/parse-asm` generates around that routine. The theorem's preconditions
 hold for every call from safe Rust: the `&mut` result cannot overlap an input
 or the routine's code, and the routine's stack lies below the caller's
@@ -20,28 +20,28 @@ with the wrapper passing the arguments the theorem names, are trusted.
 namespace rind.x86_64
 
 /-- `CURVE25519_X25519_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/curve25519_x25519.ml#L8305 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/curve25519_x25519.ml#L8305 -/
 @[step]
 axiom curve25519_x25519_spec (res scalar point : Std.Array U64 4#usize) :
     low.x86_64.curve25519_x25519.curve25519_x25519 res scalar point ⦃ r =>
       wordsNat r.val = rfcx25519 (wordsNat scalar.val) (wordsNat point.val) ⦄
 
 /-- `CURVE25519_X25519_ALT_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/curve25519_x25519_alt.ml#L8524 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/curve25519_x25519_alt.ml#L8524 -/
 @[step]
 axiom curve25519_x25519_alt_spec (res scalar point : Std.Array U64 4#usize) :
     low.x86_64.curve25519_x25519_alt.curve25519_x25519_alt res scalar point ⦃ r =>
       wordsNat r.val = rfcx25519 (wordsNat scalar.val) (wordsNat point.val) ⦄
 
 /-- `CURVE25519_X25519BASE_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/curve25519_x25519base.ml#L5099 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/curve25519_x25519base.ml#L5099 -/
 @[step]
 axiom curve25519_x25519base_spec (res scalar : Std.Array U64 4#usize) :
     low.x86_64.curve25519_x25519base.curve25519_x25519base res scalar ⦃ r =>
       wordsNat r.val = rfcx25519 (wordsNat scalar.val) 9 ⦄
 
 /-- `CURVE25519_X25519BASE_ALT_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/curve25519_x25519base_alt.ml#L5197 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/curve25519_x25519base_alt.ml#L5197 -/
 @[step]
 axiom curve25519_x25519base_alt_spec (res scalar : Std.Array U64 4#usize) :
     low.x86_64.curve25519_x25519base_alt.curve25519_x25519base_alt res scalar ⦃ r =>
@@ -49,7 +49,7 @@ axiom curve25519_x25519base_alt_spec (res scalar : Std.Array U64 4#usize) :
 
 /-- `BIGNUM_EQ_SUBROUTINE_CORRECT`, whose 1 or 0 the wrapper returns as
 `true` or `false`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/bignum_eq.ml#L294 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_eq.ml#L294 -/
 @[step]
 axiom bignum_eq_spec (x y : Slice U64) :
     low.x86_64.bignum_eq.bignum_eq x y ⦃ b => b = decide (wordsNat x.val = wordsNat y.val) ⦄
@@ -58,7 +58,7 @@ axiom bignum_eq_spec (x y : Slice U64) :
 
 /-- `EDWARDS25519_DECODE_SUBROUTINE_CORRECT`, whose 0 for a valid
 encoding the wrapper returns as `true`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_decode.ml#L2128 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/edwards25519_decode.ml#L2128 -/
 @[step]
 axiom edwards25519_decode_spec (z : Std.Array U64 8#usize) (c : Std.Array U8 32#usize) :
     low.x86_64.edwards25519_decode.edwards25519_decode z c ⦃ r =>
@@ -68,7 +68,7 @@ axiom edwards25519_decode_spec (z : Std.Array U64 8#usize) (c : Std.Array U8 32#
 /-- `EDWARDS25519_SCALARMULBASE_SUBROUTINE_CORRECT`, whose `tables`
 preconditions hold because rind links s2n-bignum's constant table, which the
 routine addresses PC-relative,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_scalarmulbase.ml#L5312 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/edwards25519_scalarmulbase.ml#L5312 -/
 @[step]
 axiom edwards25519_scalarmulbase_spec (res : Std.Array U64 8#usize)
     (scalar : Std.Array U64 4#usize) :
@@ -78,7 +78,7 @@ axiom edwards25519_scalarmulbase_spec (res : Std.Array U64 8#usize)
 /-- `EDWARDS25519_SCALARMULDOUBLE_SUBROUTINE_CORRECT`, whose `tables`
 preconditions hold because rind links s2n-bignum's constant table, which the
 routine addresses PC-relative,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_scalarmuldouble.ml#L11800 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/edwards25519_scalarmuldouble.ml#L11800 -/
 @[step]
 axiom edwards25519_scalarmuldouble_spec (res : Std.Array U64 8#usize)
     (scalar : Std.Array U64 4#usize) (point : Std.Array U64 8#usize)
@@ -90,7 +90,7 @@ axiom edwards25519_scalarmuldouble_spec (res : Std.Array U64 8#usize)
           edModEncodePair (edMul (edPow P (wordsNat scalar.val)) (edPow edB (wordsNat bscalar.val))) ⦄
 
 /-- `BIGNUM_MADD_N25519_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/bignum_madd_n25519.ml#L964 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_madd_n25519.ml#L964 -/
 @[step]
 axiom bignum_madd_n25519_spec (z x y c : Std.Array U64 4#usize) :
     low.x86_64.bignum_madd_n25519.bignum_madd_n25519 z x y c ⦃ r =>
@@ -98,7 +98,7 @@ axiom bignum_madd_n25519_spec (z x y c : Std.Array U64 4#usize) :
 
 /-- `EDWARDS25519_DECODE_ALT_SUBROUTINE_CORRECT`, whose 0 for a valid
 encoding the wrapper returns as `true`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_decode_alt.ml#L2071 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/edwards25519_decode_alt.ml#L2071 -/
 @[step]
 axiom edwards25519_decode_alt_spec (z : Std.Array U64 8#usize) (c : Std.Array U8 32#usize) :
     low.x86_64.edwards25519_decode_alt.edwards25519_decode_alt z c ⦃ r =>
@@ -108,7 +108,7 @@ axiom edwards25519_decode_alt_spec (z : Std.Array U64 8#usize) (c : Std.Array U8
 /-- `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_CORRECT`, whose `tables`
 preconditions hold because rind links s2n-bignum's constant table, which the
 routine addresses PC-relative,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_scalarmulbase_alt.ml#L5418 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/edwards25519_scalarmulbase_alt.ml#L5418 -/
 @[step]
 axiom edwards25519_scalarmulbase_alt_spec (res : Std.Array U64 8#usize)
     (scalar : Std.Array U64 4#usize) :
@@ -118,7 +118,7 @@ axiom edwards25519_scalarmulbase_alt_spec (res : Std.Array U64 8#usize)
 /-- `EDWARDS25519_SCALARMULDOUBLE_ALT_SUBROUTINE_CORRECT`, whose `tables`
 preconditions hold because rind links s2n-bignum's constant table, which the
 routine addresses PC-relative,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/edwards25519_scalarmuldouble_alt.ml#L11872 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/edwards25519_scalarmuldouble_alt.ml#L11872 -/
 @[step]
 axiom edwards25519_scalarmuldouble_alt_spec (res : Std.Array U64 8#usize)
     (scalar : Std.Array U64 4#usize) (point : Std.Array U64 8#usize)
@@ -130,28 +130,28 @@ axiom edwards25519_scalarmuldouble_alt_spec (res : Std.Array U64 8#usize)
           edModEncodePair (edMul (edPow P (wordsNat scalar.val)) (edPow edB (wordsNat bscalar.val))) ⦄
 
 /-- `BIGNUM_MADD_N25519_ALT_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/bignum_madd_n25519_alt.ml#L939 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_madd_n25519_alt.ml#L939 -/
 @[step]
 axiom bignum_madd_n25519_alt_spec (z x y c : Std.Array U64 4#usize) :
     low.x86_64.bignum_madd_n25519_alt.bignum_madd_n25519_alt z x y c ⦃ r =>
       wordsNat r.val = (wordsNat x.val * wordsNat y.val + wordsNat c.val) % n25519 ⦄
 
 /-- `BIGNUM_MOD_N25519_SUBROUTINE_CORRECT`, for the slice's length as `k`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/bignum_mod_n25519.ml#L498 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_mod_n25519.ml#L498 -/
 @[step]
 axiom bignum_mod_n25519_spec (z : Std.Array U64 4#usize) (x : Slice U64) :
     low.x86_64.bignum_mod_n25519.bignum_mod_n25519 z x ⦃ r =>
       wordsNat r.val = wordsNat x.val % n25519 ⦄
 
 /-- `BIGNUM_NEG_P25519_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/bignum_neg_p25519.ml#L120 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_neg_p25519.ml#L120 -/
 @[step]
 axiom bignum_neg_p25519_spec (z x : Std.Array U64 4#usize) :
     low.x86_64.bignum_neg_p25519.bignum_neg_p25519 z x ⦃ r =>
       wordsNat x.val ≤ p25519 → wordsNat r.val = (p25519 - wordsNat x.val) % p25519 ⦄
 
 /-- `BIGNUM_LT_SUBROUTINE_CORRECT`, for the slices' lengths as `m` and `n`,
-https://github.com/awslabs/s2n-bignum/blob/9f2cd960e11892a582e7facb0c191b4a2959ea91/x86/proofs/bignum_lt.ml#L412 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_lt.ml#L412 -/
 @[step]
 axiom bignum_cmp_lt_spec (x y : Slice U64) :
     low.x86_64.bignum_cmp_lt.bignum_cmp_lt x y ⦃ r =>
