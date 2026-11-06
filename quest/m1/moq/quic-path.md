@@ -10,7 +10,7 @@ Since 0.1.13 ([moq-dev/rind#329](https://github.com/moq-dev/rind/pull/329)), the
 
 Decided with the maintainer on 2026-11-05, from #387's findings (✅ chosen):
 - Route AES-GCM opens under 256 B to Vale on VAES and AVX-512 CPUs: approve ✅ / drop. Done in [moq-dev/rind#391](https://github.com/moq-dev/rind/pull/391).
-- Call the hardware AES block directly for header protection: approve ✅ / drop. Planned as [header-protection-block](/quest/m1/moq/header-protection-block.md).
+- Call the hardware AES block directly for header protection: approve ✅ / drop. Done in [moq-dev/rind#392](https://github.com/moq-dev/rind/pull/392).
 - DIT on aarch64: keep toggling it per call, once per batch where an API processes one ✅ / never set it, as aws-lc-rs / leave it set once a thread enters rind.
 - One-pass short-message AES-GCM on aarch64, with DIT kept per call: approve ✅ / drop. Planned as [aarch64-short-gcm](/quest/m1/moq/aarch64-short-gcm.md).
 - Ask zshenker for a Zen 2 rerun on 0.1.13: ask ✅ / skip.

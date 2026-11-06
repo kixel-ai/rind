@@ -12,5 +12,4 @@ The audit landed in [moq-dev/rind#383](https://github.com/moq-dev/rind/pull/383)
 
 ## Required
 
-- [Header protection calls the hardware AES block directly](/quest/m1/moq/header-protection-block.md) - header protection on AMD
 - [One-pass AES-GCM for short messages on aarch64](/quest/m1/moq/aarch64-short-gcm.md) - ACK-sized sends on aarch64

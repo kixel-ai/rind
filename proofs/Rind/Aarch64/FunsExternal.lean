@@ -256,8 +256,8 @@ opaque mid.p384.PublicKey.from_x962_uncompressed
 
 /-! AES, whose header protection no proof covers. -/
 
-opaque mid.aes.Aes.encrypt_block
-  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
+opaque mid.aes.Aes.header_protection_mask
+  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 5#usize)
 
 /-! SHA-3, whose sponge no proof covers. -/
 
