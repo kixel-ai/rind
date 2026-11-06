@@ -85,7 +85,6 @@ maintainer, 2026-11-05).
 
 ## Required
 
-- [AES-GCM opens under 256 B run Vale's kernel on VAES CPUs](/quest/m1/moq/vaes-short-open.md) - ACK-sized QUIC receives 20-44% faster on Zen 3 to 5 and Arrow Lake
 - [Header protection calls the hardware AES block directly](/quest/m1/moq/header-protection-block.md) - AES-128 header protection at least level with aws-lc-rs on AMD
 - [One-pass AES-GCM for short messages on aarch64](/quest/m1/moq/aarch64-short-gcm.md) - ACK-sized sends level with aws-lc-rs on Neoverse N2
 - [AMD CPUs without VAES run their fastest AES-GCM tier](/quest/m1/moq/quic-path.md) - Vale or `by8` on Zen 2, from zshenker's rerun
