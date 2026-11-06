@@ -221,7 +221,7 @@ SHA-512.
 
 | Algorithm | x86_64 | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|
-| AES-GCM | BoringSSL ⚡ + Graviola | HACL* ✓ + rind | Graviola | aws-lc + rind |  |
+| AES-GCM | BoringSSL ⚡ + HACL* ✓ + Graviola | HACL* ✓ + rind | Graviola | aws-lc + rind |  |
 | AES block, AES-CTR | Graviola + aws-lc |  |  | aws-lc |  |
 | AES-KW | Graviola + rind |  |  | aws-lc + rind |  |
 | AES-CBC | Graviola + aws-lc + rind |  |  | aws-lc + rind |  |
@@ -609,6 +609,8 @@ Below 256 bytes, Vale's AES-GCM opens on those cores too, measured 0.61-0.96x
 the by-8 path's time on Arrow Lake, Zen 3, Zen 5, and Ice Lake. It also seals
 below 80 bytes without AVX-512, 0.77x on Arrow Lake and 0.94-1.05x on Zen 3,
 but not with it, where Zen 5 and Ice Lake measured it slower.
+Vale's proof covers those short messages' kernel, but not the choice of it,
+which [`proofs/`](proofs/README.md) proves only without VAES.
 The key picks its kernel once, when it is made.
 
 aarch64 decides once per process whether the CPU has the crypto extension.
