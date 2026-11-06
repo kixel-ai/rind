@@ -1,6 +1,9 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::arch::aarch64::*;
+use core::mem;
+
 use super::aes::HwKey;
 use super::aes128_gcm_dec::aes128_gcm_dec;
 use super::aes128_gcm_enc::aes128_gcm_enc;
@@ -8,6 +11,7 @@ use super::aes256_gcm_dec::aes256_gcm_dec;
 use super::aes256_gcm_dec_alt::aes256_gcm_dec_alt;
 use super::aes256_gcm_enc::aes256_gcm_enc;
 use super::aes256_gcm_enc_alt::aes256_gcm_enc_alt;
+use super::ghash::{Aggregate, PmullTable};
 use crate::low::ghash::{Ghash, GhashTable};
 use crate::low::{AesKey, aes_ctr, ct_equal};
 
@@ -83,6 +87,19 @@ pub(crate) fn tagged_from<const ENC: bool>(
     aad: &[u8],
     cipher_inout: &mut [u8],
 ) -> [u8; 16] {
+    if let (AesKey::Hw(key), GhashTable::Pmull(table)) = (key, table)
+        && aad.len().div_ceil(16) + cipher_inout.len().div_ceil(16) < SHORT_BLOCKS
+    {
+        // SAFETY: only a `HaveCryptoExt` token builds `AesKey128` and
+        // `AesKey256`, proving the `aes` cpu feature.
+        return unsafe {
+            match key {
+                HwKey::Aes128(k) => short::<ENC, 11>(k.round_keys(), table, y0, aad, cipher_inout),
+                HwKey::Aes256(k) => short::<ENC, 15>(k.round_keys(), table, y0, aad, cipher_inout),
+            }
+        };
+    }
+
     let mut ghash = Ghash::new(table);
     cipher::<ENC>(key, &mut ghash, &y0, aad, cipher_inout);
     ghash.add(&lengths(aad.len(), cipher_inout.len()));
@@ -93,6 +110,127 @@ pub(crate) fn tagged_from<const ENC: bool>(
         *t ^= x;
     }
     tag
+}
+
+/// The most GHASH blocks [`short`] takes, the AAD's, the message's, and the
+/// lengths block: one per power of H that `PmullTable` holds.
+const SHORT_BLOCKS: usize = 8;
+
+/// Encrypts (if `ENC`) or decrypts a message whose GHASH fits in
+/// [`SHORT_BLOCKS`] blocks in one pass, and returns its tag: its counter
+/// blocks and `y0` encrypt together, and one reduction hashes every block,
+/// where the stitched kernels and separate GHASH calls reduce each.
+#[target_feature(enable = "aes")]
+fn short<const ENC: bool, const ROUND_KEYS: usize>(
+    round_keys: &[uint8x16_t; ROUND_KEYS],
+    table: &PmullTable,
+    y0: [u8; 16],
+    aad: &[u8],
+    cipher_inout: &mut [u8],
+) -> [u8; 16] {
+    let blocks = aad.len().div_ceil(16) + cipher_inout.len().div_ceil(16) + 1;
+    let mut ghash = Aggregate::new(table, blocks);
+
+    let y0_block = load(&y0);
+    let tag_mask = encrypt(round_keys, y0_block);
+    for chunk in aad.chunks(16) {
+        ghash.add(load(chunk));
+    }
+
+    let y0_ctr = u32::from_be_bytes([y0[12], y0[13], y0[14], y0[15]]);
+    let y0_words = vreinterpretq_u32_u8(y0_block);
+    for (i, chunk) in (1u32..).zip(cipher_inout.chunks_mut(16)) {
+        let counter = vsetq_lane_u32::<3>(y0_ctr.wrapping_add(i).to_be(), y0_words);
+        let keystream = encrypt(round_keys, vreinterpretq_u8_u32(counter));
+        let input = load(chunk);
+        if !ENC {
+            ghash.add(input);
+        }
+        let output = veorq_u8(input, keystream);
+        store(chunk, output);
+        if ENC {
+            // The keystream past a short chunk is no ciphertext.
+            ghash.add(vandq_u8(output, load(&KEEP[16 - chunk.len()..][..16])));
+        }
+    }
+    ghash.add(load(&lengths(aad.len(), cipher_inout.len())));
+
+    let mut tag = [0u8; 16];
+    store(&mut tag, veorq_u8(tag_mask, ghash.finish()));
+    tag
+}
+
+/// Sixteen ones then sixteen zeros: the 16 bytes from `16 - n` keep the
+/// first `n` bytes of a block.
+static KEEP: [u8; 32] = {
+    let mut keep = [0; 32];
+    let mut i = 0;
+    while i < 16 {
+        keep[i] = 0xff;
+        i += 1;
+    }
+    keep
+};
+
+/// AES-128 or AES-256 of `block`, by its number of round keys.
+#[target_feature(enable = "aes")]
+#[inline]
+fn encrypt<const N: usize>(round_keys: &[uint8x16_t; N], mut block: uint8x16_t) -> uint8x16_t {
+    let [rounds @ .., penultimate, last] = round_keys.as_slice() else {
+        unreachable!()
+    };
+    for rk in rounds {
+        block = vaesmcq_u8(vaeseq_u8(block, *rk));
+    }
+    veorq_u8(vaeseq_u8(block, *penultimate), *last)
+}
+
+/// Loads up to 16 bytes, zero-padded.
+#[target_feature(enable = "neon")]
+#[inline]
+fn load(bytes: &[u8]) -> uint8x16_t {
+    if let Ok(block) = <&[u8; 16]>::try_from(bytes) {
+        // SAFETY: `block` is 16 readable bytes.
+        return unsafe { vld1q_u8(block.as_ptr()) };
+    }
+
+    // A shorter one in at most four moves through general registers, as a
+    // `memcpy` call would spill every vector register, and its bytes stored
+    // to the stack would not forward to one vector load.
+    let mut word = 0u128;
+    let mut at = 0;
+    for size in [8, 4, 2, 1] {
+        if bytes.len() & size != 0 {
+            let mut part = [0u8; 8];
+            part[..size].copy_from_slice(&bytes[at..at + size]);
+            word |= u128::from(u64::from_le_bytes(part)) << (8 * at);
+            at += size;
+        }
+    }
+    // SAFETY: u128 and uint8x16_t have the same size, and both are little
+    // endian.
+    unsafe { mem::transmute(word) }
+}
+
+/// Stores the first `bytes.len()` bytes of `block`, up to 16.
+#[target_feature(enable = "neon")]
+#[inline]
+fn store(bytes: &mut [u8], block: uint8x16_t) {
+    if let Ok(out) = <&mut [u8; 16]>::try_from(&mut *bytes) {
+        // SAFETY: `out` is 16 writable bytes.
+        return unsafe { vst1q_u8(out.as_mut_ptr(), block) };
+    }
+
+    // SAFETY: as in `load`.
+    let word: u128 = unsafe { mem::transmute(block) };
+    let mut at = 0;
+    for size in [8, 4, 2, 1] {
+        if bytes.len() & size != 0 {
+            let part = ((word >> (8 * at)) as u64).to_le_bytes();
+            bytes[at..at + size].copy_from_slice(&part[..size]);
+            at += size;
+        }
+    }
 }
 
 // AES-GCM encrypt (if `ENC` is `true`) or decrypt.
@@ -219,12 +357,14 @@ mod tests {
     use crate::low::aarch64::ghash::PmullTable;
     use crate::low::aarch64::ghash_neon_armv8::NeonTable;
     use crate::low::aarch64::vpaes_armv8::VpaesKey;
+    use crate::low::ct;
     use crate::low::generic::ghash::gcm_model;
 
     // Every other test sees only the path the CPU picks, so the stitched
-    // kernels are checked against vpaes and NEON GHASH here: each key size,
-    // and AAD and message lengths around the block and eight-block
-    // boundaries, both ways.
+    // kernels and the one-pass short path are checked against vpaes and NEON
+    // GHASH here, under a key `admin/ctgrind` keeps secret: each key size,
+    // and AAD and message lengths around the block, eight-block, and short
+    // path's boundaries, both ways, with a tag wrong in either half.
     #[test]
     fn kernels_match_composed() {
         let Some(token) = HaveCryptoExt::check() else {
@@ -237,6 +377,7 @@ mod tests {
         };
         for key_len in [16, 32] {
             let key = bytes(key_len, 1);
+            ct::secret_slice(&key);
             let hw = AesKey::new(&key);
             let vpaes = AesKey::Vpaes(VpaesKey::new(&key));
             let mut h = [0u8; 16];
@@ -244,25 +385,37 @@ mod tests {
             let pmull = GhashTable::Pmull(PmullTable::new(u128::from_be_bytes(h), token));
             let neon = GhashTable::Neon(NeonTable::new(&h));
 
-            for aad_len in [0, 1, 16, 17] {
-                for msg_len in [0, 1, 15, 16, 17, 112, 127, 128, 129, 255, 256, 1000] {
+            for aad_len in [0, 1, 13, 16, 17, 32, 33, 112] {
+                for msg_len in [
+                    0, 1, 3, 15, 16, 17, 35, 64, 80, 81, 95, 96, 97, 112, 113, 127, 128, 129, 255,
+                    256, 1000,
+                ] {
                     let nonce = bytes(12, msg_len as u32).try_into().unwrap();
                     let aad = bytes(aad_len, 2);
                     let plain = bytes(msg_len, 3);
+                    let what = format!("{key_len} {aad_len} {msg_len}");
 
                     let mut want = plain.clone();
-                    let want_tag = seal(&hw, &pmull, &nonce, &aad, &mut want);
+                    let want_tag = ct::into_public(seal(&vpaes, &neon, &nonce, &aad, &mut want));
+                    ct::public_slice(&want);
                     let mut got = plain.clone();
-                    let tag = seal(&vpaes, &neon, &nonce, &aad, &mut got);
-                    let what = format!("{key_len} {aad_len} {msg_len}");
+                    let tag = ct::into_public(seal(&hw, &pmull, &nonce, &aad, &mut got));
+                    ct::public_slice(&got);
                     assert_eq!(got, want, "{what}");
                     assert_eq!(tag, want_tag, "{what}");
 
-                    assert!(
-                        open(&vpaes, &neon, &nonce, &aad, &mut got, &want_tag),
-                        "{what}"
-                    );
+                    let valid = open(&hw, &pmull, &nonce, &aad, &mut got, &want_tag);
+                    ct::public_slice(&got);
+                    assert!(ct::into_public(valid), "{what}");
                     assert_eq!(got, plain, "{what}");
+
+                    for byte in [0, 15] {
+                        let mut wrong = want_tag;
+                        wrong[byte] ^= 1;
+                        let mut got = want.clone();
+                        let valid = open(&hw, &pmull, &nonce, &aad, &mut got, &wrong);
+                        assert!(!ct::into_public(valid), "{what}, byte {byte}");
+                    }
                 }
             }
         }
@@ -271,8 +424,8 @@ mod tests {
     // An IV other than 96 bits hashes to a counter block whose 32-bit
     // counter may wrap within one message, as GCM's increment does mod 2^32
     // without carrying into the rest of the block: on both paths, at lengths
-    // that wrap within the kernels' eight- and four-block loops and tails,
-    // or not at all.
+    // that wrap within the short path, the kernels' eight- and four-block
+    // loops, and their tails, or not at all.
     #[test]
     fn counter_wraps() {
         let bytes = |n: usize, seed: u32| -> Vec<u8> {
@@ -293,7 +446,7 @@ mod tests {
 
             for (key, table) in &paths {
                 for start in [0xffff_ffffu32, 0xffff_fffe, 0xffff_fff9, 0xffff_ff00, 7] {
-                    for msg_len in [16, 17, 100, 128, 300, 1000] {
+                    for msg_len in [3, 16, 17, 48, 100, 128, 300, 1000] {
                         let mut y0: [u8; 16] = bytes(16, msg_len as u32).try_into().unwrap();
                         y0[12..].copy_from_slice(&start.to_be_bytes());
                         let aad = bytes(17, 2);

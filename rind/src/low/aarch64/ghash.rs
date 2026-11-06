@@ -307,6 +307,81 @@ fn _mul8(
     reduce!(lo, mi, hi)
 }
 
+/// The GHASH of at most eight blocks from zero, with one reduction: of `n`
+/// blocks, the first is multiplied by H^n, the next by H^(n-1), and so on.
+pub(crate) struct Aggregate<'a> {
+    table: &'a PmullTable,
+    /// The power of H the next block is multiplied by.
+    power: usize,
+    lo: uint64x2_t,
+    mi: uint64x2_t,
+    hi: uint64x2_t,
+}
+
+impl<'a> Aggregate<'a> {
+    /// Starts a hash of `n` blocks, from one to eight.
+    pub(crate) fn new(table: &'a PmullTable, n: usize) -> Self {
+        debug_assert!((1..=8).contains(&n));
+        Self {
+            table,
+            power: n,
+            lo: zero(),
+            mi: zero(),
+            hi: zero(),
+        }
+    }
+
+    /// Adds the next block, in memory order.
+    #[target_feature(enable = "neon,aes")]
+    #[inline]
+    pub(crate) fn add(&mut self, block: uint8x16_t) {
+        // For H^p, `htable`'s index of its swapped halves, and of the 64-bit
+        // word holding its Karatsuba middle term.
+        const POWERS: [(usize, usize); 8] = [
+            (0, 2),
+            (2, 3),
+            (3, 8),
+            (5, 9),
+            (6, 14),
+            (8, 15),
+            (9, 20),
+            (11, 21),
+        ];
+        self.power -= 1;
+        let (hs, m) = POWERS[self.power];
+        // SAFETY: a `uint64x2_t` is two `u64`s, low lane first.
+        let words: &[u64; 24] = unsafe { mem::transmute(&self.table.htable) };
+        let (mut lo, mut mi, mut hi) = (self.lo, self.mi, self.hi);
+        mul!(
+            lo,
+            mi,
+            hi,
+            reverse(block),
+            self.table.htable[hs],
+            vdupq_n_u64(words[m]),
+            vmull_p64_fix
+        );
+        (self.lo, self.mi, self.hi) = (lo, mi, hi);
+    }
+
+    /// The hash, in memory order.
+    #[target_feature(enable = "neon,aes")]
+    #[inline]
+    pub(crate) fn finish(self) -> uint8x16_t {
+        let (lo, mi, hi) = (self.lo, self.mi, self.hi);
+        vreinterpretq_u8_u64(reverse(vreinterpretq_u8_u64(reduce!(lo, mi, hi))))
+    }
+}
+
+/// Reverses `block`'s bytes, between memory order and the hash's, as
+/// [`Ghash`] reads each block through `u128::from_be_bytes`.
+#[target_feature(enable = "neon")]
+#[inline]
+fn reverse(block: uint8x16_t) -> uint64x2_t {
+    let r = vreinterpretq_u64_u8(vrev64q_u8(block));
+    vextq_u64(r, r, 1)
+}
+
 #[target_feature(enable = "neon")]
 fn xor_halves(h: uint64x2_t) -> uint64x2_t {
     let hx = vextq_u64(h, h, 1);
