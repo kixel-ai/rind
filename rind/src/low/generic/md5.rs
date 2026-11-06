@@ -13,6 +13,8 @@
 /// critical path. `black_box` also hides it, but through memory, and measured
 /// 9% slower on an i7-8700.
 #[inline(always)]
+// The operand appears only in a comment, so no register width is printed.
+#[allow(asm_sub_register)]
 fn opaque(mut v: u32) -> u32 {
     // SAFETY: the assembly is empty, so it reads, writes, and clobbers
     // nothing but returns `v` in the register it took it in.
