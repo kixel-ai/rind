@@ -8,8 +8,8 @@ Usage:
   admin/bench-report summary DIR
 
 `collect` copies one commit to each host in turn, holds the host with
-`quest gate --host` in its Nix dev shell, builds rind-bench there with the
-pinned toolchain, and times every operation in OPERATIONS for every
+`quest gate --host`, builds rind-bench there in the commit's Nix dev shell with
+its pinned toolchain, and times every operation in OPERATIONS for every
 library that offers it, then measures each library's build cost with
 admin/build-cost. It runs here for the host this is, and over ssh for the
 others. A host that is busy, unreachable, or fails is recorded and skipped,
@@ -494,11 +494,16 @@ def collect_host(host, commit, out_dir):
 
     # Holding the host keeps every other gated command, such as another
     # collection's run, off it until the benchmarks and build costs finish.
-    # A macOS ssh session runs no login shell, which is what puts Nix on PATH.
+    # The gate is this checkout's quest, so a commit pinning an older one
+    # still runs, in its own dev shell. A macOS ssh session runs no login
+    # shell, which is what puts Nix on PATH.
+    with open(os.path.join(ROOT, "flake.lock")) as f:
+        quest = json.load(f)["nodes"]["quest"]["locked"]
     on_host(
         host,
         f'export PATH="$PATH:/nix/var/nix/profiles/default/bin" && cd {src} && '
-        f'nix develop "path:$PWD" --command quest gate --host python3 admin/bench-report run '
+        f"nix shell github:{quest['owner']}/{quest['repo']}/{quest['rev']} --command quest gate --host "
+        f'nix develop "path:$PWD" --command python3 admin/bench-report run '
         f"--host {q(host)} --commit {q(commit)} --jobs {HOSTS[host]['jobs']} "
         f"--target-dir ../target --out result.json",
     )
