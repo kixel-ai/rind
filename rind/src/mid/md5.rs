@@ -12,7 +12,7 @@ use crate::low::{Blockwise, Entry, UpdateBlocks, md5_compress_blocks, pad, split
 #[derive(Clone)]
 pub(crate) struct Md5State {
     h: [u32; 4],
-    // u64 so 32-bit targets can hash past 4 GiB.
+    // u64 so 32-bit targets can hash past 4 GiB; only its low 58 bits count.
     nblocks: u64,
 }
 
@@ -28,12 +28,12 @@ impl Md5State {
     /// The hash of the input so far followed by `message`, leaving this state as it was.
     pub(crate) fn finish_with(&self, message: &[u8]) -> [u8; Md5Context::OUTPUT_SZ] {
         const BLOCK_SZ: usize = Md5Context::BLOCK_SZ;
+        // RFC 1321 closes the message with its bit length modulo 2^64, so a
+        // longer one is still a message.
         let bits = self
             .nblocks
-            .checked_mul(BLOCK_SZ as u64)
-            .and_then(|bytes| bytes.checked_add(message.len() as u64))
-            .and_then(|bytes| bytes.checked_mul(8))
-            .expect("excess data processed by hash function");
+            .wrapping_mul(BLOCK_SZ as u64 * 8)
+            .wrapping_add((message.len() as u64).wrapping_mul(8));
 
         let mut h = self.h;
         Entry::assert_held();
@@ -59,7 +59,7 @@ impl UpdateBlocks for Md5State {
             md5_compress_blocks(&mut self.h, blocks);
             self.nblocks = self
                 .nblocks
-                .saturating_add((blocks.len() / Md5Context::BLOCK_SZ) as u64);
+                .wrapping_add((blocks.len() / Md5Context::BLOCK_SZ) as u64);
         }
     }
 }
@@ -111,5 +111,24 @@ mod tests {
             ctx.update(b"x");
             ctx.finish();
         }
+    }
+
+    // Past 2^64 bits the length wraps, as RFC 1321 specifies, rather than
+    // panicking: 2^58 more blocks hash as none.
+    #[test]
+    fn length_wraps_at_2_64_bits() {
+        // `update` holds the last whole block back, so compresses one here.
+        let mut ctx = Md5Context::new();
+        ctx.state.nblocks = u64::MAX;
+        ctx.update(&[0x61; 2 * Md5Context::BLOCK_SZ]);
+        assert_eq!(ctx.state.nblocks, 0);
+
+        let mut wrapped = Md5Context::new();
+        wrapped.state.nblocks = (1 << 58) + 3;
+        let mut plain = Md5Context::new();
+        plain.state.nblocks = 3;
+        wrapped.update(b"x");
+        plain.update(b"x");
+        assert_eq!(wrapped.finish(), plain.finish());
     }
 }
