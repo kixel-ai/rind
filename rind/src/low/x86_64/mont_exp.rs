@@ -50,6 +50,8 @@ use crate::low;
 #[repr(C, align(64))]
 struct Row([u64; 32]);
 
+impl low::Zeroable for Row {}
+
 /// `z = x^e` in Montgomery form modulo `m`, for `x` and `one`, which is
 /// `R mod m`, in Montgomery form below `m`, where `n0` is `-m^-1 mod 2^64`.
 ///
@@ -80,7 +82,7 @@ fn mont_exp_by(
     // each odd one multiplies the power below it by `x`. Each row takes `w`
     // words, `k` rounded up to whole AVX2 vectors, zero above `k`, so the
     // gather loads none partly. Two rows of scratch follow in the same
-    // allocation.
+    // allocation, which is wiped before it is freed, as `table` is.
     let w = k.next_multiple_of(4);
     let mut heap = vec![0; 32 * w + k + w];
     let (powers, scratch) = heap.split_at_mut(32 * w);
@@ -116,6 +118,7 @@ fn mont_exp_by(
             lsb -= 5;
             power5(z, &table, m, n0, bits(e, lsb, 5), adx);
         }
+        low::zeroise(&mut table);
         mont_mul(spare, z, one, m, n0);
         let ge = 1 - low::bignum_cmp_lt(spare, m);
         low::bignum_optsub(z, spare, m, ge);
@@ -131,6 +134,7 @@ fn mont_exp_by(
             z.copy_from_slice(spare);
         }
     }
+    low::zeroise(&mut heap);
 }
 
 /// Copies power `i` of the 32 rows of `powers` into `z`, each row as long as

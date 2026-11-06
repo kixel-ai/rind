@@ -11,7 +11,7 @@ This is one Rust workspace: the `rind` library, its `rind-<consumer>` adapter cr
 - Test every primitive against Wycheproof where vectors exist, and differentially against aws-lc-rs (a dev-dependency only).
 - Design the API so misuse fails to compile: types over runtime checks, one way to do each job. Borrow an aws-lc-rs or ring name only when it is as clear; the migration guide maps theirs to rind's.
 - When in doubt about behavior (what to accept, refuse, or wipe), follow aws-lc-rs: it is the library rind would use if it didn't require C.
-- Wipe keys and keyed state on drop, and nothing else: digest contexts, decrypted messages, scratch, and copies inside a call stay unwiped, on the stack or the heap. Safe Rust cannot read them, so wiping them costs speed for nothing.
+- Wipe keys, keyed state, and heap scratch derived from a private key before they are freed, since that scratch can be as good as the key. Wipe nothing else: digest contexts, decrypted messages, stack temporaries, other scratch, and copies inside a call stay unwiped. Safe Rust cannot read them, so wiping them costs speed for nothing.
 - Benchmark performance-sensitive changes against aws-lc-rs.
 - An adapter for a third-party crate lives in its own `rind-<consumer>` crate, so that crate's major bump never forces one in `rind`.
 
