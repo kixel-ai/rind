@@ -7,8 +7,8 @@ Usage:
   admin/bench-report render [--from DIR] [--check]
   admin/bench-report summary DIR
 
-`collect` copies one commit to each host in turn, holds the host with its
-lease or `quest gate --host`, builds rind-bench there in the commit's Nix dev shell with
+`collect` copies one commit to each host in turn, holds the host with
+`quest gate --host` and any lease it has, builds rind-bench there in the commit's Nix dev shell with
 its pinned toolchain, and times every operation in OPERATIONS for every
 library that offers it, then measures each library's build cost with
 admin/build-cost. It runs here for the host this is, and over ssh for the
@@ -563,18 +563,16 @@ def collect_host(host, commit, out_dir):
         f"--host {q(host)} --commit {q(commit)} --jobs {HOSTS[host]['jobs']} "
         f"--target-dir ../target --out result.json"
     )
+    # Holding the host keeps every other gated command, such as another
+    # collection's run, off it until the benchmarks and build costs finish.
+    # The gate is this checkout's quest, so a commit pinning an older one
+    # still runs, in its own dev shell.
+    with open(os.path.join(ROOT, "flake.lock")) as f:
+        quest = json.load(f)["nodes"]["quest"]["locked"]
+    cmd = f"nix shell github:{quest['owner']}/{quest['repo']}/{quest['rev']} --command quest gate --host {cmd}"
     if "lease" in HOSTS[host]:
         # Crate downloads too, so that removing the work directory leaves nothing.
         cmd = f'CARGO_HOME="$PWD/../cargo" {cmd}'
-    else:
-        # Holding the host keeps every other gated command, such as another
-        # collection's run, off it until the benchmarks and build costs
-        # finish; a lease does that on a leased host. The gate is this
-        # checkout's quest, so a commit pinning an older one still runs, in
-        # its own dev shell.
-        with open(os.path.join(ROOT, "flake.lock")) as f:
-            quest = json.load(f)["nodes"]["quest"]["locked"]
-        cmd = f"nix shell github:{quest['owner']}/{quest['repo']}/{quest['rev']} --command quest gate --host {cmd}"
     # A macOS ssh session runs no login shell, which is what puts Nix on PATH.
     cmd = f'export PATH="$PATH:/nix/var/nix/profiles/default/bin" && {cmd}'
     ran = on_host(host, host_script(host, work, cmd), input=archive.stdout, stdout=subprocess.PIPE)
