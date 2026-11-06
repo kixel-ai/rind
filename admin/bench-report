@@ -499,7 +499,7 @@ def is_local(host):
 
 def ssh(host):
     # ServerAlive ends a session whose link died, which would otherwise hang
-    # collect, or keep a lease it no longer holds looking held.
+    # collect.
     options = ["BatchMode=yes", "ConnectTimeout=10", "ServerAliveInterval=15", "ServerAliveCountMax=4"]
     return ["ssh", *(arg for o in options for arg in ("-o", o)), HOSTS[host].get("ssh", host)]
 
@@ -511,32 +511,36 @@ def on_host(host, script, **kwargs):
     return subprocess.run(ssh(host) + [script], **kwargs)
 
 
-# The exit status of a lease that another run holds.
+# The host script's exit status when another run holds the host's lease, and
+# when it could not copy the commit.
 LEASE_HELD = 73
+COPY_FAILED = 74
 
 
-def take_lease(host):
-    """An ssh session holding the host's lease until its stdin closes, or the
-    reason it couldn't take it."""
-    lock = shlex.quote(HOSTS[host]["lease"])
-    lease = subprocess.Popen(
-        ssh(host) + [f"exec 9>{lock} && {{ flock -n 9 || exit {LEASE_HELD}; }} && echo held && exec cat >/dev/null"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True,
+def host_script(host, work, cmd):
+    """The shell script that copies the commit from stdin into `work`, runs
+    `cmd` there with its output on stderr, and prints the result. On a leased
+    host it holds the lease throughout, and removes `work` before letting go,
+    so that no other run can take the host while any of it runs."""
+    q = shlex.quote
+    w = q(work)
+    script = (
+        f"rm -rf {w}/src {w}/result.json && mkdir -p {w}/src && tar -x -C {w}/src || exit {COPY_FAILED}\n"
+        f"cd {w}/src && {{ {cmd}; }} </dev/null >&2\n"
+        "cat ../result.json\n"
     )
-    if lease.stdout.readline().strip() == "held":
-        return lease, None
-    lease.communicate()
-    if lease.returncode == LEASE_HELD:
-        return None, "another run holds its lease"
-    return None, f"could not take its lease, ssh exit {lease.returncode}"
+    if "lease" not in HOSTS[host]:
+        return script
+    # The descriptor holding the lock passes to every process the script
+    # starts, so the lease outlives whichever of them ends last.
+    lock = f"exec 9>{q(HOSTS[host]['lease'])} && {{ flock -n 9 || exit {LEASE_HELD}; }}\n"
+    # From home, since `work` may be relative to it and the script moves.
+    return lock + f"trap 'cd && rm -rf {w}' EXIT\n" + script
 
 
 def collect_host(host, commit, out_dir):
     out = os.path.join(out_dir, f"{host}.json")
     work = os.path.join(ROOT, ".tmp", "bench-report", "host") if is_local(host) else REMOTE_DIR
-    leased = "lease" in HOSTS[host]
     q = shlex.quote
 
     def record(status, reason):
@@ -550,48 +554,29 @@ def collect_host(host, commit, out_dir):
         return record("unreachable", probe.stderr.strip())
     darwin = probe.stdout.strip() == "Darwin"
 
-    def measure():
-        # A fresh copy of the commit; the build directory stays between runs
-        # unless the host is leased.
-        archive = subprocess.run(["git", "-C", ROOT, "archive", "--format=tar", commit], capture_output=True, check=True)
-        copy = on_host(
-            host,
-            f"rm -rf {q(work)}/src && mkdir -p {q(work)}/src && tar -x -C {q(work)}/src",
-            input=archive.stdout,
-        )
-        if copy.returncode != 0:
-            return record("failed", "could not copy the commit")
-
-        cmd = (
-            f"python3 admin/bench-report run --host {q(host)} --commit {q(commit)} "
-            f"--jobs {HOSTS[host]['jobs']} --target-dir ../target --out ../result.json"
-        )
-        if not darwin:
-            cmd = f'nix develop "path:$PWD" --command {cmd}'
-        if leased:
-            # Crate downloads too, so that removing the work directory leaves nothing.
-            cmd = f'CARGO_HOME="$PWD/../cargo" {cmd}'
-        on_host(host, f"rm -f {q(work)}/result.json && cd {q(work)}/src && {cmd}")
-        fetched = on_host(host, f"cat {q(work)}/result.json", capture_output=True)
-        if fetched.returncode != 0:
-            return record("failed", "the run wrote no result; see its output above")
-        with open(out, "wb") as f:
-            f.write(fetched.stdout)
-        status = json.loads(fetched.stdout)["status"]
-        print(f"bench-report: {host}: {status}", file=sys.stderr)
-
-    if not leased:
-        return measure()
-    lease, reason = take_lease(host)
-    if lease is None:
-        return record("busy", reason)
-    try:
-        measure()
-        if lease.poll() is not None:
-            record("failed", "lost its lease during the run")
-    finally:
-        on_host(host, f"rm -rf {q(work)}")
-        lease.communicate(timeout=60)
+    # A fresh copy of the commit; the build directory stays between runs
+    # unless the host is leased.
+    archive = subprocess.run(["git", "-C", ROOT, "archive", "--format=tar", commit], capture_output=True, check=True)
+    cmd = (
+        f"python3 admin/bench-report run --host {q(host)} --commit {q(commit)} "
+        f"--jobs {HOSTS[host]['jobs']} --target-dir ../target --out ../result.json"
+    )
+    if not darwin:
+        cmd = f'nix develop "path:$PWD" --command {cmd}'
+    if "lease" in HOSTS[host]:
+        # Crate downloads too, so that removing the work directory leaves nothing.
+        cmd = f'CARGO_HOME="$PWD/../cargo" {cmd}'
+    ran = on_host(host, host_script(host, work, cmd), input=archive.stdout, stdout=subprocess.PIPE)
+    if ran.returncode == LEASE_HELD:
+        return record("busy", "another run holds its lease")
+    if ran.returncode == COPY_FAILED:
+        return record("failed", "could not copy the commit")
+    if ran.returncode != 0:
+        return record("failed", "the run wrote no result; see its output above")
+    with open(out, "wb") as f:
+        f.write(ran.stdout)
+    status = json.loads(ran.stdout)["status"]
+    print(f"bench-report: {host}: {status}", file=sys.stderr)
 
 
 def collect(args):

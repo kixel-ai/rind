@@ -7,10 +7,13 @@ Usage: admin/bench-report-test
 import fcntl
 import importlib.machinery
 import importlib.util
+import io
 import json
 import os
 import re
+import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 
@@ -345,26 +348,38 @@ class Gaps(unittest.TestCase):
 
 
 class Lease(unittest.TestCase):
-    def test_skips_a_held_lease_and_takes_a_free_one(self):
+    def run_script(self, cmd):
+        """The host script's exit status and output on a leased host here."""
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w") as tar:
+            tar.addfile(tarfile.TarInfo("file"), io.BytesIO())
+        ran = subprocess.run(
+            ["sh", "-c", br.host_script("vps", self.work, cmd)], input=archive.getvalue(), capture_output=True
+        )
+        return ran.returncode, ran.stdout
+
+    def test_holds_the_lease_through_the_run_and_its_cleanup(self):
         with tempfile.TemporaryDirectory() as d:
+            self.work = os.path.join(d, "work")
             lock = os.path.join(d, "lock")
-            hosts, ssh = br.HOSTS, br.ssh
+            hosts = br.HOSTS
             br.HOSTS = {"vps": {"jobs": 1, "lease": lock}}
-            br.ssh = lambda host: ["sh", "-c"]
             try:
+                # Another run's lease: its work stays.
+                os.makedirs(os.path.join(self.work, "src"))
                 with open(lock, "w") as held:
                     fcntl.flock(held, fcntl.LOCK_EX)
-                    self.assertEqual(br.take_lease("vps"), (None, "another run holds its lease"))
-                lease, reason = br.take_lease("vps")
-                self.assertIsNone(reason)
+                    self.assertEqual(self.run_script("true"), (br.LEASE_HELD, b""))
+                self.assertTrue(os.path.isdir(os.path.join(self.work, "src")))
+                # Ours: the run sees the lease held and its copy, and nothing
+                # is left once it lets go.
+                status, out = self.run_script(f"flock -n {lock} true; echo $? $(ls) > ../result.json")
+                self.assertEqual((status, out), (0, b"1 file\n"))
+                self.assertFalse(os.path.exists(self.work))
                 with open(lock) as other:
-                    with self.assertRaises(BlockingIOError):
-                        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    lease.communicate(timeout=10)
-                    self.assertEqual(lease.returncode, 0)
                     fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
             finally:
-                br.HOSTS, br.ssh = hosts, ssh
+                br.HOSTS = hosts
 
 
 if __name__ == "__main__":
