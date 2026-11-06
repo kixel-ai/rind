@@ -181,6 +181,11 @@ LIBRARIES = {
     "openssl": "openssl",
 }
 
+# The x86_64 CPU features, as rind-cpuid names them, without which a library
+# panics on first use rather than run a slower path. Its BMI1 requirement
+# comes with BMI2.
+REQUIRED_X86 = {"graviola": ["aes", "pclmulqdq", "bmi2", "adx", "avx", "avx2"]}
+
 # The crates whose versions a result records, by library.
 CRATES = {
     "rind": ["rind", "rind-rustls"],
@@ -226,9 +231,14 @@ def fail(message):
     sys.exit(f"bench-report: {message}")
 
 
-def operation_regex():
-    """A criterion filter matching exactly the report's operations."""
-    ops = "|".join(re.escape(op).replace(re.escape("{lib}"), "[^/]+") for op in OPERATIONS)
+def operation_regex(refused=()):
+    """A criterion filter matching exactly the report's operations, without
+    the libraries in `refused`."""
+    lib = "[^/]+"
+    if refused:
+        # The regex crate has no lookahead, so name the rest.
+        lib = "(" + "|".join(re.escape(row) for row, name in LIBRARIES.items() if name not in refused) + ")"
+    ops = "|".join(re.escape(op).replace(re.escape("{lib}"), lib) for op in OPERATIONS)
     return f"^({ops})$"
 
 
@@ -389,6 +399,13 @@ def run(args):
     subprocess.run(bench + ["--no-run"], env=env, check=True)
     # The CPU features rind reads, which pick its paths on this host.
     result["rind_cpu"] = json.loads(output(cargo + ["run", "-q", "--release", "-p", "rind-cpuid"], env))
+    # Each library this CPU lacks a required feature for, with the features.
+    cpuid = result["rind_cpu"]["cpuid"]
+    result["refused"] = {
+        lib: missing
+        for lib, features in REQUIRED_X86.items()
+        if platform.machine() == "x86_64" and (missing := [f for f in features if not cpuid[f]])
+    }
 
     try:
         idle_before_run = check_idle("before the benchmarks")
@@ -398,7 +415,7 @@ def run(args):
 
     criterion_dir = os.path.join(env["CARGO_TARGET_DIR"], "criterion")
     shutil.rmtree(criterion_dir, ignore_errors=True)
-    criterion_args = CRITERION_ARGS + [operation_regex()]
+    criterion_args = CRITERION_ARGS + [operation_regex(result["refused"])]
     wall0 = time.monotonic()
     ticks0 = cpu_times()[0] if sys.platform == "linux" else None
     ours0 = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -450,19 +467,21 @@ def run(args):
         criterion_args=criterion_args,
         load=load,
         results=results,
-        build_cost=build_cost(env, args.jobs),
+        build_cost=build_cost(env, args.jobs, result["refused"]),
     )
 
 
-def build_cost(env, jobs):
+def build_cost(env, jobs, refused):
     """admin/build-cost's measurements on this host, after the benchmarks so
-    that neither skews the other's times."""
+    that neither skews the other's times, without the builds of libraries in
+    `refused`, whose binaries it runs."""
     env = dict(env, CARGO_BUILD_JOBS=str(jobs))
     if sys.platform == "darwin":
         env["RUSTUP_TOOLCHAIN"] = pinned_toolchain()
     started = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    builds = [b for b in BUILDS if b not in refused] if refused else []
     proc = subprocess.run(
-        [sys.executable, os.path.join(ROOT, "admin", "build-cost")], env=env, capture_output=True, text=True
+        [sys.executable, os.path.join(ROOT, "admin", "build-cost"), *builds], env=env, capture_output=True, text=True
     )
     if proc.returncode != 0:
         lines = proc.stderr.strip().splitlines() or ["no output"]
@@ -1492,6 +1511,12 @@ def report(hosts, tiers, verified, gaps):
             "",
             *([HOSTS[name]["note"], ""] if "note" in HOSTS[name] else []),
             *([f"Not timed on `{name}`: {', '.join(untimed)}.", ""] if untimed else []),
+            *(
+                f"{COLUMNS[lib]} isn't timed on `{name}`: it requires {and_list([f.upper() for f in missing])}, "
+                "which this CPU lacks."
+                for lib, missing in h.get("refused", {}).items()
+            ),
+            *([""] if h.get("refused") else []),
             *picture(name, f"Times on {name}"),
             "",
             "<details>",

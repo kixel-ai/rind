@@ -197,6 +197,17 @@ class Render(unittest.TestCase):
         self.assertIn("| Operation | rind | aws-lc-rs | ring | OpenSSL |", md)
         self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | 300.00 µs |", md)
 
+    def test_leaves_out_a_library_the_cpu_lacks_features_for(self):
+        regex = re.compile(br.operation_regex({"graviola": ["adx"]}))
+        for row in ["x25519-ecdh/rind", "p256-ecdh/p256-rustcrypto", "aes128-gcm/openssl/32B"]:
+            self.assertTrue(regex.match(row), row)
+        for row in ["x25519-ecdh/graviola", "aes128-gcm/graviola/32B", "x25519-ecdh/rind/extra"]:
+            self.assertFalse(regex.match(row), row)
+        everyone = hosts()
+        everyone["nixos2"]["refused"] = {"graviola": ["bmi2", "adx"]}
+        md = br.report(everyone, None, VERIFIED, [])[br.REPORT]
+        self.assertIn("graviola isn't timed on `nixos2`: it requires BMI2 and ADX, which this CPU lacks.", md)
+
     def test_headline_is_the_mean_over_hosts_and_says_what_is_missing(self):
         everyone = hosts()
         everyone["nixos"]["build_cost"] = {
