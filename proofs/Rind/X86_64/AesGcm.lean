@@ -135,16 +135,16 @@ theorem check_gcm_lengths_spec (aad msg : Usize) (haad : aad.val < 2 ^ 32) (hmsg
 
 /-- `aes_gcm::seal` and `open` run Vale's routines for a key on its tier and
 lengths under 2^32. -/
-theorem vale_some (alg : Algorithm) (kw : List (BitVec 32)) (key : low.x86_64.aes.AesKey)
+theorem vale_some (enc : Bool) (alg : Algorithm) (kw : List (BitVec 32)) (key : low.x86_64.aes.AesKey)
     (gh : low.x86_64.ghash.GhashTable) (hg : Ready alg kw ⟨key, gh⟩)
     (aad inout : Slice U8) (haad : aad.length < 2 ^ 32) (hin : inout.length < 2 ^ 32) :
-    low.x86_64.aes_gcm.vale key gh aad inout ⦃ o =>
+    low.x86_64.aes_gcm.vale enc key gh aad inout ⦃ o =>
       ∃ hk kernel, o = some (hk, kernel) ∧ KernelKeys alg hk kw kernel ⦄ := by
   obtain ⟨hk, table, kernel, hkey, hgh, hkk⟩ := hg
   simp only at hkey hgh
   subst hkey hgh
   unfold low.x86_64.aes_gcm.vale
-  step*
+  cases enc <;> step*
 
 /-- `AesGcm::encrypt` on Vale's tier, for AAD and messages under 2^32 bytes:
 the ciphertext in place and the tag are AES-GCM's. -/
@@ -160,7 +160,7 @@ theorem aes_gcm_encrypt_spec (he : ∃ e, low.entry.Entry.new_secret = ok e) (al
   unfold mid.aes_gcm.AesGcm.encrypt low.x86_64.aes_gcm.seal
   rw [he, bind_ok]
   step*
-  · apply WP.spec_bind (vale_some alg kw key gh hg aad inout haad hin)
+  · apply WP.spec_bind (vale_some true alg kw key gh hg aad inout haad hin)
     rintro _ ⟨hk, kernel, rfl, hkk⟩
     simp only [low.x86_64.aes_gcm_avx.AvxKernel.seal]
     step with cipher_encrypt_spec alg hk kw kernel hkk nonce aad inout _ haad hin as ⟨res, hres⟩
@@ -184,7 +184,7 @@ theorem aes_gcm_decrypt_spec (he : ∃ e, low.entry.Entry.new_secret = ok e) (al
   unfold mid.aes_gcm.AesGcm.decrypt low.x86_64.aes_gcm.open
   rw [he, bind_ok]
   step*
-  · apply WP.spec_bind (vale_some alg kw key gh hg aad inout haad hin)
+  · apply WP.spec_bind (vale_some false alg kw key gh hg aad inout haad hin)
     rintro _ ⟨hk, kernel, rfl, hkk⟩
     simp only [low.x86_64.aes_gcm_avx.AvxKernel.open]
     step with cipher_decrypt_spec alg hk kw kernel hkk nonce aad inout tag haad hin as ⟨res, hlen, hout, hok⟩
