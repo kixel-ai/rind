@@ -254,6 +254,9 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmulbase \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmuldouble \
     --include crate::low::x86_64::adx_mux::bignum_madd_n25519 \
+    --include crate::low::x86_64::sha1_mux \
+    --opaque crate::low::x86_64::sha1_mux::path \
+    --opaque crate::low::x86_64::sha1_mux::sha1_compress_blocks \
     --include crate::low::x86_64::sha256_mux \
     --opaque crate::low::x86_64::sha256_mux::path \
     --include crate::low::x86_64::sha512::Path \
@@ -289,6 +292,10 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::aes_gcm::seal \
     --include crate::low::x86_64::aes_gcm::open \
     --include crate::low::x86_64::aes_gcm::vale \
+    --include crate::low::x86_64::aes_gcm::VAES_AVX2_VALE_OPEN_BELOW \
+    --include crate::low::x86_64::aes_gcm::VAES_AVX2_VALE_SEAL_BELOW \
+    --include crate::low::x86_64::aes_gcm::AVX512_VALE_OPEN_BELOW \
+    --include crate::low::x86_64::aes_gcm::AVX512_VALE_SEAL_BELOW \
     --include crate::low::x86_64::aes_gcm_avx \
     --opaque crate::low::x86_64::aes_gcm_avx::counter_block \
     --opaque crate::low::x86_64::aes_gcm_avx::aead
@@ -315,6 +322,7 @@ extract aarch64 Aarch64 \
     --opaque 'crate::high::curve::_::oid' \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
+    --include crate::low::aarch64::sha1::sha1_compress_padded \
     --include crate::low::aarch64::sha256 \
     --opaque crate::low::aarch64::sha256::sha256_compress_blocks
 

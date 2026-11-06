@@ -74,11 +74,12 @@ done
 seed 33 "$asn1/spki-rsa-2k.bin"
 
 # wycheproof SELECTOR FILE JQ: a seed for each distinct key JQ finds in the
-# Wycheproof FILE, in hex: the selector byte, then the key.
+# Wycheproof FILE, in hex, uppercase as older basenc requires: the selector
+# byte, then the key.
 wycheproof() {
     local selector=$1 file=$2 filter=$3 key
     jq -r "[$filter] | unique[]" "thirdparty/wycheproof/testvectors_v1/$file" | while read -r key; do
-        printf %02x%s "$selector" "$key" | basenc --base16 -d >"$corpus/$selector-${file%_test.json}-${key: -16}"
+        printf %02X%s "$selector" "${key^^}" | basenc --base16 -d >"$corpus/$selector-${file%_test.json}-${key: -16}"
     done
 }
 

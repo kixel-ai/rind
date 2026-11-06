@@ -28,44 +28,14 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
 }
 
 /// The digest of `state` followed by `message`, padded and closed by `length`.
-// Out of line, as `Sha1State::compress_padded` is, so `finish_with` inlines.
+// Out of line, so `finish_with` stays small enough to inline.
 #[inline(never)]
 pub(crate) fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -> [u8; 32] {
     match path() {
-        // The message's whole blocks run from where they are, and only its
-        // tail is copied, for the routine to pad.
-        Path::Shaext(token) => {
-            let (blocks, rest) = message.split_at(message.len() / 64 * 64);
-            let mut last = [0u8; 64];
-            last[..rest.len()].copy_from_slice(rest);
-            x86_64::sha256::sha256_finish_shaext(state, blocks, &last, rest.len(), length, token)
-        }
+        Path::Shaext(token) => x86_64::sha256::sha256_finish_shaext(state, message, length, token),
         _ => {
             let mut h = *state;
             sha256_compress_padded(&mut h, message, length);
-            sha256_digest(&h)
-        }
-    }
-}
-
-/// The digest of `state` followed by the first `used` bytes of `block`,
-/// padded and closed by `length`.
-#[inline(never)]
-pub(crate) fn sha256_finish_block(
-    state: &[u32; 8],
-    block: &[u8; 64],
-    used: usize,
-    length: [u8; 8],
-) -> [u8; 32] {
-    match path() {
-        // The routine pads `block` where it is, so a context's buffer needs
-        // no copy.
-        Path::Shaext(token) => {
-            x86_64::sha256::sha256_finish_shaext(state, &[], block, used, length, token)
-        }
-        _ => {
-            let mut h = *state;
-            sha256_compress_padded(&mut h, &block[..used], length);
             sha256_digest(&h)
         }
     }

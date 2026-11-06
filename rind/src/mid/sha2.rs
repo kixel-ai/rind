@@ -43,14 +43,6 @@ impl Sha256State {
         crate::low::sha256_finish(&self.h, message, length)
     }
 
-    /// The hash of the input so far followed by the first `used` bytes of
-    /// `block`, leaving this state as it was.
-    fn finish_block(&self, block: &[u8; 64], used: usize) -> [u8; Sha256Context::OUTPUT_SZ] {
-        let length = self.length(used);
-        Entry::assert_held();
-        crate::low::sha256_finish_block(&self.h, block, used, length)
-    }
-
     /// The padding's length field for the input so far followed by `more` bytes.
     fn length(&self, more: usize) -> [u8; 8] {
         const BLOCK_SZ: usize = Sha256Context::BLOCK_SZ;
@@ -107,8 +99,7 @@ impl Sha256Context {
 
     /// Complete the SHA256 computation, returning the hash output.
     pub(crate) fn finish(&self) -> [u8; Self::OUTPUT_SZ] {
-        self.state
-            .finish_block(self.blockwise.buffer(), self.blockwise.used())
+        self.state.finish_with(self.blockwise.buffered())
     }
 
     /// The internal block size of SHA256.

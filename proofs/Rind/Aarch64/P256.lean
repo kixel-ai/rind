@@ -1,6 +1,7 @@
 import Rind.Aarch64.P256Table
 import Rind.Aarch64.P256Dispatch
 import Rind.Bytes
+import Rind.P256Multiples
 import Mathlib.Tactic.LinearCombination
 open Aeneas Aeneas.Std Result rind.spec
 
@@ -25,8 +26,7 @@ def x962Coords (bytes : List U8) : Nat × Nat :=
 /-- P-256 ECDH's outcome, for scalar `k` and the peer's encoded key: refused
 unless it is an X9.62 uncompressed point on the curve, with coordinates below
 `p256`, and otherwise the x-coordinate of `k` times that point, or a fault
-unless that is a finite point on the curve, as it always is for `k` in
-[1, n). -/
+unless that is a finite point on the curve. -/
 def p256Agreement (k : Nat) (peer : List U8) (r : core.result.Result high.agreement.Secret error.Error) :
     Prop :=
   match peer.head? with
@@ -43,6 +43,10 @@ def p256Agreement (k : Nat) (peer : List U8) (r : core.result.Result high.agreem
         else r = .Err (.KeyRejected .NotOnCurve)
       else r = .Err (.KeyRejected .WrongLength)
     else r = .Err (.KeyRejected .Compressed)
+
+/-- `b` is X9.62's uncompressed encoding of `d` times the generator. -/
+def p256PublicKey (d : Nat) (b : List U8) : Prop :=
+  b.length = 65 ∧ b.head? = some 4#u8 ∧ p256Pow p256G d = some (x962Coords b)
 
 /-- P-256 key generation's outcome, for the system source's successive
 draws: the first of `n` draws, from the `i`th, whose bytes, read big-endian,
@@ -1012,8 +1016,8 @@ theorem p256_generate (h : Runs) (draws : Nat → core.result.Result Unit getran
 /-- A P-256 key loaded from its scalar is refused unless it is 32 bytes and,
 read big-endian, in [1, n), and otherwise is that scalar, as
 `p256_generate`'s is a draw's. -/
-theorem p256_from_private_key (h : Runs) (b : Slice U8) :
-    high.agreement.PrivateKey.from_private_key high.agreement.ECDH_P256 b ⦃ key =>
+theorem p256_from_scalar (h : Runs) (b : Slice U8) :
+    high.agreement.PrivateKey.from_scalar high.agreement.ECDH_P256 b ⦃ key =>
       if b.length = 32 then
         if 0 < beNat b.val ∧ beNat b.val < n256 then
           ∃ k : high.agreement.Keyed mid.p256.PrivateKey,
@@ -1021,7 +1025,7 @@ theorem p256_from_private_key (h : Runs) (b : Slice U8) :
               wordsNat k.key.scalar.val = beNat b.val
         else key = core.result.Result.Err (.KeyRejected .ScalarOutOfRange)
       else key = core.result.Result.Err (.KeyRejected .WrongLength) ⦄ := by
-  unfold high.agreement.PrivateKey.from_private_key high.agreement.PrivateKey.load
+  unfold high.agreement.PrivateKey.from_scalar high.agreement.PrivateKey.load
     high.agreement.ECDH_P256 high.agreement.Keyed.load high.agreement.Keyed.new
   simp only
   step with load_scalar_spec h b as ⟨r, hr⟩
@@ -1034,20 +1038,25 @@ theorem p256_from_private_key (h : Runs) (b : Slice U8) :
     simp
 
 /-- A P-256 key's public key: X9.62's uncompressed encoding of its scalar
-times the generator, for a scalar whose multiple is a finite point on the
-curve, as every scalar in [1, n) gives. -/
+times the generator, for a scalar in [1, n), as `p256_generate` and
+`p256_from_scalar` give. -/
 theorem p256_public_key (h : Runs) (k : high.agreement.Keyed mid.p256.PrivateKey)
-    (x y : Nat) (hq : p256Pow p256G (wordsNat k.key.scalar.val) = some (x, y))
-    (hc : p256OnCurve (some (x, y))) :
+    (hk0 : 0 < wordsNat k.key.scalar.val) (hk : wordsNat k.key.scalar.val < n256) :
     (do
       let pk ← high.agreement.PrivateKey.public_key (.P256 k)
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
-      b.length = 65 ∧ b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄ := by
+      p256PublicKey (wordsNat k.key.scalar.val) b.val ⦄ := by
+  obtain ⟨x, y, hq, hc⟩ := g_mult _ hk0 hk
   unfold high.agreement.PrivateKey.public_key high.agreement.Keyed.public_key
-  exact encode_public_spec h k.key x y hq hc
+  refine WP.spec_mono (encode_public_spec h k.key x y hq hc) fun b ⟨hl, h4, hxy⟩ => ⟨hl, h4, ?_⟩
+  rw [hq, hxy]
 
 /-- A P-256 agreement with the peer's encoded public key: `p256Agreement` of
-this key's scalar. -/
+this key's scalar. Its fault case never happens for a scalar in [1, n) if
+every finite point has order n, which follows from the curve's group having
+n points, a count that needs more than Mathlib proves (Hasse's bound at
+least). G's order, which the kernel checks, says nothing about the peer's
+point. -/
 theorem p256_agree (h : Runs) (k : high.agreement.Keyed mid.p256.PrivateKey) (peer : Slice U8) :
     high.agreement.PrivateKey.agree (.P256 k) peer ⦃ r =>
       p256Agreement (wordsNat k.key.scalar.val) peer.val r ⦄ := by

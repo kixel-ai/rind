@@ -306,7 +306,7 @@ enum EcdsaSource<'a> {
     Pkcs8(&'a [u8]),
     Sec1(&'a [u8]),
     Scalar {
-        private_key: &'a [u8],
+        scalar: &'a [u8],
         public_key: &'a [u8],
     },
 }
@@ -390,15 +390,12 @@ impl EcdsaKeyPair {
     ///
     /// This suits a JWK's `d` and `x`/`y`; prefer [`Self::from_pkcs8`] for
     /// stored keys.
-    pub fn from_private_key_and_public_key(
+    pub fn from_scalar_and_public_key(
         algorithm: &'static EcdsaSigningAlgorithm,
-        private_key: &[u8],
+        scalar: &[u8],
         public_key: &[u8],
     ) -> Result<Self, Error> {
-        let source = EcdsaSource::Scalar {
-            private_key,
-            public_key,
-        };
+        let source = EcdsaSource::Scalar { scalar, public_key };
         (algorithm.load)(algorithm.ecdsa, source)
     }
 
@@ -412,10 +409,9 @@ impl EcdsaKeyPair {
             EcdsaSource::Generate => ecdsa::SigningKey::<C>::generate(),
             EcdsaSource::Pkcs8(der) => ecdsa::SigningKey::from_pkcs8_der(der),
             EcdsaSource::Sec1(der) => ecdsa::SigningKey::from_sec1_der(der),
-            EcdsaSource::Scalar {
-                private_key,
-                public_key,
-            } => ecdsa::SigningKey::from_private_key_and_public_key(private_key, public_key),
+            EcdsaSource::Scalar { scalar, public_key } => {
+                ecdsa::SigningKey::from_private_key_and_public_key(scalar, public_key)
+            }
         }?;
         let point = Buffer::copy_from(signing.public_key_uncompressed())?;
         let verifying = ecdsa::VerifyingKey::from_x962_uncompressed(point.as_ref())?;
@@ -493,7 +489,7 @@ impl EcdsaKeyPair {
     /// Encodes the private key as a big-endian scalar exactly the curve's
     /// length, as a JWK's `d` and SEC1's `privateKey` hold it.
     ///
-    /// This is what [`Self::from_private_key_and_public_key`] loads; prefer
+    /// This is what [`Self::from_scalar_and_public_key`] loads; prefer
     /// [`Self::to_pkcs8`] for stored keys.
     pub fn to_scalar(&self) -> EcdsaScalar {
         EcdsaScalar(Buffer::encode(|output| {
@@ -671,7 +667,7 @@ inductive high.signature.EcdsaSource where
   | Generate
   | Pkcs8 (der : Slice Std.U8)
   | Sec1 (der : Slice Std.U8)
-  | Scalar (private_key public_key : Slice Std.U8)
+  | Scalar (scalar public_key : Slice Std.U8)
 
 /-- `EcdsaSigningAlgorithm`: its `load`, applied to its `Ecdsa`. -/
 structure high.signature.EcdsaSigningAlgorithm where
@@ -693,8 +689,8 @@ def high.signature.EcdsaKeyPair.load_p256_sha256_fixed (source : high.signature.
     | .Generate => high.ecdsa.SigningKey.generate P256C
     | .Pkcs8 der => high.ecdsa.SigningKey.from_pkcs8_der_p256 der
     | .Sec1 der => high.ecdsa.SigningKey.from_sec1_der_p256 der
-    | .Scalar private_key public_key =>
-      high.ecdsa.SigningKey.from_private_key_and_public_key P256C private_key public_key
+    | .Scalar scalar public_key =>
+      high.ecdsa.SigningKey.from_private_key_and_public_key P256C scalar public_key
   match signing with
   | .Err e => ok (.Err e)
   | .Ok signing =>
@@ -719,11 +715,11 @@ def high.signature.EcdsaKeyPair.generate (algorithm : high.signature.EcdsaSignin
     Result (core.result.Result high.signature.EcdsaKeyPair error.Error) :=
   algorithm.load .Generate
 
-/-- `EcdsaKeyPair::from_private_key_and_public_key`. -/
-def high.signature.EcdsaKeyPair.from_private_key_and_public_key
-    (algorithm : high.signature.EcdsaSigningAlgorithm) (private_key public_key : Slice Std.U8) :
+/-- `EcdsaKeyPair::from_scalar_and_public_key`. -/
+def high.signature.EcdsaKeyPair.from_scalar_and_public_key
+    (algorithm : high.signature.EcdsaSigningAlgorithm) (scalar public_key : Slice Std.U8) :
     Result (core.result.Result high.signature.EcdsaKeyPair error.Error) :=
-  algorithm.load (.Scalar private_key public_key)
+  algorithm.load (.Scalar scalar public_key)
 
 /-- `EcdsaKeyPair::public_key`, as the translation names a method, whose
 P-256 `Verifier`'s `verify` is `VerifyingKey::verify::<Sha256>`. -/

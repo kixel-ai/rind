@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::fmt;
+
 use crate::Error;
 use crate::cipher::Algorithm;
 use crate::low::{self, AesKey, Entry};
@@ -20,6 +22,11 @@ impl Aes {
             return Err(Error::WrongLength);
         }
         Ok(Self(expand_key(key)))
+    }
+
+    /// The key's length in bytes, 16 or 32.
+    pub(crate) fn key_len(&self) -> usize {
+        self.0.key_len()
     }
 
     /// Encrypts one block in place.
@@ -106,6 +113,22 @@ impl AesCtr {
     }
 }
 
+impl fmt::Debug for Aes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Aes")
+            .field("algorithm", crate::cipher::aes(self.key_len()))
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for AesCtr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AesCtr")
+            .field("algorithm", crate::cipher::aes(self.key.key_len()))
+            .finish_non_exhaustive()
+    }
+}
+
 impl Drop for AesCtr {
     fn drop(&mut self) {
         // not secret, but wiped so that the whole value reads zero
@@ -135,7 +158,7 @@ pub(super) fn check_gcm_lengths(aad: usize, msg: usize) -> Result<(), Error> {
 
 /// Fails with [`Error::WrongLength`] unless `iv` is an AES-GCM IV: not
 /// empty, and with a bit length that fits in 64 bits.
-pub(super) fn check_gcm_iv(iv: &[u8]) -> Result<(), Error> {
+pub(crate) fn check_gcm_iv(iv: &[u8]) -> Result<(), Error> {
     if iv.is_empty() || iv.len() as u64 >= 1 << 61 {
         return Err(Error::WrongLength);
     }
