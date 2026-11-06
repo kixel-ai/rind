@@ -76,7 +76,6 @@ don't ask again (✅ is the chosen option):
 - [rind for Dart and Flutter](/quest/m2/adoption/rind-dart.md) - the `rind` package on pub.dev
 - [rind as a Dart `cryptography` backend](/quest/m2/adoption/rind-dart-cryptography.md) - the `cryptography` package's interface on rind
 - [Apache Iggy encrypts streams with rind](/quest/m2/adoption/iggy.md) - its AES-256-GCM message encryption on rind
-- [AES key wrap with padding](/quest/m2/adoption/aes-kwp.md) - RFC 5649, for pyca-compatible pyrind
 - [librespot builds rustls without ring](/quest/m2/adoption/librespot.md) - users pick their rustls provider
 - [rind-rustls supports rustls 0.24](/quest/m2/adoption/rind-rustls-0.24.md) - a release on 0.24 soon after it ships
 - [rustls 0.24 is released](/quest/m2/adoption/rustls-0.24-release.md) - waiting on the release
