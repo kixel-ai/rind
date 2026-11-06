@@ -8,7 +8,7 @@ use super::hash::{
     Hash, HashContext, LegacySha1, Sha1Context, Sha256, Sha256Context, Sha384, Sha384Context,
     Sha512, Sha512Context,
 };
-use crate::low::{Entry, Zeroable, ZeroableRef, ct, ct_equal, zeroise_value};
+use crate::low::{Entry, ct, ct_equal};
 use crate::mid::{sha1, sha2, sha3};
 
 /// A hash function, chosen by one of this module's constants.
@@ -125,14 +125,14 @@ pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
     (algorithm.hash)(data)
 }
 
-/// An in-progress hash computation, wiped on drop.
+/// An in-progress hash computation.
 ///
 /// A clone forks the computation, so messages sharing a prefix hash it once.
 #[derive(Clone)]
 pub struct Context(State);
 
-// `repr(u8)` puts `Sha1` at tag zero, and every context is plain integers and
-// bytes beside a `ZeroableRef`, so all-bits-zero is a valid value.
+// `repr(u8)` lays every variant out as the tag then its `Hashing`, so `ops`
+// sits at one offset in each.
 #[derive(Clone)]
 #[repr(u8)]
 enum State {
@@ -174,8 +174,6 @@ impl State {
     }
 }
 
-impl Zeroable for State {}
-
 /// A hash context with its hash's code, which it reaches only through
 /// `ops`: matching on [`State`] then names no hash's code.
 ///
@@ -184,7 +182,7 @@ impl Zeroable for State {}
 #[derive(Clone)]
 #[repr(C)]
 struct Hashing<C: Variant> {
-    ops: ZeroableRef<Ops<C>>,
+    ops: &'static Ops<C>,
     context: C,
 }
 
@@ -196,24 +194,22 @@ struct Ops<C> {
 impl<C: Variant> Hashing<C> {
     fn start() -> State {
         C::state(Self {
-            ops: ZeroableRef::new(
-                const {
-                    &Ops {
-                        update: C::update,
-                        finish: C::finish_reset,
-                    }
-                },
-            ),
+            ops: const {
+                &Ops {
+                    update: C::update,
+                    finish: C::finish_reset,
+                }
+            },
             context: C::new(),
         })
     }
 
     fn update(&mut self, data: &[u8]) {
-        (self.ops.get().update)(&mut self.context, data)
+        (self.ops.update)(&mut self.context, data)
     }
 
     fn finish(&mut self) -> Digest {
-        (self.ops.get().finish)(&mut self.context)
+        (self.ops.finish)(&mut self.context)
     }
 }
 
@@ -318,13 +314,6 @@ impl Context {
     pub fn finish(&mut self) -> Digest {
         let _entry = Entry::new_secret();
         self.0.finish()
-    }
-}
-
-// The message may be secret, and aws-lc wipes a digest context when it frees it.
-impl Drop for Context {
-    fn drop(&mut self) {
-        zeroise_value(&mut self.0);
     }
 }
 

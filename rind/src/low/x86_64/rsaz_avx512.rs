@@ -97,9 +97,6 @@ impl<const H: usize> Pair<H> {
     }
 }
 
-// All-zero words are a valid pair.
-impl<const H: usize> low::Zeroable for Pair<H> {}
-
 const MASK: u64 = (1 << 52) - 1;
 
 /// Splits `words` into 52-bit `limbs`, zero above them.
@@ -222,9 +219,6 @@ fn mod_exp<const H: usize>(
         }
         rsaz.mul_by(&mut y, &x);
     }
-
-    // The powers of a secret base, on the heap.
-    low::zeroise(&mut table);
 
     // Out of Montgomery form, which leaves each at most its modulus.
     rsaz.mul_by(&mut y, &one);

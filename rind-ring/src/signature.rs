@@ -7,8 +7,6 @@
 
 use core::fmt;
 
-use zeroize::Zeroizing;
-
 /// An RSA public key as its big-endian modulus and exponent.
 pub use crate::rsa::PublicKeyComponents as RsaPublicKeyComponents;
 pub use crate::rsa::{
@@ -469,7 +467,7 @@ impl Ed25519KeyPair {
         if seed.len() != 32 {
             return Err(error::KeyRejected::invalid_encoding());
         }
-        let mut pkcs8 = Zeroizing::new([0u8; ED25519_PKCS8_V1_PREFIX.len() + 32]);
+        let mut pkcs8 = [0u8; ED25519_PKCS8_V1_PREFIX.len() + 32];
         let (prefix, key) = pkcs8.split_at_mut(ED25519_PKCS8_V1_PREFIX.len());
         prefix.copy_from_slice(&ED25519_PKCS8_V1_PREFIX);
         key.copy_from_slice(seed);

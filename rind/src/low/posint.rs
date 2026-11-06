@@ -168,10 +168,7 @@ impl<const N: usize> PosInt<N> {
     /// Return true if `gcd(self, other)` is one
     pub(crate) fn is_coprime(&self, other: &Self) -> bool {
         let mut tmp = vec![0u64; N + N];
-        let r = low::bignum_coprime(self.as_words(), other.as_words(), &mut tmp);
-        // Key generation's values are secret, and this scratch is on the heap.
-        low::zeroise(&mut tmp);
-        r
+        low::bignum_coprime(self.as_words(), other.as_words(), &mut tmp)
     }
 
     /// The significant words.
@@ -552,8 +549,6 @@ impl<const N: usize> PosInt<N> {
             core::mem::swap(&mut accum, &mut spare);
         }
 
-        // The powers of a secret base, on the heap.
-        low::zeroise(&mut table);
         accum.clone()
     }
 
@@ -572,8 +567,6 @@ impl<const N: usize> PosInt<N> {
             n.as_words(),
             &mut temp,
         );
-        // Key generation's values are secret, and this scratch is on the heap.
-        low::zeroise(&mut temp);
         r
     }
 

@@ -2,8 +2,6 @@
 
 use core::num::NonZeroU32;
 
-use zeroize::Zeroizing;
-
 use crate::{digest, error, hmac};
 
 /// A PBKDF2 algorithm, chosen by one of this module's statics.
@@ -89,7 +87,7 @@ pub fn verify(
     }
 
     // rind refuses a value this short, so derive its block and compare here.
-    let mut derived = Zeroizing::new([0u8; digest::MAX_OUTPUT_LEN]);
+    let mut derived = [0u8; digest::MAX_OUTPUT_LEN];
     let derived = &mut derived[..previously_derived.len()];
     secret
         .derive(iterations, salt, derived)

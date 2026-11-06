@@ -270,8 +270,7 @@ struct UnreducedScalar([u64; 4]);
 impl UnreducedScalar {
     /// Read a uniformly random 32-byte little-endian string, and clamp it.
     fn clamp_from_le_bytes(x: &[u8; 32]) -> Self {
-        // Clamp the words rather than a byte copy, which would be one more
-        // copy of the hashed seed to wipe.
+        // Clamp the words, saving a byte copy.
         let mut x = util::little_endian_to_u64x4(x);
 
         // Clamp the scalar:
