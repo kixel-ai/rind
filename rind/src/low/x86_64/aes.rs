@@ -42,9 +42,8 @@ impl AesKey {
         }
     }
 
-    /// Encrypts one block, inlined so that AES-NI's path is one call.
+    /// Encrypts one block.
     #[must_use]
-    #[inline]
     pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         match self {
             Self::Hw(key) => key.encrypt_block(block),
@@ -142,7 +141,6 @@ pub(crate) enum HwKey {
 
 impl HwKey {
     #[must_use]
-    #[inline]
     pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         match self {
             Self::Aes128(a128) => a128.encrypt_block(block),
@@ -259,7 +257,6 @@ impl AesKey128 {
     }
 
     #[must_use]
-    #[inline]
     pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         // SAFETY: only a `HaveAesHardware` token builds `self`.
         unsafe { aes128_block(&self.round_keys, block) }
@@ -309,7 +306,6 @@ impl AesKey256 {
     }
 
     #[must_use]
-    #[inline]
     pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         // SAFETY: only a `HaveAesHardware` token builds `self`.
         unsafe { aes256_block(&self.round_keys, block) }
