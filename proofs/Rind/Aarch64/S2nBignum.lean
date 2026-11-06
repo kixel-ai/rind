@@ -328,6 +328,10 @@ reads an input. -/
 def Runs : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧ (∃ e, low.entry.Entry.new_public = ok e)
 
+/-- Ed25519 verification's double scalar multiplication runs s2n-bignum's
+routine, as it does on every aarch64 CPU. -/
+def RunsDouble : Prop := True
+
 @[step]
 theorem new_secret_spec (h : Runs) : low.entry.Entry.new_secret ⦃ _ => True ⦄ := by
   obtain ⟨⟨e, he⟩, -⟩ := h

@@ -46,7 +46,7 @@ reason = "From an older run than the other hosts', before [#339](https://github.
 [[gap]]
 operations = ["p256-ecdsa-verify/*"]
 on = ["no ADX"]
-reason = "Only CPUs older than Broadwell and Zen lack ADX, and there rind runs s2n-bignum's verified `_alt` routines."
+reason = "CPUs older than Broadwell and Zen lack ADX, and so do virtual CPUs that hide it, as the OVH VPS report hosts' do. There rind runs s2n-bignum's verified `_alt` routines, which trail by more than 10% only on the nightly runners: on the VPSes P-256 verification measured 1.05× aws-lc-rs's time."
 
 [[gap]]
 operations = ["chacha20poly1305/*/16KB", "xchacha20poly1305/*/16KB"]

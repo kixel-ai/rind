@@ -129,10 +129,12 @@ Android are untested.
   Bobcat and Bulldozer, and QEMU's default `qemu64` model, AES and GHASH run
   Rust ports of [aws-lc]'s constant-time SSE2 and integer C, SHA1 and SHA256
   its integer assembly, and ChaCha20 [HACL\*]'s verified rounds.
-  Without `adx`, as on Haswell and AMD's cores before Zen, [s2n-bignum]'s
-  `_alt` routines replace those that use it, and [aws-lc]'s Montgomery
-  multiplication replaces its Karatsuba routines for RSA; with `avx2` there,
-  as on Haswell, RSA-2048 signing runs aws-lc's RSAZ exponentiation. With
+  Without `adx`, as on Haswell, AMD's cores before Zen, and virtual CPUs
+  that hide it, [s2n-bignum]'s `_alt` routines replace those that use it,
+  and [aws-lc]'s Montgomery multiplication replaces its Karatsuba routines
+  for RSA; with `avx2` there, as on Haswell, RSA-2048 signing runs aws-lc's
+  RSAZ exponentiation, and Ed25519 verification a port of
+  [curve25519-dalek]'s AVX2 backend. With
   `avx512ifma`, as on Ice Lake, Sapphire Rapids, and AMD's Zen 4 and 5,
   RSA-2048, 3072, and 4096 signing runs aws-lc's dual AVX-512 RSAZ.
 - 32-bit `arm` (tested on `armv7-unknown-linux-gnueabihf`, and built for
@@ -213,7 +215,8 @@ x86_64 runs every feature. Each column to its right denies more, as
 and VPCLMULQDQ (Sandy Bridge); no AVX also AVX (Westmere); no AES-NI also
 AES-NI, PCLMULQDQ, and SSE4.1 (Core 2); and SSE2 also SSSE3. Without ADX
 alone (Haswell), rind runs the same sources as x86_64, through s2n-bignum's
-routines that don't use it.
+routines that don't use it, except that Ed25519 verification runs
+curve25519-dalek ⚡ (see below).
 CPUs with AVX2 but without SHA-NI run [OpenSSL]'s AVX2 SHA-256, and CPUs
 with the SHA512 instructions its SHA-384 and SHA-512 for them. Intel CPUs
 without AVX2 run [aws-lc]'s AVX SHA-1, SHA-256, and verified ✓ SHA-384 and
@@ -260,6 +263,12 @@ SHA-512.
   key or 32 B seal.
 - P-256 without ADX: verification runs s2n-bignum's verified routines rather
   than aws-lc's `ecp_nistz256`.
+- Ed25519 verification without ADX: on CPUs with AVX2, `[S]B - [k]A` runs a
+  port of curve25519-dalek's AVX2 backend, variable-time over public inputs,
+  rather than s2n-bignum's verified `edwards25519_scalarmuldouble_alt`, a
+  constant-time fixed-window loop. On an i7-8700 with ADX denied, verification
+  fell from 1.30× curve25519-dalek's time to RESULT_LOCAL; on the OVH VPSes,
+  whose virtual CPUs hide ADX, RESULT_VPS.
 - ChaCha20-Poly1305 without AES-NI and on SSE2, which lack SSE4.1: rind runs
   Graviola's scalar Poly1305 there, and aws-lc BoringSSL's SSE2
   `poly1305_vec.c`, which rind doesn't port for CPUs older than Westmere.
@@ -313,7 +322,7 @@ tests use [Wycheproof]'s vectors.
 | [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine and its aarch64 one for the SHA-256 instructions, Montgomery multiplication and the x86_64 exponentiation's `bn_power5` (with one deliberate change: rind's `bn_sqr8x_mont` and `bn_powerx5` zero two scratch words their `mulx` squaring reads unwritten, which valgrind reports though results and timing do not depend on them), AVX2 and dual AVX-512 RSAZ exponentiation, AES-NI AES-CTR, P-256's generator multiplication (its row scan and mixed addition), and SSE4.1 and AVX2 ChaCha20-Poly1305 (with one deliberate change: rind's copy reads the choice of AVX2 from the block rind passes it rather than aws-lc's `OPENSSL_ia32cap_P`), its aarch64 NEON ChaCha20-Poly1305, its x86_64 assembly for CPUs without AVX2 (SSSE3 ChaCha20, SSSE3 and AVX SHA-1, and SSSE3 SHA-256) without AES-NI (SSSE3 AES and GHASH), and without SSSE3 (integer SHA-1 and SHA-256), its aarch64 Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, Montgomery multiplication, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`; and the C that drives that Poly1305, RSAZ, and `bn_power5`, that sets up its x86_64 SSSE3 GHASH table, and that computes its constant-time SSE2 AES and integer GHASH for x86_64 CPUs without SSSE3, ported to Rust, the GHASH also for armv7 without the crypto extension. aws-lc takes its Poly1305, ChaCha20-Poly1305, SSSE3 GHASH, and constant-time AES and GHASH from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305, ChaCha20-Poly1305, SSSE3 and integer GHASH, and constant-time AES ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification/tree/797302470c1703cbb1a3a6fa98daffef0bfd3d80) that its x86_64 AVX and aarch64 scalar SHA-384/512 routines compute their specified result for all inputs. The proof of its aarch64 routine for the SHA-512 instructions ends with the result in registers, before the routine stores it, so earns no ✓. They check aws-lc's own build, not rind's copy, and do not cover its 32-bit ARM code. [`proofs/`](proofs/README.md) proves rind's SHA-384/512 around the AVX and aarch64 scalar routines. |
 | [BoringSSL] | copied, by `admin/import-boringssl`: its x86_64 VAES AES-GCM assembly, `aes-gcm-avx2-x86_64` and `aes-gcm-avx512-x86_64`, as Rust naked functions; its 32-bit ARM NEON X25519 assembly, in Rust `global_asm!`, which BoringSSL takes from [SUPERCOP]'s `neon2`, public domain | Apache-2.0 | nothing |
 | [OpenSSL] | copied, by `admin/import-openssl`: its x86_64 AVX2 SHA-256 and SHA-512 assembly and its SHA-512 assembly for the SHA512 instructions, from `sha512-x86_64`, as Rust naked functions; its 32-bit ARM Keccak-f assembly, integer and NEON, `keccak1600-armv4`, in Rust `global_asm!` | Apache-2.0 | nothing |
-| [curve25519-dalek] | dependency, with its serial 32-bit backend | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
+| [curve25519-dalek] | dependency, with its serial 32-bit backend, for armv7; ported: its AVX2 backend's field arithmetic, point formulas, and base point table, and its scalars' non-adjacent forms, to Rust intrinsics, for Ed25519 verification on x86_64 CPUs with AVX2 but without ADX | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written, as is the AVX2 backend's. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto/tree/67316f05d771f7f2db62beede59e9b56406a9efd) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
 
 rind's own code is licensed under Apache-2.0 OR ISC OR MIT-0. Copied code
@@ -322,7 +331,7 @@ texts they require; dependencies ship their own. Every file under
 `rind/src` names its license in a `SPDX-License-Identifier` comment, and
 files Graviola wrote keep their `Written for Graviola by ...` header. The
 `rind` crate as a whole is therefore `(Apache-2.0 OR ISC OR MIT-0) AND
-(Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC`. The adapter crates copy
+(Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND BSD-3-Clause`. The adapter crates copy
 nothing under another license, so they stay `Apache-2.0 OR ISC OR MIT-0`.
 rind-ring runs ring's own tests, which keep ring's licenses and stay out of
 the published crate.
@@ -429,8 +438,11 @@ only which candidates it discards.
 
 ### ECC
 On x86_64 and aarch64, all ECC field and scalar arithmetic are provided by
-s2n-bignum, except P256's on x86_64 where aws-lc's is named below, and the
-rest of this section describes those backends.
+s2n-bignum, except P256's on x86_64 where aws-lc's is named below, and
+Ed25519 verification's on x86_64 CPUs with AVX2 but without ADX, which runs
+curve25519-dalek's AVX2 backend over width-5 and width-8 non-adjacent forms
+of its two scalars, the latter over a 20KB table of the base point's odd
+multiples. The rest of this section describes those backends.
 
 P256 base point multiplication on x86_64 is aws-lc's: 7-bit Booth windows over
 37 rows of 64 affine points (a 152KB constant table), each row scanned whole

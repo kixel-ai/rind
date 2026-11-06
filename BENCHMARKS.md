@@ -545,7 +545,7 @@ Each operation where another library is more than 10% faster than rind, on a hos
 | SHA-256, 16 KB | `nixos2` | 1.11× (OpenSSL) | Closed by [#353](https://github.com/moq-dev/rind/pull/353), after this data: CPUs with AVX2 but without the SHA extensions run OpenSSL's AVX2 routine, the one OpenSSL runs on `nixos2`. The next refresh drops this entry. |
 | SHA-512, 1350 B | `nixos` | 1.83× (OpenSSL) | Closed by [#353](https://github.com/moq-dev/rind/pull/353), after this data: Zen 3 runs OpenSSL's AVX2 routine rather than aws-lc's scalar one, which interleaved runs measured at 0.84× OpenSSL's time at this size. The next refresh drops this entry. |
 | Ed25519 verify, ML-KEM-768 encapsulate | `nixos2` | 1.13× to 1.23× (RustCrypto + dalek, graviola) | From an older run than the other hosts', before [#339](https://github.com/moq-dev/rind/pull/339) reworked Ed25519 for its proof. Neither shows on the other hosts, and the next refresh rechecks both. |
-| `p256-ecdsa-verify/*` | no ADX tier | 1.14× (aws-lc-rs) | Only CPUs older than Broadwell and Zen lack ADX, and there rind runs s2n-bignum's verified `_alt` routines. |
+| `p256-ecdsa-verify/*` | no ADX tier | 1.14× (aws-lc-rs) | CPUs older than Broadwell and Zen lack ADX, and so do virtual CPUs that hide it, as the OVH VPS report hosts' do. There rind runs s2n-bignum's verified `_alt` routines, which trail by more than 10% only on the nightly runners: on the VPSes P-256 verification measured 1.05× aws-lc-rs's time. |
 | `chacha20poly1305/*/16KB`, `xchacha20poly1305/*/16KB` | no AES-NI tier | 1.17× (aws-lc-rs) | Without SSE4.1 rind runs Graviola's scalar Poly1305 rather than port BoringSSL's SSE2 `poly1305_vec.c` for CPUs older than Westmere, as README records. |
 
 ## Verified code

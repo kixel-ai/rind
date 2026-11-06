@@ -163,6 +163,12 @@ def Runs : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧ (∃ e, low.entry.Entry.new_public = ok e) ∧
     ∃ t, low.x86_64.cpu.HaveBmi2Adx.check = ok t
 
+/-- Ed25519 verification's double scalar multiplication runs one of
+s2n-bignum's routines: a CPU without ADX lacks AVX2 too, since with it rind
+runs a port of curve25519-dalek's AVX2 backend, which nothing proves. -/
+def RunsDouble : Prop :=
+  low.x86_64.cpu.HaveBmi2Adx.check = ok none → low.x86_64.cpu.HaveAvx2.check = ok none
+
 @[step]
 theorem new_secret_spec (h : Runs) : low.entry.Entry.new_secret ⦃ _ => True ⦄ := by
   obtain ⟨⟨e, he⟩, -⟩ := h
@@ -214,9 +220,9 @@ theorem edwards25519_scalarmulbase_mux_spec (h : Runs) (res : Std.Array U64 8#us
   cases t <;> step*
 
 @[step]
-theorem edwards25519_scalarmuldouble_mux_spec (h : Runs) (res : Std.Array U64 8#usize)
-    (scalar : Std.Array U64 4#usize) (point : Std.Array U64 8#usize)
-    (bscalar : Std.Array U64 4#usize) :
+theorem edwards25519_scalarmuldouble_mux_spec (h : Runs) (hd : RunsDouble)
+    (res : Std.Array U64 8#usize) (scalar : Std.Array U64 4#usize)
+    (point : Std.Array U64 8#usize) (bscalar : Std.Array U64 4#usize) :
     low.x86_64.adx_mux.edwards25519_scalarmuldouble res scalar point bscalar ⦃ r =>
       ∀ P, edOnCurve P → edModDecodePair (pairNat point.val) = P →
         pairNat r.val =
@@ -224,7 +230,10 @@ theorem edwards25519_scalarmuldouble_mux_spec (h : Runs) (res : Std.Array U64 8#
   obtain ⟨-, -, t, ht⟩ := h
   unfold low.x86_64.adx_mux.edwards25519_scalarmuldouble
   rw [ht]
-  cases t <;> step*
+  cases t
+  · rw [hd ht]
+    step*
+  · step*
 
 @[step]
 theorem bignum_madd_n25519_mux_spec (h : Runs) (z x y c : Std.Array U64 4#usize) :
