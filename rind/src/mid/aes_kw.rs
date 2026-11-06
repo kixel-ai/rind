@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 use core::fmt;
+use core::mem::ManuallyDrop;
 
 use crate::Error;
 use crate::cipher::Algorithm;
@@ -59,7 +60,8 @@ impl AesKek {
         r.copy_from_slice(key);
         low::ct::secret_slice(r);
 
-        let aes = AesKey::new(self.key());
+        // Expanded for this call, so it skips its wipe.
+        let aes = ManuallyDrop::new(AesKey::new(self.key()));
         // `block` is A followed by each R[i] in turn.
         let mut block = [0u8; 16];
         block[..8].copy_from_slice(&IV);
@@ -96,7 +98,8 @@ impl AesKek {
         let (a, c) = wrapped.split_at(8);
         key.copy_from_slice(c);
 
-        let aes = AesDecKey::new(self.key());
+        // Expanded for this call, so it skips its wipe.
+        let aes = ManuallyDrop::new(AesDecKey::new(self.key()));
         let mut block = [0u8; 16];
         block[..8].copy_from_slice(a);
         let r = key.as_chunks_mut::<8>().0;
