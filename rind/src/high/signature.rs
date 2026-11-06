@@ -837,6 +837,8 @@ struct EcdsaPair<C: EcdsaCurve> {
 type Write<K> = for<'a> fn(&K, &'a mut [u8]) -> Result<&'a [u8], Error>;
 
 struct EcdsaOps<C: EcdsaCurve> {
+    public_key: fn(&ecdsa::SigningKey<C>) -> ecdsa::EncodedPoint,
+    parse: fn(&[u8]) -> Result<ecdsa::VerifyingKey<C>, Error>,
     sign: Sign<ecdsa::SigningKey<C>>,
     sign_digest: Sign<ecdsa::SigningKey<C>>,
     verify: Verify<ecdsa::VerifyingKey<C>>,
@@ -847,11 +849,14 @@ struct EcdsaOps<C: EcdsaCurve> {
 }
 
 impl<C: EcdsaCurve> EcdsaPair<C> {
+    fn point(&self) -> ecdsa::EncodedPoint {
+        (self.ops.get().public_key)(&self.signing)
+    }
+
     fn public_key(&self, ecdsa: Ecdsa) -> PublicKey {
-        let point = self.signing.public_key_uncompressed();
+        let point = self.point();
         let key = EcdsaVerifier {
-            key: ecdsa::VerifyingKey::from_x962_uncompressed(point.as_ref())
-                .expect("a key pair's own point"),
+            key: (self.ops.get().parse)(point.as_ref()).expect("a key pair's own point"),
             verify: self.ops.get().verify,
             verify_digest: self.ops.get().verify_digest,
         };
@@ -927,6 +932,8 @@ impl EcdsaKeyPair {
         }?;
         let ops = const {
             &EcdsaOps {
+                public_key: ecdsa::SigningKey::public_key_uncompressed,
+                parse: ecdsa::VerifyingKey::from_x962_uncompressed,
                 sign: E::sign::<C, H>,
                 sign_digest: E::sign_digest::<C, H>,
                 verify: E::verify::<C, H>,
@@ -1013,7 +1020,7 @@ impl EcdsaKeyPair {
     pub fn to_sec1(&self) -> Sec1 {
         let _entry = low::Entry::new_secret();
         let scalar = self.to_scalar();
-        let point = on_ecdsa!(self, |pair| pair.signing.public_key_uncompressed());
+        let point = on_ecdsa!(self, |pair| pair.point());
         let curve = curve_oid(self.algorithm.curve);
         Sec1(Buffer::encode(|output| {
             sec1::encode(scalar.as_ref(), point.as_ref(), Some(curve), output)
@@ -1030,7 +1037,7 @@ impl EcdsaKeyPair {
 
 impl fmt::Debug for EcdsaKeyPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let point = on_ecdsa!(self, |pair| pair.signing.public_key_uncompressed());
+        let point = on_ecdsa!(self, |pair| pair.point());
         f.debug_struct("EcdsaKeyPair")
             .field("algorithm", &self.algorithm)
             .field("public_key", &point.as_ref())
