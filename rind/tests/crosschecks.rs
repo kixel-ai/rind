@@ -1799,7 +1799,8 @@ mod rsa {
         use crate::der;
 
         /// The object identifiers of `rsaEncryption`, `id-RSAES-OAEP`, and
-        /// X.509's `id-ea-rsa`, all for the same key.
+        /// X.509's `id-ea-rsa`, all for the same key, and of RSASSA-PSS, which
+        /// restricts it.
         const RSA_ENCRYPTION: [u8; 11] = [
             0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
         ];
@@ -1807,6 +1808,9 @@ mod rsa {
             0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x07,
         ];
         const EA_RSA: [u8; 6] = [0x06, 0x04, 0x55, 0x08, 0x01, 0x01];
+        const RSASSA_PSS: [u8; 11] = [
+            0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a,
+        ];
 
         const ALGORITHMS: [(&ours::OaepAlgorithm, &OaepAlgorithm); 4] = [
             (&ours::legacy::OAEP_SHA1, &OAEP_SHA1_MGF1SHA1),
@@ -1928,9 +1932,6 @@ mod rsa {
             let theirs = &THEIRS[0];
             let pkcs1 = theirs.public_key().as_ref();
             let rsa_encryption = RSA_ENCRYPTION;
-            let rsassa_pss = [
-                0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a,
-            ];
             let ec_public_key = [0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01];
             let null = |oid: &[u8]| [oid, &[0x05, 0x00]].concat();
             let rsa_null = null(&rsa_encryption);
@@ -1964,18 +1965,8 @@ mod rsa {
                     false,
                     true,
                 ),
-                (
-                    "RSASSA-PSS",
-                    spki(&null(&rsassa_pss), &key),
-                    false,
-                    false,
-                ),
-                (
-                    "EC",
-                    spki(&null(&ec_public_key), &key),
-                    false,
-                    false,
-                ),
+                ("RSASSA-PSS", spki(&null(&RSASSA_PSS), &key), false, false),
+                ("EC", spki(&null(&ec_public_key), &key), false, false),
                 (
                     "unused bits",
                     spki(&rsa_null, &[&[1][..], pkcs1].concat()),
@@ -2053,14 +2044,21 @@ mod rsa {
                 .unwrap();
             let (version, private_key) = (&canonical[4..at], &canonical[at + rsa_null.len()..]);
             let pkcs8 = |algorithm: &[u8]| {
-                der(0x30, &[version, &der(0x30, algorithm), private_key].concat())
+                der(
+                    0x30,
+                    &[version, &der(0x30, algorithm), private_key].concat(),
+                )
             };
             let null = |oid: &[u8]| [oid, &[0x05, 0x00]].concat();
 
             // Each algorithm identifier, and whether both sides take it.
             let cases: [(&str, Vec<u8>, bool); 9] = [
                 ("rsaEncryption", null(&RSA_ENCRYPTION), true),
-                ("rsaEncryption, no parameters", RSA_ENCRYPTION.to_vec(), false),
+                (
+                    "rsaEncryption, no parameters",
+                    RSA_ENCRYPTION.to_vec(),
+                    false,
+                ),
                 ("id-RSAES-OAEP", null(&RSAES_OAEP), true),
                 ("id-RSAES-OAEP, no parameters", RSAES_OAEP.to_vec(), false),
                 (
@@ -2070,12 +2068,12 @@ mod rsa {
                 ),
                 ("id-ea-rsa", null(&EA_RSA), true),
                 ("id-ea-rsa, no parameters", EA_RSA.to_vec(), false),
-                ("id-ea-rsa, KeySize", [&EA_RSA[..], &[0x02, 0x02, 0x08, 0x00]].concat(), false),
                 (
-                    "RSASSA-PSS",
-                    null(&[0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a]),
+                    "id-ea-rsa, KeySize",
+                    [&EA_RSA[..], &[0x02, 0x02, 0x08, 0x00]].concat(),
                     false,
                 ),
+                ("RSASSA-PSS", null(&RSASSA_PSS), false),
             ];
             assert_eq!(pkcs8(&cases[0].1), canonical);
 

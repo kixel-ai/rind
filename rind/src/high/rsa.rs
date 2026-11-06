@@ -526,12 +526,8 @@ impl SigningKey {
     /// [`KEY_ALGORITHMS`] with `NULL` parameters, as aws-lc requires.
     pub(crate) fn from_pkcs8_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        pkcs8::Key::decode(
-            bytes,
-            &KEY_ALGORITHMS,
-            Some(asn1::Any::Null(asn1::Null)),
-        )
-        .and_then(|k| Self::from_pkcs1_der(k.v1_private_key()?))
+        pkcs8::Key::decode(bytes, &KEY_ALGORITHMS, Some(asn1::Any::Null(asn1::Null)))
+            .and_then(|k| Self::from_pkcs1_der(k.v1_private_key()?))
     }
 
     /// Returns the matching public key.
