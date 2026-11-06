@@ -498,7 +498,11 @@ def collect_host(host, commit, out_dir):
         f"python3 admin/bench-report run --host {q(host)} --commit {q(commit)} "
         f"--jobs {HOSTS[host]['jobs']} --target-dir ../target --out ../result.json"
     )
-    if not darwin:
+    if darwin:
+        # ssh runs no login shell, so Homebrew's python3 and openssl@3 are not
+        # on PATH; macOS's own python3 is too old for tomllib.
+        cmd = f'eval "$(/opt/homebrew/bin/brew shellenv)" && {cmd}'
+    else:
         cmd = f'nix develop "path:$PWD" --command {cmd}'
     on_host(host, f"rm -f {q(work)}/result.json && cd {q(work)}/src && {cmd}")
     fetched = on_host(host, f"cat {q(work)}/result.json", capture_output=True)
