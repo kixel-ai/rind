@@ -37,7 +37,7 @@ pub(crate) struct PmullTable {
     /// B in its low and high halves. The four-way kernels read only the first
     /// six entries.
     pub(crate) htable: [uint64x2_t; 12],
-    /// Whether AES-256 runs the eight-way kernels, which need SHA3's `EOR3`.
+    /// Whether AES-GCM runs the eight-way kernels, which need SHA3's `EOR3`.
     pub(crate) eight_way: Option<HaveSha3>,
 }
 

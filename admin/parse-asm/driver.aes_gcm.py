@@ -8,7 +8,12 @@ from parse import assemble_and_disassemble, parse_file
 if __name__ == "__main__":
     # The `_alt` kernels interleave eight blocks and need SHA3's EOR3, so they
     # take H to H^8, and return from several places.
-    for bits, rounds, alt in ((128, 10, False), (256, 14, False), (256, 14, True)):
+    for bits, rounds, alt in (
+        (128, 10, False),
+        (128, 10, True),
+        (256, 14, False),
+        (256, 14, True),
+    ):
         for op in ("enc", "dec"):
             name = "aes%d_gcm_%s%s" % (bits, op, "_alt" if alt else "")
             with (

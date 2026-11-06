@@ -6,7 +6,9 @@ use core::mem;
 
 use super::aes::HwKey;
 use super::aes128_gcm_dec::aes128_gcm_dec;
+use super::aes128_gcm_dec_alt::aes128_gcm_dec_alt;
 use super::aes128_gcm_enc::aes128_gcm_enc;
+use super::aes128_gcm_enc_alt::aes128_gcm_enc_alt;
 use super::aes256_gcm_dec::aes256_gcm_dec;
 use super::aes256_gcm_dec_alt::aes256_gcm_dec_alt;
 use super::aes256_gcm_enc::aes256_gcm_enc;
@@ -275,11 +277,17 @@ fn cipher<const ENC: bool>(
         // checks.
         unsafe {
             match (hw_key, ENC, table.eight_way) {
-                (HwKey::Aes128(k), true, _) => {
+                (HwKey::Aes128(k), true, None) => {
                     aes128_gcm_enc(inout, len, &mut tag, &mut counter, k.round_keys(), htable4)
                 }
-                (HwKey::Aes128(k), false, _) => {
+                (HwKey::Aes128(k), false, None) => {
                     aes128_gcm_dec(inout, len, &mut tag, &mut counter, k.round_keys(), htable4)
+                }
+                (HwKey::Aes128(k), true, Some(_)) => {
+                    aes128_gcm_enc_alt(inout, len, &mut tag, &mut counter, k.round_keys(), htable)
+                }
+                (HwKey::Aes128(k), false, Some(_)) => {
+                    aes128_gcm_dec_alt(inout, len, &mut tag, &mut counter, k.round_keys(), htable)
                 }
                 (HwKey::Aes256(k), true, None) => {
                     aes256_gcm_enc(inout, len, &mut tag, &mut counter, k.round_keys(), htable4)

@@ -3,7 +3,9 @@
 
 pub(crate) mod aes;
 pub(crate) mod aes128_gcm_dec;
+pub(crate) mod aes128_gcm_dec_alt;
 pub(crate) mod aes128_gcm_enc;
+pub(crate) mod aes128_gcm_enc_alt;
 pub(crate) mod aes256_gcm_dec;
 pub(crate) mod aes256_gcm_dec_alt;
 pub(crate) mod aes256_gcm_enc;
