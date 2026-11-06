@@ -342,11 +342,11 @@ ring has none.
 
 Each `rind-*` crate stands in for a crate's aws-lc-rs or ring backend. rind
 panics on a CPU missing a feature it requires, so every adapter function
-that builds a provider or ticketer refuses one with
-`rind::cpu::MissingFeature` instead. A static that the upstream crate
-requires, such as `DEFAULT_PROVIDER`, cannot; nor can rind-ring, whose
-signatures are ring's, or rind-rcgen's `KeyPair`, whose errors are rcgen's.
-Call `rind::cpu::check()`, or rind-ring's `cpu::check()`, before using them.
+that builds a provider or ticketer refuses one with the adapter's own
+`MissingFeature` instead, which displays rind's message. A static that the
+upstream crate requires, such as `DEFAULT_PROVIDER`, cannot; nor can
+rind-ring, whose signatures are ring's, or rind-rcgen's `KeyPair`, whose
+errors are rcgen's. Call `rind::cpu::check()`, or rind-ring's `cpu::check()`, before using them.
 
 ### rind-ring
 
@@ -355,9 +355,9 @@ in with `ring = { package = "rind-ring", version = "0.1" }` and no code
 changes. The rename reaches only that crate: a dependency that names ring,
 such as rustls with its `ring` feature, still builds ring, since Cargo cannot
 patch it with a crate of another name. It panics wherever ring panics, so
-its signatures stay ring's, and adds rind's `cpu` module, so the renamed
-crate refuses an unsupported CPU with `ring::cpu::check()` without depending
-on rind. Its [README](rind-ring/README.md) lists the
+its signatures stay ring's, and adds a `cpu` module wrapping rind's check, so
+the renamed crate refuses an unsupported CPU with `ring::cpu::check()`
+without depending on rind. Its [README](rind-ring/README.md) lists the
 items it leaves out and the inputs it refuses where ring takes them.
 
 ### rind-rustls
