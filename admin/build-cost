@@ -101,8 +101,9 @@ def busy_cpus():
         return os.getloadavg()[0]
 
     def times():
+        # The first eight fields, since user and nice already count guest time.
         with open("/proc/stat") as f:
-            fields = [int(x) for x in f.readline().split()[1:]]
+            fields = [int(x) for x in f.readline().split()[1:9]]
         return sum(fields) - fields[3] - fields[4], sum(fields)
 
     busy0, total0 = times()

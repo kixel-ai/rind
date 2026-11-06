@@ -288,8 +288,9 @@ def cpu_times():
             fail("host_statistics failed")
         user, system, idle, nice = ticks
         return user + system + nice, user + system + idle + nice
+    # The first eight fields, since user and nice already count guest time.
     with open("/proc/stat") as f:
-        fields = [int(x) for x in f.readline().split()[1:]]
+        fields = [int(x) for x in f.readline().split()[1:9]]
     idle = fields[3] + fields[4]
     return sum(fields) - idle, sum(fields)
 
