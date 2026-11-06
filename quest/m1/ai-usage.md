@@ -19,6 +19,13 @@ Where the data is:
 
 - Claude Code: `~/.claude/projects/*/` on the maintainer's workstation, including `subagents/` directories. Each assistant message records its model and usage by type (input, cache writes by TTL, cache reads, output including thinking), so the cost can be priced exactly per model. rind sessions start on 2026-10-28 there (377 through 2026-11-06); find the bootstrap day's sessions by working directory, since some ran from moq or `~/work` checkouts. `ssh desktop` holds one more rind project; `ssh nixos` holds none.
 - Codex: `~/.codex/sessions/2026/` on the workstation, filtered by working directory, priced at the model's API list price.
+- Also on both hosts: `~/.claude-api-credits/projects` and `~/.claude-personal/projects` (other Claude Code configs), `~/.codex/sessions/`, and T3 Code's `~/.t3/userdata/statev2.sqlite`, whose messages say who wrote them (`createdBy`), so the maintainer's prompts and answers come from there.
 - Bots (Pullfrog, CodeRabbit, CodSpeed's analysis): no usage logs. Estimate from their run and comment counts on moq-dev/rind, and label it as a rough estimate in its own line.
 
 Price each model at its published API list price for the tier and cache TTL used, and state the price table and its date in the method. Count each message once: a session file resumed or forked into another must not double-count. Run the tally as close to the post as practical, and rerun if the post slips by days.
+
+The first tally ran on 2026-11-06 in [moq-dev/rind#400](https://github.com/moq-dev/rind/pull/400): its body holds the numbers, the chart JSON, the method, the price table, and the scripts. Rerunning means that PR's scripts on both hosts, a fresh check of the price pages, and the new JSON into the post's chart; then delete this quest.
+
+## Waiting
+
+- Maintainer: say when the rind launch post in moq-dev/moq.dev is about to go out, since only the maintainer sets its date; then rerun the tally as the Plan says. Check: the post's PR is ready to merge.
