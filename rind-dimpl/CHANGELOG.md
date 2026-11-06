@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/moq-dev/rind/compare/rind-dimpl-v0.1.13...rind-dimpl-v0.2.0) - 2026-11-06
+
+### Fixed
+
+- *(adapters)* [**breaking**] return each adapter's own MissingFeature, not rind's ([#420](https://github.com/moq-dev/rind/pull/420))
+
 ## [0.1.13](https://github.com/moq-dev/rind/compare/rind-dimpl-v0.1.12...rind-dimpl-v0.1.13) - 2026-11-05
 
 ### Other
