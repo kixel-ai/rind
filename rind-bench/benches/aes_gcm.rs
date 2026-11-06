@@ -254,14 +254,20 @@ fn open<K: KeySize>(
     ours: &'static rind::aead::Algorithm,
 ) {
     let nonce = [0u8; 12];
-    let aad = [0u8; 32];
     let ring_key = ring::aead::LessSafeKey::new(ring::aead::UnboundKey::new(ring, key).unwrap());
     let aws_key =
         aws_lc_rs::aead::LessSafeKey::new(aws_lc_rs::aead::UnboundKey::new(aws, key).unwrap());
     let rind_key = rind::aead::Key::new(ours, key).unwrap();
 
     let mut group = c.benchmark_group(name);
-    for (size, size_name) in criterion::SIZES {
+    // Each size under a 32 B AAD, then QUIC's ACK-sized packets under its
+    // 13 B short header.
+    let rows = criterion::SIZES
+        .map(|(size, size_name)| (size, size_name, 32))
+        .into_iter()
+        .chain([(32, "quic-32B", 13), (64, "quic-64B", 13)]);
+    for (size, size_name, aad_len) in rows {
+        let aad = &[0u8; 32][..aad_len];
         // Opening consumes its ciphertext, so each iteration first copies it
         // into a buffer a whole number of 4 KiB pages after it. Two separate
         // heap buffers can instead land with the destination just past the
@@ -272,7 +278,7 @@ fn open<K: KeySize>(
         let (ct, pt) = buf.split_at_mut(stride);
         let ct = &mut ct[..size];
         let tag = rind_key
-            .seal_in_place_separate_tag(rind::aead::Nonce::assume_unique_for_key(nonce), &aad, ct)
+            .seal_in_place_separate_tag(rind::aead::Nonce::assume_unique_for_key(nonce), aad, ct)
             .unwrap();
         group.throughput(Throughput::Bytes(size as u64));
 
@@ -310,7 +316,7 @@ fn open<K: KeySize>(
                 rind_key
                     .open_in_place_separate_tag(
                         rind::aead::Nonce::assume_unique_for_key(nonce),
-                        &aad,
+                        aad,
                         tag,
                         pt,
                     )
@@ -323,7 +329,7 @@ fn open<K: KeySize>(
             let tag = <&[u8; 16]>::try_from(tag.as_ref()).unwrap().into();
             b.iter(|| {
                 pt.copy_from_slice(ct);
-                key.decrypt_inout_detached(&nonce.into(), &aad, pt.into(), tag)
+                key.decrypt_inout_detached(&nonce.into(), aad, pt.into(), tag)
                     .unwrap();
             });
         });
@@ -332,20 +338,20 @@ fn open<K: KeySize>(
             let key = graviola::aead::AesGcm::new(key);
             b.iter(|| {
                 pt.copy_from_slice(ct);
-                key.decrypt(&nonce, &aad, pt, tag.as_ref()).unwrap();
+                key.decrypt(&nonce, aad, pt, tag.as_ref()).unwrap();
             });
         });
         // libcrux opens out of place, so it needs no copy.
         group.bench_function(BenchmarkId::new("libcrux", size_name), |b| {
             let tag = tag.as_ref().try_into().unwrap();
-            b.iter(|| K::libcrux(key, &nonce, &aad, ct, tag, pt));
+            b.iter(|| K::libcrux(key, &nonce, aad, ct, tag, pt));
         });
         #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
         group.bench_function(BenchmarkId::new("openssl", size_name), |b| {
             let mut key = ossl_aead::Opener::new(K::openssl(), key);
             b.iter(|| {
                 pt.copy_from_slice(ct);
-                key.open(&nonce, &aad, tag.as_ref(), pt);
+                key.open(&nonce, aad, tag.as_ref(), pt);
             });
         });
     }
