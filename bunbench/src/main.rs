@@ -38,6 +38,215 @@ unsafe extern "C" {
     fn SHA256(data: *const u8, len: usize, out: *mut u8) -> *mut u8;
     fn SHA384(data: *const u8, len: usize, out: *mut u8) -> *mut u8;
     fn SHA512(data: *const u8, len: usize, out: *mut u8) -> *mut u8;
+    fn d2i_PKCS8_PRIV_KEY_INFO(out: *mut c_void, inp: *mut *const u8, len: i64) -> *mut c_void;
+    fn i2d_PKCS8_PRIV_KEY_INFO(p8: *const c_void, out: *mut *mut u8) -> i32;
+    fn PKCS8_PRIV_KEY_INFO_free(p8: *mut c_void);
+    fn EVP_PKCS82PKEY(p8: *const c_void) -> *mut c_void;
+    fn EVP_PKEY2PKCS8(pkey: *const c_void) -> *mut c_void;
+    fn EVP_PKEY_new() -> *mut c_void;
+    fn EVP_PKEY_free(pkey: *mut c_void);
+    fn EVP_PKEY_get0_EC_KEY(pkey: *const c_void) -> *mut EC_KEY;
+    fn EVP_PKEY_set1_EC_KEY(pkey: *mut c_void, key: *mut EC_KEY) -> i32;
+    fn EVP_PKEY_get_raw_private_key(pkey: *const c_void, out: *mut u8, len: *mut usize) -> i32;
+    fn EVP_PKEY_get_raw_public_key(pkey: *const c_void, out: *mut u8, len: *mut usize) -> i32;
+    fn EVP_parse_private_key(cbs: *mut Cbs) -> *mut c_void;
+    fn EVP_parse_public_key(cbs: *mut Cbs) -> *mut c_void;
+    fn d2i_PUBKEY(out: *mut c_void, inp: *mut *const u8, len: i64) -> *mut c_void;
+    fn i2d_PUBKEY(pkey: *const c_void, out: *mut *mut u8) -> i32;
+    fn i2d_ECPrivateKey(key: *const EC_KEY, out: *mut *mut u8) -> i32;
+    fn EC_KEY_check_key(key: *const EC_KEY) -> i32;
+    fn EC_KEY_get0_group(key: *const EC_KEY) -> *const c_void;
+    fn EC_KEY_set_public_key(key: *mut EC_KEY, point: *const c_void) -> i32;
+    fn EC_POINT_new(group: *const c_void) -> *mut c_void;
+    fn EC_POINT_free(point: *mut c_void);
+    fn EC_POINT_oct2point(group: *const c_void, point: *mut c_void, buf: *const u8, len: usize, ctx: *mut c_void) -> i32;
+    fn ED25519_keypair_from_seed(out_public: *mut u8, out_private: *mut u8, seed: *const u8);
+}
+
+/// BoringSSL's `CBS`.
+#[repr(C)]
+struct Cbs {
+    data: *const u8,
+    len: usize,
+}
+
+fn cbs(bytes: &[u8]) -> Cbs {
+    Cbs { data: bytes.as_ptr(), len: bytes.len() }
+}
+
+/// An `i2d_*` encoding, freed.
+unsafe fn i2d(f: impl FnOnce(*mut *mut u8) -> i32) -> usize {
+    let mut out: *mut u8 = std::ptr::null_mut();
+    let n = f(&mut out);
+    assert!(n > 0);
+    unsafe { OPENSSL_free(out.cast()) };
+    n as usize
+}
+
+/// Bun's EC raw import: `EC_POINT_oct2point`, then the key checked.
+unsafe fn bssl_ec_raw(nid: i32, point: &[u8]) {
+    unsafe {
+        let key = EC_KEY_new_by_curve_name(nid);
+        let group = EC_KEY_get0_group(key);
+        let p = EC_POINT_new(group);
+        assert_eq!(EC_POINT_oct2point(group, p, point.as_ptr(), point.len(), std::ptr::null_mut()), 1);
+        assert_eq!(EC_KEY_set_public_key(key, p), 1);
+        assert_eq!(EC_KEY_check_key(key), 1);
+        let pkey = EVP_PKEY_new();
+        EVP_PKEY_set1_EC_KEY(pkey, key);
+        black_box(pkey);
+        EVP_PKEY_free(pkey);
+        EC_POINT_free(p);
+        EC_KEY_free(key);
+    }
+}
+
+/// The import and export rows: Bun's `CryptoKeyEC` and `CryptoKeyOKP` calls
+/// against rind's loaders, each on the same bytes.
+fn keys(filter: &str) {
+    let ed = "ed25519".contains(filter) || filter.is_empty();
+    if ed || "keys".contains(filter) {
+        let pair = Ed25519KeyPair::generate().unwrap();
+        let seed = pair.to_seed();
+        let pkcs8 = pair.to_pkcs8v1();
+        let spki = pair.to_spki();
+        let b = time(|| unsafe {
+            let mut c = cbs(pkcs8.as_ref());
+            let pkey = EVP_parse_private_key(&mut c);
+            let mut raw = [0u8; 32];
+            let mut len = 32;
+            assert_eq!(EVP_PKEY_get_raw_private_key(pkey, raw.as_mut_ptr(), &mut len), 1);
+            EVP_PKEY_free(pkey);
+            let (mut p, mut s) = ([0u8; 32], [0u8; 64]);
+            ED25519_keypair_from_seed(p.as_mut_ptr(), s.as_mut_ptr(), raw.as_ptr());
+            black_box((p, s));
+        });
+        let r = time(|| {
+            black_box(Ed25519KeyPair::from_pkcs8(black_box(pkcs8.as_ref())).unwrap());
+        });
+        row("Ed25519 importKey pkcs8", b, r, "v1, public key derived");
+        let b = time(|| unsafe {
+            let (mut p, mut s) = ([0u8; 32], [0u8; 64]);
+            ED25519_keypair_from_seed(p.as_mut_ptr(), s.as_mut_ptr(), black_box(seed.as_ref()).as_ptr());
+            black_box((p, s));
+        });
+        let r = time(|| {
+            black_box(Ed25519KeyPair::from_seed(black_box(seed.as_ref())).unwrap());
+        });
+        row("Ed25519 importKey jwk private", b, r, "seed alone");
+        let b = time(|| unsafe {
+            let mut c = cbs(spki.as_ref());
+            let pkey = EVP_parse_public_key(&mut c);
+            let mut raw = [0u8; 32];
+            let mut len = 32;
+            assert_eq!(EVP_PKEY_get_raw_public_key(pkey, raw.as_mut_ptr(), &mut len), 1);
+            EVP_PKEY_free(pkey);
+            black_box(raw);
+        });
+        let r = time(|| {
+            black_box(PublicKey::from_spki(&signature::verify::ED25519, black_box(spki.as_ref())).unwrap());
+        });
+        row("Ed25519 importKey spki", b, r, "rind checks the point, BoringSSL at verify");
+    }
+    if "x25519".contains(filter) || filter.is_empty() || "keys".contains(filter) {
+        let key = agreement::PrivateKey::generate(&agreement::X25519).unwrap();
+        let spki = key.public_key().to_spki();
+        let b = time(|| unsafe {
+            let mut c = cbs(spki.as_ref());
+            let pkey = EVP_parse_public_key(&mut c);
+            let mut raw = [0u8; 32];
+            let mut len = 32;
+            assert_eq!(EVP_PKEY_get_raw_public_key(pkey, raw.as_mut_ptr(), &mut len), 1);
+            EVP_PKEY_free(pkey);
+            black_box(raw);
+        });
+        let r = time(|| {
+            black_box(agreement::PublicKey::from_spki(&agreement::X25519, black_box(spki.as_ref())).unwrap());
+        });
+        row("X25519 importKey spki", b, r, "");
+    }
+}
+
+/// The EC import and export rows for `c`.
+unsafe fn ec_keys(c: &Curve) {
+    let pair = EcdsaKeyPair::generate(c.sign).unwrap();
+    let pkcs8 = pair.to_pkcs8();
+    let spki = pair.to_spki();
+    let public = pair.public_key();
+    let point = public.as_ref();
+    let (x, y) = point[1..].split_at(c.len);
+    let compressed = [&[0x02 | (y[c.len - 1] & 1)][..], x].concat();
+    unsafe {
+        // Bun's platformImportPkcs8.
+        let b = time(|| {
+            let mut p = pkcs8.as_ref().as_ptr();
+            let p8 = d2i_PKCS8_PRIV_KEY_INFO(std::ptr::null_mut(), &mut p, pkcs8.as_ref().len() as i64);
+            let pkey = EVP_PKCS82PKEY(p8);
+            assert_eq!(EC_KEY_check_key(EVP_PKEY_get0_EC_KEY(pkey)), 1);
+            black_box(pkey);
+            EVP_PKEY_free(pkey);
+            PKCS8_PRIV_KEY_INFO_free(p8);
+        });
+        let r = time(|| {
+            black_box(EcdsaKeyPair::from_pkcs8(c.sign, black_box(pkcs8.as_ref())).unwrap());
+        });
+        row(&format!("EC {} importKey pkcs8", c.name), b, r, "");
+
+        // Bun's platformImportSpki parses the DER by hand before this.
+        let b = time(|| {
+            let mut p = spki.as_ref().as_ptr();
+            let pkey = d2i_PUBKEY(std::ptr::null_mut(), &mut p, spki.as_ref().len() as i64);
+            assert_eq!(EC_KEY_check_key(EVP_PKEY_get0_EC_KEY(pkey)), 1);
+            black_box(pkey);
+            EVP_PKEY_free(pkey);
+        });
+        let r = time(|| {
+            black_box(PublicKey::from_spki(c.verify, black_box(spki.as_ref())).unwrap());
+        });
+        row(&format!("EC {} importKey spki", c.name), b, r, "BoringSSL: d2i_PUBKEY, a lower bound on Bun's path");
+
+        let b = time(|| bssl_ec_raw(c.nid, black_box(point)));
+        let r = time(|| {
+            black_box(PublicKey::new(c.verify, black_box(point)).unwrap());
+        });
+        row(&format!("EC {} importKey raw", c.name), b, r, "uncompressed");
+        let b = time(|| bssl_ec_raw(c.nid, black_box(&compressed)));
+        let r = time(|| {
+            black_box(agreement::PublicKey::new(c.agree, black_box(&compressed)).unwrap());
+        });
+        row(&format!("EC {} importKey raw", c.name), b, r, "compressed: a square root");
+
+        // Bun's export paths, from a key BoringSSL already holds.
+        let mut p = pkcs8.as_ref().as_ptr();
+        let p8 = d2i_PKCS8_PRIV_KEY_INFO(std::ptr::null_mut(), &mut p, pkcs8.as_ref().len() as i64);
+        let pkey = EVP_PKCS82PKEY(p8);
+        PKCS8_PRIV_KEY_INFO_free(p8);
+        let b = time(|| {
+            let p8 = EVP_PKEY2PKCS8(pkey);
+            black_box(i2d(|out| i2d_PKCS8_PRIV_KEY_INFO(p8, out)));
+            PKCS8_PRIV_KEY_INFO_free(p8);
+        });
+        let r = time(|| {
+            black_box(pair.to_pkcs8());
+        });
+        row(&format!("EC {} exportKey pkcs8", c.name), b, r, "");
+        let b = time(|| {
+            black_box(i2d(|out| i2d_PUBKEY(pkey, out)));
+        });
+        let r = time(|| {
+            black_box(pair.to_spki());
+        });
+        row(&format!("EC {} exportKey spki", c.name), b, r, "");
+        let ec = EVP_PKEY_get0_EC_KEY(pkey);
+        let b = time(|| {
+            black_box(i2d(|out| i2d_ECPrivateKey(ec, out)));
+        });
+        let r = time(|| {
+            black_box(pair.to_sec1());
+        });
+        row(&format!("EC {} export sec1", c.name), b, r, "node:crypto KeyObject");
+        EVP_PKEY_free(pkey);
+    }
 }
 
 /// Median nanoseconds per call over batches filling about `budget`.
@@ -91,6 +300,7 @@ fn main() {
     let filter = std::env::args().nth(1).unwrap_or_default();
     println!("| operation | BoringSSL us | rind us | rind speedup | note |");
     println!("|---|---|---|---|---|");
+    keys(&filter);
 
     if "ed25519".contains(&filter) || filter.is_empty() {
         let mut pk = [0u8; 32];
@@ -179,9 +389,14 @@ fn main() {
             agree: &agreement::ECDH_P521 },
     ];
     for c in &curves {
+        if filter == "keys" {
+            unsafe { ec_keys(c) };
+            continue;
+        }
         if !c.name.to_lowercase().replace('-', "").contains(&filter) && !filter.is_empty() {
             continue;
         }
+        unsafe { ec_keys(c) };
         unsafe {
             let key = EC_KEY_new_by_curve_name(c.nid);
             assert_eq!(EC_KEY_generate_key(key), 1);
