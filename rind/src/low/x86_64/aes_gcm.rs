@@ -360,11 +360,6 @@ fn by8<const ENC: bool>(
 
         let cipher_inout = remainder;
         if !cipher_inout.is_empty() {
-            let mut block = [0u8; 16];
-            let len = cipher_inout.len();
-            debug_assert!(len < 16);
-            block[..len].copy_from_slice(cipher_inout);
-
             let c1 = counter.next();
             let mut c1 = _mm_xor_si128(c1, rk_first);
 
@@ -373,17 +368,8 @@ fn by8<const ENC: bool>(
             }
 
             let c1 = _mm_aesenclast_si128(c1, rk_last);
-
-            // SAFETY: `block` is 16 bytes and writable.
-            let p1 = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
-            let c1 = _mm_xor_si128(c1, p1);
-
-            // SAFETY: `block` is 16 bytes and writable.
-            unsafe {
-                _mm_storeu_si128(block.as_mut_ptr().cast(), c1);
-            }
-
-            cipher_inout.copy_from_slice(&block[..len]);
+            let c1 = _mm_xor_si128(c1, ghash::load_partial(cipher_inout));
+            ghash::store_partial(cipher_inout, c1);
         }
     }
 
