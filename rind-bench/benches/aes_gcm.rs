@@ -66,10 +66,21 @@ fn key_setup(
     });
 }
 
+/// Each size under a 32 B AAD, then QUIC's ACK-sized packets under its 13 B
+/// short header.
+fn rows() -> impl Iterator<Item = (usize, &'static str, &'static [u8])> {
+    criterion::SIZES
+        .map(|(size, size_name)| (size, size_name, &[0u8; 32][..]))
+        .into_iter()
+        .chain([
+            (32, "quic-32B", &[0u8; 13][..]),
+            (64, "quic-64B", &[0u8; 13][..]),
+        ])
+}
+
 fn aes128_gcm(c: &mut Criterion) {
     let key = [0u8; 16];
     let nonce = [0u8; 12];
-    let aad = [0u8; 32];
 
     let mut group = c.benchmark_group("aes128-gcm");
     key_setup(
@@ -80,7 +91,7 @@ fn aes128_gcm(c: &mut Criterion) {
         &rind::aead::AES_128_GCM,
     );
 
-    for (size, size_name) in criterion::SIZES {
+    for (size, size_name, aad) in rows() {
         // Sealing the same buffer in place each iteration times the cipher
         // alone, without an allocation or a copy of the input.
         let mut buf = vec![0u8; size];
@@ -90,29 +101,29 @@ fn aes128_gcm(c: &mut Criterion) {
             use ring::aead::{AES_128_GCM, LessSafeKey, UnboundKey};
             let key = UnboundKey::new(&AES_128_GCM, &key).unwrap();
             let key = LessSafeKey::new(key);
-            b.iter(|| test_ring_aes_gcm(&key, &nonce, &aad, &mut buf));
+            b.iter(|| test_ring_aes_gcm(&key, &nonce, aad, &mut buf));
         });
         group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
             use aws_lc_rs::aead::{AES_128_GCM, LessSafeKey, UnboundKey};
             let key = UnboundKey::new(&AES_128_GCM, &key).unwrap();
             let key = LessSafeKey::new(key);
-            b.iter(|| test_aws_aes_gcm(&key, &nonce, &aad, &mut buf));
+            b.iter(|| test_aws_aes_gcm(&key, &nonce, aad, &mut buf));
         });
         group.bench_function(BenchmarkId::new("rustcrypto", size_name), |b| {
             use aes_gcm::KeyInit;
             let key = aes_gcm::Aes128Gcm::new_from_slice(&key).unwrap();
-            b.iter(|| test_rc_aes128_gcm(&key, &nonce, &aad, &mut buf));
+            b.iter(|| test_rc_aes128_gcm(&key, &nonce, aad, &mut buf));
         });
         group.bench_function(BenchmarkId::new("rind", size_name), |b| {
             use rind::aead::{AES_128_GCM, Key};
             let key = Key::new(&AES_128_GCM, &key).unwrap();
-            b.iter(|| test_rind_aes_gcm(&key, &nonce, &aad, &mut buf));
+            b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
         });
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
             let key = graviola::aead::AesGcm::new(&key);
             let mut tag = [0u8; 16];
-            b.iter(|| key.encrypt(&nonce, &aad, &mut buf, &mut tag));
+            b.iter(|| key.encrypt(&nonce, aad, &mut buf, &mut tag));
         });
         // libcrux seals out of place.
         group.bench_function(BenchmarkId::new("libcrux", size_name), |b| {
@@ -120,12 +131,12 @@ fn aes128_gcm(c: &mut Criterion) {
             let nonce = libcrux_aes::AesGcm128Nonce::from(nonce);
             let mut tag = libcrux_aes::AesGcm128Tag::from([0u8; 16]);
             let mut ct = vec![0u8; size];
-            b.iter(|| key.encrypt(&mut ct, &mut tag, &nonce, &aad, &buf).unwrap());
+            b.iter(|| key.encrypt(&mut ct, &mut tag, &nonce, aad, &buf).unwrap());
         });
         #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
         group.bench_function(BenchmarkId::new("openssl", size_name), |b| {
             let mut key = ossl_aead::Sealer::new(openssl::cipher::Cipher::aes_128_gcm(), &key);
-            b.iter(|| key.seal(&nonce, &aad, &mut buf));
+            b.iter(|| key.seal(&nonce, aad, &mut buf));
         });
     }
 }
@@ -133,7 +144,6 @@ fn aes128_gcm(c: &mut Criterion) {
 fn aes256_gcm(c: &mut Criterion) {
     let key = [0u8; 32];
     let nonce = [0u8; 12];
-    let aad = [0u8; 32];
 
     let mut group = c.benchmark_group("aes256-gcm");
     key_setup(
@@ -144,7 +154,7 @@ fn aes256_gcm(c: &mut Criterion) {
         &rind::aead::AES_256_GCM,
     );
 
-    for (size, size_name) in criterion::SIZES {
+    for (size, size_name, aad) in rows() {
         // Sealing the same buffer in place each iteration times the cipher
         // alone, without an allocation or a copy of the input.
         let mut buf = vec![0u8; size];
@@ -154,29 +164,29 @@ fn aes256_gcm(c: &mut Criterion) {
             use ring::aead::{AES_256_GCM, LessSafeKey, UnboundKey};
             let key = UnboundKey::new(&AES_256_GCM, &key).unwrap();
             let key = LessSafeKey::new(key);
-            b.iter(|| test_ring_aes_gcm(&key, &nonce, &aad, &mut buf));
+            b.iter(|| test_ring_aes_gcm(&key, &nonce, aad, &mut buf));
         });
         group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
             use aws_lc_rs::aead::{AES_256_GCM, LessSafeKey, UnboundKey};
             let key = UnboundKey::new(&AES_256_GCM, &key).unwrap();
             let key = LessSafeKey::new(key);
-            b.iter(|| test_aws_aes_gcm(&key, &nonce, &aad, &mut buf));
+            b.iter(|| test_aws_aes_gcm(&key, &nonce, aad, &mut buf));
         });
         group.bench_function(BenchmarkId::new("rustcrypto", size_name), |b| {
             use aes_gcm::KeyInit;
             let key = aes_gcm::Aes256Gcm::new_from_slice(&key).unwrap();
-            b.iter(|| test_rc_aes256_gcm(&key, &nonce, &aad, &mut buf));
+            b.iter(|| test_rc_aes256_gcm(&key, &nonce, aad, &mut buf));
         });
         group.bench_function(BenchmarkId::new("rind", size_name), |b| {
             use rind::aead::{AES_256_GCM, Key};
             let key = Key::new(&AES_256_GCM, &key).unwrap();
-            b.iter(|| test_rind_aes_gcm(&key, &nonce, &aad, &mut buf));
+            b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
         });
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
             let key = graviola::aead::AesGcm::new(&key);
             let mut tag = [0u8; 16];
-            b.iter(|| key.encrypt(&nonce, &aad, &mut buf, &mut tag));
+            b.iter(|| key.encrypt(&nonce, aad, &mut buf, &mut tag));
         });
         // libcrux seals out of place.
         group.bench_function(BenchmarkId::new("libcrux", size_name), |b| {
@@ -184,12 +194,12 @@ fn aes256_gcm(c: &mut Criterion) {
             let nonce = libcrux_aes::AesGcm256Nonce::from(nonce);
             let mut tag = libcrux_aes::AesGcm256Tag::from([0u8; 16]);
             let mut ct = vec![0u8; size];
-            b.iter(|| key.encrypt(&mut ct, &mut tag, &nonce, &aad, &buf).unwrap());
+            b.iter(|| key.encrypt(&mut ct, &mut tag, &nonce, aad, &buf).unwrap());
         });
         #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
         group.bench_function(BenchmarkId::new("openssl", size_name), |b| {
             let mut key = ossl_aead::Sealer::new(openssl::cipher::Cipher::aes_256_gcm(), &key);
-            b.iter(|| key.seal(&nonce, &aad, &mut buf));
+            b.iter(|| key.seal(&nonce, aad, &mut buf));
         });
     }
 }
@@ -260,14 +270,7 @@ fn open<K: KeySize>(
     let rind_key = rind::aead::Key::new(ours, key).unwrap();
 
     let mut group = c.benchmark_group(name);
-    // Each size under a 32 B AAD, then QUIC's ACK-sized packets under its
-    // 13 B short header.
-    let rows = criterion::SIZES
-        .map(|(size, size_name)| (size, size_name, 32))
-        .into_iter()
-        .chain([(32, "quic-32B", 13), (64, "quic-64B", 13)]);
-    for (size, size_name, aad_len) in rows {
-        let aad = &[0u8; 32][..aad_len];
+    for (size, size_name, aad) in rows() {
         // Opening consumes its ciphertext, so each iteration first copies it
         // into a buffer a whole number of 4 KiB pages after it. Two separate
         // heap buffers can instead land with the destination just past the
