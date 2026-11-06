@@ -21,7 +21,7 @@ pub(crate) fn seal(
     aad: &[u8],
     cipher_inout: &mut [u8],
 ) -> [u8; 16] {
-    if let Some((hw_key, kernel)) = vale(key, table, aad, cipher_inout) {
+    if let Some((hw_key, kernel)) = vale::<true>(key, table, aad, cipher_inout) {
         return kernel.seal(hw_key, nonce, aad, cipher_inout);
     }
     tagged::<true>(key, table, nonce, aad, cipher_inout)
@@ -37,27 +37,34 @@ pub(crate) fn open(
     cipher_inout: &mut [u8],
     tag: &[u8; 16],
 ) -> bool {
-    if let Some((hw_key, kernel)) = vale(key, table, aad, cipher_inout) {
+    if let Some((hw_key, kernel)) = vale::<false>(key, table, aad, cipher_inout) {
         return kernel.open(hw_key, nonce, aad, cipher_inout, tag);
     }
     ct_equal(&tagged::<false>(key, table, nonce, aad, cipher_inout), tag)
 }
 
-/// Vale's AES-GCM, where the CPU runs it and its proof covers the lengths.
-fn vale<'a>(
+/// Vale's AES-GCM, where the CPU runs it, its proof covers the lengths, and
+/// it is the fastest path to encrypt (if `ENC`) or decrypt the message.
+fn vale<'a, const ENC: bool>(
     key: &'a AesKey,
     table: &'a GhashTable,
     aad: &[u8],
     cipher_inout: &[u8],
 ) -> Option<(&'a HwKey, &'a AvxKernel)> {
-    match (key, table) {
-        (AesKey::Hw(hw_key), GhashTable::Avx(_, kernel))
-            if u32::try_from(aad.len()).is_ok() && u32::try_from(cipher_inout.len()).is_ok() =>
-        {
-            Some((hw_key, kernel))
+    let AesKey::Hw(hw_key) = key else {
+        return None;
+    };
+    let (kernel, below) = match table {
+        GhashTable::Avx(_, kernel) => (kernel, usize::MAX),
+        GhashTable::VaesAvx2(.., kernel) => (kernel, VAES_AVX2_VALE_BELOW[usize::from(ENC)]),
+        GhashTable::Avx512(GhashTableAvx512 { vale, .. }) => {
+            (vale, AVX512_VALE_BELOW[usize::from(ENC)])
         }
-        _ => None,
-    }
+        _ => return None,
+    };
+    let len = cipher_inout.len();
+    (len < below && u32::try_from(aad.len()).is_ok() && u32::try_from(len).is_ok())
+        .then_some((hw_key, kernel))
 }
 
 fn tagged<const ENC: bool>(
@@ -145,12 +152,12 @@ fn cipher<const ENC: bool>(
                 _cipher_avx512::<ENC>(hw_key, ghash, initial_counter, aad, cipher_inout, *token)
             };
         }
-        GhashTable::VaesAvx2(_, vaes) if len >= VAES_AVX2_MINIMUM_CIPHER_LEN => {
+        GhashTable::VaesAvx2(_, vaes, _) if len >= VAES_AVX2_MINIMUM_CIPHER_LEN => {
             ghash.add(aad);
             return vaes.cipher::<ENC>(hw_key, initial_counter, ghash, cipher_inout);
         }
         GhashTable::Clmul(table)
-        | GhashTable::VaesAvx2(table, _)
+        | GhashTable::VaesAvx2(table, ..)
         | GhashTable::Avx(table, _)
         | GhashTable::Avx512(GhashTableAvx512 { clmul: table, .. }) => table,
         GhashTable::Ssse3(_) | GhashTable::Nohw(_) => {
@@ -521,6 +528,14 @@ const AVX512_KERNEL_MINIMUM_CIPHER_LEN: usize = 2048;
 /// How many message bytes BoringSSL's 256-bit kernel needs to beat the AVX
 /// path, whose single blocks are quicker for short messages.
 const VAES_AVX2_MINIMUM_CIPHER_LEN: usize = 16 * 16;
+
+/// The message lengths, to decrypt and then to encrypt, below which Vale's
+/// AES-GCM beats the VAES-AVX2 tier's own paths.
+const VAES_AVX2_VALE_BELOW: [usize; 2] = [256, 0];
+
+/// The message lengths, to decrypt and then to encrypt, below which Vale's
+/// AES-GCM beats the AVX-512 tier's own paths.
+const AVX512_VALE_BELOW: [usize; 2] = [256, 0];
 
 /// This stores the current four counter values, in big endian.
 #[derive(Debug)]
