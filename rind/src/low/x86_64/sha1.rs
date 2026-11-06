@@ -13,6 +13,21 @@ pub(in crate::low) fn sha1_compress_blocks_shaext(
     unsafe { sha1(state, blocks) }
 }
 
+/// Compresses `message`, padded and closed by `length`.
+///
+/// The last block is padded in registers, so no load of it waits on a store
+/// that cannot forward.
+pub(in crate::low) fn sha1_compress_padded_shaext(
+    state: &mut [u32; 5],
+    message: &[u8],
+    length: [u8; 8],
+    _token: super::cpu::HaveSha1,
+) {
+    // SAFETY: `_token` proves the caller checked the `sha`, `ssse3`, and
+    // `sse4.1` features
+    unsafe { sha1_finish(state, message, length) }
+}
+
 /// Four rounds: `$e` gains the next message words, `$e_next` saves `$abcd`
 /// to seed the following four.
 macro_rules! rounds4 {
@@ -23,158 +38,194 @@ macro_rules! rounds4 {
     };
 }
 
+#[target_feature(enable = "sha,sse2,ssse3,sse4.1")]
+fn sha1(state: &mut [u32; 5], blocks: &[u8]) {
+    let mut abcde = load_state(state);
+    let (blocks, _) = blocks.as_chunks::<64>();
+    for block in blocks {
+        compress_block(&mut abcde, load_block(block));
+    }
+    store_state(state, abcde);
+}
+
+#[target_feature(enable = "sha,sse2,ssse3,sse4.1")]
+fn sha1_finish(state: &mut [u32; 5], message: &[u8], length: [u8; 8]) {
+    let mut abcde = load_state(state);
+    let (blocks, tail) = message.as_chunks::<64>();
+    for block in blocks {
+        compress_block(&mut abcde, load_block(block));
+    }
+    let (last, next) = super::sha_tail::padded_tail(tail, length);
+    compress_block(&mut abcde, last);
+    if let Some(next) = next {
+        compress_block(&mut abcde, next);
+    }
+    store_state(state, abcde);
+}
+
+/// `state` as the SHA extensions hold it: ABCD with A in the top lane, and
+/// E in the top lane of the other.
+#[target_feature(enable = "sha,sse2,ssse3,sse4.1")]
+fn load_state(state: &[u32; 5]) -> (__m128i, __m128i) {
+    // SAFETY: `state` is 5 32-bit words, so the first 4 are readable
+    let abcd = unsafe { _mm_loadu_si128(state[0..4].as_ptr().cast()) };
+    (
+        _mm_shuffle_epi32(abcd, 0b00_01_10_11),
+        _mm_set_epi32(state[4] as i32, 0, 0, 0),
+    )
+}
+
+#[target_feature(enable = "sha,sse2,ssse3,sse4.1")]
+fn store_state(state: &mut [u32; 5], (abcd, e): (__m128i, __m128i)) {
+    let abcd = _mm_shuffle_epi32(abcd, 0b00_01_10_11);
+    // SAFETY: `state` is 5 32-bit words, so the first 4 are writable
+    unsafe { _mm_storeu_si128(state[0..4].as_mut_ptr().cast(), abcd) };
+    state[4] = _mm_extract_epi32::<3>(e) as u32;
+}
+
+#[target_feature(enable = "sha,sse2,ssse3,sse4.1")]
+fn load_block(block: &[u8; 64]) -> [__m128i; 4] {
+    // SAFETY: `block` is 64 bytes and readable
+    unsafe {
+        [
+            _mm_loadu_si128(block[0..].as_ptr().cast()),
+            _mm_loadu_si128(block[16..].as_ptr().cast()),
+            _mm_loadu_si128(block[32..].as_ptr().cast()),
+            _mm_loadu_si128(block[48..].as_ptr().cast()),
+        ]
+    }
+}
+
+/// Compresses the block whose bytes `msg` holds into ABCD and E.
+//
 // The message schedule is interleaved with the rounds as in Intel's
 // "Intel SHA Extensions" paper (2013): for each group `g` of four rounds,
 // `sha1msg2` finishes W for group g+1, `sha1msg1` starts W for g+3, and the
 // xor folds W[t-8] into W for g+2.
 #[target_feature(enable = "sha,sse2,ssse3,sse4.1")]
-fn sha1(state: &mut [u32; 5], blocks: &[u8]) {
+fn compress_block(state: &mut (__m128i, __m128i), msg: [__m128i; 4]) {
+    let (abcd_prev, e0_prev) = *state;
+    let (mut abcd, mut e0) = *state;
     // Reverses all 16 bytes: big-endian words, with W[0] in the top lane.
     let byte_reverse = _mm_set_epi64x(0x0001020304050607, 0x08090a0b0c0d0e0f);
+    let mut msg0 = _mm_shuffle_epi8(msg[0], byte_reverse);
+    let mut msg1 = _mm_shuffle_epi8(msg[1], byte_reverse);
+    let mut msg2 = _mm_shuffle_epi8(msg[2], byte_reverse);
+    let mut msg3 = _mm_shuffle_epi8(msg[3], byte_reverse);
 
-    // SAFETY: `state` is 5 32-bit words, so the first 4 are readable
-    let abcd = unsafe { _mm_loadu_si128(state[0..4].as_ptr().cast()) };
-    let mut abcd = _mm_shuffle_epi32(abcd, 0b00_01_10_11);
-    let mut e0 = _mm_set_epi32(state[4] as i32, 0, 0, 0);
+    // Rounds 0-3: the first group adds `e` directly, since it is not
+    // derived from a previous `abcd`.
+    e0 = _mm_add_epi32(e0, msg0);
+    let mut e1 = abcd;
+    abcd = _mm_sha1rnds4_epu32::<0>(abcd, e0);
 
-    let (chunks, _) = blocks.as_chunks::<64>();
-    for block in chunks {
-        let abcd_prev = abcd;
-        let e0_prev = e0;
+    // Rounds 4-7
+    rounds4!(abcd, e1, e0, msg1, 0);
+    msg0 = _mm_sha1msg1_epu32(msg0, msg1);
 
-        // SAFETY: `block` is 64 bytes and readable
-        let (msg0, msg1, msg2, msg3) = unsafe {
-            (
-                _mm_loadu_si128(block[0..].as_ptr().cast()),
-                _mm_loadu_si128(block[16..].as_ptr().cast()),
-                _mm_loadu_si128(block[32..].as_ptr().cast()),
-                _mm_loadu_si128(block[48..].as_ptr().cast()),
-            )
-        };
-        let mut msg0 = _mm_shuffle_epi8(msg0, byte_reverse);
-        let mut msg1 = _mm_shuffle_epi8(msg1, byte_reverse);
-        let mut msg2 = _mm_shuffle_epi8(msg2, byte_reverse);
-        let mut msg3 = _mm_shuffle_epi8(msg3, byte_reverse);
+    // Rounds 8-11
+    rounds4!(abcd, e0, e1, msg2, 0);
+    msg1 = _mm_sha1msg1_epu32(msg1, msg2);
+    msg0 = _mm_xor_si128(msg0, msg2);
 
-        // Rounds 0-3: the first group adds `e` directly, since it is not
-        // derived from a previous `abcd`.
-        e0 = _mm_add_epi32(e0, msg0);
-        let mut e1 = abcd;
-        abcd = _mm_sha1rnds4_epu32::<0>(abcd, e0);
+    // Rounds 12-15
+    msg0 = _mm_sha1msg2_epu32(msg0, msg3);
+    rounds4!(abcd, e1, e0, msg3, 0);
+    msg2 = _mm_sha1msg1_epu32(msg2, msg3);
+    msg1 = _mm_xor_si128(msg1, msg3);
 
-        // Rounds 4-7
-        rounds4!(abcd, e1, e0, msg1, 0);
-        msg0 = _mm_sha1msg1_epu32(msg0, msg1);
+    // Rounds 16-19
+    msg1 = _mm_sha1msg2_epu32(msg1, msg0);
+    rounds4!(abcd, e0, e1, msg0, 0);
+    msg3 = _mm_sha1msg1_epu32(msg3, msg0);
+    msg2 = _mm_xor_si128(msg2, msg0);
 
-        // Rounds 8-11
-        rounds4!(abcd, e0, e1, msg2, 0);
-        msg1 = _mm_sha1msg1_epu32(msg1, msg2);
-        msg0 = _mm_xor_si128(msg0, msg2);
+    // Rounds 20-23
+    msg2 = _mm_sha1msg2_epu32(msg2, msg1);
+    rounds4!(abcd, e1, e0, msg1, 1);
+    msg0 = _mm_sha1msg1_epu32(msg0, msg1);
+    msg3 = _mm_xor_si128(msg3, msg1);
 
-        // Rounds 12-15
-        msg0 = _mm_sha1msg2_epu32(msg0, msg3);
-        rounds4!(abcd, e1, e0, msg3, 0);
-        msg2 = _mm_sha1msg1_epu32(msg2, msg3);
-        msg1 = _mm_xor_si128(msg1, msg3);
+    // Rounds 24-27
+    msg3 = _mm_sha1msg2_epu32(msg3, msg2);
+    rounds4!(abcd, e0, e1, msg2, 1);
+    msg1 = _mm_sha1msg1_epu32(msg1, msg2);
+    msg0 = _mm_xor_si128(msg0, msg2);
 
-        // Rounds 16-19
-        msg1 = _mm_sha1msg2_epu32(msg1, msg0);
-        rounds4!(abcd, e0, e1, msg0, 0);
-        msg3 = _mm_sha1msg1_epu32(msg3, msg0);
-        msg2 = _mm_xor_si128(msg2, msg0);
+    // Rounds 28-31
+    msg0 = _mm_sha1msg2_epu32(msg0, msg3);
+    rounds4!(abcd, e1, e0, msg3, 1);
+    msg2 = _mm_sha1msg1_epu32(msg2, msg3);
+    msg1 = _mm_xor_si128(msg1, msg3);
 
-        // Rounds 20-23
-        msg2 = _mm_sha1msg2_epu32(msg2, msg1);
-        rounds4!(abcd, e1, e0, msg1, 1);
-        msg0 = _mm_sha1msg1_epu32(msg0, msg1);
-        msg3 = _mm_xor_si128(msg3, msg1);
+    // Rounds 32-35
+    msg1 = _mm_sha1msg2_epu32(msg1, msg0);
+    rounds4!(abcd, e0, e1, msg0, 1);
+    msg3 = _mm_sha1msg1_epu32(msg3, msg0);
+    msg2 = _mm_xor_si128(msg2, msg0);
 
-        // Rounds 24-27
-        msg3 = _mm_sha1msg2_epu32(msg3, msg2);
-        rounds4!(abcd, e0, e1, msg2, 1);
-        msg1 = _mm_sha1msg1_epu32(msg1, msg2);
-        msg0 = _mm_xor_si128(msg0, msg2);
+    // Rounds 36-39
+    msg2 = _mm_sha1msg2_epu32(msg2, msg1);
+    rounds4!(abcd, e1, e0, msg1, 1);
+    msg0 = _mm_sha1msg1_epu32(msg0, msg1);
+    msg3 = _mm_xor_si128(msg3, msg1);
 
-        // Rounds 28-31
-        msg0 = _mm_sha1msg2_epu32(msg0, msg3);
-        rounds4!(abcd, e1, e0, msg3, 1);
-        msg2 = _mm_sha1msg1_epu32(msg2, msg3);
-        msg1 = _mm_xor_si128(msg1, msg3);
+    // Rounds 40-43
+    msg3 = _mm_sha1msg2_epu32(msg3, msg2);
+    rounds4!(abcd, e0, e1, msg2, 2);
+    msg1 = _mm_sha1msg1_epu32(msg1, msg2);
+    msg0 = _mm_xor_si128(msg0, msg2);
 
-        // Rounds 32-35
-        msg1 = _mm_sha1msg2_epu32(msg1, msg0);
-        rounds4!(abcd, e0, e1, msg0, 1);
-        msg3 = _mm_sha1msg1_epu32(msg3, msg0);
-        msg2 = _mm_xor_si128(msg2, msg0);
+    // Rounds 44-47
+    msg0 = _mm_sha1msg2_epu32(msg0, msg3);
+    rounds4!(abcd, e1, e0, msg3, 2);
+    msg2 = _mm_sha1msg1_epu32(msg2, msg3);
+    msg1 = _mm_xor_si128(msg1, msg3);
 
-        // Rounds 36-39
-        msg2 = _mm_sha1msg2_epu32(msg2, msg1);
-        rounds4!(abcd, e1, e0, msg1, 1);
-        msg0 = _mm_sha1msg1_epu32(msg0, msg1);
-        msg3 = _mm_xor_si128(msg3, msg1);
+    // Rounds 48-51
+    msg1 = _mm_sha1msg2_epu32(msg1, msg0);
+    rounds4!(abcd, e0, e1, msg0, 2);
+    msg3 = _mm_sha1msg1_epu32(msg3, msg0);
+    msg2 = _mm_xor_si128(msg2, msg0);
 
-        // Rounds 40-43
-        msg3 = _mm_sha1msg2_epu32(msg3, msg2);
-        rounds4!(abcd, e0, e1, msg2, 2);
-        msg1 = _mm_sha1msg1_epu32(msg1, msg2);
-        msg0 = _mm_xor_si128(msg0, msg2);
+    // Rounds 52-55
+    msg2 = _mm_sha1msg2_epu32(msg2, msg1);
+    rounds4!(abcd, e1, e0, msg1, 2);
+    msg0 = _mm_sha1msg1_epu32(msg0, msg1);
+    msg3 = _mm_xor_si128(msg3, msg1);
 
-        // Rounds 44-47
-        msg0 = _mm_sha1msg2_epu32(msg0, msg3);
-        rounds4!(abcd, e1, e0, msg3, 2);
-        msg2 = _mm_sha1msg1_epu32(msg2, msg3);
-        msg1 = _mm_xor_si128(msg1, msg3);
+    // Rounds 56-59
+    msg3 = _mm_sha1msg2_epu32(msg3, msg2);
+    rounds4!(abcd, e0, e1, msg2, 2);
+    msg1 = _mm_sha1msg1_epu32(msg1, msg2);
+    msg0 = _mm_xor_si128(msg0, msg2);
 
-        // Rounds 48-51
-        msg1 = _mm_sha1msg2_epu32(msg1, msg0);
-        rounds4!(abcd, e0, e1, msg0, 2);
-        msg3 = _mm_sha1msg1_epu32(msg3, msg0);
-        msg2 = _mm_xor_si128(msg2, msg0);
+    // Rounds 60-63
+    msg0 = _mm_sha1msg2_epu32(msg0, msg3);
+    rounds4!(abcd, e1, e0, msg3, 3);
+    msg2 = _mm_sha1msg1_epu32(msg2, msg3);
+    msg1 = _mm_xor_si128(msg1, msg3);
 
-        // Rounds 52-55
-        msg2 = _mm_sha1msg2_epu32(msg2, msg1);
-        rounds4!(abcd, e1, e0, msg1, 2);
-        msg0 = _mm_sha1msg1_epu32(msg0, msg1);
-        msg3 = _mm_xor_si128(msg3, msg1);
+    // Rounds 64-67
+    msg1 = _mm_sha1msg2_epu32(msg1, msg0);
+    rounds4!(abcd, e0, e1, msg0, 3);
+    msg3 = _mm_sha1msg1_epu32(msg3, msg0);
+    msg2 = _mm_xor_si128(msg2, msg0);
 
-        // Rounds 56-59
-        msg3 = _mm_sha1msg2_epu32(msg3, msg2);
-        rounds4!(abcd, e0, e1, msg2, 2);
-        msg1 = _mm_sha1msg1_epu32(msg1, msg2);
-        msg0 = _mm_xor_si128(msg0, msg2);
+    // Rounds 68-71
+    msg2 = _mm_sha1msg2_epu32(msg2, msg1);
+    rounds4!(abcd, e1, e0, msg1, 3);
+    msg3 = _mm_xor_si128(msg3, msg1);
 
-        // Rounds 60-63
-        msg0 = _mm_sha1msg2_epu32(msg0, msg3);
-        rounds4!(abcd, e1, e0, msg3, 3);
-        msg2 = _mm_sha1msg1_epu32(msg2, msg3);
-        msg1 = _mm_xor_si128(msg1, msg3);
+    // Rounds 72-75
+    msg3 = _mm_sha1msg2_epu32(msg3, msg2);
+    rounds4!(abcd, e0, e1, msg2, 3);
 
-        // Rounds 64-67
-        msg1 = _mm_sha1msg2_epu32(msg1, msg0);
-        rounds4!(abcd, e0, e1, msg0, 3);
-        msg3 = _mm_sha1msg1_epu32(msg3, msg0);
-        msg2 = _mm_xor_si128(msg2, msg0);
+    // Rounds 76-79
+    rounds4!(abcd, e1, e0, msg3, 3);
 
-        // Rounds 68-71
-        msg2 = _mm_sha1msg2_epu32(msg2, msg1);
-        rounds4!(abcd, e1, e0, msg1, 3);
-        msg3 = _mm_xor_si128(msg3, msg1);
-
-        // Rounds 72-75
-        msg3 = _mm_sha1msg2_epu32(msg3, msg2);
-        rounds4!(abcd, e0, e1, msg2, 3);
-
-        // Rounds 76-79
-        rounds4!(abcd, e1, e0, msg3, 3);
-
-        e0 = _mm_sha1nexte_epu32(e0, e0_prev);
-        abcd = _mm_add_epi32(abcd, abcd_prev);
-    }
-
-    let abcd = _mm_shuffle_epi32(abcd, 0b00_01_10_11);
-    // SAFETY: `state` is 5 32-bit words, so the first 4 are writable
-    unsafe { _mm_storeu_si128(state[0..4].as_mut_ptr().cast(), abcd) };
-    state[4] = _mm_extract_epi32::<3>(e0) as u32;
+    e0 = _mm_sha1nexte_epu32(e0, e0_prev);
+    *state = (_mm_add_epi32(abcd, abcd_prev), e0);
 }
 
 /// SHA-1 without the SHA extensions, structured as aws-lc's
@@ -506,7 +557,9 @@ fn maj(b: u32, c: u32, d: u32) -> u32 {
 mod tests {
     use super::*;
     use crate::low::generic;
-    use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSsse3};
+    use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSha1, HaveSsse3};
+
+    const START: [u32; 5] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
 
     // The SHA extensions, AVX2, SSSE3, and the vendor hide all but one path from
     // every other test, so each the CPU can run is checked against the
@@ -514,7 +567,6 @@ mod tests {
     // in every block.
     #[test]
     fn paths_match_generic() {
-        const START: [u32; 5] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
         let (ssse3, avx, avx2) = (HaveSsse3::check(), HaveAvx::check(), HaveAvx2::check());
         let blocks: Vec<u8> = (0..5 * 64u32)
             .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
@@ -542,6 +594,32 @@ mod tests {
                 sha1_compress_blocks_avx2(&mut got, blocks, token);
                 assert_eq!(got, wanted, "avx2, {n} blocks");
             }
+        }
+    }
+
+    // Every length up to three blocks, so every place the padding can fall
+    // after zero to two whole blocks, with bytes past the message that must
+    // not count.
+    #[test]
+    fn padded_matches_generic() {
+        let Some(token) = HaveSha1::check() else {
+            return;
+        };
+        let bytes: Vec<u8> = (0..4 * 64u32)
+            .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
+            .collect();
+        let length = 0x0102030405060708u64.to_be_bytes();
+        for len in 0..=3 * 64 {
+            let message = &bytes[..len];
+            let (blocks, rest) = crate::low::split_tail::<64, 8>(message);
+            let mut wanted = START;
+            generic::sha1::sha1_compress_blocks(&mut wanted, blocks);
+            let mut padded = [[0u8; 64]; 2];
+            let padded = crate::low::pad(rest, length, &mut padded);
+            generic::sha1::sha1_compress_blocks(&mut wanted, padded);
+            let mut got = START;
+            sha1_compress_padded_shaext(&mut got, message, length, token);
+            assert_eq!(got, wanted, "{len} bytes");
         }
     }
 }

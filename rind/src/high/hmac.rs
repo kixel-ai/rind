@@ -508,9 +508,9 @@ mod tests {
     // HMAC-SHA1 and HMAC-SHA256 on the SHA extensions, and HMAC-SHA384 and
     // HMAC-SHA512 on the SHA512 instructions, which valgrind cannot run, with
     // a secret key and message, for `admin/ct-sde`. The longer key is hashed
-    // first, and the messages end in a block that pads within itself, into
-    // another, or after a whole one, both in one call and through a
-    // context's buffer.
+    // first, and the messages end in a block that pads within itself, fills
+    // it exactly, pads into another, or follows a whole one, both in one call
+    // and through a context's buffer.
     #[cfg(target_arch = "x86_64")]
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
@@ -526,7 +526,7 @@ mod tests {
         let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
         for algorithm in [&HMAC_SHA1, &HMAC_SHA256, &HMAC_SHA384, &HMAC_SHA512] {
             for key_len in [16, 200] {
-                for message_len in [300, 316, 320] {
+                for message_len in [300, 311, 316, 320] {
                     let (key, message) = (bytes(key_len), bytes(message_len));
                     ct_sde::traced(|| sign(&Key::new(algorithm, &key), &message));
                     ct_sde::traced(|| {
