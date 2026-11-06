@@ -76,7 +76,7 @@ impl KeyPair {
         }
         let signed = self
             .key
-            .sign(padding_alg.rind(), msg)
+            .sign(padding_alg.padding().rind, msg)
             .map_err(|_| error::Unspecified)?;
         if signed.as_ref().len() != signature.len() {
             return Err(error::Unspecified);
@@ -290,13 +290,16 @@ pub(crate) mod padding {
     /// An RSA signature encoding, a padding and a hash, for [`super::KeyPair::sign`].
     pub trait RsaEncoding: Encoding {}
 
+    // Returns rind-ring's own `Padding`, never a rind type: a caller bounded
+    // by `E: RsaEncoding` can call this, and rind-ring's public API must not
+    // name rind.
     pub trait Encoding: fmt::Debug + Sync + sealed::Sealed + 'static {
-        fn rind(&self) -> &'static rind::signature::RsaSigningAlgorithm;
+        fn padding(&self) -> &Padding;
     }
 
     /// One of the `RSA_PKCS1_*` and `RSA_PSS_*` signing encodings.
     pub struct Padding {
-        rind: &'static rind::signature::RsaSigningAlgorithm,
+        pub(super) rind: &'static rind::signature::RsaSigningAlgorithm,
         id: &'static str,
     }
 
@@ -309,8 +312,8 @@ pub(crate) mod padding {
     impl sealed::Sealed for Padding {}
 
     impl Encoding for Padding {
-        fn rind(&self) -> &'static rind::signature::RsaSigningAlgorithm {
-            self.rind
+        fn padding(&self) -> &Padding {
+            self
         }
     }
 
