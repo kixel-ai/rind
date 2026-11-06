@@ -67,7 +67,7 @@ ecdsa_items() {
 }
 check_quote Aarch64/EcdsaDispatch ecdsa_items
 check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
-    'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
+    'pub static MD5:' 'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
     'pub static SHA512_256:' 'pub static SHA3_256:' 'pub static SHA3_384:' 'pub static SHA3_512:' \
     'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {'
 aes_ni_items() {
@@ -152,7 +152,7 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # `signature::PublicKey` holds the signature API's, so no translated function
 # reaches it, and `SignatureDispatch.lean` defines it. SHA-1's and SHA-256's
 # padding is translated down to their block functions, which are opaque.
-# SHA-3's sponge, which no proof covers, is opaque.
+# MD5 and SHA-3's sponge, which no proof covers, are opaque.
 # P-256's key generation draws through a `dyn RandomSource`, so it is opaque
 # too, and `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the
 # translated `PrivateKey::from_bytes`, as `EcdsaDispatch.lean` does for ECDSA,
@@ -218,6 +218,7 @@ extract() {
         --opaque 'crate::high::digest::_::ct_equal' \
         --opaque 'crate::high::digest::_::as_ref' \
         --opaque 'crate::high::digest::_::output_len' \
+        --opaque crate::high::digest::MD5 \
         --opaque crate::high::digest::SHA1 \
         --opaque crate::high::digest::SHA256 \
         --opaque crate::high::digest::SHA384 \
@@ -226,6 +227,7 @@ extract() {
         --opaque crate::high::digest::SHA3_256 \
         --opaque crate::high::digest::SHA3_384 \
         --opaque crate::high::digest::SHA3_512 \
+        --opaque crate::mid::md5 \
         --opaque crate::mid::sha3 \
         --opaque crate::low \
         --opaque 'crate::mid::p384::_::_' \
