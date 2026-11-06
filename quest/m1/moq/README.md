@@ -86,6 +86,10 @@ maintainer, 2026-11-05).
 ## Required
 
 - [AES-GCM's partial AAD block costs no more than a full one on VAES CPUs](/quest/m1/moq/gcm-partial-aad.md) - QUIC's 13 B header stops costing about 12 ns per packet
+- [Short AES-GCM on Arrow Lake runs its fastest path after #409](/quest/m1/moq/gcm-arrow-lake.md) - waits for `desktop`
+- [Vale's AES-GCM wrapper pads partial blocks in registers](/quest/m1/moq/gcm-vale-wrapper-tail.md) - short opens under QUIC's header stop stalling
+- [x86_64 CPUs without VAES seal short AES-GCM messages on their fastest path](/quest/m1/moq/gcm-no-vaes-short-seal.md) - by-8 wins below 128 B on Coffee Lake
+- [AES-GCM by-8 opens check the tag with one vector compare](/quest/m1/moq/gcm-by8-tag-compare.md) - 8-12 ns per open
 - [AES-GCM at packet sizes on Apple Silicon is level with aws-lc-rs](/quest/m1/moq/m1-aes-gcm.md) - M1 trails at 0.69-0.89x
 - [AMD CPUs without VAES run their fastest AES-GCM tier](/quest/m1/moq/quic-path.md) - Vale or `by8` on Zen 2, from zshenker's rerun
 - [MoQ runs on rind](/quest/m1/moq/moq-on-rind.md) - waiting on MoQ to finish its migration
