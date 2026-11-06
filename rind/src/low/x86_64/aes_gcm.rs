@@ -540,7 +540,7 @@ const VAES_AVX2_MINIMUM_CIPHER_LEN: usize = 16 * 16;
 /// tier, to decrypt and to encrypt. Its opens measured 0.61-0.89x the by-8
 /// path's time below 256 bytes on Arrow Lake and Zen 3. Its seals measured
 /// 0.77-0.83x on Arrow Lake below 80 bytes, where Zen 3 measured 0.94-1.05x,
-/// and beyond that Zen 3 lost up to 13%. That is under an AAD of a partial
+/// and beyond that Zen 3 lost up to 20%. That is under an AAD of a partial
 /// block, as QUIC's and TLS's are; under a 32-byte AAD, by-8 seals 32 bytes
 /// 5-9% quicker on Arrow Lake.
 const VAES_AVX2_VALE_OPEN_BELOW: usize = 256;
