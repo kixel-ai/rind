@@ -1,9 +1,10 @@
-//! rind against Bun's BoringSSL, through the calls Bun's WebCrypto makes.
+//! rind against Bun's BoringSSL, through the calls Bun's WebCrypto and
+//! node:crypto make.
 use std::ffi::c_void;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-use rind::agreement;
+use rind::{agreement, digest};
 use rind::signature::{self, EcdsaKeyPair, Ed25519KeyPair, PublicKey};
 
 #[allow(non_camel_case_types)]
@@ -291,6 +292,9 @@ struct Curve {
     len: usize,
     hash: unsafe extern "C" fn(*const u8, usize, *mut u8) -> *mut u8,
     hash_len: usize,
+    digest: &'static digest::Algorithm,
+    /// Another hash WebCrypto and node:crypto pair with the curve.
+    other: (&'static str, unsafe extern "C" fn(*const u8, usize, *mut u8) -> *mut u8, usize, &'static digest::Algorithm),
     sign: &'static signature::EcdsaSigningAlgorithm,
     verify: &'static signature::VerificationAlgorithm,
     agree: &'static agreement::Algorithm,
@@ -362,6 +366,17 @@ fn main() {
         let b = time(|| unsafe {
             black_box(X25519(out.as_mut_ptr(), peer_priv.as_ptr(), peer_pub.as_ptr()));
         });
+        // Bun's WebCrypto keeps X25519's raw private key and loads it per derive.
+        let r = time(|| {
+            let k = agreement::PrivateKey::from_scalar(&agreement::X25519, black_box(&peer_priv)).unwrap();
+            black_box(k.agree(black_box(&peer_pub)).unwrap());
+        });
+        row("X25519 deriveBits", b, r, "rind key loaded per call");
+        let stored = agreement::PrivateKey::from_scalar(&agreement::X25519, &peer_priv).unwrap();
+        let r = time(|| {
+            black_box(stored.agree(black_box(&peer_pub)).unwrap());
+        });
+        row("X25519 deriveBits", b, r, "rind key stored (node:crypto)");
         let bg = time(|| unsafe {
             let mut p = [0u8; 32];
             let mut s = [0u8; 32];
@@ -373,18 +388,20 @@ fn main() {
             black_box(k.public_key());
             black_box(k.agree(&peer_pub).unwrap());
         });
-        println!("| X25519 deriveBits | {:.1} | n/a | | rind has no static private key |", b / 1000.0);
         row("X25519 generate + derive", bg, r, "ephemeral");
     }
 
     let curves = [
         Curve { name: "P-256", nid: 415, len: 32, hash: SHA256, hash_len: 32,
+            digest: &digest::SHA256, other: ("SHA-384", SHA384, 48, &digest::SHA384),
             sign: &signature::sign::ECDSA_P256_SHA256_FIXED, verify: &signature::verify::ECDSA_P256_SHA256_FIXED,
             agree: &agreement::ECDH_P256 },
         Curve { name: "P-384", nid: 715, len: 48, hash: SHA384, hash_len: 48,
+            digest: &digest::SHA384, other: ("SHA-256", SHA256, 32, &digest::SHA256),
             sign: &signature::sign::ECDSA_P384_SHA384_FIXED, verify: &signature::verify::ECDSA_P384_SHA384_FIXED,
             agree: &agreement::ECDH_P384 },
         Curve { name: "P-521", nid: 716, len: 66, hash: SHA512, hash_len: 64,
+            digest: &digest::SHA512, other: ("SHA-256", SHA256, 32, &digest::SHA256),
             sign: &signature::sign::ECDSA_P521_SHA512_FIXED, verify: &signature::verify::ECDSA_P521_SHA512_FIXED,
             agree: &agreement::ECDH_P521 },
     ];
@@ -406,7 +423,7 @@ fn main() {
             OPENSSL_free(buf.cast());
             let mut scalar = vec![0u8; c.len];
             BN_bn2bin_padded(scalar.as_mut_ptr(), c.len, EC_KEY_get0_private_key(key));
-            let rind_pair = EcdsaKeyPair::from_private_key_and_public_key(c.sign, &scalar, &point).unwrap();
+            let rind_pair = EcdsaKeyPair::from_scalar_and_public_key(c.sign, &scalar, &point).unwrap();
 
             let b = time(|| {
                 let k = EC_KEY_new_by_curve_name(c.nid);
@@ -441,7 +458,7 @@ fn main() {
             });
             row(&format!("ECDSA {} sign", c.name), b, r, "rind key pair cached");
             let r2 = time(|| {
-                let k = EcdsaKeyPair::from_private_key_and_public_key(c.sign, &scalar, &point).unwrap();
+                let k = EcdsaKeyPair::from_scalar_and_public_key(c.sign, &scalar, &point).unwrap();
                 black_box(k.sign(black_box(MSG)).unwrap());
             });
             row(&format!("ECDSA {} sign", c.name), b, r2, "rind key loaded per call");
@@ -469,13 +486,60 @@ fn main() {
             });
             row(&format!("ECDSA {} verify", c.name), b, r2, "rind key parsed per call");
 
+            // node:crypto's createSign hashes as data arrives, then signs the digest; and
+            // WebCrypto and node:crypto also pair a curve with another hash.
+            for (name, hash, hash_len, digest) in [("the curve's hash", c.hash, c.hash_len, c.digest), c.other] {
+                let b = time(|| {
+                    let mut d = [0u8; 64];
+                    hash(MSG.as_ptr(), MSG.len(), d.as_mut_ptr());
+                    let sig = ECDSA_do_sign(d.as_ptr(), hash_len, key);
+                    black_box(sig);
+                    ECDSA_SIG_free(sig);
+                });
+                let r = time(|| {
+                    let d = digest::digest(digest, black_box(MSG));
+                    black_box(rind_pair.sign_digest(&d).unwrap());
+                });
+                row(&format!("ECDSA {} sign, prehash {name}", c.name), b, r, "rind key pair cached");
+                let prehashed = rind_pair.sign_digest(&digest::digest(digest, MSG)).unwrap();
+                let prehashed = prehashed.as_ref();
+                let b = time(|| {
+                    let s = ECDSA_SIG_new();
+                    let rr = BN_bin2bn(prehashed.as_ptr(), c.len, std::ptr::null_mut());
+                    let ss = BN_bin2bn(prehashed[c.len..].as_ptr(), c.len, std::ptr::null_mut());
+                    ECDSA_SIG_set0(s, rr, ss);
+                    let mut d = [0u8; 64];
+                    hash(MSG.as_ptr(), MSG.len(), d.as_mut_ptr());
+                    assert_eq!(ECDSA_do_verify(d.as_ptr(), hash_len, s, key), 1);
+                    ECDSA_SIG_free(s);
+                });
+                let r = time(|| {
+                    let d = digest::digest(digest, black_box(MSG));
+                    pk.verify_digest(&d, prehashed).unwrap();
+                });
+                row(&format!("ECDSA {} verify, prehash {name}", c.name), b, r, "rind key cached");
+            }
+
             let peer = EC_KEY_new_by_curve_name(c.nid);
             EC_KEY_generate_key(peer);
             let mut out = [0u8; 66];
             let b = time(|| {
                 black_box(ECDH_compute_key(out.as_mut_ptr(), c.len, EC_KEY_get0_public_key(peer), key, std::ptr::null()));
             });
-            println!("| ECDH {} deriveBits | {:.1} | n/a | | rind has no static private key |", c.name, b / 1000.0);
+            // Bun parses the peer's point, then agrees with the stored key.
+            let peer_point = {
+                let mut buf: *mut u8 = std::ptr::null_mut();
+                let n = EC_KEY_key2buf(peer, 4, &mut buf, std::ptr::null_mut());
+                let v = std::slice::from_raw_parts(buf, n).to_vec();
+                OPENSSL_free(buf.cast());
+                v
+            };
+            let stored = agreement::PrivateKey::from_scalar(c.agree, &scalar).unwrap();
+            let r = time(|| {
+                let p = agreement::PublicKey::new(c.agree, black_box(&peer_point)).unwrap();
+                black_box(stored.agree(p.as_ref()).unwrap());
+            });
+            row(&format!("ECDH {} deriveBits", c.name), b, r, "rind key stored, peer parsed per call");
             let bg = time(|| {
                 let k = EC_KEY_new_by_curve_name(c.nid);
                 EC_KEY_generate_key(k);
