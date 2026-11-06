@@ -51,20 +51,24 @@ fn vale<'a, const ENC: bool>(
     aad: &[u8],
     cipher_inout: &[u8],
 ) -> Option<(&'a HwKey, &'a AvxKernel)> {
-    let AesKey::Hw(hw_key) = key else {
-        return None;
-    };
-    let (kernel, below) = match table {
-        GhashTable::Avx(_, kernel) => (kernel, usize::MAX),
-        GhashTable::VaesAvx2(.., kernel) => (kernel, VAES_AVX2_VALE_BELOW[usize::from(ENC)]),
-        GhashTable::Avx512(GhashTableAvx512 { vale, .. }) => {
-            (vale, AVX512_VALE_BELOW[usize::from(ENC)])
-        }
-        _ => return None,
-    };
     let len = cipher_inout.len();
-    (len < below && u32::try_from(aad.len()).is_ok() && u32::try_from(len).is_ok())
-        .then_some((hw_key, kernel))
+    if !(u32::try_from(aad.len()).is_ok() && u32::try_from(len).is_ok()) {
+        return None;
+    }
+    match (key, table) {
+        (AesKey::Hw(hw_key), GhashTable::Avx(_, kernel)) => Some((hw_key, kernel)),
+        (AesKey::Hw(hw_key), GhashTable::VaesAvx2(.., kernel))
+            if len < if ENC { VAES_AVX2_VALE_SEAL_BELOW } else { VAES_AVX2_VALE_OPEN_BELOW } =>
+        {
+            Some((hw_key, kernel))
+        }
+        (AesKey::Hw(hw_key), GhashTable::Avx512(GhashTableAvx512 { vale, .. }))
+            if len < if ENC { AVX512_VALE_SEAL_BELOW } else { AVX512_VALE_OPEN_BELOW } =>
+        {
+            Some((hw_key, vale))
+        }
+        _ => None,
+    }
 }
 
 fn tagged<const ENC: bool>(
@@ -529,13 +533,15 @@ const AVX512_KERNEL_MINIMUM_CIPHER_LEN: usize = 2048;
 /// path, whose single blocks are quicker for short messages.
 const VAES_AVX2_MINIMUM_CIPHER_LEN: usize = 16 * 16;
 
-/// The message lengths, to decrypt and then to encrypt, below which Vale's
-/// AES-GCM beats the VAES-AVX2 tier's own paths.
-const VAES_AVX2_VALE_BELOW: [usize; 2] = [256, 0];
+/// The message lengths below which Vale's AES-GCM beats the VAES-AVX2
+/// tier's own paths, to decrypt and to encrypt.
+const VAES_AVX2_VALE_OPEN_BELOW: usize = 256;
+const VAES_AVX2_VALE_SEAL_BELOW: usize = 0;
 
-/// The message lengths, to decrypt and then to encrypt, below which Vale's
-/// AES-GCM beats the AVX-512 tier's own paths.
-const AVX512_VALE_BELOW: [usize; 2] = [256, 0];
+/// The message lengths below which Vale's AES-GCM beats the AVX-512 tier's
+/// own paths, to decrypt and to encrypt.
+const AVX512_VALE_OPEN_BELOW: usize = 256;
+const AVX512_VALE_SEAL_BELOW: usize = 0;
 
 /// This stores the current four counter values, in big endian.
 #[derive(Debug)]
