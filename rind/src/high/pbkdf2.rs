@@ -4,6 +4,7 @@
 //!
 //! PBKDF2 is standardized in [RFC 8018](https://datatracker.ietf.org/doc/html/rfc8018#section-5.2).
 
+use core::fmt;
 use core::num::NonZeroU32;
 
 use super::hmac;
@@ -31,6 +32,14 @@ pub static PBKDF2_HMAC_SHA512: Algorithm = Algorithm(&hmac::HMAC_SHA512);
 
 /// A secret, such as a password, keyed once for every salt it derives with; wiped on drop.
 pub struct Secret(hmac::Key);
+
+impl fmt::Debug for Secret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Secret")
+            .field("algorithm", &self.0.id())
+            .finish_non_exhaustive()
+    }
+}
 
 impl Secret {
     /// Keys `algorithm` with `secret`, which may be any length.

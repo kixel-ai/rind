@@ -5,7 +5,7 @@ use core::fmt;
 use super::hash::{Hash, LegacySha1, Sha256, Sha384, Sha512};
 use super::pkcs1;
 use super::rsa;
-use super::signature::{Buffer, Pkcs8, RSA_MIN_BITS, RsaPublicKeyComponents, Spki};
+use super::signature::{Buffer, Pkcs8, PublicKeyComponents, RSA_MIN_BITS, Spki};
 use crate::error::{Error, KeyFormatError};
 use crate::low;
 use crate::mid::rsa_key_size::RsaKeySize;
@@ -182,7 +182,7 @@ impl EncryptingKey {
     /// as a JWK carries them.
     pub fn from_components(
         algorithm: &'static OaepAlgorithm,
-        components: &RsaPublicKeyComponents<impl AsRef<[u8]>>,
+        components: &PublicKeyComponents<impl AsRef<[u8]>>,
     ) -> Result<Self, Error> {
         Self::checked(
             algorithm,

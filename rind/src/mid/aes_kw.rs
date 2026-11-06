@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::fmt;
 use core::mem::ManuallyDrop;
 
 use crate::Error;
@@ -121,6 +122,14 @@ impl AesKek {
             key.fill(0x00);
             Err(Error::DecryptFailed)
         }
+    }
+}
+
+impl fmt::Debug for AesKek {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AesKek")
+            .field("algorithm", crate::cipher::aes(self.key_len))
+            .finish_non_exhaustive()
     }
 }
 

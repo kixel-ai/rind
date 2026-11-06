@@ -13,7 +13,7 @@ renames [rind-ring](#rind-ring), ring's API on rind, to `ring`.
 | A `&'static` algorithm, or an `hmac::Algorithm` or `hkdf::Algorithm` by value | always `&'static` |
 | A `&dyn SecureRandom` argument | none: rind draws from the system's random source itself |
 | A `_FOR_LEGACY_USE_ONLY` suffix | a `legacy` submodule, such as `digest::legacy::SHA1` |
-| An allocated `Document`, `Vec`, or `Box` output | an owned value of fixed capacity, such as `signature::Pkcs8` |
+| An allocated `Document`, `Vec`, or `Box` output | an owned value of fixed capacity, such as `encoding::Pkcs8` |
 | `error::Unspecified`, `error::KeyRejected` | `rind::Error`, by kind of call (see [error](#error)) |
 
 ## digest
@@ -93,7 +93,7 @@ reuses it. `verify` refuses a stored value shorter than the HMAC output with
 | `AES_128_GCM`, `AES_256_GCM`, `CHACHA20_POLY1305` | the same |
 | `AES_192_GCM` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |
 | `AES_128_GCM_SIV`, `AES_256_GCM_SIV` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
-| none | `gcm::Key::new(&cipher::AES_128, key, TagLength::Full)?`, for AES-GCM under an IV of any length, or with a tag cut to one of `TagLength`'s, as WebCrypto takes; its methods are `Key`'s, with `iv: &[u8]` for the nonce |
+| none | `gcm::Key::new(&cipher::AES_128, key, TagLength::Full)?`, for AES-GCM under an IV of any length, or with a tag cut to one of `TagLength`'s, as WebCrypto takes; its methods are `Key`'s, with an `Iv` for the nonce: `Iv::assume_unique_for_key(iv)?`, which refuses an empty IV |
 | `RandomizedNonceKey::new(&AES_256_GCM, key)`, with 96-bit random nonces | `RandomizedNonceKey::new(&key)`, XChaCha20-Poly1305 with 192-bit random nonces, which never collide in practice |
 | `RandomizedNonceKey::{seal_in_place_append_tag, open_in_place}` | the same, with the nonce a `RandomNonce` |
 | `RandomizedNonceKey::seal_in_place_separate_tag` | none |
@@ -128,7 +128,7 @@ protocols with their own integrity protection need. ring has none.
 | `AES_192` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |
 | `DES_EDE3_FOR_LEGACY_USE_ONLY` and the other DES, the ECB, CFB, and OFB modes, `StreamingEncryptingKey`, `StreamingDecryptingKey` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | none | `Aes::new(&alg, key)?.encrypt_block(block)`, one AES block |
-| none | `ChaCha20::new(key).apply_keystream(nonce, counter, in_out)?` |
+| none | `ChaCha20::new(&key).apply_keystream(nonce, counter, in_out)?` |
 
 ## agreement
 
@@ -143,9 +143,9 @@ protocols with their own integrity protection need. ring has none.
 | `ParsedPublicKeyFormat` | none |
 | `PublicKey`'s bytes | `PublicKey`'s bytes: an uncompressed point, or X25519's 32 bytes |
 | `X25519`, `ECDH_P256`, `ECDH_P384`, `ECDH_P521` | the same |
-| `PrivateKey::from_private_key(alg, bytes)` | the same |
+| `PrivateKey::from_private_key(alg, bytes)` | `PrivateKey::from_scalar(&alg, bytes)` |
 | `PrivateKey::from_private_key_der(alg, der)` | `from_pkcs8(&alg, der)` or `from_sec1(&alg, der)`, whichever the caller holds |
-| `as_be_bytes()` to `EcPrivateKeyBin` or `Curve25519SeedBin` | `to_scalar()`, wiped on drop |
+| `as_be_bytes()` to `EcPrivateKeyBin` or `Curve25519SeedBin` | `to_scalar()`, a `Scalar` wiped on drop |
 | `AsDer<Pkcs8V1Der>::as_der()` | `to_pkcs8()`, which X25519 keys also have |
 | `PublicKey::as_der()` | `PublicKey::to_spki()`, with an uncompressed point |
 | `AsDer<EcPrivateKeyRfc5915Der>::as_der()`, `PublicKey::as_be_bytes()` | none; an ECDSA key pair's `to_sec1()` |
@@ -164,7 +164,7 @@ agreement keys refuse.
 | `DecapsulationKey::generate(&ML_KEM_768)` | the same |
 | `encapsulation_key()?`, then `EncapsulationKey::key_bytes()?` | `public_key()`, and its bytes through `AsRef<[u8]>` |
 | `EncapsulationKey::new(alg, bytes)`, `encapsulate()` | the same |
-| `decapsulate(Ciphertext::from(bytes))` | `decapsulate(bytes)`, which consumes the key |
+| `decapsulate(Ciphertext::from(bytes))` | `decapsulate(bytes)`, which borrows the key |
 | `DecapsulationKey::new(alg, bytes)`, `DecapsulationKey::key_bytes()` | none: decapsulation keys are ephemeral |
 | `ML_KEM_512`, `ML_KEM_1024` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | `algorithm()`, `Algorithm::id()`, `AlgorithmId`, `AlgorithmIdentifier` | none |
@@ -177,7 +177,7 @@ ring has no `kem`.
 |---|---|
 | `UnparsedPublicKey::new(alg, bytes).verify(m, s)` | `PublicKey::new(alg, bytes)?.verify(m, s)` |
 | `UnparsedPublicKey::parse`, `ParsedPublicKey::new(alg, bytes)`, `verify_sig` | `PublicKey::new(alg, bytes)`, or `PublicKey::from_spki(alg, der)` for a `SubjectPublicKeyInfo`, then `verify` |
-| `RsaPublicKeyComponents::verify(alg, m, s)`, `to_parsed_public_key(alg)` | `components.to_public_key(alg)?.verify(m, s)` |
+| `RsaPublicKeyComponents::verify(alg, m, s)`, `to_parsed_public_key(alg)` | `PublicKey::from_components(alg, &rsa::PublicKeyComponents { n, e })?.verify(m, s)` |
 | `UnparsedPublicKey::verify_digest`, `ParsedPublicKey::verify_digest_sig`, `EcdsaKeyPair::sign_digest`, for ECDSA | `PublicKey::verify_digest`, `EcdsaKeyPair::sign_digest`, with SHA-256, SHA-384, or SHA-512; the digest's hash replaces the algorithm's, where aws-lc-rs refuses a mismatch |
 | `verify_digest` and `sign_digest` for RSA, and `verify_digest` for Ed25519 | none: `Error::Unsupported` |
 | `ParsedPublicKey::as_der()` | `PublicKey::to_spki()`, or a key pair's |
@@ -203,16 +203,16 @@ ring has no `kem`.
 | `Ed25519PublicKey`, `EcdsaPublicKey`, `RsaSubjectPublicKey` | `PublicKey` |
 | `generate_pkcs8(rng)`, `generate_pkcs8(alg, rng)`, `generate_pkcs8v1` | `generate(..)?.to_pkcs8()` |
 | `EcdsaKeyPair::from_pkcs8(alg, der)`, ring's `(alg, der, rng)` | `from_pkcs8(&alg, der)` |
-| `EcdsaKeyPair::from_private_key_and_public_key`, ring's with an `rng` | the same, with no random source |
+| `EcdsaKeyPair::from_private_key_and_public_key`, ring's with an `rng` | `from_scalar_and_public_key(&alg, scalar, public_key)`, with no random source |
 | `EcdsaKeyPair::from_private_key_der` | `from_sec1`, which refuses PKCS#8 |
 | `RsaKeyPair::from_der` | `from_pkcs1` |
 | `RsaKeyPair::from_components`, `KeyPairComponents` | none: load the key as PKCS#1 or PKCS#8 |
 | `Ed25519KeyPair::from_pkcs8_maybe_unchecked` | `from_pkcs8`, which takes v1 and v2 |
 | `Ed25519KeyPair::from_seed_unchecked` | `from_seed`, or `from_seed_and_public_key`, which checks the public key |
 | `to_pkcs8()`, `to_pkcs8v1()`, `public_key().as_der()`, each an allocated `Document` | `to_pkcs8()`, `to_pkcs8v1()` (Ed25519), `to_spki()`, each of fixed capacity; `Pkcs8` is wiped on drop |
-| `EcdsaKeyPair::private_key().as_der()` | `to_sec1()`, a `Sec1` wiped on drop |
+| `EcdsaKeyPair::private_key().as_der()` | `to_sec1()`, an `encoding::Sec1` wiped on drop |
 | `EcdsaKeyPair::sign(rng, m)`, `RsaKeyPair::sign(alg, rng, m, &mut sig)`, `Ed25519KeyPair::try_sign` | `sign(m)`, `sign(alg, m)`, which take no random source and return a `Signature` |
-| `rsa::KeySize`, `RsaKeyPair::generate(size)` | `RsaKeySize`, which adds `Rsa6144`, and `generate(size)` |
+| `rsa::KeySize`, `RsaKeyPair::generate(size)` | the same; `KeySize` adds `Rsa6144` |
 | `EcdsaKeyPair::private_key().as_be_bytes()` (not in ring) | `to_scalar()`, an `EcdsaScalar` wiped on drop |
 | `Ed25519KeyPair::seed()?.as_be_bytes()` (not in ring) | `to_seed()`, an `Ed25519Seed` wiped on drop |
 | `public_modulus_len()`, `algorithm()`, `generate_fips` | none |
@@ -235,7 +235,7 @@ aws-lc-rs and ring take: with the identity as the key, `R` the identity and
 An ECDSA key pair's loaders take its public key uncompressed or compressed,
 as aws-lc-rs does, but refuse a hybrid point, which aws-lc-rs takes; ring,
 and so rind-ring, takes only the uncompressed one.
-`from_private_key_and_public_key` refuses a scalar that is not exactly the
+`from_scalar_and_public_key` refuses a scalar that is not exactly the
 curve's length, as ring does, where aws-lc-rs takes leading zeros added or
 stripped.
 
@@ -256,7 +256,7 @@ RSA-OAEP through `rsa`. ring has no RSA encryption.
 | `PublicEncryptingKey`, then `OaepPublicEncryptingKey::new(key)` | `EncryptingKey`, which encrypts OAEP itself |
 | `PrivateDecryptingKey::from_pkcs8(der)`, `generate(size)`, `as_der()` | `DecryptingKey::from_pkcs8(alg, der)`, `from_pkcs1(alg, der)`, `generate(alg, size)`, `to_pkcs8()`, each key bound to one algorithm |
 | `PrivateDecryptingKey::public_key()` | `public_key()`, an `EncryptingKey` bound to the same algorithm; `to_spki()` for its `SubjectPublicKeyInfo` |
-| `PublicEncryptingKey::from_der(spki)` | `EncryptingKey::new(alg, der)`, which takes a `SubjectPublicKeyInfo` or PKCS#1 `RSAPublicKey`, or `EncryptingKey::from_components(alg, &RsaPublicKeyComponents { n, e })` |
+| `PublicEncryptingKey::from_der(spki)` | `EncryptingKey::new(alg, der)`, which takes a `SubjectPublicKeyInfo` or PKCS#1 `RSAPublicKey`, or `EncryptingKey::from_components(alg, &PublicKeyComponents { n, e })` |
 | `OAEP_SHA256_MGF1SHA256`, `OAEP_SHA384_MGF1SHA384`, `OAEP_SHA512_MGF1SHA512` | `OAEP_SHA256`, `OAEP_SHA384`, `OAEP_SHA512` |
 | `OAEP_SHA1_MGF1SHA1` | `legacy::OAEP_SHA1` |
 | `encrypt(alg, m, &mut out, label)`, `decrypt(alg, c, &mut out, label)` | `encrypt(m, label)`, `decrypt(c, label)` with the key's algorithm, returning a `Ciphertext` or a `Plaintext`; `None` for the label is `b""` |
@@ -333,7 +333,7 @@ ring has none.
 | aws-lc-rs | rind |
 |---|---|
 | `cmac`, `kdf` (KBKDF and SSKDF), `tls_prf` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
-| `pkcs8::Document` | `signature::Pkcs8`, `signature::Spki` |
+| `pkcs8::Document` | `encoding::Pkcs8`, `encoding::Spki` |
 | `encoding`'s `AsDer`, `AsBigEndian`, and `AsRawBytes` | `to_pkcs8()` and `to_spki()`; an ECDSA key pair's `to_sec1()` and `to_scalar()`, and an Ed25519 key pair's `to_pkcs8v1()` and `to_seed()`; other raw keys none |
 | `io::Positive`, `io::der`, `iv::FixedLength`, `test`, `test_file!`, `unstable`, and ring's `deprecated_test` | none |
 | `init`, `try_fips_mode`, `fips_mode`, `try_fips_self_test`, `fips_version`, `try_fips_cpu_jitter_entropy`, `fips_cpu_jitter_entropy`, `awslc_version` | none: rind has no C library to initialize and no FIPS module |
@@ -341,11 +341,12 @@ ring has none.
 ## Adapter crates
 
 Each `rind-*` crate stands in for a crate's aws-lc-rs or ring backend. rind
-panics on a CPU missing a feature it requires, so every adapter entry point
-that is a function refuses one with `rind::cpu::MissingFeature` instead. A
-static that the upstream crate requires, such as `DEFAULT_PROVIDER`, cannot,
-and neither can rind-ring, whose signatures are ring's, so call
-`rind::cpu::check()`, or rind-ring's `cpu::check()`, before using them.
+panics on a CPU missing a feature it requires, so every adapter function
+that builds a provider or ticketer refuses one with
+`rind::cpu::MissingFeature` instead. A static that the upstream crate
+requires, such as `DEFAULT_PROVIDER`, cannot; nor can rind-ring, whose
+signatures are ring's, or rind-rcgen's `KeyPair`, whose errors are rcgen's.
+Call `rind::cpu::check()`, or rind-ring's `cpu::check()`, before using them.
 
 ### rind-ring
 
