@@ -7,8 +7,9 @@ Usage:
   admin/bench-report render [--from DIR] [--check]
   admin/bench-report summary DIR
 
-`collect` copies one commit to each host in turn, builds rind-bench there with
-the pinned toolchain, and times every operation in OPERATIONS for every
+`collect` copies one commit to each host in turn, holds the host with
+`quest gate --host` in its Nix dev shell, builds rind-bench there with the
+pinned toolchain, and times every operation in OPERATIONS for every
 library that offers it, then measures each library's build cost with
 admin/build-cost. It runs here for the host this is, and over ssh for the
 others. A host that is busy, unreachable, or fails is recorded and skipped,
@@ -64,8 +65,8 @@ HOSTS = {
 # under a single-threaded benchmark.
 BUSY_SHARE = 0.1
 
-# Where each host keeps its copy, its build, and its result, under its home
-# directory; this host uses the checkout's `.tmp/` instead.
+# Where each host keeps each collection's copy and result, and the build they
+# share, under its home directory; this host uses the checkout's `.tmp/` instead.
 REMOTE_DIR = ".cache/rind-bench-report"
 
 # Criterion's timing, shortened from 3 s of warm-up and 5 s of measurement so
@@ -324,23 +325,13 @@ def locked_versions():
 
 def toolchain(env):
     """The cargo command for the pinned toolchain, refusing any other."""
-    pinned = pinned_toolchain()
-    if sys.platform == "darwin":
-        # No Nix here: rustup provides the same release.
-        cargo = ["rustup", "run", pinned, "cargo"]
-        rustc = ["rustup", "run", pinned, "rustc"]
-        prefix = output(["brew", "--prefix", "openssl@3"])
-        env["OPENSSL_DIR"] = prefix
-        openssl = os.path.join(prefix, "bin", "openssl")
-    else:
-        if os.environ.get("IN_RIND_DEV_SHELL") != "1":
-            fail("run inside the dev shell: nix develop --command admin/bench-report run ...")
-        cargo, rustc, openssl = ["cargo"], ["rustc"], "openssl"
-    version = output(rustc + ["-vV"], env)
+    if os.environ.get("IN_RIND_DEV_SHELL") != "1":
+        fail("run inside the dev shell: nix develop --command admin/bench-report run ...")
+    version = output(["rustc", "-vV"], env)
     release = re.search(r"^release: (.+)$", version, re.M).group(1)
-    if release != pinned:
-        fail(f"rustc {release} is not the pinned {pinned}")
-    return cargo, {"rustc": version.splitlines()[0], "cargo": output(cargo + ["-V"], env)}, openssl
+    if release != pinned_toolchain():
+        fail(f"rustc {release} is not the pinned {pinned_toolchain()}")
+    return ["cargo"], {"rustc": version.splitlines()[0], "cargo": output(["cargo", "-V"], env)}, "openssl"
 
 
 def run(args):
@@ -448,8 +439,6 @@ def build_cost(env, jobs):
     """admin/build-cost's measurements on this host, after the benchmarks so
     that neither skews the other's times."""
     env = dict(env, CARGO_BUILD_JOBS=str(jobs))
-    if sys.platform == "darwin":
-        env["RUSTUP_TOOLCHAIN"] = pinned_toolchain()
     started = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     proc = subprocess.run(
         [sys.executable, os.path.join(ROOT, "admin", "build-cost")], env=env, capture_output=True, text=True
@@ -486,33 +475,34 @@ def collect_host(host, commit, out_dir):
             f.write("\n")
         print(f"bench-report: {host}: {status}: {reason}", file=sys.stderr)
 
-    probe = on_host(host, "uname -s", capture_output=True, text=True)
+    probe = on_host(host, "true", capture_output=True, text=True)
     if probe.returncode != 0:
         return record("unreachable", probe.stderr.strip())
-    darwin = probe.stdout.strip() == "Darwin"
 
-    # A fresh copy of the commit; the build directory stays between runs.
+    # A fresh copy of the commit for this collection alone, so another one on
+    # the same host cannot replace it mid-run; the build directory is shared.
     archive = subprocess.run(["git", "-C", ROOT, "archive", "--format=tar", commit], capture_output=True, check=True)
     copy = on_host(
         host,
-        f"rm -rf {q(work)}/src && mkdir -p {q(work)}/src && tar -x -C {q(work)}/src",
+        f'mkdir -p {q(work)} && src=$(mktemp -d {q(work)}/src.XXXXXX) && tar -x -C "$src" && echo "$src"',
         input=archive.stdout,
+        capture_output=True,
     )
     if copy.returncode != 0:
         return record("failed", "could not copy the commit")
+    src = q(copy.stdout.decode().strip())
 
-    cmd = (
-        f"python3 admin/bench-report run --host {q(host)} --commit {q(commit)} "
-        f"--jobs {HOSTS[host]['jobs']} --target-dir ../target --out ../result.json"
+    # Holding the host keeps every other gated command, such as another
+    # collection's run, off it until the benchmarks and build costs finish.
+    # A macOS ssh session runs no login shell, which is what puts Nix on PATH.
+    on_host(
+        host,
+        f'export PATH="$PATH:/nix/var/nix/profiles/default/bin" && cd {src} && '
+        f'nix develop "path:$PWD" --command quest gate --host python3 admin/bench-report run '
+        f"--host {q(host)} --commit {q(commit)} --jobs {HOSTS[host]['jobs']} "
+        f"--target-dir ../target --out result.json",
     )
-    if darwin:
-        # ssh runs no login shell, so Homebrew's python3 and openssl@3 are not
-        # on PATH; macOS's own python3 is too old for tomllib.
-        cmd = f'eval "$(/opt/homebrew/bin/brew shellenv)" && {cmd}'
-    else:
-        cmd = f'nix develop "path:$PWD" --command {cmd}'
-    on_host(host, f"rm -f {q(work)}/result.json && cd {q(work)}/src && {cmd}")
-    fetched = on_host(host, f"cat {q(work)}/result.json", capture_output=True)
+    fetched = on_host(host, f"cat {src}/result.json; status=$?; rm -rf {src}; exit $status", capture_output=True)
     if fetched.returncode != 0:
         return record("failed", "the run wrote no result; see its output above")
     with open(out, "wb") as f:
@@ -522,6 +512,10 @@ def collect_host(host, commit, out_dir):
 
 
 def collect(args):
+    # A gate nested in a gated command runs at once, so this host's run would
+    # not hold the host.
+    if os.environ.get("QUEST_GATE_ADMITTED") == "1":
+        fail("run collect outside quest gate: it holds each host itself")
     commit = output(["git", "-C", ROOT, "rev-parse", f"{args.commit}^{{commit}}"])
     hosts = args.host or list(HOSTS)
     for host in hosts:
