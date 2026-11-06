@@ -37,6 +37,14 @@ pub(crate) struct NohwKey {
 }
 
 impl NohwKey {
+    /// The key's length in bytes, from its 10 or 14 rounds.
+    pub(crate) fn key_len(&self) -> usize {
+        match self.rounds {
+            10 => 16,
+            _ => 32,
+        }
+    }
+
     /// Expands a 16- or 32-byte key.
     pub(crate) fn new(key: &[u8]) -> Self {
         // SAFETY: every x86_64 CPU has SSE2
@@ -62,6 +70,20 @@ impl NohwKey {
     pub(crate) fn ctr32(&self, ivec: &[u8; 16], inout: &mut [[u8; 16]]) {
         // SAFETY: every x86_64 CPU has SSE2
         unsafe { ctr32_encrypt_blocks(self, ivec, inout) }
+    }
+
+    /// Encrypts whole blocks in place in CBC mode, the first chained from
+    /// `iv`.
+    pub(crate) fn cbc_encrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        // SAFETY: every x86_64 CPU has SSE2
+        unsafe { cbc_encrypt(self, iv, blocks) }
+    }
+
+    /// Decrypts whole blocks in place in CBC mode, the first chained from
+    /// `iv`.
+    pub(crate) fn cbc_decrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        // SAFETY: every x86_64 CPU has SSE2
+        unsafe { cbc_decrypt(self, iv, blocks) }
     }
 }
 
@@ -698,6 +720,56 @@ fn ctr32_encrypt_blocks(key: &NohwKey, ivec: &[u8; 16], inout: &mut [[u8; 16]]) 
         }
 
         ctr = ctr.wrapping_add(BATCH_SIZE as u32);
+    }
+}
+
+/// CBC encryption is not parallelizable, so each block takes a batch of its
+/// own.
+#[target_feature(enable = "sse2")]
+fn cbc_encrypt(key: &NohwKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+    if blocks.is_empty() {
+        return;
+    }
+    let sched = expand_round_keys(key);
+    let sched = &sched[..=key.rounds];
+
+    let mut prev = *iv;
+    for block in blocks {
+        for (b, p) in block.iter_mut().zip(prev) {
+            *b ^= p;
+        }
+        let mut batch = to_batch(core::slice::from_ref(block));
+        encrypt_batch(sched, &mut batch);
+        from_batch(core::slice::from_mut(block), &batch);
+        prev = *block;
+    }
+}
+
+#[target_feature(enable = "sse2")]
+fn cbc_decrypt(key: &NohwKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+    if blocks.is_empty() {
+        return;
+    }
+    let sched = expand_round_keys(key);
+    let sched = &sched[..=key.rounds];
+
+    let mut prev = *iv;
+    for chunk in blocks.chunks_mut(BATCH_SIZE) {
+        // Copy the ciphertext, which the next block chains from, before
+        // decrypting in place.
+        let mut copy = [[0u8; 16]; BATCH_SIZE];
+        copy[..chunk.len()].copy_from_slice(chunk);
+
+        let mut batch = to_batch(chunk);
+        decrypt_batch(sched, &mut batch);
+        from_batch(chunk, &batch);
+
+        for (block, ct) in chunk.iter_mut().zip(&copy) {
+            for (b, p) in block.iter_mut().zip(prev) {
+                *b ^= p;
+            }
+            prev = *ct;
+        }
     }
 }
 

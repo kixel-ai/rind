@@ -18,6 +18,8 @@ writes for aarch64:
 
 - `x25519_generate`: the key's scalar is the 32 drawn bytes, read
   little-endian, and a failed draw is refused;
+- `x25519_from_scalar`: a loaded key's scalar is the 32 given bytes, read
+  little-endian, and any other length is refused;
 - `x25519_public_key`: the public key is the 32 little-endian bytes of
   `rfcx25519(scalar, 9)`;
 - `x25519_agree`: a peer key that is not 32 bytes is refused, so is an
@@ -33,8 +35,10 @@ P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
 - `p256_generate`: the key's scalar is the first of up to 64 draws whose
   bytes, read big-endian, are in [1, n), and the key is refused if a draw
   fails before one is, or none is;
+- `p256_from_scalar`: a loaded key's scalar is the 32 given bytes, read
+  big-endian, refused unless they are 32 bytes and in [1, n);
 - `p256_public_key`: the public key is the X9.62 uncompressed encoding of the
-  scalar times G, for a scalar whose multiple is a finite point on the curve;
+  scalar times G, for a scalar in [1, n), as every key's is;
 - `p256_agree`: a peer key is refused unless it is a 65-byte uncompressed
   point whose coordinates are below p and on the curve, and otherwise the
   secret is the 32 big-endian bytes of the x-coordinate of the scalar times
@@ -43,9 +47,12 @@ P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
 
 `p256Pow` is HOL Light's `group_pow p256_group`, defined as HOL Light does,
 and `Rind/P256Group.lean` proves it is multiplication in Mathlib's group of
-points on the curve. That a scalar in [1, n) times a point on the curve is a
-finite point on the curve, so the public key's hypothesis always holds and the
-fault never happens, needs the point's order, which these theorems do not
+points on the curve. `Rind/P256Multiples.lean` proves G's order n: the kernel
+computes (n - 1)·G by doubling and adding, checking each step's coordinates
+against the group law, and finds -G, and `Rind/N256Prime.lean` proves n
+prime. So a scalar in [1, n) times G is a finite point. That the same holds
+for the peer's point, so the fault never happens, needs every point's order,
+which follows from the group having n points, a count these theorems do not
 prove.
 
 P-256 ECDSA with SHA-256 and fixed-length signatures on aarch64, from the
@@ -54,7 +61,7 @@ signature API's `EcdsaKeyPair` and `PublicKey` to s2n-bignum's routines, in
 
 - `p256_ecdsa_generate`: the key pair's scalar is in [1, n), and generation
   is refused only if the system source's draws fail;
-- `p256_ecdsa_from_private_key_and_public_key`: a scalar that is not 32 bytes
+- `p256_ecdsa_from_scalar_and_public_key`: a scalar that is not 32 bytes
   is refused, so is one outside [1, n), and so is a public key that is neither
   X9.62 encoding, uncompressed or compressed, of the scalar times G, and
   otherwise the key pair's scalar is the scalar;
@@ -76,10 +83,12 @@ signature API's `EcdsaKeyPair` and `PublicKey` to s2n-bignum's routines, in
 over `p256Pow` and `p256Add`. `Rind/P256Multiples.lean` proves, from
 `Rind/P256Group.lean`'s group, the laws by which the twin multiplication's
 windowed sum is e/s·G + r/s·Q, and `Rind/N256Prime.lean` that n is prime, so
-every nonzero scalar has an inverse. The laws need one more fact, which the
-theorems take as `P256Order`: every finite point on the curve has order n, as
-HOL Light's `P256_GROUP_ELEMENT_ORDER` proves from the group's size, which
-Mathlib cannot count yet. The message's SHA-256 is the digest rind's
+every nonzero scalar has an inverse. The sum also needs Q's order n. A key
+pair's Q is its scalar times G, whose order follows from G's, but a parsed
+public key's is any point on the curve, so `p256_ecdsa_public_key_new` takes
+`P256Order`: every finite point on the curve has order n, as HOL Light's
+`P256_GROUP_ELEMENT_ORDER` proves from the group's size, which Mathlib cannot
+count yet. Key generation and signing need only G's order. The message's SHA-256 is the digest rind's
 `Sha256` impl computes (`Sha256E`), which `sha256_hash` proves is FIPS
 180-4's in a module these cannot import, as `Rind/HashSpec.lean` and
 `Rind/Sha2.lean` share names. Signing draws nonces until r and s are both
@@ -89,9 +98,9 @@ with 16 bytes from the system source; its update takes a slice of borrowed
 slices, which Aeneas cannot translate, so it is opaque, and the theorems
 assume `Drbg`: it seeds and draws without panicking, and a draw never fails.
 They also assume `Fills`, that the system source returns, `Held`, that the
-entry guard holds, and `Cached`: a verifying key's lock-free cache of 17P to
-31P, whose atomics Aeneas cannot translate, is built from the key's own
-multiples.
+entry guard holds, and `Cached`: a verifying key's lock-free caches of P to
+15P and 17P to 31P, whose atomics Aeneas cannot translate, are built from the
+key's own point.
 
 ChaCha20 QUIC header protection on x86_64 and aarch64, from
 `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
@@ -126,15 +135,16 @@ against FIPS 180-4 and RFC 2104 as `Rind/HashSpec.lean` transliterates them:
 No proof covers a SHA-1 or SHA-256 block function rind runs on either target,
 so these theorems take `ShaBlocks` as a hypothesis, in each target's own
 `Rind/<Arch>/ShaBlocks.lean`: each routine computes FIPS 180-4's block
-function, x86_64's SHA extensions' finishing routine pads and encodes as
-FIPS 180-4 does, and rind's checks pass. They add no axiom, which
+function, x86_64's SHA extensions' routines for SHA-1's padded last blocks
+and SHA-256's finish pad, and SHA-256's encodes, as FIPS 180-4 does, and
+rind's checks pass. They add no axiom, which
 `Rind/<Arch>/HashAxioms.lean` checks. An input is at most `maxInput`
 (2^61 - 1) bytes, under FIPS 180-4's 2^64-bit limit. `Rind/HashSpecTest.lean`
 checks the transliterations against FIPS 180-4's, RFC 4231's, RFC 5869's, and
 RFC 6070's vectors.
 
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
-(`Algorithm`'s `generate` and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
+(`Algorithm`'s `generate` and `load`, and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
 cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
 cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
 Lean definitions beside the Rust they model. P-256's key generation draws
@@ -257,7 +267,8 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   SHA-1's, SHA-256's, and HMAC's; `Rind/X86_64/{AesKey,Ghash,AesGcmGlue,AesGcm}.lean`:
   the AES-GCM proof, on x86_64 alone.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
-  target, and SHA-256's padded last blocks and finish.
+  target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
+  finish.
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
 - `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate, and
@@ -310,5 +321,5 @@ Beyond Lean's kernel:
   s2n-bignum's and Vale's own proofs.
 - That rind's inline assembly is s2n-bignum's, aws-lc's, and Vale's object
   code, as for `benchmarks/verified.toml`'s other entries.
-- The translation ignores drops, which here wipe keys and hash contexts and
+- The translation ignores drops, which here wipe keys and keyed state and
   restore CPU state, and computes nothing an output depends on.

@@ -18,6 +18,11 @@ pub(crate) struct AesGcm {
 }
 
 impl AesGcm {
+    /// The AES key's length in bytes, 16 or 32.
+    pub(crate) fn key_len(&self) -> usize {
+        self.key.key_len()
+    }
+
     /// Expands a 16- or 32-byte key, which the caller has checked, into an
     /// AES-128-GCM or AES-256-GCM key.
     pub(crate) fn new(key: &[u8]) -> Self {

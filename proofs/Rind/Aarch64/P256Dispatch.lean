@@ -14,6 +14,8 @@ quote is still that Rust, so a change to it is a change to this model:
 pub static ECDH_P256: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP256,
     generate: Keyed::<p256::PrivateKey>::generate,
+    load: Keyed::<p256::PrivateKey>::load,
+    parse_public: p256_public_key,
 };
 
     pub(crate) fn new_random() -> Result<Self, Error> {
@@ -92,5 +94,6 @@ def high.agreement.ECDH_P256 : high.agreement.Algorithm where
   id := .EcdhP256
   generate := high.agreement.Keyed.generate
     { mid.p256.PrivateKey.Insts.RindHighAgreementAgree with random := mid.p256.PrivateKey.generate }
+  load := high.agreement.Keyed.load mid.p256.PrivateKey.Insts.RindHighAgreementAgree
 
 end rind.aarch64

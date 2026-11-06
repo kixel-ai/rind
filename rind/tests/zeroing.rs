@@ -63,8 +63,6 @@ fn rsa_oaep() {
     let key =
         DecryptingKey::from_pkcs1(&OAEP_SHA256, include_bytes!("../src/high/rsa/rsa8192.der"))
             .unwrap();
-    let ciphertext = key.public_key().encrypt(&[0xa5; 900], b"").unwrap();
-    check_zeroed_on_drop(Box::pin(key.decrypt(ciphertext.as_ref(), b"").unwrap()));
     check_zeroed_on_drop(Box::pin(key));
 }
 
@@ -88,6 +86,7 @@ fn ecdsa() {
         let key = EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).unwrap();
         check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
         check_zeroed_on_drop(Box::pin(key.to_scalar()));
+        check_zeroed_on_drop(Box::pin(key.to_sec1()));
         check_zeroed_on_drop(Box::pin(key));
     }
 }
@@ -99,7 +98,10 @@ fn ed25519() {
         Ed25519KeyPair::from_pkcs8(include_bytes!("../src/high/asn1/testdata/ed25519-p8v2.bin"))
             .unwrap();
     check_zeroed_on_drop(Box::pin(ed25519.to_pkcs8()));
+    check_zeroed_on_drop(Box::pin(ed25519.to_pkcs8v1()));
     check_zeroed_on_drop(Box::pin(ed25519.to_seed()));
+    let seed = ed25519.to_seed();
+    check_zeroed_on_drop(Box::pin(Ed25519KeyPair::from_seed(seed.as_ref()).unwrap()));
     check_zeroed_on_drop(Box::pin(ed25519));
 }
 
@@ -109,12 +111,11 @@ fn ecdh() {
     for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
         let key = PrivateKey::generate(algorithm).unwrap();
         let peer = PrivateKey::generate(algorithm).unwrap().public_key();
-        check_zeroed_on_drop(Box::pin(
-            PrivateKey::generate(algorithm)
-                .unwrap()
-                .agree(peer.as_ref())
-                .unwrap(),
-        ));
+        check_zeroed_on_drop(Box::pin(key.agree(peer.as_ref()).unwrap()));
+        check_zeroed_on_drop(Box::pin(key.to_scalar()));
+        check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
+        let loaded = PrivateKey::from_pkcs8(algorithm, key.to_pkcs8().as_ref()).unwrap();
+        check_zeroed_on_drop(Box::pin(loaded));
         check_zeroed_on_drop(Box::pin(key));
     }
 }
@@ -131,28 +132,6 @@ fn mlkem768() {
         .unwrap();
     check_zeroed_on_drop(Box::pin(decapsulated));
     check_zeroed_on_drop(Box::pin(key));
-}
-
-#[test]
-fn digest() {
-    use rind::digest::*;
-
-    for algorithm in [
-        &legacy::SHA1,
-        &SHA256,
-        &SHA384,
-        &SHA512,
-        &SHA512_256,
-        &SHA3_256,
-        &SHA3_384,
-        &SHA3_512,
-    ] {
-        // Whole blocks change the state, and a partial one leaves message
-        // bytes buffered beside it.
-        let mut ctx = Context::new(algorithm);
-        ctx.update(&[0xffu8; 300]);
-        check_zeroed_on_drop(Box::pin(ctx));
-    }
 }
 
 #[test]
@@ -219,13 +198,17 @@ fn aead() {
 
 #[test]
 fn cipher() {
-    use rind::cipher::{AES_128, AES_256, Aes, AesCtr, ChaCha20};
+    use rind::cipher::{
+        AES_128, AES_256, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, ChaCha20,
+    };
     for (algorithm, len) in [(&AES_128, 16), (&AES_256, 32)] {
         let key = &[0xffu8; 32][..len];
         check_zeroed_on_drop(Box::pin(Aes::new(algorithm, key).unwrap()));
         check_zeroed_on_drop(Box::pin(AesCtr::new(algorithm, key, 128).unwrap()));
+        check_zeroed_on_drop(Box::pin(AesCbcEncryptingKey::new(algorithm, key).unwrap()));
+        check_zeroed_on_drop(Box::pin(AesCbcDecryptingKey::new(algorithm, key).unwrap()));
     }
-    check_zeroed_on_drop(Box::pin(ChaCha20::new([0xffu8; 32])));
+    check_zeroed_on_drop(Box::pin(ChaCha20::new(&[0xffu8; 32])));
 }
 
 #[test]

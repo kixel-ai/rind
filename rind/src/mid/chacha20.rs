@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::fmt;
+
 use crate::Error;
 use crate::low::{self, Entry, zeroise};
 
@@ -13,10 +15,10 @@ pub struct ChaCha20 {
 }
 
 impl ChaCha20 {
-    /// Create a new [`ChaCha20`] from 32 bytes of key material.
-    pub fn new(key: [u8; 32]) -> Self {
-        low::ct::secret_slice(&key);
-        Self { key }
+    /// Makes a key from 32 bytes of key material.
+    pub fn new(key: &[u8; 32]) -> Self {
+        low::ct::secret_slice(key);
+        Self { key: *key }
     }
 
     /// XORs the keystream for `nonce`, starting at block `counter`, into `inout`.
@@ -68,6 +70,12 @@ pub(super) fn check_counter(counter: u32, len: usize) -> Result<(), Error> {
     Ok(())
 }
 
+impl fmt::Debug for ChaCha20 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ChaCha20").finish_non_exhaustive()
+    }
+}
+
 impl Drop for ChaCha20 {
     fn drop(&mut self) {
         zeroise(&mut self.key);
@@ -86,7 +94,7 @@ mod tests {
         let nonce = hex::decode("000000000000004a00000000").unwrap();
         let mut buf = b"Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.".to_vec();
 
-        ChaCha20::new(key)
+        ChaCha20::new(&key)
             .apply_keystream(&nonce.try_into().unwrap(), 1, &mut buf)
             .unwrap();
 

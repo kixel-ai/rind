@@ -57,7 +57,8 @@ ecdsa_items() {
     items rind/src/high/signature.rs 'impl<const N: usize> Buffer<N> {' 'macro_rules! with_hash {' \
         'struct Ecdsa {' 'macro_rules! with_ecdsa {' 'macro_rules! with_curve {' 'trait Encoding {' \
         'impl Encoding for Fixed {' 'trait EcdsaCurve:' 'macro_rules! ecdsa_curve {' \
-        'ecdsa_curve!(P256, EcdsaP256);' 'fn parse_ecdsa<' 'const fn ecdsa_verification(' \
+        'ecdsa_curve!(P256, EcdsaP256);' 'struct EcdsaVerifier<' 'impl<C: Curve> EcdsaVerifier<C> {' \
+        'fn parse_ecdsa<' 'const fn ecdsa_verification(' \
         'const fn ecdsa_signing(' 'pub struct EcdsaSigningAlgorithm {' 'enum EcdsaSource<' \
         'pub struct EcdsaKeyPair {' 'enum EcdsaKey {' 'struct EcdsaPair<' 'type Write<K> =' \
         'struct EcdsaOps<' 'impl<C: EcdsaCurve> EcdsaPair<C> {' 'macro_rules! on_ecdsa {' \
@@ -197,6 +198,16 @@ extract() {
         --start-from '{impl core::convert::AsRef for crate::high::signature::Signature}' \
         --start-from crate::high::signature::Buffer::copy_from \
         --opaque crate::high::agreement::Ops \
+        --opaque crate::high::agreement::x25519_from_pkcs8 \
+        --opaque crate::high::agreement::x25519_to_pkcs8 \
+        --opaque crate::high::sec1::decode \
+        --opaque crate::high::sec1::decode_pkcs8 \
+        --opaque crate::high::sec1::encode \
+        --opaque crate::high::sec1::encode_pkcs8 \
+        --opaque 'crate::high::agreement::_::encode_pkcs8' \
+        --opaque 'crate::high::agreement::_::encode_scalar' \
+        --opaque '{impl crate::high::agreement::Agree for crate::mid::p384::PrivateKey}::load' \
+        --opaque '{impl crate::high::agreement::Agree for crate::mid::p521::PrivateKey}::load' \
         --opaque crate::aead::quic::Masker \
         --opaque crate::mid::aes \
         --opaque crate::high::digest::Ops \
@@ -235,6 +246,7 @@ extract() {
 }
 
 extract x86_64 X86_64 \
+    --opaque '{impl crate::high::agreement::Agree for crate::mid::p256::PrivateKey}::load' \
     --opaque 'crate::mid::p256::_::_' \
     --include crate::low::x86_64::adx_mux::curve25519_x25519 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base \
@@ -242,6 +254,9 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmulbase \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmuldouble \
     --include crate::low::x86_64::adx_mux::bignum_madd_n25519 \
+    --include crate::low::x86_64::sha1_mux \
+    --opaque crate::low::x86_64::sha1_mux::path \
+    --opaque crate::low::x86_64::sha1_mux::sha1_compress_blocks \
     --include crate::low::x86_64::sha256_mux \
     --opaque crate::low::x86_64::sha256_mux::path \
     --include crate::low::x86_64::sha512::Path \
@@ -277,6 +292,10 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::aes_gcm::seal \
     --include crate::low::x86_64::aes_gcm::open \
     --include crate::low::x86_64::aes_gcm::vale \
+    --include crate::low::x86_64::aes_gcm::VAES_AVX2_VALE_OPEN_BELOW \
+    --include crate::low::x86_64::aes_gcm::VAES_AVX2_VALE_SEAL_BELOW \
+    --include crate::low::x86_64::aes_gcm::AVX512_VALE_OPEN_BELOW \
+    --include crate::low::x86_64::aes_gcm::AVX512_VALE_SEAL_BELOW \
     --include crate::low::x86_64::aes_gcm_avx \
     --opaque crate::low::x86_64::aes_gcm_avx::counter_block \
     --opaque crate::low::x86_64::aes_gcm_avx::aead
@@ -303,6 +322,7 @@ extract aarch64 Aarch64 \
     --opaque 'crate::high::curve::_::oid' \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
+    --include crate::low::aarch64::sha1::sha1_compress_padded \
     --include crate::low::aarch64::sha256 \
     --opaque crate::low::aarch64::sha256::sha256_compress_blocks
 

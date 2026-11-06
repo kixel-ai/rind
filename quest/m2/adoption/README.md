@@ -47,6 +47,10 @@ don't ask again (✅ is the chosen option):
 - Other-language packages live in this workspace as `rind-<consumer>` crates
   released by its CI ✅ / separate repositories; each language gets rind's own
   API and a second package with the popular library's interface ✅.
+- rind-rustls's `default_provider()` keeps aws-lc-rs's algorithm list,
+  P-521 included ✅ / drop P-521 as ring does (decided 2026-11-05 on
+  [#375](https://github.com/moq-dev/rind/pull/375), which has the sizes): it
+  is already smaller than aws-lc-rs's provider.
 - Whatever these consumers need from rind itself is planned now: the
   [WebCrypto set](/quest/m2/adoption/webcrypto/README.md), platform coverage,
   and [RSA-2048 speed](/quest/m2/speed/x86-rsa2048-sign.md) in the speed epic.
@@ -55,9 +59,6 @@ don't ask again (✅ is the chosen option):
 
 - [rustls lists rind-rustls](/quest/m2/adoption/rustls-providers.md) - an entry in rustls's third-party provider list
 - [rusty-s3 offers rind](/quest/m2/adoption/rusty-s3.md) - a `rind` feature beside its `graviola` one
-- [rind-rustls adds little to a binary](/quest/m2/adoption/rind-rustls-size.md) - 3.4 MB today, mostly P-384 and P-521
-- [rind's test-only features add no packages to dependents' lockfiles](/quest/m2/adoption/ctgrind-deps.md) - `__ctgrind`'s optional dependencies
-- [rind-ring exposes rind's CPU check](/quest/m2/adoption/rind-ring-cpu.md) - no direct rind dependency for it
 - [rind-str0m](/quest/m2/adoption/rind-str0m.md) - str0m's `CryptoProvider` on rind
 - [quinn's rustls support works with any provider](/quest/m2/adoption/quinn.md) - quinn-proto stops forcing ring or aws-lc-rs
 - [Bun's CryptoHasher takes SHA-3 from rind](/quest/m2/adoption/bun-sha3.md) - SHA-3 in Bun on rind, after the m1 Bun PR

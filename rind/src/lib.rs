@@ -61,7 +61,7 @@ pub mod doc {
     pub use super::low::inline_assembly_safety;
 }
 
-/// Ephemeral key agreement: X25519, and ECDH on P-256, P-384, and P-521.
+/// Key agreement: X25519, and ECDH on P-256, P-384, and P-521.
 ///
 /// ```
 /// use rind::agreement::*;
@@ -83,7 +83,8 @@ pub mod doc {
 /// ```
 pub mod agreement {
     pub use crate::high::agreement::{
-        Algorithm, ECDH_P256, ECDH_P384, ECDH_P521, PrivateKey, PublicKey, SharedSecret, X25519,
+        Algorithm, ECDH_P256, ECDH_P384, ECDH_P521, PrivateKey, PublicKey, Scalar, SharedSecret,
+        X25519,
     };
 }
 
@@ -119,16 +120,17 @@ pub mod kem {
 /// RSA encryption: RSA-OAEP with SHA-256, SHA-384, or SHA-512, and SHA-1
 /// under [`rsa::legacy`].
 ///
-/// RSA signatures are under [`signature`]. PKCS#1 v1.5 encryption, which
-/// invites padding-oracle attacks, is refused.
+/// RSA signatures are under [`signature`], and take this module's
+/// [`KeySize`](rsa::KeySize) and [`PublicKeyComponents`](rsa::PublicKeyComponents)
+/// too. PKCS#1 v1.5 encryption, which invites padding-oracle attacks, is
+/// refused.
 ///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
 /// use rind::rsa::*;
-/// use rind::signature::RsaKeySize;
 ///
 /// // The recipient generates a key, and sends its public key to the sender.
-/// let decrypting_key = DecryptingKey::generate(&OAEP_SHA256, RsaKeySize::Rsa2048)?;
+/// let decrypting_key = DecryptingKey::generate(&OAEP_SHA256, KeySize::Rsa2048)?;
 /// let public_key = decrypting_key.to_spki();
 ///
 /// // The sender parses the public key for the same algorithm, and encrypts
@@ -147,6 +149,8 @@ pub mod rsa {
         Ciphertext, DecryptingKey, EncryptingKey, OAEP_SHA256, OAEP_SHA384, OAEP_SHA512,
         OaepAlgorithm, Plaintext,
     };
+    pub use crate::high::signature::PublicKeyComponents;
+    pub use crate::mid::rsa_key_size::RsaKeySize as KeySize;
 
     /// RSA-OAEP with SHA-1, for protocols that still require it.
     pub mod legacy {
@@ -174,9 +178,9 @@ pub mod rsa {
 /// ```
 pub mod signature {
     pub use crate::high::signature::{
-        EcdsaKeyPair, EcdsaScalar, EcdsaSigningAlgorithm, Ed25519KeyPair, Ed25519Seed, Pkcs8,
-        PublicKey, RsaKeyPair, RsaKeySize, RsaPssSaltLength, RsaPublicKeyComponents,
-        RsaSigningAlgorithm, RsaVerificationAlgorithm, Signature, Spki, VerificationAlgorithm,
+        EcdsaKeyPair, EcdsaScalar, EcdsaSigningAlgorithm, Ed25519KeyPair, Ed25519Seed, PublicKey,
+        RsaKeyPair, RsaPssSaltLength, RsaSigningAlgorithm, RsaVerificationAlgorithm, Signature,
+        VerificationAlgorithm,
     };
 
     /// Algorithms a key pair signs with.
@@ -373,9 +377,18 @@ pub mod pbkdf2 {
 /// ```
 pub mod aead;
 
+/// Encoded keys: PKCS#8 and SEC1 private keys, and `SubjectPublicKeyInfo`
+/// public keys.
+///
+/// Every key type that exports itself returns these, whatever its module.
+pub mod encoding {
+    pub use crate::high::signature::{Pkcs8, Sec1, Spki};
+}
+
 /// Unauthenticated ciphers, for protocols that specify one alongside their own integrity protection.
 ///
-/// Prefer [`aead`] unless a protocol requires one of these.
+/// Prefer [`aead`] unless a protocol requires one of these. Decrypting
+/// AES-CBC before verifying a MAC over its ciphertext is a padding oracle.
 pub mod cipher;
 
 /// Key wrapping with AES-KW, RFC 3394, as WebCrypto's `AES-KW` and JWE's

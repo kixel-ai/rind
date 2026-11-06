@@ -36,6 +36,15 @@ impl VpaesKey {
         r
     }
 
+    /// The key's length in bytes, from the `nbits / 32 + 5` rounds that
+    /// `vpaes_set_encrypt_key` stores.
+    pub(crate) fn key_len(&self) -> usize {
+        match self.rounds {
+            9 => 16,
+            _ => 32,
+        }
+    }
+
     /// Encrypts one block in place.
     pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
         // SAFETY: `inout` is one readable and writable block, which aws-lc
@@ -60,6 +69,13 @@ impl VpaesKey {
                 ivec,
             )
         }
+    }
+
+    /// Encrypts whole blocks in place in CBC mode, the first chained from
+    /// `iv`.
+    pub(crate) fn cbc_encrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        // SAFETY: `self` is an expanded encryption key.
+        unsafe { cbc(blocks, (self as *const Self).cast(), iv, 1) }
     }
 }
 
@@ -101,6 +117,13 @@ impl VpaesDecKey {
         // allows to alias, and `self` an expanded decryption key.
         unsafe { vpaes_decrypt(inout.as_ptr(), inout.as_mut_ptr(), self) }
     }
+
+    /// Decrypts whole blocks in place in CBC mode, the first chained from
+    /// `iv`.
+    pub(crate) fn cbc_decrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        // SAFETY: `self` is an expanded decryption key.
+        unsafe { cbc(blocks, (self as *const Self).cast(), iv, 0) }
+    }
 }
 
 impl Drop for VpaesDecKey {
@@ -110,6 +133,30 @@ impl Drop for VpaesDecKey {
 }
 
 impl low::generic::zeroise::Zeroable for VpaesDecKey {}
+
+/// Runs `vpaes_cbc_encrypt` over `blocks` in place, encrypting under a
+/// [`VpaesKey`] if `enc` is 1 or decrypting under a [`VpaesDecKey`] if 0.
+///
+/// # Safety
+///
+/// `key` must be that key.
+unsafe fn cbc(blocks: &mut [[u8; 16]], key: *const u8, iv: &[u8; 16], enc: i32) {
+    // The routine leaves the next IV here; CBC callers here start afresh.
+    let mut ivec = *iv;
+    // SAFETY: `blocks` is `16 * blocks.len()` readable and writable bytes,
+    // which aws-lc allows to alias, and the caller vouches for `key`. The
+    // routine returns at once for zero bytes.
+    unsafe {
+        vpaes_cbc_encrypt(
+            blocks.as_ptr().cast(),
+            blocks.as_mut_ptr().cast(),
+            16 * blocks.len(),
+            key,
+            &mut ivec,
+            enc,
+        )
+    }
+}
 
 /// `key`'s length in bits, which vpaes's key schedules take.
 fn key_bits(key: &[u8]) -> u32 {
@@ -173,6 +220,21 @@ vpaes_routine!(vpaes_ctr32_encrypt_blocks(
     vpaes_encrypt_2x = vpaes_encrypt_2x
 });
 
+vpaes_routine!(vpaes_cbc_encrypt(
+    input: *const u8,
+    output: *mut u8,
+    len: usize,
+    key: *const u8,
+    ivec: *mut [u8; 16],
+    enc: i32
+) {
+    vpaes_encrypt_preheat = vpaes_encrypt_preheat,
+    vpaes_encrypt_core = vpaes_encrypt_core,
+    vpaes_decrypt_preheat = vpaes_decrypt_preheat,
+    vpaes_decrypt_core = vpaes_decrypt_core,
+    vpaes_decrypt_2x = vpaes_decrypt_2x
+});
+
 // The routines' helpers, which pass their arguments in registers of their
 // own choosing rather than by the C ABI, so only the routines call them.
 vpaes_routine!(vpaes_encrypt_preheat() { vpaes_consts = VPAES_CONSTS });
@@ -180,6 +242,7 @@ vpaes_routine!(vpaes_encrypt_core() { vpaes_consts = VPAES_CONSTS });
 vpaes_routine!(vpaes_encrypt_2x() { vpaes_consts = VPAES_CONSTS });
 vpaes_routine!(vpaes_decrypt_preheat() { vpaes_consts = VPAES_CONSTS });
 vpaes_routine!(vpaes_decrypt_core() { vpaes_consts = VPAES_CONSTS });
+vpaes_routine!(vpaes_decrypt_2x() { vpaes_consts = VPAES_CONSTS });
 vpaes_routine!(vpaes_key_preheat() { vpaes_consts = VPAES_CONSTS });
 vpaes_routine!(vpaes_schedule_core() {
     vpaes_consts = VPAES_CONSTS,

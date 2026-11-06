@@ -29,6 +29,7 @@ macro_rules! aws_lc_symbol {
 }
 
 pub(crate) mod aes;
+pub(crate) mod aes_cbc;
 pub(crate) mod aes_ctr;
 pub(crate) mod aesv8_armx;
 pub(crate) mod bignum_eq;

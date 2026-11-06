@@ -78,6 +78,15 @@ These quests cover every gap MoQ's 2026-10-26 inventory found. If a MoQ area
 quest turns up another, add a quest here rather than letting MoQ keep a C or
 RustCrypto dependency.
 
+rind adds no QUIC-specific public API, such as a key that seals and applies
+header protection in one call or a GSO batch seal: neither measured an
+end-to-end win in moq ([moq-dev/rind#387](https://github.com/moq-dev/rind/pull/387);
+maintainer, 2026-11-05).
+
 ## Required
 
+- [Header protection calls the hardware AES block directly](/quest/m1/moq/header-protection-block.md) - AES-128 header protection at least level with aws-lc-rs on AMD
+- [One-pass AES-GCM for short messages on aarch64](/quest/m1/moq/aarch64-short-gcm.md) - ACK-sized sends level with aws-lc-rs on Neoverse N2
+- [AES-GCM's partial AAD block costs no more than a full one on VAES CPUs](/quest/m1/moq/gcm-partial-aad.md) - QUIC's 13 B header stops costing about 12 ns per packet
+- [AMD CPUs without VAES run their fastest AES-GCM tier](/quest/m1/moq/quic-path.md) - Vale or `by8` on Zen 2, from zshenker's rerun
 - [MoQ runs on rind](/quest/m1/moq/moq-on-rind.md) - waiting on MoQ to finish its migration

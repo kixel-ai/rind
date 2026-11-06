@@ -17,6 +17,10 @@ change to the trust base.
 #guard_msgs in
 #print axioms x25519_generate
 
+/-- info: 'rind.x86_64.x25519_from_scalar' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms x25519_from_scalar
+
 /-- info: 'rind.x86_64.x25519_public_key' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,

@@ -61,6 +61,42 @@ seed 20 "$asn1"/ed25519-p8v*.bin
 seed 22 "$ring/ed25519_test_public_key.der"
 # An all-zero ML-KEM-768 encapsulation key passes the modulus check.
 { printf '\x17'; head -c 1184 /dev/zero; } >"$corpus/23-zero"
+# Agreement scalars of each curve's length, all 0x01 bytes, which each
+# curve takes, and an X25519 PKCS#8 v1 key of those bytes.
+for selector_len in 24:32 25:32 26:48 27:66; do
+    { printf %b "\\x$(printf %02x "${selector_len%:*}")"; head -c "${selector_len#*:}" /dev/zero | tr '\0' '\1'; } \
+        >"$corpus/${selector_len%:*}-ones"
+done
+{ printf '\x1c\x30\x2e\x02\x01\x00\x30\x05\x06\x03\x2b\x65\x6e\x04\x22\x04\x20'; head -c 32 /dev/zero | tr '\0' '\1'; } \
+    >"$corpus/28-x25519-p8v1"
+# An Ed25519 seed of 0x01 bytes.
+{ printf '\x2a'; head -c 32 /dev/zero | tr '\0' '\1'; } >"$corpus/42-ones"
+seed 33 "$asn1/spki-rsa-2k.bin"
+
+# wycheproof SELECTOR FILE JQ: a seed for each distinct key JQ finds in the
+# Wycheproof FILE, in hex, uppercase as older basenc requires: the selector
+# byte, then the key.
+wycheproof() {
+    local selector=$1 file=$2 filter=$3 key
+    jq -r "[$filter] | unique[]" "thirdparty/wycheproof/testvectors_v1/$file" | while read -r key; do
+        printf %02X%s "$selector" "${key^^}" | basenc --base16 -d >"$corpus/$selector-${file%_test.json}-${key: -16}"
+    done
+}
+
+# Each curve's points, bare and in a `SubjectPublicKeyInfo`, compressed among
+# them, and Ed25519's public keys.
+wycheproof 29 ecdh_secp256r1_test.json '.testGroups[].tests[].public'
+wycheproof 30 ecdh_secp384r1_test.json '.testGroups[].tests[].public'
+wycheproof 31 ecdh_secp521r1_test.json '.testGroups[].tests[].public'
+wycheproof 32 ed25519_test.json '.testGroups[].publicKeyDer'
+wycheproof 34 x25519_test.json '.testGroups[].tests[].public'
+wycheproof 35 ecdh_secp256r1_ecpoint_test.json '.testGroups[].tests[].public'
+wycheproof 36 ecdh_secp384r1_ecpoint_test.json '.testGroups[].tests[].public'
+wycheproof 37 ecdh_secp521r1_ecpoint_test.json '.testGroups[].tests[].public'
+wycheproof 38 x25519_asn_test.json '.testGroups[].tests[].public'
+wycheproof 39 ecdh_secp256r1_test.json '.testGroups[].tests[].public'
+wycheproof 40 ecdh_secp384r1_test.json '.testGroups[].tests[].public'
+wycheproof 41 ecdh_secp521r1_test.json '.testGroups[].tests[].public'
 
 # Version 2 documents, which the ECDSA and RSA loaders refuse: one with its
 # public key, one with an empty one, and two without, which aws-lc-rs takes.

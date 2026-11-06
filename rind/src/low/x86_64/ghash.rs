@@ -57,9 +57,9 @@ macro_rules! reduce {
 
 pub(crate) enum GhashTable {
     Clmul(ClmulTable),
-    /// VAES without AVX-512: the PCLMULQDQ path for short messages, and
-    /// BoringSSL's 256-bit kernel for long ones.
-    VaesAvx2(ClmulTable, VaesKernel),
+    /// VAES without AVX-512: Vale's AES-GCM or the PCLMULQDQ path for short
+    /// messages, and BoringSSL's 256-bit kernel for long ones.
+    VaesAvx2(ClmulTable, VaesKernel, AvxKernel),
     /// AVX and MOVBE without VAES: Vale's AES-GCM, and the PCLMULQDQ path
     /// for an AAD or message of 2^32 bytes or more, beyond Vale's proof.
     Avx(ClmulTable, AvxKernel),
@@ -84,7 +84,9 @@ impl GhashTable {
         }
         if let Some(token) = HaveVaesAvx2ForAesGcm::check() {
             let vaes = VaesKernel::avx2(h, token);
-            return Self::VaesAvx2(ClmulTable::from_powers(vaes.powers(), hw), vaes);
+            let table = ClmulTable::from_powers(vaes.powers(), hw);
+            let vale = AvxKernel::new(&table, h, token.avx_movbe());
+            return Self::VaesAvx2(table, vaes, vale);
         }
         if let Some(token) = HaveAvxMovbeForAesGcm::check() {
             let table = ClmulTable::new(h, hw);
@@ -233,14 +235,18 @@ pub(crate) struct GhashTableAvx512 {
     /// BoringSSL's 512-bit kernel, for long messages, whose table also holds
     /// the powers the 512-bit multiplies here take.
     pub(crate) vaes: VaesKernel,
+    /// Vale's AES-GCM, for short messages.
+    pub(crate) vale: AvxKernel,
     pub(crate) token: HaveAvx512ForAesGcm,
 }
 
 impl GhashTableAvx512 {
     pub(crate) fn new(h: u128, hw: HaveAesHardware, token: HaveAvx512ForAesGcm) -> Self {
         let vaes = VaesKernel::avx512(h, token);
+        let clmul = ClmulTable::from_powers(vaes.powers(), hw);
         Self {
-            clmul: ClmulTable::from_powers(vaes.powers(), hw),
+            vale: AvxKernel::new(&clmul, h, token.avx_movbe()),
+            clmul,
             vaes,
             token,
         }
@@ -308,7 +314,7 @@ impl<'a> Ghash<'a> {
     pub(crate) fn add(&mut self, bytes: &[u8]) {
         self.current = match self.table {
             GhashTable::Clmul(table)
-            | GhashTable::VaesAvx2(table, _)
+            | GhashTable::VaesAvx2(table, ..)
             | GhashTable::Avx(table, _) => {
                 // SAFETY: only a `HaveAesHardware` token builds `table`,
                 // proving PCLMULQDQ.
@@ -344,7 +350,7 @@ impl<'a> Ghash<'a> {
         let block = ((aad_len as u128 * 8) << 64) | (msg_len as u128 * 8);
         let table = match self.table {
             GhashTable::Clmul(table)
-            | GhashTable::VaesAvx2(table, _)
+            | GhashTable::VaesAvx2(table, ..)
             | GhashTable::Avx(table, _)
             | GhashTable::Avx512(GhashTableAvx512 { clmul: table, .. }) => table,
             GhashTable::Ssse3(_) | GhashTable::Nohw(_) => return self.add(&block.to_be_bytes()),

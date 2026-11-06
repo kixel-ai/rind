@@ -21,7 +21,7 @@ pub(crate) fn seal(
     aad: &[u8],
     cipher_inout: &mut [u8],
 ) -> [u8; 16] {
-    if let Some((hw_key, kernel)) = vale(key, table, aad, cipher_inout) {
+    if let Some((hw_key, kernel)) = vale::<true>(key, table, aad, cipher_inout) {
         return kernel.seal(hw_key, nonce, aad, cipher_inout);
     }
     tagged::<true>(key, table, nonce, aad, cipher_inout)
@@ -37,24 +37,38 @@ pub(crate) fn open(
     cipher_inout: &mut [u8],
     tag: &[u8; 16],
 ) -> bool {
-    if let Some((hw_key, kernel)) = vale(key, table, aad, cipher_inout) {
+    if let Some((hw_key, kernel)) = vale::<false>(key, table, aad, cipher_inout) {
         return kernel.open(hw_key, nonce, aad, cipher_inout, tag);
     }
     ct_equal(&tagged::<false>(key, table, nonce, aad, cipher_inout), tag)
 }
 
-/// Vale's AES-GCM, where the CPU runs it and its proof covers the lengths.
-fn vale<'a>(
+/// Vale's AES-GCM, where the CPU runs it, its proof covers the lengths, and
+/// it is the fastest path to encrypt (if `ENC`) or decrypt the message.
+fn vale<'a, const ENC: bool>(
     key: &'a AesKey,
     table: &'a GhashTable,
     aad: &[u8],
     cipher_inout: &[u8],
 ) -> Option<(&'a HwKey, &'a AvxKernel)> {
+    let len = cipher_inout.len();
+    if !(u32::try_from(aad.len()).is_ok() && u32::try_from(len).is_ok()) {
+        return None;
+    }
+    let (vaes_avx2_below, avx512_below) = if ENC {
+        (VAES_AVX2_VALE_SEAL_BELOW, AVX512_VALE_SEAL_BELOW)
+    } else {
+        (VAES_AVX2_VALE_OPEN_BELOW, AVX512_VALE_OPEN_BELOW)
+    };
     match (key, table) {
-        (AesKey::Hw(hw_key), GhashTable::Avx(_, kernel))
-            if u32::try_from(aad.len()).is_ok() && u32::try_from(cipher_inout.len()).is_ok() =>
-        {
+        (AesKey::Hw(hw_key), GhashTable::Avx(_, kernel)) => Some((hw_key, kernel)),
+        (AesKey::Hw(hw_key), GhashTable::VaesAvx2(.., kernel)) if len < vaes_avx2_below => {
             Some((hw_key, kernel))
+        }
+        (AesKey::Hw(hw_key), GhashTable::Avx512(GhashTableAvx512 { vale, .. }))
+            if len < avx512_below =>
+        {
+            Some((hw_key, vale))
         }
         _ => None,
     }
@@ -145,12 +159,12 @@ fn cipher<const ENC: bool>(
                 _cipher_avx512::<ENC>(hw_key, ghash, initial_counter, aad, cipher_inout, *token)
             };
         }
-        GhashTable::VaesAvx2(_, vaes) if len >= VAES_AVX2_MINIMUM_CIPHER_LEN => {
+        GhashTable::VaesAvx2(_, vaes, _) if len >= VAES_AVX2_MINIMUM_CIPHER_LEN => {
             ghash.add(aad);
             return vaes.cipher::<ENC>(hw_key, initial_counter, ghash, cipher_inout);
         }
         GhashTable::Clmul(table)
-        | GhashTable::VaesAvx2(table, _)
+        | GhashTable::VaesAvx2(table, ..)
         | GhashTable::Avx(table, _)
         | GhashTable::Avx512(GhashTableAvx512 { clmul: table, .. }) => table,
         GhashTable::Ssse3(_) | GhashTable::Nohw(_) => {
@@ -522,6 +536,23 @@ const AVX512_KERNEL_MINIMUM_CIPHER_LEN: usize = 2048;
 /// path, whose single blocks are quicker for short messages.
 const VAES_AVX2_MINIMUM_CIPHER_LEN: usize = 16 * 16;
 
+/// The message lengths below which Vale's AES-GCM runs on the VAES-AVX2
+/// tier, to decrypt and to encrypt. Its opens measured 0.61-0.89x the by-8
+/// path's time below 256 bytes on Arrow Lake and Zen 3. Its seals measured
+/// 0.77-0.83x on Arrow Lake below 80 bytes, where Zen 3 measured 0.94-1.05x,
+/// and beyond that Zen 3 lost up to 20%. That is under an AAD of a partial
+/// block, as QUIC's and TLS's are; under a 32-byte AAD, by-8 seals 32 bytes
+/// 5-9% quicker on Arrow Lake.
+const VAES_AVX2_VALE_OPEN_BELOW: usize = 256;
+const VAES_AVX2_VALE_SEAL_BELOW: usize = 80;
+
+/// The message lengths below which Vale's AES-GCM runs on the AVX-512 tier,
+/// to decrypt and to encrypt. Its opens measured 0.75-0.96x the by-8 path's
+/// time below 256 bytes on Zen 5 and Ice Lake, but its seals 1.03-1.33x
+/// from 32 bytes.
+const AVX512_VALE_OPEN_BELOW: usize = 256;
+const AVX512_VALE_SEAL_BELOW: usize = 0;
+
 /// This stores the current four counter values, in big endian.
 #[derive(Debug)]
 struct Counter512(__m512i);
@@ -641,11 +672,12 @@ mod tests {
     // Every other test sees only the path the CPU picks, so the slower ones
     // are checked against it here, under a key `admin/ctgrind` keeps secret:
     // the by-8 PCLMULQDQ kernel, which a CPU with VAES runs only for short
-    // messages, Vale's AES-GCM, vpaes with SSSE3 GHASH, and SSE2 AES with
+    // seals, Vale's AES-GCM, vpaes with SSSE3 GHASH, and SSE2 AES with
     // integer GHASH. Each key size, and AAD and message lengths around the
-    // block, six-, eight-, and sixteen-block boundaries and the minimums of
-    // Vale's six-block loop, both ways, with a tag wrong in either half, and
-    // one long enough to carry out of the counter's low byte.
+    // block, six-, eight-, and sixteen-block boundaries, the minimums of
+    // Vale's six-block loop, and where a VAES CPU hands over from Vale, both
+    // ways, with a tag wrong in either half, and one long enough to carry out
+    // of the counter's low byte.
     #[test]
     fn paths_match() {
         let bytes = |n: usize, seed: u32| -> Vec<u8> {
@@ -681,11 +713,26 @@ mod tests {
                 }
             }
 
+            // Around where Vale's AES-GCM hands over to each VAES tier's
+            // own paths.
+            let crossovers = [
+                VAES_AVX2_VALE_OPEN_BELOW,
+                VAES_AVX2_VALE_SEAL_BELOW,
+                AVX512_VALE_OPEN_BELOW,
+                AVX512_VALE_SEAL_BELOW,
+            ]
+            .into_iter()
+            .flat_map(|n| [n.saturating_sub(1), n, n + 1]);
+            let mut msg_lens = vec![
+                0, 1, 15, 16, 17, 95, 96, 97, 112, 127, 128, 129, 255, 256, 257, 287, 288, 289,
+                1000, 5000,
+            ];
+            msg_lens.extend(crossovers);
+            msg_lens.sort_unstable();
+            msg_lens.dedup();
+
             for aad_len in [0, 1, 16, 17] {
-                for msg_len in [
-                    0, 1, 15, 16, 17, 95, 96, 97, 112, 127, 128, 129, 255, 256, 257, 287, 288, 289,
-                    1000, 5000,
-                ] {
+                for &msg_len in &msg_lens {
                     let nonce = bytes(12, msg_len as u32).try_into().unwrap();
                     let aad = bytes(aad_len, 2);
                     let plain = bytes(msg_len, 3);

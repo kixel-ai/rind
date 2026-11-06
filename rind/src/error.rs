@@ -32,6 +32,10 @@ pub enum Error {
     /// An internal consistency check failed, from a hardware fault or a rind
     /// bug, which the caller cannot fix.
     Fault,
+
+    /// A call was given an algorithm it does not take, such as a SHA-1
+    /// digest to sign, or a digest for a key that verifies only messages.
+    Unsupported,
 }
 
 /// Why a key was refused, which its `Display` describes.
@@ -44,6 +48,7 @@ pub(crate) enum KeyFormatError {
     WrongLength,
     LeadingZero,
     Compressed,
+    PointEncoding,
     NotOnCurve,
     SmallOrder,
     ScalarOutOfRange,
@@ -76,6 +81,9 @@ impl core::fmt::Display for KeyRejected {
             KeyFormatError::WrongLength => write!(f, "an encoding of the wrong length"),
             KeyFormatError::LeadingZero => write!(f, "an integer with a leading zero byte"),
             KeyFormatError::Compressed => write!(f, "a compressed point"),
+            KeyFormatError::PointEncoding => {
+                write!(f, "a point neither compressed nor uncompressed")
+            }
             KeyFormatError::NotOnCurve => write!(f, "a point not on the curve"),
             KeyFormatError::SmallOrder => write!(f, "a small-order point"),
             KeyFormatError::ScalarOutOfRange => {
@@ -109,10 +117,7 @@ impl core::fmt::Display for KeyRejected {
             KeyFormatError::MismatchedSec1Curve => write!(f, "mismatched SEC1 curve"),
             KeyFormatError::MismatchedSec1PublicKey => write!(f, "mismatched SEC1 public key"),
             KeyFormatError::MismatchedSpkiAlgorithm => {
-                write!(
-                    f,
-                    "a SubjectPublicKeyInfo of another algorithm than rsaEncryption"
-                )
+                write!(f, "a SubjectPublicKeyInfo of another algorithm")
             }
         }
     }
@@ -128,6 +133,7 @@ impl core::fmt::Display for Error {
             Self::RngFailed => write!(f, "the system random source failed"),
             Self::NotEqual => write!(f, "values compared in constant time were not equal"),
             Self::Fault => write!(f, "an internal consistency check failed"),
+            Self::Unsupported => write!(f, "an algorithm the call does not take"),
         }
     }
 }

@@ -3,6 +3,7 @@
 
 pub(crate) mod adx_mux;
 pub(crate) mod aes;
+pub(crate) mod aes_cbc;
 pub(crate) mod aes_ctr;
 pub(crate) mod aes_gcm;
 pub(crate) mod aes_gcm_avx;
@@ -140,4 +141,5 @@ pub(crate) mod sha3_keccak4_f1600_shim;
 pub(crate) mod sha3_keccak_f1600;
 pub(crate) mod sha3_keccak_nof4_f1600;
 pub(crate) mod sha512;
+mod sha_tail;
 pub(crate) mod vpaes_x86_64;

@@ -6,7 +6,7 @@ use rind::aead::{
     AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce, RandomNonce, RandomizedNonceKey, Tag,
     gcm,
 };
-use rind::cipher::{AES_128, AES_256, ChaCha20};
+use rind::cipher::{AES_128, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey, ChaCha20};
 use rind::key_wrap::{self, AesKek};
 use rind::rsa::{self, DecryptingKey, OaepAlgorithm};
 use rind::signature::verify::legacy;
@@ -375,6 +375,7 @@ fn test_verify_ecdsa() {
 
             let public_key =
                 signature::PublicKey::new(algorithm, &group.public_key.uncompressed).unwrap();
+            check_ecdsa_spki(algorithm, &group, &public_key);
 
             for test in group.tests {
                 summary.start(&test);
@@ -384,6 +385,144 @@ fn test_verify_ecdsa() {
                     (ExpectedResult::Valid, Ok(())) => {}
                     (ExpectedResult::Invalid, Err(Error::BadSignature)) => {}
                     _ => panic!("expected {:?} got {:?}", test.result, result),
+                }
+            }
+        }
+    }
+}
+
+/// The group's SPKI parses as its point, and encodes back to itself; and
+/// with its point compressed, parses as the same point.
+fn check_ecdsa_spki(
+    algorithm: &'static signature::VerificationAlgorithm,
+    group: &TestGroup,
+    key: &signature::PublicKey,
+) {
+    let der = &group.public_key_der;
+    let from_spki = signature::PublicKey::from_spki(algorithm, der).unwrap();
+    assert_eq!(from_spki.as_ref(), key.as_ref());
+    assert_eq!(from_spki.to_spki().as_ref(), &der[..]);
+
+    let point = key.as_ref();
+    let (x, y) = point[1..].split_at(point.len() / 2);
+    let compressed = [&[2 | (y[y.len() - 1] & 1)][..], x].concat();
+    let compressed_der = spki(algorithm_identifier(der), &compressed);
+    let from_compressed = signature::PublicKey::from_spki(algorithm, &compressed_der);
+    assert_eq!(from_compressed.unwrap().as_ref(), key.as_ref());
+}
+
+/// A DER element: `tag`, the length of `body`, and `body`.
+fn der(tag: u8, body: &[u8]) -> Vec<u8> {
+    let length = match body.len() {
+        len @ 0..0x80 => vec![len as u8],
+        len @ 0x80..0x100 => vec![0x81, len as u8],
+        len => vec![0x82, (len >> 8) as u8, len as u8],
+    };
+    [&[tag][..], &length, body].concat()
+}
+
+/// A `SubjectPublicKeyInfo` of `algorithm`, an encoded
+/// `AlgorithmIdentifier`, holding `key`.
+fn spki(algorithm: &[u8], key: &[u8]) -> Vec<u8> {
+    let key = der(0x03, &[&[0][..], key].concat());
+    der(0x30, &[algorithm, &key].concat())
+}
+
+/// The encoded `AlgorithmIdentifier` that opens a `SubjectPublicKeyInfo`,
+/// whose own length is one byte.
+fn algorithm_identifier(spki: &[u8]) -> &[u8] {
+    let body = match spki[1] {
+        0x81 => &spki[3..],
+        _ => &spki[2..],
+    };
+    &body[..2 + body[1] as usize]
+}
+
+#[test]
+fn test_verify_ecdsa_digest() {
+    use rind::digest::{self, SHA256, SHA384, SHA512};
+
+    // Each file whose curve rind has and whose hash its signatures take,
+    // with an algorithm for its curve and encoding: the digest names the hash.
+    for (file, algorithm, hash) in [
+        (
+            "ecdsa_secp256r1_sha256_p1363_test.json",
+            &verify::ECDSA_P256_SHA256_FIXED,
+            &SHA256,
+        ),
+        (
+            "ecdsa_secp256r1_sha256_test.json",
+            &verify::ECDSA_P256_SHA256_ASN1,
+            &SHA256,
+        ),
+        (
+            "ecdsa_secp256r1_sha512_p1363_test.json",
+            &verify::ECDSA_P256_SHA256_FIXED,
+            &SHA512,
+        ),
+        (
+            "ecdsa_secp256r1_sha512_test.json",
+            &verify::ECDSA_P256_SHA256_ASN1,
+            &SHA512,
+        ),
+        (
+            "ecdsa_secp384r1_sha256_test.json",
+            &verify::ECDSA_P384_SHA384_ASN1,
+            &SHA256,
+        ),
+        (
+            "ecdsa_secp384r1_sha384_p1363_test.json",
+            &verify::ECDSA_P384_SHA384_FIXED,
+            &SHA384,
+        ),
+        (
+            "ecdsa_secp384r1_sha384_test.json",
+            &verify::ECDSA_P384_SHA384_ASN1,
+            &SHA384,
+        ),
+        (
+            "ecdsa_secp384r1_sha512_p1363_test.json",
+            &verify::ECDSA_P384_SHA384_FIXED,
+            &SHA512,
+        ),
+        (
+            "ecdsa_secp384r1_sha512_test.json",
+            &verify::ECDSA_P384_SHA384_ASN1,
+            &SHA512,
+        ),
+        (
+            "ecdsa_secp521r1_sha512_p1363_test.json",
+            &verify::ECDSA_P521_SHA512_FIXED,
+            &SHA512,
+        ),
+        (
+            "ecdsa_secp521r1_sha512_test.json",
+            &verify::ECDSA_P521_SHA512_ASN1,
+            &SHA512,
+        ),
+    ] {
+        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
+            .unwrap_or_else(|_| panic!("failed to open data file {}", file));
+
+        let reader = BufReader::new(data_file);
+        let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
+        let mut summary = Summary::new();
+
+        for group in tests.groups {
+            summary.group(&group);
+
+            let public_key =
+                signature::PublicKey::new(algorithm, &group.public_key.uncompressed).unwrap();
+
+            for test in group.tests {
+                summary.start(&test);
+
+                let digest = digest::digest(hash, &test.msg);
+                let result = public_key.verify_digest(&digest, &test.sig);
+                match (test.result, result) {
+                    (ExpectedResult::Valid, Ok(())) => {}
+                    (ExpectedResult::Invalid, Err(Error::BadSignature)) => {}
+                    _ => panic!("{file}: expected {:?} got {:?}", test.result, result),
                 }
             }
         }
@@ -459,9 +598,10 @@ fn aes_gcm(file: &str, gmac: bool) {
             }
 
             let ctx = gcm::Key::new(aes, &test.key, gcm::TagLength::Full).unwrap();
+            let iv = || gcm::Iv::assume_unique_for_key(&test.iv);
             let mut got = ct.to_vec();
-            let result = ctx
-                .open_in_place_separate_tag(&test.iv, aad, &test.tag, &mut got)
+            let result = iv()
+                .and_then(|iv| ctx.open_in_place_separate_tag(iv, aad, &test.tag, &mut got))
                 .map(|_| ());
             check_open(valid, malformed, result);
             if valid {
@@ -469,7 +609,7 @@ fn aes_gcm(file: &str, gmac: bool) {
             }
 
             let mut got = msg.to_vec();
-            match ctx.seal_in_place_separate_tag(&test.iv, aad, &mut got) {
+            match iv().and_then(|iv| ctx.seal_in_place_separate_tag(iv, aad, &mut got)) {
                 Ok(tag) if valid => assert_eq!((&got[..], tag.as_ref()), (ct, &test.tag[..])),
                 Ok(_) => assert!(!test.iv.is_empty()),
                 Err(Error::WrongLength) => assert!(test.iv.is_empty()),
@@ -486,6 +626,61 @@ fn check_open(valid: bool, malformed: bool, result: Result<(), Error>) {
         (true, Ok(())) | (false, Err(Error::DecryptFailed)) => {}
         (false, Err(Error::WrongLength)) if malformed => {}
         (_, result) => panic!("expected valid {valid}, got {result:?}"),
+    }
+}
+
+#[test]
+fn test_aes_cbc_pkcs7() {
+    let data_file = File::open("../thirdparty/wycheproof/testvectors_v1/aes_cbc_pkcs5_test.json")
+        .expect("failed to open data file");
+
+    let reader = BufReader::new(data_file);
+    let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
+    let mut summary = Summary::new();
+
+    for group in tests.groups {
+        summary.group(&group);
+
+        for test in group.tests {
+            summary.start(&test);
+
+            let algorithm = match test.key.len() {
+                16 => &AES_128,
+                32 => &AES_256,
+                24 => {
+                    summary.skipped("aes-192 not supported");
+                    continue;
+                }
+                len => panic!("unexpected key length {len}"),
+            };
+            let iv: [u8; 16] = test.iv[..].try_into().unwrap();
+            let enc = AesCbcEncryptingKey::new(algorithm, &test.key).unwrap();
+            let dec = AesCbcDecryptingKey::new(algorithm, &test.key).unwrap();
+
+            let mut in_out = test.ct.clone();
+            let result = dec.decrypt(&iv, &mut in_out).map(|pt| pt.to_vec());
+            match (test.result, result) {
+                (ExpectedResult::Valid, Ok(pt)) => {
+                    assert_eq!(pt, test.msg);
+                    let mut ct = test.msg.clone();
+                    enc.encrypt(&iv, &mut ct);
+                    assert_eq!(ct, test.ct);
+                }
+                // Every invalid test is a whole number of blocks whose
+                // padding is malformed, so decryption clears it.
+                (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {
+                    assert!(in_out.iter().all(|b| *b == 0));
+                }
+                (_, result) => panic!("expected {:?} got {:?}", test.result, result),
+            }
+
+            // Without padding, every ciphertext decrypts to the padded
+            // plaintext and encrypts back.
+            let mut in_out = test.ct.clone();
+            dec.decrypt_blocks(&iv, &mut in_out).unwrap();
+            enc.encrypt_blocks(&iv, &mut in_out).unwrap();
+            assert_eq!(in_out, test.ct);
+        }
     }
 }
 
@@ -590,7 +785,7 @@ fn test_rsa_pkcs1_verify() {
                 other => panic!("unhandled sha {other:?}"),
             };
             let n = group.public_key.modulus.strip_prefix(&[0]).unwrap();
-            let components = signature::RsaPublicKeyComponents {
+            let components = rind::rsa::PublicKeyComponents {
                 n,
                 e: &group.public_key.public_exponent[..],
             };
@@ -600,25 +795,31 @@ fn test_rsa_pkcs1_verify() {
                 if group.key_size < min_bits {
                     assert!(matches!(key, Err(Error::KeyRejected(_))));
                     assert!(matches!(
-                        components.to_public_key(algorithm),
+                        signature::PublicKey::from_components(algorithm, &components),
                         Err(Error::KeyRejected(_))
                     ));
                     continue;
                 }
                 let key = key.unwrap();
-                let from_components = components.to_public_key(algorithm).unwrap();
+                let from_components =
+                    signature::PublicKey::from_components(algorithm, &components).unwrap();
                 assert_eq!(from_components.as_ref(), key.as_ref());
                 let from_spki =
                     signature::PublicKey::new(algorithm, &group.public_key_der).unwrap();
                 assert_eq!(from_spki.as_ref(), key.as_ref());
+                let from_spki =
+                    signature::PublicKey::from_spki(algorithm, &group.public_key_der).unwrap();
+                assert_eq!(from_spki.as_ref(), key.as_ref());
+                assert_eq!(from_spki.to_spki().as_ref(), &group.public_key_der[..]);
+                assert!(signature::PublicKey::from_spki(algorithm, &group.public_key_asn).is_err());
 
                 // The modulus with its sign byte is not minimal.
-                let signed = signature::RsaPublicKeyComponents {
+                let signed = rind::rsa::PublicKeyComponents {
                     n: &group.public_key.modulus[..],
                     e: components.e,
                 };
                 assert!(matches!(
-                    signed.to_public_key(algorithm),
+                    signature::PublicKey::from_components(algorithm, &signed),
                     Err(Error::KeyRejected(_))
                 ));
 
@@ -931,6 +1132,15 @@ fn test_ed25519_verify() {
         summary.group(&group);
 
         let key = signature::PublicKey::new(&verify::ED25519, &group.public_key.pk);
+        let from_spki = signature::PublicKey::from_spki(&verify::ED25519, &group.public_key_der);
+        match (&key, from_spki) {
+            (Ok(key), Ok(from_spki)) => {
+                assert_eq!(from_spki.as_ref(), key.as_ref());
+                assert_eq!(from_spki.to_spki().as_ref(), &group.public_key_der[..]);
+            }
+            (Err(e), Err(from_spki)) => assert_eq!(*e, from_spki),
+            (key, from_spki) => panic!("{key:?} but from SPKI {from_spki:?}"),
+        }
 
         for test in group.tests {
             summary.start(&test);
@@ -1033,7 +1243,7 @@ fn test_chacha20() {
                 continue;
             }
 
-            let ctx = ChaCha20::new(test.key.try_into().unwrap());
+            let ctx = ChaCha20::new(test.key.as_slice().try_into().unwrap());
             let counter = u32::from_le_bytes(test.initial_counter.try_into().unwrap());
 
             let mut buf = test.msg.clone();

@@ -20,4 +20,6 @@ pub(super) mod pbkdf2;
 pub(super) mod pkcs1;
 pub(super) mod pkcs8;
 pub(super) mod rsa;
+pub(super) mod sec1;
 pub(super) mod signature;
+pub(super) mod spki;
