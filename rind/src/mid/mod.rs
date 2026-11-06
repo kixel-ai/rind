@@ -18,6 +18,7 @@ cfg_if::cfg_if! {
 }
 
 pub(super) mod aes;
+pub(super) mod aes_cbc;
 pub(super) mod aes_kw;
 pub(super) mod chacha20;
 pub(super) mod chacha20poly1305;

@@ -386,7 +386,8 @@ pub mod encoding {
 
 /// Unauthenticated ciphers, for protocols that specify one alongside their own integrity protection.
 ///
-/// Prefer [`aead`] unless a protocol requires one of these.
+/// Prefer [`aead`] unless a protocol requires one of these. Decrypting
+/// AES-CBC before verifying a MAC over its ciphertext is a padding oracle.
 pub mod cipher;
 
 /// Key wrapping with AES-KW, RFC 3394, as WebCrypto's `AES-KW` and JWE's

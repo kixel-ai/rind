@@ -31,6 +31,18 @@ unsafe extern "C" {
         key: *const AesHwKey,
         ivec: *const [u8; 16],
     );
+
+    /// Encrypts under an [`AesHwKey`] if `enc` is 1, or decrypts under an
+    /// [`AesHwDecKey`] if 0.
+    #[link_name = aws_lc_symbol!("aes_hw_cbc_encrypt")]
+    fn aes_hw_cbc_encrypt(
+        input: *const u8,
+        output: *mut u8,
+        len: usize,
+        key: *const u8,
+        ivec: *mut [u8; 16],
+        enc: i32,
+    );
 }
 
 // aws-lc assembles these in ARM mode with NEON, encoding the ARMv8
@@ -48,6 +60,7 @@ core::arch::global_asm!(
     aes_hw_encrypt = sym aes_hw_encrypt,
     aes_hw_decrypt = sym aes_hw_decrypt,
     aes_hw_ctr32_encrypt_blocks = sym aes_hw_ctr32_encrypt_blocks,
+    aes_hw_cbc_encrypt = sym aes_hw_cbc_encrypt,
 );
 
 /// An expanded AES-128 or AES-256 encryption key: aws-lc's `AES_KEY`.
@@ -105,6 +118,13 @@ impl AesHwKey {
             )
         }
     }
+
+    /// Encrypts whole blocks in place in CBC mode, the first chained from
+    /// `iv`.
+    pub(crate) fn cbc_encrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        // SAFETY: only a `HaveCryptoExt` token builds `self`.
+        unsafe { cbc(blocks, (self as *const Self).cast(), iv, 1) }
+    }
 }
 
 impl Drop for AesHwKey {
@@ -142,6 +162,37 @@ impl AesHwDecKey {
         // SAFETY: `inout` is one readable and writable block, which aws-lc
         // allows to alias. Only a `HaveCryptoExt` token builds `self`.
         unsafe { aes_hw_decrypt(inout.as_ptr(), inout.as_mut_ptr(), self) }
+    }
+
+    /// Decrypts whole blocks in place in CBC mode, the first chained from
+    /// `iv`.
+    pub(crate) fn cbc_decrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        // SAFETY: only a `HaveCryptoExt` token builds `self`.
+        unsafe { cbc(blocks, (self as *const Self).cast(), iv, 0) }
+    }
+}
+
+/// Runs `aes_hw_cbc_encrypt` over `blocks` in place.
+///
+/// # Safety
+///
+/// `key` must be the [`AesHwKey`] or [`AesHwDecKey`] for `enc`, which only a
+/// `HaveCryptoExt` token builds.
+unsafe fn cbc(blocks: &mut [[u8; 16]], key: *const u8, iv: &[u8; 16], enc: i32) {
+    // The routine leaves the next IV here; CBC callers here start afresh.
+    let mut ivec = *iv;
+    // SAFETY: `blocks` is `16 * blocks.len()` readable and writable bytes,
+    // which aws-lc allows to alias, and the caller vouches for `key`. The
+    // routine returns at once for fewer than 16 bytes.
+    unsafe {
+        aes_hw_cbc_encrypt(
+            blocks.as_ptr().cast(),
+            blocks.as_mut_ptr().cast(),
+            16 * blocks.len(),
+            key,
+            &mut ivec,
+            enc,
+        )
     }
 }
 

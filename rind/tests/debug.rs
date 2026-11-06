@@ -35,7 +35,11 @@ fn aead() {
     assert_eq!(show(&iv), "Iv(..)");
 
     use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};
-    for (algorithm, name) in [(&AES_128, "Aes128"), (&AES_256, "Aes256"), (&CHACHA20, "ChaCha20")] {
+    for (algorithm, name) in [
+        (&AES_128, "Aes128"),
+        (&AES_256, "Aes256"),
+        (&CHACHA20, "ChaCha20"),
+    ] {
         let key = HeaderProtectionKey::new(algorithm, &[0xff; 32][..algorithm.key_len()]).unwrap();
         let expected = format!("HeaderProtectionKey {{ algorithm: {name}, .. }}");
         assert_eq!(show(&key), expected);
@@ -53,11 +57,20 @@ fn cipher() {
         let key = &[0xff; 32][..len];
         let algorithm_shown = format!("Algorithm {{ key_len: {len} }}");
         let aes = Aes::new(algorithm, key).unwrap();
-        assert_eq!(show(&aes), format!("Aes {{ algorithm: {algorithm_shown}, .. }}"));
+        assert_eq!(
+            show(&aes),
+            format!("Aes {{ algorithm: {algorithm_shown}, .. }}")
+        );
         let ctr = AesCtr::new(algorithm, key, 128).unwrap();
-        assert_eq!(show(&ctr), format!("AesCtr {{ algorithm: {algorithm_shown}, .. }}"));
+        assert_eq!(
+            show(&ctr),
+            format!("AesCtr {{ algorithm: {algorithm_shown}, .. }}")
+        );
         let kek = AesKek::new(kek, key).unwrap();
-        assert_eq!(show(&kek), format!("AesKek {{ algorithm: {algorithm_shown}, .. }}"));
+        assert_eq!(
+            show(&kek),
+            format!("AesKek {{ algorithm: {algorithm_shown}, .. }}")
+        );
     }
     assert_eq!(show(&ChaCha20::new(&[0xff; 32])), "ChaCha20 { .. }");
 }

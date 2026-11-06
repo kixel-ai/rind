@@ -15,10 +15,6 @@ namespace rind.aarch64
 
 open P256
 
-/-- `b` is X9.62's uncompressed encoding of `d` times the generator. -/
-def p256PublicKey (d : Nat) (b : List U8) : Prop :=
-  b.length = 65 ∧ b.head? = some 4#u8 ∧ p256Pow p256G d = some (x962Coords b)
-
 /-- A signing key whose private scalar is `d`, in [1, n), and whose public key
 is `d`'s. -/
 def SigningKeyOf (key : P256SigningKey) (d : Nat) : Prop :=
@@ -27,15 +23,15 @@ def SigningKeyOf (key : P256SigningKey) (d : Nat) : Prop :=
 
 namespace P256
 
-theorem static_public_key_uncompressed_spec (hG : P256Laws) (h : Runs) (k : mid.p256.StaticPrivateKey)
+theorem static_public_key_uncompressed_spec (h : Runs) (k : mid.p256.StaticPrivateKey)
     (hk0 : 0 < scNat k.scalar) (hk : scNat k.scalar < n256) :
     mid.p256.StaticPrivateKey.public_key_uncompressed k ⦃ b => p256PublicKey (scNat k.scalar) b.val ⦄ := by
-  obtain ⟨x, y, hq, hc⟩ := g_mult hG _ hk0 hk
+  obtain ⟨x, y, hq, hc⟩ := g_mult _ hk0 hk
   have := public_key_uncompressed_spec h k x y hq hc
   refine WP.spec_mono this fun b ⟨h4, hxy⟩ => ⟨b.property, h4, ?_⟩
   rw [hq, hxy]
 
-theorem signing_new_spec (hG : P256Laws) (h : Runs) (k : mid.p256.StaticPrivateKey)
+theorem signing_new_spec (h : Runs) (k : mid.p256.StaticPrivateKey)
     (hk0 : 0 < scNat k.scalar) (hk : scNat k.scalar < n256) :
     high.ecdsa.SigningKey.new P256C k ⦃ r => ∃ key, r = .Ok key ∧ SigningKeyOf key (scNat k.scalar) ⦄ := by
   unfold high.ecdsa.SigningKey.new
@@ -47,7 +43,7 @@ theorem signing_new_spec (hG : P256Laws) (h : Runs) (k : mid.p256.StaticPrivateK
   step*
   rw [ite_eq_left (by simp [hsl]; scalar_tac)]
   simp only [bind_ok]
-  step with static_public_key_uncompressed_spec hG h k hk0 hk as ⟨a, ha⟩
+  step with static_public_key_uncompressed_spec h k hk0 hk as ⟨a, ha⟩
   have hx : x.val = 65 := by scalar_tac
   have ha65 : a.val.length = 65 := a.property
   have hcp : core.slice.Slice.copy_from_slice core.marker.CopyU8
@@ -75,7 +71,7 @@ theorem system_draws (hfill : Fills) : Draws mid.rng.SystemRandom.Insts.RindMidR
       
       mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once]
 
-theorem signing_generate_spec (hG : P256Laws) (h : Runs) (hfill : Fills) :
+theorem signing_generate_spec (h : Runs) (hfill : Fills) :
     high.ecdsa.SigningKey.generate P256C ⦃ r =>
       (∀ key, r = .Ok key → ∃ d, SigningKeyOf key d) ∧ ∀ e, r = .Err e → e = .RngFailed ⦄ := by
   unfold high.ecdsa.SigningKey.generate
@@ -85,7 +81,7 @@ theorem signing_generate_spec (hG : P256Laws) (h : Runs) (hfill : Fills) :
   rcases rr with k | e
   · obtain ⟨hk0, hk⟩ := hok k rfl
     simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
-    apply WP.spec_mono (signing_new_spec hG h k hk0 hk)
+    apply WP.spec_mono (signing_new_spec h k hk0 hk)
     rintro r ⟨key, rfl, hkey⟩
     exact ⟨fun key' h' => by cases h'; exact ⟨_, hkey⟩, fun e h => nomatch h⟩
   · simpa [core.result.Result.Insts.CoreOpsTry.branch,
@@ -207,7 +203,7 @@ theorem is_public_key_spec (key : P256SigningKey) (hl : key.public_key_len.val =
         · exact hn3 (h.trans (UScalar.eq_of_val_eq rfl))
       simp [hnc]
 
-theorem from_scalar_spec (hG : P256Laws) (h : Runs) (sk pk : Slice U8) :
+theorem from_scalar_spec (h : Runs) (sk pk : Slice U8) :
     high.ecdsa.SigningKey.from_private_key_and_public_key P256C sk pk ⦃ r =>
       if sk.length ≠ 32 then r = .Err (.KeyRejected .WrongLength)
       else if 0 < beNat sk.val ∧ beNat sk.val < n256 then
@@ -233,7 +229,7 @@ theorem from_scalar_spec (hG : P256Laws) (h : Runs) (sk pk : Slice U8) :
       simp only [core.result.Result.map, P.Insts.CoreOpsFunctionFnOnceTuplePrivateKeyStaticPrivateKey.call_once,
         mid.p256.StaticPrivateKey.constructor, bind_ok, core.result.Result.Insts.CoreOpsTry.branch]
       have hk' : scNat k.scalar = beNat sk.val := hk
-      step with signing_new_spec hG h k (hk' ▸ hin.1) (hk' ▸ hin.2)
+      step with signing_new_spec h k (hk' ▸ hin.1) (hk' ▸ hin.2)
       subst r1_post
       have hkey := r1_post1
       rw [hk'] at hkey
@@ -292,7 +288,7 @@ def EcdsaKeyPairOf (kp : high.signature.EcdsaKeyPair) (d : Nat) : Prop :=
 
 namespace P256
 
-theorem load_tail_spec (hG : P256Laws) (h : Runs) (hheld : Held) (hc : Cached)
+theorem load_tail_spec (h : Runs) (hheld : Held) (hc : Cached)
     (signing : P256SigningKey) (d : Nat) (hs : SigningKeyOf signing d) :
     (do
       let pk ← high.ecdsa.SigningKey.public_key_uncompressed P256C signing
@@ -317,9 +313,9 @@ theorem load_tail_spec (hG : P256Laws) (h : Runs) (hheld : Held) (hc : Cached)
   simp only
   step with buffer_as_ref_spec b (by rw [point_post1, hpkl]; decide) as ⟨sl, hsl⟩
   have hslv : sl.val = signing.public_key.val.take 65 := by rw [hsl, point_post1, point_post2, hpkv]
-  step with ecdsa_vk_from_x962_spec hG h hheld hc sl as ⟨vr, hvr⟩
+  step with ecdsa_vk_from_x962_spec h hheld hc sl as ⟨vr, hvr⟩
   obtain ⟨hl65, h4, hq⟩ := hpk
-  obtain ⟨x, y, hxy, hon⟩ := g_mult hG d hd0 hd
+  obtain ⟨x, y, hxy, hon⟩ := g_mult d hd0 hd
   rw [hq] at hxy
   rw [← hxy] at hon
   unfold x962Outcome at hvr
@@ -350,17 +346,17 @@ def Sha256E (msg : Slice U8) (e : Nat) : Prop :=
 
 namespace P256
 
-/-- A verifying key's clone has its odd multiples. -/
+/-- A verifying key's clone has its point. -/
 theorem vk_clone_spec (hc : Cached) (v : P256VerifyingKey) :
     high.ecdsa.VerifyingKey.Insts.CoreCloneClone.clone P256C mid.p256.VerifyingKey.Insts.CoreCloneClone v
-      ⦃ v' => v'.public_key.odd_multiples = v.public_key.odd_multiples ⦄ := by
+      ⦃ v' => v'.public_key.point = v.public_key.point ⦄ := by
   unfold high.ecdsa.VerifyingKey.Insts.CoreCloneClone.clone
-  simp only [mid.p256.VerifyingKey.Insts.CoreCloneClone.clone]
-  step with core.array.CloneArray.clone_spec mid.p256.AffineMontPoint.Insts.CoreCloneClone _ (fun x _ => rfl)
-    as ⟨a, ha⟩
-  obtain ⟨c', hc'⟩ := hc.clone v.public_key.more_odd_multiples
-  rw [hc']
-  simp [ha]
+  simp only [mid.p256.VerifyingKey.Insts.CoreCloneClone.clone,
+    mid.p256.AffineMontPoint.Insts.CoreCloneClone.clone, bind_ok]
+  obtain ⟨c', hc'⟩ := hc.clone v.public_key.odd_multiples
+  obtain ⟨c'', hc''⟩ := hc.clone v.public_key.more_odd_multiples
+  rw [hc', hc'']
+  simp
 
 /-- `Buffer::widen`. -/
 theorem widen_buffer_spec {N : Usize} (M : Usize) (w : high.signature.Buffer N) (hM : N.val ≤ M.val) :
@@ -389,18 +385,17 @@ end P256
 /-- A generated key pair's private scalar is in [1, n), drawn from the system
 random source, and generation is refused only if the draws fail. The draws
 themselves are outside the functional spec. -/
-theorem p256_ecdsa_generate (ho : P256Order) (h : Runs) (hheld : Held) (hc : Cached) (hfill : Fills) :
+theorem p256_ecdsa_generate (h : Runs) (hheld : Held) (hc : Cached) (hfill : Fills) :
     high.signature.EcdsaKeyPair.generate high.signature.sign.ECDSA_P256_SHA256_FIXED ⦃ r =>
       (∀ kp, r = .Ok kp → ∃ d, EcdsaKeyPairOf kp d) ∧ ∀ e, r = .Err e → e = .RngFailed ⦄ := by
-  have hG := P256Laws.of_order ho
   unfold high.signature.EcdsaKeyPair.generate high.signature.sign.ECDSA_P256_SHA256_FIXED
     high.signature.EcdsaKeyPair.load_p256_sha256_fixed
   simp only
-  step with signing_generate_spec hG h hfill as ⟨r, hok, herr⟩
+  step with signing_generate_spec h hfill as ⟨r, hok, herr⟩
   rcases r with signing | e
   · obtain ⟨d, hd⟩ := hok signing rfl
     simp only
-    apply WP.spec_mono (load_tail_spec hG h hheld hc signing d hd)
+    apply WP.spec_mono (load_tail_spec h hheld hc signing d hd)
     rintro r ⟨kp, rfl, hkp⟩
     exact ⟨fun kp' h' => by cases h'; exact ⟨d, hkp⟩, fun e h => (nomatch h)⟩
   · simp only [WP.spec_ok]
@@ -411,8 +406,8 @@ open Classical in
 refused unless the scalar is 32 bytes, in [1, n), and the public key is its
 uncompressed or compressed encoding, and otherwise its private scalar is the
 scalar. -/
-theorem p256_ecdsa_from_scalar_and_public_key (ho : P256Order) (h : Runs) (hheld : Held)
-    (hc : Cached) (sk pk : Slice U8) :
+theorem p256_ecdsa_from_scalar_and_public_key (h : Runs) (hheld : Held) (hc : Cached)
+    (sk pk : Slice U8) :
     high.signature.EcdsaKeyPair.from_scalar_and_public_key high.signature.sign.ECDSA_P256_SHA256_FIXED
       sk pk ⦃ r =>
       if sk.length ≠ 32 then r = .Err (.KeyRejected .WrongLength)
@@ -421,11 +416,10 @@ theorem p256_ecdsa_from_scalar_and_public_key (ho : P256Order) (h : Runs) (hheld
           if pk.val = b ∨ pk.val = x962Compress b then ∃ kp, r = .Ok kp ∧ EcdsaKeyPairOf kp (beNat sk.val)
           else r = .Err (.KeyRejected .MismatchedPublicKey)
       else r = .Err (.KeyRejected .ScalarOutOfRange) ⦄ := by
-  have hG := P256Laws.of_order ho
   unfold high.signature.EcdsaKeyPair.from_scalar_and_public_key high.signature.sign.ECDSA_P256_SHA256_FIXED
     high.signature.EcdsaKeyPair.load_p256_sha256_fixed
   simp only
-  step with from_scalar_spec hG h sk pk as ⟨r, hr⟩
+  step with from_scalar_spec h sk pk as ⟨r, hr⟩
   split_ifs at hr ⊢ with hl hin
   · subst hr; simp
   · obtain ⟨b, hb, hr⟩ := hr
@@ -433,7 +427,7 @@ theorem p256_ecdsa_from_scalar_and_public_key (ho : P256Order) (h : Runs) (hheld
     · rw [ite_eq_left hm] at hr
       obtain ⟨key, rfl, hkey⟩ := hr
       simp only
-      apply WP.spec_mono (load_tail_spec hG h hheld hc key _ hkey)
+      apply WP.spec_mono (load_tail_spec h hheld hc key _ hkey)
       rintro r ⟨kp, rfl, hkp⟩
       exact ⟨b, hb, by rw [ite_eq_left hm]; exact ⟨kp, rfl, hkp⟩⟩
     · rw [ite_eq_right hm] at hr
@@ -447,7 +441,7 @@ ECDSA signature of `msg`'s SHA-256 under the key pair's scalar, for some
 nonce in [1, n), neither zero. Signing is refused only if the nonce's random
 input cannot be drawn. The nonces, RFC 6979's hedged with that input, are
 outside the functional spec. -/
-theorem p256_ecdsa_sign (ho : P256Order) (h : Runs) (hdrbg : Drbg) (hfill : Fills)
+theorem p256_ecdsa_sign (h : Runs) (hdrbg : Drbg) (hfill : Fills)
     (kp : high.signature.EcdsaKeyPair) (d : Nat) (hkp : EcdsaKeyPairOf kp d) (msg : Slice U8) (e : Nat)
     (he : Sha256E msg e) :
     high.signature.EcdsaKeyPair.sign kp msg ⦃ r =>
@@ -456,14 +450,13 @@ theorem p256_ecdsa_sign (ho : P256Order) (h : Runs) (hdrbg : Drbg) (hfill : Fill
           ecdsaP256Sign d k e = some (beNat (b.val.take 32), beNat (b.val.drop 32)) ∧
           beNat (b.val.take 32) ≠ 0 ∧ beNat (b.val.drop 32) ≠ 0 ⦄) ∧
       ∀ err, r = .Err err → err = .RngFailed ⦄div := by
-  have hG := P256Laws.of_order ho
   obtain ⟨signing, verifying, hkey, hs, -, -, -⟩ := hkp
   obtain ⟨hsd, -, hd, -, -⟩ := hs
   obtain ⟨dd, dg, hhash, hdg', hdg, rfl⟩ := he
   unfold high.signature.EcdsaKeyPair.sign high.signature.Buffer.write high.signature.Buffer.new
   rw [hkey]
   simp only [lift, bind_ok, Array.to_slice_mut]
-  apply WP.dspec_bind (ecdsa_sign_spec hG h hdrbg hfill Sha256Sig signing (by rw [hsd]; exact hd) msg _ dg dd
+  apply WP.dspec_bind (ecdsa_sign_spec h hdrbg hfill Sha256Sig signing (by rw [hsd]; exact hd) msg _ dg dd
     hhash hdg' hdg)
   rintro ⟨r, s1⟩ ⟨hok, herr⟩
   rw [hsd] at hok
@@ -520,15 +513,15 @@ theorem p256_ecdsa_key_pair_public_key (hc : Cached) (kp : high.signature.EcdsaK
 
 /-- Verification with a key pair's public key: ECDSA's verification of
 `msg`'s SHA-256 under its scalar times the generator. -/
-theorem p256_ecdsa_key_pair_verify (ho : P256Order) (h : Runs) (hc : Cached)
+theorem p256_ecdsa_key_pair_verify (h : Runs) (hc : Cached)
     (kp : high.signature.EcdsaKeyPair) (d : Nat) (hkp : EcdsaKeyPairOf kp d) (msg sig : Slice U8) (e : Nat)
     (he : Sha256E msg e) :
     (do
       let pk ← high.signature.EcdsaKeyPair.impl.public_key kp
       high.signature.PublicKey.verify pk msg sig) ⦃ r =>
       ecdsaVerdict (p256Pow p256G d) e sig.val r ⦄ := by
-  have hG := P256Laws.of_order ho
-  obtain ⟨signing, verifying, hkey, -, hvk, -, -⟩ := hkp
+  obtain ⟨signing, verifying, hkey, hs, hvk, -, -⟩ := hkp
+  obtain ⟨-, hd0, hd, -, -⟩ := hs
   obtain ⟨dd, dg, hhash, hdg', hdg, rfl⟩ := he
   unfold high.signature.EcdsaKeyPair.impl.public_key high.signature.PublicKey.verify
   rw [hkey]
@@ -537,7 +530,8 @@ theorem p256_ecdsa_key_pair_verify (ho : P256Order) (h : Runs) (hc : Cached)
   step with widen_buffer_spec 1088#usize kp.point (by decide) as ⟨w, hwl, hwb⟩
   have hvk' : VKey (p256Pow p256G d) v'.public_key := by
     obtain ⟨h1, h2, h3⟩ := hvk; exact ⟨h1, h2, by rw [hv']; exact h3⟩
-  exact WP.spec_mono (ecdsa_verify_spec hG h hc Sha256Sig v' _ hvk' msg sig dg dd hhash hdg' hdg)
+  exact WP.spec_mono (ecdsa_verify_spec h hc Sha256Sig v' _ hvk' (g_mult_order d hd0 hd) msg sig dg dd hhash
+    hdg' hdg)
     fun r hr => verdict_of_outcome hr
 
 /-- A P-256 public key parsed from its encoding: refused unless it is an
@@ -549,11 +543,10 @@ theorem p256_ecdsa_public_key_new (ho : P256Order) (h : Runs) (hheld : Held) (hc
       x962Outcome bytes.val (fun pk => ∀ (msg sig : Slice U8) (e : Nat), Sha256E msg e →
         high.signature.PublicKey.verify pk msg sig ⦃ v =>
           ecdsaVerdict (some (x962Coords bytes.val)) e sig.val v ⦄) r ⦄ := by
-  have hG := P256Laws.of_order ho
   unfold high.signature.PublicKey.new high.signature.verify.ECDSA_P256_SHA256_FIXED
     high.signature.parse_ecdsa_p256_sha256_fixed
   simp only
-  step with ecdsa_vk_from_x962_spec hG h hheld hc bytes as ⟨r, hr⟩
+  step with ecdsa_vk_from_x962_spec h hheld hc bytes as ⟨r, hr⟩
   unfold x962Outcome at hr ⊢
   rcases hb : bytes.val.head? with _ | b0
   · simp only [hb] at hr ⊢; subst hr; simp
@@ -566,7 +559,8 @@ theorem p256_ecdsa_public_key_new (ho : P256Order) (h : Runs) (hheld : Held) (hc
       simp only [WP.spec_ok]
       refine ⟨_, rfl, fun msg sig e he => ?_⟩
       obtain ⟨dd, dg, hhash, hdg', hdg, rfl⟩ := he
-      exact WP.spec_mono (ecdsa_verify_spec hG h hc Sha256Sig vk _ hvk msg sig dg dd hhash hdg' hdg)
+      exact WP.spec_mono (ecdsa_verify_spec h hc Sha256Sig vk _ hvk (ho _ hvk.1 hvk.2.1) msg sig dg dd hhash
+        hdg' hdg)
         fun r hr => verdict_of_outcome hr
     · subst hr; simp
     · subst hr; simp

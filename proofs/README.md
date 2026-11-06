@@ -38,7 +38,7 @@ P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
 - `p256_from_scalar`: a loaded key's scalar is the 32 given bytes, read
   big-endian, refused unless they are 32 bytes and in [1, n);
 - `p256_public_key`: the public key is the X9.62 uncompressed encoding of the
-  scalar times G, for a scalar whose multiple is a finite point on the curve;
+  scalar times G, for a scalar in [1, n), as every key's is;
 - `p256_agree`: a peer key is refused unless it is a 65-byte uncompressed
   point whose coordinates are below p and on the curve, and otherwise the
   secret is the 32 big-endian bytes of the x-coordinate of the scalar times
@@ -47,9 +47,12 @@ P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
 
 `p256Pow` is HOL Light's `group_pow p256_group`, defined as HOL Light does,
 and `Rind/P256Group.lean` proves it is multiplication in Mathlib's group of
-points on the curve. That a scalar in [1, n) times a point on the curve is a
-finite point on the curve, so the public key's hypothesis always holds and the
-fault never happens, needs the point's order, which these theorems do not
+points on the curve. `Rind/P256Multiples.lean` proves G's order n: the kernel
+computes (n - 1)·G by doubling and adding, checking each step's coordinates
+against the group law, and finds -G, and `Rind/N256Prime.lean` proves n
+prime. So a scalar in [1, n) times G is a finite point. That the same holds
+for the peer's point, so the fault never happens, needs every point's order,
+which follows from the group having n points, a count these theorems do not
 prove.
 
 P-256 ECDSA with SHA-256 and fixed-length signatures on aarch64, from the
@@ -80,10 +83,12 @@ signature API's `EcdsaKeyPair` and `PublicKey` to s2n-bignum's routines, in
 over `p256Pow` and `p256Add`. `Rind/P256Multiples.lean` proves, from
 `Rind/P256Group.lean`'s group, the laws by which the twin multiplication's
 windowed sum is e/s·G + r/s·Q, and `Rind/N256Prime.lean` that n is prime, so
-every nonzero scalar has an inverse. The laws need one more fact, which the
-theorems take as `P256Order`: every finite point on the curve has order n, as
-HOL Light's `P256_GROUP_ELEMENT_ORDER` proves from the group's size, which
-Mathlib cannot count yet. The message's SHA-256 is the digest rind's
+every nonzero scalar has an inverse. The sum also needs Q's order n. A key
+pair's Q is its scalar times G, whose order follows from G's, but a parsed
+public key's is any point on the curve, so `p256_ecdsa_public_key_new` takes
+`P256Order`: every finite point on the curve has order n, as HOL Light's
+`P256_GROUP_ELEMENT_ORDER` proves from the group's size, which Mathlib cannot
+count yet. Key generation and signing need only G's order. The message's SHA-256 is the digest rind's
 `Sha256` impl computes (`Sha256E`), which `sha256_hash` proves is FIPS
 180-4's in a module these cannot import, as `Rind/HashSpec.lean` and
 `Rind/Sha2.lean` share names. Signing draws nonces until r and s are both
@@ -93,9 +98,9 @@ with 16 bytes from the system source; its update takes a slice of borrowed
 slices, which Aeneas cannot translate, so it is opaque, and the theorems
 assume `Drbg`: it seeds and draws without panicking, and a draw never fails.
 They also assume `Fills`, that the system source returns, `Held`, that the
-entry guard holds, and `Cached`: a verifying key's lock-free cache of 17P to
-31P, whose atomics Aeneas cannot translate, is built from the key's own
-multiples.
+entry guard holds, and `Cached`: a verifying key's lock-free caches of P to
+15P and 17P to 31P, whose atomics Aeneas cannot translate, are built from the
+key's own point.
 
 ChaCha20 QUIC header protection on x86_64 and aarch64, from
 `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:

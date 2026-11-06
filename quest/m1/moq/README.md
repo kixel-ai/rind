@@ -80,4 +80,5 @@ RustCrypto dependency.
 
 ## Required
 
+- [MoQ's QUIC packet path is as fast as rind can make it](/quest/m1/moq/quic-path.md) - packet AES-GCM, header protection, dispatch, and handshakes, in rind and moq-quic
 - [MoQ runs on rind](/quest/m1/moq/moq-on-rind.md) - waiting on MoQ to finish its migration

@@ -218,11 +218,15 @@ fn aead() {
 
 #[test]
 fn cipher() {
-    use rind::cipher::{AES_128, AES_256, Aes, AesCtr, ChaCha20};
+    use rind::cipher::{
+        AES_128, AES_256, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, ChaCha20,
+    };
     for (algorithm, len) in [(&AES_128, 16), (&AES_256, 32)] {
         let key = &[0xffu8; 32][..len];
         check_zeroed_on_drop(Box::pin(Aes::new(algorithm, key).unwrap()));
         check_zeroed_on_drop(Box::pin(AesCtr::new(algorithm, key, 128).unwrap()));
+        check_zeroed_on_drop(Box::pin(AesCbcEncryptingKey::new(algorithm, key).unwrap()));
+        check_zeroed_on_drop(Box::pin(AesCbcDecryptingKey::new(algorithm, key).unwrap()));
     }
     check_zeroed_on_drop(Box::pin(ChaCha20::new(&[0xffu8; 32])));
 }

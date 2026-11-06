@@ -120,10 +120,12 @@ protocols with their own integrity protection need. ring has none.
 |---|---|
 | `UnboundCipherKey::new(&AES_128, key)` and `EncryptingKey::ctr` or `DecryptingKey::ctr` | `AesCtr::new(&AES_128, key, 128)?`, whose last argument is how many of the counter block's rightmost bits count, as WebCrypto's `length` |
 | `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))`, `decrypt` | `apply_keystream(&iv, in_out)?`, with `iv` the `[u8; 16]` counter block |
+| `PaddedBlockEncryptingKey::cbc_pkcs7(key)` and `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))` | `AesCbcEncryptingKey::new(&AES_128, key)?` and `encrypt(&iv, in_out)`, which cannot fail |
+| `PaddedBlockDecryptingKey::cbc_pkcs7(key)` and `decrypt(in_out, DecryptionContext::Iv128(iv))` | `AesCbcDecryptingKey::new(&AES_128, key)?` and `decrypt(&iv, in_out)?`, which clears `in_out` if the padding is malformed |
+| `EncryptingKey::cbc`, `DecryptingKey::cbc`, unpadded | `encrypt_blocks(&iv, in_out)?` and `decrypt_blocks(&iv, in_out)?` on the keys above |
 | `AES_128`, `AES_256` | the same |
-| `EncryptingKey::encrypt`, which picks a random IV | none: pick the nonce with `rand::fill` |
+| `EncryptingKey::encrypt` and `PaddedBlockEncryptingKey::encrypt`, which pick a random IV | none: pick the nonce or IV with `rand::fill` |
 | `AES_192` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |
-| The CBC mode, `PaddedBlockEncryptingKey`, `PaddedBlockDecryptingKey` | none; [AES-CBC](quest/m2/adoption/webcrypto/aes-cbc.md) |
 | `DES_EDE3_FOR_LEGACY_USE_ONLY` and the other DES, the ECB, CFB, and OFB modes, `StreamingEncryptingKey`, `StreamingDecryptingKey` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | none | `Aes::new(&alg, key)?.encrypt_block(block)`, one AES block |
 | none | `ChaCha20::new(&key).apply_keystream(nonce, counter, in_out)?` |
@@ -516,8 +518,8 @@ No new adapter is planned (maintainer, 2026-10-31):
   aws-lc-rs, so an adapter would carry its own port of quinn's
   `crypto::rustls` session. noq, quinn's fork, already runs on rind-rustls.
 - **webrtc**: `rtc_crypto::RTCCryptoProvider` covers all of its crypto, and
-  rind lacks only MD5 (for TURN's long-term credentials) and the AES-CCM and
-  AES-CBC DTLS suites, but no consumer asks for it.
+  rind lacks only MD5 (for TURN's long-term credentials) and the AES-CCM
+  DTLS suites, but no consumer asks for it.
 
 Nor are these worth a crate:
 
