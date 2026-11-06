@@ -226,8 +226,8 @@ ring has no `kem`.
 the latter, with its point compressed or not, and
 `agreement::PublicKey::new` decompresses a bare point. It takes an RSA key as
 PKCS#1 or as a `SubjectPublicKeyInfo`, as aws-lc-rs does, but refuses the
-latter's `rsaEncryption` with parameters other than `NULL` or none, which
-aws-lc ignores, and an RSA key's bytes are always its PKCS#1 DER.
+latter's algorithm (`rsaEncryption`, `id-RSAES-OAEP`, or `id-ea-rsa`) with
+parameters other than `NULL` or none, which aws-lc ignores, and an RSA key's bytes are always its PKCS#1 DER.
 It also refuses an Ed25519 key of small order, as libsodium does, which
 aws-lc-rs and ring take: with the identity as the key, `R` the identity and
 `S = 0` verify any message. No honest key has small order.

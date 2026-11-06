@@ -14,7 +14,7 @@ impl<'a> Key<'a> {
     ///
     /// - ensures the version is 0 if the publicKey field is absent,
     ///   or the version is 1 if the publicKey field is present.
-    /// - ensures the key algorithm is `algorithm`,
+    /// - ensures the key algorithm is one of `algorithms`,
     /// - ensures the parameters are `parameters`.
     ///
     /// Any `attributes` are skipped, as aws-lc and ring do.
@@ -25,7 +25,7 @@ impl<'a> Key<'a> {
     /// against the public key calculated from the private key.
     pub(crate) fn decode(
         slice: &'a [u8],
-        algorithm: &asn1::ObjectId,
+        algorithms: &[&asn1::ObjectId],
         parameters: Option<asn1::Any<'_>>,
     ) -> Result<Self, Error> {
         let oak = pkix::OneAsymmetricKey::from_bytes(slice).map_err(KeyFormatError::Asn1)?;
@@ -36,7 +36,7 @@ impl<'a> Key<'a> {
             _ => return Err(KeyFormatError::UnsupportedPkcs8Version.into()),
         };
 
-        if oak.privateKeyAlgorithm.algorithm != *algorithm {
+        if !algorithms.contains(&&oak.privateKeyAlgorithm.algorithm) {
             return Err(KeyFormatError::MismatchedPkcs8Algorithm.into());
         }
 
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn round_trip_ed25519_v2() {
         let bytes = include_bytes!("asn1/testdata/ed25519-p8v2.bin");
-        let k = Key::decode(bytes, &oid::id_ed25519, None).unwrap();
+        let k = Key::decode(bytes, &[&oid::id_ed25519], None).unwrap();
 
         assert_eq!(k.private_key().len(), 34);
         assert_eq!(k.public_key().unwrap().len(), 32);
@@ -188,7 +188,7 @@ mod tests {
             ),
         ] {
             let bytes = ed25519_with(version, &tail);
-            let k = Key::decode(&bytes, &oid::id_ed25519, None).unwrap();
+            let k = Key::decode(&bytes, &[&oid::id_ed25519], None).unwrap();
             assert_eq!(k.private_key().len(), 34);
             assert_eq!(k.public_key(), (version == 1).then_some(&public_key[..]));
         }
@@ -209,7 +209,7 @@ mod tests {
         ] {
             assert_eq!(
                 Some(KeyFormatError::Asn1(error).into()),
-                Key::decode(&ed25519_with(version, &tail), &oid::id_ed25519, None).err(),
+                Key::decode(&ed25519_with(version, &tail), &[&oid::id_ed25519], None).err(),
                 "{tail:02x?}",
             );
         }
@@ -221,7 +221,7 @@ mod tests {
         bytes[4] = 0x03;
         assert_eq!(
             Some(KeyFormatError::Asn1(asn1::Error::UnhandledEnumValue).into()),
-            Key::decode(&bytes, &oid::id_ed25519, None).err(),
+            Key::decode(&bytes, &[&oid::id_ed25519], None).err(),
         );
     }
 
@@ -231,7 +231,7 @@ mod tests {
         bytes[4] = 0x00;
         assert_eq!(
             Some(KeyFormatError::UnsupportedPkcs8Version.into()),
-            Key::decode(&bytes, &oid::id_ed25519, None).err(),
+            Key::decode(&bytes, &[&oid::id_ed25519], None).err(),
         );
     }
 }

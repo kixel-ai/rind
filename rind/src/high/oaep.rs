@@ -93,7 +93,8 @@ impl DecryptingKey {
         Ok(Self::new(algorithm, rsa::SigningKey::generate(size)?))
     }
 
-    /// Loads a PKCS#8 v1 `rsaEncryption` private key for `algorithm`.
+    /// Loads a PKCS#8 v1 RSA private key for `algorithm`, named
+    /// `rsaEncryption`, `id-RSAES-OAEP`, or `id-ea-rsa`.
     pub fn from_pkcs8(algorithm: &'static OaepAlgorithm, der: &[u8]) -> Result<Self, Error> {
         Ok(Self::new(algorithm, rsa::SigningKey::from_pkcs8_der(der)?))
     }
