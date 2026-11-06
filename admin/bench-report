@@ -8,7 +8,7 @@ Usage:
   admin/bench-report summary DIR
 
 `collect` copies one commit to each host in turn, holds the host with
-`quest gate --host`, builds rind-bench there in the commit's Nix dev shell with
+`quest gate --host` and any lease it has, builds rind-bench there in the commit's Nix dev shell with
 its pinned toolchain, and times every operation in OPERATIONS for every
 library that offers it, then measures each library's build cost with
 admin/build-cost. It runs here for the host this is, and over ssh for the
@@ -52,12 +52,29 @@ import time
 import tomllib
 
 # The report's hosts, in the order they run. `jobs` caps the build: nixos2 is
-# a shared 15 GB machine that more jobs run out of memory.
+# a shared 15 GB machine that more jobs run out of memory. `ssh` is the
+# destination where it isn't the name, and `note` describes the machine in the
+# report. Other work on a host with a `lease` holds that lock file with
+# flock(1) for its whole run, so collect holds it too, or skips the host as
+# busy, and leaves no copy, build, or download cache behind.
+VPS_NOTE = "OVH VPS in {}, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack."
 HOSTS = {
     "nixos": {"jobs": 16},
     "desktop": {"jobs": 12},
     "nixos2": {"jobs": 3},
     "kixtop": {"jobs": 4},
+    "ovh-iad": {
+        "jobs": 4,
+        "ssh": "root@vps-bcb7229a.vps.ovh.us",
+        "lease": "/run/lock/moq-perf.lock",
+        "note": VPS_NOTE.format("Virginia"),
+    },
+    "ovh-sea": {
+        "jobs": 4,
+        "ssh": "root@vps-39a0ff2a.vps.ovh.us",
+        "lease": "/run/lock/moq-perf.lock",
+        "note": VPS_NOTE.format("Oregon"),
+    },
 }
 
 # A host is busy when other work keeps more than this share of its logical
@@ -166,6 +183,15 @@ LIBRARIES = {
     "openssl": "openssl",
 }
 
+# The CPU features by architecture, as rind-cpuid names them, without which a
+# library panics on first use rather than run a slower path.
+REQUIRED = {
+    "graviola": {
+        "x86_64": ["aes", "pclmulqdq", "bmi1", "adx", "avx", "avx2"],
+        "aarch64": ["neon", "aes", "pmull", "sha2"],
+    }
+}
+
 # The crates whose versions a result records, by library.
 CRATES = {
     "rind": ["rind", "rind-rustls"],
@@ -211,9 +237,14 @@ def fail(message):
     sys.exit(f"bench-report: {message}")
 
 
-def operation_regex():
-    """A criterion filter matching exactly the report's operations."""
-    ops = "|".join(re.escape(op).replace(re.escape("{lib}"), "[^/]+") for op in OPERATIONS)
+def operation_regex(refused=()):
+    """A criterion filter matching exactly the report's operations, without
+    the libraries in `refused`."""
+    lib = "[^/]+"
+    if refused:
+        # The regex crate has no lookahead, so name the rest.
+        lib = "(" + "|".join(re.escape(row) for row, name in LIBRARIES.items() if name not in refused) + ")"
+    ops = "|".join(re.escape(op).replace(re.escape("{lib}"), lib) for op in OPERATIONS)
     return f"^({ops})$"
 
 
@@ -257,8 +288,9 @@ def cpu_times():
             fail("host_statistics failed")
         user, system, idle, nice = ticks
         return user + system + nice, user + system + idle + nice
+    # The first eight fields, since user and nice already count guest time.
     with open("/proc/stat") as f:
-        fields = [int(x) for x in f.readline().split()[1:]]
+        fields = [int(x) for x in f.readline().split()[1:9]]
     idle = fields[3] + fields[4]
     return sum(fields) - idle, sum(fields)
 
@@ -372,6 +404,13 @@ def run(args):
     subprocess.run(bench + ["--no-run"], env=env, check=True)
     # The CPU features rind reads, which pick its paths on this host.
     result["rind_cpu"] = json.loads(output(cargo + ["run", "-q", "--release", "-p", "rind-cpuid"], env))
+    # Each library this CPU lacks a required feature for, with the features.
+    cpuid = result["rind_cpu"]["cpuid"]
+    result["refused"] = {
+        lib: missing
+        for lib, features in REQUIRED.items()
+        if (missing := [f for f in features.get(host_arch(result), []) if not cpuid[f]])
+    }
 
     try:
         idle_before_run = check_idle("before the benchmarks")
@@ -381,7 +420,7 @@ def run(args):
 
     criterion_dir = os.path.join(env["CARGO_TARGET_DIR"], "criterion")
     shutil.rmtree(criterion_dir, ignore_errors=True)
-    criterion_args = CRITERION_ARGS + [operation_regex()]
+    criterion_args = CRITERION_ARGS + [operation_regex(result["refused"])]
     wall0 = time.monotonic()
     ticks0 = cpu_times()
     ours0 = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -431,17 +470,19 @@ def run(args):
         criterion_args=criterion_args,
         load=load,
         results=results,
-        build_cost=build_cost(env, args.jobs),
+        build_cost=build_cost(env, args.jobs, result["refused"]),
     )
 
 
-def build_cost(env, jobs):
+def build_cost(env, jobs, refused):
     """admin/build-cost's measurements on this host, after the benchmarks so
-    that neither skews the other's times."""
+    that neither skews the other's times, without the builds of libraries in
+    `refused`, whose binaries it runs."""
     env = dict(env, CARGO_BUILD_JOBS=str(jobs))
     started = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    builds = [b for b in BUILDS if b not in refused] if refused else []
     proc = subprocess.run(
-        [sys.executable, os.path.join(ROOT, "admin", "build-cost")], env=env, capture_output=True, text=True
+        [sys.executable, os.path.join(ROOT, "admin", "build-cost"), *builds], env=env, capture_output=True, text=True
     )
     if proc.returncode != 0:
         lines = proc.stderr.strip().splitlines() or ["no output"]
@@ -457,11 +498,46 @@ def is_local(host):
     return host == socket.gethostname().split(".")[0]
 
 
+def ssh(host):
+    # ServerAlive ends a session whose link died, which would otherwise hang
+    # collect.
+    options = ["BatchMode=yes", "ConnectTimeout=10", "ServerAliveInterval=15", "ServerAliveCountMax=4"]
+    return ["ssh", *(arg for o in options for arg in ("-o", o)), HOSTS[host].get("ssh", host)]
+
+
 def on_host(host, script, **kwargs):
     """Runs a shell script on `host`, here or over ssh."""
     if is_local(host):
         return subprocess.run(["sh", "-c", script], **kwargs)
-    return subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, script], **kwargs)
+    return subprocess.run(ssh(host) + [script], **kwargs)
+
+
+# The host script's exit status when another run holds the host's lease, and
+# when it could not copy the commit.
+LEASE_HELD = 73
+COPY_FAILED = 74
+
+
+def host_script(host, work, cmd):
+    """The shell script that copies the commit from stdin into a directory of
+    its own under `work`, runs `cmd` there with its output on stderr, prints
+    the result, and removes the copy. On a leased host it holds the lease
+    throughout, and removes all of `work` before letting go."""
+    q = shlex.quote
+    w = q(work)
+    # `cmd` runs in a subshell, since `work` may be relative to the start.
+    script = (
+        f'mkdir -p {w} && src=$(mktemp -d {w}/src.XXXXXX) && tar -x -C "$src" || exit {COPY_FAILED}\n'
+        f'(cd "$src" && {cmd}) </dev/null >&2\n'
+        'cat "$src/result.json"; code=$?; rm -rf "$src"; exit $code\n'
+    )
+    if "lease" not in HOSTS[host]:
+        return script
+    # The script's processes inherit the descriptor holding the lock. Python
+    # closes it in its own children, but subprocess.run kills its child when
+    # Python fails, so no child outlives the lease.
+    lock = f"exec 9>{q(HOSTS[host]['lease'])} && {{ flock -n -E {LEASE_HELD} 9 || exit; }}\n"
+    return lock + f"trap 'rm -rf {w}' EXIT\n" + script
 
 
 def collect_host(host, commit, out_dir):
@@ -479,40 +555,36 @@ def collect_host(host, commit, out_dir):
     if probe.returncode != 0:
         return record("unreachable", probe.stderr.strip())
 
-    # A fresh copy of the commit for this collection alone, so another one on
-    # the same host cannot replace it mid-run; the build directory is shared.
+    # Each collection extracts its own copy of the commit, so another on the
+    # same host cannot replace it mid-run; the build directory is shared.
     archive = subprocess.run(["git", "-C", ROOT, "archive", "--format=tar", commit], capture_output=True, check=True)
-    copy = on_host(
-        host,
-        f'mkdir -p {q(work)} && src=$(mktemp -d {q(work)}/src.XXXXXX) && tar -x -C "$src" && echo "$src"',
-        input=archive.stdout,
-        capture_output=True,
+    cmd = (
+        f'nix develop "path:$PWD" --command python3 admin/bench-report run '
+        f"--host {q(host)} --commit {q(commit)} --jobs {HOSTS[host]['jobs']} "
+        f"--target-dir ../target --out result.json"
     )
-    if copy.returncode != 0:
-        return record("failed", "could not copy the commit")
-    src = q(copy.stdout.decode().strip())
-
     # Holding the host keeps every other gated command, such as another
     # collection's run, off it until the benchmarks and build costs finish.
     # The gate is this checkout's quest, so a commit pinning an older one
-    # still runs, in its own dev shell. A macOS ssh session runs no login
-    # shell, which is what puts Nix on PATH.
+    # still runs, in its own dev shell.
     with open(os.path.join(ROOT, "flake.lock")) as f:
         quest = json.load(f)["nodes"]["quest"]["locked"]
-    on_host(
-        host,
-        f'export PATH="$PATH:/nix/var/nix/profiles/default/bin" && cd {src} && '
-        f"nix shell github:{quest['owner']}/{quest['repo']}/{quest['rev']} --command quest gate --host "
-        f'nix develop "path:$PWD" --command python3 admin/bench-report run '
-        f"--host {q(host)} --commit {q(commit)} --jobs {HOSTS[host]['jobs']} "
-        f"--target-dir ../target --out result.json",
-    )
-    fetched = on_host(host, f"cat {src}/result.json; code=$?; rm -rf {src}; exit $code", capture_output=True)
-    if fetched.returncode != 0:
+    cmd = f"nix shell github:{quest['owner']}/{quest['repo']}/{quest['rev']} --command quest gate --host {cmd}"
+    if "lease" in HOSTS[host]:
+        # Crate downloads too, so that removing the work directory leaves nothing.
+        cmd = f'CARGO_HOME="$PWD/../cargo" {cmd}'
+    # A macOS ssh session runs no login shell, which is what puts Nix on PATH.
+    cmd = f'export PATH="$PATH:/nix/var/nix/profiles/default/bin" && {cmd}'
+    ran = on_host(host, host_script(host, work, cmd), input=archive.stdout, stdout=subprocess.PIPE)
+    if ran.returncode == LEASE_HELD:
+        return record("busy", "another run holds its lease")
+    if ran.returncode == COPY_FAILED:
+        return record("failed", "could not copy the commit")
+    if ran.returncode != 0:
         return record("failed", "the run wrote no result; see its output above")
     with open(out, "wb") as f:
-        f.write(fetched.stdout)
-    status = json.loads(fetched.stdout)["status"]
+        f.write(ran.stdout)
+    status = json.loads(ran.stdout)["status"]
     print(f"bench-report: {host}: {status}", file=sys.stderr)
 
 
@@ -1382,7 +1454,8 @@ def report(hosts, tiers, verified, gaps):
     files = {}
     shown = [name for name in HOSTS if name in hosts]
     missing = [f"`{name}`" for name in HOSTS if name not in hosts]
-    count = ["no", "one", "two", "three", "four"][len(shown)] if len(shown) <= 4 else str(len(shown))
+    words = ["no", "one", "two", "three", "four", "five", "six"]
+    count = words[len(shown)] if len(shown) < len(words) else str(len(shown))
     md = [
         "# Benchmarks",
         "",
@@ -1434,7 +1507,14 @@ def report(hosts, tiers, verified, gaps):
             "",
             f"Measured {measured(h)}, on {h['os']} with {h['toolchain']['rustc']}.",
             "",
+            *([HOSTS[name]["note"], ""] if "note" in HOSTS[name] else []),
             *([f"Not timed on `{name}`: {', '.join(untimed)}.", ""] if untimed else []),
+            *(
+                f"{COLUMNS[lib]} isn't timed on `{name}`: it requires {and_list([f.upper() for f in missing])}, "
+                "which this CPU lacks."
+                for lib, missing in h.get("refused", {}).items()
+            ),
+            *([""] if h.get("refused") else []),
             *picture(name, f"Times on {name}"),
             "",
             "<details>",

@@ -222,6 +222,12 @@ impl EncryptingKey {
     pub fn max_message_len(&self) -> usize {
         (self.algorithm.max_message_len)(self.key.modulus_len_bits().div_ceil(8))
     }
+
+    /// Encodes the key as a `SubjectPublicKeyInfo` naming `rsaEncryption`
+    /// with `NULL` parameters.
+    pub fn to_spki(&self) -> Spki {
+        Spki(Buffer::encode(|output| self.key.to_spki_der(output)))
+    }
 }
 
 impl AsRef<[u8]> for EncryptingKey {
@@ -308,6 +314,7 @@ mod tests {
                     EncryptingKey::new(algorithm, spki.as_ref()).unwrap(),
                 ] {
                     assert_eq!(public.as_ref(), key.public_key().as_ref());
+                    assert_eq!(public.to_spki().as_ref(), spki.as_ref());
                     let max = public.max_message_len();
                     for (len, label) in [(0, &b""[..]), (1, b"label"), (max, b"")] {
                         let message = vec![0xa5; len];

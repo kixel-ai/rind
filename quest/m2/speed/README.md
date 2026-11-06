@@ -45,13 +45,11 @@ settled; don't ask them again. The chosen option is marked ✅.
   and `render` regenerate from the nightly bench, show each path's ratio to
   the fastest baseline; the nightly job's summary keeps the live numbers ✅
   (maintainer, 2026-11-03, while planning the benchmark report:
-  moved from README's Algorithms table, which keeps only the sources) /
-  README's Algorithms table / nightly summary only.
+  moved from the Algorithms table, now in `ALGORITHMS.md`, which keeps only the sources) /
+  the Algorithms table / nightly summary only.
 
 ## Required
 
 - [Short hashes through digest::Context match the one-shot](/quest/m2/speed/digest-context-setup.md) - the context's setup and reset cost
 - [Ed25519 verification without ADX is level with RustCrypto](/quest/m2/speed/ed25519-no-adx.md) - cloud VPSes that hide ADX
-- [Benchmark collections on one host can't clobber each other](/quest/m2/speed/bench-host-lock.md) - a per-host lock for `admin/bench-report collect`
 - [An x86_64 bench tier without AVX-512 IFMA](/quest/m2/speed/bench-no-ifma.md) - RSA A/Bs that measure the AVX2 path
-- [Confirm x86_64 RSA-2048 signing level in the report](/quest/m2/speed/x86-rsa2048-sign.md) - a report refresh shows 2048-bit signing, and the RSA certificate handshake with it, level on x86_64, and drops its gap

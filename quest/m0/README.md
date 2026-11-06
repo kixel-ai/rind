@@ -12,4 +12,3 @@ nothing is urgent.
 - [Confine release credentials to publishing](/quest/m0/confine-release-credentials.md) -
   keep release credentials behind the protected publish path and replace the
   long-lived crates.io token
-- [ctgrind passes on main again](/quest/m0/ctgrind-main.md) - the nightly constant-time gate, failing since 2026-11-04

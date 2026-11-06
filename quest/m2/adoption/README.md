@@ -52,8 +52,9 @@ don't ask again (✅ is the chosen option):
   [#375](https://github.com/moq-dev/rind/pull/375), which has the sizes): it
   is already smaller than aws-lc-rs's provider.
 - Whatever these consumers need from rind itself is planned now: the
-  [WebCrypto set](/quest/m2/adoption/webcrypto/README.md), platform coverage,
-  and [RSA-2048 speed](/quest/m2/speed/x86-rsa2048-sign.md) in the speed epic.
+  [WebCrypto set](/quest/m2/adoption/webcrypto/README.md) and platform
+  coverage. RSA-2048 signing, which JWT's RS256 needs, is level with the
+  fastest library on x86_64 in [BENCHMARKS.md](/BENCHMARKS.md).
 
 ## Required
 
