@@ -591,8 +591,8 @@ fn load_be(block: &[u8; 16]) -> __m128i {
 ///
 /// It builds the block in registers from overlapping loads, branching on the
 /// length alone. Copying to a zeroed block instead calls `memcpy`, whose
-/// narrow stores then stall the block's 16-byte load: about 12 ns, which a
-/// short message under a partial-block AAD, such as QUIC's, paid in full.
+/// narrow stores then stall the block's 16-byte load, which nearly doubled a
+/// short seal's time on Xeons under a partial-block AAD, such as QUIC's.
 #[inline]
 pub(crate) fn load_partial(bytes: &[u8]) -> __m128i {
     let n = bytes.len();
