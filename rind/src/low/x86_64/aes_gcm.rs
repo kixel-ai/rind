@@ -55,15 +55,18 @@ fn vale<'a, const ENC: bool>(
     if !(u32::try_from(aad.len()).is_ok() && u32::try_from(len).is_ok()) {
         return None;
     }
+    let (vaes_avx2_below, avx512_below) = if ENC {
+        (VAES_AVX2_VALE_SEAL_BELOW, AVX512_VALE_SEAL_BELOW)
+    } else {
+        (VAES_AVX2_VALE_OPEN_BELOW, AVX512_VALE_OPEN_BELOW)
+    };
     match (key, table) {
         (AesKey::Hw(hw_key), GhashTable::Avx(_, kernel)) => Some((hw_key, kernel)),
-        (AesKey::Hw(hw_key), GhashTable::VaesAvx2(.., kernel))
-            if len < if ENC { VAES_AVX2_VALE_SEAL_BELOW } else { VAES_AVX2_VALE_OPEN_BELOW } =>
-        {
+        (AesKey::Hw(hw_key), GhashTable::VaesAvx2(.., kernel)) if len < vaes_avx2_below => {
             Some((hw_key, kernel))
         }
         (AesKey::Hw(hw_key), GhashTable::Avx512(GhashTableAvx512 { vale, .. }))
-            if len < if ENC { AVX512_VALE_SEAL_BELOW } else { AVX512_VALE_OPEN_BELOW } =>
+            if len < avx512_below =>
         {
             Some((hw_key, vale))
         }
