@@ -76,7 +76,7 @@ impl Prk {
         let _entry = Entry::new_secret();
         let mut block: Option<Digest> = None;
         for (counter, chunk) in (1..=255u8).zip(out.chunks_mut(self.0.algorithm().tag_len())) {
-            let mut ctx = hmac::Context::with_key(&self.0);
+            let mut ctx = self.0.start();
             if let Some(block) = &block {
                 ctx.update(block.as_ref());
             }

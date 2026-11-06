@@ -65,7 +65,7 @@ impl State {
 }
 
 struct Hashing<C: Variant> {
-    ops: ZeroableRef<Ops<C>>,
+    ops: &'static Ops<C>,
     context: C,
 }
 
@@ -77,24 +77,22 @@ struct Ops<C> {
 impl<C: Variant> Hashing<C> {
     fn start() -> State {
         C::state(Self {
-            ops: ZeroableRef::new(
-                const {
-                    &Ops {
-                        update: C::update,
-                        finish: C::finish_reset,
-                    }
-                },
-            ),
+            ops: const {
+                &Ops {
+                    update: C::update,
+                    finish: C::finish_reset,
+                }
+            },
             context: C::new(),
         })
     }
 
     fn update(&mut self, data: &[u8]) {
-        (self.ops.get().update)(&mut self.context, data)
+        (self.ops.update)(&mut self.context, data)
     }
 
     fn finish(&mut self) -> Digest {
-        (self.ops.get().finish)(&mut self.context)
+        (self.ops.finish)(&mut self.context)
     }
 }
 
@@ -119,7 +117,7 @@ trait Variant: HashContext + 'static {
 
 ```
 
-The model departs from the Rust in three ways, and adds no axiom:
+The model departs from the Rust in two ways, and adds no axiom:
 
 - `Ops<C>` holds nothing, and `Hashing`'s methods call `C`'s `HashContext`
   `update` and `Variant` `finish_reset` directly: `Ops` is private to
@@ -128,10 +126,6 @@ The model departs from the Rust in three ways, and adds no axiom:
 - `Algorithm`'s `hash` and `start` are functions of which static it is,
   as `Rind.X86_64.DigestAlgorithm` models `Algorithm`, each the function that
   static holds there.
-- `ZeroableRef<T>` is its `T`, as `Rind.X86_64.Dispatch` models it.
-
-Drops are not modelled, as everywhere in the translation; here they wipe a
-context's state.
 -/
 
 namespace rind.x86_64

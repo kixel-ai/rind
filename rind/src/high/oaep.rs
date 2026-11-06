@@ -255,7 +255,7 @@ impl fmt::Debug for Ciphertext {
     }
 }
 
-/// A decrypted message, wiped on drop.
+/// A decrypted message.
 pub struct Plaintext(Buffer<MAX_PUBLIC_MODULUS_BYTES>);
 
 impl AsRef<[u8]> for Plaintext {
@@ -267,12 +267,6 @@ impl AsRef<[u8]> for Plaintext {
 impl fmt::Debug for Plaintext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Plaintext").finish_non_exhaustive()
-    }
-}
-
-impl Drop for Plaintext {
-    fn drop(&mut self) {
-        low::zeroise_value(&mut self.0);
     }
 }
 

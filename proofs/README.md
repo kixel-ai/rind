@@ -321,5 +321,5 @@ Beyond Lean's kernel:
   s2n-bignum's and Vale's own proofs.
 - That rind's inline assembly is s2n-bignum's, aws-lc's, and Vale's object
   code, as for `benchmarks/verified.toml`'s other entries.
-- The translation ignores drops, which here wipe keys and hash contexts and
+- The translation ignores drops, which here wipe keys and keyed state and
   restore CPU state, and computes nothing an output depends on.

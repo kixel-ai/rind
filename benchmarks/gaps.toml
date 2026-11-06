@@ -16,7 +16,7 @@
 [[gap]]
 operations = ["sha256/64B"]
 on = ["nixos"]
-reason = "Narrowed by [#352](https://github.com/moq-dev/rind/pull/352): on the SHA extensions the last block is padded and the digest written in registers, and `digest::Context::finish` takes `&mut self`, so it no longer copies the context. Most of the rest was the context's wipe on drop, which a build without it measured level with RustCrypto, and [#394](https://github.com/moq-dev/rind/pull/394) removed it after this data. The next refresh rechecks it."
+reason = "Narrowed by [#352](https://github.com/moq-dev/rind/pull/352): on the SHA extensions the last block is padded and the digest written in registers, and `digest::Context::finish` takes `&mut self`, so it no longer copies the context. Closed by [#394](https://github.com/moq-dev/rind/pull/394), after this data, which drops the context's wipe on drop: on GitHub's AMD EPYC 9V45 runner it measured rind at 0.84× main's time at 64 B and 0.86× RustCrypto's. The next refresh drops this entry."
 
 [[gap]]
 operations = ["rsa2048-pkcs1-sha256-sign"]
@@ -32,6 +32,11 @@ reason = "Noise: other work kept 5 CPUs busy during this run. The run before it 
 operations = ["ed25519-verify"]
 on = ["ovh-iad", "ovh-sea"]
 reason = "These VPSes' virtual CPUs hide ADX, as CPUs older than Broadwell and Zen lack it, and there rind runs s2n-bignum's verified `_alt` routines, which RustCrypto's AVX2 backend beats."
+
+[[gap]]
+operations = ["ed25519-sign"]
+on = ["ovh-iad"]
+reason = "Noise from the VPS's other tenants: `ovh-sea`, the same virtual CPU, measured 0.92× aws-lc-rs's time, and no dedicated host shows it. The next refresh rechecks it."
 
 [[gap]]
 operations = ["p256-ecdsa-verify/*"]

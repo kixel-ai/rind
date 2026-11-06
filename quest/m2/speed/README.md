@@ -50,6 +50,5 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [Only keys are wiped on drop](/quest/m2/speed/non-key-wipes.md) - per-call state stops paying for wipes
 - [Short hashes through digest::Context match the one-shot](/quest/m2/speed/digest-context-setup.md) - the context's setup and reset cost
 - [An x86_64 bench tier without AVX-512 IFMA](/quest/m2/speed/bench-no-ifma.md) - RSA A/Bs that measure the AVX2 path

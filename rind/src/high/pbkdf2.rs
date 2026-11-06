@@ -112,7 +112,7 @@ impl Secret {
         len: usize,
         mut sink: impl FnMut(usize, &[u8]),
     ) {
-        let mut salted = hmac::Context::with_key(&self.0);
+        let mut salted = self.0.start();
         salted.update(salt);
 
         let hash_len = self.0.algorithm().tag_len();

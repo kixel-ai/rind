@@ -23,7 +23,6 @@ std = ["alloc"]
 [dependencies]
 rind = { version = "0.1.13", path = "../rind" }
 untrusted = "0.9"
-zeroize = "1.9"
 
 [dev-dependencies]
 aws-lc-rs = { version = "1.16", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
