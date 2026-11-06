@@ -56,5 +56,4 @@ dual RSAZ only when the runner has IFMA.
 
 ## Required
 
-- [Short hashes through digest::Context match the one-shot](/quest/m2/speed/digest-context-setup.md) - the context's setup and reset cost
 - [Ed25519 verification without ADX is level with RustCrypto](/quest/m2/speed/ed25519-no-adx.md) - cloud VPSes that hide ADX

@@ -215,7 +215,7 @@ impl<C: Variant> Hashing<C> {
                     finish: C::finish_reset,
                 }
             },
-            context: C::new(),
+            context: C::NEW,
         })
     }
 
@@ -230,14 +230,17 @@ impl<C: Variant> Hashing<C> {
 
 /// A hash's context, as a [`State`] variant holds it.
 trait Variant: HashContext + 'static {
-    fn new() -> Self;
+    /// A context before any input.
+    // A constant rather than a function, so starting or resetting a context
+    // copies it from read-only memory instead of building it on the stack.
+    const NEW: Self;
 
     fn state(hashing: Hashing<Self>) -> State;
 
-    /// The digest of the message so far, leaving `self` as [`Self::new`] does.
+    /// The digest of the message so far, leaving `self` as [`Self::NEW`].
     fn finish_reset(&mut self) -> Digest {
         let digest = self.finish();
-        *self = Self::new();
+        *self = Self::NEW;
         digest
     }
 }
@@ -245,9 +248,7 @@ trait Variant: HashContext + 'static {
 macro_rules! variant {
     ($context:ty, $variant:ident, $new:expr) => {
         impl Variant for $context {
-            fn new() -> Self {
-                $new
-            }
+            const NEW: Self = $new;
 
             fn state(hashing: Hashing<Self>) -> State {
                 State::$variant(hashing)
@@ -256,10 +257,22 @@ macro_rules! variant {
     };
 }
 
-variant!(Sha1Context, Sha1, LegacySha1::new());
-variant!(Sha256Context, Sha256, Sha256::new());
-variant!(Sha384Context, Sha384, Sha384::new());
-variant!(Sha512Context, Sha512, Sha512::new());
+variant!(Sha1Context, Sha1, Sha1Context(sha1::Sha1Context::new()));
+variant!(
+    Sha256Context,
+    Sha256,
+    Sha256Context(sha2::Sha256Context::new())
+);
+variant!(
+    Sha384Context,
+    Sha384,
+    Sha384Context(sha2::Sha384Context::new())
+);
+variant!(
+    Sha512Context,
+    Sha512,
+    Sha512Context(sha2::Sha512Context::new())
+);
 variant!(
     Sha512_256Context,
     Sha512_256,
@@ -323,7 +336,7 @@ sha3_context!(Sha3_512Context, Sha3_512, SHA3_512);
 
 /// Hashes `data` with a fresh `C`, for an algorithm with no [`Hash`].
 fn one_shot<C: Variant>(data: &[u8]) -> Digest {
-    let mut context = C::new();
+    let mut context = C::NEW;
     context.update(data);
     context.finish()
 }

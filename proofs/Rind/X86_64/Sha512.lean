@@ -588,21 +588,21 @@ theorem context_new (algorithm : high.digest.Algorithm) (f : List U8 → List U8
     high.digest.Context.new algorithm ⦃ c => ContextHashed c algorithm [] ⦄ := by
   cases algorithm <;> simp only [sha512Family, reduceCtorEq] at hf <;>
     simp only [high.digest.Context.new, high.digest.Algorithm.start, high.digest.Hashing.start]
-  · simp only [high.hash.Sha384Context.Insts.RindHighDigestVariant.new,
+  · simp only [high.hash.Sha384Context.Insts.RindHighDigestVariant.NEW,
       high.hash.Sha384Context.Insts.RindHighDigestVariant.state,
       high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.new,
       mid.sha2.Sha384Context.new, mid.sha2.Sha384Context.resume]
     step with sha384_initial_spec as ⟨st, hh, hn⟩
     step with resume_spec _ st hh hn as ⟨c, hc⟩
     simpa [ContextHashed] using hc
-  · simp only [high.hash.Sha512Context.Insts.RindHighDigestVariant.new,
+  · simp only [high.hash.Sha512Context.Insts.RindHighDigestVariant.NEW,
       high.hash.Sha512Context.Insts.RindHighDigestVariant.state,
       high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.new,
       mid.sha2.Sha512Context.new]
     step with sha512_initial_spec as ⟨st, hh, hn⟩
     step with resume_spec _ st hh hn as ⟨c, hc⟩
     simpa [ContextHashed] using hc
-  · simp only [high.digest.Sha512_256Context.Insts.RindHighDigestVariant.new,
+  · simp only [high.digest.Sha512_256Context.Insts.RindHighDigestVariant.NEW,
       high.digest.Sha512_256Context.Insts.RindHighDigestVariant.state,
       mid.sha2.Sha512_256Context.new]
     step with sha512_256_initial_spec as ⟨st, hh, hn⟩
@@ -648,7 +648,7 @@ theorem context_finish (h : RunsSha512) (c : high.digest.Context) (algorithm : h
     have hl : sl.length = 48 := by simp [hsl]
     step with digest_new_as_ref' .SHA384 sl 48#usize rfl (by simp [hl]) (by simp [hl])
       as ⟨d, hd⟩
-    simp only [high.hash.Sha384Context.Insts.RindHighDigestVariant.new,
+    simp only [high.hash.Sha384Context.Insts.RindHighDigestVariant.NEW,
       high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.new,
       mid.sha2.Sha384Context.new, mid.sha2.Sha384Context.resume]
     step with sha384_initial_spec as ⟨st, hh, hn⟩
@@ -664,7 +664,7 @@ theorem context_finish (h : RunsSha512) (c : high.digest.Context) (algorithm : h
     have hl : sl.length = 64 := by simp [hsl]
     step with digest_new_as_ref' .SHA512 sl 64#usize rfl (by simp [hl]) (by simp [hl])
       as ⟨d, hd⟩
-    simp only [high.hash.Sha512Context.Insts.RindHighDigestVariant.new,
+    simp only [high.hash.Sha512Context.Insts.RindHighDigestVariant.NEW,
       high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.new, mid.sha2.Sha512Context.new]
     step with sha512_initial_spec as ⟨st, hh, hn⟩
     step with resume_spec _ st hh hn as ⟨c, hc⟩
@@ -680,7 +680,7 @@ theorem context_finish (h : RunsSha512) (c : high.digest.Context) (algorithm : h
     have hl : sl.length = 32 := by simp [hsl]
     step with digest_new_as_ref' .SHA512_256 sl 32#usize rfl (by simp [hl]) (by simp [hl])
       as ⟨d, hd⟩
-    simp only [high.digest.Sha512_256Context.Insts.RindHighDigestVariant.new,
+    simp only [high.digest.Sha512_256Context.Insts.RindHighDigestVariant.NEW,
       mid.sha2.Sha512_256Context.new]
     step with sha512_256_initial_spec as ⟨st, hh, hn⟩
     step with resume_spec _ st hh hn as ⟨c, hc⟩
