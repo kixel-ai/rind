@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/moq-dev/rind/compare/rind-v0.1.13...rind-v0.2.0) - 2026-11-06
+
+### Added
+
+- *(key_wrap)* AES key wrap with padding (RFC 5649) ([#418](https://github.com/moq-dev/rind/pull/418))
+- *(rsa)* load RSA keys named id-RSAES-OAEP or id-ea-rsa, as aws-lc-rs does ([#413](https://github.com/moq-dev/rind/pull/413))
+- *(rsa)* RSA public keys export as SPKI ([#411](https://github.com/moq-dev/rind/pull/411))
+- [**breaking**] audit rind's public API, and apply its decisions, before 0.2.0 ([#383](https://github.com/moq-dev/rind/pull/383))
+- *(keys)* SPKI, SEC1, and seed key formats, and compressed ECDH peers, for Bun ([#382](https://github.com/moq-dev/rind/pull/382))
+- *(cipher)* AES-CBC with PKCS#7 padding on every backend ([#381](https://github.com/moq-dev/rind/pull/381))
+- *(agreement)* [**breaking**] store, load, and export agreement keys, agreeing by reference ([#372](https://github.com/moq-dev/rind/pull/372))
+- *(signature)* ECDSA over a precomputed digest ([#379](https://github.com/moq-dev/rind/pull/379))
+- *(signature)* RSA-PSS with any salt length ([#363](https://github.com/moq-dev/rind/pull/363))
+- *(key_wrap)* AES key wrap (RFC 3394) on AES decryption for every backend ([#359](https://github.com/moq-dev/rind/pull/359))
+- *(rsa)* RSA-OAEP encryption and decryption, and RSA SPKI public keys ([#361](https://github.com/moq-dev/rind/pull/361))
+- *(cipher)* [**breaking**] AES-CTR over a 16-byte counter block with a per-key counter width ([#360](https://github.com/moq-dev/rind/pull/360))
+- *(aead)* AES-GCM with any IV length and truncated tags ([#362](https://github.com/moq-dev/rind/pull/362))
+- *(digest)* SHA3-256, SHA3-384, and SHA3-512 ([#358](https://github.com/moq-dev/rind/pull/358))
+- *(proofs)* prove aarch64 P-256 ECDSA end to end with Aeneas and Lean ([#346](https://github.com/moq-dev/rind/pull/346))
+
+### Fixed
+
+- *(ctgrind)* green the nightly again: PBKDF2's HMAC out of line, and DIT denied under valgrind ([#406](https://github.com/moq-dev/rind/pull/406))
+- *(bench-report)* hold each host with quest gate --host, and measure macOS noise ([#399](https://github.com/moq-dev/rind/pull/399))
+- *(cpu)* run aarch64 Linux with DIT where Hyper-V hides it ([#370](https://github.com/moq-dev/rind/pull/370))
+- *(cpu)* run aarch64 Windows with DIT where the core has it ([#366](https://github.com/moq-dev/rind/pull/366))
+- *(x86_64)* build on the declared 1.90 rust-version, and gate on it ([#365](https://github.com/moq-dev/rind/pull/365))
+
+### Other
+
+- *(digest)* start and reset a Context from a constant ([#416](https://github.com/moq-dev/rind/pull/416))
+- *(readme)* show how to use rind and link the details ([#410](https://github.com/moq-dev/rind/pull/410))
+- *(aarch64)* seal and open short AES-GCM messages in one pass ([#393](https://github.com/moq-dev/rind/pull/393))
+- *(aes)* header protection reads the sample straight into AES-NI ([#392](https://github.com/moq-dev/rind/pull/392))
+- *(readme)* credit Vale's proven kernel for short AES-GCM on VAES CPUs ([#402](https://github.com/moq-dev/rind/pull/402))
+- *(aes-gcm)* run Vale's kernel for short messages on VAES CPUs ([#391](https://github.com/moq-dev/rind/pull/391))
+- stop wiping anything but keys, keyed state, and private-key heap scratch ([#394](https://github.com/moq-dev/rind/pull/394))
+- *(sha)* pad SHA-1 and SHA-256's last block in registers on the SHA extensions ([#376](https://github.com/moq-dev/rind/pull/376))
+- *(ecdsa)* build a verifying key's multiples on its first verification (P-256 keygen 1.4x) ([#374](https://github.com/moq-dev/rind/pull/374))
+- a prompt has an agent migrate a repo to rind and report the results ([#357](https://github.com/moq-dev/rind/pull/357))
+- *(sha256)* [**breaking**] finish SHA-NI hashes in registers, and digest contexts by reference ([#352](https://github.com/moq-dev/rind/pull/352))
+- *(build)* test aarch64 Windows, x86_64 macOS, and musl ([#356](https://github.com/moq-dev/rind/pull/356))
+
 ## [0.1.13](https://github.com/moq-dev/rind/compare/rind-v0.1.12...rind-v0.1.13) - 2026-11-05
 
 ### Added

@@ -13,4 +13,3 @@ Bun's fastest asymmetric operations run on rind, ahead of Bun writing its own.
 - [The launch post can say what building rind cost in AI tokens, time, and money](/quest/m1/ai-usage.md) - tokens, agent and maintainer hours, and API-price cost, before the post
 - [rind's launch blog post is published](/quest/m1/launch-post.md) - the Bun PR waits on it
 - [rind covers MoQ](/quest/m1/moq/README.md) - the primitives, CPU check, armv7 backend, and `rind-*` adapters MoQ needs, verified and released
-- [The README shows how to use rind and links the details](/quest/m1/readme-restructure.md) - usage, the migration prompt, and an invitation to AI contributors, with the details in linked docs

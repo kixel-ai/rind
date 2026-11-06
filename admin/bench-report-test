@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Tests admin/bench-report's rendering on synthetic results.
+"""Tests admin/bench-report's rendering on synthetic results, and its lease.
 
 Usage: admin/bench-report-test
 """
 
+import fcntl
 import importlib.machinery
 import importlib.util
+import io
 import json
 import os
 import re
+import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 
@@ -186,7 +190,7 @@ class Render(unittest.TestCase):
         md = files[br.REPORT]
         self.assertIn("on three machines", md)
         self.assertIn("Not timed on `kixtop`: full handshake, X25519MLKEM768, ", md)
-        self.assertIn("Not measured yet: `desktop`.", md)
+        self.assertIn("Not measured yet: `desktop`, `ovh-iad`, `ovh-sea`.", md)
         self.assertNotIn("`desktop` |", md)
         self.assertIn("No nightly results yet.", md)
         self.assertEqual(
@@ -195,6 +199,17 @@ class Render(unittest.TestCase):
         )
         self.assertIn("| Operation | rind | aws-lc-rs | ring | OpenSSL |", md)
         self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | 300.00 µs |", md)
+
+    def test_leaves_out_a_library_the_cpu_lacks_features_for(self):
+        regex = re.compile(br.operation_regex({"graviola": ["adx"]}))
+        for row in ["x25519-ecdh/rind", "p256-ecdh/p256-rustcrypto", "aes128-gcm/openssl/32B"]:
+            self.assertTrue(regex.match(row), row)
+        for row in ["x25519-ecdh/graviola", "aes128-gcm/graviola/32B", "x25519-ecdh/rind/extra"]:
+            self.assertFalse(regex.match(row), row)
+        everyone = hosts()
+        everyone["nixos2"]["refused"] = {"graviola": ["bmi1", "adx"]}
+        md = br.report(everyone, None, VERIFIED, [])[br.REPORT]
+        self.assertIn("graviola isn't timed on `nixos2`: it requires BMI1 and ADX, which this CPU lacks.", md)
 
     def test_headline_is_the_mean_over_hosts_and_says_what_is_missing(self):
         everyone = hosts()
@@ -330,6 +345,47 @@ class Gaps(unittest.TestCase):
         tiers = os.path.join(br.DATA_DIR, "tiers.json")
         with open(tiers) as f:
             br.load_gaps(br.load_hosts(br.DATA_DIR), json.load(f))
+
+
+class HostScript(unittest.TestCase):
+    def run_script(self, cmd):
+        """The host script's exit status and output on the host "vps" here."""
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w") as tar:
+            tar.addfile(tarfile.TarInfo("file"), io.BytesIO())
+        ran = subprocess.run(
+            ["sh", "-c", br.host_script("vps", self.work, cmd)], input=archive.getvalue(), capture_output=True
+        )
+        return ran.returncode, ran.stdout
+
+    def setUp(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        self.work = os.path.join(d.name, "work")
+        self.lock = os.path.join(d.name, "lock")
+        self.addCleanup(setattr, br, "HOSTS", br.HOSTS)
+
+    def test_removes_its_copy_and_keeps_the_rest(self):
+        br.HOSTS = {"vps": {"jobs": 1}}
+        os.makedirs(os.path.join(self.work, "target"))
+        self.assertEqual(self.run_script("echo $(ls) > result.json"), (0, b"file\n"))
+        self.assertEqual(os.listdir(self.work), ["target"])
+
+    def test_holds_the_lease_through_the_run_and_its_cleanup(self):
+        br.HOSTS = {"vps": {"jobs": 1, "lease": self.lock}}
+        # Another run's lease: its work stays.
+        os.makedirs(os.path.join(self.work, "target"))
+        with open(self.lock, "w") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            self.assertEqual(self.run_script("true"), (br.LEASE_HELD, b""))
+        self.assertTrue(os.path.isdir(os.path.join(self.work, "target")))
+        # Ours: the run sees the lease held and its copy, and nothing is left
+        # once it lets go.
+        status, out = self.run_script(f"flock -n {self.lock} true; echo $? $(ls) > result.json")
+        self.assertEqual((status, out), (0, b"1 file\n"))
+        self.assertFalse(os.path.exists(self.work))
+        with open(self.lock) as other:
+            fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
 if __name__ == "__main__":

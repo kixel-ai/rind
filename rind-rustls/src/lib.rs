@@ -6,7 +6,7 @@
 //! Use it like:
 //!
 //! ```rust
-//! # fn main() -> Result<(), rind::cpu::MissingFeature> {
+//! # fn main() -> Result<(), rind_rustls::MissingFeature> {
 //! rind_rustls::default_provider()?.install_default().unwrap();
 //! # Ok(())
 //! # }
@@ -30,7 +30,7 @@
 //!     )],
 //! };
 //!
-//! # fn main() -> Result<(), rind::cpu::MissingFeature> {
+//! # fn main() -> Result<(), rind_rustls::MissingFeature> {
 //! let provider = CryptoProvider {
 //!     cipher_suites: vec![cipher_suite::TLS13_AES_128_GCM_SHA256],
 //!     kx_groups: vec![kx_group::X25519],
@@ -45,6 +45,8 @@
 //! rind panics on a CPU missing a feature it requires, so [`default_provider`],
 //! [`empty_provider`], and [`Ticketer::new`] check first and return an error
 //! instead. Build any provider from this crate's statics on [`empty_provider`].
+
+use core::fmt;
 
 use rustls::SignatureScheme;
 use rustls::SupportedCipherSuite;
@@ -70,6 +72,18 @@ pub mod verify;
 mod ticketer;
 pub use ticketer::Ticketer;
 
+/// A CPU feature rind requires that this CPU lacks.
+#[derive(Debug)]
+pub struct MissingFeature(rind::cpu::MissingFeature);
+
+impl fmt::Display for MissingFeature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for MissingFeature {}
+
 /// Returns a rustls [`CryptoProvider`] using cryptography from rind, or the
 /// CPU feature rind requires that this CPU lacks.
 ///
@@ -77,7 +91,7 @@ pub use ticketer::Ticketer;
 /// aws-lc-rs provider's defaults, and verifies and signs the same signature
 /// schemes, short of ML-DSA.
 /// It prefers ChaCha20-Poly1305 where rind runs AES without CPU instructions.
-pub fn default_provider() -> Result<CryptoProvider, rind::cpu::MissingFeature> {
+pub fn default_provider() -> Result<CryptoProvider, MissingFeature> {
     let empty = empty_provider()?;
     let cipher_suites = if rind::cpu::has_aes_hardware() {
         DEFAULT_CIPHER_SUITES
@@ -98,8 +112,8 @@ pub fn default_provider() -> Result<CryptoProvider, rind::cpu::MissingFeature> {
 /// requires that this CPU lacks.
 ///
 /// It loads no private key until given a [`sign`] key provider.
-pub fn empty_provider() -> Result<CryptoProvider, rind::cpu::MissingFeature> {
-    rind::cpu::check()?;
+pub fn empty_provider() -> Result<CryptoProvider, MissingFeature> {
+    rind::cpu::check().map_err(MissingFeature)?;
     Ok(CryptoProvider {
         cipher_suites: Vec::new(),
         kx_groups: Vec::new(),

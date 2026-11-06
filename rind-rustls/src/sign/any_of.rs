@@ -13,7 +13,7 @@ use rustls::sign::SigningKey;
 ///
 /// static KEYS: sign::AnyOf = sign::AnyOf(&[sign::ECDSA_P256, sign::ED25519]);
 ///
-/// # fn main() -> Result<(), rind::cpu::MissingFeature> {
+/// # fn main() -> Result<(), rind_rustls::MissingFeature> {
 /// let provider = CryptoProvider {
 ///     key_provider: &KEYS,
 ///     ..rind_rustls::empty_provider()?
