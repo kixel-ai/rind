@@ -81,6 +81,20 @@ impl HeaderProtectionKey {
     }
 }
 
+impl fmt::Debug for HeaderProtectionKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // An id, not the static, so formatting links no other cipher's code.
+        let algorithm = match &self.0 {
+            Key::Aes(masker) if masker.key.key_len() == 16 => AlgorithmId::Aes128,
+            Key::Aes(_) => AlgorithmId::Aes256,
+            Key::ChaCha20(_) => AlgorithmId::ChaCha20,
+        };
+        f.debug_struct("HeaderProtectionKey")
+            .field("algorithm", &algorithm)
+            .finish_non_exhaustive()
+    }
+}
+
 /// A key with its cipher's mask, which it reaches only through `mask`:
 /// matching on [`Key`] then names no cipher's code.
 struct Masker<C: Mask> {

@@ -5,7 +5,7 @@ use core::hint::black_box;
 
 use super::aes::expand_key;
 use crate::Error;
-use crate::cipher::{AES_128, AES_256, Algorithm};
+use crate::cipher::Algorithm;
 use crate::low::{self, AesDecKey, AesKey, Entry, Zeroable, aes_cbc, zeroise_value};
 
 /// An AES key that encrypts in CBC mode, as WebCrypto's AES-CBC, pyca's
@@ -171,7 +171,7 @@ impl Zeroable for AesCbcDecryptingKey {}
 impl fmt::Debug for AesCbcEncryptingKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AesCbcEncryptingKey")
-            .field("algorithm", algorithm(self.key_len))
+            .field("algorithm", crate::cipher::aes(self.key_len))
             .finish_non_exhaustive()
     }
 }
@@ -179,14 +179,9 @@ impl fmt::Debug for AesCbcEncryptingKey {
 impl fmt::Debug for AesCbcDecryptingKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AesCbcDecryptingKey")
-            .field("algorithm", algorithm(self.key_len))
+            .field("algorithm", crate::cipher::aes(self.key_len))
             .finish_non_exhaustive()
     }
-}
-
-/// The algorithm a checked key length is for.
-fn algorithm(key_len: usize) -> &'static Algorithm {
-    if key_len == 16 { &AES_128 } else { &AES_256 }
 }
 
 /// All ones if `a < b`, else zero, without a branch.
@@ -199,11 +194,12 @@ fn ct_mask_lt(a: u8, b: u8) -> u8 {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::cipher::{AES_128, AES_256};
 
     fn keys(key: &[u8]) -> (AesCbcEncryptingKey, AesCbcDecryptingKey) {
         (
-            AesCbcEncryptingKey::new(algorithm(key.len()), key).unwrap(),
-            AesCbcDecryptingKey::new(algorithm(key.len()), key).unwrap(),
+            AesCbcEncryptingKey::new(crate::cipher::aes(key.len()), key).unwrap(),
+            AesCbcDecryptingKey::new(crate::cipher::aes(key.len()), key).unwrap(),
         )
     }
 

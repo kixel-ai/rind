@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::fmt;
 use core::mem::ManuallyDrop;
 
 use super::{AES_128_GCM, AES_256_GCM, Inner, Nonce};
 use crate::Error;
 use crate::cipher::Algorithm;
 use crate::low::{Zeroable, zeroise_value};
+use crate::mid::aes::check_gcm_iv;
 use crate::mid::aes_gcm::AesGcm;
 
 /// How long an AES-GCM tag is: one of NIST SP 800-38D's lengths, named in bits.
@@ -48,6 +50,28 @@ impl TagLength {
     }
 }
 
+/// An AES-GCM IV of any length but zero, which the caller promises seals
+/// only once under a key.
+///
+/// It is not `Clone`, so one value seals at most one message.
+pub struct Iv<'a>(&'a [u8]);
+
+impl<'a> Iv<'a> {
+    /// Wraps `iv`, which the caller promises is never reused with the same
+    /// key, failing with [`Error::WrongLength`] if it is empty or past GCM's
+    /// limit of 2^61 - 1 bytes.
+    pub fn assume_unique_for_key(iv: &'a [u8]) -> Result<Self, Error> {
+        check_gcm_iv(iv)?;
+        Ok(Self(iv))
+    }
+}
+
+impl fmt::Debug for Iv<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Iv").finish_non_exhaustive()
+    }
+}
+
 /// An AES-GCM key that takes an IV of any length and makes tags of one
 /// [`TagLength`], as WebCrypto's AES-GCM does; wiped on drop.
 ///
@@ -73,6 +97,14 @@ impl Drop for Key {
 }
 
 impl Zeroable for Key {}
+
+impl fmt::Debug for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Key")
+            .field("algorithm", crate::cipher::aes(self.aes_gcm().key_len()))
+            .finish_non_exhaustive()
+    }
+}
 
 impl Key {
     /// Expands `key` for `algorithm`, to make tags of `tag_len`, failing with
@@ -109,12 +141,11 @@ impl Key {
 
     /// Encrypts `in_out` in place under `iv` and returns the tag.
     ///
-    /// Fails with [`Error::WrongLength`], leaving `in_out` unchanged, if `iv`
-    /// is empty, or `iv`, `aad`, or `in_out` is past GCM's limit: 2^61 - 1,
-    /// 2^61 - 1, and 2^36 - 32 bytes.
+    /// Fails with [`Error::WrongLength`], leaving `in_out` unchanged, if
+    /// `aad` or `in_out` is past GCM's limit: 2^61 - 1 and 2^36 - 32 bytes.
     pub fn seal_in_place_separate_tag(
         &self,
-        iv: &[u8],
+        iv: Iv<'_>,
         aad: &[u8],
         in_out: &mut [u8],
     ) -> Result<Tag, Error> {
@@ -122,14 +153,14 @@ impl Key {
             bytes: [0; 16],
             len: self.tag_len(),
         };
-        match iv.try_into() {
+        match iv.0.try_into() {
             Ok(nonce) => {
                 let nonce = Nonce::assume_unique_for_key(nonce);
                 tag.bytes = self.key.seal_in_place_separate_tag(nonce, aad, in_out)?.0;
             }
             Err(_) => {
                 self.aes_gcm()
-                    .encrypt_any(iv, aad, in_out, &mut tag.bytes[..tag.len])?;
+                    .encrypt_any(iv.0, aad, in_out, &mut tag.bytes[..tag.len])?;
             }
         }
         Ok(tag)
@@ -140,7 +171,7 @@ impl Key {
     /// Fails as [`Self::seal_in_place_separate_tag`] does.
     pub fn seal_in_place_append_tag<InOut>(
         &self,
-        iv: &[u8],
+        iv: Iv<'_>,
         aad: &[u8],
         in_out: &mut InOut,
     ) -> Result<(), Error>
@@ -160,7 +191,7 @@ impl Key {
     /// with [`Error::WrongLength`] past the sealing limits.
     pub fn open_in_place<'a>(
         &self,
-        iv: &[u8],
+        iv: Iv<'_>,
         aad: &[u8],
         in_out: &'a mut [u8],
     ) -> Result<&'a mut [u8], Error> {
@@ -182,7 +213,7 @@ impl Key {
     /// verify.
     pub fn open_in_place_separate_tag<'a>(
         &self,
-        iv: &[u8],
+        iv: Iv<'_>,
         aad: &[u8],
         tag: &[u8],
         in_out: &'a mut [u8],
@@ -195,14 +226,14 @@ impl Key {
     }
 
     /// Opens `in_out` against `tag`, of this key's length.
-    fn open(&self, iv: &[u8], aad: &[u8], tag: &[u8], in_out: &mut [u8]) -> Result<(), Error> {
-        match (iv.try_into(), tag.try_into()) {
+    fn open(&self, iv: Iv<'_>, aad: &[u8], tag: &[u8], in_out: &mut [u8]) -> Result<(), Error> {
+        match (iv.0.try_into(), tag.try_into()) {
             (Ok(nonce), Ok(tag)) => {
                 let nonce = Nonce::assume_unique_for_key(nonce);
                 self.key
                     .open_in_place_separate_tag(nonce, aad, super::Tag(tag), in_out)?;
             }
-            _ => self.aes_gcm().decrypt_any(iv, aad, in_out, tag)?,
+            _ => self.aes_gcm().decrypt_any(iv.0, aad, in_out, tag)?,
         }
         Ok(())
     }
@@ -228,6 +259,10 @@ mod tests {
     use crate::aead::{AES_128_GCM, Nonce};
     use crate::cipher::{AES_128, AES_256};
     use crate::test::*;
+
+    fn iv(iv: &[u8]) -> Iv<'_> {
+        Iv::assume_unique_for_key(iv).unwrap()
+    }
 
     const TAG_LENGTHS: [TagLength; 7] = [
         TagLength::Full,
@@ -279,7 +314,7 @@ mod tests {
                         let want = value.bytes();
                         let key = key(&self.key, tag_length(want.len()));
                         let tag = key
-                            .seal_in_place_separate_tag(&self.iv, &self.aad, &mut self.pt)
+                            .seal_in_place_separate_tag(iv(&self.iv), &self.aad, &mut self.pt)
                             .unwrap();
                         assert_eq!(self.pt, self.ct);
                         assert_eq!(tag.as_ref(), want);
@@ -287,7 +322,7 @@ mod tests {
                     "FAIL" | "PT" => {
                         let key = key(&self.key, tag_length(self.tag.len()));
                         let result = key.open_in_place_separate_tag(
-                            &self.iv,
+                            iv(&self.iv),
                             &self.aad,
                             &self.tag,
                             &mut self.ct,
@@ -331,19 +366,20 @@ mod tests {
         for tag_len in TAG_LENGTHS {
             let key = key(&raw, tag_len);
             let mut sealed = b"message".to_vec();
-            key.seal_in_place_append_tag(&[3; 12], b"aad", &mut sealed)
+            key.seal_in_place_append_tag(iv(&[3; 12]), b"aad", &mut sealed)
                 .unwrap();
             assert_eq!(sealed, want[..7 + key.tag_len()], "{tag_len:?}");
 
             let mut separate = b"message".to_vec();
             let tag = key
-                .seal_in_place_separate_tag(&[3; 12], b"aad", &mut separate)
+                .seal_in_place_separate_tag(iv(&[3; 12]), b"aad", &mut separate)
                 .unwrap();
             assert_eq!([&separate[..], tag.as_ref()].concat(), sealed);
 
             let mut opened = sealed.clone();
             assert_eq!(
-                key.open_in_place(&[3; 12], b"aad", &mut opened).unwrap(),
+                key.open_in_place(iv(&[3; 12]), b"aad", &mut opened)
+                    .unwrap(),
                 b"message"
             );
         }
@@ -355,32 +391,27 @@ mod tests {
             Key::new(&AES_128, &[0; 32], TagLength::Full).err(),
             Some(Error::WrongLength)
         );
+        // An empty IV, for which GCM is undefined.
+        assert_eq!(
+            Iv::assume_unique_for_key(&[]).err(),
+            Some(Error::WrongLength)
+        );
 
         for tag_len in TAG_LENGTHS {
             let key = key(&[1; 32], tag_len);
             let len = key.tag_len();
 
-            // An empty IV, for which GCM is undefined.
             let mut msg = [5u8; 20];
-            assert_eq!(
-                key.seal_in_place_separate_tag(&[], &[], &mut msg).err(),
-                Some(Error::WrongLength)
-            );
-            assert_eq!(
-                key.open_in_place(&[], &[], &mut msg).err(),
-                Some(Error::WrongLength)
-            );
-            assert_eq!(msg, [5; 20]);
 
             // A tag of another length than the key's, so a forger cannot
             // pick a shorter one.
             let tag = key
-                .seal_in_place_separate_tag(&[2; 7], &[], &mut msg)
+                .seal_in_place_separate_tag(iv(&[2; 7]), &[], &mut msg)
                 .unwrap();
             for other in [len - 1, len + 1] {
                 let mut copy = msg;
                 assert_eq!(
-                    key.open_in_place_separate_tag(&[2; 7], &[], &[0; 17][..other], &mut copy)
+                    key.open_in_place_separate_tag(iv(&[2; 7]), &[], &[0; 17][..other], &mut copy)
                         .err(),
                     Some(Error::WrongLength)
                 );
@@ -390,14 +421,14 @@ mod tests {
             // Input shorter than a tag, and a tag wrong in its last byte.
             let mut short = vec![0xaa; len - 1];
             assert_eq!(
-                key.open_in_place(&[2; 7], &[], &mut short).err(),
+                key.open_in_place(iv(&[2; 7]), &[], &mut short).err(),
                 Some(Error::DecryptFailed)
             );
             assert_eq!(short, vec![0xaa; len - 1]);
             let mut wrong = tag.as_ref().to_vec();
             wrong[len - 1] ^= 1;
             assert_eq!(
-                key.open_in_place_separate_tag(&[2; 7], &[], &wrong, &mut msg)
+                key.open_in_place_separate_tag(iv(&[2; 7]), &[], &wrong, &mut msg)
                     .err(),
                 Some(Error::DecryptFailed)
             );

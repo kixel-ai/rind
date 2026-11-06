@@ -18,7 +18,7 @@ writes for aarch64:
 
 - `x25519_generate`: the key's scalar is the 32 drawn bytes, read
   little-endian, and a failed draw is refused;
-- `x25519_from_private_key`: a loaded key's scalar is the 32 given bytes, read
+- `x25519_from_scalar`: a loaded key's scalar is the 32 given bytes, read
   little-endian, and any other length is refused;
 - `x25519_public_key`: the public key is the 32 little-endian bytes of
   `rfcx25519(scalar, 9)`;
@@ -35,7 +35,7 @@ P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
 - `p256_generate`: the key's scalar is the first of up to 64 draws whose
   bytes, read big-endian, are in [1, n), and the key is refused if a draw
   fails before one is, or none is;
-- `p256_from_private_key`: a loaded key's scalar is the 32 given bytes, read
+- `p256_from_scalar`: a loaded key's scalar is the 32 given bytes, read
   big-endian, refused unless they are 32 bytes and in [1, n);
 - `p256_public_key`: the public key is the X9.62 uncompressed encoding of the
   scalar times G, for a scalar in [1, n), as every key's is;
@@ -61,7 +61,7 @@ signature API's `EcdsaKeyPair` and `PublicKey` to s2n-bignum's routines, in
 
 - `p256_ecdsa_generate`: the key pair's scalar is in [1, n), and generation
   is refused only if the system source's draws fail;
-- `p256_ecdsa_from_private_key_and_public_key`: a scalar that is not 32 bytes
+- `p256_ecdsa_from_scalar_and_public_key`: a scalar that is not 32 bytes
   is refused, so is one outside [1, n), and so is a public key that is neither
   X9.62 encoding, uncompressed or compressed, of the scalar times G, and
   otherwise the key pair's scalar is the scalar;
@@ -321,5 +321,5 @@ Beyond Lean's kernel:
   s2n-bignum's and Vale's own proofs.
 - That rind's inline assembly is s2n-bignum's, aws-lc's, and Vale's object
   code, as for `benchmarks/verified.toml`'s other entries.
-- The translation ignores drops, which here wipe keys and hash contexts and
+- The translation ignores drops, which here wipe keys and keyed state and
   restore CPU state, and computes nothing an output depends on.

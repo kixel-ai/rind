@@ -8,11 +8,11 @@ use rustls::crypto::GetRandomFailed;
 use rustls::server::ProducesTickets;
 use rustls::{Error, OtherError, TicketRotator};
 
-/// The default ticketer.
+/// A rustls session ticketer, sealing tickets with XChaCha20-Poly1305.
 pub struct Ticketer;
 
 impl Ticketer {
-    /// Make a new ticketer, or fail on a CPU missing a feature rind requires.
+    /// Makes a ticketer, or fails on a CPU missing a feature rind requires.
     ///
     /// Tickets are encrypted with XChaCha20Poly1305.
     /// Ticket keys are rotated every 6 hours.

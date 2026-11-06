@@ -1,10 +1,10 @@
 //! PKCS#8 private key documents.
 
 /// A PKCS#8 private key document, wiped on drop.
-pub struct Document(rind::signature::Pkcs8);
+pub struct Document(rind::encoding::Pkcs8);
 
 impl Document {
-    pub(crate) fn new(pkcs8: rind::signature::Pkcs8) -> Self {
+    pub(crate) fn new(pkcs8: rind::encoding::Pkcs8) -> Self {
         Self(pkcs8)
     }
 }

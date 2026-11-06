@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::mem::ManuallyDrop;
+
 use libcrux_aes::aes_gcm_128::portable::PortableAesGcm128;
 use libcrux_aes::aes_gcm_256::portable::PortableAesGcm256;
 use libcrux_traits::aead::arrayref::Aead;
@@ -35,6 +37,14 @@ impl AesGcm {
         match HaveCryptoExt::check() {
             Some(token) => Self::Hw(Hw::new(copy_key, token)),
             None => Self::Portable(Portable::new(copy_key)),
+        }
+    }
+
+    /// The AES key's length in bytes, 16 or 32.
+    pub(crate) fn key_len(&self) -> usize {
+        match self {
+            Self::Portable(key) => key.key_len,
+            Self::Hw(key) => key.key.key_len(),
         }
     }
 
@@ -189,7 +199,7 @@ impl Portable {
         tag_out: &mut [u8; 16],
     ) -> Result<(), Error> {
         // libcrux reads and writes separate buffers.
-        let mut plain = cipher_inout.to_vec();
+        let plain = cipher_inout.to_vec();
         let result = match self.key_len {
             16 => PortableAesGcm128::encrypt(
                 cipher_inout,
@@ -201,8 +211,6 @@ impl Portable {
             ),
             _ => PortableAesGcm256::encrypt(cipher_inout, tag_out, &self.key, nonce, aad, &plain),
         };
-        // The plaintext copy is on the heap.
-        zeroise(&mut plain);
         result.map_err(|_| Error::WrongLength)
     }
 
@@ -238,8 +246,8 @@ impl Portable {
         let mut h = [0u8; 16];
         key.encrypt_block(&mut h);
         Composed {
-            table: NohwTable::new(&h),
-            key,
+            table: ManuallyDrop::new(NohwTable::new(&h)),
+            key: ManuallyDrop::new(key),
         }
     }
 }
@@ -399,9 +407,11 @@ impl Parts for Hw {
 }
 
 /// See [`Portable::composed`].
+///
+/// Built for one call, so its parts skip their wipes.
 struct Composed {
-    key: AesKey,
-    table: NohwTable,
+    key: ManuallyDrop<AesKey>,
+    table: ManuallyDrop<NohwTable>,
 }
 
 impl Parts for Composed {

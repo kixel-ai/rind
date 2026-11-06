@@ -317,7 +317,7 @@ fn stored(c: &mut Criterion) {
 
     group.bench_function("rind", |b| {
         use rind::agreement::*;
-        let key = PrivateKey::from_private_key(&ECDH_P521, &scalar).unwrap();
+        let key = PrivateKey::from_scalar(&ECDH_P521, &scalar).unwrap();
 
         b.iter(|| black_box(key.agree(public_key).unwrap()))
     });
