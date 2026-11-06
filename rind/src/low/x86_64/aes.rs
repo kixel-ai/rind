@@ -239,7 +239,6 @@ impl HwKey {
     }
 }
 
-#[expect(clippy::large_enum_variant)] // 200 bytes is a bad heuristic for large enums
 pub(crate) enum RoundKeys512 {
     Aes128([__m512i; 11]),
     Aes192([__m512i; 13]),
