@@ -12,7 +12,7 @@ How long rind and the usual Rust crypto libraries take for the same operations, 
 | `desktop` | Intel(R) Core(TM) Ultra 7 270K Plus | Ubuntu 26.04.1 LTS (Linux 7.0.0-42-generic) | 2026-11-05 at [`6024d155`](https://github.com/moq-dev/rind/commit/6024d1557147b1f5dae1da700ed7c7bee38cd086) |
 | `nixos2` | Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz | NixOS 26.11 (Zokor) (Linux 6.18.56) | 2026-11-04 at [`a6d9bd72`](https://github.com/moq-dev/rind/commit/a6d9bd7210fc2352f8dec4aa2078230f779398eb) |
 
-Not measured yet: `kixtop`.
+Not measured yet: `kixtop`, `ovh-iad`, `ovh-sea`.
 
 Each host builds with the pinned toolchain, in the Nix dev shell on Linux, and runs `admin/bench-report` only when idle. Times are criterion's estimates.
 

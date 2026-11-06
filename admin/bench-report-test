@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Tests admin/bench-report's rendering on synthetic results.
+"""Tests admin/bench-report's rendering on synthetic results, and its lease.
 
 Usage: admin/bench-report-test
 """
 
+import fcntl
 import importlib.machinery
 import importlib.util
 import json
@@ -186,7 +187,7 @@ class Render(unittest.TestCase):
         md = files[br.REPORT]
         self.assertIn("on three machines", md)
         self.assertIn("Not timed on `kixtop`: full handshake, X25519MLKEM768, ", md)
-        self.assertIn("Not measured yet: `desktop`.", md)
+        self.assertIn("Not measured yet: `desktop`, `ovh-iad`, `ovh-sea`.", md)
         self.assertNotIn("`desktop` |", md)
         self.assertIn("No nightly results yet.", md)
         self.assertEqual(
@@ -330,6 +331,29 @@ class Gaps(unittest.TestCase):
         tiers = os.path.join(br.DATA_DIR, "tiers.json")
         with open(tiers) as f:
             br.load_gaps(br.load_hosts(br.DATA_DIR), json.load(f))
+
+
+class Lease(unittest.TestCase):
+    def test_skips_a_held_lease_and_takes_a_free_one(self):
+        with tempfile.TemporaryDirectory() as d:
+            lock = os.path.join(d, "lock")
+            hosts, ssh = br.HOSTS, br.ssh
+            br.HOSTS = {"vps": {"jobs": 1, "lease": lock}}
+            br.ssh = lambda host: ["sh", "-c"]
+            try:
+                with open(lock, "w") as held:
+                    fcntl.flock(held, fcntl.LOCK_EX)
+                    self.assertEqual(br.take_lease("vps"), (None, "another run holds its lease"))
+                lease, reason = br.take_lease("vps")
+                self.assertIsNone(reason)
+                with open(lock) as other:
+                    with self.assertRaises(BlockingIOError):
+                        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    lease.communicate(timeout=10)
+                    self.assertEqual(lease.returncode, 0)
+                    fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                br.HOSTS, br.ssh = hosts, ssh
 
 
 if __name__ == "__main__":

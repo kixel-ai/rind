@@ -50,12 +50,29 @@ import time
 import tomllib
 
 # The report's hosts, in the order they run. `jobs` caps the build: nixos2 is
-# a shared 15 GB machine that more jobs run out of memory.
+# a shared 15 GB machine that more jobs run out of memory. `ssh` is the
+# destination where it isn't the name, and `note` describes the machine in the
+# report. Other work on a host with a `lease` holds that lock file with
+# flock(1) for its whole run, so collect holds it too, or skips the host as
+# busy, and leaves no copy, build, or download cache behind.
+VPS_NOTE = "OVH VPS in {}, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack."
 HOSTS = {
     "nixos": {"jobs": 16},
     "desktop": {"jobs": 12},
     "nixos2": {"jobs": 3},
     "kixtop": {"jobs": 4},
+    "ovh-iad": {
+        "jobs": 4,
+        "ssh": "root@vps-bcb7229a.vps.ovh.us",
+        "lease": "/run/lock/moq-perf.lock",
+        "note": VPS_NOTE.format("Virginia"),
+    },
+    "ovh-sea": {
+        "jobs": 4,
+        "ssh": "root@vps-39a0ff2a.vps.ovh.us",
+        "lease": "/run/lock/moq-perf.lock",
+        "note": VPS_NOTE.format("Oregon"),
+    },
 }
 
 # A host is busy when other work keeps more than this share of its logical
@@ -461,16 +478,46 @@ def is_local(host):
     return host == socket.gethostname().split(".")[0]
 
 
+def ssh(host):
+    # ServerAlive ends a session whose link died, which would otherwise hang
+    # collect, or keep a lease it no longer holds looking held.
+    options = ["BatchMode=yes", "ConnectTimeout=10", "ServerAliveInterval=15", "ServerAliveCountMax=4"]
+    return ["ssh", *(arg for o in options for arg in ("-o", o)), HOSTS[host].get("ssh", host)]
+
+
 def on_host(host, script, **kwargs):
     """Runs a shell script on `host`, here or over ssh."""
     if is_local(host):
         return subprocess.run(["sh", "-c", script], **kwargs)
-    return subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, script], **kwargs)
+    return subprocess.run(ssh(host) + [script], **kwargs)
+
+
+# The exit status of a lease that another run holds.
+LEASE_HELD = 73
+
+
+def take_lease(host):
+    """An ssh session holding the host's lease until its stdin closes, or the
+    reason it couldn't take it."""
+    lock = shlex.quote(HOSTS[host]["lease"])
+    lease = subprocess.Popen(
+        ssh(host) + [f"exec 9>{lock} && {{ flock -n 9 || exit {LEASE_HELD}; }} && echo held && exec cat >/dev/null"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    if lease.stdout.readline().strip() == "held":
+        return lease, None
+    lease.communicate()
+    if lease.returncode == LEASE_HELD:
+        return None, "another run holds its lease"
+    return None, f"could not take its lease, ssh exit {lease.returncode}"
 
 
 def collect_host(host, commit, out_dir):
     out = os.path.join(out_dir, f"{host}.json")
     work = os.path.join(ROOT, ".tmp", "bench-report", "host") if is_local(host) else REMOTE_DIR
+    leased = "lease" in HOSTS[host]
     q = shlex.quote
 
     def record(status, reason):
@@ -484,30 +531,48 @@ def collect_host(host, commit, out_dir):
         return record("unreachable", probe.stderr.strip())
     darwin = probe.stdout.strip() == "Darwin"
 
-    # A fresh copy of the commit; the build directory stays between runs.
-    archive = subprocess.run(["git", "-C", ROOT, "archive", "--format=tar", commit], capture_output=True, check=True)
-    copy = on_host(
-        host,
-        f"rm -rf {q(work)}/src && mkdir -p {q(work)}/src && tar -x -C {q(work)}/src",
-        input=archive.stdout,
-    )
-    if copy.returncode != 0:
-        return record("failed", "could not copy the commit")
+    def measure():
+        # A fresh copy of the commit; the build directory stays between runs
+        # unless the host is leased.
+        archive = subprocess.run(["git", "-C", ROOT, "archive", "--format=tar", commit], capture_output=True, check=True)
+        copy = on_host(
+            host,
+            f"rm -rf {q(work)}/src && mkdir -p {q(work)}/src && tar -x -C {q(work)}/src",
+            input=archive.stdout,
+        )
+        if copy.returncode != 0:
+            return record("failed", "could not copy the commit")
 
-    cmd = (
-        f"python3 admin/bench-report run --host {q(host)} --commit {q(commit)} "
-        f"--jobs {HOSTS[host]['jobs']} --target-dir ../target --out ../result.json"
-    )
-    if not darwin:
-        cmd = f'nix develop "path:$PWD" --command {cmd}'
-    on_host(host, f"rm -f {q(work)}/result.json && cd {q(work)}/src && {cmd}")
-    fetched = on_host(host, f"cat {q(work)}/result.json", capture_output=True)
-    if fetched.returncode != 0:
-        return record("failed", "the run wrote no result; see its output above")
-    with open(out, "wb") as f:
-        f.write(fetched.stdout)
-    status = json.loads(fetched.stdout)["status"]
-    print(f"bench-report: {host}: {status}", file=sys.stderr)
+        cmd = (
+            f"python3 admin/bench-report run --host {q(host)} --commit {q(commit)} "
+            f"--jobs {HOSTS[host]['jobs']} --target-dir ../target --out ../result.json"
+        )
+        if not darwin:
+            cmd = f'nix develop "path:$PWD" --command {cmd}'
+        if leased:
+            # Crate downloads too, so that removing the work directory leaves nothing.
+            cmd = f'CARGO_HOME="$PWD/../cargo" {cmd}'
+        on_host(host, f"rm -f {q(work)}/result.json && cd {q(work)}/src && {cmd}")
+        fetched = on_host(host, f"cat {q(work)}/result.json", capture_output=True)
+        if fetched.returncode != 0:
+            return record("failed", "the run wrote no result; see its output above")
+        with open(out, "wb") as f:
+            f.write(fetched.stdout)
+        status = json.loads(fetched.stdout)["status"]
+        print(f"bench-report: {host}: {status}", file=sys.stderr)
+
+    if not leased:
+        return measure()
+    lease, reason = take_lease(host)
+    if lease is None:
+        return record("busy", reason)
+    try:
+        measure()
+        if lease.poll() is not None:
+            record("failed", "lost its lease during the run")
+    finally:
+        on_host(host, f"rm -rf {q(work)}")
+        lease.communicate(timeout=60)
 
 
 def collect(args):
@@ -1372,7 +1437,8 @@ def report(hosts, tiers, verified, gaps):
     files = {}
     shown = [name for name in HOSTS if name in hosts]
     missing = [f"`{name}`" for name in HOSTS if name not in hosts]
-    count = ["no", "one", "two", "three", "four"][len(shown)] if len(shown) <= 4 else str(len(shown))
+    words = ["no", "one", "two", "three", "four", "five", "six"]
+    count = words[len(shown)] if len(shown) < len(words) else str(len(shown))
     md = [
         "# Benchmarks",
         "",
@@ -1424,6 +1490,7 @@ def report(hosts, tiers, verified, gaps):
             "",
             f"Measured {measured(h)}, on {h['os']} with {h['toolchain']['rustc']}.",
             "",
+            *([HOSTS[name]["note"], ""] if "note" in HOSTS[name] else []),
             *([f"Not timed on `{name}`: {', '.join(untimed)}.", ""] if untimed else []),
             *picture(name, f"Times on {name}"),
             "",
