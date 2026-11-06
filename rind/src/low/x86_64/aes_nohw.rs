@@ -44,6 +44,10 @@ impl NohwKey {
     }
 
     /// Encrypts one block in place.
+    ///
+    /// Out of line: the bitsliced round keys take a 1.9 KiB frame, which
+    /// would otherwise land on every caller of [`super::aes::AesKey`]'s.
+    #[inline(never)]
     pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
         // SAFETY: every x86_64 CPU has SSE2
         unsafe { encrypt(self, inout) }
