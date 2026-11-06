@@ -392,7 +392,7 @@ pub mod encoding {
 pub mod cipher;
 
 /// Key wrapping with AES-KW, RFC 3394, as WebCrypto's `AES-KW` and JWE's
-/// `A128KW` and `A256KW` use it.
+/// `A128KW`, `A192KW`, and `A256KW` use it.
 ///
 /// ```
 /// use rind::key_wrap::{AES_256, AesKek};
@@ -408,7 +408,7 @@ pub mod cipher;
 /// assert_eq!(unwrapped, key);
 /// ```
 pub mod key_wrap {
-    pub use crate::cipher::{AES_128, AES_256};
+    pub use crate::cipher::{AES_128, AES_192, AES_256};
     pub use crate::mid::aes_kw::AesKek;
 }
 

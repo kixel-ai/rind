@@ -11,6 +11,7 @@ pub(crate) mod ct;
 pub mod inline_assembly_safety;
 
 mod generic {
+    pub(crate) mod aes192;
     // armv7's RSA arithmetic, also built in tests elsewhere to check it
     // against s2n-bignum.
     #[cfg(any(target_arch = "arm", test))]

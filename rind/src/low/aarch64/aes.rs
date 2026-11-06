@@ -23,12 +23,14 @@ pub(crate) enum AesKey {
 }
 
 impl AesKey {
-    /// Creates an AesKey.
-    ///
-    /// `key` must be 16 or 32 bytes in length (AES-192 not supported).
+    /// Expands `key`, which must be 16, 24, or 32 bytes.
     pub(crate) fn new(key: &[u8]) -> Self {
         match (key.len(), HaveCryptoExt::check()) {
             (16, Some(token)) => Self::Hw(HwKey::Aes128(AesKey128::new(
+                key.try_into().unwrap(),
+                token,
+            ))),
+            (24, Some(token)) => Self::Hw(HwKey::Aes192(AesKey192::new(
                 key.try_into().unwrap(),
                 token,
             ))),
@@ -36,9 +38,8 @@ impl AesKey {
                 key.try_into().unwrap(),
                 token,
             ))),
-            (16 | 32, None) => Self::Vpaes(VpaesKey::new(key)),
-            (24, _) => panic!("aes-192 not supported"),
-            _ => panic!("invalid aes key size"),
+            (16 | 24 | 32, None) => Self::Vpaes(VpaesKey::new(key)),
+            _ => unreachable!("callers check the AES key length"),
         }
     }
 
@@ -46,15 +47,18 @@ impl AesKey {
     pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         match self {
             Self::Hw(HwKey::Aes128(a128)) => a128.encrypt_block(block),
+            Self::Hw(HwKey::Aes192(a192)) => a192.encrypt_block(block),
             Self::Hw(HwKey::Aes256(a256)) => a256.encrypt_block(block),
             Self::Vpaes(key) => key.encrypt_block(block),
         }
     }
 
-    /// The key's length in bytes, 16 or 32, which no API reads but `Debug`.
+    /// The key's length in bytes, 16, 24, or 32, which no API reads but
+    /// `Debug`.
     pub(crate) fn key_len(&self) -> usize {
         match self {
             Self::Hw(HwKey::Aes128(_)) => 16,
+            Self::Hw(HwKey::Aes192(_)) => 24,
             Self::Hw(HwKey::Aes256(_)) => 32,
             Self::Vpaes(key) => key.key_len(),
         }
@@ -64,6 +68,7 @@ impl AesKey {
 /// A key for the AES instructions.
 pub(crate) enum HwKey {
     Aes128(AesKey128),
+    Aes192(AesKey192),
     Aes256(AesKey256),
 }
 
@@ -82,16 +87,19 @@ pub(crate) enum AesDecKey {
 }
 
 impl AesDecKey {
-    /// Expands `key`, which must be 16 or 32 bytes.
+    /// Expands `key`, which must be 16, 24, or 32 bytes.
     pub(crate) fn new(key: &[u8]) -> Self {
         match (key.len(), HaveCryptoExt::check()) {
             (16, Some(token)) => Self::Hw(HwDecKey::Aes128(
                 AesKey128::new(key.try_into().unwrap(), token).decryption_round_keys(),
             )),
+            (24, Some(token)) => Self::Hw(HwDecKey::Aes192(
+                AesKey192::new(key.try_into().unwrap(), token).decryption_round_keys(),
+            )),
             (32, Some(token)) => Self::Hw(HwDecKey::Aes256(
                 AesKey256::new(key.try_into().unwrap(), token).decryption_round_keys(),
             )),
-            (16 | 32, None) => Self::Vpaes(VpaesDecKey::new(key)),
+            (16 | 24 | 32, None) => Self::Vpaes(VpaesDecKey::new(key)),
             _ => unreachable!("callers check the AES key length"),
         }
     }
@@ -100,6 +108,10 @@ impl AesDecKey {
         match self {
             // SAFETY: only a `HaveCryptoExt` token builds the round keys.
             Self::Hw(HwDecKey::Aes128(round_keys)) => unsafe {
+                hw_decrypt_block(round_keys, inout)
+            },
+            // SAFETY: as above.
+            Self::Hw(HwDecKey::Aes192(round_keys)) => unsafe {
                 hw_decrypt_block(round_keys, inout)
             },
             // SAFETY: as above.
@@ -124,6 +136,7 @@ impl low::generic::zeroise::Zeroable for AesDecKey {}
 /// keys reversed, all but the outer two through InvMixColumns.
 pub(crate) enum HwDecKey {
     Aes128([uint8x16_t; 10 + 1]),
+    Aes192([uint8x16_t; 12 + 1]),
     Aes256([uint8x16_t; 14 + 1]),
 }
 
@@ -152,6 +165,35 @@ impl AesKey128 {
     }
 
     fn decryption_round_keys(&self) -> [uint8x16_t; 10 + 1] {
+        // SAFETY: only a `HaveCryptoExt` token builds `self`.
+        unsafe { invert_round_keys(&self.round_keys) }
+    }
+}
+
+/// An AES-192 key for the AES instructions, which only a `HaveCryptoExt`
+/// token builds.
+pub(crate) struct AesKey192 {
+    round_keys: [uint8x16_t; 12 + 1],
+}
+
+impl AesKey192 {
+    pub(crate) fn new(key: &[u8; 24], _: HaveCryptoExt) -> Self {
+        // SAFETY: the token proves the CPU has the AES instructions.
+        let round_keys = unsafe { aes192_expand(key) };
+        Self { round_keys }
+    }
+
+    #[must_use]
+    pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
+        // SAFETY: only a `HaveCryptoExt` token builds `self`.
+        unsafe { aes_block(&self.round_keys, block) }
+    }
+
+    pub(crate) fn round_keys(&self) -> &[uint8x16_t; 13] {
+        &self.round_keys
+    }
+
+    fn decryption_round_keys(&self) -> [uint8x16_t; 12 + 1] {
         // SAFETY: only a `HaveCryptoExt` token builds `self`.
         unsafe { invert_round_keys(&self.round_keys) }
     }
@@ -227,6 +269,18 @@ fn aes256_expand(key: &[u8; 32], out: &mut [uint8x16_t; 15]) {
         b = veorq_u8(xor_prefix(b), vaeseq_u8(w3, zero()));
         out[2 * i + 3] = b;
     }
+}
+
+#[target_feature(enable = "aes")]
+fn aes192_expand(key: &[u8; 24]) -> [uint8x16_t; 13] {
+    let round_keys = low::generic::aes192::expand(key, |word| {
+        // `aese` with a zero key on four equal columns is SubBytes alone, as
+        // in `sub_rot_word`.
+        let sub = vaeseq_u8(vreinterpretq_u8_u32(vdupq_n_u32(word)), zero());
+        vgetq_lane_u32::<0>(vreinterpretq_u32_u8(sub))
+    });
+    // SAFETY: each round key is 16 readable bytes
+    round_keys.map(|rk| unsafe { vld1q_u8(rk.as_ptr()) })
 }
 
 /// SubWord(RotWord(w3)) XOR `rcon` in every word, where w3 is `t`'s last.
@@ -390,6 +444,21 @@ pub(crate) fn _aes128_8_blocks(
     )
 }
 
+/// One block under any key size, by its number of round keys.
+#[target_feature(enable = "aes")]
+fn aes_block<const N: usize>(round_keys: &[uint8x16_t; N], block: &[u8; 16]) -> [u8; 16] {
+    // SAFETY: `block` is 16 bytes and readable
+    let mut b = unsafe { vld1q_u8(block.as_ptr()) };
+    for rk in &round_keys[..N - 2] {
+        b = vaesmcq_u8(vaeseq_u8(b, *rk));
+    }
+    b = veorq_u8(vaeseq_u8(b, round_keys[N - 2]), round_keys[N - 1]);
+    let mut out = [0u8; 16];
+    // SAFETY: `out` is 16 bytes and writable
+    unsafe { vst1q_u8(out.as_mut_ptr(), b) };
+    out
+}
+
 #[target_feature(enable = "aes")]
 fn aes256_block(round_keys: &[uint8x16_t; 15], block: &[u8; 16]) -> [u8; 16] {
     // SAFETY: `block` is 16 bytes and readable
@@ -489,18 +558,34 @@ pub(crate) fn _aes256_8_blocks(
     )
 }
 
+/// Eight blocks under any key size, by its number of round keys,
+/// interleaved as [`_aes128_8_blocks`] does.
+#[target_feature(enable = "aes")]
+#[inline]
+pub(crate) fn _aes_8_blocks<const N: usize>(
+    round_keys: &[uint8x16_t; N],
+    mut b: [uint8x16_t; 8],
+) -> [uint8x16_t; 8] {
+    for rk in &round_keys[..N - 2] {
+        for b in &mut b {
+            *b = vaesmcq_u8(vaeseq_u8(*b, *rk));
+        }
+    }
+    for b in &mut b {
+        *b = veorq_u8(vaeseq_u8(*b, round_keys[N - 2]), round_keys[N - 1]);
+    }
+    b
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    #[cfg(panic = "unwind")]
-    use std::panic;
-
     use super::*;
     use crate::low::aes_ctr;
 
     #[test]
     fn key_len() {
-        for key in [&[0u8; 16][..], &[0u8; 32]] {
+        for key in [&[0u8; 16][..], &[0u8; 24], &[0u8; 32]] {
             assert_eq!(AesKey::new(key).key_len(), key.len());
             assert_eq!(AesKey::Vpaes(VpaesKey::new(key)).key_len(), key.len());
         }
@@ -518,27 +603,13 @@ mod tests {
     // these test vectors from FIPS-197 appendices A.1 - A.3.
 
     #[test]
-    #[cfg(panic = "unwind")]
     fn test_construct() {
-        // The generic AesKey::new wrapper should create the proper subtype of key when called
-        // with a 128- or 256-bit value and should fail with any other argument length.
-        let input: [u8; 33] = [
-            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
-            0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b,
-            0x1c, 0x1d, 0x1e, 0x1f, 0xff,
-        ];
-        for len in 0..=input.len() {
-            let num_bits = len * 8;
-            match panic::catch_unwind(|| AesKey::new(&input[..len])) {
-                Ok(key) => match key {
-                    AesKey::Hw(HwKey::Aes128(_)) => assert_eq!(num_bits, 128),
-                    AesKey::Hw(HwKey::Aes256(_)) => assert_eq!(num_bits, 256),
-                    AesKey::Vpaes(_) => assert!(matches!(num_bits, 128 | 256)),
-                },
-                Err(_) => {
-                    assert_ne!(num_bits, 128);
-                    assert_ne!(num_bits, 256);
-                }
+        for len in [16, 24, 32] {
+            match AesKey::new(&[0; 32][..len]) {
+                AesKey::Hw(HwKey::Aes128(_)) => assert_eq!(len, 16),
+                AesKey::Hw(HwKey::Aes192(_)) => assert_eq!(len, 24),
+                AesKey::Hw(HwKey::Aes256(_)) => assert_eq!(len, 32),
+                AesKey::Vpaes(_) => assert!(HaveCryptoExt::check().is_none()),
             }
         }
     }
@@ -612,6 +683,41 @@ mod tests {
         }
     }
 
+    // FIPS-197 appendix A.2.
+    #[test]
+    fn test_key_expansion_192() {
+        let Some(token) = HaveCryptoExt::check() else {
+            return;
+        };
+        let context = AesKey192::new(
+            &[
+                0x8e, 0x73, 0xb0, 0xf7, 0xda, 0x0e, 0x64, 0x52, 0xc8, 0x10, 0xf3, 0x2b, 0x80, 0x90,
+                0x79, 0xe5, 0x62, 0xf8, 0xea, 0xd2, 0x52, 0x2c, 0x6b, 0x7b,
+            ],
+            token,
+        );
+
+        let expected = [
+            0x8e73b0f7_da0e6452_c810f32b_809079e5,
+            0x62f8ead2_522c6b7b_fe0c91f7_2402f5a5,
+            0xec12068e_6c827f6b_0e7a95b9_5c56fec2,
+            0x4db7b4bd_69b54118_85a74796_e92538fd,
+            0xe75fad44_bb095386_485af057_21efb14f,
+            0xa448f6d9_4d6dce24_aa326360_113b30e6,
+            0xa25e7ed5_83b1cf9a_27f93943_6a94f767,
+            0xc0a69407_d19da4e1_ec1786eb_6fa64971,
+            0x485f7032_22cb8755_e26d1352_33f0b7b3,
+            0x40beeb28_2f18a259_6747d26b_458c553e,
+            0xa7e1466c_9411f1df_821f750a_ad07d753,
+            0xca400538_8fcc5006_282d166a_bc3ce7b5,
+            0xe98ba06f_448c773c_8ecc7204_01002202,
+        ];
+
+        for (i, expect) in expected.into_iter().enumerate() {
+            assert_eq!(to_u128(context.round_keys[i]), expect);
+        }
+    }
+
     #[test]
     fn test_block_128() {
         let context = AesKey::new(&[
@@ -656,20 +762,18 @@ mod tests {
     // blocks, and counter mode across the 32-bit counter's wrap.
     #[test]
     fn hw_matches_vpaes() {
-        let Some(token) = HaveCryptoExt::check() else {
+        if HaveCryptoExt::check().is_none() {
             return;
-        };
+        }
         let bytes = |n: usize, seed: u32| -> Vec<u8> {
             (0..n as u32)
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for (key_len, seed) in [16, 32].into_iter().zip(1..) {
+        for (key_len, seed) in [16, 24, 32].into_iter().zip(1..) {
             let key = bytes(key_len, seed);
-            let hw = AesKey::Hw(match key_len {
-                16 => HwKey::Aes128(AesKey128::new(key[..].try_into().unwrap(), token)),
-                _ => HwKey::Aes256(AesKey256::new(key[..].try_into().unwrap(), token)),
-            });
+            let hw = AesKey::new(&key);
+            assert!(matches!(hw, AesKey::Hw(_)));
             let vpaes = AesKey::Vpaes(VpaesKey::new(&key));
 
             let block: [u8; 16] = bytes(16, seed).try_into().unwrap();
@@ -704,19 +808,14 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for (key_len, seed) in [16, 32].into_iter().zip(1..) {
+        for (key_len, seed) in [16, 24, 32].into_iter().zip(1..) {
             let key = bytes(key_len, seed);
             let enc = AesKey::new(&key);
             let mut paths = vec![AesDecKey::Vpaes(VpaesDecKey::new(&key))];
-            if let Some(token) = HaveCryptoExt::check() {
-                paths.push(AesDecKey::Hw(match key_len {
-                    16 => HwDecKey::Aes128(
-                        AesKey128::new(key[..].try_into().unwrap(), token).decryption_round_keys(),
-                    ),
-                    _ => HwDecKey::Aes256(
-                        AesKey256::new(key[..].try_into().unwrap(), token).decryption_round_keys(),
-                    ),
-                }));
+            if HaveCryptoExt::check().is_some() {
+                let hw = AesDecKey::new(&key);
+                assert!(matches!(hw, AesDecKey::Hw(_)));
+                paths.push(hw);
             }
             for block_seed in 0..4 {
                 let block: [u8; 16] = bytes(16, block_seed).try_into().unwrap();

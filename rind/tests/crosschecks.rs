@@ -145,30 +145,32 @@ proptest! {
 mod cipher {
     use aws_lc_rs::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, Nonce, UnboundKey, quic};
     use aws_lc_rs::cipher::{
-        AES_128, AES_256, DecryptingKey, DecryptionContext, EncryptingKey, EncryptionContext,
-        PaddedBlockDecryptingKey, PaddedBlockEncryptingKey, UnboundCipherKey,
+        AES_128, AES_192, AES_256, DecryptingKey, DecryptionContext, EncryptingKey,
+        EncryptionContext, PaddedBlockDecryptingKey, PaddedBlockEncryptingKey, UnboundCipherKey,
     };
     use proptest::prelude::*;
     use rind::Error;
     use rind::cipher::{self, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, ChaCha20};
 
     fn aes_key() -> impl Strategy<Value = Vec<u8>> {
-        prop_oneof![
-            prop::collection::vec(any::<u8>(), 16),
-            prop::collection::vec(any::<u8>(), 32)
-        ]
+        prop::sample::select(&[16, 24, 32][..])
+            .prop_flat_map(|len| prop::collection::vec(any::<u8>(), len))
     }
 
     fn rind_aes_algorithm(key: &[u8]) -> &'static cipher::Algorithm {
-        if key.len() == 16 {
-            &cipher::AES_128
-        } else {
-            &cipher::AES_256
+        match key.len() {
+            16 => &cipher::AES_128,
+            24 => &cipher::AES_192,
+            _ => &cipher::AES_256,
         }
     }
 
     fn aws_aes_key(key: &[u8]) -> UnboundCipherKey {
-        let alg = if key.len() == 16 { &AES_128 } else { &AES_256 };
+        let alg = match key.len() {
+            16 => &AES_128,
+            24 => &AES_192,
+            _ => &AES_256,
+        };
         UnboundCipherKey::new(alg, key).unwrap()
     }
 
@@ -381,21 +383,77 @@ mod cipher {
 }
 
 mod key_wrap {
-    use aws_lc_rs::key_wrap::{AES_128, AES_256, AesKek, KeyWrap};
     use proptest::prelude::*;
     use rind::Error;
     use rind::key_wrap as ours;
 
     fn kek() -> impl Strategy<Value = Vec<u8>> {
-        prop_oneof![
-            prop::collection::vec(any::<u8>(), 16),
-            prop::collection::vec(any::<u8>(), 32)
-        ]
+        prop::sample::select(&[16, 24, 32][..])
+            .prop_flat_map(|len| prop::collection::vec(any::<u8>(), len))
     }
 
-    // aws-lc-rs's wrapping consumes its key, so each call takes a new one.
-    fn theirs(kek: &[u8]) -> AesKek {
-        AesKek::new(if kek.len() == 16 { &AES_128 } else { &AES_256 }, kek).unwrap()
+    /// aws-lc's RFC 3394 key wrap, through aws-lc-sys, since aws-lc-rs
+    /// offers no AES-192 KEK.
+    struct Theirs(aws_lc_sys::AES_KEY, aws_lc_sys::AES_KEY);
+
+    fn theirs(kek: &[u8]) -> Theirs {
+        let bits = 8 * kek.len() as u32;
+        // SAFETY: `kek` is `bits / 8` readable bytes, and each key a
+        // writable `AES_KEY`.
+        unsafe {
+            let mut keys: Theirs = core::mem::zeroed();
+            assert_eq!(
+                aws_lc_sys::AES_set_encrypt_key(kek.as_ptr(), bits, &mut keys.0),
+                0
+            );
+            assert_eq!(
+                aws_lc_sys::AES_set_decrypt_key(kek.as_ptr(), bits, &mut keys.1),
+                0
+            );
+            keys
+        }
+    }
+
+    impl Theirs {
+        fn wrap(&self, key: &[u8], out: &mut [u8]) -> Result<(), ()> {
+            assert_eq!(out.len(), key.len() + 8);
+            // SAFETY: `out` is 8 bytes longer than `key`, as the routine
+            // writes, and a null IV is RFC 3394's default.
+            let n = unsafe {
+                aws_lc_sys::AES_wrap_key(
+                    &self.0,
+                    core::ptr::null(),
+                    out.as_mut_ptr(),
+                    key.as_ptr(),
+                    key.len(),
+                )
+            };
+            if n == out.len() as i32 {
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+
+        fn unwrap(&self, wrapped: &[u8], out: &mut [u8]) -> Result<(), ()> {
+            assert_eq!(out.len() + 8, wrapped.len());
+            // SAFETY: `out` is 8 bytes shorter than `wrapped`, as the routine
+            // writes, and a null IV is RFC 3394's default.
+            let n = unsafe {
+                aws_lc_sys::AES_unwrap_key(
+                    &self.1,
+                    core::ptr::null(),
+                    out.as_mut_ptr(),
+                    wrapped.as_ptr(),
+                    wrapped.len(),
+                )
+            };
+            if n == out.len() as i32 {
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
     }
 
     proptest! {
@@ -405,7 +463,11 @@ mod key_wrap {
             key in (2..=12usize).prop_flat_map(|n| prop::collection::vec(any::<u8>(), 8 * n)),
             flip in any::<prop::sample::Index>(),
         ) {
-            let algorithm = if kek.len() == 16 { &ours::AES_128 } else { &ours::AES_256 };
+            let algorithm = match kek.len() {
+                16 => &ours::AES_128,
+                24 => &ours::AES_192,
+                _ => &ours::AES_256,
+            };
             let ours = ours::AesKek::new(algorithm, &kek).unwrap();
 
             let mut wrapped = vec![0u8; key.len() + 8];
@@ -602,9 +664,10 @@ mod aead {
     use proptest::sample::Index;
     use rind::Error;
     use rind::aead::{
-        AES_128_GCM, AES_256_GCM, Algorithm, CHACHA20_POLY1305, Key, Nonce, RandomizedNonceKey, gcm,
+        AES_128_GCM, AES_192_GCM, AES_256_GCM, Algorithm, CHACHA20_POLY1305, Key, Nonce,
+        RandomizedNonceKey, gcm,
     };
-    use rind::cipher::{AES_128, AES_256};
+    use rind::cipher::{AES_128, AES_192, AES_256};
 
     const TAG_LENGTHS: [gcm::TagLength; 7] = [
         gcm::TagLength::Full,
@@ -669,6 +732,7 @@ mod aead {
         let msg: Vec<u8> = (0..2048 + 256 + 15).map(|i| (i * 7 + 3) as u8).collect();
         for (ours, theirs, key) in [
             (&AES_128_GCM, &theirs::AES_128_GCM, &[1u8; 16][..]),
+            (&AES_192_GCM, &theirs::AES_192_GCM, &[4u8; 24][..]),
             (&AES_256_GCM, &theirs::AES_256_GCM, &[2u8; 32][..]),
         ] {
             for len in 0..=32 * 16 + 15 {
@@ -685,16 +749,16 @@ mod aead {
     proptest! {
         #[test]
         fn aes_gcm(
-            key in prop_oneof![vec(any::<u8>(), 16), vec(any::<u8>(), 32)],
+            key in prop_oneof![vec(any::<u8>(), 16), vec(any::<u8>(), 24), vec(any::<u8>(), 32)],
             nonce in any::<[u8; 12]>(),
             aad in vec(any::<u8>(), 0..100),
             msg in vec(any::<u8>(), 0..1100),
             flip in any::<Option<Index>>(),
         ) {
-            let (ours, theirs) = if key.len() == 16 {
-                (&AES_128_GCM, &theirs::AES_128_GCM)
-            } else {
-                (&AES_256_GCM, &theirs::AES_256_GCM)
+            let (ours, theirs) = match key.len() {
+                16 => (&AES_128_GCM, &theirs::AES_128_GCM),
+                24 => (&AES_192_GCM, &theirs::AES_192_GCM),
+                _ => (&AES_256_GCM, &theirs::AES_256_GCM),
             };
             check(ours, theirs, &key, nonce, &aad, &msg, flip)?;
         }
@@ -715,14 +779,18 @@ mod aead {
         // length, then opens that, as `check` does.
         #[test]
         fn aes_gcm_any_iv(
-            key in prop_oneof![vec(any::<u8>(), 16), vec(any::<u8>(), 32)],
+            key in prop_oneof![vec(any::<u8>(), 16), vec(any::<u8>(), 24), vec(any::<u8>(), 32)],
             iv in prop_oneof![vec(any::<u8>(), 12), vec(any::<u8>(), 1..80)],
             tag_len in proptest::sample::select(&TAG_LENGTHS[..]),
             aad in vec(any::<u8>(), 0..100),
             msg in vec(any::<u8>(), 0..1100),
             flip in any::<Option<Index>>(),
         ) {
-            let aes = if key.len() == 16 { &AES_128 } else { &AES_256 };
+            let aes = match key.len() {
+                16 => &AES_128,
+                24 => &AES_192,
+                _ => &AES_256,
+            };
             let ours = gcm::Key::new(aes, &key, tag_len).unwrap();
             let mut ours_sealed = msg.clone();
             ours.seal_in_place_append_tag(gcm::Iv::assume_unique_for_key(&iv).unwrap(), &aad, &mut ours_sealed).unwrap();
@@ -737,6 +805,7 @@ mod aead {
             let sealed = unsafe {
                 let aead = match key.len() {
                     16 => aws_lc_sys::EVP_aead_aes_128_gcm(),
+                    24 => aws_lc_sys::EVP_aead_aes_192_gcm(),
                     _ => aws_lc_sys::EVP_aead_aes_256_gcm(),
                 };
                 let ctx = aws_lc_sys::EVP_AEAD_CTX_new(aead, key.as_ptr(), key.len(), tag.len());
