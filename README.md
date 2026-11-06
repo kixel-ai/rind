@@ -266,9 +266,9 @@ SHA-512.
 - Ed25519 verification without ADX: on CPUs with AVX2, `[S]B - [k]A` runs a
   port of curve25519-dalek's AVX2 backend, variable-time over public inputs,
   rather than s2n-bignum's verified `edwards25519_scalarmuldouble_alt`, a
-  constant-time fixed-window loop. On an i7-8700 with ADX denied, verification
-  fell from 1.30× curve25519-dalek's time to RESULT_LOCAL; on the OVH VPSes,
-  whose virtual CPUs hide ADX, RESULT_VPS.
+  constant-time fixed-window loop. Verification fell from 1.31× to 1.09×
+  curve25519-dalek's time on an i7-8700 with ADX denied, and from 1.30× to
+  1.08× on an OVH VPS whose virtual CPU hides ADX.
 - ChaCha20-Poly1305 without AES-NI and on SSE2, which lack SSE4.1: rind runs
   Graviola's scalar Poly1305 there, and aws-lc BoringSSL's SSE2
   `poly1305_vec.c`, which rind doesn't port for CPUs older than Westmere.
