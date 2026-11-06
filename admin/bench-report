@@ -531,7 +531,7 @@ def host_script(host, work, cmd):
     # The script's processes inherit the descriptor holding the lock. Python
     # closes it in its own children, but subprocess.run kills its child when
     # Python fails, so no child outlives the lease.
-    lock = f"exec 9>{q(HOSTS[host]['lease'])} && {{ flock -n 9 || exit {LEASE_HELD}; }}\n"
+    lock = f"exec 9>{q(HOSTS[host]['lease'])} && {{ flock -n -E {LEASE_HELD} 9 || exit; }}\n"
     return lock + f"trap 'rm -rf {w}' EXIT\n" + script
 
 

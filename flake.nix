@@ -258,6 +258,9 @@
                   nixfmt
                   # admin/ scripts.
                   python3
+                  # admin/bench-report-test runs the script that holds a
+                  # leased host.
+                  flock
                   cargo-modules
                   quest-cli
                   # rind-instant-acme's end-to-end test issues a certificate from it.
