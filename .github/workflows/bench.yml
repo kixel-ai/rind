@@ -53,6 +53,9 @@ jobs:
   # aarch64, the crypto extension and the SHA-512 and SHA-3 instructions, as
   # a Raspberry Pi 4 lacks them; on x86_64, what Sandy Bridge lacks: AVX2,
   # BMI1 and BMI2, ADX, the SHA extensions, AVX-512, VAES, and VPCLMULQDQ.
+  # One x86_64 row denies only AVX-512 IFMA, so RSA signing takes the path
+  # of CPUs without it, such as Zen 3 and Intel's client cores, whichever CPU
+  # the runner draws; an RSA change's A/B reads it.
   # Two more x86_64 rows time mostly AES: one also denies AVX, as Westmere
   # and the Goldmont Atoms lack it, and one AES-NI, PCLMULQDQ, and SSE4.1
   # too, as the first Core 2s lack them, which also times ChaCha20-Poly1305
@@ -86,6 +89,12 @@ jobs:
             runner: ubuntu-24.04
             personality: linux64
             portable: true
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            personality: linux64
+            portable: true
+            cpu: no-ifma
+            benches: --bench rsa_priv
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64
@@ -159,12 +168,18 @@ jobs:
                 # aws-lc's AES, SHA1, SHA256, PMULL, SHA512, and SHA3 bits.
                 export OPENSSL_armcap='~0x87c'
                 ;;
-              # Haswell's path: without ADX, and for aws-lc without BMI2,
-              # ADX, and AVX-512 F, DQ, IFMA, CD, BW, and VL in CPUID leaf
-              # 7's EBX, so both run RSAZ for RSA-2048, and aws-lc not its
-              # AVX-512 RSA, which rind lacks.
+              # IFMA in CPUID leaf 7's EBX, which both libraries' dual RSAZ
+              # needs.
+              x86_64-*/no-ifma)
+                export RIND_CPU_DISABLE_avx512ifma=1
+                export OPENSSL_ia32cap='~0x0:~0x200000'
+                ;;
+              # Haswell's path: without ADX and AVX-512 IFMA, and for aws-lc
+              # without BMI2, ADX, and AVX-512 F, DQ, IFMA, CD, BW, and VL in
+              # CPUID leaf 7's EBX, so both run RSAZ for RSA-2048, and
+              # neither the dual AVX-512 RSAZ.
               x86_64-*/no-adx)
-                export RIND_CPU_DISABLE_adx=1
+                export RIND_CPU_DISABLE_adx=1 RIND_CPU_DISABLE_avx512ifma=1
                 export OPENSSL_ia32cap='~0x0:~0xd02b0100'
                 ;;
               x86_64-*)

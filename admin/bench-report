@@ -693,6 +693,7 @@ CPU_FEATURES = {
 # bench.yml's `native` matrix defines them.
 TIERS = [
     (("x86_64-unknown-linux-gnu", False, ""), "x86_64"),
+    (("x86_64-unknown-linux-gnu", True, "no-ifma"), "no IFMA"),
     (("x86_64-unknown-linux-gnu", True, "no-adx"), "no ADX"),
     (("x86_64-unknown-linux-gnu", True, ""), "no AVX2"),
     (("x86_64-unknown-linux-gnu", True, "no-avx"), "no AVX"),
@@ -1483,7 +1484,8 @@ def report(hosts, tiers, verified, gaps):
         cpus = sorted({t["cpu"] for t in tiers["tiers"]})
         md += [
             "GitHub's runners, timed by the nightly `bench` workflow with CPU features denied as `bench.yml` "
-            "describes: x86_64 runs every feature, and each column to its right denies more (no ADX: ADX; "
+            "describes: x86_64 runs every feature, and each column to its right denies more (no IFMA: AVX-512 "
+            "IFMA; no ADX: also ADX; "
             "no AVX2: also AVX2, BMI2, SHA-NI, AVX-512, VAES, and VPCLMULQDQ; no AVX: also AVX; no AES-NI: "
             "also AES-NI, PCLMULQDQ, and SSE4.1; SSE2: also SSSE3). aarch64 runs with the crypto extension, "
             "no crypto without it, and armv7 in 32-bit mode on the same core. Each cell is rind's time over "
