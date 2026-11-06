@@ -877,6 +877,14 @@ def tier_column(tier):
     return column
 
 
+def tier_columns(tiers):
+    """The report's tier columns, in bench.yml's order. A tier added since the
+    saved run has no column yet, rather than an empty one, which the report
+    reads as code shared with the column to its left."""
+    present = {tier_column(t) for t in tiers["tiers"]}
+    return [name for _, name in TIERS if name in present]
+
+
 def tier_row(key):
     """The CPU-tier row a nightly benchmark belongs to, if it is ranked."""
     return next((name for name, pattern in TIER_ROWS if re.match(pattern, key)), None)
@@ -1172,7 +1180,7 @@ def tiers_svg(tiers, theme):
     of each row where rind trails most."""
     svg = Svg(theme)
     cells = tier_cells(tiers)
-    columns = [name for _, name in TIERS]
+    columns = tier_columns(tiers)
     cell = 74
     label_width = max(text_width(name, 12) for name, _ in TIER_ROWS) + 16
     top = 52
@@ -1364,7 +1372,7 @@ def build_table(cost):
 
 
 def tier_table(tiers):
-    columns = [name for _, name in TIERS]
+    columns = tier_columns(tiers)
     by_key = {}
     for t in tiers["tiers"]:
         column = dict(TIERS)[(t["target"], t["portable"], t["tier"])]
