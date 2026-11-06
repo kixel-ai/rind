@@ -152,7 +152,7 @@ mod tests {
                     for (b, p) in block.iter_mut().zip(prev) {
                         *b ^= p;
                     }
-                    model.encrypt_block(block);
+                    *block = model.encrypt_block(block);
                     prev = *block;
                 }
 

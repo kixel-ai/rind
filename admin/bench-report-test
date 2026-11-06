@@ -347,9 +347,9 @@ class Gaps(unittest.TestCase):
             br.load_gaps(br.load_hosts(br.DATA_DIR), json.load(f))
 
 
-class Lease(unittest.TestCase):
+class HostScript(unittest.TestCase):
     def run_script(self, cmd):
-        """The host script's exit status and output on a leased host here."""
+        """The host script's exit status and output on the host "vps" here."""
         archive = io.BytesIO()
         with tarfile.open(fileobj=archive, mode="w") as tar:
             tar.addfile(tarfile.TarInfo("file"), io.BytesIO())
@@ -358,28 +358,34 @@ class Lease(unittest.TestCase):
         )
         return ran.returncode, ran.stdout
 
+    def setUp(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        self.work = os.path.join(d.name, "work")
+        self.lock = os.path.join(d.name, "lock")
+        self.addCleanup(setattr, br, "HOSTS", br.HOSTS)
+
+    def test_removes_its_copy_and_keeps_the_rest(self):
+        br.HOSTS = {"vps": {"jobs": 1}}
+        os.makedirs(os.path.join(self.work, "target"))
+        self.assertEqual(self.run_script("echo $(ls) > result.json"), (0, b"file\n"))
+        self.assertEqual(os.listdir(self.work), ["target"])
+
     def test_holds_the_lease_through_the_run_and_its_cleanup(self):
-        with tempfile.TemporaryDirectory() as d:
-            self.work = os.path.join(d, "work")
-            lock = os.path.join(d, "lock")
-            hosts = br.HOSTS
-            br.HOSTS = {"vps": {"jobs": 1, "lease": lock}}
-            try:
-                # Another run's lease: its work stays.
-                os.makedirs(os.path.join(self.work, "src"))
-                with open(lock, "w") as held:
-                    fcntl.flock(held, fcntl.LOCK_EX)
-                    self.assertEqual(self.run_script("true"), (br.LEASE_HELD, b""))
-                self.assertTrue(os.path.isdir(os.path.join(self.work, "src")))
-                # Ours: the run sees the lease held and its copy, and nothing
-                # is left once it lets go.
-                status, out = self.run_script(f"flock -n {lock} true; echo $? $(ls) > ../result.json")
-                self.assertEqual((status, out), (0, b"1 file\n"))
-                self.assertFalse(os.path.exists(self.work))
-                with open(lock) as other:
-                    fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            finally:
-                br.HOSTS = hosts
+        br.HOSTS = {"vps": {"jobs": 1, "lease": self.lock}}
+        # Another run's lease: its work stays.
+        os.makedirs(os.path.join(self.work, "target"))
+        with open(self.lock, "w") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            self.assertEqual(self.run_script("true"), (br.LEASE_HELD, b""))
+        self.assertTrue(os.path.isdir(os.path.join(self.work, "target")))
+        # Ours: the run sees the lease held and its copy, and nothing is left
+        # once it lets go.
+        status, out = self.run_script(f"flock -n {self.lock} true; echo $? $(ls) > result.json")
+        self.assertEqual((status, out), (0, b"1 file\n"))
+        self.assertFalse(os.path.exists(self.work))
+        with open(self.lock) as other:
+            fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
 if __name__ == "__main__":

@@ -126,8 +126,7 @@ impl VaesKernel {
         if !partial.is_empty() {
             // The kernel took `bulk.len() / 16` counter blocks, modulo 2^32
             // as GCM increments them.
-            let mut keystream = add_to_counter(&counter, (bulk.len() / 16) as u32);
-            key.encrypt_block(&mut keystream);
+            let keystream = key.encrypt_block(&add_to_counter(&counter, (bulk.len() / 16) as u32));
             if !ENC {
                 ghash.add(partial);
             }

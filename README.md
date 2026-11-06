@@ -173,8 +173,9 @@ cargo bench
 ```
 
 `admin/bench-report collect` runs the report's benchmarks, then
-`admin/build-cost`, on each benchmark host in turn over ssh, skipping any
-that is busy, and writes their results and the hosts' details as JSON under
+`admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev
+shell and under `quest gate --host`, which keeps other gated work off the
+host; it skips any host that is still busy, and writes their results and the hosts' details as JSON under
 `.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly
 `bench` run's results, and `admin/bench-report render --from DIR` copies a
 collection's measured hosts into `benchmarks/data/` and writes
@@ -220,7 +221,7 @@ SHA-512.
 
 | Algorithm | x86_64 | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|
-| AES-GCM | BoringSSL ⚡ + Graviola | HACL* ✓ + rind | Graviola | aws-lc + rind |  |
+| AES-GCM | BoringSSL ⚡ + HACL* ✓ + Graviola | HACL* ✓ + rind | Graviola | aws-lc + rind |  |
 | AES block, AES-CTR | Graviola + aws-lc |  |  | aws-lc |  |
 | AES-KW | Graviola + rind |  |  | aws-lc + rind |  |
 | AES-CBC | Graviola + aws-lc + rind |  |  | aws-lc + rind |  |
@@ -270,7 +271,7 @@ the code [Symmetric cryptography](#symmetric-cryptography) names.
 
 | Algorithm | aarch64 | no crypto | armv7 |
 |---|---|---|---|
-| AES-GCM | s2n-bignum + Graviola | aws-lc + rind |  |
+| AES-GCM | s2n-bignum + Graviola + rind | aws-lc + rind |  |
 | AES block, AES-CTR | Graviola + rind | aws-lc |  |
 | AES-KW, AES-CBC | Graviola + rind | aws-lc + rind |  |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |
@@ -608,6 +609,8 @@ Below 256 bytes, Vale's AES-GCM opens on those cores too, measured 0.61-0.96x
 the by-8 path's time on Arrow Lake, Zen 3, Zen 5, and Ice Lake. It also seals
 below 80 bytes without AVX-512, 0.77x on Arrow Lake and 0.94-1.05x on Zen 3,
 but not with it, where Zen 5 and Ice Lake measured it slower.
+Vale's proof covers those short messages' kernel, but not the choice of it,
+which [`proofs/`](proofs/README.md) proves only without VAES.
 The key picks its kernel once, when it is made.
 
 aarch64 decides once per process whether the CPU has the crypto extension.
@@ -617,7 +620,12 @@ by-8 kernels instead, which use its three-way XOR. They run in place, outside
 their proofs, which assume separate input and output buffers.
 `admin/parse-asm/inplace.py` walks them at every length to 64 blocks, checking
 that each block is loaded before it is stored and that their branches and
-addresses depend only on the length.
+addresses depend only on the length. Up to 15 blocks of AAD and message
+sealed, or 31 opened, rind's own Rust runs instead: one pass that encrypts
+every counter block and the tag's, and hashes every block with one reduction
+per eight. It measured 0.41-0.97x the kernels' time on Neoverse N2 and
+0.51-0.89x on Apple M1, gaining least near those limits. Its tests check it
+against vpaes and NEON GHASH.
 
 Without it, AES runs aws-lc's `vpaes-armv8`, Mike Hamburg's vector permutation
 AES, whose S-box is NEON `tbl` lookups into registers, and GHASH runs aws-lc's

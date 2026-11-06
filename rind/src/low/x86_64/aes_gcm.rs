@@ -114,9 +114,7 @@ pub(crate) fn tagged_from<const ENC: bool>(
     ghash.add_lengths(aad.len(), cipher_inout.len());
 
     // Last, so its AES overlaps the GHASH before it.
-    let mut e_y0 = y0;
-    key.encrypt_block(&mut e_y0);
-    ghash.tag(&e_y0)
+    ghash.tag(&key.encrypt_block(&y0))
 }
 
 /// GCM's first counter block for a 96-bit nonce: the nonce, then 1.
@@ -689,8 +687,7 @@ mod tests {
             let key = bytes(key_len, 1);
             ct::secret_slice(&key);
             let fast = AesKey::new(&key);
-            let mut h = [0u8; 16];
-            fast.encrypt_block(&mut h);
+            let h = fast.encrypt_block(&[0; 16]);
             let fast_table = GhashTable::new(u128::from_be_bytes(h));
             let mut slow = vec![(
                 AesKey::Nohw(NohwKey::new(&key)),
@@ -784,8 +781,7 @@ mod tests {
             let key = bytes(key_len, 1);
             ct::secret_slice(&key);
             let fast = AesKey::new(&key);
-            let mut h = [0u8; 16];
-            fast.encrypt_block(&mut h);
+            let h = fast.encrypt_block(&[0; 16]);
             let mut paths = vec![(
                 AesKey::Nohw(NohwKey::new(&key)),
                 GhashTable::Nohw(NohwTable::new(&h)),
@@ -887,8 +883,7 @@ mod tests {
         let key = bytes(rng, key_len);
         ct_sde::traced(|| {
             let key = AesKey::new(&key);
-            let mut h = [0u8; 16];
-            key.encrypt_block(&mut h);
+            let h = key.encrypt_block(&[0; 16]);
             (key, GhashTable::new(u128::from_be_bytes(h)))
         })
     }

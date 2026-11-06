@@ -8,8 +8,8 @@ set_option linter.dupNamespace false
 /-!
 # rind's AES-NI key expansion and block cipher, modelled by hand
 
-These load and store through raw pointers and zip iterators, which Aeneas
-cannot translate, so the translation leaves them opaque and this file models
+These load through raw pointers, `transmute` a vector to bytes, and zip
+iterators, which Aeneas cannot translate, so the translation leaves them opaque and this file models
 them over `Rind.X86_64.Simd`'s intrinsics. So does `u128_to_m128i` and the
 constants beside it, which `transmute` a `u128`, whose bits a vector holds
 unchanged. `admin/prove` fails unless these quotes are still that Rust, so a
@@ -71,9 +71,9 @@ fn zero() -> __m128i {
     unsafe { _mm_setzero_si128() }
 }
 
-fn aes128_block(round_keys: &[__m128i; 11], block_inout: &mut [u8; 16]) {
-    // SAFETY: `block_inout` is 16 bytes and readable
-    let block = unsafe { _mm_loadu_si128(block_inout.as_ptr().cast()) };
+fn aes128_block(round_keys: &[__m128i; 11], block: &[u8; 16]) -> [u8; 16] {
+    // SAFETY: `block` is 16 bytes and readable
+    let block = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
     let block = _mm_xor_si128(block, round_keys[0]);
     let block = _mm_aesenc_si128(block, round_keys[1]);
     let block = _mm_aesenc_si128(block, round_keys[2]);
@@ -85,13 +85,13 @@ fn aes128_block(round_keys: &[__m128i; 11], block_inout: &mut [u8; 16]) {
     let block = _mm_aesenc_si128(block, round_keys[8]);
     let block = _mm_aesenc_si128(block, round_keys[9]);
     let block = _mm_aesenclast_si128(block, round_keys[10]);
-    // SAFETY: `block_inout` is 16 bytes and writeable
-    unsafe { _mm_storeu_si128(block_inout.as_mut_ptr().cast(), block) };
+    // SAFETY: both are 16 bytes, and any bits are a valid array
+    unsafe { core::mem::transmute(block) }
 }
 
-fn aes256_block(round_keys: &[__m128i; 15], block_inout: &mut [u8; 16]) {
-    // SAFETY: `block_inout` is 16 bytes and readable
-    let block = unsafe { _mm_loadu_si128(block_inout.as_ptr().cast()) };
+fn aes256_block(round_keys: &[__m128i; 15], block: &[u8; 16]) -> [u8; 16] {
+    // SAFETY: `block` is 16 bytes and readable
+    let block = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
     let block = _mm_xor_si128(block, round_keys[0]);
     let block = _mm_aesenc_si128(block, round_keys[1]);
     let block = _mm_aesenc_si128(block, round_keys[2]);
@@ -107,8 +107,8 @@ fn aes256_block(round_keys: &[__m128i; 15], block_inout: &mut [u8; 16]) {
     let block = _mm_aesenc_si128(block, round_keys[12]);
     let block = _mm_aesenc_si128(block, round_keys[13]);
     let block = _mm_aesenclast_si128(block, round_keys[14]);
-    // SAFETY: `block_inout` is 16 bytes and writeable
-    unsafe { _mm_storeu_si128(block_inout.as_mut_ptr().cast(), block) };
+    // SAFETY: both are 16 bytes, and any bits are a valid array
+    unsafe { core::mem::transmute(block) }
 }
 
 fn u128_to_m128i(v: u128) -> __m128i {
@@ -209,7 +209,7 @@ def low.x86_64.aes.aes256_expand (key : Std.Array Std.U8 32#usize)
   let ts ← low.x86_64.aes.aes256_expand_loop a b (low.x86_64.aes.RCON.take 7)
   if h : (a :: b :: ts).length = 15 then ok (Std.Array.from (a :: b :: ts) h) else fail .panic
 
-/-- `_mm_storeu_si128` to a byte array: the vector's bytes, the lowest first. -/
+/-- A vector as a byte array, as `transmute` reads it: its bytes, the lowest first. -/
 def low.x86_64.aes.store (v : core.core_arch.x86.__m128i) : Std.Array Std.U8 16#usize :=
   Std.Array.from ((leQuad32ToBytes v).map fun b => ⟨b⟩) (by simp [leQuad32ToBytes])
 
@@ -225,16 +225,16 @@ def low.x86_64.aes.rounds (block : core.core_arch.x86.__m128i) :
 
 /-- `aes128_block`, whose calls are unrolled over the round keys in order. -/
 def low.x86_64.aes.aes128_block (round_keys : Std.Array core.core_arch.x86.__m128i 11#usize)
-    (block_inout : Std.Array Std.U8 16#usize) : Result (Std.Array Std.U8 16#usize) := do
-  let block := low.x86_64.aes.load block_inout.val
+    (block : Std.Array Std.U8 16#usize) : Result (Std.Array Std.U8 16#usize) := do
+  let block := low.x86_64.aes.load block.val
   let block ← core.core_arch.x86.sse2._mm_xor_si128 block round_keys.val[0]!
   let block ← low.x86_64.aes.rounds block (round_keys.val.drop 1)
   ok (low.x86_64.aes.store block)
 
 /-- `aes256_block`, whose calls are unrolled over the round keys in order. -/
 def low.x86_64.aes.aes256_block (round_keys : Std.Array core.core_arch.x86.__m128i 15#usize)
-    (block_inout : Std.Array Std.U8 16#usize) : Result (Std.Array Std.U8 16#usize) := do
-  let block := low.x86_64.aes.load block_inout.val
+    (block : Std.Array Std.U8 16#usize) : Result (Std.Array Std.U8 16#usize) := do
+  let block := low.x86_64.aes.load block.val
   let block ← core.core_arch.x86.sse2._mm_xor_si128 block round_keys.val[0]!
   let block ← low.x86_64.aes.rounds block (round_keys.val.drop 1)
   ok (low.x86_64.aes.store block)
