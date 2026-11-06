@@ -1,29 +1,22 @@
-# [M] MoQ's QUIC packet path is as fast as rind can make it
+# [XS] AMD CPUs without VAES run their fastest AES-GCM tier
 
 ## Goal
 
-Every change in rind, rind-rustls, or moq-quic that measurably speeds up MoQ's QUIC packet path is found, measured, and planned as its own quest. The path covers per-packet AES-GCM seal and open, header protection, key dispatch, key updates, and handshakes. Each quest goes to the maintainer for approval before it's created.
+x86_64 CPUs with AVX and MOVBE but no VAES, such as Zen 2, run whichever of Vale's AES-GCM and rind's SSE `by8` loop is faster at QUIC packet sizes, decided from a Zen 2 measurement. This is what remains of the investigation into MoQ's QUIC packet path.
 
 ## Plan
 
-Planned with the maintainer on 2026-11-05, from zshenker's independent Zen 2 numbers on [moq-dev/moq#7873](https://github.com/moq-dev/moq/pull/7873#issuecomment-6670951461). With rind 0.1.12 on an EPYC 7662, pinned:
-- AES-128-GCM: seal 1.54x and open 1.41x aws-lc-rs's throughput at 64 B, and 1.06-1.09x at 1200-1280 B.
-- Header protection: level.
-- TLS 1.3 handshakes: 1.65x.
+Since 0.1.13 ([moq-dev/rind#329](https://github.com/moq-dev/rind/pull/329)), these CPUs run Vale's kernel at every length. Forcing tiers with `--cfg rind_cpu_disable` on newer cores ([moq-dev/rind#387](https://github.com/moq-dev/rind/pull/387)) shows `by8` 3-8% ahead of Vale at 1200-1452 B on Zen 3, 4, and 5, and Vale 15-49% ahead on Arrow Lake. zshenker's numbers on [moq-dev/moq#7873](https://github.com/moq-dev/moq/pull/7873#issuecomment-6670951461) predate 0.1.13. Bulk encryption takes the fastest source outright, so if Zen 2 runs `by8` faster, route AMD CPUs without VAES to it; otherwise delete this quest.
 
-Decisions (✅ chosen):
-- Scope: rind and rind-rustls, plus changes in moq-quic itself ✅ / rind's primitives only / rind and rind-rustls only.
-- CPUs: relay servers first ✅ (x86_64 Zen 2 to 5 and Intel Xeon, with and without VAES, plus aarch64 Graviton/Neoverse), then clients (Apple M, Android aarch64 and armv7) / every tier equally / x86_64 only.
-- Structure: this quest investigates. rind and rind-rustls fixes become rind quests, and moq-quic fixes become quests in [moq-dev/moq](https://github.com/moq-dev/moq)'s perf epic ✅ / separate investigations in each repo.
-- New API: a new public QUIC API in rind is allowed if it measures a clear end-to-end win ✅ / none. One example is a packet key that seals and applies header protection in one call; another seals a GSO batch. It would be additive, so a patch release, and its shape goes to the maintainer.
+Decided with the maintainer on 2026-11-05, from #387's findings (✅ chosen):
+- Route AES-GCM opens under 256 B to Vale on VAES and AVX-512 CPUs: approve ✅ / drop. Planned as [vaes-short-open](/quest/m1/moq/vaes-short-open.md).
+- Call the hardware AES block directly for header protection: approve ✅ / drop. Planned as [header-protection-block](/quest/m1/moq/header-protection-block.md).
+- DIT on aarch64: keep toggling it per call, once per batch where an API processes one ✅ / never set it, as aws-lc-rs / leave it set once a thread enters rind.
+- One-pass short-message AES-GCM on aarch64, with DIT kept per call: approve ✅ / drop. Planned as [aarch64-short-gcm](/quest/m1/moq/aarch64-short-gcm.md).
+- Ask zshenker for a Zen 2 rerun on 0.1.13: ask ✅ / skip.
+- New public QUIC API (a key that seals and applies header protection in one call, or a GSO batch seal): none ✅ / add. Neither measured an end-to-end win: header protection and dispatch are 3.6% of moq's CPU in `echo_quic`, rustls exposes no QUIC secrets for a fused key, and batching 1200 B packets amortizes only a few ns of about 100-270 ns per call.
+- moq-quic: no quest, so nothing goes to moq-dev/moq's perf epic.
 
-Where the path is today:
-- moq-quic (`rs/moq-quic/src/crypto/rustls.rs`) reaches rind through rustls's `quic::PacketKey` and `HeaderProtectionKey` traits, which rind-rustls implements. Each packet passes through two `Box<dyn PacketKey>` layers, and header protection is a separate AES call.
-- Since 0.1.13, x86_64 CPUs with AVX and MOVBE but no VAES, such as Zen 2 and 3, run Vale's verified AES-GCM ([moq-dev/rind#329](https://github.com/moq-dev/rind/pull/329)), which was 6-11% slower than aws-lc's at 32 B.
+## Waiting
 
-How to investigate:
-- Re-measure zshenker's rows on the current release and main, with and without the Vale tier, on the report's hosts and on GitHub's runners, comparing only matching CPUs.
-- Profile moq-uring's `echo_quic` bench, and a relay fan-out if one exists, to find where packet crypto's time goes: copies, dispatch, nonce and AAD setup, header-protection masks, key updates.
-- Read rind-rustls's `PacketKey` and `HeaderProtectionKey` implementations for per-call waste.
-- For each gap, write up the expected win with numbers and a recommendation, then plan it through `/quest-plan` once the maintainer approves.
-- For bulk encryption (packet AES-GCM, ChaCha20-Poly1305, and header protection), performance beats verification (maintainer, 2026-11-05): the fastest source wins even when a verified one is within 10%, so the Vale tier stays only if it measures fastest. Elsewhere on the path, such as handshakes, AGENTS.md's ~10% rule applies.
+- zshenker: rerun moq-dev/moq#7873's bench on the Zen 2 EPYC 7662 with rind 0.1.13 or later, pinned, reporting AES-128-GCM seal and open at 64 B and 1200 B against aws-lc-rs. His 0.1.12 numbers ran `by8`, so the two compare the tiers. Check for the reply on [moq-dev/moq#7873](https://github.com/moq-dev/moq/pull/7873).

@@ -141,4 +141,5 @@ pub(crate) mod sha3_keccak4_f1600_shim;
 pub(crate) mod sha3_keccak_f1600;
 pub(crate) mod sha3_keccak_nof4_f1600;
 pub(crate) mod sha512;
+mod sha_tail;
 pub(crate) mod vpaes_x86_64;
