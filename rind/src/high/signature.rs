@@ -1744,6 +1744,40 @@ mod tests {
         result.expect_err("accepted")
     }
 
+    // A generated key pair derives its public key on the first read, so
+    // each reader must see the same key whichever reads first.
+    #[test]
+    fn ecdsa_generated_public_key_agrees_whichever_reads_first() {
+        type Reader = fn(&'static EcdsaSigningAlgorithm, &EcdsaKeyPair) -> Vec<u8>;
+        let readers: [Reader; 4] = [
+            |_, pair| pair.public_key().as_ref().to_vec(),
+            |_, pair| pair.to_spki().as_ref().to_vec(),
+            |signing, pair| {
+                let pkcs8 = pair.to_pkcs8();
+                let loaded = EcdsaKeyPair::from_pkcs8(signing, pkcs8.as_ref()).unwrap();
+                loaded.to_spki().as_ref().to_vec()
+            },
+            |signing, pair| {
+                let sec1 = pair.to_sec1();
+                let loaded = EcdsaKeyPair::from_sec1(signing, sec1.as_ref()).unwrap();
+                loaded.to_spki().as_ref().to_vec()
+            },
+        ];
+        for signing in ECDSA_SIGNING {
+            for first in 0..readers.len() {
+                let pair = EcdsaKeyPair::generate(signing).unwrap();
+                readers[first](signing, &pair);
+                let point = pair.public_key().as_ref().to_vec();
+                let spki = pair.to_spki().as_ref().to_vec();
+                for (i, reader) in readers.iter().enumerate() {
+                    let read = reader(signing, &pair);
+                    let expected = if i == 0 { &point } else { &spki };
+                    assert_eq!(&read, expected, "{signing:?}, {first} first, {i}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn ecdsa_verifies_only_under_its_algorithm() {
         let verification = [

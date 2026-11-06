@@ -1818,10 +1818,11 @@ end P256
 as every caller holds one; release builds compile it out. -/
 def Held : Prop := low.entry.Entry.assert_held = ok ()
 
-/-- A verifying key's caches of P, ..., 15P and 17P, ..., 31P, whose atomics
-Aeneas cannot translate: `ReuseCache::new` returns a cache, each cache holds
-only what its build returns, built from the key's own point, which never
-changes after it is parsed, so whatever every such build's value satisfies,
+/-- A verifying key's caches of P, ..., 15P and 17P, ..., 31P, and a signing
+key's cache of its encoded public key, whose atomics Aeneas cannot translate:
+`ReuseCache::new` returns a cache, each cache holds only what its build
+returns, built from the key's own point or scalar, which never changes after
+the key is made, so whatever every such build's value satisfies,
 `get_or_build_now`'s value does, and `get_or_build`'s, unless `None`, and a
 clone, which copies a built value, returns. -/
 structure Cached : Prop where
@@ -1848,6 +1849,15 @@ structure Cached : Prop where
   clone : ∀ c, ∃ c', low.generic.reuse_cache.ReuseCache.Insts.CoreCloneClone.clone
       (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
       (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault) c = ok c'
+  point_new : ∃ c, low.generic.reuse_cache.ReuseCache.new
+      high.ecdsa.EncodedPoint.Insts.CoreMarkerCopy high.ecdsa.EncodedPoint.Insts.CoreDefaultDefault = ok c
+  point_get_or_build_now : ∀ (key : P256SigningKey) (P : high.ecdsa.EncodedPoint → Prop),
+    high.ecdsa.SigningKey.public_key_uncompressed.closure.Insts.CoreOpsFunctionFnOnceTupleEncodedPoint.call_once
+      P256C key () ⦃ P ⦄ →
+    low.generic.reuse_cache.ReuseCache.get_or_build_now
+      high.ecdsa.EncodedPoint.Insts.CoreMarkerCopy high.ecdsa.EncodedPoint.Insts.CoreDefaultDefault
+      (high.ecdsa.SigningKey.public_key_uncompressed.closure.Insts.CoreOpsFunctionFnOnceTupleEncodedPoint P256C)
+      key.public_key key ⦃ P ⦄
 
 namespace P256
 

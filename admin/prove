@@ -310,6 +310,7 @@ extract aarch64 Aarch64 \
     --start-from '{impl crate::high::hash::SignatureHash for crate::high::hash::Sha256}' \
     --start-from crate::high::ecdsa::SigningKey::from_private_key_and_public_key \
     --start-from crate::high::ecdsa::SigningKey::public_key_uncompressed \
+    --start-from '{impl core::convert::AsRef for crate::high::ecdsa::EncodedPoint}' \
     --start-from crate::high::ecdsa::SigningKey::sign \
     --opaque crate::high::hmac_drbg \
     --start-from crate::high::ecdsa::hash_to_scalar \
