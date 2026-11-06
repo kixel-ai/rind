@@ -2,16 +2,19 @@
 
 use core::fmt;
 
+use super::asn1::{self, Type, pkix};
 use super::curve::{Curve, MAX_SCALAR_LEN, MAX_UNCOMPRESSED_PUBLIC_KEY_LEN, P256, P384, P521};
 use super::digest::Digest;
 use super::ecdsa;
 use super::ed25519::{Ed25519SigningKey, Ed25519VerifyingKey};
 use super::hash::{Sha256, Sha384, Sha512, SignatureHash};
 use super::rsa::{self, PssSalt};
+use super::{sec1, spki};
 use crate::error::{Error, KeyFormatError};
 use crate::low::{self, Zeroable};
 pub use crate::mid::rsa_key_size::RsaKeySize;
 use crate::mid::rsa_pub::MAX_PUBLIC_MODULUS_BYTES;
+use crate::mid::{p256, p384, p521};
 
 /// The hash a signature algorithm applies to the message.
 ///
@@ -131,10 +134,15 @@ impl<const N: usize> Zeroable for Buffer<N> {}
 pub struct VerificationAlgorithm(Verification);
 
 /// An algorithm and the function that parses its keys, which is the only
-/// path to its code: a binary links only the algorithms it names.
+/// path to its code: a binary links only the algorithms it names. ECDSA's
+/// also holds its curve's [`sec1::Decompress`].
 #[derive(Clone, Copy)]
 enum Verification {
-    Ecdsa(Ecdsa, fn(Ecdsa, &[u8]) -> Result<Parsed, Error>),
+    Ecdsa(
+        Ecdsa,
+        fn(Ecdsa, &[u8]) -> Result<Parsed, Error>,
+        sec1::Decompress,
+    ),
     Rsa(Rsa),
     Ed25519(fn(&[u8]) -> Result<Parsed, Error>),
 }
@@ -142,7 +150,7 @@ enum Verification {
 impl fmt::Debug for Verification {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Ecdsa(ecdsa, _) => f.debug_tuple("Ecdsa").field(ecdsa).finish(),
+            Self::Ecdsa(ecdsa, ..) => f.debug_tuple("Ecdsa").field(ecdsa).finish(),
             Self::Rsa(rsa) => f.debug_tuple("Rsa").field(rsa).finish(),
             Self::Ed25519(_) => f.write_str("Ed25519"),
         }
@@ -225,12 +233,13 @@ impl PublicKey {
     ///
     /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
     /// `RSAPublicKey` or `SubjectPublicKeyInfo` DER, and Ed25519 keys are
-    /// their 32 bytes. A compressed ECDSA point is refused: no consumer sends
-    /// one. So is an Ed25519 point of small order, which verifies signatures
-    /// nobody made.
+    /// their 32 bytes. A compressed ECDSA point is refused, which
+    /// [`agreement::PublicKey::new`](crate::agreement::PublicKey::new)
+    /// decompresses. So is an Ed25519 point of small order, which verifies
+    /// signatures nobody made.
     pub fn new(algorithm: &impl AsRef<VerificationAlgorithm>, bytes: &[u8]) -> Result<Self, Error> {
         let key = match algorithm.as_ref().0 {
-            Verification::Ecdsa(ecdsa, parse) => parse(ecdsa, bytes)?,
+            Verification::Ecdsa(ecdsa, parse, _) => parse(ecdsa, bytes)?,
             Verification::Rsa(rsa) => return (rsa.parse)(rsa, bytes),
             Verification::Ed25519(parse) => parse(bytes)?,
         };
@@ -238,6 +247,55 @@ impl PublicKey {
             key,
             encoding: Buffer::copy_from(bytes)?,
         })
+    }
+
+    /// Parses a public key for `algorithm` from its `SubjectPublicKeyInfo`
+    /// DER, refusing one that names another algorithm or curve.
+    ///
+    /// An ECDSA key names `id-ecPublicKey` and the algorithm's curve, and
+    /// its point may be compressed (RFC 5480), which this decompresses. An
+    /// RSA key names `rsaEncryption`, and an Ed25519 key `id-Ed25519`.
+    pub fn from_spki(
+        algorithm: &impl AsRef<VerificationAlgorithm>,
+        der: &[u8],
+    ) -> Result<Self, Error> {
+        match algorithm.as_ref().0 {
+            Verification::Ecdsa(ecdsa, _, decompress) => {
+                let curve = Some(asn1::Any::ObjectId(curve_oid(ecdsa.curve)));
+                let point = spki::decode(der, &[&asn1::oid::id_ecPublicKey], curve)?;
+                let mut decompressed = [0; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN];
+                Self::new(
+                    algorithm,
+                    sec1::uncompressed(point, decompress, &mut decompressed)?,
+                )
+            }
+            // RSA's parser takes PKCS#1 too, which this refuses.
+            Verification::Rsa(rsa) => {
+                pkix::SubjectPublicKeyInfo::from_bytes(der).map_err(KeyFormatError::Asn1)?;
+                (rsa.parse)(rsa, der)
+            }
+            Verification::Ed25519(_) => Self::new(
+                algorithm,
+                spki::decode(der, &[&asn1::oid::id_ed25519], None)?,
+            ),
+        }
+    }
+
+    /// Encodes the public key as a `SubjectPublicKeyInfo`: ECDSA's
+    /// `id-ecPublicKey` on its curve, with its uncompressed point, RSA's
+    /// `rsaEncryption`, or Ed25519's `id-Ed25519`.
+    pub fn to_spki(&self) -> Spki {
+        let ec = |curve| (&asn1::oid::id_ecPublicKey, Some(asn1::Any::ObjectId(curve)));
+        let (algorithm, parameters) = match &self.key {
+            Parsed::EcdsaP256(..) => ec(P256::oid()),
+            Parsed::EcdsaP384(..) => ec(P384::oid()),
+            Parsed::EcdsaP521(..) => ec(P521::oid()),
+            Parsed::Rsa(..) => (&asn1::oid::rsaEncryption, Some(asn1::Any::Null(asn1::Null))),
+            Parsed::Ed25519(_) => (&asn1::oid::id_ed25519, None),
+        };
+        Spki(Buffer::encode(|output| {
+            spki::encode(self.as_ref(), algorithm, parameters, output)
+        }))
     }
 
     /// Parses an RSA key's PKCS#1 or SPKI DER for `rsa`.
@@ -382,6 +440,28 @@ impl AsRef<[u8]> for Spki {
 impl fmt::Debug for Spki {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Spki").field(&self.as_ref()).finish()
+    }
+}
+
+/// An ECDSA private key encoded as a SEC1 (RFC 5915) `ECPrivateKey` in
+/// DER, wiped on drop.
+pub struct Sec1(Buffer<{ sec1::MAX_LEN }>);
+
+impl AsRef<[u8]> for Sec1 {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl fmt::Debug for Sec1 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Sec1").finish_non_exhaustive()
+    }
+}
+
+impl Drop for Sec1 {
+    fn drop(&mut self) {
+        low::zeroise_value(&mut self.0);
     }
 }
 
@@ -662,14 +742,28 @@ const fn ecdsa_verification(
         encoding,
     };
     let parse = with_ecdsa!(ecdsa, |C, H, E| parse_ecdsa::<C, H, E> as _);
-    VerificationAlgorithm(Verification::Ecdsa(ecdsa, parse))
+    let decompress: sec1::Decompress = match curve {
+        CurveId::P256 => p256::PublicKey::decompress,
+        CurveId::P384 => p384::PublicKey::decompress,
+        CurveId::P521 => p521::PublicKey::decompress,
+    };
+    VerificationAlgorithm(Verification::Ecdsa(ecdsa, parse, decompress))
+}
+
+/// The OID naming `curve`.
+fn curve_oid(curve: CurveId) -> asn1::ObjectId {
+    match curve {
+        CurveId::P256 => P256::oid(),
+        CurveId::P384 => P384::oid(),
+        CurveId::P521 => P521::oid(),
+    }
 }
 
 /// Signs as `verification` verifies, which must be ECDSA: checked when a
 /// static is compiled, never at run time.
 const fn ecdsa_signing(verification: &VerificationAlgorithm) -> EcdsaSigningAlgorithm {
     match verification.0 {
-        Verification::Ecdsa(ecdsa, _) => EcdsaSigningAlgorithm {
+        Verification::Ecdsa(ecdsa, ..) => EcdsaSigningAlgorithm {
             ecdsa,
             load: with_ecdsa!(ecdsa, |C, H, E| EcdsaKeyPair::load::<C, H, E> as _),
         },
@@ -903,6 +997,20 @@ impl EcdsaKeyPair {
                 &pair.signing,
                 output
             ))
+        }))
+    }
+
+    /// Encodes the private key as a SEC1 (RFC 5915) `ECPrivateKey` naming
+    /// its curve and holding its public key, as OpenSSL writes it.
+    ///
+    /// This is what [`Self::from_sec1`] loads; [`Self::to_pkcs8`] holds the
+    /// same `ECPrivateKey` without its curve, which PKCS#8 names instead.
+    pub fn to_sec1(&self) -> Sec1 {
+        let _entry = low::Entry::new_secret();
+        let scalar = self.to_scalar();
+        let curve = curve_oid(self.algorithm.curve);
+        Sec1(Buffer::encode(|output| {
+            sec1::encode(scalar.as_ref(), self.point.as_ref(), Some(curve), output)
         }))
     }
 
@@ -1361,6 +1469,15 @@ impl Ed25519KeyPair {
         Ok(Self::new(Ed25519SigningKey::from_pkcs8_der(der)?))
     }
 
+    /// Loads a 32-byte seed, as a JWK's `d` holds it, deriving its public
+    /// key.
+    ///
+    /// Prefer [`Self::from_seed_and_public_key`] when the public key is at
+    /// hand, which checks it.
+    pub fn from_seed(seed: &[u8]) -> Result<Self, Error> {
+        Ok(Self::new(Ed25519SigningKey::from_bytes(seed)?))
+    }
+
     /// Loads a 32-byte seed, refused unless `public_key` is its public key.
     ///
     /// This suits a JWK's `d` and `x`.
@@ -1395,7 +1512,15 @@ impl Ed25519KeyPair {
 
     /// Encodes the key pair as PKCS#8 v2 (RFC 5958).
     pub fn to_pkcs8(&self) -> Pkcs8 {
-        Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(output)))
+        Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(true, output)))
+    }
+
+    /// Encodes the private key as PKCS#8 v1 (RFC 8410), its seed without its
+    /// public key, as OpenSSL and BoringSSL write it.
+    pub fn to_pkcs8v1(&self) -> Pkcs8 {
+        Pkcs8(Buffer::encode(|output| {
+            self.key.to_pkcs8_der(false, output)
+        }))
     }
 
     /// Returns the private key's 32-byte seed, as a JWK's `d` holds it.
@@ -2100,6 +2225,172 @@ mod tests {
         let reloaded =
             Ed25519KeyPair::from_seed_and_public_key(seed.as_ref(), public.as_ref()).unwrap();
         assert_eq!(reloaded.to_pkcs8().as_ref(), pair.to_pkcs8().as_ref());
+    }
+
+    #[test]
+    fn ed25519_seed_loads_alone() {
+        // The seed stays secret, so ctgrind checks the load and both
+        // PKCS#8 encodings.
+        let pair = Ed25519KeyPair::generate().unwrap();
+        let seed = pair.to_seed();
+        let reloaded = Ed25519KeyPair::from_seed(seed.as_ref()).unwrap();
+        assert_eq!(reloaded.public_key().as_ref(), pair.public_key().as_ref());
+        assert_eq!(reloaded.to_pkcs8().as_ref(), pair.to_pkcs8().as_ref());
+
+        // v1 is RFC 8410's fixed prefix and the seed, which loads back.
+        let v1 = pair.to_pkcs8v1();
+        assert_eq!(v1.as_ref().len(), 48);
+        assert_eq!(
+            v1.as_ref()[..16],
+            include_bytes!("asn1/testdata/ed25519-p8v1.bin")[..16]
+        );
+        let reloaded = Ed25519KeyPair::from_pkcs8(v1.as_ref()).unwrap();
+        assert_eq!(reloaded.public_key().as_ref(), pair.public_key().as_ref());
+
+        for seed in [&[0; 31][..], &[0; 33]] {
+            assert_eq!(
+                rejected(Ed25519KeyPair::from_seed(seed)),
+                KeyFormatError::WrongLength.into()
+            );
+        }
+    }
+
+    #[test]
+    fn ecdsa_sec1_round_trips() {
+        for signing in ECDSA_SIGNING {
+            // The key is secret, so ctgrind checks the encoding.
+            let pair = EcdsaKeyPair::generate(signing).unwrap();
+            let sec1 = pair.to_sec1();
+            let reloaded = EcdsaKeyPair::from_sec1(signing, sec1.as_ref()).unwrap();
+            assert_eq!(reloaded.to_pkcs8().as_ref(), pair.to_pkcs8().as_ref());
+
+            // It names its curve and holds its public key, as the
+            // `ECPrivateKey` inside PKCS#8 does, which names neither.
+            let decoded = pkix::EcPrivateKey::from_bytes(sec1.as_ref()).unwrap();
+            assert_eq!(
+                decoded.parameters.inner(),
+                &Some(curve_oid(signing.ecdsa.curve))
+            );
+            assert_eq!(
+                decoded
+                    .publicKey
+                    .inner()
+                    .as_ref()
+                    .map(|key| key.as_octets()),
+                Some(pair.public_key().as_ref())
+            );
+        }
+    }
+
+    #[test]
+    fn public_keys_round_trip_through_spki() {
+        let rsa = RsaKeyPair::from_pkcs1(include_bytes!("rsa/rsa2048.der")).unwrap();
+        let ed25519 = Ed25519KeyPair::generate().unwrap();
+        // Each key, and the kind of key its algorithm takes.
+        let mut keys = vec![
+            (
+                verify::RSA_PSS_SHA256.as_ref(),
+                "RSA",
+                rsa.public_key(&sign::RSA_PSS_SHA256),
+                rsa.to_spki(),
+            ),
+            (
+                &verify::ED25519,
+                "Ed25519",
+                ed25519.public_key(),
+                ed25519.to_spki(),
+            ),
+        ];
+        let verification = [
+            &verify::ECDSA_P256_SHA256_ASN1,
+            &verify::ECDSA_P256_SHA256_FIXED,
+            &verify::ECDSA_P384_SHA384_ASN1,
+            &verify::ECDSA_P384_SHA384_FIXED,
+            &verify::ECDSA_P521_SHA512_ASN1,
+            &verify::ECDSA_P521_SHA512_FIXED,
+        ];
+        for (signing, verification) in ECDSA_SIGNING.into_iter().zip(verification) {
+            let pair = EcdsaKeyPair::generate(signing).unwrap();
+            let curve = match signing.ecdsa.curve {
+                CurveId::P256 => "P-256",
+                CurveId::P384 => "P-384",
+                CurveId::P521 => "P-521",
+            };
+            keys.push((verification, curve, pair.public_key(), pair.to_spki()));
+        }
+
+        for (algorithm, kind, key, spki) in &keys {
+            assert_eq!(key.to_spki().as_ref(), spki.as_ref(), "{algorithm:?}");
+            let parsed = PublicKey::from_spki(*algorithm, spki.as_ref()).unwrap();
+            assert_eq!(parsed.as_ref(), key.as_ref());
+
+            // The bare key is no SPKI.
+            assert!(PublicKey::from_spki(*algorithm, key.as_ref()).is_err());
+            // Nor is another kind's.
+            for (other, other_kind, _, other_spki) in &keys {
+                let result = PublicKey::from_spki(*algorithm, other_spki.as_ref());
+                assert_eq!(
+                    kind == other_kind,
+                    result.is_ok(),
+                    "{algorithm:?} {other:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ecdsa_spki_decompresses() {
+        for (signing, verification) in [
+            (
+                &sign::ECDSA_P256_SHA256_ASN1,
+                &verify::ECDSA_P256_SHA256_ASN1,
+            ),
+            (
+                &sign::ECDSA_P384_SHA384_ASN1,
+                &verify::ECDSA_P384_SHA384_ASN1,
+            ),
+            (
+                &sign::ECDSA_P521_SHA512_ASN1,
+                &verify::ECDSA_P521_SHA512_ASN1,
+            ),
+        ] {
+            let pair = EcdsaKeyPair::generate(signing).unwrap();
+            let point = pair.public_key();
+            let point = point.as_ref();
+            let (x, y) = point[1..].split_at(point.len() / 2);
+            let curve = Some(asn1::Any::ObjectId(curve_oid(signing.ecdsa.curve)));
+            let spki = |key: &[u8]| {
+                let mut der = [0; 256];
+                let der = spki::encode(key, &asn1::oid::id_ecPublicKey, curve.clone(), &mut der);
+                der.unwrap().to_vec()
+            };
+
+            let compressed = [&[2 | (y[y.len() - 1] & 1)][..], x].concat();
+            let parsed = PublicKey::from_spki(verification, &spki(&compressed)).unwrap();
+            assert_eq!(parsed.as_ref(), point);
+            let signature = pair.sign(b"message").unwrap();
+            parsed.verify(b"message", signature.as_ref()).unwrap();
+
+            // `new` takes it uncompressed only, and a hybrid point is
+            // refused either way.
+            assert_eq!(
+                rejected(PublicKey::new(verification, &compressed)),
+                KeyFormatError::Compressed.into()
+            );
+            let hybrid = [&[6 | (y[y.len() - 1] & 1)][..], &point[1..]].concat();
+            assert_eq!(
+                rejected(PublicKey::from_spki(verification, &spki(&hybrid))),
+                KeyFormatError::PointEncoding.into()
+            );
+
+            // `id-ecDH` names an ECDH key, not an ECDSA one.
+            let mut der = [0; 256];
+            let ecdh = spki::encode(point, &asn1::oid::id_ecDH, curve.clone(), &mut der).unwrap();
+            assert_eq!(
+                rejected(PublicKey::from_spki(verification, ecdh)),
+                KeyFormatError::MismatchedSpkiAlgorithm.into()
+            );
+        }
     }
 
     // The owned encodings are sized for the largest key each loader takes,

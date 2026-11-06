@@ -15,24 +15,20 @@ pub(in crate::low) fn sha256_compress_blocks_shaext(
     unsafe { sha256(state, blocks) }
 }
 
-/// The digest of `state` followed by `blocks`, then the first `used` bytes
-/// of `last`, padded and closed by `length`.
+/// The digest of `state` followed by `message`, padded and closed by
+/// `length`.
 ///
-/// `last` is padded in registers, and the digest is written from them, so
-/// neither takes a trip through memory that a load could wait on.
+/// The last block is padded in registers, and the digest is written from
+/// them, so no load waits on a store that cannot forward.
 pub(in crate::low) fn sha256_finish_shaext(
     state: &[u32; 8],
-    blocks: &[u8],
-    last: &[u8; 64],
-    used: usize,
+    message: &[u8],
     length: [u8; 8],
     _token: super::cpu::HaveSha256,
 ) -> [u8; 32] {
-    debug_assert!(blocks.len().is_multiple_of(64));
-    debug_assert!(used <= 64);
     // SAFETY: `_token` proves the caller checked the `sha`, `ssse3`, and
     // `sse4.1` features
-    unsafe { sha256_finish(state, blocks, last, used, length) }
+    unsafe { sha256_finish(state, message, length) }
 }
 
 macro_rules! k {
@@ -193,42 +189,17 @@ fn sha256(state: &mut [u32; 8], blocks: &[u8]) {
 }
 
 #[target_feature(enable = "sha,sse4.1,ssse3")]
-fn sha256_finish(
-    state: &[u32; 8],
-    blocks: &[u8],
-    last: &[u8; 64],
-    used: usize,
-    length: [u8; 8],
-) -> [u8; 32] {
+fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -> [u8; 32] {
     let k = round_constants();
     let mut abef = load_state(state);
-    let (blocks, _) = blocks.as_chunks::<64>();
+    let (blocks, tail) = message.as_chunks::<64>();
     for block in blocks {
         compress_block(&mut abef, load_block(block), &k);
     }
-
-    // Keeps the bytes before `used`, and puts the 0x80 that ends the message
-    // at `used`. `used` is the message's length, so it may be branched on.
-    let used_at = _mm_set1_epi8(used as i8);
-    let end = _mm_set1_epi8(0x80u8 as i8);
-    let first = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
-    let mut msg = load_block(last);
-    for (i, lane) in msg.iter_mut().enumerate() {
-        let index = _mm_add_epi8(first, _mm_set1_epi8((16 * i) as i8));
-        let kept = _mm_and_si128(*lane, _mm_cmpgt_epi8(used_at, index));
-        *lane = _mm_or_si128(kept, _mm_and_si128(_mm_cmpeq_epi8(used_at, index), end));
-    }
-    // The length's bytes, as the block's last eight.
-    let length = _mm_set_epi64x(i64::from_le_bytes(length), 0);
-    if used + 1 + 8 <= 64 {
-        msg[3] = _mm_or_si128(msg[3], length);
-        compress_block(&mut abef, msg, &k);
-    } else {
-        compress_block(&mut abef, msg, &k);
-        let zero = _mm_setzero_si128();
-        // A full `last` leaves the 0x80 to the block after it.
-        let end = _mm_cvtsi32_si128(if used == 64 { 0x80 } else { 0 });
-        compress_block(&mut abef, [end, zero, zero, length], &k);
+    let (last, next) = super::sha_tail::padded_tail(tail, length);
+    compress_block(&mut abef, last, &k);
+    if let Some(next) = next {
+        compress_block(&mut abef, next, &k);
     }
 
     let (abcd, efgh) = unload_state(abef.0, abef.1);
@@ -473,35 +444,28 @@ mod tests {
         }
     }
 
-    // Every length of the last block's message, around each place the
-    // padding can fall, after zero to two whole blocks, with bytes past the
-    // message that must not count.
+    // Every length up to three blocks, so every place the padding can fall
+    // after zero to two whole blocks, with bytes past the message that must
+    // not count.
     #[test]
     fn finish_matches_generic() {
         let Some(token) = HaveSha256::check() else {
             return;
         };
-        let bytes: Vec<u8> = (0..3 * 64u32)
+        let bytes: Vec<u8> = (0..4 * 64u32)
             .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
             .collect();
-        let (blocks, last) = bytes.split_at(2 * 64);
-        let last: &[u8; 64] = last.try_into().unwrap();
         let length = 0x0102030405060708u64.to_be_bytes();
-        for n in 0..=2 {
-            let blocks = &blocks[..n * 64];
-            for used in 0..=64 {
-                let mut wanted = START;
-                generic::sha256::sha256_compress_blocks(&mut wanted, blocks);
-                let mut padded = [[0u8; 64]; 2];
-                let padded = crate::low::pad(&last[..used], length, &mut padded);
-                generic::sha256::sha256_compress_blocks(&mut wanted, padded);
-                let got = sha256_finish_shaext(&START, blocks, last, used, length, token);
-                assert_eq!(
-                    got,
-                    crate::low::sha256_digest(&wanted),
-                    "{n} blocks, {used} bytes"
-                );
-            }
+        for len in 0..=3 * 64 {
+            let message = &bytes[..len];
+            let (blocks, rest) = crate::low::split_tail::<64, 8>(message);
+            let mut wanted = START;
+            generic::sha256::sha256_compress_blocks(&mut wanted, blocks);
+            let mut padded = [[0u8; 64]; 2];
+            let padded = crate::low::pad(rest, length, &mut padded);
+            generic::sha256::sha256_compress_blocks(&mut wanted, padded);
+            let got = sha256_finish_shaext(&START, message, length, token);
+            assert_eq!(got, crate::low::sha256_digest(&wanted), "{len} bytes");
         }
     }
 }

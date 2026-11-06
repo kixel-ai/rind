@@ -20,9 +20,10 @@ opaque low.entry.Entry : Type
 /-- The token proving the CPU has BMI2 and ADX. -/
 opaque low.x86_64.cpu.HaveBmi2Adx : Type
 
-/-- The tokens proving the CPU has what each SHA-256 and SHA-512 routine
-needs: the SHA extensions, AVX and SSSE3, AVX2, SSSE3, and the SHA512
-instructions. -/
+/-- The tokens proving the CPU has what each SHA-1, SHA-256, and SHA-512
+routine needs: the SHA extensions, AVX and SSSE3, AVX2, SSSE3, and the
+SHA512 instructions. -/
+opaque low.x86_64.cpu.HaveSha1 : Type
 opaque low.x86_64.cpu.HaveSha256 : Type
 opaque low.x86_64.cpu.HaveAvx : Type
 opaque low.x86_64.cpu.HaveAvx2 : Type

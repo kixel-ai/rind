@@ -848,7 +848,8 @@ macro_rules! ec_crosschecks {
         mod $curve {
             use aws_lc_rs::agreement::{self, $ecdh, EphemeralPrivateKey};
             use aws_lc_rs::encoding::{
-                AsBigEndian, AsDer, EcPrivateKeyBin, EcPrivateKeyRfc5915Der, Pkcs8V1Der,
+                AsBigEndian, AsDer, EcPrivateKeyBin, EcPrivateKeyRfc5915Der,
+                EcPublicKeyCompressedBin, Pkcs8V1Der, PublicKeyX509Der,
             };
             use aws_lc_rs::rand::SystemRandom;
             use aws_lc_rs::signature::{
@@ -998,6 +999,71 @@ macro_rules! ec_crosschecks {
                         let signing_public = signing.public_key();
                         prop_assert_eq!(signing_public.as_ref(), theirs_public.as_ref());
                     }
+                }
+
+                /// Each side's encodings of a key are the other's: SEC1 and
+                /// SPKI, of key pairs, public keys, and agreement keys, and
+                /// a compressed point, raw or in SPKI, which both
+                /// decompress and agree with alike.
+                #[test]
+                fn encodings(_case in any::<u8>()) {
+                    let theirs = EcdsaKeyPair::generate(&$asn1_signing).unwrap();
+                    let pkcs8 = theirs.to_pkcs8v1().unwrap();
+                    let ours = signature::EcdsaKeyPair::from_pkcs8(&sign::$asn1, pkcs8.as_ref())
+                        .unwrap();
+                    let sec1 = theirs.private_key().as_der().unwrap();
+                    let ours_sec1 = ours.to_sec1();
+                    prop_assert_eq!(ours_sec1.as_ref(), sec1.as_ref());
+
+                    let public = theirs.public_key();
+                    let point = public.as_ref();
+                    let spki = AsDer::<PublicKeyX509Der<'_>>::as_der(public).unwrap();
+                    let parsed = signature::PublicKey::from_spki(&verify::$asn1, spki.as_ref())
+                        .unwrap();
+                    prop_assert_eq!(parsed.as_ref(), point);
+                    let ours_spki = parsed.to_spki();
+                    prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
+
+                    let ecdh = &rind::agreement::$ecdh;
+                    let agreeing = agreement::PrivateKey::generate(&$ecdh).unwrap();
+                    let agreeing_public = agreeing.compute_public_key().unwrap();
+                    let agreeing_spki = agreeing_public.as_der().unwrap();
+                    let parsed = rind::agreement::PublicKey::from_spki(ecdh, agreeing_spki.as_ref())
+                        .unwrap();
+                    prop_assert_eq!(parsed.as_ref(), agreeing_public.as_ref());
+                    let ours_spki = parsed.to_spki();
+                    prop_assert_eq!(ours_spki.as_ref(), agreeing_spki.as_ref());
+
+                    let compressed =
+                        AsBigEndian::<EcPublicKeyCompressedBin<'_>>::as_be_bytes(public).unwrap();
+                    let compressed = compressed.as_ref();
+                    let decompressed = rind::agreement::PublicKey::new(ecdh, compressed).unwrap();
+                    prop_assert_eq!(decompressed.as_ref(), point);
+                    let compressed_spki = crate::der(0x30, &[
+                        &crate::der(0x30, &[
+                            &crate::der(0x06, &hex::decode("2a8648ce3d0201").unwrap())[..],
+                            &crate::der(0x06, &hex::decode($oid).unwrap()),
+                        ].concat())[..],
+                        &crate::der(0x03, &[&[0][..], compressed].concat()),
+                    ].concat());
+                    let parsed = signature::PublicKey::from_spki(&verify::$asn1, &compressed_spki)
+                        .unwrap();
+                    prop_assert_eq!(parsed.as_ref(), point);
+
+                    let ours_agreeing = rind::agreement::PrivateKey::from_private_key(
+                        ecdh,
+                        AsBigEndian::<EcPrivateKeyBin<'_>>::as_be_bytes(&agreeing).unwrap().as_ref(),
+                    )
+                    .unwrap();
+                    let ours_secret = ours_agreeing.agree(decompressed.as_ref()).unwrap();
+                    let theirs_secret = agreement::agree(
+                        &agreeing,
+                        agreement::UnparsedPublicKey::new(&$ecdh, compressed),
+                        (),
+                        |secret| Ok(secret.to_vec()),
+                    )
+                    .unwrap();
+                    prop_assert_eq!(ours_secret.as_ref(), &theirs_secret[..]);
                 }
 
                 /// A key pair's public key loads compressed, as aws-lc-rs
@@ -1160,6 +1226,26 @@ mod ed25519 {
             let theirs_result = UnparsedPublicKey::new(&ED25519, public).verify(&message, &signature);
             prop_assert_eq!(ours_result.is_ok(), flip.is_none());
             prop_assert_eq!(theirs_result.is_ok(), flip.is_none());
+        }
+
+        /// Both load a seed alone, and encode it as the same PKCS#8 v1, and
+        /// the public key as the same SPKI, which each parses.
+        #[test]
+        fn seed_alone(seed in any::<[u8; 32]>()) {
+            let theirs = Ed25519KeyPair::from_seed_unchecked(&seed).unwrap();
+            let ours = signature::Ed25519KeyPair::from_seed(&seed).unwrap();
+            let public = ours.public_key();
+            prop_assert_eq!(public.as_ref(), theirs.public_key().as_ref());
+            let (ours_v1, theirs_v1) = (ours.to_pkcs8v1(), theirs.to_pkcs8v1().unwrap());
+            prop_assert_eq!(ours_v1.as_ref(), theirs_v1.as_ref());
+            Ed25519KeyPair::from_pkcs8(ours_v1.as_ref()).unwrap();
+
+            let spki = theirs.public_key().as_der().unwrap();
+            let parsed = signature::PublicKey::from_spki(&signature::verify::ED25519, spki.as_ref())
+                .unwrap();
+            prop_assert_eq!(parsed.as_ref(), public.as_ref());
+            let ours_spki = parsed.to_spki();
+            prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
         }
 
         #[test]
@@ -2123,7 +2209,7 @@ mod pkcs8_attributes {
 
 mod ecdh_scalars {
     use aws_lc_rs::agreement::{self, ECDH_P256, PrivateKey, UnparsedPublicKey, X25519};
-    use aws_lc_rs::encoding::{AsBigEndian, Curve25519SeedBin};
+    use aws_lc_rs::encoding::{AsBigEndian, AsDer, Curve25519SeedBin};
     use proptest::prelude::*;
     use rind::agreement as ours;
 
@@ -2228,6 +2314,15 @@ mod ecdh_scalars {
         #[test]
         fn x25519(private in any::<[u8; 32]>(), peer in x25519_peer()) {
             check(&ours::X25519, &X25519, &private, &peer)?;
+
+            // Both encode the public key as the same SPKI, which ours parses.
+            let theirs = PrivateKey::from_private_key(&X25519, &private).unwrap();
+            let theirs_public = theirs.compute_public_key().unwrap();
+            let spki = theirs_public.as_der().unwrap();
+            let parsed = ours::PublicKey::from_spki(&ours::X25519, spki.as_ref()).unwrap();
+            prop_assert_eq!(parsed.as_ref(), theirs_public.as_ref());
+            let ours_spki = parsed.to_spki();
+            prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
 
             // Both keep the 32 bytes as given, unclamped.
             let theirs = PrivateKey::from_private_key(&X25519, &private).unwrap();

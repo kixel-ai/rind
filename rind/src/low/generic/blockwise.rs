@@ -15,11 +15,6 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
-    /// How many bytes [`Self::update`] holds.
-    pub(crate) const fn used(&self) -> usize {
-        self.used
-    }
-
     /// Adds `bytes`, passing each run of whole blocks to `state` in order and
     /// holding the rest: what is short of a whole block, or the last whole
     /// block until more follows, so a hash can compress it with its padding
@@ -91,12 +86,6 @@ impl<const N: usize> Blockwise<N> {
         } else {
             None
         }
-    }
-
-    /// The whole buffer, whose first [`Self::used`] bytes are those
-    /// [`Self::buffered`] returns, so a routine can pad it in place.
-    pub(crate) fn buffer(&self) -> &[u8; N] {
-        &self.buffer
     }
 
     /// The bytes [`Self::update`] holds, up to one whole block.

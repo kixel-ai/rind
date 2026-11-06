@@ -277,12 +277,17 @@ const fn ecdsa_verification(
         encoding,
     };
     let parse = with_ecdsa!(ecdsa, |C, H, E| parse_ecdsa::<C, H, E> as _);
-    VerificationAlgorithm(Verification::Ecdsa(ecdsa, parse))
+    let decompress: sec1::Decompress = match curve {
+        CurveId::P256 => p256::PublicKey::decompress,
+        CurveId::P384 => p384::PublicKey::decompress,
+        CurveId::P521 => p521::PublicKey::decompress,
+    };
+    VerificationAlgorithm(Verification::Ecdsa(ecdsa, parse, decompress))
 }
 
 const fn ecdsa_signing(verification: &VerificationAlgorithm) -> EcdsaSigningAlgorithm {
     match verification.0 {
-        Verification::Ecdsa(ecdsa, _) => EcdsaSigningAlgorithm {
+        Verification::Ecdsa(ecdsa, ..) => EcdsaSigningAlgorithm {
             ecdsa,
             load: with_ecdsa!(ecdsa, |C, H, E| EcdsaKeyPair::load::<C, H, E> as _),
         },
@@ -496,6 +501,20 @@ impl EcdsaKeyPair {
                 &pair.signing,
                 output
             ))
+        }))
+    }
+
+    /// Encodes the private key as a SEC1 (RFC 5915) `ECPrivateKey` naming
+    /// its curve and holding its public key, as OpenSSL writes it.
+    ///
+    /// This is what [`Self::from_sec1`] loads; [`Self::to_pkcs8`] holds the
+    /// same `ECPrivateKey` without its curve, which PKCS#8 names instead.
+    pub fn to_sec1(&self) -> Sec1 {
+        let _entry = low::Entry::new_secret();
+        let scalar = self.to_scalar();
+        let curve = curve_oid(self.algorithm.curve);
+        Sec1(Buffer::encode(|output| {
+            sec1::encode(scalar.as_ref(), self.point.as_ref(), Some(curve), output)
         }))
     }
 

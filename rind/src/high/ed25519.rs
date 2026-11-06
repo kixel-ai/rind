@@ -166,14 +166,17 @@ impl Ed25519SigningKey {
         Ok(key)
     }
 
-    /// Encode this private key in PKCS#8 DER format.
-    ///
-    /// This produces an RFC5958 PKCS#8 "v2" format.
+    /// Encode this private key in PKCS#8 DER format: RFC 5958's "v2", with
+    /// the public key, if `with_public_key`, and otherwise RFC 8410's v1.
     ///
     /// The encoding is written to the start of `output`, and the used slice is
     /// returned.  [`Error::WrongLength`] is returned if `output` is not sufficient
     /// to contain the full encoding.
-    pub(crate) fn to_pkcs8_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+    pub(crate) fn to_pkcs8_der<'a>(
+        &self,
+        with_public_key: bool,
+        output: &'a mut [u8],
+    ) -> Result<&'a [u8], Error> {
         let _entry = Entry::new_secret();
 
         let mut private_key_buf = [0u8; 34];
@@ -186,7 +189,7 @@ impl Ed25519SigningKey {
 
         match pkcs8::Key::construct(
             &private_key_buf[..],
-            Some(&public_key[..]),
+            with_public_key.then_some(&public_key[..]),
             asn1::oid::id_ed25519.clone(),
             None,
         )
@@ -238,7 +241,7 @@ mod tests {
         let key = Ed25519SigningKey::from_pkcs8_der(bytes).unwrap();
 
         let mut buf = vec![0; 128];
-        let buf = key.to_pkcs8_der(&mut buf).unwrap();
+        let buf = key.to_pkcs8_der(true, &mut buf).unwrap();
         assert_ne!(bytes, buf);
         assert!(bytes.len() < buf.len());
     }
@@ -250,10 +253,10 @@ mod tests {
 
         let mut buf = vec![0; bytes.len()];
         assert_eq!(
-            key.to_pkcs8_der(&mut buf[..bytes.len() - 1]),
+            key.to_pkcs8_der(true, &mut buf[..bytes.len() - 1]),
             Err(Error::WrongLength)
         );
-        let buf = key.to_pkcs8_der(&mut buf).unwrap();
+        let buf = key.to_pkcs8_der(true, &mut buf).unwrap();
         assert_eq!(bytes, buf);
     }
 

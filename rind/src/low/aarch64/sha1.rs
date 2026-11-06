@@ -24,6 +24,19 @@ pub(crate) fn sha1_compress_blocks(state: &mut [u32; 5], blocks: &[u8]) {
     }
 }
 
+/// Compresses the end of `message`, padded and closed by `length`.
+// Out of line, so `Sha1State::finish_with` stays small enough to inline and
+// write the digest where its caller keeps it.
+#[inline(never)]
+pub(crate) fn sha1_compress_padded(state: &mut [u32; 5], message: &[u8], length: [u8; 8]) {
+    let (blocks, rest) = crate::low::split_tail::<64, 8>(message);
+    if !blocks.is_empty() {
+        sha1_compress_blocks(state, blocks);
+    }
+    let mut last = [[0u8; 64]; 2];
+    sha1_compress_blocks(state, crate::low::pad(rest, length, &mut last));
+}
+
 #[unsafe(naked)]
 unsafe extern "C" fn sha1_block_data_order_nohw(
     state: *mut [u32; 5],

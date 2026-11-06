@@ -6,7 +6,8 @@ use super::asn1::{self, Type};
 use super::curve::{self, Curve, MAX_SCALAR_LEN};
 use super::pkcs8;
 use super::sec1;
-use super::signature::{Buffer, Pkcs8};
+use super::signature::{Buffer, Pkcs8, Spki};
+use super::spki;
 use crate::error::{Error, KeyFormatError};
 use crate::low;
 use crate::mid::{p256, p384, p521, x25519};
@@ -18,6 +19,7 @@ pub struct Algorithm {
     // whose algorithms it names.
     generate: fn() -> Result<Private, Error>,
     load: fn(Source<'_>) -> Result<Private, Error>,
+    parse_public: fn(&[u8]) -> Result<PublicKey, Error>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -41,33 +43,43 @@ pub static X25519: Algorithm = Algorithm {
     id: AlgorithmId::X25519,
     generate: Keyed::<x25519::PrivateKey>::generate,
     load: Keyed::<x25519::PrivateKey>::load,
+    parse_public: x25519_public_key,
 };
 
 /// ECDH on P-256, with X9.62 uncompressed public keys.
+///
+/// [`PublicKey::new`] also takes compressed ones.
 ///
 /// P-256 is also known as "NISTP256", "prime256v1", or "secp256r1".
 pub static ECDH_P256: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP256,
     generate: Keyed::<p256::PrivateKey>::generate,
     load: Keyed::<p256::PrivateKey>::load,
+    parse_public: p256_public_key,
 };
 
 /// ECDH on P-384, with X9.62 uncompressed public keys.
+///
+/// [`PublicKey::new`] also takes compressed ones.
 ///
 /// P-384 is also known as "NISTP384", or "secp384r1".
 pub static ECDH_P384: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP384,
     generate: Keyed::<p384::PrivateKey>::generate,
     load: Keyed::<p384::PrivateKey>::load,
+    parse_public: p384_public_key,
 };
 
 /// ECDH on P-521, with X9.62 uncompressed public keys.
+///
+/// [`PublicKey::new`] also takes compressed ones.
 ///
 /// P-521 is also known as "NISTP521", or "secp521r1".
 pub static ECDH_P521: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP521,
     generate: Keyed::<p521::PrivateKey>::generate,
     load: Keyed::<p521::PrivateKey>::load,
+    parse_public: p521_public_key,
 };
 
 /// A private key, which agrees with any number of peers, wiped on drop.
@@ -143,6 +155,8 @@ impl PrivateKey {
     /// is malformed or off the curve, and so is X25519's all-zero output from
     /// a small-order point
     /// ([RFC7748 section 6.1](https://datatracker.ietf.org/doc/html/rfc7748#section-6.1)).
+    /// A NIST curve's key is an uncompressed point, as TLS sends it;
+    /// [`PublicKey::new`] decompresses a compressed one.
     pub fn agree(&self, peer: &[u8]) -> Result<SharedSecret, Error> {
         Ok(SharedSecret(match &self.0 {
             Private::X25519(key) => key.agree(peer),
@@ -303,7 +317,7 @@ impl Agree for x25519::PrivateKey {
     }
 
     fn encode_public(&self) -> PublicKey {
-        PublicKey::new(&self.public_key().as_bytes())
+        PublicKey::from_encoding(&self.public_key().as_bytes())
     }
 
     fn agree(&self, peer: &[u8]) -> Result<Secret, Error> {
@@ -320,6 +334,13 @@ impl Agree for x25519::PrivateKey {
         output.copy_from_slice(&self.secret_bytes());
         Ok(output)
     }
+}
+
+/// Parses a peer's X25519 public key: any 32 bytes, as [`Agree::agree`]
+/// takes them.
+fn x25519_public_key(bytes: &[u8]) -> Result<PublicKey, Error> {
+    x25519::PublicKey::try_from_slice(bytes)?;
+    Ok(PublicKey::from_encoding(bytes))
 }
 
 /// Loads an RFC 8410 PKCS#8 X25519 key, whose `privateKey` holds an
@@ -358,9 +379,19 @@ fn x25519_to_pkcs8<'a>(key: &x25519::PrivateKey, output: &'a mut [u8]) -> Result
     Ok(encoded)
 }
 
-/// Implements [`Agree`] for a NIST curve's private key.
+/// Implements [`Agree`] for a NIST curve's private key, and defines
+/// `$public_key`, which parses a peer's X9.62 point, uncompressed or
+/// compressed, as its uncompressed encoding.
 macro_rules! nist_curve {
-    ($curve:ident, $variant:ident, $curve_type:ty) => {
+    ($curve:ident, $variant:ident, $curve_type:ty, $public_key:ident) => {
+        fn $public_key(bytes: &[u8]) -> Result<PublicKey, Error> {
+            let mut decompressed = [0; $curve::PublicKey::BYTES];
+            let point =
+                sec1::uncompressed(bytes, $curve::PublicKey::decompress, &mut decompressed)?;
+            $curve::PublicKey::from_x962_uncompressed(point)?;
+            Ok(PublicKey::from_encoding(point))
+        }
+
         impl Agree for $curve::PrivateKey {
             fn random() -> Result<Self, Error> {
                 Self::new_random()
@@ -392,7 +423,7 @@ macro_rules! nist_curve {
             }
 
             fn encode_public(&self) -> PublicKey {
-                PublicKey::new(&self.public_key_uncompressed())
+                PublicKey::from_encoding(&self.public_key_uncompressed())
             }
 
             fn agree(&self, peer: &[u8]) -> Result<Secret, Error> {
@@ -421,11 +452,13 @@ macro_rules! nist_curve {
     };
 }
 
-nist_curve!(p256, P256, curve::P256);
-nist_curve!(p384, P384, curve::P384);
-nist_curve!(p521, P521, curve::P521);
+nist_curve!(p256, P256, curve::P256, p256_public_key);
+nist_curve!(p384, P384, curve::P384, p384_public_key);
+nist_curve!(p521, P521, curve::P521, p521_public_key);
 
-/// Our public key: 32 bytes for X25519, or an X9.62 uncompressed point.
+/// A public key: 32 bytes for X25519, or an X9.62 uncompressed point.
+///
+/// Each algorithm's key has its own length, which names its algorithm.
 #[derive(Clone)]
 pub struct PublicKey {
     bytes: [u8; Self::MAX_LEN],
@@ -436,7 +469,53 @@ impl PublicKey {
     // P-521's uncompressed point.
     const MAX_LEN: usize = p521::PublicKey::BYTES;
 
-    fn new(encoded: &[u8]) -> Self {
+    /// Parses a peer's public key for `algorithm`: X25519's 32 bytes, any
+    /// value, or a NIST curve's X9.62 point, uncompressed or compressed,
+    /// refused off the curve.
+    ///
+    /// Its bytes are then what [`PrivateKey::agree`] takes, a NIST curve's
+    /// point uncompressed.
+    pub fn new(algorithm: &'static Algorithm, bytes: &[u8]) -> Result<Self, Error> {
+        (algorithm.parse_public)(bytes)
+    }
+
+    /// Parses a public key for `algorithm` from its `SubjectPublicKeyInfo`
+    /// DER, as [`Self::new`] parses the key it holds.
+    ///
+    /// A NIST curve's key names `id-ecPublicKey` and the curve, or, as
+    /// WebCrypto also takes for ECDH, `id-ecDH`.
+    pub fn from_spki(algorithm: &'static Algorithm, der: &[u8]) -> Result<Self, Error> {
+        let ec = [&asn1::oid::id_ecPublicKey, &asn1::oid::id_ecDH];
+        let curve = |oid: asn1::ObjectId| Some(asn1::Any::ObjectId(oid));
+        let key = match algorithm.id {
+            AlgorithmId::X25519 => spki::decode(der, &[&asn1::oid::id_X25519], None),
+            AlgorithmId::EcdhP256 => spki::decode(der, &ec, curve(curve::P256::oid())),
+            AlgorithmId::EcdhP384 => spki::decode(der, &ec, curve(curve::P384::oid())),
+            AlgorithmId::EcdhP521 => spki::decode(der, &ec, curve(curve::P521::oid())),
+        }?;
+        Self::new(algorithm, key)
+    }
+
+    /// Encodes the public key as a `SubjectPublicKeyInfo`: X25519's, or
+    /// `id-ecPublicKey` on the key's curve.
+    pub fn to_spki(&self) -> Spki {
+        let (algorithm, curve) = match self.len {
+            32 => (&asn1::oid::id_X25519, None),
+            p256::PublicKey::BYTES => (&asn1::oid::id_ecPublicKey, Some(curve::P256::oid())),
+            p384::PublicKey::BYTES => (&asn1::oid::id_ecPublicKey, Some(curve::P384::oid())),
+            _ => (&asn1::oid::id_ecPublicKey, Some(curve::P521::oid())),
+        };
+        Spki(Buffer::encode(|output| {
+            spki::encode(
+                self.as_ref(),
+                algorithm,
+                curve.map(asn1::Any::ObjectId),
+                output,
+            )
+        }))
+    }
+
+    fn from_encoding(encoded: &[u8]) -> Self {
         let mut public = Self {
             bytes: [0; Self::MAX_LEN],
             len: encoded.len(),
@@ -773,31 +852,77 @@ mod tests {
         [vec![0; len - digits.len()], digits.to_vec()].concat()
     }
 
+    /// Wycheproof's X9.62 points, which `agree` takes uncompressed and
+    /// [`PublicKey::new`] compressed too.
     fn check_nist_ecdh(file: &str, algorithm: &'static Algorithm, len: usize) {
         for test in wycheproof::<EcdhTest>(file) {
             let private =
                 PrivateKey::from_private_key(algorithm, &fixed_scalar(&test.private, len)).unwrap();
-            let result = private.agree(&test.public).map(|shared| public(&shared));
-            // Point compression is unsupported.
-            if test.has_flag("CompressedPublic") || test.has_flag("CompressedPoint") {
-                assert_eq!(
-                    result,
+            let direct = private.agree(&test.public).map(|shared| public(&shared));
+            let result = PublicKey::new(algorithm, &test.public)
+                .and_then(|peer| private.agree(peer.as_ref()))
+                .map(|shared| public(&shared));
+            let compressed = test.has_flag("CompressedPoint");
+            match compressed {
+                true => assert_eq!(
+                    direct,
                     Err(KeyFormatError::Compressed.into()),
                     "{}",
                     test.id
-                );
-                continue;
+                ),
+                false => assert_eq!(direct, result, "{}", test.id),
             }
 
             match (test.result, &result) {
                 (Expected::Valid, Ok(shared)) => assert_eq!(shared, &test.shared, "{}", test.id),
+                (Expected::Acceptable, Ok(shared)) if compressed => {
+                    assert_eq!(shared, &test.shared, "{}", test.id)
+                }
                 (Expected::Invalid, Err(e))
-                    if test.has_flag("InvalidCurveAttack")
+                    if (test.has_flag("InvalidCurveAttack")
+                        || test.has_flag("InvalidCompressedPublic"))
                         && *e == KeyFormatError::NotOnCurve.into() => {}
                 (Expected::Invalid, Err(e))
                     if test.has_flag("InvalidEncoding")
                         && *e == KeyFormatError::WrongLength.into() => {}
+                // A point on the twist, compressed, names no point on the
+                // curve; another curve's is the wrong length.
+                (Expected::Invalid, Err(e))
+                    if test.has_flag("WrongCurve")
+                        && [KeyFormatError::NotOnCurve, KeyFormatError::WrongLength]
+                            .map(Error::from)
+                            .contains(e) => {}
                 _ => panic!("{}: expected {:?} got {:?}", test.id, test.result, result),
+            }
+        }
+    }
+
+    /// Wycheproof's public keys as `SubjectPublicKeyInfo`, many naming
+    /// curves by their parameters, which rind refuses.
+    fn check_nist_ecdh_spki(file: &str, algorithm: &'static Algorithm, len: usize) {
+        for test in wycheproof::<EcdhTest>(file) {
+            let private =
+                PrivateKey::from_private_key(algorithm, &fixed_scalar(&test.private, len)).unwrap();
+            let peer = PublicKey::from_spki(algorithm, &test.public);
+            let result = peer
+                .as_ref()
+                .map_err(|e| *e)
+                .and_then(|peer| private.agree(peer.as_ref()))
+                .map(|shared| public(&shared));
+            match (test.result, &result) {
+                (Expected::Valid, Ok(shared)) => assert_eq!(shared, &test.shared, "{}", test.id),
+                (Expected::Acceptable, Ok(shared)) => {
+                    assert_eq!(shared, &test.shared, "{}", test.id)
+                }
+                (Expected::Invalid | Expected::Acceptable, Err(_)) => {}
+                _ => panic!("{}: expected {:?} got {:?}", test.id, test.result, result),
+            }
+            // A key that parsed encodes back to Wycheproof's SPKI, but for
+            // a compressed point, which it decompresses.
+            if let Ok(peer) = peer
+                && !test.has_flag("CompressedPublic")
+            {
+                assert_eq!(peer.to_spki().as_ref(), &test.public[..], "{}", test.id);
             }
         }
     }
@@ -805,16 +930,19 @@ mod tests {
     #[test]
     fn wycheproof_p256() {
         check_nist_ecdh("ecdh_secp256r1_ecpoint_test.json", &ECDH_P256, 32);
+        check_nist_ecdh_spki("ecdh_secp256r1_test.json", &ECDH_P256, 32);
     }
 
     #[test]
     fn wycheproof_p384() {
         check_nist_ecdh("ecdh_secp384r1_ecpoint_test.json", &ECDH_P384, 48);
+        check_nist_ecdh_spki("ecdh_secp384r1_test.json", &ECDH_P384, 48);
     }
 
     #[test]
     fn wycheproof_p521() {
         check_nist_ecdh("ecdh_secp521r1_ecpoint_test.json", &ECDH_P521, 66);
+        check_nist_ecdh_spki("ecdh_secp521r1_test.json", &ECDH_P521, 66);
     }
 
     fn check_x25519(test: &EcdhTest, result: Result<Vec<u8>, Error>) {
@@ -839,21 +967,111 @@ mod tests {
         }
     }
 
-    /// Private keys in PKCS#8, and public keys in SPKI, which only the test
-    /// parses: its fixed prefix, then the 32 bytes.
+    /// Private keys in PKCS#8, and public keys in SPKI.
     #[test]
     fn wycheproof_x25519_pkcs8() {
-        const SPKI_PREFIX: [u8; 12] = [
-            0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x03, 0x21, 0x00,
-        ];
         for test in wycheproof::<EcdhTest>("x25519_asn_test.json") {
-            let result = PrivateKey::from_pkcs8(&X25519, &test.private).and_then(|private| {
-                match test.public.strip_prefix(&SPKI_PREFIX[..]) {
-                    Some(peer) if peer.len() == 32 => private.agree(peer).map(|s| public(&s)),
-                    _ => Err(KeyFormatError::WrongLength.into()),
-                }
-            });
+            let peer = PublicKey::from_spki(&X25519, &test.public);
+            if let Ok(peer) = &peer {
+                assert_eq!(peer.to_spki().as_ref(), &test.public[..], "{}", test.id);
+            }
+            let result = PrivateKey::from_pkcs8(&X25519, &test.private)
+                .and_then(|private| private.agree(peer?.as_ref()).map(|s| public(&s)));
             check_x25519(&test, result);
+        }
+    }
+
+    /// The point `uncompressed`, compressed.
+    fn compress(uncompressed: &[u8]) -> Vec<u8> {
+        let (x, y) = uncompressed[1..].split_at(uncompressed.len() / 2);
+        [&[2 | (y[y.len() - 1] & 1)][..], x].concat()
+    }
+
+    #[test]
+    fn public_keys_round_trip() {
+        for algorithm in ALGORITHMS {
+            let ours = PrivateKey::generate(algorithm).unwrap().public_key();
+            let parsed = PublicKey::new(algorithm, ours.as_ref()).unwrap();
+            assert_eq!(parsed.as_ref(), ours.as_ref());
+            let spki = ours.to_spki();
+            let parsed = PublicKey::from_spki(algorithm, spki.as_ref()).unwrap();
+            assert_eq!(parsed.as_ref(), ours.as_ref());
+
+            // Another algorithm's key is refused, raw and in SPKI.
+            for other in ALGORITHMS.into_iter().filter(|a| a.id != algorithm.id) {
+                assert!(PublicKey::new(other, ours.as_ref()).is_err());
+                assert_eq!(
+                    PublicKey::from_spki(other, spki.as_ref()).err(),
+                    Some(KeyFormatError::MismatchedSpkiAlgorithm.into())
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn decompresses_points() {
+        for algorithm in &ALGORITHMS[1..] {
+            for _ in 0..16 {
+                let private = PrivateKey::generate(algorithm).unwrap();
+                let ours = private.public_key();
+                let compressed = compress(ours.as_ref());
+                let parsed = PublicKey::new(algorithm, &compressed).unwrap();
+                assert_eq!(parsed.as_ref(), ours.as_ref());
+
+                // The other root of `x`.
+                let mut negated = compressed.clone();
+                negated[0] ^= 1;
+                let other = PublicKey::new(algorithm, &negated).unwrap();
+                assert_ne!(other.as_ref(), ours.as_ref());
+                assert_eq!(other.as_ref()[1..compressed.len()], compressed[1..]);
+
+                // `agree` itself takes only uncompressed points.
+                assert_eq!(
+                    private.agree(&compressed).err(),
+                    Some(KeyFormatError::Compressed.into())
+                );
+
+                // An SPKI's point may be compressed too, under
+                // `id-ecPublicKey` or `id-ecDH`.
+                let curve = match algorithm.id {
+                    AlgorithmId::EcdhP256 => curve::P256::oid(),
+                    AlgorithmId::EcdhP384 => curve::P384::oid(),
+                    _ => curve::P521::oid(),
+                };
+                for oid in [&asn1::oid::id_ecPublicKey, &asn1::oid::id_ecDH] {
+                    let mut der = [0; 256];
+                    let parameters = Some(asn1::Any::ObjectId(curve.clone()));
+                    let der = spki::encode(&compressed, oid, parameters, &mut der).unwrap();
+                    let parsed = PublicKey::from_spki(algorithm, der).unwrap();
+                    assert_eq!(parsed.as_ref(), ours.as_ref());
+                }
+            }
+
+            // A hybrid point, an unknown tag, an empty key, the wrong
+            // length, and `x` at or above p are refused.
+            let ours = PrivateKey::generate(algorithm).unwrap().public_key();
+            let mut hybrid = ours.as_ref().to_vec();
+            hybrid[0] = 6 | (hybrid[hybrid.len() - 1] & 1);
+            let compressed = compress(ours.as_ref());
+            let refusals: [(&[u8], KeyFormatError); 5] = [
+                (&hybrid, KeyFormatError::PointEncoding),
+                (
+                    &[&[5][..], &compressed[1..]].concat(),
+                    KeyFormatError::PointEncoding,
+                ),
+                (&[], KeyFormatError::WrongLength),
+                (
+                    &compressed[..compressed.len() - 1],
+                    KeyFormatError::WrongLength,
+                ),
+                (
+                    &[&[2][..], &vec![0xff; compressed.len() - 1]].concat(),
+                    KeyFormatError::NotOnCurve,
+                ),
+            ];
+            for (bytes, error) in refusals {
+                assert_eq!(PublicKey::new(algorithm, bytes).err(), Some(error.into()));
+            }
         }
     }
 }
