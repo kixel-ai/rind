@@ -33,8 +33,18 @@ impl Aes {
     pub fn encrypt_block(&self, block: &mut [u8; 16]) {
         let _entry = Entry::new_secret();
         low::ct::secret_slice(block);
-        self.0.encrypt_block(block);
+        *block = self.0.encrypt_block(block);
         low::ct::public_slice(block);
+    }
+
+    /// The QUIC header-protection mask for `sample` (RFC 9001 section 5.4.3),
+    /// read from `sample` without the copy [`Self::encrypt_block`] needs.
+    pub(crate) fn header_protection_mask(&self, sample: &[u8; 16]) -> [u8; 5] {
+        let _entry = Entry::new_secret();
+        let block = self.0.encrypt_block(sample);
+        let mask = [block[0], block[1], block[2], block[3], block[4]];
+        low::ct::public_slice(&mask);
+        mask
     }
 }
 

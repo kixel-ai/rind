@@ -51,10 +51,17 @@ impl NohwKey {
         unsafe { set_encrypt_key(key) }
     }
 
-    /// Encrypts one block in place.
-    pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
+    /// Encrypts one block.
+    ///
+    /// Out of line: the bitsliced round keys take a 1.9 KiB frame, which
+    /// would otherwise land on every caller of [`super::aes::AesKey`]'s.
+    #[must_use]
+    #[inline(never)]
+    pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
+        let mut out = *block;
         // SAFETY: every x86_64 CPU has SSE2
-        unsafe { encrypt(self, inout) }
+        unsafe { encrypt(self, &mut out) };
+        out
     }
 
     /// Decrypts one block in place.
@@ -799,11 +806,12 @@ mod tests {
             let nohw = NohwKey::new(&key);
             let vpaes = VpaesKey::new(&key, token);
 
-            let mut want: [u8; 16] = bytes(16, seed).try_into().unwrap();
-            let mut got = want;
-            vpaes.encrypt_block(&mut want);
-            nohw.encrypt_block(&mut got);
-            assert_eq!(got, want, "{key_len}-byte key, one block");
+            let block: [u8; 16] = bytes(16, seed).try_into().unwrap();
+            assert_eq!(
+                nohw.encrypt_block(&block),
+                vpaes.encrypt_block(&block),
+                "{key_len}-byte key, one block"
+            );
 
             for counter in [0, u32::MAX - 3] {
                 let mut ivec: [u8; 16] = bytes(16, counter).try_into().unwrap();
@@ -838,9 +846,12 @@ mod tests {
                 0x8ea2b7ca_516745bf_eafc4990_4b496089u128,
             ),
         ] {
-            let mut block = plaintext;
-            NohwKey::new(key).encrypt_block(&mut block);
-            assert_eq!(block, ciphertext.to_be_bytes(), "{}-byte key", key.len());
+            assert_eq!(
+                NohwKey::new(key).encrypt_block(&plaintext),
+                ciphertext.to_be_bytes(),
+                "{}-byte key",
+                key.len()
+            );
         }
     }
 }

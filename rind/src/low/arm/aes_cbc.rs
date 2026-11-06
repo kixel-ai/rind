@@ -13,7 +13,7 @@ pub(crate) fn encrypt(key: &AesKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
         for (b, p) in block.iter_mut().zip(prev) {
             *b ^= p;
         }
-        key.encrypt_block(block);
+        *block = key.encrypt_block(block);
         prev = *block;
     }
 }

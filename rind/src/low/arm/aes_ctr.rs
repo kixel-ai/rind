@@ -19,8 +19,7 @@ pub(crate) fn apply(key: &AesKey, nonce: &[u8; 12], counter: u32, inout: &mut [u
         for (i, block) in (0u32..).zip(blocks) {
             let mut keystream = *ivec;
             keystream[12..].copy_from_slice(&counter.wrapping_add(i).to_be_bytes());
-            key.encrypt_block(&mut keystream);
-            for (b, k) in block.iter_mut().zip(keystream) {
+            for (b, k) in block.iter_mut().zip(key.encrypt_block(&keystream)) {
                 *b ^= k;
             }
         }

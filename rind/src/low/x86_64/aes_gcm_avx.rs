@@ -361,9 +361,7 @@ mod tests {
                     unsafe { core::slice::from_raw_parts(hw_key.as_aes_key(), round_keys_len) };
                 assert_eq!(ours, &vale_keys[..round_keys_len], "{key:02x?}");
 
-                let mut h = [0u8; 16];
-                hw_key.encrypt_block(&mut h);
-                let h = u128::from_be_bytes(h);
+                let h = u128::from_be_bytes(hw_key.encrypt_block(&[0; 16]));
                 let kernel = AvxKernel::new(&ClmulTable::new(h, hw), h, token);
                 // SAFETY: any eight vectors are 128 bytes.
                 let ours = unsafe { core::mem::transmute::<[__m128i; 8], [u8; 128]>(kernel.hkeys) };
