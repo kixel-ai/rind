@@ -377,11 +377,12 @@ pub mod pbkdf2 {
 /// ```
 pub mod aead;
 
-/// Encoded keys: PKCS#8 private keys and `SubjectPublicKeyInfo` public keys.
+/// Encoded keys: PKCS#8 and SEC1 private keys, and `SubjectPublicKeyInfo`
+/// public keys.
 ///
 /// Every key type that exports itself returns these, whatever its module.
 pub mod encoding {
-    pub use crate::high::signature::{Pkcs8, Spki};
+    pub use crate::high::signature::{Pkcs8, Sec1, Spki};
 }
 
 /// Unauthenticated ciphers, for protocols that specify one alongside their own integrity protection.

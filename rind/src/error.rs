@@ -48,6 +48,7 @@ pub(crate) enum KeyFormatError {
     WrongLength,
     LeadingZero,
     Compressed,
+    PointEncoding,
     NotOnCurve,
     SmallOrder,
     ScalarOutOfRange,
@@ -80,6 +81,9 @@ impl core::fmt::Display for KeyRejected {
             KeyFormatError::WrongLength => write!(f, "an encoding of the wrong length"),
             KeyFormatError::LeadingZero => write!(f, "an integer with a leading zero byte"),
             KeyFormatError::Compressed => write!(f, "a compressed point"),
+            KeyFormatError::PointEncoding => {
+                write!(f, "a point neither compressed nor uncompressed")
+            }
             KeyFormatError::NotOnCurve => write!(f, "a point not on the curve"),
             KeyFormatError::SmallOrder => write!(f, "a small-order point"),
             KeyFormatError::ScalarOutOfRange => {
@@ -113,10 +117,7 @@ impl core::fmt::Display for KeyRejected {
             KeyFormatError::MismatchedSec1Curve => write!(f, "mismatched SEC1 curve"),
             KeyFormatError::MismatchedSec1PublicKey => write!(f, "mismatched SEC1 public key"),
             KeyFormatError::MismatchedSpkiAlgorithm => {
-                write!(
-                    f,
-                    "a SubjectPublicKeyInfo of another algorithm than rsaEncryption"
-                )
+                write!(f, "a SubjectPublicKeyInfo of another algorithm")
             }
         }
     }

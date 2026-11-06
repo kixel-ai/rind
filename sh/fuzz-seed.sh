@@ -69,6 +69,34 @@ for selector_len in 24:32 25:32 26:48 27:66; do
 done
 { printf '\x1c\x30\x2e\x02\x01\x00\x30\x05\x06\x03\x2b\x65\x6e\x04\x22\x04\x20'; head -c 32 /dev/zero | tr '\0' '\1'; } \
     >"$corpus/28-x25519-p8v1"
+# An Ed25519 seed of 0x01 bytes.
+{ printf '\x2a'; head -c 32 /dev/zero | tr '\0' '\1'; } >"$corpus/42-ones"
+seed 33 "$asn1/spki-rsa-2k.bin"
+
+# wycheproof SELECTOR FILE JQ: a seed for each distinct key JQ finds in the
+# Wycheproof FILE, in hex, uppercase as older basenc requires: the selector
+# byte, then the key.
+wycheproof() {
+    local selector=$1 file=$2 filter=$3 key
+    jq -r "[$filter] | unique[]" "thirdparty/wycheproof/testvectors_v1/$file" | while read -r key; do
+        printf %02X%s "$selector" "${key^^}" | basenc --base16 -d >"$corpus/$selector-${file%_test.json}-${key: -16}"
+    done
+}
+
+# Each curve's points, bare and in a `SubjectPublicKeyInfo`, compressed among
+# them, and Ed25519's public keys.
+wycheproof 29 ecdh_secp256r1_test.json '.testGroups[].tests[].public'
+wycheproof 30 ecdh_secp384r1_test.json '.testGroups[].tests[].public'
+wycheproof 31 ecdh_secp521r1_test.json '.testGroups[].tests[].public'
+wycheproof 32 ed25519_test.json '.testGroups[].publicKeyDer'
+wycheproof 34 x25519_test.json '.testGroups[].tests[].public'
+wycheproof 35 ecdh_secp256r1_ecpoint_test.json '.testGroups[].tests[].public'
+wycheproof 36 ecdh_secp384r1_ecpoint_test.json '.testGroups[].tests[].public'
+wycheproof 37 ecdh_secp521r1_ecpoint_test.json '.testGroups[].tests[].public'
+wycheproof 38 x25519_asn_test.json '.testGroups[].tests[].public'
+wycheproof 39 ecdh_secp256r1_test.json '.testGroups[].tests[].public'
+wycheproof 40 ecdh_secp384r1_test.json '.testGroups[].tests[].public'
+wycheproof 41 ecdh_secp521r1_test.json '.testGroups[].tests[].public'
 
 # Version 2 documents, which the ECDSA and RSA loaders refuse: one with its
 # public key, one with an empty one, and two without, which aws-lc-rs takes.

@@ -14,7 +14,11 @@ is a change to this model:
 pub struct VerificationAlgorithm(Verification);
 
 enum Verification {
-    Ecdsa(Ecdsa, fn(Ecdsa, &[u8]) -> Result<Parsed, Error>),
+    Ecdsa(
+        Ecdsa,
+        fn(Ecdsa, &[u8]) -> Result<Parsed, Error>,
+        sec1::Decompress,
+    ),
     Rsa(Rsa),
     Ed25519(fn(&[u8]) -> Result<Parsed, Error>),
 }
@@ -51,12 +55,13 @@ impl PublicKey {
     ///
     /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
     /// `RSAPublicKey` or `SubjectPublicKeyInfo` DER, and Ed25519 keys are
-    /// their 32 bytes. A compressed ECDSA point is refused: no consumer sends
-    /// one. So is an Ed25519 point of small order, which verifies signatures
-    /// nobody made.
+    /// their 32 bytes. A compressed ECDSA point is refused, which
+    /// [`agreement::PublicKey::new`](crate::agreement::PublicKey::new)
+    /// decompresses. So is an Ed25519 point of small order, which verifies
+    /// signatures nobody made.
     pub fn new(algorithm: &impl AsRef<VerificationAlgorithm>, bytes: &[u8]) -> Result<Self, Error> {
         let key = match algorithm.as_ref().0 {
-            Verification::Ecdsa(ecdsa, parse) => parse(ecdsa, bytes)?,
+            Verification::Ecdsa(ecdsa, parse, _) => parse(ecdsa, bytes)?,
             Verification::Rsa(rsa) => return (rsa.parse)(rsa, bytes),
             Verification::Ed25519(parse) => parse(bytes)?,
         };
@@ -74,6 +79,55 @@ impl PublicKey {
     ) -> Result<Self, Error> {
         let key = rsa::VerifyingKey::from_components(components.n.as_ref(), components.e.as_ref())?;
         Self::rsa(algorithm.rsa, key)
+    }
+
+    /// Parses a public key for `algorithm` from its `SubjectPublicKeyInfo`
+    /// DER, refusing one that names another algorithm or curve.
+    ///
+    /// An ECDSA key names `id-ecPublicKey` and the algorithm's curve, and
+    /// its point may be compressed (RFC 5480), which this decompresses. An
+    /// RSA key names `rsaEncryption`, and an Ed25519 key `id-Ed25519`.
+    pub fn from_spki(
+        algorithm: &impl AsRef<VerificationAlgorithm>,
+        der: &[u8],
+    ) -> Result<Self, Error> {
+        match algorithm.as_ref().0 {
+            Verification::Ecdsa(ecdsa, _, decompress) => {
+                let curve = Some(asn1::Any::ObjectId(curve_oid(ecdsa.curve)));
+                let point = spki::decode(der, &[&asn1::oid::id_ecPublicKey], curve)?;
+                let mut decompressed = [0; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN];
+                Self::new(
+                    algorithm,
+                    sec1::uncompressed(point, decompress, &mut decompressed)?,
+                )
+            }
+            // RSA's parser takes PKCS#1 too, which this refuses.
+            Verification::Rsa(rsa) => {
+                pkix::SubjectPublicKeyInfo::from_bytes(der).map_err(KeyFormatError::Asn1)?;
+                (rsa.parse)(rsa, der)
+            }
+            Verification::Ed25519(_) => Self::new(
+                algorithm,
+                spki::decode(der, &[&asn1::oid::id_ed25519], None)?,
+            ),
+        }
+    }
+
+    /// Encodes the public key as a `SubjectPublicKeyInfo`: ECDSA's
+    /// `id-ecPublicKey` on its curve, with its uncompressed point, RSA's
+    /// `rsaEncryption`, or Ed25519's `id-Ed25519`.
+    pub fn to_spki(&self) -> Spki {
+        let ec = |curve| (&asn1::oid::id_ecPublicKey, Some(asn1::Any::ObjectId(curve)));
+        let (algorithm, parameters) = match &self.key {
+            Parsed::EcdsaP256(..) => ec(P256::oid()),
+            Parsed::EcdsaP384(..) => ec(P384::oid()),
+            Parsed::EcdsaP521(..) => ec(P521::oid()),
+            Parsed::Rsa(..) => (&asn1::oid::rsaEncryption, Some(asn1::Any::Null(asn1::Null))),
+            Parsed::Ed25519(_) => (&asn1::oid::id_ed25519, None),
+        };
+        Spki(Buffer::encode(|output| {
+            spki::encode(self.as_ref(), algorithm, parameters, output)
+        }))
     }
 
     /// Parses an RSA key's PKCS#1 or SPKI DER for `rsa`.
@@ -169,6 +223,15 @@ impl Ed25519KeyPair {
         Ok(Self::new(Ed25519SigningKey::from_pkcs8_der(der)?))
     }
 
+    /// Loads a 32-byte seed, as a JWK's `d` holds it, deriving its public
+    /// key.
+    ///
+    /// Prefer [`Self::from_seed_and_public_key`] when the public key is at
+    /// hand, which checks it.
+    pub fn from_seed(seed: &[u8]) -> Result<Self, Error> {
+        Ok(Self::new(Ed25519SigningKey::from_bytes(seed)?))
+    }
+
     /// Loads a 32-byte seed, refused unless `public_key` is its public key.
     ///
     /// This suits a JWK's `d` and `x`.
@@ -203,7 +266,15 @@ impl Ed25519KeyPair {
 
     /// Encodes the key pair as PKCS#8 v2 (RFC 5958).
     pub fn to_pkcs8(&self) -> Pkcs8 {
-        Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(output)))
+        Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(true, output)))
+    }
+
+    /// Encodes the private key as PKCS#8 v1 (RFC 8410), its seed without its
+    /// public key, as OpenSSL and BoringSSL write it.
+    pub fn to_pkcs8v1(&self) -> Pkcs8 {
+        Pkcs8(Buffer::encode(|output| {
+            self.key.to_pkcs8_der(false, output)
+        }))
     }
 
     /// Returns the private key's 32-byte seed, as a JWK's `d` holds it.
@@ -250,12 +321,15 @@ The model departs from the Rust in five ways, and adds no axiom:
   that the quotes hold every mention of `Parsed::Ed25519(` there.
 - ECDSA's and RSA's variants, which no theorem here is about, are one
   `Other` variant of each type, holding what `PublicKey::new` and
-  `PublicKey::verify` do for them.
+  `PublicKey::verify` do for them. `Verification::Ecdsa`'s decompressor,
+  which only `PublicKey::from_spki` reads, is left out.
 - `?` is a `match`, since each error it passes on is already an `Error`.
 
 `PublicKey`'s `Debug` is quoted only so that check sees its mention, and not
-modelled: it computes no result. Nor is `PublicKey::verify_digest`, which no
-theorem here is about, and which builds no `Parsed`. Drops are not modelled, as everywhere in the
+modelled: it computes no result. Nor are `PublicKey::verify_digest`,
+`from_spki`, and `to_spki`, or `Ed25519KeyPair`'s `from_seed` and
+`to_pkcs8v1`, which no theorem here is about: `from_spki` builds its key with
+`PublicKey::new`, and the others build no `Parsed`. Drops are not modelled, as everywhere in the
 translation. `rsa::MAX_PUBLIC_KEY_LEN` is 8192 / 8 + 64 =
 1088.
 -/

@@ -250,7 +250,7 @@ theorem encode_public_spec (h : Runs) (k : mid.x25519.PrivateKey) :
       let pk ← mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_public k
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
       b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.val) 9 ⦄ := by
-  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_public high.agreement.PublicKey.new
+  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_public high.agreement.PublicKey.from_encoding
     high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
   step as ⟨pk, hpk⟩
   step as ⟨a, ha⟩

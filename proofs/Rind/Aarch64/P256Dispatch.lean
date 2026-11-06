@@ -15,6 +15,7 @@ pub static ECDH_P256: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP256,
     generate: Keyed::<p256::PrivateKey>::generate,
     load: Keyed::<p256::PrivateKey>::load,
+    parse_public: p256_public_key,
 };
 
     pub(crate) fn new_random() -> Result<Self, Error> {

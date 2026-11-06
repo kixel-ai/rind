@@ -138,17 +138,22 @@ protocols with their own integrity protection need. ring has none.
 | `compute_public_key()?` | `public_key()`, which cannot fail |
 | `agree_ephemeral(key, &UnparsedPublicKey::new(alg, peer), err, kdf)` | `key.agree(peer)?`, returning a `SharedSecret` wiped on drop |
 | `agree(&key, peer, err, kdf)` | `key.agree(peer)?`, which borrows the key, so it agrees again |
-| `UnparsedPublicKey`, `ParsedPublicKey`, `ParsedPublicKeyFormat` | none: `agree` parses the peer's bytes for the key's algorithm |
+| `UnparsedPublicKey::new(alg, point)`, `ParsedPublicKey` of a point | `PublicKey::new(&alg, point)?`, which decompresses a compressed point, then `key.agree(peer.as_ref())`; `agree` alone takes an uncompressed point |
+| `ParsedPublicKey` of a `SubjectPublicKeyInfo` | `PublicKey::from_spki(&alg, der)?`, which also takes WebCrypto's `id-ecDH` |
+| `ParsedPublicKeyFormat` | none |
 | `PublicKey`'s bytes | `PublicKey`'s bytes: an uncompressed point, or X25519's 32 bytes |
 | `X25519`, `ECDH_P256`, `ECDH_P384`, `ECDH_P521` | the same |
 | `PrivateKey::from_private_key(alg, bytes)` | `PrivateKey::from_scalar(&alg, bytes)` |
 | `PrivateKey::from_private_key_der(alg, der)` | `from_pkcs8(&alg, der)` or `from_sec1(&alg, der)`, whichever the caller holds |
 | `as_be_bytes()` to `EcPrivateKeyBin` or `Curve25519SeedBin` | `to_scalar()`, a `Scalar` wiped on drop |
 | `AsDer<Pkcs8V1Der>::as_der()` | `to_pkcs8()`, which X25519 keys also have |
-| `AsDer<EcPrivateKeyRfc5915Der>::as_der()`, `PublicKey::as_der()`, `PublicKey::as_be_bytes()` | none |
+| `PublicKey::as_der()` | `PublicKey::to_spki()`, with an uncompressed point |
+| `AsDer<EcPrivateKeyRfc5915Der>::as_der()`, `PublicKey::as_be_bytes()` | none; an ECDSA key pair's `to_sec1()` |
 | `algorithm()` on each type | none |
 
-`agree` refuses a compressed or DER-encoded peer key, which aws-lc-rs takes.
+`agree` refuses a compressed or DER-encoded peer key, which aws-lc-rs takes;
+`PublicKey::new` and `from_spki` parse them first. Each refuses a hybrid
+point, which aws-lc-rs takes and BoringSSL refuses.
 X25519 keys load from and encode to PKCS#8 (RFC 8410), which aws-lc-rs's
 agreement keys refuse.
 
@@ -171,11 +176,12 @@ ring has no `kem`.
 | aws-lc-rs | rind |
 |---|---|
 | `UnparsedPublicKey::new(alg, bytes).verify(m, s)` | `PublicKey::new(alg, bytes)?.verify(m, s)` |
-| `UnparsedPublicKey::parse`, `ParsedPublicKey::new(alg, bytes)`, `verify_sig` | `PublicKey::new(alg, bytes)`, `verify` |
+| `UnparsedPublicKey::parse`, `ParsedPublicKey::new(alg, bytes)`, `verify_sig` | `PublicKey::new(alg, bytes)`, or `PublicKey::from_spki(alg, der)` for a `SubjectPublicKeyInfo`, then `verify` |
 | `RsaPublicKeyComponents::verify(alg, m, s)`, `to_parsed_public_key(alg)` | `PublicKey::from_components(alg, &rsa::PublicKeyComponents { n, e })?.verify(m, s)` |
 | `UnparsedPublicKey::verify_digest`, `ParsedPublicKey::verify_digest_sig`, `EcdsaKeyPair::sign_digest`, for ECDSA | `PublicKey::verify_digest`, `EcdsaKeyPair::sign_digest`, with SHA-256, SHA-384, or SHA-512; the digest's hash replaces the algorithm's, where aws-lc-rs refuses a mismatch |
 | `verify_digest` and `sign_digest` for RSA, and `verify_digest` for Ed25519 | none: `Error::Unsupported` |
-| `ParsedPublicKey::algorithm()`, `as_der()` | none; the key's bytes through `AsRef<[u8]>`, or a key pair's `to_spki()` |
+| `ParsedPublicKey::as_der()` | `PublicKey::to_spki()`, or a key pair's |
+| `ParsedPublicKey::algorithm()` | none |
 | `VerificationAlgorithm` trait, `EcdsaVerificationAlgorithm`, `EdDSAParameters` | `VerificationAlgorithm` |
 | `RsaParameters` | `RsaVerificationAlgorithm`, which `PublicKey::new` also takes |
 | `RSA_PSS_2048_8192_SHA256.with_pss_salt_length(RsaPssSaltLength::Custom(n))`, `Max`, and their SHA-384 and SHA-512 | `RsaVerificationAlgorithm::pss_sha256(RsaPssSaltLength::Custom(n))`, `Max`, and so on, which take the salt at run time too |
@@ -202,20 +208,23 @@ ring has no `kem`.
 | `RsaKeyPair::from_der` | `from_pkcs1` |
 | `RsaKeyPair::from_components`, `KeyPairComponents` | none: load the key as PKCS#1 or PKCS#8 |
 | `Ed25519KeyPair::from_pkcs8_maybe_unchecked` | `from_pkcs8`, which takes v1 and v2 |
-| `Ed25519KeyPair::from_seed_unchecked` | `from_seed_and_public_key`, which checks the public key |
-| `to_pkcs8()`, `to_pkcs8v1()`, `public_key().as_der()`, each an allocated `Document` | `to_pkcs8()`, `to_spki()`, each of fixed capacity; `Pkcs8` is wiped on drop |
+| `Ed25519KeyPair::from_seed_unchecked` | `from_seed`, or `from_seed_and_public_key`, which checks the public key |
+| `to_pkcs8()`, `to_pkcs8v1()`, `public_key().as_der()`, each an allocated `Document` | `to_pkcs8()`, `to_pkcs8v1()` (Ed25519), `to_spki()`, each of fixed capacity; `Pkcs8` is wiped on drop |
+| `EcdsaKeyPair::private_key().as_der()` | `to_sec1()`, an `encoding::Sec1` wiped on drop |
 | `EcdsaKeyPair::sign(rng, m)`, `RsaKeyPair::sign(alg, rng, m, &mut sig)`, `Ed25519KeyPair::try_sign` | `sign(m)`, `sign(alg, m)`, which take no random source and return a `Signature` |
 | `rsa::KeySize`, `RsaKeyPair::generate(size)` | the same; `KeySize` adds `Rsa6144` |
 | `EcdsaKeyPair::private_key().as_be_bytes()` (not in ring) | `to_scalar()`, an `EcdsaScalar` wiped on drop |
 | `Ed25519KeyPair::seed()?.as_be_bytes()` (not in ring) | `to_seed()`, an `Ed25519Seed` wiped on drop |
-| `EcdsaKeyPair::private_key().as_der()`, `public_modulus_len()`, `algorithm()`, `generate_fips` | none |
+| `public_modulus_len()`, `algorithm()`, `generate_fips` | none |
 | `ED25519_PUBLIC_KEY_LEN` | none: always 32 |
 | `rsa::PublicKey::from_der` | `PublicKey::new(&verify::RSA_PKCS1_SHA256, der)`, for one algorithm and PKCS#1 or `SubjectPublicKeyInfo` DER |
 | `rsa::PublicKey::{modulus, exponent, modulus_len}`, `PublicKeyComponents::from(&key)` | none |
 | `PqdsaKeyPair`, `ML_DSA_65` and the other ML-DSA items | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 
 `PublicKey::new` refuses a compressed ECDSA point and an ECDSA or Ed25519
-`SubjectPublicKeyInfo`, which aws-lc-rs takes. It takes an RSA key as
+`SubjectPublicKeyInfo`, which aws-lc-rs takes. `PublicKey::from_spki` takes
+the latter, with its point compressed or not, and
+`agreement::PublicKey::new` decompresses a bare point. It takes an RSA key as
 PKCS#1 or as a `SubjectPublicKeyInfo`, as aws-lc-rs does, but refuses the
 latter's `rsaEncryption` with parameters other than `NULL` or none, which
 aws-lc ignores, and an RSA key's bytes are always its PKCS#1 DER.
@@ -325,7 +334,7 @@ ring has none.
 |---|---|
 | `cmac`, `kdf` (KBKDF and SSKDF), `tls_prf` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | `pkcs8::Document` | `encoding::Pkcs8`, `encoding::Spki` |
-| `encoding`'s `AsDer`, `AsBigEndian`, and `AsRawBytes` | `to_pkcs8()` and `to_spki()`; an ECDSA key pair's `to_scalar()` and an Ed25519 key pair's `to_seed()`; other raw keys none |
+| `encoding`'s `AsDer`, `AsBigEndian`, and `AsRawBytes` | `to_pkcs8()` and `to_spki()`; an ECDSA key pair's `to_sec1()` and `to_scalar()`, and an Ed25519 key pair's `to_pkcs8v1()` and `to_seed()`; other raw keys none |
 | `io::Positive`, `io::der`, `iv::FixedLength`, `test`, `test_file!`, `unstable`, and ring's `deprecated_test` | none |
 | `init`, `try_fips_mode`, `fips_mode`, `try_fips_self_test`, `fips_version`, `try_fips_cpu_jitter_entropy`, `fips_cpu_jitter_entropy`, `awslc_version` | none: rind has no C library to initialize and no FIPS module |
 

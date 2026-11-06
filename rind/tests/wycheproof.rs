@@ -375,6 +375,7 @@ fn test_verify_ecdsa() {
 
             let public_key =
                 signature::PublicKey::new(algorithm, &group.public_key.uncompressed).unwrap();
+            check_ecdsa_spki(algorithm, &group, &public_key);
 
             for test in group.tests {
                 summary.start(&test);
@@ -388,6 +389,53 @@ fn test_verify_ecdsa() {
             }
         }
     }
+}
+
+/// The group's SPKI parses as its point, and encodes back to itself; and
+/// with its point compressed, parses as the same point.
+fn check_ecdsa_spki(
+    algorithm: &'static signature::VerificationAlgorithm,
+    group: &TestGroup,
+    key: &signature::PublicKey,
+) {
+    let der = &group.public_key_der;
+    let from_spki = signature::PublicKey::from_spki(algorithm, der).unwrap();
+    assert_eq!(from_spki.as_ref(), key.as_ref());
+    assert_eq!(from_spki.to_spki().as_ref(), &der[..]);
+
+    let point = key.as_ref();
+    let (x, y) = point[1..].split_at(point.len() / 2);
+    let compressed = [&[2 | (y[y.len() - 1] & 1)][..], x].concat();
+    let compressed_der = spki(algorithm_identifier(der), &compressed);
+    let from_compressed = signature::PublicKey::from_spki(algorithm, &compressed_der);
+    assert_eq!(from_compressed.unwrap().as_ref(), key.as_ref());
+}
+
+/// A DER element: `tag`, the length of `body`, and `body`.
+fn der(tag: u8, body: &[u8]) -> Vec<u8> {
+    let length = match body.len() {
+        len @ 0..0x80 => vec![len as u8],
+        len @ 0x80..0x100 => vec![0x81, len as u8],
+        len => vec![0x82, (len >> 8) as u8, len as u8],
+    };
+    [&[tag][..], &length, body].concat()
+}
+
+/// A `SubjectPublicKeyInfo` of `algorithm`, an encoded
+/// `AlgorithmIdentifier`, holding `key`.
+fn spki(algorithm: &[u8], key: &[u8]) -> Vec<u8> {
+    let key = der(0x03, &[&[0][..], key].concat());
+    der(0x30, &[algorithm, &key].concat())
+}
+
+/// The encoded `AlgorithmIdentifier` that opens a `SubjectPublicKeyInfo`,
+/// whose own length is one byte.
+fn algorithm_identifier(spki: &[u8]) -> &[u8] {
+    let body = match spki[1] {
+        0x81 => &spki[3..],
+        _ => &spki[2..],
+    };
+    &body[..2 + body[1] as usize]
 }
 
 #[test]
@@ -759,6 +807,11 @@ fn test_rsa_pkcs1_verify() {
                 let from_spki =
                     signature::PublicKey::new(algorithm, &group.public_key_der).unwrap();
                 assert_eq!(from_spki.as_ref(), key.as_ref());
+                let from_spki =
+                    signature::PublicKey::from_spki(algorithm, &group.public_key_der).unwrap();
+                assert_eq!(from_spki.as_ref(), key.as_ref());
+                assert_eq!(from_spki.to_spki().as_ref(), &group.public_key_der[..]);
+                assert!(signature::PublicKey::from_spki(algorithm, &group.public_key_asn).is_err());
 
                 // The modulus with its sign byte is not minimal.
                 let signed = rind::rsa::PublicKeyComponents {
@@ -1079,6 +1132,15 @@ fn test_ed25519_verify() {
         summary.group(&group);
 
         let key = signature::PublicKey::new(&verify::ED25519, &group.public_key.pk);
+        let from_spki = signature::PublicKey::from_spki(&verify::ED25519, &group.public_key_der);
+        match (&key, from_spki) {
+            (Ok(key), Ok(from_spki)) => {
+                assert_eq!(from_spki.as_ref(), key.as_ref());
+                assert_eq!(from_spki.to_spki().as_ref(), &group.public_key_der[..]);
+            }
+            (Err(e), Err(from_spki)) => assert_eq!(*e, from_spki),
+            (key, from_spki) => panic!("{key:?} but from SPKI {from_spki:?}"),
+        }
 
         for test in group.tests {
             summary.start(&test);
