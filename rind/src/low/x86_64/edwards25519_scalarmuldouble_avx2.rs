@@ -52,7 +52,7 @@ pub(crate) fn edwards25519_scalarmuldouble(
 }
 
 /// Computes `[a]A + [b]B` from `A`'s extended coordinates `(X, Y, Z, T)`,
-/// returning the result's `(X, Y, Z)`, each below 2^256.
+/// returning the result's `(X, Y, Z)`, each reduced.
 #[target_feature(enable = "avx,avx2")]
 fn double_base(a: &[u64; 4], b: &[u64; 4], point: &[[u64; 4]; 4]) -> [[u64; 4]; 3] {
     let a_naf = non_adjacent_form(a, 5);
@@ -327,7 +327,7 @@ impl Fe4 {
         Self(out)
     }
 
-    /// Unpacks the four field elements, each below 2^256 but not reduced.
+    /// Unpacks the four field elements, each reduced.
     #[target_feature(enable = "avx,avx2")]
     fn split(&self) -> [[u64; 4]; 4] {
         let mut lanes = [[0u32; 8]; 5];
@@ -347,19 +347,31 @@ impl Fe4 {
         }
 
         out.map(|mut l| {
-            // Two carry passes leave every limb below 2^51 but the last,
-            // which may reach 2^51, so the packed value stays below 2^256.
+            // dalek's `reduce` then `to_bytes`: a weak carry leaves each
+            // limb below 2^51 + 2^13, `q` is 1 exactly when the value is at
+            // least p, and adding 19q then carrying and dropping 2^255
+            // subtracts it, leaving every limb below 2^51.
             const MASK: u64 = (1 << 51) - 1;
-            for _ in 0..2 {
-                for i in 0..4 {
-                    l[i + 1] += l[i] >> 51;
-                    l[i] &= MASK;
-                }
-                l[0] += 19 * (l[4] >> 51);
-                l[4] &= MASK;
+            let c = l.map(|l| l >> 51);
+            for l in &mut l {
+                *l &= MASK;
             }
-            l[1] += l[0] >> 51;
-            l[0] &= MASK;
+            l[0] += 19 * c[4];
+            for i in 1..5 {
+                l[i] += c[i - 1];
+            }
+
+            let mut q = (l[0] + 19) >> 51;
+            for l in &l[1..] {
+                q = (l + q) >> 51;
+            }
+            l[0] += 19 * q;
+            for i in 0..4 {
+                l[i + 1] += l[i] >> 51;
+                l[i] &= MASK;
+            }
+            l[4] &= MASK;
+
             [
                 l[0] | (l[1] << 51),
                 (l[1] >> 13) | (l[2] << 38),
@@ -490,7 +502,7 @@ impl Fe4 {
         let low_26_bits = _mm256_set1_epi64x((1 << 26) - 1);
 
         let carry = |z: &mut [__m256i; 10], i: usize| {
-            if i % 2 == 0 {
+            if i.is_multiple_of(2) {
                 z[i + 1] = _mm256_add_epi64(z[i + 1], _mm256_srli_epi64::<26>(z[i]));
                 z[i] = _mm256_and_si256(z[i], low_26_bits);
             } else {
