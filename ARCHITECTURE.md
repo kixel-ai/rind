@@ -29,7 +29,7 @@ The modules:
 - `cipher`: bare AES, AES-CTR, and ChaCha20, for DTLS record number
   protection and SRTP.
 - `key_wrap`: AES key wrap (RFC 3394), for WebCrypto's AES-KW and JWE's
-  `A128KW` and `A256KW`.
+  `A128KW` and `A256KW`, and with padding (RFC 5649), for keys of any length.
 - `agreement`: X25519 and ECDH on P-256, P-384, and P-521, with keys that
   load from a scalar, PKCS#8, or SEC1, and export as a scalar or PKCS#8, and
   peer keys parsed from a point, compressed or not, or a

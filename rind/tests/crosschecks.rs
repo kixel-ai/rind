@@ -407,7 +407,7 @@ mod cipher {
 }
 
 mod key_wrap {
-    use aws_lc_rs::key_wrap::{AES_128, AES_256, AesKek, KeyWrap};
+    use aws_lc_rs::key_wrap::{AES_128, AES_256, AesKek, KeyWrap, KeyWrapPadded};
     use proptest::prelude::*;
     use rind::Error;
     use rind::key_wrap as ours;
@@ -449,6 +449,31 @@ mod key_wrap {
             wrapped[bit / 8] ^= 1 << (bit % 8);
             prop_assert_eq!(ours.unwrap(&wrapped, &mut unwrapped), Err(Error::DecryptFailed));
             prop_assert!(theirs(&kek).unwrap(&wrapped, &mut vec![0u8; key.len()]).is_err());
+        }
+
+        #[test]
+        fn wrap_and_unwrap_padded(
+            kek in kek(),
+            key in prop::collection::vec(any::<u8>(), 1..100),
+            flip in any::<prop::sample::Index>(),
+        ) {
+            let algorithm = if kek.len() == 16 { &ours::AES_128 } else { &ours::AES_256 };
+            let ours = ours::AesKek::new(algorithm, &kek).unwrap();
+
+            let mut wrapped = vec![0u8; key.len().next_multiple_of(8) + 8];
+            ours.wrap_padded(&key, &mut wrapped).unwrap();
+            let mut wanted = vec![0u8; key.len() + 15];
+            let wanted = theirs(&kek).wrap_with_padding(&key, &mut wanted).unwrap();
+            prop_assert_eq!(&wrapped[..], &wanted[..]);
+
+            let mut unwrapped = vec![0u8; wrapped.len() - 8];
+            prop_assert_eq!(&ours.unwrap_padded(&wrapped, &mut unwrapped).unwrap()[..], &key[..]);
+
+            // both refuse any single bit flipped
+            let bit = flip.index(wrapped.len() * 8);
+            wrapped[bit / 8] ^= 1 << (bit % 8);
+            prop_assert_eq!(ours.unwrap_padded(&wrapped, &mut unwrapped), Err(Error::DecryptFailed));
+            prop_assert!(theirs(&kek).unwrap_with_padding(&wrapped, &mut vec![0u8; wrapped.len()]).is_err());
         }
     }
 }
