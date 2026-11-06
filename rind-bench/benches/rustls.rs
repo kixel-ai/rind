@@ -15,12 +15,32 @@ use rustls::{
     RootCertStore, ServerConfig, ServerConnection,
 };
 
-/// The providers this build has: Graviola runs only on x86_64 and aarch64.
+/// The providers this build and CPU have. The setup below runs every
+/// provider, whatever criterion's filter, so it can't leave Graviola to it.
 fn providers() -> impl Iterator<Item = &'static str> {
     ["ring", "aws-lc-rs", "rind"]
         .into_iter()
-        .chain(cfg!(any(target_arch = "x86_64", target_arch = "aarch64")).then_some("graviola"))
+        .chain(graviola_runs().then_some("graviola"))
         .chain(cfg!(all(feature = "__bench_openssl", target_family = "unix")).then_some("openssl"))
+}
+
+/// Whether Graviola runs here: it panics on a CPU without the features it
+/// asserts in its `verify_cpu_features`.
+#[cfg(target_arch = "x86_64")]
+fn graviola_runs() -> bool {
+    use std::arch::is_x86_feature_detected as has;
+    has!("aes") && has!("pclmulqdq") && has!("bmi1") && has!("adx") && has!("avx") && has!("avx2")
+}
+
+#[cfg(target_arch = "aarch64")]
+fn graviola_runs() -> bool {
+    use std::arch::is_aarch64_feature_detected as has;
+    has!("neon") && has!("aes") && has!("pmull") && has!("sha2")
+}
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+fn graviola_runs() -> bool {
+    false
 }
 
 fn provider(name: &str) -> CryptoProvider {

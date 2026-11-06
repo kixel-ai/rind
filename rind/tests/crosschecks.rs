@@ -1585,6 +1585,8 @@ mod rsa {
                         prop_assert_eq!(ours_signature, &theirs_signature[..]);
                     }
                     let verifier = rind::signature::PublicKey::new(scheme.ours_verify, public).unwrap();
+                    let verifier_spki = verifier.to_spki();
+                    prop_assert_eq!(verifier_spki.as_ref(), spki.as_ref());
                     verifier.verify(&message, &theirs_signature).unwrap();
                     prop_assert_eq!(
                         verifier.verify(&[&message[..], b"!"].concat(), &theirs_signature),
@@ -1932,8 +1934,10 @@ mod rsa {
                     let ours_spki = ours.to_spki();
                     prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
                     let ours_public = EncryptingKey::new(ours_algorithm, spki.as_ref()).unwrap();
+                    let ours_public_spki = ours_public.to_spki();
+                    prop_assert_eq!(ours_public_spki.as_ref(), spki.as_ref());
                     let theirs_public = OaepPublicEncryptingKey::new(
-                        PublicEncryptingKey::from_der(ours_spki.as_ref()).unwrap(),
+                        PublicEncryptingKey::from_der(ours_public_spki.as_ref()).unwrap(),
                     )
                     .unwrap();
 
