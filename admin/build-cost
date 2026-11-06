@@ -63,8 +63,8 @@ TOOLS = {
 # A C compiler invocation with one of these compiles; any other links.
 COMPILE_FLAGS = ("-c", "-S", "-E")
 
-# Above this 1-minute load average per CPU, other work would skew the times.
-BUSY_LOAD = 0.25
+# Above this share of the CPUs busy, other work would skew the times.
+BUSY_SHARE = 0.25
 
 
 def log(message):
@@ -91,6 +91,24 @@ def cpus():
     if hasattr(os, "sched_getaffinity"):
         return len(os.sched_getaffinity(0))
     return os.cpu_count()
+
+
+def busy_cpus():
+    """How many CPUs other work keeps busy. On Linux that is over the next
+    5 s, since the load average still counts work that just ended, such as
+    admin/bench-report's benchmarks before it runs this."""
+    if sys.platform != "linux":
+        return os.getloadavg()[0]
+
+    def times():
+        with open("/proc/stat") as f:
+            fields = [int(x) for x in f.readline().split()[1:]]
+        return sum(fields) - fields[3] - fields[4], sum(fields)
+
+    busy0, total0 = times()
+    time.sleep(5)
+    busy1, total1 = times()
+    return (busy1 - busy0) / max(1, total1 - total0) * (os.cpu_count() or 1)
 
 
 def output(*cmd):
@@ -266,9 +284,9 @@ def main():
         if name not in BUILDS:
             parser.error(f"unknown build {name}; pick from {', '.join(BUILDS)}")
 
-    load = os.getloadavg()[0]
-    if load > BUSY_LOAD * cpus():
-        sys.exit(f"error: host is busy (load average {load:.1f} on {cpus()} CPUs)")
+    busy = busy_cpus()
+    if busy > BUSY_SHARE * cpus():
+        sys.exit(f"error: host is busy ({busy:.1f} of {cpus()} CPUs busy)")
 
     env = build_env()
     host = host_info(env)
