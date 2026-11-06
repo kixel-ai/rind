@@ -151,6 +151,11 @@ impl HaveAvx512ForAesGcm {
             false => None,
         }
     }
+
+    /// Vale's AES-GCM, for short messages, runs here too.
+    pub(crate) fn avx_movbe(self) -> HaveAvxMovbeForAesGcm {
+        HaveAvxMovbeForAesGcm(())
+    }
 }
 
 /// Token type reflecting the check for CPU features needed for VAES-AES-GCM
@@ -166,6 +171,11 @@ impl HaveVaesAvx2ForAesGcm {
             true => Some(Self(())),
             false => None,
         }
+    }
+
+    /// Vale's AES-GCM, for short messages, runs here too.
+    pub(crate) fn avx_movbe(self) -> HaveAvxMovbeForAesGcm {
+        HaveAvxMovbeForAesGcm(())
     }
 }
 
@@ -367,9 +377,10 @@ const SHA512: u32 = 1 << 21;
 const INTEL: u32 = 1 << 30;
 /// What rind's AVX2 kernels use, for [`HaveAvx2`].
 const AVX2_KERNELS: u32 = AVX | AVX2 | BMI1 | BMI2 | POPCNT | SSSE3;
-/// What the AES-GCM kernels for wider vectors build on: the AVX2 ISA, and
-/// AES-NI and PCLMULQDQ for their key schedule and tail.
-const AES_GCM_BASE: u32 = AES | PCLMULQDQ | SSSE3 | AVX | AVX2;
+/// What the AES-GCM kernels for wider vectors build on: the AVX2 ISA, AES-NI
+/// and PCLMULQDQ for their key schedule and tail, and SSE4.1 and MOVBE for
+/// Vale's AES-GCM, which short messages run. Every VAES CPU has them all.
+const AES_GCM_BASE: u32 = AES | PCLMULQDQ | SSSE3 | SSE41 | AVX | AVX2 | MOVBE;
 const DETECTED: u32 = 1 << 31;
 
 /// Whether the CPU has every feature in `wanted`.

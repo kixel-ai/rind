@@ -168,13 +168,13 @@ impl<B: AsRef<[u8]>> PublicKeyComponents<B> {
         message: &[u8],
         signature: &[u8],
     ) -> Result<(), error::Unspecified> {
-        rind::signature::RsaPublicKeyComponents {
+        let components = rind::rsa::PublicKeyComponents {
             n: self.n.as_ref(),
             e: self.e.as_ref(),
-        }
-        .to_public_key(params.rind)
-        .and_then(|key| key.verify(message, signature))
-        .map_err(|_| error::Unspecified)
+        };
+        rind::signature::PublicKey::from_components(params.rind, &components)
+            .and_then(|key| key.verify(message, signature))
+            .map_err(|_| error::Unspecified)
     }
 }
 

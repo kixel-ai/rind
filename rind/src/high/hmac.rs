@@ -116,7 +116,7 @@ pub struct Algorithm {
 
 // Only the digests HMAC offers, so a key is made for every value.
 #[derive(Clone, Copy, Debug)]
-enum Id {
+pub(super) enum Id {
     Sha1,
     Sha256,
     Sha384,
@@ -183,6 +183,11 @@ impl Key {
         self.0.sign(data)
     }
 
+    /// Starts a tag computation, for callers that will not keep it.
+    pub(super) fn start(&self) -> Streaming {
+        self.0.start()
+    }
+
     /// The algorithm this key was made for.
     pub fn algorithm(&self) -> &'static Algorithm {
         match &self.0 {
@@ -192,9 +197,23 @@ impl Key {
             Keyed::Sha512(key) => key.ops.get().algorithm,
         }
     }
+
+    /// The hash this key was made for, which the `Debug` of every key built
+    /// on HMAC shows.
+    pub(super) fn id(&self) -> Id {
+        self.algorithm().id
+    }
 }
 
-/// An in-progress tag computation, for a message given in pieces.
+impl fmt::Debug for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Key")
+            .field("algorithm", &self.id())
+            .finish_non_exhaustive()
+    }
+}
+
+/// An in-progress tag computation, for a message given in pieces; wiped on drop.
 ///
 /// A clone forks the computation, so messages sharing a prefix process it once.
 #[derive(Clone)]
@@ -203,40 +222,42 @@ pub struct Context(Streaming);
 impl Context {
     /// Starts a tag computation under `key`.
     pub fn with_key(key: &Key) -> Self {
-        Self(match &key.0 {
-            Keyed::Sha1(key) => key.start(),
-            Keyed::Sha256(key) => key.start(),
-            Keyed::Sha384(key) => key.start(),
-            Keyed::Sha512(key) => key.start(),
-        })
+        Self(key.0.start())
     }
 
     /// Adds `data` to the message.
     pub fn update(&mut self, data: &[u8]) {
-        // The compressors enter instead, so an update that only buffers skips
-        // the cost of enabling DIT.
-        match &mut self.0 {
-            Streaming::Sha1(hmac) => hmac.update(data),
-            Streaming::Sha256(hmac) => hmac.update(data),
-            Streaming::Sha384(hmac) => hmac.update(data),
-            Streaming::Sha512(hmac) => hmac.update(data),
-        }
+        self.0.update(data);
     }
 
     /// Returns the tag of the message.
     pub fn sign(self) -> Tag {
         let _entry = Entry::new_secret();
-        Tag(self.finish())
+        Tag(self.0.finish())
     }
+}
 
-    /// The tag of the message so far, for callers that have entered.
-    pub(super) fn finish(&self) -> Digest {
-        match &self.0 {
-            Streaming::Sha1(hmac) => hmac.finish(),
-            Streaming::Sha256(hmac) => hmac.finish(),
-            Streaming::Sha384(hmac) => hmac.finish(),
-            Streaming::Sha512(hmac) => hmac.finish(),
-        }
+// The caller holds this keyed state for as long as it likes, so it wipes as
+// a key does. `Streaming` itself does not, for HKDF's and PBKDF2's copies
+// inside a call.
+impl Drop for Context {
+    fn drop(&mut self) {
+        zeroise_value(&mut self.0);
+    }
+}
+
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // An `Id`, not the static, so formatting links no other hash's code.
+        let algorithm = match &self.0.0 {
+            Tagged::Sha1(_) => Id::Sha1,
+            Tagged::Sha256(_) => Id::Sha256,
+            Tagged::Sha384(_) => Id::Sha384,
+            Tagged::Sha512(_) => Id::Sha512,
+        };
+        f.debug_struct("Context")
+            .field("algorithm", &algorithm)
+            .finish_non_exhaustive()
     }
 }
 
@@ -288,6 +309,15 @@ impl Keyed {
             Self::Sha512(key) => key.sign(data),
         }
     }
+
+    fn start(&self) -> Streaming {
+        match self {
+            Self::Sha1(key) => key.start(),
+            Self::Sha256(key) => key.start(),
+            Self::Sha384(key) => key.start(),
+            Self::Sha512(key) => key.start(),
+        }
+    }
 }
 
 impl Drop for Keyed {
@@ -300,26 +330,46 @@ impl Drop for Keyed {
 
 impl Zeroable for Keyed {}
 
+/// An in-progress tag computation that, unlike a [`Context`], is not wiped on drop.
+#[derive(Clone)]
+pub(super) struct Streaming(Tagged);
+
 // As `Keyed`, with all-zero hash contexts too.
 #[derive(Clone)]
 #[repr(u8)]
-enum Streaming {
+enum Tagged {
     Sha1(Tagging<LegacySha1>),
     Sha256(Tagging<Sha256>),
     Sha384(Tagging<Sha384>),
     Sha512(Tagging<Sha512>),
 }
 
-// Neither the hash context nor the keyed outer state wipes itself.
-impl Drop for Streaming {
-    fn drop(&mut self) {
-        zeroise_value(self);
+impl Streaming {
+    pub(super) fn update(&mut self, data: &[u8]) {
+        // The compressors enter instead, so an update that only buffers skips
+        // the cost of enabling DIT.
+        match &mut self.0 {
+            Tagged::Sha1(hmac) => hmac.update(data),
+            Tagged::Sha256(hmac) => hmac.update(data),
+            Tagged::Sha384(hmac) => hmac.update(data),
+            Tagged::Sha512(hmac) => hmac.update(data),
+        }
+    }
+
+    /// The tag of the message so far, for callers that have entered.
+    pub(super) fn finish(&self) -> Digest {
+        match &self.0 {
+            Tagged::Sha1(hmac) => hmac.finish(),
+            Tagged::Sha256(hmac) => hmac.finish(),
+            Tagged::Sha384(hmac) => hmac.finish(),
+            Tagged::Sha512(hmac) => hmac.finish(),
+        }
     }
 }
 
 impl Zeroable for Streaming {}
 
-/// A hash HMAC offers, and its places in [`Keyed`] and [`Streaming`].
+/// A hash HMAC offers, and its places in [`Keyed`] and [`Tagged`].
 trait HmacHash: Hash + Sized + 'static {
     const HMAC: &'static Algorithm;
 
@@ -338,7 +388,7 @@ macro_rules! hmac_hash {
             }
 
             fn streaming(hmac: Tagging<Self>) -> Streaming {
-                Streaming::$variant(hmac)
+                Streaming(Tagged::$variant(hmac))
             }
         }
     };

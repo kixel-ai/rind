@@ -37,6 +37,14 @@ pub(crate) struct NohwKey {
 }
 
 impl NohwKey {
+    /// The key's length in bytes, from its 10 or 14 rounds.
+    pub(crate) fn key_len(&self) -> usize {
+        match self.rounds {
+            10 => 16,
+            _ => 32,
+        }
+    }
+
     /// Expands a 16- or 32-byte key.
     pub(crate) fn new(key: &[u8]) -> Self {
         // SAFETY: every x86_64 CPU has SSE2

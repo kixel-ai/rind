@@ -1016,8 +1016,8 @@ theorem p256_generate (h : Runs) (draws : Nat → core.result.Result Unit getran
 /-- A P-256 key loaded from its scalar is refused unless it is 32 bytes and,
 read big-endian, in [1, n), and otherwise is that scalar, as
 `p256_generate`'s is a draw's. -/
-theorem p256_from_private_key (h : Runs) (b : Slice U8) :
-    high.agreement.PrivateKey.from_private_key high.agreement.ECDH_P256 b ⦃ key =>
+theorem p256_from_scalar (h : Runs) (b : Slice U8) :
+    high.agreement.PrivateKey.from_scalar high.agreement.ECDH_P256 b ⦃ key =>
       if b.length = 32 then
         if 0 < beNat b.val ∧ beNat b.val < n256 then
           ∃ k : high.agreement.Keyed mid.p256.PrivateKey,
@@ -1025,7 +1025,7 @@ theorem p256_from_private_key (h : Runs) (b : Slice U8) :
               wordsNat k.key.scalar.val = beNat b.val
         else key = core.result.Result.Err (.KeyRejected .ScalarOutOfRange)
       else key = core.result.Result.Err (.KeyRejected .WrongLength) ⦄ := by
-  unfold high.agreement.PrivateKey.from_private_key high.agreement.PrivateKey.load
+  unfold high.agreement.PrivateKey.from_scalar high.agreement.PrivateKey.load
     high.agreement.ECDH_P256 high.agreement.Keyed.load high.agreement.Keyed.new
   simp only
   step with load_scalar_spec h b as ⟨r, hr⟩
@@ -1039,7 +1039,7 @@ theorem p256_from_private_key (h : Runs) (b : Slice U8) :
 
 /-- A P-256 key's public key: X9.62's uncompressed encoding of its scalar
 times the generator, for a scalar in [1, n), as `p256_generate` and
-`p256_from_private_key` give. -/
+`p256_from_scalar` give. -/
 theorem p256_public_key (h : Runs) (k : high.agreement.Keyed mid.p256.PrivateKey)
     (hk0 : 0 < wordsNat k.key.scalar.val) (hk : wordsNat k.key.scalar.val < n256) :
     (do
