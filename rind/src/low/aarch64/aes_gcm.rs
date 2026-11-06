@@ -113,13 +113,15 @@ pub(crate) fn tagged_from<const ENC: bool>(
 }
 
 /// The most GHASH blocks [`short`] takes, the AAD's, the message's, and the
-/// lengths block: one per power of H that `PmullTable` holds.
-const SHORT_BLOCKS: usize = 8;
+/// lengths block. Past them the stitched kernels win: on Neoverse N2, a seal
+/// of 256 bytes or more runs faster there, and an open of 512 or more.
+const SHORT_BLOCKS: usize = 16;
 
 /// Encrypts (if `ENC`) or decrypts a message whose GHASH fits in
 /// [`SHORT_BLOCKS`] blocks in one pass, and returns its tag: its counter
-/// blocks and `y0` encrypt together, and one reduction hashes every block,
-/// where the stitched kernels and separate GHASH calls reduce each.
+/// blocks and `y0` encrypt together, and every block, the AAD's and the
+/// lengths' too, joins one GHASH with a reduction per eight, where the
+/// stitched kernels hash the AAD, a short tail, and the lengths separately.
 #[target_feature(enable = "aes")]
 fn short<const ENC: bool, const ROUND_KEYS: usize>(
     round_keys: &[uint8x16_t; ROUND_KEYS],
@@ -387,8 +389,8 @@ mod tests {
 
             for aad_len in [0, 1, 13, 16, 17, 32, 33, 112] {
                 for msg_len in [
-                    0, 1, 3, 15, 16, 17, 35, 64, 80, 81, 95, 96, 97, 112, 113, 127, 128, 129, 255,
-                    256, 1000,
+                    0, 1, 3, 15, 16, 17, 35, 64, 80, 81, 95, 96, 97, 112, 113, 127, 128, 129, 223,
+                    224, 225, 240, 241, 255, 256, 1000,
                 ] {
                     let nonce = bytes(12, msg_len as u32).try_into().unwrap();
                     let aad = bytes(aad_len, 2);
@@ -446,7 +448,7 @@ mod tests {
 
             for (key, table) in &paths {
                 for start in [0xffff_ffffu32, 0xffff_fffe, 0xffff_fff9, 0xffff_ff00, 7] {
-                    for msg_len in [3, 16, 17, 48, 100, 128, 300, 1000] {
+                    for msg_len in [3, 16, 17, 48, 100, 128, 200, 300, 1000] {
                         let mut y0: [u8; 16] = bytes(16, msg_len as u32).try_into().unwrap();
                         y0[12..].copy_from_slice(&start.to_be_bytes());
                         let aad = bytes(17, 2);
