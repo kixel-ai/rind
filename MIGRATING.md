@@ -224,8 +224,8 @@ ring has no `kem`.
 the latter, with its point compressed or not, and
 `agreement::PublicKey::new` decompresses a bare point. It takes an RSA key as
 PKCS#1 or as a `SubjectPublicKeyInfo`, as aws-lc-rs does, but refuses the
-latter's `rsaEncryption` with parameters other than `NULL` or none, which
-aws-lc ignores, and an RSA key's bytes are always its PKCS#1 DER.
+latter's algorithm (`rsaEncryption`, `id-RSAES-OAEP`, or `id-ea-rsa`) with
+parameters other than `NULL` or none, which aws-lc ignores, and an RSA key's bytes are always its PKCS#1 DER.
 It also refuses an Ed25519 key of small order, as libsodium does, which
 aws-lc-rs and ring take: with the identity as the key, `R` the identity and
 `S = 0` verify any message. No honest key has small order.
@@ -325,7 +325,8 @@ ring has none.
 | none | `AES_192` |
 | `KeyWrap::wrap(kek, key, output)?`, which consumes the key and takes any longer `output` | `kek.wrap(key, wrapped)?`, which borrows it and takes `wrapped` exactly 8 bytes longer than `key` |
 | `KeyWrap::unwrap(kek, wrapped, output)?` | `kek.unwrap(wrapped, key)?`, with `key` exactly 8 bytes shorter than `wrapped`, cleared if it fails to verify |
-| `KeyWrapPadded`, RFC 5649's padded variant | none |
+| `KeyWrapPadded::wrap_with_padding(kek, key, output)?`, which takes any `output` at least 15 bytes longer than `key` | `kek.wrap_padded(key, wrapped)?`, with `wrapped` exactly `key.len().next_multiple_of(8) + 8` bytes |
+| `KeyWrapPadded::unwrap_with_padding(kek, wrapped, output)?` | `kek.unwrap_padded(wrapped, key)?`, with `key` exactly 8 bytes shorter than `wrapped`, cleared if it fails to verify; both return the key |
 | `BlockCipherId`, `AesKek::block_cipher_id()` | none |
 
 ## Other modules
@@ -342,11 +343,11 @@ ring has none.
 
 Each `rind-*` crate stands in for a crate's aws-lc-rs or ring backend. rind
 panics on a CPU missing a feature it requires, so every adapter function
-that builds a provider or ticketer refuses one with
-`rind::cpu::MissingFeature` instead. A static that the upstream crate
-requires, such as `DEFAULT_PROVIDER`, cannot; nor can rind-ring, whose
-signatures are ring's, or rind-rcgen's `KeyPair`, whose errors are rcgen's.
-Call `rind::cpu::check()`, or rind-ring's `cpu::check()`, before using them.
+that builds a provider or ticketer refuses one with the adapter's own
+`MissingFeature` instead, which displays rind's message. A static that the
+upstream crate requires, such as `DEFAULT_PROVIDER`, cannot; nor can
+rind-ring, whose signatures are ring's, or rind-rcgen's `KeyPair`, whose
+errors are rcgen's. Call `rind::cpu::check()`, or rind-ring's `cpu::check()`, before using them.
 
 ### rind-ring
 
@@ -355,9 +356,9 @@ in with `ring = { package = "rind-ring", version = "0.1" }` and no code
 changes. The rename reaches only that crate: a dependency that names ring,
 such as rustls with its `ring` feature, still builds ring, since Cargo cannot
 patch it with a crate of another name. It panics wherever ring panics, so
-its signatures stay ring's, and adds rind's `cpu` module, so the renamed
-crate refuses an unsupported CPU with `ring::cpu::check()` without depending
-on rind. Its [README](rind-ring/README.md) lists the
+its signatures stay ring's, and adds a `cpu` module wrapping rind's check, so
+the renamed crate refuses an unsupported CPU with `ring::cpu::check()`
+without depending on rind. Its [README](rind-ring/README.md) lists the
 items it leaves out and the inputs it refuses where ring takes them.
 
 ### rind-rustls

@@ -732,6 +732,55 @@ fn test_aes_wrap() {
 }
 
 #[test]
+fn test_aes_kwp() {
+    let data_file = File::open("../thirdparty/wycheproof/testvectors_v1/aes_kwp_test.json")
+        .expect("failed to open data file");
+
+    let reader = BufReader::new(data_file);
+    let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
+    let mut summary = Summary::new();
+
+    for group in tests.groups {
+        summary.group(&group);
+
+        for test in group.tests {
+            summary.start(&test);
+
+            let algorithm = match test.key.len() {
+                16 => &key_wrap::AES_128,
+                24 => &key_wrap::AES_192,
+                32 => &key_wrap::AES_256,
+                len => panic!("unexpected key length {len}"),
+            };
+            let kek = AesKek::new(algorithm, &test.key).unwrap();
+
+            let mut key = vec![0xaa; test.ct.len().saturating_sub(8)];
+            let result = kek
+                .unwrap_padded(&test.ct, &mut key)
+                .map(|key| key.to_vec());
+            match (test.result, result) {
+                (ExpectedResult::Valid, Ok(key)) => assert_eq!(key, test.msg),
+                (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {
+                    assert!(key.iter().all(|b| *b == 0) || key.iter().all(|b| *b == 0xaa));
+                }
+                (_, result) => panic!("expected {:?} got {:?}", test.result, result),
+            }
+
+            let mut wrapped = vec![0u8; test.msg.len().next_multiple_of(8) + 8];
+            let result = kek.wrap_padded(&test.msg, &mut wrapped);
+            match (test.result, result) {
+                (ExpectedResult::Valid, Ok(())) => assert_eq!(wrapped, test.ct),
+                // a key wrapped and then altered
+                (ExpectedResult::Invalid, Ok(())) => assert_ne!(wrapped, test.ct),
+                // RFC 5649 wraps no empty key
+                (ExpectedResult::Invalid, Err(Error::WrongLength)) if test.msg.is_empty() => {}
+                (_, result) => panic!("expected {:?} got {:?}", test.result, result),
+            }
+        }
+    }
+}
+
+#[test]
 fn test_rsa_pkcs1_verify() {
     for file in &[
         "rsa_signature_2048_sha256_test.json",

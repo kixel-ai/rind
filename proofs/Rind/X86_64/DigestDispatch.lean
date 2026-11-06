@@ -83,7 +83,7 @@ impl<C: Variant> Hashing<C> {
                     finish: C::finish_reset,
                 }
             },
-            context: C::new(),
+            context: C::NEW,
         })
     }
 
@@ -97,20 +97,23 @@ impl<C: Variant> Hashing<C> {
 }
 
 fn one_shot<C: Variant>(data: &[u8]) -> Digest {
-    let mut context = C::new();
+    let mut context = C::NEW;
     context.update(data);
     context.finish()
 }
 
 trait Variant: HashContext + 'static {
-    fn new() -> Self;
+    /// A context before any input.
+    // A constant rather than a function, so starting or resetting a context
+    // copies it from read-only memory instead of building it on the stack.
+    const NEW: Self;
 
     fn state(hashing: Hashing<Self>) -> State;
 
-    /// The digest of the message so far, leaving `self` as [`Self::new`] does.
+    /// The digest of the message so far, leaving `self` as [`Self::NEW`].
     fn finish_reset(&mut self) -> Digest {
         let digest = self.finish();
-        *self = Self::new();
+        *self = Self::NEW;
         digest
     }
 }
@@ -133,7 +136,7 @@ namespace rind.x86_64
 /-- `Hashing::<C>::start`. -/
 def high.digest.Hashing.start {C : Type} (VariantInst : high.digest.Variant C) :
     Result high.digest.State := do
-  let context ← VariantInst.new
+  let context ← VariantInst.NEW
   VariantInst.state { context, ops := () }
 
 /-- `Hashing::<C>::update`, whose `ops.update` is `C::update`. -/
@@ -151,7 +154,7 @@ def high.digest.Hashing.finish {C : Type} (VariantInst : high.digest.Variant C)
 /-- `one_shot::<C>`. -/
 def high.digest.one_shot {C : Type} (VariantInst : high.digest.Variant C) (data : Slice Std.U8) :
     Result high.digest.Digest := do
-  let context ← VariantInst.new
+  let context ← VariantInst.NEW
   let context ← VariantInst.hashHashContextInst.update context data
   VariantInst.hashHashContextInst.finish context
 

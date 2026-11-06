@@ -27,4 +27,3 @@ Decided with the maintainer on 2026-11-04, in a planning interview:
 ## Required
 
 - [MD5](/quest/m2/adoption/webcrypto/md5.md) - legacy MD5 for hashing APIs that offer it
-- [RSA keys labelled id-RSAES-OAEP load](/quest/m2/adoption/webcrypto/rsa-oaep-oid.md) - aws-lc-rs parity the keys fuzzer found
