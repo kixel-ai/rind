@@ -563,6 +563,7 @@ impl AesKey {
         }
     }
 
+    #[must_use]
     pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         match self {
             Self::Aes128(keyex) => block_cipher(keyex, block),

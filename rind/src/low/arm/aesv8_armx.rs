@@ -95,6 +95,7 @@ impl AesHwKey {
     }
 
     /// Encrypts one block.
+    #[must_use]
     pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         let mut out = [0u8; 16];
         // SAFETY: `block` is one readable block and `out` one writable one.

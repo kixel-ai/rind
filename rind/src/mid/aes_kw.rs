@@ -70,7 +70,7 @@ impl AesKek {
             for r_i in r.as_chunks_mut::<8>().0 {
                 t += 1;
                 block[8..].copy_from_slice(r_i);
-                aes.encrypt_block(&block);
+                block = aes.encrypt_block(&block);
                 xor_counter(&mut block, t);
                 r_i.copy_from_slice(&block[8..]);
             }

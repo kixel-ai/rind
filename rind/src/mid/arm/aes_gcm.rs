@@ -306,6 +306,7 @@ trait Parts {
 
     fn table(&self) -> &Self::Table;
 
+    #[must_use]
     fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16];
 
     /// XORs the keystream from counter block `ivec` into `blocks`,

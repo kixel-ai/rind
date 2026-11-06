@@ -55,6 +55,7 @@ impl NohwKey {
     ///
     /// Out of line: the bitsliced round keys take a 1.9 KiB frame, which
     /// would otherwise land on every caller of [`super::aes::AesKey`]'s.
+    #[must_use]
     #[inline(never)]
     pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         let mut out = *block;
