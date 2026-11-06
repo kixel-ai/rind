@@ -426,16 +426,40 @@ fn aes256_expand(key: &[u8; 32], out: &mut [__m128i; 15]) {
     }
 }
 
-#[target_feature(enable = "aes")]
+/// AES-192's schedule six words at a time: `a` holds each step's first four
+/// words and `b` its last two, in its low half, so every other round key
+/// straddles the two. Each step's first word takes RotWord, SubWord, and the
+/// round constant of the step before's last, as `sub_rot_word` computes
+/// them from a vector's last word.
+#[target_feature(enable = "aes,ssse3")]
 fn aes192_expand(key: &[u8; 24]) -> [__m128i; 13] {
-    let round_keys = low::generic::aes192::expand(key, |word| {
-        // `aesenclast` on four equal columns is SubBytes alone, as in
-        // `sub_rot_word`.
-        let sub = _mm_aesenclast_si128(_mm_set1_epi32(word as i32), zero());
-        _mm_cvtsi128_si32(sub) as u32
-    });
-    // SAFETY: each round key is 16 readable bytes
-    round_keys.map(|rk| unsafe { _mm_loadu_si128(rk.as_ptr().cast()) })
+    // SAFETY: `key` is 24 readable bytes
+    let (mut a, mut b) = unsafe {
+        (
+            _mm_loadu_si128(key.as_ptr().cast()),
+            _mm_loadl_epi64(key[16..].as_ptr().cast()),
+        )
+    };
+    let rot_word_1 = _mm_setr_epi8(5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4);
+    let mut out = [a; 13];
+    for (step, rcon) in (1..).zip(&RCON[..8]) {
+        let sub = _mm_aesenclast_si128(_mm_shuffle_epi8(b, rot_word_1), _mm_set1_epi32(*rcon));
+        a = _mm_xor_si128(xor_prefix(a), sub);
+        if step % 2 == 1 {
+            out[3 * (step - 1) / 2 + 1] = _mm_unpacklo_epi64(b, a);
+        } else {
+            out[3 * step / 2] = a;
+        }
+        if step == 8 {
+            break;
+        }
+        let w3 = _mm_shuffle_epi32(a, 0b11_11_11_11);
+        b = _mm_xor_si128(_mm_xor_si128(b, _mm_slli_si128(b, 4)), w3);
+        if step % 2 == 1 {
+            out[3 * (step - 1) / 2 + 2] = _mm_alignr_epi8(b, a, 8);
+        }
+    }
+    out
 }
 
 /// SubWord(RotWord(w3)) XOR `rcon` in every word, where w3 is `t`'s last.

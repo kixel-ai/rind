@@ -679,10 +679,14 @@ fn key_expansion128(key: &[u8]) -> [State; 11] {
     keyex
 }
 
-/// AES-192's round keys, from the word-by-word schedule with each SubWord
-/// through the bitsliced S-box, a whole block for one word.
+/// AES-192's round keys, from FIPS 197's word-by-word schedule, section
+/// 5.2, with each SubWord through the bitsliced S-box, a whole block for one
+/// word. Its six-word stride splits round keys across steps, so the
+/// four-word form AES-128 and AES-256 take here does not fit it; a schedule
+/// runs once per key, so this simpler form costs little.
 fn key_expansion192(key: &[u8; 24]) -> [State; 13] {
-    let round_keys = low::generic::aes192::expand(key, |word| {
+    const RCON: [u32; 8] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80];
+    let sub_word = |word: u32| {
         let mut block = [0u8; 16];
         block[..4].copy_from_slice(&word.to_le_bytes());
         let mut st = new_state();
@@ -690,10 +694,28 @@ fn key_expansion192(key: &[u8; 24]) -> [State; 13] {
         sub_bytes_state(&mut st);
         transpose_u16x8(&st, &mut block);
         u32::from_le_bytes(block[..4].try_into().unwrap())
-    });
+    };
+
+    let mut w = [0u32; 52];
+    for (w, bytes) in w.iter_mut().zip(key.as_chunks::<4>().0) {
+        *w = u32::from_le_bytes(*bytes);
+    }
+    for i in 6..52 {
+        let mut t = w[i - 1];
+        if i % 6 == 0 {
+            // RotWord moves the first byte, the lowest, to the end.
+            t = sub_word(t.rotate_right(8)) ^ RCON[i / 6 - 1];
+        }
+        w[i] = w[i - 6] ^ t;
+    }
+
     let mut keyex = [new_state(); 13];
-    for (k, rk) in keyex.iter_mut().zip(&round_keys) {
-        transpose_u8x16(rk, k);
+    for (k, words) in keyex.iter_mut().zip(w.as_chunks::<4>().0) {
+        let mut rk = [0u8; 16];
+        for (bytes, word) in rk.as_chunks_mut::<4>().0.iter_mut().zip(words) {
+            *bytes = word.to_le_bytes();
+        }
+        transpose_u8x16(&rk, k);
     }
     keyex
 }

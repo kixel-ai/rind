@@ -271,16 +271,47 @@ fn aes256_expand(key: &[u8; 32], out: &mut [uint8x16_t; 15]) {
     }
 }
 
+/// AES-192's schedule six words at a time: `a` holds each step's first four
+/// words and `b` its last two, in its low half, so every other round key
+/// straddles the two. Each step's first word takes RotWord, SubWord, and the
+/// round constant of the step before's last, as `sub_rot_word` computes
+/// them from a vector's last word.
 #[target_feature(enable = "aes")]
 fn aes192_expand(key: &[u8; 24]) -> [uint8x16_t; 13] {
-    let round_keys = low::generic::aes192::expand(key, |word| {
-        // `aese` with a zero key on four equal columns is SubBytes alone, as
-        // in `sub_rot_word`.
-        let sub = vaeseq_u8(vreinterpretq_u8_u32(vdupq_n_u32(word)), zero());
-        vgetq_lane_u32::<0>(vreinterpretq_u32_u8(sub))
-    });
-    // SAFETY: each round key is 16 readable bytes
-    round_keys.map(|rk| unsafe { vld1q_u8(rk.as_ptr()) })
+    const ROT_WORD_1: [u8; 16] = [5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4];
+    // SAFETY: `key` is 24 readable bytes, and `ROT_WORD_1` 16
+    let (mut a, mut b, rot_word_1) = unsafe {
+        (
+            vld1q_u8(key.as_ptr()),
+            vcombine_u8(vld1_u8(key[16..].as_ptr()), vdup_n_u8(0)),
+            vld1q_u8(ROT_WORD_1.as_ptr()),
+        )
+    };
+    let mut out = [a; 13];
+    for (step, rcon) in (1..).zip(&RCON[..8]) {
+        let sub = veorq_u8(
+            vaeseq_u8(vqtbl1q_u8(b, rot_word_1), zero()),
+            vreinterpretq_u8_u32(vdupq_n_u32(*rcon)),
+        );
+        a = veorq_u8(xor_prefix(a), sub);
+        if step % 2 == 1 {
+            // The low halves of `b` then `a`.
+            out[3 * (step - 1) / 2 + 1] =
+                vreinterpretq_u8_u64(vzip1q_u64(vreinterpretq_u64_u8(b), vreinterpretq_u64_u8(a)));
+        } else {
+            out[3 * step / 2] = a;
+        }
+        if step == 8 {
+            break;
+        }
+        let w3 = vreinterpretq_u8_u32(vdupq_laneq_u32::<3>(vreinterpretq_u32_u8(a)));
+        b = veorq_u8(veorq_u8(b, vextq_u8::<12>(zero(), b)), w3);
+        if step % 2 == 1 {
+            // The high half of `a`, then the low of `b`.
+            out[3 * (step - 1) / 2 + 2] = vextq_u8::<8>(a, b);
+        }
+    }
+    out
 }
 
 /// SubWord(RotWord(w3)) XOR `rcon` in every word, where w3 is `t`'s last.
