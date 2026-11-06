@@ -41,12 +41,12 @@ pub mod quic;
 /// let key = Key::new(&AES_128, &[0x42; 16], TagLength::Truncated96).unwrap();
 ///
 /// let mut in_out = b"hello".to_vec();
-/// let iv = [7; 16];
-/// key.seal_in_place_append_tag(&iv, b"header", &mut in_out)
+/// let iv = || Iv::assume_unique_for_key(&[7; 16]).unwrap();
+/// key.seal_in_place_append_tag(iv(), b"header", &mut in_out)
 ///     .unwrap();
 /// assert_eq!(in_out.len(), 5 + 12);
 ///
-/// let plaintext = key.open_in_place(&iv, b"header", &mut in_out).unwrap();
+/// let plaintext = key.open_in_place(iv(), b"header", &mut in_out).unwrap();
 /// assert_eq!(plaintext, b"hello");
 /// ```
 pub mod gcm;
@@ -365,6 +365,20 @@ impl Cipher for ChaCha20Poly1305 {
     }
 }
 
+impl fmt::Debug for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // An id, not the static, so formatting links no other cipher's code.
+        let algorithm = match &self.0 {
+            Inner::AesGcm(sealer) if sealer.key.key_len() == 16 => AlgorithmId::Aes128Gcm,
+            Inner::AesGcm(_) => AlgorithmId::Aes256Gcm,
+            Inner::ChaCha20Poly1305(_) => AlgorithmId::ChaCha20Poly1305,
+        };
+        f.debug_struct("Key")
+            .field("algorithm", &algorithm)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Drop for Inner {
     fn drop(&mut self) {
         // Wipes the discriminant and the space a smaller variant leaves unused,
@@ -384,6 +398,12 @@ impl Nonce {
     /// Wraps `nonce`, which the caller promises is never reused with the same key.
     pub fn assume_unique_for_key(nonce: [u8; NONCE_LEN]) -> Self {
         Self(nonce)
+    }
+}
+
+impl fmt::Debug for Nonce {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Nonce").finish_non_exhaustive()
     }
 }
 
@@ -453,6 +473,12 @@ impl RandomizedNonceKey {
         let (in_out, tag) = in_out.split_last_chunk_mut().ok_or(Error::DecryptFailed)?;
         self.0.decrypt(&nonce.0, aad, in_out, tag)?;
         Ok(in_out)
+    }
+}
+
+impl fmt::Debug for RandomizedNonceKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RandomizedNonceKey").finish_non_exhaustive()
     }
 }
 

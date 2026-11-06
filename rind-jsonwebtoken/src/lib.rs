@@ -24,10 +24,10 @@ use jsonwebtoken::jwk::{EllipticCurve, ThumbprintHash};
 use jsonwebtoken::signature::{self, Signer, Verifier};
 use jsonwebtoken::{Algorithm, DecodingKey, DecodingKeyKind, EncodingKey};
 use pkcs1::der::Decode;
+use rind::rsa::PublicKeyComponents;
 use rind::signature::{
     EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, PublicKey, RsaKeyPair,
-    RsaPublicKeyComponents, RsaSigningAlgorithm, RsaVerificationAlgorithm, VerificationAlgorithm,
-    sign, verify,
+    RsaSigningAlgorithm, RsaVerificationAlgorithm, VerificationAlgorithm, sign, verify,
 };
 use rind::{digest, hmac};
 
@@ -135,7 +135,7 @@ fn new_verifier(algorithm: &Algorithm, key: &DecodingKey) -> Result<Box<dyn JwtV
         let key = match key.kind() {
             DecodingKeyKind::SecretOrDer(der) => PublicKey::new(verification, der),
             DecodingKeyKind::RsaModulusExponent { n, e } => {
-                RsaPublicKeyComponents { n, e }.to_public_key(verification)
+                PublicKey::from_components(verification, &PublicKeyComponents { n, e })
             }
         };
         Ok(verifier(algorithm, key.map_err(invalid_rsa)?))

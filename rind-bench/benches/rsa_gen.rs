@@ -15,17 +15,17 @@ fn rsa_key_generation(c: &mut Criterion) {
         (
             2048,
             aws_lc_rs::rsa::KeySize::Rsa2048,
-            rind::signature::RsaKeySize::Rsa2048,
+            rind::rsa::KeySize::Rsa2048,
         ),
         (
             3072,
             aws_lc_rs::rsa::KeySize::Rsa3072,
-            rind::signature::RsaKeySize::Rsa3072,
+            rind::rsa::KeySize::Rsa3072,
         ),
         (
             4096,
             aws_lc_rs::rsa::KeySize::Rsa4096,
-            rind::signature::RsaKeySize::Rsa4096,
+            rind::rsa::KeySize::Rsa4096,
         ),
     ];
     for (bits, theirs, ours) in sizes {

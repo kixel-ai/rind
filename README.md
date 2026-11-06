@@ -220,7 +220,7 @@ SHA-512.
 
 | Algorithm | x86_64 | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|
-| AES-GCM | BoringSSL ⚡ + Graviola | HACL* ✓ + rind | Graviola | aws-lc + rind |  |
+| AES-GCM | BoringSSL ⚡ + HACL* ✓ + Graviola | HACL* ✓ + rind | Graviola | aws-lc + rind |  |
 | AES block, AES-CTR | Graviola + aws-lc |  |  | aws-lc |  |
 | AES-KW | Graviola + rind |  |  | aws-lc + rind |  |
 | AES-CBC | Graviola + aws-lc + rind |  |  | aws-lc + rind |  |
@@ -604,6 +604,12 @@ and GHASH.  It uses dynamic CPU feature detection, so AVX-512 is not required at
 On cores with VAES, BoringSSL's kernels, which interleave AES-CTR and GHASH, take
 long messages: its 512-bit kernel from 2 KB where the CPU has AVX-512 (the by-16
 path is quicker below that), and its 256-bit kernel from 256 bytes otherwise.
+Below 256 bytes, Vale's AES-GCM opens on those cores too, measured 0.61-0.96x
+the by-8 path's time on Arrow Lake, Zen 3, Zen 5, and Ice Lake. It also seals
+below 80 bytes without AVX-512, 0.77x on Arrow Lake and 0.94-1.05x on Zen 3,
+but not with it, where Zen 5 and Ice Lake measured it slower.
+Vale's proof covers those short messages' kernel, but not the choice of it,
+which [`proofs/`](proofs/README.md) proves only without VAES.
 The key picks its kernel once, when it is made.
 
 aarch64 decides once per process whether the CPU has the crypto extension.
@@ -694,8 +700,9 @@ run time. [MIGRATING.md][migrating] maps each ring and aws-lc-rs item to it.
   `from_sec1`, `to_spki`), and every private key returns its public half
   from `public_key()`.
 - Encodings, signatures, and shared secrets are owned values of fixed
-  capacity, such as `signature::Pkcs8`, rather than caller buffers or
-  allocations. Keys wipe their secrets on drop.
+  capacity, such as `encoding::Pkcs8`, rather than caller buffers or
+  allocations. Keys wipe their secrets on drop, and their `Debug` shows only
+  their algorithm.
 - No call takes a random source: rind draws from the system's when it needs
   one, and `rand::fill` gives callers the same.
 - Fallible calls return `rind::Error`, whose variant says which kind of call
@@ -716,7 +723,8 @@ The modules:
   peer keys parsed from a point, compressed or not, or a
   `SubjectPublicKeyInfo`.
 - `kem`: ML-KEM-768.
-- `rsa`: RSA-OAEP encryption and decryption, with SHA-1 under `legacy`.
+- `rsa`: RSA-OAEP encryption and decryption, with SHA-1 under `legacy`,
+  and the key sizes and public-key components both RSA modules take.
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
   Ed25519 key pairs and verification, plus ECDSA over a `digest` the caller
   computed, with any SHA-2 hash, RSA keys given as their components, and
@@ -727,6 +735,8 @@ The modules:
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.
 - `hkdf`: HKDF over those HMACs, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
 - `pbkdf2`: PBKDF2 over those HMACs, deriving or verifying a key from a password.
+- `encoding`: the PKCS#8, SEC1, and `SubjectPublicKeyInfo` encodings key
+  types export.
 - `constant_time`: comparing secrets such as MACs without a timing leak.
 - `rand`: random bytes from the system.
 - `cpu`: the startup check for required CPU features, and whether AES runs
