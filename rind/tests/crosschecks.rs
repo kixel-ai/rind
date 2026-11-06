@@ -334,7 +334,7 @@ mod cipher {
             msg in prop::collection::vec(any::<u8>(), 0..1100),
         ) {
             let mut ours = msg.clone();
-            ChaCha20::new(key).apply_keystream(&nonce, 1, &mut ours).unwrap();
+            ChaCha20::new(&key).apply_keystream(&nonce, 1, &mut ours).unwrap();
 
             let mut theirs = msg.clone();
             let _tag = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, &key).unwrap())
@@ -363,7 +363,7 @@ mod cipher {
             )
             .unwrap();
 
-        let ours = ChaCha20::new(key);
+        let ours = ChaCha20::new(&key);
         for len in 0..=600 {
             let mut at_once = vec![0u8; len];
             ours.apply_keystream(&nonce, 1, &mut at_once).unwrap();
@@ -725,7 +725,7 @@ mod aead {
             let aes = if key.len() == 16 { &AES_128 } else { &AES_256 };
             let ours = gcm::Key::new(aes, &key, tag_len).unwrap();
             let mut ours_sealed = msg.clone();
-            ours.seal_in_place_append_tag(&iv, &aad, &mut ours_sealed).unwrap();
+            ours.seal_in_place_append_tag(gcm::Iv::assume_unique_for_key(&iv).unwrap(), &aad, &mut ours_sealed).unwrap();
 
             let mut theirs_sealed = msg.clone();
             theirs_sealed.extend([0; 16]);
@@ -768,7 +768,7 @@ mod aead {
                 theirs_sealed[index] ^= 1;
             }
             let result = ours
-                .open_in_place(&iv, &aad, &mut theirs_sealed)
+                .open_in_place(gcm::Iv::assume_unique_for_key(&iv).unwrap(), &aad, &mut theirs_sealed)
                 .map(|plain| plain.to_vec());
             if flip.is_some() {
                 prop_assert_eq!(result, Err(Error::DecryptFailed));
@@ -886,7 +886,7 @@ macro_rules! ec_crosschecks {
 
                     // We load its scalar and point as the same key, and refuse
                     // the scalar with another key's point.
-                    let reloaded = signature::EcdsaKeyPair::from_private_key_and_public_key(
+                    let reloaded = signature::EcdsaKeyPair::from_scalar_and_public_key(
                         &sign::$asn1,
                         scalar.as_ref(),
                         public,
@@ -895,7 +895,7 @@ macro_rules! ec_crosschecks {
                     let (reloaded_pkcs8, ours_pkcs8) = (reloaded.to_pkcs8(), ours.to_pkcs8());
                     prop_assert_eq!(reloaded_pkcs8.as_ref(), ours_pkcs8.as_ref());
                     let other = EcdsaKeyPair::generate(&$fixed_signing).unwrap();
-                    prop_assert!(signature::EcdsaKeyPair::from_private_key_and_public_key(
+                    prop_assert!(signature::EcdsaKeyPair::from_scalar_and_public_key(
                         &sign::$asn1,
                         scalar.as_ref(),
                         other.public_key().as_ref(),
@@ -970,7 +970,7 @@ macro_rules! ec_crosschecks {
                     let pkcs8 = AsDer::<Pkcs8V1Der<'_>>::as_der(&theirs).unwrap();
                     let sec1 = AsDer::<EcPrivateKeyRfc5915Der<'_>>::as_der(&theirs).unwrap();
                     for ours in [
-                        Ours::from_private_key(ecdh, scalar.as_ref()).unwrap(),
+                        Ours::from_scalar(ecdh, scalar.as_ref()).unwrap(),
                         Ours::from_pkcs8(ecdh, pkcs8.as_ref()).unwrap(),
                         Ours::from_sec1(ecdh, sec1.as_ref()).unwrap(),
                     ] {
@@ -1050,7 +1050,7 @@ macro_rules! ec_crosschecks {
                         .unwrap();
                     prop_assert_eq!(parsed.as_ref(), point);
 
-                    let ours_agreeing = rind::agreement::PrivateKey::from_private_key(
+                    let ours_agreeing = rind::agreement::PrivateKey::from_scalar(
                         ecdh,
                         AsBigEndian::<EcPrivateKeyBin<'_>>::as_be_bytes(&agreeing).unwrap().as_ref(),
                     )
@@ -1100,7 +1100,7 @@ macro_rules! ec_crosschecks {
                         ].concat());
 
                         let ours = [
-                            signature::EcdsaKeyPair::from_private_key_and_public_key(
+                            signature::EcdsaKeyPair::from_scalar_and_public_key(
                                 &sign::$asn1, scalar, &encoded,
                             ),
                             signature::EcdsaKeyPair::from_sec1(&sign::$asn1, &sec1),
@@ -1345,8 +1345,7 @@ mod rsa {
     use proptest::prelude::*;
     use rind::Error;
     use rind::signature::{
-        RsaKeyPair, RsaKeySize, RsaPssSaltLength, RsaSigningAlgorithm, RsaVerificationAlgorithm,
-        sign, verify,
+        RsaKeyPair, RsaPssSaltLength, RsaSigningAlgorithm, RsaVerificationAlgorithm, sign, verify,
     };
 
     /// One padding and hash: each side's signing and verification constants.
@@ -1406,47 +1405,47 @@ mod rsa {
 
     #[test]
     fn key_generation_2048() {
-        check_key_generation(RsaKeySize::Rsa2048);
+        check_key_generation(rind::rsa::KeySize::Rsa2048);
     }
 
     #[test]
     fn key_generation_2048_soak() {
         if std::env::var_os("SLOW_TESTS").is_some() {
             for _ in 0..512 {
-                check_key_generation(RsaKeySize::Rsa2048);
+                check_key_generation(rind::rsa::KeySize::Rsa2048);
             }
         }
     }
 
     #[test]
     fn key_generation_3072() {
-        check_key_generation(RsaKeySize::Rsa3072);
+        check_key_generation(rind::rsa::KeySize::Rsa3072);
     }
 
     #[test]
     fn key_generation_4096() {
         if std::env::var_os("SLOW_TESTS").is_some() {
-            check_key_generation(RsaKeySize::Rsa4096);
+            check_key_generation(rind::rsa::KeySize::Rsa4096);
         }
     }
 
     #[test]
     fn key_generation_6144() {
         if std::env::var_os("SLOW_TESTS").is_some() {
-            check_key_generation(RsaKeySize::Rsa6144);
+            check_key_generation(rind::rsa::KeySize::Rsa6144);
         }
     }
 
     #[test]
     fn key_generation_8192() {
         if std::env::var_os("SLOW_TESTS").is_some() {
-            check_key_generation(RsaKeySize::Rsa8192);
+            check_key_generation(rind::rsa::KeySize::Rsa8192);
         }
     }
 
     /// aws-lc-rs accepts a key we generate and verifies its signatures under
     /// every scheme, as we do.
-    fn check_key_generation(size: RsaKeySize) {
+    fn check_key_generation(size: rind::rsa::KeySize) {
         let ours = RsaKeyPair::generate(size).unwrap();
         let theirs = KeyPair::from_pkcs8(ours.to_pkcs8().as_ref())
             .expect("aws-lc-rs rejected a key we generated");
@@ -1722,9 +1721,10 @@ mod rsa {
                         for (ours, theirs) in VERIFICATION {
                             let case = format!("{file} {i} {ours:?}");
                             for n in [n, &modulus] {
-                                let ours = rind::signature::RsaPublicKeyComponents { n, e: &e }
-                                    .to_public_key(ours)
-                                    .and_then(|key| key.verify(message, &signature));
+                                let components = rind::rsa::PublicKeyComponents { n, e: &e };
+                                let ours =
+                                    rind::signature::PublicKey::from_components(ours, &components)
+                                        .and_then(|key| key.verify(message, &signature));
                                 let theirs = signature::RsaPublicKeyComponents { n, e: &e }
                                     .verify(theirs, message, &signature);
                                 assert_eq!(ours.is_ok(), theirs.is_ok(), "{case} {ours:?}");
@@ -2275,7 +2275,7 @@ mod ecdh_scalars {
         private: &[u8],
         peer: &[u8],
     ) -> Result<(), TestCaseError> {
-        let ours = ours::PrivateKey::from_private_key(ours_alg, private).unwrap();
+        let ours = ours::PrivateKey::from_scalar(ours_alg, private).unwrap();
         let theirs = PrivateKey::from_private_key(theirs_alg, private).unwrap();
         let theirs_public = theirs.compute_public_key().unwrap();
         let ours_public = ours.public_key();
@@ -2327,7 +2327,7 @@ mod ecdh_scalars {
             // Both keep the 32 bytes as given, unclamped.
             let theirs = PrivateKey::from_private_key(&X25519, &private).unwrap();
             let theirs = AsBigEndian::<Curve25519SeedBin<'_>>::as_be_bytes(&theirs).unwrap();
-            let ours = ours::PrivateKey::from_private_key(&ours::X25519, &private)
+            let ours = ours::PrivateKey::from_scalar(&ours::X25519, &private)
                 .unwrap()
                 .to_scalar();
             prop_assert_eq!(ours.as_ref(), theirs.as_ref());
@@ -2337,7 +2337,7 @@ mod ecdh_scalars {
         /// ours against aws-lc's `EVP` encoding of the same key, each way.
         #[test]
         fn x25519_pkcs8(private in any::<[u8; 32]>()) {
-            let ours = ours::PrivateKey::from_private_key(&ours::X25519, &private).unwrap();
+            let ours = ours::PrivateKey::from_scalar(&ours::X25519, &private).unwrap();
             let ours_pkcs8 = ours.to_pkcs8();
             let theirs_pkcs8 = aws_lc_x25519_pkcs8(&private);
             prop_assert_eq!(ours_pkcs8.as_ref(), &theirs_pkcs8[..]);

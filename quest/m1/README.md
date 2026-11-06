@@ -9,7 +9,6 @@ Bun's fastest asymmetric operations run on rind, ahead of Bun writing its own.
 ## Required
 
 - [Bun runs its fastest asymmetric crypto on rind](/quest/m1/bun.md) - Ed25519, X25519, P-384, and P-521 in Bun on rind, before Bun writes its own
-- [rind's public API is audited before 0.2.0](/quest/m1/api-audit.md) - every public item against AGENTS.md's API rules
 - [rind 0.2.0 is released](/quest/m1/release-0.2.md) - the audited API on crates.io for Bun and MoQ
 - [rind's launch blog post is published](/quest/m1/launch-post.md) - the Bun PR waits on it
 - [rind covers MoQ](/quest/m1/moq/README.md) - the primitives, CPU check, armv7 backend, and `rind-*` adapters MoQ needs, verified and released

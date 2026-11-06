@@ -116,7 +116,7 @@ pub struct Algorithm {
 
 // Only the digests HMAC offers, so a key is made for every value.
 #[derive(Clone, Copy, Debug)]
-enum Id {
+pub(super) enum Id {
     Sha1,
     Sha256,
     Sha384,
@@ -192,6 +192,20 @@ impl Key {
             Keyed::Sha512(key) => key.ops.get().algorithm,
         }
     }
+
+    /// The hash this key was made for, which the `Debug` of every key built
+    /// on HMAC shows.
+    pub(super) fn id(&self) -> Id {
+        self.algorithm().id
+    }
+}
+
+impl fmt::Debug for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Key")
+            .field("algorithm", &self.id())
+            .finish_non_exhaustive()
+    }
 }
 
 /// An in-progress tag computation, for a message given in pieces.
@@ -237,6 +251,21 @@ impl Context {
             Streaming::Sha384(hmac) => hmac.finish(),
             Streaming::Sha512(hmac) => hmac.finish(),
         }
+    }
+}
+
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // An `Id`, not the static, so formatting links no other hash's code.
+        let algorithm = match &self.0 {
+            Streaming::Sha1(_) => Id::Sha1,
+            Streaming::Sha256(_) => Id::Sha256,
+            Streaming::Sha384(_) => Id::Sha384,
+            Streaming::Sha512(_) => Id::Sha512,
+        };
+        f.debug_struct("Context")
+            .field("algorithm", &algorithm)
+            .finish_non_exhaustive()
     }
 }
 

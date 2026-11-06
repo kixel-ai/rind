@@ -38,6 +38,14 @@ impl AesGcm {
         }
     }
 
+    /// The AES key's length in bytes, 16 or 32.
+    pub(crate) fn key_len(&self) -> usize {
+        match self {
+            Self::Portable(key) => key.key_len,
+            Self::Hw(key) => key.key.key_len(),
+        }
+    }
+
     /// Encrypts the given message.
     ///
     /// On entry, `cipher_inout` contains the plaintext of the message.

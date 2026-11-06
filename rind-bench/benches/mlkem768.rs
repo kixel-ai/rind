@@ -312,16 +312,10 @@ fn mlkem768_decaps(c: &mut Criterion) {
     group.bench_function("rind", |b| {
         use rind::kem::*;
 
-        // Decapsulation consumes its key, so each iteration gets a fresh one.
-        b.iter_batched(
-            || {
-                let decaps = DecapsulationKey::generate(&ML_KEM_768).unwrap();
-                let (ciphertext, _secret) = decaps.public_key().encapsulate().unwrap();
-                (decaps, ciphertext)
-            },
-            |(decaps, ciphertext)| black_box(decaps.decapsulate(ciphertext.as_ref()).unwrap()),
-            BatchSize::SmallInput,
-        );
+        let decaps = DecapsulationKey::generate(&ML_KEM_768).unwrap();
+        let (ciphertext, _secret) = decaps.public_key().encapsulate().unwrap();
+
+        b.iter(|| black_box(decaps.decapsulate(ciphertext.as_ref()).unwrap()))
     });
 
     #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]

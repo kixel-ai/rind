@@ -570,6 +570,15 @@ impl AesKey {
             Self::Hw(key) => key.encrypt_block(inout),
         }
     }
+
+    /// The key's length in bytes, 16 or 32, which no API reads but `Debug`.
+    pub(crate) fn key_len(&self) -> usize {
+        match self {
+            Self::Aes128(_) => 16,
+            Self::Aes256(_) => 32,
+            Self::Hw(key) => key.key_len(),
+        }
+    }
 }
 
 impl Drop for AesKey {
@@ -686,6 +695,18 @@ fn key_expansion256(key: &[u8]) -> [State; 15] {
 mod tests {
     use super::*;
     use crate::low::aes_ctr;
+
+    #[test]
+    fn key_len() {
+        assert_eq!(AesKey::Aes128(key_expansion128(&[0; 16])).key_len(), 16);
+        assert_eq!(AesKey::Aes256(key_expansion256(&[0; 32])).key_len(), 32);
+        for key in [&[0u8; 16][..], &[0u8; 32]] {
+            assert_eq!(AesKey::new(key).key_len(), key.len());
+            if let Some(token) = HaveCryptoExt::check() {
+                assert_eq!(AesKey::Hw(AesHwKey::new(key, token)).key_len(), key.len());
+            }
+        }
+    }
 
     // Every other test sees only the path the CPU picks, so the crypto
     // extension's AES is checked against the portable code here: each key
