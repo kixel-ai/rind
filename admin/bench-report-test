@@ -207,9 +207,9 @@ class Render(unittest.TestCase):
         for row in ["x25519-ecdh/graviola", "aes128-gcm/graviola/32B", "x25519-ecdh/rind/extra"]:
             self.assertFalse(regex.match(row), row)
         everyone = hosts()
-        everyone["nixos2"]["refused"] = {"graviola": ["bmi2", "adx"]}
+        everyone["nixos2"]["refused"] = {"graviola": ["bmi1", "adx"]}
         md = br.report(everyone, None, VERIFIED, [])[br.REPORT]
-        self.assertIn("graviola isn't timed on `nixos2`: it requires BMI2 and ADX, which this CPU lacks.", md)
+        self.assertIn("graviola isn't timed on `nixos2`: it requires BMI1 and ADX, which this CPU lacks.", md)
 
     def test_headline_is_the_mean_over_hosts_and_says_what_is_missing(self):
         everyone = hosts()

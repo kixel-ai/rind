@@ -183,10 +183,14 @@ LIBRARIES = {
     "openssl": "openssl",
 }
 
-# The x86_64 CPU features, as rind-cpuid names them, without which a library
-# panics on first use rather than run a slower path. Its BMI1 requirement
-# comes with BMI2.
-REQUIRED_X86 = {"graviola": ["aes", "pclmulqdq", "bmi2", "adx", "avx", "avx2"]}
+# The CPU features by architecture, as rind-cpuid names them, without which a
+# library panics on first use rather than run a slower path.
+REQUIRED = {
+    "graviola": {
+        "x86_64": ["aes", "pclmulqdq", "bmi1", "adx", "avx", "avx2"],
+        "aarch64": ["neon", "aes", "pmull", "sha2"],
+    }
+}
 
 # The crates whose versions a result records, by library.
 CRATES = {
@@ -403,8 +407,8 @@ def run(args):
     cpuid = result["rind_cpu"]["cpuid"]
     result["refused"] = {
         lib: missing
-        for lib, features in REQUIRED_X86.items()
-        if platform.machine() == "x86_64" and (missing := [f for f in features if not cpuid[f]])
+        for lib, features in REQUIRED.items()
+        if (missing := [f for f in features.get(host_arch(result), []) if not cpuid[f]])
     }
 
     try:
