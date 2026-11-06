@@ -1,13 +1,26 @@
-# [S] AES-GCM at packet sizes on Apple Silicon is level with aws-lc-rs
+# [S] A caller can hold DIT across a batch, and AES-GCM on Apple Silicon is level with aws-lc-rs while it does
 
 ## Goal
 
-On Apple M-series CPUs, AES-128-GCM and AES-256-GCM seal and open 1200-1452 B QUIC packets at least as fast as aws-lc-rs.
+rind exports a guard that keeps data-independent timing (DIT) on for the thread that made it until it is dropped, so every rind call under it skips the per-call toggle.
+With it held, AES-128-GCM and AES-256-GCM on Apple M-series CPUs seal and open 1200-1452 B QUIC packets at least as fast as aws-lc-rs.
+Callers that hold no guard keep today's per-call toggle.
 
 ## Plan
 
-[moq-dev/rind#408](https://github.com/moq-dev/rind/pull/408) runs s2n-bignum's by-8 kernels for AES-128 as well as AES-256 on cores with SHA3, which took M1 from 0.69-0.93x aws-lc-rs's speed at 1200-1452 B to 0.75-1.00x, and is 3-9% faster on Neoverse N2 too. What remains is DIT. On GitHub's `macos-15` (Apple M1, virtual) runner, rind with DIT already set when it is called, so it skips the toggle, runs 0.98-1.15x aws-lc-rs at 1350-1452 B, and as fast as rind with DIT never set; toggling it on and off in each call costs about 50-60 ns, more than the two `msr DIT` cost alone in a loop (9-25 ns). aws-lc-rs never sets DIT. Measure on `macos-15`, comparing only matching `CPU:` lines.
+Decided with the maintainer on 2026-11-06, in [moq-dev/rind#408](https://github.com/moq-dev/rind/pull/408):
 
-## Waiting
+- How rind pays for DIT on Apple cores: public hold guard ✅ (rejected: keep per-call and drop the goal, sticky DIT per thread, document only). MoQ holds it across a batch of packets; everyone else keeps the per-call toggle.
+- Scope: kernels now, guard after ✅ (rejected: guard in this PR). That PR landed the by-8 AES-128-GCM kernels on SHA3 cores; this quest builds the guard.
 
-- Maintainer: how rind pays for DIT on Apple cores, which only the maintainer can trade against the 2026-11-06 decision to toggle it once per call. Options: (a) keep the per-call toggle and drop this quest, accepting about 0.75-1.00x aws-lc-rs at packet sizes on M1; (b) leave DIT set on a thread once rind first sets it, which makes every rind call after the first skip the toggle but keeps DIT on for the caller's own code; (c) add a public guard, such as `rind::Dit::hold()`, that sets DIT until dropped, so a QUIC stack holds it across a batch of packets, while rind still toggles it per call for everyone else; or (d) only document that rind skips the toggle when DIT is already set, leaving callers to set it with their own `unsafe` assembly. Recommendation: (c), since it keeps today's default and lets moq opt in where it seals packets. Check: a maintainer comment on [moq-dev/rind#408](https://github.com/moq-dev/rind/pull/408) or an edit here.
+Why: on GitHub's `macos-15` runner (Apple M1, virtual), rind with DIT already set when called runs 0.98-1.15x aws-lc-rs at 1350-1452 B, level with rind never setting DIT, while toggling it in each call costs about 50-60 ns and leaves rind at 0.75-1.00x. aws-lc-rs never sets DIT.
+
+The guard's name and shape are the implementing agent's to propose in the PR, and the maintainer approves them before it lands; put them under the PR's `## Waiting` until then.
+A starting proposal, to argue against: `rind::cpu::hold_dit()` returning a `#[must_use]` `rind::cpu::DitGuard`.
+
+- It works through `low`'s existing `enter_cpu_state`/`leave_cpu_state`, so on drop it clears DIT only if it set it, and nested guards and per-call `Entry`s compose.
+- It is `!Send` and `!Sync`: DIT is per thread, so dropping it on another thread would clear the wrong one. An async task cannot hold it across an `.await` on a multi-threaded runtime, which is the misuse to refuse.
+- It exists on every target, as a no-op where rind sets no DIT (x86_64, armv7, aarch64 cores without it), so callers need no `cfg`.
+- One way to do the job: no second spelling such as a closure-taking `with_dit`.
+
+Measure on `macos-15` against aws-lc-rs with the guard held around the benchmark loop, comparing only matching `CPU:` lines, and record the table in the PR. Add the held case to the AES-GCM benchmark only if it earns its runtime.

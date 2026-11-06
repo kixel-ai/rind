@@ -86,6 +86,6 @@ maintainer, 2026-11-05).
 ## Required
 
 - [AES-GCM's partial AAD block costs no more than a full one on VAES CPUs](/quest/m1/moq/gcm-partial-aad.md) - QUIC's 13 B header stops costing about 12 ns per packet
-- [AES-GCM at packet sizes on Apple Silicon is level with aws-lc-rs](/quest/m1/moq/m1-aes-gcm.md) - M1 trails at 0.75-1.00x, all of it the per-call DIT toggle
+- [A caller can hold DIT across a batch, and AES-GCM on Apple Silicon is level with aws-lc-rs while it does](/quest/m1/moq/m1-aes-gcm.md) - a public guard that skips the per-call DIT toggle, the whole remaining M1 gap
 - [AMD CPUs without VAES run their fastest AES-GCM tier](/quest/m1/moq/quic-path.md) - Vale or `by8` on Zen 2, from zshenker's rerun
 - [MoQ runs on rind](/quest/m1/moq/moq-on-rind.md) - waiting on MoQ to finish its migration
