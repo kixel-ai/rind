@@ -9,7 +9,7 @@ use super::hash::{
     Sha512, Sha512Context,
 };
 use crate::low::{Entry, ct, ct_equal};
-use crate::mid::{sha1, sha2, sha3};
+use crate::mid::{md5, sha1, sha2, sha3};
 
 /// A hash function, chosen by one of this module's constants.
 pub struct Algorithm {
@@ -23,6 +23,7 @@ pub struct Algorithm {
 
 #[derive(Clone, Copy, Debug)]
 enum Id {
+    Md5,
     Sha1,
     Sha256,
     Sha384,
@@ -48,6 +49,17 @@ impl fmt::Debug for Algorithm {
             .finish()
     }
 }
+
+/// MD5, from [RFC 1321](https://www.rfc-editor.org/rfc/rfc1321), for legacy
+/// protocols only: its collision resistance is broken.
+///
+/// Only hashing takes it: no HMAC, key derivation, or signature does.
+pub static MD5: Algorithm = Algorithm {
+    id: Id::Md5,
+    output_len: md5::Md5Context::OUTPUT_SZ,
+    hash: |data| Digest::new(&MD5, &md5::Md5State::new().finish_with(data)),
+    start: Hashing::<Md5Context>::start,
+};
 
 /// SHA-1, for legacy protocols only: its collision resistance is broken.
 ///
@@ -136,6 +148,7 @@ pub struct Context(State);
 #[derive(Clone)]
 #[repr(u8)]
 enum State {
+    Md5(Hashing<Md5Context>),
     Sha1(Hashing<Sha1Context>),
     Sha256(Hashing<Sha256Context>),
     Sha384(Hashing<Sha384Context>),
@@ -149,6 +162,7 @@ enum State {
 impl State {
     fn update(&mut self, data: &[u8]) {
         match self {
+            Self::Md5(hashing) => hashing.update(data),
             Self::Sha1(hashing) => hashing.update(data),
             Self::Sha256(hashing) => hashing.update(data),
             Self::Sha384(hashing) => hashing.update(data),
@@ -162,6 +176,7 @@ impl State {
 
     fn finish(&mut self) -> Digest {
         match self {
+            Self::Md5(hashing) => hashing.finish(),
             Self::Sha1(hashing) => hashing.finish(),
             Self::Sha256(hashing) => hashing.finish(),
             Self::Sha384(hashing) => hashing.finish(),
@@ -251,6 +266,22 @@ variant!(
     Sha512_256Context(sha2::Sha512_256Context::new())
 );
 
+/// MD5's context, which no [`Hash`] has: nothing keyed or signed takes MD5.
+#[derive(Clone)]
+struct Md5Context(md5::Md5Context);
+
+impl HashContext for Md5Context {
+    fn update(&mut self, bytes: &[u8]) {
+        self.0.update(bytes)
+    }
+
+    fn finish(&self) -> Digest {
+        Digest::new(&MD5, &self.0.finish())
+    }
+}
+
+variant!(Md5Context, Md5, Md5Context(md5::Md5Context::new()));
+
 /// SHA-512/256's context, which no [`Hash`] has.
 #[derive(Clone)]
 struct Sha512_256Context(sha2::Sha512_256Context);
@@ -321,6 +352,7 @@ impl fmt::Debug for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // An `Id`, not the static, so formatting links no hash's code.
         let algorithm = match &self.0 {
+            State::Md5(_) => Id::Md5,
             State::Sha1(_) => Id::Sha1,
             State::Sha256(_) => Id::Sha256,
             State::Sha384(_) => Id::Sha384,
@@ -403,6 +435,7 @@ mod tests {
         // Under `admin/ctgrind`, nothing may branch on or index by the
         // message, which ends in a partial block of each hash.
         for algorithm in [
+            &MD5,
             &SHA1,
             &SHA256,
             &SHA384,
@@ -502,11 +535,38 @@ mod tests {
         }
     }
 
+    // RFC 1321's test suite, as no CAVP or Wycheproof vectors cover MD5.
+    #[test]
+    fn rfc1321() {
+        for (message, wanted) in [
+            ("", "d41d8cd98f00b204e9800998ecf8427e"),
+            ("a", "0cc175b9c0f1b6a831c399e269772661"),
+            ("abc", "900150983cd24fb0d6963f7d28e17f72"),
+            ("message digest", "f96b697d7cb7938d525a2f31aaf161d0"),
+            (
+                "abcdefghijklmnopqrstuvwxyz",
+                "c3fcd3d76192e4007dfb496cca67e13b",
+            ),
+            (
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+                "d174ab98d277d9f5a5611c2c9f419d9f",
+            ),
+            (
+                "12345678901234567890123456789012345678901234567890123456789012345678901234567890",
+                "57edf4a22be3c955ac49da2e2107b67a",
+            ),
+        ] {
+            let got = digest(&MD5, message.as_bytes());
+            assert_eq!(got.as_ref(), hex::decode(wanted).unwrap(), "{message:?}");
+        }
+    }
+
     // `finish` leaves a fresh context: each message after it hashes alone,
     // whether a partial block, several blocks, or nothing was left buffered.
     #[test]
     fn finish_resets() {
         for algorithm in [
+            &MD5,
             &SHA1,
             &SHA256,
             &SHA384,

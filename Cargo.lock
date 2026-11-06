@@ -3062,6 +3062,7 @@ dependencies = [
  "libcrux-rsa",
  "libcrux-sha2",
  "libcrux-sha3",
+ "md-5",
  "ml-kem",
  "openssl",
  "openssl-sys",

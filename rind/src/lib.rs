@@ -241,7 +241,7 @@ pub mod digest {
 
     /// Hash functions only legacy protocols should use.
     pub mod legacy {
-        pub use crate::high::digest::SHA1;
+        pub use crate::high::digest::{MD5, SHA1};
     }
 }
 

@@ -227,6 +227,7 @@ SHA-512.
 | AES-CBC | Graviola + aws-lc + rind |  |  | aws-lc + rind |  |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | aws-lc ⚡ |  |  | HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | HACL* ✓ + Graviola ⚡ |
+| MD5 | rind |  |  |  |  |
 | SHA-1 | rind | aws-lc |  |  |  |
 | SHA-256 | Graviola ⚡ | aws-lc ⚡ |  |  |  |
 | SHA-384, SHA-512, SHA-512/256 | OpenSSL ⚡ | aws-lc ⚡ |  |  |  |
@@ -255,6 +256,9 @@ SHA-512.
   and 101, and a 1350 B seal from 285 and 356 ns to 267 and 347, but a 32 B
   seal rose from 44 and 51 ns to 49 and 54 (11% and 6%), a cost taken for the
   faster keys and larger messages.
+- MD5: rind's portable Rust runs on every target, as no CPU has MD5
+  instructions. On an i7-8700 it measured level with [aws-lc]'s x86_64
+  assembly at 16 KB and 8% faster at 1350 B.
 - AES-GCM key setup: a key reaches its cipher through an indirect call, so
   that a binary links only the ciphers it names; the call adds about 3 ns per
   key or 32 B seal.
@@ -276,6 +280,7 @@ the code [Symmetric cryptography](#symmetric-cryptography) names.
 | AES-KW, AES-CBC | Graviola + rind | aws-lc + rind |  |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | aws-lc ⚡ |  |  |
+| MD5 | rind |  |  |
 | SHA-1 | rind | aws-lc |  |
 | SHA-256 | aws-lc ⚡ | aws-lc | aws-lc ⚡ |
 | SHA-384, SHA-512, SHA-512/256 | aws-lc | aws-lc ✓ | aws-lc ⚡ |
@@ -736,8 +741,8 @@ The modules:
   computed, with any SHA-2 hash, RSA keys given as their components, and
   SHA-1 and 1024-bit RSA for verifying old signatures. Keys load from and
   export as PKCS#8, a `SubjectPublicKeyInfo`, raw bytes, and SEC1 for ECDSA.
-- `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, SHA-512/256,
-  SHA3-256, SHA3-384, and SHA3-512.
+- `digest`: MD5 and SHA-1 (legacy only), SHA-256, SHA-384, SHA-512,
+  SHA-512/256, SHA3-256, SHA3-384, and SHA3-512.
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.
 - `hkdf`: HKDF over those HMACs, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
 - `pbkdf2`: PBKDF2 over those HMACs, deriving or verifying a key from a password.
