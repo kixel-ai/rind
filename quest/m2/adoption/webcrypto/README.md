@@ -24,6 +24,4 @@ Decided with the maintainer on 2026-11-04, in a planning interview:
 
 ## Required
 
-- [RSA public keys export as SPKI](/quest/m2/adoption/webcrypto/rsa-spki-export.md) - WebCrypto exportKey("spki")
 - [AES-192](/quest/m2/adoption/webcrypto/aes-192.md) - 192-bit keys for every AES mode
-- [RSA keys labelled id-RSAES-OAEP load](/quest/m2/adoption/webcrypto/rsa-oaep-oid.md) - aws-lc-rs parity the keys fuzzer found

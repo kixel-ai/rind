@@ -1,8 +1,55 @@
 # Getting oriented
 
-The [README](README.md) covers the layering, CPU requirements, and tests.
+[ARCHITECTURE.md](ARCHITECTURE.md) covers the API and the layering,
+[PLATFORMS.md](PLATFORMS.md) the CPU requirements,
+[ALGORITHMS.md](ALGORITHMS.md) whose code runs on each path, and
+[Building and testing](#building-and-testing) the tests.
 Agents should also read [AGENTS.md](AGENTS.md) and the instructions nested
 under the files they change.
+
+# Building and testing
+
+Compile:
+```shell
+cargo build --release
+```
+
+Run tests:
+```shell
+git submodule update --init thirdparty/cavp
+git submodule update --init thirdparty/wycheproof
+cargo test
+```
+
+Run performance benchmarks:
+```shell
+cargo bench
+```
+
+`admin/bench-report collect` runs the report's benchmarks, then
+`admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev
+shell and under `quest gate --host`, which keeps other gated work off the
+host; it skips any host that is still busy, and writes their results and the hosts' details as JSON under
+`.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly
+`bench` run's results, and `admin/bench-report render --from DIR` copies a
+collection's measured hosts into `benchmarks/data/` and writes
+`BENCHMARKS.md`, its SVGs, and the README's headline from them, `benchmarks/verified.toml`, and
+`benchmarks/gaps.toml`, which must hold a quest or a reason for every gap
+over 10%.
+
+With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
+toolchain, and `just check` runs CI's gate over what the branch changed.
+On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
+32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
+with NEON alone, and with NEON denied.
+`nix develop .#ctgrind --command admin/ctgrind` runs the nightly
+constant-time checks under valgrind, `nix develop .#sde --command
+admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
+valgrind cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
+admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
+qemu.
+`nix develop .#prove --command admin/prove` translates the Rust under proof to
+Lean with Aeneas and checks the proofs in [`proofs/`](proofs/README.md).
 
 # Commits
 
