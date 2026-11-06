@@ -50,7 +50,6 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [Short hashes through digest::Context match the one-shot](/quest/m2/speed/digest-context-setup.md) - the context's setup and reset cost
 - [Ed25519 verification without ADX is level with RustCrypto](/quest/m2/speed/ed25519-no-adx.md) - cloud VPSes that hide ADX
 - [Benchmark collections on one host can't clobber each other](/quest/m2/speed/bench-host-lock.md) - a per-host lock for `admin/bench-report collect`
 - [An x86_64 bench tier without AVX-512 IFMA](/quest/m2/speed/bench-no-ifma.md) - RSA A/Bs that measure the AVX2 path
