@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! AES-GCM on AVX and MOVBE without VAES, with HACL*'s Vale AES-GCM,
-//! imported by `admin/import-hacl`, which interleaves AES-CTR and GHASH over
-//! six blocks at a time as OpenSSL's `aesni_gcm` does.
+//! AES-GCM on AVX and MOVBE, with HACL*'s Vale AES-GCM, imported by
+//! `admin/import-hacl`, which interleaves AES-CTR and GHASH over six blocks
+//! at a time as OpenSSL's `aesni_gcm` does. It runs every message without
+//! VAES, and short ones with it.
 //!
 //! Vale proves that `gcm{128,256}_{encrypt,decrypt}_opt` compute AES-GCM, tag
 //! check included, for every AAD and message under 2^32 bytes, in place, from

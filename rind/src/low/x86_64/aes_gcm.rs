@@ -533,13 +533,18 @@ const AVX512_KERNEL_MINIMUM_CIPHER_LEN: usize = 2048;
 /// path, whose single blocks are quicker for short messages.
 const VAES_AVX2_MINIMUM_CIPHER_LEN: usize = 16 * 16;
 
-/// The message lengths below which Vale's AES-GCM beats the VAES-AVX2
-/// tier's own paths, to decrypt and to encrypt.
+/// The message lengths below which Vale's AES-GCM runs on the VAES-AVX2
+/// tier, to decrypt and to encrypt. Its opens measured 0.61-0.89x the by-8
+/// path's time below 256 bytes on Arrow Lake and Zen 3. Its seals measured
+/// 0.77x on Arrow Lake below 80 bytes, where Zen 3 measured 0.94-1.05x, and
+/// beyond that Zen 3 lost up to 13%.
 const VAES_AVX2_VALE_OPEN_BELOW: usize = 256;
-const VAES_AVX2_VALE_SEAL_BELOW: usize = 0;
+const VAES_AVX2_VALE_SEAL_BELOW: usize = 80;
 
-/// The message lengths below which Vale's AES-GCM beats the AVX-512 tier's
-/// own paths, to decrypt and to encrypt.
+/// The message lengths below which Vale's AES-GCM runs on the AVX-512 tier,
+/// to decrypt and to encrypt. Its opens measured 0.75-0.96x the by-8 path's
+/// time below 256 bytes on Zen 5 and Ice Lake, but its seals 1.03-1.33x
+/// from 32 bytes.
 const AVX512_VALE_OPEN_BELOW: usize = 256;
 const AVX512_VALE_SEAL_BELOW: usize = 0;
 
@@ -662,11 +667,12 @@ mod tests {
     // Every other test sees only the path the CPU picks, so the slower ones
     // are checked against it here, under a key `admin/ctgrind` keeps secret:
     // the by-8 PCLMULQDQ kernel, which a CPU with VAES runs only for short
-    // messages, Vale's AES-GCM, vpaes with SSSE3 GHASH, and SSE2 AES with
+    // seals, Vale's AES-GCM, vpaes with SSSE3 GHASH, and SSE2 AES with
     // integer GHASH. Each key size, and AAD and message lengths around the
-    // block, six-, eight-, and sixteen-block boundaries and the minimums of
-    // Vale's six-block loop, both ways, with a tag wrong in either half, and
-    // one long enough to carry out of the counter's low byte.
+    // block, six-, eight-, and sixteen-block boundaries, the minimums of
+    // Vale's six-block loop, and where a VAES CPU hands over from Vale, both
+    // ways, with a tag wrong in either half, and one long enough to carry out
+    // of the counter's low byte.
     #[test]
     fn paths_match() {
         let bytes = |n: usize, seed: u32| -> Vec<u8> {
@@ -702,11 +708,26 @@ mod tests {
                 }
             }
 
+            // Around where Vale's AES-GCM hands over to each VAES tier's
+            // own paths.
+            let crossovers = [
+                VAES_AVX2_VALE_OPEN_BELOW,
+                VAES_AVX2_VALE_SEAL_BELOW,
+                AVX512_VALE_OPEN_BELOW,
+                AVX512_VALE_SEAL_BELOW,
+            ]
+            .into_iter()
+            .flat_map(|n| [n.saturating_sub(1), n, n + 1]);
+            let mut msg_lens = vec![
+                0, 1, 15, 16, 17, 95, 96, 97, 112, 127, 128, 129, 255, 256, 257, 287, 288, 289,
+                1000, 5000,
+            ];
+            msg_lens.extend(crossovers);
+            msg_lens.sort_unstable();
+            msg_lens.dedup();
+
             for aad_len in [0, 1, 16, 17] {
-                for msg_len in [
-                    0, 1, 15, 16, 17, 95, 96, 97, 112, 127, 128, 129, 255, 256, 257, 287, 288, 289,
-                    1000, 5000,
-                ] {
+                for &msg_len in &msg_lens {
                     let nonce = bytes(12, msg_len as u32).try_into().unwrap();
                     let aad = bytes(aad_len, 2);
                     let plain = bytes(msg_len, 3);
