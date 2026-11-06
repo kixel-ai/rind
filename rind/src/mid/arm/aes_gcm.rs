@@ -243,8 +243,7 @@ impl Portable {
     /// Built for each call, as libcrux expands the key for each.
     fn composed(&self) -> Composed {
         let key = AesKey::new(&self.key[..self.key_len]);
-        let mut h = [0u8; 16];
-        key.encrypt_block(&mut h);
+        let h = key.encrypt_block(&[0; 16]);
         Composed {
             table: ManuallyDrop::new(NohwTable::new(&h)),
             key: ManuallyDrop::new(key),
@@ -273,8 +272,7 @@ impl Hw {
 
     fn new(key: &[u8], token: HaveCryptoExt) -> Self {
         let key = AesHwKey::new(key, token);
-        let mut h = [0u8; 16];
-        key.encrypt_block(&mut h);
+        let h = key.encrypt_block(&[0; 16]);
         let table = GhashTable::new(&h, token);
         Self { key, table }
     }
@@ -308,7 +306,7 @@ trait Parts {
 
     fn table(&self) -> &Self::Table;
 
-    fn encrypt_block(&self, block: &mut [u8; 16]);
+    fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16];
 
     /// XORs the keystream from counter block `ivec` into `blocks`,
     /// incrementing its last four bytes with 32-bit wrapping.
@@ -347,8 +345,7 @@ trait Parts {
         // Finishes GHASH with the bit lengths, then masks it with the first
         // counter block's keystream.
         table.ghash(&mut xi, &[lengths(aad.len(), inout.len())]);
-        self.encrypt_block(&mut y0);
-        for (x, e) in xi.iter_mut().zip(y0) {
+        for (x, e) in xi.iter_mut().zip(self.encrypt_block(&y0)) {
             *x ^= e;
         }
         xi
@@ -359,14 +356,13 @@ trait Parts {
     fn ctr(&self, ivec: &[u8; 16], inout: &mut [u8]) -> [u8; 16] {
         let (blocks, tail) = inout.as_chunks_mut::<16>();
         self.ctr32(ivec, blocks);
-        let mut ivec = add32(ivec, blocks.len() as u32);
+        let ivec = add32(ivec, blocks.len() as u32);
         if tail.is_empty() {
             return ivec;
         }
 
         let next = add32(&ivec, 1);
-        self.encrypt_block(&mut ivec);
-        for (b, k) in tail.iter_mut().zip(ivec) {
+        for (b, k) in tail.iter_mut().zip(self.encrypt_block(&ivec)) {
             *b ^= k;
         }
         next
@@ -397,8 +393,8 @@ impl Parts for Hw {
         &self.table
     }
 
-    fn encrypt_block(&self, block: &mut [u8; 16]) {
-        self.key.encrypt_block(block);
+    fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
+        self.key.encrypt_block(block)
     }
 
     fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]) {
@@ -421,15 +417,16 @@ impl Parts for Composed {
         &self.table
     }
 
-    fn encrypt_block(&self, block: &mut [u8; 16]) {
-        self.key.encrypt_block(block);
+    fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
+        self.key.encrypt_block(block)
     }
 
     fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]) {
         for (i, block) in (0u32..).zip(blocks) {
-            let mut keystream = add32(ivec, i);
-            self.key.encrypt_block(&mut keystream);
-            for (b, k) in block.iter_mut().zip(keystream) {
+            for (b, k) in block
+                .iter_mut()
+                .zip(self.key.encrypt_block(&add32(ivec, i)))
+            {
                 *b ^= k;
             }
         }
@@ -557,7 +554,7 @@ mod tests {
             let raw = bytes(key_len, 1);
             let composed = Portable::new(&raw).composed();
             let hw = HaveCryptoExt::check().map(|token| Hw::new(&raw, token));
-            let encrypt = |b: &mut [u8; 16]| composed.encrypt_block(b);
+            let encrypt = |b: &[u8; 16]| composed.encrypt_block(b);
             let aad = bytes(17, 2);
             for msg_len in [0, 1, 16, 17, 100, 3071, 3073] {
                 let plain = bytes(msg_len, 3);

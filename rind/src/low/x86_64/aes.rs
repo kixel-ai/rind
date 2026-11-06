@@ -44,11 +44,11 @@ impl AesKey {
 
     /// Encrypts one block, inlined so that AES-NI's path is one call.
     #[inline]
-    pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
+    pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         match self {
-            Self::Hw(key) => key.encrypt_block(inout),
-            Self::Vpaes(key) => key.encrypt_block(inout),
-            Self::Nohw(key) => key.encrypt_block(inout),
+            Self::Hw(key) => key.encrypt_block(block),
+            Self::Vpaes(key) => key.encrypt_block(block),
+            Self::Nohw(key) => key.encrypt_block(block),
         }
     }
 
@@ -141,10 +141,10 @@ pub(crate) enum HwKey {
 
 impl HwKey {
     #[inline]
-    pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
+    pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         match self {
-            Self::Aes128(a128) => a128.encrypt_block(inout),
-            Self::Aes256(a256) => a256.encrypt_block(inout),
+            Self::Aes128(a128) => a128.encrypt_block(block),
+            Self::Aes256(a256) => a256.encrypt_block(block),
         }
     }
 
@@ -257,9 +257,9 @@ impl AesKey128 {
     }
 
     #[inline]
-    pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
+    pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         // SAFETY: only a `HaveAesHardware` token builds `self`.
-        unsafe { aes128_block(&self.round_keys, inout) }
+        unsafe { aes128_block(&self.round_keys, block) }
     }
 
     /// The inverse cipher's key, as [`HwDecKey`] holds it.
@@ -306,9 +306,9 @@ impl AesKey256 {
     }
 
     #[inline]
-    pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
+    pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         // SAFETY: only a `HaveAesHardware` token builds `self`.
-        unsafe { aes256_block(&self.round_keys, inout) }
+        unsafe { aes256_block(&self.round_keys, block) }
     }
 
     /// The inverse cipher's key, as [`HwDecKey`] holds it.
@@ -386,9 +386,9 @@ fn xor_prefix(t: __m128i) -> __m128i {
 }
 
 #[target_feature(enable = "aes")]
-fn aes128_block(round_keys: &[__m128i; 11], block_inout: &mut [u8; 16]) {
-    // SAFETY: `block_inout` is 16 bytes and readable
-    let block = unsafe { _mm_loadu_si128(block_inout.as_ptr().cast()) };
+fn aes128_block(round_keys: &[__m128i; 11], block: &[u8; 16]) -> [u8; 16] {
+    // SAFETY: `block` is 16 bytes and readable
+    let block = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
     let block = _mm_xor_si128(block, round_keys[0]);
     let block = _mm_aesenc_si128(block, round_keys[1]);
     let block = _mm_aesenc_si128(block, round_keys[2]);
@@ -400,14 +400,14 @@ fn aes128_block(round_keys: &[__m128i; 11], block_inout: &mut [u8; 16]) {
     let block = _mm_aesenc_si128(block, round_keys[8]);
     let block = _mm_aesenc_si128(block, round_keys[9]);
     let block = _mm_aesenclast_si128(block, round_keys[10]);
-    // SAFETY: `block_inout` is 16 bytes and writeable
-    unsafe { _mm_storeu_si128(block_inout.as_mut_ptr().cast(), block) };
+    // SAFETY: both are 16 bytes, and any bits are a valid array
+    unsafe { core::mem::transmute(block) }
 }
 
 #[target_feature(enable = "aes")]
-fn aes256_block(round_keys: &[__m128i; 15], block_inout: &mut [u8; 16]) {
-    // SAFETY: `block_inout` is 16 bytes and readable
-    let block = unsafe { _mm_loadu_si128(block_inout.as_ptr().cast()) };
+fn aes256_block(round_keys: &[__m128i; 15], block: &[u8; 16]) -> [u8; 16] {
+    // SAFETY: `block` is 16 bytes and readable
+    let block = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
     let block = _mm_xor_si128(block, round_keys[0]);
     let block = _mm_aesenc_si128(block, round_keys[1]);
     let block = _mm_aesenc_si128(block, round_keys[2]);
@@ -423,8 +423,8 @@ fn aes256_block(round_keys: &[__m128i; 15], block_inout: &mut [u8; 16]) {
     let block = _mm_aesenc_si128(block, round_keys[12]);
     let block = _mm_aesenc_si128(block, round_keys[13]);
     let block = _mm_aesenclast_si128(block, round_keys[14]);
-    // SAFETY: `block_inout` is 16 bytes and writeable
-    unsafe { _mm_storeu_si128(block_inout.as_mut_ptr().cast(), block) };
+    // SAFETY: both are 16 bytes, and any bits are a valid array
+    unsafe { core::mem::transmute(block) }
 }
 
 /// The round keys for `aesdec` from those for `aesenc`.
@@ -584,13 +584,12 @@ mod tests {
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
             0x0e, 0x0f,
         ]);
-        let mut block = [
+        let block = [
             0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
             0xee, 0xff,
         ];
-        context.encrypt_block(&mut block);
         assert_eq!(
-            block,
+            context.encrypt_block(&block),
             [
                 0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30, 0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4,
                 0xc5, 0x5a
@@ -605,13 +604,12 @@ mod tests {
             0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b,
             0x1c, 0x1d, 0x1e, 0x1f,
         ]);
-        let mut block = [
+        let block = [
             0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
             0xee, 0xff,
         ];
-        context.encrypt_block(&mut block);
         assert_eq!(
-            block,
+            context.encrypt_block(&block),
             [
                 0x8e, 0xa2, 0xb7, 0xca, 0x51, 0x67, 0x45, 0xbf, 0xea, 0xfc, 0x49, 0x90, 0x4b, 0x49,
                 0x60, 0x89
@@ -640,11 +638,12 @@ mod tests {
             });
             let vpaes = AesKey::Vpaes(VpaesKey::new(&key, ssse3));
             for block_seed in 0..4 {
-                let mut want: [u8; 16] = bytes(16, block_seed).try_into().unwrap();
-                let mut got = want;
-                hw.encrypt_block(&mut want);
-                vpaes.encrypt_block(&mut got);
-                assert_eq!(got, want, "{key_len}-byte key, block {block_seed}");
+                let block: [u8; 16] = bytes(16, block_seed).try_into().unwrap();
+                assert_eq!(
+                    vpaes.encrypt_block(&block),
+                    hw.encrypt_block(&block),
+                    "{key_len}-byte key, block {block_seed}"
+                );
             }
         }
     }
@@ -677,8 +676,7 @@ mod tests {
             }
             for block_seed in 0..4 {
                 let block: [u8; 16] = bytes(16, block_seed).try_into().unwrap();
-                let mut ct = block;
-                enc.encrypt_block(&mut ct);
+                let ct = enc.encrypt_block(&block);
                 for (i, dec) in paths.iter().enumerate() {
                     let mut pt = ct;
                     dec.decrypt_block(&mut pt);

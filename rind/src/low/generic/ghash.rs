@@ -80,22 +80,18 @@ const R: u128 = 0xe1000000_00000000_00000000_00000000;
 /// AES-GCM by the book, one block at a time, from the counter block `y0`
 /// under the block cipher `encrypt`: the ciphertext of `msg` and its tag.
 pub(crate) fn gcm_model(
-    encrypt: impl Fn(&mut [u8; 16]),
+    encrypt: impl Fn(&[u8; 16]) -> [u8; 16],
     y0: &[u8; 16],
     aad: &[u8],
     msg: &[u8],
 ) -> (Vec<u8>, [u8; 16]) {
-    let mut h = [0u8; 16];
-    encrypt(&mut h);
-    let table = GhashTable::new(u128::from_be_bytes(h));
+    let table = GhashTable::new(u128::from_be_bytes(encrypt(&[0; 16])));
 
     let mut ct = msg.to_vec();
     let mut counter = u128::from_be_bytes(*y0);
     for chunk in ct.chunks_mut(16) {
         counter = counter & !0xffff_ffff | u128::from((counter as u32).wrapping_add(1));
-        let mut keystream = counter.to_be_bytes();
-        encrypt(&mut keystream);
-        for (c, k) in chunk.iter_mut().zip(keystream) {
+        for (c, k) in chunk.iter_mut().zip(encrypt(&counter.to_be_bytes())) {
             *c ^= k;
         }
     }
@@ -104,8 +100,7 @@ pub(crate) fn gcm_model(
     ghash.add(aad);
     ghash.add(&ct);
     ghash.add(&(((aad.len() as u128 * 8) << 64) | (msg.len() as u128 * 8)).to_be_bytes());
-    let mut tag = *y0;
-    encrypt(&mut tag);
+    let mut tag = encrypt(y0);
     for (t, s) in tag.iter_mut().zip(ghash.into_bytes()) {
         *t ^= s;
     }

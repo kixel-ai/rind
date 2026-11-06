@@ -563,11 +563,11 @@ impl AesKey {
         }
     }
 
-    pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
+    pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         match self {
-            Self::Aes128(keyex) => block_cipher(keyex, inout),
-            Self::Aes256(keyex) => block_cipher(keyex, inout),
-            Self::Hw(key) => key.encrypt_block(inout),
+            Self::Aes128(keyex) => block_cipher(keyex, block),
+            Self::Aes256(keyex) => block_cipher(keyex, block),
+            Self::Hw(key) => key.encrypt_block(block),
         }
     }
 
@@ -625,9 +625,9 @@ impl Drop for AesDecKey {
 
 impl low::generic::zeroise::Zeroable for AesDecKey {}
 
-fn block_cipher<const NUM_KEYS: usize>(keyex: &[State; NUM_KEYS], inout: &mut [u8; 16]) {
+fn block_cipher<const NUM_KEYS: usize>(keyex: &[State; NUM_KEYS], block: &[u8; 16]) -> [u8; 16] {
     let mut st = new_state();
-    transpose_u8x16(inout, &mut st);
+    transpose_u8x16(block, &mut st);
 
     xor_key1_state(&mut st, &keyex[0]);
     for key in &keyex[1..NUM_KEYS - 1] {
@@ -635,7 +635,9 @@ fn block_cipher<const NUM_KEYS: usize>(keyex: &[State; NUM_KEYS], inout: &mut [u
     }
     aes_enc_last(&mut st, &keyex[NUM_KEYS - 1]);
 
-    transpose_u16x8(&st, inout);
+    let mut out = [0u8; 16];
+    transpose_u16x8(&st, &mut out);
+    out
 }
 
 fn block_decipher<const NUM_KEYS: usize>(keyex: &[State; NUM_KEYS], inout: &mut [u8; 16]) {
@@ -729,11 +731,12 @@ mod tests {
             };
             let hw = AesKey::Hw(AesHwKey::new(&key, token));
 
-            let mut want: [u8; 16] = bytes(16, seed).try_into().unwrap();
-            let mut got = want;
-            portable.encrypt_block(&mut want);
-            hw.encrypt_block(&mut got);
-            assert_eq!(got, want, "{key_len}-byte key block");
+            let block: [u8; 16] = bytes(16, seed).try_into().unwrap();
+            assert_eq!(
+                hw.encrypt_block(&block),
+                portable.encrypt_block(&block),
+                "{key_len}-byte key block"
+            );
 
             let nonce = bytes(12, seed).try_into().unwrap();
             for counter in [0, 1, u32::MAX - 3, u32::MAX] {
@@ -772,8 +775,7 @@ mod tests {
             }
             for block_seed in 0..4 {
                 let block: [u8; 16] = bytes(16, block_seed).try_into().unwrap();
-                let mut ct = block;
-                enc.encrypt_block(&mut ct);
+                let ct = enc.encrypt_block(&block);
                 for (i, dec) in paths.iter().enumerate() {
                     let mut pt = ct;
                     dec.decrypt_block(&mut pt);

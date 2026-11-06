@@ -87,8 +87,7 @@ pub(crate) fn tagged_from<const ENC: bool>(
     cipher::<ENC>(key, &mut ghash, &y0, aad, cipher_inout);
     ghash.add(&lengths(aad.len(), cipher_inout.len()));
 
-    let mut tag = y0;
-    key.encrypt_block(&mut tag);
+    let mut tag = key.encrypt_block(&y0);
     for (t, x) in tag.iter_mut().zip(ghash.into_bytes()) {
         *t ^= x;
     }
@@ -159,9 +158,7 @@ fn cipher<const ENC: bool>(
             ghash.add(remainder);
         }
 
-        let mut keystream = counter;
-        key.encrypt_block(&mut keystream);
-        for (c, k) in remainder.iter_mut().zip(keystream) {
+        for (c, k) in remainder.iter_mut().zip(key.encrypt_block(&counter)) {
             *c ^= k;
         }
 
@@ -239,8 +236,7 @@ mod tests {
             let key = bytes(key_len, 1);
             let hw = AesKey::new(&key);
             let vpaes = AesKey::Vpaes(VpaesKey::new(&key));
-            let mut h = [0u8; 16];
-            vpaes.encrypt_block(&mut h);
+            let h = vpaes.encrypt_block(&[0; 16]);
             let pmull = GhashTable::Pmull(PmullTable::new(u128::from_be_bytes(h), token));
             let neon = GhashTable::Neon(NeonTable::new(&h));
 
@@ -283,8 +279,7 @@ mod tests {
         for key_len in [16, 32] {
             let key = bytes(key_len, 1);
             let vpaes = AesKey::Vpaes(VpaesKey::new(&key));
-            let mut h = [0u8; 16];
-            vpaes.encrypt_block(&mut h);
+            let h = vpaes.encrypt_block(&[0; 16]);
             let mut paths = vec![(vpaes, GhashTable::Neon(NeonTable::new(&h)))];
             if let Some(token) = HaveCryptoExt::check() {
                 let pmull = PmullTable::new(u128::from_be_bytes(h), token);

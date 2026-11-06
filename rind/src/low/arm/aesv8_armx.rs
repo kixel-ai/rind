@@ -94,11 +94,13 @@ impl AesHwKey {
         }
     }
 
-    /// Encrypts one block in place.
-    pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
-        // SAFETY: `inout` is one readable and writable block, which aws-lc
-        // allows to alias. Only a `HaveCryptoExt` token builds `self`.
-        unsafe { aes_hw_encrypt(inout.as_ptr(), inout.as_mut_ptr(), self) }
+    /// Encrypts one block.
+    pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
+        let mut out = [0u8; 16];
+        // SAFETY: `block` is one readable block and `out` one writable one.
+        // Only a `HaveCryptoExt` token builds `self`.
+        unsafe { aes_hw_encrypt(block.as_ptr(), out.as_mut_ptr(), self) };
+        out
     }
 
     /// XORs counter-mode keystream into whole blocks.
