@@ -307,11 +307,14 @@ fn _mul8(
     reduce!(lo, mi, hi)
 }
 
-/// The GHASH of at most eight blocks from zero, with one reduction: of `n`
-/// blocks, the first is multiplied by H^n, the next by H^(n-1), and so on.
+/// The GHASH of `n` blocks from zero, with one reduction per eight: of a
+/// group of `k` blocks, the first, plus the hash of the groups before it, is
+/// multiplied by H^k, the next by H^(k-1), and so on. The first group takes
+/// what is left over from eights.
 pub(crate) struct Aggregate<'a> {
     table: &'a PmullTable,
-    /// The power of H the next block is multiplied by.
+    /// The power of H the next block is multiplied by, or zero when it
+    /// starts a group.
     power: usize,
     lo: uint64x2_t,
     mi: uint64x2_t,
@@ -319,12 +322,12 @@ pub(crate) struct Aggregate<'a> {
 }
 
 impl<'a> Aggregate<'a> {
-    /// Starts a hash of `n` blocks, from one to eight.
+    /// Starts a hash of `n` blocks, at least one.
     pub(crate) fn new(table: &'a PmullTable, n: usize) -> Self {
-        debug_assert!((1..=8).contains(&n));
+        debug_assert!(n > 0);
         Self {
             table,
-            power: n,
+            power: (n - 1) % 8 + 1,
             lo: zero(),
             mi: zero(),
             hi: zero(),
@@ -347,16 +350,22 @@ impl<'a> Aggregate<'a> {
             (9, 20),
             (11, 21),
         ];
+        let (mut lo, mut mi, mut hi) = (self.lo, self.mi, self.hi);
+        let mut x = reverse(block);
+        if self.power == 0 {
+            x = veorq_u64(x, reduce!(lo, mi, hi));
+            (lo, mi, hi) = (zero(), zero(), zero());
+            self.power = 8;
+        }
         self.power -= 1;
         let (hs, m) = POWERS[self.power];
         // SAFETY: a `uint64x2_t` is two `u64`s, low lane first.
         let words: &[u64; 24] = unsafe { mem::transmute(&self.table.htable) };
-        let (mut lo, mut mi, mut hi) = (self.lo, self.mi, self.hi);
         mul!(
             lo,
             mi,
             hi,
-            reverse(block),
+            x,
             self.table.htable[hs],
             vdupq_n_u64(words[m]),
             vmull_p64_fix

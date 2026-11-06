@@ -87,8 +87,13 @@ pub(crate) fn tagged_from<const ENC: bool>(
     aad: &[u8],
     cipher_inout: &mut [u8],
 ) -> [u8; 16] {
+    let short_blocks = if ENC {
+        SHORT_SEAL_BLOCKS
+    } else {
+        SHORT_OPEN_BLOCKS
+    };
     if let (AesKey::Hw(key), GhashTable::Pmull(table)) = (key, table)
-        && aad.len().div_ceil(16) + cipher_inout.len().div_ceil(16) < SHORT_BLOCKS
+        && aad.len().div_ceil(16) + cipher_inout.len().div_ceil(16) <= short_blocks
     {
         // SAFETY: only a `HaveCryptoExt` token builds `AesKey128` and
         // `AesKey256`, proving the `aes` cpu feature.
@@ -112,14 +117,17 @@ pub(crate) fn tagged_from<const ENC: bool>(
     tag
 }
 
-/// The most GHASH blocks [`short`] takes, the AAD's, the message's, and the
-/// lengths block: one per power of H that `PmullTable` holds.
-const SHORT_BLOCKS: usize = 8;
+/// The most AAD and message blocks [`short`] seals and opens, past which the
+/// stitched kernels were faster on Neoverse N2. With the lengths block, each
+/// fills whole groups of eight. Sealing stops sooner, as it hashes each block
+/// only once its AES is done.
+const SHORT_SEAL_BLOCKS: usize = 15;
+const SHORT_OPEN_BLOCKS: usize = 31;
 
-/// Encrypts (if `ENC`) or decrypts a message whose GHASH fits in
-/// [`SHORT_BLOCKS`] blocks in one pass, and returns its tag: its counter
-/// blocks and `y0` encrypt together, and one reduction hashes every block,
-/// where the stitched kernels and separate GHASH calls reduce each.
+/// Encrypts (if `ENC`) or decrypts a short message in one pass, and returns
+/// its tag: its counter blocks and `y0` encrypt together, and one GHASH
+/// reduction per eight blocks hashes the AAD, the message, and the lengths
+/// block, where the kernels' path hashes each of them in a separate call.
 #[target_feature(enable = "aes")]
 fn short<const ENC: bool, const ROUND_KEYS: usize>(
     round_keys: &[uint8x16_t; ROUND_KEYS],
@@ -387,8 +395,8 @@ mod tests {
 
             for aad_len in [0, 1, 13, 16, 17, 32, 33, 112] {
                 for msg_len in [
-                    0, 1, 3, 15, 16, 17, 35, 64, 80, 81, 95, 96, 97, 112, 113, 127, 128, 129, 255,
-                    256, 1000,
+                    0, 1, 3, 15, 16, 17, 35, 64, 80, 81, 95, 96, 97, 112, 113, 127, 128, 129, 224,
+                    225, 240, 255, 256, 480, 481, 496, 1000,
                 ] {
                     let nonce = bytes(12, msg_len as u32).try_into().unwrap();
                     let aad = bytes(aad_len, 2);
@@ -446,7 +454,7 @@ mod tests {
 
             for (key, table) in &paths {
                 for start in [0xffff_ffffu32, 0xffff_fffe, 0xffff_fff9, 0xffff_ff00, 7] {
-                    for msg_len in [3, 16, 17, 48, 100, 128, 300, 1000] {
+                    for msg_len in [3, 16, 17, 48, 100, 128, 200, 300, 1000] {
                         let mut y0: [u8; 16] = bytes(16, msg_len as u32).try_into().unwrap();
                         y0[12..].copy_from_slice(&start.to_be_bytes());
                         let aad = bytes(17, 2);

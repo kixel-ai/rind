@@ -270,7 +270,7 @@ the code [Symmetric cryptography](#symmetric-cryptography) names.
 
 | Algorithm | aarch64 | no crypto | armv7 |
 |---|---|---|---|
-| AES-GCM | s2n-bignum + Graviola | aws-lc + rind |  |
+| AES-GCM | s2n-bignum + Graviola + rind | aws-lc + rind |  |
 | AES block, AES-CTR | Graviola + rind | aws-lc |  |
 | AES-KW, AES-CBC | Graviola + rind | aws-lc + rind |  |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |
@@ -619,7 +619,12 @@ by-8 kernels instead, which use its three-way XOR. They run in place, outside
 their proofs, which assume separate input and output buffers.
 `admin/parse-asm/inplace.py` walks them at every length to 64 blocks, checking
 that each block is loaded before it is stored and that their branches and
-addresses depend only on the length.
+addresses depend only on the length. Up to 15 blocks of AAD and message
+sealed, or 31 opened, rind's own Rust runs instead: one pass that encrypts
+every counter block and the tag's, and hashes every block with one reduction
+per eight. It measured 0.41-0.97x the kernels' time on Neoverse N2 and
+0.51-0.89x on Apple M1, gaining least near those limits. Its tests check it
+against vpaes and NEON GHASH.
 
 Without it, AES runs aws-lc's `vpaes-armv8`, Mike Hamburg's vector permutation
 AES, whose S-box is NEON `tbl` lookups into registers, and GHASH runs aws-lc's
