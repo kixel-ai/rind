@@ -152,3 +152,7 @@ harness = false
 [[bench]]
 name = "rustls"
 harness = false
+
+[[bench]]
+name = "short_gcm"
+harness = false

@@ -1,164 +1,30 @@
 name: build
 
 on:
-  schedule:
-    - cron: "0 18 * * *"
   workflow_dispatch:
 
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  CARGO_TERM_COLOR: always
+permissions:
+  contents: read
 
 jobs:
-  build:
+  probe:
     strategy:
+      fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            rustc: stable
-          - os: ubuntu-latest
-            rustc: nightly
-          # macos-latest is aarch64; macos-15-intel is the x86_64 runner.
-          - os: macos-latest
-            rustc: stable
-          - os: macos-15-intel
-            rustc: stable
-          - os: windows-latest
-            rustc: stable
-          - os: windows-11-arm
-            rustc: stable
-          - os: ubuntu-24.04-arm
-            rustc: stable
-
-    runs-on: ${{ matrix.os }}
+        runner: [ubuntu-24.04-arm, macos-15]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: ./.github/actions/vectors
-
-      - name: Install ${{ matrix.rustc }} toolchain
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ matrix.rustc }}
-
-      - name: Build (debug)
-        run: cargo build -p rind
-      - name: Run tests (debug)
-        run: cargo test
-      - name: Run tests (debug, --no-default-features)
-        run: cargo test --no-default-features
-
-      - name: Build (release)
-        run: cargo build -p rind --release
-      - name: Run tests (release)
-        run: env SLOW_TESTS=1 cargo test --release
-
-      - name: Artificial CPU feature tests (x86_64)
-        if: runner.arch == 'X64'
-        run: |
-          # test rind's AVX2 SHA-1 and OpenSSL's AVX2 SHA-256 for CPUs without
-          # the SHA extensions
-          env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 cargo test
-          # test Vale's aes-gcm and avx2 ML-KEM without avx512 or vaes, and
-          # RSA's CRT one exponentiation at a time on a runner with AVX-512 IFMA
-          env RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 RIND_TEST_X86_AVX512_RSA=0 cargo test
-          # test s2n-bignum's _alt routines, and aws-lc's Montgomery
-          # multiplication and RSAZ exponentiation, for CPUs with AVX2 but
-          # without BMI2 and ADX, such as Haswell; the last variables fail the
-          # run that lands on the wrong path
-          env RIND_CPU_DISABLE_adx=1 RIND_TEST_X86_BMI2_ADX=0 RIND_TEST_X86_AVX2=1 cargo test
-          # test aws-lc's SSE4.1 ChaCha20-Poly1305, its SSSE3 ChaCha20, SHA-1,
-          # and SHA-256, its scalar SHA-512, the portable ML-KEM arithmetic,
-          # and the SSE2 selects for CPUs without AVX2, such as AMD's Bulldozer
-          # and Jaguar;
-          # x86-cpu's Sandy Bridge run covers aws-lc's AVX SHA routines, which
-          # Intel's cores run there
-          env RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_SSE41=1 cargo test
-          # test rind's AES-GCM and GHASH intrinsics without VEX encoding, and
-          # aws-lc's AES-NI CTR, for CPUs with AES-NI but without AVX, such as
-          # Westmere and the Goldmont and Tremont Atoms
-          env RIND_CPU_DISABLE_avx=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AES_HARDWARE=1 cargo test
-          # test aws-lc's vpaes and SSSE3 GHASH for CPUs without AES-NI or
-          # PCLMULQDQ, such as Core 2 and Nehalem, where rind-rustls and
-          # rind-dimpl prefer ChaCha20-Poly1305, and without SSE4.1 too, as
-          # the first Core 2s lack it, ChaCha20 and Poly1305 in separate passes
-          env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_sse41=1 RIND_TEST_X86_AES_HARDWARE=0 RIND_TEST_X86_SSE41=0 cargo test
-          # test aws-lc's integer SHA-1 and SHA-256, its SSE2 AES and integer
-          # GHASH, and HACL*'s ChaCha20 at every length, for CPUs without
-          # SSSE3, such as QEMU's default `qemu64` model; every faster path
-          # needs SSSE3 too
-          env RIND_CPU_DISABLE_ssse3=1 RIND_TEST_X86_SSSE3=0 RIND_TEST_X86_SSE41=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=0 cargo test
-
-      - name: Artificial CPU feature tests (aarch64)
-        if: runner.arch == 'ARM64'
-        run: |
-          # test the AES-256-GCM and Keccak-f kernels for cores without SHA3,
-          # failing a run whose OS hides the crypto extension
-          env RIND_CPU_DISABLE_sha3=1 RIND_TEST_ARM_CRYPTO_EXT=1 cargo test
-          # test vpaes, NEON GHASH, and scalar SHA-1 and SHA-256 for cores
-          # without the crypto extension, such as the Raspberry Pi 4's; the
-          # last variable fails the run that lands on the wrong path
-          env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test
-
-  # musl runs the glibc build's code, so these test the packages consumers
-  # link, without the CPU feature passes. The bench and fuzz crates need C++
-  # built for musl, which musl-tools lacks.
-  musl:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-musl
-
-    runs-on: ${{ matrix.os }}
-    env:
-      CARGO_BUILD_TARGET: ${{ matrix.target }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/vectors
-
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
-          targets: ${{ matrix.target }}
-
-      # The tests' aws-lc-rs dev-dependency builds C for the target.
-      - name: Install musl-gcc
+      - name: Record the CPU
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes musl-tools
-          echo "CC_${CARGO_BUILD_TARGET//-/_}=musl-gcc" >> "$GITHUB_ENV"
-
-      - name: Run tests (debug)
-        run: cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme
-      - name: Run tests (release)
-        run: env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme --release
-
-  # 32-bit ARM runs libcrux, or aws-lc's assembly for ChaCha20, NEON, and the
-  # crypto extension. The recipe builds and lints Android and Linux gnueabihf,
-  # then runs the gnueabihf tests under qemu on both of rind's armv7 paths, as
-  # a local run does.
-  armv7:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/vectors
-      - uses: ./.github/actions/just
-      - uses: ./.github/actions/nix
-
-      - name: Build, lint, and test
-        run: just armv7
+          if [ "$(uname)" = Linux ]; then model=$(lscpu | sed -n 's/^Model name: *//p' | head -n1); else model=$(sysctl -n machdep.cpu.brand_string); fi
+          echo "CPU: $model" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Probe
+        run: .github/probe/run.sh
