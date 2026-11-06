@@ -464,7 +464,9 @@ mod tests {
 
         let expected = test_toggle("dit", has_dit);
         assert_eq!(features() & DIT != 0, expected);
-        if has_dit {
+        // A denied DIT is left alone, as under `admin/ctgrind`, whose
+        // valgrind runs no DIT instruction.
+        if expected {
             // SAFETY: this core has DIT. Cleared, so only an `Entry` can set
             // it.
             unsafe { dit::write(0) };

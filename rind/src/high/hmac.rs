@@ -179,6 +179,11 @@ impl Key {
     }
 
     /// The tag of `data`, for callers that have entered.
+    // Out of line: inlined into PBKDF2's loop, LLVM unswitches the loop on
+    // the largest variant's `ops`, which a smaller key leaves uninitialized,
+    // so memcheck reports a branch on undefined bytes. An extra call per HMAC
+    // costs nothing measurable.
+    #[inline(never)]
     pub(super) fn tag(&self, data: &[u8]) -> Digest {
         self.0.sign(data)
     }
