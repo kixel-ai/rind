@@ -257,6 +257,7 @@ RSA-OAEP through `rsa`. ring has no RSA encryption.
 | `PrivateDecryptingKey::from_pkcs8(der)`, `generate(size)`, `as_der()` | `DecryptingKey::from_pkcs8(alg, der)`, `from_pkcs1(alg, der)`, `generate(alg, size)`, `to_pkcs8()`, each key bound to one algorithm |
 | `PrivateDecryptingKey::public_key()` | `public_key()`, an `EncryptingKey` bound to the same algorithm; `to_spki()` for its `SubjectPublicKeyInfo` |
 | `PublicEncryptingKey::from_der(spki)` | `EncryptingKey::new(alg, der)`, which takes a `SubjectPublicKeyInfo` or PKCS#1 `RSAPublicKey`, or `EncryptingKey::from_components(alg, &PublicKeyComponents { n, e })` |
+| `PublicEncryptingKey::as_der()` | `EncryptingKey::to_spki()` |
 | `OAEP_SHA256_MGF1SHA256`, `OAEP_SHA384_MGF1SHA384`, `OAEP_SHA512_MGF1SHA512` | `OAEP_SHA256`, `OAEP_SHA384`, `OAEP_SHA512` |
 | `OAEP_SHA1_MGF1SHA1` | `legacy::OAEP_SHA1` |
 | `encrypt(alg, m, &mut out, label)`, `decrypt(alg, c, &mut out, label)` | `encrypt(m, label)`, `decrypt(c, label)` with the key's algorithm, returning a `Ciphertext` or a `Plaintext`, which is not wiped on drop; `None` for the label is `b""` |

@@ -14,34 +14,29 @@
 #   reason      why it stays
 
 [[gap]]
-operations = ["rsa2048-pkcs1-sha256-sign", "rsa2048-pss-sha256-sign", "rustls-full-handshake-key/rsa-2048"]
-on = ["nixos", "desktop", "nixos2"]
-quest = "/quest/m2/speed/x86-rsa2048-sign.md"
-
-[[gap]]
 operations = ["sha256/64B"]
-on = ["nixos", "desktop"]
-reason = "Narrowed by [#352](https://github.com/moq-dev/rind/pull/352), after this data: on the SHA extensions the last block is padded and the digest written in registers, and `digest::Context::finish` takes `&mut self`, so it no longer copies the context. Interleaved runs on `nixos` measured rind at 1.16× RustCrypto's time and 1.03× graviola's at 64 B, from 1.44×, and ahead of both at 32 B; `digest::digest` beats RustCrypto at 64 B. Closed by [#394](https://github.com/moq-dev/rind/pull/394), which drops the context's wipe on drop: on GitHub's AMD EPYC 9V45 runner it measured rind at 0.84× main's time at 64 B and 0.86× RustCrypto's. The next refresh drops this entry."
-
-[[gap]]
-operations = ["sha512/16KB"]
-on = ["nixos", "desktop", "nixos2"]
-reason = "Closed by [#353](https://github.com/moq-dev/rind/pull/353), after this data: CPUs with AVX2 run OpenSSL's AVX2 routine, the one OpenSSL runs on `nixos2`, and those with the SHA512 instructions OpenSSL's routine for them. Interleaved runs measured rind at 0.96× OpenSSL's time on `nixos` and 0.22× on `desktop`. The next refresh drops this entry."
-
-[[gap]]
-operations = ["sha256/16KB"]
-on = ["nixos2"]
-reason = "Closed by [#353](https://github.com/moq-dev/rind/pull/353), after this data: CPUs with AVX2 but without the SHA extensions run OpenSSL's AVX2 routine, the one OpenSSL runs on `nixos2`. The next refresh drops this entry."
-
-[[gap]]
-operations = ["sha512/1350B"]
 on = ["nixos"]
-reason = "Closed by [#353](https://github.com/moq-dev/rind/pull/353), after this data: Zen 3 runs OpenSSL's AVX2 routine rather than aws-lc's scalar one, which interleaved runs measured at 0.84× OpenSSL's time at this size. The next refresh drops this entry."
+reason = "Narrowed by [#352](https://github.com/moq-dev/rind/pull/352): on the SHA extensions the last block is padded and the digest written in registers, and `digest::Context::finish` takes `&mut self`, so it no longer copies the context. Closed by [#394](https://github.com/moq-dev/rind/pull/394), after this data, which drops the context's wipe on drop: on GitHub's AMD EPYC 9V45 runner it measured rind at 0.84× main's time at 64 B and 0.86× RustCrypto's. The next refresh drops this entry."
 
 [[gap]]
-operations = ["ed25519-verify", "mlkem768-encaps"]
-on = ["nixos2"]
-reason = "From an older run than the other hosts', before [#339](https://github.com/moq-dev/rind/pull/339) reworked Ed25519 for its proof. Neither shows on the other hosts, and the next refresh rechecks both."
+operations = ["rsa2048-pkcs1-sha256-sign"]
+on = ["nixos"]
+reason = "Noise: other work kept 5 CPUs busy during this run, in which PSS signing, the same exponentiation, measured 0.95× graviola's time. Interleaved runs on `nixos` the same morning measured rind's PKCS#1 signing at 436 to 446 µs against graviola's 432 to 542 µs and ring's 459 to 568 µs. The next refresh rechecks it."
+
+[[gap]]
+operations = ["rustls-bulk/aes128-gcm", "xchacha20poly1305/1350B"]
+on = ["desktop"]
+reason = "Noise: other work kept 5 CPUs busy during this run. The run before it measured 0.99× ring's and 0.97× aws-lc-rs's time, and neither shows on another host. The next refresh rechecks both."
+
+[[gap]]
+operations = ["ed25519-verify"]
+on = ["ovh-iad", "ovh-sea"]
+reason = "These VPSes' virtual CPUs hide ADX, as CPUs older than Broadwell and Zen lack it, and there rind runs s2n-bignum's verified `_alt` routines, which RustCrypto's AVX2 backend beats."
+
+[[gap]]
+operations = ["ed25519-sign"]
+on = ["ovh-iad"]
+reason = "Noise from the VPS's other tenants: `ovh-sea`, the same virtual CPU, measured 0.92× aws-lc-rs's time, and no dedicated host shows it. The next refresh rechecks it."
 
 [[gap]]
 operations = ["p256-ecdsa-verify/*"]
