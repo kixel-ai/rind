@@ -264,7 +264,8 @@ impl PublicKey {
     ///
     /// An ECDSA key names `id-ecPublicKey` and the algorithm's curve, and
     /// its point may be compressed (RFC 5480), which this decompresses. An
-    /// RSA key names `rsaEncryption`, and an Ed25519 key `id-Ed25519`.
+    /// RSA key names `rsaEncryption`, `id-RSAES-OAEP`, or `id-ea-rsa`, and an
+    /// Ed25519 key `id-Ed25519`.
     pub fn from_spki(
         algorithm: &impl AsRef<VerificationAlgorithm>,
         der: &[u8],
@@ -1360,7 +1361,8 @@ impl RsaKeyPair {
         Self::new(rsa::SigningKey::generate(size)?)
     }
 
-    /// Loads a PKCS#8 v1 `rsaEncryption` private key.
+    /// Loads a PKCS#8 v1 RSA private key, named `rsaEncryption`,
+    /// `id-RSAES-OAEP`, or `id-ea-rsa`.
     pub fn from_pkcs8(der: &[u8]) -> Result<Self, Error> {
         Self::new(rsa::SigningKey::from_pkcs8_der(der)?)
     }

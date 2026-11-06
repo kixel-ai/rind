@@ -15,7 +15,7 @@
 # as field operations under unverified point formulas, or a verified routine
 # under unverified glue. s2n-bignum's proofs check its own object code and
 # HACL*'s its C, so code copied from s2n-bignum or compiled from HACL* counts,
-# as README's Sources table says.
+# as ALGORITHMS.md's Sources table says.
 #
 # Each entry:
 #   library     rind, aws-lc-rs, ring, rustcrypto, graviola, libcrux, or openssl
