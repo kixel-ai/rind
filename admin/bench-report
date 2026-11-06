@@ -502,7 +502,7 @@ def collect_host(host, commit, out_dir):
         f"--host {q(host)} --commit {q(commit)} --jobs {HOSTS[host]['jobs']} "
         f"--target-dir ../target --out result.json",
     )
-    fetched = on_host(host, f"cat {src}/result.json; status=$?; rm -rf {src}; exit $status", capture_output=True)
+    fetched = on_host(host, f"cat {src}/result.json; code=$?; rm -rf {src}; exit $code", capture_output=True)
     if fetched.returncode != 0:
         return record("failed", "the run wrote no result; see its output above")
     with open(out, "wb") as f:
