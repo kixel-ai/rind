@@ -51,8 +51,7 @@ use core::fmt;
 
 pub mod aead;
 pub mod agreement;
-/// rind's CPU check, for refusing an unsupported CPU at startup instead of panicking.
-pub use rind::cpu;
+pub mod cpu;
 #[doc(hidden)]
 #[deprecated(note = "ring deprecates it too; compare with `hmac::verify` or a constant-time crate")]
 pub mod deprecated_constant_time;

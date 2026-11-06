@@ -41,6 +41,19 @@ asn1_oid! {
 }
 
 asn1_oid! {
+    id_RSAES_OAEP OBJECT IDENTIFIER ::= {
+        iso(1) member_body(2)
+        us(840) rsadsi(113549) pkcs(1) 1 7
+    }
+}
+
+asn1_oid! {
+    id_ea_rsa OBJECT IDENTIFIER ::= {
+        joint_iso_itu_t(2) ds(5) algorithm(8) encryptionAlgorithm(1) rsa(1)
+    }
+}
+
+asn1_oid! {
     id_sha1 OBJECT IDENTIFIER ::= {
         iso(1) identified_organization(3) oiw(14) secsig(3) algorithms(2) 26
     }

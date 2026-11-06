@@ -150,7 +150,7 @@ impl Ed25519SigningKey {
     pub(crate) fn from_pkcs8_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
 
-        let p8 = pkcs8::Key::decode(bytes, &asn1::oid::id_ed25519, None)?;
+        let p8 = pkcs8::Key::decode(bytes, &[&asn1::oid::id_ed25519], None)?;
 
         let key = asn1::OctetString::from_bytes(p8.private_key())
             .map_err(|e| Error::from(KeyFormatError::Asn1(e)))

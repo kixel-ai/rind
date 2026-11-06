@@ -66,7 +66,7 @@ pub(crate) fn decode_pkcs8<'a>(
 ) -> Result<Decoded<'a>, Error> {
     let key = pkcs8::Key::decode(
         der,
-        &asn1::oid::id_ecPublicKey,
+        &[&asn1::oid::id_ecPublicKey],
         Some(asn1::Any::ObjectId(curve.clone())),
     )?;
     decode(key.v1_private_key()?, curve)
