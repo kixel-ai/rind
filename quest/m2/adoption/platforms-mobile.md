@@ -18,4 +18,4 @@ ships: iOS on aarch64, and Android on aarch64, armv7, and x86_64.
 - The tests' aws-lc-rs dev-dependency builds C for the target, so Android
   needs the NDK's compilers, as iOS needs Xcode's.
 - Fix what fails at the source; a target that cannot work fails to compile,
-  as `AGENTS.md` requires, and is named in the README.
+  as `AGENTS.md` requires, and is named in `PLATFORMS.md`.

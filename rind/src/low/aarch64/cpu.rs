@@ -447,7 +447,7 @@ mod tests {
 
     // A core that runs `mrs DIT` has DIT, whatever its OS reports, so a
     // child process runs it. Where Linux hides DIT, rind can't tell the core
-    // without `/sys` or with a CPU offline, as README states, so the test
+    // without `/sys` or with a CPU offline, as PLATFORMS.md states, so the test
     // can't either; a core missing from the table still fails it. Android's
     // kernels report DIT, and rind trusts that report there, so the test does
     // too.

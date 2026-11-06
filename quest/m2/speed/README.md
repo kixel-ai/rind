@@ -45,8 +45,8 @@ settled; don't ask them again. The chosen option is marked ✅.
   and `render` regenerate from the nightly bench, show each path's ratio to
   the fastest baseline; the nightly job's summary keeps the live numbers ✅
   (maintainer, 2026-11-03, while planning the benchmark report:
-  moved from README's Algorithms table, which keeps only the sources) /
-  README's Algorithms table / nightly summary only.
+  moved from the Algorithms table, now in `ALGORITHMS.md`, which keeps only the sources) /
+  the Algorithms table / nightly summary only.
 
 ## Required
 

@@ -309,7 +309,7 @@ aws-lc-rs's `error::Unspecified` and `error::KeyRejected` become one
 
 ring and aws-lc-rs detect CPU features and fall back to slower code, down
 to portable C. rind picks its path per CPU too, but only down to a floor (see
-the README's Limitations): it panics on a CPU below it.
+[PLATFORMS.md](PLATFORMS.md)): it panics on a CPU below it.
 
 | aws-lc-rs | rind |
 |---|---|
