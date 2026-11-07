@@ -162,3 +162,88 @@ jobs:
 
       - name: Build, lint, and test
         run: just armv7
+
+  # The simulator runs the iOS tests natively on the Apple silicon runner;
+  # devices' code is only built, since GitHub has no iOS device to run it.
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      # aws-lc-rs's C, which the tests link, targets the SDK's own iOS
+      # version unless told otherwise, and then needs symbols rustc's
+      # default iOS version lacks; this gives both rustc's default.
+      - name: Build tests (device)
+        run: |
+          export "$(rustc --print deployment-target --target aarch64-apple-ios)"
+          cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme --target aarch64-apple-ios --no-run
+
+      - name: Boot a simulator
+        run: |
+          udid=$(xcrun simctl list devices available --json | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid"
+
+      - name: Run tests (simulator)
+        env:
+          CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUNNER: ${{ github.workspace }}/sh/ios-simulator.sh
+          RIND_TEST_ARM_CRYPTO_EXT: 1
+        run: |
+          export "$(rustc --print deployment-target --target aarch64-apple-ios-sim)"
+          cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme --target aarch64-apple-ios-sim
+          env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme --target aarch64-apple-ios-sim --release
+
+  # cross's images (see Cross.toml) hold an Android system for the tests, and
+  # run aarch64 and armv7 under qemu-user, whose CPU has the crypto extension.
+  # armv7 Linux covers the paths without it.
+  android:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-linux-android
+            expect: RIND_TEST_ARM_CRYPTO_EXT=1
+          - target: armv7-linux-androideabi
+            expect: RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1
+          - target: x86_64-linux-android
+            expect: ""
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        run: cargo install cross --locked --git https://github.com/cross-rs/cross --rev a9301e91f72bba3850460512685f6b16062015ff
+
+      # The CPU test reruns itself in a child process, which the kernel hands
+      # to qemu-user only through binfmt_misc.
+      - name: Install qemu-user's binfmt handlers
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes qemu-user-static
+
+      # Optimised for qemu, but keeping the checks a debug build has.
+      - name: Run tests
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
+          CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS: true
+        run: env ${{ matrix.expect }} cross test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme --locked --release --target ${{ matrix.target }}

@@ -1,8 +1,9 @@
 # Platforms
 
 `aarch64`, `x86_64`, and 32-bit `arm` architectures only. CI tests Linux
-(glibc and musl), macOS, and Windows on `x86_64` and `aarch64`; iOS and
-Android are untested.
+(glibc and musl), macOS, and Windows on `x86_64` and `aarch64`, iOS in the
+simulator on `aarch64`, and Android on `aarch64`, `armv7`, and `x86_64`, the
+first two under qemu. iOS devices' code is only built.
 
 - `aarch64` requires the `neon` CPU feature. Where the CPU has the crypto
   extension (`aes`, `pmull`, and `sha2`), as the Raspberry Pi 5 and most
@@ -11,10 +12,11 @@ Android are untested.
   run [aws-lc]'s NEON and scalar assembly instead (see
   [ALGORITHMS.md](ALGORITHMS.md)), `rind::cpu::has_aes_hardware()` is false, and
   rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Secret-dependent code
-  runs with data-independent timing (DIT) where the core has it. Where
-  Hyper-V hides DIT from Linux, as on Azure's Cobalt 100, rind knows it from
-  the core's model, for Arm's Armv8.4 and later cores and Qualcomm's Oryon,
-  given a readable `/sys` and every CPU online.
+  runs with data-independent timing (DIT) where the core has it, set and
+  cleared in each call unless `rind::cpu::Dit::hold()` holds it across a batch
+  of calls. Where Hyper-V hides DIT from Linux, as on Azure's Cobalt 100,
+  rind knows it from the core's model, for Arm's Armv8.4 and later cores and
+  Qualcomm's Oryon, given a readable `/sys` and every CPU online.
 - `x86_64` runs on every x86_64 CPU. Without `aes` and `pclmulqdq`, as on
   Core 2 and Nehalem, AES and GHASH run [aws-lc]'s SSSE3 assembly instead
   (see [ALGORITHMS.md](ALGORITHMS.md)), `rind::cpu::has_aes_hardware()` is false,
@@ -39,7 +41,7 @@ Android are untested.
   [curve25519-dalek]'s AVX2 backend. With `avx512ifma`, as on Ice Lake,
   Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048, 3072, and 4096 signing
   runs aws-lc's dual AVX-512 RSAZ.
-- 32-bit `arm` (tested on `armv7-unknown-linux-gnueabihf`, and built for
+- 32-bit `arm` (tested on `armv7-unknown-linux-gnueabihf` and
   `armv7-linux-androideabi`) runs portable Rust instead, mostly from
   [libcrux] (see [ALGORITHMS.md](ALGORITHMS.md)), and needs no CPU features. RSA's
   Montgomery multiplication runs [aws-lc]'s assembly, with NEON where the CPU

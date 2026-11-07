@@ -136,10 +136,11 @@ theorem check_gcm_lengths_spec (aad msg : Usize) (haad : aad.val < 2 ^ 32) (hmsg
   step*
 
 /-- `aes_gcm::seal` and `open` run Vale's routines for a key on its tier and
-lengths under 2^32. -/
+lengths under 2^32, and `seal` only for messages of at least 129 bytes. -/
 theorem vale_some (enc : Bool) (alg : Algorithm) (kw : List (BitVec 32)) (key : low.x86_64.aes.AesKey)
     (gh : low.x86_64.ghash.GhashTable) (hg : Ready alg kw ⟨key, gh⟩)
-    (aad inout : Slice U8) (haad : aad.length < 2 ^ 32) (hin : inout.length < 2 ^ 32) :
+    (aad inout : Slice U8) (haad : aad.length < 2 ^ 32) (hin : inout.length < 2 ^ 32)
+    (hlong : enc = true → 129 ≤ inout.length) :
     low.x86_64.aes_gcm.vale enc key gh aad inout ⦃ o =>
       ∃ hk kernel, o = some (hk, kernel) ∧ KernelKeys alg hk kw kernel ⦄ := by
   obtain ⟨hk, table, kernel, hkey, hgh, hkk⟩ := hg
@@ -147,16 +148,20 @@ theorem vale_some (enc : Bool) (alg : Algorithm) (kw : List (BitVec 32)) (key : 
   subst hkey hgh
   unfold low.x86_64.aes_gcm.vale
   cases hk with
-  | Aes128 k => cases enc <;> step*
+  | Aes128 k =>
+    cases enc <;> step*
+    simp_all [low.x86_64.aes_gcm.AVX_VALE_SEAL_FROM]
   | Aes192 k => exact hkk.2.1.elim
-  | Aes256 k => cases enc <;> step*
+  | Aes256 k =>
+    cases enc <;> step*
+    simp_all [low.x86_64.aes_gcm.AVX_VALE_SEAL_FROM]
 
-/-- `AesGcm::encrypt` on Vale's tier, for AAD and messages under 2^32 bytes:
-the ciphertext in place and the tag are AES-GCM's. -/
+/-- `AesGcm::encrypt` on Vale's tier, for AAD under 2^32 bytes and messages
+of 129 bytes to 2^32: the ciphertext in place and the tag are AES-GCM's. -/
 theorem aes_gcm_encrypt_spec (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
     (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) (hg : Ready alg kw g)
     (nonce : Std.Array U8 12#usize) (aad inout : Slice U8) (tag : Std.Array U8 16#usize)
-    (haad : aad.length < 2 ^ 32) (hin : inout.length < 2 ^ 32) :
+    (haad : aad.length < 2 ^ 32) (hin : inout.length < 2 ^ 32) (hlong : 129 ≤ inout.length) :
     mid.aes_gcm.AesGcm.encrypt g nonce aad inout tag ⦃ r =>
       r.1 = .Ok () ∧ r.2.1.length = inout.length ∧ (bvs r.2.1.val, bvs r.2.2.val) =
         gcmEncrypt alg (seqNat32ToSeqNat8LE kw) (bvs nonce.val) (bvs inout.val) (bvs aad.val) ⦄ := by
@@ -165,7 +170,7 @@ theorem aes_gcm_encrypt_spec (he : ∃ e, low.entry.Entry.new_secret = ok e) (al
   unfold mid.aes_gcm.AesGcm.encrypt low.x86_64.aes_gcm.seal
   rw [he, bind_ok]
   step*
-  · apply WP.spec_bind (vale_some true alg kw key gh hg aad inout haad hin)
+  · apply WP.spec_bind (vale_some true alg kw key gh hg aad inout haad hin fun _ => hlong)
     rintro _ ⟨hk, kernel, rfl, hkk⟩
     simp only [low.x86_64.aes_gcm_avx.AvxKernel.seal]
     step with cipher_encrypt_spec alg hk kw kernel hkk nonce aad inout _ haad hin as ⟨res, hres⟩
@@ -189,7 +194,7 @@ theorem aes_gcm_decrypt_spec (he : ∃ e, low.entry.Entry.new_secret = ok e) (al
   unfold mid.aes_gcm.AesGcm.decrypt low.x86_64.aes_gcm.open
   rw [he, bind_ok]
   step*
-  · apply WP.spec_bind (vale_some false alg kw key gh hg aad inout haad hin)
+  · apply WP.spec_bind (vale_some false alg kw key gh hg aad inout haad hin nofun)
     rintro _ ⟨hk, kernel, rfl, hkk⟩
     simp only [low.x86_64.aes_gcm_avx.AvxKernel.open]
     step with cipher_decrypt_spec alg hk kw kernel hkk nonce aad inout tag haad hin as ⟨res, hlen, hout, hok⟩
@@ -253,14 +258,14 @@ theorem key_bytes (alg : Algorithm) (key : List (BitVec 8)) (h : key.length = 4 
 
 theorem aes_gcm_seal (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
     (key : List (BitVec 8)) (k : aead.Key) (hk : KeyReady alg key k) (nonce : aead.Nonce) (aad in_out : Slice U8)
-    (haad : aad.length < 2 ^ 32) (hin : in_out.length < 2 ^ 32) :
+    (haad : aad.length < 2 ^ 32) (hin : in_out.length < 2 ^ 32) (hlong : 129 ≤ in_out.length) :
     k.seal_in_place_separate_tag nonce aad in_out ⦃ r =>
       ∃ tag, r.1 = .Ok tag ∧ r.2.length = in_out.length ∧
         (bvs r.2.val, bvs tag.bytes.val) = gcmEncrypt alg key (bvs nonce.bytes.val) (bvs in_out.val) (bvs aad.val) ⦄ := by
   obtain ⟨hkl, g, rfl, hg⟩ := hk
   unfold aead.Key.seal_in_place_separate_tag aead.Sealer.seal
   simp only [mid.aes_gcm.AesGcm.Insts.RindAeadCipher.seal]
-  apply WP.spec_bind (aes_gcm_encrypt_spec he alg _ g hg nonce.bytes aad in_out _ haad hin)
+  apply WP.spec_bind (aes_gcm_encrypt_spec he alg _ g hg nonce.bytes aad in_out _ haad hin hlong)
   rintro ⟨r, out, tag⟩ ⟨rfl, hlen, hout⟩
   rw [key_bytes alg key hkl] at hout
   exact (WP.spec_ok _).2 ⟨⟨tag⟩, rfl, hlen, hout⟩

@@ -12,7 +12,11 @@ fn key_pair_modulus_sizes() {
         (6144, false),
         (8192, false),
     ] {
-        let der = std::fs::read(format!("../rind/src/high/rsa/rsa{bits}.der")).unwrap();
+        let der = std::fs::read(format!(
+            "{}/../rind/src/high/rsa/rsa{bits}.der",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
         let key_pair = signature::RsaKeyPair::from_der(&der);
         assert_eq!(key_pair.is_ok(), ok, "{bits} bits");
         let Ok(key_pair) = key_pair else { continue };

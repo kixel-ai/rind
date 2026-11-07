@@ -72,10 +72,10 @@ don't ask again (✅ is the chosen option):
 - [Servo's WebCrypto runs on rind](/quest/m2/adoption/servo.md) - Servo's RustCrypto WebCrypto moved to rind
 - [pyca-compatible pyrind](/quest/m2/adoption/pyrind-cryptography.md) - pyca's `hazmat` names on pyrind
 - [Talk to pyca about rind](/quest/m2/adoption/pyca.md) - a discussion with pyca/cryptography's maintainers
-- [rind builds and passes its tests on iOS and Android](/quest/m2/adoption/platforms-mobile.md) - CI tests the mobile targets the Dart package ships
 - [rind for Dart and Flutter](/quest/m2/adoption/rind-dart.md) - the `rind` package on pub.dev
 - [rind as a Dart `cryptography` backend](/quest/m2/adoption/rind-dart-cryptography.md) - the `cryptography` package's interface on rind
 - [Apache Iggy encrypts streams with rind](/quest/m2/adoption/iggy.md) - its AES-256-GCM message encryption on rind
 - [librespot builds rustls without ring](/quest/m2/adoption/librespot.md) - users pick their rustls provider
 - [rind-rustls supports rustls 0.24](/quest/m2/adoption/rind-rustls-0.24.md) - a release on 0.24 soon after it ships
 - [rustls 0.24 is released](/quest/m2/adoption/rustls-0.24-release.md) - waiting on the release
+- [rind on every ring or aws-lc-rs target](/quest/m2/adoption/targets/README.md) - a portable backend for every architecture except wasm, so libraries can go rind-only

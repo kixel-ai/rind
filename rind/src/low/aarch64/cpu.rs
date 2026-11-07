@@ -506,6 +506,31 @@ mod tests {
         }
     }
 
+    #[test]
+    fn dit_hold_keeps_dit_on_across_calls() {
+        if features() & DIT == 0 {
+            // Nothing to hold, and nothing to read DIT with.
+            drop(crate::cpu::Dit::hold());
+            return;
+        }
+        // SAFETY: this core has DIT. Cleared, so only the guard can set it.
+        unsafe { dit::write(0) };
+        let first = crate::cpu::Dit::hold();
+        // A call under the guard, and a nested guard, leave DIT to it.
+        drop(crate::low::Entry::new_secret());
+        drop(crate::cpu::Dit::hold());
+        // SAFETY: as above.
+        assert_eq!(unsafe { dit::read() }, 1);
+        // Guards may drop out of order: DIT waits for the last.
+        let second = crate::cpu::Dit::hold();
+        drop(first);
+        // SAFETY: as above.
+        assert_eq!(unsafe { dit::read() }, 1);
+        drop(second);
+        // SAFETY: as above.
+        assert_eq!(unsafe { dit::read() }, 0);
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn needs_dit_on_every_possible_core() {

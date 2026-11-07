@@ -232,8 +232,6 @@ pub(crate) struct GhashTableAvx512 {
     /// BoringSSL's 512-bit kernel, for long messages, whose table also holds
     /// the powers the 512-bit multiplies here take.
     pub(crate) vaes: VaesKernel,
-    /// Vale's AES-GCM, for short messages.
-    pub(crate) vale: AvxKernel,
     pub(crate) token: HaveAvx512ForAesGcm,
 }
 
@@ -241,12 +239,7 @@ impl GhashTableAvx512 {
     pub(crate) fn new(h: u128, hw: HaveAesHardware, token: HaveAvx512ForAesGcm) -> Self {
         let vaes = VaesKernel::avx512(h, token);
         let clmul = ClmulTable::from_powers(vaes.powers(), hw);
-        Self {
-            vale: AvxKernel::new(&clmul, h, token.avx_movbe()),
-            clmul,
-            vaes,
-            token,
-        }
+        Self { clmul, vaes, token }
     }
 
     /// H^16, H^15, ... H^1: descending, so a tail of `n` blocks multiplies

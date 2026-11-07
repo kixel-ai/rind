@@ -174,11 +174,6 @@ impl HaveAvx512ForAesGcm {
             false => None,
         }
     }
-
-    /// Vale's AES-GCM, for short messages, runs here too.
-    pub(crate) fn avx_movbe(self) -> HaveAvxMovbeForAesGcm {
-        HaveAvxMovbeForAesGcm(())
-    }
 }
 
 /// Token type reflecting the check for CPU features needed for VAES-AES-GCM
@@ -402,7 +397,8 @@ const INTEL: u32 = 1 << 30;
 const AVX2_KERNELS: u32 = AVX | AVX2 | BMI1 | BMI2 | POPCNT | SSSE3;
 /// What the AES-GCM kernels for wider vectors build on: the AVX2 ISA, AES-NI
 /// and PCLMULQDQ for their key schedule and tail, and SSE4.1 and MOVBE for
-/// Vale's AES-GCM, which short messages run. Every VAES CPU has them all.
+/// Vale's AES-GCM, which short messages run without AVX-512. Every VAES CPU
+/// has them all.
 const AES_GCM_BASE: u32 = AES | PCLMULQDQ | SSSE3 | SSE41 | AVX | AVX2 | MOVBE;
 const DETECTED: u32 = 1 << 31;
 
