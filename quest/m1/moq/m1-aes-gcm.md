@@ -1,4 +1,4 @@
-# [S] A caller can hold DIT across a batch, and AES-GCM on Apple Silicon is level with aws-lc-rs while it does
+# [M] A caller can hold DIT across a batch, and AES-GCM on Apple Silicon is level with aws-lc-rs while it does
 
 ## Goal
 
