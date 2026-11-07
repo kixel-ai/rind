@@ -180,8 +180,13 @@ jobs:
           toolchain: stable
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
 
+      # aws-lc-rs's C, which the tests link, targets the SDK's own iOS
+      # version unless told otherwise, and then needs symbols rustc's
+      # default iOS version lacks; this gives both rustc's default.
       - name: Build tests (device)
-        run: cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme --target aarch64-apple-ios --no-run
+        run: |
+          export "$(rustc --print deployment-target --target aarch64-apple-ios)"
+          cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme --target aarch64-apple-ios --no-run
 
       - name: Boot a simulator
         run: |
@@ -194,6 +199,7 @@ jobs:
           CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUNNER: ${{ github.workspace }}/sh/ios-simulator.sh
           RIND_TEST_ARM_CRYPTO_EXT: 1
         run: |
+          export "$(rustc --print deployment-target --target aarch64-apple-ios-sim)"
           cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme --target aarch64-apple-ios-sim
           env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme --target aarch64-apple-ios-sim --release
 
