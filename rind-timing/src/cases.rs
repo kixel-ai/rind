@@ -556,12 +556,14 @@ fn rsa_cases(cases: &mut Vec<Case>) {
             let pkcs1 = &rsa_keys_one_modulus(size)[0][0];
             let key = rsa::DecryptingKey::from_pkcs1(&rsa::OAEP_SHA256, pkcs1).unwrap();
             let len = key.public_key().max_message_len() + 66;
-            let encrypt = |em: &[u8]| full_length(|| crate::rsa_keys::encrypt_raw(pkcs1, em));
-            let valid = encrypt(&oaep(len, true));
+            let encrypt = |em: &dyn Fn() -> Vec<u8>| {
+                full_length(|| crate::rsa_keys::encrypt_raw(pkcs1, &em()))
+            };
+            let valid = encrypt(&|| oaep(len, true));
             assert!(key.decrypt(&valid, b"").unwrap().as_ref().is_empty());
             // Random values, which decrypt to their remainder modulo n.
-            let anything = || encrypt(&random_vec(len));
-            let ciphertexts = classes(VALUES, fixed(encrypt(&oaep(len, false))), anything);
+            let anything = || encrypt(&|| random_vec(len));
+            let ciphertexts = classes(VALUES, fixed(encrypt(&|| oaep(len, false))), anything);
             measure(config, &ciphertexts, |c| key.decrypt(c, b""))
         }));
         cases.push(case(name("oaep-decrypt-ciphertext"), move |config| {
@@ -727,7 +729,8 @@ fn early_exit_eq(a: &[u8], b: &[u8]) -> bool {
 
 /// An RSA ciphertext from `encrypt` whose first byte is not zero: parsing
 /// one trims leading zeros, in time that depends on them but on nothing
-/// secret, so every class has none.
+/// secret, so every class has none. Each call to `encrypt` must draw new
+/// randomness, or a zero first byte repeats forever.
 fn full_length(mut encrypt: impl FnMut() -> Vec<u8>) -> Vec<u8> {
     loop {
         let c = encrypt();
