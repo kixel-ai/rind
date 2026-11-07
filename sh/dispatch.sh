@@ -72,6 +72,8 @@ declare -A scope=(
     [fixtures]='^(rind/|rind-rustls/|Cargo\.toml$|admin/build-cost-fixtures/(rind|rustls)/)'
     # The fixture builds this checkout's rind-ring under the rind-patch shim.
     [patch]='^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)'
+    # rind-dart's Dart package, whose build hook compiles the crate.
+    [dart]='^rind-dart/'
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
@@ -100,6 +102,7 @@ declare -A tools=(
     [bench]='python3'
     [fixtures]='cargo'
     [patch]='cargo jq git'
+    [dart]='nix'
     [quest]='quest'
     [gh]='actionlint yq jq'
     [hooks]='shellcheck'
@@ -111,8 +114,8 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs msrv cross deny versions license inplace compat bench fixtures patch quest gh hooks shell nix) ;;
-    fix) modules=(rs compat patch nix) ;;
+    check) modules=(rs msrv cross deny versions license inplace compat bench fixtures patch dart quest gh hooks shell nix) ;;
+    fix) modules=(rs compat patch dart nix) ;;
 esac
 
 selected=()
@@ -169,7 +172,7 @@ for module in "${selected[@]}"; do
         check:rs)
             # The tests read these vectors, and otherwise fail partway through.
             # s2n-bignum only feeds admin/parse-asm, so it is not required.
-            unfetched=$(git submodule status -- thirdparty/cavp thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
+            unfetched=$(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
             if [[ -n "$unfetched" ]]; then
                 echo "error: test vectors not checked out; run: git submodule update --init ${unfetched//$'\n'/ }" >&2
                 exit 1
@@ -181,6 +184,11 @@ for module in "${selected[@]}"; do
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
             cargo nextest run "${packages[@]}" --locked --no-tests=warn
+            # Only the zeroing tests see the opt-in wipe, which the default
+            # build turns into no-ops.
+            if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind|--workspace'; then
+                cargo nextest run -p rind --features wipe --test zeroing --locked
+            fi
             # Doc tests need a library. No packages at all means the workspace.
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
@@ -225,6 +233,8 @@ for module in "${selected[@]}"; do
             cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind-lean --target-dir target
             ;;
         check:patch) sh/patch.sh ;;
+        check:dart) nix develop .#dart --command sh/dart.sh check ;;
+        fix:dart) nix develop .#dart --command sh/dart.sh fix ;;
         fix:patch) cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:gh)
             actionlint

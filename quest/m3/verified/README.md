@@ -45,7 +45,6 @@ Decided with the maintainer on 2026-11-03, after the benchmark report (`BENCHMAR
 - [The hash and KDF glue's constant-time compares are proven](/quest/m3/verified/hash-glue.md) - the compares behind `hmac::verify` and `pbkdf2::Secret::verify`, in HOL Light
 - [HKDF's key conversions are proven](/quest/m3/verified/hkdf-okm.md) - the `From<Okm>` keys QUIC's packet protection starts from
 - [x86_64 SHA-NI SHA-256 block function is proven](/quest/m3/verified/sha256-block.md) - today's routine proven on s2n-bignum's SHA-256 spec, or a proven one as fast
-- [AES-GCM's seal_in_place_append_tag is proven on the Vale tier](/quest/m3/verified/aes-gcm-append-tag.md) - the last seal the AEAD API offers
 - [AES-GCM of 2^32 bytes and more is proven on the Vale tier](/quest/m3/verified/aes-gcm-vale-long.md) - drops the ✓'s size caveat
 - [AES-GCM's custom-IV key is proven on the Vale tier](/quest/m3/verified/aes-gcm-key-vale.md) - `aead::gcm::Key`, for 12-byte IVs and any others
 - [ECDSA's theorems rest on the SHA-256 spec](/quest/m3/verified/sha256-spec-unify.md) - one SHA-256 spec, so ECDSA composes with the hash proof
