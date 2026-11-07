@@ -209,3 +209,28 @@ fn generated_certificate() {
             .sha256(&cert.certificate)
     );
 }
+
+/// A caller's certificate or key that dimpl cannot use is an error, not a panic.
+#[test]
+fn unusable_certificate_is_an_error() {
+    let provider = rind_str0m::default_provider().unwrap();
+    let dtls = provider.dtls_provider;
+    let cert = dtls.generate_certificate().unwrap();
+
+    let mut empty = cert.clone();
+    empty.certificate.clear();
+    let mut truncated = cert.clone();
+    truncated.private_key.truncate(cert.private_key.len() / 2);
+    let mut no_key = cert.clone();
+    no_key.private_key.clear();
+
+    for bad in [empty, truncated, no_key] {
+        for version in [DtlsVersion::Dtls12, DtlsVersion::Dtls13, DtlsVersion::Auto] {
+            assert!(dtls.new_dtls(&bad, Instant::now(), version, None).is_err());
+        }
+    }
+    assert!(
+        dtls.new_dtls(&cert, Instant::now(), DtlsVersion::Auto, None)
+            .is_ok()
+    );
+}

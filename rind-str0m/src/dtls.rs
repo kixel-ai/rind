@@ -25,11 +25,22 @@ impl DtlsProvider for RindDtls {
         dtls_version: DtlsVersion,
         mtu: Option<usize>,
     ) -> Result<Box<dyn DtlsInstance>, CryptoError> {
-        // ICE checks return routability before DTLS starts, so a server cookie
-        // adds a round trip without protecting anything.
         // `default_provider` already refused a CPU missing a feature.
         let provider =
             rind_dimpl::default_provider().map_err(|e| CryptoError::Other(e.to_string()))?;
+
+        // dimpl panics on an empty certificate or a key it cannot load, and
+        // `RtcConfig::set_dtls_cert` takes both from the caller.
+        if cert.certificate.is_empty() {
+            return Err(CryptoError::Other("empty DTLS certificate".into()));
+        }
+        provider
+            .key_provider
+            .load_private_key(&cert.private_key)
+            .map_err(|e| CryptoError::Other(format!("DTLS private key: {e}")))?;
+
+        // ICE checks return routability before DTLS starts, so a server cookie
+        // adds a round trip without protecting anything.
         let mut builder = dimpl::Config::builder()
             .with_crypto_provider(provider)
             .use_server_cookie(false);
