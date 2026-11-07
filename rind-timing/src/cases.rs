@@ -37,8 +37,8 @@ fn case(name: impl Into<String>, run: impl Fn(&Config) -> Report + 'static) -> C
 
 /// Values in each class of byte strings and cheap keys.
 const VALUES: usize = 64;
-/// Values in each class of RSA keys, which take seconds to generate.
-const RSA_KEYS: usize = 4;
+/// Values in each class of RSA keys.
+const RSA_KEYS: usize = 8;
 /// A message length that takes the bulk path of every cipher and leaves a
 /// partial final block.
 const LEN: usize = 1347;
@@ -465,43 +465,39 @@ fn kem_cases(cases: &mut Vec<Case>) {
 fn rsa_cases(cases: &mut Vec<Case>) {
     for (bits, size) in RSA_SIZES {
         let name = |op: &str| format!("rsa-{bits}/{op}");
-        cases.push(case(name("from-pkcs8"), move |config| {
+        let signing = |der: &Vec<u8>| signature::RsaKeyPair::from_pkcs1(der).unwrap();
+        let decrypting =
+            |der: &Vec<u8>| rsa::DecryptingKey::from_pkcs1(&rsa::OAEP_SHA256, der).unwrap();
+
+        cases.push(case(name("from-pkcs1"), move |config| {
             measure(config, rsa_keys(size), |der| {
-                signature::RsaKeyPair::from_pkcs8(der)
+                signature::RsaKeyPair::from_pkcs1(der)
             })
         }));
         cases.push(case(name("sign-key"), move |config| {
-            let new = |der: &Vec<u8>| signature::RsaKeyPair::from_pkcs8(der).unwrap();
-            measure_built(config, rsa_keys(size), new, |key| {
+            measure_built(config, rsa_keys(size), signing, |key| {
                 key.sign(&signature::sign::RSA_PKCS1_SHA256, MESSAGE)
             })
         }));
         cases.push(case(name("sign-message"), move |config| {
-            let key = signature::RsaKeyPair::from_pkcs8(&rsa_keys(size)[0][0]).unwrap();
+            let key = signing(&rsa_keys(size)[0][0]);
             let messages = classes(VALUES, fixed(random::<32>()), random::<32>);
             measure(config, &messages, |message| {
                 key.sign(&signature::sign::RSA_PKCS1_SHA256, message)
             })
         }));
         cases.push(case(name("oaep-decrypt-key"), move |config| {
-            let message = random::<32>();
-            let new =
-                |der: &Vec<u8>| rsa::DecryptingKey::from_pkcs8(&rsa::OAEP_SHA256, der).unwrap();
-            // Each key with a ciphertext of its own.
-            let keys = rsa_keys(size).each_ref().map(|ders| {
-                ders.iter()
-                    .map(|der| {
-                        let c = new(der).public_key().encrypt(&message, b"").unwrap();
-                        (der.clone(), c.as_ref().to_vec())
-                    })
-                    .collect()
-            });
-            let build = |(der, c): &(Vec<u8>, Vec<u8>)| (new(der), c.clone());
-            measure_built(config, &keys, build, |(key, c)| key.decrypt(c, b""))
+            // Every key has the same public key, so one ciphertext serves.
+            let c = decrypting(&rsa_keys(size)[0][0])
+                .public_key()
+                .encrypt(&random::<32>(), b"")
+                .unwrap();
+            measure_built(config, rsa_keys(size), decrypting, |key| {
+                key.decrypt(c.as_ref(), b"")
+            })
         }));
         cases.push(case(name("oaep-decrypt-ciphertext"), move |config| {
-            let key =
-                rsa::DecryptingKey::from_pkcs8(&rsa::OAEP_SHA256, &rsa_keys(size)[0][0]).unwrap();
+            let key = decrypting(&rsa_keys(size)[0][0]);
             let public = key.public_key();
             let encrypt = || {
                 public
@@ -525,26 +521,18 @@ const RSA_SIZES: [(u32, rsa::KeySize); 3] = [
     (4096, rsa::KeySize::Rsa4096),
 ];
 
-/// PKCS#8 encodings of RSA keys of `size`, generated once. The random keys
-/// encode to the fixed key's length, since a component's length is public in
-/// practice and would otherwise be what the parse's time depends on.
+/// PKCS#1 encodings of RSA keys of `size` that share one public key (see
+/// [`crate::rsa_keys`]), generated once: the fixed class one of them, the
+/// random class the others in turn.
 fn rsa_keys(size: rsa::KeySize) -> &'static Classes<Vec<u8>> {
     static KEYS: [OnceLock<Classes<Vec<u8>>>; 3] = [const { OnceLock::new() }; 3];
     let i = RSA_SIZES.iter().position(|&(_, s)| s == size).unwrap();
     KEYS[i].get_or_init(|| {
-        let generate = || {
-            signature::RsaKeyPair::generate(size)
-                .unwrap()
-                .to_pkcs8()
-                .as_ref()
-                .to_vec()
-        };
-        let fixed_key = generate();
-        let len = fixed_key.len();
-        classes(RSA_KEYS, fixed(fixed_key), || {
-            std::iter::repeat_with(generate)
-                .find(|der| der.len() == len)
-                .unwrap()
+        let pkcs8 = signature::RsaKeyPair::generate(size).unwrap().to_pkcs8();
+        let keys = crate::rsa_keys::variants(pkcs8.as_ref());
+        let mut others = keys[1..].iter().cycle();
+        classes(RSA_KEYS, fixed(keys[0].clone()), || {
+            others.next().unwrap().clone()
         })
     })
 }

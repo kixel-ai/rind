@@ -3209,6 +3209,8 @@ dependencies = [
 name = "rind-timing"
 version = "0.1.0"
 dependencies = [
+ "num-bigint",
+ "num-integer",
  "rind",
 ]
 

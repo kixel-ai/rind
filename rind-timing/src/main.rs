@@ -4,6 +4,7 @@
 mod cases;
 mod dudect;
 mod marvin;
+mod rsa_keys;
 
 use std::process::ExitCode;
 
