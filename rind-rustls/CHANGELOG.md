@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.1](https://github.com/moq-dev/rind/compare/rind-rustls-v0.23.0...rind-rustls-v0.23.1) - 2026-11-07
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.23.0](https://github.com/moq-dev/rind/compare/rind-rustls-v0.2.0...rind-rustls-v0.23.0) - 2026-11-07
+
+### Added
+
+- [**breaking**] each adapter's version matches the upstream it adapts ([#440](https://github.com/moq-dev/rind/pull/440))
+
+### Other
+
+- *(release)* ship rind as 0.2.1, not 0.3.0 ([#457](https://github.com/moq-dev/rind/pull/457))
+- test iOS in the simulator and Android under cross ([#432](https://github.com/moq-dev/rind/pull/432))
+
+## [0.2.0](https://github.com/moq-dev/rind/compare/rind-rustls-v0.1.13...rind-rustls-v0.2.0) - 2026-11-06
+
+### Added
+
+- [**breaking**] audit rind's public API, and apply its decisions, before 0.2.0 ([#383](https://github.com/moq-dev/rind/pull/383))
+
+### Fixed
+
+- *(adapters)* [**breaking**] return each adapter's own MissingFeature, not rind's ([#420](https://github.com/moq-dev/rind/pull/420))
+
+### Other
+
+- *(sha256)* [**breaking**] finish SHA-NI hashes in registers, and digest contexts by reference ([#352](https://github.com/moq-dev/rind/pull/352))
+
+## [0.1.13](https://github.com/moq-dev/rind/compare/rind-rustls-v0.1.12...rind-rustls-v0.1.13) - 2026-11-05
+
+### Added
+
+- *(rind-rustls)* build a lean provider from per-algorithm exports ([#332](https://github.com/moq-dev/rind/pull/332))
+
+### Other
+
+- add rind logos and credit upstream projects ([#313](https://github.com/moq-dev/rind/pull/313))
+
 ## [0.1.12](https://github.com/moq-dev/rind/compare/rind-rustls-v0.1.11...rind-rustls-v0.1.12) - 2026-11-03
 
 ### Other

@@ -71,11 +71,13 @@ fn bench_chacha20poly1305(c: &mut Criterion) {
             let key = chacha20poly1305::ChaCha20Poly1305::new_from_slice(&key).unwrap();
             b.iter(|| test_rc_chacha(&key, &nonce, &aad, &mut buf));
         });
-        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
-            use rind::aead::{CHACHA20_POLY1305, Key};
-            let key = Key::new(&CHACHA20_POLY1305, &key).unwrap();
-            b.iter(|| test_rind_chacha(&key, &nonce, &aad, &mut buf));
-        });
+        for (lib, _dit) in criterion::rind_rows() {
+            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
+                use rind::aead::{CHACHA20_POLY1305, Key};
+                let key = Key::new(&CHACHA20_POLY1305, &key).unwrap();
+                b.iter(|| test_rind_chacha(&key, &nonce, &aad, &mut buf));
+            });
+        }
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
             let key = graviola::aead::ChaCha20Poly1305::new(key);

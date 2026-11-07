@@ -6,6 +6,9 @@ set -e
 # Run it in `nix develop .#ctgrind`, which has the libclang and valgrind
 # headers crabgrind builds with.
 #
+# Set `RUSTFLAGS='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'`
+# on x86_64 to check the portable backend, as `just portable` tests it.
+#
 # Pass `--target armv7-unknown-linux-gnueabihf` on a host that executes
 # 32-bit ARM natively, such as an arm64 one, with an armhf valgrind.
 # Valgrind passes `AT_HWCAP2` only to ppc64 programs (3.22 through 3.28), so
@@ -15,8 +18,8 @@ set -e
 #
 # Valgrind (through 3.27) decodes no AVX-512, VAES, VPCLMULQDQ, or SHA
 # instruction and hides them from `cpuid`, so rind's AES-GCM on VAES, SHA-1
-# and SHA-256 on the SHA extensions, and AVX-512 ML-KEM and RSA go unchecked
-# here. `admin/ct-sde` checks them under Intel SDE, all but ML-KEM, whose
+# and SHA-256 on the SHA extensions, SHA-384 and SHA-512 on the SHA512
+# instructions, and AVX-512 ML-KEM and RSA go unchecked here. `admin/ct-sde` checks them under Intel SDE, all but ML-KEM, whose
 # AVX-512 code samples only the public matrix.
 #
 # Release builds keep line tables so memcheck names inlined frames, which
@@ -52,6 +55,14 @@ esac
 # `RUSTFLAGS='--cfg rind_cpu_disable'` for `--release`, for those.
 export VALGRIND_BUG_494162=1
 export CARGO_PROFILE_RELEASE_DEBUG=line-tables-only
+
+# Valgrind (through 3.27) decodes no read or write of aarch64's DIT register.
+# It hides DIT from `AT_HWCAP`, but rind also finds DIT from each core's
+# `MIDR_EL1`, so this denies it. A release build takes the denial only with
+# `--cfg rind_cpu_disable`, and a set `RUSTFLAGS` replaces this variable, so
+# a caller that sets `RUSTFLAGS` includes the cfg.
+export RIND_CPU_DISABLE_dit=1
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="--cfg rind_cpu_disable"
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER="$self --run"

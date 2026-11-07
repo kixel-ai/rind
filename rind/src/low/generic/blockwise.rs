@@ -15,18 +15,6 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
-    pub(crate) const fn used(&self) -> usize {
-        self.used
-    }
-
-    pub(crate) fn add(&mut self, bytes: &[u8]) {
-        if self.used == 0 {
-            self.add_trailing(bytes);
-        } else {
-            self.add_leading(bytes);
-        }
-    }
-
     /// Adds `bytes`, passing each run of whole blocks to `state` in order and
     /// holding the rest: what is short of a whole block, or the last whole
     /// block until more follows, so a hash can compress it with its padding
@@ -64,6 +52,12 @@ impl<const N: usize> Blockwise<N> {
         self.used = rest.len();
     }
 
+    // Only Poly1305 uses it.
+    #[cfg(any(
+        rind_backend = "x86_64",
+        all(rind_backend = "portable", target_pointer_width = "64"),
+        all(rind_backend = "aarch64", test)
+    ))]
     pub(crate) fn add_leading<'a>(&mut self, bytes: &'a [u8]) -> &'a [u8] {
         if self.used == 0 {
             return bytes;
@@ -77,6 +71,12 @@ impl<const N: usize> Blockwise<N> {
         returned
     }
 
+    // Only Poly1305 uses it.
+    #[cfg(any(
+        rind_backend = "x86_64",
+        all(rind_backend = "portable", target_pointer_width = "64"),
+        all(rind_backend = "aarch64", test)
+    ))]
     pub(crate) fn take(&mut self) -> Option<[u8; N]> {
         if self.used == N {
             self.used = 0;
@@ -87,7 +87,11 @@ impl<const N: usize> Blockwise<N> {
     }
 
     // Only Poly1305's tail reads it.
-    #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
+    #[cfg(any(
+        rind_backend = "x86_64",
+        all(rind_backend = "portable", target_pointer_width = "64"),
+        all(rind_backend = "aarch64", test)
+    ))]
     pub(crate) fn peek_remaining(&self) -> Option<&[u8]> {
         if self.used > 0 {
             Some(&self.buffer[..self.used])
@@ -101,6 +105,12 @@ impl<const N: usize> Blockwise<N> {
         &self.buffer[..self.used]
     }
 
+    // Only Poly1305 uses it.
+    #[cfg(any(
+        rind_backend = "x86_64",
+        all(rind_backend = "portable", target_pointer_width = "64"),
+        all(rind_backend = "aarch64", test)
+    ))]
     pub(crate) fn add_trailing(&mut self, trailing: &[u8]) {
         self.buffer[..trailing.len()].copy_from_slice(trailing);
         self.used += trailing.len();
@@ -116,27 +126,12 @@ pub(crate) trait UpdateBlocks {
     fn update_blocks(&mut self, blocks: &[u8]);
 }
 
-/// Compresses the end of `message` for a Merkle-Damgard hash of `N`-byte
-/// blocks, padded with a 0x80 byte, zeroes, and `length`, through `compress`,
-/// which takes whole blocks.
-pub(crate) fn compress_padded<const N: usize, const L: usize>(
-    message: &[u8],
-    length: [u8; L],
-    mut compress: impl FnMut(&[u8]),
-) {
-    let (blocks, rest) = split_tail::<N, L>(message);
-    if !blocks.is_empty() {
-        compress(blocks);
-    }
-    let mut last = [[0u8; N]; 2];
-    compress(pad(rest, length, &mut last));
-}
-
-/// Splits `message` as [`compress_padded`] compresses it: the whole blocks
-/// to compress first, then the rest, under two blocks, to pad. Where the
-/// padding fits after the message's last whole block, the rest takes that
-/// block too, so one call compresses both, and the routine's entry and exit
-/// and the chaining value's trip through memory come once fewer.
+/// Splits the end of `message`, for a Merkle-Damgard hash of `N`-byte blocks
+/// closed by an `L`-byte length: the whole blocks to compress first, then the
+/// rest, under two blocks, for [`pad`]. Where the padding fits after the
+/// message's last whole block, the rest takes that block too, so one call
+/// compresses both, and the routine's entry and exit and the chaining value's
+/// trip through memory come once fewer.
 pub(crate) fn split_tail<const N: usize, const L: usize>(message: &[u8]) -> (&[u8], &[u8]) {
     let tail = message.len() % N;
     let start = if tail + 1 + L <= N && message.len() >= N {
@@ -145,19 +140,6 @@ pub(crate) fn split_tail<const N: usize, const L: usize>(message: &[u8]) -> (&[u
         message.len() - tail
     };
     message.split_at(start)
-}
-
-/// Pads `message` as [`compress_padded`] does, for a routine that takes the
-/// padding as a run of blocks of its own: returns the message's whole blocks,
-/// then its tail padded in `last`.
-#[cfg(target_arch = "x86_64")]
-pub(crate) fn pad_message<'m, 'l, const N: usize, const L: usize>(
-    message: &'m [u8],
-    length: [u8; L],
-    last: &'l mut [[u8; N]; 2],
-) -> (&'m [u8], &'l [u8]) {
-    let (blocks, rest) = message.split_at(message.len() / N * N);
-    (blocks, pad(rest, length, last))
 }
 
 /// `rest`, under two blocks, padded in `last`, which must be zeroed.
@@ -176,4 +158,17 @@ pub(crate) fn pad<'l, const N: usize, const L: usize>(
     last[rest.len()] = 0x80;
     last[padded - L..].copy_from_slice(&length);
     last
+}
+
+/// SHA-256's digest of its chaining value `h`: each word, big-endian.
+// Indexes rather than zipping `as_chunks_mut`, which Aeneas cannot translate,
+// so `proofs/` can prove the encoding. Inline, so the digest is written where
+// its caller keeps it, rather than returned through memory a copy then loads.
+#[inline(always)]
+pub(crate) fn sha256_digest(h: &[u32; 8]) -> [u8; 32] {
+    let mut r = [0u8; 32];
+    for (i, word) in h.iter().enumerate() {
+        r[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
+    }
+    r
 }

@@ -144,7 +144,7 @@ impl Context {
     }
 
     /// Returns the digest of the message.
-    pub fn finish(self) -> Digest {
+    pub fn finish(mut self) -> Digest {
         Digest::new(self.algorithm, self.inner.finish().as_ref())
     }
 

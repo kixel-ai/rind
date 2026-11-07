@@ -5,11 +5,15 @@
 //! where an [`Expect`] names a difference by design, and every key rind loads
 //! must re-encode to input both load again as the same key.
 
+use aws_lc_rs::agreement::ParsedPublicKeyFormat as Format;
 use aws_lc_rs::encoding::{AsBigEndian, AsDer};
 use aws_lc_rs::signature::KeyPair as _;
-use aws_lc_rs::{kem as their_kem, rsa as their_rsa, signature as theirs};
-use der::{element, elements, sequence, spki, trailing};
+use aws_lc_rs::{
+    agreement as theirs_ecdh, kem as their_kem, rsa as their_rsa, signature as theirs,
+};
+use der::{element, elements, sequence, spki, spki_parameters, trailing};
 use libfuzzer_sys::fuzz_target;
+use rind::agreement as ours_ecdh;
 use rind::kem as our_kem;
 use rind::signature::{self as ours, sign, verify};
 
@@ -54,6 +58,29 @@ fuzz_target!(|data: &[u8]| {
         21 => ed25519_seed(input),
         22 => ed25519_public(input),
         23 => mlkem_public(input),
+        24 => ecdh_scalar(&X25519, input),
+        25 => ecdh_scalar(&P256.ecdh, input),
+        26 => ecdh_scalar(&P384.ecdh, input),
+        27 => ecdh_scalar(&P521.ecdh, input),
+        28 => x25519_pkcs8(input),
+        29 => ecdsa_spki(&P256, input),
+        30 => ecdsa_spki(&P384, input),
+        31 => ecdsa_spki(&P521, input),
+        32 => ed25519_spki(input),
+        33 => rsa_spki(&RSA_2048, input),
+        34 => ecdh_public(&X25519, input),
+        35 => ecdh_public(&P256.ecdh, input),
+        36 => ecdh_public(&P384.ecdh, input),
+        37 => ecdh_public(&P521.ecdh, input),
+        38 => ecdh_spki(&X25519, input),
+        39 => ecdh_spki(&P256.ecdh, input),
+        40 => ecdh_spki(&P384.ecdh, input),
+        41 => ecdh_spki(&P521.ecdh, input),
+        42 => agree_ed25519(
+            ours::Ed25519KeyPair::from_seed(input),
+            theirs::Ed25519KeyPair::from_seed_unchecked(input),
+            Expect::Agree,
+        ),
         _ => {}
     }
 });
@@ -61,6 +88,7 @@ fuzz_target!(|data: &[u8]| {
 /// One curve's algorithms on each side, and its scalar's length.
 struct Curve {
     ours: &'static ours::EcdsaSigningAlgorithm,
+    ecdh: Ecdh,
     ours_verify: &'static ours::VerificationAlgorithm,
     theirs: &'static theirs::EcdsaSigningAlgorithm,
     theirs_verify: &'static theirs::EcdsaVerificationAlgorithm,
@@ -68,6 +96,11 @@ struct Curve {
 }
 
 const P256: Curve = Curve {
+    ecdh: Ecdh {
+        ours: &ours_ecdh::ECDH_P256,
+        theirs: &theirs_ecdh::ECDH_P256,
+        scalar_len: 32,
+    },
     ours: &sign::ECDSA_P256_SHA256_ASN1,
     ours_verify: &verify::ECDSA_P256_SHA256_ASN1,
     theirs: &theirs::ECDSA_P256_SHA256_ASN1_SIGNING,
@@ -76,6 +109,11 @@ const P256: Curve = Curve {
 };
 
 const P384: Curve = Curve {
+    ecdh: Ecdh {
+        ours: &ours_ecdh::ECDH_P384,
+        theirs: &theirs_ecdh::ECDH_P384,
+        scalar_len: 48,
+    },
     ours: &sign::ECDSA_P384_SHA384_ASN1,
     ours_verify: &verify::ECDSA_P384_SHA384_ASN1,
     theirs: &theirs::ECDSA_P384_SHA384_ASN1_SIGNING,
@@ -84,11 +122,36 @@ const P384: Curve = Curve {
 };
 
 const P521: Curve = Curve {
+    ecdh: Ecdh {
+        ours: &ours_ecdh::ECDH_P521,
+        theirs: &theirs_ecdh::ECDH_P521,
+        scalar_len: 66,
+    },
     ours: &sign::ECDSA_P521_SHA512_ASN1,
     ours_verify: &verify::ECDSA_P521_SHA512_ASN1,
     theirs: &theirs::ECDSA_P521_SHA512_ASN1_SIGNING,
     theirs_verify: &theirs::ECDSA_P521_SHA512_ASN1,
     scalar_len: 66,
+};
+
+/// An agreement algorithm on each side, and its scalar's length.
+struct Ecdh {
+    ours: &'static ours_ecdh::Algorithm,
+    theirs: &'static theirs_ecdh::Algorithm,
+    scalar_len: usize,
+}
+
+impl Ecdh {
+    /// Whether this is a NIST curve's, whose points have X9.62's forms.
+    fn nist(&self) -> bool {
+        self.theirs != &theirs_ecdh::X25519
+    }
+}
+
+const X25519: Ecdh = Ecdh {
+    ours: &ours_ecdh::X25519,
+    theirs: &theirs_ecdh::X25519,
+    scalar_len: 32,
 };
 
 /// An RSA verification algorithm on each side, and its smallest modulus.
@@ -200,7 +263,28 @@ fn ecdsa_pkcs8(curve: &Curve, input: &[u8]) {
     let theirs = theirs::EcdsaKeyPair::from_pkcs8(curve.theirs, input);
     let point = pkcs8_private_key(input).and_then(sec1_public_key);
     let refused = trailing(input) || v2_without_public_key(input) || point.is_some_and(hybrid);
+    let ecdh = ours_ecdh::PrivateKey::from_pkcs8(curve.ecdh.ours, input);
+    same_key(&ours, &ecdh);
     agree_ecdsa(curve, ours, theirs, refused.into());
+}
+
+/// An agreement key loads exactly the encodings an ECDSA key pair does, as
+/// the same key.
+fn same_key(
+    ecdsa: &Result<ours::EcdsaKeyPair, rind::Error>,
+    ecdh: &Result<ours_ecdh::PrivateKey, rind::Error>,
+) {
+    match (ecdsa, ecdh) {
+        (Ok(ecdsa), Ok(ecdh)) => {
+            assert_eq!(ecdsa.public_key().as_ref(), ecdh.public_key().as_ref());
+        }
+        (Err(ecdsa), Err(ecdh)) => assert_eq!(ecdsa, ecdh),
+        (ecdsa, ecdh) => panic!(
+            "ECDSA: {:?}, ECDH: {:?}",
+            ecdsa.as_ref().err(),
+            ecdh.as_ref().err()
+        ),
+    }
 }
 
 fn ecdsa_sec1(curve: &Curve, input: &[u8]) {
@@ -210,14 +294,62 @@ fn ecdsa_sec1(curve: &Curve, input: &[u8]) {
     // of the two it holds.
     let pkcs8 = theirs::EcdsaKeyPair::from_pkcs8(curve.theirs, input).is_ok();
     let refused = pkcs8 || trailing(input) || sec1_public_key(input).is_some_and(hybrid);
+    let ecdh = ours_ecdh::PrivateKey::from_sec1(curve.ecdh.ours, input);
+    same_key(&ours, &ecdh);
     agree_ecdsa(curve, ours, theirs, refused.into());
+}
+
+fn ecdh_scalar(ecdh: &Ecdh, input: &[u8]) {
+    let (ours_algorithm, theirs_algorithm) = (ecdh.ours, ecdh.theirs);
+    let ours = ours_ecdh::PrivateKey::from_scalar(ours_algorithm, input);
+    let theirs = theirs_ecdh::PrivateKey::from_private_key(theirs_algorithm, input);
+    agree(&ours, &theirs, Expect::Agree);
+    let (Ok(ours), Ok(theirs)) = (ours, theirs) else {
+        return;
+    };
+    let theirs_public = theirs.compute_public_key().unwrap();
+    assert_eq!(ours.public_key().as_ref(), theirs_public.as_ref());
+    assert_eq!(ours.to_scalar().as_ref(), input);
+
+    // PKCS#8 loads again as the same key, on both sides for a NIST curve,
+    // whose PKCS#8 aws-lc-rs takes.
+    let pkcs8 = ours.to_pkcs8();
+    let again = ours_ecdh::PrivateKey::from_pkcs8(ours_algorithm, pkcs8.as_ref()).unwrap();
+    assert_eq!(again.public_key().as_ref(), theirs_public.as_ref());
+    if theirs_algorithm != &theirs_ecdh::X25519 {
+        let theirs =
+            theirs_ecdh::PrivateKey::from_private_key_der(theirs_algorithm, pkcs8.as_ref())
+                .unwrap();
+        assert_eq!(
+            theirs.compute_public_key().unwrap().as_ref(),
+            theirs_public.as_ref()
+        );
+    }
+}
+
+/// aws-lc-rs's agreement API takes no X25519 PKCS#8, so this checks that a
+/// key rind loads re-encodes to input it loads again as the same key, and
+/// to the input itself for a v1 document of only its three required fields,
+/// with nothing after it: attributes, which the loader skips, are not
+/// written back.
+fn x25519_pkcs8(input: &[u8]) {
+    let Ok(ours) = ours_ecdh::PrivateKey::from_pkcs8(&ours_ecdh::X25519, input) else {
+        return;
+    };
+    let pkcs8 = ours.to_pkcs8();
+    let again = ours_ecdh::PrivateKey::from_pkcs8(&ours_ecdh::X25519, pkcs8.as_ref()).unwrap();
+    assert_eq!(again.public_key().as_ref(), ours.public_key().as_ref());
+    let fields: Vec<_> = elements(sequence(input).unwrap()).collect();
+    if fields.len() == 3 && fields[0] == (0x02, &[0][..]) && !trailing(input) {
+        assert_eq!(pkcs8.as_ref(), input);
+    }
 }
 
 fn ecdsa_scalar(curve: &Curve, input: &[u8]) {
     let Some((scalar, point)) = split(input) else {
         return;
     };
-    let ours = ours::EcdsaKeyPair::from_private_key_and_public_key(curve.ours, scalar, point);
+    let ours = ours::EcdsaKeyPair::from_scalar_and_public_key(curve.ours, scalar, point);
     let theirs = theirs::EcdsaKeyPair::from_private_key_and_public_key(curve.theirs, scalar, point);
     // aws-lc-rs takes leading zeros added or stripped, though its docs
     // require the curve's length.
@@ -253,18 +385,25 @@ fn agree_ecdsa(
         ours.to_spki().as_ref(),
         theirs.public_key().as_der().unwrap().as_ref()
     );
+    let sec1 = ours.to_sec1();
+    let again = ours::EcdsaKeyPair::from_sec1(curve.ours, sec1.as_ref()).unwrap();
+    assert_eq!(again.public_key().as_ref(), point);
+    assert_eq!(
+        sec1.as_ref(),
+        theirs.private_key().as_der().unwrap().as_ref()
+    );
 
     // The scalar loads with the point uncompressed or compressed.
     let scalar = ours.to_scalar();
     let (x, y) = point[1..].split_at(point.len() / 2);
     let compressed = [&[0x02 | (y[y.len() - 1] & 1)][..], x].concat();
     for point in [point, &compressed] {
-        ours::EcdsaKeyPair::from_private_key_and_public_key(curve.ours, scalar.as_ref(), point)
-            .unwrap();
+        ours::EcdsaKeyPair::from_scalar_and_public_key(curve.ours, scalar.as_ref(), point).unwrap();
         theirs::EcdsaKeyPair::from_private_key_and_public_key(curve.theirs, scalar.as_ref(), point)
             .unwrap();
     }
     ecdsa_public(curve, point);
+    ecdsa_spki(curve, ours.to_spki().as_ref());
 }
 
 fn ecdsa_public(curve: &Curve, input: &[u8]) {
@@ -332,7 +471,11 @@ fn their_rsa_public(rsa: &Rsa, der: &[u8]) -> Result<their_rsa::PublicKey, &'sta
 fn rsa_public(rsa: &Rsa, input: &[u8]) {
     let ours = ours::PublicKey::new(rsa.ours, input);
     let theirs = their_rsa_public(rsa, input);
-    agree(&ours, &theirs, (spki(input) || trailing(input)).into());
+    agree(
+        &ours,
+        &theirs,
+        (spki_parameters(input) || trailing(input)).into(),
+    );
     let Ok(ours) = ours else {
         return;
     };
@@ -346,7 +489,7 @@ fn rsa_components(rsa: &Rsa, input: &[u8]) {
     let Some((n, e)) = split(input) else {
         return;
     };
-    let ours = ours::RsaPublicKeyComponents { n, e }.to_public_key(rsa.ours);
+    let ours = ours::PublicKey::from_components(rsa.ours, &rind::rsa::PublicKeyComponents { n, e });
     // aws-lc-rs checks components only when it verifies, so their key is the
     // same components as DER. Both refuse an empty component or a leading
     // zero, which DER cannot carry.
@@ -370,11 +513,11 @@ fn rsa_reencode(rsa: &Rsa, key: &ours::PublicKey) {
 
     let theirs = their_rsa::PublicKey::from_der(key.as_ref()).unwrap();
     let (n, e) = (theirs.modulus(), theirs.exponent());
-    let components = ours::RsaPublicKeyComponents {
+    let components = rind::rsa::PublicKeyComponents {
         n: n.big_endian_without_leading_zero(),
         e: e.big_endian_without_leading_zero(),
     };
-    let again = components.to_public_key(rsa.ours).unwrap();
+    let again = ours::PublicKey::from_components(rsa.ours, &components).unwrap();
     assert_eq!(again.as_ref(), key.as_ref());
 }
 
@@ -445,9 +588,16 @@ fn agree_ed25519(
         ours.to_spki().as_ref(),
         theirs.public_key().as_der().unwrap().as_ref()
     );
-    ours::Ed25519KeyPair::from_seed_and_public_key(ours.to_seed().as_ref(), public.as_ref())
-        .unwrap();
+    let pkcs8v1 = ours.to_pkcs8v1();
+    assert_eq!(pkcs8v1.as_ref(), theirs.to_pkcs8v1().unwrap().as_ref());
+    let again = ours::Ed25519KeyPair::from_pkcs8(pkcs8v1.as_ref()).unwrap();
+    assert_eq!(again.public_key().as_ref(), public.as_ref());
+    let seed = ours.to_seed();
+    ours::Ed25519KeyPair::from_seed_and_public_key(seed.as_ref(), public.as_ref()).unwrap();
+    let again = ours::Ed25519KeyPair::from_seed(seed.as_ref()).unwrap();
+    assert_eq!(again.public_key().as_ref(), public.as_ref());
     ed25519_public(public.as_ref());
+    ed25519_spki(ours.to_spki().as_ref());
 }
 
 fn ed25519_public(input: &[u8]) {
@@ -465,6 +615,171 @@ fn ed25519_public(input: &[u8]) {
     };
     assert_eq!(ours.as_ref(), input);
     ours::PublicKey::new(&verify::ED25519, ours.as_ref()).unwrap();
+}
+
+fn ed25519_spki(input: &[u8]) {
+    let ours = ours::PublicKey::from_spki(&verify::ED25519, input);
+    let theirs = theirs::ParsedPublicKey::new(&theirs::ED25519, input);
+    // aws-lc-rs takes any 32 bytes as a bare key, and checks the point only
+    // when it verifies.
+    let expect = match input.len() {
+        32 => Expect::Refused,
+        _ => Expect::Stricter,
+    };
+    agree(&ours, &theirs, expect);
+    let Ok(ours) = ours else {
+        return;
+    };
+    let spki = ours.to_spki();
+    assert_eq!(spki.as_ref(), theirs.unwrap().as_der().unwrap().as_ref());
+    let again = ours::PublicKey::from_spki(&verify::ED25519, spki.as_ref()).unwrap();
+    assert_eq!(again.as_ref(), ours.as_ref());
+    ed25519_public(ours.as_ref());
+}
+
+fn ecdsa_spki(curve: &Curve, input: &[u8]) {
+    let ours = ours::PublicKey::from_spki(curve.ours_verify, input);
+    let theirs = theirs::ParsedPublicKey::new(curve.theirs_verify, input);
+    // aws-lc-rs takes a bare point here too, and a curve's explicit
+    // parameters in place of its name.
+    let refused = !spki(input)
+        || trailing(input)
+        || explicit_curve(input)
+        || spki_point(input).is_some_and(hybrid);
+    agree(&ours, &theirs, refused.into());
+    let Ok(ours) = ours else {
+        return;
+    };
+
+    // The point is aws-lc-rs's, uncompressed, and each encoding of it loads
+    // again on both sides as the same key.
+    same_peer(&curve.ecdh, ours.as_ref(), input);
+    let again = ours::PublicKey::new(curve.ours_verify, ours.as_ref()).unwrap();
+    assert_eq!(again.as_ref(), ours.as_ref());
+    let spki = ours.to_spki();
+    let again = ours::PublicKey::from_spki(curve.ours_verify, spki.as_ref()).unwrap();
+    assert_eq!(again.as_ref(), ours.as_ref());
+    let theirs = theirs::ParsedPublicKey::new(curve.theirs_verify, spki.as_ref()).unwrap();
+    assert_eq!(theirs.as_der().unwrap().as_ref(), spki.as_ref());
+}
+
+fn rsa_spki(rsa: &Rsa, input: &[u8]) {
+    let ours = ours::PublicKey::from_spki(rsa.ours, input);
+    let theirs = their_rsa_public(rsa, input);
+    // aws-lc-rs takes PKCS#1's `RSAPublicKey` here too.
+    let refused = !spki(input) || spki_parameters(input) || trailing(input);
+    agree(&ours, &theirs, refused.into());
+    let Ok(ours) = ours else {
+        return;
+    };
+    assert_eq!(ours.as_ref(), theirs.unwrap().as_ref());
+    let spki = ours.to_spki();
+    let again = ours::PublicKey::from_spki(rsa.ours, spki.as_ref()).unwrap();
+    assert_eq!(again.as_ref(), ours.as_ref());
+    rsa_reencode(rsa, &ours);
+}
+
+fn ecdh_public(ecdh: &Ecdh, input: &[u8]) {
+    let ours = ours_ecdh::PublicKey::new(ecdh.ours, input);
+    let theirs = their_ecdh_public(ecdh, input);
+    // aws-lc-rs takes a `SubjectPublicKeyInfo` here too.
+    let refused = theirs
+        .as_ref()
+        .is_ok_and(|key| matches!(key.format(), Format::X509 | Format::Hybrid));
+    agree(&ours, &theirs, refused.into());
+    let Ok(ours) = ours else {
+        return;
+    };
+    if input.first() == Some(&4) || !ecdh.nist() {
+        assert_eq!(ours.as_ref(), input);
+    }
+    ecdh_reencode(ecdh, &ours, input);
+}
+
+fn ecdh_spki(ecdh: &Ecdh, input: &[u8]) {
+    let ours = ours_ecdh::PublicKey::from_spki(ecdh.ours, input);
+    let theirs = their_ecdh_public(ecdh, input);
+    // aws-lc-rs takes a bare point here too, and a curve's explicit
+    // parameters in place of its name. rind takes WebCrypto's id-ecDH,
+    // whatever aws-lc-rs makes of it.
+    let refused = theirs
+        .as_ref()
+        .is_ok_and(|key| key.format() != Format::X509)
+        || trailing(input)
+        || explicit_curve(input)
+        || ecdh.nist() && spki_point(input).is_some_and(hybrid);
+    if !id_ecdh(input) {
+        agree(&ours, &theirs, refused.into());
+    }
+    let Ok(ours) = ours else {
+        return;
+    };
+    ecdh_reencode(ecdh, &ours, spki_point(input).unwrap());
+}
+
+/// aws-lc-rs's agreement key from `input`, which it takes as a
+/// `SubjectPublicKeyInfo` or a bare point.
+fn their_ecdh_public(
+    ecdh: &Ecdh,
+    input: &[u8],
+) -> Result<theirs_ecdh::ParsedPublicKey, aws_lc_rs::error::KeyRejected> {
+    theirs_ecdh::UnparsedPublicKey::new(ecdh.theirs, input).try_into()
+}
+
+/// `key`, which rind loaded from the bare point `point`, is aws-lc-rs's key
+/// for the point, and each of its encodings loads again on both sides as
+/// itself.
+fn ecdh_reencode(ecdh: &Ecdh, key: &ours_ecdh::PublicKey, point: &[u8]) {
+    same_peer(ecdh, key.as_ref(), point);
+    let again = ours_ecdh::PublicKey::new(ecdh.ours, key.as_ref()).unwrap();
+    assert_eq!(again.as_ref(), key.as_ref());
+    let spki = key.to_spki();
+    let again = ours_ecdh::PublicKey::from_spki(ecdh.ours, spki.as_ref()).unwrap();
+    assert_eq!(again.as_ref(), key.as_ref());
+    let theirs = their_ecdh_public(ecdh, spki.as_ref()).unwrap();
+    assert!(theirs.format() == Format::X509);
+}
+
+/// Whether rind's key `ours` and aws-lc-rs's key from `theirs`, in any form
+/// it takes, are the same key: each agrees on the same secret with a private
+/// key of all 0x01 bytes, or both refuse.
+fn same_peer(ecdh: &Ecdh, ours: &[u8], theirs: &[u8]) {
+    let scalar = vec![1; ecdh.scalar_len];
+    let ours = ours_ecdh::PrivateKey::from_scalar(ecdh.ours, &scalar)
+        .unwrap()
+        .agree(ours);
+    let private = theirs_ecdh::PrivateKey::from_private_key(ecdh.theirs, &scalar).unwrap();
+    let peer = theirs_ecdh::UnparsedPublicKey::new(ecdh.theirs, theirs);
+    let theirs = theirs_ecdh::agree(&private, peer, "refused", |secret| Ok(secret.to_vec()));
+    agree(&ours, &theirs, Expect::Agree);
+    if let (Ok(ours), Ok(theirs)) = (ours, theirs) {
+        assert_eq!(ours.as_ref(), theirs);
+    }
+}
+
+/// The point in the `SubjectPublicKeyInfo` `input`.
+fn spki_point(input: &[u8]) -> Option<&[u8]> {
+    let (tag, bits) = elements(sequence(input)?).nth(1)?;
+    (tag == 0x03).then_some(bits)?.strip_prefix(&[0])
+}
+
+/// The object identifier and parameters of the `SubjectPublicKeyInfo`
+/// `input`'s algorithm.
+fn spki_algorithm(input: &[u8]) -> Option<(&[u8], &[u8])> {
+    let (tag, oid, parameters) = element(sequence(sequence(input)?)?)?;
+    (tag == 0x06).then_some((oid, parameters))
+}
+
+/// Whether the `SubjectPublicKeyInfo` `input` gives its curve's parameters
+/// in place of its name, which aws-lc-rs takes for a curve it knows.
+fn explicit_curve(input: &[u8]) -> bool {
+    spki_algorithm(input).is_some_and(|(_, parameters)| parameters.first() == Some(&0x30))
+}
+
+/// Whether the `SubjectPublicKeyInfo` `input` names id-ecDH, which WebCrypto
+/// takes for an ECDH key.
+fn id_ecdh(input: &[u8]) -> bool {
+    spki_algorithm(input).is_some_and(|(oid, _)| oid == [0x2b, 0x81, 0x04, 0x01, 0x0c])
 }
 
 fn mlkem_public(input: &[u8]) {

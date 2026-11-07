@@ -6,7 +6,7 @@
 //! Its collision resistance is broken, so it must not be used where that
 //! matters, such as in signatures.
 
-use crate::low::{Blockwise, Entry, UpdateBlocks, compress_padded};
+use crate::low::{Blockwise, Entry, UpdateBlocks};
 
 /// SHA1's chaining value after a whole number of blocks.
 ///
@@ -47,14 +47,14 @@ impl Sha1State {
         // two stores, which the SHA extensions' 16-byte load of it then
         // waits on instead of forwarding.
         let mut h = self.h;
-        compress_padded::<BLOCK_SZ, _>(message, bits.to_be_bytes(), |blocks| {
-            Self::compress(&mut h, blocks)
-        });
+        Entry::assert_held();
+        crate::low::sha1_compress_padded(&mut h, message, bits.to_be_bytes());
 
+        // Indexes rather than zipping `as_chunks_mut`, which Aeneas cannot
+        // translate, so `proofs/` can prove the encoding.
         let mut r = [0u8; Sha1Context::OUTPUT_SZ];
-        let (chunks, _) = r.as_chunks_mut::<4>();
-        for (out, word) in chunks.iter_mut().zip(h.iter()) {
-            out.copy_from_slice(&word.to_be_bytes());
+        for (i, word) in h.iter().enumerate() {
+            r[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
         }
         r
     }

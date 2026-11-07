@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use crate::low::x86_64;
 use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSha256, HaveSsse3, is_intel};
-use crate::low::{compress_padded, pad_message};
+use crate::low::{pad, sha256_digest, split_tail};
 
 /// The SHA-256 routine this CPU runs, with the proof it may.
 #[derive(Clone, Copy)]
@@ -19,9 +19,7 @@ enum Path {
 
 pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
     match path() {
-        Path::Shaext(token) => {
-            x86_64::sha256::sha256_compress_blocks_shaext(state, blocks, &[], token)
-        }
+        Path::Shaext(token) => x86_64::sha256::sha256_compress_blocks_shaext(state, blocks, token),
         Path::Avx(token) => x86_64::sha256::sha256_compress_blocks_avx(state, blocks, token),
         Path::Avx2(token) => x86_64::sha256::sha256_compress_blocks_avx2(state, blocks, token),
         Path::Ssse3(token) => x86_64::sha256::sha256_compress_blocks_ssse3(state, blocks, token),
@@ -29,23 +27,29 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
     }
 }
 
-/// Compresses the end of `message`, padded and closed by `length`.
-pub(crate) fn sha256_compress_padded(state: &mut [u32; 8], message: &[u8], length: [u8; 8]) {
+/// The digest of `state` followed by `message`, padded and closed by `length`.
+// Out of line, so `finish_with` stays small enough to inline.
+#[inline(never)]
+pub(crate) fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -> [u8; 32] {
     match path() {
-        // The routine takes the padding as blocks of its own, so the message's
-        // whole blocks run from where they are in the same call. Joining them
-        // as the others do would copy the last, and on some cores, such as
-        // Arrow Lake, the routine's load of that copy waits for every older
-        // store, which costs more than the call it saves.
-        Path::Shaext(token) => {
-            let mut last = [[0u8; 64]; 2];
-            let (blocks, last) = pad_message(message, length, &mut last);
-            x86_64::sha256::sha256_compress_blocks_shaext(state, blocks, last, token);
+        Path::Shaext(token) => x86_64::sha256::sha256_finish_shaext(state, message, length, token),
+        _ => {
+            let mut h = *state;
+            sha256_compress_padded(&mut h, message, length);
+            sha256_digest(&h)
         }
-        _ => compress_padded::<64, 8>(message, length, |blocks| {
-            sha256_compress_blocks(state, blocks)
-        }),
     }
+}
+
+/// Compresses the end of `message`, padded and closed by `length`, on the
+/// routines that do not finish a hash themselves.
+fn sha256_compress_padded(state: &mut [u32; 8], message: &[u8], length: [u8; 8]) {
+    let (blocks, rest) = split_tail::<64, 8>(message);
+    if !blocks.is_empty() {
+        sha256_compress_blocks(state, blocks);
+    }
+    let mut last = [[0u8; 64]; 2];
+    sha256_compress_blocks(state, pad(rest, length, &mut last));
 }
 
 fn path() -> Path {
@@ -57,10 +61,10 @@ fn path() -> Path {
 fn pick() -> Path {
     if let Some(token) = HaveSha256::check() {
         Path::Shaext(token)
-    } else if let Some(token) = HaveAvx::check().filter(|_| is_intel()) {
-        Path::Avx(token)
     } else if let Some(token) = HaveAvx2::check() {
         Path::Avx2(token)
+    } else if let Some(token) = HaveAvx::check().filter(|_| is_intel()) {
+        Path::Avx(token)
     } else if let Some(token) = HaveSsse3::check() {
         Path::Ssse3(token)
     } else {

@@ -8,22 +8,24 @@ This crate provides a signing key for [rcgen](https://github.com/rustls/rcgen), 
 It generates and loads ECDSA P-256 and P-384 and Ed25519 keys, and loads RSA keys.
 
 Build rcgen with `default-features = false` so it compiles no other crypto backend.
-rcgen then needs each certificate's serial number set explicitly.
+rcgen then needs each certificate's serial number set explicitly, and
+`rind_rcgen::key_identifier` fills in the key identifiers it would otherwise leave empty.
 
 ```rust
-let key = rind_rcgen::KeyPair::generate(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
+// Refuses a CPU missing a feature rind requires.
+rind_rcgen::check()?;
 
-let mut serial = [0u8; 16];
-rind::rand::fill(&mut serial).unwrap();
+let key = rind_rcgen::KeyPair::generate(&rcgen::PKCS_ECDSA_P256_SHA256)?;
 
-let mut params = rcgen::CertificateParams::new(["localhost".to_string()]).unwrap();
-params.serial_number = Some(rcgen::SerialNumber::from_slice(&serial));
+let mut params = rcgen::CertificateParams::new(["localhost".to_string()])?;
+params.serial_number = Some(rind_rcgen::serial_number());
+params.key_identifier_method = rind_rcgen::key_identifier(&key);
 
-let cert = params.self_signed(&key).unwrap();
+let cert = params.self_signed(&key)?;
 let key = key.to_pkcs8();
 ```
 
-rind panics on a CPU missing a feature it requires, so call
-`rind::cpu::check()` before using a `KeyPair`.
+rind panics on a CPU missing a feature it requires, so call `rind_rcgen::check()`
+before using a `KeyPair`.
 
 License: Apache-2.0 OR ISC OR MIT-0

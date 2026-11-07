@@ -1,5 +1,5 @@
-//! Verification that every value owning a secret (a key, keyed state, or a
-//! shared secret) is zeroed on drop.
+//! Verification that, under the `wipe` feature, every value owning a secret
+//! (a key, keyed state, or a shared secret) is zeroed on drop.
 //!
 //! Some of this is subject to whims of the compiler, and
 //! hand-written drop impls, so we test it here.
@@ -41,7 +41,7 @@
 //!     been zeroised upon drop, even if the value was a `Key::Key128`
 //!     that only initialized half of that space.
 
-#![cfg(any(target_os = "linux", target_os = "macos"))]
+#![cfg(all(feature = "wipe", any(target_os = "linux", target_os = "macos")))]
 
 use core::mem::size_of;
 use core::ops::Deref;
@@ -55,6 +55,15 @@ fn rsa() {
     let rsa = RsaKeyPair::from_pkcs1(include_bytes!("../src/high/rsa/rsa8192.der")).unwrap();
     check_zeroed_on_drop(Box::pin(rsa.to_pkcs8()));
     check_zeroed_on_drop(Box::pin(rsa));
+}
+
+#[test]
+fn rsa_oaep() {
+    use rind::rsa::*;
+    let key =
+        DecryptingKey::from_pkcs1(&OAEP_SHA256, include_bytes!("../src/high/rsa/rsa8192.der"))
+            .unwrap();
+    check_zeroed_on_drop(Box::pin(key));
 }
 
 #[test]
@@ -77,6 +86,7 @@ fn ecdsa() {
         let key = EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).unwrap();
         check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
         check_zeroed_on_drop(Box::pin(key.to_scalar()));
+        check_zeroed_on_drop(Box::pin(key.to_sec1()));
         check_zeroed_on_drop(Box::pin(key));
     }
 }
@@ -88,7 +98,10 @@ fn ed25519() {
         Ed25519KeyPair::from_pkcs8(include_bytes!("../src/high/asn1/testdata/ed25519-p8v2.bin"))
             .unwrap();
     check_zeroed_on_drop(Box::pin(ed25519.to_pkcs8()));
+    check_zeroed_on_drop(Box::pin(ed25519.to_pkcs8v1()));
     check_zeroed_on_drop(Box::pin(ed25519.to_seed()));
+    let seed = ed25519.to_seed();
+    check_zeroed_on_drop(Box::pin(Ed25519KeyPair::from_seed(seed.as_ref()).unwrap()));
     check_zeroed_on_drop(Box::pin(ed25519));
 }
 
@@ -98,12 +111,11 @@ fn ecdh() {
     for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
         let key = PrivateKey::generate(algorithm).unwrap();
         let peer = PrivateKey::generate(algorithm).unwrap().public_key();
-        check_zeroed_on_drop(Box::pin(
-            PrivateKey::generate(algorithm)
-                .unwrap()
-                .agree(peer.as_ref())
-                .unwrap(),
-        ));
+        check_zeroed_on_drop(Box::pin(key.agree(peer.as_ref()).unwrap()));
+        check_zeroed_on_drop(Box::pin(key.to_scalar()));
+        check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
+        let loaded = PrivateKey::from_pkcs8(algorithm, key.to_pkcs8().as_ref()).unwrap();
+        check_zeroed_on_drop(Box::pin(loaded));
         check_zeroed_on_drop(Box::pin(key));
     }
 }
@@ -120,18 +132,6 @@ fn mlkem768() {
         .unwrap();
     check_zeroed_on_drop(Box::pin(decapsulated));
     check_zeroed_on_drop(Box::pin(key));
-}
-
-#[test]
-fn digest() {
-    use rind::digest::*;
-
-    for algorithm in [&legacy::SHA1, &SHA256, &SHA384, &SHA512, &SHA512_256] {
-        // A partial block leaves message bytes buffered beside the state.
-        let mut ctx = Context::new(algorithm);
-        ctx.update(&[0xffu8; 3]);
-        check_zeroed_on_drop(Box::pin(ctx));
-    }
 }
 
 #[test]
@@ -173,13 +173,27 @@ fn pbkdf2() {
 
 #[test]
 fn aead() {
-    use rind::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, RandomizedNonceKey};
+    use rind::aead::{
+        AES_128_GCM, AES_192_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, RandomizedNonceKey,
+    };
 
-    for algorithm in [&AES_128_GCM, &AES_256_GCM, &CHACHA20_POLY1305] {
+    for algorithm in [&AES_128_GCM, &AES_192_GCM, &AES_256_GCM, &CHACHA20_POLY1305] {
         let key = Key::new(algorithm, &[0xffu8; 32][..algorithm.key_len()]).unwrap();
         check_zeroed_on_drop(Box::pin(key));
     }
     check_zeroed_on_drop(Box::pin(RandomizedNonceKey::new(&[0xffu8; 32])));
+
+    use rind::aead::gcm::{self, TagLength};
+    use rind::cipher;
+    for (algorithm, len) in [
+        (&cipher::AES_128, 16),
+        (&cipher::AES_192, 24),
+        (&cipher::AES_256, 32),
+    ] {
+        let key = &[0xffu8; 32][..len];
+        let key = gcm::Key::new(algorithm, key, TagLength::Truncated32).unwrap();
+        check_zeroed_on_drop(Box::pin(key));
+    }
 
     use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};
     for algorithm in [&AES_128, &AES_256, &CHACHA20] {
@@ -190,13 +204,26 @@ fn aead() {
 
 #[test]
 fn cipher() {
-    use rind::cipher::{AES_128, AES_256, Aes, AesCtr, ChaCha20};
-    for (algorithm, len) in [(&AES_128, 16), (&AES_256, 32)] {
+    use rind::cipher::{
+        AES_128, AES_192, AES_256, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, ChaCha20,
+    };
+    for (algorithm, len) in [(&AES_128, 16), (&AES_192, 24), (&AES_256, 32)] {
         let key = &[0xffu8; 32][..len];
         check_zeroed_on_drop(Box::pin(Aes::new(algorithm, key).unwrap()));
-        check_zeroed_on_drop(Box::pin(AesCtr::new(algorithm, key).unwrap()));
+        check_zeroed_on_drop(Box::pin(AesCtr::new(algorithm, key, 128).unwrap()));
+        check_zeroed_on_drop(Box::pin(AesCbcEncryptingKey::new(algorithm, key).unwrap()));
+        check_zeroed_on_drop(Box::pin(AesCbcDecryptingKey::new(algorithm, key).unwrap()));
     }
-    check_zeroed_on_drop(Box::pin(ChaCha20::new([0xffu8; 32])));
+    check_zeroed_on_drop(Box::pin(ChaCha20::new(&[0xffu8; 32])));
+}
+
+#[test]
+fn key_wrap() {
+    use rind::key_wrap::{AES_128, AES_192, AES_256, AesKek};
+    for (algorithm, len) in [(&AES_128, 16), (&AES_192, 24), (&AES_256, 32)] {
+        let key = &[0xffu8; 32][..len];
+        check_zeroed_on_drop(Box::pin(AesKek::new(algorithm, key).unwrap()));
+    }
 }
 
 fn check_zeroed_on_drop<T: Unpin>(value: Pin<Box<T>>) {

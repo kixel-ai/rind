@@ -81,8 +81,11 @@ ARM_IMPORTS = [
         "constants": [(".Lrcon:", 3)],
         "routines": [
             "aes_hw_set_encrypt_key",
+            "aes_hw_set_decrypt_key",
             "aes_hw_encrypt",
+            "aes_hw_decrypt",
             "aes_hw_ctr32_encrypt_blocks",
+            "aes_hw_cbc_encrypt",
         ],
     },
     {
@@ -178,6 +181,7 @@ ARCHES = {
         "comment": "//",
         "cpp": [
             "-DOPENSSL_AARCH64",
+            "-D__ARM_MAX_ARCH__=8",
             "-DAARCH64_VALID_CALL_TARGET=",
             "-DAARCH64_SIGN_LINK_REGISTER=",
             "-DAARCH64_VALIDATE_LINK_REGISTER=",
@@ -376,8 +380,17 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/aes/asm/aesni-x86_64.pl",
         "copyright": "Copyright 2009-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": [],
-        "routines": ["aes_hw_ctr32_encrypt_blocks"],
-        "carries": {"aes_hw_ctr32_encrypt_blocks": ["_aesni_encrypt8"]},
+        "routines": ["aes_hw_ctr32_encrypt_blocks", "aes_hw_cbc_encrypt"],
+        "carries": {
+            "aes_hw_ctr32_encrypt_blocks": ["_aesni_encrypt8"],
+            "aes_hw_cbc_encrypt": [
+                "_aesni_decrypt2",
+                "_aesni_decrypt3",
+                "_aesni_decrypt4",
+                "_aesni_decrypt6",
+                "_aesni_decrypt8",
+            ],
+        },
     },
     {
         "arch": "x86_64",
@@ -386,11 +399,19 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/aes/asm/vpaes-x86_64.pl",
         "copyright": "Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["_vpaes_consts"],
-        "routines": ["vpaes_set_encrypt_key", "vpaes_encrypt", "vpaes_ctr32_encrypt_blocks"],
+        "routines": [
+            "vpaes_set_encrypt_key",
+            "vpaes_set_decrypt_key",
+            "vpaes_encrypt",
+            "vpaes_decrypt",
+            "vpaes_ctr32_encrypt_blocks",
+            "vpaes_cbc_encrypt",
+        ],
         "helpers": [
             "_vpaes_preheat",
             "_vpaes_encrypt_core",
             "_vpaes_encrypt_core_2x",
+            "_vpaes_decrypt_core",
             "_vpaes_schedule_core",
             "_vpaes_schedule_192_smear",
             "_vpaes_schedule_round",
@@ -480,6 +501,17 @@ IMPORTS_64 = [
         "routines": ["bn_mul_mont"],
         "joins": ["__bn_sqr8x_mont", "__bn_mul4x_mont"],
     },
+    # AES-192-GCM eight blocks at a time, with SHA3's `EOR3`, as s2n-bignum's
+    # stitched kernels take only 128- and 256-bit keys.
+    {
+        "arch": "aarch64",
+        "source": "aesv8-gcm-armv8-unroll8.S",
+        "tag": "gcm8x",
+        "perlasm": "crypto/fipsmodule/modes/asm/aesv8-gcm-armv8-unroll8.pl",
+        "copyright": "Copyright 2020-2022 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": [],
+        "routines": ["aesv8_gcm_8x_enc_192", "aesv8_gcm_8x_dec_192"],
+    },
     # The rest are for aarch64 CPUs without the crypto extension.
     {
         "arch": "aarch64",
@@ -506,11 +538,21 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/aes/asm/vpaes-armv8.pl",
         "copyright": "Copyright 2015-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["_vpaes_consts"],
-        "routines": ["vpaes_set_encrypt_key", "vpaes_encrypt", "vpaes_ctr32_encrypt_blocks"],
+        "routines": [
+            "vpaes_set_encrypt_key",
+            "vpaes_set_decrypt_key",
+            "vpaes_encrypt",
+            "vpaes_decrypt",
+            "vpaes_ctr32_encrypt_blocks",
+            "vpaes_cbc_encrypt",
+        ],
         "helpers": [
             "_vpaes_encrypt_preheat",
             "_vpaes_encrypt_core",
             "_vpaes_encrypt_2x",
+            "_vpaes_decrypt_preheat",
+            "_vpaes_decrypt_core",
+            "_vpaes_decrypt_2x",
             "_vpaes_key_preheat",
             "_vpaes_schedule_core",
             "_vpaes_schedule_192_smear",
@@ -520,6 +562,7 @@ IMPORTS_64 = [
             "_vpaes_schedule_mangle",
         ],
         "inner": ["_vpaes_schedule_low_round"],
+        "carries": {"vpaes_cbc_encrypt": ["vpaes_cbc_decrypt"]},
     },
     # ChaCha20-Poly1305 in one pass, with NEON.
     {
@@ -547,7 +590,7 @@ def vzeroupper(line):
 def preprocess(path, defines):
     # The headers only define what the defines already do, or macros for
     # other architectures.
-    include = re.compile(r'#\s*include (<openssl/|"_internal_s2n_bignum_x86_att\.h")')
+    include = re.compile(r'#\s*include (<openssl/|"openssl/|"_internal_s2n_bignum_x86_att\.h")')
     with open(path) as f:
         text = "".join(line for line in f if not include.match(line))
     # As an assembler source, so qhasm's `#` comment lines pass through.

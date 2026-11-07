@@ -28,41 +28,39 @@ impl core::ops::Deref for P256GeneratorRow {
     }
 }
 
-/// Returns `row`'s point `index - 1`, or zeros for an `index` of 0 or above
-/// 64, reading every point.
+/// Writes `row`'s point `index - 1` to `out`, or zeros for an `index` of 0 or
+/// above 64, reading every point.
 ///
 /// `index` is secret, so not even a debug build asserts on it.
-pub(crate) fn p256_select_w7(row: &P256GeneratorRow, index: u8) -> [u64; 8] {
-    let mut r = [0; 8];
-    // SAFETY: `r` is one writable point and `row` 64 readable points, as
+pub(crate) fn p256_select_w7(out: &mut [u64; 8], row: &P256GeneratorRow, index: u8) {
+    // SAFETY: `out` is one writable point and `row` 64 readable points, as
     // aligned as the routines load them. The AVX2 routine runs only where the
     // token proves AVX2, and the other needs only SSE2.
     unsafe {
         match HaveAvx2::check() {
-            Some(_) => ecp_nistz256_avx2_select_w7(&mut r, row, index.into()),
-            None => ecp_nistz256_select_w7(&mut r, row, index.into()),
+            Some(_) => ecp_nistz256_avx2_select_w7(out, row, index.into()),
+            None => ecp_nistz256_select_w7(out, row, index.into()),
         }
     }
-    r
 }
 
-/// Returns the Jacobian `p1` plus the affine `p2`, both in Montgomery form.
+/// Adds the affine `p2` to the Jacobian `p1`, both in Montgomery form.
 ///
 /// Either may be infinity: `p1` with a zero `z`, `p2` as all zeros. They must
 /// not be the same point, which this does not double.
-pub(crate) fn p256_point_add_affine(p1: &[u64; 12], p2: &[u64; 8]) -> [u64; 12] {
-    let mut r = [0; 12];
-    // SAFETY: `r` is one writable Jacobian point, `p1` one readable Jacobian
-    // point, and `p2` one readable affine point; the routines load them
+pub(crate) fn p256_point_add_affine(p1: &mut [u64; 12], p2: &[u64; 8]) {
+    let p1 = core::ptr::from_mut(p1);
+    // SAFETY: `p1` is one readable and writable Jacobian point, which the
+    // routines read in full before writing, as aws-lc's in-place calls rely
+    // on, and `p2` one readable affine point; the routines load them
     // unaligned. The BMI2 and ADX routine runs only where the token proves
     // both, and the other needs only SSE2.
     unsafe {
         match HaveBmi2Adx::check() {
-            Some(_) => ecp_nistz256_point_add_affinex(&mut r, p1, p2),
-            None => ecp_nistz256_point_add_affine(&mut r, p1, p2),
+            Some(_) => ecp_nistz256_point_add_affinex(p1, p1, p2),
+            None => ecp_nistz256_point_add_affine(p1, p1, p2),
         }
     }
-    r
 }
 
 /// aws-lc's `.Lpoly`, the field prime, as the multiplications load it.
@@ -145,6 +143,86 @@ mod tests {
     use super::super::adx_mux::tests::Rng;
     use super::*;
 
+    // aws-lc's point additions whose `B` or `A` is affine, which rind's
+    // routine takes, but for the same point twice, which it does not double.
+    // The sums are checked against the affine results through fiat-crypto's
+    // field arithmetic, for whichever twin this CPU picks.
+    #[test]
+    fn aws_lc_point_add_affine() {
+        use fiat_crypto::p256_64::{
+            fiat_p256_montgomery_domain_field_element as Fe, fiat_p256_mul, fiat_p256_square,
+        };
+
+        let one = Fe(include!("aws_lc/p256-x86_64-asm.ONE_mont.rs")[..4]
+            .try_into()
+            .unwrap());
+        let mul = |a: &Fe, b: &Fe| {
+            let mut out = Fe([0; 4]);
+            fiat_p256_mul(&mut out, a, b);
+            out
+        };
+        let mut ran = 0;
+        for test in
+            crate::test::file_test::tests("aws-lc/crypto/fipsmodule/ec/p256-nistz_tests.txt")
+        {
+            if test.str("Test") != "PointAdd" {
+                continue;
+            }
+            let fe = |name: &str| {
+                let bytes = test.bytes(name);
+                Fe(core::array::from_fn(|i| {
+                    u64::from_be_bytes(bytes[24 - 8 * i..][..8].try_into().unwrap())
+                }))
+            };
+            let point = |p: &str| {
+                [
+                    fe(&format!("{p}.X")),
+                    fe(&format!("{p}.Y")),
+                    fe(&format!("{p}.Z")),
+                ]
+            };
+            let (result_x, result_y) = (fe("Result.X"), fe("Result.Y"));
+            for (jacobian, affine) in [(point("A"), point("B")), (point("B"), point("A"))] {
+                let affine_xy = match affine[2].0 {
+                    z if z == one.0 => [affine[0].0, affine[1].0].concat(),
+                    [0, 0, 0, 0] => vec![0; 8],
+                    _ => continue,
+                };
+                if jacobian[2].0 == one.0
+                    && jacobian[..2]
+                        .iter()
+                        .map(|f| f.0)
+                        .eq(affine[..2].iter().map(|f| f.0))
+                    && affine_xy != [0; 8]
+                {
+                    continue;
+                }
+                let mut p1: [u64; 12] = [jacobian[0].0, jacobian[1].0, jacobian[2].0]
+                    .concat()
+                    .try_into()
+                    .unwrap();
+                p256_point_add_affine(&mut p1, &affine_xy.try_into().unwrap());
+                let (x, y, z) = (
+                    Fe(p1[..4].try_into().unwrap()),
+                    Fe(p1[4..8].try_into().unwrap()),
+                    Fe(p1[8..].try_into().unwrap()),
+                );
+                if result_x.0 == [0; 4] && result_y.0 == [0; 4] {
+                    assert_eq!(z.0, [0; 4], "{test}");
+                } else {
+                    // An all-zero output would pass the coordinate checks below.
+                    assert_ne!(z.0, [0; 4], "{test}");
+                    let mut z2 = Fe([0; 4]);
+                    fiat_p256_square(&mut z2, &z);
+                    assert_eq!(x.0, mul(&result_x, &z2).0, "{test}");
+                    assert_eq!(y.0, mul(&result_y, &mul(&z2, &z)).0, "{test}");
+                }
+                ran += 1;
+            }
+        }
+        assert!(ran > 0);
+    }
+
     // The other tests run only the twin this CPU picks, so each pair is
     // checked against each other here, where the CPU runs both, and the
     // mixed addition against s2n-bignum's verified one.
@@ -203,7 +281,8 @@ mod tests {
             p1[8] |= 1;
             let mut s2n = [0; 12];
             super::super::adx_mux::p256_montjmixadd(&mut s2n, &p1, &p2);
-            assert_eq!(p256_point_add_affine(&p1, &p2), s2n);
+            p256_point_add_affine(&mut p1, &p2);
+            assert_eq!(p1, s2n);
         }
     }
 }

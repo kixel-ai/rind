@@ -1,8 +1,12 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::hint::black_box;
+
 use super::hash::{Hash, HashContext};
 use crate::Error;
+use crate::error::KeyFormatError;
+use crate::low::{ct, ct_equal};
 use crate::mid::rng::RandomSource;
 
 /// This is EMSA-PKCS1-v1_5-ENCODE
@@ -77,17 +81,19 @@ pub(crate) static DIGESTINFO_SHA512: &[u8] = &[
 
 /// This is EMSA-PSS-ENCODE.
 ///
-/// `sLen` is fixed as `hLen`.
 /// `MGF` is `MGF1` with hash `H`.
 /// `out` is the output buffer of `emLen = ceil(emBits / 8)` octets, where
 /// `em_bits` is one less than the modulus bit length.
 /// `hash` is the message hash, made by the caller using `H`.
-/// `rng` is used to generate the salt.
+/// `s_len` is the salt length, which `rng` fills.
+///
+/// A salt too long for `emLen` is refused as the key's size.
 pub(crate) fn encode_pss_sig<H: Hash>(
     out: &mut [u8],
     em_bits: usize,
     rng: &mut dyn RandomSource,
     hash: &[u8],
+    s_len: usize,
 ) -> Result<(), Error> {
     // 1.  If the length of M is greater than the input limitation for the
     //     hash function (2^61 - 1 octets for SHA-1), output "message too
@@ -96,22 +102,32 @@ pub(crate) fn encode_pss_sig<H: Hash>(
     // (by caller)
 
     // 3.  If emLen < hLen + sLen + 2, output "encoding error" and stop.
-    let s_len = hash.len();
     let h_len = hash.len();
     let em_len = out.len();
-    assert!(em_len >= h_len + s_len + 2);
+    if em_len < h_len + s_len + 2 {
+        return Err(KeyFormatError::RsaModulus.into());
+    }
+
+    // 7.  Generate an octet string PS consisting of emLen - sLen - hLen - 2
+    //     zero octets.  The length of PS may be 0.
+    // 8.  Let DB = PS || 0x01 || salt; DB is an octet string of length
+    //     emLen - hLen - 1.
+    // (laid out first, so step 4 writes the salt in place)
+    let (db, h_bc) = out.split_at_mut(em_len - h_len - 1);
+    let (ps, ps_sep_salt) = db.split_at_mut(em_len - s_len - h_len - 2);
+    let (ps_sep, salt) = ps_sep_salt.split_first_mut().unwrap();
+    ps.fill(0x00);
+    *ps_sep = 0x01;
 
     // 4.  Generate a random octet string salt of length sLen; if sLen = 0,
     //     then salt is the empty string.
-    let mut salt = H::zeroed_output();
-    assert_eq!(salt.as_ref().len(), s_len);
-    rng.fill(salt.as_mut())?;
+    rng.fill(salt)?;
 
     // 5.  Let
     //       M' = (0x)00 00 00 00 00 00 00 00 || mHash || salt;
     //     M' is an octet string of length 8 + hLen + sLen with eight
     //     initial zero octets.
-    let m_prime = [&[0u8; 8], hash, salt.as_ref()];
+    let m_prime = [&[0u8; 8], hash, &*salt];
 
     // 6.  Let H = Hash(M'), an octet string of length hLen.
     let mut ctx = H::new();
@@ -120,17 +136,6 @@ pub(crate) fn encode_pss_sig<H: Hash>(
     }
     let h = ctx.finish();
     assert_eq!(h.as_ref().len(), h_len);
-
-    // 7.  Generate an octet string PS consisting of emLen - sLen - hLen - 2
-    //     zero octets.  The length of PS may be 0.
-    // 8.  Let DB = PS || 0x01 || salt; DB is an octet string of length
-    //     emLen - hLen - 1.
-    let (db, h_bc) = out.split_at_mut(em_len - h_len - 1);
-    let (ps, ps_sep_salt) = db.split_at_mut(em_len - s_len - h_len - 2);
-    let (ps_sep, salt_out) = ps_sep_salt.split_first_mut().unwrap();
-    ps.fill(0x00);
-    *ps_sep = 0x01;
-    salt_out.copy_from_slice(salt.as_ref());
 
     // 9.  Let dbMask = MGF(H, emLen - hLen - 1).
     // 10. Let maskedDB = DB \xor dbMask.
@@ -151,18 +156,21 @@ pub(crate) fn encode_pss_sig<H: Hash>(
 
 /// This is EMSA-PSS-VERIFY.
 ///
-/// `sLen` is fixed as `hLen`, like `encode_pss_sig`.
-///
 /// `MGF` is `MGF1` with hash `H`.
 ///
 /// `em` is the input and temporary buffer of `emLen = ceil(emBits / 8)`
 /// octets, where `em_bits` is one less than the modulus bit length.
 ///
 /// `m_hash` is the message hash, made by the caller using `H`.
+///
+/// `s_len` is the salt length, or `None` to take any, as the signature's
+/// padding has it: the salt is public, so finding its end needs no constant
+/// time.
 pub(crate) fn verify_pss_sig<H: Hash>(
     em: &mut [u8],
     em_bits: usize,
     m_hash: &[u8],
+    s_len: Option<usize>,
 ) -> Result<(), Error> {
     // 1.   If the length of M is greater than the input limitation for
     //      the hash function (2^61 - 1 octets for SHA-1), output
@@ -174,8 +182,7 @@ pub(crate) fn verify_pss_sig<H: Hash>(
     let em_len = em.len();
     let top_mask = u8::MAX >> (8 * em_len - em_bits);
     let h_len = m_hash.len();
-    let s_len = h_len;
-    if em_len < h_len + s_len + 2 {
+    if em_len < h_len + s_len.unwrap_or(0) + 2 {
         return Err(Error::BadSignature);
     }
 
@@ -211,7 +218,15 @@ pub(crate) fn verify_pss_sig<H: Hash>(
     //      leftmost position is "position 1") does not have hexadecimal
     //      value 0x01, output "inconsistent" and stop.
     // 11.  Let salt be the last sLen octets of DB.
-    let (zeroes, one_salt) = db.split_at(em_len - h_len - s_len - 2);
+    // (with any sLen, PS runs to the first nonzero octet)
+    let ps_len = match s_len {
+        Some(s_len) => em_len - h_len - s_len - 2,
+        None => db
+            .iter()
+            .position(|b| *b != 0x00)
+            .ok_or(Error::BadSignature)?,
+    };
+    let (zeroes, one_salt) = db.split_at(ps_len);
     let (one, salt) = one_salt.split_first().unwrap();
     if zeroes.iter().any(|z| *z != 0x00) || *one != 0x01 {
         return Err(Error::BadSignature);
@@ -241,6 +256,160 @@ pub(crate) fn verify_pss_sig<H: Hash>(
     }
 }
 
+/// The longest message EME-OAEP with `H` fits in `k` octets, the modulus
+/// length; RFC 8017 section 7.1.1, step 1b.
+pub(crate) fn oaep_max_message_len<H: Hash>(k: usize) -> usize {
+    k.saturating_sub(2 * H::zeroed_output().as_ref().len() + 2)
+}
+
+/// This is EME-OAEP encoding, RFC 8017 section 7.1.1, step 2.
+///
+/// `MGF` is `MGF1` with hash `H`.
+/// `out` is the output buffer of `k` octets, the modulus length.
+/// `message` is the plaintext, at most [`oaep_max_message_len`] octets.
+/// `rng` is used to generate the seed.
+pub(crate) fn encode_oaep<H: Hash>(
+    out: &mut [u8],
+    rng: &mut dyn RandomSource,
+    message: &[u8],
+    label: &[u8],
+) -> Result<(), Error> {
+    // 1b.  If mLen > k - 2hLen - 2, output "message too long" and stop.
+    let k = out.len();
+    let h_len = H::zeroed_output().as_ref().len();
+    if k < 2 * h_len + 2 || message.len() > oaep_max_message_len::<H>(k) {
+        return Err(Error::WrongLength);
+    }
+
+    // 2a.  Let lHash = Hash(L), an octet string of length hLen.
+    let l_hash = H::hash(label);
+
+    // 2b.  Generate a padding string PS consisting of k - mLen - 2hLen - 2
+    //      zero octets.  The length of PS may be zero.
+    // 2c.  Concatenate lHash, PS, a single octet with hexadecimal value
+    //      0x01, and the message M to form a data block DB of length
+    //      k - hLen - 1 octets as
+    //
+    //         DB = lHash || PS || 0x01 || M.
+    let (y, rest) = out.split_first_mut().unwrap();
+    let (seed, db) = rest.split_at_mut(h_len);
+    let (l_hash_out, ps_one_m) = db.split_at_mut(h_len);
+    let (ps_one, m_out) = ps_one_m.split_at_mut(ps_one_m.len() - message.len());
+    let (one, ps) = ps_one.split_last_mut().unwrap();
+    l_hash_out.copy_from_slice(l_hash.as_ref());
+    ps.fill(0x00);
+    *one = 0x01;
+    m_out.copy_from_slice(message);
+
+    // 2d.  Generate a random octet string seed of length hLen.  It
+    //      unmasks the message, so it is as secret.
+    rng.fill(seed)?;
+    ct::secret_slice(seed);
+
+    // 2e.  Let dbMask = MGF(seed, k - hLen - 1).
+    // 2f.  Let maskedDB = DB \xor dbMask.
+    mgf1_xor::<H>(seed, h_len, db);
+
+    // 2g.  Let seedMask = MGF(maskedDB, hLen).
+    // 2h.  Let maskedSeed = seed \xor seedMask.
+    mgf1_xor::<H>(db, h_len, seed);
+
+    // 2i.  Concatenate a single octet with hexadecimal value 0x00,
+    //      maskedSeed, and maskedDB to form an encoded message EM of
+    //      length k octets as
+    //
+    //         EM = 0x00 || maskedSeed || maskedDB.
+    *y = 0x00;
+    Ok(())
+}
+
+/// This is EME-OAEP decoding, RFC 8017 section 7.1.2, step 3, in constant
+/// time: every bad `em` fails with [`Error::DecryptFailed`], which reveals
+/// nothing of `em` until the padding is found valid, so it is no Manger
+/// oracle.
+///
+/// `MGF` is `MGF1` with hash `H`.
+/// `em` is the input and temporary buffer of `k` octets, the modulus length.
+/// `out` receives the message, and must hold [`oaep_max_message_len`]
+/// octets.
+pub(crate) fn decode_oaep<'a, H: Hash>(
+    em: &mut [u8],
+    label: &[u8],
+    out: &'a mut [u8],
+) -> Result<&'a [u8], Error> {
+    // 1c.  If k < 2hLen + 2, output "decryption error" and stop.
+    let h_len = H::zeroed_output().as_ref().len();
+    if em.len() < 2 * h_len + 2 {
+        return Err(Error::DecryptFailed);
+    }
+
+    // 3a.  If the label L is not provided, let L be the empty string.  Let
+    //      lHash = Hash(L), an octet string of length hLen.
+    let l_hash = H::hash(label);
+
+    // 3b.  Separate the encoded message EM into a single octet Y, an octet
+    //      string maskedSeed of length hLen, and an octet string maskedDB
+    //      of length k - hLen - 1 as
+    //
+    //         EM = Y || maskedSeed || maskedDB.
+    let (y, rest) = em.split_first_mut().unwrap();
+    let (seed, db) = rest.split_at_mut(h_len);
+
+    // 3c.  Let seedMask = MGF(maskedDB, hLen).
+    // 3d.  Let seed = maskedSeed \xor seedMask.
+    mgf1_xor::<H>(db, h_len, seed);
+
+    // 3e.  Let dbMask = MGF(seed, k - hLen - 1).
+    // 3f.  Let DB = maskedDB \xor dbMask.
+    mgf1_xor::<H>(seed, h_len, db);
+
+    // 3g.  Separate DB into an octet string lHash' of length hLen, a
+    //      (possibly empty) padding string PS consisting of octets with
+    //      hexadecimal value 0x00, and a message M as
+    //
+    //         DB = lHash' || PS || 0x01 || M.
+    //
+    //      If there is no octet with hexadecimal value 0x01 to separate PS
+    //      from M, if lHash does not equal lHash', or if Y is nonzero,
+    //      output "decryption error" and stop.
+    //
+    // Each check folds into `bad`, an all-ones mask once any fails, and
+    // the 0x01 is found by a scan of every octet, so neither which check
+    // failed nor where PS ends shows until `bad` is revealed.
+    let (l_hash_prime, ps_one_m) = db.split_at(h_len);
+    let mut bad = !ct_mask(ct_equal(l_hash_prime, l_hash.as_ref())) | !ct_is_zero(*y);
+    let mut looking = u8::MAX;
+    let mut one_index = 0usize;
+    for (i, byte) in ps_one_m.iter().enumerate() {
+        let is_one = ct_is_zero(*byte ^ 0x01);
+        let found = black_box(looking & is_one);
+        one_index ^= (one_index ^ i) & usize::from(found & 1).wrapping_neg();
+        bad |= looking & !is_one & !ct_is_zero(*byte);
+        looking &= !is_one;
+    }
+    bad |= looking;
+
+    if ct::into_public(bad) != 0 {
+        return Err(Error::DecryptFailed);
+    }
+
+    // The message length is revealed by the plaintext anyway.
+    let m = &ps_one_m[ct::into_public(one_index) + 1..];
+    let out = out.get_mut(..m.len()).ok_or(Error::WrongLength)?;
+    out.copy_from_slice(m);
+    Ok(out)
+}
+
+/// All ones if `b` is zero, else zero, without a branch.
+fn ct_is_zero(b: u8) -> u8 {
+    (u32::from(black_box(b)).wrapping_sub(1) >> 8) as u8
+}
+
+/// All ones if `b`, else zero, without a branch.
+fn ct_mask(b: bool) -> u8 {
+    u8::from(black_box(b)).wrapping_neg()
+}
+
 /// Compute MGF1-H, and XOR the result into `out`.
 fn mgf1_xor<H: Hash>(seed: &[u8], h_len: usize, out: &mut [u8]) {
     for (chunk, counter) in out.chunks_mut(h_len).zip(0u32..) {
@@ -262,6 +431,56 @@ mod tests {
     use crate::high::asn1::{self, Type, oid, pkix};
     use crate::high::hash;
     use crate::mid::rng::SliceRandomSource;
+
+    #[test]
+    fn oaep_needs_two_hashes_and_two_bytes() {
+        let h_len = 32;
+        for k in [h_len + 4, 2 * h_len, 2 * h_len + 1] {
+            let mut em = vec![0u8; k];
+            let mut rng = SliceRandomSource(&[7; 32]);
+            assert_eq!(
+                encode_oaep::<hash::Sha256>(&mut em, &mut rng, b"", b""),
+                Err(Error::WrongLength),
+                "k {k}"
+            );
+            assert_eq!(
+                decode_oaep::<hash::Sha256>(&mut em, b"", &mut []),
+                Err(Error::DecryptFailed),
+                "k {k}"
+            );
+        }
+
+        let mut em = vec![0u8; 2 * h_len + 2];
+        let mut rng = SliceRandomSource(&[7; 32]);
+        encode_oaep::<hash::Sha256>(&mut em, &mut rng, b"", b"").unwrap();
+        assert_eq!(
+            decode_oaep::<hash::Sha256>(&mut em, b"", &mut []),
+            Ok(&[][..])
+        );
+    }
+
+    /// Each check fails decoding alone, and so do two together.
+    #[test]
+    fn oaep_refuses_wrong_label_and_nonzero_first_byte() {
+        let mut em = [0u8; 128];
+        let mut rng = SliceRandomSource(&[7; 32]);
+        encode_oaep::<hash::Sha256>(&mut em, &mut rng, b"hi", b"label").unwrap();
+        let mut out = [0u8; 128];
+        for (y, label) in [
+            (0, &b"label"[..]),
+            (0, b"other"),
+            (1, b"label"),
+            (1, b"other"),
+        ] {
+            let mut em = em;
+            em[0] = y;
+            let result = decode_oaep::<hash::Sha256>(&mut em, label, &mut out).map(|m| m.to_vec());
+            match (y, label) {
+                (0, b"label") => assert_eq!(result, Ok(b"hi".to_vec())),
+                _ => assert_eq!(result, Err(Error::DecryptFailed), "{y} {label:?}"),
+            }
+        }
+    }
 
     #[test]
     fn digestinfos_are_correct() {
@@ -299,7 +518,7 @@ mod tests {
         );
         let hash = b"\xe3\xb0\xc4\x42\x98\xfc\x1c\x14\x9a\xfb\xf4\xc8\x99\x6f\xb9\x24\
                      \x27\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55";
-        encode_pss_sig::<hash::Sha256>(&mut buf, 2047, &mut seed, hash).unwrap();
+        encode_pss_sig::<hash::Sha256>(&mut buf, 2047, &mut seed, hash, 32).unwrap();
 
         assert_eq!(
             buf,
@@ -326,6 +545,7 @@ mod tests {
             ],
         );
 
-        verify_pss_sig::<hash::Sha256>(&mut buf, 2047, hash).unwrap();
+        verify_pss_sig::<hash::Sha256>(&mut buf.clone(), 2047, hash, Some(32)).unwrap();
+        verify_pss_sig::<hash::Sha256>(&mut buf, 2047, hash, None).unwrap();
     }
 }

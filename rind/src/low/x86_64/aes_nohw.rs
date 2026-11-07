@@ -4,7 +4,7 @@
 //! AES on SSE2 alone, for CPUs without SSSE3: aws-lc's
 //! `crypto/fipsmodule/aes/aes_nohw.c` at commit
 //! 91c93a8eb860e51482a871a8772cb9b1b310baea, in Rust, in its SSE2
-//! configuration and encrypting only.
+//! configuration.
 //!
 //! It bitslices eight blocks into eight 128-bit words and computes the S-box
 //! as a circuit of ANDs and XORs, so no branch or memory index depends on the
@@ -25,8 +25,8 @@ use core::arch::x86_64::*;
 
 use crate::low;
 
-/// An expanded AES-128 or AES-256 encryption key: aws-lc's `AES_KEY`, the
-/// compact round keys and the round count.
+/// An expanded AES-128, AES-192, or AES-256 key: aws-lc's `AES_KEY`, the compact
+/// round keys and the round count, which encryption and decryption share.
 ///
 /// Each call bitslices the round keys again, as aws-lc does: holding them
 /// bitsliced would take 1.9 KiB, which every `AesKey` would then occupy, on
@@ -37,16 +37,34 @@ pub(crate) struct NohwKey {
 }
 
 impl NohwKey {
-    /// Expands a 16- or 32-byte key.
+    /// The key's length in bytes, from its 10, 12, or 14 rounds.
+    pub(crate) fn key_len(&self) -> usize {
+        self.rounds * 4 - 24
+    }
+
+    /// Expands a 16-, 24-, or 32-byte key.
     pub(crate) fn new(key: &[u8]) -> Self {
         // SAFETY: every x86_64 CPU has SSE2
         unsafe { set_encrypt_key(key) }
     }
 
-    /// Encrypts one block in place.
-    pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
+    /// Encrypts one block.
+    ///
+    /// Out of line: the bitsliced round keys take a 1.9 KiB frame, which
+    /// would otherwise land on every caller of [`super::aes::AesKey`]'s.
+    #[must_use]
+    #[inline(never)]
+    pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
+        let mut out = *block;
         // SAFETY: every x86_64 CPU has SSE2
-        unsafe { encrypt(self, inout) }
+        unsafe { encrypt(self, &mut out) };
+        out
+    }
+
+    /// Decrypts one block in place.
+    pub(crate) fn decrypt_block(&self, inout: &mut [u8; 16]) {
+        // SAFETY: every x86_64 CPU has SSE2
+        unsafe { decrypt(self, inout) }
     }
 
     /// XORs counter-mode keystream into whole blocks.
@@ -56,6 +74,20 @@ impl NohwKey {
     pub(crate) fn ctr32(&self, ivec: &[u8; 16], inout: &mut [[u8; 16]]) {
         // SAFETY: every x86_64 CPU has SSE2
         unsafe { ctr32_encrypt_blocks(self, ivec, inout) }
+    }
+
+    /// Encrypts whole blocks in place in CBC mode, the first chained from
+    /// `iv`.
+    pub(crate) fn cbc_encrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        // SAFETY: every x86_64 CPU has SSE2
+        unsafe { cbc_encrypt(self, iv, blocks) }
+    }
+
+    /// Decrypts whole blocks in place in CBC mode, the first chained from
+    /// `iv`.
+    pub(crate) fn cbc_decrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        // SAFETY: every x86_64 CPU has SSE2
+        unsafe { cbc_decrypt(self, iv, blocks) }
     }
 }
 
@@ -334,6 +366,37 @@ fn sub_bytes(batch: &mut Batch) {
     batch.w[7] = s0;
 }
 
+/// Inverts the affine transform of the S-box, FIPS 197 section 5.1.1 step 2.
+#[target_feature(enable = "sse2")]
+fn sub_bytes_inv_affine(batch: &mut Batch) {
+    let [a0, a1, a2, a3, a4, a5, a6, a7] = batch.w;
+
+    // Apply the circulant [0 0 1 0 0 1 0 1], the inverse of the circulant
+    // [1 0 0 0 1 1 1 1].
+    let b0 = xor(a2, xor(a5, a7));
+    let b1 = xor(a3, xor(a6, a0));
+    let b2 = xor(a4, xor(a7, a1));
+    let b3 = xor(a5, xor(a0, a2));
+    let b4 = xor(a6, xor(a1, a3));
+    let b5 = xor(a7, xor(a2, a4));
+    let b6 = xor(a0, xor(a3, a5));
+    let b7 = xor(a1, xor(a4, a6));
+
+    // XOR 0x05, the circulant applied to 0x63, which has lower Hamming
+    // weight than XORing 0x63 before it.
+    batch.w = [not(b0), b1, not(b2), b3, b4, b5, b6, b7];
+}
+
+/// The inverse S-box from the forward one, as
+/// <https://www.bearssl.org/constanttime.html#aes> describes: the S-box is
+/// `S(x) = A(Inv(x))`, so `InvS(x) = Inv(InvA(x)) = InvA(S(InvA(x)))`.
+#[target_feature(enable = "sse2")]
+fn inv_sub_bytes(batch: &mut Batch) {
+    sub_bytes_inv_affine(batch);
+    sub_bytes(batch);
+    sub_bytes_inv_affine(batch);
+}
+
 /// Rotates the columns in each row of `v` right by `n`. A macro because the
 /// byte shifts take constant counts.
 macro_rules! rotate_cols_right {
@@ -355,6 +418,20 @@ fn shift_rows(batch: &mut Batch) {
         let row1 = rotate_cols_right!(row1, 1);
         let row2 = rotate_cols_right!(row2, 2);
         let row3 = rotate_cols_right!(row3, 3);
+        *w = or(or(row0, row1), or(row2, row3));
+    }
+}
+
+#[target_feature(enable = "sse2")]
+fn inv_shift_rows(batch: &mut Batch) {
+    for w in &mut batch.w {
+        let row0 = and(*w, _mm_set1_epi32(0x000000ff));
+        let row1 = and(*w, _mm_set1_epi32(0x0000ff00));
+        let row2 = and(*w, _mm_set1_epi32(0x00ff0000));
+        let row3 = and(*w, _mm_set1_epi32(0xff000000u32 as i32));
+        let row1 = rotate_cols_right!(row1, 3);
+        let row2 = rotate_cols_right!(row2, 2);
+        let row3 = rotate_cols_right!(row3, 1);
         *w = or(or(row0, row1), or(row2, row3));
     }
 }
@@ -412,6 +489,46 @@ fn mix_columns(batch: &mut Batch) {
     batch.w[7] = xor(xor(a6_r6, r7), rotate_rows_twice(a7_r7));
 }
 
+/// InvMixColumns, by bsaes-x86_64's decomposition, credited to Jussi
+/// Kivilinna, into a [05 00 04 00] step and then MixColumns:
+///
+/// ```text
+/// | 0e 0b 0d 09 |   | 02 03 01 01 |   | 05 00 04 00 |
+/// | 09 0e 0b 0d | = | 01 02 03 01 | x | 00 05 00 04 |
+/// | 0d 09 0e 0b |   | 01 01 02 03 |   | 04 00 05 00 |
+/// | 0b 0d 09 0e |   | 03 01 01 02 |   | 00 04 00 05 |
+/// ```
+#[target_feature(enable = "sse2")]
+fn inv_mix_columns(batch: &mut Batch) {
+    let [a0, a1, a2, a3, a4, a5, a6, a7] = batch.w;
+
+    // Each byte becomes 05·a_ij ⊕ 04·a_i(j+2) = 04·(a_ij ⊕ a_i(j+2)) ⊕ a_ij,
+    // where a_i(j+2) is a rotation of the rows by two, and multiplying by
+    // 04 maps bits (b0..b7) to (a6, a6^a7, a0^a7, a1^a6, a2^a6^a7, a3^a7,
+    // a4, a5).
+    let a0_r0 = xor(a0, rotate_rows_twice(a0));
+    let a1_r1 = xor(a1, rotate_rows_twice(a1));
+    let a2_r2 = xor(a2, rotate_rows_twice(a2));
+    let a3_r3 = xor(a3, rotate_rows_twice(a3));
+    let a4_r4 = xor(a4, rotate_rows_twice(a4));
+    let a5_r5 = xor(a5, rotate_rows_twice(a5));
+    let a6_r6 = xor(a6, rotate_rows_twice(a6));
+    let a7_r7 = xor(a7, rotate_rows_twice(a7));
+
+    batch.w = [
+        xor(a0, a6_r6),
+        xor(a1, xor(a6_r6, a7_r7)),
+        xor(a2, xor(a0_r0, a7_r7)),
+        xor(a3, xor(a1_r1, a6_r6)),
+        xor(xor(a4, a2_r2), xor(a6_r6, a7_r7)),
+        xor(a5, xor(a3_r3, a7_r7)),
+        xor(a6, a4_r4),
+        xor(a7, a5_r5),
+    ];
+
+    mix_columns(batch);
+}
+
 #[target_feature(enable = "sse2")]
 fn encrypt_batch(keys: &[Batch], batch: &mut Batch) {
     let (first, rest) = keys.split_first().unwrap();
@@ -426,6 +543,22 @@ fn encrypt_batch(keys: &[Batch], batch: &mut Batch) {
     sub_bytes(batch);
     shift_rows(batch);
     add_round_key(batch, last);
+}
+
+#[target_feature(enable = "sse2")]
+fn decrypt_batch(keys: &[Batch], batch: &mut Batch) {
+    let (first, rest) = keys.split_first().unwrap();
+    let (last, middle) = rest.split_last().unwrap();
+    add_round_key(batch, last);
+    inv_shift_rows(batch);
+    inv_sub_bytes(batch);
+    for round_key in middle.iter().rev() {
+        add_round_key(batch, round_key);
+        inv_mix_columns(batch);
+        inv_shift_rows(batch);
+        inv_sub_bytes(batch);
+    }
+    add_round_key(batch, first);
 }
 
 // Key schedule.
@@ -489,6 +622,94 @@ fn setup_key_128(rd_key: &mut [__m128i; 15], input: &[u8; 16]) {
 }
 
 #[target_feature(enable = "sse2")]
+fn setup_key_192(rd_key: &mut [__m128i; 15], input: &[u8; 24]) {
+    // Each key schedule iteration produces six words, but each block holds
+    // four, so this keeps a sliding window of two blocks, filled to 1.5
+    // blocks at a time, and loops every three blocks or two iterations. On
+    // entry to the loop, `block1` and the first half of `block2` hold the
+    // previous iteration; `block1` is written to `rd_key`, but `block2`,
+    // incomplete, is not.
+    let col01 = _mm_set_epi32(0, 0, -1, -1);
+    let col2 = _mm_set_epi32(0, -1, 0, 0);
+    let col3 = _mm_set_epi32(-1, 0, 0, 0);
+
+    let (lo, hi) = input.split_at(16);
+    let mut block1 = compact_block(lo.try_into().unwrap());
+    rd_key[0] = block1;
+    let mut half_block = [0u8; 16];
+    half_block[..8].copy_from_slice(hi);
+    let mut block2 = compact_block(&half_block);
+
+    for i in 0..4 {
+        let sub = sub_block(block2);
+        // The first two words of the next iteration, which go in the second
+        // half of `block2`, from the first two of the previous, in the first
+        // half of `block1`. `rcon` goes in here too, since the shifts match.
+        block2 = or(
+            block2,
+            _mm_slli_si128::<8>(xor(block1, rcon_slice(RCON[2 * i]))),
+        );
+        // Incorporate the transformed word and propagate. The previous
+        // iteration's last word is the second word of `sub`, which goes into
+        // the next iteration's first, the third word of `block2`.
+        block2 = xor(
+            block2,
+            and(_mm_slli_si128::<4>(rotate_rows_down(sub)), col2),
+        );
+        block2 = xor(block2, and(_mm_slli_si128::<4>(block2), col3));
+
+        // The remaining four words, which fill `block1`, from the previous
+        // iteration's words in the second half of `block1` and the first
+        // half of `block2`.
+        block1 = _mm_srli_si128::<8>(block1);
+        block1 = or(block1, _mm_slli_si128::<8>(block2));
+        // Incorporate the second word, computed above in `block2`, and
+        // propagate.
+        block1 = xor(block1, _mm_srli_si128::<12>(block2));
+        let v = block1;
+        block1 = xor(block1, _mm_slli_si128::<4>(v));
+        block1 = xor(block1, _mm_slli_si128::<8>(v));
+        block1 = xor(block1, _mm_slli_si128::<12>(v));
+
+        // Two round keys are done, `block2`'s half of them from the
+        // previous iteration.
+        rd_key[3 * i + 1] = block2;
+        rd_key[3 * i + 2] = block1;
+
+        let sub = sub_block(block1);
+        // The first four words of the next iteration in `block2`, from the
+        // previous iteration's in the second half of `block2` and the first
+        // half of `block1`.
+        block2 = _mm_srli_si128::<8>(block2);
+        block2 = or(block2, _mm_slli_si128::<8>(block1));
+        // Incorporate `rcon` and the transformed word, from the previous
+        // iteration's last word, the last word of `sub`.
+        block2 = xor(block2, rcon_slice(RCON[2 * i + 1]));
+        block2 = xor(block2, _mm_srli_si128::<12>(rotate_rows_down(sub)));
+        // Propagate to the remaining words.
+        let v = block2;
+        block2 = xor(block2, _mm_slli_si128::<4>(v));
+        block2 = xor(block2, _mm_slli_si128::<8>(v));
+        block2 = xor(block2, _mm_slli_si128::<12>(v));
+
+        // The last two words, in the first half of `block1`, from the
+        // previous iteration's last two, in its second half. Propagate, then
+        // mask off the excess.
+        block1 = _mm_srli_si128::<8>(block1);
+        block1 = xor(block1, _mm_srli_si128::<12>(block2));
+        block1 = xor(block1, _mm_slli_si128::<4>(block1));
+        block1 = and(block1, col01);
+
+        // `block2` is a whole round key; `block1` completes in the next
+        // iteration.
+        rd_key[3 * i + 3] = block2;
+
+        // Swap the blocks to restore the invariant.
+        (block1, block2) = (block2, block1);
+    }
+}
+
+#[target_feature(enable = "sse2")]
 fn setup_key_256(rd_key: &mut [__m128i; 15], input: &[u8; 32]) {
     // Each key schedule iteration produces two round keys.
     let (lo, hi) = input.split_at(16);
@@ -535,6 +756,10 @@ fn set_encrypt_key(key: &[u8]) -> NohwKey {
             setup_key_128(&mut rd_key, key.try_into().unwrap());
             10
         }
+        24 => {
+            setup_key_192(&mut rd_key, key.try_into().unwrap());
+            12
+        }
         32 => {
             setup_key_256(&mut rd_key, key.try_into().unwrap());
             14
@@ -549,6 +774,14 @@ fn encrypt(key: &NohwKey, inout: &mut [u8; 16]) {
     let sched = expand_round_keys(key);
     let mut batch = to_batch(core::slice::from_ref(inout));
     encrypt_batch(&sched[..=key.rounds], &mut batch);
+    from_batch(core::slice::from_mut(inout), &batch);
+}
+
+#[target_feature(enable = "sse2")]
+fn decrypt(key: &NohwKey, inout: &mut [u8; 16]) {
+    let sched = expand_round_keys(key);
+    let mut batch = to_batch(core::slice::from_ref(inout));
+    decrypt_batch(&sched[..=key.rounds], &mut batch);
     from_batch(core::slice::from_mut(inout), &batch);
 }
 
@@ -586,6 +819,56 @@ fn ctr32_encrypt_blocks(key: &NohwKey, ivec: &[u8; 16], inout: &mut [[u8; 16]]) 
     }
 }
 
+/// CBC encryption is not parallelizable, so each block takes a batch of its
+/// own.
+#[target_feature(enable = "sse2")]
+fn cbc_encrypt(key: &NohwKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+    if blocks.is_empty() {
+        return;
+    }
+    let sched = expand_round_keys(key);
+    let sched = &sched[..=key.rounds];
+
+    let mut prev = *iv;
+    for block in blocks {
+        for (b, p) in block.iter_mut().zip(prev) {
+            *b ^= p;
+        }
+        let mut batch = to_batch(core::slice::from_ref(block));
+        encrypt_batch(sched, &mut batch);
+        from_batch(core::slice::from_mut(block), &batch);
+        prev = *block;
+    }
+}
+
+#[target_feature(enable = "sse2")]
+fn cbc_decrypt(key: &NohwKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+    if blocks.is_empty() {
+        return;
+    }
+    let sched = expand_round_keys(key);
+    let sched = &sched[..=key.rounds];
+
+    let mut prev = *iv;
+    for chunk in blocks.chunks_mut(BATCH_SIZE) {
+        // Copy the ciphertext, which the next block chains from, before
+        // decrypting in place.
+        let mut copy = [[0u8; 16]; BATCH_SIZE];
+        copy[..chunk.len()].copy_from_slice(chunk);
+
+        let mut batch = to_batch(chunk);
+        decrypt_batch(sched, &mut batch);
+        from_batch(chunk, &batch);
+
+        for (block, ct) in chunk.iter_mut().zip(&copy) {
+            for (b, p) in block.iter_mut().zip(prev) {
+                *b ^= p;
+            }
+            prev = *ct;
+        }
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -607,16 +890,17 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for (key_len, seed) in [16, 32].into_iter().zip(1..) {
+        for (key_len, seed) in [16, 24, 32].into_iter().zip(1..) {
             let key = bytes(key_len, seed);
             let nohw = NohwKey::new(&key);
             let vpaes = VpaesKey::new(&key, token);
 
-            let mut want: [u8; 16] = bytes(16, seed).try_into().unwrap();
-            let mut got = want;
-            vpaes.encrypt_block(&mut want);
-            nohw.encrypt_block(&mut got);
-            assert_eq!(got, want, "{key_len}-byte key, one block");
+            let block: [u8; 16] = bytes(16, seed).try_into().unwrap();
+            assert_eq!(
+                nohw.encrypt_block(&block),
+                vpaes.encrypt_block(&block),
+                "{key_len}-byte key, one block"
+            );
 
             for counter in [0, u32::MAX - 3] {
                 let mut ivec: [u8; 16] = bytes(16, counter).try_into().unwrap();
@@ -636,7 +920,7 @@ mod tests {
         }
     }
 
-    // FIPS-197 Appendix C.1 and C.3, which hold the circuit to AES itself
+    // FIPS-197 Appendix C.1 to C.3, which hold the circuit to AES itself
     // rather than to another implementation.
     #[test]
     fn fips197() {
@@ -647,13 +931,20 @@ mod tests {
                 0x69c4e0d8_6a7b0430_d8cdb780_70b4c55au128,
             ),
             (
+                &(0..24).collect::<Vec<u8>>(),
+                0xdda97ca4_864cdfe0_6eaf70a0_ec0d7191u128,
+            ),
+            (
                 &(0..32).collect::<Vec<u8>>(),
                 0x8ea2b7ca_516745bf_eafc4990_4b496089u128,
             ),
         ] {
-            let mut block = plaintext;
-            NohwKey::new(key).encrypt_block(&mut block);
-            assert_eq!(block, ciphertext.to_be_bytes(), "{}-byte key", key.len());
+            assert_eq!(
+                NohwKey::new(key).encrypt_block(&plaintext),
+                ciphertext.to_be_bytes(),
+                "{}-byte key",
+                key.len()
+            );
         }
     }
 }

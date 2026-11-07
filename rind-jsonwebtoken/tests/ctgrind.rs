@@ -12,7 +12,6 @@ use crabgrind::memcheck::{self, MemState};
 use crabgrind::valgrind::{self, RunningMode};
 use jsonwebtoken::Algorithm;
 use jsonwebtoken::jwk::EllipticCurve;
-use rind_jsonwebtoken::DEFAULT_PROVIDER;
 
 const MESSAGE: &[u8] = b"eyJhbGciOiJub25lIn0.eyJzdWIiOiJyaW5kIn0";
 
@@ -34,19 +33,20 @@ fn mark<T: ?Sized>(value: &T, state: MemState) {
 
 #[test]
 fn sign_and_verify() {
+    let provider = rind_jsonwebtoken::default_provider().unwrap();
     for key in common::all() {
         if common::HMAC.contains(&key.algorithm) {
             secret(key.encoding.as_bytes());
             secret(key.decoding.try_get_as_bytes().unwrap());
         }
 
-        let signature = (DEFAULT_PROVIDER.signer_factory)(&key.algorithm, &key.encoding)
+        let signature = (provider.signer_factory)(&key.algorithm, &key.encoding)
             .unwrap()
             .try_sign(MESSAGE)
             .unwrap();
         public(&signature[..]);
 
-        (DEFAULT_PROVIDER.verifier_factory)(&key.algorithm, &key.decoding)
+        (provider.verifier_factory)(&key.algorithm, &key.decoding)
             .unwrap()
             .verify(MESSAGE, &signature)
             .unwrap_or_else(|e| panic!("{}: {e}", key.label()));
@@ -55,7 +55,8 @@ fn sign_and_verify() {
 
 #[test]
 fn public_components() {
-    let utils = &DEFAULT_PROVIDER.key_utils;
+    let provider = rind_jsonwebtoken::default_provider().unwrap();
+    let utils = &provider.key_utils;
     for key in common::all() {
         let der = key.encoding.as_bytes();
         match key.algorithm {

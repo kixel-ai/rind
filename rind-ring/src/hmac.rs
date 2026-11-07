@@ -2,8 +2,6 @@
 
 use core::fmt;
 
-use zeroize::Zeroizing;
-
 use crate::{digest, error, hkdf, rand};
 
 /// An HMAC algorithm, chosen by one of this module's statics.
@@ -65,7 +63,7 @@ impl hkdf::KeyType for Algorithm {
     }
 }
 
-/// An HMAC key, keyed once and reused for every message; wiped on drop.
+/// An HMAC key, keyed once and reused for every message; wiped on drop under rind's `wipe` feature.
 #[derive(Clone)]
 pub struct Key {
     inner: rind::hmac::Key,
@@ -78,7 +76,7 @@ impl Key {
         algorithm: Algorithm,
         rng: &dyn rand::SecureRandom,
     ) -> Result<Self, error::Unspecified> {
-        let mut key = Zeroizing::new([0u8; digest::MAX_OUTPUT_LEN]);
+        let mut key = [0u8; digest::MAX_OUTPUT_LEN];
         let key = &mut key[..algorithm.digest.output_len()];
         rng.fill(key)?;
         Ok(Self::new(algorithm, key))
@@ -109,7 +107,7 @@ impl fmt::Debug for Key {
 impl From<hkdf::Okm<'_, Algorithm>> for Key {
     fn from(okm: hkdf::Okm<'_, Algorithm>) -> Self {
         let algorithm = *okm.len();
-        let mut key = Zeroizing::new([0u8; digest::MAX_OUTPUT_LEN]);
+        let mut key = [0u8; digest::MAX_OUTPUT_LEN];
         let key = &mut key[..algorithm.digest.output_len()];
         okm.fill_exact(key);
         Self::new(algorithm, key)

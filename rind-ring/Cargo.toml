@@ -1,6 +1,6 @@
 [package]
 name = "rind-ring"
-version = "0.1.11"
+version = "0.17.1"
 edition = "2024"
 repository = "https://github.com/moq-dev/rind"
 license = "Apache-2.0 OR ISC OR MIT-0"
@@ -10,6 +10,11 @@ rust-version.workspace = true
 readme = "README.md"
 # ring's own tests and test vectors, under their own licenses.
 exclude = ["tests/ring"]
+
+# The ring version whose API this crate offers, which its own version tracks
+# (sh/adapter-versions.sh), since it implements ring rather than depending on it.
+[package.metadata.rind]
+upstream = "0.17"
 
 # ring's feature names, so a manifest naming them builds unchanged. rind-ring
 # always has `alloc` and `std`, and rind's random source already falls back
@@ -21,9 +26,8 @@ dev_urandom_fallback = []
 std = ["alloc"]
 
 [dependencies]
-rind = { version = "0.1.12", path = "../rind" }
+rind = { version = "0.3.0", path = "../rind" }
 untrusted = "0.9"
-zeroize = "1.9"
 
 [dev-dependencies]
 aws-lc-rs = { version = "1.16", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }

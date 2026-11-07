@@ -661,6 +661,16 @@ impl<'a> Type<'a> for SetOf<'a> {
     const TAG: Tag = Tag(Tag::SET);
 }
 
+/// Whether `bytes` opens with a `SEQUENCE` whose first element is also a
+/// `SEQUENCE`, as a `SubjectPublicKeyInfo` does and an `RSAPublicKey`, which
+/// opens with an `INTEGER`, does not.
+pub(crate) fn opens_nested_sequence(bytes: &[u8]) -> bool {
+    Parser::new(bytes)
+        .descend(Tag(Tag::SEQUENCE))
+        .and_then(|(_, mut body)| body.peek_tag())
+        .is_ok_and(|tag| tag.0 == Tag::SEQUENCE)
+}
+
 pub(crate) struct Parser<'a> {
     input: &'a [u8],
 }
@@ -1052,6 +1062,12 @@ mod tests {
         test_round_trip(
             &[0x06, 0x05, 0x2b, 0x81, 0x04, 0x00, 0x22],
             ObjectId::from_path(&[1, 3, 132, 0, 34]),
+        );
+
+        // An arc whose middle group has its top bit set.
+        test_round_trip(
+            &[0x06, 0x04, 0x2a, 0x81, 0x80, 0x00],
+            ObjectId::from_path(&[1, 2, 16384]),
         );
 
         // meets our self-imposed length limit

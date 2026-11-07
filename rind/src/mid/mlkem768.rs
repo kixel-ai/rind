@@ -37,7 +37,7 @@ impl DecapKey {
     }
 
     /// Decapsulate ciphertext `c`, yielding a [`SharedSecret`].
-    pub(crate) fn decaps(self, c: &Ciphertext) -> SharedSecret {
+    pub(crate) fn decaps(&self, c: &Ciphertext) -> SharedSecret {
         let _entry = low::Entry::new_secret();
         self.decaps_internal(c)
     }
@@ -61,6 +61,23 @@ impl DecapKey {
         out[K * 768 + 32..K * 768 + 64].copy_from_slice(&self.ek_pke.h_ek);
         out[K * 768 + 64..].copy_from_slice(&self.z);
         out
+    }
+
+    /// Decode a key encoded as [`Self::as_bytes()`] encodes it, or `None` if
+    /// its `H(ek)` is not that of its encapsulation key.
+    ///
+    /// This is used for testing: rind generates keys only from seeds.
+    #[cfg(test)]
+    pub(crate) fn from_bytes(dk: &[u8; K * 768 + 96]) -> Option<Self> {
+        let (dk_pke, rest) = dk.split_at(K * 384);
+        let (ek, rest) = rest.split_at(K * 384 + 32);
+        let (h_ek, z) = rest.split_at(32);
+        let ek_pke = EncapKey::from_bytes(ek.try_into().unwrap()).ok()?;
+        (ek_pke.h_ek == h_ek).then(|| Self {
+            ek_pke,
+            dk_pke: dk_pke.try_into().unwrap(),
+            z: z.try_into().unwrap(),
+        })
     }
 
     pub(crate) fn keygen_internal(seed: &[u8; 64]) -> Self {

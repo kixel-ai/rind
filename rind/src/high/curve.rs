@@ -9,25 +9,28 @@ use crate::mid::p521;
 use crate::mid::rng::RandomSource;
 
 /// A generalisation of elliptic curves for use with ECDSA.
+///
+/// The key traits name the curve's scalar rather than the curve, so that no
+/// two traits refer to each other, which Aeneas cannot translate.
 pub(crate) trait Curve {
     /// Private key type for this curve.
-    type PrivateKey: PrivateKey<Self>;
+    type PrivateKey: PrivateKey<Self::Scalar>;
 
     /// Public key type for this curve.
-    type PublicKey: PublicKey<Self>;
+    type PublicKey: PublicKey<Self::Scalar>;
 
     /// Scalar type for this curve.
-    type Scalar: Scalar<Self>;
+    type Scalar: Scalar;
 
     /// The curve's OID when used in PKCS#8 key formats.
     fn oid() -> asn1::ObjectId;
 
     /// Generate a random `PrivateKey`
-    fn generate_random_key(rng: &mut dyn RandomSource) -> Result<Self::PrivateKey, Error>;
+    fn generate_random_key(rng: &mut impl RandomSource) -> Result<Self::PrivateKey, Error>;
 }
 
-/// A generic elliptic curve private key scalar, on curve `C`.
-pub(crate) trait PrivateKey<C: Curve + ?Sized> {
+/// A generic elliptic curve private key scalar, whose curve's scalars are `S`.
+pub(crate) trait PrivateKey<S> {
     /// Decode a private key from `bytes`.
     ///
     /// `bytes` may be larger or smaller than the size of `n`: excess bytes
@@ -50,7 +53,7 @@ pub(crate) trait PrivateKey<C: Curve + ?Sized> {
     /// Note this is returned as a scalar, so this may involve
     /// a `mod p` to `mod n` reduction.  This is not useful outside
     /// of ECDSA.
-    fn public_key_x_scalar(&self) -> C::Scalar;
+    fn public_key_x_scalar(&self) -> S;
 
     /// Output an uncompressed encoding of this key's public half.
     ///
@@ -59,11 +62,11 @@ pub(crate) trait PrivateKey<C: Curve + ?Sized> {
     fn public_key_encode_uncompressed<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error>;
 
     /// The raw RSA signing operation: `(e + r * d) / k`, where self aka `d`.
-    fn raw_ecdsa_sign(&self, k: &Self, e: &C::Scalar, r: &C::Scalar) -> C::Scalar;
+    fn raw_ecdsa_sign(&self, k: &Self, e: &S, r: &S) -> S;
 }
 
-/// A generic elliptic curve public key point, on curve `C`.
-pub(crate) trait PublicKey<C: Curve + ?Sized> {
+/// A generic elliptic curve public key point, whose curve's scalars are `S`.
+pub(crate) trait PublicKey<S> {
     /// Decode a point from its uncompressed encoding.
     ///
     /// `bytes` must be precisely `LEN_BYTES` in length.
@@ -76,11 +79,11 @@ pub(crate) trait PublicKey<C: Curve + ?Sized> {
         Self: Sized;
 
     /// Raw ECDSA verification primitive.
-    fn raw_ecdsa_verify(&self, r: &C::Scalar, s: &C::Scalar, e: &C::Scalar) -> Result<(), Error>;
+    fn raw_ecdsa_verify(&self, r: &S, s: &S, e: &S) -> Result<(), Error>;
 }
 
-/// A generic elliptic curve scalar, on curve `C`.
-pub(crate) trait Scalar<C: Curve + ?Sized> {
+/// A generic elliptic curve scalar.
+pub(crate) trait Scalar {
     /// Length of an encoded scalar.
     const LEN_BYTES: usize;
 
@@ -131,12 +134,12 @@ impl Curve for P256 {
         asn1::oid::id_prime256v1.clone()
     }
 
-    fn generate_random_key(rng: &mut dyn RandomSource) -> Result<p256::StaticPrivateKey, Error> {
+    fn generate_random_key(rng: &mut impl RandomSource) -> Result<p256::StaticPrivateKey, Error> {
         p256::StaticPrivateKey::generate(rng)
     }
 }
 
-impl PrivateKey<P256> for p256::StaticPrivateKey {
+impl PrivateKey<p256::Scalar> for p256::StaticPrivateKey {
     fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         Self::from_bytes(bytes)
     }
@@ -168,7 +171,7 @@ impl PrivateKey<P256> for p256::StaticPrivateKey {
     }
 }
 
-impl PublicKey<P256> for p256::VerifyingKey {
+impl PublicKey<p256::Scalar> for p256::VerifyingKey {
     fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
         Self::from_x962_uncompressed(bytes)
     }
@@ -183,7 +186,7 @@ impl PublicKey<P256> for p256::VerifyingKey {
     }
 }
 
-impl Scalar<P256> for p256::Scalar {
+impl Scalar for p256::Scalar {
     const LEN_BYTES: usize = Self::BYTES;
 
     fn from_bytes_checked(bytes: &[u8]) -> Result<Self, Error> {
@@ -219,12 +222,12 @@ impl Curve for P384 {
         asn1::oid::secp384r1.clone()
     }
 
-    fn generate_random_key(rng: &mut dyn RandomSource) -> Result<p384::StaticPrivateKey, Error> {
+    fn generate_random_key(rng: &mut impl RandomSource) -> Result<p384::StaticPrivateKey, Error> {
         p384::StaticPrivateKey::generate(rng)
     }
 }
 
-impl PrivateKey<P384> for p384::StaticPrivateKey {
+impl PrivateKey<p384::Scalar> for p384::StaticPrivateKey {
     fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         Self::from_bytes(bytes)
     }
@@ -256,7 +259,7 @@ impl PrivateKey<P384> for p384::StaticPrivateKey {
     }
 }
 
-impl PublicKey<P384> for p384::VerifyingKey {
+impl PublicKey<p384::Scalar> for p384::VerifyingKey {
     fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
         Self::from_x962_uncompressed(bytes)
     }
@@ -271,7 +274,7 @@ impl PublicKey<P384> for p384::VerifyingKey {
     }
 }
 
-impl Scalar<P384> for p384::Scalar {
+impl Scalar for p384::Scalar {
     const LEN_BYTES: usize = Self::BYTES;
 
     fn from_bytes_checked(bytes: &[u8]) -> Result<Self, Error> {
@@ -307,12 +310,12 @@ impl Curve for P521 {
         asn1::oid::secp521r1.clone()
     }
 
-    fn generate_random_key(rng: &mut dyn RandomSource) -> Result<p521::StaticPrivateKey, Error> {
+    fn generate_random_key(rng: &mut impl RandomSource) -> Result<p521::StaticPrivateKey, Error> {
         p521::StaticPrivateKey::generate(rng)
     }
 }
 
-impl PrivateKey<P521> for p521::StaticPrivateKey {
+impl PrivateKey<p521::Scalar> for p521::StaticPrivateKey {
     fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         Self::from_bytes(bytes)
     }
@@ -344,7 +347,7 @@ impl PrivateKey<P521> for p521::StaticPrivateKey {
     }
 }
 
-impl PublicKey<P521> for p521::VerifyingKey {
+impl PublicKey<p521::Scalar> for p521::VerifyingKey {
     fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
         Self::from_x962_uncompressed(bytes)
     }
@@ -359,7 +362,7 @@ impl PublicKey<P521> for p521::VerifyingKey {
     }
 }
 
-impl Scalar<P521> for p521::Scalar {
+impl Scalar for p521::Scalar {
     const LEN_BYTES: usize = Self::BYTES;
 
     fn from_bytes_checked(bytes: &[u8]) -> Result<Self, Error> {
@@ -385,6 +388,20 @@ mod tests {
     use super::*;
     use crate::error::KeyFormatError;
     use crate::test::*;
+
+    // Signing retries on a zero `r` or `s`, which only this tells it of.
+    #[test]
+    fn is_zero() {
+        fn check<S: Scalar>() {
+            assert!(S::from_bytes_reduced(&[0; 66][..S::LEN_BYTES]).is_zero());
+            let mut one = [0; 66];
+            one[S::LEN_BYTES - 1] = 1;
+            assert!(!S::from_bytes_reduced(&one[..S::LEN_BYTES]).is_zero());
+        }
+        check::<p256::Scalar>();
+        check::<p384::Scalar>();
+        check::<p521::Scalar>();
+    }
 
     #[test]
     fn private_key_encode_error() {

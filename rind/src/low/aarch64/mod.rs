@@ -3,11 +3,14 @@
 
 pub(crate) mod aes;
 pub(crate) mod aes128_gcm_dec;
+pub(crate) mod aes128_gcm_dec_alt;
 pub(crate) mod aes128_gcm_enc;
+pub(crate) mod aes128_gcm_enc_alt;
 pub(crate) mod aes256_gcm_dec;
 pub(crate) mod aes256_gcm_dec_alt;
 pub(crate) mod aes256_gcm_enc;
 pub(crate) mod aes256_gcm_enc_alt;
+pub(crate) mod aes_cbc;
 pub(crate) mod aes_ctr;
 pub(crate) mod aes_gcm;
 pub(crate) mod bignum_add;
@@ -63,6 +66,9 @@ pub(crate) mod bignum_tomont_p384;
 pub(crate) mod chacha20;
 pub(crate) mod chacha20poly1305;
 pub(crate) mod cpu;
+#[cfg(test)]
+#[path = "../arm/ct_qemu.rs"]
+pub(crate) mod ct_qemu;
 pub(crate) mod curve25519_x25519;
 pub(crate) mod curve25519_x25519base;
 pub(crate) mod edwards25519_decode;

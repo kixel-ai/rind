@@ -53,6 +53,9 @@ jobs:
   # aarch64, the crypto extension and the SHA-512 and SHA-3 instructions, as
   # a Raspberry Pi 4 lacks them; on x86_64, what Sandy Bridge lacks: AVX2,
   # BMI1 and BMI2, ADX, the SHA extensions, AVX-512, VAES, and VPCLMULQDQ.
+  # One x86_64 row denies only AVX-512 IFMA, so RSA signing takes the path
+  # of CPUs without it, such as Zen 3 and Intel's client cores, whichever CPU
+  # the runner draws; an RSA change's A/B reads it.
   # Two more x86_64 rows time mostly AES: one also denies AVX, as Westmere
   # and the Goldmont Atoms lack it, and one AES-NI, PCLMULQDQ, and SSE4.1
   # too, as the first Core 2s lack them, which also times ChaCha20-Poly1305
@@ -62,7 +65,10 @@ jobs:
   # rind_cpu_disable`, so these rows time release code, without the debug
   # assertions that would otherwise enable it. ring has no way to deny it a
   # feature, so these rows leave it out. Each times the benchmarks whose
-  # code the denied features change.
+  # code the denied features change. The generic row times rind's portable
+  # backend, forced by `--cfg rind_portable`, against aws-lc's C without
+  # assembly, which aws-lc-sys's cc builder builds only below opt-level 3 and
+  # its CMake builder, its default without assembly, only at 0.
   native:
     name: native (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }}${{ matrix.cpu && format(', {0}', matrix.cpu) || '' }})
     strategy:
@@ -90,6 +96,12 @@ jobs:
             runner: ubuntu-24.04
             personality: linux64
             portable: true
+            cpu: no-ifma
+            benches: --bench rsa_priv
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            personality: linux64
+            portable: true
             cpu: no-adx
             benches: --bench rsa_priv --bench rsa_pub --bench rsa_gen --bench p256 --bench p384 --bench p521 --bench x25519 --bench ed25519
           - target: x86_64-unknown-linux-gnu
@@ -103,13 +115,18 @@ jobs:
             personality: linux64
             portable: true
             cpu: no-aes
-            benches: --bench aes_gcm --bench cipher --bench chacha20poly1305 --bench xchacha20poly1305
+            benches: --bench aes_gcm --bench cipher --bench key_wrap --bench chacha20poly1305 --bench xchacha20poly1305
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64
             portable: true
             cpu: no-ssse3
-            benches: --bench aes_gcm --bench cipher --bench chacha20poly1305 --bench xchacha20poly1305 --bench sha1 --bench sha2
+            benches: --bench aes_gcm --bench cipher --bench key_wrap --bench chacha20poly1305 --bench xchacha20poly1305 --bench sha1 --bench sha2
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            personality: linux64
+            portable: true
+            cpu: generic
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -150,6 +167,7 @@ jobs:
       - name: Run benchmarks
         run: |
           libs='rind|aws-lc-rs|ring'
+          config=()
           if [ "${{ matrix.portable }}" = true ]; then
             libs='rind|aws-lc-rs'
             export RUSTFLAGS='--cfg rind_cpu_disable'
@@ -159,12 +177,23 @@ jobs:
                 # aws-lc's AES, SHA1, SHA256, PMULL, SHA512, and SHA3 bits.
                 export OPENSSL_armcap='~0x87c'
                 ;;
-              # Haswell's path: without ADX, and for aws-lc without BMI2,
-              # ADX, and AVX-512 F, DQ, IFMA, CD, BW, and VL in CPUID leaf
-              # 7's EBX, so both run RSAZ for RSA-2048, and aws-lc not its
-              # AVX-512 RSA, which rind lacks.
+              # IFMA in CPUID leaf 7's EBX, which both libraries' dual RSAZ
+              # needs.
+              x86_64-*/no-ifma)
+                export RIND_CPU_DISABLE_avx512ifma=1
+                export OPENSSL_ia32cap='~0x0:~0x200000'
+                ;;
+              # Haswell's path: without ADX and AVX-512 IFMA, and for aws-lc
+              # without BMI2, ADX, and AVX-512 F, DQ, IFMA, CD, BW, and VL in
+              # CPUID leaf 7's EBX, so both run RSAZ for RSA-2048, and
+              # neither the dual AVX-512 RSAZ.
+              x86_64-*/generic)
+                export RUSTFLAGS='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
+                export AWS_LC_SYS_NO_ASM=1 AWS_LC_SYS_CMAKE_BUILDER=0
+                config=(--config profile.bench.package.aws-lc-sys.opt-level=2)
+                ;;
               x86_64-*/no-adx)
-                export RIND_CPU_DISABLE_adx=1
+                export RIND_CPU_DISABLE_adx=1 RIND_CPU_DISABLE_avx512ifma=1
                 export OPENSSL_ia32cap='~0x0:~0xd02b0100'
                 ;;
               x86_64-*)
@@ -195,7 +224,7 @@ jobs:
                 ;;
             esac
           fi
-          cargo bench -p rind-bench ${{ matrix.benches }} --target ${{ matrix.target }} -- --noplot "(^|/)($libs)(/|\$)"
+          cargo bench "${config[@]}" -p rind-bench ${{ matrix.benches }} --target ${{ matrix.target }} -- --noplot "(^|/)($libs)(/|\$)"
         env:
           # Times RSA key generation too, which varies from run to run.
           NOISY_BENCHMARKS: 1

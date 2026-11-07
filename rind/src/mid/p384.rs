@@ -30,17 +30,32 @@ impl PublicKey {
         let point = AffineMontPoint::from_x962_uncompressed(bytes)?;
         Ok(Self { point })
     }
+
+    /// Decompress an X9.62 compressed point to its uncompressed encoding,
+    /// written to the start of `output`, which
+    /// [`Self::from_x962_uncompressed`] takes.
+    ///
+    /// An error is returned unless `bytes` is 49 bytes with tag 2 or 3, its
+    /// `x` is below the field prime, and a point on the curve has that `x`.
+    pub(crate) fn decompress<'a>(bytes: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        let _entry = low::Entry::new_public();
+        let point = AffineMontPoint::from_x962_compressed(bytes)?;
+        let output = output.get_mut(..Self::BYTES).ok_or(Error::WrongLength)?;
+        output.copy_from_slice(&point.as_bytes_uncompressed());
+        Ok(output)
+    }
 }
 
 /// A P-384 public key for ECDSA verification.
 ///
-/// It keeps the point's multiples, so verifying again with the same key
-/// skips computing them; Diffie-Hellman's [`PublicKey`] is used once and
-/// never needs them.
+/// It builds the point's multiples on its first verification and keeps
+/// them, so verifying again skips computing them, and a key never verified
+/// with, such as an ECDSA key pair's, never pays for them.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
+    point: AffineMontPoint,
     /// P, 3P, ..., 15P.
-    odd_multiples: [AffineMontPoint; 8],
+    odd_multiples: low::ReuseCache<[AffineMontPoint; 8]>,
     /// 17P, 19P, ..., 31P, which widen P's digits but pay for building
     /// only once a key is reused.
     more_odd_multiples: low::ReuseCache<[AffineMontPoint; 8]>,
@@ -52,7 +67,8 @@ impl VerifyingKey {
         low::Entry::assert_held();
         let PublicKey { point } = PublicKey::from_x962_uncompressed(bytes)?;
         Ok(Self {
-            odd_multiples: point.public_odd_multiples(),
+            point,
+            odd_multiples: low::ReuseCache::new(),
             more_odd_multiples: low::ReuseCache::new(),
         })
     }
@@ -65,14 +81,17 @@ impl VerifyingKey {
 
         // 5. Compute: R = (xR, yR) = u1 G + u2 QU
         //  If R = O, output "invalid" and stop.
+        let odd_multiples = self
+            .odd_multiples
+            .get_or_build_now(|| self.point.public_odd_multiples());
         let more = self
             .more_odd_multiples
-            .get_or_build(|| AffineMontPoint::public_more_odd_multiples(&self.odd_multiples));
+            .get_or_build(|| AffineMontPoint::public_more_odd_multiples(&odd_multiples));
         let point = match more {
             Some(more) => {
-                JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples, more])
+                JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&odd_multiples, more])
             }
-            None => JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples]),
+            None => JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&odd_multiples]),
         };
 
         if point.public_is_infinity() {
@@ -89,11 +108,11 @@ impl VerifyingKey {
     }
 }
 
-/// A P-384 ephemeral private key.
+/// A P-384 private key.
 ///
-/// `agreement::PrivateKey` uses one for a single Diffie-Hellman
-/// operation. It is not wiped on drop: the public keys holding one wipe it,
-/// and an ECDSA nonce is one too, which lives only for the signing call.
+/// `agreement::PrivateKey` holds one for Diffie-Hellman. It is not wiped on
+/// drop: the public keys holding one wipe it, and an ECDSA nonce is one too,
+/// which lives only for the signing call.
 pub(crate) struct PrivateKey {
     scalar: Scalar,
 }
@@ -151,10 +170,16 @@ impl PrivateKey {
         Err(Error::RngFailed)
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    /// Decode a private key as [`StaticPrivateKey::from_bytes`] does.
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         Scalar::from_bytes_checked(bytes).map(|scalar| Self {
             scalar: low::ct::into_secret(scalar),
         })
+    }
+
+    /// Return a fixed-length encoding of this private key's value, still secret.
+    pub(crate) fn secret_bytes(&self) -> [u8; Scalar::BYTES] {
+        self.scalar.as_bytes()
     }
 }
 
@@ -166,8 +191,7 @@ impl fmt::Debug for PrivateKey {
 
 /// A P-384 static private key.
 ///
-/// This backs ECDSA, so it can be serialized and deserialized. Its
-/// Diffie-Hellman operation is only for tests with known scalars.
+/// This backs ECDSA, so it can be serialized and deserialized.
 pub(crate) struct StaticPrivateKey(PrivateKey);
 
 impl StaticPrivateKey {
@@ -193,7 +217,7 @@ impl StaticPrivateKey {
 
     /// Return a fixed-length encoding of this private key's value, still secret.
     pub(crate) fn secret_bytes(&self) -> [u8; Scalar::BYTES] {
-        self.0.scalar.as_bytes()
+        self.0.secret_bytes()
     }
 
     /// Derive the corresponding public key, and return it in
@@ -201,18 +225,6 @@ impl StaticPrivateKey {
     pub(crate) fn public_key_uncompressed(&self) -> [u8; PublicKey::BYTES] {
         let _entry = low::Entry::new_secret();
         self.0.public_point().as_bytes_uncompressed()
-    }
-
-    /// Do the Diffie-Hellman operation.
-    ///
-    /// `peer` is the peer's public key (and this type means it was
-    /// already checked to be on the curve.)
-    ///
-    /// Returns a [`SharedSecret`].  May return an error in fault conditions.
-    #[cfg(test)]
-    pub(crate) fn diffie_hellman(&self, peer: &PublicKey) -> Result<SharedSecret, Error> {
-        let _entry = low::Entry::new_secret();
-        self.0.diffie_hellman(peer)
     }
 
     pub(crate) fn public_key_x_scalar(&self) -> Scalar {
@@ -283,6 +295,42 @@ impl AffineMontPoint {
         }
 
         Ok(point)
+    }
+
+    /// Decodes an X9.62 compressed point: `x`, and the parity of `y`.
+    ///
+    /// p is 3 mod 4, so a square's root is its `(p + 1) / 4`th power
+    /// (Euler's criterion). The root is squared back, so an `x` with no
+    /// point is refused rather than given one. No point of a curve of prime
+    /// order has `y = 0`, so `y` and `p - y` differ in parity.
+    fn from_x962_compressed(bytes: &[u8]) -> Result<Self, Error> {
+        let (tag, x) = match bytes.split_first() {
+            Some((&tag @ (0x02 | 0x03), x)) => (tag, x),
+            Some(_) => return Err(KeyFormatError::PointEncoding.into()),
+            None => return Err(KeyFormatError::WrongLength.into()),
+        };
+        let x = util::big_endian_slice_to_u64x6(x).ok_or(KeyFormatError::WrongLength)?;
+        if !x.iter().rev().lt(CURVE_PRIME.iter().rev()) {
+            return Err(KeyFormatError::NotOnCurve.into());
+        }
+
+        let x = FieldElement(x).as_mont();
+        let rhs = x
+            .mont_sqr()
+            .add(&CURVE_A_MONT)
+            .mont_mul(&x)
+            .add(&CURVE_B_MONT);
+        let y = rhs.mont_sqrt_candidate();
+        if !y.mont_sqr().public_eq(&rhs) {
+            return Err(KeyFormatError::NotOnCurve.into());
+        }
+
+        let y = y.demont();
+        let y = match y.0[0] & 1 == u64::from(tag & 1) {
+            true => y,
+            false => y.negate_mod_p(),
+        };
+        Ok(Self::from_xy(x, y.as_mont()))
     }
 
     fn x_scalar(&self) -> Scalar {
@@ -404,7 +452,7 @@ impl AffineMontPoint {
         JacobianMontPoint::public_batch_as_affine(&multiples)
     }
 
-    #[cfg(target_arch = "arm")]
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
     fn public_precomp_w5(&self) -> JacobianMontPointTableW5 {
         let mut r = [JacobianMontPoint::zero(); 16];
 
@@ -528,7 +576,7 @@ impl JacobianMontPoint {
     }
 
     /// `scalar * point`, by s2n-bignum's `p384_montjscalarmul`.
-    #[cfg(not(target_arch = "arm"))]
+    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
     fn multiply(scalar: &Scalar, point: &AffineMontPoint) -> Self {
         let mut r = Self::zero();
         low::p384_montjscalarmul(&mut r.xyz, &scalar.0, &Self::from_affine(point).xyz);
@@ -545,7 +593,7 @@ impl JacobianMontPoint {
     /// when the windows so far are worth 32m + d = n + 2d.  Below n, that
     /// needs the last window, a negative d, and n = -d mod 32, which the
     /// assertion below rules out.
-    #[cfg(target_arch = "arm")]
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
     fn multiply(scalar: &Scalar, point: &AffineMontPoint) -> Self {
         const { assert!(CURVE_ORDER[0] % 32 > 16) };
         let precomp = point.public_precomp_w5();
@@ -711,7 +759,7 @@ impl JacobianMontPoint {
         }
     }
 
-    #[cfg(any(target_arch = "arm", test))]
+    #[cfg(any(any(rind_backend = "arm", rind_backend = "portable"), test))]
     fn add_inplace(&mut self, p: &Self) {
         let mut r = Self::infinity();
         low::p384_montjadd(&mut r.xyz, &self.xyz, &p.xyz);
@@ -752,7 +800,7 @@ impl JacobianMontPoint {
 
     /// Returns `table[index - 1]`, negated if `sign` is set, or infinity
     /// for a zero `index`, in constant time.
-    #[cfg(target_arch = "arm")]
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
     fn lookup_w5(table: &JacobianMontPointTableW5, index: u8, sign: u8) -> Self {
         let mut r = Self::infinity();
         low::bignum_jac_point_select_p384(&mut r.xyz, table, index);
@@ -760,7 +808,7 @@ impl JacobianMontPoint {
         r
     }
 
-    #[cfg(target_arch = "arm")]
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
     fn maybe_negate_y(&mut self, sign: u8) {
         let y = self.y();
         let neg_y = y.negate_mod_p();
@@ -800,6 +848,38 @@ impl FieldElement {
         let mut r = Self::default();
         low::bignum_montmul_p384(&mut r.0, &self.0, &other.0);
         r
+    }
+
+    /// `n` Montgomery squarings mod p384
+    fn mont_sqr_n(&self, n: usize) -> Self {
+        let mut r = *self;
+        for _ in 0..n {
+            r = r.mont_sqr();
+        }
+        r
+    }
+
+    /// `self` to the `(p + 1) / 4`th power, in Montgomery form. That is
+    /// `(2^255 - 1) * 2^127 + (2^32 - 1) * 2^94 + 2^30`: 255 set bits, a clear
+    /// one, 32 set, 63 clear, one set, and 30 clear, so `xN = self^(2^N - 1)`
+    /// builds `x255` and `x32`.
+    fn mont_sqrt_candidate(&self) -> Self {
+        let x2 = self.mont_sqr_n(1).mont_mul(self);
+        let x3 = x2.mont_sqr_n(1).mont_mul(self);
+        let x6 = x3.mont_sqr_n(3).mont_mul(&x3);
+        let x12 = x6.mont_sqr_n(6).mont_mul(&x6);
+        let x15 = x12.mont_sqr_n(3).mont_mul(&x3);
+        let x30 = x15.mont_sqr_n(15).mont_mul(&x15);
+        let x32 = x30.mont_sqr_n(2).mont_mul(&x2);
+        let x60 = x30.mont_sqr_n(30).mont_mul(&x30);
+        let x120 = x60.mont_sqr_n(60).mont_mul(&x60);
+        let x240 = x120.mont_sqr_n(120).mont_mul(&x120);
+        let x255 = x240.mont_sqr_n(15).mont_mul(&x15);
+        x255.mont_sqr_n(33)
+            .mont_mul(&x32)
+            .mont_sqr_n(64)
+            .mont_mul(self)
+            .mont_sqr_n(30)
     }
 
     /// Remove one montgomery factor
@@ -1058,7 +1138,7 @@ impl Iterator for BoothRecodeW5 {
 }
 
 /// 16 jacobian points
-#[cfg(target_arch = "arm")]
+#[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 type JacobianMontPointTableW5 = [u64; 288];
 
 /// 20 tables of 16 affine points
@@ -1121,6 +1201,13 @@ const CURVE_ORDER_MM: [u64; 6] = [
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    // The key's Debug, which no public type's Debug reaches, shows nothing of it.
+    #[test]
+    fn private_key_debug() {
+        let key = PrivateKey::new_random().unwrap();
+        assert_eq!(format!("{key:?}"), "PrivateKey { .. }");
+    }
+
     use super::*;
 
     const CURVE_GENERATOR: AffineMontPoint = AffineMontPoint {

@@ -184,6 +184,9 @@ impl RsaPrivateKey {
     /// returns c ^ d mod n
     ///
     /// (albeit via CRT)
+    ///
+    /// The result is at the modulus's width and stays secret, as a decrypted
+    /// message must: a signer declassifies it.
     pub(crate) fn private_op(&self, c: &RsaPosIntModN) -> Result<RsaPosIntModN, Error> {
         if !c.less_than(&self.public.n) {
             return Err(Error::WrongLength);
@@ -191,8 +194,8 @@ impl RsaPrivateKey {
 
         // A note about blinding:
         //
-        // In this library, we only perform RSA signatures, where `c` is
-        // public information, there is little use for base blinding.
+        // `c` is public, a message to sign or a ciphertext to decrypt, so
+        // base blinding would hide nothing a timing channel could reveal.
         //
         // Exponent and modulus blinding are _also_ relatively unnecessary,
         // since our `PosInt::mod_exp_pair` is side-channel silent.
@@ -232,13 +235,16 @@ impl RsaPrivateKey {
             .mont_mul(&self.iqmp_mont, &self.p, self.p0);
 
         // iv.  Let m = m_2 + q * h.
-        let m = m_2.widen().add(&low::PosInt::mul(&self.q, &h));
-        let m = low::ct::into_public(m);
+        // `add` narrows `m` to its nonzero words, a width that depends on
+        // its value, so widen it back before anything reads that width.
+        let mut m = m_2.widen().add(&low::PosInt::mul(&self.q, &h));
+        m.expand(&self.public.n);
 
         // Check the result as a fault attack countermeasure: `new` checked
-        // the key's components, so only a fault fails this.
+        // the key's components, so only a fault fails this, and the verdict
+        // reveals nothing else.
         match self.public.public_op(m.clone()) {
-            Ok(c2) if c2.equals(c) => Ok(m),
+            Ok(c2) if low::ct::into_public(c2.equals(c)) => Ok(m),
             _ => Err(Error::Fault),
         }
     }
@@ -315,3 +321,35 @@ type SecretRsaPosIntD = low::SecretPosInt<{ MAX_PRIVATE_MODULUS_WORDS * 2 }>;
 type RsaPosIntModP = low::PosInt<MAX_PRIVATE_MODULUS_WORDS>;
 type RsaPosIntD = low::PosInt<{ MAX_PRIVATE_MODULUS_WORDS * 2 }>;
 type RsaPosIntModN = low::PosInt<{ MAX_PRIVATE_MODULUS_WORDS * 2 }>;
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    // A prime below 1024 bits is refused before anything is computed from
+    // it, however wide the modulus.
+    #[test]
+    fn short_prime_refused() {
+        fn int<const N: usize>(bytes: &[u8]) -> low::PosInt<N> {
+            low::PosInt::from_bytes(bytes).unwrap()
+        }
+        let mut n = [0u8; 256];
+        n[0] = 0x80;
+        n[255] = 1;
+        let mut p = [0u8; 127];
+        p[0] = 0x80;
+        p[126] = 1;
+        let key = RsaPrivateKey::new(
+            int(&p),
+            int(&[3]),
+            int(&[1]),
+            int(&[1]),
+            int(&[1]),
+            int(&[1]),
+            int(&n),
+            65537,
+        );
+        assert_eq!(key.err(), Some(KeyFormatError::RsaPrimes.into()));
+    }
+}

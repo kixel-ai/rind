@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/moq-dev/rind/compare/rind-dimpl-v0.9.0...rind-dimpl-v0.9.1) - 2026-11-07
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.9.0](https://github.com/moq-dev/rind/compare/rind-dimpl-v0.2.0...rind-dimpl-v0.9.0) - 2026-11-07
+
+### Added
+
+- [**breaking**] each adapter's version matches the upstream it adapts ([#440](https://github.com/moq-dev/rind/pull/440))
+
+### Other
+
+- *(release)* ship rind as 0.2.1, not 0.3.0 ([#457](https://github.com/moq-dev/rind/pull/457))
+
+## [0.2.0](https://github.com/moq-dev/rind/compare/rind-dimpl-v0.1.13...rind-dimpl-v0.2.0) - 2026-11-06
+
+### Fixed
+
+- *(adapters)* [**breaking**] return each adapter's own MissingFeature, not rind's ([#420](https://github.com/moq-dev/rind/pull/420))
+
+## [0.1.13](https://github.com/moq-dev/rind/compare/rind-dimpl-v0.1.12...rind-dimpl-v0.1.13) - 2026-11-05
+
+### Other
+
+- add rind logos and credit upstream projects ([#313](https://github.com/moq-dev/rind/pull/313))
+
 ## [0.1.12](https://github.com/moq-dev/rind/compare/rind-dimpl-v0.1.11...rind-dimpl-v0.1.12) - 2026-11-03
 
 ### Other

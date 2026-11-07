@@ -23,3 +23,19 @@ pub const HASH_SIZES: [(usize, &str); 6] = [
     (8192, "8KB"),
     (16384, "16KB"),
 ];
+
+/// rind's rows: `rind`, then, on a CPU with DIT, `rind-dit-held` with a
+/// [`rind::cpu::Dit`] guard for the caller to hold while timing it, as a
+/// caller batching calls would. Elsewhere the guard does nothing, so the row
+/// would repeat `rind`'s.
+#[allow(dead_code)]
+pub fn rind_rows() -> impl Iterator<Item = (&'static str, Option<rind::cpu::Dit>)> {
+    #[cfg(target_arch = "aarch64")]
+    let dit = std::arch::is_aarch64_feature_detected!("dit");
+    #[cfg(not(target_arch = "aarch64"))]
+    let dit = false;
+    // Lazily, so that the guard is taken only once `rind`'s row is timed.
+    let held = dit.then_some(()).into_iter();
+    std::iter::once(("rind", None))
+        .chain(held.map(|()| ("rind-dit-held", Some(rind::cpu::Dit::hold()))))
+}

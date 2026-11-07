@@ -28,9 +28,28 @@ asn1_oid! {
 }
 
 asn1_oid! {
+    id_ecDH OBJECT IDENTIFIER ::= {
+        iso(1) identified_organization(3) certicom(132) schemes(1) ecdh(12)
+    }
+}
+
+asn1_oid! {
     rsaEncryption OBJECT IDENTIFIER ::= {
         iso(1) member_body(2)
         us(840) rsadsi(113549) pkcs(1) 1 rsaEncryption(1)
+    }
+}
+
+asn1_oid! {
+    id_RSAES_OAEP OBJECT IDENTIFIER ::= {
+        iso(1) member_body(2)
+        us(840) rsadsi(113549) pkcs(1) 1 7
+    }
+}
+
+asn1_oid! {
+    id_ea_rsa OBJECT IDENTIFIER ::= {
+        joint_iso_itu_t(2) ds(5) algorithm(8) encryptionAlgorithm(1) rsa(1)
     }
 }
 
@@ -59,6 +78,10 @@ asn1_oid! {
         joint_iso_itu_t(2) country(16) us(840) organization(1) gov(101)
         csor(3) nistalgorithm(4) hashalgs(2) 3
     }
+}
+
+asn1_oid! {
+    id_X25519 OBJECT IDENTIFIER ::= { 1 3 101 110 }
 }
 
 asn1_oid! {

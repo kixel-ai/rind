@@ -30,17 +30,32 @@ impl PublicKey {
         let point = AffineMontPoint::from_x962_uncompressed(bytes)?;
         Ok(Self { point })
     }
+
+    /// Decompress an X9.62 compressed point to its uncompressed encoding,
+    /// written to the start of `output`, which
+    /// [`Self::from_x962_uncompressed`] takes.
+    ///
+    /// An error is returned unless `bytes` is 33 bytes with tag 2 or 3, its
+    /// `x` is below the field prime, and a point on the curve has that `x`.
+    pub(crate) fn decompress<'a>(bytes: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        let _entry = low::Entry::new_public();
+        let point = AffineMontPoint::from_x962_compressed(bytes)?;
+        let output = output.get_mut(..Self::BYTES).ok_or(Error::WrongLength)?;
+        output.copy_from_slice(&point.as_bytes_uncompressed());
+        Ok(output)
+    }
 }
 
 /// A P-256 public key for ECDSA verification.
 ///
-/// It keeps the point's multiples, so verifying again with the same key
-/// skips computing them; Diffie-Hellman's [`PublicKey`] is used once and
-/// never needs them.
+/// It builds the point's multiples on its first verification and keeps
+/// them, so verifying again skips computing them, and a key never verified
+/// with, such as an ECDSA key pair's, never pays for them.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
+    point: AffineMontPoint,
     /// P, 3P, ..., 15P.
-    odd_multiples: [AffineMontPoint; 8],
+    odd_multiples: low::ReuseCache<[AffineMontPoint; 8]>,
     /// 17P, 19P, ..., 31P, which widen P's digits but pay for building
     /// only once a key is reused.
     more_odd_multiples: low::ReuseCache<[AffineMontPoint; 8]>,
@@ -52,7 +67,8 @@ impl VerifyingKey {
         low::Entry::assert_held();
         let PublicKey { point } = PublicKey::from_x962_uncompressed(bytes)?;
         Ok(Self {
-            odd_multiples: point.public_odd_multiples(),
+            point,
+            odd_multiples: low::ReuseCache::new(),
             more_odd_multiples: low::ReuseCache::new(),
         })
     }
@@ -65,15 +81,13 @@ impl VerifyingKey {
 
         // 5. Compute: R = (xR, yR) = u1 G + u2 QU
         //  If R = O, output "invalid" and stop.
+        let odd_multiples = self
+            .odd_multiples
+            .get_or_build_now(|| self.point.public_odd_multiples());
         let more = self
             .more_odd_multiples
-            .get_or_build(|| AffineMontPoint::public_more_odd_multiples(&self.odd_multiples));
-        let point = match more {
-            Some(more) => {
-                JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples, more])
-            }
-            None => JacobianMontPoint::public_twin_multiply(&u1, &u2, &[&self.odd_multiples]),
-        };
+            .get_or_build(|| AffineMontPoint::public_more_odd_multiples(&odd_multiples));
+        let point = JacobianMontPoint::public_twin_multiply(&u1, &u2, &odd_multiples, more);
 
         if point.public_is_infinity() {
             return Err(Error::BadSignature);
@@ -89,11 +103,11 @@ impl VerifyingKey {
     }
 }
 
-/// A P-256 ephemeral private key.
+/// A P-256 private key.
 ///
-/// `agreement::PrivateKey` uses one for a single Diffie-Hellman
-/// operation. It is not wiped on drop: the public keys holding one wipe it,
-/// and an ECDSA nonce is one too, which lives only for the signing call.
+/// `agreement::PrivateKey` holds one for Diffie-Hellman. It is not wiped on
+/// drop: the public keys holding one wipe it, and an ECDSA nonce is one too,
+/// which lives only for the signing call.
 pub(crate) struct PrivateKey {
     scalar: Scalar,
 }
@@ -150,10 +164,16 @@ impl PrivateKey {
         Err(Error::RngFailed)
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    /// Decode a private key as [`StaticPrivateKey::from_bytes`] does.
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         Scalar::from_bytes_checked(bytes).map(|scalar| Self {
             scalar: low::ct::into_secret(scalar),
         })
+    }
+
+    /// Return a fixed-length encoding of this private key's value, still secret.
+    pub(crate) fn secret_bytes(&self) -> [u8; Scalar::BYTES] {
+        self.scalar.as_bytes()
     }
 }
 
@@ -165,8 +185,7 @@ impl fmt::Debug for PrivateKey {
 
 /// A P-256 static private key.
 ///
-/// This backs ECDSA, so it can be serialized and deserialized. Its
-/// Diffie-Hellman operation is only for tests with known scalars.
+/// This backs ECDSA, so it can be serialized and deserialized.
 pub(crate) struct StaticPrivateKey(PrivateKey);
 
 impl StaticPrivateKey {
@@ -191,7 +210,7 @@ impl StaticPrivateKey {
 
     /// Return a fixed-length encoding of this private key's value, still secret.
     pub(crate) fn secret_bytes(&self) -> [u8; Scalar::BYTES] {
-        self.0.scalar.as_bytes()
+        self.0.secret_bytes()
     }
 
     /// Derive the corresponding public key, and return it in
@@ -199,18 +218,6 @@ impl StaticPrivateKey {
     pub(crate) fn public_key_uncompressed(&self) -> [u8; PublicKey::BYTES] {
         let _entry = low::Entry::new_secret();
         self.0.public_point().as_bytes_uncompressed()
-    }
-
-    /// Do the Diffie-Hellman operation.
-    ///
-    /// `peer` is the peer's public key (and this type means it was
-    /// already checked to be on the curve.)
-    ///
-    /// Returns a [`SharedSecret`].  May return an error in fault conditions.
-    #[cfg(test)]
-    pub(crate) fn diffie_hellman(&self, peer: &PublicKey) -> Result<SharedSecret, Error> {
-        let _entry = low::Entry::new_secret();
-        self.0.diffie_hellman(peer)
     }
 
     pub(crate) fn generate(rng: &mut dyn RandomSource) -> Result<Self, Error> {
@@ -269,19 +276,8 @@ impl AffineMontPoint {
         let y = util::big_endian_slice_to_u64x4(y).unwrap();
 
         // A coordinate at or above p would be reduced, giving the point a
-        // second encoding.  Public, so this need not be constant time.  A
-        // loop from the top limb rather than `Iterator::lt`, which Aeneas
-        // cannot translate; the compiled code is the same.
-        let below_p = |v: &[u64; 4]| {
-            for i in 0..4 {
-                let j = 3 - i;
-                if v[j] != CURVE_PRIME[j] {
-                    return v[j] < CURVE_PRIME[j];
-                }
-            }
-            false
-        };
-        if !below_p(&x) || !below_p(&y) {
+        // second encoding.
+        if !public_below_p(&x) || !public_below_p(&y) {
             return Err(KeyFormatError::NotOnCurve.into());
         }
 
@@ -292,6 +288,42 @@ impl AffineMontPoint {
         }
 
         Ok(point)
+    }
+
+    /// Decodes an X9.62 compressed point: `x`, and the parity of `y`.
+    ///
+    /// p is 3 mod 4, so a square's root is its `(p + 1) / 4`th power
+    /// (Euler's criterion). The root is squared back, so an `x` with no
+    /// point is refused rather than given one. No point of a curve of prime
+    /// order has `y = 0`, so `y` and `p - y` differ in parity.
+    fn from_x962_compressed(bytes: &[u8]) -> Result<Self, Error> {
+        let (tag, x) = match bytes.split_first() {
+            Some((&tag @ (0x02 | 0x03), x)) => (tag, x),
+            Some(_) => return Err(KeyFormatError::PointEncoding.into()),
+            None => return Err(KeyFormatError::WrongLength.into()),
+        };
+        let x = util::big_endian_slice_to_u64x4(x).ok_or(KeyFormatError::WrongLength)?;
+        if !public_below_p(&x) {
+            return Err(KeyFormatError::NotOnCurve.into());
+        }
+
+        let x = FieldElement(x).as_mont();
+        let rhs = x
+            .mont_sqr()
+            .add(&CURVE_A_MONT)
+            .mont_mul(&x)
+            .add(&CURVE_B_MONT);
+        let y = rhs.mont_sqrt_candidate();
+        if !y.mont_sqr().public_eq(&rhs) {
+            return Err(KeyFormatError::NotOnCurve.into());
+        }
+
+        let y = y.demont();
+        let y = match y.0[0] & 1 == u64::from(tag & 1) {
+            true => y,
+            false => y.negate_mod_p(),
+        };
+        Ok(Self::from_xy(x, y.as_mont()))
     }
 
     fn x_scalar(&self) -> Scalar {
@@ -397,7 +429,7 @@ impl AffineMontPoint {
     }
 
     /// `scalar * self`, by s2n-bignum's `p256_montjscalarmul`.
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(rind_backend = "aarch64"))]
     fn multiply(&self, scalar: &Scalar) -> Self {
         JacobianMontPoint::multiply(scalar, self).as_affine()
     }
@@ -408,7 +440,7 @@ impl AffineMontPoint {
     /// output, inversion included, for any scalar and a point on the curve,
     /// which `self` is. It takes and returns plain coordinates, the result
     /// proven only mod p, which `as_mont` reduces.
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(rind_backend = "aarch64")]
     fn multiply(&self, scalar: &Scalar) -> Self {
         let point = Self::from_xy(self.x().demont(), self.y().demont());
         let mut xy = [0; 8];
@@ -419,7 +451,7 @@ impl AffineMontPoint {
     }
 
     /// `scalar * G`, by aws-lc's routines over the generator table.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     fn base_multiply(scalar: &Scalar) -> Self {
         JacobianMontPoint::base_multiply(scalar).as_affine()
     }
@@ -430,7 +462,7 @@ impl AffineMontPoint {
     /// Its proof, which covers the aarch64 routine, assumes the table holds
     /// exactly the multiples of G that `admin/p256-precomp` writes, and
     /// returns plain affine coordinates.
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(not(rind_backend = "x86_64"))]
     fn base_multiply(scalar: &Scalar) -> Self {
         let mut xy = [0; 8];
         low::p256_scalarmulbase(&mut xy, &scalar.0, &precomp::CURVE_GENERATOR_PRECOMP);
@@ -446,9 +478,11 @@ impl AffineMontPoint {
         }
     }
 
-    /// Negates `y` if `negate` is 1, in constant time.
-    #[cfg(target_arch = "x86_64")]
-    fn negate_y_if(&mut self, negate: u8) {
+    /// Becomes `row`'s point `digit - 1`, or zeros for a zero `digit`, with
+    /// `y` negated if `negate` is 1, in constant time.
+    #[cfg(rind_backend = "x86_64")]
+    fn select_w7(&mut self, row: &low::P256GeneratorRow, digit: u8, negate: u8) {
+        low::p256_select_w7(&mut self.xy, row, digit);
         let y = self.y();
         low::bignum_mux(
             negate.into(),
@@ -497,7 +531,7 @@ impl JacobianMontPoint {
     }
 
     /// `scalar * point`, by s2n-bignum's `p256_montjscalarmul`.
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(rind_backend = "aarch64"))]
     fn multiply(scalar: &Scalar, point: &AffineMontPoint) -> Self {
         let mut r = Self::zero();
         low::p256_montjscalarmul(&mut r.xyz, &scalar.0, &Self::from_affine(point).xyz);
@@ -511,23 +545,18 @@ impl JacobianMontPoint {
     /// No addition doubles, which `p256_point_add_affine` cannot: the
     /// accumulator sums lower windows, so it is a smaller integer than the
     /// table point, in magnitude, and below n.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     fn base_multiply(scalar: &Scalar) -> Self {
         let mut windows = precomp::CURVE_GENERATOR_PRECOMP
             .iter()
             .zip(scalar.booth_recoded::<BASE_WINDOW>());
-        let lookup = |row, digit, sign| {
-            let mut point = AffineMontPoint {
-                xy: low::p256_select_w7(row, digit),
-            };
-            point.negate_y_if(sign);
-            point
-        };
+        let mut point = AffineMontPoint::default();
 
         // unwrap: the number of windows is constant. The first point is
         // infinity, with a zero `z`, when its digit is zero.
         let (row, (digit, sign)) = windows.next().unwrap();
-        let mut result = Self::from_affine(&lookup(row, digit, sign));
+        point.select_w7(row, digit, sign);
+        let mut result = Self::from_affine(&point);
         low::bignum_mux(
             digit.into(),
             &mut result.xyz[Self::Z],
@@ -536,38 +565,46 @@ impl JacobianMontPoint {
         );
 
         for (row, (digit, sign)) in windows {
-            result.xyz = low::p256_point_add_affine(&result.xyz, &lookup(row, digit, sign).xy);
+            point.select_w7(row, digit, sign);
+            low::p256_point_add_affine(&mut result.xyz, &point.xy);
         }
         result
     }
 
-    /// `g * G + p * P` for public scalars, given P's odd multiples in rows
-    /// of 8.
+    /// `g * G + p * P` for public scalars, given P, 3P, ..., 15P, and 17P,
+    /// ..., 31P if `more` holds them.
     ///
-    /// One chain of doublings serves both: P's digits are a NAF over
-    /// `odd_multiples`, width 5 for one row and 6 for two, and G's a width-6
-    /// NAF over the generator table's first row, which holds G to at least
-    /// 32G.
+    /// One chain of doublings serves both: P's digits are a NAF over its odd
+    /// multiples, width 5 without `more` and 6 with it, and G's a width-6 NAF
+    /// over the generator table's first row, which holds G to at least 32G.
+    ///
+    /// The rows are two arguments, and the digits indexed rather than zipped,
+    /// as Aeneas cannot translate a slice of borrowed rows or the zip.
     fn public_twin_multiply(
         g: &Scalar,
         p: &Scalar,
-        odd_multiples: &[&[AffineMontPoint; 8]],
+        odd_multiples: &[AffineMontPoint; 8],
+        more: Option<&[AffineMontPoint; 8]>,
     ) -> Self {
         let g_digits = g.public_naf::<6>();
-        let p_digits = match odd_multiples.len() {
-            1 => p.public_naf::<5>(),
-            _ => p.public_naf::<6>(),
+        let p_digits = match more {
+            None => p.public_naf::<5>(),
+            Some(_) => p.public_naf::<6>(),
         };
         let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP[0][..];
 
         let mut result = Self::infinity();
-        for (g_digit, p_digit) in g_digits.iter().zip(&p_digits).rev() {
+        for i in (0..g_digits.len()).rev() {
+            let (g_digit, p_digit) = (&g_digits[i], &p_digits[i]);
             if !result.public_is_infinity() {
                 result = result.double();
             }
             if *p_digit != 0 {
                 let i = usize::from(p_digit.unsigned_abs() / 2);
-                let mut tmp = odd_multiples[i / 8][i % 8];
+                let mut tmp = match more {
+                    Some(more) if i >= 8 => more[i - 8],
+                    _ => odd_multiples[i],
+                };
                 if *p_digit < 0 {
                     tmp.negate_y();
                 }
@@ -592,7 +629,7 @@ impl JacobianMontPoint {
     }
 
     // aarch64's `p256_scalarmul` makes its result affine itself.
-    #[cfg(any(test, not(target_arch = "aarch64")))]
+    #[cfg(any(test, not(rind_backend = "aarch64")))]
     fn as_affine(&self) -> AffineMontPoint {
         // inversion calculated outside montgomery domain
         // (benchmarked vs addition chain in montgomery)
@@ -667,13 +704,13 @@ impl JacobianMontPoint {
         }
         let mut r_plus_n = [0; 4];
         let mut carry = false;
-        for (sum, (r, n)) in r_plus_n.iter_mut().zip(r.0.iter().zip(CURVE_ORDER)) {
-            let (s, c1) = r.overflowing_add(n);
+        for i in 0..4 {
+            let (s, c1) = r.0[i].overflowing_add(CURVE_ORDER[i]);
             let (s, c2) = s.overflowing_add(u64::from(carry));
-            *sum = s;
+            r_plus_n[i] = s;
             carry = c1 | c2;
         }
-        !carry && r_plus_n.iter().rev().lt(CURVE_PRIME.iter().rev()) && is(r_plus_n)
+        !carry && public_below_p(&r_plus_n) && is(r_plus_n)
     }
 
     #[must_use]
@@ -722,6 +759,20 @@ impl JacobianMontPoint {
     }
 }
 
+/// Whether `v` is below p, for public `v`.
+///
+/// A loop from the top limb rather than `Iterator::lt`, which Aeneas cannot
+/// translate; the compiled code is the same.
+fn public_below_p(v: &[u64; 4]) -> bool {
+    for i in 0..4 {
+        let j = 3 - i;
+        if v[j] != CURVE_PRIME[j] {
+            return v[j] < CURVE_PRIME[j];
+        }
+    }
+    false
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 struct FieldElement([u64; 4]);
 
@@ -753,6 +804,31 @@ impl FieldElement {
         let mut r = Self::default();
         low::bignum_montmul_p256(&mut r.0, &self.0, &other.0);
         r
+    }
+
+    /// `n` Montgomery squarings mod p256
+    fn mont_sqr_n(&self, n: usize) -> Self {
+        let mut r = *self;
+        for _ in 0..n {
+            r = r.mont_sqr();
+        }
+        r
+    }
+
+    /// `self` to the `(p + 1) / 4`th power, `2^254 - 2^222 + 2^190 + 2^94`,
+    /// in Montgomery form: `x32 = self^(2^32 - 1)`, shifted past one set bit
+    /// and then another.
+    fn mont_sqrt_candidate(&self) -> Self {
+        let x2 = self.mont_sqr_n(1).mont_mul(self);
+        let x4 = x2.mont_sqr_n(2).mont_mul(&x2);
+        let x8 = x4.mont_sqr_n(4).mont_mul(&x4);
+        let x16 = x8.mont_sqr_n(8).mont_mul(&x8);
+        let x32 = x16.mont_sqr_n(16).mont_mul(&x16);
+        x32.mont_sqr_n(32)
+            .mont_mul(self)
+            .mont_sqr_n(96)
+            .mont_mul(self)
+            .mont_sqr_n(94)
     }
 
     /// Remove one montgomery factor
@@ -906,7 +982,7 @@ impl Scalar {
     }
 
     /// Iterator of `256 / W + 1` W-bit elements, LSB first, sign bit is separate
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     fn booth_recoded<const W: usize>(&self) -> BoothRecode<W> {
         BoothRecode::new(self)
     }
@@ -948,14 +1024,14 @@ impl Iterator for Bits<'_> {
     }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 struct BoothRecode<const W: usize> {
     // little endian
     bytes: [u8; 33],
     index: usize,
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 impl<const W: usize> BoothRecode<W> {
     fn new(scalar: &Scalar) -> Self {
         let mut bytes = [0u8; 33];
@@ -981,7 +1057,7 @@ impl<const W: usize> BoothRecode<W> {
     }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 impl<const W: usize> Iterator for BoothRecode<W> {
     type Item = (u8, u8);
 
@@ -1010,19 +1086,19 @@ impl<const W: usize> Iterator for BoothRecode<W> {
 }
 
 /// The generator table's window, aws-lc's.
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 const BASE_WINDOW: usize = 7;
 
 /// 37 rows of the 64 multiples `i * 2^(7 * j) * G`, one row per 7-bit window.
 ///
 /// 37 := 256 / 7 + 1, as Booth recoding carries into a window above the top bit.
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 type AffineMontPointTable = [low::P256GeneratorRow; 37];
 
 /// 43 rows of the 32 multiples `i * 2^(6 * j) * G`, one row per 6-bit window.
 ///
 /// 43 := 256 / 6 + 1, as Booth recoding carries into a window above the top bit.
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(rind_backend = "x86_64"))]
 type AffineMontPointTable = [[u64; 256]; 43];
 
 const CURVE_A_MONT: FieldElement = FieldElement([
@@ -1070,6 +1146,13 @@ const CURVE_ORDER_MM: [u64; 4] = [
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    // The key's Debug, which no public type's Debug reaches, shows nothing of it.
+    #[test]
+    fn private_key_debug() {
+        let key = PrivateKey::new_random().unwrap();
+        assert_eq!(format!("{key:?}"), "PrivateKey { .. }");
+    }
+
     use super::*;
 
     const CURVE_GENERATOR: AffineMontPoint = AffineMontPoint {
@@ -1156,10 +1239,10 @@ mod tests {
             let odd_multiples = CURVE_GENERATOR.public_odd_multiples();
             let more = AffineMontPoint::public_more_odd_multiples(&odd_multiples);
             let zero = Scalar::default();
-            for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
+            for more in [None, Some(&more)] {
                 for (g, p) in [(&scalar, &zero), (&zero, &scalar)] {
                     assert_eq!(
-                        JacobianMontPoint::public_twin_multiply(g, p, rows)
+                        JacobianMontPoint::public_twin_multiply(g, p, &odd_multiples, more)
                             .as_affine()
                             .xy,
                         expected
@@ -1192,9 +1275,9 @@ mod tests {
             (Scalar([0, 0, 0, 1 << 63]), Scalar([0, 0, 0, 1 << 63])),
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
-            for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
+            for more in [None, Some(&more)] {
                 assert_eq!(
-                    JacobianMontPoint::public_twin_multiply(&g, &p, rows)
+                    JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples, more)
                         .as_affine()
                         .xy,
                     expected
@@ -1212,9 +1295,9 @@ mod tests {
             (Scalar::small_u64(6), Scalar::small_u64(3)),
         ] {
             let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p).add(&p)).xy;
-            for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
+            for more in [None, Some(&more)] {
                 assert_eq!(
-                    JacobianMontPoint::public_twin_multiply(&g, &p, rows)
+                    JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples, more)
                         .as_affine()
                         .xy,
                     expected

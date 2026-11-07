@@ -7,6 +7,145 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/moq-dev/rind/compare/rind-v0.2.1...rind-v0.3.0) - 2026-11-07
+
+### Added
+
+- a portable backend for architectures without rind assembly ([#458](https://github.com/moq-dev/rind/pull/458))
+- *(aws-lc-rs)* rind-aws-lc-rs offers aws-lc-rs 1.x's API backed by rind ([#465](https://github.com/moq-dev/rind/pull/465))
+- *(python)* pyrind, rind's API for Python ([#459](https://github.com/moq-dev/rind/pull/459))
+- *(str0m)* rind-str0m, a str0m CryptoProvider on rind ([#467](https://github.com/moq-dev/rind/pull/467))
+- wiping keys on drop is opt-in, under a `wipe` feature ([#461](https://github.com/moq-dev/rind/pull/461))
+- *(rind-dart)* rind for Dart and Flutter through FFI ([#462](https://github.com/moq-dev/rind/pull/462))
+
+### Fixed
+
+- *(key_wrap)* fold unwrap_padded's AIV check into the word it reveals ([#489](https://github.com/moq-dev/rind/pull/489))
+
+### Other
+
+- *(testing)* map every primitive and tier to its checks, and fill the small gaps ([#454](https://github.com/moq-dev/rind/pull/454))
+- Mutation testing ([#482](https://github.com/moq-dev/rind/pull/482))
+- run CCTV's, aws-lc's, and BoringSSL's vectors on every CPU tier ([#481](https://github.com/moq-dev/rind/pull/481))
+- *(aes-gcm)* run aws-lc's eight-way AES-192-GCM on aarch64 with SHA3 ([#460](https://github.com/moq-dev/rind/pull/460))
+- The hash and KDF glue is proven ([#476](https://github.com/moq-dev/rind/pull/476))
+
+## [0.2.1](https://github.com/moq-dev/rind/compare/rind-v0.2.0...rind-v0.2.1) - 2026-11-07
+
+### Added
+
+- [**breaking**] each adapter's version matches the upstream it adapts ([#440](https://github.com/moq-dev/rind/pull/440))
+- *(bench)* measure Apple M4 natively in the bench report ([#435](https://github.com/moq-dev/rind/pull/435))
+- *(cpu)* hold DIT across a batch of calls, putting M1 AES-GCM ahead of aws-lc-rs ([#431](https://github.com/moq-dev/rind/pull/431))
+- *(aes)* AES-192 in every AES mode on every backend ([#414](https://github.com/moq-dev/rind/pull/414))
+- *(digest)* MD5 under digest::legacy ([#412](https://github.com/moq-dev/rind/pull/412))
+
+### Fixed
+
+- *(ctgrind)* type the armv7 key-wrap-with-padding test's lengths ([#426](https://github.com/moq-dev/rind/pull/426))
+
+### Other
+
+- *(release)* ship rind as 0.2.1, not 0.3.0 ([#457](https://github.com/moq-dev/rind/pull/457))
+- *(aarch64)* run s2n-bignum's faster _alt P-256 and P-384 Montgomery multiplication ([#434](https://github.com/moq-dev/rind/pull/434))
+- *(aes-gcm)* seal under 129 bytes on by-8 on the AVX tier ([#436](https://github.com/moq-dev/rind/pull/436))
+- *(aes-gcm)* pad Vale's partial blocks in registers, and re-set the open crossovers ([#430](https://github.com/moq-dev/rind/pull/430))
+- test iOS in the simulator and Android under cross ([#432](https://github.com/moq-dev/rind/pull/432))
+- *(aes-gcm)* check 16-byte tags as whole words, so by-8 opens no longer trail its seals ([#429](https://github.com/moq-dev/rind/pull/429))
+- *(ed25519)* verify without ADX through curve25519-dalek's AVX2 backend ([#415](https://github.com/moq-dev/rind/pull/415))
+- *(aarch64)* run s2n-bignum's by-8 AES-128-GCM kernels on cores with SHA3 ([#408](https://github.com/moq-dev/rind/pull/408))
+- *(aes-gcm)* hash and cipher partial blocks without memcpy on x86_64, and seal short messages on by-8 on VAES-AVX2 ([#409](https://github.com/moq-dev/rind/pull/409))
+- *(ecdsa)* derive a key pair's public key on its first read (P-256 generation ahead of BoringSSL) ([#407](https://github.com/moq-dev/rind/pull/407))
+
+## [0.2.0](https://github.com/moq-dev/rind/compare/rind-v0.1.13...rind-v0.2.0) - 2026-11-06
+
+### Added
+
+- *(key_wrap)* AES key wrap with padding (RFC 5649) ([#418](https://github.com/moq-dev/rind/pull/418))
+- *(rsa)* load RSA keys named id-RSAES-OAEP or id-ea-rsa, as aws-lc-rs does ([#413](https://github.com/moq-dev/rind/pull/413))
+- *(rsa)* RSA public keys export as SPKI ([#411](https://github.com/moq-dev/rind/pull/411))
+- [**breaking**] audit rind's public API, and apply its decisions, before 0.2.0 ([#383](https://github.com/moq-dev/rind/pull/383))
+- *(keys)* SPKI, SEC1, and seed key formats, and compressed ECDH peers, for Bun ([#382](https://github.com/moq-dev/rind/pull/382))
+- *(cipher)* AES-CBC with PKCS#7 padding on every backend ([#381](https://github.com/moq-dev/rind/pull/381))
+- *(agreement)* [**breaking**] store, load, and export agreement keys, agreeing by reference ([#372](https://github.com/moq-dev/rind/pull/372))
+- *(signature)* ECDSA over a precomputed digest ([#379](https://github.com/moq-dev/rind/pull/379))
+- *(signature)* RSA-PSS with any salt length ([#363](https://github.com/moq-dev/rind/pull/363))
+- *(key_wrap)* AES key wrap (RFC 3394) on AES decryption for every backend ([#359](https://github.com/moq-dev/rind/pull/359))
+- *(rsa)* RSA-OAEP encryption and decryption, and RSA SPKI public keys ([#361](https://github.com/moq-dev/rind/pull/361))
+- *(cipher)* [**breaking**] AES-CTR over a 16-byte counter block with a per-key counter width ([#360](https://github.com/moq-dev/rind/pull/360))
+- *(aead)* AES-GCM with any IV length and truncated tags ([#362](https://github.com/moq-dev/rind/pull/362))
+- *(digest)* SHA3-256, SHA3-384, and SHA3-512 ([#358](https://github.com/moq-dev/rind/pull/358))
+- *(proofs)* prove aarch64 P-256 ECDSA end to end with Aeneas and Lean ([#346](https://github.com/moq-dev/rind/pull/346))
+
+### Fixed
+
+- *(ctgrind)* green the nightly again: PBKDF2's HMAC out of line, and DIT denied under valgrind ([#406](https://github.com/moq-dev/rind/pull/406))
+- *(bench-report)* hold each host with quest gate --host, and measure macOS noise ([#399](https://github.com/moq-dev/rind/pull/399))
+- *(cpu)* run aarch64 Linux with DIT where Hyper-V hides it ([#370](https://github.com/moq-dev/rind/pull/370))
+- *(cpu)* run aarch64 Windows with DIT where the core has it ([#366](https://github.com/moq-dev/rind/pull/366))
+- *(x86_64)* build on the declared 1.90 rust-version, and gate on it ([#365](https://github.com/moq-dev/rind/pull/365))
+
+### Other
+
+- *(digest)* start and reset a Context from a constant ([#416](https://github.com/moq-dev/rind/pull/416))
+- *(readme)* show how to use rind and link the details ([#410](https://github.com/moq-dev/rind/pull/410))
+- *(aarch64)* seal and open short AES-GCM messages in one pass ([#393](https://github.com/moq-dev/rind/pull/393))
+- *(aes)* header protection reads the sample straight into AES-NI ([#392](https://github.com/moq-dev/rind/pull/392))
+- *(readme)* credit Vale's proven kernel for short AES-GCM on VAES CPUs ([#402](https://github.com/moq-dev/rind/pull/402))
+- *(aes-gcm)* run Vale's kernel for short messages on VAES CPUs ([#391](https://github.com/moq-dev/rind/pull/391))
+- stop wiping anything but keys, keyed state, and private-key heap scratch ([#394](https://github.com/moq-dev/rind/pull/394))
+- *(sha)* pad SHA-1 and SHA-256's last block in registers on the SHA extensions ([#376](https://github.com/moq-dev/rind/pull/376))
+- *(ecdsa)* build a verifying key's multiples on its first verification (P-256 keygen 1.4x) ([#374](https://github.com/moq-dev/rind/pull/374))
+- a prompt has an agent migrate a repo to rind and report the results ([#357](https://github.com/moq-dev/rind/pull/357))
+- *(sha256)* [**breaking**] finish SHA-NI hashes in registers, and digest contexts by reference ([#352](https://github.com/moq-dev/rind/pull/352))
+- *(build)* test aarch64 Windows, x86_64 macOS, and musl ([#356](https://github.com/moq-dev/rind/pull/356))
+
+## [0.1.13](https://github.com/moq-dev/rind/compare/rind-v0.1.12...rind-v0.1.13) - 2026-11-05
+
+### Added
+
+- *(proofs)* prove x86_64 AES-GCM on Vale's tier end to end with Aeneas and Lean ([#344](https://github.com/moq-dev/rind/pull/344))
+- *(proofs)* prove SHA-1, SHA-256, and HMAC's glue with Aeneas and Lean ([#338](https://github.com/moq-dev/rind/pull/338))
+- *(proofs)* prove aarch64 P-256's generator table in Lean ([#343](https://github.com/moq-dev/rind/pull/343))
+- *(bench)* publish BENCHMARKS.md from three hosts and the nightly CPU tiers ([#347](https://github.com/moq-dev/rind/pull/347))
+- *(proofs)* prove Ed25519 end to end with Aeneas and Lean ([#339](https://github.com/moq-dev/rind/pull/339))
+- *(proofs)* prove SHA-384 and SHA-512 end to end with Aeneas and Lean ([#337](https://github.com/moq-dev/rind/pull/337))
+- *(proofs)* prove ChaCha20 header protection end to end with Aeneas and Lean ([#335](https://github.com/moq-dev/rind/pull/335))
+- *(proofs)* prove aarch64 P-256 ECDH end to end ([#336](https://github.com/moq-dev/rind/pull/336))
+- *(proofs)* prove X25519 end to end with Aeneas and Lean ([#326](https://github.com/moq-dev/rind/pull/326))
+- *(p256)* run aarch64 ECDH through s2n-bignum's proven p256_scalarmul ([#321](https://github.com/moq-dev/rind/pull/321))
+- *(admin)* render BENCHMARKS.md from the benchmark results ([#316](https://github.com/moq-dev/rind/pull/316))
+- *(bench)* time every library on every host ([#309](https://github.com/moq-dev/rind/pull/309))
+
+### Fixed
+
+- *(p256, p384, p521)* verify ECDSA without adding equal points ([#324](https://github.com/moq-dev/rind/pull/324))
+- enter the entry guard in hashing, HMAC, HKDF, PBKDF2, and constant-time comparison ([#299](https://github.com/moq-dev/rind/pull/299))
+- *(x86_64)* compute prefetch's stride address with wrapping arithmetic ([#301](https://github.com/moq-dev/rind/pull/301))
+- *(ecdsa)* draw a new nonce when s is zero ([#300](https://github.com/moq-dev/rind/pull/300))
+- *(ed25519)* [**breaking**] refuse public keys of small order ([#298](https://github.com/moq-dev/rind/pull/298))
+
+### Other
+
+- *(release)* ship rind 0.1.13 and rind-ring 0.1.12 as patch releases ([#355](https://github.com/moq-dev/rind/pull/355))
+- *(sha2)* run OpenSSL's AVX2 and SHA512-instruction SHA-2 routines on x86_64 ([#353](https://github.com/moq-dev/rind/pull/353))
+- *(x86_64)* gather RSA's window entries by AVX2 ([#351](https://github.com/moq-dev/rind/pull/351))
+- *(quest)* plan adoption beyond MoQ, a marketing README, and m4 ([#341](https://github.com/moq-dev/rind/pull/341))
+- *(readme)* open with why to use rind and a generated headline chart ([#350](https://github.com/moq-dev/rind/pull/350))
+- *(quest)* triage the report's speed gaps into quests and recorded reasons ([#348](https://github.com/moq-dev/rind/pull/348))
+- *(quest)* close ECDSA verify speed with the equal-point cost accepted ([#345](https://github.com/moq-dev/rind/pull/345))
+- *(p256, p384, p521)* widen a reused ECDSA key's NAF to width 6 from its second verification ([#334](https://github.com/moq-dev/rind/pull/334))
+- *(p256, p384, p521)* add the public key's multiples to ECDSA verification in affine form ([#331](https://github.com/moq-dev/rind/pull/331))
+- *(aes-gcm)* run HACL*'s Vale AES-GCM on x86_64 with AVX and MOVBE ([#329](https://github.com/moq-dev/rind/pull/329))
+- link only the algorithms a binary names, and never inline assembly routines ([#315](https://github.com/moq-dev/rind/pull/315))
+- mark ✓ only where a current proof covers the code ([#325](https://github.com/moq-dev/rind/pull/325))
+- *(p256)* show rind's aarch64 base-point table meets s2n-bignum's proof ([#319](https://github.com/moq-dev/rind/pull/319))
+- add rind logos and credit upstream projects ([#313](https://github.com/moq-dev/rind/pull/313))
+- *(ctgrind)* check armv7's crypto extension for constant time under qemu ([#311](https://github.com/moq-dev/rind/pull/311))
+- check every import regenerates exactly at its pin, and write generated files atomically ([#304](https://github.com/moq-dev/rind/pull/304))
+- *(chacha20)* run HACL*'s verified rounds where x86_64 ran aws-lc's integer ChaCha20 ([#293](https://github.com/moq-dev/rind/pull/293))
+- *(chacha20)* run one block in general-purpose registers on x86_64 ([#287](https://github.com/moq-dev/rind/pull/287))
+
 ## [0.1.12](https://github.com/moq-dev/rind/compare/rind-v0.1.11...rind-v0.1.12) - 2026-11-03
 
 ### Other

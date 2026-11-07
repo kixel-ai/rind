@@ -3,10 +3,12 @@
 ## Goal
 
 Every algorithm rind exports, on every path it runs (x86_64's fast path and
-its no-ADX, no-AVX2, no-AES-NI, and SSE2 tiers; aarch64 with and without the
-crypto extensions; armv7), is at least as fast as the fastest permissively
-licensed source usable from Rust, or the gap is recorded with its reason.
-README's Algorithms table shows where each stands.
+its no-IFMA, no-ADX, no-AVX2, no-AES-NI, and SSE2 tiers; aarch64 with and
+without the crypto extensions; armv7), is at least as fast as the fastest
+permissively licensed source usable from Rust, or the gap is recorded with its
+reason.
+BENCHMARKS.md's CPU tiers show where each stands, and its Known gaps, from
+`benchmarks/gaps.toml`, each gap's quest or reason.
 
 ## Plan
 
@@ -40,11 +42,19 @@ settled; don't ask them again. The chosen option is marked ✅.
   primitives only / also every adapter.
 - Symmetric sizes: 32 B, 1200 B, 1350 B, and 16 KB, plus 64 B and 8 KB for
   hashes; a gap at any size counts ✅ / a full power-of-two sweep.
-- Scoreboard: README's Algorithms table gains each path's ratio to the
-  fastest baseline, refreshed by the audit and each gap quest; the nightly
-  job's summary keeps the live numbers ✅ / nightly summary only / a separate
-  BENCHMARKS.md.
+- Scoreboard: BENCHMARKS.md's CPU tiers, which `admin/bench-report nightly`
+  and `render` regenerate from the nightly bench, show each path's ratio to
+  the fastest baseline; the nightly job's summary keeps the live numbers ✅
+  (maintainer, 2026-11-03, while planning the benchmark report:
+  moved from the Algorithms table, now in `ALGORITHMS.md`, which keeps only the sources) /
+  the Algorithms table / nightly summary only.
+
+An RSA change's A/B on GitHub's runners reads `bench.yml`'s `no-ifma` row:
+a runner may draw a CPU with AVX-512 IFMA, whose dual RSAZ the row denies, so
+both runs time the path of CPUs without it. The plain x86_64 row times the
+dual RSAZ only when the runner has IFMA.
 
 ## Required
 
-- [ECDSA verification at or below its cost before #324](/quest/m2/speed/ecdsa-verify-affine.md) - a width-6 NAF for the public key recovers the rest of the equal-point checks' cost
+- [HKDF-SHA256 expand is back to its earlier speed on x86_64](/quest/m2/speed/hkdf-expand-regression.md) - desktop measured 47 to 66 ns between two runs; confirm on a runner, then bisect
+- [armv7 without the crypto extension runs the fastest SHA-256](/quest/m2/speed/armv7-sha256-hacl.md) - Graviola's or HACL*'s, measured

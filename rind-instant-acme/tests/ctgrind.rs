@@ -10,7 +10,6 @@ use crabgrind::memcheck::{self, MemState};
 use crabgrind::valgrind::{self, RunningMode};
 use instant_acme::{CryptoProvider, JwkThumbFields};
 use rind::signature::{PublicKey, verify};
-use rind_instant_acme::DEFAULT_PROVIDER;
 
 /// Marks `value` secret: memcheck flags any branch or index that depends on it.
 fn secret<T: ?Sized>(value: &T) {
@@ -30,8 +29,9 @@ fn mark<T: ?Sized>(value: &T, state: MemState) {
 
 #[test]
 fn account_key() {
-    let (generated, pkcs8) = DEFAULT_PROVIDER.key_provider.generate_key().unwrap();
-    let loaded = DEFAULT_PROVIDER.key_provider.load_key(pkcs8).unwrap();
+    let provider = rind_instant_acme::default_provider().unwrap();
+    let (generated, pkcs8) = provider.key_provider.generate_key().unwrap();
+    let loaded = provider.key_provider.load_key(pkcs8).unwrap();
     let message = b"eyJhbGciOiJFUzI1NiJ9.eyJyaW5kIjp0cnVlfQ";
 
     for key in [generated, loaded] {
@@ -53,6 +53,7 @@ fn account_key() {
 
 #[test]
 fn external_account_binding() {
+    let provider = rind_instant_acme::default_provider().unwrap();
     let key = [0x42u8; 32];
     let message = b"eyJhbGciOiJIUzI1NiJ9.eyJyaW5kIjp0cnVlfQ";
     let expected = CryptoProvider::aws_lc_rs()
@@ -61,7 +62,7 @@ fn external_account_binding() {
         .sign(message);
 
     secret(&key);
-    let tag = DEFAULT_PROVIDER.hmac.load_key(&key).sign(message);
+    let tag = provider.hmac.load_key(&key).sign(message);
     public(&tag[..]);
     assert_eq!(tag, expected);
 }

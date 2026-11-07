@@ -7,8 +7,6 @@ use core::fmt;
 use core::ops::RangeFrom;
 use std::sync::Arc;
 
-use zeroize::Zeroizing;
-
 use crate::{error, hkdf};
 
 pub mod quic;
@@ -204,14 +202,14 @@ impl fmt::Debug for UnboundKey {
 impl From<hkdf::Okm<'_, &'static Algorithm>> for UnboundKey {
     fn from(okm: hkdf::Okm<'_, &'static Algorithm>) -> Self {
         let algorithm = *okm.len();
-        let mut key = Zeroizing::new([0u8; 32]);
+        let mut key = [0u8; 32];
         let key = &mut key[..algorithm.key_len()];
         okm.fill_exact(key);
         Self::new(algorithm, key).expect("key_len bytes are a valid key")
     }
 }
 
-/// A key that seals or opens with any nonce the caller gives it; wiped on drop.
+/// A key that seals or opens with any nonce the caller gives it; wiped on drop under rind's `wipe` feature.
 ///
 /// A clone shares the expanded key.
 #[derive(Clone)]

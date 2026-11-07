@@ -34,9 +34,9 @@ Repo:
 - Adapters are separate crates named `rind-<consumer>`, so a third-party major
   bump never forces a rind major bump. The prefix keeps them grouped under
   rind's own name rather than borrowing the consumer's.
-- MoQ vendors str0m and dimpl and ports rind's str0m provider into that copy,
-  so rind has no str0m adapter. `rind-dimpl` stays published for other dimpl
-  users (maintainer, 2026-10-31).
+- MoQ vendors str0m and dimpl and ports rind's str0m provider into that copy.
+  `rind-str0m` is published for other str0m users (maintainer, 2026-11-04),
+  and `rind-dimpl` for other dimpl users (maintainer, 2026-10-31).
 
 Targets, refused rather than falling back:
 
@@ -76,6 +76,12 @@ These quests cover every gap MoQ's 2026-10-26 inventory found. If a MoQ area
 quest turns up another, add a quest here rather than letting MoQ keep a C or
 RustCrypto dependency.
 
+rind adds no QUIC-specific public API, such as a key that seals and applies
+header protection in one call or a GSO batch seal: neither measured an
+end-to-end win in moq ([moq-dev/rind#387](https://github.com/moq-dev/rind/pull/387);
+maintainer, 2026-11-05).
+
 ## Required
 
+- [AMD CPUs without VAES run their fastest AES-GCM tier](/quest/m1/moq/quic-path.md) - Vale or `by8` on Zen 2, from zshenker's rerun
 - [MoQ runs on rind](/quest/m1/moq/moq-on-rind.md) - waiting on MoQ to finish its migration

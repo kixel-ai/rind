@@ -61,7 +61,7 @@ pub static CHACHA20: Algorithm = Algorithm {
     },
 };
 
-/// A header-protection key, expanded once for its algorithm and wiped on drop.
+/// A header-protection key, expanded once for its algorithm and wiped on drop under the `wipe` feature.
 pub struct HeaderProtectionKey(Key);
 
 impl HeaderProtectionKey {
@@ -78,6 +78,20 @@ impl HeaderProtectionKey {
             Key::Aes(key) => key.mask(sample),
             Key::ChaCha20(key) => key.mask(sample),
         }
+    }
+}
+
+impl fmt::Debug for HeaderProtectionKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // An id, not the static, so formatting links no other cipher's code.
+        let algorithm = match &self.0 {
+            Key::Aes(masker) if masker.key.key_len() == 16 => AlgorithmId::Aes128,
+            Key::Aes(_) => AlgorithmId::Aes256,
+            Key::ChaCha20(_) => AlgorithmId::ChaCha20,
+        };
+        f.debug_struct("HeaderProtectionKey")
+            .field("algorithm", &algorithm)
+            .finish_non_exhaustive()
     }
 }
 
@@ -109,11 +123,8 @@ trait Mask: 'static {
 }
 
 impl Mask for Aes {
-    // RFC 9001 section 5.4.3
     fn mask(&self, sample: &[u8; SAMPLE_LEN]) -> [u8; 5] {
-        let mut block = *sample;
-        self.encrypt_block(&mut block);
-        core::array::from_fn(|i| block[i])
+        self.header_protection_mask(sample)
     }
 }
 
