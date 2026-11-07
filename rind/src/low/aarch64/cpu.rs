@@ -85,6 +85,29 @@ pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: u
     }
 }
 
+/// Compares two 16-byte blocks, such as AEAD tags, in constant time.
+///
+/// Returns zero if `a == b`, otherwise non-zero. The words are combined in
+/// assembly so the compiler cannot split the test into early exits.
+pub(in crate::low) fn ct_compare_16(a: &[u8; 16], b: &[u8; 16]) -> usize {
+    let (a, b) = (u128::from_ne_bytes(*a), u128::from_ne_bytes(*b));
+    let mut diff = a as u64;
+    // SAFETY: register-only arithmetic.
+    unsafe {
+        core::arch::asm!(
+            "eor {diff}, {diff}, {b0}",
+            "eor {a1}, {a1}, {b1}",
+            "orr {diff}, {diff}, {a1}",
+            diff = inout(reg) diff,
+            a1 = inout(reg) (a >> 64) as u64 => _,
+            b0 = in(reg) b as u64,
+            b1 = in(reg) (b >> 64) as u64,
+            options(pure, nomem, nostack, preserves_flags),
+        );
+    }
+    diff as usize
+}
+
 /// Proof that the CPU has the crypto extension: AES, PMULL, SHA-1, and
 /// SHA-256.
 ///
