@@ -56,6 +56,4 @@ dual RSAZ only when the runner has IFMA.
 
 ## Required
 
-- [AES-192-GCM on aarch64 is level with aws-lc-rs for large messages](/quest/m2/speed/aes192-gcm-aarch64.md) - s2n-bignum's stitched kernels skip 192-bit keys
 - [HKDF-SHA256 expand is back to its earlier speed on x86_64](/quest/m2/speed/hkdf-expand-regression.md) - desktop measured 47 to 66 ns between two runs; confirm on a runner, then bisect
-- [Wiping keys on drop is opt-in](/quest/m2/speed/wipe-feature.md) - a `wipe` feature; the default build skips it

@@ -93,8 +93,8 @@
             };
           };
 
-          # The tracer `admin/ct-qemu` loads into qemu-arm, built against the
-          # plugin API of the qemu-user the `armv7` shell runs.
+          # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
+          # built against the plugin API of the qemu-user its shells run.
           ct-qemu-plugin = pkgs.stdenv.mkDerivation {
             name = "ct-qemu-plugin";
             src = ./admin/ct-qemu-plugin.c;
@@ -246,6 +246,8 @@
                   pkg-config
                   openssl
                   cargo-deny
+                  # admin/mutants and the mutants workflow.
+                  cargo-mutants
                   cargo-nextest
                   cargo-semver-checks
                   # Linters used by `just check` and `just fix`, which skip a
@@ -292,6 +294,16 @@
                     "armv7-unknown-linux-gnueabihf"
                   ];
                 })
+              ];
+            };
+
+            # The `dart` module of `just check` runs rind-dart's Dart package
+            # in it. Its own shell, since the SDK would add over 200 MB to
+            # the closure every CI job downloads.
+            dart = pkgs.mkShell {
+              packages = [
+                rust-toolchain
+                pkgs.dart
               ];
             };
 
@@ -374,6 +386,18 @@
                 };
               }
             );
+
+            # `admin/ct-qemu --target aarch64-unknown-linux-gnu` traces the
+            # aarch64 tests in it on an aarch64 host, which builds them
+            # natively, so it needs none of the armv7 toolchain.
+            ct-qemu-aarch64 = pkgs.mkShell {
+              packages = [
+                rust-stable.minimal
+                pkgs.qemu-user
+                pkgs.python3
+              ];
+              env.RIND_CT_QEMU_PLUGIN = "${ct-qemu-plugin}/lib/ct-qemu-plugin.so";
+            };
           }
           # `x86-cpu.yml` and `admin/x86-cpu sde-scan` run the tests and
           # `rind-cpuid` under `sde` in it, and `admin/ct-sde` traces them.
