@@ -1,0 +1,13 @@
+# [L] rind offers HPKE, and rind-rustls offers ECH
+
+## Goal
+
+A public `hpke` module implements RFC 9180's base mode and secret export over the KEMs, KDFs, and AEADs rind already has, and rind-rustls's provider offers the same HPKE suites as rustls's aws-lc-rs provider, so rustls's Encrypted Client Hello runs on rind.
+
+## Plan
+
+- Suites: DHKEM over X25519, P-256, P-384, and P-521; HKDF-SHA256, -SHA384, and -SHA512; AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. rustls's aws-lc-rs provider ships the twelve that pair each KEM with its own hash and one of the three AEADs (`rustls::crypto::aws_lc_rs::hpke::ALL_SUPPORTED_SUITES`, rustls's own code over aws-lc-rs's primitives). X448 is left out, as aws-lc-rs leaves it out. The post-quantum KEMs (ML-KEM, X-Wing, and the NIST-curve hybrids of draft-ietf-hpke-pq) join from the [post-quantum epic](/quest/m4/pq/README.md) once their code points are final.
+- Base mode only, with the exporter: ECH, MLS, and Oblivious HTTP (whose responses are keyed by the exporter, RFC 9458 section 4.4) use nothing else. PSK mode waits for a consumer, such as openmls's `targeted-messages-draft` feature leaving draft; the Auth modes are dropped by RFC 9180's revision (draft-ietf-hpke-hpke, in the RFC Editor queue).
+- API: `&'static` `Kem`, `Kdf`, and `Aead` constants combined into a `Suite`, since RFC 9180 allows every combination; a recipient `PrivateKey` (wiped, from `generate` or RFC 9180's `DeriveKeyPair`) and a `PublicKey`; `Sender::new(suite, &public_key, info)` returns the encapsulated key and a sender context, and `Recipient::new(suite, &private_key, enc, info)` the matching context. Each context seals or opens in sequence, refusing once the sequence number would overflow, and exports secrets. An `ExportOnlySuite` yields contexts that only export, so sealing with one fails to compile. One-shot `seal` and `open` cover the single-message case.
+- rind-rustls implements `rustls::crypto::hpke::Hpke` on it and exports the same twelve suites as `hpke::ALL_SUPPORTED_SUITES`, the slice `EchConfig::new` takes; extend `aws_lc_rs_parity` to compare them, and add an ECH handshake test. rustls 0.23's ECH is client-side and uses no exporter, which openmls and Oblivious HTTP need.
+- Test against RFC 9180's test vectors (the cfrg/draft-irtf-cfrg-hpke repository's JSON, and the revision's in hpkewg/hpke), and Wycheproof's once [C2SP/wycheproof#273](https://github.com/C2SP/wycheproof/pull/273) lands; differentially against rustls's aws-lc-rs provider's HPKE (aws-lc-rs itself exposes none) and `hpke-rs`; and ctgrind on decapsulation and key derivation.
