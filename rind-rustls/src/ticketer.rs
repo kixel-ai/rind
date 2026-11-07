@@ -18,7 +18,9 @@ impl Ticketer {
     /// Ticket keys are rotated every 6 hours.
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Result<Arc<dyn ProducesTickets>, Error> {
-        rind::cpu::check().map_err(|missing| Error::Other(OtherError(Arc::new(missing))))?;
+        rind::cpu::check().map_err(|missing| {
+            Error::Other(OtherError(Arc::new(crate::MissingFeature(missing))))
+        })?;
         Ok(Arc::new(TicketRotator::new(
             ONE_TICKET_LIFETIME_SECS,
             make_ticket_generator,

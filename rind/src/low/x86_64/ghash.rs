@@ -218,11 +218,8 @@ impl ClmulTable {
             mul!(lo, mi, hi, b, *h, *hx);
             x = zero();
         }
-        // Only a partial block pays for the copy that pads it.
         if let Some((h, hx)) = powers.next() {
-            let mut last = [0u8; 16];
-            last[..partial.len()].copy_from_slice(partial);
-            let b = _mm_xor_si128(x, load_be(&last));
+            let b = _mm_xor_si128(x, _mm_shuffle_epi8(load_partial(partial), BYTESWAP));
             mul!(lo, mi, hi, b, *h, *hx);
         }
         reduce!(lo, mi, hi)
@@ -590,6 +587,67 @@ fn load_be(block: &[u8; 16]) -> __m128i {
     _mm_shuffle_epi8(unsafe { _mm_loadu_si128(block.as_ptr().cast()) }, BYTESWAP)
 }
 
+/// Loads `bytes`, fewer than 16, zero-padded to a block in GCM's byte order.
+///
+/// It builds the block in registers from overlapping loads, branching on the
+/// length alone. Copying to a zeroed block instead calls `memcpy`, whose
+/// narrow stores then stall the block's 16-byte load, which nearly doubled a
+/// short seal's time on Xeons under a partial-block AAD, such as QUIC's.
+#[inline]
+pub(crate) fn load_partial(bytes: &[u8]) -> __m128i {
+    let n = bytes.len();
+    debug_assert!(n < 16);
+    let le64 = |i: usize| u64::from_le_bytes(bytes[i..i + 8].try_into().unwrap());
+    let le32 = |i: usize| u64::from(u32::from_le_bytes(bytes[i..i + 4].try_into().unwrap()));
+    let (lo, hi) = match n {
+        // The second load ends at the last byte, overlapping the first, and
+        // the shift drops what the first already holds.
+        9.. => (le64(0), le64(n - 8) >> (8 * (16 - n))),
+        4..=8 => (le32(0) | le32(n - 4) << (8 * (n - 4)), 0),
+        1..=3 => {
+            let byte = |i: usize| u64::from(bytes[i]) << (8 * i);
+            (byte(0) | byte(n / 2) | byte(n - 1), 0)
+        }
+        0 => (0, 0),
+    };
+    // SAFETY: every x86_64 CPU has SSE2
+    unsafe { _mm_set_epi64x(hi as i64, lo as i64) }
+}
+
+/// Stores the first `out.len()` bytes, fewer than 16, of `block` in GCM's
+/// byte order, without `load_partial`'s `memcpy` either.
+#[inline]
+pub(crate) fn store_partial(out: &mut [u8], block: __m128i) {
+    let n = out.len();
+    debug_assert!(n < 16);
+    // SAFETY: every x86_64 CPU has SSE2
+    let (lo, hi) = unsafe {
+        (
+            _mm_cvtsi128_si64(block) as u64,
+            _mm_cvtsi128_si64(_mm_unpackhi_epi64(block, block)) as u64,
+        )
+    };
+    match n {
+        // Overlapping stores, as `load_partial`'s loads: the second ends at
+        // the last byte and repeats what the first wrote.
+        9.. => {
+            out[..8].copy_from_slice(&lo.to_le_bytes());
+            let last = lo >> (8 * (n - 8)) | hi << (8 * (16 - n));
+            out[n - 8..].copy_from_slice(&last.to_le_bytes());
+        }
+        4..=8 => {
+            out[..4].copy_from_slice(&(lo as u32).to_le_bytes());
+            out[n - 4..].copy_from_slice(&((lo >> (8 * (n - 4))) as u32).to_le_bytes());
+        }
+        1..=3 => {
+            out[0] = lo as u8;
+            out[n / 2] = (lo >> (8 * (n / 2))) as u8;
+            out[n - 1] = (lo >> (8 * (n - 1))) as u8;
+        }
+        0 => {}
+    }
+}
+
 #[inline]
 fn u128_to_m128i(v: u128) -> __m128i {
     // SAFETY: sizeof(u128) == sizeof(__m128i), all bits have same meaning
@@ -653,6 +711,25 @@ mod tests {
             *p = 0xf0 | (i & 0xf) as u8;
         }
         check(k, &pattern);
+    }
+
+    // Every length a partial block can have, each byte distinct, and a store
+    // that leaves the bytes past its slice alone.
+    #[test]
+    fn partial_blocks() {
+        let bytes: [u8; 16] = core::array::from_fn(|i| 0xa0 + i as u8);
+        for n in 0..16 {
+            let mut want = [0u8; 16];
+            want[..n].copy_from_slice(&bytes[..n]);
+            // SAFETY: both are 16 bytes, and any bits are a valid `[u8; 16]`
+            let got: [u8; 16] = unsafe { mem::transmute(load_partial(&bytes[..n])) };
+            assert_eq!(got, want, "{n}");
+
+            let mut out = [0x55u8; 17];
+            store_partial(&mut out[..n], u128_to_m128i(u128::from_le_bytes(bytes)));
+            assert_eq!(out[..n], bytes[..n], "{n}");
+            assert!(out[n..].iter().all(|&b| b == 0x55), "{n}");
+        }
     }
 
     // Checks the table the CPU picks, and every slower one it can run: the

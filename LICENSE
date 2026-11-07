@@ -17,7 +17,7 @@ Third-party code
 rind copies code from the projects below. Each copied file keeps its
 source's copyright lines and names its license in an
 SPDX-License-Identifier comment. The license texts follow this list.
-README.md's Sources table names the same projects: a change that copies
+ALGORITHMS.md's Sources table names the same projects: a change that copies
 code from a new project updates both.
 
 Graviola <https://github.com/ctz/graviola>

@@ -3,9 +3,10 @@
 ## Goal
 
 Every algorithm rind exports, on every path it runs (x86_64's fast path and
-its no-ADX, no-AVX2, no-AES-NI, and SSE2 tiers; aarch64 with and without the
-crypto extensions; armv7), is at least as fast as the fastest permissively
-licensed source usable from Rust, or the gap is recorded with its reason.
+its no-IFMA, no-ADX, no-AVX2, no-AES-NI, and SSE2 tiers; aarch64 with and
+without the crypto extensions; armv7), is at least as fast as the fastest
+permissively licensed source usable from Rust, or the gap is recorded with its
+reason.
 BENCHMARKS.md's CPU tiers show where each stands, and its Known gaps, from
 `benchmarks/gaps.toml`, each gap's quest or reason.
 
@@ -45,12 +46,14 @@ settled; don't ask them again. The chosen option is marked ✅.
   and `render` regenerate from the nightly bench, show each path's ratio to
   the fastest baseline; the nightly job's summary keeps the live numbers ✅
   (maintainer, 2026-11-03, while planning the benchmark report:
-  moved from README's Algorithms table, which keeps only the sources) /
-  README's Algorithms table / nightly summary only.
+  moved from the Algorithms table, now in `ALGORITHMS.md`, which keeps only the sources) /
+  the Algorithms table / nightly summary only.
+
+An RSA change's A/B on GitHub's runners reads `bench.yml`'s `no-ifma` row:
+a runner may draw a CPU with AVX-512 IFMA, whose dual RSAZ the row denies, so
+both runs time the path of CPUs without it. The plain x86_64 row times the
+dual RSAZ only when the runner has IFMA.
 
 ## Required
 
-- [Short hashes through digest::Context match the one-shot](/quest/m2/speed/digest-context-setup.md) - the context's setup and reset cost
-- [Benchmark collections on one host can't clobber each other](/quest/m2/speed/bench-host-lock.md) - a per-host lock for `admin/bench-report collect`
-- [An x86_64 bench tier without AVX-512 IFMA](/quest/m2/speed/bench-no-ifma.md) - RSA A/Bs that measure the AVX2 path
-- [Confirm x86_64 RSA-2048 signing level in the report](/quest/m2/speed/x86-rsa2048-sign.md) - a report refresh shows 2048-bit signing, and the RSA certificate handshake with it, level on x86_64, and drops its gap
+- [AES-192-GCM on aarch64 is level with aws-lc-rs for large messages](/quest/m2/speed/aes192-gcm-aarch64.md) - s2n-bignum's stitched kernels skip 192-bit keys

@@ -9,9 +9,7 @@ Bun's fastest asymmetric operations run on rind, ahead of Bun writing its own.
 ## Required
 
 - [Bun runs its fastest asymmetric crypto on rind](/quest/m1/bun.md) - Ed25519, X25519, P-384, and P-521 in Bun on rind, before Bun writes its own
-- [rind generates P-256 keys faster than Bun's BoringSSL](/quest/m1/p256-keygen-boringssl.md) - so P-256 can join a Bun PR, with signing already ahead
 - [rind 0.2.0 is released](/quest/m1/release-0.2.md) - the audited API on crates.io for Bun and MoQ
 - [The launch post can say what building rind cost in AI tokens, time, and money](/quest/m1/ai-usage.md) - tokens, agent and maintainer hours, and API-price cost, before the post
 - [rind's launch blog post is published](/quest/m1/launch-post.md) - the Bun PR waits on it
 - [rind covers MoQ](/quest/m1/moq/README.md) - the primitives, CPU check, armv7 backend, and `rind-*` adapters MoQ needs, verified and released
-- [The README shows how to use rind and links the details](/quest/m1/readme-restructure.md) - usage, the migration prompt, and an invitation to AI contributors, with the details in linked docs

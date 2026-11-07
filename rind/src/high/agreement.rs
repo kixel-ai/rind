@@ -347,7 +347,7 @@ fn x25519_public_key(bytes: &[u8]) -> Result<PublicKey, Error> {
 /// `OCTET STRING` of the key's 32 bytes, checking a v2 key's public key.
 fn x25519_from_pkcs8(der: &[u8]) -> Result<x25519::PrivateKey, Error> {
     let _entry = low::Entry::new_secret();
-    let p8 = pkcs8::Key::decode(der, &asn1::oid::id_X25519, None)?;
+    let p8 = pkcs8::Key::decode(der, &[&asn1::oid::id_X25519], None)?;
     let key = asn1::OctetString::from_bytes(p8.private_key())
         .map_err(|e| Error::from(KeyFormatError::Asn1(e)))
         .and_then(|key| x25519::PrivateKey::from_bytes(key.as_octets()))?;

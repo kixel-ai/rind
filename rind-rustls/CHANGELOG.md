@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/moq-dev/rind/compare/rind-rustls-v0.1.13...rind-rustls-v0.2.0) - 2026-11-06
+
+### Added
+
+- [**breaking**] audit rind's public API, and apply its decisions, before 0.2.0 ([#383](https://github.com/moq-dev/rind/pull/383))
+
+### Fixed
+
+- *(adapters)* [**breaking**] return each adapter's own MissingFeature, not rind's ([#420](https://github.com/moq-dev/rind/pull/420))
+
+### Other
+
+- *(sha256)* [**breaking**] finish SHA-NI hashes in registers, and digest contexts by reference ([#352](https://github.com/moq-dev/rind/pull/352))
+
 ## [0.1.13](https://github.com/moq-dev/rind/compare/rind-rustls-v0.1.12...rind-rustls-v0.1.13) - 2026-11-05
 
 ### Added

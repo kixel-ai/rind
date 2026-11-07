@@ -31,6 +31,11 @@ keep in m2.
   (P-384) against aws-lc-rs, whose versions diverged. Measure first; drop any
   operation from the Goal that isn't clearly ahead. P-256 is near parity and
   stays unless it measures ahead.
+- P-256 key generation measures ahead only if Bun's shim reads the public key
+  when it is first needed, as rind now does
+  ([moq-dev/rind#407](https://github.com/moq-dev/rind/pull/407)): keep the
+  `EcdsaKeyPair` and read its public key on export or verification, not when
+  the key is made, as the P-384 shim's `Key::ec` does today.
 - The hard part is keys: node:crypto passes `EVP_PKEY` through ncrypto, so
   these key types need a representation of their own, with import and export
   (raw, PKCS#8, SPKI, JWK) matching Bun's behavior byte for byte. Bun's and

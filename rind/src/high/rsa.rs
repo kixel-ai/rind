@@ -23,6 +23,15 @@ pub(crate) const MAX_SPKI_LEN: usize = MAX_PUBLIC_KEY_LEN + 32;
 /// after its version and algorithm identifier.
 pub(crate) const MAX_PKCS8_LEN: usize = SigningKey::MAX_PKCS1_BUFFER_LEN + 64;
 
+/// The algorithms an RSA key's `SubjectPublicKeyInfo` or PKCS#8 may name,
+/// all for the same key, as aws-lc takes them: `rsaEncryption`, RFC 4055's
+/// `id-RSAES-OAEP`, and X.509's `id-ea-rsa`.
+static KEY_ALGORITHMS: [&asn1::ObjectId; 3] = [
+    &asn1::oid::rsaEncryption,
+    &asn1::oid::id_RSAES_OAEP,
+    &asn1::oid::id_ea_rsa,
+];
+
 /// Reads a big-endian public exponent for `RsaPublicKey::new` to bound; one
 /// too wide for a `u64` is far past that bound.
 fn public_exponent(e: &[u8]) -> Result<u64, Error> {
@@ -86,12 +95,13 @@ impl VerifyingKey {
     }
 
     /// Decodes an RSA public key from `SubjectPublicKeyInfo` DER, whose
-    /// algorithm must be `rsaEncryption` with `NULL` parameters, as
-    /// RFC 3279 section 2.3.1 requires, or none, which aws-lc also takes.
+    /// algorithm must be one of [`KEY_ALGORITHMS`] with `NULL` parameters, as
+    /// RFC 3279 section 2.3.1 requires for `rsaEncryption`, or none, which
+    /// aws-lc also takes.
     fn from_spki_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_public();
         let spki = pkix::SubjectPublicKeyInfo::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
-        if spki.algorithm.algorithm != asn1::oid::rsaEncryption
+        if !KEY_ALGORITHMS.contains(&&spki.algorithm.algorithm)
             || !matches!(
                 spki.algorithm.parameters,
                 None | Some(asn1::Any::Null(asn1::Null))
@@ -512,15 +522,12 @@ impl SigningKey {
     /// [RFC5208](https://datatracker.ietf.org/doc/html/rfc5208#section-5)
     /// (and earlier standards, including the original PKCS#8 standard).
     ///
-    /// `privateKeyAlgorithm` inside this encoding must be `rsaEncryption`.
+    /// `privateKeyAlgorithm` inside this encoding must be one of
+    /// [`KEY_ALGORITHMS`] with `NULL` parameters, as aws-lc requires.
     pub(crate) fn from_pkcs8_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        pkcs8::Key::decode(
-            bytes,
-            &asn1::oid::rsaEncryption,
-            Some(asn1::Any::Null(asn1::Null)),
-        )
-        .and_then(|k| Self::from_pkcs1_der(k.v1_private_key()?))
+        pkcs8::Key::decode(bytes, &KEY_ALGORITHMS, Some(asn1::Any::Null(asn1::Null)))
+            .and_then(|k| Self::from_pkcs1_der(k.v1_private_key()?))
     }
 
     /// Returns the matching public key.

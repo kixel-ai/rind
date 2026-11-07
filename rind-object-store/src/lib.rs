@@ -17,6 +17,7 @@
 //! # }
 //! ```
 
+use core::fmt;
 use std::sync::Arc;
 
 use object_store::client::{
@@ -31,10 +32,22 @@ use rustls_pki_types::pem::PemObject;
 // Names the provider, as object_store's own providers do in this field.
 const STORE: &str = "RindCryptoProvider";
 
+/// A CPU feature rind requires that this CPU lacks.
+#[derive(Debug)]
+pub struct MissingFeature(rind::cpu::MissingFeature);
+
+impl fmt::Display for MissingFeature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for MissingFeature {}
+
 /// Returns an object_store [`CryptoProvider`] backed by rind, or the CPU
 /// feature rind requires that this CPU lacks.
-pub fn default_provider() -> Result<Arc<dyn CryptoProvider>, rind::cpu::MissingFeature> {
-    rind::cpu::check()?;
+pub fn default_provider() -> Result<Arc<dyn CryptoProvider>, MissingFeature> {
+    rind::cpu::check().map_err(MissingFeature)?;
     Ok(Arc::new(Provider))
 }
 
