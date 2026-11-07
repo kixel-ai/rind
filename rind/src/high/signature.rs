@@ -809,10 +809,12 @@ enum EcdsaSource<'a> {
 }
 
 /// An ECDSA private key and its public key, bound to one signing algorithm.
+///
+/// Generating one draws only the private key: the public key, which
+/// signing never reads, is derived when it is first read, and kept.
 pub struct EcdsaKeyPair {
     key: EcdsaKey,
     algorithm: Ecdsa,
-    point: Buffer<MAX_UNCOMPRESSED_PUBLIC_KEY_LEN>,
 }
 
 // `repr(u8)` puts `P256` at tag zero, and every key is plain words beside a
@@ -829,7 +831,6 @@ enum EcdsaKey {
 /// only through `ops`: matching on [`EcdsaKey`] then names no curve's code.
 struct EcdsaPair<C: EcdsaCurve> {
     signing: ecdsa::SigningKey<C>,
-    verifying: ecdsa::VerifyingKey<C>,
     ops: low::ZeroableRef<EcdsaOps<C>>,
 }
 
@@ -837,6 +838,8 @@ struct EcdsaPair<C: EcdsaCurve> {
 type Write<K> = for<'a> fn(&K, &'a mut [u8]) -> Result<&'a [u8], Error>;
 
 struct EcdsaOps<C: EcdsaCurve> {
+    public_key: fn(&ecdsa::SigningKey<C>) -> ecdsa::EncodedPoint,
+    parse: fn(&[u8]) -> Result<ecdsa::VerifyingKey<C>, Error>,
     sign: Sign<ecdsa::SigningKey<C>>,
     sign_digest: Sign<ecdsa::SigningKey<C>>,
     verify: Verify<ecdsa::VerifyingKey<C>>,
@@ -847,13 +850,21 @@ struct EcdsaOps<C: EcdsaCurve> {
 }
 
 impl<C: EcdsaCurve> EcdsaPair<C> {
-    fn public_key(&self, ecdsa: Ecdsa) -> Parsed {
+    fn point(&self) -> ecdsa::EncodedPoint {
+        (self.ops.get().public_key)(&self.signing)
+    }
+
+    fn public_key(&self, ecdsa: Ecdsa) -> PublicKey {
+        let point = self.point();
         let key = EcdsaVerifier {
-            key: self.verifying.clone(),
+            key: (self.ops.get().parse)(point.as_ref()).expect("a key pair's own point"),
             verify: self.ops.get().verify,
             verify_digest: self.ops.get().verify_digest,
         };
-        C::parsed(key, ecdsa)
+        PublicKey {
+            key: C::parsed(key, ecdsa),
+            encoding: Buffer::copy_from(point.as_ref()).expect("sized for the largest key"),
+        }
     }
 }
 
@@ -920,10 +931,10 @@ impl EcdsaKeyPair {
                 ecdsa::SigningKey::from_private_key_and_public_key(scalar, public_key)
             }
         }?;
-        let point = Buffer::copy_from(signing.public_key_uncompressed())?;
-        let verifying = ecdsa::VerifyingKey::from_x962_uncompressed(point.as_ref())?;
         let ops = const {
             &EcdsaOps {
+                public_key: ecdsa::SigningKey::public_key_uncompressed,
+                parse: ecdsa::VerifyingKey::from_x962_uncompressed,
                 sign: E::sign::<C, H>,
                 sign_digest: E::sign_digest::<C, H>,
                 verify: E::verify::<C, H>,
@@ -936,20 +947,15 @@ impl EcdsaKeyPair {
         Ok(Self {
             key: C::key(EcdsaPair {
                 signing,
-                verifying,
                 ops: low::ZeroableRef::new(ops),
             }),
             algorithm: ecdsa,
-            point,
         })
     }
 
     /// Returns the public key, which verifies what this key pair signs.
     pub fn public_key(&self) -> PublicKey {
-        PublicKey {
-            key: on_ecdsa!(self, |pair| pair.public_key(self.algorithm)),
-            encoding: self.point.widen(),
-        }
+        on_ecdsa!(self, |pair| pair.public_key(self.algorithm))
     }
 
     /// Signs `message` with a fresh nonce.
@@ -1015,9 +1021,10 @@ impl EcdsaKeyPair {
     pub fn to_sec1(&self) -> Sec1 {
         let _entry = low::Entry::new_secret();
         let scalar = self.to_scalar();
+        let point = on_ecdsa!(self, |pair| pair.point());
         let curve = curve_oid(self.algorithm.curve);
         Sec1(Buffer::encode(|output| {
-            sec1::encode(scalar.as_ref(), self.point.as_ref(), Some(curve), output)
+            sec1::encode(scalar.as_ref(), point.as_ref(), Some(curve), output)
         }))
     }
 
@@ -1031,9 +1038,10 @@ impl EcdsaKeyPair {
 
 impl fmt::Debug for EcdsaKeyPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let point = on_ecdsa!(self, |pair| pair.point());
         f.debug_struct("EcdsaKeyPair")
             .field("algorithm", &self.algorithm)
-            .field("public_key", &self.point.as_ref())
+            .field("public_key", &point.as_ref())
             .finish_non_exhaustive()
     }
 }
@@ -1743,6 +1751,40 @@ mod tests {
 
     fn rejected(result: Result<impl fmt::Debug, Error>) -> Error {
         result.expect_err("accepted")
+    }
+
+    // A generated key pair derives its public key on the first read, so
+    // each reader must see the same key whichever reads first.
+    #[test]
+    fn ecdsa_generated_public_key_agrees_whichever_reads_first() {
+        type Reader = fn(&'static EcdsaSigningAlgorithm, &EcdsaKeyPair) -> Vec<u8>;
+        let readers: [Reader; 4] = [
+            |_, pair| pair.public_key().as_ref().to_vec(),
+            |_, pair| pair.to_spki().as_ref().to_vec(),
+            |signing, pair| {
+                let pkcs8 = pair.to_pkcs8();
+                let loaded = EcdsaKeyPair::from_pkcs8(signing, pkcs8.as_ref()).unwrap();
+                loaded.to_spki().as_ref().to_vec()
+            },
+            |signing, pair| {
+                let sec1 = pair.to_sec1();
+                let loaded = EcdsaKeyPair::from_sec1(signing, sec1.as_ref()).unwrap();
+                loaded.to_spki().as_ref().to_vec()
+            },
+        ];
+        for signing in ECDSA_SIGNING {
+            for first in 0..readers.len() {
+                let pair = EcdsaKeyPair::generate(signing).unwrap();
+                readers[first](signing, &pair);
+                let point = pair.public_key().as_ref().to_vec();
+                let spki = pair.to_spki().as_ref().to_vec();
+                for (i, reader) in readers.iter().enumerate() {
+                    let read = reader(signing, &pair);
+                    let expected = if i == 0 { &point } else { &spki };
+                    assert_eq!(&read, expected, "{signing:?}, {first} first, {i}");
+                }
+            }
+        }
     }
 
     #[test]

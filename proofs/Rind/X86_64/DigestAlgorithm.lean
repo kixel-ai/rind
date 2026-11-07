@@ -33,6 +33,13 @@ impl Algorithm {
     }
 }
 
+pub static MD5: Algorithm = Algorithm {
+    id: Id::Md5,
+    output_len: md5::Md5Context::OUTPUT_SZ,
+    hash: |data| Digest::new(&MD5, &md5::Md5State::new().finish_with(data)),
+    start: Hashing::<Md5Context>::start,
+};
+
 pub static SHA1: Algorithm = Algorithm {
     id: Id::Sha1,
     output_len: sha1::Sha1Context::OUTPUT_SZ,
@@ -149,6 +156,7 @@ namespace rind.x86_64
 
 /-- `&'static Algorithm`: which of `high::digest`'s statics. -/
 inductive high.digest.Algorithm where
+  | MD5
   | SHA1
   | SHA256
   | SHA384
@@ -161,6 +169,7 @@ deriving DecidableEq
 
 /-- `Algorithm::output_len`. -/
 def high.digest.Algorithm.output_len : high.digest.Algorithm → Result Std.Usize
+  | .MD5 => ok 16#usize
   | .SHA1 => ok 20#usize
   | .SHA256 => ok 32#usize
   | .SHA384 => ok 48#usize
@@ -169,6 +178,9 @@ def high.digest.Algorithm.output_len : high.digest.Algorithm → Result Std.Usiz
   | .SHA3_256 => ok 32#usize
   | .SHA3_384 => ok 48#usize
   | .SHA3_512 => ok 64#usize
+
+/-- The `MD5` static. -/
+def high.digest.MD5 : Result high.digest.Algorithm := ok .MD5
 
 /-- The `SHA1` static. -/
 def high.digest.SHA1 : Result high.digest.Algorithm := ok .SHA1

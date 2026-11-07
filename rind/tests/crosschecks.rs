@@ -20,6 +20,58 @@ fn ed25519_key_generation() {
     }
 }
 
+/// aws-lc's hash of a message: through aws-lc-rs, or aws-lc-sys's EVP
+/// interface for MD5, which aws-lc-rs does not export.
+enum Theirs {
+    AwsLcRs(&'static digest::Algorithm),
+    Md5,
+}
+
+impl Theirs {
+    fn digest(&self, message: &[u8]) -> Vec<u8> {
+        match self {
+            Self::AwsLcRs(algorithm) => digest::digest(algorithm, message).as_ref().to_vec(),
+            Self::Md5 => {
+                let mut out = [0u8; 16];
+                // SAFETY: `message` is readable for its length, and `out` is
+                // writable for MD5's 16-byte digest.
+                let ok = unsafe {
+                    aws_lc_sys::EVP_Digest(
+                        message.as_ptr().cast(),
+                        message.len(),
+                        out.as_mut_ptr(),
+                        core::ptr::null_mut(),
+                        aws_lc_sys::EVP_md5(),
+                        core::ptr::null_mut(),
+                    )
+                };
+                assert_eq!(ok, 1);
+                out.to_vec()
+            }
+        }
+    }
+}
+
+/// Each hash rind offers, with aws-lc's and its block size.
+fn hashes() -> [(&'static rind::digest::Algorithm, Theirs, usize); 9] {
+    use Theirs::*;
+    [
+        (&rind::digest::legacy::MD5, Md5, 64),
+        (
+            &rind::digest::legacy::SHA1,
+            AwsLcRs(&digest::SHA1_FOR_LEGACY_USE_ONLY),
+            64,
+        ),
+        (&rind::digest::SHA256, AwsLcRs(&digest::SHA256), 64),
+        (&rind::digest::SHA384, AwsLcRs(&digest::SHA384), 128),
+        (&rind::digest::SHA512, AwsLcRs(&digest::SHA512), 128),
+        (&rind::digest::SHA512_256, AwsLcRs(&digest::SHA512_256), 128),
+        (&rind::digest::SHA3_256, AwsLcRs(&digest::SHA3_256), 136),
+        (&rind::digest::SHA3_384, AwsLcRs(&digest::SHA3_384), 104),
+        (&rind::digest::SHA3_512, AwsLcRs(&digest::SHA3_512), 72),
+    ]
+}
+
 // Every length to three of SHA-2's larger blocks, so each tail lands on both
 // sides of the length field for both block sizes, and SHA-3's padding lands
 // in one byte, two, or a block of its own. One-shot, and in updates that end
@@ -27,35 +79,18 @@ fn ed25519_key_generation() {
 #[test]
 fn hashes_every_length() {
     let message: Vec<u8> = (0..3 * 128 + 1).map(|i| (i * 7 + 3) as u8).collect();
-    for (ours, theirs, block) in [
-        (
-            &rind::digest::legacy::SHA1,
-            &digest::SHA1_FOR_LEGACY_USE_ONLY,
-            64,
-        ),
-        (&rind::digest::SHA256, &digest::SHA256, 64),
-        (&rind::digest::SHA384, &digest::SHA384, 128),
-        (&rind::digest::SHA512, &digest::SHA512, 128),
-        (&rind::digest::SHA512_256, &digest::SHA512_256, 128),
-        (&rind::digest::SHA3_256, &digest::SHA3_256, 136),
-        (&rind::digest::SHA3_384, &digest::SHA3_384, 104),
-        (&rind::digest::SHA3_512, &digest::SHA3_512, 72),
-    ] {
+    for (ours, theirs, block) in hashes() {
         for len in 0..=message.len() {
             let message = &message[..len];
-            let wanted = digest::digest(theirs, message);
+            let wanted = theirs.digest(message);
             let got = rind::digest::digest(ours, message);
-            assert_eq!(got.as_ref(), wanted.as_ref(), "{ours:?} one-shot {len}");
+            assert_eq!(got.as_ref(), wanted, "{ours:?} one-shot {len}");
 
             let mut ctx = rind::digest::Context::new(ours);
             for part in message.chunks(block) {
                 ctx.update(part);
             }
-            assert_eq!(
-                ctx.finish().as_ref(),
-                wanted.as_ref(),
-                "{ours:?} blockwise {len}"
-            );
+            assert_eq!(ctx.finish().as_ref(), wanted, "{ours:?} blockwise {len}");
         }
     }
 }
@@ -70,24 +105,15 @@ proptest! {
         // that fills a block exactly, or spans several, after a partial one.
         let mut splits: Vec<_> = splits.iter().map(|s| s.index(message.len() + 1)).collect();
         splits.sort();
-        for (ours, theirs) in [
-            (&rind::digest::legacy::SHA1, &digest::SHA1_FOR_LEGACY_USE_ONLY),
-            (&rind::digest::SHA256, &digest::SHA256),
-            (&rind::digest::SHA384, &digest::SHA384),
-            (&rind::digest::SHA512, &digest::SHA512),
-            (&rind::digest::SHA512_256, &digest::SHA512_256),
-            (&rind::digest::SHA3_256, &digest::SHA3_256),
-            (&rind::digest::SHA3_384, &digest::SHA3_384),
-            (&rind::digest::SHA3_512, &digest::SHA3_512),
-        ] {
+        for (ours, theirs, _) in hashes() {
             let mut ctx = rind::digest::Context::new(ours);
             let mut start = 0;
             for &end in splits.iter().chain([&message.len()]) {
                 ctx.update(&message[start..end]);
                 start = end;
             }
-            let (got, wanted) = (ctx.finish(), digest::digest(theirs, &message));
-            prop_assert_eq!(got.as_ref(), wanted.as_ref());
+            let got = ctx.finish();
+            prop_assert_eq!(got.as_ref(), theirs.digest(&message));
         }
     }
 

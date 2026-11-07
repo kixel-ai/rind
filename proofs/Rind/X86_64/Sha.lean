@@ -235,6 +235,7 @@ theorem sha256_ctx_finish_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha2.Sha2
 
 /-- An algorithm's output length. -/
 def outLen : high.digest.Algorithm → Nat
+  | .MD5 => 16
   | .SHA1 => 20
   | .SHA256 => 32
   | .SHA384 => 48

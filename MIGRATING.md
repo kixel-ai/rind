@@ -24,6 +24,7 @@ renames [rind-ring](#rind-ring), ring's API on rind, to `ring`.
 | `Context::finish(self)` | `Context::finish(&mut self)`, which leaves the context fresh to hash another message; bind the context `mut` |
 | `SHA256`, `SHA384`, `SHA512`, `SHA512_256` | the same |
 | `SHA1_FOR_LEGACY_USE_ONLY` | `legacy::SHA1` |
+| MD5 (in neither) | `legacy::MD5`, for hashing only: no HMAC, key derivation, or signature takes it |
 | `SHA224` (not in ring) | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | `SHA3_256`, `SHA3_384`, `SHA3_512` (not in ring) | the same |
 | `Algorithm::output_len()` | the same |
@@ -528,8 +529,7 @@ No new adapter is planned (maintainer, 2026-10-31):
   aws-lc-rs, so an adapter would carry its own port of quinn's
   `crypto::rustls` session. noq, quinn's fork, already runs on rind-rustls.
 - **webrtc**: `rtc_crypto::RTCCryptoProvider` covers all of its crypto, and
-  rind lacks only MD5 (for TURN's long-term credentials) and the AES-CCM
-  DTLS suites, but no consumer asks for it.
+  rind lacks only the AES-CCM DTLS suites, but no consumer asks for it.
 
 Nor are these worth a crate:
 

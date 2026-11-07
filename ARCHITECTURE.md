@@ -42,8 +42,8 @@ The modules:
   computed, with any SHA-2 hash, RSA keys given as their components, and
   SHA-1 and 1024-bit RSA for verifying old signatures. Keys load from and
   export as PKCS#8, a `SubjectPublicKeyInfo`, raw bytes, and SEC1 for ECDSA.
-- `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, SHA-512/256,
-  SHA3-256, SHA3-384, and SHA3-512.
+- `digest`: MD5 and SHA-1 (legacy only), SHA-256, SHA-384, SHA-512,
+  SHA-512/256, SHA3-256, SHA3-384, and SHA3-512.
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.
 - `hkdf`: HKDF over those HMACs, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
 - `pbkdf2`: PBKDF2 over those HMACs, deriving or verifying a key from a password.

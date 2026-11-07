@@ -33,6 +33,7 @@ libcrux-ml-kem = { version = "0.0.11", default-features = false, features = ["ml
 libcrux-rsa = "0.0.9"
 libcrux-sha2 = "0.0.9"
 libcrux-sha3 = "0.0.11"
+md5 = { package = "md-5", version = "0.11" }
 ml-kem = { version = "0.3", features = ["getrandom"] }
 p256 = { version = "0.14", features = ["ecdh", "getrandom"] }
 p384 = { version = "0.14", features = ["ecdh", "getrandom"] }
@@ -79,6 +80,10 @@ harness = false
 
 [[bench]]
 name = "p521"
+harness = false
+
+[[bench]]
+name = "md5"
 harness = false
 
 [[bench]]

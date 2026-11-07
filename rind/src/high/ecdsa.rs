@@ -9,36 +9,52 @@ use super::hash::{Hash, SignatureHash};
 use super::hmac_drbg::HmacDrbg;
 use super::sec1;
 use crate::error::{Error, KeyFormatError};
-use crate::low::Entry;
+use crate::low::{Entry, ReuseCache};
 use crate::mid::rng::{RandomSource, SystemRandom};
 
 /// An ECDSA signing key, on curve `C`.
 pub(crate) struct SigningKey<C: Curve> {
     // Private, so the scalar cannot be reused for ECDH.
     private_key: C::PrivateKey,
-    // Deriving the public key costs a scalar multiplication, so it is done
-    // once, when the key is made.
-    public_key: [u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN],
-    public_key_len: usize,
+    // Deriving the public key costs a scalar multiplication, which signing
+    // never needs, so it is done when the public key is first read.
+    public_key: ReuseCache<EncodedPoint>,
+}
+
+/// A public key's X9.62 uncompressed encoding, on any curve.
+#[derive(Clone, Copy)]
+pub(crate) struct EncodedPoint {
+    bytes: [u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN],
+    len: usize,
+}
+
+impl Default for EncodedPoint {
+    fn default() -> Self {
+        Self {
+            bytes: [0; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN],
+            len: 0,
+        }
+    }
+}
+
+impl AsRef<[u8]> for EncodedPoint {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes[..self.len]
+    }
 }
 
 impl<C: Curve> SigningKey<C> {
-    fn new(private_key: C::PrivateKey) -> Result<Self, Error> {
-        let mut public_key = [0u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN];
-        let public_key_len = private_key
-            .public_key_encode_uncompressed(&mut public_key)?
-            .len();
-        Ok(Self {
+    fn new(private_key: C::PrivateKey) -> Self {
+        Self {
             private_key,
-            public_key,
-            public_key_len,
-        })
+            public_key: ReuseCache::new(),
+        }
     }
 
     /// Generate a new random key.
     pub(crate) fn generate() -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        Self::new(C::generate_random_key(&mut SystemRandom)?)
+        Ok(Self::new(C::generate_random_key(&mut SystemRandom)?))
     }
 
     /// Load an ECDSA private key in PKCS#8 format.
@@ -58,7 +74,7 @@ impl<C: Curve> SigningKey<C> {
         let private_key = self.private_key.encode(&mut private_key)?;
         sec1::encode_pkcs8(
             private_key,
-            self.public_key_uncompressed(),
+            self.public_key_uncompressed().as_ref(),
             C::oid(),
             output,
         )
@@ -71,7 +87,7 @@ impl<C: Curve> SigningKey<C> {
     }
 
     fn from_decoded(decoded: sec1::Decoded<'_>) -> Result<Self, Error> {
-        let key = Self::new(C::PrivateKey::from_bytes(decoded.private_key)?)?;
+        let key = Self::new(C::PrivateKey::from_bytes(decoded.private_key)?);
         match decoded.public_key {
             Some(public_key) if !key.is_public_key(public_key) => {
                 Err(KeyFormatError::MismatchedSec1PublicKey.into())
@@ -92,7 +108,7 @@ impl<C: Curve> SigningKey<C> {
             return Err(KeyFormatError::WrongLength.into());
         }
 
-        let key = Self::new(C::PrivateKey::from_bytes(private_key)?)?;
+        let key = Self::new(C::PrivateKey::from_bytes(private_key)?);
         match key.is_public_key(public_key) {
             true => Ok(key),
             false => Err(KeyFormatError::MismatchedPublicKey.into()),
@@ -102,7 +118,7 @@ impl<C: Curve> SigningKey<C> {
     /// Whether `encoded`, an X9.62 uncompressed or compressed point, is this
     /// key's public key, as [`sec1::is_public_key`] decides.
     fn is_public_key(&self, encoded: &[u8]) -> bool {
-        sec1::is_public_key(self.public_key_uncompressed(), encoded)
+        sec1::is_public_key(self.public_key_uncompressed().as_ref(), encoded)
     }
 
     /// Encode this private key as its fixed-length big-endian scalar, still
@@ -113,8 +129,16 @@ impl<C: Curve> SigningKey<C> {
     }
 
     /// This private key's public key, as an X9.62 uncompressed point.
-    pub(crate) fn public_key_uncompressed(&self) -> &[u8] {
-        &self.public_key[..self.public_key_len]
+    pub(crate) fn public_key_uncompressed(&self) -> EncodedPoint {
+        self.public_key.get_or_build_now(|| {
+            let mut point = EncodedPoint::default();
+            point.len = self
+                .private_key
+                .public_key_encode_uncompressed(&mut point.bytes)
+                .expect("sized for the largest curve")
+                .len();
+            point
+        })
     }
 
     /// Encode this private key's corresponding public key in SubjectPublicKeyInfo DER format.
@@ -123,12 +147,13 @@ impl<C: Curve> SigningKey<C> {
     /// returned.  [`Error::WrongLength`] is returned if `output` is not sufficient
     /// to contain the full encoding.
     pub(crate) fn to_spki_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        let point = self.public_key_uncompressed();
         let spki = asn1::pkix::SubjectPublicKeyInfo {
             algorithm: asn1::pkix::AlgorithmIdentifier {
                 algorithm: asn1::oid::id_ecPublicKey.clone(),
                 parameters: Some(asn1::Any::ObjectId(C::oid())),
             },
-            subjectPublicKey: asn1::BitString::new(self.public_key_uncompressed()),
+            subjectPublicKey: asn1::BitString::new(point.as_ref()),
         };
 
         let len = spki
@@ -579,8 +604,7 @@ mod tests {
                 &n_minus_1,
             );
         let sk =
-            SigningKey::<curve::P256>::new(StaticPrivateKey::from_bytes(&d.as_bytes()).unwrap())
-                .unwrap();
+            SigningKey::<curve::P256>::new(StaticPrivateKey::from_bytes(&d.as_bytes()).unwrap());
         let k1_key = StaticPrivateKey::from_bytes(&k1).unwrap();
         assert!(sk.private_key.raw_ecdsa_sign(&k1_key, &e, &r1).is_zero());
 
@@ -592,7 +616,7 @@ mod tests {
             .unwrap()
             .public_key_x_scalar();
         assert_eq!(r.as_bytes(), r2.as_bytes());
-        VerifyingKey::<curve::P256>::from_x962_uncompressed(sk.public_key_uncompressed())
+        VerifyingKey::<curve::P256>::from_x962_uncompressed(sk.public_key_uncompressed().as_ref())
             .unwrap()
             .public_key
             .raw_ecdsa_verify(&r, &s, &e)
@@ -604,7 +628,7 @@ mod tests {
         let public_key = private_key
             .public_key_encode_uncompressed(&mut public_key)
             .unwrap();
-        let sk = SigningKey::<C>::new(private_key).unwrap();
+        let sk = SigningKey::<C>::new(private_key);
         let vk = VerifyingKey::<C> {
             public_key: C::PublicKey::from_x962_uncompressed(public_key).unwrap(),
         };
@@ -649,6 +673,7 @@ mod tests {
         let mut scalar = [0u8; MAX_SCALAR_LEN];
         let scalar = loaded.to_scalar(&mut scalar).unwrap();
         let public_key = loaded.public_key_uncompressed();
+        let public_key = public_key.as_ref();
         let encoded = sec1::encode(scalar, public_key, Some(C::oid()), &mut buf).unwrap();
         assert_eq!(sec1_der, encoded);
         assert_eq!(
@@ -735,7 +760,7 @@ mod tests {
         let public_key = private_key
             .public_key_encode_uncompressed(&mut public_key)
             .unwrap();
-        let k = SigningKey::<curve::P256>::new(private_key).unwrap();
+        let k = SigningKey::<curve::P256>::new(private_key);
         let v = VerifyingKey::<curve::P256> {
             public_key: <curve::P256 as curve::Curve>::PublicKey::from_x962_uncompressed(
                 public_key,
@@ -849,7 +874,7 @@ mod tests {
                 .public_key_encode_uncompressed(&mut public_key)
                 .unwrap();
             let v = VerifyingKey::<C>::from_x962_uncompressed(public_key).unwrap();
-            let k = SigningKey::<C>::new(private_key).unwrap();
+            let k = SigningKey::<C>::new(private_key);
             for message in [&b"sample"[..], b"test"] {
                 let (mut ours, mut wanted) = ([0u8; 132], [0u8; 132]);
                 let wanted = k
@@ -901,7 +926,7 @@ mod tests {
             )
             .unwrap(),
         };
-        let k = SigningKey::<curve::P521>::new(private_key).unwrap();
+        let k = SigningKey::<curve::P521>::new(private_key);
         let mut signature = [0u8; 132];
 
         k.rfc6979_sign_with_random::<hash::Sha256>(b"sample", &[], &mut signature)

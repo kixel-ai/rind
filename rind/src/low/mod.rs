@@ -26,6 +26,8 @@ mod generic {
     pub(super) mod ctr;
     #[cfg(test)]
     pub(crate) mod ghash;
+    // Every target's MD5: no CPU has instructions for it.
+    pub(super) mod md5;
     pub(crate) mod mlkem;
     #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
     pub(crate) mod mlkem768;
@@ -68,6 +70,7 @@ pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
 #[cfg(all(test, target_arch = "arm"))]
 pub(crate) use generic::ghash::gcm_model;
+pub(crate) use generic::md5::md5_compress_blocks;
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
 pub(crate) use generic::reuse_cache::ReuseCache;
