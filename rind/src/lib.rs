@@ -432,7 +432,7 @@ pub mod key_wrap {
 /// }
 /// ```
 pub mod cpu {
-    pub use crate::low::cpu::{MissingFeature, check, has_aes_hardware};
+    pub use crate::low::cpu::{DitGuard, MissingFeature, check, has_aes_hardware, hold_dit};
 }
 
 /// Random bytes from the system's secure random source.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 use core::fmt;
+use core::marker::PhantomData;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 /// A CPU feature rind requires that this CPU lacks.
@@ -37,6 +38,64 @@ pub fn has_aes_hardware() -> bool {
     return super::HaveCryptoExt::check().is_some();
     #[cfg(target_arch = "x86_64")]
     return super::x86_64::cpu::HaveAesHardware::check().is_some();
+}
+
+/// Keeps data-independent timing (DIT) on for this thread until the returned guard drops.
+///
+/// Every rind call that handles a secret runs with DIT where the core has it,
+/// turning it on at entry and back off on return. On Apple's cores that
+/// costs about 50 ns a call, a tenth of sealing a QUIC packet, so holding a
+/// guard across a batch of calls pays it once instead. Where rind sets no
+/// DIT, on x86_64, armv7, and aarch64 cores without it, the guard does
+/// nothing.
+///
+/// Everything the thread runs while a guard is held runs with DIT, rind's
+/// code or not. Dropping the guard turns DIT off only if it turned it on, so
+/// guards nest.
+///
+/// ```
+/// use rind::aead::{AES_128_GCM, Key, Nonce};
+///
+/// let key = Key::new(&AES_128_GCM, &[0x42; 16]).unwrap();
+/// let mut packets = [[0u8; 1200]; 4];
+///
+/// let _dit = rind::cpu::hold_dit();
+/// for (number, packet) in packets.iter_mut().enumerate() {
+///     let mut nonce = [0u8; 12];
+///     nonce[4..].copy_from_slice(&(number as u64).to_be_bytes());
+///     let nonce = Nonce::assume_unique_for_key(nonce);
+///     key.seal_in_place_separate_tag(nonce, b"header", packet).unwrap();
+/// }
+/// ```
+///
+/// DIT belongs to a thread, so the guard can't leave the one that made it,
+/// nor live across an `.await` in a task a multi-threaded runtime may move:
+///
+/// ```compile_fail
+/// let dit = rind::cpu::hold_dit();
+/// std::thread::spawn(move || drop(dit));
+/// ```
+pub fn hold_dit() -> DitGuard {
+    DitGuard {
+        cpu_state: super::enter_cpu_state(),
+        _thread: PhantomData,
+    }
+}
+
+/// Holds data-independent timing on for this thread until dropped; see [`hold_dit`].
+#[must_use = "DIT turns back off when the guard drops"]
+#[derive(Debug)]
+pub struct DitGuard {
+    cpu_state: u32,
+    // Neither `Send` nor `Sync`: dropping it on another thread would turn off
+    // that thread's DIT.
+    _thread: PhantomData<*const ()>,
+}
+
+impl Drop for DitGuard {
+    fn drop(&mut self) {
+        super::leave_cpu_state(self.cpu_state);
+    }
 }
 
 /// Panics with [`check`]'s error rather than run instructions this CPU lacks.

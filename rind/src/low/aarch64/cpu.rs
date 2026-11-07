@@ -483,6 +483,26 @@ mod tests {
         }
     }
 
+    #[test]
+    fn hold_dit_keeps_dit_on_across_calls() {
+        if features() & DIT == 0 {
+            // Nothing to hold, and nothing to read DIT with.
+            drop(crate::cpu::hold_dit());
+            return;
+        }
+        // SAFETY: this core has DIT. Cleared, so only the guard can set it.
+        unsafe { dit::write(0) };
+        let held = crate::cpu::hold_dit();
+        // A call under the guard, and a nested guard, leave DIT to it.
+        drop(crate::low::Entry::new_secret());
+        drop(crate::cpu::hold_dit());
+        // SAFETY: as above.
+        assert_eq!(unsafe { dit::read() }, 1);
+        drop(held);
+        // SAFETY: as above.
+        assert_eq!(unsafe { dit::read() }, 0);
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn needs_dit_on_every_possible_core() {
