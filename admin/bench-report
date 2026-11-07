@@ -175,6 +175,7 @@ OPERATIONS = [op for _, ops in SECTIONS for op in ops]
 # the history of its older benchmarks.
 LIBRARIES = {
     "rind": "rind",
+    "rind-dit-held": "rind-dit-held",
     "aws-lc-rs": "aws-lc-rs",
     "ring": "ring",
     "rustcrypto": "rustcrypto",
@@ -643,7 +644,7 @@ def summary(args):
         cells = []
         for h in measured:
             times = {r["library"]: r["ns"] for r in h["results"] if r["operation"] == op}
-            others = {lib: ns for lib, ns in times.items() if lib != "rind"}
+            others = {lib: ns for lib, ns in times.items() if lib != "rind" and lib not in VARIANTS}
             if "rind" not in times or not others:
                 cells.append("-")
                 continue
@@ -667,6 +668,7 @@ REPO = "moq-dev/rind"
 # The report's columns, in order, by library.
 COLUMNS = {
     "rind": "rind",
+    "rind-dit-held": "rind (DIT held)",
     "aws-lc-rs": "aws-lc-rs",
     "ring": "ring",
     "rustcrypto": "RustCrypto + dalek",
@@ -674,6 +676,18 @@ COLUMNS = {
     "libcrux": "libcrux",
     "openssl": "OpenSSL",
 }
+
+# Rows that time a library's own code another way, by that library. Each
+# shows beside the library, with its proofs, but never counts as the fastest
+# or as a rival in a gap. rind's DIT-held row is timed only on a CPU with DIT.
+VARIANTS = {"rind-dit-held": "rind"}
+
+
+def fastest(libs):
+    """The fastest library of an operation's times by library."""
+    rivals = {lib: ns for lib, ns in libs.items() if lib not in VARIANTS}
+    return min(rivals, key=rivals.get)
+
 
 # Each operation's label, by its row name without a message size.
 NAMES = {
@@ -987,7 +1001,7 @@ def gaps_of(hosts, tiers):
     out = {}
     for name, host in hosts.items():
         for row, libs in times(host).items():
-            others = {lib: ns for lib, ns in libs.items() if lib != "rind"}
+            others = {lib: ns for lib, ns in libs.items() if lib != "rind" and lib not in VARIANTS}
             if "rind" in libs and others:
                 best = min(others, key=others.get)
                 if libs["rind"] / others[best] > SLOWER:
@@ -1148,9 +1162,8 @@ def columns(*hosts):
 
 
 def header_lines(name):
-    """A column header's lines, breaking a pair of libraries before its +."""
-    words = name.split(" + ")
-    return [words[0], "+ " + words[1]] if len(words) == 2 else [name]
+    """A column header's lines, breaking before a + or a parenthesis."""
+    return re.split(r" (?=[+(])", name)
 
 
 def header_width(names):
@@ -1198,9 +1211,9 @@ def overview_svg(hosts, verified, theme):
                     libs = host_times[name].get(row, {})
                     if lib not in libs:
                         continue
-                    ratio = libs[lib] / min(libs.values())
+                    ratio = libs[lib] / libs[fastest(libs)]
                     fill = svg.theme["speed"][bin_of(ratio, SPEED_BINS)]
-                    proof = proof_for(verified, lib, row, hosts[name])
+                    proof = proof_for(verified, VARIANTS.get(lib, lib), row, hosts[name])
                     title = f"{label(row)}, {COLUMNS[lib]} on {name}: {human(libs[lib])}, {ratio:.2f}× the fastest"
                     if proof:
                         title += f"; verified: {proof['proof']}"
@@ -1238,9 +1251,9 @@ def host_svg(name, host, verified, theme):
                 x = label_width + c * cell + 2
                 if lib not in libs:
                     continue
-                ratio = libs[lib] / min(libs.values())
+                ratio = libs[lib] / libs[fastest(libs)]
                 fill = svg.theme["speed"][bin_of(ratio, SPEED_BINS)]
-                proof = proof_for(verified, lib, row, host)
+                proof = proof_for(verified, VARIANTS.get(lib, lib), row, host)
                 title = f"{label(row)}, {COLUMNS[lib]}: {human(libs[lib])}, {ratio:.2f}× the fastest"
                 if proof:
                     title += f"; verified: {proof['proof']}"
@@ -1426,7 +1439,7 @@ def host_table(host, verified):
             if lib not in libs:
                 cells.append("-")
                 continue
-            check = " ✓" if proof_for(verified, lib, row, host) else ""
+            check = " ✓" if proof_for(verified, VARIANTS.get(lib, lib), row, host) else ""
             cells.append(f"{human(libs[lib])}{check}")
         lines.append(f"| {label(row)} | " + " | ".join(cells) + " |")
     return lines
@@ -1504,6 +1517,17 @@ def report(hosts, tiers, verified, gaps):
             "the tables below each host give them all. A library with no square doesn't offer the operation, or "
             "the host didn't time it, as its section says.",
             "",
+            *(
+                [
+                    "rind (DIT held) times rind with `rind::cpu::Dit::hold()` held across the timed loop, as a "
+                    "caller batching calls does, so that DIT is set once rather than around each call. Only a CPU "
+                    "with DIT times it, since elsewhere it runs the same code as rind's own column, and it never "
+                    "counts as the fastest library.",
+                    "",
+                ]
+                if "rind-dit-held" in columns(*hosts.values())
+                else []
+            ),
             *picture("overview", "Time over the fastest library's, by operation, library, and host"),
             "",
         ]

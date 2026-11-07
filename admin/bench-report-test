@@ -171,6 +171,24 @@ class Render(unittest.TestCase):
             ],
         )
 
+    def test_dit_held_shows_beside_rind_but_never_sets_the_fastest(self):
+        everyone = hosts()
+        everyone["kixtop"]["results"].append({"operation": "x25519-ecdh/{lib}", "library": "rind-dit-held", "ns": 10000.0})
+        everyone["kixtop"]["results"][1]["ns"] = 15000.0
+        titles = squares(br.overview_svg(everyone, VERIFIED, "light"))
+        self.assertIn("X25519, rind (DIT held) on kixtop: 10.00 µs, 0.67× the fastest", titles)
+        self.assertIn("X25519, rind on kixtop: 20.00 µs, 1.33× the fastest", titles)
+        # rind is a gap against ring, never against its own held row.
+        self.assertEqual(br.gaps_of(everyone, None), {("x25519-ecdh", "kixtop"): (20000.0 / 15000.0, "ring")})
+        on_macos = [{"library": "rind", "operations": ["x25519-ecdh"], "proof": "p", "link": "https://example.com"}]
+        table = br.host_table(everyone["kixtop"], on_macos)
+        self.assertIn("| Operation | rind | rind (DIT held) | ring |", table)
+        self.assertIn("| X25519 | 20.00 µs ✓ | 10.00 µs ✓ | 15.00 µs |", table)
+        self.assertEqual(br.header_lines("rind (DIT held)"), ["rind", "(DIT held)"])
+        held = "rind (DIT held) times rind with `rind::cpu::Dit::hold()`"
+        self.assertIn(held, br.report(everyone, None, VERIFIED, [])[br.REPORT])
+        self.assertNotIn(held, br.report(hosts(), None, VERIFIED, [])[br.REPORT])
+
     def test_fastest_bin_holds_within_ten_percent(self):
         self.assertEqual(br.bin_of(1.0, br.SPEED_BINS), 0)
         self.assertEqual(br.bin_of(1.1, br.SPEED_BINS), 0)

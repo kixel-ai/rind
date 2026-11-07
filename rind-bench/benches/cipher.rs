@@ -129,16 +129,18 @@ fn bench_header_protection(c: &mut Criterion) {
             let key = HeaderProtectionKey::new(algorithm, key).unwrap();
             b.iter(|| key.new_mask(&sample).unwrap());
         });
-        group.bench_function(format!("{name}/rind"), |b| {
-            use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};
-            let algorithm = match name {
-                "aes128" => &AES_128,
-                "aes256" => &AES_256,
-                _ => &CHACHA20,
-            };
-            let key = HeaderProtectionKey::new(algorithm, key).unwrap();
-            b.iter(|| key.mask(&sample));
-        });
+        for (lib, _dit) in criterion::rind_rows() {
+            group.bench_function(format!("{name}/{lib}"), |b| {
+                use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};
+                let algorithm = match name {
+                    "aes128" => &AES_128,
+                    "aes256" => &AES_256,
+                    _ => &CHACHA20,
+                };
+                let key = HeaderProtectionKey::new(algorithm, key).unwrap();
+                b.iter(|| key.mask(&sample));
+            });
+        }
     }
 }
 

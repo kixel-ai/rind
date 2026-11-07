@@ -114,11 +114,13 @@ fn aes128_gcm(c: &mut Criterion) {
             let key = aes_gcm::Aes128Gcm::new_from_slice(&key).unwrap();
             b.iter(|| test_rc_aes128_gcm(&key, &nonce, aad, &mut buf));
         });
-        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
-            use rind::aead::{AES_128_GCM, Key};
-            let key = Key::new(&AES_128_GCM, &key).unwrap();
-            b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
-        });
+        for (lib, _dit) in criterion::rind_rows() {
+            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
+                use rind::aead::{AES_128_GCM, Key};
+                let key = Key::new(&AES_128_GCM, &key).unwrap();
+                b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
+            });
+        }
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
             let key = graviola::aead::AesGcm::new(&key);
@@ -177,11 +179,13 @@ fn aes256_gcm(c: &mut Criterion) {
             let key = aes_gcm::Aes256Gcm::new_from_slice(&key).unwrap();
             b.iter(|| test_rc_aes256_gcm(&key, &nonce, aad, &mut buf));
         });
-        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
-            use rind::aead::{AES_256_GCM, Key};
-            let key = Key::new(&AES_256_GCM, &key).unwrap();
-            b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
-        });
+        for (lib, _dit) in criterion::rind_rows() {
+            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
+                use rind::aead::{AES_256_GCM, Key};
+                let key = Key::new(&AES_256_GCM, &key).unwrap();
+                b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
+            });
+        }
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
             let key = graviola::aead::AesGcm::new(&key);
@@ -313,19 +317,21 @@ fn open<K: KeySize>(
                     .unwrap();
             });
         });
-        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
-            b.iter(|| {
-                pt.copy_from_slice(ct);
-                rind_key
-                    .open_in_place_separate_tag(
-                        rind::aead::Nonce::assume_unique_for_key(nonce),
-                        aad,
-                        tag,
-                        pt,
-                    )
-                    .unwrap();
+        for (lib, _dit) in criterion::rind_rows() {
+            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
+                b.iter(|| {
+                    pt.copy_from_slice(ct);
+                    rind_key
+                        .open_in_place_separate_tag(
+                            rind::aead::Nonce::assume_unique_for_key(nonce),
+                            aad,
+                            tag,
+                            pt,
+                        )
+                        .unwrap();
+                });
             });
-        });
+        }
         group.bench_function(BenchmarkId::new("rustcrypto", size_name), |b| {
             use aes_gcm::{AeadInOut, KeyInit};
             let key = K::RustCrypto::new_from_slice(key).unwrap();
