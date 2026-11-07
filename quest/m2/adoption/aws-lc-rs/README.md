@@ -2,20 +2,19 @@
 
 ## Goal
 
-A crate that calls aws-lc-rs's API switches to rind by renaming one dependency, as one on ring already can with rind-ring. A binary replaces ring or aws-lc-rs everywhere in its tree, including dependencies that hard-wire them such as quinn-proto, s2n-quic, and libp2p, with one `[patch.crates-io]` line that points at rind's git repo.
+A crate that calls aws-lc-rs's API switches to rind by renaming one dependency, as one on ring already can with rind-ring. A binary replaces ring or aws-lc-rs everywhere in its tree, including dependencies that hard-wire them such as quinn-proto, s2n-quic, and libp2p, with one `[patch.crates-io]` line that points at [moq-dev/rind-patch](https://github.com/moq-dev/rind-patch).
 
 ## Plan
 
 Decided with the maintainer on 2026-11-07, in m2 adoption:
 
 - A published `rind-aws-lc-rs` offers aws-lc-rs 1.x's API, versioned 1.x by the adapter rule (CONTRIBUTING.md's Releases). It shares rind-ring's code where the two APIs overlap, and adds the extras rind already has, such as ML-KEM, AES-KW, and AES-CBC.
-- Git-only shim crates in rind's repo that are actually named `ring` (0.17.x) and `aws-lc-rs` (1.x) wrap the adapters, so a binary can patch them in. Cargo patches only with a crate of the same name, which crates.io has already taken, so the shims are never published.
+- Git-only shim crates in moq-dev/rind-patch that are actually named `ring` (0.17.x) and `aws-lc-rs` (1.x) wrap the adapters, so a binary can patch them in. Cargo patches only with a crate of the same name, which crates.io has already taken, so the shims are never published.
 - A patch applies only in a binary's own workspace. A dependency that calls an item rind doesn't offer fails to build, and the docs list those items.
 - The `ring` shim ships first, since rind-ring already covers ring 0.17's API.
 - MIGRATE.md and MIGRATING.md gain the patch route next to "port each call to rind's API". Every MIGRATING.md row the shims unblock moves out of Unsupported, such as quinn-proto, libp2p, and s2n-quic.
 
 ## Required
 
-- [A ring patch shim](/quest/m2/adoption/aws-lc-rs/ring-patch.md) - one line replaces ring across a binary's tree
 - [rind-aws-lc-rs](/quest/m2/adoption/aws-lc-rs/rind-aws-lc-rs.md) - aws-lc-rs 1.x's API on rind
 - [An aws-lc-rs patch shim](/quest/m2/adoption/aws-lc-rs/aws-lc-rs-patch.md) - one line replaces aws-lc-rs across a binary's tree
