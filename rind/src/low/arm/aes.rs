@@ -7,6 +7,9 @@
 // from `src/aes.rs` and `src/ctr/aes{128,256}_ctr.rs`. armv7's AES-GCM runs the same code inside
 // libcrux-aes, which does not export it.
 //
+// libcrux-aes has no AES-192, so its key expansion is rind's: FIPS 197's
+// word-by-word schedule, each SubWord through this file's S-box.
+//
 // libcrux-aes only encrypts, so the inverse cipher is rind's, in the same
 // representation: aws-lc's `aes_nohw.c` builds InvSubBytes from the forward
 // S-box and InvMixColumns from MixColumns, and the steps below follow it.
@@ -544,22 +547,21 @@ fn key_expansion_step(next: &mut State, prev: &State) {
 
 pub(crate) enum AesKey {
     Aes128([State; 11]),
+    Aes192([State; 13]),
     Aes256([State; 15]),
     /// The crypto extension's, which the key picks when the CPU has it.
     Hw(AesHwKey),
 }
 
 impl AesKey {
-    /// Creates an AesKey.
-    ///
-    /// `key` must be 16 or 32 bytes in length (AES-192 not supported).
+    /// Expands `key`, which must be 16, 24, or 32 bytes.
     pub(crate) fn new(key: &[u8]) -> Self {
         match (key.len(), HaveCryptoExt::check()) {
-            (16 | 32, Some(token)) => Self::Hw(AesHwKey::new(key, token)),
+            (16 | 24 | 32, Some(token)) => Self::Hw(AesHwKey::new(key, token)),
             (16, None) => Self::Aes128(key_expansion128(key)),
+            (24, None) => Self::Aes192(key_expansion192(key.try_into().unwrap())),
             (32, None) => Self::Aes256(key_expansion256(key)),
-            (24, _) => panic!("aes-192 not supported"),
-            _ => panic!("invalid aes key size"),
+            _ => unreachable!("callers check the AES key length"),
         }
     }
 
@@ -567,15 +569,18 @@ impl AesKey {
     pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
         match self {
             Self::Aes128(keyex) => block_cipher(keyex, block),
+            Self::Aes192(keyex) => block_cipher(keyex, block),
             Self::Aes256(keyex) => block_cipher(keyex, block),
             Self::Hw(key) => key.encrypt_block(block),
         }
     }
 
-    /// The key's length in bytes, 16 or 32, which no API reads but `Debug`.
+    /// The key's length in bytes, 16, 24, or 32, which no API reads but
+    /// `Debug`.
     pub(crate) fn key_len(&self) -> usize {
         match self {
             Self::Aes128(_) => 16,
+            Self::Aes192(_) => 24,
             Self::Aes256(_) => 32,
             Self::Hw(key) => key.key_len(),
         }
@@ -594,16 +599,18 @@ impl low::generic::zeroise::Zeroable for AesKey {}
 /// portable inverse cipher runs the encryption round keys backwards.
 pub(crate) enum AesDecKey {
     Aes128([State; 11]),
+    Aes192([State; 13]),
     Aes256([State; 15]),
     Hw(AesHwDecKey),
 }
 
 impl AesDecKey {
-    /// Expands `key`, which must be 16 or 32 bytes.
+    /// Expands `key`, which must be 16, 24, or 32 bytes.
     pub(crate) fn new(key: &[u8]) -> Self {
         match (key.len(), HaveCryptoExt::check()) {
-            (16 | 32, Some(token)) => Self::Hw(AesHwDecKey::new(key, token)),
+            (16 | 24 | 32, Some(token)) => Self::Hw(AesHwDecKey::new(key, token)),
             (16, None) => Self::Aes128(key_expansion128(key)),
+            (24, None) => Self::Aes192(key_expansion192(key.try_into().unwrap())),
             (32, None) => Self::Aes256(key_expansion256(key)),
             _ => unreachable!("callers check the AES key length"),
         }
@@ -612,6 +619,7 @@ impl AesDecKey {
     pub(crate) fn decrypt_block(&self, inout: &mut [u8; 16]) {
         match self {
             Self::Aes128(keyex) => block_decipher(keyex, inout),
+            Self::Aes192(keyex) => block_decipher(keyex, inout),
             Self::Aes256(keyex) => block_decipher(keyex, inout),
             Self::Hw(key) => key.decrypt_block(inout),
         }
@@ -671,6 +679,47 @@ fn key_expansion128(key: &[u8]) -> [State; 11] {
     keyex
 }
 
+/// AES-192's round keys, from FIPS 197's word-by-word schedule, section
+/// 5.2, with each SubWord through the bitsliced S-box, a whole block for one
+/// word. Its six-word stride splits round keys across steps, so the
+/// four-word form AES-128 and AES-256 take here does not fit it; a schedule
+/// runs once per key, so this simpler form costs little.
+fn key_expansion192(key: &[u8; 24]) -> [State; 13] {
+    const RCON: [u32; 8] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80];
+    let sub_word = |word: u32| {
+        let mut block = [0u8; 16];
+        block[..4].copy_from_slice(&word.to_le_bytes());
+        let mut st = new_state();
+        transpose_u8x16(&block, &mut st);
+        sub_bytes_state(&mut st);
+        transpose_u16x8(&st, &mut block);
+        u32::from_le_bytes(block[..4].try_into().unwrap())
+    };
+
+    let mut w = [0u32; 52];
+    for (w, bytes) in w.iter_mut().zip(key.as_chunks::<4>().0) {
+        *w = u32::from_le_bytes(*bytes);
+    }
+    for i in 6..52 {
+        let mut t = w[i - 1];
+        if i % 6 == 0 {
+            // RotWord moves the first byte, the lowest, to the end.
+            t = sub_word(t.rotate_right(8)) ^ RCON[i / 6 - 1];
+        }
+        w[i] = w[i - 6] ^ t;
+    }
+
+    let mut keyex = [new_state(); 13];
+    for (k, words) in keyex.iter_mut().zip(w.as_chunks::<4>().0) {
+        let mut rk = [0u8; 16];
+        for (bytes, word) in rk.as_chunks_mut::<4>().0.iter_mut().zip(words) {
+            *bytes = word.to_le_bytes();
+        }
+        transpose_u8x16(&rk, k);
+    }
+    keyex
+}
+
 fn key_expansion256(key: &[u8]) -> [State; 15] {
     let mut keyex = [new_state(); 15];
     transpose_u8x16(key[..16].try_into().unwrap(), &mut keyex[0]);
@@ -702,8 +751,9 @@ mod tests {
     #[test]
     fn key_len() {
         assert_eq!(AesKey::Aes128(key_expansion128(&[0; 16])).key_len(), 16);
+        assert_eq!(AesKey::Aes192(key_expansion192(&[0; 24])).key_len(), 24);
         assert_eq!(AesKey::Aes256(key_expansion256(&[0; 32])).key_len(), 32);
-        for key in [&[0u8; 16][..], &[0u8; 32]] {
+        for key in [&[0u8; 16][..], &[0u8; 24], &[0u8; 32]] {
             assert_eq!(AesKey::new(key).key_len(), key.len());
             if let Some(token) = HaveCryptoExt::check() {
                 assert_eq!(AesKey::Hw(AesHwKey::new(key, token)).key_len(), key.len());
@@ -724,10 +774,11 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for (key_len, seed) in [16, 32].into_iter().zip(1..) {
+        for (key_len, seed) in [16, 24, 32].into_iter().zip(1..) {
             let key = bytes(key_len, seed);
             let portable = match key_len {
                 16 => AesKey::Aes128(key_expansion128(&key)),
+                24 => AesKey::Aes192(key_expansion192(key[..].try_into().unwrap())),
                 _ => AesKey::Aes256(key_expansion256(&key)),
             };
             let hw = AesKey::Hw(AesHwKey::new(&key, token));
@@ -764,11 +815,12 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for (key_len, seed) in [16, 32].into_iter().zip(1..) {
+        for (key_len, seed) in [16, 24, 32].into_iter().zip(1..) {
             let key = bytes(key_len, seed);
             let enc = AesKey::new(&key);
             let mut paths = vec![match key_len {
                 16 => AesDecKey::Aes128(key_expansion128(&key)),
+                24 => AesDecKey::Aes192(key_expansion192(key[..].try_into().unwrap())),
                 _ => AesDecKey::Aes256(key_expansion256(&key)),
             }];
             if let Some(token) = HaveCryptoExt::check() {

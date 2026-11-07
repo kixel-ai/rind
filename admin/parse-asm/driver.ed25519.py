@@ -201,6 +201,39 @@ if __name__ == "__main__":
         )
         parse_file(input, d)
 
+    # bignum_inv_p25519 (x86_64)
+    with (
+        open("../../thirdparty/s2n-bignum/x86/curve25519/bignum_inv_p25519.S") as input,
+        generated("../../rind/src/low/x86_64/bignum_inv_p25519.rs") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "bignum_inv_p25519",
+            parameter_map=[
+                ("inout", "z.as_mut_ptr() => _"),
+                ("inout", "x.as_ptr() => _"),
+            ],
+            rust_decl="fn bignum_inv_p25519(z: &mut [u64; 4], x: &[u64; 4])",
+        )
+        parse_file(input, d)
+
+    # bignum_mul_p25519_alt (x86_64)
+    with (
+        open("../../thirdparty/s2n-bignum/x86/curve25519/bignum_mul_p25519_alt.S") as input,
+        generated("../../rind/src/low/x86_64/bignum_mul_p25519_alt.rs") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "bignum_mul_p25519_alt",
+            parameter_map=[
+                ("inout", "z.as_mut_ptr() => _"),
+                ("inout", "x.as_ptr() => _"),
+                ("inout", "y.as_ptr() => _"),
+            ],
+            rust_decl="fn bignum_mul_p25519_alt(z: &mut [u64; 4], x: &[u64; 4], y: &[u64; 4])",
+        )
+        parse_file(input, d)
+
     # bignum_neg_p25519 (x86_64)
     with (
         open("../../thirdparty/s2n-bignum/x86/curve25519/bignum_neg_p25519.S") as input,

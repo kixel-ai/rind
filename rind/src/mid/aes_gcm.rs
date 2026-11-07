@@ -10,21 +10,19 @@ use crate::low::{self, AesKey, Entry, aes_gcm, ct_equal};
 ///
 /// Making one of these is relatively expensive due to key
 /// expansion and precomputation.
-///
-/// AES-192 is not supported, as it is rarely used.
 pub(crate) struct AesGcm {
     key: AesKey,
     gh: GhashTable,
 }
 
 impl AesGcm {
-    /// The AES key's length in bytes, 16 or 32.
+    /// The AES key's length in bytes, 16, 24, or 32.
     pub(crate) fn key_len(&self) -> usize {
         self.key.key_len()
     }
 
-    /// Expands a 16- or 32-byte key, which the caller has checked, into an
-    /// AES-128-GCM or AES-256-GCM key.
+    /// Expands a 16-, 24-, or 32-byte key, which the caller has checked,
+    /// into an AES-128-GCM, AES-192-GCM, or AES-256-GCM key.
     pub(crate) fn new(key: &[u8]) -> Self {
         let _entry = Entry::new_secret();
         let key = expand_key(key);

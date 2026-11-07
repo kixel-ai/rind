@@ -13,13 +13,17 @@ pub struct Algorithm {
 /// AES with a 16-byte key.
 pub static AES_128: Algorithm = Algorithm { key_len: 16 };
 
+/// AES with a 24-byte key.
+pub static AES_192: Algorithm = Algorithm { key_len: 24 };
+
 /// AES with a 32-byte key.
 pub static AES_256: Algorithm = Algorithm { key_len: 32 };
 
-/// The algorithm of an AES key `key_len` bytes long, 16 or 32.
+/// The algorithm of an AES key `key_len` bytes long, 16, 24, or 32.
 pub(crate) fn aes(key_len: usize) -> &'static Algorithm {
     match key_len {
         16 => &AES_128,
+        24 => &AES_192,
         _ => &AES_256,
     }
 }

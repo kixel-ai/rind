@@ -49,6 +49,7 @@ def KernelKeys (alg : Algorithm) (key : low.x86_64.aes.HwKey) (kw : List (BitVec
   kw.length = nk alg ∧
   (match key with
     | .Aes128 k => alg = .AES_128 ∧ k.round_keys.val = keyToRoundKeys .AES_128 kw
+    | .Aes192 _ => False
     | .Aes256 k => alg = .AES_256 ∧ k.round_keys.val = keyToRoundKeys .AES_256 kw) ∧
   hkeysReqsPub kernel.hkeys.val (reverseBytesQuad32 (aesEncrypt alg kw (mkfour 0 0 0 0)))
 
@@ -152,6 +153,7 @@ theorem cipher_encrypt_spec (alg : Algorithm) (key : low.x86_64.aes.HwKey) (kw :
   | Aes128 k =>
     obtain ⟨rfl, hrk⟩ := hkey
     cipher_glue gcm128_encrypt_opt_spec with 18
+  | Aes192 k => exact hkey.elim
   | Aes256 k =>
     obtain ⟨rfl, hrk⟩ := hkey
     cipher_glue gcm256_encrypt_opt_spec with 18
@@ -173,6 +175,7 @@ theorem cipher_decrypt_spec (alg : Algorithm) (key : low.x86_64.aes.HwKey) (kw :
   | Aes128 k =>
     obtain ⟨rfl, hrk⟩ := hkey
     cipher_glue gcm128_decrypt_opt_spec with 6
+  | Aes192 k => exact hkey.elim
   | Aes256 k =>
     obtain ⟨rfl, hrk⟩ := hkey
     cipher_glue gcm256_decrypt_opt_spec with 6

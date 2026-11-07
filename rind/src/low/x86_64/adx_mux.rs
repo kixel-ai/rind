@@ -2,11 +2,13 @@
 
 //! Picks s2n-bignum's routines that use BMI2 and ADX where the CPU has them,
 //! and otherwise their `_alt` twins, which use only `mul`, `adc`, and `sbb`.
+//! Without ADX, Ed25519 verification on CPUs with AVX2 runs a port of
+//! curve25519-dalek's AVX2 backend instead.
 //!
 //! The Karatsuba multipliers and `bignum_emontredc_8n` have no `_alt` twin;
 //! `super::mont` picks RSA's multiplication instead.
 
-use super::cpu::HaveBmi2Adx;
+use super::cpu::{HaveAvx2, HaveBmi2Adx};
 
 macro_rules! mux {
     ($($name:ident / $alt:ident ($($arg:ident: $ty:ty),*) $(-> $ret:ty)?;)*) => {$(
@@ -52,7 +54,31 @@ mux! {
     curve25519_x25519base / curve25519_x25519base_alt(res: &mut [u64; 4], scalar: &[u64; 4]);
     edwards25519_decode / edwards25519_decode_alt(z: &mut [u64; 8], c: &[u8; 32]) -> bool;
     edwards25519_scalarmulbase / edwards25519_scalarmulbase_alt(res: &mut [u64; 8], scalar: &[u64; 4]);
-    edwards25519_scalarmuldouble / edwards25519_scalarmuldouble_alt(res: &mut [u64; 8], scalar: &[u64; 4], point: &[u64; 8], bscalar: &[u64; 4]);
+}
+
+/// Ed25519 verification's `[scalar]point + [bscalar]B`, for scalars below
+/// 2^255. Without ADX, CPUs with AVX2 run curve25519-dalek's AVX2 backend,
+/// which measured faster than the `_alt` routine there.
+#[inline]
+pub(crate) fn edwards25519_scalarmuldouble(
+    res: &mut [u64; 8],
+    scalar: &[u64; 4],
+    point: &[u64; 8],
+    bscalar: &[u64; 4],
+) {
+    match HaveBmi2Adx::check() {
+        Some(_) => super::edwards25519_scalarmuldouble::edwards25519_scalarmuldouble(
+            res, scalar, point, bscalar,
+        ),
+        None => match HaveAvx2::check() {
+            Some(token) => super::edwards25519_scalarmuldouble_avx2::edwards25519_scalarmuldouble(
+                res, scalar, point, bscalar, token,
+            ),
+            None => super::edwards25519_scalarmuldouble_alt::edwards25519_scalarmuldouble_alt(
+                res, scalar, point, bscalar,
+            ),
+        },
+    }
 }
 
 #[cfg(test)]

@@ -31,7 +31,7 @@ reason = "Noise: other work kept 5 CPUs busy during this run. The run before it 
 [[gap]]
 operations = ["ed25519-verify"]
 on = ["ovh-iad", "ovh-sea"]
-reason = "These VPSes' virtual CPUs hide ADX, as CPUs older than Broadwell and Zen lack it, and there rind runs s2n-bignum's verified `_alt` routines, which RustCrypto's AVX2 backend beats."
+reason = "These VPSes' virtual CPUs hide ADX, and there rind ran s2n-bignum's verified `_alt` routines, which RustCrypto's AVX2 backend beats. Closed by [#415](https://github.com/moq-dev/rind/pull/415), after this data, which runs a port of that backend there: its collection measured rind at 1.08× RustCrypto's time on both VPSes. The next refresh drops this entry."
 
 [[gap]]
 operations = ["ed25519-sign"]
@@ -41,7 +41,7 @@ reason = "Noise from the VPS's other tenants: `ovh-sea`, the same virtual CPU, m
 [[gap]]
 operations = ["p256-ecdsa-verify/*"]
 on = ["no ADX"]
-reason = "Only CPUs older than Broadwell and Zen lack ADX, and there rind runs s2n-bignum's verified `_alt` routines."
+reason = "CPUs older than Broadwell and Zen lack ADX, and so do virtual CPUs that hide it, as `ovh-iad`'s and `ovh-sea`'s do. There rind runs s2n-bignum's verified `_alt` routines, which trail by more than 10% only on the nightly runners: on the VPSes P-256 verification measured 1.05× aws-lc-rs's time."
 
 [[gap]]
 operations = ["chacha20poly1305/*/16KB", "xchacha20poly1305/*/16KB"]

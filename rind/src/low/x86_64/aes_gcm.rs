@@ -43,8 +43,9 @@ pub(crate) fn open(
     ct_equal(&tagged::<false>(key, table, nonce, aad, cipher_inout), tag)
 }
 
-/// Vale's AES-GCM, where the CPU runs it, its proof covers the lengths, and
-/// it is the fastest path to encrypt (if `ENC`) or decrypt the message.
+/// Vale's AES-GCM, where the CPU runs it, it has a routine for the key size,
+/// its proof covers the lengths, and it is the fastest path to encrypt (if
+/// `ENC`) or decrypt the message.
 fn vale<'a, const ENC: bool>(
     key: &'a AesKey,
     table: &'a GhashTable,
@@ -52,7 +53,9 @@ fn vale<'a, const ENC: bool>(
     cipher_inout: &[u8],
 ) -> Option<(&'a HwKey, &'a AvxKernel)> {
     let len = cipher_inout.len();
-    if !(u32::try_from(aad.len()).is_ok() && u32::try_from(len).is_ok()) {
+    if !(u32::try_from(aad.len()).is_ok() && u32::try_from(len).is_ok())
+        || matches!(key, AesKey::Hw(HwKey::Aes192(_)))
+    {
         return None;
     }
     let (vaes_avx2_below, avx512_below) = if ENC {
@@ -668,7 +671,7 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for key_len in [16, 32] {
+        for key_len in [16, 24, 32] {
             let key = bytes(key_len, 1);
             ct::secret_slice(&key);
             let fast = AesKey::new(&key);
@@ -762,7 +765,7 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for key_len in [16, 32] {
+        for key_len in [16, 24, 32] {
             let key = bytes(key_len, 1);
             ct::secret_slice(&key);
             let fast = AesKey::new(&key);
@@ -831,6 +834,12 @@ mod tests {
 
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_aes192_gcm() {
+        trace_avx512(24);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
     fn ct_sde_aes256_gcm() {
         trace_avx512(32);
     }
@@ -852,7 +861,7 @@ mod tests {
     fn ct_sde_aes_gcm_vaes_avx2() {
         let mut rng = Rng(ct_sde::seed());
         let len = VAES_AVX2_MINIMUM_CIPHER_LEN + 7 * 16 + 8;
-        for key_len in [16, 32] {
+        for key_len in [16, 24, 32] {
             let (key, table) = traced_key(&mut rng, key_len);
             assert!(matches!(table, GhashTable::VaesAvx2(..)), "VAES-AVX2");
             traced_seal_open(&mut rng, &key, &table, len);
