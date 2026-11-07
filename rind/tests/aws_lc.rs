@@ -14,7 +14,7 @@ use rind::cipher::{
 };
 use rind::hmac;
 use rind::key_wrap::AesKek;
-use rind::signature::{self, verify};
+use rind::signature::{self, sign, verify};
 
 #[path = "../src/test/file_test.rs"]
 mod file_test;
@@ -46,6 +46,7 @@ fn gcm_tag_length(len: usize) -> Option<gcm::TagLength> {
 /// Checks AES-GCM through `gcm::Key`, which takes any IV and the tag lengths
 /// SP 800-38D allows, and through `aead::Key` for 96-bit IVs and full tags.
 /// aws-lc's EVP interface takes tags of any length, which rind refuses.
+#[allow(clippy::too_many_arguments)]
 fn check_aes_gcm(
     test: &Test,
     key: &[u8],
@@ -95,6 +96,7 @@ fn check_aes_gcm(
 
 /// Checks an `aead::Key` opens `ct` and `tag` to `pt`, and seals it back, or
 /// for an invalid test refuses it.
+#[allow(clippy::too_many_arguments)]
 fn check_aead(
     test: &Test,
     algorithm: &'static Algorithm,
@@ -385,4 +387,541 @@ fn ecdh() {
         let secret = key.agree(&uncompressed(&test, "PeerX", "PeerY")).unwrap();
         assert_eq!(secret.as_ref(), test.bytes("Z"), "{test}");
     }
+}
+
+/// A key of an EVP test file, kept encoded: rind parses each for the
+/// algorithm an operation names.
+#[derive(Clone)]
+enum EvpKey {
+    Rsa {
+        pkcs8: Option<Vec<u8>>,
+        spki: Vec<u8>,
+    },
+    Ec {
+        curve: usize,
+        pkcs8: Option<Vec<u8>>,
+        spki: Vec<u8>,
+    },
+    Ed25519 {
+        pkcs8: Option<Vec<u8>>,
+        spki: Vec<u8>,
+    },
+    X25519 {
+        pkcs8: Option<Vec<u8>>,
+        spki: Vec<u8>,
+    },
+}
+
+const EC_CURVES: [(&agreement::Algorithm, &signature::EcdsaSigningAlgorithm); 3] = [
+    (&ECDH_P256, &sign::ECDSA_P256_SHA256_ASN1),
+    (&ECDH_P384, &sign::ECDSA_P384_SHA384_ASN1),
+    (&ECDH_P521, &sign::ECDSA_P521_SHA512_ASN1),
+];
+
+/// Parses an EVP test's key of type `kind`, a PKCS#8 private key or an SPKI
+/// public one, as rind does: RSA, EC, Ed25519, or X25519.
+fn parse_evp_key(kind: &str, der: &[u8], private: bool) -> Result<EvpKey, Error> {
+    let pkcs8 = Some(der.to_vec());
+    match (kind, private) {
+        ("RSA", true) => signature::RsaKeyPair::from_pkcs8(der).map(|key| EvpKey::Rsa {
+            pkcs8,
+            spki: key.to_spki().as_ref().to_vec(),
+        }),
+        ("RSA", false) => {
+            signature::PublicKey::from_spki(&verify::RSA_PKCS1_SHA256, der).map(|_| EvpKey::Rsa {
+                pkcs8: None,
+                spki: der.to_vec(),
+            })
+        }
+        ("EC", _) => {
+            let mut last = Error::Unsupported;
+            for (curve, (ecdh, _)) in EC_CURVES.iter().enumerate() {
+                let parsed = match private {
+                    true => agreement::PrivateKey::from_pkcs8(ecdh, der)
+                        .map(|key| key.public_key().to_spki().as_ref().to_vec()),
+                    false => agreement::PublicKey::from_spki(ecdh, der).map(|_| der.to_vec()),
+                };
+                match parsed {
+                    Ok(spki) => {
+                        let pkcs8 = private.then(|| der.to_vec());
+                        return Ok(EvpKey::Ec { curve, pkcs8, spki });
+                    }
+                    Err(e) => last = e,
+                }
+            }
+            Err(last)
+        }
+        ("Ed25519", true) => {
+            signature::Ed25519KeyPair::from_pkcs8(der).map(|key| EvpKey::Ed25519 {
+                pkcs8,
+                spki: key.to_spki().as_ref().to_vec(),
+            })
+        }
+        ("Ed25519", false) => {
+            signature::PublicKey::from_spki(&verify::ED25519, der).map(|_| EvpKey::Ed25519 {
+                pkcs8: None,
+                spki: der.to_vec(),
+            })
+        }
+        ("X25519", true) => {
+            agreement::PrivateKey::from_pkcs8(&agreement::X25519, der).map(|key| EvpKey::X25519 {
+                pkcs8,
+                spki: key.public_key().to_spki().as_ref().to_vec(),
+            })
+        }
+        ("X25519", false) => {
+            agreement::PublicKey::from_spki(&agreement::X25519, der).map(|_| EvpKey::X25519 {
+                pkcs8: None,
+                spki: der.to_vec(),
+            })
+        }
+        _ => Err(Error::Unsupported),
+    }
+}
+
+/// The RSA verification algorithm an EVP test names, if rind has it.
+fn evp_rsa_verify(test: &Test) -> Option<&'static signature::RsaVerificationAlgorithm> {
+    let digest = test.get("Digest")?;
+    match test.get("RSAPadding").unwrap_or("PKCS1") {
+        "PKCS1" => Some(match digest {
+            "SHA1" => &verify::legacy::RSA_PKCS1_SHA1,
+            "SHA256" => &verify::RSA_PKCS1_SHA256,
+            "SHA384" => &verify::RSA_PKCS1_SHA384,
+            "SHA512" => &verify::RSA_PKCS1_SHA512,
+            _ => return None,
+        }),
+        "PSS" => {
+            if test.get("MGF1Digest").is_some_and(|mgf| mgf != digest) {
+                return None;
+            }
+            let (exact, any, len) = match digest {
+                "SHA256" => (
+                    &verify::RSA_PSS_SHA256,
+                    &verify::RSA_PSS_SHA256_ANY_SALT,
+                    "32",
+                ),
+                "SHA384" => (
+                    &verify::RSA_PSS_SHA384,
+                    &verify::RSA_PSS_SHA384_ANY_SALT,
+                    "48",
+                ),
+                "SHA512" => (
+                    &verify::RSA_PSS_SHA512,
+                    &verify::RSA_PSS_SHA512_ANY_SALT,
+                    "64",
+                ),
+                _ => return None,
+            };
+            // aws-lc's -1 is the digest's length, and -2 any length.
+            match test.get("PSSSaltLength").unwrap_or("-1") {
+                "-2" => Some(any),
+                s if s == "-1" || s == len => Some(exact),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// The RSA signing algorithm an EVP test names, if rind has it.
+fn evp_rsa_sign(test: &Test) -> Option<&'static signature::RsaSigningAlgorithm> {
+    let digest = test.get("Digest")?;
+    match test.get("RSAPadding").unwrap_or("PKCS1") {
+        "PKCS1" => Some(match digest {
+            "SHA256" => &sign::RSA_PKCS1_SHA256,
+            "SHA384" => &sign::RSA_PKCS1_SHA384,
+            "SHA512" => &sign::RSA_PKCS1_SHA512,
+            _ => return None,
+        }),
+        "PSS" => {
+            if test.get("MGF1Digest").is_some_and(|mgf| mgf != digest) {
+                return None;
+            }
+            let (algorithm, len) = match digest {
+                "SHA256" => (&sign::RSA_PSS_SHA256, "32"),
+                "SHA384" => (&sign::RSA_PSS_SHA384, "48"),
+                "SHA512" => (&sign::RSA_PSS_SHA512, "64"),
+                _ => return None,
+            };
+            let salt = test.get("PSSSaltLength").unwrap_or("-1");
+            (salt == "-1" || salt == len).then_some(algorithm)
+        }
+        _ => None,
+    }
+}
+
+/// The ECDSA verification algorithm for `curve` and an EVP test's digest.
+fn evp_ecdsa_verify(
+    curve: usize,
+    test: &Test,
+) -> Option<&'static signature::VerificationAlgorithm> {
+    let algorithms = [
+        [
+            &verify::ECDSA_P256_SHA256_ASN1,
+            &verify::ECDSA_P256_SHA384_ASN1,
+            &verify::ECDSA_P256_SHA512_ASN1,
+        ],
+        [
+            &verify::ECDSA_P384_SHA256_ASN1,
+            &verify::ECDSA_P384_SHA384_ASN1,
+            &verify::ECDSA_P384_SHA512_ASN1,
+        ],
+        [
+            &verify::ECDSA_P521_SHA256_ASN1,
+            &verify::ECDSA_P521_SHA384_ASN1,
+            &verify::ECDSA_P521_SHA512_ASN1,
+        ],
+    ];
+    let hash = match test.get("Digest")? {
+        "SHA256" => 0,
+        "SHA384" => 1,
+        "SHA512" => 2,
+        _ => return None,
+    };
+    Some(algorithms[curve][hash])
+}
+
+/// The OAEP algorithm an EVP test names, if rind has it: one hash for both
+/// OAEP and MGF1. PKCS#1 v1.5 encryption and raw RSA rind refuses.
+fn evp_oaep(test: &Test) -> Option<&'static rind::rsa::OaepAlgorithm> {
+    if test.get("RSAPadding") != Some("OAEP") {
+        return None;
+    }
+    let digest = test.get("OAEPDigest").unwrap_or("SHA1");
+    if test.get("MGF1Digest").unwrap_or(digest) != digest {
+        return None;
+    }
+    Some(match digest {
+        "SHA1" => &rind::rsa::legacy::OAEP_SHA1,
+        "SHA256" => &rind::rsa::OAEP_SHA256,
+        "SHA384" => &rind::rsa::OAEP_SHA384,
+        "SHA512" => &rind::rsa::OAEP_SHA512,
+        _ => return None,
+    })
+}
+
+/// Keys aws-lc takes that rind refuses, each for a reason it documents.
+const EVP_REFUSED: &[(&str, &str)] = &[
+    (
+        "P-224-ExplicitParameters",
+        "P-224, which rind doesn't offer",
+    ),
+    (
+        "P-256-ExplicitParameters",
+        "explicit curve parameters, which RFC 5480 forbids",
+    ),
+    (
+        "P-256-ExplicitParameters-NoCofactor",
+        "explicit curve parameters, which RFC 5480 forbids",
+    ),
+    (
+        "P-256-SPKI-EXPLICIT",
+        "explicit curve parameters, which RFC 5480 forbids",
+    ),
+    (
+        "P-384-ExplicitParameters",
+        "explicit curve parameters, which RFC 5480 forbids",
+    ),
+    (
+        "P-521-ExplicitParameters",
+        "explicit curve parameters, which RFC 5480 forbids",
+    ),
+    ("RSA-512", "a modulus under 2048 bits"),
+    ("RSA-515", "a modulus under 2048 bits"),
+    ("RSA-OAEP-1", "a modulus under 2048 bits"),
+    ("RSA-OAEP-2", "a modulus under 2048 bits"),
+    ("RSA-OAEP-3", "a modulus under 2048 bits"),
+    ("RSA-OAEP-4", "a modulus under 2048 bits"),
+    ("RSA-OAEP-5", "a modulus under 2048 bits"),
+    ("RSA-OAEP-6", "a modulus under 2048 bits"),
+    ("RSA-OAEP-7", "a modulus under 2048 bits"),
+    ("RSA-OAEP-8", "a modulus under 2048 bits"),
+    ("RSA-OAEP-9", "a modulus under 2048 bits"),
+    ("RSA-PSS-1", "a modulus under 2048 bits"),
+    ("RSA-PSS-2", "a modulus under 2048 bits"),
+    ("RSA-PSS-3", "a modulus under 2048 bits"),
+    ("RSA-PSS-4", "a modulus under 2048 bits"),
+    ("RSA-PSS-5", "a modulus under 2048 bits"),
+    ("RSA-PSS-6", "a modulus under 2048 bits"),
+    ("RSA-PSS-7", "a modulus under 2048 bits"),
+    ("RSA-PSS-8", "a modulus under 2048 bits"),
+    ("RSA-PSS-9", "a modulus under 2048 bits"),
+    ("RSA-PrimeMismatch", "a modulus under 2048 bits"),
+    ("RSA-Swapped", "a modulus under 2048 bits"),
+];
+
+/// Keys BoringSSL refuses that rind takes, as aws-lc does.
+const EVP_ACCEPTED: &[(&str, &str)] = &[(
+    "RSA-2048-SPKI-Invalid",
+    "rsaEncryption without its NULL parameters, which aws-lc takes as OpenSSL does",
+)];
+
+// aws-lc's and BoringSSL's EVP tests: parsing keys, signing and verifying
+// messages, OAEP, and key agreement. rind refuses every key aws-lc does, and
+// takes every one it does but those `EVP_REFUSED` lists. Their `Sign` and
+// `Verify` tests give a digest without its message, which rind's API never
+// takes, as it computes the digest itself.
+#[test]
+fn evp() {
+    use std::collections::HashMap;
+
+    let mut refused = std::collections::BTreeSet::new();
+    let mut accepted = std::collections::BTreeSet::new();
+    let mut ran: HashMap<&str, usize> = HashMap::new();
+    for path in [
+        "aws-lc/crypto/evp_extra/evp_tests.txt",
+        "boringssl/crypto/evp/test/rsa_tests.txt",
+        "boringssl/crypto/evp/test/ec_tests.txt",
+        "boringssl/crypto/evp/test/ed25519_tests.txt",
+        "boringssl/crypto/evp/test/x25519_tests.txt",
+    ] {
+        let mut keys: HashMap<String, EvpKey> = HashMap::new();
+        for test in tests(path) {
+            // A key: aws-lc's `PrivateKey`/`PublicKey` with `Input`, or
+            // BoringSSL's `Key` with `PKCS8` or `SPKI`.
+            let encoded = if let Some(name) = test.get("PrivateKey") {
+                Some((name, test.get("Type"), test.bytes("Input"), true))
+            } else if let Some(name) = test.get("PublicKey") {
+                Some((name, test.get("Type"), test.bytes("Input"), false))
+            } else if let Some(name) = test.get("Key") {
+                let kind = test.get("Algorithm");
+                match (test.get("PKCS8"), test.get("SPKI")) {
+                    (Some(_), _) => Some((name, kind, test.bytes("PKCS8"), true)),
+                    (None, Some(_)) => Some((name, kind, test.bytes("SPKI"), false)),
+                    (None, None) => None,
+                }
+            } else {
+                None
+            };
+            if let Some((name, kind, der, private)) = encoded {
+                // A key without a type is any of them that parses.
+                let kinds = match kind {
+                    Some(kind) => vec![kind],
+                    None => vec!["RSA", "EC", "Ed25519", "X25519"],
+                };
+                let parsed = kinds
+                    .iter()
+                    .find_map(|kind| parse_evp_key(kind, &der, private).ok());
+                // With `PKCS8VersionOut`, the error is re-encoding's.
+                let error = test
+                    .get("Error")
+                    .filter(|_| test.get("PKCS8VersionOut").is_none());
+                match (error, parsed) {
+                    (Some(_), None) => {}
+                    (Some(_), Some(_)) => {
+                        accepted.insert(name.to_string());
+                    }
+                    (None, Some(key)) => {
+                        keys.insert(name.to_string(), key);
+                    }
+                    (None, None) => {
+                        let offered = kinds
+                            .iter()
+                            .any(|k| ["RSA", "EC", "Ed25519", "X25519"].contains(k));
+                        if offered {
+                            refused.insert(name.to_string());
+                        }
+                    }
+                }
+                continue;
+            }
+
+            let key = |name: &str| keys.get(name.trim_end_matches("/Private")).cloned();
+            if let Some(name) = test.get("VerifyMessage") {
+                let Some(key) = key(name) else { continue };
+                let (msg, sig) = (test.bytes("Input"), test.bytes("Output"));
+                let result = match &key {
+                    EvpKey::Rsa { spki, .. } => evp_rsa_verify(&test).map(|algorithm| {
+                        signature::PublicKey::from_spki(algorithm, spki)
+                            .and_then(|key| key.verify(&msg, &sig))
+                    }),
+                    EvpKey::Ec { curve, spki, .. } => {
+                        evp_ecdsa_verify(*curve, &test).map(|algorithm| {
+                            signature::PublicKey::from_spki(algorithm, spki)
+                                .and_then(|key| key.verify(&msg, &sig))
+                        })
+                    }
+                    EvpKey::Ed25519 { spki, .. } => Some(
+                        signature::PublicKey::from_spki(&verify::ED25519, spki)
+                            .and_then(|key| key.verify(&msg, &sig)),
+                    ),
+                    EvpKey::X25519 { .. } => None,
+                };
+                *ran.entry("VerifyMessage").or_default() += usize::from(result.is_some());
+                match (result, test.get("Error")) {
+                    (None, _) => {}
+                    (Some(result), None) => assert_eq!(result, Ok(()), "{test}"),
+                    (Some(result), Some(_)) => assert!(result.is_err(), "{test}"),
+                }
+            } else if let Some(name) = test.get("SignMessage") {
+                let Some(key) = key(name) else { continue };
+                if test.get("Error").is_some() {
+                    continue;
+                }
+                let msg = test.bytes("Input");
+                match &key {
+                    EvpKey::Rsa {
+                        pkcs8: Some(pkcs8),
+                        spki,
+                    } => {
+                        let (Some(algorithm), Some(verification)) =
+                            (evp_rsa_sign(&test), evp_rsa_verify(&test))
+                        else {
+                            continue;
+                        };
+                        let pair = signature::RsaKeyPair::from_pkcs8(pkcs8).unwrap();
+                        let sig = pair.sign(algorithm, &msg).unwrap();
+                        // PKCS#1 v1.5 is deterministic; PSS takes a salt.
+                        if test.get("RSAPadding").unwrap_or("PKCS1") == "PKCS1" {
+                            assert_eq!(sig.as_ref(), test.bytes("Output"), "{test}");
+                        }
+                        let public = signature::PublicKey::from_spki(verification, spki).unwrap();
+                        public.verify(&msg, sig.as_ref()).unwrap();
+                        *ran.entry("SignMessage").or_default() += 1;
+                    }
+                    EvpKey::Ec {
+                        curve,
+                        pkcs8: Some(pkcs8),
+                        spki,
+                    } => {
+                        let Some(verification) = evp_ecdsa_verify(*curve, &test) else {
+                            continue;
+                        };
+                        let algorithm = EC_CURVES[*curve].1;
+                        let pair = signature::EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).unwrap();
+                        let public = signature::PublicKey::from_spki(verification, spki).unwrap();
+                        // A key pair signs with its curve's own hash.
+                        if public
+                            .verify(&msg, pair.sign(&msg).unwrap().as_ref())
+                            .is_err()
+                        {
+                            assert_ne!(
+                                *curve,
+                                ["SHA256", "SHA384", "SHA512"]
+                                    .iter()
+                                    .position(|d| Some(*d) == test.get("Digest"))
+                                    .unwrap(),
+                                "{test}"
+                            );
+                        }
+                    }
+                    EvpKey::Ed25519 {
+                        pkcs8: Some(pkcs8), ..
+                    } => {
+                        let pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8).unwrap();
+                        assert_eq!(pair.sign(&msg).as_ref(), test.bytes("Output"), "{test}");
+                        *ran.entry("SignMessage").or_default() += 1;
+                    }
+                    _ => {}
+                }
+            } else if let Some(name) = test.get("Decrypt") {
+                let (
+                    Some(EvpKey::Rsa {
+                        pkcs8: Some(pkcs8), ..
+                    }),
+                    Some(algorithm),
+                ) = (key(name), evp_oaep(&test))
+                else {
+                    continue;
+                };
+                let label = test
+                    .get("OAEPLabel")
+                    .map(|_| test.bytes("OAEPLabel"))
+                    .unwrap_or_default();
+                let key = rind::rsa::DecryptingKey::from_pkcs8(algorithm, &pkcs8).unwrap();
+                let result = key
+                    .decrypt(&test.bytes("Input"), &label)
+                    .map(|pt| pt.as_ref().to_vec());
+                *ran.entry("Decrypt").or_default() += 1;
+                match test.get("Error") {
+                    None => assert_eq!(result, Ok(test.bytes("Output")), "{test}"),
+                    Some(_) => assert!(result.is_err(), "{test}"),
+                }
+            } else if let Some(name) = test.get("Encrypt") {
+                let (
+                    Some(EvpKey::Rsa {
+                        pkcs8: Some(pkcs8), ..
+                    }),
+                    Some(algorithm),
+                ) = (key(name), evp_oaep(&test))
+                else {
+                    continue;
+                };
+                let label = test
+                    .get("OAEPLabel")
+                    .map(|_| test.bytes("OAEPLabel"))
+                    .unwrap_or_default();
+                let key = rind::rsa::DecryptingKey::from_pkcs8(algorithm, &pkcs8).unwrap();
+                let msg = test.bytes("Input");
+                let ct = key.public_key().encrypt(&msg, &label).unwrap();
+                assert_eq!(
+                    key.decrypt(ct.as_ref(), &label).unwrap().as_ref(),
+                    msg,
+                    "{test}"
+                );
+                *ran.entry("Encrypt").or_default() += 1;
+            } else if let Some(name) = test.get("Derive") {
+                let (Some(private), Some(peer)) = (key(name), key(test.str("DerivePeer"))) else {
+                    continue;
+                };
+                let (algorithm, pkcs8, peer) = match (private, peer) {
+                    (
+                        EvpKey::Ec {
+                            curve,
+                            pkcs8: Some(pkcs8),
+                            ..
+                        },
+                        EvpKey::Ec {
+                            spki,
+                            curve: peer_curve,
+                            ..
+                        },
+                    ) => {
+                        if curve != peer_curve {
+                            assert!(test.get("Error").is_some(), "{test}");
+                            continue;
+                        }
+                        (EC_CURVES[curve].0, pkcs8, spki)
+                    }
+                    (
+                        EvpKey::X25519 {
+                            pkcs8: Some(pkcs8), ..
+                        },
+                        EvpKey::X25519 { spki, .. },
+                    ) => (&agreement::X25519, pkcs8, spki),
+                    _ => continue,
+                };
+                let private = agreement::PrivateKey::from_pkcs8(algorithm, &pkcs8).unwrap();
+                let result = agreement::PublicKey::from_spki(algorithm, &peer)
+                    .and_then(|peer| private.agree(peer.as_ref()))
+                    .map(|secret| secret.as_ref().to_vec());
+                *ran.entry("Derive").or_default() += 1;
+                match test.get("Error") {
+                    None => assert_eq!(result, Ok(test.bytes("Output")), "{test}"),
+                    Some(_) => assert!(result.is_err(), "{test}"),
+                }
+            }
+        }
+    }
+
+    for kind in [
+        "VerifyMessage",
+        "SignMessage",
+        "Decrypt",
+        "Encrypt",
+        "Derive",
+    ] {
+        assert!(ran.get(kind).is_some_and(|n| *n > 0), "no {kind} test ran");
+    }
+
+    let expected = EVP_REFUSED
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect();
+    assert_eq!(refused, expected, "refused");
+    let expected = EVP_ACCEPTED
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect();
+    assert_eq!(accepted, expected, "accepted");
 }

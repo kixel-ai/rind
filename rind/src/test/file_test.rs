@@ -37,8 +37,8 @@ impl Test {
     }
 }
 
-impl std::fmt::Display for Test {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Test {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}:{}", self.path, self.line)
     }
 }
@@ -68,7 +68,7 @@ pub(crate) fn tests(path: &str) -> Vec<Test> {
                 tests.push(Test {
                     path: path.to_string(),
                     line: start + 1,
-                    attributes: std::mem::take(&mut attributes),
+                    attributes: core::mem::take(&mut attributes),
                     instructions: instructions.clone(),
                 });
                 tested = true;
