@@ -93,11 +93,16 @@ impl CryptoResolver for Resolver {
             #[allow(unreachable_patterns)]
             _ => return None,
         };
+        // A random key until snow sets one, so a caller that seals before
+        // `set` gets a message no one can open, rather than a panic or a
+        // message under a known key. snow fails to build a session on `None`.
+        let mut key = [0u8; 32];
+        rind::rand::fill(&mut key).ok()?;
         Some(Box::new(Aead {
             name,
             algorithm,
             counter,
-            key: None,
+            key: aead::Key::new(algorithm, &key).ok()?,
         }))
     }
 }
@@ -182,8 +187,7 @@ struct Aead {
     name: &'static str,
     algorithm: &'static aead::Algorithm,
     counter: fn(u64) -> [u8; 8],
-    /// `None` until snow sets a key, which it does before any seal or open.
-    key: Option<aead::Key>,
+    key: aead::Key,
 }
 
 impl Aead {
@@ -200,19 +204,18 @@ impl Cipher for Aead {
     }
 
     fn set(&mut self, key: &[u8; 32]) {
-        self.key =
-            Some(aead::Key::new(self.algorithm, key).expect("both ciphers take 32-byte keys"));
+        self.key = aead::Key::new(self.algorithm, key).expect("both ciphers take 32-byte keys");
     }
 
     /// Panics if `out` is shorter than `plaintext` and its tag: snow checks
     /// that for every message but a handshake's static key, and this cannot
     /// return an error.
     fn encrypt(&self, nonce: u64, authtext: &[u8], plaintext: &[u8], out: &mut [u8]) -> usize {
-        let key = self.key.as_ref().expect("snow sets a key before it seals");
         let (body, rest) = out.split_at_mut(plaintext.len());
         body.copy_from_slice(plaintext);
         // snow caps a message at 65535 bytes, far under either cipher's limit.
-        let tag = key
+        let tag = self
+            .key
             .seal_in_place_separate_tag(self.nonce(nonce), authtext, body)
             .expect("snow's messages fit the cipher's limits");
         rest[..16].copy_from_slice(tag.as_ref());
@@ -226,12 +229,12 @@ impl Cipher for Aead {
         ciphertext: &[u8],
         out: &mut [u8],
     ) -> Result<usize, Error> {
-        let key = self.key.as_ref().ok_or(Error::Decrypt)?;
         let (body, tag) = ciphertext.split_last_chunk::<16>().ok_or(Error::Decrypt)?;
         let out = out.get_mut(..body.len()).ok_or(Error::Decrypt)?;
         out.copy_from_slice(body);
         let tag = aead::Tag::try_from(&tag[..]).map_err(|_| Error::Decrypt)?;
-        key.open_in_place_separate_tag(self.nonce(nonce), authtext, tag, out)
+        self.key
+            .open_in_place_separate_tag(self.nonce(nonce), authtext, tag, out)
             .map_err(|_| Error::Decrypt)?;
         Ok(body.len())
     }

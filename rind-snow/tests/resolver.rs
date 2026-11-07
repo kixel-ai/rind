@@ -198,7 +198,15 @@ fn cipher_refuses_malformed_input() {
     for choice in [CipherChoice::ChaChaPoly, CipherChoice::AESGCM] {
         let mut cipher = rind().resolve_cipher(&choice).unwrap();
         let mut out = [0u8; 64];
-        // Before a key is set, opening fails rather than panics.
+        // Before a key is set, sealing uses a random key, so another cipher
+        // fresh from the resolver cannot open it, and opening fails.
+        let mut unkeyed = [0u8; 16];
+        assert_eq!(cipher.encrypt(0, &[], &[], &mut unkeyed), 16);
+        let other = rind().resolve_cipher(&choice).unwrap();
+        assert_eq!(
+            other.decrypt(0, &[], &unkeyed, &mut out),
+            Err(Error::Decrypt)
+        );
         assert_eq!(
             cipher.decrypt(0, &[], &[0; 32], &mut out),
             Err(Error::Decrypt)
