@@ -256,9 +256,13 @@
                   # sh/alert.sh reads the workflows.
                   yq-go
                   nixfmt
-                  # admin/ scripts, and pyrind's tests and benchmarks, which
-                  # check it against pyca/cryptography.
-                  (python3.withPackages (ps: [ ps.cryptography ]))
+                  # admin/ scripts, and pyrind's tests and benchmarks: they
+                  # check it against pyca/cryptography, and its type stubs
+                  # with mypy's stubtest.
+                  (python3.withPackages (ps: [
+                    ps.cryptography
+                    ps.mypy
+                  ]))
                   # Builds pyrind (rind-python).
                   maturin
                   # admin/bench-report-test runs the script that holds a

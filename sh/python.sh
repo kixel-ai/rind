@@ -2,7 +2,7 @@
 # Build pyrind's wheel and run its tests, or its benchmarks, against it.
 #
 # Usage: sh/python.sh test|bench [ARGS...]
-# The tests need pyca/cryptography, the differential oracle, and the
+# The tests need pyca/cryptography, the differential oracle, mypy, and the
 # Wycheproof submodule; the benchmarks compare against cryptography,
 # hashlib, and hmac. ARGS go to unittest or the benchmark script.
 set -euo pipefail
@@ -21,7 +21,11 @@ maturin build --release --quiet --manifest-path rind-python/Cargo.toml --out "$o
 python3 -m zipfile -e "$out"/wheel/pyrind-*.whl "$out/site"
 
 case "$action" in
-    test) PYTHONPATH="$out/site" python3 -m unittest discover --start-directory rind-python/tests "$@" ;;
+    test)
+        PYTHONPATH="$out/site" python3 -m unittest discover --start-directory rind-python/tests "$@"
+        # Checks the type stubs against the built module.
+        (cd "$out/site" && python3 -m mypy.stubtest pyrind)
+        ;;
     bench) PYTHONPATH="$out/site" python3 rind-python/bench/bench.py "$@" ;;
     *)
         echo "$usage" >&2

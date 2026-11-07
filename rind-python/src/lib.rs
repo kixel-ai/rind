@@ -17,7 +17,7 @@ use std::borrow::Cow;
 
 use pyo3::buffer::PyBuffer;
 use pyo3::create_exception;
-use pyo3::exceptions::{PyException, PyImportError};
+use pyo3::exceptions::{PyException, PyImportError, PyMemoryError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 
@@ -153,6 +153,36 @@ macro_rules! constants {
     }};
 }
 pub(crate) use constants;
+
+/// Returns a new `bytes` of `len` bytes that begins with `prefix`, the rest
+/// zeroed, after `fill` has written it in place.
+///
+/// Unlike `PyBytes::new_with`, this writes each byte once before `fill`
+/// rather than zeroing the whole buffer and then copying `prefix` over it,
+/// which for an AEAD's plaintext is a pass over every byte saved.
+pub(crate) fn bytes_with<'py>(
+    py: Python<'py>,
+    prefix: &[u8],
+    len: usize,
+    fill: impl FnOnce(&mut [u8]) -> PyResult<()>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    assert!(prefix.len() <= len);
+    let size = isize::try_from(len).map_err(|_| PyMemoryError::new_err(()))?;
+    // SAFETY: `PyBytes_FromStringAndSize` with a null pointer returns a new
+    // object, owned here and referenced nowhere else, whose `len` bytes are
+    // uninitialized, or null with an exception set. Its buffer is copied and
+    // zeroed into whole before any slice of it exists, and Python sees the
+    // object only once it is returned.
+    unsafe {
+        let object = pyo3::ffi::PyBytes_FromStringAndSize(core::ptr::null(), size);
+        let bytes = Bound::from_owned_ptr_or_err(py, object)?.cast_into_unchecked::<PyBytes>();
+        let buffer = pyo3::ffi::PyBytes_AsString(object).cast::<u8>();
+        core::ptr::copy_nonoverlapping(prefix.as_ptr(), buffer, prefix.len());
+        core::ptr::write_bytes(buffer.add(prefix.len()), 0, len - prefix.len());
+        fill(core::slice::from_raw_parts_mut(buffer, len))?;
+        Ok(bytes)
+    }
+}
 
 /// Returns `bytes` holding `value`.
 pub(crate) fn bytes<'py>(py: Python<'py>, value: impl AsRef<[u8]>) -> Bound<'py, PyBytes> {

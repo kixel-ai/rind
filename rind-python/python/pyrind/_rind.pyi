@@ -32,3 +32,5 @@ class Unsupported(Error):
 
 class Fault(Error):
     """An internal consistency check failed, from a hardware fault or a rind bug."""
+
+__all__ = ["Error", "WrongLength", "KeyRejected", "BadSignature", "DecryptFailed", "RngFailed", "Unsupported", "Fault", "aead", "agreement", "cpu", "digest", "hkdf", "hmac", "kem", "pbkdf2", "rsa", "signature"]

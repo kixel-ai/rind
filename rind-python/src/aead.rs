@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use rind::aead;
 
-use crate::{Bytes, WrongLength, algorithm, bytes, constants, error};
+use crate::{Bytes, WrongLength, algorithm, bytes, bytes_with, constants, error};
 
 const TAG_LEN: usize = 16;
 
@@ -37,9 +37,8 @@ fn seal_into<'py, T: AsRef<[u8]>>(
     plaintext: &[u8],
     seal: impl FnOnce(&mut [u8]) -> Result<T, rind::Error>,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    PyBytes::new_with(py, plaintext.len() + TAG_LEN, |out| {
+    bytes_with(py, plaintext, plaintext.len() + TAG_LEN, |out| {
         let (body, tag) = out.split_at_mut(plaintext.len());
-        body.copy_from_slice(plaintext);
         tag.copy_from_slice(seal(body).map_err(error)?.as_ref());
         Ok(())
     })
@@ -55,10 +54,7 @@ fn open_into<'py>(
     let (body, tag) = ciphertext
         .split_last_chunk::<TAG_LEN>()
         .ok_or_else(|| error(rind::Error::DecryptFailed))?;
-    PyBytes::new_with(py, body.len(), |out| {
-        out.copy_from_slice(body);
-        open(out, *tag).map_err(error)
-    })
+    bytes_with(py, body, body.len(), |out| open(out, *tag).map_err(error))
 }
 
 /// An AEAD key, which seals with the caller's nonces.

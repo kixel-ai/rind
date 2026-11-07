@@ -8,7 +8,7 @@ import threading
 import unittest
 
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519, mlkem, padding
 from cryptography.hazmat.primitives.asymmetric import rsa as pyca_rsa
 from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.ciphers import aead as pyca_aead
@@ -478,6 +478,16 @@ class Kem(unittest.TestCase):
         for key, encapsulation_key in zip(keys, public):
             ciphertext, secret = encapsulation_key.encapsulate()
             self.assertEqual(key.decapsulate(ciphertext), secret)
+
+    def test_against_pyca(self):
+        ours = kem.DecapsulationKey.generate(kem.ML_KEM_768)
+        their_view = mlkem.MLKEM768PublicKey.from_public_bytes(bytes(ours.public_key()))
+        secret, ciphertext = their_view.encapsulate()
+        self.assertEqual(ours.decapsulate(ciphertext), secret)
+
+        theirs = mlkem.MLKEM768PrivateKey.generate()
+        ciphertext, secret = kem.EncapsulationKey(kem.ML_KEM_768, theirs.public_key().public_bytes_raw()).encapsulate()
+        self.assertEqual(theirs.decapsulate(ciphertext), secret)
 
     def test_round_trip(self):
         recipient = kem.DecapsulationKey.generate(kem.ML_KEM_768)

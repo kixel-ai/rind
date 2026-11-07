@@ -29,9 +29,11 @@ def digest(algorithm: Algorithm, data: Buffer) -> bytes:
 class Context:
     """A hash of a message given in pieces."""
 
-    def __init__(self, algorithm: Algorithm) -> None:
+    def __new__(cls, algorithm: Algorithm) -> Context:
         """Starts hashing with `algorithm`."""
     def update(self, data: Buffer) -> None:
         """Adds `data` to the message."""
     def finish(self) -> bytes:
         """Returns the digest of the message, and starts a new one with the same algorithm."""
+
+__all__ = ["Algorithm", "Context", "digest", "SHA256", "SHA384", "SHA512", "SHA512_256", "SHA3_256", "SHA3_384", "SHA3_512", "legacy"]
