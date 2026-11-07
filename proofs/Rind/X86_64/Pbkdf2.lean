@@ -241,7 +241,7 @@ theorem block_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (P : List Byte)
     have : sl.val.length = 4 := by simp [hsl]
     simp only [List.length_append, this]; omega))
   rintro u ⟨hul, hub⟩
-  simp only [high.digest.Digest.Insts.CoreCloneClone.clone, core.num.nonzero.NonZero.get, bind_ok]
+  simp only [core.num.nonzero.NonZero.get, bind_ok]
   have hU1 : digestBytes u = pbU1 (hmacOf a) P (bv salt) index.val := by
     rw [hub, pbU1, bv_append, hsl, Array.val_to_slice, harr, bv_toBEBytes]
   apply WP.spec_mono (block_loop_spec a hr P k hk iterations.val
