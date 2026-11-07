@@ -694,8 +694,10 @@ fn evp() {
                 None
             };
             if let Some((name, kind, der, private)) = encoded {
-                // A key without a type is any of them that parses.
+                // A key without a type is any of them that parses. BoringSSL
+                // names the curve where aws-lc says only `EC`.
                 let kinds = match kind {
+                    Some("EC-P-256" | "EC-P-384" | "EC-P-521") => vec!["EC"],
                     Some(kind) => vec![kind],
                     None => vec!["RSA", "EC", "Ed25519", "X25519"],
                 };
@@ -902,6 +904,8 @@ fn evp() {
                 }
             }
         }
+        // An unrecognized `Algorithm` would skip every key a file holds.
+        assert!(!keys.is_empty(), "{path}: no key parsed");
     }
 
     for kind in [
