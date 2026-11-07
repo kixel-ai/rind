@@ -21,7 +21,7 @@ use rind::{
     signature,
 };
 
-use crate::dudect::{Classes, Config, Report, classes, measure};
+use crate::dudect::{Classes, Config, Report, classes, measure, measure_in_place};
 
 pub struct Case {
     pub name: String,
@@ -46,13 +46,33 @@ const MESSAGE: &[u8] = b"a public message";
 const AAD: &[u8] = b"public associated data";
 const NONCE: [u8; 12] = [7; 12];
 
-/// The planted leak, which must be seen, then every case.
+/// The planted leak, which must be seen, then the controls and every case.
 pub fn all() -> Vec<Case> {
     let mut cases = vec![
         case("planted/early-exit-compare", |config| {
             let expected = random::<32>();
             measure(config, &mismatches(&expected), |b| {
                 early_exit_eq(&expected, b)
+            })
+        }),
+        // Both classes hold one secret, so nothing but the harness could
+        // tell them apart: once with inputs copied, once with keys read in
+        // place.
+        case("control/sha256-same-input", |config| {
+            let data = random_vec(LEN);
+            let inputs = classes(VALUES, fixed(data.clone()), fixed(data));
+            measure(config, &inputs, |data| {
+                digest::digest(&digest::SHA256, data)
+            })
+        }),
+        case("control/aes-128-gcm-same-key", |config| {
+            let secret = random::<16>();
+            let new = || aead::Key::new(&aead::AES_128_GCM, &secret).unwrap();
+            let plaintext = random::<LEN>();
+            measure_in_place(config, &classes(VALUES, new, new), |key| {
+                let mut buf = plaintext;
+                let nonce = aead::Nonce::assume_unique_for_key(NONCE);
+                key.seal_in_place_separate_tag(nonce, AAD, &mut buf)
             })
         }),
         case("constant_time/verify", |config| {
@@ -121,7 +141,7 @@ fn kdf_cases(cases: &mut Vec<Case>) {
     cases.push(case("hkdf/sha256/expand", move |config| {
         let salt = salt();
         let prks = keys(32, |secret| salt.extract(secret));
-        measure(config, &prks, |prk| {
+        measure_in_place(config, &prks, |prk| {
             let mut out = [0; 32];
             prk.expand(&[b"public info"], out.len())
                 .fill(&mut out)
@@ -166,7 +186,7 @@ fn aead_cases(cases: &mut Vec<Case>) {
         }));
         cases.push(case(format!("aead/{name}/seal-key"), move |config| {
             let plaintext = random::<LEN>();
-            measure(config, &keys(len, new), |key| {
+            measure_in_place(config, &keys(len, new), |key| {
                 let mut buf = plaintext;
                 key.seal_in_place_separate_tag(nonce(), AAD, &mut buf)
             })
@@ -216,7 +236,7 @@ fn aead_cases(cases: &mut Vec<Case>) {
             aead::RandomizedNonceKey::new(key.try_into().unwrap())
         });
         let plaintext = random::<LEN>();
-        measure(config, &keys, |key| {
+        measure_in_place(config, &keys, |key| {
             let mut buf = Vec::with_capacity(LEN + 16);
             buf.extend_from_slice(&plaintext);
             key.seal_in_place_append_tag(AAD, &mut buf)
@@ -339,7 +359,7 @@ fn cipher_cases(cases: &mut Vec<Case>) {
             key_wrap::AesKek::new(&key_wrap::AES_256, kek).unwrap()
         });
         let key = random::<32>();
-        measure(config, &keys, |kek| {
+        measure_in_place(config, &keys, |kek| {
             let mut wrapped = [0; 40];
             kek.wrap(&key, &mut wrapped).map(|()| wrapped)
         })
@@ -406,7 +426,7 @@ fn agreement_cases(cases: &mut Vec<Case>) {
                 || from_scalar(&fixed_scalar).unwrap(),
                 || from_scalar(&scalar()).unwrap(),
             );
-            measure(config, &keys, |key| key.agree(peer.as_ref()))
+            measure_in_place(config, &keys, |key| key.agree(peer.as_ref()))
         }));
         cases.push(case(
             format!("agreement/{name}/agree-peer"),
@@ -463,7 +483,7 @@ fn rsa_cases(cases: &mut Vec<Case>) {
                     .map(|der| signature::RsaKeyPair::from_pkcs8(der).unwrap())
                     .collect()
             });
-            measure(config, &keys, |key| {
+            measure_in_place(config, &keys, |key| {
                 key.sign(&signature::sign::RSA_PKCS1_SHA256, MESSAGE)
             })
         }));
@@ -485,7 +505,7 @@ fn rsa_cases(cases: &mut Vec<Case>) {
                     })
                     .collect()
             });
-            measure(config, &keys, |(key, c)| key.decrypt(c.as_ref(), b""))
+            measure_in_place(config, &keys, |(key, c)| key.decrypt(c.as_ref(), b""))
         }));
         cases.push(case(name("oaep-decrypt-ciphertext"), move |config| {
             let key =
@@ -561,7 +581,7 @@ fn signature_cases(cases: &mut Vec<Case>) {
         cases.push(case(format!("ecdsa/{name}/sign-key"), move |config| {
             let fixed_der = der();
             let keys = classes(VALUES, || from(&fixed_der), || from(&der()));
-            measure(config, &keys, |key| key.sign(MESSAGE))
+            measure_in_place(config, &keys, |key| key.sign(MESSAGE))
         }));
         cases.push(case(format!("ecdsa/{name}/sign-message"), move |config| {
             let key = from(&der());
@@ -587,7 +607,7 @@ fn signature_cases(cases: &mut Vec<Case>) {
     cases.push(case("ed25519/sign-key", move |config| {
         let fixed_seed = seed();
         let keys = classes(VALUES, || from(&fixed_seed), || from(&seed()));
-        measure(config, &keys, |key| key.sign(MESSAGE))
+        measure_in_place(config, &keys, |key| key.sign(MESSAGE))
     }));
     // The message picks the nonce, so it is a secret input too.
     cases.push(case("ed25519/sign-message", move |config| {

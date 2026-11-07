@@ -78,34 +78,72 @@ impl std::fmt::Display for Test {
 /// many times.
 pub type Classes<T> = [Vec<T>; 2];
 
-/// Builds [`Classes`] of `len` values each.
+/// Builds [`Classes`] of `len` values each, alternating between the classes
+/// so neither gets the lower addresses.
 pub fn classes<T>(
     len: usize,
     mut fixed: impl FnMut() -> T,
     mut random: impl FnMut() -> T,
 ) -> Classes<T> {
     assert!(len.is_power_of_two());
-    [
-        (0..len).map(|_| fixed()).collect(),
-        (0..len).map(|_| random()).collect(),
-    ]
+    let mut classes = [Vec::with_capacity(len), Vec::with_capacity(len)];
+    for _ in 0..len {
+        classes[0].push(fixed());
+        classes[1].push(random());
+    }
+    classes
 }
 
 /// Times `op` on inputs drawn from `classes` at random until `config`'s
 /// budget is spent.
-pub fn measure<T, R>(config: &Config, classes: &Classes<T>, op: impl Fn(&T) -> R) -> Report {
+///
+/// Each input is first copied to the one place `op` reads it from, outside
+/// the timed span. Otherwise each value's address would fix a cost of its
+/// own, from the cache sets and store-to-load aliasing it falls in, and
+/// with a fixed set of values per class those costs would not average out.
+pub fn measure<T: Clone, R>(config: &Config, classes: &Classes<T>, op: impl Fn(&T) -> R) -> Report {
+    let mut staged = classes[0][0].clone();
+    sample(config, classes, |input, reps| {
+        staged.clone_from(input);
+        time(reps, || op(black_box(&staged)))
+    })
+}
+
+/// [`measure`] for inputs that cannot be copied, such as keys, which `op`
+/// reads where they were built.
+pub fn measure_in_place<T, R>(
+    config: &Config,
+    classes: &Classes<T>,
+    op: impl Fn(&T) -> R,
+) -> Report {
+    sample(config, classes, |input, reps| {
+        time(reps, || op(black_box(input)))
+    })
+}
+
+#[inline(always)]
+fn time<R>(reps: u64, op: impl Fn() -> R) -> u64 {
+    let begin = ticks();
+    for _ in 0..reps {
+        black_box(op());
+    }
+    ticks().wrapping_sub(begin)
+}
+
+/// Runs `timed`, which returns the ticks `reps` calls on an input took, on
+/// inputs drawn at random.
+fn sample<T>(
+    config: &Config,
+    classes: &Classes<T>,
+    mut timed: impl FnMut(&T, u64) -> u64,
+) -> Report {
     let len = classes[0].len();
     assert!(len.is_power_of_two() && classes[1].len() == len);
     let mask = len - 1;
 
     // Warm up, and repeat a call that spans too few ticks.
     let mut warm: Vec<u64> = (0..200)
-        .map(|i| {
-            let input = &classes[i & 1][(i >> 1) & mask];
-            let start = ticks();
-            black_box(op(black_box(input)));
-            ticks().wrapping_sub(start)
-        })
+        .map(|i| timed(&classes[i & 1][(i >> 1) & mask], 1))
         .collect();
     warm.sort_unstable();
     let median = warm[warm.len() / 2].max(1);
@@ -125,12 +163,7 @@ pub fn measure<T, R>(config: &Config, classes: &Classes<T>, op: impl Fn(&T) -> R
         for (i, draw) in draws.as_chunks::<4>().0.iter().enumerate() {
             let draw = u32::from_le_bytes(*draw) as usize;
             let c = draw & 1;
-            let input = &classes[c][(draw >> 1) & mask];
-            let begin = ticks();
-            for _ in 0..reps {
-                black_box(op(black_box(input)));
-            }
-            times[i] = ticks().wrapping_sub(begin);
+            times[i] = timed(&classes[c][(draw >> 1) & mask], reps);
             class[i] = c as u8;
         }
 
