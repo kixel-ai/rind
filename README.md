@@ -49,7 +49,7 @@ features, which compile aws-lc-rs:
 
 ```toml
 [dependencies]
-rind-rustls = "0.1"
+rind-rustls = "0.23"
 rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }
 ```
 

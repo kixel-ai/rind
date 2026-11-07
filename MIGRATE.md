@@ -101,7 +101,7 @@ For each way the survey found:
 - **A crate a `rind-*` adapter serves.** Follow the adapter's row in
   [MIGRATING.md] and its README.
 - **ring's API.** Rename the dependency, with no code changes:
-  `ring = { package = "rind-ring", version = "<latest>" }`. A library, which
+  `ring = { package = "rind-ring", version = "0.17" }`. A library, which
   keeps ring, adds `rind-ring` as an optional dependency instead, with
   `#[cfg(feature = "<its feature>")] extern crate rind_ring as ring;` at its
   crate root. rind-ring keeps ring's signatures, such as

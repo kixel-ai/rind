@@ -119,3 +119,10 @@ Each `Written for Graviola by ...` header is attribution; keep it on files that 
 
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions; bump one only when asked.
+
+Each published `rind-<consumer>` adapter's version begins with the breaking part of the upstream version it adapts (major.minor below 1.0, major from 1.0 on), so rind-rustls 0.23.x adapts rustls 0.23; the rest of the version is the adapter's own.
+`sh/adapter-versions.sh`, in `just ci`, fails when the two drift.
+An adapter's own breaking change waits for its upstream's next breaking release; the PR that moves an adapter to that release sets the adapter's version to match.
+release-plz cannot cap a bump: a breaking change it finds in an adapter, by cargo-semver-checks or a `!` commit, makes its release PR propose the next breaking version, which that check then fails.
+Hold or revert the change instead.
+A version set by hand ahead of the published one is kept as is, and the next release PR publishes it.

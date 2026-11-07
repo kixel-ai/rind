@@ -12,7 +12,7 @@ Follow the provider API's changes from 0.23, and keep rind-rustls's
 Whether to also keep 0.23 support is the maintainer's call at the time;
 ask with the cost of each. The port ships as rind-rustls 0.24.x, since
 adapter versions match their upstream
-([adapter versions](/quest/m1/adapter-versions.md)), so keeping 0.23
+([CONTRIBUTING.md](/CONTRIBUTING.md#releases)), so keeping 0.23
 means a 0.23.x maintenance line.
 
 ## Required
