@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/moq-dev/rind/compare/rind-v0.2.0...rind-v0.2.1) - 2026-11-07
+
+### Added
+
+- [**breaking**] each adapter's version matches the upstream it adapts ([#440](https://github.com/moq-dev/rind/pull/440))
+- *(bench)* measure Apple M4 natively in the bench report ([#435](https://github.com/moq-dev/rind/pull/435))
+- *(cpu)* hold DIT across a batch of calls, putting M1 AES-GCM ahead of aws-lc-rs ([#431](https://github.com/moq-dev/rind/pull/431))
+- *(aes)* AES-192 in every AES mode on every backend ([#414](https://github.com/moq-dev/rind/pull/414))
+- *(digest)* MD5 under digest::legacy ([#412](https://github.com/moq-dev/rind/pull/412))
+
+### Fixed
+
+- *(ctgrind)* type the armv7 key-wrap-with-padding test's lengths ([#426](https://github.com/moq-dev/rind/pull/426))
+
+### Other
+
+- *(release)* ship rind as 0.2.1, not 0.3.0 ([#457](https://github.com/moq-dev/rind/pull/457))
+- *(aarch64)* run s2n-bignum's faster _alt P-256 and P-384 Montgomery multiplication ([#434](https://github.com/moq-dev/rind/pull/434))
+- *(aes-gcm)* seal under 129 bytes on by-8 on the AVX tier ([#436](https://github.com/moq-dev/rind/pull/436))
+- *(aes-gcm)* pad Vale's partial blocks in registers, and re-set the open crossovers ([#430](https://github.com/moq-dev/rind/pull/430))
+- test iOS in the simulator and Android under cross ([#432](https://github.com/moq-dev/rind/pull/432))
+- *(aes-gcm)* check 16-byte tags as whole words, so by-8 opens no longer trail its seals ([#429](https://github.com/moq-dev/rind/pull/429))
+- *(ed25519)* verify without ADX through curve25519-dalek's AVX2 backend ([#415](https://github.com/moq-dev/rind/pull/415))
+- *(aarch64)* run s2n-bignum's by-8 AES-128-GCM kernels on cores with SHA3 ([#408](https://github.com/moq-dev/rind/pull/408))
+- *(aes-gcm)* hash and cipher partial blocks without memcpy on x86_64, and seal short messages on by-8 on VAES-AVX2 ([#409](https://github.com/moq-dev/rind/pull/409))
+- *(ecdsa)* derive a key pair's public key on its first read (P-256 generation ahead of BoringSSL) ([#407](https://github.com/moq-dev/rind/pull/407))
+
 ## [0.2.0](https://github.com/moq-dev/rind/compare/rind-v0.1.13...rind-v0.2.0) - 2026-11-06
 
 ### Added

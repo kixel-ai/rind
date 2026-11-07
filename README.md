@@ -99,10 +99,27 @@ Each crate's README shows its setup.
 |---|---|
 | [rind-ring][] | ring 0.17's API, name for name: rename the dependency, with no code changes |
 | [rind-dimpl][] | DTLS 1.2 and 1.3 through [dimpl](https://github.com/algesten/dimpl) |
+| [rind-str0m][] | WebRTC through [str0m](https://github.com/algesten/str0m) |
 | [rind-jsonwebtoken][] | JWTs through [jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
 | [rind-object-store][] | S3, Azure, and GCS request signing through [object_store](https://github.com/apache/arrow-rs-object-store) |
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
+| [rind-dart][] | Dart and Flutter, through FFI: the `rind` package, unpublished until its first pub.dev release |
 | [rind-instant-acme][] | ACME through [instant-acme](https://github.com/djc/instant-acme), unpublished until instant-acme releases the interface it targets |
+| [rind-python][] | Python, as the `pyrind` package on PyPI, with rind's own API |
+
+### Wiping keys
+
+rind wipes keys, keyed state, and heap scratch derived from a private key
+on drop only under its `wipe` feature, as RustCrypto does with `zeroize`;
+aws-lc-rs always wipes, and ring never does. A memory disclosure such as
+Heartbleed leaks every live key anyway, so the default build skips the
+cost. The adapters don't forward the feature: enable it on `rind` itself,
+and Cargo turns it on beneath every adapter too.
+
+```toml
+[dependencies]
+rind = { version = "0.2", features = ["wipe"] }
+```
 
 ### Platforms
 
@@ -194,10 +211,13 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [rind-rustls]: https://github.com/moq-dev/rind/tree/main/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
 [rind-dimpl]: https://github.com/moq-dev/rind/tree/main/rind-dimpl
+[rind-str0m]: https://github.com/moq-dev/rind/tree/main/rind-str0m
 [rind-jsonwebtoken]: https://github.com/moq-dev/rind/tree/main/rind-jsonwebtoken
 [rind-object-store]: https://github.com/moq-dev/rind/tree/main/rind-object-store
 [rind-rcgen]: https://github.com/moq-dev/rind/tree/main/rind-rcgen
+[rind-dart]: https://github.com/moq-dev/rind/tree/main/rind-dart
 [rind-instant-acme]: https://github.com/moq-dev/rind/tree/main/rind-instant-acme
+[rind-python]: https://github.com/moq-dev/rind/tree/main/rind-python
 [quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
 [contributing]: https://github.com/moq-dev/rind/blob/main/CONTRIBUTING.md
 [migrating]: https://github.com/moq-dev/rind/blob/main/MIGRATING.md

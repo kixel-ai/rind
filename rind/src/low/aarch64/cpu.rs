@@ -458,6 +458,31 @@ pub(in crate::low) fn prefetch_ro<T>(ptr: *const T) {
 mod tests {
     use super::*;
 
+    /// Whether std detects every feature named, less those `test_toggle`
+    /// denies.
+    macro_rules! available {
+        ($($name:tt),+) => {
+            true $(&& std::arch::is_aarch64_feature_detected!($name) && !denied($name))+
+        };
+    }
+
+    fn denied(name: &str) -> bool {
+        cfg!(any(debug_assertions, rind_cpu_disable))
+            && std::env::var(format!("RIND_CPU_DISABLE_{name}")).is_ok()
+    }
+
+    // Each check names the features its kernels need, which the OS reports
+    // independently of the bits `detect` packs them into.
+    #[test]
+    fn checks_need_their_features() {
+        assert_eq!(missing_cpu_feature().is_none(), available!("neon"));
+        assert_eq!(
+            HaveCryptoExt::check().is_some(),
+            available!("aes", "pmull", "sha2")
+        );
+        assert_eq!(HaveSha3::check().is_some(), available!("sha3"));
+    }
+
     // CI runs the aarch64 suite on a CPU with the crypto extension, then
     // again with it denied, and names which, so neither run silently tests
     // only one path.
