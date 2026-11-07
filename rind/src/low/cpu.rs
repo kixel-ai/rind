@@ -43,11 +43,11 @@ pub fn has_aes_hardware() -> bool {
 /// Keeps data-independent timing (DIT) on for this thread until the returned guard drops.
 ///
 /// Every rind call that handles a secret runs with DIT where the core has it,
-/// turning it on at entry and back off on return. On Apple's cores that
-/// costs about 50 ns a call, a tenth of sealing a QUIC packet, so holding a
-/// guard across a batch of calls pays it once instead. Where rind sets no
-/// DIT, on x86_64, armv7, and aarch64 cores without it, the guard does
-/// nothing.
+/// turning it on at entry and back off on return. On Apple's M1 that costs
+/// about 55 ns a call, a fifth of sealing a 1350-byte QUIC packet, so
+/// holding a guard across a batch of calls pays it once instead. Where rind
+/// sets no DIT, on x86_64, armv7, and aarch64 cores without it, the guard
+/// does nothing.
 ///
 /// Everything the thread runs while a guard is held runs with DIT, rind's
 /// code or not. Dropping the guard turns DIT off only if it turned it on, so
@@ -71,7 +71,7 @@ pub fn has_aes_hardware() -> bool {
 /// DIT belongs to a thread, so the guard can't leave the one that made it,
 /// nor live across an `.await` in a task a multi-threaded runtime may move:
 ///
-/// ```compile_fail
+/// ```compile_fail,E0277
 /// let dit = rind::cpu::hold_dit();
 /// std::thread::spawn(move || drop(dit));
 /// ```
