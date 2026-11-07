@@ -1,6 +1,7 @@
 """pyrind's API, checked against known answers and against pyca/cryptography,
 hashlib, and hmac."""
 
+import array
 import hashlib
 import hmac as std_hmac
 import os
@@ -78,6 +79,11 @@ class BytesLike(unittest.TestCase):
     def test_strided_buffer_is_copied(self):
         expected = hashlib.sha256(b"ace").digest()
         self.assertEqual(digest.digest(digest.SHA256, memoryview(b"abcdef")[::2]), expected)
+
+    def test_any_item_format_is_its_raw_bytes(self):
+        for data in (memoryview(b"abc").cast("b"), array.array("H", [1, 2]), memoryview(bytearray(8)).cast("I")[::2]):
+            self.assertEqual(digest.digest(digest.SHA256, data), hashlib.sha256(bytes(data)).digest())
+        self.assertEqual(digest.digest(digest.SHA256, bytearray()), hashlib.sha256(b"").digest())
 
 
 class Digest(unittest.TestCase):
@@ -181,6 +187,9 @@ class Hkdf(unittest.TestCase):
         prk = hkdf.Salt(hkdf.HKDF_SHA256, b"").extract(b"secret")
         with self.assertRaises(pyrind.WrongLength):
             prk.expand(b"", 255 * 32 + 1)
+        # Refused before allocating, rather than raising MemoryError.
+        with self.assertRaises(pyrind.WrongLength):
+            prk.expand(b"", 1 << 62)
 
 
 class Pbkdf2(unittest.TestCase):
@@ -202,6 +211,12 @@ class Pbkdf2(unittest.TestCase):
             secret.derive(0, b"salt", 32)
         with self.assertRaises(OverflowError):
             secret.derive(-1, b"salt", 32)
+
+    def test_too_long_is_wrong_length(self):
+        # Refused before allocating, rather than raising MemoryError.
+        secret = pbkdf2.Secret(pbkdf2.PBKDF2_HMAC_SHA256, b"password")
+        with self.assertRaises(pyrind.WrongLength):
+            secret.derive(1, b"salt", 1 << 62)
 
     def test_releases_the_gil(self):
         secret = pbkdf2.Secret(pbkdf2.PBKDF2_HMAC_SHA256, b"password")

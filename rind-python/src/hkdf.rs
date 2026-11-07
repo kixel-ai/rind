@@ -55,6 +55,9 @@ impl Prk {
     ) -> PyResult<Bound<'py, PyAny>> {
         let info: [&[u8]; 1] = [&info];
         Ok(match key_type {
+            // The longest any hash expands to, so a longer request fails
+            // before allocating; rind refuses the rest by the hash's length.
+            KeyType::Len(len) if len > 255 * 64 => return Err(error(rind::Error::WrongLength)),
             KeyType::Len(len) => PyBytes::new_with(py, len, |out| {
                 self.0.expand(&info, out.len()).fill(out).map_err(error)
             })?

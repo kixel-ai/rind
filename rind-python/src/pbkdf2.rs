@@ -45,6 +45,12 @@ impl Secret {
         length: usize,
     ) -> PyResult<Bound<'py, PyBytes>> {
         let iterations = iterations_of(iterations)?;
+        // The longest any hash derives, (2**32 - 1) blocks of 64 bytes, so a
+        // longer request fails before allocating; rind refuses the rest by
+        // the hash's length.
+        if length as u64 > u64::from(u32::MAX) * 64 {
+            return Err(error(rind::Error::WrongLength));
+        }
         PyBytes::new_with(py, length, |out| {
             py.detach(|| self.0.derive(iterations, &salt, out))
                 .map_err(error)

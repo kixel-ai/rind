@@ -67,8 +67,10 @@ impl Context {
 
     /// Returns the tag of the message; the context takes no more data.
     fn sign<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        // Signs a stack copy: moving the context out of its box would free
+        // the heap copy unwiped, while dropping the box wipes it in place.
         let context = self.0.take().ok_or_else(signed)?;
-        Ok(bytes(py, context.sign()))
+        Ok(bytes(py, (*context).clone().sign()))
     }
 }
 

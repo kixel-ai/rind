@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Print the tag of pyrind's current version if release-plz has released it
-# and PyPI does not have it yet, or nothing.
+# and PyPI does not have all of it yet, or nothing.
 #
 # Usage: sh/pyrind-unpublished.sh
 # release-plz tags rind-python when a release PR lands, since it never goes
@@ -23,9 +23,18 @@ case "$status" in
     *) exit "$status" ;;
 esac
 
-status=$(curl --silent --output /dev/null --write-out '%{http_code}' "https://pypi.org/pypi/pyrind/$version/json")
+# twine uploads the wheels before the sdist, so a version whose sdist is on
+# PyPI is complete; one without it may be partly uploaded, and release.yml
+# skips the files already there.
+json=$(mktemp)
+trap 'rm -f "$json"' EXIT
+status=$(curl --silent --output "$json" --write-out '%{http_code}' "https://pypi.org/pypi/pyrind/$version/json")
 case "$status" in
-    200) ;;
+    200)
+        if ! jq -e '.urls | any(.packagetype == "sdist")' "$json" >/dev/null; then
+            echo "$tag"
+        fi
+        ;;
     404) echo "$tag" ;;
     *)
         echo "error: PyPI answered $status for pyrind $version" >&2

@@ -15,11 +15,11 @@
 
 use std::borrow::Cow;
 
-use pyo3::buffer::PyBuffer;
+use pyo3::buffer::PyUntypedBuffer;
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyImportError, PyMemoryError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict};
+use pyo3::types::{PyBytes, PyDict, PyMemoryView};
 
 mod aead;
 mod agreement;
@@ -87,9 +87,10 @@ pub(crate) fn error(e: rind::Error) -> PyErr {
 }
 
 /// A bytes-like argument: borrowed from `bytes`, which is immutable, and
-/// copied from any other buffer, such as a `bytearray` or `memoryview`, so
-/// no other thread can change it while rind reads it, even with the GIL
-/// released.
+/// copied from any other buffer, such as a `bytearray`, `memoryview`, or
+/// `array`, so no other thread can change it while rind reads it, even with
+/// the GIL released. Like `hashlib`, it takes a buffer's raw bytes whatever
+/// its item format.
 pub(crate) struct Bytes<'a>(Cow<'a, [u8]>);
 
 impl<'a, 'py> FromPyObject<'a, 'py> for Bytes<'a> {
@@ -99,8 +100,23 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Bytes<'a> {
         if let Ok(bytes) = <&'a [u8]>::extract(obj) {
             return Ok(Self(Cow::Borrowed(bytes)));
         }
-        let buffer = PyBuffer::<u8>::get(&obj)?;
-        Ok(Self(Cow::Owned(buffer.to_vec(obj.py())?)))
+        let buffer = PyUntypedBuffer::get(&obj)?;
+        if buffer.is_c_contiguous() {
+            let len = buffer.len_bytes();
+            if len == 0 {
+                return Ok(Self(Cow::Borrowed(&[])));
+            }
+            // SAFETY: a C-contiguous buffer is `len_bytes()` readable bytes
+            // at `buf_ptr()`, non-null when nonempty, for as long as `buffer`
+            // holds it, and the GIL keeps Python code from resizing it.
+            let raw = unsafe { std::slice::from_raw_parts(buffer.buf_ptr().cast::<u8>(), len) };
+            return Ok(Self(Cow::Owned(raw.to_vec())));
+        }
+        // Any other layout, such as a strided `memoryview`, in C order.
+        let bytes = PyMemoryView::from(&obj)?.call_method0("tobytes")?;
+        Ok(Self(Cow::Owned(
+            bytes.cast::<PyBytes>()?.as_bytes().to_vec(),
+        )))
     }
 }
 
