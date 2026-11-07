@@ -58,7 +58,8 @@ declare -A scope=(
     [license]='^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)'
     # Dependents may build with the workspace's declared rust-version.
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
-    # rind's aarch64 and armv7 backends, which the host's own build skips.
+    # rind's aarch64, armv7, and portable backends, which the host's own
+    # build skips.
     [cross]='^(rind/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$)'
     # Variable-time instructions in rind's release builds, which a change to
     # its code, dependencies, toolchain, or the scan itself can bring.
@@ -66,6 +67,8 @@ declare -A scope=(
     # s2n-bignum's proofs assume separate input and output, so the kernels
     # rind runs in place are walked, after planting faults in each.
     [inplace]='^(rind/src/low/|admin/parse-asm/)'
+    # TESTING.md's table names every export, test, and vector file.
+    [testing]='^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)'
     # COMPATIBILITY.md is generated from the CPU scans.
     [compat]='^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))'
     # BENCHMARKS.md is generated from the results, the verified-code table,
@@ -103,6 +106,7 @@ declare -A tools=(
     [cross]='cargo'
     [vartime]='nix'
     [inplace]='python3'
+    [testing]='python3'
     [compat]='python3'
     [bench]='python3'
     [fixtures]='cargo'
@@ -119,7 +123,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs msrv cross vartime deny versions license inplace compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs msrv cross vartime deny versions license inplace testing compat bench fixtures patch py dart quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -166,6 +170,10 @@ if ((${#missing[@]} > 0)); then
     exit 1
 fi
 
+# The portable backend, forced on a target; an explicit target keeps its
+# builds apart from the host's, and its build scripts unflagged.
+portable='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
+
 # Tracked files matching a pathspec, NUL-separated.
 files() {
     git ls-files -z -- "$@"
@@ -194,6 +202,9 @@ for module in "${selected[@]}"; do
             if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind|--workspace'; then
                 cargo nextest run -p rind --features wipe --test zeroing --locked
             fi
+            if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind-aws-lc-rs|--workspace'; then
+                cargo nextest run -p rind-aws-lc-rs --features wipe --test zeroing --locked
+            fi
             # Doc tests need a library. No packages at all means the workspace.
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
@@ -218,6 +229,11 @@ for module in "${selected[@]}"; do
             for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
                 cargo clippy -p rind --lib --locked --target "$target" -- --deny warnings
             done
+            CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable" \
+                cargo clippy -p rind --lib --locked --target x86_64-unknown-linux-gnu -- --deny warnings
+            # And on a 32-bit target, whose Poly1305 and GHASH differ.
+            CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS="$portable" \
+                cargo clippy -p rind --lib --locked --target armv7-unknown-linux-gnueabihf -- --deny warnings
             ;;
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;
         check:deny) cargo deny --locked check ;;
@@ -226,6 +242,7 @@ for module in "${selected[@]}"; do
         check:license) bash admin/scan-license ;;
         # It finds the generated kernels relative to its own directory.
         check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
+        check:testing) python3 admin/testing ;;
         check:compat) python3 admin/x86-cpu markdown-table | diff -u COMPATIBILITY.md - ;;
         fix:compat) python3 admin/x86-cpu markdown-table >COMPATIBILITY.md ;;
         check:bench)

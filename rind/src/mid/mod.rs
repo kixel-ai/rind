@@ -4,10 +4,17 @@
 #![deny(unsafe_code)]
 
 // libcrux exposes whole operations rather than the field and bignum
-// arithmetic these build on, so 32-bit ARM swaps them at this layer.
-#[cfg_attr(target_arch = "arm", path = "arm/aes_gcm.rs")]
+// arithmetic these build on, so the portable backend, which armv7 builds on,
+// swaps them at this layer. The declarations stay visible to cargo-mutants.
+#[cfg_attr(
+    any(rind_backend = "arm", rind_backend = "portable"),
+    path = "portable/aes_gcm.rs"
+)]
 pub(super) mod aes_gcm;
-#[cfg_attr(target_arch = "arm", path = "arm/ed25519.rs")]
+#[cfg_attr(
+    any(rind_backend = "arm", rind_backend = "portable"),
+    path = "portable/ed25519.rs"
+)]
 pub(super) mod ed25519;
 
 pub(super) mod aes;

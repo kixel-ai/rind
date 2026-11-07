@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.1](https://github.com/moq-dev/rind/compare/rind-ring-v0.17.0...rind-ring-v0.17.1) - 2026-11-07
+
+### Added
+
+- wiping keys on drop is opt-in, under a `wipe` feature ([#461](https://github.com/moq-dev/rind/pull/461))
+
+### Fixed
+
+- *(rind-ring)* package the current workspace license ([#495](https://github.com/moq-dev/rind/pull/495))
+
 ## [0.17.0](https://github.com/moq-dev/rind/compare/rind-ring-v0.2.0...rind-ring-v0.17.0) - 2026-11-07
 
 ### Added
