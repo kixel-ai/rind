@@ -107,10 +107,11 @@ Each crate's README shows its setup.
 ### Platforms
 
 rind has assembly for x86_64, aarch64, and 32-bit arm, and runs portable
-Rust on any other architecture. CI tests Linux (glibc and musl), macOS, and Windows on
+Rust on any other architecture (on 32-bit x86, only with a Rust newer than its
+1.90 MSRV). CI tests Linux (glibc and musl), macOS, and Windows on
 x86_64 and aarch64, iOS in the simulator, and Android on aarch64, armv7, and
 x86_64. Any x86_64 CPU runs it,
-aarch64 needs NEON, and every operation panics on a CPU missing a feature
+little-endian aarch64 needs NEON, and every operation panics on a CPU missing a feature
 rind requires: call `rind::cpu::check()` at startup to get an error naming
 it instead, as `rind_rustls::default_provider()` does.
 [PLATFORMS.md][platforms] lists what each architecture runs without each

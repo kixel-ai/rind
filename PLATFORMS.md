@@ -62,7 +62,9 @@ first two under qemu. iOS devices' code is only built.
   place of the assembly `arm` always runs (see [ALGORITHMS.md](ALGORITHMS.md)).
   It needs no CPU features, `rind::cpu::has_aes_hardware()` is false, and
   rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. CI tests it only on
-  `x86_64`, where `--cfg rind_portable` forces it.
+  `x86_64`, where `--cfg rind_portable` forces it. On 32-bit `x86` it needs a
+  Rust newer than the 1.90 MSRV, since libcrux-platform 0.0.4 calls `__cpuid`
+  outside `unsafe`.
 
 Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
 at startup to get an error naming the missing feature instead.
