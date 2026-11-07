@@ -183,6 +183,7 @@ fn aead<const ENC: bool>(
         (true, HwKey::Aes256(_)) => gcm256_encrypt_opt,
         (false, HwKey::Aes128(_)) => gcm128_decrypt_opt,
         (false, HwKey::Aes256(_)) => gcm256_decrypt_opt,
+        (_, HwKey::Aes192(_)) => unreachable!("Vale has no AES-192 routine"),
     };
     // SAFETY: the routine reads `aad`'s whole blocks and `aad_partial`, and
     // reads and writes in place the message's whole blocks, the first `six`

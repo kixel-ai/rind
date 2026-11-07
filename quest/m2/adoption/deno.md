@@ -33,7 +33,3 @@ Guidance:
   (RUSTSEC-2023-0071) the `rsa` crate carries.
 - Deno's WPT and node compat suites are the bar; keys must round-trip
   byte for byte through every import and export format.
-
-## Required
-
-- [What WebCrypto adopters need](/quest/m2/adoption/webcrypto/README.md) - the AES modes, RSA-OAEP, and hashes the swap covers

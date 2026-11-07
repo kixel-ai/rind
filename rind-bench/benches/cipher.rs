@@ -4,7 +4,7 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 fn bench_aes_ctr(c: &mut Criterion) {
     let iv = [0u8; 16];
 
-    for (name, key_len) in [("aes128-ctr", 16), ("aes256-ctr", 32)] {
+    for (name, key_len) in [("aes128-ctr", 16), ("aes192-ctr", 24), ("aes256-ctr", 32)] {
         let key = &[0u8; 32][..key_len];
         let mut group = c.benchmark_group(name);
         for (size, size_name) in criterion::SIZES {
@@ -15,9 +15,13 @@ fn bench_aes_ctr(c: &mut Criterion) {
 
             group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
                 use aws_lc_rs::cipher::{
-                    AES_128, AES_256, EncryptingKey, EncryptionContext, UnboundCipherKey,
+                    AES_128, AES_192, AES_256, EncryptingKey, EncryptionContext, UnboundCipherKey,
                 };
-                let algorithm = if key_len == 16 { &AES_128 } else { &AES_256 };
+                let algorithm = match key_len {
+                    16 => &AES_128,
+                    24 => &AES_192,
+                    _ => &AES_256,
+                };
                 let key =
                     EncryptingKey::ctr(UnboundCipherKey::new(algorithm, key).unwrap()).unwrap();
                 b.iter(|| {
@@ -26,9 +30,7 @@ fn bench_aes_ctr(c: &mut Criterion) {
                 });
             });
             group.bench_function(BenchmarkId::new("rind", size_name), |b| {
-                use rind::cipher::{AES_128, AES_256, AesCtr};
-                let algorithm = if key_len == 16 { &AES_128 } else { &AES_256 };
-                let key = AesCtr::new(algorithm, key, 128).unwrap();
+                let key = rind::cipher::AesCtr::new(rind_aes(key_len), key, 128).unwrap();
                 b.iter(|| key.apply_keystream(&iv, &mut buf).unwrap());
             });
         }
@@ -42,13 +44,13 @@ fn bench_aes_ctr(c: &mut Criterion) {
 fn bench_aes_cbc(c: &mut Criterion) {
     let iv = [0u8; 16];
 
-    for (name, key_len) in [("aes128-cbc", 16), ("aes256-cbc", 32)] {
+    for (name, key_len) in [("aes128-cbc", 16), ("aes192-cbc", 24), ("aes256-cbc", 32)] {
         let key = &[0u8; 32][..key_len];
         for op in ["encrypt", "decrypt"] {
             let mut group = c.benchmark_group(format!("{name}-{op}"));
             for (size, size_name) in criterion::SIZES {
-                use rind::cipher::{AES_128, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey};
-                let algorithm = if key_len == 16 { &AES_128 } else { &AES_256 };
+                use rind::cipher::{AesCbcDecryptingKey, AesCbcEncryptingKey};
+                let algorithm = rind_aes(key_len);
                 let mut ct = vec![0u8; size];
                 AesCbcEncryptingKey::new(algorithm, key)
                     .unwrap()
@@ -59,10 +61,14 @@ fn bench_aes_cbc(c: &mut Criterion) {
 
                 group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
                     use aws_lc_rs::cipher::{
-                        AES_128, AES_256, DecryptionContext, EncryptionContext,
+                        AES_128, AES_192, AES_256, DecryptionContext, EncryptionContext,
                         PaddedBlockDecryptingKey, PaddedBlockEncryptingKey, UnboundCipherKey,
                     };
-                    let algorithm = if key_len == 16 { &AES_128 } else { &AES_256 };
+                    let algorithm = match key_len {
+                        16 => &AES_128,
+                        24 => &AES_192,
+                        _ => &AES_256,
+                    };
                     let key = || UnboundCipherKey::new(algorithm, key).unwrap();
                     let enc = PaddedBlockEncryptingKey::cbc_pkcs7(key()).unwrap();
                     let dec = PaddedBlockDecryptingKey::cbc_pkcs7(key()).unwrap();
@@ -133,6 +139,14 @@ fn bench_header_protection(c: &mut Criterion) {
             let key = HeaderProtectionKey::new(algorithm, key).unwrap();
             b.iter(|| key.mask(&sample));
         });
+    }
+}
+
+fn rind_aes(key_len: usize) -> &'static rind::cipher::Algorithm {
+    match key_len {
+        16 => &rind::cipher::AES_128,
+        24 => &rind::cipher::AES_192,
+        _ => &rind::cipher::AES_256,
     }
 }
 

@@ -90,6 +90,15 @@ opaque low.x86_64.vpaes_x86_64.VpaesKey.new
 opaque low.x86_64.vpaes_x86_64.VpaesKey.encrypt_block
   : low.x86_64.vpaes_x86_64.VpaesKey → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)
 
+/-! AES-192's key expansion and block cipher. Vale has no AES-192 routine, so
+no proof reaches them. -/
+
+opaque low.x86_64.aes.aes192_expand
+  : Std.Array Std.U8 24#usize → Result (Std.Array core.core_arch.x86.__m128i 13#usize)
+
+opaque low.x86_64.aes.aes_block {N : Std.Usize}
+  : Std.Array core.core_arch.x86.__m128i N → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)
+
 opaque low.x86_64.aes_nohw.NohwKey.new : Slice Std.U8 → Result low.x86_64.aes_nohw.NohwKey
 
 opaque low.x86_64.aes_nohw.NohwKey.encrypt_block
@@ -171,6 +180,11 @@ opaque low.x86_64.edwards25519_scalarmuldouble_alt.edwards25519_scalarmuldouble_
   Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
     Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
 
+opaque low.x86_64.edwards25519_scalarmuldouble_avx2.edwards25519_scalarmuldouble
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
+    Array Std.U64 4#usize → low.x86_64.cpu.HaveAvx2 → Result (Array Std.U64 8#usize)
+
 opaque low.x86_64.bignum_madd_n25519_alt.bignum_madd_n25519_alt
   :
   Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
@@ -206,6 +220,8 @@ opaque low.x86_64.sha512.path : Result low.x86_64.sha512.Path
 
 opaque low.x86_64.cpu.HaveBmi2Adx.check
   : Result (Option low.x86_64.cpu.HaveBmi2Adx)
+
+opaque low.x86_64.cpu.HaveAvx2.check : Result (Option low.x86_64.cpu.HaveAvx2)
 
 opaque low.x86_64.cpu.HaveAesHardware.check : Result (Option low.x86_64.cpu.HaveAesHardware)
 

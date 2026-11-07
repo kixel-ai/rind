@@ -32,12 +32,14 @@ Android are untested.
   Bobcat and Bulldozer, and QEMU's default `qemu64` model, AES and GHASH run
   Rust ports of [aws-lc]'s constant-time SSE2 and integer C, SHA1 and SHA256
   its integer assembly, and ChaCha20 [HACL\*]'s verified rounds.
-  Without `adx`, as on Haswell and AMD's cores before Zen, [s2n-bignum]'s
-  `_alt` routines replace those that use it, and [aws-lc]'s Montgomery
-  multiplication replaces its Karatsuba routines for RSA; with `avx2` there,
-  as on Haswell, RSA-2048 signing runs aws-lc's RSAZ exponentiation. With
-  `avx512ifma`, as on Ice Lake, Sapphire Rapids, and AMD's Zen 4 and 5,
-  RSA-2048, 3072, and 4096 signing runs aws-lc's dual AVX-512 RSAZ.
+  Without `adx`, as on Haswell, AMD's cores before Zen, and virtual CPUs
+  that hide it, [s2n-bignum]'s `_alt` routines replace those that use it,
+  and [aws-lc]'s Montgomery multiplication replaces its Karatsuba routines
+  for RSA; with `avx2` there, as on Haswell, RSA-2048 signing runs aws-lc's
+  RSAZ exponentiation, and Ed25519 verification a port of
+  [curve25519-dalek]'s AVX2 backend. With `avx512ifma`, as on Ice Lake,
+  Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048, 3072, and 4096 signing
+  runs aws-lc's dual AVX-512 RSAZ.
 - 32-bit `arm` (tested on `armv7-unknown-linux-gnueabihf`, and built for
   `armv7-linux-androideabi`) runs portable Rust instead, mostly from
   [libcrux] (see [ALGORITHMS.md](ALGORITHMS.md)), and needs no CPU features. RSA's
@@ -60,6 +62,7 @@ at startup to get an error naming the missing feature instead.
 family since 2004, and of some AMD cores.
 
 [s2n-bignum]: https://github.com/awslabs/s2n-bignum
+[curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [HACL\*]: https://github.com/hacl-star/hacl-star
 [mlkem-native]: https://github.com/pq-code-package/mlkem-native
 [libcrux]: https://github.com/cryspen/libcrux

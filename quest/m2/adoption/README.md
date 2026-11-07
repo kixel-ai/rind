@@ -52,8 +52,8 @@ don't ask again (✅ is the chosen option):
   [#375](https://github.com/moq-dev/rind/pull/375), which has the sizes): it
   is already smaller than aws-lc-rs's provider.
 - Whatever these consumers need from rind itself is planned now: the
-  [WebCrypto set](/quest/m2/adoption/webcrypto/README.md) and platform
-  coverage. RSA-2048 signing, which JWT's RS256 needs, is level with the
+  WebCrypto set (AES-192, MD5, RSA-OAEP key labels and SPKI export, AES key
+  wrap with padding, all landed) and platform coverage. RSA-2048 signing, which JWT's RS256 needs, is level with the
   fastest library on x86_64 in [BENCHMARKS.md](/BENCHMARKS.md).
 
 ## Required
@@ -67,7 +67,6 @@ don't ask again (✅ is the chosen option):
 - [Lemmy's federation signs and verifies with rind](/quest/m2/adoption/lemmy.md) - activitypub-federation-rust's HTTP signatures off the `rsa` crate
 - [rind-snow](/quest/m2/adoption/rind-snow.md) - snow's `CryptoResolver` on rind, for rathole and other Noise users
 - [tailscale-rs's tunnel runs on rind](/quest/m2/adoption/tailscale-rs.md) - WireGuard's per-packet ChaCha20-Poly1305 on rind
-- [What WebCrypto adopters need](/quest/m2/adoption/webcrypto/README.md) - the AES modes, RSA-OAEP, and hashes llrt, pyca users, and Dart need
 - [llrt offers rind](/quest/m2/adoption/llrt.md) - `crypto-rind` and `tls-rind` features in AWS's Lambda runtime
 - [Deno's WebCrypto and node:crypto run on rind](/quest/m2/adoption/deno.md) - Deno's RustCrypto paths moved to rind
 - [Servo's WebCrypto runs on rind](/quest/m2/adoption/servo.md) - Servo's RustCrypto WebCrypto moved to rind

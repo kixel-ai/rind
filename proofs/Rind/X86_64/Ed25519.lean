@@ -445,7 +445,7 @@ theorem slice_eq_spec (s t : Slice U8) :
   rw [hb, Slice.eq_iff]
 
 @[step]
-theorem scalarmuldouble_spec (_h : Runs) (k : Std.Array U64 4#usize) (pt : Std.Array U64 8#usize)
+theorem scalarmuldouble_spec (_h : Runs) (_hd : RunsDouble) (k : Std.Array U64 4#usize) (pt : Std.Array U64 8#usize)
     (b : Std.Array U64 4#usize) :
     mid.ed25519.EdwardsPoint.scalarmuldouble k pt b ⦃ r =>
       ∀ P, edOnCurve P → edModDecodePair (pairNat pt.val) = P →
@@ -469,7 +469,7 @@ theorem compress_point_spec (p : Std.Array U64 8#usize) (P : EdPoint)
 open Classical in
 /-- `verify` with a key whose point is `A`, a point of the group, and whose
 bytes are `vk.bytes`: RFC 8032's verification. -/
-theorem mid_verify_spec (h : Runs) (hs : RunsSha512) (vk : mid.ed25519.VerifyingKey) (A : EdPoint)
+theorem mid_verify_spec (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (vk : mid.ed25519.VerifyingKey) (A : EdPoint)
     (hA : edOnCurve A) (hp : pairNat vk.point.val = edModEncodePair A)
     (sig : Std.Array U8 64#usize) (msg : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
     mid.ed25519.VerifyingKey.verify vk sig msg ⦃ r =>
@@ -804,7 +804,7 @@ def KeyPairOf (kp : high.signature.Ed25519KeyPair) (seed : List U8) : Prop :=
   SeedKey kp.key seed ∧ kp.public_key.val = ed25519PublicKey seed
 
 open Classical in
-theorem high_verify_spec (h : Runs) (hs : RunsSha512) (vk : high.ed25519.Ed25519VerifyingKey) (A : EdPoint)
+theorem high_verify_spec (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (vk : high.ed25519.Ed25519VerifyingKey) (A : EdPoint)
     (hA : edOnCurve A) (hp : pairNat vk.point.val = edModEncodePair A) (sig msg : Slice U8)
     (hm : msg.length + 64 < 2 ^ 64) :
     high.ed25519.Ed25519VerifyingKey.verify vk sig msg ⦃ r =>
@@ -818,7 +818,7 @@ theorem high_verify_spec (h : Runs) (hs : RunsSha512) (vk : high.ed25519.Ed25519
     obtain ⟨a, rfl, ha⟩ := hr
     simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch]
     step*
-    step with mid_verify_spec h hs vk A hA hp a msg hm as ⟨r, hr⟩
+    step with mid_verify_spec h hd hs vk A hA hp a msg hm as ⟨r, hr⟩
     rw [hr, ha]
   · simp only [hl, ↓reduceIte] at hr
     obtain ⟨e, rfl⟩ := hr
@@ -975,7 +975,7 @@ open Classical in
 /-- Verification with a key pair's public key: RFC 8032's verification with
 its seed's public key, whose point is the base point times its secret scalar,
 for a scalar whose multiple is a point of the group. -/
-theorem ed25519_key_pair_verify (h : Runs) (hs : RunsSha512) (kp : high.signature.Ed25519KeyPair)
+theorem ed25519_key_pair_verify (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (kp : high.signature.Ed25519KeyPair)
     (seed : List U8) (hkp : KeyPairOf kp seed) (hA : edOnCurve (edPow edB (ed25519Scalar seed)))
     (msg sig : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
     (do
@@ -990,7 +990,7 @@ theorem ed25519_key_pair_verify (h : Runs) (hs : RunsSha512) (kp : high.signatur
   step*
   have hb : vk.bytes.val = ed25519PublicKey seed := by rw [hvk]; exact hkb
   rw [← hb]
-  exact high_verify_spec h hs vk _ hA (by rw [hvk]; exact hkpt) sig msg hm
+  exact high_verify_spec h hd hs vk _ hA (by rw [hvk]; exact hkpt) sig msg hm
 
 open Classical in
 /-- An Ed25519 public key parsed from its encoding: refused unless it is 32
@@ -998,7 +998,7 @@ bytes, refused if its y-coordinate is one of libsodium's small-order list,
 refused unless it encodes a point of the group, and otherwise its
 verification is RFC 8032's with that point, for messages under 2⁶⁴ - 64
 bytes. -/
-theorem ed25519_public_key_new (h : Runs) (hs : RunsSha512) (key : Slice U8) :
+theorem ed25519_public_key_new (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (key : Slice U8) :
     high.signature.PublicKey.new high.signature.verify.ED25519 key ⦃ r =>
       if key.length ≠ 32 then r = .Err (.KeyRejected .WrongLength)
       else if leNat key.val % 2 ^ 255 ∈ edSmallOrderY then r = .Err (.KeyRejected .SmallOrder)
@@ -1022,7 +1022,7 @@ theorem ed25519_public_key_new (h : Runs) (hs : RunsSha512) (key : Slice U8) :
     simp only [WP.spec_ok]
     refine ⟨_, rfl, fun msg sig hm => ?_⟩
     simp only [high.signature.PublicKey.verify]
-    have := high_verify_spec h hs vk _ (edDecode_spec _ hv).1 hvp sig msg hm
+    have := high_verify_spec h hd hs vk _ (edDecode_spec _ hv).1 hvp sig msg hm
     rwa [hvb] at this
   · subst hr; simp
 
