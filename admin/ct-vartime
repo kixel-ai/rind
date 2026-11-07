@@ -62,7 +62,7 @@ VARTIME = {
     "x86_64": re.compile(
         r"i?div"
         r"|v?(add|sub|mul|div|sqrt|min|max|hadd|hsub|addsub|dp|rcp|rsqrt|round)[sp][sdh]"
-        r"|vfn?m(add|sub|addsub|subadd)\d+[sp][sdh]|v(rcp|rsqrt)(14|28)[sp][sdh]"
+        r"|vfn?m(add|sub|addsub|subadd)\d*[sp][sdh]|v(rcp|rsqrt)(14|28)[sp][sdh]"
         r"|v(scalef|getexp|getmant|reduce|rndscale|range|fixupimm)[sp][sdh]|v?cvt\w+"
         r"|fi?(add|sub|subr|mul|div|divr)p?|fsqrt|fprem1?|fscale|f2xm1|fyl2xp?1"
     ),
@@ -70,10 +70,28 @@ VARTIME = {
     # is data-independent-time, and FMOV moves bits.
     "aarch64": re.compile(r"[us]divr?|[us]cvtf|f(?!(mov|csel)$)\w+"),
     # An A32 or T32 instruction may carry a condition, as in `udivne`, and
-    # every floating-point one but a move names its type, as in `vadd.f32`.
+    # every floating-point one but a move names a type, as in `vadd.f32` or
+    # `vcvt.s32.f32`.
     "arm": re.compile(
         r"[us]div(eq|ne|hs|cs|lo|cc|mi|pl|vs|vc|hi|ls|ge|lt|gt|le|al)?"
-        r"|v(?!mov)\w+\.f(16|32|64)(\.\w+)?"
+        r"|v(?!mov)\w+(\.\w+)*\.f(16|32|64)(\.\w+)*"
+    ),
+}
+
+# Mnemonics each VARTIME pattern must refuse, then must allow, checked
+# before every scan.
+SAMPLES = {
+    "x86_64": (
+        "div idiv divsd vsqrtpd haddps addsubps vfmadd231pd vfmaddps vrcp14ps cvtsi2sd fdivp",
+        "mulx adcx vpmuludq vpaddd movaps xorps vpclmulqdq aesenc shrx",
+    ),
+    "aarch64": (
+        "udiv sdiv fdiv fsqrt faddp fmul fmla fcvtzs scvtf",
+        "mul umulh fmov fcsel pmull aese eor3 lslv",
+    ),
+    "arm": (
+        "udiv sdivne vdiv.f64 vsqrt.f32 vmul.f32 vfmane.f64 vcvt.s32.f32 vcvt.f32.u32",
+        "umull umaal vmul.i32 vmull.p64 vmov.f32 vadd.i64 vld1.32 aese.8",
     ),
 }
 
@@ -297,6 +315,12 @@ def main():
     for entry in public:
         if not entry.get("why") or set(entry["targets"]) - set(TARGETS):
             sys.exit("ct-vartime: bad entry for {}".format(entry["function"]))
+
+    for arch, (refused, allowed) in SAMPLES.items():
+        for mnemonic in refused.split():
+            assert VARTIME[arch].fullmatch(mnemonic), (arch, mnemonic)
+        for mnemonic in allowed.split():
+            assert not VARTIME[arch].fullmatch(mnemonic), (arch, mnemonic)
 
     tool = objdump()
     libs = build(targets)
