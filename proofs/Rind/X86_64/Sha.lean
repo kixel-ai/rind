@@ -305,6 +305,35 @@ structure HashSpec {Self C S : Type} (inst : high.hash.Hash Self C S)
     outLen d.algorithm = L ∧ digestBytes d = H (bv p) ⦄
   zeroed_block : inst.zeroed_block ⦃ hb => hb.len.val = B ∧ hb.buf.val = List.replicate 128 0#u8 ⦄
   hash_default : inst.hash = high.hash.Hash.hash.default inst
+  cclone : ∀ p c, CAbs p c → inst.HashContextInst.corecloneCloneInst.clone c ⦃ c' => CAbs p c' ⦄
+
+theorem blockwise_clone_spec {N : Usize} (bw : low.generic.blockwise.Blockwise N) :
+    low.generic.blockwise.Blockwise.Insts.CoreCloneClone.clone bw ⦃ bw' => bw' = bw ⦄ := by
+  unfold low.generic.blockwise.Blockwise.Insts.CoreCloneClone.clone
+  simp only [core.clone.impls.CloneUsize.clone, lift, bind_ok]
+  step*
+  subst_vars
+  rfl
+
+theorem sha256_ctx_clone_spec (c : high.hash.Sha256Context) :
+    high.hash.Sha256Context.Insts.CoreCloneClone.clone c ⦃ c' => c' = c ⦄ := by
+  simp only [high.hash.Sha256Context.Insts.CoreCloneClone.clone,
+    mid.sha2.Sha256Context.Insts.CoreCloneClone.clone, mid.sha2.Sha256State.Insts.CoreCloneClone.clone,
+    core.clone.impls.CloneU64.clone, lift, bind_ok]
+  step*
+  step with blockwise_clone_spec as ⟨bw, hbw⟩
+  subst_vars
+  rfl
+
+theorem sha1_ctx_clone_spec (c : high.hash.Sha1Context) :
+    high.hash.Sha1Context.Insts.CoreCloneClone.clone c ⦃ c' => c' = c ⦄ := by
+  simp only [high.hash.Sha1Context.Insts.CoreCloneClone.clone,
+    mid.sha1.Sha1Context.Insts.CoreCloneClone.clone, mid.sha1.Sha1State.Insts.CoreCloneClone.clone,
+    core.clone.impls.CloneU64.clone, lift, bind_ok]
+  step*
+  step with blockwise_clone_spec as ⟨bw, hbw⟩
+  subst_vars
+  rfl
 
 theorem sha256_compress_length (H : List (BitVec 32)) (b : List Byte) (h : H.length = 8) :
     (sha256.compress H b).length = 8 := by
@@ -380,6 +409,7 @@ theorem sha256_hashSpec (hb : ShaBlocks) :
       high.hash.HashBlock.new, mid.sha2.Sha256Context.BLOCK_SZ]
     simp
   hash_default := rfl
+  cclone := fun p c hc => WP.spec_mono (sha256_ctx_clone_spec c) fun _ h => h ▸ hc
 
 /-! ## SHA-1, as SHA-256 above -/
 
@@ -573,5 +603,6 @@ theorem sha1_hashSpec (hb : ShaBlocks) :
       high.hash.HashBlock.new, mid.sha1.Sha1Context.BLOCK_SZ]
     simp
   hash_default := rfl
+  cclone := fun p c hc => WP.spec_mono (sha1_ctx_clone_spec c) fun _ h => h ▸ hc
 
 end rind.x86_64

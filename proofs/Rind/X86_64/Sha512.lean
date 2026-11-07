@@ -800,20 +800,32 @@ theorem absorbed_finish_with_spec (h : RunsSha512) (iv : List U64) (P : List U8)
   intro r hr
   rw [hr, hh, hn, ← compress_append _ _ _ hP, ← pad_append _ _ hP, sha512Words]
 
+theorem sha512_state_clone_spec (s : mid.sha2.Sha512State) :
+    mid.sha2.Sha512State.Insts.CoreCloneClone.clone s ⦃ s' => s' = s ⦄ := by
+  unfold mid.sha2.Sha512State.Insts.CoreCloneClone.clone
+  simp only [core.clone.impls.CloneU64.clone, lift, bind_ok]
+  step*
+  subst_vars
+  rfl
+
 theorem absorbed_clone_spec (iv : List U64) (P : List U8) (s : mid.sha2.Sha512State)
     (hs : Sha512Absorbed iv P s) :
-    mid.sha2.Sha512State.Insts.CoreCloneClone.clone s ⦃ s' => Sha512Absorbed iv P s' ⦄ := by
-  unfold mid.sha2.Sha512State.Insts.CoreCloneClone.clone
-  step*
-  rw [← a_post]
-  simp only [core.clone.impls.CloneU64.clone, lift, bind_ok, WP.spec_ok]
-  exact hs
+    mid.sha2.Sha512State.Insts.CoreCloneClone.clone s ⦃ s' => Sha512Absorbed iv P s' ⦄ :=
+  WP.spec_mono (sha512_state_clone_spec s) fun _ h => h ▸ hs
 
 theorem absorbed_resume_spec (iv : List U64) (P : List U8) (s : mid.sha2.Sha512State)
     (hs : Sha512Absorbed iv P s) :
     mid.sha2.Sha512Context.resume s ⦃ c => Hashed iv c P ⦄ := by
   obtain ⟨hh, hn⟩ := hs
   simp [mid.sha2.Sha512Context.resume, low.generic.blockwise.Blockwise.new, Hashed, hh, hn]
+
+theorem sha512_ctx_clone_spec (c : mid.sha2.Sha512Context) :
+    mid.sha2.Sha512Context.Insts.CoreCloneClone.clone c ⦃ c' => c' = c ⦄ := by
+  unfold mid.sha2.Sha512Context.Insts.CoreCloneClone.clone
+  step with sha512_state_clone_spec as ⟨st, hst⟩
+  step with blockwise_clone_spec as ⟨bw, hbw⟩
+  subst_vars
+  rfl
 
 theorem maxInput_lt (n : Nat) (h : n ≤ maxInput) : n < 2 ^ 64 := by
   unfold maxInput at h; simp only [U64.max_eq] at h; omega
@@ -868,6 +880,10 @@ theorem sha512_hashSpec (h : RunsSha512) :
       high.hash.HashBlock.new, mid.sha2.Sha512Context.BLOCK_SZ]
     simp
   hash_default := rfl
+  cclone := fun p c hc => by
+    simp only [high.hash.Sha512Context.Insts.CoreCloneClone.clone]
+    step with sha512_ctx_clone_spec as ⟨c', h'⟩
+    exact h' ▸ hc
 
 /-- SHA-384's `Hash` impl computes FIPS 180-4's SHA-384, given aws-lc's routine. -/
 theorem sha384_hashSpec (h : RunsSha512) :
@@ -924,5 +940,10 @@ theorem sha384_hashSpec (h : RunsSha512) :
       high.hash.HashBlock.new, mid.sha2.Sha512Context.BLOCK_SZ]
     simp
   hash_default := rfl
+  cclone := fun p c hc => by
+    simp only [high.hash.Sha384Context.Insts.CoreCloneClone.clone,
+      mid.sha2.Sha384Context.Insts.CoreCloneClone.clone]
+    step with sha512_ctx_clone_spec as ⟨c', h'⟩
+    exact h' ▸ hc
 
 end rind.x86_64

@@ -341,6 +341,18 @@ theorem hmac_finish_spec (hs : HashSpec inst H B L max Abs CAbs) (key : List Byt
   simp only [bv, List.map_append] at hsb hd1 ⊢
   rw [hsb, hd1]
 
+theorem hmac_clone_spec (hs : HashSpec inst H B L max Abs CAbs) (key : List Byte) (p : List U8)
+    (h : high.hmac.Hmac Self C S) (hh : HmacCtx CAbs Abs H B key p h) :
+    high.hmac.Hmac.Insts.CoreCloneClone.clone inst h ⦃ h' => HmacCtx CAbs Abs H B key p h' ⦄ := by
+  obtain ⟨ki, ko, hi, ho, hkil, hkol, hbi, hbo⟩ := hh
+  unfold high.hmac.Hmac.Insts.CoreCloneClone.clone
+  apply WP.spec_bind (hs.cclone _ _ hi)
+  intro c hc
+  apply WP.spec_bind (hs.clone _ _ ho)
+  intro o hoc
+  simp only [WP.spec_ok]
+  exact ⟨ki, ko, hc, hoc, hkil, hkol, hbi, hbo⟩
+
 end
 
 /-! ## SHA-1, SHA-256, and HMAC over them -/
