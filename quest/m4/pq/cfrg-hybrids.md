@@ -10,6 +10,7 @@ From [the scope](/quest/m4/pq/README.md), 2026-11-06.
 
 - Both instantiate the CFRG's CG framework with a SHAKE256 key expansion and a SHA3-256 combiner, as X-Wing does for X25519, over rind's P-256 and P-384 ECDH and ML-KEM. Share the combiner with [X-Wing](/quest/m4/pq/x-wing.md); no new arithmetic.
 - Test against draft-ietf-hpke-pq's Appendix A vectors; aws-lc-rs and libcrux have neither KEM.
+- Waits for the draft rather than building against -04 (maintainer, 2026-11-07).
 
 ## Waiting
 
