@@ -4,7 +4,8 @@ This guide maps each ring 0.17 and aws-lc-rs 1.x item to rind's name, to the
 [quest](quest/README.md) that adds it, or to why rind refuses it, and
 surveys the crates that pick a crypto backend for you. ring's names match
 aws-lc-rs's except where noted. A crate on ring that cannot change its code
-renames [rind-ring](#rind-ring), ring's API on rind, to `ring`.
+renames [rind-ring](#rind-ring), ring's API on rind, to `ring`, and a binary
+patches it in for every crate in its tree on ring 0.17.
 
 ## Across the API
 
@@ -354,12 +355,17 @@ returns its own `MissingFeature`, before using them.
 
 rind-ring offers ring 0.17's API name for name, so a crate on ring swaps it
 in with `ring = { package = "rind-ring", version = "0.17" }` and no code
-changes. The rename reaches only that crate: a dependency that names ring,
-such as rustls with its `ring` feature, still builds ring, since Cargo cannot
-patch it with a crate of another name. It panics wherever ring panics, so
-its signatures stay ring's, and adds a `cpu` module wrapping rind's check, so
-the renamed crate refuses an unsupported CPU with `ring::cpu::check()`
-without depending on rind. Its [README](rind-ring/README.md) lists the
+changes. The rename reaches only that crate. A binary moves every crate in
+its tree on ring 0.17, such as rustls or quinn-proto on their `ring`
+features, by adding `[patch.crates-io] ring = { git =
+"https://github.com/moq-dev/rind-patch" }` to its workspace's root
+`Cargo.toml` and running `cargo update -p ring`. That builds
+[rind-patch](https://github.com/moq-dev/rind-patch)'s unpublished crate named
+`ring`, which re-exports rind-ring, and `cargo tree -i ring` then prints only
+`ring v0.17.999` from rind-patch. It panics wherever ring
+panics, so its signatures stay ring's, and adds a `cpu` module wrapping
+rind's check, so the renamed crate refuses an unsupported CPU with
+`ring::cpu::check()` without depending on rind. Its [README](rind-ring/README.md) lists the
 items it leaves out and the inputs it refuses where ring takes them.
 
 ### rind-rustls
@@ -417,7 +423,8 @@ those algorithms only with its `aws_lc_rs` feature.
 
 Surveyed on 2026-10-31 against each crate's latest release, by reading its
 features and source; none were built. A migrated graph should give no output
-from `cargo tree -e normal,build -i ring` or `-i aws-lc-sys`.
+from `cargo tree -e normal,build -i ring` or `-i aws-lc-sys`, except
+`ring v0.17.999` from rind-patch under the ring patch.
 
 "Install" means calling `rind_rustls::default_provider()?.install_default()`
 before the crate builds its TLS config. Crates that read rustls's process
@@ -428,10 +435,14 @@ install ring's if nothing is installed first.
   install or pass rind-rustls's provider.
 - **rind-x**: an existing adapter crate covers it.
 - **Pure Rust**: its default build, or the listed features, use neither.
+- **Patch**: ring 0.17 is hard-wired, and a binary moves it with the
+  [ring patch](#rind-ring). Built against the patch on 2026-11-06, with no
+  other ring left in the tree.
 - **Adapter**: a new `rind-*` crate could cover it through a public hook.
   [Adapters](#adapters) says which are worth building.
-- **Unsupported**: ring or aws-lc-rs is hard-wired. The cell names the
-  alternative or the upstream change that would fix it.
+- **Unsupported**: aws-lc-rs, ring 0.16, or a ring item rind-ring leaves out
+  is hard-wired. The cell names the alternative or the upstream change that
+  would fix it.
 
 ### TLS and HTTP
 
@@ -450,8 +461,8 @@ install ring's if nothing is installed first.
 | tungstenite 0.30, tokio-tungstenite 0.30 | none | **rind-rustls**: a `rustls-tls-*-roots` feature, install |
 | tokio-websockets 0.13 | handshake SHA-1 from ring, aws-lc-rs, or OpenSSL | **rind-rustls**: `sha1_smol` and `rustls-bring-your-own-connector` |
 | lettre 0.11 | `rustls-tls` is ring | **rind-rustls**: `rustls-no-provider`, install |
-| kube 4 | default `rustls-tls` with `ring` | **rind-rustls**: `client` and `rustls-tls`, install. `oidc` and `oauth` need ring |
-| async-nats 0.51 | default `ring`; `crypto` hashes with it | **rind-rustls**: without `ring`, `crypto`, or `object-store`, install |
+| kube 4 | default `rustls-tls` with `ring` | **rind-rustls**: `client` and `rustls-tls`, install. `oidc` and `oauth` need **Patch** |
+| async-nats 0.51 | default `ring`; `crypto` hashes with it | **rind-rustls**: without `ring`, `crypto`, or `object-store`, install; with them, **Patch** |
 | mysql_async 0.37 | `default-rustls` is aws-lc-rs | **rind-rustls**: `default-rustls-no-provider`, install |
 | tokio-postgres-rustls 0.14 | optional, off by default | **rind-rustls**: default features |
 | bollard 0.21 | `ssl` is ring | **rind-rustls**: `ssl_providerless`, install |
@@ -460,39 +471,40 @@ install ring's if nothing is installed first.
 | tauri 2 | mobile `rustls-tls` installs ring | **rind-rustls**: desktop needs nothing; mobile skips `rustls-tls`; tauri-plugin-http goes through reqwest 0.12's `rustls-tls-native-roots-no-provider` |
 | AWS SDK: aws-config 1, aws-smithy-http-client 1 | `default-https-client` is aws-lc-rs; the legacy `rustls` default is ring | **rind-rustls** only under `--cfg aws_sdk_unstable`, through `CryptoMode::Custom`; otherwise Adapter. Request signing (aws-sigv4) is pure Rust |
 | poem 3 | `rustls` calls aws-lc-rs; `acme*` calls ring | Adapter: a TLS `Acceptor` over tokio-rustls |
-| sqlx 0.9 | `tls-rustls-*` hard-code ring's or aws-lc-rs's provider | Unsupported: needs a no-provider feature upstream |
-| mongodb 3 | hard-codes the provider | Unsupported: needs a no-provider feature upstream |
-| fred 10 | rustls only behind `enable-rustls` (aws-lc-rs) or `enable-rustls-ring` | Unsupported: needs a no-provider feature upstream |
-| rskafka 0.6 | `transport-tls` enables ring | Unsupported: `tls_config` takes a rind-rustls config, but ring stays linked |
-| jsonrpsee 0.26 | `tls` enables and installs ring | Unsupported over TLS |
-| pingora 0.9 | pingora-rustls depends on ring | Unsupported |
+| sqlx 0.9 | `tls-rustls-*` hard-code ring's or aws-lc-rs's provider | **Patch**: `tls-rustls-ring-webpki` or `tls-rustls-ring-native-roots` |
+| mongodb 3 | default `rustls-tls` hard-codes ring's provider | **Patch** |
+| fred 10 | rustls only behind `enable-rustls` (aws-lc-rs) or `enable-rustls-ring` | **Patch**: `enable-rustls-ring` |
+| rskafka 0.6 | `transport-tls` enables ring | **Patch** |
+| jsonrpsee 0.26 | `tls` enables and installs ring | **Patch** |
+| pingora 0.9 | pingora-rustls depends on ring | **Patch**: `rustls` |
 | tiny_http 0.12 | `ssl-rustls` is rustls 0.20 | Unsupported over TLS |
-| webpki 0.22, sct 0.7 | ring, unconditionally | Unsupported: legacy; move to rustls 0.23 and rustls-webpki |
+| webpki 0.22 | calls ring's `io` DER reader, which rind-ring leaves out | Unsupported: legacy; move to rustls 0.23 and rustls-webpki |
+| sct 0.7 | ring, unconditionally | **Patch** |
 
 ### QUIC, WebRTC, and peer-to-peer
 
 | Crate | What ties it | On rind |
 |---|---|---|
-| quinn 0.11, quinn-proto 0.11, h3-quinn | `rustls` is an alias for `rustls-ring`; the Retry tag, reset key, and token key call ring or aws-lc-rs | Unsupported: use noq, or ask quinn for a provider-only `rustls` feature |
+| quinn 0.11, quinn-proto 0.11, h3-quinn | `rustls` is an alias for `rustls-ring`; the Retry tag, reset key, and token key call ring or aws-lc-rs | **Patch**: the default `rustls-ring`, or noq on rind-rustls |
 | noq 1.4 | default `ring` | **rind-rustls**: `rustls` without `ring`, plus the caller's `HmacKey` and `HandshakeTokenKey` on rind's HMAC, HKDF, and AES-256-GCM |
 | iroh 1.4 | default `tls-ring` picks the provider | **rind-rustls**: `default-features = false`, `Endpoint::builder().crypto_provider(..)`. iroh-relay's `server` enables ring |
-| wtransport 0.7 | needs `ring` or `aws-lc-rs`, and quinn's defaults | Unsupported |
+| wtransport 0.7 | needs `ring` or `aws-lc-rs`, and quinn's defaults | **Patch**: the default `ring` |
 | s2n-quic 1 | s2n-quic-crypto always links aws-lc-rs | Unsupported |
 | quiche 0.30 | BoringSSL | Unsupported: C |
 | dimpl 0.9 | default aws-lc-rs | **rind-dimpl** |
 | str0m | default aws-lc-rs; its provider interface is unreleased | Adapter: rind-str0m covered it and was removed for lack of a consumer |
-| webrtc 0.21 (rtc 0.21) | default `crypto-ring`, or `crypto-aws-lc-rs` | Unsupported: `RTCCryptoProvider` could carry an adapter, but none is planned without a consumer |
-| webrtc-dtls 0.12, stun 0.17, turn 0.17 | ring, unconditionally | Unsupported: move to webrtc 0.21 |
+| webrtc 0.21 (rtc 0.21) | default `crypto-ring`, or `crypto-aws-lc-rs` | **Patch**: the default `crypto-ring` |
+| webrtc-dtls 0.12, stun 0.17, turn 0.17 | ring, unconditionally | **Patch** |
 | libp2p-tls 0.7, libp2p-quic 0.14, libp2p-noise 0.47 | aws-lc-rs and ring, unconditionally | Unsupported: needs a provider hook upstream |
 | snow 0.10 | opt-in `ring-resolver` | **Pure Rust** by default. Adapter through `CryptoResolver`, once rind loads static X25519 keys |
-| boringtun 0.7 | ring's ChaCha20-Poly1305 and constant-time comparison | Unsupported |
+| boringtun 0.7 | ring's ChaCha20-Poly1305 and constant-time comparison | **Patch** |
 
 ### DNS
 
 | Crate | What ties it | On rind |
 |---|---|---|
-| hickory-proto, hickory-net, hickory-resolver 0.26 | TLS, HTTPS, and QUIC need a `*-ring` or `*-aws-lc-rs` feature; DNSSEC validation calls them internally | Unsupported: `with_tls_config` takes a rind-rustls config, but ring stays linked. Plain DNS is unaffected. rind has every primitive DNSSEC needs |
-| domain 0.12 | DNSSEC and TSIG need ring or OpenSSL | Unsupported: its backend is a closed enum |
+| hickory-proto, hickory-net, hickory-resolver 0.26 | TLS, HTTPS, and QUIC need a `*-ring` or `*-aws-lc-rs` feature; DNSSEC validation calls them internally | **Patch**: the `*-ring` features. Plain DNS is unaffected |
+| domain 0.12 | DNSSEC and TSIG need ring or OpenSSL | **Patch**: `ring`, `tsig`, and `unstable-validator`. `unstable-sign` builds RSA keys from components, which rind-ring leaves out |
 
 ### Certificates, ACME, and tokens
 
@@ -500,18 +512,19 @@ install ring's if nothing is installed first.
 |---|---|---|
 | rcgen 0.14 | default `ring`, or `aws_lc_rs`, gates `KeyPair` | **rind-rcgen**: ECDSA P-256 and P-384, Ed25519, and loaded RSA keys. Without rcgen's `crypto` feature, set the serial number with `rind_rcgen::serial_number()` and `key_identifier_method` with `rind_rcgen::key_identifier(&key)`, or the key identifiers are empty |
 | instant-acme | 0.8 calls aws-lc-rs or ring; the unreleased 0.9 takes a `CryptoProvider` | **rind-instant-acme** on 0.9. `Order::finalize` needs ring or aws-lc-rs; call `finalize_csr` with a CSR from rcgen on rind-rcgen |
-| rustls-acme 0.15, tokio-rustls-acme 0.9 | account keys and CSRs call ring or aws-lc-rs | Unsupported: use instant-acme on rind-instant-acme |
-| x509-parser 0.18 | `verify` is ring, `verify-aws` aws-lc-rs | Unsupported: verify `tbs_certificate` with `rind::signature` instead |
-| x509-certificate 0.25, cryptographic-message-syntax 0.28 | ring types in their public API | Unsupported |
+| rustls-acme 0.15, tokio-rustls-acme 0.9 | account keys and CSRs call ring or aws-lc-rs | **Patch**: rustls-acme's `ring` without its default `aws-lc-rs`, or instant-acme on rind-instant-acme |
+| x509-parser 0.18 | `verify` is ring, `verify-aws` aws-lc-rs | **Patch**: `verify`, or verify `tbs_certificate` with `rind::signature` |
+| x509-certificate 0.25, cryptographic-message-syntax 0.28 | ring types in their public API | **Patch** |
 | sigstore 0.14, tough 0.24 | aws-lc-rs, unconditionally | Unsupported |
 | jsonwebtoken 11 | optional `aws_lc_rs` | **rind-jsonwebtoken**, every algorithm. `rust_crypto` is the pure-Rust alternative |
 | jwtk 0.5 | default `aws-lc` for RSA verification and JWK conversion | Adapter, for caller-held keys only |
-| biscuit 0.8, rusty_paseto 0.10, paseto 2 | ring, unconditionally | Unsupported |
+| biscuit 0.8, rusty_paseto 0.10 | ring, unconditionally | **Patch** |
+| paseto 2 | ring 0.16 and OpenSSL | Unsupported |
 | passkey 0.6 (passkey-crypto) | optional `aws-lc-rs` | **Pure Rust** by default |
-| tame-oauth 0.10 | `jwt` is ring | Unsupported |
-| gcp_auth 0.12 | default `ring` for TLS and service-account signing | **rind-rustls** without `ring` or `aws-lc-rs`; service-account keys need a signing hook upstream |
+| tame-oauth 0.10 | `jwt` is ring | **Patch** |
+| gcp_auth 0.12 | default `ring` for TLS and service-account signing | **rind-rustls** without `ring` or `aws-lc-rs`; service-account keys need **Patch** with the default `ring` |
 | google-cloud-auth 1 | defaults are aws-lc-rs | **rind-rustls**: `default-features = false`, install; signing loads keys through the installed provider. `idtoken` also installs rind-jsonwebtoken |
-| yup-oauth2 12 | default `ring` for TLS and service-account signing | **rind-rustls** for user flows, through `with_client` and hyper-rustls; service accounts need a signing hook upstream |
+| yup-oauth2 12 | default `ring` for TLS and service-account signing | **rind-rustls** for user flows, through `with_client` and hyper-rustls; service accounts need **Patch** with the default `ring` |
 | matrix-sdk-crypto 0.19 | opt-in `rust-x509-verifier-impl` | **Pure Rust** without it |
 
 ### Storage, databases, and other
@@ -519,9 +532,9 @@ install ring's if nothing is installed first.
 | Crate | What ties it | On rind |
 |---|---|---|
 | object_store 0.14 | `aws`, `gcp`, `azure` and `http` enable aws-lc-rs | **rind-object-store**, with the `*-base` features; HTTPS through reqwest on rind-rustls |
-| parquet 60 | `encryption` calls ring | Unsupported |
-| russh 0.65 | default `aws-lc-rs`, or `ring`, for its AES-GCM and ChaCha20-Poly1305 transport | Unsupported: its cipher trait is private |
-| scram 0.6 | ring, unconditionally | Unsupported |
+| parquet 60 | `encryption` calls ring | **Patch** |
+| russh 0.65 | default `aws-lc-rs`, or `ring`, for its AES-GCM and ChaCha20-Poly1305 transport | Unsupported: its cipher trait is private, and its `ring` calls `chacha20_poly1305_openssh`, which rind refuses |
+| scram 0.6 | ring 0.16, unconditionally | Unsupported |
 | ethereum_hashing 0.8 | default `ring` for SHA-256 | **Pure Rust** on x86_64; other targets need ring |
 
 ## Adapters
@@ -530,7 +543,8 @@ No new adapter is planned (maintainer, 2026-10-31):
 
 - **quinn**: its rustls integration cannot be built without ring or
   aws-lc-rs, so an adapter would carry its own port of quinn's
-  `crypto::rustls` session. noq, quinn's fork, already runs on rind-rustls.
+  `crypto::rustls` session. The ring patch moves quinn as it is, and noq,
+  quinn's fork, already runs on rind-rustls.
 - **webrtc**: `rtc_crypto::RTCCryptoProvider` covers all of its crypto, and
   rind lacks only the AES-CCM DTLS suites, but no consumer asks for it.
 

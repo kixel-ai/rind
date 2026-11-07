@@ -14,16 +14,36 @@ ring = { package = "rind-ring", version = "0.17" }
 ```
 
 ring's `alloc`, `std`, and `dev_urandom_fallback` features are accepted
-and change nothing. The rename reaches only the crate that makes it: Cargo
-cannot patch a dependency's `ring` with a crate of another name, so a
-dependency that names ring still builds ring.
+and change nothing.
+
+The rename reaches only the crate that makes it. A binary moves every crate
+in its tree on ring 0.17 to rind, including dependencies that name ring such
+as rustls and quinn-proto on their `ring` features, by patching ring in its
+workspace's root `Cargo.toml` and then running `cargo update -p ring`:
+
+```toml
+[patch.crates-io]
+ring = { git = "https://github.com/moq-dev/rind-patch" }
+```
+
+Cargo builds the crate named `ring` in
+[rind-patch](https://github.com/moq-dev/rind-patch), a small repository of
+its own, which re-exports rind-ring and accepts every ring feature.
+crates.io has the name, so that crate is never published. Its version, 0.17.999, meets every ring
+0.17 requirement. Where the patch is not used, such as for an exact
+requirement like `=0.17.14` or before the lockfile is updated, Cargo builds
+crates.io's ring and only warns, so check that `cargo tree -i ring` prints
+`ring v0.17.999` from rind-patch alone. A dependency on ring 0.16 or
+older keeps it, and a library cannot patch for the binaries that use it,
+since Cargo applies a patch only in the workspace that declares it.
 
 rind-ring panics wherever ring panics, such as `pbkdf2::derive` on an
 output over (2^32 - 1) hash outputs, so its signatures match ring's
 exactly (maintainer, 2026-10-31). rind itself never panics on caller
 input.
 
-These items are not offered, so code using them fails to build:
+These items are not offered, so code using them, in a patched dependency
+too, fails to build:
 
 - `aead::chacha20_poly1305_openssh`: rind refuses it, having no SSH consumer.
 - `rsa::KeyPairComponents` and `rsa::KeyPair::from_components`: building a

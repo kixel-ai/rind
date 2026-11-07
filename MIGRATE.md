@@ -32,7 +32,7 @@ the old backend's feature in otherwise the same command.
 
    A "nothing to print" warning or a "did not match any packages" error
    means that feature set does not build the crate. Each path reaches it in
-   one of four ways:
+   one of five ways:
 
    - **rustls, or a crate above it**, such as reqwest, hyper-rustls, tonic,
      or ureq.
@@ -40,11 +40,14 @@ the old backend's feature in otherwise the same command.
      object_store, or instant-acme.
    - **The project calls ring's API.**
    - **The project calls aws-lc-rs's API.**
+   - **A crate that hard-wires ring 0.17**, such as quinn-proto.
 
    Look up each crate in [MIGRATING.md]'s "Crates with their own crypto
-   backend". A crate listed as Unsupported, or one not listed whose source
-   calls ring or aws-lc-rs with no feature or hook to replace it, hard-wires
-   them. Dev-dependencies may keep ring; only what ships must move.
+   backend". A crate listed as Patch or Unsupported, or one not listed whose
+   source calls ring or aws-lc-rs with no feature or hook to replace it,
+   hard-wires them. A binary replaces ring 0.17 throughout its tree with
+   the ring patch, but not aws-lc-rs or an older ring. Dev-dependencies may
+   keep ring; only what ships must move.
 
 2. Find the release targets: the targets the project's CI, whatever runs it,
    builds for release, including Docker images' platforms, and any
@@ -65,14 +68,15 @@ the old backend's feature in otherwise the same command.
    feature needs rind's: say so in its docs.
 
 Stop here, before changing anything, if a release target is on another
-architecture, a dependency hard-wires ring or aws-lc-rs in what ships, or the
+architecture, a dependency in what ships hard-wires aws-lc-rs, a ring older
+than 0.17, or in a library, which cannot patch for its users, any ring, or the
 project calls an item rind lacks: for ring's API, one [rind-ring's README]
 leaves out, and for aws-lc-rs's, one [MIGRATING.md] maps to none.
 MIGRATING.md on `main` may name items not yet released, which count as
 missing. Check every condition, then report each that holds in the format of
 step 5, without the table, naming the target, dependency path, or item, and
-make the offers in step 6. Do not patch around a dependency or migrate part
-of the graph: a build that still links ring or aws-lc-rs gains nothing.
+make the offers in step 6. Do not migrate part of the graph: a build that
+still links ring or aws-lc-rs gains nothing.
 
 ## 2. Migrate
 
@@ -108,6 +112,20 @@ For each way the survey found:
   `digest::Context::finish(self)`, so leave the code as it is: MIGRATING.md's
   tables map to rind's own API, where `finish` takes `&mut self`.
 - **aws-lc-rs's API.** Port each call to rind's, using MIGRATING.md's tables.
+- **A crate that hard-wires ring 0.17.** Patch ring in the root `Cargo.toml`
+  of each binary's workspace, then run `cargo update -p ring`, which changes
+  ring alone:
+
+  ```toml
+  [patch.crates-io]
+  ring = { git = "https://github.com/moq-dev/rind-patch" }
+  ```
+
+  This moves every crate in the tree on ring 0.17, the project's own ring
+  calls included, which then need no rename. Move rustls and the crates an
+  adapter serves as above all the same, since their rind routes skip
+  ring's API. A dependency that then fails to build calls an item
+  [rind-ring's README] leaves out: stop, and report it as a rind gap.
 
 rind panics on a CPU missing a feature it requires. At the start of each
 binary's `main`, refuse one by exiting with the error from an adapter's
@@ -122,7 +140,8 @@ Commit as you go, with messages in the project's style.
 1. Confirm nothing that ships links ring or aws-lc-rs: for each feature set
    the project ships, or a library's rind feature, the three `cargo tree`
    commands from the survey print no dependency path, or only
-   dev-dependencies.
+   dev-dependencies. With the ring patch, `-i ring` instead prints
+   `ring v0.17.999` from rind-patch and no other ring.
 2. Build each release target, adding its standard library with
    `rustup target add` where it is missing. Where the host has the target's
    linker, run the release build with `--target`. Otherwise run
