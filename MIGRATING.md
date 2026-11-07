@@ -4,7 +4,8 @@ This guide maps each ring 0.17 and aws-lc-rs 1.x item to rind's name, to the
 [quest](quest/README.md) that adds it, or to why rind refuses it, and
 surveys the crates that pick a crypto backend for you. ring's names match
 aws-lc-rs's except where noted. A crate on ring that cannot change its code
-renames [rind-ring](#rind-ring), ring's API on rind, to `ring`.
+renames [rind-ring](#rind-ring), ring's API on rind, to `ring`, and a binary
+patches it in for every crate in its tree on ring 0.17.
 
 ## Across the API
 
@@ -354,9 +355,13 @@ errors are rcgen's. Call `rind::cpu::check()`, or rind-ring's `cpu::check()`, be
 
 rind-ring offers ring 0.17's API name for name, so a crate on ring swaps it
 in with `ring = { package = "rind-ring", version = "0.17" }` and no code
-changes. The rename reaches only that crate: a dependency that names ring,
-such as rustls with its `ring` feature, still builds ring, since Cargo cannot
-patch it with a crate of another name. It panics wherever ring panics, so
+changes. The rename reaches only that crate. A binary moves every crate in
+its tree on ring 0.17, such as rustls or quinn-proto on their `ring`
+features, by adding `[patch.crates-io] ring = { git =
+"https://github.com/moq-dev/rind" }` to its workspace's root `Cargo.toml`
+and running `cargo update -p ring`. That builds `patch/ring`, an unpublished
+crate named `ring` that re-exports rind-ring, and `cargo tree -i ring` then
+prints only `ring v0.17.999` from rind's repository. It panics wherever ring panics, so
 its signatures stay ring's, and adds a `cpu` module wrapping rind's check, so
 the renamed crate refuses an unsupported CPU with `ring::cpu::check()`
 without depending on rind. Its [README](rind-ring/README.md) lists the
@@ -414,7 +419,8 @@ those algorithms only with its `aws_lc_rs` feature.
 
 Surveyed on 2026-10-31 against each crate's latest release, by reading its
 features and source; none were built. A migrated graph should give no output
-from `cargo tree -e normal,build -i ring` or `-i aws-lc-sys`.
+from `cargo tree -e normal,build -i ring` or `-i aws-lc-sys`, except
+`ring v0.17.999` from rind's repository under the ring patch.
 
 "Install" means calling `rind_rustls::default_provider()?.install_default()`
 before the crate builds its TLS config. Crates that read rustls's process
@@ -425,6 +431,9 @@ install ring's if nothing is installed first.
   install or pass rind-rustls's provider.
 - **rind-x**: an existing adapter crate covers it.
 - **Pure Rust**: its default build, or the listed features, use neither.
+- **Patch**: ring 0.17 is hard-wired, and a binary moves it with the
+  [ring patch](#rind-ring). Built against the patch on 2026-11-06, with no
+  other ring left in the tree.
 - **Adapter**: a new `rind-*` crate could cover it through a public hook.
   [Adapters](#adapters) says which are worth building.
 - **Unsupported**: ring or aws-lc-rs is hard-wired. The cell names the

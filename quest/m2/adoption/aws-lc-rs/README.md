@@ -16,6 +16,5 @@ Decided with the maintainer on 2026-11-07, in m2 adoption:
 
 ## Required
 
-- [A ring patch shim](/quest/m2/adoption/aws-lc-rs/ring-patch.md) - one line replaces ring across a binary's tree
 - [rind-aws-lc-rs](/quest/m2/adoption/aws-lc-rs/rind-aws-lc-rs.md) - aws-lc-rs 1.x's API on rind
 - [An aws-lc-rs patch shim](/quest/m2/adoption/aws-lc-rs/aws-lc-rs-patch.md) - one line replaces aws-lc-rs across a binary's tree

@@ -70,6 +70,9 @@ declare -A scope=(
     [bench]='^(BENCHMARKS\.md$|benchmarks/|admin/bench-report|quest/)'
     # admin/build-cost builds these against rind's API, so they break with it.
     [fixtures]='^(rind/|rind-rustls/|Cargo\.toml$|admin/build-cost-fixtures/(rind|rustls)/)'
+    # The ring shim re-exports rind-ring, and Cargo finds it by name among the
+    # repository's manifests.
+    [patch]='^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)'
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
@@ -97,6 +100,7 @@ declare -A tools=(
     [compat]='python3'
     [bench]='python3'
     [fixtures]='cargo'
+    [patch]='cargo jq git'
     [quest]='quest'
     [gh]='actionlint yq jq'
     [hooks]='shellcheck'
@@ -108,8 +112,8 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs msrv cross deny versions license inplace compat bench fixtures quest gh hooks shell nix) ;;
-    fix) modules=(rs compat nix) ;;
+    check) modules=(rs msrv cross deny versions license inplace compat bench fixtures patch quest gh hooks shell nix) ;;
+    fix) modules=(rs compat patch nix) ;;
 esac
 
 selected=()
@@ -220,6 +224,11 @@ for module in "${selected[@]}"; do
             cargo check --manifest-path admin/build-cost-fixtures/rind/Cargo.toml --target-dir target
             cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind --target-dir target
             cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind-lean --target-dir target
+            ;;
+        check:patch) sh/patch.sh ;;
+        fix:patch)
+            cargo fmt --manifest-path patch/ring/Cargo.toml
+            cargo fmt --manifest-path patch/fixture/Cargo.toml
             ;;
         check:gh)
             actionlint

@@ -6,8 +6,8 @@ A binary that adds `[patch.crates-io] aws-lc-rs = { git = "https://github.com/mo
 
 ## Plan
 
-- Add an unpublished crate named `aws-lc-rs` (1.x) that re-exports rind-aws-lc-rs, alongside the [`ring` shim](/quest/m2/adoption/aws-lc-rs/ring-patch.md).
-- The fixture uses rustls with its default features, which pull in aws-lc-rs, plus quinn-proto's `aws-lc-rs` feature. CI builds it with the patch, checks `cargo tree -i aws-lc-sys` prints nothing, and runs a handshake.
+- Add an unpublished crate named `aws-lc-rs` (1.x) that re-exports rind-aws-lc-rs, beside the `ring` shim in `patch/ring`.
+- Extend `patch/fixture`, which `sh/patch.sh` runs, with rustls's default features, which pull in aws-lc-rs, and quinn-proto's `aws-lc-rs` feature. Check that `cargo tree -i aws-lc-sys` prints nothing, and run its handshake.
 - Document it in MIGRATE.md and move the MIGRATING.md rows it unblocks, such as s2n-quic and libp2p.
 
 ## Required
