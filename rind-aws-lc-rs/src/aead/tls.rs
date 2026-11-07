@@ -99,6 +99,8 @@ impl TlsRecordSealingKey {
     where
         A: AsRef<[u8]>,
     {
+        // Bad buffers leave the nonce unused, as in aws-lc-rs.
+        super::check_scatter(in_plaintext, out_ciphertext, extra_in, extra_out_and_tag)?;
         self.check(&nonce)?;
         self.key.seal_out_of_place_scatter(
             nonce,

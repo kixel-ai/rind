@@ -285,15 +285,10 @@ impl LessSafeKey {
         let opened = in_out.get_mut(ciphertext).ok_or(error::Unspecified)?;
         let len = opened.len();
         let tag = rind::aead::Tag::try_from(tag).map_err(error::unspecified)?;
-        if self
-            .key
+        // rind clears `opened` when the tag does not match.
+        self.key
             .open_in_place_separate_tag(nonce.into_rind(), aad, tag, opened)
-            .is_err()
-        {
-            // So a caller never reads unauthenticated bytes.
-            in_out[..len].fill(0);
-            return Err(error::Unspecified);
-        }
+            .map_err(error::unspecified)?;
         in_out.copy_within(start.., 0);
         Ok(&mut in_out[..len])
     }
@@ -416,11 +411,7 @@ impl LessSafeKey {
     where
         A: AsRef<[u8]>,
     {
-        if in_plaintext.len() != out_ciphertext.len()
-            || extra_out_and_tag.len() != extra_in.len() + TAG_LEN
-        {
-            return Err(error::Unspecified);
-        }
+        check_scatter(in_plaintext, out_ciphertext, extra_in, extra_out_and_tag)?;
         out_ciphertext.copy_from_slice(in_plaintext);
         self.seal_in_place_scatter(nonce, aad, out_ciphertext, extra_in, extra_out_and_tag)
     }
@@ -448,7 +439,11 @@ impl LessSafeKey {
             true => self.seal_in_place_separate_tag(nonce, aad, in_out)?,
             // rind seals one contiguous buffer, so join the two plaintexts.
             false => {
-                let mut joined = Vec::with_capacity(in_out.len() + extra_in.len());
+                let mut joined = Vec::new();
+                let len = in_out.len().checked_add(extra_in.len());
+                joined
+                    .try_reserve_exact(len.ok_or(error::Unspecified)?)
+                    .map_err(|_| error::Unspecified)?;
                 joined.extend_from_slice(in_out);
                 joined.extend_from_slice(extra_in);
                 let tag = self.seal_in_place_separate_tag(nonce, aad, &mut joined)?;
@@ -802,4 +797,21 @@ fn random_nonce() -> Result<[u8; NONCE_LEN], error::Unspecified> {
     let mut nonce = [0; NONCE_LEN];
     crate::rand::fill(&mut nonce)?;
     Ok(nonce)
+}
+
+/// Refuses scatter buffers whose lengths do not match, before a sealing key
+/// takes the nonce: `out_ciphertext` as long as `in_plaintext`, and
+/// `extra_out_and_tag` as `extra_in` and the tag.
+pub(crate) fn check_scatter(
+    in_plaintext: &[u8],
+    out_ciphertext: &[u8],
+    extra_in: &[u8],
+    extra_out_and_tag: &[u8],
+) -> Result<(), error::Unspecified> {
+    match in_plaintext.len() == out_ciphertext.len()
+        && extra_out_and_tag.len() == extra_in.len() + TAG_LEN
+    {
+        true => Ok(()),
+        false => Err(error::Unspecified),
+    }
 }

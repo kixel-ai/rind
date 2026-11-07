@@ -401,3 +401,58 @@ fn refused() {
         assert!(ours::agreement::agree(&ours_key, peer, (), |_| Ok(())).is_err());
     }
 }
+
+/// A DER element tagged `tag` holding `contents`.
+fn der(tag: u8, contents: &[u8]) -> Vec<u8> {
+    let len = contents.len();
+    let mut out = vec![tag];
+    match len {
+        0..=0x7f => out.push(len as u8),
+        0x80..=0xff => out.extend([0x81, len as u8]),
+        _ => out.extend([0x82, (len >> 8) as u8, len as u8]),
+    }
+    out.extend_from_slice(contents);
+    out
+}
+
+#[test]
+fn rsa_public_keys() {
+    let key = theirs::rsa::KeyPair::from_pkcs8(rsa_pkcs8()).unwrap();
+    let pkcs1 = key.public_key().as_ref().to_vec();
+
+    // Both load the key as PKCS#1, and in an SPKI whose `rsaEncryption`
+    // omits its NULL parameters.
+    const RSA_ENCRYPTION: &[u8] = &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01];
+    let bits = [&[0][..], &pkcs1].concat();
+    let spki = der(
+        0x30,
+        &[der(0x30, &der(0x06, RSA_ENCRYPTION)), der(0x03, &bits)].concat(),
+    );
+    for input in [&pkcs1, &spki] {
+        let ours = ours::rsa::PublicKey::from_der(input).unwrap();
+        let theirs = theirs::rsa::PublicKey::from_der(input).unwrap();
+        assert_eq!(ours.as_ref(), theirs.as_ref());
+    }
+
+    // Both refuse an even modulus. e = 65537 is the last five bytes, so the
+    // modulus ends just before them.
+    let mut even = pkcs1.clone();
+    let last = even.len() - 6;
+    even[last] &= 0xfe;
+    assert!(ours::rsa::PublicKey::from_der(&even).is_err());
+    assert!(theirs::rsa::PublicKey::from_der(&even).is_err());
+    assert!(ours::rsa::RsaParameters::public_modulus_len(&even).is_err());
+    assert!(theirs::rsa::RsaParameters::public_modulus_len(&even).is_err());
+
+    // A modulus too long for DER's two-byte lengths fails to encode.
+    let mut n = vec![0xff; 65536];
+    n[65535] = 0xfb;
+    let components = ours::rsa::PublicKeyComponents {
+        n,
+        e: vec![1, 0, 1],
+    };
+    assert!(
+        ours::encoding::AsDer::<ours::encoding::PublicKeyX509Der<'static>>::as_der(&components)
+            .is_err()
+    );
+}

@@ -7,43 +7,54 @@ use core::marker::PhantomData;
 
 use zeroize::Zeroize;
 
-/// Bytes exposed by an encoding, wiped on drop when owned, since some hold a
-/// private key. `T` tells the encodings apart.
-pub struct Buffer<'a, T>(Cow<'a, [u8]>, PhantomData<T>);
+/// Bytes exposed by an encoding. `T` tells the encodings apart, and says
+/// whether they hold a private key, wiped on drop when owned.
+pub struct Buffer<'a, T: Kind>(Cow<'a, [u8]>, PhantomData<T>);
 
-impl<T> Buffer<'_, T> {
+/// Whether an encoding holds a private key.
+pub trait Kind {
+    /// Whether the encoding holds a private key, which is wiped on drop.
+    const SECRET: bool;
+}
+
+impl<T: Kind> Buffer<'_, T> {
     pub(crate) fn new(owned: Vec<u8>) -> Self {
         Buffer(Cow::Owned(owned), PhantomData)
     }
 }
 
-impl<T> Drop for Buffer<'_, T> {
+impl<T: Kind> Drop for Buffer<'_, T> {
     fn drop(&mut self) {
-        if let Cow::Owned(bytes) = &mut self.0 {
+        if let (true, Cow::Owned(bytes)) = (T::SECRET, &mut self.0) {
             bytes.zeroize();
         }
     }
 }
 
-impl<T> fmt::Debug for Buffer<'_, T> {
+impl<T: Kind> fmt::Debug for Buffer<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Buffer(...)")
     }
 }
 
-impl<T> AsRef<[u8]> for Buffer<'_, T> {
+impl<T: Kind> AsRef<[u8]> for Buffer<'_, T> {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-/// Declares serialized forms, each a [`Buffer`] of its own type.
+/// Declares serialized forms, each a [`Buffer`] of its own type, and whether
+/// it holds a private key.
 macro_rules! generated_encodings {
-    ($(($name:ident, $name_type:ident)),* $(,)?) => {
+    ($(($name:ident, $name_type:ident, $secret:literal)),* $(,)?) => {
         mod buffer_type {
             $(
                 pub struct $name_type {
                     _priv: (),
+                }
+
+                impl $crate::buffer::Kind for $name_type {
+                    const SECRET: bool = $secret;
                 }
             )*
         }

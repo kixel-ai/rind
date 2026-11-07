@@ -164,6 +164,24 @@ impl AsDer<Pkcs8V1Der<'static>> for KeyPair {
     }
 }
 
+/// The verification algorithm with rind's widest modulus range, 1024 to 8192
+/// bits, which loads RSA public keys outside any one algorithm.
+const ANY_RSA: &rind::signature::RsaVerificationAlgorithm =
+    &rind::signature::verify::legacy::RSA_PKCS1_1024_SHA1;
+
+/// Loads a PKCS#1 `RSAPublicKey` or `SubjectPublicKeyInfo` as rind does,
+/// refusing what AWS-LC's `RSA_check_key` does, such as an even modulus or an
+/// exponent of 1. Its bytes are then always PKCS#1.
+fn rind_public_key(der: &[u8]) -> Result<rind::signature::PublicKey, Unspecified> {
+    rind::signature::PublicKey::new(ANY_RSA, der).map_err(|_| Unspecified)
+}
+
+/// The `rsaEncryption` `SubjectPublicKeyInfo` holding a PKCS#1 `RSAPublicKey`.
+fn spki(pkcs1: &[u8]) -> Result<PublicKeyX509Der<'static>, Unspecified> {
+    let spki = rind_public_key(pkcs1)?.to_spki();
+    Ok(PublicKeyX509Der::new(spki.as_ref().to_vec()))
+}
+
 /// An RSA public key, whose bytes are its PKCS#1 `RSAPublicKey` DER.
 #[derive(Clone)]
 pub struct PublicKey {
@@ -173,6 +191,7 @@ pub struct PublicKey {
 }
 
 impl PublicKey {
+    /// Wraps a PKCS#1 `RSAPublicKey` that rind has already parsed.
     fn from_pkcs1(der: &[u8]) -> Result<Self, Unspecified> {
         let (n, e) = der::rsa_public_key(der)?;
         Ok(Self {
@@ -185,11 +204,9 @@ impl PublicKey {
     /// Parses a PKCS#1 `RSAPublicKey` or an `rsaEncryption`
     /// `SubjectPublicKeyInfo`.
     pub fn from_der(input: &[u8]) -> Result<Self, KeyRejected> {
-        let pkcs1 = match der::is_spki(input) {
-            true => der::rsa_spki(input).map_err(|_| KeyRejected::invalid_encoding())?,
-            false => input,
-        };
-        Self::from_pkcs1(pkcs1).map_err(|_| KeyRejected::invalid_encoding())
+        rind_public_key(input)
+            .and_then(|key| Self::from_pkcs1(key.as_ref()))
+            .map_err(|_| KeyRejected::invalid_encoding())
     }
 
     /// The modulus.
@@ -227,7 +244,7 @@ impl fmt::Debug for PublicKey {
 
 impl AsDer<PublicKeyX509Der<'static>> for PublicKey {
     fn as_der(&self) -> Result<PublicKeyX509Der<'static>, Unspecified> {
-        Ok(PublicKeyX509Der::new(der::rsa_spki_encode(&self.der)))
+        spki(&self.der)
     }
 }
 
@@ -318,9 +335,9 @@ impl<B: AsRef<[u8]>> TryFrom<PublicKeyComponents<B>> for PublicEncryptingKey {
 
 impl<B: AsRef<[u8]>> AsDer<PublicKeyX509Der<'static>> for PublicKeyComponents<B> {
     fn as_der(&self) -> Result<PublicKeyX509Der<'static>, Unspecified> {
-        let components = self.rind()?;
-        let pkcs1 = der::rsa_public_key_encode(components.n, components.e);
-        Ok(PublicKeyX509Der::new(der::rsa_spki_encode(&pkcs1)))
+        let key = rind::signature::PublicKey::from_components(ANY_RSA, &self.rind()?)
+            .map_err(unspecified)?;
+        Ok(PublicKeyX509Der::new(key.to_spki().as_ref().to_vec()))
     }
 }
 
@@ -385,7 +402,9 @@ impl RsaParameters {
 
     /// The bit length of the modulus of a PKCS#1 `RSAPublicKey`.
     pub fn public_modulus_len(public_key: &[u8]) -> Result<u32, Unspecified> {
+        // aws-lc-rs takes PKCS#1 alone here, which `der` checks.
         let (n, _) = der::rsa_public_key(public_key)?;
+        rind_public_key(public_key)?;
         Ok(u32::try_from(der::bits(n))?)
     }
 
@@ -892,7 +911,7 @@ impl fmt::Debug for PublicEncryptingKey {
 
 impl AsDer<PublicKeyX509Der<'static>> for PublicEncryptingKey {
     fn as_der(&self) -> Result<PublicKeyX509Der<'static>, Unspecified> {
-        Ok(PublicKeyX509Der::new(der::rsa_spki_encode(&self.0.der)))
+        spki(&self.0.der)
     }
 }
 

@@ -68,7 +68,7 @@ impl AlgorithmId {
     }
 }
 
-generated_encodings!((EncapsulationKeyBytes, EncapsulationKeyBytesType));
+generated_encodings!((EncapsulationKeyBytes, EncapsulationKeyBytesType, false));
 
 /// A decapsulation key, which decapsulates any number of ciphertexts, wiped
 /// on drop.

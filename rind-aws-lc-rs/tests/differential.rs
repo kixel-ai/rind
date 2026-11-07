@@ -406,3 +406,28 @@ proptest! {
         });
     }
 }
+
+/// Scatter buffers of the wrong length leave the TLS nonce unused.
+#[test]
+fn tls_scatter_keeps_nonce() {
+    let results = both!(|c| {
+        use c::aead::{AES_128_GCM, Aad, Nonce, TlsProtocolId, TlsRecordSealingKey};
+        let mut key =
+            TlsRecordSealingKey::new(&AES_128_GCM, TlsProtocolId::TLS13, &[7; 16]).unwrap();
+        let mut seal = |out_len: usize| {
+            let mut out = vec![0; out_len];
+            let mut tag = [0; 16];
+            key.seal_out_of_place_scatter(
+                Nonce::assume_unique_for_key([1; 12]),
+                Aad::empty(),
+                b"message",
+                &mut out,
+                &[],
+                &mut tag,
+            )
+            .is_ok()
+        };
+        (seal(3), seal(7))
+    });
+    assert_eq!(results, ((false, true), (false, true)));
+}

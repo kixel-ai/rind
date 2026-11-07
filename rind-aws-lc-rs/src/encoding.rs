@@ -22,12 +22,20 @@ pub trait AsRawBytes<T> {
 }
 
 generated_encodings!(
-    (Curve25519SeedBin, Curve25519SeedBinType),
-    (EcPrivateKeyBin, EcPrivateKeyBinType),
-    (EcPrivateKeyRfc5915Der, EcPrivateKeyRfc5915DerType),
-    (EcPublicKeyCompressedBin, EcPublicKeyCompressedBinType),
-    (EcPublicKeyUncompressedBin, EcPublicKeyUncompressedBinType),
-    (Pkcs8V1Der, Pkcs8V1DerType),
-    (Pkcs8V2Der, Pkcs8V2DerType),
-    (PublicKeyX509Der, PublicKeyX509DerType),
+    (Curve25519SeedBin, Curve25519SeedBinType, true),
+    (EcPrivateKeyBin, EcPrivateKeyBinType, true),
+    (EcPrivateKeyRfc5915Der, EcPrivateKeyRfc5915DerType, true),
+    (
+        EcPublicKeyCompressedBin,
+        EcPublicKeyCompressedBinType,
+        false
+    ),
+    (
+        EcPublicKeyUncompressedBin,
+        EcPublicKeyUncompressedBinType,
+        false
+    ),
+    (Pkcs8V1Der, Pkcs8V1DerType, true),
+    (Pkcs8V2Der, Pkcs8V2DerType, true),
+    (PublicKeyX509Der, PublicKeyX509DerType, false),
 );

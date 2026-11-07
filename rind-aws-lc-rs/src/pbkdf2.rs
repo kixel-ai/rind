@@ -59,11 +59,9 @@ pub fn derive(
 /// Checks in constant time that `previously_derived` is what [`derive()`] makes for the same inputs.
 ///
 /// Fails if `previously_derived` is empty or differs. As in aws-lc-rs, a
-/// value shorter than the hash output is compared too.
-///
-/// # Panics
-///
-/// Panics if `previously_derived` is longer than PBKDF2 allows, as aws-lc-rs does.
+/// value shorter than the hash output is compared too. Unlike aws-lc-rs,
+/// it also fails, rather than panicking, when `previously_derived` is longer
+/// than PBKDF2 allows.
 pub fn verify(
     algorithm: Algorithm,
     iterations: NonZeroU32,
@@ -74,11 +72,9 @@ pub fn verify(
     let secret = rind::pbkdf2::Secret::new(algorithm.rind(), secret);
     let hash_len = algorithm.0.tag_len();
     if previously_derived.len() >= hash_len {
-        return match secret.verify(iterations, salt, previously_derived) {
-            Ok(()) => Ok(()),
-            Err(rind::Error::WrongLength) => panic!("derived key too long"),
-            Err(_) => Err(error::Unspecified),
-        };
+        return secret
+            .verify(iterations, salt, previously_derived)
+            .map_err(error::unspecified);
     }
     if previously_derived.is_empty() {
         return Err(error::Unspecified);
