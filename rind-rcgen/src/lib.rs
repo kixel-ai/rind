@@ -5,7 +5,8 @@
 //! It generates and loads ECDSA P-256 and P-384 and Ed25519 keys, and loads RSA keys.
 //!
 //! Build rcgen with `default-features = false` so it compiles no other crypto backend.
-//! rcgen then needs each certificate's serial number set explicitly.
+//! rcgen then needs each certificate's serial number set explicitly, and
+//! [`key_identifier`] fills in the key identifiers it would otherwise leave empty.
 //!
 //! ```rust
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,6 +17,7 @@
 //!
 //! let mut params = rcgen::CertificateParams::new(["localhost".to_string()])?;
 //! params.serial_number = Some(rind_rcgen::serial_number());
+//! params.key_identifier_method = rind_rcgen::key_identifier(&key);
 //!
 //! let cert = params.self_signed(&key)?;
 //! let key = key.to_pkcs8();
@@ -29,9 +31,11 @@
 use core::fmt;
 
 use rcgen::{
-    Error, PKCS_ECDSA_P256_SHA256, PKCS_ECDSA_P384_SHA384, PKCS_ED25519, PKCS_RSA_SHA256,
-    PKCS_RSA_SHA384, PKCS_RSA_SHA512, SerialNumber, SignatureAlgorithm,
+    Error, KeyIdMethod, PKCS_ECDSA_P256_SHA256, PKCS_ECDSA_P384_SHA384, PKCS_ED25519,
+    PKCS_RSA_SHA256, PKCS_RSA_SHA384, PKCS_RSA_SHA512, PublicKeyData, SerialNumber,
+    SignatureAlgorithm,
 };
+use rind::digest::{SHA256, digest};
 use rind::signature::{
     EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, PublicKey, RsaKeyPair,
     RsaSigningAlgorithm, sign,
@@ -142,6 +146,17 @@ impl KeyPair {
     }
 }
 
+/// Identifies `key` as rcgen's `crypto` feature does, by the first 20 bytes of
+/// the SHA-256 of its SubjectPublicKeyInfo (RFC 7093 method 1).
+///
+/// Set it as `key_identifier_method` on each certificate's own parameters: they
+/// give that certificate's subject key identifier and, once an [`rcgen::Issuer`]
+/// holds them, the authority key identifier of the certificates it signs.
+pub fn key_identifier(key: &impl PublicKeyData) -> KeyIdMethod {
+    let hash = digest(&SHA256, &key.subject_public_key_info());
+    KeyIdMethod::PreSpecified(hash.as_ref()[..20].to_vec())
+}
+
 /// How rind signs for an rcgen algorithm.
 enum Signer {
     Ecdsa(&'static EcdsaSigningAlgorithm),
@@ -177,7 +192,7 @@ fn rejected(err: rind::Error) -> Error {
     }
 }
 
-impl rcgen::PublicKeyData for KeyPair {
+impl PublicKeyData for KeyPair {
     // rcgen takes the uncompressed point for ECDSA, the 32 bytes for Ed25519,
     // and PKCS#1 `RSAPublicKey` DER for RSA, which is rind's encoding of each.
     fn der_bytes(&self) -> &[u8] {

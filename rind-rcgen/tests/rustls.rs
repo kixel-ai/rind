@@ -1,13 +1,14 @@
 //! Certificates signed by rind-rcgen verify under rind-rustls and under
-//! rustls on aws-lc-rs, and each key loads and matches its certificate.
+//! rustls on aws-lc-rs, each key loads and matches its certificate, and key
+//! identifiers match rcgen's own.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use rcgen::{
-    BasicConstraints, CertificateParams, Error, IsCa, Issuer, PKCS_ECDSA_P256_SHA256,
+    BasicConstraints, CertificateParams, Error, IsCa, Issuer, KeyIdMethod, PKCS_ECDSA_P256_SHA256,
     PKCS_ECDSA_P384_SHA384, PKCS_ED25519, PKCS_RSA_SHA256, PKCS_RSA_SHA384, PKCS_RSA_SHA512,
-    PublicKeyData, SignatureAlgorithm,
+    PublicKeyData, SerialNumber, SignatureAlgorithm,
 };
 use rind_rcgen::KeyPair;
 use rustls::RootCertStore;
@@ -59,8 +60,7 @@ fn signed_by_ca() {
 
 #[test]
 fn rsa_loads_but_does_not_generate() {
-    let der =
-        PrivatePkcs8KeyDer::from(&include_bytes!("../../rind/src/high/rsa/rsa2048.pkcs8.der")[..]);
+    let der = rsa_pkcs8();
     for algorithm in [&PKCS_RSA_SHA256, &PKCS_RSA_SHA384, &PKCS_RSA_SHA512] {
         let key = KeyPair::from_pkcs8(algorithm, &der).unwrap();
         let cert = params().self_signed(&key).unwrap();
@@ -74,6 +74,51 @@ fn rsa_loads_but_does_not_generate() {
             Error::KeyGenerationUnavailable
         );
     }
+}
+
+#[test]
+fn key_identifiers_match_rcgen() {
+    // Ed25519 signs deterministically, so the two chains match byte for byte.
+    let ca_key = KeyPair::generate(&PKCS_ED25519).unwrap();
+    let mut keys = Vec::from(GENERATED.map(|algorithm| KeyPair::generate(algorithm).unwrap()));
+    keys.push(KeyPair::from_pkcs8(&PKCS_RSA_SHA256, &rsa_pkcs8()).unwrap());
+
+    for key in &keys {
+        let ours = chain(&ca_key, key, rind_rcgen::key_identifier);
+        // rcgen's default with `crypto`, hashing on aws-lc-rs.
+        let rcgen = chain(&ca_key, key, |_| KeyIdMethod::Sha256);
+        assert_eq!(ours, rcgen);
+
+        for provider in providers() {
+            verify(&provider, &ours[0], &ours[1]).unwrap();
+        }
+    }
+}
+
+/// A CA and a certificate it signs for `key`, with both key identifier extensions.
+fn chain(
+    ca_key: &KeyPair,
+    key: &KeyPair,
+    method: impl Fn(&KeyPair) -> KeyIdMethod,
+) -> [CertificateDer<'static>; 2] {
+    // Fixed serial numbers, so only the key identifiers could tell two chains apart.
+    let mut ca_params = params();
+    ca_params.serial_number = Some(SerialNumber::from(1));
+    ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    ca_params.key_identifier_method = method(ca_key);
+    let ca = ca_params.self_signed(ca_key).unwrap();
+
+    let mut cert_params = params();
+    cert_params.serial_number = Some(SerialNumber::from(2));
+    // rcgen writes a subject key identifier only alongside basic constraints.
+    cert_params.is_ca = IsCa::ExplicitNoCa;
+    cert_params.use_authority_key_identifier_extension = true;
+    cert_params.key_identifier_method = method(key);
+    let cert = cert_params
+        .signed_by(key, &Issuer::new(ca_params, ca_key))
+        .unwrap();
+
+    [ca.der().clone(), cert.der().clone()]
 }
 
 #[test]
@@ -107,6 +152,10 @@ fn serial_number_fits_rfc_5280() {
     assert_eq!(serial.len(), 20);
     assert!(serial.as_ref()[0] < 0x80);
     assert_ne!(serial, rind_rcgen::serial_number());
+}
+
+fn rsa_pkcs8() -> PrivatePkcs8KeyDer<'static> {
+    PrivatePkcs8KeyDer::from(&include_bytes!("../../rind/src/high/rsa/rsa2048.pkcs8.der")[..])
 }
 
 fn providers() -> [Arc<CryptoProvider>; 2] {
