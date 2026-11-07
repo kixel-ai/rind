@@ -218,16 +218,16 @@ from the AEAD API's `Key` to HACL*'s Vale AES-GCM routines, in
   otherwise the key holds FIPS 197's round keys for its bytes, as Vale's
   `key_to_round_keys_LE` lays them out, and the GHASH key powers Vale's
   `hkeys_reqs_pub` requires of `E_K(0)`;
-- `aes_gcm_seal`: for AAD and messages under 2^32 bytes, the ciphertext in
-  place and the tag are Vale's `gcm_encrypt_LE` of the key, nonce, message,
-  and AAD;
-- `aes_gcm_open_separate_tag` and `aes_gcm_open`: for those lengths, the
-  call succeeds exactly when Vale's `gcm_decrypt_LE` accepts the tag, leaving
-  its plaintext in place, and otherwise fails, leaving zeros.
+- `aes_gcm_seal`: for AAD under 2^32 bytes and messages of 129 bytes up to
+  that, the ciphertext in place and the tag are Vale's `gcm_encrypt_LE` of the
+  key, nonce, message, and AAD;
+- `aes_gcm_open_separate_tag` and `aes_gcm_open`: for AAD and messages under
+  2^32 bytes, the call succeeds exactly when Vale's `gcm_decrypt_LE` accepts
+  the tag, leaving its plaintext in place, and otherwise fails, leaving zeros.
 
 Longer AAD or messages run the by-8 code, which no proof covers, as do
-AES-192 keys, for which Vale has no routine. The key
-setup is rind's: its AES-NI key expansion and block cipher, and its
+seals of messages under 129 bytes, where it is faster, and AES-192 keys, for
+which Vale has no routine. The key setup is rind's: its AES-NI key expansion and block cipher, and its
 PCLMULQDQ GHASH key powers, whose Karatsuba product and reduction
 `Rind/Gf128.lean` proves to be Vale's `gf128_mul_rev` of the shifted keys
 (`mul_shiftKey1`). The rest is the Rust around Vale's routines, which

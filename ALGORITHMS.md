@@ -28,7 +28,7 @@ SHA-512.
 
 | Algorithm | x86_64 | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|
-| AES-GCM | BoringSSL ⚡ + HACL* ✓ + Graviola | HACL* ✓ + rind | Graviola | aws-lc + rind |  |
+| AES-GCM | BoringSSL ⚡ + HACL* ✓ + Graviola | HACL* ✓ + Graviola ⚡ + rind | Graviola | aws-lc + rind |  |
 | AES block, AES-CTR | Graviola + aws-lc |  |  | aws-lc |  |
 | AES-KW, AES-KWP | Graviola + rind |  |  | aws-lc + rind |  |
 | AES-CBC | Graviola + aws-lc + rind |  |  | aws-lc + rind |  |
@@ -57,12 +57,6 @@ SHA-512.
   s2n-bignum's verified `bignum_copy_row_from_table` rather than, at widths
   that aren't a multiple of eight words, `bn_mul_mont_gather5`, which fuses
   a faster gather into the product.
-- AES-GCM without AVX2: [HACL\*]'s Vale AES-GCM seals and opens under rind's
-  key setup. On an i7-8700 (Coffee Lake), against the aws-lc and Graviola code
-  it replaced, AES-128 and AES-256 key setup fell from 101 and 105 ns to 97
-  and 101, and a 1350 B seal from 285 and 356 ns to 267 and 347, but a 32 B
-  seal rose from 44 and 51 ns to 49 and 54 (11% and 6%), a cost taken for the
-  faster keys and larger messages.
 - MD5: rind's portable Rust runs on every target, as no CPU has MD5
   instructions. On an i7-8700 it measured level with [aws-lc]'s x86_64
   assembly at 16 KB and 8% faster at 1350 B.
@@ -379,11 +373,12 @@ VAES, as from Haswell through Comet Lake and on Zen 1 and 2, [HACL\*]'s
 Vale AES-GCM runs the AEAD: its counter block, and a port of OpenSSL's
 `aesni_gcm`, which interleaves AES-CTR and GHASH six blocks at a time from
 288 bytes to encrypt and 96 to decrypt, then takes the rest a block at a time
-and checks the tag. rind computes the round keys and GHASH key powers itself,
+and checks the tag. Seals under 129 bytes run the by-8 path instead, as Vale's
+measured 0.94-1.19x its time there on Coffee Lake (medians 1.04-1.06x). rind computes the round keys and GHASH key powers itself,
 in the layout Vale's proof assumes, since Vale's own setup measured twice as
 slow, and `proofs/` proves them and the Rust around Vale's routines end to
 end. Vale's proof stops at 2^32 bytes of message or AAD, so longer ones run
-the by-8 code, which no proof covers, as do IVs other than 96 bits and the
+the by-8 code, which no proof covers, as do those short seals, IVs other than 96 bits, and the
 opening of truncated tags, whose tag check Vale's routine does not take. Every 256- and 512-bit kernel rind runs ends with
 `vzeroupper`, so SSE code after one pays no AVX-SSE transition or false
 dependency. There is also an optional AVX-512 by-16 AES-CTR
