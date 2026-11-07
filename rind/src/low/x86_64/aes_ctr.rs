@@ -85,7 +85,7 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for (key_len, seed) in [16, 32].into_iter().zip(1..) {
+        for (key_len, seed) in [16, 24, 32].into_iter().zip(1..) {
             let key = bytes(key_len, seed);
             let aes_key = AesKey::new(&key);
             let AesKey::Hw(hw) = &aes_key else {

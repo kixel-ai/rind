@@ -23,6 +23,7 @@ impl Algorithm {
     pub fn key_len(&self) -> usize {
         match self.id {
             AlgorithmId::Aes128Gcm => 16,
+            AlgorithmId::Aes192Gcm => 24,
             AlgorithmId::Aes256Gcm | AlgorithmId::ChaCha20Poly1305 => 32,
         }
     }
@@ -40,6 +41,11 @@ impl Algorithm {
 
 pub static AES_128_GCM: Algorithm = Algorithm {
     id: AlgorithmId::Aes128Gcm,
+    expand: Sealer::<AesGcm>::expand,
+};
+
+pub static AES_192_GCM: Algorithm = Algorithm {
+    id: AlgorithmId::Aes192Gcm,
     expand: Sealer::<AesGcm>::expand,
 };
 
@@ -222,7 +228,7 @@ The model departs from the Rust in five ways, and adds no axiom:
   modelled: it seals as `seal_in_place_separate_tag` does, then appends the
   tag.
 
-Of the algorithm statics, only `AES_128_GCM` and `AES_256_GCM` are modelled;
+Of the algorithm statics, only the AES-GCM ones are modelled;
 `CHACHA20_POLY1305` is quoted so the check sees every `Algorithm`.
 -/
 
@@ -248,6 +254,7 @@ structure aead.Algorithm where
 def aead.Algorithm.key_len (self : aead.Algorithm) : Usize :=
   match self.id with
   | .Aes128Gcm => 16#usize
+  | .Aes192Gcm => 24#usize
   | .Aes256Gcm | .ChaCha20Poly1305 => 32#usize
 
 /-- `Sealer::<C>::expand`, whose `ops` are `C::seal` and `C::open`. -/
@@ -270,6 +277,11 @@ def aead.Sealer.open {C : Type} (CipherInst : aead.Cipher C) (self : aead.Sealer
 /-- The `AES_128_GCM` static. -/
 def aead.AES_128_GCM : aead.Algorithm where
   id := .Aes128Gcm
+  expand := aead.Sealer.expand mid.aes_gcm.AesGcm.Insts.RindAeadCipher
+
+/-- The `AES_192_GCM` static. -/
+def aead.AES_192_GCM : aead.Algorithm where
+  id := .Aes192Gcm
   expand := aead.Sealer.expand mid.aes_gcm.AesGcm.Insts.RindAeadCipher
 
 /-- The `AES_256_GCM` static. -/

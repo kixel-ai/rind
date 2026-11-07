@@ -78,7 +78,7 @@ aes_ni_items() {
 }
 check_quote X86_64/AesNi aes_ni_items
 check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
-    'pub static AES_128_GCM:' 'pub static AES_256_GCM:' 'pub static CHACHA20_POLY1305:' 'impl Key {' \
+    'pub static AES_128_GCM:' 'pub static AES_192_GCM:' 'pub static AES_256_GCM:' 'pub static CHACHA20_POLY1305:' 'impl Key {' \
     'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \
     'pub struct Nonce(' 'impl Nonce {' 'pub struct Tag('
 check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
@@ -276,9 +276,11 @@ extract x86_64 X86_64 \
     --include crate::mid::aes::check_counter \
     --include crate::low::x86_64::aes \
     --opaque crate::low::x86_64::aes::aes128_expand \
+    --opaque crate::low::x86_64::aes::aes192_expand \
     --opaque crate::low::x86_64::aes::aes256_expand \
     --opaque crate::low::x86_64::aes::aes128_block \
     --opaque crate::low::x86_64::aes::aes256_block \
+    --opaque crate::low::x86_64::aes::aes_block \
     --opaque crate::low::x86_64::aes::HwKey::round_keys_512 \
     --opaque crate::low::x86_64::aes::RoundKeys512 \
     --include crate::low::x86_64::ghash \
