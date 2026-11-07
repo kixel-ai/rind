@@ -14,6 +14,13 @@ use rind::signature::{self, RsaPssSaltLength, RsaVerificationAlgorithm, sign, ve
 use rind::{hkdf, hmac, pbkdf2};
 use serde::Deserialize;
 
+/// The path of the Wycheproof vector file `name`, from any directory, as the
+/// iOS simulator runs the tests.
+fn vectors(name: &str) -> String {
+    let dir = env!("CARGO_MANIFEST_DIR");
+    format!("{dir}/../thirdparty/wycheproof/testvectors_v1/{name}")
+}
+
 #[derive(Deserialize, Debug)]
 struct TestFile {
     #[serde(rename(deserialize = "testGroups"))]
@@ -183,8 +190,8 @@ fn hmac_tests() {
         ("hmac_sha384_test.json", &hmac::HMAC_SHA384),
         ("hmac_sha512_test.json", &hmac::HMAC_SHA512),
     ] {
-        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
-            .unwrap_or_else(|_| panic!("failed to open data file {file}"));
+        let data_file =
+            File::open(vectors(file)).unwrap_or_else(|_| panic!("failed to open data file {file}"));
 
         let reader = BufReader::new(data_file);
         let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
@@ -253,10 +260,7 @@ fn hkdf_tests() {
         ("hkdf_sha384_test.json", &hkdf::HKDF_SHA384),
         ("hkdf_sha512_test.json", &hkdf::HKDF_SHA512),
     ] {
-        check(
-            &format!("../thirdparty/wycheproof/testvectors_v1/{file}"),
-            algorithm,
-        );
+        check(&vectors(file), algorithm);
     }
 }
 
@@ -292,8 +296,8 @@ fn pbkdf2_tests() {
             64,
         ),
     ] {
-        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
-            .unwrap_or_else(|_| panic!("failed to open data file {file}"));
+        let data_file =
+            File::open(vectors(file)).unwrap_or_else(|_| panic!("failed to open data file {file}"));
 
         let reader = BufReader::new(data_file);
         let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
@@ -363,7 +367,7 @@ fn test_verify_ecdsa() {
             &verify::ECDSA_P521_SHA512_ASN1,
         ),
     ] {
-        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
+        let data_file = File::open(vectors(file))
             .unwrap_or_else(|_| panic!("failed to open data file {}", file));
 
         let reader = BufReader::new(data_file);
@@ -501,7 +505,7 @@ fn test_verify_ecdsa_digest() {
             &SHA512,
         ),
     ] {
-        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
+        let data_file = File::open(vectors(file))
             .unwrap_or_else(|_| panic!("failed to open data file {}", file));
 
         let reader = BufReader::new(data_file);
@@ -543,8 +547,7 @@ fn test_aes_gmac() {
 /// AAD of an empty one, through `gcm::Key`, and those with 96-bit IVs through
 /// `aead::Key` too.
 fn aes_gcm(file: &str, gmac: bool) {
-    let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
-        .expect("failed to open data file");
+    let data_file = File::open(vectors(file)).expect("failed to open data file");
 
     let reader = BufReader::new(data_file);
     let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
@@ -628,8 +631,8 @@ fn check_open(valid: bool, malformed: bool, result: Result<(), Error>) {
 
 #[test]
 fn test_aes_cbc_pkcs7() {
-    let data_file = File::open("../thirdparty/wycheproof/testvectors_v1/aes_cbc_pkcs5_test.json")
-        .expect("failed to open data file");
+    let data_file =
+        File::open(vectors("aes_cbc_pkcs5_test.json")).expect("failed to open data file");
 
     let reader = BufReader::new(data_file);
     let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
@@ -680,8 +683,7 @@ fn test_aes_cbc_pkcs7() {
 
 #[test]
 fn test_aes_wrap() {
-    let data_file = File::open("../thirdparty/wycheproof/testvectors_v1/aes_wrap_test.json")
-        .expect("failed to open data file");
+    let data_file = File::open(vectors("aes_wrap_test.json")).expect("failed to open data file");
 
     let reader = BufReader::new(data_file);
     let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
@@ -733,8 +735,7 @@ fn test_aes_wrap() {
 
 #[test]
 fn test_aes_kwp() {
-    let data_file = File::open("../thirdparty/wycheproof/testvectors_v1/aes_kwp_test.json")
-        .expect("failed to open data file");
+    let data_file = File::open(vectors("aes_kwp_test.json")).expect("failed to open data file");
 
     let reader = BufReader::new(data_file);
     let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
@@ -796,8 +797,7 @@ fn test_rsa_pkcs1_verify() {
         "rsa_signature_8192_sha384_test.json",
         "rsa_signature_8192_sha512_test.json",
     ] {
-        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
-            .expect("failed to open data file");
+        let data_file = File::open(vectors(file)).expect("failed to open data file");
         println!("file: {data_file:?}");
 
         let reader = BufReader::new(data_file);
@@ -890,8 +890,7 @@ fn test_rsa_pkcs1_legacy_verify() {
         "rsa_pkcs1_1024_sig_gen_test.json",
         "rsa_pkcs1_2048_sig_gen_test.json",
     ] {
-        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
-            .expect("failed to open data file");
+        let data_file = File::open(vectors(file)).expect("failed to open data file");
         println!("file: {data_file:?}");
 
         let reader = BufReader::new(data_file);
@@ -958,8 +957,7 @@ fn test_rsa_pkcs1_sign() {
         "rsa_pkcs1_3072_sig_gen_test.json",
         "rsa_pkcs1_4096_sig_gen_test.json",
     ] {
-        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
-            .expect("failed to open data file");
+        let data_file = File::open(vectors(file)).expect("failed to open data file");
         println!("file: {data_file:?}");
 
         let reader = BufReader::new(data_file);
@@ -1009,8 +1007,7 @@ fn test_rsa_oaep_decrypt() {
         "rsa_oaep_4096_sha512_mgf1sha512_test.json",
         "rsa_oaep_misc_test.json",
     ] {
-        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
-            .expect("failed to open data file");
+        let data_file = File::open(vectors(file)).expect("failed to open data file");
         println!("file: {data_file:?}");
 
         let reader = BufReader::new(data_file);
@@ -1073,8 +1070,7 @@ fn test_rsa_pss_verify() {
         "rsa_pss_4096_sha512_mgf1_64_test.json",
         "rsa_pss_misc_test.json",
     ] {
-        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
-            .expect("failed to open data file");
+        let data_file = File::open(vectors(file)).expect("failed to open data file");
         println!("file: {data_file:?}");
 
         let reader = BufReader::new(data_file);
@@ -1160,8 +1156,7 @@ fn test_rsa_pss_verify() {
 
 #[test]
 fn test_ed25519_verify() {
-    let data_file = File::open("../thirdparty/wycheproof/testvectors_v1/ed25519_test.json")
-        .expect("failed to open data file");
+    let data_file = File::open(vectors("ed25519_test.json")).expect("failed to open data file");
     println!("file: {data_file:?}");
 
     let reader = BufReader::new(data_file);
@@ -1210,8 +1205,7 @@ fn test_ed25519_verify() {
 #[test]
 fn test_chacha20poly1305() {
     let data_file =
-        File::open("../thirdparty/wycheproof/testvectors_v1/chacha20_poly1305_test.json")
-            .expect("failed to open data file");
+        File::open(vectors("chacha20_poly1305_test.json")).expect("failed to open data file");
 
     let reader = BufReader::new(data_file);
     let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
@@ -1265,8 +1259,7 @@ fn test_chacha20poly1305() {
 #[test]
 fn test_chacha20() {
     let data_file =
-        File::open("../thirdparty/wycheproof/testvectors_v1/chacha20_counter_test.json")
-            .expect("failed to open data file");
+        File::open(vectors("chacha20_counter_test.json")).expect("failed to open data file");
 
     let reader = BufReader::new(data_file);
     let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
@@ -1301,8 +1294,7 @@ fn test_chacha20() {
 #[test]
 fn test_xchacha20poly1305() {
     let data_file =
-        File::open("../thirdparty/wycheproof/testvectors_v1/xchacha20_poly1305_test.json")
-            .expect("failed to open data file");
+        File::open(vectors("xchacha20_poly1305_test.json")).expect("failed to open data file");
 
     let reader = BufReader::new(data_file);
     let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");

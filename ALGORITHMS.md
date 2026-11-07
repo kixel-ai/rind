@@ -391,11 +391,15 @@ and GHASH.  It uses dynamic CPU feature detection, so AVX-512 is not required at
 On cores with VAES, BoringSSL's kernels, which interleave AES-CTR and GHASH, take
 long messages: its 512-bit kernel from 2 KB where the CPU has AVX-512 (the by-16
 path is quicker below that), and its 256-bit kernel from 256 bytes otherwise.
-Below 256 bytes, Vale's AES-GCM opens on those cores too, measured 0.72-1.05x
-the by-8 path's time on Zen 3 and 0.59-1.14x on Zen 4, and on Emerald and
-Granite Rapids 0.80-1.00x under an AAD of whole blocks but 0.94-1.33x under a
-partial one. Short seals run the by-8 path, which measured 1.03-1.39x quicker
-than Vale on Zen 3 and 1.21-1.86x on those Xeons.
+Below 256 bytes, Vale's AES-GCM opens on VAES cores without AVX-512, where it
+measured 0.83-1.09x the by-8 path's time on Zen 3 (median 0.95x), and
+0.74-1.06x on Arrow Lake's P-cores and 0.70-1.08x on its E-cores (medians
+0.88x and 0.90x), under an AAD of a partial block, as QUIC's and TLS's are,
+or of whole ones. Short seals there run the by-8 path, which Vale trailed on
+both from 16 bytes up to 176. AVX-512 cores run the by-8 path for every short
+message: Vale's opens measured 0.95-1.44x its time on Zen 5 (median 1.03x),
+0.96-1.37x on Granite Rapids (median 1.07x), and 0.70-1.14x on Zen 4 (median
+1.00x), and its seals lost on all three.
 Vale's proof covers those short opens' kernel, but not the choice of it,
 which [`proofs/`](proofs/README.md) proves only without VAES.
 The key picks its kernel once, when it is made.

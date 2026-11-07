@@ -42,8 +42,11 @@ fn hkdf() {
         ("hkdf_sha384_test.json", hkdf::HKDF_SHA384),
         ("hkdf_sha512_test.json", hkdf::HKDF_SHA512),
     ] {
-        let data = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
-            .unwrap_or_else(|_| panic!("failed to open {file}"));
+        let data = File::open(format!(
+            "{}/../thirdparty/wycheproof/testvectors_v1/{file}",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap_or_else(|_| panic!("failed to open {file}"));
         let tests: TestFile = serde_json::from_reader(BufReader::new(data)).unwrap();
         let mut count = 0;
 

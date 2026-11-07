@@ -1862,7 +1862,10 @@ mod rsa {
             "rsa_pkcs1_1024_sig_gen_test.json",
             "rsa_pkcs1_2048_sig_gen_test.json",
         ] {
-            let path = format!("../thirdparty/wycheproof/testvectors_v1/{file}");
+            let path = format!(
+                "{}/../thirdparty/wycheproof/testvectors_v1/{file}",
+                env!("CARGO_MANIFEST_DIR")
+            );
             let tests: serde_json::Value =
                 serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
             for group in tests["testGroups"].as_array().unwrap() {

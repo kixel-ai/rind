@@ -13,7 +13,7 @@ Decided with the maintainer on 2026-11-03: rerun the report at the end of each m
 - Settled with the maintainer when the report was planned (2026-11-03), so don't reopen them: the hosts `nixos`, `desktop`, `nixos2`, and `kixtop`, each on its native path; the libraries rind, aws-lc-rs, ring, RustCrypto with dalek, graviola, libcrux, and OpenSSL; a ✓ only where a published proof covers the whole computation that library runs on that host, padding included. A gap becomes a [speed](/quest/m2/speed/README.md) quest when the operation is common or the gap is large, and otherwise gets a recorded reason; verified code within about 10% stays.
 - Recheck the README's opening against the new results: its claims, such as which operations trail aws-lc-rs and ring, must still hold.
 - The first report's `nixos2` gaps in Ed25519 verify (1.13 against RustCrypto) and ML-KEM-768 encapsulation (1.23 against graviola) come from its older run. Recheck them with a fresh `nixos2` run, and plan a speed quest for either that still holds.
-- The first report (maintainer, 2026-11-04) measured `nixos`, `desktop`, and `nixos2`, the last at an older commit. Add `kixtop` once it is reachable: accept its ssh host key first, and fix what the first run of its macOS path (rustup, Homebrew OpenSSL, `top`, and `admin/build-cost` there) finds. Then recheck `benchmarks/verified.toml` against its recorded CPU features: a ✓ that lands on no square, or a dispatch the table didn't foresee, is a bug in the table.
+- `kixtop` (Apple M4) joins the report before this run, in [its own m1 quest](/quest/m1/bench-apple-m4.md) (maintainer, 2026-11-07); this run measures it like the other hosts.
 
 ## Required
 

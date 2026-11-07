@@ -46,29 +46,27 @@ axiom counter_block_spec (nonce : Std.Array U8 12#usize) (iv : Std.Array U8 16#u
         computeIvBE (reverseBytesQuad32 hkeys.val[2]!) ((bvs iv.val).take 12) ⦄
 
 /-- What Vale's AEAD procedures require of the buffers rind passes, for an
-algorithm with `nk` key words: the AAD's whole blocks and its partial block's
-16 bytes, the message's whole blocks, of which the six-block loop's share is
-`six`, at least `minSix` when not zero, and its partial block's 16 bytes, and
-lengths under 2^32. -/
+algorithm with `nk` key words: the AAD's whole blocks, the message's whole
+blocks, of which the six-block loop's share is `six`, at least `minSix` when
+not zero, and lengths under 2^32. Each partial block is a vector, so its 16
+bytes. -/
 structure AeadBuffers (b : low.x86_64.aes_gcm_avx.Buffers) (minSix : Nat) : Prop where
   aad : b.aad.length < 2 ^ 32
   aad_whole : b.aad_whole.val = b.aad.length / 16 * 16
-  aad_partial : b.aad_partial.length = 16
   blocks : b.blocks.length % 16 = 0
   six : b.six.val % 6 = 0 ∧ 16 * b.six.val ≤ b.blocks.length ∧ (0 < b.six.val → minSix ≤ b.six.val)
-  partial_len : b.partial.length = 16
   len : b.blocks.length ≤ b.len.val ∧ b.len.val < b.blocks.length + 16
   len32 : b.len.val < 2 ^ 32
   scratch : b.scratch.length = 144
 
 /-- The AAD Vale hashes: the whole blocks, then the partial block, cut to the AAD's length. -/
 def authBytes (b : low.x86_64.aes_gcm_avx.Buffers) : List (BitVec 8) :=
-  (bvs (b.aad.val.take b.aad_whole.val) ++ bvs b.aad_partial.val).take b.aad.length
+  (bvs (b.aad.val.take b.aad_whole.val) ++ leQuad32ToBytes b.aad_partial).take b.aad.length
 
 /-- The message Vale reads, or the one it writes: the whole blocks, then the
 partial block, cut to the message's length. -/
 def messageBytes (b : low.x86_64.aes_gcm_avx.Buffers) (len : Nat) : List (BitVec 8) :=
-  (bvs b.blocks.val ++ bvs b.partial.val).take len
+  (bvs b.blocks.val ++ leQuad32ToBytes b.partial).take len
 
 /-- `gcm128_encrypt_opt`: `Gcm_blocks_stdcall` for `AES_128`, whose `ensures` is
 AES-GCM's ciphertext in the message's blocks and its tag, at
@@ -84,7 +82,7 @@ axiom gcm128_encrypt_opt_spec (k : low.x86_64.aes.AesKey128) (kw : List (BitVec 
     (t : low.x86_64.cpu.HaveAvxMovbeForAesGcm) :
     low.x86_64.aes_gcm_avx.aead true (.Aes128 k) hkeys b t ⦃ r =>
       let out := gcmEncrypt .AES_128 (seqNat32ToSeqNat8LE kw) iv (messageBytes b b.len.val) (authBytes b)
-      r.2.blocks.length = b.blocks.length ∧ r.2.partial.length = 16 ∧
+      r.2.blocks.length = b.blocks.length ∧
         messageBytes r.2 b.len.val = out.1 ∧ bvs r.2.tag.val = out.2 ⦄
 
 /-- `gcm256_encrypt_opt`: `Gcm_blocks_stdcall` for `AES_256`, whose `ensures` is
@@ -101,7 +99,7 @@ axiom gcm256_encrypt_opt_spec (k : low.x86_64.aes.AesKey256) (kw : List (BitVec 
     (t : low.x86_64.cpu.HaveAvxMovbeForAesGcm) :
     low.x86_64.aes_gcm_avx.aead true (.Aes256 k) hkeys b t ⦃ r =>
       let out := gcmEncrypt .AES_256 (seqNat32ToSeqNat8LE kw) iv (messageBytes b b.len.val) (authBytes b)
-      r.2.blocks.length = b.blocks.length ∧ r.2.partial.length = 16 ∧
+      r.2.blocks.length = b.blocks.length ∧
         messageBytes r.2 b.len.val = out.1 ∧ bvs r.2.tag.val = out.2 ⦄
 
 /-- `gcm128_decrypt_opt`: `Gcm_blocks_decrypt_stdcall` for `AES_128`, whose `ensures` is
@@ -120,7 +118,7 @@ axiom gcm128_decrypt_opt_spec (k : low.x86_64.aes.AesKey128) (kw : List (BitVec 
     low.x86_64.aes_gcm_avx.aead false (.Aes128 k) hkeys b t ⦃ r =>
       let out := gcmDecrypt .AES_128 (seqNat32ToSeqNat8LE kw) iv (messageBytes b b.len.val) (authBytes b)
         (bvs b.tag.val)
-      r.2.blocks.length = b.blocks.length ∧ r.2.partial.length = 16 ∧
+      r.2.blocks.length = b.blocks.length ∧
         messageBytes r.2 b.len.val = out.1 ∧ (r.1.val = 0 ↔ out.2 = true) ⦄
 
 /-- `gcm256_decrypt_opt`: `Gcm_blocks_decrypt_stdcall` for `AES_256`, whose `ensures` is
@@ -139,7 +137,7 @@ axiom gcm256_decrypt_opt_spec (k : low.x86_64.aes.AesKey256) (kw : List (BitVec 
     low.x86_64.aes_gcm_avx.aead false (.Aes256 k) hkeys b t ⦃ r =>
       let out := gcmDecrypt .AES_256 (seqNat32ToSeqNat8LE kw) iv (messageBytes b b.len.val) (authBytes b)
         (bvs b.tag.val)
-      r.2.blocks.length = b.blocks.length ∧ r.2.partial.length = 16 ∧
+      r.2.blocks.length = b.blocks.length ∧
         messageBytes r.2 b.len.val = out.1 ∧ (r.1.val = 0 ↔ out.2 = true) ⦄
 
 end rind.x86_64

@@ -138,6 +138,29 @@ pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: u
     acc
 }
 
+/// Compares two 16-byte blocks, such as AEAD tags, in constant time.
+///
+/// Returns zero if `a == b`, otherwise non-zero. The words are combined in
+/// assembly so the compiler cannot split the test into early exits.
+pub(in crate::low) fn ct_compare_16(a: &[u8; 16], b: &[u8; 16]) -> usize {
+    let (a, b) = (u128::from_ne_bytes(*a), u128::from_ne_bytes(*b));
+    let mut diff = a as u64;
+    // SAFETY: register-only arithmetic.
+    unsafe {
+        core::arch::asm!(
+            "xor {diff}, {b0}",
+            "xor {a1}, {b1}",
+            "or  {diff}, {a1}",
+            diff = inout(reg) diff,
+            a1 = inout(reg) (a >> 64) as u64 => _,
+            b0 = in(reg) b as u64,
+            b1 = in(reg) (b >> 64) as u64,
+            options(pure, nomem, nostack),
+        );
+    }
+    diff as usize
+}
+
 /// Token type reflecting the check for CPU features needed for AVX512-AES-GCM
 ///
 /// A value of this type is proof that the CPU dynamic feature check has happened.
@@ -150,11 +173,6 @@ impl HaveAvx512ForAesGcm {
             true => Some(Self(())),
             false => None,
         }
-    }
-
-    /// Vale's AES-GCM, for short messages, runs here too.
-    pub(crate) fn avx_movbe(self) -> HaveAvxMovbeForAesGcm {
-        HaveAvxMovbeForAesGcm(())
     }
 }
 
@@ -379,7 +397,8 @@ const INTEL: u32 = 1 << 30;
 const AVX2_KERNELS: u32 = AVX | AVX2 | BMI1 | BMI2 | POPCNT | SSSE3;
 /// What the AES-GCM kernels for wider vectors build on: the AVX2 ISA, AES-NI
 /// and PCLMULQDQ for their key schedule and tail, and SSE4.1 and MOVBE for
-/// Vale's AES-GCM, which short messages run. Every VAES CPU has them all.
+/// Vale's AES-GCM, which short messages run without AVX-512. Every VAES CPU
+/// has them all.
 const AES_GCM_BASE: u32 = AES | PCLMULQDQ | SSSE3 | SSE41 | AVX | AVX2 | MOVBE;
 const DETECTED: u32 = 1 << 31;
 

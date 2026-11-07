@@ -237,9 +237,6 @@ opaque low.x86_64.cpu.HaveAvx512ForAesGcm.check
 opaque low.x86_64.cpu.HaveVaesAvx2ForAesGcm.avx_movbe
   : low.x86_64.cpu.HaveVaesAvx2ForAesGcm → Result low.x86_64.cpu.HaveAvxMovbeForAesGcm
 
-opaque low.x86_64.cpu.HaveAvx512ForAesGcm.avx_movbe
-  : low.x86_64.cpu.HaveAvx512ForAesGcm → Result low.x86_64.cpu.HaveAvxMovbeForAesGcm
-
 opaque low.x86_64.cpu.HaveSsse3.check : Result (Option low.x86_64.cpu.HaveSsse3)
 
 /-- The SHA-1 and SHA-256 routines the CPU runs, each picked once. -/

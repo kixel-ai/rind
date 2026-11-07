@@ -32,9 +32,11 @@ impl Value<'_> {
     }
 }
 
+/// Feeds `sink` the CAVP vector file at `filename`, relative to this crate's
+/// directory, so the tests run from any directory, as the iOS simulator's do.
 pub(crate) fn process_cavp(filename: impl AsRef<Path>, sink: &mut dyn CavpSink) {
-    let f = File::open(&filename)
-        .unwrap_or_else(|_| panic!("cannot open {}", filename.as_ref().to_str().unwrap()));
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
+    let f = File::open(&path).unwrap_or_else(|_| panic!("cannot open {}", path.display()));
     for line in BufReader::new(f).lines() {
         let line = line.unwrap();
 
@@ -76,7 +78,10 @@ pub(crate) fn wycheproof<T: serde::de::DeserializeOwned>(name: &str) -> Vec<T> {
         tests: Vec<T>,
     }
 
-    let path = format!("../thirdparty/wycheproof/testvectors_v1/{name}");
+    let path = format!(
+        "{}/../thirdparty/wycheproof/testvectors_v1/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let file = File::open(&path).unwrap_or_else(|_| panic!("cannot open {path}"));
     let file: TestFile<T> =
         serde_json::from_reader(BufReader::new(file)).expect("invalid test JSON");
