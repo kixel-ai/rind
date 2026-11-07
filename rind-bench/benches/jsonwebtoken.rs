@@ -15,10 +15,12 @@ use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use jsonwebtoken::crypto::{CryptoProvider, aws_lc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey};
 
-const PROVIDERS: [(&str, &CryptoProvider); 2] = [
-    ("aws-lc-rs", &aws_lc::DEFAULT_PROVIDER),
-    ("rind", &rind_jsonwebtoken::DEFAULT_PROVIDER),
-];
+fn providers() -> [(&'static str, &'static CryptoProvider); 2] {
+    [
+        ("aws-lc-rs", &aws_lc::DEFAULT_PROVIDER),
+        ("rind", rind_jsonwebtoken::default_provider().unwrap()),
+    ]
+}
 
 // The header and claims of a typical token, as jsonwebtoken signs them.
 const MESSAGE: &[u8] = b"eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb290IjoiZGVtbyIsInB1dCI6WyIiXSwiZ2V0IjpbIiJdLCJleHAiOjE3OTI4MTYwMDAsImlhdCI6MTc2MTI4MDAwMH0";
@@ -81,7 +83,7 @@ fn sign(c: &mut Criterion) {
         let mut group = c.benchmark_group(format!("jwt-{algorithm:?}-sign").to_lowercase());
         group.throughput(Throughput::Elements(1));
 
-        for (name, provider) in PROVIDERS {
+        for (name, provider) in providers() {
             group.bench_function(format!("{name}/token"), |b| {
                 b.iter(|| {
                     let signer = (provider.signer_factory)(&algorithm, &encoding).unwrap();
@@ -105,7 +107,7 @@ fn verify(c: &mut Criterion) {
             .try_sign(MESSAGE)
             .unwrap();
 
-        for (name, provider) in PROVIDERS {
+        for (name, provider) in providers() {
             group.bench_function(format!("{name}/token"), |b| {
                 b.iter(|| {
                     let verifier = (provider.verifier_factory)(&algorithm, &decoding).unwrap();

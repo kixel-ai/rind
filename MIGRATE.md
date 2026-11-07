@@ -109,10 +109,10 @@ For each way the survey found:
   tables map to rind's own API, where `finish` takes `&mut self`.
 - **aws-lc-rs's API.** Port each call to rind's, using MIGRATING.md's tables.
 
-rind panics on a CPU missing a feature it requires. Depend on `rind` and call
-`rind::cpu::check()` at the start of each binary's `main`, exiting with its
-error. A library leaves this to the binaries that use it, and says so in its
-docs.
+rind panics on a CPU missing a feature it requires. At the start of each
+binary's `main`, refuse one by exiting with the error from an adapter's
+`default_provider()`, rind-ring's `cpu::check()`, or `rind::cpu::check()`.
+A library leaves this to the binaries that use it, and says so in its docs.
 
 Commit as you go, with messages in the project's style.
 

@@ -9,7 +9,8 @@ use serde_json::{Value, json};
 
 #[test]
 fn tokens_round_trip_through_jwks() {
-    rind_jsonwebtoken::DEFAULT_PROVIDER
+    rind_jsonwebtoken::default_provider()
+        .unwrap()
         .install_default()
         .unwrap();
 
