@@ -400,7 +400,6 @@ theorem derive_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (P : List B
         simpa only [Slice.length] using this
       have hT1 : bv s1.val = pbT (hmacOf a) P (bv salt) iterations.val (i' + 1) := by
         rw [hs1b, hbb, hidx]
-      try simp only [WP.spec_ok]
       refine ⟨⟨i' + 1, hz', ?_, ?_⟩, zipAt_measure _ _ _ _ _ hz hz' hn hlt⟩
       · rw [hback, Slice.setSlice!_length]; exact hl
       · rw [hback, Slice.setSlice!_val, hs3, hs2, hoff]
@@ -510,6 +509,174 @@ theorem derive_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (P : List Byte)
     simp only [WP.spec_ok]
     exact ⟨trivial, hrl, by rw [hrb, pbkdf2_eq]⟩
   · simp only [hc, ↓reduceIte, core.result.Result.Insts.CoreOpsTry.branch, bind_ok,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+      core.convert.FromSame.from]
+    simp
+
+/-! ## `Secret::verify` -/
+
+section
+variable (T : Nat → List Byte) (n : Nat) (hT : ∀ i, (T (i + 1)).length = n)
+
+include hT in
+theorem blocksOut_take_ceil (hn : 0 < n) (L j : Nat) (hj : L ≤ j * n) :
+    (blocksOut T j).take L = (blocksOut T ((L + n - 1) / n)).take L := by
+  have hK := ceilDiv_le n L j hn hj
+  rw [show j = (L + n - 1) / n + (j - (L + n - 1) / n) by omega,
+    blocksOut_take T n hT _ _ _ (ceilDiv_ge n _ hn)]
+
+include hT in
+/-- The output matches through block `c' + 1` exactly when it matches through
+block `c'` and block `c' + 1`, cut to the output, matches its bytes. -/
+theorem prefix_eq_step (prev blk : List U8) (c' : Nat) (hoff : c' * n < prev.length)
+    (hblk : bv blk = T (c' + 1)) :
+    (bv prev).take ((c' + 1) * n) = (blocksOut T (c' + 1)).take prev.length ↔
+      ((bv prev).take (c' * n) = (blocksOut T c').take prev.length ∧
+        blk.take (min n (prev.length - c' * n)) =
+          prev.slice (c' * n) (c' * n + min n (prev.length - c' * n))) := by
+  have hOl := blocksOut_length T n hT c'
+  have hA : (blocksOut T c').take prev.length = blocksOut T c' :=
+    List.take_of_length_le (by rw [hOl]; omega)
+  have hR : (blocksOut T (c' + 1)).take prev.length =
+      blocksOut T c' ++ bv (blk.take (min n (prev.length - c' * n))) := by
+    rw [blocksOut_succ, List.take_append, hOl, hA, bv_take, hblk]
+    congr 1
+    rw [← List.take_take, List.take_of_length_le (l := List.take _ _)
+      (by simp only [List.length_take, hT]; omega)]
+  have hL : (bv prev).take ((c' + 1) * n) =
+      (bv prev).take (c' * n) ++ bv (prev.slice (c' * n) (c' * n + min n (prev.length - c' * n))) := by
+    rw [show (c' + 1) * n = c' * n + n by rw [Nat.add_mul, one_mul], List.take_add, List.slice,
+      Nat.add_sub_cancel_left, bv_take, bv, ← List.map_drop]
+    congr 1
+    by_cases hcase : n ≤ prev.length - c' * n
+    · rw [show min n (prev.length - c' * n) = n by omega]
+      rfl
+    · rw [show min n (prev.length - c' * n) = prev.length - c' * n by omega]
+      rw [List.take_of_length_le (by simp; omega), List.take_of_length_le (by simp [bv])]
+      rfl
+  rw [hL, hR, hA]
+  constructor
+  · intro h
+    obtain ⟨h1, h2⟩ := List.append_inj h (by rw [List.length_take, bv_length, hOl]; omega)
+    exact ⟨h1, ((bv_inj _ _).mp h2).symm⟩
+  · rintro ⟨h1, h2⟩
+    rw [h1, h2]
+
+end
+
+theorem verify_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (hct : CtEqual)
+    (P : List Byte) (k : high.hmac.Key) (hk : KeyOf a P k) (salt : List U8)
+    (salted : high.hmac.Streaming) (hs : StreamOf a P salt salted)
+    (hm : hmacBlock a + salt.length + 4 ≤ maxInput)
+    (iterations : core.num.nonzero.NonZero U32 core.num.niche_types.NonZeroU32Inner)
+    (hash_len : Usize) (hhl : hash_len.val = tagLen a) (prev : Slice U8)
+    (hK : (prev.length + tagLen a - 1) / tagLen a ≤ U32.max) (it : BlockIter) (i' : Nat)
+    (equal : Bool) (hz : ZipAt (tagLen a) prev.length i' it)
+    (heq : equal = true ↔ (bv prev.val).take (i' * tagLen a) =
+      (blocksOut (pbT (hmacOf a) P (bv salt) iterations.val) i').take prev.length) :
+    high.pbkdf2.Secret.verify_loop it k iterations prev salted hash_len equal ⦃ r =>
+      r = true ↔ bv prev.val = (blocksOut (pbT (hmacOf a) P (bv salt) iterations.val)
+        ((prev.length + tagLen a - 1) / tagLen a)).take prev.length ⦄ := by
+  have hn := tagLen_pos a
+  have hT : ∀ i, (pbT (hmacOf a) P (bv salt) iterations.val (i + 1)).length = tagLen a :=
+    fun i => pbT_length _ _ _ _ (fun x => hmacOf_length a P x hr) _ _
+  have hpl : prev.val.length = prev.length := rfl
+  unfold high.pbkdf2.Secret.verify_loop
+  apply loop.spec_decr_nat (fun x => prev.length - x.1.snd.iter.start.val)
+    (fun x => ∃ i', ZipAt (tagLen a) prev.length i' x.1 ∧
+      (x.2 = true ↔ (bv prev.val).take (i' * tagLen a) =
+        (blocksOut (pbT (hmacOf a) P (bv salt) iterations.val) i').take prev.length))
+  · rintro ⟨it, equal⟩ ⟨i', hz, heq⟩
+    simp only at hz heq ⊢
+    unfold high.pbkdf2.Secret.verify_loop.body
+    apply WP.spec_bind (zip_next_spec _ _ i' hn hK it hz)
+    rintro ⟨o, it'⟩ ho
+    rcases o with _ | ⟨idx, off⟩
+    · simp only [WP.uncurry'] at ho
+      refine (WP.spec_ok _).mpr ?_
+      show equal = true ↔ _
+      rw [heq, List.take_of_length_le (by rw [bv_length]; exact ho),
+        blocksOut_take_ceil _ _ hT hn _ _ ho]
+    · simp only [WP.uncurry'] at ho
+      obtain ⟨hidx, hoff, hlt, hz'⟩ := ho
+      dsimp only
+      apply WP.spec_bind (block_spec a hr P k hk salt salted hs hm iterations idx)
+      rintro blk ⟨hbl, hbb⟩
+      have hol : (Slice.len prev).val = prev.length := Slice.len_val prev
+      step as ⟨i1, hi1⟩
+      step as ⟨len, hlen⟩
+      step with digest_as_ref_spec blk as ⟨s, hsl, hsb⟩
+      step as ⟨s1, hs1v, hs1l⟩
+      step as ⟨i2, hi2⟩
+      step as ⟨s2, hs2v, hs2l⟩
+      rw [hct, bind_ok]
+      have hlenv : len.val = min (tagLen a) (prev.length - i' * tagLen a) := by
+        rw [hlen, core.cmp.impls.OrdUsize.min_val, hhl, hi1, hol, hoff]
+      have hT1 : bv s.val = pbT (hmacOf a) P (bv salt) iterations.val (i' + 1) := by
+        rw [hsb, hbb, hidx]
+      have hs1 : s1.val = s.val.take (min (tagLen a) (prev.length - i' * tagLen a)) := by
+        rw [hs1v, List.slice, List.drop_zero, Nat.sub_zero, hlenv]
+      have hs2 : s2.val = prev.val.slice (i' * tagLen a)
+          (i' * tagLen a + min (tagLen a) (prev.length - i' * tagLen a)) := by
+        rw [hs2v, hi2, hoff, hlenv]
+      try simp only [WP.spec_ok]
+      refine ⟨⟨i' + 1, hz', ?_⟩, zipAt_measure _ _ _ _ _ hz hz' hn hlt⟩
+      have := prefix_eq_step _ _ hT prev.val s.val i' (by rw [hpl]; exact hlt) hT1
+      rw [hpl] at this
+      rw [this, Bool.and_eq_true, heq, hs1, hs2, decide_eq_true_iff]
+  · exact ⟨i', hz, heq⟩
+
+theorem verify_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (hct : CtEqual)
+    (P : List Byte) (k : high.hmac.Key) (hk : KeyOf a P k)
+    (iterations : core.num.nonzero.NonZero U32 core.num.niche_types.NonZeroU32Inner)
+    (salt prev : Slice U8) (hm : hmacBlock a + salt.length + 4 ≤ maxInput) :
+    high.pbkdf2.Secret.verify k iterations salt prev ⦃ r =>
+      r = if prev.length < tagLen a ∨ ¬ (prev.length + tagLen a - 1) / tagLen a ≤ U32.max then
+        .Err .WrongLength
+      else if bv prev.val = pbkdf2 (hmacOf a) (tagLen a) P (bv salt.val) iterations.val
+          prev.length then .Ok ()
+      else .Err .BadSignature ⦄ := by
+  obtain ⟨n, hn, hnv⟩ := tagLen_eq a
+  have hpos := tagLen_pos a
+  obtain ⟨e, he⟩ := hr.1
+  unfold high.pbkdf2.Secret.verify
+  rw [he, bind_ok, key_algorithm_eq hk, bind_ok, hn, bind_ok]
+  have hlv : (Slice.len prev).val = prev.length := Slice.len_val prev
+  by_cases hs : prev.length < tagLen a
+  · have : Slice.len prev < n := by scalar_tac
+    simp only [this, ↓reduceIte, hs, true_or, WP.spec_ok]
+  have hs' : ¬ Slice.len prev < n := by scalar_tac
+  simp only [hs', ↓reduceIte, hs, false_or]
+  apply WP.spec_bind (check_len_spec a P k hk (Slice.len prev))
+  rintro c rfl
+  rw [hlv]
+  by_cases hc : (prev.length + tagLen a - 1) / tagLen a ≤ U32.max
+  · have hc' : 0 < prev.length ∧ (prev.length + tagLen a - 1) / tagLen a ≤ U32.max :=
+      ⟨by omega, hc⟩
+    simp only [hc', and_self, ↓reduceIte, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
+    apply WP.spec_bind (salted_spec a hr P k hk salt (by omega))
+    intro salted hsd
+    simp only [core.ops.range.RangeInclusive.new, bind_ok,
+      core.iter.traits.iterator.Iterator.step_by.trait_default,
+      core.iter.traits.iterator.Iterator.step_by.default,
+      core.iter.traits.iterator.Iterator.zip.trait_default,
+      core.iter.traits.iterator.Iterator.zip.default,
+      core.iter.traits.collect.IntoIterator.Blanket.into_iter]
+    have h0 : ¬ n.val = 0 := by omega
+    simp only [h0, ↓reduceIte, bind_ok]
+    have hz := zipAt_start prev.length n (Slice.len prev) hlv
+    rw [hnv] at hz
+    apply WP.spec_bind (verify_loop_spec a hr hct P k hk salt.val salted hsd hm iterations n hnv
+      prev hc _ 0 true hz (by simp [blocksOut]))
+    intro eq heq
+    simp only [low.ct.into_public, bind_ok, ← pbkdf2_eq] at heq ⊢
+    by_cases hb : eq = true
+    · simp only [hb, ↓reduceIte, (heq.mp hb), not_true_eq_false, WP.spec_ok]
+    · have : ¬ bv prev.val = pbkdf2 (hmacOf a) (tagLen a) P (bv salt.val) iterations.val
+          prev.length := fun h => hb (heq.mpr h)
+      simp only [hb, this, Bool.false_eq_true, not_true_eq_false, ↓reduceIte, WP.spec_ok]
+  · simp only [hc, not_false_eq_true, ↓reduceIte,
+      core.result.Result.Insts.CoreOpsTry.branch, bind_ok,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
       core.convert.FromSame.from]
     simp
