@@ -1,7 +1,7 @@
 name: python
 
 # Builds pyrind's wheels for every platform rind supports that PyPI takes,
-# and its sdist, and tests each wheel its runner can load. Nightly, on
+# and its sdist, and tests every wheel before uploading it. Nightly, on
 # demand, and from the release workflow, which publishes what this uploads.
 # Read-only: publishing is release.yml's.
 
@@ -47,12 +47,26 @@ jobs:
           - os: ubuntu-latest
             target: armv7-unknown-linux-gnueabihf
             manylinux: "2014"
+            test: true
+            container: python:3.11-slim-bookworm
+            platform: linux/arm/v7
+            # Cortex-A15 has NEON but no ARMv8 crypto extension: rind uses
+            # its NEON paths and portable AES, GHASH, SHA1, and SHA256.
+            cpu: cortex-a15
+            # cryptography has an armv7 wheel, but its cffi dependency does not.
+            pyca: "0"
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             manylinux: musllinux_1_2
+            test: true
+            container: python:3.11-alpine
+            platform: linux/amd64
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
             manylinux: musllinux_1_2
+            test: true
+            container: python:3.11-alpine
+            platform: linux/arm64
           - os: macos-15-intel
             target: x86_64-apple-darwin
             test: true
@@ -94,7 +108,7 @@ jobs:
         uses: ./.github/actions/vectors
 
       - name: Test
-        if: matrix.test
+        if: matrix.test && !matrix.container
         shell: bash
         env:
           TESTS: ${{ matrix.tests || 'test*.py' }}
@@ -103,6 +117,46 @@ jobs:
           python -m pip install --no-index --find-links dist pyrind
           python -m unittest discover --start-directory rind-python/tests --pattern "$TESTS"
           python -m mypy.stubtest pyrind
+
+      - name: Install qemu-user's binfmt handlers
+        if: matrix.cpu
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes qemu-user-static
+
+      - name: Test in container
+        if: matrix.container
+        env:
+          TEST_CONTAINER: ${{ matrix.container }}
+          TEST_PLATFORM: ${{ matrix.platform }}
+          QEMU_CPU: ${{ matrix.cpu }}
+          PYRIND_TEST_PYCA: ${{ matrix.pyca || '1' }}
+        run: |
+          docker run --rm --interactive --platform "$TEST_PLATFORM" \
+            --env QEMU_CPU --env PYRIND_TEST_PYCA \
+            --volume "$PWD:/work" --workdir /work "$TEST_CONTAINER" sh -es <<'SH'
+          python -m pip install --only-binary :all: mypy
+          if [ "$PYRIND_TEST_PYCA" != 0 ]; then
+            python -m pip install --only-binary :all: cryptography
+          fi
+          python -m pip install --no-index --find-links dist pyrind
+          if [ -n "$QEMU_CPU" ]; then
+            python - <<'PY'
+          import ctypes
+          import platform
+          import struct
+          from pyrind import cpu
+
+          assert platform.machine() == "armv7l"
+          assert struct.calcsize("P") == 4
+          assert ctypes.CDLL(None).getauxval(16) & (1 << 12)  # HWCAP_NEON
+          assert not cpu.has_aes_hardware()
+          print("armv7 Cortex-A15: NEON, no crypto extension")
+          PY
+          fi
+          python -m unittest discover --start-directory rind-python/tests
+          python -m mypy.stubtest pyrind
+          SH
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
