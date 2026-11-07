@@ -1149,7 +1149,7 @@ mod tests {
     // The key's Debug, which no public type's Debug reaches, shows nothing of it.
     #[test]
     fn private_key_debug() {
-        let key = super::PrivateKey::new_random().unwrap();
+        let key = PrivateKey::new_random().unwrap();
         assert_eq!(format!("{key:?}"), "PrivateKey { .. }");
     }
 
