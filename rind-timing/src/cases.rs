@@ -614,8 +614,14 @@ fn rsa_keys_one_modulus(size: rsa::KeySize) -> &'static Classes<Vec<u8>> {
     static KEYS: [OnceLock<Classes<Vec<u8>>>; 3] = [const { OnceLock::new() }; 3];
     let i = RSA_SIZES.iter().position(|&(_, s)| s == size).unwrap();
     KEYS[i].get_or_init(|| {
-        let pkcs8 = signature::RsaKeyPair::generate(size).unwrap().to_pkcs8();
-        let keys = crate::rsa_keys::variants(pkcs8.as_ref());
+        // A key may have no other variant of the same widths; draw another.
+        let keys = loop {
+            let pkcs8 = signature::RsaKeyPair::generate(size).unwrap().to_pkcs8();
+            let keys = crate::rsa_keys::variants(pkcs8.as_ref());
+            if keys.len() > 1 {
+                break keys;
+            }
+        };
         let mut others = keys[1..].iter().cycle();
         classes(RSA_KEYS, fixed(keys[0].clone()), || {
             others.next().unwrap().clone()

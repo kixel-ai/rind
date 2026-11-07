@@ -13,8 +13,9 @@ use num_bigint::BigUint;
 use num_integer::Integer;
 
 /// PKCS#1 encodings of keys with `pkcs8`'s public key: `pkcs8`'s own key
-/// first, then every other that encodes `d` in as many bytes, since a
-/// component's length is public in practice.
+/// first, then every other whose components each encode in as many DER
+/// bytes, sign padding included, since parsing takes time that depends on a
+/// component's length, which is public in practice.
 pub fn variants(pkcs8: &[u8]) -> Vec<Vec<u8>> {
     // PrivateKeyInfo: version, algorithm, then the RSAPrivateKey.
     let mut info = sequence(pkcs8);
@@ -28,27 +29,36 @@ pub fn variants(pkcs8: &[u8]) -> Vec<Vec<u8>> {
 
     let one = BigUint::from(1u8);
     let lambda = (&p - &one).lcm(&(&q - &one));
-    let len = d.to_bytes_be().len();
     let mut keys = Vec::new();
     for (p, q) in [(&p, &q), (&q, &p)] {
         for k in 0u8..4 {
             let d = &d + &lambda * k;
-            if d < n && d.to_bytes_be().len() == len {
-                keys.push(encode(&[
-                    &BigUint::ZERO,
-                    &n,
-                    &e,
-                    &d,
-                    p,
-                    q,
-                    &(&d % (p - &one)),
-                    &(&d % (q - &one)),
-                    &q.modinv(p).expect("distinct primes"),
-                ]));
+            if d >= n {
+                break;
+            }
+            let key = encode(&[
+                &BigUint::ZERO,
+                &n,
+                &e,
+                &d,
+                p,
+                q,
+                &(&d % (p - &one)),
+                &(&d % (q - &one)),
+                &q.modinv(p).expect("distinct primes"),
+            ]);
+            if widths(&key) == widths(pkcs1) {
+                keys.push(key);
             }
         }
     }
     keys
+}
+
+/// The contents' length of each element of the DER SEQUENCE `der`.
+fn widths(der: &[u8]) -> Vec<usize> {
+    let mut fields = sequence(der);
+    std::iter::from_fn(|| (!fields.is_empty()).then(|| next(&mut fields).1.len())).collect()
 }
 
 /// `message`, as long as the modulus, raised to the public exponent of the
