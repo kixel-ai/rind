@@ -120,7 +120,7 @@ and wipes the adapter's own copies of secrets.
 
 ```toml
 [dependencies]
-rind = { version = "0.2", features = ["wipe"] }
+rind = { version = "0.3", features = ["wipe"] }
 ```
 
 ### Platforms
