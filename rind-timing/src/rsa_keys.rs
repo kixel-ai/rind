@@ -55,10 +55,16 @@ pub fn variants(pkcs8: &[u8]) -> Vec<Vec<u8>> {
     keys
 }
 
-/// The contents' length of each element of the DER SEQUENCE `der`.
-fn widths(der: &[u8]) -> Vec<usize> {
+/// Each DER integer's content length and whether it has a leading zero.
+fn widths(der: &[u8]) -> Vec<(usize, bool)> {
     let mut fields = sequence(der);
-    std::iter::from_fn(|| (!fields.is_empty()).then(|| next(&mut fields).1.len())).collect()
+    std::iter::from_fn(|| {
+        (!fields.is_empty()).then(|| {
+            let bytes = next(&mut fields).1;
+            (bytes.len(), bytes.first() == Some(&0))
+        })
+    })
+    .collect()
 }
 
 /// `message`, as long as the modulus, raised to the public exponent of the
@@ -123,4 +129,40 @@ fn element(out: &mut Vec<u8>, tag: u8, contents: &[u8]) {
         n => out.extend([0x82, (n >> 8) as u8, n as u8]),
     }
     out.extend_from_slice(contents);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn variants_keep_sign_padding_when_der_lengths_match() {
+        // p=19, q=23, e=23: lambda=198 and d=155. d+lambda=353 is
+        // valid too, but 155 encodes as 00 9b and 353 as 01 61. Both
+        // have two DER bytes, while only the former needs a sign byte.
+        let values = [0u32, 437, 23, 155, 19, 23, 11, 1, 5].map(BigUint::from);
+        let pkcs1 = encode(&values.each_ref());
+        let mut info = Vec::new();
+        element(&mut info, 0x02, &[0]);
+        element(
+            &mut info,
+            0x30,
+            &[
+                0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00,
+            ],
+        );
+        element(&mut info, 0x04, &pkcs1);
+        let mut pkcs8 = Vec::new();
+        element(&mut pkcs8, 0x30, &info);
+
+        let keys = variants(&pkcs8);
+        assert_eq!(keys.len(), 2); // The original and the swapped primes.
+        for key in keys {
+            let mut fields = sequence(&key);
+            for _ in 0..3 {
+                next(&mut fields);
+            }
+            assert_eq!(next(&mut fields).1, &[0, 155]);
+        }
+    }
 }
