@@ -5,6 +5,7 @@ import array
 import hashlib
 import hmac as std_hmac
 import os
+import sys
 import threading
 import unittest
 
@@ -195,7 +196,7 @@ class Hkdf(unittest.TestCase):
             prk.expand(b"", 255 * 32 + 1)
         # Refused before allocating, rather than raising MemoryError.
         with self.assertRaises(pyrind.WrongLength):
-            prk.expand(b"", 1 << 62)
+            prk.expand(b"", sys.maxsize)
 
 
 class Pbkdf2(unittest.TestCase):
@@ -221,6 +222,8 @@ class Pbkdf2(unittest.TestCase):
 
     def test_too_long_is_wrong_length(self):
         # One byte past each hash's limit, refused before allocating it.
+        # On 32-bit hosts these lengths overflow usize before reaching rind.
+        error = pyrind.WrongLength if sys.maxsize > 2**32 else OverflowError
         for algorithm, hash_len in (
             (pbkdf2.PBKDF2_HMAC_SHA256, 32),
             (pbkdf2.PBKDF2_HMAC_SHA384, 48),
@@ -228,7 +231,7 @@ class Pbkdf2(unittest.TestCase):
             (pbkdf2.legacy.PBKDF2_HMAC_SHA1, 20),
         ):
             secret = pbkdf2.Secret(algorithm, b"password")
-            with self.assertRaises(pyrind.WrongLength):
+            with self.assertRaises(error):
                 secret.derive(1, b"salt", (2**32 - 1) * hash_len + 1)
 
     def test_releases_the_gil(self):
