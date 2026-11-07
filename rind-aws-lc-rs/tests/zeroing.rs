@@ -6,6 +6,14 @@
 //! freed block still holding it, and checks no block does once the values
 //! that held the secret are dropped. Inline values are boxed so they live on
 //! the heap too.
+//!
+//! Is this test sound? No, as rind's isn't: it reads a block the program has
+//! freed, including bytes it never initialized, such as padding and a
+//! vector's spare capacity. It reads them with volatile byte loads into
+//! plain integers before handing the block back to `System`, so the compiler
+//! cannot assume their contents, and the block is still allocated as far as
+//! the system allocator knows. In theory it could still miss a failed wipe;
+//! `detects_a_leak` checks that it catches one in practice.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::Mutex;
@@ -28,7 +36,7 @@ static LEAKS: AtomicUsize = AtomicUsize::new(0);
 struct Scan;
 
 // SAFETY: forwards every call to `System`, and only reads a block it is
-// about to free.
+// about to free; the module documentation explains what that read risks.
 unsafe impl GlobalAlloc for Scan {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         // SAFETY: the caller's contract, passed on.
@@ -38,11 +46,17 @@ unsafe impl GlobalAlloc for Scan {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         // Locking allocates nothing, so this cannot recurse.
         if let Some(needle) = *NEEDLE.lock().unwrap_or_else(|e| e.into_inner()) {
-            // SAFETY: `ptr` is a live block of `layout.size()` bytes until
-            // it is freed below.
-            let block = unsafe { std::slice::from_raw_parts(ptr, layout.size()) };
-            if block.windows(NEEDLE_LEN).any(|window| window == needle) {
-                LEAKS.fetch_add(1, Ordering::Relaxed);
+            // The last `NEEDLE_LEN` bytes read, oldest first.
+            let mut window = [0u8; NEEDLE_LEN];
+            for i in 0..layout.size() {
+                window.copy_within(1.., 0);
+                // SAFETY: `ptr` is `layout.size()` bytes that `System` keeps
+                // allocated until the call below.
+                window[NEEDLE_LEN - 1] = unsafe { ptr.add(i).read_volatile() };
+                if i + 1 >= NEEDLE_LEN && window == needle {
+                    LEAKS.fetch_add(1, Ordering::Relaxed);
+                    break;
+                }
             }
         }
         // SAFETY: the caller's contract, passed on.

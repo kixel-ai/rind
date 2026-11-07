@@ -15,6 +15,8 @@ aws-lc-rs = { package = "rind-aws-lc-rs", version = "1" }
 
 The rename reaches only the crate that makes it, not dependencies that use aws-lc-rs themselves.
 
+It panics wherever aws-lc-rs panics, such as `pbkdf2::derive` asked for more than PBKDF2 allows, so its signatures stay aws-lc-rs's, as rind-ring's stay ring's.
+
 Every aws-lc-rs feature but `fips` is accepted and changes nothing.
 `fips` is refused, since rind is not FIPS validated: `try_fips_mode()` always fails and `fips_version()` is `None`.
 
