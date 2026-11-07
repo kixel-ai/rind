@@ -60,9 +60,12 @@ jobs:
 
       - name: Artificial CPU feature tests (x86_64)
         if: runner.arch == 'X64'
+        shell: bash
         run: |
-          # Each tier runs the tests, then CCTV's million ML-KEM vectors.
-          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 cargo test --release -p rind --lib cctv_accumulated; }
+          # Each tier runs the tests, then CCTV's million ML-KEM vectors in a
+          # release build, which honours the tier's denials only with
+          # `--cfg rind_cpu_disable`, alongside the check that they took effect
+          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
           # test rind's AVX2 SHA-1 and OpenSSL's AVX2 SHA-256 for CPUs without
           # the SHA extensions
           tier RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1
@@ -98,8 +101,9 @@ jobs:
 
       - name: Artificial CPU feature tests (aarch64)
         if: runner.arch == 'ARM64'
+        shell: bash
         run: |
-          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 cargo test --release -p rind --lib cctv_accumulated; }
+          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
           # test the by-4 AES-GCM and Keccak-f kernels for cores without SHA3,
           # failing a run whose OS hides the crypto extension
           tier RIND_CPU_DISABLE_sha3=1 RIND_TEST_ARM_CRYPTO_EXT=1

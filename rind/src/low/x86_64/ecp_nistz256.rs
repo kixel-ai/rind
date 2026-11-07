@@ -210,6 +210,8 @@ mod tests {
                 if result_x.0 == [0; 4] && result_y.0 == [0; 4] {
                     assert_eq!(z.0, [0; 4], "{test}");
                 } else {
+                    // An all-zero output would pass the coordinate checks below.
+                    assert_ne!(z.0, [0; 4], "{test}");
                     let mut z2 = Fe([0; 4]);
                     fiat_p256_square(&mut z2, &z);
                     assert_eq!(x.0, mul(&result_x, &z2).0, "{test}");
