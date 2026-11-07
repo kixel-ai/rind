@@ -19,10 +19,11 @@ All three constant-time tools state they can't see variable-time instructions. O
 
 ## Required
 
-- [Every published test vector rind can run](/quest/m3/confidence/vectors.md) - C2SP's CCTV and latest Wycheproof, and aws-lc's and BoringSSL's vector files
 - [No variable-time instruction on a secret path](/quest/m3/confidence/vartime-scan.md) - a static scan of the compiled secret paths
 - [Statistical timing tests](/quest/m3/confidence/timing.md) - dudect-style tests, and the Marvin toolkit for RSA
-- [Mutation testing](/quest/m3/confidence/mutants.md) - cargo-mutants shows which changes the tests miss
-- [A differential fuzz target for every primitive](/quest/m3/confidence/fuzz-every-primitive.md) - signing, ciphers, MD5, and GCM's any-IV API compared with aws-lc
-- [Fuzz the tiers GitHub's runners cannot reach](/quest/m3/confidence/fuzz-tiers.md) - corpus replay under SDE for AVX-512 and SHA512, and under qemu for armv7
-- [A constant-time check on every tier](/quest/m3/confidence/ct-tiers.md) - Intel's AVX SHA under SDE, and aarch64's SHA-3 and SHA-512 paths
+- [Adapter crates' surviving mutants](/quest/m3/confidence/mutants-adapters.md) - tests for the 103 adapter mutants no test catches
+- [Surviving mutants that need crafted inputs](/quest/m3/confidence/mutants-edge-cases.md) - the AVX2 Ed25519 field arithmetic, points at infinity, and other edges random inputs miss
+- [Mutation testing on AVX-512](/quest/m3/confidence/mutants-avx512.md) - the AVX-512 paths no campaign host runs, under Intel SDE
+- [Mutation testing on armv7](/quest/m3/confidence/mutants-armv7.md) - the code only 32-bit ARM compiles, under qemu-arm
+- [Mutation testing of DIT](/quest/m3/confidence/mutants-dit.md) - DIT detection and setting, on cores that have it
+- [TESTING.md lists the CCTV and imported vector sets](/quest/m3/confidence/testing-vectors-rows.md) - rows for `thirdparty/cctv` and `thirdparty/vectors`

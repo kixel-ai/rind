@@ -29,3 +29,4 @@ proofs/Rind/Aarch64/DigestApi.lean
 proofs/Rind/Aarch64/Hkdf.lean
 proofs/Rind/Aarch64/Pbkdf2.lean
 patch/*/Cargo.lock
+__pycache__/

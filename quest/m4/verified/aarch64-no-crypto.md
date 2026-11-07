@@ -13,5 +13,5 @@ Every operation earns the ✓ on aarch64 cores without the crypto extension (the
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m4/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
+- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
 - [AES-GCM on aarch64 is proven](/quest/m4/verified/aes-gcm-aarch64.md) - the AEAD glue this tier shares
