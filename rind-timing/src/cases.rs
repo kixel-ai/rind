@@ -21,7 +21,7 @@ use rind::{
     signature,
 };
 
-use crate::dudect::{Classes, Config, Report, classes, measure, measure_in_place};
+use crate::dudect::{Classes, Config, Report, classes, measure, measure_built};
 
 pub struct Case {
     pub name: String,
@@ -56,8 +56,7 @@ pub fn all() -> Vec<Case> {
             })
         }),
         // Both classes hold one secret, so nothing but the harness could
-        // tell them apart: once with inputs copied, once with keys read in
-        // place.
+        // tell them apart: once for bytes, once for keys built from them.
         case("control/sha256-same-input", |config| {
             let data = random_vec(LEN);
             let inputs = classes(VALUES, fixed(data.clone()), fixed(data));
@@ -67,9 +66,10 @@ pub fn all() -> Vec<Case> {
         }),
         case("control/aes-128-gcm-same-key", |config| {
             let secret = random::<16>();
-            let new = || aead::Key::new(&aead::AES_128_GCM, &secret).unwrap();
+            let new = |secret: &[u8; 16]| aead::Key::new(&aead::AES_128_GCM, secret).unwrap();
             let plaintext = random::<LEN>();
-            measure_in_place(config, &classes(VALUES, new, new), |key| {
+            let secrets = classes(VALUES, fixed(secret), fixed(secret));
+            measure_built(config, &secrets, new, |key| {
                 let mut buf = plaintext;
                 let nonce = aead::Nonce::assume_unique_for_key(NONCE);
                 key.seal_in_place_separate_tag(nonce, AAD, &mut buf)
@@ -119,8 +119,8 @@ fn hmac_cases(cases: &mut Vec<Case>) {
         ("sha512", &hmac::HMAC_SHA512),
     ] {
         cases.push(case(format!("hmac/{name}/sign"), move |config| {
-            let keys = keys(32, |key| hmac::Key::new(algorithm, key));
-            measure(config, &keys, |key| hmac::sign(key, MESSAGE))
+            let new = |key: &Vec<u8>| hmac::Key::new(algorithm, key);
+            measure_built(config, &secrets(32), new, |key| hmac::sign(key, MESSAGE))
         }));
     }
     cases.push(case("hmac/sha256/verify", |config| {
@@ -140,8 +140,8 @@ fn kdf_cases(cases: &mut Vec<Case>) {
     }));
     cases.push(case("hkdf/sha256/expand", move |config| {
         let salt = salt();
-        let prks = keys(32, |secret| salt.extract(secret));
-        measure_in_place(config, &prks, |prk| {
+        let extract = |secret: &Vec<u8>| salt.extract(secret);
+        measure_built(config, &secrets(32), extract, |prk| {
             let mut out = [0; 32];
             prk.expand(&[b"public info"], out.len())
                 .fill(&mut out)
@@ -179,6 +179,7 @@ fn aead_cases(cases: &mut Vec<Case>) {
     ] {
         let len = algorithm.key_len();
         let new = move |key: &[u8]| aead::Key::new(algorithm, key).unwrap();
+        let build = move |key: &Vec<u8>| new(key);
         let nonce = || aead::Nonce::assume_unique_for_key(NONCE);
 
         cases.push(case(format!("aead/{name}/key"), move |config| {
@@ -186,7 +187,7 @@ fn aead_cases(cases: &mut Vec<Case>) {
         }));
         cases.push(case(format!("aead/{name}/seal-key"), move |config| {
             let plaintext = random::<LEN>();
-            measure_in_place(config, &keys(len, new), |key| {
+            measure_built(config, &secrets(len), build, |key| {
                 let mut buf = plaintext;
                 key.seal_in_place_separate_tag(nonce(), AAD, &mut buf)
             })
@@ -232,11 +233,9 @@ fn aead_cases(cases: &mut Vec<Case>) {
     }
 
     cases.push(case("aead/xchacha20-poly1305/seal-key", |config| {
-        let keys = keys(32, |key| {
-            aead::RandomizedNonceKey::new(key.try_into().unwrap())
-        });
+        let new = |key: &Vec<u8>| aead::RandomizedNonceKey::new(key[..].try_into().unwrap());
         let plaintext = random::<LEN>();
-        measure_in_place(config, &keys, |key| {
+        measure_built(config, &secrets(32), new, |key| {
             let mut buf = Vec::with_capacity(LEN + 16);
             buf.extend_from_slice(&plaintext);
             key.seal_in_place_append_tag(AAD, &mut buf)
@@ -355,11 +354,9 @@ fn cipher_cases(cases: &mut Vec<Case>) {
 
     let wrap_key = || key_wrap::AesKek::new(&key_wrap::AES_256, &random::<32>()).unwrap();
     cases.push(case("key-wrap/aes-256/wrap-kek", |config| {
-        let keys = keys(32, |kek| {
-            key_wrap::AesKek::new(&key_wrap::AES_256, kek).unwrap()
-        });
+        let new = |kek: &Vec<u8>| key_wrap::AesKek::new(&key_wrap::AES_256, kek).unwrap();
         let key = random::<32>();
-        measure_in_place(config, &keys, |kek| {
+        measure_built(config, &secrets(32), new, |kek| {
             let mut wrapped = [0; 40];
             kek.wrap(&key, &mut wrapped).map(|()| wrapped)
         })
@@ -420,13 +417,9 @@ fn agreement_cases(cases: &mut Vec<Case>) {
         ));
         cases.push(case(format!("agreement/{name}/agree-key"), move |config| {
             let peer = generate().public_key();
-            let fixed_scalar = scalar();
-            let keys = classes(
-                VALUES,
-                || from_scalar(&fixed_scalar).unwrap(),
-                || from_scalar(&scalar()).unwrap(),
-            );
-            measure_in_place(config, &keys, |key| key.agree(peer.as_ref()))
+            let scalars = classes(VALUES, fixed(scalar()), scalar);
+            let new = |s: &Vec<u8>| from_scalar(s).unwrap();
+            measure_built(config, &scalars, new, |key| key.agree(peer.as_ref()))
         }));
         cases.push(case(
             format!("agreement/{name}/agree-peer"),
@@ -478,12 +471,8 @@ fn rsa_cases(cases: &mut Vec<Case>) {
             })
         }));
         cases.push(case(name("sign-key"), move |config| {
-            let keys = rsa_keys(size).each_ref().map(|ders| {
-                ders.iter()
-                    .map(|der| signature::RsaKeyPair::from_pkcs8(der).unwrap())
-                    .collect()
-            });
-            measure_in_place(config, &keys, |key| {
+            let new = |der: &Vec<u8>| signature::RsaKeyPair::from_pkcs8(der).unwrap();
+            measure_built(config, rsa_keys(size), new, |key| {
                 key.sign(&signature::sign::RSA_PKCS1_SHA256, MESSAGE)
             })
         }));
@@ -496,16 +485,19 @@ fn rsa_cases(cases: &mut Vec<Case>) {
         }));
         cases.push(case(name("oaep-decrypt-key"), move |config| {
             let message = random::<32>();
+            let new =
+                |der: &Vec<u8>| rsa::DecryptingKey::from_pkcs8(&rsa::OAEP_SHA256, der).unwrap();
+            // Each key with a ciphertext of its own.
             let keys = rsa_keys(size).each_ref().map(|ders| {
                 ders.iter()
                     .map(|der| {
-                        let key = rsa::DecryptingKey::from_pkcs8(&rsa::OAEP_SHA256, der).unwrap();
-                        let c = key.public_key().encrypt(&message, b"").unwrap();
-                        (key, c)
+                        let c = new(der).public_key().encrypt(&message, b"").unwrap();
+                        (der.clone(), c.as_ref().to_vec())
                     })
                     .collect()
             });
-            measure_in_place(config, &keys, |(key, c)| key.decrypt(c.as_ref(), b""))
+            let build = |(der, c): &(Vec<u8>, Vec<u8>)| (new(der), c.clone());
+            measure_built(config, &keys, build, |(key, c)| key.decrypt(c, b""))
         }));
         cases.push(case(name("oaep-decrypt-ciphertext"), move |config| {
             let key =
@@ -579,9 +571,8 @@ fn signature_cases(cases: &mut Vec<Case>) {
             })
         }));
         cases.push(case(format!("ecdsa/{name}/sign-key"), move |config| {
-            let fixed_der = der();
-            let keys = classes(VALUES, || from(&fixed_der), || from(&der()));
-            measure_in_place(config, &keys, |key| key.sign(MESSAGE))
+            let ders = classes(VALUES, fixed(der()), der);
+            measure_built(config, &ders, |der| from(der), |key| key.sign(MESSAGE))
         }));
         cases.push(case(format!("ecdsa/{name}/sign-message"), move |config| {
             let key = from(&der());
@@ -605,9 +596,8 @@ fn signature_cases(cases: &mut Vec<Case>) {
         })
     }));
     cases.push(case("ed25519/sign-key", move |config| {
-        let fixed_seed = seed();
-        let keys = classes(VALUES, || from(&fixed_seed), || from(&seed()));
-        measure_in_place(config, &keys, |key| key.sign(MESSAGE))
+        let seeds = classes(VALUES, fixed(seed()), seed);
+        measure_built(config, &seeds, |seed| from(seed), |key| key.sign(MESSAGE))
     }));
     // The message picks the nonce, so it is a secret input too.
     cases.push(case("ed25519/sign-message", move |config| {
@@ -637,12 +627,6 @@ fn fixed<T: Clone>(value: T) -> impl FnMut() -> T {
 /// Secret byte strings of `len`.
 fn secrets(len: usize) -> Classes<Vec<u8>> {
     classes(VALUES, fixed(random_vec(len)), || random_vec(len))
-}
-
-/// Keys made by `new` from secrets of `len` bytes.
-fn keys<K>(len: usize, new: impl Fn(&[u8]) -> K) -> Classes<K> {
-    let secret = random_vec(len);
-    classes(VALUES, || new(&secret), || new(&random_vec(len)))
 }
 
 /// Wrong values to compare `expected` with: the fixed one differs only in

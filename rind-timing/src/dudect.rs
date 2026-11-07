@@ -70,102 +70,90 @@ impl std::fmt::Display for Test {
     }
 }
 
-/// The two classes of input: `[fixed, random]`.
-///
-/// Both hold the same number of separately built values, a power of two, so
-/// the classes differ only in the secrets the values hold, not in how much
-/// memory a measurement touches. The fixed class holds one secret built that
-/// many times.
+/// The two classes of input: `[fixed, random]`, each a power of two in
+/// length. The fixed class holds one secret, as many times as the random
+/// class holds secrets.
 pub type Classes<T> = [Vec<T>; 2];
 
-/// Builds [`Classes`] of `len` values each, alternating between the classes
-/// so neither gets the lower addresses.
+/// Builds [`Classes`] of `len` values each.
 pub fn classes<T>(
     len: usize,
     mut fixed: impl FnMut() -> T,
-    mut random: impl FnMut() -> T,
+    random: impl FnMut() -> T,
 ) -> Classes<T> {
     assert!(len.is_power_of_two());
-    let mut classes = [Vec::with_capacity(len), Vec::with_capacity(len)];
-    for _ in 0..len {
-        classes[0].push(fixed());
-        classes[1].push(random());
-    }
-    classes
+    [
+        (0..len).map(|_| fixed()).collect(),
+        std::iter::repeat_with(random).take(len).collect(),
+    ]
 }
 
-/// Times `op` on inputs drawn from `classes` at random until `config`'s
-/// budget is spent.
-///
-/// Each input is first copied to the one place `op` reads it from, outside
-/// the timed span. Otherwise each value's address would fix a cost of its
-/// own, from the cache sets and store-to-load aliasing it falls in, and
-/// with a fixed set of values per class those costs would not average out.
+/// Times `op` on copies of inputs drawn from `classes` at random, until
+/// `config`'s budget is spent.
 pub fn measure<T: Clone, R>(config: &Config, classes: &Classes<T>, op: impl Fn(&T) -> R) -> Report {
-    let mut staged = classes[0][0].clone();
-    sample(config, classes, |input, reps| {
-        staged.clone_from(input);
-        time(reps, || op(black_box(&staged)))
-    })
+    measure_built(config, classes, T::clone, op)
 }
 
-/// [`measure`] for inputs that cannot be copied, such as keys, which `op`
-/// reads where they were built.
-pub fn measure_in_place<T, R>(
+/// Times `op` on what `build` makes from inputs drawn from `classes` at
+/// random, until `config`'s budget is spent.
+///
+/// As in dudect.h, each measurement gets an input of its own: every batch
+/// builds its inputs in the random order of their classes, then times them
+/// in that order. Reusing a few values per class instead would give each
+/// class the costs of its values' addresses, from the cache sets and the
+/// store-to-load aliasing they fall in, which never average out.
+pub fn measure_built<S, T, R>(
     config: &Config,
-    classes: &Classes<T>,
+    classes: &Classes<S>,
+    build: impl Fn(&S) -> T,
     op: impl Fn(&T) -> R,
-) -> Report {
-    sample(config, classes, |input, reps| {
-        time(reps, || op(black_box(input)))
-    })
-}
-
-#[inline(always)]
-fn time<R>(reps: u64, op: impl Fn() -> R) -> u64 {
-    let begin = ticks();
-    for _ in 0..reps {
-        black_box(op());
-    }
-    ticks().wrapping_sub(begin)
-}
-
-/// Runs `timed`, which returns the ticks `reps` calls on an input took, on
-/// inputs drawn at random.
-fn sample<T>(
-    config: &Config,
-    classes: &Classes<T>,
-    mut timed: impl FnMut(&T, u64) -> u64,
 ) -> Report {
     let len = classes[0].len();
     assert!(len.is_power_of_two() && classes[1].len() == len);
     let mask = len - 1;
+    let draw = |draws: &mut Vec<u8>, count: usize| -> (Vec<T>, Vec<u8>) {
+        draws.resize(count * 4, 0);
+        rind::rand::fill(draws).expect("system random source");
+        draws
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|draw| {
+                let draw = u32::from_le_bytes(*draw) as usize;
+                let c = draw & 1;
+                (build(&classes[c][(draw >> 1) & mask]), c as u8)
+            })
+            .unzip()
+    };
+    let mut draws = Vec::new();
 
     // Warm up, and repeat a call that spans too few ticks.
-    let mut warm: Vec<u64> = (0..200)
-        .map(|i| timed(&classes[i & 1][(i >> 1) & mask], 1))
+    let (inputs, _) = draw(&mut draws, 200);
+    let mut warm: Vec<u64> = inputs
+        .iter()
+        .map(|input| time(1, || op(black_box(input))))
         .collect();
+    drop(inputs);
     warm.sort_unstable();
     let median = warm[warm.len() / 2].max(1);
     let reps = MIN_TICKS.div_ceil(median).next_power_of_two();
 
-    // About half a second a batch: the first sets the crop cutoffs.
+    // About a quarter second of measurements a batch, within 64 MiB of
+    // inputs: the first batch sets the crop cutoffs.
     let per_second = ticks_per_second();
-    let batch = ((per_second / 2) / (median * reps)).clamp(1_000, 100_000) as usize;
+    let most = (64 << 20) / size_of::<T>().max(1);
+    let batch = ((per_second / 4) / (median * reps)).clamp(1_000, 20_000) as usize;
+    let batch = batch.min(most).max(1_000);
 
-    let mut draws = vec![0u8; batch * 4];
-    let mut times = vec![0u64; batch];
-    let mut class = vec![0u8; batch];
     let mut stats: Option<Stats> = None;
     let start = Instant::now();
     loop {
-        rind::rand::fill(&mut draws).expect("system random source");
-        for (i, draw) in draws.as_chunks::<4>().0.iter().enumerate() {
-            let draw = u32::from_le_bytes(*draw) as usize;
-            let c = draw & 1;
-            times[i] = timed(&classes[c][(draw >> 1) & mask], reps);
-            class[i] = c as u8;
-        }
+        let (inputs, class) = draw(&mut draws, batch);
+        let times: Vec<u64> = inputs
+            .iter()
+            .map(|input| time(reps, || op(black_box(input))))
+            .collect();
+        drop(inputs);
 
         match &mut stats {
             None => stats = Some(Stats::new(&times)),
@@ -180,6 +168,16 @@ fn sample<T>(
             }
         }
     }
+}
+
+/// The ticks `reps` calls of `op` take.
+#[inline(always)]
+fn time<R>(reps: u64, op: impl Fn() -> R) -> u64 {
+    let begin = ticks();
+    for _ in 0..reps {
+        black_box(op());
+    }
+    ticks().wrapping_sub(begin)
 }
 
 /// Reads the CPU's counter after every earlier instruction completes, and
