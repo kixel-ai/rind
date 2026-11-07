@@ -118,7 +118,7 @@ For each way the survey found:
 
   ```toml
   [patch.crates-io]
-  ring = { git = "https://github.com/moq-dev/rind" }
+  ring = { git = "https://github.com/moq-dev/rind-patch" }
   ```
 
   This moves every crate in the tree on ring 0.17, the project's own ring
@@ -141,7 +141,7 @@ Commit as you go, with messages in the project's style.
    the project ships, or a library's rind feature, the three `cargo tree`
    commands from the survey print no dependency path, or only
    dev-dependencies. With the ring patch, `-i ring` instead prints
-   `ring v0.17.999` from rind's repository and no other ring.
+   `ring v0.17.999` from rind-patch and no other ring.
 2. Build each release target, adding its standard library with
    `rustup target add` where it is missing. Where the host has the target's
    linker, run the release build with `--target`. Otherwise run

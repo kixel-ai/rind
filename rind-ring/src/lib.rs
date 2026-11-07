@@ -20,17 +20,17 @@
 //!
 //! ```toml
 //! [patch.crates-io]
-//! ring = { git = "https://github.com/moq-dev/rind" }
+//! ring = { git = "https://github.com/moq-dev/rind-patch" }
 //! ```
 //!
-//! Cargo fetches rind's repository, with its test-vector submodules (about
-//! 150 MB, once), and builds the crate named `ring` in its `patch/ring`, which
-//! re-exports rind-ring and accepts every ring feature. crates.io has the name,
-//! so that crate is never published. Its version, 0.17.999, meets every ring
+//! Cargo builds the crate named `ring` in
+//! [rind-patch](https://github.com/moq-dev/rind-patch), a small repository of
+//! its own, which re-exports rind-ring and accepts every ring feature.
+//! crates.io has the name, so that crate is never published. Its version, 0.17.999, meets every ring
 //! 0.17 requirement. Where the patch is not used, such as for an exact
 //! requirement like `=0.17.14` or before the lockfile is updated, Cargo builds
 //! crates.io's ring and only warns, so check that `cargo tree -i ring` prints
-//! `ring v0.17.999` from rind's repository alone. A dependency on ring 0.16 or
+//! `ring v0.17.999` from rind-patch alone. A dependency on ring 0.16 or
 //! older keeps it, and a library cannot patch for the binaries that use it,
 //! since Cargo applies a patch only in the workspace that declares it.
 //!

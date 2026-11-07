@@ -15,6 +15,6 @@ rcgen = "0.14"
 ring = "0.17"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
-# The line a binary adds. sh/patch.sh points it at this checkout instead.
+# The line a binary adds. sh/patch.sh also patches rind-ring to this checkout.
 [patch.crates-io]
-ring = { git = "https://github.com/moq-dev/rind" }
+ring = { git = "https://github.com/moq-dev/rind-patch" }

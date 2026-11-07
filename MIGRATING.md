@@ -358,10 +358,11 @@ in with `ring = { package = "rind-ring", version = "0.17" }` and no code
 changes. The rename reaches only that crate. A binary moves every crate in
 its tree on ring 0.17, such as rustls or quinn-proto on their `ring`
 features, by adding `[patch.crates-io] ring = { git =
-"https://github.com/moq-dev/rind" }` to its workspace's root `Cargo.toml`
-and running `cargo update -p ring`. That builds `patch/ring`, an unpublished
-crate named `ring` that re-exports rind-ring, and `cargo tree -i ring` then
-prints only `ring v0.17.999` from rind's repository. It panics wherever ring
+"https://github.com/moq-dev/rind-patch" }` to its workspace's root
+`Cargo.toml` and running `cargo update -p ring`. That builds
+[rind-patch](https://github.com/moq-dev/rind-patch)'s unpublished crate named
+`ring`, which re-exports rind-ring, and `cargo tree -i ring` then prints only
+`ring v0.17.999` from rind-patch. It panics wherever ring
 panics, so its signatures stay ring's, and adds a `cpu` module wrapping
 rind's check, so the renamed crate refuses an unsupported CPU with
 `ring::cpu::check()` without depending on rind. Its [README](rind-ring/README.md) lists the
@@ -423,7 +424,7 @@ those algorithms only with its `aws_lc_rs` feature.
 Surveyed on 2026-10-31 against each crate's latest release, by reading its
 features and source; none were built. A migrated graph should give no output
 from `cargo tree -e normal,build -i ring` or `-i aws-lc-sys`, except
-`ring v0.17.999` from rind's repository under the ring patch.
+`ring v0.17.999` from rind-patch under the ring patch.
 
 "Install" means calling `rind_rustls::default_provider()?.install_default()`
 before the crate builds its TLS config. Crates that read rustls's process

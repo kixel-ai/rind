@@ -70,8 +70,7 @@ declare -A scope=(
     [bench]='^(BENCHMARKS\.md$|benchmarks/|admin/bench-report|quest/)'
     # admin/build-cost builds these against rind's API, so they break with it.
     [fixtures]='^(rind/|rind-rustls/|Cargo\.toml$|admin/build-cost-fixtures/(rind|rustls)/)'
-    # The ring shim re-exports rind-ring, and Cargo finds it by name among the
-    # repository's manifests.
+    # The fixture builds this checkout's rind-ring under the rind-patch shim.
     [patch]='^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)'
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
@@ -226,10 +225,7 @@ for module in "${selected[@]}"; do
             cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind-lean --target-dir target
             ;;
         check:patch) sh/patch.sh ;;
-        fix:patch)
-            cargo fmt --manifest-path patch/ring/Cargo.toml
-            cargo fmt --manifest-path patch/fixture/Cargo.toml
-            ;;
+        fix:patch) cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:gh)
             actionlint
             sh/alert.sh check
