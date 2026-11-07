@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [11.0.0](https://github.com/moq-dev/rind/compare/rind-jsonwebtoken-v0.2.0...rind-jsonwebtoken-v11.0.0) - 2026-11-07
+
+### Added
+
+- *(adapters)* [**breaking**] rind-jsonwebtoken and rind-instant-acme check the CPU in default_provider() ([#445](https://github.com/moq-dev/rind/pull/445))
+- [**breaking**] each adapter's version matches the upstream it adapts ([#440](https://github.com/moq-dev/rind/pull/440))
+
+### Other
+
+- *(release)* ship rind as 0.2.1, not 0.3.0 ([#457](https://github.com/moq-dev/rind/pull/457))
+
 ## [0.2.0](https://github.com/moq-dev/rind/compare/rind-jsonwebtoken-v0.1.13...rind-jsonwebtoken-v0.2.0) - 2026-11-06
 
 ### Added
