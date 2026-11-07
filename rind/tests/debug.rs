@@ -94,6 +94,16 @@ fn hmac() {
     let mut ctx = digest::Context::new(&digest::SHA512_256);
     ctx.update(&[0xff; 3]);
     assert_eq!(show(&ctx), "Context { algorithm: Sha512_256, .. }");
+    assert_eq!(
+        format!("{:?}", digest::SHA256),
+        "Algorithm { id: Sha256, output_len: 32 }"
+    );
+    let hash = digest::digest(&digest::SHA256, b"");
+    let bytes = format!("{:?}", hash.as_ref());
+    assert_eq!(
+        format!("{hash:?}"),
+        format!("Digest {{ algorithm: Sha256, value: {bytes} }}")
+    );
 
     let salt = hkdf::Salt::new(&hkdf::HKDF_SHA256, &[0xff; 32]);
     assert_eq!(show(&salt), "Salt { algorithm: Sha256, .. }");
@@ -140,4 +150,87 @@ fn rsa() {
     assert_eq!(format!("{ciphertext:?}"), format!("Ciphertext({bytes})"));
     let plaintext = key.decrypt(ciphertext.as_ref(), b"").unwrap();
     assert_eq!(show(&plaintext), "Plaintext(..)");
+}
+
+#[test]
+fn signature() {
+    use rind::signature::{EcdsaKeyPair, Ed25519KeyPair, RsaKeyPair, sign, verify};
+    let ecdsa = r#"Ecdsa { curve: P256, hash: Sha256, encoding: Asn1 }"#;
+    assert_eq!(
+        format!("{:?}", verify::ECDSA_P256_SHA256_ASN1),
+        format!("Ecdsa({ecdsa})")
+    );
+    assert_eq!(format!("{:?}", verify::ED25519), "Ed25519");
+    let rsa =
+        "Rsa { verification: Scheme(RsaScheme { padding: Pkcs1, hash: Sha256 }), min_bits: 2048 }";
+    assert_eq!(format!("{:?}", verify::RSA_PKCS1_SHA256), rsa);
+    assert_eq!(
+        format!("{:?}", verify::RSA_PKCS1_SHA256.as_ref()),
+        format!("Rsa({rsa})")
+    );
+
+    let algorithm = &sign::ECDSA_P256_SHA256_ASN1;
+    assert_eq!(
+        format!("{algorithm:?}"),
+        format!("EcdsaSigningAlgorithm({ecdsa})")
+    );
+    let pair = EcdsaKeyPair::generate(algorithm).unwrap();
+    let public = pair.public_key();
+    let point = format!("{:?}", public.as_ref());
+    assert_eq!(
+        format!("{pair:?}"),
+        format!("EcdsaKeyPair {{ algorithm: {ecdsa}, public_key: {point}, .. }}")
+    );
+    assert_eq!(
+        format!("{public:?}"),
+        format!("PublicKey {{ algorithm: {ecdsa}, bytes: {point} }}")
+    );
+    let signature = pair.sign(b"").unwrap();
+    let bytes = format!("{:?}", signature.as_ref());
+    assert_eq!(format!("{signature:?}"), format!("Signature({bytes})"));
+    let spki = pair.to_spki();
+    let bytes = format!("{:?}", spki.as_ref());
+    assert_eq!(format!("{spki:?}"), format!("Spki({bytes})"));
+    assert_eq!(format!("{:?}", pair.to_pkcs8()), "Pkcs8(..)");
+    assert_eq!(format!("{:?}", pair.to_sec1()), "Sec1(..)");
+    assert_eq!(format!("{:?}", pair.to_scalar()), "EcdsaScalar(..)");
+
+    let pss = "RsaScheme { padding: Pss(Hash), hash: Sha256 }";
+    assert_eq!(
+        format!("{:?}", sign::RSA_PSS_SHA256),
+        format!("RsaSigningAlgorithm({pss})")
+    );
+    let pair = RsaKeyPair::from_pkcs8(include_bytes!("../src/high/rsa/rsa2048.pkcs8.der")).unwrap();
+    let public = pair.public_key(&sign::RSA_PSS_SHA256);
+    let bytes = format!("{:?}", public.as_ref());
+    assert_eq!(
+        format!("{pair:?}"),
+        format!("RsaKeyPair {{ public_key: {bytes}, .. }}")
+    );
+    assert_eq!(
+        format!("{public:?}"),
+        format!("PublicKey {{ algorithm: Scheme({pss}), bytes: {bytes} }}")
+    );
+
+    let pair = Ed25519KeyPair::generate().unwrap();
+    let bytes = format!("{:?}", pair.public_key().as_ref());
+    assert_eq!(
+        format!("{pair:?}"),
+        format!("Ed25519KeyPair {{ public_key: {bytes}, .. }}")
+    );
+    assert_eq!(format!("{:?}", pair.to_seed()), "Ed25519Seed(..)");
+}
+
+#[test]
+fn agreement() {
+    use rind::agreement::{ECDH_P256, PrivateKey};
+    assert_eq!(format!("{ECDH_P256:?}"), "EcdhP256");
+    let key = PrivateKey::generate(&ECDH_P256).unwrap();
+    assert_eq!(format!("{key:?}"), "PrivateKey { .. }");
+    assert_eq!(format!("{:?}", key.to_scalar()), "Scalar(..)");
+    let public = key.public_key();
+    let bytes = format!("{:?}", public.as_ref());
+    assert_eq!(format!("{public:?}"), format!("PublicKey({bytes})"));
+    let secret = key.agree(public.as_ref()).unwrap();
+    assert_eq!(format!("{secret:?}"), "SharedSecret(..)");
 }
