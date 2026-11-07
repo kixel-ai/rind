@@ -78,3 +78,4 @@ don't ask again (✅ is the chosen option):
 - [librespot builds rustls without ring](/quest/m2/adoption/librespot.md) - users pick their rustls provider
 - [rind-rustls supports rustls 0.24](/quest/m2/adoption/rind-rustls-0.24.md) - a release on 0.24 soon after it ships
 - [rustls 0.24 is released](/quest/m2/adoption/rustls-0.24-release.md) - waiting on the release
+- [rind on every ring or aws-lc-rs target](/quest/m2/adoption/targets/README.md) - a portable backend for every architecture except wasm, so libraries can go rind-only
