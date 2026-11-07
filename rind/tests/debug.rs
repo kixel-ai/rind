@@ -47,6 +47,10 @@ fn aead() {
         (&AES_256, "Aes256"),
         (&CHACHA20, "ChaCha20"),
     ] {
+        assert_eq!(
+            format!("{algorithm:?}"),
+            format!("Algorithm {{ id: {name} }}")
+        );
         let key = HeaderProtectionKey::new(algorithm, &[0xff; 32][..algorithm.key_len()]).unwrap();
         let expected = format!("HeaderProtectionKey {{ algorithm: {name}, .. }}");
         assert_eq!(show(&key), expected);
