@@ -309,7 +309,7 @@ pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64])
 
 /// z := 2^1152 mod m, for m = n_521
 // Checks the constant against s2n-bignum, which armv7 lacks.
-#[cfg(all(test, not(target_arch = "arm")))]
+#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
     assert_eq!(m, N);
     z.copy_from_slice(&MM);
@@ -643,7 +643,7 @@ const C: [u64; 5] = [
 ///
 /// Inputs that are secret in `mid::p521` are marked secret, so under
 /// `admin/ctgrind` these also check each routine is constant time in them.
-#[cfg(all(test, not(target_arch = "arm")))]
+#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use proptest::prelude::*;
@@ -918,6 +918,18 @@ mod tests {
         bignum_montifier(&mut ours, &N, &mut [0; 9]);
         low::bignum_montifier(&mut theirs, &N, &mut [0; 27]);
         assert_eq!(ours, theirs);
+    }
+
+    // Only the top bit set is where an exclusive or of `x` and `-x` would
+    // drop it, and only words sharing a bit cancel in an exclusive or.
+    #[test]
+    fn nonzero_at_the_top_bit() {
+        assert_eq!(nonzero(&fe(&[0; 9])), 0);
+        assert_eq!(nonzero(&fe(&[1 << 63, 0, 0, 0, 0, 0, 0, 0, 0])), 1);
+        assert_eq!(nonzero(&fe(&[1, 1, 0, 0, 0, 0, 0, 0, 0])), 1);
+        assert_eq!((nonzero_u8(0), nonzero_u8(1), nonzero_u8(0x80)), (0, 1, 1));
+        assert_eq!(mask_nonzero(0), 0);
+        assert_eq!(mask_nonzero(1 << 63), u64::MAX);
     }
 
     #[test]

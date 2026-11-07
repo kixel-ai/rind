@@ -12,5 +12,5 @@
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m4/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
+- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
 - [AES and QUIC AES header protection are proven with AES hardware](/quest/m4/verified/aes-header-protection.md) - the block cipher and its intrinsic models
