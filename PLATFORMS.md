@@ -1,8 +1,9 @@
 # Platforms
 
 `aarch64`, `x86_64`, and 32-bit `arm` architectures only. CI tests Linux
-(glibc and musl), macOS, and Windows on `x86_64` and `aarch64`; iOS and
-Android are untested.
+(glibc and musl), macOS, and Windows on `x86_64` and `aarch64`, iOS in the
+simulator on `aarch64`, and Android on `aarch64`, `armv7`, and `x86_64`, the
+first two under qemu. iOS devices' code is only built.
 
 - `aarch64` requires the `neon` CPU feature. Where the CPU has the crypto
   extension (`aes`, `pmull`, and `sha2`), as the Raspberry Pi 5 and most
@@ -37,7 +38,7 @@ Android are untested.
   as on Haswell, RSA-2048 signing runs aws-lc's RSAZ exponentiation. With
   `avx512ifma`, as on Ice Lake, Sapphire Rapids, and AMD's Zen 4 and 5,
   RSA-2048, 3072, and 4096 signing runs aws-lc's dual AVX-512 RSAZ.
-- 32-bit `arm` (tested on `armv7-unknown-linux-gnueabihf`, and built for
+- 32-bit `arm` (tested on `armv7-unknown-linux-gnueabihf` and
   `armv7-linux-androideabi`) runs portable Rust instead, mostly from
   [libcrux] (see [ALGORITHMS.md](ALGORITHMS.md)), and needs no CPU features. RSA's
   Montgomery multiplication runs [aws-lc]'s assembly, with NEON where the CPU

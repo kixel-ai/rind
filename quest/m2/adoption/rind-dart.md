@@ -26,7 +26,3 @@ Guidance:
   than falling back.
 - Benchmark on a real Android armv7 or aarch64 phone against pointycastle and
   `cryptography`, where rind's lead is largest.
-
-## Required
-
-- [rind builds and passes its tests on iOS and Android](/quest/m2/adoption/platforms-mobile.md) - the Android and iOS targets
