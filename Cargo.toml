@@ -5,6 +5,7 @@ members = [
   "rind-aws-lc-rs",
   "rind-bench",
   "rind-cpuid",
+  "rind-dart",
   "rind-dimpl",
   "rind-instant-acme",
   "rind-object-store",
