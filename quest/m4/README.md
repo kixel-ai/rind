@@ -3,7 +3,10 @@
 ## Goal
 
 Work that takes rind beyond Rust consumers into the C ecosystem and
-regulated deployments: an OpenSSL provider and FIPS 140-3. Planned, but
+regulated deployments (an OpenSSL provider and FIPS 140-3), and the long-term
+work of a complete, fully verified library: post-quantum and protocol
+building blocks, every path proven, and continuous testing (maintainer,
+2026-11-07). Planned, but
 after m2's adoption work and its own scoping.
 
 ## Plan
@@ -17,3 +20,7 @@ the one route by which rind's faster ECC reaches them unchanged.
 
 - [rind as an OpenSSL 3 provider](/quest/m4/openssl-provider.md) - OpenSSL loads rind's faster algorithms through `openssl.cnf`
 - [Scope FIPS 140-3 validation](/quest/m4/fips-scope.md) - what validating rind would take, for the maintainer to decide
+- [rind covers the standardized post-quantum algorithms](/quest/m4/pq/README.md) - ML-KEM-512/1024, ML-DSA, SLH-DSA, hybrid KEMs, and later FN-DSA and HQC
+- [rind offers the building blocks modern protocols need](/quest/m4/protocols/README.md) - HPKE, blind RSA, VOPRF, FROST, ECVRF, and PAKEs
+- [Every rind path is proven, with the smallest trust base](/quest/m4/verified/README.md) - the gaps m3 accepted, closed, and the transliteration out of the trust base
+- [rind is continuously tested the way established libraries are](/quest/m4/assurance/README.md) - OSS-Fuzz, cryptofuzz, and ACVP
