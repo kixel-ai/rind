@@ -2,14 +2,14 @@
 
 use alloc::vec::Vec;
 
-use zeroize::Zeroizing;
+use crate::wipe::Wiped;
 
-/// A PKCS#8 private key document, wiped on drop.
-pub struct Document(Zeroizing<Vec<u8>>);
+/// A PKCS#8 private key document, wiped on drop under the `wipe` feature.
+pub struct Document(Wiped<Vec<u8>>);
 
 impl Document {
     pub(crate) fn new(der: &[u8]) -> Self {
-        Self(Zeroizing::new(der.to_vec()))
+        Self(Wiped::new(der.to_vec()))
     }
 }
 

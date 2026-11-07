@@ -73,7 +73,7 @@ impl hkdf::KeyType for Algorithm {
     }
 }
 
-/// An HMAC key, keyed once and reused for every message; wiped on drop.
+/// An HMAC key, keyed once and reused for every message; wiped on drop under the `wipe` feature.
 #[derive(Clone)]
 pub struct Key {
     inner: rind::hmac::Key,

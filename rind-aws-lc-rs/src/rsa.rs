@@ -15,7 +15,7 @@ use core::fmt;
 use core::ops::RangeInclusive;
 use std::sync::OnceLock;
 
-use zeroize::Zeroizing;
+use crate::wipe::Wiped;
 
 use crate::digest::{self, Digest};
 use crate::encoding::{AsDer, Pkcs8V1Der, PublicKeyX509Der};
@@ -772,7 +772,7 @@ fn cached<K>(
 
 struct DecryptingInner {
     /// The key as PKCS#8, from which each algorithm's key is loaded.
-    pkcs8: Zeroizing<Vec<u8>>,
+    pkcs8: Wiped<Vec<u8>>,
     /// The key loaded for each algorithm, by [`OaepAlgorithm::index`].
     keys: [OnceLock<rind::rsa::DecryptingKey>; 4],
     public: PublicEncryptingKey,
@@ -789,7 +789,7 @@ impl PrivateDecryptingKey {
     fn new(key: rind::rsa::DecryptingKey) -> Result<Self, KeyRejected> {
         let public = PublicEncryptingKey::new(key.public_key().as_ref())?;
         let keys = [const { OnceLock::new() }; 4];
-        let pkcs8 = Zeroizing::new(key.to_pkcs8().as_ref().to_vec());
+        let pkcs8 = Wiped::new(key.to_pkcs8().as_ref().to_vec());
         let _ = keys[OAEP_SHA256_MGF1SHA256.index()].set(key);
         Ok(Self(Arc::new(DecryptingInner {
             pkcs8,

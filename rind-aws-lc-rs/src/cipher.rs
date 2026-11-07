@@ -6,7 +6,7 @@
 
 use core::fmt;
 
-use zeroize::Zeroizing;
+use crate::wipe::Wiped;
 
 use crate::error::Unspecified;
 use crate::hkdf;
@@ -169,14 +169,14 @@ impl DecryptionContext {
     }
 }
 
-/// A key not yet given a mode; wiped on drop.
+/// A key not yet given a mode; wiped on drop under the `wipe` feature.
 pub struct UnboundCipherKey {
     algorithm: &'static Algorithm,
     key: Key,
 }
 
 // The key bytes, kept until a mode expands them.
-type Key = Zeroizing<[u8; AES_256_KEY_LEN]>;
+type Key = Wiped<[u8; AES_256_KEY_LEN]>;
 
 impl UnboundCipherKey {
     /// Takes `key_bytes` for `algorithm`, failing unless it is the algorithm's key length.
@@ -246,7 +246,7 @@ fn ctr(key: &UnboundCipherKey) -> Result<rind::cipher::AesCtr, Unspecified> {
         .map_err(crate::error::unspecified)
 }
 
-/// A key that encrypts in CBC, without padding, or CTR mode; wiped on drop.
+/// A key that encrypts in CBC, without padding, or CTR mode; wiped on drop under the `wipe` feature.
 pub struct EncryptingKey {
     algorithm: &'static Algorithm,
     key: Encrypting,
@@ -339,7 +339,7 @@ impl Decrypting {
     }
 }
 
-/// A key that decrypts in CBC, without padding, or CTR mode; wiped on drop.
+/// A key that decrypts in CBC, without padding, or CTR mode; wiped on drop under the `wipe` feature.
 pub struct DecryptingKey {
     algorithm: &'static Algorithm,
     key: Decrypting,
@@ -401,7 +401,7 @@ impl fmt::Debug for DecryptingKey {
     }
 }
 
-/// A key that pads with PKCS#7 and encrypts in CBC mode; wiped on drop.
+/// A key that pads with PKCS#7 and encrypts in CBC mode; wiped on drop under the `wipe` feature.
 pub struct PaddedBlockEncryptingKey {
     algorithm: &'static Algorithm,
     key: rind::cipher::AesCbcEncryptingKey,
@@ -459,7 +459,7 @@ impl fmt::Debug for PaddedBlockEncryptingKey {
     }
 }
 
-/// A key that decrypts in CBC mode and removes PKCS#7 padding; wiped on drop.
+/// A key that decrypts in CBC mode and removes PKCS#7 padding; wiped on drop under the `wipe` feature.
 pub struct PaddedBlockDecryptingKey {
     algorithm: &'static Algorithm,
     key: rind::cipher::AesCbcDecryptingKey,

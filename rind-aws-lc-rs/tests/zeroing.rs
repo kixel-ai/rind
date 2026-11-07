@@ -14,6 +14,10 @@
 //! cannot assume their contents, and the block is still allocated as far as
 //! the system allocator knows. In theory it could still miss a failed wipe;
 //! `detects_a_leak` checks that it catches one in practice.
+//!
+//! The wipe is opt-in, so these tests build only with the `wipe` feature.
+
+#![cfg(feature = "wipe")]
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::Mutex;

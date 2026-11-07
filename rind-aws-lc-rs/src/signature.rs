@@ -11,7 +11,7 @@ use core::fmt;
 use core::marker::PhantomData;
 use core::ops::Deref;
 
-use zeroize::Zeroizing;
+use crate::wipe::Wiped;
 
 use crate::digest::{self, Digest};
 use crate::encoding::{
@@ -877,7 +877,7 @@ impl Ed25519KeyPair {
 
     /// The private key's seed.
     pub fn seed(&self) -> Result<Ed25519Seed<'static>, Unspecified> {
-        let mut seed = Zeroizing::new([0; 32]);
+        let mut seed = Wiped::new([0; 32]);
         seed.copy_from_slice(self.key.to_seed().as_ref());
         Ok(Ed25519Seed {
             bytes: seed,
@@ -912,10 +912,10 @@ impl AsDer<Pkcs8V2Der<'static>> for Ed25519KeyPair {
     }
 }
 
-/// An Ed25519 private key's seed; wiped on drop.
+/// An Ed25519 private key's seed; wiped on drop under the `wipe` feature.
 #[derive(Clone)]
 pub struct Ed25519Seed<'a> {
-    bytes: Zeroizing<[u8; 32]>,
+    bytes: Wiped<[u8; 32]>,
     phantom: PhantomData<&'a [u8]>,
 }
 

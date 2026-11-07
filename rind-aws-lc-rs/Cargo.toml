@@ -33,6 +33,10 @@ ring-sig-verify = []
 test_logging = []
 unstable = []
 
+# rind-aws-lc-rs's own: wipes the adapter's heap copies of secrets on drop,
+# as rind's `wipe` feature wipes rind's keys.
+wipe = []
+
 [dependencies]
 rind = { version = "0.2.1", path = "../rind" }
 untrusted = "0.7.1"

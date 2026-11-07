@@ -245,7 +245,7 @@ impl From<hkdf::Okm<'_, &'static Algorithm>> for UnboundKey {
     }
 }
 
-/// A key that seals or opens with any nonce the caller gives it; wiped on drop.
+/// A key that seals or opens with any nonce the caller gives it; wiped on drop under the `wipe` feature.
 pub struct LessSafeKey {
     key: rind::aead::Key,
     algorithm: &'static Algorithm,

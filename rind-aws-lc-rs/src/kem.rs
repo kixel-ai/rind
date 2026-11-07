@@ -4,10 +4,9 @@ use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use core::fmt;
 
-use zeroize::Zeroize;
-
 use crate::buffer::generated_encodings;
 use crate::error::{KeyRejected, Unspecified, unspecified};
+use crate::wipe::Wiped;
 
 /// ML-KEM-768, as standardised by FIPS 203.
 pub const ML_KEM_768: Algorithm<AlgorithmId> = Algorithm {
@@ -71,7 +70,7 @@ impl AlgorithmId {
 generated_encodings!((EncapsulationKeyBytes, EncapsulationKeyBytesType, false));
 
 /// A decapsulation key, which decapsulates any number of ciphertexts, wiped
-/// on drop.
+/// on drop under the `wipe` feature.
 pub struct DecapsulationKey<Id = AlgorithmId>
 where
     Id: AlgorithmIdentifier,
@@ -107,7 +106,7 @@ impl DecapsulationKey<AlgorithmId> {
             .key
             .decapsulate(ciphertext.as_ref())
             .map_err(unspecified)?;
-        Ok(SharedSecret(secret.as_ref().into()))
+        Ok(SharedSecret(Wiped::new(secret.as_ref().into())))
     }
 }
 
@@ -158,7 +157,7 @@ impl EncapsulationKey<AlgorithmId> {
         let (ciphertext, secret) = self.key.encapsulate().map_err(unspecified)?;
         Ok((
             Ciphertext(Cow::Owned(ciphertext.as_ref().to_vec())),
-            SharedSecret(secret.as_ref().into()),
+            SharedSecret(Wiped::new(secret.as_ref().into())),
         ))
     }
 
@@ -199,14 +198,9 @@ impl<'a> From<&'a [u8]> for Ciphertext<'a> {
     }
 }
 
-/// The shared secret encapsulation and decapsulation agree on, wiped on drop.
-pub struct SharedSecret(Box<[u8]>);
-
-impl Drop for SharedSecret {
-    fn drop(&mut self) {
-        self.0.zeroize();
-    }
-}
+/// The shared secret encapsulation and decapsulation agree on, wiped on drop
+/// under the `wipe` feature.
+pub struct SharedSecret(Wiped<Box<[u8]>>);
 
 impl AsRef<[u8]> for SharedSecret {
     fn as_ref(&self) -> &[u8] {

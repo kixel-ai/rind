@@ -20,6 +20,12 @@ It panics wherever aws-lc-rs panics, such as `pbkdf2::derive` asked for more tha
 Every aws-lc-rs feature but `fips` is accepted and changes nothing.
 `fips` is refused, since rind is not FIPS validated: `try_fips_mode()` always fails and `fips_version()` is `None`.
 
+## Wiping keys
+
+The adapter's own copies of secrets, such as PKCS#8 documents, Ed25519 seeds, raw cipher keys, and ML-KEM shared secrets, are wiped on drop only under the `wipe` feature, which aws-lc-rs lacks since it always wipes them.
+Leaving it off skips the wipe, which is faster.
+The rind keys this crate wraps follow rind's own wiping.
+
 ## Not offered
 
 These items are left out, so code using them fails to build:

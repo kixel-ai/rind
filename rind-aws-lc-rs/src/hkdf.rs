@@ -84,7 +84,8 @@ pub trait KeyType {
     fn len(&self) -> usize;
 }
 
-/// A pseudorandom key, from which [`Prk::expand`] derives any number of keys; wiped on drop.
+/// A pseudorandom key, from which [`Prk::expand`] derives any number of keys;
+/// wiped on drop under the `wipe` feature.
 #[derive(Clone)]
 pub struct Prk(hmac::Key);
 
