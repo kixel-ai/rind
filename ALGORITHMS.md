@@ -434,17 +434,22 @@ run the bitsliced block cipher rind copies from libcrux and a port of aws-lc's
 
 AES-192 takes each of these paths with 12 rounds, but for three sources with
 no AES-192: Vale's AES-GCM, so x86_64 runs the by-8 code where Vale would
-run; s2n-bignum's aarch64 AES-GCM kernels, so aarch64 runs AES-CTR and GHASH
-in turn past `short`'s lengths; and libcrux's bitsliced AES-GCM, so armv7
+run; s2n-bignum's aarch64 AES-GCM kernels, so aarch64 runs aws-lc's by-8
+`aesv8_gcm_8x_enc_192` and `aesv8_gcm_8x_dec_192` past `short`'s lengths on a
+core with SHA3, which aws-lc runs on Apple and Neoverse V cores, and AES-CTR
+and GHASH in turn without it; and libcrux's bitsliced AES-GCM, so armv7
 without the crypto extension composes its block cipher with `gcm_nohw.c`.
+aws-lc's routines are not verified, and their branches and addresses,
+which depend only on the length, were checked by reading them, since
+valgrind hides SHA3 from `admin/ctgrind`.
 AES-NI and ARMv8 expand an AES-192 key six words per vector step, with the
 SubWord the other sizes take, measured 0.88-0.94x aws-lc-rs's AES-GCM key
 setup on Zen 3 and Neoverse N2; armv7's bitsliced path runs FIPS 197's
 word-by-word schedule. Against aws-lc-rs, AES-192-GCM measured 0.43-0.57x on
-Zen 3 with VAES and 0.44-1.03x without AVX2, as AES-128 did, and 0.46-0.61x
-on N2 up to 64 bytes, but 1.04-1.09x from 1200 bytes, and 1.35-1.68x on Apple
-M2 (0.97-1.55x on M1), where aws-lc stitches AES-CTR and GHASH for every
-key size.
+Zen 3 with VAES and 0.44-1.03x without AVX2, as AES-128 did, 0.43-0.47x on
+N2 at 32 bytes and 0.74-0.84x from 1200 bytes, where aws-lc runs its by-4
+routine, and 0.90-1.02x on Apple M1 and 0.92-0.99x on M4 from 1200 bytes
+with `rind::cpu::Dit::hold()` held, 1.01-1.21x without it.
 AES-192-CTR and CBC measured as AES-128 did on each.
 
 x86_64 CPUs with AVX2 run ChaCha20 on Graviola's AVX2 kernels from two
