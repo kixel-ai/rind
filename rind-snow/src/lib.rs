@@ -124,7 +124,8 @@ struct X25519(Option<KeyPair>);
 
 struct KeyPair {
     private: PrivateKey,
-    // `privkey` returns a borrow, so the scalar is kept, and wiped on drop.
+    // `privkey` returns a borrow, so the scalar is kept, as a rind `Scalar`
+    // so that rind's key wiping covers it.
     scalar: Scalar,
     public: PublicKey,
 }
@@ -207,9 +208,12 @@ impl Cipher for Aead {
         self.key = aead::Key::new(self.algorithm, key).expect("both ciphers take 32-byte keys");
     }
 
-    /// Panics if `out` is shorter than `plaintext` and its tag: snow checks
-    /// that for every message but a handshake's static key, and this cannot
-    /// return an error.
+    /// # Panics
+    ///
+    /// If `out` is shorter than `plaintext` and its 16-byte tag. snow's trait
+    /// returns no error, and snow's own resolvers panic here too. snow sizes
+    /// `out` for every message but a handshake's static key, whose length
+    /// check leaves out the tag.
     fn encrypt(&self, nonce: u64, authtext: &[u8], plaintext: &[u8], out: &mut [u8]) -> usize {
         let (body, rest) = out.split_at_mut(plaintext.len());
         body.copy_from_slice(plaintext);
@@ -269,6 +273,11 @@ impl Hash for Hasher {
     }
 
     /// Writes the digest and starts a new one, as snow's own resolver does.
+    ///
+    /// # Panics
+    ///
+    /// If `out` is shorter than the digest. snow's trait returns no error,
+    /// snow's own resolvers panic here too, and snow passes 64-byte buffers.
     fn result(&mut self, out: &mut [u8]) {
         let digest = self.context.finish();
         out[..digest.as_ref().len()].copy_from_slice(digest.as_ref());
