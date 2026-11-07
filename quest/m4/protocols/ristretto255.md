@@ -2,7 +2,7 @@
 
 ## Goal
 
-rind's crate-internal `mid` layer offers ristretto255 (RFC 9496): element encoding and decoding, the one-way map from 64 bytes, and RFC 9380's `ristretto255_XMD:SHA-512_R255MAP_RO_` hash. Under it sits a constant-time variable-base scalar multiplication on edwards25519, which rind lacks today: its Ed25519 multiplies only the base point in constant time, and verification's double-scalar multiplication is variable time. The [OPRF](/quest/m4/protocols/oprf.md), [FROST](/quest/m4/protocols/frost.md), [ECVRF](/quest/m4/protocols/ecvrf.md), and [OPAQUE](/quest/m4/protocols/opaque.md) quests build on it. No public API: it ships with its first consumer's.
+rind's crate-internal `mid` layer offers ristretto255 (RFC 9496): element encoding and decoding, and the one-way map from 64 uniform bytes, which the OPRF feeds from [hash-to-curve](/quest/m4/protocols/hash-to-curve.md)'s `expand_message_xmd`. Under it sits a constant-time variable-base scalar multiplication on edwards25519, which rind lacks today: its Ed25519 multiplies only the base point in constant time, and verification's double-scalar multiplication is variable time. The [OPRF](/quest/m4/protocols/oprf.md), [FROST](/quest/m4/protocols/frost.md), [ECVRF](/quest/m4/protocols/ecvrf.md), and [OPAQUE](/quest/m4/protocols/opaque.md) quests build on it. No public API: it ships with its first consumer's.
 
 ## Plan
 

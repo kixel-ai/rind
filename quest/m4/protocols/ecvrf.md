@@ -2,13 +2,14 @@
 
 ## Goal
 
-A public `vrf` module implements RFC 9381's ECVRF: the holder of a secret key proves a pseudorandom output for an input, and anyone holding the public key verifies the proof and recovers the same output.
+A public `vrf` module implements RFC 9381's ECVRF-EDWARDS25519-SHA512-TAI and ECVRF-P256-SHA256-TAI: the holder of a secret key proves a pseudorandom output for an input, and anyone holding the public key verifies the proof and recovers the same output. These are the two suites key transparency uses: Meta's `akd` runs the Edwards suite, and draft-ietf-keytrans-protocol's ciphersuites name both.
 
 ## Plan
 
-- Builds on the constant-time edwards25519 scalar multiplication from the [ristretto255](/quest/m4/protocols/ristretto255.md) quest, since the prover multiplies the hashed input by its secret key, and on the NIST curves' arithmetic rind already has.
+- Builds on the constant-time edwards25519 scalar multiplication from the [ristretto255](/quest/m4/protocols/ristretto255.md) quest, since the prover multiplies the hashed input by its secret key; P-256 uses rind's existing arithmetic. Try-and-increment hashes only public data (the public key and input), so its variable running time leaks nothing.
+- The ELL2 and SSWU suites are left out: Cardano and Algorand use an incompatible pre-RFC draft, and no RFC 9381 consumer uses them.
 - API: one `&'static Algorithm` per suite; a wiped `SecretKey` whose `prove(alpha)` returns the `Proof` and its `Output`, and a `PublicKey` whose `verify(alpha, &proof)` returns the `Output` or an error, so a caller cannot use an output it did not verify. Public keys are validated as RFC 9381 section 5.4.5 requires.
-- Test against RFC 9381's Appendix B vectors, differentially against an established implementation of each suite as a dev-dependency (aws-lc-rs has no VRF), and ctgrind on proving.
+- Test against RFC 9381's Appendix B vectors, differentially against `akd_core`'s ECVRF for the Edwards suite and `vrf-rfc9381` for P-256 as dev-dependencies (aws-lc-rs has no VRF), and ctgrind on proving.
 
 ## Required
 
