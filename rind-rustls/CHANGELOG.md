@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0](https://github.com/moq-dev/rind/compare/rind-rustls-v0.2.0...rind-rustls-v0.23.0) - 2026-11-07
+
+### Added
+
+- [**breaking**] each adapter's version matches the upstream it adapts ([#440](https://github.com/moq-dev/rind/pull/440))
+
+### Other
+
+- *(release)* ship rind as 0.2.1, not 0.3.0 ([#457](https://github.com/moq-dev/rind/pull/457))
+- test iOS in the simulator and Android under cross ([#432](https://github.com/moq-dev/rind/pull/432))
+
 ## [0.2.0](https://github.com/moq-dev/rind/compare/rind-rustls-v0.1.13...rind-rustls-v0.2.0) - 2026-11-06
 
 ### Added
