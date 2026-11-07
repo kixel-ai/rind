@@ -14,8 +14,8 @@ void main() {
       check: (input, output) {
         expect(output.assets.code.single.file, isNotNull);
         expect(
-          output.dependencies.map((uri) => uri.path),
-          contains(endsWith('rind-dart/src/lib.rs')),
+          output.dependencies,
+          contains(input.packageRoot.resolve('src/lib.rs')),
         );
       },
     );
