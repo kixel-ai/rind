@@ -22,6 +22,7 @@ next push to `main` that runs the release job.
 - Maintainer: on PyPI, add a pending trusted publisher for the project
   `pyrind` (owner `moq-dev`, repository `rind`, workflow `release.yml`,
   environment `publish`) before merging the release PR that carries
-  rind-python 0.1.0, then merge it. An agent cannot create the PyPI account
-  or publisher. Check: `pip install pyrind==0.1.0` installs, and
+  rind-python 0.1.0, then merge it. An agent cannot: PyPI has no API for
+  adding a trusted publisher, only its web form behind the owner's login.
+  Check: `pip install pyrind==0.1.0` installs, and
   `python -c "import pyrind"` runs.

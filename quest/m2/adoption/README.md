@@ -64,6 +64,7 @@ don't ask again (✅ is the chosen option):
 - [quinn's rustls support works with any provider](/quest/m2/adoption/quinn.md) - quinn-proto stops forcing ring or aws-lc-rs
 - [Bun's CryptoHasher takes SHA-3 from rind](/quest/m2/adoption/bun-sha3.md) - SHA-3 in Bun on rind, after the m1 Bun PR
 - [pyrind on PyPI](/quest/m2/adoption/pyrind.md) - rind for Python with its own API
+- [pyrind's musl and armv7 wheels are tested](/quest/m2/adoption/pyrind-wheel-tests.md) - CI loads every wheel it publishes
 - [Lemmy's federation signs and verifies with rind](/quest/m2/adoption/lemmy.md) - activitypub-federation-rust's HTTP signatures off the `rsa` crate
 - [rind-snow](/quest/m2/adoption/rind-snow.md) - snow's `CryptoResolver` on rind, for rathole and other Noise users
 - [tailscale-rs's tunnel runs on rind](/quest/m2/adoption/tailscale-rs.md) - WireGuard's per-packet ChaCha20-Poly1305 on rind
