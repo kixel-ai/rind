@@ -490,6 +490,54 @@ mod tests {
         }
     }
 
+    // Valgrind hides SHA3, so `admin/ctgrind` never reaches the eight-way
+    // kernels; `admin/ct-qemu` traces them here instead, under qemu-aarch64's
+    // `max` CPU: key and GHASH table setup, then each key size both ways with
+    // a secret key, nonce or IV, AAD, and message, at lengths that take the
+    // one-pass short path, and the kernels' eight-block loop with tails of
+    // seven blocks and a partial one, five blocks, and eight.
+    #[test]
+    #[ignore = "admin/ct-qemu runs it under qemu"]
+    fn ct_qemu_aes_gcm() {
+        use crate::low::aarch64::ct_qemu;
+
+        let seed = ct_qemu::seed().to_le_bytes();
+        let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
+        let token = HaveCryptoExt::check().expect("the crypto extension");
+        for key_len in [16, 24, 32] {
+            let key = bytes(key_len);
+            let (key, table) = ct_qemu::traced(|| {
+                let key = AesKey::new(&key);
+                let h = key.encrypt_block(&[0; 16]);
+                (key, PmullTable::new(u128::from_be_bytes(h), token))
+            });
+            assert!(matches!(key, AesKey::Hw(_)), "the crypto extension");
+            assert!(table.eight_way.is_some(), "SHA3");
+            let table = GhashTable::Pmull(table);
+
+            let nonce = bytes(12).try_into().unwrap();
+            let iv = bytes(17);
+            for (aad_len, msg_len) in [
+                (13, 100),
+                (300, 128 * 3 + 16 * 7 + 5),
+                (0, 128 * 2 + 16 * 5),
+                (13, 1024),
+            ] {
+                let aad = bytes(aad_len);
+                let mut msg = bytes(msg_len);
+                let tag = ct_qemu::traced(|| seal(&key, &table, &nonce, &aad, &mut msg));
+                ct_qemu::traced(|| open(&key, &table, &nonce, &aad, &mut msg, &tag));
+
+                // An IV other than 96 bits, which hashes to a secret counter
+                // block.
+                ct_qemu::traced(|| {
+                    let y0 = initial_counter(&table, &iv);
+                    tagged_from::<true>(&key, &table, y0, &aad, &mut msg)
+                });
+            }
+        }
+    }
+
     // An IV other than 96 bits hashes to a counter block whose 32-bit
     // counter may wrap within one message, as GCM's increment does mod 2^32
     // without carrying into the rest of the block: on both paths, at lengths

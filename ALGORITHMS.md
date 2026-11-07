@@ -439,9 +439,9 @@ run; s2n-bignum's aarch64 AES-GCM kernels, so aarch64 runs aws-lc's by-8
 core with SHA3, which aws-lc runs on Apple and Neoverse V cores, and AES-CTR
 and GHASH in turn without it; and libcrux's bitsliced AES-GCM, so armv7
 without the crypto extension composes its block cipher with `gcm_nohw.c`.
-aws-lc's routines are not verified, and their branches and addresses,
-which depend only on the length, were checked by reading them, since
-valgrind hides SHA3 from `admin/ctgrind`.
+aws-lc's routines are not verified. Valgrind hides SHA3 from
+`admin/ctgrind`, so `admin/ct-qemu` checks them, and the eight-way kernels,
+under qemu-aarch64.
 AES-NI and ARMv8 expand an AES-192 key six words per vector step, with the
 SubWord the other sizes take, measured 0.88-0.94x aws-lc-rs's AES-GCM key
 setup on Zen 3 and Neoverse N2; armv7's bitsliced path runs FIPS 197's
