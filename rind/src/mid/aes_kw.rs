@@ -510,7 +510,7 @@ mod tests {
             ct_qemu::traced(|| kek.unwrap(&wrapped, &mut unwrapped)).unwrap();
 
             // one block, encrypted on its own, and several, wrapped
-            for len in [5, 31] {
+            for len in [5usize, 31] {
                 let mut wrapped = [0u8; 40];
                 let wrapped = &mut wrapped[..len.next_multiple_of(8) + 8];
                 ct_qemu::traced(|| kek.wrap_padded(&key[..len], wrapped)).unwrap();
