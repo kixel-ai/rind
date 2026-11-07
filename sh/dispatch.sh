@@ -75,6 +75,8 @@ declare -A scope=(
     # pyrind's Python tests and type stubs, against its built wheel. rind's
     # own changes reach them in the nightly wheels workflow instead.
     [py]='^(rind-python/|sh/python\.sh$)'
+    # rind-dart's Dart package, whose build hook compiles the crate.
+    [dart]='^rind-dart/'
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
@@ -104,6 +106,7 @@ declare -A tools=(
     [fixtures]='cargo'
     [patch]='cargo jq git'
     [py]='cargo jq maturin python3'
+    [dart]='nix'
     [quest]='quest'
     [gh]='actionlint yq jq'
     [hooks]='shellcheck'
@@ -115,8 +118,8 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs msrv cross deny versions license inplace compat bench fixtures patch py quest gh hooks shell nix) ;;
-    fix) modules=(rs compat patch nix) ;;
+    check) modules=(rs msrv cross deny versions license inplace compat bench fixtures patch py dart quest gh hooks shell nix) ;;
+    fix) modules=(rs compat patch dart nix) ;;
 esac
 
 selected=()
@@ -230,6 +233,8 @@ for module in "${selected[@]}"; do
             ;;
         check:patch) sh/patch.sh ;;
         check:py) sh/python.sh test ;;
+        check:dart) nix develop .#dart --command sh/dart.sh check ;;
+        fix:dart) nix develop .#dart --command sh/dart.sh fix ;;
         fix:patch) cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:gh)
             actionlint
