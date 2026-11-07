@@ -84,7 +84,10 @@ pub fn hold_dit() -> DitGuard {
     } else {
         cpu_state
     };
-    DIT_GUARDS.set((guards + 1, cpu_state));
+    // Saturating, here and in `drop`: past `usize::MAX` guards the count is
+    // inexact and DIT may turn off early, which costs speed but never
+    // safety, since every rind call sets DIT itself.
+    DIT_GUARDS.set((guards.saturating_add(1), cpu_state));
     DitGuard {
         _thread: PhantomData,
     }
@@ -108,7 +111,7 @@ pub struct DitGuard {
 impl Drop for DitGuard {
     fn drop(&mut self) {
         let (guards, cpu_state) = DIT_GUARDS.get();
-        DIT_GUARDS.set((guards - 1, cpu_state));
+        DIT_GUARDS.set((guards.saturating_sub(1), cpu_state));
         if guards == 1 {
             super::leave_cpu_state(cpu_state);
         }
