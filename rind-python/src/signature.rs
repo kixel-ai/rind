@@ -149,7 +149,7 @@ impl EcdsaKeyPair {
             &public_key,
         )
         .map(Box::new)
-            .map(Self)
+        .map(Self)
         .map_err(error)
     }
 

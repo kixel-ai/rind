@@ -56,12 +56,7 @@ create_exception!(
     Error,
     "An AEAD ciphertext, its tag, or its associated data did not authenticate, or an RSA-OAEP ciphertext did not decrypt."
 );
-create_exception!(
-    pyrind,
-    RngFailed,
-    Error,
-    "The system random source failed."
-);
+create_exception!(pyrind, RngFailed, Error, "The system random source failed.");
 create_exception!(
     pyrind,
     Unsupported,

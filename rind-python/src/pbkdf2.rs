@@ -14,7 +14,8 @@ algorithm!(
 );
 
 fn iterations_of(iterations: u32) -> PyResult<NonZeroU32> {
-    NonZeroU32::new(iterations).ok_or_else(|| PyValueError::new_err("iterations must be at least 1"))
+    NonZeroU32::new(iterations)
+        .ok_or_else(|| PyValueError::new_err("iterations must be at least 1"))
 }
 
 /// A password keyed into HMAC once, which derives keys for any salt and
@@ -29,7 +30,10 @@ impl Secret {
     /// Keys `algorithm` with `secret`, a password of any length.
     #[new]
     fn new(algorithm: &Bound<'_, Algorithm>, secret: Bytes<'_>) -> Self {
-        Self(Box::new(pbkdf2::Secret::new(algorithm.get().inner, &secret)))
+        Self(Box::new(pbkdf2::Secret::new(
+            algorithm.get().inner,
+            &secret,
+        )))
     }
 
     /// Derives `length` bytes for `salt` with `iterations`.

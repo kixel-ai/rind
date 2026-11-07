@@ -190,7 +190,7 @@ def main():
     parser.add_argument("--repeat", type=int, default=7, help="timed runs per operation, of which the fastest counts")
     args = parser.parse_args()
 
-    print(f"{cpu_model()}, {platform.system()} {platform.release()}, Python {platform.python_version()}, ")
+    print(f"{cpu_model()}, {platform.system()} {platform.release()}, Python {platform.python_version()},")
     print(f"cryptography {cryptography.__version__} on {backend.openssl_version_text()}.\n")
     libraries = ["pyrind", "cryptography", "hashlib"]
     print("| Operation | pyrind | cryptography | hashlib, hmac | cryptography ÷ pyrind |")

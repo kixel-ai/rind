@@ -12,9 +12,43 @@ pip install pyrind
 
 A Python call into pyca/cryptography pays OpenSSL 3's per-call setup, which
 dwarfs the work on a small message. pyrind's calls go straight to rind's
-assembly:
+assembly.
 
-<!-- bench -->
+On an Intel Core i7-8700 (Coffee Lake, 2017), Linux 6.18, CPython 3.14.8,
+against cryptography 50.0.2 on OpenSSL 3.5.9, one call at a time with its
+inputs in hand, fastest of seven runs:
+
+| Operation | pyrind | cryptography | hashlib, hmac | cryptography ÷ pyrind |
+|---|---:|---:|---:|---:|
+| SHA-256, 21 B | 262 ns | 1.79 µs | 526 ns | 6.8x |
+| HMAC-SHA256, 21 B | 401 ns | 2.54 µs | 1.87 µs | 6.3x |
+| HKDF-SHA256, 32 B key | 1.68 µs | 5.07 µs | - | 3.0x |
+| AES-128-GCM seal, 32 B | 237 ns | 667 ns | - | 2.8x |
+| AES-128-GCM open, 32 B | 218 ns | 690 ns | - | 3.2x |
+| AES-128-GCM seal, 1350 B | 507 ns | 924 ns | - | 1.8x |
+| AES-128-GCM open, 1350 B | 472 ns | 926 ns | - | 2.0x |
+| AES-128-GCM seal, 16384 B | 3.04 µs | 3.63 µs | - | 1.2x |
+| AES-128-GCM open, 16384 B | 3.02 µs | 3.59 µs | - | 1.2x |
+| ChaCha20-Poly1305 seal, 32 B | 315 ns | 858 ns | - | 2.7x |
+| ChaCha20-Poly1305 open, 32 B | 293 ns | 894 ns | - | 3.0x |
+| ChaCha20-Poly1305 seal, 1350 B | 930 ns | 1.54 µs | - | 1.7x |
+| ChaCha20-Poly1305 open, 1350 B | 901 ns | 1.59 µs | - | 1.8x |
+| ChaCha20-Poly1305 seal, 16384 B | 7.13 µs | 7.66 µs | - | 1.1x |
+| ChaCha20-Poly1305 open, 16384 B | 7.03 µs | 7.72 µs | - | 1.1x |
+| X25519 agree | 19.93 µs | 30.44 µs | - | 1.5x |
+| ECDH P-256 agree | 37.44 µs | 62.57 µs | - | 1.7x |
+| Ed25519 sign, 21 B | 7.10 µs | 28.96 µs | - | 4.1x |
+| Ed25519 verify, 21 B | 29.07 µs | 93.03 µs | - | 3.2x |
+| ECDSA P-256 sign, 21 B | 14.41 µs | 26.14 µs | - | 1.8x |
+| ECDSA P-256 verify, 21 B | 39.42 µs | 60.53 µs | - | 1.5x |
+| RSA-2048 PKCS#1 sign, 21 B | 470.21 µs | 483.67 µs | - | 1.0x |
+| RSA-2048 PKCS#1 verify, 21 B | 11.00 µs | 20.14 µs | - | 1.8x |
+| ML-KEM-768 encapsulate | 3.22 µs | 22.16 µs | - | 6.9x |
+| ML-KEM-768 decapsulate | 7.78 µs | 33.81 µs | - | 4.3x |
+
+The gap is widest on small messages and short-lived keys, which is where
+protocols spend their calls. On 16 KiB the assembly dominates both and the
+two converge; RSA signing is the same modular exponentiation in each.
 
 Run `sh/python.sh bench` in the repository for your own machine's numbers.
 

@@ -65,6 +65,9 @@ jobs:
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
             test: true
+            # pyca/cryptography's last Windows on Arm wheel, 46.0.3, lacks
+            # ML-KEM, so the comparisons against it run on the other runners.
+            tests: "test_[rw]*.py"
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -93,10 +96,12 @@ jobs:
       - name: Test
         if: matrix.test
         shell: bash
+        env:
+          TESTS: ${{ matrix.tests || 'test*.py' }}
         run: |
           python -m pip install --only-binary :all: cryptography mypy
           python -m pip install --no-index --find-links dist pyrind
-          python -m unittest discover --start-directory rind-python/tests
+          python -m unittest discover --start-directory rind-python/tests --pattern "$TESTS"
           python -m mypy.stubtest pyrind
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
