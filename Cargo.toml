@@ -2,15 +2,19 @@
 resolver = "2"
 members = [
   "rind",
+  "rind-aws-lc-rs",
   "rind-bench",
   "rind-cpuid",
+  "rind-dart",
   "rind-dimpl",
   "rind-instant-acme",
   "rind-object-store",
   "rind-rcgen",
   "rind-ring",
   "rind-rustls",
+  "rind-str0m",
   "rind-jsonwebtoken",
+  "rind-python",
   "fuzz"
 ]
 

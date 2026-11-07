@@ -13,8 +13,8 @@ run time. [MIGRATING.md][migrating] maps each ring and aws-lc-rs item to it.
   from `public_key()`.
 - Encodings, signatures, and shared secrets are owned values of fixed
   capacity, such as `encoding::Pkcs8`, rather than caller buffers or
-  allocations. Keys wipe their secrets on drop, and their `Debug` shows only
-  their algorithm.
+  allocations. Keys wipe their secrets on drop under the `wipe` feature, and
+  their `Debug` shows only their algorithm.
 - No call takes a random source: rind draws from the system's when it needs
   one, and `rand::fill` gives callers the same.
 - Fallible calls return `rind::Error`, whose variant says which kind of call
@@ -65,5 +65,13 @@ The public modules wrap three private layers:
 `low` must present the same interface irrespective of platform.  To this end,
 `low::generic` contains pure-rust polyfills for items we don't have assembler-
 or intrinsic-based implementations for a certain platform.
+
+`rind/build.rs` picks one backend per target and sets `rind_backend` to it:
+`x86_64`, `aarch64`, or `arm` on little-endian targets of those
+architectures, and `portable` everywhere else, or wherever `--cfg
+rind_portable` forces it. Code outside `low` gates on `rind_backend`, never
+`target_arch`. `low::portable` is pure Rust and needs no CPU features; the
+`arm` backend wraps its types with the crypto extension's, NEON's, and
+aws-lc's assembly.
 
 [migrating]: MIGRATING.md
