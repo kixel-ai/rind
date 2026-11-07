@@ -1,4 +1,5 @@
 import Rind.X86_64.Sha
+import Rind.X86_64.HmacDispatch
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
@@ -343,12 +344,6 @@ theorem hmac_finish_spec (hs : HashSpec inst H B L max Abs CAbs) (key : List Byt
 end
 
 /-! ## SHA-1, SHA-256, and HMAC over them -/
-
-/-- SHA-256's `Hash` impl. -/
-abbrev Sha256Hash := high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State
-
-/-- SHA-1's `Hash` impl. -/
-abbrev Sha1Hash := high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State
 
 /-- SHA-256 of a message is FIPS 180-4's, given the block functions' contracts. -/
 theorem sha256_hash (hb : ShaBlocks) (m : Slice U8) (hm : m.length ≤ maxInput) :
