@@ -328,7 +328,10 @@ pub(crate) fn bignum_optsub(z: &mut [u64], x: &[u64], y: &[u64], p: u64) {
 /// HACL*'s verified `Hacl_Bignum` has this, but its Rust allocates scratch
 /// for each call and frees it unwiped, though RSA's private operations put
 /// their secrets there.
-#[cfg(any(rind_backend = "portable", test))]
+#[cfg(any(
+    rind_backend = "portable",
+    all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
+))]
 pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
     let k = m.len();
     assert!(k >= 1 && z.len() == k && x.len() == k && y.len() == k);
