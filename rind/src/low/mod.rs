@@ -64,11 +64,7 @@ mod generic {
         all(test, rind_backend = "x86_64")
     ))]
     pub(super) mod sha1;
-    #[cfg(any(
-        rind_backend = "arm",
-        rind_backend = "portable",
-        all(test, rind_backend = "x86_64")
-    ))]
+    #[cfg(any(rind_backend = "arm", all(test, rind_backend = "x86_64")))]
     pub(super) mod sha256;
     pub(super) mod zeroise;
 }
