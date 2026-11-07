@@ -31,7 +31,7 @@ pub static PBKDF2_HMAC_SHA384: Algorithm = Algorithm(&hmac::HMAC_SHA384);
 /// PBKDF2-HMAC-SHA512.
 pub static PBKDF2_HMAC_SHA512: Algorithm = Algorithm(&hmac::HMAC_SHA512);
 
-/// A secret, such as a password, keyed once for every salt it derives with; wiped on drop.
+/// A secret, such as a password, keyed once for every salt it derives with; wiped on drop under the `wipe` feature.
 pub struct Secret(hmac::Key);
 
 impl fmt::Debug for Secret {
@@ -178,6 +178,17 @@ mod tests {
             );
             assert_eq!(secret.verify(ONE, b"salt", &key[..hash_len]), Ok(()));
             assert_eq!(secret.verify(ONE, b"salt", &key), Ok(()));
+
+            // RFC 8018's 32-bit block counter bounds the length, which only
+            // the check can reach without allocating it. On a 32-bit target
+            // no length reaches it.
+            match (u32::MAX as usize).checked_mul(hash_len) {
+                Some(most) => {
+                    assert_eq!(secret.check_len(most), Ok(()));
+                    assert_eq!(secret.check_len(most + 1), Err(Error::WrongLength));
+                }
+                None => assert_eq!(secret.check_len(usize::MAX), Ok(())),
+            }
         }
     }
 
