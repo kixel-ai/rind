@@ -15,4 +15,4 @@ ChaCha20-Poly1305 and XChaCha20-Poly1305, TLS's and QUIC's other AEAD, and `ciph
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m4/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
+- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
