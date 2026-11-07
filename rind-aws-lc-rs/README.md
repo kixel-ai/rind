@@ -22,9 +22,8 @@ Every aws-lc-rs feature but `fips` is accepted and changes nothing.
 
 ## Wiping keys
 
-The adapter's own copies of secrets, such as PKCS#8 documents, Ed25519 seeds, raw cipher keys, and ML-KEM shared secrets, are wiped on drop only under the `wipe` feature, which aws-lc-rs lacks since it always wipes them.
-Leaving it off skips the wipe, which is faster.
-The rind keys this crate wraps follow rind's own wiping.
+Keys, and the adapter's own copies of secrets such as PKCS#8 documents, Ed25519 seeds, and ML-KEM shared secrets, are wiped on drop only under the `wipe` feature, which aws-lc-rs lacks since it always wipes.
+It turns on rind's own `wipe` feature too. Leaving it off skips the wipe, which is faster.
 
 ## Not offered
 
