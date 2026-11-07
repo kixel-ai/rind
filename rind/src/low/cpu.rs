@@ -150,4 +150,18 @@ mod tests {
         let hardware = matches!(AesKey::new(&[0; 16]), AesKey::Hw(_));
         assert_eq!(super::has_aes_hardware(), hardware);
     }
+
+    // No CPU a test runs on lacks a required feature, so only this shows
+    // what the panic would say.
+    #[test]
+    fn missing_feature_names_it() {
+        let message = super::MissingFeature("neon").to_string();
+        assert_eq!(
+            message,
+            format!(
+                "rind requires neon CPU support on {}",
+                std::env::consts::ARCH
+            )
+        );
+    }
 }
