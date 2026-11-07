@@ -1,10 +1,13 @@
-//! RSA private keys that share one public key but differ in their secrets.
+//! RSA by hand, for inputs rind's API cannot make: private keys that share one
+//! public key but differ in their secrets, and raw encryption of a chosen
+//! encoded message.
 //!
 //! Loading a key sets up its public modulus in time that depends on it, by
 //! design, so keys with different moduli would differ in time for a public
 //! reason. Keys of one modulus differ only in which prime is `p`, and so in
 //! `dP`, `dQ`, and `qInv`, and in which valid `d` they hold: `d + kλ(n)` for
-//! small `k`.
+//! small `k`. Those `d` share `dP` and `dQ`, which is all a private operation
+//! uses, so only key loading is timed on them.
 
 use num_bigint::BigUint;
 use num_integer::Integer;
@@ -46,6 +49,20 @@ pub fn variants(pkcs8: &[u8]) -> Vec<Vec<u8>> {
         }
     }
     keys
+}
+
+/// `message`, an encoded message as long as the modulus, raised to the
+/// public exponent of the PKCS#1 `RSAPrivateKey` `pkcs1`, modulo its modulus.
+pub fn encrypt_raw(pkcs1: &[u8], message: &[u8]) -> Vec<u8> {
+    let mut fields = sequence(pkcs1);
+    let _version = next(&mut fields);
+    let [n, e] = [(); 2].map(|()| BigUint::from_bytes_be(next(&mut fields).1));
+    let len = n.to_bytes_be().len();
+    assert_eq!(message.len(), len);
+    let c = BigUint::from_bytes_be(message).modpow(&e, &n).to_bytes_be();
+    let mut out = vec![0; len - c.len()];
+    out.extend(c);
+    out
 }
 
 /// The contents of the DER SEQUENCE `der`.

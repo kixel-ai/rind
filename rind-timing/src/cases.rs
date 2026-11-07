@@ -330,20 +330,33 @@ fn cipher_cases(cases: &mut Vec<Case>) {
             key.encrypt_blocks(&iv, &mut buf).map(|()| buf)
         })
     }));
+    cases.push(case("cipher/aes-128-cbc/decrypt-key", move |config| {
+        let ciphertext = random::<256>();
+        measure(config, &secrets(16), |key| {
+            let mut buf = ciphertext;
+            cipher::AesCbcDecryptingKey::new(&cipher::AES_128, key)
+                .and_then(|key| key.decrypt_blocks(&iv, &mut buf))
+                .map(|()| buf)
+        })
+    }));
     // Padding a decryption refuses: a valid padding's length is public once
-    // the call returns, but which bytes broke an invalid one is not.
+    // the call returns, but where an invalid one breaks is not. Each claims
+    // a whole block of padding with one byte wrong: the fixed one's the byte
+    // furthest from the end, the random ones' anywhere before the last.
     cases.push(case("cipher/aes-128-cbc/decrypt-padding", move |config| {
         let secret = random::<16>();
         let encrypt = cipher::AesCbcEncryptingKey::new(&cipher::AES_128, &secret).unwrap();
         let decrypt = cipher::AesCbcDecryptingKey::new(&cipher::AES_128, &secret).unwrap();
-        let invalid = || loop {
-            let mut buf = random::<64>();
-            if !valid_padding(&buf) {
-                encrypt.encrypt_blocks(&iv, &mut buf).unwrap();
-                return buf;
-            }
+        let prefix = random::<48>();
+        let wrong_at = |at: usize| {
+            let mut buf = [16; 64];
+            buf[..48].copy_from_slice(&prefix);
+            buf[48 + at] ^= random::<1>()[0] | 1;
+            encrypt.encrypt_blocks(&iv, &mut buf).unwrap();
+            buf
         };
-        let ciphertexts = classes(VALUES, fixed(invalid()), invalid);
+        let anywhere = || wrong_at(usize::from(random::<1>()[0]) % 15);
+        let ciphertexts = classes(VALUES, fixed(wrong_at(0)), anywhere);
         measure(config, &ciphertexts, |ciphertext| {
             let mut buf = *ciphertext;
             decrypt
@@ -352,7 +365,6 @@ fn cipher_cases(cases: &mut Vec<Case>) {
         })
     }));
 
-    let wrap_key = || key_wrap::AesKek::new(&key_wrap::AES_256, &random::<32>()).unwrap();
     cases.push(case("key-wrap/aes-256/wrap-kek", |config| {
         let new = |kek: &Vec<u8>| key_wrap::AesKek::new(&key_wrap::AES_256, kek).unwrap();
         let key = random::<32>();
@@ -362,7 +374,7 @@ fn cipher_cases(cases: &mut Vec<Case>) {
         })
     }));
     cases.push(case("key-wrap/aes-256/wrap-key", move |config| {
-        let kek = wrap_key();
+        let kek = key_wrap::AesKek::new(&key_wrap::AES_256, &random::<32>()).unwrap();
         measure(
             config,
             &classes(VALUES, fixed(random::<32>()), random::<32>),
@@ -372,27 +384,59 @@ fn cipher_cases(cases: &mut Vec<Case>) {
             },
         )
     }));
-    cases.push(case("key-wrap/aes-256/unwrap-integrity", move |config| {
-        let kek = wrap_key();
+    cases.push(case("key-wrap/aes-256/unwrap-kek", |config| {
+        // Refused under every key.
+        let wrapped = random::<40>();
+        measure(config, &secrets(32), |kek| {
+            let mut key = [0; 32];
+            key_wrap::AesKek::new(&key_wrap::AES_256, kek)
+                .and_then(|kek| kek.unwrap(&wrapped, &mut key))
+                .map(|()| key)
+        })
+    }));
+    // The integrity value an unwrap recovers, compared with RFC 3394's: keys
+    // wrapped by hand from wrong initial values, all of one key.
+    cases.push(case("key-wrap/aes-256/unwrap-integrity", |config| {
+        let secret = random::<32>();
+        let kek = key_wrap::AesKek::new(&key_wrap::AES_256, &secret).unwrap();
+        let key = random::<32>();
+        let wrap = |iv: &Vec<u8>| wrap_from(&secret, iv[..].try_into().unwrap(), &key);
         let mut wrapped = [0; 40];
-        kek.wrap(&random::<32>(), &mut wrapped).unwrap();
-        measure(config, &mismatches(&wrapped), |wrapped| {
+        kek.wrap(&key, &mut wrapped).unwrap();
+        assert_eq!(wrap(&vec![0xa6; 8]), wrapped);
+        let wrapped = mismatches(&[0xa6; 8]).map(|ivs| ivs.iter().map(wrap).collect());
+        measure(config, &wrapped, |wrapped| {
             let mut key = [0; 32];
             kek.unwrap(wrapped, &mut key).map(|()| key)
         })
     }));
-    cases.push(case(
-        "key-wrap/aes-256/unwrap-padded-integrity",
-        move |config| {
-            let kek = wrap_key();
-            let mut wrapped = [0; 32];
-            kek.wrap_padded(&random::<20>(), &mut wrapped).unwrap();
-            measure(config, &mismatches(&wrapped), |wrapped| {
-                let mut key = [0; 24];
-                kek.unwrap_padded(wrapped, &mut key).map(|key| key.len())
-            })
-        },
-    ));
+    // RFC 5649's integrity value adds the key's length, which a flip of its
+    // last bit would leave valid, so the fixed one's is out of range.
+    cases.push(case("key-wrap/aes-256/unwrap-padded-integrity", |config| {
+        let secret = random::<32>();
+        let kek = key_wrap::AesKek::new(&key_wrap::AES_256, &secret).unwrap();
+        let key = random::<20>();
+        let padded = [&key[..], &[0; 4]].concat();
+        let wrap = |aiv: &Vec<u8>| wrap_from(&secret, aiv[..].try_into().unwrap(), &padded);
+        let aiv = [0xa6, 0x59, 0x59, 0xa6, 0, 0, 0, 20];
+        let mut wrapped = [0; 32];
+        kek.wrap_padded(&key, &mut wrapped).unwrap();
+        assert_eq!(wrap(&aiv.to_vec()), wrapped);
+        let mut late = aiv;
+        late[7] ^= 0x80;
+        let other = || loop {
+            let value = random::<8>();
+            if value[..4] != aiv[..4] {
+                return value.to_vec();
+            }
+        };
+        let aivs = classes(VALUES, fixed(late.to_vec()), other);
+        let wrapped = aivs.map(|aivs| aivs.iter().map(wrap).collect());
+        measure(config, &wrapped, |wrapped| {
+            let mut key = [0; 24];
+            kek.unwrap_padded(wrapped, &mut key).map(|key| key.len())
+        })
+    }));
 }
 
 fn agreement_cases(cases: &mut Vec<Case>) {
@@ -465,12 +509,12 @@ fn kem_cases(cases: &mut Vec<Case>) {
 fn rsa_cases(cases: &mut Vec<Case>) {
     for (bits, size) in RSA_SIZES {
         let name = |op: &str| format!("rsa-{bits}/{op}");
-        let signing = |der: &Vec<u8>| signature::RsaKeyPair::from_pkcs1(der).unwrap();
+        let signing = |der: &Vec<u8>| signature::RsaKeyPair::from_pkcs8(der).unwrap();
         let decrypting =
-            |der: &Vec<u8>| rsa::DecryptingKey::from_pkcs1(&rsa::OAEP_SHA256, der).unwrap();
+            |der: &[u8]| rsa::DecryptingKey::from_pkcs8(&rsa::OAEP_SHA256, der).unwrap();
 
         cases.push(case(name("from-pkcs1"), move |config| {
-            measure(config, rsa_keys(size), |der| {
+            measure(config, rsa_keys_one_modulus(size), |der| {
                 signature::RsaKeyPair::from_pkcs1(der)
             })
         }));
@@ -487,14 +531,35 @@ fn rsa_cases(cases: &mut Vec<Case>) {
             })
         }));
         cases.push(case(name("oaep-decrypt-key"), move |config| {
-            // Every key has the same public key, so one ciphertext serves.
-            let c = decrypting(&rsa_keys(size)[0][0])
-                .public_key()
-                .encrypt(&random::<32>(), b"")
-                .unwrap();
-            measure_built(config, rsa_keys(size), decrypting, |key| {
-                key.decrypt(c.as_ref(), b"")
-            })
+            // Each key with a ciphertext of its own.
+            let encrypted = |der: &Vec<u8>| {
+                let c = decrypting(der).public_key().encrypt(&random::<32>(), b"");
+                (der.clone(), c.unwrap().as_ref().to_vec())
+            };
+            let keys = rsa_keys(size)
+                .each_ref()
+                .map(|keys| keys.iter().map(encrypted).collect());
+            let build = |(der, c): &(Vec<u8>, Vec<u8>)| (decrypting(der), c.clone());
+            measure_built(config, &keys, build, |(key, c)| key.decrypt(c, b""))
+        }));
+        // Padding a decryption refuses, as in Manger's attack: the fixed
+        // ciphertext's encoding fails as late as one can, the random ones'
+        // almost always at its first byte.
+        cases.push(case(name("oaep-decrypt-padding"), move |config| {
+            let pkcs1 = &rsa_keys_one_modulus(size)[0][0];
+            let key = rsa::DecryptingKey::from_pkcs1(&rsa::OAEP_SHA256, pkcs1).unwrap();
+            let len = key.public_key().max_message_len() + 66;
+            let encrypt = |separator| crate::rsa_keys::encrypt_raw(pkcs1, &oaep(len, separator));
+            assert!(
+                key.decrypt(&encrypt(true), b"")
+                    .unwrap()
+                    .as_ref()
+                    .is_empty()
+            );
+            // Below the modulus, whose top bit is set.
+            let anything = || [&[0][..], &random_vec(len - 1)].concat();
+            let ciphertexts = classes(VALUES, fixed(encrypt(false)), anything);
+            measure(config, &ciphertexts, |c| key.decrypt(c, b""))
         }));
         cases.push(case(name("oaep-decrypt-ciphertext"), move |config| {
             let key = decrypting(&rsa_keys(size)[0][0]);
@@ -521,10 +586,24 @@ const RSA_SIZES: [(u32, rsa::KeySize); 3] = [
     (4096, rsa::KeySize::Rsa4096),
 ];
 
+/// PKCS#8 encodings of RSA keys of `size`, generated once: the fixed class
+/// one key, the random class others.
+fn rsa_keys(size: rsa::KeySize) -> &'static Classes<Vec<u8>> {
+    static KEYS: [OnceLock<Classes<Vec<u8>>>; 3] = [const { OnceLock::new() }; 3];
+    let i = RSA_SIZES.iter().position(|&(_, s)| s == size).unwrap();
+    KEYS[i].get_or_init(|| {
+        let generate = || {
+            let key = signature::RsaKeyPair::generate(size).unwrap();
+            key.to_pkcs8().as_ref().to_vec()
+        };
+        classes(RSA_KEYS, fixed(generate()), generate)
+    })
+}
+
 /// PKCS#1 encodings of RSA keys of `size` that share one public key (see
 /// [`crate::rsa_keys`]), generated once: the fixed class one of them, the
 /// random class the others in turn.
-fn rsa_keys(size: rsa::KeySize) -> &'static Classes<Vec<u8>> {
+fn rsa_keys_one_modulus(size: rsa::KeySize) -> &'static Classes<Vec<u8>> {
     static KEYS: [OnceLock<Classes<Vec<u8>>>; 3] = [const { OnceLock::new() }; 3];
     let i = RSA_SIZES.iter().position(|&(_, s)| s == size).unwrap();
     KEYS[i].get_or_init(|| {
@@ -641,11 +720,47 @@ fn early_exit_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(x, y)| std::hint::black_box(*x) == *y)
 }
 
-/// Whether the last block of `plaintext` ends in valid PKCS#7 padding.
-fn valid_padding(plaintext: &[u8]) -> bool {
-    let n = usize::from(*plaintext.last().unwrap());
-    (1..=16).contains(&n)
-        && plaintext[plaintext.len() - n..]
-            .iter()
-            .all(|&b| usize::from(b) == n)
+/// RFC 3394's wrapping of `plaintext` under the AES-256 key `kek` from the
+/// initial value `iv`, which rind's API fixes.
+fn wrap_from(kek: &[u8], iv: [u8; 8], plaintext: &[u8]) -> Vec<u8> {
+    let aes = cipher::Aes::new(&cipher::AES_256, kek).unwrap();
+    let mut a = iv;
+    let mut r = plaintext.to_vec();
+    let mut t = 0u64;
+    for _ in 0..6 {
+        for r_i in r.as_chunks_mut::<8>().0 {
+            t += 1;
+            let mut block = [0; 16];
+            block[..8].copy_from_slice(&a);
+            block[8..].copy_from_slice(r_i);
+            aes.encrypt_block(&mut block);
+            a = (u64::from_be_bytes(block[..8].try_into().unwrap()) ^ t).to_be_bytes();
+            r_i.copy_from_slice(&block[8..]);
+        }
+    }
+    [&a[..], &r].concat()
+}
+
+/// An RSA-OAEP encoded message of `len` bytes, for SHA-256 and an empty
+/// label, holding the empty message: its first byte zero and its label hash
+/// right, and the 0x01 that ends its zero padding there if `separator`.
+fn oaep(len: usize, separator: bool) -> Vec<u8> {
+    let seed = random::<32>();
+    let mut db = vec![0; len - 33];
+    db[..32].copy_from_slice(digest::digest(&digest::SHA256, b"").as_ref());
+    *db.last_mut().unwrap() = u8::from(separator);
+    xor_mgf1(&mut db, &seed);
+    let mut masked_seed = seed;
+    xor_mgf1(&mut masked_seed, &db);
+    [&[0][..], &masked_seed, &db].concat()
+}
+
+/// XORs MGF1 with SHA-256 of `seed` into `out`.
+fn xor_mgf1(out: &mut [u8], seed: &[u8]) {
+    for (counter, chunk) in (0u32..).zip(out.chunks_mut(32)) {
+        let mask = digest::digest(&digest::SHA256, &[seed, &counter.to_be_bytes()].concat());
+        for (out, mask) in chunk.iter_mut().zip(mask.as_ref()) {
+            *out ^= mask;
+        }
+    }
 }
