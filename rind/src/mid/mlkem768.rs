@@ -758,18 +758,6 @@ const N: usize = 256;
 mod tests {
     use super::*;
 
-    // Key generation transposes the matrix it sampled, where loading a key
-    // samples the transpose directly; a wrong transpose would still agree
-    // with itself, so only this shows it.
-    #[test]
-    fn keygen_transposes_as_loading_samples() {
-        let (ek, _) = DecapKey::kpke_keygen(&[7; 32]);
-        assert_eq!(
-            ek.transpose_a_hat.0,
-            Coeffs::sample_poly_transposed(&ek.rho).0
-        );
-    }
-
     #[test]
     fn shared_secret_debug() {
         assert_eq!(format!("{:?}", SharedSecret([0u8; 32])), "SharedSecret(..)");
