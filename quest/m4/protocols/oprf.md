@@ -1,0 +1,16 @@
+# [L] rind offers OPRFs
+
+## Goal
+
+A public `oprf` module implements RFC 9497's OPRF and VOPRF modes for its P-256, P-384, P-521, and ristretto255 suites: the client blinds an input and finalizes the server's evaluation into the PRF output, and a verifiable server proves, for one input or a batch, that it used the key it published. Privacy Pass's privately verifiable token (RFC 9578, type `0x0001`, VOPRF(P-384, SHA-384)), its batched ristretto255 token (draft-ietf-privacypass-batched-tokens, type `0x0005`), and [OPAQUE](/quest/m4/protocols/opaque.md) run on it.
+
+## Plan
+
+- Builds on [hash-to-curve](/quest/m4/protocols/hash-to-curve.md) and [ristretto255](/quest/m4/protocols/ristretto255.md); the NIST curves' arithmetic is s2n-bignum's, already in rind. The DLEQ proof's verification is public and may run variable time; everything holding the client's input, blind, or the server's key runs in constant time.
+- API: one `&'static Suite` per suite; the modes are separate types (an `oprf::ServerKey` and a `voprf::ServerKey`, each wiped, from `generate` or RFC 9497's `DeriveKeyPair`), so an unverified evaluation cannot reach a verifying client. The client's `blind(suite, input)` returns the `BlindedElement` to send and a `Blind` that `finalize(self, ..)` consumes, the VOPRF one taking the `Proof` and server public key; outputs are fixed-size per suite. POPRF is left out until its first consumer, the public-metadata Privacy Pass token (draft-ietf-privacypass-public-metadata-issuance), is final.
+- Test against RFC 9497's Appendix A vectors (the cfrg/draft-irtf-cfrg-voprf repository's `allVectors.json`), differentially against the `voprf` crate as a dev-dependency (aws-lc-rs has no OPRF; AWS-LC's trust tokens are a different protocol), and ctgrind on blinding, evaluation, and finalization.
+
+## Required
+
+- [Hash to the NIST curves](/quest/m4/protocols/hash-to-curve.md) - SSWU hash-to-curve and hash-to-scalar
+- [edwards25519 group and ristretto255](/quest/m4/protocols/ristretto255.md) - constant-time variable-base scalar multiplication and ristretto255

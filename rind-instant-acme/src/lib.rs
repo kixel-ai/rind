@@ -13,12 +13,13 @@
 //! use instant_acme::{Account, DefaultClient};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! // Refuses a CPU missing a feature rind requires, which DEFAULT_PROVIDER cannot.
 //! let http = DefaultClient::new(Arc::new(rind_rustls::default_provider()?))?;
-//! let builder = Account::builder(Box::new(http), &rind_instant_acme::DEFAULT_PROVIDER)?;
+//! let builder = Account::builder(Box::new(http), rind_instant_acme::default_provider()?)?;
 //! # Ok(())
 //! # }
 //! ```
+
+use core::fmt;
 
 use instant_acme::{
     CryptoProvider, EcCurve, Error, HmacKey, HmacKeyProvider, Jwk, JwkThumbFields, Sha256,
@@ -28,14 +29,30 @@ use rind::signature::{EcdsaKeyPair, EcdsaSigningAlgorithm, PublicKey, sign};
 use rind::{digest, hmac};
 use rustls_pki_types::PrivatePkcs8KeyDer;
 
-/// An instant-acme [`CryptoProvider`] that signs with ECDSA P-256 account keys and HS256 EAB keys on rind.
+/// A CPU feature rind requires that this CPU lacks.
+#[derive(Debug)]
+pub struct MissingFeature(rind::cpu::MissingFeature);
+
+impl fmt::Display for MissingFeature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for MissingFeature {}
+
+/// Returns an instant-acme [`CryptoProvider`] that signs with ECDSA P-256
+/// account keys and HS256 EAB keys on rind, or the CPU feature rind requires
+/// that this CPU lacks.
 ///
 /// It loads and generates the same PKCS#8 account keys as instant-acme's
 /// aws-lc-rs and ring providers, so stored credentials move between them.
-///
-/// rind panics on a CPU missing a feature it requires, so call
-/// [`rind::cpu::check`] first, as `rind_rustls::default_provider()` does.
-pub static DEFAULT_PROVIDER: CryptoProvider = CryptoProvider {
+pub fn default_provider() -> Result<&'static CryptoProvider, MissingFeature> {
+    rind::cpu::check().map_err(MissingFeature)?;
+    Ok(&PROVIDER)
+}
+
+static PROVIDER: CryptoProvider = CryptoProvider {
     key_provider: &P256KeyProvider,
     sha256: &RindSha256,
     hmac: &HmacSha256Provider,
