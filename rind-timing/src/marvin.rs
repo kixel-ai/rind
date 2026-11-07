@@ -17,8 +17,8 @@ pub fn run(key: &str, ciphertexts: &str, out: &str) -> Result<(), String> {
     let der = std::fs::read(key).map_err(|e| format!("{key}: {e}"))?;
     let key = rsa::DecryptingKey::from_pkcs8(&rsa::OAEP_SHA256, &der)
         .map_err(|e| format!("{key}: {e:?}"))?;
-    // OAEP with SHA-256 fits a message of the modulus's length less 66.
-    let len = key.public_key().max_message_len() + 66;
+    // A ciphertext is as long as the modulus.
+    let len = key.public_key().encrypt(b"", b"").unwrap().as_ref().len();
 
     let file = File::open(ciphertexts).map_err(|e| format!("{ciphertexts}: {e}"))?;
     let size = file

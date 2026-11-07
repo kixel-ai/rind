@@ -555,7 +555,8 @@ fn rsa_cases(cases: &mut Vec<Case>) {
         cases.push(case(name("oaep-decrypt-padding"), move |config| {
             let pkcs1 = &rsa_keys_one_modulus(size)[0][0];
             let key = rsa::DecryptingKey::from_pkcs1(&rsa::OAEP_SHA256, pkcs1).unwrap();
-            let len = key.public_key().max_message_len() + 66;
+            // The encoded message is as long as the modulus.
+            let len = key.public_key().encrypt(b"", b"").unwrap().as_ref().len();
             let encrypt = |em: &dyn Fn() -> Vec<u8>| {
                 full_length(|| crate::rsa_keys::encrypt_raw(pkcs1, &em()))
             };

@@ -28,8 +28,11 @@ const MIN_TICKS: u64 = 200;
 
 pub struct Config {
     /// How long each case measures for, once it has [`ENOUGH`] measurements
-    /// in every test it reports.
+    /// in every test it reports, the second-order test included, which
+    /// starts only once the fixed class has [`ENOUGH`].
     pub seconds: f64,
+    /// The counter's rate, from [`ticks_per_second`].
+    pub ticks_per_second: u64,
 }
 
 /// One case's result.
@@ -138,12 +141,9 @@ pub fn measure_built<S, T, R>(
     let median = warm[warm.len() / 2].max(1);
     let reps = MIN_TICKS.div_ceil(median).next_power_of_two();
 
-    // About a quarter second of measurements a batch, within 64 MiB of
-    // inputs: the first batch sets the crop cutoffs.
-    let per_second = ticks_per_second();
-    let most = (64 << 20) / size_of::<T>().max(1);
-    let batch = ((per_second / 4) / (median * reps)).clamp(1_000, 20_000) as usize;
-    let batch = batch.min(most).max(1_000);
+    // About a quarter second of measurements a batch: the first batch sets
+    // the crop cutoffs.
+    let batch = ((config.ticks_per_second / 4) / (median * reps)).clamp(1_000, 20_000) as usize;
 
     let mut stats: Option<Stats> = None;
     let start = Instant::now();
@@ -247,6 +247,10 @@ impl Welch {
     }
 
     fn t(&self) -> f64 {
+        // Equal means show no difference, even in times that never vary.
+        if self.mean[0] == self.mean[1] {
+            return 0.0;
+        }
         let var = |c: usize| self.m2[c] / (self.n[c] - 1.0) / self.n[c];
         (self.mean[0] - self.mean[1]) / (var(0) + var(1)).sqrt()
     }

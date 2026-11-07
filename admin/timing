@@ -17,20 +17,15 @@
 # report.txt among it, lands in .tmp/timing/marvin/rsaBITS/probes. rind has no
 # PKCS#1 v1.5 decryption, the toolkit's main target.
 #
-# Run it in `nix develop .#timing` on a quiet machine, holding a shared one
-# with `quest gate --host`: other work adds noise, and a CPU throttled by
-# power or heat runs faster on some data than on other. On Linux the tests
+# `marvin` needs `nix develop .#timing`. Run either on a quiet machine,
+# holding a shared one with `quest gate --host`: other work adds noise, and a
+# CPU throttled by power or heat runs faster on some data than on other. On Linux the tests
 # run pinned to CPU 1 (RIND_TIMING_CPU picks another), off the CPU most
 # interrupts land on.
 set -euo pipefail
 
 usage="usage: admin/timing dudect [--seconds S] [--list] [FILTER...]
        admin/timing marvin [--repeat N] [BITS...]"
-
-if [[ -z "${TLSFUZZER:-}" || -z "${MARVIN_TOOLKIT:-}" ]]; then
-    echo "error: run inside 'nix develop .#timing'" >&2
-    exit 1
-fi
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 cargo build --release --locked -p rind-timing
@@ -42,6 +37,10 @@ if [[ "$(uname)" == Linux ]]; then
 fi
 
 marvin() {
+    if [[ -z "${TLSFUZZER:-}" || -z "${MARVIN_TOOLKIT:-}" ]]; then
+        echo "error: run marvin inside 'nix develop .#timing'" >&2
+        exit 1
+    fi
     local repeat=100000
     if [[ "${1:-}" == --repeat ]]; then
         repeat=${2:?$usage}
