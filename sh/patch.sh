@@ -18,6 +18,10 @@ args=(
 cargo fmt --check --manifest-path patch/ring/Cargo.toml
 cargo fmt --check --manifest-path patch/fixture/Cargo.toml
 
+# A lockfile from an earlier run pins that run's commit, which no longer matches
+# the patch, so Cargo would build crates.io's ring.
+cargo generate-lockfile "${args[@]}"
+
 # A second ring would be crates.io's, kept by a requirement the shim's version
 # does not meet. Metadata resolves every target, as a build of any would.
 sources=$(cargo metadata "${args[@]}" --format-version 1 | jq -r '.packages[] | select(.name == "ring") | .source')
