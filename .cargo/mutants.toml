@@ -1,0 +1,23 @@
+# cargo-mutants' settings. Run it through `admin/mutants`, which also skips
+# generated assembly and the code this host's architecture never compiles.
+
+exclude_globs = [
+  # Constants imported with aws-lc's, BoringSSL's, and OpenSSL's assembly,
+  # which proofs and differential tests own.
+  "rind/src/low/*/aws_lc/**",
+  "rind/src/low/*/boringssl/**",
+  "rind/src/low/*/openssl/**",
+  # Test-only code under a `cfg(test)` cargo-mutants does not recognise.
+  "rind/src/low/tests.rs",
+  # Tools, not libraries.
+  "rind-bench/**",
+  "rind-cpuid/**",
+  "fuzz/**",
+]
+
+# Each surviving mutant no test can catch, with why.
+exclude_re = [
+  # The negative entries of ML-KEM's constant tables; every unary minus in
+  # these files is one.
+  'mlkem(_poly)?\.rs:\d+:\d+: delete -$',
+]

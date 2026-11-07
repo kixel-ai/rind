@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Runs cargo-mutants (see .cargo/mutants.toml) on this host's architecture,
+# passing its arguments through. It skips generated assembly, which proofs and
+# differential tests own, and every module only another architecture compiles,
+# whose mutants no test here can reach.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+case $(uname -m) in
+    x86_64)
+        skip=(
+            'rind/src/low/aarch64/**' 'rind/src/low/arm/**' 'rind/src/mid/arm/**'
+            rind/src/low/generic/mlkem768.rs rind/src/low/generic/order.rs
+        )
+        ;;
+    aarch64 | arm64)
+        skip=(
+            'rind/src/low/x86_64/**' 'rind/src/low/arm/**' 'rind/src/mid/arm/**'
+            rind/src/low/generic/mlkem_poly.rs rind/src/low/generic/order.rs
+            rind/src/low/generic/sha1.rs rind/src/low/generic/sha256.rs
+        )
+        ;;
+    *)
+        echo "admin/mutants: no campaign for $(uname -m)" >&2
+        exit 1
+        ;;
+esac
+
+args=()
+for glob in "${skip[@]}"; do
+    args+=(--exclude "$glob")
+done
+while IFS= read -r file; do
+    args+=(--exclude "$file")
+done < <(git grep -l '^// generated source' -- rind/src)
+
+exec cargo mutants "${args[@]}" "$@"
