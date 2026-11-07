@@ -149,9 +149,11 @@ impl Gcm {
         input: &[u8],
         output: &mut [u8],
     ) -> Result<usize, CryptoError> {
-        let (ciphertext, tag) = input
-            .split_at_checked(input.len().wrapping_sub(TAG_LEN))
+        let ciphertext_len = input
+            .len()
+            .checked_sub(TAG_LEN)
             .ok_or_else(|| CryptoError::Other("AES-GCM input shorter than its tag".into()))?;
+        let (ciphertext, tag) = input.split_at(ciphertext_len);
         let tag = Tag::try_from(tag).expect("split at the tag length");
         let plaintext = output
             .get_mut(..ciphertext.len())
