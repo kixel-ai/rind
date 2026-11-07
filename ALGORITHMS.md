@@ -215,7 +215,7 @@ On x86_64 and aarch64, all ECC field and scalar arithmetic are provided by
 s2n-bignum, except P256's on x86_64 where aws-lc's is named below, and
 Ed25519 verification's on x86_64 CPUs with AVX2 but without ADX, which runs
 curve25519-dalek's AVX2 backend over width-5 and width-8 non-adjacent forms
-of its two scalars, the latter over a 20KB table of the base point's odd
+of its two scalars, the latter over a 10 KiB table of the base point's odd
 multiples. The rest of this section describes those backends.
 
 P256 base point multiplication on x86_64 is aws-lc's: 7-bit Booth windows over
