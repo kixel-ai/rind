@@ -82,7 +82,9 @@ jobs:
         with:
           path: ${{ runner.temp }}/mutants
 
+      # One artifact downloads into `mutants` itself, several into a
+      # subdirectory each.
       - name: Survivors
         run: |
           shopt -s nullglob
-          admin/mutants --survivors "$RUNNER_TEMP"/mutants/*
+          admin/mutants --survivors "$RUNNER_TEMP"/mutants "$RUNNER_TEMP"/mutants/*/

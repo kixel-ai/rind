@@ -458,13 +458,17 @@ pub(in crate::low) fn prefetch_ro<T>(ptr: *const T) {
 mod tests {
     use super::*;
 
-    /// Whether std detects every feature named, less those
-    /// `RIND_CPU_DISABLE_*` denies.
+    /// Whether std detects every feature named, less those `test_toggle`
+    /// denies.
     macro_rules! available {
         ($($name:tt),+) => {
-            true $(&& std::arch::is_aarch64_feature_detected!($name)
-                && std::env::var_os(concat!("RIND_CPU_DISABLE_", $name)).is_none())+
+            true $(&& std::arch::is_aarch64_feature_detected!($name) && !denied($name))+
         };
+    }
+
+    fn denied(name: &str) -> bool {
+        cfg!(any(debug_assertions, rind_cpu_disable))
+            && std::env::var(format!("RIND_CPU_DISABLE_{name}")).is_ok()
     }
 
     // Each check names the features its kernels need, which the OS reports

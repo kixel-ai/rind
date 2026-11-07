@@ -533,8 +533,8 @@ pub(crate) fn prefetch<T>(table: &[T], stride: usize) {
 mod tests {
     use super::*;
 
-    /// Whether std detects every feature named, less those
-    /// `RIND_CPU_DISABLE_*` denies.
+    /// Whether std detects every feature named, less those `test_toggle`
+    /// denies.
     macro_rules! available {
         ($($name:tt),+) => {
             true $(&& is_x86_feature_detected!($name) && !denied($name))+
@@ -542,7 +542,8 @@ mod tests {
     }
 
     fn denied(name: &str) -> bool {
-        std::env::var_os(format!("RIND_CPU_DISABLE_{}", name.replace('.', ""))).is_some()
+        cfg!(any(debug_assertions, rind_cpu_disable))
+            && std::env::var(format!("RIND_CPU_DISABLE_{}", name.replace('.', ""))).is_ok()
     }
 
     // Each feature has a bit of its own, so no check can pass for one
