@@ -20,10 +20,10 @@ fn planted_float(secret: f64, by: f64) -> f64 {
     secret * by
 }
 
-// Nothing calls them, so this keeps them in rind's rlib.
+// Nothing calls them, so these keep them in rind's rlib.
 #[used]
-static PLANTED: (
-    fn(u64, u64) -> u64,
-    fn(u128, u128) -> u128,
-    fn(f64, f64) -> f64,
-) = (planted_division, planted_wide_division, planted_float);
+static DIVISION: fn(u64, u64) -> u64 = planted_division;
+#[used]
+static WIDE_DIVISION: fn(u128, u128) -> u128 = planted_wide_division;
+#[used]
+static FLOAT: fn(f64, f64) -> f64 = planted_float;
