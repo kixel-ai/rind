@@ -11,13 +11,13 @@ use std::sync::Arc;
 
 use instant_acme::{Account, DefaultClient};
 
-// Refuses a CPU missing a feature rind requires, which DEFAULT_PROVIDER cannot.
 let http = DefaultClient::new(Arc::new(rind_rustls::default_provider()?))?;
-let builder = Account::builder(Box::new(http), &rind_instant_acme::DEFAULT_PROVIDER)?;
+let builder = Account::builder(Box::new(http), rind_instant_acme::default_provider()?)?;
 ```
 
-rind panics on a CPU missing a feature it requires, so call `rind::cpu::check()`
-before using `DEFAULT_PROVIDER`, as `rind_rustls::default_provider()` does.
+rind panics on a CPU missing a feature it requires, so `default_provider()`
+checks first and returns an error naming it instead, as
+`rind_rustls::default_provider()` does.
 
 It signs account requests with ECDSA P-256 (ES256) keys, the same PKCS#8 keys instant-acme's aws-lc-rs and ring providers make, so stored credentials keep working.
 It signs External Account Binding with HMAC-SHA256 and hashes JWK thumbprints and challenge digests with SHA-256.

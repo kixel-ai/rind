@@ -19,7 +19,6 @@ use instant_acme::{
     OrderStatus, RetryPolicy,
 };
 use rcgen::{CertificateParams, PKCS_ECDSA_P256_SHA256, PublicKeyData, SerialNumber};
-use rind_instant_acme::DEFAULT_PROVIDER;
 use rustls_pki_types::CertificateDer;
 use rustls_pki_types::pem::PemObject;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -48,21 +47,23 @@ async fn issue_certificate() {
         Box::new(DefaultClient::with_pem_root(&root, provider).unwrap())
     };
 
+    let acme = rind_instant_acme::default_provider().unwrap();
+
     // Creating the account generates its key and signs the EAB with HS256.
-    let eab = ExternalAccountKey::new(EAB_KID.to_string(), DEFAULT_PROVIDER.hmac.load_key(EAB_KEY));
+    let eab = ExternalAccountKey::new(EAB_KID.to_string(), acme.hmac.load_key(EAB_KEY));
     let new_account = NewAccount {
         contact: &[],
         terms_of_service_agreed: true,
         only_return_existing: false,
     };
-    let (_, credentials) = Account::builder(http(), &DEFAULT_PROVIDER)
+    let (_, credentials) = Account::builder(http(), acme)
         .unwrap()
         .create(&new_account, directory, Some(&eab))
         .await
         .unwrap();
 
     // Ordering from stored credentials loads the PKCS#8 key back.
-    let account = Account::builder(http(), &DEFAULT_PROVIDER)
+    let account = Account::builder(http(), acme)
         .unwrap()
         .from_credentials(credentials)
         .await
