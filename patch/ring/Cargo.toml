@@ -1,0 +1,36 @@
+[package]
+name = "ring"
+# Above every ring 0.17 release, so every `^0.17.x` requirement takes this
+# patch and none falls back to crates.io's ring.
+version = "0.17.999"
+edition = "2024"
+# crates.io has the name; a binary patches this in from git instead.
+publish = false
+repository = "https://github.com/moq-dev/rind"
+license = "Apache-2.0 OR ISC OR MIT-0"
+description = "rind-ring under ring's name, for a binary's [patch.crates-io]"
+
+# Its own workspace, apart from rind's, whose lockfile also holds crates.io's
+# ring for the comparisons rind's dev-dependencies make.
+[workspace]
+
+# Each of ring 0.17's features, so any feature a dependency requests resolves.
+# Cargo resolves features for every target, so even quinn-proto's wasm-only
+# `wasm32_unknown_unknown_js` must exist. All change nothing.
+[features]
+default = ["alloc", "dev_urandom_fallback"]
+alloc = []
+dev_urandom_fallback = []
+less-safe-getrandom-custom-or-rdrand = []
+less-safe-getrandom-espidf = []
+slow_tests = []
+std = ["alloc"]
+test_logging = []
+unstable-testing-arm-no-hw = []
+unstable-testing-arm-no-neon = []
+wasm32_unknown_unknown_js = []
+
+[dependencies]
+# The version fails to resolve once rind-ring moves past ring 0.17, so this
+# shim follows it.
+rind-ring = { version = "0.17", path = "../../rind-ring" }
