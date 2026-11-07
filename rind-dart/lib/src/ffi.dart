@@ -24,12 +24,11 @@ Pointer<Void> _newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
 // Returns a non-negative [status], or throws for a negative one.
 int _check(int status) {
   if (status >= 0) return status;
-  final message = _lastMessage();
-  if (status == -9) throw UnsupportedError(message);
-  if (status == -10) throw StateError('rind binding bug: $message');
+  if (status == -9) throw UnsupportedError(_lastMessage());
+  if (status == -10) throw StateError('rind binding bug: ${_lastMessage()}');
   throw RindException(
     RindError.values[-status - 1],
-    status == -2 ? message : null,
+    status == -2 ? _lastMessage() : null,
   );
 }
 
@@ -49,20 +48,15 @@ Uint8List _output(int length, int Function(Uint8List out) call) {
   return out.sublist(0, _check(call(out)));
 }
 
-// Copies [data] to native memory for a non-leaf call, freeing it after, and
-// wiping it first when it is [secret].
-T _native<T>(
-  Uint8List data,
-  T Function(Pointer<Uint8> pointer) call, {
-  bool secret = false,
-}) {
+// Copies [data] to native memory for a non-leaf call, freeing it after. A
+// copy inside a call stays unwiped, as rind's own do.
+T _native<T>(Uint8List data, T Function(Pointer<Uint8> pointer) call) {
   final pointer = malloc<Uint8>(data.isEmpty ? 1 : data.length);
   final view = pointer.asTypedList(data.length);
   try {
     view.setAll(0, data);
     return call(pointer);
   } finally {
-    if (secret) view.fillRange(0, view.length, 0);
     malloc.free(pointer);
   }
 }

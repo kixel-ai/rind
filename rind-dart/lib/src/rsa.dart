@@ -44,7 +44,6 @@ final class RsaDecryptingKey extends _Handle {
               out,
             ),
           ),
-          secret: true,
         ),
         _decryptingKeyFinalizer,
       );

@@ -61,7 +61,7 @@ final class Pbkdf2Secret extends _Handle {
           ),
         );
         return Uint8List.fromList(out.asTypedList(length));
-      }, secret: true);
+      });
     });
   }
 
@@ -84,7 +84,7 @@ final class Pbkdf2Secret extends _Handle {
             previouslyDerived.length,
           ),
         );
-      }, secret: true);
+      });
     });
   }
 

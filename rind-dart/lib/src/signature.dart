@@ -479,7 +479,6 @@ final class RsaKeyPair extends _Handle {
     der,
     (bytes) =>
         _newHandle((out) => _rsaKeyPairNew(source, 0, bytes, der.length, out)),
-    secret: true,
   );
 
   /// Generates a random key pair of [size].
