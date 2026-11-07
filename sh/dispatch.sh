@@ -64,6 +64,8 @@ declare -A scope=(
     # s2n-bignum's proofs assume separate input and output, so the kernels
     # rind runs in place are walked, after planting faults in each.
     [inplace]='^(rind/src/low/|admin/parse-asm/)'
+    # TESTING.md's table names every export, test, and vector file.
+    [testing]='^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)'
     # COMPATIBILITY.md is generated from the CPU scans.
     [compat]='^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))'
     # BENCHMARKS.md is generated from the results, the verified-code table,
@@ -100,6 +102,7 @@ declare -A tools=(
     [msrv]='nix cargo jq'
     [cross]='cargo'
     [inplace]='python3'
+    [testing]='python3'
     [compat]='python3'
     [bench]='python3'
     [fixtures]='cargo'
@@ -116,7 +119,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs msrv cross deny versions license inplace compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs msrv cross deny versions license inplace testing compat bench fixtures patch py dart quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -195,6 +198,9 @@ for module in "${selected[@]}"; do
             if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind|--workspace'; then
                 cargo nextest run -p rind --features wipe --test zeroing --locked
             fi
+            if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind-aws-lc-rs|--workspace'; then
+                cargo nextest run -p rind-aws-lc-rs --features wipe --test zeroing --locked
+            fi
             # Doc tests need a library. No packages at all means the workspace.
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
@@ -231,6 +237,7 @@ for module in "${selected[@]}"; do
         check:license) bash admin/scan-license ;;
         # It finds the generated kernels relative to its own directory.
         check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
+        check:testing) python3 admin/testing ;;
         check:compat) python3 admin/x86-cpu markdown-table | diff -u COMPATIBILITY.md - ;;
         fix:compat) python3 admin/x86-cpu markdown-table >COMPATIBILITY.md ;;
         check:bench)

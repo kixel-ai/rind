@@ -128,7 +128,7 @@ impl Secret {
         let mut ctx = salted.clone();
         ctx.update(&index.to_be_bytes());
         let mut u = ctx.finish();
-        let mut t = u.clone();
+        let mut t = u;
         for _ in 1..iterations.get() {
             u = self.0.tag(u.as_ref());
             // Indexes rather than zipping `iter_mut`, which Aeneas cannot

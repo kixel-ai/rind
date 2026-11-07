@@ -47,5 +47,4 @@ Decided with the maintainer on 2026-11-03, after the benchmark report (`BENCHMAR
 - [HKDF's key conversions are proven](/quest/m3/verified/hkdf-okm.md) - the `From<Okm>` keys QUIC's packet protection starts from
 - [x86_64 SHA-NI SHA-256 block function is proven](/quest/m3/verified/sha256-block.md) - today's routine proven on s2n-bignum's SHA-256 spec, or a proven one as fast
 - [AES-GCM's custom-IV key is proven on the Vale tier](/quest/m3/verified/aes-gcm-key-vale.md) - `aead::gcm::Key`, for 12-byte IVs and any others
-- [ECDSA's theorems rest on the SHA-256 spec](/quest/m3/verified/sha256-spec-unify.md) - one SHA-256 spec, so ECDSA composes with the hash proof
 - [The portable backend's Keccak-f is proven or replaced](/quest/m3/verified/keccak-portable.md) - SHA-3 and ML-KEM on every architecture without rind assembly
