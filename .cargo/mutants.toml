@@ -1,6 +1,9 @@
 # cargo-mutants' settings. Run it through `admin/mutants`, which also skips
 # generated assembly and the code this host's architecture never compiles.
 
+# Runs each mutant's tests in parallel, in about half `cargo test`'s time.
+test_tool = "nextest"
+
 exclude_globs = [
   # Constants imported with aws-lc's, BoringSSL's, and OpenSSL's assembly,
   # which proofs and differential tests own.
