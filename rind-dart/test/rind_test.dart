@@ -120,6 +120,7 @@ void main() {
       () => prk.expand([], 255 * 32 + 1),
       throwsRind(RindError.wrongLength),
     );
+    expect(() => prk.expand([], 1 << 40), throwsRind(RindError.wrongLength));
   });
 
   group('PBKDF2', () {

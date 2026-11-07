@@ -12,13 +12,15 @@ part of 'bindings.dart';
 
 typedef _Free = Void Function(Pointer<Void>);
 
-// The handle slot each constructor writes into, allocated once per isolate.
-final Pointer<Pointer<Void>> _slot = malloc<Pointer<Void>>();
-
-// Runs [call] with the handle slot, and returns the handle it stored.
+// Runs [call] with a slot for a handle, and returns the handle it stored.
 Pointer<Void> _newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
-  _check(call(_slot));
-  return _slot.value;
+  final slot = malloc<Pointer<Void>>();
+  try {
+    _check(call(slot));
+    return slot.value;
+  } finally {
+    malloc.free(slot);
+  }
 }
 
 // Returns a non-negative [status], or throws for a negative one.

@@ -86,8 +86,29 @@ void main(List<String> args) async {
           .dylibFileName('rind_dart')
           .replaceFirst(RegExp(r'\.[^.]+$'), '.d'),
     );
+    // Its lockfile and manifest, the workspace's in this repository and the
+    // package's own once published, pick the dependencies' versions.
+    final workspace = await Process.run('cargo', [
+      'locate-project',
+      '--workspace',
+      '--message-format',
+      'plain',
+      '--manifest-path',
+      manifest.toFilePath(),
+    ]);
+    if (workspace.exitCode != 0) {
+      throw ProcessException(
+        'cargo',
+        const ['locate-project'],
+        '${workspace.stderr}',
+        workspace.exitCode,
+      );
+    }
+    final workspaceManifest = Uri.file((workspace.stdout as String).trim());
     output.dependencies
       ..add(manifest)
+      ..add(workspaceManifest)
+      ..add(workspaceManifest.resolve('Cargo.lock'))
       ..addAll(_parseDepInfo(File.fromUri(depInfo).readAsStringSync()));
   });
 }

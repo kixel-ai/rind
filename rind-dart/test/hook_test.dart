@@ -15,7 +15,14 @@ void main() {
         expect(output.assets.code.single.file, isNotNull);
         expect(
           output.dependencies,
-          contains(input.packageRoot.resolve('src/lib.rs')),
+          containsAll([
+            input.packageRoot.resolve('src/lib.rs'),
+            isA<Uri>().having(
+              (uri) => uri.path,
+              'path',
+              endsWith('/Cargo.lock'),
+            ),
+          ]),
         );
       },
     );

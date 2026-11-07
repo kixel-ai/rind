@@ -16,3 +16,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rind = { version = "0.2.1", path = "../rind" }
+
+[dev-dependencies]
+# Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
+# features, as `admin/ctgrind` does; otherwise they build as no-ops.
+crabgrind = { version = "0.4", default-features = false }

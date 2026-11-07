@@ -3097,6 +3097,7 @@ dependencies = [
 name = "rind-dart"
 version = "0.1.0"
 dependencies = [
+ "crabgrind 0.4.0",
  "rind",
 ]
 

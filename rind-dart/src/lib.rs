@@ -24,6 +24,9 @@ use rind::signature::{
 };
 use rind::{Error, aead, agreement, digest, hkdf, hmac, kem, pbkdf2, rsa};
 
+#[cfg(test)]
+mod ctgrind;
+
 /// The negative codes a call returns on failure, one per [`Error`] variant
 /// and two of the binding's own.
 #[repr(isize)]

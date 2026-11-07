@@ -28,7 +28,8 @@ const hkdfSha1 = HkdfAlgorithm._(hmacSha1);
 final class HkdfSalt extends _Handle {
   /// Makes a salt for [algorithm] from [value], which may be empty.
   HkdfSalt(HkdfAlgorithm algorithm, Uint8List value)
-    : super(
+    : _hashLength = algorithm._hmac.tagLength,
+      super(
         _newHandle(
           (out) => _hkdfSaltNew(
             algorithm._hmac._id,
@@ -40,8 +41,11 @@ final class HkdfSalt extends _Handle {
         _hkdfSaltFinalizer,
       );
 
+  final int _hashLength;
+
   /// Extracts a pseudorandom key from [secret] (HKDF-Extract).
   HkdfPrk extract(Uint8List secret) => HkdfPrk._(
+    _hashLength,
     _newHandle(
       (out) => _hkdfExtract(_pointer, secret.address, secret.length, out),
     ),
@@ -50,11 +54,19 @@ final class HkdfSalt extends _Handle {
 
 /// A pseudorandom key, which expands into any number of keys.
 final class HkdfPrk extends _Handle {
-  HkdfPrk._(Pointer<Void> pointer) : super(pointer, _hkdfPrkFinalizer);
+  HkdfPrk._(this._hashLength, Pointer<Void> pointer)
+    : super(pointer, _hkdfPrkFinalizer);
+
+  final int _hashLength;
 
   /// Derives [length] bytes for the concatenation of [info] (HKDF-Expand),
   /// throwing [RindError.wrongLength] past 255 hash outputs.
   Uint8List expand(List<Uint8List> info, int length) {
+    // Checked before allocating, so a huge length throws rather than
+    // exhausting memory.
+    if (length > 255 * _hashLength) {
+      throw const RindException(RindError.wrongLength);
+    }
     final joined = BytesBuilder(copy: false);
     info.forEach(joined.add);
     final infoBytes = joined.takeBytes();
