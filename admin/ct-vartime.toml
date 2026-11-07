@@ -11,3 +11,13 @@ why = "Divides by the top word of a public RSA modulus, for `PosInt::pub_montifi
 function = "<curve25519_dalek::scalar::Scalar>::as_radix_2w"
 targets = ["armv7-unknown-linux-gnueabihf"]
 why = "Divides 256 by the window width, which is 4 for the basepoint table rind uses."
+
+[[public]]
+function = "<rind::high::pbkdf2::Secret>::derive"
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "armv7-unknown-linux-gnueabihf"]
+why = "The length check and step_by iterator divide only the public output length by the selected hash's public tag length; neither operand comes from the password or derived key. Retains the formally verified implementation."
+
+[[public]]
+function = "<rind::high::pbkdf2::Secret>::verify"
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "armv7-unknown-linux-gnueabihf"]
+why = "The length check and step_by iterator divide only the public stored-key length by the selected hash's public tag length; neither operand comes from the password or stored-key bytes. Retains the formally verified implementation."
