@@ -8,7 +8,7 @@ rind offers the primitives that protocols above TLS build on, so their Rust impl
 - RSA blind signatures (RFC 9474) and VOPRF/OPRF (RFC 9497), for Privacy Pass;
 - FROST threshold Schnorr signatures (RFC 9591);
 - ECVRF (RFC 9381);
-- the PAKEs SPAKE2+ (RFC 9383, used by Matter) and OPAQUE (RFC 9807).
+- the PAKEs SPAKE2+ (RFC 9383, which Matter uses in a pre-RFC draft) and OPAQUE (RFC 9807).
 
 ## Plan
 
