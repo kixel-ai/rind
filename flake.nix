@@ -11,7 +11,7 @@
     # The quest CLI, which also serves the quest guide and skills the stubs in
     # .claude/skills call. Bump the rev to upgrade them.
     quest = {
-      url = "github:moq-dev/quest/99eb7f256e7395b293f5f3246b01dd0ade760b8f";
+      url = "github:moq-dev/quest/1c3cf6a719c8ac8e98181475e27e25d25a5ebbc2";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
@@ -246,6 +246,8 @@
                   pkg-config
                   openssl
                   cargo-deny
+                  # admin/mutants and the mutants workflow.
+                  cargo-mutants
                   cargo-nextest
                   cargo-semver-checks
                   # Linters used by `just check` and `just fix`, which skip a

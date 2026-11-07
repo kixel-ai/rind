@@ -172,7 +172,7 @@ for module in "${selected[@]}"; do
         check:rs)
             # The tests read these vectors, and otherwise fail partway through.
             # s2n-bignum only feeds admin/parse-asm, so it is not required.
-            unfetched=$(git submodule status -- thirdparty/cavp thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
+            unfetched=$(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
             if [[ -n "$unfetched" ]]; then
                 echo "error: test vectors not checked out; run: git submodule update --init ${unfetched//$'\n'/ }" >&2
                 exit 1
@@ -184,6 +184,11 @@ for module in "${selected[@]}"; do
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
             cargo nextest run "${packages[@]}" --locked --no-tests=warn
+            # Only the zeroing tests see the opt-in wipe, which the default
+            # build turns into no-ops.
+            if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind|--workspace'; then
+                cargo nextest run -p rind --features wipe --test zeroing --locked
+            fi
             # Doc tests need a library. No packages at all means the workspace.
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
