@@ -27,17 +27,25 @@ impl SrtpProvider for RindSrtp {
         &RindSrtp
     }
 
+    /// Encrypts one SRTP key derivation block.
+    ///
+    /// Panics unless `key` is 16 bytes, `input` 16, and `output` at least 16:
+    /// the trait returns `()`, so there is no error to report.
     fn srtp_aes_128_ecb_round(&self, key: &[u8], input: &[u8], output: &mut [u8]) {
         ecb_round(&cipher::AES_128, key, input, output);
     }
 
+    /// Encrypts one SRTP key derivation block.
+    ///
+    /// Panics unless `key` is 32 bytes, `input` 16, and `output` at least 16:
+    /// the trait returns `()`, so there is no error to report.
     fn srtp_aes_256_ecb_round(&self, key: &[u8], input: &[u8], output: &mut [u8]) {
         ecb_round(&cipher::AES_256, key, input, output);
     }
 }
 
-// str0m sizes these from its own types, never from a packet, and the trait has
-// no error path, so a mismatch is a str0m bug worth a panic.
+// str0m sizes these from fixed arrays, never from a packet, so a mismatch is a
+// str0m bug worth a panic.
 fn ecb_round(algorithm: &'static cipher::Algorithm, key: &[u8], input: &[u8], output: &mut [u8]) {
     let aes = Aes::new(algorithm, key).expect("SRTP master key length");
     let mut block: [u8; 16] = input.try_into().expect("SRTP key derivation block");
