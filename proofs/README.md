@@ -226,9 +226,11 @@ Longer AAD or messages run the by-8 code, which no proof covers. The key
 setup is rind's: its AES-NI key expansion and block cipher, and its
 PCLMULQDQ GHASH key powers, whose Karatsuba product and reduction
 `Rind/Gf128.lean` proves to be Vale's `gf128_mul_rev` of the shifted keys
-(`mul_shiftKey1`). The rest is the Rust around Vale's routines, which copies
-the partial blocks and picks the six-block loop's share, as EverCrypt's proven
-Low* wrapper does. The theorems assume `RunsValeAesGcm`: rind's CPU-feature
+(`mul_shiftKey1`). The rest is the Rust around Vale's routines, which
+zero-pads the partial blocks and picks the six-block loop's share, as
+EverCrypt's proven Low* wrapper does. It pads them with GHASH's
+`load_partial` and `store_partial`, whose overlapping loads and stores
+`Rind/X86_64/PartialBlock.lean` proves are the bytes at every length. The theorems assume `RunsValeAesGcm`: rind's CPU-feature
 checks pick Vale's tier. `Rind/X86_64/AeadDispatch.lean` models the AEAD API's
 function pointers (`Algorithm`'s `expand` and `Sealer`'s `Ops`).
 
@@ -251,8 +253,8 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   `Rind/X86_64/ValeAesGcm.lean`: s2n-bignum's, aws-lc-verification's, and
   Vale's theorems, restated as axioms about the routines' Rust wrappers.
 - `Rind/X86_64/Simd.lean` and `Rind/X86_64/AesNi.lean`: models of the x86_64
-  intrinsics rind's AES-GCM setup calls, and of its AES-NI key expansion and
-  block cipher, which load and store through raw pointers.
+  intrinsics rind's AES-GCM setup and partial blocks call, and of its AES-NI
+  key expansion and block cipher, which load and store through raw pointers.
 - `Rind/Spec.lean` and `Rind/Bytes.lean`: the elliptic-curve and ChaCha20
   specs and byte-conversion lemmas; `Rind/Sha2.lean` and
   `Rind/Sha2Lemmas.lean`: SHA-512's; `Rind/Ed25519.lean`: Ed25519's;
@@ -265,7 +267,7 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   AEAD APIs' dispatch.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
   ChaCha20, and Ed25519 proofs, and `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
-  SHA-1's, SHA-256's, and HMAC's; `Rind/X86_64/{AesKey,Ghash,AesGcmGlue,AesGcm}.lean`:
+  SHA-1's, SHA-256's, and HMAC's; `Rind/X86_64/{AesKey,Ghash,PartialBlock,AesGcmGlue,AesGcm}.lean`:
   the AES-GCM proof, on x86_64 alone.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
