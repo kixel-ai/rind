@@ -29,4 +29,3 @@ All three constant-time tools state they can't see variable-time instructions. O
 - [Mutation testing on AVX-512](/quest/m3/confidence/mutants-avx512.md) - the AVX-512 paths no campaign host runs, under Intel SDE
 - [Mutation testing on armv7](/quest/m3/confidence/mutants-armv7.md) - the code only 32-bit ARM compiles, under qemu-arm
 - [Mutation testing of DIT](/quest/m3/confidence/mutants-dit.md) - DIT detection and setting, on cores that have it
-- [TESTING.md lists the CCTV and imported vector sets](/quest/m3/confidence/testing-vectors-rows.md) - rows for `thirdparty/cctv` and `thirdparty/vectors`
