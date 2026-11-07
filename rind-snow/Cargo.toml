@@ -8,8 +8,6 @@ description = "snow CryptoResolver backed by rind"
 categories = ["network-programming", "cryptography"]
 rust-version.workspace = true
 readme = "README.md"
-# The test vectors stay in the repository.
-exclude = ["tests/vectors"]
 
 [dependencies]
 rind = { version = "0.2.1", path = "../rind" }

@@ -418,7 +418,7 @@ those algorithms only with its `aws_lc_rs` feature.
 | object_store's `aws`, `azure`, and `gcp` features | the `*-base` features, with `with_crypto_provider(rind_object_store::default_provider()?)` |
 | jsonwebtoken's `crypto::aws_lc::DEFAULT_PROVIDER` | `rind_jsonwebtoken::default_provider()?` |
 | instant-acme's built-in provider | `Account::builder(http, rind_instant_acme::default_provider()?)` |
-| snow's `Builder::new(params)` or `RingResolver` | `Builder::with_resolver(params, rind_snow::resolver()?)`, with snow's default resolver behind a `FallbackResolver` for BLAKE2 or Curve448 |
+| snow's `Builder::new(params)` or `RingResolver` | `Builder::with_resolver(params, rind_snow::resolver()?)`, with snow's default resolver behind a `FallbackResolver` for BLAKE2 |
 
 ## Crates with their own crypto backend
 

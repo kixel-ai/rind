@@ -16,7 +16,7 @@ let initiator = snow::Builder::with_resolver(params, rind_snow::resolver()?)
 ```
 
 It resolves X25519, ChaCha20-Poly1305, AES-256-GCM, SHA-256, SHA-512, and the system random source.
-A protocol naming BLAKE2 or Curve448 fails to build; put snow's default resolver behind it for those:
+A protocol naming BLAKE2 or Curve448 fails to build. For BLAKE2, put snow's default resolver behind it (snow 0.10 has no Curve448):
 
 ```rust
 use snow::resolvers::{DefaultResolver, FallbackResolver};

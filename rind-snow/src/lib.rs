@@ -19,8 +19,9 @@
 //!
 //! It resolves X25519, ChaCha20-Poly1305, AES-256-GCM, SHA-256, SHA-512, and
 //! the system random source, and nothing else: building a protocol that
-//! names BLAKE2 or Curve448 fails. For those, put another resolver behind it
-//! with [`FallbackResolver`](snow::resolvers::FallbackResolver).
+//! names BLAKE2 or Curve448 fails. For BLAKE2, put snow's default resolver
+//! behind it with [`FallbackResolver`](snow::resolvers::FallbackResolver);
+//! snow 0.10 has no Curve448.
 //!
 //! rind is young, and Noise is a security-critical handshake: weigh that
 //! before deploying it.
