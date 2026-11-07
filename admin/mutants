@@ -3,21 +3,38 @@
 # passing its arguments through. It skips generated assembly, which proofs and
 # differential tests own, and every module only another architecture compiles,
 # whose mutants no test here can reach.
+#
+# Each test runs on this CPU and again with each row of features below denied,
+# so code only CPUs without them run, such as aws-lc's SSE2 AES, is tested
+# too. The rows are ctgrind.yml's. No row reaches the AVX-512 paths a CPU
+# without AVX-512 never runs.
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 case $(uname -m) in
     x86_64)
+        triple=X86_64_UNKNOWN_LINUX_GNU
         skip=(
             'rind/src/low/aarch64/**' 'rind/src/low/arm/**' 'rind/src/mid/arm/**'
             rind/src/low/generic/mlkem768.rs rind/src/low/generic/order.rs
         )
+        rows=(
+            "adx vaes"
+            "adx avx intel sha"
+            "adx avx intel sha aes pclmulqdq sse41"
+            "adx ssse3"
+        )
         ;;
     aarch64 | arm64)
+        triple=AARCH64_UNKNOWN_LINUX_GNU
         skip=(
             'rind/src/low/x86_64/**' 'rind/src/low/arm/**' 'rind/src/mid/arm/**'
             rind/src/low/generic/mlkem_poly.rs rind/src/low/generic/order.rs
             rind/src/low/generic/sha1.rs rind/src/low/generic/sha256.rs
+        )
+        rows=(
+            "sha3 dit"
+            "aes pmull sha2 sha3 dit"
         )
         ;;
     *)
@@ -26,6 +43,25 @@ case $(uname -m) in
         ;;
 esac
 
+# The test runner: runs one test binary on each row, failing if any fails.
+# Nextest lists a binary's tests through the runner too, which needs one run.
+if [ "${1:-}" = --run ]; then
+    shift
+    "$@"
+    for arg in "$@"; do
+        [ "$arg" != --list ] || exit 0
+    done
+    for row in "${rows[@]}"; do
+        deny=()
+        for feature in $row; do
+            deny+=("RIND_CPU_DISABLE_$feature=1")
+        done
+        env "${deny[@]}" "$@"
+    done
+    exit 0
+fi
+
+cd "$here"
 args=()
 for glob in "${skip[@]}"; do
     args+=(--exclude "$glob")
@@ -34,4 +70,5 @@ while IFS= read -r file; do
     args+=(--exclude "$file")
 done < <(git grep -l '^// generated source' -- rind/src)
 
+export "CARGO_TARGET_${triple}_RUNNER=$here/admin/mutants --run"
 exec cargo mutants "${args[@]}" "$@"
