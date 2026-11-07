@@ -14,6 +14,106 @@ over HMAC with any of `high::hmac`'s hashes, down to `Rind.X86_64.HmacApi`.
 
 namespace rind.x86_64.kdf
 
+/-! ## Output of whole blocks
+
+HKDF-Expand and PBKDF2 both write the first `L` bytes of `T(1) | T(2) | ...`
+one `n`-byte block at a time. -/
+
+theorem bv_append (x y : List U8) : bv (x ++ y) = bv x ++ bv y := List.map_append
+
+theorem bv_take (x : List U8) (n : Nat) : bv (x.take n) = (bv x).take n := List.map_take ..
+
+theorem bv_length (x : List U8) : (bv x).length = x.length := List.length_map ..
+
+/-- `T(1) | ... | T(j)`. -/
+def blocksOut (T : Nat → List Byte) (j : Nat) : List Byte :=
+  (List.range j).flatMap fun i => T (i + 1)
+
+section
+variable (T : Nat → List Byte) (n : Nat) (hT : ∀ i, (T (i + 1)).length = n)
+
+theorem blocksOut_succ (j : Nat) : blocksOut T (j + 1) = blocksOut T j ++ T (j + 1) := by
+  simp [blocksOut, List.range_succ, List.flatMap_append]
+
+include hT in
+theorem blocksOut_length (j : Nat) : (blocksOut T j).length = j * n := by
+  induction j with
+  | zero => simp [blocksOut]
+  | succ j ih => rw [blocksOut_succ, List.length_append, ih, hT]; ring
+
+include hT in
+theorem blocksOut_take (L j d : Nat) (hj : L ≤ j * n) :
+    (blocksOut T (j + d)).take L = (blocksOut T j).take L := by
+  induction d with
+  | zero => rfl
+  | succ d ih =>
+    rw [← Nat.add_assoc, blocksOut_succ, List.take_append_of_le_length
+      (by rw [blocksOut_length T n hT]; nlinarith), ih]
+
+theorem ceilDiv_ge (L : Nat) (hn : 0 < n) : L ≤ (L + n - 1) / n * n := by
+  have h1 := Nat.div_add_mod (L + n - 1) n
+  have h2 := Nat.mod_lt (L + n - 1) hn
+  rw [Nat.mul_comm] at h1
+  omega
+
+theorem ceilDiv_le (L j : Nat) (hn : 0 < n) (h : L ≤ j * n) : (L + n - 1) / n ≤ j := by
+  have : (L + n - 1) / n < j + 1 := by
+    rw [Nat.div_lt_iff_lt_mul hn, Nat.add_mul, one_mul]
+    omega
+  omega
+
+include hT in
+/-- Once `j` blocks cover the output, it is the first `L` bytes of `ceil(L / n)` blocks. -/
+theorem prefix_done (hn : 0 < n) (out : List Byte) (j : Nat) (hL : out.length ≤ j * n)
+    (hpre : out.take (j * n) = (blocksOut T j).take out.length) :
+    out = (blocksOut T ((out.length + n - 1) / n)).take out.length := by
+  have hK := ceilDiv_le n out.length j hn hL
+  calc out = out.take (j * n) := (List.take_of_length_le hL).symm
+    _ = (blocksOut T j).take out.length := hpre
+    _ = _ := by
+      rw [show j = (out.length + n - 1) / n + (j - (out.length + n - 1) / n) by omega,
+        blocksOut_take T n hT _ _ _ (ceilDiv_ge n _ hn)]
+
+include hT in
+/-- Writing block `c' + 1`, cut to what is left of the output, at its offset. -/
+theorem prefix_step (out blk : List U8) (c' : Nat) (hoff : c' * n < out.length)
+    (hbl : blk.length = n) (hblk : bv blk = T (c' + 1))
+    (hpre : (bv out).take (c' * n) = (blocksOut T c').take out.length) :
+    (bv (out.setSlice! (c' * n) (blk.take (min n (out.length - c' * n))))).take ((c' + 1) * n) =
+      (blocksOut T (c' + 1)).take out.length := by
+  have hOl := blocksOut_length T n hT c'
+  rw [← bv_take, blocksOut_succ, List.take_append, hOl,
+    List.take_of_length_le (l := blocksOut T c') (by rw [hOl]; omega)]
+  have hs'l : (blk.take (min n (out.length - c' * n))).length = min n (out.length - c' * n) := by
+    simp only [List.length_take, hbl]; omega
+  have h1 := take_setSlice! out (blk.take (min n (out.length - c' * n))) (c' * n)
+    (by rw [hs'l]; omega)
+  rw [hs'l] at h1
+  have hsetl : (out.setSlice! (c' * n) (blk.take (min n (out.length - c' * n)))).length =
+      out.length := by
+    simp [List.length_setSlice!]
+  have htake : (out.setSlice! (c' * n) (blk.take (min n (out.length - c' * n)))).take
+      ((c' + 1) * n) = out.take (c' * n) ++ blk.take (min n (out.length - c' * n)) := by
+    rw [← h1]
+    by_cases hcase : n ≤ out.length - c' * n
+    · rw [show c' * n + min n (out.length - c' * n) = (c' + 1) * n by
+        rw [Nat.add_mul, one_mul]; omega]
+    · have e1 : (out.setSlice! (c' * n) (blk.take (min n (out.length - c' * n)))).take
+          ((c' + 1) * n) = out.setSlice! (c' * n) (blk.take (min n (out.length - c' * n))) :=
+        List.take_of_length_le (by rw [hsetl, Nat.add_mul, one_mul]; omega)
+      have e2 : (out.setSlice! (c' * n) (blk.take (min n (out.length - c' * n)))).take
+          (c' * n + min n (out.length - c' * n)) =
+          out.setSlice! (c' * n) (blk.take (min n (out.length - c' * n))) :=
+        List.take_of_length_le (by rw [hsetl]; omega)
+      rw [e1, e2]
+  rw [htake, bv_append, bv_take, hpre, List.take_of_length_le (by rw [hOl]; omega),
+    bv_take, hblk]
+  congr 1
+  rw [← List.take_take, List.take_of_length_le (l := List.take _ _)
+    (by simp only [List.length_take, hT]; omega)]
+
+end
+
 /-! ## HKDF-Expand's blocks -/
 
 section
@@ -24,50 +124,23 @@ def hkdfT : Nat → List Byte
   | 0 => []
   | i + 1 => prf prk (hkdfT i ++ info ++ [BitVec.ofNat 8 (i + 1)])
 
-/-- `T(1) | ... | T(j)`. -/
-def hkdfOut (j : Nat) : List Byte := (List.range j).flatMap fun i => hkdfT prf prk info (i + 1)
-
-theorem hkdfOut_succ (j : Nat) :
-    hkdfOut prf prk info (j + 1) = hkdfOut prf prk info j ++ hkdfT prf prk info (j + 1) := by
-  simp [hkdfOut, List.range_succ, List.flatMap_append]
-
 theorem hkdf_fold (j : Nat) :
     (List.range j).foldl (fun (acc : List Byte × List Byte) i =>
       let t := prf prk (acc.1 ++ info ++ [BitVec.ofNat 8 (i + 1)])
-      (t, acc.2 ++ t)) ([], []) = (hkdfT prf prk info j, hkdfOut prf prk info j) := by
+      (t, acc.2 ++ t)) ([], []) = (hkdfT prf prk info j, blocksOut (hkdfT prf prk info) j) := by
   induction j with
   | zero => rfl
   | succ j ih =>
-    rw [List.range_succ, List.foldl_append, ih, hkdfOut_succ]
+    rw [List.range_succ, List.foldl_append, ih, blocksOut_succ]
     rfl
 
 theorem hkdfExpand_eq (n L : Nat) :
-    hkdfExpand prf n prk info L = (hkdfOut prf prk info ((L + n - 1) / n)).take L := by
+    hkdfExpand prf n prk info L = (blocksOut (hkdfT prf prk info) ((L + n - 1) / n)).take L := by
   simp only [hkdfExpand, hkdf_fold]
-
-theorem hkdfOut_length (n : Nat) (hn : ∀ x, (prf prk x).length = n) (j : Nat) :
-    (hkdfOut prf prk info j).length = j * n := by
-  induction j with
-  | zero => simp [hkdfOut]
-  | succ j ih => rw [hkdfOut_succ, List.length_append, ih, hkdfT, hn]; ring
-
-theorem hkdfOut_take (n : Nat) (hn : ∀ x, (prf prk x).length = n) (L j d : Nat)
-    (hj : L ≤ j * n) : (hkdfOut prf prk info (j + d)).take L = (hkdfOut prf prk info j).take L := by
-  induction d with
-  | zero => rfl
-  | succ d ih =>
-    rw [← Nat.add_assoc, hkdfOut_succ, List.take_append_of_le_length
-      (by rw [hkdfOut_length prf prk info n hn]; nlinarith), ih]
 
 end
 
 /-! ## `Prk::expand_into` -/
-
-theorem bv_append (x y : List U8) : bv (x ++ y) = bv x ++ bv y := List.map_append
-
-theorem bv_take (x : List U8) (n : Nat) : bv (x.take n) = (bv x).take n := List.map_take ..
-
-theorem bv_length (x : List U8) : (bv x).length = x.length := List.length_map ..
 
 /-- `info`'s parts, joined. -/
 def infoBytes (info : Slice (Slice U8)) : List U8 := info.val.flatMap (·.val)
@@ -103,10 +176,10 @@ theorem expand_into_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (prk :
             digestBytes t = hkdfT (hmacOf a) prk (bv (infoBytes info)) (c - 1)) →
       out.length ≤ 255 * tagLen a →
       (bv out.val).take ((c - 1) * tagLen a) =
-        (hkdfOut (hmacOf a) prk (bv (infoBytes info)) (c - 1)).take out.length →
+        (blocksOut (hkdfT (hmacOf a) prk (bv (infoBytes info))) (c - 1)).take out.length →
       high.hkdf.Prk.expand_into_loop k info (tagLen a) block c ((c - 1) * tagLen a) out ⦃ r =>
         r.length = out.length ∧
-          bv r.val = (hkdfOut (hmacOf a) prk (bv (infoBytes info))
+          bv r.val = (blocksOut (hkdfT (hmacOf a) prk (bv (infoBytes info)))
             ((out.length + tagLen a - 1) / tagLen a)).take out.length ⦄ := by
   intro m
   induction m using Nat.strong_induction_on with
@@ -166,9 +239,6 @@ theorem expand_into_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (prk :
       have hsl' : s.val.length = tagLen a := by
         have : s.length = tagLen a := by rw [hsl, htl]
         simpa only [Slice.length] using this
-      have hTl : (hkdfT (hmacOf a) prk (bv (infoBytes info)) (c' + 1)).length = tagLen a := hTlen c'
-      have hOl : (hkdfOut (hmacOf a) prk (bv (infoBytes info)) c').length = c' * tagLen a :=
-        hkdfOut_length _ _ _ _ hlen c'
       split
       · rename_i hle
         rw [show c' * tagLen a + tagLen a = (c' + 1 + 1 - 1) * tagLen a by
@@ -182,43 +252,8 @@ theorem expand_into_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (prk :
         · rintro r ⟨hrl, hrv⟩
           rw [hlen'] at hrl hrv
           exact ⟨hrl, hrv⟩
-        · rw [hlen', Nat.add_sub_cancel, Slice.setSlice!_val, ← bv_take, hkdfOut_succ,
-            List.take_append, hOl,
-            List.take_of_length_le (l := hkdfOut _ _ _ c') (by rw [hOl]; omega)]
-          have hs'l : (s.val.take (min (tagLen a) (out.length - c' * tagLen a))).length =
-              min (tagLen a) (out.length - c' * tagLen a) := by
-            simp only [List.length_take, hsl']; omega
-          have h1 := take_setSlice! out.val (s.val.take (min (tagLen a) (out.length - c' * tagLen a)))
-            (c' * tagLen a) (by rw [hs'l]; simp only [Slice.length] at hoff ⊢; omega)
-          rw [hs'l] at h1
-          have hsetl : (out.val.setSlice! (c' * tagLen a)
-              (s.val.take (min (tagLen a) (out.length - c' * tagLen a)))).length = out.length := by
-            simp [List.length_setSlice!, Slice.length]
-          have htake : (out.val.setSlice! (c' * tagLen a)
-              (s.val.take (min (tagLen a) (out.length - c' * tagLen a)))).take ((c' + 1) * tagLen a) =
-              out.val.take (c' * tagLen a) ++
-                s.val.take (min (tagLen a) (out.length - c' * tagLen a)) := by
-            rw [← h1]
-            by_cases hcase : tagLen a ≤ out.length - c' * tagLen a
-            · rw [show c' * tagLen a + min (tagLen a) (out.length - c' * tagLen a) =
-                (c' + 1) * tagLen a by rw [Nat.add_mul, one_mul]; omega]
-            · have e1 : (out.val.setSlice! (c' * tagLen a)
-                  (s.val.take (min (tagLen a) (out.length - c' * tagLen a)))).take
-                  ((c' + 1) * tagLen a) = out.val.setSlice! (c' * tagLen a)
-                  (s.val.take (min (tagLen a) (out.length - c' * tagLen a))) :=
-                List.take_of_length_le (by rw [hsetl, Nat.add_mul, one_mul]; omega)
-              have e2 : (out.val.setSlice! (c' * tagLen a)
-                  (s.val.take (min (tagLen a) (out.length - c' * tagLen a)))).take
-                  (c' * tagLen a + min (tagLen a) (out.length - c' * tagLen a)) =
-                  out.val.setSlice! (c' * tagLen a)
-                  (s.val.take (min (tagLen a) (out.length - c' * tagLen a))) :=
-                List.take_of_length_le (by rw [hsetl]; omega)
-              rw [e1, e2]
-          rw [htake, bv_append, bv_take, hpre, List.take_of_length_le (by rw [hOl]; omega), bv_take,
-            hT]
-          congr 1
-          rw [← List.take_take, List.take_of_length_le (l := List.take _ _)
-            (by simp only [List.length_take, hTl]; omega)]
+        · rw [hlen', Nat.add_sub_cancel, Slice.setSlice!_val]
+          exact prefix_step _ _ hTlen out.val s.val c' hoff hsl' hT hpre
       · rename_i hgt
         exfalso
         apply hgt
@@ -234,25 +269,8 @@ theorem expand_into_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (prk :
       by_contra h'
       have : 255 * tagLen a ≤ (c - 1) * tagLen a := Nat.mul_le_mul_right _ (by omega)
       omega
-    have hout : (bv out.val).take ((c - 1) * tagLen a) = bv out.val :=
-      List.take_of_length_le (by rw [bv_length]; exact hdone)
-    rw [← hout, hpre]
-    have hK : out.length ≤ (out.length + tagLen a - 1) / tagLen a * tagLen a := by
-      have h1 := Nat.div_add_mod (out.length + tagLen a - 1) (tagLen a)
-      have h2 := Nat.mod_lt (out.length + tagLen a - 1) hn
-      rw [Nat.mul_comm] at h1
-      omega
-    have hKle : (out.length + tagLen a - 1) / tagLen a ≤ c - 1 := by
-      have : (out.length + tagLen a - 1) / tagLen a < c := by
-        rw [Nat.div_lt_iff_lt_mul hn]
-        obtain ⟨c', rfl⟩ : ∃ c', c = c' + 1 := ⟨c - 1, by omega⟩
-        simp only [Nat.add_sub_cancel] at hdone
-        rw [Nat.add_mul, one_mul]
-        omega
-      omega
-    rw [show c - 1 = (out.length + tagLen a - 1) / tagLen a +
-        (c - 1 - (out.length + tagLen a - 1) / tagLen a) by omega,
-      hkdfOut_take _ _ _ (tagLen a) hlen _ _ _ hK]
+    exact prefix_done _ _ hTlen hn (bv out.val) (c - 1) (by rw [bv_length]; exact hdone)
+      (by rw [bv_length]; exact hpre) |>.trans (by rw [bv_length])
 
 /-- `Prk::expand_into` fills `out` with HKDF-Expand's output. -/
 theorem expand_into_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (prk : List Byte)
@@ -263,12 +281,13 @@ theorem expand_into_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (prk : List
       bv r.val = hkdfExpand (hmacOf a) (tagLen a) prk (bv (infoBytes info)) out.length ⦄ := by
   obtain ⟨n, hn, hnv⟩ := tagLen_eq a
   have hloop := expand_into_loop_spec a hr prk k hk info hinfo _ 1 none out rfl le_rfl rfl hL
-    (by simp [hkdfOut])
+    (by simp [blocksOut])
   obtain ⟨⟨e, he⟩, -⟩ := hr
   simp only [Nat.sub_self, Nat.zero_mul] at hloop
   unfold high.hkdf.Prk.expand_into
-  rw [he, bind_ok, key_algorithm_eq hk, bind_ok, hn, bind_ok,
-    if_neg (by rw [hnv]; have := tagLen_pos a; omega), hnv]
+  have h0 : ¬ (tagLen a = 0) := by have := tagLen_pos a; omega
+  rw [he, bind_ok, key_algorithm_eq hk, bind_ok, hn, bind_ok, hnv]
+  simp only [h0, ↓reduceIte]
   apply WP.spec_mono hloop
   rintro r ⟨h1, h2⟩
   exact ⟨h1, by rw [h2, hkdfExpand_eq]⟩
@@ -379,7 +398,9 @@ theorem hkdf_fill (a : high.hmac.Algorithm) (hr : RunsHmac a) (inst : high.hkdf.
   simp only [high.hkdf.Prk.expand, bind_ok]
   apply WP.spec_mono (okm_fill_spec a hr _ prk hprk info hinfo len out)
   intro r hr'
-  rw [ite_cond_eq_true _ _ (eq_true ⟨hlen, hL⟩)] at hr'
-  exact ⟨hr'.1, hr'.2.2⟩
+  split at hr'
+  · exact ⟨hr'.1, hr'.2.2⟩
+  · rename_i hc
+    exact absurd (And.intro hlen hL) hc
 
 end rind.x86_64.kdf
