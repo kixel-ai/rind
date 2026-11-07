@@ -20,6 +20,7 @@ on:
       - coverage
       - ctgrind
       - fuzz
+      - mutants
       - prove
       - Pullfrog
       - quality lints
