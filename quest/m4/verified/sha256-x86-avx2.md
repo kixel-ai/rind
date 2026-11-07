@@ -14,5 +14,4 @@ SHA-256, and HMAC, HKDF, and PBKDF2 over it, earn the ✓ on x86_64 CPUs with AV
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m4/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
-- [The hash and KDF glue is proven](/quest/m3/verified/hash-glue.md) - HMAC, HKDF, and PBKDF2 over the hash
+- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
