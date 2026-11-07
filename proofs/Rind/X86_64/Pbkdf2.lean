@@ -409,4 +409,109 @@ theorem derive_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (P : List B
         exact this
   · exact ⟨i', hz, hl, hpre⟩
 
+/-- `check_len` accepts a length of at least one and at most `u32::MAX` blocks. -/
+theorem check_len_spec (a : high.hmac.Algorithm) (P : List Byte) (k : high.hmac.Key)
+    (hk : KeyOf a P k) (len : Usize) :
+    high.pbkdf2.Secret.check_len k len ⦃ r =>
+      r = if 0 < len.val ∧ (len.val + tagLen a - 1) / tagLen a ≤ U32.max then .Ok ()
+        else .Err .WrongLength ⦄ := by
+  obtain ⟨n, hn, hnv⟩ := tagLen_eq a
+  have hpos := tagLen_pos a
+  unfold high.pbkdf2.Secret.check_len core.num.Usize.div_ceil
+  rw [key_algorithm_eq hk, bind_ok, hn, bind_ok]
+  have h0 : ¬ n.val = 0 := by omega
+  simp only [h0, ↓reduceDIte, bind_ok]
+  have hval : ∀ h, (UScalar.ofNatCore (ty := .Usize) ((len.val + n.val - 1) / n.val) h).val =
+      (len.val + tagLen a - 1) / tagLen a := by
+    intro h; rw [UScalar.ofNatCore_val_eq, hnv]
+  have hcast : (UScalar.cast UScalarTy.Usize core.num.U32.MAX).val = U32.max := by
+    simp only [UScalar.cast_val_eq, core.num.U32.MAX]
+    rcases System.Platform.numBits_eq with h | h <;> simp [h, U32.rMax, U32.max, U32.numBits]
+  split
+  · rename_i hb
+    have hB := congrArg UScalar.val hb
+    rw [hval] at hB
+    have hB' : (len.val + tagLen a - 1) / tagLen a = 0 := hB
+    have hl0 : len.val = 0 := by
+      by_contra hne
+      have := (Nat.le_div_iff_mul_le hpos).mpr (show 1 * tagLen a ≤ len.val + tagLen a - 1 by omega)
+      omega
+    simp only [WP.spec_ok, hl0]
+    simp
+  · rename_i hb
+    have hB : (len.val + tagLen a - 1) / tagLen a ≠ 0 := by
+      intro h; apply hb; apply UScalar.eq_of_val_eq; rw [hval, h]; simp
+    have hl0 : 0 < len.val := by
+      by_contra h
+      apply hB
+      rw [show len.val = 0 by omega, Nat.zero_add]
+      exact Nat.div_eq_of_lt (by omega)
+    simp only [lift, bind_ok]
+    split
+    · rename_i hgt
+      simp only [GT.gt, UScalar.lt_equiv, hcast, hval] at hgt
+      simp only [WP.spec_ok]
+      split
+      · omega
+      · rfl
+    · rename_i hgt
+      simp only [GT.gt, UScalar.lt_equiv, hcast, hval, not_lt] at hgt
+      simp only [WP.spec_ok]
+      split
+      · rfl
+      · omega
+
+theorem u32_max_val : core.num.U32.MAX.val = U32.max := by
+  simp [core.num.U32.MAX, U32.rMax, U32.max, U32.numBits]
+
+/-- The iterator `derive` and `verify` build, before block 1. -/
+theorem zipAt_start (L : Nat) (n : Usize) (len : Usize) (hl : len.val = L) :
+    ZipAt n.val L 0 ⟨⟨1#u32, core.num.U32.MAX, false⟩, ⟨⟨0#usize, len⟩, n⟩⟩ := by
+  refine ⟨u32_max_val, fun _ => rfl, fun h => by simp at h, by simp, hl, rfl⟩
+
+/-- `Secret::derive` writes PBKDF2's output, for an output of at least one
+and at most `u32::MAX` blocks, and refuses any other. -/
+theorem derive_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (P : List Byte)
+    (k : high.hmac.Key) (hk : KeyOf a P k)
+    (iterations : core.num.nonzero.NonZero U32 core.num.niche_types.NonZeroU32Inner)
+    (salt out : Slice U8) (hm : hmacBlock a + salt.length + 4 ≤ maxInput) :
+    high.pbkdf2.Secret.derive k iterations salt out ⦃ r =>
+      if 0 < out.length ∧ (out.length + tagLen a - 1) / tagLen a ≤ U32.max then
+        r.1 = .Ok () ∧ r.2.length = out.length ∧
+          bv r.2.val = pbkdf2 (hmacOf a) (tagLen a) P (bv salt.val) iterations.val out.length
+      else r = (.Err .WrongLength, out) ⦄ := by
+  obtain ⟨n, hn, hnv⟩ := tagLen_eq a
+  have hpos := tagLen_pos a
+  have hent := hr.1
+  obtain ⟨e, he⟩ := hent
+  unfold high.pbkdf2.Secret.derive
+  rw [he, bind_ok]
+  apply WP.spec_bind (check_len_spec a P k hk (Slice.len out))
+  rintro c rfl
+  rw [Slice.len_val]
+  by_cases hc : 0 < out.length ∧ (out.length + tagLen a - 1) / tagLen a ≤ U32.max
+  · simp only [hc, and_self, ↓reduceIte, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
+    apply WP.spec_bind (salted_spec a hr P k hk salt (by omega))
+    intro salted hs
+    rw [key_algorithm_eq hk, bind_ok, hn, bind_ok]
+    simp only [core.ops.range.RangeInclusive.new, bind_ok,
+      core.iter.traits.iterator.Iterator.step_by.trait_default,
+      core.iter.traits.iterator.Iterator.step_by.default,
+      core.iter.traits.iterator.Iterator.zip.trait_default,
+      core.iter.traits.iterator.Iterator.zip.default,
+      core.iter.traits.collect.IntoIterator.Blanket.into_iter]
+    have h0 : ¬ n.val = 0 := by omega
+    simp only [h0, ↓reduceIte, bind_ok]
+    have hz := zipAt_start out.length n (Slice.len out) (Slice.len_val out)
+    rw [hnv] at hz
+    apply WP.spec_bind (derive_loop_spec a hr P k hk salt.val salted hs hm iterations n hnv
+      out.length hc.2 _ out 0 hz rfl (by simp [blocksOut]))
+    rintro r ⟨hrl, hrb⟩
+    simp only [WP.spec_ok]
+    exact ⟨trivial, hrl, by rw [hrb, pbkdf2_eq]⟩
+  · simp only [hc, ↓reduceIte, core.result.Result.Insts.CoreOpsTry.branch, bind_ok,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+      core.convert.FromSame.from]
+    simp
+
 end rind.x86_64.kdf
