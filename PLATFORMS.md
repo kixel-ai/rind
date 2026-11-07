@@ -13,7 +13,7 @@ first two under qemu. iOS devices' code is only built.
   [ALGORITHMS.md](ALGORITHMS.md)), `rind::cpu::has_aes_hardware()` is false, and
   rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Secret-dependent code
   runs with data-independent timing (DIT) where the core has it, set and
-  cleared in each call unless `rind::cpu::hold_dit()` holds it across a batch
+  cleared in each call unless `rind::cpu::Dit::hold()` holds it across a batch
   of calls. Where Hyper-V hides DIT from Linux, as on Azure's Cobalt 100,
   rind knows it from the core's model, for Arm's Armv8.4 and later cores and
   Qualcomm's Oryon, given a readable `/sys` and every CPU online.

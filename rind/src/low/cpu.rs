@@ -41,7 +41,7 @@ pub fn has_aes_hardware() -> bool {
     return super::x86_64::cpu::HaveAesHardware::check().is_some();
 }
 
-/// Keeps data-independent timing (DIT) on for this thread until the returned guard drops.
+/// Holds data-independent timing (DIT) on for this thread until dropped.
 ///
 /// Every rind call that handles a secret runs with DIT where the core has it,
 /// turning it on at entry and back off on return. On Apple's M1 that costs
@@ -61,7 +61,7 @@ pub fn has_aes_hardware() -> bool {
 /// let key = Key::new(&AES_128_GCM, &[0x42; 16]).unwrap();
 /// let mut packets = [[0u8; 1200]; 4];
 ///
-/// let _dit = rind::cpu::hold_dit();
+/// let _dit = rind::cpu::Dit::hold();
 /// for (number, packet) in packets.iter_mut().enumerate() {
 ///     let mut nonce = [0u8; 12];
 ///     nonce[4..].copy_from_slice(&(number as u64).to_be_bytes());
@@ -74,41 +74,37 @@ pub fn has_aes_hardware() -> bool {
 /// nor live across an `.await` in a task a multi-threaded runtime may move:
 ///
 /// ```compile_fail,E0277
-/// let dit = rind::cpu::hold_dit();
+/// let dit = rind::cpu::Dit::hold();
 /// std::thread::spawn(move || drop(dit));
 /// ```
-pub fn hold_dit() -> DitGuard {
-    let (guards, cpu_state) = DIT_GUARDS.get();
-    let cpu_state = if guards == 0 {
-        super::enter_cpu_state()
-    } else {
-        cpu_state
-    };
-    // Saturating, here and in `drop`: past `usize::MAX` guards the count is
-    // inexact and DIT may turn off early, which costs speed but never
-    // safety, since every rind call sets DIT itself.
-    DIT_GUARDS.set((guards.saturating_add(1), cpu_state));
-    DitGuard {
-        _thread: PhantomData,
-    }
-}
-
-std::thread_local! {
-    // This thread's live guards, and what the first one's `enter_cpu_state`
-    // returned, for the last one to drop to restore.
-    static DIT_GUARDS: Cell<(usize, u32)> = const { Cell::new((0, 0)) };
-}
-
-/// Holds data-independent timing on for this thread until dropped; see [`hold_dit`].
 #[must_use = "DIT turns back off when the guard drops"]
 #[derive(Debug)]
-pub struct DitGuard {
+pub struct Dit {
     // Neither `Send` nor `Sync`: dropping it on another thread would count
     // against that thread's guards.
     _thread: PhantomData<*const ()>,
 }
 
-impl Drop for DitGuard {
+impl Dit {
+    /// Turns DIT on for this thread, if rind sets it here, until the guard drops.
+    pub fn hold() -> Self {
+        let (guards, cpu_state) = DIT_GUARDS.get();
+        let cpu_state = if guards == 0 {
+            super::enter_cpu_state()
+        } else {
+            cpu_state
+        };
+        // Saturating, here and in `drop`: past `usize::MAX` guards the count
+        // is inexact and DIT may turn off early, which costs speed but never
+        // safety, since every rind call sets DIT itself.
+        DIT_GUARDS.set((guards.saturating_add(1), cpu_state));
+        Self {
+            _thread: PhantomData,
+        }
+    }
+}
+
+impl Drop for Dit {
     fn drop(&mut self) {
         let (guards, cpu_state) = DIT_GUARDS.get();
         DIT_GUARDS.set((guards.saturating_sub(1), cpu_state));
@@ -116,6 +112,12 @@ impl Drop for DitGuard {
             super::leave_cpu_state(cpu_state);
         }
     }
+}
+
+std::thread_local! {
+    // This thread's live guards, and what the first one's `enter_cpu_state`
+    // returned, for the last one to drop to restore.
+    static DIT_GUARDS: Cell<(usize, u32)> = const { Cell::new((0, 0)) };
 }
 
 /// Panics with [`check`]'s error rather than run instructions this CPU lacks.
