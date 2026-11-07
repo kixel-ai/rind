@@ -14,12 +14,13 @@
 //! (<https://github.com/PyO3/pyo3/issues/6526>).
 
 use std::borrow::Cow;
+use std::mem::MaybeUninit;
 
-use pyo3::buffer::PyUntypedBuffer;
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyImportError, PyMemoryError};
+use pyo3::ffi;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyMemoryView};
+use pyo3::types::{PyBytes, PyDict};
 
 mod aead;
 mod agreement;
@@ -90,7 +91,7 @@ pub(crate) fn error(e: rind::Error) -> PyErr {
 /// copied from any other buffer, such as a `bytearray`, `memoryview`, or
 /// `array`, so no other thread can change it while rind reads it, even with
 /// the GIL released. Like `hashlib`, it takes a buffer's raw bytes whatever
-/// its item format.
+/// its item format or layout.
 pub(crate) struct Bytes<'a>(Cow<'a, [u8]>);
 
 impl<'a, 'py> FromPyObject<'a, 'py> for Bytes<'a> {
@@ -100,24 +101,39 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Bytes<'a> {
         if let Ok(bytes) = <&'a [u8]>::extract(obj) {
             return Ok(Self(Cow::Borrowed(bytes)));
         }
-        let buffer = PyUntypedBuffer::get(&obj)?;
-        if buffer.is_c_contiguous() {
-            let len = buffer.len_bytes();
-            if len == 0 {
-                return Ok(Self(Cow::Borrowed(&[])));
-            }
-            // SAFETY: a C-contiguous buffer is `len_bytes()` readable bytes
-            // at `buf_ptr()`, non-null when nonempty, for as long as `buffer`
-            // holds it, and the GIL keeps Python code from resizing it.
-            let raw = unsafe { std::slice::from_raw_parts(buffer.buf_ptr().cast::<u8>(), len) };
-            return Ok(Self(Cow::Owned(raw.to_vec())));
-        }
-        // Any other layout, such as a strided `memoryview`, in C order.
-        let bytes = PyMemoryView::from(&obj)?.call_method0("tobytes")?;
-        Ok(Self(Cow::Owned(
-            bytes.cast::<PyBytes>()?.as_bytes().to_vec(),
-        )))
+        Ok(Self(Cow::Owned(copy_buffer(&obj)?)))
     }
+}
+
+/// Copies the raw bytes of any buffer, in C order, through CPython's own
+/// copy, so no Rust reference ever covers memory another thread may write,
+/// as a `bytearray` can be on free-threaded CPython.
+fn copy_buffer(obj: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+    let py = obj.py();
+    let mut view = MaybeUninit::<ffi::Py_buffer>::uninit();
+    // SAFETY: `obj` is a live object and `view` has room for a `Py_buffer`,
+    // which this initializes on success.
+    if unsafe { ffi::PyObject_GetBuffer(obj.as_ptr(), view.as_mut_ptr(), ffi::PyBUF_FULL_RO) } == -1
+    {
+        return Err(PyErr::fetch(py));
+    }
+    // SAFETY: `PyObject_GetBuffer` succeeded, so `view` is initialized and
+    // must be released, which happens below in place, never moved.
+    let view = unsafe { view.assume_init_mut() };
+    let len = usize::try_from(view.len).expect("a buffer's length is non-negative");
+    let mut out = Vec::<u8>::with_capacity(len);
+    // SAFETY: `out` has room for `view.len` bytes, which this copies; the
+    // view describes its own layout.
+    let copied =
+        unsafe { ffi::PyBuffer_ToContiguous(out.as_mut_ptr().cast(), view, view.len, b'C' as _) };
+    // SAFETY: `view` came from `PyObject_GetBuffer` and is released once.
+    unsafe { ffi::PyBuffer_Release(view) };
+    if copied == -1 {
+        return Err(PyErr::fetch(py));
+    }
+    // SAFETY: `PyBuffer_ToContiguous` wrote all `len` bytes.
+    unsafe { out.set_len(len) };
+    Ok(out)
 }
 
 impl core::ops::Deref for Bytes<'_> {

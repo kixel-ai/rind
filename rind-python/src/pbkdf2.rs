@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 use std::num::NonZeroU32;
+use std::ptr;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -23,17 +24,35 @@ fn iterations_of(iterations: u32) -> PyResult<NonZeroU32> {
 ///
 /// Both calls release the GIL while they run.
 #[pyclass(frozen, module = "pyrind.pbkdf2")]
-struct Secret(Box<pbkdf2::Secret>);
+struct Secret {
+    secret: Box<pbkdf2::Secret>,
+    hash_len: usize,
+}
+
+/// The output length of `algorithm`'s hash, which rind keeps private; 64,
+/// the longest, for any other.
+fn hash_len(algorithm: &'static pbkdf2::Algorithm) -> usize {
+    [
+        (&pbkdf2::PBKDF2_HMAC_SHA256, 32),
+        (&pbkdf2::PBKDF2_HMAC_SHA384, 48),
+        (&pbkdf2::PBKDF2_HMAC_SHA512, 64),
+        (&pbkdf2::legacy::PBKDF2_HMAC_SHA1, 20),
+    ]
+    .into_iter()
+    .find_map(|(known, len)| ptr::eq(known, algorithm).then_some(len))
+    .unwrap_or(64)
+}
 
 #[pymethods]
 impl Secret {
     /// Keys `algorithm` with `secret`, a password of any length.
     #[new]
     fn new(algorithm: &Bound<'_, Algorithm>, secret: Bytes<'_>) -> Self {
-        Self(Box::new(pbkdf2::Secret::new(
-            algorithm.get().inner,
-            &secret,
-        )))
+        let algorithm = algorithm.get().inner;
+        Self {
+            secret: Box::new(pbkdf2::Secret::new(algorithm, &secret)),
+            hash_len: hash_len(algorithm),
+        }
     }
 
     /// Derives `length` bytes for `salt` with `iterations`.
@@ -45,14 +64,13 @@ impl Secret {
         length: usize,
     ) -> PyResult<Bound<'py, PyBytes>> {
         let iterations = iterations_of(iterations)?;
-        // The longest any hash derives, (2**32 - 1) blocks of 64 bytes, so a
-        // longer request fails before allocating; rind refuses the rest by
-        // the hash's length.
-        if length as u64 > u64::from(u32::MAX) * 64 {
+        // PBKDF2 derives at most 2**32 - 1 hash outputs, refused here
+        // before allocating them.
+        if length as u64 > u64::from(u32::MAX) * self.hash_len as u64 {
             return Err(error(rind::Error::WrongLength));
         }
         PyBytes::new_with(py, length, |out| {
-            py.detach(|| self.0.derive(iterations, &salt, out))
+            py.detach(|| self.secret.derive(iterations, &salt, out))
                 .map_err(error)
         })
     }
@@ -67,7 +85,7 @@ impl Secret {
         previously_derived: Bytes<'_>,
     ) -> PyResult<()> {
         let iterations = iterations_of(iterations)?;
-        py.detach(|| self.0.verify(iterations, &salt, &previously_derived))
+        py.detach(|| self.secret.verify(iterations, &salt, &previously_derived))
             .map_err(error)
     }
 }

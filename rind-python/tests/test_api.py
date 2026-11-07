@@ -81,7 +81,8 @@ class BytesLike(unittest.TestCase):
         self.assertEqual(digest.digest(digest.SHA256, memoryview(b"abcdef")[::2]), expected)
 
     def test_any_item_format_is_its_raw_bytes(self):
-        for data in (memoryview(b"abc").cast("b"), array.array("H", [1, 2]), memoryview(bytearray(8)).cast("I")[::2]):
+        strided = memoryview(bytearray(range(8))).cast("I")[::2]
+        for data in (memoryview(b"abc").cast("b"), array.array("H", [1, 2]), strided):
             self.assertEqual(digest.digest(digest.SHA256, data), hashlib.sha256(bytes(data)).digest())
         self.assertEqual(digest.digest(digest.SHA256, bytearray()), hashlib.sha256(b"").digest())
 
@@ -213,10 +214,16 @@ class Pbkdf2(unittest.TestCase):
             secret.derive(-1, b"salt", 32)
 
     def test_too_long_is_wrong_length(self):
-        # Refused before allocating, rather than raising MemoryError.
-        secret = pbkdf2.Secret(pbkdf2.PBKDF2_HMAC_SHA256, b"password")
-        with self.assertRaises(pyrind.WrongLength):
-            secret.derive(1, b"salt", 1 << 62)
+        # One byte past each hash's limit, refused before allocating it.
+        for algorithm, hash_len in (
+            (pbkdf2.PBKDF2_HMAC_SHA256, 32),
+            (pbkdf2.PBKDF2_HMAC_SHA384, 48),
+            (pbkdf2.PBKDF2_HMAC_SHA512, 64),
+            (pbkdf2.legacy.PBKDF2_HMAC_SHA1, 20),
+        ):
+            secret = pbkdf2.Secret(algorithm, b"password")
+            with self.assertRaises(pyrind.WrongLength):
+                secret.derive(1, b"salt", (2**32 - 1) * hash_len + 1)
 
     def test_releases_the_gil(self):
         secret = pbkdf2.Secret(pbkdf2.PBKDF2_HMAC_SHA256, b"password")
