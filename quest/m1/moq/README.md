@@ -85,7 +85,6 @@ maintainer, 2026-11-05).
 
 ## Required
 
-- [AES-GCM's partial AAD block costs no more than a full one on VAES CPUs](/quest/m1/moq/gcm-partial-aad.md) - QUIC's 13 B header stops costing about 12 ns per packet
 - [Short AES-GCM on Arrow Lake runs its fastest path after #409](/quest/m1/moq/gcm-arrow-lake.md) - waits for `desktop`
 - [Vale's AES-GCM wrapper pads partial blocks in registers](/quest/m1/moq/gcm-vale-wrapper-tail.md) - short opens under QUIC's header stop stalling
 - [x86_64 CPUs without VAES seal short AES-GCM messages on their fastest path](/quest/m1/moq/gcm-no-vaes-short-seal.md) - by-8 wins below 128 B on Coffee Lake

@@ -56,4 +56,5 @@ dual RSAZ only when the runner has IFMA.
 
 ## Required
 
+- [AES-192-GCM on aarch64 is level with aws-lc-rs for large messages](/quest/m2/speed/aes192-gcm-aarch64.md) - s2n-bignum's stitched kernels skip 192-bit keys
 - [Ed25519 verification without ADX is level with RustCrypto](/quest/m2/speed/ed25519-no-adx.md) - cloud VPSes that hide ADX

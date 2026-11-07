@@ -363,11 +363,6 @@ fn by8<const ENC: bool>(
 
         let cipher_inout = remainder;
         if !cipher_inout.is_empty() {
-            let mut block = [0u8; 16];
-            let len = cipher_inout.len();
-            debug_assert!(len < 16);
-            block[..len].copy_from_slice(cipher_inout);
-
             let c1 = counter.next();
             let mut c1 = _mm_xor_si128(c1, rk_first);
 
@@ -376,17 +371,8 @@ fn by8<const ENC: bool>(
             }
 
             let c1 = _mm_aesenclast_si128(c1, rk_last);
-
-            // SAFETY: `block` is 16 bytes and writable.
-            let p1 = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
-            let c1 = _mm_xor_si128(c1, p1);
-
-            // SAFETY: `block` is 16 bytes and writable.
-            unsafe {
-                _mm_storeu_si128(block.as_mut_ptr().cast(), c1);
-            }
-
-            cipher_inout.copy_from_slice(&block[..len]);
+            let c1 = _mm_xor_si128(c1, ghash::load_partial(cipher_inout));
+            ghash::store_partial(cipher_inout, c1);
         }
     }
 
@@ -538,19 +524,18 @@ const AVX512_KERNEL_MINIMUM_CIPHER_LEN: usize = 2048;
 const VAES_AVX2_MINIMUM_CIPHER_LEN: usize = 16 * 16;
 
 /// The message lengths below which Vale's AES-GCM runs on the VAES-AVX2
-/// tier, to decrypt and to encrypt. Its opens measured 0.61-0.89x the by-8
-/// path's time below 256 bytes on Arrow Lake and Zen 3. Its seals measured
-/// 0.77-0.83x on Arrow Lake below 80 bytes, where Zen 3 measured 0.94-1.05x,
-/// and beyond that Zen 3 lost up to 20%. That is under an AAD of a partial
-/// block, as QUIC's and TLS's are; under a 32-byte AAD, by-8 seals 32 bytes
-/// 5-9% quicker on Arrow Lake.
+/// tier, to decrypt and to encrypt. Its opens measured 0.75-1.05x the by-8
+/// path's time below 256 bytes on Zen 3, under an AAD of a partial block, as
+/// QUIC's and TLS's are, and 0.72-0.99x under a whole one. Its seals measured
+/// 1.03-1.39x from 16 bytes.
 const VAES_AVX2_VALE_OPEN_BELOW: usize = 256;
-const VAES_AVX2_VALE_SEAL_BELOW: usize = 80;
+const VAES_AVX2_VALE_SEAL_BELOW: usize = 0;
 
 /// The message lengths below which Vale's AES-GCM runs on the AVX-512 tier,
-/// to decrypt and to encrypt. Its opens measured 0.75-0.96x the by-8 path's
-/// time below 256 bytes on Zen 5 and Ice Lake, but its seals 1.03-1.33x
-/// from 32 bytes.
+/// to decrypt and to encrypt. Its opens measured 0.59-1.14x the by-8 path's
+/// time below 256 bytes on Zen 4, and on Emerald and Granite Rapids
+/// 0.94-1.33x under an AAD of a partial block but 0.80-1.00x under a whole
+/// one. Its seals measured 1.21-1.86x from 16 bytes on those Xeons.
 const AVX512_VALE_OPEN_BELOW: usize = 256;
 const AVX512_VALE_SEAL_BELOW: usize = 0;
 
