@@ -5,7 +5,9 @@ use instant_acme::{CryptoProvider, Error, JwkThumbFields, SigningKey};
 use rind::signature::{EcdsaKeyPair, Ed25519KeyPair, sign, verify};
 use rustls_pki_types::PrivatePkcs8KeyDer;
 
-const RIND: &CryptoProvider = &rind_instant_acme::DEFAULT_PROVIDER;
+fn rind() -> &'static CryptoProvider {
+    rind_instant_acme::default_provider().unwrap()
+}
 
 fn aws_lc() -> &'static CryptoProvider {
     CryptoProvider::aws_lc_rs()
@@ -51,11 +53,11 @@ fn load(provider: &CryptoProvider, pkcs8: &[u8]) -> Result<Box<dyn SigningKey>, 
 
 #[test]
 fn generated_keys_load_in_both_providers() {
-    for (generator, name) in [(RIND, "rind"), (aws_lc(), "aws-lc-rs")] {
+    for (generator, name) in [(rind(), "rind"), (aws_lc(), "aws-lc-rs")] {
         let (key, pkcs8) = generator.key_provider.generate_key().unwrap();
         let pkcs8 = pkcs8.secret_pkcs8_der();
 
-        let ours = load(RIND, pkcs8).unwrap_or_else(|e| panic!("{name} key in rind: {e}"));
+        let ours = load(rind(), pkcs8).unwrap_or_else(|e| panic!("{name} key in rind: {e}"));
         let theirs = load(aws_lc(), pkcs8).unwrap_or_else(|e| panic!("{name} key in aws-lc: {e}"));
 
         assert_eq!(jwk(&*key), jwk(&*ours), "{name}");
@@ -66,7 +68,7 @@ fn generated_keys_load_in_both_providers() {
 
 #[test]
 fn signatures_verify_across_providers() {
-    let (key, pkcs8) = RIND.key_provider.generate_key().unwrap();
+    let (key, pkcs8) = rind().key_provider.generate_key().unwrap();
     let theirs = load(aws_lc(), pkcs8.secret_pkcs8_der()).unwrap();
     let point = point(&*key);
     let message = b"eyJhbGciOiJFUzI1NiJ9.eyJyaW5kIjp0cnVlfQ";
@@ -88,7 +90,7 @@ fn signatures_verify_across_providers() {
 
 #[test]
 fn malformed_keys_are_rejected_by_both_providers() {
-    let (_, p256) = RIND.key_provider.generate_key().unwrap();
+    let (_, p256) = rind().key_provider.generate_key().unwrap();
     let p256 = p256.secret_pkcs8_der();
     let p384 = EcdsaKeyPair::generate(&sign::ECDSA_P384_SHA384_FIXED)
         .unwrap()
@@ -116,7 +118,7 @@ fn malformed_keys_are_rejected_by_both_providers() {
             "aws-lc-rs accepted {what}"
         );
         assert!(
-            matches!(load(RIND, pkcs8), Err(Error::KeyRejected)),
+            matches!(load(rind(), pkcs8), Err(Error::KeyRejected)),
             "rind accepted {what}"
         );
     }
@@ -129,7 +131,7 @@ fn sha256_matches() {
     for len in 0..300 {
         let data = rng.bytes(len);
         assert_eq!(
-            RIND.sha256.hash(&data),
+            rind().sha256.hash(&data),
             aws_lc().sha256.hash(&data),
             "{len}"
         );
@@ -142,7 +144,7 @@ fn hmac_matches() {
     // Keys either side of the 64-byte block, past which HMAC hashes the key.
     for key_len in [0, 1, 16, 32, 63, 64, 65, 128, 200] {
         let key = rng.bytes(key_len);
-        let ours = RIND.hmac.load_key(&key);
+        let ours = rind().hmac.load_key(&key);
         let theirs = aws_lc().hmac.load_key(&key);
         assert_eq!(
             serde_json::to_string(&ours.algorithm()).unwrap(),
