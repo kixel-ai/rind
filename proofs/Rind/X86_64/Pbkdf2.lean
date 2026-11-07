@@ -250,4 +250,163 @@ theorem block_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (P : List Byte)
   rintro r ⟨hrl, hrb⟩
   exact ⟨hrl, hrb⟩
 
+/-! ## The block iterator, `(1..=u32::MAX).zip((0..len).step_by(hash_len))` -/
+
+/-- The iterator's type. -/
+abbrev BlockIter := core.iter.adapters.zip.Zip (core.ops.range.RangeInclusive U32)
+  (core.iter.adapters.step_by.StepBy (core.ops.range.Range Usize))
+
+/-- The iterator before block `i'` + 1, of `n`-byte blocks over `L` bytes: the
+indices from `i' + 1` and the offsets from `i' * n`. -/
+def ZipAt (n L i' : Nat) (it : BlockIter) : Prop :=
+  it.fst.«end».val = U32.max ∧ (it.fst.exhausted = false → it.fst.start.val = i' + 1) ∧
+    (it.fst.exhausted = true → L ≤ i' * n) ∧
+    it.snd.iter.start.val = min (i' * n) L ∧ it.snd.iter.«end».val = L ∧ it.snd.step_by.val = n
+
+theorem zip_next_spec (n L i' : Nat) (hn : 0 < n) (hK : (L + n - 1) / n ≤ U32.max)
+    (it : BlockIter) (hz : ZipAt n L i' it) :
+    core.iter.adapters.zip.Zip.Insts.CoreIterTraitsIteratorIteratorPair.next
+      (core.ops.range.RangeInclusive.Insts.CoreIterTraitsIteratorIterator core.iter.range.StepU32)
+      (core.iter.traits.iterator.IteratorStepBy
+        (core.iter.traits.iterator.IteratorRange core.iter.range.StepUsize)) it ⦃ o it' =>
+      match o with
+      | none => L ≤ i' * n
+      | some (idx, off) => idx.val = i' + 1 ∧ off.val = i' * n ∧ i' * n < L ∧
+          ZipAt n L (i' + 1) it' ⦄ := by
+  obtain ⟨hend, hne, hex, hs, hse, hsb⟩ := hz
+  unfold core.iter.adapters.zip.Zip.Insts.CoreIterTraitsIteratorIteratorPair.next
+  step as ⟨oa, a', hoa⟩
+  have hsmax : it.fst.start.val ≤ U32.max := by scalar_tac
+  by_cases hx : it.fst.exhausted = true ∨ it.fst.«end».val < it.fst.start.val
+  · simp only [hx, ↓reduceIte] at hoa
+    obtain ⟨rfl, -⟩ := hoa
+    simp only [WP.spec_ok]
+    rcases hx with hx | hx
+    · exact hex hx
+    · omega
+  · simp only [hx, ↓reduceIte] at hoa
+    simp only [not_or, not_lt] at hx
+    obtain ⟨hx1, hx2⟩ := hx
+    have hnx : it.fst.exhausted = false := by simpa using hx1
+    have hst : it.fst.start.val = i' + 1 := hne hnx
+    have hoa' : oa = some it.fst.start := by split at hoa <;> exact hoa.1
+    subst hoa'
+    simp only
+    step as ⟨ob, b', hob, hbe, hbs⟩
+    by_cases hb : it.snd.iter.start.val < it.snd.iter.«end».val
+    · simp only [hb, ↓reduceIte] at hob
+      obtain ⟨rfl, hb'⟩ := hob
+      simp only [WP.spec_ok]
+      have hoff : i' * n < L := by rw [hs, hse] at hb; omega
+      refine ⟨hst, by rw [hs]; omega, hoff, ?_⟩
+      have hb'' : b'.iter.start.val = min ((i' + 1) * n) L := by
+        rw [hb', hs, hsb, hse, Nat.add_mul, one_mul]; omega
+      split at hoa
+      · rename_i hlt
+        obtain ⟨-, ha1, ha2, ha3⟩ := hoa
+        exact ⟨by rw [ha2]; exact hend, fun _ => by rw [ha1, hst], fun h => by simp_all,
+          hb'', by rw [hbe, hse], by rw [hbs, hsb]⟩
+      · rename_i hlt
+        obtain ⟨-, ha1, ha2, ha3⟩ := hoa
+        have hi : i' + 1 = U32.max := by
+          simp only [not_lt] at hlt
+          omega
+        have hL : L ≤ (i' + 1) * n := by
+          have := ceilDiv_ge n L hn
+          have : (L + n - 1) / n * n ≤ (i' + 1) * n := Nat.mul_le_mul_right _ (by omega)
+          omega
+        exact ⟨by rw [ha2]; exact hend, fun h => by simp_all, fun _ => hL,
+          hb'', by rw [hbe, hse], by rw [hbs, hsb]⟩
+    · simp only [hb, ↓reduceIte] at hob
+      obtain ⟨rfl, -⟩ := hob
+      simp only [WP.spec_ok]
+      rw [hs, hse] at hb
+      show L ≤ i' * n
+      omega
+
+theorem zipAt_measure (n L i' : Nat) (it it' : BlockIter) (hz : ZipAt n L i' it)
+    (hz' : ZipAt n L (i' + 1) it') (hn : 0 < n) (hlt : i' * n < L) :
+    L - it'.snd.iter.start.val < L - it.snd.iter.start.val := by
+  rw [hz.2.2.2.1, hz'.2.2.2.1, Nat.add_mul, one_mul]
+  omega
+
+/-! ## `Secret::derive` -/
+
+theorem salted_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (P : List Byte)
+    (k : high.hmac.Key) (hk : KeyOf a P k) (salt : Slice U8)
+    (hm : hmacBlock a + salt.length ≤ maxInput) :
+    high.pbkdf2.Secret.salted k salt ⦃ s => StreamOf a P salt.val s ⦄ := by
+  unfold high.pbkdf2.Secret.salted
+  apply WP.spec_bind (key_start_spec a hr P k hk)
+  intro s hs
+  have := stream_update_spec a hr P [] s hs salt (by simpa using hm)
+  simpa using this
+
+theorem derive_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (P : List Byte)
+    (k : high.hmac.Key) (hk : KeyOf a P k) (salt : List U8) (salted : high.hmac.Streaming)
+    (hs : StreamOf a P salt salted) (hm : hmacBlock a + salt.length + 4 ≤ maxInput)
+    (iterations : core.num.nonzero.NonZero U32 core.num.niche_types.NonZeroU32Inner)
+    (hash_len : Usize) (hhl : hash_len.val = tagLen a) (L : Nat)
+    (hK : (L + tagLen a - 1) / tagLen a ≤ U32.max) (it : BlockIter) (out : Slice U8) (i' : Nat)
+    (hz : ZipAt (tagLen a) L i' it) (hl : out.length = L)
+    (hpre : (bv out.val).take (i' * tagLen a) =
+      (blocksOut (pbT (hmacOf a) P (bv salt) iterations.val) i').take L) :
+    high.pbkdf2.Secret.derive_loop it k iterations out salted hash_len ⦃ r =>
+      r.length = L ∧ bv r.val = (blocksOut (pbT (hmacOf a) P (bv salt) iterations.val)
+        ((L + tagLen a - 1) / tagLen a)).take L ⦄ := by
+  have hn := tagLen_pos a
+  have hT : ∀ i, (pbT (hmacOf a) P (bv salt) iterations.val (i + 1)).length = tagLen a :=
+    fun i => pbT_length _ _ _ _ (fun x => hmacOf_length a P x hr) _ _
+  unfold high.pbkdf2.Secret.derive_loop
+  apply loop.spec_decr_nat (fun x => L - x.1.snd.iter.start.val)
+    (fun x => ∃ i', ZipAt (tagLen a) L i' x.1 ∧ x.2.length = L ∧
+      (bv x.2.val).take (i' * tagLen a) =
+        (blocksOut (pbT (hmacOf a) P (bv salt) iterations.val) i').take L)
+  · rintro ⟨it, out⟩ ⟨i', hz, hl, hpre⟩
+    simp only at hz hl hpre ⊢
+    unfold high.pbkdf2.Secret.derive_loop.body
+    apply WP.spec_bind (zip_next_spec _ L i' hn hK it hz)
+    rintro ⟨o, it'⟩ ho
+    rcases o with _ | ⟨idx, off⟩
+    · simp only [WP.uncurry'] at ho
+      refine (WP.spec_ok _).mpr ?_
+      show out.length = L ∧ _
+      have hbl : (bv out.val).length = L := by rw [bv_length]; exact hl
+      refine ⟨hl, ?_⟩
+      have := prefix_done _ _ hT hn (bv out.val) i' (by rw [hbl]; exact ho) (by rw [hbl]; exact hpre)
+      rw [hbl] at this
+      exact this
+    · simp only [WP.uncurry'] at ho
+      obtain ⟨hidx, hoff, hlt, hz'⟩ := ho
+      dsimp only
+      apply WP.spec_bind (block_spec a hr P k hk salt salted hs hm iterations idx)
+      rintro blk ⟨hbl, hbb⟩
+      have hol : (Slice.len out).val = L := by rw [Slice.len_val]; exact hl
+      step as ⟨i1, hi1⟩
+      step as ⟨len, hlen⟩
+      step as ⟨i2, hi2⟩
+      step as ⟨s, back, hsv, hsl, hback⟩
+      step with digest_as_ref_spec blk as ⟨s1, hs1l, hs1b⟩
+      step as ⟨s2, hs2v, hs2l⟩
+      step as ⟨s3, hs3⟩
+      · rw [hsl, hs2l, hi2]; omega
+      have hlv : out.val.length = L := hl
+      have hlenv : len.val = min (tagLen a) (L - i' * tagLen a) := by
+        rw [hlen, core.cmp.impls.OrdUsize.min_val, hhl, hi1, hol, hoff]
+      have hs2 : s2.val = s1.val.take (min (tagLen a) (L - i' * tagLen a)) := by
+        rw [hs2v, List.slice, List.drop_zero, Nat.sub_zero, hlenv]
+      have hs1l' : s1.val.length = tagLen a := by
+        have : s1.length = tagLen a := by rw [hs1l, hbl]
+        simpa only [Slice.length] using this
+      have hT1 : bv s1.val = pbT (hmacOf a) P (bv salt) iterations.val (i' + 1) := by
+        rw [hs1b, hbb, hidx]
+      try simp only [WP.spec_ok]
+      refine ⟨⟨i' + 1, hz', ?_, ?_⟩, zipAt_measure _ _ _ _ _ hz hz' hn hlt⟩
+      · rw [hback, Slice.setSlice!_length]; exact hl
+      · rw [hback, Slice.setSlice!_val, hs3, hs2, hoff]
+        have := prefix_step _ _ hT out.val s1.val i' (by omega) hs1l' hT1 (by rw [hlv]; exact hpre)
+        rw [hlv] at this
+        exact this
+  · exact ⟨i', hz, hl, hpre⟩
+
 end rind.x86_64.kdf
