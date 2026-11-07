@@ -292,7 +292,6 @@
                   targets = [
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
-                    "x86_64-unknown-linux-gnu"
                   ];
                 })
               ];

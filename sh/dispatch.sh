@@ -205,8 +205,6 @@ for module in "${selected[@]}"; do
             for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
                 nix develop .#msrv --command cargo check -p rind --lib --locked --target "$target"
             done
-            CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable" \
-                nix develop .#msrv --command cargo check -p rind --lib --locked --target x86_64-unknown-linux-gnu
             ;;
         check:cross)
             for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
