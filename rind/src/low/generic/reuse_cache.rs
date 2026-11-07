@@ -142,7 +142,7 @@ mod tests {
     fn never_keeps_beside_a_build() {
         let cache = ReuseCache::<u64>::new();
         assert_eq!(cache.get_or_build(|| unreachable!()), None);
-        let build = std::panic::AssertUnwindSafe(|| cache.get_or_build(|| panic!("build")));
+        let build = core::panic::AssertUnwindSafe(|| cache.get_or_build(|| panic!("build")));
         assert!(std::panic::catch_unwind(build).is_err());
         assert_eq!(cache.get_or_build_now(|| 7), 7);
         assert_eq!(cache.get_or_build(|| unreachable!()), None);
