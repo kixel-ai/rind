@@ -1,0 +1,710 @@
+From 12e44977c650ec7e78d7cfd5185833f382a68f9b Mon Sep 17 00:00:00 2001
+From: Luke Curley <rebe@kixel.us>
+Date: Sat, 7 Nov 2026 00:26:13 -0800
+Subject: [PATCH] perf(common): seal AES-256-GCM payloads and stream-key
+ envelopes with rind
+
+Client-side AES-256-GCM encryption and the stream-key envelope now use
+rind's AES-256-GCM instead of RustCrypto's aes-gcm. The wire format is
+unchanged: tests check that payloads and envelopes sealed by aes-gcm open
+under the new code and the other way round. aes-gcm stays a dev-dependency
+for those tests and for the stream_encryption bench's raw comparison.
+AES-256-GCM-SIV stays on aes-gcm-siv.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Cargo.lock                          | 241 +++++++++++++++++++++++++++-
+ Cargo.toml                          |   1 +
+ core/common/Cargo.toml              |   3 +-
+ core/common/src/utils/crypto.rs     |  75 +++++++--
+ core/common/src/utils/stream_key.rs | 119 ++++++++++----
+ 5 files changed, 387 insertions(+), 52 deletions(-)
+
+diff --git a/Cargo.lock b/Cargo.lock
+index 92c3433..69a713a 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2278,6 +2278,26 @@ dependencies = [
+  "syn 2.0.119",
+ ]
+ 
++[[package]]
++name = "bindgen"
++version = "0.72.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
++dependencies = [
++ "bitflags 2.13.2",
++ "cexpr",
++ "clang-sys",
++ "itertools 0.13.0",
++ "log",
++ "prettyplease 0.2.37",
++ "proc-macro2",
++ "quote",
++ "regex",
++ "rustc-hash",
++ "shlex 1.3.0",
++ "syn 2.0.119",
++]
++
+ [[package]]
+ name = "binrw"
+ version = "0.15.2"
+@@ -3666,6 +3686,17 @@ version = "0.8.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
+ 
++[[package]]
++name = "core-models"
++version = "0.0.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ee3344d349528f449816cfa85e558c439bdca5a6d8a738cfb21e69f0b2b1952f"
++dependencies = [
++ "hax-lib 0.3.7",
++ "pastey 0.2.3",
++ "rand 0.10.3",
++]
++
+ [[package]]
+ name = "core_detect"
+ version = "1.0.0"
+@@ -3714,6 +3745,18 @@ dependencies = [
+  "libc",
+ ]
+ 
++[[package]]
++name = "crabgrind"
++version = "0.3.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "035c801dc4b418e1d857a6536dc88b4d1929c7a1fd163389766e18d322d34a84"
++dependencies = [
++ "bindgen 0.72.1",
++ "cc",
++ "pkg-config",
++ "rustversion",
++]
++
+ [[package]]
+ name = "crc"
+ version = "3.4.0"
+@@ -4021,12 +4064,26 @@ dependencies = [
+  "cpufeatures 0.2.17",
+  "curve25519-dalek-derive",
+  "digest 0.10.7",
+- "fiat-crypto",
++ "fiat-crypto 0.2.9",
+  "rustc_version",
+  "subtle",
+  "zeroize",
+ ]
+ 
++[[package]]
++name = "curve25519-dalek"
++version = "5.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b5eed333089e2e1c1ac8c6c0398e5e2497b4c9926ca6d0365ed1e099afa5bc23"
++dependencies = [
++ "cfg-if",
++ "cpufeatures 0.3.1",
++ "curve25519-dalek-derive",
++ "fiat-crypto 0.3.0",
++ "rustc_version",
++ "subtle",
++]
++
+ [[package]]
+ name = "curve25519-dalek-derive"
+ version = "0.1.1"
+@@ -4903,7 +4960,7 @@ version = "2.2.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "70e796c081cee67dc755e1a36a0a172b897fab85fc3f6bc48307991f64e4eca9"
+ dependencies = [
+- "curve25519-dalek",
++ "curve25519-dalek 4.1.3",
+  "ed25519",
+  "serde",
+  "sha2 0.10.9",
+@@ -5280,6 +5337,12 @@ version = "0.2.9"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
+ 
++[[package]]
++name = "fiat-crypto"
++version = "0.3.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
++
+ [[package]]
+ name = "figlet-rs"
+ version = "1.0.0"
+@@ -6414,6 +6477,79 @@ dependencies = [
+  "hashbrown 0.16.1",
+ ]
+ 
++[[package]]
++name = "hax-lib"
++version = "0.3.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "01a33cb227f97ee5c419064c31d7c55a7d895f28d8019ccdadc311cc036500c4"
++dependencies = [
++ "hax-lib-macros 0.3.7",
++ "num-bigint 0.4.8",
++ "num-traits",
++]
++
++[[package]]
++name = "hax-lib"
++version = "0.4.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fb3bfcfc915e894c331662e4ac76706b777a5956535ea24535f4df30da04b1bf"
++dependencies = [
++ "hax-lib-macros 0.4.2",
++ "num-bigint 0.4.8",
++ "num-traits",
++]
++
++[[package]]
++name = "hax-lib-macros"
++version = "0.3.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "28da835a5f153e9f3d0cc1f42ee605a1cfa9093c93348193793d60a1b0908b51"
++dependencies = [
++ "hax-lib-macros-types 0.3.7",
++ "proc-macro-error2",
++ "proc-macro2",
++ "quote",
++ "syn 2.0.119",
++]
++
++[[package]]
++name = "hax-lib-macros"
++version = "0.4.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6e9010990fcba1d1494047fa433a433be0a5df23653a9784c739f7bba270272e"
++dependencies = [
++ "hax-lib-macros-types 0.4.2",
++ "proc-macro2",
++ "quote",
++ "syn 2.0.119",
++]
++
++[[package]]
++name = "hax-lib-macros-types"
++version = "0.3.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "eed327e9a28d6ee018a4a9ba842d4ee27e378c8a591d2beb6f42f32b24a02fcb"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "serde",
++ "serde_json",
++ "uuid",
++]
++
++[[package]]
++name = "hax-lib-macros-types"
++version = "0.4.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e053e3a5aeb92df47b07323180c5088edc488ca49883a234f6c73255c54cc520"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "serde",
++ "serde_json",
++ "uuid",
++]
++
+ [[package]]
+ name = "heapless"
+ version = "0.7.17"
+@@ -7397,6 +7533,7 @@ dependencies = [
+  "iggy_binary_protocol",
+  "papaya",
+  "pin-project-lite",
++ "rind",
+  "ring",
+  "secrecy",
+  "serde",
+@@ -8713,6 +8850,86 @@ version = "0.2.191"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+ 
++[[package]]
++name = "libcrux-aes"
++version = "0.0.10"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cd415025511a0bd8731cae34ae2d5e07c1b3f0443d5c12bd199c9e9b2f1fd4d5"
++dependencies = [
++ "libcrux-intrinsics",
++ "libcrux-platform",
++ "libcrux-secrets",
++ "libcrux-traits",
++]
++
++[[package]]
++name = "libcrux-hacl-rs"
++version = "0.0.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "27ce64ead37fc67c1039fdbcf1e8c97044e6a644cb3d1f79060b5c9ac8fdfe0a"
++dependencies = [
++ "libcrux-macros",
++]
++
++[[package]]
++name = "libcrux-intrinsics"
++version = "0.0.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "de82722c9c7419a311e84ee902e9643a15e39a6fcaade87f21e94f8d0f30fa70"
++dependencies = [
++ "core-models",
++ "hax-lib 0.4.2",
++]
++
++[[package]]
++name = "libcrux-macros"
++version = "0.0.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "2afdd4da30d6e23f76bd6f3ad61be5c773720349eef3e791f8b79cfea3fe1436"
++dependencies = [
++ "quote",
++ "syn 3.0.9",
++]
++
++[[package]]
++name = "libcrux-platform"
++version = "0.0.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8bf8bee8c35d34867a3762d6ee7b74e8523a882855c3cfce30484e9554342206"
++dependencies = [
++ "libc",
++]
++
++[[package]]
++name = "libcrux-poly1305"
++version = "0.0.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d727ee28ee0d5d2661daa5f2f47965cd3489a0ac9130f3410e95632a98b12e49"
++dependencies = [
++ "libcrux-hacl-rs",
++ "libcrux-macros",
++]
++
++[[package]]
++name = "libcrux-secrets"
++version = "0.0.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "03c4ba47b3596f2771213ff162c792e9b93ddc0cdd178a2e407e00bb8ae4afcd"
++dependencies = [
++ "crabgrind",
++ "hax-lib 0.4.2",
++]
++
++[[package]]
++name = "libcrux-traits"
++version = "0.0.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8958bb5c3780eb7c3355aeeb051629b830e47bfefd36befed93c81b53366bbc4"
++dependencies = [
++ "libcrux-secrets",
++ "rand 0.10.3",
++]
++
+ [[package]]
+ name = "libfuzzer-sys"
+ version = "0.4.13"
+@@ -12130,6 +12347,24 @@ dependencies = [
+  "bytemuck",
+ ]
+ 
++[[package]]
++name = "rind"
++version = "0.2.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "164cd446ae1ce418f63fb3bc518a5b6a1e8e6d5a12da1bd4ce65fc0ea90b0cb5"
++dependencies = [
++ "cfg-if",
++ "curve25519-dalek 5.0.0",
++ "fiat-crypto 0.3.0",
++ "getrandom 0.4.3",
++ "libc",
++ "libcrux-aes",
++ "libcrux-hacl-rs",
++ "libcrux-macros",
++ "libcrux-poly1305",
++ "libcrux-traits",
++]
++
+ [[package]]
+ name = "ring"
+ version = "0.17.14"
+@@ -15438,7 +15673,7 @@ version = "137.3.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "33995a1fee055ff743281cde33a41f0d618ee0bdbe8bdf6859e11864499c2595"
+ dependencies = [
+- "bindgen",
++ "bindgen 0.71.1",
+  "bitflags 2.13.2",
+  "fslock",
+  "gzip-header",
+diff --git a/Cargo.toml b/Cargo.toml
+index fafc2ce..0452286 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -303,6 +303,7 @@ reqwest = { version = "0.13.5", default-features = false, features = ["json", "r
+ reqwest-middleware = { version = "0.5.2", features = ["json", "query"] }
+ reqwest-retry = "0.9.1"
+ reqwest-tracing = "0.7.1"
++rind = "0.2.1"
+ ring = "0.17.14"
+ ringbuffer = "0.16.0"
+ rmcp = "3.8.0"
+diff --git a/core/common/Cargo.toml b/core/common/Cargo.toml
+index c5fb422..d8a5a93 100644
+--- a/core/common/Cargo.toml
++++ b/core/common/Cargo.toml
+@@ -30,7 +30,6 @@ repository = "https://github.com/apache/iggy"
+ readme = "README.md"
+ 
+ [dependencies]
+-aes-gcm = { workspace = true }
+ aes-gcm-siv = { workspace = true }
+ async-broadcast = { workspace = true }
+ async-trait = { workspace = true }
+@@ -47,6 +46,7 @@ humantime = { workspace = true }
+ iggy_binary_protocol = { workspace = true }
+ papaya = { workspace = true }
+ pin-project-lite = { workspace = true }
++rind = { workspace = true }
+ ring = { workspace = true }
+ secrecy = { workspace = true }
+ serde = { workspace = true }
+@@ -63,6 +63,7 @@ url = { workspace = true }
+ uuid = { workspace = true }
+ 
+ [dev-dependencies]
++aes-gcm = { workspace = true }
+ bytemuck = { workspace = true }
+ hex = { workspace = true }
+ xaes-256-gcm = { workspace = true }
+diff --git a/core/common/src/utils/crypto.rs b/core/common/src/utils/crypto.rs
+index 7c69890..d4dde3b 100644
+--- a/core/common/src/utils/crypto.rs
++++ b/core/common/src/utils/crypto.rs
+@@ -17,18 +17,20 @@
+ 
+ use crate::text;
+ use crate::{IggyError, IggyMessage};
+-use aes_gcm::aead::{Aead, Generate};
+-use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+-use aes_gcm_siv::aead::AeadInOut;
++use aes_gcm_siv::aead::{AeadInOut, Generate, KeyInit};
+ use aes_gcm_siv::{Aes256GcmSiv, Nonce as SivNonce, Tag as SivTag};
+ use bytes::Bytes;
++use rind::aead::{AES_256_GCM, Key, Nonce};
+ use std::fmt::Debug;
++use std::sync::Arc;
+ 
+ const AES_GCM_NONCE_SIZE: usize = 12;
+ const AES_GCM_TAG_SIZE: usize = 16;
+ const AES_GCM_SIV_NONCE_SIZE: usize = 12;
+ const AES_GCM_SIV_TAG_SIZE: usize = 16;
+ 
++// Callers hold the enum behind an Arc, so the SIV cipher's inline size is paid once.
++#[allow(clippy::large_enum_variant)]
+ #[derive(Debug, Clone)]
+ pub enum EncryptorKind {
+     Aes256Gcm(Aes256GcmEncryptor),
+@@ -70,7 +72,7 @@ pub trait Encryptor {
+ 
+ #[derive(Clone)]
+ pub struct Aes256GcmEncryptor {
+-    cipher: Aes256Gcm,
++    cipher: Arc<Key>,
+ }
+ 
+ impl Debug for Aes256GcmEncryptor {
+@@ -82,7 +84,9 @@ impl Debug for Aes256GcmEncryptor {
+ impl Aes256GcmEncryptor {
+     pub fn new(key: &[u8]) -> Result<Self, IggyError> {
+         Ok(Self {
+-            cipher: Aes256Gcm::new_from_slice(key).map_err(|_| IggyError::InvalidEncryptionKey)?,
++            cipher: Arc::new(
++                Key::new(&AES_256_GCM, key).map_err(|_| IggyError::InvalidEncryptionKey)?,
++            ),
+         })
+     }
+ 
+@@ -93,13 +97,21 @@ impl Aes256GcmEncryptor {
+ 
+ impl Encryptor for Aes256GcmEncryptor {
+     fn encrypt(&self, data: &[u8]) -> Result<Vec<u8>, IggyError> {
+-        let nonce = Nonce::generate();
+-        let encrypted_data = self.cipher.encrypt(&nonce, data);
+-        if encrypted_data.is_err() {
+-            return Err(IggyError::CannotEncryptData);
+-        }
+-        let payload = [&nonce, encrypted_data.unwrap().as_slice()].concat();
+-        Ok(payload)
++        let mut nonce = [0u8; AES_GCM_NONCE_SIZE];
++        rind::rand::fill(&mut nonce).map_err(|_| IggyError::CannotEncryptData)?;
++        let mut output = Vec::with_capacity(AES_GCM_NONCE_SIZE + data.len() + AES_GCM_TAG_SIZE);
++        output.extend_from_slice(&nonce);
++        output.extend_from_slice(data);
++        let tag = self
++            .cipher
++            .seal_in_place_separate_tag(
++                Nonce::assume_unique_for_key(nonce),
++                b"",
++                &mut output[AES_GCM_NONCE_SIZE..],
++            )
++            .map_err(|_| IggyError::CannotEncryptData)?;
++        output.extend_from_slice(tag.as_ref());
++        Ok(output)
+     }
+ 
+     fn decrypt(&self, data: &[u8]) -> Result<Vec<u8>, IggyError> {
+@@ -108,9 +120,14 @@ impl Encryptor for Aes256GcmEncryptor {
+         }
+         let (nonce, ciphertext) = data.split_at(AES_GCM_NONCE_SIZE);
+         let nonce = nonce.try_into().map_err(|_| IggyError::CannotDecryptData)?;
+-        self.cipher
+-            .decrypt(nonce, ciphertext)
+-            .map_err(|_| IggyError::CannotDecryptData)
++        let mut plaintext = ciphertext.to_vec();
++        let plaintext_length = self
++            .cipher
++            .open_in_place(Nonce::assume_unique_for_key(nonce), b"", &mut plaintext)
++            .map_err(|_| IggyError::CannotDecryptData)?
++            .len();
++        plaintext.truncate(plaintext_length);
++        Ok(plaintext)
+     }
+ }
+ 
+@@ -169,6 +186,8 @@ impl Encryptor for Aes256GcmSivEncryptor {
+ mod tests {
+     use super::*;
+     use crate::{HeaderKey, HeaderValue, IggyMessage};
++    use aes_gcm::Aes256Gcm;
++    use aes_gcm::aead::Aead;
+ 
+     #[test]
+     fn given_siv_ciphertext_when_decrypting_should_authenticate_every_byte() {
+@@ -244,6 +263,32 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn given_payload_sealed_by_rustcrypto_aes_gcm_when_decrypting_should_match_both_ways() {
++        let key = [4u8; 32];
++        let encryptor = Aes256GcmEncryptor::new(&key).expect("valid key");
++        let rustcrypto = Aes256Gcm::new_from_slice(&key).expect("valid key");
++        let nonce = [6u8; AES_GCM_NONCE_SIZE];
++        let sealed = rustcrypto
++            .encrypt(&nonce.into(), b"stream payload".as_slice())
++            .expect("rustcrypto seals");
++        let payload = [nonce.as_slice(), &sealed].concat();
++        assert_eq!(
++            encryptor.decrypt(&payload).expect("rind opens rustcrypto"),
++            b"stream payload"
++        );
++
++        let payload = encryptor.encrypt(b"stream payload").expect("rind seals");
++        let (nonce, ciphertext) = payload.split_at(AES_GCM_NONCE_SIZE);
++        let nonce: [u8; AES_GCM_NONCE_SIZE] = nonce.try_into().expect("nonce length");
++        assert_eq!(
++            rustcrypto
++                .decrypt(&nonce.into(), ciphertext)
++                .expect("rustcrypto opens rind"),
++            b"stream payload"
++        );
++    }
++
+     #[test]
+     fn given_the_same_key_data_should_be_encrypted_and_decrypted_correctly() {
+         let key = [1; 32];
+diff --git a/core/common/src/utils/stream_key.rs b/core/common/src/utils/stream_key.rs
+index f75e57f..09c0d76 100644
+--- a/core/common/src/utils/stream_key.rs
++++ b/core/common/src/utils/stream_key.rs
+@@ -18,10 +18,9 @@
+ use crate::IggyError;
+ use crate::utils::crypto::{Aes256GcmSivEncryptor, EncryptorKind};
+ use crate::utils::text;
+-use aes_gcm::aead::{Aead, Generate, Payload};
+-use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+ use base64::Engine;
+ use base64::engine::general_purpose::STANDARD;
++use rind::aead::{AES_256_GCM, Key, Nonce};
+ use ring::rand::{SecureRandom, SystemRandom};
+ use ring::{digest, hkdf};
+ use secrecy::zeroize::Zeroizing;
+@@ -114,7 +113,7 @@ pub enum RewrapPlanError {
+ 
+ #[derive(Clone)]
+ struct KeyEncryptionKey {
+-    cipher: Aes256Gcm,
++    cipher: Arc<Key>,
+     fingerprint: [u8; FINGERPRINT_LENGTH],
+ }
+ 
+@@ -451,21 +450,21 @@ impl ServerKeyContext {
+             .keks()
+             .find(|kek| kek.fingerprint == wrapped.kek_fingerprint_bytes())
+             .ok_or(IggyError::CannotDecryptData)?;
+-        let nonce = Nonce::try_from(&wrapped.0[NONCE_OFFSET..CIPHERTEXT_OFFSET])
++        let nonce = wrapped.0[NONCE_OFFSET..CIPHERTEXT_OFFSET]
++            .try_into()
+             .map_err(|_| IggyError::CannotDecryptData)?;
+-        let plaintext = Zeroizing::new(
+-            kek.cipher
+-                .decrypt(
+-                    &nonce,
+-                    Payload {
+-                        msg: &wrapped.0[CIPHERTEXT_OFFSET..KEY_FINGERPRINT_OFFSET],
+-                        aad: &wrapped.associated_data(),
+-                    },
+-                )
+-                .map_err(|_| IggyError::CannotDecryptData)?,
+-        );
+-        let key = StreamEncryptionKey::try_from(plaintext.as_slice())
++        let mut sealed = Zeroizing::new([0u8; WRAPPED_KEY_CIPHERTEXT_LENGTH]);
++        sealed.copy_from_slice(&wrapped.0[CIPHERTEXT_OFFSET..KEY_FINGERPRINT_OFFSET]);
++        let plaintext = kek
++            .cipher
++            .open_in_place(
++                Nonce::assume_unique_for_key(nonce),
++                &wrapped.associated_data(),
++                sealed.as_mut_slice(),
++            )
+             .map_err(|_| IggyError::CannotDecryptData)?;
++        let key =
++            StreamEncryptionKey::try_from(&*plaintext).map_err(|_| IggyError::CannotDecryptData)?;
+         if key.fingerprint_bytes() != wrapped.key_fingerprint_bytes() {
+             return Err(IggyError::CannotDecryptData);
+         }
+@@ -587,8 +586,10 @@ impl KeyEncryptionKey {
+         let prk = hkdf::Salt::new(hkdf::HKDF_SHA256, &[]).extract(config_key.as_slice());
+         let wrapping_key = derive_key(&prk, STREAM_KEY_WRAP_INFO)?;
+         Ok(Self {
+-            cipher: Aes256Gcm::new_from_slice(wrapping_key.expose_secret())
+-                .map_err(|_| IggyError::InvalidEncryptionKey)?,
++            cipher: Arc::new(
++                Key::new(&AES_256_GCM, wrapping_key.expose_secret())
++                    .map_err(|_| IggyError::InvalidEncryptionKey)?,
++            ),
+             fingerprint: labelled_fingerprint(KEK_FINGERPRINT_LABEL, wrapping_key.expose_secret()),
+         })
+     }
+@@ -600,26 +601,21 @@ impl KeyEncryptionKey {
+     ) -> Result<WrappedStreamKey, IggyError> {
+         let key_fingerprint = key.fingerprint_bytes();
+         let aad = associated_data(origin as u8, &self.fingerprint, &key_fingerprint);
+-        let nonce = Nonce::generate();
+-        let sealed = self
+-            .cipher
+-            .encrypt(
+-                &nonce,
+-                Payload {
+-                    msg: key.as_bytes(),
+-                    aad: &aad,
+-                },
+-            )
+-            .map_err(|_| IggyError::CannotEncryptData)?;
+-        if sealed.len() != WRAPPED_KEY_CIPHERTEXT_LENGTH {
+-            return Err(IggyError::CannotEncryptData);
+-        }
++        let mut nonce = [0u8; NONCE_LENGTH];
++        rind::rand::fill(&mut nonce).map_err(|_| IggyError::CannotEncryptData)?;
+         let mut envelope = [0u8; WRAPPED_STREAM_KEY_LENGTH];
+         envelope[0] = WRAPPED_STREAM_KEY_VERSION;
+         envelope[ORIGIN_OFFSET] = origin as u8;
+         envelope[KEK_FINGERPRINT_OFFSET..NONCE_OFFSET].copy_from_slice(&self.fingerprint);
+         envelope[NONCE_OFFSET..CIPHERTEXT_OFFSET].copy_from_slice(&nonce);
+-        envelope[CIPHERTEXT_OFFSET..KEY_FINGERPRINT_OFFSET].copy_from_slice(&sealed);
++        let (sealed, tag) =
++            envelope[CIPHERTEXT_OFFSET..KEY_FINGERPRINT_OFFSET].split_at_mut(STREAM_KEY_LENGTH);
++        sealed.copy_from_slice(key.as_bytes());
++        let sealed_tag = self
++            .cipher
++            .seal_in_place_separate_tag(Nonce::assume_unique_for_key(nonce), &aad, sealed)
++            .map_err(|_| IggyError::CannotEncryptData)?;
++        tag.copy_from_slice(sealed_tag.as_ref());
+         envelope[KEY_FINGERPRINT_OFFSET..].copy_from_slice(&key_fingerprint);
+         Ok(WrappedStreamKey(envelope))
+     }
+@@ -884,6 +880,8 @@ fn hex(bytes: &[u8]) -> String {
+ mod tests {
+     use super::*;
+     use crate::utils::crypto::{Aes256GcmEncryptor, Encryptor};
++    use aes_gcm::aead::{Aead, KeyInit, Payload};
++    use aes_gcm::{Aes256Gcm, Nonce as GcmNonce};
+ 
+     const CONFIG_KEY: &str = "/rvT1xP4V8u1EAhk4xDdqzqM2UOPXyy9XYkl4uRShgE=";
+     const OTHER_CONFIG_KEY: &str = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=";
+@@ -905,6 +903,61 @@ mod tests {
+         assert!(client.decrypt(&encrypted).is_err());
+     }
+ 
++    #[test]
++    fn given_envelope_sealed_by_rustcrypto_aes_gcm_when_unwrapping_should_match_both_ways() {
++        let config = text::from_base64_as_bytes(CONFIG_KEY).expect("valid base64");
++        let prk = hkdf::Salt::new(hkdf::HKDF_SHA256, &[]).extract(&config);
++        let wrapping_key = derive_key(&prk, STREAM_KEY_WRAP_INFO).expect("derive kek");
++        let rustcrypto =
++            Aes256Gcm::new_from_slice(wrapping_key.expose_secret()).expect("valid kek");
++        let kek_fingerprint =
++            labelled_fingerprint(KEK_FINGERPRINT_LABEL, wrapping_key.expose_secret());
++        let ctx = context(CONFIG_KEY, &[], true);
++        let key = StreamEncryptionKey::try_from([9u8; 32].as_slice()).expect("valid key");
++        let key_fingerprint = key.fingerprint_bytes();
++        let aad = associated_data(
++            StreamKeyOrigin::Client as u8,
++            &kek_fingerprint,
++            &key_fingerprint,
++        );
++
++        let nonce = [5u8; NONCE_LENGTH];
++        let sealed = rustcrypto
++            .encrypt(
++                &GcmNonce::from(nonce),
++                Payload {
++                    msg: key.as_bytes(),
++                    aad: &aad,
++                },
++            )
++            .expect("rustcrypto seals");
++        let mut envelope = [0u8; WRAPPED_STREAM_KEY_LENGTH];
++        envelope[0] = WRAPPED_STREAM_KEY_VERSION;
++        envelope[ORIGIN_OFFSET] = StreamKeyOrigin::Client as u8;
++        envelope[KEK_FINGERPRINT_OFFSET..NONCE_OFFSET].copy_from_slice(&kek_fingerprint);
++        envelope[NONCE_OFFSET..CIPHERTEXT_OFFSET].copy_from_slice(&nonce);
++        envelope[CIPHERTEXT_OFFSET..KEY_FINGERPRINT_OFFSET].copy_from_slice(&sealed);
++        envelope[KEY_FINGERPRINT_OFFSET..].copy_from_slice(&key_fingerprint);
++        let wrapped = WrappedStreamKey::try_from(envelope.as_slice()).expect("valid envelope");
++        let unwrapped = ctx
++            .unwrap(&wrapped)
++            .expect("rind opens a rustcrypto envelope");
++        assert_eq!(unwrapped.as_bytes(), key.as_bytes());
++
++        let wrapped = ctx.wrap(&key, StreamKeyOrigin::Client).expect("rind wraps");
++        let opened = rustcrypto
++            .decrypt(
++                &GcmNonce::try_from(&wrapped.0[NONCE_OFFSET..CIPHERTEXT_OFFSET])
++                    .expect("nonce length"),
++                Payload {
++                    msg: &wrapped.0[CIPHERTEXT_OFFSET..KEY_FINGERPRINT_OFFSET],
++                    aad: &wrapped.associated_data(),
++                },
++            )
++            .expect("rustcrypto opens a rind envelope");
++        assert_eq!(opened.as_slice(), key.as_bytes());
++    }
++
+     #[test]
+     fn given_config_key_when_deriving_should_produce_only_the_pinned_kek() {
+         let config = text::from_base64_as_bytes(CONFIG_KEY).expect("valid base64");
+-- 
+2.56.0
+

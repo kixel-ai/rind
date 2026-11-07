@@ -1,0 +1,45 @@
+name: build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  iggy-bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: probe
+      - name: Build
+        run: |
+          set -eux
+          git clone -q https://github.com/apache/iggy.git iggy
+          cd iggy
+          git checkout -q 1fb58a67d382b9a997573ab04d102565362b8afa
+          git config user.name probe && git config user.email probe@example.com
+          mkdir -p ../out
+          build() {
+            cargo bench --no-run -p iggy_common --bench "$1" --message-format=json 2>/dev/null \
+              | jq -r "select(.executable!=null and .target.name==\"$1\") | .executable" | tail -1 \
+              | xargs -I{} cp {} "../out/$2"
+          }
+          build stream_encryption base
+          git am -q ../probe/patches/1-rind.patch
+          build stream_encryption rind
+          git am -q ../probe/patches/2-compare-a.patch ../probe/patches/3-compare-b.patch
+          build aead_backends backends
+          ls -la ../out
+      - name: Run
+        run: |
+          set -eu
+          lscpu | grep -E "Model name|^CPU\(s\)|Flags" | cut -c1-400
+          for round in 1 2 3; do
+            for bin in base rind; do
+              echo "== $bin round $round"; taskset -c 1 out/$bin
+            done
+          done
+          for round in 1 2; do echo "== backends round $round"; taskset -c 1 out/backends; done

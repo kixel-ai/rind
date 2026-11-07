@@ -1,0 +1,43 @@
+From 5480c80f7e27e34279351b033c3f8e8bb1b1ebc1 Mon Sep 17 00:00:00 2001
+From: x <x@x>
+Date: Sat, 7 Nov 2026 00:36:52 -0800
+Subject: [PATCH 2/2] local: fix must_use
+
+---
+ core/common/benches/aead_backends.rs | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/core/common/benches/aead_backends.rs b/core/common/benches/aead_backends.rs
+index 6ff099d..74456a5 100644
+--- a/core/common/benches/aead_backends.rs
++++ b/core/common/benches/aead_backends.rs
+@@ -34,7 +34,7 @@ fn main() {
+         let mut buf = vec![0x42u8; size];
+ 
+         let seal = time(iterations, || {
+-            black_box(
++            let _ = black_box(
+                 rustcrypto
+                     .encrypt_inout_detached(&nonce.into(), b"", buf.as_mut_slice().into())
+                     .unwrap(),
+@@ -55,7 +55,7 @@ fn main() {
+         println!("rustcrypto, {size}, {seal:.1}, {open:.1}");
+ 
+         let seal = time(iterations, || {
+-            black_box(
++            let _ = black_box(
+                 ring_key
+                     .seal_in_place_separate_tag(
+                         ring::aead::Nonce::assume_unique_for_key(nonce),
+@@ -88,7 +88,7 @@ fn main() {
+         println!("ring, {size}, {seal:.1}, {open:.1}");
+ 
+         let seal = time(iterations, || {
+-            black_box(
++            let _ = black_box(
+                 rind_key
+                     .seal_in_place_separate_tag(
+                         rind::aead::Nonce::assume_unique_for_key(nonce),
+-- 
+2.56.0
+

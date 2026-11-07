@@ -1,0 +1,159 @@
+From 2978c36dd854b4f757edf342788209b642e4fb82 Mon Sep 17 00:00:00 2001
+From: x <x@x>
+Date: Sat, 7 Nov 2026 00:26:35 -0800
+Subject: [PATCH 1/2] local: aead backend comparison bench
+
+---
+ core/common/Cargo.toml               |   4 +
+ core/common/benches/aead_backends.rs | 127 +++++++++++++++++++++++++++
+ 2 files changed, 131 insertions(+)
+ create mode 100644 core/common/benches/aead_backends.rs
+
+diff --git a/core/common/Cargo.toml b/core/common/Cargo.toml
+index d8a5a93..d80d020 100644
+--- a/core/common/Cargo.toml
++++ b/core/common/Cargo.toml
+@@ -74,3 +74,7 @@ harness = false
+ 
+ [lints]
+ workspace = true
++
++[[bench]]
++name = "aead_backends"
++harness = false
+diff --git a/core/common/benches/aead_backends.rs b/core/common/benches/aead_backends.rs
+new file mode 100644
+index 0000000..6ff099d
+--- /dev/null
++++ b/core/common/benches/aead_backends.rs
+@@ -0,0 +1,127 @@
++// Local-only comparison of AES-256-GCM backends, sealing and opening in place
++// so only the cipher is timed.
++
++use aes_gcm::aead::{AeadInOut, KeyInit};
++use std::hint::black_box;
++use std::time::Instant;
++
++fn time(iterations: usize, mut op: impl FnMut()) -> f64 {
++    for _ in 0..iterations / 10 + 1 {
++        op();
++    }
++    let start = Instant::now();
++    for _ in 0..iterations {
++        op();
++    }
++    start.elapsed().as_nanos() as f64 / iterations as f64
++}
++
++fn main() {
++    println!("backend, bytes, seal_ns, open_ns");
++    let key = [0x5a; 32];
++    let nonce = [7u8; 12];
++    let rustcrypto = aes_gcm::Aes256Gcm::new_from_slice(&key).unwrap();
++    let ring_key = ring::aead::LessSafeKey::new(
++        ring::aead::UnboundKey::new(&ring::aead::AES_256_GCM, &key).unwrap(),
++    );
++    let rind_key = rind::aead::Key::new(&rind::aead::AES_256_GCM, &key).unwrap();
++    for (size, iterations) in [
++        (64, 1_000_000),
++        (1024, 300_000),
++        (16 * 1024, 30_000),
++        (1024 * 1024, 500),
++    ] {
++        let mut buf = vec![0x42u8; size];
++
++        let seal = time(iterations, || {
++            black_box(
++                rustcrypto
++                    .encrypt_inout_detached(&nonce.into(), b"", buf.as_mut_slice().into())
++                    .unwrap(),
++            );
++        });
++        let mut sealed = vec![0x42u8; size];
++        let tag = rustcrypto
++            .encrypt_inout_detached(&nonce.into(), b"", sealed.as_mut_slice().into())
++            .unwrap();
++        // Open fails after the first pass decrypts in place, so re-seal is
++        // avoided by timing decrypt of a fresh copy each time.
++        let open = time(iterations, || {
++            buf.copy_from_slice(&sealed);
++            rustcrypto
++                .decrypt_inout_detached(&nonce.into(), b"", buf.as_mut_slice().into(), &tag)
++                .unwrap();
++        });
++        println!("rustcrypto, {size}, {seal:.1}, {open:.1}");
++
++        let seal = time(iterations, || {
++            black_box(
++                ring_key
++                    .seal_in_place_separate_tag(
++                        ring::aead::Nonce::assume_unique_for_key(nonce),
++                        ring::aead::Aad::empty(),
++                        &mut buf,
++                    )
++                    .unwrap(),
++            );
++        });
++        sealed.fill(0x42);
++        let tag = ring_key
++            .seal_in_place_separate_tag(
++                ring::aead::Nonce::assume_unique_for_key(nonce),
++                ring::aead::Aad::empty(),
++                &mut sealed,
++            )
++            .unwrap();
++        let open = time(iterations, || {
++            buf.copy_from_slice(&sealed);
++            ring_key
++                .open_in_place_separate_tag(
++                    ring::aead::Nonce::assume_unique_for_key(nonce),
++                    ring::aead::Aad::empty(),
++                    tag,
++                    &mut buf,
++                    0..,
++                )
++                .unwrap();
++        });
++        println!("ring, {size}, {seal:.1}, {open:.1}");
++
++        let seal = time(iterations, || {
++            black_box(
++                rind_key
++                    .seal_in_place_separate_tag(
++                        rind::aead::Nonce::assume_unique_for_key(nonce),
++                        b"",
++                        &mut buf,
++                    )
++                    .unwrap(),
++            );
++        });
++        sealed.fill(0x42);
++        let tag = rind_key
++            .seal_in_place_separate_tag(
++                rind::aead::Nonce::assume_unique_for_key(nonce),
++                b"",
++                &mut sealed,
++            )
++            .unwrap();
++        let open = time(iterations, || {
++            buf.copy_from_slice(&sealed);
++            rind_key
++                .open_in_place_separate_tag(
++                    rind::aead::Nonce::assume_unique_for_key(nonce),
++                    b"",
++                    tag,
++                    &mut buf,
++                )
++                .unwrap();
++        });
++        println!("rind, {size}, {seal:.1}, {open:.1}");
++
++        let copy = time(iterations, || {
++            buf.copy_from_slice(black_box(&sealed));
++        });
++        println!("copy-only, {size}, 0, {copy:.1}");
++    }
++}
+-- 
+2.56.0
+
