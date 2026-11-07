@@ -10,7 +10,10 @@ users choosing a provider for the first time can pick rind-rustls.
 Follow the provider API's changes from 0.23, and keep rind-rustls's
 `aws_lc_rs_parity` test against `rustls-aws-lc-rs`, which 0.24 splits out.
 Whether to also keep 0.23 support is the maintainer's call at the time;
-ask with the cost of each.
+ask with the cost of each. The port ships as rind-rustls 0.24.x, since
+adapter versions match their upstream
+([adapter versions](/quest/m1/adapter-versions.md)), so keeping 0.23
+means a 0.23.x maintenance line.
 
 ## Required
 
