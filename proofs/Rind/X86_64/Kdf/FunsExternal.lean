@@ -22,10 +22,6 @@ def core.num.nonzero.NonZero.get {T Inner : Type}
     Result T :=
   ok x
 
-/-- `u8`'s `BitXorAssign<&u8>`. -/
-def U8.Insts.CoreOpsBitBitXorAssignShared0U8.bitxor_assign (x y : Std.U8) : Result Std.U8 :=
-  ok (x ^^^ y)
-
 /-- `Digest`'s derived `Clone`, which copies its algorithm and bytes. -/
 def high.digest.Digest.Insts.CoreCloneClone.clone (d : high.digest.Digest) :
     Result high.digest.Digest :=

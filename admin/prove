@@ -4,7 +4,7 @@
 #
 # Each target's translation is its own namespace, but they share global names,
 # so no Lean module imports both. The aarch64 hand models and its X25519,
-# SHA-512, ChaCha20, Ed25519, and SHA-1, SHA-256, and HMAC proofs are the
+# SHA-512, ChaCha20, Ed25519, SHA-1, SHA-256, HMAC, digest, HKDF, and PBKDF2 proofs are the
 # x86_64 ones with the target renamed, which this writes too, all but each
 # target's own `ShaBlocks.lean`.
 #
@@ -390,7 +390,8 @@ extract_kdf aarch64 Aarch64
 
 mkdir -p proofs/Rind/Aarch64/Kdf
 for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
-    Blockwise Sha Hmac HashAxioms HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal; do
+    Blockwise Sha Hmac HashAxioms HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
+    HmacApi DigestApi Hkdf Pbkdf2; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 

@@ -1,12 +1,14 @@
-import Rind.X86_64.Sha512
+import Rind.X86_64.Hmac
+import Rind.X86_64.DigestDispatch
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
 # The digest API, `high::digest`, through the modelled dispatch
 
-`digest` and `Context` compute FIPS 180-4's SHA-1, SHA-256, SHA-384, and
-SHA-512, through the dispatch `Rind.X86_64.DigestDispatch` models, down to
-each hash's `HashSpec`. `CtxOf` says what a `Context` has been given.
+`digest` and `Context` compute FIPS 180-4's SHA-1 and SHA-256, through the
+dispatch `Rind.X86_64.DigestDispatch` models, down to each hash's `HashSpec`;
+`Rind.X86_64.Sha512` proves the SHA-512 family's. `CtxOf` says what a
+`Context` has been given.
 `admin/prove` writes the aarch64 proof from this file by renaming the target.
 -/
 
@@ -17,17 +19,6 @@ namespace rind.x86_64
 section
 variable {Self C S : Type} {inst : high.hash.Hash Self C S} {H : List Byte → List Byte}
   {B L max : Nat} {Abs : List U8 → S → Prop} {CAbs : List U8 → C → Prop}
-
-/-- `Hash::hash`, the default every `Hash` impl keeps. -/
-theorem hash_default_spec (hs : HashSpec inst H B L max Abs CAbs) (data : Slice U8)
-    (hl : data.length ≤ max) :
-    high.hash.Hash.hash.default inst data ⦃ d =>
-      outLen d.algorithm = L ∧ digestBytes d = H (bv data.val) ⦄ := by
-  unfold high.hash.Hash.hash.default
-  apply WP.spec_bind hs.initial
-  intro s h0
-  have := hs.finish_with [] s data h0 (by simpa using hl)
-  simpa only [List.nil_append] using this
 
 theorem hashing_update_spec (hs : HashSpec inst H B L max Abs CAbs)
     (V : high.digest.Variant C) (hV : V.hashHashContextInst = inst.HashContextInst)
@@ -72,48 +63,22 @@ theorem sha256_variant_new_spec :
   step with sha256_resume_spec [] s hs as ⟨c, hc⟩
   exact hc
 
-theorem sha384_variant_new_spec :
-    high.hash.Sha384Context.Insts.RindHighDigestVariant.NEW ⦃ c =>
-      Hashed sha384Iv c.inner [] ⦄ := by
-  unfold high.hash.Sha384Context.Insts.RindHighDigestVariant.NEW mid.sha2.Sha384Context.new
-    mid.sha2.Sha384Context.resume
-  step with sha384_initial_spec as ⟨s, hh, hn⟩
-  step with absorbed_resume_spec _ [] s (absorbed_initial _ s hh hn) as ⟨c, hc⟩
-  exact hc
-
-theorem sha512_variant_new_spec :
-    high.hash.Sha512Context.Insts.RindHighDigestVariant.NEW ⦃ c => Hashed sha512Iv c [] ⦄ := by
-  unfold high.hash.Sha512Context.Insts.RindHighDigestVariant.NEW mid.sha2.Sha512Context.new
-  step with sha512_initial_spec as ⟨s, hh, hn⟩
-  step with absorbed_resume_spec _ [] s (absorbed_initial _ s hh hn) as ⟨c, hc⟩
-  exact hc
-
 /-! ## The API -/
 
-/-- The hash each digest algorithm runs, over spec bytes, for those proven. -/
+/-- The hash each algorithm proven here runs, over spec bytes. -/
 def digestHash : high.digest.Algorithm → List Byte → List Byte
   | .SHA1 => sha1.hash
-  | .SHA256 => sha256.hash
-  | .SHA384 => sha384Bytes
-  | .SHA512 => sha512Bytes
-  | _ => fun _ => []
+  | _ => sha256.hash
 
-/-- What the digest API under `a` needs: `a` is SHA-1, SHA-256, SHA-384, or
-SHA-512, the entry guard passes, and the CPU runs the hash's routines
-(`ShaBlocks` for SHA-1 and SHA-256, `RunsSha512` for SHA-384 and SHA-512). -/
+/-- What the digest API under `a` needs: `a` is SHA-1 or SHA-256, the entry
+guard passes, and the block functions meet their contracts. -/
 def RunsDigest (a : high.digest.Algorithm) : Prop :=
-  (∃ e, low.entry.Entry.new_secret = ok e) ∧
-    match a with
-    | .SHA1 | .SHA256 => ShaBlocks
-    | .SHA384 | .SHA512 => RunsSha512
-    | _ => False
+  (a = .SHA1 ∨ a = .SHA256) ∧ (∃ e, low.entry.Entry.new_secret = ok e) ∧ ShaBlocks
 
 /-- `c` is a `Context` of `a` that has been given `p`. -/
 def CtxOf (a : high.digest.Algorithm) (p : List U8) : high.digest.State → Prop
   | .Sha1 h => a = .SHA1 ∧ Sha1Ctx p h.context
   | .Sha256 h => a = .SHA256 ∧ Sha256Ctx p h.context
-  | .Sha384 h => a = .SHA384 ∧ Hashed sha384Iv h.context.inner p
-  | .Sha512 h => a = .SHA512 ∧ Hashed sha512Iv h.context p
   | _ => False
 
 /-- `digest::digest`. -/
@@ -121,33 +86,28 @@ theorem digest_spec (a : high.digest.Algorithm) (hr : RunsDigest a) (data : Slic
     (hl : data.length ≤ maxInput) :
     high.digest.digest a data ⦃ d =>
       outLen d.algorithm = outLen a ∧ digestBytes d = digestHash a (bv data.val) ⦄ := by
-  obtain ⟨⟨e, he⟩, hb⟩ := hr
+  obtain ⟨ha, ⟨e, he⟩, hb⟩ := hr
   unfold high.digest.digest
   rw [he, bind_ok]
-  cases a <;> simp only at hb
-  · exact hash_default_spec (sha1_hashSpec hb) data hl
-  · exact hash_default_spec (sha256_hashSpec hb) data hl
-  · exact hash_default_spec (sha384_hashSpec hb) data hl
-  · exact hash_default_spec (sha512_hashSpec hb) data hl
+  rcases ha with rfl | rfl
+  · simp only [high.digest.Algorithm.hash]
+    rw [← (sha1_hashSpec hb).hash_default]
+    exact (sha1_hashSpec hb).hash_spec data hl
+  · simp only [high.digest.Algorithm.hash]
+    rw [← (sha256_hashSpec hb).hash_default]
+    exact (sha256_hashSpec hb).hash_spec data hl
 
 /-- `Context::new`. -/
 theorem digest_ctx_new_spec (a : high.digest.Algorithm) (hr : RunsDigest a) :
     high.digest.Context.new a ⦃ c => CtxOf a [] c ⦄ := by
-  have hb := hr.2
   unfold high.digest.Context.new
-  cases a <;> simp only at hb
+  rcases hr.1 with rfl | rfl
   all_goals simp only [high.digest.Algorithm.start, high.digest.Hashing.start,
     high.hash.Sha1Context.Insts.RindHighDigestVariant.state,
-    high.hash.Sha256Context.Insts.RindHighDigestVariant.state,
-    high.hash.Sha384Context.Insts.RindHighDigestVariant.state,
-    high.hash.Sha512Context.Insts.RindHighDigestVariant.state]
+    high.hash.Sha256Context.Insts.RindHighDigestVariant.state]
   · step with sha1_variant_new_spec as ⟨c, hc⟩
     exact ⟨rfl, hc⟩
   · step with sha256_variant_new_spec as ⟨c, hc⟩
-    exact ⟨rfl, hc⟩
-  · step with sha384_variant_new_spec as ⟨c, hc⟩
-    exact ⟨rfl, hc⟩
-  · step with sha512_variant_new_spec as ⟨c, hc⟩
     exact ⟨rfl, hc⟩
 
 /-- `Context::update`. -/
@@ -155,7 +115,7 @@ theorem digest_ctx_update_spec (a : high.digest.Algorithm) (hr : RunsDigest a) (
     (c : high.digest.Context) (hc : CtxOf a p c) (data : Slice U8)
     (hl : p.length + data.length ≤ maxInput) :
     high.digest.Context.update c data ⦃ c' => CtxOf a (p ++ data.val) c' ⦄ := by
-  have hb := hr.2
+  have hb := hr.2.2
   unfold high.digest.Context.update high.digest.State.update
   cases c <;> simp only [CtxOf] at hc
   all_goals obtain ⟨rfl, hc⟩ := hc
@@ -165,12 +125,6 @@ theorem digest_ctx_update_spec (a : high.digest.Algorithm) (hr : RunsDigest a) (
   · step with hashing_update_spec (sha256_hashSpec hb)
       high.hash.Sha256Context.Insts.RindHighDigestVariant rfl p _ hc data hl as ⟨h', hh⟩
     exact ⟨rfl, hh⟩
-  · step with hashing_update_spec (sha384_hashSpec hb)
-      high.hash.Sha384Context.Insts.RindHighDigestVariant rfl p _ hc data hl as ⟨h', hh⟩
-    exact ⟨rfl, hh⟩
-  · step with hashing_update_spec (sha512_hashSpec hb)
-      high.hash.Sha512Context.Insts.RindHighDigestVariant rfl p _ hc data hl as ⟨h', hh⟩
-    exact ⟨rfl, hh⟩
 
 /-- `Context::finish`, which leaves the context fresh. -/
 theorem digest_ctx_finish_spec (a : high.digest.Algorithm) (hr : RunsDigest a) (p : List U8)
@@ -178,7 +132,7 @@ theorem digest_ctx_finish_spec (a : high.digest.Algorithm) (hr : RunsDigest a) (
     high.digest.Context.finish c ⦃ r =>
       outLen r.1.algorithm = outLen a ∧ digestBytes r.1 = digestHash a (bv p) ∧
         CtxOf a [] r.2 ⦄ := by
-  obtain ⟨⟨e, he⟩, hb⟩ := hr
+  obtain ⟨-, ⟨e, he⟩, hb⟩ := hr
   unfold high.digest.Context.finish high.digest.State.finish
   rw [he, bind_ok]
   cases c <;> simp only [CtxOf] at hc
@@ -189,14 +143,6 @@ theorem digest_ctx_finish_spec (a : high.digest.Algorithm) (hr : RunsDigest a) (
     exact ⟨h1, h2, rfl, h3⟩
   · step with hashing_finish_spec (sha256_hashSpec hb)
       high.hash.Sha256Context.Insts.RindHighDigestVariant rfl rfl sha256_variant_new_spec p _ hc
-      hl as ⟨r, hh, h1, h2, h3⟩
-    exact ⟨h1, h2, rfl, h3⟩
-  · step with hashing_finish_spec (sha384_hashSpec hb)
-      high.hash.Sha384Context.Insts.RindHighDigestVariant rfl rfl sha384_variant_new_spec p _ hc
-      hl as ⟨r, hh, h1, h2, h3⟩
-    exact ⟨h1, h2, rfl, h3⟩
-  · step with hashing_finish_spec (sha512_hashSpec hb)
-      high.hash.Sha512Context.Insts.RindHighDigestVariant rfl rfl sha512_variant_new_spec p _ hc
       hl as ⟨r, hh, h1, h2, h3⟩
     exact ⟨h1, h2, rfl, h3⟩
 
