@@ -6,7 +6,8 @@ surveys the crates that pick a crypto backend for you. ring's names match
 aws-lc-rs's except where noted. A crate on ring that cannot change its code
 renames [rind-ring](#rind-ring), ring's API on rind, to `ring`, and a binary
 patches it in for every crate in its tree on ring 0.17. A crate on aws-lc-rs
-renames [rind-aws-lc-rs](#rind-aws-lc-rs) to `aws-lc-rs` the same way.
+renames [rind-aws-lc-rs](#rind-aws-lc-rs) to `aws-lc-rs` the same way, or a
+binary patches it throughout its tree on aws-lc-rs 1.x.
 
 ## Across the API
 
@@ -376,12 +377,22 @@ items it leaves out and the inputs it refuses where ring takes them.
 rind-aws-lc-rs offers aws-lc-rs 1.x's API name for name for every item rind
 backs, so a crate on aws-lc-rs swaps it in with `aws-lc-rs = { package =
 "rind-aws-lc-rs", version = "1" }` and no code changes. The rename reaches
-only that crate. It accepts every aws-lc-rs feature but `fips`, and adds the
-same `cpu` module as rind-ring. Its [README](rind-aws-lc-rs/README.md) lists
+only that crate. A binary moves compatible aws-lc-rs 1.x dependencies
+throughout its tree with `[patch.crates-io] aws-lc-rs = { git =
+"https://github.com/moq-dev/rind-patch" }` in its workspace's root
+`Cargo.toml`, then `cargo update -p aws-lc-rs`. The unpublished shim
+re-exports the published adapter. Check that `cargo tree -i aws-lc-rs`
+prints only `aws-lc-rs v1.999.0` from rind-patch and `cargo tree -i aws-lc-sys`
+finds no package: an exact or bounded requirement can keep the original.
+It accepts every aws-lc-rs feature but `fips`, and adds the same `cpu`
+module as rind-ring. Enable `aws-lc-rs/wipe` on a direct dependency to keep
+aws-lc-rs's key wiping on drop. Its [README](rind-aws-lc-rs/README.md) lists
 the items it leaves out, such as ML-DSA, ML-KEM-512 and ML-KEM-1024, SHA-224,
 and the PKCS#1 v1.5 encryption keys, and where it behaves differently. rustls's
 `aws_lc_rs` provider, rustls-webpki's `aws-lc-rs` feature, and rcgen's
-`aws_lc_rs` feature name ML-DSA, so they do not build on it until rind has it.
+`aws_lc_rs` feature name ML-DSA, and rustls also names ML-KEM-1024, so they
+do not build on the adapter or patch until rind has them. Use their ring
+features with the ring patch or the dedicated rind adapters instead.
 
 ### rind-rustls
 
@@ -440,7 +451,8 @@ those algorithms only with its `aws_lc_rs` feature.
 Surveyed on 2026-10-31 against each crate's latest release, by reading its
 features and source; none were built. A migrated graph should give no output
 from `cargo tree -e normal,build -i ring` or `-i aws-lc-sys`, except
-`ring v0.17.999` from rind-patch under the ring patch.
+`ring v0.17.999` from rind-patch under the ring patch. The aws-lc-rs patch
+similarly leaves only `aws-lc-rs v1.999.0` and no aws-lc-sys.
 
 "Install" means calling `rind_rustls::default_provider()?.install_default()`
 before the crate builds its TLS config. Crates that read rustls's process
@@ -451,13 +463,14 @@ install ring's if nothing is installed first.
   install or pass rind-rustls's provider.
 - **rind-x**: an existing adapter crate covers it.
 - **Pure Rust**: its default build, or the listed features, use neither.
-- **Patch**: ring 0.17 is hard-wired, and a binary moves it with the
-  [ring patch](#rind-ring). Built against the patch on 2026-11-06, with no
-  other ring left in the tree.
+- **Patch**: ring 0.17 or aws-lc-rs 1.x is hard-wired, and a binary moves it
+  with the [ring patch](#rind-ring) or [aws-lc-rs patch](#rind-aws-lc-rs).
+  ring consumers were built on 2026-11-06; s2n-quic-crypto and jsonwebtoken
+  on aws-lc-rs were built and exercised on 2026-11-07, with no aws-lc-sys.
 - **Adapter**: a new `rind-*` crate could cover it through a public hook.
   [Adapters](#adapters) says which are worth building.
-- **Unsupported**: aws-lc-rs, ring 0.16, or a ring item rind-ring leaves out
-  is hard-wired. The cell names the alternative or the upstream change that
+- **Unsupported**: ring 0.16 or an item rind's adapters leave out is
+  hard-wired. The cell names the alternative or the upstream change that
   would fix it.
 
 ### TLS and HTTP
@@ -505,13 +518,13 @@ install ring's if nothing is installed first.
 | noq 1.4 | default `ring` | **rind-rustls**: `rustls` without `ring`, plus the caller's `HmacKey` and `HandshakeTokenKey` on rind's HMAC, HKDF, and AES-256-GCM |
 | iroh 1.4 | default `tls-ring` picks the provider | **rind-rustls**: `default-features = false`, `Endpoint::builder().crypto_provider(..)`. iroh-relay's `server` enables ring |
 | wtransport 0.7 | needs `ring` or `aws-lc-rs`, and quinn's defaults | **Patch**: the default `ring` |
-| s2n-quic 1 | s2n-quic-crypto always links aws-lc-rs | Unsupported |
+| s2n-quic 1 | s2n-quic-crypto always links aws-lc-rs | **Patch**: aws-lc-rs for packet crypto; choose TLS separately to avoid s2n-tls's C backend |
 | quiche 0.30 | BoringSSL | Unsupported: C |
 | dimpl 0.9 | default aws-lc-rs | **rind-dimpl** |
 | str0m 0.25 | default aws-lc-rs | **rind-str0m** |
 | webrtc 0.21 (rtc 0.21) | default `crypto-ring`, or `crypto-aws-lc-rs` | **Patch**: the default `crypto-ring` |
 | webrtc-dtls 0.12, stun 0.17, turn 0.17 | ring, unconditionally | **Patch** |
-| libp2p-tls 0.7, libp2p-quic 0.14, libp2p-noise 0.47 | aws-lc-rs and ring, unconditionally | Unsupported: needs a provider hook upstream |
+| libp2p-tls 0.7, libp2p-quic 0.14, libp2p-noise 0.47 | aws-lc-rs and ring, unconditionally | Unsupported as a graph: the TLS crates reach rustls's aws-lc-rs provider, which needs ML-DSA and ML-KEM-1024 |
 | snow 0.10 | opt-in `ring-resolver` | **Pure Rust** by default. Adapter through `CryptoResolver`, once rind loads static X25519 keys |
 | boringtun 0.7 | ring's ChaCha20-Poly1305 and constant-time comparison | **Patch** |
 
@@ -532,7 +545,7 @@ install ring's if nothing is installed first.
 | x509-parser 0.18 | `verify` is ring, `verify-aws` aws-lc-rs | **Patch**: `verify`, or verify `tbs_certificate` with `rind::signature` |
 | x509-certificate 0.25, cryptographic-message-syntax 0.28 | ring types in their public API | **Patch** |
 | sigstore 0.14, tough 0.24 | aws-lc-rs, unconditionally | Unsupported |
-| jsonwebtoken 11 | optional `aws_lc_rs` | **rind-jsonwebtoken**, every algorithm. `rust_crypto` is the pure-Rust alternative |
+| jsonwebtoken 11 | optional `aws_lc_rs` | **rind-jsonwebtoken**, every algorithm, or **Patch**: `aws_lc_rs`. `rust_crypto` is the pure-Rust alternative |
 | jwtk 0.5 | default `aws-lc` for RSA verification and JWK conversion | Adapter, for caller-held keys only |
 | biscuit 0.8, rusty_paseto 0.10 | ring, unconditionally | **Patch** |
 | paseto 2 | ring 0.16 and OpenSSL | Unsupported |

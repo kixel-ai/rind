@@ -7,14 +7,22 @@ publish = false
 # Its own workspace, so the patch below applies to it alone.
 [workspace]
 
-# Each of these calls ring itself, with no way to pick another backend.
+# Exercise consumers of both crates.io APIs through the patches below.
 [dependencies]
+aws-lc-rs = "1"
 bytes = "1"
+jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs"] }
 quinn-proto = { version = "0.11", default-features = false, features = ["rustls-ring"] }
 rcgen = "0.14"
 ring = "0.17"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+s2n-codec = "0.91"
+s2n-quic-core = { version = "0.91", default-features = false }
+s2n-quic-crypto = "0.91"
+serde_json = "1"
 
-# The line a binary adds. sh/patch.sh also patches rind-ring to this checkout.
+# A binary patches these names; sh/patch.sh patches both adapters locally too.
 [patch.crates-io]
 ring = { git = "https://github.com/moq-dev/rind-patch" }
+# Pin the shim revision so the fixture also runs before its main-branch merge.
+aws-lc-rs = { git = "https://github.com/moq-dev/rind-patch", rev = "b785c6994465b59d2176d2593aa5e3395c61864d" }
