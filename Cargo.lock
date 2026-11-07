@@ -1836,9 +1836,9 @@ dependencies = [
 
 [[package]]
 name = "inout"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b5cf4372d022092674a83b8febf5865f7a573cc0c5baec5e49c879b6a20978f"
+checksum = "3a580c13f0ffc335ef42dd3f6b1a41b726051c5e1656d9a3aa6fddb3c5dfbbf9"
 dependencies = [
  "hybrid-array",
 ]
@@ -3195,7 +3195,7 @@ dependencies = [
 
 [[package]]
 name = "rind"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "aws-lc-rs",
  "aws-lc-sys",
@@ -3303,7 +3303,7 @@ dependencies = [
 
 [[package]]
 name = "rind-dimpl"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3343,7 +3343,7 @@ dependencies = [
 
 [[package]]
 name = "rind-jsonwebtoken"
-version = "11.0.0"
+version = "11.0.1"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3355,7 +3355,7 @@ dependencies = [
 
 [[package]]
 name = "rind-object-store"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "async-trait",
  "aws-lc-rs",
@@ -3377,7 +3377,7 @@ dependencies = [
 
 [[package]]
 name = "rind-rcgen"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "crabgrind 0.4.0",
  "rcgen",
@@ -3390,7 +3390,7 @@ dependencies = [
 
 [[package]]
 name = "rind-ring"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3404,7 +3404,7 @@ dependencies = [
 
 [[package]]
 name = "rind-rustls"
-version = "0.23.0"
+version = "0.23.1"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
