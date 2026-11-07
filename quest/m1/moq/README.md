@@ -85,6 +85,5 @@ maintainer, 2026-11-05).
 
 ## Required
 
-- [x86_64 CPUs without VAES seal short AES-GCM messages on their fastest path](/quest/m1/moq/gcm-no-vaes-short-seal.md) - by-8 wins below 128 B on Coffee Lake
 - [AMD CPUs without VAES run their fastest AES-GCM tier](/quest/m1/moq/quic-path.md) - Vale or `by8` on Zen 2, from zshenker's rerun
 - [MoQ runs on rind](/quest/m1/moq/moq-on-rind.md) - waiting on MoQ to finish its migration
