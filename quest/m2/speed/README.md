@@ -59,4 +59,5 @@ dual RSAZ only when the runner has IFMA.
 - [AES-192-GCM on aarch64 is level with aws-lc-rs for large messages](/quest/m2/speed/aes192-gcm-aarch64.md) - s2n-bignum's stitched kernels skip 192-bit keys
 - [The Ed25519 verify benchmark times every library the same way](/quest/m2/speed/ed25519-verify-bench.md) - rind's row parses the key inside the loop
 - [HKDF-SHA256 expand is back to its earlier speed on x86_64](/quest/m2/speed/hkdf-expand-regression.md) - desktop measured 47 to 66 ns between two runs; confirm on a runner, then bisect
+- [armv7 without the crypto extension runs the fastest SHA-256](/quest/m2/speed/armv7-sha256-hacl.md) - Graviola's or HACL*'s, measured
 - [Wiping keys on drop is opt-in](/quest/m2/speed/wipe-feature.md) - a `wipe` feature; the default build skips it

@@ -24,3 +24,4 @@ All three constant-time tools state they can't see variable-time instructions. O
 - [No variable-time instruction on a secret path](/quest/m3/confidence/vartime-scan.md) - a static scan of the compiled secret paths
 - [Statistical timing tests](/quest/m3/confidence/timing.md) - dudect-style tests, and the Marvin toolkit for RSA
 - [Mutation testing](/quest/m3/confidence/mutants.md) - cargo-mutants shows which changes the tests miss
+- [TESTING.md lists the CCTV and imported vector sets](/quest/m3/confidence/testing-vectors-rows.md) - rows for `thirdparty/cctv` and `thirdparty/vectors`
