@@ -11,7 +11,4 @@ A public `spake2plus` module implements SPAKE2+ on P-256 with SHA-256, HKDF-SHA2
 - API: a wiped `ProverSecrets` (w0, w1) and a `VerifierRecord` (w0, L), each built from the output of the caller's password stretch (PBKDF2 for Matter), as both specifications leave that step to the protocol; each side's state is a type its next step consumes, so a step cannot run twice or out of order, and neither side gets the shared key before the peer's confirmation checks.
 - Test against RFC 9383's Appendix C vectors and Matter's PASE vectors from connectedhomeip; differentially against `rs-matter`'s draft-01 implementation and `pakery-spake2plus`'s RFC 9383 one (aws-lc-rs has no SPAKE2+; BoringSSL's is internal to its TLS); and ctgrind on both sides.
 - `rs-matter`'s `Crypto` trait asks its backend for raw P-256 point operations and AES-128-CCM, not for SPAKE2+, so running it on rind needs an upstream change or a `rind-rs-matter` adapter, planned once this lands.
-
-## Waiting
-
-- Maintainer: which SPAKE2+ to build. (a) Both RFC 9383 and Matter's draft-01 key schedule; (b) RFC 9383 only, which no Rust consumer uses yet (BoringSSL's experimental TLS PAKE is its one deployment); (c) Matter's only. Recommend (a): Matter is SPAKE2+'s deployed use, the RFC is what new protocols will cite, and the second key schedule costs a few lines. Done once this quest's Goal records the choice.
+- Decided with the maintainer on 2026-11-07: build both RFC 9383's and Matter's draft-01 key schedules, as separate suites.

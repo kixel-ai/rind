@@ -28,3 +28,4 @@ The scope ([moq-dev/rind#449](https://github.com/moq-dev/rind/pull/449)) ordered
 - [SPAKE2+](/quest/m4/protocols/spake2plus.md) - RFC 9383 and Matter's commissioning on P-256
 - [Argon2id](/quest/m4/protocols/argon2.md) - RFC 9106 password hashing, OPAQUE's key stretch
 - [OPAQUE](/quest/m4/protocols/opaque.md) - RFC 9807's augmented PAKE
+- [rind-openmls](/quest/m4/protocols/rind-openmls.md) - openmls's crypto provider on rind, after HPKE
