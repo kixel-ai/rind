@@ -85,7 +85,7 @@ cfg_if::cfg_if! {
     if #[cfg(target_arch = "x86_64")] {
         mod x86_64;
 
-        pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
+        pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state, missing_cpu_feature};
         pub(crate) use x86_64::chacha20;
         pub(crate) use x86_64::chacha20poly1305;
         pub(crate) use x86_64::aes::{AesDecKey, AesKey};
@@ -189,7 +189,7 @@ cfg_if::cfg_if! {
     } else if #[cfg(target_arch = "aarch64")] {
         mod aarch64;
 
-        pub(in crate::low) use aarch64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
+        pub(in crate::low) use aarch64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state, missing_cpu_feature};
         pub(crate) use aarch64::aes::{AesDecKey, AesKey};
         pub(crate) use aarch64::aes_cbc;
         pub(crate) use aarch64::aes_ctr;
@@ -284,7 +284,7 @@ cfg_if::cfg_if! {
     } else if #[cfg(target_arch = "arm")] {
         mod arm;
 
-        pub(in crate::low) use arm::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
+        pub(in crate::low) use arm::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state, missing_cpu_feature};
         pub(crate) use arm::aes::{AesDecKey, AesKey};
         pub(crate) use arm::aes_cbc;
         pub(crate) use arm::aes_ctr;
