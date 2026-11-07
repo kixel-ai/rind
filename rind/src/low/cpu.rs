@@ -144,12 +144,16 @@ pub(crate) fn verify_cpu_features() {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    #[cfg(not(rind_backend = "portable"))]
     use crate::low::AesKey;
 
     /// The flag agrees with the AES keys run, whichever features are denied.
     #[test]
     fn has_aes_hardware_matches_keys() {
+        #[cfg(not(rind_backend = "portable"))]
         let hardware = matches!(AesKey::new(&[0; 16]), AesKey::Hw(_));
+        #[cfg(rind_backend = "portable")]
+        let hardware = false;
         assert_eq!(super::has_aes_hardware(), hardware);
     }
 
