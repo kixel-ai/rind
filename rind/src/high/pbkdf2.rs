@@ -169,10 +169,15 @@ mod tests {
             assert_eq!(secret.verify(ONE, b"salt", &key), Ok(()));
 
             // RFC 8018's 32-bit block counter bounds the length, which only
-            // the check can reach without allocating it.
-            let most = u32::MAX as usize * hash_len;
-            assert_eq!(secret.check_len(most), Ok(()));
-            assert_eq!(secret.check_len(most + 1), Err(Error::WrongLength));
+            // the check can reach without allocating it. On a 32-bit target
+            // no length reaches it.
+            match (u32::MAX as usize).checked_mul(hash_len) {
+                Some(most) => {
+                    assert_eq!(secret.check_len(most), Ok(()));
+                    assert_eq!(secret.check_len(most + 1), Err(Error::WrongLength));
+                }
+                None => assert_eq!(secret.check_len(usize::MAX), Ok(())),
+            }
         }
     }
 
