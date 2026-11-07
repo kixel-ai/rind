@@ -110,8 +110,9 @@ axiom bignum_cmp_lt_spec (x y : Slice U64) :
 
 /-! ### P-256
 
-rind's aarch64 P-256 runs the `_alt` scalar multiplications under the plain
-names, and the other routines' plain sources. -/
+rind's aarch64 P-256 runs the `_alt` scalar multiplications and Montgomery
+multiplication and squaring under the plain names, and the plain sources of
+the other routines, which have no `_alt`. -/
 
 /-- HOL Light's `inverse_mod p_256 (2 EXP 256)`: the number below `p256`
 that 2²⁵⁶ times is 1 mod `p256`, which `p256RInv_spec` checks, and which is
@@ -170,16 +171,16 @@ axiom bignum_add_p256_spec (z x y : Std.Array U64 4#usize) :
       wordsNat x.val < p256 → wordsNat y.val < p256 →
         wordsNat r.val = (wordsNat x.val + wordsNat y.val) % p256 ⦄
 
-/-- `BIGNUM_MONTMUL_P256_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs/bignum_montmul_p256.ml#L1753 -/
+/-- `BIGNUM_MONTMUL_P256_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs/bignum_montmul_p256_alt.ml#L239 -/
 @[step]
 axiom bignum_montmul_p256_spec (z x y : Std.Array U64 4#usize) :
     low.aarch64.bignum_montmul_p256.bignum_montmul_p256 z x y ⦃ r =>
       wordsNat x.val * wordsNat y.val ≤ 2 ^ 256 * p256 →
         wordsNat r.val = p256RInv * wordsNat x.val * wordsNat y.val % p256 ⦄
 
-/-- `BIGNUM_MONTSQR_P256_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs/bignum_montsqr_p256.ml#L1231 -/
+/-- `BIGNUM_MONTSQR_P256_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs/bignum_montsqr_p256_alt.ml#L213 -/
 @[step]
 axiom bignum_montsqr_p256_spec (z x : Std.Array U64 4#usize) :
     low.aarch64.bignum_montsqr_p256.bignum_montsqr_p256 z x ⦃ r =>
