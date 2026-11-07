@@ -20,8 +20,10 @@ on:
       - coverage
       - ctgrind
       - fuzz
+      - mutants
       - prove
       - Pullfrog
+      - python
       - quality lints
       - Queue
       - regenerate
