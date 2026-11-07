@@ -5,7 +5,8 @@
 # The constant-time check for instructions whose timing depends on their
 # operands, which ctgrind, `admin/ct-sde`, and `admin/ct-qemu` cannot see.
 # It builds rind's release rlib for each target, x86_64, aarch64, and armv7
-# Linux, or those of them named, and disassembles it with every crate it
+# Linux, and the portable backend on x86_64 and armv7, or those of them
+# named, and disassembles it with every crate it
 # links, the standard library and compiler-builtins included. Starting from
 # every function named for rind, it follows each relocation, so calls, tail
 # calls, and the function pointers in vtables, through to code the compiler
@@ -33,7 +34,12 @@ TARGETS = [
     "x86_64-unknown-linux-gnu",
     "aarch64-unknown-linux-gnu",
     "armv7-unknown-linux-gnueabihf",
+    # The portable backend every other architecture runs, forced as
+    # `sh/dispatch.sh` forces it, at 64 and 32 bits.
+    "x86_64-unknown-linux-gnu+portable",
+    "armv7-unknown-linux-gnueabihf+portable",
 ]
+PORTABLE = '--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
 
 # Instructions whose latency may depend on their operands: integer division,
 # and floating-point arithmetic, whose subnormal operands take a slow path.
@@ -112,7 +118,7 @@ PANICS = re.compile(r".*(panic|_fail(ed)?$|handle_alloc_error|capacity_overflow|
 # ctgrind's to find.
 PLANTED = {
     "rind::low::vartime_planted::planted_division": TARGETS,
-    "rind::low::vartime_planted::planted_wide_division": TARGETS[:2],
+    "rind::low::vartime_planted::planted_wide_division": [t for t in TARGETS if not t.startswith("armv7")],
     "rind::low::vartime_planted::planted_float": TARGETS,
 }
 
@@ -146,25 +152,32 @@ def run(cmd, **kw):
 
 def build(targets):
     """Each target's rlibs: rind's, then every other crate's it links."""
-    cmd = ["cargo", "build", "-p", "rind", "--lib", "--release"]
-    cmd += ["--target-dir", "target/ct-vartime", "--message-format=json-render-diagnostics"]
-    for target in targets:
-        cmd += ["--target", target]
-    flags = os.environ.get("RUSTFLAGS", "")
-    env = dict(os.environ, RUSTFLAGS=(flags + " --cfg rind_vartime_planted").strip())
     libs = {target: ([], []) for target in targets}
-    for line in run(cmd, env=env).splitlines():
-        js = json.loads(line)
-        if js.get("reason") != "compiler-artifact":
-            continue
-        for path in js["filenames"]:
-            for target in targets:
-                if path.endswith(".rlib") and "/{}/".format(target) in path:
-                    libs[target][js["target"]["name"] != "rind"].append(path)
+    # Each backend's flags apply to the whole build, so each gets its own.
+    for backend in sorted({t.partition("+")[2] for t in targets}):
+        cmd = ["cargo", "build", "-p", "rind", "--lib", "--release"]
+        cmd += ["--target-dir", "target/ct-vartime/" + (backend or "native")]
+        cmd += ["--message-format=json-render-diagnostics"]
+        triples = [t.partition("+")[0] for t in targets if t.partition("+")[2] == backend]
+        for triple in triples:
+            cmd += ["--target", triple]
+        flags = [os.environ.get("RUSTFLAGS", ""), "--cfg rind_vartime_planted"]
+        flags += [PORTABLE] if backend else []
+        env = dict(os.environ, RUSTFLAGS=" ".join(flags).strip())
+        for line in run(cmd, env=env).splitlines():
+            js = json.loads(line)
+            if js.get("reason") != "compiler-artifact":
+                continue
+            for path in js["filenames"]:
+                for triple in triples:
+                    if path.endswith(".rlib") and "/{}/".format(triple) in path:
+                        target = triple + ("+" + backend if backend else "")
+                        libs[target][js["target"]["name"] != "rind"].append(path)
     for target in targets:
         if len(libs[target][0]) != 1:
             sys.exit("ct-vartime: no rind rlib for {}".format(target))
-        libdir = run(["rustc", "--print", "target-libdir", "--target", target]).strip()
+        triple = target.partition("+")[0]
+        libdir = run(["rustc", "--print", "target-libdir", "--target", triple]).strip()
         libs[target][1].extend(
             os.path.join(libdir, f) for f in sorted(os.listdir(libdir)) if f.endswith(".rlib")
         )
