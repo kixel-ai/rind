@@ -34,8 +34,10 @@ RustCrypto crates at opt-level 3:
 - Moved: ECDSA, ECDH, and P-384 and P-521 key generation; X25519; RSA sign,
   verify, OAEP, and key generation; AES-GCM, CBC, CTR, and KW; and in
   node:crypto the hashes (so `Hmac` too), HKDF, PBKDF2, and AES-CBC and CTR
-  streams. Asymmetric operations get 6x to 35x faster and RSA private-key
-  operations about 3x. AES, where per-call overhead dominates, is level on
+  streams. ECDSA and ECDH get 6x to 35x faster, RSA public-key operations
+  8x to 12x, RSA private-key operations about 3x, and X25519 2x to 3x.
+  Against opt-level 3, ECDSA and ECDH are still 4x to 30x faster. AES,
+  where per-call overhead dominates, is level on
   small buffers (0.9x to 1.2x, within the run's noise) and up to 2x faster
   on 16 KiB ones.
 - Deno's WPT WebCryptoAPI run passes 1,044 more cases (truncated AES-GCM tags
