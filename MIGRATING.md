@@ -347,8 +347,8 @@ panics on a CPU missing a feature it requires, so every adapter function
 that returns a provider or ticketer refuses one with the adapter's own
 `MissingFeature` instead, which displays rind's message. rind-ring, whose
 signatures are ring's, and rind-rcgen's `KeyPair`, whose errors are rcgen's,
-cannot. Call rind-ring's `cpu::check()`, or `rind::cpu::check()` for
-rind-rcgen, before using them.
+cannot. Call rind-ring's `cpu::check()`, or rind-rcgen's `check()`, which
+returns its own `MissingFeature`, before using them.
 
 ### rind-ring
 
@@ -400,6 +400,8 @@ those algorithms only with its `aws_lc_rs` feature.
 | `KeyPair::from_der_and_sign_algo`, `from_pem`, `TryFrom` | none; convert the key to PKCS#8 and pass its algorithm |
 | `serialize_der()`, `serialized_der()`, `PrivatePkcs8KeyDer::from(&key)` | `to_pkcs8()`, wiped on drop |
 | `Error::RingKeyRejected`, `RingUnspecified` | the same variants, with rind's reason for a refused key |
+| a serial number hashed from the public key, without `serial_number` set | `params.serial_number = Some(rind_rcgen::serial_number())`, random in the same 20-byte shape |
+| none | `check()`, at startup, returns `MissingFeature` naming the CPU feature |
 
 ### rind-dimpl, rind-object-store, rind-jsonwebtoken, and rind-instant-acme
 
@@ -495,7 +497,7 @@ install ring's if nothing is installed first.
 
 | Crate | What ties it | On rind |
 |---|---|---|
-| rcgen 0.14 | default `ring`, or `aws_lc_rs`, gates `KeyPair` | **rind-rcgen**: ECDSA P-256 and P-384, Ed25519, and loaded RSA keys. Without rcgen's `crypto` feature, set the serial number and `key_identifier_method` yourself, or the subject key identifier is empty |
+| rcgen 0.14 | default `ring`, or `aws_lc_rs`, gates `KeyPair` | **rind-rcgen**: ECDSA P-256 and P-384, Ed25519, and loaded RSA keys. Without rcgen's `crypto` feature, set the serial number with `rind_rcgen::serial_number()`, and `key_identifier_method` yourself or the subject key identifier is empty |
 | instant-acme | 0.8 calls aws-lc-rs or ring; the unreleased 0.9 takes a `CryptoProvider` | **rind-instant-acme** on 0.9. `Order::finalize` needs ring or aws-lc-rs; call `finalize_csr` with a CSR from rcgen on rind-rcgen |
 | rustls-acme 0.15, tokio-rustls-acme 0.9 | account keys and CSRs call ring or aws-lc-rs | Unsupported: use instant-acme on rind-instant-acme |
 | x509-parser 0.18 | `verify` is ring, `verify-aws` aws-lc-rs | Unsupported: verify `tbs_certificate` with `rind::signature` instead |

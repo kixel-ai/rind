@@ -8,26 +8,29 @@
 //! rcgen then needs each certificate's serial number set explicitly.
 //!
 //! ```rust
-//! let key = rind_rcgen::KeyPair::generate(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Refuses a CPU missing a feature rind requires.
+//! rind_rcgen::check()?;
 //!
-//! let mut serial = [0u8; 16];
-//! rind::rand::fill(&mut serial).unwrap();
+//! let key = rind_rcgen::KeyPair::generate(&rcgen::PKCS_ECDSA_P256_SHA256)?;
 //!
-//! let mut params = rcgen::CertificateParams::new(["localhost".to_string()]).unwrap();
-//! params.serial_number = Some(rcgen::SerialNumber::from_slice(&serial));
+//! let mut params = rcgen::CertificateParams::new(["localhost".to_string()])?;
+//! params.serial_number = Some(rind_rcgen::serial_number());
 //!
-//! let cert = params.self_signed(&key).unwrap();
+//! let cert = params.self_signed(&key)?;
 //! let key = key.to_pkcs8();
+//! # Ok(())
+//! # }
 //! ```
 //!
-//! rind panics on a CPU missing a feature it requires, so call
-//! [`rind::cpu::check`] before using a [`KeyPair`].
+//! rind panics on a CPU missing a feature it requires, so call [`check`]
+//! before using a [`KeyPair`].
 
 use core::fmt;
 
 use rcgen::{
     Error, PKCS_ECDSA_P256_SHA256, PKCS_ECDSA_P384_SHA384, PKCS_ED25519, PKCS_RSA_SHA256,
-    PKCS_RSA_SHA384, PKCS_RSA_SHA512, SignatureAlgorithm,
+    PKCS_RSA_SHA384, PKCS_RSA_SHA512, SerialNumber, SignatureAlgorithm,
 };
 use rind::signature::{
     EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, PublicKey, RsaKeyPair,
@@ -35,6 +38,35 @@ use rind::signature::{
 };
 use rustls_pki_types::PrivatePkcs8KeyDer;
 use zeroize::Zeroizing;
+
+/// A CPU feature rind requires that this CPU lacks.
+#[derive(Debug)]
+pub struct MissingFeature(rind::cpu::MissingFeature);
+
+impl fmt::Display for MissingFeature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for MissingFeature {}
+
+/// Returns the CPU feature rind requires that this CPU lacks, if any.
+pub fn check() -> Result<(), MissingFeature> {
+    rind::cpu::check().map_err(MissingFeature)
+}
+
+/// Returns a random serial number for a certificate.
+///
+/// It has rcgen's shape: 20 bytes with the top bit clear, so it encodes as a
+/// positive integer of at most 20 octets, as RFC 5280 requires.
+pub fn serial_number() -> SerialNumber {
+    let mut serial = [0u8; 20];
+    // aws-lc-rs aborts when its random source fails, so this panics likewise.
+    rind::rand::fill(&mut serial).expect("the system random source failed");
+    serial[0] &= 0x7f;
+    SerialNumber::from_slice(&serial)
+}
 
 /// A key pair that signs rcgen certificates and requests with one algorithm.
 pub struct KeyPair {
