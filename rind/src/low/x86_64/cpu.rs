@@ -545,6 +545,44 @@ mod tests {
         std::env::var_os(format!("RIND_CPU_DISABLE_{}", name.replace('.', ""))).is_some()
     }
 
+    // Each feature has a bit of its own, so no check can pass for one
+    // feature because the CPU has another. A CPU with every feature cannot
+    // show that by itself.
+    #[test]
+    fn features_have_distinct_bits() {
+        let bits = [
+            AES,
+            VAES,
+            PCLMULQDQ,
+            VPCLMULQDQ,
+            BMI2,
+            ADX,
+            POPCNT,
+            SSSE3,
+            AVX,
+            AVX2,
+            AVX512F,
+            AVX512BW,
+            AVX512VL,
+            AVX512VBMI,
+            AVX512VBMI2,
+            SHA,
+            SSE41,
+            MOVBE,
+            AVX512DQ,
+            AVX512IFMA,
+            BMI1,
+            SHA512,
+            INTEL,
+            DETECTED,
+        ];
+        let all = bits.iter().fold(0, |all, bit| {
+            assert!(bit.is_power_of_two());
+            all | bit
+        });
+        assert_eq!(all.count_ones() as usize, bits.len());
+    }
+
     // Each check names the features its kernels need, which `cpuid` reports
     // independently of the bits `detect` packs them into.
     #[test]
