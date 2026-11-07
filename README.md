@@ -19,8 +19,10 @@
 - **As fast as aws-lc-rs and ring.** rind matches or beats both on nearly
   every operation TLS and QUIC run, from the handshake to each packet's
   AEAD. Where another library is ahead, as ring and aws-lc-rs are at
-  RSA-2048 signing on x86_64, [Known gaps][gaps] says so, with the quest that
-  closes the gap or the reason it stays.
+  RSA-2048 signing on x86_64, and aws-lc-rs is at AES-GCM and short messages
+  on Apple silicon, where rind alone sets DIT around each call,
+  [Known gaps][gaps] says so, with the quest that closes the gap or the
+  reason it stays.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/moq-dev/rind/main/benchmarks/headline-dark.svg">

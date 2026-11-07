@@ -1,15 +1,17 @@
-# [S] The bench report measures Apple M4 and a quiet Arrow Lake
+# [XS] The bench report has a quiet Arrow Lake run and kixtop's build cost
 
 ## Goal
 
-`BENCHMARKS.md` has a `kixtop` (Apple M4, macOS) column, collected natively, and a fresh, quiet `desktop` (Arrow Lake) run, before the launch post. Every gap either opens a speed quest or gets a recorded reason in `benchmarks/gaps.toml`.
+`BENCHMARKS.md`'s `desktop` (Arrow Lake) column comes from a fresh run that `admin/bench-report` doesn't flag as noisy, and `kixtop` (Apple M4) has a build-cost table, before the launch post. Every gap either opens a speed quest or gets a recorded reason in `benchmarks/gaps.toml`.
 
 ## Plan
 
-Decided with the maintainer on 2026-11-07: plan in m1 the optimizations only the maintainer's hardware can measure. GitHub's runners cover Zen 3/4/5, Intel server cores, Neoverse N2, and a virtual M1, but not real Apple silicon or Arrow Lake. The maintainer opened `desktop`, `nixos`, and `kixtop` to agents. This moves "add `kixtop`" out of the [end-of-m2 refresh](/quest/m3/bench-report-refresh.md), whose other settled choices (libraries, hosts, the ✓ rule, the triage rule) apply here unchanged.
+What remains of adding `kixtop` to the report, which [moq-dev/rind#435](https://github.com/moq-dev/rind/pull/435) did. The [end-of-m2 refresh](/quest/m3/bench-report-refresh.md)'s settled choices (libraries, hosts, the ✓ rule, the triage rule) apply here unchanged.
 
-- `kixtop` is the maintainer's own MacBook (Apple M4, FEAT_DIT, SHA3, SHA512), so expect background load. Hold it with `quest gate --host kixtop` as `admin/bench-report` does, prefer a quiet window, and rerun noisy rows rather than recording noise.
-- First macOS collection: fix what `admin/bench-report`'s macOS path (#399) hits there (rustup, Homebrew OpenSSL, `top`, `admin/build-cost`), and accept its ssh host key first.
-- Re-collect `desktop` quietly. The `rustls-bulk/aes128-gcm` and `xchacha20poly1305/1350B` gaps there are recorded as noise awaiting a recheck, so drop or triage them.
-- Recheck `benchmarks/verified.toml` against `kixtop`'s CPU features: a ✓ that lands on no square, or a dispatch the table didn't foresee, is a bug in the table.
-- A gap becomes a speed quest when the operation is common or the gap is large, and otherwise gets a recorded reason. Plan new quests with `/quest-plan` as follow-ups in the PR.
+- Re-collect `desktop` with `admin/bench-report collect --host desktop`. The `rustls-bulk/aes128-gcm` and `xchacha20poly1305/1350B` gaps there are recorded as noise awaiting a recheck, so drop or triage them.
+- Re-collect `kixtop` too if its run gets a build cost, since `collect` measures both together; rerun noisy rows rather than recording noise.
+- On 2026-11-07, `collect` refused `desktop` three times: 16.8, 4.7, and 5.3 of its 24 CPUs were busy, against a limit of 2.4, from other sessions' builds outside any gate. One attempt waited an hour for its host hold: the `quest` those sessions run predates [moq-dev/quest#526](https://github.com/moq-dev/quest/pull/526), so their gated commands were admitted past it. `kixtop` measured quietly on the second of two runs, but both runs' build costs were refused, at 11.6 and 6.6 of its 10 CPUs busy.
+
+## Waiting
+
+- Maintainer: a quiet window on `desktop`, and on `kixtop` for its build cost: pause the sessions building there, and update the `quest` they run to [moq-dev/quest@99eb7f25](https://github.com/moq-dev/quest/commit/99eb7f256e7395b293f5f3246b01dd0ade760b8f) or later, so their gates honor `admin/bench-report`'s host hold. An agent can't pause the maintainer's own sessions or change their tools. Check: `quest gate --help` on each host lists `--host`, and the hosts are quiet when the maintainer says so.
