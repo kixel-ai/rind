@@ -12,11 +12,11 @@
 # calls, and the function pointers in vtables, through to code the compiler
 # generated. It fails if a function it reaches holds an instruction in
 # VARTIME or calls a routine in HELPERS, unless `admin/ct-vartime.toml`
-# lists that function with why its operands are public, or if an entry there
-# matches nothing.
+# lists exactly what that function holds on that target, with why its
+# operands are public, or if an entry there does not match what is found.
 #
 # All of rind counts as a secret path, so no entry point needs marking, and
-# a function the list names is checked whole. It stops at the panic routines
+# a new instruction in a function the list names still fails. It stops at the panic routines
 # in PANICS, which run only once a check has failed. It cannot see code that
 # only rind's callers compile, such as a generic function at a type rind
 # never instantiates itself, nor the C library's memcpy and memset.
@@ -70,7 +70,10 @@ VARTIME = {
         r"|v?(add|sub|mul|div|sqrt|min|max|hadd|hsub|addsub|dp|rcp|rsqrt|round)[sp][sdh]"
         r"|vfn?m(add|sub|addsub|subadd)\d*[sp][sdh]|v(rcp|rsqrt)(14|28)[sp][sdh]"
         r"|v(scalef|getexp|getmant|reduce|rndscale|range|fixupimm)[sp][sdh]|v?cvt\w+"
-        r"|fi?(add|sub|subr|mul|div|divr)p?|fsqrt|fprem1?|fscale|f2xm1|fyl2xp?1"
+        r"|v?u?comis[sdh]|v?cmp\w*[ps][sdh]"
+        # Every x87 mnemonic begins with `f`; all but these control and
+        # state ones take floating-point operands.
+        r"|f(?!(n?stcw|ldcw|n?stsw|n?clex|n?init|n?save|rstor|n?stenv|ldenv|x(save|rstor)(64)?|wait|emms|freep?|decstp|incstp|nop)$)\w+"
     ),
     # Every A64 floating-point mnemonic begins with `f`; of them, only FCSEL
     # is data-independent-time, and FMOV moves bits.
@@ -88,8 +91,9 @@ VARTIME = {
 # before every scan.
 SAMPLES = {
     "x86_64": (
-        "div idiv divsd vsqrtpd haddps addsubps vfmadd231pd vfmaddps vrcp14ps cvtsi2sd fdivp",
-        "mulx adcx vpmuludq vpaddd movaps xorps vpclmulqdq aesenc shrx",
+        "div idiv divsd vsqrtpd haddps addsubps vfmadd231pd vfmaddps vrcp14ps cvtsi2sd fdivp"
+        " ucomisd vcmpltpd cmpss fsin fld fcomip",
+        "mulx adcx vpmuludq vpaddd movaps xorps vpclmulqdq aesenc shrx cmp cmpxchg fnstcw fxsave64",
     ),
     "aarch64": (
         "udiv sdiv fdiv fsqrt faddp fmul fmla fcvtzs scvtf",
@@ -122,13 +126,17 @@ PLANTED = {
     "rind::low::vartime_planted::planted_float": TARGETS,
 }
 
-# x86 prefixes, which llvm-objdump prints as their own word.
-PREFIXES = {"lock", "rep", "repe", "repz", "repne", "repnz", "notrack", "bnd", "data16"}
+# x86 prefixes, which llvm-objdump prints as their own word before the
+# mnemonic, as it does encoding markers such as `{evex}`.
+PREFIXES = {
+    "lock", "rep", "repe", "repz", "repne", "repnz", "notrack", "bnd", "data16", "data32",
+    "addr32", "xacquire", "xrelease", "cs", "ds", "es", "fs", "gs", "ss", "rex", "rex64",
+}
 
 MEMBER = re.compile(r"^(.*)\((.+)\):\s+file format")
 SECTION = re.compile(r"^Disassembly of section (.+):$")
 LABEL = re.compile(r"^([0-9a-f]+) <(.+)>:$")
-INSN = re.compile(r"^\s+([0-9a-f]+):\s+(\S+)\s*(\S*)")
+INSN = re.compile(r"^\s+([0-9a-f]+):\s+(.*)$")
 RELOCS = re.compile(r"^RELOCATION RECORDS FOR \[(.+)\]:$")
 RELOC = re.compile(r"^([0-9a-f]+) \S+\s+(\S+?)(?:[+-]0x[0-9a-f]+)?$")
 SYMBOL = re.compile(r"^[0-9a-f]+ (.{7}) (\S+)\t[0-9a-f]+ (?:\.hidden |\.protected |\.internal )?(.+)$")
@@ -238,7 +246,10 @@ class Objects:
             elif m := LABEL.match(line):
                 self.labels[section].append((int(m[1], 16), m[2]))
             elif m := INSN.match(line):
-                mnemonic = m[3] if m[2] in PREFIXES and m[3] else m[2]
+                words = m[2].split()
+                while len(words) > 1 and (words[0] in PREFIXES or words[0].startswith("{")):
+                    words.pop(0)
+                mnemonic = words[0] if words else ""
                 self.insns[section].append((int(m[1], 16), mnemonic))
 
     def name(self, name):
@@ -326,7 +337,10 @@ def main():
     with open("admin/ct-vartime.toml", "rb") as f:
         public = tomllib.load(f)["public"]
     for entry in public:
-        if not entry.get("why") or set(entry["targets"]) - set(TARGETS):
+        holds = entry.get("holds")
+        if not entry.get("function") or not entry.get("why") or not isinstance(holds, dict):
+            sys.exit("ct-vartime: bad entry for {}".format(entry.get("function")))
+        if not holds or set(holds) - set(TARGETS):
             sys.exit("ct-vartime: bad entry for {}".format(entry["function"]))
 
     for arch, (refused, allowed) in SAMPLES.items():
@@ -346,7 +360,7 @@ def main():
         findings, paths, reached = scan(objects, roots, arch)
         print("{}: reached {} sections".format(target, reached))
 
-        listed = {e["function"]: e for e in public if target in e["targets"]}
+        listed = {e["function"]: e["holds"][target] for e in public if target in e["holds"]}
         for function, where in PLANTED.items():
             if target in where and function not in findings:
                 print("FAIL {}: found nothing planted".format(function))
@@ -354,8 +368,12 @@ def main():
         for function, counts in sorted(findings.items()):
             if function in PLANTED:
                 print("ok   planted {}: {}".format(function, describe(counts)))
-            elif function in listed:
+            elif listed.get(function) == describe(counts):
                 print("ok   public {}: {}".format(function, describe(counts)))
+            elif function in listed:
+                print("FAIL {}: {}, but listed public holding {}".format(
+                    function, describe(counts), listed[function]))
+                failed = True
             else:
                 print("FAIL {}: {}".format(function, describe(counts)))
                 for caller in paths[function][:12]:

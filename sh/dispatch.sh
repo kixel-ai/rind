@@ -60,10 +60,10 @@ declare -A scope=(
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
     # rind's aarch64, armv7, and portable backends, which the host's own
     # build skips.
-    [cross]='^(rind/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$)'
+    [cross]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$)'
     # Variable-time instructions in rind's release builds, which a change to
     # its code, dependencies, toolchain, or the scan itself can bring.
-    [vartime]='^(rind/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$|admin/ct-vartime)'
+    [vartime]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$|admin/ct-vartime)'
     # s2n-bignum's proofs assume separate input and output, so the kernels
     # rind runs in place are walked, after planting faults in each.
     [inplace]='^(rind/src/low/|admin/parse-asm/)'
