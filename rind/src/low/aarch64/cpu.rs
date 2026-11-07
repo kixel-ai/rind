@@ -492,13 +492,18 @@ mod tests {
         }
         // SAFETY: this core has DIT. Cleared, so only the guard can set it.
         unsafe { dit::write(0) };
-        let held = crate::cpu::hold_dit();
+        let first = crate::cpu::hold_dit();
         // A call under the guard, and a nested guard, leave DIT to it.
         drop(crate::low::Entry::new_secret());
         drop(crate::cpu::hold_dit());
         // SAFETY: as above.
         assert_eq!(unsafe { dit::read() }, 1);
-        drop(held);
+        // Guards may drop out of order: DIT waits for the last.
+        let second = crate::cpu::hold_dit();
+        drop(first);
+        // SAFETY: as above.
+        assert_eq!(unsafe { dit::read() }, 1);
+        drop(second);
         // SAFETY: as above.
         assert_eq!(unsafe { dit::read() }, 0);
     }

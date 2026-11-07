@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::cell::Cell;
 use core::fmt;
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -50,8 +51,9 @@ pub fn has_aes_hardware() -> bool {
 /// does nothing.
 ///
 /// Everything the thread runs while a guard is held runs with DIT, rind's
-/// code or not. Dropping the guard turns DIT off only if it turned it on, so
-/// guards nest.
+/// code or not. DIT stays on until the thread's last guard drops, in
+/// whatever order they drop, and then turns off only if the first guard
+/// found it off.
 ///
 /// ```
 /// use rind::aead::{AES_128_GCM, Key, Nonce};
@@ -76,25 +78,40 @@ pub fn has_aes_hardware() -> bool {
 /// std::thread::spawn(move || drop(dit));
 /// ```
 pub fn hold_dit() -> DitGuard {
+    let (guards, cpu_state) = DIT_GUARDS.get();
+    let cpu_state = if guards == 0 {
+        super::enter_cpu_state()
+    } else {
+        cpu_state
+    };
+    DIT_GUARDS.set((guards + 1, cpu_state));
     DitGuard {
-        cpu_state: super::enter_cpu_state(),
         _thread: PhantomData,
     }
+}
+
+std::thread_local! {
+    // This thread's live guards, and what the first one's `enter_cpu_state`
+    // returned, for the last one to drop to restore.
+    static DIT_GUARDS: Cell<(usize, u32)> = const { Cell::new((0, 0)) };
 }
 
 /// Holds data-independent timing on for this thread until dropped; see [`hold_dit`].
 #[must_use = "DIT turns back off when the guard drops"]
 #[derive(Debug)]
 pub struct DitGuard {
-    cpu_state: u32,
-    // Neither `Send` nor `Sync`: dropping it on another thread would turn off
-    // that thread's DIT.
+    // Neither `Send` nor `Sync`: dropping it on another thread would count
+    // against that thread's guards.
     _thread: PhantomData<*const ()>,
 }
 
 impl Drop for DitGuard {
     fn drop(&mut self) {
-        super::leave_cpu_state(self.cpu_state);
+        let (guards, cpu_state) = DIT_GUARDS.get();
+        DIT_GUARDS.set((guards - 1, cpu_state));
+        if guards == 1 {
+            super::leave_cpu_state(cpu_state);
+        }
     }
 }
 
