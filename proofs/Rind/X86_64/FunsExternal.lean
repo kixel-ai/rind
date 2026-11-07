@@ -90,6 +90,15 @@ opaque low.x86_64.vpaes_x86_64.VpaesKey.new
 opaque low.x86_64.vpaes_x86_64.VpaesKey.encrypt_block
   : low.x86_64.vpaes_x86_64.VpaesKey → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)
 
+/-! AES-192's key expansion and block cipher. Vale has no AES-192 routine, so
+no proof reaches them. -/
+
+opaque low.x86_64.aes.aes192_expand
+  : Std.Array Std.U8 24#usize → Result (Std.Array core.core_arch.x86.__m128i 13#usize)
+
+opaque low.x86_64.aes.aes_block {N : Std.Usize}
+  : Std.Array core.core_arch.x86.__m128i N → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)
+
 opaque low.x86_64.aes_nohw.NohwKey.new : Slice Std.U8 → Result low.x86_64.aes_nohw.NohwKey
 
 opaque low.x86_64.aes_nohw.NohwKey.encrypt_block

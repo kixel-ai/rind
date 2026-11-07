@@ -222,7 +222,8 @@ from the AEAD API's `Key` to HACL*'s Vale AES-GCM routines, in
   call succeeds exactly when Vale's `gcm_decrypt_LE` accepts the tag, leaving
   its plaintext in place, and otherwise fails, leaving zeros.
 
-Longer AAD or messages run the by-8 code, which no proof covers. The key
+Longer AAD or messages run the by-8 code, which no proof covers, as do
+AES-192 keys, for which Vale has no routine. The key
 setup is rind's: its AES-NI key expansion and block cipher, and its
 PCLMULQDQ GHASH key powers, whose Karatsuba product and reduction
 `Rind/Gf128.lean` proves to be Vale's `gf128_mul_rev` of the shifted keys

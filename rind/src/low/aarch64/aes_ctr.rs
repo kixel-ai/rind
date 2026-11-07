@@ -2,7 +2,7 @@
 
 use core::arch::aarch64::*;
 
-use super::aes::{_aes128_8_blocks, _aes256_8_blocks, HwKey};
+use super::aes::{_aes_8_blocks, _aes128_8_blocks, _aes256_8_blocks, HwKey};
 use crate::low::AesKey;
 use crate::low::generic::ctr;
 
@@ -49,6 +49,11 @@ fn _apply_8(key: &HwKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8; 128]) 
     );
     let (b0, b1, b2, b3, b4, b5, b6, b7) = match key {
         HwKey::Aes128(a128) => _aes128_8_blocks(a128.round_keys(), b0, b1, b2, b3, b4, b5, b6, b7),
+        HwKey::Aes192(a192) => {
+            let [b0, b1, b2, b3, b4, b5, b6, b7] =
+                _aes_8_blocks(a192.round_keys(), [b0, b1, b2, b3, b4, b5, b6, b7]);
+            (b0, b1, b2, b3, b4, b5, b6, b7)
+        }
         HwKey::Aes256(a256) => _aes256_8_blocks(a256.round_keys(), b0, b1, b2, b3, b4, b5, b6, b7),
     };
 

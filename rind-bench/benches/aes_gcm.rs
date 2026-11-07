@@ -382,11 +382,85 @@ fn aes256_gcm_open(c: &mut Criterion) {
     );
 }
 
+// AES-192-GCM, which only aws-lc-rs of the other libraries offers, both
+// ways: WebCrypto and pyca take 192-bit keys.
+fn aes192_gcm(c: &mut Criterion) {
+    let key = [0u8; 24];
+    let nonce = [0u8; 12];
+    let aws_key = aws_lc_rs::aead::LessSafeKey::new(
+        aws_lc_rs::aead::UnboundKey::new(&aws_lc_rs::aead::AES_192_GCM, &key).unwrap(),
+    );
+    let rind_key = rind::aead::Key::new(&rind::aead::AES_192_GCM, &key).unwrap();
+
+    let mut group = c.benchmark_group("aes192-gcm");
+    group.bench_function(BenchmarkId::new("aws-lc-rs", "key"), |b| {
+        b.iter(|| {
+            aws_lc_rs::aead::UnboundKey::new(&aws_lc_rs::aead::AES_192_GCM, black_box(&key))
+                .unwrap()
+        })
+    });
+    group.bench_function(BenchmarkId::new("rind", "key"), |b| {
+        b.iter(|| rind::aead::Key::new(&rind::aead::AES_192_GCM, black_box(&key)).unwrap())
+    });
+    for (size, size_name, aad) in rows() {
+        let mut buf = vec![0u8; size];
+        group.throughput(Throughput::Bytes(size as u64));
+        group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
+            b.iter(|| test_aws_aes_gcm(&aws_key, &nonce, aad, &mut buf));
+        });
+        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+            b.iter(|| test_rind_aes_gcm(&rind_key, &nonce, aad, &mut buf));
+        });
+    }
+    drop(group);
+
+    let mut group = c.benchmark_group("aes192-gcm-open");
+    for (size, size_name, aad) in rows() {
+        // As in `open`, the ciphertext is copied into a buffer whole pages
+        // after it.
+        let stride = size.next_multiple_of(4096);
+        let mut buf = vec![0u8; stride + size];
+        let (ct, pt) = buf.split_at_mut(stride);
+        let ct = &mut ct[..size];
+        let tag = rind_key
+            .seal_in_place_separate_tag(rind::aead::Nonce::assume_unique_for_key(nonce), aad, ct)
+            .unwrap();
+        group.throughput(Throughput::Bytes(size as u64));
+        group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
+            b.iter(|| {
+                pt.copy_from_slice(ct);
+                aws_key
+                    .open_in_place_separate_tag(
+                        aws_lc_rs::aead::Nonce::assume_unique_for_key(nonce),
+                        aws_lc_rs::aead::Aad::from(aad),
+                        tag.as_ref(),
+                        pt,
+                    )
+                    .unwrap();
+            });
+        });
+        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+            b.iter(|| {
+                pt.copy_from_slice(ct);
+                rind_key
+                    .open_in_place_separate_tag(
+                        rind::aead::Nonce::assume_unique_for_key(nonce),
+                        aad,
+                        tag,
+                        pt,
+                    )
+                    .unwrap();
+            });
+        });
+    }
+}
+
 criterion_group!(
     benches,
     aes128_gcm,
     aes256_gcm,
     aes128_gcm_open,
-    aes256_gcm_open
+    aes256_gcm_open,
+    aes192_gcm
 );
 criterion_main!(benches);

@@ -68,6 +68,7 @@ theorem expand_key256_spec (h : RunsValeAesGcm) (key : Slice U8) (hk : key.lengt
 /-- The AES-NI key holds Vale's round keys of the AES key `kw` for `alg`. -/
 def HwKeyIs (alg : Algorithm) (kw : List (BitVec 32)) : low.x86_64.aes.HwKey → Prop
   | .Aes128 k => alg = .AES_128 ∧ k.round_keys.val = keyToRoundKeys .AES_128 kw
+  | .Aes192 _ => False
   | .Aes256 k => alg = .AES_256 ∧ k.round_keys.val = keyToRoundKeys .AES_256 kw
 
 /-- An AES-GCM key on Vale's tier, for the AES key `kw` and `alg`. -/
@@ -87,6 +88,7 @@ theorem encrypt_zero (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (B
     obtain ⟨rfl, hrk⟩ := h
     simp only [low.x86_64.aes.AesKey.encrypt_block, low.x86_64.aes.HwKey.encrypt_block,
       low.x86_64.aes.AesKey128.encrypt_block, aes128_block_spec, load_zero, hrk, aesEncrypt]
+  | Aes192 k => exact h.elim
   | Aes256 k =>
     obtain ⟨rfl, hrk⟩ := h
     simp only [low.x86_64.aes.AesKey.encrypt_block, low.x86_64.aes.HwKey.encrypt_block,
@@ -144,7 +146,10 @@ theorem vale_some (enc : Bool) (alg : Algorithm) (kw : List (BitVec 32)) (key : 
   simp only at hkey hgh
   subst hkey hgh
   unfold low.x86_64.aes_gcm.vale
-  cases enc <;> step*
+  cases hk with
+  | Aes128 k => cases enc <;> step*
+  | Aes192 k => exact hkk.2.1.elim
+  | Aes256 k => cases enc <;> step*
 
 /-- `AesGcm::encrypt` on Vale's tier, for AAD and messages under 2^32 bytes:
 the ciphertext in place and the tag are AES-GCM's. -/

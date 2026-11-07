@@ -20,7 +20,3 @@ Decided with the maintainer on 2026-11-04, in a planning interview.
 - Servo builds for desktop, Android, and OpenHarmony; check each target
   against rind's before proposing.
 - Posting is the maintainer's call; prepare the branch and text, then ask.
-
-## Required
-
-- [What WebCrypto adopters need](/quest/m2/adoption/webcrypto/README.md) - the AES modes, RSA-OAEP, and hashes the swap covers

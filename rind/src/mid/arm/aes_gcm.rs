@@ -14,8 +14,6 @@ use crate::low::{
 };
 
 /// An AES-GCM key.
-///
-/// AES-192 is not supported, as it is rarely used.
 // A process only ever builds one variant, so boxing would buy nothing.
 #[expect(clippy::large_enum_variant)]
 pub(crate) enum AesGcm {
@@ -25,8 +23,8 @@ pub(crate) enum AesGcm {
 }
 
 impl AesGcm {
-    /// Expands a 16- or 32-byte key, which the caller has checked, into an
-    /// AES-128-GCM or AES-256-GCM key.
+    /// Expands a 16-, 24-, or 32-byte key, which the caller has checked,
+    /// into an AES-128-GCM, AES-192-GCM, or AES-256-GCM key.
     pub(crate) fn new(key: &[u8]) -> Self {
         let _entry = Entry::new_secret();
         // Mark a copy: the caller's buffer may be shared, or a promoted constant.
@@ -40,7 +38,7 @@ impl AesGcm {
         }
     }
 
-    /// The AES key's length in bytes, 16 or 32.
+    /// The AES key's length in bytes, 16, 24, or 32.
     pub(crate) fn key_len(&self) -> usize {
         match self {
             Self::Portable(key) => key.key_len,
@@ -175,7 +173,8 @@ impl AesGcm {
     }
 }
 
-/// libcrux's portable AES-GCM, for CPUs without the crypto extension.
+/// libcrux's portable AES-GCM, for CPUs without the crypto extension, and
+/// [`Portable::composed`] for AES-192, which libcrux lacks.
 pub(crate) struct Portable {
     key: [u8; 32],
     key_len: usize,
@@ -198,6 +197,10 @@ impl Portable {
         cipher_inout: &mut [u8],
         tag_out: &mut [u8; 16],
     ) -> Result<(), Error> {
+        if self.key_len == 24 {
+            *tag_out = self.composed().tagged::<true>(nonce, aad, cipher_inout);
+            return Ok(());
+        }
         // libcrux reads and writes separate buffers.
         let plain = cipher_inout.to_vec();
         let result = match self.key_len {
@@ -222,6 +225,10 @@ impl Portable {
         cipher_inout: &mut [u8],
         tag: &[u8; 16],
     ) -> bool {
+        if self.key_len == 24 {
+            let want = self.composed().tagged::<false>(nonce, aad, cipher_inout);
+            return ct_equal(&want, tag);
+        }
         let cipher = cipher_inout.to_vec();
         match self.key_len {
             16 => PortableAesGcm128::decrypt(
@@ -506,7 +513,7 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for key_len in [16, 32] {
+        for key_len in [16, 24, 32] {
             let key = bytes(key_len, 1);
             let portable = Portable::new(&key);
             let hw = Hw::new(&key, token);
@@ -551,7 +558,7 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for key_len in [16, 32] {
+        for key_len in [16, 24, 32] {
             let raw = bytes(key_len, 1);
             let composed = Portable::new(&raw).composed();
             let hw = HaveCryptoExt::check().map(|token| Hw::new(&raw, token));
@@ -634,7 +641,7 @@ mod tests {
 
         let seed = ct_qemu::seed().to_le_bytes();
         let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
-        for key_len in [16, 32] {
+        for key_len in [16, 24, 32] {
             let key = bytes(key_len);
             let gcm = ct_qemu::traced(|| AesGcm::new(&key));
             assert!(matches!(gcm, AesGcm::Hw(_)), "the crypto extension");

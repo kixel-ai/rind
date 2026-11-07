@@ -12,7 +12,7 @@
 
 use crate::low;
 
-/// An expanded AES-128 or AES-256 encryption key, in vpaes's own format:
+/// An expanded AES-128, AES-192, or AES-256 encryption key, in vpaes's own format:
 /// aws-lc's `AES_KEY`.
 #[repr(C, align(16))]
 pub(crate) struct VpaesKey {
@@ -21,7 +21,7 @@ pub(crate) struct VpaesKey {
 }
 
 impl VpaesKey {
-    /// Expands a 16- or 32-byte key.
+    /// Expands a 16-, 24-, or 32-byte key.
     pub(crate) fn new(key: &[u8]) -> Self {
         let mut r = Self {
             rd_key: [0; 60],
@@ -39,10 +39,7 @@ impl VpaesKey {
     /// The key's length in bytes, from the `nbits / 32 + 5` rounds that
     /// `vpaes_set_encrypt_key` stores.
     pub(crate) fn key_len(&self) -> usize {
-        match self.rounds {
-            9 => 16,
-            _ => 32,
-        }
+        (self.rounds as usize - 5) * 4
     }
 
     /// Encrypts one block.
@@ -90,7 +87,7 @@ impl Drop for VpaesKey {
 
 impl low::generic::zeroise::Zeroable for VpaesKey {}
 
-/// An expanded AES-128 or AES-256 decryption key, in vpaes's own format:
+/// An expanded AES-128, AES-192, or AES-256 decryption key, in vpaes's own format:
 /// aws-lc's `AES_KEY`.
 #[repr(C, align(16))]
 pub(crate) struct VpaesDecKey {
@@ -99,7 +96,7 @@ pub(crate) struct VpaesDecKey {
 }
 
 impl VpaesDecKey {
-    /// Expands a 16- or 32-byte key.
+    /// Expands a 16-, 24-, or 32-byte key.
     pub(crate) fn new(key: &[u8]) -> Self {
         let mut r = Self {
             rd_key: [0; 60],
@@ -165,6 +162,7 @@ unsafe fn cbc(blocks: &mut [[u8; 16]], key: *const u8, iv: &[u8; 16], enc: i32) 
 fn key_bits(key: &[u8]) -> u32 {
     match key.len() {
         16 => 128,
+        24 => 192,
         32 => 256,
         _ => unreachable!("callers check the AES key length"),
     }

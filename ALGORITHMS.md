@@ -417,6 +417,21 @@ checks only whole tags, so without the extension, other IVs and truncated tags
 run the bitsliced block cipher rind copies from libcrux and a port of aws-lc's
 `gcm_nohw.c` in its 32-bit configuration, composed the same way.
 
+AES-192 takes each of these paths with 12 rounds, but for three sources with
+no AES-192: Vale's AES-GCM, so x86_64 runs the by-8 code where Vale would
+run; s2n-bignum's aarch64 AES-GCM kernels, so aarch64 runs AES-CTR and GHASH
+in turn past `short`'s lengths; and libcrux's bitsliced AES-GCM, so armv7
+without the crypto extension composes its block cipher with `gcm_nohw.c`.
+AES-NI and ARMv8 expand an AES-192 key six words per vector step, with the
+SubWord the other sizes take, measured 0.88-0.94x aws-lc-rs's AES-GCM key
+setup on Zen 3 and Neoverse N2; armv7's bitsliced path runs FIPS 197's
+word-by-word schedule. Against aws-lc-rs, AES-192-GCM measured 0.43-0.57x on
+Zen 3 with VAES and 0.44-1.03x without AVX2, as AES-128 did, and 0.46-0.61x
+on N2 up to 64 bytes, but 1.04-1.09x from 1200 bytes, and 1.35-1.68x on Apple
+M2 (0.97-1.55x on M1), where aws-lc stitches AES-CTR and GHASH for every
+key size.
+AES-192-CTR and CBC measured as AES-128 did on each.
+
 x86_64 CPUs with AVX2 run ChaCha20 on Graviola's AVX2 kernels from two
 blocks, and on HACL*'s verified rounds in general-purpose registers for one
 block, as QUIC header protection takes and as aws-lc runs its integer routine

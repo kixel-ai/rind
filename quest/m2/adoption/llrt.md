@@ -18,7 +18,3 @@ in a merged upstream PR.
   backend implements llrt's whole `CryptoProvider` trait on rind alone.
 - Benchmark llrt's crypto on its graviola and rind builds and put the numbers
   in the PR.
-
-## Required
-
-- [What WebCrypto adopters need](/quest/m2/adoption/webcrypto/README.md) - the operations llrt's provider trait needs that rind lacks

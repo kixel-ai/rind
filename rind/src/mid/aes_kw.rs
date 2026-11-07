@@ -265,10 +265,10 @@ fn xor_counter(block: &mut [u8; 16], t: u64) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::cipher::{AES_128, AES_256};
+    use crate::cipher::{AES_128, AES_192, AES_256};
 
-    // RFC 3394 section 4.1 and 4.6: the smallest and largest key under each
-    // KEK size, both ways.
+    // RFC 3394 sections 4.1, 4.2, 4.4, and 4.6: a key under each KEK size,
+    // the smallest and largest among them, both ways.
     #[test]
     fn rfc3394() {
         for (algorithm, kek, key, wrapped) in [
@@ -277,6 +277,18 @@ mod tests {
                 "000102030405060708090a0b0c0d0e0f",
                 "00112233445566778899aabbccddeeff",
                 "1fa68b0a8112b447aef34bd8fb5a7b829d3e862371d2cfe5",
+            ),
+            (
+                &AES_192,
+                "000102030405060708090a0b0c0d0e0f1011121314151617",
+                "00112233445566778899aabbccddeeff",
+                "96778b25ae6ca435f92b5b97c050aed2468ab8a17ad84e5d",
+            ),
+            (
+                &AES_192,
+                "000102030405060708090a0b0c0d0e0f1011121314151617",
+                "00112233445566778899aabbccddeeff0001020304050607",
+                "031d33264e15d33268f24ec260743edce1c6c7ddee725a936ba814915c6762d2",
             ),
             (
                 &AES_256,
@@ -299,12 +311,24 @@ mod tests {
         }
     }
 
-    // Wycheproof's KWP tests 15 and 185: a key that pads to a single block,
-    // which is encrypted on its own, and one that pads to two, which is
-    // wrapped.
+    // RFC 5649's examples, section 6, and Wycheproof's KWP tests 15 and 185:
+    // keys that pad to a single block, which is encrypted on its own, and
+    // keys that pad to more, which are wrapped.
     #[test]
     fn rfc5649() {
         for (algorithm, kek, key, wrapped) in [
+            (
+                &AES_192,
+                "5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a8",
+                "c37b7e6492584340bed12207808941155068f738",
+                "138bdeaa9b8fa7fc61f97742e72248ee5ae6ae5360d1ae6a5f54f373fa543b6a",
+            ),
+            (
+                &AES_192,
+                "5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a8",
+                "466f7250617369",
+                "afbeb0f07dfbf5419200f2ccb50bb24f",
+            ),
             (
                 &AES_128,
                 "1abf4b7fa2bb62a78f09ddab04625dca",
@@ -495,7 +519,7 @@ mod tests {
 
         let seed = ct_qemu::seed().to_le_bytes();
         let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
-        for algorithm in [&AES_128, &AES_256] {
+        for algorithm in [&AES_128, &AES_192, &AES_256] {
             let kek_bytes = bytes(algorithm.key_len);
             let kek = ct_qemu::traced(|| AesKek::new(algorithm, &kek_bytes).unwrap());
             assert!(
@@ -510,7 +534,7 @@ mod tests {
             ct_qemu::traced(|| kek.unwrap(&wrapped, &mut unwrapped)).unwrap();
 
             // one block, encrypted on its own, and several, wrapped
-            for len in [5, 31] {
+            for len in [5usize, 31] {
                 let mut wrapped = [0u8; 40];
                 let wrapped = &mut wrapped[..len.next_multiple_of(8) + 8];
                 ct_qemu::traced(|| kek.wrap_padded(&key[..len], wrapped)).unwrap();
