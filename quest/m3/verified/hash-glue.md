@@ -12,12 +12,11 @@ Planned with the maintainer on 2026-11-03 from the audit.
 
 - Prove `ct_compare_bytes` and `ct_compare_16` in HOL Light on each target: the result is zero exactly when the inputs are equal, and the routine runs in constant time.
 - Restate those proofs as axioms about the Rust wrappers, as `Rind/<Arch>/S2nBignum.lean` does. Then prove `ct_equal` from them in Lean, discharge `CtEqual`, and pin the axioms in `Rind/<Arch>/Axioms.lean`.
-- HKDF's `From<Okm>` impls for `aead::Key`, `aead::quic::HeaderProtectionKey`, and `hmac::Key` (`rind/src/high/hkdf.rs`) are unproven: prove each fills its key from `kdf.hkdf_fill`'s bytes. They need no HOL Light and can land first.
-- `Rind/X86_64/Sha512.lean` keeps its own SHA-512 padding and buffering lemmas (`sha512_pad_spec`, `sha512_split_tail_spec`, `sha512_complete_blocks_spec`). `Blockwise.lean`'s generic ones could replace them in the same PR, or the work can be dropped.
+- `Rind/X86_64/Sha512.lean` keeps its own SHA-512 padding and buffering lemmas (`sha512_pad_spec`, `sha512_split_tail_spec`, `sha512_complete_blocks_spec`). Replacing them with `Blockwise.lean`'s generic ones was dropped on [moq-dev/rind#476](https://github.com/moq-dev/rind/pull/476): the proofs hold, and only duplication would go.
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m4/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
+- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
 
 ## Related
 
