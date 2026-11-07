@@ -1,5 +1,5 @@
 //! Every symmetric key and keyed state's `Debug` names its algorithm and
-//! never shows its bytes.
+//! never shows its bytes, and neither does any other secret's.
 
 /// Formats `value`, whose secret bytes are all 0xff, failing if they show.
 fn show(value: &impl core::fmt::Debug) -> String {
@@ -10,12 +10,19 @@ fn show(value: &impl core::fmt::Debug) -> String {
 
 #[test]
 fn aead() {
-    use rind::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce, RandomizedNonceKey};
+    use rind::aead::{
+        AES_128_GCM, AES_192_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce, RandomizedNonceKey,
+    };
     for (algorithm, name) in [
         (&AES_128_GCM, "Aes128Gcm"),
+        (&AES_192_GCM, "Aes192Gcm"),
         (&AES_256_GCM, "Aes256Gcm"),
         (&CHACHA20_POLY1305, "ChaCha20Poly1305"),
     ] {
+        assert_eq!(
+            format!("{algorithm:?}"),
+            format!("Algorithm {{ id: {name} }}")
+        );
         let key = Key::new(algorithm, &[0xff; 32][..algorithm.key_len()]).unwrap();
         assert_eq!(show(&key), format!("Key {{ algorithm: {name}, .. }}"));
     }
@@ -96,4 +103,41 @@ fn hmac() {
 
     let secret = pbkdf2::Secret::new(&pbkdf2::PBKDF2_HMAC_SHA512, &[0xff; 8]);
     assert_eq!(show(&secret), "Secret { algorithm: Sha512, .. }");
+    assert_eq!(format!("{:?}", hmac::HMAC_SHA384), "Algorithm(Sha384)");
+}
+
+#[test]
+fn kem() {
+    use rind::kem::{DecapsulationKey, ML_KEM_768};
+    assert_eq!(format!("{ML_KEM_768:?}"), "MlKem768");
+    let key = DecapsulationKey::generate(&ML_KEM_768).unwrap();
+    assert_eq!(format!("{key:?}"), "DecapsulationKey { .. }");
+    let public = key.public_key();
+    let shown = format!("{:?}", public.as_ref());
+    assert_eq!(format!("{public:?}"), format!("EncapsulationKey({shown})"));
+    let (_, secret) = public.encapsulate().unwrap();
+    assert_eq!(format!("{secret:?}"), "SharedSecret(..)");
+}
+
+#[test]
+fn rsa() {
+    use rind::rsa::{DecryptingKey, OAEP_SHA256};
+    assert_eq!(format!("{OAEP_SHA256:?}"), "OaepAlgorithm(Sha256)");
+    let der = include_bytes!("../src/high/rsa/rsa2048.der");
+    let key = DecryptingKey::from_pkcs1(&OAEP_SHA256, der).unwrap();
+    assert_eq!(
+        format!("{key:?}"),
+        "DecryptingKey { algorithm: OaepAlgorithm(Sha256), .. }"
+    );
+    let public = key.public_key();
+    let bytes = format!("{:?}", public.as_ref());
+    assert_eq!(
+        format!("{public:?}"),
+        format!("EncryptingKey {{ algorithm: OaepAlgorithm(Sha256), bytes: {bytes} }}")
+    );
+    let ciphertext = public.encrypt(&[0xff; 4], b"").unwrap();
+    let bytes = format!("{:?}", ciphertext.as_ref());
+    assert_eq!(format!("{ciphertext:?}"), format!("Ciphertext({bytes})"));
+    let plaintext = key.decrypt(ciphertext.as_ref(), b"").unwrap();
+    assert_eq!(show(&plaintext), "Plaintext(..)");
 }

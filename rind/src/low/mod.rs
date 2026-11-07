@@ -82,12 +82,12 @@ pub(crate) use posint::{ModExp, PosInt, SecretPosInt};
 mod tests;
 
 // Declared outside `cfg_if!`, which cargo-mutants cannot see into.
-#[cfg(target_arch = "x86_64")]
-mod x86_64;
 #[cfg(target_arch = "aarch64")]
 mod aarch64;
 #[cfg(target_arch = "arm")]
 mod arm;
+#[cfg(target_arch = "x86_64")]
+mod x86_64;
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "x86_64")] {

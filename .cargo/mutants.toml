@@ -20,6 +20,8 @@ exclude_globs = [
 
 # Each surviving mutant no test can catch, with why.
 exclude_re = [
+  # Test helpers, in `tests` modules whose `cfg` also names an architecture.
+  '\btests::',
   # The negative entries of ML-KEM's constant tables; every unary minus in
   # these files is one.
   'mlkem(_poly)?\.rs:\d+:\d+: delete -$',
