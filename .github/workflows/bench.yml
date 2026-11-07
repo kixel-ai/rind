@@ -67,7 +67,8 @@ jobs:
   # feature, so these rows leave it out. Each times the benchmarks whose
   # code the denied features change. The generic row times rind's portable
   # backend, forced by `--cfg rind_portable`, against aws-lc's C without
-  # assembly, which aws-lc-sys builds only below opt-level 3.
+  # assembly, which aws-lc-sys's cc builder builds only below opt-level 3 and
+  # its CMake builder, its default without assembly, only at 0.
   native:
     name: native (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }}${{ matrix.cpu && format(', {0}', matrix.cpu) || '' }})
     strategy:
@@ -188,7 +189,7 @@ jobs:
               # neither the dual AVX-512 RSAZ.
               x86_64-*/generic)
                 export RUSTFLAGS='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
-                export AWS_LC_SYS_NO_ASM=1
+                export AWS_LC_SYS_NO_ASM=1 AWS_LC_SYS_CMAKE_BUILDER=0
                 config=(--config profile.bench.package.aws-lc-sys.opt-level=2)
                 ;;
               x86_64-*/no-adx)
