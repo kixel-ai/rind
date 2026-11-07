@@ -533,8 +533,15 @@ fn rsa_cases(cases: &mut Vec<Case>) {
         cases.push(case(name("oaep-decrypt-key"), move |config| {
             // Each key with a ciphertext of its own.
             let encrypted = |der: &Vec<u8>| {
-                let c = decrypting(der).public_key().encrypt(&random::<32>(), b"");
-                (der.clone(), c.unwrap().as_ref().to_vec())
+                let public = decrypting(der).public_key();
+                let c = full_length(|| {
+                    public
+                        .encrypt(&random::<32>(), b"")
+                        .unwrap()
+                        .as_ref()
+                        .to_vec()
+                });
+                (der.clone(), c)
             };
             let keys = rsa_keys(size)
                 .each_ref()
@@ -549,27 +556,25 @@ fn rsa_cases(cases: &mut Vec<Case>) {
             let pkcs1 = &rsa_keys_one_modulus(size)[0][0];
             let key = rsa::DecryptingKey::from_pkcs1(&rsa::OAEP_SHA256, pkcs1).unwrap();
             let len = key.public_key().max_message_len() + 66;
-            let encrypt = |separator| crate::rsa_keys::encrypt_raw(pkcs1, &oaep(len, separator));
-            assert!(
-                key.decrypt(&encrypt(true), b"")
-                    .unwrap()
-                    .as_ref()
-                    .is_empty()
-            );
-            // Below the modulus, whose top bit is set.
-            let anything = || [&[0][..], &random_vec(len - 1)].concat();
-            let ciphertexts = classes(VALUES, fixed(encrypt(false)), anything);
+            let encrypt = |em: &[u8]| full_length(|| crate::rsa_keys::encrypt_raw(pkcs1, em));
+            let valid = encrypt(&oaep(len, true));
+            assert!(key.decrypt(&valid, b"").unwrap().as_ref().is_empty());
+            // Random values, which decrypt to their remainder modulo n.
+            let anything = || encrypt(&random_vec(len));
+            let ciphertexts = classes(VALUES, fixed(encrypt(&oaep(len, false))), anything);
             measure(config, &ciphertexts, |c| key.decrypt(c, b""))
         }));
         cases.push(case(name("oaep-decrypt-ciphertext"), move |config| {
             let key = decrypting(&rsa_keys(size)[0][0]);
             let public = key.public_key();
             let encrypt = || {
-                public
-                    .encrypt(&random::<32>(), b"")
-                    .unwrap()
-                    .as_ref()
-                    .to_vec()
+                full_length(|| {
+                    public
+                        .encrypt(&random::<32>(), b"")
+                        .unwrap()
+                        .as_ref()
+                        .to_vec()
+                })
             };
             let ciphertexts = classes(VALUES, fixed(encrypt()), encrypt);
             measure(config, &ciphertexts, |c| key.decrypt(c, b""))
@@ -718,6 +723,18 @@ fn early_exit_eq(a: &[u8], b: &[u8]) -> bool {
     // `black_box` keeps the compiler from turning the loop into `bcmp`,
     // whose wide loads compare 32 bytes without exiting early.
     a.len() == b.len() && a.iter().zip(b).all(|(x, y)| std::hint::black_box(*x) == *y)
+}
+
+/// An RSA ciphertext from `encrypt` whose first byte is not zero: parsing
+/// one trims leading zeros, in time that depends on them but on nothing
+/// secret, so every class has none.
+fn full_length(mut encrypt: impl FnMut() -> Vec<u8>) -> Vec<u8> {
+    loop {
+        let c = encrypt();
+        if c[0] != 0 {
+            return c;
+        }
+    }
 }
 
 /// RFC 3394's wrapping of `plaintext` under the AES-256 key `kek` from the

@@ -51,8 +51,8 @@ pub fn variants(pkcs8: &[u8]) -> Vec<Vec<u8>> {
     keys
 }
 
-/// `message`, an encoded message as long as the modulus, raised to the
-/// public exponent of the PKCS#1 `RSAPrivateKey` `pkcs1`, modulo its modulus.
+/// `message`, as long as the modulus, raised to the public exponent of the
+/// PKCS#1 `RSAPrivateKey` `pkcs1`, modulo its modulus.
 pub fn encrypt_raw(pkcs1: &[u8], message: &[u8]) -> Vec<u8> {
     let mut fields = sequence(pkcs1);
     let _version = next(&mut fields);
