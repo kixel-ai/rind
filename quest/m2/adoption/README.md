@@ -61,10 +61,10 @@ don't ask again (✅ is the chosen option):
 
 - [rustls lists rind-rustls](/quest/m2/adoption/rustls-providers.md) - an entry in rustls's third-party provider list
 - [rusty-s3 offers rind](/quest/m2/adoption/rusty-s3.md) - a `rind` feature beside its `graviola` one
-- [rind-str0m](/quest/m2/adoption/rind-str0m.md) - str0m's `CryptoProvider` on rind
 - [quinn's rustls support works with any provider](/quest/m2/adoption/quinn.md) - quinn-proto stops forcing ring or aws-lc-rs
 - [Bun's CryptoHasher takes SHA-3 from rind](/quest/m2/adoption/bun-sha3.md) - SHA-3 in Bun on rind, after the m1 Bun PR
 - [pyrind on PyPI](/quest/m2/adoption/pyrind.md) - rind for Python with its own API
+- [pyrind's musl and armv7 wheels are tested](/quest/m2/adoption/pyrind-wheel-tests.md) - CI loads every wheel it publishes
 - [Lemmy's federation signs and verifies with rind](/quest/m2/adoption/lemmy.md) - activitypub-federation-rust's HTTP signatures off the `rsa` crate
 - [rind-snow](/quest/m2/adoption/rind-snow.md) - snow's `CryptoResolver` on rind, for rathole and other Noise users
 - [snow's write_message refuses a buffer without room for the static key's tag](/quest/m2/adoption/snow-write-message.md) - an upstream fix for rind-snow's one reachable panic
@@ -74,6 +74,8 @@ don't ask again (✅ is the chosen option):
 - [pyca-compatible pyrind](/quest/m2/adoption/pyrind-cryptography.md) - pyca's `hazmat` names on pyrind
 - [Talk to pyca about rind](/quest/m2/adoption/pyca.md) - a discussion with pyca/cryptography's maintainers
 - [rind for Dart and Flutter](/quest/m2/adoption/rind-dart.md) - the `rind` package on pub.dev
+- [rind for Dart installs without a Rust toolchain](/quest/m2/adoption/rind-dart-prebuilt.md) - prebuilt, hash-pinned libraries fetched by the build hook
+- [rind for Dart is tested on Android and iOS](/quest/m2/adoption/rind-dart-mobile-tests.md) - the Dart tests on an emulator and simulator
 - [rind as a Dart `cryptography` backend](/quest/m2/adoption/rind-dart-cryptography.md) - the `cryptography` package's interface on rind
 - [Apache Iggy encrypts streams with rind](/quest/m2/adoption/iggy.md) - its AES-256-GCM message encryption on rind
 - [librespot builds rustls without ring](/quest/m2/adoption/librespot.md) - users pick their rustls provider
