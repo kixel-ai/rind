@@ -3094,6 +3094,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rind-dart"
+version = "0.1.0"
+dependencies = [
+ "rind",
+]
+
+[[package]]
 name = "rind-dimpl"
 version = "0.9.0"
 dependencies = [
