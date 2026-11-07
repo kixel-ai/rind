@@ -71,7 +71,7 @@ operations = [
   "hkdf-sha256/expand",
 ]
 on = ["kixtop"]
-reason = "DIT: the M4 has it, and rind turns it on and off around every call that handles a secret, which costs about 35 to 55 ns a call there; the other libraries never set it. Keeping it per call was decided with the maintainer from [#387](https://github.com/moq-dev/rind/pull/387)'s findings, and [#431](https://github.com/moq-dev/rind/pull/431)'s `rind::cpu::hold_dit()` pays it once across a batch of calls. With DIT denied (`--cfg rind_cpu_disable` and `RIND_CPU_DISABLE_dit`), the same commit measured each of these within 10% of the fastest library but AES header protection (1.2× aws-lc-rs's 2.9 ns) and HMAC-SHA-256 at 64 B (1.15× RustCrypto's 101 ns)."
+reason = "DIT: the M4 has it, and rind turns it on and off around every call that handles a secret, which costs about 35 to 55 ns a call there; the other libraries never set it. Keeping it per call was decided with the maintainer from [#387](https://github.com/moq-dev/rind/pull/387)'s findings, and `rind::cpu::Dit::hold()` ([#431](https://github.com/moq-dev/rind/pull/431)) pays it once across a batch of calls. With DIT denied (`--cfg rind_cpu_disable` and `RIND_CPU_DISABLE_dit`), the same commit measured each of these within 10% of the fastest library but AES header protection (1.2× aws-lc-rs's 2.9 ns) and HMAC-SHA-256 at 64 B (1.15× RustCrypto's 101 ns)."
 
 [[gap]]
 operations = ["xchacha20poly1305/32B"]
