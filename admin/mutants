@@ -8,8 +8,35 @@
 # so code only CPUs without them run, such as aws-lc's SSE2 AES, is tested
 # too. The rows are ctgrind.yml's. No row reaches the AVX-512 paths a CPU
 # without AVX-512 never runs.
+#
+# cargo-mutants mutates code whatever its `cfg`, so a function only another
+# architecture compiles is missed here. `admin/mutants --survivors DIR...`
+# combines runs' `mutants.out` directories: it prints each mutant some run
+# missed and none caught, and fails if there is one.
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [ "${1:-}" = --survivors ]; then
+    shift
+    # A run with no mutants to test, such as one over an empty diff, writes
+    # none of these.
+    list() {
+        for dir in "$@"; do
+            for outcome in "${outcomes[@]}"; do
+                [ ! -f "$dir/$outcome.txt" ] || cat "$dir/$outcome.txt"
+            done
+        done
+    }
+    outcomes=(missed)
+    missed=$(list "$@" | sort -u)
+    outcomes=(caught timeout unviable)
+    survivors=$(grep -vxF -f <(list "$@") <<<"$missed" || true)
+    [ -z "$survivors" ] || {
+        echo "$survivors"
+        exit 1
+    }
+    exit 0
+fi
 
 case $(uname -m) in
     x86_64)
@@ -71,4 +98,9 @@ while IFS= read -r file; do
 done < <(git grep -l '^// generated source' -- rind/src)
 
 export "CARGO_TARGET_${triple}_RUNNER=$here/admin/mutants --run"
-exec cargo mutants "${args[@]}" "$@"
+# A mutant that hangs the tests until the timeout is caught by them, so only
+# exit 3, timeouts alone, passes beside 0.
+status=0
+cargo mutants "${args[@]}" "$@" || status=$?
+[ "$status" -ne 3 ] || status=0
+exit "$status"
