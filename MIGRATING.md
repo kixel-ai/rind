@@ -91,8 +91,7 @@ reuses it. `verify` refuses a stored value shorter than the HMAC output with
 | `Tag`, ring's `Tag::try_from` | `Tag`, from `TryFrom<&[u8]>`, failing with `Error::WrongLength` |
 | `Algorithm::{key_len, tag_len, nonce_len}` | the same |
 | `NONCE_LEN`, `MAX_TAG_LEN`, `algorithm()` on each key | none; the `Algorithm` methods give each length |
-| `AES_128_GCM`, `AES_256_GCM`, `CHACHA20_POLY1305` | the same |
-| `AES_192_GCM` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |
+| `AES_128_GCM`, `AES_192_GCM`, `AES_256_GCM`, `CHACHA20_POLY1305` | the same |
 | `AES_128_GCM_SIV`, `AES_256_GCM_SIV` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | none | `gcm::Key::new(&cipher::AES_128, key, TagLength::Full)?`, for AES-GCM under an IV of any length, or with a tag cut to one of `TagLength`'s, as WebCrypto takes; its methods are `Key`'s, with an `Iv` for the nonce: `Iv::assume_unique_for_key(iv)?`, which refuses an empty IV |
 | `RandomizedNonceKey::new(&AES_256_GCM, key)`, with 96-bit random nonces | `RandomizedNonceKey::new(&key)`, XChaCha20-Poly1305 with 192-bit random nonces, which never collide in practice |
@@ -124,9 +123,8 @@ protocols with their own integrity protection need. ring has none.
 | `PaddedBlockEncryptingKey::cbc_pkcs7(key)` and `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))` | `AesCbcEncryptingKey::new(&AES_128, key)?` and `encrypt(&iv, in_out)`, which cannot fail |
 | `PaddedBlockDecryptingKey::cbc_pkcs7(key)` and `decrypt(in_out, DecryptionContext::Iv128(iv))` | `AesCbcDecryptingKey::new(&AES_128, key)?` and `decrypt(&iv, in_out)?`, which clears `in_out` if the padding is malformed |
 | `EncryptingKey::cbc`, `DecryptingKey::cbc`, unpadded | `encrypt_blocks(&iv, in_out)?` and `decrypt_blocks(&iv, in_out)?` on the keys above |
-| `AES_128`, `AES_256` | the same |
+| `AES_128`, `AES_192`, `AES_256` | the same |
 | `EncryptingKey::encrypt` and `PaddedBlockEncryptingKey::encrypt`, which pick a random IV | none: pick the nonce or IV with `rand::fill` |
-| `AES_192` | none; [AES-192](quest/m2/adoption/webcrypto/aes-192.md) |
 | `DES_EDE3_FOR_LEGACY_USE_ONLY` and the other DES, the ECB, CFB, and OFB modes, `StreamingEncryptingKey`, `StreamingDecryptingKey` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | none | `Aes::new(&alg, key)?.encrypt_block(block)`, one AES block |
 | none | `ChaCha20::new(&key).apply_keystream(nonce, counter, in_out)?` |
@@ -325,6 +323,7 @@ ring has none.
 | aws-lc-rs | rind |
 |---|---|
 | `AesKek::new(&AES_128, key)?`, `AES_128`, `AES_256` | the same |
+| none | `AES_192` |
 | `KeyWrap::wrap(kek, key, output)?`, which consumes the key and takes any longer `output` | `kek.wrap(key, wrapped)?`, which borrows it and takes `wrapped` exactly 8 bytes longer than `key` |
 | `KeyWrap::unwrap(kek, wrapped, output)?` | `kek.unwrap(wrapped, key)?`, with `key` exactly 8 bytes shorter than `wrapped`, cleared if it fails to verify |
 | `KeyWrapPadded::wrap_with_padding(kek, key, output)?`, which takes any `output` at least 15 bytes longer than `key` | `kek.wrap_padded(key, wrapped)?`, with `wrapped` exactly `key.len().next_multiple_of(8) + 8` bytes |

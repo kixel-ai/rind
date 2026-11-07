@@ -3,10 +3,10 @@ use std::io::BufReader;
 
 use rind::Error;
 use rind::aead::{
-    AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce, RandomNonce, RandomizedNonceKey, Tag,
-    gcm,
+    AES_128_GCM, AES_192_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce, RandomNonce,
+    RandomizedNonceKey, Tag, gcm,
 };
-use rind::cipher::{AES_128, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey, ChaCha20};
+use rind::cipher::{AES_128, AES_192, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey, ChaCha20};
 use rind::key_wrap::{self, AesKek};
 use rind::rsa::{self, DecryptingKey, OaepAlgorithm};
 use rind::signature::verify::legacy;
@@ -558,11 +558,8 @@ fn aes_gcm(file: &str, gmac: bool) {
 
             let (algorithm, aes) = match test.key.len() {
                 16 => (&AES_128_GCM, &AES_128),
+                24 => (&AES_192_GCM, &AES_192),
                 32 => (&AES_256_GCM, &AES_256),
-                24 => {
-                    summary.skipped("aes-192 not supported");
-                    continue;
-                }
                 len => panic!("unexpected key length {len}"),
             };
             let (aad, msg, ct) = match gmac {
@@ -646,11 +643,8 @@ fn test_aes_cbc_pkcs7() {
 
             let algorithm = match test.key.len() {
                 16 => &AES_128,
+                24 => &AES_192,
                 32 => &AES_256,
-                24 => {
-                    summary.skipped("aes-192 not supported");
-                    continue;
-                }
                 len => panic!("unexpected key length {len}"),
             };
             let iv: [u8; 16] = test.iv[..].try_into().unwrap();
@@ -701,11 +695,8 @@ fn test_aes_wrap() {
 
             let algorithm = match test.key.len() {
                 16 => &key_wrap::AES_128,
+                24 => &key_wrap::AES_192,
                 32 => &key_wrap::AES_256,
-                24 => {
-                    summary.skipped("aes-192 not supported");
-                    continue;
-                }
                 len => panic!("unexpected key length {len}"),
             };
             let kek = AesKek::new(algorithm, &test.key).unwrap();
@@ -757,11 +748,8 @@ fn test_aes_kwp() {
 
             let algorithm = match test.key.len() {
                 16 => &key_wrap::AES_128,
+                24 => &key_wrap::AES_192,
                 32 => &key_wrap::AES_256,
-                24 => {
-                    summary.skipped("aes-192 not supported");
-                    continue;
-                }
                 len => panic!("unexpected key length {len}"),
             };
             let kek = AesKek::new(algorithm, &test.key).unwrap();

@@ -97,11 +97,12 @@ pub(crate) fn tagged_from<const ENC: bool>(
     if let (AesKey::Hw(key), GhashTable::Pmull(table)) = (key, table)
         && aad.len().div_ceil(16) + cipher_inout.len().div_ceil(16) <= short_blocks
     {
-        // SAFETY: only a `HaveCryptoExt` token builds `AesKey128` and
-        // `AesKey256`, proving the `aes` cpu feature.
+        // SAFETY: only a `HaveCryptoExt` token builds a `HwKey`, proving the
+        // `aes` cpu feature.
         return unsafe {
             match key {
                 HwKey::Aes128(k) => short::<ENC, 11>(k.round_keys(), table, y0, aad, cipher_inout),
+                HwKey::Aes192(k) => short::<ENC, 13>(k.round_keys(), table, y0, aad, cipher_inout),
                 HwKey::Aes256(k) => short::<ENC, 15>(k.round_keys(), table, y0, aad, cipher_inout),
             }
         };
@@ -181,7 +182,7 @@ static KEEP: [u8; 32] = {
     keep
 };
 
-/// AES-128 or AES-256 of `block`, by its number of round keys.
+/// AES of `block` under any key size, by its number of round keys.
 #[target_feature(enable = "aes")]
 #[inline]
 fn encrypt<const N: usize>(round_keys: &[uint8x16_t; N], mut block: uint8x16_t) -> uint8x16_t {
@@ -256,7 +257,10 @@ fn cipher<const ENC: bool>(
     let mut counter = *initial_counter;
     inc32(&mut counter);
 
-    let (AesKey::Hw(hw_key), GhashTable::Pmull(table)) = (key, ghash.table) else {
+    // s2n-bignum's stitched kernels take AES-128 and AES-256 keys.
+    let (AesKey::Hw(hw_key @ (HwKey::Aes128(_) | HwKey::Aes256(_))), GhashTable::Pmull(table)) =
+        (key, ghash.table)
+    else {
         return composed::<ENC>(key, ghash, &counter, cipher_inout);
     };
 
@@ -301,6 +305,7 @@ fn cipher<const ENC: bool>(
                 (HwKey::Aes256(k), false, Some(_)) => {
                     aes256_gcm_dec_alt(inout, len, &mut tag, &mut counter, k.round_keys(), htable)
                 }
+                (HwKey::Aes192(_), ..) => unreachable!("composed above"),
             }
         }
 
@@ -388,7 +393,7 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for key_len in [16, 32] {
+        for key_len in [16, 24, 32] {
             let key = bytes(key_len, 1);
             ct::secret_slice(&key);
             let hw = AesKey::new(&key);
@@ -445,7 +450,7 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for key_len in [16, 32] {
+        for key_len in [16, 24, 32] {
             let key = bytes(key_len, 1);
             let vpaes = AesKey::Vpaes(VpaesKey::new(&key));
             let h = vpaes.encrypt_block(&[0; 16]);
