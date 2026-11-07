@@ -1,6 +1,6 @@
 #![no_main]
 
-use aws_lc_rs::key_wrap::KeyWrap;
+use aws_lc_rs::key_wrap::{KeyWrap, KeyWrapPadded};
 use libfuzzer_sys::{arbitrary, arbitrary::Arbitrary, fuzz_target};
 use rind::key_wrap::{AES_128, AES_256, AesKek};
 
@@ -14,6 +14,30 @@ fuzz_target!(|input: (Operation, edit::Edit)| {
     };
     let ours = AesKek::new(ours, kek).unwrap();
     let theirs = || aws_lc_rs::key_wrap::AesKek::new(theirs, kek).unwrap();
+
+    // Both wrap the keys RFC 5649 allows, alike, and refuse the rest.
+    let mut wrapped = vec![0u8; key.len().next_multiple_of(8) + 8];
+    let mut right = vec![0u8; key.len() + 15];
+    let ours_padded = ours.wrap_padded(key, &mut wrapped);
+    let theirs_padded = theirs().wrap_with_padding(key, &mut right);
+    assert_eq!(ours_padded.is_ok(), theirs_padded.is_ok());
+    if let Ok(right) = theirs_padded {
+        assert_eq!(wrapped, right);
+
+        // Both unwrap the wrapped key tampered with alike, and refuse it if
+        // it changed.
+        let changed = edit.apply(&mut wrapped);
+        let mut ours_key = vec![0u8; wrapped.len().saturating_sub(8)];
+        let ours_result = ours
+            .unwrap_padded(&wrapped, &mut ours_key)
+            .map(|k| k.to_vec());
+        let mut theirs_key = vec![0u8; wrapped.len()];
+        let theirs_result = theirs()
+            .unwrap_with_padding(&wrapped, &mut theirs_key)
+            .map(|out| out.to_vec());
+        assert_eq!(ours_result.as_ref().ok(), theirs_result.as_ref().ok());
+        assert_eq!(ours_result.is_err(), changed);
+    }
 
     // Both wrap the keys RFC 3394 allows, alike, and refuse the rest.
     let mut wrapped = vec![0u8; key.len() + 8];

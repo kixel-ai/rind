@@ -326,7 +326,8 @@ ring has none.
 | `AesKek::new(&AES_128, key)?`, `AES_128`, `AES_256` | the same |
 | `KeyWrap::wrap(kek, key, output)?`, which consumes the key and takes any longer `output` | `kek.wrap(key, wrapped)?`, which borrows it and takes `wrapped` exactly 8 bytes longer than `key` |
 | `KeyWrap::unwrap(kek, wrapped, output)?` | `kek.unwrap(wrapped, key)?`, with `key` exactly 8 bytes shorter than `wrapped`, cleared if it fails to verify |
-| `KeyWrapPadded`, RFC 5649's padded variant | none |
+| `KeyWrapPadded::wrap_with_padding(kek, key, output)?`, which takes any `output` at least 15 bytes longer than `key` | `kek.wrap_padded(key, wrapped)?`, with `wrapped` exactly `key.len().next_multiple_of(8) + 8` bytes |
+| `KeyWrapPadded::unwrap_with_padding(kek, wrapped, output)?` | `kek.unwrap_padded(wrapped, key)?`, with `key` exactly 8 bytes shorter than `wrapped`, cleared if it fails to verify; both return the key |
 | `BlockCipherId`, `AesKek::block_cipher_id()` | none |
 
 ## Other modules

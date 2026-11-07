@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/moq-dev/rind/compare/rind-jsonwebtoken-v0.1.13...rind-jsonwebtoken-v0.2.0) - 2026-11-06
+
+### Added
+
+- [**breaking**] audit rind's public API, and apply its decisions, before 0.2.0 ([#383](https://github.com/moq-dev/rind/pull/383))
+
 ## [0.1.13](https://github.com/moq-dev/rind/compare/rind-jsonwebtoken-v0.1.12...rind-jsonwebtoken-v0.1.13) - 2026-11-05
 
 ### Other
