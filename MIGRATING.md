@@ -353,7 +353,7 @@ errors are rcgen's. Call `rind::cpu::check()`, or rind-ring's `cpu::check()`, be
 ### rind-ring
 
 rind-ring offers ring 0.17's API name for name, so a crate on ring swaps it
-in with `ring = { package = "rind-ring", version = "0.1" }` and no code
+in with `ring = { package = "rind-ring", version = "0.17" }` and no code
 changes. The rename reaches only that crate: a dependency that names ring,
 such as rustls with its `ring` feature, still builds ring, since Cargo cannot
 patch it with a crate of another name. It panics wherever ring panics, so

@@ -212,6 +212,11 @@ curve25519-dalek's AVX2 backend over width-5 and width-8 non-adjacent forms
 of its two scalars, the latter over a 10 KiB table of the base point's odd
 multiples. The rest of this section describes those backends.
 
+Where s2n-bignum ships a routine in two verified variants, aarch64 runs the
+scalar `_alt` one under the plain name: on Apple's M1 and M4 and on Neoverse
+N2 it runs every curve routine rind uses in 50-98% of the time of the
+other, which mixes in SIMD multiplies.
+
 P256 base point multiplication on x86_64 is aws-lc's: 7-bit Booth windows over
 37 rows of 64 affine points (a 152KB constant table), each row scanned whole
 by its SSE2 or AVX2 routine and added by its mixed addition, with `mulq` or

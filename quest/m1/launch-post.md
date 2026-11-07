@@ -11,4 +11,3 @@ The maintainer decided on 2026-11-05 to post the Bun PR only after this blog pos
 ## Required
 
 - [The launch post can say what building rind cost in AI tokens, time, and money](/quest/m1/ai-usage.md) - the post's numbers
-- [Each adapter's version matches the upstream it adapts](/quest/m1/adapter-versions.md) - the versions the post quotes

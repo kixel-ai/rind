@@ -53,6 +53,8 @@ declare -A scope=(
     [rs]='^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt\.toml$)'
     # Advisories, licenses, and sources move with any manifest or the policy.
     [deny]='(^|/)Cargo\.(toml|lock)$|^deny\.toml$'
+    # An adapter's manifest holds both its version and its upstream requirement.
+    [versions]='^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)'
     [license]='^(rind/src/|admin/scan-license$)'
     # Dependents may build with the workspace's declared rust-version.
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
@@ -87,6 +89,7 @@ declare -A tools=(
     [rs]='cargo jq'
     [check:rs]='cargo cargo-nextest jq'
     [deny]='cargo-deny'
+    [versions]='cargo jq'
     [license]='find grep'
     [msrv]='nix cargo jq'
     [cross]='cargo'
@@ -105,7 +108,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs msrv cross deny license inplace compat bench fixtures quest gh hooks shell nix) ;;
+    check) modules=(rs msrv cross deny versions license inplace compat bench fixtures quest gh hooks shell nix) ;;
     fix) modules=(rs compat nix) ;;
 esac
 
@@ -201,6 +204,7 @@ for module in "${selected[@]}"; do
             done
             ;;
         check:deny) cargo deny --locked check ;;
+        check:versions) sh/adapter-versions.sh ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
         # It finds the generated kernels relative to its own directory.

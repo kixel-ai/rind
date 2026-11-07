@@ -7,7 +7,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! ring = { package = "rind-ring", version = "0.1" }
+//! ring = { package = "rind-ring", version = "0.17" }
 //! ```
 //!
 //! ring's `alloc`, `std`, and `dev_urandom_fallback` features are accepted
