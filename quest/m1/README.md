@@ -13,4 +13,5 @@ Bun's fastest asymmetric operations run on rind, ahead of Bun writing its own.
 - [rind's launch blog post is published](/quest/m1/launch-post.md) - the Bun PR waits on it
 - [The bench report has a quiet Arrow Lake run and kixtop's build cost](/quest/m1/bench-apple-m4.md) - a fresh desktop column and M4 build costs before the launch post
 - [rind-jsonwebtoken and rind-instant-acme check the CPU themselves](/quest/m1/adapter-cpu-check.md) - `default_provider()` like the other adapters, before 11.0.0 publishes
+- [rind-rcgen users don't depend on rind directly](/quest/m1/rcgen-helpers.md) - `check()` and `serial_number()` helpers
 - [rind covers MoQ](/quest/m1/moq/README.md) - the primitives, CPU check, armv7 backend, and `rind-*` adapters MoQ needs, verified and released
