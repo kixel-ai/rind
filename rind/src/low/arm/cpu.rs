@@ -204,6 +204,37 @@ pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: u
     acc as u8
 }
 
+/// Compares two 16-byte blocks, such as AEAD tags, in constant time.
+///
+/// Returns zero if `a == b`, otherwise non-zero. The words are combined in
+/// assembly so the compiler cannot split the test into early exits.
+pub(in crate::low) fn ct_compare_16(a: &[u8; 16], b: &[u8; 16]) -> usize {
+    let (a, b) = (u128::from_ne_bytes(*a), u128::from_ne_bytes(*b));
+    let mut diff = a as u32;
+    // SAFETY: register-only arithmetic.
+    unsafe {
+        core::arch::asm!(
+            "eor {diff}, {diff}, {b0}",
+            "eor {a1}, {a1}, {b1}",
+            "eor {a2}, {a2}, {b2}",
+            "eor {a3}, {a3}, {b3}",
+            "orr {diff}, {diff}, {a1}",
+            "orr {a2}, {a2}, {a3}",
+            "orr {diff}, {diff}, {a2}",
+            diff = inout(reg) diff,
+            a1 = inout(reg) (a >> 32) as u32 => _,
+            a2 = inout(reg) (a >> 64) as u32 => _,
+            a3 = inout(reg) (a >> 96) as u32 => _,
+            b0 = in(reg) b as u32,
+            b1 = in(reg) (b >> 32) as u32,
+            b2 = in(reg) (b >> 64) as u32,
+            b3 = in(reg) (b >> 96) as u32,
+            options(pure, nomem, nostack, preserves_flags),
+        );
+    }
+    diff as usize
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {

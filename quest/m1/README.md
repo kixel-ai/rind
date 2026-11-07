@@ -9,7 +9,7 @@ Bun's fastest asymmetric operations run on rind, ahead of Bun writing its own.
 ## Required
 
 - [Bun runs its fastest asymmetric crypto on rind](/quest/m1/bun.md) - Ed25519, X25519, P-384, and P-521 in Bun on rind, before Bun writes its own
-- [rind 0.2.0 is released](/quest/m1/release-0.2.md) - the audited API on crates.io for Bun and MoQ
 - [The launch post can say what building rind cost in AI tokens, time, and money](/quest/m1/ai-usage.md) - tokens, agent and maintainer hours, and API-price cost, before the post
 - [rind's launch blog post is published](/quest/m1/launch-post.md) - the Bun PR waits on it
+- [The bench report measures Apple M4 and a quiet Arrow Lake](/quest/m1/bench-apple-m4.md) - real Apple silicon in the report before the launch post
 - [rind covers MoQ](/quest/m1/moq/README.md) - the primitives, CPU check, armv7 backend, and `rind-*` adapters MoQ needs, verified and released

@@ -180,6 +180,11 @@ opaque low.x86_64.edwards25519_scalarmuldouble_alt.edwards25519_scalarmuldouble_
   Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
     Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
 
+opaque low.x86_64.edwards25519_scalarmuldouble_avx2.edwards25519_scalarmuldouble
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
+    Array Std.U64 4#usize → low.x86_64.cpu.HaveAvx2 → Result (Array Std.U64 8#usize)
+
 opaque low.x86_64.bignum_madd_n25519_alt.bignum_madd_n25519_alt
   :
   Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
@@ -215,6 +220,8 @@ opaque low.x86_64.sha512.path : Result low.x86_64.sha512.Path
 
 opaque low.x86_64.cpu.HaveBmi2Adx.check
   : Result (Option low.x86_64.cpu.HaveBmi2Adx)
+
+opaque low.x86_64.cpu.HaveAvx2.check : Result (Option low.x86_64.cpu.HaveAvx2)
 
 opaque low.x86_64.cpu.HaveAesHardware.check : Result (Option low.x86_64.cpu.HaveAesHardware)
 

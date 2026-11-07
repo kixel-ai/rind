@@ -13,7 +13,7 @@ Planned with the maintainer on 2026-11-03 from the audit. Each block function en
 - `hmac::Key`, `hmac::Context`, `hmac::sign`, `hmac::verify`, and `digest::digest` and `digest::Context` reach the hash through function pointers; model that dispatch by hand, as `Rind/X86_64/Dispatch.lean` does the agreement API's, and compose with `HashSpec`.
 - HKDF and PBKDF2 call that hand-modelled HMAC API, but Aeneas emits one `Funs.lean` whose external declarations precede it, so translated code cannot call a model built on translated code. Decided with the maintainer on 2026-11-04: translate the KDFs in a second Aeneas pass, with the first pass's items and the HMAC model opaque below it, rather than drop HMAC's function-pointer dispatch or hand-model the KDFs.
 - PBKDF2's `blocks` takes a closure that captures `&mut`, which Aeneas mistranslates; rewrite it as `Blockwise` was, keeping release codegen.
-- The constant-time compares (`ct_compare_bytes`, behind `hmac::verify` and `pbkdf2::Secret::verify`).
+- The constant-time compares (`ct_compare_bytes` and `ct_compare_16`, behind `hmac::verify` and `pbkdf2::Secret::verify`).
 - HMAC over SHA-384 and SHA-512: their `Hash` impls meet `HashSpec` from `proofs/Rind/X86_64/Sha512.lean`'s theorems, whose SHA-512-specific padding and buffering lemmas `Blockwise.lean`'s generic ones can replace.
 
 ## Related

@@ -524,18 +524,20 @@ const AVX512_KERNEL_MINIMUM_CIPHER_LEN: usize = 2048;
 const VAES_AVX2_MINIMUM_CIPHER_LEN: usize = 16 * 16;
 
 /// The message lengths below which Vale's AES-GCM runs on the VAES-AVX2
-/// tier, to decrypt and to encrypt. Its opens measured 0.75-1.05x the by-8
-/// path's time below 256 bytes on Zen 3, under an AAD of a partial block, as
-/// QUIC's and TLS's are, and 0.72-0.99x under a whole one. Its seals measured
-/// 1.03-1.39x from 16 bytes.
+/// tier, to decrypt and to encrypt. Its opens measured 0.77-1.17x the by-8
+/// path's time below 256 bytes on Zen 3 under an AAD of whole blocks, and
+/// 0.97-1.30x under a partial one, as QUIC's and TLS's are, which Vale's
+/// wrapper pads through `memcpy`. Its seals measured 1.03-1.39x from 16
+/// bytes.
 const VAES_AVX2_VALE_OPEN_BELOW: usize = 256;
 const VAES_AVX2_VALE_SEAL_BELOW: usize = 0;
 
 /// The message lengths below which Vale's AES-GCM runs on the AVX-512 tier,
-/// to decrypt and to encrypt. Its opens measured 0.59-1.14x the by-8 path's
-/// time below 256 bytes on Zen 4, and on Emerald and Granite Rapids
-/// 0.94-1.33x under an AAD of a partial block but 0.80-1.00x under a whole
-/// one. Its seals measured 1.21-1.86x from 16 bytes on those Xeons.
+/// to decrypt and to encrypt. Its opens measured, below 256 bytes, under an
+/// AAD of whole blocks and then of a partial one, 0.66-1.24x and 0.83-1.40x
+/// the by-8 path's time on Zen 4, 0.96-1.53x and 1.06-1.68x on Zen 5, and
+/// 0.87-1.20x and 1.00-1.68x on Ice Lake. Its seals measured 1.21-1.86x from
+/// 16 bytes on Emerald and Granite Rapids.
 const AVX512_VALE_OPEN_BELOW: usize = 256;
 const AVX512_VALE_SEAL_BELOW: usize = 0;
 
