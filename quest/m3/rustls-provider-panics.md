@@ -12,4 +12,4 @@ Malformed peer input cannot reach the `rind-rustls` AEAD key or IV conversions t
 
 ## Related
 
-- [Test coverage audit](/quest/m3/confidence/audit.md) - maps primitive tests rather than adapter input provenance
+- [Test coverage](/TESTING.md) - maps primitive tests rather than adapter input provenance

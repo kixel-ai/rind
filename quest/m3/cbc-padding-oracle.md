@@ -12,4 +12,4 @@ No current consumer of rind's AES-CBC exposes a distinguishable padding result f
 
 ## Related
 
-- [Test coverage audit](/quest/m3/confidence/audit.md) - maps primitive tests across backends, rather than consumer misuse
+- [Test coverage](/TESTING.md) - maps primitive tests across backends, rather than consumer misuse
