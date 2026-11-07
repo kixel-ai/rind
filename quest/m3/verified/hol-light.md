@@ -2,9 +2,11 @@
 
 ## Goal
 
-The HOL Light proofs this epic writes for routines s2n-bignum lacks (aws-lc's, OpenSSL's, and BoringSSL's assembly, generalizations of s2n-bignum's own theorems, and additions to its instruction models) live in `proofs/hol-light/` in rind. `admin/prove` checks them beside the Lean proofs, against the object code rind imports, so `proofs/`'s axioms cite them as they cite s2n-bignum's.
+The HOL Light proofs rind writes for routines s2n-bignum lacks (aws-lc's, OpenSSL's, and BoringSSL's assembly, generalizations of s2n-bignum's own theorems, and additions to its instruction models) live in `proofs/hol-light/` in rind. `admin/prove` checks them beside the Lean proofs, against the object code rind imports, so `proofs/`'s axioms cite them as they cite s2n-bignum's.
 
 ## Plan
+
+Moved from m4 into m3 with the maintainer on 2026-11-07: [the hash-glue quest](/quest/m3/verified/hash-glue.md)'s constant-time compares are its first consumer, so the tree starts there.
 
 Decided with the maintainer on 2026-11-07 on [moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448): an in-repo tree run by `admin/prove`, not a `moq-dev/s2n-bignum` fork.
 
