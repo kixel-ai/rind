@@ -1,6 +1,6 @@
 [package]
 name = "rind-str0m"
-version = "0.25.1"
+version = "0.25.2"
 edition = "2024"
 repository = "https://github.com/moq-dev/rind"
 license = "Apache-2.0 OR ISC OR MIT-0"
@@ -12,9 +12,9 @@ readme = "README.md"
 [dependencies]
 dimpl = { version = "0.9", default-features = false }
 rcgen = { version = "0.14", default-features = false }
-rind = { version = "0.3.1", path = "../rind" }
-rind-dimpl = { version = "0.9.2", path = "../rind-dimpl" }
-rind-rcgen = { version = "0.14.2", path = "../rind-rcgen" }
+rind = { version = "0.3.2", path = "../rind" }
+rind-dimpl = { version = "0.9.3", path = "../rind-dimpl" }
+rind-rcgen = { version = "0.14.3", path = "../rind-rcgen" }
 # Its default features compile aws-lc-rs.
 str0m = { version = "0.25", default-features = false }
 time = { version = "0.3", default-features = false, features = ["std"] }
