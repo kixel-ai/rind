@@ -48,7 +48,8 @@ pub fn has_aes_hardware() -> bool {
 /// Every rind call that handles a secret runs with DIT where the core has it,
 /// turning it on at entry and back off on return. On Apple's M1 that costs
 /// about 55 ns a call, a fifth of sealing a 1350-byte QUIC packet, so
-/// holding a guard across a batch of calls pays it once instead. Where rind
+/// holding a guard across a batch of calls pays it once instead, for calls
+/// made directly or through an adapter such as rind-rustls. Where rind
 /// sets no DIT, on x86_64, armv7, and aarch64 cores without it, the guard
 /// does nothing.
 ///

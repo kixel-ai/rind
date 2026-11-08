@@ -123,6 +123,19 @@ and wipes the adapter's own copies of secrets.
 rind = { version = "0.3", features = ["wipe"] }
 ```
 
+### Data-independent timing
+
+On aarch64 cores with DIT, such as Apple silicon and Graviton 3 and later,
+each rind call that handles a secret turns DIT on at entry and back off on
+return, so the CPU keeps rind's constant-time code constant-time and the
+rest of the thread runs as the application left it. aws-lc-rs and ring
+never set DIT. Turning it on and off costs about 45-60 ns a call on Apple's
+M1 and M4, a fifth of sealing a 1350-byte packet, and about 2 ns on
+Neoverse N2. A loop of small calls, such as sealing a batch of QUIC packets,
+holds `rind::cpu::Dit::hold()` around the batch to pay it once. The guard
+covers every rind call its thread makes, including those through rind-rustls
+and the other adapters, and does nothing where rind sets no DIT.
+
 ### Platforms
 
 rind has assembly for x86_64, aarch64, and 32-bit arm, and runs portable
