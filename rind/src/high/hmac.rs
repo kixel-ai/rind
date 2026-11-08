@@ -350,6 +350,9 @@ enum Tagged {
 }
 
 impl Streaming {
+    // Keep the algorithm dispatch beside HKDF's loop so successive updates
+    // reuse it instead of calling through this wrapper for every info part.
+    #[inline]
     pub(super) fn update(&mut self, data: &[u8]) {
         // The compressors enter instead, so an update that only buffers skips
         // the cost of enabling DIT.
