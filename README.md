@@ -123,6 +123,28 @@ and wipes the adapter's own copies of secrets.
 rind = { version = "0.3", features = ["wipe"] }
 ```
 
+### Data-independent timing
+
+On Apple silicon, each rind call that handles a secret turns on DIT
+(data-independent timing) at entry and back off on return. From the M3, DIT
+turns off the data memory-dependent prefetcher that
+[GoFetch](https://gofetch.fail/) leaks keys from constant-time code through,
+and clearing it on return leaves the rest of the thread as the application
+set it. The M1 and M2 have no such switch, so they pay the toggle's cost
+without that protection. Arm says DIT changes nothing on its current cores, so rind sets it
+only on Apple's platforms; aws-lc-rs and ring never set it.
+
+Turning DIT on and off costs about 45-60 ns a call on Apple's M1 and M4, a
+fifth of sealing a 1350-byte packet. A loop of small calls, such as sealing
+a batch of QUIC packets, holds a guard around the batch to pay it once:
+
+```rust
+let _dit = rind::cpu::Dit::hold();
+```
+
+The guard covers every rind call its thread makes, including those through
+rind-rustls and the other adapters, and does nothing off Apple's platforms.
+
 ### Platforms
 
 rind has assembly for x86_64, aarch64, and 32-bit arm, and runs portable

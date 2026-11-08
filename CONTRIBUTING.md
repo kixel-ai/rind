@@ -54,7 +54,17 @@ valgrind cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
 admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
 qemu; on an aarch64 host, `nix develop .#ct-qemu-aarch64 --command
 admin/ct-qemu --target aarch64-unknown-linux-gnu` those of the aarch64 code
-that runs only with SHA3.
+that runs only with SHA3. None of them can see an instruction whose timing depends on its
+operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
+scans its release builds for x86_64, aarch64, and armv7, and its portable
+backend's, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
+not list as taking only public operands.
+`nix develop .#timing --command admin/timing dudect` times each secret
+operation whose secret the API lets it set (not key generation, encapsulation,
+or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,
+and `admin/timing marvin` runs the Marvin toolkit against RSA-OAEP decryption. They need quiet
+hardware: the weekly `timing` workflow runs them on GitHub's runners, and a
+shared host is held with `quest gate --host`.
 `nix develop .#prove --command admin/prove` translates the Rust under proof to
 Lean with Aeneas and checks the proofs in [`proofs/`](proofs/README.md).
 
@@ -134,3 +144,8 @@ An adapter's own breaking change waits for its upstream's next breaking release;
 release-plz cannot cap a bump: a breaking change it finds in an adapter, by cargo-semver-checks or a `!` commit, makes its release PR propose the next breaking version, which that check then fails.
 Hold or revert the change instead.
 A version set by hand ahead of the published one is kept as is, and the next release PR publishes it.
+
+The release job publishes through crates.io trusted publishing, so no registry token is stored: crates.io issues a short-lived token only to `release.yml` running in the `publish` environment, which only `main` can deploy to.
+Trusted publishing cannot create a crate, so the maintainer publishes a new crate's first version by hand from `main` before the release PR that would publish it merges.
+Use a crates.io token scoped to `publish-new` for that crate name with a short expiry, never stored as a secret, and revoke it afterwards.
+Then add the crate's trusted publisher for `release.yml` and the `publish` environment, so release-plz publishes every later version, and turn on its crates.io "require trusted publishing" setting, as every published rind crate has, so no API token can publish it.

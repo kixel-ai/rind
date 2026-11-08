@@ -2,8 +2,8 @@
 
 ## Goal
 
-Work that waits on something besides priority: an outside party, an upstream
-release, or a consumer that does not exist yet.
+Work deferred by priority or waiting on an outside party, an upstream release,
+or a consumer that does not exist yet.
 
 ## Plan
 
@@ -13,6 +13,8 @@ quest names how to check it and is deleted once it holds.
 
 ## Required
 
+- [Check CBC consumers for padding-oracle exposure](/quest/m3/cbc-padding-oracle.md) - confirm current callers authenticate before exposing padding failures, and fix a reachable defect
+- [Check rustls provider panic reachability](/quest/m3/rustls-provider-panics.md) - trace malformed peer input to the adapter's key and IV conversions, and fix a reachable defect
 - [armv7 debug ctgrind, end of m2](/quest/m3/armv7-debug-ct.md) - recurring check that armv7 stays constant-time in debug builds
 - [cargo-llvm-cov builds with its tests again](/quest/m3/cargo-llvm-cov-check.md) - waiting on a nixpkgs rustc fix, then drop the doCheck override
 - [instant-acme 0.9 is released](/quest/m3/instant-acme-release.md) - waiting on the release with a pluggable `CryptoProvider`
