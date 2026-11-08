@@ -1,0 +1,24 @@
+# The API steers callers away from misuse
+
+## Goal
+
+rind's public API steers callers away from the misuse and wasted work a 2026-11-08 security and performance audit found: chained HKDF expands written by hand, public keys recomputed on every call, caller-chosen AES-CBC IVs, and hazards nothing documents. Adapters change only to drop the workarounds they carry today.
+
+## Plan
+
+The audit checked every module of `rind` against AGENTS.md's rules and found nothing high-severity, and no panic reachable from public input. Decided with the maintainer on 2026-11-08:
+
+- Scope: the goal above ✅ (rejected: non-breaking changes only, docs only).
+- Additive quests: HKDF chaining, cached agreement keys, and a hygiene and docs pass ✅, all three.
+- Breaking changes: a typed AES-CBC IV ✅. Rejected, so don't raise them again without new evidence:
+  - Replacing `SharedSecret`'s `AsRef<[u8]>` with a named accessor. Documenting HKDF in the examples gets most of the value, and the rename would churn every TLS and HPKE caller.
+  - Moving GCM's 32- and 64-bit tags under a legacy name. WebCrypto requires them, and `TagLength`'s docs already warn about them.
+  - Collapsing `constant_time::verify`'s `WrongLength` and `NotEqual` into one error. Matching only `NotEqual` is a contrived misuse, and every caller uses `?`.
+- Milestone: m2 ✅ (rejected: m1, m3). None of this blocks MoQ.
+- Dropped as not worth a quest:
+  - Fixed buffers sized for RSA (`PublicKey` 3584 B, `encoding::Pkcs8` 4.8 KB, `Signature` 1032 B). They sit on no hot path, and fixed capacity is ARCHITECTURE.md's design.
+  - `RandomizedNonceKey`'s `getrandom` call per seal. Its only consumer seals rustls tickets.
+  - The per-packet copy in rind-str0m's SRTP. aws-lc-rs's ciphers are in place too, and MoQ doesn't use SRTP.
+  - Taking `agree(&PublicKey)` instead of bytes. TLS parses each peer key once per handshake anyway.
+  - A streaming `hmac::Context::verify`. It has no consumer; the hygiene quest documents signing and then calling `constant_time::verify`.
+- Owned elsewhere: storing and loading ML-KEM decapsulation keys is in [ML-KEM-512 and ML-KEM-1024](/quest/m4/pq/ml-kem.md).
