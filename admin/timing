@@ -28,8 +28,8 @@ usage="usage: admin/timing dudect [--seconds S] [--list] [FILTER...]
        admin/timing marvin [--repeat N] [BITS...]"
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-cargo build --release --locked -p rind-timing
-bin=$PWD/target/release/rind-timing
+bin=$(cargo build --release --locked -p rind-timing --message-format=json-render-diagnostics |
+    jq -r 'select(.reason == "compiler-artifact" and .target.name == "rind-timing") | .executable')
 
 pin=()
 if [[ "$(uname)" == Linux ]]; then
@@ -52,6 +52,12 @@ marvin() {
     fi
 
     local status=0 bits dir mhz
+    for bits in "${sizes[@]}"; do
+        if [[ ! "$bits" =~ ^[1-9][0-9]*$ ]]; then
+            echo "error: not a key size: $bits" >&2
+            exit 2
+        fi
+    done
     for bits in "${sizes[@]}"; do
         dir=.tmp/timing/marvin/rsa$bits
         rm -rf "$dir"

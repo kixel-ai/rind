@@ -18,7 +18,12 @@ pub fn run(key: &str, ciphertexts: &str, out: &str) -> Result<(), String> {
     let key = rsa::DecryptingKey::from_pkcs8(&rsa::OAEP_SHA256, &der)
         .map_err(|e| format!("{key}: {e:?}"))?;
     // A ciphertext is as long as the modulus.
-    let len = key.public_key().encrypt(b"", b"").unwrap().as_ref().len();
+    let len = key
+        .public_key()
+        .encrypt(b"", b"")
+        .map_err(|e| format!("encrypt: {e:?}"))?
+        .as_ref()
+        .len();
 
     let file = File::open(ciphertexts).map_err(|e| format!("{ciphertexts}: {e}"))?;
     let size = file

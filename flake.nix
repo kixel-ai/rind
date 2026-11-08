@@ -331,6 +331,8 @@
                 )
                 # The Marvin keys and certificates.
                 pkgs.openssl
+                # admin/timing finds the binary cargo built.
+                pkgs.jq
               ]
               # `taskset` pins the tests to one core.
               ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];

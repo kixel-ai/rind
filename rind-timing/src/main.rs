@@ -52,7 +52,9 @@ fn dudect(mut args: &[String]) -> Result<(), String> {
                 args = rest;
                 seconds = value
                     .parse()
-                    .map_err(|_| format!("--seconds: not a number: {value}"))?;
+                    .ok()
+                    .filter(|s: &f64| s.is_finite() && *s >= 0.0)
+                    .ok_or_else(|| format!("--seconds: not a duration: {value}"))?;
             }
             _ if arg.starts_with('-') => return Err(USAGE.into()),
             _ => filters.push(arg.as_str()),
