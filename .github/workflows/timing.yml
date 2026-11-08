@@ -1,7 +1,7 @@
 name: timing
 
 # Times rind's secret operations on GitHub's x86_64 and arm64 runners with
-# `admin/timing`: dudect's two-class test of every operation, on each CPU tier
+# `admin/timing`: dudect's two-class test of each case, on each CPU tier
 # ctgrind checks, and the Marvin toolkit's RSA-OAEP probes. Weekly, since a
 # run takes hours of runner time, and a leak shows on any run.
 

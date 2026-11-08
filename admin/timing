@@ -5,9 +5,10 @@
 #   admin/timing dudect [--seconds S] [--list] [FILTER...]
 #   admin/timing marvin [--repeat N] [BITS...]
 #
-# `dudect` times every operation that handles a secret on two classes of
-# secret (see rind-timing/src/cases.rs), after a planted leak it must find,
-# and fails on a |t| over dudect's 10.
+# `dudect` times each operation whose secret rind's API lets it set, on two
+# classes of secret, after a planted leak it must find, and fails on a |t|
+# over dudect's 10. rind-timing/src/cases.rs lists what it cannot time: key
+# generation, encapsulation, and varied ML-KEM decapsulation keys.
 #
 # `marvin` runs the Marvin toolkit's RSA-OAEP probes against rind's
 # decryption, for 2048-, 3072-, and 4096-bit keys unless BITS names others:
