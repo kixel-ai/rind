@@ -18,13 +18,15 @@ jobs:
         run: |
           sudo dpkg --add-architecture armhf
           sudo apt-get update
-          sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6:armhf
+          sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6:armhf libssl-dev:armhf
           lscpu
           setarch linux32 uname -m
           ls /proc/sys/fs/binfmt_misc
           if grep -l qemu /proc/sys/fs/binfmt_misc/*; then exit 1; fi
       - name: Build Graviola and HACL variants
         env:
+          ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_INCLUDE_DIR: /usr/include
+          ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_LIB_DIR: /usr/lib/arm-linux-gnueabihf
           RUSTFLAGS: --cfg rind_cpu_disable
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
           CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
