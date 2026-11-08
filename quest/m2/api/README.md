@@ -2,7 +2,7 @@
 
 ## Goal
 
-rind's public API steers callers away from the misuse and wasted work a 2026-11-08 security and performance audit found: chained HKDF expands written by hand, public keys recomputed on every call, caller-chosen AES-CBC IVs, and hazards nothing documents. Adapters change only to drop the workarounds they carry today.
+rind's public API steers callers away from the misuse and wasted work a 2026-11-08 security and performance audit found: chained HKDF expands written by hand, public keys recomputed on every call, caller-chosen AES-CBC IVs, and hazards nothing documents, and a startup CPU check every caller must make although it can no longer fail. Adapters change only to drop the workarounds they carry today.
 
 ## Plan
 
@@ -10,7 +10,7 @@ The audit checked every module of `rind` against AGENTS.md's rules and found not
 
 - Scope: the goal above ✅ (rejected: non-breaking changes only, docs only).
 - Additive quests: HKDF chaining, cached agreement keys, and a hygiene and docs pass ✅, all three.
-- Breaking changes: a typed AES-CBC IV ✅. Rejected, so don't raise them again without new evidence:
+- Breaking changes: a typed AES-CBC IV, and deleting the runtime CPU check that can no longer fail ✅, with the adapters breaking in patch releases (see [its quest](/quest/m2/api/cpu-check.md)). Rejected, so don't raise them again without new evidence:
   - Replacing `SharedSecret`'s `AsRef<[u8]>` with a named accessor. Documenting HKDF in the examples gets most of the value, and the rename would churn every TLS and HPKE caller.
   - Moving GCM's 32- and 64-bit tags under a legacy name. WebCrypto requires them, and `TagLength`'s docs already warn about them.
   - Collapsing `constant_time::verify`'s `WrongLength` and `NotEqual` into one error. Matching only `NotEqual` is a contrived misuse, and every caller uses `?`.
