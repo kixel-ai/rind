@@ -12,7 +12,3 @@ Planned with the maintainer on 2026-11-07, a follow-up of [moq-dev/rind#470](htt
 - The fix: add `TAGLEN` when `self.symmetricstate.has_key()`, as the `E1` and payload checks already do, with a test of the reproduction.
 - Decided with the maintainer on 2026-11-07: outside posts wait for the launch post, then go up only as draft PRs. Open it from a kixelated fork as a draft, with the AI use stated and a short body.
 - snow has no AI or contribution policy beyond its license terms; check again before posting.
-
-## Required
-
-- [rind's launch blog post is published](/quest/m1/launch-post.md) - outside posts wait for it

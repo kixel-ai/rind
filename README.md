@@ -34,6 +34,9 @@ operation on each host and CPU tier, against aws-lc-rs, ring, RustCrypto,
 Graviola, libcrux, and OpenSSL, with each library's build time, binary size,
 and build tools.
 
+The [launch post][launch-post] tells why rind exists and what building it
+cost in AI tokens.
+
 ## Usage
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/moq-dev/rind/build.yml)](https://github.com/moq-dev/rind/actions/workflows/build.yml?query=branch%3Amain)
@@ -244,6 +247,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [rind-instant-acme]: https://github.com/moq-dev/rind/tree/main/rind-instant-acme
 [rind-python]: https://github.com/moq-dev/rind/tree/main/rind-python
 [quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
+[launch-post]: https://moq.dev/blog/rind/
 [contributing]: https://github.com/moq-dev/rind/blob/main/CONTRIBUTING.md
 [migrating]: https://github.com/moq-dev/rind/blob/main/MIGRATING.md
 [benchmarks]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md

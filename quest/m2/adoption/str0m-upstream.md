@@ -16,7 +16,3 @@ Planned with the maintainer on 2026-11-07, a follow-up of [moq-dev/rind#467](htt
 - Decided with the maintainer on 2026-11-07: outside posts wait for the launch post, then go up only as draft PRs, from kixelated forks, with the AI use stated and short bodies. Check each repository's contribution and AI policy again before posting.
 - The dimpl `Drop` should follow the upstream crate's own conventions (for example `zeroize`, if it already depends on it); don't push rind's opt-in rule onto it.
 - Once a fix is released upstream, update rind-str0m to drop the matching exception.
-
-## Required
-
-- [rind's launch blog post is published](/quest/m1/launch-post.md) - outside posts wait for it
