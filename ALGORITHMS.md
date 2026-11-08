@@ -93,7 +93,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | aws-lc ⚡ |  |  | HACL* ✓ + Graviola |
 | MD5 | rind |  |  |  |
 | SHA-1 | rind | aws-lc |  | rind |
-| SHA-256 | aws-lc ⚡ | aws-lc | aws-lc ⚡ | HACL* ✓ |
+| SHA-256 | aws-lc ⚡ | aws-lc | aws-lc ⚡ / Graviola without crypto | HACL* ✓ |
 | SHA-384, SHA-512, SHA-512/256 | aws-lc | aws-lc ✓ | aws-lc ⚡ | HACL* ✓ |
 | SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  | OpenSSL ⚡ + Graviola | HACL* + Graviola |
 | HMAC | Graviola ⚡ |  |  |  |
@@ -109,6 +109,9 @@ with portable Rust in place of the assembly armv7 runs regardless.
 
 - AES header protection on aarch64 pays the same indirect call as AES-GCM
   key setup on x86_64.
+- armv7 without crypto: SHA-256 keeps Graviola. Its [native 32-bit comparison](benchmarks/armv7-sha256.md)
+  measured 28–30% lower latency than HACL* at 64 B and 1350 B, exceeding
+  the about 10% advantage required to prefer unverified code.
 - portable: ChaCha20-Poly1305's Poly1305 is Graviola's on 64-bit targets
   and HACL*'s ✓ on 32-bit ones, whose streaming state counts its input in a
   32-bit length that a 64-bit AEAD can overflow. SHA-3's and ML-KEM's
