@@ -130,7 +130,8 @@ On Apple silicon, each rind call that handles a secret turns on DIT
 turns off the data memory-dependent prefetcher that
 [GoFetch](https://gofetch.fail/) leaks keys from constant-time code through,
 and clearing it on return leaves the rest of the thread as the application
-set it. Arm says DIT changes nothing on its current cores, so rind sets it
+set it. The M1 and M2 have no such switch, so they pay the toggle's cost
+without that protection. Arm says DIT changes nothing on its current cores, so rind sets it
 only on Apple's platforms; aws-lc-rs and ring never set it.
 
 Turning DIT on and off costs about 45-60 ns a call on Apple's M1 and M4, a
