@@ -9,9 +9,6 @@ armv7 backend, and every `rind-*` adapter MoQ uses. Each adapter's operations pa
 rind's tests on x86_64, aarch64, and armv7 alike; an operation missing on one
 arch does not count as covered.
 
-MoQ drops moq-relay's ACME for now (maintainer, 2026-11-03), so
-`rind-instant-acme` and the instant-acme release it waits on moved to m3.
-
 MoQ's [migration epic](https://github.com/moq-dev/moq/blob/main/quest/m1/rind/README.md)
 switches each area once the rind pieces it uses are on crates.io.
 

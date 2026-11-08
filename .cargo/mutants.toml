@@ -355,7 +355,6 @@ exclude_re = [
   'rind-dimpl/src/suite\.rs:121:\d+: replace <impl SupportedDtls12CipherSuite for Dtls12>::hash_algorithm -> HashAlgorithm with Default::default\(\)$',
   'rind-dimpl/src/suite\.rs:162:\d+: replace <impl SupportedDtls13CipherSuite for Dtls13>::hash_algorithm -> HashAlgorithm with Default::default\(\)$',
   'rind-dimpl/src/suite\.rs:70:\d+: replace <impl fmt::Debug for Aead>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-instant-acme/src/lib\.rs:38:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-jsonwebtoken/src/lib\.rs:40:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-object-store/src/lib\.rs:41:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-rcgen/src/lib\.rs:221:\d+: replace <impl fmt::Debug for KeyPair>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
