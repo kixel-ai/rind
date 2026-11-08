@@ -31,7 +31,8 @@ The chunk wrapper bounds its byte length to a block-aligned `u32`.
 Graviola is rind's existing `low::generic::sha256` implementation.
 Both use Rust 1.99.1, the bench profile, and `--cfg rind_cpu_disable`;
 `RIND_CPU_DISABLE_sha2=1` disables rind's crypto extension and
-`OPENSSL_armcap=~0x10` disables aws-lc's SHA-256 instructions.
+`OPENSSL_armcap=~0x10` does not disable aws-lc's SHA-256 instructions on
+Linux ARM32.
 
 The [successful run](https://github.com/moq-dev/rind/actions/runs/42496769936)
 contains the full logs and Criterion artifact, including the candidate
