@@ -42,7 +42,7 @@ jobs:
               if item.get('executable') and item['target']['name'] == 'sha2':
                   shutil.copy2(item['executable'], '.tmp/graviola')
           p = Path('rind/Cargo.toml')
-          p.write_text(p.read_text().replace('target_arch = "aarch64", target_arch = "arm"', 'target_arch = "aarch64"'))
+          p.write_text(p.read_text().replace('[target.\'cfg(any(rind_portable, target_endian = "big", not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "arm"))))\'.dependencies]\n', ''))
           p = Path('rind/src/low/arm/sha_armv4.rs')
           p.write_text(p.read_text().replace('None => generic::sha256::sha256_compress_blocks(state, blocks),', '''None => {
                       for piece in blocks.chunks((u32::MAX as usize / 64) * 64) {
