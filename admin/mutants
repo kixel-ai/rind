@@ -60,8 +60,8 @@ case $(uname -m) in
             rind/src/low/generic/sha1.rs rind/src/low/generic/sha256.rs
         )
         rows=(
-            "sha3 dit"
-            "aes pmull sha2 sha3 dit"
+            "sha3"
+            "aes pmull sha2 sha3"
         )
         ;;
     *)
