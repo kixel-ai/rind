@@ -53,7 +53,7 @@ jobs:
       - name: Run tests (debug, --no-default-features)
         run: cargo test --no-default-features
       - name: Run zeroing tests (debug, --features wipe)
-        run: cargo test -p rind --features wipe --test zeroing
+        run: cargo test -p rind -p rind-aws-lc-rs --features rind/wipe,rind-aws-lc-rs/wipe --test zeroing
 
       - name: Build (release)
         run: cargo build -p rind --release
@@ -150,13 +150,13 @@ jobs:
           echo "CC_${CARGO_BUILD_TARGET//-/_}=musl-gcc" >> "$GITHUB_ENV"
 
       - name: Run tests (debug)
-        run: cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-str0m -p rind-instant-acme
+        run: cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m -p rind-instant-acme
       - name: Run tests (release)
-        run: env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-str0m -p rind-instant-acme --release
+        run: env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m -p rind-instant-acme --release
 
   # 32-bit ARM runs libcrux, or aws-lc's assembly for ChaCha20, NEON, and the
   # crypto extension. The recipe builds and lints Android and Linux gnueabihf,
-  # then runs the gnueabihf tests under qemu on both of rind's armv7 paths, as
+  # then runs the gnueabihf tests under qemu on each of rind's armv7 tiers, as
   # a local run does.
   armv7:
     runs-on: ubuntu-latest
@@ -216,6 +216,23 @@ jobs:
           RIND_DART_CROSS_TARGETS: ${{ matrix.cross }}
         run: dart test
 
+  # The portable backend, which every architecture without rind assembly
+  # runs, forced on x86_64 so it runs without emulation. The recipe lints and
+  # tests it with the checks a debug build has.
+  portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+      - uses: ./.github/actions/just
+      - uses: ./.github/actions/nix
+
+      - name: Build, lint, and test
+        run: just portable
+
   # The simulator runs the iOS tests natively on the Apple silicon runner;
   # devices' code is only built, since GitHub has no iOS device to run it.
   ios:
@@ -239,7 +256,7 @@ jobs:
       - name: Build tests (device)
         run: |
           export "$(rustc --print deployment-target --target aarch64-apple-ios)"
-          cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-str0m -p rind-instant-acme --target aarch64-apple-ios --no-run
+          cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m -p rind-instant-acme --target aarch64-apple-ios --no-run
 
       - name: Boot a simulator
         run: |
@@ -253,8 +270,8 @@ jobs:
           RIND_TEST_ARM_CRYPTO_EXT: 1
         run: |
           export "$(rustc --print deployment-target --target aarch64-apple-ios-sim)"
-          cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-str0m -p rind-instant-acme --target aarch64-apple-ios-sim
-          env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-str0m -p rind-instant-acme --target aarch64-apple-ios-sim --release
+          cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m -p rind-instant-acme --target aarch64-apple-ios-sim
+          env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m -p rind-instant-acme --target aarch64-apple-ios-sim --release
 
   # cross's images (see Cross.toml) hold an Android system for the tests, and
   # run aarch64 and armv7 under qemu-user, whose CPU has the crypto extension.
@@ -299,4 +316,4 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
           CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS: true
-        run: env ${{ matrix.expect }} cross test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-str0m -p rind-instant-acme --locked --release --target ${{ matrix.target }}
+        run: env ${{ matrix.expect }} cross test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m -p rind-instant-acme --locked --release --target ${{ matrix.target }}

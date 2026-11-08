@@ -10,17 +10,19 @@ Decided with the maintainer on 2026-11-07, in m3. rind already has these:
 - differential fuzz targets against aws-lc-rs, run nightly;
 - Wycheproof and cross-checks against aws-lc-rs;
 - Intel SDE CPU models for every x86_64 dispatch path;
-- ctgrind, `admin/ct-sde`, and `admin/ct-qemu` for secret-dependent branches and addresses.
+- ctgrind, `admin/ct-sde`, and `admin/ct-qemu` for secret-dependent branches and addresses;
+- `admin/ct-vartime`, in `just ci`, for variable-time instructions, which those three can't see.
 
-All three constant-time tools state they can't see variable-time instructions. OSS-Fuzz, cryptofuzz, and NIST ACVP are planned in [m4 assurance](/quest/m4/assurance/README.md) and aren't repeated here.
+OSS-Fuzz, cryptofuzz, and NIST ACVP are planned in [m4 assurance](/quest/m4/assurance/README.md) and aren't repeated here.
 
 - Fix what a check finds in its own quest's PR when it's small; otherwise plan a follow-up.
 - Slow suites run in their own workflows, not in `just ci`, as `AGENTS.md` asks.
 
 ## Required
 
-- [Test coverage audit](/quest/m3/confidence/audit.md) - every primitive × tier mapped to its vectors, fuzz target, differential test, and constant-time check, with gaps planned
-- [No variable-time instruction on a secret path](/quest/m3/confidence/vartime-scan.md) - a static scan of the compiled secret paths
+- [A differential fuzz target for every primitive](/quest/m3/confidence/fuzz-every-primitive.md) - signing, ciphers, MD5, and GCM's any-IV API compared with aws-lc
+- [Fuzz the tiers GitHub's runners cannot reach](/quest/m3/confidence/fuzz-tiers.md) - corpus replay under SDE for AVX-512 and SHA512, and under qemu for armv7
+- [A constant-time check on every tier](/quest/m3/confidence/ct-tiers.md) - Intel's AVX SHA under SDE, and aarch64's SHA-3 and SHA-512 paths
 - [Adapter crates' surviving mutants](/quest/m3/confidence/mutants-adapters.md) - tests for the 103 adapter mutants no test catches
 - [Surviving mutants that need crafted inputs](/quest/m3/confidence/mutants-edge-cases.md) - the AVX2 Ed25519 field arithmetic, points at infinity, and other edges random inputs miss
 - [Mutation testing on AVX-512](/quest/m3/confidence/mutants-avx512.md) - the AVX-512 paths no campaign host runs, under Intel SDE
