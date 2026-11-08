@@ -175,7 +175,10 @@ class Render(unittest.TestCase):
         everyone = hosts()
         everyone["kixtop"]["results"].append({"operation": "x25519-ecdh/{lib}", "library": "rind-dit-held", "ns": 10000.0})
         everyone["kixtop"]["results"][1]["ns"] = 15000.0
-        titles = squares(br.overview_svg(everyone, VERIFIED, "light"))
+        svg = br.overview_svg(everyone, VERIFIED, "light")
+        titles = squares(svg)
+        # kixtop's rind trails ring by 33%; its held row counts for neither.
+        self.assertIn(">rind is the fastest, or within 10% of it, in 3 of its 4 times<", svg)
         self.assertIn("X25519, rind (DIT held) on kixtop: 10.00 µs, 0.67× the fastest", titles)
         self.assertIn("X25519, rind on kixtop: 20.00 µs, 1.33× the fastest", titles)
         # rind is a gap against ring, never against its own held row.
@@ -213,7 +216,7 @@ class Render(unittest.TestCase):
         self.assertIn("No nightly results yet.", md)
         self.assertEqual(
             sorted(os.path.basename(p) for p in files if p.endswith(".svg")),
-            sorted(f"{n}{s}.svg" for n in ["overview", "headline", "nixos", "nixos2", "kixtop"] for s in ["", "-dark"]),
+            sorted(f"{n}{s}.svg" for n in ["overview", "nixos", "nixos2", "kixtop"] for s in ["", "-dark"]),
         )
         self.assertIn("| Operation | rind | aws-lc-rs | ring | OpenSSL |", md)
         self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | 300.00 µs |", md)
@@ -228,26 +231,6 @@ class Render(unittest.TestCase):
         everyone["nixos2"]["refused"] = {"graviola": ["bmi1", "adx"]}
         md = br.report(everyone, None, VERIFIED, [])[br.REPORT]
         self.assertIn("graviola isn't timed on `nixos2`: it requires BMI1 and ADX, which this CPU lacks.", md)
-
-    def test_headline_is_the_mean_over_hosts_and_says_what_is_missing(self):
-        everyone = hosts()
-        everyone["nixos"]["build_cost"] = {
-            "status": "ok",
-            "builds": [
-                {"name": "rustls-rind", "median_seconds": 5.0, "tools": []},
-                {"name": "rustls-ring", "median_seconds": 10.0, "tools": ["cc"]},
-            ],
-        }
-        svg = br.headline_svg(everyone, "light")
-        # Rows rind has no time for are left out, and so is nixos2, which
-        # timed none of the rest.
-        self.assertEqual([name for name, _, _ in br.headline_rows(everyone)], ["X25519", "cold build of a rustls client"])
-        self.assertIn("over nixos and kixtop (aarch64 and x86_64)", svg)
-        self.assertIn("<title>Time over rind's for common TLS and QUIC operations", svg)
-        self.assertIn("X25519, ring: nixos 33.00 µs, 1.10× rind's; kixtop 40.00 µs, 2.00× rind's", squares(svg))
-        self.assertIn(">1.48×<", svg)
-        self.assertIn(">2.00×, needs cc<", svg)
-        self.assertEqual(svg.count(">not offered<"), 2)
 
     def test_svgs_are_well_formed(self):
         import xml.etree.ElementTree as ET

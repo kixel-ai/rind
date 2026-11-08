@@ -1,59 +1,70 @@
+<p align="center">
+  <img width="220" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png" alt="rind: a curled strip of spiky green graviola peel shaped like a lowercase r">
+</p>
+
 <h1 align="center">rind</h1>
-<img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png" alt="rind: a curled strip of spiky green graviola peel shaped like a lowercase r">
 
-> **rind** distills great cryptography into a pure-Rust library for
-> [rustls](https://github.com/rustls/rustls) and
-> [MoQ](https://github.com/moq-dev/moq), as fast as aws-lc-rs and ring and
-> built by rustc alone.
+<p align="center">
+  <strong>Fast, formally verified cryptography in pure Rust.</strong><br>
+  A drop-in for ring, aws-lc-rs, and rustls that <code>cargo build</code> compiles with rustc alone.
+</p>
 
-- **No C toolchain.** rind's assembly lives in Rust source, so `cargo build`
-  needs only rustc and a linker: no C compiler, cmake, nasm, or perl, for
-  the host or a cross target. A rustls client builds faster over rind than
-  over aws-lc-rs or ring.
-- **Verified where it counts.** On x86_64 and aarch64, rind's elliptic-curve,
-  RSA, and ML-KEM arithmetic builds on [s2n-bignum]'s formally verified
-  assembly, and rind's own [Lean proofs][proofs] carry X25519 and Ed25519
-  from its API down to it, as [Verified code][verified] lists. rind prefers
-  verified code, and [ALGORITHMS.md][algorithms] marks ⚡ each place it runs
-  faster unverified code instead.
-- **As fast as aws-lc-rs and ring.** rind matches or beats both on nearly
-  every operation TLS and QUIC run, from the handshake to each packet's
-  AEAD. Where another library is ahead, as ring and aws-lc-rs are at
-  RSA-2048 signing on x86_64, and aws-lc-rs is at AES-GCM and short messages
-  on Apple silicon, where rind alone sets DIT around each call,
-  [Known gaps][gaps] says so, with the quest that closes the gap or the
-  reason it stays.
+<p align="center">
+  <a href="https://crates.io/crates/rind"><img alt="Latest release" src="https://img.shields.io/crates/v/rind"></a>
+  <a href="https://docs.rs/rind/"><img alt="Documentation" src="https://img.shields.io/docsrs/rind"></a>
+  <a href="https://github.com/moq-dev/rind/actions/workflows/build.yml?query=branch%3Amain"><img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/moq-dev/rind/build.yml"></a>
+</p>
+
+- 🏎️ **As fast as aws-lc-rs and ring.** rind matches or beats both on
+  nearly every operation TLS and QUIC run, from the handshake to each
+  packet's AEAD.
+- 🛡️ **Verified where it counts.** On x86_64 and aarch64, rind's
+  elliptic-curve, RSA, and ML-KEM arithmetic builds on [s2n-bignum]'s
+  formally verified assembly, and rind's own [Lean proofs][proofs] carry
+  X25519 and Ed25519 from its API down to it, as [Verified code][verified]
+  lists. rind prefers verified code, and [ALGORITHMS.md][algorithms] marks ⚡
+  each place it runs faster unverified code instead.
+- 🦀 **No C toolchain.** rind's assembly lives in Rust source: no C
+  compiler, cmake, nasm, or perl, for the host or a cross target. A rustls
+  client builds [faster][build-cost] over rind than over aws-lc-rs or ring.
+
+## Every benchmark, on every CPU
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/moq-dev/rind/main/benchmarks/headline-dark.svg">
-  <img alt="Time over rind's, for aws-lc-rs and ring, at a TLS 1.3 handshake, AES-128-GCM and ChaCha20-Poly1305 seals, X25519, P-256 ECDSA and RSA-2048 PSS signing, and a rustls client's build" src="https://raw.githubusercontent.com/moq-dev/rind/main/benchmarks/headline.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/moq-dev/rind/main/benchmarks/overview-dark.svg">
+  <img alt="Time over the fastest library's, by operation, library, and host" src="https://raw.githubusercontent.com/moq-dev/rind/main/benchmarks/overview.svg">
 </picture>
 
-[BENCHMARKS.md][benchmarks] has the times behind this chart: every
-operation on each host and CPU tier, against aws-lc-rs, ring, RustCrypto,
-Graviola, libcrux, and OpenSSL, with each library's build time, binary size,
-and build tools.
+Each row is an operation and each column a library, with one square per
+machine: x86_64 from Haswell to Zen 3 and Arrow Lake, and an Apple M4.
+Green is the fastest library on that machine, or within 10% of it, and
+red is over 8× slower. A shield marks formally verified code. Where
+another library leads, mostly at short messages on Apple silicon, where
+rind alone sets DIT around each call, [Known gaps][gaps] says why and what
+closes it. [BENCHMARKS.md][benchmarks] has every time, build time, and
+binary size.
 
-## Usage
-
-[![Build Status](https://img.shields.io/github/actions/workflow/status/moq-dev/rind/build.yml)](https://github.com/moq-dev/rind/actions/workflows/build.yml?query=branch%3Amain)
-[![Latest release](https://img.shields.io/crates/v/rind)](https://crates.io/crates/rind)
-[![Documentation](https://img.shields.io/docsrs/rind)](https://docs.rs/rind/)
+## Switch in one line
 
 rind is new, so exercise due caution.
 
-### With rustls
-
-[rind-rustls][] is a rustls `CryptoProvider`. Turn off rustls's default
-features, which compile aws-lc-rs:
-
 ```toml
 [dependencies]
+# A rustls CryptoProvider: turn off rustls's default features, which compile aws-lc-rs.
 rind-rustls = "0.23"
 rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }
+
+# Or keep your code, and rename the dependency: ring and aws-lc-rs's APIs, name for name.
+ring = { package = "rind-ring", version = "0.17" }
+aws-lc-rs = { package = "rind-aws-lc-rs", version = "1" }
+
+# Or use rind's own API.
+rind = "0.3"
 ```
 
-Install it at startup, then use rustls as normal:
+### With rustls
+
+Install [rind-rustls][] at startup, then use rustls as normal:
 
 ```rust,ignore
 // Refuses a CPU missing a feature rind requires.
@@ -62,6 +73,20 @@ rind_rustls::default_provider()?.install_default().unwrap();
 
 Its [README][rind-rustls] shows a provider that links only the algorithms a
 binary names.
+
+### With an agent
+
+Paste this into your coding agent, in your repository:
+
+```text
+Move this repository from ring or aws-lc-rs to rind, following
+https://raw.githubusercontent.com/moq-dev/rind/main/MIGRATE.md
+```
+
+It migrates on a local branch, reports the build time, binary size,
+benchmarks, and tests before and after, and asks before opening a PR or
+filing an issue. To migrate by hand, [MIGRATING.md][migrating] maps each
+ring and aws-lc-rs item to rind's.
 
 ### Directly
 
@@ -91,14 +116,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 [docs.rs][docs] documents every module, and [ARCHITECTURE.md][architecture]
 describes the API's shape.
 
-### Other adapters
+## Adapters
 
 Each crate's README shows its setup.
 
 | Crate | For |
 |---|---|
-| [rind-ring][] | ring 0.17's API, name for name: rename the dependency, with no code changes |
-| [rind-aws-lc-rs][] | aws-lc-rs 1.x's API, name for name, for every item rind backs: rename the dependency, with no code changes |
+| [rind-ring][] | ring 0.17's API, name for name |
+| [rind-aws-lc-rs][] | aws-lc-rs 1.x's API, name for name, for every item rind backs |
 | [rind-dimpl][] | DTLS 1.2 and 1.3 through [dimpl](https://github.com/algesten/dimpl) |
 | [rind-str0m][] | WebRTC through [str0m](https://github.com/algesten/str0m) |
 | [rind-jsonwebtoken][] | JWTs through [jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
@@ -108,7 +133,7 @@ Each crate's README shows its setup.
 | [rind-instant-acme][] | ACME through [instant-acme](https://github.com/djc/instant-acme), unpublished until instant-acme releases the interface it targets |
 | [rind-python][] | Python, as the `pyrind` package on PyPI, with rind's own API |
 
-### Wiping keys
+## Wiping keys
 
 rind wipes keys, keyed state, and heap scratch derived from a private key
 on drop only under its `wipe` feature, as RustCrypto does with `zeroize`;
@@ -123,7 +148,7 @@ and wipes the adapter's own copies of secrets.
 rind = { version = "0.3", features = ["wipe"] }
 ```
 
-### Platforms
+## Platforms
 
 rind has assembly for x86_64, aarch64, and 32-bit arm, and runs portable
 Rust on any other architecture (on 32-bit x86, only with a Rust newer than its
@@ -135,20 +160,6 @@ rind requires: call `rind::cpu::check()` at startup to get an error naming
 it instead, as `rind_rustls::default_provider()` does.
 [PLATFORMS.md][platforms] lists what each architecture runs without each
 feature.
-
-## Migrating with an agent
-
-Paste this into your coding agent, in your repository:
-
-```text
-Move this repository from ring or aws-lc-rs to rind, following
-https://raw.githubusercontent.com/moq-dev/rind/main/MIGRATE.md
-```
-
-It migrates on a local branch, reports the build time, binary size,
-benchmarks, and tests before and after, and asks before opening a PR or
-filing an issue. To migrate by hand, [MIGRATING.md][migrating] maps each
-ring and aws-lc-rs item to rind's.
 
 ## Contributing
 
@@ -226,6 +237,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [migrating]: https://github.com/moq-dev/rind/blob/main/MIGRATING.md
 [benchmarks]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md
 [gaps]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#known-gaps
+[build-cost]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#build-cost
 [verified]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#verified-code
 [proofs]: https://github.com/moq-dev/rind/blob/main/proofs/README.md
 [algorithms]: https://github.com/moq-dev/rind/blob/main/ALGORITHMS.md

@@ -2,7 +2,7 @@
 
 ## Goal
 
-`BENCHMARKS.md`, and with it the README's headline, is regenerated on all four hosts at the end of m2, and every new gap is triaged as the Plan sets out.
+`BENCHMARKS.md`, and with it the README's heatmap, is regenerated on all four hosts at the end of m2, and every new gap is triaged as the Plan sets out.
 
 ## Plan
 
