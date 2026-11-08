@@ -146,7 +146,7 @@ ct_tests = {
 # trace tests use ct_sde_ and ct_qemu_. Integration suites include every test.
 vector_suites = {name: tests(ROOT / f"rind/tests/{name}.rs") for name in ["aws_lc", "cctv"]}
 vector_tests = {
-    "::".join([*p.relative_to(SRC).with_suffix("").parts, name])
+    "::".join([*(p.parent if p.name == "mod.rs" else p.with_suffix("")).relative_to(SRC).parts, name])
     for p in SRC.rglob("*.rs")
     for name in tests(p)
     if re.match(r"(aws_lc|boringssl|cctv)(_|$)", name)
