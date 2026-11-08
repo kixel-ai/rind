@@ -2,7 +2,7 @@
 
 ## Goal
 
-A backend requires only its target's compile-time features, so no CPU that runs a rind binary lacks one. `rind::cpu::check`, `cpu::MissingFeature`, and the panic every operation guards against are gone, and so is every adapter's `MissingFeature`: `default_provider()` and its kin become infallible, and pyrind, rind-dart, and rind-cpuid stop calling the check.
+A backend requires only its target's compile-time features, so no CPU that runs a rind binary lacks one. `rind::cpu::check`, `cpu::MissingFeature`, and the panic every operation guards against are gone, and pyrind, rind-dart, and rind-cpuid stop calling the check.
 
 ## Plan
 
@@ -13,6 +13,10 @@ Decided with the maintainer on 2026-11-08:
 - Delete the runtime check and make requirements compile-time ✅ (rejected: keep `check()` documented as never failing; leave it). rind's removal ships in 0.4.
 - `rind/build.rs` selects the aarch64 backend only when `CARGO_CFG_TARGET_FEATURE` has `neon`, and the portable backend otherwise, which is one backend per target, chosen at build time.
 - AGENTS.md's Required rule changes from "a CPU missing a required feature fails with an error naming it" to say a backend requires only its target's compile-time features. The maintainer asked for this edit; follow `quest guide prompting`.
-- Adapters break now, in their next patch releases, rather than waiting for their upstream's next major ✅ (rejected: wait for upstream majors; change the adapter version scheme). The maintainer: nobody uses them yet. This covers rind-rustls, rind-dimpl, rind-object-store, rind-instant-acme, rind-jsonwebtoken's docs, and rind-ring's and rind-aws-lc-rs's `cpu::check`.
+- The adapters stop calling `check()` and drop their `MissingFeature` in [Adapters offer exactly their upstream's API](/quest/m0/adapters/README.md), since their upstreams have no such error. That epic also replaces this quest's earlier decision to break the adapters in patch releases for this quest alone.
 - Delete what only existed for the check: `verify_cpu_features` and its per-operation atomic load in `low::entry`, `rind/tests/cpu.rs`'s per-feature panic test, and `RIND_CPU_DISABLE_neon` if nothing else uses it. Keep the optional-feature toggles that select tiers.
-- Update README, PLATFORMS.md, MIGRATING.md, ARCHITECTURE.md's `cpu` line, and the adapters' docs, which tell callers to check first. Keep `cpu::has_aes_hardware` and `cpu::Dit`.
+- Update README, PLATFORMS.md, MIGRATING.md, and ARCHITECTURE.md's `cpu` line, which tell callers to check first. Keep `cpu::has_aes_hardware` and `cpu::Dit`.
+
+## Required
+
+- [Adapters offer exactly their upstream's API](/quest/m0/adapters/README.md) - the adapters stop calling `check()` first

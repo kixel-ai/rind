@@ -1,0 +1,16 @@
+# Adapters offer exactly their upstream's API
+
+## Goal
+
+Each published `rind-<consumer>` adapter offers exactly the API of the provider its upstream ships, so swapping one for the other changes no other code. Each README lists only what rind cannot back.
+
+## Plan
+
+A 2026-11-08 comparison of each adapter's rustdoc surface against its upstream found additions, changed signatures, and renamed items. Decided with the maintainer on 2026-11-08:
+
+- Adapters must have identical APIs ✅. A divergence is a bug: fix it in a patch release with the version set by hand, and yank the divergent releases if needed. AGENTS.md and CONTRIBUTING.md now say so.
+- Milestone: now, m0 ✅ (rejected: m2 beside the API epic, m3 beside the parity epic).
+- Every adapter's `MissingFeature`, and the `Result` it puts on `default_provider()` and its kin, diverges from upstream. Each child removes it from its adapters by no longer calling `rind::cpu::check()`, which can't fail on any target rind builds for. rind's own `check()` goes in [rind needs no runtime CPU check](/quest/m2/api/cpu-check.md).
+- rind-object-store and rind-instant-acme have no upstream provider shape to copy: object_store's are `pub(crate)`, and instant-acme's are associated functions. rind-object-store keeps its `default_provider()`, which MoQ's moq-cli uses; rind-instant-acme is being deleted, since it has no consumer.
+- Behavior that isn't API stays where rind has a reason, documented in each README: rind-rustls and rind-dimpl put ChaCha20-Poly1305 first on CPUs without AES instructions, and rind-rustls lists AES-128-GCM before AES-256-GCM, for speed.
+- Each child ends with its adapter's README and MIGRATING.md section listing only the remaining omissions.
