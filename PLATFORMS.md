@@ -11,12 +11,11 @@ first two under qemu. iOS devices' code is only built.
   instructions. Without it, as on the Raspberry Pi 4, CM4, and Zero 2 W, they
   run [aws-lc]'s NEON and scalar assembly instead (see
   [ALGORITHMS.md](ALGORITHMS.md)), `rind::cpu::has_aes_hardware()` is false, and
-  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Secret-dependent code
-  runs with data-independent timing (DIT) where the core has it, set and
+  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. On Apple's platforms,
+  secret-dependent code runs with data-independent timing (DIT), set and
   cleared in each call unless `rind::cpu::Dit::hold()` holds it across a batch
-  of calls. Where Hyper-V hides DIT from Linux, as on Azure's Cobalt 100,
-  rind knows it from the core's model, for Arm's Armv8.4 and later cores and
-  Qualcomm's Oryon, given a readable `/sys` and every CPU online.
+  of calls. rind sets no DIT on other aarch64 platforms, where Arm says it
+  changes nothing on current cores.
 - `x86_64` runs on every x86_64 CPU. Without `aes` and `pclmulqdq`, as on
   Core 2 and Nehalem, AES and GHASH run [aws-lc]'s SSSE3 assembly instead
   (see [ALGORITHMS.md](ALGORITHMS.md)), `rind::cpu::has_aes_hardware()` is false,

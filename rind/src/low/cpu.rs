@@ -45,13 +45,12 @@ pub fn has_aes_hardware() -> bool {
 
 /// Holds data-independent timing (DIT) on for this thread until dropped.
 ///
-/// Every rind call that handles a secret runs with DIT where the core has it,
+/// On Apple's platforms, every rind call that handles a secret runs with DIT,
 /// turning it on at entry and back off on return. On Apple's M1 that costs
 /// about 55 ns a call, a fifth of sealing a 1350-byte QUIC packet, so
 /// holding a guard across a batch of calls pays it once instead, for calls
-/// made directly or through an adapter such as rind-rustls. Where rind
-/// sets no DIT, on x86_64, armv7, and aarch64 cores without it, the guard
-/// does nothing.
+/// made directly or through an adapter such as rind-rustls. Everywhere else
+/// rind sets no DIT, and the guard does nothing.
 ///
 /// Everything the thread runs while a guard is held runs with DIT, rind's
 /// code or not. DIT stays on until the thread's last guard drops, in

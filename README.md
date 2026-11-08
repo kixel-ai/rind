@@ -125,16 +125,24 @@ rind = { version = "0.3", features = ["wipe"] }
 
 ### Data-independent timing
 
-On aarch64 cores with DIT, such as Apple silicon and Graviton 3 and later,
-each rind call that handles a secret turns DIT on at entry and back off on
-return, so the CPU keeps rind's constant-time code constant-time and the
-rest of the thread runs as the application left it. aws-lc-rs and ring
-never set DIT. Turning it on and off costs about 45-60 ns a call on Apple's
-M1 and M4, a fifth of sealing a 1350-byte packet, and about 2 ns on
-Neoverse N2. A loop of small calls, such as sealing a batch of QUIC packets,
-holds `rind::cpu::Dit::hold()` around the batch to pay it once. The guard
-covers every rind call its thread makes, including those through rind-rustls
-and the other adapters, and does nothing where rind sets no DIT.
+On Apple silicon, each rind call that handles a secret turns on DIT
+(data-independent timing) at entry and back off on return. From the M3, DIT
+turns off the data memory-dependent prefetcher that
+[GoFetch](https://gofetch.fail/) leaks keys from constant-time code through,
+and clearing it on return leaves the rest of the thread as the application
+set it. Arm says DIT changes nothing on its current cores, so rind sets it
+only on Apple's platforms; aws-lc-rs and ring never set it.
+
+Turning DIT on and off costs about 45-60 ns a call on Apple's M1 and M4, a
+fifth of sealing a 1350-byte packet. A loop of small calls, such as sealing
+a batch of QUIC packets, holds a guard around the batch to pay it once:
+
+```rust
+let _dit = rind::cpu::Dit::hold();
+```
+
+The guard covers every rind call its thread makes, including those through
+rind-rustls and the other adapters, and does nothing off Apple's platforms.
 
 ### Platforms
 
