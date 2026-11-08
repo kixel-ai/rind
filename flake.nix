@@ -11,7 +11,7 @@
     # The quest CLI, which also serves the quest guide and skills the stubs in
     # .claude/skills call. Bump the rev to upgrade them.
     quest = {
-      url = "github:moq-dev/quest/1c3cf6a719c8ac8e98181475e27e25d25a5ebbc2";
+      url = "github:moq-dev/quest/6a18b8a815c2d15d37d7433a619f961ec5a07165";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
@@ -289,6 +289,72 @@
               env.IN_RIND_DEV_SHELL = "1";
             };
 
+            # `admin/timing` and the timing workflow run in it: rind-timing's
+            # dudect cases, and the Marvin toolkit's RSA ciphertexts, timed by
+            # rind-timing and analysed by tlsfuzzer.
+            timing = pkgs.mkShell {
+              packages = [
+                rust-stable.minimal
+                (
+                  (pkgs.python3.override {
+                    packageOverrides = _: super: {
+                      # nixpkgs marks python-ecdsa insecure for CVE-2024-23342,
+                      # a timing leak in its own signing. tlsfuzzer and
+                      # tlslite-ng only parse with it here.
+                      ecdsa = super.ecdsa.overridePythonAttrs (old: {
+                        meta = old.meta // {
+                          knownVulnerabilities = [ ];
+                        };
+                      });
+                      # The tlsfuzzer below needs this release's ML-DSA names.
+                      tlslite-ng = super.tlslite-ng.overridePythonAttrs {
+                        version = "0.9.0b2";
+                        src = pkgs.fetchPypi {
+                          pname = "tlslite_ng";
+                          version = "0.9.0b2";
+                          sha256 = "ff971e02061f17c43b46b41817c4627ba2765cc319e032e33bc4182c4d7091fb";
+                        };
+                      };
+                    };
+                  }).withPackages
+                    (
+                      p: with p; [
+                        # tlsfuzzer's requirements-timing.txt, and what its
+                        # extract.py and the toolkit's step2.py import.
+                        numpy
+                        scipy
+                        pandas
+                        matplotlib
+                        ecdsa
+                        dpkt
+                        tlslite-ng
+                      ]
+                    )
+                )
+                # The Marvin keys and certificates.
+                pkgs.openssl
+                # admin/timing finds the binary cargo built.
+                pkgs.jq
+              ]
+              # `taskset` pins the tests to one core.
+              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
+
+              env = {
+                MARVIN_TOOLKIT = pkgs.fetchFromGitHub {
+                  owner = "tomato42";
+                  repo = "marvin-toolkit";
+                  rev = "7d264ab2b6611b25b95d5dd6bd1590a761c47048";
+                  hash = "sha256-Y1SvbRTXyyixVOys2ookmqimLm/gdiTl1oFE1slyi1g=";
+                };
+                TLSFUZZER = pkgs.fetchFromGitHub {
+                  owner = "tlsfuzzer";
+                  repo = "tlsfuzzer";
+                  rev = "5eebc4464e5197a7f7392fb9acda99cfc32441f7";
+                  hash = "sha256-+8Lf1sbuu8D7fiWt6iyNgY5RZv3bKXbwuEZARj2NXPQ=";
+                };
+              };
+            };
+
             # The nightly MSRV job builds in it. The workspace's rust-version
             # names a minor release, which resolves to its latest patch, as
             # rustup does. The extra targets let it check rind's other
@@ -333,6 +399,22 @@
               ++ pkgs.lib.optionals (system == "x86_64-linux") [ sde ];
 
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
+            };
+
+            # `just check` runs `admin/ct-vartime` in it: llvm-objdump, and the
+            # standard library of each target it builds rind's rlib for.
+            ct-vartime = pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override {
+                  extensions = [ "llvm-tools" ];
+                  targets = [
+                    "x86_64-unknown-linux-gnu"
+                    "aarch64-unknown-linux-gnu"
+                    "armv7-unknown-linux-gnueabihf"
+                  ];
+                })
+                pkgs.python3
+              ];
             };
           }
           # Linux only, since valgrind and qemu-user need a Linux host.
