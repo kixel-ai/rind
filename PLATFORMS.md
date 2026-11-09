@@ -1,7 +1,7 @@
 # Platforms
 
-`aarch64`, `x86_64`, and 32-bit `arm` architectures only. CI tests Linux
-(glibc and musl), macOS, and Windows on `x86_64` and `aarch64`, iOS in the
+rind has assembly for `aarch64`, `x86_64`, and 32-bit `arm`, and a portable
+Rust backend for every other architecture. CI tests Linux (glibc and musl), macOS, and Windows on `x86_64` and `aarch64`, iOS in the
 simulator on `aarch64`, and Android on `aarch64`, `armv7`, and `x86_64`, the
 first two under qemu. iOS devices' code is only built.
 
@@ -11,12 +11,11 @@ first two under qemu. iOS devices' code is only built.
   instructions. Without it, as on the Raspberry Pi 4, CM4, and Zero 2 W, they
   run [aws-lc]'s NEON and scalar assembly instead (see
   [ALGORITHMS.md](ALGORITHMS.md)), `rind::cpu::has_aes_hardware()` is false, and
-  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Secret-dependent code
-  runs with data-independent timing (DIT) where the core has it, set and
+  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. On Apple's platforms,
+  secret-dependent code runs with data-independent timing (DIT), set and
   cleared in each call unless `rind::cpu::Dit::hold()` holds it across a batch
-  of calls. Where Hyper-V hides DIT from Linux, as on Azure's Cobalt 100,
-  rind knows it from the core's model, for Arm's Armv8.4 and later cores and
-  Qualcomm's Oryon, given a readable `/sys` and every CPU online.
+  of calls. rind sets no DIT on other aarch64 platforms, where Arm says it
+  changes nothing on current cores.
 - `x86_64` runs on every x86_64 CPU. Without `aes` and `pclmulqdq`, as on
   Core 2 and Nehalem, AES and GHASH run [aws-lc]'s SSSE3 assembly instead
   (see [ALGORITHMS.md](ALGORITHMS.md)), `rind::cpu::has_aes_hardware()` is false,
@@ -55,6 +54,16 @@ first two under qemu. iOS devices' code is only built.
   CPU has it, and with NEON, X25519's shared secret runs [BoringSSL]'s
   assembly. SHA-3's and ML-KEM's Keccak-f runs [OpenSSL]'s assembly, on NEON
   where the CPU has it.
+
+- Every other architecture, and big-endian `aarch64` and `arm`, whose
+  assembly assumes little-endian, runs the portable backend: what 32-bit
+  `arm` runs without NEON and the crypto extension, with portable Rust in
+  place of the assembly `arm` always runs (see [ALGORITHMS.md](ALGORITHMS.md)).
+  It needs no CPU features, `rind::cpu::has_aes_hardware()` is false, and
+  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. CI tests it only on
+  `x86_64`, where `--cfg rind_portable` forces it. On 32-bit `x86` it needs a
+  Rust newer than the 1.90 MSRV, since libcrux-platform 0.0.4 calls `__cpuid`
+  outside `unsafe`.
 
 Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
 at startup to get an error naming the missing feature instead.

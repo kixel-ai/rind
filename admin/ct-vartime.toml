@@ -1,0 +1,40 @@
+# The functions `admin/ct-vartime` may find a variable-time instruction in,
+# because every operand it takes there is public, with why, and exactly what
+# the scan finds in each on each target where it is found, so a new one fails.
+# An entry that does not match what is found fails the scan.
+
+[[public]]
+function = "rind::low::posint::mul_word_mod"
+why = "Divides by the top word of a public RSA modulus, for `PosInt::pub_montifier`."
+[public.holds]
+"x86_64-unknown-linux-gnu" = "calls __udivti3"
+"aarch64-unknown-linux-gnu" = "calls __udivti3"
+"x86_64-unknown-linux-gnu+portable" = "calls __udivti3"
+
+[[public]]
+function = "<curve25519_dalek::scalar::Scalar>::as_radix_2w"
+why = "Divides 256 by the window width, which is 4 for the basepoint table rind uses."
+[public.holds]
+"armv7-unknown-linux-gnueabihf" = "calls __aeabi_uidiv"
+"x86_64-unknown-linux-gnu+portable" = "div"
+"armv7-unknown-linux-gnueabihf+portable" = "calls __aeabi_uidiv"
+
+[[public]]
+function = "<rind::high::pbkdf2::Secret>::derive"
+why = "The length check and step_by iterator divide only the public output length by the selected hash's public tag length; neither operand comes from the password or derived key. Retains the formally verified implementation."
+[public.holds]
+"x86_64-unknown-linux-gnu" = "div x4"
+"aarch64-unknown-linux-gnu" = "udiv x2"
+"armv7-unknown-linux-gnueabihf" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"
+"x86_64-unknown-linux-gnu+portable" = "div x4"
+"armv7-unknown-linux-gnueabihf+portable" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"
+
+[[public]]
+function = "<rind::high::pbkdf2::Secret>::verify"
+why = "The length check and step_by iterator divide only the public stored-key length by the selected hash's public tag length; neither operand comes from the password or stored-key bytes. Retains the formally verified implementation."
+[public.holds]
+"x86_64-unknown-linux-gnu" = "div x4"
+"aarch64-unknown-linux-gnu" = "udiv x2"
+"armv7-unknown-linux-gnueabihf" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"
+"x86_64-unknown-linux-gnu+portable" = "div x4"
+"armv7-unknown-linux-gnueabihf+portable" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"

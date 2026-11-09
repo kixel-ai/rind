@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/moq-dev/rind/compare/rind-v0.3.1...rind-v0.3.2) - 2026-11-08
+
+### Other
+
+- *(cpu)* set DIT only on Apple's platforms, and document it ([#503](https://github.com/moq-dev/rind/pull/503))
+
+## [0.3.1](https://github.com/moq-dev/rind/compare/rind-v0.3.0...rind-v0.3.1) - 2026-11-08
+
+### Other
+
+- refuse variable-time instructions on rind's secret paths ([#455](https://github.com/moq-dev/rind/pull/455))
+
+## [0.3.0](https://github.com/moq-dev/rind/compare/rind-v0.2.1...rind-v0.3.0) - 2026-11-07
+
+### Added
+
+- a portable backend for architectures without rind assembly ([#458](https://github.com/moq-dev/rind/pull/458))
+- *(aws-lc-rs)* rind-aws-lc-rs offers aws-lc-rs 1.x's API backed by rind ([#465](https://github.com/moq-dev/rind/pull/465))
+- *(python)* pyrind, rind's API for Python ([#459](https://github.com/moq-dev/rind/pull/459))
+- *(str0m)* rind-str0m, a str0m CryptoProvider on rind ([#467](https://github.com/moq-dev/rind/pull/467))
+- wiping keys on drop is opt-in, under a `wipe` feature ([#461](https://github.com/moq-dev/rind/pull/461))
+- *(rind-dart)* rind for Dart and Flutter through FFI ([#462](https://github.com/moq-dev/rind/pull/462))
+
+### Fixed
+
+- *(key_wrap)* fold unwrap_padded's AIV check into the word it reveals ([#489](https://github.com/moq-dev/rind/pull/489))
+
+### Other
+
+- *(testing)* map every primitive and tier to its checks, and fill the small gaps ([#454](https://github.com/moq-dev/rind/pull/454))
+- Mutation testing ([#482](https://github.com/moq-dev/rind/pull/482))
+- run CCTV's, aws-lc's, and BoringSSL's vectors on every CPU tier ([#481](https://github.com/moq-dev/rind/pull/481))
+- *(aes-gcm)* run aws-lc's eight-way AES-192-GCM on aarch64 with SHA3 ([#460](https://github.com/moq-dev/rind/pull/460))
+- The hash and KDF glue is proven ([#476](https://github.com/moq-dev/rind/pull/476))
+
 ## [0.2.1](https://github.com/moq-dev/rind/compare/rind-v0.2.0...rind-v0.2.1) - 2026-11-07
 
 ### Added

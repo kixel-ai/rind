@@ -370,12 +370,12 @@ impl<const N: usize> PosInt<N> {
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn from_montgomery(self, n: &Self) -> Self {
         // On x86_64, `mont_mul` by one measured faster than s2n-bignum's
-        // generic `bignum_demont`, and armv7's `bignum_demont` takes only group
-        // orders.
-        #[cfg(any(target_arch = "x86_64", target_arch = "arm"))]
+        // generic `bignum_demont`, and the portable `bignum_demont` takes
+        // only group orders.
+        #[cfg(not(rind_backend = "aarch64"))]
         return self.mont_mul(&n.fixed_one(), n, n.mont_neg_inverse());
 
-        #[cfg(target_arch = "aarch64")]
+        #[cfg(rind_backend = "aarch64")]
         {
             let mut demont = Self::zero();
             demont.used = n.used;
@@ -399,7 +399,7 @@ impl<const N: usize> PosInt<N> {
     /// AVX-512 IFMA, for moduli of 16, 24, or 32 words each, and exponents
     /// no wider.
     pub(crate) fn mod_exp_pair(pair: [ModExp<'_, N>; 2]) -> [Self; 2] {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(rind_backend = "x86_64")]
         if let Some(r) = Self::mod_exp_pair_rsaz(&pair) {
             return r;
         }
@@ -409,7 +409,7 @@ impl<const N: usize> PosInt<N> {
 
     /// [`Self::mod_exp_pair`] by aws-lc's dual RSAZ, which takes every word
     /// of `e` to `n`'s width, so the trace depends on none of the values.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     fn mod_exp_pair_rsaz(pair: &[ModExp<'_, N>; 2]) -> Option<[Self; 2]> {
         let k = pair[0].n.used;
         if pair.iter().any(|x| x.n.used != k || x.e.used > k) {
@@ -444,7 +444,7 @@ impl<const N: usize> PosInt<N> {
     /// This is done in a side-channel-free way, with respect to the values of `self`, `e`,
     /// `n` and `n_0`.  The instruction trace depends only on `e.used` and `n.used`.
     fn mod_exp(&self, e: &Self, n: &Self, n_montifier: &Self, n_0: u64) -> Self {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(rind_backend = "x86_64")]
         if let Some(r) = self.mod_exp_rsaz(e, n, n_montifier, n_0) {
             return r;
         }
@@ -459,7 +459,7 @@ impl<const N: usize> PosInt<N> {
     /// wider, where it is the fastest: on x86_64 CPUs with AVX2 but without
     /// ADX. RSAZ takes every 1024 bits of `e`, so the trace depends on none
     /// of the values.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     fn mod_exp_rsaz(&self, e: &Self, n: &Self, n_montifier: &Self, n_0: u64) -> Option<Self> {
         let rsaz = low::Rsaz::check()?;
         if n.used != 16 || e.used > 16 {
@@ -488,7 +488,7 @@ impl<const N: usize> PosInt<N> {
     ///
     /// This is done in a side-channel-free way, with respect to the values of `self`, `e`,
     /// `n` and `n_0`.  The instruction trace depends only on `e.used` and `n.used`.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     pub(crate) fn mont_exp(&self, one_mont: Self, e: &Self, n: &Self, n_0: u64) -> Self {
         let mut r = Self::zero();
         r.used = n.used;
@@ -505,7 +505,7 @@ impl<const N: usize> PosInt<N> {
 
     /// Computes `self` ^ `e` mod `n`, as the x86_64 `mont_exp` does, by a
     /// 5-bit window over `mont_mul` and `mont_sqr`.
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(not(rind_backend = "x86_64"))]
     pub(crate) fn mont_exp(&self, one_mont: Self, e: &Self, n: &Self, n_0: u64) -> Self {
         const WINDOW: usize = 5;
         let k = n.used;
@@ -728,7 +728,7 @@ impl<const N: usize> Drop for SecretPosInt<N> {
 
 /// The `width` bits of `e` from bit `lsb` up, which must lie within it. Only
 /// the positions decide which words are read, so the bits may be secret.
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(rind_backend = "x86_64"))]
 fn window_bits(e: &[u64], lsb: usize, width: usize) -> u64 {
     let (word, shift) = (lsb / 64, lsb % 64);
     let mut bits = e[word] >> shift;
@@ -754,6 +754,9 @@ fn trim_leading_zeroes(mut bytes: &[u8]) -> &[u8] {
 ///
 /// This is one step of Knuth's algorithm D (TAOCP 4.3.1). `d`'s top bit must
 /// be set, `u` must be below `d`, and both must be as wide.
+// Out of line, so `admin/ct-vartime`'s list of public divisions names this
+// function rather than its callers.
+#[inline(never)]
 fn mul_word_mod(u: &mut [u64], d: &[u64]) {
     let k = d.len();
     let (Some(&d1), Some(&u2)) = (d.last(), u.last()) else {
@@ -830,7 +833,7 @@ mod tests {
     /// Against square-and-multiply, at each width class aarch64's
     /// `bn_mul_mont` branches on, and exponents of one to five words, whose
     /// top windows take each width from one to five bits.
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(not(rind_backend = "x86_64"))]
     #[test]
     fn mont_exp_matches_square_and_multiply() {
         let mut state = 0x6a09_e667_f3bc_c908u64;
@@ -897,15 +900,26 @@ mod tests {
     #[test]
     fn mul_word_mod() {
         const TOP: u64 = 1 << 63;
-        for (d, want, why) in [
+        for (mut u, d, want, why) in [
             // 2^192 mod 2^191 + 1: the estimate 2 survives refinement, so
             // the remainder goes negative and d is added back.
-            ([1, 0, TOP], [u64::MAX, u64::MAX, TOP - 1], "added back"),
+            (
+                [0, 0, 1],
+                [1, 0, TOP],
+                [u64::MAX, u64::MAX, TOP - 1],
+                "added back",
+            ),
             // 2^192 mod 2^191 + 2^128 - 2^64: the second word refines the
             // estimate 2 down to 1.
-            ([0, u64::MAX, TOP], [0, 1, TOP - 1], "refined"),
+            ([0, 0, 1], [0, u64::MAX, TOP], [0, 1, TOP - 1], "refined"),
+            // Adding d back carries between words.
+            (
+                [0, u64::MAX, 0],
+                [1, 0, u64::MAX],
+                [0, 0, u64::MAX],
+                "carried back",
+            ),
         ] {
-            let mut u = [0, 0, 1];
             super::mul_word_mod(&mut u, &d);
             assert_eq!(u, want, "{why}");
         }
@@ -1085,6 +1099,27 @@ mod tests {
     fn sub_narrower() {
         let w = PosInt::<2>::from_words(&[1, 1]).unwrap();
         assert_eq!(w.sub(&PosInt::word(3)).as_words(), &[u64::MAX - 1, 0]);
+    }
+
+    #[test]
+    fn is_coprime() {
+        let (four, six, nine) = (PosInt::<1>::word(4), PosInt::word(6), PosInt::word(9));
+        assert!(four.is_coprime(&nine));
+        assert!(!four.is_coprime(&six));
+    }
+
+    // A one-word modulus, which the bits shift in one at a time.
+    #[test]
+    fn reduce_even_by_a_word() {
+        let a =
+            PosInt::<3>::from_words(&[0x0123_4567_89ab_cdef, 0xfedc_ba98_7654_3210, 7]).unwrap();
+        let m = PosInt::<1>::word(0xffff_ffff_0000_0001);
+        let want = ((7u128 << 64 | 0xfedc_ba98_7654_3210) % 0xffff_ffff_0000_0001) << 64
+            | 0x0123_4567_89ab_cdef;
+        assert_eq!(
+            a.reduce_even(&m).as_words(),
+            &[(want % 0xffff_ffff_0000_0001) as u64]
+        );
     }
 
     #[test]

@@ -9,6 +9,4 @@ nothing is urgent.
 
 ## Required
 
-- [Confine release credentials to publishing](/quest/m0/confine-release-credentials.md) -
-  keep release credentials behind the protected publish path and replace the
-  long-lived crates.io token
+- [Adapters offer exactly their upstream's API](/quest/m0/adapters/README.md) - every adapter swaps for its upstream's provider with no other change

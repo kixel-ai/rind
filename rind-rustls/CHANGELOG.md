@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.3](https://github.com/moq-dev/rind/compare/rind-rustls-v0.23.2...rind-rustls-v0.23.3) - 2026-11-08
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.23.2](https://github.com/moq-dev/rind/compare/rind-rustls-v0.23.1...rind-rustls-v0.23.2) - 2026-11-08
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.23.1](https://github.com/moq-dev/rind/compare/rind-rustls-v0.23.0...rind-rustls-v0.23.1) - 2026-11-07
+
+### Other
+
+- updated the following local packages: rind
+
 ## [0.23.0](https://github.com/moq-dev/rind/compare/rind-rustls-v0.2.0...rind-rustls-v0.23.0) - 2026-11-07
 
 ### Added

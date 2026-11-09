@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.3](https://github.com/moq-dev/rind/compare/rind-rcgen-v0.14.2...rind-rcgen-v0.14.3) - 2026-11-08
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.14.2](https://github.com/moq-dev/rind/compare/rind-rcgen-v0.14.1...rind-rcgen-v0.14.2) - 2026-11-08
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.14.1](https://github.com/moq-dev/rind/compare/rind-rcgen-v0.14.0...rind-rcgen-v0.14.1) - 2026-11-07
+
+### Other
+
+- updated the following local packages: rind
+
 ## [0.14.0](https://github.com/moq-dev/rind/compare/rind-rcgen-v0.1.14...rind-rcgen-v0.14.0) - 2026-11-07
 
 ### Added

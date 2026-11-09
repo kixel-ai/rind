@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [11.0.3](https://github.com/moq-dev/rind/compare/rind-jsonwebtoken-v11.0.2...rind-jsonwebtoken-v11.0.3) - 2026-11-08
+
+### Other
+
+- updated the following local packages: rind
+
+## [11.0.2](https://github.com/moq-dev/rind/compare/rind-jsonwebtoken-v11.0.1...rind-jsonwebtoken-v11.0.2) - 2026-11-08
+
+### Other
+
+- updated the following local packages: rind
+
+## [11.0.1](https://github.com/moq-dev/rind/compare/rind-jsonwebtoken-v11.0.0...rind-jsonwebtoken-v11.0.1) - 2026-11-07
+
+### Other
+
+- updated the following local packages: rind
+
 ## [11.0.0](https://github.com/moq-dev/rind/compare/rind-jsonwebtoken-v0.2.0...rind-jsonwebtoken-v11.0.0) - 2026-11-07
 
 ### Added

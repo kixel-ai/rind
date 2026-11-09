@@ -35,20 +35,22 @@ pub fn check() -> Result<(), MissingFeature> {
 /// Where it doesn't, ChaCha20-Poly1305 is faster than AES-GCM, so a protocol
 /// that negotiates between them should prefer it.
 pub fn has_aes_hardware() -> bool {
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(any(rind_backend = "arm", rind_backend = "aarch64"))]
     return super::HaveCryptoExt::check().is_some();
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     return super::x86_64::cpu::HaveAesHardware::check().is_some();
+    #[cfg(rind_backend = "portable")]
+    return false;
 }
 
 /// Holds data-independent timing (DIT) on for this thread until dropped.
 ///
-/// Every rind call that handles a secret runs with DIT where the core has it,
+/// On Apple's platforms, every rind call that handles a secret runs with DIT,
 /// turning it on at entry and back off on return. On Apple's M1 that costs
 /// about 55 ns a call, a fifth of sealing a 1350-byte QUIC packet, so
-/// holding a guard across a batch of calls pays it once instead. Where rind
-/// sets no DIT, on x86_64, armv7, and aarch64 cores without it, the guard
-/// does nothing.
+/// holding a guard across a batch of calls pays it once instead, for calls
+/// made directly or through an adapter such as rind-rustls. Everywhere else
+/// rind sets no DIT, and the guard does nothing.
 ///
 /// Everything the thread runs while a guard is held runs with DIT, rind's
 /// code or not. DIT stays on until the thread's last guard drops, in
@@ -136,5 +138,36 @@ pub(crate) fn verify_cpu_features() {
 
     if !VERIFIED.load(Ordering::Relaxed) {
         verify();
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    #[cfg(not(rind_backend = "portable"))]
+    use crate::low::AesKey;
+
+    /// The flag agrees with the AES keys run, whichever features are denied.
+    #[test]
+    fn has_aes_hardware_matches_keys() {
+        #[cfg(not(rind_backend = "portable"))]
+        let hardware = matches!(AesKey::new(&[0; 16]), AesKey::Hw(_));
+        #[cfg(rind_backend = "portable")]
+        let hardware = false;
+        assert_eq!(super::has_aes_hardware(), hardware);
+    }
+
+    // No CPU a test runs on lacks a required feature, so only this shows
+    // what the panic would say.
+    #[test]
+    fn missing_feature_names_it() {
+        let message = super::MissingFeature("neon").to_string();
+        assert_eq!(
+            message,
+            format!(
+                "rind requires neon CPU support on {}",
+                std::env::consts::ARCH
+            )
+        );
     }
 }

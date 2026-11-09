@@ -14,4 +14,4 @@ SHA-384, SHA-512, and SHA-512/256, and with them Ed25519 and HMAC and HKDF over 
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m4/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
+- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them

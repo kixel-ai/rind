@@ -11,7 +11,7 @@
     # The quest CLI, which also serves the quest guide and skills the stubs in
     # .claude/skills call. Bump the rev to upgrade them.
     quest = {
-      url = "github:moq-dev/quest/99eb7f256e7395b293f5f3246b01dd0ade760b8f";
+      url = "github:moq-dev/quest/6a18b8a815c2d15d37d7433a619f961ec5a07165";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
@@ -53,10 +53,12 @@
               "rust-src"
               "rust-analyzer"
             ];
-            # The gate lints rind's other backends without their C toolchains.
+            # The gate lints rind's other backends without their C toolchains,
+            # the portable one forced on x86_64.
             targets = [
               "aarch64-unknown-linux-gnu"
               "armv7-unknown-linux-gnueabihf"
+              "x86_64-unknown-linux-gnu"
             ];
           };
 
@@ -93,8 +95,8 @@
             };
           };
 
-          # The tracer `admin/ct-qemu` loads into qemu-arm, built against the
-          # plugin API of the qemu-user the `armv7` shell runs.
+          # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
+          # built against the plugin API of the qemu-user its shells run.
           ct-qemu-plugin = pkgs.stdenv.mkDerivation {
             name = "ct-qemu-plugin";
             src = ./admin/ct-qemu-plugin.c;
@@ -246,6 +248,8 @@
                   pkg-config
                   openssl
                   cargo-deny
+                  # admin/mutants and the mutants workflow.
+                  cargo-mutants
                   cargo-nextest
                   cargo-semver-checks
                   # Linters used by `just check` and `just fix`, which skip a
@@ -256,15 +260,20 @@
                   # sh/alert.sh reads the workflows.
                   yq-go
                   nixfmt
-                  # admin/ scripts.
-                  python3
+                  # admin/ scripts, and pyrind's tests and benchmarks: they
+                  # check it against pyca/cryptography, and its type stubs
+                  # with mypy's stubtest.
+                  (python3.withPackages (ps: [
+                    ps.cryptography
+                    ps.mypy
+                  ]))
+                  # Builds pyrind (rind-python).
+                  maturin
                   # admin/bench-report-test runs the script that holds a
                   # leased host.
                   flock
                   cargo-modules
                   quest-cli
-                  # rind-instant-acme's end-to-end test issues a certificate from it.
-                  pebble
                 ]
                 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
                   # Marked broken on Darwin in nixpkgs.
@@ -276,6 +285,72 @@
               # What sh/dispatch.sh checks before a scoped `just check` or `just
               # fix`. IN_NIX_SHELL would also pass inside another project's shell.
               env.IN_RIND_DEV_SHELL = "1";
+            };
+
+            # `admin/timing` and the timing workflow run in it: rind-timing's
+            # dudect cases, and the Marvin toolkit's RSA ciphertexts, timed by
+            # rind-timing and analysed by tlsfuzzer.
+            timing = pkgs.mkShell {
+              packages = [
+                rust-stable.minimal
+                (
+                  (pkgs.python3.override {
+                    packageOverrides = _: super: {
+                      # nixpkgs marks python-ecdsa insecure for CVE-2024-23342,
+                      # a timing leak in its own signing. tlsfuzzer and
+                      # tlslite-ng only parse with it here.
+                      ecdsa = super.ecdsa.overridePythonAttrs (old: {
+                        meta = old.meta // {
+                          knownVulnerabilities = [ ];
+                        };
+                      });
+                      # The tlsfuzzer below needs this release's ML-DSA names.
+                      tlslite-ng = super.tlslite-ng.overridePythonAttrs {
+                        version = "0.9.0b2";
+                        src = pkgs.fetchPypi {
+                          pname = "tlslite_ng";
+                          version = "0.9.0b2";
+                          sha256 = "ff971e02061f17c43b46b41817c4627ba2765cc319e032e33bc4182c4d7091fb";
+                        };
+                      };
+                    };
+                  }).withPackages
+                    (
+                      p: with p; [
+                        # tlsfuzzer's requirements-timing.txt, and what its
+                        # extract.py and the toolkit's step2.py import.
+                        numpy
+                        scipy
+                        pandas
+                        matplotlib
+                        ecdsa
+                        dpkt
+                        tlslite-ng
+                      ]
+                    )
+                )
+                # The Marvin keys and certificates.
+                pkgs.openssl
+                # admin/timing finds the binary cargo built.
+                pkgs.jq
+              ]
+              # `taskset` pins the tests to one core.
+              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
+
+              env = {
+                MARVIN_TOOLKIT = pkgs.fetchFromGitHub {
+                  owner = "tomato42";
+                  repo = "marvin-toolkit";
+                  rev = "7d264ab2b6611b25b95d5dd6bd1590a761c47048";
+                  hash = "sha256-Y1SvbRTXyyixVOys2ookmqimLm/gdiTl1oFE1slyi1g=";
+                };
+                TLSFUZZER = pkgs.fetchFromGitHub {
+                  owner = "tlsfuzzer";
+                  repo = "tlsfuzzer";
+                  rev = "5eebc4464e5197a7f7392fb9acda99cfc32441f7";
+                  hash = "sha256-+8Lf1sbuu8D7fiWt6iyNgY5RZv3bKXbwuEZARj2NXPQ=";
+                };
+              };
             };
 
             # The nightly MSRV job builds in it. The workspace's rust-version
@@ -292,6 +367,16 @@
                     "armv7-unknown-linux-gnueabihf"
                   ];
                 })
+              ];
+            };
+
+            # The `dart` module of `just check` runs rind-dart's Dart package
+            # in it. Its own shell, since the SDK would add over 200 MB to
+            # the closure every CI job downloads.
+            dart = pkgs.mkShell {
+              packages = [
+                rust-toolchain
+                pkgs.dart
               ];
             };
 
@@ -312,6 +397,22 @@
               ++ pkgs.lib.optionals (system == "x86_64-linux") [ sde ];
 
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
+            };
+
+            # `just check` runs `admin/ct-vartime` in it: llvm-objdump, and the
+            # standard library of each target it builds rind's rlib for.
+            ct-vartime = pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override {
+                  extensions = [ "llvm-tools" ];
+                  targets = [
+                    "x86_64-unknown-linux-gnu"
+                    "aarch64-unknown-linux-gnu"
+                    "armv7-unknown-linux-gnueabihf"
+                  ];
+                })
+                pkgs.python3
+              ];
             };
           }
           # Linux only, since valgrind and qemu-user need a Linux host.
@@ -374,6 +475,18 @@
                 };
               }
             );
+
+            # `admin/ct-qemu --target aarch64-unknown-linux-gnu` traces the
+            # aarch64 tests in it on an aarch64 host, which builds them
+            # natively, so it needs none of the armv7 toolchain.
+            ct-qemu-aarch64 = pkgs.mkShell {
+              packages = [
+                rust-stable.minimal
+                pkgs.qemu-user
+                pkgs.python3
+              ];
+              env.RIND_CT_QEMU_PLUGIN = "${ct-qemu-plugin}/lib/ct-qemu-plugin.so";
+            };
           }
           # `x86-cpu.yml` and `admin/x86-cpu sde-scan` run the tests and
           # `rind-cpuid` under `sde` in it, and `admin/ct-sde` traces them.
