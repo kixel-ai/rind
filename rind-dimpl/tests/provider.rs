@@ -8,7 +8,7 @@ use dimpl::crypto::{
 use dimpl::{CryptoError, CryptoOperation};
 
 fn rind() -> CryptoProvider {
-    rind_dimpl::default_provider().unwrap()
+    rind_dimpl::default_provider()
 }
 
 fn certificate(algorithm: &'static rcgen::SignatureAlgorithm) -> (Vec<u8>, Vec<u8>) {
@@ -301,17 +301,23 @@ fn signatures_are_checked_against_the_certificate() {
 }
 
 #[test]
-fn only_ecdsa_der_keys_load() {
+fn only_ecdsa_keys_load() {
     let provider = rind();
     let (_, ed25519) = certificate(&rcgen::PKCS_ED25519);
     let (_, p256) = certificate(&rcgen::PKCS_ECDSA_P256_SHA256);
     let pem = rcgen::KeyPair::try_from(p256.as_slice())
         .unwrap()
         .serialize_pem();
+    assert!(
+        provider
+            .key_provider
+            .load_private_key(pem.as_bytes())
+            .is_ok()
+    );
 
     for (key, what) in [
         (&ed25519[..], "Ed25519"),
-        (pem.as_bytes(), "PEM"),
+        (&pem.as_bytes()[..pem.len() - 30], "truncated PEM"),
         (&p256[..p256.len() - 1], "truncated"),
         (&[], "empty"),
     ] {

@@ -8,6 +8,8 @@ use dimpl::{CryptoError, CryptoOperation};
 use rind::signature::{
     EcdsaKeyPair, EcdsaSigningAlgorithm, PublicKey, VerificationAlgorithm, sign, verify,
 };
+use rustls_pki_types::PrivateKeyDer;
+use rustls_pki_types::pem::PemObject;
 use x509_cert::Certificate;
 use x509_cert::der::Decode;
 use x509_cert::spki::ObjectIdentifier;
@@ -41,14 +43,22 @@ pub(crate) static KEYS: Keys = Keys;
 impl KeyProvider for Keys {
     fn load_private_key(&self, der: &[u8]) -> Result<Box<dyn SigningKey>, CryptoError> {
         type Load = fn(&'static EcdsaSigningAlgorithm, &[u8]) -> Result<EcdsaKeyPair, rind::Error>;
-        let load = |load: Load| {
+        let load = |load: Load, der: &[u8]| {
             CURVES.into_iter().find_map(|(group, hash, algorithm)| {
                 let key = load(algorithm, der).ok()?;
                 Some(Box::new(Key { key, group, hash }) as Box<dyn SigningKey>)
             })
         };
-        load(EcdsaKeyPair::from_pkcs8)
-            .or_else(|| load(EcdsaKeyPair::from_sec1))
+        let der_key = |der: &[u8]| {
+            load(EcdsaKeyPair::from_pkcs8, der).or_else(|| load(EcdsaKeyPair::from_sec1, der))
+        };
+        // dimpl's own providers also take a PEM-wrapped key.
+        der_key(der)
+            .or_else(|| match PrivateKeyDer::from_pem_slice(der).ok()? {
+                PrivateKeyDer::Pkcs8(key) => der_key(key.secret_pkcs8_der()),
+                PrivateKeyDer::Sec1(key) => der_key(key.secret_sec1_der()),
+                _ => None,
+            })
             .ok_or(CryptoError::InvalidPrivateKey)
     }
 }

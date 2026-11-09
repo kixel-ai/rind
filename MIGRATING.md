@@ -429,10 +429,11 @@ those algorithms only with its `aws_lc_rs` feature.
 
 | aws-lc-rs backend | rind |
 |---|---|
-| dimpl's `crypto::aws_lc_rs::default_provider()` | `rind_dimpl::default_provider()?` |
-| str0m's default `aws-lc-rs` feature, or `str0m_aws_lc_rs::default_provider()` | `default-features = false`, with `set_crypto_provider(Arc::new(rind_str0m::default_provider()?))` |
-| object_store's `aws`, `azure`, and `gcp` features | the `*-base` features, with `with_crypto_provider(rind_object_store::default_provider()?)` |
-| jsonwebtoken's `crypto::aws_lc::DEFAULT_PROVIDER` | `rind_jsonwebtoken::default_provider()?` |
+| dimpl's `crypto::aws_lc_rs::default_provider()` | `rind_dimpl::default_provider()` |
+| str0m's default `aws-lc-rs` feature, or `str0m_aws_lc_rs::default_provider()` | `default-features = false`, with `set_crypto_provider(Arc::new(rind_str0m::default_provider()))` |
+| `str0m_aws_lc_rs::dimpl_crypto_provider()` | `rind_str0m::dimpl_crypto_provider()` |
+| object_store's `aws`, `azure`, and `gcp` features | the `*-base` features, with `with_crypto_provider(rind_object_store::default_provider())` |
+| jsonwebtoken's `crypto::aws_lc::DEFAULT_PROVIDER` | `rind_jsonwebtoken::DEFAULT_PROVIDER` |
 
 ## Crates with their own crypto backend
 

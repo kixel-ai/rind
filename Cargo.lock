@@ -3196,6 +3196,7 @@ dependencies = [
  "dimpl",
  "rcgen",
  "rind",
+ "rustls-pki-types",
  "x509-cert",
 ]
 
