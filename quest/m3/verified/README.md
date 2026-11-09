@@ -42,6 +42,7 @@ Decided with the maintainer on 2026-11-03, after the benchmark report (`BENCHMAR
 
 ## Required
 
+- [rind's assembly is byte-identical to the proven object code](/quest/m3/verified/asm-bytes.md) - the transliteration leaves the trust base, and s2n-bignum's constant-time proofs cover rind
 - [The hash and KDF glue's constant-time compares are proven](/quest/m3/verified/hash-glue.md) - the compares behind `hmac::verify` and `pbkdf2::Secret::verify`, in HOL Light
 - [HKDF's key conversions are proven](/quest/m3/verified/hkdf-okm.md) - the `From<Okm>` keys QUIC's packet protection starts from
 - [x86_64 SHA-NI SHA-256 block function is proven](/quest/m3/verified/sha256-block.md) - today's routine proven on s2n-bignum's SHA-256 spec, or a proven one as fast
