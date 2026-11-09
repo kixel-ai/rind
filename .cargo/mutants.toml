@@ -338,7 +338,7 @@ exclude_re = [
   'rind/src/low/x86_64/sha1\.rs:462:\d+: replace < with <= in Expander<\x27a>::step$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace < with <= in <impl Iterator for BoothRecode<W>>::next$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace << with >> in BoothRecode<W>::recode$',
-  'rind/src/mid/p256\.rs:514:\d+: replace JacobianMontPoint::public_is_infinity -> bool with false$',
+  'rind/src/mid/p256\.rs:\d+:\d+: replace JacobianMontPoint::public_is_infinity -> bool with false$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace \| with \^ in (<impl Iterator for BoothRecode<W>>::next|BoothRecode<W>::recode)$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace match guard self\.index < 256 with true in <impl Iterator for BoothRecode<W>>::next$',
   'rind/src/mid/p384\.rs:515:\d+: replace JacobianMontPoint::public_is_infinity -> bool with false$',

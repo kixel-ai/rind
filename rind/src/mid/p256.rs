@@ -225,9 +225,13 @@ impl StaticPrivateKey {
     ///
     /// This checks the point against the Jacobian product, x * z² = X and
     /// y * z³ = Y, as BoringSSL's `EC_KEY_check_key` does, so it needs no
-    /// inversion. Like [`JacobianMontPoint::public_x_is`], it relies on the
-    /// product's coordinates being reduced mod p. They stay secret, as z
-    /// says something of the scalar: only the answer is public.
+    /// inversion. Equal words are equal mod p, and z is not zero for a
+    /// scalar in [1, n), so a match is this key's point; the parse refused
+    /// coordinates at or above p, so the encoding is the canonical one. The
+    /// key's own point matches because aws-lc's addition leaves X, Y, and z
+    /// below p: `twins_agree` checks it word for word against s2n-bignum's,
+    /// whose proof bounds them. They stay secret, as z says something of the
+    /// scalar: only the answer is public.
     #[cfg(rind_backend = "x86_64")]
     pub(crate) fn public_key_is_uncompressed(&self, encoded: &[u8]) -> bool {
         let _entry = low::Entry::new_secret();

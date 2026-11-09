@@ -116,7 +116,9 @@ impl<C: Curve> SigningKey<C> {
     }
 
     /// Whether `encoded`, an X9.62 uncompressed or compressed point, is this
-    /// key's public key, as [`sec1::is_public_key`] decides.
+    /// key's public key, as [`sec1::is_public_key`] decides, or for an
+    /// uncompressed point the curve's `public_key_is_uncompressed` where it
+    /// has one.
     fn is_public_key(&self, encoded: &[u8]) -> bool {
         // Kept as the public key once it matches, so it is not derived again.
         #[cfg(rind_backend = "x86_64")]
