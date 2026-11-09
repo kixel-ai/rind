@@ -70,11 +70,9 @@ impl SupportedKxGroup for KxGroup {
     fn start(&self) -> Result<Box<dyn crypto::ActiveKeyExchange>, rustls::Error> {
         let priv_key = agreement::PrivateKey::generate(self.algorithm)
             .map_err(|_| rustls::Error::from(crypto::GetRandomFailed))?;
-        let pub_key = priv_key.public_key();
         Ok(Box::new(Active {
             group: self.name,
             priv_key,
-            pub_key,
         }))
     }
 
@@ -90,7 +88,6 @@ impl SupportedKxGroup for KxGroup {
 struct Active {
     group: rustls::NamedGroup,
     priv_key: agreement::PrivateKey,
-    pub_key: agreement::PublicKey,
 }
 
 impl crypto::ActiveKeyExchange for Active {
@@ -103,7 +100,7 @@ impl crypto::ActiveKeyExchange for Active {
     }
 
     fn pub_key(&self) -> &[u8] {
-        self.pub_key.as_ref()
+        self.priv_key.public_key().as_ref()
     }
 
     fn ffdhe_group(&self) -> Option<FfdheGroup<'static>> {
