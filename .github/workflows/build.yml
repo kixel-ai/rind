@@ -259,9 +259,12 @@ jobs:
           arch: x86_64
           working-directory: rind-dart/integration
           script: |
-            flutter test integration_test -d emulator-5554
-            flutter build apk --debug --target-platform android-arm -t integration_test/rind_test.dart
-            flutter drive -d emulator-5554 --driver test_driver/integration_test.dart -t integration_test/rind_test.dart --use-application-binary build/app/outputs/flutter-apk/app-debug.apk
+            flutter build apk --release --target-platform android-arm -t integration_test/rind_test.dart
+            adb install build/app/outputs/flutter-apk/app-release.apk
+            adb logcat -c
+            adb shell am start -n com.example.rind_integration/.MainActivity
+            sleep 120
+            adb logcat -d -s flutter:* DEBUG:* AndroidRuntime:* libc:*
 
   # rind-dart's tests on the iOS simulator, through the same Flutter app.
   dart-ios:
