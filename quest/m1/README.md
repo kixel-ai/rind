@@ -8,5 +8,5 @@ Bun's fastest asymmetric operations run on rind, ahead of Bun writing its own.
 
 ## Required
 
-- [Bun runs its fastest asymmetric crypto on rind](/quest/m1/bun.md) - Ed25519, X25519, P-384, and P-521 in Bun on rind, before Bun writes its own
+- [Bun runs its fastest asymmetric crypto on rind](/quest/m1/bun.md) - Ed25519, X25519, P-256, P-384, and P-521 in Bun on rind, before Bun writes its own
 - [rind covers MoQ](/quest/m1/moq/README.md) - the primitives, CPU check, armv7 backend, and `rind-*` adapters MoQ needs, verified and released
