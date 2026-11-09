@@ -59,7 +59,7 @@ operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
 scans its release builds for x86_64, aarch64, and armv7, and its portable
 backend's, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
 not list as taking only public operands.
-`nix develop .#timing --command admin/timing dudect` times each secret
+`nix develop .#dudect --command admin/timing dudect` times each secret
 operation whose secret the API lets it set (not key generation, encapsulation,
 or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,
 and `admin/timing marvin` runs the Marvin toolkit against RSA-OAEP decryption. They need quiet

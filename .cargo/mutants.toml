@@ -12,6 +12,8 @@ exclude_globs = [
   "rind/src/low/*/openssl/**",
   # Test-only code under a `cfg(test)` cargo-mutants does not recognise.
   "rind/src/low/tests.rs",
+  # Scanner fixtures, compiled only by admin/ct-vartime, never by the tests.
+  "rind/src/low/vartime_planted.rs",
   # AVX-512 only, which no test host has: quest/m3/confidence/mutants-avx512.md.
   "rind/src/low/x86_64/mlkem768_sample_poly_ntt_8x.rs",
   "rind/src/low/x86_64/rsaz_avx512.rs",

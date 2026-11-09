@@ -60,9 +60,10 @@ void main() {
 
   // Cross builds, which need each target's Rust standard library and, for
   // Android, the NDK; CI's build workflow sets these.
-  final targets = Platform.environment['RIND_DART_CROSS_TARGETS'];
+  final targets = Platform.environment['RIND_DART_CROSS_TARGETS'] ?? '';
   final ndk = Platform.environment['ANDROID_NDK_HOME'];
-  for (final target in targets?.split(',') ?? const <String>[]) {
+  for (final target
+      in targets.isEmpty ? const <String>[] : targets.split(',')) {
     final [os, arch, ...sdk] = target.split('-');
     test('builds for $target', () async {
       final targetOS = OS.fromString(os);

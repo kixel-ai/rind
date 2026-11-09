@@ -15,15 +15,14 @@ use core::fmt;
 use core::ops::RangeInclusive;
 use std::sync::OnceLock;
 
-use crate::wipe::Wiped;
+use signing::RsaEncoding;
 
 use crate::digest::{self, Digest};
 use crate::encoding::{AsDer, Pkcs8V1Der, PublicKeyX509Der};
 use crate::error::{KeyRejected, Unspecified, unspecified};
 use crate::signature::{self, ParsedPublicKey, private};
+use crate::wipe::Wiped;
 use crate::{der, io, rand, sealed};
-
-use signing::RsaEncoding;
 
 /// An RSA key size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

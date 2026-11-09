@@ -6,11 +6,10 @@
 
 use core::fmt;
 
-use crate::wipe::Wiped;
-
 use crate::error::Unspecified;
 use crate::hkdf;
 use crate::iv::{FixedLength, IV_LEN_128_BIT};
+use crate::wipe::Wiped;
 
 /// The length of an AES-128 key, in bytes.
 pub const AES_128_KEY_LEN: usize = 16;

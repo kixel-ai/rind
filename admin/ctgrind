@@ -70,7 +70,8 @@ if [ "$suite" = all ] || [ "$suite" = wycheproof ]; then
 fi
 
 # Each adapter's ctgrind test marks the secrets it hands rind, while rind's
-# hooks mark the keys rind generates or parses.
+# hooks mark the keys rind generates or parses. Python's tests run through
+# its extension, not a Rust lib test binary, which would need libpython.
 if [ "$suite" = all ] || [ "$suite" = adapters ]; then
-    cargo test --workspace --exclude rind --lib --test ctgrind --features rind/__ctgrind "$@"
+    cargo test --workspace --exclude rind --exclude rind-python --lib --test ctgrind --features rind/__ctgrind "$@"
 fi
