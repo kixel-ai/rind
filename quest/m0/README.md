@@ -6,3 +6,7 @@ The work that cannot wait: security advisories against rind or its
 dependencies, a failing `main`, and anything that breaks MoQ on a published
 rind release, and hosted CI that blocks every PR. Otherwise empty while
 nothing is urgent.
+
+## Required
+
+- [Adapters offer exactly their upstream's API](/quest/m0/adapters/README.md) - every adapter swaps for its upstream's provider with no other change

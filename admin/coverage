@@ -18,7 +18,7 @@ case `uname -m` in
         env CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="sde -dmr --" cargo test --locked
         ;;
     arm|arm64|aarch64)
-        env RIND_CPU_DISABLE_sha3=1 RIND_CPU_DISABLE_dit=1 cargo test --locked
+        env RIND_CPU_DISABLE_sha3=1 cargo test --locked
         ;;
 esac
 

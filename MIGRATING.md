@@ -425,7 +425,7 @@ those algorithms only with its `aws_lc_rs` feature.
 | none | `check()`, at startup, returns `MissingFeature` naming the CPU feature |
 | `KeyIdMethod::Sha256`, the default `key_identifier_method` | `key_identifier(&key)`, set on each certificate's parameters |
 
-### rind-dimpl, rind-str0m, rind-object-store, rind-jsonwebtoken, and rind-instant-acme
+### rind-dimpl, rind-str0m, rind-object-store, and rind-jsonwebtoken
 
 | aws-lc-rs backend | rind |
 |---|---|
@@ -433,7 +433,6 @@ those algorithms only with its `aws_lc_rs` feature.
 | str0m's default `aws-lc-rs` feature, or `str0m_aws_lc_rs::default_provider()` | `default-features = false`, with `set_crypto_provider(Arc::new(rind_str0m::default_provider()?))` |
 | object_store's `aws`, `azure`, and `gcp` features | the `*-base` features, with `with_crypto_provider(rind_object_store::default_provider()?)` |
 | jsonwebtoken's `crypto::aws_lc::DEFAULT_PROVIDER` | `rind_jsonwebtoken::default_provider()?` |
-| instant-acme's built-in provider | `Account::builder(http, rind_instant_acme::default_provider()?)` |
 
 ## Crates with their own crypto backend
 
@@ -527,8 +526,8 @@ install ring's if nothing is installed first.
 | Crate | What ties it | On rind |
 |---|---|---|
 | rcgen 0.14 | default `ring`, or `aws_lc_rs`, gates `KeyPair` | **rind-rcgen**: ECDSA P-256 and P-384, Ed25519, and loaded RSA keys. Without rcgen's `crypto` feature, set the serial number with `rind_rcgen::serial_number()` and `key_identifier_method` with `rind_rcgen::key_identifier(&key)`, or the key identifiers are empty |
-| instant-acme | 0.8 calls aws-lc-rs or ring; the unreleased 0.9 takes a `CryptoProvider` | **rind-instant-acme** on 0.9. `Order::finalize` needs ring or aws-lc-rs; call `finalize_csr` with a CSR from rcgen on rind-rcgen |
-| rustls-acme 0.15, tokio-rustls-acme 0.9 | account keys and CSRs call ring or aws-lc-rs | **Patch**: rustls-acme's `ring` without its default `aws-lc-rs`, or instant-acme on rind-instant-acme |
+| instant-acme | 0.8 calls aws-lc-rs or ring; the unreleased 0.9 takes a `CryptoProvider` | Unsupported: 0.8 has no provider hook, and 0.9 is unreleased |
+| rustls-acme 0.15, tokio-rustls-acme 0.9 | account keys and CSRs call ring or aws-lc-rs | **Patch**: rustls-acme's `ring` without its default `aws-lc-rs` |
 | x509-parser 0.18 | `verify` is ring, `verify-aws` aws-lc-rs | **Patch**: `verify`, or verify `tbs_certificate` with `rind::signature` |
 | x509-certificate 0.25, cryptographic-message-syntax 0.28 | ring types in their public API | **Patch** |
 | sigstore 0.14, tough 0.24 | aws-lc-rs, unconditionally | Unsupported |

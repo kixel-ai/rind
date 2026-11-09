@@ -7,13 +7,14 @@
 # - every item rind exports is named in the table's Exports column, or in the
 #   list of exports that are not primitives, and every name there is exported;
 # - every fuzz target, every differential test in `rind/tests/crosschecks.rs`,
-#   every `ct_sde_...` and `ct_qemu_...` test, and every Wycheproof and CAVP
-#   file the tests load is named in the table;
+#   every `ct_sde_...` and `ct_qemu_...` test, every CCTV and imported-vector
+#   test, and every Wycheproof and CAVP file the tests load is named in the table;
 # - every function, fuzz target, and vector file the table names exists.
 #
 # A backticked name in the table's other columns is one of:
 # - `fuzz::NAME`, a fuzz target;
 # - `crosschecks::[MOD::]FN`, a test in `rind/tests/crosschecks.rs`;
+# - `aws_lc::FN` or `cctv::FN`, a test in `rind/tests/NAME.rs`;
 # - `a::b::FN`, a function in `rind/src/a/b.rs` (or `a/b/mod.rs`);
 # - `STEM_test`, a Wycheproof file, where `*` matches any run of characters;
 # - `cavp/DIR` or `cavp-sha1`, a CAVP directory.
@@ -141,8 +142,17 @@ ct_tests = {
     for name in tests(p)
     if re.match(r"ct_(sde|qemu)_", name) and "_planted_" not in name
 }
+# Imported-vector and CCTV unit tests use these suite prefixes, as the
+# trace tests use ct_sde_ and ct_qemu_. Integration suites include every test.
+vector_suites = {name: tests(ROOT / f"rind/tests/{name}.rs") for name in ["aws_lc", "cctv"]}
+vector_tests = {
+    "::".join([*(p.parent if p.name == "mod.rs" else p.with_suffix("")).relative_to(SRC).parts, name])
+    for p in SRC.rglob("*.rs")
+    for name in tests(p)
+    if re.match(r"(aws_lc|boringssl|cctv)(_|$)", name)
+}
 
-seen = {"fuzz": set(), "crosschecks": set(), "wycheproof": set(), "cavp": set(), "ct": set()}
+seen = {kind: set() for kind in ["fuzz", "crosschecks", "wycheproof", "cavp", "ct", "vectors", *vector_suites]}
 for row in rows:
     for column in COLUMNS[2:]:
         for token in re.findall(r"`([^`]+)`", row[column]):
@@ -159,11 +169,19 @@ for row in rows:
                 if segments[-1] not in tests(crosschecks_path):
                     errors.append(f"{where}: no such test in {crosschecks_path.name}")
                 seen["crosschecks"].add(segments[-1])
+            elif segments[0] in vector_suites and len(segments) == 2:
+                if segments[1] not in vector_suites[segments[0]]:
+                    errors.append(f"{where}: no such test in rind/tests/{segments[0]}.rs")
+                if column != "Vectors":
+                    errors.append(f"{where}: vector suite test belongs in Vectors")
+                seen[segments[0]].add(segments[1])
             elif len(segments) >= 2 and all(re.fullmatch(r"[a-z0-9_]+", s) for s in segments):
                 path = source_file(segments[:-1])
                 if path is None or segments[-1] not in functions(path):
                     errors.append(f"{where}: no such function under rind/src")
                 seen["ct"].add(segments[-1])
+                if column == "Vectors":
+                    seen["vectors"].add(token)
             elif token.endswith("_test"):
                 matches = fnmatch.filter(wycheproof, token)
                 if not matches:
@@ -180,6 +198,8 @@ for kind, names in [
     ("constant-time test", ct_tests - seen["ct"]),
     ("Wycheproof file", wycheproof - seen["wycheproof"]),
     ("CAVP directory", cavp - seen["cavp"]),
+    ("vector test", vector_tests - seen["vectors"]),
+    *[(f"{suite} vector test", names - seen[suite]) for suite, names in vector_suites.items()],
 ]:
     for name in sorted(names):
         errors.append(f"{kind} `{name}` is in no row")

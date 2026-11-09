@@ -53,7 +53,3 @@ An RSA change's A/B on GitHub's runners reads `bench.yml`'s `no-ifma` row:
 a runner may draw a CPU with AVX-512 IFMA, whose dual RSAZ the row denies, so
 both runs time the path of CPUs without it. The plain x86_64 row times the
 dual RSAZ only when the runner has IFMA.
-
-## Required
-
-- [armv7 without the crypto extension runs the fastest SHA-256](/quest/m2/speed/armv7-sha256-hacl.md) - Graviola's or HACL*'s, measured

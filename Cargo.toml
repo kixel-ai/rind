@@ -8,7 +8,6 @@ members = [
   "rind-dart",
   "rind-timing",
   "rind-dimpl",
-  "rind-instant-acme",
   "rind-object-store",
   "rind-rcgen",
   "rind-ring",
