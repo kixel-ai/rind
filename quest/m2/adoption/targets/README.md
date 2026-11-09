@@ -27,7 +27,7 @@ The epic's own work, once every child has merged:
 
 ## Required
 
-- [32-bit x86](/quest/m2/adoption/targets/x86.md) - i686 on Linux, Windows and Android
+- [32-bit x86](/quest/m2/adoption/targets/x86.md) - i686 on the 1.90 MSRV, once libcrux fixes `__cpuid`
 - [armv6](/quest/m2/adoption/targets/armv6.md) - arm-unknown-linux-gnueabi(hf) and arm-linux-androideabi
 - [riscv64](/quest/m2/adoption/targets/riscv64.md) - riscv64gc Linux
 - [PowerPC](/quest/m2/adoption/targets/powerpc.md) - powerpc64le, powerpc64 and powerpc Linux
