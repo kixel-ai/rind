@@ -39,13 +39,15 @@ keys on free. Measured on 2026-11-06 against Bun's own BoringSSL build:
   BoringSSL, so Bun imports and exports byte for byte as before. A key rind
   parsed or generated is rind's alone, so the Ed25519 PEM double load is gone.
 - P-256 moved too, in the same PR (decision below). Measured end to end on
-  2026-11-09 with rind 0.3.2: sign 1.3x to 1.6x, verify and derive 1.0x to
-  1.3x, and key import and export ahead, but key generation stays behind at
-  0.71x to 0.84x (WebCrypto `generateKey`, `createECDH().generateKeys`), as
-  does WebCrypto's JWK private import (0.84x). The shim derives the public
-  key at generation, since both halves of a pair hold it, so
+  2026-11-09: every P-256 operation is at 1.0x or better. The shim derives
+  a key's public key on first read, shared by a pair's halves, so
   [moq-dev/rind#407](https://github.com/moq-dev/rind/pull/407)'s lazy
-  derivation does not reach Bun yet.
+  derivation reaches Bun: WebCrypto `generateKey` 4.7x to 5.0x (was 0.71x to
+  0.81x), `generateKeyPairSync` 7.9x, `createECDH().generateKeys` 1.13x (was
+  0.84x). WebCrypto's JWK private import reads 1.12x (was 0.84x) only with
+  [moq-dev/rind#544](https://github.com/moq-dev/rind/pull/544), which checks
+  a loaded key's point without an inversion, so the Bun branch needs a rind
+  release carrying it.
 
 Decided 2026-11-09 (maintainer): P-256 moves onto rind in this same Bun PR,
 alongside Ed25519, X25519, P-384, and P-521: key generation, ECDSA sign and
@@ -59,6 +61,6 @@ a natural follow-up.
 
 ## Waiting
 
-- Maintainer: P-256 key generation measures 0.71x to 0.84x of BoringSSL end to end, against the Goal's rule. Options: keep P-256 generation on rind and post anyway; route only P-256 generation to BoringSSL; or hold the Bun PR until the shim shares one lazily derived public key between a pair's halves (recommended), so #407's gain reaches Bun. Check: the PR body's P-256 generateKey rows read 1.0x or better.
+- moq-dev/rind#544 merges and ships in a rind release; then bump the Bun branch's rind to it and re-measure WebCrypto's P-256 JWK private import. Check: the PR body's P-256 rows all read 1.0x or better on the released rind.
 - Maintainer: open the PR on oven-sh/bun as a draft from `kixelated/bun:claude/rind-asymmetric` with the text in moq-dev/rind#368; no agent may post to oven-sh/bun. Check for an open PR on oven-sh/bun from that branch.
 - oven-sh/bun: review and merge the PR; check its state.
