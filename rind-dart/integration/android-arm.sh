@@ -13,8 +13,9 @@ adb install -r build/app/outputs/flutter-apk/app-release.apk
 adb logcat -c
 adb shell am start -n com.example.rind_integration/.MainActivity
 
-# The reporter's summary or the app's crash ends the run.
-result=$(grep -m1 -E "All tests passed!|Some tests failed|Fatal signal" \
-    <(adb logcat -v raw flutter:I libc:F "*:S"))
+# The reporter's summary or the app's crash ends the run; a hang fails after
+# ten minutes, with the log still dumped below.
+result=$(timeout 600 grep -m1 -E "All tests passed!|Some tests failed|Fatal signal" \
+    <(adb logcat -v raw flutter:I libc:F "*:S") || echo "no test result before timeout")
 adb logcat -d -v raw flutter:I libc:F DEBUG:F "*:S"
 [[ $result == *'All tests passed!'* ]]
