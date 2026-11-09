@@ -543,6 +543,8 @@ fn key_expansion_step(next: &mut State, prev: &State) {
     next[7] = key_expand1(prev[7], next[7]);
 }
 
+// Keep all-zero valid when drop wipes the whole enum.
+#[repr(u8)]
 pub(crate) enum AesKey {
     Aes128([State; 11]),
     Aes192([State; 13]),
@@ -590,6 +592,7 @@ impl low::generic::zeroise::Zeroable for AesKey {}
 
 /// An AES key that decrypts. The inverse cipher runs the encryption round
 /// keys backwards.
+#[repr(u8)]
 pub(crate) enum AesDecKey {
     Aes128([State; 11]),
     Aes192([State; 13]),
