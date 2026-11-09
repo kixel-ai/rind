@@ -56,6 +56,7 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 | armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | none, as above | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
 | armv7 | no NEON | `just armv7`: qemu Cortex-A15, denied | none, as above | ctgrind: denied (`no-neon`) |
 | portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | none: fuzz jobs build the native backends | ctgrind: the `portable` job forces this backend |
+| portable | riscv64gc Linux, glibc and musl | `build.yml`'s `cross` job, under qemu | none, as above | none: ctgrind checks the same Rust only as x86_64 compiles it |
 
 ## Vector suites
 

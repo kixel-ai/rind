@@ -1,6 +1,7 @@
 # cross runs the Android tests in images holding the NDK and an Android 9
-# system built from AOSP, under qemu-user where the host's architecture
-# differs. Images are pinned, since cross publishes them only under moving tags.
+# system built from AOSP, and the other Linux targets' in images holding their
+# C toolchains, under qemu-user where the host's architecture differs. Images
+# are pinned, since cross publishes them only under moving tags.
 
 [build.env]
 passthrough = [
@@ -19,3 +20,9 @@ image = "ghcr.io/cross-rs/armv7-linux-androideabi@sha256:a930d41f9acf6cae27c9c99
 [target.x86_64-linux-android]
 image = "ghcr.io/cross-rs/x86_64-linux-android@sha256:5779721607756da8c49c032edc5f82970f7295d3a42c2ab4cba49e69ba40a18d"
 runner = "native"
+
+[target.riscv64gc-unknown-linux-gnu]
+image = "ghcr.io/cross-rs/riscv64gc-unknown-linux-gnu@sha256:8a675d4b8c47d1146a24125e5b9efed9ac20c7b9199bd03a05638f02b959eb25"
+
+[target.riscv64gc-unknown-linux-musl]
+image = "ghcr.io/cross-rs/riscv64gc-unknown-linux-musl@sha256:89da1489341600c86cbcdd56d47f5e195b89570afbdbfe4979273c0f8a2585cf"
