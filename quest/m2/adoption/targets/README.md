@@ -32,5 +32,4 @@ The epic's own work, once every child has merged:
 - [riscv64](/quest/m2/adoption/targets/riscv64.md) - riscv64gc Linux
 - [PowerPC](/quest/m2/adoption/targets/powerpc.md) - powerpc64le, powerpc64 and powerpc Linux
 - [s390x](/quest/m2/adoption/targets/s390x.md) - s390x Linux
-- [loongarch64](/quest/m2/adoption/targets/loongarch64.md) - loongarch64 Linux
 - [MIPS](/quest/m2/adoption/targets/mips.md) - mips and mips64 Linux, if ring or aws-lc-rs still supports them

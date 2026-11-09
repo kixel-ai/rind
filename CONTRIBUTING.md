@@ -46,7 +46,8 @@ With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
 toolchain, and `just check` runs CI's gate over what the branch changed.
 On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
-with NEON alone, and with NEON denied.
+with NEON alone, and with NEON denied. `just loongarch64` does the same for
+loongarch64, which runs the portable backend.
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
 constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
@@ -56,7 +57,7 @@ qemu; on an aarch64 host, `nix develop .#ct-qemu-aarch64 --command
 admin/ct-qemu --target aarch64-unknown-linux-gnu` those of the aarch64 code
 that runs only with SHA3. None of them can see an instruction whose timing depends on its
 operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
-scans its release builds for x86_64, aarch64, and armv7, and its portable
+scans its release builds for x86_64, aarch64, armv7, and loongarch64, and its portable
 backend's, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
 not list as taking only public operands.
 `nix develop .#timing --command admin/timing dudect` times each secret

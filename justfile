@@ -36,6 +36,10 @@ fix $BASE="":
 armv7:
     nix develop .#armv7 --command sh/armv7.sh
 
+# Build, lint, and test loongarch64 under qemu (Linux only).
+loongarch64:
+    nix develop .#loongarch64 --command sh/loongarch64.sh
+
 # Lint and test the portable backend, forced on this x86_64 Linux host.
 portable:
     nix develop --command sh/portable.sh

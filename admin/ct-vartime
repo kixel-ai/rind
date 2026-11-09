@@ -5,7 +5,7 @@
 # The constant-time check for instructions whose timing depends on their
 # operands, which ctgrind, `admin/ct-sde`, and `admin/ct-qemu` cannot see.
 # It builds rind's release rlib for each target, x86_64, aarch64, and armv7
-# Linux, and the portable backend on x86_64 and armv7, or those of them
+# Linux, and the portable backend on x86_64, armv7, and loongarch64, or those of them
 # named, and disassembles it with every crate it
 # links, the standard library and compiler-builtins included. Starting from
 # every function named for rind, it follows each relocation, so calls, tail
@@ -38,6 +38,8 @@ TARGETS = [
     # `sh/dispatch.sh` forces it, at 64 and 32 bits.
     "x86_64-unknown-linux-gnu+portable",
     "armv7-unknown-linux-gnueabihf+portable",
+    # loongarch64's only backend is the portable one.
+    "loongarch64-unknown-linux-gnu",
 ]
 PORTABLE = '--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
 
@@ -53,6 +55,8 @@ PORTABLE = '--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
 #   lists no UDIV, SDIV, or floating-point instruction but FCSEL. For
 #   AArch32, DDI 0597 2026-09 marks no UDIV, SDIV, or VFP arithmetic
 #   instruction data-independent-time.
+# - Loongson publishes no such list, so LoongArch's divisions and
+#   floating-point arithmetic count as variable-time too.
 # - BearSSL, "Constant-Time Implementations",
 #   https://www.bearssl.org/constanttime.html: division "will trigger a
 #   faster code path when the divisor and/or the dividend is small", as may
@@ -63,7 +67,8 @@ PORTABLE = '--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
 # which both lists hold too; BearSSL notes they are slow on the Pentium 4,
 # which has no barrel shifter, and the scan leaves that core out.
 # x86 floating-point moves, shuffles, and bitwise operations take no slow
-# path and are not listed; aarch64's and armv7's are told apart by name.
+# path and are not listed; aarch64's, armv7's, and loongarch64's are told
+# apart by name.
 VARTIME = {
     "x86_64": re.compile(
         r"i?div"
@@ -85,6 +90,14 @@ VARTIME = {
         r"[us]div(eq|ne|hs|cs|lo|cc|mi|pl|vs|vc|hi|ls|ge|lt|gt|le|al)?"
         r"|v(?!mov)\w+(\.\w+)*\.f(16|32|64)(\.\w+)*"
     ),
+    # Scalar, LSX, and LASX division name their width, as in `div.du` or
+    # `vmod.w`. Every floating-point mnemonic begins with `f`, or `vf` or
+    # `xvf` for vectors; of them, moves, selects, loads, and stores take no
+    # slow path.
+    "loongarch64": re.compile(
+        r"x?v?(div|mod)\.[bhwd]u?"
+        r"|(x?v)?f(?!(mov\.|sel$|ldx?\.|stx?\.|ld[gl][te]\.|st[gl][te]\.))\w+(\.\w+)*"
+    ),
 }
 
 # Mnemonics each VARTIME pattern must refuse, then must allow, checked
@@ -102,6 +115,10 @@ SAMPLES = {
     "arm": (
         "udiv sdivne vdiv.f64 vsqrt.f32 vmul.f32 vfmane.f64 vcvt.s32.f32 vcvt.f32.u32",
         "umull umaal vmul.i32 vmull.p64 vmov.f32 vadd.i64 vld1.32 aese.8",
+    ),
+    "loongarch64": (
+        "div.du mod.w div.wu vdiv.b xvmod.du fdiv.d fsqrt.s fmadd.d ffint.d.l ftint.l.d fcmp.clt.d vfadd.s xvfmul.d",
+        "mul.d mulh.du fmov.d fsel fld.d fstx.s fldgt.d movgr2fr.d vadd.w srl.d",
     ),
 }
 
@@ -244,6 +261,10 @@ class Objects:
             elif m := SECTION.match(line):
                 section = (member, m[1])
             elif m := LABEL.match(line):
+                # LoongArch keeps the assembler's local labels, such as
+                # `.L0 `, inside functions; none starts one.
+                if m[2].startswith(".L"):
+                    continue
                 self.labels[section].append((int(m[1], 16), m[2]))
             elif m := INSN.match(line):
                 words = m[2].split()

@@ -95,6 +95,11 @@
             };
           };
 
+          # loongarch64 runs the portable backend. As for armv7, only its
+          # tests need this C toolchain, for the aws-lc-rs dev-dependency.
+          loongarch64-cc = pkgs.pkgsCross.loongarch64-linux.stdenv.cc;
+          loongarch64-prefix = "${loongarch64-cc}/bin/${loongarch64-cc.targetPrefix}";
+
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
           # built against the plugin API of the qemu-user its shells run.
           ct-qemu-plugin = pkgs.stdenv.mkDerivation {
@@ -409,6 +414,7 @@
                     "x86_64-unknown-linux-gnu"
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
+                    "loongarch64-unknown-linux-gnu"
                   ];
                 })
                 pkgs.python3
@@ -463,6 +469,28 @@
             # and the armv7 standard libraries add about 700 MB, which every
             # other CI job would download.
             armv7 = pkgs.mkShell armv7-shell;
+
+            # `just loongarch64` enters it to lint and test the loongarch64
+            # build under qemu, apart from the other shells for the same
+            # reason as `armv7`.
+            loongarch64 = pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override {
+                  extensions = [ "clippy" ];
+                  targets = [ "loongarch64-unknown-linux-gnu" ];
+                })
+                loongarch64-cc
+                pkgs.qemu-user
+              ];
+
+              env = {
+                CC_loongarch64_unknown_linux_gnu = "${loongarch64-prefix}cc";
+                CXX_loongarch64_unknown_linux_gnu = "${loongarch64-prefix}c++";
+                AR_loongarch64_unknown_linux_gnu = "${loongarch64-prefix}ar";
+                CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_GNU_LINKER = "${loongarch64-prefix}cc";
+                CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_GNU_RUNNER = "qemu-loongarch64";
+              };
+            };
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
             # plugin it adds to the `armv7` shell.
