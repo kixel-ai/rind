@@ -795,4 +795,26 @@ mod tests {
             Some(KeyFormatError::MlKemModulus.into())
         );
     }
+
+    // Valgrind hides SHA3, so `admin/ctgrind` never reaches the Keccak
+    // kernels aarch64 runs with it; `admin/ct-qemu` traces them here instead,
+    // under qemu-aarch64's `max` CPU. Encapsulating a secret message takes
+    // the one-, two-, and four-way kernels, and decapsulation runs them on
+    // the secret key, for a ciphertext it accepts and one it rejects. The key
+    // is fixed between runs, so the public matrix is too.
+    #[cfg(rind_backend = "aarch64")]
+    #[test]
+    #[ignore = "admin/ct-qemu runs it under qemu"]
+    fn ct_qemu_mlkem768() {
+        use crate::low::ct_qemu;
+
+        assert!(std::arch::is_aarch64_feature_detected!("sha3"), "SHA3");
+        let seed = ct_qemu::seed().to_le_bytes();
+        let dk = DecapKey::keygen_internal(&[0x5a; 64]);
+        let m = Message(core::array::from_fn(|i| seed[i % seed.len()]));
+        let (_, mut c) = ct_qemu::traced(|| dk.ek_pke.encaps_internal(m));
+        ct_qemu::traced(|| dk.decaps(&c));
+        c.0[0] ^= 1;
+        ct_qemu::traced(|| dk.decaps(&c));
+    }
 }

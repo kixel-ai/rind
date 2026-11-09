@@ -22,6 +22,11 @@ set -e
 # instructions, and AVX-512 ML-KEM and RSA go unchecked here. `admin/ct-sde` checks them under Intel SDE, all but ML-KEM, whose
 # AVX-512 code samples only the public matrix.
 #
+# On aarch64 it hides SHA3, which rind takes for its eight-way AES-GCM
+# kernels, SHA-384 and SHA-512 on the SHA-512 instructions, and its SHA3
+# Keccak kernels, so `admin/ct-qemu --target aarch64-unknown-linux-gnu`
+# checks those.
+#
 # Release builds keep line tables so memcheck names inlined frames, which
 # the suppressions match.
 self="$(cd "$(dirname "$0")" && pwd)/ctgrind"

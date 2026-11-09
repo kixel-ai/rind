@@ -256,6 +256,8 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::aes_cbc;
         pub(crate) use aarch64::aes_ctr;
         pub(crate) use aarch64::cpu::HaveCryptoExt;
+        #[cfg(test)]
+        pub(crate) use aarch64::ct_qemu;
         pub(crate) use aarch64::aes_gcm;
         pub(crate) use aarch64::bignum_add::bignum_add;
         pub(crate) use aarch64::bignum_add_p256::bignum_add_p256;
