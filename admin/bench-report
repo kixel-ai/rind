@@ -1169,12 +1169,12 @@ def column_headers(svg, x0, y, cell_width, names):
 
 def standing(hosts):
     """How many of rind's times are the fastest, or within 10% of it, and how
-    many rind has."""
+    many rind has, counting only operations another library also times."""
     ratios = [
         libs["rind"] / libs[fastest(libs)]
         for h in hosts.values()
         for libs in times(h).values()
-        if "rind" in libs
+        if "rind" in libs and any(lib != "rind" and lib not in VARIANTS for lib in libs)
     ]
     return sum(r <= SLOWER for r in ratios), len(ratios)
 

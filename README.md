@@ -17,7 +17,8 @@
 
 - 🏎️ **As fast as aws-lc-rs and ring.** rind matches or beats both on
   nearly every operation TLS and QUIC run, from the handshake to each
-  packet's AEAD.
+  packet's AEAD. On Apple's M4, rind's per-call DIT toggle trails on small
+  packet operations unless held across a batch, as [Known gaps][gaps] lists.
 - 🛡️ **Verified where it counts.** On x86_64 and aarch64, rind's
   elliptic-curve, RSA, and ML-KEM arithmetic builds on [s2n-bignum]'s
   formally verified assembly, and rind's own [Lean proofs][proofs] carry
@@ -263,6 +264,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [gaps]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#known-gaps
 [build-cost]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#build-cost
 [verified]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#verified-code
+[gaps]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#known-gaps
 [proofs]: https://github.com/moq-dev/rind/blob/main/proofs/README.md
 [algorithms]: https://github.com/moq-dev/rind/blob/main/ALGORITHMS.md
 [sources]: https://github.com/moq-dev/rind/blob/main/ALGORITHMS.md#sources
