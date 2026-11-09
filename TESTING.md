@@ -21,7 +21,7 @@ A primitive is checked four ways:
   builds one is checked. `admin/ct-sde` and `admin/ct-qemu` compare the traces
   of `ct_sde_...` and `ct_qemu_...` tests for two secrets, for the code
   valgrind cannot run. None of the three sees variable-time instructions;
-  [that quest](/quest/m3/confidence/vartime-scan.md) adds the check.
+  `admin/ct-vartime` scans the release builds for them.
 
 `admin/testing`, in `just ci`, fails when an export, fuzz target, differential
 test, constant-time test, vector file, or CCTV/imported-vector test is missing

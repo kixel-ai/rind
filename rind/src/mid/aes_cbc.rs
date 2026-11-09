@@ -80,6 +80,8 @@ pub struct CbcIv([u8; 16]);
 
 impl CbcIv {
     /// Draws an IV from the system's secure random source.
+    ///
+    /// Fails with [`Error::RngFailed`] if the system random source does.
     pub fn random() -> Result<Self, Error> {
         let mut iv = [0; 16];
         crate::rand::fill(&mut iv)?;
