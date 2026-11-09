@@ -13,12 +13,12 @@ readme = "README.md"
 # rcgen's default features include `pem`.
 default = ["pem"]
 # rcgen's PEM methods on `KeyPair`.
-pem = ["dep:pem", "rcgen/pem"]
+pem = ["dep:pem-rfc7468", "rcgen/pem"]
 # rind-rcgen's own: wipes rind's keys and the key pair's PKCS#8 copy on drop.
 wipe = ["rind/wipe"]
 
 [dependencies]
-pem = { version = "4", optional = true }
+pem-rfc7468 = { version = "1", optional = true, features = ["alloc"] }
 rcgen = { version = "0.14", default-features = false }
 rind = { version = "0.3.2", path = "../rind" }
 rustls-pki-types = "1.12"

@@ -120,7 +120,7 @@ impl KeyPair {
     /// Parses a PEM private key, which must be PKCS#8, finding its algorithm.
     #[cfg(feature = "pem")]
     pub fn from_pem(pem_str: &str) -> Result<Self, Error> {
-        Self::try_from(parse_pem(pem_str)?.contents())
+        Self::try_from(parse_pem(pem_str)?.as_slice())
     }
 
     /// Parses a PEM PKCS#8 private key that signs with `alg`.
@@ -130,7 +130,7 @@ impl KeyPair {
         alg: &'static SignatureAlgorithm,
     ) -> Result<Self, Error> {
         let pem = parse_pem(pem_str)?;
-        Self::from_pkcs8_der_and_sign_algo(&PrivatePkcs8KeyDer::from(pem.contents()), alg)
+        Self::from_pkcs8_der_and_sign_algo(&PrivatePkcs8KeyDer::from(pem.as_slice()), alg)
     }
 
     /// Parses a PEM private key that signs with `alg`, which must be PKCS#8.
@@ -141,7 +141,7 @@ impl KeyPair {
     ) -> Result<Self, Error> {
         let pem = parse_pem(pem_str)?;
         let key =
-            PrivateKeyDer::try_from(pem.contents()).map_err(|_| Error::CouldNotParseKeyPair)?;
+            PrivateKeyDer::try_from(pem.as_slice()).map_err(|_| Error::CouldNotParseKeyPair)?;
         Self::from_der_and_sign_algo(&key, alg)
     }
 
@@ -163,7 +163,7 @@ impl KeyPair {
     /// Encodes the public key as a PEM SubjectPublicKeyInfo.
     #[cfg(feature = "pem")]
     pub fn public_key_pem(&self) -> String {
-        encode_pem("PUBLIC KEY", self.subject_public_key_info())
+        encode_pem("PUBLIC KEY", &self.subject_public_key_info())
     }
 
     /// Encodes the key pair as PKCS#8 DER.
@@ -179,7 +179,7 @@ impl KeyPair {
     /// Encodes the key pair as PEM PKCS#8.
     #[cfg(feature = "pem")]
     pub fn serialize_pem(&self) -> String {
-        encode_pem("PRIVATE KEY", self.serialize_der())
+        encode_pem("PRIVATE KEY", self.serialized_der())
     }
 
     fn new(key: Key, algorithm: &'static SignatureAlgorithm, serialized_der: Vec<u8>) -> Self {
@@ -210,23 +210,25 @@ impl Drop for Wiped {
     }
 }
 
+// pem-rfc7468 over rcgen's `pem` crate: its base64 is constant time, so
+// private keys' encodings never index a table.
 #[cfg(feature = "pem")]
-fn parse_pem(pem_str: &str) -> Result<pem::Pem, Error> {
-    pem::parse(pem_str).map_err(|e| Error::PemError(e.to_string()))
+fn parse_pem(pem_str: &str) -> Result<Vec<u8>, Error> {
+    let (_label, der) =
+        pem_rfc7468::decode_vec(pem_str.as_bytes()).map_err(|e| Error::PemError(e.to_string()))?;
+    Ok(der)
 }
 
 #[cfg(feature = "pem")]
-fn encode_pem(tag: &str, contents: Vec<u8>) -> String {
+fn encode_pem(label: &str, contents: &[u8]) -> String {
     // rcgen's own line endings.
     let line_ending = if cfg!(target_family = "windows") {
-        pem::LineEnding::CRLF
+        pem_rfc7468::LineEnding::CRLF
     } else {
-        pem::LineEnding::LF
+        pem_rfc7468::LineEnding::LF
     };
-    pem::encode_config(
-        &pem::Pem::new(tag, contents),
-        pem::EncodeConfig::new().set_line_ending(line_ending),
-    )
+    pem_rfc7468::encode_string(label, line_ending, contents)
+        .expect("a PEM label and a DER length always encode")
 }
 
 /// How rind signs for an rcgen algorithm.

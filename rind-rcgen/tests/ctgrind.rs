@@ -94,3 +94,17 @@ fn rsa() {
         assert_eq!(exported, der.secret_pkcs8_der());
     }
 }
+
+#[cfg(feature = "pem")]
+#[test]
+fn pem() {
+    for (algorithm, _) in ALGORITHMS {
+        let key = KeyPair::generate_for(algorithm).unwrap();
+        // Encoding and decoding PEM touch the private key, so neither is public.
+        let pem = key.serialize_pem();
+        let reloaded = KeyPair::from_pem(&pem).unwrap();
+        let public_key = reloaded.der_bytes();
+        public(public_key);
+        assert_eq!(public_key, key.der_bytes());
+    }
+}
