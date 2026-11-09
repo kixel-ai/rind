@@ -65,7 +65,6 @@ don't ask again (✅ is the chosen option):
 - [str0m and dimpl take rind-str0m's upstream fixes](/quest/m2/adoption/str0m-upstream.md) - draft PRs
 - [quinn's rustls support works with any provider](/quest/m2/adoption/quinn.md) - quinn-proto stops forcing ring or aws-lc-rs
 - [Bun's CryptoHasher takes SHA-3 from rind](/quest/m2/adoption/bun-sha3.md) - SHA-3 in Bun on rind, after the m1 Bun PR
-- [pyrind on PyPI](/quest/m2/adoption/pyrind.md) - rind for Python with its own API
 - [rind-snow](/quest/m2/adoption/rind-snow.md) - snow's `CryptoResolver` on rind, for rathole and other Noise users
 - [snow's write_message refuses a buffer without room for the static key's tag](/quest/m2/adoption/snow-write-message.md) - an upstream fix for rind-snow's one reachable panic
 - [Deno's WebCrypto and node:crypto run on rind](/quest/m2/adoption/deno.md) - Deno's RustCrypto paths moved to rind
