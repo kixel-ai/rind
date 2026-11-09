@@ -3081,7 +3081,7 @@ dependencies = [
 
 [[package]]
 name = "rind"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "aws-lc-rs",
  "aws-lc-sys",
