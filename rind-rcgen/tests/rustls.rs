@@ -89,9 +89,6 @@ fn reloads_its_own_encoding() {
         let found = KeyPair::try_from(key.serialized_der()).unwrap();
         assert_eq!(found.algorithm(), algorithm);
         assert_eq!(found.der_bytes(), key.der_bytes());
-
-        let pem = KeyPair::from_pem(&key.serialize_pem()).unwrap();
-        assert_eq!(pem.der_bytes(), key.der_bytes());
     }
 }
 
@@ -105,12 +102,16 @@ fn finds_rsa_as_sha256() {
     );
 }
 
+#[cfg(feature = "pem")]
 #[test]
 fn matches_rcgen_pem() {
     let ours = KeyPair::generate().unwrap();
     let theirs = rcgen::KeyPair::try_from(ours.serialized_der()).unwrap();
     assert_eq!(ours.serialize_pem(), theirs.serialize_pem());
     assert_eq!(ours.public_key_pem(), theirs.public_key_pem());
+
+    let reloaded = KeyPair::from_pem(&ours.serialize_pem()).unwrap();
+    assert_eq!(reloaded.der_bytes(), ours.der_bytes());
 }
 
 #[test]
