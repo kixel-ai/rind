@@ -12,6 +12,7 @@ Moved from m4 into m3 with the maintainer on 2026-11-09. Since late 2025 s2n-big
 
 - Scope (decided with the maintainer on 2026-11-09): every proven source, with the constant-time theorems added ✅ (rejected: s2n-bignum only in m3, with Vale and aws-lc left in m4).
 - Build each upstream's object code at its pinned revision, extract each routine's bytes, and compare them with the bytes in rind's compiled `asm!` and naked functions. Relocations and alignment padding need a normalization step, documented in the check.
+- `admin/prove`'s `asm_block` already extracts an `asm!` block's bytes from rind's release build for the HOL Light proofs in `proofs/hol-light/`; extend it rather than write a second extractor, so both checks read the same bytes.
 - A recorded difference also says why the routine's constant-time theorem still holds with it, as for an appended `vzeroupper`, which touches no secret.
 - Run it for x86_64 and aarch64, and fail when a re-import changes bytes without a matching proof revision.
 
