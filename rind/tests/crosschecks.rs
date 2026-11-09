@@ -176,7 +176,9 @@ mod cipher {
     };
     use proptest::prelude::*;
     use rind::Error;
-    use rind::cipher::{self, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, ChaCha20};
+    use rind::cipher::{
+        self, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, CbcIv, ChaCha20,
+    };
 
     fn aes_key() -> impl Strategy<Value = Vec<u8>> {
         prop::sample::select(&[16, 24, 32][..])
@@ -266,7 +268,7 @@ mod cipher {
             let theirs_dec = PaddedBlockDecryptingKey::cbc_pkcs7(aws_aes_key(&key)).unwrap();
 
             let mut ours = msg.clone();
-            enc.encrypt(&iv, &mut ours);
+            enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ours);
             let mut theirs = msg.clone();
             PaddedBlockEncryptingKey::cbc_pkcs7(aws_aes_key(&key))
                 .unwrap()
@@ -281,7 +283,7 @@ mod cipher {
             forged[len - 1] = tail.0;
             forged[len - 2] = if tail.1 == 0 { tail.0 } else { forged[len - 2] };
             let mut ct = forged.clone();
-            enc.encrypt_blocks(&iv, &mut ct).unwrap();
+            enc.encrypt_blocks(CbcIv::assume_unpredictable(iv), &mut ct).unwrap();
             let mut ours = ct.clone();
             let ours = dec.decrypt(&iv, &mut ours).map(|pt| pt.to_vec());
             let mut theirs = ct.clone();
@@ -305,7 +307,7 @@ mod cipher {
             let mut ours = msg.clone();
             AesCbcEncryptingKey::new(algorithm, &key)
                 .unwrap()
-                .encrypt_blocks(&iv, &mut ours)
+                .encrypt_blocks(CbcIv::assume_unpredictable(iv), &mut ours)
                 .unwrap();
 
             let mut theirs = msg.clone();

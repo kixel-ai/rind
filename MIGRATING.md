@@ -123,11 +123,11 @@ protocols with their own integrity protection need. ring has none.
 |---|---|
 | `UnboundCipherKey::new(&AES_128, key)` and `EncryptingKey::ctr` or `DecryptingKey::ctr` | `AesCtr::new(&AES_128, key, 128)?`, whose last argument is how many of the counter block's rightmost bits count, as WebCrypto's `length` |
 | `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))`, `decrypt` | `apply_keystream(&iv, in_out)?`, with `iv` the `[u8; 16]` counter block |
-| `PaddedBlockEncryptingKey::cbc_pkcs7(key)` and `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))` | `AesCbcEncryptingKey::new(&AES_128, key)?` and `encrypt(&iv, in_out)`, which cannot fail |
+| `PaddedBlockEncryptingKey::cbc_pkcs7(key)` and `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))` | `AesCbcEncryptingKey::new(&AES_128, key)?` and `encrypt(CbcIv::assume_unpredictable(iv), in_out)`, which cannot fail |
 | `PaddedBlockDecryptingKey::cbc_pkcs7(key)` and `decrypt(in_out, DecryptionContext::Iv128(iv))` | `AesCbcDecryptingKey::new(&AES_128, key)?` and `decrypt(&iv, in_out)?`, which clears `in_out` if the padding is malformed |
-| `EncryptingKey::cbc`, `DecryptingKey::cbc`, unpadded | `encrypt_blocks(&iv, in_out)?` and `decrypt_blocks(&iv, in_out)?` on the keys above |
+| `EncryptingKey::cbc`, `DecryptingKey::cbc`, unpadded | `encrypt_blocks(CbcIv::assume_unpredictable(iv), in_out)?` and `decrypt_blocks(&iv, in_out)?` on the keys above |
 | `AES_128`, `AES_192`, `AES_256` | the same |
-| `EncryptingKey::encrypt` and `PaddedBlockEncryptingKey::encrypt`, which pick a random IV | none: pick the nonce or IV with `rand::fill` |
+| `EncryptingKey::encrypt` and `PaddedBlockEncryptingKey::encrypt`, which pick a random IV | for CBC, `CbcIv::random()?`, read with `as_bytes` before encrypting; for CTR, pick the counter block with `rand::fill` |
 | `DES_EDE3_FOR_LEGACY_USE_ONLY` and the other DES, the ECB, CFB, and OFB modes, `StreamingEncryptingKey`, `StreamingDecryptingKey` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | none | `Aes::new(&alg, key)?.encrypt_block(block)`, one AES block |
 | none | `ChaCha20::new(&key).apply_keystream(nonce, counter, in_out)?` |
