@@ -348,10 +348,9 @@ ring has none.
 Each `rind-*` crate stands in for a crate's aws-lc-rs or ring backend. rind
 panics on a CPU missing a feature it requires, so every adapter function
 that returns a provider or ticketer refuses one with the adapter's own
-`MissingFeature` instead, which displays rind's message. rind-ring and
-rind-aws-lc-rs, whose signatures are ring's and aws-lc-rs's, and rind-rcgen's
-`KeyPair`, whose errors are rcgen's, cannot. Call rind-ring's or
-rind-aws-lc-rs's `cpu::check()`, or rind-rcgen's `check()`, which returns its
+`MissingFeature` instead, which displays rind's message. rind-aws-lc-rs,
+whose signatures are aws-lc-rs's, and rind-rcgen's `KeyPair`, whose errors
+are rcgen's, cannot. Call rind-aws-lc-rs's `cpu::check()`, or rind-rcgen's `check()`, which returns its
 own `MissingFeature`, before using them.
 
 ### rind-ring
@@ -366,9 +365,7 @@ features, by adding `[patch.crates-io] ring = { git =
 [rind-patch](https://github.com/moq-dev/rind-patch)'s unpublished crate named
 `ring`, which re-exports rind-ring, and `cargo tree -i ring` then prints only
 `ring v0.17.999` from rind-patch. It panics wherever ring
-panics, so its signatures stay ring's, and adds a `cpu` module wrapping
-rind's check, so the renamed crate refuses an unsupported CPU with
-`ring::cpu::check()` without depending on rind. Its [README](rind-ring/README.md) lists the
+panics, so its signatures stay ring's, and adds nothing to ring's API. Its [README](rind-ring/README.md) lists the
 items it leaves out and the inputs it refuses where ring takes them.
 
 ### rind-aws-lc-rs
@@ -376,8 +373,8 @@ items it leaves out and the inputs it refuses where ring takes them.
 rind-aws-lc-rs offers aws-lc-rs 1.x's API name for name for every item rind
 backs, so a crate on aws-lc-rs swaps it in with `aws-lc-rs = { package =
 "rind-aws-lc-rs", version = "1" }` and no code changes. The rename reaches
-only that crate. It accepts every aws-lc-rs feature but `fips`, and adds the
-same `cpu` module as rind-ring. Its [README](rind-aws-lc-rs/README.md) lists
+only that crate. It accepts every aws-lc-rs feature but `fips`, and adds a
+`cpu` module wrapping rind's check. Its [README](rind-aws-lc-rs/README.md) lists
 the items it leaves out, such as ML-DSA, ML-KEM-512 and ML-KEM-1024, SHA-224,
 and the PKCS#1 v1.5 encryption keys, and where it behaves differently. rustls's
 `aws_lc_rs` provider, rustls-webpki's `aws-lc-rs` feature, and rcgen's
