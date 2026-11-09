@@ -10,8 +10,8 @@ rind's tests on x86_64, aarch64, and armv7 alike; an operation missing on one
 arch does not count as covered.
 
 MoQ finished its switch to rind in
-[moq-dev/moq#8250](https://github.com/moq-dev/moq/pull/8250), so no MoQ area waits
-on rind any more.
+[moq-dev/moq#8250](https://github.com/moq-dev/moq/pull/8250), so no MoQ area's switch
+waits on rind any more.
 
 ## Plan
 
