@@ -155,7 +155,7 @@ jobs:
         run: env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --release
 
   # 32-bit x86 runs the portable backend. The x86_64 runners run its binaries
-  # natively, with no emulation; Android x86 runs in the android job.
+  # natively; Android's run in the android job.
   i686:
     strategy:
       matrix:
@@ -314,7 +314,8 @@ jobs:
           env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --target aarch64-apple-ios-sim --release
 
   # cross's images (see Cross.toml) hold an Android system for the tests, and
-  # run aarch64 and armv7 under qemu-user, whose CPU has the crypto extension.
+  # run aarch64, armv7, and i686 under qemu-user, whose ARM CPUs have the
+  # crypto extension.
   # armv7 Linux covers the paths without it.
   android:
     strategy:
