@@ -28,6 +28,8 @@ zeroize = "1.9"
 # Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
 # features, as `admin/ctgrind` does; otherwise they build as no-ops.
 crabgrind = { version = "0.4", default-features = false }
+# The PEM codec, checked directly by the ctgrind tests.
+pem-rfc7468 = { version = "1", features = ["alloc"] }
 # Its `crypto` feature, which the tests then share, gives rcgen's own key
 # identifiers to compare against.
 rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs"] }

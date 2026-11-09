@@ -100,11 +100,23 @@ fn rsa() {
 fn pem() {
     for (algorithm, _) in ALGORITHMS {
         let key = KeyPair::generate_for(algorithm).unwrap();
-        // Encoding and decoding PEM touch the private key, so neither is public.
+        // rind marks the PKCS#8 it exports public, so mark it secret again.
+        mark(key.serialized_der(), MemState::Undefined);
         let pem = key.serialize_pem();
+        public(key.serialized_der());
+
+        // Decoding is checked on pem-rfc7468 itself, since parsing the DER it
+        // yields branches on its public structure. Only the base64 is secret.
+        for line in pem.lines().filter(|line| !line.starts_with("-----")) {
+            mark(line.as_bytes(), MemState::Undefined);
+        }
+        let (label, der) = pem_rfc7468::decode_vec(pem.as_bytes()).unwrap();
+        public(&der[..]);
+        public(pem.as_bytes());
+        assert_eq!(label, "PRIVATE KEY");
+        assert_eq!(der, key.serialized_der());
+
         let reloaded = KeyPair::from_pem(&pem).unwrap();
-        let public_key = reloaded.der_bytes();
-        public(public_key);
-        assert_eq!(public_key, key.der_bytes());
+        assert_eq!(reloaded.der_bytes(), key.der_bytes());
     }
 }
