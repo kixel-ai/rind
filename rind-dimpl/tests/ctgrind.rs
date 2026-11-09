@@ -171,3 +171,36 @@ fn signing() {
         }
     }
 }
+
+/// Signs with keys loaded from PKCS#8 and SEC1 PEM. The PEM is not marked:
+/// rustls-pki-types decodes the base64 as secret, and rind marks the key it
+/// parses, as for DER.
+#[test]
+fn pem_signing() {
+    use ::aws_lc_rs::encoding::AsDer;
+    use ::aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair};
+
+    let pkcs8 = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
+        .unwrap()
+        .serialize_der();
+    let sec1 = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &pkcs8)
+        .unwrap()
+        .private_key()
+        .as_der()
+        .unwrap();
+    for (label, der) in [
+        ("PRIVATE KEY", &pkcs8[..]),
+        ("EC PRIVATE KEY", sec1.as_ref()),
+    ] {
+        let pem = pem::encode(&pem::Pem::new(label, der));
+        let mut key = rind()
+            .key_provider
+            .load_private_key(pem.as_bytes())
+            .unwrap();
+        let mut signature = Buf::new();
+        key.sign(b"transcript", HashAlgorithm::SHA256, &mut signature)
+            .unwrap();
+        public(signature.as_ref());
+        assert!(!signature.is_empty(), "{label}");
+    }
+}

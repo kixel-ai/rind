@@ -3194,6 +3194,7 @@ dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
  "dimpl",
+ "pem",
  "rcgen",
  "rind",
  "rustls-pki-types",
