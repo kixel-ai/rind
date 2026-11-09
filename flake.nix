@@ -82,6 +82,9 @@
               })
               armv7-cc
               pkgs.qemu-user
+              # admin/mutants --target armv7-unknown-linux-gnueabihf.
+              pkgs.cargo-mutants
+              pkgs.cargo-nextest
             ];
 
             env = {
@@ -459,7 +462,7 @@
             };
 
             # `just armv7` enters it to lint and test the armv7 build under
-            # qemu. A separate shell because the ARM C toolchain, qemu-user,
+            # qemu, and the mutants workflow to mutate it. A separate shell because the ARM C toolchain, qemu-user,
             # and the armv7 standard libraries add about 700 MB, which every
             # other CI job would download.
             armv7 = pkgs.mkShell armv7-shell;
