@@ -18,7 +18,8 @@ frame, and the ABI keeps the stack pointer 16-byte aligned. Its total correctnes
 
 The restatement, and that rind's inline assembly is s2n-bignum's object code
 and constant table with the wrapper passing the arguments the theorem names,
-are trusted.
+are trusted. `bignum_eq`'s theorem is instead rind's own, of the bytes rind's
+build emits, so only the wrapper's arguments are trusted there.
 -/
 
 namespace rind.aarch64
@@ -38,9 +39,10 @@ axiom curve25519_x25519base_spec (res scalar : Std.Array U64 4#usize) :
     low.aarch64.curve25519_x25519base.curve25519_x25519base res scalar ⦃ r =>
       wordsNat r.val = rfcx25519 (wordsNat scalar.val) 9 ⦄
 
-/-- `BIGNUM_EQ_SUBROUTINE_CORRECT`, whose 1 or 0 the wrapper returns as
-`true` or `false`,
-https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs/bignum_eq.ml#L269 -/
+/-- `BIGNUM_EQ_CORRECT`, rind's own proof of the wrapper's `asm!` block, as
+rind's build emits it, which ends where the block does, and whose 1 or 0 the
+wrapper returns as `true` or `false`, in `proofs/hol-light/aarch64/bignum_eq.ml`
+at rind's commit. -/
 @[step]
 axiom bignum_eq_spec (x y : Slice U64) :
     low.aarch64.bignum_eq.bignum_eq x y ⦃ b => b = decide (wordsNat x.val = wordsNat y.val) ⦄

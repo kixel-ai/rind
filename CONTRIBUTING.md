@@ -65,8 +65,9 @@ or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,
 and `admin/timing marvin` runs the Marvin toolkit against RSA-OAEP decryption. They need quiet
 hardware: the weekly `timing` workflow runs them on GitHub's runners, and a
 shared host is held with `quest gate --host`.
-`nix develop .#prove --command admin/prove` translates the Rust under proof to
-Lean with Aeneas and checks the proofs in [`proofs/`](proofs/README.md).
+`nix develop .#prove --command admin/prove` checks rind's HOL Light proofs of
+its assembly, then translates the Rust under proof to Lean with Aeneas and
+checks the proofs in [`proofs/`](proofs/README.md).
 
 # Commits
 
