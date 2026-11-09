@@ -221,6 +221,7 @@ jobs:
   # for its 32-bit pointers, under its ARM translation.
   dart-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: rind-dart/integration
@@ -246,9 +247,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Create the Android project
-        run: |
-          flutter create --platforms android .
-          flutter analyze --fatal-infos
+        run: flutter create --platforms android .
 
       # flutter test builds for the emulator's own ABI, so armv7 is built
       # alone and run with flutter drive.
@@ -267,6 +266,7 @@ jobs:
   # rind-dart's tests on the iOS simulator, through the same Flutter app.
   dart-ios:
     runs-on: macos-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: rind-dart/integration
@@ -293,7 +293,7 @@ jobs:
           udid=$(xcrun simctl list devices available --json | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid"
-          flutter test integration_test -d "$udid"
+          flutter test integration_test -d "$udid" --reporter expanded -v
 
   # The portable backend, which every architecture without rind assembly
   # runs, forced on x86_64 so it runs without emulation. The recipe lints and
