@@ -172,9 +172,9 @@ fn signing() {
     }
 }
 
-/// Signs with keys loaded from PKCS#8 and SEC1 PEM. The PEM is not marked:
-/// rustls-pki-types decodes the base64 as secret, and rind marks the key it
-/// parses, as for DER.
+/// Signs with keys loaded from PKCS#8 and SEC1 PEM, with the base64 that
+/// encodes the private scalar marked secret. The DER structure around it stays
+/// public, as it does for DER keys.
 #[test]
 fn pem_signing() {
     use ::aws_lc_rs::encoding::AsDer;
@@ -192,7 +192,22 @@ fn pem_signing() {
         ("PRIVATE KEY", &pkcs8[..]),
         ("EC PRIVATE KEY", sec1.as_ref()),
     ] {
-        let pem = pem::encode(&pem::Pem::new(label, der));
+        let lf = pem::EncodeConfig::new().set_line_ending(pem::LineEnding::LF);
+        let pem = pem::encode_config(&pem::Pem::new(label, der), lf);
+        // ECPrivateKey's version INTEGER 1, then the 32-byte scalar OCTET STRING.
+        let scalar = der
+            .windows(5)
+            .position(|w| w == [0x02, 0x01, 0x01, 0x04, 0x20])
+            .unwrap()
+            + 5;
+        let body = pem.find('\n').unwrap() + 1;
+        // Each 3 bytes are 4 base64 characters, 64 characters to a line.
+        for group in scalar.div_ceil(3)..(scalar + 32) / 3 {
+            for c in 4 * group..4 * group + 4 {
+                let at = body + c + c / 64;
+                secret(&pem.as_bytes()[at]);
+            }
+        }
         let mut key = rind()
             .key_provider
             .load_private_key(pem.as_bytes())
