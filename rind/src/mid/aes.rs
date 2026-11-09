@@ -83,9 +83,9 @@ impl AesCtr {
     /// XORs the keystream from `counter_block` into `inout`.
     ///
     /// Encryption and decryption are the same operation. The counter block is
-    /// not secret. Keystream starts at a whole block, so continuing a stream
-    /// with the next counter block after a length that is not a multiple of
-    /// 16 reuses keystream.
+    /// not secret. Each call starts at a whole block, so a stream split after
+    /// a length that is not a multiple of 16 cannot resume mid-block: passing
+    /// that partial block's counter block again reuses keystream.
     ///
     /// Fails with [`Error::WrongLength`], leaving `inout` unchanged, if
     /// `inout` needs more than 2^`counter_bits` blocks: the counter would wrap

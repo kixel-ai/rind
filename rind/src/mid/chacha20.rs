@@ -24,9 +24,9 @@ impl ChaCha20 {
     /// XORs the keystream for `nonce`, starting at block `counter`, into `inout`.
     ///
     /// Encryption and decryption are the same operation. The nonce and counter
-    /// are not secret. Keystream starts at a whole block, so continuing a
-    /// stream with the next counter after a length that is not a multiple of
-    /// 64 reuses keystream.
+    /// are not secret. Each call starts at a whole block, so a stream split
+    /// after a length that is not a multiple of 64 cannot resume mid-block:
+    /// passing that partial block's counter again reuses keystream.
     ///
     /// Fails with [`Error::WrongLength`], leaving `inout` unchanged, if `inout`
     /// needs more blocks than remain before the counter wraps: wrapping would
