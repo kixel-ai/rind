@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-// Builds the `rind-dart` crate beside this package with cargo, for the target
-// the Dart or Flutter build asks for, and bundles it as this package's code
-// asset. A target rind has no backend for fails here rather than at run time.
+// Bundles rind's library for the target the Dart or Flutter build asks for as
+// this package's code asset: the prebuilt library `hook/prebuilt.json` pins by
+// SHA-256, downloaded from this version's GitHub release, or, with the
+// `build_from_source` user-define, the `rind-dart` crate beside this package
+// built with cargo. A target rind has no backend for fails here rather than at
+// run time.
 
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:code_assets/code_assets.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:hooks/hooks.dart';
 
 void main(List<String> args) async {
@@ -18,59 +24,15 @@ void main(List<String> args) async {
     }
 
     final target = rustTarget(code);
-    final manifest = input.packageRoot.resolve('Cargo.toml');
-    final targetDir = input.outputDirectoryShared.resolve('target/');
-    final env = <String, String>{};
-    final linkArgs = <String>[];
-
-    switch (code.targetOS) {
-      case OS.android:
-        // The NDK's clang links, for the app's minimum API level.
-        final clang = code.cCompiler?.compiler;
-        if (clang == null) {
-          throw UnsupportedError('building rind for Android needs the NDK');
-        }
-        final api = code.android.targetNdkApi;
-        final clangTarget = target.replaceFirst('armv7-', 'armv7a-');
-        linkArgs
-          ..add('-Clinker=${clang.toFilePath()}')
-          ..add('-Clink-arg=--target=$clangTarget$api')
-          // Android 15 devices may use 16 KB pages, which Google Play
-          // requires apps to support.
-          ..add('-Clink-arg=-Wl,-z,max-page-size=16384');
-      case OS.iOS:
-        final version = code.iOS.deploymentVersion;
-        env['IPHONEOS_DEPLOYMENT_TARGET'] = '${version.major}.${version.minor}';
-      case OS.macOS:
-        final version = code.macOS.deploymentVersion;
-        env['MACOSX_DEPLOYMENT_TARGET'] = '${version.major}.${version.minor}';
-    }
-
-    await _checkTargetInstalled(target);
-    final cargo = await Process.run('cargo', [
-      'rustc',
-      '--release',
-      '--locked',
-      '--lib',
-      '--manifest-path',
-      manifest.toFilePath(),
-      '--target',
-      target,
-      '--target-dir',
-      targetDir.toFilePath(),
-      if (linkArgs.isNotEmpty) ...['--', ...linkArgs],
-    ], environment: env);
-    if (cargo.exitCode != 0) {
-      throw ProcessException(
-        'cargo',
-        const [],
-        'building rind for $target failed:\n${cargo.stderr}',
-        cargo.exitCode,
+    final fromSource = input.userDefines['build_from_source'];
+    if (fromSource is! bool?) {
+      throw const FormatException(
+        'hooks.user_defines.rind.build_from_source must be true or false',
       );
     }
-
-    final outDir = targetDir.resolve('$target/release/');
-    final library = outDir.resolve(code.targetOS.dylibFileName('rind_dart'));
+    final library = fromSource == true
+        ? await _buildFromSource(input, output, target)
+        : await _download(input, output, target);
     output.assets.code.add(
       CodeAsset(
         package: input.packageName,
@@ -79,38 +41,181 @@ void main(List<String> args) async {
         file: library,
       ),
     );
+  });
+}
 
-    // Cargo lists every source file the library depends on beside it.
-    final depInfo = outDir.resolve(
-      code.targetOS
-          .dylibFileName('rind_dart')
-          .replaceFirst(RegExp(r'\.[^.]+$'), '.d'),
+/// Downloads [target]'s pinned library into the hook's shared output
+/// directory, where later builds reuse it.
+Future<Uri> _download(
+  BuildInput input,
+  BuildOutputBuilder output,
+  String target,
+) async {
+  final manifest = File.fromUri(
+    input.packageRoot.resolve('hook/prebuilt.json'),
+  );
+  if (!manifest.existsSync()) {
+    throw UnsupportedError(
+      'only a released rind pins prebuilt libraries; build this one from '
+      'source by setting hooks.user_defines.rind.build_from_source to true in '
+      'your pubspec.yaml',
     );
-    // Its lockfile and manifest, the workspace's in this repository and the
-    // package's own once published, pick the dependencies' versions.
-    final workspace = await Process.run('cargo', [
-      'locate-project',
-      '--workspace',
-      '--message-format',
-      'plain',
-      '--manifest-path',
-      manifest.toFilePath(),
-    ]);
-    if (workspace.exitCode != 0) {
-      throw ProcessException(
-        'cargo',
-        const ['locate-project'],
-        '${workspace.stderr}',
-        workspace.exitCode,
+  }
+  output.dependencies.add(manifest.uri);
+  final pin = (jsonDecode(manifest.readAsStringSync()) as Map)[target] as Map;
+  final sha256 = pin['sha256'] as String;
+  final library = input.outputDirectoryShared.resolve(
+    'prebuilt/$sha256/${input.config.code.targetOS.dylibFileName('rind_dart')}',
+  );
+  await fetchLibrary(
+    Uri.parse(pin['url'] as String),
+    sha256: sha256,
+    size: pin['size'] as int,
+    file: File.fromUri(library),
+  );
+  return library;
+}
+
+/// Downloads [url] to [file] unless [file] already holds it, refusing a
+/// download whose length or SHA-256 is not the pinned one.
+Future<void> fetchLibrary(
+  Uri url, {
+  required String sha256,
+  required int size,
+  required File file,
+}) async {
+  if (file.existsSync() &&
+      crypto.sha256.convert(file.readAsBytesSync()).toString() == sha256) {
+    return;
+  }
+
+  final client = HttpClient()..findProxy = HttpClient.findProxyFromEnvironment;
+  final Uint8List bytes;
+  try {
+    final response = await (await client.getUrl(url)).close();
+    if (response.statusCode != HttpStatus.ok) {
+      throw HttpException(
+        'downloading rind answered ${response.statusCode}',
+        uri: url,
       );
     }
-    final workspaceManifest = Uri.file((workspace.stdout as String).trim());
-    output.dependencies
-      ..add(manifest)
-      ..add(workspaceManifest)
-      ..add(workspaceManifest.resolve('Cargo.lock'))
-      ..addAll(_parseDepInfo(File.fromUri(depInfo).readAsStringSync()));
-  });
+    // The pinned length bounds what the server can make the hook hold.
+    final builder = BytesBuilder(copy: false);
+    await for (final chunk in response) {
+      if (builder.length + chunk.length > size) {
+        throw StateError('$url is longer than the library this package pins');
+      }
+      builder.add(chunk);
+    }
+    bytes = builder.takeBytes();
+  } finally {
+    client.close(force: true);
+  }
+  if (bytes.length != size ||
+      crypto.sha256.convert(bytes).toString() != sha256) {
+    throw StateError('$url is not the library this package pins');
+  }
+
+  // Renamed into place, so an interrupted build never leaves a partial file.
+  file.parent.createSync(recursive: true);
+  File('${file.path}.partial')
+    ..writeAsBytesSync(bytes)
+    ..renameSync(file.path);
+}
+
+/// Builds the `rind-dart` crate beside this package for [target] with cargo,
+/// listing the files it read as the build's dependencies.
+Future<Uri> _buildFromSource(
+  BuildInput input,
+  BuildOutputBuilder output,
+  String target,
+) async {
+  final code = input.config.code;
+  final manifest = input.packageRoot.resolve('Cargo.toml');
+  final targetDir = input.outputDirectoryShared.resolve('target/');
+  final env = <String, String>{};
+  final linkArgs = <String>[];
+
+  switch (code.targetOS) {
+    case OS.android:
+      // The NDK's clang links, for the app's minimum API level.
+      final clang = code.cCompiler?.compiler;
+      if (clang == null) {
+        throw UnsupportedError('building rind for Android needs the NDK');
+      }
+      final api = code.android.targetNdkApi;
+      final clangTarget = target.replaceFirst('armv7-', 'armv7a-');
+      linkArgs
+        ..add('-Clinker=${clang.toFilePath()}')
+        ..add('-Clink-arg=--target=$clangTarget$api')
+        // Android 15 devices may use 16 KB pages, which Google Play
+        // requires apps to support.
+        ..add('-Clink-arg=-Wl,-z,max-page-size=16384');
+    case OS.iOS:
+      final version = code.iOS.deploymentVersion;
+      env['IPHONEOS_DEPLOYMENT_TARGET'] = '${version.major}.${version.minor}';
+    case OS.macOS:
+      final version = code.macOS.deploymentVersion;
+      env['MACOSX_DEPLOYMENT_TARGET'] = '${version.major}.${version.minor}';
+  }
+
+  await _checkTargetInstalled(target);
+  final cargo = await Process.run('cargo', [
+    'rustc',
+    '--release',
+    '--locked',
+    '--lib',
+    '--manifest-path',
+    manifest.toFilePath(),
+    '--target',
+    target,
+    '--target-dir',
+    targetDir.toFilePath(),
+    if (linkArgs.isNotEmpty) ...['--', ...linkArgs],
+  ], environment: env);
+  if (cargo.exitCode != 0) {
+    throw ProcessException(
+      'cargo',
+      const [],
+      'building rind for $target failed:\n${cargo.stderr}',
+      cargo.exitCode,
+    );
+  }
+
+  final outDir = targetDir.resolve('$target/release/');
+  final library = outDir.resolve(code.targetOS.dylibFileName('rind_dart'));
+
+  // Cargo lists every source file the library depends on beside it.
+  final depInfo = outDir.resolve(
+    code.targetOS
+        .dylibFileName('rind_dart')
+        .replaceFirst(RegExp(r'\.[^.]+$'), '.d'),
+  );
+  // Its lockfile and manifest, the workspace's in this repository and the
+  // package's own once published, pick the dependencies' versions.
+  final workspace = await Process.run('cargo', [
+    'locate-project',
+    '--workspace',
+    '--message-format',
+    'plain',
+    '--manifest-path',
+    manifest.toFilePath(),
+  ]);
+  if (workspace.exitCode != 0) {
+    throw ProcessException(
+      'cargo',
+      const ['locate-project'],
+      '${workspace.stderr}',
+      workspace.exitCode,
+    );
+  }
+  final workspaceManifest = Uri.file((workspace.stdout as String).trim());
+  output.dependencies
+    ..add(manifest)
+    ..add(workspaceManifest)
+    ..add(workspaceManifest.resolve('Cargo.lock'))
+    ..addAll(_parseDepInfo(File.fromUri(depInfo).readAsStringSync()));
+  return library;
 }
 
 /// The Rust target triple for [code]'s target, refusing one rind lacks.
