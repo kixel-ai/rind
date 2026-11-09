@@ -5,16 +5,21 @@ import array
 import hashlib
 import hmac as std_hmac
 import os
+import sys
 import threading
 import unittest
 
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, ed25519, mlkem, padding
-from cryptography.hazmat.primitives.asymmetric import rsa as pyca_rsa
-from cryptography.hazmat.primitives.asymmetric import x25519
-from cryptography.hazmat.primitives.ciphers import aead as pyca_aead
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+# Wheel CI explicitly opts out where pyca's dependencies have no wheel.
+PYCA = os.environ.get("PYRIND_TEST_PYCA") != "0"
+requires_pyca = unittest.skipUnless(PYCA, "pyca dependencies have no wheel for this target")
+if PYCA:
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec, ed25519, mlkem, padding
+    from cryptography.hazmat.primitives.asymmetric import rsa as pyca_rsa
+    from cryptography.hazmat.primitives.asymmetric import x25519
+    from cryptography.hazmat.primitives.ciphers import aead as pyca_aead
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 import pyrind
 from pyrind import aead, agreement, cpu, digest, hkdf, hmac, kem, pbkdf2, rsa, signature
@@ -166,6 +171,7 @@ class Hkdf(unittest.TestCase):
             "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865",
         )
 
+    @requires_pyca
     def test_matches_pyca(self):
         salt, secret, info = os.urandom(16), os.urandom(32), os.urandom(10)
         expected = HKDF(hashes.SHA384(), 100, salt, info).derive(secret)
@@ -190,10 +196,11 @@ class Hkdf(unittest.TestCase):
             prk.expand(b"", 255 * 32 + 1)
         # Refused before allocating, rather than raising MemoryError.
         with self.assertRaises(pyrind.WrongLength):
-            prk.expand(b"", 1 << 62)
+            prk.expand(b"", sys.maxsize)
 
 
 class Pbkdf2(unittest.TestCase):
+    @requires_pyca
     def test_matches_pyca(self):
         secret = pbkdf2.Secret(pbkdf2.PBKDF2_HMAC_SHA256, b"password")
         expected = PBKDF2HMAC(hashes.SHA256(), 40, b"salt", 1000).derive(b"password")
@@ -215,6 +222,8 @@ class Pbkdf2(unittest.TestCase):
 
     def test_too_long_is_wrong_length(self):
         # One byte past each hash's limit, refused before allocating it.
+        # On 32-bit hosts these lengths overflow usize before reaching rind.
+        error = pyrind.WrongLength if sys.maxsize > 2**32 else OverflowError
         for algorithm, hash_len in (
             (pbkdf2.PBKDF2_HMAC_SHA256, 32),
             (pbkdf2.PBKDF2_HMAC_SHA384, 48),
@@ -222,7 +231,7 @@ class Pbkdf2(unittest.TestCase):
             (pbkdf2.legacy.PBKDF2_HMAC_SHA1, 20),
         ):
             secret = pbkdf2.Secret(algorithm, b"password")
-            with self.assertRaises(pyrind.WrongLength):
+            with self.assertRaises(error):
                 secret.derive(1, b"salt", (2**32 - 1) * hash_len + 1)
 
     def test_releases_the_gil(self):
@@ -237,18 +246,18 @@ class Pbkdf2(unittest.TestCase):
 
 
 class Aead(unittest.TestCase):
-    PYCA = {
-        id(aead.AES_128_GCM): pyca_aead.AESGCM,
-        id(aead.AES_192_GCM): pyca_aead.AESGCM,
-        id(aead.AES_256_GCM): pyca_aead.AESGCM,
-        id(aead.CHACHA20_POLY1305): pyca_aead.ChaCha20Poly1305,
-    }
-
+    @requires_pyca
     def test_matches_pyca(self):
+        pyca = {
+            id(aead.AES_128_GCM): pyca_aead.AESGCM,
+            id(aead.AES_192_GCM): pyca_aead.AESGCM,
+            id(aead.AES_256_GCM): pyca_aead.AESGCM,
+            id(aead.CHACHA20_POLY1305): pyca_aead.ChaCha20Poly1305,
+        }
         for algorithm in (aead.AES_128_GCM, aead.AES_192_GCM, aead.AES_256_GCM, aead.CHACHA20_POLY1305):
             raw = os.urandom(algorithm.key_len)
             key = aead.Key(algorithm, raw)
-            other = self.PYCA[id(algorithm)](raw)
+            other = pyca[id(algorithm)](raw)
             for length in (0, 1, 15, 16, 17, 255, 1350, 4096):
                 nonce = os.urandom(algorithm.nonce_len)
                 plaintext, aad = os.urandom(length), os.urandom(length % 40)
@@ -314,6 +323,7 @@ class Agreement(unittest.TestCase):
             "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742",
         )
 
+    @requires_pyca
     def test_x25519_matches_pyca(self):
         ours = agreement.PrivateKey.generate(agreement.X25519)
         theirs = x25519.X25519PrivateKey.generate()
@@ -323,6 +333,7 @@ class Agreement(unittest.TestCase):
             theirs.exchange(x25519.X25519PublicKey.from_public_bytes(bytes(ours.public_key()))),
         )
 
+    @requires_pyca
     def test_ecdh_matches_pyca(self):
         for algorithm, curve in (
             (agreement.ECDH_P256, ec.SECP256R1()),
@@ -376,6 +387,7 @@ class Signature(unittest.TestCase):
         with self.assertRaises(pyrind.BadSignature):
             key.public_key().verify(b"x", signed)
 
+    @requires_pyca
     def test_ed25519_matches_pyca(self):
         ours = signature.Ed25519KeyPair.generate()
         theirs = ed25519.Ed25519PrivateKey.from_private_bytes(ours.to_seed())
@@ -384,6 +396,7 @@ class Signature(unittest.TestCase):
         self.assertEqual(loaded.sign(b"m"), ours.sign(b"m"))
         self.assertEqual(signature.Ed25519KeyPair.from_pkcs8(ours.to_pkcs8()).to_seed(), ours.to_seed())
 
+    @requires_pyca
     def test_ecdsa_against_pyca(self):
         for algorithm, check, curve, hash_ in (
             (sign.ECDSA_P256_SHA256_ASN1, verify.ECDSA_P256_SHA256_ASN1, ec.SECP256R1(), hashes.SHA256()),
@@ -424,6 +437,7 @@ class Signature(unittest.TestCase):
         with self.assertRaises(pyrind.KeyRejected):
             signature.EcdsaKeyPair.from_pkcs8(sign.ECDSA_P384_SHA384_ASN1, key.to_pkcs8())
 
+    @requires_pyca
     def test_rsa_against_pyca(self):
         theirs = pyca_rsa.generate_private_key(65537, 2048)
         der = theirs.private_bytes(
@@ -451,8 +465,9 @@ class Signature(unittest.TestCase):
         key = signature.RsaKeyPair.generate(rsa.KeySize.RSA_2048)
         public = signature.PublicKey.from_spki(verify.RSA_PSS_SHA256, key.to_spki())
         public.verify(b"m", key.sign(sign.RSA_PSS_SHA256, b"m"))
-        loaded = serialization.load_der_private_key(key.to_pkcs8(), None)
-        self.assertEqual(loaded.key_size, 2048)
+        if PYCA:
+            loaded = serialization.load_der_private_key(key.to_pkcs8(), None)
+            self.assertEqual(loaded.key_size, 2048)
 
     def test_garbage_keys_are_rejected(self):
         for call in (
@@ -466,6 +481,7 @@ class Signature(unittest.TestCase):
 
 
 class Rsa(unittest.TestCase):
+    @requires_pyca
     def test_oaep_against_pyca(self):
         theirs = pyca_rsa.generate_private_key(65537, 2048)
         der = theirs.private_bytes(
@@ -501,6 +517,7 @@ class Kem(unittest.TestCase):
             ciphertext, secret = encapsulation_key.encapsulate()
             self.assertEqual(key.decapsulate(ciphertext), secret)
 
+    @requires_pyca
     def test_against_pyca(self):
         ours = kem.DecapsulationKey.generate(kem.ML_KEM_768)
         their_view = mlkem.MLKEM768PublicKey.from_public_bytes(bytes(ours.public_key()))

@@ -56,13 +56,6 @@ esac
 export VALGRIND_BUG_494162=1
 export CARGO_PROFILE_RELEASE_DEBUG=line-tables-only
 
-# Valgrind (through 3.27) decodes no read or write of aarch64's DIT register.
-# It hides DIT from `AT_HWCAP`, but rind also finds DIT from each core's
-# `MIDR_EL1`, so this denies it. A release build takes the denial only with
-# `--cfg rind_cpu_disable`, and a set `RUSTFLAGS` replaces this variable, so
-# a caller that sets `RUSTFLAGS` includes the cfg.
-export RIND_CPU_DISABLE_dit=1
-export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="--cfg rind_cpu_disable"
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER="$self --run"

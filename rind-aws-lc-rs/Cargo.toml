@@ -1,6 +1,6 @@
 [package]
 name = "rind-aws-lc-rs"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 repository = "https://github.com/moq-dev/rind"
 license = "Apache-2.0 OR ISC OR MIT-0"
@@ -38,7 +38,7 @@ unstable = []
 wipe = ["rind/wipe"]
 
 [dependencies]
-rind = { version = "0.3.1", path = "../rind" }
+rind = { version = "0.3.2", path = "../rind" }
 untrusted = "0.7.1"
 zeroize = "1.9"
 

@@ -44,6 +44,9 @@ rind alone sets DIT around each call, [Known gaps][gaps] says why and what
 closes it. [BENCHMARKS.md][benchmarks] has every time, build time, and
 binary size.
 
+The [launch post][launch-post] tells why rind exists and what building it
+cost in AI tokens.
+
 ## Switch in one line
 
 rind is new, so exercise due caution.
@@ -130,7 +133,6 @@ Each crate's README shows its setup.
 | [rind-object-store][] | S3, Azure, and GCS request signing through [object_store](https://github.com/apache/arrow-rs-object-store) |
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
 | [rind-dart][] | Dart and Flutter, through FFI: the `rind` package, unpublished until its first pub.dev release |
-| [rind-instant-acme][] | ACME through [instant-acme](https://github.com/djc/instant-acme), unpublished until instant-acme releases the interface it targets |
 | [rind-python][] | Python, as the `pyrind` package on PyPI, with rind's own API |
 
 ## Wiping keys
@@ -147,6 +149,28 @@ and wipes the adapter's own copies of secrets.
 [dependencies]
 rind = { version = "0.3", features = ["wipe"] }
 ```
+
+## Data-independent timing
+
+On Apple silicon, each rind call that handles a secret turns on DIT
+(data-independent timing) at entry and back off on return. From the M3, DIT
+turns off the data memory-dependent prefetcher that
+[GoFetch](https://gofetch.fail/) leaks keys from constant-time code through,
+and clearing it on return leaves the rest of the thread as the application
+set it. The M1 and M2 have no such switch, so they pay the toggle's cost
+without that protection. Arm says DIT changes nothing on its current cores, so rind sets it
+only on Apple's platforms; aws-lc-rs and ring never set it.
+
+Turning DIT on and off costs about 45-60 ns a call on Apple's M1 and M4, a
+fifth of sealing a 1350-byte packet. A loop of small calls, such as sealing
+a batch of QUIC packets, holds a guard around the batch to pay it once:
+
+```rust
+let _dit = rind::cpu::Dit::hold();
+```
+
+The guard covers every rind call its thread makes, including those through
+rind-rustls and the other adapters, and does nothing off Apple's platforms.
 
 ## Platforms
 
@@ -230,9 +254,9 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [rind-object-store]: https://github.com/moq-dev/rind/tree/main/rind-object-store
 [rind-rcgen]: https://github.com/moq-dev/rind/tree/main/rind-rcgen
 [rind-dart]: https://github.com/moq-dev/rind/tree/main/rind-dart
-[rind-instant-acme]: https://github.com/moq-dev/rind/tree/main/rind-instant-acme
 [rind-python]: https://github.com/moq-dev/rind/tree/main/rind-python
 [quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
+[launch-post]: https://moq.dev/blog/rind/
 [contributing]: https://github.com/moq-dev/rind/blob/main/CONTRIBUTING.md
 [migrating]: https://github.com/moq-dev/rind/blob/main/MIGRATING.md
 [benchmarks]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md

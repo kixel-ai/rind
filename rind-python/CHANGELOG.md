@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/moq-dev/rind/compare/rind-python-v0.1.1...rind-python-v0.1.2) - 2026-11-08
+
+### Other
+
+- *(python)* test musl and armv7 wheels ([#496](https://github.com/moq-dev/rind/pull/496))
+
 ## [0.1.1](https://github.com/moq-dev/rind/compare/rind-python-v0.1.0...rind-python-v0.1.1) - 2026-11-08
 
 ### Other
