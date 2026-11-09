@@ -376,8 +376,6 @@ exclude_re = [
   'rind-ring/src/agreement\.rs:114:\d+: replace <impl AsRef<\[u8\]> for PublicKey>::as_ref -> &\[u8\] with Vec::leak\(vec!\[1\]\)$',
   'rind-ring/src/agreement\.rs:30:\d+: replace <impl PartialEq for Algorithm>::eq -> bool with true$',
   'rind-ring/src/agreement\.rs:120:\d+: replace <impl fmt::Debug for PublicKey>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-ring/src/cpu\.rs:16:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-ring/src/cpu\.rs:7:\d+: replace check -> Result<\(\), MissingFeature> with Ok\(\(\)\)$',
   'rind-ring/src/der\.rs:\d+:\d+: delete match arm \[2\.\.= 0x7f\] in ed25519_pkcs8$',
   'rind-ring/src/der\.rs:\d+:\d+: delete match arm \[\] \|\[0x80\.\.= 0xff, \.\.\] in positive_integer$',
   'rind-ring/src/der\.rs:\d+:\d+: replace match guard input\.at_end\(\) with false in ed25519_pkcs8$',
