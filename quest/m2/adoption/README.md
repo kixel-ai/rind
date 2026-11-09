@@ -25,9 +25,11 @@ don't ask again (✅ is the chosen option):
 - Big names on RustCrypto are marketing wins, since rind is several times
   faster ([BENCHMARKS.md](/BENCHMARKS.md)'s `nixos2`, an i7-8700: RSA-2048
   verify about 4.7x, P-256 sign and ECDH about 5x, ChaCha20-Poly1305 per
-  packet about 3x, AES-GCM about 2x): Deno and snow's users ✅. Deno is in
-  for the marketing win though the maintainer considers it deprecated, and
-  nothing is added to rind only for it. Considered and left out: RustFS
+  packet about 3x, AES-GCM about 2x). Decided 2026-11-09 (maintainer,
+  /quest-unblock): Deno and snow are dropped, Deno because it is
+  deprecated and rind-snow by closing
+  [#470](https://github.com/moq-dev/rind/pull/470) on purpose.
+  Considered and left out: RustFS
   (already links aws-lc-rs), YARA-X, age, Turso, rustic (needs a raw
   Poly1305 API), Kanidm and Servo (forbid AI-written contributions; Servo
   dropped on 2026-11-07 in [#475](https://github.com/moq-dev/rind/pull/475)),
@@ -35,7 +37,8 @@ don't ask again (✅ is the chosen option):
 - Patches and issues to downstream projects: drop them and let projects pull
   rind themselves ✅ (rejected: keep preparing them). The maintainer dropped
   llrt, rusty-s3, librespot, Lemmy, tailscale-rs, and Apache Iggy on
-  2026-11-07; Bun, Deno, and rustls's provider list stay.
+  2026-11-07, and Deno and str0m's upstream fixes on 2026-11-09; Bun and
+  rustls's provider list stay.
 - No rind-graviola ✅: build it only if big crates use graviola directly.
   None does; every notable graviola user (llrt, rusty-s3, wtx, oxish) picks it
   with an optional feature, and `[patch]` cannot swap in a crate of another
@@ -62,12 +65,8 @@ don't ask again (✅ is the chosen option):
 ## Required
 
 - [rustls lists rind-rustls](/quest/m2/adoption/rustls-providers.md) - an entry in rustls's third-party provider list
-- [str0m and dimpl take rind-str0m's upstream fixes](/quest/m2/adoption/str0m-upstream.md) - draft PRs
 - [quinn's rustls support works with any provider](/quest/m2/adoption/quinn.md) - quinn-proto stops forcing ring or aws-lc-rs
 - [Bun's CryptoHasher takes SHA-3 from rind](/quest/m2/adoption/bun-sha3.md) - SHA-3 in Bun on rind, after the m1 Bun PR
-- [rind-snow](/quest/m2/adoption/rind-snow.md) - snow's `CryptoResolver` on rind, for rathole and other Noise users
-- [snow's write_message refuses a buffer without room for the static key's tag](/quest/m2/adoption/snow-write-message.md) - an upstream fix for rind-snow's one reachable panic
-- [Deno's WebCrypto and node:crypto run on rind](/quest/m2/adoption/deno.md) - Deno's RustCrypto paths moved to rind
 - [pyca-compatible pyrind](/quest/m2/adoption/pyrind-cryptography.md) - pyca's `hazmat` names on pyrind
 - [Talk to pyca about rind](/quest/m2/adoption/pyca.md) - a discussion with pyca/cryptography's maintainers
 - [rind for Dart and Flutter](/quest/m2/adoption/rind-dart.md) - the `rind` package on pub.dev
