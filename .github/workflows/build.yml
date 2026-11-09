@@ -249,8 +249,6 @@ jobs:
       - name: Create the Android project
         run: flutter create --platforms android .
 
-      # flutter test builds for the emulator's own ABI, so armv7 is built
-      # alone and run with flutter drive.
       - name: Run tests
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
@@ -259,12 +257,8 @@ jobs:
           arch: x86_64
           working-directory: rind-dart/integration
           script: |
-            flutter build apk --release --target-platform android-arm -t integration_test/rind_test.dart
-            adb install build/app/outputs/flutter-apk/app-release.apk
-            adb logcat -c
-            adb shell am start -n com.example.rind_integration/.MainActivity
-            sleep 120
-            adb logcat -d -s flutter:* DEBUG:* AndroidRuntime:* libc:*
+            flutter test integration_test -d emulator-5554
+            ./android-arm.sh
 
   # rind-dart's tests on the iOS simulator, through the same Flutter app.
   dart-ios:
@@ -296,7 +290,7 @@ jobs:
           udid=$(xcrun simctl list devices available --json | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid"
-          flutter test integration_test -d "$udid" --reporter expanded -v
+          flutter test integration_test -d "$udid"
 
   # The portable backend, which every architecture without rind assembly
   # runs, forced on x86_64 so it runs without emulation. The recipe lints and
