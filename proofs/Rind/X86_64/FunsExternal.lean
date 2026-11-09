@@ -360,45 +360,45 @@ on, whose DER no proof covers. -/
 opaque high.agreement.x25519_from_pkcs8
   : Slice Std.U8 → Result (core.result.Result mid.x25519.PrivateKey error.Error)
 
-opaque mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+opaque high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.encode_pkcs8
   : mid.x25519.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+opaque high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.encode_scalar
   : mid.x25519.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+opaque high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_pkcs8
   : mid.p256.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+opaque high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_scalar
   : mid.p256.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+opaque high.curve.P384.Insts.RindHighAgreementAgreePrivateKey.encode_pkcs8
   : mid.p384.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+opaque high.curve.P384.Insts.RindHighAgreementAgreePrivateKey.encode_scalar
   : mid.p384.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.encode_pkcs8
   : mid.p521.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.encode_scalar
   : mid.p521.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.load
+opaque high.curve.P384.Insts.RindHighAgreementAgreePrivateKey.load
   : high.agreement.Source → Result (core.result.Result mid.p384.PrivateKey error.Error)
 
-opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.load
+opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.load
   : high.agreement.Source → Result (core.result.Result mid.p521.PrivateKey error.Error)
 
-opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.load
+opaque high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.load
   : high.agreement.Source → Result (core.result.Result mid.p256.PrivateKey error.Error)
 
 end rind.x86_64

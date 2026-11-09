@@ -67,9 +67,9 @@ the `T`, since only the drop that wipes it leaves it `None`. -/
 @[reducible] def low.generic.zeroise.ZeroableRef (T : Type) : Type := T
 
 /-- A curve's key agreement functions, as `Rind.X86_64.Dispatch` models them:
-nothing, since `Keyed::generate` builds the only one, of `K`'s own `Agree`
-functions, which the model calls directly. -/
-@[reducible] def high.agreement.Ops (_K : Type) : Type := Unit
+nothing, since `Keyed::new` builds each `Ops<K::Key>` from the curve marker
+`K`'s own `Agree` functions, which the model calls directly. -/
+@[reducible] def high.agreement.Ops (_Key : Type) : Type := Unit
 
 /-- A header-protection key with its cipher's mask, as `Rind.X86_64.Dispatch` models it:
 the key, since `Masker::new` builds every one with `C`'s own `mask`, which the

@@ -22,8 +22,8 @@ pub struct Algorithm {
 
 pub static X25519: Algorithm = Algorithm {
     id: AlgorithmId::X25519,
-    generate: Keyed::<x25519::PrivateKey>::generate,
-    load: Keyed::<x25519::PrivateKey>::load,
+    generate: Keyed::<X25519Curve>::generate,
+    load: Keyed::<X25519Curve>::load,
     parse_public: x25519_public_key,
 };
 
@@ -112,8 +112,8 @@ impl PrivateKey {
 }
 
 struct Keyed<K: Agree> {
-    key: K,
-    ops: low::ZeroableRef<Ops<K>>,
+    key: K::Key,
+    ops: low::ZeroableRef<Ops<K::Key>>,
 }
 
 struct Ops<K> {
@@ -132,7 +132,7 @@ impl<K: Agree> Keyed<K> {
         Ok(K::wrap(Self::new(K::load(source)?)))
     }
 
-    fn new(key: K) -> Self {
+    fn new(key: K::Key) -> Self {
         Self {
             key,
             ops: low::ZeroableRef::new(
@@ -236,7 +236,7 @@ impl<C: Mask> Masker<C> {
 
 The model departs from the Rust in six ways, and adds no axiom:
 
-- `Ops<K>` holds nothing, and `Keyed`'s methods call `K`'s `encode_public` and
+- `Ops<K::Key>` holds nothing, and `Keyed`'s methods call `K`'s `encode_public` and
   `agree` directly: `Ops` is private to `high::agreement`, whose only value of
   one is `Keyed::new`'s, of `K`'s own functions. `admin/prove` checks that the
   quote holds every mention of `Ops` there.
@@ -256,6 +256,9 @@ The model departs from the Rust in six ways, and adds no axiom:
 Drops are not modelled, as everywhere in the translation. Of the algorithm
 statics, only `X25519` and `CHACHA20` are here; `Rind.Aarch64.P256Dispatch`
 models `ECDH_P256` on aarch64.
+
+As in the translation, `Keyed` and `Agree` take the curve marker `K` and its
+associated key type as separate type parameters.
 -/
 
 namespace rind.x86_64
@@ -267,11 +270,11 @@ structure high.agreement.Algorithm where
   load : high.agreement.Source → Result (core.result.Result high.agreement.Private error.Error)
 
 /-- `Keyed::<K>::new`, whose `ops` holds `K`'s own functions. -/
-def high.agreement.Keyed.new {K : Type} (key : K) : Result (high.agreement.Keyed K) :=
+def high.agreement.Keyed.new {K Key : Type} (key : Key) : Result (high.agreement.Keyed K Key) :=
   ok { key, ops := () }
 
 /-- `Keyed::<K>::generate`. -/
-def high.agreement.Keyed.generate {K : Type} (AgreeInst : high.agreement.Agree K) :
+def high.agreement.Keyed.generate {K Key : Type} (AgreeInst : high.agreement.Agree K Key) :
     Result (core.result.Result high.agreement.Private error.Error) := do
   let r ← AgreeInst.random
   match r with
@@ -282,7 +285,7 @@ def high.agreement.Keyed.generate {K : Type} (AgreeInst : high.agreement.Agree K
   | .Err e => ok (.Err e)
 
 /-- `Keyed::<K>::load`. -/
-def high.agreement.Keyed.load {K : Type} (AgreeInst : high.agreement.Agree K)
+def high.agreement.Keyed.load {K Key : Type} (AgreeInst : high.agreement.Agree K Key)
     (source : high.agreement.Source) :
     Result (core.result.Result high.agreement.Private error.Error) := do
   let r ← AgreeInst.load source
@@ -294,21 +297,21 @@ def high.agreement.Keyed.load {K : Type} (AgreeInst : high.agreement.Agree K)
   | .Err e => ok (.Err e)
 
 /-- `Keyed::<K>::public_key`, whose `ops.public_key` is `K::encode_public`. -/
-def high.agreement.Keyed.public_key {K : Type} (AgreeInst : high.agreement.Agree K)
-    (self : high.agreement.Keyed K) : Result high.agreement.PublicKey :=
+def high.agreement.Keyed.public_key {K Key : Type} (AgreeInst : high.agreement.Agree K Key)
+    (self : high.agreement.Keyed K Key) : Result high.agreement.PublicKey :=
   AgreeInst.encode_public self.key
 
 /-- `Keyed::<K>::agree`, whose `ops.agree` is `K::agree`. -/
-def high.agreement.Keyed.agree {K : Type} (AgreeInst : high.agreement.Agree K)
-    (self : high.agreement.Keyed K) (peer : Slice Std.U8) :
+def high.agreement.Keyed.agree {K Key : Type} (AgreeInst : high.agreement.Agree K Key)
+    (self : high.agreement.Keyed K Key) (peer : Slice Std.U8) :
     Result (core.result.Result high.agreement.Secret error.Error) :=
   AgreeInst.agree self.key peer
 
 /-- The `X25519` static. -/
 def high.agreement.X25519 : high.agreement.Algorithm where
   id := .X25519
-  generate := high.agreement.Keyed.generate mid.x25519.PrivateKey.Insts.RindHighAgreementAgree
-  load := high.agreement.Keyed.load mid.x25519.PrivateKey.Insts.RindHighAgreementAgree
+  generate := high.agreement.Keyed.generate high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey
+  load := high.agreement.Keyed.load high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey
 
 /-- `PrivateKey::generate`. -/
 def high.agreement.PrivateKey.generate (algorithm : high.agreement.Algorithm) :
@@ -351,20 +354,20 @@ def high.agreement.PrivateKey.public_key (self : high.agreement.PrivateKey) :
     Result high.agreement.PublicKey :=
   match self with
   | .X25519 key =>
-    high.agreement.Keyed.public_key mid.x25519.PrivateKey.Insts.RindHighAgreementAgree key
-  | .P256 key => high.agreement.Keyed.public_key mid.p256.PrivateKey.Insts.RindHighAgreementAgree key
-  | .P384 key => high.agreement.Keyed.public_key mid.p384.PrivateKey.Insts.RindHighAgreementAgree key
-  | .P521 key => high.agreement.Keyed.public_key mid.p521.PrivateKey.Insts.RindHighAgreementAgree key
+    high.agreement.Keyed.public_key high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey key
+  | .P256 key => high.agreement.Keyed.public_key high.curve.P256.Insts.RindHighAgreementAgreePrivateKey key
+  | .P384 key => high.agreement.Keyed.public_key high.curve.P384.Insts.RindHighAgreementAgreePrivateKey key
+  | .P521 key => high.agreement.Keyed.public_key high.curve.P521.Insts.RindHighAgreementAgreePrivateKey key
 
 /-- `PrivateKey::agree`. -/
 def high.agreement.PrivateKey.agree (self : high.agreement.PrivateKey) (peer : Slice Std.U8) :
     Result (core.result.Result high.agreement.SharedSecret error.Error) := do
   let r ← match self with
     | .X25519 key =>
-      high.agreement.Keyed.agree mid.x25519.PrivateKey.Insts.RindHighAgreementAgree key peer
-    | .P256 key => high.agreement.Keyed.agree mid.p256.PrivateKey.Insts.RindHighAgreementAgree key peer
-    | .P384 key => high.agreement.Keyed.agree mid.p384.PrivateKey.Insts.RindHighAgreementAgree key peer
-    | .P521 key => high.agreement.Keyed.agree mid.p521.PrivateKey.Insts.RindHighAgreementAgree key peer
+      high.agreement.Keyed.agree high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey key peer
+    | .P256 key => high.agreement.Keyed.agree high.curve.P256.Insts.RindHighAgreementAgreePrivateKey key peer
+    | .P384 key => high.agreement.Keyed.agree high.curve.P384.Insts.RindHighAgreementAgreePrivateKey key peer
+    | .P521 key => high.agreement.Keyed.agree high.curve.P521.Insts.RindHighAgreementAgreePrivateKey key peer
   match r with
   | .Ok secret => ok (.Ok secret)
   | .Err e => ok (.Err e)
