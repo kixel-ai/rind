@@ -18,7 +18,6 @@ Decided with the maintainer on 2026-11-07, planning m4's long-term work with no 
 
 ## Required
 
-- [rind's assembly is byte-identical to the proven object code](/quest/m4/verified/asm-bytes.md) - the transliteration leaves the trust base
 - [Aeneas translates function pointers](/quest/m4/verified/aeneas-fn-pointers.md) - the hand models of rind's dispatch retire
 - [Re-audit what's left to prove, end of m3](/quest/m4/verified/re-audit.md) - recurring: what still lacks a ✓, new algorithms included, planned as children
 - [AES and QUIC AES header protection are proven with AES hardware](/quest/m4/verified/aes-header-protection.md) - every QUIC packet's mask on x86_64 and aarch64
