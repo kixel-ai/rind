@@ -316,12 +316,12 @@ impl Keyed {
     }
 
     fn start(&self) -> Streaming {
-        match self {
+        Streaming(match self {
             Self::Sha1(key) => key.start(),
             Self::Sha256(key) => key.start(),
             Self::Sha384(key) => key.start(),
             Self::Sha512(key) => key.start(),
-        }
+        })
     }
 }
 
@@ -380,7 +380,7 @@ trait HmacHash: Hash + Sized + 'static {
 
     fn keyed(key: Keying<Self>) -> Keyed;
 
-    fn streaming(hmac: Tagging<Self>) -> Streaming;
+    fn tagged(hmac: Tagging<Self>) -> Tagged;
 }
 
 macro_rules! hmac_hash {
@@ -392,8 +392,8 @@ macro_rules! hmac_hash {
                 Keyed::$variant(key)
             }
 
-            fn streaming(hmac: Tagging<Self>) -> Streaming {
-                Streaming(Tagged::$variant(hmac))
+            fn tagged(hmac: Tagging<Self>) -> Tagged {
+                Tagged::$variant(hmac)
             }
         }
     };
@@ -414,7 +414,7 @@ struct Keying<H: HmacHash> {
 struct KeyOps<H: HmacHash> {
     algorithm: &'static Algorithm,
     sign: fn(&HmacKey<H>, &[u8]) -> Digest,
-    start: fn(&HmacKey<H>) -> Streaming,
+    start: fn(&HmacKey<H>) -> Tagged,
 }
 
 // Not derived, as for `HmacKey`.
@@ -447,7 +447,7 @@ impl<H: HmacHash> Keying<H> {
         (self.ops.get().sign)(&self.key, data)
     }
 
-    fn start(&self) -> Streaming {
+    fn start(&self) -> Tagged {
         (self.ops.get().start)(&self.key)
     }
 }
@@ -474,8 +474,8 @@ impl<H: HmacHash> Clone for Tagging<H> {
 }
 
 impl<H: HmacHash> Tagging<H> {
-    fn start(key: &HmacKey<H>) -> Streaming {
-        H::streaming(Self {
+    fn start(key: &HmacKey<H>) -> Tagged {
+        H::tagged(Self {
             hmac: key.start(),
             ops: ZeroableRef::new(
                 const {
