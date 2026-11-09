@@ -253,7 +253,6 @@ for module in "${selected[@]}"; do
         check:fixtures)
             cargo check --manifest-path admin/build-cost-fixtures/rind/Cargo.toml --target-dir target
             cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind --target-dir target
-            cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind-lean --target-dir target
             ;;
         check:patch) sh/patch.sh ;;
         check:py) sh/python.sh test ;;

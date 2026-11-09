@@ -496,7 +496,7 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 
 ## Build cost
 
-A cold `cargo build --release` of a minimal binary per library (AES-128-GCM, SHA-256, ECDSA P-256, and X25519) and of a rustls client per provider, plus one whose rind-rustls provider holds only those, by `admin/build-cost`: the median of three builds with an empty target directory and a warm download cache, their CPU time, the stripped binary's size, the build tools it needs beyond rustc and a linker, and the crates it compiles. The system OpenSSL build leaves the library itself out of its size; the vendored build is the static figure.
+A cold `cargo build --release` of a minimal binary per library (AES-128-GCM, SHA-256, ECDSA P-256, and X25519) and of a rustls client per provider, by `admin/build-cost`: the median of three builds with an empty target directory and a warm download cache, their CPU time, the stripped binary's size, the build tools it needs beyond rustc and a linker, and the crates it compiles. The system OpenSSL build leaves the library itself out of its size; the vendored build is the static figure.
 
 ### `nixos`
 
@@ -517,7 +517,6 @@ Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/moq-dev/rind/commit/9e7f6
 | OpenSSL, the system's, linked dynamically | 3.4 (3.2 to 3.6) | 9 | 0.38 | cc, pkg-config | 18 |
 | OpenSSL, vendored | 24.7 (19.5 to 32.2) | 161 | 5.13 | cc, make, perl | 19 |
 | rustls + rind-rustls | 4.2 (4.2 to 7.3) | 21 | 3.00 | none | 14 |
-| rustls + rind-rustls, one TLS 1.3 suite, X25519, and P-256 | 4.5 (4.3 to 4.8) | 23 | 1.82 | none | 14 |
 | rustls + aws-lc-rs | 16.6 (16.2 to 16.8) | 55 | 4.11 | cc | 20 |
 | rustls + ring | 7.8 (7.7 to 7.8) | 19 | 1.94 | cc | 16 |
 
@@ -536,7 +535,6 @@ Measured 2026-11-06 at [`f95b91da`](https://github.com/moq-dev/rind/commit/f95b9
 | OpenSSL, the system's, linked dynamically | 5.8 (5.8 to 5.8) | 12 | 0.38 | cc, pkg-config | 18 |
 | OpenSSL, vendored | 82.3 (81.0 to 82.5) | 220 | 5.13 | cc, make, perl | 19 |
 | rustls + rind-rustls | 11.3 (11.3 to 11.4) | 31 | 2.95 | none | 14 |
-| rustls + rind-rustls, one TLS 1.3 suite, X25519, and P-256 | 11.8 (11.5 to 11.8) | 33 | 1.82 | none | 14 |
 | rustls + aws-lc-rs | 36.6 (36.0 to 38.2) | 89 | 4.11 | cc | 20 |
 | rustls + ring | 16.4 (16.2 to 16.4) | 31 | 1.94 | cc | 16 |
 
@@ -555,7 +553,6 @@ Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/moq-dev/rind/commit/9e7f6
 | OpenSSL, the system's, linked dynamically | 4.6 (4.6 to 4.6) | 10 | 0.36 | cc | 18 |
 | OpenSSL, vendored | 131.7 (131.2 to 133.1) | 421 | 3.75 | cc, make, perl | 19 |
 | rustls + rind-rustls | 6.5 (6.5 to 6.7) | 22 | 2.17 | none | 14 |
-| rustls + rind-rustls, one TLS 1.3 suite, X25519, and P-256 | 6.7 (6.7 to 6.8) | 22 | 1.54 | none | 14 |
 | rustls + aws-lc-rs | 34.0 (33.9 to 34.1) | 109 | 3.08 | cc | 20 |
 | rustls + ring | 12.2 (12.2 to 12.3) | 23 | 1.60 | cc | 16 |
 
@@ -573,7 +570,6 @@ Measured 2026-11-06 at [`6b185382`](https://github.com/moq-dev/rind/commit/6b185
 | OpenSSL, the system's, linked dynamically | 10.1 (9.9 to 10.2) | 21 | 0.38 | cc, pkg-config | 18 |
 | OpenSSL, vendored | 108.4 (105.4 to 111.6) | 365 | 5.13 | cc, make, perl | 19 |
 | rustls + rind-rustls | 16.6 (16.5 to 16.9) | 54 | 2.95 | none | 14 |
-| rustls + rind-rustls, one TLS 1.3 suite, X25519, and P-256 | 16.6 (16.6 to 18.1) | 54 | 1.82 | none | 14 |
 | rustls + aws-lc-rs | 54.0 (53.8 to 55.0) | 138 | 4.11 | cc | 20 |
 | rustls + ring | 27.3 (26.7 to 28.0) | 52 | 1.94 | cc | 16 |
 
@@ -591,7 +587,6 @@ Measured 2026-11-06 at [`6b185382`](https://github.com/moq-dev/rind/commit/6b185
 | OpenSSL, the system's, linked dynamically | 8.6 (8.5 to 8.7) | 18 | 0.38 | cc, pkg-config | 18 |
 | OpenSSL, vendored | 94.0 (93.6 to 94.2) | 316 | 5.13 | cc, make, perl | 19 |
 | rustls + rind-rustls | 14.7 (14.6 to 14.7) | 48 | 2.95 | none | 14 |
-| rustls + rind-rustls, one TLS 1.3 suite, X25519, and P-256 | 14.6 (14.5 to 14.8) | 48 | 1.82 | none | 14 |
 | rustls + aws-lc-rs | 47.6 (47.1 to 48.5) | 122 | 4.11 | cc | 20 |
 | rustls + ring | 24.4 (24.1 to 24.5) | 47 | 1.94 | cc | 16 |
 

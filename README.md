@@ -71,12 +71,8 @@ rind = "0.3"
 Install [rind-rustls][] at startup, then use rustls as normal:
 
 ```rust,ignore
-// Refuses a CPU missing a feature rind requires.
-rind_rustls::default_provider()?.install_default().unwrap();
+rind_rustls::default_provider().install_default().unwrap();
 ```
-
-Its [README][rind-rustls] shows a provider that links only the algorithms a
-binary names.
 
 ### With an agent
 
@@ -182,7 +178,7 @@ x86_64 and aarch64, iOS in the simulator, and Android on aarch64, armv7, and
 x86_64. Any x86_64 CPU runs it,
 little-endian aarch64 needs NEON, and every operation panics on a CPU missing a feature
 rind requires: call `rind::cpu::check()` at startup to get an error naming
-it instead, as `rind_rustls::default_provider()` does.
+it instead.
 [PLATFORMS.md][platforms] lists what each architecture runs without each
 feature.
 
