@@ -207,9 +207,7 @@ impl PrivateKey {
 
 impl Drop for PrivateKey {
     fn drop(&mut self) {
-        // The public key is not secret, but wiping it with the key lets
-        // `tests/zeroing.rs` check every byte.
-        low::zeroise_value(self);
+        low::zeroise_value(&mut self.private);
     }
 }
 
