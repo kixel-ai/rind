@@ -171,7 +171,8 @@ fn upper_vector_state_left_clean() {
     });
     let theirs = agreement::PrivateKey::generate(&X25519)
         .unwrap()
-        .public_key();
+        .public_key()
+        .clone();
     check("X25519 agree", || ours.agree(theirs.as_ref()).unwrap());
     let rsa = RsaKeyPair::from_pkcs8(include_bytes!("../src/high/rsa/rsa2048.pkcs8.der")).unwrap();
     check("RSA-2048 sign", || {
