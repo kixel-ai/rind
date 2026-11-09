@@ -267,6 +267,7 @@ impl fmt::Debug for Context {
 }
 
 /// Returns the tag of `data` under `key`.
+#[must_use]
 pub fn sign(key: &Key, data: &[u8]) -> Tag {
     let _entry = Entry::new_secret();
     Tag(key.0.sign(data))
@@ -275,6 +276,9 @@ pub fn sign(key: &Key, data: &[u8]) -> Tag {
 /// Checks in constant time that `tag` is the whole tag of `data` under `key`.
 ///
 /// Fails with [`Error::BadSignature`] otherwise, including for a truncated tag.
+/// To check a tag over a message fed in pieces, or one truncated to a length
+/// the protocol fixes (SRTP's HMAC-SHA1-80), sign with a [`Context`] or
+/// [`sign`] and compare the agreed prefix with [`crate::constant_time::verify`].
 pub fn verify(key: &Key, data: &[u8], tag: &[u8]) -> Result<(), Error> {
     let _entry = Entry::new_secret();
     match key.0.sign(data).ct_equal(tag) {
@@ -284,8 +288,17 @@ pub fn verify(key: &Key, data: &[u8], tag: &[u8]) -> Result<(), Error> {
 }
 
 /// An HMAC tag.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Tag(Digest);
+
+// The bytes stay out: a tag is secret where HMAC serves as a PRF.
+impl fmt::Debug for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Tag")
+            .field("algorithm", &self.0.id())
+            .finish_non_exhaustive()
+    }
+}
 
 impl AsRef<[u8]> for Tag {
     fn as_ref(&self) -> &[u8] {
