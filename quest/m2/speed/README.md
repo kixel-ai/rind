@@ -56,5 +56,4 @@ dual RSAZ only when the runner has IFMA.
 
 ## Required
 
-- [HKDF-SHA256 expand is back to its earlier speed on x86_64](/quest/m2/speed/hkdf-expand-regression.md) - desktop measured 47 to 66 ns between two runs; confirm on a runner, then bisect
 - [armv7 without the crypto extension runs the fastest SHA-256](/quest/m2/speed/armv7-sha256-hacl.md) - Graviola's or HACL*'s, measured
