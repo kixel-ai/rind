@@ -27,7 +27,7 @@ for target in "$@"; do
             link=(--
                 "-Clinker=$ndk/toolchains/llvm/prebuilt/$host/bin/clang"
                 "-Clink-arg=--target=${target/armv7-/armv7a-}21"
-                -Clink-arg=-Wl,-z,max-page-size=16384)
+                "-Clink-arg=-Wl,-z,max-page-size=16384")
             ;;
         *-linux-gnu*)
             cargo=(cargo-zigbuild)
