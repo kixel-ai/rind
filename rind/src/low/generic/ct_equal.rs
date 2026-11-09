@@ -1,7 +1,7 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use crate::low::{Entry, ct_compare_bytes};
+use crate::low::{Entry, ct_compare_16, ct_compare_bytes};
 
 pub(crate) fn ct_equal(a: &[u8], b: &[u8]) -> bool {
     Entry::assert_held();
@@ -9,9 +9,47 @@ pub(crate) fn ct_equal(a: &[u8], b: &[u8]) -> bool {
         return false;
     }
 
-    // SAFETY: prior code guarantees a.len() == b.len()
-    let diff = unsafe { ct_compare_bytes(a.as_ptr(), b.as_ptr(), a.len()) };
+    // Every AEAD open checks a 16-byte tag, which compares as whole words
+    // rather than through the byte loop.
+    let diff = match (a.try_into(), b.try_into()) {
+        (Ok(a), Ok(b)) => ct_compare_16(a, b),
+        // SAFETY: prior code guarantees a.len() == b.len()
+        _ => unsafe { ct_compare_bytes(a.as_ptr(), b.as_ptr(), a.len()) }.into(),
+    };
     // The result stays secret: a caller that accepts or rejects on it
     // declassifies it, but ML-KEM's implicit rejection must not.
     diff == 0
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use crate::low::ct;
+
+    // Every length up to 1 KiB, the 16-byte words included, differing in
+    // each byte in turn, under inputs `admin/ctgrind` keeps secret.
+    #[test]
+    fn matches_eq() {
+        equiv(&[], &[]);
+        for n in 1..1024 {
+            let a = vec![0u8; n];
+            equiv(&a, &a.clone());
+            for i in 0..n {
+                let mut b = vec![0u8; n];
+                b[i] = 1 << (i % 8);
+                equiv(&a, &b);
+            }
+        }
+        equiv(&[0; 16], &[0; 15]);
+    }
+
+    fn equiv(a: &[u8], b: &[u8]) {
+        let want = a == b;
+        ct::secret_slice(a);
+        ct::secret_slice(b);
+        assert_eq!(want, ct::into_public(ct_equal(a, b)));
+        ct::public_slice(a);
+        ct::public_slice(b);
+    }
 }

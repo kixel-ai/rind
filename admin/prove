@@ -4,7 +4,7 @@
 #
 # Each target's translation is its own namespace, but they share global names,
 # so no Lean module imports both. The aarch64 hand models and its X25519,
-# SHA-512, ChaCha20, Ed25519, and SHA-1, SHA-256, and HMAC proofs are the
+# SHA-512, ChaCha20, Ed25519, SHA-1, SHA-256, HMAC, digest, HKDF, and PBKDF2 proofs are the
 # x86_64 ones with the target renamed, which this writes too, all but each
 # target's own `ShaBlocks.lean`.
 #
@@ -67,7 +67,7 @@ ecdsa_items() {
 }
 check_quote Aarch64/EcdsaDispatch ecdsa_items
 check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
-    'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
+    'pub static MD5:' 'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
     'pub static SHA512_256:' 'pub static SHA3_256:' 'pub static SHA3_384:' 'pub static SHA3_512:' \
     'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {'
 aes_ni_items() {
@@ -78,12 +78,22 @@ aes_ni_items() {
 }
 check_quote X86_64/AesNi aes_ni_items
 check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
-    'pub static AES_128_GCM:' 'pub static AES_256_GCM:' 'pub static CHACHA20_POLY1305:' 'impl Key {' \
+    'pub static AES_128_GCM:' 'pub static AES_192_GCM:' 'pub static AES_256_GCM:' 'pub static CHACHA20_POLY1305:' 'impl Key {' \
     'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \
-    'pub struct Nonce(' 'impl Nonce {' 'pub struct Tag('
+    'pub struct Nonce(' 'impl Nonce {' 'pub struct Tag(' 'impl AsRef<[u8]> for Tag {'
 check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
     'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {' 'fn one_shot<' \
     'trait Variant:'
+check_quote X86_64/HmacDispatch items rind/src/high/hmac.rs 'pub struct Algorithm ' 'impl Algorithm {' \
+    'pub static HMAC_SHA1:' 'pub static HMAC_SHA256:' 'pub static HMAC_SHA384:' 'pub static HMAC_SHA512:' \
+    'pub struct Key(' 'impl Key {' 'pub struct Context(' 'impl Context {' 'pub fn sign(' 'pub fn verify(' \
+    'pub struct Tag(' 'impl AsRef<[u8]> for Tag {' 'enum Keyed {' 'impl Keyed {' \
+    'pub(super) struct Streaming(' 'enum Tagged {' 'impl Streaming {' 'trait HmacHash:' \
+    'macro_rules! hmac_hash {' 'hmac_hash!(LegacySha1' 'hmac_hash!(Sha256' 'hmac_hash!(Sha384' \
+    'hmac_hash!(Sha512' 'struct Keying<' 'struct KeyOps<' \
+    'impl<H: HmacHash> Clone for Keying<H> {' 'impl<H: HmacHash> Keying<H> {' 'struct Tagging<' \
+    'struct TagOps<' 'impl<H: HmacHash> Clone for Tagging<H> {' 'impl<H: HmacHash> Tagging<H> {'
+check_quote X86_64/HkdfExpand items rind/src/high/hkdf.rs '    fn expand_into('
 check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
     'pub struct VerificationAlgorithm(' 'enum Verification {' 'type Verify<K> =' \
     'struct Verifier<K> {' 'impl<K> Verifier<K> {' 'pub struct PublicKey {' 'enum Parsed {' \
@@ -125,6 +135,9 @@ only_quoted rind/src/high/signature.rs "$out/signature.rs" 'EcdsaP256\b'
 only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" 'EcdsaKey::'
 only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" 'Ecdsa(Ops|Pair) \{'
 only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" '\.ops\b'
+only_quoted rind/src/high/hmac.rs "$out/HmacDispatch.rs" '\.ops\b'
+only_quoted rind/src/high/hmac.rs "$out/HmacDispatch.rs" '(Key|Tag)Ops \{'
+only_quoted rind/src/high/hmac.rs "$out/HmacDispatch.rs" '= Algorithm \{'
 only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '\bOps\b'
 only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 
@@ -152,7 +165,7 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # `signature::PublicKey` holds the signature API's, so no translated function
 # reaches it, and `SignatureDispatch.lean` defines it. SHA-1's and SHA-256's
 # padding is translated down to their block functions, which are opaque.
-# SHA-3's sponge, which no proof covers, is opaque.
+# MD5 and SHA-3's sponge, which no proof covers, are opaque.
 # P-256's key generation draws through a `dyn RandomSource`, so it is opaque
 # too, and `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the
 # translated `PrivateKey::from_bytes`, as `EcdsaDispatch.lean` does for ECDSA,
@@ -185,6 +198,7 @@ extract() {
         --start-from crate::mid::chacha20::ChaCha20::new \
         --start-from 'crate::high::hmac::HmacKey::_' \
         --start-from 'crate::high::hmac::Hmac::_' \
+        --start-from '{impl core::clone::Clone for crate::high::hmac::Hmac<_>}' \
         --start-from crate::high::ed25519::Ed25519VerifyingKey::from_bytes \
         --start-from crate::high::ed25519::Ed25519VerifyingKey::verify \
         --start-from crate::high::ed25519::Ed25519VerifyingKey::as_bytes \
@@ -218,6 +232,7 @@ extract() {
         --opaque 'crate::high::digest::_::ct_equal' \
         --opaque 'crate::high::digest::_::as_ref' \
         --opaque 'crate::high::digest::_::output_len' \
+        --opaque crate::high::digest::MD5 \
         --opaque crate::high::digest::SHA1 \
         --opaque crate::high::digest::SHA256 \
         --opaque crate::high::digest::SHA384 \
@@ -226,6 +241,7 @@ extract() {
         --opaque crate::high::digest::SHA3_256 \
         --opaque crate::high::digest::SHA3_384 \
         --opaque crate::high::digest::SHA3_512 \
+        --opaque crate::mid::md5 \
         --opaque crate::mid::sha3 \
         --opaque crate::low \
         --opaque 'crate::mid::p384::_::_' \
@@ -243,6 +259,47 @@ extract() {
         -no-progress-bar -dest "$out/lean" -subdir "Rind/$dir" \
         -namespace "rind.$arch" "$out/$arch.llbc"
     cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
+}
+
+# HKDF and PBKDF2, in a second translation above the HMAC API, whose dispatch
+# `proofs/Rind/X86_64/HmacDispatch.lean` models on the first's `HmacKey` and
+# `Hmac`: one translation's external declarations precede all of its code, so
+# none of its code can call a model built on it. This one has its own
+# namespace, under the first's, whose names it reaches for what it leaves
+# opaque, and `proofs/Rind/X86_64/Kdf/{Types,Funs}External.lean` define the
+# rest. HKDF-Expand's loop over `info`, a slice of borrowed slices, is opaque,
+# and `proofs/Rind/X86_64/HkdfExpand.lean` models it.
+extract_kdf() {
+    local arch=$1 dir=$2
+    (cd rind && charon cargo --preset=aeneas \
+        --start-from crate::high::hkdf::Salt::new \
+        --start-from crate::high::hkdf::Salt::extract \
+        --start-from crate::high::hkdf::Prk::expand \
+        --start-from crate::high::hkdf::Okm::fill \
+        --start-from crate::high::pbkdf2::Secret::new \
+        --start-from crate::high::pbkdf2::Secret::derive \
+        --start-from crate::high::pbkdf2::Secret::verify \
+        --opaque 'crate::high::hkdf::_::expand_into' \
+        --opaque crate::high::hmac \
+        --opaque crate::high::digest \
+        --opaque crate::low \
+        --opaque crate::mid \
+        --opaque crate::aead \
+        --dest-file "$PWD/../$out/$arch-kdf.llbc" \
+        -- -p rind --lib --target "$arch-unknown-linux-gnu")
+    rm -rf "$out/lean"
+    aeneas -backend lean -split-files -abort-on-error \
+        -no-progress-bar -dest "$out/lean" -subdir "Rind/$dir/Kdf" \
+        -namespace "rind.$arch.kdf" "$out/$arch-kdf.llbc"
+    mkdir -p "proofs/Rind/$dir/Kdf"
+    # Aeneas names both of `ZeroablePrimitive`'s `Copy` clauses, which
+    # `NonZeroU32::get` brings in, `markerCopyInst`, which Lean refuses as a
+    # duplicate field. Nothing reads them, so rename the second.
+    sed 's/"markerCopyInst", "markerCopyInst"/"markerCopyInst", "markerCopyInst1"/;
+        s/^  markerCopyInst : core.marker.Copy Self_NonZeroInner$/  markerCopyInst1 : core.marker.Copy Self_NonZeroInner/' \
+        "$out/lean/Rind/$dir/Kdf/Types.lean" >"proofs/Rind/$dir/Kdf/Types.lean"
+    sed 's/^  markerCopyInst := core.num.niche_types.NonZeroU32Inner.Insts.CoreMarkerCopy$/  markerCopyInst1 := core.num.niche_types.NonZeroU32Inner.Insts.CoreMarkerCopy/' \
+        "$out/lean/Rind/$dir/Kdf/Funs.lean" >"proofs/Rind/$dir/Kdf/Funs.lean"
 }
 
 extract x86_64 X86_64 \
@@ -274,9 +331,11 @@ extract x86_64 X86_64 \
     --include crate::mid::aes::check_counter \
     --include crate::low::x86_64::aes \
     --opaque crate::low::x86_64::aes::aes128_expand \
+    --opaque crate::low::x86_64::aes::aes192_expand \
     --opaque crate::low::x86_64::aes::aes256_expand \
     --opaque crate::low::x86_64::aes::aes128_block \
     --opaque crate::low::x86_64::aes::aes256_block \
+    --opaque crate::low::x86_64::aes::aes_block \
     --opaque crate::low::x86_64::aes::HwKey::round_keys_512 \
     --opaque crate::low::x86_64::aes::RoundKeys512 \
     --include crate::low::x86_64::ghash \
@@ -292,10 +351,9 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::aes_gcm::seal \
     --include crate::low::x86_64::aes_gcm::open \
     --include crate::low::x86_64::aes_gcm::vale \
+    --include crate::low::x86_64::aes_gcm::AVX_VALE_SEAL_FROM \
     --include crate::low::x86_64::aes_gcm::VAES_AVX2_VALE_OPEN_BELOW \
     --include crate::low::x86_64::aes_gcm::VAES_AVX2_VALE_SEAL_BELOW \
-    --include crate::low::x86_64::aes_gcm::AVX512_VALE_OPEN_BELOW \
-    --include crate::low::x86_64::aes_gcm::AVX512_VALE_SEAL_BELOW \
     --include crate::low::x86_64::aes_gcm_avx \
     --opaque crate::low::x86_64::aes_gcm_avx::counter_block \
     --opaque crate::low::x86_64::aes_gcm_avx::aead
@@ -310,6 +368,7 @@ extract aarch64 Aarch64 \
     --start-from '{impl crate::high::hash::SignatureHash for crate::high::hash::Sha256}' \
     --start-from crate::high::ecdsa::SigningKey::from_private_key_and_public_key \
     --start-from crate::high::ecdsa::SigningKey::public_key_uncompressed \
+    --start-from '{impl core::convert::AsRef for crate::high::ecdsa::EncodedPoint}' \
     --start-from crate::high::ecdsa::SigningKey::sign \
     --opaque crate::high::hmac_drbg \
     --start-from crate::high::ecdsa::hash_to_scalar \
@@ -326,8 +385,13 @@ extract aarch64 Aarch64 \
     --include crate::low::aarch64::sha256 \
     --opaque crate::low::aarch64::sha256::sha256_compress_blocks
 
+extract_kdf x86_64 X86_64
+extract_kdf aarch64 Aarch64
+
+mkdir -p proofs/Rind/Aarch64/Kdf
 for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
-    Blockwise Sha Hmac HashAxioms; do
+    Blockwise Sha Hmac HashAxioms HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
+    HmacApi DigestApi Hkdf Pbkdf2; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 

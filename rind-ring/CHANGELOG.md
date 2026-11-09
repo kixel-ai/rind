@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.3](https://github.com/moq-dev/rind/compare/rind-ring-v0.17.2...rind-ring-v0.17.3) - 2026-11-08
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.17.2](https://github.com/moq-dev/rind/compare/rind-ring-v0.17.1...rind-ring-v0.17.2) - 2026-11-08
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.17.1](https://github.com/moq-dev/rind/compare/rind-ring-v0.17.0...rind-ring-v0.17.1) - 2026-11-07
+
+### Added
+
+- wiping keys on drop is opt-in, under a `wipe` feature ([#461](https://github.com/moq-dev/rind/pull/461))
+
+### Fixed
+
+- *(rind-ring)* package the current workspace license ([#495](https://github.com/moq-dev/rind/pull/495))
+
+## [0.17.0](https://github.com/moq-dev/rind/compare/rind-ring-v0.2.0...rind-ring-v0.17.0) - 2026-11-07
+
+### Added
+
+- *(rind-ring)* patch ring from moq-dev/rind-patch, without rind's test vectors ([#456](https://github.com/moq-dev/rind/pull/456))
+- a ring patch shim replaces ring across a binary's tree ([#444](https://github.com/moq-dev/rind/pull/444))
+- [**breaking**] each adapter's version matches the upstream it adapts ([#440](https://github.com/moq-dev/rind/pull/440))
+
+### Other
+
+- *(release)* ship rind as 0.2.1, not 0.3.0 ([#457](https://github.com/moq-dev/rind/pull/457))
+- test iOS in the simulator and Android under cross ([#432](https://github.com/moq-dev/rind/pull/432))
+
+## [0.2.0](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.12...rind-ring-v0.2.0) - 2026-11-06
+
+### Added
+
+- *(rsa)* load RSA keys named id-RSAES-OAEP or id-ea-rsa, as aws-lc-rs does ([#413](https://github.com/moq-dev/rind/pull/413))
+- [**breaking**] audit rind's public API, and apply its decisions, before 0.2.0 ([#383](https://github.com/moq-dev/rind/pull/383))
+- *(rind-ring)* re-export rind's CPU check as cpu ([#377](https://github.com/moq-dev/rind/pull/377))
+
+### Fixed
+
+- *(adapters)* [**breaking**] return each adapter's own MissingFeature, not rind's ([#420](https://github.com/moq-dev/rind/pull/420))
+
+### Other
+
+- *(readme)* show how to use rind and link the details ([#410](https://github.com/moq-dev/rind/pull/410))
+- stop wiping anything but keys, keyed state, and private-key heap scratch ([#394](https://github.com/moq-dev/rind/pull/394))
+- *(sha256)* [**breaking**] finish SHA-NI hashes in registers, and digest contexts by reference ([#352](https://github.com/moq-dev/rind/pull/352))
+
 ## [0.1.12](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.11...rind-ring-v0.1.12) - 2026-11-05
 
 ### Fixed

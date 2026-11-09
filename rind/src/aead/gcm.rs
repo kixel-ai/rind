@@ -3,7 +3,7 @@
 use core::fmt;
 use core::mem::ManuallyDrop;
 
-use super::{AES_128_GCM, AES_256_GCM, Inner, Nonce};
+use super::{AES_128_GCM, AES_192_GCM, AES_256_GCM, Inner, Nonce};
 use crate::Error;
 use crate::cipher::Algorithm;
 use crate::low::{Zeroable, zeroise_value};
@@ -73,7 +73,7 @@ impl fmt::Debug for Iv<'_> {
 }
 
 /// An AES-GCM key that takes an IV of any length and makes tags of one
-/// [`TagLength`], as WebCrypto's AES-GCM does; wiped on drop.
+/// [`TagLength`], as WebCrypto's AES-GCM does; wiped on drop under the `wipe` feature.
 ///
 /// Prefer [`super::Key`], whose 96-bit nonces and full tags are what
 /// protocols use; GCM hashes an IV of any other length into its counter,
@@ -116,6 +116,7 @@ impl Key {
     ) -> Result<Self, Error> {
         let aead = match algorithm.key_len {
             16 => &AES_128_GCM,
+            24 => &AES_192_GCM,
             _ => &AES_256_GCM,
         };
         if key.len() != algorithm.key_len {
@@ -257,7 +258,7 @@ impl AsRef<[u8]> for Tag {
 mod tests {
     use super::*;
     use crate::aead::{AES_128_GCM, Nonce};
-    use crate::cipher::{AES_128, AES_256};
+    use crate::cipher::AES_128;
     use crate::test::*;
 
     fn iv(iv: &[u8]) -> Iv<'_> {
@@ -279,8 +280,7 @@ mod tests {
     }
 
     fn key(key: &[u8], tag_len: TagLength) -> Key {
-        let algorithm = if key.len() == 16 { &AES_128 } else { &AES_256 };
-        Key::new(algorithm, key, tag_len).unwrap()
+        Key::new(crate::cipher::aes(key.len()), key, tag_len).unwrap()
     }
 
     // NIST's vectors: IVs of 1, 12, and 128 bytes, each tag length, and
@@ -337,13 +337,17 @@ mod tests {
             }
         }
 
-        for file in ["gcmDecrypt128", "gcmDecrypt256"] {
+        for file in ["gcmDecrypt128", "gcmDecrypt192", "gcmDecrypt256"] {
             process_cavp(
                 format!("../thirdparty/cavp/gcm/{file}.rsp"),
                 &mut State::default(),
             );
         }
-        for file in ["gcmEncryptExtIV128", "gcmEncryptExtIV256"] {
+        for file in [
+            "gcmEncryptExtIV128",
+            "gcmEncryptExtIV192",
+            "gcmEncryptExtIV256",
+        ] {
             let mut state = State {
                 encrypt: true,
                 ..Default::default()

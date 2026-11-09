@@ -63,7 +63,7 @@ core::arch::global_asm!(
     aes_hw_cbc_encrypt = sym aes_hw_cbc_encrypt,
 );
 
-/// An expanded AES-128 or AES-256 encryption key: aws-lc's `AES_KEY`.
+/// An expanded AES-128, AES-192, or AES-256 encryption key: aws-lc's `AES_KEY`.
 #[repr(C, align(16))]
 pub(crate) struct AesHwKey {
     rd_key: [u32; 60],
@@ -71,7 +71,7 @@ pub(crate) struct AesHwKey {
 }
 
 impl AesHwKey {
-    /// Expands a 16- or 32-byte key.
+    /// Expands a 16-, 24-, or 32-byte key.
     pub(crate) fn new(key: &[u8], _: HaveCryptoExt) -> Self {
         let mut r = Self {
             rd_key: [0; 60],
@@ -85,20 +85,20 @@ impl AesHwKey {
         r
     }
 
-    /// The key's length in bytes, from the 10 or 14 rounds that
+    /// The key's length in bytes, from the 10, 12, or 14 rounds that
     /// `aes_hw_set_encrypt_key` stores.
     pub(crate) fn key_len(&self) -> usize {
-        match self.rounds {
-            10 => 16,
-            _ => 32,
-        }
+        self.rounds as usize * 4 - 24
     }
 
-    /// Encrypts one block in place.
-    pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
-        // SAFETY: `inout` is one readable and writable block, which aws-lc
-        // allows to alias. Only a `HaveCryptoExt` token builds `self`.
-        unsafe { aes_hw_encrypt(inout.as_ptr(), inout.as_mut_ptr(), self) }
+    /// Encrypts one block.
+    #[must_use]
+    pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
+        let mut out = [0u8; 16];
+        // SAFETY: `block` is one readable block and `out` one writable one.
+        // Only a `HaveCryptoExt` token builds `self`.
+        unsafe { aes_hw_encrypt(block.as_ptr(), out.as_mut_ptr(), self) };
+        out
     }
 
     /// XORs counter-mode keystream into whole blocks.
@@ -135,7 +135,7 @@ impl Drop for AesHwKey {
 
 impl low::generic::zeroise::Zeroable for AesHwKey {}
 
-/// An expanded AES-128 or AES-256 decryption key: aws-lc's `AES_KEY`.
+/// An expanded AES-128, AES-192, or AES-256 decryption key: aws-lc's `AES_KEY`.
 #[repr(C, align(16))]
 pub(crate) struct AesHwDecKey {
     rd_key: [u32; 60],
@@ -143,7 +143,7 @@ pub(crate) struct AesHwDecKey {
 }
 
 impl AesHwDecKey {
-    /// Expands a 16- or 32-byte key.
+    /// Expands a 16-, 24-, or 32-byte key.
     pub(crate) fn new(key: &[u8], _: HaveCryptoExt) -> Self {
         let mut r = Self {
             rd_key: [0; 60],
@@ -208,6 +208,7 @@ impl low::generic::zeroise::Zeroable for AesHwDecKey {}
 fn key_bits(key: &[u8]) -> i32 {
     match key.len() {
         16 => 128,
+        24 => 192,
         32 => 256,
         _ => unreachable!("callers check the AES key length"),
     }

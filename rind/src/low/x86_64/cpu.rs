@@ -138,6 +138,29 @@ pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: u
     acc
 }
 
+/// Compares two 16-byte blocks, such as AEAD tags, in constant time.
+///
+/// Returns zero if `a == b`, otherwise non-zero. The words are combined in
+/// assembly so the compiler cannot split the test into early exits.
+pub(in crate::low) fn ct_compare_16(a: &[u8; 16], b: &[u8; 16]) -> usize {
+    let (a, b) = (u128::from_ne_bytes(*a), u128::from_ne_bytes(*b));
+    let mut diff = a as u64;
+    // SAFETY: register-only arithmetic.
+    unsafe {
+        core::arch::asm!(
+            "xor {diff}, {b0}",
+            "xor {a1}, {b1}",
+            "or  {diff}, {a1}",
+            diff = inout(reg) diff,
+            a1 = inout(reg) (a >> 64) as u64 => _,
+            b0 = in(reg) b as u64,
+            b1 = in(reg) (b >> 64) as u64,
+            options(pure, nomem, nostack),
+        );
+    }
+    diff as usize
+}
+
 /// Token type reflecting the check for CPU features needed for AVX512-AES-GCM
 ///
 /// A value of this type is proof that the CPU dynamic feature check has happened.
@@ -150,11 +173,6 @@ impl HaveAvx512ForAesGcm {
             true => Some(Self(())),
             false => None,
         }
-    }
-
-    /// Vale's AES-GCM, for short messages, runs here too.
-    pub(crate) fn avx_movbe(self) -> HaveAvxMovbeForAesGcm {
-        HaveAvxMovbeForAesGcm(())
     }
 }
 
@@ -379,7 +397,8 @@ const INTEL: u32 = 1 << 30;
 const AVX2_KERNELS: u32 = AVX | AVX2 | BMI1 | BMI2 | POPCNT | SSSE3;
 /// What the AES-GCM kernels for wider vectors build on: the AVX2 ISA, AES-NI
 /// and PCLMULQDQ for their key schedule and tail, and SSE4.1 and MOVBE for
-/// Vale's AES-GCM, which short messages run. Every VAES CPU has them all.
+/// Vale's AES-GCM, which short messages run without AVX-512. Every VAES CPU
+/// has them all.
 const AES_GCM_BASE: u32 = AES | PCLMULQDQ | SSSE3 | SSE41 | AVX | AVX2 | MOVBE;
 const DETECTED: u32 = 1 << 31;
 
@@ -513,6 +532,140 @@ pub(crate) fn prefetch<T>(table: &[T], stride: usize) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+
+    /// Whether std detects every feature named, less those `test_toggle`
+    /// denies.
+    macro_rules! available {
+        ($($name:tt),+) => {
+            true $(&& is_x86_feature_detected!($name) && !denied($name))+
+        };
+    }
+
+    fn denied(name: &str) -> bool {
+        cfg!(any(debug_assertions, rind_cpu_disable))
+            && std::env::var(format!("RIND_CPU_DISABLE_{}", name.replace('.', ""))).is_ok()
+    }
+
+    // Each feature has a bit of its own, so no check can pass for one
+    // feature because the CPU has another. A CPU with every feature cannot
+    // show that by itself.
+    #[test]
+    fn features_have_distinct_bits() {
+        let bits = [
+            AES,
+            VAES,
+            PCLMULQDQ,
+            VPCLMULQDQ,
+            BMI2,
+            ADX,
+            POPCNT,
+            SSSE3,
+            AVX,
+            AVX2,
+            AVX512F,
+            AVX512BW,
+            AVX512VL,
+            AVX512VBMI,
+            AVX512VBMI2,
+            SHA,
+            SSE41,
+            MOVBE,
+            AVX512DQ,
+            AVX512IFMA,
+            BMI1,
+            SHA512,
+            INTEL,
+            DETECTED,
+        ];
+        let all = bits.iter().fold(0, |all, bit| {
+            assert!(bit.is_power_of_two());
+            all | bit
+        });
+        assert_eq!(all.count_ones() as usize, bits.len());
+    }
+
+    // Each check names the features its kernels need, which `cpuid` reports
+    // independently of the bits `detect` packs them into.
+    #[test]
+    fn checks_need_their_features() {
+        let adx = (is_x86_feature_detected!("adx") || option_env!("VALGRIND_BUG_494162").is_some())
+            && !denied("adx");
+        let gcm = available!(
+            "aes",
+            "pclmulqdq",
+            "ssse3",
+            "sse4.1",
+            "avx",
+            "avx2",
+            "movbe"
+        );
+        let checks = [
+            (
+                HaveAvx512ForAesGcm::check().is_some(),
+                gcm && available!("avx512f", "avx512bw", "avx512vl", "vpclmulqdq", "vaes"),
+            ),
+            (
+                HaveVaesAvx2ForAesGcm::check().is_some(),
+                gcm && available!("vpclmulqdq", "vaes"),
+            ),
+            (
+                HaveAvxMovbeForAesGcm::check().is_some(),
+                available!("aes", "pclmulqdq", "ssse3", "sse4.1", "avx", "movbe"),
+            ),
+            (
+                HaveAvx512ForMlKem::check().is_some(),
+                available!("avx", "avx2", "bmi1", "bmi2", "popcnt", "ssse3")
+                    && available!("avx512f", "avx512bw", "avx512vbmi", "avx512vbmi2"),
+            ),
+            (
+                HaveAvx512ForRsa::check().is_some(),
+                available!(
+                    "avx512f",
+                    "avx512dq",
+                    "avx512ifma",
+                    "avx512bw",
+                    "avx512vl",
+                    "bmi2"
+                ),
+            ),
+            (
+                HaveSha1::check().is_some(),
+                available!("sha", "ssse3", "sse4.1"),
+            ),
+            (
+                HaveSha256::check().is_some(),
+                available!("sha", "ssse3", "sse4.1"),
+            ),
+            (
+                HaveAvx2::check().is_some(),
+                available!("avx", "avx2", "bmi1", "bmi2", "popcnt", "ssse3"),
+            ),
+            (
+                HaveSha512::check().is_some(),
+                available!("sha512", "avx", "avx2"),
+            ),
+            (
+                HaveAesHardware::check().is_some(),
+                available!("aes", "pclmulqdq", "ssse3", "sse4.1"),
+            ),
+            (HaveAvx::check().is_some(), available!("avx", "ssse3")),
+            (HaveSsse3::check().is_some(), available!("ssse3")),
+            (HaveSse41::check().is_some(), available!("ssse3", "sse4.1")),
+            (HaveBmi2Adx::check().is_some(), available!("bmi2") && adx),
+        ];
+        for (i, (check, expected)) in checks.into_iter().enumerate() {
+            assert_eq!(check, expected, "check {i}");
+        }
+
+        // SAFETY: every x86_64 CPU has `cpuid`.
+        #[allow(unused_unsafe)]
+        let id = unsafe { __cpuid(0) };
+        let vendor = [id.ebx, id.edx, id.ecx].map(u32::to_le_bytes);
+        assert_eq!(
+            is_intel(),
+            vendor.as_flattened() == b"GenuineIntel" && !denied("intel")
+        );
+    }
 
     // CI runs the suite again with features denied, and names the path each
     // run expects, so no run silently tests only the fastest one.

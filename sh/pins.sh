@@ -3,6 +3,8 @@
 # pinned to a full commit SHA with its version in a trailing comment, so a moved
 # tag or branch can't change what CI runs, and Dependabot can keep it current.
 # Local actions (./) are exempt: they change only through this repository.
+# The queue build uses this repository's main branch so runner admission can
+# restrict it to that trusted workflow, independently of a PR's workflow edits.
 #
 # Usage: sh/pins.sh
 set -euo pipefail
@@ -24,6 +26,7 @@ while IFS= read -r -d '' file; do
     fi
     while IFS=$'\t' read -r line ref comment; do
         [[ -n "$ref" && "$ref" != ./* ]] || continue
+        [[ "$ref" != moq-dev/rind/.github/workflows/queue-build.yml@main ]] || continue
         count=$((count + 1))
         if [[ ! "$ref" =~ ^[^@]+@[0-9a-f]{40}$ ]]; then
             echo "$file:$line: $ref is not pinned to a full commit SHA" >&2

@@ -9,9 +9,6 @@ armv7 backend, and every `rind-*` adapter MoQ uses. Each adapter's operations pa
 rind's tests on x86_64, aarch64, and armv7 alike; an operation missing on one
 arch does not count as covered.
 
-MoQ drops moq-relay's ACME for now (maintainer, 2026-11-03), so
-`rind-instant-acme` and the instant-acme release it waits on moved to m3.
-
 MoQ's [migration epic](https://github.com/moq-dev/moq/blob/main/quest/m1/rind/README.md)
 switches each area once the rind pieces it uses are on crates.io.
 
@@ -34,11 +31,9 @@ Repo:
 - Adapters are separate crates named `rind-<consumer>`, so a third-party major
   bump never forces a rind major bump. The prefix keeps them grouped under
   rind's own name rather than borrowing the consumer's.
-- MoQ vendors str0m and dimpl and ports rind's str0m provider into that copy,
-  so rind has no str0m adapter for MoQ. A published one for other str0m
-  users is [planned](/quest/m2/adoption/rind-str0m.md) (maintainer,
-  2026-11-04). `rind-dimpl` stays published for other dimpl
-  users (maintainer, 2026-10-31).
+- MoQ vendors str0m and dimpl and ports rind's str0m provider into that copy.
+  `rind-str0m` is published for other str0m users (maintainer, 2026-11-04),
+  and `rind-dimpl` for other dimpl users (maintainer, 2026-10-31).
 
 Targets, refused rather than falling back:
 
@@ -85,8 +80,5 @@ maintainer, 2026-11-05).
 
 ## Required
 
-- [Header protection calls the hardware AES block directly](/quest/m1/moq/header-protection-block.md) - AES-128 header protection at least level with aws-lc-rs on AMD
-- [One-pass AES-GCM for short messages on aarch64](/quest/m1/moq/aarch64-short-gcm.md) - ACK-sized sends level with aws-lc-rs on Neoverse N2
-- [AES-GCM's partial AAD block costs no more than a full one on VAES CPUs](/quest/m1/moq/gcm-partial-aad.md) - QUIC's 13 B header stops costing about 12 ns per packet
 - [AMD CPUs without VAES run their fastest AES-GCM tier](/quest/m1/moq/quic-path.md) - Vale or `by8` on Zen 2, from zshenker's rerun
 - [MoQ runs on rind](/quest/m1/moq/moq-on-rind.md) - waiting on MoQ to finish its migration

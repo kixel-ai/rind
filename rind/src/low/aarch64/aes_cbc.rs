@@ -11,6 +11,8 @@ pub(crate) fn encrypt(key: &AesKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
         // rind requires NEON.
         AesKey::Hw(HwKey::Aes128(key)) => unsafe { hw_encrypt(key.round_keys(), iv, blocks) },
         // SAFETY: as above.
+        AesKey::Hw(HwKey::Aes192(key)) => unsafe { hw_encrypt(key.round_keys(), iv, blocks) },
+        // SAFETY: as above.
         AesKey::Hw(HwKey::Aes256(key)) => unsafe { hw_encrypt(key.round_keys(), iv, blocks) },
         AesKey::Vpaes(key) => key.cbc_encrypt(iv, blocks),
     }
@@ -22,6 +24,10 @@ pub(crate) fn decrypt(key: &AesDecKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
         // SAFETY: only a `HaveCryptoExt` token builds the round keys, and
         // rind requires NEON.
         AesDecKey::Hw(HwDecKey::Aes128(round_keys)) => unsafe {
+            hw_decrypt(round_keys, iv, blocks)
+        },
+        // SAFETY: as above.
+        AesDecKey::Hw(HwDecKey::Aes192(round_keys)) => unsafe {
             hw_decrypt(round_keys, iv, blocks)
         },
         // SAFETY: as above.
@@ -131,7 +137,7 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for (key_len, seed) in [16, 32].into_iter().zip(1..) {
+        for (key_len, seed) in [16, 24, 32].into_iter().zip(1..) {
             let key = bytes(key_len, seed);
             let model = VpaesKey::new(&key);
             let mut paths = vec![(
@@ -152,7 +158,7 @@ mod tests {
                     for (b, p) in block.iter_mut().zip(prev) {
                         *b ^= p;
                     }
-                    model.encrypt_block(block);
+                    *block = model.encrypt_block(block);
                     prev = *block;
                 }
 

@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.3](https://github.com/moq-dev/rind/compare/rind-rcgen-v0.14.2...rind-rcgen-v0.14.3) - 2026-11-08
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.14.2](https://github.com/moq-dev/rind/compare/rind-rcgen-v0.14.1...rind-rcgen-v0.14.2) - 2026-11-08
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.14.1](https://github.com/moq-dev/rind/compare/rind-rcgen-v0.14.0...rind-rcgen-v0.14.1) - 2026-11-07
+
+### Other
+
+- updated the following local packages: rind
+
+## [0.14.0](https://github.com/moq-dev/rind/compare/rind-rcgen-v0.1.14...rind-rcgen-v0.14.0) - 2026-11-07
+
+### Added
+
+- *(rind-rcgen)* key_identifier() fills in key identifiers as rcgen does ([#452](https://github.com/moq-dev/rind/pull/452))
+- *(rind-rcgen)* check() and serial_number() so users need no direct rind dependency ([#451](https://github.com/moq-dev/rind/pull/451))
+- [**breaking**] each adapter's version matches the upstream it adapts ([#440](https://github.com/moq-dev/rind/pull/440))
+
+### Other
+
+- *(release)* ship rind as 0.2.1, not 0.3.0 ([#457](https://github.com/moq-dev/rind/pull/457))
+
+## [0.1.14](https://github.com/moq-dev/rind/compare/rind-rcgen-v0.1.13...rind-rcgen-v0.1.14) - 2026-11-06
+
+### Other
+
+- updated the following local packages: rind
+
 ## [0.1.13](https://github.com/moq-dev/rind/compare/rind-rcgen-v0.1.12...rind-rcgen-v0.1.13) - 2026-11-05
 
 ### Other

@@ -13,8 +13,8 @@
 //! takes about twice as long; `proofs/` proves them so, and the tests check
 //! them against Vale's byte for byte. The rest of the Rust here does what
 //! EverCrypt's proven Low* wrapper, `Vale.Wrapper.X64.GCMencryptOpt`, does
-//! around the routines: it copies the partial blocks of the message and AAD
-//! to scratch, and picks the six-block loop's share of the message.
+//! around the routines: it zero-pads the partial blocks of the message and
+//! AAD, and picks the six-block loop's share of the message.
 //! `proofs/` proves that too, over `counter_block` and `aead`, the only code
 //! here that calls a routine.
 //!
@@ -30,7 +30,7 @@ use core::arch::x86_64::__m128i;
 
 use super::aes::HwKey;
 use super::cpu::HaveAvxMovbeForAesGcm;
-use super::ghash::ClmulTable;
+use super::ghash::{self, ClmulTable};
 
 /// The routines with the GHASH key powers they read.
 pub(crate) struct AvxKernel {
@@ -93,15 +93,15 @@ impl AvxKernel {
         iv[..12].copy_from_slice(nonce);
         counter_block(nonce, &mut iv, &self.hkeys, self.token);
 
-        // The AAD's and message's partial blocks, then the routines' own.
-        let mut scratch = [0u8; 16 + 16 + 144];
-        let (aad_partial, rest) = scratch.split_at_mut(16);
-        let (partial, scratch) = rest.split_at_mut(16);
+        // The AAD's and message's partial blocks, zero-padded in registers:
+        // copying them to a zeroed block instead calls `memcpy`, whose narrow
+        // stores stall the routine's 16-byte load of the block.
         let aad_whole = aad.len() / 16 * 16;
-        aad_partial[..aad.len() - aad_whole].copy_from_slice(&aad[aad_whole..]);
+        let aad_partial = ghash::load_partial(&aad[aad_whole..]);
         let len = inout.len();
         let (blocks, tail) = inout.split_at_mut(len / 16 * 16);
-        partial[..tail.len()].copy_from_slice(tail);
+        let mut partial = ghash::load_partial(tail);
+        let mut scratch = [0u8; 144];
 
         // The six-block loop's share, which must be 18 blocks or more to
         // encrypt, or 6 to decrypt.
@@ -116,18 +116,17 @@ impl AvxKernel {
                 aad,
                 aad_whole,
                 iv: &mut iv,
-                aad_partial,
+                aad_partial: &aad_partial,
                 blocks,
                 six,
-                partial,
+                partial: &mut partial,
                 len,
-                scratch,
+                scratch: &mut scratch,
                 tag,
             },
             self.token,
         );
-        let tail_len = tail.len();
-        tail.copy_from_slice(&partial[..tail_len]);
+        ghash::store_partial(tail, partial);
         result
     }
 }
@@ -155,12 +154,12 @@ struct Buffers<'a> {
     /// The counter block, which the routine writes over.
     iv: &'a mut [u8; 16],
     /// The AAD's partial block, zero-padded.
-    aad_partial: &'a [u8],
+    aad_partial: &'a __m128i,
     /// The message's whole blocks, the first `six` for the six-block loop.
     blocks: &'a mut [u8],
     six: usize,
     /// The message's partial block, zero-padded, and the message's length.
-    partial: &'a mut [u8],
+    partial: &'a mut __m128i,
     len: usize,
     /// The 144 bytes the routine may write, and the tag it writes or reads.
     scratch: &'a mut [u8],
@@ -183,6 +182,7 @@ fn aead<const ENC: bool>(
         (true, HwKey::Aes256(_)) => gcm256_encrypt_opt,
         (false, HwKey::Aes128(_)) => gcm128_decrypt_opt,
         (false, HwKey::Aes256(_)) => gcm256_decrypt_opt,
+        (_, HwKey::Aes192(_)) => unreachable!("Vale has no AES-192 routine"),
     };
     // SAFETY: the routine reads `aad`'s whole blocks and `aad_partial`, and
     // reads and writes in place the message's whole blocks, the first `six`
@@ -200,14 +200,14 @@ fn aead<const ENC: bool>(
             key.as_aes_key(),
             b.iv.as_mut_ptr(),
             hkeys.as_ptr().cast(),
-            b.aad_partial.as_ptr(),
+            (b.aad_partial as *const __m128i).cast(),
             blocks,
             blocks,
             b.six as u64,
             rest,
             rest,
             ones as u64,
-            b.partial.as_mut_ptr(),
+            (b.partial as *mut __m128i).cast(),
             b.len as u64,
             b.scratch.as_mut_ptr(),
             b.tag.as_mut_ptr(),
@@ -361,9 +361,7 @@ mod tests {
                     unsafe { core::slice::from_raw_parts(hw_key.as_aes_key(), round_keys_len) };
                 assert_eq!(ours, &vale_keys[..round_keys_len], "{key:02x?}");
 
-                let mut h = [0u8; 16];
-                hw_key.encrypt_block(&mut h);
-                let h = u128::from_be_bytes(h);
+                let h = u128::from_be_bytes(hw_key.encrypt_block(&[0; 16]));
                 let kernel = AvxKernel::new(&ClmulTable::new(h, hw), h, token);
                 // SAFETY: any eight vectors are 128 bytes.
                 let ours = unsafe { core::mem::transmute::<[__m128i; 8], [u8; 128]>(kernel.hkeys) };

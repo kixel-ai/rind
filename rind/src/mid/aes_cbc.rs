@@ -194,7 +194,7 @@ fn ct_mask_lt(a: u8, b: u8) -> u8 {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::cipher::{AES_128, AES_256};
+    use crate::cipher::{AES_128, AES_192, AES_256};
 
     fn keys(key: &[u8]) -> (AesCbcEncryptingKey, AesCbcDecryptingKey) {
         (
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn sp800_38a() {
-        // F.2.1 to F.2.6, CBC-AES128 and CBC-AES256, both ways
+        // F.2.1 to F.2.6, CBC-AES128, CBC-AES192, and CBC-AES256, both ways
         let iv = hex::decode("000102030405060708090a0b0c0d0e0f").unwrap();
         let iv: &[u8; 16] = iv[..].try_into().unwrap();
         let pt = hex::decode(
@@ -218,6 +218,11 @@ mod tests {
                 "2b7e151628aed2a6abf7158809cf4f3c",
                 "7649abac8119b246cee98e9b12e9197d5086cb9b507219ee95db113a917678b2\
                  73bed6b8e3c1743b7116e69e222295163ff1caa1681fac09120eca307586e1a7",
+            ),
+            (
+                "8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b",
+                "4f021db243bc633d7178183a9fa071e8b4d9ada9ad7dedf4e5e738763f69145a\
+                 571b242012fb7ae07fa9baac3df102e008b0e27988598881d920a9e64f5615cd",
             ),
             (
                 "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4",
@@ -257,7 +262,7 @@ mod tests {
     #[test]
     fn key_length_must_match_algorithm() {
         let key = [0u8; 33];
-        for algorithm in [&AES_128, &AES_256] {
+        for algorithm in [&AES_128, &AES_192, &AES_256] {
             for len in 0..=key.len() {
                 let supported = len == algorithm.key_len;
                 assert_eq!(
@@ -345,7 +350,7 @@ mod tests {
     // armv7's AES-CBC on the crypto extension, which valgrind hides, for each
     // key size, with a secret key and message, for `admin/ct-qemu`. The
     // message's 7 blocks take the decryption's 3-block loop and its tail.
-    #[cfg(target_arch = "arm")]
+    #[cfg(rind_backend = "arm")]
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu-arm"]
     fn ct_qemu_aes_cbc() {
@@ -353,7 +358,7 @@ mod tests {
 
         let seed = ct_qemu::seed().to_le_bytes();
         let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
-        for algorithm in [&AES_128, &AES_256] {
+        for algorithm in [&AES_128, &AES_192, &AES_256] {
             let key = bytes(algorithm.key_len);
             let enc = ct_qemu::traced(|| AesCbcEncryptingKey::new(algorithm, &key).unwrap());
             let dec = ct_qemu::traced(|| AesCbcDecryptingKey::new(algorithm, &key).unwrap());

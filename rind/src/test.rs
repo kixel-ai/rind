@@ -32,9 +32,11 @@ impl Value<'_> {
     }
 }
 
+/// Feeds `sink` the CAVP vector file at `filename`, relative to this crate's
+/// directory, so the tests run from any directory, as the iOS simulator's do.
 pub(crate) fn process_cavp(filename: impl AsRef<Path>, sink: &mut dyn CavpSink) {
-    let f = File::open(&filename)
-        .unwrap_or_else(|_| panic!("cannot open {}", filename.as_ref().to_str().unwrap()));
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
+    let f = File::open(&path).unwrap_or_else(|_| panic!("cannot open {}", path.display()));
     for line in BufReader::new(f).lines() {
         let line = line.unwrap();
 
@@ -76,7 +78,10 @@ pub(crate) fn wycheproof<T: serde::de::DeserializeOwned>(name: &str) -> Vec<T> {
         tests: Vec<T>,
     }
 
-    let path = format!("../thirdparty/wycheproof/testvectors_v1/{name}");
+    let path = format!(
+        "{}/../thirdparty/wycheproof/testvectors_v1/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let file = File::open(&path).unwrap_or_else(|_| panic!("cannot open {path}"));
     let file: TestFile<T> =
         serde_json::from_reader(BufReader::new(file)).expect("invalid test JSON");
@@ -93,3 +98,41 @@ pub(crate) enum Expected {
     Invalid,
     Acceptable,
 }
+
+/// The path of `name` in C2SP's CCTV vectors.
+pub(crate) fn cctv(name: &str) -> String {
+    format!("{}/../thirdparty/cctv/{name}", env!("CARGO_MANIFEST_DIR"))
+}
+
+/// Reads a CCTV file of `name = hex` lines, each blank-line-separated record
+/// as its values in order.
+pub(crate) fn cctv_records(name: &str) -> Vec<Vec<(String, Vec<u8>)>> {
+    let path = cctv(name);
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("cannot open {path}"));
+    let records: Vec<_> = text
+        .split("\n\n")
+        .map(|record| {
+            record
+                .lines()
+                .map(|line| {
+                    let (name, value) = line.split_once(" = ").expect("expected `name = value`");
+                    (name.to_string(), hex::decode(value).unwrap_or_default())
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|record| !record.is_empty())
+        .collect();
+    assert!(!records.is_empty(), "{path} has no records");
+    records
+}
+
+/// The first value named `name` in a CCTV record.
+pub(crate) fn cctv_value<'a>(record: &'a [(String, Vec<u8>)], name: &str) -> &'a [u8] {
+    &record
+        .iter()
+        .find(|(n, _)| n == name)
+        .unwrap_or_else(|| panic!("record lacks {name}"))
+        .1
+}
+
+pub(crate) mod file_test;

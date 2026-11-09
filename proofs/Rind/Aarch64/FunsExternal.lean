@@ -256,8 +256,23 @@ opaque mid.p384.PublicKey.from_x962_uncompressed
 
 /-! AES, whose header protection no proof covers. -/
 
-opaque mid.aes.Aes.encrypt_block
-  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
+opaque mid.aes.Aes.header_protection_mask
+  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 5#usize)
+
+/-! MD5, which no proof covers. -/
+
+opaque mid.md5.Md5State.new : Result mid.md5.Md5State
+
+opaque mid.md5.Md5State.finish_with
+  : mid.md5.Md5State → Slice Std.U8 → Result (Array Std.U8 16#usize)
+
+opaque mid.md5.Md5Context.new : Result mid.md5.Md5Context
+
+opaque mid.md5.Md5Context.update : mid.md5.Md5Context → Slice Std.U8 → Result mid.md5.Md5Context
+
+opaque mid.md5.Md5Context.finish : mid.md5.Md5Context → Result (Array Std.U8 16#usize)
+
+opaque mid.md5.Md5Context.Insts.CoreCloneClone.clone : mid.md5.Md5Context → Result mid.md5.Md5Context
 
 /-! SHA-3, whose sponge no proof covers. -/
 
@@ -322,5 +337,10 @@ opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.load
 
 opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.load
   : high.agreement.Source → Result (core.result.Result mid.p521.PrivateKey error.Error)
+
+/-! The constant-time compare, which the translation never calls, but the HMAC
+model does: its inline assembly is left to HOL Light, and `CtEqual` states it. -/
+
+opaque low.generic.ct_equal.ct_equal : Slice Std.U8 → Slice Std.U8 → Result Bool
 
 end rind.aarch64

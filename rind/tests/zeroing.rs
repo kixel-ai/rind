@@ -1,5 +1,5 @@
-//! Verification that every value owning a secret (a key, keyed state, or a
-//! shared secret) is zeroed on drop.
+//! Verification that, under the `wipe` feature, every value owning a secret
+//! (a key, keyed state, or a shared secret) is zeroed on drop.
 //!
 //! Some of this is subject to whims of the compiler, and
 //! hand-written drop impls, so we test it here.
@@ -41,7 +41,7 @@
 //!     been zeroised upon drop, even if the value was a `Key::Key128`
 //!     that only initialized half of that space.
 
-#![cfg(any(target_os = "linux", target_os = "macos"))]
+#![cfg(all(feature = "wipe", any(target_os = "linux", target_os = "macos")))]
 
 use core::mem::size_of;
 use core::ops::Deref;
@@ -173,9 +173,11 @@ fn pbkdf2() {
 
 #[test]
 fn aead() {
-    use rind::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, RandomizedNonceKey};
+    use rind::aead::{
+        AES_128_GCM, AES_192_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, RandomizedNonceKey,
+    };
 
-    for algorithm in [&AES_128_GCM, &AES_256_GCM, &CHACHA20_POLY1305] {
+    for algorithm in [&AES_128_GCM, &AES_192_GCM, &AES_256_GCM, &CHACHA20_POLY1305] {
         let key = Key::new(algorithm, &[0xffu8; 32][..algorithm.key_len()]).unwrap();
         check_zeroed_on_drop(Box::pin(key));
     }
@@ -183,7 +185,11 @@ fn aead() {
 
     use rind::aead::gcm::{self, TagLength};
     use rind::cipher;
-    for (algorithm, len) in [(&cipher::AES_128, 16), (&cipher::AES_256, 32)] {
+    for (algorithm, len) in [
+        (&cipher::AES_128, 16),
+        (&cipher::AES_192, 24),
+        (&cipher::AES_256, 32),
+    ] {
         let key = &[0xffu8; 32][..len];
         let key = gcm::Key::new(algorithm, key, TagLength::Truncated32).unwrap();
         check_zeroed_on_drop(Box::pin(key));
@@ -199,9 +205,9 @@ fn aead() {
 #[test]
 fn cipher() {
     use rind::cipher::{
-        AES_128, AES_256, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, ChaCha20,
+        AES_128, AES_192, AES_256, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, ChaCha20,
     };
-    for (algorithm, len) in [(&AES_128, 16), (&AES_256, 32)] {
+    for (algorithm, len) in [(&AES_128, 16), (&AES_192, 24), (&AES_256, 32)] {
         let key = &[0xffu8; 32][..len];
         check_zeroed_on_drop(Box::pin(Aes::new(algorithm, key).unwrap()));
         check_zeroed_on_drop(Box::pin(AesCtr::new(algorithm, key, 128).unwrap()));
@@ -213,8 +219,8 @@ fn cipher() {
 
 #[test]
 fn key_wrap() {
-    use rind::key_wrap::{AES_128, AES_256, AesKek};
-    for (algorithm, len) in [(&AES_128, 16), (&AES_256, 32)] {
+    use rind::key_wrap::{AES_128, AES_192, AES_256, AesKek};
+    for (algorithm, len) in [(&AES_128, 16), (&AES_192, 24), (&AES_256, 32)] {
         let key = &[0xffu8; 32][..len];
         check_zeroed_on_drop(Box::pin(AesKek::new(algorithm, key).unwrap()));
     }

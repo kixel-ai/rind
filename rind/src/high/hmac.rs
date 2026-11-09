@@ -167,7 +167,7 @@ pub static HMAC_SHA512: Algorithm = Algorithm {
     key: Keying::<Sha512>::with_key,
 };
 
-/// An HMAC key, keyed once and reused for every message; wiped on drop.
+/// An HMAC key, keyed once and reused for every message; wiped on drop under the `wipe` feature.
 #[derive(Clone)]
 pub struct Key(Keyed);
 
@@ -179,6 +179,11 @@ impl Key {
     }
 
     /// The tag of `data`, for callers that have entered.
+    // Out of line: inlined into PBKDF2's loop, LLVM unswitches the loop on
+    // the largest variant's `ops`, which a smaller key leaves uninitialized,
+    // so memcheck reports a branch on undefined bytes. The cost is one call
+    // beside each HMAC's two compressions.
+    #[inline(never)]
     pub(super) fn tag(&self, data: &[u8]) -> Digest {
         self.0.sign(data)
     }
@@ -213,7 +218,7 @@ impl fmt::Debug for Key {
     }
 }
 
-/// An in-progress tag computation, for a message given in pieces; wiped on drop.
+/// An in-progress tag computation, for a message given in pieces; wiped on drop under the `wipe` feature.
 ///
 /// A clone forks the computation, so messages sharing a prefix process it once.
 #[derive(Clone)]
@@ -311,12 +316,12 @@ impl Keyed {
     }
 
     fn start(&self) -> Streaming {
-        match self {
+        Streaming(match self {
             Self::Sha1(key) => key.start(),
             Self::Sha256(key) => key.start(),
             Self::Sha384(key) => key.start(),
             Self::Sha512(key) => key.start(),
-        }
+        })
     }
 }
 
@@ -375,7 +380,7 @@ trait HmacHash: Hash + Sized + 'static {
 
     fn keyed(key: Keying<Self>) -> Keyed;
 
-    fn streaming(hmac: Tagging<Self>) -> Streaming;
+    fn tagged(hmac: Tagging<Self>) -> Tagged;
 }
 
 macro_rules! hmac_hash {
@@ -387,8 +392,8 @@ macro_rules! hmac_hash {
                 Keyed::$variant(key)
             }
 
-            fn streaming(hmac: Tagging<Self>) -> Streaming {
-                Streaming(Tagged::$variant(hmac))
+            fn tagged(hmac: Tagging<Self>) -> Tagged {
+                Tagged::$variant(hmac)
             }
         }
     };
@@ -409,7 +414,7 @@ struct Keying<H: HmacHash> {
 struct KeyOps<H: HmacHash> {
     algorithm: &'static Algorithm,
     sign: fn(&HmacKey<H>, &[u8]) -> Digest,
-    start: fn(&HmacKey<H>) -> Streaming,
+    start: fn(&HmacKey<H>) -> Tagged,
 }
 
 // Not derived, as for `HmacKey`.
@@ -442,7 +447,7 @@ impl<H: HmacHash> Keying<H> {
         (self.ops.get().sign)(&self.key, data)
     }
 
-    fn start(&self) -> Streaming {
+    fn start(&self) -> Tagged {
         (self.ops.get().start)(&self.key)
     }
 }
@@ -469,8 +474,8 @@ impl<H: HmacHash> Clone for Tagging<H> {
 }
 
 impl<H: HmacHash> Tagging<H> {
-    fn start(key: &HmacKey<H>) -> Streaming {
-        H::streaming(Self {
+    fn start(key: &HmacKey<H>) -> Tagged {
+        H::tagged(Self {
             hmac: key.start(),
             ops: ZeroableRef::new(
                 const {
@@ -561,7 +566,7 @@ mod tests {
     // first, and the messages end in a block that pads within itself, fills
     // it exactly, pads into another, or follows a whole one, both in one call
     // and through a context's buffer.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
     fn ct_sde_hmac() {
@@ -591,7 +596,7 @@ mod tests {
 
     // HMAC-SHA1 and HMAC-SHA256 on the crypto extension, which valgrind hides
     // from armv7, as `ct_sde_hmac`, for `admin/ct-qemu`.
-    #[cfg(target_arch = "arm")]
+    #[cfg(rind_backend = "arm")]
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu-arm"]
     fn ct_qemu_hmac() {

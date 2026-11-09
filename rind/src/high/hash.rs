@@ -141,7 +141,7 @@ impl Hash for LegacySha1 {
 }
 
 #[derive(Clone)]
-pub(crate) struct Sha1Context(sha1::Sha1Context);
+pub(crate) struct Sha1Context(pub(super) sha1::Sha1Context);
 
 impl HashContext for Sha1Context {
     fn update(&mut self, bytes: &[u8]) {
@@ -199,7 +199,7 @@ impl Hash for Sha256 {
 impl SignatureHash for Sha256 {}
 
 #[derive(Clone)]
-pub(crate) struct Sha256Context(sha2::Sha256Context);
+pub(crate) struct Sha256Context(pub(super) sha2::Sha256Context);
 
 impl HashContext for Sha256Context {
     fn update(&mut self, bytes: &[u8]) {
@@ -257,7 +257,7 @@ impl Hash for Sha384 {
 impl SignatureHash for Sha384 {}
 
 #[derive(Clone)]
-pub(crate) struct Sha384Context(sha2::Sha384Context);
+pub(crate) struct Sha384Context(pub(super) sha2::Sha384Context);
 
 impl HashContext for Sha384Context {
     fn update(&mut self, bytes: &[u8]) {
@@ -318,7 +318,7 @@ impl Hash for Sha512 {
 impl SignatureHash for Sha512 {}
 
 #[derive(Clone)]
-pub(crate) struct Sha512Context(sha2::Sha512Context);
+pub(crate) struct Sha512Context(pub(super) sha2::Sha512Context);
 
 impl HashContext for Sha512Context {
     fn update(&mut self, bytes: &[u8]) {

@@ -25,7 +25,7 @@ use core::arch::x86_64::*;
 
 use crate::low;
 
-/// An expanded AES-128 or AES-256 key: aws-lc's `AES_KEY`, the compact
+/// An expanded AES-128, AES-192, or AES-256 key: aws-lc's `AES_KEY`, the compact
 /// round keys and the round count, which encryption and decryption share.
 ///
 /// Each call bitslices the round keys again, as aws-lc does: holding them
@@ -37,24 +37,28 @@ pub(crate) struct NohwKey {
 }
 
 impl NohwKey {
-    /// The key's length in bytes, from its 10 or 14 rounds.
+    /// The key's length in bytes, from its 10, 12, or 14 rounds.
     pub(crate) fn key_len(&self) -> usize {
-        match self.rounds {
-            10 => 16,
-            _ => 32,
-        }
+        self.rounds * 4 - 24
     }
 
-    /// Expands a 16- or 32-byte key.
+    /// Expands a 16-, 24-, or 32-byte key.
     pub(crate) fn new(key: &[u8]) -> Self {
         // SAFETY: every x86_64 CPU has SSE2
         unsafe { set_encrypt_key(key) }
     }
 
-    /// Encrypts one block in place.
-    pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
+    /// Encrypts one block.
+    ///
+    /// Out of line: the bitsliced round keys take a 1.9 KiB frame, which
+    /// would otherwise land on every caller of [`super::aes::AesKey`]'s.
+    #[must_use]
+    #[inline(never)]
+    pub(crate) fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
+        let mut out = *block;
         // SAFETY: every x86_64 CPU has SSE2
-        unsafe { encrypt(self, inout) }
+        unsafe { encrypt(self, &mut out) };
+        out
     }
 
     /// Decrypts one block in place.
@@ -618,6 +622,94 @@ fn setup_key_128(rd_key: &mut [__m128i; 15], input: &[u8; 16]) {
 }
 
 #[target_feature(enable = "sse2")]
+fn setup_key_192(rd_key: &mut [__m128i; 15], input: &[u8; 24]) {
+    // Each key schedule iteration produces six words, but each block holds
+    // four, so this keeps a sliding window of two blocks, filled to 1.5
+    // blocks at a time, and loops every three blocks or two iterations. On
+    // entry to the loop, `block1` and the first half of `block2` hold the
+    // previous iteration; `block1` is written to `rd_key`, but `block2`,
+    // incomplete, is not.
+    let col01 = _mm_set_epi32(0, 0, -1, -1);
+    let col2 = _mm_set_epi32(0, -1, 0, 0);
+    let col3 = _mm_set_epi32(-1, 0, 0, 0);
+
+    let (lo, hi) = input.split_at(16);
+    let mut block1 = compact_block(lo.try_into().unwrap());
+    rd_key[0] = block1;
+    let mut half_block = [0u8; 16];
+    half_block[..8].copy_from_slice(hi);
+    let mut block2 = compact_block(&half_block);
+
+    for i in 0..4 {
+        let sub = sub_block(block2);
+        // The first two words of the next iteration, which go in the second
+        // half of `block2`, from the first two of the previous, in the first
+        // half of `block1`. `rcon` goes in here too, since the shifts match.
+        block2 = or(
+            block2,
+            _mm_slli_si128::<8>(xor(block1, rcon_slice(RCON[2 * i]))),
+        );
+        // Incorporate the transformed word and propagate. The previous
+        // iteration's last word is the second word of `sub`, which goes into
+        // the next iteration's first, the third word of `block2`.
+        block2 = xor(
+            block2,
+            and(_mm_slli_si128::<4>(rotate_rows_down(sub)), col2),
+        );
+        block2 = xor(block2, and(_mm_slli_si128::<4>(block2), col3));
+
+        // The remaining four words, which fill `block1`, from the previous
+        // iteration's words in the second half of `block1` and the first
+        // half of `block2`.
+        block1 = _mm_srli_si128::<8>(block1);
+        block1 = or(block1, _mm_slli_si128::<8>(block2));
+        // Incorporate the second word, computed above in `block2`, and
+        // propagate.
+        block1 = xor(block1, _mm_srli_si128::<12>(block2));
+        let v = block1;
+        block1 = xor(block1, _mm_slli_si128::<4>(v));
+        block1 = xor(block1, _mm_slli_si128::<8>(v));
+        block1 = xor(block1, _mm_slli_si128::<12>(v));
+
+        // Two round keys are done, `block2`'s half of them from the
+        // previous iteration.
+        rd_key[3 * i + 1] = block2;
+        rd_key[3 * i + 2] = block1;
+
+        let sub = sub_block(block1);
+        // The first four words of the next iteration in `block2`, from the
+        // previous iteration's in the second half of `block2` and the first
+        // half of `block1`.
+        block2 = _mm_srli_si128::<8>(block2);
+        block2 = or(block2, _mm_slli_si128::<8>(block1));
+        // Incorporate `rcon` and the transformed word, from the previous
+        // iteration's last word, the last word of `sub`.
+        block2 = xor(block2, rcon_slice(RCON[2 * i + 1]));
+        block2 = xor(block2, _mm_srli_si128::<12>(rotate_rows_down(sub)));
+        // Propagate to the remaining words.
+        let v = block2;
+        block2 = xor(block2, _mm_slli_si128::<4>(v));
+        block2 = xor(block2, _mm_slli_si128::<8>(v));
+        block2 = xor(block2, _mm_slli_si128::<12>(v));
+
+        // The last two words, in the first half of `block1`, from the
+        // previous iteration's last two, in its second half. Propagate, then
+        // mask off the excess.
+        block1 = _mm_srli_si128::<8>(block1);
+        block1 = xor(block1, _mm_srli_si128::<12>(block2));
+        block1 = xor(block1, _mm_slli_si128::<4>(block1));
+        block1 = and(block1, col01);
+
+        // `block2` is a whole round key; `block1` completes in the next
+        // iteration.
+        rd_key[3 * i + 3] = block2;
+
+        // Swap the blocks to restore the invariant.
+        (block1, block2) = (block2, block1);
+    }
+}
+
+#[target_feature(enable = "sse2")]
 fn setup_key_256(rd_key: &mut [__m128i; 15], input: &[u8; 32]) {
     // Each key schedule iteration produces two round keys.
     let (lo, hi) = input.split_at(16);
@@ -663,6 +755,10 @@ fn set_encrypt_key(key: &[u8]) -> NohwKey {
         16 => {
             setup_key_128(&mut rd_key, key.try_into().unwrap());
             10
+        }
+        24 => {
+            setup_key_192(&mut rd_key, key.try_into().unwrap());
+            12
         }
         32 => {
             setup_key_256(&mut rd_key, key.try_into().unwrap());
@@ -794,16 +890,17 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for (key_len, seed) in [16, 32].into_iter().zip(1..) {
+        for (key_len, seed) in [16, 24, 32].into_iter().zip(1..) {
             let key = bytes(key_len, seed);
             let nohw = NohwKey::new(&key);
             let vpaes = VpaesKey::new(&key, token);
 
-            let mut want: [u8; 16] = bytes(16, seed).try_into().unwrap();
-            let mut got = want;
-            vpaes.encrypt_block(&mut want);
-            nohw.encrypt_block(&mut got);
-            assert_eq!(got, want, "{key_len}-byte key, one block");
+            let block: [u8; 16] = bytes(16, seed).try_into().unwrap();
+            assert_eq!(
+                nohw.encrypt_block(&block),
+                vpaes.encrypt_block(&block),
+                "{key_len}-byte key, one block"
+            );
 
             for counter in [0, u32::MAX - 3] {
                 let mut ivec: [u8; 16] = bytes(16, counter).try_into().unwrap();
@@ -823,7 +920,7 @@ mod tests {
         }
     }
 
-    // FIPS-197 Appendix C.1 and C.3, which hold the circuit to AES itself
+    // FIPS-197 Appendix C.1 to C.3, which hold the circuit to AES itself
     // rather than to another implementation.
     #[test]
     fn fips197() {
@@ -834,13 +931,20 @@ mod tests {
                 0x69c4e0d8_6a7b0430_d8cdb780_70b4c55au128,
             ),
             (
+                &(0..24).collect::<Vec<u8>>(),
+                0xdda97ca4_864cdfe0_6eaf70a0_ec0d7191u128,
+            ),
+            (
                 &(0..32).collect::<Vec<u8>>(),
                 0x8ea2b7ca_516745bf_eafc4990_4b496089u128,
             ),
         ] {
-            let mut block = plaintext;
-            NohwKey::new(key).encrypt_block(&mut block);
-            assert_eq!(block, ciphertext.to_be_bytes(), "{}-byte key", key.len());
+            assert_eq!(
+                NohwKey::new(key).encrypt_block(&plaintext),
+                ciphertext.to_be_bytes(),
+                "{}-byte key",
+                key.len()
+            );
         }
     }
 }

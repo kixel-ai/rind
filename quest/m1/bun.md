@@ -27,9 +27,9 @@ on a stable API ✅ / post once the first four prerequisites land.
 The prototype is branch `claude/rind-asymmetric` of
 [kixelated/bun](https://github.com/kixelated/bun/tree/claude/rind-asymmetric),
 and its PR text, with the measurements, is in
-[moq-dev/rind#368](https://github.com/moq-dev/rind/pull/368). It pins rind by
-git at a main commit until 0.2.0 is on crates.io. Measured on 2026-11-06
-against Bun's own BoringSSL build:
+[moq-dev/rind#368](https://github.com/moq-dev/rind/pull/368). It depends on
+rind 0.3.2 from crates.io with the `wipe` feature, since BoringSSL cleanses
+keys on free. Measured on 2026-11-06 against Bun's own BoringSSL build:
 
 - Moved: Ed25519; X25519; ECDSA and ECDH on P-384 and P-521, with any SHA-2
   hash, including node's `createSign`/`createVerify`; and key import and
@@ -42,7 +42,8 @@ against Bun's own BoringSSL build:
   P-256 keys at 0.5x to 0.8x of BoringSSL's (0.83x for the primitive on
   EPYC, Neoverse-N2, and M1), verifies at about 1.0x, and signs only 1.1x to
   1.4x faster. It can join a later Bun PR once rind's P-256 key generation
-  leads.
+  leads, which needs the shim to read the public key only when first needed
+  ([moq-dev/rind#407](https://github.com/moq-dev/rind/pull/407)).
 
 Once Bun merges it, a native `Bun.jwt`
 ([oven-sh/bun#27727](https://github.com/oven-sh/bun/issues/27727)) on rind is
@@ -50,10 +51,5 @@ a natural follow-up.
 
 ## Waiting
 
-- Maintainer: once rind 0.2.0 is out and the launch post is up, switch the branch's rind pin to 0.2.0 from crates.io, then post it to oven-sh/bun from `kixelated/bun:claude/rind-asymmetric` with the text in moq-dev/rind#368; no agent may post to oven-sh/bun. Check for an open PR on oven-sh/bun from that branch.
+- Maintainer: open the PR on oven-sh/bun as a draft from `kixelated/bun:claude/rind-asymmetric` with the text in moq-dev/rind#368; no agent may post to oven-sh/bun. Check for an open PR on oven-sh/bun from that branch.
 - oven-sh/bun: review and merge the PR; check its state.
-
-## Required
-
-- [rind 0.2.0 is released](/quest/m1/release-0.2.md) - the PR depends on the audited API
-- [rind's launch blog post is published](/quest/m1/launch-post.md) - the post the Bun PR links

@@ -24,7 +24,7 @@ impl Aes {
         Ok(Self(expand_key(key)))
     }
 
-    /// The key's length in bytes, 16 or 32.
+    /// The key's length in bytes, 16, 24, or 32.
     pub(crate) fn key_len(&self) -> usize {
         self.0.key_len()
     }
@@ -33,8 +33,18 @@ impl Aes {
     pub fn encrypt_block(&self, block: &mut [u8; 16]) {
         let _entry = Entry::new_secret();
         low::ct::secret_slice(block);
-        self.0.encrypt_block(block);
+        *block = self.0.encrypt_block(block);
         low::ct::public_slice(block);
+    }
+
+    /// The QUIC header-protection mask for `sample` (RFC 9001 section 5.4.3),
+    /// read from `sample` without the copy [`Self::encrypt_block`] needs.
+    pub(crate) fn header_protection_mask(&self, sample: &[u8; 16]) -> [u8; 5] {
+        let _entry = Entry::new_secret();
+        let block = self.0.encrypt_block(sample);
+        let mask = [block[0], block[1], block[2], block[3], block[4]];
+        low::ct::public_slice(&mask);
+        mask
     }
 }
 
@@ -165,7 +175,7 @@ pub(crate) fn check_gcm_iv(iv: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-/// Expands `key`, which the caller has checked is 16 or 32 bytes.
+/// Expands `key`, which the caller has checked is 16, 24, or 32 bytes.
 pub(super) fn expand_key(key: &[u8]) -> AesKey {
     // Mark a copy: the caller's buffer may be shared, or a promoted constant.
     let mut copy = [0u8; 32];
@@ -179,18 +189,18 @@ pub(super) fn expand_key(key: &[u8]) -> AesKey {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::cipher::{AES_128, AES_256};
+    use crate::cipher::{AES_128, AES_192, AES_256};
     use crate::low::AesDecKey;
     use crate::test::*;
 
     fn algorithm(key: &[u8]) -> &'static Algorithm {
-        if key.len() == 16 { &AES_128 } else { &AES_256 }
+        crate::cipher::aes(key.len())
     }
 
     #[test]
     fn key_length_must_match_algorithm() {
         let key = [0u8; 33];
-        for algorithm in [&AES_128, &AES_256] {
+        for algorithm in [&AES_128, &AES_192, &AES_256] {
             for len in 0..=key.len() {
                 let supported = len == algorithm.key_len;
                 assert_eq!(
@@ -277,7 +287,7 @@ mod tests {
             }
         }
 
-        for bits in [128, 256] {
+        for bits in [128, 192, 256] {
             for kind in ["GFSbox", "KeySbox", "VarKey", "VarTxt", "MCT"] {
                 let mut state = State {
                     mct: kind == "MCT",
@@ -293,12 +303,17 @@ mod tests {
 
     #[test]
     fn rfc3686() {
-        // test vectors #3 and #9: three blocks, the last one partial
+        // test vectors #3, #6, and #9: three blocks, the last one partial
         for (key, nonce, ct) in [
             (
                 "7691be035e5020a8ac6e618529f9a0dc",
                 "00e0017b27777f3f4a1786f0",
                 "c1cf48a89f2ffdd9cf4652e9efdb72d74540a42bde6d7836d59a5ceaaef3105325b2072f",
+            ),
+            (
+                "02bf391ee8ecb159b959617b0965279bf59b60a786d3e0fe",
+                "0007bdfd5cbd60278dcc0912",
+                "96893fc55e5c722f540b7dd1ddf7e758d288bc95c69165884536c811662f2188abee0935",
             ),
             (
                 "ff7a617ce69148e4f1726e2f43581de2aa62d9f805532edff1eed687fb54153d",
@@ -318,7 +333,8 @@ mod tests {
 
     #[test]
     fn sp800_38a() {
-        // F.5.1 and F.5.5, CTR-AES128.Encrypt and CTR-AES256.Encrypt
+        // F.5.1, F.5.3, and F.5.5, CTR-AES128.Encrypt, CTR-AES192.Encrypt, and
+        // CTR-AES256.Encrypt
         let pt = "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51\
                   30c81c46a35ce411e5fbc1191a0a52eff69f2445df4f9b17ad2b417be66c3710";
         for (key, ct) in [
@@ -326,6 +342,11 @@ mod tests {
                 "2b7e151628aed2a6abf7158809cf4f3c",
                 "874d6191b620e3261bef6864990db6ce9806f66b7970fdff8617187bb9fffdff\
                  5ae4df3edbd5d35e5b4f09020db03eab1e031dda2fbe03d1792170a0f3009cee",
+            ),
+            (
+                "8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b",
+                "1abc932417521ca24f2b0459fe7e6e0b090339ec0aa6faefd5ccc2c6f4ce8e94\
+                 1e36b26bd1ebc670d1bd1d665620abf74f78a7f6d29809585a97daec58c6b050",
             ),
             (
                 "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4",
@@ -454,7 +475,7 @@ mod tests {
     // hides, for each key size, with a secret key, block, and message, for
     // `admin/ct-qemu`. The message's 5 blocks take the CTR routine's 3-block
     // loop and 2-block tail, then its partial block a 1-block call.
-    #[cfg(target_arch = "arm")]
+    #[cfg(rind_backend = "arm")]
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu-arm"]
     fn ct_qemu_aes() {
@@ -462,7 +483,7 @@ mod tests {
 
         let seed = ct_qemu::seed().to_le_bytes();
         let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
-        for algorithm in [&AES_128, &AES_256] {
+        for algorithm in [&AES_128, &AES_192, &AES_256] {
             let key = bytes(algorithm.key_len);
             let aes = ct_qemu::traced(|| Aes::new(algorithm, &key).unwrap());
             let ctr = ct_qemu::traced(|| AesCtr::new(algorithm, &key, 32).unwrap());

@@ -52,6 +52,8 @@ jobs:
         run: cargo test
       - name: Run tests (debug, --no-default-features)
         run: cargo test --no-default-features
+      - name: Run zeroing tests (debug, --features wipe)
+        run: cargo test -p rind -p rind-aws-lc-rs --features rind/wipe,rind-aws-lc-rs/wipe --test zeroing
 
       - name: Build (release)
         run: cargo build -p rind --release
@@ -60,50 +62,57 @@ jobs:
 
       - name: Artificial CPU feature tests (x86_64)
         if: runner.arch == 'X64'
+        shell: bash
         run: |
+          # Each tier runs the tests, then CCTV's million ML-KEM vectors in a
+          # release build, which honours the tier's denials only with
+          # `--cfg rind_cpu_disable`, alongside the check that they took effect
+          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
           # test rind's AVX2 SHA-1 and OpenSSL's AVX2 SHA-256 for CPUs without
           # the SHA extensions
-          env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 cargo test
+          tier RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1
           # test Vale's aes-gcm and avx2 ML-KEM without avx512 or vaes, and
           # RSA's CRT one exponentiation at a time on a runner with AVX-512 IFMA
-          env RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 RIND_TEST_X86_AVX512_RSA=0 cargo test
+          tier RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 RIND_TEST_X86_AVX512_RSA=0
           # test s2n-bignum's _alt routines, and aws-lc's Montgomery
           # multiplication and RSAZ exponentiation, for CPUs with AVX2 but
           # without BMI2 and ADX, such as Haswell; the last variables fail the
           # run that lands on the wrong path
-          env RIND_CPU_DISABLE_adx=1 RIND_TEST_X86_BMI2_ADX=0 RIND_TEST_X86_AVX2=1 cargo test
+          tier RIND_CPU_DISABLE_adx=1 RIND_TEST_X86_BMI2_ADX=0 RIND_TEST_X86_AVX2=1
           # test aws-lc's SSE4.1 ChaCha20-Poly1305, its SSSE3 ChaCha20, SHA-1,
           # and SHA-256, its scalar SHA-512, the portable ML-KEM arithmetic,
           # and the SSE2 selects for CPUs without AVX2, such as AMD's Bulldozer
           # and Jaguar;
           # x86-cpu's Sandy Bridge run covers aws-lc's AVX SHA routines, which
           # Intel's cores run there
-          env RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_SSE41=1 cargo test
+          tier RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_SSE41=1
           # test rind's AES-GCM and GHASH intrinsics without VEX encoding, and
           # aws-lc's AES-NI CTR, for CPUs with AES-NI but without AVX, such as
           # Westmere and the Goldmont and Tremont Atoms
-          env RIND_CPU_DISABLE_avx=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AES_HARDWARE=1 cargo test
+          tier RIND_CPU_DISABLE_avx=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AES_HARDWARE=1
           # test aws-lc's vpaes and SSSE3 GHASH for CPUs without AES-NI or
           # PCLMULQDQ, such as Core 2 and Nehalem, where rind-rustls and
           # rind-dimpl prefer ChaCha20-Poly1305, and without SSE4.1 too, as
           # the first Core 2s lack it, ChaCha20 and Poly1305 in separate passes
-          env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_sse41=1 RIND_TEST_X86_AES_HARDWARE=0 RIND_TEST_X86_SSE41=0 cargo test
+          tier RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_sse41=1 RIND_TEST_X86_AES_HARDWARE=0 RIND_TEST_X86_SSE41=0
           # test aws-lc's integer SHA-1 and SHA-256, its SSE2 AES and integer
           # GHASH, and HACL*'s ChaCha20 at every length, for CPUs without
           # SSSE3, such as QEMU's default `qemu64` model; every faster path
           # needs SSSE3 too
-          env RIND_CPU_DISABLE_ssse3=1 RIND_TEST_X86_SSSE3=0 RIND_TEST_X86_SSE41=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=0 cargo test
+          tier RIND_CPU_DISABLE_ssse3=1 RIND_TEST_X86_SSSE3=0 RIND_TEST_X86_SSE41=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=0
 
       - name: Artificial CPU feature tests (aarch64)
         if: runner.arch == 'ARM64'
+        shell: bash
         run: |
-          # test the AES-256-GCM and Keccak-f kernels for cores without SHA3,
+          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
+          # test the by-4 AES-GCM and Keccak-f kernels for cores without SHA3,
           # failing a run whose OS hides the crypto extension
-          env RIND_CPU_DISABLE_sha3=1 RIND_TEST_ARM_CRYPTO_EXT=1 cargo test
+          tier RIND_CPU_DISABLE_sha3=1 RIND_TEST_ARM_CRYPTO_EXT=1
           # test vpaes, NEON GHASH, and scalar SHA-1 and SHA-256 for cores
           # without the crypto extension, such as the Raspberry Pi 4's; the
           # last variable fails the run that lands on the wrong path
-          env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test
+          tier RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_TEST_ARM_CRYPTO_EXT=0
 
   # musl runs the glibc build's code, so these test the packages consumers
   # link, without the CPU feature passes. The bench and fuzz crates need C++
@@ -141,13 +150,13 @@ jobs:
           echo "CC_${CARGO_BUILD_TARGET//-/_}=musl-gcc" >> "$GITHUB_ENV"
 
       - name: Run tests (debug)
-        run: cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme
+        run: cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m
       - name: Run tests (release)
-        run: env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-instant-acme --release
+        run: env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --release
 
   # 32-bit ARM runs libcrux, or aws-lc's assembly for ChaCha20, NEON, and the
   # crypto extension. The recipe builds and lints Android and Linux gnueabihf,
-  # then runs the gnueabihf tests under qemu on both of rind's armv7 paths, as
+  # then runs the gnueabihf tests under qemu on each of rind's armv7 tiers, as
   # a local run does.
   armv7:
     runs-on: ubuntu-latest
@@ -162,3 +171,149 @@ jobs:
 
       - name: Build, lint, and test
         run: just armv7
+
+  # rind-dart's Dart package on each host Dart and Flutter build on. Its tests
+  # run natively, and its build hook cross-builds the mobile targets, whose
+  # libraries the hook's test checks are for the right architecture.
+  dart:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+            cross: android-arm64,android-arm,android-x64
+          - os: ubuntu-24.04-arm
+          - os: macos-latest
+            targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+            cross: ios-arm64-iphoneos,ios-arm64-iphonesimulator,ios-x64-iphonesimulator
+          - os: macos-15-intel
+          - os: windows-latest
+          - os: windows-11-arm
+
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: rind-dart
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.targets }}
+
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+
+      - run: dart pub get
+
+      # The Android builds link with the runner's NDK, at ANDROID_NDK_HOME.
+      - name: Run tests
+        env:
+          RIND_DART_CROSS_TARGETS: ${{ matrix.cross }}
+        run: dart test
+
+  # The portable backend, which every architecture without rind assembly
+  # runs, forced on x86_64 so it runs without emulation. The recipe lints and
+  # tests it with the checks a debug build has.
+  portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+      - uses: ./.github/actions/just
+      - uses: ./.github/actions/nix
+
+      - name: Build, lint, and test
+        run: just portable
+
+  # The simulator runs the iOS tests natively on the Apple silicon runner;
+  # devices' code is only built, since GitHub has no iOS device to run it.
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      # aws-lc-rs's C, which the tests link, targets the SDK's own iOS
+      # version unless told otherwise, and then needs symbols rustc's
+      # default iOS version lacks; this gives both rustc's default.
+      - name: Build tests (device)
+        run: |
+          export "$(rustc --print deployment-target --target aarch64-apple-ios)"
+          cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --target aarch64-apple-ios --no-run
+
+      - name: Boot a simulator
+        run: |
+          udid=$(xcrun simctl list devices available --json | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid"
+
+      - name: Run tests (simulator)
+        env:
+          CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUNNER: ${{ github.workspace }}/sh/ios-simulator.sh
+          RIND_TEST_ARM_CRYPTO_EXT: 1
+        run: |
+          export "$(rustc --print deployment-target --target aarch64-apple-ios-sim)"
+          cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --target aarch64-apple-ios-sim
+          env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --target aarch64-apple-ios-sim --release
+
+  # cross's images (see Cross.toml) hold an Android system for the tests, and
+  # run aarch64 and armv7 under qemu-user, whose CPU has the crypto extension.
+  # armv7 Linux covers the paths without it.
+  android:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-linux-android
+            expect: RIND_TEST_ARM_CRYPTO_EXT=1
+          - target: armv7-linux-androideabi
+            expect: RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1
+          - target: x86_64-linux-android
+            expect: ""
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        run: cargo install cross --locked --git https://github.com/cross-rs/cross --rev a9301e91f72bba3850460512685f6b16062015ff
+
+      # The CPU test reruns itself in a child process, which the kernel hands
+      # to qemu-user only through binfmt_misc.
+      - name: Install qemu-user's binfmt handlers
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes qemu-user-static
+
+      # Optimised for qemu, but keeping the checks a debug build has.
+      - name: Run tests
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
+          CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS: true
+        run: env ${{ matrix.expect }} cross test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --locked --release --target ${{ matrix.target }}

@@ -1,8 +1,72 @@
 # Getting oriented
 
-The [README](README.md) covers the layering, CPU requirements, and tests.
+[ARCHITECTURE.md](ARCHITECTURE.md) covers the API and the layering,
+[PLATFORMS.md](PLATFORMS.md) the CPU requirements,
+[ALGORITHMS.md](ALGORITHMS.md) whose code runs on each path,
+[Building and testing](#building-and-testing) the tests, and
+[TESTING.md](TESTING.md) what checks each primitive on each CPU tier.
 Agents should also read [AGENTS.md](AGENTS.md) and the instructions nested
 under the files they change.
+
+# Building and testing
+
+Compile:
+```shell
+cargo build --release
+```
+
+Run tests:
+```shell
+git submodule update --init thirdparty/cavp thirdparty/cctv thirdparty/wycheproof
+cargo test
+```
+
+`thirdparty/vectors` holds aws-lc's and BoringSSL's vector files, which
+`admin/sync-vectors` copies from the revisions it pins. `SLOW_TESTS=1` adds
+the large sets, such as CCTV's million ML-KEM vectors, which the nightly
+`build` workflow runs on every CPU tier.
+
+Run performance benchmarks:
+```shell
+cargo bench
+```
+
+`admin/bench-report collect` runs the report's benchmarks, then
+`admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev
+shell and under `quest gate --host`, which keeps other gated work off the
+host; it skips any host that is still busy, and writes their results and the hosts' details as JSON under
+`.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly
+`bench` run's results, and `admin/bench-report render --from DIR` copies a
+collection's measured hosts into `benchmarks/data/` and writes
+`BENCHMARKS.md` and its SVGs, which the README shows too, from them, `benchmarks/verified.toml`, and
+`benchmarks/gaps.toml`, which must hold a quest or a reason for every gap
+over 10%.
+
+With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
+toolchain, and `just check` runs CI's gate over what the branch changed.
+On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
+32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
+with NEON alone, and with NEON denied.
+`nix develop .#ctgrind --command admin/ctgrind` runs the nightly
+constant-time checks under valgrind, `nix develop .#sde --command
+admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
+valgrind cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
+admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
+qemu; on an aarch64 host, `nix develop .#ct-qemu-aarch64 --command
+admin/ct-qemu --target aarch64-unknown-linux-gnu` those of the aarch64 code
+that runs only with SHA3. None of them can see an instruction whose timing depends on its
+operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
+scans its release builds for x86_64, aarch64, and armv7, and its portable
+backend's, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
+not list as taking only public operands.
+`nix develop .#timing --command admin/timing dudect` times each secret
+operation whose secret the API lets it set (not key generation, encapsulation,
+or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,
+and `admin/timing marvin` runs the Marvin toolkit against RSA-OAEP decryption. They need quiet
+hardware: the weekly `timing` workflow runs them on GitHub's runners, and a
+shared host is held with `quest gate --host`.
+`nix develop .#prove --command admin/prove` translates the Rust under proof to
+Lean with Aeneas and checks the proofs in [`proofs/`](proofs/README.md).
 
 # Commits
 
@@ -36,6 +100,7 @@ The platform workflows inherited from graviola run nightly or on demand with `gh
 PRs land on `main` through GitHub's merge queue, one PR at a time, as squash commits.
 Queue the reviewed head with `quest merge <pr> --land <sha>` (`/quest-merge` does this).
 The required `Queue` check skips on pull requests; the merge group runs `just ci` against the merge group's base on the self-hosted runner.
+That build lives in `.github/workflows/queue-build.yml`, which the merge group calls from `main`, so a PR's edit to it runs only after the PR lands.
 The host's `quest land watch` daemon runs the Codex fixer when the queue drops a PR for a failed build or a conflict, and re-enqueues healthy heads at the back of the queue.
 A fix that needs a maintainer decision is handed back with a diagnosis on the PR.
 The admin bypass of `main`'s ruleset is for emergencies.
@@ -72,3 +137,15 @@ Each `Written for Graviola by ...` header is attribution; keep it on files that 
 
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions; bump one only when asked.
+
+Each published `rind-<consumer>` adapter's version begins with the breaking part of the upstream version it adapts (major.minor below 1.0, major from 1.0 on), so rind-rustls 0.23.x adapts rustls 0.23; the rest of the version is the adapter's own.
+`sh/adapter-versions.sh`, in `just ci`, fails when the two drift.
+An adapter's API is its upstream's, so it changes only with upstream's; the PR that moves an adapter to upstream's next breaking release sets the adapter's version to match.
+release-plz cannot cap a bump: a breaking change it finds in an adapter, by cargo-semver-checks or a `!` commit, makes its release PR propose the next breaking version, which that check then fails.
+A change that restores upstream's API fixes a bug: set its patch version by hand, and the maintainer yanks the divergent releases if needed. Hold or revert any other breaking change.
+A version set by hand ahead of the published one is kept as is, and the next release PR publishes it.
+
+The release job publishes through crates.io trusted publishing, so no registry token is stored: crates.io issues a short-lived token only to `release.yml` running in the `publish` environment, which only `main` can deploy to.
+Trusted publishing cannot create a crate, so the maintainer publishes a new crate's first version by hand from `main` before the release PR that would publish it merges.
+Use a crates.io token scoped to `publish-new` for that crate name with a short expiry, never stored as a secret, and revoke it afterwards.
+Then add the crate's trusted publisher for `release.yml` and the `publish` environment, so release-plz publishes every later version, and turn on its crates.io "require trusted publishing" setting, as every published rind crate has, so no API token can publish it.

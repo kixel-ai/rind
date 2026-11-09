@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 use core::fmt;
+use core::hint::black_box;
 use core::mem::ManuallyDrop;
 
 use crate::Error;
@@ -10,8 +11,12 @@ use crate::low::{self, AesDecKey, AesKey, Entry, Zeroable, ct_equal, zeroise_val
 /// RFC 3394's default initial value, which unwrapping checks.
 const IV: [u8; 8] = [0xa6; 8];
 
+/// RFC 5649's alternative initial value, which the key's length follows.
+const AIV: [u8; 4] = [0xa6, 0x59, 0x59, 0xa6];
+
 /// An AES key-encryption key, which wraps and unwraps other keys with RFC
-/// 3394 AES-KW; wiped on drop.
+/// 3394 AES-KW, or with RFC 5649 AES-KWP for keys of any length; wiped on
+/// drop.
 ///
 /// Wrapping is deterministic and authenticated: a wrapped key that was
 /// altered fails to unwrap.
@@ -62,20 +67,7 @@ impl AesKek {
 
         // Expanded for this call, so it skips its wipe.
         let aes = ManuallyDrop::new(AesKey::new(self.key()));
-        // `block` is A followed by each R[i] in turn.
-        let mut block = [0u8; 16];
-        block[..8].copy_from_slice(&IV);
-        let mut t = 0u64;
-        for _ in 0..6 {
-            for r_i in r.as_chunks_mut::<8>().0 {
-                t += 1;
-                block[8..].copy_from_slice(r_i);
-                aes.encrypt_block(&mut block);
-                xor_counter(&mut block, t);
-                r_i.copy_from_slice(&block[8..]);
-            }
-        }
-        a.copy_from_slice(&block[..8]);
+        a.copy_from_slice(&wrap_blocks(&aes, IV, r));
 
         low::ct::public_slice(wrapped);
         Ok(())
@@ -100,23 +92,108 @@ impl AesKek {
 
         // Expanded for this call, so it skips its wipe.
         let aes = ManuallyDrop::new(AesDecKey::new(self.key()));
-        let mut block = [0u8; 16];
-        block[..8].copy_from_slice(a);
-        let r = key.as_chunks_mut::<8>().0;
-        let mut t = 6 * r.len() as u64;
-        for _ in 0..6 {
-            for r_i in r.iter_mut().rev() {
-                xor_counter(&mut block, t);
-                t -= 1;
-                block[8..].copy_from_slice(r_i);
-                aes.decrypt_block(&mut block);
-                r_i.copy_from_slice(&block[8..]);
-            }
-        }
+        let a = unwrap_blocks(&aes, a.try_into().unwrap(), key);
 
-        if low::ct::into_public(ct_equal(&block[..8], &IV)) {
+        if low::ct::into_public(ct_equal(&a, &IV)) {
             low::ct::public_slice(key);
             Ok(())
+        } else {
+            // avoid unauthenticated key leak
+            key.fill(0x00);
+            Err(Error::DecryptFailed)
+        }
+    }
+
+    /// Wraps `key`, of any length from 1 byte, into `wrapped`, which must be
+    /// `key.len().next_multiple_of(8) + 8` bytes long, with RFC 5649's
+    /// padding.
+    ///
+    /// Fails with [`Error::WrongLength`], leaving `wrapped` unchanged, if
+    /// `key` is empty or longer than `u32::MAX` bytes, or `wrapped` is not
+    /// that length.
+    pub fn wrap_padded(&self, key: &[u8], wrapped: &mut [u8]) -> Result<(), Error> {
+        let _entry = Entry::new_secret();
+        let Ok(len) = u32::try_from(key.len()) else {
+            return Err(Error::WrongLength);
+        };
+        if key.is_empty() || wrapped.len() != key.len().next_multiple_of(8) + 8 {
+            return Err(Error::WrongLength);
+        }
+        let mut aiv = [0u8; 8];
+        aiv[..4].copy_from_slice(&AIV);
+        aiv[4..].copy_from_slice(&len.to_be_bytes());
+
+        let (a, r) = wrapped.split_at_mut(8);
+        let (r_key, r_pad) = r.split_at_mut(key.len());
+        r_key.copy_from_slice(key);
+        r_pad.fill(0);
+        low::ct::secret_slice(r);
+
+        // Expanded for this call, so it skips its wipe.
+        let aes = ManuallyDrop::new(AesKey::new(self.key()));
+        if r.len() == 8 {
+            // A single padded block is encrypted on its own, not wrapped.
+            let mut block = [0u8; 16];
+            block[..8].copy_from_slice(&aiv);
+            block[8..].copy_from_slice(r);
+            wrapped.copy_from_slice(&aes.encrypt_block(&block));
+        } else {
+            a.copy_from_slice(&wrap_blocks(&aes, aiv, r));
+        }
+
+        low::ct::public_slice(wrapped);
+        Ok(())
+    }
+
+    /// Unwraps `wrapped`, wrapped with RFC 5649's padding, into `key`, which
+    /// must be 8 bytes shorter, returning the unwrapped key at its start.
+    ///
+    /// Fails with [`Error::DecryptFailed`] if `wrapped` was not wrapped by
+    /// this key, clearing `key`, or is shorter than 16 bytes or not a
+    /// multiple of 8, and with [`Error::WrongLength`] if `key` is not 8 bytes
+    /// shorter; a length failure leaves `key` unchanged.
+    pub fn unwrap_padded<'a>(
+        &self,
+        wrapped: &[u8],
+        key: &'a mut [u8],
+    ) -> Result<&'a mut [u8], Error> {
+        let _entry = Entry::new_secret();
+        if wrapped.len() < 16 || !wrapped.len().is_multiple_of(8) {
+            return Err(Error::DecryptFailed);
+        }
+        if key.len() != wrapped.len() - 8 {
+            return Err(Error::WrongLength);
+        }
+
+        // Expanded for this call, so it skips its wipe.
+        let aes = ManuallyDrop::new(AesDecKey::new(self.key()));
+        let aiv = if key.len() == 8 {
+            let mut block: [u8; 16] = wrapped.try_into().unwrap();
+            aes.decrypt_block(&mut block);
+            key.copy_from_slice(&block[8..]);
+            *block.first_chunk().unwrap()
+        } else {
+            let (a, c) = wrapped.split_at(8);
+            key.copy_from_slice(c);
+            unwrap_blocks(&aes, a.try_into().unwrap(), key)
+        };
+
+        // Valid if the AIV's constant matches, the claimed length ends in the
+        // last block, and every byte after it is zero, checked without
+        // branching on any. Each folds into the one word revealed, since the
+        // compiler splits `a & b` of two bools into a branch on each.
+        let claimed = u64::from(u32::from_be_bytes(*aiv.last_chunk().unwrap()));
+        let mut bad = black_box((key.len() as u64).wrapping_sub(claimed) >> 3);
+        for (i, byte) in key.iter().enumerate().skip(key.len() - 8) {
+            // all ones if `i` is at or past the claimed length
+            let past = ((i as u64).wrapping_sub(claimed) >> 63).wrapping_sub(1);
+            bad |= black_box(past & u64::from(*byte));
+        }
+        bad |= black_box(u64::from(!ct_equal(&aiv[..4], &AIV)));
+
+        if low::ct::into_public(black_box(bad)) == 0 {
+            low::ct::public_slice(key);
+            Ok(&mut key[..low::ct::into_public(claimed) as usize])
         } else {
             // avoid unauthenticated key leak
             key.fill(0x00);
@@ -141,6 +218,44 @@ impl Drop for AesKek {
 
 impl Zeroable for AesKek {}
 
+/// RFC 3394's wrapping of `r` in place under the initial value `a`,
+/// returning the integrity value.
+fn wrap_blocks(aes: &AesKey, a: [u8; 8], r: &mut [u8]) -> [u8; 8] {
+    // `block` is A followed by each R[i] in turn.
+    let mut block = [0u8; 16];
+    block[..8].copy_from_slice(&a);
+    let mut t = 0u64;
+    for _ in 0..6 {
+        for r_i in r.as_chunks_mut::<8>().0 {
+            t += 1;
+            block[8..].copy_from_slice(r_i);
+            block = aes.encrypt_block(&block);
+            xor_counter(&mut block, t);
+            r_i.copy_from_slice(&block[8..]);
+        }
+    }
+    *block.first_chunk().unwrap()
+}
+
+/// RFC 3394's unwrapping of `r` in place from the integrity value `a`,
+/// returning the initial value for the caller to check.
+fn unwrap_blocks(aes: &AesDecKey, a: [u8; 8], r: &mut [u8]) -> [u8; 8] {
+    let mut block = [0u8; 16];
+    block[..8].copy_from_slice(&a);
+    let r = r.as_chunks_mut::<8>().0;
+    let mut t = 6 * r.len() as u64;
+    for _ in 0..6 {
+        for r_i in r.iter_mut().rev() {
+            xor_counter(&mut block, t);
+            t -= 1;
+            block[8..].copy_from_slice(r_i);
+            aes.decrypt_block(&mut block);
+            r_i.copy_from_slice(&block[8..]);
+        }
+    }
+    *block.first_chunk().unwrap()
+}
+
 /// XORs the step counter `t`, big-endian, into A.
 #[inline]
 fn xor_counter(block: &mut [u8; 16], t: u64) {
@@ -152,10 +267,10 @@ fn xor_counter(block: &mut [u8; 16], t: u64) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::cipher::{AES_128, AES_256};
+    use crate::cipher::{AES_128, AES_192, AES_256};
 
-    // RFC 3394 section 4.1 and 4.6: the smallest and largest key under each
-    // KEK size, both ways.
+    // RFC 3394 sections 4.1, 4.2, 4.4, and 4.6: a key under each KEK size,
+    // the smallest and largest among them, both ways.
     #[test]
     fn rfc3394() {
         for (algorithm, kek, key, wrapped) in [
@@ -164,6 +279,18 @@ mod tests {
                 "000102030405060708090a0b0c0d0e0f",
                 "00112233445566778899aabbccddeeff",
                 "1fa68b0a8112b447aef34bd8fb5a7b829d3e862371d2cfe5",
+            ),
+            (
+                &AES_192,
+                "000102030405060708090a0b0c0d0e0f1011121314151617",
+                "00112233445566778899aabbccddeeff",
+                "96778b25ae6ca435f92b5b97c050aed2468ab8a17ad84e5d",
+            ),
+            (
+                &AES_192,
+                "000102030405060708090a0b0c0d0e0f1011121314151617",
+                "00112233445566778899aabbccddeeff0001020304050607",
+                "031d33264e15d33268f24ec260743edce1c6c7ddee725a936ba814915c6762d2",
             ),
             (
                 &AES_256,
@@ -183,6 +310,117 @@ mod tests {
             let mut out = vec![0u8; key.len()];
             kek.unwrap(&wrapped, &mut out).unwrap();
             assert_eq!(out, key);
+        }
+    }
+
+    // RFC 5649's examples, section 6, and Wycheproof's KWP tests 15 and 185:
+    // keys that pad to a single block, which is encrypted on its own, and
+    // keys that pad to more, which are wrapped.
+    #[test]
+    fn rfc5649() {
+        for (algorithm, kek, key, wrapped) in [
+            (
+                &AES_192,
+                "5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a8",
+                "c37b7e6492584340bed12207808941155068f738",
+                "138bdeaa9b8fa7fc61f97742e72248ee5ae6ae5360d1ae6a5f54f373fa543b6a",
+            ),
+            (
+                &AES_192,
+                "5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a8",
+                "466f7250617369",
+                "afbeb0f07dfbf5419200f2ccb50bb24f",
+            ),
+            (
+                &AES_128,
+                "1abf4b7fa2bb62a78f09ddab04625dca",
+                "0412ab3ec6",
+                "0344f7b34ab8ef28aaa843f276b0b3d5",
+            ),
+            (
+                &AES_256,
+                "1abf4b7fa2bb62a78f09ddab04625dcacdd9e551d1a69b6b162baa53d2700093",
+                "72aaee126a822184806c7d22eed66b",
+                "de497acf18a177a3a9b3d8da46d74dfa58dcc537a3a95323",
+            ),
+        ] {
+            let kek = AesKek::new(algorithm, &hex::decode(kek).unwrap()).unwrap();
+            let key = hex::decode(key).unwrap();
+            let wrapped = hex::decode(wrapped).unwrap();
+
+            let mut out = vec![0u8; wrapped.len()];
+            kek.wrap_padded(&key, &mut out).unwrap();
+            assert_eq!(out, wrapped);
+
+            let mut out = vec![0u8; wrapped.len() - 8];
+            assert_eq!(kek.unwrap_padded(&wrapped, &mut out).unwrap(), key);
+        }
+    }
+
+    // Every length from 1 to 24 round trips, and any altered byte, a claimed
+    // length outside the last block, or a nonzero padding byte fails,
+    // clearing the key.
+    #[test]
+    fn padded() {
+        let kek = AesKek::new(&AES_128, &[0x42; 16]).unwrap();
+        let enc = AesKey::new(&[0x42; 16]);
+        let _entry = Entry::new_secret();
+        for len in 1..=24usize {
+            let key: Vec<u8> = (1..=len as u8).collect();
+            let mut wrapped = vec![0u8; len.next_multiple_of(8) + 8];
+            kek.wrap_padded(&key, &mut wrapped).unwrap();
+            let mut out = vec![0xaa; wrapped.len() - 8];
+            assert_eq!(kek.unwrap_padded(&wrapped, &mut out).unwrap(), key);
+
+            for i in [0, 3, 4, 7, 8, wrapped.len() - 1] {
+                let mut tampered = wrapped.clone();
+                tampered[i] ^= 1;
+                let mut out = vec![0xaa; wrapped.len() - 8];
+                assert_eq!(
+                    kek.unwrap_padded(&tampered, &mut out),
+                    Err(Error::DecryptFailed)
+                );
+                assert!(out.iter().all(|b| *b == 0), "len {len} byte {i}");
+            }
+
+            // Rewrap the plaintext with a forged AIV, claiming each length
+            // and the padding nonzero, as an attacker holding the KEK could.
+            let padded = len.next_multiple_of(8);
+            for claimed in [0, len - 1, len + 1, padded, padded + 1, padded - 8] {
+                for pad_byte in [0u8, 1] {
+                    let mut plain = key.clone();
+                    plain.resize(padded, pad_byte);
+                    let mut aiv = [0u8; 8];
+                    aiv[..4].copy_from_slice(&AIV);
+                    aiv[4..].copy_from_slice(&(claimed as u32).to_be_bytes());
+                    let mut forged = vec![0u8; padded + 8];
+                    if padded == 8 {
+                        let mut block = [0u8; 16];
+                        block[..8].copy_from_slice(&aiv);
+                        block[8..].copy_from_slice(&plain);
+                        forged.copy_from_slice(&enc.encrypt_block(&block));
+                    } else {
+                        forged[8..].copy_from_slice(&plain);
+                        let a = wrap_blocks(&enc, aiv, &mut forged[8..]);
+                        forged[..8].copy_from_slice(&a);
+                    }
+                    // the forgery is well formed, and only the claimed
+                    // length and padding decide
+                    let valid = claimed > padded - 8
+                        && claimed <= padded
+                        && plain[claimed..].iter().all(|b| *b == 0);
+                    let mut out = vec![0xaa; padded];
+                    let result = kek.unwrap_padded(&forged, &mut out);
+                    assert_eq!(
+                        result.is_ok(),
+                        valid,
+                        "len {len} claimed {claimed} pad {pad_byte}"
+                    );
+                    if !valid {
+                        assert!(out.iter().all(|b| *b == 0));
+                    }
+                }
+            }
         }
     }
 
@@ -231,13 +469,51 @@ mod tests {
         let mut key = [0u8; 16];
         assert_eq!(kek.unwrap(&wrapped, &mut key), Err(Error::WrongLength));
 
+        // RFC 5649 wraps any key but an empty one, into exactly its padded
+        // length plus 8.
+        for len in 0..=48usize {
+            let wanted = len.next_multiple_of(8) + 8;
+            for out_len in [wanted - 1, wanted, wanted + 1, wanted + 8] {
+                let mut wrapped = vec![0xaa; out_len];
+                let result = kek.wrap_padded(&buf[..len], &mut wrapped);
+                let valid = len > 0 && out_len == wanted;
+                assert_eq!(result.is_ok(), valid, "wrap_padded {len} into {out_len}");
+                if !valid {
+                    assert_eq!(result, Err(Error::WrongLength));
+                    assert!(
+                        wrapped.iter().all(|b| *b == 0xaa),
+                        "refused wrap_padded wrote"
+                    );
+                }
+            }
+
+            let mut key = vec![0xaa; len.saturating_sub(8)];
+            let result = kek.unwrap_padded(&buf[..len], &mut key);
+            assert_eq!(result, Err(Error::DecryptFailed), "unwrap_padded {len}");
+            if len < 16 || !len.is_multiple_of(8) {
+                assert!(
+                    key.iter().all(|b| *b == 0xaa),
+                    "refused unwrap_padded wrote"
+                );
+            }
+        }
+        let mut wrapped = [0u8; 16];
+        kek.wrap_padded(&buf[..1], &mut wrapped).unwrap();
+        for key_len in [7, 9, 16] {
+            let mut key = vec![0u8; key_len];
+            assert_eq!(
+                kek.unwrap_padded(&wrapped, &mut key),
+                Err(Error::WrongLength)
+            );
+        }
+
         assert!(AesKek::new(&AES_128, &[0; 32]).is_err());
         assert!(AesKek::new(&AES_256, &[0; 16]).is_err());
     }
 
     // armv7's AES-KW on the crypto extension, which valgrind hides, for each
     // key size, with a secret KEK and key, for `admin/ct-qemu`.
-    #[cfg(target_arch = "arm")]
+    #[cfg(rind_backend = "arm")]
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu-arm"]
     fn ct_qemu_aes_kw() {
@@ -245,7 +521,7 @@ mod tests {
 
         let seed = ct_qemu::seed().to_le_bytes();
         let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
-        for algorithm in [&AES_128, &AES_256] {
+        for algorithm in [&AES_128, &AES_192, &AES_256] {
             let kek_bytes = bytes(algorithm.key_len);
             let kek = ct_qemu::traced(|| AesKek::new(algorithm, &kek_bytes).unwrap());
             assert!(
@@ -258,6 +534,16 @@ mod tests {
             ct_qemu::traced(|| kek.wrap(&key, &mut wrapped)).unwrap();
             let mut unwrapped = [0u8; 32];
             ct_qemu::traced(|| kek.unwrap(&wrapped, &mut unwrapped)).unwrap();
+
+            // one block, encrypted on its own, and several, wrapped
+            for len in [5usize, 31] {
+                let mut wrapped = [0u8; 40];
+                let wrapped = &mut wrapped[..len.next_multiple_of(8) + 8];
+                ct_qemu::traced(|| kek.wrap_padded(&key[..len], wrapped)).unwrap();
+                let mut unwrapped = [0u8; 32];
+                let unwrapped = &mut unwrapped[..wrapped.len() - 8];
+                ct_qemu::traced(|| kek.unwrap_padded(wrapped, unwrapped).map(|k| k.len())).unwrap();
+            }
         }
     }
 }

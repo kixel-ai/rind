@@ -71,6 +71,7 @@ impl fmt::Debug for Algorithm {
 #[derive(Debug)]
 enum AlgorithmId {
     Aes128Gcm,
+    Aes192Gcm,
     Aes256Gcm,
     ChaCha20Poly1305,
 }
@@ -80,6 +81,7 @@ impl Algorithm {
     pub fn key_len(&self) -> usize {
         match self.id {
             AlgorithmId::Aes128Gcm => 16,
+            AlgorithmId::Aes192Gcm => 24,
             AlgorithmId::Aes256Gcm | AlgorithmId::ChaCha20Poly1305 => 32,
         }
     }
@@ -101,6 +103,12 @@ pub static AES_128_GCM: Algorithm = Algorithm {
     expand: Sealer::<AesGcm>::expand,
 };
 
+/// AES-192 in GCM mode, with a 24-byte key.
+pub static AES_192_GCM: Algorithm = Algorithm {
+    id: AlgorithmId::Aes192Gcm,
+    expand: Sealer::<AesGcm>::expand,
+};
+
 /// AES-256 in GCM mode, with a 32-byte key.
 pub static AES_256_GCM: Algorithm = Algorithm {
     id: AlgorithmId::Aes256Gcm,
@@ -113,7 +121,7 @@ pub static CHACHA20_POLY1305: Algorithm = Algorithm {
     expand: Sealer::<ChaCha20Poly1305>::expand,
 };
 
-/// An AEAD key that seals with any nonce the caller gives it; wiped on drop.
+/// An AEAD key that seals with any nonce the caller gives it; wiped on drop under the `wipe` feature.
 ///
 /// The caller owns nonce uniqueness: sealing two messages with one nonce and
 /// key loses confidentiality and lets anyone forge messages. Derive nonces
@@ -369,8 +377,11 @@ impl fmt::Debug for Key {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // An id, not the static, so formatting links no other cipher's code.
         let algorithm = match &self.0 {
-            Inner::AesGcm(sealer) if sealer.key.key_len() == 16 => AlgorithmId::Aes128Gcm,
-            Inner::AesGcm(_) => AlgorithmId::Aes256Gcm,
+            Inner::AesGcm(sealer) => match sealer.key.key_len() {
+                16 => AlgorithmId::Aes128Gcm,
+                24 => AlgorithmId::Aes192Gcm,
+                _ => AlgorithmId::Aes256Gcm,
+            },
             Inner::ChaCha20Poly1305(_) => AlgorithmId::ChaCha20Poly1305,
         };
         f.debug_struct("Key")
@@ -503,7 +514,8 @@ impl From<[u8; 24]> for RandomNonce {
 mod tests {
     use super::*;
 
-    const ALGORITHMS: [&Algorithm; 3] = [&AES_128_GCM, &AES_256_GCM, &CHACHA20_POLY1305];
+    const ALGORITHMS: [&Algorithm; 4] =
+        [&AES_128_GCM, &AES_192_GCM, &AES_256_GCM, &CHACHA20_POLY1305];
 
     #[test]
     fn key_length_must_match_algorithm() {
@@ -523,6 +535,7 @@ mod tests {
     fn seal_and_open() {
         for algorithm in ALGORITHMS {
             let key = Key::new(algorithm, &[7u8; 32][..algorithm.key_len()]).unwrap();
+            assert_eq!(algorithm.nonce_len(), 12);
             let nonce = || Nonce::assume_unique_for_key([9; 12]);
 
             let mut sealed = b"hello".to_vec();

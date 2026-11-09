@@ -6,7 +6,7 @@ set_option linter.style.nameCheck false
 open Aeneas Aeneas.Std Result
 
 /-!
-# x86_64's 128-bit vectors and the intrinsics rind's AES-GCM setup calls
+# x86_64's 128-bit vectors and the intrinsics rind's AES-GCM setup and partial blocks call
 
 `core::arch` implements each intrinsic with an LLVM builtin, which Aeneas
 cannot translate, so these model them by hand, each as Intel's Software
@@ -110,6 +110,19 @@ def core.core_arch.x86.sse2._mm_setr_epi8
   ok (leBytesToQuad32
     [e0.bv, e1.bv, e2.bv, e3.bv, e4.bv, e5.bv, e6.bv, e7.bv, e8.bv, e9.bv, e10.bv, e11.bv, e12.bv,
       e13.bv, e14.bv, e15.bv])
+
+/-- `_mm_set_epi64x`: the 64-bit lanes, the last lowest. -/
+def core.core_arch.x86.sse2._mm_set_epi64x (e1 e0 : Std.I64) : Result core.core_arch.x86.__m128i :=
+  ok (e1.bv ++ e0.bv)
+
+/-- `_mm_cvtsi128_si64`, `MOVQ`: the low 64-bit lane. -/
+def core.core_arch.x86_64.sse2._mm_cvtsi128_si64 (a : core.core_arch.x86.__m128i) : Result Std.I64 :=
+  ok ⟨lane64 a 0⟩
+
+/-- `_mm_unpackhi_epi64`, `PUNPCKHQDQ`: the high 64-bit lanes of `a` then `b`, `a`'s lowest. -/
+def core.core_arch.x86.sse2._mm_unpackhi_epi64 (a b : core.core_arch.x86.__m128i) :
+    Result core.core_arch.x86.__m128i :=
+  ok (lane64 b 1 ++ lane64 a 1)
 
 /-- `_mm_set1_epi32`: each 32-bit lane `a`. -/
 def core.core_arch.x86.sse2._mm_set1_epi32 (a : Std.I32) : Result core.core_arch.x86.__m128i :=

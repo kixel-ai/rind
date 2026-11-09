@@ -9,8 +9,11 @@ use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::jwk::{EllipticCurve, ThumbprintHash};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey};
 
-const RIND: &CryptoProvider = &rind_jsonwebtoken::DEFAULT_PROVIDER;
 const AWS_LC: &CryptoProvider = &aws_lc::DEFAULT_PROVIDER;
+
+fn rind() -> &'static CryptoProvider {
+    rind_jsonwebtoken::default_provider().unwrap()
+}
 
 const MESSAGE: &[u8] = b"eyJhbGciOiJub25lIn0.eyJzdWIiOiJyaW5kIn0";
 
@@ -32,9 +35,9 @@ fn verifies(provider: &CryptoProvider, key: &Key, message: &[u8], signature: &[u
 fn signatures_verify_across_providers() {
     for key in common::all() {
         for (signer, verifier, direction) in [
-            (RIND, AWS_LC, "rind to aws-lc-rs"),
-            (AWS_LC, RIND, "aws-lc-rs to rind"),
-            (RIND, RIND, "rind to rind"),
+            (rind(), AWS_LC, "rind to aws-lc-rs"),
+            (AWS_LC, rind(), "aws-lc-rs to rind"),
+            (rind(), rind(), "rind to rind"),
         ] {
             let label = format!("{} ({direction})", key.label());
             let signature = sign(signer, &key, MESSAGE);
@@ -47,7 +50,7 @@ fn signatures_verify_across_providers() {
 #[test]
 fn altered_signatures_fail_on_both_providers() {
     for key in common::all() {
-        let signature = sign(RIND, &key, MESSAGE);
+        let signature = sign(rind(), &key, MESSAGE);
 
         let mut flipped = signature.clone();
         *flipped.last_mut().unwrap() ^= 1;
@@ -64,7 +67,7 @@ fn altered_signatures_fail_on_both_providers() {
             (&signature[..signature.len() - 1], "last byte removed"),
             (&[][..], "empty"),
         ] {
-            for (provider, name) in [(RIND, "rind"), (AWS_LC, "aws-lc-rs")] {
+            for (provider, name) in [(rind(), "rind"), (AWS_LC, "aws-lc-rs")] {
                 assert!(
                     !verifies(provider, &key, MESSAGE, altered),
                     "{} accepted with a {how} by {name}",
@@ -83,14 +86,14 @@ fn key_of_another_family_is_refused() {
             .iter()
             .filter(|key| key.encoding.family() != algorithm.family())
         {
-            let signer = (RIND.signer_factory)(&algorithm, &key.encoding);
+            let signer = (rind().signer_factory)(&algorithm, &key.encoding);
             assert_eq!(
                 signer.err().map(|e| e.into_kind()),
                 Some(ErrorKind::InvalidKeyFormat),
                 "{algorithm:?} signer with {}",
                 key.label()
             );
-            let verifier = (RIND.verifier_factory)(&algorithm, &key.decoding);
+            let verifier = (rind().verifier_factory)(&algorithm, &key.decoding);
             assert_eq!(
                 verifier.err().map(|e| e.into_kind()),
                 Some(ErrorKind::InvalidKeyFormat),
@@ -119,7 +122,7 @@ fn malformed_keys_are_errors() {
     ];
     for (algorithm, key) in signers {
         assert!(
-            (RIND.signer_factory)(&algorithm, &key).is_err(),
+            (rind().signer_factory)(&algorithm, &key).is_err(),
             "{algorithm:?}"
         );
     }
@@ -147,7 +150,7 @@ fn malformed_keys_are_errors() {
     ];
     for (algorithm, key) in verifiers {
         assert!(
-            (RIND.verifier_factory)(&algorithm, &key).is_err(),
+            (rind().verifier_factory)(&algorithm, &key).is_err(),
             "{algorithm:?}"
         );
     }
@@ -165,11 +168,11 @@ fn common_point(algorithm: Algorithm) -> DecodingKey {
 fn key_utils_match_aws_lc() {
     let (private, public) = common::rsa_key();
     assert_eq!(
-        (RIND.key_utils.rsa_pub_components_from_private_key)(private).unwrap(),
+        (rind().key_utils.rsa_pub_components_from_private_key)(private).unwrap(),
         (AWS_LC.key_utils.rsa_pub_components_from_private_key)(private).unwrap(),
     );
     assert_eq!(
-        (RIND.key_utils.rsa_pub_components_from_public_key)(public).unwrap(),
+        (rind().key_utils.rsa_pub_components_from_public_key)(public).unwrap(),
         (AWS_LC.key_utils.rsa_pub_components_from_public_key)(public).unwrap(),
     );
 
@@ -177,13 +180,13 @@ fn key_utils_match_aws_lc() {
         let der = key.encoding.as_bytes();
         match key.algorithm {
             Algorithm::ES256 | Algorithm::ES384 => assert_eq!(
-                (RIND.key_utils.ec_pub_components_from_private_key)(der, key.algorithm).unwrap(),
+                (rind().key_utils.ec_pub_components_from_private_key)(der, key.algorithm).unwrap(),
                 (AWS_LC.key_utils.ec_pub_components_from_private_key)(der, key.algorithm).unwrap(),
                 "{}",
                 key.label()
             ),
             Algorithm::EdDSA => assert_eq!(
-                (RIND.key_utils.ed_pub_components_from_private_key)(der, &EllipticCurve::Ed25519)
+                (rind().key_utils.ed_pub_components_from_private_key)(der, &EllipticCurve::Ed25519)
                     .unwrap(),
                 (AWS_LC.key_utils.ed_pub_components_from_private_key)(der, &EllipticCurve::Ed25519)
                     .unwrap(),
@@ -200,7 +203,7 @@ fn key_utils_match_aws_lc() {
         ThumbprintHash::SHA512,
     ] {
         assert_eq!(
-            (RIND.key_utils.compute_digest)(MESSAGE, hash.clone()).unwrap(),
+            (rind().key_utils.compute_digest)(MESSAGE, hash.clone()).unwrap(),
             (AWS_LC.key_utils.compute_digest)(MESSAGE, hash).unwrap(),
         );
     }

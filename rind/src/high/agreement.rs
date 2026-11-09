@@ -82,7 +82,7 @@ pub static ECDH_P521: Algorithm = Algorithm {
     parse_public: p521_public_key,
 };
 
-/// A private key, which agrees with any number of peers, wiped on drop.
+/// A private key, which agrees with any number of peers, wiped on drop under the `wipe` feature.
 pub struct PrivateKey(Private);
 
 // `repr(u8)` puts `X25519` at tag zero, and every variant's key is plain
@@ -202,7 +202,7 @@ impl fmt::Debug for PrivateKey {
 }
 
 /// A private key as its scalar, which [`PrivateKey::from_scalar`]
-/// loads, wiped on drop.
+/// loads, wiped on drop under the `wipe` feature.
 pub struct Scalar(Buffer<MAX_SCALAR_LEN>);
 
 impl AsRef<[u8]> for Scalar {
@@ -347,7 +347,7 @@ fn x25519_public_key(bytes: &[u8]) -> Result<PublicKey, Error> {
 /// `OCTET STRING` of the key's 32 bytes, checking a v2 key's public key.
 fn x25519_from_pkcs8(der: &[u8]) -> Result<x25519::PrivateKey, Error> {
     let _entry = low::Entry::new_secret();
-    let p8 = pkcs8::Key::decode(der, &asn1::oid::id_X25519, None)?;
+    let p8 = pkcs8::Key::decode(der, &[&asn1::oid::id_X25519], None)?;
     let key = asn1::OctetString::from_bytes(p8.private_key())
         .map_err(|e| Error::from(KeyFormatError::Asn1(e)))
         .and_then(|key| x25519::PrivateKey::from_bytes(key.as_octets()))?;
@@ -537,7 +537,7 @@ impl fmt::Debug for PublicKey {
     }
 }
 
-/// The secret both parties agree on, wiped on drop.
+/// The secret both parties agree on, wiped on drop under the `wipe` feature.
 pub struct SharedSecret(Secret);
 
 // As `Private`: all-bits-zero is a valid `X25519` secret.

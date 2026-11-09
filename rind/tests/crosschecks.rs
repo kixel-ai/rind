@@ -20,6 +20,58 @@ fn ed25519_key_generation() {
     }
 }
 
+/// aws-lc's hash of a message: through aws-lc-rs, or aws-lc-sys's EVP
+/// interface for MD5, which aws-lc-rs does not export.
+enum Theirs {
+    AwsLcRs(&'static digest::Algorithm),
+    Md5,
+}
+
+impl Theirs {
+    fn digest(&self, message: &[u8]) -> Vec<u8> {
+        match self {
+            Self::AwsLcRs(algorithm) => digest::digest(algorithm, message).as_ref().to_vec(),
+            Self::Md5 => {
+                let mut out = [0u8; 16];
+                // SAFETY: `message` is readable for its length, and `out` is
+                // writable for MD5's 16-byte digest.
+                let ok = unsafe {
+                    aws_lc_sys::EVP_Digest(
+                        message.as_ptr().cast(),
+                        message.len(),
+                        out.as_mut_ptr(),
+                        core::ptr::null_mut(),
+                        aws_lc_sys::EVP_md5(),
+                        core::ptr::null_mut(),
+                    )
+                };
+                assert_eq!(ok, 1);
+                out.to_vec()
+            }
+        }
+    }
+}
+
+/// Each hash rind offers, with aws-lc's and its block size.
+fn hashes() -> [(&'static rind::digest::Algorithm, Theirs, usize); 9] {
+    use Theirs::*;
+    [
+        (&rind::digest::legacy::MD5, Md5, 64),
+        (
+            &rind::digest::legacy::SHA1,
+            AwsLcRs(&digest::SHA1_FOR_LEGACY_USE_ONLY),
+            64,
+        ),
+        (&rind::digest::SHA256, AwsLcRs(&digest::SHA256), 64),
+        (&rind::digest::SHA384, AwsLcRs(&digest::SHA384), 128),
+        (&rind::digest::SHA512, AwsLcRs(&digest::SHA512), 128),
+        (&rind::digest::SHA512_256, AwsLcRs(&digest::SHA512_256), 128),
+        (&rind::digest::SHA3_256, AwsLcRs(&digest::SHA3_256), 136),
+        (&rind::digest::SHA3_384, AwsLcRs(&digest::SHA3_384), 104),
+        (&rind::digest::SHA3_512, AwsLcRs(&digest::SHA3_512), 72),
+    ]
+}
+
 // Every length to three of SHA-2's larger blocks, so each tail lands on both
 // sides of the length field for both block sizes, and SHA-3's padding lands
 // in one byte, two, or a block of its own. One-shot, and in updates that end
@@ -27,35 +79,18 @@ fn ed25519_key_generation() {
 #[test]
 fn hashes_every_length() {
     let message: Vec<u8> = (0..3 * 128 + 1).map(|i| (i * 7 + 3) as u8).collect();
-    for (ours, theirs, block) in [
-        (
-            &rind::digest::legacy::SHA1,
-            &digest::SHA1_FOR_LEGACY_USE_ONLY,
-            64,
-        ),
-        (&rind::digest::SHA256, &digest::SHA256, 64),
-        (&rind::digest::SHA384, &digest::SHA384, 128),
-        (&rind::digest::SHA512, &digest::SHA512, 128),
-        (&rind::digest::SHA512_256, &digest::SHA512_256, 128),
-        (&rind::digest::SHA3_256, &digest::SHA3_256, 136),
-        (&rind::digest::SHA3_384, &digest::SHA3_384, 104),
-        (&rind::digest::SHA3_512, &digest::SHA3_512, 72),
-    ] {
+    for (ours, theirs, block) in hashes() {
         for len in 0..=message.len() {
             let message = &message[..len];
-            let wanted = digest::digest(theirs, message);
+            let wanted = theirs.digest(message);
             let got = rind::digest::digest(ours, message);
-            assert_eq!(got.as_ref(), wanted.as_ref(), "{ours:?} one-shot {len}");
+            assert_eq!(got.as_ref(), wanted, "{ours:?} one-shot {len}");
 
             let mut ctx = rind::digest::Context::new(ours);
             for part in message.chunks(block) {
                 ctx.update(part);
             }
-            assert_eq!(
-                ctx.finish().as_ref(),
-                wanted.as_ref(),
-                "{ours:?} blockwise {len}"
-            );
+            assert_eq!(ctx.finish().as_ref(), wanted, "{ours:?} blockwise {len}");
         }
     }
 }
@@ -70,24 +105,15 @@ proptest! {
         // that fills a block exactly, or spans several, after a partial one.
         let mut splits: Vec<_> = splits.iter().map(|s| s.index(message.len() + 1)).collect();
         splits.sort();
-        for (ours, theirs) in [
-            (&rind::digest::legacy::SHA1, &digest::SHA1_FOR_LEGACY_USE_ONLY),
-            (&rind::digest::SHA256, &digest::SHA256),
-            (&rind::digest::SHA384, &digest::SHA384),
-            (&rind::digest::SHA512, &digest::SHA512),
-            (&rind::digest::SHA512_256, &digest::SHA512_256),
-            (&rind::digest::SHA3_256, &digest::SHA3_256),
-            (&rind::digest::SHA3_384, &digest::SHA3_384),
-            (&rind::digest::SHA3_512, &digest::SHA3_512),
-        ] {
+        for (ours, theirs, _) in hashes() {
             let mut ctx = rind::digest::Context::new(ours);
             let mut start = 0;
             for &end in splits.iter().chain([&message.len()]) {
                 ctx.update(&message[start..end]);
                 start = end;
             }
-            let (got, wanted) = (ctx.finish(), digest::digest(theirs, &message));
-            prop_assert_eq!(got.as_ref(), wanted.as_ref());
+            let got = ctx.finish();
+            prop_assert_eq!(got.as_ref(), theirs.digest(&message));
         }
     }
 
@@ -145,30 +171,32 @@ proptest! {
 mod cipher {
     use aws_lc_rs::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, Nonce, UnboundKey, quic};
     use aws_lc_rs::cipher::{
-        AES_128, AES_256, DecryptingKey, DecryptionContext, EncryptingKey, EncryptionContext,
-        PaddedBlockDecryptingKey, PaddedBlockEncryptingKey, UnboundCipherKey,
+        AES_128, AES_192, AES_256, DecryptingKey, DecryptionContext, EncryptingKey,
+        EncryptionContext, PaddedBlockDecryptingKey, PaddedBlockEncryptingKey, UnboundCipherKey,
     };
     use proptest::prelude::*;
     use rind::Error;
     use rind::cipher::{self, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, ChaCha20};
 
     fn aes_key() -> impl Strategy<Value = Vec<u8>> {
-        prop_oneof![
-            prop::collection::vec(any::<u8>(), 16),
-            prop::collection::vec(any::<u8>(), 32)
-        ]
+        prop::sample::select(&[16, 24, 32][..])
+            .prop_flat_map(|len| prop::collection::vec(any::<u8>(), len))
     }
 
     fn rind_aes_algorithm(key: &[u8]) -> &'static cipher::Algorithm {
-        if key.len() == 16 {
-            &cipher::AES_128
-        } else {
-            &cipher::AES_256
+        match key.len() {
+            16 => &cipher::AES_128,
+            24 => &cipher::AES_192,
+            _ => &cipher::AES_256,
         }
     }
 
     fn aws_aes_key(key: &[u8]) -> UnboundCipherKey {
-        let alg = if key.len() == 16 { &AES_128 } else { &AES_256 };
+        let alg = match key.len() {
+            16 => &AES_128,
+            24 => &AES_192,
+            _ => &AES_256,
+        };
         UnboundCipherKey::new(alg, key).unwrap()
     }
 
@@ -381,21 +409,118 @@ mod cipher {
 }
 
 mod key_wrap {
-    use aws_lc_rs::key_wrap::{AES_128, AES_256, AesKek, KeyWrap};
     use proptest::prelude::*;
     use rind::Error;
     use rind::key_wrap as ours;
 
     fn kek() -> impl Strategy<Value = Vec<u8>> {
-        prop_oneof![
-            prop::collection::vec(any::<u8>(), 16),
-            prop::collection::vec(any::<u8>(), 32)
-        ]
+        prop::sample::select(&[16, 24, 32][..])
+            .prop_flat_map(|len| prop::collection::vec(any::<u8>(), len))
     }
 
-    // aws-lc-rs's wrapping consumes its key, so each call takes a new one.
-    fn theirs(kek: &[u8]) -> AesKek {
-        AesKek::new(if kek.len() == 16 { &AES_128 } else { &AES_256 }, kek).unwrap()
+    /// aws-lc's RFC 3394 and RFC 5649 key wrap, through aws-lc-sys, since
+    /// aws-lc-rs offers no AES-192 KEK.
+    struct Theirs(aws_lc_sys::AES_KEY, aws_lc_sys::AES_KEY);
+
+    fn theirs(kek: &[u8]) -> Theirs {
+        let bits = 8 * kek.len() as u32;
+        // SAFETY: `kek` is `bits / 8` readable bytes, and each key a
+        // writable `AES_KEY`.
+        unsafe {
+            let mut keys: Theirs = core::mem::zeroed();
+            assert_eq!(
+                aws_lc_sys::AES_set_encrypt_key(kek.as_ptr(), bits, &mut keys.0),
+                0
+            );
+            assert_eq!(
+                aws_lc_sys::AES_set_decrypt_key(kek.as_ptr(), bits, &mut keys.1),
+                0
+            );
+            keys
+        }
+    }
+
+    impl Theirs {
+        fn wrap(&self, key: &[u8], out: &mut [u8]) -> Result<(), ()> {
+            assert_eq!(out.len(), key.len() + 8);
+            // SAFETY: `out` is 8 bytes longer than `key`, as the routine
+            // writes, and a null IV is RFC 3394's default.
+            let n = unsafe {
+                aws_lc_sys::AES_wrap_key(
+                    &self.0,
+                    core::ptr::null(),
+                    out.as_mut_ptr(),
+                    key.as_ptr(),
+                    key.len(),
+                )
+            };
+            if n == out.len() as i32 {
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+
+        fn unwrap(&self, wrapped: &[u8], out: &mut [u8]) -> Result<(), ()> {
+            assert_eq!(out.len() + 8, wrapped.len());
+            // SAFETY: `out` is 8 bytes shorter than `wrapped`, as the routine
+            // writes, and a null IV is RFC 3394's default.
+            let n = unsafe {
+                aws_lc_sys::AES_unwrap_key(
+                    &self.1,
+                    core::ptr::null(),
+                    out.as_mut_ptr(),
+                    wrapped.as_ptr(),
+                    wrapped.len(),
+                )
+            };
+            if n == out.len() as i32 {
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+
+        /// RFC 5649's padded wrap of `key` into `out`, returning the part
+        /// written.
+        fn wrap_with_padding<'a>(&self, key: &[u8], out: &'a mut [u8]) -> Result<&'a mut [u8], ()> {
+            let mut n = 0;
+            // SAFETY: `out` is `out.len()` writable bytes, the most the
+            // routine writes.
+            let ok = unsafe {
+                aws_lc_sys::AES_wrap_key_padded(
+                    &self.0,
+                    out.as_mut_ptr(),
+                    &mut n,
+                    out.len(),
+                    key.as_ptr(),
+                    key.len(),
+                )
+            };
+            if ok == 1 { Ok(&mut out[..n]) } else { Err(()) }
+        }
+
+        /// RFC 5649's padded unwrap of `wrapped` into `out`, returning the
+        /// key.
+        fn unwrap_with_padding<'a>(
+            &self,
+            wrapped: &[u8],
+            out: &'a mut [u8],
+        ) -> Result<&'a mut [u8], ()> {
+            let mut n = 0;
+            // SAFETY: as in `wrap_with_padding`.
+            let ok = unsafe {
+                aws_lc_sys::AES_unwrap_key_padded(
+                    &self.1,
+                    out.as_mut_ptr(),
+                    &mut n,
+                    out.len(),
+                    wrapped.as_ptr(),
+                    wrapped.len(),
+                )
+            };
+            if ok == 1 { Ok(&mut out[..n]) } else { Err(()) }
+        }
     }
 
     proptest! {
@@ -405,7 +530,11 @@ mod key_wrap {
             key in (2..=12usize).prop_flat_map(|n| prop::collection::vec(any::<u8>(), 8 * n)),
             flip in any::<prop::sample::Index>(),
         ) {
-            let algorithm = if kek.len() == 16 { &ours::AES_128 } else { &ours::AES_256 };
+            let algorithm = match kek.len() {
+                16 => &ours::AES_128,
+                24 => &ours::AES_192,
+                _ => &ours::AES_256,
+            };
             let ours = ours::AesKek::new(algorithm, &kek).unwrap();
 
             let mut wrapped = vec![0u8; key.len() + 8];
@@ -423,6 +552,35 @@ mod key_wrap {
             wrapped[bit / 8] ^= 1 << (bit % 8);
             prop_assert_eq!(ours.unwrap(&wrapped, &mut unwrapped), Err(Error::DecryptFailed));
             prop_assert!(theirs(&kek).unwrap(&wrapped, &mut vec![0u8; key.len()]).is_err());
+        }
+
+        #[test]
+        fn wrap_and_unwrap_padded(
+            kek in kek(),
+            key in prop::collection::vec(any::<u8>(), 1..100),
+            flip in any::<prop::sample::Index>(),
+        ) {
+            let algorithm = match kek.len() {
+                16 => &ours::AES_128,
+                24 => &ours::AES_192,
+                _ => &ours::AES_256,
+            };
+            let ours = ours::AesKek::new(algorithm, &kek).unwrap();
+
+            let mut wrapped = vec![0u8; key.len().next_multiple_of(8) + 8];
+            ours.wrap_padded(&key, &mut wrapped).unwrap();
+            let mut wanted = vec![0u8; key.len() + 15];
+            let wanted = theirs(&kek).wrap_with_padding(&key, &mut wanted).unwrap();
+            prop_assert_eq!(&wrapped[..], &wanted[..]);
+
+            let mut unwrapped = vec![0u8; wrapped.len() - 8];
+            prop_assert_eq!(&ours.unwrap_padded(&wrapped, &mut unwrapped).unwrap()[..], &key[..]);
+
+            // both refuse any single bit flipped
+            let bit = flip.index(wrapped.len() * 8);
+            wrapped[bit / 8] ^= 1 << (bit % 8);
+            prop_assert_eq!(ours.unwrap_padded(&wrapped, &mut unwrapped), Err(Error::DecryptFailed));
+            prop_assert!(theirs(&kek).unwrap_with_padding(&wrapped, &mut vec![0u8; wrapped.len()]).is_err());
         }
     }
 }
@@ -602,9 +760,10 @@ mod aead {
     use proptest::sample::Index;
     use rind::Error;
     use rind::aead::{
-        AES_128_GCM, AES_256_GCM, Algorithm, CHACHA20_POLY1305, Key, Nonce, RandomizedNonceKey, gcm,
+        AES_128_GCM, AES_192_GCM, AES_256_GCM, Algorithm, CHACHA20_POLY1305, Key, Nonce,
+        RandomizedNonceKey, gcm,
     };
-    use rind::cipher::{AES_128, AES_256};
+    use rind::cipher::{AES_128, AES_192, AES_256};
 
     const TAG_LENGTHS: [gcm::TagLength; 7] = [
         gcm::TagLength::Full,
@@ -669,6 +828,7 @@ mod aead {
         let msg: Vec<u8> = (0..2048 + 256 + 15).map(|i| (i * 7 + 3) as u8).collect();
         for (ours, theirs, key) in [
             (&AES_128_GCM, &theirs::AES_128_GCM, &[1u8; 16][..]),
+            (&AES_192_GCM, &theirs::AES_192_GCM, &[4u8; 24][..]),
             (&AES_256_GCM, &theirs::AES_256_GCM, &[2u8; 32][..]),
         ] {
             for len in 0..=32 * 16 + 15 {
@@ -685,16 +845,16 @@ mod aead {
     proptest! {
         #[test]
         fn aes_gcm(
-            key in prop_oneof![vec(any::<u8>(), 16), vec(any::<u8>(), 32)],
+            key in prop_oneof![vec(any::<u8>(), 16), vec(any::<u8>(), 24), vec(any::<u8>(), 32)],
             nonce in any::<[u8; 12]>(),
             aad in vec(any::<u8>(), 0..100),
             msg in vec(any::<u8>(), 0..1100),
             flip in any::<Option<Index>>(),
         ) {
-            let (ours, theirs) = if key.len() == 16 {
-                (&AES_128_GCM, &theirs::AES_128_GCM)
-            } else {
-                (&AES_256_GCM, &theirs::AES_256_GCM)
+            let (ours, theirs) = match key.len() {
+                16 => (&AES_128_GCM, &theirs::AES_128_GCM),
+                24 => (&AES_192_GCM, &theirs::AES_192_GCM),
+                _ => (&AES_256_GCM, &theirs::AES_256_GCM),
             };
             check(ours, theirs, &key, nonce, &aad, &msg, flip)?;
         }
@@ -715,14 +875,18 @@ mod aead {
         // length, then opens that, as `check` does.
         #[test]
         fn aes_gcm_any_iv(
-            key in prop_oneof![vec(any::<u8>(), 16), vec(any::<u8>(), 32)],
+            key in prop_oneof![vec(any::<u8>(), 16), vec(any::<u8>(), 24), vec(any::<u8>(), 32)],
             iv in prop_oneof![vec(any::<u8>(), 12), vec(any::<u8>(), 1..80)],
             tag_len in proptest::sample::select(&TAG_LENGTHS[..]),
             aad in vec(any::<u8>(), 0..100),
             msg in vec(any::<u8>(), 0..1100),
             flip in any::<Option<Index>>(),
         ) {
-            let aes = if key.len() == 16 { &AES_128 } else { &AES_256 };
+            let aes = match key.len() {
+                16 => &AES_128,
+                24 => &AES_192,
+                _ => &AES_256,
+            };
             let ours = gcm::Key::new(aes, &key, tag_len).unwrap();
             let mut ours_sealed = msg.clone();
             ours.seal_in_place_append_tag(gcm::Iv::assume_unique_for_key(&iv).unwrap(), &aad, &mut ours_sealed).unwrap();
@@ -737,6 +901,7 @@ mod aead {
             let sealed = unsafe {
                 let aead = match key.len() {
                     16 => aws_lc_sys::EVP_aead_aes_128_gcm(),
+                    24 => aws_lc_sys::EVP_aead_aes_192_gcm(),
                     _ => aws_lc_sys::EVP_aead_aes_256_gcm(),
                 };
                 let ctx = aws_lc_sys::EVP_AEAD_CTX_new(aead, key.as_ptr(), key.len(), tag.len());
@@ -1516,6 +1681,8 @@ mod rsa {
                         prop_assert_eq!(ours_signature, &theirs_signature[..]);
                     }
                     let verifier = rind::signature::PublicKey::new(scheme.ours_verify, public).unwrap();
+                    let verifier_spki = verifier.to_spki();
+                    prop_assert_eq!(verifier_spki.as_ref(), spki.as_ref());
                     verifier.verify(&message, &theirs_signature).unwrap();
                     prop_assert_eq!(
                         verifier.verify(&[&message[..], b"!"].concat(), &theirs_signature),
@@ -1695,7 +1862,10 @@ mod rsa {
             "rsa_pkcs1_1024_sig_gen_test.json",
             "rsa_pkcs1_2048_sig_gen_test.json",
         ] {
-            let path = format!("../thirdparty/wycheproof/testvectors_v1/{file}");
+            let path = format!(
+                "{}/../thirdparty/wycheproof/testvectors_v1/{file}",
+                env!("CARGO_MANIFEST_DIR")
+            );
             let tests: serde_json::Value =
                 serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
             for group in tests["testGroups"].as_array().unwrap() {
@@ -1798,6 +1968,20 @@ mod rsa {
         use super::THEIRS;
         use crate::der;
 
+        /// The object identifiers of `rsaEncryption`, `id-RSAES-OAEP`, and
+        /// X.509's `id-ea-rsa`, all for the same key, and of RSASSA-PSS, which
+        /// restricts it.
+        const RSA_ENCRYPTION: [u8; 11] = [
+            0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+        ];
+        const RSAES_OAEP: [u8; 11] = [
+            0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x07,
+        ];
+        const EA_RSA: [u8; 6] = [0x06, 0x04, 0x55, 0x08, 0x01, 0x01];
+        const RSASSA_PSS: [u8; 11] = [
+            0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a,
+        ];
+
         const ALGORITHMS: [(&ours::OaepAlgorithm, &OaepAlgorithm); 4] = [
             (&ours::legacy::OAEP_SHA1, &OAEP_SHA1_MGF1SHA1),
             (&ours::OAEP_SHA256, &OAEP_SHA256_MGF1SHA256),
@@ -1863,8 +2047,10 @@ mod rsa {
                     let ours_spki = ours.to_spki();
                     prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
                     let ours_public = EncryptingKey::new(ours_algorithm, spki.as_ref()).unwrap();
+                    let ours_public_spki = ours_public.to_spki();
+                    prop_assert_eq!(ours_public_spki.as_ref(), spki.as_ref());
                     let theirs_public = OaepPublicEncryptingKey::new(
-                        PublicEncryptingKey::from_der(ours_spki.as_ref()).unwrap(),
+                        PublicEncryptingKey::from_der(ours_public_spki.as_ref()).unwrap(),
                     )
                     .unwrap();
 
@@ -1917,41 +2103,42 @@ mod rsa {
         fn spki_forms_agree() {
             let theirs = &THEIRS[0];
             let pkcs1 = theirs.public_key().as_ref();
-            let rsa_encryption = [
-                0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
-            ];
-            let rsassa_pss = [
-                0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a,
-            ];
+            let rsa_encryption = RSA_ENCRYPTION;
             let ec_public_key = [0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01];
-            let rsa_null = [&rsa_encryption[..], &[0x05, 0x00]].concat();
+            let null = |oid: &[u8]| [oid, &[0x05, 0x00]].concat();
+            let rsa_null = null(&rsa_encryption);
             let spki = |algorithm: &[u8], bits: &[u8]| {
                 der(0x30, &[der(0x30, algorithm), der(0x03, bits)].concat())
             };
             let key = [&[0][..], pkcs1].concat();
 
             // Each form, whether rind takes it, and whether aws-lc-rs does.
-            let cases: [(&str, Vec<u8>, bool, bool); 9] = [
+            let cases: [(&str, Vec<u8>, bool, bool); 14] = [
                 ("canonical", spki(&rsa_null, &key), true, true),
                 ("no parameters", spki(&rsa_encryption, &key), true, true),
+                ("id-RSAES-OAEP", spki(&null(&RSAES_OAEP), &key), true, true),
+                (
+                    "id-RSAES-OAEP, no parameters",
+                    spki(&RSAES_OAEP, &key),
+                    true,
+                    true,
+                ),
+                (
+                    "id-RSAES-OAEP, default RSAES-OAEP-params",
+                    spki(&[&RSAES_OAEP[..], &[0x30, 0x00]].concat(), &key),
+                    false,
+                    true,
+                ),
+                ("id-ea-rsa", spki(&null(&EA_RSA), &key), true, true),
+                ("id-ea-rsa, no parameters", spki(&EA_RSA, &key), true, true),
                 (
                     "empty-sequence parameters",
                     spki(&[&rsa_encryption[..], &[0x30, 0x00]].concat(), &key),
                     false,
                     true,
                 ),
-                (
-                    "RSASSA-PSS",
-                    spki(&[&rsassa_pss[..], &[0x05, 0x00]].concat(), &key),
-                    false,
-                    false,
-                ),
-                (
-                    "EC",
-                    spki(&[&ec_public_key[..], &[0x05, 0x00]].concat(), &key),
-                    false,
-                    false,
-                ),
+                ("RSASSA-PSS", spki(&null(&RSASSA_PSS), &key), false, false),
+                ("EC", spki(&null(&ec_public_key), &key), false, false),
                 (
                     "unused bits",
                     spki(&rsa_null, &[&[1][..], pkcs1].concat()),
@@ -2005,6 +2192,83 @@ mod rsa {
                 if let Ok(ours) = ours {
                     assert_eq!(ours.as_ref(), pkcs1, "{case}");
                     ours.verify(message, &signature).unwrap();
+                }
+                let ours = rind::signature::PublicKey::from_spki(&verify::RSA_PKCS1_SHA256, der);
+                assert_eq!(ours.is_ok(), *ours_take, "{case}: {ours:?}");
+            }
+        }
+
+        /// RSA PKCS#8 algorithm identifiers through `DecryptingKey` and
+        /// `RsaKeyPair`, each beside aws-lc-rs, which requires `NULL`
+        /// parameters for every RSA algorithm it takes.
+        #[test]
+        fn pkcs8_algorithms_agree() {
+            let theirs = &THEIRS[0];
+            let canonical = theirs.as_der().unwrap();
+            let canonical = canonical.as_ref();
+            let rsa_null = [
+                0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05,
+                0x00,
+            ];
+            let at = canonical
+                .windows(rsa_null.len())
+                .position(|w| w == rsa_null)
+                .unwrap();
+            let (version, private_key) = (&canonical[4..at], &canonical[at + rsa_null.len()..]);
+            let pkcs8 = |algorithm: &[u8]| {
+                der(
+                    0x30,
+                    &[version, &der(0x30, algorithm), private_key].concat(),
+                )
+            };
+            let null = |oid: &[u8]| [oid, &[0x05, 0x00]].concat();
+
+            // Each algorithm identifier, and whether both sides take it.
+            let cases: [(&str, Vec<u8>, bool); 9] = [
+                ("rsaEncryption", null(&RSA_ENCRYPTION), true),
+                (
+                    "rsaEncryption, no parameters",
+                    RSA_ENCRYPTION.to_vec(),
+                    false,
+                ),
+                ("id-RSAES-OAEP", null(&RSAES_OAEP), true),
+                ("id-RSAES-OAEP, no parameters", RSAES_OAEP.to_vec(), false),
+                (
+                    "id-RSAES-OAEP, default RSAES-OAEP-params",
+                    [&RSAES_OAEP[..], &[0x30, 0x00]].concat(),
+                    false,
+                ),
+                ("id-ea-rsa", null(&EA_RSA), true),
+                ("id-ea-rsa, no parameters", EA_RSA.to_vec(), false),
+                (
+                    "id-ea-rsa, KeySize",
+                    [&EA_RSA[..], &[0x02, 0x02, 0x08, 0x00]].concat(),
+                    false,
+                ),
+                ("RSASSA-PSS", null(&RSASSA_PSS), false),
+            ];
+            assert_eq!(pkcs8(&cases[0].1), canonical);
+
+            let public = theirs.public_key().as_ref();
+            for (case, algorithm, take) in &cases {
+                let der = pkcs8(algorithm);
+                let theirs = PrivateDecryptingKey::from_pkcs8(&der);
+                assert_eq!(theirs.is_ok(), *take, "{case}");
+                let theirs = aws_lc_rs::rsa::KeyPair::from_pkcs8(&der);
+                assert_eq!(theirs.is_ok(), *take, "{case}");
+
+                let ours = DecryptingKey::from_pkcs8(&ours::OAEP_SHA256, &der);
+                assert_eq!(ours.is_ok(), *take, "{case}: {ours:?}");
+                if let Ok(ours) = ours {
+                    assert_eq!(ours.public_key().as_ref(), public, "{case}");
+                    // It writes back as `rsaEncryption`, as aws-lc does.
+                    assert_eq!(ours.to_pkcs8().as_ref(), canonical, "{case}");
+                }
+                let ours = rind::signature::RsaKeyPair::from_pkcs8(&der);
+                assert_eq!(ours.is_ok(), *take, "{case}: {ours:?}");
+                if let Ok(ours) = ours {
+                    let ours = ours.public_key(&rind::signature::sign::RSA_PKCS1_SHA256);
+                    assert_eq!(ours.as_ref(), public, "{case}");
                 }
             }
         }

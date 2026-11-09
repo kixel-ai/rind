@@ -7,8 +7,9 @@ Usage:
   admin/bench-report render [--from DIR] [--check]
   admin/bench-report summary DIR
 
-`collect` copies one commit to each host in turn, builds rind-bench there with
-the pinned toolchain, and times every operation in OPERATIONS for every
+`collect` copies one commit to each host in turn, holds the host with
+`quest gate --host` and any lease it has, builds rind-bench there in the commit's Nix dev shell with
+its pinned toolchain, and times every operation in OPERATIONS for every
 library that offers it, then measures each library's build cost with
 admin/build-cost. It runs here for the host this is, and over ssh for the
 others. A host that is busy, unreachable, or fails is recorded and skipped,
@@ -16,8 +17,8 @@ never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
 `<host>.json` per host, with its CPU, OS, toolchain, and library versions.
 
 `nightly` saves the latest nightly `bench` run's results on main, with gh, as
-the report's CPU tiers. `render` writes BENCHMARKS.md, its SVGs, and the
-README's headline SVG from benchmarks/data, the verified code in
+the report's CPU tiers. `render` writes BENCHMARKS.md and its SVGs, among
+them the overview the README shows, from benchmarks/data, the verified code in
 benchmarks/verified.toml, and the decision on each gap in
 benchmarks/gaps.toml, first importing each measured host of a collection
 given by `--from`. It fails on a gap over 10% without a
@@ -32,11 +33,11 @@ written to DIR are measurements, not history: rerun `collect` to refresh them.
 """
 
 import argparse
+import ctypes
 import datetime
 import fnmatch
 import glob
 import json
-import math
 import os
 import platform
 import re
@@ -50,12 +51,33 @@ import time
 import tomllib
 
 # The report's hosts, in the order they run. `jobs` caps the build: nixos2 is
-# a shared 15 GB machine that more jobs run out of memory.
+# a shared 15 GB machine that more jobs run out of memory. `ssh` is the
+# destination where it isn't the name, and `note` describes the machine in the
+# report. Other work on a host with a `lease` holds that lock file with
+# flock(1) for its whole run, so collect holds it too, or skips the host as
+# busy, and leaves no copy, build, or download cache behind.
+VPS_NOTE = "OVH VPS in {}, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack."
 HOSTS = {
     "nixos": {"jobs": 16},
     "desktop": {"jobs": 12},
     "nixos2": {"jobs": 3},
-    "kixtop": {"jobs": 4},
+    "kixtop": {
+        "jobs": 4,
+        "note": "The maintainer's MacBook, in daily use. Its cores have DIT, which rind sets around each call "
+        "that handles a secret and the other libraries never set; Known gaps gives its cost.",
+    },
+    "ovh-iad": {
+        "jobs": 4,
+        "ssh": "root@vps-bcb7229a.vps.ovh.us",
+        "lease": "/run/lock/moq-perf.lock",
+        "note": VPS_NOTE.format("Virginia"),
+    },
+    "ovh-sea": {
+        "jobs": 4,
+        "ssh": "root@vps-39a0ff2a.vps.ovh.us",
+        "lease": "/run/lock/moq-perf.lock",
+        "note": VPS_NOTE.format("Oregon"),
+    },
 }
 
 # A host is busy when other work keeps more than this share of its logical
@@ -63,8 +85,8 @@ HOSTS = {
 # under a single-threaded benchmark.
 BUSY_SHARE = 0.1
 
-# Where each host keeps its copy, its build, and its result, under its home
-# directory; this host uses the checkout's `.tmp/` instead.
+# Where each host keeps each collection's copy and result, and the build they
+# share, under its home directory; this host uses the checkout's `.tmp/` instead.
 REMOTE_DIR = ".cache/rind-bench-report"
 
 # Criterion's timing, shortened from 3 s of warm-up and 5 s of measurement so
@@ -152,6 +174,7 @@ OPERATIONS = [op for _, ops in SECTIONS for op in ops]
 # the history of its older benchmarks.
 LIBRARIES = {
     "rind": "rind",
+    "rind-dit-held": "rind-dit-held",
     "aws-lc-rs": "aws-lc-rs",
     "ring": "ring",
     "rustcrypto": "rustcrypto",
@@ -162,6 +185,15 @@ LIBRARIES = {
     "libcrux": "libcrux",
     "libcrux-ml-kem": "libcrux",
     "openssl": "openssl",
+}
+
+# The CPU features by architecture, as rind-cpuid names them, without which a
+# library panics on first use rather than run a slower path.
+REQUIRED = {
+    "graviola": {
+        "x86_64": ["aes", "pclmulqdq", "bmi1", "adx", "avx", "avx2"],
+        "aarch64": ["neon", "aes", "pmull", "sha2"],
+    }
 }
 
 # The crates whose versions a result records, by library.
@@ -209,9 +241,14 @@ def fail(message):
     sys.exit(f"bench-report: {message}")
 
 
-def operation_regex():
-    """A criterion filter matching exactly the report's operations."""
-    ops = "|".join(re.escape(op).replace(re.escape("{lib}"), "[^/]+") for op in OPERATIONS)
+def operation_regex(refused=()):
+    """A criterion filter matching exactly the report's operations, without
+    the libraries in `refused`."""
+    lib = "[^/]+"
+    if refused:
+        # The regex crate has no lookahead, so name the rest.
+        lib = "(" + "|".join(re.escape(row) for row, name in LIBRARIES.items() if name not in refused) + ")"
+    ops = "|".join(re.escape(op).replace(re.escape("{lib}"), lib) for op in OPERATIONS)
     return f"^({ops})$"
 
 
@@ -245,26 +282,35 @@ def busy_limit():
 
 
 def cpu_times():
-    """The system's (busy, total) CPU time in clock ticks, on Linux."""
+    """The system's (busy, total) CPU time in clock ticks."""
+    if sys.platform == "darwin":
+        # host_statistics(HOST_CPU_LOAD_INFO): user, system, idle, nice.
+        libc = ctypes.CDLL(None)
+        libc.mach_host_self.restype = ctypes.c_uint32
+        ticks, count = (ctypes.c_uint32 * 4)(), ctypes.c_uint32(4)
+        if libc.host_statistics(libc.mach_host_self(), 3, ticks, ctypes.byref(count)) != 0:
+            fail("host_statistics failed")
+        user, system, idle, nice = ticks
+        return user + system + nice, user + system + idle + nice
+    # The first eight fields, since user and nice already count guest time.
     with open("/proc/stat") as f:
-        fields = [int(x) for x in f.readline().split()[1:]]
+        fields = [int(x) for x in f.readline().split()[1:9]]
     idle = fields[3] + fields[4]
     return sum(fields) - idle, sum(fields)
 
 
+def busy_cpus_since(start):
+    """How many logical CPUs were busy on average since `start`, a cpu_times()."""
+    # macOS's counters are 32 bits, so they wrap after weeks of uptime.
+    busy, total = ((now - then) % 2**32 for now, then in zip(cpu_times(), start))
+    return busy / max(1, total) * cpu_count()
+
+
 def busy_cpus(seconds=5):
     """How many logical CPUs other work keeps busy, averaged over `seconds`."""
-    if sys.platform == "linux":
-        busy0, total0 = cpu_times()
-        time.sleep(seconds)
-        busy1, total1 = cpu_times()
-        return (busy1 - busy0) / max(1, total1 - total0) * cpu_count()
-    # macOS: top's second sample covers the interval.
-    out = subprocess.run(
-        ["top", "-l", "2", "-n", "0", "-s", str(seconds)], capture_output=True, text=True, check=True
-    ).stdout
-    idle = re.findall(r"CPU usage:.*?([0-9.]+)% idle", out)[-1]
-    return (100 - float(idle)) / 100 * cpu_count()
+    start = cpu_times()
+    time.sleep(seconds)
+    return busy_cpus_since(start)
 
 
 def check_idle(when):
@@ -315,23 +361,13 @@ def locked_versions():
 
 def toolchain(env):
     """The cargo command for the pinned toolchain, refusing any other."""
-    pinned = pinned_toolchain()
-    if sys.platform == "darwin":
-        # No Nix here: rustup provides the same release.
-        cargo = ["rustup", "run", pinned, "cargo"]
-        rustc = ["rustup", "run", pinned, "rustc"]
-        prefix = output(["brew", "--prefix", "openssl@3"])
-        env["OPENSSL_DIR"] = prefix
-        openssl = os.path.join(prefix, "bin", "openssl")
-    else:
-        if os.environ.get("IN_RIND_DEV_SHELL") != "1":
-            fail("run inside the dev shell: nix develop --command admin/bench-report run ...")
-        cargo, rustc, openssl = ["cargo"], ["rustc"], "openssl"
-    version = output(rustc + ["-vV"], env)
+    if os.environ.get("IN_RIND_DEV_SHELL") != "1":
+        fail("run inside the dev shell: nix develop --command admin/bench-report run ...")
+    version = output(["rustc", "-vV"], env)
     release = re.search(r"^release: (.+)$", version, re.M).group(1)
-    if release != pinned:
-        fail(f"rustc {release} is not the pinned {pinned}")
-    return cargo, {"rustc": version.splitlines()[0], "cargo": output(cargo + ["-V"], env)}, openssl
+    if release != pinned_toolchain():
+        fail(f"rustc {release} is not the pinned {pinned_toolchain()}")
+    return ["cargo"], {"rustc": version.splitlines()[0], "cargo": output(["cargo", "-V"], env)}, "openssl"
 
 
 def run(args):
@@ -372,6 +408,13 @@ def run(args):
     subprocess.run(bench + ["--no-run"], env=env, check=True)
     # The CPU features rind reads, which pick its paths on this host.
     result["rind_cpu"] = json.loads(output(cargo + ["run", "-q", "--release", "-p", "rind-cpuid"], env))
+    # Each library this CPU lacks a required feature for, with the features.
+    cpuid = result["rind_cpu"]["cpuid"]
+    result["refused"] = {
+        lib: missing
+        for lib, features in REQUIRED.items()
+        if (missing := [f for f in features.get(host_arch(result), []) if not cpuid[f]])
+    }
 
     try:
         idle_before_run = check_idle("before the benchmarks")
@@ -381,26 +424,24 @@ def run(args):
 
     criterion_dir = os.path.join(env["CARGO_TARGET_DIR"], "criterion")
     shutil.rmtree(criterion_dir, ignore_errors=True)
-    criterion_args = CRITERION_ARGS + [operation_regex()]
+    criterion_args = CRITERION_ARGS + [operation_regex(result["refused"])]
     wall0 = time.monotonic()
-    ticks0 = cpu_times()[0] if sys.platform == "linux" else None
+    ticks0 = cpu_times()
     ours0 = resource.getrusage(resource.RUSAGE_CHILDREN)
     subprocess.run(bench + ["--"] + criterion_args, env=env, check=True)
     ours1 = resource.getrusage(resource.RUSAGE_CHILDREN)
     wall = time.monotonic() - wall0
 
+    # Other work during the run: the system's busy CPUs less the benchmarks'.
+    ours = (ours1.ru_utime + ours1.ru_stime) - (ours0.ru_utime + ours0.ru_stime)
+    other = round(max(0.0, busy_cpus_since(ticks0) - ours / wall), 2)
     load = {
         "limit_cpus": round(busy_limit(), 2),
         "busy_cpus_before_build": idle_before_build,
         "busy_cpus_before_run": idle_before_run,
+        "other_busy_cpus_during_run": other,
+        "noisy": other > busy_limit(),
     }
-    if ticks0 is not None:
-        # Other work during the run: the system's busy time less the
-        # benchmarks' own.
-        system = (cpu_times()[0] - ticks0) / os.sysconf("SC_CLK_TCK")
-        ours = (ours1.ru_utime + ours1.ru_stime) - (ours0.ru_utime + ours0.ru_stime)
-        load["other_busy_cpus_during_run"] = round(max(0.0, system - ours) / wall, 2)
-        load["noisy"] = load["other_busy_cpus_during_run"] > busy_limit()
 
     results = []
     for path in sorted(glob.glob(os.path.join(criterion_dir, "**", "new", "benchmark.json"), recursive=True)):
@@ -433,19 +474,19 @@ def run(args):
         criterion_args=criterion_args,
         load=load,
         results=results,
-        build_cost=build_cost(env, args.jobs),
+        build_cost=build_cost(env, args.jobs, result["refused"]),
     )
 
 
-def build_cost(env, jobs):
+def build_cost(env, jobs, refused):
     """admin/build-cost's measurements on this host, after the benchmarks so
-    that neither skews the other's times."""
+    that neither skews the other's times, without the builds of libraries in
+    `refused`, whose binaries it runs."""
     env = dict(env, CARGO_BUILD_JOBS=str(jobs))
-    if sys.platform == "darwin":
-        env["RUSTUP_TOOLCHAIN"] = pinned_toolchain()
     started = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    builds = [b for b in BUILDS if b not in refused] if refused else []
     proc = subprocess.run(
-        [sys.executable, os.path.join(ROOT, "admin", "build-cost")], env=env, capture_output=True, text=True
+        [sys.executable, os.path.join(ROOT, "admin", "build-cost"), *builds], env=env, capture_output=True, text=True
     )
     if proc.returncode != 0:
         lines = proc.stderr.strip().splitlines() or ["no output"]
@@ -461,11 +502,46 @@ def is_local(host):
     return host == socket.gethostname().split(".")[0]
 
 
+def ssh(host):
+    # ServerAlive ends a session whose link died, which would otherwise hang
+    # collect.
+    options = ["BatchMode=yes", "ConnectTimeout=10", "ServerAliveInterval=15", "ServerAliveCountMax=4"]
+    return ["ssh", *(arg for o in options for arg in ("-o", o)), HOSTS[host].get("ssh", host)]
+
+
 def on_host(host, script, **kwargs):
     """Runs a shell script on `host`, here or over ssh."""
     if is_local(host):
         return subprocess.run(["sh", "-c", script], **kwargs)
-    return subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, script], **kwargs)
+    return subprocess.run(ssh(host) + [script], **kwargs)
+
+
+# The host script's exit status when another run holds the host's lease, and
+# when it could not copy the commit.
+LEASE_HELD = 73
+COPY_FAILED = 74
+
+
+def host_script(host, work, cmd):
+    """The shell script that copies the commit from stdin into a directory of
+    its own under `work`, runs `cmd` there with its output on stderr, prints
+    the result, and removes the copy. On a leased host it holds the lease
+    throughout, and removes all of `work` before letting go."""
+    q = shlex.quote
+    w = q(work)
+    # `cmd` runs in a subshell, since `work` may be relative to the start.
+    script = (
+        f'mkdir -p {w} && src=$(mktemp -d {w}/src.XXXXXX) && tar -x -C "$src" || exit {COPY_FAILED}\n'
+        f'(cd "$src" && {cmd}) </dev/null >&2\n'
+        'cat "$src/result.json"; code=$?; rm -rf "$src"; exit $code\n'
+    )
+    if "lease" not in HOSTS[host]:
+        return script
+    # The script's processes inherit the descriptor holding the lock. Python
+    # closes it in its own children, but subprocess.run kills its child when
+    # Python fails, so no child outlives the lease.
+    lock = f"exec 9>{q(HOSTS[host]['lease'])} && {{ flock -n -E {LEASE_HELD} 9 || exit; }}\n"
+    return lock + f"trap 'rm -rf {w}' EXIT\n" + script
 
 
 def collect_host(host, commit, out_dir):
@@ -479,38 +555,48 @@ def collect_host(host, commit, out_dir):
             f.write("\n")
         print(f"bench-report: {host}: {status}: {reason}", file=sys.stderr)
 
-    probe = on_host(host, "uname -s", capture_output=True, text=True)
+    probe = on_host(host, "true", capture_output=True, text=True)
     if probe.returncode != 0:
         return record("unreachable", probe.stderr.strip())
-    darwin = probe.stdout.strip() == "Darwin"
 
-    # A fresh copy of the commit; the build directory stays between runs.
+    # Each collection extracts its own copy of the commit, so another on the
+    # same host cannot replace it mid-run; the build directory is shared.
     archive = subprocess.run(["git", "-C", ROOT, "archive", "--format=tar", commit], capture_output=True, check=True)
-    copy = on_host(
-        host,
-        f"rm -rf {q(work)}/src && mkdir -p {q(work)}/src && tar -x -C {q(work)}/src",
-        input=archive.stdout,
-    )
-    if copy.returncode != 0:
-        return record("failed", "could not copy the commit")
-
     cmd = (
-        f"python3 admin/bench-report run --host {q(host)} --commit {q(commit)} "
-        f"--jobs {HOSTS[host]['jobs']} --target-dir ../target --out ../result.json"
+        f'nix develop "path:$PWD" --command python3 admin/bench-report run '
+        f"--host {q(host)} --commit {q(commit)} --jobs {HOSTS[host]['jobs']} "
+        f"--target-dir ../target --out result.json"
     )
-    if not darwin:
-        cmd = f'nix develop "path:$PWD" --command {cmd}'
-    on_host(host, f"rm -f {q(work)}/result.json && cd {q(work)}/src && {cmd}")
-    fetched = on_host(host, f"cat {q(work)}/result.json", capture_output=True)
-    if fetched.returncode != 0:
+    # Holding the host keeps every other gated command, such as another
+    # collection's run, off it until the benchmarks and build costs finish.
+    # The gate is this checkout's quest, so a commit pinning an older one
+    # still runs, in its own dev shell.
+    with open(os.path.join(ROOT, "flake.lock")) as f:
+        quest = json.load(f)["nodes"]["quest"]["locked"]
+    cmd = f"nix shell github:{quest['owner']}/{quest['repo']}/{quest['rev']} --command quest gate --host {cmd}"
+    if "lease" in HOSTS[host]:
+        # Crate downloads too, so that removing the work directory leaves nothing.
+        cmd = f'CARGO_HOME="$PWD/../cargo" {cmd}'
+    # A macOS ssh session runs no login shell, which is what puts Nix on PATH.
+    cmd = f'export PATH="$PATH:/nix/var/nix/profiles/default/bin" && {cmd}'
+    ran = on_host(host, host_script(host, work, cmd), input=archive.stdout, stdout=subprocess.PIPE)
+    if ran.returncode == LEASE_HELD:
+        return record("busy", "another run holds its lease")
+    if ran.returncode == COPY_FAILED:
+        return record("failed", "could not copy the commit")
+    if ran.returncode != 0:
         return record("failed", "the run wrote no result; see its output above")
     with open(out, "wb") as f:
-        f.write(fetched.stdout)
-    status = json.loads(fetched.stdout)["status"]
+        f.write(ran.stdout)
+    status = json.loads(ran.stdout)["status"]
     print(f"bench-report: {host}: {status}", file=sys.stderr)
 
 
 def collect(args):
+    # A gate nested in a gated command runs at once, so this host's run would
+    # not hold the host.
+    if os.environ.get("QUEST_GATE_ADMITTED") == "1":
+        fail("run collect outside quest gate: it holds each host itself")
     commit = output(["git", "-C", ROOT, "rev-parse", f"{args.commit}^{{commit}}"])
     hosts = args.host or list(HOSTS)
     for host in hosts:
@@ -557,7 +643,7 @@ def summary(args):
         cells = []
         for h in measured:
             times = {r["library"]: r["ns"] for r in h["results"] if r["operation"] == op}
-            others = {lib: ns for lib, ns in times.items() if lib != "rind"}
+            others = {lib: ns for lib, ns in times.items() if lib != "rind" and lib not in VARIANTS}
             if "rind" not in times or not others:
                 cells.append("-")
                 continue
@@ -581,6 +667,7 @@ REPO = "moq-dev/rind"
 # The report's columns, in order, by library.
 COLUMNS = {
     "rind": "rind",
+    "rind-dit-held": "rind (DIT held)",
     "aws-lc-rs": "aws-lc-rs",
     "ring": "ring",
     "rustcrypto": "RustCrypto + dalek",
@@ -588,6 +675,18 @@ COLUMNS = {
     "libcrux": "libcrux",
     "openssl": "OpenSSL",
 }
+
+# Rows that time a library's own code another way, by that library. Each
+# shows beside the library, with its proofs, but never counts as the fastest
+# or as a rival in a gap. rind's DIT-held row is timed only on a CPU with DIT.
+VARIANTS = {"rind-dit-held": "rind"}
+
+
+def fastest(libs):
+    """The fastest library of an operation's times by library."""
+    rivals = {lib: ns for lib, ns in libs.items() if lib not in VARIANTS}
+    return min(rivals, key=rivals.get)
+
 
 # Each operation's label, by its row name without a message size.
 NAMES = {
@@ -651,24 +750,6 @@ BUILDS = {
     "rustls-ring": "rustls + ring",
 }
 
-# The README's headline: one row per job TLS 1.3 and QUIC do most, by row
-# name. The handshake runs both peers whole; then each AEAD at a QUIC
-# packet's size, the usual key agreement, and the server's signature with
-# the two most common certificate keys.
-HEADLINE = [
-    "rustls-full-handshake-group/x25519mlkem768",
-    "aes128-gcm/1350B",
-    "chacha20poly1305/1350B",
-    "x25519-ecdh",
-    "p256-ecdsa-sign",
-    "rsa2048-pss-sha256-sign",
-]
-
-# The headline's libraries, and its build row: a rustls client over each
-# one's provider.
-HEADLINE_LIBRARIES = ["rind", "aws-lc-rs", "ring"]
-HEADLINE_BUILDS = {"rind": "rustls-rind", "aws-lc-rs": "rustls-aws-lc-rs", "ring": "rustls-ring"}
-
 # The CPU features a ✓ may require, as rind-cpuid names them.
 CPU_FEATURES = {
     "x86_64": {
@@ -683,6 +764,7 @@ CPU_FEATURES = {
 # bench.yml's `native` matrix defines them.
 TIERS = [
     (("x86_64-unknown-linux-gnu", False, ""), "x86_64"),
+    (("x86_64-unknown-linux-gnu", True, "no-ifma"), "no IFMA"),
     (("x86_64-unknown-linux-gnu", True, "no-adx"), "no ADX"),
     (("x86_64-unknown-linux-gnu", True, ""), "no AVX2"),
     (("x86_64-unknown-linux-gnu", True, "no-avx"), "no AVX"),
@@ -691,6 +773,7 @@ TIERS = [
     (("aarch64-unknown-linux-gnu", False, ""), "aarch64"),
     (("aarch64-unknown-linux-gnu", True, ""), "no crypto"),
     (("armv7-unknown-linux-gnueabihf", False, ""), "armv7"),
+    (("x86_64-unknown-linux-gnu", True, "generic"), "portable"),
 ]
 
 # The libraries the nightly bench times rind against.
@@ -732,28 +815,24 @@ SPEED_LABELS = ["fastest, or within 10%", "to 1.25×", "to 1.5×", "to 2×", "to
 TIER_BINS = [0.8, 0.9, 0.98, 1.02, 1.1, 1.25]
 TIER_LABELS = ["under 0.8", "to 0.9", "to 0.98", "even", "to 1.1", "to 1.25", "over 1.25"]
 
-# Each theme's colors. Speed is one blue ramp, darkest for the fastest on
-# light and lightest on dark, so that the fastest stands out on either. The
-# tiers diverge from a neutral gray: blue where rind leads, red where it
-# trails. The headline's bars are blue for rind and gray for the rest.
+# Each theme's colors. Speed runs from green for the fastest through yellow
+# to red, the same on either theme. The tiers diverge from a neutral gray:
+# blue where rind leads, red where it trails.
+SPEED = ["#1a9641", "#74c476", "#c2e07c", "#f9d64a", "#f6a03c", "#e4572e", "#a50f15"]
 THEMES = {
     "light": {
         "ink": "#0b0b0b",
         "muted": "#52514e",
         "rule": "#c3c2b7",
-        "speed": ["#0d366b", "#184f95", "#256abf", "#3987e5", "#6da7ec", "#9ec5f4", "#cde2fb"],
+        "speed": SPEED,
         "tier": ["#184f95", "#3987e5", "#b7d3f6", "#f0efec", "#f6c4b5", "#e5735a", "#b3321f"],
-        "rind": "#2a78d6",
-        "other": "#8f8e86",
     },
     "dark": {
         "ink": "#f0efec",
         "muted": "#c3c2b7",
         "rule": "#383835",
-        "speed": ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#2a78d6", "#1c5cab", "#184f95"],
+        "speed": SPEED,
         "tier": ["#6da7ec", "#2a78d6", "#184f95", "#383835", "#8a2f1f", "#c4452c", "#ec7a63"],
-        "rind": "#3987e5",
-        "other": "#6b6a64",
     },
 }
 FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
@@ -866,6 +945,14 @@ def tier_column(tier):
     return column
 
 
+def tier_columns(tiers):
+    """The report's tier columns, in bench.yml's order. A tier added since the
+    saved run has no column yet, rather than an empty one, which the report
+    reads as code shared with the column to its left."""
+    present = {tier_column(t) for t in tiers["tiers"]}
+    return [name for _, name in TIERS if name in present]
+
+
 def tier_row(key):
     """The CPU-tier row a nightly benchmark belongs to, if it is ranked."""
     return next((name for name, pattern in TIER_ROWS if re.match(pattern, key)), None)
@@ -892,7 +979,7 @@ def gaps_of(hosts, tiers):
     out = {}
     for name, host in hosts.items():
         for row, libs in times(host).items():
-            others = {lib: ns for lib, ns in libs.items() if lib != "rind"}
+            others = {lib: ns for lib, ns in libs.items() if lib != "rind" and lib not in VARIANTS}
             if "rind" in libs and others:
                 best = min(others, key=others.get)
                 if libs["rind"] / others[best] > SLOWER:
@@ -1003,6 +1090,17 @@ class Svg:
         else:
             self.items.append(f"<rect {attrs}/>")
 
+    def verified(self, x, y, size, fill):
+        """The verified mark, a shield with a check, drawn over a square of
+        this fill. It lets the pointer through to the square's tooltip."""
+        ink = ink_on(fill)
+        self.items.append(
+            f'<g transform="translate({x:.1f} {y:.1f}) scale({size / 12:.3f})" pointer-events="none">'
+            f'<path d="M6 0.6 L10.8 2.4 V5.8 C10.8 8.7 8.8 10.8 6 11.6 C3.2 10.8 1.2 8.7 1.2 5.8 V2.4 Z" fill="{ink}"/>'
+            f'<path d="M3.7 6.1 L5.4 7.8 L8.4 4.5" fill="none" stroke="{fill}" stroke-width="1.6" '
+            'stroke-linecap="round" stroke-linejoin="round"/></g>'
+        )
+
     def line(self, x1, y1, x2, y2, color="rule"):
         self.items.append(
             f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{self.theme[color]}"/>'
@@ -1021,17 +1119,16 @@ class Svg:
         )
 
 
-def speed_legend(svg, x, y, extra=()):
-    """The speed bins' swatches in one row, then any (mark, meaning) pairs."""
+def speed_legend(svg, x, y):
+    """The speed bins' swatches in one row, then the verified mark."""
     for i, name in enumerate(SPEED_LABELS):
         svg.rect(x, y - 10, 12, 12, svg.theme["speed"][i])
         svg.text(x + 16, y, name, size=11, color="muted")
         x += 16 + text_width(name, 11) + 12
-    for mark, meaning in extra:
-        svg.text(x, y, mark, size=12, weight="bold")
-        svg.text(x + 14, y, meaning, size=11, color="muted")
-        x += 14 + text_width(meaning, 11) + 12
-    return x
+    svg.rect(x, y - 10, 12, 12, svg.theme["speed"][0])
+    svg.verified(x + 1, y - 9, 10, svg.theme["speed"][0])
+    svg.text(x + 16, y, "formally verified", size=11, color="muted")
+    return x + 16 + text_width("formally verified", 11) + 12
 
 
 SQUARE = 14
@@ -1053,9 +1150,8 @@ def columns(*hosts):
 
 
 def header_lines(name):
-    """A column header's lines, breaking a pair of libraries before its +."""
-    words = name.split(" + ")
-    return [words[0], "+ " + words[1]] if len(words) == 2 else [name]
+    """A column header's lines, breaking before a + or a parenthesis."""
+    return re.split(r" (?=[+(])", name)
 
 
 def header_width(names):
@@ -1071,9 +1167,21 @@ def column_headers(svg, x0, y, cell_width, names):
             svg.text(cx, y - 14 * (len(lines) - 1 - j), line, anchor="middle", weight="bold")
 
 
+def standing(hosts):
+    """How many of rind's times are the fastest, or within 10% of it, and how
+    many rind has, counting only operations another library also times."""
+    ratios = [
+        libs["rind"] / libs[fastest(libs)]
+        for h in hosts.values()
+        for libs in times(h).values()
+        if "rind" in libs and any(lib != "rind" and lib not in VARIANTS for lib in libs)
+    ]
+    return sum(r <= SLOWER for r in ratios), len(ratios)
+
+
 def overview_svg(hosts, verified, theme):
     """Operations by library, each cell a square per host, colored by its time
-    over the fastest library's on that host."""
+    over the fastest library's on that host, under how often rind leads."""
     svg = Svg(theme)
     shown = [name for name in HOSTS if name in hosts]
     libs_shown = columns(*hosts.values())
@@ -1081,11 +1189,15 @@ def overview_svg(hosts, verified, theme):
     squares = len(shown) * SQUARE + (len(shown) - 1) * GAP
     cell = max(squares + 18, header_width(names) + 12)
     label_width, top = grid_layout()
+    top += 28
     host_times = {name: times(h) for name, h in hosts.items()}
 
-    x = speed_legend(svg, 12, 18, [("✓", "verified code")])
+    lead, timed = standing(hosts)
+    headline = f"rind is the fastest, or within 10% of it, in {lead} of its {timed} times"
+    svg.text(12, 22, headline, size=18, weight="bold")
+    x = max(speed_legend(svg, 12, 46), 12 + text_width(headline, 18) + 12)
     width = max(x, label_width + cell * len(names) + 12)
-    svg.text(12, 38, "Each cell's squares, left to right: " + ", ".join(shown) + ".", size=11, color="muted")
+    svg.text(12, 66, "Each cell's squares, left to right: " + ", ".join(shown) + ".", size=11, color="muted")
     column_headers(svg, label_width, top, cell, names)
 
     y = top + 8
@@ -1103,15 +1215,15 @@ def overview_svg(hosts, verified, theme):
                     libs = host_times[name].get(row, {})
                     if lib not in libs:
                         continue
-                    ratio = libs[lib] / min(libs.values())
+                    ratio = libs[lib] / libs[fastest(libs)]
                     fill = svg.theme["speed"][bin_of(ratio, SPEED_BINS)]
-                    proof = proof_for(verified, lib, row, hosts[name])
+                    proof = proof_for(verified, VARIANTS.get(lib, lib), row, hosts[name])
                     title = f"{label(row)}, {COLUMNS[lib]} on {name}: {human(libs[lib])}, {ratio:.2f}× the fastest"
                     if proof:
                         title += f"; verified: {proof['proof']}"
                     svg.rect(sx, y + 3, SQUARE, SQUARE, fill, title)
                     if proof:
-                        svg.text(sx + SQUARE / 2, y + 14, "✓", size=10, anchor="middle", weight="bold", color=ink_on(fill))
+                        svg.verified(sx + 1.5, y + 4.5, SQUARE - 3, fill)
             y += ROW
     return svg.render(width, y + 12, "Time over the fastest library's, by operation, library, and host")
 
@@ -1124,7 +1236,7 @@ def host_svg(name, host, verified, theme):
     libs_shown = columns(host)
     label_width, top = grid_layout()
     width = label_width + cell * len(libs_shown) + 12
-    x = speed_legend(svg, 12, 18, [("✓", "verified code")])
+    x = speed_legend(svg, 12, 18)
     width = max(width, x)
     svg.text(12, 38, f"{name}: {host['cpu']['model']}", size=11, color="muted")
     column_headers(svg, label_width, top, cell, [COLUMNS[lib] for lib in libs_shown])
@@ -1143,15 +1255,18 @@ def host_svg(name, host, verified, theme):
                 x = label_width + c * cell + 2
                 if lib not in libs:
                     continue
-                ratio = libs[lib] / min(libs.values())
+                ratio = libs[lib] / libs[fastest(libs)]
                 fill = svg.theme["speed"][bin_of(ratio, SPEED_BINS)]
-                proof = proof_for(verified, lib, row, host)
+                proof = proof_for(verified, VARIANTS.get(lib, lib), row, host)
                 title = f"{label(row)}, {COLUMNS[lib]}: {human(libs[lib])}, {ratio:.2f}× the fastest"
                 if proof:
                     title += f"; verified: {proof['proof']}"
                 svg.rect(x, y + 1, cell - 4, ROW - 2, fill, title)
-                text = human(libs[lib]) + (" ✓" if proof else "")
-                svg.text(x + (cell - 4) / 2, y + 14, text, size=11, anchor="middle", color=ink_on(fill))
+                text = human(libs[lib])
+                mid = x + (cell - 4) / 2 - (7 if proof else 0)
+                svg.text(mid, y + 14, text, size=11, anchor="middle", color=ink_on(fill))
+                if proof:
+                    svg.verified(mid + text_width(text, 11) / 2 + 3, y + 4, 11, fill)
             y += ROW
     return svg.render(width, y + 12, f"Times on {name}, by operation and library")
 
@@ -1161,7 +1276,7 @@ def tiers_svg(tiers, theme):
     of each row where rind trails most."""
     svg = Svg(theme)
     cells = tier_cells(tiers)
-    columns = [name for _, name in TIERS]
+    columns = tier_columns(tiers)
     cell = 74
     label_width = max(text_width(name, 12) for name, _ in TIER_ROWS) + 16
     top = 52
@@ -1192,94 +1307,6 @@ def tiers_svg(tiers, theme):
 
 def and_list(words):
     return words[0] if len(words) == 1 else ", ".join(words[:-1]) + ("," if len(words) > 2 else "") + " and " + words[-1]
-
-
-def headline_rows(hosts):
-    """Each headline row's label, each library's (host, time over rind's,
-    time) on every host that timed both, and the build tools each needs."""
-    rows = []
-    for row in HEADLINE:
-        per = {}
-        for name in HOSTS:
-            libs = times(hosts[name]).get(row, {}) if name in hosts else {}
-            for lib in HEADLINE_LIBRARIES:
-                if "rind" in libs and lib in libs:
-                    per.setdefault(lib, []).append((name, libs[lib] / libs["rind"], human(libs[lib])))
-        rows.append((label(row), per, {}))
-    per, tools = {}, {}
-    for name in HOSTS:
-        cost = hosts.get(name, {}).get("build_cost") or {}
-        builds = {b["name"]: b for b in cost.get("builds", [])} if cost.get("status") == "ok" else {}
-        if HEADLINE_BUILDS["rind"] not in builds:
-            continue
-        rind = builds[HEADLINE_BUILDS["rind"]]["median_seconds"]
-        for lib, build in HEADLINE_BUILDS.items():
-            if build in builds:
-                seconds = builds[build]["median_seconds"]
-                per.setdefault(lib, []).append((name, seconds / rind, f"{seconds:.1f} s"))
-                tools[lib] = builds[build]["tools"]
-    rows.append(("cold build of a rustls client", per, tools))
-    return [r for r in rows if "rind" in r[1]]
-
-
-def headline_svg(hosts, theme):
-    """The README's headline: each library's time over rind's for the
-    HEADLINE operations and a rustls client's build, as the geometric mean
-    over the hosts with a whisker across them."""
-    svg = Svg(theme)
-    rows = headline_rows(hosts)
-    title = "Time over rind's for common TLS and QUIC operations and a rustls client's build"
-    if not rows:
-        svg.text(12, 18, "No host has timed the headline's operations yet.", color="muted")
-        return svg.render(320, 28, title)
-    timed = {host for _, per, _ in rows for found in per.values() for host, _, _ in found}
-    shown = [name for name in HOSTS if name in timed]
-    arches = sorted({host_arch(hosts[name]) for name in shown})
-    bar_row, bar, bars = 16, 12, 300
-    label_width = max(text_width(name, 12) for name, _, _ in rows) + 16
-    name_width = max(text_width(COLUMNS[lib], 11) for lib in HEADLINE_LIBRARIES) + 10
-    x0 = 12 + label_width + name_width
-    width = x0 + bars + 130
-    svg.text(12, 18, "Time over rind's: shorter is faster", size=13, weight="bold")
-    svg.text(
-        12,
-        36,
-        f"The geometric mean over {and_list(shown)} ({and_list(arches)}), with a whisker across them. "
-        "BENCHMARKS.md has every time.",
-        size=11,
-        color="muted",
-    )
-    y = 52
-    for name, per, tools in rows:
-        top = max(r for found in per.values() for _, r, _ in found)
-        svg.line(12, y, width - 12, y)
-        y += 8
-        svg.text(12, y + len(HEADLINE_LIBRARIES) * bar_row / 2 + 4, name)
-        for i, lib in enumerate(HEADLINE_LIBRARIES):
-            by = y + i * bar_row
-            svg.text(12 + label_width, by + 11, COLUMNS[lib], size=11, color="muted")
-            if lib not in per:
-                svg.text(x0, by + 11, "not offered", size=11, color="muted")
-                continue
-            ratios = [r for _, r, _ in per[lib]]
-            mean = math.exp(sum(math.log(r) for r in ratios) / len(ratios))
-            tip = f"{name}, {COLUMNS[lib]}: " + "; ".join(
-                f"{host} {value}, {r:.2f}× rind's" for host, r, value in per[lib]
-            )
-            fill = svg.theme["rind" if lib == "rind" else "other"]
-            svg.rect(x0, by + (bar_row - bar) / 2, bars * mean / top, bar, fill, tip)
-            lo, hi = x0 + bars * min(ratios) / top, x0 + bars * max(ratios) / top
-            if hi - lo >= 1:
-                mid = by + bar_row / 2
-                svg.line(lo, mid, hi, mid, color="ink")
-                svg.line(lo, mid - 3, lo, mid + 3, color="ink")
-                svg.line(hi, mid - 3, hi, mid + 3, color="ink")
-            text = "1×" if lib == "rind" else f"{mean:.2f}×"
-            if tools.get(lib):
-                text += ", needs " + ", ".join(tools[lib])
-            svg.text(max(hi, x0 + bars * mean / top) + 6, by + 12, text, size=11)
-        y += len(HEADLINE_LIBRARIES) * bar_row + 8
-    return svg.render(width, y + 4, title)
 
 
 # --- Markdown ---------------------------------------------------------------
@@ -1331,7 +1358,7 @@ def host_table(host, verified):
             if lib not in libs:
                 cells.append("-")
                 continue
-            check = " ✓" if proof_for(verified, lib, row, host) else ""
+            check = " ✓" if proof_for(verified, VARIANTS.get(lib, lib), row, host) else ""
             cells.append(f"{human(libs[lib])}{check}")
         lines.append(f"| {label(row)} | " + " | ".join(cells) + " |")
     return lines
@@ -1353,7 +1380,7 @@ def build_table(cost):
 
 
 def tier_table(tiers):
-    columns = [name for _, name in TIERS]
+    columns = tier_columns(tiers)
     by_key = {}
     for t in tiers["tiers"]:
         column = dict(TIERS)[(t["target"], t["portable"], t["tier"])]
@@ -1368,11 +1395,12 @@ def tier_table(tiers):
 
 
 def report(hosts, tiers, verified, gaps):
-    """BENCHMARKS.md, its SVGs, and the README's headline, by path."""
+    """BENCHMARKS.md and its SVGs, by path."""
     files = {}
     shown = [name for name in HOSTS if name in hosts]
     missing = [f"`{name}`" for name in HOSTS if name not in hosts]
-    count = ["no", "one", "two", "three", "four"][len(shown)] if len(shown) <= 4 else str(len(shown))
+    words = ["no", "one", "two", "three", "four", "five", "six"]
+    count = words[len(shown)] if len(shown) < len(words) else str(len(shown))
     md = [
         "# Benchmarks",
         "",
@@ -1394,7 +1422,7 @@ def report(hosts, tiers, verified, gaps):
     if missing:
         md += [f"Not measured yet: {', '.join(missing)}.", ""]
     md += [
-        "Each host builds with the pinned toolchain, in the Nix dev shell on Linux, and runs "
+        "Each host builds with the pinned toolchain in the Nix dev shell, and runs "
         "`admin/bench-report` only when idle. Times are criterion's estimates.",
         "",
     ]
@@ -1403,17 +1431,27 @@ def report(hosts, tiers, verified, gaps):
             "## Speed",
             "",
             "Each row is one operation and each column one library. Each cell holds a square per host, colored "
-            "by that library's time over the fastest library's on the same host, as the legend shows. A ✓ in a "
-            "square marks verified code. Each square's tooltip, in the SVG opened on its own, gives its time; "
+            "by that library's time over the fastest library's on the same host, as the legend shows. A shield in "
+            "a square marks verified code. Each square's tooltip, in the SVG opened on its own, gives its time; "
             "the tables below each host give them all. A library with no square doesn't offer the operation, or "
             "the host didn't time it, as its section says.",
             "",
+            *(
+                [
+                    "rind (DIT held) times rind with `rind::cpu::Dit::hold()` held across the timed loop, as a "
+                    "caller batching calls does, so that DIT is set once rather than around each call. Only an Apple "
+                    "CPU times it, since elsewhere it runs the same code as rind's own column, and it never "
+                    "counts as the fastest library.",
+                    "",
+                ]
+                if "rind-dit-held" in columns(*hosts.values())
+                else []
+            ),
             *picture("overview", "Time over the fastest library's, by operation, library, and host"),
             "",
         ]
         for theme, suffix in (("light", ""), ("dark", "-dark")):
             files[f"overview{suffix}.svg"] = overview_svg(hosts, verified, theme)
-            files[f"headline{suffix}.svg"] = headline_svg(hosts, theme)
     for name in HOSTS:
         if name not in hosts:
             continue
@@ -1424,7 +1462,14 @@ def report(hosts, tiers, verified, gaps):
             "",
             f"Measured {measured(h)}, on {h['os']} with {h['toolchain']['rustc']}.",
             "",
+            *([HOSTS[name]["note"], ""] if "note" in HOSTS[name] else []),
             *([f"Not timed on `{name}`: {', '.join(untimed)}.", ""] if untimed else []),
+            *(
+                f"{COLUMNS[lib]} isn't timed on `{name}`: it requires {and_list([f.upper() for f in missing])}, "
+                "which this CPU lacks."
+                for lib, missing in h.get("refused", {}).items()
+            ),
+            *([""] if h.get("refused") else []),
             *picture(name, f"Times on {name}"),
             "",
             "<details>",
@@ -1473,7 +1518,8 @@ def report(hosts, tiers, verified, gaps):
         cpus = sorted({t["cpu"] for t in tiers["tiers"]})
         md += [
             "GitHub's runners, timed by the nightly `bench` workflow with CPU features denied as `bench.yml` "
-            "describes: x86_64 runs every feature, and each column to its right denies more (no ADX: ADX; "
+            "describes: x86_64 runs every feature, and each column to its right denies more (no IFMA: AVX-512 "
+            "IFMA; no ADX: also ADX; "
             "no AVX2: also AVX2, BMI2, SHA-NI, AVX-512, VAES, and VPCLMULQDQ; no AVX: also AVX; no AES-NI: "
             "also AES-NI, PCLMULQDQ, and SSE4.1; SSE2: also SSSE3). aarch64 runs with the crypto extension, "
             "no crypto without it, and armv7 in 32-bit mode on the same core. Each cell is rind's time over "
@@ -1501,7 +1547,7 @@ def report(hosts, tiers, verified, gaps):
         "## Known gaps",
         "",
         "Each operation where another library is more than 10% faster than rind, on a host's native path or a "
-        "CPU tier, and what is decided: a [speed](quest/m2/speed/README.md) quest that closes it, or the reason "
+        "CPU tier, and what is decided: a quest that closes it, or the reason "
         "it stays. `benchmarks/gaps.toml` holds this table, and `admin/bench-report render` refuses a gap it "
         "lacks or an entry that is no longer a gap.",
         "",

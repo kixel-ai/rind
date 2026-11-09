@@ -90,6 +90,15 @@ opaque low.x86_64.vpaes_x86_64.VpaesKey.new
 opaque low.x86_64.vpaes_x86_64.VpaesKey.encrypt_block
   : low.x86_64.vpaes_x86_64.VpaesKey → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)
 
+/-! AES-192's key expansion and block cipher. Vale has no AES-192 routine, so
+no proof reaches them. -/
+
+opaque low.x86_64.aes.aes192_expand
+  : Std.Array Std.U8 24#usize → Result (Std.Array core.core_arch.x86.__m128i 13#usize)
+
+opaque low.x86_64.aes.aes_block {N : Std.Usize}
+  : Std.Array core.core_arch.x86.__m128i N → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)
+
 opaque low.x86_64.aes_nohw.NohwKey.new : Slice Std.U8 → Result low.x86_64.aes_nohw.NohwKey
 
 opaque low.x86_64.aes_nohw.NohwKey.encrypt_block
@@ -171,6 +180,11 @@ opaque low.x86_64.edwards25519_scalarmuldouble_alt.edwards25519_scalarmuldouble_
   Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
     Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
 
+opaque low.x86_64.edwards25519_scalarmuldouble_avx2.edwards25519_scalarmuldouble
+  :
+  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
+    Array Std.U64 4#usize → low.x86_64.cpu.HaveAvx2 → Result (Array Std.U64 8#usize)
+
 opaque low.x86_64.bignum_madd_n25519_alt.bignum_madd_n25519_alt
   :
   Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
@@ -207,6 +221,8 @@ opaque low.x86_64.sha512.path : Result low.x86_64.sha512.Path
 opaque low.x86_64.cpu.HaveBmi2Adx.check
   : Result (Option low.x86_64.cpu.HaveBmi2Adx)
 
+opaque low.x86_64.cpu.HaveAvx2.check : Result (Option low.x86_64.cpu.HaveAvx2)
+
 opaque low.x86_64.cpu.HaveAesHardware.check : Result (Option low.x86_64.cpu.HaveAesHardware)
 
 opaque low.x86_64.cpu.HaveAvxMovbeForAesGcm.check
@@ -220,9 +236,6 @@ opaque low.x86_64.cpu.HaveAvx512ForAesGcm.check
 
 opaque low.x86_64.cpu.HaveVaesAvx2ForAesGcm.avx_movbe
   : low.x86_64.cpu.HaveVaesAvx2ForAesGcm → Result low.x86_64.cpu.HaveAvxMovbeForAesGcm
-
-opaque low.x86_64.cpu.HaveAvx512ForAesGcm.avx_movbe
-  : low.x86_64.cpu.HaveAvx512ForAesGcm → Result low.x86_64.cpu.HaveAvxMovbeForAesGcm
 
 opaque low.x86_64.cpu.HaveSsse3.check : Result (Option low.x86_64.cpu.HaveSsse3)
 
@@ -309,8 +322,23 @@ opaque mid.p256.PublicKey.from_x962_uncompressed
 
 /-! AES, whose header protection no proof covers. -/
 
-opaque mid.aes.Aes.encrypt_block
-  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
+opaque mid.aes.Aes.header_protection_mask
+  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 5#usize)
+
+/-! MD5, which no proof covers. -/
+
+opaque mid.md5.Md5State.new : Result mid.md5.Md5State
+
+opaque mid.md5.Md5State.finish_with
+  : mid.md5.Md5State → Slice Std.U8 → Result (Array Std.U8 16#usize)
+
+opaque mid.md5.Md5Context.new : Result mid.md5.Md5Context
+
+opaque mid.md5.Md5Context.update : mid.md5.Md5Context → Slice Std.U8 → Result mid.md5.Md5Context
+
+opaque mid.md5.Md5Context.finish : mid.md5.Md5Context → Result (Array Std.U8 16#usize)
+
+opaque mid.md5.Md5Context.Insts.CoreCloneClone.clone : mid.md5.Md5Context → Result mid.md5.Md5Context
 
 /-! SHA-3, whose sponge no proof covers. -/
 

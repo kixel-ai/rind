@@ -13,9 +13,8 @@ Decided with the maintainer on 2026-11-04, in a planning interview. Settled;
 don't ask again (✅ is the chosen option):
 
 - Milestone: m2 ✅ / m3.
-- Targets: graviola-precedent features (llrt, rusty-s3), rind-str0m,
-  provider-neutral hooks (quinn, opendal, librespot), rustls's provider list
-  and 0.24, Bun, Python, and Dart ✅. Node, React Native, Go, Java, .NET,
+- Targets: rind-str0m, provider-neutral hooks (quinn, opendal), rustls's
+  provider list and 0.24, Bun, Python, and Dart ✅. Node, React Native, Go, Java, .NET,
   Swift, Zig, and C libraries are out: they need OpenSSL's breadth or FIPS,
   which [m4](/quest/m4/README.md) holds, and rind wins there only on
   asymmetric ECC.
@@ -26,13 +25,17 @@ don't ask again (✅ is the chosen option):
 - Big names on RustCrypto are marketing wins, since rind is several times
   faster ([BENCHMARKS.md](/BENCHMARKS.md)'s `nixos2`, an i7-8700: RSA-2048
   verify about 4.7x, P-256 sign and ECDH about 5x, ChaCha20-Poly1305 per
-  packet about 3x, AES-GCM about 2x): Deno,
-  Servo, Lemmy, tailscale-rs, snow's users, and Apache Iggy ✅. Deno is in
+  packet about 3x, AES-GCM about 2x): Deno and snow's users ✅. Deno is in
   for the marketing win though the maintainer considers it deprecated, and
   nothing is added to rind only for it. Considered and left out: RustFS
   (already links aws-lc-rs), YARA-X, age, Turso, rustic (needs a raw
-  Poly1305 API), Kanidm (forbids AI-written code), Arti (security bar), and
-  Bitwarden and Matrix (need wasm).
+  Poly1305 API), Kanidm and Servo (forbid AI-written contributions; Servo
+  dropped on 2026-11-07 in [#475](https://github.com/moq-dev/rind/pull/475)),
+  Arti (security bar), and Bitwarden and Matrix (need wasm).
+- Patches and issues to downstream projects: drop them and let projects pull
+  rind themselves ✅ (rejected: keep preparing them). The maintainer dropped
+  llrt, rusty-s3, librespot, Lemmy, tailscale-rs, and Apache Iggy on
+  2026-11-07; Bun, Deno, and rustls's provider list stay.
 - No rind-graviola ✅: build it only if big crates use graviola directly.
   None does; every notable graviola user (llrt, rusty-s3, wtx, oxish) picks it
   with an optional feature, and `[patch]` cannot swap in a crate of another
@@ -52,31 +55,27 @@ don't ask again (✅ is the chosen option):
   [#375](https://github.com/moq-dev/rind/pull/375), which has the sizes): it
   is already smaller than aws-lc-rs's provider.
 - Whatever these consumers need from rind itself is planned now: the
-  [WebCrypto set](/quest/m2/adoption/webcrypto/README.md), platform coverage,
-  and [RSA-2048 speed](/quest/m2/speed/x86-rsa2048-sign.md) in the speed epic.
+  WebCrypto set (AES-192, MD5, RSA-OAEP key labels and SPKI export, AES key
+  wrap with padding, all landed) and platform coverage. RSA-2048 signing, which JWT's RS256 needs, is level with the
+  fastest library on x86_64 in [BENCHMARKS.md](/BENCHMARKS.md).
 
 ## Required
 
 - [rustls lists rind-rustls](/quest/m2/adoption/rustls-providers.md) - an entry in rustls's third-party provider list
-- [rusty-s3 offers rind](/quest/m2/adoption/rusty-s3.md) - a `rind` feature beside its `graviola` one
-- [rind-str0m](/quest/m2/adoption/rind-str0m.md) - str0m's `CryptoProvider` on rind
+- [str0m and dimpl take rind-str0m's upstream fixes](/quest/m2/adoption/str0m-upstream.md) - draft PRs
 - [quinn's rustls support works with any provider](/quest/m2/adoption/quinn.md) - quinn-proto stops forcing ring or aws-lc-rs
 - [Bun's CryptoHasher takes SHA-3 from rind](/quest/m2/adoption/bun-sha3.md) - SHA-3 in Bun on rind, after the m1 Bun PR
 - [pyrind on PyPI](/quest/m2/adoption/pyrind.md) - rind for Python with its own API
-- [Lemmy's federation signs and verifies with rind](/quest/m2/adoption/lemmy.md) - activitypub-federation-rust's HTTP signatures off the `rsa` crate
 - [rind-snow](/quest/m2/adoption/rind-snow.md) - snow's `CryptoResolver` on rind, for rathole and other Noise users
-- [tailscale-rs's tunnel runs on rind](/quest/m2/adoption/tailscale-rs.md) - WireGuard's per-packet ChaCha20-Poly1305 on rind
-- [What WebCrypto adopters need](/quest/m2/adoption/webcrypto/README.md) - the AES modes, RSA-OAEP, and hashes llrt, pyca users, and Dart need
-- [llrt offers rind](/quest/m2/adoption/llrt.md) - `crypto-rind` and `tls-rind` features in AWS's Lambda runtime
+- [snow's write_message refuses a buffer without room for the static key's tag](/quest/m2/adoption/snow-write-message.md) - an upstream fix for rind-snow's one reachable panic
 - [Deno's WebCrypto and node:crypto run on rind](/quest/m2/adoption/deno.md) - Deno's RustCrypto paths moved to rind
-- [Servo's WebCrypto runs on rind](/quest/m2/adoption/servo.md) - Servo's RustCrypto WebCrypto moved to rind
 - [pyca-compatible pyrind](/quest/m2/adoption/pyrind-cryptography.md) - pyca's `hazmat` names on pyrind
 - [Talk to pyca about rind](/quest/m2/adoption/pyca.md) - a discussion with pyca/cryptography's maintainers
-- [rind builds and passes its tests on iOS and Android](/quest/m2/adoption/platforms-mobile.md) - CI tests the mobile targets the Dart package ships
 - [rind for Dart and Flutter](/quest/m2/adoption/rind-dart.md) - the `rind` package on pub.dev
+- [rind for Dart installs without a Rust toolchain](/quest/m2/adoption/rind-dart-prebuilt.md) - prebuilt, hash-pinned libraries fetched by the build hook
+- [rind for Dart is tested on Android and iOS](/quest/m2/adoption/rind-dart-mobile-tests.md) - the Dart tests on an emulator and simulator
 - [rind as a Dart `cryptography` backend](/quest/m2/adoption/rind-dart-cryptography.md) - the `cryptography` package's interface on rind
-- [Apache Iggy encrypts streams with rind](/quest/m2/adoption/iggy.md) - its AES-256-GCM message encryption on rind
-- [AES key wrap with padding](/quest/m2/adoption/aes-kwp.md) - RFC 5649, for pyca-compatible pyrind
-- [librespot builds rustls without ring](/quest/m2/adoption/librespot.md) - users pick their rustls provider
 - [rind-rustls supports rustls 0.24](/quest/m2/adoption/rind-rustls-0.24.md) - a release on 0.24 soon after it ships
 - [rustls 0.24 is released](/quest/m2/adoption/rustls-0.24-release.md) - waiting on the release
+- [rind replaces ring and aws-lc-rs throughout a binary's tree](/quest/m2/adoption/aws-lc-rs/README.md) - rind-aws-lc-rs, and git-only `ring` and `aws-lc-rs` patch shims
+- [rind on every ring or aws-lc-rs target](/quest/m2/adoption/targets/README.md) - a portable backend for every architecture except wasm, so libraries can go rind-only

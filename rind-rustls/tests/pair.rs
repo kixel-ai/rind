@@ -318,24 +318,28 @@ impl KeyType {
         }
     }
 
+    /// This key's file `name`, from any directory, as the iOS simulator runs
+    /// the tests.
+    fn file(self, name: &str) -> String {
+        let dir = env!("CARGO_MANIFEST_DIR");
+        format!("{dir}/tests/keys/{}/{name}", self.slug())
+    }
+
     fn cert_chain(self) -> Vec<CertificateDer<'static>> {
-        CertificateDer::pem_file_iter(format!("tests/keys/{}/end.fullchain", self.slug()))
+        CertificateDer::pem_file_iter(self.file("end.fullchain"))
             .unwrap()
             .collect::<Result<Vec<_>, _>>()
             .unwrap()
     }
 
     fn key(self) -> PrivateKeyDer<'static> {
-        PrivateKeyDer::from_pem_file(format!("tests/keys/{}/end.key", self.slug())).unwrap()
+        PrivateKeyDer::from_pem_file(self.file("end.key")).unwrap()
     }
 
     fn ca_certs(self) -> Arc<RootCertStore> {
         let mut roots = RootCertStore::empty();
         roots
-            .add(
-                CertificateDer::from_pem_file(format!("tests/keys/{}/ca.cert", self.slug()))
-                    .unwrap(),
-            )
+            .add(CertificateDer::from_pem_file(self.file("ca.cert")).unwrap())
             .unwrap();
         roots.into()
     }

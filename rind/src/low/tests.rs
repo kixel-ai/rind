@@ -17,41 +17,22 @@ fn bignum_mux() {
 }
 
 #[test]
-fn zeroise() {
+fn zero_bytes() {
     for n in 0..1024 {
         for offset in 0..4 {
-            zeroise_equiv(offset, n);
+            zero_bytes_equiv(offset, n);
         }
     }
 }
 
 // Zeroes `len` bytes from `offset` in, so the wide stores start unaligned too,
 // and checks the bytes either side are untouched.
-fn zeroise_equiv(offset: usize, len: usize) {
+fn zero_bytes_equiv(offset: usize, len: usize) {
     let mut expect = vec![0xffu8; offset + len + 1];
     expect[offset..offset + len].fill(0);
     let mut bytes = vec![0xffu8; offset + len + 1];
-    super::zeroise(&mut bytes[offset..offset + len]);
+    super::zero_bytes(bytes[offset..].as_mut_ptr(), len);
     assert_eq!(expect, bytes);
-}
-
-#[test]
-fn ct_equal() {
-    ct_equal_equiv(&[], &[]);
-
-    for n in 1..1024 {
-        let a = vec![0u8; n];
-
-        for i in 0..n {
-            let mut b = vec![0u8; n];
-            b[i] = i as u8;
-            ct_equal_equiv(&a, &b);
-        }
-    }
-}
-
-fn ct_equal_equiv(a: &[u8], b: &[u8]) {
-    assert_eq!(a == b, super::ct_equal(a, b));
 }
 
 // ld64 splits a Mach-O object into atoms at each CFI frame, and can

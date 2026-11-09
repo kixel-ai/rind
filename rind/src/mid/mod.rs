@@ -3,25 +3,26 @@
 
 #![deny(unsafe_code)]
 
-cfg_if::cfg_if! {
-    if #[cfg(target_arch = "arm")] {
-        // libcrux exposes whole operations rather than the field and bignum
-        // arithmetic these build on, so 32-bit ARM swaps them at this layer.
-        #[path = "arm/aes_gcm.rs"]
-        pub(super) mod aes_gcm;
-        #[path = "arm/ed25519.rs"]
-        pub(super) mod ed25519;
-    } else {
-        pub(super) mod aes_gcm;
-        pub(super) mod ed25519;
-    }
-}
+// libcrux exposes whole operations rather than the field and bignum
+// arithmetic these build on, so the portable backend, which armv7 builds on,
+// swaps them at this layer. The declarations stay visible to cargo-mutants.
+#[cfg_attr(
+    any(rind_backend = "arm", rind_backend = "portable"),
+    path = "portable/aes_gcm.rs"
+)]
+pub(super) mod aes_gcm;
+#[cfg_attr(
+    any(rind_backend = "arm", rind_backend = "portable"),
+    path = "portable/ed25519.rs"
+)]
+pub(super) mod ed25519;
 
 pub(super) mod aes;
 pub(super) mod aes_cbc;
 pub(super) mod aes_kw;
 pub(super) mod chacha20;
 pub(super) mod chacha20poly1305;
+pub(super) mod md5;
 pub(super) mod mlkem768;
 pub(super) mod p256;
 pub(super) mod p384;

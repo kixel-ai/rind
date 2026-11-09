@@ -69,9 +69,11 @@ fn bench(
                 b.iter(|| mac(key, input))
             });
         }
-        group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
-            b.iter(|| black_box(rind::hmac::sign(&rind::hmac::Key::new(ours, key), input)))
-        });
+        for (lib, _dit) in criterion::rind_rows() {
+            group.bench_with_input(BenchmarkId::new(lib, size_name), &input, |b, input| {
+                b.iter(|| black_box(rind::hmac::sign(&rind::hmac::Key::new(ours, key), input)))
+            });
+        }
 
         let ring_key = ring::hmac::Key::new(ring, key);
         group.bench_with_input(

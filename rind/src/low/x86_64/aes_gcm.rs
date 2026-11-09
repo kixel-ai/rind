@@ -43,8 +43,9 @@ pub(crate) fn open(
     ct_equal(&tagged::<false>(key, table, nonce, aad, cipher_inout), tag)
 }
 
-/// Vale's AES-GCM, where the CPU runs it, its proof covers the lengths, and
-/// it is the fastest path to encrypt (if `ENC`) or decrypt the message.
+/// Vale's AES-GCM, where the CPU runs it, it has a routine for the key size,
+/// its proof covers the lengths, and it is the fastest path to encrypt (if
+/// `ENC`) or decrypt the message.
 fn vale<'a, const ENC: bool>(
     key: &'a AesKey,
     table: &'a GhashTable,
@@ -52,23 +53,22 @@ fn vale<'a, const ENC: bool>(
     cipher_inout: &[u8],
 ) -> Option<(&'a HwKey, &'a AvxKernel)> {
     let len = cipher_inout.len();
-    if !(u32::try_from(aad.len()).is_ok() && u32::try_from(len).is_ok()) {
+    if !(u32::try_from(aad.len()).is_ok() && u32::try_from(len).is_ok())
+        || matches!(key, AesKey::Hw(HwKey::Aes192(_)))
+    {
         return None;
     }
-    let (vaes_avx2_below, avx512_below) = if ENC {
-        (VAES_AVX2_VALE_SEAL_BELOW, AVX512_VALE_SEAL_BELOW)
+    let (avx_from, vaes_avx2_below) = if ENC {
+        (AVX_VALE_SEAL_FROM, VAES_AVX2_VALE_SEAL_BELOW)
     } else {
-        (VAES_AVX2_VALE_OPEN_BELOW, AVX512_VALE_OPEN_BELOW)
+        (0, VAES_AVX2_VALE_OPEN_BELOW)
     };
     match (key, table) {
-        (AesKey::Hw(hw_key), GhashTable::Avx(_, kernel)) => Some((hw_key, kernel)),
-        (AesKey::Hw(hw_key), GhashTable::VaesAvx2(.., kernel)) if len < vaes_avx2_below => {
+        (AesKey::Hw(hw_key), GhashTable::Avx(_, kernel)) if len >= avx_from => {
             Some((hw_key, kernel))
         }
-        (AesKey::Hw(hw_key), GhashTable::Avx512(GhashTableAvx512 { vale, .. }))
-            if len < avx512_below =>
-        {
-            Some((hw_key, vale))
+        (AesKey::Hw(hw_key), GhashTable::VaesAvx2(.., kernel)) if len < vaes_avx2_below => {
+            Some((hw_key, kernel))
         }
         _ => None,
     }
@@ -114,9 +114,7 @@ pub(crate) fn tagged_from<const ENC: bool>(
     ghash.add_lengths(aad.len(), cipher_inout.len());
 
     // Last, so its AES overlaps the GHASH before it.
-    let mut e_y0 = y0;
-    key.encrypt_block(&mut e_y0);
-    ghash.tag(&e_y0)
+    ghash.tag(&key.encrypt_block(&y0))
 }
 
 /// GCM's first counter block for a 96-bit nonce: the nonce, then 1.
@@ -362,11 +360,6 @@ fn by8<const ENC: bool>(
 
         let cipher_inout = remainder;
         if !cipher_inout.is_empty() {
-            let mut block = [0u8; 16];
-            let len = cipher_inout.len();
-            debug_assert!(len < 16);
-            block[..len].copy_from_slice(cipher_inout);
-
             let c1 = counter.next();
             let mut c1 = _mm_xor_si128(c1, rk_first);
 
@@ -375,17 +368,8 @@ fn by8<const ENC: bool>(
             }
 
             let c1 = _mm_aesenclast_si128(c1, rk_last);
-
-            // SAFETY: `block` is 16 bytes and writable.
-            let p1 = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
-            let c1 = _mm_xor_si128(c1, p1);
-
-            // SAFETY: `block` is 16 bytes and writable.
-            unsafe {
-                _mm_storeu_si128(block.as_mut_ptr().cast(), c1);
-            }
-
-            cipher_inout.copy_from_slice(&block[..len]);
+            let c1 = _mm_xor_si128(c1, ghash::load_partial(cipher_inout));
+            ghash::store_partial(cipher_inout, c1);
         }
     }
 
@@ -536,22 +520,28 @@ const AVX512_KERNEL_MINIMUM_CIPHER_LEN: usize = 2048;
 /// path, whose single blocks are quicker for short messages.
 const VAES_AVX2_MINIMUM_CIPHER_LEN: usize = 16 * 16;
 
-/// The message lengths below which Vale's AES-GCM runs on the VAES-AVX2
-/// tier, to decrypt and to encrypt. Its opens measured 0.61-0.89x the by-8
-/// path's time below 256 bytes on Arrow Lake and Zen 3. Its seals measured
-/// 0.77-0.83x on Arrow Lake below 80 bytes, where Zen 3 measured 0.94-1.05x,
-/// and beyond that Zen 3 lost up to 20%. That is under an AAD of a partial
-/// block, as QUIC's and TLS's are; under a 32-byte AAD, by-8 seals 32 bytes
-/// 5-9% quicker on Arrow Lake.
-const VAES_AVX2_VALE_OPEN_BELOW: usize = 256;
-const VAES_AVX2_VALE_SEAL_BELOW: usize = 80;
+/// The message length from which Vale's AES-GCM seals on the AVX tier, which
+/// opens with it at every length. On Coffee Lake (an i7-8700 and two
+/// i7-8700Bs), under AADs of 5 to 32 bytes, its seals measured 0.94-1.19x
+/// the by-8 path's time from 1 to 128 bytes (medians 1.04-1.06x), 0.93-0.98x
+/// at 0, and 0.75-1.08x from 129 to 512 bytes (medians 0.90-0.91x), and its
+/// opens 0.72-1.02x at every length.
+const AVX_VALE_SEAL_FROM: usize = 129;
 
-/// The message lengths below which Vale's AES-GCM runs on the AVX-512 tier,
-/// to decrypt and to encrypt. Its opens measured 0.75-0.96x the by-8 path's
-/// time below 256 bytes on Zen 5 and Ice Lake, but its seals 1.03-1.33x
-/// from 32 bytes.
-const AVX512_VALE_OPEN_BELOW: usize = 256;
-const AVX512_VALE_SEAL_BELOW: usize = 0;
+/// The message lengths below which Vale's AES-GCM runs on the VAES-AVX2
+/// tier, to decrypt and to encrypt. Below 256 bytes its opens measured
+/// 0.83-1.09x the by-8 path's time on Zen 3 (median 0.95x), and 0.74-1.06x
+/// on Arrow Lake's P-cores and 0.70-1.08x on its E-cores (medians 0.88x and
+/// 0.90x), under an AAD of a partial block, as QUIC's and TLS's are, or of
+/// whole ones. From 16 bytes its seals measured 1.04-1.46x on Zen 3 and
+/// 0.94-1.38x on Arrow Lake, losing below 176 bytes on both.
+///
+/// The AVX-512 tier runs no Vale. Below 256 bytes its opens measured
+/// 0.95-1.44x the by-8 path's time on Zen 5 (median 1.03x), 0.96-1.37x on
+/// Granite Rapids (median 1.07x), and 0.70-1.14x on Zen 4 (median 1.00x),
+/// and its seals lost on all three.
+const VAES_AVX2_VALE_OPEN_BELOW: usize = 256;
+const VAES_AVX2_VALE_SEAL_BELOW: usize = 0;
 
 /// This stores the current four counter values, in big endian.
 #[derive(Debug)]
@@ -671,13 +661,13 @@ mod tests {
 
     // Every other test sees only the path the CPU picks, so the slower ones
     // are checked against it here, under a key `admin/ctgrind` keeps secret:
-    // the by-8 PCLMULQDQ kernel, which a CPU with VAES runs only for short
-    // seals, Vale's AES-GCM, vpaes with SSSE3 GHASH, and SSE2 AES with
-    // integer GHASH. Each key size, and AAD and message lengths around the
-    // block, six-, eight-, and sixteen-block boundaries, the minimums of
-    // Vale's six-block loop, and where a VAES CPU hands over from Vale, both
-    // ways, with a tag wrong in either half, and one long enough to carry out
-    // of the counter's low byte.
+    // the by-8 PCLMULQDQ kernel, which a CPU with AVX and MOVBE runs only for
+    // short messages, Vale's AES-GCM, vpaes with SSSE3 GHASH, and SSE2 AES
+    // with integer GHASH. Each key size, and AAD and message lengths around
+    // the block, six-, eight-, and sixteen-block boundaries, the minimums of
+    // Vale's six-block loop, and where the AVX and VAES-AVX2 tiers hand over
+    // between Vale and by-8, both ways, with a tag wrong in either half, and
+    // one long enough to carry out of the counter's low byte.
     #[test]
     fn paths_match() {
         let bytes = |n: usize, seed: u32| -> Vec<u8> {
@@ -685,12 +675,11 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for key_len in [16, 32] {
+        for key_len in [16, 24, 32] {
             let key = bytes(key_len, 1);
             ct::secret_slice(&key);
             let fast = AesKey::new(&key);
-            let mut h = [0u8; 16];
-            fast.encrypt_block(&mut h);
+            let h = fast.encrypt_block(&[0; 16]);
             let fast_table = GhashTable::new(u128::from_be_bytes(h));
             let mut slow = vec![(
                 AesKey::Nohw(NohwKey::new(&key)),
@@ -713,13 +702,12 @@ mod tests {
                 }
             }
 
-            // Around where Vale's AES-GCM hands over to each VAES tier's
-            // own paths.
+            // Around where the AVX and VAES-AVX2 tiers hand over between
+            // Vale's AES-GCM and their own paths.
             let crossovers = [
+                AVX_VALE_SEAL_FROM,
                 VAES_AVX2_VALE_OPEN_BELOW,
                 VAES_AVX2_VALE_SEAL_BELOW,
-                AVX512_VALE_OPEN_BELOW,
-                AVX512_VALE_SEAL_BELOW,
             ]
             .into_iter()
             .flat_map(|n| [n.saturating_sub(1), n, n + 1]);
@@ -780,12 +768,11 @@ mod tests {
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
                 .collect()
         };
-        for key_len in [16, 32] {
+        for key_len in [16, 24, 32] {
             let key = bytes(key_len, 1);
             ct::secret_slice(&key);
             let fast = AesKey::new(&key);
-            let mut h = [0u8; 16];
-            fast.encrypt_block(&mut h);
+            let h = fast.encrypt_block(&[0; 16]);
             let mut paths = vec![(
                 AesKey::Nohw(NohwKey::new(&key)),
                 GhashTable::Nohw(NohwTable::new(&h)),
@@ -850,6 +837,12 @@ mod tests {
 
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_aes192_gcm() {
+        trace_avx512(24);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
     fn ct_sde_aes256_gcm() {
         trace_avx512(32);
     }
@@ -871,7 +864,7 @@ mod tests {
     fn ct_sde_aes_gcm_vaes_avx2() {
         let mut rng = Rng(ct_sde::seed());
         let len = VAES_AVX2_MINIMUM_CIPHER_LEN + 7 * 16 + 8;
-        for key_len in [16, 32] {
+        for key_len in [16, 24, 32] {
             let (key, table) = traced_key(&mut rng, key_len);
             assert!(matches!(table, GhashTable::VaesAvx2(..)), "VAES-AVX2");
             traced_seal_open(&mut rng, &key, &table, len);
@@ -887,8 +880,7 @@ mod tests {
         let key = bytes(rng, key_len);
         ct_sde::traced(|| {
             let key = AesKey::new(&key);
-            let mut h = [0u8; 16];
-            key.encrypt_block(&mut h);
+            let h = key.encrypt_block(&[0; 16]);
             (key, GhashTable::new(u128::from_be_bytes(h)))
         })
     }
