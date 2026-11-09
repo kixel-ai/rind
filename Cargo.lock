@@ -3249,6 +3249,7 @@ name = "rind-rcgen"
 version = "0.14.3"
 dependencies = [
  "crabgrind 0.4.0",
+ "pem",
  "rcgen",
  "rind",
  "rind-rustls",
