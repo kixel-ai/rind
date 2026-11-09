@@ -1,4 +1,4 @@
-# Fastest at every algorithm
+# [M] Fastest at every algorithm
 
 ## Goal
 
