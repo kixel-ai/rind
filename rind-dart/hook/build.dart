@@ -62,7 +62,12 @@ Future<Uri> _download(
     );
   }
   output.dependencies.add(manifest.uri);
-  final pin = (jsonDecode(manifest.readAsStringSync()) as Map)[target] as Map;
+  final pin = (jsonDecode(manifest.readAsStringSync()) as Map)[target];
+  if (pin is! Map) {
+    throw UnsupportedError(
+      'this rind release pins no prebuilt library for $target',
+    );
+  }
   final sha256 = pin['sha256'] as String;
   final library = input.outputDirectoryShared.resolve(
     'prebuilt/$sha256/${input.config.code.targetOS.dylibFileName('rind_dart')}',
