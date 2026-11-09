@@ -160,6 +160,11 @@ set it. The M1 and M2 have no such switch, so they pay the toggle's cost
 without that protection. Arm says DIT changes nothing on its current cores, so rind sets it
 only on Apple's platforms; aws-lc-rs and ring never set it.
 
+DIT is a second layer, not the constant-time guarantee: on every platform,
+rind's secret-handling code avoids branches, memory indices, and
+variable-time instructions that depend on a secret, and [TESTING.md][testing]
+lists the check each primitive gets.
+
 Turning DIT on and off costs about 45-60 ns a call on Apple's M1 and M4, a
 fifth of sealing a 1350-byte packet. A loop of small calls, such as sealing
 a batch of QUIC packets, holds a guard around the batch to pay it once:
@@ -262,7 +267,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [gaps]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#known-gaps
 [build-cost]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#build-cost
 [verified]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#verified-code
-[gaps]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#known-gaps
+[testing]: https://github.com/moq-dev/rind/blob/main/TESTING.md#primitives
 [proofs]: https://github.com/moq-dev/rind/blob/main/proofs/README.md
 [algorithms]: https://github.com/moq-dev/rind/blob/main/ALGORITHMS.md
 [sources]: https://github.com/moq-dev/rind/blob/main/ALGORITHMS.md#sources
