@@ -273,19 +273,27 @@ jobs:
           cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --target aarch64-apple-ios-sim
           env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --target aarch64-apple-ios-sim --release
 
-  # cross's images (see Cross.toml) hold an Android system for the tests, and
-  # run aarch64 and armv7 under qemu-user, whose CPU has the crypto extension.
-  # armv7 Linux covers the paths without it.
-  android:
+  # cross's images (see Cross.toml) hold an Android system for the Android
+  # tests, and run aarch64 and armv7 under qemu-user, whose CPU has the crypto
+  # extension. armv7 Linux covers the paths without it. The ARM targets before
+  # ARMv7 run the portable backend, the Linux ones on qemu's ARMv6 core, as on
+  # a Raspberry Pi 1 or Zero.
+  cross:
     strategy:
       matrix:
         include:
           - target: aarch64-linux-android
-            expect: RIND_TEST_ARM_CRYPTO_EXT=1
+            env: RIND_TEST_ARM_CRYPTO_EXT=1
           - target: armv7-linux-androideabi
-            expect: RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1
+            env: RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1
           - target: x86_64-linux-android
-            expect: ""
+            env: ""
+          - target: arm-linux-androideabi
+            env: ""
+          - target: arm-unknown-linux-gnueabi
+            env: QEMU_CPU=arm1176
+          - target: arm-unknown-linux-gnueabihf
+            env: QEMU_CPU=arm1176
 
     runs-on: ubuntu-latest
     steps:
@@ -316,4 +324,4 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
           CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS: true
-        run: env ${{ matrix.expect }} cross test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --locked --release --target ${{ matrix.target }}
+        run: env ${{ matrix.env }} cross test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --locked --release --target ${{ matrix.target }}
