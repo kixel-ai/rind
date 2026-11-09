@@ -1,5 +1,4 @@
-//! A QUIC handshake through quinn-proto, rustls, and rcgen on their `ring`
-//! features, which a `[patch.crates-io]` of ring moves onto rind.
+//! Consumers of ring and aws-lc-rs moved onto rind by `[patch.crates-io]`.
 
 use std::error::Error;
 use std::net::{Ipv6Addr, SocketAddr};
@@ -18,9 +17,82 @@ const SERVER: SocketAddr = SocketAddr::new(std::net::IpAddr::V6(Ipv6Addr::LOCALH
 const CLIENT: SocketAddr = SocketAddr::new(std::net::IpAddr::V6(Ipv6Addr::LOCALHOST), 4434);
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // Only rind-ring has `cpu`, so this builds only with ring patched.
+    // Only rind's adapters have `cpu`, so this builds only with both patched.
     ring::cpu::check()?;
+    aws_lc_rs::cpu::check()?;
+    s2n_packets()?;
+    jwt()?;
+    quic_handshake()
+}
 
+fn s2n_packets() -> Result<(), Box<dyn Error>> {
+    use s2n_codec::{Encoder, EncoderBuffer};
+    use s2n_quic_core::crypto::{HeaderKey, InitialKey as _, Key, RetryKey as _, scatter};
+    use s2n_quic_crypto::{initial::InitialKey, retry::RetryKey};
+
+    let (mut client, client_header) = InitialKey::new_client(b"connection id");
+    let (server, server_header) = InitialKey::new_server(b"connection id");
+    let message = b"initial payload";
+    let header = b"initial header";
+    let mut packet = vec![0; message.len() + client.tag_len()];
+    let mut encoder = EncoderBuffer::new(&mut packet);
+    encoder.write_slice(message);
+    client
+        .encrypt(0, header, &mut scatter::Buffer::new(encoder))
+        .map_err(|e| format!("s2n encrypt: {e:?}"))?;
+    let sample = &packet[..client_header.sealing_sample_len()];
+    assert_eq!(
+        client_header.sealing_header_protection_mask(sample),
+        server_header.opening_header_protection_mask(sample)
+    );
+    let mut tampered = packet.clone();
+    tampered[0] ^= 1;
+    assert!(server.decrypt(0, header, &mut tampered).is_err());
+    server
+        .decrypt(0, header, &mut packet)
+        .map_err(|e| format!("s2n decrypt: {e:?}"))?;
+    assert_eq!(&packet[..message.len()], message);
+
+    let tag = RetryKey::generate_tag(header);
+    RetryKey::validate(header, tag).map_err(|e| format!("s2n retry: {e:?}"))?;
+    assert!(RetryKey::validate(b"altered header", tag).is_err());
+    println!("s2n-quic Initial packet and Retry authenticated on rind");
+    Ok(())
+}
+
+fn jwt() -> Result<(), Box<dyn Error>> {
+    use aws_lc_rs::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair};
+    use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+
+    let alg = &ECDSA_P256_SHA256_FIXED_SIGNING;
+    let pkcs8 = EcdsaKeyPair::generate_pkcs8(alg, &aws_lc_rs::rand::SystemRandom::new())?;
+    let key = EcdsaKeyPair::from_pkcs8(alg, pkcs8.as_ref())?;
+    let claims = serde_json::json!({"sub": "patch fixture"});
+    let token = encode(
+        &Header::new(Algorithm::ES256),
+        &claims,
+        &EncodingKey::from_ec_der(pkcs8.as_ref()),
+    )?;
+    // Test the signature without depending on the wall clock.
+    let mut validation = Validation::new(Algorithm::ES256);
+    validation.required_spec_claims.clear();
+    validation.validate_exp = false;
+    let public = DecodingKey::from_ec_der(key.public_key().as_ref());
+    assert_eq!(
+        decode::<serde_json::Value>(&token, &public, &validation)?.claims,
+        claims
+    );
+    let altered = token.replacen(
+        token.split('.').nth(1).ok_or("missing JWT claims")?,
+        "e30",
+        1,
+    );
+    assert!(decode::<serde_json::Value>(&altered, &public, &validation).is_err());
+    println!("jsonwebtoken ES256 signed and verified on rind");
+    Ok(())
+}
+
+fn quic_handshake() -> Result<(), Box<dyn Error>> {
     let cert = rcgen::generate_simple_self_signed(["localhost".to_owned()])?;
     let key = PrivatePkcs8KeyDer::from(cert.signing_key.serialize_der());
     let server_config = ServerConfig::with_single_cert(vec![cert.cert.der().clone()], key.into())?;

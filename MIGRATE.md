@@ -40,14 +40,15 @@ the old backend's feature in otherwise the same command.
      jsonwebtoken, or object_store.
    - **The project calls ring's API.**
    - **The project calls aws-lc-rs's API.**
-   - **A crate that hard-wires ring 0.17**, such as quinn-proto.
+   - **A crate that hard-wires ring 0.17 or aws-lc-rs 1.x**, such as
+     quinn-proto or s2n-quic-crypto.
 
    Look up each crate in [MIGRATING.md]'s "Crates with their own crypto
    backend". A crate listed as Patch or Unsupported, or one not listed whose
    source calls ring or aws-lc-rs with no feature or hook to replace it,
-   hard-wires them. A binary replaces ring 0.17 throughout its tree with
-   the ring patch, but not aws-lc-rs or an older ring. Dev-dependencies may
-   keep ring; only what ships must move.
+   hard-wires them. A binary replaces ring 0.17 or aws-lc-rs 1.x throughout
+   its tree with the corresponding patch, provided every caller uses items
+   rind supports. Dev-dependencies may keep either; only what ships must move.
 
 2. Find the release targets: the targets the project's CI, whatever runs it,
    builds for release, including Docker images' platforms, and any
@@ -68,8 +69,8 @@ the old backend's feature in otherwise the same command.
    feature needs rind's: say so in its docs.
 
 Stop here, before changing anything, if a release target is on another
-architecture, a dependency in what ships hard-wires aws-lc-rs, a ring older
-than 0.17, or in a library, which cannot patch for its users, any ring, or the
+architecture, a dependency in what ships hard-wires ring older than 0.17,
+or in a library, which cannot patch for its users, any ring or aws-lc-rs, or the
 project calls an item rind lacks: for ring's API, one [rind-ring's README]
 leaves out, and for aws-lc-rs's, one [rind-aws-lc-rs's README] leaves out.
 MIGRATING.md on `main` may name items not yet released, which count as
@@ -114,21 +115,32 @@ For each way the survey found:
 - **aws-lc-rs's API.** Rename the dependency the same way, with no code
   changes: `aws-lc-rs = { package = "rind-aws-lc-rs", version = "1" }`, or in
   a library `#[cfg(feature = "<its feature>")] extern crate rind_aws_lc_rs as
-  aws_lc_rs;`. Drop the `fips` feature, which rind-aws-lc-rs refuses.
-- **A crate that hard-wires ring 0.17.** Patch ring in the root `Cargo.toml`
-  of each binary's workspace, then run `cargo update -p ring`, which changes
-  ring alone:
+  aws_lc_rs;`. The `fips` feature is unsupported because rind is not FIPS
+  validated. Enable `wipe` to retain aws-lc-rs's key wiping on drop.
+- **A crate that hard-wires ring 0.17 or aws-lc-rs 1.x.** Add the matching
+  patch in the root `Cargo.toml` of each binary's workspace, or both if both
+  appear in its tree:
 
   ```toml
   [patch.crates-io]
   ring = { git = "https://github.com/moq-dev/rind-patch" }
+  aws-lc-rs = { git = "https://github.com/moq-dev/rind-patch" }
   ```
 
-  This moves every crate in the tree on ring 0.17, the project's own ring
-  calls included, which then need no rename. Move rustls and the crates an
-  adapter serves as above all the same, since their rind routes skip
-  ring's API. A dependency that then fails to build calls an item
-  [rind-ring's README] leaves out: stop, and report it as a rind gap.
+  Run `cargo update -p ring` or `cargo update -p aws-lc-rs` for each patch.
+  This moves compatible requirements throughout the tree, including the
+  project's own calls, which then need no rename. Exact or bounded version
+  requirements can leave the original crate in the graph: check step 3.
+  Enable `aws-lc-rs/wipe` on a direct dependency to retain key wiping;
+  Cargo ignores features on patch entries.
+  Move rustls and the crates an adapter serves as above all the same, since
+  their rind routes skip the compatibility API. rustls's `aws_lc_rs`,
+  rustls-webpki's `aws-lc-rs`, and rcgen's `aws_lc_rs` features do not build
+  on the patch: they name ML-DSA, and rustls also names ML-KEM-1024, which
+  rind lacks. Switch those features to ring with the ring patch, or use the
+  dedicated adapters. A dependency that still fails to build calls an item
+  [rind-ring's README] or [rind-aws-lc-rs's README] leaves out: stop, and
+  report it as a rind gap.
 
 rind panics on a CPU missing a feature it requires. At the start of each
 binary's `main`, refuse one by exiting with the error from an adapter's
@@ -144,7 +156,9 @@ Commit as you go, with messages in the project's style.
    the project ships, or a library's rind feature, the three `cargo tree`
    commands from the survey print no dependency path, or only
    dev-dependencies. With the ring patch, `-i ring` instead prints
-   `ring v0.17.999` from rind-patch and no other ring.
+   `ring v0.17.999` from rind-patch and no other ring. With the aws-lc-rs
+   patch, `-i aws-lc-rs` prints only `aws-lc-rs v1.999.0` from rind-patch,
+   and `-i aws-lc-sys` still finds no package.
 2. Build each release target, adding its standard library with
    `rustup target add` where it is missing. Where the host has the target's
    linker, run the release build with `--target`. Otherwise run

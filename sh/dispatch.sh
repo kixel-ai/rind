@@ -76,8 +76,8 @@ declare -A scope=(
     [bench]='^(BENCHMARKS\.md$|benchmarks/|admin/bench-report|quest/)'
     # admin/build-cost builds these against rind's API, so they break with it.
     [fixtures]='^(rind/|rind-rustls/|Cargo\.toml$|admin/build-cost-fixtures/(rind|rustls)/)'
-    # The fixture builds this checkout's rind-ring under the rind-patch shim.
-    [patch]='^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)'
+    # The fixture builds this checkout's adapters under the rind-patch shims.
+    [patch]='^(patch/|rind-ring/|rind-aws-lc-rs/|(rind/)?Cargo\.toml$|sh/patch\.sh$)'
     # pyrind's Python tests and type stubs, against its built wheel. rind's
     # own changes reach them in the nightly wheels workflow instead.
     [py]='^(rind-python/|sh/python\.sh$)'
