@@ -1,8 +1,9 @@
 <p align="center">
-  <img width="220" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png" alt="rind: a curled strip of spiky green graviola peel shaped like a lowercase r">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/moq-dev/rind/main/admin/wordmark.svg">
+    <img width="280" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/wordmark-light.svg" alt="rind: a curled strip of green graviola peel forms the r, followed by ind">
+  </picture>
 </p>
-
-<h1 align="center">rind</h1>
 
 <p align="center">
   <strong>Cryptography slop. Fast, somewhat formally verified, and in pure Rust.</strong><br>
