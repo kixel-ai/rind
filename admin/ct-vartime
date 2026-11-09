@@ -262,7 +262,7 @@ class Objects:
                 section = (member, m[1])
             elif m := LABEL.match(line):
                 # LoongArch keeps the assembler's local labels, such as
-                # `.L0 `, inside functions; none starts one.
+                # `.L0`, inside functions; none starts one.
                 if m[2].startswith(".L"):
                     continue
                 self.labels[section].append((int(m[1], 16), m[2]))
