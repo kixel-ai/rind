@@ -1547,7 +1547,7 @@ def report(hosts, tiers, verified, gaps):
         "## Known gaps",
         "",
         "Each operation where another library is more than 10% faster than rind, on a host's native path or a "
-        "CPU tier, and what is decided: a [speed](quest/m2/speed/README.md) quest that closes it, or the reason "
+        "CPU tier, and what is decided: a quest that closes it, or the reason "
         "it stays. `benchmarks/gaps.toml` holds this table, and `admin/bench-report render` refuses a gap it "
         "lacks or an entry that is no longer a gap.",
         "",

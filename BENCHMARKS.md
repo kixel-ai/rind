@@ -815,7 +815,7 @@ From [run 41932862737](https://github.com/moq-dev/rind/actions/runs/41932862737)
 
 ## Known gaps
 
-Each operation where another library is more than 10% faster than rind, on a host's native path or a CPU tier, and what is decided: a [speed](quest/m2/speed/README.md) quest that closes it, or the reason it stays. `benchmarks/gaps.toml` holds this table, and `admin/bench-report render` refuses a gap it lacks or an entry that is no longer a gap.
+Each operation where another library is more than 10% faster than rind, on a host's native path or a CPU tier, and what is decided: a quest that closes it, or the reason it stays. `benchmarks/gaps.toml` holds this table, and `admin/bench-report render` refuses a gap it lacks or an entry that is no longer a gap.
 
 | Operation | On | rind's time over the fastest | Decision |
 |---|---|---|---|
