@@ -89,6 +89,7 @@ use crate::low::macros::*;
 //    as the proofs require; it enters the main loop at 12 mod 16.
 // Proofs: arm/proofs/aes256_gcm_dec_alt.ml.
 
+// Transliterated from s2n-bignum's arm/aes_gcm/aes256_gcm_dec_alt.S.
 /// AES-256-GCM bulk decryption, 8 blocks at a time: counter-mode decryption of
 ///
 /// whole blocks with the GHASH tag update

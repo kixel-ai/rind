@@ -43,6 +43,12 @@ impl Context {
         self.0.update(&data);
     }
 
+    /// Returns a context that continues from this one's message, which this
+    /// one keeps.
+    fn copy(&self) -> Self {
+        Self(self.0.clone())
+    }
+
     /// Returns the digest of the message, and starts a new one with the same
     /// algorithm.
     fn finish<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyBytes> {

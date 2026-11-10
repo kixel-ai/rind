@@ -13,16 +13,17 @@ import unittest
 PYCA = os.environ.get("PYRIND_TEST_PYCA") != "0"
 requires_pyca = unittest.skipUnless(PYCA, "pyca dependencies have no wheel for this target")
 if PYCA:
-    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives import hashes, keywrap, serialization
     from cryptography.hazmat.primitives.asymmetric import ec, ed25519, mlkem, padding
     from cryptography.hazmat.primitives.asymmetric import rsa as pyca_rsa
     from cryptography.hazmat.primitives.asymmetric import x25519
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.primitives.ciphers import aead as pyca_aead
     from cryptography.hazmat.primitives.kdf.hkdf import HKDF
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 import pyrind
-from pyrind import aead, agreement, cpu, digest, hkdf, hmac, kem, pbkdf2, rsa, signature
+from pyrind import aead, agreement, cipher, cpu, digest, hkdf, hmac, kem, key_wrap, pbkdf2, rsa, signature
 from pyrind.signature import sign, verify
 
 
@@ -120,6 +121,15 @@ class Digest(unittest.TestCase):
         self.assertEqual(context.finish(), hashlib.sha256(b"hello, world").digest())
         self.assertEqual(context.finish(), hashlib.sha256(b"").digest())
 
+    def test_copy_continues_independently(self):
+        context = digest.Context(digest.SHA256)
+        context.update(b"hello, ")
+        copy = context.copy()
+        copy.update(b"world")
+        context.update(b"there")
+        self.assertEqual(copy.finish(), hashlib.sha256(b"hello, world").digest())
+        self.assertEqual(context.finish(), hashlib.sha256(b"hello, there").digest())
+
 
 class Hmac(unittest.TestCase):
     def test_rfc4231_case_2(self):
@@ -160,6 +170,18 @@ class Hmac(unittest.TestCase):
             context.sign()
         with self.assertRaises(ValueError):
             context.update(b"more")
+
+    def test_copy_continues_independently(self):
+        key = hmac.Key(hmac.HMAC_SHA256, b"key")
+        context = hmac.Context(key)
+        context.update(b"da")
+        copy = context.copy()
+        copy.update(b"ta")
+        context.update(b"te")
+        self.assertEqual(copy.sign(), hmac.sign(key, b"data"))
+        self.assertEqual(context.sign(), hmac.sign(key, b"date"))
+        with self.assertRaises(ValueError):
+            context.copy()
 
 
 class Hkdf(unittest.TestCase):
@@ -243,6 +265,65 @@ class Pbkdf2(unittest.TestCase):
         for thread in threads:
             thread.join()
         self.assertEqual(len(set(results)), 1)
+
+
+class AesCbc(unittest.TestCase):
+    SIZES = {16: cipher.AES_128, 24: cipher.AES_192, 32: cipher.AES_256}
+
+    @requires_pyca
+    def test_cbc_matches_pyca(self):
+        for key_len, size in self.SIZES.items():
+            key, iv, data = os.urandom(key_len), os.urandom(16), os.urandom(64)
+            encryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+            expected = encryptor.update(data) + encryptor.finalize()
+            self.assertEqual(cipher.AesCbcEncryptingKey(size, key).encrypt_blocks(iv, data), expected)
+            self.assertEqual(cipher.AesCbcDecryptingKey(size, key).decrypt_blocks(iv, expected), data)
+
+    def test_cbc_lengths_are_checked(self):
+        encrypting = cipher.AesCbcEncryptingKey(cipher.AES_128, bytes(16))
+        decrypting = cipher.AesCbcDecryptingKey(cipher.AES_128, bytes(16))
+        with self.assertRaises(pyrind.WrongLength):
+            cipher.AesCbcEncryptingKey(cipher.AES_256, bytes(16))
+        with self.assertRaises(pyrind.WrongLength):
+            encrypting.encrypt_blocks(bytes(16), bytes(15))
+        with self.assertRaises(pyrind.WrongLength):
+            encrypting.encrypt_blocks(bytes(12), bytes(16))
+        with self.assertRaises(pyrind.DecryptFailed):
+            decrypting.decrypt_blocks(bytes(16), bytes(17))
+        self.assertEqual(encrypting.encrypt_blocks(bytes(16), b""), b"")
+
+
+class KeyWrap(unittest.TestCase):
+    @requires_pyca
+    def test_matches_pyca(self):
+        for key_len, size in ((16, key_wrap.AES_128), (24, key_wrap.AES_192), (32, key_wrap.AES_256)):
+            kek_bytes = os.urandom(key_len)
+            kek = key_wrap.AesKek(size, kek_bytes)
+            for length in (16, 24, 40):
+                key = os.urandom(length)
+                wrapped = keywrap.aes_key_wrap(kek_bytes, key)
+                self.assertEqual(kek.wrap(key), wrapped)
+                self.assertEqual(kek.unwrap(wrapped), key)
+            for length in (1, 8, 9, 20):
+                key = os.urandom(length)
+                wrapped = keywrap.aes_key_wrap_with_padding(kek_bytes, key)
+                self.assertEqual(kek.wrap_padded(key), wrapped)
+                self.assertEqual(kek.unwrap_padded(wrapped), key)
+
+    def test_refuses_what_it_did_not_wrap(self):
+        kek = key_wrap.AesKek(key_wrap.AES_128, bytes(16))
+        other = key_wrap.AesKek(key_wrap.AES_128, bytes(15) + b"\x01")
+        for wrapped in (other.wrap(bytes(16)), bytes(23), bytes(25), b""):
+            with self.assertRaises(pyrind.DecryptFailed):
+                kek.unwrap(wrapped)
+        for wrapped in (other.wrap_padded(bytes(5)), bytes(15), bytes(17), b""):
+            with self.assertRaises(pyrind.DecryptFailed):
+                kek.unwrap_padded(wrapped)
+        for key in (bytes(8), bytes(17)):
+            with self.assertRaises(pyrind.WrongLength):
+                kek.wrap(key)
+        with self.assertRaises(pyrind.WrongLength):
+            kek.wrap_padded(b"")
 
 
 class Aead(unittest.TestCase):

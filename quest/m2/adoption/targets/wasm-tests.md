@@ -15,7 +15,7 @@ Decided with the maintainer on 2026-11-09, in the quest audit, reconciling two a
 Guidance:
 
 - Run the tests on wasm32-wasip2 under wasmtime, in a nightly `build.yml` job with a `just` recipe, as armv7 and the qemu targets have. The vector files reach the tests through a preopened directory.
-- aws-lc-rs, the tests' oracle, is C and does not build for wasm, so the differential tests cannot run there. The vectors do: Wycheproof, CAVP, CCTV, and the RFCs'. `just portable` runs the same Rust differentially on x86_64. Say so in [TESTING.md](/TESTING.md)'s tier table.
+- aws-lc-rs, the tests' oracle, is C and does not build for wasm, so the differential tests cannot run there. The Miri run already leaves it out with a `cfg(not(miri))` dev-dependency table in `rind/Cargo.toml` and the same cfg on each test that calls it; extend that cfg to wasm. The vectors do: Wycheproof, CAVP, CCTV, and the RFCs'. `just portable` runs the same Rust differentially on x86_64. Say so in [TESTING.md](/TESTING.md)'s tier table.
 - Constant time: ctgrind, the trace comparisons, and `admin/ct-vartime` check native code. A wasm engine compiles rind again, and may turn a select into a branch. PLATFORMS.md says that plainly.
 - wasm32-unknown-unknown stays compile-only: its tests need a JavaScript host, which waits for a browser consumer, as WebCrypto does.
 - `quest/m0/adapters/ring.md` keeps ring's `wasm32_unknown_unknown_js` feature a no-op because rind did not build for wasm32. Now that it does, that feature must select getrandom's JavaScript backend as ring's does; its PR, [moq-dev/rind#516](https://github.com/moq-dev/rind/pull/516), must revisit it.
@@ -26,5 +26,4 @@ Guidance:
 
 ## Related
 
-- [Miri runs the portable backend's tests](/quest/m2/confidence/miri-portable.md) - the other run of this backend that cannot link aws-lc-rs
 - [64-bit portable targets use 64-bit limbs](/quest/m3/cold-speed/portable-limbs.md) - picks wasm32's limb width

@@ -23,7 +23,7 @@ The harness covers:
 
 The harness does not cover these; settle each in the same PR:
 
-- A caller-saved register a block writes without declaring it. The wrapper's ABI lets it change, so the boundary shows nothing; only the text scan guards it. Recommended: once [asm-bytes](/quest/m2/verified/asm-bytes.md) lands, compare each generated block's clobbers with its HOL Light theorem's `MAYCHANGE` list. Until then, leave it to the scan.
+- A caller-saved register a block writes without declaring it. The wrapper's ABI lets it change, so the boundary shows nothing; only the text scan guards it. Recommended: compare each generated block's clobbers with its HOL Light theorem's `MAYCHANGE` list, now that `admin/prove bytes` checks each block is the code its theorem is about.
 - The red zone under `options(nostack)`. Ten blocks set it: the 128-bit compares, a prefetch, armv7's zeroing and compare loops, the constant-time trace markers, and MD5's optimizer barrier. None touches the stack today. Recommended: a rule in `admin/parse-asm` or a lint that a `nostack` block holds no `push`, `pop`, `call`, or stack-pointer operand.
 - Landing pads. None of the 17 x86_64 naked files holds `endbr64`, and none of the 8 aarch64 ones a `bti`, though dispatch calls them through function pointers. That matters only to a build with `-Z cf-protection=branch` or `-Z branch-protection=bti`, both unstable. Recommended: record it in [PLATFORMS.md](/PLATFORMS.md) as unsupported, and restore aws-lc's markers in `admin/import-aws-lc` when either flag stabilizes.
 - Unwind tables, beyond what `apple_routines_open_one_cfi_frame` (`rind/src/low/tests.rs:42`) checks.
@@ -35,4 +35,3 @@ Guidance:
 
 ## Related
 
-- [rind's assembly is byte-identical to the proven object code](/quest/m2/verified/asm-bytes.md) - its theorems name every register a proven routine may change

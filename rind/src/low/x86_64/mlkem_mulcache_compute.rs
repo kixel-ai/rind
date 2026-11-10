@@ -29,6 +29,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = x, RDX = a, R8 = qdata
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/mlkem/mlkem_mulcache_compute.S.
 /// Precompute the mulcache data for a polynomial in the NTT domain
 ///
 /// Inputs a[256], qdata[624] (all signed 16-bit words); output x[128] (signed 16-bit words)

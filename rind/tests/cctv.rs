@@ -2,6 +2,9 @@
 //! inject randomness, so they run in `src/high/kem.rs`, and RFC 6979's
 //! rejection vector in `src/high/ecdsa.rs`.
 
+// Each vector is checked against aws-lc, which Miri cannot run.
+#![cfg(not(miri))]
+
 use aws_lc_rs::signature::{ED25519, UnparsedPublicKey};
 use rind::Error;
 use rind::signature::{self, verify};

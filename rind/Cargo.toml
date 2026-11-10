@@ -40,9 +40,6 @@ libcrux-traits = "0.0.9"
 libc = { version = "0.2", default-features = false }
 
 [dev-dependencies]
-aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
-# aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
-aws-lc-sys = { version = "0.47", default-features = false }
 # Checks armv7's NIST curve arithmetic against s2n-bignum's on the other arches.
 fiat-crypto = { version = "0.3", default-features = false }
 # CCTV gzips its ML-KEM modulus vectors.
@@ -55,6 +52,13 @@ serde_json = "1"
 # Maps the guard pages around the buffers in `low::guard_pages`.
 [target.'cfg(unix)'.dev-dependencies]
 libc = { version = "0.2", default-features = false }
+
+# The differential tests' reference. Miri cannot run C, so its builds leave it
+# out, along with every test that calls it.
+[target.'cfg(not(miri))'.dev-dependencies]
+aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
+# aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
+aws-lc-sys = { version = "0.47", default-features = false }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
