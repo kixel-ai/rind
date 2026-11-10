@@ -126,7 +126,8 @@ rind_symbol() {
 # line its object file, symbol, and demangled symbol, which its first call
 # for `arch` writes from the build's codegen units.
 rind_index() {
-    local arch=$1 units=$out/asm/$arch-units unit
+    local arch=$1 unit
+    local units=$out/asm/$arch-units
     if [[ ! -f "$units/index" ]]; then
         rm -rf "$units"
         mkdir -p "$units"
