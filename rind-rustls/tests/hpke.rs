@@ -74,29 +74,39 @@ fn matches_aws_lc_rs() {
     }
 }
 
+/// `point`, an uncompressed NIST point, compressed.
+fn compressed(point: &[u8]) -> Vec<u8> {
+    let mut compressed = vec![2 | (point[point.len() - 1] & 1)];
+    compressed.extend(&point[1..1 + point.len() / 2]);
+    compressed
+}
+
 // RFC 9180 serializes NIST points uncompressed (section 7.1.1), and the KEM
 // context hashes them as sent. aws-lc-rs seals to a compressed public key,
 // but its recipient hashes its own key uncompressed, so not even aws-lc-rs
-// opens the message; rind refuses the key instead.
+// opens the message; rind refuses the key instead. Both take a compressed
+// `enc`, which a sender that sends one hashes as sent.
 #[test]
-fn compressed_public_keys() {
+fn compressed_points() {
     for (ours, theirs) in pairs() {
         let (public_key, private_key) = theirs.generate_key_pair().unwrap();
-        let point = &public_key.0;
-        if point.len() == 32 {
+        if public_key.0.len() == 32 {
             continue; // X25519 has no compressed form.
         }
-        let mut compressed = vec![2 | (point[point.len() - 1] & 1)];
-        compressed.extend(&point[1..1 + point.len() / 2]);
-        let compressed = HpkePublicKey(compressed);
-
-        let (enc, ct) = theirs.seal(b"", b"", b"pt", &compressed).unwrap();
+        let compressed_key = HpkePublicKey(compressed(&public_key.0));
+        let (enc, ct) = theirs.seal(b"", b"", b"pt", &compressed_key).unwrap();
         assert!(
             theirs
                 .open(&enc, b"", b"", &ct, &copy(&private_key))
                 .is_err()
         );
-        assert!(ours.seal(b"", b"", b"pt", &compressed).is_err());
+        assert!(ours.seal(b"", b"", b"pt", &compressed_key).is_err());
+
+        let (enc, _) = theirs.seal(b"", b"", b"pt", &public_key).unwrap();
+        let enc = EncapsulatedSecret(compressed(&enc.0));
+        for side in [ours, theirs] {
+            assert!(side.setup_opener(&enc, b"", &copy(&private_key)).is_ok());
+        }
     }
 }
 

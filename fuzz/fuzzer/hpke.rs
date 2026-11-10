@@ -68,21 +68,16 @@ fuzz_target!(|input: Input| {
     if !changed {
         assert_eq!(ours.as_deref(), Ok(&input.plaintext[..]));
     }
-    // RFC 9180 serializes points uncompressed, but aws-lc-rs also takes
-    // compressed ones, which ours refuses.
-    if enc.len() == public_key.as_ref().len() {
-        let their_enc = EncapsulatedSecret(enc);
-        let theirs = theirs.open(
-            &their_enc,
-            &input.info,
-            &input.aad,
-            &ciphertext,
-            &their_private(),
-        );
-        assert_eq!(ours.ok(), theirs.ok());
-    } else {
-        assert!(ours.is_err());
-    }
+    // Both take or refuse `enc` alike, compressed points included.
+    let enc = EncapsulatedSecret(enc);
+    assert_eq!(
+        Recipient::new(suite, &private_key, &enc.0, &input.info).is_ok(),
+        theirs
+            .setup_opener(&enc, &input.info, &their_private())
+            .is_ok(),
+    );
+    let theirs_opened = theirs.open(&enc, &input.info, &input.aad, &ciphertext, &their_private());
+    assert_eq!(ours.ok(), theirs_opened.ok());
 
     // Theirs opens what ours seals.
     let (enc, mut sender) = Sender::new(suite, &public_key, &input.info).unwrap();

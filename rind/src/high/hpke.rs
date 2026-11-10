@@ -245,10 +245,11 @@ impl PrivateKey {
     /// `Decap` (RFC 9180 section 4.1): the shared secret `enc` encapsulates.
     fn decapsulate(&self, enc: &[u8]) -> Result<SharedSecret, Error> {
         let kem = self.kem();
-        if enc.len() != kem.public_len {
-            return Err(KeyFormatError::WrongLength.into());
-        }
-        let dh = self.key.agree(enc)?;
+        // RFC 9180 serializes a point uncompressed, but a compressed one is
+        // taken too, as aws-lc-rs takes it; `kem_context` hashes `enc` as
+        // sent.
+        let peer = agreement::PublicKey::new(kem.agreement, enc)?;
+        let dh = self.key.agree(peer.as_ref())?;
         Ok(SharedSecret::new(
             kem,
             dh.as_ref(),
@@ -445,8 +446,9 @@ impl Recipient {
     /// from it for `suite` and `info`, as RFC 9180's `SetupBaseR` does.
     ///
     /// Fails with [`Error::KeyRejected`] when `enc` is not a public key of
-    /// the key's KEM, as [`PublicKey::new`] parses one, or X25519 agreement
-    /// with it gives all zeroes.
+    /// the key's KEM, or X25519 agreement with it gives all zeroes. Beside
+    /// what [`PublicKey::new`] parses, `enc` may be a compressed NIST point,
+    /// as aws-lc-rs takes one, which the key schedule hashes as sent.
     pub fn new(
         suite: Suite,
         private_key: &PrivateKey,
@@ -1209,6 +1211,44 @@ mod tests {
         }
     }
 
+    /// `point`, an uncompressed NIST point, compressed.
+    fn compressed(point: &[u8]) -> Vec<u8> {
+        let mut compressed = vec![2 | (point[point.len() - 1] & 1)];
+        compressed.extend(&point[1..1 + point.len() / 2]);
+        compressed
+    }
+
+    // aws-lc-rs takes a compressed `enc`, hashing it as sent, so a sender
+    // that sends one hashes it so too.
+    #[test]
+    fn opens_compressed_enc() {
+        let suite = Suite {
+            kdf: &HKDF_SHA256,
+            aead: &AES_128_GCM,
+        };
+        for kem in KEMS.iter().filter(|kem| kem.candidate_mask.is_some()) {
+            let private_key = PrivateKey::generate(kem).unwrap();
+            let pk_rm = private_key.public_key();
+            let ephemeral = PrivateKey::generate(kem).unwrap();
+            let enc = compressed(ephemeral.public_key().as_ref());
+            let dh = ephemeral.key.agree(pk_rm.as_ref()).unwrap();
+            let secret = SharedSecret::new(kem, dh.as_ref(), &enc, pk_rm.as_ref());
+            let mut sender = Sender::schedule(suite, &secret, b"info");
+            let mut sealed = b"message".to_vec();
+            sender.seal_in_place_append_tag(b"", &mut sealed).unwrap();
+
+            let mut recipient = Recipient::new(suite, &private_key, &enc, b"info").unwrap();
+            assert_eq!(opened(&mut recipient, b"", &sealed).unwrap(), b"message");
+            // Its uncompressed form is another `enc`.
+            let enc = ephemeral.public_key();
+            let mut recipient = Recipient::new(suite, &private_key, enc.as_ref(), b"info").unwrap();
+            assert_eq!(
+                opened(&mut recipient, b"", &sealed),
+                Err(Error::DecryptFailed)
+            );
+        }
+    }
+
     #[test]
     fn refuses_malformed_keys() {
         for kem in KEMS {
@@ -1231,13 +1271,10 @@ mod tests {
                 rejected(Exporter::recipient(&HKDF_SHA256, &private_key, bad, b"").map(|_| ()));
             }
             if kem.candidate_mask.is_some() {
-                // RFC 9180 serializes a point uncompressed, and refuses a
-                // compressed one, which `agreement` takes.
-                let mut compressed = bytes[..1 + kem.scalar_len].to_vec();
-                compressed[0] = 2 + (bytes[bytes.len() - 1] & 1);
-                agreement::PublicKey::new(kem.agreement, &compressed).unwrap();
-                rejected(PublicKey::new(kem, &compressed).map(|_| ()));
-                rejected(Recipient::new(suite, &private_key, &compressed, b"").map(|_| ()));
+                // RFC 9180 serializes a point uncompressed, and no
+                // recipient opens what is sealed to a compressed one (see
+                // `opens_compressed_enc`).
+                rejected(PublicKey::new(kem, &compressed(bytes)).map(|_| ()));
 
                 let mut off_curve = bytes.to_vec();
                 off_curve[kem.public_len - 1] ^= 1;

@@ -27,9 +27,8 @@ Where it behaves differently:
 - `DEFAULT_CIPHER_SUITES` and `ALL_CIPHER_SUITES` list AES-128-GCM before
   AES-256-GCM, for speed.
 - `hpke`'s suites are `&dyn Hpke`, not upstream's `&HpkeAwsLcRs<..>`.
-- `hpke`'s NIST suites refuse compressed public and encapsulated keys, which
-  RFC 9180 does not define. Upstream seals to a compressed public key a
-  message that no recipient opens.
+- `hpke`'s NIST suites refuse a compressed public key, which RFC 9180 does
+  not define, where upstream seals to one a message no recipient opens.
 - `Ticketer` seals tickets with XChaCha20-Poly1305, where upstream's uses
   RFC 5077's AES-256-CBC and HMAC-SHA256.
 
