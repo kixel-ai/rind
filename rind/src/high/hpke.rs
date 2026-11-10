@@ -164,7 +164,10 @@ pub struct PrivateKey {
 impl PrivateKey {
     /// Generates a key for `kem` from the system random source.
     pub fn generate(kem: &'static Kem) -> Result<Self, Error> {
-        Ok(Self::new(kem, agreement::PrivateKey::generate(kem.agreement)?))
+        Ok(Self::new(
+            kem,
+            agreement::PrivateKey::generate(kem.agreement)?,
+        ))
     }
 
     /// Derives a key for `kem` from `ikm`, as RFC 9180's `DeriveKeyPair`
@@ -245,7 +248,12 @@ impl PrivateKey {
             return Err(KeyFormatError::WrongLength.into());
         }
         let dh = self.key.agree(enc)?;
-        Ok(SharedSecret::new(kem, dh.as_ref(), enc, self.key.public_key().as_ref()))
+        Ok(SharedSecret::new(
+            kem,
+            dh.as_ref(),
+            enc,
+            self.key.public_key().as_ref(),
+        ))
     }
 }
 
@@ -338,7 +346,9 @@ impl AsRef<[u8]> for EncapsulatedKey {
 
 impl fmt::Debug for EncapsulatedKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("EncapsulatedKey").field(&self.as_ref()).finish()
+        f.debug_tuple("EncapsulatedKey")
+            .field(&self.as_ref())
+            .finish()
     }
 }
 
@@ -533,7 +543,13 @@ impl Exporter {
     /// is longer than 255 of the KDF's hash outputs.
     pub fn export(&self, exporter_context: &[u8], out: &mut [u8]) -> Result<(), Error> {
         let _entry = low::Entry::new_secret();
-        labeled_expand(&self.suite_id, &self.secret, b"sec", &[exporter_context], out)
+        labeled_expand(
+            &self.suite_id,
+            &self.secret,
+            b"sec",
+            &[exporter_context],
+            out,
+        )
     }
 }
 
@@ -568,12 +584,12 @@ impl Sealing {
     ) -> Result<T, Error> {
         // RFC 9180 allows 2^96 - 1 messages; a u64 counter stops at its own
         // limit, which no context reaches.
-        let next = self
-            .seq
-            .checked_add(1)
-            .ok_or(Error::MessageLimitReached)?;
+        let next = self.seq.checked_add(1).ok_or(Error::MessageLimitReached)?;
         let mut nonce = self.base_nonce;
-        for (n, s) in nonce[NONCE_LEN - 8..].iter_mut().zip(self.seq.to_be_bytes()) {
+        for (n, s) in nonce[NONCE_LEN - 8..]
+            .iter_mut()
+            .zip(self.seq.to_be_bytes())
+        {
             *n ^= s;
         }
         let result = f(&self.key, aead::Nonce::assume_unique_for_key(nonce))?;
@@ -745,13 +761,7 @@ impl Labels {
     }
 
     /// `LabeledExpand(prk, label, info, len(out))`, as [`labeled_expand`].
-    fn expand(
-        &self,
-        prk: &Prk,
-        label: &[u8],
-        info: &[&[u8]],
-        out: &mut [u8],
-    ) -> Result<(), Error> {
+    fn expand(&self, prk: &Prk, label: &[u8], info: &[&[u8]], out: &mut [u8]) -> Result<(), Error> {
         labeled_expand(self.suite_id(), prk, label, info, out)
     }
 }
@@ -830,7 +840,9 @@ mod tests {
 
     fn opened(recipient: &mut Recipient, aad: &[u8], ct: &[u8]) -> Result<Vec<u8>, Error> {
         let mut in_out = ct.to_vec();
-        recipient.open_in_place(aad, &mut in_out).map(|pt| public(pt))
+        recipient
+            .open_in_place(aad, &mut in_out)
+            .map(|pt| public(pt))
     }
 
     /// `SetupBaseS` with the ephemeral key `DeriveKeyPair(ikm_e)` gives.
@@ -844,6 +856,9 @@ mod tests {
         let (enc, secret) = public_key.encapsulate(&ephemeral.key)?;
         Ok((enc, Sender::schedule(suite, &secret, info)))
     }
+
+    /// A context's `Export`, as `(exporter_context, out)`.
+    type Export<'a> = &'a dyn Fn(&[u8], &mut [u8]) -> Result<(), Error>;
 
     #[derive(Deserialize)]
     struct Rfc9180 {
@@ -911,7 +926,7 @@ mod tests {
             assert_eq!(ephemeral.public_key().as_ref(), v.pk_em);
 
             let public_key = PublicKey::new(kem, &v.pk_rm).unwrap();
-            let exports = |export: &dyn Fn(&[u8], &mut [u8]) -> Result<(), Error>| {
+            let exports = |export: Export<'_>| {
                 for e in &v.exports {
                     let value = exported(|out| export(&e.exporter_context, out), e.len);
                     assert_eq!(value, e.exported_value);
@@ -1120,7 +1135,10 @@ mod tests {
             let private_key = PrivateKey::generate(kem).unwrap();
             let public_key = private_key.public_key();
             assert_eq!(public_key.as_ref().len(), kem.public_len);
-            assert_eq!(public(private_key.to_scalar().as_ref()).len(), kem.scalar_len);
+            assert_eq!(
+                public(private_key.to_scalar().as_ref()).len(),
+                kem.scalar_len
+            );
             for suite in suites() {
                 let (enc, mut sender) = Sender::new(suite, &public_key, b"info").unwrap();
                 let mut recipient =
@@ -1144,8 +1162,8 @@ mod tests {
                 );
 
                 let (enc, exporter) = Exporter::sender(suite.kdf, &public_key, b"info").unwrap();
-                let other = Exporter::recipient(suite.kdf, &private_key, enc.as_ref(), b"info")
-                    .unwrap();
+                let other =
+                    Exporter::recipient(suite.kdf, &private_key, enc.as_ref(), b"info").unwrap();
                 assert_eq!(
                     exported(|out| exporter.export(b"", out), 0),
                     exported(|out| other.export(b"", out), 0),
@@ -1245,10 +1263,19 @@ mod tests {
         let mut second = b"second".to_vec();
         sender.seal_in_place_append_tag(b"", &mut second).unwrap();
 
-        assert_eq!(opened(&mut recipient, b"", &second), Err(Error::DecryptFailed));
-        assert_eq!(opened(&mut recipient, b"", &[0; 15]), Err(Error::DecryptFailed));
+        assert_eq!(
+            opened(&mut recipient, b"", &second),
+            Err(Error::DecryptFailed)
+        );
+        assert_eq!(
+            opened(&mut recipient, b"", &[0; 15]),
+            Err(Error::DecryptFailed)
+        );
         assert_eq!(opened(&mut recipient, b"", &first).unwrap(), b"first");
-        assert_eq!(opened(&mut recipient, b"", &first), Err(Error::DecryptFailed));
+        assert_eq!(
+            opened(&mut recipient, b"", &first),
+            Err(Error::DecryptFailed)
+        );
         assert_eq!(opened(&mut recipient, b"", &second).unwrap(), b"second");
     }
 
@@ -1312,9 +1339,12 @@ mod tests {
                     aead: &CHACHA20_POLY1305,
                 },
             ] {
-                let (enc, mut sender) = Sender::new(suite, &private_key.public_key(), info).unwrap();
+                let (enc, mut sender) =
+                    Sender::new(suite, &private_key.public_key(), info).unwrap();
                 let mut sealed = b"message".to_vec();
-                sender.seal_in_place_append_tag(b"aad", &mut sealed).unwrap();
+                sender
+                    .seal_in_place_append_tag(b"aad", &mut sealed)
+                    .unwrap();
 
                 let loaded = PrivateKey::from_scalar(kem, &scalar).unwrap();
                 let mut recipient = Recipient::new(suite, &loaded, enc.as_ref(), info).unwrap();

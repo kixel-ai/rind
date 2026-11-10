@@ -82,7 +82,11 @@ struct RindHpke {
 }
 
 impl RindHpke {
-    fn sender(&self, info: &[u8], pub_key: &HpkePublicKey) -> Result<(EncapsulatedSecret, Sealer), Error> {
+    fn sender(
+        &self,
+        info: &[u8],
+        pub_key: &HpkePublicKey,
+    ) -> Result<(EncapsulatedSecret, Sealer), Error> {
         let public_key = PublicKey::new(self.kem, &pub_key.0).map_err(other)?;
         let (enc, sender) = Sender::new(self.rind, &public_key, info).map_err(other)?;
         Ok((EncapsulatedSecret(enc.as_ref().to_vec()), Sealer(sender)))
@@ -94,7 +98,8 @@ impl RindHpke {
         info: &[u8],
         secret_key: &HpkePrivateKey,
     ) -> Result<Opener, Error> {
-        let private_key = PrivateKey::from_scalar(self.kem, secret_key.secret_bytes()).map_err(other)?;
+        let private_key =
+            PrivateKey::from_scalar(self.kem, secret_key.secret_bytes()).map_err(other)?;
         let recipient = Recipient::new(self.rind, &private_key, &enc.0, info).map_err(other)?;
         Ok(Opener(recipient))
     }
@@ -129,8 +134,7 @@ impl Hpke for RindHpke {
         ciphertext: &[u8],
         secret_key: &HpkePrivateKey,
     ) -> Result<Vec<u8>, Error> {
-        self.recipient(enc, info, secret_key)?
-            .open(aad, ciphertext)
+        self.recipient(enc, info, secret_key)?.open(aad, ciphertext)
     }
 
     fn setup_opener(
@@ -179,11 +183,7 @@ struct Opener(Recipient);
 impl HpkeOpener for Opener {
     fn open(&mut self, aad: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
         let mut in_out = ciphertext.to_vec();
-        let len = self
-            .0
-            .open_in_place(aad, &mut in_out)
-            .map_err(other)?
-            .len();
+        let len = self.0.open_in_place(aad, &mut in_out).map_err(other)?.len();
         in_out.truncate(len);
         Ok(in_out)
     }

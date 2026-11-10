@@ -377,8 +377,10 @@ mod tests {
             DH_KEM_X25519_HKDF_SHA256_AES_256,
             DH_KEM_X25519_HKDF_SHA256_CHACHA20_POLY1305,
         );
-        let _: [&[&dyn rustls::crypto::hpke::Hpke]; 2] =
-            [hpke::ALL_SUPPORTED_SUITES, theirs::hpke::ALL_SUPPORTED_SUITES];
+        let _: [&[&dyn rustls::crypto::hpke::Hpke]; 2] = [
+            hpke::ALL_SUPPORTED_SUITES,
+            theirs::hpke::ALL_SUPPORTED_SUITES,
+        ];
 
         fn rsa_signing_key<K: SigningKey + std::fmt::Debug>(
             _: fn(&PrivateKeyDer<'_>) -> Result<K, rustls::Error>,

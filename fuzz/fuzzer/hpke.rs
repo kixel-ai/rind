@@ -72,7 +72,13 @@ fuzz_target!(|input: Input| {
     // compressed ones, which ours refuses.
     if enc.len() == public_key.as_ref().len() {
         let their_enc = EncapsulatedSecret(enc);
-        let theirs = theirs.open(&their_enc, &input.info, &input.aad, &ciphertext, &their_private());
+        let theirs = theirs.open(
+            &their_enc,
+            &input.info,
+            &input.aad,
+            &ciphertext,
+            &their_private(),
+        );
         assert_eq!(ours.ok(), theirs.ok());
     } else {
         assert!(ours.is_err());
@@ -81,7 +87,9 @@ fuzz_target!(|input: Input| {
     // Theirs opens what ours seals.
     let (enc, mut sender) = Sender::new(suite, &public_key, &input.info).unwrap();
     let mut sealed = input.plaintext.clone();
-    sender.seal_in_place_append_tag(&input.aad, &mut sealed).unwrap();
+    sender
+        .seal_in_place_append_tag(&input.aad, &mut sealed)
+        .unwrap();
     let enc = EncapsulatedSecret(enc.as_ref().to_vec());
     let opened = theirs.open(&enc, &input.info, &input.aad, &sealed, &their_private());
     assert_eq!(opened.unwrap(), input.plaintext);
@@ -91,7 +99,9 @@ fuzz_target!(|input: Input| {
         .and_then(|peer| Sender::new(suite, &peer, &input.info))
         .is_ok();
     if input.peer.len() == public_key.as_ref().len() {
-        let theirs = theirs.setup_sealer(&input.info, &HpkePublicKey(input.peer)).is_ok();
+        let theirs = theirs
+            .setup_sealer(&input.info, &HpkePublicKey(input.peer))
+            .is_ok();
         assert_eq!(ours, theirs);
     } else {
         assert!(!ours);
