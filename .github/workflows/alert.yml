@@ -21,6 +21,7 @@ on:
       - coverage
       - ctgrind
       - fuzz
+      - miri
       - mutants
       - prove
       - Pullfrog
