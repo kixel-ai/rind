@@ -212,7 +212,8 @@ impl PrivateKey {
     /// Serializes the key as [`Self::from_scalar`] loads it.
     ///
     /// An X25519 key's bytes are those it was loaded or derived from,
-    /// unclamped, as RFC 9180's test vectors and its revision give them.
+    /// unclamped, as RFC 9180's test vectors, its erratum 7121, and its
+    /// revision serialize them.
     pub fn to_scalar(&self) -> agreement::Scalar {
         self.key.to_scalar()
     }
