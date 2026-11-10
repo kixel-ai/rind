@@ -148,4 +148,24 @@ mod tests {
         assert_eq!(cache.get_or_build(|| unreachable!()), None);
         assert_eq!(format!("{cache:?}"), "ReuseCache(None)");
     }
+
+    /// Threads racing to build and read one cache each see the whole value,
+    /// and Miri finds no data race between the build and a read.
+    #[test]
+    fn shared_across_threads() {
+        let cache = ReuseCache::<[u64; 4]>::new();
+        std::thread::scope(|s| {
+            for _ in 0..4 {
+                s.spawn(|| {
+                    for _ in 0..3 {
+                        if let Some(value) = cache.get_or_build(|| [7; 4]) {
+                            assert_eq!(*value, [7; 4]);
+                        }
+                        assert_eq!(cache.get_or_build_now(|| [7; 4]), [7; 4]);
+                    }
+                });
+            }
+        });
+        assert_eq!(cache.get_or_build(|| unreachable!()), Some(&[7; 4]));
+    }
 }

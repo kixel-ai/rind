@@ -52,6 +52,7 @@ macro_rules! d {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_eq.S.
 /// Test bignums for equality, x = y
 ///
 /// Inputs x[m], y[n]; output function return

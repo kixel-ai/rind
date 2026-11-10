@@ -19,6 +19,7 @@ use crate::low::macros::*;
 // Standard ARM ABI: X0 = r, X1 = a
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's arm/mlkem/mlkem_tobytes.S.
 /// Pack ML-KEM polynomial coefficients as 12-bit numbers
 ///
 /// Input a[256] (signed 16-bit words); output r[384] (bytes)

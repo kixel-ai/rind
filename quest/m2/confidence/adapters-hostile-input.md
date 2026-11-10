@@ -11,14 +11,13 @@ The inputs it covers:
 
 ## Plan
 
-Found by the 2026-11-09 API and hostile-input audit, which read the entry points below and found no panic a peer can reach, apart from the `unwrap`s the trace under Related owns. It did not read `rind-str0m/src/dtls.rs` in full. Reading does not hold as the adapters change: [Adapters offer exactly their upstream's API](/quest/m0/adapters/README.md) is about to reshape them, and only a few unit tests feed them malformed input today, each a fixed case such as a one-byte key share or a truncated ticket.
+Found by the 2026-11-09 API and hostile-input audit, which read the entry points below and found no panic a peer can reach, apart from the `unwrap`s in `rind-rustls/src/aead.rs`, which [moq-dev/rind#572](https://github.com/moq-dev/rind/pull/572) confirmed no peer input reaches. It did not read `rind-str0m/src/dtls.rs` in full. Reading does not hold as the adapters change: [Adapters offer exactly their upstream's API](/quest/m0/adapters/README.md) is about to reshape them, and only a few unit tests feed them malformed input today, each a fixed case such as a one-byte key share or a truncated ticket.
 
 Decided with the maintainer on 2026-11-09:
 - Milestone: m2, in the confidence epic ✅ (rejected: redefine m3, move only the security check).
 
 How this differs from its neighbours:
 - The existing targets in `fuzz/fuzzer/`, and the two fuzz quests under Related, compare rind's primitives with aws-lc-rs. None links an adapter, so the glue between a protocol library and rind runs under no fuzzer.
-- [Check rustls provider panic reachability](/quest/m2/confidence/rustls-provider-panics.md) traces by hand whether a peer can reach the `unwrap`s in `rind-rustls/src/aead.rs`. This quest tests the whole boundary mechanically and keeps testing it. If that trace finds a reachable panic, its fix lands there, and this target then guards it.
 
 The entry points, so none is missed:
 - rind-rustls: `MessageDecrypter::decrypt` (`rind-rustls/src/aead.rs:117`, `:164`, `:266`), QUIC's `decrypt_in_place` for packets and headers (`rind-rustls/src/quic.rs:82`, `:158`), `start_and_complete` and `complete` on each group (`rind-rustls/src/kx_group.rs:97`, `kx_group/hybrid.rs:65` and `:105`, `kx_group/mlkem.rs:26` and `:60`), the ticketer's `decrypt` (`rind-rustls/src/ticketer.rs:96`), and `verify_signature` (`rind-rustls/src/verify.rs:181`).
@@ -35,6 +34,5 @@ Guidance:
 
 ## Related
 
-- [Check rustls provider panic reachability](/quest/m2/confidence/rustls-provider-panics.md) - the manual trace of part of the same boundary
 - [A differential fuzz target for every primitive](/quest/m3/confidence/fuzz-every-primitive.md) - fuzzes `rind`'s primitives, not the adapters above them
 - [Adapter crates' surviving mutants](/quest/m2/confidence/mutants-adapters.md) - tests the adapters' values against upstream's, where this tests their handling of bad input

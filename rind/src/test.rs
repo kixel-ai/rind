@@ -135,4 +135,5 @@ pub(crate) fn cctv_value<'a>(record: &'a [(String, Vec<u8>)], name: &str) -> &'a
         .1
 }
 
+pub(crate) mod bignum;
 pub(crate) mod file_test;
