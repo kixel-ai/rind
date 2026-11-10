@@ -212,6 +212,28 @@ jobs:
       - name: Build, lint, and test
         run: just armv7
 
+  # Architectures with no rind assembly, on the portable backend, under
+  # qemu-user. Each entry names the flake dev shell that holds its target's
+  # toolchain. s390x is big-endian.
+  qemu:
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [s390x]
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+      - uses: ./.github/actions/just
+      - uses: ./.github/actions/nix
+
+      - name: Build, lint, and test
+        run: just qemu ${{ matrix.shell }}
+
   # rind-dart's Dart package on each host Dart and Flutter build on. Its tests
   # run natively, and its build hook cross-builds the mobile targets, whose
   # libraries the hook's test checks are for the right architecture.
