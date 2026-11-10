@@ -168,7 +168,7 @@ agreement keys refuse.
 | `EncapsulationKey::new(alg, bytes)`, `encapsulate()` | the same |
 | `decapsulate(Ciphertext::from(bytes))` | `decapsulate(bytes)`, which borrows the key |
 | `DecapsulationKey::new(alg, bytes)`, `DecapsulationKey::key_bytes()` | none: decapsulation keys are ephemeral |
-| `ML_KEM_512`, `ML_KEM_1024` | none; [post-quantum epic](quest/m4/pq/README.md) |
+| `ML_KEM_512`, `ML_KEM_1024` | none; [ML-KEM-512 and ML-KEM-1024](quest/m3/parity/ml-kem.md) |
 | `algorithm()`, `Algorithm::id()`, `AlgorithmId`, `AlgorithmIdentifier` | none |
 
 ring has no `kem`.
@@ -221,7 +221,7 @@ ring has no `kem`.
 | `ED25519_PUBLIC_KEY_LEN` | none: always 32 |
 | `rsa::PublicKey::from_der` | `PublicKey::new(&verify::RSA_PKCS1_SHA256, der)`, for one algorithm and PKCS#1 or `SubjectPublicKeyInfo` DER |
 | `rsa::PublicKey::{modulus, exponent, modulus_len}`, `PublicKeyComponents::from(&key)` | none |
-| `PqdsaKeyPair`, `ML_DSA_65` and the other ML-DSA items | none; [post-quantum epic](quest/m4/pq/README.md) |
+| `PqdsaKeyPair`, `ML_DSA_65` and the other ML-DSA items | none; [ML-DSA](quest/m3/parity/ml-dsa.md) |
 
 `PublicKey::new` refuses a compressed ECDSA point and an ECDSA or Ed25519
 `SubjectPublicKeyInfo`, which aws-lc-rs takes. `PublicKey::from_spki` takes

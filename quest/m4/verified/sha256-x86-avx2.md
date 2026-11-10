@@ -11,3 +11,7 @@ SHA-256, and HMAC, HKDF, and PBKDF2 over it, earn the ✓ on x86_64 CPUs with AV
 - Route: a HOL Light proof in s2n-bignum's x86_64 model against [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415)'s FIPS 180-4 SHA-256 spec, sharing the AVX2 model work with [x86_64 SHA-512 on AVX2](/quest/m4/verified/sha512-x86-avx2.md), whose routine comes from the same `sha512-x86_64.pl`. It enters `proofs/Rind/X86_64/ShaBlocks.lean` as an axiom.
 - Spec pin: build on [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415)'s spec at a pinned commit while it is unmerged, and move to the merged version when it lands; `benchmarks/verified.toml`'s ✓ notes the pin (decided with the maintainer on 2026-11-07 on [moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448)).
 - Upstream: offering this work to awslabs/s2n-bignum is optional, and there is no standing approval: stop and ask the maintainer before posting there or anywhere outside the moq-dev and kixelated orgs (decided with the maintainer on 2026-11-07 on [moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448)).
+
+## Required
+
+- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs

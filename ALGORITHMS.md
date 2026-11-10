@@ -79,8 +79,8 @@ aarch64 runs with the crypto extension and the SHA-512 and SHA-3
 instructions; no crypto denies them, as a Raspberry Pi 4 lacks them. armv7
 runs in 32-bit mode, with NEON and the crypto extension; without them it runs
 the code [Symmetric cryptography](#symmetric-cryptography) names. portable is
-the backend for every other architecture and for big-endian aarch64 and arm,
-which CI runs on x86_64 under
+the backend for every other architecture, for big-endian aarch64 and arm, and
+for ARM cores before ARMv7, which CI runs on x86_64 under
 `--cfg rind_portable`: armv7's code without NEON and the crypto extension,
 with portable Rust in place of the assembly armv7 runs regardless.
 
@@ -110,8 +110,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 - AES header protection on aarch64 pays the same indirect call as AES-GCM
   key setup on x86_64.
 - armv7 without crypto: SHA-256 keeps Graviola. Its [native 32-bit comparison](benchmarks/armv7-sha256.md)
-  measured 28–30% lower latency than HACL* at 64 B and 1350 B, exceeding
-  the about 10% advantage required to prefer unverified code.
+  measured 28–30% lower latency than HACL* at 64 B and 1350 B.
 - portable: ChaCha20-Poly1305's Poly1305 is Graviola's on 64-bit targets
   and HACL*'s ✓ on 32-bit ones, whose streaming state counts its input in a
   32-bit length that a 64-bit AEAD can overflow. SHA-3's and ML-KEM's
@@ -491,8 +490,7 @@ x86_64 CPUs without AVX2 run ChaCha20 above 128 bytes on aws-lc's
 which measured 2.4-2.7x faster than HACL*'s rounds from 256 bytes on Coffee
 Lake, Zen 3, and Arrow Lake. Up to that, and at every length without SSSE3,
 where aws-lc runs its integer routine, they run HACL*'s verified rounds, which
-took 0.92-1.07 of that routine's time on the same CPUs, within the 10% rind
-accepts for verified code. Header protection without AVX2 takes 0.91 of
+took 0.92-1.07 of that routine's time on the same CPUs. Header protection without AVX2 takes 0.91 of
 aws-lc-rs's time on an EPYC 9V74 and 0.96 on a Xeon Platinum 8573C in
 [run 41697909102].
 
