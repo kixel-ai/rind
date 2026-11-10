@@ -143,10 +143,14 @@ mod tests {
             out.push((name, z));
         };
         // SAFETY: each operand is `num` 32-bit words.
-        run("nohw", &|z| unsafe { bn_mul_mont_nohw(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num); });
+        run("nohw", &|z| unsafe {
+            bn_mul_mont_nohw(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num);
+        });
         if num.is_multiple_of(8) && HaveNeon::check().is_some() {
             // SAFETY: as above, and the CPU has NEON.
-            run("neon", &|z| unsafe { bn_mul8x_mont_neon(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num) });
+            run("neon", &|z| unsafe {
+                bn_mul8x_mont_neon(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num)
+            });
         }
         let mut z = vec![0; k];
         mont_mul(&mut z, x, y, m, n0);

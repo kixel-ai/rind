@@ -8,6 +8,7 @@
 //! those, as Go's `weirdLimbs` builds its field elements. A routine working
 //! in limbs narrower than a word, as RSAZ's do, needs them in its own radix.
 
+#[cfg(not(rind_backend = "portable"))]
 use proptest::prelude::*;
 
 use super::file_test;
@@ -15,6 +16,7 @@ use crate::low;
 
 /// A `bits`-bit limb: random, or one of zero, one, all ones, the top bit
 /// alone, or all but the top bit.
+#[cfg(not(rind_backend = "portable"))]
 pub(crate) fn limb(bits: u32) -> impl Strategy<Value = u64> {
     let ones = u64::MAX >> (64 - bits);
     let top = 1 << (bits - 1);
@@ -29,12 +31,14 @@ pub(crate) fn limb(bits: u32) -> impl Strategy<Value = u64> {
 }
 
 /// `min` to `max` words of [`limb`]s.
+#[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
 pub(crate) fn words(min: usize, max: usize) -> impl Strategy<Value = Vec<u64>> {
     prop::collection::vec(limb(64), min..=max)
 }
 
 /// `k` words of `bits`-bit [`limb`]s, the least significant first, cutting
 /// the top one to fit.
+#[cfg(not(rind_backend = "portable"))]
 pub(crate) fn radix_words(bits: u32, k: usize) -> impl Strategy<Value = Vec<u64>> {
     let limbs = (64 * k).div_ceil(bits as usize);
     prop::collection::vec(limb(bits), limbs).prop_map(move |limbs| {
@@ -52,6 +56,7 @@ pub(crate) fn radix_words(bits: u32, k: usize) -> impl Strategy<Value = Vec<u64>
 
 /// An odd modulus of `k` words of `bits`-bit limbs, with a nonzero top
 /// word, above one.
+#[cfg(not(rind_backend = "portable"))]
 pub(crate) fn modulus(bits: u32, k: usize) -> impl Strategy<Value = Vec<u64>> {
     radix_words(bits, k).prop_map(|mut m| {
         m[0] |= 1;
@@ -67,6 +72,7 @@ pub(crate) fn modulus(bits: u32, k: usize) -> impl Strategy<Value = Vec<u64>> {
 /// A value below `m`, as wide, of `bits`-bit limbs below its top nonzero
 /// word: such a value, or `m - 1` less one, which takes the edge limbs to
 /// `m`'s top.
+#[cfg(not(rind_backend = "portable"))]
 pub(crate) fn below(bits: u32, m: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
     (radix_words(bits, m.len()), any::<bool>()).prop_map(move |(mut x, from_top)| {
         let top = m.iter().rposition(|w| *w != 0).unwrap();

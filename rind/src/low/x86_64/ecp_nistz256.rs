@@ -318,7 +318,10 @@ mod tests {
             };
             let z = if case == 0 { [0; 4] } else { z };
             let p2 = if case == 1 { [[0; 4]; 2] } else { [x2, y2] };
-            ([x1, y1, z].concat().try_into().unwrap(), p2.concat().try_into().unwrap())
+            (
+                [x1, y1, z].concat().try_into().unwrap(),
+                p2.concat().try_into().unwrap(),
+            )
         })
     }
 

@@ -415,8 +415,7 @@ mod tests {
     }
 
     fn pair() -> impl Strategy<Value = [(Vec<u64>, Vec<u64>, Vec<u64>); 2]> {
-        prop::sample::select(&[16, 24, 32][..])
-            .prop_flat_map(|k| [operand(k), operand(k)])
+        prop::sample::select(&[16, 24, 32][..]).prop_flat_map(|k| [operand(k), operand(k)])
     }
 
     proptest! {
@@ -454,7 +453,13 @@ mod tests {
                     (v.m.clone(), v.a.clone(), e)
                 });
                 let [got, _] = both(&ops);
-                assert_eq!(got, [v.want.clone(), next.want.clone()], "{} and {}", v.at, next.at);
+                assert_eq!(
+                    got,
+                    [v.want.clone(), next.want.clone()],
+                    "{} and {}",
+                    v.at,
+                    next.at
+                );
                 ran += 1;
             }
         }

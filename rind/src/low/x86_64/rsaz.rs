@@ -333,7 +333,9 @@ mod tests {
     /// sixteen.
     fn operands() -> impl Strategy<Value = ([u64; 16], [u64; 16], [u64; 16])> {
         prop_oneof![Just(29), Just(64)]
-            .prop_flat_map(|bits| modulus(bits, 16).prop_flat_map(move |m| (Just(m.clone()), below(bits, m))))
+            .prop_flat_map(|bits| {
+                modulus(bits, 16).prop_flat_map(move |m| (Just(m.clone()), below(bits, m)))
+            })
             .prop_flat_map(|(m, x)| (Just(m), Just(x), words(1, 16)))
             .prop_map(|(m, x, mut e)| {
                 e.resize(16, 0);

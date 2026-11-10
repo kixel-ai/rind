@@ -78,7 +78,9 @@ mod tests {
     /// A modulus of a width taking each of `bn_mul_mont`'s paths, and two
     /// values below it.
     fn operands() -> impl Strategy<Value = (Vec<u64>, Vec<u64>, Vec<u64>)> {
-        const WIDTHS: &[usize] = &[2, 3, 5, 8, 9, 12, 16, 17, 18, 24, 32, 33, 36, 48, 64, 96, 128];
+        const WIDTHS: &[usize] = &[
+            2, 3, 5, 8, 9, 12, 16, 17, 18, 24, 32, 33, 36, 48, 64, 96, 128,
+        ];
         prop::sample::select(WIDTHS)
             .prop_flat_map(|k| modulus(64, k))
             .prop_flat_map(|m| (Just(m.clone()), below(64, m.clone()), below(64, m)))

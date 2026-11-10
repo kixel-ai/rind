@@ -318,20 +318,21 @@ mod tests {
         prop::sample::select(WIDTHS).prop_flat_map(|k| {
             let edges = modulus(64, k)
                 .prop_flat_map(|m| (Just(m.clone()), below(64, m.clone()), below(64, m)));
-            let product = (radix_words(64, k / 2), radix_words(64, k - k / 2)).prop_map(|(r, s)| {
-                let [r, s] = [r, s].map(|mut v| {
-                    v[0] |= 1;
-                    *v.last_mut().unwrap() |= 1 << 63;
-                    v
+            let product =
+                (radix_words(64, k / 2), radix_words(64, k - k / 2)).prop_map(|(r, s)| {
+                    let [r, s] = [r, s].map(|mut v| {
+                        v[0] |= 1;
+                        *v.last_mut().unwrap() |= 1 << 63;
+                        v
+                    });
+                    let mut m = vec![0; r.len() + s.len()];
+                    bignum_mul::bignum_mul(&mut m, &r, &s);
+                    let [r, s] = [r, s].map(|mut v| {
+                        v.resize(m.len(), 0);
+                        v
+                    });
+                    (m, r, s)
                 });
-                let mut m = vec![0; r.len() + s.len()];
-                bignum_mul::bignum_mul(&mut m, &r, &s);
-                let [r, s] = [r, s].map(|mut v| {
-                    v.resize(m.len(), 0);
-                    v
-                });
-                (m, r, s)
-            });
             prop_oneof![3 => edges, 1 => product]
         })
     }
