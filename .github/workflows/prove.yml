@@ -17,6 +17,7 @@ on:
       - proofs/**
       - admin/prove
       - admin/prove-bytes
+      - admin/simd-vectors.rs
       - admin/upstream
       - ALGORITHMS.md
       - flake.nix

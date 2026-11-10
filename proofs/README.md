@@ -388,9 +388,14 @@ Beyond Lean's kernel:
 - That `Rind/Vale.lean` transliterates Vale's AES and GF(2^128) specs and
   `hkeys_reqs_pub`, with the round functions Vale's AES spec assumes read as
   FIPS 197's, the S-box and `MixColumns` opaque.
-- That `Rind/X86_64/Simd.lean`'s intrinsics compute what Intel's manual
-  defines their instructions to, as an instruction model is trusted for
-  s2n-bignum's and Vale's own proofs.
+- That `Rind/X86_64/Simd.lean`'s intrinsics compute what their instructions
+  do beyond the inputs `admin/prove` tests them on. `admin/simd-vectors.rs`
+  runs each instruction on the checking machine's CPU, on every immediate it
+  reads, zero and all-ones lanes, and random inputs from a fixed seed, and
+  Lean checks each model gives the same. The AES models run the S-box and
+  `MixColumns` as FIPS 197 computes them, bodies Lean evaluates while proofs
+  keep the two opaque. All are tested on hardware, none under an emulator;
+  `admin/prove` fails on a `core.core_arch` model it does not test.
 - That rind's inline assembly is s2n-bignum's, aws-lc's, and Vale's object
   code, as for `benchmarks/verified.toml`'s other entries, except where a
   proof in `hol-light/` covers the bytes rind's build emits. For those, HOL

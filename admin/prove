@@ -710,6 +710,21 @@ for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20 Signa
 done
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
+# Each hand model of a CPU intrinsic, a `core.core_arch` definition but its
+# vector types' own, is tested against the instruction on this CPU:
+# `admin/simd-vectors.rs` runs each and writes `#guard`s that the models
+# compute the same, which Lean checks once the proofs build. Fail on a model
+# it does not test, so a new one cannot go untested.
+rustc --edition 2024 -O -o "$out/simd-vectors" admin/simd-vectors.rs
+"$out/simd-vectors" >"$out/SimdVectors.lean"
+untested=$(grep -rhoE '^def core\.core_arch\.[^ ]+' proofs/Rind | sed 's/^def //' | grep -v '\.__m' | sort -u |
+    while read -r model; do grep -qF " $model " "$out/SimdVectors.lean" || echo "$model"; done)
+if [[ -n $untested ]]; then
+    echo "admin/prove: no vectors test these intrinsic models:" $untested >&2
+    exit 1
+fi
+
 cd proofs
 lake exe cache get
 lake build
+lake env lean "../$out/SimdVectors.lean"
