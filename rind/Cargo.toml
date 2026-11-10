@@ -1,6 +1,6 @@
 [package]
 name = "rind"
-version = "0.3.3"
+version = "0.3.2"
 edition = "2024"
 repository = "https://github.com/moq-dev/rind"
 license = "(Apache-2.0 OR ISC OR MIT-0) AND (Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND BSD-3-Clause"
@@ -48,6 +48,10 @@ hex = { version = "0.4", features = ["serde"] }
 proptest = "1.5.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Maps the guard pages around the buffers in `low::guard_pages`.
+[target.'cfg(unix)'.dev-dependencies]
+libc = { version = "0.2", default-features = false }
 
 # The differential tests' reference. Miri cannot run C, so its builds leave it
 # out, along with every test that calls it.

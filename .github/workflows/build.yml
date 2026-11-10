@@ -87,10 +87,10 @@ jobs:
         if: runner.arch == 'X64'
         shell: bash
         run: |
-          # Each tier runs the tests, then CCTV's million ML-KEM vectors in a
+          # Each tier runs the tests and the zeroing tests, then CCTV's million ML-KEM vectors in a
           # release build, which honours the tier's denials only with
           # `--cfg rind_cpu_disable`, alongside the check that they took effect
-          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
+          tier() { env "$@" cargo test; env "$@" cargo test -p rind --features wipe --test zeroing; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
           # test rind's AVX2 SHA-1 and OpenSSL's AVX2 SHA-256 for CPUs without
           # the SHA extensions
           tier RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1
@@ -128,7 +128,7 @@ jobs:
         if: runner.arch == 'ARM64'
         shell: bash
         run: |
-          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
+          tier() { env "$@" cargo test; env "$@" cargo test -p rind --features wipe --test zeroing; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
           # test the by-4 AES-GCM and Keccak-f kernels for cores without SHA3,
           # failing a run whose OS hides the crypto extension
           tier RIND_CPU_DISABLE_sha3=1 RIND_TEST_ARM_CRYPTO_EXT=1
@@ -177,6 +177,30 @@ jobs:
       - name: Run tests (release)
         run: env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --release
 
+  # 32-bit x86 Windows on the portable backend, which the x86_64 runner runs
+  # natively. The qemu job tests Linux's, and the android job Android's.
+  i686-windows:
+    runs-on: windows-latest
+    env:
+      CARGO_BUILD_TARGET: i686-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: i686-pc-windows-msvc
+
+      - name: Run tests (debug)
+        run: cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --locked
+      - name: Run tests (release)
+        run: env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --locked --release
+
   # 32-bit ARM runs libcrux, or aws-lc's assembly for ChaCha20, NEON, and the
   # crypto extension. The recipe builds and lints Android and Linux gnueabihf,
   # then runs the gnueabihf tests under qemu on each of rind's armv7 tiers, as
@@ -195,15 +219,16 @@ jobs:
       - name: Build, lint, and test
         run: just armv7
 
-  # Targets with no rind assembly, on the portable backend, under qemu-user.
-  # Each entry names the flake dev shell that holds its target's toolchain.
-  # s390x, powerpc64, and powerpc are big-endian, and the armv6 shells run on
-  # qemu's ARM1176.
+  # Targets with no rind assembly, on the portable backend, under qemu-user
+  # where the runner cannot run them natively. Each entry names the flake dev
+  # shell that holds its target's toolchain. s390x, powerpc64, and powerpc are
+  # big-endian, the armv6 shells run on qemu's ARM1176, and the runner runs
+  # i686 natively.
   qemu:
     strategy:
       fail-fast: false
       matrix:
-        shell: [s390x, riscv64, riscv64-musl, loongarch64, armv6, armv6-softfloat, powerpc64le, powerpc64, powerpc]
+        shell: [s390x, riscv64, riscv64-musl, loongarch64, armv6, armv6-softfloat, powerpc64le, powerpc64, powerpc, i686]
 
     runs-on: ubuntu-latest
     steps:
@@ -396,7 +421,8 @@ jobs:
           env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --target aarch64-apple-ios-sim --release
 
   # cross's images (see Cross.toml) hold an Android system for the tests, and
-  # run aarch64 and armv7 under qemu-user, whose CPU has the crypto extension.
+  # run aarch64, armv7, and i686 under qemu-user. The aarch64 and armv7 CPUs
+  # have the crypto extension; i686's Atom N270 has none of x86's.
   # armv7 Linux covers the paths without it. ARMv5TE runs the portable backend.
   android:
     strategy:
@@ -407,6 +433,8 @@ jobs:
           - target: armv7-linux-androideabi
             expect: RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1
           - target: x86_64-linux-android
+            expect: ""
+          - target: i686-linux-android
             expect: ""
           - target: arm-linux-androideabi
             expect: ""

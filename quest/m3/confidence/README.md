@@ -2,7 +2,7 @@
 
 ## Goal
 
-The four confidence quests that open PRs claimed before the epic moved finish from this directory. Once the last has merged, this README is deleted.
+The confidence quests that open PRs claimed before the epic moved finish from this directory. Once the last has merged, this README is deleted.
 
 ## Plan
 

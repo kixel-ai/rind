@@ -22,3 +22,9 @@ image = "ghcr.io/cross-rs/arm-linux-androideabi@sha256:806d4227824454e6ce961d6c9
 [target.x86_64-linux-android]
 image = "ghcr.io/cross-rs/x86_64-linux-android@sha256:5779721607756da8c49c032edc5f82970f7295d3a42c2ab4cba49e69ba40a18d"
 runner = "native"
+
+# 32-bit x86 runs the portable backend, which needs no CPU features, so qemu's
+# Atom N270 model serves. Run natively in the container, the binaries die of
+# SIGSYS before the first test.
+[target.i686-linux-android]
+image = "ghcr.io/cross-rs/i686-linux-android@sha256:7d8fc923d8aa0645aff4b73815c86effceef7375a6244d31c8e69486395be78d"

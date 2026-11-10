@@ -96,6 +96,10 @@ pub(crate) use posint::{ModExp, PosInt, SecretPosInt};
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests;
 
+#[cfg(all(test, unix))]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod guard_pages;
+
 // The portable backend, which armv7 builds on, and what both run alike.
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 mod portable;

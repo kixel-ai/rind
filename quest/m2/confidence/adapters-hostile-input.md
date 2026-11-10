@@ -34,5 +34,4 @@ Guidance:
 
 ## Related
 
-- [A differential fuzz target for every primitive](/quest/m3/confidence/fuzz-every-primitive.md) - fuzzes `rind`'s primitives, not the adapters above them
 - [Adapter crates' surviving mutants](/quest/m2/confidence/mutants-adapters.md) - tests the adapters' values against upstream's, where this tests their handling of bad input
