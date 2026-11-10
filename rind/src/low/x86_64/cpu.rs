@@ -113,48 +113,56 @@ unsafe fn zero_bytes_sse2(ptr: *mut u8, len: usize) {
 ///
 /// # Safety
 /// The caller must ensure that there are `len` bytes readable at `a` and `b`,
+#[inline(never)]
 pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: usize) -> u8 {
-    let mut acc = 0u8;
-    // SAFETY: reads `len` bytes from `a` and `b`, which the caller guarantees
+    let acc: u32;
+    // SAFETY: reads `len` bytes from `a` and `b`, which the caller guarantees.
+    // Its registers are fixed, and it is never inlined, so its proof in
+    // `proofs/hol-light/x86_64/ct_compare_bytes.ml` is of one copy.
     unsafe {
         core::arch::asm!(
-            "   2: cmp {len}, 0",
-            "      je  3f",
-            "      mov {tmp}, [{a}]",
-            "      xor {tmp}, [{b}]",
-            "      or  {acc}, {tmp}",
-            "      add {a}, 1",
-            "      add {b}, 1",
-            "      sub {len}, 1",
-            "      jmp 2b",
+            "   2: cmp   rdx, 0",
+            "      je    3f",
+            "      movzx ecx, byte ptr [rdi]",
+            "      movzx r8d, byte ptr [rsi]",
+            "      xor   ecx, r8d",
+            "      or    eax, ecx",
+            "      add   rdi, 1",
+            "      add   rsi, 1",
+            "      sub   rdx, 1",
+            "      jmp   2b",
             "   3:  ",
-            a = inout(reg) a => _,
-            b = inout(reg) b => _,
-            len = inout(reg) len => _,
-            tmp = inout(reg_byte) 0u8 => _,
-            acc = inout(reg_byte) acc,
+            inout("rdi") a => _,
+            inout("rsi") b => _,
+            inout("rdx") len => _,
+            inout("eax") 0u32 => acc,
+            out("ecx") _,
+            out("r8d") _,
+            options(nostack, readonly),
         );
     }
-    acc
+    acc as u8
 }
 
 /// Compares two 16-byte blocks, such as AEAD tags, in constant time.
 ///
 /// Returns zero if `a == b`, otherwise non-zero. The words are combined in
 /// assembly so the compiler cannot split the test into early exits.
+#[inline(never)]
 pub(in crate::low) fn ct_compare_16(a: &[u8; 16], b: &[u8; 16]) -> usize {
     let (a, b) = (u128::from_ne_bytes(*a), u128::from_ne_bytes(*b));
-    let mut diff = a as u64;
-    // SAFETY: register-only arithmetic.
+    let diff: u64;
+    // SAFETY: register-only arithmetic, proven in
+    // `proofs/hol-light/x86_64/ct_compare_16.ml`.
     unsafe {
         core::arch::asm!(
-            "xor {diff}, {b0}",
-            "xor {a1}, {b1}",
-            "or  {diff}, {a1}",
-            diff = inout(reg) diff,
-            a1 = inout(reg) (a >> 64) as u64 => _,
-            b0 = in(reg) b as u64,
-            b1 = in(reg) (b >> 64) as u64,
+            "xor rax, rdx",
+            "xor rcx, r8",
+            "or  rax, rcx",
+            inout("rax") a as u64 => diff,
+            inout("rcx") (a >> 64) as u64 => _,
+            in("rdx") b as u64,
+            in("r8") (b >> 64) as u64,
             options(pure, nomem, nostack),
         );
     }

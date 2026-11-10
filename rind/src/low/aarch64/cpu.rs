@@ -64,50 +64,56 @@ pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
 ///
 /// # Safety
 /// The caller must ensure that there are `len` bytes readable at `a` and `b`,
+#[inline(never)]
 pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: usize) -> u8 {
-    // SAFETY: inline assembly.
+    let acc: u64;
+    // SAFETY: reads `len` bytes from `a` and `b`, which the caller guarantees.
+    // Its registers are fixed, and it is never inlined, so its proof in
+    // `proofs/hol-light/aarch64/ct_compare_bytes.ml` is of one copy.
     unsafe {
-        let mut acc = 0u8;
         core::arch::asm!(
-            "   2: cmp  {len}, 0",
+            "   2: cmp  x2, 0",
             "      beq  3f",
-            "      ldrb {tmpa:w}, [{a}]",
-            "      ldrb {tmpb:w}, [{b}]",
-            "      eor  {tmpa:w}, {tmpa:w}, {tmpb:w}",
-            "      orr  {acc:w}, {acc:w}, {tmpa:w}",
-            "      add  {a}, {a}, 1",
-            "      add  {b}, {b}, 1",
-            "      sub  {len}, {len}, 1",
+            "      ldrb w4, [x0]",
+            "      ldrb w5, [x1]",
+            "      eor  w4, w4, w5",
+            "      orr  w3, w3, w4",
+            "      add  x0, x0, 1",
+            "      add  x1, x1, 1",
+            "      sub  x2, x2, 1",
             "      b    2b",
             "   3:  ",
-            a = inout(reg) a => _,
-            b = inout(reg) b => _,
-            len = inout(reg) len => _,
-            tmpa = inout(reg) 0u8 => _,
-            tmpb = inout(reg) 0u8 => _,
-            acc = inout(reg) acc,
+            inout("x0") a => _,
+            inout("x1") b => _,
+            inout("x2") len => _,
+            inout("x3") 0u64 => acc,
+            out("x4") _,
+            out("x5") _,
+            options(nostack, readonly),
         );
-        acc
     }
+    acc as u8
 }
 
 /// Compares two 16-byte blocks, such as AEAD tags, in constant time.
 ///
 /// Returns zero if `a == b`, otherwise non-zero. The words are combined in
 /// assembly so the compiler cannot split the test into early exits.
+#[inline(never)]
 pub(in crate::low) fn ct_compare_16(a: &[u8; 16], b: &[u8; 16]) -> usize {
     let (a, b) = (u128::from_ne_bytes(*a), u128::from_ne_bytes(*b));
-    let mut diff = a as u64;
-    // SAFETY: register-only arithmetic.
+    let diff: u64;
+    // SAFETY: register-only arithmetic, proven in
+    // `proofs/hol-light/aarch64/ct_compare_16.ml`.
     unsafe {
         core::arch::asm!(
-            "eor {diff}, {diff}, {b0}",
-            "eor {a1}, {a1}, {b1}",
-            "orr {diff}, {diff}, {a1}",
-            diff = inout(reg) diff,
-            a1 = inout(reg) (a >> 64) as u64 => _,
-            b0 = in(reg) b as u64,
-            b1 = in(reg) (b >> 64) as u64,
+            "eor x0, x0, x2",
+            "eor x1, x1, x3",
+            "orr x0, x0, x1",
+            inout("x0") a as u64 => diff,
+            inout("x1") (a >> 64) as u64 => _,
+            in("x2") b as u64,
+            in("x3") (b >> 64) as u64,
             options(pure, nomem, nostack, preserves_flags),
         );
     }

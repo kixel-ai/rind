@@ -203,6 +203,10 @@ symbol_bounds() {
 # an axiom beyond HOL Light's.
 hol_light_proofs=(
     "aarch64 bignum_eq rind::low::aarch64::bignum_eq::bignum_eq"
+    "aarch64 ct_compare_bytes rind::low::aarch64::cpu::ct_compare_bytes"
+    "aarch64 ct_compare_16 rind::low::aarch64::cpu::ct_compare_16"
+    "x86_64 ct_compare_bytes rind::low::x86_64::cpu::ct_compare_bytes"
+    "x86_64 ct_compare_16 rind::low::x86_64::cpu::ct_compare_16"
 )
 hol_light() {
     local dir=$out/hol-light root=$PWD arches arch file path proof
