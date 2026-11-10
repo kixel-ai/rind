@@ -994,6 +994,12 @@ def tier_cells(tiers):
     return cells
 
 
+def covers(entry, operation, place):
+    """Whether a benchmarks/gaps.toml entry decides the gap of an operation on
+    a host or tier."""
+    return place in entry["on"] and any(fnmatch.fnmatchcase(operation, op) for op in entry["operations"])
+
+
 def gaps_of(hosts, tiers):
     """Each operation where another library beats rind by more than SLOWER, by
     (operation, host or tier), as (ratio, fastest library)."""
@@ -1043,11 +1049,7 @@ def load_gaps(hosts, tiers, path=GAPS):
                 fail(f"{where}: no host or tier {place}")
             if place in HOSTS and place not in hosts:
                 fail(f"{where}: {place} is not measured; update or remove the entry")
-        covered = {
-            k: v
-            for k, v in found.items()
-            if k[1] in e["on"] and any(fnmatch.fnmatchcase(k[0], op) for op in e["operations"])
-        }
+        covered = {k: v for k, v in found.items() if covers(e, *k)}
         if not covered and measured & set(e["on"]):
             fail(f"{where}: names no gap over 10%; update or remove the entry")
         for k in covered:
@@ -1558,7 +1560,9 @@ def report(hosts, tiers, verified, gaps):
             "IFMA; no ADX: also ADX; "
             "no AVX2: also AVX2, BMI2, SHA-NI, AVX-512, VAES, and VPCLMULQDQ; no AVX: also AVX; no AES-NI: "
             "also AES-NI, PCLMULQDQ, and SSE4.1; SSE2: also SSSE3). aarch64 runs with the crypto extension, "
-            "no crypto without it, and armv7 in 32-bit mode on the same core. Each cell is rind's time over "
+            "no crypto without it, and armv7 in 32-bit mode on the same core. portable times rind's portable "
+            "backend, forced with `--cfg rind_portable`, against aws-lc's C built without assembly; ring has no "
+            "such build, so it sits that column out. Each cell is rind's time over "
             "the fastest of aws-lc-rs and ring (aws-lc-rs alone where a feature is denied, since ring can't "
             "be denied one), in the row's benchmark where rind trails most. An empty cell runs the same code "
             "as the one to its left, so it isn't timed.",
@@ -1710,7 +1714,7 @@ def gate(args):
     )
     undecided, once = [], []
     for (key, column), (ratio, best) in sorted(gaps_of({}, tiers).items()):
-        if any(column in e["on"] and any(fnmatch.fnmatchcase(key, op) for op in e["operations"]) for e in entries):
+        if any(covers(e, key, column) for e in entries):
             continue
         cell = f"{key} on {column} ({ratio:.2f}× {best})"
         if previous is None or (key, column) in previous:
