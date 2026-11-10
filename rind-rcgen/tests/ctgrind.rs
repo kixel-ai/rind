@@ -106,8 +106,14 @@ fn pem() {
         public(key.serialized_der());
 
         // Decoding is checked on pem-rfc7468 itself, since parsing the DER it
-        // yields branches on its public structure. Only the base64 is secret.
-        for line in pem.lines().filter(|line| !line.starts_with("-----")) {
+        // yields branches on its public structure. Only the base64 is secret,
+        // so find its lines while the PEM is public, then mark them.
+        public(pem.as_bytes());
+        let base64: Vec<&str> = pem
+            .lines()
+            .filter(|line| !line.starts_with("-----"))
+            .collect();
+        for line in base64 {
             mark(line.as_bytes(), MemState::Undefined);
         }
         let (label, der) = pem_rfc7468::decode_vec(pem.as_bytes()).unwrap();
