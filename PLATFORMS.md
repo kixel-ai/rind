@@ -4,8 +4,8 @@ rind has assembly for `aarch64`, `x86_64`, and 32-bit `arm` from ARMv7 on, and
 a portable Rust backend for every other architecture. CI tests Linux (glibc and musl), macOS, and Windows on `x86_64` and `aarch64`, Linux and Windows on
 32-bit `x86`, iOS in the simulator on `aarch64`, Android on `aarch64`,
 `armv7`, ARMv5TE, `x86_64`, and 32-bit `x86`, all but `x86_64` under qemu, and
-Linux on `armv7`, ARMv6, big-endian `s390x`, and `riscv64gc` (glibc and musl)
-under qemu. iOS devices' code is only built.
+Linux on `armv7`, ARMv6, big-endian `s390x`, `riscv64gc` (glibc and musl), and
+`loongarch64` under qemu. iOS devices' code is only built.
 
 - `aarch64` requires the `neon` CPU feature. Where the CPU has the crypto
   extension (`aes`, `pmull`, and `sha2`), as the Raspberry Pi 5 and most
@@ -68,8 +68,9 @@ under qemu. iOS devices' code is only built.
   runs the portable backend even when built for a newer core. CI tests it on
   32-bit `x86` (`i686`), and under qemu on big-endian `s390x`, on `riscv64gc`
   (scalar only: rind uses neither the vector nor the scalar crypto
-  extensions), on `arm-unknown-linux-gnueabi` and `arm-unknown-linux-gnueabihf`
-  on qemu's ARMv6 core (the ARM1176 of the Raspberry Pi 1 and Zero), and on
+  extensions), on `loongarch64`, on `arm-unknown-linux-gnueabi` and
+  `arm-unknown-linux-gnueabihf` on qemu's ARMv6 core (the ARM1176 of the
+  Raspberry Pi 1 and Zero), and on
   `arm-linux-androideabi`, which Rust builds for ARMv5TE, and on `x86_64`,
   where `--cfg rind_portable` forces it. CI also compiles the library for
   `wasm32-wasip2` and `wasm32-unknown-unknown`, with and without `wipe`. The

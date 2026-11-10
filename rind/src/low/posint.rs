@@ -808,6 +808,29 @@ fn mul_word_mod(u: &mut [u64], d: &[u64]) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::test::bignum::{div_r, mod_exp_vectors, mod_mul_vectors};
+
+    // Through the products and exponentiation this CPU picks, on every
+    // backend; the backends' own tests run each of their routines.
+    #[test]
+    fn aws_lc_mod_mul() {
+        for v in mod_mul_vectors() {
+            let int = |words: &[u64]| PosInt::<64>::from_words(words).unwrap();
+            let n = int(&v.m);
+            let got = int(&v.a).mont_mul(&int(&v.b), &n, n.mont_neg_inverse());
+            assert_eq!(got.as_words(), div_r(&v.want, &v.m), "{}", v.at);
+        }
+    }
+
+    #[test]
+    fn aws_lc_mod_exp() {
+        for v in mod_exp_vectors() {
+            let int = |words: &[u64]| PosInt::<128>::from_words(words).unwrap();
+            let n = int(&v.m);
+            let got = int(&v.a).mod_exp(&int(&v.e), &n, &n.montifier(), n.mont_neg_inverse());
+            assert_eq!(got.as_words(), v.want, "{}", v.at);
+        }
+    }
 
     /// Against the constant-time montifier, at the extremes of each width,
     /// including a top word of one.
