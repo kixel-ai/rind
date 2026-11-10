@@ -1,4 +1,4 @@
-# [L] x86_64 SHA-NI SHA-256 block function is proven
+# [M] x86_64 SHA-NI SHA-256 block function is proven
 
 ## Goal
 

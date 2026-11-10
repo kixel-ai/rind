@@ -1,4 +1,4 @@
-# [XL] x86_64's other RSA Montgomery products are proven
+# [L] x86_64's other RSA Montgomery products are proven
 
 ## Goal
 

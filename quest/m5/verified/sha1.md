@@ -1,4 +1,4 @@
-# [L] SHA-1 is proven on every x86_64 and aarch64 tier
+# [XL] SHA-1 is proven on every x86_64 and aarch64 tier
 
 ## Goal
 
