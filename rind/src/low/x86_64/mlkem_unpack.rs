@@ -18,6 +18,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = a
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/mlkem/mlkem_unpack.S.
 /// Reorder ML-KEM polynomial coefficients for x86 implementation
 ///
 /// Input a[256] (signed 16-bit words); output a[256] (signed 16-bit words)

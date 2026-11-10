@@ -814,6 +814,7 @@ macro_rules! copy9 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p521/p521_jmixadd.S.
 /// Point mixed addition on NIST curve P-521 in Jacobian coordinates
 ///
 ///

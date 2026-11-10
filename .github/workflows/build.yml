@@ -13,6 +13,29 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: wasm32-wasip2,wasm32-unknown-unknown
+
+      # Compile only the library: the differential tests link native aws-lc.
+      - name: Build WASI
+        run: cargo build -p rind --release --lib --locked --target wasm32-wasip2
+      - name: Build WASI with wiping
+        run: cargo build -p rind --release --lib --locked --target wasm32-wasip2 --features wipe
+      - name: Build WebAssembly with JavaScript randomness
+        run: cargo build -p rind --release --lib --locked --target wasm32-unknown-unknown --features getrandom/wasm_js
+      - name: Build WebAssembly with JavaScript randomness and wiping
+        run: cargo build -p rind --release --lib --locked --target wasm32-unknown-unknown --features wipe,getrandom/wasm_js
+
   build:
     strategy:
       matrix:
@@ -172,14 +195,14 @@ jobs:
       - name: Build, lint, and test
         run: just armv7
 
-  # Architectures with no rind assembly, on the portable backend, under
-  # qemu-user. Each entry names the flake dev shell that holds its target's
-  # toolchain. s390x is big-endian.
+  # Targets with no rind assembly, on the portable backend, under qemu-user.
+  # Each entry names the flake dev shell that holds its target's toolchain.
+  # s390x is big-endian, and the armv6 shells run on qemu's ARM1176.
   qemu:
     strategy:
       fail-fast: false
       matrix:
-        shell: [s390x, riscv64, riscv64-musl]
+        shell: [s390x, riscv64, riscv64-musl, loongarch64, armv6, armv6-softfloat]
 
     runs-on: ubuntu-latest
     steps:
@@ -373,7 +396,7 @@ jobs:
 
   # cross's images (see Cross.toml) hold an Android system for the tests, and
   # run aarch64 and armv7 under qemu-user, whose CPU has the crypto extension.
-  # armv7 Linux covers the paths without it.
+  # armv7 Linux covers the paths without it. ARMv5TE runs the portable backend.
   android:
     strategy:
       matrix:
@@ -383,6 +406,8 @@ jobs:
           - target: armv7-linux-androideabi
             expect: RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1
           - target: x86_64-linux-android
+            expect: ""
+          - target: arm-linux-androideabi
             expect: ""
 
     runs-on: ubuntu-latest

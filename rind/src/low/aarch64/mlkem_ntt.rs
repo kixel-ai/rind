@@ -24,6 +24,7 @@ use crate::low::macros::*;
 // Standard ARM ABI: X0 = a, X1 = z_01234, X2 = z_56
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's arm/mlkem/mlkem_ntt.S.
 /// Forward number-theoretic transform from ML-KEM
 ///
 /// Input a[256], z_01234[80], z_56[384] (all signed 16-bit words); output a[256] (signed 16-bit words).

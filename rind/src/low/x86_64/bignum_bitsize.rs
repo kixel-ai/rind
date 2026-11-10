@@ -51,6 +51,7 @@ macro_rules! j {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_bitsize.S.
 /// Return size of bignum in bits
 ///
 /// Input x[k]; output function return

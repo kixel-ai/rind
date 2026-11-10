@@ -65,6 +65,7 @@ macro_rules! d {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_add.S.
 /// Add, z := x + y
 ///
 /// Inputs x[m], y[n]; outputs function return (carry-out) and z[p]
