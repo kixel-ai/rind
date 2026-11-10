@@ -10,5 +10,4 @@ The confidence quests that open PRs claimed before the epic moved finish from th
 
 ## Required
 
-- [A constant-time check on every tier](/quest/m3/confidence/ct-tiers.md) - Intel's AVX SHA under SDE, and aarch64's SHA-3 and SHA-512 paths
 - [Mutation testing on armv7](/quest/m3/confidence/mutants-armv7.md) - the code only 32-bit ARM compiles, under qemu-arm

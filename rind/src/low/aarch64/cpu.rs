@@ -315,11 +315,14 @@ mod tests {
 
     // CI runs the aarch64 suite on a CPU with the crypto extension, then
     // again with it denied, and names which, so neither run silently tests
-    // only one path.
+    // only one path. Under valgrind, which hides SHA3, it names that too.
     #[test]
     fn detects_the_expected_cpu() {
         if let Some(expected) = std::env::var_os("RIND_TEST_ARM_CRYPTO_EXT") {
             assert_eq!(HaveCryptoExt::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_ARM_SHA3") {
+            assert_eq!(HaveSha3::check().is_some(), expected == "1");
         }
     }
 
