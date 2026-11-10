@@ -12,6 +12,8 @@ use super::cpu::{HaveAesHardware, HaveSsse3};
 use super::vpaes_x86_64::{VpaesDecKey, VpaesKey};
 use crate::low;
 
+// Keep all-zero valid when drop wipes the whole enum.
+#[repr(u8)]
 pub(crate) enum AesKey {
     /// AES-NI's, which the key picks when the CPU has AES-NI and PCLMULQDQ.
     Hw(HwKey),
@@ -75,6 +77,7 @@ impl Drop for AesKey {
 impl low::generic::zeroise::Zeroable for AesKey {}
 
 /// An AES key that decrypts, on the path [`AesKey`] picks for the CPU.
+#[repr(u8)]
 pub(crate) enum AesDecKey {
     Hw(HwDecKey),
     Vpaes(VpaesDecKey),

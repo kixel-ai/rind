@@ -87,7 +87,7 @@ jobs:
           for feature in $DENY; do
             deny+=("RIND_CPU_DISABLE_$feature=1")
           done
-          nix develop .#timing --command env "${deny[@]}" admin/timing dudect
+          nix develop .#dudect --command env "${deny[@]}" admin/timing dudect
         env:
           DENY: ${{ matrix.deny }}
           RUSTFLAGS: ${{ matrix.deny && '--cfg rind_cpu_disable' || '' }}

@@ -20,7 +20,6 @@ Route: prove each against the HOL Light or Lean specs the x86_64 and aarch64 que
 
 ## Required
 
-- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
 - [An AArch32 instruction model checks armv7's assembly](/quest/m5/verified-armv7/model.md) - the model the proofs run on
 - [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) - the armv7 translation these routines' theorems compose with
 - [ChaCha20-Poly1305 is proven on x86_64](/quest/m4/verified/chacha20-poly1305-x86.md) - the RFC 8439 ChaCha20 and Poly1305 specs and the AEAD glue's proof

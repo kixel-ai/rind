@@ -22,29 +22,29 @@ pub struct Algorithm {
 
 pub static X25519: Algorithm = Algorithm {
     id: AlgorithmId::X25519,
-    generate: Keyed::<x25519::PrivateKey>::generate,
-    load: Keyed::<x25519::PrivateKey>::load,
+    generate: Keyed::<X25519Curve>::generate,
+    load: Keyed::<X25519Curve>::load,
     parse_public: x25519_public_key,
 };
 
 pub static ECDH_P256: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP256,
-    generate: Keyed::<p256::PrivateKey>::generate,
-    load: Keyed::<p256::PrivateKey>::load,
+    generate: Keyed::<curve::P256>::generate,
+    load: Keyed::<curve::P256>::load,
     parse_public: p256_public_key,
 };
 
 pub static ECDH_P384: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP384,
-    generate: Keyed::<p384::PrivateKey>::generate,
-    load: Keyed::<p384::PrivateKey>::load,
+    generate: Keyed::<curve::P384>::generate,
+    load: Keyed::<curve::P384>::load,
     parse_public: p384_public_key,
 };
 
 pub static ECDH_P521: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP521,
-    generate: Keyed::<p521::PrivateKey>::generate,
-    load: Keyed::<p521::PrivateKey>::load,
+    generate: Keyed::<curve::P521>::generate,
+    load: Keyed::<curve::P521>::load,
     parse_public: p521_public_key,
 };
 
@@ -139,8 +139,8 @@ impl PrivateKey {
 }
 
 struct Keyed<K: Agree> {
-    key: K,
-    ops: low::ZeroableRef<Ops<K>>,
+    key: K::Key,
+    ops: low::ZeroableRef<Ops<K::Key>>,
 }
 
 struct Ops<K> {
@@ -152,7 +152,7 @@ struct Ops<K> {
 impl<K: Agree> Keyed<K> {
     fn generate(algorithm: &'static Algorithm) -> Result<PrivateKey, Error> {
         let key = K::random()?;
-        let public = key.encode_public(algorithm);
+        let public = K::encode_public(&key, algorithm);
         Ok(Self::private_key(key, public))
     }
 
@@ -161,7 +161,7 @@ impl<K: Agree> Keyed<K> {
         Ok(Self::private_key(key, public))
     }
 
-    fn private_key(key: K, public: PublicKey) -> PrivateKey {
+    fn private_key(key: K::Key, public: PublicKey) -> PrivateKey {
         let keyed = Self {
             key,
             ops: low::ZeroableRef::new(
@@ -274,7 +274,7 @@ The model departs from the Rust in seven ways, and adds no axiom:
 - P-256's `random` is `p256::PrivateKey::generate`, which
   `Rind.X86_64.P256Dispatch` names: the translation's opaque `new_random` on
   a target with no P-256 theorem, and otherwise a model of its draws.
-- `Ops<K>` holds nothing, and `Keyed::agree` calls `K::agree` directly: `Ops`
+- `Ops<K::Key>` holds nothing, and `Keyed::agree` calls `K::agree` directly: `Ops`
   is private to `high::agreement`, whose only value of one is
   `Keyed::private_key`'s, of `K`'s own functions. `admin/prove` checks that
   the quote holds every mention of `Ops` there.
@@ -290,18 +290,21 @@ The model departs from the Rust in seven ways, and adds no axiom:
 
 Drops are not modelled, as everywhere in the translation. Of the
 header-protection statics, only `CHACHA20` is here.
+
+As in the translation, `Keyed` and `Agree` take the curve marker `K` and its
+associated key type as separate type parameters.
 -/
 
 namespace rind.x86_64
 
 /-- `Keyed::<K>::private_key`, whose `ops` holds `K`'s own functions. -/
-def high.agreement.Keyed.private_key {K : Type} (AgreeInst : high.agreement.Agree K) (key : K)
+def high.agreement.Keyed.private_key {K Key : Type} (AgreeInst : high.agreement.Agree K Key) (key : Key)
     («public» : high.agreement.PublicKey) : Result high.agreement.PrivateKey := do
   let p ← AgreeInst.wrap { key, ops := () }
   ok { «private» := p, «public» }
 
 /-- `Keyed::<K>::generate`. -/
-def high.agreement.Keyed.generate {K : Type} (AgreeInst : high.agreement.Agree K)
+def high.agreement.Keyed.generate {K Key : Type} (AgreeInst : high.agreement.Agree K Key)
     (algorithm : high.agreement.Algorithm) :
     Result (core.result.Result high.agreement.PrivateKey error.Error) := do
   let r ← AgreeInst.random
@@ -313,7 +316,7 @@ def high.agreement.Keyed.generate {K : Type} (AgreeInst : high.agreement.Agree K
   | .Err e => ok (.Err e)
 
 /-- `Keyed::<K>::load`. -/
-def high.agreement.Keyed.load {K : Type} (AgreeInst : high.agreement.Agree K)
+def high.agreement.Keyed.load {K Key : Type} (AgreeInst : high.agreement.Agree K Key)
     (algorithm : high.agreement.Algorithm) (source : high.agreement.Source) :
     Result (core.result.Result high.agreement.PrivateKey error.Error) := do
   let r ← AgreeInst.load algorithm source
@@ -324,25 +327,25 @@ def high.agreement.Keyed.load {K : Type} (AgreeInst : high.agreement.Agree K)
   | .Err e => ok (.Err e)
 
 /-- `Keyed::<K>::agree`, whose `ops.agree` is `K::agree`. -/
-def high.agreement.Keyed.agree {K : Type} (AgreeInst : high.agreement.Agree K)
-    (self : high.agreement.Keyed K) (peer : Slice Std.U8) :
+def high.agreement.Keyed.agree {K Key : Type} (AgreeInst : high.agreement.Agree K Key)
+    (self : high.agreement.Keyed K Key) (peer : Slice Std.U8) :
     Result (core.result.Result high.agreement.Secret error.Error) :=
   AgreeInst.agree self.key peer
 
 /-- P-256's `Agree` impl, with `random` the `p256::PrivateKey::generate` that
 `Rind.X86_64.P256Dispatch` names. -/
-def high.agreement.p256Agree : high.agreement.Agree mid.p256.PrivateKey :=
-  { mid.p256.PrivateKey.Insts.RindHighAgreementAgree with random := mid.p256.PrivateKey.generate }
+def high.agreement.p256Agree : high.agreement.Agree high.curve.P256 mid.p256.PrivateKey :=
+  { high.curve.P256.Insts.RindHighAgreementAgreePrivateKey with random := mid.p256.PrivateKey.generate }
 
 /-- An `Algorithm`'s `generate`, given the static itself, as `PrivateKey::generate`
 passes it. -/
 def high.agreement.Algorithm.generate (algorithm : high.agreement.Algorithm) :
     Result (core.result.Result high.agreement.PrivateKey error.Error) :=
   match algorithm with
-  | .X25519 => high.agreement.Keyed.generate mid.x25519.PrivateKey.Insts.RindHighAgreementAgree algorithm
+  | .X25519 => high.agreement.Keyed.generate high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey algorithm
   | .ECDH_P256 => high.agreement.Keyed.generate high.agreement.p256Agree algorithm
-  | .ECDH_P384 => high.agreement.Keyed.generate mid.p384.PrivateKey.Insts.RindHighAgreementAgree algorithm
-  | .ECDH_P521 => high.agreement.Keyed.generate mid.p521.PrivateKey.Insts.RindHighAgreementAgree algorithm
+  | .ECDH_P384 => high.agreement.Keyed.generate high.curve.P384.Insts.RindHighAgreementAgreePrivateKey algorithm
+  | .ECDH_P521 => high.agreement.Keyed.generate high.curve.P521.Insts.RindHighAgreementAgreePrivateKey algorithm
 
 /-- An `Algorithm`'s `load`, given the static itself, as `PrivateKey`'s loaders
 pass it. -/
@@ -351,12 +354,12 @@ def high.agreement.Algorithm.load (algorithm : high.agreement.Algorithm)
     Result (core.result.Result high.agreement.PrivateKey error.Error) :=
   match algorithm with
   | .X25519 =>
-    high.agreement.Keyed.load mid.x25519.PrivateKey.Insts.RindHighAgreementAgree algorithm source
+    high.agreement.Keyed.load high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey algorithm source
   | .ECDH_P256 => high.agreement.Keyed.load high.agreement.p256Agree algorithm source
   | .ECDH_P384 =>
-    high.agreement.Keyed.load mid.p384.PrivateKey.Insts.RindHighAgreementAgree algorithm source
+    high.agreement.Keyed.load high.curve.P384.Insts.RindHighAgreementAgreePrivateKey algorithm source
   | .ECDH_P521 =>
-    high.agreement.Keyed.load mid.p521.PrivateKey.Insts.RindHighAgreementAgree algorithm source
+    high.agreement.Keyed.load high.curve.P521.Insts.RindHighAgreementAgreePrivateKey algorithm source
 
 /-- The `X25519` static. -/
 def high.agreement.X25519 : high.agreement.Algorithm := .X25519
@@ -403,10 +406,10 @@ def high.agreement.PrivateKey.agree (self : high.agreement.PrivateKey) (peer : S
     Result (core.result.Result high.agreement.SharedSecret error.Error) := do
   let r ← match self.private with
     | .X25519 key =>
-      high.agreement.Keyed.agree mid.x25519.PrivateKey.Insts.RindHighAgreementAgree key peer
-    | .P256 key => high.agreement.Keyed.agree mid.p256.PrivateKey.Insts.RindHighAgreementAgree key peer
-    | .P384 key => high.agreement.Keyed.agree mid.p384.PrivateKey.Insts.RindHighAgreementAgree key peer
-    | .P521 key => high.agreement.Keyed.agree mid.p521.PrivateKey.Insts.RindHighAgreementAgree key peer
+      high.agreement.Keyed.agree high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey key peer
+    | .P256 key => high.agreement.Keyed.agree high.curve.P256.Insts.RindHighAgreementAgreePrivateKey key peer
+    | .P384 key => high.agreement.Keyed.agree high.curve.P384.Insts.RindHighAgreementAgreePrivateKey key peer
+    | .P521 key => high.agreement.Keyed.agree high.curve.P521.Insts.RindHighAgreementAgreePrivateKey key peer
   match r with
   | .Ok secret => ok (.Ok secret)
   | .Err e => ok (.Err e)

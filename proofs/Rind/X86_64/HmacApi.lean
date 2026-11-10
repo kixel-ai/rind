@@ -39,12 +39,13 @@ def hmacOf (a : high.hmac.Algorithm) (key text : List Byte) : List Byte :=
   hmac (hmacHash a) (hmacBlock a) key text
 
 /-- What HMAC under `a` needs: the entry guard passes, and the CPU runs the
-hash's routines (`ShaBlocks` for SHA-1 and SHA-256, `RunsSha512` for SHA-384
-and SHA-512). -/
+hash's routines (`Sha1Blocks` for SHA-1, `Sha256Blocks` for SHA-256, and
+`RunsSha512` for SHA-384 and SHA-512). -/
 def RunsHmac (a : high.hmac.Algorithm) : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧
     match a with
-    | .HMAC_SHA1 | .HMAC_SHA256 => ShaBlocks
+    | .HMAC_SHA1 => Sha1Blocks
+    | .HMAC_SHA256 => Sha256Blocks
     | .HMAC_SHA384 | .HMAC_SHA512 => RunsSha512
 
 /-- `k` is the key `Key::new(a, key)` makes. -/
