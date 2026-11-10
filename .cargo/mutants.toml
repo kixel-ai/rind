@@ -12,7 +12,7 @@ exclude_globs = [
   "rind/src/low/*/openssl/**",
   # Test-only code under a `cfg(test)` cargo-mutants does not recognise.
   "rind/src/low/tests.rs",
-  # AVX-512 only, which no test host has: quest/m3/confidence/mutants-avx512.md.
+  # AVX-512 only, which no test host has: quest/m2/confidence/mutants-avx512.md.
   "rind/src/low/x86_64/mlkem768_sample_poly_ntt_8x.rs",
   "rind/src/low/x86_64/rsaz_avx512.rs",
   # Tools, not libraries.
@@ -246,10 +246,10 @@ exclude_re = [
   'rind/src/mid/p384\.rs:805:\d+: replace JacobianMontPoint::lookup_w5 -> Self with Default::default\(\)$',
   'rind/src/mid/p384\.rs:813:\d+: replace JacobianMontPoint::maybe_negate_y with \(\)$',
   'rind/src/mid/p384\.rs:598:\d+: replace JacobianMontPoint::multiply -> Self with Default::default\(\)$',
-  # DIT, which no test host has: quest/m3/confidence/mutants-dit.md.
+  # DIT, which no test host has: quest/m2/confidence/mutants-dit.md.
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace & with \^ in dit::maybe_enable$',
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace & with \| in dit::maybe_enable$',
-  # AVX-512 only: quest/m3/confidence/mutants-avx512.md.
+  # AVX-512 only: quest/m2/confidence/mutants-avx512.md.
   'rind/src/low/posint\.rs:\d+:\d+: replace != with == in PosInt<N>::mod_exp_pair_rsaz$',
   'rind/src/low/posint\.rs:\d+:\d+: replace > with < in PosInt<N>::mod_exp_pair_rsaz$',
   'rind/src/low/posint\.rs:\d+:\d+: replace > with == in PosInt<N>::mod_exp_pair_rsaz$',
@@ -293,7 +293,7 @@ exclude_re = [
   'rind/src/low/x86_64/ghash\.rs:\d+:\d+: replace \+ with - in _mul_tail$',
   'rind/src/low/x86_64/ghash\.rs:\d+:\d+: replace \+ with \* in _mul_tail$',
   'rind/src/mid/mlkem768/sample_ntt\.rs:100:\d+: replace _sample_poly_ntt_tail with \(\)$',
-  # Needs crafted inputs: quest/m3/confidence/mutants-edge-cases.md.
+  # Needs crafted inputs: quest/m2/confidence/mutants-edge-cases.md.
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:109:\d+: replace - with / in non_adjacent_form$',
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:451:\d+: replace - with / in Fe4::reduce$',
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:452:\d+: replace - with / in Fe4::reduce$',
@@ -345,7 +345,7 @@ exclude_re = [
   'rind/src/mid/p521\.rs:494:\d+: replace JacobianPoint::is_infinity -> u8 with 0$',
   'rind/src/mid/rsa_priv/exponents\.rs:\d+:\d+: replace \| with & in divide_exact_odd$',
   'rind/src/mid/rsa_priv/exponents\.rs:\d+:\d+: replace \| with \^ in divide_exact_odd$',
-  # Untested adapter code: quest/m3/confidence/mutants-adapters.md.
+  # Untested adapter code: quest/m2/confidence/mutants-adapters.md.
   'rind-dimpl/src/digest\.rs:78:\d+: replace <impl SecureRandom for Random>::fill -> Result<\(\), CryptoError> with Ok\(\(\)\)$',
   'rind-dimpl/src/digest\.rs:28:\d+: replace <impl fmt::Debug for Running>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-dimpl/src/kx\.rs:55:\d+: replace <impl fmt::Debug for Exchange>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
@@ -357,9 +357,6 @@ exclude_re = [
   'rind-dimpl/src/suite\.rs:70:\d+: replace <impl fmt::Debug for Aead>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-jsonwebtoken/src/lib\.rs:40:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-object-store/src/lib\.rs:41:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-rcgen/src/lib\.rs:221:\d+: replace <impl fmt::Debug for KeyPair>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-rcgen/src/lib\.rs:52:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-rcgen/src/lib\.rs:60:\d+: replace check -> Result<\(\), MissingFeature> with Ok\(\(\)\)$',
   'rind-ring/src/aead\.rs:113:\d+: replace <impl AsRef<\[u8; NONCE_LEN\]> for Nonce>::as_ref -> &\[u8; NONCE_LEN\] with Box::leak\(Box::new\(\[0; NONCE_LEN\]\)\)$',
   'rind-ring/src/aead\.rs:113:\d+: replace <impl AsRef<\[u8; NONCE_LEN\]> for Nonce>::as_ref -> &\[u8; NONCE_LEN\] with Box::leak\(Box::new\(\[1; NONCE_LEN\]\)\)$',
   'rind-ring/src/aead\.rs:53:\d+: replace <impl PartialEq for Algorithm>::eq -> bool with false$',

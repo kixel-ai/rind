@@ -21,6 +21,10 @@ Decided by the maintainer on 2026-10-30:
   `rind-ring`, which panics wherever ring panics so its signatures match
   ring's (maintainer, 2026-10-31); rind itself never panics on caller input.
 - ring's algorithm set first. aws-lc-rs's extras wait for a consumer.
+- ML-KEM-1024 and ML-DSA are the exception (maintainer, 2026-11-09): ✅ they
+  moved here from m4's post-quantum epic (rejected: into m2, or pushing rustls
+  parity back to m4). rustls's aws-lc-rs provider ships both, so rind-rustls
+  is their consumer, and m3 could not finish while they sat in m4.
 - An OpenSSL provider, once out of reach, is planned in
   [m4](/quest/m4/README.md), and FIPS validation scoped there (maintainer,
   2026-11-04).
@@ -31,5 +35,7 @@ Decided by the maintainer on 2026-10-30:
 ## Required
 
 - [P-521 in rind-rcgen](/quest/m3/parity/rcgen-p521.md) - waiting on rcgen to export its P-521 algorithms without aws-lc-rs
+- [ML-KEM-512 and ML-KEM-1024](/quest/m3/parity/ml-kem.md) - the typed KEM API, and ML-KEM-1024 for rustls parity
+- [ML-DSA-44, ML-DSA-65, and ML-DSA-87](/quest/m3/parity/ml-dsa.md) - mldsa-native's proven kernels, for rustls parity and certificates
 - [rustls provider parity](/quest/m3/parity/rustls.md) - rind-rustls offers ML-KEM-1024 and ML-DSA, the last of what aws-lc-rs's provider does
 - [aws-lc-rs extras on demand](/quest/m3/parity/aws-lc-extras.md) - waiting on a consumer for each aws-lc-rs-only algorithm

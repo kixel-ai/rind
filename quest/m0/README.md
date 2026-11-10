@@ -3,8 +3,9 @@
 ## Goal
 
 The work that cannot wait: security advisories against rind or its
-dependencies, a failing `main`, and anything that breaks MoQ on a published
-rind release, and hosted CI that blocks every PR. Otherwise empty while
+dependencies, a failing `main`, anything that breaks MoQ on a published
+rind release, a published adapter that diverges from its upstream's API,
+and hosted CI that blocks every PR. Otherwise empty while
 nothing is urgent.
 
 ## Required

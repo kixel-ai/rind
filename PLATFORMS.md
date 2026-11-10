@@ -70,7 +70,11 @@ and `riscv64gc` (glibc and musl) under qemu. iOS devices' code is only built.
   `arm-unknown-linux-gnueabi` and `arm-unknown-linux-gnueabihf` on qemu's
   ARMv6 core (the ARM1176 of the Raspberry Pi 1 and Zero), and on
   `arm-linux-androideabi`, which Rust builds for ARMv5TE, and on `x86_64`,
-  where `--cfg rind_portable` forces it. On 32-bit `x86` it needs a
+  where `--cfg rind_portable` forces it. CI also compiles the library for
+  `wasm32-wasip2` and `wasm32-unknown-unknown`, with and without `wipe`. The
+  latter enables `getrandom/wasm_js` for JavaScript randomness; the WASI target
+  uses its system random source. These are compile checks, not runtime tests.
+  On 32-bit `x86` it needs a
   Rust newer than the 1.90 MSRV, since libcrux-platform 0.0.4 calls `__cpuid`
   outside `unsafe`.
 

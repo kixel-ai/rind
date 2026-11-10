@@ -235,7 +235,7 @@ fn agreement() {
     use rind::agreement::{ECDH_P256, PrivateKey};
     assert_eq!(format!("{ECDH_P256:?}"), "EcdhP256");
     let key = PrivateKey::generate(&ECDH_P256).unwrap();
-    assert_eq!(format!("{key:?}"), "PrivateKey { .. }");
+    assert_eq!(format!("{key:?}"), "PrivateKey { algorithm: EcdhP256, .. }");
     assert_eq!(format!("{:?}", key.to_scalar()), "Scalar(..)");
     let public = key.public_key();
     let bytes = format!("{:?}", public.as_ref());
