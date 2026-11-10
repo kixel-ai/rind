@@ -598,6 +598,8 @@ mod tests {
     }
 
     /// Signs with each test's nonce `k`, which ACVP gives with its answers.
+    /// It skips the random nonce's mapping, which for P-521 keeps the top
+    /// 521 bits of 66 bytes rather than reading `k` as given.
     #[test]
     fn acvp_sig_gen() {
         fn check<C: Curve, H: SignatureHash>(group: &serde_json::Value) {
@@ -609,9 +611,9 @@ mod tests {
             for test in group.tests() {
                 let e = hash_to_scalar::<C>(H::hash(&test.hex("message")).as_ref()).unwrap();
                 let k = acvp_fixed(test.hex("k"), C::Scalar::LEN_BYTES).unwrap();
-                let (r, s) = key
-                    .sign_with_nonces(&e, &mut SliceRandomSource(&k))
-                    .unwrap();
+                let k = C::PrivateKey::from_bytes(&k).unwrap();
+                let r = k.public_key_x_scalar();
+                let s = key.private_key.raw_ecdsa_sign(&k, &e, &r);
                 let mut signature = vec![0; C::Scalar::LEN_BYTES * 2];
                 r.write_bytes(&mut signature[..C::Scalar::LEN_BYTES]);
                 s.write_bytes(&mut signature[C::Scalar::LEN_BYTES..]);
