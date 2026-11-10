@@ -1,0 +1,20 @@
+# [S] Measure what wiping costs, and decide whether it is on by default
+
+## Goal
+
+The maintainer decides `wipe`'s default based on measured cost. The PR reports, for every `rind-bench` benchmark on at least one x86_64 and one aarch64 host, the time with and without `rind/wipe`. The README's "Wiping keys" section states what wiping does and does not protect against. If the maintainer turns it on, the PR also moves `wipe` into `rind`'s default features.
+
+Non-goals: wiping the stack, and wiping anything `AGENTS.md` says not to (digest contexts, messages, other scratch). The policy on what gets wiped stays as it is. Only the default is in question.
+
+## Plan
+
+Planned with the maintainer on 2026-11-10, from a discussion of whether libraries should wipe secrets on drop: ✅ measure the cost, rewrite the rationale, then decide the default with the numbers (rejected: turn it on by default now, following aws-lc-rs; keep it off and fix only the README; no change). ✅ m2 top level, ready now and not required by rind 0.4 (rejected: m2/api, required by the 0.4 release; m2/confidence). Turning on a default feature breaks no build, and `default-features = false` still opts out.
+
+- The README says wiping protects against Heartbleed-style heap dumps, and that its speed cost isn't worth it by default. The first half is wrong and the second was never measured. Wiping doesn't stop an attacker who can read memory while a key is in use. What it does is shorten how long a key that is no longer in use stays in memory: in freed blocks a later allocation reuses, in swap, in core dumps and crash reports, and in memory read after the fact. Write the section around that, and compare with aws-lc-rs (always wipes), ring (never), and RustCrypto (opt-in `zeroize`) as it does today.
+- Measure with `rind-bench` built both ways (`--features rind/wipe` and without), so both runs time the same code. The cost should show up where a key or keyed state is created and dropped for each operation, such as one-shot AEAD seals, HMAC, HKDF, ECDH, and ephemeral key generation, plus RSA's private paths, which wipe heap scratch. Report each ratio. Say which ones are within the noise across repeated runs, and don't treat any single threshold as automatically deciding the default.
+- Every adapter depends on `rind` with its default features, so a default `wipe` reaches every adapter user too. rind-aws-lc-rs's own `wipe` feature also wipes the adapter's own copies; say in the PR whether that should follow rind's default.
+- Hand the PR back as a draft with the numbers and a `## Waiting` item for the default, recommending one choice. If it turns on, update the README, ARCHITECTURE.md's sentence, the `wipe` comment in `rind/Cargo.toml`, and the bindings' READMEs that say they do not wipe.
+
+## Related
+
+- [Heap scratch from a private key is wiped before it is freed](/quest/m2/confidence/wipe-heap-scratch.md) - the test that `wipe` covers the heap scratch, whatever the default
