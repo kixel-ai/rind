@@ -43,6 +43,5 @@ Decided with the maintainer on 2026-11-03, after the benchmark report (`BENCHMAR
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the proofs this epic writes for unproven assembly live, checked by `admin/prove`
 - [x86_64 SHA-NI SHA-256 block function is proven](/quest/m3/verified/sha256-block.md) - today's routine proven on s2n-bignum's SHA-256 spec, or a proven one as fast
 - [AES-GCM's custom-IV key is proven for 12-byte IVs and full tags on the Vale tier](/quest/m3/verified/aes-gcm-key-vale.md) - `aead::gcm::Key`'s glue over the proven `aead::Key`

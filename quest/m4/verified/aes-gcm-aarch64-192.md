@@ -17,7 +17,6 @@ Found by the 2026-11-09 audit: [moq-dev/rind#460](https://github.com/moq-dev/rin
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
 - [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
 - [aarch64's AES-GCM kernels are proven in place](/quest/m4/verified/aes-gcm-aarch64-in-place.md) - the pin with s2n-bignum's shared eight-way proofs and in-place theorems
 - [AES-GCM on aarch64 is proven](/quest/m4/verified/aes-gcm-aarch64.md) - the Lean proof of `aes_gcm.rs` these kernels' axioms slot into

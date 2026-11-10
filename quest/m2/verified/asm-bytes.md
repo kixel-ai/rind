@@ -17,10 +17,6 @@ Moved from m4 into m3 with the maintainer on 2026-11-09, then into m2 the same d
 - A recorded difference also says why the routine's constant-time theorem still holds with it, as for an appended `vzeroupper`, which touches no secret.
 - Run it for x86_64 and aarch64, and fail when a re-import changes bytes without a matching proof revision.
 
-## Required
-
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - `admin/prove`'s extraction of the bytes rind's build emits for an `asm!` block, which this check compares
-
 ## Related
 
 - [BINSEC checks the secret paths no proof covers](/quest/m2/confidence/binsec.md) - takes this check's inventory, and leaves the routines these theorems cover to them

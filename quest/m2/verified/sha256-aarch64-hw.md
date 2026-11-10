@@ -22,7 +22,3 @@ The measurement, in the PR's body:
 - For scale, upstream's own proofs, neither merged: #450 proves its SHA-NI routine, a 299-line source file, in 13,570 lines of HOL Light, and #415 its scalar one, 1,429 lines, in 12,830.
 - A second route on the same routine: prove it by symbolic execution with an SMT solver or a bit-vector decision procedure, such as SAW, which aws-lc-verification's SHA-512 proof that `proofs/Rind/X86_64/AwsLc.lean` restates used, or Lean's `bv_decide` over a small model of the instructions the routine runs. Report its cost in the same figures, what it trusts that the HOL Light proof does not (the solver, its instruction model, how its theorem would enter under the composition rule), and where it stopped if it did not finish.
 - From both, a proposed size for each quest that requires this one, given its routine's instruction count and whether it loops, branches, or needs instructions the model lacks. Which route those quests take stays HOL Light in `proofs/hol-light/` unless the maintainer picks otherwise from this report; the ✓ here rests on the HOL Light proof.
-
-## Required
-
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them

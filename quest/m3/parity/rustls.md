@@ -7,9 +7,10 @@ rind-rustls offers the rest of aws-lc-rs's rustls provider: the MLKEM1024 key-ex
 ## Plan
 
 - Waits on rind having ML-KEM-1024 and ML-DSA, which its siblings below build. They moved here from m4's post-quantum epic with the maintainer on 2026-11-09 (✅ m3/parity; rejected: m2, or pushing this quest back to m4), so this quest no longer waits on a later milestone.
-- rind-rustls already offers every other algorithm aws-lc-rs's provider does. The provider's `hpke` module is the one other omission [the adapter's API quest](/quest/m0/adapters/rustls.md) lists, and [HPKE and ECH](/quest/m4/protocols/hpke.md) owns it.
-- `aws_lc_rs_parity` in `rind-rustls/src/lib.rs` lists these as the only gaps in the algorithm lists it compares;
-  drop each exclusion as it lands.
+- rind-rustls already offers every other algorithm aws-lc-rs's provider does. The provider's `hpke` module is the one other omission, and [HPKE and ECH](/quest/m4/protocols/hpke.md) owns it.
+- `aws_lc_rs_parity` and `aws_lc_rs_items` in `rind-rustls/src/lib.rs` list
+  these as the only gaps besides `hpke`; drop each exclusion as it lands, and
+  each from rind-rustls's README and MIGRATING.md.
 
 ## Required
 

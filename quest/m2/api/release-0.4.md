@@ -32,7 +32,6 @@ The benchmark report is refreshed once before each minor release (maintainer, 20
 ## Required
 
 - [Benchmark report refresh, before rind 0.4](/quest/m2/bench/report-refresh.md) - the report and the README's claims, current for the release
-- [AES-CBC encryption takes a typed IV](/quest/m2/api/cbc-iv.md) - the `CbcIv` argument, the first breaking change
 - [Agreement keys keep their public key and algorithm](/quest/m2/api/agreement-key-state.md) - `public_key()` returning a borrow, the second
 - [rind needs no runtime CPU check](/quest/m2/api/cpu-check.md) - `cpu::check` and `MissingFeature` removed, the third
 

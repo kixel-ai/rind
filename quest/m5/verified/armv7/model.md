@@ -14,5 +14,4 @@ A machine-checked model of the 32-bit Arm instructions armv7's assembly uses, in
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - the pinned s2n-bignum tree a HOL Light model extends, and where its first proof is checked
 - [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs

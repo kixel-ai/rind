@@ -24,12 +24,6 @@ pub static SECP384R1: &dyn SupportedKxGroup = &KxGroup {
     algorithm: &agreement::ECDH_P384,
 };
 
-/// Key exchange with ECDH on P-521, also known as secp521r1.
-pub static SECP521R1: &dyn SupportedKxGroup = &KxGroup {
-    name: rustls::NamedGroup::secp521r1,
-    algorithm: &agreement::ECDH_P521,
-};
-
 /// Hybrid key exchange with X25519 and ML-KEM-768, for TLS 1.3 only.
 pub static X25519MLKEM768: &dyn SupportedKxGroup = &hybrid::Hybrid {
     classical: X25519,
@@ -128,7 +122,6 @@ mod tests {
             (X25519, NamedGroup::X25519, &agreement::X25519),
             (SECP256R1, NamedGroup::secp256r1, &agreement::ECDH_P256),
             (SECP384R1, NamedGroup::secp384r1, &agreement::ECDH_P384),
-            (SECP521R1, NamedGroup::secp521r1, &agreement::ECDH_P521),
         ] {
             assert_eq!(group.name(), name);
             assert_eq!(group.ffdhe_group(), None);

@@ -12,7 +12,7 @@ Findings (2026-11-03):
 - HACL*'s Vale `sha256_update` was tried in [moq-dev/rind#328](https://github.com/moq-dev/rind/pull/328) and lost: on Arrow Lake, against today's routine on the same machine, HMAC-SHA256 with a reused key was 29% slower at 32 bytes and 40% at 64, SHA-256 15% slower at 64 bytes, HKDF's extract and expand 11%, and both 3-9% at 1200-1350 bytes. 8 KiB and up tied.
 - [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450) (draft, 2026-09-08) adds a HOL Light proof, constant time included, of an x86_64 SHA-NI routine, `sha256_compress_hw`, with a FIPS 180-4 spec, `sha256_spec.ml`, and models `sha256rnds2`, `sha256msg1`, `sha256msg2`, and `palignr`.
 
-Route (maintainer, 2026-11-09: ✅ start on #450 at a pinned commit; rejected: keep waiting for it to merge, since it has been an untouched draft since 2026-09-08, and the 2026-11-07 decision in [hol-light](/quest/m3/verified/hol-light.md) already lets rind build on unmerged upstream by pin). The ✓ notes the pin until upstream merges:
+Route (maintainer, 2026-11-09: ✅ start on #450 at a pinned commit; rejected: keep waiting for it to merge, since it has been an untouched draft since 2026-09-08, and the 2026-11-07 decision that put rind's HOL Light proofs in `proofs/hol-light/` already lets rind build on unmerged upstream by pin). The ✓ notes the pin until upstream merges:
 1. Measure its `sha256_compress_hw` against today's routine on the GitHub runners and on Arrow Lake, rows up to 64 bytes and HMAC included. Switch only if it ties at every size.
 2. Otherwise, freeze LLVM's output for today's routine as assembly and prove it on #450's spec in HOL Light, adding to s2n-bignum's x86_64 model any instruction that output uses and #450 does not add.
 
@@ -22,5 +22,4 @@ Consider vendoring s2n-bignum rather than pinning it (maintainer, 2026-11-09). T
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
 - [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs, and how unmerged upstream comes in
