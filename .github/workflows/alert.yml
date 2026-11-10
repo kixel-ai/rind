@@ -15,11 +15,14 @@ on:
       - asan
       - bench
       - build
+      - dart-libraries
       - Dart release
       - Check
       - coverage
       - ctgrind
+      - ctgrind debug
       - fuzz
+      - miri
       - mutants
       - prove
       - Pullfrog

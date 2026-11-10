@@ -40,6 +40,7 @@ impl Salt {
     }
 
     /// Extracts a pseudorandom key from `secret` (HKDF-Extract).
+    #[must_use]
     pub fn extract(&self, secret: &[u8]) -> Prk {
         let _entry = Entry::new_secret();
         let prk = hmac::sign(&self.0, secret);
@@ -138,6 +139,15 @@ impl sealed::Len for &'static hmac::Algorithm {
     }
 }
 
+/// The pseudorandom key of a further [`Prk::expand`], the hash's output length.
+impl KeyType for &'static Algorithm {}
+
+impl sealed::Len for &'static Algorithm {
+    fn len(&self) -> usize {
+        self.0.tag_len()
+    }
+}
+
 impl fmt::Debug for Prk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Prk")
@@ -147,6 +157,7 @@ impl fmt::Debug for Prk {
 }
 
 /// Key material from [`Prk::expand`], sized by `L`: fill a buffer for a `usize` length, or convert it into the key an algorithm names.
+#[must_use]
 pub struct Okm<'a, L: KeyType> {
     prk: &'a Prk,
     info: &'a [&'a [u8]],
@@ -204,6 +215,12 @@ impl From<Okm<'_, &'static aead::quic::Algorithm>> for aead::quic::HeaderProtect
 impl From<Okm<'_, &'static hmac::Algorithm>> for hmac::Key {
     fn from(okm: Okm<'_, &'static hmac::Algorithm>) -> Self {
         okm.into_key(|algorithm, bytes| Self::new(algorithm, bytes))
+    }
+}
+
+impl From<Okm<'_, &'static Algorithm>> for Prk {
+    fn from(okm: Okm<'_, &'static Algorithm>) -> Self {
+        Self(okm.into_key(|algorithm, bytes| hmac::Key::new(algorithm.0, bytes)))
     }
 }
 
@@ -314,6 +331,32 @@ mod tests {
         }
     }
 
+    #[test]
+    fn rfc9001_initial_secrets() {
+        // Appendix A.1: each secret is the pseudorandom key of the next expand.
+        let label = |name: &[u8], len: u16| {
+            let mut info = len.to_be_bytes().to_vec();
+            info.push(6 + name.len() as u8);
+            info.extend_from_slice(b"tls13 ");
+            info.extend_from_slice(name);
+            info.push(0);
+            info
+        };
+        let salt = hex::decode("38762cf7f55934b34d179ae6a4c80cadccbb7f0a").unwrap();
+        let initial =
+            Salt::new(&HKDF_SHA256, &salt).extract(&hex::decode("8394c8f03e515708").unwrap());
+
+        let client_in = label(b"client in", 32);
+        let client = Prk::from(initial.expand(&[&client_in], &HKDF_SHA256));
+        let mut out = [0u8; 16];
+        let quic_key = label(b"quic key", 16);
+        client.expand(&[&quic_key], 16).fill(&mut out).unwrap();
+        assert_eq!(hex::encode(out), "1f369613dd76d5467730efcbe3b1a22d");
+        let quic_hp = label(b"quic hp", 16);
+        client.expand(&[&quic_hp], 16).fill(&mut out).unwrap();
+        assert_eq!(hex::encode(out), "9f50449e04a0e810283a1e9933adedd2");
+    }
+
     static ALGORITHMS: [&Algorithm; 4] = [&HKDF_SHA1, &HKDF_SHA256, &HKDF_SHA384, &HKDF_SHA512];
 
     #[test]
@@ -401,8 +444,9 @@ mod tests {
         let info: [&[u8]; 1] = [b"info"];
         let derive = |algorithm: &'static Algorithm, ikm: &[u8]| {
             let prk = Salt::new(algorithm, b"salt").extract(ikm);
+            let chained = Prk::from(prk.expand(&info, algorithm));
             let mut bytes = [0u8; 100];
-            prk.expand(&info, bytes.len()).fill(&mut bytes).unwrap();
+            chained.expand(&info, bytes.len()).fill(&mut bytes).unwrap();
             let aead_key = aead::Key::from(prk.expand(&info, &AES_256_GCM));
             let aead_tag = aead_key
                 .seal_in_place_separate_tag(Nonce::assume_unique_for_key([0; 12]), &[], &mut [])

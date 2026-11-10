@@ -220,6 +220,34 @@ impl StaticPrivateKey {
         self.0.public_point().as_bytes_uncompressed()
     }
 
+    /// Whether `encoded`, an X9.62 uncompressed point, is this key's public
+    /// key.
+    ///
+    /// This checks the point against the Jacobian product, x * z² = X and
+    /// y * z³ = Y, as BoringSSL's `EC_KEY_check_key` does, so it needs no
+    /// inversion. Equal words are equal mod p, and z is not zero for a
+    /// scalar in [1, n), so a match is this key's point; the parse refused
+    /// coordinates at or above p, so the encoding is the canonical one. The
+    /// key's own point matches because aws-lc's addition leaves X, Y, and z
+    /// below p: `twins_agree` checks it word for word against s2n-bignum's,
+    /// whose proof bounds them. They stay secret, as z says something of the
+    /// scalar: only the answer is public.
+    #[cfg(rind_backend = "x86_64")]
+    pub(crate) fn public_key_is_uncompressed(&self, encoded: &[u8]) -> bool {
+        let _entry = low::Entry::new_secret();
+        let Ok(PublicKey { point }) = PublicKey::from_x962_uncompressed(encoded) else {
+            return false;
+        };
+        let product = JacobianMontPoint::base_multiply(&self.0.scalar);
+        let z2 = product.z().mont_sqr();
+        let z3 = z2.mont_mul(&product.z());
+        let x = point.x().mont_mul(&z2);
+        let y = point.y().mont_mul(&z3);
+        low::ct::into_public(
+            low::bignum_eq(&x.0, &product.x().0) & low::bignum_eq(&y.0, &product.y().0),
+        )
+    }
+
     pub(crate) fn generate(rng: &mut dyn RandomSource) -> Result<Self, Error> {
         let _entry = low::Entry::new_secret();
         PrivateKey::generate(rng).map(Self)

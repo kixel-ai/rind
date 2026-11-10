@@ -2,7 +2,7 @@
 //! a PKCS#1 RSA public key's fields, which rind keeps to itself. rind parses
 //! and encodes the keys; every byte read here is public.
 
-use crate::error::Unspecified;
+use crate::error::{Unspecified, unspecified};
 
 const INTEGER: u8 = 0x02;
 const SEQUENCE: u8 = 0x30;
@@ -13,18 +13,18 @@ fn read<'a>(
     input: &mut untrusted::Reader<'a>,
     tag: u8,
 ) -> Result<untrusted::Input<'a>, Unspecified> {
-    if input.read_byte()? != tag {
+    if input.read_byte().map_err(unspecified)? != tag {
         return Err(Unspecified);
     }
-    let len = match input.read_byte()? {
+    let len = match input.read_byte().map_err(unspecified)? {
         len @ 0..=0x7f => usize::from(len),
-        0x81 => match input.read_byte()? {
+        0x81 => match input.read_byte().map_err(unspecified)? {
             len @ 0x80..=0xff => usize::from(len),
             _ => return Err(Unspecified),
         },
         0x82 => {
-            let high = input.read_byte()?;
-            let low = input.read_byte()?;
+            let high = input.read_byte().map_err(unspecified)?;
+            let low = input.read_byte().map_err(unspecified)?;
             match u16::from_be_bytes([high, low]) {
                 len @ 0x100..=0xffff => usize::from(len),
                 _ => return Err(Unspecified),
@@ -32,7 +32,7 @@ fn read<'a>(
         }
         _ => return Err(Unspecified),
     };
-    Ok(input.read_bytes(len)?)
+    input.read_bytes(len).map_err(unspecified)
 }
 
 /// Reads a positive INTEGER and returns its magnitude, without the zero byte

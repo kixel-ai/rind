@@ -21,6 +21,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = z, RDX = x, R8 = y, R9 = t
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/fastmul/bignum_kmul_16_32.S.
 /// Multiply z := x * y
 ///
 /// Inputs x[16], y[16]; output z[32]; temporary buffer t[>=32]

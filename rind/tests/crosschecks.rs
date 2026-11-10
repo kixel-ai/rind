@@ -1,3 +1,6 @@
+//! Differential tests against aws-lc, which Miri cannot run.
+#![cfg(not(miri))]
+
 use aws_lc_rs::{digest, hmac, signature::Ed25519KeyPair};
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -176,7 +179,9 @@ mod cipher {
     };
     use proptest::prelude::*;
     use rind::Error;
-    use rind::cipher::{self, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, ChaCha20};
+    use rind::cipher::{
+        self, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, CbcIv, ChaCha20,
+    };
 
     fn aes_key() -> impl Strategy<Value = Vec<u8>> {
         prop::sample::select(&[16, 24, 32][..])
@@ -266,7 +271,7 @@ mod cipher {
             let theirs_dec = PaddedBlockDecryptingKey::cbc_pkcs7(aws_aes_key(&key)).unwrap();
 
             let mut ours = msg.clone();
-            enc.encrypt(&iv, &mut ours);
+            enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ours);
             let mut theirs = msg.clone();
             PaddedBlockEncryptingKey::cbc_pkcs7(aws_aes_key(&key))
                 .unwrap()
@@ -281,7 +286,7 @@ mod cipher {
             forged[len - 1] = tail.0;
             forged[len - 2] = if tail.1 == 0 { tail.0 } else { forged[len - 2] };
             let mut ct = forged.clone();
-            enc.encrypt_blocks(&iv, &mut ct).unwrap();
+            enc.encrypt_blocks(CbcIv::assume_unpredictable(iv), &mut ct).unwrap();
             let mut ours = ct.clone();
             let ours = dec.decrypt(&iv, &mut ours).map(|pt| pt.to_vec());
             let mut theirs = ct.clone();
@@ -305,7 +310,7 @@ mod cipher {
             let mut ours = msg.clone();
             AesCbcEncryptingKey::new(algorithm, &key)
                 .unwrap()
-                .encrypt_blocks(&iv, &mut ours)
+                .encrypt_blocks(CbcIv::assume_unpredictable(iv), &mut ours)
                 .unwrap();
 
             let mut theirs = msg.clone();
@@ -706,6 +711,14 @@ mod hkdf {
                 let theirs_tag = their_hmac::sign(&theirs_key, &msg);
                 prop_assert_eq!(ours_tag.as_ref(), theirs_tag.as_ref());
             }
+
+            let ours = hkdf::Prk::from(ours.expand(&info, ours_prk_alg));
+            let theirs = theirs::Prk::from(theirs.expand(&info, theirs_prk_alg).unwrap());
+            let mut ours_out = [0u8; 100];
+            ours.expand(&info, ours_out.len()).fill(&mut ours_out).unwrap();
+            let mut theirs_out = [0u8; 100];
+            theirs.expand(&info, Len(theirs_out.len())).unwrap().fill(&mut theirs_out).unwrap();
+            prop_assert_eq!(ours_out, theirs_out);
         }
     }
 }

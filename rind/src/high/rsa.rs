@@ -1051,6 +1051,7 @@ mod tests {
     /// `admin/ctgrind` this also checks Miller-Rabin on them and the
     /// derivation are constant time.
     #[test]
+    #[cfg(not(miri))]
     fn key_generation_matches_aws_lc() {
         use aws_lc_rs::encoding::AsDer;
         use aws_lc_rs::rsa::{KeyPair, KeySize};
@@ -1312,6 +1313,7 @@ mod tests {
                 matches!(SigningKey::from_pkcs1_der(&der), Err(Error::KeyRejected(_))),
                 "{name}"
             );
+            #[cfg(not(miri))]
             assert!(aws_lc_rs::rsa::KeyPair::from_der(&der).is_err(), "{name}");
         }
 
@@ -1323,6 +1325,7 @@ mod tests {
             ..key.clone()
         }
         .encode();
+        #[cfg(not(miri))]
         aws_lc_rs::rsa::KeyPair::from_der(&der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(&der).unwrap();
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
@@ -1346,6 +1349,7 @@ mod tests {
         let der = include_bytes!("rsa/rsa2048-q-above-p.der");
         let key = Pkcs1::decode(der);
         assert!(key.q.len() == key.p.len() && key.q > key.p);
+        #[cfg(not(miri))]
         aws_lc_rs::rsa::KeyPair::from_der(der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(der).unwrap();
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
@@ -1358,6 +1362,7 @@ mod tests {
         let der = include_bytes!("rsa/rsa2086-unbalanced.der");
         let key = Pkcs1::decode(der);
         assert!(key.q.len() > key.p.len());
+        #[cfg(not(miri))]
         aws_lc_rs::rsa::KeyPair::from_der(der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(der).unwrap();
         check_all_algs(&mut [0u8; 261], &private_key, &private_key.public_key());
@@ -1401,6 +1406,7 @@ mod tests {
             ..key
         }
         .encode();
+        #[cfg(not(miri))]
         aws_lc_rs::rsa::KeyPair::from_der(&der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(&der).unwrap();
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
@@ -1456,6 +1462,7 @@ mod tests {
             }
             .encode();
             let ours = SigningKey::from_pkcs1_der(&der).map(|_| ()).err();
+            #[cfg(not(miri))]
             assert!(
                 aws_lc_rs::rsa::KeyPair::from_der(&der).is_ok() == (e == [1, 0, 1]),
                 "{e:?}"
@@ -1488,6 +1495,7 @@ mod tests {
             pkcs1::DIGESTINFO_SHA256,
             hash::Sha256::hash(b"hello").as_ref(),
         );
+        #[cfg(not(miri))]
         assert!(
             aws_lc_rs::signature::RsaPublicKeyComponents {
                 n: &key.n[..],

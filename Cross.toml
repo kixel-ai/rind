@@ -14,6 +14,9 @@ image = "ghcr.io/cross-rs/aarch64-linux-android@sha256:b081e122d075268e8f528b914
 [target.armv7-linux-androideabi]
 image = "ghcr.io/cross-rs/armv7-linux-androideabi@sha256:a930d41f9acf6cae27c9c99b72e673cb11e973859a1c5a909769d0921bb4a83c"
 
+[target.arm-linux-androideabi]
+image = "ghcr.io/cross-rs/arm-linux-androideabi@sha256:806d4227824454e6ce961d6c90bc81076c6bb57d2e04384f98e41a5df2f5d17c"
+
 # The x86_64 host runs the binaries itself, on its own CPU's features, rather
 # than under qemu's model without AES-NI.
 [target.x86_64-linux-android]
