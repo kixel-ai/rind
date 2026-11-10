@@ -6,7 +6,7 @@
 
 ## Plan
 
-Found by the 2026-11-09 audit: the backend landed in [moq-dev/rind#458](https://github.com/moq-dev/rind/pull/458) hours after the 2026-11-07 audit, so [the epic](/quest/m4/verified/README.md)'s "every backend" had no quest for it beyond [its Keccak-f](/quest/m3/verified/keccak-portable.md).
+Found by the 2026-11-09 audit: the backend landed in [moq-dev/rind#458](https://github.com/moq-dev/rind/pull/458) hours after the 2026-11-07 audit, so [the epic](/quest/m4/verified/README.md)'s "every backend" had no quest for it beyond [its Keccak-f](/quest/m4/verified/keccak-portable.md).
 
 - Runs: `low/portable/` and `mid/portable/`, pure Rust for every architecture without rind assembly, with rind's shared arithmetic in `low/generic/`. It has no CPU tiers (`low/portable/cpu.rs:4`), so its theorems take no `Runs` hypothesis about dispatch.
 - Translation: Charon on x86_64 under `--cfg rind_portable --cfg curve25519_dalek_backend="serial"`, the flags CI's portable jobs build with (`.github/workflows/ctgrind.yml:109`), into `Rind/Portable/`, with the hand models copied as `admin/prove` copies them to `Rind/Aarch64/`. That is the 64-bit configuration. Where the code picks by pointer width (Poly1305 in `low/portable/poly1305.rs`, `gcm_nohw`'s configuration, curve25519-dalek's limbs), the ✓ says which it covers; the 32-bit forms are the code [the armv7 epic](/quest/m5/verified/armv7/README.md) proves.
@@ -18,7 +18,7 @@ Found by the 2026-11-09 audit: the backend landed in [moq-dev/rind#458](https://
 - The compares behind `hmac::verify` and `pbkdf2::Secret::verify` are Rust on this backend (`low/portable/cpu.rs:37`, `:53`), so `CtEqual` needs no HOL Light here: Aeneas translates them, or a hand model stands in where one reads through raw pointers (`:37`).
 - ChaCha20 header protection runs the HACL* rounds `Rind/X86_64/ChaCha20.lean` already proves, one block at a time (`low/portable/chacha20.rs`); its proof carries over once the backend is translated.
 - Not this quest's, and listed in `proofs/README.md` with the quest that proves the code, each of whose proofs then runs on this translation:
-  - SHA-3 and ML-KEM: [the portable Keccak-f](/quest/m3/verified/keccak-portable.md), [the sponge](/quest/m4/verified/sha3-sponge.md), [the construction](/quest/m4/verified/mlkem-construction.md), and [the portable arithmetic](/quest/m4/verified/mlkem-portable.md);
+  - SHA-3 and ML-KEM: [the portable Keccak-f](/quest/m4/verified/keccak-portable.md), [the sponge](/quest/m4/verified/sha3-sponge.md), [the construction](/quest/m4/verified/mlkem-construction.md), and [the portable arithmetic](/quest/m4/verified/mlkem-portable.md);
   - ChaCha20-Poly1305: [Graviola's Poly1305 and the separate-pass glue](/quest/m5/verified/chacha20-poly1305-portable.md);
   - AES and AES-GCM: libcrux's bitsliced cipher and rind's `gcm_nohw.c` port, in [armv7's Rust proofs](/quest/m5/verified/armv7/prove.md) and [x86_64 without AES-NI](/quest/m5/verified/x86-no-aesni.md), which [the portable AES-GCM rework](/quest/m3/cold-speed/portable-aes-gcm.md) changes first;
   - X25519 and Ed25519: curve25519-dalek's serial backend under rind's glue (`low/portable/curve25519.rs`, `mid/portable/ed25519.rs`), in [armv7's Curve25519](/quest/m5/verified/armv7/curve25519.md), whose source of Lean proofs also covers the 64-bit limbs this translation runs;
@@ -29,6 +29,6 @@ Found by the 2026-11-09 audit: the backend landed in [moq-dev/rind#458](https://
 
 ## Related
 
-- [The portable backend's Keccak-f is proven or replaced](/quest/m3/verified/keccak-portable.md) - the one portable routine with a proof quest before this
+- [The portable backend's Keccak-f is proven or replaced](/quest/m4/verified/keccak-portable.md) - the one portable routine with a proof quest before this
 - [64-bit portable targets use 64-bit limbs](/quest/m3/cold-speed/portable-limbs.md) - moves 64-bit targets to fiat-crypto's 64-bit field code and a `u64` Montgomery loop, changing what the curve and RSA proofs cover here
 - [armv7 runs the Rust proofs](/quest/m5/verified/armv7/prove.md) - translates the same Rust for a 32-bit target

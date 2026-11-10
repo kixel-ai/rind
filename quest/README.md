@@ -7,8 +7,9 @@ milestones ordered by priority.
 
 ## Plan
 
-m0 holds urgent fixes: security advisories, broken CI, and anything that
-breaks MoQ on a published rind. m1 is everything MoQ needs from rind to drop C
+m0 holds urgent fixes: security advisories, broken CI, anything that breaks
+MoQ on a published rind, and a published adapter that diverges from its
+upstream. m1 is everything MoQ needs from rind to drop C
 cryptography, ending in the release MoQ switches to. m2 holds work that
 follows that release: the API audit's fixes, adoption beyond MoQ, and the
 checks, measurements, and proof groundwork that keep rind correct and fast.

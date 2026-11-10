@@ -13,6 +13,7 @@ quest names how to check it and is deleted once it holds.
 
 ## Required
 
+- [AMD CPUs without VAES run their fastest AES-GCM tier](/quest/m3/quic-path.md) - Vale or `by8` on Zen 2, waiting on an outside rerun
 - [cargo-llvm-cov builds with its tests again](/quest/m3/cargo-llvm-cov-check.md) - waiting on a nixpkgs rustc fix, then drop the doCheck override
 - [dimpl checks signatures for every provider](/quest/m3/dimpl-crypto-common.md) - waiting on a dimpl release, then rind-dimpl drops dimpl's internal feature
 - [armv7 raw ciphers from libcrux](/quest/m3/libcrux-ciphers.md) - drop rind's copy once libcrux exports its AES

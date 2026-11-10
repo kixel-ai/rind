@@ -19,7 +19,7 @@ Decided with the maintainer on 2026-11-07, planning m4's long-term work with no 
 
 ## Required
 
-- [Aeneas translates function pointers](/quest/m4/verified/aeneas-fn-pointers.md) - the hand models of rind's dispatch retire
+- [Every hand model of untranslated Rust is retired](/quest/m4/verified/aeneas-fn-pointers.md) - the dispatch, HKDF, AES-NI, and key-generation models and the hypotheses standing in for opaque Rust, as Aeneas lifts each limitation
 - [Re-audit what's left to prove, end of m3](/quest/m4/verified/re-audit.md) - recurring: what still lacks a ✓, new algorithms included, planned as children
 - [AES and QUIC AES header protection are proven with AES hardware](/quest/m4/verified/aes-header-protection.md) - every QUIC packet's mask on x86_64 and aarch64
 - [x86_64's by-8 and by-16 AES-GCM intrinsics are proven](/quest/m4/verified/aes-gcm-x86-intrinsics.md) - AES-GCM without AVX, and the Vale tier's short seals, AES-192, odd IVs, and truncated tags
@@ -49,3 +49,4 @@ Decided with the maintainer on 2026-11-07, planning m4's long-term work with no 
 - [P-521 ECDH and ECDSA are proven on x86_64 and aarch64](/quest/m4/verified/p521.md) - the same, over P-521's direct field
 - [ML-KEM's portable arithmetic is proven](/quest/m4/verified/mlkem-portable.md) - x86_64 without AVX2
 - [The portable backend's HACL* paths are proven](/quest/m4/verified/portable.md) - `admin/prove` translates the backend; SHA-2, its MACs and KDFs, and ChaCha20 header protection earn the ✓
+- [The portable backend's Keccak-f is proven or replaced](/quest/m4/verified/keccak-portable.md) - SHA-3 and ML-KEM on every architecture without rind assembly

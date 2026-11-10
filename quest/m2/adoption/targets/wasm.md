@@ -6,7 +6,7 @@ rind builds for wasm32-wasip2 on the [portable backend](/ARCHITECTURE.md), and C
 
 ## Plan
 
-Decided with the maintainer on 2026-11-09, after the tooling audit found wasm neither refused nor tested: `rind/build.rs:24-26` gives every architecture but three the portable backend, while this epic called wasm a non-goal and `quest/m1/moq/README.md` said it does not build.
+Decided with the maintainer on 2026-11-09, after the tooling audit found wasm neither refused nor tested: `rind/build.rs:24-26` gives every architecture but three the portable backend, while this epic called wasm a non-goal and the docs said it does not build.
 
 - wasm: ✅ support and test it (rejected: build only, as [moq-dev/rind#543](https://github.com/moq-dev/rind/pull/543) proposes; refuse it with a compile error).
 - Long-term: ✅ pure Rust now, with WebCrypto an open question to revisit if a browser consumer appears (rejected: record WebCrypto as a permanent non-goal; go back to build-only).
@@ -23,7 +23,7 @@ Guidance:
 - Constant time: ctgrind, the trace comparisons, and `admin/ct-vartime` check native code. A wasm engine compiles rind again, and may turn a select into a branch. PLATFORMS.md says that plainly.
 - wasm32-unknown-unknown stays build-only: its tests need a JavaScript host, which waits for a browser consumer, as WebCrypto does. Its entropy comes from getrandom's `wasm_js` feature, which the final binary must enable.
 - rind-rustls: build it for wasm32-wasip2 if rustls builds there, and record the result either way.
-- Remove or correct every statement that wasm does not build: `quest/m1/moq/README.md`, `MIGRATE.md:56`, and this epic's README, whose Goal and non-goals still exclude wasm.
+- Remove or correct every statement that wasm does not build, `MIGRATE.md:56` among them.
 - `quest/m0/adapters/ring.md` keeps ring's `wasm32_unknown_unknown_js` feature a no-op because rind does not build for wasm32. Once it does, that feature must select getrandom's JavaScript backend as ring's does; its PR, [moq-dev/rind#516](https://github.com/moq-dev/rind/pull/516), must revisit it.
 
 ## Related
