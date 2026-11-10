@@ -103,9 +103,10 @@ fn aead() {
         let key = aead::Key::new(algorithm, &[7; 32][..algorithm.key_len()]).unwrap();
         let nonce = || Nonce::assume_unique_for_key([9; 12]);
         let check = |aad: &[u8], in_out: &mut [u8]| {
-            let mut expect = in_out.to_vec();
+            // The reference seals unguarded copies.
+            let (unguarded_aad, mut expect) = (aad.to_vec(), in_out.to_vec());
             let tag = key
-                .seal_in_place_separate_tag(nonce(), &aad.to_vec(), &mut expect)
+                .seal_in_place_separate_tag(nonce(), &unguarded_aad, &mut expect)
                 .unwrap();
             let plain = in_out.to_vec();
             let got = key
