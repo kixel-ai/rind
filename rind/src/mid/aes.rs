@@ -58,8 +58,7 @@ impl Aes {
 /// unauthenticated, so pair it with a MAC.
 pub struct AesCtr {
     key: AesKey,
-    /// The counter block's counting bits, which a `u128` stores so that the
-    /// value has no padding the drop cannot wipe.
+    /// The counter block's counting bits.
     counter_mask: u128,
 }
 
@@ -139,12 +138,15 @@ impl fmt::Debug for AesCtr {
     }
 }
 
+// The counter mask is not secret, but is wiped with the key, padding
+// included, so that the whole value reads zero.
 impl Drop for AesCtr {
     fn drop(&mut self) {
-        // not secret, but wiped so that the whole value reads zero
-        low::zeroise_value(&mut self.counter_mask);
+        low::zeroise_value(self);
     }
 }
+
+impl low::Zeroable for AesCtr {}
 
 /// Fails with [`Error::WrongLength`] if `len` bytes need more blocks than
 /// remain from block `counter` before the 32-bit counter wraps.
