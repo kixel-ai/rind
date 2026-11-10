@@ -178,15 +178,15 @@ impl SignatureVerifier for Verifier {
 /// Rewrites a PEM key's label to `PRIVATE KEY`, which rustls-pki-types
 /// decodes as a secret; it skips sections whose label it does not know.
 ///
-/// Like dimpl's pem-rfc7468, it takes one section ending the input, up to
-/// trailing whitespace, after an optional preamble that holds no NUL and ends
-/// in a line feed. The searches stop at the boundaries, and input whose outer
-/// DER header (public structure) spans it is refused first, so none reads key
-/// bytes.
+/// Like dimpl's pem-rfc7468, it takes one section ending the input, up to one
+/// line ending, after an optional preamble that holds no NUL and ends in a line
+/// feed. Input starting with the DER SEQUENCE tag is refused first, since a DER
+/// key's later bytes are secret, and the searches stop at the boundaries, so
+/// none reads key bytes.
 fn relabel(pem: &[u8]) -> Option<Vec<u8>> {
     const BEGIN: &[u8] = b"-----BEGIN ";
     const DASHES: &[u8] = b"-----";
-    if spans_der(pem) {
+    if pem.first() == Some(&0x30) {
         return None;
     }
     let start = match pem.starts_with(BEGIN) {
@@ -204,10 +204,13 @@ fn relabel(pem: &[u8]) -> Option<Vec<u8>> {
     let rest = &pem[start + BEGIN.len()..];
     let label_len = rest.windows(DASHES.len()).position(|w| w == DASHES)?;
     let (label, rest) = rest.split_at(label_len);
+    let rest = &rest[DASHES.len()..];
+    let rest = [&b"\r\n"[..], b"\n", b"\r"]
+        .into_iter()
+        .find_map(|eol| rest.strip_suffix(eol))
+        .unwrap_or(rest);
     let end = [b"-----END ", label, DASHES].concat();
-    let body = rest[DASHES.len()..]
-        .trim_ascii_end()
-        .strip_suffix(end.as_slice())?;
+    let body = rest.strip_suffix(end.as_slice())?;
     Some(
         [
             b"-----BEGIN PRIVATE KEY-----",
@@ -216,15 +219,4 @@ fn relabel(pem: &[u8]) -> Option<Vec<u8>> {
         ]
         .concat(),
     )
-}
-
-/// Whether `der` is one DER SEQUENCE header and the contents it claims.
-fn spans_der(der: &[u8]) -> bool {
-    let (len, header) = match der {
-        [0x30, len @ 0..=0x7f, ..] => (usize::from(*len), 2),
-        [0x30, 0x81, len, ..] => (usize::from(*len), 3),
-        [0x30, 0x82, hi, lo, ..] => (usize::from(u16::from_be_bytes([*hi, *lo])), 4),
-        _ => return false,
-    };
-    header + len == der.len()
 }
