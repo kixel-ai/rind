@@ -5,24 +5,23 @@ open Aeneas Aeneas.Std Result rind.spec
 # SHA-1 and SHA-256's block functions on x86_64
 
 No proof covers any block function x86_64 runs for SHA-1 or SHA-256, so the
-theorems over them take `ShaBlocks` as a hypothesis instead of an axiom: each
-routine's contract, FIPS 180-4's block function over every whole block it is
-given, and that rind's checks pass. On the SHA extensions, SHA-1 and SHA-256
-pad their last block in registers, so those routines' contracts cover the
-padding too. Once a routine's published proof lands,
-an axiom restating it under the composition rule discharges its field.
+theorems over them take `Sha1Blocks` or `Sha256Blocks` as a hypothesis instead
+of an axiom: each routine's contract, FIPS 180-4's block function over every
+whole block it is given, and that rind's checks pass. On the SHA extensions,
+SHA-1 and SHA-256 pad their last block in registers, so those routines'
+contracts cover the padding too. Once a routine's published proof lands, an
+axiom restating it under the composition rule discharges its field.
 -/
 
 namespace rind.x86_64
 
-/-- What the SHA-1 and SHA-256 theorems assume of the code below rind's
-padding on x86_64: each routine computes FIPS 180-4's block function, or pads
-and compresses as FIPS 180-4 does on the SHA extensions, the CPU dispatch
-picks one, and the entry checks pass. None reads an input. -/
-structure ShaBlocks : Prop where
+/-- What the SHA-1 theorems assume of the code below rind's padding on
+x86_64: each routine computes FIPS 180-4's block function, or pads and
+compresses as FIPS 180-4 does on the SHA extensions, the CPU dispatch picks
+one, and the entry checks pass. None reads an input. -/
+structure Sha1Blocks : Prop where
   entry : ∃ e, low.entry.Entry.new_secret = ok e
   held : low.entry.Entry.assert_held = ok ()
-  path : ∃ p, low.x86_64.sha256_mux.path = ok p
   sha1_path : ∃ p, low.x86_64.sha1_mux.path = ok p
   /-- SHA-1's padded compression on the SHA extensions: `m` padded and closed
   by `length`. -/
@@ -33,6 +32,13 @@ structure ShaBlocks : Prop where
           (words h.val) ⦄
   -- After `sha1_shaext`, whose `sha1.compress` would otherwise name this field.
   sha1 : Compresses sha1.compress low.x86_64.sha1_mux.sha1_compress_blocks
+
+/-- What the SHA-256 theorems assume of the code below rind's padding on
+x86_64, as `Sha1Blocks` does for SHA-1's. -/
+structure Sha256Blocks : Prop where
+  entry : ∃ e, low.entry.Entry.new_secret = ok e
+  held : low.entry.Entry.assert_held = ok ()
+  path : ∃ p, low.x86_64.sha256_mux.path = ok p
   shaext : ∀ t, Compresses sha256.compress fun h b =>
     low.x86_64.sha256.sha256_compress_blocks_shaext h b t
   /-- The SHA extensions' finish: `m` padded and closed by `length`, and the
@@ -49,7 +55,7 @@ structure ShaBlocks : Prop where
     low.x86_64.sha256.sha256_compress_blocks_ssse3 h b t
   nohw : Compresses sha256.compress low.x86_64.sha256.sha256_compress_blocks_nohw
 
-theorem sha256_compress_blocks_spec (hb : ShaBlocks) :
+theorem sha256_compress_blocks_spec (hb : Sha256Blocks) :
     Compresses sha256.compress low.x86_64.sha256_mux.sha256_compress_blocks := by
   intro h b hl
   obtain ⟨p, hp⟩ := hb.path
@@ -63,14 +69,14 @@ theorem sha256_compress_blocks_spec (hb : ShaBlocks) :
   | Nohw => exact (by simpa using hb.nohw h b hl)
 
 /-- SHA-256's block function as `Sha256State` calls it. -/
-theorem sha256_block_spec (hb : ShaBlocks) : Compresses sha256.compress mid.sha2.Sha256State.compress := by
+theorem sha256_block_spec (hb : Sha256Blocks) : Compresses sha256.compress mid.sha2.Sha256State.compress := by
   intro h b hl
   unfold mid.sha2.Sha256State.compress
   rw [hb.held]
   simpa using sha256_compress_blocks_spec hb h b hl
 
 /-- SHA-1's block function as `Sha1State` calls it. -/
-theorem sha1_block_spec (hb : ShaBlocks) :
+theorem sha1_block_spec (hb : Sha1Blocks) :
     Compresses sha1.compress mid.sha1.Sha1State.compress := by
   intro h b hl
   unfold mid.sha1.Sha1State.compress
@@ -78,7 +84,7 @@ theorem sha1_block_spec (hb : ShaBlocks) :
   simpa using hb.sha1 h b hl
 
 /-- SHA-1's padded last blocks. -/
-theorem sha1_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 5#usize)
+theorem sha1_compress_padded_spec (hb : Sha1Blocks) (P : List U8) (state : Std.Array U32 5#usize)
     (message : Slice U8) (length : Std.Array U8 8#usize)
     (hR : Absorbed sha1.compress sha1.H0 P state) :
     low.x86_64.sha1_mux.sha1_compress_padded state message length ⦃ h' =>
@@ -130,7 +136,7 @@ theorem sha1_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.Ar
 
 /-- SHA-256's padded last blocks, on the routines that do not finish a hash
 themselves. -/
-theorem sha256_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
+theorem sha256_compress_padded_spec (hb : Sha256Blocks) (P : List U8) (state : Std.Array U32 8#usize)
     (message : Slice U8) (length : Std.Array U8 8#usize)
     (hR : Absorbed sha256.compress sha256.H0 P state) :
     low.x86_64.sha256_mux.sha256_compress_padded state message length ⦃ h' =>
@@ -169,7 +175,7 @@ theorem sha256_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.
 
 /-- The routines that do not finish a hash: the padded last blocks, then the
 digest's encoding. -/
-theorem sha256_finish_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
+theorem sha256_finish_padded_spec (hb : Sha256Blocks) (P : List U8) (state : Std.Array U32 8#usize)
     (message : Slice U8) (length : Std.Array U8 8#usize)
     (hR : Absorbed sha256.compress sha256.H0 P state) :
     (do
@@ -183,7 +189,7 @@ theorem sha256_finish_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.Ar
   rfl
 
 /-- SHA-256's digest of what `state` has absorbed followed by `message`. -/
-theorem sha256_finish_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
+theorem sha256_finish_spec (hb : Sha256Blocks) (P : List U8) (state : Std.Array U32 8#usize)
     (message : Slice U8) (length : Std.Array U8 8#usize)
     (hR : Absorbed sha256.compress sha256.H0 P state) :
     low.x86_64.sha256_mux.sha256_finish state message length ⦃ r =>

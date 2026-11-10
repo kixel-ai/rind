@@ -1,4 +1,4 @@
-# [L] x86_64 SHA-NI SHA-256 block function is proven
+# [M] x86_64 SHA-NI SHA-256 block function is proven
 
 ## Goal
 
@@ -16,10 +16,6 @@ Route (maintainer, 2026-11-09: ✅ start on #450 at a pinned commit; rejected: k
 1. Measure its `sha256_compress_hw` against today's routine on the GitHub runners and on Arrow Lake, rows up to 64 bytes and HMAC included. Switch only if it ties at every size.
 2. Otherwise, freeze LLVM's output for today's routine as assembly and prove it on #450's spec in HOL Light, adding to s2n-bignum's x86_64 model any instruction that output uses and #450 does not add.
 
-aarch64's routine is proven in [the calibration quest](/quest/m2/verified/sha256-aarch64-hw.md), on the same FIPS 180-4 spec.
+aarch64's routine is proven on the same FIPS 180-4 spec, in `proofs/hol-light/aarch64/sha256_block_data_order_hw.ml` ([moq-dev/rind#552](https://github.com/moq-dev/rind/pull/552)), whose body measures what such a proof costs.
 
-Consider vendoring s2n-bignum rather than pinning it (maintainer, 2026-11-09). Today it is a submodule at one upstream commit (`thirdparty/s2n-bignum`, 90 MB checked out). A draft PR's commit can vanish on a force-push, and one submodule commit cannot hold #415, #420, and #450 at once without a fork, which the 2026-11-07 decision rejected. Recommended: keep the submodule for merged upstream, and vendor only the unmerged spec and proof files into `proofs/hol-light/`, each with its source PR and commit recorded; vendor the whole tree only if that cannot build. The calibration quest is the first to build on a pin, so it settles this and this quest follows it.
-
-## Required
-
-- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs, and how unmerged upstream comes in
+Unmerged upstream comes in as the calibration settled: the submodule stays at merged upstream, and each unmerged s2n-bignum file rind needs is vendored unchanged under `proofs/hol-light/s2n-bignum/`, at its upstream path, ahead of the submodule on HOL Light's load path, with its PR and commit in `proofs/README.md`. Vendor #450's model additions and spec the same way.

@@ -18,6 +18,10 @@ opaque low.entry.Entry : Type
 /-- The token proving the CPU has the SHA-512 instructions. -/
 opaque low.aarch64.cpu.HaveSha3 : Type
 
+/-- The token proving the CPU has the crypto extension's instructions, SHA-256's
+among them. -/
+opaque low.aarch64.cpu.HaveCryptoExt : Type
+
 /-- A value its owner builds once and keeps, whose atomics Aeneas cannot
 translate. -/
 opaque low.generic.reuse_cache.ReuseCache (T : Type) : Type
