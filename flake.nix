@@ -95,12 +95,17 @@
             };
           };
 
-          # A shell that builds `target`, an architecture with no rind
-          # assembly, and runs its tests under qemu-user, as `just qemu` does.
-          # `cross` is the nixpkgs cross set whose C toolchain the tests'
-          # aws-lc-rs dev-dependency builds with; rind itself needs none.
+          # A shell that builds `target`, a target with no rind assembly, and
+          # runs its tests under qemu-user, as `just qemu` does. `cross` is the
+          # nixpkgs cross set whose C toolchain the tests' aws-lc-rs
+          # dev-dependency builds with; rind itself needs none. `cpu`, if set,
+          # is the core qemu emulates, so it traps any newer instruction.
           qemu-shell =
-            { target, cross }:
+            {
+              target,
+              cross,
+              cpu ? null,
+            }:
             let
               cc = cross.stdenv.cc;
               prefix = "${cc}/bin/${cc.targetPrefix}";
@@ -126,7 +131,8 @@
                 # The wrapper links against the store's glibc for the target
                 # by absolute path, so qemu needs no sysroot.
                 "CARGO_TARGET_${var}_RUNNER" = "qemu-${cross.stdenv.hostPlatform.qemuArch}";
-              };
+              }
+              // pkgs.lib.optionalAttrs (cpu != null) { QEMU_CPU = cpu; };
             };
 
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
@@ -538,6 +544,21 @@
             riscv64-musl = qemu-shell {
               target = "riscv64gc-unknown-linux-musl";
               cross = pkgs.pkgsCross.riscv64-musl;
+            };
+
+            # `just qemu armv6` and `just qemu armv6-softfloat` test the
+            # portable backend on the ARM1176 of the Raspberry Pi 1 and Zero.
+            # Rust builds `arm-unknown-linux-gnueabi` for ARMv6 too, and the
+            # ARMv5TE glibc it links against runs there.
+            armv6 = qemu-shell {
+              target = "arm-unknown-linux-gnueabihf";
+              cross = pkgs.pkgsCross.raspberryPi;
+              cpu = "arm1176";
+            };
+            armv6-softfloat = qemu-shell {
+              target = "arm-unknown-linux-gnueabi";
+              cross = pkgs.pkgsCross.armv5tel-multiplatform;
+              cpu = "arm1176";
             };
 
             # `just qemu powerpc64le`, `just qemu powerpc64`, and `just qemu
