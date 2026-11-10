@@ -24,12 +24,12 @@ soon as its own PRs are done.
 
 ## Waiting
 
-- kixelated/rind: the open PRs under the two epics land or close
-  ([#558](https://github.com/kixelated/rind/pull/558),
-  [#554](https://github.com/kixelated/rind/pull/554),
-  [#527](https://github.com/kixelated/rind/pull/527),
-  [#525](https://github.com/kixelated/rind/pull/525),
-  [#524](https://github.com/kixelated/rind/pull/524) and
-  [#497](https://github.com/kixelated/rind/pull/497) on 2026-11-09). Check
-  with `gh pr list -R kixelated/rind --search "head:quest/m2/adoption/"`
+- moq-dev/rind: the open PRs under the two epics land or close
+  ([#558](https://github.com/moq-dev/rind/pull/558),
+  [#554](https://github.com/moq-dev/rind/pull/554),
+  [#527](https://github.com/moq-dev/rind/pull/527),
+  [#525](https://github.com/moq-dev/rind/pull/525),
+  [#524](https://github.com/moq-dev/rind/pull/524) and
+  [#497](https://github.com/moq-dev/rind/pull/497) on 2026-11-09). Check
+  with `gh pr list -R moq-dev/rind --search "head:quest/m2/adoption/"`
   listing no branch under `targets/` or `aws-lc-rs/`.
