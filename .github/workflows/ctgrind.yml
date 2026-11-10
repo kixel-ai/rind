@@ -248,3 +248,35 @@ jobs:
 
       - name: ct-qemu
         run: nix develop .#ct-qemu-aarch64 --command admin/ct-qemu --target aarch64-unknown-linux-gnu
+
+  # BINSEC proves each `ct_binsec` test's region constant time for every
+  # secret at once, symbolically, on the code the runner's CPU takes short of
+  # the instructions it cannot decode (see `admin/ct-binsec`). The portable
+  # row forces the portable backend, as the `portable` job does. armv7 is
+  # left to valgrind and `admin/ct-qemu`: BINSEC decodes none of its NEON
+  # table lookups or crypto extension.
+  binsec:
+    name: binsec (${{ matrix.backend }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: x86_64
+            os: ubuntu-latest
+          - backend: portable
+            os: ubuntu-latest
+            rustflags: --cfg rind_portable --cfg curve25519_dalek_backend="serial"
+          - backend: aarch64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      - name: ct-binsec
+        run: nix develop .#binsec --command admin/ct-binsec --timeout 480
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}

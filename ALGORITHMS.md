@@ -179,7 +179,8 @@ covers it, or "none" where s2n-bignum proves none at the pinned revision.
 LLVM may inline `bignum_modadd`, which a hot loop calls, so no symbol marks
 its copies and the check does not reach them; the check fails if such a
 routine has a `_SAFE` theorem.
-[BINSEC](/quest/m2/confidence/binsec.md) is planned to check those. The
+`admin/ct-binsec` checks those in the loop, `PosInt::reduce_even`, with
+BINSEC. The
 aarch64 AES-GCM theorems assume separate input and output buffers, so they do
 not cover rind's in-place calls.
 

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-# Usage: admin/ct-binsec [--target TARGET] [--timeout SECONDS] [filter]
+# Usage: admin/ct-binsec [--target TARGET] [--timeout SECONDS] [--exact] [filter]
 #
 # The symbolic constant-time check (see `rind/src/low/ct_binsec.rs`). For
-# each rind test named `ct_binsec...` whose name contains `filter`, this
-# stops the release test binary under gdb as it enters the test's checked
-# region, dumps the process, and has BINSEC's checkct explore the region
+# each rind test named `ct_binsec...` whose name contains `filter`, or with
+# `--exact` is `filter` past its module path, this stops the release test
+# binary under gdb as it enters the test's checked region, dumps the
+# process, and has BINSEC's checkct explore the region
 # from that dump, with every byte rind marks secret taking every value at
 # once. It fails unless BINSEC proves that no branch, memory address,
 # divisor, or dividend depends on a secret, over every path the region
@@ -86,6 +87,29 @@ UNDECODED = {
     "aarch64": ["aes", "pmull", "sha2", "sha3", "dit"],
 }
 
+# Instructions BINSEC cannot decode, but whose effect on its state is short
+# enough to give it: s2n-bignum's P-521 code sets the carry with `stc`, and
+# LLVM tests the portable P-256 and P-384 for zero with `movmskps`.
+STUBS = {
+    "x86_64": """\
+replace opcode f9 by
+  cf := true
+end
+
+replace opcode f8 by
+  cf := false
+end
+""",
+}
+
+# `movmskps %xmmN,%eGP` for N and GP below 8: the sign bit of each lane.
+for src in range(8):
+    for dst, gp in enumerate(["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi"]):
+        lanes = " :: ".join("xmm{}{{{}}}".format(src, bit) for bit in (127, 95, 63, 31))
+        STUBS["x86_64"] += "\nreplace opcode 0f 50 {:02x} by\n  {} := uext64 ({})\nend\n".format(
+            0xC0 | dst << 3 | src, gp, lanes
+        )
+
 # NT_PRPSINFO, NT_AUXV, and NT_FILE, which describe the process.
 PROCESS_NOTES = {3, 6, 0x46494C45}
 NT_PRSTATUS = 1
@@ -96,7 +120,7 @@ WORD = {"x86_64": 64, "aarch64": 64, "arm": 32}
 # A path that panics ends where the panic begins, as one may where a value
 # declassified afresh lets it.
 SYMBOLS = ["rind_ct_binsec_stop", "rind_ct_binsec_secret", "rind_ct_binsec_public"]
-SYMBOLS += ["getrandom", "__rustc::rust_begin_unwind"]
+SYMBOLS += ["getrandom", "free", "__rustc::rust_begin_unwind"]
 
 # BINSEC replaces the secret marker with fresh secret bytes, and glibc's
 # getrandom, which rind's random bytes come from, with secret ones too,
@@ -105,11 +129,15 @@ SYMBOLS += ["getrandom", "__rustc::rust_begin_unwind"]
 # it: a fresh public value would have BINSEC search every public value as
 # well, such as each ML-KEM matrix seed, which it cannot do in time. A path
 # that declassifies more than the real run did gets fresh public values.
+# glibc's free does nothing, as under valgrind, which replaces it: its
+# double-free check compares the freed bytes with a key, and they may be
+# secret.
 SCRIPT = """\
 starting from core with
   declassified<{word}> := 0
 end
 
+{stubs}
 replace {secret:#x} (value, len) by
   for i<{word}> in 0 to len - 1 do
     @[value + i] := secret
@@ -127,6 +155,10 @@ replace {getrandom:#x} (buf, len, flags) by
     @[buf + i] := secret
   end
   return len
+end
+
+replace {free:#x} (ptr) by
+  return
 end
 
 halt at {stop:#x}
@@ -163,7 +195,7 @@ def build(target):
     sys.exit("ct-binsec: no rind test binary")
 
 
-def tests(exe, filter):
+def tests(exe, filter, exact):
     out = subprocess.run(
         [exe, "--list", "--ignored", "--format", "terse"],
         stdout=subprocess.PIPE,
@@ -173,7 +205,8 @@ def tests(exe, filter):
     names = [line.removesuffix(": test") for line in out.splitlines()]
     names = [n for n in names if n.split("::")[-1].startswith("ct_binsec")]
     planted = [n for n in names if is_planted(n)]
-    return planted + [n for n in names if filter in n and not is_planted(n)]
+    chosen = [n for n in names if (n.split("::")[-1] == filter if exact else filter in n)]
+    return planted + [n for n in chosen if not is_planted(n)]
 
 
 def is_planted(name):
@@ -250,10 +283,12 @@ def check(exe, name, target, timeout, tmp):
         f.write(
             SCRIPT.format(
                 word=word,
+                stubs=STUBS.get(arch(target), ""),
                 declassify=declassify,
                 secret=symbols["rind_ct_binsec_secret"],
                 public=symbols["rind_ct_binsec_public"],
                 getrandom=symbols["getrandom"],
+                free=symbols["free"],
                 stop=symbols["rind_ct_binsec_stop"],
                 panic=symbols["__rustc::rust_begin_unwind"],
             )
@@ -267,7 +302,11 @@ def check(exe, name, target, timeout, tmp):
     log = run.stdout
     status = re.search(r"\[checkct:result\] Program status is : (\w+)", log)
     explored = re.search(r"\[checkct:info\] [1-9]\d* visited path", log)
-    verdict = status[1] if status and run.returncode == 0 and explored else "failed"
+    if status and status[1] == "insecure":
+        # A leak found is a leak, even on a search cut short.
+        verdict = "insecure"
+    else:
+        verdict = status[1] if status and run.returncode == 0 and explored else "failed"
     if verdict == "secure" and ("Exploration is incomplete" in log or "Cut path" in log):
         verdict = "unknown"
     return verdict, log, core
@@ -295,6 +334,7 @@ def main():
     parser.add_argument("--target", default=None)
     # A search cut short at this many seconds is incomplete, so it fails.
     parser.add_argument("--timeout", type=int, default=None)
+    parser.add_argument("--exact", action="store_true")
     parser.add_argument("filter", nargs="?", default="")
     args = parser.parse_args()
     target = args.target or host()
@@ -302,7 +342,7 @@ def main():
         sys.exit("ct-binsec: gdb runs the test natively, so the target must be the host's")
 
     exe = build(target)
-    names = tests(exe, args.filter)
+    names = tests(exe, args.filter, args.exact)
     if all(is_planted(n) for n in names):
         sys.exit("ct-binsec: no ct_binsec test matches {!r}".format(args.filter))
 

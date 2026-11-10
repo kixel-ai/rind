@@ -7,6 +7,8 @@
 //! harness ignores what a declassified check returns, since BINSEC takes
 //! both of its values.
 
+use core::hint::black_box;
+
 use crate::low::ct;
 use crate::low::ct_binsec::checked;
 
@@ -31,8 +33,19 @@ fn ct_binsec_aes_gcm() {
             let key = Key::new(algorithm, &secret::<32>(1)[..algorithm.key_len()]).unwrap();
             let nonce = || Nonce::assume_unique_for_key([2; 12]);
             let mut msg = secret::<MESSAGE>(3);
-            let tag = key.seal_in_place_separate_tag(nonce(), &[4; 21], &mut msg).unwrap();
-            let _ = key.open_in_place_separate_tag(nonce(), &[4; 21], tag, &mut msg);
+            let tag = key
+                .seal_in_place_separate_tag(nonce(), &[4; 21], &mut msg)
+                .unwrap();
+            // libcrux's AES-128 and AES-256 open branch on whether the tag
+            // verified before rind can declassify it, as `admin/ctgrind.supp`
+            // allows, so BINSEC checks only AES-192's open there.
+            if cfg!(rind_backend = "portable") && algorithm.key_len() != 24 {
+                continue;
+            }
+            black_box(
+                key.open_in_place_separate_tag(nonce(), &[4; 21], tag, &mut msg)
+                    .is_ok(),
+            );
         }
     });
 }
@@ -46,8 +59,13 @@ fn ct_binsec_chacha20_poly1305() {
         let key = Key::new(&CHACHA20_POLY1305, &secret::<32>(1)).unwrap();
         let nonce = || Nonce::assume_unique_for_key([2; 12]);
         let mut msg = secret::<MESSAGE>(3);
-        let tag = key.seal_in_place_separate_tag(nonce(), &[4; 21], &mut msg).unwrap();
-        let _ = key.open_in_place_separate_tag(nonce(), &[4; 21], tag, &mut msg);
+        let tag = key
+            .seal_in_place_separate_tag(nonce(), &[4; 21], &mut msg)
+            .unwrap();
+        black_box(
+            key.open_in_place_separate_tag(nonce(), &[4; 21], tag, &mut msg)
+                .is_ok(),
+        );
     });
 }
 
@@ -60,7 +78,7 @@ fn ct_binsec_xchacha20_poly1305() {
         let key = RandomizedNonceKey::new(&secret::<32>(1));
         let mut msg = secret::<MESSAGE>(3).to_vec();
         let nonce = key.seal_in_place_append_tag(&[4; 21], &mut msg).unwrap();
-        let _ = key.open_in_place(nonce, &[4; 21], &mut msg);
+        black_box(key.open_in_place(nonce, &[4; 21], &mut msg).is_ok());
     });
 }
 
@@ -85,9 +103,12 @@ fn ct_binsec_aes() {
     checked(|| {
         for algorithm in [&AES_128, &AES_192, &AES_256] {
             let key = &secret::<32>(1)[..algorithm.key_len];
-            Aes::new(algorithm, key).unwrap().encrypt_block(&mut secret(2));
+            Aes::new(algorithm, key)
+                .unwrap()
+                .encrypt_block(&mut secret(2));
             let ctr = AesCtr::new(algorithm, key, 32).unwrap();
-            ctr.apply_keystream(&[3; 16], &mut secret::<MESSAGE>(4)).unwrap();
+            ctr.apply_keystream(&[3; 16], &mut secret::<MESSAGE>(4))
+                .unwrap();
         }
     });
 }
@@ -105,11 +126,13 @@ fn ct_binsec_aes_cbc() {
             let encrypting = AesCbcEncryptingKey::new(algorithm, key).unwrap();
             encrypting.encrypt(iv, &mut msg);
             let decrypting = AesCbcDecryptingKey::new(algorithm, key).unwrap();
-            let _ = decrypting.decrypt(&[3; 16], &mut msg);
+            black_box(decrypting.decrypt(&[3; 16], &mut msg).is_ok());
         }
     });
 }
 
+// One block, since BINSEC cannot decode the `vinsertf128` that LLVM emits
+// for the AVX2 kernel longer messages take; ctgrind checks that one.
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_chacha20() {
@@ -117,7 +140,8 @@ fn ct_binsec_chacha20() {
 
     checked(|| {
         let key = ChaCha20::new(&secret(1));
-        key.apply_keystream(&[2; 12], 3, &mut secret::<MESSAGE>(4)).unwrap();
+        key.apply_keystream(&[2; 12], 3, &mut secret::<64>(4))
+            .unwrap();
     });
 }
 
@@ -131,10 +155,10 @@ fn ct_binsec_aes_kw() {
             let kek = AesKek::new(algorithm, &secret::<32>(1)[..algorithm.key_len]).unwrap();
             let (mut wrapped, mut key) = ([0; 24], [0; 16]);
             kek.wrap(&secret::<16>(2), &mut wrapped).unwrap();
-            let _ = kek.unwrap(&wrapped, &mut key);
+            black_box(kek.unwrap(&wrapped, &mut key).is_ok());
             let (mut wrapped, mut key) = ([0; 32], [0; 20]);
             kek.wrap_padded(&secret::<20>(2), &mut wrapped).unwrap();
-            let _ = kek.unwrap_padded(&wrapped, &mut key);
+            black_box(kek.unwrap_padded(&wrapped, &mut key).is_ok());
         }
     });
 }
@@ -149,7 +173,7 @@ fn ct_binsec_digest() {
             .into_iter()
             .chain([&SHA512_256, &SHA3_256, &SHA3_384, &SHA3_512])
         {
-            let _ = digest(algorithm, &secret::<150>(1));
+            black_box(digest(algorithm, &secret::<150>(1)));
         }
     });
 }
@@ -163,7 +187,7 @@ fn ct_binsec_hmac() {
         for algorithm in [&legacy::HMAC_SHA1, &HMAC_SHA256, &HMAC_SHA384, &HMAC_SHA512] {
             let key = Key::new(algorithm, &secret::<200>(1));
             let tag = sign(&key, &secret::<150>(2));
-            let _ = verify(&key, &secret::<150>(2), tag.as_ref());
+            black_box(verify(&key, &secret::<150>(2), tag.as_ref()).is_ok());
         }
     });
 }
@@ -190,7 +214,7 @@ fn ct_binsec_pbkdf2() {
         let mut out = [0; 40];
         let iterations = core::num::NonZeroU32::new(2).unwrap();
         secret.derive(iterations, &[2; 16], &mut out).unwrap();
-        let _ = secret.verify(iterations, &[2; 16], &out);
+        black_box(secret.verify(iterations, &[2; 16], &out).is_ok());
     });
 }
 
@@ -203,7 +227,7 @@ fn ct_binsec_x25519() {
     let peer = peer.public_key().as_ref().to_vec();
     checked(|| {
         let key = PrivateKey::from_scalar(&X25519, &[1; 32]).unwrap();
-        let _ = key.agree(&peer);
+        black_box(key.agree(&peer).is_ok());
     });
 }
 
@@ -217,7 +241,7 @@ fn ecdh(algorithm: &'static crate::agreement::Algorithm, len: usize) {
     let peer = peer.public_key().as_ref().to_vec();
     checked(|| {
         let key = PrivateKey::from_scalar(algorithm, &vec![1; len]).unwrap();
-        let _ = key.agree(&peer);
+        black_box(key.agree(&peer).is_ok());
     });
 }
 
@@ -244,7 +268,10 @@ fn ct_binsec_ecdh_p521() {
 fn ct_binsec_mlkem768() {
     use crate::mid::mlkem768::DecapKey;
 
-    let (_, ciphertext) = DecapKey::keygen_internal(&[1; 64]).encapsulation_key().encaps().unwrap();
+    let (_, ciphertext) = DecapKey::keygen_internal(&[1; 64])
+        .encapsulation_key()
+        .encaps()
+        .unwrap();
     checked(|| DecapKey::keygen_internal(&[1; 64]).decaps(&ciphertext));
 }
 
@@ -264,7 +291,7 @@ fn ecdsa(algorithm: &'static crate::signature::EcdsaSigningAlgorithm, pkcs8: &[u
 
     checked(|| {
         let key = EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).unwrap();
-        let _ = key.sign(&secret::<40>(1));
+        black_box(key.sign(&secret::<40>(1)).is_ok());
     });
 }
 
@@ -272,25 +299,95 @@ fn ecdsa(algorithm: &'static crate::signature::EcdsaSigningAlgorithm, pkcs8: &[u
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_ecdsa_p256() {
     use crate::signature::sign::ECDSA_P256_SHA256_FIXED;
-    ecdsa(&ECDSA_P256_SHA256_FIXED, include_bytes!("../high/ecdsa/secp256r1.pkcs8.der"));
+    ecdsa(
+        &ECDSA_P256_SHA256_FIXED,
+        include_bytes!("../high/ecdsa/secp256r1.pkcs8.der"),
+    );
 }
 
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_ecdsa_p384() {
     use crate::signature::sign::ECDSA_P384_SHA384_FIXED;
-    ecdsa(&ECDSA_P384_SHA384_FIXED, include_bytes!("../high/ecdsa/secp384r1.pkcs8.der"));
+    ecdsa(
+        &ECDSA_P384_SHA384_FIXED,
+        include_bytes!("../high/ecdsa/secp384r1.pkcs8.der"),
+    );
 }
 
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_ecdsa_p521() {
     use crate::signature::sign::ECDSA_P521_SHA512_FIXED;
-    ecdsa(&ECDSA_P521_SHA512_FIXED, include_bytes!("../high/ecdsa/secp521r1.pkcs8.der"));
+    ecdsa(
+        &ECDSA_P521_SHA512_FIXED,
+        include_bytes!("../high/ecdsa/secp521r1.pkcs8.der"),
+    );
+}
+
+// The Montgomery products RSA's private operation runs at its CRT widths,
+// 16, 24, and 32 words: s2n-bignum's Karatsuba routines and aws-lc's
+// `bn_mul4x_mont` and `bn_sqr8x_mont` on x86_64. BINSEC cannot finish the
+// exponentiation that runs thousands of them.
+#[test]
+#[ignore = "admin/ct-binsec runs it under BINSEC"]
+fn ct_binsec_mont_mul() {
+    use crate::low::{mont_mul, mont_sqr};
+
+    // An odd modulus, whose `-m^-1 mod 2^64` is 1.
+    let m = [u64::MAX; 32];
+    checked(|| {
+        for k in [16, 24, 32] {
+            let (x, mut y, mut z) = ([1u64; 32], [2u64; 32], [0u64; 32]);
+            ct::secret_slice(&x[..k]);
+            ct::secret_slice(&y[..k]);
+            mont_mul(&mut z[..k], &x[..k], &y[..k], &m[..k], 1);
+            mont_sqr(&mut y[..k], &z[..k], &m[..k], 1);
+            black_box(&y);
+        }
+    });
+}
+
+// The reduction RSA's key check runs on the private exponent, whose loop
+// calls `bignum_modadd` where LLVM may inline it, out of `admin/prove
+// bytes`'s reach.
+#[test]
+#[ignore = "admin/ct-binsec runs it under BINSEC"]
+fn ct_binsec_reduce_even() {
+    use crate::low::PosInt;
+
+    checked(|| {
+        let d = PosInt::<33>::from_words(&[1; 32]).unwrap();
+        let p_1 = PosInt::<16>::from_words(&[3; 16]).unwrap();
+        ct::secret_slice(d.as_words());
+        ct::secret_slice(p_1.as_words());
+        black_box(d.reduce_even(&p_1));
+    });
+}
+
+// RSA's padding check, on a decrypted message: BINSEC cannot finish the
+// private operation that decrypts it, at 2048 bits, in a nightly's time.
+#[test]
+#[ignore = "admin/ct-binsec runs it under BINSEC"]
+fn ct_binsec_rsa_oaep_padding() {
+    use crate::high::hash::Sha256;
+    use crate::high::pkcs1::{decode_oaep, encode_oaep};
+    use crate::mid::rng::SliceRandomSource;
+
+    let mut em = [0; 256];
+    encode_oaep::<Sha256>(&mut em, &mut SliceRandomSource(&[2; 32]), &[1; 40], b"").unwrap();
+    checked(|| {
+        let mut em = em;
+        ct::secret_slice(&em);
+        let mut out = [0; 256];
+        black_box(decode_oaep::<Sha256>(&mut em, b"", &mut out).is_ok());
+    });
 }
 
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_constant_time_verify() {
-    let _ = checked(|| crate::constant_time::verify(&secret::<33>(1), &secret::<33>(2)));
+    black_box(checked(|| {
+        crate::constant_time::verify(&secret::<33>(1), &secret::<33>(2)).is_ok()
+    }));
 }
