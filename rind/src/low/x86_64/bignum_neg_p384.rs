@@ -63,6 +63,7 @@ macro_rules! n0short {
     };
 }
 
+// Transliterated from s2n-bignum's x86/p384/bignum_neg_p384.S.
 /// Negate modulo p_384, z := (-x) mod p_384, assuming x reduced
 ///
 /// Input x[6]; output z[6]
