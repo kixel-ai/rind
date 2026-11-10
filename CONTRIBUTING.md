@@ -33,8 +33,9 @@ cargo bench
 
 `admin/bench-report collect` runs the report's benchmarks, then
 `admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev
-shell and under `quest gate --host`, which keeps other gated work off the
-host; it skips any host that is still busy, and writes their results and the hosts' details as JSON under
+shell and under `quest gate`, which waits for the host to have room but
+shares it with other gated work, so its numbers are noisier than the nightly
+`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under
 `.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly
 `bench` run's results, and `admin/bench-report render --from DIR` copies a
 collection's measured hosts into `benchmarks/data/` and writes
@@ -71,7 +72,7 @@ operation whose secret the API lets it set (not key generation, encapsulation,
 or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,
 and `admin/timing marvin` runs the Marvin toolkit against RSA-OAEP decryption. They need quiet
 hardware: the weekly `timing` workflow runs them on GitHub's runners, and a
-shared host is held with `quest gate --host`.
+shared host adds noise that no gate removes.
 `nix develop .#prove --command admin/prove` checks rind's HOL Light proofs of
 its assembly, then translates the Rust under proof to Lean with Aeneas and
 checks the proofs in [`proofs/`](proofs/README.md).
