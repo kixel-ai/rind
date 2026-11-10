@@ -33,3 +33,4 @@ cargo clippy "${packages[@]}" --locked --target "$target" --all-targets -- --den
 export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
 export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
 SLOW_TESTS=1 cargo test "${packages[@]}" --locked --release --target "$target"
+cargo test -p rind --features wipe --test zeroing --locked --release --target "$target"
