@@ -12,7 +12,7 @@ exclude_globs = [
   "rind/src/low/*/openssl/**",
   # Test-only code under a `cfg(test)` cargo-mutants does not recognise.
   "rind/src/low/tests.rs",
-  # AVX-512 only, which no test host has: quest/m3/confidence/mutants-avx512.md.
+  # AVX-512 only, which no test host has: quest/m2/confidence/mutants-avx512.md.
   "rind/src/low/x86_64/mlkem768_sample_poly_ntt_8x.rs",
   "rind/src/low/x86_64/rsaz_avx512.rs",
   # Tools, not libraries.
@@ -246,10 +246,10 @@ exclude_re = [
   'rind/src/mid/p384\.rs:805:\d+: replace JacobianMontPoint::lookup_w5 -> Self with Default::default\(\)$',
   'rind/src/mid/p384\.rs:813:\d+: replace JacobianMontPoint::maybe_negate_y with \(\)$',
   'rind/src/mid/p384\.rs:598:\d+: replace JacobianMontPoint::multiply -> Self with Default::default\(\)$',
-  # DIT, which no test host has: quest/m3/confidence/mutants-dit.md.
+  # DIT, which no test host has: quest/m2/confidence/mutants-dit.md.
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace & with \^ in dit::maybe_enable$',
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace & with \| in dit::maybe_enable$',
-  # AVX-512 only: quest/m3/confidence/mutants-avx512.md.
+  # AVX-512 only: quest/m2/confidence/mutants-avx512.md.
   'rind/src/low/posint\.rs:\d+:\d+: replace != with == in PosInt<N>::mod_exp_pair_rsaz$',
   'rind/src/low/posint\.rs:\d+:\d+: replace > with < in PosInt<N>::mod_exp_pair_rsaz$',
   'rind/src/low/posint\.rs:\d+:\d+: replace > with == in PosInt<N>::mod_exp_pair_rsaz$',
@@ -293,7 +293,7 @@ exclude_re = [
   'rind/src/low/x86_64/ghash\.rs:\d+:\d+: replace \+ with - in _mul_tail$',
   'rind/src/low/x86_64/ghash\.rs:\d+:\d+: replace \+ with \* in _mul_tail$',
   'rind/src/mid/mlkem768/sample_ntt\.rs:100:\d+: replace _sample_poly_ntt_tail with \(\)$',
-  # Needs crafted inputs: quest/m3/confidence/mutants-edge-cases.md.
+  # Needs crafted inputs: quest/m2/confidence/mutants-edge-cases.md.
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:109:\d+: replace - with / in non_adjacent_form$',
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:451:\d+: replace - with / in Fe4::reduce$',
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:452:\d+: replace - with / in Fe4::reduce$',
@@ -338,14 +338,14 @@ exclude_re = [
   'rind/src/low/x86_64/sha1\.rs:462:\d+: replace < with <= in Expander<\x27a>::step$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace < with <= in <impl Iterator for BoothRecode<W>>::next$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace << with >> in BoothRecode<W>::recode$',
-  'rind/src/mid/p256\.rs:514:\d+: replace JacobianMontPoint::public_is_infinity -> bool with false$',
+  'rind/src/mid/p256\.rs:\d+:\d+: replace JacobianMontPoint::public_is_infinity -> bool with false$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace \| with \^ in (<impl Iterator for BoothRecode<W>>::next|BoothRecode<W>::recode)$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace match guard self\.index < 256 with true in <impl Iterator for BoothRecode<W>>::next$',
   'rind/src/mid/p384\.rs:515:\d+: replace JacobianMontPoint::public_is_infinity -> bool with false$',
   'rind/src/mid/p521\.rs:494:\d+: replace JacobianPoint::is_infinity -> u8 with 0$',
   'rind/src/mid/rsa_priv/exponents\.rs:\d+:\d+: replace \| with & in divide_exact_odd$',
   'rind/src/mid/rsa_priv/exponents\.rs:\d+:\d+: replace \| with \^ in divide_exact_odd$',
-  # Untested adapter code: quest/m3/confidence/mutants-adapters.md.
+  # Untested adapter code: quest/m2/confidence/mutants-adapters.md.
   'rind-dimpl/src/digest\.rs:78:\d+: replace <impl SecureRandom for Random>::fill -> Result<\(\), CryptoError> with Ok\(\(\)\)$',
   'rind-dimpl/src/digest\.rs:28:\d+: replace <impl fmt::Debug for Running>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-dimpl/src/kx\.rs:55:\d+: replace <impl fmt::Debug for Exchange>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
@@ -357,9 +357,6 @@ exclude_re = [
   'rind-dimpl/src/suite\.rs:70:\d+: replace <impl fmt::Debug for Aead>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-jsonwebtoken/src/lib\.rs:40:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-object-store/src/lib\.rs:41:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-rcgen/src/lib\.rs:221:\d+: replace <impl fmt::Debug for KeyPair>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-rcgen/src/lib\.rs:52:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-rcgen/src/lib\.rs:60:\d+: replace check -> Result<\(\), MissingFeature> with Ok\(\(\)\)$',
   'rind-ring/src/aead\.rs:113:\d+: replace <impl AsRef<\[u8; NONCE_LEN\]> for Nonce>::as_ref -> &\[u8; NONCE_LEN\] with Box::leak\(Box::new\(\[0; NONCE_LEN\]\)\)$',
   'rind-ring/src/aead\.rs:113:\d+: replace <impl AsRef<\[u8; NONCE_LEN\]> for Nonce>::as_ref -> &\[u8; NONCE_LEN\] with Box::leak\(Box::new\(\[1; NONCE_LEN\]\)\)$',
   'rind-ring/src/aead\.rs:53:\d+: replace <impl PartialEq for Algorithm>::eq -> bool with false$',
@@ -417,7 +414,6 @@ exclude_re = [
   'rind-rustls/src/cipher_suite\.rs:16:\d+: replace << with >>$',
   'rind-rustls/src/cipher_suite\.rs:29:\d+: replace << with >>$',
   'rind-rustls/src/kx_group/hybrid\.rs:92:\d+: replace <impl SupportedKxGroup for Hybrid>::usable_for_version -> bool with true$',
-  'rind-rustls/src/lib\.rs:81:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-rustls/src/quic\.rs:19:\d+: replace << with >>$',
   'rind-rustls/src/quic\.rs:20:\d+: replace << with >>$',
   'rind-rustls/src/quic\.rs:27:\d+: replace << with >>$',
@@ -429,16 +425,15 @@ exclude_re = [
   'rind-rustls/src/quic\.rs:105:\d+: replace <impl quic::PacketKey for PacketKey>::integrity_limit -> u64 with 1$',
   'rind-rustls/src/quic\.rs:97:\d+: replace <impl quic::PacketKey for PacketKey>::tag_len -> usize with 0$',
   'rind-rustls/src/quic\.rs:97:\d+: replace <impl quic::PacketKey for PacketKey>::tag_len -> usize with 1$',
-  'rind-rustls/src/sign\.rs:\d+:\d+: delete match arm PrivateKeyDer::Pkcs1\(_\) in <impl KeyProvider for Keys>::load_private_key$',
-  'rind-rustls/src/sign\.rs:\d+:\d+: delete match arm PrivateKeyDer::Pkcs8\(_\) in <impl KeyProvider for Keys>::load_private_key$',
-  'rind-rustls/src/sign\.rs:\d+:\d+: delete match arm PrivateKeyDer::Sec1\(_\) in <impl KeyProvider for Keys>::load_private_key$',
-  'rind-rustls/src/sign\.rs:285:\d+: replace <impl fmt::Debug for Ecdsa>::fmt -> Result<\(\), fmt::Error> with Ok\(\(\)\)$',
-  'rind-rustls/src/sign\.rs:198:\d+: replace <impl fmt::Debug for Rsa>::fmt -> Result<\(\), fmt::Error> with Ok\(\(\)\)$',
-  'rind-rustls/src/sign\.rs:225:\d+: replace <impl fmt::Debug for RsaSigner>::fmt -> Result<\(\), fmt::Error> with Ok\(\(\)\)$',
-  'rind-rustls/src/sign/any_of\.rs:\d+:\d+: delete ! in <impl KeyProvider for AnyOf>::load_private_key$',
-  'rind-rustls/src/ticketer\.rs:130:\d+: replace <impl fmt::Debug for XChaCha20Ticketer>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
+  'rind-rustls/src/sign\.rs:\d+:\d+: delete match arm PrivateKeyDer::Pkcs1\(_\) in unsupported$',
+  'rind-rustls/src/sign\.rs:\d+:\d+: delete match arm PrivateKeyDer::Pkcs8\(_\) in unsupported$',
+  'rind-rustls/src/sign\.rs:\d+:\d+: delete match arm PrivateKeyDer::Sec1\(_\) in unsupported$',
+  'rind-rustls/src/sign\.rs:307:\d+: replace <impl fmt::Debug for Ecdsa>::fmt -> Result<\(\), fmt::Error> with Ok\(\(\)\)$',
+  'rind-rustls/src/sign\.rs:220:\d+: replace <impl fmt::Debug for RsaSigningKey>::fmt -> Result<\(\), fmt::Error> with Ok\(\(\)\)$',
+  'rind-rustls/src/sign\.rs:247:\d+: replace <impl fmt::Debug for RsaSigner>::fmt -> Result<\(\), fmt::Error> with Ok\(\(\)\)$',
+  'rind-rustls/src/ticketer\.rs:127:\d+: replace <impl fmt::Debug for XChaCha20Ticketer>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-rustls/src/ticketer\.rs:\d+:\d+: replace > with < in <impl ProducesTickets for XChaCha20Ticketer>::decrypt$',
-  'rind-rustls/src/ticketer\.rs:136:\d+: replace \* with /$',
-  'rind-rustls/src/ticketer\.rs:136:\d+: replace \* with \+$',
+  'rind-rustls/src/ticketer\.rs:133:\d+: replace \* with /$',
+  'rind-rustls/src/ticketer\.rs:133:\d+: replace \* with \+$',
   'rind-rustls/src/verify\.rs:164:\d+: replace <impl fmt::Debug for Verify>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
 ]

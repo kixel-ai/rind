@@ -123,11 +123,11 @@ protocols with their own integrity protection need. ring has none.
 |---|---|
 | `UnboundCipherKey::new(&AES_128, key)` and `EncryptingKey::ctr` or `DecryptingKey::ctr` | `AesCtr::new(&AES_128, key, 128)?`, whose last argument is how many of the counter block's rightmost bits count, as WebCrypto's `length` |
 | `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))`, `decrypt` | `apply_keystream(&iv, in_out)?`, with `iv` the `[u8; 16]` counter block |
-| `PaddedBlockEncryptingKey::cbc_pkcs7(key)` and `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))` | `AesCbcEncryptingKey::new(&AES_128, key)?` and `encrypt(&iv, in_out)`, which cannot fail |
+| `PaddedBlockEncryptingKey::cbc_pkcs7(key)` and `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))` | `AesCbcEncryptingKey::new(&AES_128, key)?` and `encrypt(CbcIv::assume_unpredictable(iv), in_out)`, which cannot fail |
 | `PaddedBlockDecryptingKey::cbc_pkcs7(key)` and `decrypt(in_out, DecryptionContext::Iv128(iv))` | `AesCbcDecryptingKey::new(&AES_128, key)?` and `decrypt(&iv, in_out)?`, which clears `in_out` if the padding is malformed |
-| `EncryptingKey::cbc`, `DecryptingKey::cbc`, unpadded | `encrypt_blocks(&iv, in_out)?` and `decrypt_blocks(&iv, in_out)?` on the keys above |
+| `EncryptingKey::cbc`, `DecryptingKey::cbc`, unpadded | `encrypt_blocks(CbcIv::assume_unpredictable(iv), in_out)?` and `decrypt_blocks(&iv, in_out)?` on the keys above |
 | `AES_128`, `AES_192`, `AES_256` | the same |
-| `EncryptingKey::encrypt` and `PaddedBlockEncryptingKey::encrypt`, which pick a random IV | none: pick the nonce or IV with `rand::fill` |
+| `EncryptingKey::encrypt` and `PaddedBlockEncryptingKey::encrypt`, which pick a random IV | for CBC, `CbcIv::random()?`, read with `as_bytes` before encrypting; for CTR, pick the counter block with `rand::fill` |
 | `DES_EDE3_FOR_LEGACY_USE_ONLY` and the other DES, the ECB, CFB, and OFB modes, `StreamingEncryptingKey`, `StreamingDecryptingKey` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | none | `Aes::new(&alg, key)?.encrypt_block(block)`, one AES block |
 | none | `ChaCha20::new(&key).apply_keystream(nonce, counter, in_out)?` |
@@ -138,7 +138,7 @@ protocols with their own integrity protection need. ring has none.
 |---|---|
 | `EphemeralPrivateKey::generate(alg, rng)`, `PrivateKey::generate(alg)` | `PrivateKey::generate(&alg)?` |
 | `compute_public_key()?` | `public_key()`, which cannot fail |
-| `agree_ephemeral(key, &UnparsedPublicKey::new(alg, peer), err, kdf)` | `key.agree(peer)?`, returning a `SharedSecret` wiped on drop under `wipe` |
+| `agree_ephemeral(key, &UnparsedPublicKey::new(alg, peer), err, kdf)` | `key.agree(peer)?`, returning a `SharedSecret` wiped on drop under `wipe`; run a KDF such as `hkdf` on it, as `kdf` did |
 | `agree(&key, peer, err, kdf)` | `key.agree(peer)?`, which borrows the key, so it agrees again |
 | `UnparsedPublicKey::new(alg, point)`, `ParsedPublicKey` of a point | `PublicKey::new(&alg, point)?`, which decompresses a compressed point, then `key.agree(peer.as_ref())`; `agree` alone takes an uncompressed point |
 | `ParsedPublicKey` of a `SubjectPublicKeyInfo` | `PublicKey::from_spki(&alg, der)?`, which also takes WebCrypto's `id-ecDH` |
@@ -168,7 +168,7 @@ agreement keys refuse.
 | `EncapsulationKey::new(alg, bytes)`, `encapsulate()` | the same |
 | `decapsulate(Ciphertext::from(bytes))` | `decapsulate(bytes)`, which borrows the key |
 | `DecapsulationKey::new(alg, bytes)`, `DecapsulationKey::key_bytes()` | none: decapsulation keys are ephemeral |
-| `ML_KEM_512`, `ML_KEM_1024` | none; [post-quantum epic](quest/m4/pq/README.md) |
+| `ML_KEM_512`, `ML_KEM_1024` | none; [ML-KEM-512 and ML-KEM-1024](quest/m3/parity/ml-kem.md) |
 | `algorithm()`, `Algorithm::id()`, `AlgorithmId`, `AlgorithmIdentifier` | none |
 
 ring has no `kem`.
@@ -221,7 +221,7 @@ ring has no `kem`.
 | `ED25519_PUBLIC_KEY_LEN` | none: always 32 |
 | `rsa::PublicKey::from_der` | `PublicKey::new(&verify::RSA_PKCS1_SHA256, der)`, for one algorithm and PKCS#1 or `SubjectPublicKeyInfo` DER |
 | `rsa::PublicKey::{modulus, exponent, modulus_len}`, `PublicKeyComponents::from(&key)` | none |
-| `PqdsaKeyPair`, `ML_DSA_65` and the other ML-DSA items | none; [post-quantum epic](quest/m4/pq/README.md) |
+| `PqdsaKeyPair`, `ML_DSA_65` and the other ML-DSA items | none; [ML-DSA](quest/m3/parity/ml-dsa.md) |
 
 `PublicKey::new` refuses a compressed ECDSA point and an ECDSA or Ed25519
 `SubjectPublicKeyInfo`, which aws-lc-rs takes. `PublicKey::from_spki` takes
@@ -347,10 +347,11 @@ ring has none.
 
 Each `rind-*` crate stands in for a crate's aws-lc-rs or ring backend. rind
 panics on a CPU missing a feature it requires, so every adapter function
-that returns a provider or ticketer refuses one with the adapter's own
-`MissingFeature` instead, which displays rind's message. rind-rcgen's
-`KeyPair`, whose errors are rcgen's, cannot. Call rind-rcgen's `check()`,
-which returns its own `MissingFeature`, before using it.
+that returns a provider refuses one with the adapter's own
+`MissingFeature` instead, which displays rind's message. rind-rustls, whose
+signatures are rustls's provider's, does not. rind-ring, whose signatures
+are ring's, and rind-rcgen's `KeyPair`, whose errors are rcgen's, cannot.
+Call `rind::cpu::check()` before using them.
 
 ### rind-ring
 
@@ -381,45 +382,32 @@ and the PKCS#1 v1.5 encryption keys, and where it behaves differently. rustls's
 
 ### rind-rustls
 
-rind-rustls mirrors the layout of rustls's own providers.
+rind-rustls offers rustls's `crypto::aws_lc_rs` API item for item, so
+replacing that path with `rind_rustls` changes no other code. It leaves out
+what rind cannot back yet; see [rustls provider parity](quest/m3/parity/rustls.md).
 
 | rustls `crypto::aws_lc_rs` | rind-rustls |
 |---|---|
-| `default_provider()` | `default_provider()?` |
-| `DEFAULT_CIPHER_SUITES`, `ALL_CIPHER_SUITES` | the same, preferring AES-128-GCM to AES-256-GCM; `default_provider()` puts ChaCha20-Poly1305 first where rind runs AES without CPU instructions |
-| `DEFAULT_KX_GROUPS` | the same: X25519MLKEM768, X25519, P-256, then P-384 |
-| `ALL_KX_GROUPS` | X25519MLKEM768, SECP256R1MLKEM768, X25519, P-256, P-384, P-521, then MLKEM768 |
-| `cipher_suite::*` | the same nine suites |
-| `kx_group::X25519`, `SECP256R1`, `SECP384R1`, `X25519MLKEM768`, `SECP256R1MLKEM768`, `MLKEM768` | the same, plus `SECP521R1` |
-| `kx_group::MLKEM1024` | none; [rustls provider parity](quest/m3/parity/rustls.md) |
-| `Ticketer::new()` | the same, which also refuses a CPU missing a feature |
-| `CryptoProvider { .., ..default_provider() }`, to trim it | `..empty_provider()?`, since `default_provider()` links every algorithm |
-| `sign::any_supported_type(&der)` | `sign::ANY_SUPPORTED_TYPE.load_private_key(der)`, a `KeyProvider` |
-| `sign::any_ecdsa_type`, `sign::any_eddsa_type` | a `KeyProvider` per key type: `sign::ECDSA_P256`, `ECDSA_P384`, `ECDSA_P521`, `ED25519`, and `RSA`, combined by `sign::AnyOf(&[sign::ECDSA_P256, sign::ECDSA_P384, sign::ECDSA_P521])` for any ECDSA key |
-| rustls-webpki's `aws_lc_rs::ECDSA_P256_SHA256` and its siblings | `verify::` the same name, less any RSA key-size infix or `_LEGACY_KEY`; `SUPPORTED_SIG_ALGS` holds them all |
+| `kx_group::MLKEM1024`, in `ALL_KX_GROUPS` | none |
+| ML-DSA, which `default_provider()` verifies and signs with | none |
 | `hpke` | none |
 
-rind-rustls signs with RSA, ECDSA P-256, P-384, and P-521, and Ed25519 keys,
-and verifies what aws-lc-rs's provider does, short of ML-DSA, which it neither
-signs nor verifies; see [rustls provider parity](quest/m3/parity/rustls.md).
+Its [README](rind-rustls/README.md) lists where it behaves differently, such
+as its cipher suite order.
 
 ### rind-rcgen
 
-`rind_rcgen::KeyPair` replaces `rcgen::KeyPair` for ECDSA P-256 and P-384,
-Ed25519, and RSA with PKCS#1 v1.5. It cannot sign with P-521: rcgen names
-those algorithms only with its `aws_lc_rs` feature.
+`rind_rcgen::KeyPair` offers `rcgen::KeyPair`'s API as rcgen's default `ring`
+backend builds it, so code swaps the type in unchanged. It signs with ECDSA
+P-256 and P-384, Ed25519, and RSA with PKCS#1 v1.5, loading only PKCS#8 keys
+and generating no RSA keys. Its [README](rind-rcgen/README.md) lists what it
+leaves out, such as P-521, which rcgen names only with its `aws_lc_rs` feature.
 
-| rcgen | rind-rcgen |
-|---|---|
-| `KeyPair::generate()` | `KeyPair::generate(&PKCS_ECDSA_P256_SHA256)` |
-| `KeyPair::generate_for(alg)` | `KeyPair::generate(alg)`; RSA fails with `KeyGenerationUnavailable` |
-| `KeyPair::from_pkcs8_der_and_sign_algo(der, alg)` | `KeyPair::from_pkcs8(alg, der)` |
-| `KeyPair::from_der_and_sign_algo`, `from_pem`, `TryFrom` | none; convert the key to PKCS#8 and pass its algorithm |
-| `serialize_der()`, `serialized_der()`, `PrivatePkcs8KeyDer::from(&key)` | `to_pkcs8()`, wiped on drop |
-| `Error::RingKeyRejected`, `RingUnspecified` | the same variants, with rind's reason for a refused key |
-| a serial number hashed from the public key, without `serial_number` set | `params.serial_number = Some(rind_rcgen::serial_number())`, random in the same 20-byte shape |
-| none | `check()`, at startup, returns `MissingFeature` naming the CPU feature |
-| `KeyIdMethod::Sha256`, the default `key_identifier_method` | `key_identifier(&key)`, set on each certificate's parameters |
+Without rcgen's `crypto` feature, rcgen needs each certificate's
+`serial_number` set, and writes key identifiers only when
+`key_identifier_method` is set, such as to `KeyIdMethod::PreSpecified` with
+the first 20 bytes of the SHA-256 of `key.subject_public_key_info()`, which is
+what rcgen's default `KeyIdMethod::Sha256` computes.
 
 ### rind-dimpl, rind-str0m, rind-object-store, and rind-jsonwebtoken
 
@@ -437,7 +425,7 @@ features and source; none were built. A migrated graph should give no output
 from `cargo tree -e normal,build -i ring` or `-i aws-lc-sys`, except
 `ring v0.17.999` from rind-patch under the ring patch.
 
-"Install" means calling `rind_rustls::default_provider()?.install_default()`
+"Install" means calling `rind_rustls::default_provider().install_default()`
 before the crate builds its TLS config. Crates that read rustls's process
 default panic without one, and a few (jsonrpsee, pingora, tauri on mobile)
 install ring's if nothing is installed first.
@@ -460,7 +448,7 @@ install ring's if nothing is installed first.
 | Crate | What ties it | On rind |
 |---|---|---|
 | rustls 0.23 | `ring` and `aws_lc_rs` features pick a provider | **rind-rustls**: `default-features = false`, `std`, `tls12` |
-| rustls-webpki 0.103 | `ring` and `aws-lc-rs` fill `ALL_VERIFICATION_ALGS` | **rind-rustls**: no features; direct callers pass `rind_rustls::SUPPORTED_SIG_ALGS.all` |
+| rustls-webpki 0.103 | `ring` and `aws-lc-rs` fill `ALL_VERIFICATION_ALGS` | **rind-rustls**: no features; direct callers pass `rind_rustls::default_provider().signature_verification_algorithms.all` |
 | rustls-platform-verifier 0.7 | none | **rind-rustls**: `Verifier::new(provider)` |
 | tokio-rustls 0.26, futures-rustls 0.26 | default `aws_lc_rs` | **rind-rustls**: `default-features = false`, `logging`, `tls12` |
 | hyper-rustls 0.27 | default `aws-lc-rs` | **rind-rustls**: `default-features = false` and a `with_provider_and_*` builder; `with_native_roots()` and its siblings need ring or aws-lc-rs |
@@ -521,7 +509,7 @@ install ring's if nothing is installed first.
 
 | Crate | What ties it | On rind |
 |---|---|---|
-| rcgen 0.14 | default `ring`, or `aws_lc_rs`, gates `KeyPair` | **rind-rcgen**: ECDSA P-256 and P-384, Ed25519, and loaded RSA keys. Without rcgen's `crypto` feature, set the serial number with `rind_rcgen::serial_number()` and `key_identifier_method` with `rind_rcgen::key_identifier(&key)`, or the key identifiers are empty |
+| rcgen 0.14 | default `ring`, or `aws_lc_rs`, gates `KeyPair` | **rind-rcgen**: ECDSA P-256 and P-384, Ed25519, and loaded RSA keys. Without rcgen's `crypto` feature, set each certificate's serial number, and its `key_identifier_method` or the key identifiers are empty |
 | instant-acme | 0.8 calls aws-lc-rs or ring; the unreleased 0.9 takes a `CryptoProvider` | Unsupported: 0.8 has no provider hook, and 0.9 is unreleased |
 | rustls-acme 0.15, tokio-rustls-acme 0.9 | account keys and CSRs call ring or aws-lc-rs | **Patch**: rustls-acme's `ring` without its default `aws-lc-rs` |
 | x509-parser 0.18 | `verify` is ring, `verify-aws` aws-lc-rs | **Patch**: `verify`, or verify `tbs_certificate` with `rind::signature` |

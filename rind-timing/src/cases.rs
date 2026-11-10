@@ -327,7 +327,8 @@ fn cipher_cases(cases: &mut Vec<Case>) {
         let plaintexts = classes(VALUES, fixed(random::<256>()), random::<256>);
         measure(config, &plaintexts, |plaintext| {
             let mut buf = *plaintext;
-            key.encrypt_blocks(&iv, &mut buf).map(|()| buf)
+            key.encrypt_blocks(cipher::CbcIv::assume_unpredictable(iv), &mut buf)
+                .map(|()| buf)
         })
     }));
     cases.push(case("cipher/aes-128-cbc/decrypt-key", move |config| {
@@ -352,7 +353,9 @@ fn cipher_cases(cases: &mut Vec<Case>) {
             let mut buf = [16; 64];
             buf[..48].copy_from_slice(&prefix);
             buf[48 + at] ^= random::<1>()[0] | 1;
-            encrypt.encrypt_blocks(&iv, &mut buf).unwrap();
+            encrypt
+                .encrypt_blocks(cipher::CbcIv::assume_unpredictable(iv), &mut buf)
+                .unwrap();
             buf
         };
         let anywhere = || wrong_at(usize::from(random::<1>()[0]) % 15);
@@ -455,12 +458,12 @@ fn agreement_cases(cases: &mut Vec<Case>) {
             move |config| {
                 let scalars = classes(VALUES, fixed(scalar()), scalar);
                 measure(config, &scalars, |s| {
-                    from_scalar(s).map(|key| key.public_key())
+                    from_scalar(s).map(|key| key.public_key().clone())
                 })
             },
         ));
         cases.push(case(format!("agreement/{name}/agree-key"), move |config| {
-            let peer = generate().public_key();
+            let peer = generate().public_key().clone();
             let scalars = classes(VALUES, fixed(scalar()), scalar);
             let new = |s: &Vec<u8>| from_scalar(s).unwrap();
             measure_built(config, &scalars, new, |key| key.agree(peer.as_ref()))

@@ -6,7 +6,9 @@ use rind::aead::{
     AES_128_GCM, AES_192_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce, RandomNonce,
     RandomizedNonceKey, Tag, gcm,
 };
-use rind::cipher::{AES_128, AES_192, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey, ChaCha20};
+use rind::cipher::{
+    AES_128, AES_192, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey, CbcIv, ChaCha20,
+};
 use rind::key_wrap::{self, AesKek};
 use rind::rsa::{self, DecryptingKey, OaepAlgorithm};
 use rind::signature::verify::legacy;
@@ -660,7 +662,7 @@ fn test_aes_cbc_pkcs7() {
                 (ExpectedResult::Valid, Ok(pt)) => {
                     assert_eq!(pt, test.msg);
                     let mut ct = test.msg.clone();
-                    enc.encrypt(&iv, &mut ct);
+                    enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ct);
                     assert_eq!(ct, test.ct);
                 }
                 // Every invalid test is a whole number of blocks whose
@@ -675,7 +677,8 @@ fn test_aes_cbc_pkcs7() {
             // plaintext and encrypts back.
             let mut in_out = test.ct.clone();
             dec.decrypt_blocks(&iv, &mut in_out).unwrap();
-            enc.encrypt_blocks(&iv, &mut in_out).unwrap();
+            enc.encrypt_blocks(CbcIv::assume_unpredictable(iv), &mut in_out)
+                .unwrap();
             assert_eq!(in_out, test.ct);
         }
     }

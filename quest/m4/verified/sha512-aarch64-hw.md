@@ -14,4 +14,4 @@ SHA-384, SHA-512, and SHA-512/256, and with them Ed25519 and HMAC and HKDF over 
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
+- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs

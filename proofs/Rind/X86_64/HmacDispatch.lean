@@ -108,6 +108,7 @@ impl Context {
     }
 
     /// Returns the tag of the message.
+    #[must_use]
     pub fn sign(self) -> Tag {
         let _entry = Entry::new_secret();
         Tag(self.0.finish())

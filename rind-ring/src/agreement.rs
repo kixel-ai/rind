@@ -76,7 +76,7 @@ impl EphemeralPrivateKey {
     /// Returns the public key to send to the peer.
     pub fn compute_public_key(&self) -> Result<PublicKey, error::Unspecified> {
         Ok(PublicKey {
-            bytes: self.key.public_key(),
+            bytes: self.key.public_key().clone(),
             algorithm: self.algorithm,
         })
     }

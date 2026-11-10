@@ -78,10 +78,9 @@ fn test_rind_chacha(
 fn bench_chacha20poly1305(c: &mut Criterion) {
     // Each seal draws a fresh random nonce, as a randomized-nonce key must.
     let key = [0u8; 32];
-    let aad = [0u8; 32];
 
     let mut group = c.benchmark_group("xchacha20poly1305");
-    for (size, size_name) in criterion::SIZES {
+    for (size, size_name, aad) in criterion::aead_rows() {
         // Sealing the same buffer in place each iteration times the cipher
         // alone, without an allocation or a copy of the input. Its room for
         // rind's appended tag keeps sealing from reallocating.
@@ -91,16 +90,16 @@ fn bench_chacha20poly1305(c: &mut Criterion) {
 
         group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
             let key = AwsXChaCha::new(&key);
-            b.iter(|| key.seal(&aad, &mut buf[..size]));
+            b.iter(|| key.seal(aad, &mut buf[..size]));
         });
         group.bench_function(BenchmarkId::new("rustcrypto", size_name), |b| {
             use chacha20poly1305::KeyInit;
             let key = chacha20poly1305::XChaCha20Poly1305::new_from_slice(&key).unwrap();
-            b.iter(|| test_rc_chacha(&key, &aad, &mut buf[..size]));
+            b.iter(|| test_rc_chacha(&key, aad, &mut buf[..size]));
         });
         group.bench_function(BenchmarkId::new("rind", size_name), |b| {
             let key = rind::aead::RandomizedNonceKey::new(&key);
-            b.iter(|| test_rind_chacha(&key, &aad, &mut buf, size));
+            b.iter(|| test_rind_chacha(&key, aad, &mut buf, size));
         });
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
@@ -109,7 +108,7 @@ fn bench_chacha20poly1305(c: &mut Criterion) {
             b.iter(|| {
                 let mut nonce = [0u8; 24];
                 rind::rand::fill(&mut nonce).unwrap();
-                key.encrypt(&nonce, &aad, &mut buf[..size], &mut tag);
+                key.encrypt(&nonce, aad, &mut buf[..size], &mut tag);
             });
         });
         // libcrux seals out of place, appending the tag.
@@ -119,7 +118,7 @@ fn bench_chacha20poly1305(c: &mut Criterion) {
             b.iter(|| {
                 let mut nonce = [0u8; 24];
                 rind::rand::fill(&mut nonce).unwrap();
-                encrypt(&key, &buf[..size], &mut ct, &aad, &nonce).unwrap();
+                encrypt(&key, &buf[..size], &mut ct, aad, &nonce).unwrap();
             });
         });
     }

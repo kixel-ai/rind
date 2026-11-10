@@ -22,7 +22,7 @@ pub struct Algorithm {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum Id {
+pub(super) enum Id {
     Md5,
     Sha1,
     Sha256,
@@ -132,6 +132,7 @@ pub static SHA3_512: Algorithm = Algorithm {
 };
 
 /// Hashes `data` in one go.
+#[must_use]
 pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
     let _entry = Entry::new_secret();
     (algorithm.hash)(data)
@@ -408,6 +409,10 @@ impl Digest {
 
     pub(crate) fn as_mut(&mut self) -> &mut [u8] {
         &mut self.value[..self.algorithm.output_len()]
+    }
+
+    pub(super) fn id(&self) -> Id {
+        self.algorithm.id
     }
 
     /// Constant-time equality, `other` may not be truncated.

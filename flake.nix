@@ -95,12 +95,17 @@
             };
           };
 
-          # A shell that builds `target`, an architecture with no rind
-          # assembly, and runs its tests under qemu-user, as `just qemu` does.
-          # `cross` is the nixpkgs cross set whose C toolchain the tests'
-          # aws-lc-rs dev-dependency builds with; rind itself needs none.
+          # A shell that builds `target`, a target with no rind assembly, and
+          # runs its tests under qemu-user, as `just qemu` does. `cross` is the
+          # nixpkgs cross set whose C toolchain the tests' aws-lc-rs
+          # dev-dependency builds with; rind itself needs none. `cpu`, if set,
+          # is the core qemu emulates, so it traps any newer instruction.
           qemu-shell =
-            { target, cross }:
+            {
+              target,
+              cross,
+              cpu ? null,
+            }:
             let
               cc = cross.stdenv.cc;
               prefix = "${cc}/bin/${cc.targetPrefix}";
@@ -126,7 +131,8 @@
                 # The wrapper links against the store's glibc for the target
                 # by absolute path, so qemu needs no sysroot.
                 "CARGO_TARGET_${var}_RUNNER" = "qemu-${cross.stdenv.hostPlatform.qemuArch}";
-              };
+              }
+              // pkgs.lib.optionalAttrs (cpu != null) { QEMU_CPU = cpu; };
             };
 
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
@@ -262,12 +268,35 @@
             '';
           };
 
+          # `admin/prove hol-light` runs in it: HOL Light, the OCaml it
+          # compiles the proofs with, as s2n-bignum's `tools/build-proof.sh`
+          # does, and the Rust whose build emits the object code they are of,
+          # with llvm-objdump to read it.
+          hol-light = pkgs.mkShell {
+            packages = [
+              (rust-stable.minimal.override {
+                extensions = [ "llvm-tools" ];
+                targets = [
+                  "x86_64-unknown-linux-gnu"
+                  "aarch64-unknown-linux-gnu"
+                ];
+              })
+              pkgs.hol_light
+              pkgs.ocamlPackages.ocaml
+              pkgs.ocamlPackages.findlib
+              pkgs.ocamlPackages.camlp5
+              pkgs.git
+            ];
+          };
+
           sde-certs = ''
             export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
           '';
         in
         {
           devShells = {
+            inherit hol-light;
+
             default = pkgs.mkShell {
               packages =
                 with pkgs;
@@ -443,6 +472,7 @@
                     "x86_64-unknown-linux-gnu"
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
+                    "loongarch64-unknown-linux-gnu"
                   ];
                 })
                 pkgs.python3
@@ -456,6 +486,7 @@
             # `proofs/lean-toolchain` names, whose bundled `leantar` reads
             # Mathlib's cache, which nixpkgs' Lean cannot.
             prove = pkgs.mkShell {
+              inputsFrom = [ hol-light ];
               packages = [
                 aeneas
                 pkgs.elan
@@ -503,6 +534,39 @@
             s390x = qemu-shell {
               target = "s390x-unknown-linux-gnu";
               cross = pkgs.pkgsCross.s390x;
+            };
+
+            # `just qemu riscv64` and `just qemu riscv64-musl` test the
+            # portable backend on riscv64gc Linux, glibc and musl, in them.
+            riscv64 = qemu-shell {
+              target = "riscv64gc-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.riscv64;
+            };
+            riscv64-musl = qemu-shell {
+              target = "riscv64gc-unknown-linux-musl";
+              cross = pkgs.pkgsCross.riscv64-musl;
+            };
+
+            # `just qemu loongarch64` tests the portable backend on
+            # loongarch64 Linux in it.
+            loongarch64 = qemu-shell {
+              target = "loongarch64-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.loongarch64-linux;
+            };
+
+            # `just qemu armv6` and `just qemu armv6-softfloat` test the
+            # portable backend on the ARM1176 of the Raspberry Pi 1 and Zero.
+            # Rust builds `arm-unknown-linux-gnueabi` for ARMv6 too, and the
+            # ARMv5TE glibc it links against runs there.
+            armv6 = qemu-shell {
+              target = "arm-unknown-linux-gnueabihf";
+              cross = pkgs.pkgsCross.raspberryPi;
+              cpu = "arm1176";
+            };
+            armv6-softfloat = qemu-shell {
+              target = "arm-unknown-linux-gnueabi";
+              cross = pkgs.pkgsCross.armv5tel-multiplatform;
+              cpu = "arm1176";
             };
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu

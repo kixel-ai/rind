@@ -1,10 +1,13 @@
 name: Dart release
 
-# Publishes rind-dart's Dart package to pub.dev when its version's tag is
-# pushed, through pub.dev's automated publishing: the run's OIDC token proves
-# its origin, so no credential is stored. pub.dev accepts only this
-# repository, a `rind-dart-v{{version}}` tag, and the `pub.dev` environment,
-# which only those tags can deploy to.
+# Releases rind-dart's Dart package when its version's tag is pushed: attaches
+# the prebuilt libraries to the tag's GitHub release, pins them in the
+# package, and publishes it to pub.dev through pub.dev's automated
+# publishing, where the run's OIDC token proves its origin, so no pub.dev
+# credential is stored. pub.dev accepts only this repository, a
+# `rind-dart-v{{version}}` tag, and the `pub.dev` environment, which only
+# those tags can deploy to and which alone holds the GitHub App key that
+# creates the release.
 on:
   push:
     tags:
@@ -14,20 +17,37 @@ permissions:
   contents: read
 
 jobs:
+  libraries:
+    if: ${{ github.repository_owner == 'moq-dev' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/dart-libraries.yml
+    with:
+      ref: ${{ github.ref }}
+
   publish:
     name: Publish
+    needs: libraries
     runs-on: ubuntu-latest
-    if: ${{ github.repository_owner == 'moq-dev' }}
     environment: pub.dev
     permissions:
       contents: read
       id-token: write
 
     steps:
+      - name: Generate GitHub token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        id: generate-token
+        with:
+          client-id: ${{ secrets.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # The tests build from source too.
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
@@ -36,20 +56,51 @@ jobs:
       # Given id-token, it also fetches the token pub.dev accepts.
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
 
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: rind-dart-package
+          path: ${{ runner.temp }}/rind-dart
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: rind-dart-library-*
+          path: ${{ runner.temp }}/libraries
+          merge-multiple: true
+
       - name: Check the tag names the package's version
         run: |
-          version=$(yq .version rind-dart/pubspec.yaml)
+          version=$(yq .version "$RUNNER_TEMP/rind-dart/pubspec.yaml")
           if [[ "$GITHUB_REF_NAME" != "rind-dart-v$version" ]]; then
             echo "::error::tag $GITHUB_REF_NAME does not name pubspec.yaml's version $version"
             exit 1
           fi
 
-      # The crate as pub.dev receives it builds against rind from crates.io,
-      # so this also checks the rind it requires is published.
-      - name: Stage the package
-        run: sh/dart-package.sh "$RUNNER_TEMP/rind-dart"
+      # A rerun keeps the libraries an earlier run released, since a published
+      # package may already pin them, and pins what the release serves.
+      - name: Release the libraries
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null; then
+            gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP"/libraries/* \
+              --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+              --title "rind for Dart ${GITHUB_REF_NAME#rind-dart-v}" \
+              --notes "The prebuilt libraries the rind package's build hook downloads, pinned by their SHA-256."
+          fi
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'rind_dart-*' --dir "$RUNNER_TEMP/released"
+          sh/dart-prebuilt.sh "$RUNNER_TEMP/rind-dart" "$RUNNER_TEMP/released"
 
-      - name: Test the staged package
+      # The package as pub.dev receives it, for publishing by hand while
+      # pub.dev lacks the package automated publishing needs.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rind-dart
+          path: ${{ runner.temp }}/rind-dart
+          if-no-files-found: error
+
+      # Downloads every target's library, checking its architecture.
+      - name: Test the package
         working-directory: ${{ runner.temp }}/rind-dart
         run: |
           dart pub get
