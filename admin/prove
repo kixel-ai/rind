@@ -124,7 +124,9 @@ rind_symbol() {
 
 # Prints the path of an index of the symbols rind's `arch` build defines, each
 # line its object file, symbol, and demangled symbol, which its first call
-# for `arch` writes from the build's codegen units.
+# for `arch` writes from the build's codegen units. The demangled symbol drops
+# the `.llvm.<hash>` suffix LLVM gives a local function that another codegen
+# unit calls, which any change to how items fall into units can add.
 rind_index() {
     local arch=$1 unit
     local units=$out/asm/$arch-units
@@ -134,7 +136,7 @@ rind_index() {
         "$tools/llvm-ar" x --output "$units" "$out/asm/$arch-unknown-linux-gnu/release/deps"/librind-*.rlib
         for unit in "$units"/*.rcgu.o; do
             paste <("$tools/llvm-nm" --defined-only "$unit") <("$tools/llvm-nm" --defined-only -C "$unit") |
-                awk -F '\t' -v u="$unit" '{ print u "\t" substr($1, 20) "\t" substr($2, 20) }'
+                awk -F '\t' -v u="$unit" '{ d = substr($2, 20); sub(/ \(\.llvm\.[0-9]+\)$/, "", d); print u "\t" substr($1, 20) "\t" d }'
         done >"$units/index.tmp"
         mv "$units/index.tmp" "$units/index"
     fi
@@ -489,10 +491,10 @@ extract() {
     local arch=$1 dir=$2
     shift 2
     (cd rind && charon cargo --preset=aeneas \
-        --start-from '{impl crate::high::agreement::Agree for crate::mid::x25519::PrivateKey}' \
-        --start-from '{impl crate::high::agreement::Agree for crate::mid::p256::PrivateKey}' \
-        --start-from '{impl crate::high::agreement::Agree for crate::mid::p384::PrivateKey}' \
-        --start-from '{impl crate::high::agreement::Agree for crate::mid::p521::PrivateKey}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::agreement::X25519Curve}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P256}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P384}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P521}' \
         --start-from '{impl core::convert::AsRef for crate::high::agreement::PublicKey}' \
         --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}' \
         --start-from crate::high::agreement::PrivateKey \
@@ -532,8 +534,8 @@ extract() {
         --opaque crate::high::sec1::encode_pkcs8 \
         --opaque 'crate::high::agreement::_::encode_pkcs8' \
         --opaque 'crate::high::agreement::_::encode_scalar' \
-        --opaque '{impl crate::high::agreement::Agree for crate::mid::p384::PrivateKey}::load' \
-        --opaque '{impl crate::high::agreement::Agree for crate::mid::p521::PrivateKey}::load' \
+        --opaque '{impl crate::high::agreement::Agree for crate::high::curve::P384}::load' \
+        --opaque '{impl crate::high::agreement::Agree for crate::high::curve::P521}::load' \
         --opaque crate::aead::quic::Masker \
         --opaque crate::mid::aes \
         --opaque crate::high::digest::Ops \
@@ -615,7 +617,7 @@ extract_kdf() {
 }
 
 extract x86_64 X86_64 \
-    --opaque '{impl crate::high::agreement::Agree for crate::mid::p256::PrivateKey}::load' \
+    --opaque '{impl crate::high::agreement::Agree for crate::high::curve::P256}::load' \
     --opaque 'crate::mid::p256::_::_' \
     --include crate::low::x86_64::adx_mux::curve25519_x25519 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base \

@@ -474,7 +474,11 @@ mod tests {
         ] {
             let mut em = em;
             em[0] = y;
-            let result = decode_oaep::<hash::Sha256>(&mut em, label, &mut out).map(|m| m.to_vec());
+            let result = decode_oaep::<hash::Sha256>(&mut em, label, &mut out).map(|m| {
+                // Only the test compares the plaintext.
+                ct::public_slice(m);
+                m.to_vec()
+            });
             match (y, label) {
                 (0, b"label") => assert_eq!(result, Ok(b"hi".to_vec())),
                 _ => assert_eq!(result, Err(Error::DecryptFailed), "{y} {label:?}"),

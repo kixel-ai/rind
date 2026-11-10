@@ -168,8 +168,9 @@ void main() {
 
   // Cross builds, which need each target's Rust standard library and, for
   // Android, the NDK; CI's build workflow sets these.
-  final targets = Platform.environment['RIND_DART_CROSS_TARGETS'];
-  for (final target in targets?.split(',') ?? const <String>[]) {
+  final targets = Platform.environment['RIND_DART_CROSS_TARGETS'] ?? '';
+  for (final target
+      in targets.isEmpty ? const <String>[] : targets.split(',')) {
     test(
       'builds from source for $target',
       () => _testTarget(target, userDefines: fromSource),

@@ -52,9 +52,9 @@ inductive high.agreement.Algorithm where
 deriving DecidableEq
 
 /-- A curve's key agreement functions, as `Rind.Aarch64.Dispatch` models them:
-nothing, since `Keyed::private_key` builds the only one, of `K`'s own `Agree`
-functions, which the model calls directly. -/
-@[reducible] def high.agreement.Ops (_K : Type) : Type := Unit
+nothing, since `Keyed::private_key` builds each `Ops<K::Key>` from the curve
+marker `K`'s own `Agree` functions, which the model calls directly. -/
+@[reducible] def high.agreement.Ops (_Key : Type) : Type := Unit
 
 /-- A header-protection key with its cipher's mask, as `Rind.Aarch64.Dispatch` models it:
 the key, since `Masker::new` builds every one with `C`'s own `mask`, which the
