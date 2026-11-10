@@ -1020,5 +1020,9 @@ pub(crate) fn p384_montjdouble(p3: &mut [u64; 18], p1: &[u64; 18]) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(p384_montjdouble, &mut [0; 18], &[0; 18]);
+    crate::low::abi::call!(
+        p384_montjdouble,
+        &mut crate::low::abi::Aligned([0; 18]).0,
+        &crate::low::abi::Aligned([0; 18]).0
+    );
 }

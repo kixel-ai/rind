@@ -111,9 +111,9 @@ pub(crate) fn mlkem_mulcache_compute(
 fn abi() {
     crate::low::abi::call!(
         mlkem_mulcache_compute,
-        &mut [0; 128],
-        &[0; 256],
-        &[0; 128],
-        &[0; 128]
+        &mut crate::low::abi::Aligned([0; 128]).0,
+        &crate::low::abi::Aligned([0; 256]).0,
+        &crate::low::abi::Aligned([0; 128]).0,
+        &crate::low::abi::Aligned([0; 128]).0
     );
 }

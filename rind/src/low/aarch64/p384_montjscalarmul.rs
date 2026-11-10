@@ -7214,5 +7214,10 @@ pub(crate) fn p384_montjscalarmul(res: &mut [u64; 18], scalar: &[u64; 6], point:
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(p384_montjscalarmul, &mut [0; 18], &[0; 6], &[0; 18]);
+    crate::low::abi::call!(
+        p384_montjscalarmul,
+        &mut crate::low::abi::Aligned([0; 18]).0,
+        &crate::low::abi::Aligned([0; 6]).0,
+        &crate::low::abi::Aligned([0; 18]).0
+    );
 }

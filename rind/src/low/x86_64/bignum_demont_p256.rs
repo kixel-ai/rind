@@ -135,5 +135,9 @@ fn abi() {
     {
         return;
     }
-    crate::low::abi::call!(bignum_demont_p256, &mut [0; 4], &[0; 4]);
+    crate::low::abi::call!(
+        bignum_demont_p256,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
 }

@@ -3036,9 +3036,9 @@ static edwards25519_scalarmuldouble_alt_constant: [u64; 96] = [
 fn abi() {
     crate::low::abi::call!(
         edwards25519_scalarmuldouble,
-        &mut [0; 8],
-        &[0; 4],
-        &[0; 8],
-        &[0; 4]
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0
     );
 }

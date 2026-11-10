@@ -717,5 +717,9 @@ fn abi() {
     {
         return;
     }
-    crate::low::abi::call!(edwards25519_decode, &mut [0; 8], &[0; 32]);
+    crate::low::abi::call!(
+        edwards25519_decode,
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 32]).0
+    );
 }

@@ -794,5 +794,9 @@ pub(crate) fn edwards25519_decode_alt(z: &mut [u64; 8], c: &[u8; 32]) -> bool {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(edwards25519_decode_alt, &mut [0; 8], &[0; 32]);
+    crate::low::abi::call!(
+        edwards25519_decode_alt,
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 32]).0
+    );
 }

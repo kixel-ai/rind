@@ -346,5 +346,9 @@ fn abi() {
     {
         return;
     }
-    crate::low::abi::call!(bignum_tomont_p384, &mut [0; 6], &[0; 6]);
+    crate::low::abi::call!(
+        bignum_tomont_p384,
+        &mut crate::low::abi::Aligned([0; 6]).0,
+        &crate::low::abi::Aligned([0; 6]).0
+    );
 }

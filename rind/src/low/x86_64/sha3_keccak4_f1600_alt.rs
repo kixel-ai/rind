@@ -687,14 +687,14 @@ pub(crate) fn sha3_keccak4_f1600(
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    if !(std::arch::is_x86_feature_detected!("avx2")) {
+    if !std::arch::is_x86_feature_detected!("avx2") {
         return;
     }
     crate::low::abi::call!(
         sha3_keccak4_f1600,
-        &mut [[0; 25]; 4],
-        &[0; 24],
-        &[0; 4],
-        &[0; 4]
+        &mut crate::low::abi::Aligned([[0; 25]; 4]).0,
+        &crate::low::abi::Aligned([0; 24]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
     );
 }

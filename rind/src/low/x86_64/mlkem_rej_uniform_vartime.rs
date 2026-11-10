@@ -158,7 +158,7 @@ fn abi() {
     }
     crate::low::abi::call!(
         mlkem_rej_uniform_vartime,
-        &mut [0; 256],
+        &mut crate::low::abi::Aligned([0; 256]).0,
         &[0x55; 168],
         &super::mlkem::MLKEM_REJ_UNIFORM_TABLE
     );

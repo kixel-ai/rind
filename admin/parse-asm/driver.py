@@ -1253,7 +1253,9 @@ fn abi() {""",
                 detected = " && ".join(
                     '%s!("%s")' % (self.arch.feature_detector, f) for f in features
                 )
-                print("if !(%s) { return; }" % detected, file=self.output)
+                if len(features) > 1:
+                    detected = "(%s)" % detected
+                print("if !%s { return; }" % detected, file=self.output)
             call = ", ".join([name] + abi_args)
             if func_attrs or rust_decl.lstrip().startswith("unsafe "):
                 print(
@@ -1358,7 +1360,8 @@ def default_abi_arg(name, ty):
     assert not re.fullmatch(r"\[[^;]*\]", m.group(2)), (
         "%s: give abi_args for %s" % (name, ty)
     )
-    return "&%s%s" % (m.group(1) or "", zero_value(m.group(2)))
+    # Routines may load whole vectors from it with aligned loads.
+    return "&%scrate::low::abi::Aligned(%s).0" % (m.group(1) or "", zero_value(m.group(2)))
 
 
 # A pass to fixup macro definitions that reference labels. This pass runs on the

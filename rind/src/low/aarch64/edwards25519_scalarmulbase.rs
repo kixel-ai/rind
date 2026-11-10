@@ -8528,5 +8528,9 @@ static edwards25519_scalarmulbase_alt_constant: [u64; 6072] = [
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(edwards25519_scalarmulbase, &mut [0; 8], &[0; 4]);
+    crate::low::abi::call!(
+        edwards25519_scalarmulbase,
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
 }

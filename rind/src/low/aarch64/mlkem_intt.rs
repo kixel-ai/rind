@@ -471,5 +471,10 @@ pub(crate) fn mlkem_intt(a: &mut [i16; 256], z_01234: &[i16; 80], z_56: &[i16; 3
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(mlkem_intt, &mut [0; 256], &[0; 80], &[0; 384]);
+    crate::low::abi::call!(
+        mlkem_intt,
+        &mut crate::low::abi::Aligned([0; 256]).0,
+        &crate::low::abi::Aligned([0; 80]).0,
+        &crate::low::abi::Aligned([0; 384]).0
+    );
 }

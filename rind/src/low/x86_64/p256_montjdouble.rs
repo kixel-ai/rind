@@ -682,5 +682,9 @@ fn abi() {
     {
         return;
     }
-    crate::low::abi::call!(p256_montjdouble, &mut [0; 12], &[0; 12]);
+    crate::low::abi::call!(
+        p256_montjdouble,
+        &mut crate::low::abi::Aligned([0; 12]).0,
+        &crate::low::abi::Aligned([0; 12]).0
+    );
 }

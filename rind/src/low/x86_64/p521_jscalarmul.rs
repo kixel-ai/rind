@@ -2495,5 +2495,10 @@ fn abi() {
     {
         return;
     }
-    crate::low::abi::call!(p521_jscalarmul, &mut [0; 27], &[0; 9], &[0; 27]);
+    crate::low::abi::call!(
+        p521_jscalarmul,
+        &mut crate::low::abi::Aligned([0; 27]).0,
+        &crate::low::abi::Aligned([0; 9]).0,
+        &crate::low::abi::Aligned([0; 27]).0
+    );
 }

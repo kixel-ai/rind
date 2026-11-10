@@ -599,5 +599,10 @@ pub(crate) fn p256_montjmixadd_alt(p3: &mut [u64; 12], p1: &[u64; 12], p2: &[u64
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(p256_montjmixadd_alt, &mut [0; 12], &[0; 12], &[0; 8]);
+    crate::low::abi::call!(
+        p256_montjmixadd_alt,
+        &mut crate::low::abi::Aligned([0; 12]).0,
+        &crate::low::abi::Aligned([0; 12]).0,
+        &crate::low::abi::Aligned([0; 8]).0
+    );
 }

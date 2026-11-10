@@ -147,5 +147,5 @@ pub(crate) fn mlkem_reduce(a: &mut [i16; 256]) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(mlkem_reduce, &mut [0; 256]);
+    crate::low::abi::call!(mlkem_reduce, &mut crate::low::abi::Aligned([0; 256]).0);
 }

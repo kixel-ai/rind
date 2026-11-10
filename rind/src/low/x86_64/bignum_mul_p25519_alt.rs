@@ -259,5 +259,10 @@ pub(crate) fn bignum_mul_p25519_alt(z: &mut [u64; 4], x: &[u64; 4], y: &[u64; 4]
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(bignum_mul_p25519_alt, &mut [0; 4], &[0; 4], &[0; 4]);
+    crate::low::abi::call!(
+        bignum_mul_p25519_alt,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
 }

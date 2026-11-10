@@ -3110,5 +3110,10 @@ pub(crate) fn p256_scalarmulbase(res: &mut [u64; 8], scalar: &[u64; 4], table: &
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(p256_scalarmulbase, &mut [0; 8], &[0; 4], &[[0; 256]; 43]);
+    crate::low::abi::call!(
+        p256_scalarmulbase,
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([[0; 256]; 43]).0
+    );
 }

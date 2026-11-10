@@ -1656,6 +1656,6 @@ fn abi() {
     }
     // SAFETY: the CPU has the features checked above.
     unsafe {
-        crate::low::abi::call!(unsafe aes128_gcm_enc_alt, [[0; 16]; 8].as_mut_ptr(), 1, &mut [0; 16], &mut [0; 16], &[crate::low::abi::zeroed(); 11], &[crate::low::abi::zeroed(); 12]);
+        crate::low::abi::call!(unsafe aes128_gcm_enc_alt, [[0; 16]; 8].as_mut_ptr(), 1, &mut crate::low::abi::Aligned([0; 16]).0, &mut crate::low::abi::Aligned([0; 16]).0, &crate::low::abi::Aligned([crate::low::abi::zeroed(); 11]).0, &crate::low::abi::Aligned([crate::low::abi::zeroed(); 12]).0);
     }
 }

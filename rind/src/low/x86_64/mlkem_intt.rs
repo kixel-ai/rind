@@ -734,8 +734,12 @@ pub(crate) fn mlkem_intt(a: &mut [i16; 256], qdata: &[i16; 624]) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    if !(std::arch::is_x86_feature_detected!("avx2")) {
+    if !std::arch::is_x86_feature_detected!("avx2") {
         return;
     }
-    crate::low::abi::call!(mlkem_intt, &mut [0; 256], &[0; 624]);
+    crate::low::abi::call!(
+        mlkem_intt,
+        &mut crate::low::abi::Aligned([0; 256]).0,
+        &crate::low::abi::Aligned([0; 624]).0
+    );
 }

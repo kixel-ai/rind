@@ -155,5 +155,9 @@ pub(crate) fn mlkem_tobytes(r: &mut [u8; 384], a: &[i16; 256]) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(mlkem_tobytes, &mut [0; 384], &[0; 256]);
+    crate::low::abi::call!(
+        mlkem_tobytes,
+        &mut crate::low::abi::Aligned([0; 384]).0,
+        &crate::low::abi::Aligned([0; 256]).0
+    );
 }

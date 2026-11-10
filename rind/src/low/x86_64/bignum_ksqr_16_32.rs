@@ -677,5 +677,10 @@ fn abi() {
     {
         return;
     }
-    crate::low::abi::call!(bignum_ksqr_16_32, &mut [0; 32], &[1; 16], &mut [0; 24]);
+    crate::low::abi::call!(
+        bignum_ksqr_16_32,
+        &mut [0; 32],
+        &[1; 16],
+        &mut crate::low::abi::Aligned([0; 24]).0
+    );
 }

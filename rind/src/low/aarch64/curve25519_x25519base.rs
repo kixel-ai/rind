@@ -8482,5 +8482,9 @@ static curve25519_x25519base_alt_constant: [u64; 6072] = [
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(curve25519_x25519base, &mut [0; 4], &[0; 4]);
+    crate::low::abi::call!(
+        curve25519_x25519base,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
 }

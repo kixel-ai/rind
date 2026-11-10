@@ -364,5 +364,10 @@ pub(crate) fn bignum_montmul_p384_alt(z: &mut [u64; 6], x: &[u64; 6], y: &[u64; 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(bignum_montmul_p384_alt, &mut [0; 6], &[0; 6], &[0; 6]);
+    crate::low::abi::call!(
+        bignum_montmul_p384_alt,
+        &mut crate::low::abi::Aligned([0; 6]).0,
+        &crate::low::abi::Aligned([0; 6]).0,
+        &crate::low::abi::Aligned([0; 6]).0
+    );
 }

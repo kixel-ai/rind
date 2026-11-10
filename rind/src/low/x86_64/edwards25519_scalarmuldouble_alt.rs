@@ -3679,9 +3679,9 @@ pub(crate) fn edwards25519_scalarmuldouble_alt(
 fn abi() {
     crate::low::abi::call!(
         edwards25519_scalarmuldouble_alt,
-        &mut [0; 8],
-        &[0; 4],
-        &[0; 8],
-        &[0; 4]
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0
     );
 }

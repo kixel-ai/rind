@@ -934,5 +934,10 @@ fn abi() {
     {
         return;
     }
-    crate::low::abi::call!(p521_jadd, &mut [0; 27], &[0; 27], &[0; 27]);
+    crate::low::abi::call!(
+        p521_jadd,
+        &mut crate::low::abi::Aligned([0; 27]).0,
+        &crate::low::abi::Aligned([0; 27]).0,
+        &crate::low::abi::Aligned([0; 27]).0
+    );
 }

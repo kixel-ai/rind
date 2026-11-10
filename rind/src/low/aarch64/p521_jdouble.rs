@@ -1535,5 +1535,9 @@ pub(crate) fn p521_jdouble(p3: &mut [u64; 27], p1: &[u64; 27]) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    crate::low::abi::call!(p521_jdouble, &mut [0; 27], &[0; 27]);
+    crate::low::abi::call!(
+        p521_jdouble,
+        &mut crate::low::abi::Aligned([0; 27]).0,
+        &crate::low::abi::Aligned([0; 27]).0
+    );
 }

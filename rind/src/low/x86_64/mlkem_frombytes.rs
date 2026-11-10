@@ -210,8 +210,12 @@ pub(crate) fn mlkem_frombytes(r: &mut [i16; 256], a: &[u8; 384]) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn abi() {
-    if !(std::arch::is_x86_feature_detected!("avx2")) {
+    if !std::arch::is_x86_feature_detected!("avx2") {
         return;
     }
-    crate::low::abi::call!(mlkem_frombytes, &mut [0; 256], &[0; 384]);
+    crate::low::abi::call!(
+        mlkem_frombytes,
+        &mut crate::low::abi::Aligned([0; 256]).0,
+        &crate::low::abi::Aligned([0; 384]).0
+    );
 }

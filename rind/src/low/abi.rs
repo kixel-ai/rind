@@ -45,49 +45,49 @@ impl Words {
 /// An argument the trampoline can pass.
 pub(crate) trait Arg {
     /// Appends the words this argument is passed in.
-    fn push(self, words: &mut Words);
+    fn pass(self, words: &mut Words);
 }
 
 impl<T> Arg for &T {
-    fn push(self, words: &mut Words) {
+    fn pass(self, words: &mut Words) {
         words.push(core::ptr::from_ref(self).expose_provenance());
     }
 }
 
 impl<T> Arg for &mut T {
-    fn push(self, words: &mut Words) {
+    fn pass(self, words: &mut Words) {
         words.push(core::ptr::from_mut(self).expose_provenance());
     }
 }
 
 impl<T> Arg for &[T] {
-    fn push(self, words: &mut Words) {
+    fn pass(self, words: &mut Words) {
         words.push(self.as_ptr().expose_provenance());
         words.push(self.len());
     }
 }
 
 impl<T> Arg for &mut [T] {
-    fn push(self, words: &mut Words) {
+    fn pass(self, words: &mut Words) {
         words.push(self.as_mut_ptr().expose_provenance());
         words.push(self.len());
     }
 }
 
 impl<T> Arg for *const T {
-    fn push(self, words: &mut Words) {
+    fn pass(self, words: &mut Words) {
         words.push(self.expose_provenance());
     }
 }
 
 impl<T> Arg for *mut T {
-    fn push(self, words: &mut Words) {
+    fn pass(self, words: &mut Words) {
         words.push(self.expose_provenance());
     }
 }
 
 impl Arg for usize {
-    fn push(self, words: &mut Words) {
+    fn pass(self, words: &mut Words) {
         words.push(self);
     }
 }
@@ -95,7 +95,7 @@ impl Arg for usize {
 macro_rules! narrow_args {
     ($($ty:ty)*) => {$(
         impl Arg for $ty {
-            fn push(self, words: &mut Words) {
+            fn pass(self, words: &mut Words) {
                 words.push(self as Word);
             }
         }
@@ -144,57 +144,39 @@ narrow_rets!(u8 u32 i32);
 #[cfg(target_pointer_width = "64")]
 narrow_rets!(u64);
 
-/// An argument the trampoline can pass for a parameter of type `P`: `P`
-/// itself, or a reference where `P` is a pointer, as a direct call would
-/// coerce it.
-pub(crate) trait Pass<P> {
-    /// Appends the words this argument is passed in.
-    fn pass(self, words: &mut Words);
-}
-
-impl<P: Arg> Pass<P> for P {
-    fn pass(self, words: &mut Words) {
-        self.push(words);
-    }
-}
-
-impl<T> Pass<*const T> for &T {
-    fn pass(self, words: &mut Words) {
-        self.push(words);
-    }
-}
-
-impl<T> Pass<*const T> for &mut T {
-    fn pass(self, words: &mut Words) {
-        self.push(words);
-    }
-}
-
-impl<T> Pass<*mut T> for &mut T {
-    fn pass(self, words: &mut Words) {
-        self.push(words);
-    }
-}
-
-/// A function pointer the trampoline can call with `Args`.
-pub(crate) trait Routine<Args> {
-    /// What the routine returns.
+/// A function pointer the trampoline can call.
+pub(crate) trait Routine: Copy {
+    /// Its parameters.
+    type Args;
+    /// `fn(Self's parameters) -> Self::Args`, through which `call!` passes
+    /// its arguments so they coerce as in a direct call.
+    type Params;
+    /// What it returns.
     type Output;
+
+    /// Returns `Self::Params`.
+    fn params(self) -> Self::Params;
 
     /// Calls the routine, named `name` in a failure, with `args`.
     ///
     /// # Safety
     ///
     /// Calling the routine with `args` must be sound.
-    unsafe fn call(self, name: &str, args: Args) -> Self::Output;
+    unsafe fn call(self, name: &str, args: Self::Args) -> Self::Output;
 }
 
 macro_rules! routine {
-    ($conv:expr, $fty:ty; $($param:ident $ty:ident $arg:ident)*) => {
-        impl<$($param,)* $($ty: Pass<$param>,)* R: Ret> Routine<($($ty,)*)> for $fty {
+    ($conv:expr, $fty:ty; $($ty:ident $arg:ident)*) => {
+        impl<$($ty: Arg,)* R: Ret> Routine for $fty {
+            type Args = ($($ty,)*);
+            type Params = fn($($ty),*) -> ($($ty,)*);
             type Output = R;
 
-            unsafe fn call(self, name: &str, ($($arg,)*): ($($ty,)*)) -> R {
+            fn params(self) -> Self::Params {
+                |$($arg),*| ($($arg,)*)
+            }
+
+            unsafe fn call(self, name: &str, ($($arg,)*): Self::Args) -> R {
                 let mut _words = Words { words: [0; MAX_WORDS], len: 0 };
                 $($arg.pass(&mut _words);)*
                 R::from_word(run($conv, self as Word, &_words, name))
@@ -204,75 +186,83 @@ macro_rules! routine {
 }
 
 macro_rules! routines {
-    ($($param:ident $ty:ident $arg:ident)*) => {
-        routine!(NATIVE, fn($($param),*) -> R; $($param $ty $arg)*);
-        routine!(NATIVE, unsafe fn($($param),*) -> R; $($param $ty $arg)*);
-        routine!(NATIVE, unsafe extern "C" fn($($param),*) -> R; $($param $ty $arg)*);
+    ($($ty:ident $arg:ident)*) => {
+        routine!(NATIVE, fn($($ty),*) -> R; $($ty $arg)*);
+        routine!(NATIVE, unsafe fn($($ty),*) -> R; $($ty $arg)*);
+        routine!(NATIVE, unsafe extern "C" fn($($ty),*) -> R; $($ty $arg)*);
         #[cfg(target_arch = "x86_64")]
-        routine!(Convention::SysV, unsafe extern "sysv64" fn($($param),*) -> R; $($param $ty $arg)*);
+        routine!(Convention::SysV, unsafe extern "sysv64" fn($($ty),*) -> R; $($ty $arg)*);
         #[cfg(target_arch = "x86_64")]
-        routine!(Convention::Win64, unsafe extern "win64" fn($($param),*) -> R; $($param $ty $arg)*);
+        routine!(Convention::Win64, unsafe extern "win64" fn($($ty),*) -> R; $($ty $arg)*);
     };
 }
 
 routines!();
-routines!(PA A a);
-routines!(PA A a PB B b);
-routines!(PA A a PB B b PC C c);
-routines!(PA A a PB B b PC C c PD D d);
-routines!(PA A a PB B b PC C c PD D d PE E e);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f PG G g);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f PG G g PH H h);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f PG G g PH H h PI I i);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f PG G g PH H h PI I i PJ J j);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f PG G g PH H h PI I i PJ J j PK K k);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f PG G g PH H h PI I i PJ J j PK K k PL L l);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f PG G g PH H h PI I i PJ J j PK K k PL L l PM M m);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f PG G g PH H h PI I i PJ J j PK K k PL L l PM M m PN N n);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f PG G g PH H h PI I i PJ J j PK K k PL L l PM M m PN N n PO O o);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f PG G g PH H h PI I i PJ J j PK K k PL L l PM M m PN N n PO O o PP P p);
-routines!(PA A a PB B b PC C c PD D d PE E e PF F f PG G g PH H h PI I i PJ J j PK K k PL L l PM M m PN N n PO O o PP P p PQ Q q);
+routines!(A a);
+routines!(A a B b);
+routines!(A a B b C c);
+routines!(A a B b C c D d);
+routines!(A a B b C c D d E e);
+routines!(A a B b C c D d E e F f);
+routines!(A a B b C c D d E e F f G g);
+routines!(A a B b C c D d E e F f G g H h);
+routines!(A a B b C c D d E e F f G g H h I i);
+routines!(A a B b C c D d E e F f G g H h I i J j);
+routines!(A a B b C c D d E e F f G g H h I i J j K k);
+routines!(A a B b C c D d E e F f G g H h I i J j K k L l);
+routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m);
+routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m N n);
+routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m N n O o);
+routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m N n O o P p);
+routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m N n O o P p Q q);
 
 /// Calls `f` with the arguments after it through the trampoline, and panics
 /// if it breaks its ABI. Prefix `unsafe` for an `unsafe fn` or one with
 /// `#[target_feature]`, and `unsafe extern "C"` and the like for those.
 macro_rules! call {
     (unsafe extern $abi:tt $f:expr $(, $arg:expr)* $(,)?) => {
-        $crate::low::abi::Routine::call(
-            $f as unsafe extern $abi fn($($crate::low::abi::hole!($arg)),*) -> _,
-            stringify!($f),
-            ($($arg,)*),
-        )
+        $crate::low::abi::call!(@call
+            unsafe extern $abi fn($($crate::low::abi::hole!($arg)),*) -> _, $f $(, $arg)*)
     };
     (unsafe $f:expr $(, $arg:expr)* $(,)?) => {
-        $crate::low::abi::Routine::call(
-            $f as unsafe fn($($crate::low::abi::hole!($arg)),*) -> _,
-            stringify!($f),
-            ($($arg,)*),
-        )
+        $crate::low::abi::call!(@call unsafe fn($($crate::low::abi::hole!($arg)),*) -> _, $f $(, $arg)*)
     };
-    ($f:expr $(, $arg:expr)* $(,)?) => {
+    (@call $fty:ty, $f:expr $(, $arg:expr)*) => {{
+        // `asm_call!` passes a function pointer field in parentheses.
+        #[allow(unused_parens)]
+        let f: $fty = $f;
+        $crate::low::abi::Routine::call(
+            f,
+            stringify!($f),
+            $crate::low::abi::Routine::params(f)($($arg),*),
+        )
+    }};
+    ($f:expr $(, $arg:expr)* $(,)?) => {{
+        let f: fn($($crate::low::abi::hole!($arg)),*) -> _ = $f;
         // SAFETY: `$f` is a safe function, and these are its arguments.
         unsafe {
             $crate::low::abi::Routine::call(
-                $f as fn($($crate::low::abi::hole!($arg)),*) -> _,
+                f,
                 stringify!($f),
-                ($($arg,)*),
+                $crate::low::abi::Routine::params(f)($($arg),*),
             )
         }
-    };
+    }};
 }
 
 macro_rules! hole {
-    ($arg:expr) => {
-        _
-    };
+    ($arg:expr) => { _ };
 }
 
 pub(crate) use {call, hole};
 
+/// A harness call's argument, aligned as a routine loading whole vectors
+/// from it may need.
+#[repr(C, align(64))]
+pub(crate) struct Aligned<T>(pub(crate) T);
+
 /// A value of all zero bits, for a harness call's vector arguments.
+#[cfg(target_arch = "aarch64")]
 pub(crate) fn zeroed<T: Plain>() -> T {
     // SAFETY: all zero bits is a valid `T`, as `Plain` promises.
     unsafe { core::mem::zeroed() }
@@ -281,6 +271,7 @@ pub(crate) fn zeroed<T: Plain>() -> T {
 /// # Safety
 ///
 /// All zero bits must be a valid value of the type.
+#[cfg(target_arch = "aarch64")]
 pub(crate) unsafe trait Plain {}
 
 // SAFETY: vector registers hold any bits.
@@ -941,7 +932,6 @@ mod arch {
 
 #[cfg(test)]
 mod tests {
-    use super::call;
 
     /// Runs `f` and returns its panic message, failing if it did not panic.
     fn broken(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
@@ -1113,7 +1103,8 @@ mod tests {
                     visit(&path, blocks);
                     continue;
                 }
-                if path.extension().is_none_or(|e| e != "rs") {
+                // This file names `asm!(` in its scans.
+                if path.extension().is_none_or(|e| e != "rs") || path.ends_with("abi.rs") {
                     continue;
                 }
                 let text = std::fs::read_to_string(&path).unwrap();
@@ -1213,7 +1204,7 @@ mod tests {
 
     #[cfg(target_arch = "x86_64")]
     mod x86_64 {
-        use super::{broken, call};
+        use super::broken;
 
         macro_rules! planted {
             ($name:ident, $abi:tt, $($line:literal),*) => {
@@ -1225,6 +1216,7 @@ mod tests {
         }
 
         planted!(clean, "sysv64", "ret");
+        planted!(clean_win64, "win64", "ret");
         planted!(rbx, "sysv64", "xor ebx, ebx", "ret");
         planted!(rbp, "sysv64", "inc rbp", "ret");
         planted!(r15, "sysv64", "not r15", "ret");
@@ -1247,7 +1239,7 @@ mod tests {
             unsafe {
                 call!(unsafe extern "sysv64" clean);
                 call!(unsafe extern "sysv64" scratch);
-                call!(unsafe extern "win64" clean);
+                call!(unsafe extern "win64" clean_win64);
                 for (expect, message) in [
                     ("rbx", broken(|| call!(unsafe extern "sysv64" rbx))),
                     ("rbp", broken(|| call!(unsafe extern "sysv64" rbp))),
@@ -1268,7 +1260,7 @@ mod tests {
 
     #[cfg(target_arch = "aarch64")]
     mod aarch64 {
-        use super::{broken, call};
+        use super::broken;
 
         macro_rules! planted {
             ($name:ident, $($line:literal),*) => {
@@ -1311,7 +1303,7 @@ mod tests {
 
     #[cfg(target_arch = "arm")]
     mod arm {
-        use super::{broken, call};
+        use super::broken;
 
         macro_rules! planted {
             ($name:ident, $($line:literal),*) => {

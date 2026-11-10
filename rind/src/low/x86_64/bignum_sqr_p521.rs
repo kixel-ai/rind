@@ -333,5 +333,9 @@ fn abi() {
     {
         return;
     }
-    crate::low::abi::call!(bignum_sqr_p521, &mut [0; 9], &[0; 9]);
+    crate::low::abi::call!(
+        bignum_sqr_p521,
+        &mut crate::low::abi::Aligned([0; 9]).0,
+        &crate::low::abi::Aligned([0; 9]).0
+    );
 }
