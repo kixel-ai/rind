@@ -498,7 +498,8 @@ def main():
     libs = build(targets)
     # Each target's scan is independent, and most of its time is parsing.
     context = multiprocessing.get_context("fork")
-    with concurrent.futures.ProcessPoolExecutor(mp_context=context) as pool:
+    workers = min(len(targets), getattr(os, "process_cpu_count", os.cpu_count)() or 1)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
         jobs = [pool.submit(check, tool, target, *libs[target], public) for target in targets]
         failed = False
         for job in jobs:
