@@ -80,6 +80,12 @@ X86_RET = bytes([0xC3])
 X86_VZEROUPPER = bytes([0xC5, 0xF8, 0x77])
 ARM_RET = bytes.fromhex("c0035fd6")
 ARM_BTI_C = bytes.fromhex("5f2403d5")
+# The bits of an aarch64 instruction each relocation fills: ADRP's immhi and
+# immlo, and ADD's imm12.
+ARM_RELOC_IMMEDIATE = {
+    "R_AARCH64_ADR_PREL_PG_HI21": 3 << 29 | 0x7FFFF << 5,
+    "R_AARCH64_ADD_ABS_LO12_NC": 0xFFF << 10,
+}
 
 
 def routines():
@@ -135,8 +141,8 @@ def group(toks, i):
 
 
 class Insn:
-    """An instruction's bytes, None where a relocation fills them, and that
-    relocation's target, a symbol in the proof or the rind object."""
+    """An instruction's bytes, None where an x86_64 relocation fills them and
+    zero bits where an aarch64 one does, and that relocation."""
 
     def __init__(self, data, reloc=None):
         self.data = data
@@ -199,9 +205,17 @@ def listed(toks, arch):
             cur = []
             continue
         elif t in ("ADRP", "ADD_rri64", "ADR", "BL") and arch == "aarch64" and toks[i + 1] == "(":
+            # ADRP's fields after the target are its addend, offset, and
+            # destination; ADD_rri64's its addend, destination, and source.
+            # The word is the instruction with the immediate a relocation
+            # fills left zero, as the object holds it.
             args, i = group(toks, i + 1)
-            m = re.fullmatch(r'mk_var \( "(\w+)" , ` : num ` \) , (-?\d+) ,.*', " ".join(args))
-            insns.append(Insn([None] * 4, (t, m.group(1), int(m.group(2)))))
+            m = re.fullmatch(r'mk_var \( "(\w+)" , ` : num ` \) , (-?\d+) , (\d+) , (\d+)', " ".join(args))
+            if not m or t not in ("ADRP", "ADD_rri64"):
+                raise Check(f"an unexpected relocated {t}")
+            a, b = int(m.group(3)), int(m.group(4))
+            word = 0x90000000 | b if t == "ADRP" else 0x91000000 | b << 5 | a
+            insns.append(Insn(list(word.to_bytes(4, "little")), (t, m.group(1), int(m.group(2)))))
             continue
         i += 1
     if cur:
@@ -255,9 +269,12 @@ def built(arch, base):
                     if off - start + 4 != end - start:
                         raise Check(f"a relocation inside the instruction at {start}")
                 else:
-                    if off != start:
-                        raise Check(f"a relocation inside the instruction at {start}")
-                    d = [None] * 4
+                    # The linker fills only the immediate; the rest of the
+                    # word must match, so it is zeroed, as the proof's is.
+                    if off != start or kind not in ARM_RELOC_IMMEDIATE:
+                        raise Check(f"relocation {kind} at {start}")
+                    w = int.from_bytes(bytes(d), "little") & ~ARM_RELOC_IMMEDIATE[kind]
+                    d = list(w.to_bytes(4, "little"))
                 reloc = (kind, target)
         insns.append(Insn(d, reloc))
     return insns
