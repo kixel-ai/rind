@@ -500,10 +500,12 @@ mod tests {
                         assert_eq!(large.str("expansionTechnique"), "repeating");
                         let content = large.hex("content");
                         let chunk = content.repeat((1 << 20) / content.len());
-                        let full_len = large.int("fullLength") / 8;
-                        assert_eq!(full_len % chunk.len(), 0);
+                        // Up to 8 GiB, more than a 32-bit `usize` holds.
+                        let full_len = large["fullLength"].as_u64().unwrap() / 8;
+                        let chunk_len = chunk.len() as u64;
+                        assert_eq!(full_len % chunk_len, 0);
                         let mut ctx = Context::new(algorithm);
-                        for _ in 0..full_len / chunk.len() {
+                        for _ in 0..full_len / chunk_len {
                             ctx.update(&chunk);
                         }
                         assert_eq!(ctx.finish().as_ref(), test.hex("md"));

@@ -118,7 +118,8 @@ pub(crate) trait Acvp {
     fn tests(&self) -> &[serde_json::Value];
     /// The hex field `name`, decoded.
     fn hex(&self, name: &str) -> Vec<u8>;
-    /// The integer field `name`, which ACVP writes as a number or a string.
+    /// The integer field `name`, which ACVP writes as a number or a string,
+    /// and which must fit in a `usize`.
     fn int(&self, name: &str) -> usize;
     /// The string field `name`.
     fn str(&self, name: &str) -> &str;
@@ -137,7 +138,7 @@ impl Acvp for serde_json::Value {
 
     fn int(&self, name: &str) -> usize {
         match &self[name] {
-            Self::Number(n) => n.as_u64().map(|n| n as usize),
+            Self::Number(n) => n.as_u64().and_then(|n| usize::try_from(n).ok()),
             Self::String(s) => s.parse().ok(),
             _ => None,
         }

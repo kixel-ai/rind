@@ -796,7 +796,7 @@ mod tests {
         }
         let key = key.unwrap();
         let (signature, message) = (test.hex("signature"), test.hex("message"));
-        let salt = Some(PssSalt::Len(group.int("saltLen") as u16));
+        let salt = Some(PssSalt::Len(u16::try_from(group.int("saltLen")).unwrap()));
         let result = match (group.str("sigType"), group.str("hashAlg")) {
             ("pkcs1v1.5", "SHA2-256") => key.verify_pkcs1_sha256(&signature, &message),
             ("pkcs1v1.5", "SHA2-384") => key.verify_pkcs1_sha384(&signature, &message),
