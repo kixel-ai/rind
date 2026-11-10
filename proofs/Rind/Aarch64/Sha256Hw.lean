@@ -44,15 +44,17 @@ axiom sha256_block_data_order_hw_spec (c : low.aarch64.cpu.HaveCryptoExt)
 block, and returns the state for none. -/
 theorem sha256_compress_blocks_hw_spec (hc : ∃ c, low.aarch64.cpu.HaveCryptoExt.check = ok (some c)) :
     Compresses sha256.compress low.aarch64.sha256.sha256_compress_blocks := by
-  intro h b hl
+  intro h s hl
   obtain ⟨c, hc⟩ := hc
   unfold low.aarch64.sha256.sha256_compress_blocks
   step*
-  · simp_all [blocks]
+  · have hs : s.val = [] := by
+      rw [← List.length_eq_zero_iff]; simp_all
+    rw [hs, show bv ([] : List U8) = [] from rfl, blocks]
+    simp
   · rw [hc]
-    step with sha256_block_data_order_hw_spec
-    rename_i r hr
-    rw [hr, show b.length = (bv b.val).length by simp [bv]]
-    exact s2n.hashBlocks_eq _ (by simp [words]) _
+    step with sha256_block_data_order_hw_spec as ⟨r, hr⟩
+    rw [hr]
+    simpa [bv] using s2n.hashBlocks_eq (words h.val) (by simp [words]) (bv s.val)
 
 end rind.aarch64

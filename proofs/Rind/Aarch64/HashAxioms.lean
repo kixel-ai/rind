@@ -21,7 +21,10 @@ this one, since aarch64's SHA-256 theorems rest on an axiom x86_64's do not.
 #guard_msgs in
 #print axioms sha1_hash
 
-/-- info: 'rind.aarch64.hmac_sha256_sign' depends on axioms: [propext, Classical.choice, Quot.sound, sha256_block_data_order_hw_spec] -/
+/-- info: 'rind.aarch64.hmac_sha256_sign' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms hmac_sha256_sign
 
@@ -29,15 +32,15 @@ this one, since aarch64's SHA-256 theorems rest on an axiom x86_64's do not.
 #guard_msgs in
 #print axioms hmac_sha1_sign
 
-/-- info: 'rind.aarch64.hmac_start_spec' depends on axioms: [propext, Classical.choice, Quot.sound, sha256_block_data_order_hw_spec] -/
+/-- info: 'rind.aarch64.hmac_start_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms hmac_start_spec
 
-/-- info: 'rind.aarch64.hmac_update_spec' depends on axioms: [propext, Classical.choice, Quot.sound, sha256_block_data_order_hw_spec] -/
+/-- info: 'rind.aarch64.hmac_update_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms hmac_update_spec
 
-/-- info: 'rind.aarch64.hmac_finish_spec' depends on axioms: [propext, Classical.choice, Quot.sound, sha256_block_data_order_hw_spec] -/
+/-- info: 'rind.aarch64.hmac_finish_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms hmac_finish_spec
 
@@ -45,15 +48,21 @@ this one, since aarch64's SHA-256 theorems rest on an axiom x86_64's do not.
 #guard_msgs in
 #print axioms digest_spec
 
-/-- info: 'rind.aarch64.digest_ctx_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound, sha256_block_data_order_hw_spec] -/
+/-- info: 'rind.aarch64.digest_ctx_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms digest_ctx_new_spec
 
-/-- info: 'rind.aarch64.digest_ctx_update_spec' depends on axioms: [propext, Classical.choice, Quot.sound, sha256_block_data_order_hw_spec] -/
+/-- info: 'rind.aarch64.digest_ctx_update_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms digest_ctx_update_spec
 
-/-- info: 'rind.aarch64.digest_ctx_finish_spec' depends on axioms: [propext, Classical.choice, Quot.sound, sha256_block_data_order_hw_spec] -/
+/-- info: 'rind.aarch64.digest_ctx_finish_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms digest_ctx_finish_spec
 

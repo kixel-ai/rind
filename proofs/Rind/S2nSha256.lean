@@ -76,10 +76,10 @@ def hashBlocks (m : Nat → List (BitVec 32)) (hsh : List (BitVec 32)) : Nat →
 theorem constants_eq : constants = sha256.K := rfl
 
 theorem choose_eq (x y z : BitVec 32) : choose x y z = ch x y z := by
-  unfold choose ch; bv_decide
+  unfold choose ch; ext i hi; simp; cases x[i] <;> cases y[i] <;> cases z[i] <;> rfl
 
 theorem maj_eq (x y z : BitVec 32) : maj x y z = rind.spec.maj x y z := by
-  unfold maj rind.spec.maj; bv_decide
+  unfold maj rind.spec.maj; ext i hi; simp; cases x[i] <;> cases y[i] <;> cases z[i] <;> rfl
 
 theorem msgSigma0_eq (x : BitVec 32) : msgSigma0 x = sha256.smallSigma0 x := by
   simp only [msgSigma0, sha256.smallSigma0, BitVec.xor_assoc]
@@ -100,7 +100,7 @@ theorem msgSchedule_add16 (m : List (BitVec 32)) (t : Nat) :
     msgSchedule m (t + 16) = sha256.smallSigma1 (msgSchedule m (t + 14)) + msgSchedule m (t + 9) +
       sha256.smallSigma0 (msgSchedule m (t + 1)) + msgSchedule m t := by
   rw [msgSchedule]
-  simp only [show ¬ t + 16 < 16 by omega, if_false, show t + 16 - 2 = t + 14 by omega,
+  simp only [show ¬ t + 16 < 16 by omega, ite_false, show t + 16 - 2 = t + 14 by omega,
     show t + 16 - 7 = t + 9 by omega, show t + 16 - 15 = t + 1 by omega,
     show t + 16 - 16 = t by omega, msgSigma0_eq, msgSigma1_eq, BitVec.add_assoc]
 
@@ -120,12 +120,13 @@ theorem schedule_prefix (M : List (BitVec 32)) (hM : M.length = 16) (k : Nat) (h
     generalize hX : (List.range k).foldl _ M = X at hl hW
     refine ⟨by simp [hl]; omega, fun t ht => ?_⟩
     rcases Nat.lt_or_ge t (16 + k) with h | h
-    · rw [List.getElem!_append_left (by omega)]; exact hW t h
+    · rw [← hW t h]
+      simp [List.getElem!_eq_getElem?_getD, List.getElem?_append_left (show t < X.length by omega)]
     · have ht' : t = k + 16 := by omega
       subst ht'
-      rw [List.getElem!_append_right (by omega), show k + 16 - X.length = 0 by omega,
-        msgSchedule_add16, hW _ (by omega), hW _ (by omega), hW _ (by omega), hW _ (by omega)]
-      simp
+      have last : ∀ v : BitVec 32, (X ++ [v])[k + 16]! = v := fun v => by
+        simp [show k + 16 = X.length by omega]
+      rw [last, msgSchedule_add16, hW _ (by omega), hW _ (by omega), hW _ (by omega), hW _ (by omega)]
 
 theorem schedule_getElem (M : List (BitVec 32)) (hM : M.length = 16) {t : Nat} (ht : t < 64) :
     (sha256.schedule M)[t]! = msgSchedule M t :=
@@ -178,16 +179,17 @@ theorem blocks_eq (bytes : List Byte) :
     blocks 64 bytes = (List.range (bytes.length / 64)).map fun i => (bytes.drop (64 * i)).take 64 := by
   induction h : bytes.length using Nat.strong_induction_on generalizing bytes with
   | _ n ih =>
+    subst h
     rw [blocks]
     by_cases hl : 64 ≤ bytes.length
-    · rw [if_pos ⟨by decide, hl⟩, show bytes.length / 64 = (bytes.length - 64) / 64 + 1 by omega,
+    · rw [ite_eq_left ⟨by decide, hl⟩, show bytes.length / 64 = (bytes.length - 64) / 64 + 1 by omega,
         List.range_succ_eq_map, List.map_cons, List.map_map,
         ih (bytes.length - 64) (by omega) (bytes.drop 64) (by simp)]
-      simp only [Nat.mul_zero, List.drop_zero, List.length_drop, List.cons.injEq, true_and]
+      simp only [Nat.mul_zero, List.drop_zero, List.cons.injEq, true_and]
       apply List.map_congr_left
       intro i _
       simp [List.drop_drop, Nat.mul_succ, Nat.add_comm]
-    · rw [if_neg (fun h => hl h.2), show bytes.length / 64 = 0 by omega]
+    · rw [ite_eq_right (fun h => hl h.2), show bytes.length / 64 = 0 by omega]
       rfl
 
 theorem length_hashBlocks (m : Nat → List (BitVec 32)) (H : List (BitVec 32)) (hH : H.length = 8)
