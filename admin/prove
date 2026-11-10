@@ -13,7 +13,8 @@
 # Usage: admin/prove [bytes | hol-light | lean]
 #
 # An argument checks only those proofs, `bytes` only that the assembly rind
-# imports is the object code its upstream's proofs checked. Run it in the
+# imports is the object code its upstream's proofs checked, and declares
+# each register they let it change. Run it in the
 # flake's `prove` dev shell: `nix develop .#prove --command admin/prove`, or
 # for the HOL Light proofs or the bytes alone, `nix develop .#hol-light
 # --command admin/prove hol-light`.

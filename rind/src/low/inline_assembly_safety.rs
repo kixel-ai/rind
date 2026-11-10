@@ -59,8 +59,11 @@
 //! on aarch64, which rustc refuses as operands, so the clobber list leaves
 //! out: a routine that writes one must restore it itself. It also canaries
 //! `x18` on Linux, which Apple, Windows, and Android reserve. A register the
-//! ABI lets a routine change shows nothing at the boundary, so only the scan
-//! guards an undeclared write to one. A test also fails on an
+//! ABI lets a routine change shows nothing at the boundary, so
+//! `admin/prove-bytes clobbers` checks each s2n-bignum block declares every
+//! register its HOL Light theorem's `MAYCHANGE` list names, but the
+//! callee-saved ones the harness covers. A theorem that bounds its routine
+//! only by the ABI leaves that routine to the scan. A test also fails on an
 //! `options(nostack)` block that moves or names the stack pointer, since
 //! rustc may keep data below it across such a block.
 //!
