@@ -100,11 +100,14 @@
           # nixpkgs cross set whose C toolchain the tests' aws-lc-rs
           # dev-dependency builds with; rind itself needs none. `cpu`, if set,
           # is the core qemu emulates, so it traps any newer instruction.
+          # `rustflags`, if set, is passed to every build for `target`, its
+          # doctests included.
           qemu-shell =
             {
               target,
               cross,
               cpu ? null,
+              rustflags ? null,
             }:
             let
               cc = cross.stdenv.cc;
@@ -132,7 +135,12 @@
                 # by absolute path, so qemu needs no sysroot.
                 "CARGO_TARGET_${var}_RUNNER" = "qemu-${cross.stdenv.hostPlatform.qemuArch}";
               }
-              // pkgs.lib.optionalAttrs (cpu != null) { QEMU_CPU = cpu; };
+              // pkgs.lib.optionalAttrs (cpu != null) { QEMU_CPU = cpu; }
+              // pkgs.lib.optionalAttrs (rustflags != null) {
+                "CARGO_TARGET_${var}_RUSTFLAGS" = rustflags;
+                # Cargo hands rustdoc, which links the doctests, only these.
+                RUSTDOCFLAGS = rustflags;
+              };
             };
 
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
@@ -586,6 +594,29 @@
               target = "arm-unknown-linux-gnueabi";
               cross = pkgs.pkgsCross.armv5tel-multiplatform;
               cpu = "arm1176";
+            };
+
+            # `just qemu powerpc64le`, `just qemu powerpc64`, and `just qemu
+            # powerpc` test the portable backend on PowerPC Linux in them,
+            # the last two big-endian. Rust's powerpc64 target uses the ELFv1
+            # ABI, unlike nixpkgs' default `ppc64`. Rust links both big-endian
+            # targets with its own lld, which refuses ELFv1 objects and, in a
+            # 32-bit PIE, gives an undefined weak function a nonzero address,
+            # so aws-lc calls its unset allocator hook. gcc obeys the last
+            # `-fuse-ld`, so a trailing one picks GNU ld.
+            powerpc64le = qemu-shell {
+              target = "powerpc64le-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.powernv;
+            };
+            powerpc64 = qemu-shell {
+              target = "powerpc64-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.ppc64-elfv1;
+              rustflags = "-C link-arg=-fuse-ld=bfd";
+            };
+            powerpc = qemu-shell {
+              target = "powerpc-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.ppc32;
+              rustflags = "-C link-arg=-fuse-ld=bfd";
             };
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
