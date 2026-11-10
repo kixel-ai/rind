@@ -27,7 +27,7 @@
 # Run it in `nix develop .#ct-vartime`, which has llvm-objdump and each
 # target's standard library.
 
-import bisect, collections, json, os, re, subprocess, sys, tomllib
+import bisect, collections, concurrent.futures, json, multiprocessing, os, re, subprocess, sys, tomllib
 
 TARGETS = [
     "x86_64-unknown-linux-gnu",
@@ -438,6 +438,41 @@ def describe(counts):
     )
 
 
+def check(tool, target, rind, others, public):
+    """Scans one target: its report's lines, and whether it failed."""
+    arch = target.split("-")[0]
+    arch = ARCH.get(arch, arch)
+    objects = Objects(tool, arch, rind + others)
+    roots = {m for m, _ in objects.insns if m.startswith(os.path.basename(rind[0]) + "(")}
+    findings, paths, reached = scan(objects, roots, arch)
+    lines = ["{}: reached {} sections".format(target, reached)]
+    failed = False
+
+    listed = {e["function"]: e["holds"][target] for e in public if target in e["holds"]}
+    for function, where in PLANTED.items():
+        if target in where and function not in findings:
+            lines.append("FAIL {}: found nothing planted".format(function))
+            failed = True
+    for function, counts in sorted(findings.items()):
+        if function in PLANTED:
+            lines.append("ok   planted {}: {}".format(function, describe(counts)))
+        elif listed.get(function) == describe(counts):
+            lines.append("ok   public {}: {}".format(function, describe(counts)))
+        elif function in listed:
+            lines.append("FAIL {}: {}, but listed public holding {}".format(
+                function, describe(counts), listed[function]))
+            failed = True
+        else:
+            lines.append("FAIL {}: {}".format(function, describe(counts)))
+            for caller in paths[function][:12]:
+                lines.append("       from " + caller)
+            failed = True
+    for function in sorted(set(listed) - set(findings)):
+        lines.append("FAIL {}: listed public, but holds nothing the scan refuses".format(function))
+        failed = True
+    return lines, failed
+
+
 def main():
     sys.stdout.reconfigure(line_buffering=True)
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -461,38 +496,15 @@ def main():
 
     tool = objdump()
     libs = build(targets)
-    failed = False
-    for target in targets:
-        arch = target.split("-")[0]
-        arch = ARCH.get(arch, arch)
-        rind, others = libs[target]
-        objects = Objects(tool, arch, rind + others)
-        roots = {m for m, _ in objects.insns if m.startswith(os.path.basename(rind[0]) + "(")}
-        findings, paths, reached = scan(objects, roots, arch)
-        print("{}: reached {} sections".format(target, reached))
-
-        listed = {e["function"]: e["holds"][target] for e in public if target in e["holds"]}
-        for function, where in PLANTED.items():
-            if target in where and function not in findings:
-                print("FAIL {}: found nothing planted".format(function))
-                failed = True
-        for function, counts in sorted(findings.items()):
-            if function in PLANTED:
-                print("ok   planted {}: {}".format(function, describe(counts)))
-            elif listed.get(function) == describe(counts):
-                print("ok   public {}: {}".format(function, describe(counts)))
-            elif function in listed:
-                print("FAIL {}: {}, but listed public holding {}".format(
-                    function, describe(counts), listed[function]))
-                failed = True
-            else:
-                print("FAIL {}: {}".format(function, describe(counts)))
-                for caller in paths[function][:12]:
-                    print("       from " + caller)
-                failed = True
-        for function in sorted(set(listed) - set(findings)):
-            print("FAIL {}: listed public, but holds nothing the scan refuses".format(function))
-            failed = True
+    # Each target's scan is independent, and most of its time is parsing.
+    context = multiprocessing.get_context("fork")
+    with concurrent.futures.ProcessPoolExecutor(mp_context=context) as pool:
+        jobs = [pool.submit(check, tool, target, *libs[target], public) for target in targets]
+        failed = False
+        for job in jobs:
+            lines, fail = job.result()
+            print("\n".join(lines))
+            failed |= fail
     sys.exit(failed)
 
 
