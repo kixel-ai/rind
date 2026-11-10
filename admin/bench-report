@@ -764,14 +764,17 @@ CPU_FEATURES = {
 TIERS = [
     (("x86_64-unknown-linux-gnu", False, ""), "x86_64"),
     (("x86_64-unknown-linux-gnu", True, "no-ifma"), "no IFMA"),
+    (("x86_64-unknown-linux-gnu", True, "no-avx512"), "no AVX-512"),
     (("x86_64-unknown-linux-gnu", True, "no-adx"), "no ADX"),
     (("x86_64-unknown-linux-gnu", True, ""), "no AVX2"),
     (("x86_64-unknown-linux-gnu", True, "no-avx"), "no AVX"),
     (("x86_64-unknown-linux-gnu", True, "no-aes"), "no AES-NI"),
     (("x86_64-unknown-linux-gnu", True, "no-ssse3"), "SSE2"),
     (("aarch64-unknown-linux-gnu", False, ""), "aarch64"),
+    (("aarch64-unknown-linux-gnu", True, "no-sha3"), "no SHA-3"),
     (("aarch64-unknown-linux-gnu", True, ""), "no crypto"),
     (("armv7-unknown-linux-gnueabihf", False, ""), "armv7"),
+    (("armv7-unknown-linux-gnueabihf", True, "no-crypto"), "armv7 NEON"),
     (("x86_64-unknown-linux-gnu", True, "generic"), "portable"),
 ]
 
@@ -1516,11 +1519,12 @@ def report(hosts, tiers, verified, gaps):
         cpus = sorted({t["cpu"] for t in tiers["tiers"]})
         md += [
             "GitHub's runners, timed by the nightly `bench` workflow with CPU features denied as `bench.yml` "
-            "describes: x86_64 runs every feature, and each column to its right denies more (no IFMA: AVX-512 "
-            "IFMA; no ADX: also ADX; "
+            "describes: x86_64 runs every feature; no IFMA denies AVX-512 IFMA, and no AVX-512 all of AVX-512 but "
+            "VAES and VPCLMULQDQ; from no ADX, each column denies more (no ADX: ADX and AVX-512 IFMA; "
             "no AVX2: also AVX2, BMI2, SHA-NI, AVX-512, VAES, and VPCLMULQDQ; no AVX: also AVX; no AES-NI: "
             "also AES-NI, PCLMULQDQ, and SSE4.1; SSE2: also SSSE3). aarch64 runs with the crypto extension, "
-            "no crypto without it, and armv7 in 32-bit mode on the same core. Each cell is rind's time over "
+            "no SHA-3 without the SHA-512 and SHA-3 instructions, no crypto without any of them, armv7 in 32-bit "
+            "mode on the same core, and armv7 NEON there without the crypto extension. Each cell is rind's time over "
             "the fastest of aws-lc-rs and ring (aws-lc-rs alone where a feature is denied, since ring can't "
             "be denied one), in the row's benchmark where rind trails most. An empty cell runs the same code "
             "as the one to its left, so it isn't timed.",
