@@ -13,4 +13,5 @@ ChaCha20-Poly1305, XChaCha20-Poly1305, and `cipher::ChaCha20` earn the ✓ on aa
 
 ## Required
 
+- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
 - [ChaCha20-Poly1305 is proven on x86_64](/quest/m4/verified/chacha20-poly1305-x86.md) - the HOL Light ChaCha20 and Poly1305 specs and the shared glue's proof

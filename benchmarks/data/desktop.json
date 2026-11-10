@@ -4367,39 +4367,6 @@
     ]
    },
    {
-    "name": "rustls-rind-lean",
-    "seconds": [
-     4.31,
-     4.83,
-     4.5
-    ],
-    "median_seconds": 4.5,
-    "cpu_seconds": [
-     22.28,
-     23.86,
-     23.23
-    ],
-    "median_cpu_seconds": 23.23,
-    "stripped_bytes": 1824096,
-    "tools": [],
-    "packages": [
-     "build-cost-rustls@0.0.0",
-     "cfg-if@1.0.5",
-     "getrandom@0.4.3",
-     "libc@0.2.191",
-     "once_cell@1.21.4",
-     "rind-rustls@0.23.0",
-     "rind@0.2.1",
-     "rustls-pki-types@1.15.1",
-     "rustls-webpki@0.103.16",
-     "rustls@0.23.46",
-     "subtle@2.6.1",
-     "untrusted@0.9.0",
-     "webpki-roots@1.0.11",
-     "zeroize@1.9.1"
-    ]
-   },
-   {
     "name": "rustls-aws-lc-rs",
     "seconds": [
      16.77,

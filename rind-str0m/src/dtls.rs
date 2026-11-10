@@ -1,7 +1,10 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use rcgen::{CertificateParams, DistinguishedName, DnType, PKCS_ECDSA_P256_SHA256};
+use rcgen::{
+    CertificateParams, DistinguishedName, DnType, KeyIdMethod, PublicKeyData, SerialNumber,
+};
+use rind::digest::{SHA256, digest};
 use str0m::crypto::CryptoError;
 use str0m::crypto::dtls::{
     DtlsCert, DtlsImplError, DtlsInstance, DtlsOutput, DtlsProvider, DtlsVersion, ProtocolVersion,
@@ -70,7 +73,7 @@ impl DtlsProvider for RindDtls {
 ///
 /// Only a failing system random source fails it, on which str0m panics.
 fn generate_certificate() -> Option<DtlsCert> {
-    let key = rind_rcgen::KeyPair::generate(&PKCS_ECDSA_P256_SHA256).ok()?;
+    let key = rind_rcgen::KeyPair::generate().ok()?;
 
     let mut name = DistinguishedName::new();
     name.push(DnType::OrganizationName, "DTLS");
@@ -80,17 +83,22 @@ fn generate_certificate() -> Option<DtlsCert> {
     params.distinguished_name = name;
     // Firefox rejects a peer reusing another certificate's issuer and serial,
     // so the serial must be unique across processes, not only within one.
-    params.serial_number = Some(rind_rcgen::serial_number());
-    params.key_identifier_method = rind_rcgen::key_identifier(&key);
+    let mut serial = [0u8; 20];
+    rind::rand::fill(&mut serial).ok()?;
+    // The top bit clear keeps it a positive integer of at most 20 octets (RFC 5280).
+    serial[0] &= 0x7f;
+    params.serial_number = Some(SerialNumber::from_slice(&serial));
+    // rcgen's `KeyIdMethod::Sha256`, which needs its `crypto` feature: the first
+    // 20 bytes of the SubjectPublicKeyInfo's SHA-256 (RFC 7093 method 1).
+    let hash = digest(&SHA256, &key.subject_public_key_info());
+    params.key_identifier_method = KeyIdMethod::PreSpecified(hash.as_ref()[..20].to_vec());
     params.not_before = OffsetDateTime::now_utc();
     params.not_after = params.not_before + Duration::days(365);
 
     let certificate = params.self_signed(&key).ok()?;
     Some(DtlsCert {
         certificate: certificate.der().to_vec(),
-        // str0m owns this copy and never wipes it; the PKCS#8 encoding it
-        // came from is wiped on drop.
-        private_key: key.to_pkcs8().secret_pkcs8_der().to_vec(),
+        private_key: key.serialize_der(),
     })
 }
 

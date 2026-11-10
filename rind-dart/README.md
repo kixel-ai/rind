@@ -28,9 +28,24 @@ benchmark/compare.dart`):
 dart pub add rind
 ```
 
-The package's build hook compiles rind from source, so building an app needs
-[Rust](https://rustup.rs) 1.90 or later with the standard library of each
-target the app builds for:
+The package's build hook downloads rind's prebuilt library for each target the
+app builds for from this version's
+[GitHub release](https://github.com/moq-dev/rind/releases), and refuses one
+whose SHA-256 differs from the one the package pins. It honors the
+`HTTPS_PROXY` environment variable.
+
+To build rind from source instead, set this in the app's `pubspec.yaml`:
+
+```yaml
+hooks:
+  user_defines:
+    rind:
+      build_from_source: true
+```
+
+That needs [Rust](https://rustup.rs) 1.90 or later with the standard library
+of each target the app builds for, and for Android the NDK that Flutter's
+Android toolchain provides:
 
 ```shell
 # Android
@@ -38,8 +53,6 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
 # iOS
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 ```
-
-Android builds link with the NDK that Flutter's Android toolchain provides.
 
 ## Platforms
 

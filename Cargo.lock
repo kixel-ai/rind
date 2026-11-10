@@ -3106,7 +3106,7 @@ dependencies = [
 
 [[package]]
 name = "rind-aws-lc-rs"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3189,7 +3189,7 @@ dependencies = [
 
 [[package]]
 name = "rind-dimpl"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3214,7 +3214,7 @@ dependencies = [
 
 [[package]]
 name = "rind-jsonwebtoken"
-version = "11.0.3"
+version = "11.0.4"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3226,7 +3226,7 @@ dependencies = [
 
 [[package]]
 name = "rind-object-store"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "async-trait",
  "aws-lc-rs",
@@ -3250,6 +3250,7 @@ dependencies = [
 name = "rind-rcgen"
 version = "0.14.3"
 dependencies = [
+ "base64ct",
  "crabgrind 0.4.0",
  "rcgen",
  "rind",
@@ -3277,7 +3278,6 @@ dependencies = [
 name = "rind-rustls"
 version = "0.23.3"
 dependencies = [
- "aws-lc-rs",
  "crabgrind 0.4.0",
  "env_logger",
  "hex",
@@ -3294,7 +3294,7 @@ dependencies = [
 
 [[package]]
 name = "rind-str0m"
-version = "0.25.2"
+version = "0.25.3"
 dependencies = [
  "crabgrind 0.4.0",
  "dimpl",

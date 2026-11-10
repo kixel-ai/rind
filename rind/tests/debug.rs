@@ -40,6 +40,10 @@ fn aead() {
     }
     let iv = Iv::assume_unique_for_key(&[0xff; 12]).unwrap();
     assert_eq!(show(&iv), "Iv(..)");
+    let key = gcm::Key::new(&cipher::AES_128, &[0xff; 16], TagLength::Full).unwrap();
+    let iv = Iv::assume_unique_for_key(&[0xff; 12]).unwrap();
+    let tag = key.seal_in_place_separate_tag(iv, &[], &mut []).unwrap();
+    assert_eq!(show(&tag), "Tag { len: 16, .. }");
 
     use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};
     for (algorithm, name) in [
@@ -94,6 +98,7 @@ fn hmac() {
     let mut ctx = hmac::Context::with_key(&key);
     ctx.update(&[0xff; 3]);
     assert_eq!(show(&ctx), "Context { algorithm: Sha384, .. }");
+    assert_eq!(show(&ctx.sign()), "Tag { algorithm: Sha384, .. }");
 
     let mut ctx = digest::Context::new(&digest::SHA512_256);
     ctx.update(&[0xff; 3]);
@@ -230,7 +235,7 @@ fn agreement() {
     use rind::agreement::{ECDH_P256, PrivateKey};
     assert_eq!(format!("{ECDH_P256:?}"), "EcdhP256");
     let key = PrivateKey::generate(&ECDH_P256).unwrap();
-    assert_eq!(format!("{key:?}"), "PrivateKey { .. }");
+    assert_eq!(format!("{key:?}"), "PrivateKey { algorithm: EcdhP256, .. }");
     assert_eq!(format!("{:?}", key.to_scalar()), "Scalar(..)");
     let public = key.public_key();
     let bytes = format!("{:?}", public.as_ref());

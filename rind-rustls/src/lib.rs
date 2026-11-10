@@ -6,56 +6,27 @@
 //! Use it like:
 //!
 //! ```rust
-//! # fn main() -> Result<(), rind_rustls::MissingFeature> {
-//! rind_rustls::default_provider()?.install_default().unwrap();
-//! # Ok(())
-//! # }
+//! rind_rustls::default_provider().install_default().unwrap();
 //! ```
 //!
 //! And then use rustls as normal.
 //!
-//! A binary links only the algorithms its provider names, so one that needs
-//! few fills in [`empty_provider`] with just those:
-//!
-//! ```rust
-//! use rind_rustls::{cipher_suite, kx_group, sign, verify};
-//! use rustls::SignatureScheme;
-//! use rustls::crypto::{CryptoProvider, WebPkiSupportedAlgorithms};
-//!
-//! static P256: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
-//!     all: &[verify::ECDSA_P256_SHA256],
-//!     mapping: &[(
-//!         SignatureScheme::ECDSA_NISTP256_SHA256,
-//!         &[verify::ECDSA_P256_SHA256],
-//!     )],
-//! };
-//!
-//! # fn main() -> Result<(), rind_rustls::MissingFeature> {
-//! let provider = CryptoProvider {
-//!     cipher_suites: vec![cipher_suite::TLS13_AES_128_GCM_SHA256],
-//!     kx_groups: vec![kx_group::X25519],
-//!     signature_verification_algorithms: P256,
-//!     key_provider: sign::ECDSA_P256,
-//!     ..rind_rustls::empty_provider()?
-//! };
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! rind panics on a CPU missing a feature it requires, so [`default_provider`],
-//! [`empty_provider`], and [`Ticketer::new`] check first and return an error
-//! instead. Build any provider from this crate's statics on [`empty_provider`].
+//! Its API is rustls's `crypto::aws_lc_rs` provider's, item for item, short of
+//! what rind lacks: ML-KEM-1024, ML-DSA, and `hpke`.
 
-use core::fmt;
+use std::sync::Arc;
 
 use rustls::SignatureScheme;
 use rustls::SupportedCipherSuite;
-use rustls::crypto::{CryptoProvider, SupportedKxGroup, WebPkiSupportedAlgorithms};
+use rustls::crypto::{CryptoProvider, KeyProvider, SupportedKxGroup, WebPkiSupportedAlgorithms};
+use rustls::pki_types::PrivateKeyDer;
+use rustls::sign::SigningKey;
 
 mod aead;
 mod hash;
 mod hmac;
 mod quic;
+mod verify;
 
 /// Every cipher suite this crate supports.
 pub mod cipher_suite;
@@ -63,67 +34,31 @@ pub mod cipher_suite;
 /// Every key exchange group this crate supports.
 pub mod kx_group;
 
-/// A key provider per signing key type this crate supports.
+/// Loading software keys to sign with.
 pub mod sign;
-
-/// Every signature verification algorithm this crate supports.
-pub mod verify;
 
 mod ticketer;
 pub use ticketer::Ticketer;
 
-/// A CPU feature rind requires that this CPU lacks.
-#[derive(Debug)]
-pub struct MissingFeature(rind::cpu::MissingFeature);
-
-impl fmt::Display for MissingFeature {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl std::error::Error for MissingFeature {}
-
-/// Returns a rustls [`CryptoProvider`] using cryptography from rind, or the
-/// CPU feature rind requires that this CPU lacks.
+/// Returns a rustls [`CryptoProvider`] using cryptography from rind.
 ///
 /// This offers the same cipher suites and key exchange groups as the rustls
 /// aws-lc-rs provider's defaults, and verifies and signs the same signature
 /// schemes, short of ML-DSA.
 /// It prefers ChaCha20-Poly1305 where rind runs AES without CPU instructions.
-pub fn default_provider() -> Result<CryptoProvider, MissingFeature> {
-    let empty = empty_provider()?;
+pub fn default_provider() -> CryptoProvider {
     let cipher_suites = if rind::cpu::has_aes_hardware() {
         DEFAULT_CIPHER_SUITES
     } else {
         CHACHA20_FIRST
     };
-    Ok(CryptoProvider {
+    CryptoProvider {
         cipher_suites: cipher_suites.to_vec(),
         kx_groups: DEFAULT_KX_GROUPS.to_vec(),
         signature_verification_algorithms: SUPPORTED_SIG_ALGS,
-        key_provider: sign::ANY_SUPPORTED_TYPE,
-        ..empty
-    })
-}
-
-/// Returns a rustls [`CryptoProvider`] with rind's random numbers and nothing
-/// else, to fill in with this crate's statics, or the CPU feature rind
-/// requires that this CPU lacks.
-///
-/// It loads no private key until given a [`sign`] key provider.
-pub fn empty_provider() -> Result<CryptoProvider, MissingFeature> {
-    rind::cpu::check().map_err(MissingFeature)?;
-    Ok(CryptoProvider {
-        cipher_suites: Vec::new(),
-        kx_groups: Vec::new(),
-        signature_verification_algorithms: WebPkiSupportedAlgorithms {
-            all: &[],
-            mapping: &[],
-        },
-        secure_random: &RngProvider,
-        key_provider: sign::NONE,
-    })
+        secure_random: &Rind,
+        key_provider: &Rind,
+    }
 }
 
 /// The cipher suites [`default_provider`] offers, in its order where rind runs
@@ -172,13 +107,12 @@ pub static ALL_KX_GROUPS: &[&dyn SupportedKxGroup] = &[
     kx_group::X25519,
     kx_group::SECP256R1,
     kx_group::SECP384R1,
-    kx_group::SECP521R1,
     kx_group::MLKEM768,
 ];
 
 /// Every signature verification algorithm this crate supports, in the order
 /// [`default_provider`] verifies with them.
-pub static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
+static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
     all: &[
         verify::ECDSA_P256_SHA512,
         verify::ECDSA_P256_SHA384,
@@ -247,11 +181,20 @@ pub static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgori
 };
 
 #[derive(Debug)]
-struct RngProvider;
+struct Rind;
 
-impl rustls::crypto::SecureRandom for RngProvider {
+impl rustls::crypto::SecureRandom for Rind {
     fn fill(&self, bytes: &mut [u8]) -> Result<(), rustls::crypto::GetRandomFailed> {
         rind::rand::fill(bytes).map_err(|_| rustls::crypto::GetRandomFailed)
+    }
+}
+
+impl KeyProvider for Rind {
+    fn load_private_key(
+        &self,
+        key_der: PrivateKeyDer<'static>,
+    ) -> Result<Arc<dyn SigningKey>, rustls::Error> {
+        sign::any_supported_type(&key_der)
     }
 }
 
@@ -277,7 +220,7 @@ mod tests {
         } else {
             CHACHA20_FIRST
         };
-        assert_eq!(default_provider().unwrap().cipher_suites, expected);
+        assert_eq!(default_provider().cipher_suites, expected);
     }
 
     // rustls's aws-lc-rs provider offers ML-KEM-1024 and ML-DSA, which rind
@@ -320,18 +263,14 @@ mod tests {
             groups(DEFAULT_KX_GROUPS),
             groups(aws_lc_rs::DEFAULT_KX_GROUPS)
         );
-        // aws-lc-rs's provider leaves out secp521r1, which rind has.
         let expected = aws_lc_rs::ALL_KX_GROUPS
             .iter()
             .map(|group| group.name())
             .filter(|name| *name != NamedGroup::MLKEM1024)
-            .chain([NamedGroup::secp521r1])
             .map(u16::from);
         assert_eq!(groups(ALL_KX_GROUPS), sorted(expected));
 
-        let ours = default_provider()
-            .unwrap()
-            .signature_verification_algorithms;
+        let ours = default_provider().signature_verification_algorithms;
         let theirs = aws_lc_rs::default_provider().signature_verification_algorithms;
         let ml_dsa = [alg_id::ML_DSA_44, alg_id::ML_DSA_65, alg_id::ML_DSA_87];
         let theirs_all = theirs
@@ -364,6 +303,55 @@ mod tests {
             assert_eq!(ids(&ours[..1]), ids(&theirs[..1]), "{scheme:?}");
             assert_eq!(ids(ours), ids(theirs), "{scheme:?}");
         }
+    }
+
+    // Every public item of rustls's aws-lc-rs provider, doc-hidden ones
+    // included, short of `kx_group::MLKEM1024` and `hpke`, has the same name
+    // and type here. This fails to compile on a divergence.
+    #[test]
+    fn aws_lc_rs_items() {
+        use rustls::crypto::aws_lc_rs as theirs;
+
+        // An array coerces its fn items to one fn pointer, or fails.
+        macro_rules! same {
+            ($($($name:ident)::+),* $(,)?) => {
+                $(let _ = [crate::$($name)::+, theirs::$($name)::+];)*
+            };
+        }
+        same!(
+            default_provider,
+            DEFAULT_CIPHER_SUITES,
+            ALL_CIPHER_SUITES,
+            DEFAULT_KX_GROUPS,
+            ALL_KX_GROUPS,
+            cipher_suite::TLS13_AES_128_GCM_SHA256,
+            cipher_suite::TLS13_AES_256_GCM_SHA384,
+            cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
+            cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+            cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+            cipher_suite::TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+            cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+            cipher_suite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+            cipher_suite::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+            kx_group::X25519,
+            kx_group::SECP256R1,
+            kx_group::SECP384R1,
+            kx_group::X25519MLKEM768,
+            kx_group::SECP256R1MLKEM768,
+            kx_group::MLKEM768,
+            sign::any_supported_type,
+            sign::any_ecdsa_type,
+            sign::any_eddsa_type,
+            Ticketer::new,
+        );
+        let _ = (Ticketer {}, theirs::Ticketer {});
+
+        fn rsa_signing_key<K: SigningKey + std::fmt::Debug>(
+            _: fn(&PrivateKeyDer<'_>) -> Result<K, rustls::Error>,
+        ) {
+        }
+        rsa_signing_key(sign::RsaSigningKey::new);
+        rsa_signing_key(theirs::sign::RsaSigningKey::new);
     }
 
     #[test]

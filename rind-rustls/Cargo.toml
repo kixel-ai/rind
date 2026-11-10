@@ -14,7 +14,6 @@ rind = { version = "0.3.2", path = "../rind" }
 rustls = { version = "0.23.20", default-features = false, features = ["std", "tls12"] }
 
 [dev-dependencies]
-aws-lc-rs = { version = "1.16", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
 # Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
 # features, as `admin/ctgrind` does; otherwise they build as no-ops.
 crabgrind = { version = "0.4", default-features = false }
