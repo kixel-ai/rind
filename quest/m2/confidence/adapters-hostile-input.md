@@ -18,7 +18,6 @@ Decided with the maintainer on 2026-11-09:
 
 How this differs from its neighbours:
 - The existing targets in `fuzz/fuzzer/`, and the two fuzz quests under Related, compare rind's primitives with aws-lc-rs. None links an adapter, so the glue between a protocol library and rind runs under no fuzzer.
-- [Check rustls provider panic reachability](/quest/m2/confidence/rustls-provider-panics.md) traces by hand whether a peer can reach the `unwrap`s in `rind-rustls/src/aead.rs`. This quest tests the whole boundary mechanically and keeps testing it. If that trace finds a reachable panic, its fix lands there, and this target then guards it.
 
 The entry points, so none is missed:
 - rind-rustls: `MessageDecrypter::decrypt` (`rind-rustls/src/aead.rs:117`, `:164`, `:266`), QUIC's `decrypt_in_place` for packets and headers (`rind-rustls/src/quic.rs:82`, `:158`), `start_and_complete` and `complete` on each group (`rind-rustls/src/kx_group.rs:97`, `kx_group/hybrid.rs:65` and `:105`, `kx_group/mlkem.rs:26` and `:60`), the ticketer's `decrypt` (`rind-rustls/src/ticketer.rs:96`), and `verify_signature` (`rind-rustls/src/verify.rs:181`).
@@ -35,6 +34,5 @@ Guidance:
 
 ## Related
 
-- [Check rustls provider panic reachability](/quest/m2/confidence/rustls-provider-panics.md) - the manual trace of part of the same boundary
 - [A differential fuzz target for every primitive](/quest/m3/confidence/fuzz-every-primitive.md) - fuzzes `rind`'s primitives, not the adapters above them
 - [Adapter crates' surviving mutants](/quest/m2/confidence/mutants-adapters.md) - tests the adapters' values against upstream's, where this tests their handling of bad input
