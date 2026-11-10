@@ -29,6 +29,18 @@ A primitive is checked five ways:
   the primitive's secrets under the `wipe` feature and fails on any of its
   bytes left nonzero. It runs on every tier, native runner, and Windows.
 
+Separately, `low::guard_pages` checks buffer bounds. It runs each kernel
+that takes a caller's slice (AES-GCM, ChaCha20-Poly1305, AES-CTR, AES-CBC,
+ChaCha20, the digests and their block functions, HMAC, the constant-time
+compare, and `zero_bytes`) with each slice against a `PROT_NONE` page, before and after,
+at every length up to 1100 bytes and, for the AEADs, 2000 to 2600 around
+AES-GCM's 512-bit kernel, so an access outside it faults. Valgrind
+cannot decode the fastest tiers and AddressSanitizer does not instrument
+assembly, so this is the only bounds check on them. It is an ordinary unit
+test on Unix, so it runs wherever the [tier table](#tiers) runs `cargo test`;
+`planted_over_read_faults` shows a read one byte past either end kills a
+forked child.
+
 `admin/testing`, in `just ci`, fails when an export, fuzz target, differential
 test, constant-time test, zeroing test, vector file, or CCTV/imported-vector test is missing
 from the [primitives table](#primitives), or when the table names one the code lacks.
