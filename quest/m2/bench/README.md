@@ -15,5 +15,4 @@ The audit found rind level or ahead in every ranked cell on mainline x86_64, aar
 ## Required
 
 - [The nightly bench fails on a gap nobody decided](/quest/m2/bench/gate.md) - the nightly fails on a gap over 1.10× without a decision, and every benchmark ID is ranked or listed as unranked
-- [AEAD benches at 128, 256, and 512 B](/quest/m2/bench/aead-sizes.md) - sizes beside each AEAD dispatch threshold
 - [Benchmark report refresh, before rind 0.4](/quest/m2/bench/report-refresh.md) - recurring rerun of the report on every host, once per minor release

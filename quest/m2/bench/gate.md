@@ -33,5 +33,4 @@ Open, with a recommendation:
 
 ## Related
 
-- [AEAD benches at 128, 256, and 512 B](/quest/m2/bench/aead-sizes.md) - adds the sizes this gate then watches
 - [Benchmark report refresh, before rind 0.4](/quest/m2/bench/report-refresh.md) - keeps the report once this owns regressions
