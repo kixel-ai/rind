@@ -79,8 +79,8 @@ aarch64 runs with the crypto extension and the SHA-512 and SHA-3
 instructions; no crypto denies them, as a Raspberry Pi 4 lacks them. armv7
 runs in 32-bit mode, with NEON and the crypto extension; without them it runs
 the code [Symmetric cryptography](#symmetric-cryptography) names. portable is
-the backend for every other architecture and for big-endian aarch64 and arm,
-which CI runs on x86_64 under
+the backend for every other architecture, for big-endian aarch64 and arm, and
+for ARM cores before ARMv7, which CI runs on x86_64 under
 `--cfg rind_portable`: armv7's code without NEON and the crypto extension,
 with portable Rust in place of the assembly armv7 runs regardless.
 

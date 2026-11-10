@@ -195,14 +195,14 @@ jobs:
       - name: Build, lint, and test
         run: just armv7
 
-  # Architectures with no rind assembly, on the portable backend, under
-  # qemu-user. Each entry names the flake dev shell that holds its target's
-  # toolchain. s390x is big-endian.
+  # Targets with no rind assembly, on the portable backend, under qemu-user.
+  # Each entry names the flake dev shell that holds its target's toolchain.
+  # s390x is big-endian, and the armv6 shells run on qemu's ARM1176.
   qemu:
     strategy:
       fail-fast: false
       matrix:
-        shell: [s390x, riscv64, riscv64-musl]
+        shell: [s390x, riscv64, riscv64-musl, armv6, armv6-softfloat]
 
     runs-on: ubuntu-latest
     steps:
@@ -396,7 +396,7 @@ jobs:
 
   # cross's images (see Cross.toml) hold an Android system for the tests, and
   # run aarch64 and armv7 under qemu-user, whose CPU has the crypto extension.
-  # armv7 Linux covers the paths without it.
+  # armv7 Linux covers the paths without it. ARMv5TE runs the portable backend.
   android:
     strategy:
       matrix:
@@ -406,6 +406,8 @@ jobs:
           - target: armv7-linux-androideabi
             expect: RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1
           - target: x86_64-linux-android
+            expect: ""
+          - target: arm-linux-androideabi
             expect: ""
 
     runs-on: ubuntu-latest
