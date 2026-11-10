@@ -8,7 +8,7 @@
 # so no Lean module imports both. The aarch64 hand models and its X25519,
 # SHA-512, ChaCha20, Ed25519, SHA-1, SHA-256, HMAC, digest, HKDF, and PBKDF2 proofs are the
 # x86_64 ones with the target renamed, which this writes too, all but each
-# target's own `ShaBlocks.lean`.
+# target's own `ShaBlocks.lean` and `HashAxioms.lean`.
 #
 # Usage: admin/prove [bytes | hol-light | lean]
 #
@@ -194,15 +194,47 @@ symbol_bounds() {
         b[m] == s && a[n] != "*UND*" { print a[n], a[1], b[1] }'
 }
 
-# rind's own HOL Light proofs, each of the `asm!` block in a Rust function,
-# on s2n-bignum's model, tactics, and specs at its submodule's commit, the
-# revision rind's transliteration pins. Each reads its block's bytes from
-# `<arch>/<file>.bin`, which `asm_block` writes, and asserts they are the ones
-# it lists. A target's proofs compile into one program, as s2n-bignum's
+# Writes to `dest` an object holding the naked Rust function at `path`, as
+# rind's release build for `arch` Linux emits it: the function's own section,
+# renamed `.text`, its relocations, and the one read-only data section they
+# all refer to, renamed `.rodata`. s2n-bignum's `define_assert_relocs_from_elf`
+# reads it, failing unless its instructions and relocations are the ones the
+# proof lists, and gives the proof that section's bytes. Anything else fails:
+# a function that is not its whole section, or relocations to other sections.
+asm_function() {
+    local arch=$1 path=$2 dest=$3
+    local found obj sym section size secsize target
+    found=$(rind_symbol "$arch" "$path")
+    read -r obj sym <<<"$found"
+    read -r section _ size < <(symbol_bounds "$obj" "$sym")
+    secsize=$("$tools/llvm-objdump" -h "$obj" | awk -v s="$section" '$2 == s { print $3 }')
+    if [[ $section != ".text.$sym" || $((16#$size)) != $((16#${secsize:-0})) ]]; then
+        echo "admin/prove: $path is not the whole of its own section" >&2
+        return 1
+    fi
+    target=$(relocations "$obj" "$section" | awk '{ sub(/[-+].*/, "", $3); print $3 }' | sort -u)
+    if [[ $(wc -l <<<"$target") != 1 || $target != .rodata.* ]]; then
+        echo "admin/prove: $path's relocations refer to other than one .rodata section:" $target >&2
+        return 1
+    fi
+    "$tools/llvm-objcopy" --only-section="$section" --only-section=".rela$section" \
+        --only-section="$target" --rename-section="$section=.text" --rename-section="$target=.rodata" \
+        "$obj" "$dest"
+}
+
+# rind's own HOL Light proofs, each of the `asm!` block in a Rust function or
+# of a naked one, on s2n-bignum's model, tactics, and specs at its submodule's
+# commit, the revision rind's transliteration pins, with the specs of
+# s2n-bignum pull requests not yet merged from `proofs/hol-light/s2n-bignum/`.
+# Each `<arch>/<file>.ml` reads its object code from `<arch>/<file>.bin`, the
+# block's bytes, which `asm_block` writes, or `<arch>/<file>.o`, the naked
+# function's object, which `asm_function` writes, and asserts it is what it
+# lists. A target's proofs compile into one program, as s2n-bignum's
 # `tools/build-proof.sh` compiles each of its own, which fails on an error or
 # an axiom beyond HOL Light's.
 hol_light_proofs=(
-    "aarch64 bignum_eq rind::low::aarch64::bignum_eq::bignum_eq"
+    "aarch64 bignum_eq.bin rind::low::aarch64::bignum_eq::bignum_eq"
+    "aarch64 sha256_block_data_order_hw.o rind::low::aarch64::sha256::sha256_block_data_order_hw"
 )
 hol_light() {
     local dir=$out/hol-light root=$PWD arches arch file path proof
@@ -217,12 +249,15 @@ hol_light() {
     done
     for proof in "${hol_light_proofs[@]}"; do
         read -r arch file path <<<"$proof"
-        asm_block "$arch" "$path" "$dir/$arch/$file.bin"
-        echo "loadt \"$arch/$file.ml\";;" >>"$dir/$arch.ml"
+        case $file in
+        *.bin) asm_block "$arch" "$path" "$dir/$arch/$file" ;;
+        *.o) asm_function "$arch" "$path" "$dir/$arch/$file" ;;
+        esac
+        echo "loadt \"$arch/${file%.*}.ml\";;" >>"$dir/$arch.ml"
     done
     for arch in $arches; do
         printf 'check_axioms ();; Printf.printf "%s: %%.0f s\\n" (Unix.time () -. prove_start);;\n' "$arch" >>"$dir/$arch.ml"
-        (cd "$dir" && HOLLIGHT_LOAD_PATH="$root/proofs/hol-light:$root/thirdparty/s2n-bignum" \
+        (cd "$dir" && HOLLIGHT_LOAD_PATH="$root/proofs/hol-light:$root/proofs/hol-light/s2n-bignum:$root/thirdparty/s2n-bignum" \
             ocaml "$HOLLIGHT_DIR/inline_load.ml" "$arch.ml" "$arch-inlined.ml")
         OCAMLRUNPARAM=l=2000000000 ocamlopt.byte -pp "$("$HOLLIGHT_DIR/hol.sh" -pp)" \
             -I "$HOLLIGHT_DIR" -I +unix -c hol_lib.cmxa "$dir/$arch-inlined.ml" -o "$dir/$arch.cmx" -w -a
@@ -702,7 +737,8 @@ extract aarch64 Aarch64 \
     --opaque 'crate::mid::p256::_::new_random' \
     --include crate::low::aarch64::sha1::sha1_compress_padded \
     --include crate::low::aarch64::sha256 \
-    --opaque crate::low::aarch64::sha256::sha256_compress_blocks
+    --opaque crate::low::aarch64::sha256::compress_hw \
+    --opaque crate::low::aarch64::sha256::compress_nohw
 
 # The AEAD key's conversion is x86_64's alone: the AEAD API's model and proofs
 # are x86_64's, as AES-GCM's are.
@@ -711,7 +747,7 @@ extract_kdf aarch64 Aarch64
 
 mkdir -p proofs/Rind/Aarch64/Kdf
 for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
-    Blockwise Sha Hmac HashAxioms HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
+    Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     HmacApi DigestApi Hkdf Pbkdf2; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
@@ -720,6 +756,21 @@ sed -i '/Rind.Aarch64.AeadDispatch/d' proofs/Rind/Aarch64/Kdf/TypesExternal.lean
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Aarch64/Kdf/FunsExternal.lean
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
+# Each hand model of a CPU intrinsic, a `core.core_arch` definition but its
+# vector types' own, is tested against the instruction on this CPU:
+# `admin/simd-vectors.rs` runs each and writes `#guard`s that the models
+# compute the same, which Lean checks once the proofs build. Fail on a model
+# it does not test, so a new one cannot go untested.
+rustc --edition 2024 -O -o "$out/simd-vectors" admin/simd-vectors.rs
+"$out/simd-vectors" >"$out/SimdVectors.lean"
+untested=$(grep -rhoE '^def core\.core_arch\.[^ ]+' proofs/Rind | sed 's/^def //' | grep -v '\.__m' | sort -u |
+    while read -r model; do grep -qF " $model " "$out/SimdVectors.lean" || echo "$model"; done)
+if [[ -n $untested ]]; then
+    echo "admin/prove: no vectors test these intrinsic models:" $untested >&2
+    exit 1
+fi
+
 cd proofs
 lake exe cache get
 lake build
+lake env lean "../$out/SimdVectors.lean"

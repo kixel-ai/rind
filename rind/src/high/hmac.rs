@@ -608,18 +608,27 @@ mod tests {
         }
     }
 
-    // HMAC-SHA1 and HMAC-SHA256 on the crypto extension, which valgrind hides
-    // from armv7, as `ct_sde_hmac`, for `admin/ct-qemu`.
-    #[cfg(rind_backend = "arm")]
+    // What valgrind hides, as `ct_sde_hmac`, for `admin/ct-qemu`: HMAC-SHA1
+    // and HMAC-SHA256 on armv7's crypto extension, and HMAC-SHA384 and
+    // HMAC-SHA512 on aarch64's SHA-512 instructions, which rind takes only
+    // with SHA3.
+    #[cfg(any(rind_backend = "arm", rind_backend = "aarch64"))]
     #[test]
-    #[ignore = "admin/ct-qemu runs it under qemu-arm"]
+    #[ignore = "admin/ct-qemu runs it under qemu"]
     fn ct_qemu_hmac() {
         use crate::low::{HaveCryptoExt, ct_qemu};
 
         assert!(HaveCryptoExt::check().is_some(), "the crypto extension");
+        #[cfg(rind_backend = "arm")]
+        let algorithms = [&HMAC_SHA1, &HMAC_SHA256];
+        #[cfg(rind_backend = "aarch64")]
+        let algorithms = {
+            assert!(std::arch::is_aarch64_feature_detected!("sha3"), "SHA3");
+            [&HMAC_SHA384, &HMAC_SHA512]
+        };
         let seed = ct_qemu::seed().to_le_bytes();
         let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
-        for algorithm in [&HMAC_SHA1, &HMAC_SHA256] {
+        for algorithm in algorithms {
             for key_len in [16, 200] {
                 let (key, message) = (bytes(key_len), bytes(300));
                 ct_qemu::traced(|| sign(&Key::new(algorithm, &key), &message));

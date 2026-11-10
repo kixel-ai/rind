@@ -4,8 +4,8 @@ open rind.x86_64
 
 /-!
 The axioms the SHA-1, SHA-256, HMAC, and digest API theorems rest on, beyond
-Lean's own: none. The block functions' contracts are `ShaBlocks`, a hypothesis
-of each theorem. `Axioms` pins the theorems over every HMAC algorithm, which
+Lean's own: none. The block functions' contracts are `Sha1Blocks` and
+`Sha256Blocks`, a hypothesis of each theorem. `Axioms` pins the theorems over every HMAC algorithm, which
 rest on SHA-512's. A change here is a change to the trust base.
 -/
 
