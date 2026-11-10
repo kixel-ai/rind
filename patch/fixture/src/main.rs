@@ -18,9 +18,6 @@ const SERVER: SocketAddr = SocketAddr::new(std::net::IpAddr::V6(Ipv6Addr::LOCALH
 const CLIENT: SocketAddr = SocketAddr::new(std::net::IpAddr::V6(Ipv6Addr::LOCALHOST), 4434);
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // Only rind-ring has `cpu`, so this builds only with ring patched.
-    ring::cpu::check()?;
-
     let cert = rcgen::generate_simple_self_signed(["localhost".to_owned()])?;
     let key = PrivatePkcs8KeyDer::from(cert.signing_key.serialize_der());
     let server_config = ServerConfig::with_single_cert(vec![cert.cert.der().clone()], key.into())?;
