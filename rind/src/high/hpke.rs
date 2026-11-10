@@ -7,6 +7,7 @@
 use core::fmt;
 
 use super::agreement;
+use super::digest::Digest;
 use super::hkdf::{self, Prk};
 use super::hmac;
 use crate::error::{Error, KeyFormatError};
@@ -397,8 +398,14 @@ impl Sender {
         InOut: AsMut<[u8]> + for<'a> Extend<&'a u8>,
     {
         let _entry = low::Entry::new_secret();
-        self.sealing
-            .step(|key, nonce| key.seal_in_place_append_tag(nonce, aad, in_out))
+        // Only the sequence number's step runs between encrypting and
+        // advancing it, so a panic in `in_out`'s `extend` cannot leave a used
+        // nonce to seal under again.
+        let tag = self
+            .sealing
+            .step(|key, nonce| key.seal_in_place_separate_tag(nonce, aad, in_out.as_mut()))?;
+        in_out.extend(tag.as_ref());
+        Ok(())
     }
 
     /// Fills `out` with the secret RFC 9180's `Export` derives for
@@ -746,13 +753,15 @@ impl Labels {
     }
 
     /// `LabeledExtract(salt, label, ikm)`.
-    fn extract(&self, salt: &[u8], label: &[u8], ikm: &[u8]) -> hmac::Tag {
+    // The streaming state is a copy inside the call, so it goes unwiped, as
+    // HKDF's does; callers have entered.
+    fn extract(&self, salt: &[u8], label: &[u8], ikm: &[u8]) -> Digest {
         let key = hmac::Key::new(self.kdf.hmac(), salt);
-        let mut ctx = hmac::Context::with_key(&key);
+        let mut ctx = key.start();
         for part in [VERSION, self.suite_id(), label, ikm] {
             ctx.update(part);
         }
-        ctx.sign()
+        ctx.finish()
     }
 
     /// `LabeledExtract(salt, label, ikm)`, as a key to expand.
@@ -1277,6 +1286,42 @@ mod tests {
             Err(Error::DecryptFailed)
         );
         assert_eq!(opened(&mut recipient, b"", &second).unwrap(), b"second");
+    }
+
+    /// A buffer with no room for a tag, whose `extend` panics.
+    struct NoRoom(Vec<u8>);
+
+    impl AsMut<[u8]> for NoRoom {
+        fn as_mut(&mut self) -> &mut [u8] {
+            &mut self.0
+        }
+    }
+
+    impl<'a> Extend<&'a u8> for NoRoom {
+        fn extend<I: IntoIterator<Item = &'a u8>>(&mut self, _: I) {
+            panic!("no room for the tag");
+        }
+    }
+
+    #[test]
+    fn panicking_append_spends_nonce() {
+        let private_key = PrivateKey::generate(&DHKEM_X25519_HKDF_SHA256).unwrap();
+        let suite = Suite {
+            kdf: &HKDF_SHA256,
+            aead: &AES_128_GCM,
+        };
+        let (_, mut sender) = Sender::new(suite, &private_key.public_key(), b"").unwrap();
+        let mut lost = NoRoom(vec![0; 16]);
+        let sealed = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
+            sender.seal_in_place_append_tag(b"", &mut lost)
+        }));
+        assert!(sealed.is_err());
+
+        // Both stream ciphers: the next message's keystream would repeat
+        // the encrypted one's under the same nonce.
+        let mut next = vec![0; 16];
+        sender.seal_in_place_append_tag(b"", &mut next).unwrap();
+        assert_ne!(lost.0, next[..16]);
     }
 
     #[test]

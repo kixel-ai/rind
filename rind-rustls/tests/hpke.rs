@@ -74,6 +74,32 @@ fn matches_aws_lc_rs() {
     }
 }
 
+// RFC 9180 serializes NIST points uncompressed (section 7.1.1), and the KEM
+// context hashes them as sent. aws-lc-rs seals to a compressed public key,
+// but its recipient hashes its own key uncompressed, so not even aws-lc-rs
+// opens the message; rind refuses the key instead.
+#[test]
+fn compressed_public_keys() {
+    for (ours, theirs) in pairs() {
+        let (public_key, private_key) = theirs.generate_key_pair().unwrap();
+        let point = &public_key.0;
+        if point.len() == 32 {
+            continue; // X25519 has no compressed form.
+        }
+        let mut compressed = vec![2 | (point[point.len() - 1] & 1)];
+        compressed.extend(&point[1..1 + point.len() / 2]);
+        let compressed = HpkePublicKey(compressed);
+
+        let (enc, ct) = theirs.seal(b"", b"", b"pt", &compressed).unwrap();
+        assert!(
+            theirs
+                .open(&enc, b"", b"", &ct, &copy(&private_key))
+                .is_err()
+        );
+        assert!(ours.seal(b"", b"", b"pt", &compressed).is_err());
+    }
+}
+
 /// An `ECHConfigList` (draft-ietf-tls-esni section 4) holding one config for
 /// `suite`'s KEM and symmetric suite, and that config's bytes, which HPKE's
 /// `info` names.
