@@ -54,10 +54,12 @@
               "rust-analyzer"
             ];
             # The gate lints rind's other backends without their C toolchains,
-            # the portable one forced on x86_64.
+            # the portable one forced on x86_64 and on wasm32.
             targets = [
               "aarch64-unknown-linux-gnu"
               "armv7-unknown-linux-gnueabihf"
+              "wasm32-unknown-unknown"
+              "wasm32-wasip2"
               "x86_64-unknown-linux-gnu"
             ];
           };
