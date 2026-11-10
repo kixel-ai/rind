@@ -304,8 +304,9 @@ not cover rind's in-place calls.
 | `p521_jscalarmul` | `p521_jscalarmul`: `P521_JSCALARMUL_SUBROUTINE_SAFE` | `p521_jscalarmul_alt`: `P521_JSCALARMUL_ALT_SUBROUTINE_SAFE` |
 | `p521_jscalarmul_alt` | `p521_jscalarmul_alt`: `P521_JSCALARMUL_ALT_SUBROUTINE_SAFE` | not imported |
 | `sha3_keccak2_f1600` | not imported | `sha3_keccak2_f1600`: `SHA3_KECCAK2_F1600_SUBROUTINE_SAFE` |
-| `sha3_keccak4_f1600` | `sha3_keccak4_f1600_alt`: none | not imported |
-| `sha3_keccak_f1600` | `sha3_keccak_f1600`: none | `sha3_keccak_f1600_alt`: `SHA3_KECCAK_F1600_ALT_SUBROUTINE_SAFE` |
+| `sha3_keccak4_f1600_alt::sha3_keccak4_f1600` | `sha3_keccak4_f1600_alt`: none | not imported |
+| `sha3_keccak_f1600` | `sha3_keccak_f1600`: none | `sha3_keccak_f1600`: `SHA3_KECCAK_F1600_SUBROUTINE_SAFE` |
+| `sha3_keccak_f1600_alt::sha3_keccak_f1600` | not imported | `sha3_keccak_f1600_alt`: `SHA3_KECCAK_F1600_ALT_SUBROUTINE_SAFE` |
 <!-- end admin/prove-bytes inventory -->
 
 ## Implementation details

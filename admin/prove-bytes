@@ -501,12 +501,14 @@ def built_routines(out):
 
 def inventory(out):
     """The table of ALGORITHMS.md between the INVENTORY markers: each Rust
-    function's routine and `_SAFE` theorem on each target."""
+    function's routine and `_SAFE` theorem on each target, named by its module
+    under `low::<arch>` where that differs from the function."""
     cells = {}
     for arch, path, source in built_routines(out):
         theorem = safe_theorem(arch, source, proven(arch, source))
         cell = f"`{os.path.basename(source)}`: " + (f"`{theorem}`" if theorem else "none")
-        cells.setdefault(path.rsplit("::", 1)[1], {})[arch] = cell
+        module, fn = path.split("::")[-2:]
+        cells.setdefault(fn if module == fn else f"{module}::{fn}", {})[arch] = cell
     rows = ["| Function | x86_64 | aarch64 |", "|---|---|---|"]
     for fn in sorted(cells):
         rows.append(f"| `{fn}` | " + " | ".join(cells[fn].get(a, "not imported") for a in ARCHES) + " |")
