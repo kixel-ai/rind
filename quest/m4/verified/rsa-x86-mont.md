@@ -10,7 +10,3 @@ Every RSA Montgomery product x86_64 runs outside s2n-bignum's Karatsuba routines
 - Route: HOL Light proofs in s2n-bignum's x86_64 model against its Montgomery specification; RSAZ AVX2 needs the 29-bit-limb representation's lemmas and any AVX2 instruction the model lacks.
 - Import the theorems as axioms, retiring the products hypothesis [RSA verification](/quest/m4/verified/rsa-verify.md) leaves for these paths.
 - Upstream: offering this work to awslabs/s2n-bignum is optional, and there is no standing approval: stop and ask the maintainer before posting there or anywhere outside the moq-dev and kixelated orgs (decided with the maintainer on 2026-11-07 on [moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448)).
-
-## Required
-
-- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs

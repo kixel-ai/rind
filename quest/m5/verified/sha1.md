@@ -15,7 +15,3 @@ Runs, block function by tier, under padding and HMAC glue that `proofs/` already
 
 Each enters as the `ShaBlocks` hypothesis's SHA-1 half does today, which this retires.
 - Upstream: offering this work to awslabs/s2n-bignum is optional, and there is no standing approval: stop and ask the maintainer before posting there or anywhere outside the moq-dev and kixelated orgs (decided with the maintainer on 2026-11-07 on [moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448)).
-
-## Required
-
-- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
