@@ -394,8 +394,8 @@ unsafe extern "sysv64" fn sha256_block_data_order_nohw(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::low::{ct, generic};
     use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSha256, HaveSsse3};
+    use crate::low::{ct, generic};
 
     const START: [u32; 8] = [
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,

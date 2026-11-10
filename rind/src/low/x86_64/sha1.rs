@@ -556,8 +556,8 @@ fn maj(b: u32, c: u32, d: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::low::{ct, generic};
     use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSha1, HaveSsse3};
+    use crate::low::{ct, generic};
 
     const START: [u32; 5] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
 
