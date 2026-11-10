@@ -665,7 +665,8 @@
             };
           }
           # `x86-cpu.yml` and `admin/x86-cpu sde-scan` run the tests and
-          # `rind-cpuid` under `sde` in it, and `admin/ct-sde` traces them.
+          # `rind-cpuid` under `sde` in it, `admin/ct-sde` traces them, and
+          # `admin/mutants --avx512` mutates under it.
           # SDE runs only on x86_64.
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             sde = pkgs.mkShell {
@@ -677,6 +678,8 @@
                 openssl
                 python3
                 sde
+                cargo-mutants
+                cargo-nextest
                 # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
                 util-linux
               ];
