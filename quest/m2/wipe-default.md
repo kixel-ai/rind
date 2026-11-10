@@ -14,7 +14,3 @@ Planned with the maintainer on 2026-11-10, from a discussion of whether librarie
 - Measure with `rind-bench` built both ways (`--features rind/wipe` and without), so both runs time the same code. The cost should show up where a key or keyed state is created and dropped for each operation, such as one-shot AEAD seals, HMAC, HKDF, ECDH, and ephemeral key generation, plus RSA's private paths, which wipe heap scratch. Report each ratio. Say which ones are within the noise across repeated runs, and don't treat any single threshold as automatically deciding the default.
 - Every adapter depends on `rind` with its default features, so a default `wipe` reaches every adapter user too. rind-aws-lc-rs's own `wipe` feature also wipes the adapter's own copies; say in the PR whether that should follow rind's default.
 - Hand the PR back as a draft with the numbers and a `## Waiting` item for the default, recommending one choice. If it turns on, update the README, ARCHITECTURE.md's sentence, the `wipe` comment in `rind/Cargo.toml`, and the bindings' READMEs that say they do not wipe.
-
-## Related
-
-- [Heap scratch from a private key is wiped before it is freed](/quest/m2/confidence/wipe-heap-scratch.md) - the test that `wipe` covers the heap scratch, whatever the default

@@ -199,10 +199,10 @@ for module in "${selected[@]}"; do
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
             cargo nextest run "${packages[@]}" --locked --no-tests=warn
-            # Only the zeroing tests see the opt-in wipe, which the default
-            # build turns into no-ops.
+            # Only the zeroing and heap scratch tests see the opt-in wipe,
+            # which the default build turns into no-ops.
             if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind|--workspace'; then
-                cargo nextest run -p rind --features wipe --test zeroing --locked
+                cargo nextest run -p rind --features wipe --test zeroing --test heap_scratch --locked
             fi
             if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind-aws-lc-rs|--workspace'; then
                 cargo nextest run -p rind-aws-lc-rs --features wipe --test zeroing --locked

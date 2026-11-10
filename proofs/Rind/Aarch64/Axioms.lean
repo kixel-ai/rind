@@ -96,47 +96,91 @@ A change here is a change to the trust base.
 #guard_msgs in
 #print axioms sha512_family_context
 
-/-- info: 'rind.aarch64.key_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_nohw_spec] -/
+/-- info: 'rind.aarch64.key_new_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms key_new_spec
 
-/-- info: 'rind.aarch64.sign_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_nohw_spec] -/
+/-- info: 'rind.aarch64.sign_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms sign_spec
 
-/-- info: 'rind.aarch64.verify_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_nohw_spec] -/
+/-- info: 'rind.aarch64.verify_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms verify_spec
 
-/-- info: 'rind.aarch64.context_with_key_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_nohw_spec] -/
+/-- info: 'rind.aarch64.context_with_key_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms context_with_key_spec
 
-/-- info: 'rind.aarch64.context_update_spec'' depends on axioms: [propext, Classical.choice, Quot.sound, compress_nohw_spec] -/
+/-- info: 'rind.aarch64.context_update_spec'' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms context_update_spec'
 
-/-- info: 'rind.aarch64.context_sign_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_nohw_spec] -/
+/-- info: 'rind.aarch64.context_sign_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms context_sign_spec
 
-/-- info: 'rind.aarch64.kdf.salt_extract_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_nohw_spec] -/
+/-- info: 'rind.aarch64.kdf.salt_extract_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms kdf.salt_extract_spec
 
-/-- info: 'rind.aarch64.kdf.okm_fill_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_nohw_spec] -/
+/-- info: 'rind.aarch64.kdf.okm_fill_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms kdf.okm_fill_spec
 
-/-- info: 'rind.aarch64.kdf.hkdf_fill' depends on axioms: [propext, Classical.choice, Quot.sound, compress_nohw_spec] -/
+/-- info: 'rind.aarch64.kdf.hkdf_fill' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms kdf.hkdf_fill
 
-/-- info: 'rind.aarch64.kdf.derive_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_nohw_spec] -/
+/-- info: 'rind.aarch64.kdf.derive_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms kdf.derive_spec
 
-/-- info: 'rind.aarch64.kdf.verify_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_nohw_spec] -/
+/-- info: 'rind.aarch64.kdf.verify_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms kdf.verify_spec
 
@@ -238,7 +282,8 @@ A change here is a change to the trust base.
  bignum_montmul_spec,
  bignum_montsqr_p256_spec,
  bignum_tomont_p256_spec,
- p256_scalarmulbase_spec] -/
+ p256_scalarmulbase_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_sign
 
@@ -273,7 +318,8 @@ A change here is a change to the trust base.
  p256_montjadd_spec,
  p256_montjdouble_spec,
  p256_montjmixadd_spec,
- p256_scalarmulbase_spec] -/
+ p256_scalarmulbase_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_key_pair_verify
 
@@ -294,6 +340,7 @@ A change here is a change to the trust base.
  bignum_tomont_p256_spec,
  p256_montjadd_spec,
  p256_montjdouble_spec,
- p256_montjmixadd_spec] -/
+ p256_montjmixadd_spec,
+ sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_public_key_new

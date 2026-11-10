@@ -556,43 +556,46 @@ fn maj(b: u32, c: u32, d: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::low::generic;
     use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSha1, HaveSsse3};
+    use crate::low::{ct, generic};
 
     const START: [u32; 5] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
 
     // The SHA extensions, AVX2, SSSE3, and the vendor hide all but one path from
     // every other test, so each the CPU can run is checked against the
-    // portable code directly: odd and even block counts, with distinct bytes
-    // in every block.
+    // portable code directly, on blocks `admin/ctgrind` keeps secret: odd and
+    // even block counts, with distinct bytes in every block. That checks
+    // Intel's AVX code, which only Intel CPUs without AVX2 pick, on any CPU.
     #[test]
     fn paths_match_generic() {
         let (ssse3, avx, avx2) = (HaveSsse3::check(), HaveAvx::check(), HaveAvx2::check());
         let blocks: Vec<u8> = (0..5 * 64u32)
             .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
             .collect();
+        ct::secret_slice(&blocks);
         for n in 0..=5 {
             let blocks = &blocks[..n * 64];
             let mut wanted = START;
             generic::sha1::sha1_compress_blocks(&mut wanted, blocks);
+            let wanted = ct::into_public(wanted);
 
             let mut got = START;
             sha1_compress_blocks_nohw(&mut got, blocks);
-            assert_eq!(got, wanted, "nohw, {n} blocks");
+            assert_eq!(ct::into_public(got), wanted, "nohw, {n} blocks");
             if let Some(token) = ssse3 {
                 let mut got = START;
                 sha1_compress_blocks_ssse3(&mut got, blocks, token);
-                assert_eq!(got, wanted, "ssse3, {n} blocks");
+                assert_eq!(ct::into_public(got), wanted, "ssse3, {n} blocks");
             }
             if let Some(token) = avx {
                 let mut got = START;
                 sha1_compress_blocks_avx(&mut got, blocks, token);
-                assert_eq!(got, wanted, "avx, {n} blocks");
+                assert_eq!(ct::into_public(got), wanted, "avx, {n} blocks");
             }
             if let Some(token) = avx2 {
                 let mut got = START;
                 sha1_compress_blocks_avx2(&mut got, blocks, token);
-                assert_eq!(got, wanted, "avx2, {n} blocks");
+                assert_eq!(ct::into_public(got), wanted, "avx2, {n} blocks");
             }
         }
     }

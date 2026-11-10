@@ -3,10 +3,13 @@
 
 //! SHA-256 compression with aws-lc's `sha256-armv8` routines, imported by
 //! `admin/import-aws-lc`: the SHA-256 instructions where the CPU has them,
-//! and scalar code otherwise. Neither is formally verified: their
-//! correctness rests on their use and testing in OpenSSL, BoringSSL, and
-//! aws-lc, and on rind's tests of each against the other, CAVP, and
-//! aws-lc-rs.
+//! and scalar code otherwise.
+//!
+//! rind's HOL Light proof, `proofs/hol-light/aarch64/sha256_block_data_order_hw.ml`,
+//! covers the routine for the SHA-256 instructions as rind's build emits it.
+//! The scalar routine is not formally verified: its correctness rests on its
+//! use and testing in OpenSSL, BoringSSL, and aws-lc, and on rind's tests of
+//! it against the other, CAVP, and aws-lc-rs.
 
 use super::cpu::HaveCryptoExt;
 
@@ -17,14 +20,34 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
     if blocks.is_empty() {
         return;
     }
-    let (data, num) = (blocks.as_ptr(), blocks.len() / 64);
     match HaveCryptoExt::check() {
-        // SAFETY: `blocks` is `num` readable blocks, and the token proves the
-        // CPU has the SHA-256 instructions.
-        Some(_) => unsafe { sha256_block_data_order_hw(state, data, num) },
-        // SAFETY: `blocks` is `num` readable blocks.
-        None => unsafe { sha256_block_data_order_nohw(state, data, num) },
+        // SAFETY: `blocks` is a whole number of blocks, and not empty.
+        Some(crypto) => unsafe { compress_hw(crypto, state, blocks) },
+        // SAFETY: `blocks` is a whole number of blocks, and not empty.
+        None => unsafe { compress_nohw(state, blocks) },
     }
+}
+
+/// Compresses `blocks`, a whole number of them, into `state` with the
+/// SHA-256 instructions.
+///
+/// # Safety
+///
+/// `blocks` must hold at least one whole block.
+unsafe fn compress_hw(_: HaveCryptoExt, state: &mut [u32; 8], blocks: &[u8]) {
+    // SAFETY: `blocks` is `len / 64` readable blocks, at least one, and the
+    // token proves the CPU has the SHA-256 instructions.
+    unsafe { sha256_block_data_order_hw(state, blocks.as_ptr(), blocks.len() / 64) }
+}
+
+/// As [`compress_hw`], with the scalar routine.
+///
+/// # Safety
+///
+/// `blocks` must hold at least one whole block.
+unsafe fn compress_nohw(state: &mut [u32; 8], blocks: &[u8]) {
+    // SAFETY: `blocks` is `len / 64` readable blocks, at least one.
+    unsafe { sha256_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 64) }
 }
 
 /// Compresses the end of `message`, padded and closed by `length`.
