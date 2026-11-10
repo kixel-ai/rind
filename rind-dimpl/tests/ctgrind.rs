@@ -201,12 +201,10 @@ fn pem_signing() {
             .unwrap()
             + 5;
         let body = pem.find('\n').unwrap() + 1;
-        // Each 3 bytes are 4 base64 characters, 64 characters to a line.
-        for group in scalar.div_ceil(3)..(scalar + 32) / 3 {
-            for c in 4 * group..4 * group + 4 {
-                let at = body + c + c / 64;
-                secret(&pem.as_bytes()[at]);
-            }
+        // Each base64 character carries 6 bits, 64 characters to a line. Mark
+        // every character whose bits all come from the scalar.
+        for c in (8 * scalar).div_ceil(6)..(8 * (scalar + 32) - 6) / 6 + 1 {
+            secret(&pem.as_bytes()[body + c + c / 64]);
         }
         let mut key = rind()
             .key_provider

@@ -328,3 +328,49 @@ fn only_ecdsa_keys_load() {
         );
     }
 }
+
+#[test]
+fn ecdsa_key_encodings_load_as_aws_lc() {
+    use ::aws_lc_rs::encoding::AsDer;
+    use ::aws_lc_rs::signature::{
+        ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P384_SHA384_ASN1_SIGNING, EcdsaKeyPair,
+    };
+
+    let reference = aws_lc_rs::default_provider();
+    let lf = pem::EncodeConfig::new().set_line_ending(pem::LineEnding::LF);
+    for (algorithm, signing) in [
+        (
+            &rcgen::PKCS_ECDSA_P256_SHA256,
+            &ECDSA_P256_SHA256_ASN1_SIGNING,
+        ),
+        (
+            &rcgen::PKCS_ECDSA_P384_SHA384,
+            &ECDSA_P384_SHA384_ASN1_SIGNING,
+        ),
+    ] {
+        let (_, pkcs8) = certificate(algorithm);
+        let sec1 = EcdsaKeyPair::from_pkcs8(signing, &pkcs8)
+            .unwrap()
+            .private_key()
+            .as_der()
+            .unwrap()
+            .as_ref()
+            .to_vec();
+        for (label, der) in [("PRIVATE KEY", pkcs8), ("EC PRIVATE KEY", sec1)] {
+            let pem = pem::encode_config(&pem::Pem::new(label, der.clone()), lf);
+            let mut bad_base64 = pem.clone().into_bytes();
+            bad_base64[label.len() + 20] = b'!';
+            for (key, loads, what) in [
+                (&der[..], true, "DER"),
+                (pem.as_bytes(), true, "PEM"),
+                (&pem.as_bytes()[..pem.len() - 30], false, "truncated PEM"),
+                (&bad_base64[..], false, "invalid base64"),
+                (&der[..der.len() - 1], false, "truncated DER"),
+            ] {
+                let rind = rind().key_provider.load_private_key(key).is_ok();
+                let aws_lc = reference.key_provider.load_private_key(key).is_ok();
+                assert_eq!((rind, aws_lc), (loads, loads), "{label} {what}");
+            }
+        }
+    }
+}
