@@ -610,10 +610,12 @@
             # powerpc` test the portable backend on PowerPC Linux in them,
             # the last two big-endian. Rust's powerpc64 target uses the ELFv1
             # ABI, unlike nixpkgs' default `ppc64`. Rust links both big-endian
-            # targets with its own lld, which refuses ELFv1 objects and, in a
-            # 32-bit PIE, gives an undefined weak function a nonzero address,
-            # so aws-lc calls its unset allocator hook. gcc obeys the last
-            # `-fuse-ld`, so a trailing one picks GNU ld.
+            # targets with its own lld, which refuses ELFv1 objects, and on
+            # 32-bit PowerPC supports only the Secure PLT: nixpkgs' ppc32 gcc
+            # is built without `--enable-secureplt`, so its objects, its
+            # `crtbeginS.o` included, use the BSS PLT, which lld links without
+            # error into a binary that crashes. GNU ld handles both. gcc obeys
+            # the last `-fuse-ld`, so a trailing one picks GNU ld.
             powerpc64le = qemu-shell {
               target = "powerpc64le-unknown-linux-gnu";
               cross = pkgs.pkgsCross.powernv;
