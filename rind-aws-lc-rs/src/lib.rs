@@ -11,12 +11,12 @@ pub mod aead;
 pub mod agreement;
 pub mod cipher;
 pub mod constant_time;
-pub mod cpu;
 pub mod digest;
 pub mod encoding;
 pub mod error;
 pub mod hkdf;
 pub mod hmac;
+#[cfg(feature = "ring-io")]
 pub mod io;
 pub mod iv;
 pub mod kem;

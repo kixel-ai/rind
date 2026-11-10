@@ -5,7 +5,7 @@ use core::num::NonZeroU32;
 use crate::{digest, error, hmac};
 
 /// A PBKDF2 algorithm, chosen by one of this module's constants.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Algorithm(hmac::Algorithm);
 
 impl Algorithm {

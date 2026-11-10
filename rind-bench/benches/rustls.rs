@@ -51,7 +51,7 @@ fn provider(name: &str) -> CryptoProvider {
         "graviola" => rustls_graviola::default_provider(),
         #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
         "openssl" => rustls_openssl::default_provider(),
-        _ => rind_rustls::default_provider().unwrap(),
+        _ => rind_rustls::default_provider(),
     }
 }
 

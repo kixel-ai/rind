@@ -46,10 +46,10 @@ With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
 toolchain, and `just check` runs CI's gate over what the branch changed.
 On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
-with NEON alone, and with NEON denied. `just qemu s390x` runs the nightly
-`qemu` job's big-endian s390x entry, which lints and tests the portable
-backend under qemu, and `just qemu armv6` its ARMv6 one, on the Raspberry Pi
-1's core.
+with NEON alone, and with NEON denied. `just qemu <shell>` runs an entry of
+the nightly `qemu` job, which lints and tests the portable backend under
+qemu: `s390x` (big-endian), `riscv64`, `riscv64-musl`, or `armv6` and
+`armv6-softfloat` (the Raspberry Pi 1's core).
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
 constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
@@ -68,8 +68,9 @@ or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,
 and `admin/timing marvin` runs the Marvin toolkit against RSA-OAEP decryption. They need quiet
 hardware: the weekly `timing` workflow runs them on GitHub's runners, and a
 shared host is held with `quest gate --host`.
-`nix develop .#prove --command admin/prove` translates the Rust under proof to
-Lean with Aeneas and checks the proofs in [`proofs/`](proofs/README.md).
+`nix develop .#prove --command admin/prove` checks rind's HOL Light proofs of
+its assembly, then translates the Rust under proof to Lean with Aeneas and
+checks the proofs in [`proofs/`](proofs/README.md).
 
 # Commits
 

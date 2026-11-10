@@ -179,7 +179,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shell: [s390x, armv6, armv6-softfloat]
+        shell: [s390x, riscv64, riscv64-musl, armv6, armv6-softfloat]
 
     runs-on: ubuntu-latest
     steps:
@@ -237,6 +237,82 @@ jobs:
         env:
           RIND_DART_CROSS_TARGETS: ${{ matrix.cross }}
         run: dart test
+
+  # rind-dart's tests on an Android emulator, through the Flutter app in
+  # rind-dart/integration. The x86_64 image runs x86_64 natively, and armv7,
+  # for its 32-bit pointers, under its ARM translation.
+  dart-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: rind-dart/integration
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: x86_64-linux-android,armv7-linux-androideabi
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Create the Android project
+        run: flutter create --platforms android .
+
+      - name: Run tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          working-directory: rind-dart/integration
+          script: |
+            flutter test integration_test -d emulator-5554
+            ./android-arm.sh
+
+  # rind-dart's tests on the iOS simulator, through the same Flutter app.
+  dart-ios:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: rind-dart/integration
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios-sim
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+
+      - name: Create the iOS project
+        run: flutter create --platforms ios .
+
+      - name: Run tests
+        run: |
+          udid=$(xcrun simctl list devices available --json | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid"
+          flutter test integration_test -d "$udid"
 
   # The portable backend, which every architecture without rind assembly
   # runs, forced on x86_64 so it runs without emulation. The recipe lints and

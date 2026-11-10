@@ -13,7 +13,7 @@ use rustls::{CipherSuite, ClientConfig, RootCertStore, ServerConfig, Side, Suppo
 fn initial_keys() {
     // Initial keys always use AES-128-GCM, derived from the client's first destination CID.
     let dcid = b"initial dcid";
-    let rind = rind_rustls::default_provider().unwrap();
+    let rind = rind_rustls::default_provider();
     for other in [aws_lc_rs::default_provider(), ring::default_provider()] {
         check_keys(
             &initial(&rind, dcid, Side::Client),
@@ -35,7 +35,7 @@ fn all_suites() {
     ] {
         let rind: Arc<_> = CryptoProvider {
             cipher_suites: vec![suite],
-            ..rind_rustls::default_provider().unwrap()
+            ..rind_rustls::default_provider()
         }
         .into();
         for other in [aws_lc_rs::default_provider(), ring::default_provider()] {

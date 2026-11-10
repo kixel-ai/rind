@@ -21,7 +21,6 @@ OSS-Fuzz, cryptofuzz, and NIST ACVP are planned in [m4 assurance](/quest/m4/assu
 ## Required
 
 - [A differential fuzz target for every primitive](/quest/m3/confidence/fuzz-every-primitive.md) - signing, ciphers, MD5, and GCM's any-IV API compared with aws-lc
-- [Fuzz the tiers GitHub's runners cannot reach](/quest/m3/confidence/fuzz-tiers.md) - corpus replay under SDE for AVX-512 and SHA512, and under qemu for armv7
 - [A constant-time check on every tier](/quest/m3/confidence/ct-tiers.md) - Intel's AVX SHA under SDE, and aarch64's SHA-3 and SHA-512 paths
 - [BINSEC checks the secret paths no proof covers](/quest/m3/confidence/binsec.md) - constant time for every secret, on the paths no proof covers, nightly on x86_64 and aarch64
 - [Adapter crates' surviving mutants](/quest/m3/confidence/mutants-adapters.md) - tests for the 103 adapter mutants no test catches

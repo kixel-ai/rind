@@ -7,8 +7,27 @@ computation is proven. [Charon](https://github.com/AeneasVerif/charon) and
 the theorems are about that translation.
 
 `nix develop .#prove --command admin/prove` translates the Rust and checks
-every proof against the translation. The `prove` workflow runs it nightly and
-on pull requests that change rind's source or these files.
+every proof against the translation, after the HOL Light proofs below. The
+`prove` workflow runs it nightly and on pull requests that change rind's
+source or these files.
+
+## HOL Light proofs
+
+`hol-light/<arch>/` holds rind's own [HOL Light](https://hol-light.github.io/)
+proofs of the `asm!` blocks it runs, for routines whose published proofs do
+not cover them, on [s2n-bignum](https://github.com/awslabs/s2n-bignum)'s
+instruction models, tactics, and specs at the commit of rind's
+`thirdparty/s2n-bignum` submodule, the revision rind's transliteration pins.
+Each proof's object code is the block's bytes as rind's release build emits
+them, which `admin/prove` extracts, so no transliteration is trusted: the
+proof lists the bytes and fails unless the build's are the same. An axiom in
+`Rind/<Arch>/` that restates one of these theorems names the file, whose
+revision is rind's commit. `nix develop .#hol-light --command admin/prove
+hol-light` checks them alone, in nixpkgs' HOL Light.
+
+- `aarch64/bignum_eq.ml`: `BIGNUM_EQ_CORRECT`, s2n-bignum's proof of
+  `bignum_eq` on the block in `low::aarch64::bignum_eq::bignum_eq`, which is
+  s2n-bignum's routine without its `ret`.
 
 ## What is proven
 
@@ -284,6 +303,7 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
 
 ## Layout
 
+- `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine.
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
   writes and git ignores.
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
@@ -367,7 +387,10 @@ Beyond Lean's kernel:
   defines their instructions to, as an instruction model is trusted for
   s2n-bignum's and Vale's own proofs.
 - That rind's inline assembly is s2n-bignum's, aws-lc's, and Vale's object
-  code, as for `benchmarks/verified.toml`'s other entries.
+  code, as for `benchmarks/verified.toml`'s other entries, except where a
+  proof in `hol-light/` covers the bytes rind's build emits. For those, HOL
+  Light's kernel and s2n-bignum's instruction models, as for s2n-bignum's
+  own theorems.
 - The translation ignores drops, which here wipe keys and keyed state under
   the `wipe` feature and restore CPU state, and computes nothing an output
   depends on.

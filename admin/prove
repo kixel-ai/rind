@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Translates rind's Rust under proof to Lean with Charon and Aeneas, into
-# `proofs/Rind/<Arch>/{Types,Funs}.lean`, then checks every proof in `proofs/`.
+# Checks rind's proofs: the HOL Light proofs in `proofs/hol-light/` of
+# assembly rind runs, against the object code rind's build emits, then the
+# Lean proofs in `proofs/` of rind's Rust, which it first translates to Lean
+# with Charon and Aeneas, into `proofs/Rind/<Arch>/{Types,Funs}.lean`.
 #
 # Each target's translation is its own namespace, but they share global names,
 # so no Lean module imports both. The aarch64 hand models and its X25519,
@@ -8,15 +10,135 @@
 # x86_64 ones with the target renamed, which this writes too, all but each
 # target's own `ShaBlocks.lean`.
 #
-# Usage: admin/prove
+# Usage: admin/prove [hol-light | lean]
 #
-# Run it in the flake's `prove` dev shell: `nix develop .#prove --command
-# admin/prove`.
+# An argument checks only those proofs. Run it in the flake's `prove` dev
+# shell: `nix develop .#prove --command admin/prove`, or for the HOL Light
+# proofs alone, `nix develop .#hol-light --command admin/prove hol-light`.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 out=.tmp/prove
 mkdir -p "$out"
+case "${1:-}" in
+'' | hol-light | lean) only=${1:-} ;;
+*)
+    echo "usage: admin/prove [hol-light | lean]" >&2
+    exit 2
+    ;;
+esac
+
+# Writes to `dest` the bytes of the one `asm!` block in the Rust function at
+# `path`, as rind's release build for `arch` Linux emits them. The build
+# passes cargo's default 16 codegen units explicitly, since `--emit=asm` would
+# otherwise compile one, and each unit's assembly marks where the block starts
+# and ends, which its object code then gives the bytes of. A relocation in the
+# block fails, as nothing proven yet needs one.
+asm_block() {
+    local arch=$1 path=$2 dest=$3
+    local deps=$out/asm/$arch-unknown-linux-gnu/release/deps units=$out/asm/$arch-units
+    local tools obj sym='' found unit
+    tools=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin
+    rm -rf "$units"
+    mkdir -p "$units"
+    "$tools/llvm-ar" x --output "$units" "$deps"/librind-*.rlib
+    for unit in "$units"/*.rcgu.o; do
+        found=$(paste <("$tools/llvm-nm" --defined-only "$unit") <("$tools/llvm-nm" --defined-only -C "$unit") |
+            awk -F '\t' -v p="$path" 'substr($2, 20) == p { print substr($1, 20) }')
+        if [[ -n "$found" && -n "$sym" ]]; then
+            echo "admin/prove: rind's $arch build defines $path twice" >&2
+            return 1
+        elif [[ -n "$found" ]]; then
+            sym=$found obj=$unit
+        fi
+    done
+    if [[ -z "$sym" ]]; then
+        echo "admin/prove: rind's $arch build defines no $path" >&2
+        return 1
+    fi
+    # The function's asm! blocks, and its instructions before the block, in
+    # it, and in all.
+    local blocks before count total
+    read -r blocks before count total < <(awk -v s="$sym:" '
+        $0 == s { p = 1; next }
+        !p { next }
+        /^\.Lfunc_end/ { exit }
+        /^\t(\/\/|#)APP$/ { blocks++; start = n; next }
+        /^\t(\/\/|#)NO_APP$/ { len = n - start; next }
+        /^\t[a-z]/ { n++ }
+        END { print blocks + 0, start + 0, len + 0, n + 0 }' "$deps/$(basename "${obj%.o}").s")
+    local -a addrs
+    mapfile -t addrs < <("$tools/llvm-objdump" -d --no-show-raw-insn --disassemble-symbols="$sym" "$obj" |
+        sed -n 's/^ *\([0-9a-f]\+\):.*/\1/p')
+    if [[ $blocks != 1 || $count == 0 || ${#addrs[@]} != "$total" ]]; then
+        echo "admin/prove: $path has $blocks asm! blocks, the first of $count instructions," \
+            "and $total instructions in its assembly to ${#addrs[@]} in its object code" >&2
+        return 1
+    fi
+    local value section size start end off
+    read -r value section size < <("$tools/llvm-objdump" -t "$obj" | awk -F '\t' -v s="$sym" '
+        { n = split($1, a, " "); m = split($2, b, " ") }
+        b[m] == s { print a[1], a[n], b[1] }')
+    start=$((16#${addrs[before]}))
+    if ((before + count < total)); then
+        end=$((16#${addrs[before + count]}))
+    else
+        end=$((16#$value + 16#$size))
+    fi
+    while read -r off _; do
+        if ((16#$off >= start && 16#$off < end)); then
+            echo "admin/prove: $path's asm! block has a relocation" >&2
+            return 1
+        fi
+    done < <("$tools/llvm-objdump" -r --section="$section" "$obj" | grep -E '^[0-9a-f]+ ' || true)
+    "$tools/llvm-objcopy" --dump-section="$section=$units/section" "$obj" "$units/copy.o"
+    tail -c +$((start + 1)) "$units/section" | head -c $((end - start)) >"$dest"
+}
+
+# rind's own HOL Light proofs, each of the `asm!` block in a Rust function,
+# on s2n-bignum's model, tactics, and specs at its submodule's commit, the
+# revision rind's transliteration pins. Each reads its block's bytes from
+# `<arch>/<file>.bin`, which `asm_block` writes, and asserts they are the ones
+# it lists. A target's proofs compile into one program, as s2n-bignum's
+# `tools/build-proof.sh` compiles each of its own, which fails on an error or
+# an axiom beyond HOL Light's.
+hol_light_proofs=(
+    "aarch64 bignum_eq rind::low::aarch64::bignum_eq::bignum_eq"
+)
+hol_light() {
+    local dir=$out/hol-light root=$PWD arches arch file path proof
+    git submodule update --init --depth 1 thirdparty/s2n-bignum
+    rm -rf "$dir"
+    mkdir -p "$dir"
+    arches=$(printf '%s\n' "${hol_light_proofs[@]}" | cut -d' ' -f1 | sort -u)
+    for arch in $arches; do
+        cargo rustc -q -p rind --lib --release --target "$arch-unknown-linux-gnu" \
+            --target-dir "$out/asm" -- --emit=asm -C codegen-units=16
+        mkdir -p "$dir/$arch"
+        echo 'let prove_start = Unix.time ();;' >"$dir/$arch.ml"
+    done
+    for proof in "${hol_light_proofs[@]}"; do
+        read -r arch file path <<<"$proof"
+        asm_block "$arch" "$path" "$dir/$arch/$file.bin"
+        echo "loadt \"$arch/$file.ml\";;" >>"$dir/$arch.ml"
+    done
+    for arch in $arches; do
+        printf 'check_axioms ();; Printf.printf "%s: %%.0f s\\n" (Unix.time () -. prove_start);;\n' "$arch" >>"$dir/$arch.ml"
+        (cd "$dir" && HOLLIGHT_LOAD_PATH="$root/proofs/hol-light:$root/thirdparty/s2n-bignum" \
+            ocaml "$HOLLIGHT_DIR/inline_load.ml" "$arch.ml" "$arch-inlined.ml")
+        OCAMLRUNPARAM=l=2000000000 ocamlopt.byte -pp "$("$HOLLIGHT_DIR/hol.sh" -pp)" \
+            -I "$HOLLIGHT_DIR" -I +unix -c hol_lib.cmxa "$dir/$arch-inlined.ml" -o "$dir/$arch.cmx" -w -a
+        ocamlfind ocamlopt -package zarith,unix -linkpkg hol_lib.cmxa -I "$HOLLIGHT_DIR" \
+            "$dir/$arch.cmx" -o "$dir/$arch.native"
+        (cd "$dir" && "./$arch.native")
+    done
+}
+if [[ $only != lean ]]; then
+    hol_light
+fi
+if [[ $only == hol-light ]]; then
+    exit 0
+fi
 
 # Each hand model quotes the Rust it models. Fail if that Rust has changed, so
 # the model is reviewed with every change to it: print the first item each line

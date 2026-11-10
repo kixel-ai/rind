@@ -268,12 +268,35 @@
             '';
           };
 
+          # `admin/prove hol-light` runs in it: HOL Light, the OCaml it
+          # compiles the proofs with, as s2n-bignum's `tools/build-proof.sh`
+          # does, and the Rust whose build emits the object code they are of,
+          # with llvm-objdump to read it.
+          hol-light = pkgs.mkShell {
+            packages = [
+              (rust-stable.minimal.override {
+                extensions = [ "llvm-tools" ];
+                targets = [
+                  "x86_64-unknown-linux-gnu"
+                  "aarch64-unknown-linux-gnu"
+                ];
+              })
+              pkgs.hol_light
+              pkgs.ocamlPackages.ocaml
+              pkgs.ocamlPackages.findlib
+              pkgs.ocamlPackages.camlp5
+              pkgs.git
+            ];
+          };
+
           sde-certs = ''
             export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
           '';
         in
         {
           devShells = {
+            inherit hol-light;
+
             default = pkgs.mkShell {
               packages =
                 with pkgs;
@@ -462,6 +485,7 @@
             # `proofs/lean-toolchain` names, whose bundled `leantar` reads
             # Mathlib's cache, which nixpkgs' Lean cannot.
             prove = pkgs.mkShell {
+              inputsFrom = [ hol-light ];
               packages = [
                 aeneas
                 pkgs.elan
@@ -509,6 +533,17 @@
             s390x = qemu-shell {
               target = "s390x-unknown-linux-gnu";
               cross = pkgs.pkgsCross.s390x;
+            };
+
+            # `just qemu riscv64` and `just qemu riscv64-musl` test the
+            # portable backend on riscv64gc Linux, glibc and musl, in them.
+            riscv64 = qemu-shell {
+              target = "riscv64gc-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.riscv64;
+            };
+            riscv64-musl = qemu-shell {
+              target = "riscv64gc-unknown-linux-musl";
+              cross = pkgs.pkgsCross.riscv64-musl;
             };
 
             # `just qemu armv6` and `just qemu armv6-softfloat` test the
