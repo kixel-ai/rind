@@ -23,6 +23,8 @@ Speed (maintainer, 2026-11-09, after an audit of the whole tree): ✅ planned, i
 
 The union of ring 0.17's and aws-lc-rs's CI and build scripts, listed on 2026-11-06, adds armv6, which both test. It drops i586, which ring refuses for lacking SSE2 and aws-lc-rs doesn't test. riscv32 and sparc64 are compile-only in both, as loongarch64 is, so they wait for a consumer. aarch64_be and armeb, which ring compiles and aws-lc refuses, compile the portable backend, untested.
 
+MIPS (maintainer, 2026-11-10, [moq-dev/rind#558](https://github.com/moq-dev/rind/pull/558)): ✅ dropped, since it has been tier 3 with no stable std since Rust 1.72 (rejected: support it via nightly `-Zbuild-std`, against rind's stable toolchain).
+
 "Exactly one backend compiles per architecture" still holds: the portable backend is each new architecture's only backend, not a fallback for a missing CPU feature. The s390x quest checked byte order: rind's tests pass on big-endian s390x and 32-bit powerpc, so big-endian targets need only their CI.
 
 The epic's own work, once every child has merged:
