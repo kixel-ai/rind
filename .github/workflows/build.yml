@@ -13,6 +13,29 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: wasm32-wasip2,wasm32-unknown-unknown
+
+      # Compile only the library: the differential tests link native aws-lc.
+      - name: Build WASI
+        run: cargo build -p rind --release --lib --locked --target wasm32-wasip2
+      - name: Build WASI with wiping
+        run: cargo build -p rind --release --lib --locked --target wasm32-wasip2 --features wipe
+      - name: Build WebAssembly with JavaScript randomness
+        run: cargo build -p rind --release --lib --locked --target wasm32-unknown-unknown --features getrandom/wasm_js
+      - name: Build WebAssembly with JavaScript randomness and wiping
+        run: cargo build -p rind --release --lib --locked --target wasm32-unknown-unknown --features wipe,getrandom/wasm_js
+
   build:
     strategy:
       matrix:

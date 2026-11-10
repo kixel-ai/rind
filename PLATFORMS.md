@@ -64,7 +64,11 @@ first two under qemu, and Linux on big-endian `s390x` and on `riscv64gc`
   rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. CI tests it on
   big-endian `s390x` and on `riscv64gc` (scalar only: rind uses neither the
   vector nor the scalar crypto extensions) under qemu, and on `x86_64`, where
-  `--cfg rind_portable` forces it. On 32-bit `x86` it needs a
+  `--cfg rind_portable` forces it. CI also compiles the library for
+  `wasm32-wasip2` and `wasm32-unknown-unknown`, with and without `wipe`. The
+  latter enables `getrandom/wasm_js` for JavaScript randomness; the WASI target
+  uses its system random source. These are compile checks, not runtime tests.
+  On 32-bit `x86` it needs a
   Rust newer than the 1.90 MSRV, since libcrux-platform 0.0.4 calls `__cpuid`
   outside `unsafe`.
 
