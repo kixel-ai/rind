@@ -126,9 +126,6 @@ exclude_re = [
   'rind/src/mid/p521\.rs:\d+:\d+: replace < with <= in JacobianPoint::public_twin_multiply$',
   'rind/src/mid/rsa_priv/exponents\.rs:\d+:\d+: replace < with <= in (divide_exact_e|shift_right_secret)$',
   'rind/src/mid/util\.rs:\d+:\d+: replace < with <= in public_naf$',
-  # Equivalent in value: a mask that also loads the lanes past GHASH's
-  # tail, whose blocks are zero, so their products add nothing.
-  'rind/src/low/x86_64/ghash\.rs:509:43: replace - with \+ in _mul_tail$',
   # Speed only: which of several implementations runs, or how far ahead it
   # prefetches. Each implementation is tested on its own against the others.
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace <= with > in tagged_from$',
