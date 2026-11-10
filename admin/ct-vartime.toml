@@ -10,6 +10,7 @@ why = "Divides by the top word of a public RSA modulus, for `PosInt::pub_montifi
 "x86_64-unknown-linux-gnu" = "calls __udivti3"
 "aarch64-unknown-linux-gnu" = "calls __udivti3"
 "x86_64-unknown-linux-gnu+portable" = "calls __udivti3"
+"loongarch64-unknown-linux-gnu" = "calls __udivti3"
 
 [[public]]
 function = "<curve25519_dalek::scalar::Scalar>::as_radix_2w"
@@ -18,6 +19,7 @@ why = "Divides 256 by the window width, which is 4 for the basepoint table rind 
 "armv7-unknown-linux-gnueabihf" = "calls __aeabi_uidiv"
 "x86_64-unknown-linux-gnu+portable" = "div"
 "armv7-unknown-linux-gnueabihf+portable" = "calls __aeabi_uidiv"
+"loongarch64-unknown-linux-gnu" = "div.du"
 
 [[public]]
 function = "<rind::high::pbkdf2::Secret>::derive"
@@ -28,6 +30,7 @@ why = "The length check and step_by iterator divide only the public output lengt
 "armv7-unknown-linux-gnueabihf" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"
 "x86_64-unknown-linux-gnu+portable" = "div x4"
 "armv7-unknown-linux-gnueabihf+portable" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"
+"loongarch64-unknown-linux-gnu" = "div.du x2"
 
 [[public]]
 function = "<rind::high::pbkdf2::Secret>::verify"
@@ -38,3 +41,4 @@ why = "The length check and step_by iterator divide only the public stored-key l
 "armv7-unknown-linux-gnueabihf" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"
 "x86_64-unknown-linux-gnu+portable" = "div x4"
 "armv7-unknown-linux-gnueabihf+portable" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"
+"loongarch64-unknown-linux-gnu" = "div.du x2"

@@ -79,8 +79,8 @@ aarch64 runs with the crypto extension and the SHA-512 and SHA-3
 instructions; no crypto denies them, as a Raspberry Pi 4 lacks them. armv7
 runs in 32-bit mode, with NEON and the crypto extension; without them it runs
 the code [Symmetric cryptography](#symmetric-cryptography) names. portable is
-the backend for every other architecture and for big-endian aarch64 and arm,
-which CI runs on x86_64 under
+the backend for every other architecture, for big-endian aarch64 and arm, and
+for ARM cores before ARMv7, which CI runs on x86_64 under
 `--cfg rind_portable`: armv7's code without NEON and the crypto extension,
 with portable Rust in place of the assembly armv7 runs regardless.
 
@@ -110,8 +110,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 - AES header protection on aarch64 pays the same indirect call as AES-GCM
   key setup on x86_64.
 - armv7 without crypto: SHA-256 keeps Graviola. Its [native 32-bit comparison](benchmarks/armv7-sha256.md)
-  measured 28–30% lower latency than HACL* at 64 B and 1350 B, exceeding
-  the about 10% advantage required to prefer unverified code.
+  measured 28–30% lower latency than HACL* at 64 B and 1350 B.
 - portable: ChaCha20-Poly1305's Poly1305 is Graviola's on 64-bit targets
   and HACL*'s ✓ on 32-bit ones, whose streaming state counts its input in a
   32-bit length that a 64-bit AEAD can overflow. SHA-3's and ML-KEM's
@@ -132,11 +131,11 @@ tests use [Wycheproof]'s vectors.
 |---|---|---|---|
 | [Graviola] | copied: rind began as a copy of it, and rind-rustls of its rustls-graviola; its aarch64 ChaCha20 and its Poly1305 began as [cifra], CC0-1.0 | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | rind | its own code | Apache-2.0 OR ISC OR MIT-0 | nothing |
-| [s2n-bignum] | copied: its assembly for the elliptic curves, RSA, ML-KEM, Keccak-f, and aarch64 AES-GCM, transliterated into Rust `asm!` by `admin/parse-asm`, which ends each x86_64 routine using 256-bit registers with `vzeroupper` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM and aarch64 Keccak-f routines (from mlkem-native) Apache-2.0 OR ISC OR MIT; its x86_64 single-state Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs)) that each routine's object code computes its specified result for all inputs; some also prove that its memory accesses stay in bounds and that its branches and addresses depend on no secret. They check s2n-bignum's own build, not rind's transliteration, except rind's own proofs in [`proofs/hol-light`](proofs/README.md#hol-light-proofs), which check rind's build of the routines they cover. rind runs the aarch64 AES-GCM kernels in place, outside their proofs, which assume separate input and output buffers. |
-| [HACL\*] | dependency, through libcrux-hacl-rs and libcrux-poly1305; copied, from libcrux-chacha20poly1305: the ChaCha20 rounds, for HChaCha20 and QUIC header protection and for x86_64's ChaCha20 up to one block, 128 bytes without AVX2, and every length without SSSE3, and armv7's ChaCha20 state setup, and every ChaCha20 length on the portable backend; ported, by hand from `Hacl_Hash_SHA3.c` at the same revision: Keccak-f, for the portable backend; dependency, through libcrux-sha2: SHA-256 and SHA-384/512 for the portable backend; copied, by `admin/import-hacl`: Vale's x86_64 AES-GCM assembly, as Rust naked functions | Apache-2.0; Vale's AES-GCM routines port OpenSSL's `aesni_gcm`, Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star/tree/f557259007db9933442dde10aa995c1b00bd3446) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified, nor is rind's hand port of Keccak-f, which its tests check against the Keccak team's intermediate values. rind's code that loads the rounds' state and XORs their keystream is not covered, except for header protection, which rind's own Lean proof covers with the rounds. Vale's [F\* proofs](https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/vale/code/arch/x64/interop/Vale.Wrapper.X64.GCMencryptOpt.fsti) that its x86_64 AES-GCM, as Vale prints it, computes AES-128-GCM and AES-256-GCM, tag check included, for any AAD and message under 2^32 bytes, in place or not, from the counter block its own routine computes, which rind runs for it, and the round keys and GHASH key powers its own routines compute. rind computes those keys and powers itself, and its tests check them byte for byte against Vale's routines. [`proofs/`](proofs/README.md) proves that code, and rind's Rust that splits the message into the routines' blocks and copies the partial ones, as EverCrypt's proven Low\* wrapper does, from its AEAD API down to Vale's routines. |
+| [s2n-bignum] | copied: its assembly for the elliptic curves, RSA, ML-KEM, Keccak-f, and aarch64 AES-GCM, transliterated into Rust `asm!` by `admin/parse-asm`, which ends each x86_64 routine using 256-bit registers with `vzeroupper` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM and aarch64 Keccak-f routines (from mlkem-native) Apache-2.0 OR ISC OR MIT; its x86_64 single-state Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs)) that each routine's object code computes its specified result for all inputs; some also prove that its memory accesses stay in bounds and that its branches and addresses depend on no secret. `admin/prove bytes` checks that rind's build of each routine holds the instructions its proof lists, with the differences [below](#s2n-bignums-constant-time-theorems), so the proofs are of rind's code. rind runs the aarch64 AES-GCM kernels in place, outside their proofs, which assume separate input and output buffers. |
+| [HACL\*] | dependency, through libcrux-hacl-rs and libcrux-poly1305; copied, from libcrux-chacha20poly1305: the ChaCha20 rounds, for HChaCha20 and QUIC header protection and for x86_64's ChaCha20 up to one block, 128 bytes without AVX2, and every length without SSSE3, and armv7's ChaCha20 state setup, and every ChaCha20 length on the portable backend; ported, by hand from `Hacl_Hash_SHA3.c` at the same revision: Keccak-f, for the portable backend; dependency, through libcrux-sha2: SHA-256 and SHA-384/512 for the portable backend; copied, by `admin/import-hacl`: Vale's x86_64 AES-GCM assembly, as Rust naked functions | Apache-2.0; Vale's AES-GCM routines port OpenSSL's `aesni_gcm`, Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star/tree/f557259007db9933442dde10aa995c1b00bd3446) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified, nor is rind's hand port of Keccak-f, which its tests check against the Keccak team's intermediate values. rind's code that loads the rounds' state and XORs their keystream is not covered, except for header protection, which rind's own Lean proof covers with the rounds. Vale's [F\* proofs](https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/vale/code/arch/x64/interop/Vale.Wrapper.X64.GCMencryptOpt.fsti) that its x86_64 AES-GCM, as Vale prints it, computes AES-128-GCM and AES-256-GCM, tag check included, for any AAD and message under 2^32 bytes, in place or not, from the counter block its own routine computes, which rind runs for it, and the round keys and GHASH key powers its own routines compute. `admin/prove bytes` checks that rind's copies of the routines it runs assemble to the instructions of Vale's printed text. rind computes those keys and powers itself, and its tests check them byte for byte against Vale's routines. [`proofs/`](proofs/README.md) proves that code, and rind's Rust that splits the message into the routines' blocks and copies the partial ones, as EverCrypt's proven Low\* wrapper does, from its AEAD API down to Vale's routines. |
 | [mlkem-native] | ported: its portable C polynomial arithmetic (the NTT, inverse NTT, base multiplication, reductions, byte encoding, and rejection sampling), to Rust, for armv7 and x86_64 CPUs without AVX2; copied, by `admin/import-aws-lc` from aws-lc's copy: its x86_64 AVX2 ciphertext compression, which rind ends with `vzeroupper` | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mlkem-native/tree/d1b2fe782888bdb761a50336012923180be7f502/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port. [HOL Light proofs](https://github.com/pq-code-package/mlkem-native/tree/d1b2fe782888bdb761a50336012923180be7f502/proofs/hol_light/x86_64) that its AVX2 compression's object code computes its specified result for all inputs, of mlkem-native's own build, at the revision aws-lc's copy takes. |
 | [libcrux-aes] | dependency for AES-GCM on armv7 without the crypto extension and on the portable backend; copied: the block cipher, which rind inverts in its representation for decryption | Apache-2.0 | nothing: libcrux marks it pre-verification |
-| [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine and its aarch64 one for the SHA-256 instructions, Montgomery multiplication and the x86_64 exponentiation's `bn_power5` (with one deliberate change: rind's `bn_sqr8x_mont` and `bn_powerx5` zero two scratch words their `mulx` squaring reads unwritten, which valgrind reports though results and timing do not depend on them), AVX2 and dual AVX-512 RSAZ exponentiation, AES-NI AES-CTR, P-256's generator multiplication (its row scan and mixed addition), and SSE4.1 and AVX2 ChaCha20-Poly1305 (with one deliberate change: rind's copy reads the choice of AVX2 from the block rind passes it rather than aws-lc's `OPENSSL_ia32cap_P`), its aarch64 NEON ChaCha20-Poly1305 and eight-way AES-192-GCM, its x86_64 assembly for CPUs without AVX2 (SSSE3 ChaCha20, SSSE3 and AVX SHA-1, and SSSE3 SHA-256) without AES-NI (SSSE3 AES and GHASH), and without SSSE3 (integer SHA-1 and SHA-256), its aarch64 Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, Montgomery multiplication, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`; and the C that drives that Poly1305, RSAZ, and `bn_power5`, that sets up its x86_64 SSSE3 GHASH table, and that computes its constant-time SSE2 AES and integer GHASH for x86_64 CPUs without SSSE3, ported to Rust, the GHASH also for armv7 without the crypto extension and the portable backend. aws-lc takes its Poly1305, ChaCha20-Poly1305, SSSE3 GHASH, and constant-time AES and GHASH from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305, ChaCha20-Poly1305, SSSE3 and integer GHASH, and constant-time AES ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification/tree/797302470c1703cbb1a3a6fa98daffef0bfd3d80) that its x86_64 AVX and aarch64 scalar SHA-384/512 routines compute their specified result for all inputs. The proof of its aarch64 routine for the SHA-512 instructions ends with the result in registers, before the routine stores it, so earns no ✓. They check aws-lc's own build, not rind's copy, and do not cover its 32-bit ARM code. [`proofs/`](proofs/README.md) proves rind's SHA-384/512 around the AVX and aarch64 scalar routines. |
+| [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine and its aarch64 one for the SHA-256 instructions, Montgomery multiplication and the x86_64 exponentiation's `bn_power5` (with one deliberate change: rind's `bn_sqr8x_mont` and `bn_powerx5` zero two scratch words their `mulx` squaring reads unwritten, which valgrind reports though results and timing do not depend on them), AVX2 and dual AVX-512 RSAZ exponentiation, AES-NI AES-CTR, P-256's generator multiplication (its row scan and mixed addition), and SSE4.1 and AVX2 ChaCha20-Poly1305 (with one deliberate change: rind's copy reads the choice of AVX2 from the block rind passes it rather than aws-lc's `OPENSSL_ia32cap_P`), its aarch64 NEON ChaCha20-Poly1305 and eight-way AES-192-GCM, its x86_64 assembly for CPUs without AVX2 (SSSE3 ChaCha20, SSSE3 and AVX SHA-1, and SSSE3 SHA-256) without AES-NI (SSSE3 AES and GHASH), and without SSSE3 (integer SHA-1 and SHA-256), its aarch64 Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, Montgomery multiplication, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`; and the C that drives that Poly1305, RSAZ, and `bn_power5`, that sets up its x86_64 SSSE3 GHASH table, and that computes its constant-time SSE2 AES and integer GHASH for x86_64 CPUs without SSSE3, ported to Rust, the GHASH also for armv7 without the crypto extension and the portable backend. aws-lc takes its Poly1305, ChaCha20-Poly1305, SSSE3 GHASH, and constant-time AES and GHASH from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305, ChaCha20-Poly1305, SSSE3 and integer GHASH, and constant-time AES ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification/tree/797302470c1703cbb1a3a6fa98daffef0bfd3d80) that its x86_64 AVX and aarch64 scalar SHA-384/512 routines compute their specified result for all inputs. The proof of its aarch64 routine for the SHA-512 instructions ends with the result in registers, before the routine stores it, so earns no ✓. `admin/prove bytes` checks that rind's copies of those two routines assemble to the instructions of aws-lc's text at the revision the proofs pin, so the proofs are of rind's code. They do not cover its 32-bit ARM code. [`proofs/`](proofs/README.md) proves rind's SHA-384/512 around the AVX and aarch64 scalar routines. |
 | [BoringSSL] | copied, by `admin/import-boringssl`: its x86_64 VAES AES-GCM assembly, `aes-gcm-avx2-x86_64` and `aes-gcm-avx512-x86_64`, as Rust naked functions; its 32-bit ARM NEON X25519 assembly, in Rust `global_asm!`, which BoringSSL takes from [SUPERCOP]'s `neon2`, public domain | Apache-2.0 | nothing |
 | [OpenSSL] | copied, by `admin/import-openssl`: its x86_64 AVX2 SHA-256 and SHA-512 assembly and its SHA-512 assembly for the SHA512 instructions, from `sha512-x86_64`, as Rust naked functions; its 32-bit ARM Keccak-f assembly, integer and NEON, `keccak1600-armv4`, in Rust `global_asm!` | Apache-2.0 | nothing |
 | [curve25519-dalek] | dependency, with its serial backend, for armv7 and the portable backend; ported: its AVX2 backend's field arithmetic, point formulas, and base point table, and its scalars' non-adjacent forms, to Rust intrinsics, for Ed25519 verification on x86_64 CPUs with AVX2 but without ADX | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written, as is the AVX2 backend's. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
@@ -156,6 +155,163 @@ the published crate.
 
 A change that copies code from a new source, or moves an algorithm to a
 different one, updates this table and [LICENSE] in the same PR.
+
+## s2n-bignum's constant-time theorems
+
+s2n-bignum's `_SAFE` theorems prove, for every input, that the instructions a
+routine executes and the addresses it accesses depend on no secret, and that
+it runs no instruction whose timing depends on its operands. `admin/prove
+bytes`, in the `prove` workflow, checks that each routine's `asm!` block in
+rind's release build holds the instructions its proof lists, at the
+submodule's commit, so those theorems are about the code rind runs. A block
+differs from its proof's code only as `admin/prove-bytes` lists, none of the
+changes altering the result the proof states or making a branch, address, or
+timing depend on a secret: the final `ret` is gone, as the Rust function
+returns; an x86_64 routine using 256-bit registers ends with `vzeroupper`; an
+aarch64 routine has no `BTI c`, as in the code the `_NOIBT_` theorems cover; a
+routine returning from several places, or whose local subroutines follow its
+`ret`, branches to the block's end from each such `ret`; and LLVM's assembler
+writes some commutative x86_64 instructions with their sources swapped.
+
+The table names, for each Rust function rind transliterates from s2n-bignum,
+the routine it runs on each target and the subroutine `_SAFE` theorem that
+covers it, or "none" where s2n-bignum proves none at the pinned revision.
+LLVM may inline `bignum_modadd`, which a hot loop calls, so no symbol marks
+its copies and the check does not reach them; the check fails if such a
+routine has a `_SAFE` theorem.
+[BINSEC](/quest/m2/confidence/binsec.md) is planned to check those. The
+aarch64 AES-GCM theorems assume separate input and output buffers, so they do
+not cover rind's in-place calls.
+
+<!-- admin/prove-bytes inventory -->
+| Function | x86_64 | aarch64 |
+|---|---|---|
+| `aes128_gcm_dec` | not imported | `aes128_gcm_dec`: `AES128_GCM_DEC_NOIBT_SUBROUTINE_SAFE` |
+| `aes128_gcm_dec_alt` | not imported | `aes128_gcm_dec_alt`: `AES128_GCM_DEC_ALT_NOIBT_SUBROUTINE_SAFE` |
+| `aes128_gcm_enc` | not imported | `aes128_gcm_enc`: `AES128_GCM_ENC_NOIBT_SUBROUTINE_SAFE` |
+| `aes128_gcm_enc_alt` | not imported | `aes128_gcm_enc_alt`: `AES128_GCM_ENC_ALT_NOIBT_SUBROUTINE_SAFE` |
+| `aes256_gcm_dec` | not imported | `aes256_gcm_dec`: `AES256_GCM_DEC_NOIBT_SUBROUTINE_SAFE` |
+| `aes256_gcm_dec_alt` | not imported | `aes256_gcm_dec_alt`: `AES256_GCM_DEC_ALT_NOIBT_SUBROUTINE_SAFE` |
+| `aes256_gcm_enc` | not imported | `aes256_gcm_enc`: `AES256_GCM_ENC_NOIBT_SUBROUTINE_SAFE` |
+| `aes256_gcm_enc_alt` | not imported | `aes256_gcm_enc_alt`: `AES256_GCM_ENC_ALT_NOIBT_SUBROUTINE_SAFE` |
+| `bignum_add` | `bignum_add`: none | `bignum_add`: none |
+| `bignum_add_p256` | `bignum_add_p256`: none | `bignum_add_p256`: none |
+| `bignum_add_p384` | `bignum_add_p384`: `BIGNUM_ADD_P384_SUBROUTINE_SAFE` | `bignum_add_p384`: `BIGNUM_ADD_P384_SUBROUTINE_SAFE` |
+| `bignum_add_p521` | `bignum_add_p521`: `BIGNUM_ADD_P521_SUBROUTINE_SAFE` | `bignum_add_p521`: `BIGNUM_ADD_P521_SUBROUTINE_SAFE` |
+| `bignum_bitsize` | `bignum_bitsize`: none | `bignum_bitsize`: none |
+| `bignum_cmp_lt` | `bignum_lt`: none | `bignum_lt`: none |
+| `bignum_coprime` | `bignum_coprime`: none | `bignum_coprime`: none |
+| `bignum_copy_row_from_table` | `bignum_copy_row_from_table`: none | `bignum_copy_row_from_table`: `BIGNUM_COPY_ROW_FROM_TABLE_SUBROUTINE_SAFE` |
+| `bignum_copy_row_from_table_16` | not imported | `bignum_copy_row_from_table_16`: `BIGNUM_COPY_ROW_FROM_TABLE_16_SUBROUTINE_SAFE` |
+| `bignum_copy_row_from_table_32` | not imported | `bignum_copy_row_from_table_32`: `BIGNUM_COPY_ROW_FROM_TABLE_32_SUBROUTINE_SAFE` |
+| `bignum_copy_row_from_table_8n` | not imported | `bignum_copy_row_from_table_8n`: `BIGNUM_COPY_ROW_FROM_TABLE_8N_SUBROUTINE_SAFE` |
+| `bignum_ctz` | `bignum_ctz`: none | `bignum_ctz`: none |
+| `bignum_demont` | `bignum_demont`: none | `bignum_demont`: none |
+| `bignum_demont_p256` | `bignum_demont_p256`: none | `bignum_demont_p256`: none |
+| `bignum_demont_p256_alt` | `bignum_demont_p256_alt`: none | not imported |
+| `bignum_demont_p384` | `bignum_demont_p384`: none | `bignum_demont_p384`: none |
+| `bignum_demont_p384_alt` | `bignum_demont_p384_alt`: none | not imported |
+| `bignum_digitsize` | `bignum_digitsize`: none | `bignum_digitsize`: none |
+| `bignum_emontredc_8n` | `bignum_emontredc_8n`: none | not imported |
+| `bignum_eq` | `bignum_eq`: none | `bignum_eq`: none |
+| `bignum_inv_p25519` | `bignum_inv_p25519`: `BIGNUM_INV_P25519_SUBROUTINE_SAFE` | not imported |
+| `bignum_inv_p256` | `bignum_inv_p256`: none | `bignum_inv_p256`: none |
+| `bignum_inv_p384` | `bignum_inv_p384`: none | `bignum_inv_p384`: none |
+| `bignum_inv_p521` | `bignum_inv_p521`: `BIGNUM_INV_P521_SUBROUTINE_SAFE` | `bignum_inv_p521`: `BIGNUM_INV_P521_SUBROUTINE_SAFE` |
+| `bignum_kmul_16_32` | `bignum_kmul_16_32`: none | not imported |
+| `bignum_kmul_32_64` | `bignum_kmul_32_64`: none | not imported |
+| `bignum_ksqr_16_32` | `bignum_ksqr_16_32`: none | not imported |
+| `bignum_ksqr_32_64` | `bignum_ksqr_32_64`: none | not imported |
+| `bignum_madd_n25519` | `bignum_madd_n25519`: `BIGNUM_MADD_N25519_SUBROUTINE_SAFE` | `bignum_madd_n25519_alt`: `BIGNUM_MADD_N25519_ALT_SUBROUTINE_SAFE` |
+| `bignum_madd_n25519_alt` | `bignum_madd_n25519_alt`: `BIGNUM_MADD_N25519_ALT_SUBROUTINE_SAFE` | not imported |
+| `bignum_mod_n25519` | `bignum_mod_n25519`: `BIGNUM_MOD_N25519_SUBROUTINE_SAFE` | `bignum_mod_n25519`: `BIGNUM_MOD_N25519_SUBROUTINE_SAFE` |
+| `bignum_mod_n256` | `bignum_mod_n256_4`: none | `bignum_mod_n256_4`: none |
+| `bignum_mod_n384` | `bignum_mod_n384_6`: none | `bignum_mod_n384_6`: none |
+| `bignum_mod_n521` | `bignum_mod_n521_9`: `BIGNUM_MOD_N521_9_SUBROUTINE_SAFE` | `bignum_mod_n521_9`: `BIGNUM_MOD_N521_9_SUBROUTINE_SAFE` |
+| `bignum_mod_n521_alt` | `bignum_mod_n521_9_alt`: `BIGNUM_MOD_N521_9_ALT_SUBROUTINE_SAFE` | not imported |
+| `bignum_modadd` | `bignum_modadd`: none; inlinable, so unchecked | `bignum_modadd`: none; inlinable, so unchecked |
+| `bignum_modinv` | `bignum_modinv`: none | `bignum_modinv`: none |
+| `bignum_modsub` | `bignum_modsub`: none | `bignum_modsub`: none |
+| `bignum_montifier` | `bignum_montifier`: none | `bignum_montifier`: none |
+| `bignum_montmul` | `bignum_montmul`: none | `bignum_montmul`: none |
+| `bignum_montmul_p256` | `bignum_montmul_p256`: `BIGNUM_MONTMUL_P256_SUBROUTINE_SAFE` | `bignum_montmul_p256_alt`: none |
+| `bignum_montmul_p256_alt` | `bignum_montmul_p256_alt`: none | not imported |
+| `bignum_montmul_p384` | `bignum_montmul_p384`: `BIGNUM_MONTMUL_P384_SUBROUTINE_SAFE` | `bignum_montmul_p384_alt`: `BIGNUM_MONTMUL_P384_ALT_SUBROUTINE_SAFE` |
+| `bignum_montmul_p384_alt` | `bignum_montmul_p384_alt`: `BIGNUM_MONTMUL_P384_ALT_SUBROUTINE_SAFE` | not imported |
+| `bignum_montredc` | `bignum_montredc`: none | `bignum_montredc`: none |
+| `bignum_montsqr` | not imported | `bignum_montsqr`: none |
+| `bignum_montsqr_p256` | `bignum_montsqr_p256`: `BIGNUM_MONTSQR_P256_SUBROUTINE_SAFE` | `bignum_montsqr_p256_alt`: none |
+| `bignum_montsqr_p256_alt` | `bignum_montsqr_p256_alt`: none | not imported |
+| `bignum_montsqr_p384` | `bignum_montsqr_p384`: `BIGNUM_MONTSQR_P384_SUBROUTINE_SAFE` | `bignum_montsqr_p384_alt`: `BIGNUM_MONTSQR_P384_ALT_SUBROUTINE_SAFE` |
+| `bignum_montsqr_p384_alt` | `bignum_montsqr_p384_alt`: `BIGNUM_MONTSQR_P384_ALT_SUBROUTINE_SAFE` | not imported |
+| `bignum_mul` | `bignum_mul`: none | `bignum_mul`: `BIGNUM_MUL_SUBROUTINE_SAFE` |
+| `bignum_mul_p25519_alt` | `bignum_mul_p25519_alt`: none | not imported |
+| `bignum_mul_p521` | `bignum_mul_p521`: `BIGNUM_MUL_P521_SUBROUTINE_SAFE` | `bignum_mul_p521_alt`: `BIGNUM_MUL_P521_ALT_SUBROUTINE_SAFE` |
+| `bignum_mul_p521_alt` | `bignum_mul_p521_alt`: `BIGNUM_MUL_P521_ALT_SUBROUTINE_SAFE` | not imported |
+| `bignum_mux` | `bignum_mux`: none | `bignum_mux`: none |
+| `bignum_neg_p25519` | `bignum_neg_p25519`: `BIGNUM_NEG_P25519_SUBROUTINE_SAFE` | `bignum_neg_p25519`: `BIGNUM_NEG_P25519_SUBROUTINE_SAFE` |
+| `bignum_neg_p256` | `bignum_neg_p256`: none | `bignum_neg_p256`: none |
+| `bignum_neg_p384` | `bignum_neg_p384`: `BIGNUM_NEG_P384_SUBROUTINE_SAFE` | `bignum_neg_p384`: `BIGNUM_NEG_P384_SUBROUTINE_SAFE` |
+| `bignum_neg_p521` | `bignum_neg_p521`: `BIGNUM_NEG_P521_SUBROUTINE_SAFE` | `bignum_neg_p521`: `BIGNUM_NEG_P521_SUBROUTINE_SAFE` |
+| `bignum_negmodinv` | `bignum_negmodinv`: none | `bignum_negmodinv`: none |
+| `bignum_optsub` | `bignum_optsub`: none | `bignum_optsub`: `BIGNUM_OPTSUB_SUBROUTINE_SAFE` |
+| `bignum_sqr_p521` | `bignum_sqr_p521`: `BIGNUM_SQR_P521_SUBROUTINE_SAFE` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` |
+| `bignum_sqr_p521_alt` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` | not imported |
+| `bignum_tomont_p256` | `bignum_tomont_p256`: none | `bignum_tomont_p256`: none |
+| `bignum_tomont_p256_alt` | `bignum_tomont_p256_alt`: none | not imported |
+| `bignum_tomont_p384` | `bignum_tomont_p384`: `BIGNUM_TOMONT_P384_SUBROUTINE_SAFE` | `bignum_tomont_p384`: `BIGNUM_TOMONT_P384_SUBROUTINE_SAFE` |
+| `bignum_tomont_p384_alt` | `bignum_tomont_p384_alt`: `BIGNUM_TOMONT_P384_ALT_SUBROUTINE_SAFE` | not imported |
+| `curve25519_x25519` | `curve25519_x25519`: `CURVE25519_X25519_SUBROUTINE_SAFE` | `curve25519_x25519_alt`: none |
+| `curve25519_x25519_alt` | `curve25519_x25519_alt`: `CURVE25519_X25519_ALT_SUBROUTINE_SAFE` | not imported |
+| `curve25519_x25519base` | `curve25519_x25519base`: `CURVE25519_X25519BASE_SUBROUTINE_SAFE` | `curve25519_x25519base_alt`: none |
+| `curve25519_x25519base_alt` | `curve25519_x25519base_alt`: `CURVE25519_X25519BASE_ALT_SUBROUTINE_SAFE` | not imported |
+| `edwards25519_decode` | `edwards25519_decode`: `EDWARDS25519_DECODE_SUBROUTINE_SAFE` | `edwards25519_decode_alt`: `EDWARDS25519_DECODE_ALT_SUBROUTINE_SAFE` |
+| `edwards25519_decode_alt` | `edwards25519_decode_alt`: `EDWARDS25519_DECODE_ALT_SUBROUTINE_SAFE` | not imported |
+| `edwards25519_scalarmulbase` | `edwards25519_scalarmulbase`: `EDWARDS25519_SCALARMULBASE_SUBROUTINE_SAFE` | `edwards25519_scalarmulbase_alt`: `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_SAFE` |
+| `edwards25519_scalarmulbase_alt` | `edwards25519_scalarmulbase_alt`: `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_SAFE` | not imported |
+| `edwards25519_scalarmuldouble` | `edwards25519_scalarmuldouble`: `EDWARDS25519_SCALARMULDOUBLE_SUBROUTINE_SAFE` | `edwards25519_scalarmuldouble_alt`: `EDWARDS25519_SCALARMULDOUBLE_ALT_SUBROUTINE_SAFE` |
+| `edwards25519_scalarmuldouble_alt` | `edwards25519_scalarmuldouble_alt`: `EDWARDS25519_SCALARMULDOUBLE_ALT_SUBROUTINE_SAFE` | not imported |
+| `mlkem_basemul_k3` | `mlkem_basemul_k3`: none | `mlkem_basemul_k3`: `MLKEM_BASEMUL_K3_SUBROUTINE_SAFE` |
+| `mlkem_frombytes` | `mlkem_frombytes`: none | not imported |
+| `mlkem_intt` | `mlkem_intt`: none | `mlkem_intt`: `MLKEM_INTT_SUBROUTINE_SAFE` |
+| `mlkem_mulcache_compute` | `mlkem_mulcache_compute`: none | `mlkem_mulcache_compute`: `MLKEM_MULCACHE_COMPUTE_SUBROUTINE_SAFE` |
+| `mlkem_ntt` | `mlkem_ntt`: none | `mlkem_ntt`: `MLKEM_NTT_SUBROUTINE_SAFE` |
+| `mlkem_reduce` | `mlkem_reduce`: `MLKEM_REDUCE_SUBROUTINE_SAFE` | `mlkem_reduce`: `MLKEM_REDUCE_SUBROUTINE_SAFE` |
+| `mlkem_rej_uniform_vartime` | `mlkem_rej_uniform_VARIABLE_TIME`: `MLKEM_REJ_UNIFORM_SUBROUTINE_SAFE` | `mlkem_rej_uniform_VARIABLE_TIME`: `MLKEM_REJ_UNIFORM_SUBROUTINE_SAFE` |
+| `mlkem_tobytes` | `mlkem_tobytes`: none | `mlkem_tobytes`: `MLKEM_TOBYTES_SUBROUTINE_SAFE` |
+| `mlkem_tomont` | `mlkem_tomont`: none | `mlkem_tomont`: `MLKEM_TOMONT_SUBROUTINE_SAFE` |
+| `mlkem_unpack` | `mlkem_unpack`: none | not imported |
+| `p256_montjadd` | `p256_montjadd`: `P256_MONTJADD_SUBROUTINE_SAFE` | `p256_montjadd_alt`: `P256_MONTJADD_ALT_SUBROUTINE_SAFE` |
+| `p256_montjadd_alt` | `p256_montjadd_alt`: `P256_MONTJADD_ALT_SUBROUTINE_SAFE` | not imported |
+| `p256_montjdouble` | `p256_montjdouble`: `P256_MONTJDOUBLE_SUBROUTINE_SAFE` | `p256_montjdouble_alt`: `P256_MONTJDOUBLE_ALT_SUBROUTINE_SAFE` |
+| `p256_montjdouble_alt` | `p256_montjdouble_alt`: `P256_MONTJDOUBLE_ALT_SUBROUTINE_SAFE` | not imported |
+| `p256_montjmixadd` | `p256_montjmixadd`: none | `p256_montjmixadd_alt`: none |
+| `p256_montjmixadd_alt` | `p256_montjmixadd_alt`: none | not imported |
+| `p256_montjscalarmul` | `p256_montjscalarmul`: `P256_MONTJSCALARMUL_SUBROUTINE_SAFE` | not imported |
+| `p256_montjscalarmul_alt` | `p256_montjscalarmul_alt`: `P256_MONTJSCALARMUL_ALT_SUBROUTINE_SAFE` | not imported |
+| `p256_scalarmul` | not imported | `p256_scalarmul_alt`: none |
+| `p256_scalarmulbase` | not imported | `p256_scalarmulbase_alt`: none |
+| `p384_montjadd` | `p384_montjadd`: `P384_MONTJADD_SUBROUTINE_SAFE` | `p384_montjadd_alt`: `P384_MONTJADD_ALT_SUBROUTINE_SAFE` |
+| `p384_montjadd_alt` | `p384_montjadd_alt`: `P384_MONTJADD_ALT_SUBROUTINE_SAFE` | not imported |
+| `p384_montjdouble` | `p384_montjdouble`: `P384_MONTJDOUBLE_SUBROUTINE_SAFE` | `p384_montjdouble_alt`: `P384_MONTJDOUBLE_ALT_SUBROUTINE_SAFE` |
+| `p384_montjdouble_alt` | `p384_montjdouble_alt`: `P384_MONTJDOUBLE_ALT_SUBROUTINE_SAFE` | not imported |
+| `p384_montjmixadd` | `p384_montjmixadd`: none | `p384_montjmixadd_alt`: none |
+| `p384_montjmixadd_alt` | `p384_montjmixadd_alt`: none | not imported |
+| `p384_montjscalarmul` | `p384_montjscalarmul`: `P384_MONTJSCALARMUL_SUBROUTINE_SAFE` | `p384_montjscalarmul_alt`: `P384_MONTJSCALARMUL_ALT_SUBROUTINE_SAFE` |
+| `p384_montjscalarmul_alt` | `p384_montjscalarmul_alt`: `P384_MONTJSCALARMUL_ALT_SUBROUTINE_SAFE` | not imported |
+| `p521_jadd` | `p521_jadd`: `P521_JADD_SUBROUTINE_SAFE` | `p521_jadd_alt`: none |
+| `p521_jadd_alt` | `p521_jadd_alt`: `P521_JADD_ALT_SUBROUTINE_SAFE` | not imported |
+| `p521_jdouble` | `p521_jdouble`: `P521_JDOUBLE_SUBROUTINE_SAFE` | `p521_jdouble_alt`: `P521_JDOUBLE_ALT_SUBROUTINE_SAFE` |
+| `p521_jdouble_alt` | `p521_jdouble_alt`: `P521_JDOUBLE_ALT_SUBROUTINE_SAFE` | not imported |
+| `p521_jmixadd` | `p521_jmixadd`: none | `p521_jmixadd_alt`: none |
+| `p521_jmixadd_alt` | `p521_jmixadd_alt`: none | not imported |
+| `p521_jscalarmul` | `p521_jscalarmul`: `P521_JSCALARMUL_SUBROUTINE_SAFE` | `p521_jscalarmul_alt`: `P521_JSCALARMUL_ALT_SUBROUTINE_SAFE` |
+| `p521_jscalarmul_alt` | `p521_jscalarmul_alt`: `P521_JSCALARMUL_ALT_SUBROUTINE_SAFE` | not imported |
+| `sha3_keccak2_f1600` | not imported | `sha3_keccak2_f1600`: `SHA3_KECCAK2_F1600_SUBROUTINE_SAFE` |
+| `sha3_keccak4_f1600_alt::sha3_keccak4_f1600` | `sha3_keccak4_f1600_alt`: none | not imported |
+| `sha3_keccak_f1600` | `sha3_keccak_f1600`: none | `sha3_keccak_f1600`: `SHA3_KECCAK_F1600_SUBROUTINE_SAFE` |
+| `sha3_keccak_f1600_alt::sha3_keccak_f1600` | not imported | `sha3_keccak_f1600_alt`: `SHA3_KECCAK_F1600_ALT_SUBROUTINE_SAFE` |
+<!-- end admin/prove-bytes inventory -->
 
 ## Implementation details
 
@@ -491,8 +647,7 @@ x86_64 CPUs without AVX2 run ChaCha20 above 128 bytes on aws-lc's
 which measured 2.4-2.7x faster than HACL*'s rounds from 256 bytes on Coffee
 Lake, Zen 3, and Arrow Lake. Up to that, and at every length without SSSE3,
 where aws-lc runs its integer routine, they run HACL*'s verified rounds, which
-took 0.92-1.07 of that routine's time on the same CPUs, within the 10% rind
-accepts for verified code. Header protection without AVX2 takes 0.91 of
+took 0.92-1.07 of that routine's time on the same CPUs. Header protection without AVX2 takes 0.91 of
 aws-lc-rs's time on an EPYC 9V74 and 0.96 on a Xeon Platinum 8573C in
 [run 41697909102].
 

@@ -168,7 +168,7 @@ agreement keys refuse.
 | `EncapsulationKey::new(alg, bytes)`, `encapsulate()` | the same |
 | `decapsulate(Ciphertext::from(bytes))` | `decapsulate(bytes)`, which borrows the key |
 | `DecapsulationKey::new(alg, bytes)`, `DecapsulationKey::key_bytes()` | none: decapsulation keys are ephemeral |
-| `ML_KEM_512`, `ML_KEM_1024` | none; [post-quantum epic](quest/m4/pq/README.md) |
+| `ML_KEM_512`, `ML_KEM_1024` | none; [ML-KEM-512 and ML-KEM-1024](quest/m3/parity/ml-kem.md) |
 | `algorithm()`, `Algorithm::id()`, `AlgorithmId`, `AlgorithmIdentifier` | none |
 
 ring has no `kem`.
@@ -221,7 +221,7 @@ ring has no `kem`.
 | `ED25519_PUBLIC_KEY_LEN` | none: always 32 |
 | `rsa::PublicKey::from_der` | `PublicKey::new(&verify::RSA_PKCS1_SHA256, der)`, for one algorithm and PKCS#1 or `SubjectPublicKeyInfo` DER |
 | `rsa::PublicKey::{modulus, exponent, modulus_len}`, `PublicKeyComponents::from(&key)` | none |
-| `PqdsaKeyPair`, `ML_DSA_65` and the other ML-DSA items | none; [post-quantum epic](quest/m4/pq/README.md) |
+| `PqdsaKeyPair`, `ML_DSA_65` and the other ML-DSA items | none; [ML-DSA](quest/m3/parity/ml-dsa.md) |
 
 `PublicKey::new` refuses a compressed ECDSA point and an ECDSA or Ed25519
 `SubjectPublicKeyInfo`, which aws-lc-rs takes. `PublicKey::from_spki` takes
@@ -351,8 +351,7 @@ that returns a provider refuses one with the adapter's own
 `MissingFeature` instead, which displays rind's message. rind-rustls, whose
 signatures are rustls's provider's, does not. rind-ring, whose signatures
 are ring's, and rind-rcgen's `KeyPair`, whose errors are rcgen's, cannot.
-Call rind-ring's `cpu::check()`, or `rind::cpu::check()` for rind-rcgen,
-before using them.
+Call `rind::cpu::check()` before using them.
 
 ### rind-ring
 
@@ -366,9 +365,7 @@ features, by adding `[patch.crates-io] ring = { git =
 [rind-patch](https://github.com/moq-dev/rind-patch)'s unpublished crate named
 `ring`, which re-exports rind-ring, and `cargo tree -i ring` then prints only
 `ring v0.17.999` from rind-patch. It panics wherever ring
-panics, so its signatures stay ring's, and adds a `cpu` module wrapping
-rind's check, so the renamed crate refuses an unsupported CPU with
-`ring::cpu::check()` without depending on rind. Its [README](rind-ring/README.md) lists the
+panics, so its signatures stay ring's, and adds nothing to ring's API. Its [README](rind-ring/README.md) lists the
 items it leaves out and the inputs it refuses where ring takes them.
 
 ### rind-aws-lc-rs

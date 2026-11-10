@@ -53,6 +53,7 @@ macro_rules! ashort {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_lt.S.
 /// Compare bignums, x < y
 ///
 /// Inputs x[m], y[n]; output function return

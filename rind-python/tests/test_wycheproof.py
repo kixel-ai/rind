@@ -10,7 +10,7 @@ import pathlib
 import unittest
 
 import pyrind
-from pyrind import aead, agreement, hkdf, hmac, kem, rsa, signature
+from pyrind import aead, agreement, cipher, hkdf, hmac, kem, key_wrap, rsa, signature
 from pyrind.signature import verify
 
 VECTORS = pathlib.Path(__file__).resolve().parents[2] / "thirdparty" / "wycheproof" / "testvectors_v1"
@@ -68,6 +68,43 @@ class Wycheproof(unittest.TestCase):
             self.assertEqual(opened, bytes.fromhex(test["msg"]))
 
         self.run_vectors("xchacha20_poly1305", run, lambda group: group["tagSize"] == 128)
+
+    def test_aes_cbc(self):
+        sizes = {128: cipher.AES_128, 192: cipher.AES_192, 256: cipher.AES_256}
+
+        def run(group, test):
+            size, key = sizes[group["keySize"]], bytes.fromhex(test["key"])
+            iv, ct = bytes.fromhex(test["iv"]), bytes.fromhex(test["ct"])
+            plain = cipher.AesCbcDecryptingKey(size, key).decrypt_blocks(iv, ct)
+            self.assertEqual(cipher.AesCbcEncryptingKey(size, key).encrypt_blocks(iv, plain), ct)
+            msg = bytes.fromhex(test["msg"])
+            self.assertEqual(plain[: len(msg)], msg)
+
+        # These blocks carry PKCS#7 padding, which the binding leaves to its
+        # caller, so only the valid vectors say what the blocks decrypt to.
+        count = 0
+        for group in groups("aes_cbc_pkcs5"):
+            for test in group["tests"]:
+                if test["result"] == "valid":
+                    with self.subTest(tcId=test["tcId"]):
+                        run(group, test)
+                    count += 1
+        self.assertGreater(count, 0)
+
+    def test_key_wrap(self):
+        sizes = {128: key_wrap.AES_128, 192: key_wrap.AES_192, 256: key_wrap.AES_256}
+
+        def check(padded):
+            def run(group, test):
+                kek = key_wrap.AesKek(sizes[group["keySize"]], bytes.fromhex(test["key"]))
+                msg, ct = bytes.fromhex(test["msg"]), bytes.fromhex(test["ct"])
+                self.assertEqual((kek.unwrap_padded if padded else kek.unwrap)(ct), msg)
+                self.assertEqual((kek.wrap_padded if padded else kek.wrap)(msg), ct)
+
+            return run
+
+        self.run_vectors("aes_wrap", check(padded=False))
+        self.run_vectors("aes_kwp", check(padded=True))
 
     def test_hmac(self):
         def run(group, test):

@@ -124,7 +124,7 @@ impl<B: AsRef<[u8]>> AsRef<[u8]> for UnparsedPublicKey<B> {
     }
 }
 
-impl<B: AsRef<[u8]>> fmt::Debug for UnparsedPublicKey<B> {
+impl<B: AsRef<[u8]> + fmt::Debug> fmt::Debug for UnparsedPublicKey<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("UnparsedPublicKey")
             .field("algorithm", &self.algorithm)

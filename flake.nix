@@ -95,12 +95,20 @@
             };
           };
 
-          # A shell that builds `target`, an architecture with no rind
-          # assembly, and runs its tests under qemu-user, as `just qemu` does.
-          # `cross` is the nixpkgs cross set whose C toolchain the tests'
-          # aws-lc-rs dev-dependency builds with; rind itself needs none.
+          # A shell that builds `target`, a target with no rind assembly, and
+          # runs its tests under qemu-user, as `just qemu` does. `cross` is the
+          # nixpkgs cross set whose C toolchain the tests' aws-lc-rs
+          # dev-dependency builds with; rind itself needs none. `cpu`, if set,
+          # is the core qemu emulates, so it traps any newer instruction.
+          # `rustflags`, if set, is passed to every build for `target`, its
+          # doctests included.
           qemu-shell =
-            { target, cross }:
+            {
+              target,
+              cross,
+              cpu ? null,
+              rustflags ? null,
+            }:
             let
               cc = cross.stdenv.cc;
               prefix = "${cc}/bin/${cc.targetPrefix}";
@@ -126,6 +134,12 @@
                 # The wrapper links against the store's glibc for the target
                 # by absolute path, so qemu needs no sysroot.
                 "CARGO_TARGET_${var}_RUNNER" = "qemu-${cross.stdenv.hostPlatform.qemuArch}";
+              }
+              // pkgs.lib.optionalAttrs (cpu != null) { QEMU_CPU = cpu; }
+              // pkgs.lib.optionalAttrs (rustflags != null) {
+                "CARGO_TARGET_${var}_RUSTFLAGS" = rustflags;
+                # Cargo hands rustdoc, which links the doctests, only these.
+                RUSTDOCFLAGS = rustflags;
               };
             };
 
@@ -262,10 +276,12 @@
             '';
           };
 
-          # `admin/prove hol-light` runs in it: HOL Light, the OCaml it
-          # compiles the proofs with, as s2n-bignum's `tools/build-proof.sh`
-          # does, and the Rust whose build emits the object code they are of,
-          # with llvm-objdump to read it.
+          # `admin/prove hol-light` and `admin/prove bytes` run in it: HOL
+          # Light, the OCaml it compiles the proofs with, as s2n-bignum's
+          # `tools/build-proof.sh` does, the Rust whose build emits the object
+          # code they are of, with llvm-objdump to read it, the Python that
+          # compares that code with the code upstream's proofs check, and the
+          # cross tools that assemble Vale's and aws-lc's.
           hol-light = pkgs.mkShell {
             packages = [
               (rust-stable.minimal.override {
@@ -280,6 +296,8 @@
               pkgs.ocamlPackages.findlib
               pkgs.ocamlPackages.camlp5
               pkgs.git
+              pkgs.python3
+              debian-cross-tools
             ];
           };
 
@@ -319,10 +337,12 @@
                   nixfmt
                   # admin/ scripts, and pyrind's tests and benchmarks: they
                   # check it against pyca/cryptography, and its type stubs
-                  # with mypy's stubtest.
+                  # with mypy's stubtest. pytest runs pyjwt's and joserfc's
+                  # suites against pyrind-cryptography.
                   (python3.withPackages (ps: [
                     ps.cryptography
                     ps.mypy
+                    ps.pytest
                   ]))
                   # Builds pyrind (rind-python).
                   maturin
@@ -342,6 +362,10 @@
               # What sh/dispatch.sh checks before a scoped `just check` or `just
               # fix`. IN_NIX_SHELL would also pass inside another project's shell.
               env.IN_RIND_DEV_SHELL = "1";
+              # The releases whose test suites `sh/python.sh compat` runs
+              # against pyrind-cryptography, pinned with nixpkgs.
+              env.PYJWT_SRC = pkgs.python3Packages.pyjwt.src;
+              env.JOSERFC_SRC = pkgs.python3Packages.joserfc.src;
             };
 
             # `admin/timing` and the timing workflow run in it: rind-timing's
@@ -466,6 +490,7 @@
                     "x86_64-unknown-linux-gnu"
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
+                    "loongarch64-unknown-linux-gnu"
                   ];
                 })
                 pkgs.python3
@@ -500,6 +525,15 @@
               ];
 
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+            };
+
+            # `just miri` and the miri workflow run in it: Charon's nightly,
+            # which already carries Miri, rather than a second nightly.
+            miri = pkgs.mkShell {
+              packages = [
+                rust-charon
+                pkgs.cargo-nextest
+              ];
             };
 
             # `admin/regenerate` and the regenerate workflow run in it. A
@@ -538,6 +572,51 @@
             riscv64-musl = qemu-shell {
               target = "riscv64gc-unknown-linux-musl";
               cross = pkgs.pkgsCross.riscv64-musl;
+            };
+
+            # `just qemu loongarch64` tests the portable backend on
+            # loongarch64 Linux in it.
+            loongarch64 = qemu-shell {
+              target = "loongarch64-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.loongarch64-linux;
+            };
+
+            # `just qemu armv6` and `just qemu armv6-softfloat` test the
+            # portable backend on the ARM1176 of the Raspberry Pi 1 and Zero.
+            # Rust builds `arm-unknown-linux-gnueabi` for ARMv6 too, and the
+            # ARMv5TE glibc it links against runs there.
+            armv6 = qemu-shell {
+              target = "arm-unknown-linux-gnueabihf";
+              cross = pkgs.pkgsCross.raspberryPi;
+              cpu = "arm1176";
+            };
+            armv6-softfloat = qemu-shell {
+              target = "arm-unknown-linux-gnueabi";
+              cross = pkgs.pkgsCross.armv5tel-multiplatform;
+              cpu = "arm1176";
+            };
+
+            # `just qemu powerpc64le`, `just qemu powerpc64`, and `just qemu
+            # powerpc` test the portable backend on PowerPC Linux in them,
+            # the last two big-endian. Rust's powerpc64 target uses the ELFv1
+            # ABI, unlike nixpkgs' default `ppc64`. Rust links both big-endian
+            # targets with its own lld, which refuses ELFv1 objects and, in a
+            # 32-bit PIE, gives an undefined weak function a nonzero address,
+            # so aws-lc calls its unset allocator hook. gcc obeys the last
+            # `-fuse-ld`, so a trailing one picks GNU ld.
+            powerpc64le = qemu-shell {
+              target = "powerpc64le-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.powernv;
+            };
+            powerpc64 = qemu-shell {
+              target = "powerpc64-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.ppc64-elfv1;
+              rustflags = "-C link-arg=-fuse-ld=bfd";
+            };
+            powerpc = qemu-shell {
+              target = "powerpc-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.ppc32;
+              rustflags = "-C link-arg=-fuse-ld=bfd";
             };
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
