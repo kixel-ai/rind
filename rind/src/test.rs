@@ -62,7 +62,7 @@ pub(crate) fn process_cavp(filename: impl AsRef<Path>, sink: &mut dyn CavpSink) 
 
             sink.on_value(name, Value(value));
         } else {
-            sink.on_value(&line, Value(""));
+            sink.on_value(line, Value(""));
         }
     }
 }
@@ -137,8 +137,8 @@ impl Acvp for serde_json::Value {
 
     fn int(&self, name: &str) -> usize {
         match &self[name] {
-            serde_json::Value::Number(n) => n.as_u64().map(|n| n as usize),
-            serde_json::Value::String(s) => s.parse().ok(),
+            Self::Number(n) => n.as_u64().map(|n| n as usize),
+            Self::String(s) => s.parse().ok(),
             _ => None,
         }
         .unwrap_or_else(|| panic!("{name} is not an integer"))

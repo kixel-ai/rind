@@ -211,8 +211,10 @@ mod tests {
                     "AFT" => {
                         let aes = Aes::new(algorithm(&key), &key).unwrap();
                         let mut text = test.hex("pt");
-                        for block in text.chunks_exact_mut(16) {
-                            aes.encrypt_block(block.try_into().unwrap());
+                        let (blocks, rest) = text.as_chunks_mut::<16>();
+                        assert!(rest.is_empty());
+                        for block in blocks {
+                            aes.encrypt_block(block);
                         }
                         assert_eq!(text, test.hex("ct"));
                     }
