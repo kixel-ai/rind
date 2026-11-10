@@ -2,7 +2,7 @@
 
 ## Goal
 
-HKDF's `From<Okm>` impls for `aead::Key`, `aead::quic::HeaderProtectionKey`, and `hmac::Key` (`rind/src/high/hkdf.rs`) are proven in `proofs/` to fill each key from `kdf.hkdf_fill`'s bytes, composing with the HKDF theorems in `Rind/<Arch>/Hkdf.lean`, on x86_64 and aarch64.
+HKDF's `From<Okm>` impls for `aead::Key`, `aead::quic::HeaderProtectionKey`, `hmac::Key`, and `Prk` (`rind/src/high/hkdf.rs`) are proven in `proofs/` to fill each key from `kdf.hkdf_fill`'s bytes, composing with the HKDF theorems in `Rind/<Arch>/Hkdf.lean`, on x86_64 and aarch64.
 
 ## Plan
 
@@ -10,4 +10,4 @@ Split out of [the hash-glue quest](/quest/m2/verified/hash-glue.md) with the mai
 
 - Each impl is a thin wrapper over `fill`; prove it with the same Aeneas translation and `admin/prove` flow #476 used.
 - The resulting keys feed QUIC's packet protection, so state the theorem in terms the AEAD and header-protection proofs can consume.
-- The three impls are at `rind/src/high/hkdf.rs:190`, `:197`, and `:204`. [moq-dev/rind#531](https://github.com/moq-dev/rind/pull/531), open on 2026-11-09, adds a fourth, `From<Okm<'_, &'static hkdf::Algorithm>> for Prk`, which chains one expand into the next as QUIC's key schedule does. Once it lands, prove that one here too.
+- The impls are at `rind/src/high/hkdf.rs:201`, `:208`, and `:215`, and a fourth at `:221`, `From<Okm<'_, &'static hkdf::Algorithm>> for Prk`, which [moq-dev/rind#531](https://github.com/moq-dev/rind/pull/531) added to chain one expand into the next as QUIC's key schedule does. Prove all four.

@@ -26,5 +26,5 @@ Constraints:
 
 ## Related
 
-- [rind on s390x](/quest/m2/adoption/targets/s390x.md) - runs the whole suite big-endian under qemu, compiled; this finds the undefined behavior qemu executes without complaint
+- [rind builds on every target ring or aws-lc-rs supports](/quest/m2/adoption/targets/README.md) - its s390x job (`just qemu`) runs the whole suite big-endian under qemu, compiled; this finds the undefined behavior qemu executes without complaint
 - [The zeroing test checks every byte of every secret type on every backend](/quest/m2/confidence/zeroing-every-byte.md) - checks that the wipe happened; this checks that it was sound
