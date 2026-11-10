@@ -97,6 +97,27 @@ accumulation in native release builds, on every denied x86_64/aarch64 tier,
 and through `just portable`. `just armv7` and `x86-cpu.yml`'s SDE models use
 the default 10,000 cases, even though they build in release mode.
 
+## Undefined behavior
+
+The nightly `miri` workflow, or `just miri TARGET`, runs the portable
+backend's tests under [Miri] with `wipe` on, forced on x86_64 and again as
+big-endian `s390x-unknown-linux-gnu`. Miri fails a test on undefined behavior,
+such as a key type's wipe leaving an invalid value for the drop that follows,
+a misaligned or out-of-bounds pointer, or a data race in `ReuseCache`, in rind
+or in the libcrux, fiat-crypto, and curve25519-dalek code it calls; a
+byte-order assumption fails the test's own assertions on s390x. Miri runs no
+assembly, so the other backends are out.
+
+Miri runs each test hundreds of times slower than a native build, so it runs a
+subset: the unit tests and `tests/cpu.rs` and `tests/debug.rs`, without the
+tests `sh/miri.sh` lists as slow, which are the vector sets, RSA beyond
+`debug::rsa`'s one decryption, and the tests that run many scalar
+multiplications. Every primitive keeps a test that builds, uses, and drops its
+keys. Miri cannot run aws-lc's C, so its builds leave out aws-lc-rs and the
+differential tests, `tests/crosschecks.rs` and `tests/cctv.rs` among them.
+`tests/wycheproof.rs` and `tests/aws_lc.rs` are vector sets too, and
+`tests/zeroing.rs` reads a dropped value on purpose.
+
 ## Primitives
 
 A cell's "none" says why, or links the quest that fills it. Published vector
@@ -140,3 +161,4 @@ Exports that are not primitives: `Error`, `KeyRejected`, `doc::inline_assembly_s
 
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [CCTV]: https://github.com/C2SP/CCTV
+[Miri]: https://github.com/rust-lang/miri

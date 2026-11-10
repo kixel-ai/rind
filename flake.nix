@@ -513,6 +513,15 @@
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
             };
 
+            # `just miri` and the miri workflow run in it: Charon's nightly,
+            # which already carries Miri, rather than a second nightly.
+            miri = pkgs.mkShell {
+              packages = [
+                rust-charon
+                pkgs.cargo-nextest
+              ];
+            };
+
             # `admin/regenerate` and the regenerate workflow run in it. A
             # separate shell because the aarch64 cross compiler, for its cpp,
             # adds about 500 MB.

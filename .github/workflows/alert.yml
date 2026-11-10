@@ -22,6 +22,7 @@ on:
       - ctgrind
       - ctgrind debug
       - fuzz
+      - miri
       - mutants
       - prove
       - Pullfrog

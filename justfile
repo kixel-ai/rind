@@ -45,6 +45,10 @@ qemu SHELL:
 portable:
     nix develop --command sh/portable.sh
 
+# Test the portable backend under Miri for TARGET, such as s390x-unknown-linux-gnu (Linux only).
+miri TARGET="x86_64-unknown-linux-gnu":
+    nix develop .#miri --command sh/miri.sh {{TARGET}}
+
 # Check dependencies against advisories, licenses, and sources in deny.toml.
 audit:
     cargo deny check
