@@ -251,7 +251,7 @@ opaque low.x86_64.sha1_mux.path : Result low.x86_64.sha1_mux.Path
 opaque low.x86_64.sha256_mux.path : Result low.x86_64.sha256_mux.Path
 
 /-! SHA-1 and SHA-256's block and finishing functions, whose contracts `Rind.X86_64.ShaBlocks`
-states as hypotheses. SHA-1's block function is its whole dispatch, which `ShaBlocks` states
+states as hypotheses. SHA-1's block function is its whole dispatch, which `Sha1Blocks` states
 as one. -/
 
 opaque low.x86_64.sha1_mux.sha1_compress_blocks
