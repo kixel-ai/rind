@@ -33,7 +33,9 @@ GDB = r"""
 import gdb
 gdb.execute("set pagination off")
 gdb.execute("set confirm off")
-gdb.execute("break rind_ct_binsec_start")
+# At each marker's first instruction, not past its prologue, where gdb
+# would break by name, and where `$pc` would not be the marker's address.
+gdb.execute("break *rind_ct_binsec_start")
 gdb.execute("run")
 if not gdb.selected_thread() or not gdb.selected_thread().is_valid():
     raise gdb.GdbError("ct-binsec: the test never entered its region")
@@ -56,8 +58,8 @@ gdb.execute("generate-core-file " + CORE)
 gdb.execute("queue-signal 0")
 arch = gdb.selected_frame().architecture().name()
 args = {"i386:x86-64": ("$rdi", "$rsi"), "aarch64": ("$x0", "$x1"), "arm": ("$r0", "$r1")}[arch]
-public = gdb.Breakpoint("rind_ct_binsec_public", internal=True)
-stop = gdb.Breakpoint("rind_ct_binsec_stop", internal=True)
+public = gdb.Breakpoint("*rind_ct_binsec_public", internal=True)
+stop = gdb.Breakpoint("*rind_ct_binsec_stop", internal=True)
 while True:
     gdb.execute("continue")
     if not gdb.selected_inferior().pid:
@@ -86,6 +88,10 @@ UNDECODED = {
     + ["avx512vl", "avx512vbmi", "avx512vbmi2"],
     "aarch64": ["aes", "pmull", "sha2", "sha3", "dit"],
 }
+
+# glibc's string functions take EVEX encodings on a CPU with AVX-512, so the
+# test runs with glibc's AVX2 ones.
+TUNABLES = {"x86_64": "glibc.cpu.hwcaps=-AVX512F,-AVX512VL,-AVX512BW,-AVX512DQ,-AVX512CD"}
 
 # Instructions BINSEC cannot decode, but whose effect on its state is short
 # enough to give it: s2n-bignum's P-521 code sets the carry with `stc`, and
@@ -213,7 +219,7 @@ def is_planted(name):
     return name.split("::")[-1].startswith("ct_binsec_planted")
 
 
-def dump(exe, name, tmp):
+def dump(exe, name, target, tmp):
     """Runs `name` under gdb, dumping it at its region into `tmp`, and
     returns the core's path and the addresses of the markers."""
     core = os.path.join(tmp, "core")
@@ -222,7 +228,10 @@ def dump(exe, name, tmp):
         f.write("CORE = {!r}\nSYMBOLS = {!r}\n".format(core, SYMBOLS) + GDB)
     cmd = ["gdb", "-batch", "-nx", "-x", script, "--args", exe]
     cmd += ["--ignored", "--exact", name, "--test-threads=1", "-q"]
-    out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8").stdout
+    env = dict(os.environ)
+    if arch(target) in TUNABLES:
+        env["GLIBC_TUNABLES"] = TUNABLES[arch(target)]
+    out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8", env=env).stdout
     symbols = dict((m[1], int(m[2], 16)) for m in re.finditer(r"^SYMBOL (\S+) (\S+)$", out, re.M))
     public = [bytes.fromhex(m) for m in re.findall(r"^PUBLIC ([0-9a-f]*)$", out, re.M)]
     exit = re.search(r"^EXIT (\d+)$", out, re.M)
@@ -267,7 +276,7 @@ def keep_first_thread(path):
 
 def check(exe, name, target, timeout, tmp):
     """Returns BINSEC's verdict on `name`'s region, and its log."""
-    core, symbols, public = dump(exe, name, tmp)
+    core, symbols, public = dump(exe, name, target, tmp)
     word = WORD[arch(target)]
     declassify = ""
     for i, value in enumerate(public):
