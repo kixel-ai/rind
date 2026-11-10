@@ -29,8 +29,8 @@ use crate::low::macros::*;
 #[inline(never)]
 pub(crate) fn bignum_emontredc_8n(z: &mut [u64], m: &[u64], w: u64) -> u64 {
     let ret: u64;
-    debug_assert!(z.len() == m.len() * 2);
-    debug_assert!(z.len().is_multiple_of(8));
+    assert!(z.len() == m.len() * 2);
+    assert!(m.len().is_multiple_of(8));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

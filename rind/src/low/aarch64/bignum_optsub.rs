@@ -73,6 +73,8 @@ macro_rules! i {
 /// Returns carry-out as per usual subtraction, always 0 if p was zero.
 #[inline(never)]
 pub(crate) fn bignum_optsub(z: &mut [u64], x: &[u64], y: &[u64], p: u64) {
+    assert!(z.len() == x.len());
+    assert!(z.len() == y.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

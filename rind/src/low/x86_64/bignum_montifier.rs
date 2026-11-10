@@ -147,8 +147,8 @@ macro_rules! qshort {
 /// representation (2^{64k} * x) mod m just by Montgomery multiplication by z.
 #[inline(never)]
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], t: &mut [u64]) {
-    debug_assert!(z.len() == m.len());
-    debug_assert!(z.len() <= t.len());
+    assert!(z.len() == m.len());
+    assert!(z.len() <= t.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

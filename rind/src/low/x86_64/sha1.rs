@@ -7,7 +7,7 @@ pub(in crate::low) fn sha1_compress_blocks_shaext(
     blocks: &[u8],
     _token: super::cpu::HaveSha1,
 ) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     // SAFETY: `_token` proves the caller checked the `sha`, `ssse3`, and
     // `sse4.1` features
     unsafe { sha1(state, blocks) }
@@ -237,7 +237,7 @@ pub(in crate::low) fn sha1_compress_blocks_avx2(
     blocks: &[u8],
     _token: super::cpu::HaveAvx2,
 ) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     // SAFETY: `_token` proves the `avx2` and `bmi2` cpu features
     unsafe { sha1_avx2(state, blocks) }
 }
@@ -251,7 +251,7 @@ pub(in crate::low) fn sha1_compress_blocks_avx(
     blocks: &[u8],
     _token: super::cpu::HaveAvx,
 ) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     // The routine runs its loop at least once, so zero blocks would read past
     // `blocks`.
     if blocks.is_empty() {
@@ -269,7 +269,7 @@ pub(in crate::low) fn sha1_compress_blocks_ssse3(
     blocks: &[u8],
     _token: super::cpu::HaveSsse3,
 ) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     // As for the AVX routine.
     if blocks.is_empty() {
         return;
@@ -282,7 +282,7 @@ pub(in crate::low) fn sha1_compress_blocks_ssse3(
 /// SHA-1 on CPUs without SSSE3, with aws-lc's integer
 /// `sha1_block_data_order_nohw`, as aws-lc runs there.
 pub(in crate::low) fn sha1_compress_blocks_nohw(state: &mut [u32; 5], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     // As for the AVX routine.
     if blocks.is_empty() {
         return;

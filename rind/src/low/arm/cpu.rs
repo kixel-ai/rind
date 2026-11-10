@@ -133,7 +133,7 @@ pub(crate) fn leave_cpu_state(_old: u32) {}
 /// # Safety:
 /// There must be `len` writable bytes at `ptr`; with no alignment
 /// requirement.
-pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
+pub(in crate::low) unsafe fn zero_bytes(ptr: *mut u8, len: usize) {
     // ARMv7 Linux and Android allow unaligned word stores, so the by-16 loop
     // needs no aligned start.
     //

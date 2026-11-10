@@ -146,9 +146,9 @@ macro_rules! jshort {
 /// guaranteed in particular if x < m, y < m initially (the "intended" case).
 #[inline(never)]
 pub(crate) fn bignum_montmul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
-    debug_assert!(z.len() == x.len());
-    debug_assert!(z.len() == y.len());
-    debug_assert!(z.len() == m.len());
+    assert!(z.len() == x.len());
+    assert!(z.len() == y.len());
+    assert!(z.len() == m.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

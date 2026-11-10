@@ -32,6 +32,7 @@ use crate::low::macros::*;
 /// coefficients for ML-KEM, but that is not relevant to its operation.
 #[inline(never)]
 pub(crate) fn mlkem_reduce(a: &mut [i16; 256]) {
+    assert!((a.as_mut_ptr() as usize).is_multiple_of(32));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

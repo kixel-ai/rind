@@ -18,7 +18,7 @@ use core::arch::x86_64::*;
 // Inline, so the lanes stay in registers rather than return through memory.
 #[inline(always)]
 pub(super) fn padded_tail(tail: &[u8], length: [u8; 8]) -> ([__m128i; 4], Option<[__m128i; 4]>) {
-    debug_assert!(tail.len() < 64);
+    assert!(tail.len() < 64);
     let lane = |at: usize| {
         if at + 16 <= tail.len() {
             // SAFETY: bytes `at..at + 16` of `tail` are readable

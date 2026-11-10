@@ -85,7 +85,7 @@ impl AvxKernel {
         inout: &mut [u8],
         tag: &mut [u8; 16],
     ) -> u64 {
-        debug_assert!(u32::try_from(aad.len()).is_ok() && u32::try_from(inout.len()).is_ok());
+        assert!(u32::try_from(aad.len()).is_ok() && u32::try_from(inout.len()).is_ok());
 
         // The counter block, which `compute_iv` reads a 96-bit nonce from
         // and writes over.

@@ -172,7 +172,7 @@ fn cipher_avx2(key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
 
 /// Computes 8 blocks.  Does _NOT_ handle ragged output.
 #[target_feature(enable = "avx2")]
-fn core_8x(t07: __m256i, z8f: &mut __m256i, xor_out_512: &mut [u8]) {
+fn core_8x(t07: __m256i, z8f: &mut __m256i, xor_out_512: &mut [u8; 512]) {
     let t8f = *z8f;
     *z8f = _mm256_add_epi32(*z8f, _mm256_set_epi32(0, 0, 0, 0, 0, 0, 0, 8));
 
@@ -334,7 +334,7 @@ fn core_8x(t07: __m256i, z8f: &mut __m256i, xor_out_512: &mut [u8]) {
 
     let ptr: *mut __m256i = xor_out_512.as_mut_ptr().cast();
 
-    // SAFETY: `xor_out_512` is 512 bytes due to chunking in caller. Observe that
+    // SAFETY: `xor_out_512` is 512 bytes. Observe that
     // `ptr` is unaligned which is allowed as we only use it here with unaligned
     // stores/loads.
     unsafe {

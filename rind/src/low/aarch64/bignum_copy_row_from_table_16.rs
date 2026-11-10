@@ -167,7 +167,8 @@ macro_rules! vmask {
 /// `idx`-th row.
 #[inline(never)]
 pub(crate) fn bignum_copy_row_from_table_16(z: &mut [u64], table: &[u64], height: u64, index: u64) {
-    debug_assert!(z.len() == 16);
+    assert!(z.len() == 16);
+    assert!(height.checked_mul(16) == Some(table.len() as u64));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

@@ -144,8 +144,8 @@ macro_rules! e8 {
 /// guaranteed in particular if x < m initially (the "intended" case).
 #[inline(never)]
 pub(crate) fn bignum_montsqr(z: &mut [u64], x: &[u64], m: &[u64]) {
-    debug_assert!(z.len() == x.len());
-    debug_assert!(z.len() == m.len());
+    assert!(z.len() == x.len());
+    assert!(z.len() == m.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

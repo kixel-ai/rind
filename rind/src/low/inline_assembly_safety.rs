@@ -24,15 +24,20 @@
 //! - the Rust type of the function.  For example, `bignum_inv_p256`
 //!   takes a pointer to four 64-bit quantities for its input: therefore
 //!   the input argument type of this function is `&[u64; 4]`.
-//! - a `debug_assert`, which checks the invariant (these are typically
-//!   the length of a slice, or a length relation between different
-//!   slices.  See `bignum_emontredc_8n` for a more complex example.)
+//! - an `assert`, which checks the invariant in every build (these are
+//!   typically the length of a slice, or a length relation between
+//!   different slices.  See `bignum_emontredc_8n` for a more complex
+//!   example.)  A `debug_assert` would leave a release build's soundness
+//!   to every caller, so no file under `low` that holds `unsafe` has one,
+//!   which `low::tests::no_debug_assert_beside_unsafe` checks.
 //!
 //! Rust itself ensures the correct alignment of slices
 //! (eg. `&[u64; 4].as_ptr()` is always correctly aligned according
 //! to the required alignment of `u64`.)  Note that `s2n-bignum`'s
 //! verification does not require alignment, but whether unaligned
-//! accesses are unsound is architecturally defined.
+//! accesses are unsound is architecturally defined.  The x86_64 ML-KEM
+//! routines load and store their polynomials with `vmovdqa`, which faults
+//! unless the address is 32-byte aligned, so each asserts that alignment.
 //!
 //! ## Incorrect clobbered registers
 //!

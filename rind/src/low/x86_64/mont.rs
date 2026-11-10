@@ -22,7 +22,7 @@ use super::cpu::HaveBmi2Adx;
 /// `z = x * y / 2^(64k) mod m`, for `x` and `y` below `m`, where `k` is the
 /// length of each and `n0` is `-m^-1 mod 2^64`.
 pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
-    debug_assert!(z.len() == m.len() && x.len() == m.len() && y.len() == m.len());
+    assert!(z.len() == m.len() && x.len() == m.len() && y.len() == m.len());
     match (HaveBmi2Adx::check(), m.len()) {
         (Some(_), 16 | 32) => karatsuba_mul(z, x, y, m, n0),
         (adx, k) if k >= 8 && k.is_multiple_of(4) => mul4x(z, x, y, m, n0, adx),
@@ -34,7 +34,7 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
 /// `z = x^2 / 2^(64k) mod m`, for `x` below `m`, where `k` is the length of
 /// each and `n0` is `-m^-1 mod 2^64`.
 pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
-    debug_assert!(z.len() == m.len() && x.len() == m.len());
+    assert!(z.len() == m.len() && x.len() == m.len());
     match (HaveBmi2Adx::check(), m.len()) {
         (Some(_), 16 | 32) => karatsuba_sqr(z, x, m, n0),
         (adx, k) if k >= 8 && k.is_multiple_of(8) => sqr8x(z, x, m, n0, adx),

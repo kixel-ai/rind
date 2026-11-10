@@ -22,7 +22,7 @@ pub(crate) fn leave_cpu_state(old: u32) {
 /// # Safety:
 /// There must be `len` writable bytes at `ptr`; with no alignment
 /// requirement.
-pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
+pub(in crate::low) unsafe fn zero_bytes(ptr: *mut u8, len: usize) {
     // SAFETY: inline assembly.
     unsafe {
         core::arch::asm!(

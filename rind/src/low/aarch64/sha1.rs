@@ -11,7 +11,7 @@ use core::arch::aarch64::*;
 use crate::low::aarch64::cpu::{self, HaveCryptoExt};
 
 pub(crate) fn sha1_compress_blocks(state: &mut [u32; 5], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     match HaveCryptoExt::check() {
         // SAFETY: the token proves the CPU has the `sha2` cpu feature, which
         // covers the SHA1 instructions, and rind requires `neon`.

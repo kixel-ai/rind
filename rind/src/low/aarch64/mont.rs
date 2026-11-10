@@ -13,7 +13,7 @@
 /// `z = x * y / 2^(64k) mod m`, for `x` and `y` below `m`, where `k` is the
 /// length of each and `n0` is `-m^-1 mod 2^64`.
 pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
-    debug_assert!(z.len() == m.len() && x.len() == m.len() && y.len() == m.len());
+    assert!(z.len() == m.len() && x.len() == m.len() && y.len() == m.len());
     match m.len() {
         k if k >= 2 => mul_mont(z, x, y, m, n0),
         _ => super::bignum_montmul::bignum_montmul(z, x, y, m),
@@ -23,7 +23,7 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
 /// `z = x^2 / 2^(64k) mod m`, for `x` below `m`, where `k` is the length of
 /// each and `n0` is `-m^-1 mod 2^64`.
 pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
-    debug_assert!(z.len() == m.len() && x.len() == m.len());
+    assert!(z.len() == m.len() && x.len() == m.len());
     match m.len() {
         k if k >= 2 => mul_mont(z, x, x, m, n0),
         _ => super::bignum_montsqr::bignum_montsqr(z, x, m),

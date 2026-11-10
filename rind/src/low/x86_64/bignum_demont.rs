@@ -122,8 +122,8 @@ macro_rules! jshort {
 /// This can handle almost-Montgomery inputs, i.e. any k-digit bignum.
 #[inline(never)]
 pub(crate) fn bignum_demont(z: &mut [u64], x: &[u64], m: &[u64]) {
-    debug_assert!(z.len() == x.len());
-    debug_assert!(z.len() == m.len());
+    assert!(z.len() == x.len());
+    assert!(z.len() == m.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
