@@ -248,9 +248,6 @@ exclude_re = [
   'rind/src/mid/p384\.rs:805:\d+: replace JacobianMontPoint::lookup_w5 -> Self with Default::default\(\)$',
   'rind/src/mid/p384\.rs:813:\d+: replace JacobianMontPoint::maybe_negate_y with \(\)$',
   'rind/src/mid/p384\.rs:598:\d+: replace JacobianMontPoint::multiply -> Self with Default::default\(\)$',
-  # DIT, which no test host has: quest/m2/confidence/mutants-dit.md.
-  'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace & with \^ in dit::maybe_enable$',
-  'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace & with \| in dit::maybe_enable$',
   # AVX-512 only: quest/m2/confidence/mutants-avx512.md.
   'rind/src/low/posint\.rs:\d+:\d+: replace != with == in PosInt<N>::mod_exp_pair_rsaz$',
   'rind/src/low/posint\.rs:\d+:\d+: replace > with < in PosInt<N>::mod_exp_pair_rsaz$',

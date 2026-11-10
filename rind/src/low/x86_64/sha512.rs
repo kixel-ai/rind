@@ -208,15 +208,19 @@ unsafe extern "sysv64" fn sha512_block_data_order_nohw(
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::ct;
 
     // Every other test sees only the routine this CPU picks, so each the CPU
-    // can run is checked against the scalar one here: odd and even block
-    // counts, with distinct bytes in every block.
+    // can run is checked against the scalar one here, on blocks
+    // `admin/ctgrind` keeps secret: odd and even block counts, with distinct
+    // bytes in every block. That checks Intel's AVX code, which only Intel
+    // CPUs without AVX2 pick, on any CPU.
     #[test]
     fn paths_match_nohw() {
         let blocks: Vec<u8> = (0..5 * 128u32)
             .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
             .collect();
+        ct::secret_slice(&blocks);
         for n in 1..=5 {
             let blocks = &blocks[..n * 128];
             let mut want = [
@@ -232,23 +236,24 @@ mod tests {
             let start = want;
             // SAFETY: `blocks` holds `n` blocks, at least one.
             unsafe { compress_nohw(&mut want, blocks) };
+            let want = ct::into_public(want);
             if let Some(token) = HaveAvx::check() {
                 let mut got = start;
                 // SAFETY: as above.
                 unsafe { compress_avx(token, &mut got, blocks) };
-                assert_eq!(got, want, "avx, {n} blocks");
+                assert_eq!(ct::into_public(got), want, "avx, {n} blocks");
             }
             if let Some(token) = HaveAvx2::check() {
                 let mut got = start;
                 // SAFETY: as above.
                 unsafe { compress_avx2(token, &mut got, blocks) };
-                assert_eq!(got, want, "avx2, {n} blocks");
+                assert_eq!(ct::into_public(got), want, "avx2, {n} blocks");
             }
             if let Some(token) = HaveSha512::check() {
                 let mut got = start;
                 // SAFETY: as above.
                 unsafe { compress_sha512ext(token, &mut got, blocks) };
-                assert_eq!(got, want, "sha512ext, {n} blocks");
+                assert_eq!(ct::into_public(got), want, "sha512ext, {n} blocks");
             }
         }
     }
