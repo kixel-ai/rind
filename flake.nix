@@ -540,6 +540,23 @@
               cross = pkgs.pkgsCross.riscv64-musl;
             };
 
+            # `just qemu powerpc64le`, `just qemu powerpc64`, and `just qemu
+            # powerpc` test the portable backend on PowerPC Linux in them,
+            # the last two big-endian. Rust's powerpc64 target uses the ELFv1
+            # ABI, unlike nixpkgs' default `ppc64`.
+            powerpc64le = qemu-shell {
+              target = "powerpc64le-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.powernv;
+            };
+            powerpc64 = qemu-shell {
+              target = "powerpc64-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.ppc64-elfv1;
+            };
+            powerpc = qemu-shell {
+              target = "powerpc-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.ppc32;
+            };
+
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
             # plugin it adds to the `armv7` shell.
             ct-qemu = pkgs.mkShell (
