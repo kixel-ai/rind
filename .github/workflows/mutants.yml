@@ -42,11 +42,12 @@ jobs:
             shell: default
             args: --workspace
           # Only rind's own code differs on armv7; the adapters' tests run
-          # on the other two.
+          # on the other two. `wipe` runs rind/tests/zeroing.rs, which
+          # checks each `Drop` that wipes a key.
           - name: armv7
             os: ubuntu-latest
             shell: armv7
-            args: --target armv7-unknown-linux-gnueabihf -p rind
+            args: --target armv7-unknown-linux-gnueabihf -p rind --features wipe
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 300
