@@ -325,7 +325,7 @@ class Gaps(unittest.TestCase):
                 self.load(*entries)
 
     def test_gate_fails_only_on_an_undecided_gap_two_runs_show(self):
-        def run(directory, sha256, chacha):
+        def run(directory, sha256, chacha, avx512):
             os.makedirs(os.path.join(directory, "bench-x"))
             results = [
                 {"id": "sha256/rind/64B", "ns": sha256},
@@ -334,7 +334,8 @@ class Gaps(unittest.TestCase):
                 {"id": "chacha20poly1305/aws-lc-rs/32B", "ns": 80.0},
                 {"id": "x25519-ecdh/rind", "ns": 1.0},
             ]
-            saved = {"target": "x86_64-unknown-linux-gnu", "portable": False, "tier": "", "cpu": "c", "results": results}
+            saved = {"target": "x86_64-unknown-linux-gnu", "portable": False, "tier": "", "cpu": "c", "avx512": avx512}
+            saved["results"] = results
             with open(os.path.join(directory, "bench-x", "bench-results.json"), "w") as f:
                 json.dump(saved, f)
 
@@ -342,16 +343,18 @@ class Gaps(unittest.TestCase):
             gaps = os.path.join(d, "gaps.toml")
             with open(gaps, "w") as f:
                 f.write('[[gap]]\noperations = ["sha256/*"]\non = ["x86_64"]\nreason = "r"\n')
-            run(os.path.join(d, "now"), 100.0, 100.0)
-            run(os.path.join(d, "then"), 100.0, 80.0)
+            run(os.path.join(d, "now"), 100.0, 100.0, True)
+            run(os.path.join(d, "then"), 100.0, 80.0, False)
             saved, br.GAPS = br.GAPS, gaps
             try:
                 # The ChaCha20-Poly1305 gap is new tonight, and the SHA-256
-                # one decided, so this passes; a single run fails.
+                # one decided on whichever CPU the runner drew, so this
+                # passes; a single run fails.
                 args = type("Args", (), {"dir": os.path.join(d, "now"), "previous": os.path.join(d, "then")})
                 with io.StringIO() as out, contextlib.redirect_stdout(out):
                     br.gate(args)
-                    self.assertIn("x25519-ecdh/* on x86_64", out.getvalue())
+                    self.assertIn("x25519-ecdh/* on x86_64 AVX-512", out.getvalue())
+                    self.assertNotIn("sha256/*/64B on", out.getvalue())
                 args.previous = None
                 with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
                     br.gate(args)

@@ -958,10 +958,17 @@ def tier_rows(tier):
     return out
 
 
-def tier_column(tier):
-    column = dict(TIERS).get((tier["target"], tier["portable"], tier["tier"]))
-    if column is None:
+def tier_name(tier):
+    """The tier's TIERS name, which benchmarks/gaps.toml decides on whatever
+    CPU the runner drew."""
+    name = dict(TIERS).get((tier["target"], tier["portable"], tier["tier"]))
+    if name is None:
         fail(f"nightly results name an unknown tier: {tier['target']} {tier['tier']}")
+    return name
+
+
+def tier_column(tier):
+    column = tier_name(tier)
     # The native x86_64 runner may or may not have AVX-512; name the tier it drew.
     if column == "x86_64" and "avx512" in tier:
         column += " AVX-512" if tier["avx512"] else " VAES AVX2"
@@ -1019,7 +1026,7 @@ def gaps_of(hosts, tiers):
                 if libs["rind"] / others[best] > SLOWER:
                     out[(row, name)] = (libs["rind"] / others[best], best)
     for t in tiers["tiers"] if tiers else []:
-        column = tier_column(t)
+        column = tier_name(t)
         for key, (ratio, _, best, _) in tier_rows(t).items():
             if ratio > SLOWER and tier_row(key):
                 out[(key, column)] = (ratio, best)
@@ -1038,7 +1045,7 @@ def load_gaps(hosts, tiers, path=GAPS):
     match a gap everywhere it names."""
     entries = gap_entries(path)
     found = gaps_of(hosts, tiers)
-    measured = set(hosts) | {tier_column(t) for t in tiers["tiers"]} if tiers else set(hosts)
+    measured = set(hosts) | {tier_name(t) for t in tiers["tiers"]} if tiers else set(hosts)
     out = []
     for i, e in enumerate(entries, 1):
         where = f"{os.path.relpath(path, ROOT)}: entry {i}"
