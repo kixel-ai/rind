@@ -95,8 +95,19 @@ if [ "${1:-}" = --run ]; then
     shift
     if [ -n "$avx512" ]; then
         # The tests' CPU check fails unless the model takes each AVX-512 path.
-        exec env RIND_TEST_X86_AVX512_AES_GCM=1 RIND_TEST_X86_AVX512_ML_KEM=1 \
+        env RIND_TEST_X86_AVX512_AES_GCM=1 RIND_TEST_X86_AVX512_ML_KEM=1 \
             RIND_TEST_X86_AVX512_RSA=1 sde -spr -- "$@"
+        # Each AVX-512 check must also refuse a CPU without any one feature it
+        # names, which no SDE model lacks alone. Only this test can tell.
+        case " $* " in
+            *::checks_need_their_features" "*)
+                for feature in avx512f avx512dq avx512ifma avx512bw avx512vl \
+                    avx512vbmi avx512vbmi2 vaes vpclmulqdq bmi2; do
+                    env "RIND_CPU_DISABLE_$feature=1" sde -spr -- "$@"
+                done
+                ;;
+        esac
+        exit 0
     fi
     "$@"
     for arg in "$@"; do
