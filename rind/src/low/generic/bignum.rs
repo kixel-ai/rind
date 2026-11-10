@@ -545,12 +545,7 @@ mod tests {
     use super::*;
     use crate::low;
     use crate::low::ct::{into_public, into_secret, public_slice, secret_slice};
-
-    /// `min` to `max` words, biased towards zero and full words.
-    fn words(min: usize, max: usize) -> impl Strategy<Value = Vec<u64>> {
-        let word = prop_oneof![6 => any::<u64>(), 1 => Just(0), 1 => Just(u64::MAX)];
-        prop::collection::vec(word, min..=max)
-    }
+    use crate::test::bignum::{below, words};
 
     /// An odd modulus above one, with its top word random, one, zero, or
     /// full, and two values below it.
@@ -569,28 +564,7 @@ mod tests {
                 }
                 m
             });
-            m.prop_flat_map(|m| (Just(m.clone()), below(m.clone()), below(m)))
-        })
-    }
-
-    /// A value below `m`, as wide.
-    fn below(m: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
-        let k = m.len();
-        prop_oneof![
-            6 => prop::collection::vec(any::<u64>(), k),
-            1 => Just(vec![0; k]),
-            1 => Just(m.clone()),
-        ]
-        .prop_map(move |mut x| {
-            // Trim to below m at its top nonzero word, then make it smaller
-            // if it is m itself.
-            let top = (0..k).rev().find(|i| m[*i] != 0).unwrap();
-            x[top + 1..].fill(0);
-            x[top] %= m[top] + u64::from(m[top] != u64::MAX);
-            if x == m {
-                x[0] -= 1;
-            }
-            x
+            m.prop_flat_map(|m| (Just(m.clone()), below(64, m.clone()), below(64, m)))
         })
     }
 

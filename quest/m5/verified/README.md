@@ -12,7 +12,7 @@ Under `AGENTS.md`'s speed rule (maintainer, 2026-11-09: ✅ the fastest source, 
 
 ## Required
 
-- [armv7 is proven](/quest/m5/verified/armv7/README.md) - an AArch32 model, then armv7's assembly, curves, and Rust
+- [armv7 is proven](/quest/m5/verified-armv7/README.md) - an AArch32 model, then armv7's assembly, curves, and Rust
 - [x86_64 SHA-2 without AVX2 is proven](/quest/m5/verified/sha2-x86-no-avx2.md) - aws-lc's AVX, SSSE3, and scalar routines
 - [aarch64 without the crypto extension is proven](/quest/m5/verified/aarch64-no-crypto.md) - vpaes, NEON GHASH, and scalar SHA-256 and SHA-1
 - [x86_64 AES without AES-NI is proven](/quest/m5/verified/x86-no-aesni.md) - vpaes and SSSE3 GHASH, and the bitsliced Rust ports
