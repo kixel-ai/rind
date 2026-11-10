@@ -100,7 +100,8 @@
           # nixpkgs cross set whose C toolchain the tests' aws-lc-rs
           # dev-dependency builds with; rind itself needs none. `cpu`, if set,
           # is the core qemu emulates, so it traps any newer instruction.
-          # `rustflags`, if set, is passed to every build for `target`.
+          # `rustflags`, if set, is passed to every build for `target`, its
+          # doctests included.
           qemu-shell =
             {
               target,
@@ -135,7 +136,11 @@
                 "CARGO_TARGET_${var}_RUNNER" = "qemu-${cross.stdenv.hostPlatform.qemuArch}";
               }
               // pkgs.lib.optionalAttrs (cpu != null) { QEMU_CPU = cpu; }
-              // pkgs.lib.optionalAttrs (rustflags != null) { "CARGO_TARGET_${var}_RUSTFLAGS" = rustflags; };
+              // pkgs.lib.optionalAttrs (rustflags != null) {
+                "CARGO_TARGET_${var}_RUSTFLAGS" = rustflags;
+                # Cargo hands rustdoc, which links the doctests, only these.
+                RUSTDOCFLAGS = rustflags;
+              };
             };
 
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
