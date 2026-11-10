@@ -60,10 +60,11 @@ Targets, refused rather than falling back:
   [moq-dev/rind#84](https://github.com/moq-dev/rind/pull/84)).
 - armv7 runs every operation the `rind-*` adapters and MoQ use, behind the
   same API, so no adapter or MoQ feature carries a per-target exclusion.
-  Operations with no consumer, SHA-3 and SHAKE, are not built there
-  (maintainer, 2026-10-27).
-- Every other target fails to compile. wasm32 does not build rind; nothing in
-  MoQ needs native crypto there.
+  SHA-3 is built there too, its Keccak-f on OpenSSL's assembly
+  (`PLATFORMS.md:55`).
+- Every other architecture, and big-endian aarch64 and arm, compiles the
+  portable backend (`rind/build.rs:26`), still one backend per target.
+  wasm32 does not build rind; nothing in MoQ needs native crypto there.
 
 Each quest lands the tests for what it adds: Wycheproof vectors where they
 exist, differential tests against aws-lc-rs as a dev-dependency, and a

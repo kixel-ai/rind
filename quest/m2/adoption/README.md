@@ -73,6 +73,7 @@ don't ask again (✅ is the chosen option):
 - [rind for Dart and Flutter](/quest/m2/adoption/rind-dart.md) - the `rind` package on pub.dev
 - [rind for Dart installs without a Rust toolchain](/quest/m2/adoption/rind-dart-prebuilt.md) - prebuilt, hash-pinned libraries fetched by the build hook
 - [rind for Dart is tested on Android and iOS](/quest/m2/adoption/rind-dart-mobile-tests.md) - the Dart tests on an emulator and simulator
+- [rind-dart and pyrind wipe what their docs say](/quest/m2/adoption/bindings-wipe.md) - the bindings' wiping claims match their shipped binaries, checked in CI
 - [rind as a Dart `cryptography` backend](/quest/m2/adoption/rind-dart-cryptography.md) - the `cryptography` package's interface on rind
 - [rind-rustls supports rustls 0.24](/quest/m2/adoption/rind-rustls-0.24.md) - a release on 0.24 soon after it ships
 - [rustls 0.24 is released](/quest/m2/adoption/rustls-0.24-release.md) - waiting on the release

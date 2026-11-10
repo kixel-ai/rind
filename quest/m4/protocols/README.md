@@ -19,6 +19,7 @@ The scope ([moq-dev/rind#449](https://github.com/moq-dev/rind/pull/449)) ordered
 ## Required
 
 - [HPKE and ECH](/quest/m4/protocols/hpke.md) - RFC 9180 base mode and export, and rustls's ECH through rind-rustls
+- [HPKE's post-quantum KEMs](/quest/m4/protocols/hpke-pq.md) - ML-KEM and X-Wing as HPKE KEMs
 - [RSA blind signatures](/quest/m4/protocols/blind-rsa.md) - RFC 9474, for Privacy Pass's publicly verifiable tokens
 - [Hash to the NIST curves](/quest/m4/protocols/hash-to-curve.md) - RFC 9380's SSWU hash-to-curve and `hash_to_field`, crate-internal
 - [edwards25519 group and ristretto255](/quest/m4/protocols/ristretto255.md) - constant-time variable-base scalar multiplication and RFC 9496, crate-internal

@@ -7,3 +7,7 @@
 ## Plan
 
 Planned with the maintainer on 2026-11-03 from [moq-dev/rind#328](https://github.com/moq-dev/rind/pull/328): the x86_64 SHA-256 proof route and the aarch64 revisit both start from #450's spec. Don't post upstream about it unless the maintainer asks.
+
+## Waiting
+
+- awslabs/s2n-bignum: merges [#450](https://github.com/awslabs/s2n-bignum/pull/450). On 2026-11-09 it was an open draft, last updated 2026-09-08. Check with `gh pr view 450 -R awslabs/s2n-bignum --json state,mergedAt`.

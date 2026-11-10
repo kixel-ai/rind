@@ -15,10 +15,11 @@ The audit checked every module of `rind` against AGENTS.md's rules and found not
   - Moving GCM's 32- and 64-bit tags under a legacy name. WebCrypto requires them, and `TagLength`'s docs already warn about them.
   - Collapsing `constant_time::verify`'s `WrongLength` and `NotEqual` into one error. Matching only `NotEqual` is a contrived misuse, and every caller uses `?`.
 - Milestone: m2 ✅ (rejected: m1, m3). None of this blocks MoQ.
+- Releases, decided with the maintainer on 2026-11-09: one rind 0.4 that carries all three breaking changes, and a MoQ-side PR ready before the m0 adapter patch releases publish ✅ (rejected: the 0.4 quest alone, accepting that MoQ's build breaks until fixed; leaving both to release-plz). The third is the cached agreement keys, whose `public_key()` returns a borrow in [moq-dev/rind#529](https://github.com/moq-dev/rind/pull/529) though this epic planned them as additive. [rind 0.4 ships once](/quest/m2/api/release-0.4.md) holds the release.
 - Dropped as not worth a quest:
   - Fixed buffers sized for RSA (`PublicKey` 3584 B, `encoding::Pkcs8` 4.8 KB, `Signature` 1032 B). They sit on no hot path, and fixed capacity is ARCHITECTURE.md's design.
   - `RandomizedNonceKey`'s `getrandom` call per seal. Its only consumer seals rustls tickets.
   - The per-packet copy in rind-str0m's SRTP. aws-lc-rs's ciphers are in place too, and MoQ doesn't use SRTP.
   - Taking `agree(&PublicKey)` instead of bytes. TLS parses each peer key once per handshake anyway.
   - A streaming `hmac::Context::verify`. It has no consumer; the hygiene quest documents signing and then calling `constant_time::verify`.
-- Owned elsewhere: storing and loading ML-KEM decapsulation keys is in [ML-KEM-512 and ML-KEM-1024](/quest/m4/pq/ml-kem.md).
+- Owned elsewhere: storing and loading ML-KEM decapsulation keys is in [ML-KEM-512 and ML-KEM-1024](/quest/m3/parity/ml-kem.md).
