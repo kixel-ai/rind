@@ -300,13 +300,13 @@ fn run(conv: Convention, f: Word, words: &Words, name: &str) -> Word {
         // trampoline reads and writes; `f` is a routine taking `words`, and
         // `words.words` holds at least as many as the trampoline reads.
         unsafe {
-            STATE.0.get().write(State::CANARIES);
+            STATE.0.get().write(State::canaries());
             let ret = trampoline(conv)(f, words.words.as_ptr(), words.len);
             (ret, STATE.0.get().read())
         }
     };
 
-    let mut broken = State::CANARIES.changed(&after, conv);
+    let mut broken = State::canaries().changed(&after, conv);
     if after.sp_after != after.sp_before {
         broken.push(format!(
             "the stack pointer: {:#x} before, {:#x} after",
@@ -398,6 +398,10 @@ mod arch {
     const DIRECTION_FLAG: u64 = 1 << 10;
 
     impl State {
+        pub(super) fn canaries() -> Self {
+            Self::CANARIES
+        }
+
         pub(super) const CANARIES: Self = {
             let mut s = Self {
                 gpr: [0; 8],
@@ -643,6 +647,10 @@ mod arch {
     const D: [&str; 8] = ["d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15"];
 
     impl State {
+        pub(super) fn canaries() -> Self {
+            Self::CANARIES
+        }
+
         pub(super) const CANARIES: Self = {
             let mut s = Self {
                 x: [0; 11],
@@ -801,14 +809,19 @@ mod arch {
 #[cfg(target_arch = "arm")]
 mod arch {
     use super::{Convention, STATE, Word, canary, compare, offset_of};
+    use crate::low::arm::cpu::HaveNeon;
 
     #[repr(C)]
     #[derive(Clone, Copy)]
     pub(super) struct State {
         /// r4-r11.
         r: [u32; 8],
-        /// d8-d15.
+        /// d8-d15, checked only when `vfp` is set.
         d: [u64; 8],
+        /// Whether the CPU has NEON. Only NEON routines write d8-d15, and an
+        /// ARMv7 core may have no VFP registers at all, so the trampoline
+        /// touches them only when this is set.
+        vfp: u32,
         frame: u32,
         pub(super) sp_before: u32,
         pub(super) sp_after: u32,
@@ -825,6 +838,7 @@ mod arch {
             let mut s = Self {
                 r: [0; 8],
                 d: [0; 8],
+                vfp: 0,
                 frame: 0,
                 sp_before: 0,
                 sp_after: 0,
@@ -838,11 +852,20 @@ mod arch {
             s
         };
 
+        pub(super) fn canaries() -> Self {
+            Self {
+                vfp: u32::from(HaveNeon::check().is_some()),
+                ..Self::CANARIES
+            }
+        }
+
         pub(super) fn changed(&self, after: &Self, _: Convention) -> Vec<String> {
             let mut broken = Vec::new();
             let widen = |r: [u32; 8]| r.map(u64::from);
             compare(&mut broken, &R, &widen(self.r), &widen(after.r));
-            compare(&mut broken, &D, &self.d, &after.d);
+            if self.vfp != 0 {
+                compare(&mut broken, &D, &self.d, &after.d);
+            }
             broken
         }
     }
@@ -871,16 +894,24 @@ mod arch {
     // Saves what the ABI preserves, records the stack pointer, copies the
     // arguments past r0-r3 onto the stack, loads the arguments and canaries,
     // calls, records the registers and stack pointer, restores the stack
-    // pointer from `STATE`, and returns what the routine did.
+    // pointer from `STATE`, and returns what the routine did. It touches
+    // d8-d15 only when `STATE.vfp` is set, and `.fpu vfpv3` lets it name them
+    // on a soft-float target, leaving `.fpu` as `curve25519` and `sha_armv4`
+    // do.
     #[unsafe(naked)]
     unsafe extern "C" fn c(f: Word, args: *const Word, len: Word) -> Word {
         core::arch::naked_asm!(
+            ".fpu vfpv3",
             "push {{r4-r11, lr}}",
-            "vpush {{d8-d15}}",
-            "sub sp, sp, #4",
             "ldr r12, 5f",
             "4:",
             "add r12, pc",
+            "ldr r5, [r12, #{vfp}]",
+            "cmp r5, #0",
+            "beq 1f",
+            "vpush {{d8-d15}}",
+            "1:",
+            "sub sp, sp, #4",
             "str sp, [r12, #{frame}]",
             "mov lr, r0",
             "mov r4, r1",
@@ -904,8 +935,12 @@ mod arch {
             "ldr r1, [r4, #4]",
             "ldr r2, [r4, #8]",
             "ldr r3, [r4, #12]",
+            "ldr r5, [r12, #{vfp}]",
+            "cmp r5, #0",
+            "beq 8f",
             "add r4, r12, #{d}",
             "vldm r4, {{d8-d15}}",
+            "8:",
             "ldm r12, {{r4-r11}}",
             "mov r12, lr",
             "blx r12",
@@ -913,19 +948,27 @@ mod arch {
             "7:",
             "add r12, pc",
             "stm r12, {{r4-r11}}",
+            "str sp, [r12, #{sp_after}]",
+            "ldr r2, [r12, #{vfp}]",
+            "cmp r2, #0",
+            "beq 9f",
             "add r3, r12, #{d}",
             "vstm r3, {{d8-d15}}",
-            "str sp, [r12, #{sp_after}]",
+            "9:",
             "ldr r3, [r12, #{frame}]",
             "mov sp, r3",
             "add sp, sp, #4",
+            "cmp r2, #0",
+            "beq 10f",
             "vpop {{d8-d15}}",
+            "10:",
             "pop {{r4-r11, pc}}",
             ".p2align 2",
             concat!("5: .word {state} - (4b + ", pc_ahead!(), ")"),
             concat!("6: .word {state} - (7b + ", pc_ahead!(), ")"),
             state = sym STATE,
             d = const offset_of!(State, d),
+            vfp = const offset_of!(State, vfp),
             frame = const offset_of!(State, frame),
             sp_before = const offset_of!(State, sp_before),
             sp_after = const offset_of!(State, sp_after),
@@ -1355,6 +1398,7 @@ mod tests {
     #[cfg(target_arch = "arm")]
     mod arm {
         use super::broken;
+        use crate::low::arm::cpu::HaveNeon;
 
         macro_rules! planted {
             ($name:ident, $($line:literal),*) => {
@@ -1368,23 +1412,34 @@ mod tests {
         planted!(clean, "bx lr");
         planted!(r4, "mov r4, #0", "bx lr");
         planted!(r11, "add r11, r11, #4", "bx lr");
-        planted!(d8, "vmov.f64 d8, #1.0", "bx lr");
+        planted!(d8, ".fpu vfpv3", "vmov.f64 d8, #1.0", "bx lr");
         planted!(sp, "add sp, sp, #8", "bx lr");
-        planted!(scratch, "mov r12, #0", "vmov.f64 d0, #1.0", "bx lr");
+        planted!(
+            scratch,
+            ".fpu vfpv3",
+            "mov r12, #0",
+            "vmov.f64 d0, #1.0",
+            "bx lr"
+        );
 
         #[test]
         fn planted_clobbers_fail() {
             // SAFETY: each planted routine takes nothing and returns.
             unsafe {
                 call!(unsafe extern "C" clean);
-                call!(unsafe extern "C" scratch);
                 for (expect, message) in [
                     ("r4", broken(|| call!(unsafe extern "C" r4))),
                     ("r11", broken(|| call!(unsafe extern "C" r11))),
-                    ("d8", broken(|| call!(unsafe extern "C" d8))),
                     ("stack pointer", broken(|| call!(unsafe extern "C" sp))),
                 ] {
                     assert!(message.contains(expect), "{expect}: {message}");
+                }
+                // The trampoline checks d8-d15 only where NEON, which every
+                // routine writing them needs, is present.
+                if HaveNeon::check().is_some() {
+                    call!(unsafe extern "C" scratch);
+                    let message = broken(|| call!(unsafe extern "C" d8));
+                    assert!(message.contains("d8"), "d8: {message}");
                 }
             }
         }
