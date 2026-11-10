@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Usage: admin/ct-binsec [--target TARGET] [filter]
+# Usage: admin/ct-binsec [--target TARGET] [--timeout SECONDS] [filter]
 #
 # The symbolic constant-time check (see `rind/src/low/ct_binsec.rs`). For
 # each rind test named `ct_binsec...` whose name contains `filter`, this
@@ -15,16 +15,19 @@
 # report them insecure, so a harness that checks nothing fails.
 #
 # The dump fixes everything else, such as the CPU features rind detected,
-# so a run checks the paths the host's CPU takes; `RIND_CPU_DISABLE_*` under
-# `--cfg rind_cpu_disable` picks others, as for `admin/ctgrind`.
+# so a run checks the paths the host's CPU takes, short of the features in
+# `UNDECODED`, whose instructions BINSEC cannot read and which this denies
+# through `--cfg rind_cpu_disable`, as `admin/ctgrind`'s jobs deny theirs.
+# `RIND_CPU_DISABLE_*` in the environment denies more.
 #
 # Run it in `nix develop .#binsec`.
 
 import argparse, json, os, re, struct, subprocess, sys, tempfile
 
 # What gdb runs in the test: stop at the region, make the thread's stack
-# readable, dump the process, then let the test finish, and refuse a
-# second region, which BINSEC would never see.
+# readable, dump the process, record each value the region declassifies,
+# then let the test finish, and refuse a second region, which BINSEC would
+# never see.
 GDB = r"""
 import gdb
 gdb.execute("set pagination off")
@@ -43,17 +46,45 @@ for line in open("/proc/{}/maps".format(pid)):
     lo, hi = (int(x, 16) for x in line.split()[0].split("-"))
     if lo <= sp < hi:
         gdb.parse_and_eval("(int)madvise({}, {}, 103)".format(lo, hi - lo))
-for sym in ["rind_ct_binsec_stop", "rind_ct_binsec_secret", "rind_ct_binsec_public", "getrandom"]:
-    print("SYMBOL {} {:#x}".format(sym, int(gdb.parse_and_eval("(unsigned long)&" + sym))))
+for sym in SYMBOLS:
+    where = gdb.execute("info address " + sym, to_string=True)
+    print("SYMBOL {} {}".format(sym, where.split(" is at ")[1].split()[0]))
 # The core lists the signalled thread first: this one.
 gdb.execute("queue-signal SIGUSR1")
 gdb.execute("generate-core-file " + CORE)
 gdb.execute("queue-signal 0")
+arch = gdb.selected_frame().architecture().name()
+args = {"i386:x86-64": ("$rdi", "$rsi"), "aarch64": ("$x0", "$x1"), "arm": ("$r0", "$r1")}[arch]
+public = gdb.Breakpoint("rind_ct_binsec_public", internal=True)
+stop = gdb.Breakpoint("rind_ct_binsec_stop", internal=True)
+while True:
+    gdb.execute("continue")
+    if not gdb.selected_inferior().pid:
+        raise gdb.GdbError("ct-binsec: the test left its region without stopping")
+    pc = int(gdb.parse_and_eval("(unsigned long)$pc"))
+    if pc == int(gdb.parse_and_eval("(unsigned long)&rind_ct_binsec_stop")):
+        break
+    value, size = (int(gdb.parse_and_eval("(unsigned long)" + a)) for a in args)
+    print("PUBLIC " + bytes(gdb.selected_inferior().read_memory(value, size)).hex())
+public.delete()
+stop.delete()
 gdb.execute("continue")
 if gdb.selected_inferior().pid:
     raise gdb.GdbError("ct-binsec: the test entered a second region")
 print("EXIT {}".format(int(gdb.parse_and_eval("$_exitcode"))))
 """
+
+# The features each target's code uses instructions of that BINSEC 0.11
+# cannot decode, so their paths stay with `admin/ctgrind`, `admin/ct-sde`,
+# and `admin/ct-qemu`: on x86_64, AES-NI, VAES, the SHA512 instructions, and
+# every EVEX encoding; on aarch64, the crypto extension's AES, PMULL, and
+# SHA instructions, SHA3's, and the `msr` that sets DIT. Denying AES leaves
+# vpaes, whose aarch64 `tbl` BINSEC cannot decode either.
+UNDECODED = {
+    "x86_64": ["aes", "vaes", "sha512", "avx512f", "avx512dq", "avx512ifma", "avx512bw"]
+    + ["avx512vl", "avx512vbmi", "avx512vbmi2"],
+    "aarch64": ["aes", "pmull", "sha2", "sha3", "dit"],
+}
 
 # NT_PRPSINFO, NT_AUXV, and NT_FILE, which describe the process.
 PROCESS_NOTES = {3, 6, 0x46494C45}
@@ -62,11 +93,22 @@ NT_PRSTATUS = 1
 # Each target's word size, for the script's loop counters.
 WORD = {"x86_64": 64, "aarch64": 64, "arm": 32}
 
-# BINSEC replaces each marker with fresh symbolic bytes, and glibc's
-# getrandom, which rind's random bytes come from, with secret ones, since
-# the kernel's call is opaque to it.
+# A path that panics ends where the panic begins, as one may where a value
+# declassified afresh lets it.
+SYMBOLS = ["rind_ct_binsec_stop", "rind_ct_binsec_secret", "rind_ct_binsec_public"]
+SYMBOLS += ["getrandom", "__rustc::rust_begin_unwind"]
+
+# BINSEC replaces the secret marker with fresh secret bytes, and glibc's
+# getrandom, which rind's random bytes come from, with secret ones too,
+# since the kernel's call is opaque to it. The public marker writes back the
+# value the real run declassified there, in order, as valgrind's run keeps
+# it: a fresh public value would have BINSEC search every public value as
+# well, such as each ML-KEM matrix seed, which it cannot do in time. A path
+# that declassifies more than the real run did gets fresh public values.
 SCRIPT = """\
-starting from core
+starting from core with
+  declassified<{word}> := 0
+end
 
 replace {secret:#x} (value, len) by
   for i<{word}> in 0 to len - 1 do
@@ -76,9 +118,7 @@ replace {secret:#x} (value, len) by
 end
 
 replace {public:#x} (value, len) by
-  for i<{word}> in 0 to len - 1 do
-    @[value + i] := public
-  end
+{declassify}  declassified := declassified + 1
   return
 end
 
@@ -90,6 +130,7 @@ replace {getrandom:#x} (buf, len, flags) by
 end
 
 halt at {stop:#x}
+halt at {panic:#x}
 explore all
 """
 
@@ -104,6 +145,9 @@ def host():
 
 
 def build(target):
+    os.environ["RUSTFLAGS"] = (os.environ.get("RUSTFLAGS", "") + " --cfg rind_cpu_disable").strip()
+    for feature in UNDECODED.get(arch(target), []):
+        os.environ["RIND_CPU_DISABLE_" + feature] = "1"
     out = subprocess.run(
         ["cargo", "test", "-p", "rind", "--lib", "--release", "--no-run"]
         + ["--target", target, "--message-format=json-render-diagnostics"],
@@ -142,16 +186,17 @@ def dump(exe, name, tmp):
     core = os.path.join(tmp, "core")
     script = os.path.join(tmp, "dump.py")
     with open(script, "w") as f:
-        f.write("CORE = {!r}\n".format(core) + GDB)
+        f.write("CORE = {!r}\nSYMBOLS = {!r}\n".format(core, SYMBOLS) + GDB)
     cmd = ["gdb", "-batch", "-nx", "-x", script, "--args", exe]
     cmd += ["--ignored", "--exact", name, "--test-threads=1", "-q"]
     out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8").stdout
     symbols = dict((m[1], int(m[2], 16)) for m in re.finditer(r"^SYMBOL (\S+) (\S+)$", out, re.M))
+    public = [bytes.fromhex(m) for m in re.findall(r"^PUBLIC ([0-9a-f]*)$", out, re.M)]
     exit = re.search(r"^EXIT (\d+)$", out, re.M)
-    if len(set(symbols.values())) != 4 or not exit or exit[1] != "0" or not os.path.exists(core):
+    if len(set(symbols.values())) != len(SYMBOLS) or not exit or exit[1] != "0" or not os.path.exists(core):
         sys.exit("ct-binsec: {} failed under gdb:\n{}".format(name, out))
     keep_first_thread(core)
-    return core, symbols
+    return core, symbols, public
 
 
 def keep_first_thread(path):
@@ -187,35 +232,52 @@ def keep_first_thread(path):
         f.write(data)
 
 
-def check(exe, name, target, tmp):
+def check(exe, name, target, timeout, tmp):
     """Returns BINSEC's verdict on `name`'s region, and its log."""
-    core, symbols = dump(exe, name, tmp)
+    core, symbols, public = dump(exe, name, tmp)
+    word = WORD[arch(target)]
+    declassify = ""
+    for i, value in enumerate(public):
+        if value:
+            # Little-endian, as the target stores it.
+            declassify += "  if declassified = {} then\n".format(i)
+            declassify += "    @[value, {}] := 0x{}\n  end\n".format(len(value), value[::-1].hex())
+    declassify += "  if declassified >= {} then\n".format(len(public))
+    declassify += "    for i<{}> in 0 to len - 1 do\n".format(word)
+    declassify += "      @[value + i] := public\n    end\n  end\n"
     script = os.path.join(tmp, "check.ini")
     with open(script, "w") as f:
         f.write(
             SCRIPT.format(
-                word=WORD[arch(target)],
+                word=word,
+                declassify=declassify,
                 secret=symbols["rind_ct_binsec_secret"],
                 public=symbols["rind_ct_binsec_public"],
                 getrandom=symbols["getrandom"],
                 stop=symbols["rind_ct_binsec_stop"],
+                panic=symbols["__rustc::rust_begin_unwind"],
             )
         )
     cmd = ["binsec", "-sse", "-sse-script", script, "-sse-depth", "1000000000"]
+    if timeout:
+        cmd += ["-sse-timeout", str(timeout)]
     cmd += ["-checkct", "-checkct-features", "control-flow,memory-access,dividend,divisor"]
     cmd += [core]
-    log = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8").stdout
+    run = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8")
+    log = run.stdout
     status = re.search(r"\[checkct:result\] Program status is : (\w+)", log)
-    complete = "Exploration is incomplete" not in log and "Cut path" not in log
-    verdict = status[1] if status else "failed"
-    if verdict == "secure" and not complete:
+    explored = re.search(r"\[checkct:info\] [1-9]\d* visited path", log)
+    verdict = status[1] if status and run.returncode == 0 and explored else "failed"
+    if verdict == "secure" and ("Exploration is incomplete" in log or "Cut path" in log):
         verdict = "unknown"
     return verdict, log, core
 
 
-def leaks(exe, core, log):
-    """Each instruction BINSEC reports, with the function gdb places it in."""
+def findings(exe, core, log):
+    """Each instruction BINSEC reports leaking, or where it cut a path short,
+    with the function gdb places it in."""
     found = re.findall(r"Instruction (0x[0-9a-f]+) has (.*? leak)", log)
+    found += [(addr, why) for why, addr in re.findall(r"Cut path \d+ (.*?) @ (0x[0-9a-f]+)", log)]
     if not found:
         return []
     cmd = ["gdb", "-batch", "-nx", exe, core]
@@ -224,13 +286,15 @@ def leaks(exe, core, log):
     out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding="utf-8").stdout
     where = [line for line in out.splitlines() if " in section " in line or line.startswith("No symbol")]
     where += ["?"] * (len(found) - len(where))
-    return ["{} {}: {}".format(addr, kind, w) for (addr, kind), w in zip(found, where)]
+    return ["{} {}: {}".format(addr, what, w) for (addr, what), w in zip(found, where)]
 
 
 def main():
     sys.stdout.reconfigure(line_buffering=True)
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", default=None)
+    # A search cut short at this many seconds is incomplete, so it fails.
+    parser.add_argument("--timeout", type=int, default=None)
     parser.add_argument("filter", nargs="?", default="")
     args = parser.parse_args()
     target = args.target or host()
@@ -245,7 +309,7 @@ def main():
     failed = False
     for name in names:
         with tempfile.TemporaryDirectory() as tmp:
-            verdict, log, core = check(exe, name, target, tmp)
+            verdict, log, core = check(exe, name, target, args.timeout, tmp)
             stats = re.findall(r"\[checkct:info\] (.*)", log)
             if is_planted(name):
                 ok = verdict == "insecure"
@@ -254,10 +318,9 @@ def main():
             print("{} {}: {}; {}".format("ok  " if ok else "FAIL", name, verdict, "; ".join(stats)))
             if not ok:
                 failed = True
-                if verdict == "insecure":
-                    for leak in leaks(exe, core, log):
-                        print("    " + leak)
-                else:
+                for finding in findings(exe, core, log):
+                    print("    " + finding)
+                if verdict != "insecure":
                     for line in log.splitlines()[-40:]:
                         print("    " + line)
     sys.exit(failed)
