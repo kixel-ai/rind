@@ -8885,3 +8885,18 @@ pub(super) static curve25519_x25519base_constant: [u64; 6072] = [
     0xd09ef36267daba45,
     0x7761455e7b1c669c,
 ];
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        curve25519_x25519base,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
+}

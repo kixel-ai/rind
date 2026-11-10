@@ -45,7 +45,7 @@ impl GhashTable {
         let mut r = Self([[0; 2]; 16]);
         // SAFETY: `r` is an `Htable` and `h` two words. The token proves the
         // CPU has PMULL.
-        unsafe { gcm_init_v8(&mut r, &h) };
+        unsafe { asm_call!(unsafe extern "C" gcm_init_v8(&mut r, &h)) };
         r
     }
 
@@ -57,7 +57,9 @@ impl GhashTable {
         }
         // SAFETY: `input` is `size_of_val(input)` readable bytes, a multiple
         // of 16. Only a `HaveCryptoExt` token builds `self`.
-        unsafe { gcm_ghash_v8(xi, self, input.as_ptr().cast(), size_of_val(input)) }
+        unsafe {
+            asm_call!(unsafe extern "C" gcm_ghash_v8(xi, self, input.as_ptr().cast(), size_of_val(input)))
+        }
     }
 }
 

@@ -296,3 +296,10 @@ pub(crate) fn bignum_montredc(z: &mut [u64], x: &[u64], m: &[u64], p: u64) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_montredc, &mut [0; 4], &[1; 8], &[u64::MAX; 4], 1);
+}

@@ -37,7 +37,9 @@ fn mul_mont(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
     assert!(k >= 2 && z.len() == k && x.len() == k && y.len() == k);
     // SAFETY: `z`, `x`, `y`, and `m` are each `k` words, as `bn_mul_mont`
     // reads and writes for such a `k`, and it reads `n0` as one word.
-    unsafe { bn_mul_mont(z.as_mut_ptr(), x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, k) };
+    unsafe {
+        asm_call!(unsafe extern "C" bn_mul_mont(z.as_mut_ptr(), x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, k))
+    };
 }
 
 /// Returns 1, which tells aws-lc's C it ran.

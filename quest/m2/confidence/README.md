@@ -32,7 +32,6 @@ The 2026-11-09 audit found no exploitable bug and no panic reachable from public
 - [Surviving mutants that need crafted inputs](/quest/m2/confidence/mutants-edge-cases.md) - the AVX2 Ed25519 field arithmetic, points at infinity, and other edges random inputs miss
 - [Mutation testing on AVX-512](/quest/m2/confidence/mutants-avx512.md) - the AVX-512 paths no campaign host runs, under Intel SDE
 - [Safe wrappers around assembly enforce their preconditions in release builds](/quest/m2/confidence/release-preconditions.md) - length, alignment, and table-size checks on safe `low` wrappers that hold in release, with RSA benches within noise
-- [An ABI harness checks every assembly routine](/quest/m2/confidence/asm-abi.md) - callee-saved registers, stack pointer, and flags after each routine
 - [The portable backend is fuzzed and mutation tested](/quest/m2/confidence/portable-fuzz-mutants.md) - nightly fuzzing and a mutation campaign for the backend every new target ships on
 - [Each adapter's API is diffed against its upstream's](/quest/m2/confidence/adapter-api-diff.md) - the exact-API rule machine-checked per feature set
 - [A PR that would redden a nightly learns before it merges](/quest/m2/confidence/nightlies-on-prs.md) - nightlies run on PRs that touch their inputs

@@ -119,3 +119,10 @@ pub(crate) fn bignum_optsub(z: &mut [u64], x: &[u64], y: &[u64], p: u64) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_optsub, &mut [0; 4], &[1; 4], &[2; 4], 1);
+}

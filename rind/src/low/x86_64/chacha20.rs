@@ -50,7 +50,9 @@ impl ChaCha20 {
                 // `ssse3` cpu feature. Its 32-bit counter wraps unspecified
                 // past 2^32 blocks, which callers rule out with
                 // `mid::chacha20::check_counter`.
-                unsafe { chacha20_ctr32_ssse3_4x(ptr, ptr, len, &self.key, &self.counter_nonce) }
+                unsafe {
+                    asm_call!(unsafe extern "sysv64" chacha20_ctr32_ssse3_4x(ptr, ptr, len, &self.key, &self.counter_nonce))
+                }
             }
             // As in aws-lc, which runs integer code here. The AVX2 kernels
             // compute one block as a single serial chain, which Zen 5's

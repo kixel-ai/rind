@@ -264,3 +264,15 @@ pub(crate) fn mlkem_rej_uniform_vartime(r: &mut [i16; 256], input: &[u8], table:
     };
     ret
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        mlkem_rej_uniform_vartime,
+        &mut crate::low::abi::Aligned([0; 256]).0,
+        &[0x55; 168],
+        &super::mlkem::MLKEM_REJ_UNIFORM_TABLE
+    );
+}

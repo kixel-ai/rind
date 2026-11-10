@@ -249,7 +249,9 @@ pub(in crate::low) fn sha256_compress_blocks_avx2(
     }
     // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and `_token`
     // proves AVX2, BMI1, and BMI2.
-    unsafe { sha256_block_data_order_avx2(state, blocks.as_ptr(), blocks.len() / 64) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha256_block_data_order_avx2(state, blocks.as_ptr(), blocks.len() / 64))
+    }
 }
 
 /// SHA-256 without the SHA extensions or AVX2 on Intel, with aws-lc's
@@ -268,7 +270,9 @@ pub(in crate::low) fn sha256_compress_blocks_avx(
     }
     // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and `_token`
     // proves AVX.
-    unsafe { sha256_block_data_order_avx(state, blocks.as_ptr(), blocks.len() / 64) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha256_block_data_order_avx(state, blocks.as_ptr(), blocks.len() / 64))
+    }
 }
 
 /// SHA-256 without the SHA extensions or AVX2 on other vendors' CPUs, with
@@ -285,7 +289,9 @@ pub(in crate::low) fn sha256_compress_blocks_ssse3(
     }
     // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and `_token`
     // proves SSSE3.
-    unsafe { sha256_block_data_order_ssse3(state, blocks.as_ptr(), blocks.len() / 64) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha256_block_data_order_ssse3(state, blocks.as_ptr(), blocks.len() / 64))
+    }
 }
 
 /// SHA-256 on CPUs without SSSE3, with aws-lc's integer
@@ -297,7 +303,9 @@ pub(in crate::low) fn sha256_compress_blocks_nohw(state: &mut [u32; 8], blocks: 
         return;
     }
     // SAFETY: `blocks` is `blocks.len() / 64` readable blocks.
-    unsafe { sha256_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 64) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha256_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 64))
+    }
 }
 
 /// The round constants, each group of four twice for the vector additions,

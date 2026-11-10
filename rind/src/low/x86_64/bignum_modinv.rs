@@ -882,3 +882,16 @@ pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], t: &mut [u64]) 
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_modinv,
+        &mut [0; 4],
+        &[3; 4],
+        &[u64::MAX; 4],
+        &mut [0; 12]
+    );
+}
