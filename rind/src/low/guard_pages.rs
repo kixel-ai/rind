@@ -236,6 +236,49 @@ fn digests() {
     }
 }
 
+// The public API keeps a tail back for padding and buffering, so it never
+// puts a compression function's input end against the guard; call them on
+// whole blocks directly. The finishing functions take the tail, which the
+// one-shot sweep above already guards.
+#[test]
+fn compress_blocks() {
+    let mut guarded = Guarded::new();
+    for blocks in 0..=MAX_LEN / 64 {
+        let src = message(blocks * 64);
+        let mut expect = [0u32; 4];
+        super::md5_compress_blocks(&mut expect, &src);
+        guarded.each(&src, |buf| {
+            let mut state = [0u32; 4];
+            super::md5_compress_blocks(&mut state, buf);
+            assert_eq!(state, expect);
+        });
+        let mut expect = [0u32; 5];
+        super::sha1_compress_blocks(&mut expect, &src);
+        guarded.each(&src, |buf| {
+            let mut state = [0u32; 5];
+            super::sha1_compress_blocks(&mut state, buf);
+            assert_eq!(state, expect);
+        });
+        let mut expect = [0u32; 8];
+        super::sha256_compress_blocks(&mut expect, &src);
+        guarded.each(&src, |buf| {
+            let mut state = [0u32; 8];
+            super::sha256_compress_blocks(&mut state, buf);
+            assert_eq!(state, expect);
+        });
+    }
+    for blocks in 0..=MAX_LEN / 128 {
+        let src = message(blocks * 128);
+        let mut expect = [0u64; 8];
+        super::sha512_compress_blocks(&mut expect, &src);
+        guarded.each(&src, |buf| {
+            let mut state = [0u64; 8];
+            super::sha512_compress_blocks(&mut state, buf);
+            assert_eq!(state, expect);
+        });
+    }
+}
+
 #[test]
 fn compare_and_zero() {
     let mut a = Guarded::new();

@@ -25,8 +25,8 @@ A primitive is checked four ways:
 
 Separately, `low::guard_pages` checks buffer bounds. It runs each kernel
 that takes a caller's slice (AES-GCM, ChaCha20-Poly1305, AES-CTR, AES-CBC,
-ChaCha20, the digests and HMAC, the constant-time compare, and
-`zero_bytes`) with each slice against a `PROT_NONE` page, before and after,
+ChaCha20, the digests and their block functions, HMAC, the constant-time
+compare, and `zero_bytes`) with each slice against a `PROT_NONE` page, before and after,
 at every length up to 1100 bytes and, for the AEADs, 2000 to 2600 around
 AES-GCM's 512-bit kernel, so an access outside it faults. Valgrind
 cannot decode the fastest tiers and AddressSanitizer does not instrument
