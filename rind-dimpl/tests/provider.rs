@@ -366,11 +366,21 @@ fn ecdsa_key_encodings_load_as_aws_lc() {
             let pem = pem::encode_config(&pem::Pem::new(label, der.clone()), lf);
             let mut bad_base64 = pem.clone().into_bytes();
             bad_base64[label.len() + 20] = b'!';
+            let trailing = format!("{pem}garbage\n");
+            let leading = format!("text\n{pem}");
+            let unterminated = format!("text {pem}");
             for (key, loads, what) in [
                 (&der[..], true, "DER"),
                 (pem.as_bytes(), true, "PEM"),
                 (&pem.as_bytes()[..pem.len() - 30], false, "truncated PEM"),
                 (&bad_base64[..], false, "invalid base64"),
+                (trailing.as_bytes(), false, "trailing garbage"),
+                (leading.as_bytes(), true, "leading text"),
+                (
+                    unterminated.as_bytes(),
+                    false,
+                    "preamble without a line feed",
+                ),
                 (&der[..der.len() - 1], false, "truncated DER"),
             ] {
                 let rind = rind().key_provider.load_private_key(key).is_ok();

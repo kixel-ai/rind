@@ -175,27 +175,56 @@ impl SignatureVerifier for Verifier {
     }
 }
 
-/// Rewrites the first PEM section's label to `PRIVATE KEY`, which rustls-pki-types
+/// Rewrites a PEM key's label to `PRIVATE KEY`, which rustls-pki-types
 /// decodes as a secret; it skips sections whose label it does not know.
 ///
-/// Both searches stop at the boundaries, so neither reads the base64 body.
+/// Like dimpl's pem-rfc7468, it takes one section ending the input, up to
+/// trailing whitespace, after an optional preamble that holds no NUL and ends
+/// in a line feed. The searches stop at the boundaries, and input whose outer
+/// DER header (public structure) spans it is refused first, so none reads key
+/// bytes.
 fn relabel(pem: &[u8]) -> Option<Vec<u8>> {
     const BEGIN: &[u8] = b"-----BEGIN ";
     const DASHES: &[u8] = b"-----";
-    let start = pem.windows(BEGIN.len()).position(|w| w == BEGIN)? + BEGIN.len();
-    let label_len = pem[start..]
-        .windows(DASHES.len())
-        .position(|w| w == DASHES)?;
-    let label = &pem[start..start + label_len];
-    let body = start + label_len + DASHES.len();
+    if spans_der(pem) {
+        return None;
+    }
+    let start = match pem.starts_with(BEGIN) {
+        true => 0,
+        false => {
+            pem.windows(BEGIN.len() + 1)
+                .position(|w| w == b"\n-----BEGIN ")?
+                + 1
+        }
+    };
+    let preamble = &pem[..start];
+    if preamble.contains(&0) || str::from_utf8(preamble).is_err() {
+        return None;
+    }
+    let rest = &pem[start + BEGIN.len()..];
+    let label_len = rest.windows(DASHES.len()).position(|w| w == DASHES)?;
+    let (label, rest) = rest.split_at(label_len);
     let end = [b"-----END ", label, DASHES].concat();
-    let body_len = pem[body..].windows(end.len()).rposition(|w| w == end)?;
+    let body = rest[DASHES.len()..]
+        .trim_ascii_end()
+        .strip_suffix(end.as_slice())?;
     Some(
         [
             b"-----BEGIN PRIVATE KEY-----",
-            &pem[body..body + body_len],
+            body,
             b"-----END PRIVATE KEY-----",
         ]
         .concat(),
     )
+}
+
+/// Whether `der` is one DER SEQUENCE header and the contents it claims.
+fn spans_der(der: &[u8]) -> bool {
+    let (len, header) = match der {
+        [0x30, len @ 0..=0x7f, ..] => (usize::from(*len), 2),
+        [0x30, 0x81, len, ..] => (usize::from(*len), 3),
+        [0x30, 0x82, hi, lo, ..] => (usize::from(u16::from_be_bytes([*hi, *lo])), 4),
+        _ => return false,
+    };
+    header + len == der.len()
 }

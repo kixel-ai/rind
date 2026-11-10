@@ -218,3 +218,17 @@ fn pem_signing() {
         assert!(!signature.is_empty(), "{label}");
     }
 }
+
+/// Refuses a DER key of an unsupported algorithm without reading its secret,
+/// including when looking for PEM.
+#[test]
+fn unsupported_key() {
+    let ed25519 = rcgen::KeyPair::generate_for(&rcgen::PKCS_ED25519)
+        .unwrap()
+        .serialize_der();
+    // RFC 8410's PKCS#8 ends with the 32-byte seed.
+    secret(&ed25519[ed25519.len() - 32..]);
+    let refused = rind().key_provider.load_private_key(&ed25519).is_err();
+    public(&refused);
+    assert!(refused);
+}
