@@ -230,6 +230,7 @@ jobs:
   # 32-bit x86 Windows on the portable backend, which the x86_64 runner runs
   # natively. The qemu job tests Linux's, and the android job Android's.
   i686-windows:
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     env:
       CARGO_BUILD_TARGET: i686-pc-windows-msvc

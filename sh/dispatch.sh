@@ -50,7 +50,7 @@ fi
 # pattern. An empty pattern is a repository-wide lint that runs on every diff.
 declare -A scope=(
     # sh/select.sh narrows this to the changed crates and their dependents.
-    [rs]='^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt\.toml$)'
+    [rs]='^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)'
     # Advisories, licenses, and sources move with any manifest or the policy.
     # rind's low, mid, and high layers reference only the layers below them.
     [structure]='^(rind/(src/|Cargo\.toml$)|admin/structure$)'
