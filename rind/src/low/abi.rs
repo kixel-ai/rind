@@ -964,9 +964,9 @@ mod tests {
     // Eight words, the most an aarch64 routine takes, with the last slice
     // straddling x86_64's argument registers and the stack.
     #[inline(never)]
-    fn rust_words(z: &mut [u64; 2], p: u64, x: &[u64], y: &[u64], m: &[u64]) -> bool {
-        z[0] = p + x.iter().chain(y).chain(m).sum::<u64>();
-        z[1] = (x.len() * 100 + y.len() * 10 + m.len()) as u64;
+    fn rust_words(z: &mut [usize; 2], p: usize, x: &[u32], y: &[u32], m: &[u32]) -> bool {
+        z[0] = p + x.iter().chain(y).chain(m).sum::<u32>() as usize;
+        z[1] = x.len() * 100 + y.len() * 10 + m.len();
         x.len() == 1
     }
 
