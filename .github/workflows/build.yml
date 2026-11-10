@@ -221,13 +221,14 @@ jobs:
 
   # Targets with no rind assembly, on the portable backend, under qemu-user
   # where the runner cannot run them natively. Each entry names the flake dev
-  # shell that holds its target's toolchain. s390x is big-endian, the armv6
-  # shells run on qemu's ARM1176, and the runner runs i686 natively.
+  # shell that holds its target's toolchain. s390x, powerpc64, and powerpc are
+  # big-endian, the armv6 shells run on qemu's ARM1176, and the runner runs
+  # i686 natively.
   qemu:
     strategy:
       fail-fast: false
       matrix:
-        shell: [s390x, riscv64, riscv64-musl, loongarch64, armv6, armv6-softfloat, i686]
+        shell: [s390x, riscv64, riscv64-musl, loongarch64, armv6, armv6-softfloat, powerpc64le, powerpc64, powerpc, i686]
 
     runs-on: ubuntu-latest
     steps:

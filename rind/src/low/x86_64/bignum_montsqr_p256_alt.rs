@@ -69,6 +69,7 @@ macro_rules! mulpade {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p256/bignum_montsqr_p256_alt.S.
 /// Montgomery square, z := (x^2 / 2^256) mod p_256
 ///
 /// Input x[4]; output z[4]

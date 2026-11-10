@@ -1060,6 +1060,7 @@ macro_rules! divstep59 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p384/bignum_inv_p384.S.
 /// Modular inverse modulo p_384 = 2^384 - 2^128 - 2^96 + 2^32 - 1
 ///
 /// Input x[6]; output z[6]

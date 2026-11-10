@@ -143,6 +143,7 @@ macro_rules! montredc {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p384/bignum_tomont_p384_alt.S.
 /// Convert to Montgomery form z := (2^384 * x) mod p_384
 ///
 /// Input x[6]; output z[6]
