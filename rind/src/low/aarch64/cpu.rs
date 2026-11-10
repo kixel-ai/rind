@@ -337,6 +337,14 @@ mod tests {
         assert_eq!(features() & DIT != 0, expected);
         // A denied DIT is left alone, as under `admin/ctgrind`, whose
         // valgrind runs no DIT instruction.
+        if has_dit && !expected {
+            // SAFETY: this core has DIT, though `test_toggle` denies it.
+            unsafe { dit::write(0) };
+            drop(crate::low::Entry::new_secret());
+            let _held = crate::cpu::Dit::hold();
+            // SAFETY: as above.
+            assert_eq!(unsafe { dit::read() }, 0);
+        }
         if expected {
             // SAFETY: this core has DIT. Cleared, so only an `Entry` can set
             // it.
