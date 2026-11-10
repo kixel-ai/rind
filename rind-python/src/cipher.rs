@@ -117,11 +117,7 @@ impl Kek {
     }
 
     /// Wraps `key`, of any length from 1 byte, with AES-KWP.
-    fn wrap_padded<'py>(
-        &self,
-        py: Python<'py>,
-        key: Bytes<'_>,
-    ) -> PyResult<Bound<'py, PyBytes>> {
+    fn wrap_padded<'py>(&self, py: Python<'py>, key: Bytes<'_>) -> PyResult<Bound<'py, PyBytes>> {
         bytes_with(py, &[], key.len().next_multiple_of(8) + 8, |out| {
             self.0.wrap_padded(&key, out).map_err(error)
         })
@@ -138,7 +134,11 @@ impl Kek {
             return Err(error(rind::Error::DecryptFailed));
         }
         let mut key = vec![0; wrapped.len() - 8];
-        let len = self.0.unwrap_padded(&wrapped, &mut key).map_err(error)?.len();
+        let len = self
+            .0
+            .unwrap_padded(&wrapped, &mut key)
+            .map_err(error)?
+            .len();
         Ok(bytes(py, &key[..len]))
     }
 }
