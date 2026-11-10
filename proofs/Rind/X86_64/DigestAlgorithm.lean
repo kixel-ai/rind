@@ -124,6 +124,10 @@ impl Digest {
         &mut self.value[..self.algorithm.output_len()]
     }
 
+    pub(super) fn id(&self) -> Id {
+        self.algorithm.id
+    }
+
     /// Constant-time equality, `other` may not be truncated.
     pub(crate) fn ct_equal(&self, other: &[u8]) -> bool {
         ct::into_public(ct_equal(self.as_ref(), other))

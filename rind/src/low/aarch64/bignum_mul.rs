@@ -99,6 +99,7 @@ macro_rules! yy {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_mul.S.
 /// Multiply z := x * y
 ///
 /// Inputs x[m], y[n]; output z[k]

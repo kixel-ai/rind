@@ -12,12 +12,14 @@ Findings (2026-11-03):
 - HACL*'s Vale `sha256_update` was tried in [moq-dev/rind#328](https://github.com/moq-dev/rind/pull/328) and lost: on Arrow Lake, against today's routine on the same machine, HMAC-SHA256 with a reused key was 29% slower at 32 bytes and 40% at 64, SHA-256 15% slower at 64 bytes, HKDF's extract and expand 11%, and both 3-9% at 1200-1350 bytes. 8 KiB and up tied.
 - [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450) (draft, 2026-09-08) adds a HOL Light proof, constant time included, of an x86_64 SHA-NI routine, `sha256_compress_hw`, with a FIPS 180-4 spec, `sha256_spec.ml`, and models `sha256rnds2`, `sha256msg1`, `sha256msg2`, and `palignr`.
 
-Route, once #450 merges:
+Route (maintainer, 2026-11-09: ✅ start on #450 at a pinned commit; rejected: keep waiting for it to merge, since it has been an untouched draft since 2026-09-08, and the 2026-11-07 decision that put rind's HOL Light proofs in `proofs/hol-light/` already lets rind build on unmerged upstream by pin). The ✓ notes the pin until upstream merges:
 1. Measure its `sha256_compress_hw` against today's routine on the GitHub runners and on Arrow Lake, rows up to 64 bytes and HMAC included. Switch only if it ties at every size.
 2. Otherwise, freeze LLVM's output for today's routine as assembly and prove it on #450's spec in HOL Light, adding to s2n-bignum's x86_64 model any instruction that output uses and #450 does not add.
 
-aarch64 is accepted for now and revisited once #450 merges, since its FIPS 180-4 spec is what a proof of aws-lc's `sha256_block_data_order_hw` would reuse (see the epic).
+aarch64's routine is proven in [the calibration quest](/quest/m2/verified/sha256-aarch64-hw.md), on the same FIPS 180-4 spec.
+
+Consider vendoring s2n-bignum rather than pinning it (maintainer, 2026-11-09). Today it is a submodule at one upstream commit (`thirdparty/s2n-bignum`, 90 MB checked out). A draft PR's commit can vanish on a force-push, and one submodule commit cannot hold #415, #420, and #450 at once without a fork, which the 2026-11-07 decision rejected. Recommended: keep the submodule for merged upstream, and vendor only the unmerged spec and proof files into `proofs/hol-light/`, each with its source PR and commit recorded; vendor the whole tree only if that cannot build. The calibration quest is the first to build on a pin, so it settles this and this quest follows it.
 
 ## Required
 
-- [s2n-bignum's SHA-256 spec has merged](/quest/m3/s2n-bignum-sha2-spec.md) - the spec and proven routine this route starts from
+- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs, and how unmerged upstream comes in

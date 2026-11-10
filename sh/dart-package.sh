@@ -3,7 +3,9 @@
 # package` normalizes it, depending on rind from crates.io at the version its
 # manifest requires, pinned by the lockfile cargo writes, and as a workspace of
 # its own so no enclosing Cargo workspace claims it. Its build hook builds
-# with --locked against that lockfile.
+# with --locked against that lockfile. The pubspec loses the user-define that
+# makes this repository build from source; sh/dart-prebuilt.sh then pins the
+# released libraries the hook downloads.
 #
 # Usage: sh/dart-package.sh OUT_DIR
 set -euo pipefail
@@ -19,3 +21,4 @@ mkdir -p "$out"
 tar -xzf "$root/target/package/rind-dart-$version.crate" -C "$out" --strip-components 1
 rm "$out/Cargo.toml.orig" "$out/.cargo_vcs_info.json"
 printf '\n[workspace]\n' >>"$out/Cargo.toml"
+yq -i 'del(.hooks)' "$out/pubspec.yaml"

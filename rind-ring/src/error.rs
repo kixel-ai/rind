@@ -3,7 +3,7 @@
 use core::fmt;
 
 /// An error with no details, as ring returns from most calls.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Unspecified;
 
 impl fmt::Display for Unspecified {

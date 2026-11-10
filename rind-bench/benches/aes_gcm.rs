@@ -66,16 +66,12 @@ fn key_setup(
     });
 }
 
-/// Each size under a 32 B AAD, then QUIC's ACK-sized packets under its 13 B
-/// short header.
+/// The AEAD rows, then QUIC's ACK-sized packets under its 13 B short header.
 fn rows() -> impl Iterator<Item = (usize, &'static str, &'static [u8])> {
-    criterion::SIZES
-        .map(|(size, size_name)| (size, size_name, &[0u8; 32][..]))
-        .into_iter()
-        .chain([
-            (32, "quic-32B", &[0u8; 13][..]),
-            (64, "quic-64B", &[0u8; 13][..]),
-        ])
+    criterion::aead_rows().chain([
+        (32, "quic-32B", &[0u8; 13][..]),
+        (64, "quic-64B", &[0u8; 13][..]),
+    ])
 }
 
 fn aes128_gcm(c: &mut Criterion) {

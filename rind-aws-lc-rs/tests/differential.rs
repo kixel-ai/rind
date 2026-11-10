@@ -271,7 +271,26 @@ proptest! {
                 .ok()
                 .map(|plaintext| plaintext.to_vec())
             };
-            (open(&theirs_sealed), open(&corrupted))
+            // The tag apart, at its full length or one byte short.
+            let open_separate = |sealed: &[u8], tag_len: usize| {
+                let (ciphertext, tag) = sealed.split_at(sealed.len() - 16);
+                let mut in_out = ciphertext.to_vec();
+                key.open_in_place_separate_tag(
+                    c::aead::Nonce::assume_unique_for_key(nonce),
+                    c::aead::Aad::from(&aad),
+                    &tag[..tag_len],
+                    &mut in_out,
+                )
+                .ok()
+                .map(|plaintext| plaintext.to_vec())
+            };
+            (
+                open(&theirs_sealed),
+                open(&corrupted),
+                open_separate(&theirs_sealed, 16),
+                open_separate(&corrupted, 16),
+                open_separate(&theirs_sealed, 15),
+            )
         });
     }
 

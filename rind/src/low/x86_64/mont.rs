@@ -248,117 +248,126 @@ unsafe extern "sysv64" fn bn_mul_mont_nohw(
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::super::adx_mux::tests::Rng;
+    use proptest::prelude::*;
+
     use super::super::{bignum_montmul, bignum_mul, bignum_negmodinv};
     use super::*;
+    use crate::test::bignum::{below, div_r, mod_mul_vectors, modulus, radix_words};
 
-    // Every other test runs only the routines this CPU picks, so here aws-lc's
-    // are checked against s2n-bignum's generic `bignum_montmul` at each width
-    // they take, with and without `mulx` where the CPU has BMI2 and ADX, and
-    // so are the Karatsuba routines there.
-    #[test]
-    fn matches_generic() {
-        let adx = HaveBmi2Adx::check();
-        let mut rng = Rng(0x2545_f491_4f6c_dd1d);
-        for k in [2, 3, 5, 8, 9, 12, 16, 17, 18, 24, 32, 33, 36, 48, 64] {
-            for case in 0..16 {
-                let mut m = rng.words::<64>(64 * k as u32);
-                let m = &mut m[..k];
-                // The widest modulus, the narrowest with its top word set,
-                // the product of odd `r` and `s`, and random ones.
-                let (mut r, mut s) = ([0; 64], [0; 64]);
-                match case {
-                    0 => m.fill(u64::MAX),
-                    1 => {
-                        m.fill(0);
-                        m[k - 1] = 1;
-                    }
-                    4 => {
-                        let h = k / 2;
-                        r = rng.words::<64>(64 * h as u32);
-                        s = rng.words::<64>(64 * (k - h) as u32);
-                        r[0] |= 1;
-                        r[h - 1] |= 1 << 63;
-                        s[0] |= 1;
-                        s[k - h - 1] |= 1 << 63;
-                        bignum_mul::bignum_mul(m, &r[..h], &s[..k - h]);
-                    }
-                    _ => m[k - 1] |= 1 << 63,
-                }
-                m[0] |= 1;
-                let mut n0 = [0];
-                bignum_negmodinv::bignum_negmodinv(&mut n0, &m[..1]);
-                let n0 = n0[0];
-
-                // Operands below `m`, with its extremes: zero, `m - 1` for
-                // both, and `r` and `s`, whose product reduces to `m` before
-                // the final subtraction.
-                let below = |rng: &mut Rng| {
-                    let mut x = rng.words::<64>(64 * k as u32);
-                    x[k - 1] %= m[k - 1];
-                    x
-                };
-                let (mut x, mut y) = (below(&mut rng), below(&mut rng));
-                match case {
-                    2 => x[..k].fill(0),
-                    3 => {
-                        x[..k].copy_from_slice(m);
-                        x[0] -= 1;
-                        y = x;
-                    }
-                    4 => (x, y) = (r, s),
-                    _ => {}
-                }
-                let (x, y) = (&x[..k], &y[..k]);
-
-                let mut want = [0; 64];
-                let want = &mut want[..k];
-                let mut want_sqr = [0; 64];
-                let want_sqr = &mut want_sqr[..k];
-                bignum_montmul::bignum_montmul(want, x, y, m);
-                bignum_montmul::bignum_montmul(want_sqr, x, x, m);
-                if case == 4 {
-                    assert!(want.iter().all(|&w| w == 0), "{k} words");
-                }
-
-                let mut got = [0; 64];
-                let got = &mut got[..k];
-                let mut check = |name: &str, f: &dyn Fn(&mut [u64])| {
-                    f(got);
-                    assert_eq!(want, got, "{name}, {k} words, case {case}");
-                };
-                check("nohw", &|z| nohw(z, x, y, m, n0));
-                if k >= 8 && k.is_multiple_of(4) {
-                    check("mul4x", &|z| mul4x(z, x, y, m, n0, None));
-                    if adx.is_some() {
-                        check("mulx4x", &|z| mul4x(z, x, y, m, n0, adx));
-                    }
-                }
-                if let (Some(_), 16 | 32) = (adx, k) {
-                    check("karatsuba_mul", &|z| karatsuba_mul(z, x, y, m, n0));
-                }
-
-                let mut check = |name: &str, f: &dyn Fn(&mut [u64])| {
-                    f(got);
-                    assert_eq!(want_sqr, got, "{name}, {k} words, case {case}");
-                };
-                check("nohw squaring", &|z| nohw(z, x, x, m, n0));
-                if k >= 8 && k.is_multiple_of(4) {
-                    check("mul4x squaring", &|z| mul4x(z, x, x, m, n0, None));
-                    if adx.is_some() {
-                        check("mulx4x squaring", &|z| mul4x(z, x, x, m, n0, adx));
-                    }
-                }
-                if k >= 8 && k.is_multiple_of(8) {
-                    check("sqr8x", &|z| sqr8x(z, x, m, n0, None));
-                    if adx.is_some() {
-                        check("sqrx8x", &|z| sqr8x(z, x, m, n0, adx));
-                    }
-                }
-                if let (Some(_), 16 | 32) = (adx, k) {
-                    check("karatsuba_sqr", &|z| karatsuba_sqr(z, x, m, n0));
-                }
+    /// Each aws-lc routine's `x * y / 2^(64k) mod m`, for `k` words each,
+    /// with and without `mulx` where the CPU has BMI2 and ADX, and the
+    /// Karatsuba routine's there: every one that takes the width, not only
+    /// the one this CPU picks.
+    fn products(x: &[u64], y: &[u64], m: &[u64]) -> Vec<(&'static str, Vec<u64>)> {
+        let (k, adx, n0) = (m.len(), HaveBmi2Adx::check(), n0(m));
+        let mut out = Vec::new();
+        let mut run = |name, f: &dyn Fn(&mut [u64])| {
+            let mut z = vec![0; k];
+            f(&mut z);
+            out.push((name, z));
+        };
+        if k >= 2 {
+            run("nohw", &|z| nohw(z, x, y, m, n0));
+        }
+        if k >= 8 && k.is_multiple_of(4) {
+            run("mul4x", &|z| mul4x(z, x, y, m, n0, None));
+            if adx.is_some() {
+                run("mulx4x", &|z| mul4x(z, x, y, m, n0, adx));
             }
         }
+        if let (Some(_), 16 | 32) = (adx, k) {
+            run("karatsuba_mul", &|z| karatsuba_mul(z, x, y, m, n0));
+        }
+        out
+    }
+
+    /// [`products`] of `x` by itself, and each squaring routine's.
+    fn squares(x: &[u64], m: &[u64]) -> Vec<(&'static str, Vec<u64>)> {
+        let (k, adx, n0) = (m.len(), HaveBmi2Adx::check(), n0(m));
+        let mut out = products(x, x, m);
+        let mut run = |name, f: &dyn Fn(&mut [u64])| {
+            let mut z = vec![0; k];
+            f(&mut z);
+            out.push((name, z));
+        };
+        if k >= 8 && k.is_multiple_of(8) {
+            run("sqr8x", &|z| sqr8x(z, x, m, n0, None));
+            if adx.is_some() {
+                run("sqrx8x", &|z| sqr8x(z, x, m, n0, adx));
+            }
+        }
+        if let (Some(_), 16 | 32) = (adx, k) {
+            run("karatsuba_sqr", &|z| karatsuba_sqr(z, x, m, n0));
+        }
+        out
+    }
+
+    /// `-m^-1 mod 2^64`.
+    fn n0(m: &[u64]) -> u64 {
+        let mut n0 = [0];
+        bignum_negmodinv::bignum_negmodinv(&mut n0, &m[..1]);
+        n0[0]
+    }
+
+    /// A modulus of a width some routine takes, and two values below it:
+    /// of edge limbs, or the product of odd `r` and `s` with their top bits
+    /// set, whose Montgomery product reaches `m` before the final
+    /// subtraction.
+    fn operands() -> impl Strategy<Value = (Vec<u64>, Vec<u64>, Vec<u64>)> {
+        const WIDTHS: &[usize] = &[2, 3, 5, 8, 9, 12, 16, 17, 18, 24, 32, 33, 36, 48, 64];
+        prop::sample::select(WIDTHS).prop_flat_map(|k| {
+            let edges = modulus(64, k)
+                .prop_flat_map(|m| (Just(m.clone()), below(64, m.clone()), below(64, m)));
+            let product =
+                (radix_words(64, k / 2), radix_words(64, k - k / 2)).prop_map(|(r, s)| {
+                    let [r, s] = [r, s].map(|mut v| {
+                        v[0] |= 1;
+                        *v.last_mut().unwrap() |= 1 << 63;
+                        v
+                    });
+                    let mut m = vec![0; r.len() + s.len()];
+                    bignum_mul::bignum_mul(&mut m, &r, &s);
+                    let [r, s] = [r, s].map(|mut v| {
+                        v.resize(m.len(), 0);
+                        v
+                    });
+                    (m, r, s)
+                });
+            prop_oneof![3 => edges, 1 => product]
+        })
+    }
+
+    proptest! {
+        // Every other test runs only the routines this CPU picks, so here
+        // each is checked against s2n-bignum's generic `bignum_montmul`.
+        #[test]
+        fn matches_generic((m, x, y) in operands()) {
+            let mut want = vec![0; m.len()];
+            bignum_montmul::bignum_montmul(&mut want, &x, &y, &m);
+            for (name, got) in products(&x, &y, &m) {
+                prop_assert_eq!(&got, &want, "{}", name);
+            }
+            bignum_montmul::bignum_montmul(&mut want, &x, &x, &m);
+            for (name, got) in squares(&x, &m) {
+                prop_assert_eq!(&got, &want, "{} squaring", name);
+            }
+        }
+    }
+
+    #[test]
+    fn aws_lc_mod_mul() {
+        let mut ran = 0;
+        for v in mod_mul_vectors() {
+            let want = div_r(&v.want, &v.m);
+            let got = match v.a == v.b {
+                true => squares(&v.a, &v.m),
+                false => products(&v.a, &v.b, &v.m),
+            };
+            for (name, got) in got {
+                assert_eq!(got, want, "{name}, {}", v.at);
+                ran += 1;
+            }
+        }
+        assert!(ran > 0);
     }
 }

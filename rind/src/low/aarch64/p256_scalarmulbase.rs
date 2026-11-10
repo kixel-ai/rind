@@ -100,6 +100,7 @@ macro_rules! movbig {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p256/p256_scalarmulbase_alt.S.
 /// Scalar multiplication for precomputed point on NIST curve P-256
 ///
 /// Input scalar[4], blocksize, table[]; output res[8]

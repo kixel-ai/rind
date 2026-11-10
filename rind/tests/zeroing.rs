@@ -110,7 +110,10 @@ fn ecdh() {
     use rind::agreement::*;
     for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
         let key = PrivateKey::generate(algorithm).unwrap();
-        let peer = PrivateKey::generate(algorithm).unwrap().public_key();
+        let peer = PrivateKey::generate(algorithm)
+            .unwrap()
+            .public_key()
+            .clone();
         check_zeroed_on_drop(Box::pin(key.agree(peer.as_ref()).unwrap()));
         check_zeroed_on_drop(Box::pin(key.to_scalar()));
         check_zeroed_on_drop(Box::pin(key.to_pkcs8()));

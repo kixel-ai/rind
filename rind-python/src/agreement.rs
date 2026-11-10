@@ -55,7 +55,7 @@ impl PrivateKey {
 
     /// The public key to send the peer.
     fn public_key(&self) -> PublicKey {
-        PublicKey(Box::new(self.0.public_key()))
+        PublicKey(Box::new(self.0.public_key().clone()))
     }
 
     /// Agrees a shared secret with the peer's public key `peer`, as

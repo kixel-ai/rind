@@ -207,6 +207,12 @@ opaque low.generic.zeroise.zeroise
   {T : Type _} (ZeroableInst : low.generic.zeroise.Zeroable T) :
   Slice T → Result (Slice T)
 
+/-- `ZeroableRef::new`, as `Rind.X86_64.Dispatch` models a `ZeroableRef`: its
+value. -/
+def low.generic.zeroise.ZeroableRef.new {T : Type} (value : T) :
+    Result (low.generic.zeroise.ZeroableRef T) :=
+  ok value
+
 /-! The entry guard and CPU dispatch, which read no input. -/
 
 opaque low.entry.Entry.new_secret : Result low.entry.Entry
@@ -358,10 +364,11 @@ opaque mid.sha3.Sha3Context.Insts.CoreCloneClone.clone {R : Std.Usize} {OUT : St
 on, whose DER no proof covers. -/
 
 opaque high.agreement.x25519_from_pkcs8
-  : Slice Std.U8 → Result (core.result.Result mid.x25519.PrivateKey error.Error)
+  : high.agreement.Algorithm → Slice Std.U8 →
+    Result (core.result.Result (mid.x25519.PrivateKey × high.agreement.PublicKey) error.Error)
 
 opaque mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
-  : mid.x25519.PrivateKey → Slice Std.U8 →
+  : mid.x25519.PrivateKey → Slice Std.U8 → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
 opaque mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
@@ -369,7 +376,7 @@ opaque mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
 opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
-  : mid.p256.PrivateKey → Slice Std.U8 →
+  : mid.p256.PrivateKey → Slice Std.U8 → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
 opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
@@ -377,7 +384,7 @@ opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
 opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
-  : mid.p384.PrivateKey → Slice Std.U8 →
+  : mid.p384.PrivateKey → Slice Std.U8 → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
 opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
@@ -385,7 +392,7 @@ opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
 opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
-  : mid.p521.PrivateKey → Slice Std.U8 →
+  : mid.p521.PrivateKey → Slice Std.U8 → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
 opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
@@ -393,12 +400,15 @@ opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
 opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.load
-  : high.agreement.Source → Result (core.result.Result mid.p384.PrivateKey error.Error)
+  : high.agreement.Algorithm → high.agreement.Source →
+    Result (core.result.Result (mid.p384.PrivateKey × high.agreement.PublicKey) error.Error)
 
 opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.load
-  : high.agreement.Source → Result (core.result.Result mid.p521.PrivateKey error.Error)
+  : high.agreement.Algorithm → high.agreement.Source →
+    Result (core.result.Result (mid.p521.PrivateKey × high.agreement.PublicKey) error.Error)
 
 opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.load
-  : high.agreement.Source → Result (core.result.Result mid.p256.PrivateKey error.Error)
+  : high.agreement.Algorithm → high.agreement.Source →
+    Result (core.result.Result (mid.p256.PrivateKey × high.agreement.PublicKey) error.Error)
 
 end rind.x86_64
