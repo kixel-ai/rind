@@ -16,7 +16,8 @@ pub const SIZES: [(usize, &str); 4] = [
 /// Lengths between the 64 B and 1200 B that the other rows time, where rind's
 /// AEADs switch kernels, so a threshold set wrong for a CPU shows only here.
 #[allow(dead_code)]
-const KERNEL_SIZES: [(usize, &str); 3] = [(128, "128B"), (256, "256B"), (512, "512B")];
+const KERNEL_SIZES: [(usize, &str); 3] =
+    [(128, "quic-128B"), (256, "quic-256B"), (512, "quic-512B")];
 
 /// The AEAD benches' rows: each of [`SIZES`] under a 32 B AAD, then
 /// [`KERNEL_SIZES`] under QUIC's 13 B short-header AAD.
