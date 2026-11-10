@@ -39,7 +39,6 @@ The 2026-11-09 audit found no exploitable bug and no panic reachable from public
 - [An ABI harness checks every assembly routine](/quest/m2/confidence/asm-abi.md) - callee-saved registers, stack pointer, and flags after each routine
 - [The zeroing test checks every byte of every secret type on every backend](/quest/m2/confidence/zeroing-every-byte.md) - no 16-byte skip, no unlisted type, every tier and Windows
 - [Heap scratch from a private key is wiped before it is freed](/quest/m2/confidence/wipe-heap-scratch.md) - a test allocator that fails on key-derived bytes in a freed block
-- [Miri runs the portable backend's tests](/quest/m2/confidence/miri-portable.md) - undefined behavior under `wipe`, natively and as big-endian s390x
 - [The portable backend is fuzzed and mutation tested](/quest/m2/confidence/portable-fuzz-mutants.md) - nightly fuzzing and a mutation campaign for the backend every new target ships on
 - [Each adapter's API is diffed against its upstream's](/quest/m2/confidence/adapter-api-diff.md) - the exact-API rule machine-checked per feature set
 - [A PR that would redden a nightly learns before it merges](/quest/m2/confidence/nightlies-on-prs.md) - nightlies run on PRs that touch their inputs

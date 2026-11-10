@@ -90,6 +90,7 @@ macro_rules! ishort {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_negmodinv.S.
 /// Negated modular inverse, z := (-1/x) mod 2^{64k}
 ///
 /// Input x[k]; output z[k]

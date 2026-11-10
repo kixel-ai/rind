@@ -278,10 +278,12 @@
             '';
           };
 
-          # `admin/prove hol-light` runs in it: HOL Light, the OCaml it
-          # compiles the proofs with, as s2n-bignum's `tools/build-proof.sh`
-          # does, and the Rust whose build emits the object code they are of,
-          # with llvm-objdump to read it.
+          # `admin/prove hol-light` and `admin/prove bytes` run in it: HOL
+          # Light, the OCaml it compiles the proofs with, as s2n-bignum's
+          # `tools/build-proof.sh` does, the Rust whose build emits the object
+          # code they are of, with llvm-objdump to read it, the Python that
+          # compares that code with the code upstream's proofs check, and the
+          # cross tools that assemble Vale's and aws-lc's.
           hol-light = pkgs.mkShell {
             packages = [
               (rust-stable.minimal.override {
@@ -296,6 +298,8 @@
               pkgs.ocamlPackages.findlib
               pkgs.ocamlPackages.camlp5
               pkgs.git
+              pkgs.python3
+              debian-cross-tools
             ];
           };
 
@@ -514,6 +518,15 @@
               ];
 
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+            };
+
+            # `just miri` and the miri workflow run in it: Charon's nightly,
+            # which already carries Miri, rather than a second nightly.
+            miri = pkgs.mkShell {
+              packages = [
+                rust-charon
+                pkgs.cargo-nextest
+              ];
             };
 
             # `admin/regenerate` and the regenerate workflow run in it. A

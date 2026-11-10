@@ -103,6 +103,7 @@ macro_rules! q {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_montifier.S.
 /// Compute "montification" constant z := 2^{128k} mod m
 ///
 /// Input m[k]; output z[k]; temporary buffer t[>=k]

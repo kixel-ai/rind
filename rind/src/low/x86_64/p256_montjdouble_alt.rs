@@ -684,6 +684,7 @@ macro_rules! cmsub41_p256 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p256/p256_montjdouble_alt.S.
 /// Point doubling on NIST curve P-256 in Montgomery-Jacobian coordinates
 ///
 ///
