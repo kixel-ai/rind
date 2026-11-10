@@ -115,6 +115,7 @@ macro_rules! e8 {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_demont.S.
 /// Convert from (almost-)Montgomery form z := (x / 2^{64k}) mod m
 ///
 /// Inputs x[k], m[k]; output z[k]

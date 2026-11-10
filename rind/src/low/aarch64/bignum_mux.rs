@@ -48,6 +48,7 @@ macro_rules! a {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_mux.S.
 /// Multiplex/select z := x (if p nonzero) or z := y (if p zero)
 ///
 /// Inputs p, x[k], y[k]; output z[k]

@@ -50,6 +50,7 @@ use crate::low::macros::*;
 // and the whole kernel rescheduled with the SLOTHY superoptimizer; the
 // surrounding assembler boilerplate follows the s2n-bignum house style.
 
+// Transliterated from s2n-bignum's arm/aes_gcm/aes128_gcm_dec.S.
 /// AES-128-GCM bulk decryption: counter-mode decryption of whole blocks with the GHASH tag update
 ///
 /// Decrypts the input in CTR mode while accumulating the GHASH of the input.

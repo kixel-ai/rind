@@ -66,6 +66,7 @@ macro_rules! c {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_modsub.S.
 /// Subtract modulo m, z := (x - y) mod m, assuming x and y reduced
 ///
 /// Inputs x[k], y[k], m[k]; output z[k]

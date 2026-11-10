@@ -43,6 +43,7 @@ macro_rules! j {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_digitsize.S.
 /// Return size of bignum in digits (64-bit word)
 ///
 /// Input x[k]; output function return

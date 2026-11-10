@@ -30,6 +30,7 @@ use crate::low::macros::*;
 // Standard ARM ABI: X0 = a, X1 = rc
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's arm/sha3/sha3_keccak_f1600_alt.S.
 /// Keccak-f1600 permutation for SHA3
 ///
 /// Input a[25], rc[24]; output a[25]

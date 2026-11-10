@@ -122,6 +122,7 @@ macro_rules! movbig {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p521/bignum_mod_n521_9.S.
 /// Reduce modulo group order, z := x mod n_521
 ///
 /// Input x[9]; output z[9]

@@ -927,6 +927,7 @@ macro_rules! store6 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p384/p384_montjmixadd.S.
 /// Point mixed addition on NIST curve P-384 in Montgomery-Jacobian coordinates
 ///
 ///

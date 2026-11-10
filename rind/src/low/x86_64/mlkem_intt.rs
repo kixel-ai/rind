@@ -22,6 +22,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = a, RDX = qdata
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/mlkem/mlkem_intt.S.
 /// Inverse number-theoretic transform from ML-KEM
 ///
 /// Input a[256], z_01234[80], z_56[384] (all signed 16-bit words); output a[256] (signed 16-bit words).

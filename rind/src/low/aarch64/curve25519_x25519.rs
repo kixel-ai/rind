@@ -489,6 +489,7 @@ macro_rules! mux_4 {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/curve25519/curve25519_x25519_alt.S.
 /// The x25519 function for curve25519
 ///
 /// Inputs scalar[4], point[4]; output res[4]

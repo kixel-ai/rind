@@ -221,6 +221,7 @@ macro_rules! u16 {
     };
 }
 
+// Transliterated from s2n-bignum's arm/p521/bignum_mul_p521_alt.S.
 /// Multiply modulo p_521, z := (x * y) mod p_521, assuming x and y reduced
 ///
 /// Inputs x[9], y[9]; output z[9]

@@ -74,6 +74,7 @@ use crate::low::macros::*;
 //  - The body has since been rescheduled for speed, so it is not a verbatim
 //    copy of the generator's output.
 
+// Transliterated from s2n-bignum's arm/aes_gcm/aes256_gcm_enc_alt.S.
 /// AES-256-GCM bulk encryption, 8 blocks at a time: counter-mode encryption of
 ///
 /// whole blocks with the GHASH tag update

@@ -785,6 +785,7 @@ macro_rules! movbig {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p521/bignum_inv_p521.S.
 /// Modular inverse modulo p_521 =  2^521 - 1
 ///
 /// Input x[9]; output z[9]

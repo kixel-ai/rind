@@ -122,6 +122,7 @@ macro_rules! w {
     };
 }
 
+// Transliterated from s2n-bignum's arm/p384/bignum_demont_p384.S.
 /// Convert from Montgomery form z := (x / 2^384) mod p_384, assuming x reduced
 ///
 /// Input x[6]; output z[6]

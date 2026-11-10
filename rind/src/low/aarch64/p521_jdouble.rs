@@ -1412,6 +1412,7 @@ macro_rules! cmsub41_p521 {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p521/p521_jdouble_alt.S.
 /// Point doubling on NIST curve P-521 in Jacobian coordinates
 ///
 ///

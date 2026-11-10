@@ -15,7 +15,7 @@ use core::fmt;
 use core::ops::RangeInclusive;
 use std::sync::OnceLock;
 
-use crate::wipe::Wiped;
+use signing::RsaEncoding;
 
 use crate::digest::{self, Digest};
 use crate::encoding::{AsDer, Pkcs8V1Der, PublicKeyX509Der};
@@ -23,9 +23,8 @@ use crate::error::{KeyRejected, Unspecified, unspecified};
 #[cfg(feature = "ring-io")]
 use crate::io;
 use crate::signature::{self, ParsedPublicKey, private};
+use crate::wipe::Wiped;
 use crate::{der, rand, sealed};
-
-use signing::RsaEncoding;
 
 /// An RSA key size.
 #[non_exhaustive]

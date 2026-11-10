@@ -97,6 +97,7 @@ macro_rules! w {
     };
 }
 
+// Transliterated from s2n-bignum's arm/p256/bignum_demont_p256.S.
 /// Convert from Montgomery form z := (x / 2^256) mod p_256, assuming x reduced
 ///
 /// Input x[4]; output z[4]

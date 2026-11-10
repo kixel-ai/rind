@@ -12,6 +12,8 @@ exclude_globs = [
   "rind/src/low/*/openssl/**",
   # Test-only code under a `cfg(test)` cargo-mutants does not recognise.
   "rind/src/low/tests.rs",
+  # Scanner fixtures, compiled only by admin/ct-vartime, never by the tests.
+  "rind/src/low/vartime_planted.rs",
   # AVX-512 only, which no test host has: quest/m2/confidence/mutants-avx512.md.
   "rind/src/low/x86_64/mlkem768_sample_poly_ntt_8x.rs",
   "rind/src/low/x86_64/rsaz_avx512.rs",
@@ -92,7 +94,7 @@ exclude_re = [
   'rind/src/high/ecdsa\.rs:\d+:\d+: replace > with >= in hash_to_scalar$',
   'rind/src/high/rsa\.rs:\d+:\d+: replace > with >= in public_exponent$',
   'rind/src/high/signature\.rs:\d+:\d+: replace > with >= in RsaScheme::min_bits$',
-  'rind/src/low/aarch64/aes\.rs:349:\d+: replace - with / in invert_round_keys$',
+  'rind/src/low/aarch64/aes\.rs:352:\d+: replace - with / in invert_round_keys$',
   'rind/src/low/generic/p256\.rs:\d+:\d+: replace <<= with >>= in sqr_wide$',
   'rind/src/low/generic/p256\.rs:\d+:\d+: replace > with >= in p256_scalarmulbase$',
   'rind/src/low/generic/p384\.rs:\d+:\d+: replace <<= with >>= in sqr_wide$',
@@ -109,7 +111,7 @@ exclude_re = [
   'rind/src/low/posint\.rs:\d+:\d+: replace > with >= in PosInt<N>::reduce_even$',
   'rind/src/low/posint\.rs:\d+:\d+: replace \* with / in PosInt<N>::reduce_even$',
   'rind/src/low/posint\.rs:274:66: replace \+ with \* in PosInt<N>::pub_montifier$',
-  'rind/src/low/x86_64/aes\.rs:550:\d+: replace - with / in invert_round_keys$',
+  'rind/src/low/x86_64/aes\.rs:553:\d+: replace - with / in invert_round_keys$',
   'rind/src/low/x86_64/chacha20\.rs:\d+:\d+: replace > with >= in core_2x$',
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:\d+:\d+: replace > with >= in double_base$',
   'rind/src/low/x86_64/ghash\.rs:637:41: replace / with % in store_partial$',
@@ -202,13 +204,13 @@ exclude_re = [
   'rind/src/low/x86_64/cpu\.rs:486:\d+: replace test_toggle -> bool with true$',
   # Wipes a key inside a type whose own `Drop` wipes all of it, which
   # rind/tests/zeroing.rs checks.
-  'rind/src/low/aarch64/aes\.rs:128:\d+: replace <impl Drop for AesDecKey>::drop with \(\)$',
+  'rind/src/low/aarch64/aes\.rs:131:\d+: replace <impl Drop for AesDecKey>::drop with \(\)$',
   'rind/src/low/aarch64/ghash\.rs:85:\d+: replace <impl Drop for PmullTable>::drop with \(\)$',
   'rind/src/low/aarch64/ghash_neon_armv8\.rs:50:\d+: replace <impl Drop for NeonTable>::drop with \(\)$',
   'rind/src/low/aarch64/vpaes_armv8\.rs:131:\d+: replace <impl Drop for VpaesDecKey>::drop with \(\)$',
   'rind/src/low/aarch64/vpaes_armv8\.rs:84:\d+: replace <impl Drop for VpaesKey>::drop with \(\)$',
   'rind/src/low/x86_64/\.\./generic/ghash_nohw\.rs:69:\d+: replace <impl Drop for NohwTable>::drop with \(\)$',
-  'rind/src/low/x86_64/aes\.rs:119:\d+: replace <impl Drop for AesDecKey>::drop with \(\)$',
+  'rind/src/low/x86_64/aes\.rs:122:\d+: replace <impl Drop for AesDecKey>::drop with \(\)$',
   'rind/src/low/x86_64/aes_nohw\.rs:96:\d+: replace <impl Drop for NohwKey>::drop with \(\)$',
   'rind/src/low/x86_64/ghash\.rs:103:\d+: replace <impl Drop for GhashTable>::drop with \(\)$',
   'rind/src/low/x86_64/ghash_ssse3_x86_64\.rs:75:\d+: replace <impl Drop for Ssse3Table>::drop with \(\)$',
@@ -246,9 +248,6 @@ exclude_re = [
   'rind/src/mid/p384\.rs:805:\d+: replace JacobianMontPoint::lookup_w5 -> Self with Default::default\(\)$',
   'rind/src/mid/p384\.rs:813:\d+: replace JacobianMontPoint::maybe_negate_y with \(\)$',
   'rind/src/mid/p384\.rs:598:\d+: replace JacobianMontPoint::multiply -> Self with Default::default\(\)$',
-  # DIT, which no test host has: quest/m2/confidence/mutants-dit.md.
-  'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace & with \^ in dit::maybe_enable$',
-  'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace & with \| in dit::maybe_enable$',
   # AVX-512 only: quest/m2/confidence/mutants-avx512.md.
   'rind/src/low/posint\.rs:\d+:\d+: replace != with == in PosInt<N>::mod_exp_pair_rsaz$',
   'rind/src/low/posint\.rs:\d+:\d+: replace > with < in PosInt<N>::mod_exp_pair_rsaz$',
@@ -373,8 +372,6 @@ exclude_re = [
   'rind-ring/src/agreement\.rs:114:\d+: replace <impl AsRef<\[u8\]> for PublicKey>::as_ref -> &\[u8\] with Vec::leak\(vec!\[1\]\)$',
   'rind-ring/src/agreement\.rs:30:\d+: replace <impl PartialEq for Algorithm>::eq -> bool with true$',
   'rind-ring/src/agreement\.rs:120:\d+: replace <impl fmt::Debug for PublicKey>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-ring/src/cpu\.rs:16:\d+: replace <impl fmt::Display for MissingFeature>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-ring/src/cpu\.rs:7:\d+: replace check -> Result<\(\), MissingFeature> with Ok\(\(\)\)$',
   'rind-ring/src/der\.rs:\d+:\d+: delete match arm \[2\.\.= 0x7f\] in ed25519_pkcs8$',
   'rind-ring/src/der\.rs:\d+:\d+: delete match arm \[\] \|\[0x80\.\.= 0xff, \.\.\] in positive_integer$',
   'rind-ring/src/der\.rs:\d+:\d+: replace match guard input\.at_end\(\) with false in ed25519_pkcs8$',

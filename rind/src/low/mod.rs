@@ -137,6 +137,10 @@ mod tests;
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod abi;
 
+#[cfg(all(test, unix))]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod guard_pages;
+
 // The portable backend, which armv7 builds on, and what both run alike.
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 mod portable;
@@ -297,6 +301,8 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::aes_cbc;
         pub(crate) use aarch64::aes_ctr;
         pub(crate) use aarch64::cpu::HaveCryptoExt;
+        #[cfg(test)]
+        pub(crate) use aarch64::ct_qemu;
         pub(crate) use aarch64::aes_gcm;
         pub(crate) use aarch64::bignum_add::bignum_add;
         pub(crate) use aarch64::bignum_add_p256::bignum_add_p256;

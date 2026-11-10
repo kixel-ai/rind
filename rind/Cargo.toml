@@ -1,6 +1,6 @@
 [package]
 name = "rind"
-version = "0.3.3"
+version = "0.3.2"
 edition = "2024"
 repository = "https://github.com/moq-dev/rind"
 license = "(Apache-2.0 OR ISC OR MIT-0) AND (Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND BSD-3-Clause"
@@ -40,9 +40,6 @@ libcrux-traits = "0.0.9"
 libc = { version = "0.2", default-features = false }
 
 [dev-dependencies]
-aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
-# aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
-aws-lc-sys = { version = "0.47", default-features = false }
 # Checks armv7's NIST curve arithmetic against s2n-bignum's on the other arches.
 fiat-crypto = { version = "0.3", default-features = false }
 # CCTV gzips its ML-KEM modulus vectors.
@@ -51,6 +48,17 @@ hex = { version = "0.4", features = ["serde"] }
 proptest = "1.5.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Maps the guard pages around the buffers in `low::guard_pages`.
+[target.'cfg(unix)'.dev-dependencies]
+libc = { version = "0.2", default-features = false }
+
+# The differential tests' reference. Miri cannot run C, so its builds leave it
+# out, along with every test that calls it.
+[target.'cfg(not(miri))'.dev-dependencies]
+aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
+# aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
+aws-lc-sys = { version = "0.47", default-features = false }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

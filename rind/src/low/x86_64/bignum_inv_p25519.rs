@@ -982,6 +982,7 @@ macro_rules! divstep59 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/curve25519/bignum_inv_p25519.S.
 /// Modular inverse modulo p_25519 = 2^255 - 19
 ///
 /// Input x[4]; output z[4]

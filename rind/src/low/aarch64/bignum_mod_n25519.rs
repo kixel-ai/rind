@@ -111,6 +111,7 @@ macro_rules! movbig {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/curve25519/bignum_mod_n25519.S.
 /// Reduce modulo basepoint order, z := x mod n_25519
 ///
 /// Input x[k]; output z[4]

@@ -73,6 +73,7 @@ macro_rules! c {
     };
 }
 
+// Transliterated from s2n-bignum's x86/p384/bignum_mod_n384_6.S.
 /// Reduce modulo group order, z := x mod n_384
 ///
 /// Input x[6]; output z[6]

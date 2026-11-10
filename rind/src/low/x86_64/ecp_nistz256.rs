@@ -144,8 +144,12 @@ p256_routine!(ecp_nistz256_subx() {});
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use proptest::prelude::*;
+
     use super::super::adx_mux::tests::Rng;
     use super::*;
+    use crate::low::generic::p256;
+    use crate::test::bignum::below;
 
     // aws-lc's point additions whose `B` or `A` is affine, which rind's
     // routine takes, but for the same point twice, which it does not double.
@@ -287,6 +291,63 @@ mod tests {
             super::super::adx_mux::p256_montjmixadd(&mut s2n, &p1, &p2);
             p256_point_add_affine(&mut p1, &p2);
             assert_eq!(p1, s2n);
+        }
+    }
+
+    /// A field element of edge limbs below the prime, `p - 1` and its
+    /// neighbours among them.
+    fn fe() -> impl Strategy<Value = [u64; 4]> {
+        below(64, POLY.0.to_vec()).prop_map(|x| x.try_into().unwrap())
+    }
+
+    /// A Jacobian `p1` and an affine `p2` of edge coordinates, and each case
+    /// the addition masks or meets: either at infinity, and `p1` as `p2`
+    /// or its negation, scaled by its `z`.
+    fn points() -> impl Strategy<Value = ([u64; 12], [u64; 8])> {
+        ([fe(), fe(), fe()], [fe(), fe()], 0..6u8).prop_map(|([x1, y1, z], [x2, y2], case)| {
+            let mul = |a: &[u64; 4], b: &[u64; 4]| {
+                let mut out = [0; 4];
+                p256::bignum_montmul_p256(&mut out, a, b);
+                out
+            };
+            let (x1, y1) = match case {
+                2 | 3 => {
+                    let z2 = mul(&z, &z);
+                    let y = mul(&y2, &mul(&z2, &z));
+                    let mut neg = [0; 4];
+                    p256::bignum_neg_p256(&mut neg, &y);
+                    (mul(&x2, &z2), if case == 2 { y } else { neg })
+                }
+                _ => (x1, y1),
+            };
+            let z = if case == 0 { [0; 4] } else { z };
+            let p2 = if case == 1 { [[0; 4]; 2] } else { [x2, y2] };
+            (
+                [x1, y1, z].concat().try_into().unwrap(),
+                p2.concat().try_into().unwrap(),
+            )
+        })
+    }
+
+    proptest! {
+        // Each twin the CPU runs against the portable addition, which takes
+        // the same formulas, but for `p2` at infinity, which it does not
+        // take and which leaves `p1` as it is.
+        #[test]
+        fn point_add_affine_edges((p1, p2) in points()) {
+            let mut want = p1;
+            if p2 != [0; 8] {
+                p256::p256_montjmixadd(&mut want, &p1, &p2);
+            }
+            let mut got = [0; 12];
+            // SAFETY: as in `p256_point_add_affine`, which needs only SSE2.
+            unsafe { ecp_nistz256_point_add_affine(&mut got, &p1, &p2) };
+            prop_assert_eq!(got, want);
+            if HaveBmi2Adx::check().is_some() {
+                // SAFETY: as above, on a CPU with BMI2 and ADX.
+                unsafe { ecp_nistz256_point_add_affinex(&mut got, &p1, &p2) };
+                prop_assert_eq!(got, want, "mulx");
+            }
         }
     }
 }

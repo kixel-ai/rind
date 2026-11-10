@@ -124,90 +124,85 @@ fn reduce_limb(z: &mut [u64], m: &[u64], n0: u32) {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
     use crate::low::generic::bignum::{bignum_montredc, bignum_mul, bignum_negmodinv};
+    use crate::test::bignum::{below, div_r, mod_mul_vectors, modulus};
 
-    /// xorshift64, so the moduli need no dependency.
-    struct Rng(u64);
+    /// Each routine's `x * y / 2^(64k) mod m` that takes `m`'s width, not
+    /// only the one this CPU and width pick.
+    fn products(x: &[u64], y: &[u64], m: &[u64]) -> Vec<(&'static str, Vec<u64>)> {
+        let k = m.len();
+        let mut n0 = [0];
+        bignum_negmodinv(&mut n0, &m[..1]);
+        let n0 = n0[0];
+        let num = k * 2;
+        let mut out = Vec::new();
+        let mut run = |name, f: &dyn Fn(*mut u64)| {
+            let mut z = vec![0; k];
+            f(z.as_mut_ptr());
+            out.push((name, z));
+        };
+        // SAFETY: each operand is `num` 32-bit words.
+        run("nohw", &|z| unsafe {
+            asm_call!(unsafe extern "C" bn_mul_mont_nohw(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num));
+        });
+        if num.is_multiple_of(8) && HaveNeon::check().is_some() {
+            // SAFETY: as above, and the CPU has NEON.
+            run("neon", &|z| unsafe {
+                asm_call!(unsafe extern "C" bn_mul8x_mont_neon(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num))
+            });
+        }
+        let mut z = vec![0; k];
+        mont_mul(&mut z, x, y, m, n0);
+        out.push(("mont_mul", z));
+        out
+    }
 
-    impl Rng {
-        fn words(&mut self, k: usize) -> [u64; 64] {
-            let mut out = [0; 64];
-            for word in &mut out[..k] {
-                self.0 ^= self.0 << 13;
-                self.0 ^= self.0 >> 7;
-                self.0 ^= self.0 << 17;
-                *word = self.0;
+    /// A modulus of a width each routine takes, in 32-bit limbs, the
+    /// routines' own, with its top word zero at times, and two values below
+    /// it.
+    fn operands() -> impl Strategy<Value = (Vec<u64>, Vec<u64>, Vec<u64>)> {
+        const WIDTHS: &[usize] = &[1, 2, 3, 4, 5, 8, 12, 16, 17, 24, 32, 64];
+        (prop::sample::select(WIDTHS), any::<bool>())
+            .prop_flat_map(|(k, zero_top)| {
+                modulus(32, k).prop_map(move |mut m| {
+                    if zero_top && k > 1 {
+                        m[k - 1] = 0;
+                    }
+                    m
+                })
+            })
+            .prop_flat_map(|m| (Just(m.clone()), below(32, m.clone()), below(32, m)))
+    }
+
+    proptest! {
+        // Every other test runs only the routine the CPU and width pick, so
+        // here each is checked against the portable product and reduction.
+        #[test]
+        fn matches_portable((m, x, y) in operands()) {
+            let k = m.len();
+            let mut product = vec![0; 2 * k];
+            bignum_mul(&mut product, &x, &y);
+            let mut want = vec![0; k];
+            bignum_montredc(&mut want, &product, &m, k as u64);
+            for (name, got) in products(&x, &y, &m) {
+                prop_assert_eq!(&got, &want, "{}", name);
             }
-            out
         }
     }
 
-    // Every other test runs only the routine the CPU and width pick, so here
-    // both are checked against the portable product and reduction, at
-    // widths each takes, with the modulus's top word full, one, and zero.
     #[test]
-    fn matches_portable() {
-        let mut rng = Rng(0x2545_f491_4f6c_dd1d);
-        for k in [1, 2, 3, 4, 5, 8, 12, 16, 17, 24, 32, 64] {
-            for case in 0..12 {
-                let mut m = rng.words(k);
-                let m = &mut m[..k];
-                match case {
-                    0 => m.fill(u64::MAX),
-                    1 if k > 1 => m[k - 1] = 1,
-                    2 if k > 1 => m[k - 1] = 0,
-                    _ => m[k - 1] |= 1 << 63,
-                }
-                m[0] |= 1;
-                let mut n0 = [0];
-                bignum_negmodinv(&mut n0, &m[..1]);
-                let n0 = n0[0];
-
-                // Operands below `m`, with its extremes: zero, and `m - 1`.
-                let below = |rng: &mut Rng| {
-                    let mut x = rng.words(k);
-                    let top = (0..k).rev().find(|i| m[*i] != 0).unwrap();
-                    x[top] %= m[top];
-                    x[top + 1..k].fill(0);
-                    x
-                };
-                let (mut x, y) = (below(&mut rng), below(&mut rng));
-                match case {
-                    3 => x[..k].fill(0),
-                    4 => {
-                        x[..k].copy_from_slice(m);
-                        x[0] -= 1;
-                    }
-                    _ => {}
-                }
-                let (x, y) = (&x[..k], &y[..k]);
-
-                let mut product = [0; 128];
-                bignum_mul(&mut product[..2 * k], x, y);
-                let mut want = [0; 64];
-                bignum_montredc(&mut want[..k], &product[..2 * k], m, k as u64);
-                let mut got = [0; 64];
-                let (num, z) = (k * 2, got[..k].as_mut_ptr());
-                // SAFETY: each operand is `num` 32-bit words.
-                unsafe {
-                    asm_call!(unsafe extern "C" bn_mul_mont_nohw(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num))
-                };
-                assert_eq!(want[..k], got[..k], "nohw, {k} words, case {case}");
-
-                if num.is_multiple_of(8) && HaveNeon::check().is_some() {
-                    got.fill(0);
-                    let z = got[..k].as_mut_ptr();
-                    // SAFETY: as above, and the CPU has NEON.
-                    unsafe {
-                        asm_call!(unsafe extern "C" bn_mul8x_mont_neon(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num))
-                    };
-                    assert_eq!(want[..k], got[..k], "neon, {k} words, case {case}");
-                }
-
-                mont_mul(&mut got[..k], x, y, m, n0);
-                assert_eq!(want[..k], got[..k], "mont_mul, {k} words, case {case}");
+    fn aws_lc_mod_mul() {
+        let mut ran = 0;
+        for v in mod_mul_vectors() {
+            let want = div_r(&v.want, &v.m);
+            for (name, got) in products(&v.a, &v.b, &v.m) {
+                assert_eq!(got, want, "{name}, {}", v.at);
+                ran += 1;
             }
         }
+        assert!(ran > 0);
     }
 }

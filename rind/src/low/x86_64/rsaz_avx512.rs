@@ -344,10 +344,13 @@ rsaz_routine!(extract_multiplier_2x40_win5(r: *mut u64, table: *const u64, i: u6
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use proptest::prelude::*;
+
     use super::super::adx_mux::tests::Rng;
     use super::super::ct_sde;
     use super::*;
     use crate::low::PosInt;
+    use crate::test::bignum::{self, below, mod_exp_vectors, modulus};
 
     fn int(words: &[u64]) -> PosInt<32> {
         let bytes: Vec<u8> = words.iter().rev().flat_map(|w| w.to_be_bytes()).collect();
@@ -367,98 +370,105 @@ mod tests {
         words
     }
 
-    // Only CPUs with AVX-512 IFMA run it, so on those this checks it against
-    // the exponentiation the others run, at each width it takes.
+    /// `x^e mod m` by the exponentiation the other CPUs run, `2^(128k) mod
+    /// m`, and `-m^-1 mod 2^64`, for `k` words each.
+    fn reference(m: &[u64], x: &[u64], e: &[u64]) -> (Vec<u64>, Vec<u64>, u64) {
+        let k = m.len();
+        let (n, x, mut e) = (int(m), int(x), int(e));
+        e.expand(&n);
+        let rr = n.montifier();
+        let n0 = n.mont_neg_inverse();
+        let one = n.fixed_one().mont_mul(&rr, &n, n0);
+        let r = x
+            .to_montgomery(&rr, &n)
+            .mont_exp(one, &e, &n, n0)
+            .from_montgomery(&n);
+        (words(&r, k), words(&rr, k), n0)
+    }
+
+    /// Each of `ops`'s `x^e mod m`, given as `(m, x, e)`, by the dual
+    /// RSAZ, and by the exponentiation the other CPUs run.
+    fn both(ops: &[(Vec<u64>, Vec<u64>, Vec<u64>); 2]) -> [[Vec<u64>; 2]; 2] {
+        let k = ops[0].0.len();
+        let want = ops.each_ref().map(|(m, x, e)| reference(m, x, e));
+        let mut got = [vec![0; k], vec![0; k]];
+        let [g0, g1] = &mut got;
+        let operands: [_; 2] = core::array::from_fn(|i| Operands {
+            x: &ops[i].1,
+            e: &ops[i].2,
+            m: &ops[i].0,
+            rr: &want[i].1,
+            n0: want[i].2,
+        });
+        RsazAvx512::check(k).unwrap().mod_exp([g0, g1], operands);
+        [got, want.map(|w| w.0)]
+    }
+
+    /// A modulus of `k` words of 52-bit limbs, the routines' own, or of
+    /// words, a base below it, and an exponent of edge words from the full
+    /// width to a few words short.
+    fn operand(k: usize) -> impl Strategy<Value = (Vec<u64>, Vec<u64>, Vec<u64>)> {
+        prop_oneof![Just(52), Just(64)]
+            .prop_flat_map(move |bits| {
+                modulus(bits, k).prop_flat_map(move |m| (Just(m.clone()), below(bits, m)))
+            })
+            .prop_flat_map(move |(m, x)| (Just(m), Just(x), bignum::words(k - 3, k)))
+            .prop_map(move |(m, x, mut e)| {
+                e.resize(k, 0);
+                (m, x, e)
+            })
+    }
+
+    fn pair() -> impl Strategy<Value = [(Vec<u64>, Vec<u64>, Vec<u64>); 2]> {
+        prop::sample::select(&[16, 24, 32][..]).prop_flat_map(|k| [operand(k), operand(k)])
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(48))]
+
+        // Only CPUs with AVX-512 IFMA run it, so on those this checks it
+        // against the exponentiation the others run, at each width it
+        // takes.
+        #[test]
+        fn matches_mont_exp(ops in pair()) {
+            if HaveAvx512ForRsa::check().is_some() {
+                let [got, want] = both(&ops);
+                prop_assert_eq!(got, want);
+            }
+        }
+    }
+
+    // Each vector of a width it takes, paired with the next of that width.
     #[test]
-    fn matches_mont_exp() {
+    fn aws_lc_mod_exp() {
         if HaveAvx512ForRsa::check().is_none() {
             return;
         }
-        let mut rng = Rng(0x3c6e_f372_fe94_f82b);
+        let mut ran = 0;
         for k in [16, 24, 32] {
-            let rsaz = RsazAvx512::check(k).unwrap();
-            for case in 0..16 {
-                let ops: [_; 2] = core::array::from_fn(|i| {
-                    // The widest modulus, the narrowest with its top word
-                    // set, which leaves the products furthest from reduced,
-                    // and random ones of the full width, with the other
-                    // modulus of the pair random.
-                    let mut m: [u64; 32] = rng.words(64 * k as u32);
-                    let m = &mut m[..k];
-                    match (case, i) {
-                        (0, 0) => m.fill(u64::MAX),
-                        (1, 0) => {
-                            m.fill(0);
-                            m[k - 1] = 1;
-                        }
-                        _ => m[k - 1] |= 1 << 63,
-                    }
-                    m[0] |= 1;
-
-                    // Bases below `m`: zero, one, and `m - 1` too.
-                    let mut x: [u64; 32] = rng.words(64 * k as u32);
-                    let x = &mut x[..k];
-                    x[k - 1] %= m[k - 1];
-                    match (case, i) {
-                        (2, 0) => x.fill(0),
-                        (3, 1) => {
-                            x.fill(0);
-                            x[0] = 1;
-                        }
-                        (4, _) => {
-                            x.copy_from_slice(m);
-                            x[0] -= 1;
-                        }
-                        _ => {}
-                    }
-
-                    // Exponents of the full width and a few words short:
-                    // zero, one, all ones, and only the top bit, which the
-                    // top window reaches.
-                    let mut e: [u64; 32] = rng.words(64 * (k - case % 4) as u32);
-                    let e = &mut e[..k];
-                    match (case, i) {
-                        (5, 0) => e.fill(0),
-                        (6, 1) => {
-                            e.fill(0);
-                            e[0] = 1;
-                        }
-                        (7, _) => e.fill(u64::MAX),
-                        (8, 0) => {
-                            e.fill(0);
-                            e[k - 1] = 1 << 63;
-                        }
-                        _ => {}
-                    }
-                    (m.to_vec(), x.to_vec(), e.to_vec())
+            let vectors: Vec<_> = mod_exp_vectors()
+                .into_iter()
+                .filter(|v| v.m.len() == k && v.e.len() <= k)
+                .collect();
+            for (i, v) in vectors.iter().enumerate() {
+                let next = &vectors[(i + 1) % vectors.len()];
+                let ops = [v, next].map(|v| {
+                    let mut e = v.e.clone();
+                    e.resize(k, 0);
+                    (v.m.clone(), v.a.clone(), e)
                 });
-
-                let want = ops.each_ref().map(|(m, x, e)| {
-                    let (n, x, mut e) = (int(m), int(x), int(e));
-                    e.expand(&n);
-                    let rr = n.montifier();
-                    let n0 = n.mont_neg_inverse();
-                    let one = n.fixed_one().mont_mul(&rr, &n, n0);
-                    let r = x
-                        .to_montgomery(&rr, &n)
-                        .mont_exp(one, &e, &n, n0)
-                        .from_montgomery(&n);
-                    (words(&r, k), words(&rr, k), n0)
-                });
-
-                let mut got = [vec![0; k], vec![0; k]];
-                let [g0, g1] = &mut got;
-                let operands: [_; 2] = core::array::from_fn(|i| Operands {
-                    x: &ops[i].1,
-                    e: &ops[i].2,
-                    m: &ops[i].0,
-                    rr: &want[i].1,
-                    n0: want[i].2,
-                });
-                rsaz.mod_exp([g0, g1], operands);
-                assert_eq!(got, want.map(|w| w.0), "{k} words, case {case}");
+                let [got, _] = both(&ops);
+                assert_eq!(
+                    got,
+                    [v.want.clone(), next.want.clone()],
+                    "{} and {}",
+                    v.at,
+                    next.at
+                );
+                ran += 1;
             }
         }
+        assert!(ran > 0);
     }
 
     // The CRT of each RSA size, with secret moduli, bases, and exponents,

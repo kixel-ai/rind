@@ -64,6 +64,7 @@ macro_rules! qshort {
     };
 }
 
+// Transliterated from s2n-bignum's x86/curve25519/bignum_neg_p25519.S.
 /// Negate modulo p_25519, z := (-x) mod p_25519, assuming x reduced
 ///
 /// Input x[4]; output z[4]

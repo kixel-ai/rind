@@ -20,6 +20,7 @@ use crate::low::macros::*;
 // Standard x86 ABI: RDI = a
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/mlkem/mlkem_tomont.S.
 /// Conversion of ML-KEM polynomial coefficients to Montgomery form
 ///
 /// Input a[256] (signed 16-bit words); output a[256] (signed 16-bit words)

@@ -104,6 +104,7 @@ macro_rules! nsqr {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/curve25519/edwards25519_decode_alt.S.
 /// Decode compressed 256-bit form of edwards25519 point
 ///
 /// Input c[32] (bytes); output function return and z[8]

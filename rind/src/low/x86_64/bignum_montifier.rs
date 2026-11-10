@@ -136,6 +136,7 @@ macro_rules! qshort {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_montifier.S.
 /// Compute "montification" constant z := 2^{128k} mod m
 ///
 /// Input m[k]; output z[k]; temporary buffer t[>=k]

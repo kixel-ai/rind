@@ -77,6 +77,7 @@ macro_rules! selectblock {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p256/p256_montjscalarmul.S.
 /// Montgomery-Jacobian form scalar multiplication for P-256
 ///
 /// Input scalar[4], point[12]; output res[12]

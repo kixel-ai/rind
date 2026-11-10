@@ -252,6 +252,7 @@ macro_rules! arg4 {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_coprime.S.
 /// Test bignums for coprimality, gcd(x,y) = 1
 ///
 /// Inputs x[m], y[n]; output function return; temporary buffer t[>=2*max(m,n)]

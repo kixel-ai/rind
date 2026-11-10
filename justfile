@@ -36,13 +36,18 @@ fix $BASE="":
 armv7:
     nix develop .#armv7 --command sh/armv7.sh
 
-# Build, lint, and test SHELL's target, such as s390x, under qemu (Linux only).
+# Build, lint, and test SHELL's target, such as s390x or i686, under qemu
+# unless the host runs it natively (Linux only).
 qemu SHELL:
     nix develop .#{{SHELL}} --command sh/qemu.sh
 
 # Lint and test the portable backend, forced on this x86_64 Linux host.
 portable:
     nix develop --command sh/portable.sh
+
+# Test the portable backend under Miri for TARGET, such as s390x-unknown-linux-gnu (Linux only).
+miri TARGET="x86_64-unknown-linux-gnu":
+    nix develop .#miri --command sh/miri.sh {{TARGET}}
 
 # Check dependencies against advisories, licenses, and sources in deny.toml.
 audit:

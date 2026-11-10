@@ -74,6 +74,7 @@ macro_rules! selectblock {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p521/p521_jscalarmul_alt.S.
 /// Jacobian form scalar multiplication for P-521
 ///
 /// Input scalar[9], point[27]; output res[27]

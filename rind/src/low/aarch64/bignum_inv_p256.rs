@@ -823,6 +823,7 @@ macro_rules! divstep59 {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p256/bignum_inv_p256.S.
 /// Modular inverse modulo p_256 = 2^256 - 2^224 + 2^192 + 2^96 - 1
 ///
 /// Input x[4]; output z[4]

@@ -104,6 +104,7 @@ macro_rules! combadd2 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p521/bignum_sqr_p521_alt.S.
 /// Square modulo p_521, z := (x^2) mod p_521, assuming x reduced
 ///
 /// Input x[9]; output z[9]

@@ -52,6 +52,7 @@ macro_rules! mulpadd {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p256/bignum_montmul_p256.S.
 /// Montgomery multiply, z := (x * y / 2^256) mod p_256
 ///
 /// Inputs x[4], y[4]; output z[4]

@@ -35,5 +35,4 @@ Benchmark against `main` and against aws-lc-rs on x86_64 and aarch64. The symmet
 
 ## Related
 
-- [rind's assembly is byte-identical to the proven object code](/quest/m2/verified/asm-bytes.md) - checks the assembly itself, where this checks what safe Rust may pass it
 - [BINSEC checks the secret paths no proof covers](/quest/m2/confidence/binsec.md) - the other mechanical check on the same boundary, for timing rather than memory

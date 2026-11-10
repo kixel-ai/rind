@@ -19,6 +19,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = k, RDX = z, R8 = m, R9 = w, returns RAX
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/fastmul/bignum_emontredc_8n.S.
 /// Extended Montgomery reduce in 8-digit blocks, results in input-output buffer
 ///
 /// Inputs z[2*k], m[k], w; outputs function return (extra result bit) and z[2*k]

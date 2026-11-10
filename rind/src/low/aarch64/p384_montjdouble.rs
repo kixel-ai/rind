@@ -906,6 +906,7 @@ macro_rules! cmsub38_p384 {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p384/p384_montjdouble_alt.S.
 /// Point doubling on NIST curve P-384 in Montgomery-Jacobian coordinates
 ///
 ///

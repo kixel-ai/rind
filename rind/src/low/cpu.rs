@@ -69,7 +69,8 @@ pub fn has_aes_hardware() -> bool {
 ///     let mut nonce = [0u8; 12];
 ///     nonce[4..].copy_from_slice(&(number as u64).to_be_bytes());
 ///     let nonce = Nonce::assume_unique_for_key(nonce);
-///     key.seal_in_place_separate_tag(nonce, b"header", packet).unwrap();
+///     key.seal_in_place_separate_tag(nonce, b"header", packet)
+///         .unwrap();
 /// }
 /// ```
 ///

@@ -34,6 +34,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = r, RDX = a, R8 = b, R9 = bt
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/mlkem/mlkem_basemul_k3.S.
 /// Scalar product of 3-element polynomial vectors in NTT domain, with mulcache
 ///
 /// Inputs a[768], b[768], bt[384] (signed 16-bit words); output r[256] (signed 16-bit words)

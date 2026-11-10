@@ -24,6 +24,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = a, RDX = rc
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/sha3/sha3_keccak_f1600.S.
 /// Keccak-f1600 permutation for SHA3
 ///
 /// Input a[25], rc[24]; output a[25]

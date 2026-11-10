@@ -70,6 +70,7 @@ macro_rules! montreds {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p384/bignum_demont_p384_alt.S.
 /// Convert from Montgomery form z := (x / 2^384) mod p_384, assuming x reduced
 ///
 /// Input x[6]; output z[6]

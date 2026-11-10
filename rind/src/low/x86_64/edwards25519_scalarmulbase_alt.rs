@@ -436,6 +436,7 @@ macro_rules! double_twice4 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/curve25519/edwards25519_scalarmulbase_alt.S.
 /// Scalar multiplication for the edwards25519 standard basepoint
 ///
 /// Input scalar[4]; output res[8]

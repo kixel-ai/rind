@@ -77,6 +77,7 @@ macro_rules! d8 {
     };
 }
 
+// Transliterated from s2n-bignum's arm/p521/bignum_neg_p521.S.
 /// Negate modulo p_521, z := (-x) mod p_521, assuming x reduced
 ///
 /// Input x[9]; output z[9]
