@@ -24,6 +24,7 @@ use pyo3::types::{PyBytes, PyDict};
 
 mod aead;
 mod agreement;
+mod cipher;
 mod digest;
 mod hkdf;
 mod hmac;
@@ -261,6 +262,7 @@ fn pyrind(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     submodule(m, "pyrind.aead", aead::register)?;
     submodule(m, "pyrind.agreement", agreement::register)?;
+    submodule(m, "pyrind.cipher", cipher::register)?;
     submodule(m, "pyrind.cpu", |cpu| {
         cpu.add_function(wrap_pyfunction!(has_aes_hardware, cpu)?)
     })?;
@@ -268,6 +270,7 @@ fn pyrind(m: &Bound<'_, PyModule>) -> PyResult<()> {
     submodule(m, "pyrind.hkdf", hkdf::register)?;
     submodule(m, "pyrind.hmac", hmac::register)?;
     submodule(m, "pyrind.kem", kem::register)?;
+    submodule(m, "pyrind.key_wrap", cipher::register_key_wrap)?;
     submodule(m, "pyrind.pbkdf2", pbkdf2::register)?;
     submodule(m, "pyrind.rsa", rsa::register)?;
     submodule(m, "pyrind.signature", signature::register)?;

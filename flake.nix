@@ -329,10 +329,12 @@
                   nixfmt
                   # admin/ scripts, and pyrind's tests and benchmarks: they
                   # check it against pyca/cryptography, and its type stubs
-                  # with mypy's stubtest.
+                  # with mypy's stubtest. pytest runs pyjwt's and joserfc's
+                  # suites against pyrind-cryptography.
                   (python3.withPackages (ps: [
                     ps.cryptography
                     ps.mypy
+                    ps.pytest
                   ]))
                   # Builds pyrind (rind-python).
                   maturin
@@ -352,6 +354,10 @@
               # What sh/dispatch.sh checks before a scoped `just check` or `just
               # fix`. IN_NIX_SHELL would also pass inside another project's shell.
               env.IN_RIND_DEV_SHELL = "1";
+              # The releases whose test suites `sh/python.sh compat` runs
+              # against pyrind-cryptography, pinned with nixpkgs.
+              env.PYJWT_SRC = pkgs.python3Packages.pyjwt.src;
+              env.JOSERFC_SRC = pkgs.python3Packages.joserfc.src;
             };
 
             # `admin/timing` and the timing workflow run in it: rind-timing's

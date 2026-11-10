@@ -130,6 +130,7 @@ Each crate's README shows its setup.
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
 | [rind-dart][] | Dart and Flutter, through FFI: the `rind` package, unpublished until its first pub.dev release |
 | [rind-python][] | Python, as the `pyrind` package on PyPI, with rind's own API |
+| [pyrind-cryptography][] | Python, pyca/cryptography's `hazmat` API on pyrind, unpublished until its first PyPI release |
 
 ## Wiping keys
 
@@ -257,6 +258,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [rind-rcgen]: https://github.com/moq-dev/rind/tree/main/rind-rcgen
 [rind-dart]: https://github.com/moq-dev/rind/tree/main/rind-dart
 [rind-python]: https://github.com/moq-dev/rind/tree/main/rind-python
+[pyrind-cryptography]: https://github.com/moq-dev/rind/tree/main/rind-python/cryptography
 [quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
 [launch-post]: https://moq.dev/blog/rind/
 [contributing]: https://github.com/moq-dev/rind/blob/main/CONTRIBUTING.md
