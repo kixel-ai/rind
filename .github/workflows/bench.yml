@@ -236,8 +236,9 @@ jobs:
           ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_INCLUDE_DIR: /usr/include
           ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_LIB_DIR: /usr/lib/arm-linux-gnueabihf
 
-      # Every benchmark's estimate, which `admin/bench-report nightly` turns
-      # into BENCHMARKS.md's CPU-tier heatmap.
+      # Every benchmark's estimate, which the gate job checks and
+      # `admin/bench-report nightly` turns into BENCHMARKS.md's CPU-tier
+      # heatmap.
       - name: Save results
         shell: bash
         run: |
@@ -279,3 +280,36 @@ jobs:
                 (to_entries[] | .value as $v | ([$v["aws-lc-rs"], $v.ring] | map(select(.)) | min) as $best
                   | "| \(.key) | \($v.rind | time) | \($v["aws-lc-rs"] | time) | \($v.ring | time) | \(if $v.rind and $best then $v.rind / $best * 100 | round / 100 else "-" end) |")' |
             tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Fails the scheduled run, and so alerts, on a gap over 10% that
+  # benchmarks/gaps.toml holds no decision for and that the previous
+  # scheduled run showed too: GitHub draws a different CPU each night, so one
+  # night's gap may be the runner's. A dispatched run is an experiment.
+  gate:
+    needs: native
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bench-*
+          path: .tmp/run
+
+      - name: Download the previous scheduled run's results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow bench.yml --branch main --event schedule \
+            --status completed --limit 2 --json databaseId --jq "map(select(.databaseId != $GITHUB_RUN_ID))[0].databaseId")
+          gh run download "$previous" --repo "$GITHUB_REPOSITORY" --pattern 'bench-*' --dir .tmp/previous
+
+      - name: Gate
+        shell: bash
+        run: admin/bench-report gate .tmp/run --previous .tmp/previous | tee -a "$GITHUB_STEP_SUMMARY"

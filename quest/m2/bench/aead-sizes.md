@@ -25,5 +25,4 @@ Guidance:
 
 ## Related
 
-- [The nightly bench fails on a gap nobody decided](/quest/m2/bench/gate.md) - watches these sizes once they exist
 - [AMD CPUs without VAES run their fastest AES-GCM tier](/quest/m3/quic-path.md) - set the x86_64 thresholds from measurements at other sizes

@@ -30,5 +30,4 @@ For all three: add the column to `TIERS` (`admin/bench-report:765`), and extend 
 
 ## Related
 
-- [The nightly bench fails on a gap nobody decided](/quest/m2/bench/gate.md) - watches these rows once they exist
 - [ARMv7 without the crypto extension runs the fastest SHA-256 and SHA-1](/quest/m3/cold-speed/armv7-sha.md) - measures on the armv7 row
