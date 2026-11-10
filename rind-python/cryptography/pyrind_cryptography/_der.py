@@ -91,6 +91,20 @@ def encode(tag, contents):
     return bytes([tag, 0x80 | len(length)]) + length + contents
 
 
+def encode_oid(dotted):
+    """Encodes the contents of an OBJECT IDENTIFIER in dotted form."""
+    arcs = [int(arc) for arc in dotted.split(".")]
+    out = bytearray()
+    for arc in [40 * arcs[0] + arcs[1], *arcs[2:]]:
+        chunk = [arc & 0x7F]
+        arc >>= 7
+        while arc:
+            chunk.append(0x80 | arc & 0x7F)
+            arc >>= 7
+        out += bytes(reversed(chunk))
+    return bytes(out)
+
+
 def encode_integer(value):
     """Encodes a non-negative INTEGER."""
     if value < 0:

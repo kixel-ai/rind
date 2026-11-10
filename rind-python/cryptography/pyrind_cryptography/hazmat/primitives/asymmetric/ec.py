@@ -267,7 +267,7 @@ class EllipticCurvePublicKey(metaclass=abc.ABCMeta):
     @classmethod
     def _load(cls, curve, point):
         """Loads the uncompressed point `point` on `curve`, refusing one off the curve."""
-        sign = _rind(curve)[0]
+        _rind(curve)
         with _keys.loading():
             key = _signature.PublicKey(_VERIFY[curve.name, _SIGN_HASH[curve.name]], point)
         public_key = EllipticCurvePublicKey(curve, point)
@@ -306,7 +306,7 @@ class EllipticCurvePublicKey(metaclass=abc.ABCMeta):
 
     def _spki(self):
         oid = _rind(self._curve)[4]
-        algorithm = _der.sequence(_der.encode(_der.OID, _encode_oid("1.2.840.10045.2.1")), _der.encode(_der.OID, _encode_oid(oid)))
+        algorithm = _der.sequence(_der.encode(_der.OID, _der.encode_oid("1.2.840.10045.2.1")), _der.encode(_der.OID, _der.encode_oid(oid)))
         return _der.spki(algorithm, self._point)
 
     def _encode_point(self, compressed):
@@ -347,19 +347,6 @@ class EllipticCurvePublicKey(metaclass=abc.ABCMeta):
 
     def __deepcopy__(self, memo):
         return self
-
-
-def _encode_oid(dotted):
-    arcs = [int(arc) for arc in dotted.split(".")]
-    out = bytearray()
-    for arc in [40 * arcs[0] + arcs[1], *arcs[2:]]:
-        chunk = [arc & 0x7F]
-        arc >>= 7
-        while arc:
-            chunk.append(0x80 | arc & 0x7F)
-            arc >>= 7
-        out += bytes(reversed(chunk))
-    return bytes(out)
 
 
 class EllipticCurvePrivateKey(metaclass=abc.ABCMeta):

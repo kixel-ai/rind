@@ -4,7 +4,7 @@ import hmac as _std_hmac
 
 from pyrind import hmac as _hmac
 
-from pyrind_cryptography.exceptions import AlreadyFinalized, InvalidSignature, _Reasons
+from pyrind_cryptography.exceptions import AlreadyFinalized, InvalidSignature
 from pyrind_cryptography.hazmat.primitives import hashes
 
 _RIND = {

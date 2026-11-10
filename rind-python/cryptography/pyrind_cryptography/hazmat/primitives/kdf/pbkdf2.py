@@ -1,9 +1,8 @@
 """PBKDF2 with HMAC, on rind's PBKDF2-HMAC-SHA1 and PBKDF2-HMAC-SHA2."""
 
-from pyrind import BadSignature as _BadSignature
 from pyrind import pbkdf2 as _pbkdf2
 
-from pyrind_cryptography.exceptions import AlreadyFinalized, InvalidKey
+from pyrind_cryptography.exceptions import AlreadyFinalized
 from pyrind_cryptography.hazmat.primitives import hashes
 from pyrind_cryptography.hazmat.primitives.kdf import _OneShot
 
@@ -34,12 +33,6 @@ class PBKDF2HMAC(_OneShot):
 
     def derive(self, key_material):
         return self._secret(key_material).derive(self._iterations, self._salt, self._length)
-
-    def verify(self, key_material, expected_key):
-        try:
-            self._secret(key_material).verify(self._iterations, self._salt, expected_key)
-        except _BadSignature:
-            raise InvalidKey("Keys do not match.") from None
 
 
 __all__ = ["PBKDF2HMAC"]

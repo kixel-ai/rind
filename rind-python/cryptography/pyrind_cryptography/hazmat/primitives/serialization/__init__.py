@@ -60,6 +60,7 @@ def _pkcs8(der):
     algorithm, parameter = _der.pkcs8_algorithm(der)
     with _keys.loading():
         if algorithm == _RSA:
+            rsa._check_private_size(_der.pkcs8_key(der))
             return rsa.RSAPrivateKey(_signature.RsaKeyPair.from_pkcs8(der))
         if algorithm == _EC:
             if parameter is None:
@@ -87,6 +88,7 @@ def _sec1(der, items):
 
 def _pkcs1_private(der):
     rsa = _modules()[2]
+    rsa._check_private_size(der)
     with _keys.loading():
         return rsa.RSAPrivateKey(_signature.RsaKeyPair.from_pkcs1(der))
 

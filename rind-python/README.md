@@ -3,6 +3,8 @@
 Cryptography for Python from [rind](https://github.com/moq-dev/rind), a
 pure-Rust library: AEADs, hashes, HMAC, HKDF, PBKDF2, X25519, Ed25519, ECDSA
 and ECDH, RSA, and ML-KEM, with rind's own misuse-resistant API.
+[pyrind-cryptography](cryptography) offers pyca/cryptography's API on it
+instead.
 
 ```shell
 pip install pyrind
@@ -92,9 +94,10 @@ public_key = signature.PublicKey(verify.ECDSA_P256_SHA256_ASN1, bytes(key_pair.p
 public_key.verify(b"message", signed)
 ```
 
-The modules are `aead`, `agreement` (X25519 and ECDH), `cpu`, `digest`,
-`hkdf`, `hmac`, `kem` (ML-KEM-768), `pbkdf2`, `rsa` (RSA-OAEP), and
-`signature` (ECDSA, Ed25519, and RSA). Algorithms only legacy protocols
+The modules are `aead`, `agreement` (X25519 and ECDH), `cipher`
+(unauthenticated AES-CBC), `cpu`, `digest`, `hkdf`, `hmac`, `kem`
+(ML-KEM-768), `key_wrap` (AES-KW and AES-KWP), `pbkdf2`, `rsa` (RSA-OAEP),
+and `signature` (ECDSA, Ed25519, and RSA). Algorithms only legacy protocols
 should use, such as SHA-1 and MD5, live in each module's `legacy` submodule.
 Keys load from and encode to PKCS#8, SEC1, PKCS#1, and
 `SubjectPublicKeyInfo` DER. The package ships type stubs, and

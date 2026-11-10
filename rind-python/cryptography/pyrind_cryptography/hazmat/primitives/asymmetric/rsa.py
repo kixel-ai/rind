@@ -15,7 +15,7 @@ from pyrind_cryptography.hazmat.primitives.asymmetric import padding as _padding
 from pyrind_cryptography.hazmat.primitives.asymmetric import utils as _utils
 from pyrind_cryptography.hazmat.primitives.serialization import _ssh
 
-_ALGORITHM = _der.sequence(_der.encode(_der.OID, bytes.fromhex("2a864886f70d010101")), _der.encode(_der.NULL, b""))
+_ALGORITHM = _der.sequence(_der.encode(_der.OID, _der.encode_oid("1.2.840.113549.1.1.1")), _der.encode(_der.NULL, b""))
 
 _SIZES = {
     2048: _rsa.KeySize.RSA_2048,
@@ -45,6 +45,21 @@ _PSS_VERIFY_ANY_SALT = {
     "sha512": _verify.RSA_PSS_SHA512_ANY_SALT,
 }
 _OAEP = {"sha1": _rsa.legacy.OAEP_SHA1, "sha256": _rsa.OAEP_SHA256, "sha384": _rsa.OAEP_SHA384, "sha512": _rsa.OAEP_SHA512}
+
+
+def _check_size(bits, low):
+    """Refuses a modulus size rind lacks, from `low` bits to 8192, as unsupported rather than malformed."""
+    if not low <= bits <= 8192:
+        raise unsupported(f"{bits}-bit RSA keys", _Reasons.UNSUPPORTED_PUBLIC_KEY_ALGORITHM)
+
+
+def _check_private_size(pkcs1):
+    """Refuses a PKCS#1 `RSAPrivateKey` whose modulus rind lacks; rind parses the rest."""
+    try:
+        n = _der.integers(pkcs1)[1]
+    except (ValueError, IndexError):
+        return
+    _check_size(n.bit_length(), 2048)
 
 
 def _hash_name(algorithm):
@@ -157,6 +172,7 @@ class RSAPrivateNumbers:
         if any(value < 0 for value in values):
             raise ValueError("Invalid RSA key")
         der = _der.sequence(_der.encode_integer(0), *map(_der.encode_integer, values))
+        _check_private_size(der)
         with _keys.loading():
             return RSAPrivateKey(_signature.RsaKeyPair.from_pkcs1(der))
 
@@ -182,6 +198,12 @@ class RSAPublicKey(metaclass=abc.ABCMeta):
     @classmethod
     def _from_spki(cls, der):
         """Loads `SubjectPublicKeyInfo` DER, refusing a modulus under 1024 bits or over 8192."""
+        try:
+            n = _der.integers(_der.spki_key(der))[0]
+        except (ValueError, IndexError):
+            pass
+        else:
+            _check_size(n.bit_length(), 1024)
         with _keys.loading():
             key = _signature.PublicKey.from_spki(_verify.legacy.RSA_PKCS1_1024_SHA256, der)
         n, e = _der.integers(bytes(key))
@@ -214,6 +236,7 @@ class RSAPublicKey(metaclass=abc.ABCMeta):
         elif isinstance(padding, _padding.PSS):
             if _mgf1_hash(padding) != hash_name:
                 raise unsupported("PSS with a different MGF1 hash", _Reasons.UNSUPPORTED_PADDING)
+            _check_size(self.key_size, 2048)
             exact = _pss_salt_is_digest(padding, hash_name, algorithm.digest_size, self.key_size, verifying=True)
             chosen = _choose(_PSS_VERIFY if exact else _PSS_VERIFY_ANY_SALT, hash_name, "PSS")
         elif isinstance(padding, _padding.AsymmetricPadding):
@@ -239,6 +262,7 @@ class RSAPublicKey(metaclass=abc.ABCMeta):
     def encrypt(self, plaintext, padding):
         """Encrypts `plaintext` with OAEP."""
         algorithm, label = _oaep_algorithm(padding)
+        _check_size(self.key_size, 2048)
         key = self._keys.get(algorithm)
         if key is None:
             with _keys.loading():
