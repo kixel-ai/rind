@@ -7,8 +7,9 @@ its prompts and their answers together.
 
 `admin/sync-acvp` fetches them from the revision it pins, v1.1.0.43
 (2026-08-12), and changes them as follows: it keeps only the test groups and
-tests whose parameters rind offers, as its filters list, and drops messages
-that are not a whole number of bytes. To update, bump the revision in
+tests whose parameters rind offers, as its filters list, and drops SP
+800-106's randomized-hashing groups and messages that are not a whole number
+of bytes. To update, bump the revision in
 `admin/sync-acvp` and rerun it. The tests that read a set fail on any group
 they do not expect, so the script's filters are the only place a test is
 skipped.

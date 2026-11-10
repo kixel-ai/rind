@@ -28,6 +28,7 @@ against ACVP-Server v1.1.0.43, ACVP covers these that rind lacks:
   KMAC, TupleHash, ParallelHash, and messages that are not whole bytes.
   ACVP v1.1.0.43 publishes no SHA-1 hash set.
 - Signatures: ECDSA on P-224 and the binary curves, or with SHA-3 or SHAKE;
+  SP 800-106 randomized hashing for ECDSA and RSA;
   RSA with SHA-3, SHAKE, or a SHAKE mask; RSA public exponents above 33 bits,
   which rind refuses as aws-lc does; FIPS 186-5 RSA key generation, whose
   sets give the primes' seeds or candidates; Ed448, Ed25519ph, Ed25519ctx;

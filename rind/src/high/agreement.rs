@@ -622,7 +622,7 @@ mod tests {
 
     use super::*;
     use crate::high::signature::{EcdsaKeyPair, sign};
-    use crate::test::{Expected, wycheproof};
+    use crate::test::{Acvp, Expected, wycheproof};
 
     #[test]
     fn acvp_x25519_key_gen() {
@@ -675,9 +675,11 @@ mod tests {
             tests: usize,
         }
 
+        // CAVP writes some P-521 values with a leading zero byte too many.
         fn fixed(value: &Value<'_>, len: usize) -> Vec<u8> {
             let value = value.bytes();
-            [vec![0; len - value.len()], value].concat()
+            let value = &value[value.len().saturating_sub(len)..];
+            [&vec![0; len - value.len()][..], value].concat()
         }
 
         impl CavpSink for State {

@@ -230,6 +230,7 @@ fn ct_mask_lt(a: u8, b: u8) -> u8 {
 mod tests {
     use super::*;
     use crate::cipher::{AES_128, AES_192, AES_256};
+    use crate::test::Acvp;
 
     fn keys(key: &[u8]) -> (AesCbcEncryptingKey, AesCbcDecryptingKey) {
         (

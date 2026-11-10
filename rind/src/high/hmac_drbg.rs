@@ -186,7 +186,8 @@ mod tests {
 
         let mut state = State::default();
         process_cavp("../thirdparty/cavp/drbg/HMAC_DRBG.rsp", &mut state);
-        assert_eq!(state.tests, 3 * 2 * 15);
+        // Eight groups of 15 per hash lack additional input.
+        assert_eq!(state.tests, 3 * 8 * 15);
     }
 
     #[test]

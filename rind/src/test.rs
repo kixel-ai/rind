@@ -161,7 +161,8 @@ impl Acvp for serde_json::Value {
 /// the low bits of a round's last two outputs, as many as the key holds.
 pub(crate) fn aes_mct_next_key(key: &mut [u8], second_last: &[u8; 16], last: &[u8; 16]) {
     let outputs = [&second_last[..], &last[..]].concat();
-    for (k, o) in key.iter_mut().zip(&outputs[32 - key.len()..]) {
+    let start = 32 - key.len();
+    for (k, o) in key.iter_mut().zip(&outputs[start..]) {
         *k ^= o;
     }
 }

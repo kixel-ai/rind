@@ -332,11 +332,12 @@ mod tests {
     /// lacks, or `None` for a public exponent above 33 bits, which rind
     /// refuses as aws-lc does.
     fn acvp_key(mode: &str, test: &serde_json::Value) -> Option<RsaPrivateKey> {
-        let int = |name| low::PosInt::from_bytes(&test.hex(name)).unwrap();
-        let (p, q): (RsaPosIntModP, RsaPosIntModP) = (int("p"), int("q"));
-        let (d, n): (RsaPosIntD, RsaPosIntModN) = (int("d"), int("n"));
+        let modp = |name| RsaPosIntModP::from_bytes(&test.hex(name)).unwrap();
+        let (p, q) = (modp("p"), modp("q"));
+        let d = RsaPosIntD::from_bytes(&test.hex("d")).unwrap();
+        let n = RsaPosIntModN::from_bytes(&test.hex("n")).unwrap();
         let (dp, dq, iqmp) = match mode {
-            "crt" => (int("dmp1"), int("dmq1"), int("iqmp")),
+            "crt" => (modp("dmp1"), modp("dmq1"), modp("iqmp")),
             "standard" => {
                 let one = low::PosInt::one();
                 let q_mod_p: RsaPosIntModP = q
@@ -378,11 +379,19 @@ mod tests {
                 let Some(key) = acvp_key(group.str("keyMode"), test) else {
                     continue;
                 };
-                let pt = acvp_private_op(&key, &test.hex("ct"));
-                match test.flag("testPassed") {
-                    true => assert_eq!(pt.unwrap(), test.hex("pt")),
-                    false => assert_eq!(pt, None),
+                let ct = test.hex("ct");
+                if test.flag("testPassed") {
+                    assert_eq!(acvp_private_op(&key, &ct).unwrap(), test.hex("pt"));
+                    continue;
                 }
+                // SP 800-56B's RSADP refuses a ciphertext outside 1 < c < n - 1
+                // before its private operation; rind's OAEP leaves 0, 1, and
+                // n - 1 to its padding check, which their outputs fail.
+                let c: RsaPosIntModN = low::PosInt::from_bytes(&ct).unwrap();
+                let n: RsaPosIntModN = low::PosInt::from_bytes(&test.hex("n")).unwrap();
+                let n_1 = n.sub(&low::PosInt::one());
+                let two: RsaPosIntModN = low::PosInt::word(2);
+                assert!(c.less_than(&two) || !c.less_than(&n_1));
             }
         }
     }
