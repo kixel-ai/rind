@@ -23,3 +23,74 @@
    Memcheck:Cond
    fun:rind_*_sha512_block_data_order_nohw
 }
+
+# rustls-pki-types parses PEM a line at a time: it finds each line's end and
+# tests each line for a `-----BEGIN`/`-----END` boundary, comparing secret
+# base64 characters with public delimiters. Whether a byte is a delimiter is
+# public by that crate's design. Frames are v0-mangled, or short names where a
+# release build inlined them; each entry ends in a rustls-pki-types PEM frame.
+{
+   rustls-pki-types-pem-line-scan
+   Memcheck:Cond
+   fun:*16rustls_pki_types3pem*
+}
+{
+   rustls-pki-types-pem-line-compare
+   Memcheck:Cond
+   fun:bcmp
+   ...
+   fun:*16rustls_pki_types3pem*
+}
+{
+   rustls-pki-types-pem-line-slice
+   Memcheck:Cond
+   fun:*4core5slice*
+   ...
+   fun:*16rustls_pki_types3pem*
+}
+{
+   rustls-pki-types-pem-line-scan-inlined
+   Memcheck:Cond
+   fun:position<u8, rustls_pki_types::pem::*
+   ...
+   fun:*16rustls_pki_types3pem*
+}
+{
+   rustls-pki-types-pem-line-end-inlined
+   Memcheck:Cond
+   fun:{closure#0}
+   fun:read_section<*
+   ...
+   fun:*16rustls_pki_types3pem*
+}
+{
+   rustls-pki-types-pem-boundary-prefix-inlined
+   Memcheck:Cond
+   fun:strip_prefix<u8, *
+   fun:is_end
+   ...
+   fun:*16rustls_pki_types3pem*
+}
+{
+   rustls-pki-types-pem-boundary-inlined
+   Memcheck:Cond
+   fun:is_end
+   ...
+   fun:*16rustls_pki_types3pem*
+}
+
+# Its secret base64 decoder branches on each character's class (whitespace,
+# padding, invalid, or data), which PEM framing makes public, then maps data
+# characters to values without branching or indexing on them. Only those
+# branches are suppressed; a secret-dependent address there still reports.
+{
+   rustls-pki-types-base64-character-class
+   Memcheck:Cond
+   fun:*16rustls_pki_types6base646decode*13decode_secret*
+}
+{
+   rustls-pki-types-base64-character-class-inlined
+   Memcheck:Cond
+   fun:decode<fn(u8) -> rustls_pki_types::base64::CodePoint>
+   fun:*16rustls_pki_types6base6413decode_secret
+}
