@@ -937,7 +937,10 @@ mod tests {
         };
 
         let rsaz = low::RsazAvx512::check(16).is_some();
-        assert_eq!(PosInt::mod_exp_pair_rsaz(&pair([0, 1], [0, 0])).is_some(), rsaz);
+        assert_eq!(
+            PosInt::mod_exp_pair_rsaz(&pair([0, 1], [0, 0])).is_some(),
+            rsaz
+        );
         assert!(PosInt::mod_exp_pair_rsaz(&pair([0, 2], [0, 0])).is_none());
         assert!(PosInt::mod_exp_pair_rsaz(&pair([0, 1], [0, 1])).is_none());
     }
