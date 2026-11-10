@@ -53,7 +53,7 @@ jobs:
       - name: Run tests (debug, --no-default-features)
         run: cargo test --no-default-features
       - name: Run zeroing tests (debug, --features wipe)
-        run: cargo test -p rind -p rind-aws-lc-rs --features rind/wipe,rind-aws-lc-rs/wipe --test zeroing
+        run: cargo test -p rind -p rind-aws-lc-rs -p rind-rcgen --features rind/wipe,rind-aws-lc-rs/wipe,rind-rcgen/wipe --test zeroing
 
       - name: Build (release)
         run: cargo build -p rind --release

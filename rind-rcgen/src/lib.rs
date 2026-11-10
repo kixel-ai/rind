@@ -37,6 +37,9 @@ use rind::signature::{
 };
 use rustls_pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 
+#[cfg(feature = "pem")]
+mod pem;
+
 /// A key pair used to sign certificates and CSRs.
 pub struct KeyPair {
     key: Key,
@@ -120,7 +123,7 @@ impl KeyPair {
     /// Parses a PEM private key, which must be PKCS#8, finding its algorithm.
     #[cfg(feature = "pem")]
     pub fn from_pem(pem_str: &str) -> Result<Self, Error> {
-        Self::try_from(parse_pem(pem_str)?.as_slice())
+        Self::try_from(pem::decode(pem_str)?.as_slice())
     }
 
     /// Parses a PEM PKCS#8 private key that signs with `alg`.
@@ -129,7 +132,7 @@ impl KeyPair {
         pem_str: &str,
         alg: &'static SignatureAlgorithm,
     ) -> Result<Self, Error> {
-        let pem = parse_pem(pem_str)?;
+        let pem = pem::decode(pem_str)?;
         Self::from_pkcs8_der_and_sign_algo(&PrivatePkcs8KeyDer::from(pem.as_slice()), alg)
     }
 
@@ -139,7 +142,7 @@ impl KeyPair {
         pem_str: &str,
         alg: &'static SignatureAlgorithm,
     ) -> Result<Self, Error> {
-        let pem = parse_pem(pem_str)?;
+        let pem = pem::decode(pem_str)?;
         let key =
             PrivateKeyDer::try_from(pem.as_slice()).map_err(|_| Error::CouldNotParseKeyPair)?;
         Self::from_der_and_sign_algo(&key, alg)
@@ -163,7 +166,7 @@ impl KeyPair {
     /// Encodes the public key as a PEM SubjectPublicKeyInfo.
     #[cfg(feature = "pem")]
     pub fn public_key_pem(&self) -> String {
-        encode_pem("PUBLIC KEY", &self.subject_public_key_info())
+        pem::encode("PUBLIC KEY", &self.subject_public_key_info())
     }
 
     /// Encodes the key pair as PKCS#8 DER.
@@ -179,7 +182,7 @@ impl KeyPair {
     /// Encodes the key pair as PEM PKCS#8.
     #[cfg(feature = "pem")]
     pub fn serialize_pem(&self) -> String {
-        encode_pem("PRIVATE KEY", self.serialized_der())
+        pem::encode("PRIVATE KEY", self.serialized_der())
     }
 
     fn new(key: Key, algorithm: &'static SignatureAlgorithm, serialized_der: Vec<u8>) -> Self {
@@ -208,27 +211,6 @@ impl Drop for Wiped {
             zeroize::Zeroize::zeroize(&mut self.0);
         }
     }
-}
-
-// pem-rfc7468 over rcgen's `pem` crate: its base64 is constant time, so
-// private keys' encodings never index a table.
-#[cfg(feature = "pem")]
-fn parse_pem(pem_str: &str) -> Result<Vec<u8>, Error> {
-    let (_label, der) =
-        pem_rfc7468::decode_vec(pem_str.as_bytes()).map_err(|e| Error::PemError(e.to_string()))?;
-    Ok(der)
-}
-
-#[cfg(feature = "pem")]
-fn encode_pem(label: &str, contents: &[u8]) -> String {
-    // rcgen's own line endings.
-    let line_ending = if cfg!(target_family = "windows") {
-        pem_rfc7468::LineEnding::CRLF
-    } else {
-        pem_rfc7468::LineEnding::LF
-    };
-    pem_rfc7468::encode_string(label, line_ending, contents)
-        .expect("a PEM label and a DER length always encode")
 }
 
 /// How rind signs for an rcgen algorithm.

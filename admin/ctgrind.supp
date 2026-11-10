@@ -24,14 +24,12 @@
    fun:rind_*_sha512_block_data_order_nohw
 }
 
-# rind-rcgen's PEM goes through pem-rfc7468 and base64ct, whose per-character
-# arithmetic is branch-free. What they branch on is public: whether the
-# decoded input was well-formed (`err == 0` in `decode`, the round-trip
-# compare in `validate_last_block`) and that the encoded output is ASCII
-# (pem-rfc7468's high-bit fold, and `str::from_utf8` on base64ct's output,
-# which only ever holds alphabet characters, including the block
-# `validate_last_block` re-encodes). Frames are v0-mangled, or short
-# names where a release build inlined them.
+# rind-rcgen's PEM codec (`rind-rcgen/src/pem.rs`) frames base64ct's, whose
+# per-character arithmetic is branch-free. What they branch on is public:
+# whether the base64 was well-formed (`err == 0` in base64ct's `decode`),
+# where the PEM's delimiters and whitespace sit, and that the base64 is
+# ASCII, which `str::from_utf8` and `char_indices` check as they read it.
+# Frames are v0-mangled, or short names where a release build inlined them.
 {
    base64ct-decode-validity
    Memcheck:Cond
@@ -43,37 +41,44 @@
    fun:decode<base64ct::*
 }
 {
-   base64ct-last-block-validity
+   rind-rcgen-pem-framing
    Memcheck:Cond
-   fun:*8base64ct8encoding19validate_last_block*
+   fun:*10rind_rcgen3pem*read_until*
 }
 {
-   base64ct-last-block-validity-inlined
+   rind-rcgen-pem-framing-inlined
    Memcheck:Cond
-   fun:validate_last_block<base64ct::*
+   fun:read_until
+   fun:*10rind_rcgen3pem6decode*
 }
 {
-   pem-rfc7468-encoded-is-ascii
+   rind-rcgen-pem-whitespace
    Memcheck:Cond
-   fun:*11pem_rfc74687encoder6encode
+   fun:*10rind_rcgen3pem*skip_whitespace*
 }
 {
-   pem-rfc7468-encoded-is-utf8
+   rind-rcgen-pem-whitespace-inlined
+   Memcheck:Cond
+   fun:skip_whitespace
+   fun:*10rind_rcgen3pem6decode*
+}
+{
+   rind-rcgen-pem-whitespace-strip
+   Memcheck:Cond
+   ...
+   fun:*strip_whitespace*
+}
+{
+   rind-rcgen-pem-utf8
    Memcheck:Cond
    fun:*utf8*
    ...
-   fun:*pem_rfc7468*encoder*
+   fun:*10rind_rcgen3pem*
 }
 {
-   base64ct-encoded-is-utf8
-   Memcheck:Cond
-   fun:*utf8*
-   fun:*8base64ct8encoding*8Encoding6encode*
-}
-{
-   pem-rfc7468-encoded-is-utf8-index
+   rind-rcgen-pem-utf8-index
    Memcheck:Value8
    fun:*utf8*
    ...
-   fun:*pem_rfc7468*encoder*
+   fun:*10rind_rcgen3pem*
 }

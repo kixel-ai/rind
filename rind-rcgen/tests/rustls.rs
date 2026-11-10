@@ -114,6 +114,65 @@ fn matches_rcgen_pem() {
     assert_eq!(reloaded.der_bytes(), ours.der_bytes());
 }
 
+/// PEM loads exactly where rcgen's `pem` crate parses it, whatever its
+/// framing, wrapping, or whitespace.
+#[cfg(feature = "pem")]
+#[test]
+fn parses_pem_as_rcgen() {
+    let key = KeyPair::generate().unwrap();
+    let pem = key.serialize_pem();
+    let base64: String = pem.lines().filter(|l| !l.starts_with("-----")).collect();
+    let wrap = |width: usize, sep: &str| {
+        base64
+            .as_bytes()
+            .chunks(width)
+            .map(|c| std::str::from_utf8(c).unwrap())
+            .collect::<Vec<_>>()
+            .join(sep)
+    };
+    let block = |label: &str, body: &str| {
+        format!("-----BEGIN {label}-----\n{body}\n-----END {label}-----\n")
+    };
+    let mut corrupt = base64.clone();
+    corrupt.replace_range(..1, "!");
+    let unpadded = base64.trim_end_matches('=');
+
+    let cases = [
+        pem.clone(),
+        pem.replace('\n', "\r\n"),
+        block("PRIVATE KEY", &wrap(76, "\n")),
+        block("PRIVATE KEY", &base64),
+        block("PRIVATE KEY", &wrap(16, " \t\x0b\x0c\n")),
+        block("PRIVATE KEY", &wrap(16, "\u{a0}\u{2028}")),
+        block("EC PRIVATE KEY", &base64),
+        format!("leading text\n{pem}trailing text"),
+        block(
+            "PRIVATE KEY",
+            &format!("Proc-Type: 4,ENCRYPTED\n\n{base64}"),
+        ),
+        block("PRIVATE KEY", &format!("Proc-Type\n\n{base64}")),
+        format!("-----BEGIN PRIVATE KEY-----\n{base64}\n-----END OTHER-----\n"),
+        format!("------BEGIN PRIVATE KEY-----\n{base64}\n-----END PRIVATE KEY-----\n"),
+        format!("-----BEGIN -----\n{base64}\n-----END -----\n"),
+        block("PRIVATE KEY", &corrupt),
+        block("PRIVATE KEY", unpadded),
+        block("PRIVATE KEY", ""),
+        String::new(),
+    ];
+    for case in cases {
+        let ours = KeyPair::from_pem(&case).map(|k| k.serialize_der());
+        let theirs = rcgen::KeyPair::from_pem(&case).map(|k| k.serialize_der());
+        assert_eq!(
+            ours.is_ok(),
+            theirs.is_ok(),
+            "{case:?}: {ours:?} vs {theirs:?}"
+        );
+        if let (Ok(ours), Ok(theirs)) = (ours, theirs) {
+            assert_eq!(ours, theirs, "{case:?}");
+        }
+    }
+}
+
 #[test]
 fn refusal_keeps_rinds_reason() {
     let p256 = PrivatePkcs8KeyDer::from(KeyPair::generate().unwrap());
