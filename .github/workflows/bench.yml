@@ -281,6 +281,12 @@ jobs:
       - name: Save results
         shell: bash
         run: |
+          # Whether the runner has the features rind's AVX-512 AES-GCM needs, so
+          # the native x86_64 column names the tier it drew.
+          avx512=true
+          for f in avx512f avx512bw avx512vl vaes vpclmulqdq; do
+            grep -m1 '^flags' /proc/cpuinfo | grep -qw "$f" || avx512=false
+          done
           find target/criterion -path '*/new/benchmark.json' | sort |
             while read -r f; do
               jq -c --slurpfile e "${f%benchmark.json}estimates.json" \
@@ -288,7 +294,8 @@ jobs:
             done |
             jq -s --arg target "$TARGET" --argjson portable "$PORTABLE" --arg tier "$TIER" \
               --arg cpu "$(lscpu | sed -n 's/^Model name: *//p' | head -n1)" --arg commit "$GITHUB_SHA" \
-              '{schema: 1, target: $target, portable: $portable, tier: $tier, cpu: $cpu, commit: $commit, results: .}' \
+              --argjson avx512 "$avx512" \
+              '{schema: 1, target: $target, portable: $portable, tier: $tier, cpu: $cpu, avx512: $avx512, commit: $commit, results: .}' \
               >bench-results.json
         env:
           TARGET: ${{ matrix.target }}
@@ -305,6 +312,12 @@ jobs:
       - name: Summarize
         shell: bash
         run: |
+          # Whether the runner has the features rind's AVX-512 AES-GCM needs, so
+          # the native x86_64 column names the tier it drew.
+          avx512=true
+          for f in avx512f avx512bw avx512vl vaes vpclmulqdq; do
+            grep -m1 '^flags' /proc/cpuinfo | grep -qw "$f" || avx512=false
+          done
           find target/criterion -path '*/new/benchmark.json' -printf '%T@ %p\n' | sort -n | cut -d' ' -f2- |
             while read -r f; do
               jq -c --slurpfile e "${f%benchmark.json}estimates.json" '.full_id | split("/")
