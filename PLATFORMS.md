@@ -3,7 +3,7 @@
 rind has assembly for `aarch64`, `x86_64`, and 32-bit `arm`, and a portable
 Rust backend for every other architecture. CI tests Linux (glibc and musl), macOS, and Windows on `x86_64` and `aarch64`, Linux and Windows on
 32-bit `x86`, iOS in the simulator on `aarch64`, Android on `aarch64`,
-`armv7`, `x86_64`, and 32-bit `x86`, the first two under qemu, and Linux on
+`armv7`, `x86_64`, and 32-bit `x86`, all but `x86_64` under qemu, and Linux on
 big-endian `s390x` under qemu. iOS devices' code is only built.
 
 - `aarch64` requires the `neon` CPU feature. Where the CPU has the crypto

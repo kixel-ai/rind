@@ -321,8 +321,8 @@ jobs:
           env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --target aarch64-apple-ios-sim --release
 
   # cross's images (see Cross.toml) hold an Android system for the tests, and
-  # run aarch64, armv7, and i686 under qemu-user, whose ARM CPUs have the
-  # crypto extension.
+  # run aarch64, armv7, and i686 under qemu-user. The aarch64 and armv7 CPUs
+  # have the crypto extension; i686's Atom N270 has none of x86's.
   # armv7 Linux covers the paths without it.
   android:
     strategy:
