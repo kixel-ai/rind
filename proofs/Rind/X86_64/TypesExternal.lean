@@ -8,7 +8,7 @@ open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch`,
-`Rind.X86_64.DigestDispatch`, and `Rind.X86_64.AeadDispatch` model the last five,
+`Rind.X86_64.DigestDispatch`, and `Rind.X86_64.AeadDispatch` model the last six,
 `Rind.X86_64.DigestAlgorithm` `Algorithm` and `Digest`, and `Rind.X86_64.Simd`
 `__m128i`. -/
 
@@ -66,9 +66,18 @@ opaque low.x86_64.aes_gcm_vaes.VaesKernel : Type
 the `T`, since only the drop that wipes it leaves it `None`. -/
 @[reducible] def low.generic.zeroise.ZeroableRef (T : Type) : Type := T
 
+/-- `&'static high::agreement::Algorithm`, as `Rind.X86_64.Dispatch` models it:
+which of the four statics, since `high::agreement` builds no other. -/
+inductive high.agreement.Algorithm where
+  | X25519
+  | ECDH_P256
+  | ECDH_P384
+  | ECDH_P521
+deriving DecidableEq
+
 /-- A curve's key agreement functions, as `Rind.X86_64.Dispatch` models them:
-nothing, since `Keyed::new` builds each `Ops<K::Key>` from the curve marker
-`K`'s own `Agree` functions, which the model calls directly. -/
+nothing, since `Keyed::private_key` builds each `Ops<K::Key>` from the curve
+marker `K`'s own `Agree` functions, which the model calls directly. -/
 @[reducible] def high.agreement.Ops (_Key : Type) : Type := Unit
 
 /-- A header-protection key with its cipher's mask, as `Rind.X86_64.Dispatch` models it:

@@ -16,3 +16,7 @@ algorithm table, cover them in its tests, and drop the P-521 caveat from
 MIGRATING.md. Adding an algorithm is not a breaking change, so the
 maintainer moved this out of the API audit on 2026-10-31 rather than hold
 rind 0.1.0 on rcgen.
+
+## Waiting
+
+- rustls/rcgen: publishes a release that exports its `PKCS_ECDSA_P521_*` algorithms with `default-features = false`. On 2026-11-09 [#460](https://github.com/rustls/rcgen/issues/460) was open and the newest release was 0.14.10 (2026-08-28). Check with `gh issue view 460 -R rustls/rcgen --json state`, then the newest release's exports.

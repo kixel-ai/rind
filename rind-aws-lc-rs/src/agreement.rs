@@ -35,6 +35,13 @@ impl Algorithm {
         }
     }
 
+    fn from_rind(algorithm: &rind::agreement::Algorithm) -> &'static Self {
+        [&ECDH_P256, &ECDH_P384, &ECDH_P521, &X25519]
+            .into_iter()
+            .find(|alg| alg.rind() == algorithm)
+            .expect("every rind algorithm has an aws-lc-rs one")
+    }
+
     /// The ECDSA algorithm on the same curve, through which a NIST key is
     /// encoded as SEC1.
     fn ecdsa(&self) -> Option<&'static rind::signature::EcdsaSigningAlgorithm> {
@@ -91,17 +98,13 @@ pub const X25519: Algorithm = Algorithm {
 /// A private key for any number of key agreements; wiped on drop under the `wipe` feature.
 pub struct PrivateKey {
     key: rind::agreement::PrivateKey,
-    algorithm: &'static Algorithm,
 }
 
 impl PrivateKey {
     /// Generates a private key for `alg` from the system random source.
     pub fn generate(alg: &'static Algorithm) -> Result<Self, Unspecified> {
         let key = rind::agreement::PrivateKey::generate(alg.rind()).map_err(unspecified)?;
-        Ok(Self {
-            key,
-            algorithm: alg,
-        })
+        Ok(Self { key })
     }
 
     /// Loads a NIST curve's private key from PKCS#8 or a SEC1 (RFC 5915)
@@ -116,10 +119,7 @@ impl PrivateKey {
         let key = rind::agreement::PrivateKey::from_pkcs8(alg.rind(), key_bytes)
             .or_else(|_| rind::agreement::PrivateKey::from_sec1(alg.rind(), key_bytes))
             .map_err(KeyRejected::rind)?;
-        Ok(Self {
-            key,
-            algorithm: alg,
-        })
+        Ok(Self { key })
     }
 
     /// Loads a private key from its bytes: X25519's 32, or a NIST curve's
@@ -133,30 +133,26 @@ impl PrivateKey {
         }
         let key = rind::agreement::PrivateKey::from_scalar(alg.rind(), key_bytes)
             .map_err(KeyRejected::rind)?;
-        Ok(Self {
-            key,
-            algorithm: alg,
-        })
+        Ok(Self { key })
     }
 
     /// The public key to send to the peer.
     pub fn compute_public_key(&self) -> Result<PublicKey, Unspecified> {
         Ok(PublicKey {
-            key: self.key.public_key(),
-            algorithm: self.algorithm,
+            key: self.key.public_key().clone(),
         })
     }
 
     /// The key's algorithm.
     #[must_use]
     pub fn algorithm(&self) -> &'static Algorithm {
-        self.algorithm
+        Algorithm::from_rind(self.key.algorithm())
     }
 }
 
 impl fmt::Debug for PrivateKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "PrivateKey {{ algorithm: {:?} }}", self.algorithm)
+        write!(f, "PrivateKey {{ algorithm: {:?} }}", self.algorithm())
     }
 }
 
@@ -164,7 +160,7 @@ impl AsDer<EcPrivateKeyRfc5915Der<'static>> for PrivateKey {
     /// Encodes a NIST curve's key as a SEC1 (RFC 5915) `ECPrivateKey`
     /// naming its curve and holding its public key; X25519 is refused.
     fn as_der(&self) -> Result<EcPrivateKeyRfc5915Der<'static>, Unspecified> {
-        let ecdsa = self.algorithm.ecdsa().ok_or(Unspecified)?;
+        let ecdsa = self.algorithm().ecdsa().ok_or(Unspecified)?;
         let pkcs8 = self.key.to_pkcs8();
         let pair = rind::signature::EcdsaKeyPair::from_pkcs8(ecdsa, pkcs8.as_ref())
             .map_err(unspecified)?;
@@ -177,7 +173,7 @@ impl AsDer<EcPrivateKeyRfc5915Der<'static>> for PrivateKey {
 impl AsDer<Pkcs8V1Der<'static>> for PrivateKey {
     /// Encodes a NIST curve's key as PKCS#8 v1; X25519 is refused.
     fn as_der(&self) -> Result<Pkcs8V1Der<'static>, Unspecified> {
-        if self.algorithm.id == AlgorithmId::X25519 {
+        if self.algorithm().id == AlgorithmId::X25519 {
             return Err(Unspecified);
         }
         Ok(Pkcs8V1Der::new(self.key.to_pkcs8().as_ref().to_vec()))
@@ -187,7 +183,7 @@ impl AsDer<Pkcs8V1Der<'static>> for PrivateKey {
 impl AsBigEndian<EcPrivateKeyBin<'static>> for PrivateKey {
     /// A NIST curve's big-endian scalar; X25519 is refused.
     fn as_be_bytes(&self) -> Result<EcPrivateKeyBin<'static>, Unspecified> {
-        if self.algorithm.id == AlgorithmId::X25519 {
+        if self.algorithm().id == AlgorithmId::X25519 {
             return Err(Unspecified);
         }
         Ok(EcPrivateKeyBin::new(self.key.to_scalar().as_ref().to_vec()))
@@ -197,7 +193,7 @@ impl AsBigEndian<EcPrivateKeyBin<'static>> for PrivateKey {
 impl AsBigEndian<Curve25519SeedBin<'static>> for PrivateKey {
     /// X25519's 32-byte private key; a NIST curve is refused.
     fn as_be_bytes(&self) -> Result<Curve25519SeedBin<'static>, Unspecified> {
-        if self.algorithm.id != AlgorithmId::X25519 {
+        if self.algorithm().id != AlgorithmId::X25519 {
             return Err(Unspecified);
         }
         Ok(Curve25519SeedBin::new(
@@ -211,20 +207,19 @@ impl AsBigEndian<Curve25519SeedBin<'static>> for PrivateKey {
 #[derive(Clone)]
 pub struct PublicKey {
     key: rind::agreement::PublicKey,
-    algorithm: &'static Algorithm,
 }
 
 impl PublicKey {
     /// The key's algorithm.
     #[must_use]
     pub fn algorithm(&self) -> &'static Algorithm {
-        self.algorithm
+        Algorithm::from_rind(self.key.algorithm())
     }
 }
 
 impl fmt::Debug for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "PublicKey {{ algorithm: {:?}, bytes: ", self.algorithm)?;
+        write!(f, "PublicKey {{ algorithm: {:?}, bytes: ", self.algorithm())?;
         fmt::Debug::fmt(&crate::Hex(self.as_ref()), f)?;
         f.write_str(" }")
     }
@@ -246,7 +241,7 @@ impl AsDer<PublicKeyX509Der<'static>> for PublicKey {
 impl AsBigEndian<EcPublicKeyCompressedBin<'static>> for PublicKey {
     /// A NIST curve's compressed point; X25519 is refused.
     fn as_be_bytes(&self) -> Result<EcPublicKeyCompressedBin<'static>, Unspecified> {
-        if self.algorithm.id == AlgorithmId::X25519 {
+        if self.algorithm().id == AlgorithmId::X25519 {
             return Err(Unspecified);
         }
         Ok(EcPublicKeyCompressedBin::new(compress(self.as_ref())))
@@ -256,7 +251,7 @@ impl AsBigEndian<EcPublicKeyCompressedBin<'static>> for PublicKey {
 impl AsBigEndian<EcPublicKeyUncompressedBin<'static>> for PublicKey {
     /// A NIST curve's uncompressed point; X25519 is refused.
     fn as_be_bytes(&self) -> Result<EcPublicKeyUncompressedBin<'static>, Unspecified> {
-        if self.algorithm.id == AlgorithmId::X25519 {
+        if self.algorithm().id == AlgorithmId::X25519 {
             return Err(Unspecified);
         }
         Ok(EcPublicKeyUncompressedBin::new(self.as_ref().to_vec()))
@@ -318,7 +313,6 @@ impl<B: AsRef<[u8]>> UnparsedPublicKey<B> {
 #[derive(Debug, Clone)]
 pub struct ParsedPublicKey {
     format: ParsedPublicKeyFormat,
-    algorithm: &'static Algorithm,
     key: rind::agreement::PublicKey,
     bytes: Box<[u8]>,
 }
@@ -362,7 +356,6 @@ impl ParsedPublicKey {
         };
         Ok(Self {
             format,
-            algorithm,
             key,
             bytes: bytes.into(),
         })
@@ -377,7 +370,7 @@ impl ParsedPublicKey {
     /// The key's algorithm.
     #[must_use]
     pub fn alg(&self) -> &'static Algorithm {
-        self.algorithm
+        Algorithm::from_rind(self.key.algorithm())
     }
 }
 
@@ -421,7 +414,7 @@ where
     let Ok(peer) = peer_public_key.try_into() else {
         return Err(error_value);
     };
-    if peer.algorithm != my_private_key.algorithm {
+    if peer.key.algorithm() != my_private_key.key.algorithm() {
         return Err(error_value);
     }
     match my_private_key.key.agree(peer.key.as_ref()) {

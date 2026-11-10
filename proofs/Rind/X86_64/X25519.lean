@@ -245,21 +245,18 @@ theorem diffie_hellman_spec (h : Runs) (k : mid.x25519.PrivateKey) (peer : mid.x
 
 /-! ## The agreement API's X25519 impl, `high::agreement` -/
 
-theorem encode_public_spec (h : Runs) (k : mid.x25519.PrivateKey) :
-    (do
-      let pk ← high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.encode_public k
-      high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
-      b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.val) 9 ⦄ := by
+theorem encode_public_spec (h : Runs) (k : mid.x25519.PrivateKey) (algorithm : high.agreement.Algorithm) :
+    high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.encode_public k algorithm ⦃ pk =>
+      high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
+        b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.val) 9 ⦄ ⦄ := by
   unfold high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.encode_public high.agreement.PublicKey.from_encoding
-    high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
+    high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref low.generic.zeroise.ZeroableRef.new
   step as ⟨pk, hpk⟩
   step as ⟨a, ha⟩
   step as ⟨sl, hsl⟩
   subst hsl
   have hlen : a.to_slice.len.val = 32 := by simp
-  step as ⟨sb, hs, hsl, hback⟩
-  obtain ⟨s, back⟩ := sb
-  simp only at hs hsl hback ⊢
+  step as ⟨s, back, hs, hsl, hback⟩
   step as ⟨x, hx⟩
   step as ⟨b, hb, hbl⟩
   have ha32 : (a.val).length = 32 := a.property
@@ -314,14 +311,46 @@ theorem random_spec (h : Runs) (r : core.result.Result Unit getrandom.error.Erro
       mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
 
-theorem load_scalar_spec (h : Runs) (b : Slice U8) :
-    high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.load (.Scalar b) ⦃ r =>
-      if b.length = 32 then ∃ k, r = .Ok k ∧ wordsNat k.val = leNat b.val
+theorem load_scalar_spec (h : Runs) (algorithm : high.agreement.Algorithm) (b : Slice U8) :
+    high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.load algorithm (.Scalar b) ⦃ r =>
+      if b.length = 32 then ∃ k pk, r = .Ok (k, pk) ∧ wordsNat k.val = leNat b.val ∧
+        high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
+          b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.val) 9 ⦄
       else r = .Err (.KeyRejected .WrongLength) ⦄ := by
   unfold high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.load
-  exact from_bytes_spec h b
+  step with from_bytes_spec h b as ⟨r, hr⟩
+  split_ifs at hr ⊢
+  · obtain ⟨k, rfl, hk⟩ := hr
+    step with core.result.Result.Insts.CoreOpsTry.branch_Ok.spec as ⟨cf, hcf⟩
+    subst hcf
+    simp only
+    step with encode_public_spec h k algorithm as ⟨pk, hpk⟩
+    exact ⟨k, pk, rfl, hk, hpk⟩
+  · subst hr
+    simp [core.result.Result.Insts.CoreOpsTry.branch,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
 
 /-! ## The agreement API, `high::agreement`, through the modelled dispatch -/
+
+/-- `key` is an X25519 key whose scalar is `d`, holding its public key: the
+u-coordinate of `d` times the base point, as RFC 7748's 32 little-endian
+bytes. -/
+def x25519Key (d : Nat) (key : high.agreement.PrivateKey) : Prop :=
+  ∃ k : high.agreement.Keyed high.agreement.X25519Curve mid.x25519.PrivateKey, key.«private» = .X25519 k ∧
+    wordsNat k.key.val = d ∧
+    high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref key.«public» ⦃ b =>
+      b.length = 32 ∧ leNat b.val = rfcx25519 d 9 ⦄
+
+/-- A key and its public key, as `Keyed::private_key` keeps them, is an
+`x25519Key`. -/
+theorem private_key_spec (k : mid.x25519.PrivateKey) (pk : high.agreement.PublicKey)
+    (hpk : high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
+      b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.val) 9 ⦄) :
+    high.agreement.Keyed.private_key high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey k pk ⦃ key =>
+      x25519Key (wordsNat k.val) key ⦄ := by
+  simp only [high.agreement.Keyed.private_key, high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.wrap,
+    bind_ok, WP.spec_ok]
+  exact ⟨{ key := k, ops := () }, rfl, rfl, hpk⟩
 
 /-- A generated X25519 key's scalar is the 32 bytes the random source drew,
 read little-endian, and a failed draw is refused. The draw itself is outside
@@ -331,16 +360,17 @@ theorem x25519_generate (h : Runs) (r : core.result.Result Unit getrandom.error.
     (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) :
     high.agreement.PrivateKey.generate high.agreement.X25519 ⦃ key =>
       match r with
-      | .Ok _ => ∃ k : high.agreement.Keyed high.agreement.X25519Curve mid.x25519.PrivateKey,
-        key = core.result.Result.Ok (high.agreement.Private.X25519 k) ∧
-          wordsNat k.key.val = leNat out.val
+      | .Ok _ => ∃ key', key = core.result.Result.Ok key' ∧ x25519Key (leNat out.val) key'
       | .Err _ => key = core.result.Result.Err error.Error.RngFailed ⦄ := by
-  unfold high.agreement.PrivateKey.generate high.agreement.X25519 high.agreement.Keyed.generate
-    high.agreement.Keyed.new
+  unfold high.agreement.PrivateKey.generate high.agreement.X25519 high.agreement.Algorithm.generate
+    high.agreement.Keyed.generate
   step with random_spec h r out hout hfill as ⟨key, hkey⟩
   rcases r with _ | _ <;> simp only at hkey
   · obtain ⟨k, rfl, hk⟩ := hkey
-    simp [high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.wrap, hk]
+    simp only
+    step with encode_public_spec h k .X25519 as ⟨pk, hpk⟩
+    step with private_key_spec k pk hpk as ⟨key', hkey'⟩
+    exact ⟨key', rfl, hk ▸ hkey'⟩
   · simp [hkey]
 
 /-- An X25519 key loaded from its scalar is refused unless it is 32 bytes, and
@@ -348,41 +378,44 @@ otherwise is those bytes, read little-endian, as `x25519_generate`'s is the
 random source's. -/
 theorem x25519_from_scalar (h : Runs) (b : Slice U8) :
     high.agreement.PrivateKey.from_scalar high.agreement.X25519 b ⦃ key =>
-      if b.length = 32 then ∃ k : high.agreement.Keyed high.agreement.X25519Curve mid.x25519.PrivateKey,
-        key = core.result.Result.Ok (high.agreement.Private.X25519 k) ∧
-          wordsNat k.key.val = leNat b.val
+      if b.length = 32 then ∃ key', key = core.result.Result.Ok key' ∧ x25519Key (leNat b.val) key'
       else key = core.result.Result.Err (.KeyRejected .WrongLength) ⦄ := by
-  unfold high.agreement.PrivateKey.from_scalar high.agreement.PrivateKey.load
-    high.agreement.X25519 high.agreement.Keyed.load high.agreement.Keyed.new
-  step with load_scalar_spec h b as ⟨r, hr⟩
+  unfold high.agreement.PrivateKey.from_scalar high.agreement.X25519 high.agreement.Algorithm.load
+    high.agreement.Keyed.load
+  step with load_scalar_spec h .X25519 b as ⟨r, hr⟩
   split_ifs at hr ⊢
-  · obtain ⟨k, rfl, hk⟩ := hr
-    simp [high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.wrap, hk]
+  · obtain ⟨k, pk, rfl, hk, hpk⟩ := hr
+    simp only
+    step with private_key_spec k pk hpk as ⟨key', hkey'⟩
+    exact ⟨key', rfl, hk ▸ hkey'⟩
   · subst hr
     simp
 
 /-- An X25519 key's public key: the u-coordinate of its scalar times the base
-point, as RFC 7748's 32 little-endian bytes. -/
-theorem x25519_public_key (h : Runs) (k : high.agreement.Keyed high.agreement.X25519Curve mid.x25519.PrivateKey) :
+point, as RFC 7748's 32 little-endian bytes, which `x25519_generate` and
+`x25519_from_scalar` show every key holds. -/
+theorem x25519_public_key (key : high.agreement.PrivateKey) (d : Nat) (hkey : x25519Key d key) :
     (do
-      let pk ← high.agreement.PrivateKey.public_key (.X25519 k)
+      let pk ← high.agreement.PrivateKey.public_key key
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
-      b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.key.val) 9 ⦄ := by
-  unfold high.agreement.PrivateKey.public_key high.agreement.Keyed.public_key
-  exact encode_public_spec h k.key
+      b.length = 32 ∧ leNat b.val = rfcx25519 d 9 ⦄ := by
+  obtain ⟨_, _, _, hpk⟩ := hkey
+  simpa [high.agreement.PrivateKey.public_key] using hpk
 
 /-- An X25519 agreement with the peer's encoded public key: refused unless it
 is 32 bytes, refused for the all-zero output of a small-order point, and
 otherwise RFC 7748's X25519 of this key's scalar and the peer's u-coordinate. -/
-theorem x25519_agree (h : Runs) (k : high.agreement.Keyed high.agreement.X25519Curve mid.x25519.PrivateKey)
+theorem x25519_agree (h : Runs) (key : high.agreement.PrivateKey)
+    (k : high.agreement.Keyed high.agreement.X25519Curve mid.x25519.PrivateKey) (hk : key.«private» = .X25519 k)
     (peer : Slice U8) :
-    high.agreement.PrivateKey.agree (.X25519 k) peer ⦃ r =>
+    high.agreement.PrivateKey.agree key peer ⦃ r =>
       if peer.length = 32 then
         if rfcx25519 (wordsNat k.key.val) (leNat peer.val) = 0 then
           r = .Err (.KeyRejected .SmallOrder)
         else ∃ s, r = .Ok (.X25519 s) ∧ leNat s.val = rfcx25519 (wordsNat k.key.val) (leNat peer.val)
       else r = .Err (.KeyRejected .WrongLength) ⦄ := by
   unfold high.agreement.PrivateKey.agree high.agreement.Keyed.agree
+  rw [hk]
   step with agree_spec h k.key peer as ⟨r, hr⟩
   split_ifs at hr ⊢ <;> first
     | (subst hr; simp)

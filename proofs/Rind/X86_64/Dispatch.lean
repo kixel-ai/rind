@@ -1,4 +1,4 @@
-import Rind.X86_64.Funs
+import Rind.X86_64.P256Dispatch
 open Aeneas Aeneas.Std Result
 
 /-!
@@ -15,9 +15,9 @@ pub struct Algorithm {
     id: AlgorithmId,
     // The only paths to the curve's code, so a binary links only the curves
     // whose algorithms it names.
-    generate: fn() -> Result<Private, Error>,
-    load: fn(Source<'_>) -> Result<Private, Error>,
-    parse_public: fn(&[u8]) -> Result<PublicKey, Error>,
+    generate: fn(&'static Self) -> Result<PrivateKey, Error>,
+    load: fn(&'static Self, Source<'_>) -> Result<PrivateKey, Error>,
+    parse_public: fn(&'static Self, &[u8]) -> Result<PublicKey, Error>,
 }
 
 pub static X25519: Algorithm = Algorithm {
@@ -27,10 +27,36 @@ pub static X25519: Algorithm = Algorithm {
     parse_public: x25519_public_key,
 };
 
+pub static ECDH_P256: Algorithm = Algorithm {
+    id: AlgorithmId::EcdhP256,
+    generate: Keyed::<curve::P256>::generate,
+    load: Keyed::<curve::P256>::load,
+    parse_public: p256_public_key,
+};
+
+pub static ECDH_P384: Algorithm = Algorithm {
+    id: AlgorithmId::EcdhP384,
+    generate: Keyed::<curve::P384>::generate,
+    load: Keyed::<curve::P384>::load,
+    parse_public: p384_public_key,
+};
+
+pub static ECDH_P521: Algorithm = Algorithm {
+    id: AlgorithmId::EcdhP521,
+    generate: Keyed::<curve::P521>::generate,
+    load: Keyed::<curve::P521>::load,
+    parse_public: p521_public_key,
+};
+
+pub struct PrivateKey {
+    private: Private,
+    public: PublicKey,
+}
+
 impl PrivateKey {
     /// Generates a private key for `algorithm` from the system random source.
     pub fn generate(algorithm: &'static Algorithm) -> Result<Self, Error> {
-        Ok(Self((algorithm.generate)()?))
+        (algorithm.generate)(algorithm)
     }
 
     /// Loads a private key for `algorithm` from its scalar: X25519's 32
@@ -39,7 +65,7 @@ impl PrivateKey {
     ///
     /// This suits a JWK's `d`; prefer [`Self::from_pkcs8`] for stored keys.
     pub fn from_scalar(algorithm: &'static Algorithm, scalar: &[u8]) -> Result<Self, Error> {
-        Ok(Self((algorithm.load)(Source::Scalar(scalar))?))
+        (algorithm.load)(algorithm, Source::Scalar(scalar))
     }
 
     /// Loads a PKCS#8 private key for `algorithm`.
@@ -49,7 +75,7 @@ impl PrivateKey {
     /// [`EcdsaKeyPair::from_pkcs8`](crate::signature::EcdsaKeyPair::from_pkcs8)
     /// does.
     pub fn from_pkcs8(algorithm: &'static Algorithm, der: &[u8]) -> Result<Self, Error> {
-        Ok(Self((algorithm.load)(Source::Pkcs8(der))?))
+        (algorithm.load)(algorithm, Source::Pkcs8(der))
     }
 
     /// Loads a SEC1 (RFC 5915) `ECPrivateKey` on `algorithm`'s curve, as
@@ -58,17 +84,17 @@ impl PrivateKey {
     ///
     /// X25519 has no SEC1 encoding, so it refuses every key.
     pub fn from_sec1(algorithm: &'static Algorithm, der: &[u8]) -> Result<Self, Error> {
-        Ok(Self((algorithm.load)(Source::Sec1(der))?))
+        (algorithm.load)(algorithm, Source::Sec1(der))
     }
 
     /// Returns the public key to send to the peer.
-    pub fn public_key(&self) -> PublicKey {
-        match &self.0 {
-            Private::X25519(key) => key.public_key(),
-            Private::P256(key) => key.public_key(),
-            Private::P384(key) => key.public_key(),
-            Private::P521(key) => key.public_key(),
-        }
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public
+    }
+
+    /// Returns the key's algorithm.
+    pub fn algorithm(&self) -> &'static Algorithm {
+        self.public.algorithm()
     }
 
     /// Agrees on a secret with the peer's encoded public key.
@@ -80,7 +106,7 @@ impl PrivateKey {
     /// A NIST curve's key is an uncompressed point, as TLS sends it;
     /// [`PublicKey::new`] decompresses a compressed one.
     pub fn agree(&self, peer: &[u8]) -> Result<SharedSecret, Error> {
-        Ok(SharedSecret(match &self.0 {
+        Ok(SharedSecret(match &self.private {
             Private::X25519(key) => key.agree(peer),
             Private::P256(key) => key.agree(peer),
             Private::P384(key) => key.agree(peer),
@@ -92,17 +118,18 @@ impl PrivateKey {
     /// curve as [`EcdsaKeyPair::to_pkcs8`](crate::signature::EcdsaKeyPair::to_pkcs8)
     /// does, with its public key.
     pub fn to_pkcs8(&self) -> Pkcs8 {
-        Pkcs8(Buffer::encode(|output| match &self.0 {
-            Private::X25519(key) => key.to_pkcs8(output),
-            Private::P256(key) => key.to_pkcs8(output),
-            Private::P384(key) => key.to_pkcs8(output),
-            Private::P521(key) => key.to_pkcs8(output),
+        let public = self.public.as_ref();
+        Pkcs8(Buffer::encode(|output| match &self.private {
+            Private::X25519(key) => key.to_pkcs8(public, output),
+            Private::P256(key) => key.to_pkcs8(public, output),
+            Private::P384(key) => key.to_pkcs8(public, output),
+            Private::P521(key) => key.to_pkcs8(public, output),
         }))
     }
 
     /// Encodes the private key as the scalar [`Self::from_scalar`] loads.
     pub fn to_scalar(&self) -> Scalar {
-        Scalar(Buffer::encode(|output| match &self.0 {
+        Scalar(Buffer::encode(|output| match &self.private {
             Private::X25519(key) => key.to_scalar(output),
             Private::P256(key) => key.to_scalar(output),
             Private::P384(key) => key.to_scalar(output),
@@ -117,47 +144,48 @@ struct Keyed<K: Agree> {
 }
 
 struct Ops<K> {
-    public_key: fn(&K) -> PublicKey,
     agree: fn(&K, &[u8]) -> Result<Secret, Error>,
-    to_pkcs8: Write<K>,
+    to_pkcs8: WritePkcs8<K>,
     to_scalar: Write<K>,
 }
 
 impl<K: Agree> Keyed<K> {
-    fn generate() -> Result<Private, Error> {
-        Ok(K::wrap(Self::new(K::random()?)))
+    fn generate(algorithm: &'static Algorithm) -> Result<PrivateKey, Error> {
+        let key = K::random()?;
+        let public = K::encode_public(&key, algorithm);
+        Ok(Self::private_key(key, public))
     }
 
-    fn load(source: Source<'_>) -> Result<Private, Error> {
-        Ok(K::wrap(Self::new(K::load(source)?)))
+    fn load(algorithm: &'static Algorithm, source: Source<'_>) -> Result<PrivateKey, Error> {
+        let (key, public) = K::load(algorithm, source)?;
+        Ok(Self::private_key(key, public))
     }
 
-    fn new(key: K::Key) -> Self {
-        Self {
+    fn private_key(key: K::Key, public: PublicKey) -> PrivateKey {
+        let keyed = Self {
             key,
             ops: low::ZeroableRef::new(
                 const {
                     &Ops {
-                        public_key: K::encode_public,
                         agree: K::agree,
                         to_pkcs8: K::encode_pkcs8,
                         to_scalar: K::encode_scalar,
                     }
                 },
             ),
+        };
+        PrivateKey {
+            private: K::wrap(keyed),
+            public,
         }
-    }
-
-    fn public_key(&self) -> PublicKey {
-        (self.ops.get().public_key)(&self.key)
     }
 
     fn agree(&self, peer: &[u8]) -> Result<Secret, Error> {
         (self.ops.get().agree)(&self.key, peer)
     }
 
-    fn to_pkcs8<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        (self.ops.get().to_pkcs8)(&self.key, output)
+    fn to_pkcs8<'a>(&self, public: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        (self.ops.get().to_pkcs8)(&self.key, public, output)
     }
 
     fn to_scalar<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
@@ -234,17 +262,24 @@ impl<C: Mask> Masker<C> {
 
 ```
 
-The model departs from the Rust in six ways, and adds no axiom:
+The model departs from the Rust in seven ways, and adds no axiom:
 
-- `Ops<K::Key>` holds nothing, and `Keyed`'s methods call `K`'s `encode_public` and
-  `agree` directly: `Ops` is private to `high::agreement`, whose only value of
-  one is `Keyed::new`'s, of `K`'s own functions. `admin/prove` checks that the
-  quote holds every mention of `Ops` there.
-- `PrivateKey::to_pkcs8` and `to_scalar`, and `Keyed`'s, are left out: no
-  theorem states what they return.
-- `Algorithm`'s `parse_public`, which only `PublicKey::new` and `from_spki`
-  read, is left out, so no static here sets it: no theorem is about loading a
-  peer's key, and `agree` takes the peer's bytes.
+- `&'static Algorithm` is which of the four statics it is, and its `generate`
+  and `load` are `Algorithm.generate` and `Algorithm.load`, each a match on
+  that static giving the function the static names: `Algorithm`'s fields are
+  private to `high::agreement`, which builds no other. `admin/prove` checks
+  that the quote holds every `= Algorithm {` there. `parse_public`, which only
+  `PublicKey::new` and `from_spki` read, is left out: no theorem is about
+  loading a peer's key, and `agree` takes the peer's bytes.
+- P-256's `random` is `p256::PrivateKey::generate`, which
+  `Rind.X86_64.P256Dispatch` names: the translation's opaque `new_random` on
+  a target with no P-256 theorem, and otherwise a model of its draws.
+- `Ops<K::Key>` holds nothing, and `Keyed::agree` calls `K::agree` directly: `Ops`
+  is private to `high::agreement`, whose only value of one is
+  `Keyed::private_key`'s, of `K`'s own functions. `admin/prove` checks that
+  the quote holds every mention of `Ops` there.
+- `PrivateKey::algorithm`, `to_pkcs8`, and `to_scalar`, and `Keyed`'s, are
+  left out: no theorem states what they return.
 - `Masker<C>` is its key, and `Masker::mask` calls `C`'s `mask` directly:
   `Masker`'s fields are private to `aead::quic`, where only `Masker::new`
   builds one, with `C::mask`. `admin/prove` checks that the quote holds every
@@ -253,9 +288,8 @@ The model departs from the Rust in six ways, and adds no axiom:
 - `?` is a `match`, since each error it passes on is already an `Error`, and
   `map_err(|_| Error::WrongLength)?` a `match` returning that error.
 
-Drops are not modelled, as everywhere in the translation. Of the algorithm
-statics, only `X25519` and `CHACHA20` are here; `Rind.Aarch64.P256Dispatch`
-models `ECDH_P256` on aarch64.
+Drops are not modelled, as everywhere in the translation. Of the
+header-protection statics, only `CHACHA20` is here.
 
 As in the translation, `Keyed` and `Agree` take the curve marker `K` and its
 associated key type as separate type parameters.
@@ -263,43 +297,34 @@ associated key type as separate type parameters.
 
 namespace rind.x86_64
 
-/-- `Algorithm`. -/
-structure high.agreement.Algorithm where
-  id : high.agreement.AlgorithmId
-  generate : Result (core.result.Result high.agreement.Private error.Error)
-  load : high.agreement.Source → Result (core.result.Result high.agreement.Private error.Error)
-
-/-- `Keyed::<K>::new`, whose `ops` holds `K`'s own functions. -/
-def high.agreement.Keyed.new {K Key : Type} (key : Key) : Result (high.agreement.Keyed K Key) :=
-  ok { key, ops := () }
+/-- `Keyed::<K>::private_key`, whose `ops` holds `K`'s own functions. -/
+def high.agreement.Keyed.private_key {K Key : Type} (AgreeInst : high.agreement.Agree K Key) (key : Key)
+    («public» : high.agreement.PublicKey) : Result high.agreement.PrivateKey := do
+  let p ← AgreeInst.wrap { key, ops := () }
+  ok { «private» := p, «public» }
 
 /-- `Keyed::<K>::generate`. -/
-def high.agreement.Keyed.generate {K Key : Type} (AgreeInst : high.agreement.Agree K Key) :
-    Result (core.result.Result high.agreement.Private error.Error) := do
+def high.agreement.Keyed.generate {K Key : Type} (AgreeInst : high.agreement.Agree K Key)
+    (algorithm : high.agreement.Algorithm) :
+    Result (core.result.Result high.agreement.PrivateKey error.Error) := do
   let r ← AgreeInst.random
   match r with
   | .Ok key =>
-    let k ← high.agreement.Keyed.new key
-    let p ← AgreeInst.wrap k
-    ok (.Ok p)
+    let «public» ← AgreeInst.encode_public key algorithm
+    let k ← high.agreement.Keyed.private_key AgreeInst key «public»
+    ok (.Ok k)
   | .Err e => ok (.Err e)
 
 /-- `Keyed::<K>::load`. -/
 def high.agreement.Keyed.load {K Key : Type} (AgreeInst : high.agreement.Agree K Key)
-    (source : high.agreement.Source) :
-    Result (core.result.Result high.agreement.Private error.Error) := do
-  let r ← AgreeInst.load source
+    (algorithm : high.agreement.Algorithm) (source : high.agreement.Source) :
+    Result (core.result.Result high.agreement.PrivateKey error.Error) := do
+  let r ← AgreeInst.load algorithm source
   match r with
-  | .Ok key =>
-    let k ← high.agreement.Keyed.new key
-    let p ← AgreeInst.wrap k
-    ok (.Ok p)
+  | .Ok (key, «public») =>
+    let k ← high.agreement.Keyed.private_key AgreeInst key «public»
+    ok (.Ok k)
   | .Err e => ok (.Err e)
-
-/-- `Keyed::<K>::public_key`, whose `ops.public_key` is `K::encode_public`. -/
-def high.agreement.Keyed.public_key {K Key : Type} (AgreeInst : high.agreement.Agree K Key)
-    (self : high.agreement.Keyed K Key) : Result high.agreement.PublicKey :=
-  AgreeInst.encode_public self.key
 
 /-- `Keyed::<K>::agree`, whose `ops.agree` is `K::agree`. -/
 def high.agreement.Keyed.agree {K Key : Type} (AgreeInst : high.agreement.Agree K Key)
@@ -307,62 +332,79 @@ def high.agreement.Keyed.agree {K Key : Type} (AgreeInst : high.agreement.Agree 
     Result (core.result.Result high.agreement.Secret error.Error) :=
   AgreeInst.agree self.key peer
 
+/-- P-256's `Agree` impl, with `random` the `p256::PrivateKey::generate` that
+`Rind.X86_64.P256Dispatch` names. -/
+def high.agreement.p256Agree : high.agreement.Agree high.curve.P256 mid.p256.PrivateKey :=
+  { high.curve.P256.Insts.RindHighAgreementAgreePrivateKey with random := mid.p256.PrivateKey.generate }
+
+/-- An `Algorithm`'s `generate`, given the static itself, as `PrivateKey::generate`
+passes it. -/
+def high.agreement.Algorithm.generate (algorithm : high.agreement.Algorithm) :
+    Result (core.result.Result high.agreement.PrivateKey error.Error) :=
+  match algorithm with
+  | .X25519 => high.agreement.Keyed.generate high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey algorithm
+  | .ECDH_P256 => high.agreement.Keyed.generate high.agreement.p256Agree algorithm
+  | .ECDH_P384 => high.agreement.Keyed.generate high.curve.P384.Insts.RindHighAgreementAgreePrivateKey algorithm
+  | .ECDH_P521 => high.agreement.Keyed.generate high.curve.P521.Insts.RindHighAgreementAgreePrivateKey algorithm
+
+/-- An `Algorithm`'s `load`, given the static itself, as `PrivateKey`'s loaders
+pass it. -/
+def high.agreement.Algorithm.load (algorithm : high.agreement.Algorithm)
+    (source : high.agreement.Source) :
+    Result (core.result.Result high.agreement.PrivateKey error.Error) :=
+  match algorithm with
+  | .X25519 =>
+    high.agreement.Keyed.load high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey algorithm source
+  | .ECDH_P256 => high.agreement.Keyed.load high.agreement.p256Agree algorithm source
+  | .ECDH_P384 =>
+    high.agreement.Keyed.load high.curve.P384.Insts.RindHighAgreementAgreePrivateKey algorithm source
+  | .ECDH_P521 =>
+    high.agreement.Keyed.load high.curve.P521.Insts.RindHighAgreementAgreePrivateKey algorithm source
+
 /-- The `X25519` static. -/
-def high.agreement.X25519 : high.agreement.Algorithm where
-  id := .X25519
-  generate := high.agreement.Keyed.generate high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey
-  load := high.agreement.Keyed.load high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey
+def high.agreement.X25519 : high.agreement.Algorithm := .X25519
+
+/-- The `ECDH_P256` static. -/
+def high.agreement.ECDH_P256 : high.agreement.Algorithm := .ECDH_P256
+
+/-- The `ECDH_P384` static. -/
+def high.agreement.ECDH_P384 : high.agreement.Algorithm := .ECDH_P384
+
+/-- The `ECDH_P521` static. -/
+def high.agreement.ECDH_P521 : high.agreement.Algorithm := .ECDH_P521
 
 /-- `PrivateKey::generate`. -/
 def high.agreement.PrivateKey.generate (algorithm : high.agreement.Algorithm) :
-    Result (core.result.Result high.agreement.PrivateKey error.Error) := do
-  let r ← algorithm.generate
-  match r with
-  | .Ok key => ok (.Ok key)
-  | .Err e => ok (.Err e)
-
-/-- `PrivateKey::from_scalar`, `from_pkcs8`, and `from_sec1`, each
-`algorithm.load` of its own `Source`. -/
-def high.agreement.PrivateKey.load (algorithm : high.agreement.Algorithm)
-    (source : high.agreement.Source) :
-    Result (core.result.Result high.agreement.PrivateKey error.Error) := do
-  let r ← algorithm.load source
-  match r with
-  | .Ok key => ok (.Ok key)
-  | .Err e => ok (.Err e)
+    Result (core.result.Result high.agreement.PrivateKey error.Error) :=
+  algorithm.generate
 
 /-- `PrivateKey::from_scalar`. -/
 def high.agreement.PrivateKey.from_scalar (algorithm : high.agreement.Algorithm)
     (scalar : Slice Std.U8) :
     Result (core.result.Result high.agreement.PrivateKey error.Error) :=
-  high.agreement.PrivateKey.load algorithm (.Scalar scalar)
+  algorithm.load (.Scalar scalar)
 
 /-- `PrivateKey::from_pkcs8`. -/
 def high.agreement.PrivateKey.from_pkcs8 (algorithm : high.agreement.Algorithm)
     (der : Slice Std.U8) :
     Result (core.result.Result high.agreement.PrivateKey error.Error) :=
-  high.agreement.PrivateKey.load algorithm (.Pkcs8 der)
+  algorithm.load (.Pkcs8 der)
 
 /-- `PrivateKey::from_sec1`. -/
 def high.agreement.PrivateKey.from_sec1 (algorithm : high.agreement.Algorithm)
     (der : Slice Std.U8) :
     Result (core.result.Result high.agreement.PrivateKey error.Error) :=
-  high.agreement.PrivateKey.load algorithm (.Sec1 der)
+  algorithm.load (.Sec1 der)
 
 /-- `PrivateKey::public_key`. -/
 def high.agreement.PrivateKey.public_key (self : high.agreement.PrivateKey) :
     Result high.agreement.PublicKey :=
-  match self with
-  | .X25519 key =>
-    high.agreement.Keyed.public_key high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey key
-  | .P256 key => high.agreement.Keyed.public_key high.curve.P256.Insts.RindHighAgreementAgreePrivateKey key
-  | .P384 key => high.agreement.Keyed.public_key high.curve.P384.Insts.RindHighAgreementAgreePrivateKey key
-  | .P521 key => high.agreement.Keyed.public_key high.curve.P521.Insts.RindHighAgreementAgreePrivateKey key
+  ok self.public
 
 /-- `PrivateKey::agree`. -/
 def high.agreement.PrivateKey.agree (self : high.agreement.PrivateKey) (peer : Slice Std.U8) :
     Result (core.result.Result high.agreement.SharedSecret error.Error) := do
-  let r ← match self with
+  let r ← match self.private with
     | .X25519 key =>
       high.agreement.Keyed.agree high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey key peer
     | .P256 key => high.agreement.Keyed.agree high.curve.P256.Insts.RindHighAgreementAgreePrivateKey key peer

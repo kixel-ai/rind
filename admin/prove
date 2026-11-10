@@ -161,13 +161,13 @@ check_quote() {
     diff -u --label "$model.lean" --label rind/src "$out/$model.rs" <("$@")
 }
 items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
+    'pub static ECDH_P256:' 'pub static ECDH_P384:' 'pub static ECDH_P521:' 'pub struct PrivateKey {' \
     'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {' >"$out/agreement.rs"
 items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {' >"$out/zeroise.rs"
 items rind/src/aead/quic.rs 'pub struct Algorithm ' 'pub static CHACHA20:' \
     'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' 'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
 check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic.rs"
 p256_items() {
-    items rind/src/high/agreement.rs 'pub static ECDH_P256:'
     items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn'
     items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
 }
@@ -245,6 +245,7 @@ only_quoted() {
     fi
 }
 only_quoted rind/src/high/agreement.rs "$out/agreement.rs" '\bOps\b'
+only_quoted rind/src/high/agreement.rs "$out/agreement.rs" '= Algorithm \{'
 only_quoted rind/src/aead/quic.rs "$out/quic.rs" 'Masker(<[^>]*>)? *\{'
 only_quoted rind/src/aead/quic.rs "$out/quic.rs" '\.mask *=[^=]'
 only_quoted rind/src/high/digest.rs "$out/DigestDispatch.rs" '\bOps\b'
@@ -282,7 +283,9 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # `Mask` impl, `digest::Context` each hash's, and `signature::PublicKey` each
 # algorithm's parser and verifier, so the translation starts below that
 # dispatch, and `proofs/Rind/X86_64/Dispatch.lean`, `DigestDispatch.lean`, and
-# `SignatureDispatch.lean` model it by hand. `digest::Algorithm` holds the
+# `SignatureDispatch.lean` model it by hand. `agreement::Algorithm` holds the
+# agreement API's, and its `PublicKey` holds an `Algorithm`, so it is opaque,
+# and `Dispatch.lean` models it. `digest::Algorithm` holds the
 # digest API's, so it is opaque too, and `DigestAlgorithm.lean` models it;
 # `signature::PublicKey` holds the signature API's, so no translated function
 # reaches it, and `SignatureDispatch.lean` defines it. SHA-1's and SHA-256's
@@ -333,6 +336,7 @@ extract() {
         --start-from crate::high::signature::Ed25519KeyPair::sign \
         --start-from '{impl core::convert::AsRef for crate::high::signature::Signature}' \
         --start-from crate::high::signature::Buffer::copy_from \
+        --opaque crate::high::agreement::Algorithm \
         --opaque crate::high::agreement::Ops \
         --opaque crate::high::agreement::x25519_from_pkcs8 \
         --opaque crate::high::agreement::x25519_to_pkcs8 \

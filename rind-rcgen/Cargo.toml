@@ -4,12 +4,23 @@ version = "0.14.3"
 edition = "2024"
 repository = "https://github.com/moq-dev/rind"
 license = "Apache-2.0 OR ISC OR MIT-0"
-description = "rcgen SigningKey backed by rind"
+description = "rcgen KeyPair backed by rind"
 categories = ["cryptography"]
 rust-version.workspace = true
 readme = "README.md"
 
+[features]
+# rcgen's default features include `pem`.
+default = ["pem"]
+# rcgen's PEM methods on `KeyPair`.
+pem = ["dep:base64ct", "rcgen/pem"]
+# rind-rcgen's own: wipes rind's keys and the key pair's PKCS#8 copy on drop.
+wipe = ["rind/wipe"]
+# rcgen's `impl Zeroize for KeyPair`, which clears its PKCS#8 copy.
+zeroize = []
+
 [dependencies]
+base64ct = { version = "1.8", optional = true, features = ["alloc"] }
 rcgen = { version = "0.14", default-features = false }
 rind = { version = "0.3.2", path = "../rind" }
 rustls-pki-types = "1.12"

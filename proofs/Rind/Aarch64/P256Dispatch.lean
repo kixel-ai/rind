@@ -1,4 +1,4 @@
-import Rind.Aarch64.Dispatch
+import Rind.Aarch64.Funs
 open Aeneas Aeneas.Std Result
 
 /-!
@@ -6,18 +6,12 @@ open Aeneas Aeneas.Std Result
 
 `p256::PrivateKey::generate` draws through a `dyn RandomSource`, which Aeneas
 cannot translate, so the translation leaves it and `new_random` opaque, and
-this file models them above the translated `PrivateKey::from_bytes`, along
-with the `ECDH_P256` static that reaches them. `admin/prove` fails unless this
-quote is still that Rust, so a change to it is a change to this model:
+this file models them above the translated `PrivateKey::from_bytes`, for
+`Rind.Aarch64.Dispatch` to use as P-256's `Agree::random`. `admin/prove` fails
+unless this quote is still that Rust, so a change to it is a change to this
+model:
 
 ```rust
-pub static ECDH_P256: Algorithm = Algorithm {
-    id: AlgorithmId::EcdhP256,
-    generate: Keyed::<curve::P256>::generate,
-    load: Keyed::<curve::P256>::load,
-    parse_public: p256_public_key,
-};
-
     pub(crate) fn new_random() -> Result<Self, Error> {
         Self::generate(&mut SystemRandom)
     }
@@ -44,7 +38,7 @@ impl RandomSource for SystemRandom {
 
 ```
 
-The model departs from the Rust in four ways, and adds no axiom:
+The model departs from the Rust in three ways, and adds no axiom:
 
 - `rng` is the `SystemRandom` that `new_random` passes, the only source key
   agreement draws from.
@@ -53,9 +47,6 @@ The model departs from the Rust in four ways, and adds no axiom:
   return the same bytes. The loop's `i`th call is instead `draw i`, opaque, so
   successive draws are independent.
 - `low::ct::secret_slice`, a ctgrind marker that computes nothing, is left out.
-- P-256's `Agree` impl's `random` calls `new_random`, which the translation
-  leaves opaque, so `ECDH_P256` uses that impl with `random` replaced by this
-  model.
 -/
 
 namespace rind.aarch64
@@ -88,12 +79,5 @@ def mid.p256.PrivateKey.generate :
     Result (core.result.Result mid.p256.PrivateKey error.Error) := do
   let _ ← low.entry.Entry.new_secret
   mid.p256.PrivateKey.generate_loop 0 64
-
-/-- The `ECDH_P256` static. -/
-def high.agreement.ECDH_P256 : high.agreement.Algorithm where
-  id := .EcdhP256
-  generate := high.agreement.Keyed.generate
-    { high.curve.P256.Insts.RindHighAgreementAgreePrivateKey with random := mid.p256.PrivateKey.generate }
-  load := high.agreement.Keyed.load high.curve.P256.Insts.RindHighAgreementAgreePrivateKey
 
 end rind.aarch64

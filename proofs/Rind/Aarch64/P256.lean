@@ -1,5 +1,5 @@
 import Rind.Aarch64.P256Table
-import Rind.Aarch64.P256Dispatch
+import Rind.Aarch64.Dispatch
 import Rind.Bytes
 import Rind.P256Multiples
 import Mathlib.Tactic.LinearCombination
@@ -48,9 +48,18 @@ def p256Agreement (k : Nat) (peer : List U8) (r : core.result.Result high.agreem
 def p256PublicKey (d : Nat) (b : List U8) : Prop :=
   b.length = 65 ∧ b.head? = some 4#u8 ∧ p256Pow p256G d = some (x962Coords b)
 
+/-- `key` is a P-256 key whose scalar is `d`, holding its public key: X9.62's
+uncompressed encoding of `d` times the generator. -/
+def p256Key (d : Nat) (key : high.agreement.PrivateKey) : Prop :=
+  ∃ k : high.agreement.Keyed high.curve.P256 mid.p256.PrivateKey, key.«private» = .P256 k ∧
+    wordsNat k.key.scalar.val = d ∧
+    high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref key.«public» ⦃ b =>
+      p256PublicKey d b.val ⦄
+
 /-- P-256 key generation's outcome, for the system source's successive
-draws: the first of `n` draws, from the `i`th, whose bytes, read big-endian,
-are a scalar in [1, n), unless a draw fails first; refused if none is. -/
+draws: a `p256Key` whose scalar is the first of `n` draws, from the `i`th,
+whose bytes, read big-endian, are in [1, n), unless a draw fails first;
+refused if none is. -/
 def p256Keygen (draws : Nat → core.result.Result Unit getrandom.error.Error × Slice U8) (i : Nat) :
     Nat → core.result.Result high.agreement.PrivateKey error.Error → Prop
   | 0, key => key = .Err .RngFailed
@@ -59,8 +68,7 @@ def p256Keygen (draws : Nat → core.result.Result Unit getrandom.error.Error ×
     | (.Err _, _) => key = .Err .RngFailed
     | (.Ok _, out) =>
       if 0 < beNat out.val ∧ beNat out.val < n256 then
-        ∃ k : high.agreement.Keyed high.curve.P256 mid.p256.PrivateKey,
-          key = .Ok (.P256 k) ∧ wordsNat k.key.scalar.val = beNat out.val
+        ∃ key', key = .Ok key' ∧ p256Key (beNat out.val) key'
       else p256Keygen draws (i + 1) n key
 
 /-! The P-256 lemmas' own namespace keeps their names apart from X25519's. -/
@@ -907,21 +915,19 @@ theorem public_key_uncompressed_spec (h : Runs) (k : mid.p256.PrivateKey) (x y :
   rw [hbc, hpt]
   simp only [rinv_tomont _ hc.1, rinv_tomont _ hc.2.1]
 
-theorem encode_public_spec (h : Runs) (k : mid.p256.PrivateKey) (x y : Nat)
-    (hq : p256Pow p256G (wordsNat k.scalar.val) = some (x, y)) (hc : p256OnCurve (some (x, y))) :
-    (do
-      let pk ← high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_public k
-      high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
-      b.length = 65 ∧ b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄ := by
+theorem encode_public_spec (h : Runs) (k : mid.p256.PrivateKey) (algorithm : high.agreement.Algorithm)
+    (x y : Nat) (hq : p256Pow p256G (wordsNat k.scalar.val) = some (x, y))
+    (hc : p256OnCurve (some (x, y))) :
+    high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_public k algorithm ⦃ pk =>
+      high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
+        b.length = 65 ∧ b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄ ⦄ := by
   unfold high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_public high.agreement.PublicKey.from_encoding
-    high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
+    high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref low.generic.zeroise.ZeroableRef.new
   step with public_key_uncompressed_spec h k x y hq hc as ⟨a, ha4, hac⟩
   step as ⟨sl, hsl⟩
   subst hsl
   have hlen : a.to_slice.len.val = 65 := by simp
-  step as ⟨sb, hs, hsl, hback⟩
-  obtain ⟨s, back⟩ := sb
-  simp only at hs hsl hback ⊢
+  step as ⟨s, back, hs, hsl, hback⟩
   step as ⟨x', hx⟩
   step as ⟨b, hb, hbl⟩
   have ha65 : (a.val).length = 65 := a.property
@@ -935,25 +941,71 @@ theorem encode_public_spec (h : Runs) (k : mid.p256.PrivateKey) (x y : Nat)
   · rw [hbv]; exact ha4
   · rw [hbv]; exact hac
 
-/-- A generated key, as `Keyed::generate` wraps it. -/
-def wrapKey : core.result.Result mid.p256.PrivateKey error.Error →
-    core.result.Result high.agreement.PrivateKey error.Error
-  | .Ok key => .Ok (.P256 { key, ops := () })
-  | .Err e => .Err e
+/-- An encoded public key, as `encode_public_spec` states it, is `p256PublicKey`'s. -/
+theorem public_key_of_coords (d x y : Nat) (hq : p256Pow p256G d = some (x, y))
+    (pk : high.agreement.PublicKey)
+    (hpk : high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
+      b.length = 65 ∧ b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄) :
+    high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
+      p256PublicKey d b.val ⦄ :=
+  WP.spec_mono hpk fun b ⟨hl, h4, hxy⟩ => ⟨hl, h4, by rw [hq, hxy]⟩
+
+/-- The public key `encode_public` computes for a scalar in [1, n). -/
+theorem encode_public_key_spec (h : Runs) (k : mid.p256.PrivateKey) (algorithm : high.agreement.Algorithm)
+    (hk0 : 0 < wordsNat k.scalar.val) (hk : wordsNat k.scalar.val < n256) :
+    high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_public k algorithm ⦃ pk =>
+      high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
+        p256PublicKey (wordsNat k.scalar.val) b.val ⦄ ⦄ := by
+  obtain ⟨x, y, hq, hc⟩ := g_mult _ hk0 hk
+  exact WP.spec_mono (encode_public_spec h k algorithm x y hq hc)
+    fun pk hpk => public_key_of_coords _ x y hq pk hpk
+
+/-- `p256Agree`'s fields, which the theorems below rewrite to, so `step` finds
+their specs. -/
+theorem p256Agree_random : high.agreement.p256Agree.random = mid.p256.PrivateKey.generate := rfl
+
+theorem p256Agree_load :
+    high.agreement.p256Agree.load = high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.load := rfl
+
+theorem p256Agree_encode_public :
+    high.agreement.p256Agree.encode_public =
+      high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_public := rfl
+
+/-- A key and its public key, as `Keyed::private_key` keeps them, is a `p256Key`. -/
+theorem private_key_spec (k : mid.p256.PrivateKey) (pk : high.agreement.PublicKey)
+    (hpk : high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
+      p256PublicKey (wordsNat k.scalar.val) b.val ⦄) :
+    high.agreement.Keyed.private_key high.agreement.p256Agree k pk ⦃ key =>
+      p256Key (wordsNat k.scalar.val) key ⦄ := by
+  simp only [high.agreement.Keyed.private_key, high.agreement.p256Agree,
+    high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.wrap, bind_ok, WP.spec_ok]
+  exact ⟨{ key := k, ops := () }, rfl, rfl, hpk⟩
+
+/-- `p256Keygen`, for the scalar `generate_loop` returns. -/
+def drawKeygen (draws : Nat → core.result.Result Unit getrandom.error.Error × Slice U8) (i : Nat) :
+    Nat → core.result.Result mid.p256.PrivateKey error.Error → Prop
+  | 0, key => key = .Err .RngFailed
+  | n + 1, key =>
+    match draws i with
+    | (.Err _, _) => key = .Err .RngFailed
+    | (.Ok _, out) =>
+      if 0 < beNat out.val ∧ beNat out.val < n256 then
+        ∃ k, key = .Ok k ∧ wordsNat k.scalar.val = beNat out.val
+      else drawKeygen draws (i + 1) n key
 
 theorem generate_loop_spec (draws : Nat → core.result.Result Unit getrandom.error.Error × Slice U8)
     (hdraw : ∀ i, mid.p256.PrivateKey.draw i (Array.repeat 32#usize 0#u8).to_slice = ok (draws i))
     (hlen : ∀ i, (draws i).2.length = 32) (n i : Nat) :
-    mid.p256.PrivateKey.generate_loop i n ⦃ key => p256Keygen draws i n (wrapKey key) ⦄ := by
+    mid.p256.PrivateKey.generate_loop i n ⦃ key => drawKeygen draws i n key ⦄ := by
   induction n generalizing i with
-  | zero => simp [mid.p256.PrivateKey.generate_loop, p256Keygen, wrapKey]
+  | zero => simp [mid.p256.PrivateKey.generate_loop, drawKeygen]
   | succ n ih =>
     unfold mid.p256.PrivateKey.generate_loop
     simp only [Array.to_slice_mut, lift, bind_ok]
     have hf : mid.p256.PrivateKey.draw i (Array.repeat 32#usize 0#u8).to_slice ⦃ p => p = draws i ⦄ := by
       rw [hdraw]; simp [WP.spec_ok]
     step with hf as ⟨r, out, hd⟩
-    simp only [p256Keygen, ← hd]
+    simp only [drawKeygen, ← hd]
     have hout : out.length = 32 := by simpa [← hd] using hlen i
     have hfrom : ((Array.repeat 32#usize 0#u8).from_slice out).to_slice.val = out.val := by
       simp [Array.from_slice, hout]
@@ -965,16 +1017,60 @@ theorem generate_loop_spec (draws : Nat → core.result.Result Unit getrandom.er
       rw [hfrom] at hp
       split_ifs at hp ⊢ with hr
       · obtain ⟨k, rfl, hk⟩ := hp
-        simp [wrapKey, hk]
+        simp [hk]
       · subst hp
         exact ih (i + 1)
-    · simp [wrapKey]
+    · simp
 
-theorem load_scalar_spec (h : Runs) (b : Slice U8) :
-    high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.load (.Scalar b) ⦃ r =>
+/-- A scalar `generate_loop` returns is in [1, n), and is `p256Keygen`'s with
+any public key a `p256Key` holds for it. -/
+theorem drawKeygen_ok (draws : Nat → core.result.Result Unit getrandom.error.Error × Slice U8)
+    (n i : Nat) (k : mid.p256.PrivateKey) (hr : drawKeygen draws i n (.Ok k)) :
+    0 < wordsNat k.scalar.val ∧ wordsNat k.scalar.val < n256 ∧
+      ∀ key, p256Key (wordsNat k.scalar.val) key → p256Keygen draws i n (.Ok key) := by
+  induction n generalizing i with
+  | zero => simp [drawKeygen] at hr
+  | succ n ih =>
+    simp only [drawKeygen] at hr
+    simp only [p256Keygen]
+    rcases hd : draws i with ⟨res, out⟩
+    simp only [hd] at hr ⊢
+    rcases res with _ | _
+    · simp only at hr ⊢
+      split_ifs at hr ⊢ with hrange
+      · obtain ⟨k', hk', hk⟩ := hr
+        cases hk'
+        rw [hk]
+        exact ⟨hrange.1, hrange.2, fun key hkey => ⟨key, rfl, hkey⟩⟩
+      · exact ih (i + 1) hr
+    · simp at hr
+
+/-- A failure `generate_loop` returns is `p256Keygen`'s. -/
+theorem drawKeygen_err (draws : Nat → core.result.Result Unit getrandom.error.Error × Slice U8)
+    (n i : Nat) (e : error.Error) (hr : drawKeygen draws i n (.Err e)) :
+    p256Keygen draws i n (.Err e) := by
+  induction n generalizing i with
+  | zero => simpa [drawKeygen, p256Keygen] using hr
+  | succ n ih =>
+    simp only [drawKeygen] at hr
+    simp only [p256Keygen]
+    rcases hd : draws i with ⟨res, out⟩
+    simp only [hd] at hr ⊢
+    rcases res with _ | _
+    · simp only at hr ⊢
+      split_ifs at hr ⊢
+      · obtain ⟨k, hk, -⟩ := hr
+        cases hk
+      · exact ih (i + 1) hr
+    · simpa using hr
+
+theorem load_scalar_spec (h : Runs) (algorithm : high.agreement.Algorithm) (b : Slice U8) :
+    high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.load algorithm (.Scalar b) ⦃ r =>
       if b.length = 32 then
         if 0 < beNat b.val ∧ beNat b.val < n256 then
-          ∃ k, r = .Ok k ∧ wordsNat k.scalar.val = beNat b.val
+          ∃ k pk, r = .Ok (k, pk) ∧ wordsNat k.scalar.val = beNat b.val ∧
+            high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b' =>
+              p256PublicKey (beNat b.val) b'.val ⦄
         else r = .Err (.KeyRejected .ScalarOutOfRange)
       else r = .Err (.KeyRejected .WrongLength) ⦄ := by
   unfold high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.load
@@ -984,11 +1080,21 @@ theorem load_scalar_spec (h : Runs) (b : Slice U8) :
       apply UScalar.eq_of_val_eq
       simpa [Slice.len, Slice.length, mid.p256.Scalar.BYTES] using hl
     simp only [hlen, ↓reduceIte, hl]
-    exact from_bytes_spec b hl
+    step with from_bytes_spec b hl as ⟨r, hr⟩
+    split_ifs at hr ⊢ with hrange
+    · obtain ⟨k, rfl, hk⟩ := hr
+      step with core.result.Result.Insts.CoreOpsTry.branch_Ok.spec as ⟨cf, hcf⟩
+      subst hcf
+      simp only
+      step with encode_public_key_spec h k algorithm (hk ▸ hrange.1) (hk ▸ hrange.2) as ⟨pk, hpk⟩
+      exact ⟨k, pk, rfl, hk, hk ▸ hpk⟩
+    · subst hr
+      simp [core.result.Result.Insts.CoreOpsTry.branch,
+        core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
   · have hlen : ¬ Slice.len b = mid.p256.Scalar.BYTES := by
       intro h'
       exact hl (by simpa [Slice.len, Slice.length, mid.p256.Scalar.BYTES] using congrArg UScalar.val h')
-    simp [hlen, hl, core.convert.IntoFrom.into, error.Error.Insts.CoreConvertFromKeyFormatError.from]
+    simp [hlen, hl, error.Error.Insts.CoreConvertFromKeyFormatError.from]
 
 end P256
 
@@ -1004,14 +1110,20 @@ theorem p256_generate (h : Runs) (draws : Nat → core.result.Result Unit getran
     (hdraw : ∀ i, mid.p256.PrivateKey.draw i (Array.repeat 32#usize 0#u8).to_slice = ok (draws i))
     (hlen : ∀ i, (draws i).2.length = 32) :
     high.agreement.PrivateKey.generate high.agreement.ECDH_P256 ⦃ key => p256Keygen draws 0 64 key ⦄ := by
-  unfold high.agreement.PrivateKey.generate high.agreement.ECDH_P256 high.agreement.Keyed.generate
-    high.agreement.Keyed.new
-    mid.p256.PrivateKey.generate
-  simp only
+  unfold high.agreement.PrivateKey.generate high.agreement.ECDH_P256 high.agreement.Algorithm.generate
+    high.agreement.Keyed.generate
+  simp only [p256Agree_random]
+  unfold mid.p256.PrivateKey.generate
   step as ⟨_⟩
-  step with generate_loop_spec draws hdraw hlen 64 0 as ⟨key, hkey⟩
-  rcases key with k | e <;>
-    simpa [wrapKey, high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.wrap] using hkey
+  step with generate_loop_spec draws hdraw hlen 64 0 as ⟨r, hr⟩
+  rcases r with k | e
+  · obtain ⟨hk0, hk, hkey⟩ := drawKeygen_ok draws 64 0 k hr
+    simp only [p256Agree_encode_public]
+    step with encode_public_key_spec h k _ hk0 hk as ⟨pk, hpk⟩
+    step with private_key_spec k pk hpk as ⟨key, hkey'⟩
+    exact hkey key hkey'
+  · simp only [WP.spec_ok]
+    exact drawKeygen_err draws 64 0 e hr
 
 /-- A P-256 key loaded from its scalar is refused unless it is 32 bytes and,
 read big-endian, in [1, n), and otherwise is that scalar, as
@@ -1020,36 +1132,33 @@ theorem p256_from_scalar (h : Runs) (b : Slice U8) :
     high.agreement.PrivateKey.from_scalar high.agreement.ECDH_P256 b ⦃ key =>
       if b.length = 32 then
         if 0 < beNat b.val ∧ beNat b.val < n256 then
-          ∃ k : high.agreement.Keyed high.curve.P256 mid.p256.PrivateKey,
-            key = core.result.Result.Ok (high.agreement.Private.P256 k) ∧
-              wordsNat k.key.scalar.val = beNat b.val
+          ∃ key', key = .Ok key' ∧ p256Key (beNat b.val) key'
         else key = core.result.Result.Err (.KeyRejected .ScalarOutOfRange)
       else key = core.result.Result.Err (.KeyRejected .WrongLength) ⦄ := by
-  unfold high.agreement.PrivateKey.from_scalar high.agreement.PrivateKey.load
-    high.agreement.ECDH_P256 high.agreement.Keyed.load high.agreement.Keyed.new
-  simp only
-  step with load_scalar_spec h b as ⟨r, hr⟩
+  unfold high.agreement.PrivateKey.from_scalar high.agreement.ECDH_P256 high.agreement.Algorithm.load
+    high.agreement.Keyed.load
+  simp only [p256Agree_load]
+  step with load_scalar_spec h _ b as ⟨r, hr⟩
   split_ifs at hr ⊢
-  · obtain ⟨k, rfl, hk⟩ := hr
-    simp [high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.wrap, hk]
+  · obtain ⟨k, pk, rfl, hk, hpk⟩ := hr
+    simp only
+    step with private_key_spec k pk (hk ▸ hpk) as ⟨key', hkey'⟩
+    exact ⟨key', rfl, hk ▸ hkey'⟩
   · subst hr
     simp
   · subst hr
     simp
 
 /-- A P-256 key's public key: X9.62's uncompressed encoding of its scalar
-times the generator, for a scalar in [1, n), as `p256_generate` and
-`p256_from_scalar` give. -/
-theorem p256_public_key (h : Runs) (k : high.agreement.Keyed high.curve.P256 mid.p256.PrivateKey)
-    (hk0 : 0 < wordsNat k.key.scalar.val) (hk : wordsNat k.key.scalar.val < n256) :
+times the generator, which `p256_generate` and `p256_from_scalar` show every
+key holds. -/
+theorem p256_public_key (key : high.agreement.PrivateKey) (d : Nat) (hkey : p256Key d key) :
     (do
-      let pk ← high.agreement.PrivateKey.public_key (.P256 k)
+      let pk ← high.agreement.PrivateKey.public_key key
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
-      p256PublicKey (wordsNat k.key.scalar.val) b.val ⦄ := by
-  obtain ⟨x, y, hq, hc⟩ := g_mult _ hk0 hk
-  unfold high.agreement.PrivateKey.public_key high.agreement.Keyed.public_key
-  refine WP.spec_mono (encode_public_spec h k.key x y hq hc) fun b ⟨hl, h4, hxy⟩ => ⟨hl, h4, ?_⟩
-  rw [hq, hxy]
+      p256PublicKey d b.val ⦄ := by
+  obtain ⟨_, _, _, hpk⟩ := hkey
+  simpa [high.agreement.PrivateKey.public_key] using hpk
 
 /-- A P-256 agreement with the peer's encoded public key: `p256Agreement` of
 this key's scalar. Its fault case never happens for a scalar in [1, n) if
@@ -1057,10 +1166,12 @@ every finite point has order n, which follows from the curve's group having
 n points, a count that needs more than Mathlib proves (Hasse's bound at
 least). G's order, which the kernel checks, says nothing about the peer's
 point. -/
-theorem p256_agree (h : Runs) (k : high.agreement.Keyed high.curve.P256 mid.p256.PrivateKey) (peer : Slice U8) :
-    high.agreement.PrivateKey.agree (.P256 k) peer ⦃ r =>
+theorem p256_agree (h : Runs) (key : high.agreement.PrivateKey)
+    (k : high.agreement.Keyed high.curve.P256 mid.p256.PrivateKey) (hk : key.«private» = .P256 k) (peer : Slice U8) :
+    high.agreement.PrivateKey.agree key peer ⦃ r =>
       p256Agreement (wordsNat k.key.scalar.val) peer.val r ⦄ := by
   unfold high.agreement.PrivateKey.agree high.agreement.Keyed.agree
+  rw [hk]
   step with agree_spec h k.key peer as ⟨r, hr⟩
   rcases r with s | e <;> simpa using hr
 

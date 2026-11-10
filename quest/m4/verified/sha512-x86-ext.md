@@ -14,4 +14,5 @@ SHA-384, SHA-512, SHA-512/256, Ed25519, and HMAC and HKDF over SHA-384 earn the 
 
 ## Required
 
+- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
 - [x86_64 SHA-512 on AVX2 is proven](/quest/m4/verified/sha512-x86-avx2.md) - the SHA-512 spec work and the `RunsSha512` widening this extends

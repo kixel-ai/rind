@@ -458,12 +458,12 @@ fn agreement_cases(cases: &mut Vec<Case>) {
             move |config| {
                 let scalars = classes(VALUES, fixed(scalar()), scalar);
                 measure(config, &scalars, |s| {
-                    from_scalar(s).map(|key| key.public_key())
+                    from_scalar(s).map(|key| key.public_key().clone())
                 })
             },
         ));
         cases.push(case(format!("agreement/{name}/agree-key"), move |config| {
-            let peer = generate().public_key();
+            let peer = generate().public_key().clone();
             let scalars = classes(VALUES, fixed(scalar()), scalar);
             let new = |s: &Vec<u8>| from_scalar(s).unwrap();
             measure_built(config, &scalars, new, |key| key.agree(peer.as_ref()))
