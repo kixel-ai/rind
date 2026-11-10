@@ -23,7 +23,7 @@ Reopened with the maintainer on 2026-11-09, after an audit of the whole tree:
 
 The union of ring 0.17's and aws-lc-rs's CI and build scripts, listed on 2026-11-06, adds armv6, which both test. It drops i586, which ring refuses for lacking SSE2 and aws-lc-rs doesn't test. riscv32 and sparc64 are compile-only in both, as loongarch64 is, so they wait for a consumer. aarch64_be and armeb, which ring compiles and aws-lc refuses, compile the portable backend, untested.
 
-"Exactly one backend compiles per architecture" still holds: the portable backend is each new architecture's only backend, not a fallback for a missing CPU feature. Big-endian targets (s390x, powerpc64, mips) need every byte-order assumption checked.
+"Exactly one backend compiles per architecture" still holds: the portable backend is each new architecture's only backend, not a fallback for a missing CPU feature. The s390x quest checked byte order: rind's tests pass on big-endian s390x and 32-bit powerpc, so big-endian targets need only their CI.
 
 The epic's own work, once every child has merged:
 
@@ -36,7 +36,6 @@ The epic's own work, once every child has merged:
 - [armv6](/quest/m2/adoption/targets/armv6.md) - arm-unknown-linux-gnueabi(hf) and arm-linux-androideabi
 - [riscv64](/quest/m2/adoption/targets/riscv64.md) - riscv64gc Linux
 - [PowerPC](/quest/m2/adoption/targets/powerpc.md) - powerpc64le, powerpc64 and powerpc Linux
-- [s390x](/quest/m2/adoption/targets/s390x.md) - s390x Linux
 - [loongarch64](/quest/m2/adoption/targets/loongarch64.md) - loongarch64 Linux
 - [rind on wasm32](/quest/m2/adoption/targets/wasm.md) - wasm32-wasip2 tested under wasmtime
 - [MIPS](/quest/m2/adoption/targets/mips.md) - mips and mips64 Linux, if ring or aws-lc-rs still supports them

@@ -257,20 +257,20 @@ impl LessSafeKey {
         key.0
     }
 
-    /// Opens `in_out[ciphertext]` against the separate `tag`, and returns the
-    /// plaintext, moved to the front of `in_out`.
+    /// Opens the ciphertext `in_out` against the separate `tag`, and returns
+    /// the plaintext, written over it.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn open_in_place_separate_tag<'in_out, A>(
         &self,
         nonce: Nonce,
         aad: Aad<A>,
-        tag: Tag,
+        tag: &[u8],
         in_out: &'in_out mut [u8],
-        ciphertext: RangeFrom<usize>,
     ) -> Result<&'in_out mut [u8], error::Unspecified>
     where
         A: AsRef<[u8]>,
     {
-        self.open(nonce, aad.as_ref(), &tag.0, in_out, ciphertext)
+        self.open(nonce, aad.as_ref(), tag, in_out, 0..)
     }
 
     fn open<'in_out>(

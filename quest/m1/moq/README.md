@@ -9,8 +9,9 @@ armv7 backend, and every `rind-*` adapter MoQ uses. Each adapter's operations pa
 rind's tests on x86_64, aarch64, and armv7 alike; an operation missing on one
 arch does not count as covered.
 
-MoQ's [migration epic](https://github.com/moq-dev/moq/blob/main/quest/m1/rind/README.md)
-switches each area once the rind pieces it uses are on crates.io.
+MoQ finished its switch to rind in
+[moq-dev/moq#8250](https://github.com/moq-dev/moq/pull/8250), so no MoQ area's switch
+waits on rind any more.
 
 ## Plan
 
@@ -82,4 +83,3 @@ maintainer, 2026-11-05).
 ## Required
 
 - [AMD CPUs without VAES run their fastest AES-GCM tier](/quest/m1/moq/quic-path.md) - Vale or `by8` on Zen 2, from zshenker's rerun
-- [MoQ runs on rind](/quest/m1/moq/moq-on-rind.md) - waiting on MoQ to finish its migration

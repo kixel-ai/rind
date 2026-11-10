@@ -63,8 +63,12 @@ pub mod doc {
 
 /// Key agreement: X25519, and ECDH on P-256, P-384, and P-521.
 ///
+/// A shared secret is not uniformly random, so derive keys from it with a KDF
+/// such as [`hkdf`] rather than using its bytes directly.
+///
 /// ```
 /// use rind::agreement::*;
+/// use rind::hkdf;
 ///
 /// let alice = PrivateKey::generate(&X25519).unwrap();
 /// let bob = PrivateKey::generate(&X25519).unwrap();
@@ -79,7 +83,19 @@ pub mod doc {
 ///     .agree(alice_pub.as_ref())
 ///     .expect("alice gave an invalid public key");
 ///
-/// assert_eq!(alice_secret.as_ref(), bob_secret.as_ref());
+/// // Each side derives the same key from its secret and the handshake's salt.
+/// let salt = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"handshake salt");
+/// let mut alice_key = [0u8; 32];
+/// let mut bob_key = [0u8; 32];
+/// salt.extract(alice_secret.as_ref())
+///     .expand(&[b"key"], alice_key.len())
+///     .fill(&mut alice_key)
+///     .unwrap();
+/// salt.extract(bob_secret.as_ref())
+///     .expand(&[b"key"], bob_key.len())
+///     .fill(&mut bob_key)
+///     .unwrap();
+/// assert_eq!(alice_key, bob_key);
 /// ```
 pub mod agreement {
     pub use crate::high::agreement::{
@@ -107,7 +123,17 @@ pub mod agreement {
 /// // The recipient decapsulates the ciphertext, recovering the same secret.
 /// let recipient_secret = decapsulation_key.decapsulate(ciphertext.as_ref())?;
 ///
-/// assert_eq!(sender_secret.as_ref(), recipient_secret.as_ref());
+/// // Each side derives its keys from the secret with a KDF.
+/// let salt = rind::hkdf::Salt::new(&rind::hkdf::HKDF_SHA256, b"");
+/// let mut sender_key = [0u8; 32];
+/// let mut recipient_key = [0u8; 32];
+/// salt.extract(sender_secret.as_ref())
+///     .expand(&[b"key"], sender_key.len())
+///     .fill(&mut sender_key)?;
+/// salt.extract(recipient_secret.as_ref())
+///     .expand(&[b"key"], recipient_key.len())
+///     .fill(&mut recipient_key)?;
+/// assert_eq!(sender_key, recipient_key);
 /// # Ok(())
 /// # }
 /// ```

@@ -333,6 +333,10 @@ impl PublicKey {
     }
 
     /// Verifies `signature` over `message`, refusing a malformed signature.
+    ///
+    /// ECDSA signatures are malleable: `(r, s)` and `(r, n - s)` both verify,
+    /// unlike Ed25519, PKCS#1, and PSS signatures, so don't identify a message
+    /// by its ECDSA signature's bytes.
     pub fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
         match &self.key {
             Parsed::EcdsaP256(key, _) => key.verify(message, signature),
@@ -1151,7 +1155,8 @@ pub enum RsaPssSaltLength {
     /// shorter than the modulus when its bit length is one more than a
     /// multiple of eight, less the hash's length and two.
     Max,
-    /// This many bytes, refusing a modulus too short for them.
+    /// This many bytes. A modulus too short for them is refused when a key
+    /// is parsed for verifying or used for signing, not here.
     Custom(u16),
 }
 
