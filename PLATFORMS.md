@@ -74,7 +74,7 @@ qemu. iOS devices' code is only built.
   Raspberry Pi 1 and Zero), on `arm-linux-androideabi`, which Rust builds for
   ARMv5TE, on `powerpc64le` and big-endian `powerpc64` and `powerpc` Linux,
   and on `x86_64`,
-  where `--cfg rind_portable` forces it. CI also compiles the library for
+  where `--cfg rind_portable` forces it. Every PR also compiles the library for
   `wasm32-wasip2` and `wasm32-unknown-unknown`, with and without `wipe`. The
   latter enables `getrandom/wasm_js` for JavaScript randomness; the WASI target
   uses its system random source. These are compile checks, not runtime tests.

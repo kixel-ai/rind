@@ -58,8 +58,8 @@ declare -A scope=(
     [license]='^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)'
     # Dependents may build with the workspace's declared rust-version.
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
-    # rind's aarch64, armv7, and portable backends, which the host's own
-    # build skips.
+    # rind's aarch64, armv7, portable, and wasm32 builds, which the host's
+    # own build skips.
     [cross]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$)'
     # Variable-time instructions in rind's release builds, which a change to
     # its code, dependencies, toolchain, or the scan itself can bring.
@@ -236,6 +236,13 @@ for module in "${selected[@]}"; do
             # And on a 32-bit target, whose Poly1305 and GHASH differ.
             CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS="$portable" \
                 cargo clippy -p rind --lib --locked --target armv7-unknown-linux-gnueabihf -- --deny warnings
+            # wasm32 compiles on the portable backend; the browser target
+            # needs getrandom's JavaScript source, WASI has its own.
+            for features in "" wipe; do
+                cargo clippy -p rind --lib --locked --target wasm32-wasip2 --features "$features" -- --deny warnings
+                cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown \
+                    --features "$features,getrandom/wasm_js" -- --deny warnings
+            done
             ;;
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;
         check:deny) cargo deny --locked check ;;
