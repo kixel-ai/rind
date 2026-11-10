@@ -181,6 +181,23 @@ and RFC 8018 as `Rind/HashSpec.lean` transliterates them:
 - `kdf.derive_spec`, `kdf.verify_spec` (`Rind/X86_64/Pbkdf2.lean`): PBKDF2's
   `Secret::derive` and `Secret::verify`.
 
+HKDF's `From<Okm>` conversions, each filling the key's length of HKDF-Expand
+into a zeroed buffer and keying it, in `Rind/X86_64/Hkdf.lean` on both targets
+and `Rind/X86_64/HkdfAead.lean` on x86_64:
+
+- `hmac_key_from_spec`, `prk_from_spec`: the `hmac::Key` and `Prk` are keyed
+  under the algorithm with the `tag_len` bytes of HKDF-Expand;
+- `header_key_from_spec`: ChaCha20 header protection holds the 32 bytes of
+  HKDF-Expand, through `header_new_spec` over `chacha20_new`;
+- `aead_key_from_spec`: an AES-128-GCM or AES-256-GCM key holds AES-GCM on
+  Vale's tier for the `4 * nk` bytes of HKDF-Expand, under `RunsValeAesGcm`,
+  through `aead_key_new_spec` over `aes_gcm_new`.
+
+The other keys `From<Okm>` converts to, AES-192-GCM, ChaCha20-Poly1305, and
+AES header protection, have no proof. `Rind/X86_64/Kdf/FunsExternal.lean`'s
+`new` wrappers turn a model's refusal into the panic its `expect` makes, so
+each conversion panics exactly where its `expect` does.
+
 `hmac::Key` and `Context` reach each hash through function pointers, which
 `Rind/X86_64/HmacDispatch.lean` models. HKDF and PBKDF2 call that model, so
 `admin/prove` translates `high::hkdf` and `high::pbkdf2` in a second pass,
@@ -336,7 +353,8 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   ChaCha20, and Ed25519 proofs, `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
   SHA-1's, SHA-256's, and HMAC's, and
   `Rind/X86_64/{DigestApi,HmacApi,Hkdf,Pbkdf2}.lean`, the digest, HMAC, HKDF,
-  and PBKDF2 APIs'; `Rind/X86_64/{AesKey,Ghash,PartialBlock,AesGcmGlue,AesGcm}.lean`:
+  and PBKDF2 APIs'; `Rind/X86_64/HkdfAead.lean`, HKDF's conversion to AES-GCM
+  keys; `Rind/X86_64/{AesKey,Ghash,PartialBlock,AesGcmGlue,AesGcm}.lean`:
   the AES-GCM proof, on x86_64 alone.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and

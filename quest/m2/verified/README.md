@@ -15,6 +15,5 @@ Staging (maintainer, 2026-11-09): ✅ calibrate first, and move the cold tiers t
 ## Required
 
 - [The hash and KDF glue's constant-time compares are proven](/quest/m2/verified/hash-glue.md) - the compares behind `hmac::verify` and `pbkdf2::Secret::verify`, in HOL Light
-- [HKDF's key conversions are proven](/quest/m2/verified/hkdf-okm.md) - the `From<Okm>` keys QUIC's packet protection starts from
 - [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
 - [The Lean models of CPU intrinsics are tested against the instructions](/quest/m2/verified/simd-models.md) - a model that misreads the manual fails `admin/prove`
