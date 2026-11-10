@@ -462,9 +462,10 @@
             };
 
             # `just armv7` enters it to lint and test the armv7 build under
-            # qemu, and the mutants workflow to mutate it. A separate shell because the ARM C toolchain, qemu-user,
-            # and the armv7 standard libraries add about 700 MB, which every
-            # other CI job would download.
+            # qemu, and the mutants workflow to mutate it. A separate shell
+            # because the ARM C toolchain, qemu-user, and the armv7 standard
+            # libraries add about 700 MB, which every other CI job would
+            # download.
             armv7 = pkgs.mkShell armv7-shell;
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
