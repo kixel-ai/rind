@@ -213,6 +213,15 @@ impl Drop for Wiped {
     }
 }
 
+/// Clears the key pair's PKCS#8 copy, as rcgen's `zeroize` feature does; the
+/// rind key it wraps is wiped on drop under the `wipe` feature.
+#[cfg(feature = "zeroize")]
+impl zeroize::Zeroize for KeyPair {
+    fn zeroize(&mut self) {
+        self.serialized_der.0.zeroize();
+    }
+}
+
 /// How rind signs for an rcgen algorithm.
 enum Signer {
     Ecdsa(&'static EcdsaSigningAlgorithm),

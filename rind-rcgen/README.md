@@ -35,5 +35,6 @@ let key = key.serialize_der();
 
 The `pem` feature, on by default as rcgen's is, adds the PEM methods.
 The `wipe` feature wipes keys and the key pair's PKCS#8 copy on drop.
+The `zeroize` feature, as rcgen's, implements `Zeroize` for `KeyPair`, clearing its PKCS#8 copy.
 
 License: Apache-2.0 OR ISC OR MIT-0

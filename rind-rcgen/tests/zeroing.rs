@@ -118,3 +118,20 @@ fn rsa() {
     let secret = &pkcs8[pkcs8.len() - NEEDLE_LEN..];
     assert_eq!(load_and_drop(pkcs8, &PKCS_RSA_SHA256, secret), 0);
 }
+
+/// `zeroize` clears the PKCS#8 copy at once, as rcgen's does.
+#[cfg(feature = "zeroize")]
+#[test]
+fn zeroize_clears() {
+    use zeroize::Zeroize;
+    let seed: [u8; 32] = distinct(5);
+    let mut pkcs8 = vec![
+        0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04,
+        0x20,
+    ];
+    pkcs8.extend_from_slice(&seed);
+    let der = PrivatePkcs8KeyDer::from(pkcs8.as_slice());
+    let mut key = KeyPair::from_pkcs8_der_and_sign_algo(&der, &PKCS_ED25519).unwrap();
+    key.zeroize();
+    assert!(key.serialized_der().is_empty());
+}
