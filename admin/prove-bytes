@@ -12,10 +12,11 @@ path, and name, and for a naked function the upstream object and symbol it
 comes from. `admin/prove` writes rind's code for each to
 `<dir>/<arch>/<name>.bin`, with its instructions' offsets, its relocations,
 and their targets' bytes, and the upstream's to `<name>.proof` alike, or
-`<name>.absent` where rind's release build defines no such function, since
-nothing in the library calls it. `check` compares them, then checks
-ALGORITHMS.md's inventory of the `_SAFE` theorems covering each, which
-`inventory` prints.
+`<name>.absent` where rind's release build defines no such function. `check`
+compares them, except a routine LLVM may inline, whose copies inside its
+callers no symbol marks: it fails if one has a `_SAFE` theorem, and otherwise
+the inventory marks it unchecked. Then it checks ALGORITHMS.md's inventory of
+the `_SAFE` theorems covering each, which `inventory` prints.
 
 s2n-bignum's proofs each assert the bytes of the object code they are about,
 as a list in the proof's source, which `define_assert_from_elf` checks
@@ -89,23 +90,31 @@ ARM_RELOC_IMMEDIATE = {
 
 
 def routines():
-    """Each s2n-bignum routine rind runs: its target, Rust path, and source."""
+    """Each s2n-bignum routine rind runs: its target, Rust path, source, and
+    whether LLVM may inline it. A file with a source line has one above each
+    of its functions, so that none drops out of the check unnoticed."""
     for arch, s2n in ARCHES.items():
         low = os.path.join(ROOT, "rind", "src", "low", arch)
-        for file in sorted(os.listdir(low)):
-            if not file.endswith(".rs"):
-                continue
-            source = None
-            for line in open(os.path.join(low, file)):
-                m = SOURCE.match(line)
-                if m:
-                    assert m.group(2) == s2n, (file, line)
-                    source = m.group(1)
+        for parent, dirs, files in sorted(os.walk(low)):
+            for file in sorted(files):
+                if not file.endswith(".rs"):
                     continue
-                m = FN.match(line)
-                if m and source:
-                    yield arch, f"rind::low::{arch}::{file[:-3]}::{m.group(1)}", source
-                    source = None
+                module = os.path.relpath(os.path.join(parent, file[:-3]), low).replace(os.sep, "::")
+                source, sourced, inline = None, False, True
+                for line in open(os.path.join(parent, file)):
+                    m = SOURCE.match(line)
+                    if m:
+                        assert m.group(2) == s2n and not source, (file, line)
+                        source, sourced = m.group(1), True
+                        continue
+                    if line == "#[inline(never)]\n":
+                        inline = False
+                    m = FN.match(line)
+                    if m:
+                        assert source or not sourced, (file, line)
+                        if source:
+                            yield arch, f"rind::low::{arch}::{module}::{m.group(1)}", source, inline
+                        source, inline = None, True
 
 
 # --- s2n-bignum's proofs, read as OCaml tokens.
@@ -509,10 +518,12 @@ INVENTORY = ("<!-- admin/prove-bytes inventory -->\n", "<!-- end admin/prove-byt
 
 
 def built_routines(out):
-    """Each s2n-bignum routine rind's release build defines, which
-    `admin/prove` marks absent otherwise: nothing in the library calls it."""
-    for arch, path, source in routines():
-        if not os.path.exists(os.path.join(out, arch, os.path.basename(source) + ".absent")):
+    """Each s2n-bignum routine whose code in rind's release build the check
+    compares: not one LLVM may inline, whose inlined copies no symbol marks,
+    nor one `admin/prove` marks absent, which nothing in the library calls
+    since it is never inlined."""
+    for arch, path, source, inline in routines():
+        if not inline and not os.path.exists(os.path.join(out, arch, os.path.basename(source) + ".absent")):
             yield arch, path, source
 
 
@@ -521,9 +532,13 @@ def inventory(out):
     function's routine and `_SAFE` theorem on each target, named by its module
     under `low::<arch>` where that differs from the function."""
     cells = {}
-    for arch, path, source in built_routines(out):
+    for arch, path, source, inline in routines():
+        if not inline and os.path.exists(os.path.join(out, arch, os.path.basename(source) + ".absent")):
+            continue
         theorem = safe_theorem(arch, source, proven(arch, source))
         cell = f"`{os.path.basename(source)}`: " + (f"`{theorem}`" if theorem else "none")
+        if inline:
+            cell += "; inlinable, so unchecked"
         module, fn = path.split("::")[-2:]
         cells.setdefault(fn if module == fn else f"{module}::{fn}", {})[arch] = cell
     rows = ["| Function | x86_64 | aarch64 |", "|---|---|---|"]
@@ -557,7 +572,7 @@ def fmt(insn):
 
 def main():
     if sys.argv[1:] == ["list"]:
-        for arch, path, source in routines():
+        for arch, path, source, _ in routines():
             print(arch, "block", path, os.path.basename(source))
         for arch, path, obj, sym in NAKED:
             print(arch, "naked", path, sym, obj, sym)
@@ -572,6 +587,11 @@ def main():
         sys.exit(__doc__.split("\n\n")[1])
     out = sys.argv[2]
     failed = 0
+    for arch, path, source, inline in routines():
+        theorem = inline and safe_theorem(arch, source, proven(arch, source))
+        if theorem:
+            print(f"admin/prove-bytes: {arch} {path}: inlined copies escape the check of {theorem}; mark it #[inline(never)]", file=sys.stderr)
+            failed += 1
     for arch, path, source in built_routines(out):
         name = os.path.basename(source)
         base = os.path.join(out, arch, name)

@@ -295,7 +295,8 @@ bytes() {
         aarch64-linux-gnu-as -L -o "$dir/sha512-armv8.o"
     admin/prove-bytes list >"$dir/routines"
     while read -r arch kind path name obj sym; do
-        # A routine nothing in the library calls is not built, and not run.
+        # A routine with no symbol is either inlined, which `admin/prove-bytes`
+        # knows from its source, or called by nothing in the library.
         if ! awk -F '\t' -v p="$path" '$3 == p { f = 1 } END { exit !f }' "$(rind_index "$arch")"; then
             touch "$dir/$arch/$name.absent"
             continue

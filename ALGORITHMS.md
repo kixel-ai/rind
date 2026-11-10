@@ -176,6 +176,9 @@ writes some commutative x86_64 instructions with their sources swapped.
 The table names, for each Rust function rind transliterates from s2n-bignum,
 the routine it runs on each target and the subroutine `_SAFE` theorem that
 covers it, or "none" where s2n-bignum proves none at the pinned revision.
+LLVM may inline `bignum_modadd`, which a hot loop calls, so no symbol marks
+its copies and the check does not reach them; the check fails if such a
+routine has a `_SAFE` theorem.
 [BINSEC](/quest/m2/confidence/binsec.md) is planned to check those. The
 aarch64 AES-GCM theorems assume separate input and output buffers, so they do
 not cover rind's in-place calls.
@@ -226,6 +229,7 @@ not cover rind's in-place calls.
 | `bignum_mod_n384` | `bignum_mod_n384_6`: none | `bignum_mod_n384_6`: none |
 | `bignum_mod_n521` | `bignum_mod_n521_9`: `BIGNUM_MOD_N521_9_SUBROUTINE_SAFE` | `bignum_mod_n521_9`: `BIGNUM_MOD_N521_9_SUBROUTINE_SAFE` |
 | `bignum_mod_n521_alt` | `bignum_mod_n521_9_alt`: `BIGNUM_MOD_N521_9_ALT_SUBROUTINE_SAFE` | not imported |
+| `bignum_modadd` | `bignum_modadd`: none; inlinable, so unchecked | `bignum_modadd`: none; inlinable, so unchecked |
 | `bignum_modinv` | `bignum_modinv`: none | `bignum_modinv`: none |
 | `bignum_modsub` | `bignum_modsub`: none | `bignum_modsub`: none |
 | `bignum_montifier` | `bignum_montifier`: none | `bignum_montifier`: none |
