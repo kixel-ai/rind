@@ -7,9 +7,11 @@ computation is proven. [Charon](https://github.com/AeneasVerif/charon) and
 the theorems are about that translation.
 
 `nix develop .#prove --command admin/prove` translates the Rust and checks
-every proof against the translation, after the HOL Light proofs below. The
-`prove` workflow runs it nightly and on pull requests that change rind's
-source or these files.
+every proof against the translation, after the HOL Light proofs below and
+`admin/prove bytes`, which checks that each imported routine those proofs
+build on, from s2n-bignum, Vale, and aws-lc, is in rind's build the object
+code its own proof is about. The `prove` workflow runs it nightly and on pull
+requests that change rind's source or these files.
 
 ## HOL Light proofs
 

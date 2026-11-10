@@ -112,6 +112,7 @@ use crate::low::macros::*;
 // bti c landing pad, as the proofs require.
 // Proofs: arm/proofs/aes128_gcm_dec_alt.ml.
 
+// Transliterated from s2n-bignum's arm/aes_gcm/aes128_gcm_dec_alt.S.
 /// AES-128-GCM bulk decryption, 8 blocks at a time: counter-mode decryption of
 ///
 /// whole blocks with the GHASH tag update

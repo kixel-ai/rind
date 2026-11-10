@@ -108,6 +108,7 @@ macro_rules! t3 {
     };
 }
 
+// Transliterated from s2n-bignum's arm/p256/bignum_tomont_p256.S.
 /// Convert to Montgomery form z := (2^256 * x) mod p_256
 ///
 /// Input x[4]; output z[4]

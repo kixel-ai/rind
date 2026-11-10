@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Checks out, into .tmp/upstream/<name>, the revision of the upstream that
+# `admin/import-<name>` pins as its REV, or into .tmp/upstream/<name>@<rev>
+# the revision `rev`, fetching it shallowly unless it is already there.
+#
+# Usage: admin/upstream <aws-lc | boringssl | openssl | hacl-star> [rev]
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+case "${1:-}" in
+aws-lc) url=https://github.com/aws/aws-lc script=admin/import-aws-lc ;;
+boringssl) url=https://github.com/google/boringssl script=admin/import-boringssl ;;
+openssl) url=https://github.com/openssl/openssl script=admin/import-openssl ;;
+hacl-star) url=https://github.com/hacl-star/hacl-star script=admin/import-hacl ;;
+*)
+    echo "usage: admin/upstream <aws-lc | boringssl | openssl | hacl-star> [rev]" >&2
+    exit 2
+    ;;
+esac
+if [[ -n "${2:-}" ]]; then
+    dir=.tmp/upstream/$1@$2 rev=$2
+else
+    dir=.tmp/upstream/$1
+    rev=$(sed -n 's/^REV = "\([0-9a-f]\{40\}\)"$/\1/p' "$script")
+fi
+if [[ -z "$rev" ]]; then
+    echo "admin/upstream: $script pins no REV" >&2
+    exit 1
+fi
+# A directory that is not its own repository resolves to rind's.
+if [[ "$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" != "$PWD/$dir" ||
+    "$(git -C "$dir" rev-parse HEAD)" != "$rev" ]]; then
+    rm -rf "$dir"
+    git init -q "$dir"
+    git -C "$dir" fetch -q --depth 1 "$url" "$rev"
+    git -C "$dir" -c advice.detachedHead=false checkout -q FETCH_HEAD
+fi

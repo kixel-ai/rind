@@ -86,6 +86,7 @@ use crate::low::macros::*;
 //    fused one-to-four-block path are rescheduled for speed. This kernel
 //    keeps those optimizations while reducing the AES round schedule.
 
+// Transliterated from s2n-bignum's arm/aes_gcm/aes128_gcm_enc_alt.S.
 /// AES-128-GCM bulk encryption, 8 blocks at a time: counter-mode encryption of
 ///
 /// whole blocks with the GHASH tag update

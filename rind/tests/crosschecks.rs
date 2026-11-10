@@ -1,3 +1,6 @@
+//! Differential tests against aws-lc, which Miri cannot run.
+#![cfg(not(miri))]
+
 use aws_lc_rs::{digest, hmac, signature::Ed25519KeyPair};
 use proptest::collection::vec;
 use proptest::prelude::*;

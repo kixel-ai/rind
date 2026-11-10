@@ -27,11 +27,11 @@ Guidance:
 - The alternative is a libcrux key state that expands once and takes one buffer, if libcrux-aes has one or grows one; [armv7 raw ciphers from libcrux](/quest/m3/libcrux-ciphers.md) already waits on its exports.
 - The expanded key and table are keyed state: wipe them on drop through `low::zeroise`, as `Portable` wipes its key bytes today.
 - A changed secret path gets its ctgrind test, on the portable build and on armv7 with the crypto extension denied.
-- Source and proof: rind's copy of libcrux-aes's bitsliced block cipher (Apache-2.0, which libcrux marks pre-verification) and rind's port of aws-lc's `gcm_nohw.c`; neither is proven. [armv7 runs the Rust proofs](/quest/m5/verified/armv7/prove.md) plans to prove both paths, and has one fewer to prove if `Composed` serves every key.
+- Source and proof: rind's copy of libcrux-aes's bitsliced block cipher (Apache-2.0, which libcrux marks pre-verification) and rind's port of aws-lc's `gcm_nohw.c`; neither is proven. [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) plans to prove both paths, and has one fewer to prove if `Composed` serves every key.
 - If the block cipher still trails by more than 1.10× afterwards, the PR suggests its follow-up, measured against a 64-bit port of aws-lc's `aes_nohw.c`, which rind already ports for SSE2 (`rind/src/low/x86_64/aes_nohw.rs`). rind-rustls prefers ChaCha20-Poly1305 on these targets, so that matters only where a peer or protocol requires AES.
 
 ## Related
 
 - [64-bit portable targets use 64-bit limbs](/quest/m3/cold-speed/portable-limbs.md) - the portable row's other large gap
 - [armv7 raw ciphers from libcrux](/quest/m3/libcrux-ciphers.md) - replaces the block cipher copy this builds on, once libcrux exports it
-- [armv7 runs the Rust proofs](/quest/m5/verified/armv7/prove.md) - proves the AES-GCM paths this changes
+- [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) - proves the AES-GCM paths this changes

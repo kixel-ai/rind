@@ -20,6 +20,7 @@ use crate::low::macros::*;
 // Standard ARM ABI: X0 = a
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's arm/mlkem/mlkem_reduce.S.
 /// Canonical reduction of polynomial coefficients for ML-KEM
 ///
 /// Input a[256] (signed 16-bit words); output a[256] (signed 16-bit words)

@@ -46,6 +46,7 @@ macro_rules! a {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_ctz.S.
 /// Count trailing zero bits
 ///
 /// Input x[k]; output function return
