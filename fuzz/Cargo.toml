@@ -11,17 +11,43 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
 aws-lc-rs = { version = "1.19", features = ["non-fips", "ring-io"], default-features = false }
-# aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
+# What aws-lc-rs does not expose: XChaCha20-Poly1305, bare ChaCha20, MD5,
+# AES-GCM with any IV, AES-192 key wrap, and RSA-PSS with any salt length.
 aws-lc-sys = { version = "0.47", default-features = false }
 # Tells which Ed25519 keys are of small order, which rind refuses.
 curve25519-dalek = { version = "5", default-features = false }
+# The adapters, each compared with its upstream's aws-lc-rs provider.
+arrayvec = "0.7"
+dimpl = { version = "0.9", default-features = false, features = ["aws-lc-rs", "_crypto-common"] }
+rind-dimpl = { path = "../rind-dimpl" }
+rind-rcgen = { path = "../rind-rcgen" }
+rind-rustls = { path = "../rind-rustls" }
+rind-str0m = { path = "../rind-str0m" }
+rcgen = { version = "0.14", default-features = false }
+rustls = { version = "0.23.20", default-features = false, features = ["aws-lc-rs", "std", "tls12"] }
+str0m = { version = "0.25", default-features = false }
+str0m-aws-lc-rs = "0.7"
 
 [dependencies.rind]
 path = "../rind"
 
 [[bin]]
-name = "sha1"
-path = "fuzzer/sha1.rs"
+name = "legacy"
+path = "fuzzer/legacy.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cipher"
+path = "fuzzer/cipher.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sign"
+path = "fuzzer/sign.rs"
 test = false
 doc = false
 bench = false
@@ -113,6 +139,27 @@ bench = false
 [[bin]]
 name = "oaep"
 path = "fuzzer/oaep.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rustls"
+path = "fuzzer/rustls.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dimpl"
+path = "fuzzer/dimpl.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "str0m"
+path = "fuzzer/str0m.rs"
 test = false
 doc = false
 bench = false

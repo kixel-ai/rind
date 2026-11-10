@@ -764,14 +764,17 @@ CPU_FEATURES = {
 TIERS = [
     (("x86_64-unknown-linux-gnu", False, ""), "x86_64"),
     (("x86_64-unknown-linux-gnu", True, "no-ifma"), "no IFMA"),
+    (("x86_64-unknown-linux-gnu", True, "no-avx512"), "no AVX-512"),
     (("x86_64-unknown-linux-gnu", True, "no-adx"), "no ADX"),
     (("x86_64-unknown-linux-gnu", True, ""), "no AVX2"),
     (("x86_64-unknown-linux-gnu", True, "no-avx"), "no AVX"),
     (("x86_64-unknown-linux-gnu", True, "no-aes"), "no AES-NI"),
     (("x86_64-unknown-linux-gnu", True, "no-ssse3"), "SSE2"),
     (("aarch64-unknown-linux-gnu", False, ""), "aarch64"),
+    (("aarch64-unknown-linux-gnu", True, "no-sha3"), "no SHA-3"),
     (("aarch64-unknown-linux-gnu", True, ""), "no crypto"),
     (("armv7-unknown-linux-gnueabihf", False, ""), "armv7"),
+    (("armv7-unknown-linux-gnueabihf", True, "no-crypto"), "armv7 NEON"),
     (("x86_64-unknown-linux-gnu", True, "generic"), "portable"),
 ]
 
@@ -941,6 +944,9 @@ def tier_column(tier):
     column = dict(TIERS).get((tier["target"], tier["portable"], tier["tier"]))
     if column is None:
         fail(f"nightly results name an unknown tier: {tier['target']} {tier['tier']}")
+    # The native x86_64 runner may or may not have AVX-512; name the tier it drew.
+    if column == "x86_64" and "avx512" in tier:
+        column += " AVX-512" if tier["avx512"] else " VAES AVX2"
     return column
 
 
@@ -948,8 +954,9 @@ def tier_columns(tiers):
     """The report's tier columns, in bench.yml's order. A tier added since the
     saved run has no column yet, rather than an empty one, which the report
     reads as code shared with the column to its left."""
-    present = {tier_column(t) for t in tiers["tiers"]}
-    return [name for _, name in TIERS if name in present]
+    order = {name: i for i, (_, name) in enumerate(TIERS)}
+    base = {tier_column(t): dict(TIERS)[(t["target"], t["portable"], t["tier"])] for t in tiers["tiers"]}
+    return sorted(base, key=lambda c: order[base[c]])
 
 
 def tier_row(key):
@@ -1382,7 +1389,7 @@ def tier_table(tiers):
     columns = tier_columns(tiers)
     by_key = {}
     for t in tiers["tiers"]:
-        column = dict(TIERS)[(t["target"], t["portable"], t["tier"])]
+        column = tier_column(t)
         for key, (ratio, *_) in tier_rows(t).items():
             by_key.setdefault(key, {})[column] = ratio
     lines = ["| Benchmark | " + " | ".join(columns) + " |", "|---|" + "---|" * len(columns)]
@@ -1516,11 +1523,12 @@ def report(hosts, tiers, verified, gaps):
         cpus = sorted({t["cpu"] for t in tiers["tiers"]})
         md += [
             "GitHub's runners, timed by the nightly `bench` workflow with CPU features denied as `bench.yml` "
-            "describes: x86_64 runs every feature, and each column to its right denies more (no IFMA: AVX-512 "
-            "IFMA; no ADX: also ADX; "
+            "describes: x86_64 runs every feature, its name suffixed with the AES-GCM tier the runner drew (AVX-512 or VAES AVX2); no IFMA denies AVX-512 IFMA, and no AVX-512 all of AVX-512 but "
+            "VAES and VPCLMULQDQ; from no ADX, each column denies more (no ADX: ADX and AVX-512 IFMA; "
             "no AVX2: also AVX2, BMI2, SHA-NI, AVX-512, VAES, and VPCLMULQDQ; no AVX: also AVX; no AES-NI: "
             "also AES-NI, PCLMULQDQ, and SSE4.1; SSE2: also SSSE3). aarch64 runs with the crypto extension, "
-            "no crypto without it, and armv7 in 32-bit mode on the same core. Each cell is rind's time over "
+            "no SHA-3 without the SHA-512 and SHA-3 instructions, no crypto without any of them, armv7 in 32-bit "
+            "mode on the same core, and armv7 NEON there without the crypto extension. Each cell is rind's time over "
             "the fastest of aws-lc-rs and ring (aws-lc-rs alone where a feature is denied, since ring can't "
             "be denied one), in the row's benchmark where rind trails most. An empty cell runs the same code "
             "as the one to its left, so it isn't timed.",
@@ -1664,7 +1672,7 @@ def nightly(args):
                     continue
                 key = "/".join("*" if p == lib else p for p in parts)
                 benchmarks.setdefault(key, {})[lib] = significant(r["ns"])
-            tiers.append({k: saved[k] for k in ("target", "portable", "tier", "cpu")} | {"benchmarks": benchmarks})
+            tiers.append({k: saved[k] for k in ("target", "portable", "tier", "cpu", "avx512") if k in saved} | {"benchmarks": benchmarks})
         order = {key: i for i, (key, _) in enumerate(TIERS)}
         missing = set(order) - {(t["target"], t["portable"], t["tier"]) for t in tiers}
         if missing:

@@ -70,10 +70,16 @@ def digestHash : high.digest.Algorithm → List Byte → List Byte
   | .SHA1 => sha1.hash
   | _ => sha256.hash
 
+/-- What `a`'s hash assumes of its block functions. -/
+def ShaBlocksOf : high.digest.Algorithm → Prop
+  | .SHA1 => Sha1Blocks
+  | .SHA256 => Sha256Blocks
+  | _ => True
+
 /-- What the digest API under `a` needs: `a` is SHA-1 or SHA-256, the entry
-guard passes, and the block functions meet their contracts. -/
+guard passes, and its block functions meet their contracts. -/
 def RunsDigest (a : high.digest.Algorithm) : Prop :=
-  (a = .SHA1 ∨ a = .SHA256) ∧ (∃ e, low.entry.Entry.new_secret = ok e) ∧ ShaBlocks
+  (a = .SHA1 ∨ a = .SHA256) ∧ (∃ e, low.entry.Entry.new_secret = ok e) ∧ ShaBlocksOf a
 
 /-- `c` is a `Context` of `a` that has been given `p`. -/
 def CtxOf (a : high.digest.Algorithm) (p : List U8) : high.digest.State → Prop

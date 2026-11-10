@@ -4,7 +4,7 @@
 
 rind offers the primitives that protocols above TLS build on, so their Rust implementations can run entirely on rind:
 
-- HPKE (RFC 9180), for ECH, MLS, and Oblivious HTTP, including through rind-rustls's ECH support;
+- HPKE's post-quantum KEMs, and MLS through rind-openmls, on top of [HPKE](/quest/m2/adoption/hpke.md) (RFC 9180), which moved to m2 on 2026-11-10;
 - RSA blind signatures (RFC 9474) and VOPRF/OPRF (RFC 9497), for Privacy Pass;
 - FROST threshold Schnorr signatures (RFC 9591);
 - ECVRF (RFC 9381);
@@ -18,7 +18,6 @@ The scope ([moq-dev/rind#449](https://github.com/moq-dev/rind/pull/449)) ordered
 
 ## Required
 
-- [HPKE and ECH](/quest/m4/protocols/hpke.md) - RFC 9180 base mode and export, and rustls's ECH through rind-rustls
 - [HPKE's post-quantum KEMs](/quest/m4/protocols/hpke-pq.md) - ML-KEM and X-Wing as HPKE KEMs
 - [RSA blind signatures](/quest/m4/protocols/blind-rsa.md) - RFC 9474, for Privacy Pass's publicly verifiable tokens
 - [Hash to the NIST curves](/quest/m4/protocols/hash-to-curve.md) - RFC 9380's SSWU hash-to-curve and `hash_to_field`, crate-internal
