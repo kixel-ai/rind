@@ -203,7 +203,12 @@ fn record(suite: u8, key: [u8; 32], iv: [u8; 12], seq: u64, typ: u8, plain: &[u8
         })
         .collect::<Vec<_>>();
     let ours = *suites[usize::from(suite) % suites.len()];
-    let typ = ContentType::from(typ);
+    // The types a TLS 1.3 peer seals: rustls refuses any other inside a record.
+    let typ = [
+        ContentType::Alert,
+        ContentType::Handshake,
+        ContentType::ApplicationData,
+    ][usize::from(typ) % 3];
     let message = OutboundPlainMessage {
         typ,
         version: ProtocolVersion::TLSv1_2,

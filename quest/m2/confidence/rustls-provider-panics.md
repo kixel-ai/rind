@@ -15,4 +15,4 @@ Moved from m3 into m2's confidence epic with the maintainer on 2026-11-09: ✅ a
 ## Related
 
 - [Test coverage](/TESTING.md) - maps primitive tests rather than adapter input provenance
-- [Hostile peer bytes never panic an adapter](/quest/m2/confidence/adapters-hostile-input.md) - a fuzz target for the same boundary, which this trace does by hand
+- [The rustls fuzz target](/fuzz/fuzzer/rustls.rs) - fuzzes the same boundary through rustls's traits, at the key lengths rustls derives

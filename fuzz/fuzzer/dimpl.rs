@@ -190,7 +190,12 @@ fn record_number(suite: u8, key: &[u8; 32], sample: &[u8; 16]) {
         .find(|theirs| theirs.suite() == ours.suite())
         .expect("aws-lc-rs has every suite rind-dimpl has");
     let key = &key[..ours.key_len()];
-    assert_eq!(ours.encrypt_sn(key, sample), theirs.encrypt_sn(key, sample));
+    // dimpl XORs at most two mask bytes over the sequence number, and aws-lc-rs's
+    // ChaCha20 mask fills only the first five, as QUIC's does.
+    assert_eq!(
+        ours.encrypt_sn(key, sample)[..5],
+        theirs.encrypt_sn(key, sample)[..5]
+    );
 }
 
 fn key_share(group: u8, share: Share) {
@@ -348,7 +353,7 @@ impl Handshake {
         let mut sent_data = false;
         for turn in 0..16 {
             let now = now + Duration::from_millis(10 * turn);
-            for side in 0..2 {
+            for (side, connected) in connected.iter_mut().enumerate() {
                 let [from, to] = match side {
                     0 => endpoints.each_mut(),
                     _ => {
@@ -360,7 +365,7 @@ impl Handshake {
                     return;
                 }
                 let (packets, done) = poll(from);
-                connected[side] |= done;
+                *connected |= done;
                 for mut packet in packets {
                     for (target, edit) in &self.edits {
                         if target % 32 == index {
