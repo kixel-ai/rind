@@ -23,6 +23,16 @@ A primitive is checked four ways:
   valgrind cannot run. None of the three sees variable-time instructions;
   `admin/ct-vartime` scans the release builds for them.
 
+Separately, `low::guard_pages` checks buffer bounds. It runs each kernel
+that takes a caller's slice (AES-GCM, ChaCha20-Poly1305, AES-CTR, AES-CBC,
+ChaCha20, the digests and HMAC, the constant-time compare, and
+`zero_bytes`) with each slice against a `PROT_NONE` page, before and after,
+at every length up to 1100 bytes, so an access outside it faults. Valgrind
+cannot decode the fastest tiers and AddressSanitizer does not instrument
+assembly, so this is the only bounds check on them. It is an ordinary unit
+test on Unix, so it runs wherever the [tier table](#tiers) runs `cargo test`;
+`planted_over_read_faults` shows a read one byte past either end kills it.
+
 `admin/testing`, in `just ci`, fails when an export, fuzz target, differential
 test, constant-time test, vector file, or CCTV/imported-vector test is missing
 from the [primitives table](#primitives), or when the table names one the code lacks.
