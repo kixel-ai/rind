@@ -26,7 +26,6 @@ The 2026-11-09 audit found no exploitable bug and no panic reachable from public
 
 ## Required
 
-- [Check rustls provider panic reachability](/quest/m2/confidence/rustls-provider-panics.md) - trace malformed peer input to the adapter's key and IV conversions, and fix a reachable defect
 - [rind passes NIST's ACVP vectors](/quest/m2/confidence/acvp.md) - every algorithm ACVP covers
 - [BINSEC checks the secret paths no proof covers](/quest/m2/confidence/binsec.md) - constant time for every secret, on the paths no proof covers, nightly on x86_64 and aarch64
 - [Adapter crates' surviving mutants](/quest/m2/confidence/mutants-adapters.md) - tests for the 103 adapter mutants no test catches

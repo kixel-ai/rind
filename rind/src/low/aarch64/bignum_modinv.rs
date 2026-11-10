@@ -224,6 +224,7 @@ macro_rules! e8 {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_modinv.S.
 /// Invert modulo m, z = (1/a) mod b, assuming b is an odd number > 1, coprime a
 ///
 /// Inputs a[k], b[k]; output z[k]; temporary buffer t[>=3*k]

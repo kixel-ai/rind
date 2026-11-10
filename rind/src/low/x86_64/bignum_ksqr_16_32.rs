@@ -20,6 +20,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = z, RDX = x, R8 = t
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/fastmul/bignum_ksqr_16_32.S.
 /// Square, z := x^2
 ///
 /// Input x[16]; output z[32]; temporary buffer t[>=24]

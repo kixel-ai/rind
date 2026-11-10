@@ -629,6 +629,7 @@ macro_rules! mux_4 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/curve25519/curve25519_x25519.S.
 /// The x25519 function for curve25519
 ///
 /// Inputs scalar[4], point[4]; output res[4]

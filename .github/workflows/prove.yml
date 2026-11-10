@@ -1,9 +1,11 @@
 name: prove
 
-# Checks rind's HOL Light proofs in `proofs/hol-light/`, and translates rind's
-# Rust under proof to Lean and checks the proofs in `proofs/`. Too slow for
-# `just ci`, so it runs nightly and on pull requests that change rind's
-# source, the proofs, s2n-bignum's pin, or the flake that pins their tools.
+# Checks that the assembly rind imports is the object code its upstream's
+# proofs check, and rind's HOL Light proofs in `proofs/hol-light/`, and
+# translates rind's Rust under proof to Lean and checks the proofs in
+# `proofs/`. Too slow for `just ci`, so it runs nightly and on pull requests
+# that change rind's source, the proofs, the checks, s2n-bignum's pin, or the
+# flake that pins their tools.
 on:
   schedule:
     - cron: "0 18 * * *"
@@ -14,6 +16,9 @@ on:
       - rind/src/**
       - proofs/**
       - admin/prove
+      - admin/prove-bytes
+      - admin/upstream
+      - ALGORITHMS.md
       - flake.nix
       - flake.lock
       - thirdparty/s2n-bignum
@@ -36,6 +41,9 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/nix
+
+      - name: Bytes
+        run: nix develop .#hol-light --command admin/prove bytes
 
       - name: Prove
         run: nix develop .#hol-light --command admin/prove hol-light

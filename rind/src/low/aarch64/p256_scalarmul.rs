@@ -79,6 +79,7 @@ macro_rules! movbig {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p256/p256_scalarmul_alt.S.
 /// Scalar multiplication for P-256
 ///
 /// Input scalar[4], point[8]; output res[8]
