@@ -57,6 +57,35 @@ cfg_if::cfg_if! {
             }
             v
         }
+    } else if #[cfg(test)] {
+        // `admin/ct-binsec` replaces these markers with fresh secret or
+        // public values, so BINSEC checks the policy valgrind does.
+        use super::ct_binsec::{classify, declassify};
+        use core::mem::size_of_val;
+
+        #[inline]
+        pub(crate) fn secret_slice<T>(v: &[T]) {
+            classify(v.as_ptr().cast_mut().cast(), size_of_val(v));
+        }
+
+        #[inline]
+        pub(crate) fn public_slice<T>(v: &[T]) {
+            declassify(v.as_ptr().cast_mut().cast(), size_of_val(v));
+        }
+
+        #[inline]
+        #[must_use]
+        pub(crate) fn into_secret<T>(mut v: T) -> T {
+            classify((&raw mut v).cast(), size_of_val(&v));
+            v
+        }
+
+        #[inline]
+        #[must_use]
+        pub(crate) fn into_public<T>(mut v: T) -> T {
+            declassify((&raw mut v).cast(), size_of_val(&v));
+            v
+        }
     } else {
         #[inline]
         pub(crate) fn secret_slice<T>(_v: &[T]) {}

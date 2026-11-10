@@ -1,0 +1,266 @@
+#!/usr/bin/env python3
+
+# Usage: admin/ct-binsec [--target TARGET] [filter]
+#
+# The symbolic constant-time check (see `rind/src/low/ct_binsec.rs`). For
+# each rind test named `ct_binsec...` whose name contains `filter`, this
+# stops the release test binary under gdb as it enters the test's checked
+# region, dumps the process, and has BINSEC's checkct explore the region
+# from that dump, with every byte rind marks secret taking every value at
+# once. It fails unless BINSEC proves that no branch, memory address,
+# divisor, or dividend depends on a secret, over every path the region
+# takes, to the end of each of its loops.
+#
+# The `ct_binsec_planted_...` tests leak, and run every time. BINSEC must
+# report them insecure, so a harness that checks nothing fails.
+#
+# The dump fixes everything else, such as the CPU features rind detected,
+# so a run checks the paths the host's CPU takes; `RIND_CPU_DISABLE_*` under
+# `--cfg rind_cpu_disable` picks others, as for `admin/ctgrind`.
+#
+# Run it in `nix develop .#binsec`.
+
+import argparse, json, os, re, struct, subprocess, sys, tempfile
+
+# What gdb runs in the test: stop at the region, make the thread's stack
+# readable, dump the process, then let the test finish, and refuse a
+# second region, which BINSEC would never see.
+GDB = r"""
+import gdb
+gdb.execute("set pagination off")
+gdb.execute("set confirm off")
+gdb.execute("break rind_ct_binsec_start")
+gdb.execute("run")
+if not gdb.selected_thread() or not gdb.selected_thread().is_valid():
+    raise gdb.GdbError("ct-binsec: the test never entered its region")
+pid = gdb.selected_inferior().pid
+sp = int(gdb.parse_and_eval("(unsigned long)$sp"))
+# glibc marks a thread stack's guard pages with MADV_GUARD_INSTALL, inside
+# the stack's own mapping, so gdb fails to read the mapping and dumps it
+# empty. MADV_GUARD_REMOVE (103) lifts them; on an older kernel the call
+# fails, and the guard is a mapping of its own.
+for line in open("/proc/{}/maps".format(pid)):
+    lo, hi = (int(x, 16) for x in line.split()[0].split("-"))
+    if lo <= sp < hi:
+        gdb.parse_and_eval("(int)madvise({}, {}, 103)".format(lo, hi - lo))
+for sym in ["rind_ct_binsec_stop", "rind_ct_binsec_secret", "rind_ct_binsec_public", "getrandom"]:
+    print("SYMBOL {} {:#x}".format(sym, int(gdb.parse_and_eval("(unsigned long)&" + sym))))
+# The core lists the signalled thread first: this one.
+gdb.execute("queue-signal SIGUSR1")
+gdb.execute("generate-core-file " + CORE)
+gdb.execute("queue-signal 0")
+gdb.execute("continue")
+if gdb.selected_inferior().pid:
+    raise gdb.GdbError("ct-binsec: the test entered a second region")
+print("EXIT {}".format(int(gdb.parse_and_eval("$_exitcode"))))
+"""
+
+# NT_PRPSINFO, NT_AUXV, and NT_FILE, which describe the process.
+PROCESS_NOTES = {3, 6, 0x46494C45}
+NT_PRSTATUS = 1
+
+# Each target's word size, for the script's loop counters.
+WORD = {"x86_64": 64, "aarch64": 64, "arm": 32}
+
+# BINSEC replaces each marker with fresh symbolic bytes, and glibc's
+# getrandom, which rind's random bytes come from, with secret ones, since
+# the kernel's call is opaque to it.
+SCRIPT = """\
+starting from core
+
+replace {secret:#x} (value, len) by
+  for i<{word}> in 0 to len - 1 do
+    @[value + i] := secret
+  end
+  return
+end
+
+replace {public:#x} (value, len) by
+  for i<{word}> in 0 to len - 1 do
+    @[value + i] := public
+  end
+  return
+end
+
+replace {getrandom:#x} (buf, len, flags) by
+  for i<{word}> in 0 to len - 1 do
+    @[buf + i] := secret
+  end
+  return len
+end
+
+halt at {stop:#x}
+explore all
+"""
+
+
+def arch(target):
+    return target.split("-")[0].replace("armv7", "arm")
+
+
+def host():
+    out = subprocess.run(["rustc", "-vV"], stdout=subprocess.PIPE, check=True, encoding="utf-8").stdout
+    return re.search(r"^host: (\S+)$", out, re.M)[1]
+
+
+def build(target):
+    out = subprocess.run(
+        ["cargo", "test", "-p", "rind", "--lib", "--release", "--no-run"]
+        + ["--target", target, "--message-format=json-render-diagnostics"],
+        stdout=subprocess.PIPE,
+        check=True,
+        encoding="utf-8",
+    ).stdout
+    for line in out.splitlines():
+        js = json.loads(line)
+        if js.get("reason") == "compiler-artifact" and js.get("executable"):
+            if js["target"]["name"] == "rind":
+                return js["executable"]
+    sys.exit("ct-binsec: no rind test binary")
+
+
+def tests(exe, filter):
+    out = subprocess.run(
+        [exe, "--list", "--ignored", "--format", "terse"],
+        stdout=subprocess.PIPE,
+        check=True,
+        encoding="utf-8",
+    ).stdout
+    names = [line.removesuffix(": test") for line in out.splitlines()]
+    names = [n for n in names if n.split("::")[-1].startswith("ct_binsec")]
+    planted = [n for n in names if is_planted(n)]
+    return planted + [n for n in names if filter in n and not is_planted(n)]
+
+
+def is_planted(name):
+    return name.split("::")[-1].startswith("ct_binsec_planted")
+
+
+def dump(exe, name, tmp):
+    """Runs `name` under gdb, dumping it at its region into `tmp`, and
+    returns the core's path and the addresses of the markers."""
+    core = os.path.join(tmp, "core")
+    script = os.path.join(tmp, "dump.py")
+    with open(script, "w") as f:
+        f.write("CORE = {!r}\n".format(core) + GDB)
+    cmd = ["gdb", "-batch", "-nx", "-x", script, "--args", exe]
+    cmd += ["--ignored", "--exact", name, "--test-threads=1", "-q"]
+    out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8").stdout
+    symbols = dict((m[1], int(m[2], 16)) for m in re.finditer(r"^SYMBOL (\S+) (\S+)$", out, re.M))
+    exit = re.search(r"^EXIT (\d+)$", out, re.M)
+    if len(set(symbols.values())) != 4 or not exit or exit[1] != "0" or not os.path.exists(core):
+        sys.exit("ct-binsec: {} failed under gdb:\n{}".format(name, out))
+    keep_first_thread(core)
+    return core, symbols
+
+
+def keep_first_thread(path):
+    """BINSEC starts from the registers of the core's last thread, and gdb
+    lists the stopped thread first, so this renames every later thread's
+    notes to a type BINSEC ignores."""
+    with open(path, "r+b") as f:
+        data = bytearray(f.read())
+        wide = data[4] == 2
+        if wide:
+            (phoff,) = struct.unpack_from("<Q", data, 0x20)
+            phentsize, phnum = struct.unpack_from("<HH", data, 0x36)
+        else:
+            (phoff,) = struct.unpack_from("<I", data, 0x1C)
+            phentsize, phnum = struct.unpack_from("<HH", data, 0x2A)
+        threads = 0
+        for i in range(phnum):
+            at = phoff + i * phentsize
+            if wide:
+                kind, _, offset, _, _, size = struct.unpack_from("<IIQQQQ", data, at)
+            else:
+                kind, offset, _, _, size = struct.unpack_from("<IIIII", data, at)
+            if kind != 4:  # PT_NOTE
+                continue
+            note = offset
+            while note < offset + size:
+                namesz, descsz, kind = struct.unpack_from("<III", data, note)
+                threads += kind == NT_PRSTATUS
+                if threads > 1 and kind not in PROCESS_NOTES:
+                    struct.pack_into("<I", data, note + 8, 0x7FFFFFFF)
+                note += 12 + (namesz + 3 & ~3) + (descsz + 3 & ~3)
+        f.seek(0)
+        f.write(data)
+
+
+def check(exe, name, target, tmp):
+    """Returns BINSEC's verdict on `name`'s region, and its log."""
+    core, symbols = dump(exe, name, tmp)
+    script = os.path.join(tmp, "check.ini")
+    with open(script, "w") as f:
+        f.write(
+            SCRIPT.format(
+                word=WORD[arch(target)],
+                secret=symbols["rind_ct_binsec_secret"],
+                public=symbols["rind_ct_binsec_public"],
+                getrandom=symbols["getrandom"],
+                stop=symbols["rind_ct_binsec_stop"],
+            )
+        )
+    cmd = ["binsec", "-sse", "-sse-script", script, "-sse-depth", "1000000000"]
+    cmd += ["-checkct", "-checkct-features", "control-flow,memory-access,dividend,divisor"]
+    cmd += [core]
+    log = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8").stdout
+    status = re.search(r"\[checkct:result\] Program status is : (\w+)", log)
+    complete = "Exploration is incomplete" not in log and "Cut path" not in log
+    verdict = status[1] if status else "failed"
+    if verdict == "secure" and not complete:
+        verdict = "unknown"
+    return verdict, log, core
+
+
+def leaks(exe, core, log):
+    """Each instruction BINSEC reports, with the function gdb places it in."""
+    found = re.findall(r"Instruction (0x[0-9a-f]+) has (.*? leak)", log)
+    if not found:
+        return []
+    cmd = ["gdb", "-batch", "-nx", exe, core]
+    for addr, _ in found:
+        cmd += ["-ex", "info symbol " + addr]
+    out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding="utf-8").stdout
+    where = [line for line in out.splitlines() if " in section " in line or line.startswith("No symbol")]
+    where += ["?"] * (len(found) - len(where))
+    return ["{} {}: {}".format(addr, kind, w) for (addr, kind), w in zip(found, where)]
+
+
+def main():
+    sys.stdout.reconfigure(line_buffering=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--target", default=None)
+    parser.add_argument("filter", nargs="?", default="")
+    args = parser.parse_args()
+    target = args.target or host()
+    if target != host():
+        sys.exit("ct-binsec: gdb runs the test natively, so the target must be the host's")
+
+    exe = build(target)
+    names = tests(exe, args.filter)
+    if all(is_planted(n) for n in names):
+        sys.exit("ct-binsec: no ct_binsec test matches {!r}".format(args.filter))
+
+    failed = False
+    for name in names:
+        with tempfile.TemporaryDirectory() as tmp:
+            verdict, log, core = check(exe, name, target, tmp)
+            stats = re.findall(r"\[checkct:info\] (.*)", log)
+            if is_planted(name):
+                ok = verdict == "insecure"
+            else:
+                ok = verdict == "secure"
+            print("{} {}: {}; {}".format("ok  " if ok else "FAIL", name, verdict, "; ".join(stats)))
+            if not ok:
+                failed = True
+                if verdict == "insecure":
+                    for leak in leaks(exe, core, log):
+                        print("    " + leak)
+                else:
+                    for line in log.splitlines()[-40:]:
+                        print("    " + line)
+    sys.exit(failed)
+
+
+main()
