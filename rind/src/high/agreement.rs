@@ -17,9 +17,9 @@ pub struct Algorithm {
     id: AlgorithmId,
     // The only paths to the curve's code, so a binary links only the curves
     // whose algorithms it names.
-    generate: fn() -> Result<Private, Error>,
-    load: fn(Source<'_>) -> Result<Private, Error>,
-    parse_public: fn(&[u8]) -> Result<PublicKey, Error>,
+    generate: fn(&'static Self) -> Result<PrivateKey, Error>,
+    load: fn(&'static Self, Source<'_>) -> Result<PrivateKey, Error>,
+    parse_public: fn(&'static Self, &[u8]) -> Result<PublicKey, Error>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -29,6 +29,14 @@ enum AlgorithmId {
     EcdhP384,
     EcdhP521,
 }
+
+impl PartialEq for Algorithm {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Algorithm {}
 
 impl fmt::Debug for Algorithm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -83,7 +91,12 @@ pub static ECDH_P521: Algorithm = Algorithm {
 };
 
 /// A private key, which agrees with any number of peers, wiped on drop under the `wipe` feature.
-pub struct PrivateKey(Private);
+///
+/// It keeps its public key, computed once when it is generated or loaded.
+pub struct PrivateKey {
+    private: Private,
+    public: PublicKey,
+}
 
 // `repr(u8)` puts `X25519` at tag zero, and every variant's key is plain
 // words beside a `ZeroableRef`, so all-bits-zero is a valid value and `Drop`
@@ -98,6 +111,8 @@ enum Private {
 
 impl low::Zeroable for Private {}
 
+impl low::Zeroable for PrivateKey {}
+
 /// An encoded private key, as one of [`PrivateKey`]'s loaders takes it.
 enum Source<'a> {
     Scalar(&'a [u8]),
@@ -108,7 +123,7 @@ enum Source<'a> {
 impl PrivateKey {
     /// Generates a private key for `algorithm` from the system random source.
     pub fn generate(algorithm: &'static Algorithm) -> Result<Self, Error> {
-        Ok(Self((algorithm.generate)()?))
+        (algorithm.generate)(algorithm)
     }
 
     /// Loads a private key for `algorithm` from its scalar: X25519's 32
@@ -117,7 +132,7 @@ impl PrivateKey {
     ///
     /// This suits a JWK's `d`; prefer [`Self::from_pkcs8`] for stored keys.
     pub fn from_scalar(algorithm: &'static Algorithm, scalar: &[u8]) -> Result<Self, Error> {
-        Ok(Self((algorithm.load)(Source::Scalar(scalar))?))
+        (algorithm.load)(algorithm, Source::Scalar(scalar))
     }
 
     /// Loads a PKCS#8 private key for `algorithm`.
@@ -127,7 +142,7 @@ impl PrivateKey {
     /// [`EcdsaKeyPair::from_pkcs8`](crate::signature::EcdsaKeyPair::from_pkcs8)
     /// does.
     pub fn from_pkcs8(algorithm: &'static Algorithm, der: &[u8]) -> Result<Self, Error> {
-        Ok(Self((algorithm.load)(Source::Pkcs8(der))?))
+        (algorithm.load)(algorithm, Source::Pkcs8(der))
     }
 
     /// Loads a SEC1 (RFC 5915) `ECPrivateKey` on `algorithm`'s curve, as
@@ -136,17 +151,17 @@ impl PrivateKey {
     ///
     /// X25519 has no SEC1 encoding, so it refuses every key.
     pub fn from_sec1(algorithm: &'static Algorithm, der: &[u8]) -> Result<Self, Error> {
-        Ok(Self((algorithm.load)(Source::Sec1(der))?))
+        (algorithm.load)(algorithm, Source::Sec1(der))
     }
 
     /// Returns the public key to send to the peer.
-    pub fn public_key(&self) -> PublicKey {
-        match &self.0 {
-            Private::X25519(key) => key.public_key(),
-            Private::P256(key) => key.public_key(),
-            Private::P384(key) => key.public_key(),
-            Private::P521(key) => key.public_key(),
-        }
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public
+    }
+
+    /// Returns the key's algorithm.
+    pub fn algorithm(&self) -> &'static Algorithm {
+        self.public.algorithm()
     }
 
     /// Agrees on a secret with the peer's encoded public key.
@@ -158,7 +173,7 @@ impl PrivateKey {
     /// A NIST curve's key is an uncompressed point, as TLS sends it;
     /// [`PublicKey::new`] decompresses a compressed one.
     pub fn agree(&self, peer: &[u8]) -> Result<SharedSecret, Error> {
-        Ok(SharedSecret(match &self.0 {
+        Ok(SharedSecret(match &self.private {
             Private::X25519(key) => key.agree(peer),
             Private::P256(key) => key.agree(peer),
             Private::P384(key) => key.agree(peer),
@@ -170,17 +185,18 @@ impl PrivateKey {
     /// curve as [`EcdsaKeyPair::to_pkcs8`](crate::signature::EcdsaKeyPair::to_pkcs8)
     /// does, with its public key.
     pub fn to_pkcs8(&self) -> Pkcs8 {
-        Pkcs8(Buffer::encode(|output| match &self.0 {
-            Private::X25519(key) => key.to_pkcs8(output),
-            Private::P256(key) => key.to_pkcs8(output),
-            Private::P384(key) => key.to_pkcs8(output),
-            Private::P521(key) => key.to_pkcs8(output),
+        let public = self.public.as_ref();
+        Pkcs8(Buffer::encode(|output| match &self.private {
+            Private::X25519(key) => key.to_pkcs8(public, output),
+            Private::P256(key) => key.to_pkcs8(public, output),
+            Private::P384(key) => key.to_pkcs8(public, output),
+            Private::P521(key) => key.to_pkcs8(public, output),
         }))
     }
 
     /// Encodes the private key as the scalar [`Self::from_scalar`] loads.
     pub fn to_scalar(&self) -> Scalar {
-        Scalar(Buffer::encode(|output| match &self.0 {
+        Scalar(Buffer::encode(|output| match &self.private {
             Private::X25519(key) => key.to_scalar(output),
             Private::P256(key) => key.to_scalar(output),
             Private::P384(key) => key.to_scalar(output),
@@ -191,13 +207,15 @@ impl PrivateKey {
 
 impl Drop for PrivateKey {
     fn drop(&mut self) {
-        low::zeroise_value(&mut self.0);
+        low::zeroise_value(&mut self.private);
     }
 }
 
 impl fmt::Debug for PrivateKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PrivateKey").finish_non_exhaustive()
+        f.debug_struct("PrivateKey")
+            .field("algorithm", self.algorithm())
+            .finish_non_exhaustive()
     }
 }
 
@@ -226,19 +244,24 @@ impl Drop for Scalar {
 /// Writes to the start of an output and returns the written span.
 type Write<K> = for<'a> fn(&K, &'a mut [u8]) -> Result<&'a [u8], Error>;
 
+/// As [`Write`], given the key's public key.
+type WritePkcs8<K> = for<'a> fn(&K, &[u8], &'a mut [u8]) -> Result<&'a [u8], Error>;
+
 /// A curve's private key, as key agreement runs it.
 trait Agree: Sized + 'static {
     fn random() -> Result<Self, Error>;
 
-    fn load(source: Source<'_>) -> Result<Self, Error>;
+    /// Loads a key and its public key, checked against any public key the
+    /// encoding carries.
+    fn load(algorithm: &'static Algorithm, source: Source<'_>) -> Result<(Self, PublicKey), Error>;
 
     fn wrap(key: Keyed<Self>) -> Private;
 
-    fn encode_public(&self) -> PublicKey;
+    fn encode_public(&self, algorithm: &'static Algorithm) -> PublicKey;
 
     fn agree(&self, peer: &[u8]) -> Result<Secret, Error>;
 
-    fn encode_pkcs8<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error>;
+    fn encode_pkcs8<'a>(&self, public: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Error>;
 
     fn encode_scalar<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error>;
 }
@@ -251,47 +274,48 @@ struct Keyed<K: Agree> {
 }
 
 struct Ops<K> {
-    public_key: fn(&K) -> PublicKey,
     agree: fn(&K, &[u8]) -> Result<Secret, Error>,
-    to_pkcs8: Write<K>,
+    to_pkcs8: WritePkcs8<K>,
     to_scalar: Write<K>,
 }
 
 impl<K: Agree> Keyed<K> {
-    fn generate() -> Result<Private, Error> {
-        Ok(K::wrap(Self::new(K::random()?)))
+    fn generate(algorithm: &'static Algorithm) -> Result<PrivateKey, Error> {
+        let key = K::random()?;
+        let public = key.encode_public(algorithm);
+        Ok(Self::private_key(key, public))
     }
 
-    fn load(source: Source<'_>) -> Result<Private, Error> {
-        Ok(K::wrap(Self::new(K::load(source)?)))
+    fn load(algorithm: &'static Algorithm, source: Source<'_>) -> Result<PrivateKey, Error> {
+        let (key, public) = K::load(algorithm, source)?;
+        Ok(Self::private_key(key, public))
     }
 
-    fn new(key: K) -> Self {
-        Self {
+    fn private_key(key: K, public: PublicKey) -> PrivateKey {
+        let keyed = Self {
             key,
             ops: low::ZeroableRef::new(
                 const {
                     &Ops {
-                        public_key: K::encode_public,
                         agree: K::agree,
                         to_pkcs8: K::encode_pkcs8,
                         to_scalar: K::encode_scalar,
                     }
                 },
             ),
+        };
+        PrivateKey {
+            private: K::wrap(keyed),
+            public,
         }
-    }
-
-    fn public_key(&self) -> PublicKey {
-        (self.ops.get().public_key)(&self.key)
     }
 
     fn agree(&self, peer: &[u8]) -> Result<Secret, Error> {
         (self.ops.get().agree)(&self.key, peer)
     }
 
-    fn to_pkcs8<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        (self.ops.get().to_pkcs8)(&self.key, output)
+    fn to_pkcs8<'a>(&self, public: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        (self.ops.get().to_pkcs8)(&self.key, public, output)
     }
 
     fn to_scalar<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
@@ -304,20 +328,22 @@ impl Agree for x25519::PrivateKey {
         Self::new_random()
     }
 
-    fn load(source: Source<'_>) -> Result<Self, Error> {
-        match source {
-            Source::Scalar(scalar) => Self::from_bytes(scalar),
-            Source::Pkcs8(der) => x25519_from_pkcs8(der),
-            Source::Sec1(_) => Err(KeyFormatError::MismatchedSec1Curve.into()),
-        }
+    fn load(algorithm: &'static Algorithm, source: Source<'_>) -> Result<(Self, PublicKey), Error> {
+        let key = match source {
+            Source::Scalar(scalar) => Self::from_bytes(scalar)?,
+            Source::Pkcs8(der) => return x25519_from_pkcs8(algorithm, der),
+            Source::Sec1(_) => return Err(KeyFormatError::MismatchedSec1Curve.into()),
+        };
+        let public = key.encode_public(algorithm);
+        Ok((key, public))
     }
 
     fn wrap(key: Keyed<Self>) -> Private {
         Private::X25519(key)
     }
 
-    fn encode_public(&self) -> PublicKey {
-        PublicKey::from_encoding(&self.public_key().as_bytes())
+    fn encode_public(&self, algorithm: &'static Algorithm) -> PublicKey {
+        PublicKey::from_encoding(algorithm, &self.public_key().as_bytes())
     }
 
     fn agree(&self, peer: &[u8]) -> Result<Secret, Error> {
@@ -325,7 +351,7 @@ impl Agree for x25519::PrivateKey {
         Ok(Secret::X25519(self.diffie_hellman(&peer)?))
     }
 
-    fn encode_pkcs8<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+    fn encode_pkcs8<'a>(&self, _: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Error> {
         x25519_to_pkcs8(self, output)
     }
 
@@ -338,24 +364,28 @@ impl Agree for x25519::PrivateKey {
 
 /// Parses a peer's X25519 public key: any 32 bytes, as [`Agree::agree`]
 /// takes them.
-fn x25519_public_key(bytes: &[u8]) -> Result<PublicKey, Error> {
+fn x25519_public_key(algorithm: &'static Algorithm, bytes: &[u8]) -> Result<PublicKey, Error> {
     x25519::PublicKey::try_from_slice(bytes)?;
-    Ok(PublicKey::from_encoding(bytes))
+    Ok(PublicKey::from_encoding(algorithm, bytes))
 }
 
 /// Loads an RFC 8410 PKCS#8 X25519 key, whose `privateKey` holds an
 /// `OCTET STRING` of the key's 32 bytes, checking a v2 key's public key.
-fn x25519_from_pkcs8(der: &[u8]) -> Result<x25519::PrivateKey, Error> {
+fn x25519_from_pkcs8(
+    algorithm: &'static Algorithm,
+    der: &[u8],
+) -> Result<(x25519::PrivateKey, PublicKey), Error> {
     let _entry = low::Entry::new_secret();
     let p8 = pkcs8::Key::decode(der, &[&asn1::oid::id_X25519], None)?;
     let key = asn1::OctetString::from_bytes(p8.private_key())
         .map_err(|e| Error::from(KeyFormatError::Asn1(e)))
         .and_then(|key| x25519::PrivateKey::from_bytes(key.as_octets()))?;
+    let public = key.encode_public(algorithm);
     match p8.public_key() {
-        Some(public_key) if public_key != key.public_key().as_bytes() => {
+        Some(public_key) if public_key != public.as_ref() => {
             Err(KeyFormatError::MismatchedPkcs8PublicKey.into())
         }
-        _ => Ok(key),
+        _ => Ok((key, public)),
     }
 }
 
@@ -384,12 +414,12 @@ fn x25519_to_pkcs8<'a>(key: &x25519::PrivateKey, output: &'a mut [u8]) -> Result
 /// compressed, as its uncompressed encoding.
 macro_rules! nist_curve {
     ($curve:ident, $variant:ident, $curve_type:ty, $public_key:ident) => {
-        fn $public_key(bytes: &[u8]) -> Result<PublicKey, Error> {
+        fn $public_key(algorithm: &'static Algorithm, bytes: &[u8]) -> Result<PublicKey, Error> {
             let mut decompressed = [0; $curve::PublicKey::BYTES];
             let point =
                 sec1::uncompressed(bytes, $curve::PublicKey::decompress, &mut decompressed)?;
             $curve::PublicKey::from_x962_uncompressed(point)?;
-            Ok(PublicKey::from_encoding(point))
+            Ok(PublicKey::from_encoding(algorithm, point))
         }
 
         impl Agree for $curve::PrivateKey {
@@ -397,24 +427,28 @@ macro_rules! nist_curve {
                 Self::new_random()
             }
 
-            fn load(source: Source<'_>) -> Result<Self, Error> {
+            fn load(
+                algorithm: &'static Algorithm,
+                source: Source<'_>,
+            ) -> Result<(Self, PublicKey), Error> {
                 let _entry = low::Entry::new_secret();
                 let decoded = match source {
                     Source::Scalar(scalar) if scalar.len() == $curve::Scalar::BYTES => {
-                        return Self::from_bytes(scalar);
+                        let key = Self::from_bytes(scalar)?;
+                        let public = key.encode_public(algorithm);
+                        return Ok((key, public));
                     }
                     Source::Scalar(_) => return Err(KeyFormatError::WrongLength.into()),
                     Source::Pkcs8(der) => sec1::decode_pkcs8(der, &<$curve_type>::oid())?,
                     Source::Sec1(der) => sec1::decode(der, &<$curve_type>::oid())?,
                 };
                 let key = Self::from_bytes(decoded.private_key)?;
+                let public = key.encode_public(algorithm);
                 match decoded.public_key {
-                    Some(public_key)
-                        if !sec1::is_public_key(&key.public_key_uncompressed(), public_key) =>
-                    {
+                    Some(encoded) if !sec1::is_public_key(public.as_ref(), encoded) => {
                         Err(KeyFormatError::MismatchedSec1PublicKey.into())
                     }
-                    _ => Ok(key),
+                    _ => Ok((key, public)),
                 }
             }
 
@@ -422,8 +456,8 @@ macro_rules! nist_curve {
                 Private::$variant(key)
             }
 
-            fn encode_public(&self) -> PublicKey {
-                PublicKey::from_encoding(&self.public_key_uncompressed())
+            fn encode_public(&self, algorithm: &'static Algorithm) -> PublicKey {
+                PublicKey::from_encoding(algorithm, &self.public_key_uncompressed())
             }
 
             fn agree(&self, peer: &[u8]) -> Result<Secret, Error> {
@@ -431,14 +465,13 @@ macro_rules! nist_curve {
                 Ok(Secret::$variant(self.diffie_hellman(&peer)?))
             }
 
-            fn encode_pkcs8<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+            fn encode_pkcs8<'a>(
+                &self,
+                public: &[u8],
+                output: &'a mut [u8],
+            ) -> Result<&'a [u8], Error> {
                 let _entry = low::Entry::new_secret();
-                sec1::encode_pkcs8(
-                    &self.secret_bytes(),
-                    &self.public_key_uncompressed(),
-                    <$curve_type>::oid(),
-                    output,
-                )
+                sec1::encode_pkcs8(&self.secret_bytes(), public, <$curve_type>::oid(), output)
             }
 
             fn encode_scalar<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
@@ -457,10 +490,9 @@ nist_curve!(p384, P384, curve::P384, p384_public_key);
 nist_curve!(p521, P521, curve::P521, p521_public_key);
 
 /// A public key: 32 bytes for X25519, or an X9.62 uncompressed point.
-///
-/// Each algorithm's key has its own length, which names its algorithm.
 #[derive(Clone)]
 pub struct PublicKey {
+    algorithm: low::ZeroableRef<Algorithm>,
     bytes: [u8; Self::MAX_LEN],
     len: usize,
 }
@@ -476,7 +508,7 @@ impl PublicKey {
     /// Its bytes are then what [`PrivateKey::agree`] takes, a NIST curve's
     /// point uncompressed.
     pub fn new(algorithm: &'static Algorithm, bytes: &[u8]) -> Result<Self, Error> {
-        (algorithm.parse_public)(bytes)
+        (algorithm.parse_public)(algorithm, bytes)
     }
 
     /// Parses a public key for `algorithm` from its `SubjectPublicKeyInfo`
@@ -496,14 +528,20 @@ impl PublicKey {
         Self::new(algorithm, key)
     }
 
+    /// Returns the key's algorithm.
+    pub fn algorithm(&self) -> &'static Algorithm {
+        self.algorithm.get()
+    }
+
     /// Encodes the public key as a `SubjectPublicKeyInfo`: X25519's, or
     /// `id-ecPublicKey` on the key's curve.
     pub fn to_spki(&self) -> Spki {
-        let (algorithm, curve) = match self.len {
-            32 => (&asn1::oid::id_X25519, None),
-            p256::PublicKey::BYTES => (&asn1::oid::id_ecPublicKey, Some(curve::P256::oid())),
-            p384::PublicKey::BYTES => (&asn1::oid::id_ecPublicKey, Some(curve::P384::oid())),
-            _ => (&asn1::oid::id_ecPublicKey, Some(curve::P521::oid())),
+        let ec = &asn1::oid::id_ecPublicKey;
+        let (algorithm, curve) = match self.algorithm().id {
+            AlgorithmId::X25519 => (&asn1::oid::id_X25519, None),
+            AlgorithmId::EcdhP256 => (ec, Some(curve::P256::oid())),
+            AlgorithmId::EcdhP384 => (ec, Some(curve::P384::oid())),
+            AlgorithmId::EcdhP521 => (ec, Some(curve::P521::oid())),
         };
         Spki(Buffer::encode(|output| {
             spki::encode(
@@ -515,8 +553,9 @@ impl PublicKey {
         }))
     }
 
-    fn from_encoding(encoded: &[u8]) -> Self {
+    fn from_encoding(algorithm: &'static Algorithm, encoded: &[u8]) -> Self {
         let mut public = Self {
+            algorithm: low::ZeroableRef::new(algorithm),
             bytes: [0; Self::MAX_LEN],
             len: encoded.len(),
         };
@@ -524,6 +563,8 @@ impl PublicKey {
         public
     }
 }
+
+impl low::Zeroable for PublicKey {}
 
 impl AsRef<[u8]> for PublicKey {
     fn as_ref(&self) -> &[u8] {
@@ -614,7 +655,10 @@ mod tests {
     fn round_trips() {
         for algorithm in ALGORITHMS {
             let key = PrivateKey::generate(algorithm).unwrap();
-            let peer = PrivateKey::generate(algorithm).unwrap().public_key();
+            let peer = PrivateKey::generate(algorithm)
+                .unwrap()
+                .public_key()
+                .clone();
             let secret = public(&key.agree(peer.as_ref()).unwrap());
 
             let scalar = key.to_scalar();
@@ -643,7 +687,10 @@ mod tests {
         type Load = fn(&'static Algorithm, &[u8]) -> Result<PrivateKey, Error>;
         for algorithm in ALGORITHMS {
             let key = PrivateKey::generate(algorithm).unwrap();
-            let peer = PrivateKey::generate(algorithm).unwrap().public_key();
+            let peer = PrivateKey::generate(algorithm)
+                .unwrap()
+                .public_key()
+                .clone();
             let scalar = key.to_scalar().as_ref().to_vec();
             low::ct::public_slice(&scalar);
             let mut encodings: Vec<(Load, Vec<u8>)> = vec![
@@ -804,7 +851,7 @@ mod tests {
         let loaded = PrivateKey::from_pkcs8(&X25519, &v2(public_key.as_ref())).unwrap();
         assert_eq!(loaded.public_key().as_ref(), public_key.as_ref());
         assert_eq!(loaded.to_pkcs8().as_ref(), key.to_pkcs8().as_ref());
-        let other = PrivateKey::generate(&X25519).unwrap().public_key();
+        let other = PrivateKey::generate(&X25519).unwrap().public_key().clone();
         assert_eq!(
             PrivateKey::from_pkcs8(&X25519, &v2(other.as_ref())).err(),
             Some(KeyFormatError::MismatchedPkcs8PublicKey.into())
@@ -990,7 +1037,10 @@ mod tests {
     #[test]
     fn public_keys_round_trip() {
         for algorithm in ALGORITHMS {
-            let ours = PrivateKey::generate(algorithm).unwrap().public_key();
+            let ours = PrivateKey::generate(algorithm)
+                .unwrap()
+                .public_key()
+                .clone();
             let parsed = PublicKey::new(algorithm, ours.as_ref()).unwrap();
             assert_eq!(parsed.as_ref(), ours.as_ref());
             let spki = ours.to_spki();
@@ -1049,7 +1099,10 @@ mod tests {
 
             // A hybrid point, an unknown tag, an empty key, the wrong
             // length, and `x` at or above p are refused.
-            let ours = PrivateKey::generate(algorithm).unwrap().public_key();
+            let ours = PrivateKey::generate(algorithm)
+                .unwrap()
+                .public_key()
+                .clone();
             let mut hybrid = ours.as_ref().to_vec();
             hybrid[0] = 6 | (hybrid[hybrid.len() - 1] & 1);
             let compressed = compress(ours.as_ref());
