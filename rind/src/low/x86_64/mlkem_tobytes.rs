@@ -20,6 +20,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = r, RDX = a
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/mlkem/mlkem_tobytes.S.
 /// Pack ML-KEM polynomial coefficients as 12-bit numbers
 ///
 /// Input a[256] (signed 16-bit words); output r[384] (bytes)

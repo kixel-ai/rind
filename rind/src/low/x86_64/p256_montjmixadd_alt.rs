@@ -477,6 +477,7 @@ macro_rules! store4 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p256/p256_montjmixadd_alt.S.
 /// Point mixed addition on NIST curve P-256 in Montgomery-Jacobian coordinates
 ///
 ///

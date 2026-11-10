@@ -121,6 +121,7 @@ macro_rules! movbig {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p384/p384_montjscalarmul_alt.S.
 /// Montgomery-Jacobian form scalar multiplication for P-384
 ///
 /// Input scalar[6], point[18]; output res[18]

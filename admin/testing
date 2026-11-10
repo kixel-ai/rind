@@ -8,13 +8,16 @@
 #   list of exports that are not primitives, and every name there is exported;
 # - every fuzz target, every differential test in `rind/tests/crosschecks.rs`,
 #   every `ct_sde_...` and `ct_qemu_...` test, every CCTV and imported-vector
-#   test, and every Wycheproof and CAVP file the tests load is named in the table;
+#   test, every test in `rind/tests/zeroing.rs`, and every Wycheproof and CAVP
+#   file the tests load is named in the table;
+# - every row with a constant-time check names a zeroing test, or says why not;
 # - every function, fuzz target, and vector file the table names exists;
 # - every other fuzz target is an adapter's, named on the adapters line.
 #
 # A backticked name in the table's other columns is one of:
 # - `fuzz::NAME`, a fuzz target;
 # - `crosschecks::[MOD::]FN`, a test in `rind/tests/crosschecks.rs`;
+# - `zeroing::FN`, a test in `rind/tests/zeroing.rs`;
 # - `aws_lc::FN` or `cctv::FN`, a test in `rind/tests/NAME.rs`;
 # - `a::b::FN`, a function in `rind/src/a/b.rs` (or `a/b/mod.rs`);
 # - `STEM_test`, a Wycheproof file, where `*` matches any run of characters;
@@ -25,7 +28,7 @@ import fnmatch, pathlib, re, sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SRC = ROOT / "rind/src"
 PAGE = ROOT / "TESTING.md"
-COLUMNS = ["Primitive", "Exports", "Vectors", "Fuzz target", "Differential test", "Constant time"]
+COLUMNS = ["Primitive", "Exports", "Vectors", "Fuzz target", "Differential test", "Constant time", "Zeroing"]
 NOT_PRIMITIVES = "Exports that are not primitives:"
 ADAPTERS = "Adapter fuzz targets:"
 
@@ -133,6 +136,7 @@ fuzz_targets = set(re.findall(r'^name = "([a-z0-9_]+)"', (ROOT / "fuzz/Cargo.tom
 fuzz_targets.discard("rind-fuzz")
 crosschecks_path = ROOT / "rind/tests/crosschecks.rs"
 crosschecks = crosschecks_path.read_text()
+zeroing_path = ROOT / "rind/tests/zeroing.rs"
 
 # What the code loads, read from string literals across the tests.
 code = "\n".join(p.read_text() for d in ["rind/src", "rind/tests"] for p in (ROOT / d).rglob("*.rs"))
@@ -154,8 +158,10 @@ vector_tests = {
     if re.match(r"(aws_lc|boringssl|cctv)(_|$)", name)
 }
 
-seen = {kind: set() for kind in ["fuzz", "crosschecks", "wycheproof", "cavp", "ct", "vectors", *vector_suites]}
+seen = {kind: set() for kind in ["fuzz", "crosschecks", "wycheproof", "cavp", "ct", "vectors", "zeroing", *vector_suites]}
 for row in rows:
+    if row["Constant time"] and not (row["Zeroing"].startswith("`zeroing::") or row["Zeroing"].startswith("none: ")):
+        errors.append(f"{row['Primitive']}: marks a secret but names no zeroing test, nor says why")
     for column in COLUMNS[2:]:
         for token in re.findall(r"`([^`]+)`", row[column]):
             where = f"{row['Primitive']}, {column}: `{token}`"
@@ -171,6 +177,12 @@ for row in rows:
                 if segments[-1] not in tests(crosschecks_path):
                     errors.append(f"{where}: no such test in {crosschecks_path.name}")
                 seen["crosschecks"].add(segments[-1])
+            elif segments[0] == "zeroing" and len(segments) == 2:
+                if segments[1] not in tests(zeroing_path):
+                    errors.append(f"{where}: no such test in {zeroing_path.name}")
+                if column != "Zeroing":
+                    errors.append(f"{where}: zeroing test belongs in Zeroing")
+                seen["zeroing"].add(segments[1])
             elif segments[0] in vector_suites and len(segments) == 2:
                 if segments[1] not in vector_suites[segments[0]]:
                     errors.append(f"{where}: no such test in rind/tests/{segments[0]}.rs")
@@ -210,6 +222,7 @@ for kind, names in [
     ("fuzz target", fuzz_targets - seen["fuzz"]),
     ("differential test", tests(crosschecks_path) - seen["crosschecks"]),
     ("constant-time test", ct_tests - seen["ct"]),
+    ("zeroing test", tests(zeroing_path) - seen["zeroing"]),
     ("Wycheproof file", wycheproof - seen["wycheproof"]),
     ("CAVP directory", cavp - seen["cavp"]),
     ("vector test", vector_tests - seen["vectors"]),

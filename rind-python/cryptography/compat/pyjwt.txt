@@ -1,0 +1,41 @@
+# pyjwt's tests that need what rind lacks, which sh/python.sh skips.
+
+# X.509 certificates.
+tests/test_algorithms.py::TestAlgorithms::test_hmac_prepare_key_rejects_der_certificate
+
+# secp256k1 (ES256K) and P-192.
+tests/test_algorithms.py::TestAlgorithms::test_ec_jwk_public_and_private_keys_should_parse_and_verify
+tests/test_algorithms.py::TestAlgorithms::test_ec_to_jwk_with_valid_curves[False]
+tests/test_algorithms.py::TestAlgorithms::test_ec_to_jwk_with_valid_curves[True]
+tests/test_algorithms.py::TestAlgorithms::test_ec_to_jwk_with_invalid_curve
+tests/test_algorithms.py::TestECCurveValidation::test_ec_curve_validation_accepts_correct_curve_for_es256k
+tests/test_algorithms.py::TestECCurveValidation::test_ec_curve_validation_rejects_p192_for_es256
+tests/test_algorithms.py::TestECCurveValidation::test_ec_algorithm_without_expected_curve_accepts_any_curve
+tests/test_algorithms.py::TestECCurveValidation::test_ec_curve_validation_with_pem_key
+tests/test_api_jwk.py::TestPyJWK::test_should_load_key_ec_secp256k1_from_dict
+tests/test_api_jws.py::TestJWS::test_encode_decode_ecdsa_related_algorithms[ES256K-jwk_ec_key_secp256k1.json-jwk_ec_pub_secp256k1.json]
+
+# An RSA JWK with only `d`, whose primes rsa_recover_prime_factors finds.
+tests/test_algorithms.py::TestAlgorithms::test_rsa_jwk_private_key_can_recover_prime_factors
+tests/test_api_jwk.py::TestPyJWKSet::test_should_skip_malformed_rsa_key_and_load_remaining_keys
+
+# RSA keys under 2048 bits.
+tests/test_algorithms.py::TestKeyLengthValidation::test_rsa_small_key_returns_warning_message
+tests/test_algorithms.py::TestKeyLengthValidation::test_rsa_small_public_key_returns_warning_message
+tests/test_algorithms.py::TestKeyLengthValidation::test_rsa_pss_inherits_validation
+tests/test_algorithms.py::TestKeyLengthValidation::test_rsa_pem_weak_key_validated
+
+# Ed448.
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_jwk_should_reject_inconsistent_private_key[False-Ed448]
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_jwk_should_reject_inconsistent_private_key[True-Ed448]
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_jwk_should_reject_private_key_with_invalid_public_length[0-Ed448]
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_jwk_should_reject_private_key_with_invalid_public_length[1-Ed448]
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_jwk_should_reject_private_key_with_invalid_public_length[56-Ed448]
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_jwk_should_reject_private_key_with_invalid_public_length[58-Ed448]
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_ed25519_jwk_fails_on_invalid_json
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_ed448_jwk_private_key_should_parse_and_verify
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_ed448_jwk_private_key_should_parse_and_verify_with_private_key_as_is
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_ed448_jwk_public_key_should_parse_and_verify
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_ed448_jwk_fails_on_invalid_json
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_ed448_to_jwk_works_with_from_jwk[False]
+tests/test_algorithms.py::TestOKPAlgorithms::test_okp_ed448_to_jwk_works_with_from_jwk[True]

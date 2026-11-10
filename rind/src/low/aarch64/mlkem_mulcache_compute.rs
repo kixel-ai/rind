@@ -28,6 +28,7 @@ use crate::low::macros::*;
 // Standard ARM ABI: X0 = x, X1 = a, X2 = z, X3 = t
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's arm/mlkem/mlkem_mulcache_compute.S.
 /// Precompute the mulcache data for a polynomial in the NTT domain
 ///
 /// Inputs a[256], z[128] and t[128] (signed 16-bit words); output x[128] (signed 16-bit words)

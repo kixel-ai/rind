@@ -3081,7 +3081,7 @@ dependencies = [
 
 [[package]]
 name = "rind"
-version = "0.3.3"
+version = "0.3.2"
 dependencies = [
  "aws-lc-rs",
  "aws-lc-sys",
@@ -3256,7 +3256,7 @@ dependencies = [
 
 [[package]]
 name = "rind-rcgen"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "base64ct",
  "crabgrind 0.4.0",
@@ -3270,7 +3270,7 @@ dependencies = [
 
 [[package]]
 name = "rind-ring"
-version = "0.17.3"
+version = "0.17.4"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3284,7 +3284,7 @@ dependencies = [
 
 [[package]]
 name = "rind-rustls"
-version = "0.23.3"
+version = "0.23.4"
 dependencies = [
  "crabgrind 0.4.0",
  "env_logger",
@@ -3302,7 +3302,7 @@ dependencies = [
 
 [[package]]
 name = "rind-str0m"
-version = "0.25.2"
+version = "0.25.3"
 dependencies = [
  "crabgrind 0.4.0",
  "dimpl",
