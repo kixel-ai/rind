@@ -32,7 +32,3 @@ Guidance:
 
 - Generate the harness calls for generated files from the `admin/parse-asm` drivers, which know each signature; write the naked routines' by hand.
 - These are unit tests: `just ci` runs them on the host's tier, and the nightly tiers inherit them.
-
-## Related
-
-- [Guard pages catch assembly that reads or writes past a buffer](/quest/m2/confidence/guard-pages.md) - the same boundary's memory bounds

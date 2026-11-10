@@ -47,10 +47,11 @@ toolchain, and `just check` runs CI's gate over what the branch changed.
 On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
 with NEON alone, and with NEON denied. `just qemu <shell>` runs an entry of
-the nightly `qemu` job, which lints and tests the portable backend under
-qemu: `s390x` (big-endian), `riscv64`, `riscv64-musl`, `loongarch64`, `armv6`
-and `armv6-softfloat` (the Raspberry Pi 1's core), or `powerpc64le`,
-`powerpc64`, and `powerpc` (the last two big-endian).
+the nightly `qemu` job, which lints and tests the portable backend: `s390x`
+(big-endian), `riscv64`, `riscv64-musl`, `loongarch64`, `armv6` and
+`armv6-softfloat` (the Raspberry Pi 1's core), or `powerpc64le`, `powerpc64`,
+and `powerpc` (the last two big-endian) under qemu, or `i686` (32-bit x86)
+natively.
 `just miri` runs the nightly `miri` job, the portable backend's tests under
 Miri, on x86_64, and `just miri s390x-unknown-linux-gnu` big-endian.
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
@@ -68,7 +69,7 @@ operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
 scans its release builds for x86_64, aarch64, and armv7, and its portable
 backend's, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
 not list as taking only public operands.
-`nix develop .#timing --command admin/timing dudect` times each secret
+`nix develop .#dudect --command admin/timing dudect` times each secret
 operation whose secret the API lets it set (not key generation, encapsulation,
 or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,
 and `admin/timing marvin` runs the Marvin toolkit against RSA-OAEP decryption. They need quiet

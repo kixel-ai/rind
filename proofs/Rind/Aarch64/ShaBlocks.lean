@@ -1,34 +1,48 @@
-import Rind.Aarch64.Blockwise
+import Rind.Aarch64.Sha256Hw
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
 # SHA-1 and SHA-256's block functions on aarch64
 
-No proof covers aws-lc's SHA-1 or SHA-256 routines that aarch64 runs, so the
-theorems over them take `ShaBlocks` as a hypothesis instead of an axiom, as on
-x86_64. `Rind.X86_64.ShaBlocks` states the same names for x86_64.
+No proof covers aws-lc's SHA-1 routines that aarch64 runs, so the theorems
+over them take `Sha1Blocks` as a hypothesis instead of an axiom, as on x86_64.
+SHA-256's routine for the crypto extension is proven, `Rind.Aarch64.Sha256Hw`,
+so the SHA-256 theorems take `Sha256Blocks`, only that the CPU has it.
+`Rind.X86_64.ShaBlocks` states the same names for x86_64.
 -/
 
 namespace rind.aarch64
 
-/-- What the SHA-1 and SHA-256 theorems assume of the code below rind's
-padding on aarch64: each routine computes FIPS 180-4's block function, and
-the entry checks pass. None reads an input. -/
-structure ShaBlocks : Prop where
+/-- What the SHA-1 theorems assume of the code below rind's padding on
+aarch64: the routine computes FIPS 180-4's block function, and the entry
+checks pass. None reads an input. -/
+structure Sha1Blocks : Prop where
   entry : ∃ e, low.entry.Entry.new_secret = ok e
   held : low.entry.Entry.assert_held = ok ()
   sha1 : Compresses sha1.compress low.aarch64.sha1.sha1_compress_blocks
-  sha256 : Compresses sha256.compress low.aarch64.sha256.sha256_compress_blocks
+
+/-- What the SHA-256 theorems assume on aarch64: the CPU has the crypto
+extension, so rind runs the proven routine, and the entry checks pass. None
+reads an input. -/
+structure Sha256Blocks : Prop where
+  entry : ∃ e, low.entry.Entry.new_secret = ok e
+  held : low.entry.Entry.assert_held = ok ()
+  crypto : ∃ c, low.aarch64.cpu.HaveCryptoExt.check = ok (some c)
+
+/-- SHA-256's block function, the dispatch to the proven routine. -/
+theorem Sha256Blocks.sha256 (hb : Sha256Blocks) :
+    Compresses sha256.compress low.aarch64.sha256.sha256_compress_blocks :=
+  sha256_compress_blocks_hw_spec hb.crypto
 
 /-- SHA-256's block function as `Sha256State` calls it. -/
-theorem sha256_block_spec (hb : ShaBlocks) : Compresses sha256.compress mid.sha2.Sha256State.compress := by
+theorem sha256_block_spec (hb : Sha256Blocks) : Compresses sha256.compress mid.sha2.Sha256State.compress := by
   intro h b hl
   unfold mid.sha2.Sha256State.compress
   rw [hb.held]
   simpa using hb.sha256 h b hl
 
 /-- SHA-1's block function as `Sha1State` calls it. -/
-theorem sha1_block_spec (hb : ShaBlocks) :
+theorem sha1_block_spec (hb : Sha1Blocks) :
     Compresses sha1.compress mid.sha1.Sha1State.compress := by
   intro h b hl
   unfold mid.sha1.Sha1State.compress
@@ -36,7 +50,7 @@ theorem sha1_block_spec (hb : ShaBlocks) :
   simpa using hb.sha1 h b hl
 
 /-- SHA-1's padded last blocks. -/
-theorem sha1_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 5#usize)
+theorem sha1_compress_padded_spec (hb : Sha1Blocks) (P : List U8) (state : Std.Array U32 5#usize)
     (message : Slice U8) (length : Std.Array U8 8#usize)
     (hR : Absorbed sha1.compress sha1.H0 P state) :
     low.aarch64.sha1.sha1_compress_padded state message length ⦃ h' =>
@@ -59,7 +73,7 @@ theorem sha1_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.Ar
         omega)
 
 /-- SHA-256's padded last blocks. -/
-theorem sha256_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
+theorem sha256_compress_padded_spec (hb : Sha256Blocks) (P : List U8) (state : Std.Array U32 8#usize)
     (message : Slice U8) (length : Std.Array U8 8#usize)
     (hR : Absorbed sha256.compress sha256.H0 P state) :
     low.aarch64.sha256.sha256_compress_padded state message length ⦃ h' =>
@@ -97,7 +111,7 @@ theorem sha256_compress_padded_spec (hb : ShaBlocks) (P : List U8) (state : Std.
   exact tail bl re ⟨hs1, hs2, hs3, hs4⟩
 
 /-- SHA-256's digest of what `state` has absorbed followed by `message`. -/
-theorem sha256_finish_spec (hb : ShaBlocks) (P : List U8) (state : Std.Array U32 8#usize)
+theorem sha256_finish_spec (hb : Sha256Blocks) (P : List U8) (state : Std.Array U32 8#usize)
     (message : Slice U8) (length : Std.Array U8 8#usize)
     (hR : Absorbed sha256.compress sha256.H0 P state) :
     low.aarch64.sha256.sha256_finish state message length ⦃ r =>

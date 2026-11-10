@@ -14,6 +14,8 @@ use super::cpu::HaveCryptoExt;
 use super::vpaes_armv8::{VpaesDecKey, VpaesKey};
 use crate::low;
 
+// Keep all-zero valid when drop wipes the whole enum.
+#[repr(u8)]
 pub(crate) enum AesKey {
     /// The AES instructions', which the key picks when the CPU has the crypto
     /// extension.
@@ -81,6 +83,7 @@ impl Drop for AesKey {
 impl low::generic::zeroise::Zeroable for AesKey {}
 
 /// An AES key that decrypts, on the path [`AesKey`] picks for the CPU.
+#[repr(u8)]
 pub(crate) enum AesDecKey {
     Hw(HwDecKey),
     Vpaes(VpaesDecKey),

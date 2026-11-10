@@ -64,6 +64,16 @@
 
           quest-cli = quest.packages.${system}.default;
 
+          timing-shell = {
+            packages = [
+              rust-stable.minimal
+              # admin/timing finds the binary cargo built.
+              pkgs.jq
+            ]
+            # taskset pins the tests to one core.
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
+          };
+
           # rind itself builds for armv7 without C. Only its tests need this
           # ARM C toolchain, for the aws-lc-rs dev-dependency they check
           # against, so it lives in `devShells.armv7` and nothing rind ships
@@ -96,12 +106,12 @@
           };
 
           # A shell that builds `target`, a target with no rind assembly, and
-          # runs its tests under qemu-user, as `just qemu` does. `cross` is the
-          # nixpkgs cross set whose C toolchain the tests' aws-lc-rs
-          # dev-dependency builds with; rind itself needs none. `cpu`, if set,
-          # is the core qemu emulates, so it traps any newer instruction.
-          # `rustflags`, if set, is passed to every build for `target`, its
-          # doctests included.
+          # runs its tests under qemu-user, as `just qemu` does, or natively
+          # where the host can, as x86_64 runs i686. `cross` is the nixpkgs
+          # cross set whose C toolchain the tests' aws-lc-rs dev-dependency
+          # builds with; rind itself needs none. `cpu`, if set, is the core
+          # qemu emulates, so it traps any newer instruction. `rustflags`, if
+          # set, is passed to every build for `target`, its doctests included.
           qemu-shell =
             {
               target,
@@ -114,6 +124,7 @@
               prefix = "${cc}/bin/${cc.targetPrefix}";
               var = pkgs.lib.toUpper (builtins.replaceStrings [ "-" ] [ "_" ] target);
               lower = builtins.replaceStrings [ "-" ] [ "_" ] target;
+              native = pkgs.stdenv.hostPlatform.canExecute cross.stdenv.hostPlatform;
             in
             pkgs.mkShell {
               packages = [
@@ -122,8 +133,8 @@
                   targets = [ target ];
                 })
                 cc
-                pkgs.qemu-user
-              ];
+              ]
+              ++ pkgs.lib.optional (!native) pkgs.qemu-user;
 
               env = {
                 RIND_QEMU_TARGET = target;
@@ -131,8 +142,10 @@
                 "CXX_${lower}" = "${prefix}c++";
                 "AR_${lower}" = "${prefix}ar";
                 "CARGO_TARGET_${var}_LINKER" = "${prefix}cc";
-                # The wrapper links against the store's glibc for the target
-                # by absolute path, so qemu needs no sysroot.
+              }
+              # The wrapper links against the store's glibc for the target by
+              # absolute path, so neither qemu nor the host needs a sysroot.
+              // pkgs.lib.optionalAttrs (!native) {
                 "CARGO_TARGET_${var}_RUNNER" = "qemu-${cross.stdenv.hostPlatform.qemuArch}";
               }
               // pkgs.lib.optionalAttrs (cpu != null) { QEMU_CPU = cpu; }
@@ -414,12 +427,13 @@
               env.JOSERFC_SRC = pkgs.python3Packages.joserfc.src;
             };
 
-            # `admin/timing` and the timing workflow run in it: rind-timing's
-            # dudect cases, and the Marvin toolkit's RSA ciphertexts, timed by
-            # rind-timing and analysed by tlsfuzzer.
+            # dudect needs only Rust, without Marvin's Python and toolkit fetches.
+            dudect = pkgs.mkShell timing-shell;
+
+            # The Marvin toolkit's RSA ciphertexts, timed by rind-timing and
+            # analysed by tlsfuzzer.
             timing = pkgs.mkShell {
-              packages = [
-                rust-stable.minimal
+              packages = timing-shell.packages ++ [
                 (
                   (pkgs.python3.override {
                     packageOverrides = _: super: {
@@ -458,11 +472,7 @@
                 )
                 # The Marvin keys and certificates.
                 pkgs.openssl
-                # admin/timing finds the binary cargo built.
-                pkgs.jq
-              ]
-              # `taskset` pins the tests to one core.
-              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
+              ];
 
               env = {
                 MARVIN_TOOLKIT = pkgs.fetchFromGitHub {
@@ -609,6 +619,13 @@
               cross = pkgs.pkgsCross.s390x;
             };
 
+            # `just qemu i686` tests the portable backend on 32-bit x86 in it,
+            # natively on an x86_64 host.
+            i686 = qemu-shell {
+              target = "i686-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.gnu32;
+            };
+
             # `just qemu riscv64` and `just qemu riscv64-musl` test the
             # portable backend on riscv64gc Linux, glibc and musl, in them.
             riscv64 = qemu-shell {
@@ -646,10 +663,12 @@
             # powerpc` test the portable backend on PowerPC Linux in them,
             # the last two big-endian. Rust's powerpc64 target uses the ELFv1
             # ABI, unlike nixpkgs' default `ppc64`. Rust links both big-endian
-            # targets with its own lld, which refuses ELFv1 objects and, in a
-            # 32-bit PIE, gives an undefined weak function a nonzero address,
-            # so aws-lc calls its unset allocator hook. gcc obeys the last
-            # `-fuse-ld`, so a trailing one picks GNU ld.
+            # targets with its own lld, which refuses ELFv1 objects, and on
+            # 32-bit PowerPC supports only the Secure PLT: nixpkgs' ppc32 gcc
+            # is built without `--enable-secureplt`, so its objects, its
+            # `crtbeginS.o` included, use the BSS PLT, which lld links without
+            # error into a binary that crashes. GNU ld handles both. gcc obeys
+            # the last `-fuse-ld`, so a trailing one picks GNU ld.
             powerpc64le = qemu-shell {
               target = "powerpc64le-unknown-linux-gnu";
               cross = pkgs.pkgsCross.powernv;

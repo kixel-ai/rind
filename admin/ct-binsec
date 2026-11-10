@@ -174,7 +174,7 @@ explore all
 
 
 def arch(target):
-    return target.split("-")[0].replace("armv7", "arm")
+    return target.split("-")[0]
 
 
 def host():

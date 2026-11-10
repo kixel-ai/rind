@@ -41,7 +41,7 @@
 //!     been zeroised upon drop, even if the value was a `Key::Key128`
 //!     that only initialized half of that space.
 
-#![cfg(all(feature = "wipe", any(target_os = "linux", target_os = "macos")))]
+#![cfg(feature = "wipe")]
 
 use core::mem::size_of;
 use core::ops::Deref;
@@ -262,7 +262,7 @@ fn check_zeroed_on_drop<T: Unpin>(value: Pin<Box<T>>) {
         dealloc(addr as *mut u8, Layout::new::<T>());
     }
 
-    for i in HEAP_FREELIST_ZONE.0..len - HEAP_FREELIST_ZONE.1 {
+    for i in 0..len {
         if after_drop[i] != 0x00 {
             println!("before_drop: {before_drop:02x?}");
             println!("after_drop: {after_drop:02x?}");
@@ -284,9 +284,3 @@ fn read_into_vec(ptr: *const u8, len: usize) -> Vec<u8> {
     }
     out
 }
-
-/// Bytes written by the heap to (probably) keep the freed chunk
-/// in the freelist.
-///
-/// These values from observation; likely very fragile.
-const HEAP_FREELIST_ZONE: (usize, usize) = (16, 0);

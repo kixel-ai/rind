@@ -2,26 +2,16 @@
 //! the rind keys it wraps, are wiped before they are freed.
 //!
 //! rind's own `tests/zeroing.rs` checks that its keys wipe themselves. This
-//! one installs an allocator that, while armed with a secret, counts each
-//! freed block still holding it, and checks no block does once the values
-//! that held the secret are dropped. Inline values are boxed so they live on
-//! the heap too.
-//!
-//! Is this test sound? No, as rind's isn't: it reads a block the program has
-//! freed, including bytes it never initialized, such as padding and a
-//! vector's spare capacity. It reads them with volatile byte loads into
-//! plain integers before handing the block back to `System`, so the compiler
-//! cannot assume their contents, and the block is still allocated as far as
-//! the system allocator knows. In theory it could still miss a failed wipe;
-//! `detects_a_leak` checks that it catches one in practice.
+//! one records the blocks freed while the values that held a secret are
+//! dropped, and checks none still holds it. Inline values are boxed so they
+//! live on the heap too.
 //!
 //! The wipe is opt-in, so these tests build only with the `wipe` feature.
 
 #![cfg(feature = "wipe")]
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+#[path = "../../rind/tests/freed/mod.rs"]
+mod freed;
 
 use rind_aws_lc_rs::encoding::{
     AsBigEndian, AsDer, Curve25519SeedBin, EcPrivateKeyBin, EcPrivateKeyRfc5915Der, Pkcs8V1Der,
@@ -29,61 +19,21 @@ use rind_aws_lc_rs::encoding::{
 };
 use rind_aws_lc_rs::{agreement, cipher, kem, rsa, signature};
 
-/// How many bytes of a secret the allocator looks for.
-const NEEDLE_LEN: usize = 16;
-
-/// The secret being watched for, if any.
-static NEEDLE: Mutex<Option<[u8; NEEDLE_LEN]>> = Mutex::new(None);
-/// Blocks freed while still holding the needle.
-static LEAKS: AtomicUsize = AtomicUsize::new(0);
-
-struct Scan;
-
-// SAFETY: forwards every call to `System`, and only reads a block it is
-// about to free; the module documentation explains what that read risks.
-unsafe impl GlobalAlloc for Scan {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // SAFETY: the caller's contract, passed on.
-        unsafe { System.alloc(layout) }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // Locking allocates nothing, so this cannot recurse.
-        if let Some(needle) = *NEEDLE.lock().unwrap_or_else(|e| e.into_inner()) {
-            // The last `NEEDLE_LEN` bytes read, oldest first.
-            let mut window = [0u8; NEEDLE_LEN];
-            for i in 0..layout.size() {
-                window.copy_within(1.., 0);
-                // SAFETY: `ptr` is `layout.size()` bytes that `System` keeps
-                // allocated until the call below.
-                window[NEEDLE_LEN - 1] = unsafe { ptr.add(i).read_volatile() };
-                if i + 1 >= NEEDLE_LEN && window == needle {
-                    LEAKS.fetch_add(1, Ordering::Relaxed);
-                    break;
-                }
-            }
-        }
-        // SAFETY: the caller's contract, passed on.
-        unsafe { System.dealloc(ptr, layout) }
-    }
-}
-
 #[global_allocator]
-static ALLOCATOR: Scan = Scan;
+static ALLOCATOR: freed::Record = freed::Record;
 
-/// Serializes the tests, which share the allocator's needle.
-static SERIAL: Mutex<()> = Mutex::new(());
+/// How many bytes of a secret are looked for.
+const NEEDLE_LEN: usize = 16;
 
 /// Counts the blocks freed while `drop` runs that still hold the first
 /// bytes of `secret`.
 fn leaks(secret: &[u8], drop: impl FnOnce()) -> usize {
-    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let needle = secret[..NEEDLE_LEN].try_into().unwrap();
-    LEAKS.store(0, Ordering::Relaxed);
-    *NEEDLE.lock().unwrap() = Some(needle);
-    drop();
-    *NEEDLE.lock().unwrap() = None;
-    LEAKS.load(Ordering::Relaxed)
+    let needle = &secret[..NEEDLE_LEN];
+    let ((), blocks) = freed::freed(drop);
+    blocks
+        .iter()
+        .filter(|block| block.windows(NEEDLE_LEN).any(|w| w == needle))
+        .count()
 }
 
 /// Bytes unlikely to appear anywhere else.

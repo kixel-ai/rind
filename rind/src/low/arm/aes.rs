@@ -5,8 +5,10 @@
 
 use super::aesv8_armx::{AesHwDecKey, AesHwKey};
 use super::cpu::HaveCryptoExt;
-use crate::low::portable::aes as portable;
+use crate::low::{self, portable::aes as portable};
 
+// Keep all-zero valid when drop wipes the whole enum.
+#[repr(u8)]
 pub(crate) enum AesKey {
     Portable(portable::AesKey),
     /// The crypto extension's, which the key picks when the CPU has it.
@@ -40,7 +42,17 @@ impl AesKey {
     }
 }
 
+impl Drop for AesKey {
+    fn drop(&mut self) {
+        // The active key's drop cannot clear the enum's unused storage.
+        low::zeroise_value(self);
+    }
+}
+
+impl low::Zeroable for AesKey {}
+
 /// An AES key that decrypts, on the path [`AesKey`] picks for the CPU.
+#[repr(u8)]
 pub(crate) enum AesDecKey {
     Portable(portable::AesDecKey),
     Hw(AesHwDecKey),
@@ -62,6 +74,14 @@ impl AesDecKey {
         }
     }
 }
+
+impl Drop for AesDecKey {
+    fn drop(&mut self) {
+        low::zeroise_value(self);
+    }
+}
+
+impl low::Zeroable for AesDecKey {}
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]

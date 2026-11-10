@@ -23,4 +23,4 @@ Guidance:
 
 ## Related
 
-- [A constant-time check on every tier](/quest/m3/confidence/ct-tiers.md) - the test-based checks on the tiers BINSEC cannot decode
+- [TESTING.md's tiers table](/TESTING.md#tiers) - the test-based checks on the tiers BINSEC cannot decode

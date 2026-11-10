@@ -5,12 +5,11 @@
 use std::sync::OnceLock;
 
 use aws_lc_rs as theirs;
+use ours::encoding::{AsBigEndian as _, AsDer as _};
+use ours::signature::KeyPair as _;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use rind_aws_lc_rs as ours;
-
-use ours::encoding::{AsBigEndian as _, AsDer as _};
-use ours::signature::KeyPair as _;
 use theirs::encoding::{AsBigEndian as _, AsDer as _};
 use theirs::signature::KeyPair as _;
 
