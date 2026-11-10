@@ -63,8 +63,8 @@ first two under qemu, and Linux on big-endian `s390x` and on `riscv64gc`
   It needs no CPU features, `rind::cpu::has_aes_hardware()` is false, and
   rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. CI tests it on
   big-endian `s390x` and on `riscv64gc` (scalar only: rind uses neither the
-  vector nor the scalar crypto extensions) under qemu, and on `x86_64`, where `--cfg rind_portable`
-  forces it. On 32-bit `x86` it needs a
+  vector nor the scalar crypto extensions) under qemu, and on `x86_64`, where
+  `--cfg rind_portable` forces it. On 32-bit `x86` it needs a
   Rust newer than the 1.90 MSRV, since libcrux-platform 0.0.4 calls `__cpuid`
   outside `unsafe`.
 

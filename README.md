@@ -1,12 +1,13 @@
 <p align="center">
-  <img width="220" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png" alt="rind: a curled strip of spiky green graviola peel shaped like a lowercase r">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/moq-dev/rind/main/admin/wordmark.svg">
+    <img width="280" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/wordmark-light.svg" alt="rind: a curled strip of green graviola peel forms the r, followed by ind">
+  </picture>
 </p>
 
-<h1 align="center">rind</h1>
-
 <p align="center">
-  <strong>Fast, formally verified cryptography in pure Rust.</strong><br>
-  A drop-in for ring, aws-lc-rs, and rustls that <code>cargo build</code> compiles with rustc alone.
+  <strong>Cryptography slop. Fast, somewhat formally verified, and in pure Rust.</strong><br>
+  A drop-in for ring, aws-lc-rs, and rustls.
 </p>
 
 <p align="center">
@@ -17,14 +18,12 @@
 
 - 🏎️ **As fast as aws-lc-rs and ring.** rind matches or beats both on
   nearly every operation TLS and QUIC run, from the handshake to each
-  packet's AEAD. On Apple's M4, rind's per-call DIT toggle trails on small
-  packet operations unless held across a batch, as [Known gaps][gaps] lists.
+  packet's AEAD.
 - 🛡️ **Verified where it counts.** On x86_64 and aarch64, rind's
   elliptic-curve, RSA, and ML-KEM arithmetic builds on [s2n-bignum]'s
   formally verified assembly, and rind's own [Lean proofs][proofs] carry
   X25519 and Ed25519 from its API down to it, as [Verified code][verified]
-  lists. rind prefers verified code, and [ALGORITHMS.md][algorithms] marks ⚡
-  each place it runs faster unverified code instead.
+  lists.
 - 🦀 **No C toolchain.** rind's assembly lives in Rust source: no C
   compiler, cmake, nasm, or perl, for the host or a cross target. A rustls
   client builds [faster][build-cost] over rind than over aws-lc-rs or ring.
@@ -140,9 +139,9 @@ Each crate's README shows its setup.
 
 rind wipes keys, keyed state, and heap scratch derived from a private key
 on drop only under its `wipe` feature, as RustCrypto does with `zeroize`;
-aws-lc-rs always wipes, and ring never does. A memory disclosure such as
-Heartbleed leaks every live key anyway, so the default build skips the
-cost. Enable it on `rind` itself, and Cargo turns it on beneath every
+aws-lc-rs always wipes, and ring never does. The benefit of wiping is to avoid *unused keys* being leaked
+in a heap dump, like with Heartbleed. But IMO, you have bigger issues at that point, and it's not worth the perf hit by default.
+Enable it on `rind` itself, and Cargo turns it on beneath every
 adapter too. rind-aws-lc-rs also has its own `wipe`, which turns on rind's
 and wipes the adapter's own copies of secrets.
 
@@ -162,6 +161,11 @@ set it. The M1 and M2 have no such switch, so they pay the toggle's cost
 without that protection. Arm says DIT changes nothing on its current cores, so rind sets it
 only on Apple's platforms; aws-lc-rs and ring never set it.
 
+DIT is a second layer, not the constant-time guarantee: on every platform,
+rind's secret-handling code avoids branches, memory indices, and
+variable-time instructions that depend on a secret, and [TESTING.md][testing]
+lists the check each primitive gets.
+
 Turning DIT on and off costs about 45-60 ns a call on Apple's M1 and M4, a
 fifth of sealing a 1350-byte packet. A loop of small calls, such as sealing
 a batch of QUIC packets, holds a guard around the batch to pay it once:
@@ -179,7 +183,8 @@ rind has assembly for x86_64, aarch64, and 32-bit arm, and runs portable
 Rust on any other architecture (on 32-bit x86, only with a Rust newer than its
 1.90 MSRV). CI tests Linux (glibc and musl), macOS, and Windows on
 x86_64 and aarch64, iOS in the simulator, Android on aarch64, armv7, and
-x86_64, and Linux on big-endian s390x and on riscv64gc (glibc and musl). Any x86_64 CPU runs it,
+x86_64, and Linux on big-endian s390x and on riscv64gc (glibc and musl).
+Any x86_64 CPU runs it,
 little-endian aarch64 needs NEON, and every operation panics on a CPU missing a feature
 rind requires: call `rind::cpu::check()` at startup to get an error naming
 it instead, as `rind_rustls::default_provider()` does.
@@ -264,7 +269,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [gaps]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#known-gaps
 [build-cost]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#build-cost
 [verified]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#verified-code
-[gaps]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#known-gaps
+[testing]: https://github.com/moq-dev/rind/blob/main/TESTING.md#primitives
 [proofs]: https://github.com/moq-dev/rind/blob/main/proofs/README.md
 [algorithms]: https://github.com/moq-dev/rind/blob/main/ALGORITHMS.md
 [sources]: https://github.com/moq-dev/rind/blob/main/ALGORITHMS.md#sources
