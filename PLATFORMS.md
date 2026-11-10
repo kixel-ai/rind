@@ -1,10 +1,10 @@
 # Platforms
 
 rind has assembly for `aarch64`, `x86_64`, and 32-bit `arm` from ARMv7 on, and
-a portable Rust backend for every other architecture. CI tests Linux (glibc and musl), macOS, and Windows on `x86_64` and `aarch64`, Linux on
-`armv7` and ARMv6, iOS in the simulator on `aarch64`, and Android on
-`aarch64`, `armv7`, ARMv5TE, and `x86_64`, the 32-bit ARM targets and Android's
-`aarch64` under qemu. iOS devices' code is only built.
+a portable Rust backend for every other architecture. CI tests Linux (glibc and musl), macOS, and Windows on `x86_64` and `aarch64`, iOS in the
+simulator on `aarch64`, Android on `aarch64`, `armv7`, ARMv5TE, and `x86_64`,
+all but `x86_64` under qemu, and Linux on `armv7`, ARMv6, and big-endian
+`s390x` under qemu. iOS devices' code is only built.
 
 - `aarch64` requires the `neon` CPU feature. Where the CPU has the crypto
   extension (`aes`, `pmull`, and `sha2`), as the Raspberry Pi 5 and most
@@ -64,11 +64,12 @@ a portable Rust backend for every other architecture. CI tests Linux (glibc and 
   features, `rind::cpu::has_aes_hardware()` is false, and rind-rustls and
   rind-dimpl prefer ChaCha20-Poly1305. Stable Rust shows a build script an
   ARM target's version only in its triple, so `arm-unknown-linux-gnueabihf`
-  runs the portable backend even when built for a newer core. CI tests it on
-  `x86_64`, where `--cfg rind_portable` forces it, on
-  `arm-unknown-linux-gnueabi` and `arm-unknown-linux-gnueabihf` under qemu's
-  ARMv6 core (the ARM1176 of the Raspberry Pi 1 and Zero), and on
-  `arm-linux-androideabi`, which Rust builds for ARMv5TE, under qemu. On 32-bit `x86` it needs a
+  runs the portable backend even when built for a newer core. CI tests it
+  under qemu on big-endian `s390x`, on `arm-unknown-linux-gnueabi` and
+  `arm-unknown-linux-gnueabihf` on qemu's ARMv6 core (the ARM1176 of the
+  Raspberry Pi 1 and Zero), and on `arm-linux-androideabi`, which Rust builds
+  for ARMv5TE, and on `x86_64`, where `--cfg rind_portable` forces it. On
+  32-bit `x86` it needs a
   Rust newer than the 1.90 MSRV, since libcrux-platform 0.0.4 calls `__cpuid`
   outside `unsafe`.
 

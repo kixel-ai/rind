@@ -1,11 +1,9 @@
 # cross runs the Android tests in images holding the NDK and an Android 9
-# system built from AOSP, and the ARMv6 Linux tests in images holding that
-# target's GCC and glibc, under qemu-user where the host's architecture
+# system built from AOSP, under qemu-user where the host's architecture
 # differs. Images are pinned, since cross publishes them only under moving tags.
 
 [build.env]
 passthrough = [
-  "QEMU_CPU",
   "RIND_TEST_ARM_CRYPTO_EXT",
   "RIND_TEST_ARM_NEON",
 ]
@@ -18,12 +16,6 @@ image = "ghcr.io/cross-rs/armv7-linux-androideabi@sha256:a930d41f9acf6cae27c9c99
 
 [target.arm-linux-androideabi]
 image = "ghcr.io/cross-rs/arm-linux-androideabi@sha256:806d4227824454e6ce961d6c90bc81076c6bb57d2e04384f98e41a5df2f5d17c"
-
-[target.arm-unknown-linux-gnueabi]
-image = "ghcr.io/cross-rs/arm-unknown-linux-gnueabi@sha256:aaa032e0653ab9970722893a04f7ec01de7ba5ded73724866f357863b04ebeec"
-
-[target.arm-unknown-linux-gnueabihf]
-image = "ghcr.io/cross-rs/arm-unknown-linux-gnueabihf@sha256:439a691170d7751977e709c8aac6b4cef78fde9c8709286b04a088316e9a584f"
 
 # The x86_64 host runs the binaries itself, on its own CPU's features, rather
 # than under qemu's model without AES-NI.

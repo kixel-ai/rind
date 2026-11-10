@@ -95,6 +95,46 @@
             };
           };
 
+          # A shell that builds `target`, a target with no rind assembly, and
+          # runs its tests under qemu-user, as `just qemu` does. `cross` is the
+          # nixpkgs cross set whose C toolchain the tests' aws-lc-rs
+          # dev-dependency builds with; rind itself needs none. `cpu`, if set,
+          # is the core qemu emulates, so it traps any newer instruction.
+          qemu-shell =
+            {
+              target,
+              cross,
+              cpu ? null,
+            }:
+            let
+              cc = cross.stdenv.cc;
+              prefix = "${cc}/bin/${cc.targetPrefix}";
+              var = pkgs.lib.toUpper (builtins.replaceStrings [ "-" ] [ "_" ] target);
+              lower = builtins.replaceStrings [ "-" ] [ "_" ] target;
+            in
+            pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override {
+                  extensions = [ "clippy" ];
+                  targets = [ target ];
+                })
+                cc
+                pkgs.qemu-user
+              ];
+
+              env = {
+                RIND_QEMU_TARGET = target;
+                "CC_${lower}" = "${prefix}cc";
+                "CXX_${lower}" = "${prefix}c++";
+                "AR_${lower}" = "${prefix}ar";
+                "CARGO_TARGET_${var}_LINKER" = "${prefix}cc";
+                # The wrapper links against the store's glibc for the target
+                # by absolute path, so qemu needs no sysroot.
+                "CARGO_TARGET_${var}_RUNNER" = "qemu-${cross.stdenv.hostPlatform.qemuArch}";
+              }
+              // pkgs.lib.optionalAttrs (cpu != null) { QEMU_CPU = cpu; };
+            };
+
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
           # built against the plugin API of the qemu-user its shells run.
           ct-qemu-plugin = pkgs.stdenv.mkDerivation {
@@ -463,6 +503,28 @@
             # and the armv7 standard libraries add about 700 MB, which every
             # other CI job would download.
             armv7 = pkgs.mkShell armv7-shell;
+
+            # `just qemu s390x` tests the portable backend on big-endian
+            # s390x in it.
+            s390x = qemu-shell {
+              target = "s390x-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.s390x;
+            };
+
+            # `just qemu armv6` and `just qemu armv6-softfloat` test the
+            # portable backend on the ARM1176 of the Raspberry Pi 1 and Zero.
+            # Rust builds `arm-unknown-linux-gnueabi` for ARMv6 too, and the
+            # ARMv5TE glibc it links against runs there.
+            armv6 = qemu-shell {
+              target = "arm-unknown-linux-gnueabihf";
+              cross = pkgs.pkgsCross.raspberryPi;
+              cpu = "arm1176";
+            };
+            armv6-softfloat = qemu-shell {
+              target = "arm-unknown-linux-gnueabi";
+              cross = pkgs.pkgsCross.armv5tel-multiplatform;
+              cpu = "arm1176";
+            };
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
             # plugin it adds to the `armv7` shell.

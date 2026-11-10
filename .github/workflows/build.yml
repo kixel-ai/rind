@@ -172,6 +172,28 @@ jobs:
       - name: Build, lint, and test
         run: just armv7
 
+  # Targets with no rind assembly, on the portable backend, under qemu-user.
+  # Each entry names the flake dev shell that holds its target's toolchain.
+  # s390x is big-endian, and the armv6 shells run on qemu's ARM1176.
+  qemu:
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [s390x, armv6, armv6-softfloat]
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+      - uses: ./.github/actions/just
+      - uses: ./.github/actions/nix
+
+      - name: Build, lint, and test
+        run: just qemu ${{ matrix.shell }}
+
   # rind-dart's Dart package on each host Dart and Flutter build on. Its tests
   # run natively, and its build hook cross-builds the mobile targets, whose
   # libraries the hook's test checks are for the right architecture.
@@ -273,27 +295,21 @@ jobs:
           cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --target aarch64-apple-ios-sim
           env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --target aarch64-apple-ios-sim --release
 
-  # cross's images (see Cross.toml) hold an Android system for the Android
-  # tests, and run aarch64 and armv7 under qemu-user, whose CPU has the crypto
-  # extension. armv7 Linux covers the paths without it. The ARM targets before
-  # ARMv7 run the portable backend, the Linux ones on qemu's ARMv6 core, as on
-  # a Raspberry Pi 1 or Zero.
-  cross:
+  # cross's images (see Cross.toml) hold an Android system for the tests, and
+  # run aarch64 and armv7 under qemu-user, whose CPU has the crypto extension.
+  # armv7 Linux covers the paths without it. ARMv5TE runs the portable backend.
+  android:
     strategy:
       matrix:
         include:
           - target: aarch64-linux-android
-            env: RIND_TEST_ARM_CRYPTO_EXT=1
+            expect: RIND_TEST_ARM_CRYPTO_EXT=1
           - target: armv7-linux-androideabi
-            env: RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1
+            expect: RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1
           - target: x86_64-linux-android
-            env: ""
+            expect: ""
           - target: arm-linux-androideabi
-            env: ""
-          - target: arm-unknown-linux-gnueabi
-            env: QEMU_CPU=arm1176
-          - target: arm-unknown-linux-gnueabihf
-            env: QEMU_CPU=arm1176
+            expect: ""
 
     runs-on: ubuntu-latest
     steps:
@@ -324,4 +340,4 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
           CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS: true
-        run: env ${{ matrix.env }} cross test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --locked --release --target ${{ matrix.target }}
+        run: env ${{ matrix.expect }} cross test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --locked --release --target ${{ matrix.target }}
