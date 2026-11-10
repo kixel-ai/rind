@@ -101,6 +101,7 @@ and RSA keys below 2048 bits are in `package:rind/legacy.dart`.
 Keys live in native memory, which Dart frees without wiping: this package
 builds rind without its `wipe` feature. To wipe keys, use rind from Rust with
 `wipe`.
+
 Generating RSA keys, RSA's private-key operations, and PBKDF2 take
 milliseconds to seconds, so call them off the UI isolate, as with
 `Isolate.run`.
