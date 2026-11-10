@@ -202,7 +202,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shell: [s390x, riscv64, riscv64-musl, armv6, armv6-softfloat]
+        shell: [s390x, riscv64, riscv64-musl, loongarch64, armv6, armv6-softfloat]
 
     runs-on: ubuntu-latest
     steps:

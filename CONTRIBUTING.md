@@ -48,7 +48,7 @@ On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
 with NEON alone, and with NEON denied. `just qemu <shell>` runs an entry of
 the nightly `qemu` job, which lints and tests the portable backend under
-qemu: `s390x` (big-endian), `riscv64`, `riscv64-musl`, or `armv6` and
+qemu: `s390x` (big-endian), `riscv64`, `riscv64-musl`, `loongarch64`, or `armv6` and
 `armv6-softfloat` (the Raspberry Pi 1's core).
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
 constant-time checks under valgrind, `nix develop .#sde --command
