@@ -197,12 +197,13 @@ jobs:
 
   # Targets with no rind assembly, on the portable backend, under qemu-user.
   # Each entry names the flake dev shell that holds its target's toolchain.
-  # s390x is big-endian, and the armv6 shells run on qemu's ARM1176.
+  # s390x, powerpc64, and powerpc are big-endian, and the armv6 shells run on
+  # qemu's ARM1176.
   qemu:
     strategy:
       fail-fast: false
       matrix:
-        shell: [s390x, riscv64, riscv64-musl, armv6, armv6-softfloat]
+        shell: [s390x, riscv64, riscv64-musl, armv6, armv6-softfloat, powerpc64le, powerpc64, powerpc]
 
     runs-on: ubuntu-latest
     steps:

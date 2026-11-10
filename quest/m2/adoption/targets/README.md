@@ -33,7 +33,6 @@ The epic's own work, once every child has merged:
 ## Required
 
 - [32-bit x86](/quest/m2/adoption/targets/x86.md) - i686 on Linux, Windows and Android
-- [PowerPC](/quest/m2/adoption/targets/powerpc.md) - powerpc64le, powerpc64 and powerpc Linux
 - [loongarch64](/quest/m2/adoption/targets/loongarch64.md) - loongarch64 Linux
 - [wasm32](/quest/m2/adoption/targets/wasm.md) - the rind library compiles for wasm32 on every PR
 - [rind's tests run on wasm32](/quest/m2/adoption/targets/wasm-tests.md) - the vector tests on wasm32-wasip2 under wasmtime
