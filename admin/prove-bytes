@@ -4,40 +4,50 @@ rind's build, to the instructions that proof checked.
 
 Usage: admin/prove-bytes list
        admin/prove-bytes check <dir>
-       admin/prove-bytes inventory
+       admin/prove-bytes inventory <dir>
+       admin/prove-bytes aws-lc-revision
 
-`admin/prove bytes` runs it: `list` prints each routine's target, Rust path,
-and file name, `admin/prove` writes each one's `asm!` block from rind's
-release build to `<dir>/<arch>/<name>.bin` with its layout, and `check`
-compares them, then checks ALGORITHMS.md's inventory of the `_SAFE` theorems
-covering each, which `inventory` prints.
+`admin/prove bytes` runs it. `list` prints each routine's target, kind, Rust
+path, and name, and for a naked function the upstream object and symbol it
+comes from. `admin/prove` writes rind's code for each to
+`<dir>/<arch>/<name>.bin`, with its instructions' offsets, its relocations,
+and their targets' bytes, and the upstream's to `<name>.proof` alike, or
+`<name>.absent` where rind's release build defines no such function, since
+nothing in the library calls it. `check` compares them, then checks
+ALGORITHMS.md's inventory of the `_SAFE` theorems covering each, which
+`inventory` prints.
 
 s2n-bignum's proofs each assert the bytes of the object code they are about,
 as a list in the proof's source, which `define_assert_from_elf` checks
-against s2n-bignum's build. `check` reads that list at the submodule's commit
-and requires rind's block to hold the same instructions, in order, with these
-differences only, each of which leaves every instruction the proof steps
-through the same:
+against s2n-bignum's build. `check` reads that list at the submodule's commit.
+Vale's proofs are of the code its printer writes, and aws-lc-verification's
+of aws-lc's build at the revision it pins, so `admin/prove` assembles that
+text with the GNU assembler. rind's code must hold the same instructions, in
+order, with these differences only, none of which changes the result the
+proof states or makes a branch, address, or instruction's timing depend on a
+secret:
 
-- The routine's final `ret` is gone, since the Rust function around the
-  block returns. Running every instruction but the last of the proof's
-  execution is a prefix of it, so its result and its trace, which the
-  `_SAFE` theorems show depend on no secret, are those of the routine up to
-  its return.
-- A routine whose 256-bit registers would otherwise slow the SSE code after
-  it ends with `vzeroupper`, which writes no general register or memory and
-  takes the same time whatever the registers hold.
-- An aarch64 routine starts without the `BTI c` landing pad, as s2n-bignum's
-  own `NO_IBT` build, which its proofs' trimmed `_tmc` code covers.
-- A routine that returns from several places, or whose local subroutines
-  follow its `ret`, branches from each such `ret` to the block's end instead,
-  where the final `ret` would have been. The branches past it then take
-  longer displacements, so they may encode in more bytes, but each targets
-  the instruction its counterpart does.
+- An `asm!` block lacks the routine's final `ret`, since the Rust function
+  around it returns. Its execution is a prefix of the proof's.
+- An x86_64 block using 256-bit registers ends with `vzeroupper`, which
+  zeroes the upper halves of vector registers the routine leaves no result in.
+- An aarch64 block starts without the `BTI c` landing pad, as in s2n-bignum's
+  `NO_IBT` build, whose code its `_NOIBT_` theorems cover. A naked function
+  starts without aws-lc's `ENDBR64`, which runs as a NOP.
+- A block that returns from several places, or whose local subroutines
+  follow its `ret`, branches from each such `ret` to where the final `ret`
+  would have been.
+- An x86_64 VEX instruction whose two sources commute (COMMUTATIVE_VEX), or
+  `xchg`, names its operands in the other order, which LLVM's assembler
+  picks for a shorter encoding where the GNU assembler keeps the order given.
+- A naked function's alignment padding differs, as its start does.
 
-A relocation in a block must fill the bytes that one does in the proof's
-list, and its target hold the bytes of the constant data s2n-bignum's source
-defines there.
+Any of the last three can lengthen a branch's displacement, which may then
+encode in more bytes, but each branch targets the instruction its
+counterpart does. A relocation must fill the bytes one does in the proven
+code, with the same addend, and its target hold the proven code's data:
+s2n-bignum's constant data as its source defines it, or the upstream's table,
+which rind's, without the padding its alignment adds, must start.
 """
 
 import os
@@ -155,7 +165,7 @@ def proven(arch, source):
         # The list is a function of the bytes before the body, which every
         # proof gives as the ENDBR64 it asserts.
         call = re.fullmatch(r"\s*\(fun b ADDR -> (\w+)\s*(\[.*?\])\s*(?:\(\*.*?\*\)\s*)?b ADDR\)\s*", rest, re.S)
-        prefix = list(tokens(call.group(2)))
+        prefix = list(tokens(call.group(2))) + ["(*)"]
         body = re.search(r"let %s\b.*?fun prefix b ADDR ->(.*?);;" % call.group(1), text, re.S)
         toks = []
         for t in tokens(body.group(1)):
@@ -219,26 +229,6 @@ def constant_data(source):
 
 
 # --- rind's side, as `admin/prove` writes it.
-
-
-def same_object(arch, proof, rind, data):
-    """Checks that rind's naked function holds the upstream routine's
-    instructions exactly, its relocations filling the same bytes with the
-    same addends, onto targets holding the same bytes."""
-    if len(proof) != len(rind):
-        raise Check(f"{len(rind)} instructions in rind's function to {len(proof)} in the upstream's")
-    for i, (p, r) in enumerate(zip(proof, rind)):
-        if p.data != r.data:
-            raise Check(f"instruction {i}: {fmt(p)} upstream, {fmt(r)} in rind")
-        if bool(p.reloc) != bool(r.reloc):
-            raise Check(f"instruction {i}: a relocation on one side only")
-        if p.reloc:
-            (pkind, ptarget), (rkind, rtarget) = p.reloc, r.reloc
-            pbase, paddend = split_target(ptarget)
-            rbase, raddend = split_target(rtarget)
-            if pkind != rkind or paddend != raddend:
-                raise Check(f"instruction {i}: relocation {rkind} {rtarget}, upstream {pkind} {ptarget}")
-            data.add((pbase, rbase))
 
 
 def split_target(target):
@@ -334,19 +324,74 @@ def targets(arch, insns):
     return out
 
 
-def compare(arch, proof, rind, data):
+X86_ENDBR64 = bytes.fromhex("f30f1efa")
+# Opcodes, in the 0F map with a 66 prefix, of the VEX instructions whose two
+# sources commute, which LLVM swaps to fit the two-byte VEX prefix where the
+# GNU assembler keeps the order it was given: vpaddq, vpmullw, vpmulhw, vpor,
+# vpxor, vpaddw, vpaddd.
+COMMUTATIVE_VEX = {0xD4, 0xD5, 0xE5, 0xEB, 0xEF, 0xFD, 0xFE}
+
+
+def nop(arch, insn):
+    """Whether `insn` is an x86_64 NOP of the forms assemblers pad with."""
+    b = bytes(insn.data) if insn.concrete() else b""
+    if arch != "x86_64" or not b:
+        return False
+    rest = b.lstrip(b"\x66").removeprefix(b"\x2e")
+    return rest == b"\x90" or (rest[:2] == b"\x0f\x1f" and len(rest) >= 3)
+
+
+def operands(insn):
+    """An x86_64 register-to-register instruction's encoding, its sources as
+    a set: the VEX ones in COMMUTATIVE_VEX, or xchg with REX.W."""
+    b = insn.data
+    if not insn.concrete():
+        return None
+    if b[0] == 0xC4 and len(b) == 5:
+        r, x, bb = (~b[1] >> 7) & 1, (~b[1] >> 6) & 1, (~b[1] >> 5) & 1
+        mmmmm, w, vvvv, l, pp = b[1] & 0x1F, b[2] >> 7, (~b[2] >> 3) & 0xF, (b[2] >> 2) & 1, b[2] & 3
+        op, modrm = b[3], b[4]
+    elif b[0] == 0xC5 and len(b) == 4:
+        r, x, bb, mmmmm, w = (~b[1] >> 7) & 1, 0, 0, 1, 0
+        vvvv, l, pp = (~b[1] >> 3) & 0xF, (b[1] >> 2) & 1, b[1] & 3
+        op, modrm = b[2], b[3]
+    elif len(b) == 3 and b[0] & 0xF8 == 0x48 and b[1] == 0x87 and b[2] >> 6 == 3:
+        reg, rm = (b[0] >> 2 & 1) << 3 | (b[2] >> 3 & 7), (b[0] & 1) << 3 | (b[2] & 7)
+        return ("xchg", frozenset((reg, rm)))
+    else:
+        return None
+    if modrm >> 6 != 3 or x or (mmmmm, pp) != (1, 1) or op not in COMMUTATIVE_VEX:
+        return None
+    dest, rm = r << 3 | (modrm >> 3 & 7), bb << 3 | (modrm & 7)
+    return ("vex", w, l, op, dest, frozenset((vvvv, rm)))
+
+
+def compare(arch, proof, rind, data, naked=False):
     """The differences between the proof's instructions and rind's, each a
-    kind the module docstring lists; raises Check on any other."""
+    kind the module docstring lists; raises Check on any other. A `naked`
+    function is the upstream's whole routine, `ret` included."""
     diffs = set()
     ret = X86_RET if arch == "x86_64" else ARM_RET
-    proof = list(proof)
-    if arch == "aarch64" and proof and bytes(proof[0].data) == ARM_BTI_C:
+    proof, rind = list(proof), list(rind)
+    if arch == "aarch64" and not naked and proof and bytes(proof[0].data) == ARM_BTI_C:
         proof = proof[1:]
         diffs.add("no BTI")
+    if naked and arch == "x86_64" and bytes(proof[0].data) == X86_ENDBR64 and bytes(rind[0].data) != X86_ENDBR64:
+        proof = proof[1:]
+        diffs.add("no ENDBR64")
+    ptargets, rtargets = targets(arch, proof), targets(arch, rind)
+    if naked:
+        # Alignment padding, whose length depends on where each assembler
+        # places the routine: drop it, and send each branch to the first
+        # instruction after the padding it lands on.
+        proof, ptargets, pad1 = unpadded(arch, proof, ptargets)
+        rind, rtargets, pad2 = unpadded(arch, rind, rtargets)
+        if pad1 or pad2:
+            diffs.add("padding")
     # Where the routine's exit lands in rind's block: the end, or the
     # vzeroupper before it.
     exit = len(proof)
-    if len(rind) == len(proof) - 1 or (len(rind) == len(proof) and rind[-1].data == list(X86_VZEROUPPER)):
+    if not naked and (len(rind) == len(proof) - 1 or (len(rind) == len(proof) and rind[-1].data == list(X86_VZEROUPPER))):
         if bytes(proof[-1].data) != ret:
             raise Check("the proof's code does not end with ret")
         exit = len(proof) - 1
@@ -356,28 +401,45 @@ def compare(arch, proof, rind, data):
                 raise Check("vzeroupper on aarch64")
             diffs.add("vzeroupper")
     if len(rind) != exit + ("vzeroupper" in diffs):
-        raise Check(f"{len(rind)} instructions in rind's block to {len(proof)} in the proof's code")
-    ptargets = targets(arch, proof)
-    rtargets = targets(arch, rind)
+        raise Check(f"{len(rind)} instructions in rind's code to {len(proof)} in the proven code")
     for i in range(exit):
         p, r = proof[i], rind[i]
         if i in ptargets or i in rtargets:
             pt, rt = ptargets.get(i), rtargets.get(i)
-            if pt and rt and pt[0] == rt[0] and pt[1] == rt[1]:
+            if pt and rt and pt == rt:
                 if p.data != r.data:
                     diffs.add("displacement")
                 continue
-            if bytes(p.data) == ret and rt and rt[0] in ("jmp", "b") and rt[1] == exit:
+            if not naked and bytes(p.data) == ret and rt and rt[0] in ("jmp", "b") and rt[1] == exit:
                 diffs.add("ret to exit")
                 continue
-            raise Check(f"instruction {i}: {fmt(p)} in the proof, {fmt(r)} in rind")
+            raise Check(f"instruction {i}: {fmt(p)} proven, {fmt(r)} in rind")
         if p.data != r.data:
-            raise Check(f"instruction {i}: {fmt(p)} in the proof, {fmt(r)} in rind")
+            if arch == "x86_64" and operands(p) and operands(p) == operands(r):
+                diffs.add("commuted")
+                continue
+            raise Check(f"instruction {i}: {fmt(p)} proven, {fmt(r)} in rind")
         if p.reloc or r.reloc:
-            relocated(arch, i, p, r, data)
-    if "displacement" in diffs and "ret to exit" not in diffs:
-        raise Check("branch encodings differ though no ret moved")
+            relocated(i, p, r, data)
+    if "displacement" in diffs and not diffs & {"ret to exit", "padding", "commuted"}:
+        raise Check("branch encodings differ though no instruction between them did")
     return diffs
+
+
+def unpadded(arch, insns, branches):
+    """`insns` without its NOPs, `branches` renumbered to match, and whether
+    any NOP was dropped."""
+    keep = [i for i, insn in enumerate(insns) if not nop(arch, insn)]
+    index, n = {}, 0
+    for i in range(len(insns) + 1):
+        index[i] = n
+        if i < len(insns) and not nop(arch, insns[i]):
+            n += 1
+    return (
+        [insns[i] for i in keep],
+        {index[i]: (kind, index[t]) for i, (kind, t) in branches.items()},
+        len(keep) != len(insns),
+    )
 
 
 RELOCS = {
@@ -387,19 +449,27 @@ RELOCS = {
 }
 
 
-def relocated(arch, i, p, r, data):
+def relocated(i, p, r, data):
     """Checks that rind's relocation at instruction `i` fills what the
-    proof's does, with a target whose bytes are the proof's constant data."""
+    proof's does, with the same addend, and records the pair of targets
+    whose bytes must match."""
     if not (p.reloc and r.reloc):
         raise Check(f"instruction {i}: a relocation on one side only")
-    kind, _, offset = p.reloc
-    rkind, target = r.reloc
-    if (kind, rkind) not in RELOCS:
-        raise Check(f"instruction {i}: relocation {rkind} for the proof's {kind}")
-    base, addend = split_target(target)
-    if addend != offset:
-        raise Check(f"instruction {i}: addend {addend} for the proof's {offset}")
-    data.add(base)
+    rkind, rtarget = r.reloc
+    rbase, raddend = split_target(rtarget)
+    if len(p.reloc) == 3:
+        # From a proof's list: its kind, target, and addend.
+        pkind, pbase, paddend = p.reloc
+        if (pkind, rkind) not in RELOCS:
+            raise Check(f"instruction {i}: relocation {rkind} for the proof's {pkind}")
+    else:
+        pkind, ptarget = p.reloc
+        pbase, paddend = split_target(ptarget)
+        if pkind != rkind:
+            raise Check(f"instruction {i}: relocation {rkind}, upstream {pkind}")
+    if raddend != paddend:
+        raise Check(f"instruction {i}: addend {raddend}, proven {paddend}")
+    data.add((pbase, rbase))
 
 
 def safe_theorem(arch, source, proof):
@@ -421,11 +491,19 @@ def safe_theorem(arch, source, proof):
 INVENTORY = ("<!-- admin/prove-bytes inventory -->\n", "<!-- end admin/prove-bytes inventory -->\n")
 
 
-def inventory():
+def built_routines(out):
+    """Each s2n-bignum routine rind's release build defines, which
+    `admin/prove` marks absent otherwise: nothing in the library calls it."""
+    for arch, path, source in routines():
+        if not os.path.exists(os.path.join(out, arch, os.path.basename(source) + ".absent")):
+            yield arch, path, source
+
+
+def inventory(out):
     """The table of ALGORITHMS.md between the INVENTORY markers: each Rust
     function's routine and `_SAFE` theorem on each target."""
     cells = {}
-    for arch, path, source in routines():
+    for arch, path, source in built_routines(out):
         theorem = safe_theorem(arch, source, proven(arch, source))
         cell = f"`{os.path.basename(source)}`: " + (f"`{theorem}`" if theorem else "none")
         cells.setdefault(path.rsplit("::", 1)[1], {})[arch] = cell
@@ -433,6 +511,25 @@ def inventory():
     for fn in sorted(cells):
         rows.append(f"| `{fn}` | " + " | ".join(cells[fn].get(a, "not imported") for a in ARCHES) + " |")
     return "\n".join(rows) + "\n"
+
+
+def table_size(path):
+    """The size of the one table the naked function at `path` names as a
+    `sym` operand, from its type: a struct around an array of integers."""
+    parts = path.split("::")
+    text = open(os.path.join(ROOT, "rind", "src", *parts[1:-1]) + ".rs").read()
+    body = text[text.index(f"fn {parts[-1]}(") :]
+    body = body[: body.index("\n}\n")]
+    (name,) = set(re.findall(r"\b\w+ = sym (\w+)", body))
+    ty = re.search(r"static %s: (\w+) = " % name, text).group(1)
+    bits, n = re.search(r"struct %s\(\[u(\d+); (\d+)\]\);" % ty, text).groups()
+    return int(bits) // 8 * int(n)
+
+
+def want_sized(base, target):
+    """Whether `admin/prove` cut the upstream's `target` to an object's size,
+    rather than taking its whole section."""
+    return os.path.exists(os.path.join(base + ".proof.data", target + ".sized"))
 
 
 def fmt(insn):
@@ -449,20 +546,20 @@ def main():
     if sys.argv[1:] == ["aws-lc-revision"]:
         print(AWS_LC_REVISION)
         return
-    if sys.argv[1:] == ["inventory"]:
-        print(inventory(), end="")
+    if len(sys.argv) == 3 and sys.argv[1] == "inventory":
+        print(inventory(sys.argv[2]), end="")
         return
     if len(sys.argv) != 3 or sys.argv[1] != "check":
         sys.exit(__doc__.split("\n\n")[1])
     out = sys.argv[2]
     failed = 0
-    for arch, path, source in routines():
+    for arch, path, source in built_routines(out):
         name = os.path.basename(source)
         base = os.path.join(out, arch, name)
         try:
             data = set()
             diffs = compare(arch, proven(arch, source), built(arch, base + ".bin"), data)
-            for sym in data:
+            for _, sym in data:
                 if open(os.path.join(base + ".bin.data", sym), "rb").read() != constant_data(source):
                     raise Check(f"{sym} differs from {source}.S's constant data")
             print(f"{arch} {name}: {', '.join(sorted(diffs)) or 'identical'}")
@@ -471,15 +568,25 @@ def main():
             failed += 1
     for arch, path, obj, sym in NAKED:
         base = os.path.join(out, arch, sym)
+        if os.path.exists(base + ".absent"):
+            print(f"admin/prove-bytes: rind's build defines no {path}", file=sys.stderr)
+            failed += 1
+            continue
         try:
             data = set()
-            same_object(arch, built(arch, base + ".proof"), built(arch, base + ".bin"), data)
+            diffs = compare(arch, built(arch, base + ".proof"), built(arch, base + ".bin"), data, naked=True)
+            if len(data) > 1:
+                raise Check(f"{len(data)} tables, where the check handles one")
             for ptarget, rtarget in data:
                 want = open(os.path.join(base + ".proof.data", ptarget), "rb").read()
                 got = open(os.path.join(base + ".bin.data", rtarget), "rb").read()
-                if want[: len(got)] != got:
+                # rind's table without the padding its alignment adds, which
+                # must start the upstream's: its sized object, or else the
+                # rest of its section.
+                got = got[: table_size(path)]
+                if want[: len(got)] != got or len(got) < len(want) and want_sized(base, ptarget):
                     raise Check(f"{rtarget} differs from the upstream's {ptarget}")
-            print(f"{arch} {sym}: identical")
+            print(f"{arch} {sym}: {', '.join(sorted(diffs)) or 'identical'}")
         except Check as e:
             print(f"admin/prove-bytes: {arch} {path}: {e}", file=sys.stderr)
             failed += 1
@@ -487,8 +594,8 @@ def main():
         sys.exit(f"admin/prove-bytes: {failed} routines differ from their proofs' code")
     text = open(os.path.join(ROOT, "ALGORITHMS.md")).read()
     start, end = text.index(INVENTORY[0]) + len(INVENTORY[0]), text.index(INVENTORY[1])
-    if text[start:end].strip() != inventory().strip():
-        sys.exit("admin/prove-bytes: ALGORITHMS.md's inventory is stale; `admin/prove-bytes inventory` prints it")
+    if text[start:end].strip() != inventory(out).strip():
+        sys.exit(f"admin/prove-bytes: ALGORITHMS.md's inventory is stale; `admin/prove-bytes inventory {out}` prints it")
 
 
 if __name__ == "__main__":
