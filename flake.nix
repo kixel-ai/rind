@@ -480,6 +480,7 @@
                     "x86_64-unknown-linux-gnu"
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
+                    "loongarch64-unknown-linux-gnu"
                   ];
                 })
                 pkgs.python3
@@ -552,6 +553,13 @@
             riscv64-musl = qemu-shell {
               target = "riscv64gc-unknown-linux-musl";
               cross = pkgs.pkgsCross.riscv64-musl;
+            };
+
+            # `just qemu loongarch64` tests the portable backend on
+            # loongarch64 Linux in it.
+            loongarch64 = qemu-shell {
+              target = "loongarch64-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.loongarch64-linux;
             };
 
             # `just qemu armv6` and `just qemu armv6-softfloat` test the
