@@ -3,7 +3,7 @@
 rind runs AES in CBC and GCM modes. GCM's contexts hold the message until
 `finalize`, which returns all of it: rind seals and opens whole messages, and
 releases no plaintext before it has authenticated it, where pyca's `update`
-returns each piece as it goes.
+and `update_into` return each piece as they go.
 """
 
 import abc

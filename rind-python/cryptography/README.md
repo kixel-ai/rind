@@ -72,16 +72,19 @@ Within what works, it differs from pyca in these ways:
 
 - ECDSA signs on each curve only with that curve's hash (P-256 with SHA-256,
   and so on), and its signatures are randomized, never RFC 6979's
-  deterministic ones. It verifies any SHA-2 hash on any of the three curves.
+  deterministic ones. It verifies SHA-256, SHA-384, and SHA-512 on each of
+  the three curves.
 - RSA signs with SHA-256, SHA-384, or SHA-512, and PSS with a salt as long as
-  the digest; it verifies PKCS#1 v1.5 with SHA-1 too, PSS with any salt
-  under `PSS.AUTO`, and keys from 1024 bits. RSA keys under 2048 bits load
-  only as public keys. `rsa_crt_iqmp`, `rsa_crt_dmp1`, `rsa_crt_dmq1`, and
-  `rsa_recover_prime_factors` raise `UnsupportedAlgorithm`: they compute on
-  the private key in Python's variable-time integers.
-- `Cipher` in GCM mode returns nothing from `update` and the whole message
-  from `finalize`: rind seals and opens whole messages, and releases no
-  plaintext it has not authenticated.
+  the digest; it verifies PKCS#1 v1.5 with SHA-1 too, and PSS with any salt
+  under `PSS.AUTO`. Keys of 1024 to 2047 bits load only as public keys, and
+  verify only PKCS#1 v1.5 with SHA-1, SHA-256, or SHA-512. `rsa_crt_iqmp`,
+  `rsa_crt_dmp1`, `rsa_crt_dmq1`, and `rsa_recover_prime_factors` raise
+  `UnsupportedAlgorithm`: they compute on the private key in Python's
+  variable-time integers.
+- `Cipher` in GCM mode returns nothing from `update`, writes nothing from
+  `update_into`, and returns the whole message from `finalize`: rind seals
+  and opens whole messages, and releases no plaintext it has not
+  authenticated.
 - Keys load only when rind accepts them, so a key pyca loads but rind
   refuses raises `ValueError` at load rather than later.
 

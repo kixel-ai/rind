@@ -199,15 +199,7 @@ Apache 2.0 license
 ISC license
 -------------------------------------
 
-Copyright 2024 Joe Birr-Pixton
-Copyright Amazon.com, Inc. or its affiliates.
-Copyright (c) 2024 The mlkem-native project authors
-Copyright (c) 2021-2022 Arm Limited
-Copyright (c) 2022 Arm Limited
-Copyright (c) 2022 Hanno Becker
-Copyright (c) 2022 Matthias Kannwischer
-Copyright (c) 2023 Amin Abdulrahman, Matthias Kannwischer
-Copyright (c) 2014, Google Inc.
+Copyright 2026 The rind authors
 
 Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
@@ -225,8 +217,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 MIT-0 license
 -------------------------------------
 
-Copyright 2024 Joe Birr-Pixton
-Copyright 2021-2024 Amazon.com, Inc. or its affiliates.
+Copyright 2026 The rind authors
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
