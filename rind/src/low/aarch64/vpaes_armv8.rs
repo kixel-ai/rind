@@ -30,7 +30,9 @@ impl VpaesKey {
         // SAFETY: `key` holds `key_bits(key) / 8` bytes and `r` is an
         // `AES_KEY`. The
         // routines need only NEON, which rind requires.
-        let ret = unsafe { vpaes_set_encrypt_key(key.as_ptr(), key_bits(key), &mut r) };
+        let ret = unsafe {
+            asm_call!(unsafe extern "C" vpaes_set_encrypt_key(key.as_ptr(), key_bits(key), &mut r))
+        };
         // aws-lc's always succeeds.
         debug_assert_eq!(ret, 0);
         r
@@ -48,7 +50,9 @@ impl VpaesKey {
         let mut out = [0u8; 16];
         // SAFETY: `block` is one readable block and `out` one writable one,
         // and `self` an expanded key.
-        unsafe { vpaes_encrypt(block.as_ptr(), out.as_mut_ptr(), self) };
+        unsafe {
+            asm_call!(unsafe extern "C" vpaes_encrypt(block.as_ptr(), out.as_mut_ptr(), self))
+        };
         out
     }
 
@@ -61,13 +65,13 @@ impl VpaesKey {
         // aws-lc allows to alias, and `self` an expanded key. The routine
         // returns at once for zero blocks.
         unsafe {
-            vpaes_ctr32_encrypt_blocks(
+            asm_call!(unsafe extern "C" vpaes_ctr32_encrypt_blocks(
                 inout.as_ptr().cast(),
                 inout.as_mut_ptr().cast(),
                 inout.len(),
                 self,
                 ivec,
-            )
+            ))
         }
     }
 
@@ -105,7 +109,9 @@ impl VpaesDecKey {
         // SAFETY: `key` holds `key_bits(key) / 8` bytes and `r` is an
         // `AES_KEY`. The
         // routines need only NEON, which rind requires.
-        let ret = unsafe { vpaes_set_decrypt_key(key.as_ptr(), key_bits(key), &mut r) };
+        let ret = unsafe {
+            asm_call!(unsafe extern "C" vpaes_set_decrypt_key(key.as_ptr(), key_bits(key), &mut r))
+        };
         // aws-lc's always succeeds.
         debug_assert_eq!(ret, 0);
         r
@@ -115,7 +121,9 @@ impl VpaesDecKey {
     pub(crate) fn decrypt_block(&self, inout: &mut [u8; 16]) {
         // SAFETY: `inout` is one readable and writable block, which aws-lc
         // allows to alias, and `self` an expanded decryption key.
-        unsafe { vpaes_decrypt(inout.as_ptr(), inout.as_mut_ptr(), self) }
+        unsafe {
+            asm_call!(unsafe extern "C" vpaes_decrypt(inout.as_ptr(), inout.as_mut_ptr(), self))
+        }
     }
 
     /// Decrypts whole blocks in place in CBC mode, the first chained from
@@ -147,14 +155,14 @@ unsafe fn cbc(blocks: &mut [[u8; 16]], key: *const u8, iv: &[u8; 16], enc: i32) 
     // which aws-lc allows to alias, and the caller vouches for `key`. The
     // routine returns at once for zero bytes.
     unsafe {
-        vpaes_cbc_encrypt(
+        asm_call!(unsafe extern "C" vpaes_cbc_encrypt(
             blocks.as_ptr().cast(),
             blocks.as_mut_ptr().cast(),
             16 * blocks.len(),
             key,
             &mut ivec,
             enc,
-        )
+        ))
     }
 }
 

@@ -3662,3 +3662,20 @@ pub(super) static edwards25519_scalarmuldouble_constant: [u64; 96] = [
     0x636412190eb62a32,
     0x26907c5c2ecc4e95,
 ];
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        edwards25519_scalarmuldouble,
+        &mut [0; 8],
+        &[0; 4],
+        &[0; 8],
+        &[0; 4]
+    );
+}

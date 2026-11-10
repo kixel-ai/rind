@@ -980,3 +980,10 @@ pub(crate) fn p384_montjmixadd_alt(p3: &mut [u64; 18], p1: &[u64; 18], p2: &[u64
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(p384_montjmixadd_alt, &mut [0; 18], &[0; 18], &[0; 12]);
+}

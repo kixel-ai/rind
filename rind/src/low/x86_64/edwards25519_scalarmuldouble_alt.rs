@@ -3672,3 +3672,16 @@ pub(crate) fn edwards25519_scalarmuldouble_alt(
 
 // Precomputed table of multiples of generator for edwards25519
 // all in precomputed extended-projective (y-x,x+y,2*d*x*y) triples.
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        edwards25519_scalarmuldouble_alt,
+        &mut [0; 8],
+        &[0; 4],
+        &[0; 8],
+        &[0; 4]
+    );
+}

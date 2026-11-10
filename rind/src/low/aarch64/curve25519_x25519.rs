@@ -1770,3 +1770,10 @@ pub(crate) fn curve25519_x25519(res: &mut [u64; 4], scalar: &[u64; 4], point: &[
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(curve25519_x25519, &mut [0; 4], &[0; 4], &[0; 4]);
+}

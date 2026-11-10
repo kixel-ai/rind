@@ -2831,3 +2831,10 @@ pub(crate) fn p521_jscalarmul_alt(res: &mut [u64; 27], scalar: &[u64; 9], point:
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(p521_jscalarmul_alt, &mut [0; 27], &[0; 9], &[0; 27]);
+}

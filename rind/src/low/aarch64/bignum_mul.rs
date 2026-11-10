@@ -198,3 +198,10 @@ pub(crate) fn bignum_mul(z: &mut [u64], x: &[u64], y: &[u64]) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_mul, &mut [0; 8], &[1, 2, 3, 4], &[5, 6, 7, 8]);
+}

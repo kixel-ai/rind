@@ -375,3 +375,10 @@ pub(crate) fn bignum_copy_row_from_table_32(z: &mut [u64], table: &[u64], height
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_copy_row_from_table_32, &mut [0; 32], &[7; 96], 3, 2);
+}

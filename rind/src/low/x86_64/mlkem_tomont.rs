@@ -165,3 +165,13 @@ pub(crate) fn mlkem_tomont(a: &mut [i16; 256]) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("avx2")) {
+        return;
+    }
+    crate::low::abi::call!(mlkem_tomont, &mut [0; 256]);
+}

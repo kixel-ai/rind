@@ -918,3 +918,18 @@ pub(crate) unsafe fn aes128_gcm_dec(
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_aarch64_feature_detected!("aes")
+        && std::arch::is_aarch64_feature_detected!("pmull"))
+    {
+        return;
+    }
+    // SAFETY: the CPU has the features checked above.
+    unsafe {
+        crate::low::abi::call!(unsafe aes128_gcm_dec, [[0; 16]; 8].as_mut_ptr(), 1, &mut [0; 16], &mut [0; 16], &[crate::low::abi::zeroed(); 11], &[crate::low::abi::zeroed(); 6]);
+    }
+}

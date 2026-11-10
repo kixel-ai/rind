@@ -3574,3 +3574,14 @@ pub(crate) fn p256_montjscalarmul(res: &mut [u64; 12], scalar: &[u64; 4], point:
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(p256_montjscalarmul, &mut [0; 12], &[0; 4], &[0; 12]);
+}

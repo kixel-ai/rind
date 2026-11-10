@@ -88,3 +88,10 @@ pub(crate) fn bignum_digitsize(z: &[u64]) -> usize {
     };
     ret as usize
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_digitsize, &[1, 2, 0, 0]);
+}

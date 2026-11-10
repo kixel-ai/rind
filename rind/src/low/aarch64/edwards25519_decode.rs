@@ -636,3 +636,10 @@ pub(crate) fn edwards25519_decode(z: &mut [u64; 8], c: &[u8; 32]) -> bool {
     };
     ret == 0
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(edwards25519_decode, &mut [0; 8], &[0; 32]);
+}

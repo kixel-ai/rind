@@ -6524,3 +6524,10 @@ pub(crate) fn p256_scalarmul(res: &mut [u64; 8], scalar: &[u64; 4], point: &[u64
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(p256_scalarmul, &mut [0; 8], &[0; 4], &[0; 8]);
+}

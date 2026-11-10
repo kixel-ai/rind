@@ -142,3 +142,10 @@ pub(crate) fn mlkem_reduce(a: &mut [i16; 256]) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(mlkem_reduce, &mut [0; 256]);
+}

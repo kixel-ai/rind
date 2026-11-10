@@ -21,9 +21,13 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
     match HaveCryptoExt::check() {
         // SAFETY: `blocks` is `num` readable blocks, and the token proves the
         // CPU has the SHA-256 instructions.
-        Some(_) => unsafe { sha256_block_data_order_hw(state, data, num) },
+        Some(_) => unsafe {
+            asm_call!(unsafe extern "C" sha256_block_data_order_hw(state, data, num))
+        },
         // SAFETY: `blocks` is `num` readable blocks.
-        None => unsafe { sha256_block_data_order_nohw(state, data, num) },
+        None => unsafe {
+            asm_call!(unsafe extern "C" sha256_block_data_order_nohw(state, data, num))
+        },
     }
 }
 
@@ -114,8 +118,8 @@ mod tests {
             // SAFETY: `blocks` holds at least `n` blocks, and the CPU has the
             // SHA-256 instructions.
             unsafe {
-                sha256_block_data_order_nohw(&mut want, blocks.as_ptr(), n);
-                sha256_block_data_order_hw(&mut got, blocks.as_ptr(), n);
+                asm_call!(unsafe extern "C" sha256_block_data_order_nohw(&mut want, blocks.as_ptr(), n));
+                asm_call!(unsafe extern "C" sha256_block_data_order_hw(&mut got, blocks.as_ptr(), n));
             }
             assert_eq!(got, want, "{n} blocks");
         }

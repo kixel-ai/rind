@@ -209,7 +209,9 @@ impl Routines<'_> {
         // SAFETY: each pointer is to 40 words, which the routine reads and
         // writes, and it takes `a` and `b` as `r` too, as aws-lc calls it;
         // the token proves the AVX2 it uses.
-        unsafe { rsaz_1024_mul_avx2(r.cast(), a.cast(), b.cast(), self.m.as_ptr(), self.n0) };
+        unsafe {
+            asm_call!(unsafe extern "sysv64" rsaz_1024_mul_avx2(r.cast(), a.cast(), b.cast(), self.m.as_ptr(), self.n0))
+        };
     }
 
     /// `r = a` squared `count` times, each over `R`.
@@ -225,18 +227,24 @@ impl Routines<'_> {
 
     fn sqr_raw(&self, r: *mut Red, a: *const Red, count: i32) {
         // SAFETY: as `mul_raw`, and `count` is positive.
-        unsafe { rsaz_1024_sqr_avx2(r.cast(), a.cast(), self.m.as_ptr(), self.n0, count) };
+        unsafe {
+            asm_call!(unsafe extern "sysv64" rsaz_1024_sqr_avx2(r.cast(), a.cast(), self.m.as_ptr(), self.n0, count))
+        };
     }
 }
 
 fn norm2red(_: HaveAvx2, red: &mut Red, norm: &[u64; 16]) {
     // SAFETY: reads 16 words and writes 40, and the token proves AVX2.
-    unsafe { rsaz_1024_norm2red_avx2(red.as_mut_ptr(), norm.as_ptr()) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" rsaz_1024_norm2red_avx2(red.as_mut_ptr(), norm.as_ptr()))
+    };
 }
 
 fn red2norm(_: HaveAvx2, norm: &mut [u64; 16], red: &Red) {
     // SAFETY: reads 40 words and writes 16, and the token proves AVX2.
-    unsafe { rsaz_1024_red2norm_avx2(norm.as_mut_ptr(), red.as_ptr()) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" rsaz_1024_red2norm_avx2(norm.as_mut_ptr(), red.as_ptr()))
+    };
 }
 
 /// Stores `val` as `table[i]`, for a public `i` below 32.
@@ -245,7 +253,9 @@ fn scatter(_: HaveAvx2, table: &mut Table, val: &Red, i: u32) {
     // SAFETY: `i` is below 32, so the routine writes 16 bytes in each of the
     // table's 9 rows of 512, and it reads 36 words of `val`; the token proves
     // AVX2.
-    unsafe { rsaz_1024_scatter5_avx2(table.0.as_mut_ptr(), val.as_ptr(), i) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" rsaz_1024_scatter5_avx2(table.0.as_mut_ptr(), val.as_ptr(), i))
+    };
 }
 
 /// Loads `table[i]` into `val`, for a secret `i` below 32, reading every
@@ -253,7 +263,9 @@ fn scatter(_: HaveAvx2, table: &mut Table, val: &Red, i: u32) {
 fn gather(_: HaveAvx2, val: &mut Red, table: &Table, i: u32) {
     // SAFETY: the routine reads the whole 32-byte aligned table whatever `i`
     // is, and writes 40 words; the token proves AVX2.
-    unsafe { rsaz_1024_gather5_avx2(val.as_mut_ptr(), table.0.as_ptr(), i) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" rsaz_1024_gather5_avx2(val.as_mut_ptr(), table.0.as_ptr(), i))
+    };
 }
 
 /// The limb mask, which the products load.

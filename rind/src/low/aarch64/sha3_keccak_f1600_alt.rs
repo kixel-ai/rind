@@ -220,3 +220,16 @@ pub(crate) unsafe fn sha3_keccak_f1600(a: &mut [u64; 25], rc: &[u64; 24]) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_aarch64_feature_detected!("sha3")) {
+        return;
+    }
+    // SAFETY: the CPU has the features checked above.
+    unsafe {
+        crate::low::abi::call!(unsafe sha3_keccak_f1600, &mut [0; 25], &[0; 24]);
+    }
+}

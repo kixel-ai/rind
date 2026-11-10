@@ -332,3 +332,16 @@ pub(crate) fn mlkem_basemul_k3(
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        mlkem_basemul_k3,
+        &mut [0; 256],
+        &[0; 768],
+        &[0; 768],
+        &[0; 384]
+    );
+}

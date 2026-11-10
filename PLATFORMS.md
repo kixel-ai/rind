@@ -56,6 +56,12 @@ and `riscv64gc` (glibc and musl) under qemu. iOS devices' code is only built.
   assembly. SHA-3's and ML-KEM's Keccak-f runs [OpenSSL]'s assembly, on NEON
   where the CPU has it.
 
+- Builds with `-Z cf-protection=branch` or `-Z branch-protection=bti`, both
+  unstable, are unsupported: rind calls aws-lc's x86_64 and aarch64 routines
+  through function pointers, and their text, as rind imports it, holds no
+  `endbr64` or `bti` landing pad. `admin/import-aws-lc` should keep aws-lc's
+  markers once either flag stabilizes.
+
 - Every other architecture, big-endian `aarch64` and `arm`, whose assembly
   assumes little-endian, and `arm` before ARMv7, which rind's ARMv7 assembly
   does not run on, run the portable backend: what 32-bit `arm` runs without

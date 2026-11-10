@@ -143,3 +143,10 @@ pub(crate) fn bignum_mod_n256(z: &mut [u64; 4], x: &[u64; 4]) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_mod_n256, &mut [0; 4], &[0; 4]);
+}

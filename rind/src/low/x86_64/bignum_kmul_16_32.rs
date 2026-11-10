@@ -987,3 +987,20 @@ pub(crate) fn bignum_kmul_16_32(z: &mut [u64], x: &[u64], y: &[u64], t: &mut [u6
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        bignum_kmul_16_32,
+        &mut [0; 32],
+        &[1; 16],
+        &[2; 16],
+        &mut [0; 32]
+    );
+}

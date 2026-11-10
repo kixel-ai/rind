@@ -43,6 +43,12 @@ fn mark<const M: u32>() {
 mod tests {
     use super::*;
 
+    // Outside a ct_sde test, SDE is not watching for the mark.
+    #[test]
+    fn abi() {
+        crate::low::abi::call!(mark::<0>);
+    }
+
     // `admin/ct-sde` requires these to differ between seeds, so that a
     // harness that traces nothing, or strips the addresses it compares,
     // fails.

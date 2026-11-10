@@ -597,3 +597,10 @@ pub(crate) fn bignum_coprime(x: &[u64], y: &[u64], t: &mut [u64]) -> bool {
     };
     ret > 0
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_coprime, &[3; 4], &[5; 4], &mut [0; 8]);
+}

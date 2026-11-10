@@ -9443,3 +9443,10 @@ pub(crate) fn p384_montjscalarmul_alt(res: &mut [u64; 18], scalar: &[u64; 6], po
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(p384_montjscalarmul_alt, &mut [0; 18], &[0; 6], &[0; 18]);
+}

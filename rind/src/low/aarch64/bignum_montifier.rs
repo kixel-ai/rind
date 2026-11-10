@@ -537,3 +537,10 @@ pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], t: &mut [u64]) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_montifier, &mut [0; 4], &[u64::MAX; 4], &mut [0; 4]);
+}

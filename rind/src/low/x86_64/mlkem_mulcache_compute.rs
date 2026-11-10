@@ -136,3 +136,13 @@ pub(crate) fn mlkem_mulcache_compute(x: &mut [i16; 128], a: &[i16; 256], qdata: 
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("avx2")) {
+        return;
+    }
+    crate::low::abi::call!(mlkem_mulcache_compute, &mut [0; 128], &[0; 256], &[0; 624]);
+}

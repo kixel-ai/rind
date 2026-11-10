@@ -31,7 +31,9 @@ impl VpaesKey {
         // SAFETY: `key` holds `key_bits(key) / 8` bytes and `r` is an
         // `AES_KEY`. The
         // routines need only SSSE3, which the token proves.
-        let ret = unsafe { vpaes_set_encrypt_key(key.as_ptr(), key_bits(key), &mut r) };
+        let ret = unsafe {
+            asm_call!(unsafe extern "sysv64" vpaes_set_encrypt_key(key.as_ptr(), key_bits(key), &mut r))
+        };
         // aws-lc's always succeeds.
         debug_assert_eq!(ret, 0);
         r
@@ -49,7 +51,9 @@ impl VpaesKey {
         let mut out = [0u8; 16];
         // SAFETY: `block` is one readable block and `out` one writable one,
         // and `self` an expanded key, which only a `HaveSsse3` token builds.
-        unsafe { vpaes_encrypt(block.as_ptr(), out.as_mut_ptr(), self) };
+        unsafe {
+            asm_call!(unsafe extern "sysv64" vpaes_encrypt(block.as_ptr(), out.as_mut_ptr(), self))
+        };
         out
     }
 
@@ -63,13 +67,13 @@ impl VpaesKey {
         // `HaveSsse3` token builds. The routine returns at once for zero
         // blocks.
         unsafe {
-            vpaes_ctr32_encrypt_blocks(
+            asm_call!(unsafe extern "sysv64" vpaes_ctr32_encrypt_blocks(
                 inout.as_ptr().cast(),
                 inout.as_mut_ptr().cast(),
                 inout.len(),
                 self,
                 ivec,
-            )
+            ))
         }
     }
 
@@ -107,7 +111,9 @@ impl VpaesDecKey {
         // SAFETY: `key` holds `key_bits(key) / 8` bytes and `r` is an
         // `AES_KEY`. The
         // routines need only SSSE3, which the token proves.
-        let ret = unsafe { vpaes_set_decrypt_key(key.as_ptr(), key_bits(key), &mut r) };
+        let ret = unsafe {
+            asm_call!(unsafe extern "sysv64" vpaes_set_decrypt_key(key.as_ptr(), key_bits(key), &mut r))
+        };
         // aws-lc's always succeeds.
         debug_assert_eq!(ret, 0);
         r
@@ -118,7 +124,9 @@ impl VpaesDecKey {
         // SAFETY: `inout` is one readable and writable block, which aws-lc
         // allows to alias, and `self` an expanded decryption key, which only a
         // `HaveSsse3` token builds.
-        unsafe { vpaes_decrypt(inout.as_ptr(), inout.as_mut_ptr(), self) }
+        unsafe {
+            asm_call!(unsafe extern "sysv64" vpaes_decrypt(inout.as_ptr(), inout.as_mut_ptr(), self))
+        }
     }
 
     /// Decrypts whole blocks in place in CBC mode, the first chained from
@@ -150,14 +158,14 @@ unsafe fn cbc(blocks: &mut [[u8; 16]], key: *const u8, iv: &[u8; 16], enc: i32) 
     // SAFETY: `blocks` is `16 * blocks.len()` readable and writable bytes,
     // which aws-lc allows to alias, and the caller vouches for `key`.
     unsafe {
-        vpaes_cbc_encrypt(
+        asm_call!(unsafe extern "sysv64" vpaes_cbc_encrypt(
             blocks.as_ptr().cast(),
             blocks.as_mut_ptr().cast(),
             16 * blocks.len(),
             key,
             &mut ivec,
             enc,
-        )
+        ))
     }
 }
 

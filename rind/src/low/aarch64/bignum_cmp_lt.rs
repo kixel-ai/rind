@@ -129,3 +129,10 @@ pub(crate) fn bignum_cmp_lt(x: &[u64], y: &[u64]) -> u64 {
     };
     ret
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_cmp_lt, &[1, 2, 3, 4], &[1, 2, 3]);
+}

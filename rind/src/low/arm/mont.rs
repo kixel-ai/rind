@@ -61,7 +61,9 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
         // the routines read and write, `num` is at least two and a multiple
         // of eight, they read `n0`'s low word, and the token proves the CPU
         // has NEON.
-        Some(_) if num.is_multiple_of(8) => unsafe { bn_mul8x_mont_neon(rp, ap, bp, np, &n0, num) },
+        Some(_) if num.is_multiple_of(8) => unsafe {
+            asm_call!(unsafe extern "C" bn_mul8x_mont_neon(rp, ap, bp, np, &n0, num))
+        },
         // Where m's top 32 bits are zero, as for a 2056-bit key's 1028-bit
         // primes, so are x's and y's, and the integer routine runs a word
         // narrower, as aws-lc's does at the modulus's own width; one more
@@ -69,12 +71,12 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
         // width is public: the key's encoding gives it.
         _ if k > 1 && ct::into_public(m[k - 1] >> 32 == 0) => {
             // SAFETY: as above, for `num - 1` words, at least two.
-            unsafe { bn_mul_mont_nohw(rp, ap, bp, np, &n0, num - 1) };
+            unsafe { asm_call!(unsafe extern "C" bn_mul_mont_nohw(rp, ap, bp, np, &n0, num - 1)) };
             reduce_limb(z, m, n0 as u32);
         }
         // SAFETY: as above, from two words.
         _ => unsafe {
-            bn_mul_mont_nohw(rp, ap, bp, np, &n0, num);
+            asm_call!(unsafe extern "C" bn_mul_mont_nohw(rp, ap, bp, np, &n0, num));
         },
     }
 }
@@ -188,14 +190,18 @@ mod tests {
                 let mut got = [0; 64];
                 let (num, z) = (k * 2, got[..k].as_mut_ptr());
                 // SAFETY: each operand is `num` 32-bit words.
-                unsafe { bn_mul_mont_nohw(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num) };
+                unsafe {
+                    asm_call!(unsafe extern "C" bn_mul_mont_nohw(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num))
+                };
                 assert_eq!(want[..k], got[..k], "nohw, {k} words, case {case}");
 
                 if num.is_multiple_of(8) && HaveNeon::check().is_some() {
                     got.fill(0);
                     let z = got[..k].as_mut_ptr();
                     // SAFETY: as above, and the CPU has NEON.
-                    unsafe { bn_mul8x_mont_neon(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num) };
+                    unsafe {
+                        asm_call!(unsafe extern "C" bn_mul8x_mont_neon(z, x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, num))
+                    };
                     assert_eq!(want[..k], got[..k], "neon, {k} words, case {case}");
                 }
 

@@ -341,3 +341,10 @@ pub(crate) fn bignum_sqr_p521_alt(z: &mut [u64; 9], x: &[u64; 9]) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_sqr_p521_alt, &mut [0; 9], &[0; 9]);
+}

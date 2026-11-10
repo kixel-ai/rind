@@ -144,3 +144,22 @@ pub(crate) fn mlkem_rej_uniform_vartime(r: &mut [i16; 256], input: &[u8], table:
     };
     ret
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("bmi2")
+        && std::arch::is_x86_feature_detected!("popcnt")
+        && std::arch::is_x86_feature_detected!("sse4.1")
+        && std::arch::is_x86_feature_detected!("ssse3"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        mlkem_rej_uniform_vartime,
+        &mut [0; 256],
+        &[0x55; 168],
+        &super::mlkem::MLKEM_REJ_UNIFORM_TABLE
+    );
+}

@@ -346,3 +346,16 @@ pub(crate) fn bignum_montmul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_montmul,
+        &mut [0; 4],
+        &[1; 4],
+        &[2; 4],
+        &[u64::MAX; 4]
+    );
+}

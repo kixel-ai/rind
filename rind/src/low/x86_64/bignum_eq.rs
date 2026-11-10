@@ -117,3 +117,10 @@ pub(crate) fn bignum_eq(x: &[u64], y: &[u64]) -> bool {
     };
     ret > 0
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_eq, &[1; 4], &[1; 3]);
+}
