@@ -3081,7 +3081,7 @@ dependencies = [
 
 [[package]]
 name = "rind"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "aws-lc-rs",
  "aws-lc-sys",
@@ -3260,7 +3260,7 @@ dependencies = [
 
 [[package]]
 name = "rind-ring"
-version = "0.17.3"
+version = "0.17.4"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3292,7 +3292,7 @@ dependencies = [
 
 [[package]]
 name = "rind-str0m"
-version = "0.25.2"
+version = "0.25.3"
 dependencies = [
  "crabgrind 0.4.0",
  "dimpl",
