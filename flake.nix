@@ -64,6 +64,16 @@
 
           quest-cli = quest.packages.${system}.default;
 
+          timing-shell = {
+            packages = [
+              rust-stable.minimal
+              # admin/timing finds the binary cargo built.
+              pkgs.jq
+            ]
+            # taskset pins the tests to one core.
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
+          };
+
           # rind itself builds for armv7 without C. Only its tests need this
           # ARM C toolchain, for the aws-lc-rs dev-dependency they check
           # against, so it lives in `devShells.armv7` and nothing rind ships
@@ -371,12 +381,13 @@
               env.JOSERFC_SRC = pkgs.python3Packages.joserfc.src;
             };
 
-            # `admin/timing` and the timing workflow run in it: rind-timing's
-            # dudect cases, and the Marvin toolkit's RSA ciphertexts, timed by
-            # rind-timing and analysed by tlsfuzzer.
+            # dudect needs only Rust, without Marvin's Python and toolkit fetches.
+            dudect = pkgs.mkShell timing-shell;
+
+            # The Marvin toolkit's RSA ciphertexts, timed by rind-timing and
+            # analysed by tlsfuzzer.
             timing = pkgs.mkShell {
-              packages = [
-                rust-stable.minimal
+              packages = timing-shell.packages ++ [
                 (
                   (pkgs.python3.override {
                     packageOverrides = _: super: {
@@ -415,11 +426,7 @@
                 )
                 # The Marvin keys and certificates.
                 pkgs.openssl
-                # admin/timing finds the binary cargo built.
-                pkgs.jq
-              ]
-              # `taskset` pins the tests to one core.
-              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
+              ];
 
               env = {
                 MARVIN_TOOLKIT = pkgs.fetchFromGitHub {
@@ -610,10 +617,12 @@
             # powerpc` test the portable backend on PowerPC Linux in them,
             # the last two big-endian. Rust's powerpc64 target uses the ELFv1
             # ABI, unlike nixpkgs' default `ppc64`. Rust links both big-endian
-            # targets with its own lld, which refuses ELFv1 objects and, in a
-            # 32-bit PIE, gives an undefined weak function a nonzero address,
-            # so aws-lc calls its unset allocator hook. gcc obeys the last
-            # `-fuse-ld`, so a trailing one picks GNU ld.
+            # targets with its own lld, which refuses ELFv1 objects, and on
+            # 32-bit PowerPC supports only the Secure PLT: nixpkgs' ppc32 gcc
+            # is built without `--enable-secureplt`, so its objects, its
+            # `crtbeginS.o` included, use the BSS PLT, which lld links without
+            # error into a binary that crashes. GNU ld handles both. gcc obeys
+            # the last `-fuse-ld`, so a trailing one picks GNU ld.
             powerpc64le = qemu-shell {
               target = "powerpc64le-unknown-linux-gnu";
               cross = pkgs.pkgsCross.powernv;

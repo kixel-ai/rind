@@ -11,7 +11,3 @@ A machine-checked model of the 32-bit Arm instructions armv7's assembly uses, in
 - Options, for the maintainer to pick from what this finds: extend s2n-bignum with an AArch32 model in HOL Light (its tactics and specs carry over; asking s2n-bignum whether they would take it is a post outside the moq-dev and kixelated orgs, so stop and ask the maintainer first, with no standing approval), or a Lean model derived from Arm's ASL through Sail if it covers AArch32, so armv7's proofs live beside `proofs/`.
 - Validate the model against hardware or qemu by random-instruction testing, as s2n-bignum validates its own.
 - Prove the smallest routine first, `low/arm/bignum_eq.rs`'s compare, to exercise the model end to end.
-
-## Required
-
-- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
