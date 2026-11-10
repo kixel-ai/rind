@@ -246,10 +246,10 @@ theorem diffie_hellman_spec (h : Runs) (k : mid.x25519.PrivateKey) (peer : mid.x
 /-! ## The agreement API's X25519 impl, `high::agreement` -/
 
 theorem encode_public_spec (h : Runs) (k : mid.x25519.PrivateKey) (algorithm : high.agreement.Algorithm) :
-    mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_public k algorithm ⦃ pk =>
+    high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.encode_public k algorithm ⦃ pk =>
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
         b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.val) 9 ⦄ ⦄ := by
-  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_public high.agreement.PublicKey.from_encoding
+  unfold high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.encode_public high.agreement.PublicKey.from_encoding
     high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref low.generic.zeroise.ZeroableRef.new
   step as ⟨pk, hpk⟩
   step as ⟨a, ha⟩
@@ -268,13 +268,13 @@ theorem encode_public_spec (h : Runs) (k : mid.x25519.PrivateKey) (algorithm : h
   simp only [List.drop_zero, Nat.sub_zero, this, ha, hpk]
 
 theorem agree_spec (h : Runs) (k : mid.x25519.PrivateKey) (peer : Slice U8) :
-    mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.agree k peer ⦃ r =>
+    high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.agree k peer ⦃ r =>
       if peer.length = 32 then
         if rfcx25519 (wordsNat k.val) (leNat peer.val) = 0 then
           r = .Err (.KeyRejected .SmallOrder)
         else ∃ s, r = .Ok (.X25519 s) ∧ leNat s.val = rfcx25519 (wordsNat k.val) (leNat peer.val)
       else r = .Err (.KeyRejected .WrongLength) ⦄ := by
-  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.agree
+  unfold high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.agree
   step as ⟨r, hr⟩
   by_cases hp : peer.length = 32
   · simp only [hp, ↓reduceIte] at hr ⊢
@@ -295,11 +295,11 @@ theorem agree_spec (h : Runs) (k : mid.x25519.PrivateKey) (peer : Slice U8) :
 theorem random_spec (h : Runs) (r : core.result.Result Unit getrandom.error.Error)
     (out : Slice U8) (hout : out.length = 32)
     (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) :
-    mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.random ⦃ key =>
+    high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.random ⦃ key =>
       match r with
       | .Ok _ => ∃ k, key = core.result.Result.Ok k ∧ wordsNat k.val = leNat out.val
       | .Err _ => key = core.result.Result.Err error.Error.RngFailed ⦄ := by
-  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.random mid.x25519.PrivateKey.new_random
+  unfold high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.random mid.x25519.PrivateKey.new_random
     mid.rng.SystemRandom.Insts.RindMidRngRandomSource.fill low.ct.into_secret
   rcases r with _ | e <;> simp only [Array.to_slice_mut, lift] <;> step <;> rw [hfill]
   · simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch]
@@ -312,12 +312,12 @@ theorem random_spec (h : Runs) (r : core.result.Result Unit getrandom.error.Erro
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
 
 theorem load_scalar_spec (h : Runs) (algorithm : high.agreement.Algorithm) (b : Slice U8) :
-    mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.load algorithm (.Scalar b) ⦃ r =>
+    high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.load algorithm (.Scalar b) ⦃ r =>
       if b.length = 32 then ∃ k pk, r = .Ok (k, pk) ∧ wordsNat k.val = leNat b.val ∧
         high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
           b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.val) 9 ⦄
       else r = .Err (.KeyRejected .WrongLength) ⦄ := by
-  unfold mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.load
+  unfold high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.load
   step with from_bytes_spec h b as ⟨r, hr⟩
   split_ifs at hr ⊢
   · obtain ⟨k, rfl, hk⟩ := hr
@@ -336,7 +336,7 @@ theorem load_scalar_spec (h : Runs) (algorithm : high.agreement.Algorithm) (b : 
 u-coordinate of `d` times the base point, as RFC 7748's 32 little-endian
 bytes. -/
 def x25519Key (d : Nat) (key : high.agreement.PrivateKey) : Prop :=
-  ∃ k : high.agreement.Keyed mid.x25519.PrivateKey, key.«private» = .X25519 k ∧
+  ∃ k : high.agreement.Keyed high.agreement.X25519Curve mid.x25519.PrivateKey, key.«private» = .X25519 k ∧
     wordsNat k.key.val = d ∧
     high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref key.«public» ⦃ b =>
       b.length = 32 ∧ leNat b.val = rfcx25519 d 9 ⦄
@@ -346,9 +346,9 @@ def x25519Key (d : Nat) (key : high.agreement.PrivateKey) : Prop :=
 theorem private_key_spec (k : mid.x25519.PrivateKey) (pk : high.agreement.PublicKey)
     (hpk : high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
       b.length = 32 ∧ leNat b.val = rfcx25519 (wordsNat k.val) 9 ⦄) :
-    high.agreement.Keyed.private_key mid.x25519.PrivateKey.Insts.RindHighAgreementAgree k pk ⦃ key =>
+    high.agreement.Keyed.private_key high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey k pk ⦃ key =>
       x25519Key (wordsNat k.val) key ⦄ := by
-  simp only [high.agreement.Keyed.private_key, mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.wrap,
+  simp only [high.agreement.Keyed.private_key, high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.wrap,
     bind_ok, WP.spec_ok]
   exact ⟨{ key := k, ops := () }, rfl, rfl, hpk⟩
 
@@ -406,7 +406,7 @@ theorem x25519_public_key (key : high.agreement.PrivateKey) (d : Nat) (hkey : x2
 is 32 bytes, refused for the all-zero output of a small-order point, and
 otherwise RFC 7748's X25519 of this key's scalar and the peer's u-coordinate. -/
 theorem x25519_agree (h : Runs) (key : high.agreement.PrivateKey)
-    (k : high.agreement.Keyed mid.x25519.PrivateKey) (hk : key.«private» = .X25519 k)
+    (k : high.agreement.Keyed high.agreement.X25519Curve mid.x25519.PrivateKey) (hk : key.«private» = .X25519 k)
     (peer : Slice U8) :
     high.agreement.PrivateKey.agree key peer ⦃ r =>
       if peer.length = 32 then

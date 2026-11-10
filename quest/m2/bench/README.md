@@ -14,5 +14,4 @@ The audit found rind level or ahead in every ranked cell on mainline x86_64, aar
 
 ## Required
 
-- [Nightly rows for the tiers nothing times](/quest/m2/bench/tiers.md) - rows for aarch64 without SHA3/SHA-512, x86_64 without AVX-512, and armv7 without the crypto extension
 - [Benchmark report refresh, before rind 0.4](/quest/m2/bench/report-refresh.md) - recurring rerun of the report on every host, once per minor release
