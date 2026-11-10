@@ -247,7 +247,10 @@ fn record(suite: u8, key: [u8; 32], iv: [u8; 12], seq: u64, typ: u8, plain: &[u8
     let [ours, theirs] = &mut decrypters;
     let opened = open(ours.as_mut(), sealed.typ, &record, seq);
     assert_eq!(opened, open(theirs.as_mut(), sealed.typ, &record, seq));
-    if !edited {
+    if !edited && plain.len() > 16384 {
+        // rustls refuses a plaintext over its 16 KiB fragment limit once it opens.
+        assert_eq!(opened, Err(Error::PeerSentOversizedRecord));
+    } else if !edited {
         let (opened_typ, _, payload) = opened.expect("an unedited record opens");
         assert_eq!((opened_typ, payload.as_slice()), (typ, plain));
     }
