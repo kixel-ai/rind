@@ -117,6 +117,7 @@ macro_rules! montreds {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p384/bignum_montsqr_p384.S.
 /// Montgomery square, z := (x^2 / 2^384) mod p_384
 ///
 /// Input x[6]; output z[6]

@@ -76,7 +76,7 @@ impl EphemeralPrivateKey {
     /// Returns the public key to send to the peer.
     pub fn compute_public_key(&self) -> Result<PublicKey, error::Unspecified> {
         Ok(PublicKey {
-            bytes: self.key.public_key(),
+            bytes: self.key.public_key().clone(),
             algorithm: self.algorithm,
         })
     }
@@ -154,7 +154,7 @@ impl<B: AsRef<[u8]>> AsRef<[u8]> for UnparsedPublicKey<B> {
     }
 }
 
-impl<B: AsRef<[u8]>> fmt::Debug for UnparsedPublicKey<B> {
+impl<B: AsRef<[u8]> + fmt::Debug> fmt::Debug for UnparsedPublicKey<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("UnparsedPublicKey")
             .field("algorithm", self.algorithm)

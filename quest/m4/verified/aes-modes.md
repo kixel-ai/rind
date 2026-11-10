@@ -12,5 +12,5 @@
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
+- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
 - [AES and QUIC AES header protection are proven with AES hardware](/quest/m4/verified/aes-header-protection.md) - the block cipher and its intrinsic models

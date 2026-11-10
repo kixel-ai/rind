@@ -12,7 +12,7 @@ A primitive is checked four ways:
   files](thirdparty/vectors/README.md), run by `cargo test`.
 - **Fuzz target**: a `fuzz/fuzzer/` target that compares rind with aws-lc-rs
   on fuzzed input. `fuzz.yml` runs each nightly, then replays its corpus on
-  each slower tier.
+  every tier.
 - **Differential test**: a `rind/tests/crosschecks.rs` test that compares rind
   with aws-lc-rs, run by `cargo test`.
 - **Constant time**: a test that marks the secrets. `admin/ctgrind` runs the
@@ -21,7 +21,10 @@ A primitive is checked four ways:
   builds one is checked. `admin/ct-sde` and `admin/ct-qemu` compare the traces
   of `ct_sde_...` and `ct_qemu_...` tests for two secrets, for the code
   valgrind cannot run. None of the three sees variable-time instructions;
-  `admin/ct-vartime`, in `just ci`, looks for those.
+  `admin/ct-vartime` scans the release builds for them. Where a cell cites
+  s2n-bignum's `_SAFE` theorems, they prove the routines they cover constant
+  time for every input, including variable-time instructions, and
+  `admin/prove bytes` checks that rind runs the code they are about.
 
 `admin/testing`, in `just ci`, fails when an export, fuzz target, differential
 test, constant-time test, vector file, or CCTV/imported-vector test is missing
@@ -39,10 +42,10 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 
 | Backend | Tier | Vectors and differential tests | Fuzz targets | Constant time |
 |---|---|---|---|---|
-| x86_64 | AVX-512 (Ice Lake and later, Zen 4 and 5) | SDE: Cannon Lake (RSA only), Granite Rapids, Diamond Rapids | the runner's tier, when it has AVX-512 | `admin/ct-sde`: AES-GCM and RSA; ML-KEM's AVX-512 code reads only the public matrix |
-| x86_64 | SHA512 instructions (Arrow Lake, Diamond Rapids) | SDE: Arrow Lake, Diamond Rapids | none: GitHub's runners lack them, [planned](/quest/m3/confidence/fuzz-tiers.md) | `admin/ct-sde`: HMAC |
-| x86_64 | VAES without AVX-512 (Alder Lake, Zen 3) | SDE: Alder Lake, Granite Rapids at 256 bits; the runner, when Zen 3 | the runner's tier, when Zen 3; denied, when it has AVX-512 | `admin/ct-sde`: AES-GCM |
-| x86_64 | SHA extensions (Goldmont, Cannon Lake and later, Zen) | SDE: Goldmont and later | the runner's tier | `admin/ct-sde`: HMAC |
+| x86_64 | AVX-512 (Ice Lake and later, Zen 4 and 5) | SDE: Cannon Lake (RSA only), Granite Rapids, Diamond Rapids | SDE: Diamond Rapids; the runner's tier, when it has AVX-512 | `admin/ct-sde`: AES-GCM and RSA; ML-KEM's AVX-512 code reads only the public matrix |
+| x86_64 | SHA512 instructions (Arrow Lake, Diamond Rapids) | SDE: Arrow Lake, Diamond Rapids | SDE: Diamond Rapids | `admin/ct-sde`: HMAC |
+| x86_64 | VAES without AVX-512 (Alder Lake, Zen 3) | SDE: Alder Lake, Granite Rapids at 256 bits; the runner, when Zen 3 | SDE: Diamond Rapids, denied; the runner's tier, when Zen 3; denied, when it has AVX-512 | `admin/ct-sde`: AES-GCM |
+| x86_64 | SHA extensions (Goldmont, Cannon Lake and later, Zen) | SDE: Goldmont and later | SDE: Diamond Rapids; the runner's tier | `admin/ct-sde`: HMAC |
 | x86_64 | AVX2 and ADX, no SHA extensions or VAES (Broadwell to Cooper Lake) | SDE: Skylake server; denied | denied | ctgrind: valgrind hides AVX-512, VAES, and the SHA extensions, so the runner's own run lands here |
 | x86_64 | AVX2 without ADX (Haswell) | SDE: Haswell; denied | denied | ctgrind: denied (`no-adx`) |
 | x86_64 | AVX without AVX2 (Sandy and Ivy Bridge, Bulldozer, Jaguar) | SDE: Sandy Bridge, which runs Intel's AVX SHA; denied, which runs other vendors' | denied | ctgrind: denied (`no-avx2`); Intel's AVX SHA, which GitHub's AMD runners never pick, in the SHA `paths_match` tests |
@@ -52,10 +55,14 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 | aarch64 | crypto extension, SHA-512 and SHA-3 instructions (Graviton 3, Apple M, Cobalt 100) | `build.yml` on the arm64 runners | the arm64 runner | `admin/ct-qemu`: AES-GCM, HMAC-SHA384 and HMAC-SHA512, and ML-KEM, for SHA3's Keccak kernels; ctgrind for the rest, as the next row |
 | aarch64 | crypto extension without SHA-3 (Graviton 2, Raspberry Pi 5) | denied | denied | ctgrind on the arm64 runner, which valgrind hides SHA3 from |
 | aarch64 | no crypto extension (Raspberry Pi 4) | denied | denied | ctgrind: denied (`aarch64-portable`) |
-| armv7 | crypto extension (most 32-bit Android) | `just armv7`: qemu `max` | none: `fuzz.yml` builds only on GitHub's hosted runners, [planned](/quest/m3/confidence/fuzz-tiers.md) | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
-| armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | none, as above | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
-| armv7 | no NEON | `just armv7`: qemu Cortex-A15, denied | none, as above | ctgrind: denied (`no-neon`) |
+| armv7 | crypto extension (most 32-bit Android) | `just armv7`: qemu `max` | the arm64 runner, which runs armv7 natively | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
+| armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | denied | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
+| armv7 | no NEON | `just armv7`: qemu Cortex-A15, denied | denied | ctgrind: denied (`no-neon`) |
 | portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | none: fuzz jobs build the native backends | ctgrind: the `portable` job forces this backend |
+| portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | none, as above | ctgrind's forced run, of the same code built for x86_64 |
+| portable | riscv64gc Linux, glibc and musl | `just qemu riscv64` and `just qemu riscv64-musl`: as s390x | none, as above | as s390x |
+| portable | PowerPC Linux: powerpc64le, big-endian powerpc64 and powerpc | `just qemu powerpc64le`, `just qemu powerpc64`, and `just qemu powerpc`: as s390x | none, as above | as s390x |
+| portable | ARM before ARMv7 (Raspberry Pi 1 and Zero) | `just qemu armv6` and `just qemu armv6-softfloat`: as s390x, on qemu's ARM1176; `build.yml`'s `android` job: ARMv5TE Android | none, as above | as s390x |
 
 ## Vector suites
 
@@ -70,9 +77,13 @@ randomized signatures and encryption are checked by verification or round trips.
 
 The unit tests named below read the remaining imported sets: ECDSA signing
 and verification with fixed digests/nonces, BoringSSL's ML-KEM-768 (including
-NIST's vectors), Miller-Rabin, P-256 point addition, and Poly1305. P-256's
-point-addition test runs only on x86_64, for affine inputs supported by rind's
-routine. Poly1305's standalone test runs on x86_64, aarch64, and the 64-bit
+NIST's vectors), Miller-Rabin, modular multiplication and exponentiation,
+P-256 point addition, and Poly1305. P-256's point-addition test runs only on
+x86_64, for affine inputs supported by rind's routine. The modular ones run
+each unproven Montgomery and RSAZ routine of the backend that takes the
+modulus's width, not only the one the CPU picks; beside them, each routine's
+unit tests compare it with proven or portable arithmetic on values built from
+edge-case limbs, in its own radix. Poly1305's standalone test runs on x86_64, aarch64, and the 64-bit
 portable backend; the AEAD vectors check the other Poly1305 implementations.
 
 CCTV's ML-KEM tests read `ML-KEM/{intermediate,unluckysample,strcmp,modulus}/`.
@@ -89,6 +100,27 @@ accumulation in native release builds, on every denied x86_64/aarch64 tier,
 and through `just portable`. `just armv7` and `x86-cpu.yml`'s SDE models use
 the default 10,000 cases, even though they build in release mode.
 
+## Undefined behavior
+
+The nightly `miri` workflow, or `just miri TARGET`, runs the portable
+backend's tests under [Miri] with `wipe` on, forced on x86_64 and again as
+big-endian `s390x-unknown-linux-gnu`. Miri fails a test on undefined behavior,
+such as a key type's wipe leaving an invalid value for the drop that follows,
+a misaligned or out-of-bounds pointer, or a data race in `ReuseCache`, in rind
+or in the libcrux, fiat-crypto, and curve25519-dalek code it calls; a
+byte-order assumption fails the test's own assertions on s390x. Miri runs no
+assembly, so the other backends are out.
+
+Miri runs each test hundreds of times slower than a native build, so it runs a
+subset: the unit tests and `tests/cpu.rs` and `tests/debug.rs`, without the
+tests `sh/miri.sh` lists as slow, which are the vector sets, RSA beyond
+`debug::rsa`'s one decryption, and the tests that run many scalar
+multiplications. Every primitive keeps a test that builds, uses, and drops its
+keys. Miri cannot run aws-lc's C, so its builds leave out aws-lc-rs and the
+differential tests, `tests/crosschecks.rs` and `tests/cctv.rs` among them.
+`tests/wycheproof.rs` and `tests/aws_lc.rs` are vector sets too, and
+`tests/zeroing.rs` reads a dropped value on purpose.
+
 ## Primitives
 
 A cell's "none" says why, or links the quest that fills it.
@@ -103,24 +135,24 @@ constant-time cell is empty by design.
 | QUIC header protection | `aead::quic::{Algorithm, AES_128, AES_256, CHACHA20, HeaderProtectionKey, SAMPLE_LEN}` | RFC 9001: `aead::quic::rfc9001` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md) | `crosschecks::cipher::quic_header_protection_mask` | ctgrind: AES's key, as below, and ChaCha20's `mid::chacha20::new`; qemu: `mid::aes::ct_qemu_aes` |
 | AES block | `cipher::{Aes, Algorithm, AES_128, AES_192, AES_256}` | `cavp/aes`, `aws_lc::aes`, `aws_lc::cipher` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md) | `crosschecks::cipher::aes_block` | ctgrind: `mid::aes::expand_key`, `mid::aes::encrypt_block`; qemu: `mid::aes::ct_qemu_aes` |
 | AES-CTR | `cipher::AesCtr` | SP 800-38A: `mid::aes::sp800_38a`, RFC 3686: `mid::aes::rfc3686`, RFC 3711: `mid::aes::srtp_aes_cm`, `aws_lc::cipher` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md) | `crosschecks::cipher::aes_ctr` | ctgrind: `mid::aes::expand_key`, `mid::aes::apply_keystream`; qemu: `mid::aes::ct_qemu_aes` |
-| AES-CBC | `cipher::{AesCbcDecryptingKey, AesCbcEncryptingKey}` | `aes_cbc_pkcs5_test`, SP 800-38A: `mid::aes_cbc::sp800_38a`, `aws_lc::cipher` | `fuzz::aes_cbc` | `crosschecks::cipher::aes_cbc_pkcs7`, `crosschecks::cipher::aes_cbc_unpadded` | ctgrind: the key `mid::aes_cbc::new`; qemu: `mid::aes_cbc::ct_qemu_aes_cbc` |
+| AES-CBC | `cipher::{AesCbcDecryptingKey, AesCbcEncryptingKey, CbcIv}` | `aes_cbc_pkcs5_test`, SP 800-38A: `mid::aes_cbc::sp800_38a`, `aws_lc::cipher` | `fuzz::aes_cbc` | `crosschecks::cipher::aes_cbc_pkcs7`, `crosschecks::cipher::aes_cbc_unpadded` | ctgrind: the key `mid::aes_cbc::new`; qemu: `mid::aes_cbc::ct_qemu_aes_cbc` |
 | ChaCha20 | `cipher::ChaCha20` | `chacha20_counter_test`, RFC 8439: `mid::chacha20::rfc8439` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md) | `crosschecks::cipher::chacha20_keystream`, `crosschecks::cipher::chacha20_every_length` | ctgrind: the key `mid::chacha20::new`, `low::x86_64::chacha20::paths_match`, `low::arm::chacha_armv4::neon_matches_nohw` |
 | AES-KW, AES-KWP | `key_wrap::{AesKek, AES_128, AES_192, AES_256}` | `aes_wrap_test`, `aes_kwp_test`, RFC 3394: `mid::aes_kw::rfc3394`, RFC 5649: `mid::aes_kw::rfc5649`, `aws_lc::aes` | `fuzz::key_wrap`, but not AES-192, which aws-lc-rs lacks | `crosschecks::key_wrap::wrap_and_unwrap`, `crosschecks::key_wrap::wrap_and_unwrap_padded` | ctgrind: the key `mid::aes_kw::new`; qemu: `mid::aes_kw::ct_qemu_aes_kw` |
 | MD5 | `digest::legacy::MD5` | RFC 1321: `mid::md5::rfc1321` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md) | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message` |
 | SHA-1 | `digest::legacy::SHA1` | `cavp-sha1` | `fuzz::sha1` | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message`, each x86_64 path `low::x86_64::sha1::paths_match_generic`; SDE and qemu: through HMAC |
 | SHA-2 | `digest::{Algorithm, Context, Digest, digest, SHA256, SHA384, SHA512, SHA512_256}` | `cavp/sha2` | `fuzz::sha2` | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message`, each x86_64 path `low::x86_64::sha256::paths_match_generic`, `low::x86_64::sha512::paths_match_nohw`; SDE and qemu: through HMAC |
-| SHA-3 | `digest::{SHA3_256, SHA3_384, SHA3_512}` | `cavp/sha3` | `fuzz::sha3` | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message`; qemu: aarch64's SHA3 kernels through ML-KEM |
+| SHA-3 | `digest::{SHA3_256, SHA3_384, SHA3_512}` | `cavp/sha3` | `fuzz::sha3` | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message`; proof: on aarch64, s2n-bignum's _SAFE theorems, for the routines [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists with one; qemu: aarch64's SHA3 kernels through ML-KEM |
 | HMAC | `hmac::{Algorithm, Context, Key, Tag, sign, verify, HMAC_SHA256, HMAC_SHA384, HMAC_SHA512}`, `hmac::legacy::HMAC_SHA1` | `hmac_sha*_test`, `cavp/hmac`, `aws_lc::hmac` | `fuzz::sha1`, `fuzz::sha2` | `crosschecks::hmac_matches_aws_lc_rs` | ctgrind: `high::hmac::secret_key_and_message`; SDE: `high::hmac::ct_sde_hmac`; qemu: `high::hmac::ct_qemu_hmac` |
 | HKDF | `hkdf::{Algorithm, KeyType, Okm, Prk, Salt, HKDF_SHA256, HKDF_SHA384, HKDF_SHA512}`, `hkdf::legacy::HKDF_SHA1` | `hkdf_sha*_test`, RFC 5869: `high::hkdf::rfc5869` | `fuzz::hkdf` | `crosschecks::hkdf::matches_aws_lc_rs`, `crosschecks::hkdf::keys` | ctgrind: `high::hkdf::secret_ikm` |
 | PBKDF2 | `pbkdf2::{Algorithm, Secret, PBKDF2_HMAC_SHA256, PBKDF2_HMAC_SHA384, PBKDF2_HMAC_SHA512}`, `pbkdf2::legacy::PBKDF2_HMAC_SHA1` | `pbkdf2_hmacsha*_test` | `fuzz::pbkdf2` | `crosschecks::pbkdf2::matches_aws_lc_rs` | ctgrind: `high::pbkdf2::secret_password` |
-| X25519 | `agreement::{Algorithm, PrivateKey, PublicKey, Scalar, SharedSecret, X25519}` | `x25519_test`, `x25519_asn_test`, `aws_lc::evp` | `fuzz::kx`, `fuzz::keys` | `crosschecks::ecdh_scalars::x25519`, `crosschecks::ecdh_scalars::x25519_pkcs8` | ctgrind: the key `mid::x25519::from_bytes`, `mid::x25519::new_random`, `high::agreement::loads_in_constant_time`, `low::arm::curve25519::neon_matches_dalek` |
-| ECDH P-256, P-384, P-521 | `agreement::{Algorithm, PrivateKey, PublicKey, Scalar, SharedSecret, ECDH_P256, ECDH_P384, ECDH_P521}` | `ecdh_secp*r1_test`, `ecdh_secp*r1_ecpoint_test`, `cavp/ecdsa` (key pairs and public key validation), `aws_lc::ecdh`, `aws_lc::ec_scalar_base_mult`, `aws_lc::evp`; x86_64 P-256 point addition: `low::x86_64::ecp_nistz256::aws_lc_point_add_affine` | `fuzz::kx`, `fuzz::keys` | `crosschecks::ecdh`, `crosschecks::ecdh_stored`, `crosschecks::ecdh_scalars::p256` | ctgrind: the keys `mid::p256::from_bytes`, `mid::p256::generate`, `mid::p384::from_bytes`, `mid::p384::generate`, `mid::p521::from_bytes`, `mid::p521::generate`, `high::agreement::loads_in_constant_time` |
-| ML-KEM-768 | `kem::{Algorithm, Ciphertext, DecapsulationKey, EncapsulationKey, SharedSecret, ML_KEM_768}` | `mlkem_768*_test`, `high::kem::boringssl`, `high::kem::cctv_intermediate`, `high::kem::cctv_unlucky_sample`, `high::kem::cctv_strcmp`, `high::kem::cctv_modulus`, `high::kem::cctv_accumulated` | `fuzz::kem`, `fuzz::keys` | `crosschecks::mlkem768::encapsulated_by_ours`, `high::kem::encapsulated_by_theirs` | ctgrind: `mid::mlkem768::keygen_internal`, `mid::mlkem768::encaps_internal`; qemu: `mid::mlkem768::ct_qemu_mlkem768` |
-| Ed25519 signing | `signature::{Ed25519KeyPair, Ed25519Seed}` | RFC 8032: `mid::ed25519::test_rfc8032_test_vectors`, `aws_lc::ed25519`, `aws_lc::evp` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md); its seeds load in `fuzz::keys` | `crosschecks::ed25519::sign_verify`, `crosschecks::ed25519::seed_alone`, `crosschecks::ed25519::seed_and_public_key`, `crosschecks::ed25519_key_generation` | ctgrind: the seed `mid::ed25519::from_seed`, armv7 and portable seeds `mid::portable::ed25519::from_seed` |
+| X25519 | `agreement::{Algorithm, PrivateKey, PublicKey, Scalar, SharedSecret, X25519}` | `x25519_test`, `x25519_asn_test`, `aws_lc::evp` | `fuzz::kx`, `fuzz::keys` | `crosschecks::ecdh_scalars::x25519`, `crosschecks::ecdh_scalars::x25519_pkcs8` | ctgrind: the key `mid::x25519::from_bytes`, `mid::x25519::new_random`, `high::agreement::loads_in_constant_time`, `low::arm::curve25519::neon_matches_dalek`; proof: on x86_64, s2n-bignum's _SAFE theorems, for the routines [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists with one |
+| ECDH P-256, P-384, P-521 | `agreement::{Algorithm, PrivateKey, PublicKey, Scalar, SharedSecret, ECDH_P256, ECDH_P384, ECDH_P521}` | `ecdh_secp*r1_test`, `ecdh_secp*r1_ecpoint_test`, `cavp/ecdsa` (key pairs and public key validation), `aws_lc::ecdh`, `aws_lc::ec_scalar_base_mult`, `aws_lc::evp`; x86_64 P-256 point addition: `low::x86_64::ecp_nistz256::aws_lc_point_add_affine` | `fuzz::kx`, `fuzz::keys` | `crosschecks::ecdh`, `crosschecks::ecdh_stored`, `crosschecks::ecdh_scalars::p256` | ctgrind: the keys `mid::p256::from_bytes`, `mid::p256::generate`, `mid::p384::from_bytes`, `mid::p384::generate`, `mid::p521::from_bytes`, `mid::p521::generate`, `high::agreement::loads_in_constant_time`; proof: s2n-bignum's _SAFE theorems, but not for P-256's scalar multiplications on aarch64,, for the routines [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists with one |
+| ML-KEM-768 | `kem::{Algorithm, Ciphertext, DecapsulationKey, EncapsulationKey, SharedSecret, ML_KEM_768}` | `mlkem_768*_test`, `high::kem::boringssl`, `high::kem::cctv_intermediate`, `high::kem::cctv_unlucky_sample`, `high::kem::cctv_strcmp`, `high::kem::cctv_modulus`, `high::kem::cctv_accumulated` | `fuzz::kem`, `fuzz::keys` | `crosschecks::mlkem768::encapsulated_by_ours`, `high::kem::encapsulated_by_theirs` | ctgrind: `mid::mlkem768::keygen_internal`, `mid::mlkem768::encaps_internal`; proof: on aarch64, and on x86_64 only for reduction and rejection sampling, s2n-bignum's _SAFE theorems, for the routines [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists with one; qemu: `mid::mlkem768::ct_qemu_mlkem768` |
+| Ed25519 signing | `signature::{Ed25519KeyPair, Ed25519Seed}` | RFC 8032: `mid::ed25519::test_rfc8032_test_vectors`, `aws_lc::ed25519`, `aws_lc::evp` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md); its seeds load in `fuzz::keys` | `crosschecks::ed25519::sign_verify`, `crosschecks::ed25519::seed_alone`, `crosschecks::ed25519::seed_and_public_key`, `crosschecks::ed25519_key_generation` | ctgrind: the seed `mid::ed25519::from_seed`, armv7 and portable seeds `mid::portable::ed25519::from_seed`; proof: s2n-bignum's _SAFE theorems, for the routines [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists with one |
 | Ed25519 verification | `signature::{PublicKey, Signature, VerificationAlgorithm}`, `signature::verify::ED25519` | `ed25519_test`, `aws_lc::ed25519`, `aws_lc::evp`, `cctv::ed25519_edge_cases` (small-order keys refused) | `fuzz::verify`, `fuzz::keys` | `crosschecks::ed25519::small_order_public_keys` | |
-| ECDSA signing | `signature::{EcdsaKeyPair, EcdsaScalar, EcdsaSigningAlgorithm}`, `signature::sign::{ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_FIXED, ECDSA_P384_SHA384_ASN1, ECDSA_P384_SHA384_FIXED, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED}` | RFC 6979 and CCTV rejection: `high::ecdsa::rfc6979_test_vectors`, `high::ecdsa::rfc6979_p521_test_vectors`; `high::ecdsa::aws_lc_sign`, `aws_lc::evp` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md); its keys load in `fuzz::keys` | `crosschecks::ecdsa`, `crosschecks::ecdsa_digest::theirs_verify_ours`, `crosschecks::pkcs8_attributes::ecdsa_and_rsa_refuse_v2`, `crosschecks::pkcs8_attributes::attributes` | ctgrind: the keys, as for ECDH, and `high::signature::ecdsa_signs_and_verifies_any_digest` |
+| ECDSA signing | `signature::{EcdsaKeyPair, EcdsaScalar, EcdsaSigningAlgorithm}`, `signature::sign::{ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_FIXED, ECDSA_P384_SHA384_ASN1, ECDSA_P384_SHA384_FIXED, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED}` | RFC 6979 and CCTV rejection: `high::ecdsa::rfc6979_test_vectors`, `high::ecdsa::rfc6979_p521_test_vectors`; `high::ecdsa::aws_lc_sign`, `aws_lc::evp` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md); its keys load in `fuzz::keys` | `crosschecks::ecdsa`, `crosschecks::ecdsa_digest::theirs_verify_ours`, `crosschecks::pkcs8_attributes::ecdsa_and_rsa_refuse_v2`, `crosschecks::pkcs8_attributes::attributes` | ctgrind: the keys, as for ECDH, and `high::signature::ecdsa_signs_and_verifies_any_digest`; proof: s2n-bignum's _SAFE theorems, but not for P-256's scalar multiplications on aarch64,, for the routines [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists with one |
 | ECDSA verification | `signature::{PublicKey, Signature, VerificationAlgorithm}`, `signature::verify::{ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_FIXED, ECDSA_P256_SHA384_ASN1, ECDSA_P256_SHA512_ASN1, ECDSA_P384_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA512_ASN1, ECDSA_P521_SHA256_ASN1, ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED}` | `ecdsa_secp*_test`, `cavp/ecdsa`, `high::ecdsa::aws_lc_verify`, `aws_lc::evp` | `fuzz::verify`, `fuzz::keys` | `crosschecks::public_key_forms`, `crosschecks::ecdsa_digest::ours_verify_theirs` | |
-| RSA signing and key generation | `signature::{RsaKeyPair, RsaPssSaltLength, RsaSigningAlgorithm}`, `signature::sign::{RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384, RSA_PSS_SHA512}`, `rsa::KeySize` | `rsa_pkcs1_*_sig_gen_test`, Wycheproof's primality tests: `mid::rsa_priv::generate::test_valid_primes`, `aws_lc::evp`, `mid::rsa_priv::generate::aws_lc_miller_rabin` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md); its keys load in `fuzz::keys` | `crosschecks::rsa::sign_verify`, `crosschecks::rsa::pss_salt_lengths`, `crosschecks::rsa::key_generation_2048`, `crosschecks::rsa::key_generation_2048_soak`, `crosschecks::rsa::key_generation_3072`, `crosschecks::rsa::key_generation_4096`, `crosschecks::rsa::key_generation_6144`, `crosschecks::rsa::key_generation_8192`, `crosschecks::rsa::pkcs8_algorithms_agree` | ctgrind: private keys are marked when loaded, `mid::rsa_priv::generate::random_prime_one`; SDE: `low::x86_64::rsaz_avx512::ct_sde_rsa2048`, `low::x86_64::rsaz_avx512::ct_sde_rsa3072`, `low::x86_64::rsaz_avx512::ct_sde_rsa4096` |
+| RSA signing and key generation | `signature::{RsaKeyPair, RsaPssSaltLength, RsaSigningAlgorithm}`, `signature::sign::{RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384, RSA_PSS_SHA512}`, `rsa::KeySize` | `rsa_pkcs1_*_sig_gen_test`, Wycheproof's primality tests: `mid::rsa_priv::generate::test_valid_primes`, `aws_lc::evp`, `mid::rsa_priv::generate::aws_lc_miller_rabin`, modular products: `low::posint::aws_lc_mod_mul`, `low::x86_64::mont::aws_lc_mod_mul`, `low::aarch64::mont::aws_lc_mod_mul`, `low::arm::mont::aws_lc_mod_mul`, exponentiation: `low::posint::aws_lc_mod_exp`, `low::x86_64::mont_exp::aws_lc_mod_exp`, `low::x86_64::rsaz::aws_lc_mod_exp`, `low::x86_64::rsaz_avx512::aws_lc_mod_exp` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md); its keys load in `fuzz::keys` | `crosschecks::rsa::sign_verify`, `crosschecks::rsa::pss_salt_lengths`, `crosschecks::rsa::key_generation_2048`, `crosschecks::rsa::key_generation_2048_soak`, `crosschecks::rsa::key_generation_3072`, `crosschecks::rsa::key_generation_4096`, `crosschecks::rsa::key_generation_6144`, `crosschecks::rsa::key_generation_8192`, `crosschecks::rsa::pkcs8_algorithms_agree` | ctgrind: private keys are marked when loaded, `mid::rsa_priv::generate::random_prime_one`; SDE: `low::x86_64::rsaz_avx512::ct_sde_rsa2048`, `low::x86_64::rsaz_avx512::ct_sde_rsa3072`, `low::x86_64::rsaz_avx512::ct_sde_rsa4096` |
 | RSA verification | `signature::{PublicKey, RsaVerificationAlgorithm, Signature}`, `signature::verify::{RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA256_ANY_SALT, RSA_PSS_SHA384, RSA_PSS_SHA384_ANY_SALT, RSA_PSS_SHA512, RSA_PSS_SHA512_ANY_SALT}`, `signature::verify::legacy::{RSA_PKCS1_1024_SHA1, RSA_PKCS1_1024_SHA256, RSA_PKCS1_1024_SHA512, RSA_PKCS1_3072_SHA384, RSA_PKCS1_SHA1}`, `rsa::PublicKeyComponents` | `rsa_signature_*_test`, `rsa_pss_*_test`, `rsa_pkcs1_*_sig_gen_test`, `aws_lc::evp` | `fuzz::verify`, `fuzz::keys` | `crosschecks::rsa::verification_agrees`, `crosschecks::rsa::refuses_modulus_below_2048_bits`, `crosschecks::rsa::refuses_exponent_over_33_bits`, `crosschecks::rsa::spki_forms_agree` | |
 | RSA-OAEP | `rsa::{Ciphertext, DecryptingKey, EncryptingKey, OaepAlgorithm, Plaintext, OAEP_SHA256, OAEP_SHA384, OAEP_SHA512}`, `rsa::legacy::OAEP_SHA1` | `rsa_oaep_*_test`, `aws_lc::evp` | `fuzz::oaep` | `crosschecks::rsa::encrypt_decrypt`, `crosschecks::rsa::decrypt_agrees` | ctgrind: private keys are marked when loaded, `high::oaep::stays_secret`, `high::pkcs1::encode_oaep`; SDE: as RSA signing |
 | Key encodings | `encoding::{Pkcs8, Sec1, Spki}` | `aws_lc::evp` (PKCS#8, SPKI); the other keys in the files above | `fuzz::keys` | `crosschecks::encodings` | none: a key is marked once parsed, and its DER's lengths are not secret |
@@ -131,3 +163,4 @@ Exports that are not primitives: `Error`, `KeyRejected`, `doc::inline_assembly_s
 
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [CCTV]: https://github.com/C2SP/CCTV
+[Miri]: https://github.com/rust-lang/miri

@@ -333,6 +333,10 @@ impl PublicKey {
     }
 
     /// Verifies `signature` over `message`, refusing a malformed signature.
+    ///
+    /// ECDSA signatures are malleable: `(r, s)` and `(r, n - s)` both verify,
+    /// unlike Ed25519, PKCS#1, and PSS signatures, so don't identify a message
+    /// by its ECDSA signature's bytes.
     pub fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
         match &self.key {
             Parsed::EcdsaP256(key, _) => key.verify(message, signature),
@@ -1151,7 +1155,8 @@ pub enum RsaPssSaltLength {
     /// shorter than the modulus when its bit length is one more than a
     /// multiple of eight, less the hash's length and two.
     Max,
-    /// This many bytes, refusing a modulus too short for them.
+    /// This many bytes. A modulus too short for them is refused when a key
+    /// is parsed for verifying or used for signing, not here.
     Custom(u16),
 }
 
@@ -1819,6 +1824,7 @@ mod tests {
     // `tests/crosschecks.rs`. Wycheproof has no P-256 with SHA-384 vectors,
     // nor P-521 with SHA-256 or SHA-384.
     #[test]
+    #[cfg(not(miri))]
     fn ecdsa_verification_matches_aws_lc_rs() {
         use aws_lc_rs::signature as theirs;
 
@@ -2063,6 +2069,36 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A scalar with its negation's point, which has the same x and the
+    /// other y, is refused: n - d's point is -(dG).
+    #[test]
+    fn ecdsa_p256_refuses_the_negated_point() {
+        const N: [u8; 32] = [
+            0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2,
+            0xfc, 0x63, 0x25, 0x51,
+        ];
+        let signing = &sign::ECDSA_P256_SHA256_FIXED;
+        let pair = EcdsaKeyPair::generate(signing).unwrap();
+        let scalar = pair.to_scalar();
+        let mut negated = [0u8; 32];
+        let mut borrow = 0;
+        for i in (0..32).rev() {
+            let difference = i16::from(N[i]) - i16::from(scalar.as_ref()[i]) - borrow;
+            negated[i] = difference as u8;
+            borrow = i16::from(difference < 0);
+        }
+        let public = pair.public_key();
+        assert_eq!(
+            rejected(EcdsaKeyPair::from_scalar_and_public_key(
+                signing,
+                &negated,
+                public.as_ref()
+            )),
+            KeyFormatError::MismatchedPublicKey.into()
+        );
     }
 
     #[test]

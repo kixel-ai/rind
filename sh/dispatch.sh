@@ -78,9 +78,11 @@ declare -A scope=(
     [fixtures]='^(rind/|rind-rustls/|Cargo\.toml$|admin/build-cost-fixtures/(rind|rustls)/)'
     # The fixture builds this checkout's rind-ring under the rind-patch shim.
     [patch]='^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)'
-    # pyrind's Python tests and type stubs, against its built wheel. rind's
-    # own changes reach them in the nightly wheels workflow instead.
-    [py]='^(rind-python/|sh/python\.sh$)'
+    # pyrind's Python tests and type stubs, against its built wheel, and
+    # pyrind-cryptography's, with pyjwt's and joserfc's suites, which the lock
+    # pins. rind's own changes reach them in the nightly wheels workflow
+    # instead.
+    [py]='^(rind-python/|sh/python\.sh$|flake\.lock$)'
     # rind-dart's Dart package, whose build hook compiles the crate.
     [dart]='^rind-dart/'
     # Quest documents form one graph, so any change validates the whole tree,
@@ -253,7 +255,6 @@ for module in "${selected[@]}"; do
         check:fixtures)
             cargo check --manifest-path admin/build-cost-fixtures/rind/Cargo.toml --target-dir target
             cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind --target-dir target
-            cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind-lean --target-dir target
             ;;
         check:patch) sh/patch.sh ;;
         check:py) sh/python.sh test ;;

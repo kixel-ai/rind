@@ -207,6 +207,9 @@ class Dispatcher:
     def on_eof(self):
         pass
 
+    def on_source(self, name):
+        pass
+
     def on_cpp(self, cpp):
         print(f"!!! UNHANDLED on_cpp {self}")
 
@@ -614,6 +617,7 @@ class RustFormatter(Dispatcher):
         self.function_state = None
         self.expected_labels = []
         self.att_syntax = False
+        self.source = None
         self.start()
 
     def discard_rust_function(self, function):
@@ -832,6 +836,9 @@ use crate::low::macros::*;
         head_comment.insert(1, "")
         return head_comment[:-1]
 
+    def on_source(self, name):
+        self.source = name.split("/s2n-bignum/", 1)[1]
+
     def on_cpp(self, cpp):
         for key, value in self.arch.cpp_definitions.items():
             cpp.set(key, value)
@@ -876,6 +883,8 @@ use crate::low::macros::*;
 
                 print("", file=self.output)
 
+                # `admin/prove bytes` reads it to find the routine's proof.
+                print("// Transliterated from s2n-bignum's %s." % self.source, file=self.output)
                 for c in self.massage_current_function_comment():
                     print("/// " + c, file=self.output)
                 self.current_function_comment = []

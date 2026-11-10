@@ -33,6 +33,8 @@ class Context:
         """Starts hashing with `algorithm`."""
     def update(self, data: Buffer) -> None:
         """Adds `data` to the message."""
+    def copy(self) -> Context:
+        """Returns a context that continues from this one's message, which this one keeps."""
     def finish(self) -> bytes:
         """Returns the digest of the message, and starts a new one with the same algorithm."""
 

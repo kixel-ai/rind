@@ -521,6 +521,7 @@ macro_rules! load_k25519 {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/curve25519/edwards25519_scalarmuldouble_alt.S.
 /// Double scalar multiplication for edwards25519, fresh and base point
 ///
 /// Input scalar[4], point[8], bscalar[4]; output res[8]

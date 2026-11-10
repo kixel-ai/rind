@@ -1,0 +1,26 @@
+name: rind_integration
+description: Runs the rind package's tests on Android and iOS.
+publish_to: none
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  rind:
+    path: ../
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  # The package's tests, which this app runs, import it.
+  test: any
+
+# Test the checkout's Rust, not a released prebuilt library.
+hooks:
+  user_defines:
+    rind:
+      build_from_source: true

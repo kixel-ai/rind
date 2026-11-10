@@ -135,6 +135,7 @@ macro_rules! e8 {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_montsqr.S.
 /// Montgomery square, z := (x^2 / 2^{64k}) mod m
 ///
 /// Inputs x[k], m[k]; output z[k]

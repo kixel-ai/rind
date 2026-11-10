@@ -3106,7 +3106,7 @@ dependencies = [
 
 [[package]]
 name = "rind-aws-lc-rs"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3248,6 +3248,7 @@ dependencies = [
 name = "rind-rcgen"
 version = "0.14.3"
 dependencies = [
+ "base64ct",
  "crabgrind 0.4.0",
  "rcgen",
  "rind",
@@ -3275,7 +3276,6 @@ dependencies = [
 name = "rind-rustls"
 version = "0.23.3"
 dependencies = [
- "aws-lc-rs",
  "crabgrind 0.4.0",
  "env_logger",
  "hex",

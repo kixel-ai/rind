@@ -171,8 +171,8 @@ jobs:
   # code is checked here and the extension's by `armv7-qemu` (see
   # `admin/ctgrind`).
   #
-  # Release only: constant time matters in the code that ships, and a debug
-  # build can only add findings in code that does not. Valgrind runs every
+  # Release here: constant time matters most in the code that ships, so the
+  # debug build runs weekly in `ctgrind-debug.yml` instead. Valgrind runs every
   # thread on one core, so the suites run as parallel jobs instead.
   #
   # The `no-neon` row denies NEON to check the code cores without it run, such

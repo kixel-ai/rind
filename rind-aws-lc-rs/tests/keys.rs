@@ -244,6 +244,10 @@ proptest! {
             .decapsulate(theirs::kem::Ciphertext::from(ciphertext.as_ref()))
             .unwrap();
         prop_assert_eq!(theirs_secret.as_ref(), secret.as_ref());
+
+        use ours::kem::AlgorithmIdentifier as _;
+        use theirs::kem::AlgorithmIdentifier as _;
+        prop_assert_eq!(ours::kem::ML_KEM_768.id().nid(), theirs::kem::ML_KEM_768.id().nid());
     }
 }
 
@@ -277,6 +281,7 @@ proptest! {
         let theirs_pair = theirs::rsa::KeyPair::from_pkcs8(rsa_pkcs8()).unwrap();
         prop_assert_eq!(ours_pair.public_key().as_ref(), theirs_pair.public_key().as_ref());
         prop_assert_eq!(ours_pair.public_modulus_len(), theirs_pair.public_modulus_len());
+        #[cfg(feature = "ring-io")]
         prop_assert_eq!(
             ours_pair.public_key().modulus().big_endian_without_leading_zero(),
             theirs_pair.public_key().modulus().big_endian_without_leading_zero()
@@ -325,8 +330,11 @@ proptest! {
                 prop_assert!(key.verify(&msg, &sig).is_ok());
                 prop_assert!(key.verify(b"other", &sig).is_err());
             }
-            let components: ours::rsa::PublicKeyComponents<Vec<u8>> = ours_pair.public_key().into();
-            prop_assert!(components.verify(ours_params, &msg, &sig).is_ok());
+            #[cfg(feature = "ring-io")]
+            {
+                let components: ours::rsa::PublicKeyComponents<Vec<u8>> = ours_pair.public_key().into();
+                prop_assert!(components.verify(ours_params, &msg, &sig).is_ok());
+            }
         }
     }
 

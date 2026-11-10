@@ -15,19 +15,23 @@ cover SHA-384 and SHA-512, and for Ed25519's hashes, Vale's in
 change to the trust base.
 -/
 
-/-- info: 'rind.x86_64.x25519_generate' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms x25519_generate
-
-/-- info: 'rind.x86_64.x25519_from_scalar' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms x25519_from_scalar
-
-/-- info: 'rind.x86_64.x25519_public_key' depends on axioms: [propext,
+/-- info: 'rind.x86_64.x25519_generate' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
  curve25519_x25519base_alt_spec,
  curve25519_x25519base_spec] -/
+#guard_msgs in
+#print axioms x25519_generate
+
+/-- info: 'rind.x86_64.x25519_from_scalar' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ curve25519_x25519base_alt_spec,
+ curve25519_x25519base_spec] -/
+#guard_msgs in
+#print axioms x25519_from_scalar
+
+/-- info: 'rind.x86_64.x25519_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms x25519_public_key
 

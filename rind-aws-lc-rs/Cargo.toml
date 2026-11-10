@@ -1,6 +1,6 @@
 [package]
 name = "rind-aws-lc-rs"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2024"
 repository = "https://github.com/moq-dev/rind"
 license = "Apache-2.0 OR ISC OR MIT-0"
@@ -15,8 +15,9 @@ readme = "README.md"
 [package.metadata.rind]
 upstream = "1"
 
-# aws-lc-rs's feature names, so a manifest naming them builds unchanged; each
-# changes nothing. `fips` is left out, so a manifest asking for it fails to
+# aws-lc-rs's feature names, so a manifest naming them builds unchanged.
+# `ring-io` and `ring-sig-verify` gate what they gate there; the rest change
+# nothing. `fips` is left out, so a manifest asking for it fails to
 # resolve: rind is not FIPS validated.
 [features]
 default = ["aws-lc-sys", "alloc", "ring-io", "ring-sig-verify"]

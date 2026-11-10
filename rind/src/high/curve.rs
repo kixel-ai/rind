@@ -61,6 +61,14 @@ pub(crate) trait PrivateKey<S> {
     #[allow(dead_code)] // ??? false positive
     fn public_key_encode_uncompressed<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error>;
 
+    /// Whether `encoded`, an X9.62 uncompressed point, is this key's public
+    /// half, for a curve that checks it faster than it encodes its own;
+    /// `None` for one that does not.
+    #[cfg(rind_backend = "x86_64")]
+    fn public_key_is_uncompressed(&self, _encoded: &[u8]) -> Option<bool> {
+        None
+    }
+
     /// The raw RSA signing operation: `(e + r * d) / k`, where self aka `d`.
     fn raw_ecdsa_sign(&self, k: &Self, e: &S, r: &S) -> S;
 }
@@ -164,6 +172,11 @@ impl PrivateKey<p256::Scalar> for p256::StaticPrivateKey {
         } else {
             Err(Error::WrongLength)
         }
+    }
+
+    #[cfg(rind_backend = "x86_64")]
+    fn public_key_is_uncompressed(&self, encoded: &[u8]) -> Option<bool> {
+        Some(self.public_key_is_uncompressed(encoded))
     }
 
     fn raw_ecdsa_sign(&self, k: &Self, e: &p256::Scalar, r: &p256::Scalar) -> p256::Scalar {

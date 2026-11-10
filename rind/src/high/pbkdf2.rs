@@ -50,6 +50,12 @@ impl Secret {
 
     /// Fills `out` with the key derived from `salt` over `iterations` rounds.
     ///
+    /// Each hash length of `out` costs another `iterations` rounds, which
+    /// slows the defender but not an attacker, who needs only the first, so
+    /// expand one hash's length with HKDF for more. The cost is linear in
+    /// `iterations`, so cap any taken from untrusted input, such as PBES2 or
+    /// PKCS#12 parameters.
+    ///
     /// Fails with [`Error::WrongLength`], leaving `out` unchanged, if `out`
     /// is empty or longer than PBKDF2 allows.
     pub fn derive(&self, iterations: NonZeroU32, salt: &[u8], out: &mut [u8]) -> Result<(), Error> {
