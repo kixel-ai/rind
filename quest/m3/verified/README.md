@@ -42,6 +42,7 @@ Decided with the maintainer on 2026-11-03, after the benchmark report (`BENCHMAR
 
 ## Required
 
+- [rind's assembly is byte-identical to the proven object code](/quest/m3/verified/asm-bytes.md) - the transliteration leaves the trust base, and s2n-bignum's constant-time proofs cover rind
 - [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the proofs this epic writes for unproven assembly live, checked by `admin/prove`
 - [The hash and KDF glue's constant-time compares are proven](/quest/m3/verified/hash-glue.md) - the compares behind `hmac::verify` and `pbkdf2::Secret::verify`, in HOL Light
 - [HKDF's key conversions are proven](/quest/m3/verified/hkdf-okm.md) - the `From<Okm>` keys QUIC's packet protection starts from

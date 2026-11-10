@@ -59,10 +59,10 @@ renames [rind-aws-lc-rs](#rind-aws-lc-rs) to `aws-lc-rs` the same way.
 | `HKDF_SHA256`, `HKDF_SHA384`, `HKDF_SHA512` | the same |
 | `HKDF_SHA1_FOR_LEGACY_USE_ONLY` | `legacy::HKDF_SHA1` |
 | `prk.expand(info, len)?` | `prk.expand(info, len)`, which cannot fail; `Okm::fill` checks a byte length |
-| your own `KeyType` | none: it is sealed, for a `usize` byte length or an `aead`, `aead::quic`, or `hmac` algorithm |
-| `UnboundKey::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)` | `aead::Key::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)` |
+| your own `KeyType` | none: it is sealed, for a `usize` byte length or an `aead`, `aead::quic`, `hmac`, or `hkdf` algorithm |
+| `UnboundKey::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)`, `Prk::from(okm)` | `aead::Key::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)`, `Prk::from(okm)` with `&HKDF_SHA256` |
 | `Okm::fill(out)` | the same, for a `usize` length only |
-| `Salt::from(okm)`, `Prk::from(okm)`, `Prk::new_less_safe` | none |
+| `Salt::from(okm)`, `Prk::new_less_safe` | none |
 | `Salt::algorithm()`, `Okm::len()`, `Algorithm::hmac_algorithm()` | none |
 
 ## pbkdf2

@@ -706,6 +706,14 @@ mod hkdf {
                 let theirs_tag = their_hmac::sign(&theirs_key, &msg);
                 prop_assert_eq!(ours_tag.as_ref(), theirs_tag.as_ref());
             }
+
+            let ours = hkdf::Prk::from(ours.expand(&info, ours_prk_alg));
+            let theirs = theirs::Prk::from(theirs.expand(&info, theirs_prk_alg).unwrap());
+            let mut ours_out = [0u8; 100];
+            ours.expand(&info, ours_out.len()).fill(&mut ours_out).unwrap();
+            let mut theirs_out = [0u8; 100];
+            theirs.expand(&info, Len(theirs_out.len())).unwrap().fill(&mut theirs_out).unwrap();
+            prop_assert_eq!(ours_out, theirs_out);
         }
     }
 }
