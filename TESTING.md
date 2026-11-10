@@ -28,6 +28,12 @@ A primitive is checked five ways:
 - **Zeroing**: a `rind/tests/zeroing.rs` test that drops each value owning
   the primitive's secrets under the `wipe` feature and fails on any of its
   bytes left nonzero. It runs on every tier, native runner, and Windows.
+  `rind/tests/heap_scratch.rs` checks the heap blocks each private-key
+  operation frees: it runs each under two keys with the same public inputs
+  and fails on a freed block whose bytes differ between them, since those
+  vary with the key, and fails on any nonzero block key generation frees.
+  It runs wherever the zeroing tests do, RSA key generation only in the
+  nightly native and portable runs.
 
 Separately, `low::guard_pages` checks buffer bounds. It runs each kernel
 that takes a caller's slice (AES-GCM, ChaCha20-Poly1305, AES-CTR, AES-CBC,
