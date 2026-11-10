@@ -251,7 +251,9 @@ macro_rules! call {
 }
 
 macro_rules! hole {
-    ($arg:expr) => { _ };
+    ($arg:expr) => {
+        _
+    };
 }
 
 pub(crate) use {call, hole};
@@ -934,7 +936,7 @@ mod arch {
 mod tests {
 
     /// Runs `f` and returns its panic message, failing if it did not panic.
-    fn broken(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
+    fn broken(f: impl FnOnce() + core::panic::UnwindSafe) -> String {
         let payload = std::panic::catch_unwind(f).expect_err("no ABI break reported");
         payload
             .downcast_ref::<String>()
@@ -990,14 +992,46 @@ mod tests {
         ("x86_64/aes_gcm_avx.rs", "gcm128_decrypt_opt", DISPATCHED),
         ("x86_64/aes_gcm_avx.rs", "gcm256_encrypt_opt", DISPATCHED),
         ("x86_64/aes_gcm_avx.rs", "gcm256_decrypt_opt", DISPATCHED),
-        ("x86_64/rsaz_avx512.rs", "rsaz_amm52x20_x2_ifma256", DISPATCHED),
-        ("x86_64/rsaz_avx512.rs", "rsaz_amm52x30_x2_ifma256", DISPATCHED),
-        ("x86_64/rsaz_avx512.rs", "rsaz_amm52x40_x2_ifma256", DISPATCHED),
-        ("x86_64/rsaz_avx512.rs", "extract_multiplier_2x20_win5", DISPATCHED),
-        ("x86_64/rsaz_avx512.rs", "extract_multiplier_2x30_win5", DISPATCHED),
-        ("x86_64/rsaz_avx512.rs", "extract_multiplier_2x40_win5", DISPATCHED),
-        ("aarch64/cpu.rs", "reads_dit", "a test, whose assembly only reads DIT"),
-        ("arm/ct_qemu.rs", "traced", "test-only hints, which touch no register"),
+        (
+            "x86_64/rsaz_avx512.rs",
+            "rsaz_amm52x20_x2_ifma256",
+            DISPATCHED,
+        ),
+        (
+            "x86_64/rsaz_avx512.rs",
+            "rsaz_amm52x30_x2_ifma256",
+            DISPATCHED,
+        ),
+        (
+            "x86_64/rsaz_avx512.rs",
+            "rsaz_amm52x40_x2_ifma256",
+            DISPATCHED,
+        ),
+        (
+            "x86_64/rsaz_avx512.rs",
+            "extract_multiplier_2x20_win5",
+            DISPATCHED,
+        ),
+        (
+            "x86_64/rsaz_avx512.rs",
+            "extract_multiplier_2x30_win5",
+            DISPATCHED,
+        ),
+        (
+            "x86_64/rsaz_avx512.rs",
+            "extract_multiplier_2x40_win5",
+            DISPATCHED,
+        ),
+        (
+            "aarch64/cpu.rs",
+            "reads_dit",
+            "a test, whose assembly only reads DIT",
+        ),
+        (
+            "arm/ct_qemu.rs",
+            "traced",
+            "test-only hints, which touch no register",
+        ),
     ];
 
     const DISPATCHED: &str = "picked into a function pointer that `asm_call!` calls";
@@ -1011,7 +1045,9 @@ mod tests {
         let mut names = Vec::new();
         for (at, _) in text.match_indices("asm!(") {
             if !text[..at].ends_with("global_") {
-                let fn_at = text[..at].rfind("fn ").expect("assembly outside a function");
+                let fn_at = text[..at]
+                    .rfind("fn ")
+                    .expect("assembly outside a function");
                 names.push(ident(&text[fn_at + 3..]));
             }
         }
@@ -1038,7 +1074,9 @@ mod tests {
             .collect();
         for (name, body) in &macros {
             if !defining.iter().any(|(d, _)| d == name)
-                && defining.iter().any(|(d, _)| body.contains(&format!("{d}!")))
+                && defining
+                    .iter()
+                    .any(|(d, _)| body.contains(&format!("{d}!")))
             {
                 defining.push((name, true));
             }
@@ -1094,8 +1132,9 @@ mod tests {
     // it.
     #[test]
     fn nostack_blocks_leave_the_stack_alone() {
-        const STACK: [&str; 11] =
-            ["push", "pop", "call", "bl", "blx", "vpush", "vpop", "rsp", "esp", "sp", "wsp"];
+        const STACK: [&str; 11] = [
+            "push", "pop", "call", "bl", "blx", "vpush", "vpop", "rsp", "esp", "sp", "wsp",
+        ];
         fn visit(dir: &std::path::Path, blocks: &mut usize) {
             for entry in std::fs::read_dir(dir).unwrap() {
                 let path = entry.unwrap().path();
@@ -1134,15 +1173,26 @@ mod tests {
         assert!(blocks >= 10, "found only {blocks} nostack blocks");
     }
 
-    /// `text` up to the parenthesis closing its first.
+    /// `text` up to the parenthesis closing its first, skipping those in
+    /// strings and line comments.
     fn parenthesized(text: &str) -> &str {
-        let mut depth = 0;
-        for (at, c) in text.char_indices() {
-            match c {
-                '(' => depth += 1,
-                ')' if depth == 1 => return &text[..at],
-                ')' => depth -= 1,
-                _ => {}
+        let (mut depth, mut string, mut comment, mut escaped) = (0, false, false, false);
+        let mut chars = text.char_indices().peekable();
+        while let Some((at, c)) = chars.next() {
+            if comment {
+                comment = c != '\n';
+            } else if string {
+                string = escaped || c != '"';
+                escaped = !escaped && c == '\\';
+            } else {
+                match c {
+                    '"' => string = true,
+                    '/' if chars.peek().is_some_and(|&(_, n)| n == '/') => comment = true,
+                    '(' => depth += 1,
+                    ')' if depth == 1 => return &text[..at],
+                    ')' => depth -= 1,
+                    _ => {}
+                }
             }
         }
         panic!("unclosed parenthesis")
