@@ -260,6 +260,7 @@ pub(crate) use {call, hole};
 
 /// A harness call's argument, aligned as a routine loading whole vectors
 /// from it may need.
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 #[repr(C, align(64))]
 pub(crate) struct Aligned<T>(pub(crate) T);
 
