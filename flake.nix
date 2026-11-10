@@ -500,7 +500,14 @@
                     "x86_64-unknown-linux-gnu"
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
+                    "arm-unknown-linux-gnueabihf"
+                    "i686-unknown-linux-gnu"
                     "loongarch64-unknown-linux-gnu"
+                    "powerpc-unknown-linux-gnu"
+                    "powerpc64-unknown-linux-gnu"
+                    "powerpc64le-unknown-linux-gnu"
+                    "riscv64gc-unknown-linux-gnu"
+                    "s390x-unknown-linux-gnu"
                   ];
                 })
                 pkgs.python3

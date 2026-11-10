@@ -85,6 +85,42 @@ qemu. iOS devices' code is only built.
 Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
 at startup to get an error naming the missing feature instead.
 
+rind's secret-dependent code divides no secret and does no floating-point
+arithmetic on any architecture, as `admin/ct-vartime` checks, but it multiplies
+secrets, so it runs in constant time only where the integer multiplier does.
+rind has no masked multiply for the cores whose multiplier finishes early for
+some operands, so it is not constant-time on them:
+
+- 32-bit `powerpc`: the 603e, 604e, 750 (G3), 7400 and 7410 (G4), 7441
+  through 7457 (G4), and e300c1, each of whose `mullw`, `mulhw`, and `mulhwu`
+  take fewer cycles when the top bits of an operand are all zeros or all ones
+  ([MPC603EUM] Table 6-4, [MPC604EUM] 6.7, [MPC750UM] Table 6-6,
+  [MPC7410UM] Table 6-6, [MPC7450UM] Table 6-5, [e300coreRM] Table 7-4). The
+  e300c2 through c4, e500v1 and v2, and e500mc multiply in fixed time
+  ([e300coreRM] Table 7-4, [E500CORERM] Table 4-6, [E500MCRM] Table 10-2).
+- 64-bit `powerpc64`: NXP's e6500, whose 64-bit `mulld` and `mulhd` take 4 to
+  7 cycles by the width of their operands ([E6500RM] Table 10-2). Its
+  predecessor the e5500 likely does too, but its manual is not public.
+  POWER8 and POWER9, the only cores `powerpc64le` runs on that rind has
+  documents for, list one multiply latency ([POWER8 UM] Table 10-16, [POWER9 UM]
+  Table A-1). Neither the PowerPC 970 (G5) nor POWER10 has a public multiply
+  timing rind could check.
+- `riscv64gc`: T-Head's C906 (Allwinner D1, Sophgo CV1800B), whose open RTL
+  iterates a 64-bit `mul` or `mulh` when an operand's high half is significant
+  ([openc906] `aq_iu_mul.v`), and Rocket cores built with `mulEarlyOut`, as
+  rocket-chip's big and huge core configurations are ([rocket-chip]). A core
+  with the Zkt extension, which the RVA22 and RVA23 profiles require, such as
+  SpacemiT's X60, guarantees its multiplies' timing ([Zkt]), and SiFive's U54
+  and U74 and T-Head's C910 and C920 document a fixed latency.
+- `s390x`: IBM publishes no instruction timing for IBM Z, so rind cannot say.
+- 32-bit `arm` before ARMv7: Intel's XScale (ARMv5TE), whose `mul`, `umull`,
+  and `smull` terminate early by the top bits of their second operand
+  ([XScale] Table 10-6), and ARMv4T's ARM7TDMI and ARM9TDMI ([BearSSL ctmul]).
+  ARMv6's ARM1176 does not terminate early ([ARM1176 TRM] Table 3-46), nor does
+  the ARM926EJ-S.
+- `x86_64` and 32-bit `x86`: VIA's Nano 2000 series ([BearSSL ctmul]). Intel
+  lists `mul` and `imul` as data-independent-time ([Intel DOIT]).
+
 [COMPATIBILITY.md](COMPATIBILITY.md) lists the features of each Intel CPU
 family since 2004, and of some AMD cores.
 
@@ -96,3 +132,21 @@ family since 2004, and of some AMD cores.
 [aws-lc]: https://github.com/aws/aws-lc
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [OpenSSL]: https://github.com/openssl/openssl
+[MPC603EUM]: https://www.nxp.com/docs/en/reference-manual/MPC603EUM.pdf
+[MPC604EUM]: https://www.nxp.com/docs/en/reference-manual/MPC604EUM.pdf
+[MPC750UM]: https://www.nxp.com/docs/en/reference-manual/MPC750UM.pdf
+[MPC7410UM]: https://www.nxp.com/docs/en/reference-manual/MPC7410UM.pdf
+[MPC7450UM]: https://www.nxp.com/docs/en/reference-manual/MPC7450UM.pdf
+[e300coreRM]: https://www.nxp.com/docs/en/reference-manual/e300coreRM.pdf
+[E500CORERM]: https://www.nxp.com/docs/en/reference-manual/E500CORERM.pdf
+[E500MCRM]: https://www.nxp.com/docs/en/reference-manual/E500MCRM.pdf
+[E6500RM]: https://www.nxp.com/docs/en/reference-manual/E6500RM.pdf
+[POWER8 UM]: https://www.setphaserstostun.org/power8/POWER8_UM_v1.3_16MAR2016_pub.pdf
+[POWER9 UM]: https://wiki.raptorcs.com/w/images/c/ce/POWER9_um_OpenPOWER_v21_10OCT2019_pub.pdf
+[openc906]: https://github.com/T-head-Semi/openc906/blob/main/C906_RTL_FACTORY/gen_rtl/iu/rtl/aq_iu_mul.v
+[rocket-chip]: https://github.com/chipsalliance/rocket-chip/blob/master/src/main/scala/rocket/Configs.scala
+[Zkt]: https://docs.riscv.org/reference/isa/v20240411/unpriv/scalar-crypto.html
+[XScale]: https://download.intel.com/design/intelxscale/27347302.pdf
+[ARM1176 TRM]: https://developer.arm.com/documentation/ddi0301/h
+[BearSSL ctmul]: https://www.bearssl.org/ctmul.html
+[Intel DOIT]: https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/resources/data-operand-independent-timing-instructions.html
