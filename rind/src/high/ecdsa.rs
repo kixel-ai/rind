@@ -513,6 +513,154 @@ mod tests {
     use crate::mid::rng::SliceRandomSource;
     use crate::test::*;
 
+    /// Calls `$f::<curve, hash>($args)` for an ACVP group's curve and hash.
+    macro_rules! acvp_dispatch {
+        ($group:expr, $f:ident($($args:expr),*)) => {
+            match ($group.str("curve"), $group.str("hashAlg")) {
+                ("P-256", "SHA2-256") => $f::<curve::P256, hash::Sha256>($($args),*),
+                ("P-256", "SHA2-384") => $f::<curve::P256, hash::Sha384>($($args),*),
+                ("P-256", "SHA2-512") => $f::<curve::P256, hash::Sha512>($($args),*),
+                ("P-384", "SHA2-256") => $f::<curve::P384, hash::Sha256>($($args),*),
+                ("P-384", "SHA2-384") => $f::<curve::P384, hash::Sha384>($($args),*),
+                ("P-384", "SHA2-512") => $f::<curve::P384, hash::Sha512>($($args),*),
+                ("P-521", "SHA2-256") => $f::<curve::P521, hash::Sha256>($($args),*),
+                ("P-521", "SHA2-384") => $f::<curve::P521, hash::Sha384>($($args),*),
+                ("P-521", "SHA2-512") => $f::<curve::P521, hash::Sha512>($($args),*),
+                other => panic!("unexpected curve and hash {other:?}"),
+            }
+        };
+    }
+
+    /// `value` left-padded to `len` bytes, or `None` if it is longer.
+    fn acvp_fixed(value: Vec<u8>, len: usize) -> Option<Vec<u8>> {
+        let pad = len.checked_sub(value.len())?;
+        Some([vec![0; pad], value].concat())
+    }
+
+    /// The X9.62 uncompressed encoding of a test's `qx` and `qy`, or `None`
+    /// if either is too long for curve `C`.
+    fn acvp_point<C: Curve>(test: &serde_json::Value) -> Option<Vec<u8>> {
+        let x = acvp_fixed(test.hex("qx"), C::Scalar::LEN_BYTES)?;
+        let y = acvp_fixed(test.hex("qy"), C::Scalar::LEN_BYTES)?;
+        Some([vec![0x04], x, y].concat())
+    }
+
+    fn acvp_signing_key<C: Curve>(d: Vec<u8>) -> SigningKey<C> {
+        let d = acvp_fixed(d, C::Scalar::LEN_BYTES).unwrap();
+        SigningKey::new(C::PrivateKey::from_bytes(&d).unwrap())
+    }
+
+    /// `r || s`, each padded to curve `C`'s scalar length.
+    fn acvp_signature<C: Curve>(test: &serde_json::Value) -> Option<Vec<u8>> {
+        let r = acvp_fixed(test.hex("r"), C::Scalar::LEN_BYTES)?;
+        let s = acvp_fixed(test.hex("s"), C::Scalar::LEN_BYTES)?;
+        Some([r, s].concat())
+    }
+
+    #[test]
+    fn acvp_key_gen() {
+        fn check<C: Curve>(test: &serde_json::Value) {
+            let key = acvp_signing_key::<C>(test.hex("d"));
+            assert_eq!(
+                key.public_key_uncompressed().as_ref(),
+                acvp_point::<C>(test).unwrap()
+            );
+        }
+        for group in acvp("ECDSA-KeyGen-FIPS186-5") {
+            for test in group.tests() {
+                match group.str("curve") {
+                    "P-256" => check::<curve::P256>(test),
+                    "P-384" => check::<curve::P384>(test),
+                    "P-521" => check::<curve::P521>(test),
+                    other => panic!("unexpected curve {other}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn acvp_key_ver() {
+        fn valid<C: Curve>(test: &serde_json::Value) -> bool {
+            acvp_point::<C>(test)
+                .is_some_and(|point| VerifyingKey::<C>::from_x962_uncompressed(&point).is_ok())
+        }
+        for group in acvp("ECDSA-KeyVer-FIPS186-5") {
+            for test in group.tests() {
+                let valid = match group.str("curve") {
+                    "P-256" => valid::<curve::P256>(test),
+                    "P-384" => valid::<curve::P384>(test),
+                    "P-521" => valid::<curve::P521>(test),
+                    other => panic!("unexpected curve {other}"),
+                };
+                assert_eq!(valid, test.flag("testPassed"), "{}", test.str("reason"));
+            }
+        }
+    }
+
+    /// Signs with each test's nonce `k`, which ACVP gives with its answers.
+    #[test]
+    fn acvp_sig_gen() {
+        fn check<C: Curve, H: SignatureHash>(group: &serde_json::Value) {
+            let key = acvp_signing_key::<C>(group.hex("d"));
+            assert_eq!(
+                key.public_key_uncompressed().as_ref(),
+                acvp_point::<C>(group).unwrap()
+            );
+            for test in group.tests() {
+                let e = hash_to_scalar::<C>(H::hash(&test.hex("message")).as_ref()).unwrap();
+                let k = acvp_fixed(test.hex("k"), C::Scalar::LEN_BYTES).unwrap();
+                let (r, s) = key
+                    .sign_with_nonces(&e, &mut SliceRandomSource(&k))
+                    .unwrap();
+                let mut signature = vec![0; C::Scalar::LEN_BYTES * 2];
+                r.write_bytes(&mut signature[..C::Scalar::LEN_BYTES]);
+                s.write_bytes(&mut signature[C::Scalar::LEN_BYTES..]);
+                assert_eq!(signature, acvp_signature::<C>(test).unwrap());
+            }
+        }
+        for group in acvp("ECDSA-SigGen-FIPS186-5") {
+            assert!(!group.flag("componentTest"));
+            acvp_dispatch!(group, check(&group));
+        }
+    }
+
+    /// FIPS 186-5's deterministic ECDSA is RFC 6979's, which rind's signing
+    /// is with no added randomness.
+    #[test]
+    fn acvp_det_sig_gen() {
+        fn check<C: Curve, H: SignatureHash>(group: &serde_json::Value) {
+            let key = acvp_signing_key::<C>(group.hex("d"));
+            for test in group.tests() {
+                let mut signature = vec![0; C::Scalar::LEN_BYTES * 2];
+                key.rfc6979_sign_with_random::<H>(&test.hex("message"), &[], &mut signature)
+                    .unwrap();
+                assert_eq!(signature, acvp_signature::<C>(test).unwrap());
+            }
+        }
+        for group in acvp("DetECDSA-SigGen-FIPS186-5") {
+            assert!(!group.flag("componentTest"));
+            acvp_dispatch!(group, check(&group));
+        }
+    }
+
+    #[test]
+    fn acvp_sig_ver() {
+        fn check<C: Curve, H: SignatureHash>(group: &serde_json::Value) {
+            for test in group.tests() {
+                let valid = acvp_point::<C>(test)
+                    .and_then(|point| VerifyingKey::<C>::from_x962_uncompressed(&point).ok())
+                    .zip(acvp_signature::<C>(test))
+                    .is_some_and(|(key, signature)| {
+                        key.verify::<H>(&test.hex("message"), &signature).is_ok()
+                    });
+                assert_eq!(valid, test.flag("testPassed"), "{}", test.str("reason"));
+            }
+        }
+        for group in acvp("ECDSA-SigVer-FIPS186-5") {
+            acvp_dispatch!(group, check(&group));
+        }
+    }
+
     #[test]
     fn smoke_test_loading_keys() {
         check_sign_verify::<curve::P256>(

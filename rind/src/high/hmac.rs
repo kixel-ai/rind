@@ -518,6 +518,25 @@ mod tests {
     use crate::test::*;
 
     #[test]
+    fn acvp() {
+        for (name, algorithm) in [
+            ("HMAC-SHA-1-2.0", &HMAC_SHA1),
+            ("HMAC-SHA2-256-2.0", &HMAC_SHA256),
+            ("HMAC-SHA2-384-2.0", &HMAC_SHA384),
+            ("HMAC-SHA2-512-2.0", &HMAC_SHA512),
+        ] {
+            for group in crate::test::acvp(name) {
+                assert_eq!(group.str("testType"), "AFT");
+                for test in group.tests() {
+                    let key = Key::new(algorithm, &test.hex("key"));
+                    let tag = sign(&key, &test.hex("msg"));
+                    assert_eq!(&tag.as_ref()[..test.int("macLen") / 8], test.hex("mac"));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn smoke() {
         let key = Key::new(&HMAC_SHA256, b"hello");
         assert_eq!(sign(&key, b"world").as_ref(),

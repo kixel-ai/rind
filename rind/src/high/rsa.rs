@@ -782,6 +782,57 @@ mod tests {
     use super::*;
     use crate::high::hmac_drbg::HmacDrbg;
     use crate::mid::rng::SliceRandomSource;
+    use crate::test::{Acvp, acvp};
+
+    /// Verifies each test's signature under its group's key, returning
+    /// `None` for a group whose public exponent rind refuses: above 33 bits,
+    /// as aws-lc refuses.
+    fn acvp_verify(group: &serde_json::Value, test: &serde_json::Value) -> Option<bool> {
+        let e = group.hex("e");
+        let key = VerifyingKey::from_components(&group.hex("n"), &e);
+        if e.len() * 8 - e[0].leading_zeros() as usize > 33 {
+            assert_eq!(key.err(), Some(KeyFormatError::RsaExponent.into()));
+            return None;
+        }
+        let key = key.unwrap();
+        let (signature, message) = (test.hex("signature"), test.hex("message"));
+        let salt = Some(PssSalt::Len(group.int("saltLen") as u16));
+        let result = match (group.str("sigType"), group.str("hashAlg")) {
+            ("pkcs1v1.5", "SHA2-256") => key.verify_pkcs1_sha256(&signature, &message),
+            ("pkcs1v1.5", "SHA2-384") => key.verify_pkcs1_sha384(&signature, &message),
+            ("pkcs1v1.5", "SHA2-512") => key.verify_pkcs1_sha512(&signature, &message),
+            ("pss", "SHA2-256") => key.verify_pss_sha256(salt, &signature, &message),
+            ("pss", "SHA2-384") => key.verify_pss_sha384(salt, &signature, &message),
+            ("pss", "SHA2-512") => key.verify_pss_sha512(salt, &signature, &message),
+            other => panic!("unexpected signature type {other:?}"),
+        };
+        if group.str("sigType") == "pss" {
+            assert_eq!(group.str("maskFunction"), "mgf1");
+        }
+        Some(result.is_ok())
+    }
+
+    #[test]
+    fn acvp_sig_ver() {
+        for group in acvp("RSA-SigVer-FIPS186-5") {
+            for test in group.tests() {
+                if let Some(valid) = acvp_verify(&group, test) {
+                    assert_eq!(valid, test.flag("testPassed"), "{}", test.str("reason"));
+                }
+            }
+        }
+    }
+
+    /// ACVP's signing answers come from keys it does not publish, so they
+    /// are checked as a validator checks a signer's: they must verify.
+    #[test]
+    fn acvp_sig_gen() {
+        for group in acvp("RSA-SigGen-FIPS186-5") {
+            for test in group.tests() {
+                assert_ne!(acvp_verify(&group, test), Some(false));
+            }
+        }
+    }
 
     fn check_all_algs(buf: &mut [u8], private: &SigningKey, public: &VerifyingKey) {
         let sig = private.sign_pkcs1_sha256(buf, b"hello").unwrap();

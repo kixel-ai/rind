@@ -239,6 +239,66 @@ mod tests {
     }
 
     #[test]
+    fn acvp() {
+        for group in crate::test::acvp("ACVP-AES-CBC-1.0") {
+            let encrypt = match group.str("direction") {
+                "encrypt" => true,
+                "decrypt" => false,
+                other => panic!("unexpected direction {other}"),
+            };
+            let (input, output) = if encrypt { ("pt", "ct") } else { ("ct", "pt") };
+            for test in group.tests() {
+                let mut key = test.hex("key");
+                let mut iv: [u8; 16] = test.hex("iv").try_into().unwrap();
+                match group.str("testType") {
+                    "AFT" => {
+                        let (enc, dec) = keys(&key);
+                        let mut text = test.hex(input);
+                        if encrypt {
+                            enc.encrypt_blocks(CbcIv::assume_unpredictable(iv), &mut text)
+                        } else {
+                            dec.decrypt_blocks(&iv, &mut text)
+                        }
+                        .unwrap();
+                        assert_eq!(text, test.hex(output));
+                    }
+                    // AESAVS section 6.4.2: each round chains 1000 one-block
+                    // messages, the first under the IV and each later one under
+                    // the previous output, feeding the output two blocks back in.
+                    "MCT" => {
+                        let mut block: [u8; 16] = test.hex(input).try_into().unwrap();
+                        for result in test["resultsArray"].as_array().unwrap() {
+                            assert_eq!(key, result.hex("key"));
+                            assert_eq!(iv, &result.hex("iv")[..]);
+                            assert_eq!(block, &result.hex(input)[..]);
+                            let (enc, dec) = keys(&key);
+                            let mut chain = iv;
+                            let mut outputs = [iv; 2];
+                            for _ in 0..1000 {
+                                let mut out = block;
+                                if encrypt {
+                                    enc.encrypt_blocks(CbcIv::assume_unpredictable(chain), &mut out)
+                                } else {
+                                    dec.decrypt_blocks(&chain, &mut out)
+                                }
+                                .unwrap();
+                                chain = if encrypt { out } else { block };
+                                block = outputs[1];
+                                outputs = [outputs[1], out];
+                            }
+                            assert_eq!(outputs[1], &result.hex(output)[..]);
+                            crate::test::aes_mct_next_key(&mut key, &outputs[0], &outputs[1]);
+                            iv = outputs[1];
+                            block = outputs[0];
+                        }
+                    }
+                    other => panic!("unexpected test type {other}"),
+                }
+            }
+        }
+    }
+
+    #[test]
     fn sp800_38a() {
         // F.2.1 to F.2.6, CBC-AES128, CBC-AES192, and CBC-AES256, both ways
         let iv = hex::decode("000102030405060708090a0b0c0d0e0f").unwrap();
