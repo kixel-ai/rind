@@ -13,6 +13,10 @@ use crate::{constant_time, digest, hmac};
 /// each short-message threshold below it.
 const MAX_LEN: usize = 1100;
 
+/// AES-GCM's 512-bit VAES kernel starts at 2048 bytes; these cover its
+/// threshold, a stride past it, and the tails.
+const LONG_AEAD_LENS: core::ops::RangeInclusive<usize> = 2000..=2600;
+
 /// Start offsets for the placement just after the leading guard page. The
 /// placement against the trailing one starts at every alignment as `len`
 /// varies.
@@ -28,7 +32,7 @@ impl Guarded {
     fn new() -> Self {
         // SAFETY: sysconf has no preconditions.
         let page = usize::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).unwrap();
-        assert!(page >= MAX_LEN + START_OFFSETS[2]);
+        assert!(page >= LONG_AEAD_LENS.end() + START_OFFSETS[2]);
         // SAFETY: a fresh anonymous mapping aliases nothing.
         let base = unsafe {
             libc::mmap(
@@ -120,6 +124,9 @@ fn aead() {
         for len in 0..=MAX_LEN {
             in_out.each(&message(len), |buf| check(&[1; 13], buf));
             aad.each(&message(len), |aad| check(aad, &mut message(67)));
+        }
+        for len in LONG_AEAD_LENS {
+            in_out.each(&message(len), |buf| check(&[1; 13], buf));
         }
     }
 }
@@ -231,46 +238,42 @@ fn compare_and_zero() {
     }
 }
 
-/// Checks the guard pages fault, by running `planted` in a child that reads
-/// one byte past each end of a placed buffer.
+/// Checks the guard pages fault, by reading one byte before and after a
+/// placed buffer in a forked child. A fork, not a new process, so it runs
+/// under the same qemu runner as the parent.
 #[test]
 fn planted_over_read_faults() {
-    let test = concat!(module_path!(), "::planted");
-    let test = test.split_once("::").unwrap().1;
-    for side in ["before", "after"] {
-        let out = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([test, "--exact", "--nocapture", "--test-threads=1"])
-            .env("RIND_TEST_GUARD_PLANT", side)
-            .output()
-            .unwrap();
-        let signal = std::os::unix::process::ExitStatusExt::signal(&out.status);
-        let stdout = String::from_utf8_lossy(&out.stdout);
+    for before in [true, false] {
+        let mut guarded = Guarded::new();
+        let buf = guarded.after_start(0, 64);
+        let past = if before {
+            buf.as_ptr().wrapping_sub(1)
+        } else {
+            guarded.before_end(64).as_ptr().wrapping_add(64)
+        };
+        // SAFETY: the child calls only async-signal-safe functions before
+        // `_exit`, as a fork of a threaded process must.
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0);
+        if pid == 0 {
+            // SAFETY: restores the default action, so a sanitizer's handler
+            // cannot turn the fault into an ordinary exit, then makes the
+            // deliberate out-of-bounds read the guard page must catch.
+            unsafe {
+                libc::signal(libc::SIGSEGV, libc::SIG_DFL);
+                libc::signal(libc::SIGBUS, libc::SIG_DFL);
+                core::ptr::read_volatile(past);
+                libc::_exit(0);
+            }
+        }
+        let mut status = 0;
+        // SAFETY: waits on the child just forked.
+        assert_eq!(unsafe { libc::waitpid(pid, &mut status, 0) }, pid);
         assert!(
-            matches!(signal, Some(libc::SIGSEGV | libc::SIGBUS)),
-            "reading {side} the buffer did not fault: {}\n{stdout}",
-            out.status
+            libc::WIFSIGNALED(status)
+                && matches!(libc::WTERMSIG(status), libc::SIGSEGV | libc::SIGBUS),
+            "reading {} the buffer did not fault: status {status:#x}",
+            if before { "before" } else { "after" },
         );
     }
-}
-
-/// Reads past the buffer for `planted_over_read_faults`, which expects it to
-/// die; it does nothing in an ordinary run.
-#[test]
-fn planted() {
-    let Some(side) = std::env::var_os("RIND_TEST_GUARD_PLANT") else {
-        return;
-    };
-    let mut guarded = Guarded::new();
-    let src = message(64);
-    guarded.each(&src, |buf| {
-        let past = match side.to_str().unwrap() {
-            // SAFETY: none; it is the bug the guard page must catch.
-            "before" => unsafe { buf.as_ptr().sub(1) },
-            // SAFETY: as above.
-            _ => unsafe { buf.as_ptr().add(buf.len()) },
-        };
-        // SAFETY: as above.
-        let byte = unsafe { past.read_volatile() };
-        println!("read {byte} {side:?} the buffer");
-    });
 }
