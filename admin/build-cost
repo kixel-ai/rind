@@ -44,7 +44,6 @@ BUILDS = {
     "openssl": ("openssl", []),
     "openssl-vendored": ("openssl", ["vendored"]),
     "rustls-rind": ("rustls", ["rind"]),
-    "rustls-rind-lean": ("rustls", ["rind-lean"]),
     "rustls-aws-lc-rs": ("rustls", ["aws-lc-rs"]),
     "rustls-ring": ("rustls", ["ring"]),
 }

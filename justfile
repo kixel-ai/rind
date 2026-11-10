@@ -36,9 +36,9 @@ fix $BASE="":
 armv7:
     nix develop .#armv7 --command sh/armv7.sh
 
-# Build, lint, and test loongarch64 under qemu (Linux only).
-loongarch64:
-    nix develop .#loongarch64 --command sh/loongarch64.sh
+# Build, lint, and test SHELL's target, such as s390x, under qemu (Linux only).
+qemu SHELL:
+    nix develop .#{{SHELL}} --command sh/qemu.sh
 
 # Lint and test the portable backend, forced on this x86_64 Linux host.
 portable:

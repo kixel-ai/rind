@@ -14,10 +14,6 @@ Planned with the maintainer on 2026-11-03 from the audit.
 - Restate those proofs as axioms about the Rust wrappers, as `Rind/<Arch>/S2nBignum.lean` does. Then prove `ct_equal` from them in Lean, discharge `CtEqual`, and pin the axioms in `Rind/<Arch>/Axioms.lean`.
 - `Rind/X86_64/Sha512.lean` keeps its own SHA-512 padding and buffering lemmas (`sha512_pad_spec`, `sha512_split_tail_spec`, `sha512_complete_blocks_spec`). Replacing them with `Blockwise.lean`'s generic ones was dropped on [moq-dev/rind#476](https://github.com/moq-dev/rind/pull/476): the proofs hold, and only duplication would go.
 
-## Required
-
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
-
 ## Related
 
 - [x86_64 SHA-NI SHA-256 block function is proven](/quest/m3/verified/sha256-block.md) - discharges `ShaBlocks` for SHA-256 on that tier

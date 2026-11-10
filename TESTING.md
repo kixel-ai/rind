@@ -12,7 +12,7 @@ A primitive is checked four ways:
   files](thirdparty/vectors/README.md), run by `cargo test`.
 - **Fuzz target**: a `fuzz/fuzzer/` target that compares rind with aws-lc-rs
   on fuzzed input. `fuzz.yml` runs each nightly, then replays its corpus on
-  each slower tier.
+  every tier.
 - **Differential test**: a `rind/tests/crosschecks.rs` test that compares rind
   with aws-lc-rs, run by `cargo test`.
 - **Constant time**: a test that marks the secrets. `admin/ctgrind` runs the
@@ -21,7 +21,7 @@ A primitive is checked four ways:
   builds one is checked. `admin/ct-sde` and `admin/ct-qemu` compare the traces
   of `ct_sde_...` and `ct_qemu_...` tests for two secrets, for the code
   valgrind cannot run. None of the three sees variable-time instructions;
-  [that quest](/quest/m3/confidence/vartime-scan.md) adds the check.
+  `admin/ct-vartime` scans the release builds for them.
 
 `admin/testing`, in `just ci`, fails when an export, fuzz target, differential
 test, constant-time test, vector file, or CCTV/imported-vector test is missing
@@ -39,10 +39,10 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 
 | Backend | Tier | Vectors and differential tests | Fuzz targets | Constant time |
 |---|---|---|---|---|
-| x86_64 | AVX-512 (Ice Lake and later, Zen 4 and 5) | SDE: Cannon Lake (RSA only), Granite Rapids, Diamond Rapids | the runner's tier, when it has AVX-512 | `admin/ct-sde`: AES-GCM and RSA; ML-KEM's AVX-512 code reads only the public matrix |
-| x86_64 | SHA512 instructions (Arrow Lake, Diamond Rapids) | SDE: Arrow Lake, Diamond Rapids | none: GitHub's runners lack them, [planned](/quest/m3/confidence/fuzz-tiers.md) | `admin/ct-sde`: HMAC |
-| x86_64 | VAES without AVX-512 (Alder Lake, Zen 3) | SDE: Alder Lake, Granite Rapids at 256 bits; the runner, when Zen 3 | the runner's tier, when Zen 3; denied, when it has AVX-512 | `admin/ct-sde`: AES-GCM |
-| x86_64 | SHA extensions (Goldmont, Cannon Lake and later, Zen) | SDE: Goldmont and later | the runner's tier | `admin/ct-sde`: HMAC |
+| x86_64 | AVX-512 (Ice Lake and later, Zen 4 and 5) | SDE: Cannon Lake (RSA only), Granite Rapids, Diamond Rapids | SDE: Diamond Rapids; the runner's tier, when it has AVX-512 | `admin/ct-sde`: AES-GCM and RSA; ML-KEM's AVX-512 code reads only the public matrix |
+| x86_64 | SHA512 instructions (Arrow Lake, Diamond Rapids) | SDE: Arrow Lake, Diamond Rapids | SDE: Diamond Rapids | `admin/ct-sde`: HMAC |
+| x86_64 | VAES without AVX-512 (Alder Lake, Zen 3) | SDE: Alder Lake, Granite Rapids at 256 bits; the runner, when Zen 3 | SDE: Diamond Rapids, denied; the runner's tier, when Zen 3; denied, when it has AVX-512 | `admin/ct-sde`: AES-GCM |
+| x86_64 | SHA extensions (Goldmont, Cannon Lake and later, Zen) | SDE: Goldmont and later | SDE: Diamond Rapids; the runner's tier | `admin/ct-sde`: HMAC |
 | x86_64 | AVX2 and ADX, no SHA extensions or VAES (Broadwell to Cooper Lake) | SDE: Skylake server; denied | denied | ctgrind: valgrind hides AVX-512, VAES, and the SHA extensions, so the runner's own run lands here |
 | x86_64 | AVX2 without ADX (Haswell) | SDE: Haswell; denied | denied | ctgrind: denied (`no-adx`) |
 | x86_64 | AVX without AVX2 (Sandy and Ivy Bridge, Bulldozer, Jaguar) | SDE: Sandy Bridge, which runs Intel's AVX SHA; denied, which runs other vendors' | denied | ctgrind: denied (`no-avx2`), but on GitHub's AMD runners not Intel's AVX SHA, [planned](/quest/m3/confidence/ct-tiers.md) |
@@ -52,10 +52,12 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 | aarch64 | crypto extension, SHA-512 and SHA-3 instructions (Graviton 3, Apple M, Cobalt 100) | `build.yml` on the arm64 runners | the arm64 runner | ctgrind on the arm64 runner, on the paths valgrind exposes, [planned](/quest/m3/confidence/ct-tiers.md) |
 | aarch64 | crypto extension without SHA-3 (Graviton 2, Raspberry Pi 5) | denied | denied | ctgrind, where valgrind hides SHA-3, [planned](/quest/m3/confidence/ct-tiers.md) |
 | aarch64 | no crypto extension (Raspberry Pi 4) | denied | denied | ctgrind: denied (`aarch64-portable`) |
-| armv7 | crypto extension (most 32-bit Android) | `just armv7`: qemu `max` | none: `fuzz.yml` builds only on GitHub's hosted runners, [planned](/quest/m3/confidence/fuzz-tiers.md) | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
-| armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | none, as above | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
-| armv7 | no NEON | `just armv7`: qemu Cortex-A15, denied | none, as above | ctgrind: denied (`no-neon`) |
+| armv7 | crypto extension (most 32-bit Android) | `just armv7`: qemu `max` | the arm64 runner, which runs armv7 natively | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
+| armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | denied | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
+| armv7 | no NEON | `just armv7`: qemu Cortex-A15, denied | denied | ctgrind: denied (`no-neon`) |
 | portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | none: fuzz jobs build the native backends | ctgrind: the `portable` job forces this backend |
+| portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | none, as above | ctgrind's forced run, of the same code built for x86_64 |
+| portable | riscv64gc Linux, glibc and musl | `just qemu riscv64` and `just qemu riscv64-musl`: as s390x | none, as above | as s390x |
 
 ## Vector suites
 
@@ -104,7 +106,7 @@ constant-time cell is empty by design.
 | QUIC header protection | `aead::quic::{Algorithm, AES_128, AES_256, CHACHA20, HeaderProtectionKey, SAMPLE_LEN}` | RFC 9001: `aead::quic::rfc9001` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md) | `crosschecks::cipher::quic_header_protection_mask` | ctgrind: AES's key, as below, and ChaCha20's `mid::chacha20::new`; qemu: `mid::aes::ct_qemu_aes` |
 | AES block | `cipher::{Aes, Algorithm, AES_128, AES_192, AES_256}` | `cavp/aes`, `aws_lc::aes`, `aws_lc::cipher` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md) | `crosschecks::cipher::aes_block` | ctgrind: `mid::aes::expand_key`, `mid::aes::encrypt_block`; qemu: `mid::aes::ct_qemu_aes` |
 | AES-CTR | `cipher::AesCtr` | SP 800-38A: `mid::aes::sp800_38a`, RFC 3686: `mid::aes::rfc3686`, RFC 3711: `mid::aes::srtp_aes_cm`, `aws_lc::cipher` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md) | `crosschecks::cipher::aes_ctr` | ctgrind: `mid::aes::expand_key`, `mid::aes::apply_keystream`; qemu: `mid::aes::ct_qemu_aes` |
-| AES-CBC | `cipher::{AesCbcDecryptingKey, AesCbcEncryptingKey}` | `aes_cbc_pkcs5_test`, SP 800-38A: `mid::aes_cbc::sp800_38a`, `aws_lc::cipher` | `fuzz::aes_cbc` | `crosschecks::cipher::aes_cbc_pkcs7`, `crosschecks::cipher::aes_cbc_unpadded` | ctgrind: the key `mid::aes_cbc::new`; qemu: `mid::aes_cbc::ct_qemu_aes_cbc` |
+| AES-CBC | `cipher::{AesCbcDecryptingKey, AesCbcEncryptingKey, CbcIv}` | `aes_cbc_pkcs5_test`, SP 800-38A: `mid::aes_cbc::sp800_38a`, `aws_lc::cipher` | `fuzz::aes_cbc` | `crosschecks::cipher::aes_cbc_pkcs7`, `crosschecks::cipher::aes_cbc_unpadded` | ctgrind: the key `mid::aes_cbc::new`; qemu: `mid::aes_cbc::ct_qemu_aes_cbc` |
 | ChaCha20 | `cipher::ChaCha20` | `chacha20_counter_test`, RFC 8439: `mid::chacha20::rfc8439` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md) | `crosschecks::cipher::chacha20_keystream`, `crosschecks::cipher::chacha20_every_length` | ctgrind: the key `mid::chacha20::new`, `low::x86_64::chacha20::paths_match`, `low::arm::chacha_armv4::neon_matches_nohw` |
 | AES-KW, AES-KWP | `key_wrap::{AesKek, AES_128, AES_192, AES_256}` | `aes_wrap_test`, `aes_kwp_test`, RFC 3394: `mid::aes_kw::rfc3394`, RFC 5649: `mid::aes_kw::rfc5649`, `aws_lc::aes` | `fuzz::key_wrap`, but not AES-192, which aws-lc-rs lacks | `crosschecks::key_wrap::wrap_and_unwrap`, `crosschecks::key_wrap::wrap_and_unwrap_padded` | ctgrind: the key `mid::aes_kw::new`; qemu: `mid::aes_kw::ct_qemu_aes_kw` |
 | MD5 | `digest::legacy::MD5` | RFC 1321: `mid::md5::rfc1321` | none, [planned](/quest/m3/confidence/fuzz-every-primitive.md) | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message` |

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Build, lint, and test loongarch64, which runs the portable backend, as
-# `just loongarch64` runs it inside the flake's `loongarch64` dev shell. The
-# tests run under qemu-user.
+# Build, lint, and test an architecture with no rind assembly under qemu-user,
+# as `just qemu <shell>` runs it inside that flake dev shell, which names the
+# target. Optimised for qemu, but keeping the checks a debug build has.
 set -euo pipefail
 
-if [[ -z "${CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_GNU_RUNNER:-}" ]]; then
-    echo "error: run through 'just loongarch64', which enters the flake's loongarch64 dev shell" >&2
+target=${RIND_QEMU_TARGET:-}
+if [[ -z "$target" ]]; then
+    echo "error: run through 'just qemu <shell>', which enters a flake dev shell naming the target" >&2
     exit 1
 fi
 
@@ -21,11 +22,12 @@ fi
 # The bench and fuzz crates need C libraries built for the target.
 packages=(-p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m)
 
-target=loongarch64-unknown-linux-gnu
-cargo clippy "${packages[@]}" --locked --target "$target" --all-targets -- --deny warnings
-
-# Under qemu, so optimised, but keeping the checks a debug build has.
 export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
 export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
+
+# Linted in the profile the tests build, since nixpkgs' cross gcc warns about
+# _FORTIFY_SOURCE at -O0, which fails aws-lc's compiler probes and so its
+# big-endian build.
+cargo clippy "${packages[@]}" --locked --release --target "$target" --all-targets -- --deny warnings
 cargo test "${packages[@]}" --locked --release --target "$target"
 cargo test -p rind --features wipe --test zeroing --locked --release --target "$target"

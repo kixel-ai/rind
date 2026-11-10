@@ -95,10 +95,39 @@
             };
           };
 
-          # loongarch64 runs the portable backend. As for armv7, only its
-          # tests need this C toolchain, for the aws-lc-rs dev-dependency.
-          loongarch64-cc = pkgs.pkgsCross.loongarch64-linux.stdenv.cc;
-          loongarch64-prefix = "${loongarch64-cc}/bin/${loongarch64-cc.targetPrefix}";
+          # A shell that builds `target`, an architecture with no rind
+          # assembly, and runs its tests under qemu-user, as `just qemu` does.
+          # `cross` is the nixpkgs cross set whose C toolchain the tests'
+          # aws-lc-rs dev-dependency builds with; rind itself needs none.
+          qemu-shell =
+            { target, cross }:
+            let
+              cc = cross.stdenv.cc;
+              prefix = "${cc}/bin/${cc.targetPrefix}";
+              var = pkgs.lib.toUpper (builtins.replaceStrings [ "-" ] [ "_" ] target);
+              lower = builtins.replaceStrings [ "-" ] [ "_" ] target;
+            in
+            pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override {
+                  extensions = [ "clippy" ];
+                  targets = [ target ];
+                })
+                cc
+                pkgs.qemu-user
+              ];
+
+              env = {
+                RIND_QEMU_TARGET = target;
+                "CC_${lower}" = "${prefix}cc";
+                "CXX_${lower}" = "${prefix}c++";
+                "AR_${lower}" = "${prefix}ar";
+                "CARGO_TARGET_${var}_LINKER" = "${prefix}cc";
+                # The wrapper links against the store's glibc for the target
+                # by absolute path, so qemu needs no sysroot.
+                "CARGO_TARGET_${var}_RUNNER" = "qemu-${cross.stdenv.hostPlatform.qemuArch}";
+              };
+            };
 
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
           # built against the plugin API of the qemu-user its shells run.
@@ -233,12 +262,35 @@
             '';
           };
 
+          # `admin/prove hol-light` runs in it: HOL Light, the OCaml it
+          # compiles the proofs with, as s2n-bignum's `tools/build-proof.sh`
+          # does, and the Rust whose build emits the object code they are of,
+          # with llvm-objdump to read it.
+          hol-light = pkgs.mkShell {
+            packages = [
+              (rust-stable.minimal.override {
+                extensions = [ "llvm-tools" ];
+                targets = [
+                  "x86_64-unknown-linux-gnu"
+                  "aarch64-unknown-linux-gnu"
+                ];
+              })
+              pkgs.hol_light
+              pkgs.ocamlPackages.ocaml
+              pkgs.ocamlPackages.findlib
+              pkgs.ocamlPackages.camlp5
+              pkgs.git
+            ];
+          };
+
           sde-certs = ''
             export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
           '';
         in
         {
           devShells = {
+            inherit hol-light;
+
             default = pkgs.mkShell {
               packages =
                 with pkgs;
@@ -414,7 +466,6 @@
                     "x86_64-unknown-linux-gnu"
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
-                    "loongarch64-unknown-linux-gnu"
                   ];
                 })
                 pkgs.python3
@@ -428,6 +479,7 @@
             # `proofs/lean-toolchain` names, whose bundled `leantar` reads
             # Mathlib's cache, which nixpkgs' Lean cannot.
             prove = pkgs.mkShell {
+              inputsFrom = [ hol-light ];
               packages = [
                 aeneas
                 pkgs.elan
@@ -470,26 +522,29 @@
             # other CI job would download.
             armv7 = pkgs.mkShell armv7-shell;
 
-            # `just loongarch64` enters it to lint and test the loongarch64
-            # build under qemu, apart from the other shells for the same
-            # reason as `armv7`.
-            loongarch64 = pkgs.mkShell {
-              packages = [
-                (rust-stable.minimal.override {
-                  extensions = [ "clippy" ];
-                  targets = [ "loongarch64-unknown-linux-gnu" ];
-                })
-                loongarch64-cc
-                pkgs.qemu-user
-              ];
+            # `just qemu s390x` tests the portable backend on big-endian
+            # s390x in it.
+            s390x = qemu-shell {
+              target = "s390x-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.s390x;
+            };
 
-              env = {
-                CC_loongarch64_unknown_linux_gnu = "${loongarch64-prefix}cc";
-                CXX_loongarch64_unknown_linux_gnu = "${loongarch64-prefix}c++";
-                AR_loongarch64_unknown_linux_gnu = "${loongarch64-prefix}ar";
-                CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_GNU_LINKER = "${loongarch64-prefix}cc";
-                CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_GNU_RUNNER = "qemu-loongarch64";
-              };
+            # `just qemu riscv64` and `just qemu riscv64-musl` test the
+            # portable backend on riscv64gc Linux, glibc and musl, in them.
+            riscv64 = qemu-shell {
+              target = "riscv64gc-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.riscv64;
+            };
+            riscv64-musl = qemu-shell {
+              target = "riscv64gc-unknown-linux-musl";
+              cross = pkgs.pkgsCross.riscv64-musl;
+            };
+
+            # `just qemu loongarch64` tests the portable backend on
+            # loongarch64 Linux in it.
+            loongarch64 = qemu-shell {
+              target = "loongarch64-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.loongarch64-linux;
             };
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
