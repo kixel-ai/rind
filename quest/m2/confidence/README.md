@@ -27,7 +27,7 @@ The 2026-11-09 audit found no exploitable bug and no panic reachable from public
 ## Required
 
 - [rind passes NIST's ACVP vectors](/quest/m2/confidence/acvp.md) - every algorithm ACVP covers
-- [BINSEC checks the secret paths no proof covers](/quest/m2/confidence/binsec.md) - constant time for every secret, on the paths no proof covers, nightly on x86_64 and aarch64
+- [BINSEC checks RSA's private operation and ChaCha20's AVX2 kernel](/quest/m2/confidence/binsec.md) - the secret paths the nightly BINSEC job leaves out
 - [Adapter crates' surviving mutants](/quest/m2/confidence/mutants-adapters.md) - tests for the 103 adapter mutants no test catches
 - [Surviving mutants that need crafted inputs](/quest/m2/confidence/mutants-edge-cases.md) - the AVX2 Ed25519 field arithmetic, points at infinity, and other edges random inputs miss
 - [Mutation testing on AVX-512](/quest/m2/confidence/mutants-avx512.md) - the AVX-512 paths no campaign host runs, under Intel SDE

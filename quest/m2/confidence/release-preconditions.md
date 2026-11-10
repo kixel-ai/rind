@@ -35,4 +35,4 @@ Benchmark against `main` and against aws-lc-rs on x86_64 and aarch64. The symmet
 
 ## Related
 
-- [BINSEC checks the secret paths no proof covers](/quest/m2/confidence/binsec.md) - the other mechanical check on the same boundary, for timing rather than memory
+- [BINSEC checks RSA's private operation and ChaCha20's AVX2 kernel](/quest/m2/confidence/binsec.md) - the other mechanical check on the same boundary, for timing rather than memory
