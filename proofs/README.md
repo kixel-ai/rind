@@ -36,11 +36,11 @@ s2n-bignum's routines, in `Rind/X86_64/X25519.lean`, which `admin/prove` also
 writes for aarch64:
 
 - `x25519_generate`: the key's scalar is the 32 drawn bytes, read
-  little-endian, and a failed draw is refused;
+  little-endian, it holds its public key, and a failed draw is refused;
 - `x25519_from_scalar`: a loaded key's scalar is the 32 given bytes, read
-  little-endian, and any other length is refused;
-- `x25519_public_key`: the public key is the 32 little-endian bytes of
-  `rfcx25519(scalar, 9)`;
+  little-endian, it holds its public key, and any other length is refused;
+- `x25519_public_key`: the public key a key holds is the 32 little-endian
+  bytes of `rfcx25519(scalar, 9)`;
 - `x25519_agree`: a peer key that is not 32 bytes is refused, so is an
   all-zero result, and otherwise the secret is the 32 little-endian bytes of
   `rfcx25519(scalar, u)`, for the peer's bytes `u` read little-endian;
@@ -52,12 +52,13 @@ P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
 `Rind/Aarch64/P256.lean`:
 
 - `p256_generate`: the key's scalar is the first of up to 64 draws whose
-  bytes, read big-endian, are in [1, n), and the key is refused if a draw
-  fails before one is, or none is;
+  bytes, read big-endian, are in [1, n), it holds its public key, and the key
+  is refused if a draw fails before one is, or none is;
 - `p256_from_scalar`: a loaded key's scalar is the 32 given bytes, read
-  big-endian, refused unless they are 32 bytes and in [1, n);
-- `p256_public_key`: the public key is the X9.62 uncompressed encoding of the
-  scalar times G, for a scalar in [1, n), as every key's is;
+  big-endian, refused unless they are 32 bytes and in [1, n), and it holds
+  its public key;
+- `p256_public_key`: the public key a key holds is the X9.62 uncompressed
+  encoding of the scalar times G;
 - `p256_agree`: a peer key is refused unless it is a 65-byte uncompressed
   point whose coordinates are below p and on the curve, and otherwise the
   secret is the 32 big-endian bytes of the x-coordinate of the scalar times
@@ -195,10 +196,12 @@ hypothesis: the compare returns whether its inputs are equal.
 (`Algorithm`'s `generate` and `load`, and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
 cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
 cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
-Lean definitions beside the Rust they model. P-256's key generation draws
-through a `dyn RandomSource`, which Aeneas cannot translate either, and
-`Rind/Aarch64/P256Dispatch.lean` models it and the `ECDH_P256` static the same
-way. The signature API's `EcdsaKeyPair` reaches each curve's code, and
+Lean definitions beside the Rust they model, with an agreement `Algorithm` as
+which static it is. P-256's key generation draws through a `dyn
+RandomSource`, which Aeneas cannot translate either, and
+`Rind/Aarch64/P256Dispatch.lean` models it the same way, for
+`Rind/Aarch64/Dispatch.lean` to call; on x86_64, where no theorem is about
+P-256, `Rind/X86_64/P256Dispatch.lean` leaves it opaque. The signature API's `EcdsaKeyPair` reaches each curve's code, and
 `PublicKey` each ECDSA key's parser and verifier, through function pointers,
 and P-256's ECDSA key generation draws through a `dyn RandomSource`;
 `Rind/Aarch64/EcdsaDispatch.lean` models them for P-256 with SHA-256 and

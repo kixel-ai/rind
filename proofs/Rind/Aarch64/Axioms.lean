@@ -15,15 +15,15 @@ which cover SHA-384 and SHA-512, and for Ed25519's hashes, and nothing else.
 A change here is a change to the trust base.
 -/
 
-/-- info: 'rind.aarch64.x25519_generate' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'rind.aarch64.x25519_generate' depends on axioms: [propext, Classical.choice, Quot.sound, curve25519_x25519base_spec] -/
 #guard_msgs in
 #print axioms x25519_generate
 
-/-- info: 'rind.aarch64.x25519_from_scalar' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'rind.aarch64.x25519_from_scalar' depends on axioms: [propext, Classical.choice, Quot.sound, curve25519_x25519base_spec] -/
 #guard_msgs in
 #print axioms x25519_from_scalar
 
-/-- info: 'rind.aarch64.x25519_public_key' depends on axioms: [propext, Classical.choice, Quot.sound, curve25519_x25519base_spec] -/
+/-- info: 'rind.aarch64.x25519_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms x25519_public_key
 
@@ -42,29 +42,32 @@ A change here is a change to the trust base.
 /-- info: 'rind.aarch64.p256_generate' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
+ bignum_add_p256_spec,
+ bignum_demont_p256_spec,
  bignum_eq_spec,
- bignum_mod_n256_spec] -/
+ bignum_mod_n256_spec,
+ bignum_montmul_p256_spec,
+ bignum_montsqr_p256_spec,
+ bignum_tomont_p256_spec,
+ p256_scalarmulbase_spec] -/
 #guard_msgs in
 #print axioms p256_generate
 
 /-- info: 'rind.aarch64.p256_from_scalar' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
- bignum_eq_spec,
- bignum_mod_n256_spec] -/
-#guard_msgs in
-#print axioms p256_from_scalar
-
-/-- info: 'rind.aarch64.p256_public_key' depends on axioms: [propext,
- Classical.choice,
- Quot.sound,
  bignum_add_p256_spec,
  bignum_demont_p256_spec,
  bignum_eq_spec,
+ bignum_mod_n256_spec,
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_spec,
  bignum_tomont_p256_spec,
  p256_scalarmulbase_spec] -/
+#guard_msgs in
+#print axioms p256_from_scalar
+
+/-- info: 'rind.aarch64.p256_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms p256_public_key
 
