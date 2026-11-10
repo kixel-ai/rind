@@ -179,6 +179,18 @@ secret names a zeroing test, or says why it has none.
 
 Exports that are not primitives: `Error`, `KeyRejected`, `doc::inline_assembly_safety`, `cpu::Dit`, `cpu::MissingFeature`, `cpu::check`, `cpu::has_aes_hardware`.
 
+## Adapters
+
+Each adapter crate gets a fuzz target that feeds it a hostile peer's bytes:
+records, packets, key shares, tickets, certificates, and signatures, through
+the traits its upstream calls, compared with upstream's own aws-lc-rs
+provider, then whole handshakes between two rind endpoints with their bytes
+edited in flight. A panic, a hang, or an answer that differs from aws-lc-rs's
+fails the run, as does a failed open that leaves plaintext in the caller's
+buffer.
+
+Adapter fuzz targets: `fuzz::rustls`, `fuzz::dimpl`, `fuzz::str0m`.
+
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [CCTV]: https://github.com/C2SP/CCTV
 [Miri]: https://github.com/rust-lang/miri

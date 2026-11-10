@@ -32,7 +32,6 @@ The 2026-11-09 audit found no exploitable bug and no panic reachable from public
 - [Surviving mutants that need crafted inputs](/quest/m2/confidence/mutants-edge-cases.md) - the AVX2 Ed25519 field arithmetic, points at infinity, and other edges random inputs miss
 - [Mutation testing on AVX-512](/quest/m2/confidence/mutants-avx512.md) - the AVX-512 paths no campaign host runs, under Intel SDE
 - [Mutation testing of DIT](/quest/m2/confidence/mutants-dit.md) - DIT detection and setting, on cores that have it
-- [Hostile peer bytes never panic an adapter](/quest/m2/confidence/adapters-hostile-input.md) - a nightly fuzz target feeding arbitrary peer bytes to rind-rustls, rind-dimpl, and rind-str0m
 - [Safe wrappers around assembly enforce their preconditions in release builds](/quest/m2/confidence/release-preconditions.md) - length, alignment, and table-size checks on safe `low` wrappers that hold in release, with RSA benches within noise
 - [An ABI harness checks every assembly routine](/quest/m2/confidence/asm-abi.md) - callee-saved registers, stack pointer, and flags after each routine
 - [Heap scratch from a private key is wiped before it is freed](/quest/m2/confidence/wipe-heap-scratch.md) - a test allocator that fails on key-derived bytes in a freed block
