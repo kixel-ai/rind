@@ -13,7 +13,18 @@ impl fmt::Display for Unspecified {
     }
 }
 
-impl std::error::Error for Unspecified {}
+// aws-lc-rs overrides the deprecated `description` and `cause`, so a caller
+// still on them gets its answers.
+#[allow(deprecated)]
+impl std::error::Error for Unspecified {
+    fn description(&self) -> &str {
+        "Unspecified"
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        None
+    }
+}
 
 impl From<core::array::TryFromSliceError> for Unspecified {
     fn from(_: core::array::TryFromSliceError) -> Self {
@@ -21,6 +32,7 @@ impl From<core::array::TryFromSliceError> for Unspecified {
     }
 }
 
+#[cfg(any(feature = "ring-sig-verify", feature = "ring-io"))]
 impl From<untrusted::EndOfInput> for Unspecified {
     fn from(_: untrusted::EndOfInput) -> Self {
         Self
@@ -120,7 +132,16 @@ impl fmt::Display for KeyRejected {
     }
 }
 
-impl std::error::Error for KeyRejected {}
+#[allow(deprecated)]
+impl std::error::Error for KeyRejected {
+    fn description(&self) -> &str {
+        self.description_()
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        None
+    }
+}
 
 impl From<()> for KeyRejected {
     fn from((): ()) -> Self {
