@@ -2,7 +2,7 @@
 
 ## Goal
 
-Every assembly routine armv7 runs is proven on [the AArch32 model](/quest/m5/verified/armv7/model.md), so SHA-2, SHA-1, ChaCha20-Poly1305, AES and AES-GCM with the crypto extension, ML-KEM, RSA, and the constant-time compare earn the ✓ on armv7.
+Every assembly routine armv7 runs is proven on [the AArch32 model](/quest/m5/verified-armv7/model.md), so SHA-2, SHA-1, ChaCha20-Poly1305, AES and AES-GCM with the crypto extension, ML-KEM, RSA, and the constant-time compare earn the ✓ on armv7.
 
 ## Plan
 
@@ -21,8 +21,8 @@ Route: prove each against the HOL Light or Lean specs the x86_64 and aarch64 que
 ## Required
 
 - [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
-- [An AArch32 instruction model checks armv7's assembly](/quest/m5/verified/armv7/model.md) - the model the proofs run on
-- [armv7 runs the Rust proofs](/quest/m5/verified/armv7/prove.md) - the armv7 translation these routines' theorems compose with
+- [An AArch32 instruction model checks armv7's assembly](/quest/m5/verified-armv7/model.md) - the model the proofs run on
+- [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) - the armv7 translation these routines' theorems compose with
 - [ChaCha20-Poly1305 is proven on x86_64](/quest/m4/verified/chacha20-poly1305-x86.md) - the RFC 8439 ChaCha20 and Poly1305 specs and the AEAD glue's proof
 - [x86_64 SHA-512 on AVX2 is proven](/quest/m4/verified/sha512-x86-avx2.md) - the pinned FIPS 180-4 SHA-512 spec and its Lean axiom shape
 - [The SHA-3 sponge is proven](/quest/m4/verified/sha3-sponge.md) - the FIPS 202 spec and sponge `keccak1600-armv4` sits under
