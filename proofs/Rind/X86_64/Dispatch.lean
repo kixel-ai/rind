@@ -1,4 +1,6 @@
-import Rind.X86_64.P256Dispatch
+module
+public import Rind.X86_64.P256Dispatch
+@[expose] public section
 open Aeneas Aeneas.Std Result
 
 /-!
@@ -215,6 +217,16 @@ pub struct Algorithm {
     new: fn(&[u8]) -> Result<Key, Error>,
 }
 
+impl Algorithm {
+    /// The length of a key, in bytes.
+    pub fn key_len(&self) -> usize {
+        match self.id {
+            AlgorithmId::Aes128 => 16,
+            AlgorithmId::Aes256 | AlgorithmId::ChaCha20 => 32,
+        }
+    }
+}
+
 pub static CHACHA20: Algorithm = Algorithm {
     id: AlgorithmId::ChaCha20,
     new: |key| {
@@ -418,6 +430,12 @@ def high.agreement.PrivateKey.agree (self : high.agreement.PrivateKey) (peer : S
 structure aead.quic.Algorithm where
   id : aead.quic.AlgorithmId
   new : Slice Std.U8 → Result (core.result.Result aead.quic.Key error.Error)
+
+/-- `quic::Algorithm::key_len`. -/
+def aead.quic.Algorithm.key_len (self : aead.quic.Algorithm) : Usize :=
+  match self.id with
+  | .Aes128 => 16#usize
+  | .Aes256 | .ChaCha20 => 32#usize
 
 /-- `Masker::<C>::new`, whose `mask` is `C::mask`. -/
 def aead.quic.Masker.new {C : Type} (key : C) : Result (aead.quic.Masker C) :=

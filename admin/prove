@@ -387,7 +387,7 @@ items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
     'pub static ECDH_P256:' 'pub static ECDH_P384:' 'pub static ECDH_P521:' 'pub struct PrivateKey {' \
     'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {' >"$out/agreement.rs"
 items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {' >"$out/zeroise.rs"
-items rind/src/aead/quic.rs 'pub struct Algorithm ' 'pub static CHACHA20:' \
+items rind/src/aead/quic.rs 'pub struct Algorithm ' 'impl Algorithm {' 'pub static CHACHA20:' \
     'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' 'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
 check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic.rs"
 p256_items() {
@@ -620,6 +620,7 @@ extract() {
 # and `proofs/Rind/X86_64/HkdfExpand.lean` models it.
 extract_kdf() {
     local arch=$1 dir=$2
+    shift 2
     (cd rind && charon cargo --preset=aeneas \
         --start-from crate::high::hkdf::Salt::new \
         --start-from crate::high::hkdf::Salt::extract \
@@ -628,12 +629,16 @@ extract_kdf() {
         --start-from crate::high::pbkdf2::Secret::new \
         --start-from crate::high::pbkdf2::Secret::derive \
         --start-from crate::high::pbkdf2::Secret::verify \
+        --start-from '{impl core::convert::From for crate::aead::quic::HeaderProtectionKey}' \
+        --start-from '{impl core::convert::From for crate::high::hmac::Key}' \
+        --start-from '{impl core::convert::From for crate::high::hkdf::Prk}' \
         --opaque 'crate::high::hkdf::_::expand_into' \
         --opaque crate::high::hmac \
         --opaque crate::high::digest \
         --opaque crate::low \
         --opaque crate::mid \
         --opaque crate::aead \
+        "$@" \
         --dest-file "$PWD/../$out/$arch-kdf.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
     rm -rf "$out/lean"
@@ -735,7 +740,9 @@ extract aarch64 Aarch64 \
     --opaque crate::low::aarch64::sha256::compress_hw \
     --opaque crate::low::aarch64::sha256::compress_nohw
 
-extract_kdf x86_64 X86_64
+# The AEAD key's conversion is x86_64's alone: the AEAD API's model and proofs
+# are x86_64's, as AES-GCM's are.
+extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aead::Key}'
 extract_kdf aarch64 Aarch64
 
 mkdir -p proofs/Rind/Aarch64/Kdf
@@ -744,6 +751,9 @@ for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20 Signa
     HmacApi DigestApi Hkdf Pbkdf2; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
+# The AEAD model imports nothing aarch64 has, and no aarch64 translation reaches it.
+sed -i '/Rind.Aarch64.AeadDispatch/d' proofs/Rind/Aarch64/Kdf/TypesExternal.lean
+sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Aarch64/Kdf/FunsExternal.lean
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
 # Each hand model of a CPU intrinsic, a `core.core_arch` definition but its

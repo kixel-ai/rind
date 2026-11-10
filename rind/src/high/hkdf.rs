@@ -93,60 +93,31 @@ impl Prk {
 }
 
 mod sealed {
-    // Only rind's own lengths, so a key's always fits `Okm::into_key`'s buffer.
-    #[allow(clippy::len_without_is_empty)]
-    pub trait Len {
-        fn len(&self) -> usize;
-    }
+    pub trait Sealed {}
 }
 
 /// A length of HKDF output: a plain `usize`, or the algorithm of the key it becomes.
-pub trait KeyType: sealed::Len {}
+pub trait KeyType: sealed::Sealed {}
 
 /// Raw key material of this many bytes, for [`Okm::fill`].
+impl sealed::Sealed for usize {}
 impl KeyType for usize {}
 
-impl sealed::Len for usize {
-    fn len(&self) -> usize {
-        *self
-    }
-}
-
 /// A key of the algorithm's [`aead::Algorithm::key_len`].
+impl sealed::Sealed for &'static aead::Algorithm {}
 impl KeyType for &'static aead::Algorithm {}
 
-impl sealed::Len for &'static aead::Algorithm {
-    fn len(&self) -> usize {
-        self.key_len()
-    }
-}
-
 /// A key of the algorithm's [`aead::quic::Algorithm::key_len`].
+impl sealed::Sealed for &'static aead::quic::Algorithm {}
 impl KeyType for &'static aead::quic::Algorithm {}
 
-impl sealed::Len for &'static aead::quic::Algorithm {
-    fn len(&self) -> usize {
-        self.key_len()
-    }
-}
-
 /// A key of the algorithm's [`hmac::Algorithm::tag_len`].
+impl sealed::Sealed for &'static hmac::Algorithm {}
 impl KeyType for &'static hmac::Algorithm {}
 
-impl sealed::Len for &'static hmac::Algorithm {
-    fn len(&self) -> usize {
-        self.tag_len()
-    }
-}
-
 /// The pseudorandom key of a further [`Prk::expand`], the hash's output length.
+impl sealed::Sealed for &'static Algorithm {}
 impl KeyType for &'static Algorithm {}
-
-impl sealed::Len for &'static Algorithm {
-    fn len(&self) -> usize {
-        self.0.tag_len()
-    }
-}
 
 impl fmt::Debug for Prk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -187,40 +158,45 @@ impl Okm<'_, usize> {
     }
 }
 
-impl<L: KeyType> Okm<'_, L> {
-    // Expands into a stack buffer for `key` to copy. Every key length fits
-    // the buffer and the 255-block limit.
-    fn into_key<K>(self, key: impl FnOnce(&L, &[u8]) -> K) -> K {
-        let mut buf = [0u8; MAX_OUTPUT_LEN];
-        let bytes = &mut buf[..self.len.len()];
-        self.prk.expand_into(self.info, bytes);
-        key(&self.len, bytes)
-    }
-}
-
+// Each conversion expands into a stack buffer for its key to copy. Every key
+// length fits the buffer and the 255-block limit.
 impl From<Okm<'_, &'static aead::Algorithm>> for aead::Key {
     fn from(okm: Okm<'_, &'static aead::Algorithm>) -> Self {
-        okm.into_key(|algorithm, bytes| Self::new(algorithm, bytes))
-            .expect("HKDF output is the algorithm's key length")
+        let algorithm = okm.len;
+        let mut buf = [0u8; MAX_OUTPUT_LEN];
+        let bytes = &mut buf[..algorithm.key_len()];
+        okm.prk.expand_into(okm.info, bytes);
+        Self::new(algorithm, bytes).expect("HKDF output is the algorithm's key length")
     }
 }
 
 impl From<Okm<'_, &'static aead::quic::Algorithm>> for aead::quic::HeaderProtectionKey {
     fn from(okm: Okm<'_, &'static aead::quic::Algorithm>) -> Self {
-        okm.into_key(|algorithm, bytes| Self::new(algorithm, bytes))
-            .expect("HKDF output is the algorithm's key length")
+        let algorithm = okm.len;
+        let mut buf = [0u8; MAX_OUTPUT_LEN];
+        let bytes = &mut buf[..algorithm.key_len()];
+        okm.prk.expand_into(okm.info, bytes);
+        Self::new(algorithm, bytes).expect("HKDF output is the algorithm's key length")
     }
 }
 
 impl From<Okm<'_, &'static hmac::Algorithm>> for hmac::Key {
     fn from(okm: Okm<'_, &'static hmac::Algorithm>) -> Self {
-        okm.into_key(|algorithm, bytes| Self::new(algorithm, bytes))
+        let algorithm = okm.len;
+        let mut buf = [0u8; MAX_OUTPUT_LEN];
+        let bytes = &mut buf[..algorithm.tag_len()];
+        okm.prk.expand_into(okm.info, bytes);
+        Self::new(algorithm, bytes)
     }
 }
 
 impl From<Okm<'_, &'static Algorithm>> for Prk {
     fn from(okm: Okm<'_, &'static Algorithm>) -> Self {
-        Self(okm.into_key(|algorithm, bytes| hmac::Key::new(algorithm.0, bytes)))
+        let algorithm = okm.len;
+        let mut buf = [0u8; MAX_OUTPUT_LEN];
+        let bytes = &mut buf[..algorithm.0.tag_len()];
+        okm.prk.expand_into(okm.info, bytes);
+        Self(hmac::Key::new(algorithm.0, bytes))
     }
 }
 
