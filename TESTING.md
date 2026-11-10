@@ -59,6 +59,7 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 | portable | 32-bit x86 (`i686`) | `just qemu i686`: clippy and release vectors and differential tests, natively on an x86_64 host; `build.yml`'s `i686-windows` and `android` jobs | none, as above | ctgrind's forced run, of the same code built for x86_64 |
 | portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | none, as above | ctgrind's forced run, of the same code built for x86_64 |
 | portable | riscv64gc Linux, glibc and musl | `just qemu riscv64` and `just qemu riscv64-musl`: as s390x | none, as above | as s390x |
+| portable | ARM before ARMv7 (Raspberry Pi 1 and Zero) | `just qemu armv6` and `just qemu armv6-softfloat`: as s390x, on qemu's ARM1176; `build.yml`'s `android` job: ARMv5TE Android | none, as above | as s390x |
 
 ## Vector suites
 

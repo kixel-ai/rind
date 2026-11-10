@@ -6,7 +6,7 @@ Every PR that changes rind's code compiles the `rind` library for `wasm32-unknow
 The flake's pinned toolchain gains both targets.
 The nightly `wasm` job in `build.yml` that [moq-dev/rind#543](https://github.com/moq-dev/rind/pull/543) added is deleted as redundant, and [PLATFORMS.md](/PLATFORMS.md) says PRs check it.
 
-Non-goals: runtime tests on wasm, the adapters on wasm, and speed.
+Non-goals: the adapters on wasm, and speed. Runtime tests are [their own quest](/quest/m2/adoption/targets/wasm-tests.md) (maintainer, 2026-11-09).
 
 ## Plan
 

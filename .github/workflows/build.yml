@@ -13,6 +13,29 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: wasm32-wasip2,wasm32-unknown-unknown
+
+      # Compile only the library: the differential tests link native aws-lc.
+      - name: Build WASI
+        run: cargo build -p rind --release --lib --locked --target wasm32-wasip2
+      - name: Build WASI with wiping
+        run: cargo build -p rind --release --lib --locked --target wasm32-wasip2 --features wipe
+      - name: Build WebAssembly with JavaScript randomness
+        run: cargo build -p rind --release --lib --locked --target wasm32-unknown-unknown --features getrandom/wasm_js
+      - name: Build WebAssembly with JavaScript randomness and wiping
+        run: cargo build -p rind --release --lib --locked --target wasm32-unknown-unknown --features wipe,getrandom/wasm_js
+
   build:
     strategy:
       matrix:
@@ -53,7 +76,7 @@ jobs:
       - name: Run tests (debug, --no-default-features)
         run: cargo test --no-default-features
       - name: Run zeroing tests (debug, --features wipe)
-        run: cargo test -p rind -p rind-aws-lc-rs --features rind/wipe,rind-aws-lc-rs/wipe --test zeroing
+        run: cargo test -p rind -p rind-aws-lc-rs -p rind-rcgen --features rind/wipe,rind-aws-lc-rs/wipe,rind-rcgen/wipe --test zeroing
 
       - name: Build (release)
         run: cargo build -p rind --release
@@ -196,15 +219,15 @@ jobs:
       - name: Build, lint, and test
         run: just armv7
 
-  # Architectures with no rind assembly, on the portable backend, under
-  # qemu-user where the runner cannot run them natively. Each entry names the
-  # flake dev shell that holds its target's toolchain. s390x is big-endian,
-  # and the runner runs i686 natively.
+  # Targets with no rind assembly, on the portable backend, under qemu-user
+  # where the runner cannot run them natively. Each entry names the flake dev
+  # shell that holds its target's toolchain. s390x is big-endian, the armv6
+  # shells run on qemu's ARM1176, and the runner runs i686 natively.
   qemu:
     strategy:
       fail-fast: false
       matrix:
-        shell: [s390x, riscv64, riscv64-musl, i686]
+        shell: [s390x, riscv64, riscv64-musl, armv6, armv6-softfloat, i686]
 
     runs-on: ubuntu-latest
     steps:
@@ -399,7 +422,7 @@ jobs:
   # cross's images (see Cross.toml) hold an Android system for the tests, and
   # run aarch64, armv7, and i686 under qemu-user. The aarch64 and armv7 CPUs
   # have the crypto extension; i686's Atom N270 has none of x86's.
-  # armv7 Linux covers the paths without it.
+  # armv7 Linux covers the paths without it. ARMv5TE runs the portable backend.
   android:
     strategy:
       matrix:
@@ -411,6 +434,8 @@ jobs:
           - target: x86_64-linux-android
             expect: ""
           - target: i686-linux-android
+            expect: ""
+          - target: arm-linux-androideabi
             expect: ""
 
     runs-on: ubuntu-latest

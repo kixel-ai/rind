@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build, lint, and test an architecture with no rind assembly, under qemu-user
+# Build, lint, and test a target with no rind assembly, under qemu-user
 # unless the host runs it natively, as `just qemu <shell>` runs it inside that
 # flake dev shell, which names the target. Optimised for qemu, but keeping the
 # checks a debug build has.

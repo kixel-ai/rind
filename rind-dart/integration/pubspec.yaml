@@ -18,3 +18,9 @@ dev_dependencies:
     sdk: flutter
   # The package's tests, which this app runs, import it.
   test: any
+
+# Test the checkout's Rust, not a released prebuilt library.
+hooks:
+  user_defines:
+    rind:
+      build_from_source: true

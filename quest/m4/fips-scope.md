@@ -17,3 +17,10 @@ and Deno's and Node's FIPS builds are the precedent) and whether a FIPS build
 can stay a separate crate so rind's default build pays nothing.
 Zeroization starts from rind's opt-in `wipe` feature; say what FIPS adds to
 it, such as wiping copies inside a call.
+Algorithm testing starts from [the ACVP quest](/quest/m2/confidence/acvp.md)'s
+record of the ACVP algorithms rind lacks and of what a validation needs
+beyond its sample vectors.
+
+## Required
+
+- [rind passes NIST's ACVP vectors](/quest/m2/confidence/acvp.md) - the list of ACVP algorithms rind lacks, and a harness that passes the rest

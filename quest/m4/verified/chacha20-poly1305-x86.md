@@ -12,3 +12,7 @@ ChaCha20-Poly1305 and XChaCha20-Poly1305, TLS's and QUIC's other AEAD, and `ciph
 - Route otherwise: write ChaCha20 and Poly1305 specs in HOL Light against RFC 8439, and prove aws-lc's routines in s2n-bignum's x86_64 model, whose AVX2 decoding is broad; prove the AEAD glue and HChaCha20 with Aeneas, and rind's AVX2 ChaCha20 kernels (`low/x86_64/chacha20.rs`) with Aeneas over modelled intrinsics.
 - The specs are [aarch64's quest](/quest/m4/verified/chacha20-poly1305-aarch64.md)'s too.
 - Upstream: offering this work to awslabs/s2n-bignum is optional, and there is no standing approval: stop and ask the maintainer before posting there or anywhere outside the moq-dev and kixelated orgs (decided with the maintainer on 2026-11-07 on [moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448)).
+
+## Required
+
+- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
