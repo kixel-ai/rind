@@ -13,6 +13,20 @@ pub const SIZES: [(usize, &str); 4] = [
     (16384, "16KB"),
 ];
 
+/// Lengths between the 64 B and 1200 B that the other rows time, where rind's
+/// AEADs switch kernels, so a threshold set wrong for a CPU shows only here.
+#[allow(dead_code)]
+const KERNEL_SIZES: [(usize, &str); 3] = [(128, "128B"), (256, "256B"), (512, "512B")];
+
+/// The AEAD benches' rows: each of [`SIZES`] under a 32 B AAD, then
+/// [`KERNEL_SIZES`] under QUIC's 13 B short-header AAD.
+#[allow(dead_code)]
+pub fn aead_rows() -> impl Iterator<Item = (usize, &'static str, &'static [u8])> {
+    let sized = SIZES.map(|(size, name)| (size, name, &[0u8; 32][..]));
+    let kernel = KERNEL_SIZES.map(|(size, name)| (size, name, &[0u8; 13][..]));
+    sized.into_iter().chain(kernel)
+}
+
 /// [`SIZES`], plus one hash block and a file-sized input, for hashes and MACs.
 #[allow(dead_code)]
 pub const HASH_SIZES: [(usize, &str); 6] = [
