@@ -38,4 +38,3 @@ The epic's own work, once every child has merged:
 - [loongarch64](/quest/m2/adoption/targets/loongarch64.md) - loongarch64 Linux
 - [wasm32](/quest/m2/adoption/targets/wasm.md) - the rind library compiles for wasm32 on every PR
 - [rind's tests run on wasm32](/quest/m2/adoption/targets/wasm-tests.md) - the vector tests on wasm32-wasip2 under wasmtime
-- [MIPS](/quest/m2/adoption/targets/mips.md) - mips and mips64 Linux, if ring or aws-lc-rs still supports them

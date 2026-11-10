@@ -2,7 +2,7 @@
 
 ## Goal
 
-On the portable backend's 64-bit targets (riscv64, loongarch64, s390x, powerpc64, mips64), RSA and the P-256, P-384, and P-521 arithmetic run on 64-bit limbs, and the nightly's portable row shows them at least as fast as aws-lc's C without assembly, or `benchmarks/gaps.toml` records why not. 32-bit targets, armv7 among them, keep their 32-bit limbs, and wasm32 gets the width that measures faster for it.
+On the portable backend's 64-bit targets (riscv64, loongarch64, s390x, powerpc64), RSA and the P-256, P-384, and P-521 arithmetic run on 64-bit limbs, and the nightly's portable row shows them at least as fast as aws-lc's C without assembly, or `benchmarks/gaps.toml` records why not. 32-bit targets, armv7 among them, keep their 32-bit limbs, and wasm32 gets the width that measures faster for it.
 
 ## Plan
 
