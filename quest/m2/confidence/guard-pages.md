@@ -24,4 +24,4 @@ The kernels in scope are those handed a slice whose length the caller picks: AES
 
 ## Related
 
-- [BINSEC checks RSA's private operation and ChaCha20's AVX2 kernel](/quest/m2/confidence/binsec.md) - explores the same binaries symbolically, for timing rather than bounds
+- [BINSEC checks RSA's private operation, ChaCha20's AVX2 kernel, and aarch64](/quest/m2/confidence/binsec.md) - explores the same binaries symbolically, for timing rather than bounds

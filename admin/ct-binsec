@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-# Usage: admin/ct-binsec [--target TARGET] [--timeout SECONDS] [--exact] [filter]
+# Usage: admin/ct-binsec [--target TARGET] [--timeout SECONDS] [--exact] [filter...]
 #
 # The symbolic constant-time check (see `rind/src/low/ct_binsec.rs`). For
-# each rind test named `ct_binsec...` whose name contains `filter`, or with
-# `--exact` is `filter` past its module path, this stops the release test
+# each rind test named `ct_binsec...` whose name contains a `filter`, or with
+# `--exact` is one past its module path, this stops the release test
 # binary under gdb as it enters the test's checked region, dumps the
 # process, and has BINSEC's checkct explore the region
 # from that dump, with every byte rind marks secret taking every value at
@@ -201,7 +201,7 @@ def build(target):
     sys.exit("ct-binsec: no rind test binary")
 
 
-def tests(exe, filter, exact):
+def tests(exe, filters, exact):
     out = subprocess.run(
         [exe, "--list", "--ignored", "--format", "terse"],
         stdout=subprocess.PIPE,
@@ -211,7 +211,7 @@ def tests(exe, filter, exact):
     names = [line.removesuffix(": test") for line in out.splitlines()]
     names = [n for n in names if n.split("::")[-1].startswith("ct_binsec")]
     planted = [n for n in names if is_planted(n)]
-    chosen = [n for n in names if (n.split("::")[-1] == filter if exact else filter in n)]
+    chosen = [n for n in names if any(n.split("::")[-1] == f if exact else f in n for f in filters)]
     return planted + [n for n in chosen if not is_planted(n)]
 
 
@@ -344,7 +344,7 @@ def main():
     # A search cut short at this many seconds is incomplete, so it fails.
     parser.add_argument("--timeout", type=int, default=None)
     parser.add_argument("--exact", action="store_true")
-    parser.add_argument("filter", nargs="?", default="")
+    parser.add_argument("filter", nargs="*", default=[""])
     args = parser.parse_args()
     target = args.target or host()
     if target != host():
@@ -353,7 +353,7 @@ def main():
     exe = build(target)
     names = tests(exe, args.filter, args.exact)
     if all(is_planted(n) for n in names):
-        sys.exit("ct-binsec: no ct_binsec test matches {!r}".format(args.filter))
+        sys.exit("ct-binsec: no ct_binsec test matches {}".format(" ".join(args.filter)))
 
     failed = False
     for name in names:

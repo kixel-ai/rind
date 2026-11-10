@@ -22,7 +22,9 @@ A primitive is checked four ways:
   of `ct_sde_...` and `ct_qemu_...` tests for two secrets, for the code
   valgrind cannot run. `admin/ct-binsec` has [BINSEC] explore the region of
   each `ct_binsec_...` test symbolically, for every value of its secrets at
-  once, on x86_64, aarch64, and the portable backend; it denies the CPU
+  once, on x86_64 and the portable backend, and on aarch64 for X25519, the
+  Montgomery products, one ChaCha20 block, and the comparison alone,
+  [planned](/quest/m2/confidence/binsec.md); it denies the CPU
   features whose instructions BINSEC cannot decode, AES-NI, VAES, the SHA512
   instructions, and AVX-512 on x86_64, and the crypto extension, SHA-3, and
   DIT on aarch64, so those paths stay with the other three. Each harness

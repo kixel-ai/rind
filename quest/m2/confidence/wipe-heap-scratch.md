@@ -28,4 +28,4 @@ Constraints:
 
 ## Related
 
-- [BINSEC checks RSA's private operation and ChaCha20's AVX2 kernel](/quest/m2/confidence/binsec.md) - the other check on RSA's private paths
+- [BINSEC checks RSA's private operation, ChaCha20's AVX2 kernel, and aarch64](/quest/m2/confidence/binsec.md) - the other check on RSA's private paths
