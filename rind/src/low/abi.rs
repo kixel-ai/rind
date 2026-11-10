@@ -1368,9 +1368,9 @@ mod tests {
         planted!(clean, "bx lr");
         planted!(r4, "mov r4, #0", "bx lr");
         planted!(r11, "add r11, r11, #4", "bx lr");
-        planted!(d8, "vmov.i32 d8, #0", "bx lr");
+        planted!(d8, "vmov.f64 d8, #1.0", "bx lr");
         planted!(sp, "add sp, sp, #8", "bx lr");
-        planted!(scratch, "mov r12, #0", "vmov.i32 d0, #0", "bx lr");
+        planted!(scratch, "mov r12, #0", "vmov.f64 d0, #1.0", "bx lr");
 
         #[test]
         fn planted_clobbers_fail() {
