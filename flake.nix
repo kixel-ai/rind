@@ -466,6 +466,7 @@
                     "x86_64-unknown-linux-gnu"
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
+                    "loongarch64-unknown-linux-gnu"
                   ];
                 })
                 pkgs.python3
