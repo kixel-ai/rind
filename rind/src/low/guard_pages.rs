@@ -196,7 +196,8 @@ fn ciphers() {
 }
 
 // The one-shot digest hands the caller's slice, tail included, straight to
-// the block and finishing functions; HMAC reaches the same ones.
+// the block and finishing functions; an incremental update after a buffered
+// prefix reaches them at an offset into the slice. HMAC reaches the same ones.
 #[test]
 fn digests() {
     let mut guarded = Guarded::new();
@@ -215,6 +216,17 @@ fn digests() {
             let expect = digest::digest(algorithm, &src);
             guarded.each(&src, |buf| {
                 assert_eq!(digest::digest(algorithm, buf).as_ref(), expect.as_ref());
+            });
+            // `update` after a buffered partial block first tops up the buffer
+            // from the slice, then hands the slice's rest to the block function.
+            let mut prefixed = vec![9; 5];
+            prefixed.extend_from_slice(&src);
+            let expect = digest::digest(algorithm, &prefixed);
+            guarded.each(&src, |buf| {
+                let mut context = digest::Context::new(algorithm);
+                context.update(&[9; 5]);
+                context.update(buf);
+                assert_eq!(context.finish().as_ref(), expect.as_ref());
             });
         }
         let expect = hmac::sign(&hmac_key, &src);
