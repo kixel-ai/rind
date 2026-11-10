@@ -11,7 +11,7 @@ The inputs it covers:
 
 ## Plan
 
-Found by the 2026-11-09 API and hostile-input audit, which read the entry points below and found no panic a peer can reach, apart from the `unwrap`s the trace under Related owns. It did not read `rind-str0m/src/dtls.rs` in full. Reading does not hold as the adapters change: [Adapters offer exactly their upstream's API](/quest/m0/adapters/README.md) is about to reshape them, and only a few unit tests feed them malformed input today, each a fixed case such as a one-byte key share or a truncated ticket.
+Found by the 2026-11-09 API and hostile-input audit, which read the entry points below and found no panic a peer can reach, apart from the `unwrap`s in `rind-rustls/src/aead.rs`, which [moq-dev/rind#572](https://github.com/moq-dev/rind/pull/572) confirmed no peer input reaches. It did not read `rind-str0m/src/dtls.rs` in full. Reading does not hold as the adapters change: [Adapters offer exactly their upstream's API](/quest/m0/adapters/README.md) is about to reshape them, and only a few unit tests feed them malformed input today, each a fixed case such as a one-byte key share or a truncated ticket.
 
 Decided with the maintainer on 2026-11-09:
 - Milestone: m2, in the confidence epic ✅ (rejected: redefine m3, move only the security check).
