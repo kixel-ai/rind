@@ -13,5 +13,4 @@ On x86_64 CPUs with AVX-512 IFMA (Ice Lake and later, Zen 4 and later), where bo
 
 ## Required
 
-- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
 - [RSA signing, decryption, and key generation are proven](/quest/m4/verified/rsa-sign.md) - the CRT glue this exponentiation slots into

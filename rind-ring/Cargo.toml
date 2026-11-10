@@ -1,6 +1,6 @@
 [package]
 name = "rind-ring"
-version = "0.17.3"
+version = "0.17.4"
 edition = "2024"
 repository = "https://github.com/moq-dev/rind"
 license = "Apache-2.0 OR ISC OR MIT-0"
@@ -17,13 +17,20 @@ exclude = ["tests/ring"]
 upstream = "0.17"
 
 # ring's feature names, so a manifest naming them builds unchanged. rind-ring
-# always has `alloc` and `std`, and rind's random source already falls back
-# to `/dev/urandom`.
+# always has `alloc` and `std`, rind's random source already falls back to
+# `/dev/urandom`, and the rest pick platforms, code paths, or tests rind lacks.
 [features]
 default = ["alloc", "dev_urandom_fallback"]
 alloc = []
 dev_urandom_fallback = []
+less-safe-getrandom-custom-or-rdrand = []
+less-safe-getrandom-espidf = []
+slow_tests = []
 std = ["alloc"]
+test_logging = []
+unstable-testing-arm-no-hw = []
+unstable-testing-arm-no-neon = []
+wasm32_unknown_unknown_js = []
 
 [dependencies]
 rind = { version = "0.3.2", path = "../rind" }

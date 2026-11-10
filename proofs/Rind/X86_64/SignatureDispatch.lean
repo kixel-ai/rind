@@ -155,6 +155,10 @@ impl PublicKey {
     }
 
     /// Verifies `signature` over `message`, refusing a malformed signature.
+    ///
+    /// ECDSA signatures are malleable: `(r, s)` and `(r, n - s)` both verify,
+    /// unlike Ed25519, PKCS#1, and PSS signatures, so don't identify a message
+    /// by its ECDSA signature's bytes.
     pub fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
         match &self.key {
             Parsed::EcdsaP256(key, _) => key.verify(message, signature),

@@ -139,6 +139,7 @@ macro_rules! jshort {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_montredc.S.
 /// Montgomery reduce, z := (x' / 2^{64p}) MOD m
 ///
 /// Inputs x[n], m[k], p; output z[k]

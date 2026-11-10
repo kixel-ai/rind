@@ -42,7 +42,3 @@ its README.
   app on an Android armv7 or aarch64 phone, where rind's lead is largest, and
   add its numbers to `rind-dart/README.md`; an agent has no phone to run it
   on, and the emulator's numbers would not represent one.
-
-## Required
-
-- [rind-dart and pyrind say plainly that they do not wipe](/quest/m2/adoption/bindings-wipe.md) - 0.1.0 must not publish a README that says keys are wiped

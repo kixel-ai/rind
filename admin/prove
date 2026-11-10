@@ -8,102 +8,233 @@
 # so no Lean module imports both. The aarch64 hand models and its X25519,
 # SHA-512, ChaCha20, Ed25519, SHA-1, SHA-256, HMAC, digest, HKDF, and PBKDF2 proofs are the
 # x86_64 ones with the target renamed, which this writes too, all but each
-# target's own `ShaBlocks.lean`.
+# target's own `ShaBlocks.lean` and `HashAxioms.lean`.
 #
-# Usage: admin/prove [hol-light | lean]
+# Usage: admin/prove [bytes | hol-light | lean]
 #
-# An argument checks only those proofs. Run it in the flake's `prove` dev
-# shell: `nix develop .#prove --command admin/prove`, or for the HOL Light
-# proofs alone, `nix develop .#hol-light --command admin/prove hol-light`.
+# An argument checks only those proofs, `bytes` only that the assembly rind
+# imports is the object code its upstream's proofs checked. Run it in the
+# flake's `prove` dev shell: `nix develop .#prove --command admin/prove`, or
+# for the HOL Light proofs or the bytes alone, `nix develop .#hol-light
+# --command admin/prove hol-light`.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 out=.tmp/prove
 mkdir -p "$out"
+tools=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin
 case "${1:-}" in
-'' | hol-light | lean) only=${1:-} ;;
+'' | bytes | hol-light | lean) only=${1:-} ;;
 *)
-    echo "usage: admin/prove [hol-light | lean]" >&2
+    echo "usage: admin/prove [bytes | hol-light | lean]" >&2
     exit 2
     ;;
 esac
+
+# Builds rind's release library for `arch` Linux with its assembly, for
+# `asm_block` and `relocation_data` to read.
+build_asm() {
+    local arch=$1
+    cargo rustc -q -p rind --lib --release --target "$arch-unknown-linux-gnu" \
+        --target-dir "$out/asm" -- --emit=asm -C codegen-units=16
+    rm -rf "$out/asm/$arch-units"
+}
 
 # Writes to `dest` the bytes of the one `asm!` block in the Rust function at
 # `path`, as rind's release build for `arch` Linux emits them. The build
 # passes cargo's default 16 codegen units explicitly, since `--emit=asm` would
 # otherwise compile one, and each unit's assembly marks where the block starts
 # and ends, which its object code then gives the bytes of. A relocation in the
-# block fails, as nothing proven yet needs one.
+# block fails, unless `layout` is given: then it also writes each
+# instruction's offset in the block to `dest.insns`, and each relocation's
+# offset, type, and target to `dest.relocs`, its bytes left as the object
+# holds them.
 asm_block() {
-    local arch=$1 path=$2 dest=$3
-    local deps=$out/asm/$arch-unknown-linux-gnu/release/deps units=$out/asm/$arch-units
-    local tools obj sym='' found unit
-    tools=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin
-    rm -rf "$units"
-    mkdir -p "$units"
-    "$tools/llvm-ar" x --output "$units" "$deps"/librind-*.rlib
-    for unit in "$units"/*.rcgu.o; do
-        found=$(paste <("$tools/llvm-nm" --defined-only "$unit") <("$tools/llvm-nm" --defined-only -C "$unit") |
-            awk -F '\t' -v p="$path" 'substr($2, 20) == p { print substr($1, 20) }')
-        if [[ -n "$found" && -n "$sym" ]]; then
-            echo "admin/prove: rind's $arch build defines $path twice" >&2
-            return 1
-        elif [[ -n "$found" ]]; then
-            sym=$found obj=$unit
-        fi
-    done
-    if [[ -z "$sym" ]]; then
-        echo "admin/prove: rind's $arch build defines no $path" >&2
-        return 1
-    fi
-    # The function's asm! blocks, and its instructions before the block, in
-    # it, and in all.
-    local blocks before count total
-    read -r blocks before count total < <(awk -v s="$sym:" '
+    local arch=$1 path=$2 dest=$3 layout=${4:-}
+    local deps=$out/asm/$arch-unknown-linux-gnu/release/deps
+    local found obj sym
+    found=$(rind_symbol "$arch" "$path")
+    read -r obj sym <<<"$found"
+    # The function's asm! blocks, and rustc's instructions before and after
+    # the block, which the block's own count would miss where it spells an
+    # instruction as `.byte`s.
+    local blocks before after count
+    read -r blocks before after < <(awk -v s="$sym:" '
         $0 == s { p = 1; next }
         !p { next }
         /^\.Lfunc_end/ { exit }
-        /^\t(\/\/|#)APP$/ { blocks++; start = n; next }
-        /^\t(\/\/|#)NO_APP$/ { len = n - start; next }
-        /^\t[a-z]/ { n++ }
-        END { print blocks + 0, start + 0, len + 0, n + 0 }' "$deps/$(basename "${obj%.o}").s")
+        /^\t(\/\/|#)APP$/ { blocks++; start = n; inside = 1; next }
+        /^\t(\/\/|#)NO_APP$/ { inside = 0; m = 0; next }
+        /^\t[a-z]/ && !inside { n++; m++ }
+        END { print blocks + 0, start + 0, m + 0 }' "$deps/$(basename "${obj%.o}").s")
     local -a addrs
     mapfile -t addrs < <("$tools/llvm-objdump" -d --no-show-raw-insn --disassemble-symbols="$sym" "$obj" |
         sed -n 's/^ *\([0-9a-f]\+\):.*/\1/p')
-    if [[ $blocks != 1 || $count == 0 || ${#addrs[@]} != "$total" ]]; then
-        echo "admin/prove: $path has $blocks asm! blocks, the first of $count instructions," \
-            "and $total instructions in its assembly to ${#addrs[@]} in its object code" >&2
+    count=$((${#addrs[@]} - before - after))
+    if [[ $blocks != 1 || $count -le 0 ]]; then
+        echo "admin/prove: $path has $blocks asm! blocks, the first of $count instructions" >&2
         return 1
     fi
-    local value section size start end off
-    read -r value section size < <("$tools/llvm-objdump" -t "$obj" | awk -F '\t' -v s="$sym" '
-        { n = split($1, a, " "); m = split($2, b, " ") }
-        b[m] == s { print a[1], a[n], b[1] }')
+    local total=${#addrs[@]}
+    local section start end off type target i
+    local value size
+    read -r section value size < <(symbol_bounds "$obj" "$sym")
     start=$((16#${addrs[before]}))
     if ((before + count < total)); then
         end=$((16#${addrs[before + count]}))
     else
         end=$((16#$value + 16#$size))
     fi
-    while read -r off _; do
+    [[ -z "$layout" ]] || : >"$dest.relocs"
+    while read -r off type target; do
         if ((16#$off >= start && 16#$off < end)); then
-            echo "admin/prove: $path's asm! block has a relocation" >&2
-            return 1
+            if [[ -z "$layout" ]]; then
+                echo "admin/prove: $path's asm! block has a relocation" >&2
+                return 1
+            fi
+            echo "$((16#$off - start)) $type $target" >>"$dest.relocs"
         fi
-    done < <("$tools/llvm-objdump" -r --section="$section" "$obj" | grep -E '^[0-9a-f]+ ' || true)
-    "$tools/llvm-objcopy" --dump-section="$section=$units/section" "$obj" "$units/copy.o"
-    tail -c +$((start + 1)) "$units/section" | head -c $((end - start)) >"$dest"
+    done < <(relocations "$obj" "$section")
+    if [[ -n "$layout" ]]; then
+        for ((i = before; i < before + count; i++)); do
+            echo $((16#${addrs[i]} - start))
+        done >"$dest.insns"
+    fi
+    "$tools/llvm-objcopy" --dump-section="$section=$dest.section" "$obj" "$dest.o"
+    tail -c +$((start + 1)) "$dest.section" | head -c $((end - start)) >"$dest"
+    rm "$dest.section" "$dest.o"
 }
 
-# rind's own HOL Light proofs, each of the `asm!` block in a Rust function,
-# on s2n-bignum's model, tactics, and specs at its submodule's commit, the
-# revision rind's transliteration pins. Each reads its block's bytes from
-# `<arch>/<file>.bin`, which `asm_block` writes, and asserts they are the ones
-# it lists. A target's proofs compile into one program, as s2n-bignum's
+# Prints the object file in rind's `arch` build that defines the Rust item at
+# `path`, or the symbol `path`, and the item's symbol, failing unless exactly
+# one does.
+rind_symbol() {
+    local arch=$1 path=$2 index found
+    index=$(rind_index "$arch")
+    found=$(awk -F '\t' -v p="$path" '$3 == p || $2 == p { print $1, $2 }' "$index")
+    if [[ -z "$found" ]]; then
+        echo "admin/prove: rind's $arch build defines no $path" >&2
+        return 1
+    elif [[ $(wc -l <<<"$found") != 1 ]]; then
+        echo "admin/prove: rind's $arch build defines $path more than once" >&2
+        return 1
+    fi
+    echo "$found"
+}
+
+# Prints the path of an index of the symbols rind's `arch` build defines, each
+# line its object file, symbol, and demangled symbol, which its first call
+# for `arch` writes from the build's codegen units. The demangled symbol drops
+# the `.llvm.<hash>` suffix LLVM gives a local function that another codegen
+# unit calls, which any change to how items fall into units can add.
+rind_index() {
+    local arch=$1 unit
+    local units=$out/asm/$arch-units
+    if [[ ! -f "$units/index" ]]; then
+        rm -rf "$units"
+        mkdir -p "$units"
+        "$tools/llvm-ar" x --output "$units" "$out/asm/$arch-unknown-linux-gnu/release/deps"/librind-*.rlib
+        for unit in "$units"/*.rcgu.o; do
+            paste <("$tools/llvm-nm" --defined-only "$unit") <("$tools/llvm-nm" --defined-only -C "$unit") |
+                awk -F '\t' -v u="$unit" '{ d = substr($2, 20); sub(/ \(\.llvm\.[0-9]+\)$/, "", d); print u "\t" substr($1, 20) "\t" d }'
+        done >"$units/index.tmp"
+        mv "$units/index.tmp" "$units/index"
+    fi
+    echo "$units/index"
+}
+
+# Prints each relocation in `section` of the object `obj`: its offset in hex,
+# type, and target.
+relocations() {
+    "$tools/llvm-objdump" -r "$1" | awk -v s="[$2]:" '
+        /^RELOCATION RECORDS FOR / { p = $4 == s; next }
+        p && /^[0-9a-f]+ / { print $1, $2, $3 }'
+}
+
+# Writes to `dir/<target>` the bytes of each target of the relocations in
+# `relocs`, from that symbol or section on, through the size of the symbol or
+# of the object starting the section, or else the section's end: from `obj`,
+# where the target is a section of it or a symbol it defines, or else from
+# rind's `arch` build.
+relocation_data() {
+    local obj=$1 relocs=$2 dir=$3 arch=${4:-} target found tobj tsym section value size
+    while read -r _ _ target; do
+        target=${target%[+-]0x*}
+        mkdir -p "$dir"
+        tobj=$obj tsym=$target
+        if [[ $target != .* ]] && [[ -z "$(symbol_bounds "$obj" "$target")" ]]; then
+            found=$(rind_symbol "$arch" "$target")
+            read -r tobj tsym <<<"$found"
+        fi
+        if [[ $target == .* ]]; then
+            # A section holds the object that starts it, where one has a size.
+            section=$target value=0
+            size=$("$tools/llvm-objdump" -t "$tobj" | awk -F '\t' -v s="$target" '
+                { n = split($1, a, " "); m = split($2, b, " ") }
+                a[n] == s && a[1] ~ /^0+$/ && b[1] !~ /^0+$/ && !f { print b[1]; f = 1 }')
+        else
+            read -r section value size < <(symbol_bounds "$tobj" "$tsym")
+        fi
+        "$tools/llvm-objcopy" --dump-section="$section=$dir/section" "$tobj" "$dir/copy.o"
+        if [[ -n "$size" ]]; then
+            tail -c +$((16#$value + 1)) "$dir/section" | head -c $((16#$size)) >"$dir/$target"
+            touch "$dir/$target.sized"
+        else
+            mv "$dir/section" "$dir/$target"
+        fi
+        rm -f "$dir/section" "$dir/copy.o"
+    done <"$relocs"
+}
+
+# Prints the section, value, and size, in hex, of the symbol `sym` the object
+# `obj` defines.
+symbol_bounds() {
+    "$tools/llvm-objdump" -t "$1" | awk -F '\t' -v s="$2" '
+        { n = split($1, a, " "); m = split($2, b, " ") }
+        b[m] == s && a[n] != "*UND*" { print a[n], a[1], b[1] }'
+}
+
+# Writes to `dest` an object holding the naked Rust function at `path`, as
+# rind's release build for `arch` Linux emits it: the function's own section,
+# renamed `.text`, its relocations, and the one read-only data section they
+# all refer to, renamed `.rodata`. s2n-bignum's `define_assert_relocs_from_elf`
+# reads it, failing unless its instructions and relocations are the ones the
+# proof lists, and gives the proof that section's bytes. Anything else fails:
+# a function that is not its whole section, or relocations to other sections.
+asm_function() {
+    local arch=$1 path=$2 dest=$3
+    local found obj sym section size secsize target
+    found=$(rind_symbol "$arch" "$path")
+    read -r obj sym <<<"$found"
+    read -r section _ size < <(symbol_bounds "$obj" "$sym")
+    secsize=$("$tools/llvm-objdump" -h "$obj" | awk -v s="$section" '$2 == s { print $3 }')
+    if [[ $section != ".text.$sym" || $((16#$size)) != $((16#${secsize:-0})) ]]; then
+        echo "admin/prove: $path is not the whole of its own section" >&2
+        return 1
+    fi
+    target=$(relocations "$obj" "$section" | awk '{ sub(/[-+].*/, "", $3); print $3 }' | sort -u)
+    if [[ $(wc -l <<<"$target") != 1 || $target != .rodata.* ]]; then
+        echo "admin/prove: $path's relocations refer to other than one .rodata section:" $target >&2
+        return 1
+    fi
+    "$tools/llvm-objcopy" --only-section="$section" --only-section=".rela$section" \
+        --only-section="$target" --rename-section="$section=.text" --rename-section="$target=.rodata" \
+        "$obj" "$dest"
+}
+
+# rind's own HOL Light proofs, each of the `asm!` block in a Rust function or
+# of a naked one, on s2n-bignum's model, tactics, and specs at its submodule's
+# commit, the revision rind's transliteration pins, with the specs of
+# s2n-bignum pull requests not yet merged from `proofs/hol-light/s2n-bignum/`.
+# Each `<arch>/<file>.ml` reads its object code from `<arch>/<file>.bin`, the
+# block's bytes, which `asm_block` writes, or `<arch>/<file>.o`, the naked
+# function's object, which `asm_function` writes, and asserts it is what it
+# lists. A target's proofs compile into one program, as s2n-bignum's
 # `tools/build-proof.sh` compiles each of its own, which fails on an error or
 # an axiom beyond HOL Light's.
 hol_light_proofs=(
-    "aarch64 bignum_eq rind::low::aarch64::bignum_eq::bignum_eq"
+    "aarch64 bignum_eq.bin rind::low::aarch64::bignum_eq::bignum_eq"
+    "aarch64 sha256_block_data_order_hw.o rind::low::aarch64::sha256::sha256_block_data_order_hw"
 )
 hol_light() {
     local dir=$out/hol-light root=$PWD arches arch file path proof
@@ -112,19 +243,21 @@ hol_light() {
     mkdir -p "$dir"
     arches=$(printf '%s\n' "${hol_light_proofs[@]}" | cut -d' ' -f1 | sort -u)
     for arch in $arches; do
-        cargo rustc -q -p rind --lib --release --target "$arch-unknown-linux-gnu" \
-            --target-dir "$out/asm" -- --emit=asm -C codegen-units=16
+        build_asm "$arch"
         mkdir -p "$dir/$arch"
         echo 'let prove_start = Unix.time ();;' >"$dir/$arch.ml"
     done
     for proof in "${hol_light_proofs[@]}"; do
         read -r arch file path <<<"$proof"
-        asm_block "$arch" "$path" "$dir/$arch/$file.bin"
-        echo "loadt \"$arch/$file.ml\";;" >>"$dir/$arch.ml"
+        case $file in
+        *.bin) asm_block "$arch" "$path" "$dir/$arch/$file" ;;
+        *.o) asm_function "$arch" "$path" "$dir/$arch/$file" ;;
+        esac
+        echo "loadt \"$arch/${file%.*}.ml\";;" >>"$dir/$arch.ml"
     done
     for arch in $arches; do
         printf 'check_axioms ();; Printf.printf "%s: %%.0f s\\n" (Unix.time () -. prove_start);;\n' "$arch" >>"$dir/$arch.ml"
-        (cd "$dir" && HOLLIGHT_LOAD_PATH="$root/proofs/hol-light:$root/thirdparty/s2n-bignum" \
+        (cd "$dir" && HOLLIGHT_LOAD_PATH="$root/proofs/hol-light:$root/proofs/hol-light/s2n-bignum:$root/thirdparty/s2n-bignum" \
             ocaml "$HOLLIGHT_DIR/inline_load.ml" "$arch.ml" "$arch-inlined.ml")
         OCAMLRUNPARAM=l=2000000000 ocamlopt.byte -pp "$("$HOLLIGHT_DIR/hol.sh" -pp)" \
             -I "$HOLLIGHT_DIR" -I +unix -c hol_lib.cmxa "$dir/$arch-inlined.ml" -o "$dir/$arch.cmx" -w -a
@@ -133,10 +266,100 @@ hol_light() {
         (cd "$dir" && "./$arch.native")
     done
 }
-if [[ $only != lean ]]; then
+# Writes to `dest` the bytes of the routine at the symbol `sym` in the object
+# `obj`, through its size or, where it has none, to the next global symbol,
+# with its layout as `asm_block` writes it, and to `dest.data/<target>` the
+# bytes of each relocation's target in `obj`.
+object_routine() {
+    local obj=$1 sym=$2 dest=$3 section value size end off type target
+    read -r section value size < <(symbol_bounds "$obj" "$sym")
+    if ((16#$size == 0)); then
+        end=$("$tools/llvm-objdump" -t "$obj" | awk -F '\t' -v sec="$section" -v v=$((16#$value)) '
+            { n = split($1, a, " "); x = strtonum("0x" a[1]) }
+            a[2] == "g" && a[n] == sec && x > v && (e == "" || x < e) { e = x }
+            END { print e }')
+        [[ -n "$end" ]] || end=$(("0x$("$tools/llvm-objdump" -h "$obj" | awk -v s="$section" '$2 == s { print $3 }')"))
+    else
+        end=$((16#$value + 16#$size))
+    fi
+    routine_layout "$obj" "$section" $((16#$value)) "$end" "$dest"
+    relocation_data "$obj" "$dest.relocs" "$dest.data"
+}
+
+# Writes to `dest` the bytes from `start` to `end` of `section` in `obj`, to
+# `dest.insns` each instruction's offset from `start`, and to `dest.relocs`
+# each relocation's offset, type, and target.
+routine_layout() {
+    local obj=$1 section=$2 start=$3 end=$4 dest=$5 off type target
+    "$tools/llvm-objdump" -d --no-show-raw-insn --section="$section" "$obj" |
+        sed -n 's/^ *\([0-9a-f]\+\):.*/\1/p' | while read -r off; do
+        if ((16#$off >= start && 16#$off < end)); then
+            echo $((16#$off - start))
+        fi
+    done >"$dest.insns"
+    : >"$dest.relocs"
+    while read -r off type target; do
+        if ((16#$off >= start && 16#$off < end)); then
+            echo "$((16#$off - start)) $type $target" >>"$dest.relocs"
+        fi
+    done < <(relocations "$obj" "$section")
+    "$tools/llvm-objcopy" --dump-section="$section=$dest.section" "$obj" "$dest.o"
+    tail -c +$((start + 1)) "$dest.section" | head -c $((end - start)) >"$dest"
+    rm "$dest.section" "$dest.o"
+}
+
+# Each routine rind imports with a published proof, against the object code
+# that proof checked, which `admin/prove-bytes` describes. Vale's and aws-lc's
+# are assembled here from their upstream's text, at the revision of their
+# proofs, with the GNU assembler.
+bytes() {
+    local dir=$out/bytes arch kind path name obj sym target found
+    git submodule update --init --depth 1 thirdparty/s2n-bignum
+    rm -rf "$dir"
+    for arch in x86_64 aarch64; do
+        build_asm "$arch"
+        mkdir -p "$dir/$arch"
+    done
+    local hacl aws_lc
+    hacl=.tmp/upstream/hacl-star aws_lc=.tmp/upstream/aws-lc@$(admin/prove-bytes aws-lc-revision)
+    admin/upstream hacl-star
+    admin/upstream aws-lc "${aws_lc#*@}"
+    # `-L` keeps the local symbols that size aws-lc's tables.
+    x86_64-linux-gnu-as -o "$dir/vale.o" "$hacl/dist/vale/aesgcm-x86_64-linux.S"
+    x86_64-linux-gnu-cpp -I "$aws_lc/include" "$aws_lc/generated-src/linux-x86_64/crypto/fipsmodule/sha512-x86_64.S" |
+        x86_64-linux-gnu-as -L -o "$dir/sha512-x86_64.o"
+    aarch64-linux-gnu-cpp -I "$aws_lc/include" "$aws_lc/generated-src/linux-aarch64/crypto/fipsmodule/sha512-armv8.S" |
+        aarch64-linux-gnu-as -L -o "$dir/sha512-armv8.o"
+    admin/prove-bytes list >"$dir/routines"
+    while read -r arch kind path name obj sym; do
+        # A routine with no symbol is either inlined, which `admin/prove-bytes`
+        # knows from its source, or called by nothing in the library.
+        if ! awk -F '\t' -v p="$path" '$3 == p { f = 1 } END { exit !f }' "$(rind_index "$arch")"; then
+            touch "$dir/$arch/$name.absent"
+            continue
+        fi
+        if [[ $kind == block ]]; then
+            asm_block "$arch" "$path" "$dir/$arch/$name.bin" layout
+        else
+            local rind_obj rind_sym section value size
+            found=$(rind_symbol "$arch" "$path")
+            read -r rind_obj rind_sym <<<"$found"
+            read -r section value size < <(symbol_bounds "$rind_obj" "$rind_sym")
+            routine_layout "$rind_obj" "$section" $((16#$value)) $((16#$value + 16#$size)) "$dir/$arch/$name.bin"
+            object_routine "$dir/$obj" "$sym" "$dir/$arch/$name.proof"
+        fi
+        found=$(rind_symbol "$arch" "$path")
+        relocation_data "${found%% *}" "$dir/$arch/$name.bin.relocs" "$dir/$arch/$name.bin.data" "$arch"
+    done <"$dir/routines"
+    admin/prove-bytes check "$dir"
+}
+if [[ -z $only || $only == bytes ]]; then
+    bytes
+fi
+if [[ -z $only || $only == hol-light ]]; then
     hol_light
 fi
-if [[ $only == hol-light ]]; then
+if [[ -n $only && $only != lean ]]; then
     exit 0
 fi
 
@@ -303,10 +526,10 @@ extract() {
     local arch=$1 dir=$2
     shift 2
     (cd rind && charon cargo --preset=aeneas \
-        --start-from '{impl crate::high::agreement::Agree for crate::mid::x25519::PrivateKey}' \
-        --start-from '{impl crate::high::agreement::Agree for crate::mid::p256::PrivateKey}' \
-        --start-from '{impl crate::high::agreement::Agree for crate::mid::p384::PrivateKey}' \
-        --start-from '{impl crate::high::agreement::Agree for crate::mid::p521::PrivateKey}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::agreement::X25519Curve}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P256}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P384}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P521}' \
         --start-from '{impl core::convert::AsRef for crate::high::agreement::PublicKey}' \
         --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}' \
         --start-from crate::high::agreement::PrivateKey \
@@ -346,8 +569,8 @@ extract() {
         --opaque crate::high::sec1::encode_pkcs8 \
         --opaque 'crate::high::agreement::_::encode_pkcs8' \
         --opaque 'crate::high::agreement::_::encode_scalar' \
-        --opaque '{impl crate::high::agreement::Agree for crate::mid::p384::PrivateKey}::load' \
-        --opaque '{impl crate::high::agreement::Agree for crate::mid::p521::PrivateKey}::load' \
+        --opaque '{impl crate::high::agreement::Agree for crate::high::curve::P384}::load' \
+        --opaque '{impl crate::high::agreement::Agree for crate::high::curve::P521}::load' \
         --opaque crate::aead::quic::Masker \
         --opaque crate::mid::aes \
         --opaque crate::high::digest::Ops \
@@ -429,7 +652,7 @@ extract_kdf() {
 }
 
 extract x86_64 X86_64 \
-    --opaque '{impl crate::high::agreement::Agree for crate::mid::p256::PrivateKey}::load' \
+    --opaque '{impl crate::high::agreement::Agree for crate::high::curve::P256}::load' \
     --opaque 'crate::mid::p256::_::_' \
     --include crate::low::x86_64::adx_mux::curve25519_x25519 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base \
@@ -509,19 +732,35 @@ extract aarch64 Aarch64 \
     --opaque 'crate::mid::p256::_::new_random' \
     --include crate::low::aarch64::sha1::sha1_compress_padded \
     --include crate::low::aarch64::sha256 \
-    --opaque crate::low::aarch64::sha256::sha256_compress_blocks
+    --opaque crate::low::aarch64::sha256::compress_hw \
+    --opaque crate::low::aarch64::sha256::compress_nohw
 
 extract_kdf x86_64 X86_64
 extract_kdf aarch64 Aarch64
 
 mkdir -p proofs/Rind/Aarch64/Kdf
 for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
-    Blockwise Sha Hmac HashAxioms HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
+    Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     HmacApi DigestApi Hkdf Pbkdf2; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
+# Each hand model of a CPU intrinsic, a `core.core_arch` definition but its
+# vector types' own, is tested against the instruction on this CPU:
+# `admin/simd-vectors.rs` runs each and writes `#guard`s that the models
+# compute the same, which Lean checks once the proofs build. Fail on a model
+# it does not test, so a new one cannot go untested.
+rustc --edition 2024 -O -o "$out/simd-vectors" admin/simd-vectors.rs
+"$out/simd-vectors" >"$out/SimdVectors.lean"
+untested=$(grep -rhoE '^def core\.core_arch\.[^ ]+' proofs/Rind | sed 's/^def //' | grep -v '\.__m' | sort -u |
+    while read -r model; do grep -qF " $model " "$out/SimdVectors.lean" || echo "$model"; done)
+if [[ -n $untested ]]; then
+    echo "admin/prove: no vectors test these intrinsic models:" $untested >&2
+    exit 1
+fi
+
 cd proofs
 lake exe cache get
 lake build
+lake env lean "../$out/SimdVectors.lean"

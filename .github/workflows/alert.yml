@@ -20,7 +20,9 @@ on:
       - Check
       - coverage
       - ctgrind
+      - ctgrind debug
       - fuzz
+      - miri
       - mutants
       - prove
       - Pullfrog

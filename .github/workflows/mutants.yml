@@ -33,7 +33,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm]
+        # macos-latest is Apple silicon, the only cores rind sets DIT on.
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 300
@@ -59,8 +60,16 @@ jobs:
 
       # Exit 2, a missed mutant, may be code only the other architecture
       # compiles, so `survivors` decides.
+      # macOS mutates only the DIT code, all of it whenever its files
+      # changed, since a test change there can let any of its mutants survive.
       - name: Mutate
-        run: nix develop --command admin/mutants --workspace --in-diff "$RUNNER_TEMP/changes.diff" --output "$RUNNER_TEMP" || [ $? -eq 2 ]
+        run: |
+          scope=(--in-diff "$RUNNER_TEMP/changes.diff")
+          if [ "$RUNNER_OS" = macOS ]; then
+            grep -qE '^\+\+\+ b/rind/src/low/(aarch64/)?cpu\.rs$' "$RUNNER_TEMP/changes.diff" || exit 0
+            scope=()
+          fi
+          nix develop --command admin/mutants --workspace "${scope[@]}" --output "$RUNNER_TEMP" || [ $? -eq 2 ]
 
       # The avx512 job mutates the same diff.
       - name: Keep the diff

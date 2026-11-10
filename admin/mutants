@@ -50,8 +50,20 @@ if [ "${1:-}" = --survivors ]; then
     exit 0
 fi
 
-case $(uname -m) in
-    x86_64)
+# Darwin runs only the DIT code, which compiles for Apple's platforms alone;
+# the Linux runs cover the rest.
+only=()
+case $(uname -sm) in
+    "Darwin arm64")
+        triple=AARCH64_APPLE_DARWIN
+        skip=()
+        only=(
+            --file rind/src/low/cpu.rs --file rind/src/low/aarch64/cpu.rs
+            --re '(\bDit\b|enter_cpu_state|leave_cpu_state|\bdit::)'
+        )
+        rows=("dit")
+        ;;
+    "Linux x86_64")
         triple=X86_64_UNKNOWN_LINUX_GNU
         skip=(
             'rind/src/low/aarch64/**' 'rind/src/low/arm/**' 'rind/src/mid/arm/**'
@@ -68,11 +80,7 @@ case $(uname -m) in
             "adx ssse3"
         )
         ;;
-    aarch64 | arm64)
-        [ -z "$avx512" ] || {
-            echo "admin/mutants: --avx512 runs only on x86_64" >&2
-            exit 1
-        }
+    "Linux aarch64")
         triple=AARCH64_UNKNOWN_LINUX_GNU
         skip=(
             'rind/src/low/x86_64/**' 'rind/src/low/arm/**' 'rind/src/mid/arm/**'
@@ -85,10 +93,14 @@ case $(uname -m) in
         )
         ;;
     *)
-        echo "admin/mutants: no campaign for $(uname -m)" >&2
+        echo "admin/mutants: no campaign for $(uname -sm)" >&2
         exit 1
         ;;
 esac
+[ -z "$avx512" ] || [ "$triple" = X86_64_UNKNOWN_LINUX_GNU ] || {
+    echo "admin/mutants: --avx512 runs only on Linux x86_64" >&2
+    exit 1
+}
 
 # The test runner: runs one test binary on each row, failing if any fails.
 # Nextest lists a binary's tests through the runner too, which needs one run.
@@ -125,8 +137,8 @@ if [ "${1:-}" = --run ]; then
 fi
 
 cd "$here"
-args=()
-for glob in "${skip[@]}"; do
+args=(${only[@]+"${only[@]}"})
+for glob in ${skip[@]+"${skip[@]}"}; do
     args+=(--exclude "$glob")
 done
 while IFS= read -r file; do

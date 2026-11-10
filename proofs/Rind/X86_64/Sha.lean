@@ -5,8 +5,9 @@ open Aeneas Aeneas.Std Result rind.spec
 /-!
 # SHA-1 and SHA-256, from their `Hash` impls to the block functions
 
-The hash of a message is FIPS 180-4's, given `ShaBlocks`: the contracts of the
-block functions below rind's padding, which no proof covers yet.
+The hash of a message is FIPS 180-4's, given `Sha1Blocks` or `Sha256Blocks`:
+the contracts of the block functions below rind's padding, which no proof
+covers yet on x86_64.
 `admin/prove` writes the aarch64 proof from this file by renaming the target.
 -/
 
@@ -123,7 +124,7 @@ theorem sha256_length_spec (P : List U8) (s : mid.sha2.Sha256State) (more : Usiz
   simp only [lift, WP.spec_ok] at hbytes
   exact ⟨bits, by rw [hm.2.1, h8, ha.2.1]; omega, hbytes⟩
 
-theorem sha256_finish_with_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha2.Sha256State)
+theorem sha256_finish_with_spec (hb : Sha256Blocks) (P : List U8) (s : mid.sha2.Sha256State)
     (message : Slice U8) (hs : Sha256Absorbed P s)
     (hlen : 8 * (P.length + message.length) ≤ U64.max) :
     mid.sha2.Sha256State.finish_with s message ⦃ r =>
@@ -146,7 +147,7 @@ theorem saturating_add_val (x y : U64) (h : x.val + y.val ≤ U64.max) :
   simp only [BitVec.toNat_ofNat]
   exact Nat.mod_eq_of_lt (by scalar_tac)
 
-theorem sha256_update_blocks_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha2.Sha256State)
+theorem sha256_update_blocks_spec (hb : Sha256Blocks) (P : List U8) (s : mid.sha2.Sha256State)
     (blk : Slice U8) (hs : Sha256Absorbed P s) (hl : blk.length % 64 = 0)
     (hbound : P.length + blk.length ≤ U64.max) :
     mid.sha2.Sha256State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks s blk ⦃ s' => Sha256Absorbed (P ++ blk.val) s' ⦄ := by
@@ -202,7 +203,7 @@ theorem sha256_resume_spec (P : List U8) (s : mid.sha2.Sha256State) (hs : Sha256
   step with blockwise_new_spec as ⟨bw, hbw⟩
   exact ⟨by simp [hbw], P, hs, by simp [hbw]⟩
 
-theorem sha256_ctx_update_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha2.Sha256Context)
+theorem sha256_ctx_update_spec (hb : Sha256Blocks) (p : List U8) (c : mid.sha2.Sha256Context)
     (bytes : Slice U8) (hc : Sha256Ctx p c) (hlen : p.length + bytes.length ≤ maxInput) :
     mid.sha2.Sha256Context.update c bytes ⦃ c' => Sha256Ctx (p ++ bytes.val) c' ⦄ := by
   unfold mid.sha2.Sha256Context.update
@@ -213,7 +214,7 @@ theorem sha256_ctx_update_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha2.Sha2
     p c.blockwise bytes c.state hc (by decide) hlen as ⟨bw, s', h⟩
   exact h
 
-theorem sha256_ctx_finish_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha2.Sha256Context)
+theorem sha256_ctx_finish_spec (hb : Sha256Blocks) (p : List U8) (c : mid.sha2.Sha256Context)
     (hc : Sha256Ctx p c) (hlen : p.length ≤ maxInput) :
     mid.sha2.Sha256Context.finish c ⦃ r => bv r.val = sha256.hash (bv p) ⦄ := by
   obtain ⟨hu, q, hq, hqp⟩ := hc
@@ -348,8 +349,8 @@ theorem sha256_hash_length (m : List Byte) : (sha256.hash m).length = 32 := by
     foldl_length _ 8 sha256_compress_length _ _ (by simp [sha256.H0])]
   rfl
 
-/-- SHA-256's `Hash` impl computes FIPS 180-4's SHA-256, given `ShaBlocks`. -/
-theorem sha256_hashSpec (hb : ShaBlocks) :
+/-- SHA-256's `Hash` impl computes FIPS 180-4's SHA-256, given `Sha256Blocks`. -/
+theorem sha256_hashSpec (hb : Sha256Blocks) :
     HashSpec high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State sha256.hash 64 32
       maxInput Sha256Absorbed Sha256Ctx where
   out := ⟨by decide, by decide, by decide, by unfold maxInput; scalar_tac, sha256_hash_length⟩
@@ -413,7 +414,7 @@ theorem sha256_hashSpec (hb : ShaBlocks) :
 def Sha1Absorbed (P : List U8) (s : mid.sha1.Sha1State) : Prop :=
   Absorbed sha1.compress sha1.H0 P s.h ∧ s.nblocks.val * 64 = P.length
 
-theorem sha1_finish_with_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha1.Sha1State)
+theorem sha1_finish_with_spec (hb : Sha1Blocks) (P : List U8) (s : mid.sha1.Sha1State)
     (message : Slice U8) (hs : Sha1Absorbed P s)
     (hlen : 8 * (P.length + message.length) ≤ U64.max) :
     mid.sha1.Sha1State.finish_with s message ⦃ r =>
@@ -459,7 +460,7 @@ theorem sha1_finish_with_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha1.Sha1S
     rfl
   all_goals simp [iter_post, iter_post1, s_post, Array.val_to_slice]
 
-theorem sha1_update_blocks_spec (hb : ShaBlocks) (P : List U8) (s : mid.sha1.Sha1State)
+theorem sha1_update_blocks_spec (hb : Sha1Blocks) (P : List U8) (s : mid.sha1.Sha1State)
     (blk : Slice U8) (hs : Sha1Absorbed P s) (hl : blk.length % 64 = 0)
     (hbound : P.length + blk.length ≤ U64.max) :
     mid.sha1.Sha1State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks s blk ⦃ s' => Sha1Absorbed (P ++ blk.val) s' ⦄ := by
@@ -507,7 +508,7 @@ theorem sha1_resume_spec (P : List U8) (s : mid.sha1.Sha1State) (hs : Sha1Absorb
   step with blockwise_new_spec as ⟨bw, hbw⟩
   exact ⟨by simp [hbw], P, hs, by simp [hbw]⟩
 
-theorem sha1_ctx_update_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha1.Sha1Context)
+theorem sha1_ctx_update_spec (hb : Sha1Blocks) (p : List U8) (c : mid.sha1.Sha1Context)
     (bytes : Slice U8) (hc : Sha1Ctx p c) (hlen : p.length + bytes.length ≤ maxInput) :
     mid.sha1.Sha1Context.update c bytes ⦃ c' => Sha1Ctx (p ++ bytes.val) c' ⦄ := by
   unfold mid.sha1.Sha1Context.update
@@ -518,7 +519,7 @@ theorem sha1_ctx_update_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha1.Sha1Co
     p c.blockwise bytes c.state hc (by decide) hlen as ⟨bw, s', h⟩
   exact h
 
-theorem sha1_ctx_finish_spec (hb : ShaBlocks) (p : List U8) (c : mid.sha1.Sha1Context)
+theorem sha1_ctx_finish_spec (hb : Sha1Blocks) (p : List U8) (c : mid.sha1.Sha1Context)
     (hc : Sha1Ctx p c) (hlen : p.length ≤ maxInput) :
     mid.sha1.Sha1Context.finish c ⦃ r => bv r.val = sha1.hash (bv p) ⦄ := by
   obtain ⟨hu, q, hq, hqp⟩ := hc
@@ -542,8 +543,8 @@ theorem sha1_hash_length (m : List Byte) : (sha1.hash m).length = 20 := by
     foldl_length _ 5 sha1_compress_length _ _ (by simp [sha1.H0])]
   rfl
 
-/-- SHA-1's `Hash` impl computes FIPS 180-4's SHA-1, given `ShaBlocks`. -/
-theorem sha1_hashSpec (hb : ShaBlocks) :
+/-- SHA-1's `Hash` impl computes FIPS 180-4's SHA-1, given `Sha1Blocks`. -/
+theorem sha1_hashSpec (hb : Sha1Blocks) :
     HashSpec high.hash.LegacySha1.Insts.RindHighHashHashSha1ContextSha1State sha1.hash 64 20
       maxInput Sha1Absorbed Sha1Ctx where
   out := ⟨by decide, by decide, by decide, by unfold maxInput; scalar_tac, sha1_hash_length⟩

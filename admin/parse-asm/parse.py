@@ -30,6 +30,7 @@ class Type(enum.StrEnum):
     DIRECTIVE = enum.auto()
     EOF = enum.auto()
     CPP = enum.auto()
+    SOURCE = enum.auto()
 
 
 def tidy_linewise(lines):
@@ -123,6 +124,7 @@ def parse_file(f, visit):
     continuation = None
     contexts = []
     cpp = Preprocessor()
+    visit(Type.SOURCE, f.name)
     visit(Type.CPP, cpp)
     cpp.set("__LF", ";")
     cpp.function("S2N_BN_SYM_VISIBILITY_DIRECTIVE", lambda *args: "")

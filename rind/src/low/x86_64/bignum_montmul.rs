@@ -137,6 +137,7 @@ macro_rules! jshort {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_montmul.S.
 /// Montgomery multiply, z := (x * y / 2^{64k}) mod m
 ///
 /// Inputs x[k], y[k], m[k]; output z[k]

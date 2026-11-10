@@ -41,6 +41,7 @@ use crate::low::macros::*;
 // * Use xmm3 in place of xmm6, so we don't need to save/restore it for Windows
 // * Directly test for null input (buflen = 0), and skip body and return 0
 
+// Transliterated from s2n-bignum's x86/mlkem/mlkem_rej_uniform_VARIABLE_TIME.S.
 /// Uniform rejection sampling for ML-KEM
 ///
 /// Inputs *buf (unsigned bytes), buflen, table (unsigned bytes); output r[256] (signed 16-bit words), return

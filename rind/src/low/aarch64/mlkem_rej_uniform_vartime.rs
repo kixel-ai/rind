@@ -32,6 +32,7 @@ use crate::low::macros::*;
 // Standard ARM ABI: X0 = buf, X1 = r, X2 = buflen, X3 = table
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's arm/mlkem/mlkem_rej_uniform_VARIABLE_TIME.S.
 /// Uniform rejection sampling for ML-KEM
 ///
 /// Inputs *buf (unsigned bytes), buflen, table (unsigned bytes); output r[256] (signed 16-bit words), return

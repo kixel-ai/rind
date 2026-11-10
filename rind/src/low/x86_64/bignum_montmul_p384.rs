@@ -117,6 +117,7 @@ macro_rules! montredc {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p384/bignum_montmul_p384.S.
 /// Montgomery multiply, z := (x * y / 2^384) mod p_384
 ///
 /// Inputs x[6], y[6]; output z[6]

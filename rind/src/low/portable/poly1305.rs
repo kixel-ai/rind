@@ -7,6 +7,8 @@
 //! targets run rind's 64-bit limbs in `generic::poly1305` instead, as x86_64
 //! does without SSE4.1, since AEAD messages there can be longer.
 
+#[cfg(all(rind_backend = "portable", target_pointer_width = "32"))]
+pub(crate) use Hacl as Poly1305;
 #[cfg(any(target_pointer_width = "32", test))]
 use libcrux_hacl_rs::streaming_types::error_code;
 #[cfg(any(target_pointer_width = "32", test))]
@@ -14,8 +16,6 @@ use libcrux_poly1305::hacl::mac_poly1305::{self, state_t};
 
 #[cfg(all(rind_backend = "portable", target_pointer_width = "64"))]
 pub(crate) use crate::low::generic::poly1305::Poly1305;
-#[cfg(all(rind_backend = "portable", target_pointer_width = "32"))]
-pub(crate) use Hacl as Poly1305;
 
 #[cfg(any(target_pointer_width = "32", test))]
 pub(crate) struct Hacl([state_t; 1]);
