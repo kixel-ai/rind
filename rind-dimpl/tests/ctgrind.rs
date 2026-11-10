@@ -172,7 +172,7 @@ fn signing() {
     }
 }
 
-/// Signs with keys loaded from PKCS#8 and SEC1 PEM, with the base64 that
+/// Signs with keys loaded from PKCS#8 and SEC1 PEM, under any label, with the base64 that
 /// encodes the private scalar marked secret. The DER structure around it stays
 /// public, as it does for DER keys.
 #[test]
@@ -191,6 +191,7 @@ fn pem_signing() {
     for (label, der) in [
         ("PRIVATE KEY", &pkcs8[..]),
         ("EC PRIVATE KEY", sec1.as_ref()),
+        ("UNUSUAL KEY", sec1.as_ref()),
     ] {
         let lf = pem::EncodeConfig::new().set_line_ending(pem::LineEnding::LF);
         let pem = pem::encode_config(&pem::Pem::new(label, der), lf);

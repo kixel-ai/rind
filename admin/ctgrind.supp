@@ -56,6 +56,13 @@
    fun:*16rustls_pki_types3pem*
 }
 {
+   rustls-pki-types-pem-line-scan-inlined-from-pem-slice
+   Memcheck:Cond
+   fun:position<u8, rustls_pki_types::pem::*
+   ...
+   fun:*16rustls_pki_types*3pem9PemObject14from_pem_slice*
+}
+{
    rustls-pki-types-pem-line-end-inlined
    Memcheck:Cond
    fun:{closure#0}
