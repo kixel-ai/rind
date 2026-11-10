@@ -9,10 +9,11 @@
 # too. The rows are ctgrind.yml's.
 #
 # `admin/mutants --avx512 ...`, on x86_64 in `nix develop .#sde`, runs each
-# test once under Intel SDE's Sapphire Rapids model instead, which takes every
-# AVX-512 path. SDE runs the tests some 20 times slower, so the other
-# campaign leaves out the files only AVX-512 runs, and this one is meant for
-# what it missed: give it `--iterate` over that campaign's `mutants.out`.
+# test under Intel SDE's Sapphire Rapids model instead, which takes every
+# AVX-512 path, though no campaign host has one. Each mutant's tests take
+# minutes there, so the other campaign leaves out the files only AVX-512
+# runs, and this one retests what that one missed: give it `--iterate` over
+# its `mutants.out`.
 #
 # cargo-mutants mutates code whatever its `cfg`, so a function only another
 # architecture compiles is missed here. `admin/mutants --survivors DIR...`
