@@ -38,7 +38,7 @@ host; it skips any host that is still busy, and writes their results and the hos
 `.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly
 `bench` run's results, and `admin/bench-report render --from DIR` copies a
 collection's measured hosts into `benchmarks/data/` and writes
-`BENCHMARKS.md`, its SVGs, and the README's headline from them, `benchmarks/verified.toml`, and
+`BENCHMARKS.md` and its SVGs, which the README shows too, from them, `benchmarks/verified.toml`, and
 `benchmarks/gaps.toml`, which must hold a quest or a reason for every gap
 over 10%.
 
@@ -46,7 +46,9 @@ With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
 toolchain, and `just check` runs CI's gate over what the branch changed.
 On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
-with NEON alone, and with NEON denied.
+with NEON alone, and with NEON denied. `just qemu <shell>` runs an entry of
+the nightly `qemu` job, which lints and tests the portable backend under
+qemu: `s390x` (big-endian), `riscv64`, or `riscv64-musl`.
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
 constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
@@ -65,8 +67,9 @@ or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,
 and `admin/timing marvin` runs the Marvin toolkit against RSA-OAEP decryption. They need quiet
 hardware: the weekly `timing` workflow runs them on GitHub's runners, and a
 shared host is held with `quest gate --host`.
-`nix develop .#prove --command admin/prove` translates the Rust under proof to
-Lean with Aeneas and checks the proofs in [`proofs/`](proofs/README.md).
+`nix develop .#prove --command admin/prove` checks rind's HOL Light proofs of
+its assembly, then translates the Rust under proof to Lean with Aeneas and
+checks the proofs in [`proofs/`](proofs/README.md).
 
 # Commits
 

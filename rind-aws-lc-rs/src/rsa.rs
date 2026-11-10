@@ -20,11 +20,14 @@ use signing::RsaEncoding;
 use crate::digest::{self, Digest};
 use crate::encoding::{AsDer, Pkcs8V1Der, PublicKeyX509Der};
 use crate::error::{KeyRejected, Unspecified, unspecified};
+#[cfg(feature = "ring-io")]
+use crate::io;
 use crate::signature::{self, ParsedPublicKey, private};
 use crate::wipe::Wiped;
-use crate::{der, io, rand, sealed};
+use crate::{der, rand, sealed};
 
 /// An RSA key size.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeySize {
     /// A 2048-bit modulus.
@@ -186,6 +189,7 @@ fn spki(pkcs1: &[u8]) -> Result<PublicKeyX509Der<'static>, Unspecified> {
 pub struct PublicKey {
     der: Box<[u8]>,
     n: Box<[u8]>,
+    #[cfg_attr(not(feature = "ring-io"), allow(dead_code))]
     e: Box<[u8]>,
 }
 
@@ -209,12 +213,14 @@ impl PublicKey {
     }
 
     /// The modulus.
+    #[cfg(feature = "ring-io")]
     #[must_use]
     pub fn modulus(&self) -> io::Positive<'_> {
         io::Positive::new(&self.n)
     }
 
     /// The public exponent.
+    #[cfg(feature = "ring-io")]
     #[must_use]
     pub fn exponent(&self) -> io::Positive<'_> {
         io::Positive::new(&self.e)
@@ -312,6 +318,7 @@ impl<B: AsRef<[u8]>> PublicKeyComponents<B> {
     }
 }
 
+#[cfg(feature = "ring-io")]
 impl From<&PublicKey> for PublicKeyComponents<Vec<u8>> {
     fn from(public_key: &PublicKey) -> Self {
         Self {
@@ -321,14 +328,17 @@ impl From<&PublicKey> for PublicKeyComponents<Vec<u8>> {
     }
 }
 
-impl<B: AsRef<[u8]>> TryFrom<PublicKeyComponents<B>> for PublicEncryptingKey {
+// aws-lc-rs implements `TryInto` rather than `TryFrom`, so
+// `PublicEncryptingKey::try_from(components)` does not build there either.
+#[allow(clippy::from_over_into)]
+impl<B: AsRef<[u8]>> TryInto<PublicEncryptingKey> for PublicKeyComponents<B> {
     type Error = Unspecified;
 
-    fn try_from(components: PublicKeyComponents<B>) -> Result<Self, Unspecified> {
-        let components = components.rind()?;
+    fn try_into(self) -> Result<PublicEncryptingKey, Unspecified> {
+        let components = self.rind()?;
         let key = rind::rsa::EncryptingKey::from_components(&rind::rsa::OAEP_SHA256, &components)
             .map_err(unspecified)?;
-        Ok(Self::new(key.as_ref())?)
+        Ok(PublicEncryptingKey::new(key.as_ref())?)
     }
 }
 

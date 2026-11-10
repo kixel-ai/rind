@@ -10,7 +10,7 @@
 #               report's tier table shows them
 #   on          hosts, or CPU tiers as the report's tier columns name them;
 #               every operation must be a gap on every one
-#   quest       the speed quest that closes it, or
+#   quest       the quest that closes it, or
 #   reason      why it stays
 
 [[gap]]

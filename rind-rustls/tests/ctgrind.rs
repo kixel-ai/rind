@@ -267,7 +267,7 @@ fn quic_protection() {
 
 #[test]
 fn signing() {
-    let provider = rind_rustls::default_provider().unwrap();
+    let provider = rind_rustls::default_provider();
     let algorithms = provider.signature_verification_algorithms;
 
     for slug in [

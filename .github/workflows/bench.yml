@@ -96,6 +96,8 @@ jobs:
             runner: ubuntu-24.04
             personality: linux64
             portable: true
+            # An RSA A/B on GitHub's runners reads this row: a runner may draw
+            # a CPU with IFMA, so only this row times the same path every run.
             cpu: no-ifma
             benches: --bench rsa_priv
           - target: x86_64-unknown-linux-gnu
