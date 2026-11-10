@@ -1,0 +1,26 @@
+[build-system]
+requires = ["flit_core>=3.12,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "pyrind-cryptography"
+description = "pyca/cryptography's hazmat API on rind, a pure-Rust library, for what rind covers"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0 OR ISC OR MIT-0"
+license-files = ["LICENSE"]
+keywords = ["cryptography", "pyca", "jwt", "jose"]
+classifiers = [
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Topic :: Security :: Cryptography",
+]
+dependencies = ["pyrind>=0.1.2,<0.2"]
+# flit reads it from pyrind_cryptography.__version__.
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/moq-dev/rind"
+Documentation = "https://github.com/moq-dev/rind/tree/main/rind-python/cryptography"
+
+[tool.flit.module]
+name = "pyrind_cryptography"
