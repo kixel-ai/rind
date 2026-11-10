@@ -9,7 +9,8 @@
 # - every fuzz target, every differential test in `rind/tests/crosschecks.rs`,
 #   every `ct_sde_...` and `ct_qemu_...` test, every CCTV and imported-vector
 #   test, and every Wycheproof and CAVP file the tests load is named in the table;
-# - every function, fuzz target, and vector file the table names exists.
+# - every function, fuzz target, and vector file the table names exists;
+# - every other fuzz target is an adapter's, named on the adapters line.
 #
 # A backticked name in the table's other columns is one of:
 # - `fuzz::NAME`, a fuzz target;
@@ -26,6 +27,7 @@ SRC = ROOT / "rind/src"
 PAGE = ROOT / "TESTING.md"
 COLUMNS = ["Primitive", "Exports", "Vectors", "Fuzz target", "Differential test", "Constant time"]
 NOT_PRIMITIVES = "Exports that are not primitives:"
+ADAPTERS = "Adapter fuzz targets:"
 
 errors = []
 
@@ -191,6 +193,18 @@ for row in rows:
                 seen["cavp"].add(token)
             else:
                 errors.append(f"{where} is not a name admin/testing knows")
+
+adapters = [line for line in PAGE.read_text().splitlines() if line.startswith(ADAPTERS)]
+if len(adapters) != 1:
+    sys.exit(f"admin/testing: TESTING.md needs one line starting {ADAPTERS!r}")
+for token in re.findall(r"`([^`]+)`", adapters[0]):
+    segments = token.split("::")
+    if len(segments) != 2 or segments[0] != "fuzz" or segments[1] not in fuzz_targets:
+        errors.append(f"adapters: `{token}` is no fuzz target")
+    elif segments[1] in seen["fuzz"]:
+        errors.append(f"adapters: `{token}` is also a primitive's")
+    else:
+        seen["fuzz"].add(segments[1])
 
 for kind, names in [
     ("fuzz target", fuzz_targets - seen["fuzz"]),
