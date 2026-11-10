@@ -173,16 +173,17 @@ def integers(der):
 
 def pem_blocks(data):
     """Each PEM block in `data`, as (label, headers, DER) triples, in order, read in one pass over its lines."""
-    blocks, label, body = [], None, []
+    blocks, label, end, body = [], None, None, []
     for line in bytes(data).splitlines():
         line = line.strip()
         if label is None:
             if line.startswith(b"-----BEGIN ") and line.endswith(b"-----"):
                 label, body = line[11:-5], []
+                end = b"-----END " + label + b"-----"
             continue
         if line.startswith(b"-----BEGIN "):
             raise ValueError("unterminated PEM block")
-        if line == b"-----END " + label + b"-----":
+        if line == end:
             blocks.append(_pem_block(label, body))
             label = None
         else:
