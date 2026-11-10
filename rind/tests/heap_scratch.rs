@@ -68,35 +68,39 @@ fn detects_a_leak_in_key_generation() {
     zeroed("planted", || drop(vec![1u8; 32]));
 }
 
-/// Two PKCS#8 RSA keys of each size, a PKCS#1 one re-encoded beside the other.
+/// Two distinct PKCS#8 RSA keys of each size.
 fn rsa_keys() -> impl Iterator<Item = [Vec<u8>; 2]> {
     use rind::signature::RsaKeyPair;
     [
         (
-            &include_bytes!("../src/high/rsa/rsa2048.der")[..],
             &include_bytes!("../src/high/rsa/rsa2048.pkcs8.der")[..],
+            &include_bytes!("../src/high/rsa/rsa2048-other.der")[..],
         ),
         (
-            include_bytes!("../src/high/rsa/rsa3072.der"),
             include_bytes!("../src/high/rsa/rsa3072.pkcs8.der"),
+            include_bytes!("../src/high/rsa/rsa3072-other.der"),
         ),
         (
-            include_bytes!("../src/high/rsa/rsa4096.der"),
             include_bytes!("../src/high/rsa/rsa4096.pkcs8.der"),
+            include_bytes!("../src/high/rsa/rsa4096-other.der"),
         ),
         (
-            include_bytes!("../src/high/rsa/rsa6144.der"),
             include_bytes!("../src/high/rsa/rsa6144.pkcs8.der"),
+            include_bytes!("../src/high/rsa/rsa6144-other.der"),
         ),
         (
-            include_bytes!("../src/high/rsa/rsa8192.der"),
             include_bytes!("../src/high/rsa/rsa8192.pkcs8.der"),
+            include_bytes!("../src/high/rsa/rsa8192-other.der"),
         ),
     ]
     .into_iter()
-    .map(|(pkcs1, pkcs8)| {
-        let pkcs1 = RsaKeyPair::from_pkcs1(pkcs1).unwrap().to_pkcs8();
-        [pkcs1.as_ref().to_vec(), pkcs8.to_vec()]
+    .map(|(pkcs8, pkcs1)| {
+        let pkcs1 = RsaKeyPair::from_pkcs1(pkcs1).unwrap();
+        assert_ne!(
+            RsaKeyPair::from_pkcs8(pkcs8).unwrap().to_spki().as_ref(),
+            pkcs1.to_spki().as_ref(),
+        );
+        [pkcs8.to_vec(), pkcs1.to_pkcs8().as_ref().to_vec()]
     })
 }
 
