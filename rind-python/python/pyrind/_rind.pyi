@@ -1,10 +1,12 @@
 from pyrind import aead as aead
 from pyrind import agreement as agreement
+from pyrind import cipher as cipher
 from pyrind import cpu as cpu
 from pyrind import digest as digest
 from pyrind import hkdf as hkdf
 from pyrind import hmac as hmac
 from pyrind import kem as kem
+from pyrind import key_wrap as key_wrap
 from pyrind import pbkdf2 as pbkdf2
 from pyrind import rsa as rsa
 from pyrind import signature as signature
@@ -33,4 +35,4 @@ class Unsupported(Error):
 class Fault(Error):
     """An internal consistency check failed, from a hardware fault or a rind bug."""
 
-__all__ = ["Error", "WrongLength", "KeyRejected", "BadSignature", "DecryptFailed", "RngFailed", "Unsupported", "Fault", "aead", "agreement", "cpu", "digest", "hkdf", "hmac", "kem", "pbkdf2", "rsa", "signature"]
+__all__ = ["Error", "WrongLength", "KeyRejected", "BadSignature", "DecryptFailed", "RngFailed", "Unsupported", "Fault", "aead", "agreement", "cipher", "cpu", "digest", "hkdf", "hmac", "kem", "key_wrap", "pbkdf2", "rsa", "signature"]

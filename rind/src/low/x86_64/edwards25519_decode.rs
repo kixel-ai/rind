@@ -78,6 +78,7 @@ macro_rules! V { () => { Q!("(16 * " N!() ")") } }
 macro_rules! W { () => { Q!("(20 * " N!() ")") } }
 macro_rules! Q8 { () => { Q!("(25 * " N!() ")") } }
 
+// Transliterated from s2n-bignum's x86/curve25519/edwards25519_decode.S.
 /// Decode compressed 256-bit form of edwards25519 point
 ///
 /// Input c[32] (bytes); output function return and z[8]
