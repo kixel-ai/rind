@@ -8,7 +8,7 @@ use dimpl::{CryptoError, CryptoOperation};
 use rind::signature::{
     EcdsaKeyPair, EcdsaSigningAlgorithm, PublicKey, VerificationAlgorithm, sign, verify,
 };
-use rustls_pki_types::PrivateKeyDer;
+use rustls_pki_types::PrivatePkcs8KeyDer;
 use rustls_pki_types::pem::PemObject;
 use x509_cert::Certificate;
 use x509_cert::der::Decode;
@@ -52,12 +52,11 @@ impl KeyProvider for Keys {
         let der_key = |der: &[u8]| {
             load(EcdsaKeyPair::from_pkcs8, der).or_else(|| load(EcdsaKeyPair::from_sec1, der))
         };
-        // dimpl's own providers also take a PEM-wrapped key.
+        // dimpl's own providers also take a PEM-wrapped key, under any label.
         der_key(der)
-            .or_else(|| match PrivateKeyDer::from_pem_slice(der).ok()? {
-                PrivateKeyDer::Pkcs8(key) => der_key(key.secret_pkcs8_der()),
-                PrivateKeyDer::Sec1(key) => der_key(key.secret_sec1_der()),
-                _ => None,
+            .or_else(|| {
+                let pem = PrivatePkcs8KeyDer::from_pem_slice(&relabel(der)?).ok()?;
+                der_key(pem.secret_pkcs8_der())
             })
             .ok_or(CryptoError::InvalidPrivateKey)
     }
@@ -174,4 +173,29 @@ impl SignatureVerifier for Verifier {
                 group,
             })
     }
+}
+
+/// Rewrites the first PEM section's label to `PRIVATE KEY`, which rustls-pki-types
+/// decodes as a secret; it skips sections whose label it does not know.
+///
+/// Both searches stop at the boundaries, so neither reads the base64 body.
+fn relabel(pem: &[u8]) -> Option<Vec<u8>> {
+    const BEGIN: &[u8] = b"-----BEGIN ";
+    const DASHES: &[u8] = b"-----";
+    let start = pem.windows(BEGIN.len()).position(|w| w == BEGIN)? + BEGIN.len();
+    let label_len = pem[start..]
+        .windows(DASHES.len())
+        .position(|w| w == DASHES)?;
+    let label = &pem[start..start + label_len];
+    let body = start + label_len + DASHES.len();
+    let end = [b"-----END ", label, DASHES].concat();
+    let body_len = pem[body..].windows(end.len()).rposition(|w| w == end)?;
+    Some(
+        [
+            b"-----BEGIN PRIVATE KEY-----",
+            &pem[body..body + body_len],
+            b"-----END PRIVATE KEY-----",
+        ]
+        .concat(),
+    )
 }

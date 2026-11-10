@@ -356,7 +356,13 @@ fn ecdsa_key_encodings_load_as_aws_lc() {
             .unwrap()
             .as_ref()
             .to_vec();
-        for (label, der) in [("PRIVATE KEY", pkcs8), ("EC PRIVATE KEY", sec1)] {
+        // dimpl's providers ignore the label, so unusual ones load too.
+        for (label, der) in [
+            ("PRIVATE KEY", pkcs8.clone()),
+            ("EC PRIVATE KEY", sec1.clone()),
+            ("UNUSUAL KEY", pkcs8),
+            ("CERTIFICATE", sec1),
+        ] {
             let pem = pem::encode_config(&pem::Pem::new(label, der.clone()), lf);
             let mut bad_base64 = pem.clone().into_bytes();
             bad_base64[label.len() + 20] = b'!';
