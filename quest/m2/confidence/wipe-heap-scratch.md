@@ -22,10 +22,6 @@ Constraints:
 - It runs wherever the zeroing test does: `just ci` on the host, and the nightly tiers. RSA key generation is slow; keep its run in the nightly.
 - Fix a missing wipe it finds in the same PR when it is small.
 
-## Required
-
-- [The zeroing test checks every byte of every secret type on every backend](/quest/m2/confidence/zeroing-every-byte.md) - the tier and Windows runs this check then rides, and the reworked harness it shares
-
 ## Related
 
 - [BINSEC checks the secret paths no proof covers](/quest/m2/confidence/binsec.md) - the other check on RSA's private paths

@@ -87,10 +87,10 @@ jobs:
         if: runner.arch == 'X64'
         shell: bash
         run: |
-          # Each tier runs the tests, then CCTV's million ML-KEM vectors in a
+          # Each tier runs the tests and the zeroing tests, then CCTV's million ML-KEM vectors in a
           # release build, which honours the tier's denials only with
           # `--cfg rind_cpu_disable`, alongside the check that they took effect
-          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
+          tier() { env "$@" cargo test; env "$@" cargo test -p rind --features wipe --test zeroing; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
           # test rind's AVX2 SHA-1 and OpenSSL's AVX2 SHA-256 for CPUs without
           # the SHA extensions
           tier RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1
@@ -128,7 +128,7 @@ jobs:
         if: runner.arch == 'ARM64'
         shell: bash
         run: |
-          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
+          tier() { env "$@" cargo test; env "$@" cargo test -p rind --features wipe --test zeroing; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
           # test the by-4 AES-GCM and Keccak-f kernels for cores without SHA3,
           # failing a run whose OS hides the crypto extension
           tier RIND_CPU_DISABLE_sha3=1 RIND_TEST_ARM_CRYPTO_EXT=1
@@ -197,12 +197,13 @@ jobs:
 
   # Targets with no rind assembly, on the portable backend, under qemu-user.
   # Each entry names the flake dev shell that holds its target's toolchain.
-  # s390x is big-endian, and the armv6 shells run on qemu's ARM1176.
+  # s390x, powerpc64, and powerpc are big-endian, and the armv6 shells run on
+  # qemu's ARM1176.
   qemu:
     strategy:
       fail-fast: false
       matrix:
-        shell: [s390x, riscv64, riscv64-musl, loongarch64, armv6, armv6-softfloat]
+        shell: [s390x, riscv64, riscv64-musl, loongarch64, armv6, armv6-softfloat, powerpc64le, powerpc64, powerpc]
 
     runs-on: ubuntu-latest
     steps:
