@@ -15,6 +15,18 @@ use crate::{Error, aead};
 #[derive(Debug)]
 pub struct Algorithm(&'static hmac::Algorithm);
 
+impl Algorithm {
+    /// The HMAC this HKDF is built on.
+    pub(crate) fn hmac(&self) -> &'static hmac::Algorithm {
+        self.0
+    }
+
+    /// The hash's output length, a pseudorandom key's.
+    pub(crate) fn hash_len(&self) -> usize {
+        self.0.tag_len()
+    }
+}
+
 /// HKDF-SHA1, for legacy protocols only.
 ///
 /// Like HMAC, HKDF does not rely on SHA-1's broken collision resistance, but
@@ -62,6 +74,12 @@ impl fmt::Debug for Salt {
 pub struct Prk(hmac::Key);
 
 impl Prk {
+    /// A pseudorandom key `algorithm` extracted elsewhere, such as from
+    /// HPKE's labeled input.
+    pub(crate) fn new(algorithm: &'static Algorithm, bytes: &[u8]) -> Self {
+        Self(hmac::Key::new(algorithm.0, bytes))
+    }
+
     /// Derives key material for the concatenation of `info` (HKDF-Expand), as long as `len` says.
     pub fn expand<'a, L: KeyType>(&'a self, info: &'a [&'a [u8]], len: L) -> Okm<'a, L> {
         Okm {
