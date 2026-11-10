@@ -529,6 +529,17 @@
               cross = pkgs.pkgsCross.s390x;
             };
 
+            # `just qemu riscv64` and `just qemu riscv64-musl` test the
+            # portable backend on riscv64gc Linux, glibc and musl, in them.
+            riscv64 = qemu-shell {
+              target = "riscv64gc-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.riscv64;
+            };
+            riscv64-musl = qemu-shell {
+              target = "riscv64gc-unknown-linux-musl";
+              cross = pkgs.pkgsCross.riscv64-musl;
+            };
+
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
             # plugin it adds to the `armv7` shell.
             ct-qemu = pkgs.mkShell (

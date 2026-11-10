@@ -12,7 +12,7 @@ A primitive is checked four ways:
   files](thirdparty/vectors/README.md), run by `cargo test`.
 - **Fuzz target**: a `fuzz/fuzzer/` target that compares rind with aws-lc-rs
   on fuzzed input. `fuzz.yml` runs each nightly, then replays its corpus on
-  each slower tier.
+  every tier.
 - **Differential test**: a `rind/tests/crosschecks.rs` test that compares rind
   with aws-lc-rs, run by `cargo test`.
 - **Constant time**: a test that marks the secrets. `admin/ctgrind` runs the
@@ -39,10 +39,10 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 
 | Backend | Tier | Vectors and differential tests | Fuzz targets | Constant time |
 |---|---|---|---|---|
-| x86_64 | AVX-512 (Ice Lake and later, Zen 4 and 5) | SDE: Cannon Lake (RSA only), Granite Rapids, Diamond Rapids | the runner's tier, when it has AVX-512 | `admin/ct-sde`: AES-GCM and RSA; ML-KEM's AVX-512 code reads only the public matrix |
-| x86_64 | SHA512 instructions (Arrow Lake, Diamond Rapids) | SDE: Arrow Lake, Diamond Rapids | none: GitHub's runners lack them, [planned](/quest/m3/confidence/fuzz-tiers.md) | `admin/ct-sde`: HMAC |
-| x86_64 | VAES without AVX-512 (Alder Lake, Zen 3) | SDE: Alder Lake, Granite Rapids at 256 bits; the runner, when Zen 3 | the runner's tier, when Zen 3; denied, when it has AVX-512 | `admin/ct-sde`: AES-GCM |
-| x86_64 | SHA extensions (Goldmont, Cannon Lake and later, Zen) | SDE: Goldmont and later | the runner's tier | `admin/ct-sde`: HMAC |
+| x86_64 | AVX-512 (Ice Lake and later, Zen 4 and 5) | SDE: Cannon Lake (RSA only), Granite Rapids, Diamond Rapids | SDE: Diamond Rapids; the runner's tier, when it has AVX-512 | `admin/ct-sde`: AES-GCM and RSA; ML-KEM's AVX-512 code reads only the public matrix |
+| x86_64 | SHA512 instructions (Arrow Lake, Diamond Rapids) | SDE: Arrow Lake, Diamond Rapids | SDE: Diamond Rapids | `admin/ct-sde`: HMAC |
+| x86_64 | VAES without AVX-512 (Alder Lake, Zen 3) | SDE: Alder Lake, Granite Rapids at 256 bits; the runner, when Zen 3 | SDE: Diamond Rapids, denied; the runner's tier, when Zen 3; denied, when it has AVX-512 | `admin/ct-sde`: AES-GCM |
+| x86_64 | SHA extensions (Goldmont, Cannon Lake and later, Zen) | SDE: Goldmont and later | SDE: Diamond Rapids; the runner's tier | `admin/ct-sde`: HMAC |
 | x86_64 | AVX2 and ADX, no SHA extensions or VAES (Broadwell to Cooper Lake) | SDE: Skylake server; denied | denied | ctgrind: valgrind hides AVX-512, VAES, and the SHA extensions, so the runner's own run lands here |
 | x86_64 | AVX2 without ADX (Haswell) | SDE: Haswell; denied | denied | ctgrind: denied (`no-adx`) |
 | x86_64 | AVX without AVX2 (Sandy and Ivy Bridge, Bulldozer, Jaguar) | SDE: Sandy Bridge, which runs Intel's AVX SHA; denied, which runs other vendors' | denied | ctgrind: denied (`no-avx2`), but on GitHub's AMD runners not Intel's AVX SHA, [planned](/quest/m3/confidence/ct-tiers.md) |
@@ -52,11 +52,12 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 | aarch64 | crypto extension, SHA-512 and SHA-3 instructions (Graviton 3, Apple M, Cobalt 100) | `build.yml` on the arm64 runners | the arm64 runner | ctgrind on the arm64 runner, on the paths valgrind exposes, [planned](/quest/m3/confidence/ct-tiers.md) |
 | aarch64 | crypto extension without SHA-3 (Graviton 2, Raspberry Pi 5) | denied | denied | ctgrind, where valgrind hides SHA-3, [planned](/quest/m3/confidence/ct-tiers.md) |
 | aarch64 | no crypto extension (Raspberry Pi 4) | denied | denied | ctgrind: denied (`aarch64-portable`) |
-| armv7 | crypto extension (most 32-bit Android) | `just armv7`: qemu `max` | none: `fuzz.yml` builds only on GitHub's hosted runners, [planned](/quest/m3/confidence/fuzz-tiers.md) | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
-| armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | none, as above | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
-| armv7 | no NEON | `just armv7`: qemu Cortex-A15, denied | none, as above | ctgrind: denied (`no-neon`) |
+| armv7 | crypto extension (most 32-bit Android) | `just armv7`: qemu `max` | the arm64 runner, which runs armv7 natively | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
+| armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | denied | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
+| armv7 | no NEON | `just armv7`: qemu Cortex-A15, denied | denied | ctgrind: denied (`no-neon`) |
 | portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | none: fuzz jobs build the native backends | ctgrind: the `portable` job forces this backend |
 | portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | none, as above | ctgrind's forced run, of the same code built for x86_64 |
+| portable | riscv64gc Linux, glibc and musl | `just qemu riscv64` and `just qemu riscv64-musl`: as s390x | none, as above | as s390x |
 
 ## Vector suites
 
