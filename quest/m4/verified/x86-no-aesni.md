@@ -13,5 +13,4 @@ AES-GCM, AES header protection, and the AES modes earn the ✓ on x86_64 CPUs wi
 
 ## Required
 
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
 - [x86_64's by-8 and by-16 AES-GCM intrinsics are proven](/quest/m4/verified/aes-gcm-x86-intrinsics.md) - the AES-GCM glue and specs this tier reuses

@@ -10,10 +10,6 @@ open and answered; record what they would need.
 
 ## Plan
 
-Decided with the maintainer on 2026-11-04: after pyrind exists with numbers
+Decided with the maintainer on 2026-11-04: after pyrind exists with numbers (now on [PyPI](https://pypi.org/project/pyrind/))
 ✅ / now / never. Posting is the maintainer's call; draft the text and ask.
 Be candid that rind is young and largely AI-written.
-
-## Required
-
-- [pyrind on PyPI](/quest/m2/adoption/pyrind.md) - the numbers the pitch cites

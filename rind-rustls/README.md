@@ -9,38 +9,25 @@ This crate provides an integration between [rustls](https://github.com/rustls/ru
 Use it like:
 
 ```rust
-rind_rustls::default_provider()?.install_default().unwrap();
+rind_rustls::default_provider().install_default().unwrap();
 ```
 
 And then use rustls as normal.
 
-A binary links only the algorithms its provider names, so one that needs
-few fills in `empty_provider()` with just those:
+Its API is rustls's `crypto::aws_lc_rs` provider's, item for item, so
+swapping one for the other changes no other code. rind cannot back yet:
 
-```rust
-use rind_rustls::{cipher_suite, kx_group, sign, verify};
-use rustls::SignatureScheme;
-use rustls::crypto::{CryptoProvider, WebPkiSupportedAlgorithms};
+- `kx_group::MLKEM1024`, which `ALL_KX_GROUPS` leaves out.
+- ML-DSA: `default_provider()` neither verifies nor signs with it.
+- `hpke`.
 
-static P256: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
-    all: &[verify::ECDSA_P256_SHA256],
-    mapping: &[(
-        SignatureScheme::ECDSA_NISTP256_SHA256,
-        &[verify::ECDSA_P256_SHA256],
-    )],
-};
+Where it behaves differently:
 
-let provider = CryptoProvider {
-    cipher_suites: vec![cipher_suite::TLS13_AES_128_GCM_SHA256],
-    kx_groups: vec![kx_group::X25519],
-    signature_verification_algorithms: P256,
-    key_provider: sign::ECDSA_P256,
-    ..rind_rustls::empty_provider()?
-};
-```
-
-rind panics on a CPU missing a feature it requires, so `default_provider()`,
-`empty_provider()`, and `Ticketer::new()` check first and return an error
-instead. Build any provider from this crate's statics on `empty_provider()`.
+- `default_provider()` puts ChaCha20-Poly1305 first on a CPU where rind runs
+  AES without CPU instructions, for speed.
+- `DEFAULT_CIPHER_SUITES` and `ALL_CIPHER_SUITES` list AES-128-GCM before
+  AES-256-GCM, for speed.
+- `Ticketer` seals tickets with XChaCha20-Poly1305, where upstream's uses
+  RFC 5077's AES-256-CBC and HMAC-SHA256.
 
 License: Apache-2.0 OR ISC OR MIT-0

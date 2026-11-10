@@ -241,10 +241,18 @@ impl Key {
 }
 
 /// A tag [`Key`] sealed, of its [`TagLength`].
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct Tag {
     bytes: [u8; 16],
     len: usize,
+}
+
+impl fmt::Debug for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Tag")
+            .field("len", &self.len)
+            .finish_non_exhaustive()
+    }
 }
 
 impl AsRef<[u8]> for Tag {

@@ -95,6 +95,40 @@
             };
           };
 
+          # A shell that builds `target`, an architecture with no rind
+          # assembly, and runs its tests under qemu-user, as `just qemu` does.
+          # `cross` is the nixpkgs cross set whose C toolchain the tests'
+          # aws-lc-rs dev-dependency builds with; rind itself needs none.
+          qemu-shell =
+            { target, cross }:
+            let
+              cc = cross.stdenv.cc;
+              prefix = "${cc}/bin/${cc.targetPrefix}";
+              var = pkgs.lib.toUpper (builtins.replaceStrings [ "-" ] [ "_" ] target);
+              lower = builtins.replaceStrings [ "-" ] [ "_" ] target;
+            in
+            pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override {
+                  extensions = [ "clippy" ];
+                  targets = [ target ];
+                })
+                cc
+                pkgs.qemu-user
+              ];
+
+              env = {
+                RIND_QEMU_TARGET = target;
+                "CC_${lower}" = "${prefix}cc";
+                "CXX_${lower}" = "${prefix}c++";
+                "AR_${lower}" = "${prefix}ar";
+                "CARGO_TARGET_${var}_LINKER" = "${prefix}cc";
+                # The wrapper links against the store's glibc for the target
+                # by absolute path, so qemu needs no sysroot.
+                "CARGO_TARGET_${var}_RUNNER" = "qemu-${cross.stdenv.hostPlatform.qemuArch}";
+              };
+            };
+
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
           # built against the plugin API of the qemu-user its shells run.
           ct-qemu-plugin = pkgs.stdenv.mkDerivation {
@@ -228,12 +262,35 @@
             '';
           };
 
+          # `admin/prove hol-light` runs in it: HOL Light, the OCaml it
+          # compiles the proofs with, as s2n-bignum's `tools/build-proof.sh`
+          # does, and the Rust whose build emits the object code they are of,
+          # with llvm-objdump to read it.
+          hol-light = pkgs.mkShell {
+            packages = [
+              (rust-stable.minimal.override {
+                extensions = [ "llvm-tools" ];
+                targets = [
+                  "x86_64-unknown-linux-gnu"
+                  "aarch64-unknown-linux-gnu"
+                ];
+              })
+              pkgs.hol_light
+              pkgs.ocamlPackages.ocaml
+              pkgs.ocamlPackages.findlib
+              pkgs.ocamlPackages.camlp5
+              pkgs.git
+            ];
+          };
+
           sde-certs = ''
             export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
           '';
         in
         {
           devShells = {
+            inherit hol-light;
+
             default = pkgs.mkShell {
               packages =
                 with pkgs;
@@ -422,6 +479,7 @@
             # `proofs/lean-toolchain` names, whose bundled `leantar` reads
             # Mathlib's cache, which nixpkgs' Lean cannot.
             prove = pkgs.mkShell {
+              inputsFrom = [ hol-light ];
               packages = [
                 aeneas
                 pkgs.elan
@@ -463,6 +521,13 @@
             # and the armv7 standard libraries add about 700 MB, which every
             # other CI job would download.
             armv7 = pkgs.mkShell armv7-shell;
+
+            # `just qemu s390x` tests the portable backend on big-endian
+            # s390x in it.
+            s390x = qemu-shell {
+              target = "s390x-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.s390x;
+            };
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
             # plugin it adds to the `armv7` shell.

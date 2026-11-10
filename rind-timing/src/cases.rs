@@ -327,7 +327,8 @@ fn cipher_cases(cases: &mut Vec<Case>) {
         let plaintexts = classes(VALUES, fixed(random::<256>()), random::<256>);
         measure(config, &plaintexts, |plaintext| {
             let mut buf = *plaintext;
-            key.encrypt_blocks(&iv, &mut buf).map(|()| buf)
+            key.encrypt_blocks(cipher::CbcIv::assume_unpredictable(iv), &mut buf)
+                .map(|()| buf)
         })
     }));
     cases.push(case("cipher/aes-128-cbc/decrypt-key", move |config| {
@@ -352,7 +353,9 @@ fn cipher_cases(cases: &mut Vec<Case>) {
             let mut buf = [16; 64];
             buf[..48].copy_from_slice(&prefix);
             buf[48 + at] ^= random::<1>()[0] | 1;
-            encrypt.encrypt_blocks(&iv, &mut buf).unwrap();
+            encrypt
+                .encrypt_blocks(cipher::CbcIv::assume_unpredictable(iv), &mut buf)
+                .unwrap();
             buf
         };
         let anywhere = || wrong_at(usize::from(random::<1>()[0]) % 15);
