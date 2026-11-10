@@ -113,9 +113,15 @@ fn pem() {
             .lines()
             .filter(|line| !line.starts_with("-----"))
             .collect();
-        for line in base64 {
+        for line in &base64 {
             mark(line.as_bytes(), MemState::Undefined);
         }
+        // base64ct sizes its output by whether the last two characters are
+        // `=`, so memcheck would taint every length derived from the public
+        // padding. Keep the final block public; every other block goes
+        // through the same transform.
+        let last = base64.last().unwrap().as_bytes();
+        public(&last[last.len() - 4..]);
         let (label, der) = pem_rfc7468::decode_vec(pem.as_bytes()).unwrap();
         public(&der[..]);
         public(pem.as_bytes());
