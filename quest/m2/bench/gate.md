@@ -24,7 +24,7 @@ Guidance:
 - Run the gate in a job after `native`, over that run's `bench-*` artifacts, through a `bench-report` subcommand that shares `gaps_of` with `render`, so the nightly and the report cannot disagree. Its failure names each undecided cell with its ratio and baseline.
 - `benchmarks/gaps.toml` needs a decision for every gap the current nightly shows before the gate lands, or its first night fails. A gap names its quest once one exists.
 - Each ID matches a `TIER_ROWS` pattern or an explicit unranked list that gives the reason, and the tool refuses an ID in neither. Unranked today for a stated reason: RSA key generation, for its variance (`admin/bench-report:783`). Unranked by design: JWT `load`, the part of a `token` spent on the key (`rind-bench/benches/jsonwebtoken.rs:3`); rank `token`.
-- A row with no baseline, such as a rind-only row from [the new tiers](/quest/m2/bench/tiers.md), has no ratio. Skip it in the gate and say so in the summary.
+- A row with no baseline has no ratio. Skip it in the gate and say so in the summary.
 
 Open, with a recommendation:
 
@@ -33,5 +33,4 @@ Open, with a recommendation:
 
 ## Related
 
-- [Nightly rows for the tiers nothing times](/quest/m2/bench/tiers.md) - adds the rows this gate then watches
 - [Benchmark report refresh, before rind 0.4](/quest/m2/bench/report-refresh.md) - keeps the report once this owns regressions
