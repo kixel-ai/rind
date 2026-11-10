@@ -5,7 +5,7 @@ use aws_lc_rs::cipher::{
     UnboundCipherKey,
 };
 use libfuzzer_sys::{arbitrary, arbitrary::Arbitrary, fuzz_target};
-use rind::cipher::{AES_128, AES_192, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey, CbcIv};
+use rind::cipher::{AES_128, AES_192, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey};
 
 mod edit;
 
@@ -22,7 +22,7 @@ fuzz_target!(|input: (Operation, [u8; 16], Vec<u8>, edit::Edit)| {
     let mut ct = msg.clone();
     AesCbcEncryptingKey::new(ours, key)
         .unwrap()
-        .encrypt(CbcIv::assume_unpredictable(iv), &mut ct);
+        .encrypt(&iv, &mut ct);
     let mut right = msg.clone();
     PaddedBlockEncryptingKey::cbc_pkcs7(theirs())
         .unwrap()

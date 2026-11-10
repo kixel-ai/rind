@@ -49,12 +49,12 @@ fn bench_aes_cbc(c: &mut Criterion) {
         for op in ["encrypt", "decrypt"] {
             let mut group = c.benchmark_group(format!("{name}-{op}"));
             for (size, size_name) in criterion::SIZES {
-                use rind::cipher::{AesCbcDecryptingKey, AesCbcEncryptingKey, CbcIv};
+                use rind::cipher::{AesCbcDecryptingKey, AesCbcEncryptingKey};
                 let algorithm = rind_aes(key_len);
                 let mut ct = vec![0u8; size];
                 AesCbcEncryptingKey::new(algorithm, key)
                     .unwrap()
-                    .encrypt(CbcIv::assume_unpredictable(iv), &mut ct);
+                    .encrypt(&iv, &mut ct);
                 let input = if op == "encrypt" { vec![0u8; size] } else { ct };
                 let mut buf = Vec::with_capacity(size + 16);
                 group.throughput(Throughput::Bytes(size as u64));
@@ -91,7 +91,7 @@ fn bench_aes_cbc(c: &mut Criterion) {
                         buf.clear();
                         buf.extend_from_slice(&input);
                         if op == "encrypt" {
-                            enc.encrypt(CbcIv::assume_unpredictable(iv), &mut buf);
+                            enc.encrypt(&iv, &mut buf);
                         } else {
                             dec.decrypt(&iv, &mut buf).unwrap();
                         }

@@ -10,7 +10,7 @@ use rind::aead::{
 };
 use rind::agreement::{self, ECDH_P256, ECDH_P384, ECDH_P521};
 use rind::cipher::{
-    AES_128, AES_192, AES_256, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, CbcIv,
+    AES_128, AES_192, AES_256, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr,
 };
 use rind::hmac;
 use rind::key_wrap::AesKek;
@@ -210,8 +210,7 @@ fn cipher() {
             m if m.ends_with("-CBC") => {
                 let mut got = pt.clone();
                 let enc = AesCbcEncryptingKey::new(algorithm(), &key).unwrap();
-                enc.encrypt_blocks(CbcIv::assume_unpredictable(iv()), &mut got)
-                    .unwrap();
+                enc.encrypt_blocks(&iv(), &mut got).unwrap();
                 assert_eq!(got, ct, "{test}");
                 let dec = AesCbcDecryptingKey::new(algorithm(), &key).unwrap();
                 dec.decrypt_blocks(&iv(), &mut got).unwrap();

@@ -296,7 +296,7 @@ impl EncryptingKey {
         let iv = context.iv()?;
         match &self.key {
             Encrypting::Cbc(key) => key
-                .encrypt_blocks(rind::cipher::CbcIv::assume_unpredictable(*iv), in_out)
+                .encrypt_blocks(iv, in_out)
                 .map_err(crate::error::unspecified)?,
             Encrypting::Ctr(key) => key
                 .apply_keystream(iv, in_out)
@@ -433,10 +433,7 @@ impl PaddedBlockEncryptingKey {
     where
         InOut: AsMut<[u8]> + for<'in_out> Extend<&'in_out u8>,
     {
-        let iv = rind::cipher::CbcIv::random().map_err(crate::error::unspecified)?;
-        let context = EncryptionContext::Iv128((*iv.as_bytes()).into());
-        self.key.encrypt(iv, in_out);
-        Ok(context.into())
+        self.less_safe_encrypt(in_out, EncryptionContext::Iv128(FixedLength::new()?))
     }
 
     /// Pads `in_out` and encrypts it in place under the caller's IV, which
@@ -449,10 +446,7 @@ impl PaddedBlockEncryptingKey {
     where
         InOut: AsMut<[u8]> + for<'in_out> Extend<&'in_out u8>,
     {
-        self.key.encrypt(
-            rind::cipher::CbcIv::assume_unpredictable(*context.iv()?),
-            in_out,
-        );
+        self.key.encrypt(context.iv()?, in_out);
         Ok(context.into())
     }
 }

@@ -17,7 +17,7 @@ use crate::low::{self, AesDecKey, AesKey, Entry, Zeroable, aes_cbc, zeroise_valu
 /// with each message, as encrypt-then-MAC and RFC 7518's `A128CBC-HS256`
 /// do, or use [`crate::aead`] instead.
 ///
-/// Each message needs a fresh [`CbcIv`], normally [`CbcIv::random`]: an IV
+/// Each message needs a fresh random IV from [`crate::rand::fill`]: an IV
 /// an attacker can predict, such as a counter, leaks whether a plaintext
 /// block equals one they chose.
 pub struct AesCbcEncryptingKey {
@@ -41,26 +41,26 @@ impl AesCbcEncryptingKey {
 
     /// Pads `in_out` with PKCS#7, 1 to 16 bytes each holding the count, and
     /// encrypts it in place under `iv`.
-    pub fn encrypt<InOut>(&self, iv: CbcIv, in_out: &mut InOut)
+    pub fn encrypt<InOut>(&self, iv: &[u8; 16], in_out: &mut InOut)
     where
         InOut: AsMut<[u8]> + for<'a> Extend<&'a u8>,
     {
         let _entry = Entry::new_secret();
         let pad = 16 - in_out.as_mut().len() % 16;
         in_out.extend(&[pad as u8; 16][..pad]);
-        self.encrypt_in_place(&iv.0, in_out.as_mut().as_chunks_mut().0);
+        self.encrypt_in_place(iv, in_out.as_mut().as_chunks_mut().0);
     }
 
     /// Encrypts `in_out` in place under `iv`, without padding.
     ///
     /// Fails with [`Error::WrongLength`], leaving `in_out` unchanged, if
     /// `in_out` is not a whole number of 16-byte blocks.
-    pub fn encrypt_blocks(&self, iv: CbcIv, in_out: &mut [u8]) -> Result<(), Error> {
+    pub fn encrypt_blocks(&self, iv: &[u8; 16], in_out: &mut [u8]) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         let (blocks, []) = in_out.as_chunks_mut() else {
             return Err(Error::WrongLength);
         };
-        self.encrypt_in_place(&iv.0, blocks);
+        self.encrypt_in_place(iv, blocks);
         Ok(())
     }
 
@@ -68,41 +68,6 @@ impl AesCbcEncryptingKey {
         low::ct::secret_slice(blocks);
         aes_cbc::encrypt(&self.key, iv, blocks);
         low::ct::public_slice(blocks);
-    }
-}
-
-/// A CBC IV that encrypts one message: random, or one the caller promises an
-/// attacker cannot predict.
-///
-/// It is not `Clone`, so one value encrypts at most one message. Read it with
-/// [`CbcIv::as_bytes`] before encrypting to send it alongside the ciphertext.
-pub struct CbcIv([u8; 16]);
-
-impl CbcIv {
-    /// Draws an IV from the system's secure random source.
-    ///
-    /// Fails with [`Error::RngFailed`] if the system random source does.
-    pub fn random() -> Result<Self, Error> {
-        let mut iv = [0; 16];
-        crate::rand::fill(&mut iv)?;
-        Ok(Self(iv))
-    }
-
-    /// Wraps `iv`, which the caller promises an attacker cannot predict:
-    /// never a constant, zero, or counter.
-    pub fn assume_unpredictable(iv: [u8; 16]) -> Self {
-        Self(iv)
-    }
-
-    /// The IV's bytes, which the receiver needs to decrypt.
-    pub fn as_bytes(&self) -> &[u8; 16] {
-        &self.0
-    }
-}
-
-impl fmt::Debug for CbcIv {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("CbcIv").finish_non_exhaustive()
     }
 }
 
@@ -267,15 +232,14 @@ mod tests {
         ] {
             let (enc, dec) = keys(&hex::decode(key).unwrap());
             let mut buf = pt.clone();
-            enc.encrypt_blocks(CbcIv::assume_unpredictable(*iv), &mut buf)
-                .unwrap();
+            enc.encrypt_blocks(iv, &mut buf).unwrap();
             assert_eq!(hex::encode(&buf), ct);
             dec.decrypt_blocks(iv, &mut buf).unwrap();
             assert_eq!(buf, pt);
 
             // padded, the same blocks then one of padding
             let mut buf = pt.clone();
-            enc.encrypt(CbcIv::assume_unpredictable(*iv), &mut buf);
+            enc.encrypt(iv, &mut buf);
             assert_eq!(hex::encode(&buf[..64]), ct);
             assert_eq!(buf.len(), 80);
             assert_eq!(dec.decrypt(iv, &mut buf).unwrap(), pt);
@@ -323,13 +287,13 @@ mod tests {
         for len in 0..=150usize {
             let msg: Vec<u8> = (0..len as u8).collect();
             let mut buf = msg.clone();
-            enc.encrypt(CbcIv::assume_unpredictable(iv), &mut buf);
+            enc.encrypt(&iv, &mut buf);
             assert_eq!(buf.len(), (len / 16 + 1) * 16, "{len}");
             assert_eq!(dec.decrypt(&iv, &mut buf).unwrap(), msg, "{len}");
 
             let whole = len.is_multiple_of(16);
             let mut buf = msg.clone();
-            let result = enc.encrypt_blocks(CbcIv::assume_unpredictable(iv), &mut buf);
+            let result = enc.encrypt_blocks(&iv, &mut buf);
             assert_eq!(result.is_ok(), whole, "{len}");
             if !whole {
                 assert_eq!(buf, msg, "refused encrypt wrote");
@@ -355,8 +319,7 @@ mod tests {
         let iv = [0x24; 16];
         let check = |padded: &[u8]| {
             let mut buf = padded.to_vec();
-            enc.encrypt_blocks(CbcIv::assume_unpredictable(iv), &mut buf)
-                .unwrap();
+            enc.encrypt_blocks(&iv, &mut buf).unwrap();
             let result = dec.decrypt(&iv, &mut buf).map(|pt| pt.len());
             if result.is_err() {
                 assert!(buf.iter().all(|b| *b == 0), "failure left plaintext");
@@ -403,7 +366,7 @@ mod tests {
 
             let iv = bytes(16).try_into().unwrap();
             let mut msg = bytes(6 * 16 + 5);
-            ct_qemu::traced(|| enc.encrypt(CbcIv::assume_unpredictable(iv), &mut msg));
+            ct_qemu::traced(|| enc.encrypt(&iv, &mut msg));
             ct_qemu::traced(|| dec.decrypt(&iv, &mut msg)).unwrap();
         }
     }
