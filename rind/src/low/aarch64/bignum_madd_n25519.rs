@@ -134,6 +134,7 @@ macro_rules! reduce0 {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/curve25519/bignum_madd_n25519_alt.S.
 /// Multiply-add modulo the order of the curve25519/edwards25519 basepoint
 ///
 /// Inputs x[4], y[4], c[4]; output z[4]

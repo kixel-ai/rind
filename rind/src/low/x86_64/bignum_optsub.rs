@@ -66,6 +66,7 @@ macro_rules! a {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_optsub.S.
 /// Optionally subtract, z := x - y (if p nonzero) or z := x (if p zero)
 ///
 /// Inputs x[k], p, y[k]; outputs function return (carry-out) and z[k]

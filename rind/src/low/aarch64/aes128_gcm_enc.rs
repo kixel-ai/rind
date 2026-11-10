@@ -49,6 +49,7 @@ use crate::low::macros::*;
 // and the whole kernel rescheduled with the SLOTHY superoptimizer; the
 // surrounding assembler boilerplate follows the s2n-bignum house style.
 
+// Transliterated from s2n-bignum's arm/aes_gcm/aes128_gcm_enc.S.
 /// AES-128-GCM bulk encryption: counter-mode encryption of whole blocks with the GHASH tag update
 ///
 /// Encrypts the input in CTR mode while accumulating the GHASH of the output.
