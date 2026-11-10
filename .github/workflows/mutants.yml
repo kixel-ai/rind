@@ -32,7 +32,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm]
+        # macos-latest is Apple silicon, the only cores rind sets DIT on.
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 300
