@@ -17,13 +17,14 @@ The rename reaches only the crate that makes it, not dependencies that use aws-l
 
 It panics wherever aws-lc-rs panics, such as `pbkdf2::derive` asked for more than PBKDF2 allows, so its signatures stay aws-lc-rs's, as rind-ring's stay ring's.
 
-Every aws-lc-rs feature but `fips` is accepted and changes nothing.
+Every aws-lc-rs feature but `fips` is accepted. `ring-io` and `ring-sig-verify` gate the items they gate in aws-lc-rs, and the rest change nothing.
 `fips` is refused, since rind is not FIPS validated: `try_fips_mode()` always fails and `fips_version()` is `None`.
 
 ## Wiping keys
 
 Keys, and the adapter's own copies of secrets such as PKCS#8 documents, Ed25519 seeds, and ML-KEM shared secrets, are wiped on drop only under the `wipe` feature, which aws-lc-rs lacks since it always wipes.
 It turns on rind's own `wipe` feature too. Leaving it off skips the wipe, which is faster.
+It is the one item this crate adds to aws-lc-rs's API.
 
 ## Not offered
 
@@ -41,7 +42,6 @@ These items are left out, so code using them fails to build:
 
 ## Behaves differently
 
-- rind panics on a CPU missing a feature it requires, and aws-lc-rs's signatures have no way to report one, so call [`cpu::check()`] at startup. [`cpu`] is rind's own, which aws-lc-rs lacks.
 - Where aws-lc-rs takes a [`rand::SecureRandom`] to generate a key or sign, rind draws from the system random source itself, as [`rand::SystemRandom`], the only `SecureRandom`, does.
 - A [`error::KeyRejected`] from rind's own checks gives rind's reason in its `Display`, and `"InvalidEncoding"` from `description_()`.
 - `VerificationAlgorithm::verify_digest_sig` and `verify_digest` fail for RSA, as they do for Ed25519: rind verifies RSA only over a message it hashes itself.

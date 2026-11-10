@@ -54,8 +54,8 @@ impl Aes {
 /// are a big-endian counter, incremented per block and wrapping within those
 /// bits, as WebCrypto's AES-CTR defines it. RFC 3686 uses 32 bits; SRTP's
 /// AES-CM, whose IVs leave their low 16 bits zero for at most 2^16 blocks,
-/// uses 16; pyca's and aws-lc-rs's CTR use 128. Counter mode is
-/// unauthenticated, so pair it with a MAC.
+/// works with any width of at least 16; pyca's and aws-lc-rs's CTR use 128.
+/// Counter mode is unauthenticated, so pair it with a MAC.
 pub struct AesCtr {
     key: AesKey,
     /// The counter block's counting bits, which a `u128` stores so that the
@@ -83,7 +83,9 @@ impl AesCtr {
     /// XORs the keystream from `counter_block` into `inout`.
     ///
     /// Encryption and decryption are the same operation. The counter block is
-    /// not secret.
+    /// not secret. Each call starts at a whole block, so a stream split after
+    /// a length that is not a multiple of 16 cannot resume mid-block: passing
+    /// that partial block's counter block again reuses keystream.
     ///
     /// Fails with [`Error::WrongLength`], leaving `inout` unchanged, if
     /// `inout` needs more than 2^`counter_bits` blocks: the counter would wrap

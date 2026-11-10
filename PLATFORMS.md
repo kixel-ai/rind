@@ -4,7 +4,8 @@ rind has assembly for `aarch64`, `x86_64`, and 32-bit `arm`, and a portable
 Rust backend for every other architecture. CI tests Linux (glibc and musl), macOS, and Windows on `x86_64` and `aarch64`, Linux and Windows on
 32-bit `x86`, iOS in the simulator on `aarch64`, Android on `aarch64`,
 `armv7`, `x86_64`, and 32-bit `x86`, all but `x86_64` under qemu, and Linux on
-big-endian `s390x` under qemu. iOS devices' code is only built.
+big-endian `s390x` and on `riscv64gc` (glibc and musl) under qemu. iOS
+devices' code is only built.
 
 - `aarch64` requires the `neon` CPU feature. Where the CPU has the crypto
   extension (`aes`, `pmull`, and `sha2`), as the Raspberry Pi 5 and most
@@ -62,10 +63,12 @@ big-endian `s390x` under qemu. iOS devices' code is only built.
   place of the assembly `arm` always runs (see [ALGORITHMS.md](ALGORITHMS.md)).
   It needs no CPU features, `rind::cpu::has_aes_hardware()` is false, and
   rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. CI tests it on 32-bit
-  `x86` (`i686`), on big-endian `s390x` under qemu, and on `x86_64`, where
-  `--cfg rind_portable` forces it. On 32-bit `x86` it needs Rust 1.94 rather
-  than the 1.90 MSRV, since libcrux-platform 0.0.4 calls `__cpuid` outside
-  `unsafe` ([libcrux#1646](https://github.com/celabshq/libcrux/issues/1646)).
+  `x86` (`i686`), on big-endian `s390x` and on `riscv64gc` (scalar only: rind
+  uses neither the vector nor the scalar crypto extensions) under qemu, and on
+  `x86_64`, where `--cfg rind_portable` forces it. On 32-bit `x86` it needs
+  Rust 1.94 rather than the 1.90 MSRV, since libcrux-platform 0.0.4 calls
+  `__cpuid` outside `unsafe`
+  ([libcrux#1646](https://github.com/celabshq/libcrux/issues/1646)).
 
 Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
 at startup to get an error naming the missing feature instead.

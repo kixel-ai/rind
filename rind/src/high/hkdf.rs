@@ -40,6 +40,7 @@ impl Salt {
     }
 
     /// Extracts a pseudorandom key from `secret` (HKDF-Extract).
+    #[must_use]
     pub fn extract(&self, secret: &[u8]) -> Prk {
         let _entry = Entry::new_secret();
         let prk = hmac::sign(&self.0, secret);
@@ -156,6 +157,7 @@ impl fmt::Debug for Prk {
 }
 
 /// Key material from [`Prk::expand`], sized by `L`: fill a buffer for a `usize` length, or convert it into the key an algorithm names.
+#[must_use]
 pub struct Okm<'a, L: KeyType> {
     prk: &'a Prk,
     info: &'a [&'a [u8]],

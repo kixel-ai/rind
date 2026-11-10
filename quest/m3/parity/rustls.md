@@ -8,8 +8,9 @@ rind-rustls offers the rest of aws-lc-rs's rustls provider: the MLKEM1024 key-ex
 
 - Waits on rind having ML-KEM-1024 and ML-DSA, which
   [m4's post-quantum epic](/quest/m4/pq/README.md) builds; rind-rustls already offers everything else aws-lc-rs's provider does.
-- `aws_lc_rs_parity` in `rind-rustls/src/lib.rs` lists these as the only gaps;
-  drop each exclusion as it lands.
+- `aws_lc_rs_parity` and `aws_lc_rs_items` in `rind-rustls/src/lib.rs` list
+  these as the only gaps besides `hpke`; drop each exclusion as it lands, and
+  each from rind-rustls's README and MIGRATING.md.
 
 ## Required
 
