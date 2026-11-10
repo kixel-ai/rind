@@ -96,7 +96,8 @@
           };
 
           # A shell that builds `target`, an architecture with no rind
-          # assembly, and runs its tests under qemu-user, as `just qemu` does.
+          # assembly, and runs its tests under qemu-user, as `just qemu` does,
+          # or natively where the host can, as x86_64 runs i686.
           # `cross` is the nixpkgs cross set whose C toolchain the tests'
           # aws-lc-rs dev-dependency builds with; rind itself needs none.
           qemu-shell =
@@ -106,6 +107,7 @@
               prefix = "${cc}/bin/${cc.targetPrefix}";
               var = pkgs.lib.toUpper (builtins.replaceStrings [ "-" ] [ "_" ] target);
               lower = builtins.replaceStrings [ "-" ] [ "_" ] target;
+              native = pkgs.stdenv.hostPlatform.canExecute cross.stdenv.hostPlatform;
             in
             pkgs.mkShell {
               packages = [
@@ -114,8 +116,8 @@
                   targets = [ target ];
                 })
                 cc
-                pkgs.qemu-user
-              ];
+              ]
+              ++ pkgs.lib.optional (!native) pkgs.qemu-user;
 
               env = {
                 RIND_QEMU_TARGET = target;
@@ -123,8 +125,10 @@
                 "CXX_${lower}" = "${prefix}c++";
                 "AR_${lower}" = "${prefix}ar";
                 "CARGO_TARGET_${var}_LINKER" = "${prefix}cc";
-                # The wrapper links against the store's glibc for the target
-                # by absolute path, so qemu needs no sysroot.
+              }
+              # The wrapper links against the store's glibc for the target by
+              # absolute path, so neither qemu nor the host needs a sysroot.
+              // pkgs.lib.optionalAttrs (!native) {
                 "CARGO_TARGET_${var}_RUNNER" = "qemu-${cross.stdenv.hostPlatform.qemuArch}";
               };
             };
@@ -503,6 +507,13 @@
             s390x = qemu-shell {
               target = "s390x-unknown-linux-gnu";
               cross = pkgs.pkgsCross.s390x;
+            };
+
+            # `just qemu i686` tests the portable backend on 32-bit x86 in it,
+            # natively on an x86_64 host.
+            i686 = qemu-shell {
+              target = "i686-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.gnu32;
             };
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu

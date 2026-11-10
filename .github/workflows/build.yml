@@ -154,20 +154,12 @@ jobs:
       - name: Run tests (release)
         run: env SLOW_TESTS=1 cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --release
 
-  # 32-bit x86 runs the portable backend. The x86_64 runners run its binaries
-  # natively; Android's run in the android job.
-  i686:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: i686-unknown-linux-gnu
-          - os: windows-latest
-            target: i686-pc-windows-msvc
-
-    runs-on: ${{ matrix.os }}
+  # 32-bit x86 Windows on the portable backend, which the x86_64 runner runs
+  # natively. The qemu job tests Linux's, and the android job Android's.
+  i686-windows:
+    runs-on: windows-latest
     env:
-      CARGO_BUILD_TARGET: ${{ matrix.target }}
+      CARGO_BUILD_TARGET: i686-pc-windows-msvc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -179,15 +171,7 @@ jobs:
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
-          targets: ${{ matrix.target }}
-
-      # rustc links, and the tests' aws-lc-rs dev-dependency builds C, with
-      # the host's gcc in 32-bit mode.
-      - name: Install gcc-multilib
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes gcc-multilib
+          targets: i686-pc-windows-msvc
 
       - name: Run tests (debug)
         run: cargo test -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-str0m --locked
@@ -213,13 +197,14 @@ jobs:
         run: just armv7
 
   # Architectures with no rind assembly, on the portable backend, under
-  # qemu-user. Each entry names the flake dev shell that holds its target's
-  # toolchain. s390x is big-endian.
+  # qemu-user where the runner cannot run them natively. Each entry names the
+  # flake dev shell that holds its target's toolchain. s390x is big-endian,
+  # and the runner runs i686 natively.
   qemu:
     strategy:
       fail-fast: false
       matrix:
-        shell: [s390x]
+        shell: [s390x, i686]
 
     runs-on: ubuntu-latest
     steps:

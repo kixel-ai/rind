@@ -36,7 +36,8 @@ fix $BASE="":
 armv7:
     nix develop .#armv7 --command sh/armv7.sh
 
-# Build, lint, and test SHELL's target, such as s390x, under qemu (Linux only).
+# Build, lint, and test SHELL's target, such as s390x or i686, under qemu
+# unless the host runs it natively (Linux only).
 qemu SHELL:
     nix develop .#{{SHELL}} --command sh/qemu.sh
 

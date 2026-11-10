@@ -46,9 +46,9 @@ With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
 toolchain, and `just check` runs CI's gate over what the branch changed.
 On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
-with NEON alone, and with NEON denied. `just qemu s390x` runs the nightly
-`qemu` job's big-endian s390x entry, which lints and tests the portable
-backend under qemu.
+with NEON alone, and with NEON denied. `just qemu s390x` and `just qemu i686` run the
+nightly `qemu` job's entries, which lint and test the portable backend on
+big-endian s390x under qemu and on 32-bit x86 natively.
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
 constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
