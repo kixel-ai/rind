@@ -41,7 +41,7 @@ exclude_re = [
   'rind/src/mid/portable/aes_gcm\.rs:\d+:\d+: replace \| with \^ in (add32|lengths)$',
   'rind/src/low/aarch64/cpu\.rs:149:\d+: replace << with >>$',
   'rind/src/low/(aarch64|arm)/cpu\.rs:\d+:\d+: replace \| with \^ in (detect|detect_once)$',
-  'rind/src/low/arm/cpu\.rs:(38|70):\d+: replace << with >>$',
+  'rind/src/low/arm/cpu\.rs:(38|70):\d+: replace << with >>( in detect)?$',
   'rind/src/low/arm/keccak1600_armv4\.rs:\d+:\d+: replace \| with \^ in (deinterleave|evens|interleave|spread)$',
   'rind/src/low/arm/mont\.rs:\d+:\d+: replace \| with \^ in reduce_limb$',
   'rind/src/low/generic/bignum\.rs:\d+:\d+: replace \| with \^ in (add_masked|bignum_add|bignum_cmp_lt|bignum_modadd|bignum_montredc|bignum_mul|cmp_lt_limbs|gcd_step|join|mod_double|mod_halve|mont_mul|sub_limbs_masked|sub_masked)$',
@@ -208,7 +208,7 @@ exclude_re = [
   'rind/src/low/aarch64/cpu\.rs:154:\d+: replace << with >>$',
   'rind/src/low/aarch64/cpu\.rs:258:\d+: replace test_toggle -> bool with false$',
   'rind/src/low/aarch64/cpu\.rs:258:\d+: replace test_toggle -> bool with true$',
-  'rind/src/low/arm/cpu\.rs:83:\d+: replace & with (\||\^) in detect$',
+  'rind/src/low/arm/cpu\.rs:(83|85|86|87|88):\d+: replace & with (\||\^) in detect$',
   'rind/src/low/arm/cpu\.rs:96:\d+: replace detect -> u8 with 1$',
   'rind/src/low/arm/cpu\.rs:104:\d+: replace test_toggle -> bool with (false|true)$',
   # armv7 has no CPU state to save, so `leave_cpu_state` ignores it.
@@ -230,6 +230,9 @@ exclude_re = [
   'rind/src/low/aarch64/ghash_neon_armv8\.rs:50:\d+: replace <impl Drop for NeonTable>::drop with \(\)$',
   'rind/src/low/aarch64/vpaes_armv8\.rs:131:\d+: replace <impl Drop for VpaesDecKey>::drop with \(\)$',
   'rind/src/low/aarch64/vpaes_armv8\.rs:84:\d+: replace <impl Drop for VpaesKey>::drop with \(\)$',
+  'rind/src/low/arm/aesv8_armx\.rs:\d+:\d+: replace <impl Drop for (AesHwKey|AesHwDecKey)>::drop with \(\)$',
+  'rind/src/low/arm/ghashv8_armx\.rs:\d+:\d+: replace <impl Drop for GhashTable>::drop with \(\)$',
+  'rind/src/low/portable/aes\.rs:\d+:\d+: replace <impl Drop for (AesKey|AesDecKey)>::drop with \(\)$',
   'rind/src/low/(portable|x86_64)/\.\./generic/ghash_nohw\.rs:69:\d+: replace <impl Drop for NohwTable>::drop with \(\)$',
   'rind/src/low/x86_64/aes\.rs:119:\d+: replace <impl Drop for AesDecKey>::drop with \(\)$',
   'rind/src/low/x86_64/aes_nohw\.rs:96:\d+: replace <impl Drop for NohwKey>::drop with \(\)$',
@@ -238,6 +241,7 @@ exclude_re = [
   'rind/src/low/x86_64/vpaes_x86_64\.rs:135:\d+: replace <impl Drop for VpaesDecKey>::drop with \(\)$',
   'rind/src/low/x86_64/vpaes_x86_64\.rs:86:\d+: replace <impl Drop for VpaesKey>::drop with \(\)$',
   'rind/src/mid/chacha20poly1305\.rs:88:\d+: replace <impl Drop for ChaCha20Poly1305>::drop with \(\)$',
+  'rind/src/mid/portable/aes_gcm\.rs:\d+:\d+: replace <impl Drop for Portable>::drop with \(\)$',
   # Unreachable from a test: a debug-only guard no public function trips, a
   # debugging helper, an impl nothing calls, a limit past 2^48 calls, a fault
   # only hardware injects, a check of what another check also refuses, or a

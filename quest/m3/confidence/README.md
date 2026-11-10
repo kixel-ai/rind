@@ -26,5 +26,4 @@ OSS-Fuzz, cryptofuzz, and NIST ACVP are planned in [m4 assurance](/quest/m4/assu
 - [Adapter crates' surviving mutants](/quest/m3/confidence/mutants-adapters.md) - tests for the 103 adapter mutants no test catches
 - [Surviving mutants that need crafted inputs](/quest/m3/confidence/mutants-edge-cases.md) - the AVX2 Ed25519 field arithmetic, points at infinity, and other edges random inputs miss
 - [Mutation testing on AVX-512](/quest/m3/confidence/mutants-avx512.md) - the AVX-512 paths no campaign host runs, under Intel SDE
-- [Mutation testing on armv7](/quest/m3/confidence/mutants-armv7.md) - the code only 32-bit ARM compiles, under qemu-arm
 - [Mutation testing of DIT](/quest/m3/confidence/mutants-dit.md) - DIT detection and setting, on cores that have it
