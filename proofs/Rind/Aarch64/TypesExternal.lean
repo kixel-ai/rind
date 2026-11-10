@@ -7,7 +7,7 @@ open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-! The rind types the aarch64 translation leaves opaque. `Rind.Aarch64.Dispatch` and
-`Rind.Aarch64.DigestDispatch` model the last four, and `Rind.Aarch64.DigestAlgorithm`
+`Rind.Aarch64.DigestDispatch` model the last five, and `Rind.Aarch64.DigestAlgorithm`
 `Algorithm` and `Digest`. -/
 
 namespace rind.aarch64
@@ -42,8 +42,17 @@ opaque mid.sha3.Sha3Context (R : Std.Usize) (OUT : Std.Usize) : Type
 the `T`, since only the drop that wipes it leaves it `None`. -/
 @[reducible] def low.generic.zeroise.ZeroableRef (T : Type) : Type := T
 
+/-- `&'static high::agreement::Algorithm`, as `Rind.Aarch64.Dispatch` models it:
+which of the four statics, since `high::agreement` builds no other. -/
+inductive high.agreement.Algorithm where
+  | X25519
+  | ECDH_P256
+  | ECDH_P384
+  | ECDH_P521
+deriving DecidableEq
+
 /-- A curve's key agreement functions, as `Rind.Aarch64.Dispatch` models them:
-nothing, since `Keyed::generate` builds the only one, of `K`'s own `Agree`
+nothing, since `Keyed::private_key` builds the only one, of `K`'s own `Agree`
 functions, which the model calls directly. -/
 @[reducible] def high.agreement.Ops (_K : Type) : Type := Unit
 

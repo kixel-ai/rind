@@ -351,8 +351,8 @@ that returns a provider refuses one with the adapter's own
 `MissingFeature` instead, which displays rind's message. rind-rustls, whose
 signatures are rustls's provider's, does not. rind-ring, whose signatures
 are ring's, and rind-rcgen's `KeyPair`, whose errors are rcgen's, cannot.
-Call rind-ring's `cpu::check()`, or rind-rcgen's `check()`, which returns
-its own `MissingFeature`, before using them.
+Call rind-ring's `cpu::check()`, or `rind::cpu::check()` for rind-rcgen,
+before using them.
 
 ### rind-ring
 
@@ -400,21 +400,17 @@ as its cipher suite order.
 
 ### rind-rcgen
 
-`rind_rcgen::KeyPair` replaces `rcgen::KeyPair` for ECDSA P-256 and P-384,
-Ed25519, and RSA with PKCS#1 v1.5. It cannot sign with P-521: rcgen names
-those algorithms only with its `aws_lc_rs` feature.
+`rind_rcgen::KeyPair` offers `rcgen::KeyPair`'s API as rcgen's default `ring`
+backend builds it, so code swaps the type in unchanged. It signs with ECDSA
+P-256 and P-384, Ed25519, and RSA with PKCS#1 v1.5, loading only PKCS#8 keys
+and generating no RSA keys. Its [README](rind-rcgen/README.md) lists what it
+leaves out, such as P-521, which rcgen names only with its `aws_lc_rs` feature.
 
-| rcgen | rind-rcgen |
-|---|---|
-| `KeyPair::generate()` | `KeyPair::generate(&PKCS_ECDSA_P256_SHA256)` |
-| `KeyPair::generate_for(alg)` | `KeyPair::generate(alg)`; RSA fails with `KeyGenerationUnavailable` |
-| `KeyPair::from_pkcs8_der_and_sign_algo(der, alg)` | `KeyPair::from_pkcs8(alg, der)` |
-| `KeyPair::from_der_and_sign_algo`, `from_pem`, `TryFrom` | none; convert the key to PKCS#8 and pass its algorithm |
-| `serialize_der()`, `serialized_der()`, `PrivatePkcs8KeyDer::from(&key)` | `to_pkcs8()`, wiped on drop |
-| `Error::RingKeyRejected`, `RingUnspecified` | the same variants, with rind's reason for a refused key |
-| a serial number hashed from the public key, without `serial_number` set | `params.serial_number = Some(rind_rcgen::serial_number())`, random in the same 20-byte shape |
-| none | `check()`, at startup, returns `MissingFeature` naming the CPU feature |
-| `KeyIdMethod::Sha256`, the default `key_identifier_method` | `key_identifier(&key)`, set on each certificate's parameters |
+Without rcgen's `crypto` feature, rcgen needs each certificate's
+`serial_number` set, and writes key identifiers only when
+`key_identifier_method` is set, such as to `KeyIdMethod::PreSpecified` with
+the first 20 bytes of the SHA-256 of `key.subject_public_key_info()`, which is
+what rcgen's default `KeyIdMethod::Sha256` computes.
 
 ### rind-dimpl, rind-str0m, rind-object-store, and rind-jsonwebtoken
 
@@ -516,7 +512,7 @@ install ring's if nothing is installed first.
 
 | Crate | What ties it | On rind |
 |---|---|---|
-| rcgen 0.14 | default `ring`, or `aws_lc_rs`, gates `KeyPair` | **rind-rcgen**: ECDSA P-256 and P-384, Ed25519, and loaded RSA keys. Without rcgen's `crypto` feature, set the serial number with `rind_rcgen::serial_number()` and `key_identifier_method` with `rind_rcgen::key_identifier(&key)`, or the key identifiers are empty |
+| rcgen 0.14 | default `ring`, or `aws_lc_rs`, gates `KeyPair` | **rind-rcgen**: ECDSA P-256 and P-384, Ed25519, and loaded RSA keys. Without rcgen's `crypto` feature, set each certificate's serial number, and its `key_identifier_method` or the key identifiers are empty |
 | instant-acme | 0.8 calls aws-lc-rs or ring; the unreleased 0.9 takes a `CryptoProvider` | Unsupported: 0.8 has no provider hook, and 0.9 is unreleased |
 | rustls-acme 0.15, tokio-rustls-acme 0.9 | account keys and CSRs call ring or aws-lc-rs | **Patch**: rustls-acme's `ring` without its default `aws-lc-rs` |
 | x509-parser 0.18 | `verify` is ring, `verify-aws` aws-lc-rs | **Patch**: `verify`, or verify `tbs_certificate` with `rind::signature` |

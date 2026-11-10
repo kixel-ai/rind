@@ -3248,6 +3248,7 @@ dependencies = [
 name = "rind-rcgen"
 version = "0.14.4"
 dependencies = [
+ "base64ct",
  "crabgrind 0.4.0",
  "rcgen",
  "rind",

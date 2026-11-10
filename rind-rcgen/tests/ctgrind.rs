@@ -38,7 +38,7 @@ const ALGORITHMS: [(&SignatureAlgorithm, &VerificationAlgorithm); 3] = [
 #[test]
 fn self_signed() {
     for (algorithm, verification) in ALGORITHMS {
-        let key = KeyPair::generate(algorithm).unwrap();
+        let key = KeyPair::generate_for(algorithm).unwrap();
 
         let mut params = CertificateParams::new(["localhost".to_string()]).unwrap();
         params.serial_number = Some(SerialNumber::from_slice(&[1]));
@@ -58,11 +58,11 @@ fn self_signed() {
 #[test]
 fn export() {
     for (algorithm, _) in ALGORITHMS {
-        let key = KeyPair::generate(algorithm).unwrap();
+        let key = KeyPair::generate_for(algorithm).unwrap();
         // rind treats an exported key as leaving its care, so the encoding is public.
-        let der = key.to_pkcs8();
+        let der = PrivatePkcs8KeyDer::from(key.serialize_der());
 
-        let reloaded = KeyPair::from_pkcs8(algorithm, &der).unwrap();
+        let reloaded = KeyPair::from_pkcs8_der_and_sign_algo(&der, algorithm).unwrap();
         let public_key = reloaded.der_bytes();
         public(public_key);
         assert_eq!(public_key, key.der_bytes());
@@ -79,7 +79,7 @@ fn rsa() {
         (&PKCS_RSA_SHA512, &verify::RSA_PKCS1_SHA512),
     ];
     for (algorithm, verification) in algorithms {
-        let key = KeyPair::from_pkcs8(algorithm, &der).unwrap();
+        let key = KeyPair::from_pkcs8_der_and_sign_algo(&der, algorithm).unwrap();
 
         let signature = rcgen::SigningKey::sign(&key, b"message").unwrap();
         public(&signature[..]);
@@ -89,8 +89,8 @@ fn rsa() {
             .unwrap();
 
         // rind treats an exported key as leaving its care, so the encoding is public.
-        let exported = key.to_pkcs8();
-        public(exported.secret_pkcs8_der());
-        assert_eq!(exported.secret_pkcs8_der(), der.secret_pkcs8_der());
+        let exported = key.serialized_der();
+        public(exported);
+        assert_eq!(exported, der.secret_pkcs8_der());
     }
 }
