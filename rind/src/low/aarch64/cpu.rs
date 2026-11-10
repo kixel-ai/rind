@@ -315,11 +315,14 @@ mod tests {
 
     // CI runs the aarch64 suite on a CPU with the crypto extension, then
     // again with it denied, and names which, so neither run silently tests
-    // only one path.
+    // only one path. Under valgrind, which hides SHA3, it names that too.
     #[test]
     fn detects_the_expected_cpu() {
         if let Some(expected) = std::env::var_os("RIND_TEST_ARM_CRYPTO_EXT") {
             assert_eq!(HaveCryptoExt::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_ARM_SHA3") {
+            assert_eq!(HaveSha3::check().is_some(), expected == "1");
         }
     }
 
@@ -334,6 +337,14 @@ mod tests {
         assert_eq!(features() & DIT != 0, expected);
         // A denied DIT is left alone, as under `admin/ctgrind`, whose
         // valgrind runs no DIT instruction.
+        if has_dit && !expected {
+            // SAFETY: this core has DIT, though `test_toggle` denies it.
+            unsafe { dit::write(0) };
+            drop(crate::low::Entry::new_secret());
+            let _held = crate::cpu::Dit::hold();
+            // SAFETY: as above.
+            assert_eq!(unsafe { dit::read() }, 0);
+        }
         if expected {
             // SAFETY: this core has DIT. Cleared, so only an `Entry` can set
             // it.
