@@ -71,6 +71,7 @@ macro_rules! d5 {
     };
 }
 
+// Transliterated from s2n-bignum's arm/p384/bignum_add_p384.S.
 /// Add modulo p_384, z := (x + y) mod p_384, assuming x and y reduced
 ///
 /// Inputs x[6], y[6]; output z[6]

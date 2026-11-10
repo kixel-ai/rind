@@ -11,3 +11,4 @@ Created with the maintainer on 2026-11-09, staging the proof plan: ✅ cold tier
 ## Required
 
 - [Every cold tier is proven](/quest/m5/verified/README.md) - armv7, the legacy hashes, and the paths without AES or SHA hardware
+- [armv7 is proven](/quest/m5/verified-armv7/README.md) - an AArch32 model, then armv7's assembly, curves, and Rust, promoted out of the cold-tier epic

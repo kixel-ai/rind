@@ -66,6 +66,7 @@ macro_rules! vmask {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_copy_row_from_table_8n.S.
 /// Given table: uint64_t[height*width], copy table[idx*width...(idx+1)*width-1]
 ///
 /// into z[0..width-1]. width must be a multiple of 8.

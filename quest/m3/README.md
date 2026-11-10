@@ -16,6 +16,7 @@ quest names how to check it and is deleted once it holds.
 - [AMD CPUs without VAES run their fastest AES-GCM tier](/quest/m3/quic-path.md) - Vale or `by8` on Zen 2, waiting on an outside rerun
 - [cargo-llvm-cov builds with its tests again](/quest/m3/cargo-llvm-cov-check.md) - waiting on a nixpkgs rustc fix, then drop the doCheck override
 - [dimpl checks signatures for every provider](/quest/m3/dimpl-crypto-common.md) - waiting on a dimpl release, then rind-dimpl drops dimpl's internal feature
+- [AES-KW and AES-CBC lose no fixed cost per call to aws-lc](/quest/m3/aes-call-cost.md) - the hot tiers' last small-size gaps in the nightly
 - [armv7 raw ciphers from libcrux](/quest/m3/libcrux-ciphers.md) - drop rind's copy once libcrux exports its AES
 - [libcrux exports its raw ciphers](/quest/m3/libcrux-ciphers-exported.md) - waiting on a libcrux release that exports them
 - [ring and aws-lc-rs parity](/quest/m3/parity/README.md) - switch from ring or aws-lc-rs to rind: algorithms, `rind-ring`, and rustls parity

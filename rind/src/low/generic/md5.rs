@@ -13,7 +13,7 @@
 /// critical path. `black_box` also hides it, but through memory, and measured
 /// 9% slower on an i7-8700.
 #[inline(always)]
-#[cfg(not(target_family = "wasm"))]
+#[cfg(not(any(target_family = "wasm", miri)))]
 // The operand appears only in a comment, so no register width is printed.
 #[allow(asm_sub_register)]
 fn opaque(mut v: u32) -> u32 {
@@ -25,10 +25,11 @@ fn opaque(mut v: u32) -> u32 {
     v
 }
 
-// WebAssembly has no stable inline assembly or general-purpose register class.
-// Keep the reassociation barrier without changing MD5's arithmetic.
+// WebAssembly has no stable inline assembly or general-purpose register class,
+// and Miri runs none. Keep the reassociation barrier without changing MD5's
+// arithmetic.
 #[inline(always)]
-#[cfg(target_family = "wasm")]
+#[cfg(any(target_family = "wasm", miri))]
 fn opaque(v: u32) -> u32 {
     core::hint::black_box(v)
 }

@@ -90,22 +90,22 @@ reason = "The block cipher's throughput: rind's copy of libcrux-aes bitslices on
 [[gap]]
 operations = ["sha1/*", "hmac-sha1/*", "sha512*", "hmac-sha384/*", "hmac-sha512/*"]
 on = ["portable"]
-reason = "rind's portable SHA-1 and HACL*'s verified SHA-384/512, through libcrux-sha2, trail aws-lc's C by 1.1 to 1.3× from 1200 B up. Not yet decided whether a faster unverified source is worth it on targets without assembly."
+reason = "rind's portable SHA-1 and HACL*'s verified SHA-384/512, through libcrux-sha2, trail aws-lc's C by 1.1 to 1.3× from 1200 B up. Kept: verified HACL* within 1.3× is worth more than an unverified source on targets without assembly, which are the cold tiers."
 
 [[gap]]
 operations = ["aes*-cbc-encrypt/*"]
 on = ["aarch64"]
-reason = "Not yet examined: rind's CBC encryption over Graviola's AES trails aws-lc's `aes_v8` assembly by 1.1 to 1.2× from 1200 B up, a serial mode where neither can interleave blocks."
+quest = "/quest/m3/aes-call-cost.md"
 
 [[gap]]
 operations = ["aes*-kw-wrap/*", "aes*-kwp-wrap/*"]
 on = ["x86_64", "no AVX2", "no AES-NI"]
-reason = "Not yet examined: wrapping 16 or 32 bytes, rind trails aws-lc by 1.1 to 1.2×, a few nanoseconds of fixed cost per call on six serial AES rounds per block."
+quest = "/quest/m3/aes-call-cost.md"
 
 [[gap]]
 operations = ["aes*-cbc-decrypt/*/32B", "aes192-cbc-decrypt/*/1200B"]
 on = ["x86_64", "no AVX"]
-reason = "Not yet examined, and only on the EPYC 9V45 runner: there, in [run 42734638175](https://github.com/moq-dev/rind/actions/runs/42734638175), rind decrypting 32 bytes took 21 to 27 ns against aws-lc's 18 to 20 ns, a fixed cost per call. The EPYC 7763 of [run 42526977036](https://github.com/moq-dev/rind/actions/runs/42526977036) measured it within 10%."
+quest = "/quest/m3/aes-call-cost.md"
 
 [[gap]]
 operations = ["rustls-full-handshake-key/ecdsa-p521/*"]
