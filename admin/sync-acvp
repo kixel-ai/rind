@@ -70,9 +70,10 @@ for ((i = 0; i < ${#sets[@]}; i += 2)); do
     curl --fail --silent --show-error --location \
         "https://raw.githubusercontent.com/usnistgov/ACVP-Server/$ACVP_SERVER/gen-val/json-files/$name/internalProjection.json" |
         # Every set drops SP 800-106's randomized hashing groups, which carry a
-        # conformance, and messages that are not whole bytes, as rind's hashes
-        # take bytes; Ed25519 signing groups drop their Ed25519ctx tests, which
-        # have a context.
+        # conformance, and tests whose bit `len` is not whole bytes, as rind's
+        # hashes take bytes (AES-CTR's tests carry `payloadLen` instead, so
+        # they stay, and `acvp_ctr` masks them); Ed25519 signing groups drop
+        # their Ed25519ctx tests, which have a context.
         jq --indent 1 ".testGroups |= map(select(.conformance == null and $filter) | .tests |= map(select((.len // 0) % 8 == 0 and (.context // \"\") == \"\")))" \
             > "$name.json"
     if [[ $(jq '[.testGroups[].tests[]] | length' "$name.json") == 0 ]]; then
