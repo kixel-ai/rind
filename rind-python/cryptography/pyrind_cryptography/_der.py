@@ -7,7 +7,6 @@ Every malformed input raises `ValueError`, and reading is linear in its size.
 
 import base64
 import binascii
-import re
 
 INTEGER = 0x02
 BIT_STRING = 0x03
@@ -172,24 +171,40 @@ def integers(der):
     return [integer(contents) for _, contents in items]
 
 
-_PEM = re.compile(rb"-----BEGIN ([A-Z0-9 ]+)-----\r?\n(.*?)-----END \1-----", re.S)
-
-
 def pem_blocks(data):
-    """Each PEM block in `data`, as (label, headers, DER) triples, in order."""
-    data = bytes(data)
-    blocks = []
-    for match in _PEM.finditer(data):
-        body = match.group(2)
-        headers = b""
-        if b":" in body.split(b"\n", 1)[0]:
-            headers, _, body = body.partition(b"\n\n") if b"\n\n" in body else body.partition(b"\r\n\r\n")
-        try:
-            der = base64.b64decode(b"".join(body.split()), validate=True)
-        except binascii.Error:
-            raise ValueError("bad PEM base64") from None
-        blocks.append((match.group(1).decode(), headers, der))
+    """Each PEM block in `data`, as (label, headers, DER) triples, in order, read in one pass over its lines."""
+    blocks, label, body = [], None, []
+    for line in bytes(data).splitlines():
+        line = line.strip()
+        if label is None:
+            if line.startswith(b"-----BEGIN ") and line.endswith(b"-----"):
+                label, body = line[11:-5], []
+            continue
+        if line.startswith(b"-----BEGIN "):
+            raise ValueError("unterminated PEM block")
+        if line == b"-----END " + label + b"-----":
+            blocks.append(_pem_block(label, body))
+            label = None
+        else:
+            body.append(line)
     return blocks
+
+
+def _pem_block(label, lines):
+    headers = b""
+    if lines and b":" in lines[0]:
+        if b"" not in lines:
+            raise ValueError("bad PEM headers")
+        split = lines.index(b"")
+        headers, lines = b"\n".join(lines[:split]), lines[split + 1 :]
+    try:
+        der = base64.b64decode(b"".join(lines), validate=True)
+    except binascii.Error:
+        raise ValueError("bad PEM base64") from None
+    try:
+        return label.decode("ascii"), headers, der
+    except UnicodeDecodeError:
+        raise ValueError("bad PEM label") from None
 
 
 def pem(label, der):

@@ -29,10 +29,14 @@ class CipherContext(metaclass=abc.ABCMeta):
 
     def update_into(self, data, buf):
         """Takes `data`, writing what is ready into `buf` and returning its length."""
-        out = self.update(data)
+        # Checked before `update`, so a refused buffer leaves the context as it was.
         view = memoryview(buf).cast("B")
-        if len(view) < len(out):
-            raise ValueError(f"buffer must be at least {len(out)} bytes for this payload")
+        if view.readonly:
+            raise TypeError("buffer must be writable")
+        needed = len(memoryview(data).cast("B")) + 15
+        if len(view) < needed:
+            raise ValueError(f"buffer must be at least {needed} bytes for this payload")
+        out = self.update(data)
         view[: len(out)] = out
         return len(out)
 

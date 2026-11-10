@@ -1,6 +1,7 @@
 """Block padding: PKCS#7 and ANSI X9.23."""
 
 import abc
+import hmac
 
 from pyrind_cryptography.exceptions import AlreadyFinalized
 
@@ -50,7 +51,13 @@ class _Padder(PaddingContext):
 
 
 class _Unpadder(PaddingContext):
-    """Holds back the last block, whose padding it checks without branching on its bytes."""
+    """Holds back the last block, whose padding it checks with `hmac.compare_digest` alone.
+
+    It compares the block's tail against every possible padding, in a fixed
+    order, each in constant time. Which candidate matched is the plaintext's
+    length, which is public once returned, and a failure matches none, so no
+    timing tells two bad paddings apart.
+    """
 
     def __init__(self, block_size, ansi):
         self._block_size = block_size // 8
@@ -72,20 +79,17 @@ class _Unpadder(PaddingContext):
         if self._done:
             raise AlreadyFinalized("Context was already finalized.")
         self._done = True
-        if len(self._buffer) != self._block_size:
+        size = self._block_size
+        if len(self._buffer) != size:
             raise ValueError("Invalid padding bytes.")
         block = self._buffer
-        pad = block[-1]
-        # Nonzero if `pad` is 0 or past the block, or a padding byte is wrong.
-        bad = ((pad - 1) >> 8 | (self._block_size - pad) >> 8) & 1
-        for i in range(1, self._block_size):
-            # All ones if byte `-1 - i` is padding, for i under `pad`.
-            mask = ((i - pad) >> 8) & 0xFF
-            expected = 0 if self._ansi else pad
-            bad |= mask & (block[-1 - i] ^ expected)
-        if bad:
+        matches = [
+            hmac.compare_digest(block[size - pad :], (bytes(pad - 1) if self._ansi else bytes([pad]) * (pad - 1)) + bytes([pad]))
+            for pad in range(1, size + 1)
+        ]
+        if True not in matches:
             raise ValueError("Invalid padding bytes.")
-        return block[: self._block_size - pad]
+        return block[: size - 1 - matches.index(True)]
 
 
 class PKCS7:

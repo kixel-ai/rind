@@ -271,6 +271,18 @@ class Ciphers(unittest.TestCase):
         with self.assertRaises(exceptions.InvalidTag):
             decryptor.finalize_with_tag(bytes(16))
 
+    def test_update_into_refuses_a_buffer_before_advancing(self):
+        key, iv, data = os.urandom(16), os.urandom(16), os.urandom(32)
+        expected = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor().update(data)
+        encryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+        with self.assertRaises(ValueError):
+            encryptor.update_into(data, bytearray(32))
+        with self.assertRaises(TypeError):
+            encryptor.update_into(data, bytes(64))
+        buffer = bytearray(47)
+        self.assertEqual(encryptor.update_into(data, buffer), 32)
+        self.assertEqual(bytes(buffer[:32]), expected)
+
     def test_unsupported(self):
         for mode in (modes.CTR(bytes(16)), modes.ECB(), modes.OFB(bytes(16)), modes.CFB(bytes(16))):
             with self.assertRaises(exceptions.UnsupportedAlgorithm):
@@ -602,6 +614,13 @@ class Keys(unittest.TestCase):
             for loader in (serialization.load_der_public_key, serialization.load_pem_public_key, serialization.load_ssh_public_key):
                 with self.assertRaises((ValueError, exceptions.UnsupportedAlgorithm)):
                     loader(garbage)
+
+    def test_unterminated_pem_is_refused(self):
+        # A quadratic scan would take hours over this.
+        with self.assertRaises(ValueError):
+            serialization.load_pem_public_key(b"-----BEGIN PUBLIC KEY-----\n" * 200_000)
+        with self.assertRaises(ValueError):
+            serialization.load_pem_public_key(b"-----BEGIN PUBLIC KEY-----\nAAAA\n")
 
     def test_constant_time(self):
         self.assertTrue(constant_time.bytes_eq(b"ab", b"ab"))
