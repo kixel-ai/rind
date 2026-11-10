@@ -19,6 +19,8 @@ pub const ML_KEM_768: Algorithm<AlgorithmId> = Algorithm {
 pub trait AlgorithmIdentifier:
     Copy + Clone + fmt::Debug + PartialEq + crate::sealed::Sealed + 'static
 {
+    /// The algorithm's AWS-LC NID.
+    fn nid(self) -> i32;
 }
 
 /// A KEM algorithm.
@@ -55,14 +57,26 @@ pub enum AlgorithmId {
     MlKem768,
 }
 
-impl AlgorithmIdentifier for AlgorithmId {}
+/// AWS-LC's `NID_MLKEM768`.
+const NID_MLKEM768: i32 = 989;
+
+impl AlgorithmIdentifier for AlgorithmId {
+    fn nid(self) -> i32 {
+        match self {
+            Self::MlKem768 => NID_MLKEM768,
+        }
+    }
+}
 
 impl crate::sealed::Sealed for AlgorithmId {}
 
-impl AlgorithmId {
-    fn rind(self) -> &'static rind::kem::Algorithm {
-        match self {
-            Self::MlKem768 => &rind::kem::ML_KEM_768,
+impl<Id: AlgorithmIdentifier> Algorithm<Id> {
+    /// rind's algorithm; only [`AlgorithmId`] implements the sealed
+    /// [`AlgorithmIdentifier`], so its NID names one this module backs.
+    fn rind(&self) -> &'static rind::kem::Algorithm {
+        match self.id.nid() {
+            NID_MLKEM768 => &rind::kem::ML_KEM_768,
+            nid => unreachable!("no KEM has NID {nid}"),
         }
     }
 }
@@ -79,10 +93,10 @@ where
     key: rind::kem::DecapsulationKey,
 }
 
-impl DecapsulationKey<AlgorithmId> {
+impl<Id: AlgorithmIdentifier> DecapsulationKey<Id> {
     /// Generates a decapsulation key for `alg`.
-    pub fn generate(alg: &'static Algorithm<AlgorithmId>) -> Result<Self, Unspecified> {
-        let key = rind::kem::DecapsulationKey::generate(alg.id.rind()).map_err(unspecified)?;
+    pub fn generate(alg: &'static Algorithm<Id>) -> Result<Self, Unspecified> {
+        let key = rind::kem::DecapsulationKey::generate(alg.rind()).map_err(unspecified)?;
         Ok(Self {
             algorithm: alg,
             key,
@@ -90,7 +104,7 @@ impl DecapsulationKey<AlgorithmId> {
     }
 
     /// The key's encapsulation key.
-    pub fn encapsulation_key(&self) -> Result<EncapsulationKey<AlgorithmId>, Unspecified> {
+    pub fn encapsulation_key(&self) -> Result<EncapsulationKey<Id>, Unspecified> {
         Ok(EncapsulationKey {
             algorithm: self.algorithm,
             key: self.key.public_key(),
@@ -108,9 +122,7 @@ impl DecapsulationKey<AlgorithmId> {
             .map_err(unspecified)?;
         Ok(SharedSecret(Wiped::new(secret.as_ref().into())))
     }
-}
 
-impl<Id: AlgorithmIdentifier> DecapsulationKey<Id> {
     /// The key's algorithm.
     #[must_use]
     pub fn algorithm(&self) -> &'static Algorithm<Id> {
@@ -135,16 +147,15 @@ where
     key: rind::kem::EncapsulationKey,
 }
 
-impl EncapsulationKey<AlgorithmId> {
+impl<Id: AlgorithmIdentifier> EncapsulationKey<Id> {
     /// Parses an encapsulation key for `alg` from its bytes.
-    pub fn new(alg: &'static Algorithm<AlgorithmId>, bytes: &[u8]) -> Result<Self, KeyRejected> {
+    pub fn new(alg: &'static Algorithm<Id>, bytes: &[u8]) -> Result<Self, KeyRejected> {
         match bytes.len().cmp(&alg.encapsulate_key_size) {
             core::cmp::Ordering::Less => return Err(KeyRejected::too_small()),
             core::cmp::Ordering::Greater => return Err(KeyRejected::too_large()),
             core::cmp::Ordering::Equal => {}
         }
-        let key =
-            rind::kem::EncapsulationKey::new(alg.id.rind(), bytes).map_err(KeyRejected::rind)?;
+        let key = rind::kem::EncapsulationKey::new(alg.rind(), bytes).map_err(KeyRejected::rind)?;
         Ok(Self {
             algorithm: alg,
             key,
@@ -165,9 +176,7 @@ impl EncapsulationKey<AlgorithmId> {
     pub fn key_bytes(&self) -> Result<EncapsulationKeyBytes<'static>, Unspecified> {
         Ok(EncapsulationKeyBytes::new(self.key.as_ref().to_vec()))
     }
-}
 
-impl<Id: AlgorithmIdentifier> EncapsulationKey<Id> {
     /// The key's algorithm.
     #[must_use]
     pub fn algorithm(&self) -> &'static Algorithm<Id> {

@@ -30,11 +30,11 @@ pub struct AesBlockCipher {
     key_len: usize,
 }
 
-impl AesBlockCipher {
-    fn rind(&self) -> &'static rind::cipher::Algorithm {
-        match self.id {
-            BlockCipherId::Aes128 => &rind::key_wrap::AES_128,
-            BlockCipherId::Aes256 => &rind::key_wrap::AES_256,
+impl BlockCipherId {
+    fn rind(self) -> &'static rind::cipher::Algorithm {
+        match self {
+            Self::Aes128 => &rind::key_wrap::AES_128,
+            Self::Aes256 => &rind::key_wrap::AES_256,
         }
     }
 }
@@ -118,16 +118,14 @@ pub struct KeyEncryptionKey<Cipher: BlockCipher> {
     kek: rind::key_wrap::AesKek,
 }
 
-impl KeyEncryptionKey<AesBlockCipher> {
+impl<Cipher: BlockCipher> KeyEncryptionKey<Cipher> {
     /// Makes a key encryption key from `key`, which must be `cipher`'s key
     /// length.
-    pub fn new(cipher: &'static AesBlockCipher, key: &[u8]) -> Result<Self, Unspecified> {
-        let kek = rind::key_wrap::AesKek::new(cipher.rind(), key).map_err(unspecified)?;
+    pub fn new(cipher: &'static Cipher, key: &[u8]) -> Result<Self, Unspecified> {
+        let kek = rind::key_wrap::AesKek::new(cipher.id().rind(), key).map_err(unspecified)?;
         Ok(Self { cipher, kek })
     }
-}
 
-impl<Cipher: BlockCipher> KeyEncryptionKey<Cipher> {
     /// The block cipher's identity.
     pub fn block_cipher_id(&self) -> BlockCipherId {
         self.cipher.id()

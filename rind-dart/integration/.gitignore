@@ -1,0 +1,7 @@
+# CI generates the platform projects with `flutter create .`.
+android/
+ios/
+.metadata
+.dart_tool/
+build/
+pubspec.lock
