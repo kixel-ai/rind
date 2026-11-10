@@ -35,7 +35,6 @@ The 2026-11-09 audit found no exploitable bug and no panic reachable from public
 - [Mutation testing of DIT](/quest/m2/confidence/mutants-dit.md) - DIT detection and setting, on cores that have it
 - [Hostile peer bytes never panic an adapter](/quest/m2/confidence/adapters-hostile-input.md) - a nightly fuzz target feeding arbitrary peer bytes to rind-rustls, rind-dimpl, and rind-str0m
 - [Safe wrappers around assembly enforce their preconditions in release builds](/quest/m2/confidence/release-preconditions.md) - length, alignment, and table-size checks on safe `low` wrappers that hold in release, with RSA benches within noise
-- [Guard pages catch assembly that reads or writes past a buffer](/quest/m2/confidence/guard-pages.md) - every buffer-taking kernel against a PROT_NONE page, at every length and alignment
 - [An ABI harness checks every assembly routine](/quest/m2/confidence/asm-abi.md) - callee-saved registers, stack pointer, and flags after each routine
 - [Edge-limb tests for the unproven bignum assembly](/quest/m2/confidence/edge-limbs.md) - Montgomery, RSAZ, and P-256 routines on edge limbs and aws-lc's `bn_tests.txt`
 - [The zeroing test checks every byte of every secret type on every backend](/quest/m2/confidence/zeroing-every-byte.md) - no 16-byte skip, no unlisted type, every tier and Windows

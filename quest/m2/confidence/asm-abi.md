@@ -36,4 +36,3 @@ Guidance:
 ## Related
 
 - [rind's assembly is byte-identical to the proven object code](/quest/m2/verified/asm-bytes.md) - its theorems name every register a proven routine may change
-- [Guard pages catch assembly that reads or writes past a buffer](/quest/m2/confidence/guard-pages.md) - the same boundary's memory bounds
