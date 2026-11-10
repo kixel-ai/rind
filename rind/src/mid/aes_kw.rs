@@ -268,6 +268,55 @@ fn xor_counter(block: &mut [u8; 16], t: u64) {
 mod tests {
     use super::*;
     use crate::cipher::{AES_128, AES_192, AES_256};
+    use crate::test::{Acvp, acvp};
+
+    #[test]
+    fn acvp_kw() {
+        acvp_set("ACVP-AES-KW-1.0", false);
+    }
+
+    #[test]
+    fn acvp_kwp() {
+        acvp_set("ACVP-AES-KWP-1.0", true);
+    }
+
+    fn acvp_set(name: &str, padded: bool) {
+        for group in acvp(name) {
+            assert_eq!(group.str("kwCipher"), "cipher");
+            let encrypt = match group.str("direction") {
+                "encrypt" => true,
+                "decrypt" => false,
+                other => panic!("unexpected direction {other}"),
+            };
+            for test in group.tests() {
+                let key = test.hex("key");
+                let kek = AesKek::new(crate::cipher::aes(key.len()), &key).unwrap();
+                let ct = test.hex("ct");
+                if encrypt {
+                    let mut wrapped = vec![0; ct.len()];
+                    if padded {
+                        kek.wrap_padded(&test.hex("pt"), &mut wrapped)
+                    } else {
+                        kek.wrap(&test.hex("pt"), &mut wrapped)
+                    }
+                    .unwrap();
+                    assert_eq!(wrapped, ct);
+                    continue;
+                }
+                let mut unwrapped = vec![0; ct.len() - 8];
+                let result = if padded {
+                    kek.unwrap_padded(&ct, &mut unwrapped)
+                        .map(|key| key.to_vec())
+                } else {
+                    kek.unwrap(&ct, &mut unwrapped).map(|()| unwrapped)
+                };
+                match test.flag("testPassed") {
+                    true => assert_eq!(result.unwrap(), test.hex("pt")),
+                    false => assert_eq!(result, Err(Error::DecryptFailed)),
+                }
+            }
+        }
+    }
 
     // RFC 3394 sections 4.1, 4.2, 4.4, and 4.6: a key under each KEK size,
     // the smallest and largest among them, both ways.
