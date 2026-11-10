@@ -378,6 +378,7 @@ macro_rules! double_twice4 {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/curve25519/curve25519_x25519base_alt.S.
 /// The x25519 function for curve25519 on base element 9
 ///
 /// Input scalar[4]; output res[4]

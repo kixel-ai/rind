@@ -118,8 +118,8 @@ fn ecdh() {
         check_zeroed_on_drop(Box::pin(key.to_scalar()));
         check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
         let loaded = PrivateKey::from_pkcs8(algorithm, key.to_pkcs8().as_ref()).unwrap();
-        check_private_key_zeroed_on_drop(loaded);
-        check_private_key_zeroed_on_drop(key);
+        check_zeroed_on_drop(Box::pin(loaded));
+        check_zeroed_on_drop(Box::pin(key));
     }
 }
 
@@ -229,19 +229,7 @@ fn key_wrap() {
     }
 }
 
-/// `PrivateKey` leaves its cached public key unwiped, since it is not secret.
-fn check_private_key_zeroed_on_drop(key: rind::agreement::PrivateKey) {
-    let key = Box::pin(key);
-    let start = key.public_key() as *const _ as usize - key.deref() as *const _ as usize;
-    let skip = start..start + size_of::<rind::agreement::PublicKey>();
-    check_zeroed_on_drop_except(key, skip);
-}
-
 fn check_zeroed_on_drop<T: Unpin>(value: Pin<Box<T>>) {
-    check_zeroed_on_drop_except(value, 0..0);
-}
-
-fn check_zeroed_on_drop_except<T: Unpin>(value: Pin<Box<T>>, skip: core::ops::Range<usize>) {
     let ptr = value.deref() as *const T as *const u8;
     let len = size_of::<T>();
     assert_ne!(len, 0);
@@ -275,7 +263,7 @@ fn check_zeroed_on_drop_except<T: Unpin>(value: Pin<Box<T>>, skip: core::ops::Ra
     }
 
     for i in 0..len {
-        if !skip.contains(&i) && after_drop[i] != 0x00 {
+        if after_drop[i] != 0x00 {
             println!("before_drop: {before_drop:02x?}");
             println!("after_drop: {after_drop:02x?}");
             panic!(
