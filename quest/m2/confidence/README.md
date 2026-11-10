@@ -40,4 +40,3 @@ The 2026-11-09 audit found no exploitable bug and no panic reachable from public
 - [Heap scratch from a private key is wiped before it is freed](/quest/m2/confidence/wipe-heap-scratch.md) - a test allocator that fails on key-derived bytes in a freed block
 - [The portable backend is fuzzed and mutation tested](/quest/m2/confidence/portable-fuzz-mutants.md) - nightly fuzzing and a mutation campaign for the backend every new target ships on
 - [Each adapter's API is diffed against its upstream's](/quest/m2/confidence/adapter-api-diff.md) - the exact-API rule machine-checked per feature set
-- [A PR that would redden a nightly learns before it merges](/quest/m2/confidence/nightlies-on-prs.md) - nightlies run on PRs that touch their inputs
