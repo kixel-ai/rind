@@ -23,12 +23,15 @@ The hold uses only what the release tooling has. Publishing happens only when a 
 
 Each change documents its own migration in MIGRATING.md, so this quest adds none. Delete it once 0.4.0 is published.
 
+The benchmark report is refreshed once before each minor release (maintainer, 2026-11-09), so this quest requires that run. Whoever plans the next minor release's quest creates the next run at the same path, from the last one in git history, and requires it.
+
 ## Waiting
 
 - Maintainer: once [moq-dev/rind#511](https://github.com/moq-dev/rind/pull/511) and the m0 adapter patch releases have published, merge no release PR until all three changes are on `main`, then merge the one that proposes rind 0.4.0. An agent cannot: a release PR merges on the maintainer's approval (`CONTRIBUTING.md:118`), and `.release-plz.toml` configures no way to hold one crate back, which is why the hold is the unmerged PR. Check: `cargo search rind` shows 0.4.0.
 
 ## Required
 
+- [Benchmark report refresh, before rind 0.4](/quest/m2/bench/report-refresh.md) - the report and the README's claims, current for the release
 - [AES-CBC encryption takes a typed IV](/quest/m2/api/cbc-iv.md) - the `CbcIv` argument, the first breaking change
 - [Agreement keys keep their public key and algorithm](/quest/m2/api/agreement-key-state.md) - `public_key()` returning a borrow, the second
 - [rind needs no runtime CPU check](/quest/m2/api/cpu-check.md) - `cpu::check` and `MissingFeature` removed, the third

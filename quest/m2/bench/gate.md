@@ -35,4 +35,4 @@ Open, with a recommendation:
 
 - [Nightly rows for the tiers nothing times](/quest/m2/bench/tiers.md) - adds the rows this gate then watches
 - [AEAD benches at 128, 256, and 512 B](/quest/m2/bench/aead-sizes.md) - adds the sizes this gate then watches
-- [Benchmark report refresh, end of m2](/quest/m3/bench-report-refresh.md) - keeps the report once this owns regressions
+- [Benchmark report refresh, before rind 0.4](/quest/m2/bench/report-refresh.md) - keeps the report once this owns regressions

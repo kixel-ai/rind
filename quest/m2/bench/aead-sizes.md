@@ -21,7 +21,7 @@ Guidance:
 - Add the sizes to the AEAD benches only (`aes_gcm.rs`, `chacha20poly1305.rs`, `xchacha20poly1305.rs`), with the 13 B AAD of the QUIC-shaped sizes, not to `SIZES`, which the raw ciphers and hashes share.
 - Recommend leaving the report's rows (`OPERATIONS` in `admin/bench-report`) as they are: a gap at a new size surfaces on the nightly's tiers.
 - No speed gain is expected from this quest. A gap it shows gets a quest or a reason in `benchmarks/gaps.toml`.
-- Update the size list in [the report refresh](/quest/m3/bench-report-refresh.md)'s Plan in the same PR.
+- Update the size list in [the report refresh](/quest/m2/bench/report-refresh.md)'s Plan in the same PR.
 
 ## Related
 
