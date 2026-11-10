@@ -23,7 +23,6 @@ Guidance:
 ## Required
 
 - [Mutation testing on armv7](/quest/m3/confidence/mutants-armv7.md) - `admin/mutants` takes a target, and the skip lists name the portable files
-- [Fuzz the tiers GitHub's runners cannot reach](/quest/m3/confidence/fuzz-tiers.md) - the replay of a corpus on a build other than the runner's own
 
 ## Related
 

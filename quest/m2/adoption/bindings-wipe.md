@@ -18,7 +18,3 @@ The evidence:
 Each README says it in one plain sentence, and names what a user who needs wiping can do today: nothing in the binding, so use rind from Rust with `wipe`.
 
 If wiping is ever added, the audit also found heap copies the bindings make that would then need wiping: rind-dart copies caller bytes into `malloc` memory and frees it unwiped (`rind-dart/lib/src/ffi.dart:56-62`), which holds an RSA private key's DER when one is loaded, and pyrind's `copy_buffer` copies any argument that is not `bytes` into a `Vec<u8>` (`rind-python/src/lib.rs:111`).
-
-## Related
-
-- [rind for Dart installs without a Rust toolchain](/quest/m2/adoption/rind-dart-prebuilt.md) - builds the binaries these docs describe

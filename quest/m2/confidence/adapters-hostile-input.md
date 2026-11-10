@@ -37,5 +37,4 @@ Guidance:
 
 - [Check rustls provider panic reachability](/quest/m2/confidence/rustls-provider-panics.md) - the manual trace of part of the same boundary
 - [A differential fuzz target for every primitive](/quest/m3/confidence/fuzz-every-primitive.md) - fuzzes `rind`'s primitives, not the adapters above them
-- [Fuzz the tiers GitHub's runners cannot reach](/quest/m3/confidence/fuzz-tiers.md) - replays every target's corpus on more CPU tiers, these included once they exist
 - [Adapter crates' surviving mutants](/quest/m2/confidence/mutants-adapters.md) - tests the adapters' values against upstream's, where this tests their handling of bad input
