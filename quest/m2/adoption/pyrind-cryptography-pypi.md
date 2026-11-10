@@ -16,7 +16,3 @@ Non-goals: new hazmat features, and changing how pyrind itself releases.
 ## Waiting
 
 - Maintainer: register the pending trusted publisher on PyPI for `pyrind-cryptography` before the first publish. It needs a logged-in PyPI account, so an agent can only drive the form with the maintainer present. Check at https://pypi.org/manage/account/publishing/.
-
-## Required
-
-- [pyca-compatible pyrind](/quest/m2/adoption/pyrind-cryptography.md) - the package this publishes
