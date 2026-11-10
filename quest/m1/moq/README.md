@@ -63,8 +63,9 @@ Targets, refused rather than falling back:
   same API, so no adapter or MoQ feature carries a per-target exclusion.
   Operations with no consumer, SHA-3 and SHAKE, are not built there
   (maintainer, 2026-10-27).
-- Every other target fails to compile. wasm32 does not build rind; nothing in
-  MoQ needs native crypto there.
+- MoQ needs no other target. Nothing in MoQ needs native crypto on wasm32;
+  rind's other targets, wasm32 included, are the
+  [targets epic](/quest/m2/adoption/targets/README.md)'s.
 
 Each quest lands the tests for what it adds: Wycheproof vectors where they
 exist, differential tests against aws-lc-rs as a dev-dependency, and a

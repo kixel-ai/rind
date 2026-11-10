@@ -91,12 +91,12 @@ For each way the survey found:
   crate's default provider feature and turn on the providerless one that
   [MIGRATING.md] lists, such as reqwest's `rustls-no-provider`, and drop a
   direct rustls dependency that only picked a provider. Then either pass
-  `rind_rustls::default_provider()?` where the crate takes a provider, or
+  `rind_rustls::default_provider()` where the crate takes a provider, or
   install it as the process default in each binary's `main`, before any TLS
   config is built:
 
   ```rust
-  rind_rustls::default_provider()?.install_default().expect("no provider installed yet");
+  rind_rustls::default_provider().install_default().expect("no provider installed yet");
   ```
 
   Tests share a process, so install it there through one helper that

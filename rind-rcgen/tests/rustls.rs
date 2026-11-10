@@ -192,7 +192,7 @@ fn rsa_pkcs8() -> PrivatePkcs8KeyDer<'static> {
 
 fn providers() -> [Arc<CryptoProvider>; 2] {
     [
-        Arc::new(rind_rustls::default_provider().unwrap()),
+        Arc::new(rind_rustls::default_provider()),
         Arc::new(rustls::crypto::aws_lc_rs::default_provider()),
     ]
 }

@@ -15,7 +15,3 @@ Runs, block function by tier, under padding and HMAC glue that `proofs/` already
 
 Each enters as the `ShaBlocks` hypothesis's SHA-1 half does today, which this retires.
 - Upstream: offering this work to awslabs/s2n-bignum is optional, and there is no standing approval: stop and ask the maintainer before posting there or anywhere outside the moq-dev and kixelated orgs (decided with the maintainer on 2026-11-07 on [moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448)).
-
-## Required
-
-- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m3/verified/hol-light.md) - where the HOL Light proofs live and CI checks them

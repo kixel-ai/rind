@@ -179,7 +179,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shell: [s390x]
+        shell: [s390x, riscv64, riscv64-musl]
 
     runs-on: ubuntu-latest
     steps:

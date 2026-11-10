@@ -10,7 +10,6 @@ publish = false
 # Build with exactly one provider's feature.
 [features]
 rind = ["dep:rind-rustls"]
-rind-lean = ["dep:rind-rustls"]
 aws-lc-rs = ["rustls/aws_lc_rs"]
 ring = ["rustls/ring"]
 
