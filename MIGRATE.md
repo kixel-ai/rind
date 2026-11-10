@@ -132,7 +132,7 @@ For each way the survey found:
 
 rind panics on a CPU missing a feature it requires. At the start of each
 binary's `main`, refuse one by exiting with the error from an adapter's
-`default_provider()`, rind-aws-lc-rs's `cpu::check()`,
+`default_provider()`,
 rind-rcgen's `check()`, or `rind::cpu::check()`.
 A library leaves this to the binaries that use it, and says so in its docs.
 

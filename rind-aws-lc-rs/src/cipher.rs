@@ -30,6 +30,7 @@ pub const AES_CTR_IV_LEN: usize = 16;
 const AES_BLOCK_LEN: usize = 16;
 
 /// A block cipher mode of operation.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OperatingMode {
     /// Cipher block chaining.

@@ -59,10 +59,10 @@ renames [rind-aws-lc-rs](#rind-aws-lc-rs) to `aws-lc-rs` the same way.
 | `HKDF_SHA256`, `HKDF_SHA384`, `HKDF_SHA512` | the same |
 | `HKDF_SHA1_FOR_LEGACY_USE_ONLY` | `legacy::HKDF_SHA1` |
 | `prk.expand(info, len)?` | `prk.expand(info, len)`, which cannot fail; `Okm::fill` checks a byte length |
-| your own `KeyType` | none: it is sealed, for a `usize` byte length or an `aead`, `aead::quic`, or `hmac` algorithm |
-| `UnboundKey::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)` | `aead::Key::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)` |
+| your own `KeyType` | none: it is sealed, for a `usize` byte length or an `aead`, `aead::quic`, `hmac`, or `hkdf` algorithm |
+| `UnboundKey::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)`, `Prk::from(okm)` | `aead::Key::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)`, `Prk::from(okm)` with `&HKDF_SHA256` |
 | `Okm::fill(out)` | the same, for a `usize` length only |
-| `Salt::from(okm)`, `Prk::from(okm)`, `Prk::new_less_safe` | none |
+| `Salt::from(okm)`, `Prk::new_less_safe` | none |
 | `Salt::algorithm()`, `Okm::len()`, `Algorithm::hmac_algorithm()` | none |
 
 ## pbkdf2
@@ -86,7 +86,7 @@ reuses it. `verify` refuses a stored value shorter than the HMAC output with
 | `SealingKey`, `OpeningKey`, `BoundKey`, `NonceSequence`, `nonce_sequence::{Counter32, Counter64}` and their builders | `Key`, given a `Nonce` per call from a sequence number the protocol keeps |
 | `seal_in_place_append_tag(nonce, Aad::from(aad), in_out)` | `seal_in_place_append_tag(nonce, aad, in_out)`, with `aad: &[u8]` |
 | `seal_in_place_separate_tag`, `open_in_place` | the same, with `aad: &[u8]` |
-| `open_in_place_separate_tag(nonce, aad, tag, in_out, range)` | `open_in_place_separate_tag(nonce, aad, Tag::try_from(tag)?, ciphertext)` |
+| `open_in_place_separate_tag(nonce, aad, tag, in_out)`, which ring takes as `(nonce, aad, tag, in_out, range)` | `open_in_place_separate_tag(nonce, aad, Tag::try_from(tag)?, ciphertext)` |
 | `open_within(nonce, aad, in_out, range)` | `open_in_place` on the ciphertext's subslice, which leaves the plaintext there rather than moving it to the front |
 | `Aad::from(aad)`, `Aad::empty()` | `aad`, `&[]` |
 | `Nonce::assume_unique_for_key` | the same |
@@ -348,10 +348,9 @@ ring has none.
 Each `rind-*` crate stands in for a crate's aws-lc-rs or ring backend. rind
 panics on a CPU missing a feature it requires, so every adapter function
 that returns a provider or ticketer refuses one with the adapter's own
-`MissingFeature` instead, which displays rind's message. rind-aws-lc-rs,
-whose signatures are aws-lc-rs's, and rind-rcgen's `KeyPair`, whose errors
-are rcgen's, cannot. Call rind-aws-lc-rs's `cpu::check()`, or rind-rcgen's `check()`, which returns its
-own `MissingFeature`, before using them.
+`MissingFeature` instead, which displays rind's message. rind-rcgen's
+`KeyPair`, whose errors are rcgen's, cannot. Call rind-rcgen's `check()`,
+which returns its own `MissingFeature`, before using it.
 
 ### rind-ring
 
@@ -373,8 +372,8 @@ items it leaves out and the inputs it refuses where ring takes them.
 rind-aws-lc-rs offers aws-lc-rs 1.x's API name for name for every item rind
 backs, so a crate on aws-lc-rs swaps it in with `aws-lc-rs = { package =
 "rind-aws-lc-rs", version = "1" }` and no code changes. The rename reaches
-only that crate. It accepts every aws-lc-rs feature but `fips`, and adds a
-`cpu` module wrapping rind's check. Its [README](rind-aws-lc-rs/README.md) lists
+only that crate. It accepts every aws-lc-rs feature but `fips`, and adds only
+a `wipe` feature, since aws-lc-rs always wipes. Its [README](rind-aws-lc-rs/README.md) lists
 the items it leaves out, such as ML-DSA, ML-KEM-512 and ML-KEM-1024, SHA-224,
 and the PKCS#1 v1.5 encryption keys, and where it behaves differently. rustls's
 `aws_lc_rs` provider, rustls-webpki's `aws-lc-rs` feature, and rcgen's
