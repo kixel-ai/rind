@@ -234,4 +234,367 @@ theorem from_bytes_spec (bytes : Slice U8) (hlen : bytes.length ≤ 1024) :
     · simp only [lowWords, hws, show full.val = ws.length by rw [hfull, hwl], List.take_left]
       rw [← hb1v, hval, htop0]; simp
 
+/-- `to_bytes`'s loop, with `i` words written at the back of `out`'s first
+`8 used` bytes: those bytes read as the low `i` words. -/
+theorem to_bytes_loop_spec {N : Usize} (words : Std.Array U64 N) (req : Usize) (out0 : Slice U8)
+    (iter : core.ops.range.Range Usize) (hreq : req.val = 8 * iter.end.val) (hlen : out0.length = req.val)
+    (hN : iter.end.val ≤ N.val) (hstart : iter.start.val ≤ iter.end.val) (out : Slice U8)
+    (hinv : out.length = req.val ∧ ∃ L : List U8, L.length = 8 * iter.start.val ∧
+      out.val = out0.val.take (req.val - 8 * iter.start.val) ++ L ∧
+      beNat L = wordsNat (words.val.take iter.start.val)) :
+    low.posint.PosInt.to_bytes_loop iter words req out ⦃ o =>
+      o.length = req.val ∧ beNat o.val = wordsNat (words.val.take iter.end.val) ⦄ := by
+  unfold low.posint.PosInt.to_bytes_loop
+  apply loop.spec_decr_nat (fun x => x.1.end.val - x.1.start.val)
+    (fun x : core.ops.range.Range Usize × Slice U8 => x.1.end = iter.end ∧ x.1.start.val ≤ x.1.end.val ∧
+      x.2.length = req.val ∧ ∃ L : List U8, L.length = 8 * x.1.start.val ∧
+      x.2.val = out0.val.take (req.val - 8 * x.1.start.val) ++ L ∧
+      beNat L = wordsNat (words.val.take x.1.start.val))
+  · rintro ⟨it, o⟩ ⟨he, hs, hol, L, hL, ho, hLv⟩
+    simp only at he hs hol hL ho hLv
+    have h2 : it.end.val = iter.end.val := by rw [he]
+    unfold low.posint.PosInt.to_bytes_loop.body
+    step as ⟨op, iter1, hop, hend1⟩
+    cases op with
+    | none =>
+      have : it.start.val = iter.end.val := by
+        split at hop
+        · simp at hop
+        · omega
+      rw [this] at hLv hL ho
+      simp only [WP.spec_ok]
+      refine ⟨hol, ?_⟩
+      rw [ho, show req.val - 8 * iter.end.val = 0 by omega]
+      simpa using hLv
+    | some i =>
+      have hlt : it.start.val < it.end.val := by
+        by_contra hc; simp [hc] at hop
+      simp only [hlt, ↓reduceIte, Option.some.injEq] at hop
+      obtain ⟨rfl, hst⟩ := hop
+      have h3 : iter1.end.val = it.end.val := by rw [hend1]
+      have hwl : words.val.length = N.val := by simp
+      have hoL : o.length = o.val.length := rfl
+      have h0L : out0.length = out0.val.length := rfl
+      step as ⟨i1, hi1⟩
+      step as ⟨e, he1⟩
+      step as ⟨i2, hi2⟩
+      step as ⟨s, back, hs1, hs2, hback⟩
+      step as ⟨w, hw⟩
+      step as ⟨a1, ha1⟩
+      step as ⟨s1, hs1v⟩
+      step as ⟨s2, hs2v⟩
+      have hbl : s1.val.length = 8 := by simp [hs1v, ha1]
+      have hs1' : s1.val = w.bv.toBEBytes.map (@UScalar.mk UScalarTy.U8) := by simp [hs1v, ha1]
+      refine ⟨by rw [hend1, he], by omega, by simp [hback, hs2v]; omega,
+        ⟨s1.val ++ L, by simp [hbl, hL, hst]; ring, ?_, ?_⟩, by omega⟩
+      · rw [hback, hs2v]
+        rw [Slice.setSlice!_val]
+        have hsplit := take_eq_take_append_slice out0.val i2.val e.val (by omega)
+        have hA : (out0.val.take i2.val).length = i2.val := by simp; omega
+        have hset := setSlice!_append (out0.val.take i2.val) (out0.val.slice i2.val e.val) L s1.val
+          (by rw [hbl, length_slice _ _ _ (by omega)]; omega)
+        rw [hA] at hset
+        rw [ho, show req.val - 8 * it.start.val = e.val by omega, hsplit, hset, hst,
+          show req.val - 8 * (it.start.val + 1) = i2.val by omega]
+        simp
+      · rw [beNat_append, hLv, hL, hst, List.take_add_one, wordsNat_append,
+          List.getElem?_eq_getElem (by omega)]
+        rw [hs1', beNat_toBEBytes, hw]
+        simp [wordsNat, List.length_take, hwl, show min it.start.val N.val = it.start.val by omega]
+        rw [show (256 : Nat) ^ (8 * it.start.val) = 2 ^ (64 * it.start.val) by
+          rw [show (256 : Nat) = 2 ^ 8 by norm_num, ← pow_mul]; ring_nf]
+        ring
+  · exact ⟨rfl, hstart, hinv⟩
+
+/-- `to_bytes` writes a number of at most `N` words as `8 used` big-endian
+bytes, given room for them. -/
+theorem to_bytes_spec {N : Usize} (p : low.posint.PosInt N) (out : Slice U8) (hN : p.used.val ≤ N.val)
+    (hlen : 8 * p.used.val ≤ out.length) :
+    low.posint.PosInt.to_bytes p out ⦃ r _ => ∃ s, r = .Ok s ∧ s.length = 8 * p.used.val ∧
+      beNat s.val = wordsNat (p.words.val.take p.used.val) ⦄ := by
+  unfold low.posint.PosInt.to_bytes
+  step as ⟨req, hreq⟩
+  have hle : req ≤ out.length := by scalar_tac
+  simp only [core.slice.Slice.get_mut, core.slice.index.SliceIndexRangeToUsizeSlice.get_mut, hle, ↓reduceIte]
+  have hl0 : (Slice.from (out.val.slice 0 req.val) (by scalar_tac) : Slice U8).length = req.val := by
+    simp [Slice.length]; scalar_tac
+  step with to_bytes_loop_spec p.words req _ { start := 0#usize, «end» := p.used } (by simp [hreq]; ring) hl0
+    (by simpa using hN) (by simp) _ ⟨hl0, [], by simp, by simp, by simp [beNat, leNat, wordsNat_nil]⟩
+    as ⟨o, hol, hov⟩
+  exact ⟨o, rfl, by omega, hov⟩
+
+theorem usize_saturating_sub_val (x y : Usize) :
+    (core.num.Usize.saturating_sub x y).val = x.val - y.val := by
+  have := x.hBounds
+  simp only [core.num.Usize.saturating_sub, UScalar.saturating_sub, UScalar.val, BitVec.toNat_ofNat]
+  apply Nat.mod_eq_of_lt
+  simp only [UScalar.val] at this
+  omega
+
+theorem beNat_pos (l : List U8) (h : ∃ x ∈ l, x ≠ 0#u8) : 0 < beNat l := by
+  induction l with
+  | nil => simp at h
+  | cons a t ih =>
+    rw [show a :: t = [a] ++ t from rfl, beNat_append]
+    by_cases ha : a = 0#u8
+    · have : ∃ x ∈ t, x ≠ 0#u8 := by
+        obtain ⟨x, hx, hx0⟩ := h
+        simp at hx; rcases hx with rfl | hx
+        · exact absurd ha hx0
+        · exact ⟨x, hx, hx0⟩
+      have := ih this; positivity
+    · have : 0 < a.val := by
+        rcases Nat.eq_zero_or_pos a.val with h0 | h0
+        · exact absurd (by simpa [UScalar.eq_equiv] using h0) ha
+        · exact h0
+      have : beNat [a] = a.val := by simp [beNat, leNat]
+      have : 0 < 256 ^ t.length := by positivity
+      nlinarith
+
+/-- `i2osp`'s loop: whether the excess bytes read so far are all zero. -/
+theorem i2osp_loop_spec (excess : Slice U8) (iter : core.ops.range.Range Usize)
+    (hend : iter.end.val = excess.length) (hstart : iter.start.val ≤ iter.end.val) (any : U8)
+    (hany : any.val = 0 ↔ ∀ x ∈ excess.val.take iter.start.val, x = 0#u8) :
+    high.rsa.i2osp_loop iter excess any ⦃ a => a.val = 0 ↔ ∀ x ∈ excess.val, x = 0#u8 ⦄ := by
+  unfold high.rsa.i2osp_loop
+  apply loop.spec_decr_nat (fun x => x.1.end.val - x.1.start.val)
+    (fun x : core.ops.range.Range Usize × U8 => x.1.end = iter.end ∧ x.1.start.val ≤ x.1.end.val ∧
+      (x.2.val = 0 ↔ ∀ y ∈ excess.val.take x.1.start.val, y = 0#u8))
+  · rintro ⟨it, a⟩ ⟨he, hs, ha⟩
+    simp only at he hs ha
+    have h2 : it.end.val = iter.end.val := by rw [he]
+    have hbL : excess.length = excess.val.length := rfl
+    unfold high.rsa.i2osp_loop.body
+    step as ⟨o, iter1, ho, hend1⟩
+    cases o with
+    | none =>
+      have : it.start.val = excess.length := by
+        split at ho
+        · simp at ho
+        · omega
+      simp only [WP.spec_ok]
+      rw [ha, this, hbL, List.take_length]
+    | some i =>
+      have hlt : it.start.val < it.end.val := by
+        by_contra hc; simp [hc] at ho
+      simp only [hlt, ↓reduceIte, Option.some.injEq] at ho
+      obtain ⟨rfl, hst⟩ := ho
+      have h3 : iter1.end.val = it.end.val := by rw [hend1]
+      step as ⟨b, hb⟩
+      step as ⟨a1, ha1⟩
+      refine ⟨by rw [hend1, he], by omega, ?_, by omega⟩
+      rw [ha1, UScalar.val_or, Nat.or_eq_zero_iff, ha, hst, List.take_add_one,
+        List.getElem?_eq_getElem (by omega)]
+      simp only [Option.toList_some, List.mem_append, List.mem_singleton]
+      constructor
+      · rintro ⟨h1, h2⟩ y (hy | rfl)
+        · exact h1 y hy
+        · rw [← hb]; simpa [UScalar.eq_equiv] using h2
+      · intro h
+        refine ⟨fun y hy => h y (Or.inl hy), ?_⟩
+        have := h _ (Or.inr rfl)
+        rw [← hb] at this
+        simpa [UScalar.eq_equiv] using this
+  · exact ⟨rfl, hstart, hany⟩
+
+/-- I2OSP: `i2osp` writes `x` to all of `out` if it fits in that many bytes,
+and refuses it otherwise. -/
+theorem i2osp_spec (x : RsaInt) (out : Slice U8) (hu : x.used.val ≤ 128) :
+    high.rsa.i2osp x out ⦃ r out' =>
+      (wordsNat (lowWords x x.used) < 256 ^ out.length →
+        r = .Ok () ∧ out'.length = out.length ∧ beNat out'.val = wordsNat (lowWords x x.used)) ∧
+      (256 ^ out.length ≤ wordsNat (lowWords x x.used) → r = .Err .WrongLength) ⦄ := by
+  unfold high.rsa.i2osp
+  step as ⟨s, _p, hs⟩
+  have hsl : s.length = 1024 := by
+    simp only [Slice.length, hs, Array.repeat_val, List.length_replicate]; rfl
+  step with to_bytes_spec x s (by simpa using hu) (by omega) as ⟨r, _q, val, hr, hvl, hvv⟩
+  subst hr
+  simp only [core.result.Result.Insts.CoreOpsTry.branch]
+  have hsat := usize_saturating_sub_val val.len out.len
+  have hvL : val.length = val.val.length := rfl
+  have hoL : out.length = out.val.length := rfl
+  simp only [lift]
+  step as ⟨excess, bytes1, hel, hbl, hev, hbv⟩
+  · rw [hsat]; simp
+  rw [hsat] at hel hbl hev hbv
+  simp only [Slice.len_val] at hel hbl hev hbv
+  step with i2osp_loop_spec excess { start := 0#usize, «end» := excess.len } (by simp) (by simp)
+    0#u8 (by simp) as ⟨any, hany⟩
+  simp only [low.ct.into_public, bind_ok]
+  have hX : wordsNat (lowWords x x.used) = beNat val.val := by rw [hvv]; rfl
+  rw [hX]
+  have hsplit : beNat val.val = beNat excess.val * 256 ^ bytes1.length + beNat bytes1.val := by
+    rw [← beNat_append, hev, hbv, List.take_append_drop]
+  have hbl' : bytes1.length = min val.length out.length := by rw [hbl]; omega
+  split
+  · rename_i hne
+    simp only [WP.spec_ok]
+    have hne' : any.val ≠ 0 := by
+      intro h0
+      have : any = 0#u8 := by rw [UScalar.eq_equiv]; simpa using h0
+      simp [this] at hne
+    have hnz : ∃ y ∈ excess.val, y ≠ 0#u8 := by
+      by_contra hc; push_neg at hc; exact hne' (hany.mpr hc)
+    have hpos := beNat_pos _ hnz
+    have hbo : bytes1.length = out.length := by
+      have : 0 < excess.val.length := by
+        obtain ⟨y, hy, _⟩ := hnz; exact List.length_pos_of_mem hy
+      have : excess.length = excess.val.length := rfl
+      omega
+    refine ⟨fun hlt => ?_, fun _ => rfl⟩
+    exfalso
+    rw [hsplit, hbo] at hlt
+    have := Nat.mul_le_mul_right (256 ^ out.length) hpos
+    omega
+  · rename_i heq
+    have hz : any.val = 0 := by simpa [UScalar.eq_equiv] using heq
+    have hall := hany.mp hz
+    have hex0 : beNat excess.val = 0 := beNat_zeros _ hall
+    have hlt : beNat val.val < 256 ^ out.length := by
+      rw [hsplit, hex0, zero_mul, zero_add]
+      calc beNat bytes1.val < 256 ^ bytes1.val.length := beNat_lt _
+        _ ≤ 256 ^ out.length := Nat.pow_le_pow_right (by norm_num) (by
+          have : bytes1.length = bytes1.val.length := rfl; omega)
+    step as ⟨i7, hi7⟩
+    step as ⟨zv, vs, bk, hz1, hz2, hz3, hz4, hback⟩
+    step as ⟨zeroes1, hzl, hzv⟩
+    · simp
+    have hb7 : bytes1.length = out.length - i7.val := by
+      have : bytes1.len.val = bytes1.length := rfl
+      have : out.len.val = out.length := rfl
+      omega
+    step as ⟨value1, hval1⟩
+    have hbk := hback zeroes1 value1 (by rw [hzl, hz1]) (by rw [hval1, hb7])
+    refine ⟨fun _ => ⟨hbk.2, ?_⟩, fun hge => absurd hlt (by omega)⟩
+    rw [hbk.1, hzv, hval1, beNat_append, beNat_zeros _ (by simp), zero_mul, zero_add, hsplit, hex0,
+      zero_mul, zero_add]
+
+/-- I2OSP writes a number as the bytes it was read from. -/
+theorem i2osp_beNat (L : List U8) : i2osp (beNat L) L.length = some (bv L) := by
+  unfold i2osp
+  rw [ite_cond_eq_true _ _ (eq_true (beNat_lt L))]
+  congr 1
+  induction L with
+  | nil => rfl
+  | cons a t ih =>
+    have hP : 0 < 256 ^ t.length := by positivity
+    have hB := beNat_lt t
+    have hcons : beNat (a :: t) = a.val * 256 ^ t.length + beNat t := by
+      rw [show a :: t = [a] ++ t from rfl, beNat_append]; simp [beNat, leNat]
+    rw [List.length_cons, List.range_succ, List.reverse_append, List.reverse_singleton,
+      List.singleton_append, List.map_cons, bv, List.map_cons, ← bv, ← ih, hcons]
+    congr 1
+    · apply BitVec.eq_of_toNat_eq
+      rw [BitVec.toNat_ofNat, Nat.add_div_of_dvd_right (Dvd.intro_left _ rfl),
+        Nat.mul_div_cancel _ hP, Nat.div_eq_of_lt hB, Nat.add_zero]
+      have := a.hBounds
+      simp only [UScalar.val] at this ⊢
+      exact Nat.mod_eq_of_lt (by simpa using this)
+    · apply List.map_congr_left
+      intro i hi
+      simp only [List.mem_reverse, List.mem_range] at hi
+      apply BitVec.eq_of_toNat_eq
+      simp only [BitVec.toNat_ofNat]
+      have hpow : 256 ^ t.length = 256 ^ i * (256 * 256 ^ (t.length - i - 1)) := by
+        rw [← pow_succ', ← pow_add]; congr 1; omega
+      rw [hpow, show a.val * (256 ^ i * (256 * 256 ^ (t.length - i - 1))) + beNat t =
+        beNat t + (a.val * (256 * 256 ^ (t.length - i - 1))) * 256 ^ i by ring,
+        Nat.add_mul_div_right _ _ (by positivity)]
+      rw [show a.val * (256 * 256 ^ (t.length - i - 1)) = 2 ^ 8 * (a.val * 256 ^ (t.length - i - 1)) by ring,
+        Nat.add_mul_mod_self_left]
+
+theorem take_set_succ {α : Type} (l : List α) (j : Nat) (x : α) (hj : j < l.length) :
+    (l.set j x).take (j + 1) = l.take j ++ [x] := by
+  rw [List.take_set, List.take_add_one, List.getElem?_eq_getElem hj, Option.toList_some,
+    List.set_append_right _ _ (by simp)]
+  simp [show j - min j l.length = 0 by omega]
+
+/-- `encode_pkcs1_sig`'s padding loop: the bytes it has reached are the
+encoding's header and as much of its `0xff` run. -/
+theorem encode_pkcs1_sig_loop_spec (iter : core.ops.range.Range Usize) (out : Slice U8)
+    (h2 : 2 ≤ iter.start.val) (hstart : iter.start.val ≤ iter.end.val) (hend : iter.end.val ≤ out.length)
+    (hinv : out.val.take iter.start.val = [0#u8, 1#u8] ++ List.replicate (iter.start.val - 2) 255#u8) :
+    high.pkcs1.encode_pkcs1_sig_loop iter out ⦃ o => o.length = out.length ∧
+      o.val.take iter.end.val = [0#u8, 1#u8] ++ List.replicate (iter.end.val - 2) 255#u8 ⦄ := by
+  unfold high.pkcs1.encode_pkcs1_sig_loop
+  apply loop.spec_decr_nat (fun x => x.1.end.val - x.1.start.val)
+    (fun x : core.ops.range.Range Usize × Slice U8 => x.1.end = iter.end ∧ 2 ≤ x.1.start.val ∧
+      x.1.start.val ≤ x.1.end.val ∧ x.2.length = out.length ∧
+      x.2.val.take x.1.start.val = [0#u8, 1#u8] ++ List.replicate (x.1.start.val - 2) 255#u8)
+  · rintro ⟨it, o⟩ ⟨he, h2', hs, hol, ho⟩
+    simp only at he h2' hs hol ho
+    have h2e : it.end.val = iter.end.val := by rw [he]
+    unfold high.pkcs1.encode_pkcs1_sig_loop.body
+    step as ⟨op, iter1, hop, hend1⟩
+    cases op with
+    | none =>
+      have : it.start.val = iter.end.val := by
+        split at hop
+        · simp at hop
+        · omega
+      simp only [WP.spec_ok]
+      rw [this] at ho
+      exact ⟨hol, ho⟩
+    | some i =>
+      have hlt : it.start.val < it.end.val := by
+        by_contra hc; simp [hc] at hop
+      simp only [hlt, ↓reduceIte, Option.some.injEq] at hop
+      obtain ⟨rfl, hst⟩ := hop
+      have h3 : iter1.end.val = it.end.val := by rw [hend1]
+      have hoL : o.length = o.val.length := rfl
+      step as ⟨o1, ho1⟩
+      refine ⟨by rw [hend1, he], by omega, by omega, by rw [ho1]; simpa using hol, ?_, by omega⟩
+      rw [ho1, Slice.set_val_eq, hst, take_set_succ _ _ _ (by omega), ho,
+        show it.start.val + 1 - 2 = (it.start.val - 2) + 1 by omega, List.replicate_succ']
+      simp
+  · exact ⟨rfl, h2, hstart, rfl, hinv⟩
+
+theorem setSlice!_end {α : Type _} (r s : List α) (i : Nat) (hs : i + s.length = r.length) :
+    r.setSlice! i s = r.take i ++ s := by
+  rw [← take_setSlice! r s i (by omega), List.take_of_length_le (by simp; omega)]
+
+/-- EMSA-PKCS1-v1_5-ENCODE, given `T = digest_info ++ hash` and room for it. -/
+theorem encode_pkcs1_sig_spec (out digest_info hash : Slice U8)
+    (hroom : digest_info.length + hash.length + 11 ≤ out.length) :
+    high.pkcs1.encode_pkcs1_sig out digest_info hash ⦃ o =>
+      o.val = [0#u8, 1#u8] ++ List.replicate (out.length - (digest_info.length + hash.length) - 3) 255#u8 ++
+        [0#u8] ++ digest_info.val ++ hash.val ⦄ := by
+  unfold high.pkcs1.encode_pkcs1_sig
+  have hoL : out.length = out.val.length := rfl
+  have hdL : digest_info.length = digest_info.val.length := rfl
+  have hhL : hash.length = hash.val.length := rfl
+  step as ⟨tl, htl⟩
+  step as ⟨i2, hi2⟩
+  step*
+  have hdl : digest_info.len.val = digest_info.length := rfl
+  have hhl : hash.len.val = hash.length := rfl
+  have hol : out.len.val = out.length := rfl
+  have hsl : s.length = out.length := by rw [s_post, out1_post]; simp
+  have hs2 : s.val.take 2 = [0#u8, 1#u8] := by
+    rw [s_post, Slice.set_val_eq, show (2 : Nat) = (1#usize).val + 1 from rfl,
+      take_set_succ _ _ _ (by simp [out1_post]; omega), out1_post, Slice.set_val_eq,
+      show (1#usize).val = (0#usize).val + 1 from rfl, take_set_succ _ _ _ (by simp; omega)]
+    simp
+  step with encode_pkcs1_sig_loop_spec { start := 2#usize, «end» := i3 } s (by simp) (by simp; omega)
+    (by show i3.val ≤ s.length; omega) (by simpa using hs2) as ⟨out2, ho2l, ho2⟩
+  step as ⟨i4, hi4⟩
+  step as ⟨out3, ho3⟩
+  step as ⟨i6, hi6⟩
+  step as ⟨s1, back, hs1, hs1l, hback⟩
+  step as ⟨s2, hs2v⟩
+  · rw [hs1l]; omega
+  step as ⟨i8, hi8⟩
+  have e1 : (back s2).length = (back s2).val.length := rfl
+  have e2 : out2.length = out2.val.length := rfl
+  have hb2l : (back s2).length = out.length := by
+    rw [e1, hback, hs2v]; simp [ho3]; omega
+  step as ⟨s3, back1, hs3, hs3l, hback1⟩
+  step as ⟨s4, hs4v⟩
+  · rw [hs3l, hb2l]; omega
+  rw [hback1, hs4v, setSlice!_end _ _ _ (by omega), hback, hs2v, Slice.setSlice!_val, show i8.val = t_start.val + digest_info.val.length by omega,
+    take_setSlice! _ _ _ (by simp [ho3]; omega), ho3, Slice.set_val_eq,
+    show t_start.val = i4.val + 1 by omega, take_set_succ _ _ _ (by omega), show i4.val = i3.val by omega, ho2,
+    show i3.val - 2 = out.length - (digest_info.length + hash.length) - 3 by omega]
+
 end rind.x86_64
