@@ -43,5 +43,5 @@ Guidance:
 
 ## Related
 
-- [Portable AES-GCM keeps its expanded key and seals in place](/quest/m3/cold-speed/portable-aes-gcm.md) - the portable row's other large gap
+- [Portable AES bitslices several blocks at once](/quest/m3/cold-speed/portable-aes-nohw.md) - the portable row's other large gap
 - [rind builds on every target ring or aws-lc-rs supports](/quest/m2/adoption/targets/README.md) - the targets this speeds up, whose speed non-goal this lifts
