@@ -386,9 +386,12 @@ mod tests {
 
     #[test]
     fn divides_by_gcd() {
-        // Common factors of two above and below the word boundary, and
-        // coprime odd parts.
+        // Common factors of two above and below the word boundary, coprime
+        // odd parts, and a two-word odd GCD whose division borrows across
+        // words.
+        let g = (1u128 << 100) | 0xffff_ffff_ffff_fff1;
         for (x, y) in [
+            (6 * g, 10 * g),
             (2u128, 2u128),
             (6, 4),
             (0x1_0000_0000_0000_0000 * 6, 0x1_0000_0000_0000_0000 * 10),
