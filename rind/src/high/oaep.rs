@@ -73,11 +73,9 @@ pub struct DecryptingKey {
 }
 
 /// The key's algorithm.
-// Aligned like the private key's words, so on 32-bit targets the key's
-// padding falls inside this value, which `DecryptingKey`'s drop wipes whole,
-// rather than after it, where `tests/zeroing.rs` finds stale bytes.
+// Pointer-aligned, like the private key, so `DecryptingKey` has no padding
+// that neither field's wipe covers.
 #[derive(Clone, Copy)]
-#[repr(align(8))]
 struct AlgorithmRef(low::ZeroableRef<OaepAlgorithm>);
 
 impl low::Zeroable for AlgorithmRef {}
