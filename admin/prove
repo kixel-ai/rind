@@ -533,6 +533,10 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # `proofs/Rind/Aarch64/P256Table.lean` can prove it holds what s2n-bignum's
 # proof assumes. HMAC's keyed states are translated over any hash, and its
 # `Key` and `Context`, which hold function pointers, are not.
+# On x86_64, RSA verification is translated from `high::rsa::VerifyingKey`
+# down to `low::posint` and the Montgomery products' dispatch in
+# `low::x86_64::mont`, whose s2n-bignum and aws-lc routines are opaque. Its
+# DER parsing and encoding, which the ✓ leaves out, are opaque too.
 extract() {
     local arch=$1 dir=$2
     shift 2
@@ -590,7 +594,6 @@ extract() {
         --opaque crate::high::digest::Digest \
         --opaque 'crate::high::digest::_::zeroed' \
         --opaque 'crate::high::digest::_::as_mut' \
-        --opaque 'crate::high::digest::_::ct_equal' \
         --opaque 'crate::high::digest::_::as_ref' \
         --opaque 'crate::high::digest::_::output_len' \
         --opaque crate::high::digest::MD5 \
@@ -723,7 +726,26 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::aes_gcm::VAES_AVX2_VALE_SEAL_BELOW \
     --include crate::low::x86_64::aes_gcm_avx \
     --opaque crate::low::x86_64::aes_gcm_avx::counter_block \
-    --opaque crate::low::x86_64::aes_gcm_avx::aead
+    --opaque crate::low::x86_64::aes_gcm_avx::aead \
+    --start-from crate::high::rsa::VerifyingKey::from_components \
+    --start-from crate::high::rsa::VerifyingKey::from_der \
+    --start-from crate::high::rsa::VerifyingKey::to_pkcs1_der \
+    --start-from crate::high::rsa::VerifyingKey::modulus_len_bits \
+    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha1 \
+    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha256 \
+    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha384 \
+    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha512 \
+    --start-from crate::high::rsa::VerifyingKey::verify_pss_sha256 \
+    --start-from crate::high::rsa::VerifyingKey::verify_pss_sha384 \
+    --start-from crate::high::rsa::VerifyingKey::verify_pss_sha512 \
+    --opaque crate::high::rsa::der_components \
+    --opaque 'crate::high::rsa::_::to_pkcs1_der' \
+    --include crate::low::posint \
+    --include crate::low::x86_64::mont::mont_mul \
+    --include crate::low::x86_64::mont::mont_sqr \
+    --include crate::low::x86_64::mont::karatsuba_mul \
+    --include crate::low::x86_64::mont::karatsuba_sqr \
+    --include crate::low::x86_64::mont::redc_8n
 extract aarch64 Aarch64 \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
     --start-from crate::high::ecdsa::VerifyingKey::from_x962_uncompressed \
