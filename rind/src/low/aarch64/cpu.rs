@@ -292,7 +292,8 @@ mod tests {
     #[test]
     fn abi() {
         let mut bytes = [0xffu8; 100];
-        call!(zero_bytes, bytes.as_mut_ptr(), 100);
+        // SAFETY: `bytes` is 100 writable bytes.
+        unsafe { call!(unsafe zero_bytes, bytes.as_mut_ptr(), 100) };
         assert_eq!(bytes, [0; 100]);
         call!(prefetch_ro::<u8>, bytes.as_ptr());
         #[cfg(target_vendor = "apple")]

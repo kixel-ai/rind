@@ -244,7 +244,8 @@ mod tests {
     #[test]
     fn abi() {
         let mut bytes = [0xffu8; 100];
-        call!(zero_bytes, bytes.as_mut_ptr(), 100);
+        // SAFETY: `bytes` is 100 writable bytes.
+        unsafe { call!(unsafe zero_bytes, bytes.as_mut_ptr(), 100) };
         assert_eq!(bytes, [0; 100]);
         let (a, b) = ([1u8; 37], [2u8; 37]);
         // SAFETY: `a` and `b` are 37 readable bytes.
