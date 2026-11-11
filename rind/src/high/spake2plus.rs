@@ -3,6 +3,7 @@
 //! SPAKE2+ on P-256 (RFC 9383 and Matter's draft-01 key schedule).
 
 use core::fmt;
+use core::marker::PhantomData;
 
 use super::{digest, hkdf, hmac};
 use crate::error::{Error, KeyFormatError};
@@ -27,6 +28,25 @@ const N_COMPRESSED: [u8; 33] = [
     0x49,
 ];
 
+/// M, uncompressed. Decompression is a square root; the handshake should not
+/// repeat it.
+const M_UNCOMPRESSED: [u8; 65] = [
+    0x04, 0x88, 0x6e, 0x2f, 0x97, 0xac, 0xe4, 0x6e, 0x55, 0xba, 0x9d, 0xd7, 0x24, 0x25, 0x79, 0xf2,
+    0x99, 0x3b, 0x64, 0xe1, 0x6e, 0xf3, 0xdc, 0xab, 0x95, 0xaf, 0xd4, 0x97, 0x33, 0x3d, 0x8f, 0xa1,
+    0x2f, 0x5f, 0xf3, 0x55, 0x16, 0x3e, 0x43, 0xce, 0x22, 0x4e, 0x0b, 0x0e, 0x65, 0xff, 0x02, 0xac,
+    0x8e, 0x5c, 0x7b, 0xe0, 0x94, 0x19, 0xc7, 0x85, 0xe0, 0xca, 0x54, 0x7d, 0x55, 0xa1, 0x2e, 0x2d,
+    0x20,
+];
+
+/// N, uncompressed.
+const N_UNCOMPRESSED: [u8; 65] = [
+    0x04, 0xd8, 0xbb, 0xd6, 0xc6, 0x39, 0xc6, 0x29, 0x37, 0xb0, 0x4d, 0x99, 0x7f, 0x38, 0xc3, 0x77,
+    0x07, 0x19, 0xc6, 0x29, 0xd7, 0x01, 0x4d, 0x49, 0xa2, 0x4b, 0x4f, 0x98, 0xba, 0xa1, 0x29, 0x2b,
+    0x49, 0x07, 0xd6, 0x0a, 0xa6, 0xbf, 0xad, 0xe4, 0x50, 0x08, 0xa6, 0x36, 0x33, 0x7f, 0x51, 0x68,
+    0xc6, 0x4d, 0x9b, 0xd3, 0x60, 0x34, 0x80, 0x8c, 0xd5, 0x64, 0x49, 0x0b, 0x1e, 0x65, 0x6e, 0xdb,
+    0xe7,
+];
+
 /// Which key schedule a [`Suite`] runs. The transcript is the same for both.
 #[derive(Clone, Copy, Debug)]
 enum Schedule {
@@ -36,34 +56,61 @@ enum Schedule {
     Draft01,
 }
 
+/// Marker for [`RFC9383`]. A [`Share`] or [`Confirm`] of this suite is not a
+/// [`MatterPase`] value, so a mixed handshake does not compile.
+#[derive(Clone, Copy, Debug)]
+pub struct Rfc9383;
+
+/// Marker for [`MATTER_PASE`].
+#[derive(Clone, Copy, Debug)]
+pub struct MatterPase;
+
 /// A SPAKE2+ ciphersuite. Only this module's constants build one.
 ///
-/// [`RFC9383`] and [`MATTER_PASE`] are the same type. A prover and a verifier
-/// given different suites still exchange shares, and [`ProverAwaiting::finish`]
-/// returns [`Error::BadSignature`].
+/// `S` is [`Rfc9383`] or [`MatterPase`]. The two schedules do not share a
+/// [`Share`] or a [`Confirm`].
+///
+/// ```compile_fail
+/// use rind::spake2plus::{MATTER_PASE, ProverSecrets, RFC9383, VerifierRecord};
+/// let w0 = [0x11; 40];
+/// let w1 = [0x22; 40];
+/// let (share_p, _) = ProverSecrets::new(&w0, &w1)
+///     .unwrap()
+///     .start(&RFC9383, b"app", b"a", b"b")
+///     .unwrap();
+/// let _ = VerifierRecord::from_w1(&w0, &w1)
+///     .unwrap()
+///     .start(&MATTER_PASE, b"app", b"a", b"b", &share_p);
+/// ```
 #[derive(Clone, Copy, Debug)]
-pub struct Suite {
+pub struct Suite<S> {
     schedule: Schedule,
+    _kind: PhantomData<fn() -> S>,
 }
 
 /// RFC 9383's P-256, SHA-256, HKDF-SHA256, HMAC-SHA256 suite.
-pub static RFC9383: Suite = Suite {
+pub static RFC9383: Suite<Rfc9383> = Suite {
     schedule: Schedule::Rfc9383,
+    _kind: PhantomData,
 };
 
 /// Matter PASE: draft-bar-cfrg-spake2plus-01's P-256 SHA-256 suite.
 ///
 /// The group operations, M, N, and the transcript match [`RFC9383`]. The key
 /// schedule splits the transcript hash instead of feeding it to HKDF.
-pub static MATTER_PASE: Suite = Suite {
+pub static MATTER_PASE: Suite<MatterPase> = Suite {
     schedule: Schedule::Draft01,
+    _kind: PhantomData,
 };
 
-/// A party's share, an uncompressed P-256 point.
+/// A party's share, an uncompressed P-256 point of suite `S`.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Share([u8; Affine::BYTES]);
+pub struct Share<S> {
+    bytes: [u8; Affine::BYTES],
+    _kind: PhantomData<fn() -> S>,
+}
 
-impl Share {
+impl<S> Share<S> {
     /// The length of an uncompressed share, 65 bytes.
     pub const BYTES: usize = Affine::BYTES;
 
@@ -78,27 +125,33 @@ impl Share {
         if encoded.as_slice() != bytes {
             return Err(KeyFormatError::NotOnCurve.into());
         }
-        Ok(Self(encoded))
+        Ok(Self {
+            bytes: encoded,
+            _kind: PhantomData,
+        })
     }
 }
 
-impl AsRef<[u8]> for Share {
+impl<S> AsRef<[u8]> for Share<S> {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        &self.bytes
     }
 }
 
-impl fmt::Debug for Share {
+impl<S> fmt::Debug for Share<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Share").field(&self.0).finish()
+        f.debug_tuple("Share").field(&self.bytes).finish()
     }
 }
 
-/// A key-confirmation tag, the 32-byte HMAC-SHA256.
+/// A key-confirmation tag, the 32-byte HMAC-SHA256 of suite `S`.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Confirm([u8; 32]);
+pub struct Confirm<S> {
+    bytes: [u8; 32],
+    _kind: PhantomData<fn() -> S>,
+}
 
-impl Confirm {
+impl<S> Confirm<S> {
     /// The length of a confirmation tag, 32 bytes.
     pub const BYTES: usize = 32;
 
@@ -107,20 +160,23 @@ impl Confirm {
     /// Fails with [`Error::WrongLength`] otherwise.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_public();
-        let bytes: [u8; Self::BYTES] = bytes.try_into().map_err(|_| Error::WrongLength)?;
-        Ok(Self(bytes))
+        let bytes: [u8; 32] = bytes.try_into().map_err(|_| Error::WrongLength)?;
+        Ok(Self {
+            bytes,
+            _kind: PhantomData,
+        })
     }
 }
 
-impl AsRef<[u8]> for Confirm {
+impl<S> AsRef<[u8]> for Confirm<S> {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        &self.bytes
     }
 }
 
-impl fmt::Debug for Confirm {
+impl<S> fmt::Debug for Confirm<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Confirm").field(&self.0).finish()
+        f.debug_tuple("Confirm").field(&self.bytes).finish()
     }
 }
 
@@ -188,24 +244,24 @@ impl ProverSecrets {
     /// `context`, `id_prover`, and `id_verifier` go into the transcript under
     /// an 8-byte little-endian length, including when empty. Each is at most
     /// 1024 bytes.
-    pub fn start(
+    pub fn start<S: 'static>(
         self,
-        suite: &'static Suite,
+        suite: &'static Suite<S>,
         context: &[u8],
         id_prover: &[u8],
         id_verifier: &[u8],
-    ) -> Result<(Share, ProverAwaiting), Error> {
+    ) -> Result<(Share<S>, ProverAwaiting<S>), Error> {
         self.start_at(suite, context, id_prover, id_verifier, None)
     }
 
-    fn start_at(
+    fn start_at<S: 'static>(
         self,
-        suite: &'static Suite,
+        suite: &'static Suite<S>,
         context: &[u8],
         id_prover: &[u8],
         id_verifier: &[u8],
         scalar: Option<Scalar>,
-    ) -> Result<(Share, ProverAwaiting), Error> {
+    ) -> Result<(Share<S>, ProverAwaiting<S>), Error> {
         let _entry = Entry::new_secret();
         let labels = Labels::new(context, id_prover, id_verifier)?;
         let x = match scalar {
@@ -220,7 +276,8 @@ impl ProverSecrets {
             w0: self.w0.copy(),
             w1: self.w1.copy(),
             x,
-            share_p: share.0,
+            share_p: share.bytes,
+            _kind: PhantomData,
         };
         Ok((share, state))
     }
@@ -254,7 +311,12 @@ impl VerifierRecord {
         let _entry = Entry::new_secret();
         let w0 = Scalar::from_be_reduced(w0)?;
         let w1 = Scalar::from_be_reduced(w1)?;
-        let l = publish_point(Affine::mul_base(&w1))?;
+        // L is stored and later sent as a public point. Declassify the
+        // affine value itself; re-encoding it would decode the same bytes.
+        let l = ct::into_public(Affine::mul_base(&w1));
+        if !l.on_curve() {
+            return Err(Error::Fault);
+        }
         Ok(Self { w0, l })
     }
 
@@ -272,26 +334,26 @@ impl VerifierRecord {
     /// Answers `prover`'s share with this verifier's share and confirmation.
     ///
     /// The labels are the same strings the prover passed to [`ProverSecrets::start`].
-    pub fn start(
+    pub fn start<S: 'static>(
         self,
-        suite: &'static Suite,
+        suite: &'static Suite<S>,
         context: &[u8],
         id_prover: &[u8],
         id_verifier: &[u8],
-        prover: &Share,
-    ) -> Result<(Share, Confirm, VerifierAwaiting), Error> {
+        prover: &Share<S>,
+    ) -> VerifierStart<S> {
         self.start_at(suite, context, id_prover, id_verifier, prover, None)
     }
 
-    fn start_at(
+    fn start_at<S: 'static>(
         self,
-        suite: &'static Suite,
+        suite: &'static Suite<S>,
         context: &[u8],
         id_prover: &[u8],
         id_verifier: &[u8],
-        prover: &Share,
+        prover: &Share<S>,
         scalar: Option<Scalar>,
-    ) -> Result<(Share, Confirm, VerifierAwaiting), Error> {
+    ) -> VerifierStart<S> {
         let _entry = Entry::new_secret();
         let labels = Labels::new(context, id_prover, id_verifier)?;
         let y = match scalar {
@@ -302,7 +364,13 @@ impl VerifierRecord {
         let peer = Affine::from_uncompressed(prover.as_ref())?;
         let share_v = publish(n.mul(&self.w0).add(Affine::mul_base(&y)))?;
         let diff = peer.add(m.mul(&self.w0).negate());
-        let z = secret_point(diff.mul(&y))?;
+        // X = w0*M makes the difference the identity. Its affine image is
+        // (0, 0), which the scalar multiplication does not accept. Multiply
+        // the generator instead, then reject. RFC 9383 allows that abort.
+        // The bit is declassified once, after the same multiplication and
+        // transcript work as a share that is not the identity.
+        let (z_point, identity) = mul_defined(diff, &y);
+        let z = secret_point(z_point)?;
         let v = secret_point(self.l.mul(&y))?;
         let keys = schedule_keys(
             suite.schedule,
@@ -315,15 +383,19 @@ impl VerifierRecord {
                 &self.w0,
             )?,
         )?;
-        let confirm_v = mac(keys.verifier_key(), prover.as_ref());
-        let confirm_p = mac(keys.prover_key(), share_v.as_ref());
+        let confirm_v: Confirm<S> = mac(keys.verifier_key(), prover.as_ref());
+        let confirm_p: Confirm<S> = mac(keys.prover_key(), share_v.as_ref());
         let mut shared = [0u8; 32];
         shared[..keys.shared().len()].copy_from_slice(keys.shared());
         let state = VerifierAwaiting {
-            confirm_p: confirm_p.0,
+            confirm_p: confirm_p.bytes,
             shared,
             shared_len: keys.shared().len() as u8,
+            _kind: PhantomData,
         };
+        if ct::into_public(identity) == 1 {
+            return Err(Error::BadSignature);
+        }
         Ok((share_v, confirm_v, state))
     }
 }
@@ -342,33 +414,38 @@ impl Drop for VerifierRecord {
 
 impl Zeroable for VerifierRecord {}
 
+type VerifierStart<S> = Result<(Share<S>, Confirm<S>, VerifierAwaiting<S>), Error>;
+
 /// The prover, between its share and the verifier's confirmation.
-pub struct ProverAwaiting {
+pub struct ProverAwaiting<S> {
     schedule: Schedule,
     labels: Labels,
     w0: Scalar,
     w1: Scalar,
     x: Scalar,
-    share_p: [u8; Share::BYTES],
+    share_p: [u8; Affine::BYTES],
+    _kind: PhantomData<fn() -> S>,
 }
 
-impl ProverAwaiting {
+impl<S> ProverAwaiting<S> {
     /// Checks `confirm`, then returns this prover's confirmation and the shared key.
     ///
     /// Fails with [`Error::BadSignature`] when `confirm` is not the verifier's
-    /// tag over this prover's share. The shared key is not returned on failure.
+    /// tag over this prover's share, and when the verifier's share makes a
+    /// derived point the identity. The shared key is not returned on failure.
     pub fn finish(
         self,
-        verifier: &Share,
-        confirm: &Confirm,
-    ) -> Result<(Confirm, SharedKey), Error> {
+        verifier: &Share<S>,
+        confirm: &Confirm<S>,
+    ) -> Result<(Confirm<S>, SharedKey), Error> {
         let _entry = Entry::new_secret();
         let (_, n) = points()?;
         let peer = Affine::from_uncompressed(verifier.as_ref())?;
-        let w0 = self.w0.copy();
-        let diff = peer.add(n.mul(&w0).negate());
-        let z = secret_point(diff.mul(&self.x))?;
-        let v = secret_point(diff.mul(&self.w1))?;
+        let diff = peer.add(n.mul(&self.w0).negate());
+        let identity = diff.identity_mask();
+        let base = diff.select(Affine::generator(), identity);
+        let z = secret_point(base.mul(&self.x))?;
+        let v = secret_point(base.mul(&self.w1))?;
         let keys = schedule_keys(
             self.schedule,
             &transcript(
@@ -377,45 +454,49 @@ impl ProverAwaiting {
                 verifier.as_ref(),
                 z.as_slice(),
                 v.as_slice(),
-                &w0,
+                &self.w0,
             )?,
         )?;
-        let expect = mac(keys.verifier_key(), &self.share_p);
-        let confirm_p = mac(keys.prover_key(), verifier.as_ref());
+        let expect: Confirm<S> = mac(keys.verifier_key(), &self.share_p);
+        let confirm_p: Confirm<S> = mac(keys.prover_key(), verifier.as_ref());
         let key = SharedKey::new(keys.shared());
-        match ct::into_public(ct_equal(expect.as_ref(), confirm.as_ref())) {
+        // `identity` is 1 exactly when Y = w0*N. The confirmation check
+        // declassifies that bit together with the tag comparison.
+        let ok = ct_equal(expect.as_ref(), confirm.as_ref()) & (identity == 0);
+        match ct::into_public(ok) {
             true => Ok((confirm_p, key)),
             false => Err(Error::BadSignature),
         }
     }
 }
 
-impl fmt::Debug for ProverAwaiting {
+impl<S> fmt::Debug for ProverAwaiting<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProverAwaiting").finish_non_exhaustive()
     }
 }
 
-impl Drop for ProverAwaiting {
+impl<S> Drop for ProverAwaiting<S> {
     fn drop(&mut self) {
         zeroise_value(self);
     }
 }
 
-impl Zeroable for ProverAwaiting {}
+impl<S> Zeroable for ProverAwaiting<S> {}
 
 /// The verifier, waiting for the prover's confirmation.
-pub struct VerifierAwaiting {
-    confirm_p: [u8; Confirm::BYTES],
+pub struct VerifierAwaiting<S> {
+    confirm_p: [u8; 32],
     shared: [u8; 32],
     shared_len: u8,
+    _kind: PhantomData<fn() -> S>,
 }
 
-impl VerifierAwaiting {
+impl<S> VerifierAwaiting<S> {
     /// Returns the shared key when `confirm` is the prover's tag.
     ///
     /// Fails with [`Error::BadSignature`] otherwise, and the key is wiped.
-    pub fn finish(self, confirm: &Confirm) -> Result<SharedKey, Error> {
+    pub fn finish(self, confirm: &Confirm<S>) -> Result<SharedKey, Error> {
         let _entry = Entry::new_secret();
         let key = SharedKey::new(&self.shared[..usize::from(self.shared_len)]);
         match ct::into_public(ct_equal(&self.confirm_p, confirm.as_ref())) {
@@ -425,19 +506,19 @@ impl VerifierAwaiting {
     }
 }
 
-impl fmt::Debug for VerifierAwaiting {
+impl<S> fmt::Debug for VerifierAwaiting<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VerifierAwaiting").finish_non_exhaustive()
     }
 }
 
-impl Drop for VerifierAwaiting {
+impl<S> Drop for VerifierAwaiting<S> {
     fn drop(&mut self) {
         zeroise_value(self);
     }
 }
 
-impl Zeroable for VerifierAwaiting {}
+impl<S> Zeroable for VerifierAwaiting<S> {}
 
 struct Label {
     bytes: [u8; MAX_LABEL],
@@ -481,7 +562,7 @@ impl Labels {
 impl Zeroable for Label {}
 impl Zeroable for Labels {}
 impl Zeroable for Schedule {}
-impl Zeroable for Confirm {}
+impl<S> Zeroable for Confirm<S> {}
 
 struct Keys {
     prover: [u8; 32],
@@ -507,10 +588,33 @@ impl Keys {
 }
 
 fn points() -> Result<(Affine, Affine), Error> {
-    Ok((
+    // Decompress once. Later handshakes reuse the affine points. The
+    // uncompressed constants are what the transcript hashes, and they have
+    // to be those decompressions.
+    static POINTS: std::sync::OnceLock<(Affine, Affine)> = std::sync::OnceLock::new();
+    if let Some(points) = POINTS.get() {
+        return Ok(*points);
+    }
+    let decoded = (
         Affine::from_compressed(&M_COMPRESSED)?,
         Affine::from_compressed(&N_COMPRESSED)?,
-    ))
+    );
+    if decoded.0.to_uncompressed() != M_UNCOMPRESSED
+        || decoded.1.to_uncompressed() != N_UNCOMPRESSED
+    {
+        return Err(Error::Fault);
+    }
+    Ok(*POINTS.get_or_init(|| decoded))
+}
+
+/// `scalar * point`, with the generator standing in for the identity.
+///
+/// Returns the product and 1 when `point` was the identity. `(0, 0)` is not
+/// a curve point, and the scalar multiplication is unspecified on it.
+fn mul_defined(point: Affine, scalar: &Scalar) -> (Affine, u64) {
+    let identity = point.identity_mask();
+    let base = point.select(Affine::generator(), identity);
+    (base.mul(scalar), identity)
 }
 
 fn random_scalar() -> Result<Scalar, Error> {
@@ -527,7 +631,7 @@ fn random_scalar() -> Result<Scalar, Error> {
 }
 
 struct EncodedPoint {
-    bytes: [u8; Share::BYTES],
+    bytes: [u8; Affine::BYTES],
     len: u8,
 }
 
@@ -537,51 +641,29 @@ impl EncodedPoint {
     }
 }
 
-/// SEC 1 encoding after a curve check. The identity, which an opposite sum
-/// becomes, is the single octet `0x00`. `public` declassifies the bytes.
+/// Uncompressed SEC 1 encoding after a curve check. `public` declassifies
+/// the bytes. An off-curve point is a protocol rejection: a hostile share
+/// can produce one, and that is not an internal fault.
 fn encode(point: Affine, public: bool) -> Result<EncodedPoint, Error> {
     let bytes = point.to_uncompressed();
-    let zeros = [0u8; Share::BYTES - 1];
-    // `(0, 0)` is the affine image of the identity, not a curve point.
-    let identity = ct_equal(&bytes[1..], &zeros) & ct_equal(&bytes[..1], &[0x04]);
-    if ct::into_public(identity) {
-        let mut stored = [0u8; Share::BYTES];
-        stored[0] = 0x00;
-        if public {
-            ct::public_slice(&stored[..1]);
-        }
-        return Ok(EncodedPoint {
-            bytes: stored,
-            len: 1,
-        });
+    if !ct::into_public(point.on_curve()) {
+        return Err(Error::BadSignature);
     }
-    match ct::into_public(point.on_curve()) {
-        true => {
-            if public {
-                ct::public_slice(&bytes);
-            }
-            Ok(EncodedPoint {
-                bytes,
-                len: Share::BYTES as u8,
-            })
-        }
-        false => Err(Error::Fault),
+    if public {
+        ct::public_slice(&bytes);
     }
+    Ok(EncodedPoint {
+        bytes,
+        len: Affine::BYTES as u8,
+    })
 }
 
-fn publish(point: Affine) -> Result<Share, Error> {
+fn publish<S>(point: Affine) -> Result<Share<S>, Error> {
     let encoded = encode(point, true)?;
-    if encoded.len != Share::BYTES as u8 {
-        return Err(KeyFormatError::NotOnCurve.into());
-    }
-    let mut bytes = [0u8; Share::BYTES];
-    bytes.copy_from_slice(&encoded.bytes);
-    Ok(Share(bytes))
-}
-
-fn publish_point(point: Affine) -> Result<Affine, Error> {
-    let bytes = publish(point)?;
-    Affine::from_uncompressed(bytes.as_ref())
+    Ok(Share {
+        bytes: encoded.bytes,
+        _kind: PhantomData,
+    })
 }
 
 fn secret_point(point: Affine) -> Result<EncodedPoint, Error> {
@@ -662,12 +744,15 @@ fn schedule_keys(schedule: Schedule, transcript_hash: &[u8; 32]) -> Result<Keys,
     Ok(keys)
 }
 
-fn mac(key: &[u8], message: &[u8]) -> Confirm {
+fn mac<S>(key: &[u8], message: &[u8]) -> Confirm<S> {
     let tag = hmac::sign(&hmac::Key::new(&hmac::HMAC_SHA256, key), message);
-    let mut bytes = [0u8; Confirm::BYTES];
+    let mut bytes = [0u8; 32];
     bytes.copy_from_slice(tag.as_ref());
     ct::public_slice(&bytes);
-    Confirm(bytes)
+    Confirm {
+        bytes,
+        _kind: PhantomData,
+    }
 }
 
 #[cfg(test)]
@@ -683,8 +768,8 @@ mod tests {
         Scalar::from_be_reduced(&hex(s)).unwrap()
     }
 
-    struct Vector {
-        suite: &'static Suite,
+    struct Vector<S: 'static> {
+        suite: &'static Suite<S>,
         context: &'static [u8],
         id_prover: &'static [u8],
         id_verifier: &'static [u8],
@@ -700,7 +785,7 @@ mod tests {
         shared: &'static str,
     }
 
-    fn run(vector: &Vector) {
+    fn run<S: 'static>(vector: &Vector<S>) {
         let prover = ProverSecrets::new(&hex(vector.w0), &hex(vector.w1)).unwrap();
         let from_w1 = VerifierRecord::from_w1(&hex(vector.w0), &hex(vector.w1)).unwrap();
         let loaded = VerifierRecord::from_record(&hex(vector.w0), &hex(vector.l)).unwrap();
@@ -989,10 +1074,12 @@ mod tests {
         let (share_v, confirm_v, _) = verifier
             .start(&RFC9383, b"ctx", b"a", b"b", &share_p)
             .unwrap();
-        let mut bad = confirm_v.0;
+        let mut bad = confirm_v.bytes;
         bad[0] ^= 1;
         assert_eq!(
-            prover_state.finish(&share_v, &Confirm(bad)).err(),
+            prover_state
+                .finish(&share_v, &confirm_of::<Rfc9383>(bad))
+                .err(),
             Some(Error::BadSignature)
         );
 
@@ -1003,18 +1090,18 @@ mod tests {
             .start(&RFC9383, b"ctx", b"a", b"b", &share_p)
             .unwrap();
         let (confirm_p, _) = prover_state.finish(&share_v, &confirm_v).unwrap();
-        let mut bad = confirm_p.0;
+        let mut bad = confirm_p.bytes;
         bad[3] ^= 0x80;
         assert_eq!(
-            verifier_state.finish(&Confirm(bad)).err(),
+            verifier_state.finish(&confirm_of::<Rfc9383>(bad)).err(),
             Some(Error::BadSignature)
         );
 
-        let mut off = share_p.0;
+        let mut off = share_p.bytes;
         off[10] ^= 1;
-        assert!(Share::from_bytes(&off).is_err());
-        assert!(Share::from_bytes(&off[..64]).is_err());
-        assert!(Confirm::from_bytes(&[0; 16]).is_err());
+        assert!(Share::<Rfc9383>::from_bytes(&off).is_err());
+        assert!(Share::<Rfc9383>::from_bytes(&off[..64]).is_err());
+        assert!(Confirm::<Rfc9383>::from_bytes(&[0; 16]).is_err());
         assert!(ProverSecrets::new(&[], &w1).is_err());
         assert!(ProverSecrets::new(&[0; 32], &w1).is_err());
         assert!(VerifierRecord::from_w1(&w0, &[0; 129]).is_err());
@@ -1025,9 +1112,9 @@ mod tests {
         );
     }
 
-    /// RFC 9383 still evaluates `X - w0*M` when `X` is `-w0*M` (a doubling)
-    /// or `w0*M` (the identity). The confirmation is the one those points
-    /// produce, and the identity is the SEC 1 octet `0x00`.
+    /// `X = -w0*M` is a doubling and still confirms. `X = w0*M` makes the
+    /// difference the identity; that is rejected after the same multiplication
+    /// rather than encoded, and `(0, 0)` is not a scalar-multiplication input.
     #[test]
     fn exceptional_peer_share_follows_rfc9383() {
         let w0 = [0x31u8; 40];
@@ -1041,8 +1128,9 @@ mod tests {
         let labels = Labels::new(b"ctx", b"client", b"").unwrap();
 
         let negated = m.mul(&w0s).negate();
-        let share_x = Share(negated.to_uncompressed());
-        let share_v = Share(n.mul(&w0s).add(Affine::mul_base(&y)).to_uncompressed());
+        let share_x = point_share::<Rfc9383>(negated.to_uncompressed());
+        let share_v =
+            point_share::<Rfc9383>(n.mul(&w0s).add(Affine::mul_base(&y)).to_uncompressed());
         let z = negated.mul(&two).mul(&y);
         let v = Affine::mul_base(&w1s).mul(&y);
         let tt = transcript(
@@ -1062,33 +1150,21 @@ mod tests {
         assert_eq!(got_share.as_ref(), share_v.as_ref());
         assert_eq!(
             got_confirm.as_ref(),
-            mac(keys.verifier_key(), share_x.as_ref()).as_ref()
+            mac::<Rfc9383>(keys.verifier_key(), share_x.as_ref()).as_ref()
         );
         let key = state
-            .finish(&mac(keys.prover_key(), share_v.as_ref()))
+            .finish(&mac::<Rfc9383>(keys.prover_key(), share_v.as_ref()))
             .unwrap();
         assert_eq!(key.as_ref(), keys.shared());
 
-        // X = w0*M makes Z the identity. SEC 1 encodes it as one zero byte.
-        let share_x = Share(m.mul(&w0s).to_uncompressed());
-        let v = Affine::mul_base(&w1s).mul(&y);
-        let tt = transcript(
-            &labels,
-            share_x.as_ref(),
-            share_v.as_ref(),
-            &[0x00],
-            &v.to_uncompressed(),
-            &w0s,
-        )
-        .unwrap();
-        let keys = schedule_keys(Schedule::Rfc9383, &tt).unwrap();
+        // X = w0*M makes the difference the identity. The verifier rejects it.
+        let share_x = point_share::<Rfc9383>(m.mul(&w0s).to_uncompressed());
         let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
-        let (_, got_confirm, _) = verifier
-            .start_at(&RFC9383, b"ctx", b"client", b"", &share_x, Some(y.copy()))
-            .unwrap();
         assert_eq!(
-            got_confirm.as_ref(),
-            mac(keys.verifier_key(), share_x.as_ref()).as_ref()
+            verifier
+                .start_at(&RFC9383, b"ctx", b"client", b"", &share_x, Some(y.copy()))
+                .err(),
+            Some(Error::BadSignature)
         );
 
         // The prover's subtraction, Y = -w0*N.
@@ -1097,7 +1173,7 @@ mod tests {
             .start_at(&RFC9383, b"ctx", b"client", b"", Some(x.copy()))
             .unwrap();
         let negated = n.mul(&w0s).negate();
-        let share_y = Share(negated.to_uncompressed());
+        let share_y = point_share::<Rfc9383>(negated.to_uncompressed());
         let diff = negated.mul(&two);
         let z = diff.mul(&x);
         let v = diff.mul(&w1s);
@@ -1112,13 +1188,60 @@ mod tests {
         .unwrap();
         let keys = schedule_keys(Schedule::Rfc9383, &tt).unwrap();
         let (confirm_p, key) = prover
-            .finish(&share_y, &mac(keys.verifier_key(), share_p.as_ref()))
+            .finish(
+                &share_y,
+                &mac::<Rfc9383>(keys.verifier_key(), share_p.as_ref()),
+            )
             .unwrap();
         assert_eq!(
             confirm_p.as_ref(),
-            mac(keys.prover_key(), share_y.as_ref()).as_ref()
+            mac::<Rfc9383>(keys.prover_key(), share_y.as_ref()).as_ref()
         );
         assert_eq!(key.as_ref(), keys.shared());
+
+        // Y = w0*N makes the prover's difference the identity.
+        let prover = ProverSecrets::new(&w0, &w1).unwrap();
+        let (_, prover) = prover
+            .start_at(&RFC9383, b"ctx", b"client", b"", Some(x))
+            .unwrap();
+        let share_y = point_share::<Rfc9383>(n.mul(&w0s).to_uncompressed());
+        assert_eq!(
+            prover
+                .finish(&share_y, &confirm_of::<Rfc9383>([0; 32]))
+                .err(),
+            Some(Error::BadSignature)
+        );
+    }
+
+    #[test]
+    fn m_and_n_match_their_compressed_form() {
+        let _entry = Entry::new_public();
+        assert_eq!(
+            Affine::from_compressed(&M_COMPRESSED)
+                .unwrap()
+                .to_uncompressed(),
+            M_UNCOMPRESSED
+        );
+        assert_eq!(
+            Affine::from_compressed(&N_COMPRESSED)
+                .unwrap()
+                .to_uncompressed(),
+            N_UNCOMPRESSED
+        );
+    }
+
+    fn point_share<S>(bytes: [u8; 65]) -> Share<S> {
+        Share {
+            bytes,
+            _kind: PhantomData,
+        }
+    }
+
+    fn confirm_of<S>(bytes: [u8; 32]) -> Confirm<S> {
+        Confirm {
+            bytes,
+            _kind: PhantomData,
+        }
     }
 
     #[test]
@@ -1127,10 +1250,15 @@ mod tests {
         let w1 = [0x41; 32];
         let x = scalar("0000000000000000000000000000000000000000000000000000000000000007");
         let y = scalar("000000000000000000000000000000000000000000000000000000000000000b");
-        let mut keys = Vec::new();
-        for suite in [&RFC9383, &MATTER_PASE] {
-            let prover = ProverSecrets::new(&w0, &w1).unwrap();
-            let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
+        fn exchange<S: 'static>(
+            suite: &'static Suite<S>,
+            w0: &[u8],
+            w1: &[u8],
+            x: &Scalar,
+            y: &Scalar,
+        ) -> Vec<u8> {
+            let prover = ProverSecrets::new(w0, w1).unwrap();
+            let verifier = VerifierRecord::from_w1(w0, w1).unwrap();
             let (share_p, prover) = prover
                 .start_at(suite, b"ctx", b"client", b"", Some(x.copy()))
                 .unwrap();
@@ -1140,30 +1268,11 @@ mod tests {
             let (confirm_p, key) = prover.finish(&share_v, &confirm_v).unwrap();
             let other = verifier.finish(&confirm_p).unwrap();
             assert_eq!(key.as_ref(), other.as_ref());
-            keys.push(key.as_ref().to_vec());
+            key.as_ref().to_vec()
         }
-        assert_ne!(keys[0], keys[1]);
-    }
-
-    /// The two schedules are one type, so a mixed handshake compiles. The
-    /// confirmation check is what refuses it.
-    #[test]
-    fn mixed_suites_fail_confirmation() {
-        let w0 = [0x31u8; 32];
-        let w1 = [0x41u8; 32];
-        let x = scalar("0000000000000000000000000000000000000000000000000000000000000007");
-        let y = scalar("000000000000000000000000000000000000000000000000000000000000000b");
-        let prover = ProverSecrets::new(&w0, &w1).unwrap();
-        let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
-        let (share_p, prover) = prover
-            .start_at(&RFC9383, b"ctx", b"client", b"", Some(x))
-            .unwrap();
-        let (share_v, confirm_v, _) = verifier
-            .start_at(&MATTER_PASE, b"ctx", b"client", b"", &share_p, Some(y))
-            .unwrap();
-        assert_eq!(
-            prover.finish(&share_v, &confirm_v).err(),
-            Some(Error::BadSignature)
+        assert_ne!(
+            exchange(&RFC9383, &w0, &w1, &x, &y),
+            exchange(&MATTER_PASE, &w0, &w1, &x, &y)
         );
     }
 
@@ -1251,9 +1360,9 @@ mod tests {
         let w1 = [0xa5; 40];
         ct::secret_slice(&w0);
         ct::secret_slice(&w1);
-        for suite in [&RFC9383, &MATTER_PASE] {
-            let prover = ProverSecrets::new(&w0, &w1).unwrap();
-            let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
+        fn one<S: 'static>(suite: &'static Suite<S>, w0: &[u8], w1: &[u8]) {
+            let prover = ProverSecrets::new(w0, w1).unwrap();
+            let verifier = VerifierRecord::from_w1(w0, w1).unwrap();
             let (share_p, prover) = prover
                 .start(suite, b"CHIP", b"commissionee", b"commissioner")
                 .unwrap();
@@ -1266,5 +1375,7 @@ mod tests {
             ct::public_slice(key_v.as_ref());
             assert_eq!(key_p.as_ref(), key_v.as_ref());
         }
+        one(&RFC9383, &w0, &w1);
+        one(&MATTER_PASE, &w0, &w1);
     }
 }

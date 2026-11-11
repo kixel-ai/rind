@@ -401,12 +401,10 @@ pub mod hkdf {
 ///
 /// [`RFC9383`](spake2plus::RFC9383) is RFC 9383. [`MATTER_PASE`](spake2plus::MATTER_PASE)
 /// is draft-bar-cfrg-spake2plus-01, the key schedule Matter's commissioning uses.
-/// The group, the points M and N, and the transcript are the same, and both
-/// values are the same [`Suite`](spake2plus::Suite) type. A prover and a
-/// verifier on different suites still exchange shares; `finish` then returns
-/// [`Error::BadSignature`](crate::error::Error::BadSignature) because the
-/// confirmation keys differ. The caller stretches the password and passes
-/// `w0` and `w1`. A verifier stores `w0` and `L = w1 * G`, not `w1`.
+/// The group, the points M and N, and the transcript are the same. The suites
+/// are different types, so a share from one does not type-check as the other's.
+/// The caller stretches the password and passes `w0` and `w1`. A verifier
+/// stores `w0` and `L = w1 * G`, not `w1`.
 ///
 /// ```
 /// use rind::spake2plus::{ProverSecrets, RFC9383, VerifierRecord};
@@ -428,8 +426,8 @@ pub mod hkdf {
 /// ```
 pub mod spake2plus {
     pub use super::high::spake2plus::{
-        Confirm, MATTER_PASE, ProverAwaiting, ProverSecrets, RFC9383, Share, SharedKey, Suite,
-        VerifierAwaiting, VerifierRecord,
+        Confirm, MATTER_PASE, MatterPase, ProverAwaiting, ProverSecrets, RFC9383, Rfc9383, Share,
+        SharedKey, Suite, VerifierAwaiting, VerifierRecord,
     };
 }
 

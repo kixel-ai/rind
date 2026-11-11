@@ -1,7 +1,7 @@
 //! The public SPAKE2+ loaders are library entry points. In a debug build
 //! they panic if they do secret or public arithmetic without an `Entry`.
 
-use rind::spake2plus::{ProverSecrets, Share, VerifierRecord};
+use rind::spake2plus::{ProverSecrets, Rfc9383, Share, VerifierRecord};
 
 /// Uncompressed P-256 generator.
 const GENERATOR: &[u8] = &[
@@ -19,7 +19,7 @@ fn entry_points_load_password_scalars_and_shares() {
     ProverSecrets::new(&w0, &w1).unwrap();
     VerifierRecord::from_w1(&w0, &w1).unwrap();
     VerifierRecord::from_record(&w0, GENERATOR).unwrap();
-    let share = Share::from_bytes(GENERATOR).unwrap();
+    let share = Share::<Rfc9383>::from_bytes(GENERATOR).unwrap();
     assert_eq!(share.as_ref(), GENERATOR);
-    assert!(Share::from_bytes(&[0x04; 65]).is_err());
+    assert!(Share::<Rfc9383>::from_bytes(&[0x04; 65]).is_err());
 }
