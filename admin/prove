@@ -430,7 +430,9 @@ check_quote X86_64/AesNi aes_ni_items
 check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static AES_128_GCM:' 'pub static AES_192_GCM:' 'pub static AES_256_GCM:' 'pub static CHACHA20_POLY1305:' 'impl Key {' \
     'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \
-    'pub struct Nonce(' 'impl Nonce {' 'pub struct Tag(' 'impl AsRef<[u8]> for Tag {'
+    'pub struct Nonce(' 'impl Nonce {' 'pub struct Tag(' 'impl AsRef<[u8]> for Tag {' \
+    'pub struct RandomizedNonceKey(' 'impl RandomizedNonceKey {' 'pub struct RandomNonce(' \
+    'impl AsRef<[u8]> for RandomNonce {' 'impl From<[u8; 24]> for RandomNonce {'
 gcm_items() {
     items rind/src/cipher.rs 'pub struct Algorithm {' 'pub static AES_128:' 'pub static AES_192:' 'pub static AES_256:'
     items rind/src/aead/gcm.rs 'pub enum TagLength {' 'impl TagLength {' "pub struct Iv<'a>(&'a [u8]);" \
@@ -510,7 +512,10 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # from its `Mask` impl down to HACL*'s rounds, which are Rust and translated
 # too; AES's key and block cipher are opaque. Then Ed25519 from
 # `high::signature`'s key pair and `high::ed25519` down to s2n-bignum's
-# routines and the SHA-512 context.
+# routines and the SHA-512 context. On x86_64, ChaCha20-Poly1305 and
+# XChaCha20-Poly1305 from their keys down to the call of aws-lc's one-pass
+# routine, which is opaque, as are the separate passes CPUs without SSE4.1
+# run, with HChaCha20 over HACL*'s rounds.
 #
 # Aeneas cannot translate function pointers, through which `PrivateKey`
 # reaches each curve's `Agree` impl, `HeaderProtectionKey` each cipher's
@@ -692,7 +697,11 @@ extract x86_64 X86_64 \
     --opaque crate::aead::Sealer \
     --opaque crate::aead::Ops \
     --start-from '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}' \
-    --opaque '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}::_' \
+    --start-from crate::mid::xchacha20poly1305::XChaCha20Poly1305::new \
+    --start-from crate::mid::xchacha20poly1305::XChaCha20Poly1305::encrypt \
+    --start-from crate::mid::xchacha20poly1305::XChaCha20Poly1305::decrypt \
+    --include crate::low::x86_64::chacha20poly1305::seal \
+    --include crate::low::x86_64::chacha20poly1305::open \
     --include crate::mid::aes::expand_key \
     --include crate::mid::aes::check_gcm_lengths \
     --include crate::mid::aes::check_counter \

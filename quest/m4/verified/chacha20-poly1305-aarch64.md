@@ -13,4 +13,4 @@ ChaCha20-Poly1305, XChaCha20-Poly1305, and `cipher::ChaCha20` earn the ✓ on aa
 
 ## Required
 
-- [ChaCha20-Poly1305 is proven on x86_64](/quest/m4/verified/chacha20-poly1305-x86.md) - the HOL Light ChaCha20 and Poly1305 specs and the shared glue's proof
+- [ChaCha20-Poly1305 is proven on x86_64](/quest/m4/verified/chacha20-poly1305-x86.md) - the HOL Light ChaCha20 and Poly1305 specs; the glue's Lean proof above aws-lc's routine, `proofs/Rind/X86_64/ChaCha20Poly1305.lean`, and the Lean specs it proves against have landed
