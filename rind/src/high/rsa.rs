@@ -782,6 +782,57 @@ mod tests {
     use super::*;
     use crate::high::hmac_drbg::HmacDrbg;
     use crate::mid::rng::SliceRandomSource;
+    use crate::test::{Acvp, acvp};
+
+    /// Verifies each test's signature under its group's key, returning
+    /// `None` for a group whose public exponent rind refuses: above 33 bits,
+    /// as aws-lc refuses.
+    fn acvp_verify(group: &serde_json::Value, test: &serde_json::Value) -> Option<bool> {
+        let e = group.hex("e");
+        let key = VerifyingKey::from_components(&group.hex("n"), &e);
+        if e.len() * 8 - e[0].leading_zeros() as usize > 33 {
+            assert_eq!(key.err(), Some(KeyFormatError::RsaExponent.into()));
+            return None;
+        }
+        let key = key.unwrap();
+        let (signature, message) = (test.hex("signature"), test.hex("message"));
+        let salt = Some(PssSalt::Len(u16::try_from(group.int("saltLen")).unwrap()));
+        let result = match (group.str("sigType"), group.str("hashAlg")) {
+            ("pkcs1v1.5", "SHA2-256") => key.verify_pkcs1_sha256(&signature, &message),
+            ("pkcs1v1.5", "SHA2-384") => key.verify_pkcs1_sha384(&signature, &message),
+            ("pkcs1v1.5", "SHA2-512") => key.verify_pkcs1_sha512(&signature, &message),
+            ("pss", "SHA2-256") => key.verify_pss_sha256(salt, &signature, &message),
+            ("pss", "SHA2-384") => key.verify_pss_sha384(salt, &signature, &message),
+            ("pss", "SHA2-512") => key.verify_pss_sha512(salt, &signature, &message),
+            other => panic!("unexpected signature type {other:?}"),
+        };
+        if group.str("sigType") == "pss" {
+            assert_eq!(group.str("maskFunction"), "mgf1");
+        }
+        Some(result.is_ok())
+    }
+
+    #[test]
+    fn acvp_sig_ver() {
+        for group in acvp("RSA-SigVer-FIPS186-5") {
+            for test in group.tests() {
+                if let Some(valid) = acvp_verify(&group, test) {
+                    assert_eq!(valid, test.flag("testPassed"), "{}", test.str("reason"));
+                }
+            }
+        }
+    }
+
+    /// ACVP's signing answers come from keys it does not publish, so they
+    /// are checked as a validator checks a signer's: they must verify.
+    #[test]
+    fn acvp_sig_gen() {
+        for group in acvp("RSA-SigGen-FIPS186-5") {
+            for test in group.tests() {
+                assert_ne!(acvp_verify(&group, test), Some(false));
+            }
+        }
+    }
 
     fn check_all_algs(buf: &mut [u8], private: &SigningKey, public: &VerifyingKey) {
         let sig = private.sign_pkcs1_sha256(buf, b"hello").unwrap();
@@ -1051,6 +1102,7 @@ mod tests {
     /// `admin/ctgrind` this also checks Miller-Rabin on them and the
     /// derivation are constant time.
     #[test]
+    #[cfg(not(miri))]
     fn key_generation_matches_aws_lc() {
         use aws_lc_rs::encoding::AsDer;
         use aws_lc_rs::rsa::{KeyPair, KeySize};
@@ -1312,6 +1364,7 @@ mod tests {
                 matches!(SigningKey::from_pkcs1_der(&der), Err(Error::KeyRejected(_))),
                 "{name}"
             );
+            #[cfg(not(miri))]
             assert!(aws_lc_rs::rsa::KeyPair::from_der(&der).is_err(), "{name}");
         }
 
@@ -1323,6 +1376,7 @@ mod tests {
             ..key.clone()
         }
         .encode();
+        #[cfg(not(miri))]
         aws_lc_rs::rsa::KeyPair::from_der(&der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(&der).unwrap();
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
@@ -1346,6 +1400,7 @@ mod tests {
         let der = include_bytes!("rsa/rsa2048-q-above-p.der");
         let key = Pkcs1::decode(der);
         assert!(key.q.len() == key.p.len() && key.q > key.p);
+        #[cfg(not(miri))]
         aws_lc_rs::rsa::KeyPair::from_der(der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(der).unwrap();
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
@@ -1358,6 +1413,7 @@ mod tests {
         let der = include_bytes!("rsa/rsa2086-unbalanced.der");
         let key = Pkcs1::decode(der);
         assert!(key.q.len() > key.p.len());
+        #[cfg(not(miri))]
         aws_lc_rs::rsa::KeyPair::from_der(der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(der).unwrap();
         check_all_algs(&mut [0u8; 261], &private_key, &private_key.public_key());
@@ -1401,6 +1457,7 @@ mod tests {
             ..key
         }
         .encode();
+        #[cfg(not(miri))]
         aws_lc_rs::rsa::KeyPair::from_der(&der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(&der).unwrap();
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
@@ -1456,6 +1513,7 @@ mod tests {
             }
             .encode();
             let ours = SigningKey::from_pkcs1_der(&der).map(|_| ()).err();
+            #[cfg(not(miri))]
             assert!(
                 aws_lc_rs::rsa::KeyPair::from_der(&der).is_ok() == (e == [1, 0, 1]),
                 "{e:?}"
@@ -1488,6 +1546,7 @@ mod tests {
             pkcs1::DIGESTINFO_SHA256,
             hash::Sha256::hash(b"hello").as_ref(),
         );
+        #[cfg(not(miri))]
         assert!(
             aws_lc_rs::signature::RsaPublicKeyComponents {
                 n: &key.n[..],

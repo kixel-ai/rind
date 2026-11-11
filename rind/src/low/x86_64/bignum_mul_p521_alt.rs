@@ -71,6 +71,7 @@ macro_rules! combads {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p521/bignum_mul_p521_alt.S.
 /// Multiply modulo p_521, z := (x * y) mod p_521, assuming x and y reduced
 ///
 /// Inputs x[9], y[9]; output z[9]
@@ -340,4 +341,16 @@ pub(crate) fn bignum_mul_p521_alt(z: &mut [u64; 9], x: &[u64; 9], y: &[u64; 9]) 
         out("rcx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_mul_p521_alt,
+        &mut crate::low::abi::Aligned([0; 9]).0,
+        &crate::low::abi::Aligned([0; 9]).0,
+        &crate::low::abi::Aligned([0; 9]).0
+    );
 }

@@ -1322,6 +1322,7 @@ macro_rules! cmsub41_p521 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p521/p521_jdouble.S.
 /// Point doubling on NIST curve P-521 in Jacobian coordinates
 ///
 ///
@@ -1422,4 +1423,19 @@ pub(crate) fn p521_jdouble(p3: &mut [u64; 27], p1: &[u64; 27]) {
         out("rdx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        p521_jdouble,
+        &mut crate::low::abi::Aligned([0; 27]).0,
+        &crate::low::abi::Aligned([0; 27]).0
+    );
 }

@@ -24,6 +24,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = a, RDX = rc, R8 = rho8, R9 = rho56
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/sha3/sha3_keccak4_f1600_alt.S.
 /// Keccak-f1600 permutation for SHA3, batch of four independent operations
 ///
 /// Input a[100], rc[24], rho8[4], rho56[4]; output a[100]
@@ -681,4 +682,20 @@ pub(crate) fn sha3_keccak4_f1600(
         out("zmm9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !std::arch::is_x86_feature_detected!("avx2") {
+        return;
+    }
+    crate::low::abi::call!(
+        sha3_keccak4_f1600,
+        &mut crate::low::abi::Aligned([[0; 25]; 4]).0,
+        &crate::low::abi::Aligned([0; 24]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
 }

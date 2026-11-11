@@ -226,8 +226,10 @@ fn power5(z: &mut [u64], table: &[Row], m: &[u64], n0: u64, i: u64, adx: Option<
     // `bn_powerx5` runs.
     unsafe {
         match adx {
-            Some(_) => bn_powerx5(z, z, table, m, &n0, k as i32, i),
-            None => bn_power5(z, z, table, m, &n0, k as i32, i),
+            Some(_) => {
+                asm_call!(unsafe extern "sysv64" bn_powerx5(z, z, table, m, &n0, k as i32, i))
+            }
+            None => asm_call!(unsafe extern "sysv64" bn_power5(z, z, table, m, &n0, k as i32, i)),
         }
     };
 }
@@ -276,9 +278,12 @@ mont5_routine!(
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use proptest::prelude::*;
+
     use super::super::adx_mux::tests::Rng;
-    use super::super::{bignum_montifier, bignum_montmul, bignum_negmodinv};
+    use super::super::{bignum_montmul, bignum_negmodinv};
     use super::*;
+    use crate::test::bignum::{below, mod_exp_vectors, modulus, mul_r, words};
 
     // AVX2, where present, hides s2n-bignum's scalar gather from every other
     // test, so the two are checked against each other at every row, for
@@ -302,82 +307,72 @@ mod tests {
         }
     }
 
-    // Every other test runs only the path this CPU picks, so here each is
-    // checked against square-and-multiply over s2n-bignum's generic
-    // `bignum_montmul`, with and without `mulx` where the CPU has BMI2 and
-    // ADX, at widths either side of each multiple of eight.
-    #[test]
-    fn matches_square_and_multiply() {
-        let adx = HaveBmi2Adx::check();
-        let mut rng = Rng(0xbb67_ae85_84ca_a73b);
-        for k in [1, 2, 7, 8, 9, 16, 17, 20, 24, 32, 33, 48, 64] {
-            for case in 0..8 {
-                let mut m = rng.words::<64>(64 * k as u32);
-                let m = &mut m[..k];
-                // The widest modulus, then the narrowest with its top word
-                // set, which leaves `bn_power5`'s products furthest from
-                // reduced, then random ones.
-                match case {
-                    0 => m.fill(u64::MAX),
-                    1 => {
-                        m.fill(0);
-                        m[k - 1] = 1;
-                    }
-                    _ => m[k - 1] |= 1 << 63,
-                }
-                m[0] |= 1;
-                let mut n0 = [0];
-                bignum_negmodinv::bignum_negmodinv(&mut n0, &m[..1]);
-                let n0 = n0[0];
-
-                let mut one = [0; 64];
-                let one = &mut one[..k];
-                one[0] = 1;
-                let mut r = [0; 64];
-                let r = &mut r[..k];
-                let mut rr = [0; 64];
-                bignum_montifier::bignum_montifier(&mut rr[..k], m, &mut [0; 64][..k]);
-                bignum_montmul::bignum_montmul(r, &rr[..k], one, m);
-
-                // A base below `m`, with its extremes, zero and `m - 1`, and
-                // exponents of one word, of `k`, and of every bit set.
-                let mut x = rng.words::<64>(64 * k as u32);
-                x[k - 1] %= m[k - 1];
-                match case {
-                    2 => x[..k].fill(0),
-                    3 => {
-                        x[..k].copy_from_slice(m);
-                        x[0] -= 1;
-                    }
-                    _ => {}
-                }
-                let x = &x[..k];
-                let e = rng.words::<64>(64 * 64);
-                let e = match case {
-                    4 => &e[..1],
-                    5 => &[u64::MAX; 64][..k],
-                    _ => &e[..k],
-                };
-
-                let mut want = r.to_vec();
-                for i in (0..e.len() * 64).rev() {
-                    let mut t = vec![0; k];
-                    bignum_montmul::bignum_montmul(&mut t, &want, &want, m);
-                    if e[i / 64] >> (i % 64) & 1 == 1 {
-                        bignum_montmul::bignum_montmul(&mut want, &t, x, m);
-                    } else {
-                        want = t;
-                    }
-                }
-
-                let mut got = vec![0; k];
-                mont_exp_by(&mut got, x, r, e, m, n0, None);
-                assert_eq!(want, got, "{k} words, case {case}");
-                if adx.is_some() {
-                    mont_exp_by(&mut got, x, r, e, m, n0, adx);
-                    assert_eq!(want, got, "mulx, {k} words, case {case}");
-                }
+    /// `x^e` in Montgomery form modulo `m`, for `x` in it, by each path:
+    /// with and without `mulx` where the CPU has BMI2 and ADX.
+    fn each_path(x: &[u64], e: &[u64], m: &[u64]) -> Vec<(&'static str, Vec<u64>)> {
+        let k = m.len();
+        let mut n0 = [0];
+        bignum_negmodinv::bignum_negmodinv(&mut n0, &m[..1]);
+        let mut unit = vec![0; k];
+        unit[0] = 1;
+        let one = mul_r(&unit, m);
+        let mut out = Vec::new();
+        for (name, adx) in [("nohw", None), ("mulx", HaveBmi2Adx::check())] {
+            if name == "nohw" || adx.is_some() {
+                let mut z = vec![0; k];
+                mont_exp_by(&mut z, x, &one, e, m, n0[0], adx);
+                out.push((name, z));
             }
         }
+        out
+    }
+
+    /// A modulus of a width either side of a multiple of eight, a base
+    /// below it, and an exponent of edge words from one word to as wide.
+    fn operands() -> impl Strategy<Value = (Vec<u64>, Vec<u64>, Vec<u64>)> {
+        const WIDTHS: &[usize] = &[1, 2, 7, 8, 9, 16, 17, 20, 24, 32, 33, 48, 64];
+        prop::sample::select(WIDTHS)
+            .prop_flat_map(|k| modulus(64, k))
+            .prop_flat_map(|m| (Just(m.clone()), below(64, m.clone()), words(1, m.len())))
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        // Every other test runs only the path this CPU picks, so here each
+        // is checked against square-and-multiply over s2n-bignum's generic
+        // `bignum_montmul`.
+        #[test]
+        fn matches_square_and_multiply((m, x, e) in operands()) {
+            let k = m.len();
+            let mut unit = vec![0; k];
+            unit[0] = 1;
+            let mut want = mul_r(&unit, &m);
+            for i in (0..e.len() * 64).rev() {
+                let mut t = vec![0; k];
+                bignum_montmul::bignum_montmul(&mut t, &want, &want, &m);
+                if e[i / 64] >> (i % 64) & 1 == 1 {
+                    bignum_montmul::bignum_montmul(&mut want, &t, &x, &m);
+                } else {
+                    want = t;
+                }
+            }
+            for (name, got) in each_path(&x, &e, &m) {
+                prop_assert_eq!(&got, &want, "{}", name);
+            }
+        }
+    }
+
+    #[test]
+    fn aws_lc_mod_exp() {
+        let mut ran = 0;
+        for v in mod_exp_vectors() {
+            let want = mul_r(&v.want, &v.m);
+            for (name, got) in each_path(&mul_r(&v.a, &v.m), &v.e, &v.m) {
+                assert_eq!(got, want, "{name}, {}", v.at);
+                ran += 1;
+            }
+        }
+        assert!(ran > 0);
     }
 }

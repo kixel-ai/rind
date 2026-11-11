@@ -754,6 +754,7 @@ macro_rules! sub_p521 {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p521/p521_jadd_alt.S.
 /// Point addition on NIST curve P-521 in Jacobian coordinates
 ///
 ///
@@ -1040,4 +1041,16 @@ pub(crate) fn p521_jadd(p3: &mut [u64; 27], p1: &[u64; 27], p2: &[u64; 27]) {
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        p521_jadd,
+        &mut crate::low::abi::Aligned([0; 27]).0,
+        &crate::low::abi::Aligned([0; 27]).0,
+        &crate::low::abi::Aligned([0; 27]).0
+    );
 }

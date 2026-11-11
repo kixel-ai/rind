@@ -12,7 +12,7 @@
 //! And then use rustls as normal.
 //!
 //! Its API is rustls's `crypto::aws_lc_rs` provider's, item for item, short of
-//! what rind lacks: ML-KEM-1024, ML-DSA, and `hpke`.
+//! what rind lacks: ML-KEM-1024 and ML-DSA.
 
 use std::sync::Arc;
 
@@ -30,6 +30,9 @@ mod verify;
 
 /// Every cipher suite this crate supports.
 pub mod cipher_suite;
+
+/// Every HPKE suite this crate supports, for Encrypted Client Hello.
+pub mod hpke;
 
 /// Every key exchange group this crate supports.
 pub mod kx_group;
@@ -281,6 +284,14 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(ids(ours.all), ids(&theirs_all));
 
+        let hpke_suites = |suites: &[&dyn rustls::crypto::hpke::Hpke]| {
+            suites.iter().map(|suite| suite.suite()).collect::<Vec<_>>()
+        };
+        assert_eq!(
+            hpke_suites(hpke::ALL_SUPPORTED_SUITES),
+            hpke_suites(aws_lc_rs::hpke::ALL_SUPPORTED_SUITES)
+        );
+
         // Each scheme verifies with the same algorithms, the first for the
         // scheme's own curve, which is the only one TLS 1.3 uses.
         let ml_dsa = [
@@ -306,8 +317,9 @@ mod tests {
     }
 
     // Every public item of rustls's aws-lc-rs provider, doc-hidden ones
-    // included, short of `kx_group::MLKEM1024` and `hpke`, has the same name
-    // and type here. This fails to compile on a divergence.
+    // included, short of `kx_group::MLKEM1024`, has the same name and type
+    // here, but for `hpke`'s suites, which are `&dyn Hpke` rather than
+    // `&HpkeAwsLcRs<..>`. This fails to compile on a divergence.
     #[test]
     fn aws_lc_rs_items() {
         use rustls::crypto::aws_lc_rs as theirs;
@@ -345,6 +357,30 @@ mod tests {
             Ticketer::new,
         );
         let _ = (Ticketer {}, theirs::Ticketer {});
+
+        macro_rules! same_hpke {
+            ($($name:ident),* $(,)?) => {
+                $(let _: [&dyn rustls::crypto::hpke::Hpke; 2] = [hpke::$name, theirs::hpke::$name];)*
+            };
+        }
+        same_hpke!(
+            DH_KEM_P256_HKDF_SHA256_AES_128,
+            DH_KEM_P256_HKDF_SHA256_AES_256,
+            DH_KEM_P256_HKDF_SHA256_CHACHA20_POLY1305,
+            DH_KEM_P384_HKDF_SHA384_AES_128,
+            DH_KEM_P384_HKDF_SHA384_AES_256,
+            DH_KEM_P384_HKDF_SHA384_CHACHA20_POLY1305,
+            DH_KEM_P521_HKDF_SHA512_AES_128,
+            DH_KEM_P521_HKDF_SHA512_AES_256,
+            DH_KEM_P521_HKDF_SHA512_CHACHA20_POLY1305,
+            DH_KEM_X25519_HKDF_SHA256_AES_128,
+            DH_KEM_X25519_HKDF_SHA256_AES_256,
+            DH_KEM_X25519_HKDF_SHA256_CHACHA20_POLY1305,
+        );
+        let _: [&[&dyn rustls::crypto::hpke::Hpke]; 2] = [
+            hpke::ALL_SUPPORTED_SUITES,
+            theirs::hpke::ALL_SUPPORTED_SUITES,
+        ];
 
         fn rsa_signing_key<K: SigningKey + std::fmt::Debug>(
             _: fn(&PrivateKeyDer<'_>) -> Result<K, rustls::Error>,

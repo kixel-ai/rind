@@ -67,6 +67,7 @@ macro_rules! q {
     };
 }
 
+// Transliterated from s2n-bignum's x86/curve25519/bignum_mod_n25519.S.
 /// Reduce modulo basepoint order, z := x mod n_25519
 ///
 /// Input x[k]; output z[4]
@@ -267,4 +268,15 @@ pub(crate) fn bignum_mod_n25519(z: &mut [u64; 4], x: &[u64]) {
         out("rcx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_mod_n25519,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &[u64::MAX; 8]
+    );
 }

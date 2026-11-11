@@ -20,6 +20,7 @@ use crate::low::macros::*;
 // Standard x86 ABI: RDI = a
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/mlkem/mlkem_tomont.S.
 /// Conversion of ML-KEM polynomial coefficients to Montgomery form
 ///
 /// Input a[256] (signed 16-bit words); output a[256] (signed 16-bit words)
@@ -30,6 +31,7 @@ use crate::low::macros::*;
 /// modular reduction but with |output[i]| < 3329 guaranteed.
 #[inline(never)]
 pub(crate) fn mlkem_tomont(a: &mut [i16; 256]) {
+    assert!((a.as_mut_ptr() as usize).is_multiple_of(32));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -164,4 +166,14 @@ pub(crate) fn mlkem_tomont(a: &mut [i16; 256]) {
         out("zmm9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !std::arch::is_x86_feature_detected!("avx2") {
+        return;
+    }
+    crate::low::abi::call!(mlkem_tomont, &mut crate::low::abi::Aligned([0; 256]).0);
 }

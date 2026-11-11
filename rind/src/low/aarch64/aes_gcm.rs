@@ -309,11 +309,11 @@ fn cipher<const ENC: bool>(
                 }
                 (HwKey::Aes192(k), true, Some(_)) => {
                     let (key, ivec, xi) = (k.round_keys(), &mut counter, &mut tag);
-                    aesv8_gcm_8x_enc_192(inout, len * 128, inout, xi, ivec, key, htable);
+                    asm_call!(unsafe extern "C" aesv8_gcm_8x_enc_192(inout, len * 128, inout, xi, ivec, key, htable));
                 }
                 (HwKey::Aes192(k), false, Some(_)) => {
                     let (key, ivec, xi) = (k.round_keys(), &mut counter, &mut tag);
-                    aesv8_gcm_8x_dec_192(inout, len * 128, inout, xi, ivec, key, htable);
+                    asm_call!(unsafe extern "C" aesv8_gcm_8x_dec_192(inout, len * 128, inout, xi, ivec, key, htable));
                 }
                 (HwKey::Aes192(_), _, None) => unreachable!("composed above"),
             }

@@ -79,6 +79,7 @@ macro_rules! movbig {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p256/p256_scalarmul_alt.S.
 /// Scalar multiplication for P-256
 ///
 /// Input scalar[4], point[8]; output res[8]
@@ -6523,4 +6524,16 @@ pub(crate) fn p256_scalarmul(res: &mut [u64; 8], scalar: &[u64; 4], point: &[u64
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        p256_scalarmul,
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 8]).0
+    );
 }

@@ -112,6 +112,7 @@ macro_rules! jshort {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_demont.S.
 /// Convert from (almost-)Montgomery form z := (x / 2^{64k}) mod m
 ///
 /// Inputs x[k], m[k]; output z[k]
@@ -121,8 +122,8 @@ macro_rules! jshort {
 /// This can handle almost-Montgomery inputs, i.e. any k-digit bignum.
 #[inline(never)]
 pub(crate) fn bignum_demont(z: &mut [u64], x: &[u64], m: &[u64]) {
-    debug_assert!(z.len() == x.len());
-    debug_assert!(z.len() == m.len());
+    assert!(z.len() == x.len());
+    assert!(z.len() == m.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -271,4 +272,11 @@ pub(crate) fn bignum_demont(z: &mut [u64], x: &[u64], m: &[u64]) {
         out("rax") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_demont, &mut [0; 4], &[1; 4], &[u64::MAX; 4]);
 }

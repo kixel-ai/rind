@@ -67,6 +67,7 @@ macro_rules! ashort {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_add.S.
 /// Add, z := x + y
 ///
 /// Inputs x[m], y[n]; outputs function return (carry-out) and z[p]
@@ -181,4 +182,11 @@ pub(crate) fn bignum_add(z: &mut [u64], x: &[u64], y: &[u64]) -> u64 {
             )
     };
     ret
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_add, &mut [0; 4], &[1; 4], &[2; 3]);
 }

@@ -684,6 +684,7 @@ macro_rules! cmsub41_p256 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p256/p256_montjdouble_alt.S.
 /// Point doubling on NIST curve P-256 in Montgomery-Jacobian coordinates
 ///
 ///
@@ -785,4 +786,15 @@ pub(crate) fn p256_montjdouble_alt(p3: &mut [u64; 12], p1: &[u64; 12]) {
         out("rdx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        p256_montjdouble_alt,
+        &mut crate::low::abi::Aligned([0; 12]).0,
+        &crate::low::abi::Aligned([0; 12]).0
+    );
 }

@@ -11,8 +11,6 @@ use core::fmt;
 use core::marker::PhantomData;
 use core::ops::Deref;
 
-use crate::wipe::Wiped;
-
 use crate::digest::{self, Digest};
 use crate::encoding::{
     AsBigEndian, AsDer, Curve25519SeedBin, EcPrivateKeyBin, EcPrivateKeyRfc5915Der,
@@ -34,6 +32,7 @@ pub use crate::rsa::{
     KeyPair as RsaKeyPair, PublicKey as RsaSubjectPublicKey,
     PublicKeyComponents as RsaPublicKeyComponents, RsaParameters, RsaPssSaltLength,
 };
+use crate::wipe::Wiped;
 use crate::{pkcs8, rand, sealed};
 
 /// A signature.

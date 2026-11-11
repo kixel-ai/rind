@@ -88,6 +88,7 @@ macro_rules! qshort {
     };
 }
 
+// Transliterated from s2n-bignum's x86/p521/bignum_mod_n521_9_alt.S.
 /// Reduce modulo group order, z := x mod n_521
 ///
 /// Input x[9]; output z[9]
@@ -210,4 +211,15 @@ pub(crate) fn bignum_mod_n521_alt(z: &mut [u64; 9], x: &[u64; 9]) {
         out("rdx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_mod_n521_alt,
+        &mut crate::low::abi::Aligned([0; 9]).0,
+        &crate::low::abi::Aligned([0; 9]).0
+    );
 }

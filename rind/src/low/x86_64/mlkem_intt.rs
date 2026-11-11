@@ -22,6 +22,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = a, RDX = qdata
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/mlkem/mlkem_intt.S.
 /// Inverse number-theoretic transform from ML-KEM
 ///
 /// Input a[256], z_01234[80], z_56[384] (all signed 16-bit words); output a[256] (signed 16-bit words).
@@ -33,8 +34,8 @@ use crate::low::macros::*;
 /// repo or our "tests/test.c".
 #[inline(never)]
 pub(crate) fn mlkem_intt(a: &mut [i16; 256], qdata: &[i16; 624]) {
-    debug_assert!((a.as_mut_ptr() as usize).is_multiple_of(32));
-    debug_assert!((qdata.as_ptr() as usize).is_multiple_of(32));
+    assert!((a.as_mut_ptr() as usize).is_multiple_of(32));
+    assert!((qdata.as_ptr() as usize).is_multiple_of(32));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -728,4 +729,18 @@ pub(crate) fn mlkem_intt(a: &mut [i16; 256], qdata: &[i16; 624]) {
         out("zmm9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !std::arch::is_x86_feature_detected!("avx2") {
+        return;
+    }
+    crate::low::abi::call!(
+        mlkem_intt,
+        &mut crate::low::abi::Aligned([0; 256]).0,
+        &crate::low::abi::Aligned([0; 624]).0
+    );
 }

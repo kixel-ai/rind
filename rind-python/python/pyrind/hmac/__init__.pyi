@@ -39,6 +39,8 @@ class Context:
         """Starts a tag under `key`."""
     def update(self, data: Buffer) -> None:
         """Adds `data` to the message."""
+    def copy(self) -> Context:
+        """Returns a context that continues from this one's message, which this one keeps."""
     def sign(self) -> bytes:
         """Returns the tag of the message; the context takes no more data."""
 

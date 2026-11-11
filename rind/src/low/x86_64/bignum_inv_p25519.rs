@@ -982,6 +982,7 @@ macro_rules! divstep59 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/curve25519/bignum_inv_p25519.S.
 /// Modular inverse modulo p_25519 = 2^255 - 19
 ///
 /// Input x[4]; output z[4]
@@ -1614,4 +1615,15 @@ pub(crate) fn bignum_inv_p25519(z: &mut [u64; 4], x: &[u64; 4]) {
         out("rdx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_inv_p25519,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
 }

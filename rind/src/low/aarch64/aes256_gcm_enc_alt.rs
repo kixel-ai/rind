@@ -74,6 +74,7 @@ use crate::low::macros::*;
 //  - The body has since been rescheduled for speed, so it is not a verbatim
 //    copy of the generator's output.
 
+// Transliterated from s2n-bignum's arm/aes_gcm/aes256_gcm_enc_alt.S.
 /// AES-256-GCM bulk encryption, 8 blocks at a time: counter-mode encryption of
 ///
 /// whole blocks with the GHASH tag update
@@ -1828,4 +1829,20 @@ pub(crate) unsafe fn aes256_gcm_enc_alt(
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_aarch64_feature_detected!("aes")
+        && std::arch::is_aarch64_feature_detected!("pmull")
+        && std::arch::is_aarch64_feature_detected!("sha3"))
+    {
+        return;
+    }
+    // SAFETY: the CPU has the features checked above.
+    unsafe {
+        crate::low::abi::call!(unsafe aes256_gcm_enc_alt, [[0; 16]; 8].as_mut_ptr(), 1, &mut crate::low::abi::Aligned([0; 16]).0, &mut crate::low::abi::Aligned([0; 16]).0, &crate::low::abi::Aligned([crate::low::abi::zeroed(); 15]).0, &crate::low::abi::Aligned([crate::low::abi::zeroed(); 12]).0);
+    }
 }

@@ -65,6 +65,12 @@ impl Context {
         Ok(())
     }
 
+    /// Returns a context that continues from this one's message, which this
+    /// one keeps.
+    fn copy(&self) -> PyResult<Self> {
+        Ok(Self(Some(self.0.as_ref().ok_or_else(signed)?.clone())))
+    }
+
     /// Returns the tag of the message; the context takes no more data.
     fn sign<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
         // Signs a stack copy and drops the box, so the heap copy gets rind's

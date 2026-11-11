@@ -233,6 +233,7 @@ macro_rules! vmask {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_copy_row_from_table_32.S.
 /// Given table: uint64_t[height*32], copy table[idx*32...(idx+1)*32-1]
 ///
 /// into z[0..row-1].
@@ -241,8 +242,8 @@ macro_rules! vmask {
 /// `idx`-th row.
 #[inline(never)]
 pub(crate) fn bignum_copy_row_from_table_32(z: &mut [u64], table: &[u64], height: u64, index: u64) {
-    debug_assert!(z.len() == 32);
-    debug_assert!(crate::low::ct::into_public(index) < height);
+    assert!(z.len() == 32);
+    assert!(height.checked_mul(32) == Some(table.len() as u64));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -374,4 +375,11 @@ pub(crate) fn bignum_copy_row_from_table_32(z: &mut [u64], table: &[u64], height
         out("x6") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_copy_row_from_table_32, &mut [0; 32], &[7; 96], 3, 2);
 }

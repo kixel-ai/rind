@@ -19,6 +19,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = k, RDX = z, R8 = m, R9 = w, returns RAX
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/fastmul/bignum_emontredc_8n.S.
 /// Extended Montgomery reduce in 8-digit blocks, results in input-output buffer
 ///
 /// Inputs z[2*k], m[k], w; outputs function return (extra result bit) and z[2*k]
@@ -28,8 +29,8 @@ use crate::low::macros::*;
 #[inline(never)]
 pub(crate) fn bignum_emontredc_8n(z: &mut [u64], m: &[u64], w: u64) -> u64 {
     let ret: u64;
-    debug_assert!(z.len() == m.len() * 2);
-    debug_assert!(z.len().is_multiple_of(8));
+    assert!(z.len() == m.len() * 2);
+    assert!(m.len().is_multiple_of(8));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -590,4 +591,15 @@ pub(crate) fn bignum_emontredc_8n(z: &mut [u64], m: &[u64], w: u64) -> u64 {
             )
     };
     ret
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(bignum_emontredc_8n, &mut [0; 16], &[u64::MAX; 8], 1);
 }

@@ -1,5 +1,6 @@
 import Rind.X86_64.Hmac
 import Rind.X86_64.Sha512
+import Rind.X86_64.CtEqual
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
@@ -39,12 +40,13 @@ def hmacOf (a : high.hmac.Algorithm) (key text : List Byte) : List Byte :=
   hmac (hmacHash a) (hmacBlock a) key text
 
 /-- What HMAC under `a` needs: the entry guard passes, and the CPU runs the
-hash's routines (`ShaBlocks` for SHA-1 and SHA-256, `RunsSha512` for SHA-384
-and SHA-512). -/
+hash's routines (`Sha1Blocks` for SHA-1, `Sha256Blocks` for SHA-256, and
+`RunsSha512` for SHA-384 and SHA-512). -/
 def RunsHmac (a : high.hmac.Algorithm) : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧
     match a with
-    | .HMAC_SHA1 | .HMAC_SHA256 => ShaBlocks
+    | .HMAC_SHA1 => Sha1Blocks
+    | .HMAC_SHA256 => Sha256Blocks
     | .HMAC_SHA384 | .HMAC_SHA512 => RunsSha512
 
 /-- `k` is the key `Key::new(a, key)` makes. -/
@@ -139,18 +141,24 @@ theorem bv_inj (x y : List U8) : bv x = bv y ↔ x = y := by
   · intro h; rw [← ofBv_bv x, ← ofBv_bv y, h]
   · intro h; rw [h]
 
-/-- What `verify` assumes of `low::generic::ct_equal`, which is not
-translated: it compares its slices. -/
-def CtEqual : Prop :=
-  ∀ x y : Slice U8, low.generic.ct_equal.ct_equal x y = ok (decide (x.val = y.val))
+/-- Every hash's routines need the entry guard held, which `ct_equal` checks. -/
+theorem RunsHmac.held {a : high.hmac.Algorithm} (hr : RunsHmac a) :
+    low.entry.Entry.assert_held = ok () := by
+  obtain ⟨-, h⟩ := hr
+  cases a
+  · exact h.held
+  · exact h.held
+  · exact h.2.1
+  · exact h.2.1
 
 /-- `verify` accepts exactly HMAC's tag of the message. -/
-theorem verify_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (hct : CtEqual) (key : List Byte)
+theorem verify_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (key : List Byte)
     (k : high.hmac.Key) (hk : KeyOf a key k) (m t : Slice U8)
     (hm : hmacBlock a + m.length ≤ maxInput) :
     high.hmac.verify k m t ⦃ r =>
       r = if bv t.val = hmacOf a key (bv m.val) then .Ok () else .Err .BadSignature ⦄ := by
   have hs := key_tag_spec a hr key k hk m hm
+  have hh := hr.held
   obtain ⟨⟨e, he⟩, -⟩ := hr
   unfold high.hmac.verify
   rw [he, bind_ok]
@@ -159,7 +167,8 @@ theorem verify_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (hct : CtEqual) 
   rintro d ⟨-, hd⟩
   unfold high.digest.Digest.ct_equal
   step with digest_as_ref_spec d as ⟨s, _, hsb⟩
-  rw [hct, bind_ok]
+  apply WP.spec_bind (ct_equal_spec hh s t)
+  rintro _ rfl
   simp only [low.ct.into_public, bind_ok]
   have : (s.val = t.val) = (bv t.val = hmacOf a key (bv m.val)) := by
     rw [← hd, ← hsb, bv_inj]

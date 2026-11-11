@@ -133,7 +133,7 @@ pub(crate) fn leave_cpu_state(_old: u32) {}
 /// # Safety:
 /// There must be `len` writable bytes at `ptr`; with no alignment
 /// requirement.
-pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
+pub(in crate::low) unsafe fn zero_bytes(ptr: *mut u8, len: usize) {
     // ARMv7 Linux and Android allow unaligned word stores, so the by-16 loop
     // needs no aligned start.
     //
@@ -170,15 +170,12 @@ pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
     }
 }
 
-/// Effectively memcmp(a, b, len), but guaranteed to visit every element
-/// of a and b.
+/// Compares the first `min(a.len(), b.len())` bytes of `a` and `b`, reading
+/// every one of them whatever their values.
 ///
-/// The return value does not follow memcmp semantics: it is zero if
-/// `a == b`, otherwise it is non-zero.
-///
-/// # Safety
-/// The caller must ensure that there are `len` bytes readable at `a` and `b`,
-pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: usize) -> u8 {
+/// Returns zero if they are equal, otherwise non-zero.
+pub(in crate::low) fn ct_compare_bytes(a: &[u8], b: &[u8]) -> u8 {
+    let (len, a, b) = (a.len().min(b.len()), a.as_ptr(), b.as_ptr());
     let mut acc = 0u32;
     // SAFETY: inline assembly. all written registers are listed as clobbers.
     unsafe {
@@ -239,6 +236,18 @@ pub(in crate::low) fn ct_compare_16(a: &[u8; 16], b: &[u8; 16]) -> usize {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::abi::call;
+
+    #[test]
+    fn abi() {
+        let mut bytes = [0xffu8; 100];
+        // SAFETY: `bytes` is 100 writable bytes.
+        unsafe { call!(unsafe zero_bytes, bytes.as_mut_ptr(), 100) };
+        assert_eq!(bytes, [0; 100]);
+        let (a, b) = ([1u8; 37], [2u8; 37]);
+        assert_ne!(call!(ct_compare_bytes, &a, &b), 0);
+        assert_ne!(call!(ct_compare_16, &[1; 16], &[2; 16]), 0);
+    }
 
     // CI runs the armv7 suite on a CPU model with NEON and the extension and
     // one without either, and names which, so neither run silently tests only

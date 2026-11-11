@@ -33,8 +33,8 @@ pub(crate) fn edwards25519_scalarmuldouble(
     bscalar: &[u64; 4],
     _token: HaveAvx2,
 ) {
-    debug_assert!(scalar[3] >> 63 == 0 && bscalar[3] >> 63 == 0);
-    debug_assert!(point[3] >> 63 == 0 && point[7] >> 63 == 0);
+    assert!(scalar[3] >> 63 == 0 && bscalar[3] >> 63 == 0);
+    assert!(point[3] >> 63 == 0 && point[7] >> 63 == 0);
 
     let x: &[u64; 4] = point[..4].try_into().unwrap();
     let y: &[u64; 4] = point[4..].try_into().unwrap();

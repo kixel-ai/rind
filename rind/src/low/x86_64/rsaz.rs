@@ -209,7 +209,9 @@ impl Routines<'_> {
         // SAFETY: each pointer is to 40 words, which the routine reads and
         // writes, and it takes `a` and `b` as `r` too, as aws-lc calls it;
         // the token proves the AVX2 it uses.
-        unsafe { rsaz_1024_mul_avx2(r.cast(), a.cast(), b.cast(), self.m.as_ptr(), self.n0) };
+        unsafe {
+            asm_call!(unsafe extern "sysv64" rsaz_1024_mul_avx2(r.cast(), a.cast(), b.cast(), self.m.as_ptr(), self.n0))
+        };
     }
 
     /// `r = a` squared `count` times, each over `R`.
@@ -225,18 +227,24 @@ impl Routines<'_> {
 
     fn sqr_raw(&self, r: *mut Red, a: *const Red, count: i32) {
         // SAFETY: as `mul_raw`, and `count` is positive.
-        unsafe { rsaz_1024_sqr_avx2(r.cast(), a.cast(), self.m.as_ptr(), self.n0, count) };
+        unsafe {
+            asm_call!(unsafe extern "sysv64" rsaz_1024_sqr_avx2(r.cast(), a.cast(), self.m.as_ptr(), self.n0, count))
+        };
     }
 }
 
 fn norm2red(_: HaveAvx2, red: &mut Red, norm: &[u64; 16]) {
     // SAFETY: reads 16 words and writes 40, and the token proves AVX2.
-    unsafe { rsaz_1024_norm2red_avx2(red.as_mut_ptr(), norm.as_ptr()) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" rsaz_1024_norm2red_avx2(red.as_mut_ptr(), norm.as_ptr()))
+    };
 }
 
 fn red2norm(_: HaveAvx2, norm: &mut [u64; 16], red: &Red) {
     // SAFETY: reads 40 words and writes 16, and the token proves AVX2.
-    unsafe { rsaz_1024_red2norm_avx2(norm.as_mut_ptr(), red.as_ptr()) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" rsaz_1024_red2norm_avx2(norm.as_mut_ptr(), red.as_ptr()))
+    };
 }
 
 /// Stores `val` as `table[i]`, for a public `i` below 32.
@@ -245,7 +253,9 @@ fn scatter(_: HaveAvx2, table: &mut Table, val: &Red, i: u32) {
     // SAFETY: `i` is below 32, so the routine writes 16 bytes in each of the
     // table's 9 rows of 512, and it reads 36 words of `val`; the token proves
     // AVX2.
-    unsafe { rsaz_1024_scatter5_avx2(table.0.as_mut_ptr(), val.as_ptr(), i) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" rsaz_1024_scatter5_avx2(table.0.as_mut_ptr(), val.as_ptr(), i))
+    };
 }
 
 /// Loads `table[i]` into `val`, for a secret `i` below 32, reading every
@@ -253,7 +263,9 @@ fn scatter(_: HaveAvx2, table: &mut Table, val: &Red, i: u32) {
 fn gather(_: HaveAvx2, val: &mut Red, table: &Table, i: u32) {
     // SAFETY: the routine reads the whole 32-byte aligned table whatever `i`
     // is, and writes 40 words; the token proves AVX2.
-    unsafe { rsaz_1024_gather5_avx2(val.as_mut_ptr(), table.0.as_ptr(), i) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" rsaz_1024_gather5_avx2(val.as_mut_ptr(), table.0.as_ptr(), i))
+    };
 }
 
 /// The limb mask, which the products load.
@@ -302,86 +314,81 @@ rsaz_routine!(rsaz_1024_gather5_avx2(val: *mut u64, table: *const u64, i: u32), 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::super::adx_mux::tests::Rng;
+    use proptest::prelude::*;
+
     use super::*;
     use crate::low::PosInt;
+    use crate::test::bignum::{below, mod_exp_vectors, modulus, words};
 
-    // Only CPUs without ADX run RSAZ, so on any with AVX2 this checks it
-    // against the exponentiation the others run.
+    /// `x^e mod m` by RSAZ, and by the exponentiation the other CPUs run.
+    fn both(token: HaveAvx2, x: &[u64; 16], e: &[u64; 16], m: &[u64; 16]) -> [[u64; 16]; 2] {
+        let int = |words: &[u64; 16]| PosInt::<16>::from_words(words).unwrap();
+        let words = |int: &PosInt<16>| -> [u64; 16] { int.as_words().try_into().unwrap() };
+        let (n, x_int, mut e_int) = (int(m), int(x), int(e));
+        // As wide as RSAZ takes it, which the other needs for zero.
+        e_int.expand(&n);
+        let rr = n.montifier();
+        let n0 = n.mont_neg_inverse();
+        let one = n.fixed_one().mont_mul(&rr, &n, n0);
+        let want = x_int
+            .to_montgomery(&rr, &n)
+            .mont_exp(one, &e_int, &n, n0)
+            .from_montgomery(&n);
+
+        let mut got = [0; 16];
+        mod_exp(token, &mut got, x, e, m, &words(&rr), n0);
+        [got, words(&want)]
+    }
+
+    /// A 1024-bit modulus of 29-bit limbs, RSAZ's own, or of words, a base
+    /// below it, and an exponent of edge words from one word wide to
+    /// sixteen.
+    fn operands() -> impl Strategy<Value = ([u64; 16], [u64; 16], [u64; 16])> {
+        prop_oneof![Just(29), Just(64)]
+            .prop_flat_map(|bits| {
+                modulus(bits, 16).prop_flat_map(move |m| (Just(m.clone()), below(bits, m)))
+            })
+            .prop_flat_map(|(m, x)| (Just(m), Just(x), words(1, 16)))
+            .prop_map(|(m, x, mut e)| {
+                e.resize(16, 0);
+                let array = |v: Vec<u64>| -> [u64; 16] { v.try_into().unwrap() };
+                (array(m), array(x), array(e))
+            })
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(32))]
+
+        // Only CPUs without ADX run RSAZ, so on any with AVX2 this checks it
+        // against the exponentiation the others run.
+        #[test]
+        fn matches_mont_exp((m, x, e) in operands()) {
+            if let Some(token) = HaveAvx2::check() {
+                let [got, want] = both(token, &x, &e, &m);
+                prop_assert_eq!(got, want);
+            }
+        }
+    }
+
     #[test]
-    fn matches_mont_exp() {
+    fn aws_lc_mod_exp() {
         let Some(token) = HaveAvx2::check() else {
             return;
         };
-        let mut rng = Rng(0x6a09_e667_f3bc_c908);
-        let int = |words: &[u64; 16]| {
-            let bytes: Vec<u8> = words.iter().rev().flat_map(|w| w.to_be_bytes()).collect();
-            PosInt::<16>::from_bytes(&bytes).unwrap()
-        };
-        let words = |int: &PosInt<16>| {
-            let mut bytes = [0; 128];
-            let bytes = int.to_bytes(&mut bytes).unwrap();
-            let mut words = [0; 16];
-            for (word, chunk) in words.iter_mut().zip(bytes.rchunks(8)) {
-                *word = u64::from_be_bytes(chunk.try_into().unwrap());
+        let mut ran = 0;
+        for v in mod_exp_vectors() {
+            if v.m.len() != 16 || v.e.len() > 16 {
+                continue;
             }
-            words
-        };
-        for case in 0..24 {
-            // The widest modulus, the narrowest with its top word set, and
-            // random 1024-bit ones.
-            let mut m: [u64; 16] = rng.words(1024);
-            match case {
-                0 => m.fill(u64::MAX),
-                1 => {
-                    m.fill(0);
-                    m[15] = 1;
-                }
-                _ => m[15] |= 1 << 63,
-            }
-            m[0] |= 1;
-
-            // Bases below `m`: zero, one, and `m - 1` too.
-            let mut x: [u64; 16] = rng.words(1024);
-            x[15] %= m[15];
-            match case {
-                2 => x = [0; 16],
-                3 => x = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                4 => {
-                    x = m;
-                    x[0] -= 1;
-                }
-                _ => {}
-            }
-
-            // Exponents of every width: zero, one, all ones, and only the
-            // top bit, which each window reaches.
-            let mut e: [u64; 16] = rng.words(64 * (1 + case % 16));
-            match case {
-                5 => e = [0; 16],
-                6 => e = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                7 => e = [u64::MAX; 16],
-                8 => {
-                    e = [0; 16];
-                    e[15] = 1 << 63;
-                }
-                _ => {}
-            }
-
-            let (n, x_int, mut e_int) = (int(&m), int(&x), int(&e));
-            // As wide as RSAZ takes it, which the other needs for zero.
-            e_int.expand(&n);
-            let rr = n.montifier();
-            let n0 = n.mont_neg_inverse();
-            let one = n.fixed_one().mont_mul(&rr, &n, n0);
-            let want = x_int
-                .to_montgomery(&rr, &n)
-                .mont_exp(one, &e_int, &n, n0)
-                .from_montgomery(&n);
-
-            let mut got = [0; 16];
-            mod_exp(token, &mut got, &x, &e, &m, &words(&rr), n0);
-            assert_eq!(got, words(&want), "case {case}");
+            let array = |v: &[u64]| -> [u64; 16] {
+                let mut a = [0; 16];
+                a[..v.len()].copy_from_slice(v);
+                a
+            };
+            let [got, _] = both(token, &array(&v.a), &array(&v.e), &array(&v.m));
+            assert_eq!(got[..], v.want[..], "{}", v.at);
+            ran += 1;
         }
+        assert!(ran > 0);
     }
 }

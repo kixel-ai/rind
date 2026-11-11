@@ -489,6 +489,7 @@ macro_rules! mux_4 {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/curve25519/curve25519_x25519_alt.S.
 /// The x25519 function for curve25519
 ///
 /// Inputs scalar[4], point[4]; output res[4]
@@ -1769,4 +1770,16 @@ pub(crate) fn curve25519_x25519(res: &mut [u64; 4], scalar: &[u64; 4], point: &[
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        curve25519_x25519,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
 }

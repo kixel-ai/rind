@@ -135,6 +135,7 @@ macro_rules! e8 {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_montsqr.S.
 /// Montgomery square, z := (x^2 / 2^{64k}) mod m
 ///
 /// Inputs x[k], m[k]; output z[k]
@@ -143,8 +144,8 @@ macro_rules! e8 {
 /// guaranteed in particular if x < m initially (the "intended" case).
 #[inline(never)]
 pub(crate) fn bignum_montsqr(z: &mut [u64], x: &[u64], m: &[u64]) {
-    debug_assert!(z.len() == x.len());
-    debug_assert!(z.len() == m.len());
+    assert!(z.len() == x.len());
+    assert!(z.len() == m.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -291,4 +292,11 @@ pub(crate) fn bignum_montsqr(z: &mut [u64], x: &[u64], m: &[u64]) {
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_montsqr, &mut [0; 4], &[1; 4], &[u64::MAX; 4]);
 }

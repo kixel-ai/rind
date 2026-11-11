@@ -39,6 +39,8 @@ pub(crate) fn process_cavp(filename: impl AsRef<Path>, sink: &mut dyn CavpSink) 
     let f = File::open(&path).unwrap_or_else(|_| panic!("cannot open {}", path.display()));
     for line in BufReader::new(f).lines() {
         let line = line.unwrap();
+        // Some of NIST's files end their lines with CRLF.
+        let line = line.strip_suffix('\r').unwrap_or(&line);
 
         match line.chars().next() {
             Some('[') => {
@@ -60,7 +62,7 @@ pub(crate) fn process_cavp(filename: impl AsRef<Path>, sink: &mut dyn CavpSink) 
 
             sink.on_value(name, Value(value));
         } else {
-            sink.on_value(&line, Value(""));
+            sink.on_value(line, Value(""));
         }
     }
 }
@@ -88,6 +90,82 @@ pub(crate) fn wycheproof<T: serde::de::DeserializeOwned>(name: &str) -> Vec<T> {
     let tests: Vec<T> = file.groups.into_iter().flat_map(|g| g.tests).collect();
     assert!(!tests.is_empty(), "{path} has no tests");
     tests
+}
+
+/// Reads the test groups of the ACVP vector set `name`, which
+/// `admin/sync-acvp` trims to the groups rind runs.
+pub(crate) fn acvp(name: &str) -> Vec<serde_json::Value> {
+    #[derive(serde::Deserialize)]
+    struct VectorSet {
+        #[serde(rename = "testGroups")]
+        groups: Vec<serde_json::Value>,
+    }
+
+    let path = format!(
+        "{}/../thirdparty/acvp/{name}.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let file = File::open(&path).unwrap_or_else(|_| panic!("cannot open {path}"));
+    let set: VectorSet = serde_json::from_reader(BufReader::new(file)).expect("invalid ACVP JSON");
+    assert!(!set.groups.is_empty(), "{path} has no test groups");
+    set.groups
+}
+
+/// Typed access to an ACVP test group's or test's fields, which panics on a
+/// missing or mistyped field.
+pub(crate) trait Acvp {
+    /// The tests of this group.
+    fn tests(&self) -> &[serde_json::Value];
+    /// The hex field `name`, decoded.
+    fn hex(&self, name: &str) -> Vec<u8>;
+    /// The integer field `name`, which ACVP writes as a number or a string,
+    /// and which must fit in a `usize`.
+    fn int(&self, name: &str) -> usize;
+    /// The string field `name`.
+    fn str(&self, name: &str) -> &str;
+    /// The boolean field `name`.
+    fn flag(&self, name: &str) -> bool;
+}
+
+impl Acvp for serde_json::Value {
+    fn tests(&self) -> &[serde_json::Value] {
+        self["tests"].as_array().expect("group has no tests")
+    }
+
+    fn hex(&self, name: &str) -> Vec<u8> {
+        hex::decode(self.str(name)).unwrap_or_else(|_| panic!("{name} is not hex"))
+    }
+
+    fn int(&self, name: &str) -> usize {
+        match &self[name] {
+            Self::Number(n) => n.as_u64().and_then(|n| usize::try_from(n).ok()),
+            Self::String(s) => s.parse().ok(),
+            _ => None,
+        }
+        .unwrap_or_else(|| panic!("{name} is not an integer"))
+    }
+
+    fn str(&self, name: &str) -> &str {
+        self[name]
+            .as_str()
+            .unwrap_or_else(|| panic!("{name} is not a string"))
+    }
+
+    fn flag(&self, name: &str) -> bool {
+        self[name]
+            .as_bool()
+            .unwrap_or_else(|| panic!("{name} is not a boolean"))
+    }
+}
+
+/// Steps an AES Monte Carlo test's key, per AESAVS section 6.4: XORs it with
+/// the low bits of a round's last two outputs, as many as the key holds.
+pub(crate) fn aes_mct_next_key(key: &mut [u8], second_last: &[u8; 16], last: &[u8; 16]) {
+    let outputs = [&second_last[..], &last[..]].concat();
+    let start = 32 - key.len();
+    for (k, o) in key.iter_mut().zip(&outputs[start..]) {
+        *k ^= o;
+    }
 }
 
 /// A Wycheproof test's expected result.
@@ -135,4 +213,6 @@ pub(crate) fn cctv_value<'a>(record: &'a [(String, Vec<u8>)], name: &str) -> &'a
         .1
 }
 
+pub(crate) mod bignum;
+mod binsec;
 pub(crate) mod file_test;

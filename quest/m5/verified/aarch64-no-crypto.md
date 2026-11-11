@@ -14,5 +14,4 @@ Every operation earns the ✓ on aarch64 cores without the crypto extension (the
 
 ## Required
 
-- [aarch64 SHA-256 on the SHA-2 instructions is proven](/quest/m2/verified/sha256-aarch64-hw.md) - the calibration: what a hand-written HOL Light proof of unproven assembly costs
 - [AES-GCM on aarch64 is proven](/quest/m4/verified/aes-gcm-aarch64.md) - the AEAD glue this tier shares

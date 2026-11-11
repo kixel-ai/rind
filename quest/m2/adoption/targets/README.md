@@ -23,20 +23,9 @@ Speed (maintainer, 2026-11-09, after an audit of the whole tree): ✅ planned, i
 
 The union of ring 0.17's and aws-lc-rs's CI and build scripts, listed on 2026-11-06, adds armv6, which both test. It drops i586, which ring refuses for lacking SSE2 and aws-lc-rs doesn't test. riscv32 and sparc64 are compile-only in both, as loongarch64 is, so they wait for a consumer. aarch64_be and armeb, which ring compiles and aws-lc refuses, compile the portable backend, untested.
 
-MIPS (maintainer, 2026-11-10, [moq-dev/rind#558](https://github.com/moq-dev/rind/pull/558)): ✅ dropped, since it has been tier 3 with no stable std since Rust 1.72 (rejected: support it via nightly `-Zbuild-std`, against rind's stable toolchain).
-
 "Exactly one backend compiles per architecture" still holds: the portable backend is each new architecture's only backend, not a fallback for a missing CPU feature. The s390x quest checked byte order: rind's tests pass on big-endian s390x and 32-bit powerpc, so big-endian targets need only their CI.
 
 The epic's own work, once every child has merged:
 
 - Rewrite [MIGRATE.md](/MIGRATE.md)'s rule that a library keeps its old backend as the default: a library whose targets rind covers may go rind-only.
 - Update [PLATFORMS.md](/PLATFORMS.md) and the README's Limitations.
-
-## Required
-
-- [32-bit x86](/quest/m2/adoption/targets/x86.md) - i686 on Linux, Windows and Android
-- [armv6](/quest/m2/adoption/targets/armv6.md) - arm-unknown-linux-gnueabi(hf) and arm-linux-androideabi
-- [PowerPC](/quest/m2/adoption/targets/powerpc.md) - powerpc64le, powerpc64 and powerpc Linux
-- [loongarch64](/quest/m2/adoption/targets/loongarch64.md) - loongarch64 Linux
-- [wasm32](/quest/m2/adoption/targets/wasm.md) - the rind library compiles for wasm32 on every PR
-- [rind's tests run on wasm32](/quest/m2/adoption/targets/wasm-tests.md) - the vector tests on wasm32-wasip2 under wasmtime

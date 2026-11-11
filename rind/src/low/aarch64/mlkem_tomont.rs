@@ -20,6 +20,7 @@ use crate::low::macros::*;
 // Standard ARM ABI: X0 = a
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's arm/mlkem/mlkem_tomont.S.
 /// Conversion of ML-KEM polynomial coefficients to Montgomery form
 ///
 /// Input a[256] (signed 16-bit words); output a[256] (signed 16-bit words)
@@ -111,4 +112,11 @@ pub(crate) fn mlkem_tomont(a: &mut [i16; 256]) {
         out("x2") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(mlkem_tomont, &mut crate::low::abi::Aligned([0; 256]).0);
 }

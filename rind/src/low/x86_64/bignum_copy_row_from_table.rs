@@ -56,6 +56,7 @@ macro_rules! j {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_copy_row_from_table.S.
 /// Given table: uint64_t[height*width], copy table[idx*width...(idx+1)*width-1]
 ///
 /// into z[0..width-1].
@@ -67,7 +68,8 @@ pub(crate) fn bignum_copy_row_from_table(
     width: u64,
     index: u64,
 ) {
-    debug_assert!(z.len() as u64 == width);
+    assert!(z.len() as u64 == width);
+    assert!(height.checked_mul(width) == Some(table.len() as u64));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -125,4 +127,11 @@ pub(crate) fn bignum_copy_row_from_table(
         out("rax") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_copy_row_from_table, &mut [0; 4], &[7; 12], 3, 4, 2);
 }

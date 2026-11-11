@@ -20,6 +20,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = r, RDX = a
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/mlkem/mlkem_tobytes.S.
 /// Pack ML-KEM polynomial coefficients as 12-bit numbers
 ///
 /// Input a[256] (signed 16-bit words); output r[384] (bytes)
@@ -29,7 +30,7 @@ use crate::low::macros::*;
 /// It packs them into the output array as 12-bit unsigned numbers.
 #[inline(never)]
 pub(crate) fn mlkem_tobytes(r: &mut [u8; 384], a: &[i16; 256]) {
-    debug_assert!((a.as_ptr() as usize).is_multiple_of(32));
+    assert!((a.as_ptr() as usize).is_multiple_of(32));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -195,4 +196,18 @@ pub(crate) fn mlkem_tobytes(r: &mut [u8; 384], a: &[i16; 256]) {
         out("zmm9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !std::arch::is_x86_feature_detected!("avx2") {
+        return;
+    }
+    crate::low::abi::call!(
+        mlkem_tobytes,
+        &mut crate::low::abi::Aligned([0; 384]).0,
+        &crate::low::abi::Aligned([0; 256]).0
+    );
 }

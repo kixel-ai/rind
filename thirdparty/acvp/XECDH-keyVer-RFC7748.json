@@ -1,0 +1,128 @@
+{
+ "vsId": 0,
+ "algorithm": "XECDH",
+ "mode": "keyVer",
+ "revision": "RFC7748",
+ "isSample": true,
+ "testGroups": [
+  {
+   "tgId": 1,
+   "testType": "AFT",
+   "curve": "Curve25519",
+   "tests": [
+    {
+     "tcId": 1,
+     "testPassed": true,
+     "reason": "most significant bit set",
+     "privateKey": "F278299C5C6ABE0442D6D5AD8D05CADD2CA0A2D0A148CBE8EF193167D5A4D5F9",
+     "publicKey": "A1BB764A157C6EF2430D53DF1DE26A1A41F17DCF0318E62BE2F589D2D9D78E82"
+    },
+    {
+     "tcId": 2,
+     "testPassed": true,
+     "reason": "none",
+     "privateKey": "D3BFA351FB3480E1B6C3D99F64E96C771755D98DCE60BAC4A4E34D5B11EEE9C1",
+     "publicKey": "E2ECE75B2373C11D47A07EA38A82D4407A5E6EDFF635F1D76F74D39412E8F05D"
+    },
+    {
+     "tcId": 3,
+     "testPassed": true,
+     "reason": "none",
+     "privateKey": "06140BDEC58AE82FE04E1DD9EA50C97B45E337DB9DD35DDDFAA437B4AF397E30",
+     "publicKey": "746F8A2F591F29FB2439CF62482AA2BC62A6C759F30CE2D9FF1CC15DADE9705C"
+    },
+    {
+     "tcId": 4,
+     "testPassed": false,
+     "reason": "too long",
+     "privateKey": "E8EA4B5257ECFBF5E8A98724F981E032EAC62E631257E23ECA8089585FA7ADC9",
+     "publicKey": "2EA0E1B60D13800BF8A61F49CE5E918CD41A7778BF8C4F698F30DCD03E8AB85FFF"
+    },
+    {
+     "tcId": 5,
+     "testPassed": true,
+     "reason": "most significant bit set",
+     "privateKey": "339CAFAF2DDD774D4561363F84C98FE14C0AD4F06CC5E218E6023DBC1EFAD819",
+     "publicKey": "80C84AB203B1F280E1D83611B1E9B092A684D9D625784348EE92998BC95B1FF0"
+    },
+    {
+     "tcId": 6,
+     "testPassed": false,
+     "reason": "too long",
+     "privateKey": "EA4B19CB958AD9BAB08FB8E63B29D8C59583FEF3B815221250F689FF5477B6C0",
+     "publicKey": "88EFAA909B2A968C5D3A5F5C1AFD97D37F751C724832EB6E741A152844921925FF"
+    },
+    {
+     "tcId": 7,
+     "testPassed": false,
+     "reason": "too short",
+     "privateKey": "DE3393CD587E6D884F5D0553070A68BADA72DD4CF7749F99E2645D3212388CE6",
+     "publicKey": "3B92AC5D780F27A4FDBF3AD262723458B698BE7DBE2D61002377085AEC5C5F"
+    },
+    {
+     "tcId": 8,
+     "testPassed": false,
+     "reason": "too long",
+     "privateKey": "881EAF24958ADCC90079264023CC65FB5AEB6C58BBA34BD5AD320F0B2D502C2E",
+     "publicKey": "02961EF1E9E6E1F37BA0A4BA6ED6F8038F4FFC27CA9C3A66E25B1548C1F94C2EFF"
+    },
+    {
+     "tcId": 9,
+     "testPassed": false,
+     "reason": "too short",
+     "privateKey": "192A36BAE8168D1178C212403FE6328DC20AFCFF237460A5007B26F9AD995E8E",
+     "publicKey": "52D5F0F84FE6707C975AC1FAF5D895B296A599F5C132A249D722593F29E916"
+    },
+    {
+     "tcId": 10,
+     "testPassed": true,
+     "reason": "most significant bit set",
+     "privateKey": "0103656E1E85182D61113151D91063B4B0F6B4B4FCE8649D264DB2ED8C63C62A",
+     "publicKey": "05634C7CAAB59A4D4832266C32BC287F12F3D92C8B89140B980CC0CB5E3639FC"
+    },
+    {
+     "tcId": 11,
+     "testPassed": true,
+     "reason": "none",
+     "privateKey": "6F46930F6B9C209C7C8762A695EC57A812C5637A56C50919AEDDE2C3393226FC",
+     "publicKey": "2676703A8AF06E1B989D82C960076A561140D7211D01741F5329687C04EC7321"
+    },
+    {
+     "tcId": 12,
+     "testPassed": false,
+     "reason": "too long",
+     "privateKey": "6837D45F45D1B477E37C65E08D599E3CB060251AF1D072538934106B6880397C",
+     "publicKey": "8F049144AEF72B3A863FA3F9C50BE473726D89B371EDF3D113B844B9AFF47141FF"
+    },
+    {
+     "tcId": 13,
+     "testPassed": false,
+     "reason": "too short",
+     "privateKey": "1E15D76F23674F4AE147C98AA41149A8E96534B8306F36343CF9563A6C4602F7",
+     "publicKey": "BAC8024155DEA2C04E88704E5128A081FF4D5188A23174EC7661B71D13DB5D"
+    },
+    {
+     "tcId": 14,
+     "testPassed": true,
+     "reason": "most significant bit set",
+     "privateKey": "769E8727A328B6D787439FE8835DD85C412325EFDA58247273BDF34C6160FD4F",
+     "publicKey": "7B74C87D18140CAD4CA997CE2F890BA973D5B232D181E310E9FA762D3D856FCA"
+    },
+    {
+     "tcId": 15,
+     "testPassed": false,
+     "reason": "too short",
+     "privateKey": "BF52BCC6A9D161FE233A5D458779C05B5217073E581092C60182F08A8E196EF8",
+     "publicKey": "432C6D366D2B5AB1A089D727F89544E566A0006670062680D075064BA69D3A"
+    },
+    {
+     "tcId": 16,
+     "testPassed": true,
+     "reason": "none",
+     "privateKey": "540D4D29C3138909ACD028F5E46215F1176A4DDCD332136C3F9A82AD70FB1A09",
+     "publicKey": "E489A83574236CFC40D68EBC5998F7B58C0C69D1C3A8185F112A225E9409FB6D"
+    }
+   ]
+  }
+ ]
+}

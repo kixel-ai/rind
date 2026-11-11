@@ -1355,12 +1355,12 @@ pub struct RsaKeyPair {
 }
 
 /// The public key's PKCS#1 DER.
-// Aligned like the private key's words, so on 32-bit targets the key pair's
-// padding falls inside this value, which `RsaKeyPair`'s drop wipes whole,
-// rather than after it, where `tests/zeroing.rs` finds stale bytes.
+// The empty array aligns it like the private key's `u64` words (to 8 bytes on
+// armv7, 4 on i686), so the key pair's padding falls inside this value, which
+// `RsaKeyPair`'s drop wipes whole, rather than after it, where
+// `tests/zeroing.rs` finds stale bytes.
 #[derive(Clone, Copy)]
-#[repr(align(8))]
-struct RsaPublicKeyDer(Buffer<{ rsa::MAX_PUBLIC_KEY_LEN }>);
+struct RsaPublicKeyDer(Buffer<{ rsa::MAX_PUBLIC_KEY_LEN }>, [u64; 0]);
 
 impl Zeroable for RsaPublicKeyDer {}
 
@@ -1389,7 +1389,7 @@ impl RsaKeyPair {
         let public_key = Buffer::write(|output| key.public_key().to_pkcs1_der(output))?;
         Ok(Self {
             key,
-            public_key: RsaPublicKeyDer(public_key),
+            public_key: RsaPublicKeyDer(public_key, []),
         })
     }
 
@@ -1824,6 +1824,7 @@ mod tests {
     // `tests/crosschecks.rs`. Wycheproof has no P-256 with SHA-384 vectors,
     // nor P-521 with SHA-256 or SHA-384.
     #[test]
+    #[cfg(not(miri))]
     fn ecdsa_verification_matches_aws_lc_rs() {
         use aws_lc_rs::signature as theirs;
 

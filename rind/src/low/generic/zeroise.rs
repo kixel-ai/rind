@@ -12,14 +12,17 @@ use crate::low::zero_bytes;
 /// Writes zeroes over the whole of the `v` slice, under the `wipe` feature.
 pub(crate) fn zeroise<T: Zeroable>(v: &mut [T]) {
     if cfg!(feature = "wipe") {
-        zero_bytes(v.as_mut_ptr().cast(), size_of_val(v));
+        // SAFETY: `v` is `size_of_val(v)` writable bytes, and `T: Zeroable`
+        // makes all-zero bytes a valid `T`.
+        unsafe { zero_bytes(v.as_mut_ptr().cast(), size_of_val(v)) };
     }
 }
 
 /// Writes zeroes over the whole of the `v` value, under the `wipe` feature.
 pub(crate) fn zeroise_value<T: Zeroable>(v: &mut T) {
     if cfg!(feature = "wipe") {
-        zero_bytes((v as *mut T).cast(), size_of::<T>());
+        // SAFETY: as above, for the `size_of::<T>()` bytes of `v`.
+        unsafe { zero_bytes((v as *mut T).cast(), size_of::<T>()) };
     }
 }
 

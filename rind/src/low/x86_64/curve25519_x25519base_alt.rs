@@ -431,6 +431,7 @@ macro_rules! double_twice4 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/curve25519/curve25519_x25519base_alt.S.
 /// The x25519 function for curve25519 on base element 9
 ///
 /// Input scalar[4]; output res[4]
@@ -2376,3 +2377,14 @@ pub(crate) fn curve25519_x25519base_alt(res: &mut [u64; 4], scalar: &[u64; 4]) {
 // ****************************************************************************
 // The precomputed data (all read-only).
 // ****************************************************************************
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        curve25519_x25519base_alt,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
+}

@@ -842,6 +842,7 @@ macro_rules! divstep59 {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p384/bignum_inv_p384.S.
 /// Modular inverse modulo p_384 = 2^384 - 2^128 - 2^96 + 2^32 - 1
 ///
 /// Input x[6]; output z[6]
@@ -1599,4 +1600,15 @@ pub(crate) fn bignum_inv_p384(z: &mut [u64; 6], x: &[u64; 6]) {
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_inv_p384,
+        &mut crate::low::abi::Aligned([0; 6]).0,
+        &crate::low::abi::Aligned([0; 6]).0
+    );
 }

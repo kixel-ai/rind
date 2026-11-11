@@ -65,10 +65,12 @@ pub(super) fn chacha20_ctr32(state: &[u32; 16], buffer: &mut [u8], neon: Option<
         // routine allows to alias exactly, and `key` and `counter_nonce` are
         // 8 and 4 aligned words. The token proves NEON.
         Some(_) if len >= NEON_MIN_LEN => unsafe {
-            ChaCha20_ctr32_neon(ptr, ptr, len, key, counter_nonce)
+            asm_call!(unsafe extern "C" ChaCha20_ctr32_neon(ptr, ptr, len, key, counter_nonce))
         },
         // SAFETY: as above; this routine needs only ARMv7.
-        _ => unsafe { ChaCha20_ctr32_nohw(ptr, ptr, len, key, counter_nonce) },
+        _ => unsafe {
+            asm_call!(unsafe extern "C" ChaCha20_ctr32_nohw(ptr, ptr, len, key, counter_nonce))
+        },
     }
 }
 
@@ -101,20 +103,20 @@ mod tests {
                 let mut got = want.clone();
                 // SAFETY: each buffer is `len` bytes, and the CPU has NEON.
                 unsafe {
-                    ChaCha20_ctr32_nohw(
+                    asm_call!(unsafe extern "C" ChaCha20_ctr32_nohw(
                         want.as_mut_ptr(),
                         want.as_ptr(),
                         len,
                         key.as_ptr(),
                         counter_nonce.as_ptr(),
-                    );
-                    ChaCha20_ctr32_neon(
+                    ));
+                    asm_call!(unsafe extern "C" ChaCha20_ctr32_neon(
                         got.as_mut_ptr(),
                         got.as_ptr(),
                         len,
                         key.as_ptr(),
                         counter_nonce.as_ptr(),
-                    );
+                    ));
                 }
                 ct::public_slice(&want);
                 ct::public_slice(&got);

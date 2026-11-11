@@ -121,7 +121,7 @@ pub(crate) fn sha3_keccak_nof4_f1600<const N: usize>(a: &mut [[u64; 25]; 4], _rc
 fn permute_neon(_: HaveNeon, a: &mut [u64; 25]) {
     // SAFETY: `a` is 25 writable, 8-byte aligned lanes, and the token proves
     // the CPU has NEON.
-    unsafe { keccak_f1600_neon(a) }
+    unsafe { asm_call!(unsafe extern "C" keccak_f1600_neon(a)) }
 }
 
 /// The integer routine keeps each lane as its even bits then its odd bits,
@@ -129,7 +129,7 @@ fn permute_neon(_: HaveNeon, a: &mut [u64; 25]) {
 fn permute_int(a: &mut [u64; 25]) {
     let mut s = a.map(interleave);
     // SAFETY: `s` is 25 writable interleaved lanes.
-    unsafe { keccak_f1600_int(&mut s) };
+    unsafe { asm_call!(unsafe extern "C" keccak_f1600_int(&mut s)) };
     *a = s.map(deinterleave);
 }
 

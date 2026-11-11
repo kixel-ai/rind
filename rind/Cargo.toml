@@ -1,6 +1,6 @@
 [package]
 name = "rind"
-version = "0.3.3"
+version = "0.3.2"
 edition = "2024"
 repository = "https://github.com/moq-dev/rind"
 license = "(Apache-2.0 OR ISC OR MIT-0) AND (Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND BSD-3-Clause"
@@ -23,7 +23,8 @@ crabgrind = { version = "0.4", optional = true }
 # The portable backend, which armv7 builds on: libcrux's portable Rust, with
 # no C or intrinsics features enabled, fiat-crypto's for the NIST curves, and
 # curve25519-dalek's for X25519 and Ed25519. The cfg is build.rs's choice of
-# the arm or portable backend, which a manifest cannot read.
+# the arm or portable backend, which a manifest cannot read, so armv7 builds
+# libcrux-sha2 too, though it runs aws-lc's assembly for SHA-512.
 [target.'cfg(any(rind_portable, target_endian = "big", not(any(target_arch = "x86_64", target_arch = "aarch64"))))'.dependencies]
 curve25519-dalek = { version = "5", default-features = false, features = ["precomputed-tables"] }
 fiat-crypto = { version = "0.3", default-features = false }
@@ -31,20 +32,14 @@ libcrux-aes = { version = "0.0.10", default-features = false }
 libcrux-hacl-rs = { version = "0.0.6", features = ["alloc"] }
 libcrux-macros = "0.0.4"
 libcrux-poly1305 = { version = "0.0.7", features = ["expose-hacl"] }
-libcrux-traits = "0.0.9"
-
-# The portable backend's SHA-512, which armv7 runs aws-lc's assembly for.
-[target.'cfg(any(rind_portable, target_endian = "big", not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "arm"))))'.dependencies]
 libcrux-sha2 = { version = "0.0.9", features = ["expose-hacl"] }
+libcrux-traits = "0.0.9"
 
 # Reads the AArch32 crypto extension's HWCAP2 bits.
 [target.'cfg(all(target_arch = "arm", target_endian = "little", not(rind_portable), any(target_os = "linux", target_os = "android")))'.dependencies]
 libc = { version = "0.2", default-features = false }
 
 [dev-dependencies]
-aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
-# aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
-aws-lc-sys = { version = "0.47", default-features = false }
 # Checks armv7's NIST curve arithmetic against s2n-bignum's on the other arches.
 fiat-crypto = { version = "0.3", default-features = false }
 # CCTV gzips its ML-KEM modulus vectors.
@@ -53,6 +48,19 @@ hex = { version = "0.4", features = ["serde"] }
 proptest = "1.5.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Maps the guard pages around the buffers in `low::guard_pages`.
+[target.'cfg(unix)'.dev-dependencies]
+libc = { version = "0.2", default-features = false }
+
+# The differential tests' reference. Miri cannot run C, so its builds leave it
+# out, along with every test that calls it.
+[target.'cfg(not(miri))'.dev-dependencies]
+aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
+# aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
+aws-lc-sys = { version = "0.47", default-features = false }
+# HPKE, which aws-lc-rs does not expose either; `hazmat` reads its private keys.
+hpke-rs = { version = "0.8", default-features = false, features = ["hazmat", "rustcrypto", "std"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

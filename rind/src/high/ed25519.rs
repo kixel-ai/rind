@@ -221,6 +221,52 @@ impl Ed25519SigningKey {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::test::{Acvp, acvp};
+
+    #[test]
+    fn acvp_key_gen() {
+        for group in acvp("EDDSA-KeyGen-1.0") {
+            for test in group.tests() {
+                let key = Ed25519SigningKey::from_bytes(&test.hex("d")).unwrap();
+                assert_eq!(key.public_key().as_bytes(), &test.hex("q")[..]);
+            }
+        }
+    }
+
+    #[test]
+    fn acvp_key_ver() {
+        for group in acvp("EDDSA-KeyVer-1.0") {
+            for test in group.tests() {
+                let valid = Ed25519VerifyingKey::from_bytes(&test.hex("q")).is_ok();
+                assert_eq!(valid, test.flag("testPassed"), "{}", test.str("reason"));
+            }
+        }
+    }
+
+    /// Ed25519 signing is deterministic, so each signature is checked whole:
+    /// AFT groups sign messages, and BFT groups messages that differ in one bit.
+    #[test]
+    fn acvp_sig_gen() {
+        for group in acvp("EDDSA-SigGen-1.0") {
+            let key = Ed25519SigningKey::from_bytes(&group.hex("d")).unwrap();
+            assert_eq!(key.public_key().as_bytes(), &group.hex("q")[..]);
+            for test in group.tests() {
+                assert_eq!(key.sign(&test.hex("message")), &test.hex("signature")[..]);
+            }
+        }
+    }
+
+    #[test]
+    fn acvp_sig_ver() {
+        for group in acvp("EDDSA-SigVer-1.0") {
+            for test in group.tests() {
+                let valid = Ed25519VerifyingKey::from_bytes(&test.hex("q"))
+                    .and_then(|key| key.verify(&test.hex("signature"), &test.hex("message")))
+                    .is_ok();
+                assert_eq!(valid, test.flag("testPassed"), "{}", test.str("reason"));
+            }
+        }
+    }
 
     #[test]
     fn pairwise() {

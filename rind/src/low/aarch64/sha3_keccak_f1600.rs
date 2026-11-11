@@ -30,6 +30,7 @@ use crate::low::macros::*;
 // Standard ARM ABI: X0 = a, X1 = rc
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's arm/sha3/sha3_keccak_f1600.S.
 /// Keccak-f1600 permutation for SHA3
 ///
 /// Input a[25], rc[24]; output a[25]
@@ -389,4 +390,15 @@ pub(crate) fn sha3_keccak_f1600(a: &mut [u64; 25], rc: &[u64; 24]) {
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        sha3_keccak_f1600,
+        &mut crate::low::abi::Aligned([0; 25]).0,
+        &crate::low::abi::Aligned([0; 24]).0
+    );
 }

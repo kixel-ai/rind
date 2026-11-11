@@ -35,6 +35,9 @@ The modules:
   peer keys parsed from a point, compressed or not, or a
   `SubjectPublicKeyInfo`.
 - `kem`: ML-KEM-768.
+- `hpke`: RFC 9180's base mode and secret export, over DHKEM with X25519,
+  P-256, P-384, and P-521, HKDF, and the AEADs: a recipient's keys, and
+  sender, recipient, and export-only contexts.
 - `rsa`: RSA-OAEP encryption and decryption, with SHA-1 under `legacy`,
   and the key sizes and public-key components both RSA modules take.
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
@@ -69,7 +72,7 @@ or intrinsic-based implementations for a certain platform.
 
 `rind/build.rs` picks one backend per target and sets `rind_backend` to it:
 `x86_64`, `aarch64`, or `arm` on little-endian targets of those
-architectures, and `portable` everywhere else, or wherever `--cfg
+architectures (`arm` only from ARMv7 on), and `portable` everywhere else, or wherever `--cfg
 rind_portable` forces it. Code outside `low` gates on `rind_backend`, never
 `target_arch`. `low::portable` is pure Rust and needs no CPU features; the
 `arm` backend wraps its types with the crypto extension's, NEON's, and

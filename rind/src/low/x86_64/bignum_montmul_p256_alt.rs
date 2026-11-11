@@ -79,6 +79,7 @@ macro_rules! mulpade {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p256/bignum_montmul_p256_alt.S.
 /// Montgomery multiply, z := (x * y / 2^256) mod p_256
 ///
 /// Inputs x[4], y[4]; output z[4]
@@ -242,4 +243,16 @@ pub(crate) fn bignum_montmul_p256_alt(z: &mut [u64; 4], x: &[u64; 4], y: &[u64; 
         out("rcx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_montmul_p256_alt,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
 }

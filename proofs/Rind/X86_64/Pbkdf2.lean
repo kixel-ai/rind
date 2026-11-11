@@ -564,7 +564,7 @@ theorem prefix_eq_step (prev blk : List U8) (c' : Nat) (hoff : c' * n < prev.len
 
 end
 
-theorem verify_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (hct : CtEqual)
+theorem verify_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a)
     (P : List Byte) (k : high.hmac.Key) (hk : KeyOf a P k) (salt : List U8)
     (salted : high.hmac.Streaming) (hs : StreamOf a P salt salted)
     (hm : hmacBlock a + salt.length + 4 ≤ maxInput)
@@ -609,7 +609,8 @@ theorem verify_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (hct : CtEq
       step as ⟨s1, hs1v, hs1l⟩
       step as ⟨i2, hi2⟩
       step as ⟨s2, hs2v, hs2l⟩
-      rw [hct, bind_ok]
+      apply WP.spec_bind (ct_equal_spec hr.held _ _)
+      rintro _ rfl
       have hlenv : len.val = min (tagLen a) (prev.length - i' * tagLen a) := by
         rw [hlen, core.cmp.impls.OrdUsize.min_val, hhl, hi1, hol, hoff]
       have hT1 : bv s.val = pbT (hmacOf a) P (bv salt) iterations.val (i' + 1) := by
@@ -626,7 +627,7 @@ theorem verify_loop_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (hct : CtEq
       rw [this, Bool.and_eq_true, heq, hs1, hs2, decide_eq_true_iff]
   · exact ⟨i', hz, heq⟩
 
-theorem verify_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (hct : CtEqual)
+theorem verify_spec (a : high.hmac.Algorithm) (hr : RunsHmac a)
     (P : List Byte) (k : high.hmac.Key) (hk : KeyOf a P k)
     (iterations : core.num.nonzero.NonZero U32 core.num.niche_types.NonZeroU32Inner)
     (salt prev : Slice U8) (hm : hmacBlock a + salt.length + 4 ≤ maxInput) :
@@ -666,7 +667,7 @@ theorem verify_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (hct : CtEqual)
     simp only [h0, ↓reduceIte, bind_ok]
     have hz := zipAt_start prev.length n (Slice.len prev) hlv
     rw [hnv] at hz
-    apply WP.spec_bind (verify_loop_spec a hr hct P k hk salt.val salted hsd hm iterations n hnv
+    apply WP.spec_bind (verify_loop_spec a hr P k hk salt.val salted hsd hm iterations n hnv
       prev hc _ 0 true hz (by simp [blocksOut]))
     intro eq heq
     simp only [low.ct.into_public, bind_ok, ← pbkdf2_eq] at heq ⊢
