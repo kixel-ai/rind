@@ -68,6 +68,7 @@ impl Share {
     /// Fails with [`Error::KeyRejected`] when `bytes` is not that encoding of
     /// a point on P-256.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let _entry = Entry::new_public();
         let point = Affine::from_uncompressed(bytes)?;
         let encoded = point.to_uncompressed();
         if encoded.as_slice() != bytes {
@@ -170,6 +171,7 @@ impl ProverSecrets {
     /// order fits. Fails with [`Error::WrongLength`] past that or when empty,
     /// and with [`Error::KeyRejected`] when either reduces to zero.
     pub fn new(w0: &[u8], w1: &[u8]) -> Result<Self, Error> {
+        let _entry = Entry::new_secret();
         Ok(Self {
             w0: Scalar::from_be_reduced(w0)?,
             w1: Scalar::from_be_reduced(w1)?,
@@ -244,6 +246,7 @@ impl VerifierRecord {
     ///
     /// The scalar rules are [`ProverSecrets::new`]'s.
     pub fn from_w1(w0: &[u8], w1: &[u8]) -> Result<Self, Error> {
+        let _entry = Entry::new_secret();
         let w0 = Scalar::from_be_reduced(w0)?;
         let w1 = Scalar::from_be_reduced(w1)?;
         let l = publish_point(Affine::mul_base(&w1))?;
@@ -254,6 +257,7 @@ impl VerifierRecord {
     ///
     /// Fails with [`Error::KeyRejected`] when `l` is not on the curve.
     pub fn from_record(w0: &[u8], l: &[u8]) -> Result<Self, Error> {
+        let _entry = Entry::new_secret();
         Ok(Self {
             w0: Scalar::from_be_reduced(w0)?,
             l: Affine::from_uncompressed(l)?,

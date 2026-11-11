@@ -530,6 +530,7 @@ impl Affine {
 
     /// Decodes an uncompressed X9.62 point.
     pub(crate) fn from_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
+        low::Entry::assert_held();
         AffineMontPoint::from_x962_uncompressed(bytes).map(Self)
     }
 
@@ -545,11 +546,13 @@ impl Affine {
 
     /// `scalar * self`.
     pub(crate) fn mul(self, scalar: &Scalar) -> Self {
+        low::Entry::assert_held();
         Self(self.0.multiply(scalar))
     }
 
     /// `scalar * G`.
     pub(crate) fn mul_base(scalar: &Scalar) -> Self {
+        low::Entry::assert_held();
         Self(AffineMontPoint::base_multiply(scalar))
     }
 
@@ -1085,6 +1088,7 @@ impl Scalar {
     /// Zero after reduction is [`KeyFormatError::ScalarOutOfRange`]. The
     /// length is public; the value stays secret.
     pub(crate) fn from_be_reduced(bytes: &[u8]) -> Result<Self, Error> {
+        low::Entry::assert_held();
         const MAX: usize = 128;
         if bytes.is_empty() || bytes.len() > MAX {
             return Err(Error::WrongLength);
