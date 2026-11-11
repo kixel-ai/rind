@@ -307,9 +307,7 @@ mod tests {
             }
         }
         let (a, b) = ([1u8; 37], [2u8; 37]);
-        // SAFETY: `a` and `b` are 37 readable bytes.
-        let diff = unsafe { call!(unsafe ct_compare_bytes, a.as_ptr(), b.as_ptr(), 37) };
-        assert_ne!(diff, 0);
+        assert_ne!(call!(ct_compare_bytes, &a, &b), 0);
         assert_ne!(call!(ct_compare_16, &[1; 16], &[2; 16]), 0);
     }
 
