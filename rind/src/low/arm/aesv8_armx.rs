@@ -79,9 +79,11 @@ impl AesHwKey {
         };
         // SAFETY: `key` holds `key_bits(key) / 8` bytes and `r` is an
         // `AES_KEY`. The token proves the CPU has the AES instructions.
-        let ret = unsafe { aes_hw_set_encrypt_key(key.as_ptr(), key_bits(key), &mut r) };
+        let ret = unsafe {
+            asm_call!(unsafe extern "C" aes_hw_set_encrypt_key(key.as_ptr(), key_bits(key), &mut r))
+        };
         // aws-lc refuses only a null pointer or another key size.
-        debug_assert_eq!(ret, 0);
+        assert_eq!(ret, 0);
         r
     }
 
@@ -97,7 +99,9 @@ impl AesHwKey {
         let mut out = [0u8; 16];
         // SAFETY: `block` is one readable block and `out` one writable one.
         // Only a `HaveCryptoExt` token builds `self`.
-        unsafe { aes_hw_encrypt(block.as_ptr(), out.as_mut_ptr(), self) };
+        unsafe {
+            asm_call!(unsafe extern "C" aes_hw_encrypt(block.as_ptr(), out.as_mut_ptr(), self))
+        };
         out
     }
 
@@ -109,13 +113,13 @@ impl AesHwKey {
         // SAFETY: `inout` is `inout.len()` readable and writable blocks, which
         // aws-lc allows to alias. Only a `HaveCryptoExt` token builds `self`.
         unsafe {
-            aes_hw_ctr32_encrypt_blocks(
+            asm_call!(unsafe extern "C" aes_hw_ctr32_encrypt_blocks(
                 inout.as_ptr().cast(),
                 inout.as_mut_ptr().cast(),
                 inout.len(),
                 self,
                 ivec,
-            )
+            ))
         }
     }
 
@@ -151,9 +155,11 @@ impl AesHwDecKey {
         };
         // SAFETY: `key` holds `key_bits(key) / 8` bytes and `r` is an
         // `AES_KEY`. The token proves the CPU has the AES instructions.
-        let ret = unsafe { aes_hw_set_decrypt_key(key.as_ptr(), key_bits(key), &mut r) };
+        let ret = unsafe {
+            asm_call!(unsafe extern "C" aes_hw_set_decrypt_key(key.as_ptr(), key_bits(key), &mut r))
+        };
         // aws-lc refuses only a null pointer or another key size.
-        debug_assert_eq!(ret, 0);
+        assert_eq!(ret, 0);
         r
     }
 
@@ -161,7 +167,9 @@ impl AesHwDecKey {
     pub(crate) fn decrypt_block(&self, inout: &mut [u8; 16]) {
         // SAFETY: `inout` is one readable and writable block, which aws-lc
         // allows to alias. Only a `HaveCryptoExt` token builds `self`.
-        unsafe { aes_hw_decrypt(inout.as_ptr(), inout.as_mut_ptr(), self) }
+        unsafe {
+            asm_call!(unsafe extern "C" aes_hw_decrypt(inout.as_ptr(), inout.as_mut_ptr(), self))
+        }
     }
 
     /// Decrypts whole blocks in place in CBC mode, the first chained from
@@ -185,14 +193,14 @@ unsafe fn cbc(blocks: &mut [[u8; 16]], key: *const u8, iv: &[u8; 16], enc: i32) 
     // which aws-lc allows to alias, and the caller vouches for `key`. The
     // routine returns at once for fewer than 16 bytes.
     unsafe {
-        aes_hw_cbc_encrypt(
+        asm_call!(unsafe extern "C" aes_hw_cbc_encrypt(
             blocks.as_ptr().cast(),
             blocks.as_mut_ptr().cast(),
             16 * blocks.len(),
             key,
             &mut ivec,
             enc,
-        )
+        ))
     }
 }
 

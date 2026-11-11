@@ -13,7 +13,3 @@ Decided with the maintainer on 2026-11-07, in m2 adoption:
 - A patch applies only in a binary's own workspace. A dependency that calls an item rind doesn't offer fails to build, and the docs list those items.
 - The `ring` shim ships first, since rind-ring already covers ring 0.17's API.
 - MIGRATE.md and MIGRATING.md gain the patch route next to "port each call to rind's API". Every MIGRATING.md row the shims unblock moves out of Unsupported, such as s2n-quic; quinn-proto and libp2p also wait on ML-DSA through rustls.
-
-## Required
-
-- [An aws-lc-rs patch shim](/quest/m2/adoption/aws-lc-rs/aws-lc-rs-patch.md) - one line replaces aws-lc-rs across a binary's tree

@@ -51,7 +51,7 @@ def p256PublicKey (d : Nat) (b : List U8) : Prop :=
 /-- `key` is a P-256 key whose scalar is `d`, holding its public key: X9.62's
 uncompressed encoding of `d` times the generator. -/
 def p256Key (d : Nat) (key : high.agreement.PrivateKey) : Prop :=
-  ∃ k : high.agreement.Keyed mid.p256.PrivateKey, key.«private» = .P256 k ∧
+  ∃ k : high.agreement.Keyed high.curve.P256 mid.p256.PrivateKey, key.«private» = .P256 k ∧
     wordsNat k.key.scalar.val = d ∧
     high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref key.«public» ⦃ b =>
       p256PublicKey d b.val ⦄
@@ -710,9 +710,9 @@ theorem public_from_x962_spec (h : Runs) (bytes : Slice U8) :
     · subst hr; simp
 
 theorem agree_spec (h : Runs) (k : mid.p256.PrivateKey) (peer : Slice U8) :
-    mid.p256.PrivateKey.Insts.RindHighAgreementAgree.agree k peer ⦃ r =>
+    high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.agree k peer ⦃ r =>
       p256Agreement (wordsNat k.scalar.val) peer.val r ⦄ := by
-  unfold mid.p256.PrivateKey.Insts.RindHighAgreementAgree.agree p256Agreement
+  unfold high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.agree p256Agreement
   step with public_from_x962_spec h peer as ⟨r, hr⟩
   simp only [core.result.Result.Insts.CoreOpsTry.branch,
     core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
@@ -918,10 +918,10 @@ theorem public_key_uncompressed_spec (h : Runs) (k : mid.p256.PrivateKey) (x y :
 theorem encode_public_spec (h : Runs) (k : mid.p256.PrivateKey) (algorithm : high.agreement.Algorithm)
     (x y : Nat) (hq : p256Pow p256G (wordsNat k.scalar.val) = some (x, y))
     (hc : p256OnCurve (some (x, y))) :
-    mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_public k algorithm ⦃ pk =>
+    high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_public k algorithm ⦃ pk =>
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
         b.length = 65 ∧ b.val.head? = some 4#u8 ∧ x962Coords b.val = (x, y) ⦄ ⦄ := by
-  unfold mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_public high.agreement.PublicKey.from_encoding
+  unfold high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_public high.agreement.PublicKey.from_encoding
     high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref low.generic.zeroise.ZeroableRef.new
   step with public_key_uncompressed_spec h k x y hq hc as ⟨a, ha4, hac⟩
   step as ⟨sl, hsl⟩
@@ -953,7 +953,7 @@ theorem public_key_of_coords (d x y : Nat) (hq : p256Pow p256G d = some (x, y))
 /-- The public key `encode_public` computes for a scalar in [1, n). -/
 theorem encode_public_key_spec (h : Runs) (k : mid.p256.PrivateKey) (algorithm : high.agreement.Algorithm)
     (hk0 : 0 < wordsNat k.scalar.val) (hk : wordsNat k.scalar.val < n256) :
-    mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_public k algorithm ⦃ pk =>
+    high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_public k algorithm ⦃ pk =>
       high.agreement.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk ⦃ b =>
         p256PublicKey (wordsNat k.scalar.val) b.val ⦄ ⦄ := by
   obtain ⟨x, y, hq, hc⟩ := g_mult _ hk0 hk
@@ -965,11 +965,11 @@ their specs. -/
 theorem p256Agree_random : high.agreement.p256Agree.random = mid.p256.PrivateKey.generate := rfl
 
 theorem p256Agree_load :
-    high.agreement.p256Agree.load = mid.p256.PrivateKey.Insts.RindHighAgreementAgree.load := rfl
+    high.agreement.p256Agree.load = high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.load := rfl
 
 theorem p256Agree_encode_public :
     high.agreement.p256Agree.encode_public =
-      mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_public := rfl
+      high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_public := rfl
 
 /-- A key and its public key, as `Keyed::private_key` keeps them, is a `p256Key`. -/
 theorem private_key_spec (k : mid.p256.PrivateKey) (pk : high.agreement.PublicKey)
@@ -978,7 +978,7 @@ theorem private_key_spec (k : mid.p256.PrivateKey) (pk : high.agreement.PublicKe
     high.agreement.Keyed.private_key high.agreement.p256Agree k pk ⦃ key =>
       p256Key (wordsNat k.scalar.val) key ⦄ := by
   simp only [high.agreement.Keyed.private_key, high.agreement.p256Agree,
-    mid.p256.PrivateKey.Insts.RindHighAgreementAgree.wrap, bind_ok, WP.spec_ok]
+    high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.wrap, bind_ok, WP.spec_ok]
   exact ⟨{ key := k, ops := () }, rfl, rfl, hpk⟩
 
 /-- `p256Keygen`, for the scalar `generate_loop` returns. -/
@@ -1065,7 +1065,7 @@ theorem drawKeygen_err (draws : Nat → core.result.Result Unit getrandom.error.
     · simpa using hr
 
 theorem load_scalar_spec (h : Runs) (algorithm : high.agreement.Algorithm) (b : Slice U8) :
-    mid.p256.PrivateKey.Insts.RindHighAgreementAgree.load algorithm (.Scalar b) ⦃ r =>
+    high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.load algorithm (.Scalar b) ⦃ r =>
       if b.length = 32 then
         if 0 < beNat b.val ∧ beNat b.val < n256 then
           ∃ k pk, r = .Ok (k, pk) ∧ wordsNat k.scalar.val = beNat b.val ∧
@@ -1073,7 +1073,7 @@ theorem load_scalar_spec (h : Runs) (algorithm : high.agreement.Algorithm) (b : 
               p256PublicKey (beNat b.val) b'.val ⦄
         else r = .Err (.KeyRejected .ScalarOutOfRange)
       else r = .Err (.KeyRejected .WrongLength) ⦄ := by
-  unfold mid.p256.PrivateKey.Insts.RindHighAgreementAgree.load
+  unfold high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.load
   step as ⟨_⟩
   by_cases hl : b.length = 32
   · have hlen : Slice.len b = mid.p256.Scalar.BYTES := by
@@ -1167,7 +1167,7 @@ n points, a count that needs more than Mathlib proves (Hasse's bound at
 least). G's order, which the kernel checks, says nothing about the peer's
 point. -/
 theorem p256_agree (h : Runs) (key : high.agreement.PrivateKey)
-    (k : high.agreement.Keyed mid.p256.PrivateKey) (hk : key.«private» = .P256 k) (peer : Slice U8) :
+    (k : high.agreement.Keyed high.curve.P256 mid.p256.PrivateKey) (hk : key.«private» = .P256 k) (peer : Slice U8) :
     high.agreement.PrivateKey.agree key peer ⦃ r =>
       p256Agreement (wordsNat k.key.scalar.val) peer.val r ⦄ := by
   unfold high.agreement.PrivateKey.agree high.agreement.Keyed.agree

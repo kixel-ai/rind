@@ -202,6 +202,69 @@ mod tests {
     }
 
     #[test]
+    fn acvp_ecb() {
+        for group in acvp("ACVP-AES-ECB-1.0") {
+            assert_eq!(group.str("direction"), "encrypt");
+            for test in group.tests() {
+                let mut key = test.hex("key");
+                match group.str("testType") {
+                    "AFT" => {
+                        let aes = Aes::new(algorithm(&key), &key).unwrap();
+                        let mut text = test.hex("pt");
+                        let (blocks, rest) = text.as_chunks_mut::<16>();
+                        assert!(rest.is_empty());
+                        for block in blocks {
+                            aes.encrypt_block(block);
+                        }
+                        assert_eq!(text, test.hex("ct"));
+                    }
+                    "MCT" => {
+                        let mut block: [u8; 16] = test.hex("pt").try_into().unwrap();
+                        for result in test["resultsArray"].as_array().unwrap() {
+                            assert_eq!(key, result.hex("key"));
+                            assert_eq!(block, &result.hex("pt")[..]);
+                            let aes = Aes::new(algorithm(&key), &key).unwrap();
+                            let mut previous = block;
+                            for _ in 0..1000 {
+                                previous = block;
+                                aes.encrypt_block(&mut block);
+                            }
+                            assert_eq!(block, &result.hex("ct")[..]);
+                            aes_mct_next_key(&mut key, &previous, &block);
+                        }
+                    }
+                    other => panic!("unexpected test type {other}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn acvp_ctr() {
+        for group in acvp("ACVP-AES-CTR-1.0") {
+            assert_eq!(group.str("internalTestType"), "RFC3686");
+            let (input, output) = match group.str("direction") {
+                "encrypt" => ("pt", "ct"),
+                "decrypt" => ("ct", "pt"),
+                other => panic!("unexpected direction {other}"),
+            };
+            for test in group.tests() {
+                let key = test.hex("key");
+                let ctr = AesCtr::new(algorithm(&key), &key, 32).unwrap();
+                let mut text = test.hex(input);
+                ctr.apply_keystream(&test.hex("iv").try_into().unwrap(), &mut text)
+                    .unwrap();
+                // A message of `len` bits fills its last byte from the top.
+                let spare_bits = text.len() * 8 - test.int("payloadLen");
+                if let Some(last) = text.last_mut() {
+                    *last &= 0xff << spare_bits;
+                }
+                assert_eq!(text, test.hex(output));
+            }
+        }
+    }
+
+    #[test]
     fn key_length_must_match_algorithm() {
         let key = [0u8; 33];
         for algorithm in [&AES_128, &AES_192, &AES_256] {

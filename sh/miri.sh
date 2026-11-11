@@ -46,6 +46,11 @@ slow=(
     high::ecdsa::tests::smoke_test_ecdsa_sign
     high::ecdsa::tests::smoke_test_loading_keys
     high::hmac::tests::cavp
+    high::hpke::tests::derives_from_any_length
+    high::hpke::tests::every_suite_round_trips
+    high::hpke::tests::rfc9180
+    high::hpke::tests::secret_decapsulation
+    high::hpke::tests::wycheproof_decrypt
     high::kem::tests::boringssl
     high::kem::tests::cctv_accumulated
     high::kem::tests::cctv_modulus

@@ -33,9 +33,9 @@ The models, each quoting the Rust it models, which `admin/prove:41-97` checks ag
 
 Not this quest's, and they stay:
 
-- `proofs/Rind/X86_64/Simd.lean`: `core::arch` intrinsics are LLVM builtins with no Rust to translate. [Its models are tested against the CPU](/quest/m2/verified/simd-models.md) instead.
+- `proofs/Rind/X86_64/Simd.lean`: `core::arch` intrinsics are LLVM builtins with no Rust to translate. `admin/prove` tests its models against the CPU instead.
 - `Fills` (`P256Ecdsa.lean:2432`), that the system random source returns, and the dispatch half of `Runs`, `RunsSha512`, `RunsDouble`, `RunsValeAesGcm`, `RunsHmac`, and `RunsDigest`, which CPU the code is on: facts about the machine, not Rust.
-- `CtEqual`, `ShaBlocks`, and `P256Order`, each retired by its own quest.
+- `ShaBlocks` and `P256Order`, each retired by its own quest.
 
 Route:
 

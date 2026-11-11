@@ -18,8 +18,8 @@
 # report.txt among it, lands in .tmp/timing/marvin/rsaBITS/probes. rind has no
 # PKCS#1 v1.5 decryption, the toolkit's main target.
 #
-# `marvin` needs `nix develop .#timing`. Run either on a quiet machine,
-# holding a shared one with `quest gate --host`: other work adds noise, and a
+# `marvin` needs `nix develop .#timing`. Run either on a quiet machine:
+# other work on a shared one adds noise, and a
 # CPU throttled by power or heat runs faster on some data than on other. On Linux the tests
 # run pinned to CPU 1 (RIND_TIMING_CPU picks another), off the CPU most
 # interrupts land on.

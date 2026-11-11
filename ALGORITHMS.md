@@ -41,6 +41,7 @@ SHA-512.
 | SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  |  |  |  |
 | HMAC | Graviola ⚡ |  |  |  |  |
 | HKDF | rind ⚡ |  |  |  |  |
+| HPKE, over the rows it builds on | rind |  |  |  |  |
 | PBKDF2 | rind |  |  |  |  |
 | X25519 | s2n-bignum ✓ |  |  |  |  |
 | Ed25519 | s2n-bignum ✓ + Graviola |  |  |  |  |
@@ -98,6 +99,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  | OpenSSL ⚡ + Graviola | HACL* + Graviola |
 | HMAC | Graviola ⚡ |  |  |  |
 | HKDF | rind ⚡ |  |  |  |
+| HPKE, over the rows it builds on | rind |  |  |  |
 | PBKDF2 | rind |  |  |  |
 | X25519 | s2n-bignum ✓ |  | BoringSSL ⚡ + curve25519-dalek ⚡ | curve25519-dalek ⚡ |
 | Ed25519 | s2n-bignum ✓ + Graviola |  | curve25519-dalek ⚡ + rind ⚡ |  |
@@ -179,7 +181,8 @@ covers it, or "none" where s2n-bignum proves none at the pinned revision.
 LLVM may inline `bignum_modadd`, which a hot loop calls, so no symbol marks
 its copies and the check does not reach them; the check fails if such a
 routine has a `_SAFE` theorem.
-[BINSEC](/quest/m2/confidence/binsec.md) is planned to check those. The
+`admin/ct-binsec` checks those in the loop, `PosInt::reduce_even`, with
+BINSEC. The
 aarch64 AES-GCM theorems assume separate input and output buffers, so they do
 not cover rind's in-place calls.
 

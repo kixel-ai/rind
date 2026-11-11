@@ -19,7 +19,6 @@ swapping one for the other changes no other code. rind cannot back yet:
 
 - `kx_group::MLKEM1024`, which `ALL_KX_GROUPS` leaves out.
 - ML-DSA: `default_provider()` neither verifies nor signs with it.
-- `hpke`.
 
 Where it behaves differently:
 
@@ -27,6 +26,11 @@ Where it behaves differently:
   AES without CPU instructions, for speed.
 - `DEFAULT_CIPHER_SUITES` and `ALL_CIPHER_SUITES` list AES-128-GCM before
   AES-256-GCM, for speed.
+- `hpke`'s suites are `&dyn Hpke`, not upstream's `&HpkeAwsLcRs<..>`.
+- `hpke`'s NIST suites refuse a compressed public key, which RFC 9180 does
+  not define, where upstream seals to one a message no recipient opens.
+- `hpke`'s NIST suites refuse an X9.62 hybrid point (`0x06`/`0x07`) as a
+  public or encapsulated key, as rind does everywhere; upstream takes one.
 - `Ticketer` seals tickets with XChaCha20-Poly1305, where upstream's uses
   RFC 5077's AES-256-CBC and HMAC-SHA256.
 

@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Copy NIST's ACVP sample vector sets that rind's tests run into
+# thirdparty/acvp, from the ACVP-Server revision pinned here, keeping only
+# the test groups rind runs. Bump the revision and rerun to update them.
+#
+# Each set's internalProjection.json holds its prompts and their answers in
+# one file. The filter after each set's name keeps the groups whose
+# parameters rind offers; the tests fail on any group they do not expect, so
+# a filter here is the only place a group is skipped.
+set -euo pipefail
+
+# v1.1.0.43
+ACVP_SERVER=975de31eb83d87039ec88934fdc47d8c312b892d
+
+prime_curves='(.curve | IN("P-256", "P-384", "P-521"))'
+sha2='IN("SHA2-256", "SHA2-384", "SHA2-512")'
+# The curve and hash pairs rind signs with.
+ecdsa_signing='([.curve, .hashAlg] | IN(["P-256", "SHA2-256"], ["P-384", "SHA2-384"], ["P-521", "SHA2-512"]))'
+# Pure Ed25519: no prehash and no context.
+ed25519='(.curve == "ED-25519" and (.preHash // false) == false)'
+# RSA signatures over SHA-2, with MGF1 for PSS.
+rsa_signatures="(.hashAlg | $sha2) and (.sigType == \"pkcs1v1.5\" or .maskFunction == \"mgf1\")"
+
+sets=(
+    ACVP-AES-ECB-1.0 '.direction == "encrypt"'
+    ACVP-AES-CBC-1.0 'true'
+    ACVP-AES-CTR-1.0 'true'
+    ACVP-AES-GCM-1.0 'true'
+    ACVP-AES-GMAC-1.0 'true'
+    ACVP-AES-KW-1.0 '.kwCipher == "cipher"'
+    ACVP-AES-KWP-1.0 '.kwCipher == "cipher"'
+    SHA2-256-1.0 'true'
+    SHA2-384-1.0 'true'
+    SHA2-512-1.0 'true'
+    SHA2-512-256-1.0 'true'
+    SHA3-256-2.0 'true'
+    SHA3-384-2.0 'true'
+    SHA3-512-2.0 'true'
+    HMAC-SHA-1-2.0 'true'
+    HMAC-SHA2-256-2.0 'true'
+    HMAC-SHA2-384-2.0 'true'
+    HMAC-SHA2-512-2.0 'true'
+    KDA-HKDF-Sp800-56Cr2 ".multiExpansion == false and (.kdfConfiguration.hmacAlg | $sha2)"
+    ECDSA-KeyGen-FIPS186-5 "$prime_curves"
+    ECDSA-KeyVer-FIPS186-5 "$prime_curves"
+    ECDSA-SigGen-FIPS186-5 "$ecdsa_signing"
+    DetECDSA-SigGen-FIPS186-5 "$ecdsa_signing"
+    ECDSA-SigVer-FIPS186-5 "$prime_curves and (.hashAlg | $sha2)"
+    EDDSA-KeyGen-1.0 "$ed25519"
+    EDDSA-KeyVer-1.0 "$ed25519"
+    EDDSA-SigGen-1.0 "$ed25519"
+    EDDSA-SigVer-1.0 "$ed25519"
+    XECDH-keyGen-RFC7748 '.curve == "Curve25519"'
+    XECDH-keyVer-RFC7748 '.curve == "Curve25519"'
+    XECDH-SSC-RFC7748 '.curve == "Curve25519"'
+    RSA-SigGen-FIPS186-5 "$rsa_signatures"
+    RSA-SigVer-FIPS186-5 "$rsa_signatures"
+    RSA-DecryptionPrimitive-Sp800-56Br2 'true'
+    RSA-SignaturePrimitive-2.0 'true'
+    ML-KEM-keyGen-FIPS203 '.parameterSet == "ML-KEM-768"'
+    ML-KEM-encapDecap-FIPS203-tr1 '.parameterSet == "ML-KEM-768"'
+)
+
+cd "$(dirname "${BASH_SOURCE[0]}")/../thirdparty/acvp"
+find . -name '*.json' -delete
+
+for ((i = 0; i < ${#sets[@]}; i += 2)); do
+    name=${sets[i]}
+    filter=${sets[i + 1]}
+    curl --fail --silent --show-error --location \
+        "https://raw.githubusercontent.com/usnistgov/ACVP-Server/$ACVP_SERVER/gen-val/json-files/$name/internalProjection.json" |
+        # Every set drops SP 800-106's randomized hashing groups, which carry a
+        # conformance, and tests whose bit `len` is not whole bytes, as rind's
+        # hashes take bytes (AES-CTR's tests carry `payloadLen` instead, so
+        # they stay, and `acvp_ctr` masks them); Ed25519 signing groups drop
+        # their Ed25519ctx tests, which have a context.
+        jq --indent 1 ".testGroups |= map(select(.conformance == null and $filter) | .tests |= map(select((.len // 0) % 8 == 0 and (.context // \"\") == \"\")))" \
+            > "$name.json"
+    if [[ $(jq '[.testGroups[].tests[]] | length' "$name.json") == 0 ]]; then
+        echo "$name: no test rind runs" >&2
+        exit 1
+    fi
+done

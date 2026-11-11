@@ -11,7 +11,9 @@ The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
 in `Rind.X86_64.S2nBignum` for X25519 and Ed25519, aws-lc's in
 `Rind.X86_64.AwsLc` for the SHA-512 family, for HMAC, HKDF, and PBKDF2, which
 cover SHA-384 and SHA-512, and for Ed25519's hashes, Vale's in
-`Rind.X86_64.ValeAesGcm` for AES-GCM, and nothing else. A change here is a
+`Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proofs of its
+constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
+`verify`, and nothing else. A change here is a
 change to the trust base.
 -/
 
@@ -64,7 +66,12 @@ change to the trust base.
 #guard_msgs in
 #print axioms sign_spec
 
-/-- info: 'rind.x86_64.verify_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.verify_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec] -/
 #guard_msgs in
 #print axioms verify_spec
 
@@ -96,7 +103,12 @@ change to the trust base.
 #guard_msgs in
 #print axioms kdf.derive_spec
 
-/-- info: 'rind.x86_64.kdf.verify_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.kdf.verify_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec] -/
 #guard_msgs in
 #print axioms kdf.verify_spec
 

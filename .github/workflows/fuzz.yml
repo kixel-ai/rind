@@ -10,6 +10,14 @@ on:
   schedule:
     - cron: "0 18 * * *"
   workflow_dispatch:
+  # A pull request only builds the targets; fuzzing needs the nightly's
+  # corpus and hours.
+  pull_request:
+    branches: [main]
+    paths:
+      - fuzz/**
+      - sh/fuzz-*.sh
+      - .github/workflows/fuzz.yml
 
 concurrency:
   group: fuzz-${{ github.ref }}
@@ -92,6 +100,7 @@ jobs:
 
   fuzz:
     name: Fuzz ${{ matrix.target }}
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -166,7 +175,7 @@ jobs:
   replay-aarch64:
     name: Replay ${{ matrix.target }} on aarch64
     needs: [build, fuzz]
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     strategy:
@@ -214,7 +223,7 @@ jobs:
   replay-x86_64-sde:
     name: Replay ${{ matrix.target }} under SDE
     needs: [build, fuzz]
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -267,7 +276,7 @@ jobs:
   replay-armv7:
     name: Replay ${{ matrix.target }} on armv7
     needs: [build, fuzz]
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     strategy:

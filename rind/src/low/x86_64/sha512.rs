@@ -21,7 +21,7 @@ enum Path {
 }
 
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(128));
+    assert!(blocks.len().is_multiple_of(128));
     // The routines other than the SHA512 instructions' run their loop at
     // least once, so zero blocks would read past `blocks`.
     if blocks.is_empty() {
@@ -68,7 +68,9 @@ fn pick() -> Path {
 unsafe fn compress_sha512ext(_: HaveSha512, state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, and the token proves
     // the SHA512 instructions and AVX2.
-    unsafe { sha512_block_data_order_sha512ext(state, blocks.as_ptr(), blocks.len() / 128) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha512_block_data_order_sha512ext(state, blocks.as_ptr(), blocks.len() / 128))
+    }
 }
 
 /// As [`compress_sha512ext`], with the AVX2 routine.
@@ -79,7 +81,9 @@ unsafe fn compress_sha512ext(_: HaveSha512, state: &mut [u64; 8], blocks: &[u8])
 unsafe fn compress_avx2(_: HaveAvx2, state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one, and the
     // token proves AVX2, BMI1, and BMI2.
-    unsafe { sha512_block_data_order_avx2(state, blocks.as_ptr(), blocks.len() / 128) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha512_block_data_order_avx2(state, blocks.as_ptr(), blocks.len() / 128))
+    }
 }
 
 /// As [`compress_sha512ext`], with the AVX routine.
@@ -90,7 +94,9 @@ unsafe fn compress_avx2(_: HaveAvx2, state: &mut [u64; 8], blocks: &[u8]) {
 unsafe fn compress_avx(_: HaveAvx, state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one, and the
     // token proves AVX.
-    unsafe { sha512_block_data_order_avx(state, blocks.as_ptr(), blocks.len() / 128) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha512_block_data_order_avx(state, blocks.as_ptr(), blocks.len() / 128))
+    }
 }
 
 /// As [`compress_sha512ext`], with the scalar routine.
@@ -100,7 +106,9 @@ unsafe fn compress_avx(_: HaveAvx, state: &mut [u64; 8], blocks: &[u8]) {
 /// `blocks` must hold at least one whole block.
 unsafe fn compress_nohw(state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one.
-    unsafe { sha512_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 128) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha512_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 128))
+    }
 }
 
 /// The round constants, each pair twice for the vector additions, then the
@@ -208,15 +216,19 @@ unsafe extern "sysv64" fn sha512_block_data_order_nohw(
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::ct;
 
     // Every other test sees only the routine this CPU picks, so each the CPU
-    // can run is checked against the scalar one here: odd and even block
-    // counts, with distinct bytes in every block.
+    // can run is checked against the scalar one here, on blocks
+    // `admin/ctgrind` keeps secret: odd and even block counts, with distinct
+    // bytes in every block. That checks Intel's AVX code, which only Intel
+    // CPUs without AVX2 pick, on any CPU.
     #[test]
     fn paths_match_nohw() {
         let blocks: Vec<u8> = (0..5 * 128u32)
             .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
             .collect();
+        ct::secret_slice(&blocks);
         for n in 1..=5 {
             let blocks = &blocks[..n * 128];
             let mut want = [
@@ -232,23 +244,24 @@ mod tests {
             let start = want;
             // SAFETY: `blocks` holds `n` blocks, at least one.
             unsafe { compress_nohw(&mut want, blocks) };
+            let want = ct::into_public(want);
             if let Some(token) = HaveAvx::check() {
                 let mut got = start;
                 // SAFETY: as above.
                 unsafe { compress_avx(token, &mut got, blocks) };
-                assert_eq!(got, want, "avx, {n} blocks");
+                assert_eq!(ct::into_public(got), want, "avx, {n} blocks");
             }
             if let Some(token) = HaveAvx2::check() {
                 let mut got = start;
                 // SAFETY: as above.
                 unsafe { compress_avx2(token, &mut got, blocks) };
-                assert_eq!(got, want, "avx2, {n} blocks");
+                assert_eq!(ct::into_public(got), want, "avx2, {n} blocks");
             }
             if let Some(token) = HaveSha512::check() {
                 let mut got = start;
                 // SAFETY: as above.
                 unsafe { compress_sha512ext(token, &mut got, blocks) };
-                assert_eq!(got, want, "sha512ext, {n} blocks");
+                assert_eq!(ct::into_public(got), want, "sha512ext, {n} blocks");
             }
         }
     }

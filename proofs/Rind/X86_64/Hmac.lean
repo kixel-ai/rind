@@ -7,7 +7,7 @@ open Aeneas Aeneas.Std Result rind.spec
 
 `HmacKey` and `Hmac` compute RFC 2104's HMAC, as HACL*'s `Spec.Agile.HMAC`
 states it, over any hash whose `Hash` impl meets `HashSpec`: SHA-1's and
-SHA-256's do, given `ShaBlocks`.
+SHA-256's do, given `Sha1Blocks` and `Sha256Blocks`.
 -/
 
 namespace rind.x86_64
@@ -358,18 +358,18 @@ end
 /-! ## SHA-1, SHA-256, and HMAC over them -/
 
 /-- SHA-256 of a message is FIPS 180-4's, given the block functions' contracts. -/
-theorem sha256_hash (hb : ShaBlocks) (m : Slice U8) (hm : m.length ≤ maxInput) :
+theorem sha256_hash (hb : Sha256Blocks) (m : Slice U8) (hm : m.length ≤ maxInput) :
     Sha256Hash.hash m ⦃ d => digestBytes d = sha256.hash (bv m.val) ⦄ :=
   WP.spec_mono ((sha256_hashSpec hb).hash_spec m hm) fun _ h => h.2
 
 /-- SHA-1 of a message is FIPS 180-4's, given the block functions' contracts. -/
-theorem sha1_hash (hb : ShaBlocks) (m : Slice U8) (hm : m.length ≤ maxInput) :
+theorem sha1_hash (hb : Sha1Blocks) (m : Slice U8) (hm : m.length ≤ maxInput) :
     Sha1Hash.hash m ⦃ d => digestBytes d = sha1.hash (bv m.val) ⦄ :=
   WP.spec_mono ((sha1_hashSpec hb).hash_spec m hm) fun _ h => h.2
 
 /-- HMAC-SHA256's tag of `m` under `key` is RFC 2104's, given the block
 functions' contracts. -/
-theorem hmac_sha256_sign (hb : ShaBlocks) (key m : Slice U8) (hk : key.length ≤ maxInput)
+theorem hmac_sha256_sign (hb : Sha256Blocks) (key m : Slice U8) (hk : key.length ≤ maxInput)
     (hm : 64 + m.length ≤ maxInput) :
     (do
       let k ← high.hmac.HmacKey.new Sha256Hash key
@@ -381,7 +381,7 @@ theorem hmac_sha256_sign (hb : ShaBlocks) (key m : Slice U8) (hk : key.length �
 
 /-- HMAC-SHA1's tag of `m` under `key` is RFC 2104's, given the block
 functions' contracts. -/
-theorem hmac_sha1_sign (hb : ShaBlocks) (key m : Slice U8) (hk : key.length ≤ maxInput)
+theorem hmac_sha1_sign (hb : Sha1Blocks) (key m : Slice U8) (hk : key.length ≤ maxInput)
     (hm : 64 + m.length ≤ maxInput) :
     (do
       let k ← high.hmac.HmacKey.new Sha1Hash key

@@ -37,9 +37,9 @@ use crate::low::macros::*;
 /// repo (mlkem/native/aarch64/src/aarch64_zetas.c) or our "tests/test.c".
 #[inline(never)]
 pub(crate) fn mlkem_intt(a: &mut [i16; 256], z_01234: &[i16; 80], z_56: &[i16; 384]) {
-    debug_assert!((a.as_mut_ptr() as usize).is_multiple_of(32));
-    debug_assert!((z_01234.as_ptr() as usize).is_multiple_of(32));
-    debug_assert!((z_56.as_ptr() as usize).is_multiple_of(32));
+    assert!((a.as_mut_ptr() as usize).is_multiple_of(32));
+    assert!((z_01234.as_ptr() as usize).is_multiple_of(32));
+    assert!((z_56.as_ptr() as usize).is_multiple_of(32));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -466,4 +466,16 @@ pub(crate) fn mlkem_intt(a: &mut [i16; 256], z_01234: &[i16; 80], z_56: &[i16; 3
         out("x5") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        mlkem_intt,
+        &mut crate::low::abi::Aligned([0; 256]).0,
+        &crate::low::abi::Aligned([0; 80]).0,
+        &crate::low::abi::Aligned([0; 384]).0
+    );
 }

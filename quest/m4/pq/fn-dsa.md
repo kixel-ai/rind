@@ -10,7 +10,7 @@ From [the scope](/quest/m4/pq/README.md), 2026-11-06.
 
 - Candidate: Thomas Pornin's [`fn-dsa`](https://github.com/pornin/rust-fn-dsa) (Rust, Unlicense), which tracks NIST's draft and promises compatibility only from its 1.0. It measured 125 µs to sign and 6.7 µs to verify FN-DSA-512 on desktop (1.3 ms keygen). Its signing uses the hardware `f64` on x86_64 and aarch64, relying on those instructions running in constant time; decide then whether to keep that or its integer emulation, and measure both. `AGENTS.md` lets no variable-time instruction depend on a secret, so keeping the hardware path takes either evidence that those instructions run in constant time on every CPU rind supports or an exception recorded in `AGENTS.md`, as [Argon2id](/quest/m4/protocols/argon2.md)'s is; that is the maintainer's call when this is scoped again.
 - No verified implementation exists, and aws-lc-rs has none. The [epic](/quest/m4/pq/README.md)'s rule sends differential tests to libcrux, RustCrypto, or `fips205`, and on 2026-11-09 none of them implements FN-DSA ([RustCrypto/signatures](https://github.com/RustCrypto/signatures) and [libcrux](https://github.com/cryspen/libcrux) have no such crate). A port of `fn-dsa` cannot be its own oracle, so name an independent one when this is scoped again.
-- Scope it again when the standard lands: the API follows [ML-DSA's](/quest/m3/parity/ml-dsa.md), and tests take ACVP vectors once NIST publishes them, in [the ACVP harness](/quest/m2/confidence/acvp.md). ACVP-Server v1.1.0.43 has no FN-DSA set.
+- Scope it again when the standard lands: the API follows [ML-DSA's](/quest/m3/parity/ml-dsa.md), and tests take ACVP vectors once NIST publishes them, through `admin/sync-acvp` and `crate::test::acvp`. ACVP-Server v1.1.0.43 has no FN-DSA set.
 
 ## Waiting
 
@@ -19,4 +19,3 @@ From [the scope](/quest/m4/pq/README.md), 2026-11-06.
 ## Required
 
 - [ML-DSA-44, ML-DSA-65, and ML-DSA-87](/quest/m3/parity/ml-dsa.md) - the signing API FN-DSA follows
-- [rind passes NIST's ACVP vectors](/quest/m2/confidence/acvp.md) - the harness FN-DSA's ACVP sets run in

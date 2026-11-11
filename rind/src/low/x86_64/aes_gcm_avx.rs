@@ -85,7 +85,7 @@ impl AvxKernel {
         inout: &mut [u8],
         tag: &mut [u8; 16],
     ) -> u64 {
-        debug_assert!(u32::try_from(aad.len()).is_ok() && u32::try_from(inout.len()).is_ok());
+        assert!(u32::try_from(aad.len()).is_ok() && u32::try_from(inout.len()).is_ok());
 
         // The counter block, which `compute_iv` reads a 96-bit nonce from
         // and writes over.
@@ -143,7 +143,9 @@ fn counter_block(
     let iv = iv.as_mut_ptr();
     // SAFETY: `nonce` is 12 bytes, `iv` 16 writable ones, and `hkeys` the
     // GHASH key powers. The token proves the CPU has PCLMULQDQ and AVX.
-    unsafe { compute_iv_stdcall(nonce.as_ptr(), 12, 0, iv, iv, hkeys.as_ptr().cast()) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" compute_iv_stdcall(nonce.as_ptr(), 12, 0, iv, iv, hkeys.as_ptr().cast()))
+    };
 }
 
 /// What an AEAD routine reads and writes besides its keys.
@@ -193,7 +195,7 @@ fn aead<const ENC: bool>(
     // AES-NI, PCLMULQDQ, AVX, and MOVBE.
     unsafe {
         let rest = blocks.add(b.six * 16);
-        routine(
+        asm_call!(unsafe extern "sysv64" routine(
             b.aad.as_ptr(),
             b.aad.len() as u64,
             (b.aad_whole / 16) as u64,
@@ -211,7 +213,7 @@ fn aead<const ENC: bool>(
             b.len as u64,
             b.scratch.as_mut_ptr(),
             b.tag.as_mut_ptr(),
-        )
+        ))
     }
 }
 
@@ -346,12 +348,12 @@ mod tests {
                     let (rk, hk) = (vale_keys.as_mut_ptr(), vale_hkeys.as_mut_ptr());
                     match key_len {
                         16 => {
-                            aes128_key_expansion(key.as_ptr(), rk);
-                            aes128_keyhash_init(rk, hk);
+                            asm_call!(unsafe extern "sysv64" aes128_key_expansion(key.as_ptr(), rk));
+                            asm_call!(unsafe extern "sysv64" aes128_keyhash_init(rk, hk));
                         }
                         _ => {
-                            aes256_key_expansion(key.as_ptr(), rk);
-                            aes256_keyhash_init(rk, hk);
+                            asm_call!(unsafe extern "sysv64" aes256_key_expansion(key.as_ptr(), rk));
+                            asm_call!(unsafe extern "sysv64" aes256_keyhash_init(rk, hk));
                         }
                     }
                 }

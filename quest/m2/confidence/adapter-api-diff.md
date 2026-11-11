@@ -26,7 +26,3 @@ Guidance:
 ## Required
 
 - [Adapters offer exactly their upstream's API](/quest/m0/adapters/README.md) - every adapter matches its upstream, so the diff starts green
-
-## Related
-
-- [A PR that would redden a nightly learns before it merges](/quest/m2/confidence/nightlies-on-prs.md) - the path-triggered run to use if this proves too slow for the gate

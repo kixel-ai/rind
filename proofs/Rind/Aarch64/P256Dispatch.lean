@@ -1,4 +1,6 @@
-import Rind.Aarch64.Funs
+module
+public import Rind.Aarch64.Funs
+@[expose] public section
 open Aeneas Aeneas.Std Result
 
 /-!

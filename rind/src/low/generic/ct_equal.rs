@@ -11,10 +11,9 @@ pub(crate) fn ct_equal(a: &[u8], b: &[u8]) -> bool {
 
     // Every AEAD open checks a 16-byte tag, which compares as whole words
     // rather than through the byte loop.
-    let diff = match (a.try_into(), b.try_into()) {
-        (Ok(a), Ok(b)) => ct_compare_16(a, b),
-        // SAFETY: prior code guarantees a.len() == b.len()
-        _ => unsafe { ct_compare_bytes(a.as_ptr(), b.as_ptr(), a.len()) }.into(),
+    let diff = match (<[u8; 16]>::try_from(a), <[u8; 16]>::try_from(b)) {
+        (Ok(a), Ok(b)) => ct_compare_16(&a, &b),
+        _ => ct_compare_bytes(a, b).into(),
     };
     // The result stays secret: a caller that accepts or rejects on it
     // declassifies it, but ML-KEM's implicit rejection must not.

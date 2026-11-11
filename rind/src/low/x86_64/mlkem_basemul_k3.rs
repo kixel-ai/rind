@@ -61,6 +61,10 @@ pub(crate) fn mlkem_basemul_k3(
     b: &[i16; 768],
     bt: &[i16; 384],
 ) {
+    assert!((r.as_mut_ptr() as usize).is_multiple_of(32));
+    assert!((a.as_ptr() as usize).is_multiple_of(32));
+    assert!((b.as_ptr() as usize).is_multiple_of(32));
+    assert!((bt.as_ptr() as usize).is_multiple_of(32));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -811,4 +815,20 @@ pub(crate) fn mlkem_basemul_k3(
         out("zmm9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !std::arch::is_x86_feature_detected!("avx2") {
+        return;
+    }
+    crate::low::abi::call!(
+        mlkem_basemul_k3,
+        &mut crate::low::abi::Aligned([0; 256]).0,
+        &crate::low::abi::Aligned([0; 768]).0,
+        &crate::low::abi::Aligned([0; 768]).0,
+        &crate::low::abi::Aligned([0; 384]).0
+    );
 }

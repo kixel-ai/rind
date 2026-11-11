@@ -34,10 +34,6 @@ Guidance:
 
 Conflict to settle in the same PR: [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) plans to prove exactly the Rust this may replace, SHA-256 and SHA-1 without the crypto extension, with Aeneas against FIPS 180-4. Under the rule above the faster source runs and its proof is planned. So for each routine that becomes assembly, move its bullet from that quest to [armv7's assembly is proven](/quest/m5/verified-armv7/assembly.md), which already holds `sha_armv4`'s other routines; a routine that stays Rust keeps its bullet.
 
-## Required
-
-- [Nightly rows for the tiers nothing times](/quest/m2/bench/tiers.md) - the armv7 row without the crypto extension, which times the pick every night
-
 ## Related
 
 - [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) - plans to prove the Rust SHA-256 and SHA-1 this may replace

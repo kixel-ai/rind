@@ -16,7 +16,9 @@ pub(crate) fn seal(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8
     // SAFETY: `inout` is `inout.len()` readable and writable bytes, which the
     // routine allows to alias exactly, `aad` is `aad.len()` readable bytes,
     // and `data` is the block it reads and writes. rind requires NEON.
-    unsafe { chacha20_poly1305_seal(ptr, ptr, inout.len(), aad.as_ptr(), aad.len(), &mut data) };
+    unsafe {
+        asm_call!(unsafe extern "C" chacha20_poly1305_seal(ptr, ptr, inout.len(), aad.as_ptr(), aad.len(), &mut data))
+    };
     data.tag()
 }
 
@@ -26,7 +28,9 @@ pub(crate) fn open(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8
     let mut data = Data::new(key, nonce);
     let ptr = inout.as_mut_ptr();
     // SAFETY: as in `seal`.
-    unsafe { chacha20_poly1305_open(ptr, ptr, inout.len(), aad.as_ptr(), aad.len(), &mut data) };
+    unsafe {
+        asm_call!(unsafe extern "C" chacha20_poly1305_open(ptr, ptr, inout.len(), aad.as_ptr(), aad.len(), &mut data))
+    };
     data.tag()
 }
 

@@ -50,7 +50,7 @@ fn ladder_neon(_: HaveNeon, scalar: &[u8; 32], point: &[u8; 32]) -> [u8; 32] {
     let mut out = [0u8; 32];
     // SAFETY: each pointer is to 32 bytes, and the token proves the CPU has
     // NEON.
-    unsafe { x25519_neon(&mut out, scalar, point) };
+    unsafe { asm_call!(unsafe extern "C" x25519_neon(&mut out, scalar, point)) };
     out
 }
 
