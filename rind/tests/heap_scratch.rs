@@ -17,6 +17,8 @@
 
 mod freed;
 
+use std::hint::black_box;
+
 use freed::freed;
 
 #[global_allocator]
@@ -65,7 +67,9 @@ fn detects_a_leak() {
 #[test]
 #[should_panic(expected = "holds bytes of the key")]
 fn detects_a_leak_in_key_generation() {
-    zeroed("planted", || drop(vec![1u8; 32]));
+    // Without black_box, the optimizer can drop the unused allocation, and
+    // the check then has nothing to find.
+    zeroed("planted", || drop(black_box(vec![1u8; 32])));
 }
 
 /// Two distinct PKCS#8 RSA keys of each size.
