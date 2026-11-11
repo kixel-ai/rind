@@ -317,15 +317,8 @@ mod word {
 
     #[inline(always)]
     pub(super) fn compact_block(input: &[u8; 16]) -> [Word; 4] {
-        let a = input
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .map(|w| compact_word(Word::from_le_bytes(*w)));
-        let a: [Word; 4] = core::array::from_fn({
-            let mut a = a;
-            move |_| a.next().unwrap()
-        });
+        let words = input.as_chunks::<4>().0;
+        let a = core::array::from_fn(|k| compact_word(Word::from_le_bytes(words[k])));
         core::array::from_fn(|k| byte_column(&a, k))
     }
 
@@ -403,7 +396,7 @@ fn transpose(batch: &mut Batch) {
 /// Bitslices up to `BATCH_SIZE` blocks, leaving the rest zero.
 #[inline(always)]
 fn to_batch(input: &[[u8; 16]]) -> Batch {
-    debug_assert!(input.len() <= BATCH_SIZE);
+    assert!(input.len() <= BATCH_SIZE);
     let mut out = EMPTY;
     for (i, block) in input.iter().enumerate() {
         out.set(&compact_block(block), i);
@@ -415,7 +408,7 @@ fn to_batch(input: &[[u8; 16]]) -> Batch {
 /// Writes the first `out.len()` blocks of `batch`.
 #[inline(always)]
 fn from_batch(out: &mut [[u8; 16]], batch: &Batch) {
-    debug_assert!(out.len() <= BATCH_SIZE);
+    assert!(out.len() <= BATCH_SIZE);
     let mut copy = *batch;
     transpose(&mut copy);
     for (i, block) in out.iter_mut().enumerate() {
@@ -851,7 +844,6 @@ fn setup_key_256(rd_key: &mut [Compact; 15], input: &[u8; 32]) {
 /// An expanded AES-128, AES-192, or AES-256 key: aws-lc's `AES_KEY`, the
 /// compact round keys and the round count, which encryption and decryption
 /// share. [`Self::schedule`] bitslices it for use.
-#[derive(Clone)]
 pub(crate) struct NohwKey {
     rd_key: [Compact; 15],
     rounds: usize,
@@ -956,7 +948,6 @@ impl crate::low::Zeroable for NohwKey {}
 
 /// Bitsliced round keys, which encrypt and decrypt `BATCH_SIZE` blocks a
 /// pass. It does not wipe itself: the key types that hold one do.
-#[derive(Clone)]
 pub(crate) struct Schedule {
     keys: [Batch; 15],
     rounds: usize,
