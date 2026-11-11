@@ -107,7 +107,8 @@ slow=(
     mid::x25519::tests::rfc7748_3
 )
 filter=$(printf 'test(=%s) | ' "${slow[@]}")
-filter="not (${filter% | })"
+# NIST's ACVP sample vectors are vector sets too, each test too slow for Miri.
+filter="not (${filter}test(/::acvp/))"
 
 # `--cfg rind_portable` forces the portable backend on x86_64, and dalek's
 # serial backend is the one the targets that need it run. The tests read the
