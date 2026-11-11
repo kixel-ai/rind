@@ -1338,6 +1338,11 @@ ABI_ARGS = {
         "&[0x55; 168]",
         "&super::mlkem::MLKEM_REJ_UNIFORM_TABLE",
     ],
+    "mldsa_rej_uniform_vartime": [
+        None,
+        "&[0x55; 840]",
+        "&super::mldsa::MLDSA_REJ_UNIFORM_TABLE",
+    ],
 }
 # AES-GCM's `blocks` counts 128-byte strides, eight AES blocks each.
 for bits in (128, 256):

@@ -63,6 +63,9 @@ mod generic {
     pub(crate) mod ghash;
     // Every target's MD5: no CPU has instructions for it.
     pub(super) mod md5;
+    // ML-DSA arithmetic for the portable backend and x86_64 CPUs without
+    // AVX2, and what s2n-bignum has no Neon routine for.
+    pub(crate) mod mldsa_poly;
     pub(crate) mod mlkem;
     #[cfg(not(rind_backend = "x86_64"))]
     pub(crate) mod mlkem768;
@@ -154,6 +157,12 @@ pub(crate) use generic::{
         bignum_negmodinv, bignum_optsub,
     },
     chacha20poly1305,
+    mldsa_poly::{
+        mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88, mldsa_intt, mldsa_ntt,
+        mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc, mldsa_poly_use_hint_32,
+        mldsa_poly_use_hint_88, mldsa_polyz_unpack_17, mldsa_polyz_unpack_19, mldsa_reduce,
+        mldsa_rej_uniform_eta2_vartime, mldsa_rej_uniform_eta4_vartime, mldsa_rej_uniform_vartime,
+    },
     mlkem::{mlkem_compress_d4, mlkem_compress_d10, mlkem_frombytes, mlkem_unpack},
     mlkem_poly::{
         mlkem_basemul_k3, mlkem_intt, mlkem_mulcache_compute, mlkem_ntt, mlkem_reduce,
@@ -257,6 +266,13 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::edwards25519_scalarmulbase;
         pub(crate) use x86_64::adx_mux::edwards25519_scalarmuldouble;
         pub(crate) use x86_64::ghash;
+        pub(crate) use x86_64::mldsa::{
+            mldsa_ntt, mldsa_intt, mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc,
+            mldsa_reduce, mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88,
+            mldsa_poly_use_hint_32, mldsa_poly_use_hint_88, mldsa_polyz_unpack_17,
+            mldsa_polyz_unpack_19, mldsa_rej_uniform_vartime, mldsa_rej_uniform_eta2_vartime,
+            mldsa_rej_uniform_eta4_vartime,
+        };
         pub(crate) use x86_64::mlkem::{
             mlkem_ntt,
             mlkem_intt,
@@ -356,6 +372,13 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::edwards25519_decode::edwards25519_decode;
         pub(crate) use aarch64::edwards25519_scalarmulbase::edwards25519_scalarmulbase;
         pub(crate) use aarch64::edwards25519_scalarmuldouble::edwards25519_scalarmuldouble;
+        pub(crate) use aarch64::mldsa::{
+            mldsa_ntt, mldsa_intt, mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc,
+            mldsa_reduce, mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88,
+            mldsa_poly_use_hint_32, mldsa_poly_use_hint_88, mldsa_polyz_unpack_17,
+            mldsa_polyz_unpack_19, mldsa_rej_uniform_vartime, mldsa_rej_uniform_eta2_vartime,
+            mldsa_rej_uniform_eta4_vartime,
+        };
         pub(crate) use aarch64::mlkem::{
             mlkem_ntt,
             mlkem_intt,
