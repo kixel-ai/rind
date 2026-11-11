@@ -17,8 +17,9 @@ pub struct ChaCha20 {
 impl ChaCha20 {
     /// Makes a key from 32 bytes of key material.
     pub fn new(key: &[u8; 32]) -> Self {
-        low::ct::secret_slice(key);
-        Self { key: *key }
+        Self {
+            key: low::ct::into_secret(*key),
+        }
     }
 
     /// XORs the keystream for `nonce`, starting at block `counter`, into `inout`.
