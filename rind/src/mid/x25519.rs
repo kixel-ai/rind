@@ -18,9 +18,8 @@ impl PrivateKey {
     /// clamps only when it multiplies.
     pub(crate) fn from_bytes(b: &[u8]) -> Result<Self, Error> {
         let _entry = low::Entry::new_secret();
-        low::ct::secret_slice(b);
         util::little_endian_slice_to_u64x4(b)
-            .map(Self)
+            .map(|k| Self(low::ct::into_secret(k)))
             .ok_or(KeyFormatError::WrongLength.into())
     }
 
