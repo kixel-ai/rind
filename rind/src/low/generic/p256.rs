@@ -587,7 +587,7 @@ pub(super) const P: [u64; 4] = [
 ];
 
 /// n_256, the group order, as little-endian words.
-pub(super) const N: [u64; 4] = [
+pub(crate) const N: [u64; 4] = [
     0xf3b9_cac2_fc63_2551,
     0xbce6_faad_a717_9e84,
     0xffff_ffff_ffff_ffff,

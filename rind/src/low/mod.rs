@@ -96,12 +96,6 @@ mod generic {
     // The portable backend's group orders, picked from by modulus.
     #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
     pub(crate) mod order;
-    // The portable backend's P-256, P-384, and P-521, also built in tests
-    // elsewhere to check them against s2n-bignum.
-    #[cfg(any(rind_backend = "arm", rind_backend = "portable", test))]
-    pub(crate) mod p384;
-    #[cfg(any(rind_backend = "arm", rind_backend = "portable", test))]
-    pub(crate) mod p521;
     // x86_64's separate-pass Poly1305 and the 64-bit portable backend's.
     // aarch64 runs Poly1305 only in aws-lc's one-pass ChaCha20-Poly1305,
     // whose tests check it against this.
@@ -190,13 +184,13 @@ pub(crate) use generic::{
         bignum_montsqr_p256, bignum_neg_p256, bignum_tomont_p256, p256_montjadd, p256_montjdouble,
         p256_montjmixadd, p256_montjscalarmul, p256_scalarmulbase,
     },
-    p384::{
+    limbs::p384::{
         bignum_add_p384, bignum_aff_point_select_p384, bignum_demont_p384, bignum_inv_p384,
         bignum_jac_point_select_p384, bignum_mod_n384, bignum_montmul_p384, bignum_montsqr_p384,
         bignum_mux, bignum_neg_p384, bignum_tomont_p384, p384_montjadd, p384_montjdouble,
         p384_montjmixadd,
     },
-    p521::{
+    limbs::p521::{
         bignum_add_p521, bignum_aff_point_select_p521, bignum_inv_p521, bignum_mod_n521,
         bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd, p521_jdouble, p521_jmixadd,
         p521_jscalarmul,
