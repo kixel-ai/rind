@@ -1166,6 +1166,81 @@ mod tests {
         );
     }
 
+    /// Matter PASE, through `matter-crypto` 0.5.1's public state machine with
+    /// its test scalars. The context is SHA-256 of "CHIP PAKE V1 Commissioning",
+    /// and both identities are empty.
+    #[test]
+    #[cfg(not(miri))]
+    fn matches_matter_crypto() {
+        use core::num::NonZeroU32;
+
+        let pin = 202_021u32;
+        let salt = [0x42u8; 16];
+        let mut stretched = [0u8; 80];
+        crate::pbkdf2::Secret::new(&crate::pbkdf2::PBKDF2_HMAC_SHA256, &pin.to_le_bytes())
+            .derive(NonZeroU32::new(1000).unwrap(), &salt, &mut stretched)
+            .unwrap();
+        let (w0, w1) = stretched.split_at(40);
+        let verifier_blob = matter_crypto::pake_passcode_verifier(pin, &salt, 1000).unwrap();
+        let record = VerifierRecord::from_w1(w0, w1).unwrap();
+        assert_eq!(
+            &verifier_blob[..32],
+            Scalar::from_be_reduced(w0).unwrap().as_bytes()
+        );
+        assert_eq!(&verifier_blob[32..], record.l.to_uncompressed().as_slice());
+
+        let mut x_bytes = [0u8; 32];
+        x_bytes[31] = 7;
+        let mut y_bytes = [0u8; 32];
+        y_bytes[31] = 11;
+        let params = matter_crypto::PasePbkdfParams {
+            iterations: 1000,
+            salt: salt.to_vec(),
+        };
+        let mut their_prover =
+            matter_crypto::test_support::prover_with_scalar(pin, params.clone(), x_bytes).unwrap();
+        let w0_be: [u8; 32] = verifier_blob[..32].try_into().unwrap();
+        let l: [u8; 65] = verifier_blob[32..].try_into().unwrap();
+        let mut their_verifier =
+            matter_crypto::test_support::verifier_with_scalar(w0_be, l, params, y_bytes).unwrap();
+        let pake1 = their_prover.start().unwrap();
+        their_verifier.handle_pake1(&pake1).unwrap();
+        let pake2 = their_verifier.next_message().unwrap();
+        their_prover.handle_pake2(&pake2).unwrap();
+        let pake3 = their_prover.next_message().unwrap();
+        their_verifier.handle_pake3(&pake3).unwrap();
+        let their_key = their_prover.finish().unwrap();
+        assert_eq!(their_key.ke, their_verifier.finish().unwrap().ke);
+
+        let mut ctx = digest::Context::new(&digest::SHA256);
+        ctx.update(b"CHIP PAKE V1 Commissioning");
+        let context = ctx.finish();
+        let prover = ProverSecrets::new(w0, w1).unwrap();
+        let verifier = VerifierRecord::from_record(w0, &l).unwrap();
+        let (share_p, prover) = prover
+            .start_at(
+                &MATTER_PASE,
+                context.as_ref(),
+                b"",
+                b"",
+                Some(Scalar::from_be_reduced(&x_bytes).unwrap()),
+            )
+            .unwrap();
+        let (share_v, confirm_v, verifier) = verifier
+            .start_at(
+                &MATTER_PASE,
+                context.as_ref(),
+                b"",
+                b"",
+                &share_p,
+                Some(Scalar::from_be_reduced(&y_bytes).unwrap()),
+            )
+            .unwrap();
+        let (confirm_p, key) = prover.finish(&share_v, &confirm_v).unwrap();
+        assert_eq!(key.as_ref(), verifier.finish(&confirm_p).unwrap().as_ref());
+        assert_eq!(key.as_ref(), their_key.ke.as_slice());
+    }
+
     #[test]
     fn secrets_stay_secret() {
         // Under `admin/ctgrind`, nothing may branch on w0, w1, or the

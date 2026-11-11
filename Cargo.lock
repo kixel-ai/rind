@@ -2383,6 +2383,45 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
+name = "matter-cert"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4952b3fc9ef028781bea73ddb3ce4ceeb9b408f0e25d3160a76513efb06d5c01"
+dependencies = [
+ "bitflags",
+ "der 0.7.10",
+ "matter-codec",
+ "ring",
+ "thiserror",
+]
+
+[[package]]
+name = "matter-codec"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8abffdf066b9d8e10f5c68796c5d2dad27a728d40206ac983391dffed3f3ccb0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "matter-crypto"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "466d8f4e5a26d47ecba82ee83d3fbe1405a3053dd37db2fdde56ca5a6a2602bf"
+dependencies = [
+ "aes",
+ "ccm",
+ "matter-cert",
+ "matter-codec",
+ "p256",
+ "ring",
+ "subtle",
+ "thiserror",
+ "zeroize",
+]
+
+[[package]]
 name = "md-5"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3289,6 +3328,7 @@ dependencies = [
  "libcrux-macros",
  "libcrux-poly1305",
  "libcrux-sha2",
+ "matter-crypto",
  "p256",
  "pakery-crypto",
  "pakery-spake2plus",

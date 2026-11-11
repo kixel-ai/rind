@@ -63,6 +63,8 @@ hpke-rs = { version = "0.8", default-features = false, features = ["hazmat", "ru
 pakery-crypto = { version = "0.6.2", default-features = false, features = ["std", "p256"] }
 pakery-spake2plus = { version = "0.6.2", default-features = false, features = ["std", "test-utils"] }
 p256 = { version = "0.14", default-features = false, features = ["arithmetic"] }
+# Matter PASE (draft-01). `test-support` injects the ephemeral scalars.
+matter-crypto = { version = "0.5.1", default-features = false, features = ["test-support"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
