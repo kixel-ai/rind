@@ -367,7 +367,11 @@ pub(crate) fn mldsa_rej_uniform_eta4_vartime(
     rej_eta(r, offset, buf, 9, |t| 4i32.wrapping_sub(t as i32))
 }
 
+// The tests call each routine through `low::`, so every backend checks the one
+// it runs; where that is this port's own, as aarch64's `mldsa_nttunpack` and
+// `mldsa_reduce` are, the path is redundant.
 #[cfg(test)]
+#[allow(unused_qualifications)]
 mod tests {
     //! Checks the backend's routines, which are s2n-bignum's where it has
     //! them, against this port.

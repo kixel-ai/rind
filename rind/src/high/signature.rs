@@ -11,7 +11,7 @@ use super::hash::{Sha256, Sha384, Sha512, SignatureHash};
 use super::rsa::{self, PssSalt};
 use super::{pkcs8, sec1, spki};
 use crate::error::{Error, KeyFormatError};
-use crate::low::{self, Entry, Zeroable};
+use crate::low::{self, Zeroable};
 use crate::mid::mldsa::{self, MlDsa44, MlDsa65, MlDsa87, Params as MlDsaParams};
 use crate::mid::rsa_key_size::RsaKeySize;
 use crate::mid::rsa_pub::MAX_PUBLIC_MODULUS_BYTES;
@@ -1051,7 +1051,7 @@ impl EcdsaKeyPair {
     /// This is what [`Self::from_sec1`] loads; [`Self::to_pkcs8`] holds the
     /// same `ECPrivateKey` without its curve, which PKCS#8 names instead.
     pub fn to_sec1(&self) -> Sec1 {
-        let _entry = Entry::new_secret();
+        let _entry = low::Entry::new_secret();
         let scalar = self.to_scalar();
         let point = on_ecdsa!(self, |pair| pair.point());
         let curve = curve_oid(self.algorithm.curve);
@@ -1718,7 +1718,7 @@ impl<P: MlDsaParameterSet> MlDsaKeyPair<P> {
     /// key, which must be consistent as FIPS 204's key generation writes it,
     /// or both, which must agree.
     pub fn from_pkcs8(der: &[u8]) -> Result<Self, Error> {
-        let _entry = Entry::new_secret();
+        let _entry = low::Entry::new_secret();
         let p8 = pkcs8::Key::decode(der, &[P::ALGORITHM.oid], None)?;
         let private_key =
             pkix::MlDsaPrivateKey::from_bytes(p8.private_key()).map_err(KeyFormatError::Asn1)?;
@@ -1748,7 +1748,7 @@ impl<P: MlDsaParameterSet> MlDsaKeyPair<P> {
     /// writes it, or its expanded form if it was loaded from that and has no
     /// seed.
     pub fn to_pkcs8(&self) -> Pkcs8 {
-        let _entry = Entry::new_secret();
+        let _entry = low::Entry::new_secret();
         let private_key = match self.0.seed() {
             Some(seed) => pkix::MlDsaPrivateKey::Seed(asn1::OctetString::new(seed)),
             None => pkix::MlDsaPrivateKey::ExpandedKey(asn1::OctetString::new(

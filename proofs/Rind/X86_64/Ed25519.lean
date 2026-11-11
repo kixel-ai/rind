@@ -1017,7 +1017,7 @@ theorem ed25519_public_key_new (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (k
   · obtain ⟨vk, rfl, hvb, hvp⟩ := hr
     simp only
     have hl' : key.length = 32 := by simpa using hl
-    step with copy_from_ok 1088#usize key (by simp [hl']) as ⟨b, enc, hb⟩
+    step with copy_from_ok 2592#usize key (by simp [hl']) as ⟨b, enc, hb⟩
     subst hb
     simp only [WP.spec_ok]
     refine ⟨_, rfl, fun msg sig hm => ?_⟩
