@@ -23,7 +23,7 @@
 #
 # Run it in `nix develop .#binsec`.
 
-import argparse, json, os, re, struct, subprocess, sys, tempfile
+import argparse, functools, json, os, re, struct, subprocess, sys, tempfile, time
 
 # What gdb runs in the test: stop at the region, make the thread's stack
 # readable, dump the process, record each value the region declassifies,
@@ -66,7 +66,13 @@ for line in open("/proc/{}/maps".format(pid)):
         break
 for name, got in GOT.items():
     print("LIBC {} {:#x}".format(name, int(gdb.parse_and_eval("*(unsigned long *){}".format(base + got)))))
+for line in open("/proc/{}/maps".format(pid)):
+    if os.path.basename(line.split()[-1]).startswith("libc.so"):
+        print("FILE " + line.split()[-1])
+        break
 arch = gdb.selected_frame().architecture().name()
+if arch == "aarch64":
+    print("TPIDR {:#x}".format(int(gdb.parse_and_eval("(unsigned long)$tpidr"))))
 args = {"i386:x86-64": ("$rdi", "$rsi"), "aarch64": ("$x0", "$x1"), "arm": ("$r0", "$r1")}[arch]
 public = gdb.Breakpoint("*rind_ct_binsec_public", internal=True)
 stop = gdb.Breakpoint("*rind_ct_binsec_stop", internal=True)
@@ -106,27 +112,129 @@ UNDECODED = {
 LIBC = ["memcpy", "memmove", "memset", "memcmp", "bcmp"]
 
 # Instructions BINSEC cannot decode, but whose effect on its state is short
-# enough to give it: s2n-bignum's P-521 code sets the carry with `stc`, and
-# LLVM tests the portable P-256 and P-384 for zero with `movmskps`.
-STUBS = {
-    "x86_64": """\
-replace opcode f9 by
-  cf := true
-end
+# enough to give it, by mnemonic: each takes objdump's operands and returns
+# the statement for that encoding, or None for a form it does not know,
+# where BINSEC still stops. The script stubs each encoding of these that the
+# test binary and glibc hold, since BINSEC matches an opcode byte for byte.
+# s2n-bignum's P-521 code sets the carry with `stc`, LLVM tests the portable
+# P-256 and P-384 for zero with `movmskps`, and loads and stores rind's AVX2
+# ChaCha20 state with `vinsertf128` and `vpermpd`. glibc's `malloc` reads the thread pointer with
+# `mrs`, and vpaes and aws-lc's NEON ChaCha20 look up bytes with `tbl`.
+GP = {"e" + r[1:]: r for r in ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi"]}
+GP.update(("r{}d".format(n), "r{}".format(n)) for n in range(8, 16))
 
-replace opcode f8 by
-  cf := false
-end
-""",
+
+def movmskps(ops, _):
+    """The sign bit of each lane."""
+    src, dst = (o.lstrip("%") for o in ops)
+    if not src.startswith("xmm") or dst not in GP:
+        return None
+    return "{} := uext64 ({})".format(GP[dst], " :: ".join("{}{{{}}}".format(src, b) for b in (127, 95, 63, 31)))
+
+
+def vinsertf128(ops, _):
+    """The 128 bits of `src` over the half of `low` the immediate selects."""
+    imm, src, low, dst = ops
+    if not imm.startswith("$") or not all(o.startswith("%") for o in (src, low, dst)):
+        return None
+    src, low, dst = (o.lstrip("%") for o in (src, low, dst))
+    if int(imm[1:], 16) & 1:
+        return "{} := {} :: {}{{127..0}}".format(dst, src, low)
+    return "{} := {}{{255..128}} :: {}".format(dst, low, src)
+
+
+def vpermpd(ops, _):
+    """Each 64-bit lane of `dst` takes the lane of `src` its two bits of the
+    immediate select."""
+    imm, src, dst = ops
+    if not imm.startswith("$") or not all(o.startswith("%ymm") for o in (src, dst)):
+        return None
+    imm, src, dst = int(imm[1:], 16), src.lstrip("%"), dst.lstrip("%")
+    lanes = ("{}{{{}..{}}}".format(src, 64 * (imm >> 2 * i & 3) + 63, 64 * (imm >> 2 * i & 3)) for i in range(4))
+    return "{} := {}".format(dst, " :: ".join(reversed(list(lanes))))
+
+
+def mrs(ops, tpidr):
+    """The thread pointer gdb read."""
+    dst, reg = ops
+    if reg != "tpidr_el0" or not re.fullmatch(r"x([0-9]|[12][0-9]|30)", dst):
+        return None
+    return "{} := {:#x}".format(dst, tpidr)
+
+
+def tbl(ops, _):
+    """Each lane takes the table's byte its index selects, or 0 past the
+    table's end, as a shift of the whole table, which a secret index cannot
+    turn into a branch or an address."""
+    m = re.fullmatch(r"v(\d+)\.(8|16)b, \{(.*)\}, v(\d+)\.(?:8|16)b", ", ".join(ops))
+    if not m:
+        return None
+    dst, lanes, index = int(m[1]), int(m[2]), int(m[4])
+    # objdump lists the table's registers one by one, or as a range.
+    table = [int(r) for r in re.findall(r"v(\d+)\.16b", m[3])]
+    if "-" in m[3]:
+        table = list(range(table[0], table[1] + 1))
+    bits = 128 * len(table)
+    table = " :: ".join("q{}".format(t) for t in reversed(table))
+    out = [
+        "(({}) >>u uext{} (q{}{{{}..{}}} :: 0b000)){{7..0}}".format(table, bits, index, 8 * i + 7, 8 * i)
+        for i in reversed(range(lanes))
+    ]
+    if lanes == 8:
+        out.insert(0, "0x0000000000000000")
+    return "q{} := {}".format(dst, " :: ".join(out))
+
+
+STUBS = {
+    "x86_64": {"stc": lambda *_: "cf := true", "clc": lambda *_: "cf := false"}
+    | {"movmskps": movmskps, "vinsertf128": vinsertf128, "vpermpd": vpermpd},
+    "aarch64": {"mrs": mrs, "tbl": tbl},
 }
 
-# `movmskps %xmmN,%eGP` for N and GP below 8: the sign bit of each lane.
-for src in range(8):
-    for dst, gp in enumerate(["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi"]):
-        lanes = " :: ".join("xmm{}{{{}}}".format(src, bit) for bit in (127, 95, 63, 31))
-        STUBS["x86_64"] += "\nreplace opcode 0f 50 {:02x} by\n  {} := uext64 ({})\nend\n".format(
-            0xC0 | dst << 3 | src, gp, lanes
-        )
+
+@functools.cache
+def disassembly(target, path):
+    """Each distinct encoding in `path` of a mnemonic in `STUBS`, with its
+    mnemonic and operands."""
+    handlers = STUBS.get(arch(target), {})
+    out = subprocess.run(
+        ["objdump", "-d", "--insn-width=16", "--no-addresses", path],
+        stdout=subprocess.PIPE,
+        check=True,
+        encoding="utf-8",
+    ).stdout
+    found = {}
+    for line in out.splitlines():
+        fields = line.strip().split("\t")
+        if len(fields) < 2:
+            continue
+        text = re.split(r"\s+(?://|#|<)", fields[1])[0].split(None, 1)
+        if not text or text[0] not in handlers:
+            continue
+        # Operands split at commas outside a register list.
+        ops = re.split(r",\s*(?![^{]*\})", text[1].strip()) if len(text) > 1 else []
+        # aarch64's objdump prints each instruction as a little-endian word.
+        opcode = bytes.fromhex(fields[0].replace(" ", ""))
+        if arch(target) == "aarch64":
+            opcode = opcode[::-1]
+        found.setdefault(opcode, (text[0], ops))
+    return found
+
+
+def stubs(target, files, tpidr):
+    """The `replace opcode` stub of each encoding in `files` of a mnemonic in
+    `STUBS`."""
+    handlers = STUBS.get(arch(target), {})
+    found = {}
+    for path in files:
+        for opcode, (mnemonic, ops) in disassembly(target, path).items():
+            found.setdefault(opcode, handlers[mnemonic](ops, tpidr))
+    return "".join(
+        "\nreplace opcode {} by\n  {}\nend\n".format(opcode.hex(" "), stmt.replace("\n", "\n  "))
+        for opcode, stmt in found.items()
+        if stmt
+    )
+
 
 # Each function in `LIBC` as a byte loop, which reads and writes only the
 # bytes it is given and returns from a comparison at the first byte that
@@ -283,7 +391,8 @@ def is_planted(name):
 def dump(exe, name, target, tmp):
     """Runs `name` under gdb, dumping it at its region into `tmp`, and
     returns the core's path, the addresses of the markers and of the
-    functions in `LIBC` glibc picked, and the values the region declassified."""
+    functions in `LIBC` glibc picked, the values the region declassified,
+    and the stubs of the instructions BINSEC cannot decode."""
     got = got_offsets(exe)
     core = os.path.join(tmp, "core")
     script = os.path.join(tmp, "dump.py")
@@ -295,13 +404,16 @@ def dump(exe, name, target, tmp):
     symbols = dict((m[1], int(m[2], 16)) for m in re.finditer(r"^SYMBOL (\S+) (\S+)$", out, re.M))
     libc = dict((m[1], int(m[2], 16)) for m in re.finditer(r"^LIBC (\S+) (\S+)$", out, re.M))
     public = [bytes.fromhex(m) for m in re.findall(r"^PUBLIC ([0-9a-f]*)$", out, re.M)]
+    libc_file = re.search(r"^FILE (.+)$", out, re.M)
+    tpidr = re.search(r"^TPIDR (\S+)$", out, re.M)
     exit = re.search(r"^EXIT (\d+)$", out, re.M)
     if len(set(symbols.values())) != len(SYMBOLS) or len(libc) != len(got):
         sys.exit("ct-binsec: {} failed under gdb:\n{}".format(name, out))
-    if not exit or exit[1] != "0" or not os.path.exists(core):
+    if not exit or exit[1] != "0" or not libc_file or not os.path.exists(core):
         sys.exit("ct-binsec: {} failed under gdb:\n{}".format(name, out))
     keep_first_thread(core)
-    return core, symbols, libc, public
+    stubbed = stubs(target, [exe, libc_file[1]], int(tpidr[1], 16) if tpidr else None)
+    return core, symbols, libc, public, stubbed
 
 
 def got_offsets(exe):
@@ -353,7 +465,7 @@ def keep_first_thread(path):
 
 def check(exe, name, target, timeout, tmp):
     """Returns BINSEC's verdict on `name`'s region, and its log."""
-    core, symbols, libc, public = dump(exe, name, target, tmp)
+    core, symbols, libc, public, stubbed = dump(exe, name, target, tmp)
     word = WORD[arch(target)]
     stubs = {}
     for fn, addr in libc.items():
@@ -374,7 +486,7 @@ def check(exe, name, target, timeout, tmp):
         f.write(
             SCRIPT.format(
                 word=word,
-                stubs=STUBS.get(arch(target), ""),
+                stubs=stubbed,
                 libc="".join(stubs.values()),
                 declassify=declassify,
                 secret=symbols["rind_ct_binsec_secret"],
@@ -441,8 +553,10 @@ def main():
     failed = False
     for name in names:
         with tempfile.TemporaryDirectory() as tmp:
+            start = time.monotonic()
             verdict, log, core = check(exe, name, target, args.timeout, tmp)
             stats = re.findall(r"\[checkct:info\] (.*)", log)
+            stats.append("{:.0f} s".format(time.monotonic() - start))
             if is_planted(name):
                 ok = verdict == "insecure"
             else:
