@@ -238,10 +238,17 @@ for module in "${selected[@]}"; do
             # aws-lc-rs dev-dependency, so test code that only these targets
             # compile is checked before it lands. aarch64 in release, as
             # sh/qemu.sh explains: nixpkgs' cross gcc fails aws-lc's -O0 probes.
-            nix develop .#aarch64 --command cargo clippy -p rind --all-targets --locked --release \
-                --target aarch64-unknown-linux-gnu -- --deny warnings
-            nix develop .#armv7 --command cargo clippy -p rind --all-targets --locked \
-                --target armv7-unknown-linux-gnueabihf -- --deny warnings
+            # Those shells are Linux-only, so elsewhere the library alone.
+            if [[ $(uname -s) == Linux ]]; then
+                nix develop .#aarch64 --command cargo clippy -p rind --all-targets --locked --release \
+                    --target aarch64-unknown-linux-gnu -- --deny warnings
+                nix develop .#armv7 --command cargo clippy -p rind --all-targets --locked \
+                    --target armv7-unknown-linux-gnueabihf -- --deny warnings
+            else
+                for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
+                    cargo clippy -p rind --lib --locked --target "$target" -- --deny warnings
+                done
+            fi
             CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable" \
                 cargo clippy -p rind --lib --locked --target x86_64-unknown-linux-gnu -- --deny warnings
             # And on a 32-bit target, whose Poly1305 and GHASH differ.
