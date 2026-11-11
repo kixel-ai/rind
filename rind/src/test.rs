@@ -70,14 +70,25 @@ pub(crate) fn process_cavp(filename: impl AsRef<Path>, sink: &mut dyn CavpSink) 
 /// Reads every test from the Wycheproof vector file `name`.
 pub(crate) fn wycheproof<T: serde::de::DeserializeOwned>(name: &str) -> Vec<T> {
     #[derive(serde::Deserialize)]
-    struct TestFile<T> {
-        #[serde(rename = "testGroups")]
-        groups: Vec<TestGroup<T>>,
-    }
-
-    #[derive(serde::Deserialize)]
     struct TestGroup<T> {
         tests: Vec<T>,
+    }
+
+    let tests: Vec<T> = wycheproof_groups::<TestGroup<T>>(name)
+        .into_iter()
+        .flat_map(|g| g.tests)
+        .collect();
+    assert!(!tests.is_empty(), "{name} has no tests");
+    tests
+}
+
+/// Reads every test group from the Wycheproof vector file `name`, for tests
+/// that need a group's fields.
+pub(crate) fn wycheproof_groups<G: serde::de::DeserializeOwned>(name: &str) -> Vec<G> {
+    #[derive(serde::Deserialize)]
+    struct TestFile<G> {
+        #[serde(rename = "testGroups")]
+        groups: Vec<G>,
     }
 
     let path = format!(
@@ -85,11 +96,10 @@ pub(crate) fn wycheproof<T: serde::de::DeserializeOwned>(name: &str) -> Vec<T> {
         env!("CARGO_MANIFEST_DIR")
     );
     let file = File::open(&path).unwrap_or_else(|_| panic!("cannot open {path}"));
-    let file: TestFile<T> =
+    let file: TestFile<G> =
         serde_json::from_reader(BufReader::new(file)).expect("invalid test JSON");
-    let tests: Vec<T> = file.groups.into_iter().flat_map(|g| g.tests).collect();
-    assert!(!tests.is_empty(), "{path} has no tests");
-    tests
+    assert!(!file.groups.is_empty(), "{path} has no test groups");
+    file.groups
 }
 
 /// Reads the test groups of the ACVP vector set `name`, which

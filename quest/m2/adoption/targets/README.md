@@ -17,7 +17,7 @@ Decided with the maintainer on 2026-11-06, in moq-dev/web-transport's planning i
 - wasm (2026-11-09, landing [moq-dev/rind#543](https://github.com/moq-dev/rind/pull/543)): ✅ compile-only, checked on every PR, since an outside user needs it (rejected: nightly best-effort; stay a non-goal). This replaces the 2026-11-06 "minus wasm".
 - Consumer: moq-dev/web-transport goes rind-only now on its x86_64/aarch64/armv7 release targets. Its library users on other architectures are the reason for this epic.
 
-wasm tests (maintainer, 2026-11-09, in the quest audit, reconciling the compile-only answer above with one given the same day): ✅ both, the compile gate now and [vector tests under wasmtime](/quest/m2/adoption/targets/wasm-tests.md) after it (rejected: compile-only, with tests a non-goal).
+wasm tests (maintainer, 2026-11-09, in the quest audit, reconciling the compile-only answer above with one given the same day): ✅ both, the compile gate now and vector tests under wasmtime after it (rejected: compile-only, with tests a non-goal).
 
 Speed (maintainer, 2026-11-09, after an audit of the whole tree): ✅ planned, in m3 (rejected: a non-goal until a consumer measures a problem; m2 beside these targets; m4).
 
