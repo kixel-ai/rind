@@ -146,6 +146,8 @@ pub(crate) mod abi;
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod guard_pages;
 
+pub(crate) use generic::mldsa_poly::MldsaPoly;
+
 // The portable backend, which armv7 builds on, and what both run alike.
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 mod portable;

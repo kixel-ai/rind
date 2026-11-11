@@ -13,6 +13,27 @@
 
 use crate::low;
 
+/// A polynomial's coefficients, aligned for the vector routines.
+#[derive(Clone, Copy, Debug)]
+#[repr(C, align(32))]
+pub(crate) struct MldsaPoly(pub(crate) [i32; 256]);
+
+impl MldsaPoly {
+    pub(crate) const ZERO: Self = Self([0; 256]);
+}
+
+impl low::Zeroable for MldsaPoly {}
+
+/// `polys` as the contiguous coefficient arrays s2n-bignum's routines read.
+#[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
+pub(crate) fn rows<const L: usize>(polys: &[MldsaPoly]) -> &[[i32; 256]; L] {
+    let polys: &[MldsaPoly; L] = polys.try_into().unwrap();
+    // SAFETY: `MldsaPoly` is `repr(C)` over `[i32; 256]`, whose 1024 bytes
+    // leave no padding at its 32-byte alignment, so `L` of them are laid
+    // out as `[[i32; 256]; L]`.
+    unsafe { &*(polys as *const [MldsaPoly; L]).cast::<[[i32; 256]; L]>() }
+}
+
 pub(crate) const Q: i32 = 8380417;
 const GAMMA2_88: i32 = (Q - 1) / 88;
 const GAMMA2_32: i32 = (Q - 1) / 32;
@@ -122,15 +143,12 @@ pub(crate) fn mldsa_pointwise(c: &mut [i32; 256], a: &[i32; 256], b: &[i32; 256]
 
 /// `c = sum(a[i] * b[i]) * 2^-32` coefficient-wise, for `|a| < q` and
 /// `|b| < 9q`, giving `|c| < q`.
-pub(crate) fn mldsa_pointwise_acc<const L: usize>(
-    c: &mut [i32; 256],
-    a: &[[i32; 256]; L],
-    b: &[[i32; 256]; L],
-) {
+pub(crate) fn mldsa_pointwise_acc(c: &mut [i32; 256], a: &[MldsaPoly], b: &[MldsaPoly]) {
+    assert_eq!(a.len(), b.len());
     for (j, c) in c.iter_mut().enumerate() {
         let mut t = 0i64;
         for (a, b) in a.iter().zip(b.iter()) {
-            t = t.wrapping_add((a[j] as i64).wrapping_mul(b[j] as i64));
+            t = t.wrapping_add((a.0[j] as i64).wrapping_mul(b.0[j] as i64));
         }
         *c = montgomery_reduce(t);
     }
@@ -352,12 +370,7 @@ mod tests {
 
     use super::*;
 
-    #[repr(align(32))]
-    #[derive(Clone, Copy)]
-    struct Poly([i32; 256]);
-
-    #[repr(align(32))]
-    struct Vector<const L: usize>([[i32; 256]; L]);
+    use MldsaPoly as Poly;
 
     struct Rng(u64);
 
@@ -437,12 +450,12 @@ mod tests {
             assert!(bounded(&got.0, Q), "pointwise bound, round {round}");
 
             fn acc<const L: usize>(rng: &mut Rng, round: usize) {
-                let a = Vector::<L>(core::array::from_fn(|_| rng.poly(Q).0));
-                let b = Vector::<L>(core::array::from_fn(|_| rng.poly(9 * Q).0));
+                let a: [Poly; L] = core::array::from_fn(|_| rng.poly(Q));
+                let b: [Poly; L] = core::array::from_fn(|_| rng.poly(9 * Q));
                 let mut want = Poly([0; 256]);
-                mldsa_pointwise_acc(&mut want.0, &a.0, &b.0);
+                mldsa_pointwise_acc(&mut want.0, &a, &b);
                 let mut got = Poly([0; 256]);
-                low::mldsa_pointwise_acc(&mut got.0, &a.0, &b.0);
+                low::mldsa_pointwise_acc(&mut got.0, &a, &b);
                 assert_eq!(
                     canonical(&got.0),
                     canonical(&want.0),

@@ -7,6 +7,7 @@
 //! s2n-bignum has no Neon `mldsa_reduce`, so that one runs the portable port.
 
 use crate::low;
+use crate::low::generic::mldsa_poly::{MldsaPoly, rows};
 
 pub(crate) use crate::low::generic::mldsa_poly::{mldsa_nttunpack, mldsa_reduce};
 
@@ -25,29 +26,13 @@ pub(crate) fn mldsa_pointwise(c: &mut [i32; 256], a: &[i32; 256], b: &[i32; 256]
     super::mldsa_pointwise::mldsa_pointwise(c, a, b);
 }
 
-/// Pointwise Montgomery multiply-accumulate of two length-`L` vectors in the
-/// NTT domain
-pub(crate) fn mldsa_pointwise_acc<const L: usize>(
-    c: &mut [i32; 256],
-    a: &[[i32; 256]; L],
-    b: &[[i32; 256]; L],
-) {
-    match L {
-        4 => super::mldsa_pointwise_acc_l4::mldsa_pointwise_acc_l4(
-            c,
-            a.as_slice().try_into().unwrap(),
-            b.as_slice().try_into().unwrap(),
-        ),
-        5 => super::mldsa_pointwise_acc_l5::mldsa_pointwise_acc_l5(
-            c,
-            a.as_slice().try_into().unwrap(),
-            b.as_slice().try_into().unwrap(),
-        ),
-        7 => super::mldsa_pointwise_acc_l7::mldsa_pointwise_acc_l7(
-            c,
-            a.as_slice().try_into().unwrap(),
-            b.as_slice().try_into().unwrap(),
-        ),
+/// Pointwise Montgomery multiply-accumulate of two vectors in the NTT domain
+pub(crate) fn mldsa_pointwise_acc(c: &mut [i32; 256], a: &[MldsaPoly], b: &[MldsaPoly]) {
+    assert_eq!(a.len(), b.len());
+    match a.len() {
+        4 => super::mldsa_pointwise_acc_l4::mldsa_pointwise_acc_l4(c, rows(a), rows(b)),
+        5 => super::mldsa_pointwise_acc_l5::mldsa_pointwise_acc_l5(c, rows(a), rows(b)),
+        7 => super::mldsa_pointwise_acc_l7::mldsa_pointwise_acc_l7(c, rows(a), rows(b)),
         _ => low::generic::mldsa_poly::mldsa_pointwise_acc(c, a, b),
     }
 }

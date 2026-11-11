@@ -12,7 +12,7 @@
 
 use super::cpu::HaveAvx2;
 use crate::low;
-use crate::low::generic::mldsa_poly as portable;
+use crate::low::generic::mldsa_poly::{self as portable, MldsaPoly, rows};
 
 /// Forward number-theoretic transform from ML-DSA
 pub(crate) fn mldsa_ntt(a: &mut [i32; 256]) {
@@ -46,43 +46,21 @@ pub(crate) fn mldsa_pointwise(c: &mut [i32; 256], a: &[i32; 256], b: &[i32; 256]
     }
 }
 
-/// Pointwise Montgomery multiply-accumulate of two length-`L` vectors in the
-/// NTT domain
-pub(crate) fn mldsa_pointwise_acc<const L: usize>(
-    c: &mut [i32; 256],
-    a: &[[i32; 256]; L],
-    b: &[[i32; 256]; L],
-) {
-    if HaveAvx2::check().is_some() {
-        match L {
-            4 => {
-                return super::mldsa_pointwise_acc_l4::mldsa_pointwise_acc_l4(
-                    c,
-                    a.as_slice().try_into().unwrap(),
-                    b.as_slice().try_into().unwrap(),
-                    &QDATA.0,
-                );
-            }
-            5 => {
-                return super::mldsa_pointwise_acc_l5::mldsa_pointwise_acc_l5(
-                    c,
-                    a.as_slice().try_into().unwrap(),
-                    b.as_slice().try_into().unwrap(),
-                    &QDATA.0,
-                );
-            }
-            7 => {
-                return super::mldsa_pointwise_acc_l7::mldsa_pointwise_acc_l7(
-                    c,
-                    a.as_slice().try_into().unwrap(),
-                    b.as_slice().try_into().unwrap(),
-                    &QDATA.0,
-                );
-            }
-            _ => {}
+/// Pointwise Montgomery multiply-accumulate of two vectors in the NTT domain
+pub(crate) fn mldsa_pointwise_acc(c: &mut [i32; 256], a: &[MldsaPoly], b: &[MldsaPoly]) {
+    assert_eq!(a.len(), b.len());
+    match (HaveAvx2::check(), a.len()) {
+        (Some(_), 4) => {
+            super::mldsa_pointwise_acc_l4::mldsa_pointwise_acc_l4(c, rows(a), rows(b), &QDATA.0)
         }
+        (Some(_), 5) => {
+            super::mldsa_pointwise_acc_l5::mldsa_pointwise_acc_l5(c, rows(a), rows(b), &QDATA.0)
+        }
+        (Some(_), 7) => {
+            super::mldsa_pointwise_acc_l7::mldsa_pointwise_acc_l7(c, rows(a), rows(b), &QDATA.0)
+        }
+        _ => portable::mldsa_pointwise_acc(c, a, b),
     }
-    portable::mldsa_pointwise_acc(c, a, b)
 }
 
 macro_rules! unary {
