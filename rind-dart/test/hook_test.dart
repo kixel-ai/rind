@@ -38,6 +38,8 @@ const supported = [
 ];
 
 void main() {
+  // A cold build on a slow runner, such as macos-15-intel, outlasts the
+  // default 30 seconds.
   test('builds from source for the host, listing its sources', () async {
     await testCodeBuildHook(
       mainMethod: hook.main,
@@ -57,7 +59,7 @@ void main() {
         );
       },
     );
-  });
+  }, timeout: const Timeout(Duration(minutes: 5)));
 
   test('refuses to download in an unreleased copy', () async {
     await expectLater(
