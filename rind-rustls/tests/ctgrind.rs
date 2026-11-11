@@ -332,3 +332,23 @@ fn tickets() {
     public(&state[..]);
     assert_eq!(state, b"session state");
 }
+
+#[test]
+fn hpke() {
+    use rustls::crypto::hpke::HpkePrivateKey;
+
+    for suite in rind_rustls::hpke::ALL_SUPPORTED_SUITES {
+        let (public_key, private_key) = suite.generate_key_pair().unwrap();
+        let (enc, ciphertext) = suite
+            .seal(b"info", b"aad", b"plaintext", &public_key)
+            .unwrap();
+
+        // The private key's bytes, as rustls hands them back to open.
+        let private_key = HpkePrivateKey::from(private_key.secret_bytes().to_vec());
+        secret(private_key.secret_bytes());
+        let mut opener = suite.setup_opener(&enc, b"info", &private_key).unwrap();
+        let plaintext = opener.open(b"aad", &ciphertext).unwrap();
+        public(&plaintext[..]);
+        assert_eq!(plaintext, b"plaintext", "{:?}", suite.suite());
+    }
+}

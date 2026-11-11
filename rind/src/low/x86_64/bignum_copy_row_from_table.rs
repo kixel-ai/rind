@@ -68,7 +68,8 @@ pub(crate) fn bignum_copy_row_from_table(
     width: u64,
     index: u64,
 ) {
-    debug_assert!(z.len() as u64 == width);
+    assert!(z.len() as u64 == width);
+    assert!(height.checked_mul(width) == Some(table.len() as u64));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -126,4 +127,11 @@ pub(crate) fn bignum_copy_row_from_table(
         out("rax") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_copy_row_from_table, &mut [0; 4], &[7; 12], 3, 4, 2);
 }

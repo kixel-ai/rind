@@ -84,7 +84,7 @@ macro_rules! i {
 /// but is not necessarily reduced mod x.
 #[inline(never)]
 pub(crate) fn bignum_negmodinv(z: &mut [u64], x: &[u64]) {
-    debug_assert!(z.len() == x.len());
+    assert!(z.len() == x.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -191,4 +191,11 @@ pub(crate) fn bignum_negmodinv(z: &mut [u64], x: &[u64]) {
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_negmodinv, &mut [0; 4], &[u64::MAX; 4]);
 }

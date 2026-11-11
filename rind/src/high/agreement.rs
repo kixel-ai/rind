@@ -645,7 +645,111 @@ mod tests {
 
     use super::*;
     use crate::high::signature::{EcdsaKeyPair, sign};
-    use crate::test::{Expected, wycheproof};
+    use crate::test::{Acvp, Expected, wycheproof};
+
+    #[test]
+    fn acvp_x25519_key_gen() {
+        for group in crate::test::acvp("XECDH-keyGen-RFC7748") {
+            for test in group.tests() {
+                let key = PrivateKey::from_scalar(&X25519, &test.hex("privateKey")).unwrap();
+                assert_eq!(key.public_key().as_ref(), test.hex("publicKey"));
+            }
+        }
+    }
+
+    /// ACVP checks only an X25519 public key's length.
+    #[test]
+    fn acvp_x25519_key_ver() {
+        for group in crate::test::acvp("XECDH-keyVer-RFC7748") {
+            for test in group.tests() {
+                let valid = PublicKey::new(&X25519, &test.hex("publicKey")).is_ok();
+                assert_eq!(valid, test.flag("testPassed"), "{}", test.str("reason"));
+            }
+        }
+    }
+
+    #[test]
+    fn acvp_x25519() {
+        for group in crate::test::acvp("XECDH-SSC-RFC7748") {
+            for test in group.tests() {
+                let key = PrivateKey::from_scalar(&X25519, &test.hex("privateIut")).unwrap();
+                assert_eq!(key.public_key().as_ref(), test.hex("publicIut"));
+                let shared = key.agree(&test.hex("publicServer"));
+                match test.flag("testPassed") {
+                    true => assert_eq!(shared.unwrap().as_ref(), test.hex("z")),
+                    false => assert!(shared.is_err()),
+                }
+            }
+        }
+    }
+
+    /// CAVP's ECC CDH primitive vectors, as no ACVP sample set holds a curve
+    /// rind offers.
+    #[test]
+    fn cavp_ecdh() {
+        use crate::test::{CavpSink, Value, process_cavp};
+
+        #[derive(Default)]
+        struct State {
+            algorithm: Option<&'static Algorithm>,
+            peer: Vec<u8>,
+            private: Vec<u8>,
+            public: Vec<u8>,
+            tests: usize,
+        }
+
+        // CAVP writes some P-521 values with a leading zero byte too many.
+        fn fixed(value: &Value<'_>, len: usize) -> Vec<u8> {
+            let value = value.bytes();
+            let value = &value[value.len().saturating_sub(len)..];
+            [&vec![0; len - value.len()][..], value].concat()
+        }
+
+        impl CavpSink for State {
+            fn on_meta(&mut self, meta: &str) {
+                self.algorithm = match meta {
+                    "P-256" => Some(&ECDH_P256),
+                    "P-384" => Some(&ECDH_P384),
+                    "P-521" => Some(&ECDH_P521),
+                    _ => None,
+                };
+            }
+
+            fn on_value(&mut self, name: &str, value: Value<'_>) {
+                let Some(algorithm) = self.algorithm else {
+                    return;
+                };
+                let len = match algorithm.id {
+                    AlgorithmId::EcdhP256 => 32,
+                    AlgorithmId::EcdhP384 => 48,
+                    _ => 66,
+                };
+                match name {
+                    "COUNT" => {}
+                    "QCAVSx" => self.peer = [vec![0x04], fixed(&value, len)].concat(),
+                    "QCAVSy" => self.peer.extend(fixed(&value, len)),
+                    "dIUT" => self.private = fixed(&value, len),
+                    "QIUTx" => self.public = [vec![0x04], fixed(&value, len)].concat(),
+                    "QIUTy" => self.public.extend(fixed(&value, len)),
+                    "ZIUT" => {
+                        let key = PrivateKey::from_scalar(algorithm, &self.private).unwrap();
+                        assert_eq!(key.public_key().as_ref(), self.public);
+                        let shared = key.agree(&self.peer).unwrap();
+                        assert_eq!(shared.as_ref(), fixed(&value, len));
+                        self.tests += 1;
+                    }
+                    _ => panic!("unexpected value {name}"),
+                }
+            }
+        }
+
+        let mut state = State::default();
+        process_cavp(
+            "../thirdparty/cavp/ecdh/KAS_ECC_CDH_PrimitiveTest.txt",
+            &mut state,
+        );
+        assert_eq!(state.tests, 75);
+    }
 
     const ALGORITHMS: [&Algorithm; 4] = [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521];
 

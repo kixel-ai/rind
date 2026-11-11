@@ -15,6 +15,18 @@ use crate::{Error, aead};
 #[derive(Debug)]
 pub struct Algorithm(&'static hmac::Algorithm);
 
+impl Algorithm {
+    /// The HMAC this HKDF is built on.
+    pub(crate) fn hmac(&self) -> &'static hmac::Algorithm {
+        self.0
+    }
+
+    /// The hash's output length, a pseudorandom key's.
+    pub(crate) fn hash_len(&self) -> usize {
+        self.0.tag_len()
+    }
+}
+
 /// HKDF-SHA1, for legacy protocols only.
 ///
 /// Like HMAC, HKDF does not rely on SHA-1's broken collision resistance, but
@@ -62,6 +74,12 @@ impl fmt::Debug for Salt {
 pub struct Prk(hmac::Key);
 
 impl Prk {
+    /// A pseudorandom key `algorithm` extracted elsewhere, such as from
+    /// HPKE's labeled input.
+    pub(crate) fn new(algorithm: &'static Algorithm, bytes: &[u8]) -> Self {
+        Self(hmac::Key::new(algorithm.0, bytes))
+    }
+
     /// Derives key material for the concatenation of `info` (HKDF-Expand), as long as `len` says.
     pub fn expand<'a, L: KeyType>(&'a self, info: &'a [&'a [u8]], len: L) -> Okm<'a, L> {
         Okm {
@@ -204,6 +222,55 @@ impl From<Okm<'_, &'static Algorithm>> for Prk {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::test::{Acvp, acvp};
+
+    /// SP 800-56C's two-step KDF over HKDF, with the fixed info its groups
+    /// name: each party's identity and optional ephemeral data, then the
+    /// output length in bits as 32 bits.
+    #[test]
+    fn acvp_kda() {
+        for group in acvp("KDA-HKDF-Sp800-56Cr2") {
+            assert!(!group.flag("multiExpansion"));
+            let config = &group["kdfConfiguration"];
+            assert_eq!(config.str("fixedInfoPattern"), "uPartyInfo||vPartyInfo||l");
+            assert_eq!(config.str("fixedInfoEncoding"), "concatenation");
+            let algorithm = match config.str("hmacAlg") {
+                "SHA2-256" => &HKDF_SHA256,
+                "SHA2-384" => &HKDF_SHA384,
+                "SHA2-512" => &HKDF_SHA512,
+                other => panic!("unexpected hash {other}"),
+            };
+            for test in group.tests() {
+                let params = &test["kdfParameter"];
+                let mut secret = params.hex("z");
+                if group.flag("usesHybridSharedSecret") {
+                    secret.extend(params.hex("t"));
+                }
+                let len = params.int("l");
+                let mut info = Vec::new();
+                for party in [&test["fixedInfoPartyU"], &test["fixedInfoPartyV"]] {
+                    info.extend(party.hex("partyId"));
+                    if party.get("ephemeralData").is_some() {
+                        info.extend(party.hex("ephemeralData"));
+                    }
+                }
+                info.extend((len as u32).to_be_bytes());
+
+                let mut dkm = vec![0; len / 8];
+                Salt::new(algorithm, &params.hex("salt"))
+                    .extract(&secret)
+                    .expand(&[&info], dkm.len())
+                    .fill(&mut dkm)
+                    .unwrap();
+                let matches = dkm == test.hex("dkm");
+                match group.str("testType") {
+                    "AFT" => assert!(matches),
+                    "VAL" => assert_eq!(matches, test.flag("testPassed")),
+                    other => panic!("unexpected test type {other}"),
+                }
+            }
+        }
+    }
     use crate::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Nonce, quic};
 
     #[test]

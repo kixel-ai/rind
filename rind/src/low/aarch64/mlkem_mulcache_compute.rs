@@ -105,3 +105,16 @@ pub(crate) fn mlkem_mulcache_compute(
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        mlkem_mulcache_compute,
+        &mut crate::low::abi::Aligned([0; 128]).0,
+        &crate::low::abi::Aligned([0; 256]).0,
+        &crate::low::abi::Aligned([0; 128]).0,
+        &crate::low::abi::Aligned([0; 128]).0
+    );
+}

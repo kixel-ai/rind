@@ -38,8 +38,12 @@ pub(crate) fn p256_select_w7(out: &mut [u64; 8], row: &P256GeneratorRow, index: 
     // token proves AVX2, and the other needs only SSE2.
     unsafe {
         match HaveAvx2::check() {
-            Some(_) => ecp_nistz256_avx2_select_w7(out, row, index.into()),
-            None => ecp_nistz256_select_w7(out, row, index.into()),
+            Some(_) => {
+                asm_call!(unsafe extern "sysv64" ecp_nistz256_avx2_select_w7(out, row, index.into()))
+            }
+            None => {
+                asm_call!(unsafe extern "sysv64" ecp_nistz256_select_w7(out, row, index.into()))
+            }
         }
     }
 }
@@ -57,8 +61,8 @@ pub(crate) fn p256_point_add_affine(p1: &mut [u64; 12], p2: &[u64; 8]) {
     // both, and the other needs only SSE2.
     unsafe {
         match HaveBmi2Adx::check() {
-            Some(_) => ecp_nistz256_point_add_affinex(p1, p1, p2),
-            None => ecp_nistz256_point_add_affine(p1, p1, p2),
+            Some(_) => asm_call!(unsafe extern "sysv64" ecp_nistz256_point_add_affinex(p1, p1, p2)),
+            None => asm_call!(unsafe extern "sysv64" ecp_nistz256_point_add_affine(p1, p1, p2)),
         }
     }
 }
@@ -243,8 +247,8 @@ mod tests {
                 let (mut sse2, mut avx2) = ([1; 8], [1; 8]);
                 // SAFETY: as in `p256_select_w7`, on a CPU with AVX2.
                 unsafe {
-                    ecp_nistz256_select_w7(&mut sse2, &row, index);
-                    ecp_nistz256_avx2_select_w7(&mut avx2, &row, index);
+                    asm_call!(unsafe extern "sysv64" ecp_nistz256_select_w7(&mut sse2, &row, index));
+                    asm_call!(unsafe extern "sysv64" ecp_nistz256_avx2_select_w7(&mut avx2, &row, index));
                 }
                 assert_eq!(sse2, avx2);
                 let want = match index {
@@ -271,8 +275,8 @@ mod tests {
                 // SAFETY: as in `p256_point_add_affine`, on a CPU with BMI2
                 // and ADX.
                 unsafe {
-                    ecp_nistz256_point_add_affine(&mut mulq, &p1, &p2);
-                    ecp_nistz256_point_add_affinex(&mut mulx, &p1, &p2);
+                    asm_call!(unsafe extern "sysv64" ecp_nistz256_point_add_affine(&mut mulq, &p1, &p2));
+                    asm_call!(unsafe extern "sysv64" ecp_nistz256_point_add_affinex(&mut mulx, &p1, &p2));
                 }
                 assert_eq!(mulq, mulx);
             }

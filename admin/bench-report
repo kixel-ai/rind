@@ -5,6 +5,7 @@ Usage:
   admin/bench-report collect [--commit REV] [--host NAME]... [--out DIR]
   admin/bench-report nightly
   admin/bench-report render [--from DIR] [--check]
+  admin/bench-report gate DIR [--previous DIR]
   admin/bench-report summary DIR
 
 `collect` copies one commit to each host in turn, waits for room under
@@ -22,8 +23,12 @@ them the overview the README shows, from benchmarks/data, the verified code in
 benchmarks/verified.toml, and the decision on each gap in
 benchmarks/gaps.toml, first importing each measured host of a collection
 given by `--from`. It fails on a gap over 10% without a
-decision, or a decision whose gap is gone. `--check` fails if they are out of
+decision, or a decision that covers no gap the data measures. `--check` fails if they are out of
 date instead.
+
+`gate` fails on a gap over 10% in a nightly run's downloaded artifacts that
+benchmarks/gaps.toml holds no decision for, counting only a gap the previous
+run, given by `--previous`, showed too. The nightly bench runs it.
 
 `summary` prints a Markdown table of a collection: rind's time per operation
 and host, against the fastest other library's.
@@ -782,15 +787,19 @@ TIERS = [
 BASELINES = ["aws-lc-rs", "ring"]
 
 # The CPU-tier rows, as patterns over a nightly benchmark ID with `*` in the
-# library's place. RSA key generation varies too much from run to run to rank.
+# library's place.
 TIER_ROWS = [
-    ("AES-GCM", r"aes(128|256)-gcm(-open)?/"),
-    ("AES block, AES-CTR", r"(aes(128|256)-ctr|quic-header-protection/aes(128|256))/"),
+    ("AES-GCM", r"aes(128|192|256)-gcm(-open)?/"),
+    ("AES block, AES-CTR", r"(aes(128|192|256)-ctr|quic-header-protection/aes(128|256))/"),
+    ("AES-CBC", r"aes(128|192|256)-cbc-"),
+    ("AES-KW, AES-KWP", r"aes(128|256)-kwp?-"),
     ("ChaCha20 (header protection)", r"quic-header-protection/chacha20/"),
     ("ChaCha20-Poly1305, XChaCha20-Poly1305", r"x?chacha20poly1305/"),
     ("SHA-1", r"sha1/"),
     ("SHA-256", r"sha256(-updates)?/"),
     ("SHA-384, SHA-512, SHA-512/256", r"sha(384|512|512-256)/"),
+    ("SHA-3", r"sha3-"),
+    ("MD5", r"md5/"),
     ("HMAC", r"hmac-"),
     ("HKDF", r"hkdf-"),
     ("PBKDF2", r"pbkdf2-"),
@@ -801,8 +810,17 @@ TIER_ROWS = [
     ("P-521 ECDH, ECDSA", r"p521-"),
     ("ML-KEM-768", r"mlkem768-"),
     ("RSA signatures", r"rsa\d+-(pkcs1|pss|load)"),
+    ("RSA-OAEP", r"rsa\d+-oaep-"),
+    ("JSON Web Tokens", r"jwt-[^/]+/\*/token$"),
     ("rind-rustls handshakes", r"rustls-(full|resumed)-"),
     ("rind-rustls 1 MB transfer", r"rustls-bulk/"),
+]
+
+# The nightly benchmarks no CPU-tier row ranks, and why. Every other
+# benchmark must match a row, so a new one cannot go unwatched.
+UNRANKED = [
+    (r"rsa\d+-key-generation", "RSA key generation varies too much from run to run to rank"),
+    (r"jwt-[^/]+/\*/load$", "a token's key loading, the part of `token` spent on the key"),
 ]
 
 # rind's time over the fastest library's above which benchmarks/gaps.toml
@@ -940,10 +958,17 @@ def tier_rows(tier):
     return out
 
 
-def tier_column(tier):
-    column = dict(TIERS).get((tier["target"], tier["portable"], tier["tier"]))
-    if column is None:
+def tier_name(tier):
+    """The tier's TIERS name, which benchmarks/gaps.toml decides on whatever
+    CPU the runner drew."""
+    name = dict(TIERS).get((tier["target"], tier["portable"], tier["tier"]))
+    if name is None:
         fail(f"nightly results name an unknown tier: {tier['target']} {tier['tier']}")
+    return name
+
+
+def tier_column(tier):
+    column = tier_name(tier)
     # The native x86_64 runner may or may not have AVX-512; name the tier it drew.
     if column == "x86_64" and "avx512" in tier:
         column += " AVX-512" if tier["avx512"] else " VAES AVX2"
@@ -960,8 +985,12 @@ def tier_columns(tiers):
 
 
 def tier_row(key):
-    """The CPU-tier row a nightly benchmark belongs to, if it is ranked."""
-    return next((name for name, pattern in TIER_ROWS if re.match(pattern, key)), None)
+    """The CPU-tier row a nightly benchmark belongs to, or None for one
+    UNRANKED lists, refusing a benchmark in neither."""
+    row = next((name for name, pattern in TIER_ROWS if re.match(pattern, key)), None)
+    if row is None and not any(re.match(pattern, key) for pattern, _ in UNRANKED):
+        fail(f"nightly benchmark {key} matches neither a TIER_ROWS row nor UNRANKED")
+    return row
 
 
 def tier_cells(tiers):
@@ -979,6 +1008,12 @@ def tier_cells(tiers):
     return cells
 
 
+def covers(entry, operation, place):
+    """Whether a benchmarks/gaps.toml entry decides the gap of an operation on
+    a host or tier."""
+    return place in entry["on"] and any(fnmatch.fnmatchcase(operation, op) for op in entry["operations"])
+
+
 def gaps_of(hosts, tiers):
     """Each operation where another library beats rind by more than SLOWER, by
     (operation, host or tier), as (ratio, fastest library)."""
@@ -991,19 +1026,26 @@ def gaps_of(hosts, tiers):
                 if libs["rind"] / others[best] > SLOWER:
                     out[(row, name)] = (libs["rind"] / others[best], best)
     for t in tiers["tiers"] if tiers else []:
-        column = tier_column(t)
+        column = tier_name(t)
         for key, (ratio, _, best, _) in tier_rows(t).items():
             if ratio > SLOWER and tier_row(key):
                 out[(key, column)] = (ratio, best)
     return out
 
 
+def gap_entries(path=GAPS):
+    with open(path, "rb") as f:
+        return tomllib.load(f).get("gap", [])
+
+
 def load_gaps(hosts, tiers, path=GAPS):
     """The decision on each gap, with the gaps it covers, refusing a gap
-    without one and an entry that names something other than a gap."""
-    with open(path, "rb") as f:
-        entries = tomllib.load(f).get("gap", [])
+    without one and an entry that covers no gap where the data measures. A
+    nightly gap can come and go with the runner's CPU, so an entry need not
+    match a gap everywhere it names."""
+    entries = gap_entries(path)
     found = gaps_of(hosts, tiers)
+    measured = set(hosts) | {tier_name(t) for t in tiers["tiers"]} if tiers else set(hosts)
     out = []
     for i, e in enumerate(entries, 1):
         where = f"{os.path.relpath(path, ROOT)}: entry {i}"
@@ -1016,13 +1058,18 @@ def load_gaps(hosts, tiers, path=GAPS):
             fail(f"{where}: needs a quest or a reason, not both")
         if "quest" in e and not (e["quest"].startswith("/quest/") and os.path.isfile(ROOT + e["quest"])):
             fail(f"{where}: no quest at {e['quest']}")
-        covered = {}
-        for op in e["operations"]:
-            for place in e["on"]:
-                if (op, place) not in found:
-                    fail(f"{where}: {op} on {place} is no gap over 10%; update or remove the entry")
-                covered[(op, place)] = found.pop((op, place))
-        out.append((e, covered))
+        for place in e["on"]:
+            if place not in HOSTS and place not in dict(TIERS).values():
+                fail(f"{where}: no host or tier {place}")
+            if place in HOSTS and place not in hosts:
+                fail(f"{where}: {place} is not measured; update or remove the entry")
+        covered = {k: v for k, v in found.items() if covers(e, *k)}
+        if not covered and measured & set(e["on"]):
+            fail(f"{where}: names no gap over 10%; update or remove the entry")
+        for k in covered:
+            del found[k]
+        if covered:
+            out.append((e, covered))
     if found:
         fail(
             f"gaps over 10% without a decision in {os.path.relpath(path, ROOT)}: "
@@ -1528,7 +1575,9 @@ def report(hosts, tiers, verified, gaps):
             "no AVX2: also AVX2, BMI2, SHA-NI, AVX-512, VAES, and VPCLMULQDQ; no AVX: also AVX; no AES-NI: "
             "also AES-NI, PCLMULQDQ, and SSE4.1; SSE2: also SSSE3). aarch64 runs with the crypto extension, "
             "no SHA-3 without the SHA-512 and SHA-3 instructions, no crypto without any of them, armv7 in 32-bit "
-            "mode on the same core, and armv7 NEON there without the crypto extension. Each cell is rind's time over "
+            "mode on the same core, and armv7 NEON there without the crypto extension. portable times rind's portable "
+            "backend, forced with `--cfg rind_portable`, against aws-lc's C built without assembly; ring has no "
+            "such build, so it sits that column out. Each cell is rind's time over "
             "the fastest of aws-lc-rs and ring (aws-lc-rs alone where a feature is denied, since ring can't "
             "be denied one), in the row's benchmark where rind trails most. An empty cell runs the same code "
             "as the one to its left, so it isn't timed.",
@@ -1636,6 +1685,67 @@ def significant(ns):
     return float(f"{ns:.4g}")
 
 
+def load_run(paths):
+    """A nightly run's tiers from its `bench-*/bench-results.json` artifacts,
+    each benchmark's times by library under its ID with `*` in the library's
+    place."""
+    tiers = []
+    for path in paths:
+        with open(path) as f:
+            saved = json.load(f)
+        benchmarks = {}
+        for r in saved["results"]:
+            parts = r["id"].split("/")
+            lib = next((p for p in parts if p == "rind" or p in BASELINES), None)
+            if lib is None:
+                continue
+            key = "/".join("*" if p == lib else p for p in parts)
+            benchmarks.setdefault(key, {})[lib] = significant(r["ns"])
+        tiers.append({k: saved[k] for k in ("target", "portable", "tier", "cpu", "avx512") if k in saved} | {"benchmarks": benchmarks})
+    return tiers
+
+
+def run_tiers(directory):
+    paths = sorted(glob.glob(os.path.join(directory, "*", "bench-results.json")))
+    if not paths:
+        fail(f"no bench-*/bench-results.json in {directory}")
+    return {"tiers": load_run(paths)}
+
+
+def gate(args):
+    """Fails on a gap over SLOWER that benchmarks/gaps.toml holds no decision
+    for and that the previous run, if given, showed too, since GitHub draws a
+    different CPU each night. Prints a Markdown summary."""
+    tiers = run_tiers(args.dir)
+    previous = gaps_of({}, run_tiers(args.previous)) if args.previous else None
+    entries = gap_entries(GAPS)
+    unbaselined = sorted(
+        {
+            f"{key} on {tier_column(t)}"
+            for t in tiers["tiers"]
+            for key, libs in t["benchmarks"].items()
+            if tier_row(key) and not set(libs) & set(BASELINES)
+        }
+    )
+    undecided, once = [], []
+    for (key, column), (ratio, best) in sorted(gaps_of({}, tiers).items()):
+        if any(covers(e, key, column) for e in entries):
+            continue
+        cell = f"{key} on {column} ({ratio:.2f}× {best})"
+        if previous is None or (key, column) in previous:
+            undecided.append(cell)
+        else:
+            once.append(cell)
+    if unbaselined:
+        print(f"No baseline, so no ratio: {', '.join(unbaselined)}.\n")
+    if once:
+        print(f"Over {SLOWER}× without a decision, but not in the previous run: {', '.join(once)}.\n")
+    if undecided:
+        print(f"Over {SLOWER}× without a decision in benchmarks/gaps.toml: {', '.join(undecided)}.")
+        fail(f"{len(undecided)} gaps over {SLOWER}× without a decision in benchmarks/gaps.toml")
+    print(f"Every gap over {SLOWER}× has a decision in benchmarks/gaps.toml.")
+
+
 def nightly(args):
     """Saves the latest nightly bench's results on main as the CPU tiers,
     from a run that timed every tier, since the report reads an empty cell as
@@ -1660,19 +1770,7 @@ def nightly(args):
         paths = sorted(glob.glob(os.path.join(scratch, "*", "bench-results.json")))
         if got.returncode != 0 or not paths:
             continue
-        tiers = []
-        for path in paths:
-            with open(path) as f:
-                saved = json.load(f)
-            benchmarks = {}
-            for r in saved["results"]:
-                parts = r["id"].split("/")
-                lib = next((p for p in parts if p == "rind" or p in BASELINES), None)
-                if lib is None:
-                    continue
-                key = "/".join("*" if p == lib else p for p in parts)
-                benchmarks.setdefault(key, {})[lib] = significant(r["ns"])
-            tiers.append({k: saved[k] for k in ("target", "portable", "tier", "cpu", "avx512") if k in saved} | {"benchmarks": benchmarks})
+        tiers = load_run(paths)
         order = {key: i for i, (key, _) in enumerate(TIERS)}
         missing = set(order) - {(t["target"], t["portable"], t["tier"]) for t in tiers}
         if missing:
@@ -1721,6 +1819,11 @@ def main():
 
     p = sub.add_parser("nightly", help="save the latest nightly bench's results as the CPU tiers")
     p.set_defaults(func=nightly)
+
+    p = sub.add_parser("gate", help="fail on a nightly run's gap without a decision")
+    p.add_argument("dir", help="the run's downloaded bench-* artifacts")
+    p.add_argument("--previous", metavar="DIR", help="the previous run's, to fail only on a gap both show")
+    p.set_defaults(func=gate)
 
     p = sub.add_parser("run", help="the host side of collect")
     p.add_argument("--host", required=True)

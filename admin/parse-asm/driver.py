@@ -52,6 +52,17 @@ class Architecture:
     def is_wide_vector(reg):
         return False
 
+    # macro testing for a CPU feature, and the features each instruction
+    # needs beyond those the architecture's tests assume
+    feature_detector = None
+    feature_instructions = {}
+
+    @classmethod
+    def required_features(cls, mnemonics):
+        return sorted(
+            set(f for m in mnemonics for f in cls.feature_instructions.get(m, []))
+        )
+
     # canonicalise register names, by returning a better name
     # for `reg`.
     #
@@ -95,6 +106,24 @@ class Architecture_amd64(Architecture):
     @staticmethod
     def is_wide_vector(reg):
         return re.fullmatch(r"[yz]mm[0-9]+", reg) is not None
+
+    feature_detector = "std::arch::is_x86_feature_detected"
+    feature_instructions = dict(
+        [(m, ["bmi2"]) for m in "mulx shlx shrx sarx rorx bzhi pdep pext".split()]
+        + [(m, ["adx"]) for m in "adcx adox".split()]
+        + [(m, ["avx2"]) for m in ["ymm%d" % n for n in range(16)]]
+        + [(m, ["ssse3"]) for m in "pshufb palignr".split()]
+        + [(m, ["sse4.1"]) for m in "pblendw pinsrq pextrq ptest".split()]
+        + [("popcnt", ["popcnt"]), ("lzcnt", ["lzcnt"]), ("tzcnt", ["bmi1"])]
+    )
+
+    @classmethod
+    def required_features(cls, mnemonics):
+        features = set(Architecture.required_features.__func__(cls, mnemonics))
+        # A VEX-encoded instruction on xmm registers needs only AVX.
+        if any(re.fullmatch(r"v[a-z0-9]+", m) for m in mnemonics) and "avx2" not in features:
+            features.add("avx")
+        return sorted(features)
 
     @staticmethod
     def lookup_register(reg):
@@ -145,6 +174,14 @@ class Architecture_aarch64(Architecture):
     constant_reference_page_offs = True
 
     fn_arg_regs = "x0 x1 x2 x3 x4 x5 x6 x7".split()
+
+    feature_detector = "std::arch::is_aarch64_feature_detected"
+    feature_instructions = dict(
+        [(m, ["sha3"]) for m in "eor3 bcax rax1 xar sha512h sha512h2 sha512su0 sha512su1".split()]
+        + [(m, ["aes"]) for m in "aese aesd aesmc aesimc".split()]
+        + [(m, ["pmull"]) for m in "pmull pmull2".split()]
+        + [(m, ["sha2"]) for m in "sha256h sha256h2 sha256su0 sha256su1".split()]
+    )
 
     cpp_definitions = dict(__linux__="1", __ELF__="1")
 
@@ -537,6 +574,7 @@ class RustDriver:
         func_attrs="",
         hoist=None,
         several_exits=False,
+        abi_args=None,
     ):
         self.macro_pass.emit_rust_function(name, rust_decl)
         self.formatter.emit_rust_function(
@@ -550,6 +588,7 @@ class RustDriver:
             func_attrs=func_attrs,
             hoist=hoist,
             several_exits=several_exits,
+            abi_args=abi_args,
         )
 
     def add_const_symbol(self, sym, shared=False, same_as=None):
@@ -617,6 +656,9 @@ class RustFormatter(Dispatcher):
         self.function_state = None
         self.expected_labels = []
         self.att_syntax = False
+        self.abi_args = {}
+        self.harness = []
+        self.mnemonics = set()
         self.source = None
         self.start()
 
@@ -635,10 +677,12 @@ class RustFormatter(Dispatcher):
         func_attrs="",
         hoist=None,
         several_exits=False,
+        abi_args=None,
     ):
         # A function with several exits runs to the end of its input: each
         # `ret` branches to one label there, where rustc's epilogue follows.
         assert not (several_exits and hoist)
+        self.abi_args[name] = abi_args
         self.expected_functions[name] = (
             parameter_map,
             return_map,
@@ -874,12 +918,15 @@ use crate::low::macros::*;
                 self.function_state.several_exits = several_exits
 
             if not self.function_state.skip:
+                self.harness.append(
+                    (rust_decl, func_attrs, self.abi_args.get(name))
+                )
                 locals = ""
                 if self.function_state.return_value:
                     rtype, rname, _ = self.function_state.return_value
                     locals = "let %s: %s;" % (rname, rtype)
                 for a in assertions:
-                    locals += "debug_assert!(%s);" % a
+                    locals += "assert!(%s);" % a
 
                 print("", file=self.output)
 
@@ -992,6 +1039,7 @@ use crate::low::macros::*;
             return self.finish_function()
 
         self.visit_operands(operands)
+        self.note_mnemonics(opcode, operands)
 
         operands = operands.replace("{", "{{").replace("}", "}}")
         operands = self.expand_rust_macros_in_asm(operands)
@@ -1002,6 +1050,22 @@ use crate::low::macros::*;
 
         if self.function_state and self.function_state.finishes_hoist(opcode, operands):
             return self.finish_function()
+
+    def note_mnemonics(self, *values, seen=None):
+        """Records each token the current function's instructions hold,
+        through the macros they expand, so its harness call can require the
+        CPU features they need."""
+        if not self.function_state or self.function_state.skip:
+            return
+        seen = seen if seen is not None else set()
+        for v in values:
+            for t in tokenise(v):
+                t = t.lstrip("%").lower()
+                if t not in self.rust_macros:
+                    self.mnemonics.add(t)
+                elif t not in seen:
+                    seen.add(t)
+                    self.note_mnemonics(*self.rust_macros[t][0], seen=seen)
 
     def visit_operands(self, operands):
         for t in tokenise(operands):
@@ -1044,6 +1108,7 @@ use crate::low::macros::*;
             self.visit_operands(vv)
         # A register passed only as an argument is clobbered too.
         self.visit_operands(params)
+        self.note_mnemonics(name, params)
         value = self.expand_rust_macros_in_macro_call(params)
         print("%s!(%s)," % (name, value), file=self.output)
 
@@ -1169,6 +1234,143 @@ use crate::low::macros::*;
             self.on_label([], "exit")
             self.finish_function()
         self.finish_constant_array()
+        self.emit_harness()
+
+    def emit_harness(self):
+        """Emits the test that calls each function through
+        `crate::low::abi`, on CPUs with the features its instructions need."""
+        assert len(self.harness) <= 1, "one harness test per file"
+        for rust_decl, func_attrs, abi_args in self.harness:
+            name, params = parse_rust_decl(rust_decl)
+            if abi_args is None:
+                abi_args = ABI_ARGS.get(name, [None] * len(params))
+            assert len(abi_args) == len(params), name
+            abi_args = [
+                a if a is not None else default_abi_arg(name, ty)
+                for a, ty in zip(abi_args, params)
+            ]
+            features = self.arch.required_features(self.mnemonics)
+            print(
+                """
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {""",
+                file=self.output,
+            )
+            if features:
+                detected = " && ".join(
+                    '%s!("%s")' % (self.arch.feature_detector, f) for f in features
+                )
+                if len(features) > 1:
+                    detected = "(%s)" % detected
+                print("if !%s { return; }" % detected, file=self.output)
+            call = ", ".join([name] + abi_args)
+            if func_attrs or rust_decl.lstrip().startswith("unsafe "):
+                print(
+                    "// SAFETY: the CPU has the features checked above.\n"
+                    "unsafe { crate::low::abi::call!(unsafe %s); }" % call,
+                    file=self.output,
+                )
+            else:
+                print("crate::low::abi::call!(%s);" % call, file=self.output)
+            print("}", file=self.output)
+
+
+def parse_rust_decl(rust_decl):
+    """Returns a declaration's function name and its parameters' types."""
+    m = re.fullmatch(
+        r"\s*(?:unsafe )?fn (\w+)\((.*)\)(\s*->.*)?\s*", rust_decl, re.S
+    )
+    assert m, rust_decl
+    params, depth, start = [], 0, 0
+    text = m.group(2)
+    for i, c in enumerate(text + ","):
+        if c in "[(<":
+            depth += 1
+        elif c in "])>":
+            depth -= 1
+        elif c == "," and depth == 0:
+            param = text[start:i].strip()
+            start = i + 1
+            if param:
+                params.append(param.split(":", 1)[1].strip())
+    return m.group(1), params
+
+
+INTEGERS = "u8 u16 u32 u64 usize i8 i16 i32 i64".split()
+
+# Harness arguments for the functions taking what has no zero to default to,
+# such as a slice, sized to satisfy their assertions. `None` takes the
+# default.
+ABI_ARGS = {
+    "bignum_add": ["&mut [0; 4]", "&[1; 4]", "&[2; 3]"],
+    "bignum_bitsize": ["&[1, 2, 3, 4]"],
+    "bignum_cmp_lt": ["&[1, 2, 3, 4]", "&[1, 2, 3]"],
+    "bignum_coprime": ["&[3; 4]", "&[5; 4]", "&mut [0; 8]"],
+    "bignum_copy_row_from_table": ["&mut [0; 4]", "&[7; 12]", "3", "4", "2"],
+    "bignum_copy_row_from_table_8n": ["&mut [0; 8]", "&[7; 24]", "3", "8", "2"],
+    "bignum_copy_row_from_table_16": ["&mut [0; 16]", "&[7; 48]", "3", "2"],
+    "bignum_copy_row_from_table_32": ["&mut [0; 32]", "&[7; 96]", "3", "2"],
+    "bignum_ctz": ["&[0, 0, 4, 1]"],
+    "bignum_demont": ["&mut [0; 4]", "&[1; 4]", "&[u64::MAX; 4]"],
+    "bignum_digitsize": ["&[1, 2, 0, 0]"],
+    "bignum_emontredc_8n": ["&mut [0; 16]", "&[u64::MAX; 8]", "1"],
+    "bignum_eq": ["&[1; 4]", "&[1; 3]"],
+    "bignum_kmul_16_32": ["&mut [0; 32]", "&[1; 16]", "&[2; 16]", None],
+    "bignum_kmul_32_64": ["&mut [0; 64]", "&[1; 32]", "&[2; 32]", None],
+    "bignum_ksqr_16_32": ["&mut [0; 32]", "&[1; 16]", None],
+    "bignum_ksqr_32_64": ["&mut [0; 64]", "&[1; 32]", None],
+    "bignum_mod_n25519": [None, "&[u64::MAX; 8]"],
+    "bignum_modadd": ["&mut [0; 4]", "&[1; 4]", "&[2; 4]", "&[u64::MAX; 4]"],
+    "bignum_modinv": ["&mut [0; 4]", "&[3; 4]", "&[u64::MAX; 4]", "&mut [0; 12]"],
+    "bignum_modsub": ["&mut [0; 4]", "&[1; 4]", "&[2; 4]", "&[u64::MAX; 4]"],
+    "bignum_montifier": ["&mut [0; 4]", "&[u64::MAX; 4]", "&mut [0; 4]"],
+    "bignum_montmul": ["&mut [0; 4]", "&[1; 4]", "&[2; 4]", "&[u64::MAX; 4]"],
+    "bignum_montredc": ["&mut [0; 4]", "&[1; 8]", "&[u64::MAX; 4]", "1"],
+    "bignum_montsqr": ["&mut [0; 4]", "&[1; 4]", "&[u64::MAX; 4]"],
+    "bignum_mul": ["&mut [0; 8]", "&[1, 2, 3, 4]", "&[5, 6, 7, 8]"],
+    "bignum_mux": ["1", "&mut [0; 4]", "&[1; 4]", "&[2; 4]"],
+    "bignum_negmodinv": ["&mut [0; 4]", "&[u64::MAX; 4]"],
+    "bignum_optsub": ["&mut [0; 4]", "&[1; 4]", "&[2; 4]", "1"],
+    "mlkem_rej_uniform_vartime": [
+        None,
+        "&[0x55; 168]",
+        "&super::mlkem::MLKEM_REJ_UNIFORM_TABLE",
+    ],
+}
+# AES-GCM's `blocks` counts 128-byte strides, eight AES blocks each.
+for bits in (128, 256):
+    for op in ("enc", "dec"):
+        for alt in ("", "_alt"):
+            ABI_ARGS["aes%d_gcm_%s%s" % (bits, op, alt)] = [
+                "[[0; 16]; 8].as_mut_ptr()",
+                "1",
+            ] + [None] * 4
+
+
+def zero_value(ty):
+    m = re.fullmatch(r"\[(.*);\s*(\w+)\]", ty)
+    if m:
+        return "[%s; %s]" % (zero_value(m.group(1).strip()), m.group(2))
+    if ty in INTEGERS:
+        return "0"
+    return "crate::low::abi::zeroed()"
+
+
+def default_abi_arg(name, ty):
+    """An argument of type `ty` for the harness call: zero, in an array
+    where it is one. A slice has no length to default to, so its function
+    must give `abi_args`."""
+    if ty in INTEGERS:
+        return "0"
+    m = re.fullmatch(r"&(mut )?(.*)", ty)
+    assert m, "%s: give abi_args for %s" % (name, ty)
+    assert not re.fullmatch(r"\[[^;]*\]", m.group(2)), (
+        "%s: give abi_args for %s" % (name, ty)
+    )
+    # Routines may load whole vectors from it with aligned loads.
+    return "&%scrate::low::abi::Aligned(%s).0" % (m.group(1) or "", zero_value(m.group(2)))
 
 
 # A pass to fixup macro definitions that reference labels. This pass runs on the
