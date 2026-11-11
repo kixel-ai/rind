@@ -22,7 +22,7 @@ pub(crate) fn leave_cpu_state(old: u32) {
 /// # Safety:
 /// There must be `len` writable bytes at `ptr`; with no alignment
 /// requirement.
-pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
+pub(in crate::low) unsafe fn zero_bytes(ptr: *mut u8, len: usize) {
     // SAFETY: inline assembly.
     unsafe {
         core::arch::asm!(
@@ -56,58 +56,61 @@ pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
     }
 }
 
-/// Effectively memcmp(a, b, len), but guaranteed to visit every element
-/// of a and b.
+/// Compares the first `min(a.len(), b.len())` bytes of `a` and `b`, reading
+/// every one of them whatever their values.
 ///
-/// The return value does not follow memcmp semantics: it is zero if
-/// `a == b`, otherwise it is non-zero.
-///
-/// # Safety
-/// The caller must ensure that there are `len` bytes readable at `a` and `b`,
-pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: usize) -> u8 {
-    // SAFETY: inline assembly.
+/// Returns zero if they are equal, otherwise non-zero.
+#[inline(never)]
+pub(in crate::low) fn ct_compare_bytes(a: &[u8], b: &[u8]) -> u8 {
+    let (len, a, b) = (a.len().min(b.len()), a.as_ptr(), b.as_ptr());
+    let acc: u64;
+    // SAFETY: reads `len` bytes from `a` and `b`, which both hold.
+    // Its registers are fixed, and it is never inlined, so its proof in
+    // `proofs/hol-light/aarch64/ct_compare_bytes.ml` is of one copy.
     unsafe {
-        let mut acc = 0u8;
         core::arch::asm!(
-            "   2: cmp  {len}, 0",
+            "   2: cmp  x2, 0",
             "      beq  3f",
-            "      ldrb {tmpa:w}, [{a}]",
-            "      ldrb {tmpb:w}, [{b}]",
-            "      eor  {tmpa:w}, {tmpa:w}, {tmpb:w}",
-            "      orr  {acc:w}, {acc:w}, {tmpa:w}",
-            "      add  {a}, {a}, 1",
-            "      add  {b}, {b}, 1",
-            "      sub  {len}, {len}, 1",
+            "      ldrb w4, [x0]",
+            "      ldrb w5, [x1]",
+            "      eor  w4, w4, w5",
+            "      orr  w3, w3, w4",
+            "      add  x0, x0, 1",
+            "      add  x1, x1, 1",
+            "      sub  x2, x2, 1",
             "      b    2b",
             "   3:  ",
-            a = inout(reg) a => _,
-            b = inout(reg) b => _,
-            len = inout(reg) len => _,
-            tmpa = inout(reg) 0u8 => _,
-            tmpb = inout(reg) 0u8 => _,
-            acc = inout(reg) acc,
+            inout("x0") a => _,
+            inout("x1") b => _,
+            inout("x2") len => _,
+            inout("x3") 0u64 => acc,
+            out("x4") _,
+            out("x5") _,
+            options(nostack, readonly),
         );
-        acc
     }
+    acc as u8
 }
 
 /// Compares two 16-byte blocks, such as AEAD tags, in constant time.
 ///
 /// Returns zero if `a == b`, otherwise non-zero. The words are combined in
 /// assembly so the compiler cannot split the test into early exits.
+#[inline(never)]
 pub(in crate::low) fn ct_compare_16(a: &[u8; 16], b: &[u8; 16]) -> usize {
     let (a, b) = (u128::from_ne_bytes(*a), u128::from_ne_bytes(*b));
-    let mut diff = a as u64;
-    // SAFETY: register-only arithmetic.
+    let diff: u64;
+    // SAFETY: register-only arithmetic, proven in
+    // `proofs/hol-light/aarch64/ct_compare_16.ml`.
     unsafe {
         core::arch::asm!(
-            "eor {diff}, {diff}, {b0}",
-            "eor {a1}, {a1}, {b1}",
-            "orr {diff}, {diff}, {a1}",
-            diff = inout(reg) diff,
-            a1 = inout(reg) (a >> 64) as u64 => _,
-            b0 = in(reg) b as u64,
-            b1 = in(reg) (b >> 64) as u64,
+            "eor x0, x0, x2",
+            "eor x1, x1, x3",
+            "orr x0, x0, x1",
+            inout("x0") a as u64 => diff,
+            inout("x1") (a >> 64) as u64 => _,
+            in("x2") b as u64,
+            in("x3") (b >> 64) as u64,
             options(pure, nomem, nostack, preserves_flags),
         );
     }
@@ -287,6 +290,27 @@ pub(in crate::low) fn prefetch_ro<T>(ptr: *const T) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::abi::call;
+
+    #[test]
+    fn abi() {
+        let mut bytes = [0xffu8; 100];
+        // SAFETY: `bytes` is 100 writable bytes.
+        unsafe { call!(unsafe zero_bytes, bytes.as_mut_ptr(), 100) };
+        assert_eq!(bytes, [0; 100]);
+        call!(prefetch_ro::<u8>, bytes.as_ptr());
+        #[cfg(target_vendor = "apple")]
+        if std::arch::is_aarch64_feature_detected!("dit") {
+            // SAFETY: the CPU has DIT, which this leaves as it found it.
+            unsafe {
+                let on = call!(unsafe dit::read);
+                call!(unsafe dit::write, on);
+            }
+        }
+        let (a, b) = ([1u8; 37], [2u8; 37]);
+        assert_ne!(call!(ct_compare_bytes, &a, &b), 0);
+        assert_ne!(call!(ct_compare_16, &[1; 16], &[2; 16]), 0);
+    }
 
     /// Whether std detects every feature named, less those `test_toggle`
     /// denies.
@@ -315,11 +339,14 @@ mod tests {
 
     // CI runs the aarch64 suite on a CPU with the crypto extension, then
     // again with it denied, and names which, so neither run silently tests
-    // only one path.
+    // only one path. Under valgrind, which hides SHA3, it names that too.
     #[test]
     fn detects_the_expected_cpu() {
         if let Some(expected) = std::env::var_os("RIND_TEST_ARM_CRYPTO_EXT") {
             assert_eq!(HaveCryptoExt::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_ARM_SHA3") {
+            assert_eq!(HaveSha3::check().is_some(), expected == "1");
         }
     }
 
@@ -334,6 +361,14 @@ mod tests {
         assert_eq!(features() & DIT != 0, expected);
         // A denied DIT is left alone, as under `admin/ctgrind`, whose
         // valgrind runs no DIT instruction.
+        if has_dit && !expected {
+            // SAFETY: this core has DIT, though `test_toggle` denies it.
+            unsafe { dit::write(0) };
+            drop(crate::low::Entry::new_secret());
+            let _held = crate::cpu::Dit::hold();
+            // SAFETY: as above.
+            assert_eq!(unsafe { dit::read() }, 0);
+        }
         if expected {
             // SAFETY: this core has DIT. Cleared, so only an `Entry` can set
             // it.

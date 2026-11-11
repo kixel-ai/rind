@@ -51,6 +51,7 @@ macro_rules! j {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_bitsize.S.
 /// Return size of bignum in bits
 ///
 /// Input x[k]; output function return
@@ -113,4 +114,11 @@ pub(crate) fn bignum_bitsize(x: &[u64]) -> usize {
             )
     };
     ret as usize
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_bitsize, &[1, 2, 3, 4]);
 }

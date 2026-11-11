@@ -33,6 +33,7 @@ use crate::low::macros::*;
 // Standard ARM ABI: X0 = r, X1 = a, X2 = b, X3 = bt
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's arm/mlkem/mlkem_basemul_k3.S.
 /// Scalar product of 3-element polynomial vectors in NTT domain, with mulcache
 ///
 /// Inputs a[768], b[768], bt[384] (signed 16-bit words); output r[256] (signed 16-bit words)
@@ -331,4 +332,17 @@ pub(crate) fn mlkem_basemul_k3(
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        mlkem_basemul_k3,
+        &mut crate::low::abi::Aligned([0; 256]).0,
+        &crate::low::abi::Aligned([0; 768]).0,
+        &crate::low::abi::Aligned([0; 768]).0,
+        &crate::low::abi::Aligned([0; 384]).0
+    );
 }

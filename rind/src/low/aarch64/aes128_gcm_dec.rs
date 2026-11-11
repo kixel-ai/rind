@@ -50,6 +50,7 @@ use crate::low::macros::*;
 // and the whole kernel rescheduled with the SLOTHY superoptimizer; the
 // surrounding assembler boilerplate follows the s2n-bignum house style.
 
+// Transliterated from s2n-bignum's arm/aes_gcm/aes128_gcm_dec.S.
 /// AES-128-GCM bulk decryption: counter-mode decryption of whole blocks with the GHASH tag update
 ///
 /// Decrypts the input in CTR mode while accumulating the GHASH of the input.
@@ -917,4 +918,19 @@ pub(crate) unsafe fn aes128_gcm_dec(
         out("x7") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_aarch64_feature_detected!("aes")
+        && std::arch::is_aarch64_feature_detected!("pmull"))
+    {
+        return;
+    }
+    // SAFETY: the CPU has the features checked above.
+    unsafe {
+        crate::low::abi::call!(unsafe aes128_gcm_dec, [[0; 16]; 8].as_mut_ptr(), 1, &mut crate::low::abi::Aligned([0; 16]).0, &mut crate::low::abi::Aligned([0; 16]).0, &crate::low::abi::Aligned([crate::low::abi::zeroed(); 11]).0, &crate::low::abi::Aligned([crate::low::abi::zeroed(); 6]).0);
+    }
 }

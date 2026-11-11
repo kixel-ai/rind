@@ -585,6 +585,7 @@ macro_rules! load_k25519 {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/curve25519/edwards25519_scalarmuldouble_alt.S.
 /// Double scalar multiplication for edwards25519, fresh and base point
 ///
 /// Input scalar[4], point[8], bscalar[4]; output res[8]
@@ -3672,3 +3673,16 @@ pub(crate) fn edwards25519_scalarmuldouble_alt(
 
 // Precomputed table of multiples of generator for edwards25519
 // all in precomputed extended-projective (y-x,x+y,2*d*x*y) triples.
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        edwards25519_scalarmuldouble_alt,
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
+}

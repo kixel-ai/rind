@@ -1,3 +1,6 @@
+//! Differential tests against aws-lc, which Miri cannot run.
+#![cfg(not(miri))]
+
 use aws_lc_rs::{digest, hmac, signature::Ed25519KeyPair};
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -2749,6 +2752,112 @@ mod ecdsa_digest {
                     let other = digest::digest(ours_hash, b"other");
                     prop_assert!(verifier.verify_digest(&other, signature).is_err());
                 }
+            }
+        }
+    }
+}
+
+/// HPKE against hpke-rs, as aws-lc-rs exposes none: rind-rustls's tests
+/// compare its twelve suites with rustls's over aws-lc's primitives.
+mod hpke {
+    use hpke_rs::hpke_types::{AeadAlgorithm, KdfAlgorithm, KemAlgorithm};
+    use hpke_rs::rustcrypto::HpkeRustCrypto;
+    use hpke_rs::{Hpke, HpkePrivateKey, HpkePublicKey, Mode};
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use rind::hpke::*;
+
+    // hpke-rs's RustCrypto backend has no P-521; RFC 9180's vectors cover it.
+    const KEMS: [(&Kem, KemAlgorithm); 3] = [
+        (&DHKEM_X25519_HKDF_SHA256, KemAlgorithm::DhKem25519),
+        (&DHKEM_P256_HKDF_SHA256, KemAlgorithm::DhKemP256),
+        (&DHKEM_P384_HKDF_SHA384, KemAlgorithm::DhKemP384),
+    ];
+    const KDFS: [(&Kdf, KdfAlgorithm); 3] = [
+        (&HKDF_SHA256, KdfAlgorithm::HkdfSha256),
+        (&HKDF_SHA384, KdfAlgorithm::HkdfSha384),
+        (&HKDF_SHA512, KdfAlgorithm::HkdfSha512),
+    ];
+    // `None` is export-only.
+    const AEADS: [(Option<&Aead>, AeadAlgorithm); 4] = [
+        (Some(&AES_128_GCM), AeadAlgorithm::Aes128Gcm),
+        (Some(&AES_256_GCM), AeadAlgorithm::Aes256Gcm),
+        (Some(&CHACHA20_POLY1305), AeadAlgorithm::ChaCha20Poly1305),
+        (None, AeadAlgorithm::HpkeExport),
+    ];
+
+    fn export(f: impl FnOnce(&mut [u8]) -> Result<(), rind::Error>, len: usize) -> Vec<u8> {
+        let mut out = vec![0; len];
+        f(&mut out).unwrap();
+        out
+    }
+
+    proptest! {
+        #[test]
+        fn matches_hpke_rs(
+            kem in 0..KEMS.len(),
+            kdf in 0..KDFS.len(),
+            aead in 0..AEADS.len(),
+            ikm in vec(any::<u8>(), 0..80),
+            info in vec(any::<u8>(), 0..64),
+            aad in vec(any::<u8>(), 0..64),
+            plaintext in vec(any::<u8>(), 0..300),
+            context in vec(any::<u8>(), 0..64),
+            len in 0..300usize,
+        ) {
+            let ((kem, their_kem), (kdf, their_kdf), (aead, their_aead)) = (KEMS[kem], KDFS[kdf], AEADS[aead]);
+            let mut theirs = Hpke::<HpkeRustCrypto>::new(Mode::Base, their_kem, their_kdf, their_aead);
+
+            // `DeriveKeyPair` gives the same key, which each side loads.
+            let private_key = PrivateKey::derive(kem, &ikm).unwrap();
+            let public_key = private_key.public_key();
+            let (their_private, their_public) = theirs.derive_key_pair(&ikm).unwrap().into_keys();
+            prop_assert_eq!(public_key.as_ref(), their_public.as_slice());
+            let loaded = PrivateKey::from_scalar(kem, their_private.as_slice()).unwrap();
+            let loaded = loaded.public_key();
+            prop_assert_eq!(loaded.as_ref(), public_key.as_ref());
+            let their_private = HpkePrivateKey::new(private_key.to_scalar().as_ref().to_vec());
+            let their_public = HpkePublicKey::new(public_key.as_ref().to_vec());
+
+            // Their sender to our recipient.
+            let (enc, mut their_sender) = theirs
+                .setup_sender(&their_public, &info, None, None, None)
+                .unwrap();
+            let their_export = their_sender.export(&context, len).unwrap();
+            match aead {
+                Some(aead) => {
+                    let suite = Suite { kdf, aead };
+                    let ct = their_sender.seal(&aad, &plaintext).unwrap();
+                    let mut recipient = Recipient::new(suite, &private_key, &enc, &info).unwrap();
+                    let mut in_out = ct.clone();
+                    prop_assert_eq!(&*recipient.open_in_place(&aad, &mut in_out).unwrap(), &plaintext[..]);
+                    prop_assert_eq!(export(|out| recipient.export(&context, out), len), their_export);
+                }
+                None => {
+                    let recipient = Exporter::recipient(kdf, &private_key, &enc, &info).unwrap();
+                    prop_assert_eq!(export(|out| recipient.export(&context, out), len), their_export);
+                }
+            }
+
+            // Our sender to their recipient.
+            let (enc, our_export, ct) = match aead {
+                Some(aead) => {
+                    let (enc, mut sender) = Sender::new(Suite { kdf, aead }, &public_key, &info).unwrap();
+                    let mut ct = plaintext.clone();
+                    sender.seal_in_place_append_tag(&aad, &mut ct).unwrap();
+                    (enc, export(|out| sender.export(&context, out), len), Some(ct))
+                }
+                None => {
+                    let (enc, sender) = Exporter::sender(kdf, &public_key, &info).unwrap();
+                    (enc, export(|out| sender.export(&context, out), len), None)
+                }
+            };
+            let mut their_recipient = theirs
+                .setup_receiver(enc.as_ref(), &their_private, &info, None, None, None)
+                .unwrap();
+            prop_assert_eq!(their_recipient.export(&context, len).unwrap(), our_export);
+            if let Some(ct) = ct {
+                prop_assert_eq!(their_recipient.open(&aad, &ct).unwrap(), plaintext);
             }
         }
     }

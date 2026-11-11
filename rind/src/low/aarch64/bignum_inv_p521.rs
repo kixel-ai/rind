@@ -785,6 +785,7 @@ macro_rules! movbig {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p521/bignum_inv_p521.S.
 /// Modular inverse modulo p_521 =  2^521 - 1
 ///
 /// Input x[9]; output z[9]
@@ -1815,4 +1816,15 @@ pub(crate) fn bignum_inv_p521(z: &mut [u64; 9], x: &[u64; 9]) {
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_inv_p521,
+        &mut crate::low::abi::Aligned([0; 9]).0,
+        &crate::low::abi::Aligned([0; 9]).0
+    );
 }

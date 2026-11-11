@@ -326,6 +326,91 @@ type RsaPosIntModN = low::PosInt<{ MAX_PRIVATE_MODULUS_WORDS * 2 }>;
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::test::{Acvp, acvp};
+
+    /// Loads an ACVP test's key, deriving the CRT values a `standard` key
+    /// lacks, or `None` for a public exponent above 33 bits, which rind
+    /// refuses as aws-lc does.
+    fn acvp_key(mode: &str, test: &serde_json::Value) -> Option<RsaPrivateKey> {
+        let modp = |name| RsaPosIntModP::from_bytes(&test.hex(name)).unwrap();
+        let (p, q) = (modp("p"), modp("q"));
+        let d = RsaPosIntD::from_bytes(&test.hex("d")).unwrap();
+        let n = RsaPosIntModN::from_bytes(&test.hex("n")).unwrap();
+        let (dp, dq, iqmp) = match mode {
+            "crt" => (modp("dmp1"), modp("dmq1"), modp("iqmp")),
+            "standard" => {
+                let one = low::PosInt::one();
+                let q_mod_p: RsaPosIntModP = q
+                    .widen::<{ MAX_PRIVATE_MODULUS_WORDS * 2 }>()
+                    .reduce(&p, &p.montifier());
+                (
+                    d.reduce_even(&p.sub(&one)),
+                    d.reduce_even(&q.sub(&one)),
+                    q_mod_p.mod_inverse(&p),
+                )
+            }
+            other => panic!("unexpected key mode {other}"),
+        };
+        let e = test.hex("e");
+        let e_bits = e.len() * 8 - e[0].leading_zeros() as usize;
+        let e = e.iter().fold(0, |e, byte| e << 8 | u64::from(*byte));
+        let key = RsaPrivateKey::new(p, q, d, dp, dq, iqmp, n, e);
+        if e_bits > 33 {
+            assert_eq!(key.err(), Some(KeyFormatError::RsaExponent.into()));
+            return None;
+        }
+        Some(key.unwrap())
+    }
+
+    /// The private operation on `input`, at the modulus's length, or `None`
+    /// if `input` is not below the modulus.
+    fn acvp_private_op(key: &RsaPrivateKey, input: &[u8]) -> Option<Vec<u8>> {
+        let input: RsaPosIntModN = low::PosInt::from_bytes(input).ok()?;
+        let output = key.private_op(&input).ok()?;
+        let mut bytes = vec![0; key.modulus_len_bytes()];
+        output.to_bytes(&mut bytes).unwrap();
+        Some(bytes)
+    }
+
+    #[test]
+    fn acvp_decryption_primitive() {
+        for group in acvp("RSA-DecryptionPrimitive-Sp800-56Br2") {
+            for test in group.tests() {
+                let Some(key) = acvp_key(group.str("keyMode"), test) else {
+                    continue;
+                };
+                let ct = test.hex("ct");
+                if test.flag("testPassed") {
+                    assert_eq!(acvp_private_op(&key, &ct).unwrap(), test.hex("pt"));
+                    continue;
+                }
+                // SP 800-56B's RSADP refuses a ciphertext outside 1 < c < n - 1
+                // before its private operation; rind's OAEP leaves 0, 1, and
+                // n - 1 to its padding check, which their outputs fail.
+                let c: RsaPosIntModN = low::PosInt::from_bytes(&ct).unwrap();
+                let n: RsaPosIntModN = low::PosInt::from_bytes(&test.hex("n")).unwrap();
+                let n_1 = n.sub(&low::PosInt::one());
+                let two: RsaPosIntModN = low::PosInt::word(2);
+                assert!(c.less_than(&two) || !c.less_than(&n_1));
+            }
+        }
+    }
+
+    #[test]
+    fn acvp_signature_primitive() {
+        for group in acvp("RSA-SignaturePrimitive-2.0") {
+            for test in group.tests() {
+                let Some(key) = acvp_key(group.str("keyMode"), test) else {
+                    continue;
+                };
+                let signature = acvp_private_op(&key, &test.hex("message"));
+                match test.flag("testPassed") {
+                    true => assert_eq!(signature.unwrap(), test.hex("signature")),
+                    false => assert_eq!(signature, None),
+                }
+            }
+        }
+    }
 
     // A prime below 1024 bits is refused before anything is computed from
     // it, however wide the modulus.

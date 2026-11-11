@@ -77,6 +77,7 @@ macro_rules! selectblock {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p256/p256_montjscalarmul.S.
 /// Montgomery-Jacobian form scalar multiplication for P-256
 ///
 /// Input scalar[4], point[12]; output res[12]
@@ -3573,4 +3574,20 @@ pub(crate) fn p256_montjscalarmul(res: &mut [u64; 12], scalar: &[u64; 4], point:
         out("rcx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        p256_montjscalarmul,
+        &mut crate::low::abi::Aligned([0; 12]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 12]).0
+    );
 }

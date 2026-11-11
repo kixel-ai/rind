@@ -246,7 +246,7 @@ impl GhashTableAvx512 {
     /// by the last `n`.
     fn powers(&self) -> &[__m512i; 4] {
         let powers = self.vaes.powers();
-        debug_assert_eq!(powers.len(), 16);
+        assert_eq!(powers.len(), 16);
         // SAFETY: the 512-bit kernel's table holds 16 powers, 64-byte
         // aligned as `__m512i` needs, and any bits are a valid `__m512i`.
         unsafe { &*powers.as_ptr().cast() }
@@ -488,13 +488,15 @@ pub(crate) fn _mul_tail(
     x: [__m512i; 4],
     len: usize,
 ) -> __m128i {
+    // `x` holds at most 16 blocks, and the table 16 powers.
+    assert!(len <= 256);
     let n = len.div_ceil(16);
     if n == 0 {
         return current;
     }
 
-    // `table.powers()` descends to H^1, so H^n is `n` blocks before its end.
-    let powers = table.powers().as_ptr().cast::<__m128i>();
+    // The powers descend to H^1, so H^n is `n` blocks before their end.
+    let powers = table.vaes.powers();
     let (mut lo, mut mi, mut hi) = (
         _mm512_setzero_si512(),
         _mm512_setzero_si512(),
@@ -505,11 +507,13 @@ pub(crate) fn _mul_tail(
             0 => _mm512_xor_epi64(x, _mm512_inserti32x4::<0>(_mm512_setzero_si512(), current)),
             _ => x,
         };
-        // Two quadwords per block, for up to four blocks left from here on.
-        let mask = u8::MAX >> (8 - 2 * (n - 4 * j).min(4));
-        // SAFETY: the vector starts at H^(n-4j), within `table.powers()`, and
-        // the mask stops it at H^1, the last; masked-off lanes are not read.
-        let h = unsafe { _mm512_maskz_loadu_epi64(mask, powers.add(16 - n + 4 * j).cast()) };
+        // Up to four blocks left from here on, from H^(n-4j); slicing them
+        // bounds the load by the table, whatever the arithmetic.
+        let h = &powers[16 - n + 4 * j..][..(n - 4 * j).min(4)];
+        // Two quadwords per block.
+        let mask = u8::MAX >> (8 - 2 * h.len());
+        // SAFETY: the mask covers `h`; masked-off lanes are not read.
+        let h = unsafe { _mm512_maskz_loadu_epi64(mask, h.as_ptr().cast()) };
         lo = _mm512_xor_epi32(lo, _mm512_clmulepi64_epi128(x, h, 0x00));
         mi = _mm512_ternarylogic_epi32(
             mi,
@@ -589,7 +593,7 @@ fn load_be(block: &[u8; 16]) -> __m128i {
 #[inline]
 pub(crate) fn load_partial(bytes: &[u8]) -> __m128i {
     let n = bytes.len();
-    debug_assert!(n < 16);
+    assert!(n < 16);
     let le64 = |i: usize| u64::from_le_bytes(bytes[i..i + 8].try_into().unwrap());
     let le32 = |i: usize| u64::from(u32::from_le_bytes(bytes[i..i + 4].try_into().unwrap()));
     let (lo, hi) = match n {
@@ -612,7 +616,7 @@ pub(crate) fn load_partial(bytes: &[u8]) -> __m128i {
 #[inline]
 pub(crate) fn store_partial(out: &mut [u8], block: __m128i) {
     let n = out.len();
-    debug_assert!(n < 16);
+    assert!(n < 16);
     // SAFETY: every x86_64 CPU has SSE2
     let (lo, hi) = unsafe {
         (

@@ -50,17 +50,19 @@ fi
 # pattern. An empty pattern is a repository-wide lint that runs on every diff.
 declare -A scope=(
     # sh/select.sh narrows this to the changed crates and their dependents.
-    [rs]='^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt\.toml$)'
+    [rs]='^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)'
     # Advisories, licenses, and sources move with any manifest or the policy.
+    # rind's low, mid, and high layers reference only the layers below them.
+    [structure]='^(rind/(src/|Cargo\.toml$)|admin/structure$)'
     [deny]='(^|/)Cargo\.(toml|lock)$|^deny\.toml$'
     # An adapter's manifest holds both its version and its upstream requirement.
     [versions]='^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)'
     [license]='^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)'
     # Dependents may build with the workspace's declared rust-version.
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
-    # rind's aarch64, armv7, and portable backends, which the host's own
-    # build skips.
-    [cross]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$)'
+    # rind's aarch64, armv7, portable, and wasm32 builds, which the host's
+    # own build skips, and which a toolchain bump can break.
+    [cross]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
     # Variable-time instructions in rind's release builds, which a change to
     # its code, dependencies, toolchain, or the scan itself can bring.
     [vartime]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$|admin/ct-vartime)'
@@ -78,9 +80,11 @@ declare -A scope=(
     [fixtures]='^(rind/|rind-rustls/|Cargo\.toml$|admin/build-cost-fixtures/(rind|rustls)/)'
     # The fixture builds this checkout's rind-ring under the rind-patch shim.
     [patch]='^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)'
-    # pyrind's Python tests and type stubs, against its built wheel. rind's
-    # own changes reach them in the nightly wheels workflow instead.
-    [py]='^(rind-python/|sh/python\.sh$)'
+    # pyrind's Python tests and type stubs, against its built wheel, and
+    # pyrind-cryptography's, with pyjwt's and joserfc's suites, which the lock
+    # pins. rind's own changes reach them in the nightly wheels workflow
+    # instead.
+    [py]='^(rind-python/|sh/python\.sh$|flake\.lock$)'
     # rind-dart's Dart package, whose build hook compiles the crate.
     [dart]='^rind-dart/'
     # Quest documents form one graph, so any change validates the whole tree,
@@ -98,7 +102,9 @@ declare -A scope=(
 # since there a skip is indistinguishable from a pass.
 declare -A tools=(
     [rs]='cargo jq'
-    [check:rs]='cargo cargo-nextest jq'
+    [check:rs]='cargo cargo-nextest jq rustfmt-unstable'
+    [fix:rs]='cargo jq rustfmt-unstable'
+    [structure]='cargo cargo-modules'
     [deny]='cargo-deny'
     [versions]='cargo jq'
     [license]='find grep'
@@ -123,7 +129,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs msrv cross vartime deny versions license inplace testing compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs structure msrv cross vartime deny versions license inplace testing compat bench fixtures patch py dart quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -192,15 +198,16 @@ for module in "${selected[@]}"; do
             fi
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all --check
+            RUSTFMT=rustfmt-unstable cargo fmt --all --check -- --config-path=.rustfmt.unstable.toml
             cargo clippy "${packages[@]}" --all-targets --locked -- --deny warnings
             # nextest runs the test binaries in parallel but not doc tests. Like
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
             cargo nextest run "${packages[@]}" --locked --no-tests=warn
-            # Only the zeroing tests see the opt-in wipe, which the default
-            # build turns into no-ops.
+            # Only the zeroing and heap scratch tests see the opt-in wipe,
+            # which the default build turns into no-ops.
             if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind|--workspace'; then
-                cargo nextest run -p rind --features wipe --test zeroing --locked
+                cargo nextest run -p rind --features wipe --test zeroing --test heap_scratch --locked
             fi
             if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind-aws-lc-rs|--workspace'; then
                 cargo nextest run -p rind-aws-lc-rs --features wipe --test zeroing --locked
@@ -214,6 +221,7 @@ for module in "${selected[@]}"; do
         fix:rs)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all
+            RUSTFMT=rustfmt-unstable cargo fmt --all -- --config-path=.rustfmt.unstable.toml
             cargo clippy "${packages[@]}" --all-targets --fix --allow-dirty --allow-staged
             ;;
         # Plain `cargo check` covers the lib and bin targets, all a dependent
@@ -234,7 +242,15 @@ for module in "${selected[@]}"; do
             # And on a 32-bit target, whose Poly1305 and GHASH differ.
             CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS="$portable" \
                 cargo clippy -p rind --lib --locked --target armv7-unknown-linux-gnueabihf -- --deny warnings
+            # wasm32 compiles on the portable backend; the browser target
+            # needs getrandom's JavaScript source, WASI has its own.
+            for features in "" wipe; do
+                cargo clippy -p rind --lib --locked --target wasm32-wasip2 --features "$features" -- --deny warnings
+                cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown \
+                    --features "$features,getrandom/wasm_js" -- --deny warnings
+            done
             ;;
+        check:structure) admin/structure ;;
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;
         check:deny) cargo deny --locked check ;;
         check:versions) sh/adapter-versions.sh ;;

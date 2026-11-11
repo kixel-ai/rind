@@ -324,7 +324,7 @@ pub(crate) struct Aggregate<'a> {
 impl<'a> Aggregate<'a> {
     /// Starts a hash of `n` blocks, at least one.
     pub(crate) fn new(table: &'a PmullTable, n: usize) -> Self {
-        debug_assert!(n > 0);
+        assert!(n > 0);
         Self {
             table,
             power: (n - 1) % 8 + 1,

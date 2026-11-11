@@ -104,6 +104,7 @@ macro_rules! nsqr {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/curve25519/edwards25519_decode_alt.S.
 /// Decode compressed 256-bit form of edwards25519 point
 ///
 /// Input c[32] (bytes); output function return and z[8]
@@ -635,4 +636,15 @@ pub(crate) fn edwards25519_decode(z: &mut [u64; 8], c: &[u8; 32]) -> bool {
             )
     };
     ret == 0
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        edwards25519_decode,
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 32]).0
+    );
 }

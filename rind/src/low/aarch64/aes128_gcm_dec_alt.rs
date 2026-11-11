@@ -112,6 +112,7 @@ use crate::low::macros::*;
 // bti c landing pad, as the proofs require.
 // Proofs: arm/proofs/aes128_gcm_dec_alt.ml.
 
+// Transliterated from s2n-bignum's arm/aes_gcm/aes128_gcm_dec_alt.S.
 /// AES-128-GCM bulk decryption, 8 blocks at a time: counter-mode decryption of
 ///
 /// whole blocks with the GHASH tag update
@@ -1525,4 +1526,20 @@ pub(crate) unsafe fn aes128_gcm_dec_alt(
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_aarch64_feature_detected!("aes")
+        && std::arch::is_aarch64_feature_detected!("pmull")
+        && std::arch::is_aarch64_feature_detected!("sha3"))
+    {
+        return;
+    }
+    // SAFETY: the CPU has the features checked above.
+    unsafe {
+        crate::low::abi::call!(unsafe aes128_gcm_dec_alt, [[0; 16]; 8].as_mut_ptr(), 1, &mut crate::low::abi::Aligned([0; 16]).0, &mut crate::low::abi::Aligned([0; 16]).0, &crate::low::abi::Aligned([crate::low::abi::zeroed(); 11]).0, &crate::low::abi::Aligned([crate::low::abi::zeroed(); 12]).0);
+    }
 }

@@ -4,10 +4,9 @@
 #
 # The constant-time check for instructions whose timing depends on their
 # operands, which ctgrind, `admin/ct-sde`, and `admin/ct-qemu` cannot see.
-# It builds rind's release rlib for each target, x86_64, aarch64, and armv7
-# Linux, and the portable backend on x86_64 and armv7, or those of them
-# named, and disassembles it with every crate it
-# links, the standard library and compiler-builtins included. Starting from
+# It builds rind's release rlib for each Linux target in TARGETS, every
+# architecture rind builds for, or those of them named, and disassembles it
+# with every crate it links, the standard library and compiler-builtins included. Starting from
 # every function named for rind, it follows each relocation, so calls, tail
 # calls, and the function pointers in vtables, through to code the compiler
 # generated. It fails if a function it reaches holds an instruction in
@@ -28,7 +27,7 @@
 # Run it in `nix develop .#ct-vartime`, which has llvm-objdump and each
 # target's standard library.
 
-import bisect, collections, json, os, re, subprocess, sys, tomllib
+import bisect, collections, concurrent.futures, json, multiprocessing, os, re, subprocess, sys, tomllib
 
 TARGETS = [
     "x86_64-unknown-linux-gnu",
@@ -38,7 +37,23 @@ TARGETS = [
     # `sh/dispatch.sh` forces it, at 64 and 32 bits.
     "x86_64-unknown-linux-gnu+portable",
     "armv7-unknown-linux-gnueabihf+portable",
+    # The architectures whose only backend is the portable one. ARMv6 is
+    # 32-bit ARM before ARMv7, and big-endian powerpc64 the ELFv1 ABI, whose
+    # calls reach a function through its descriptor in `.opd`.
+    "i686-unknown-linux-gnu",
+    "arm-unknown-linux-gnueabihf",
+    "loongarch64-unknown-linux-gnu",
+    "powerpc-unknown-linux-gnu",
+    "powerpc64-unknown-linux-gnu",
+    "powerpc64le-unknown-linux-gnu",
+    "riscv64gc-unknown-linux-gnu",
+    "s390x-unknown-linux-gnu",
 ]
+# Each target's VARTIME pattern, by the first part of its triple.
+ARCH = {
+    "x86_64": "x86", "i686": "x86", "armv7": "arm", "powerpc64": "powerpc",
+    "powerpc64le": "powerpc", "riscv64gc": "riscv64",
+}
 PORTABLE = '--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
 
 # Instructions whose latency may depend on their operands: integer division,
@@ -53,20 +68,33 @@ PORTABLE = '--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
 #   lists no UDIV, SDIV, or floating-point instruction but FCSEL. For
 #   AArch32, DDI 0597 2026-09 marks no UDIV, SDIV, or VFP arithmetic
 #   instruction data-independent-time.
+# - RISC-V, "Zkt", Scalar Cryptography v1.0.1 section 31.6,
+#   https://docs.riscv.org/reference/isa/v20240411/unpriv/scalar-crypto.html
+#   lists multiplies, shifts, rotates, and carry-less multiplies, but
+#   "division and remaindering excluded", and floating point "currently
+#   excluded from the constant-time requirement".
+# - Loongson, IBM for PowerPC and IBM Z, and Arm for ARMv6 publish no such
+#   list, so their divisions and floating-point arithmetic count as
+#   variable-time too.
 # - BearSSL, "Constant-Time Implementations",
 #   https://www.bearssl.org/constanttime.html: division "will trigger a
 #   faster code path when the divisor and/or the dividend is small", as may
 #   the compiler's routine where there is no divide instruction.
 # BearSSL's https://www.bearssl.org/ctmul.html finds multiplication
-# constant-time on x86_64 and Cortex-A, and Intel's and Arm's lists hold
-# their multiplies, so none is listed. Nor are shifts by a variable count,
-# which both lists hold too; BearSSL notes they are slow on the Pentium 4,
-# which has no barrel shifter, and the scan leaves that core out.
+# constant-time on x86_64 and Cortex-A, and Intel's, Arm's, and RISC-V's
+# lists hold their multiplies, so none is listed. Nor are shifts by a
+# variable count, which those lists hold too; BearSSL notes they are slow
+# on the Pentium 4, which has no barrel shifter. The cores whose multiplier
+# exits early, such as the PowerPC G3's and G4's and the T-Head C906's,
+# need a masked multiply rind does not have, so the scan leaves them out
+# and PLATFORMS.md names them, as it would gain nothing by refusing every
+# multiply on every core of their architecture.
 # x86 floating-point moves, shuffles, and bitwise operations take no slow
-# path and are not listed; aarch64's and armv7's are told apart by name.
+# path and are not listed; the other architectures' are told apart by name.
 VARTIME = {
-    "x86_64": re.compile(
-        r"i?div"
+    # AAM, on 32-bit x86, divides AL by its operand.
+    "x86": re.compile(
+        r"i?div|aam"
         r"|v?(add|sub|mul|div|sqrt|min|max|hadd|hsub|addsub|dp|rcp|rsqrt|round)[sp][sdh]"
         r"|vfn?m(add|sub|addsub|subadd)\d*[sp][sdh]|v(rcp|rsqrt)(14|28)[sp][sdh]"
         r"|v(scalef|getexp|getmant|reduce|rndscale|range|fixupimm)[sp][sdh]|v?cvt\w+"
@@ -85,13 +113,49 @@ VARTIME = {
         r"[us]div(eq|ne|hs|cs|lo|cc|mi|pl|vs|vc|hi|ls|ge|lt|gt|le|al)?"
         r"|v(?!mov)\w+(\.\w+)*\.f(16|32|64)(\.\w+)*"
     ),
+    # Scalar, LSX, and LASX division name their width, as in `div.du` or
+    # `vmod.w`. Every floating-point mnemonic begins with `f`, or `vf` or
+    # `xvf` for vectors; of them, moves, selects, loads, and stores take no
+    # slow path.
+    "loongarch64": re.compile(
+        r"x?v?(div|mod)\.[bhwd]u?"
+        r"|(x?v)?f(?!(mov\.|sel$|ldx?\.|stx?\.|ld[gl][te]\.|st[gl][te]\.))\w+(\.\w+)*"
+    ),
+    # Division names its width and may carry `e`, `u`, `o`, and a `.`, as in
+    # `divwuo.`; `mod` its signedness and width. Scalar floating-point
+    # mnemonics begin with `f`, of which only moves and sign changes take no
+    # slow path; VSX scalar and vector arithmetic with `xs` and `xv`, apart
+    # from its bitwise `xx`; and VMX floating point ends in `fp` or converts.
+    "powerpc": re.compile(
+        r"div[wd]e?u?o?\.?|mod[su][wd]"
+        r"|f(?!(mr|abs|nabs|neg|cpsgn)\.?$)\w+\.?"
+        r"|x[sv](?!(abs|nabs|neg|cpsgn)[sd]p$)\w+"
+        r"|v\w+fp\.?|vc(fs|fu|ts|tu)x\w*|vrfi[nmpz]|v(div|mod)\w+"
+    ),
+    # Every floating-point mnemonic begins with `f`; of them, moves, loads,
+    # stores, and the rounding mode and flags take no slow path, and `fence`
+    # orders memory. riscv64gc has no vector extension.
+    "riscv64": re.compile(
+        r"(div|rem)u?w?"
+        r"|f(?!(ence(\.\w+)?|mv\.\w+(\.\w+)?|l[hwdq]|s[hwdq]|[rs](csr|rm|flags)i?)$)\w+(\.\w+)*"
+    ),
+    # Scalar division, and z17's vector division and remainder. Binary
+    # floating point names its format, `d`, `e`, or `x`, before a `b`, as in
+    # `mdbr` or `cdlgbr`; vector floating point begins with `vf` or `wf`,
+    # apart from the string searches `vfee`, `vfene`, and `vfae`, or
+    # converts. LLVM emits no hexadecimal or decimal floating point.
+    "s390x": re.compile(
+        r"d|dr|dlg?r?|dsgf?r?|v[dr]l?[fgq]?"
+        r"|(?![vw])\w*[dex]b(ra?)?|c[dex]l?[fg]bra?|cl?[fg][dex]bra?"
+        r"|[vw]f(?!(ee|ene|ae)\w*$)\w+|[vw]c(dl?g|l?gd|el?f|l?fe)b?|[vw]l(ed|de)b?"
+    ),
 }
 
 # Mnemonics each VARTIME pattern must refuse, then must allow, checked
 # before every scan.
 SAMPLES = {
-    "x86_64": (
-        "div idiv divsd vsqrtpd haddps addsubps vfmadd231pd vfmaddps vrcp14ps cvtsi2sd fdivp"
+    "x86": (
+        "div idiv aam divsd vsqrtpd haddps addsubps vfmadd231pd vfmaddps vrcp14ps cvtsi2sd fdivp"
         " ucomisd vcmpltpd cmpss fsin fld fcomip",
         "mulx adcx vpmuludq vpaddd movaps xorps vpclmulqdq aesenc shrx cmp cmpxchg fnstcw fxsave64",
     ),
@@ -102,6 +166,26 @@ SAMPLES = {
     "arm": (
         "udiv sdivne vdiv.f64 vsqrt.f32 vmul.f32 vfmane.f64 vcvt.s32.f32 vcvt.f32.u32",
         "umull umaal vmul.i32 vmull.p64 vmov.f32 vadd.i64 vld1.32 aese.8",
+    ),
+    "loongarch64": (
+        "div.du mod.w div.wu vdiv.b xvmod.du fdiv.d fsqrt.s fmadd.d ffint.d.l ftint.l.d fcmp.clt.d vfadd.s xvfmul.d",
+        "mul.d mulh.du fmov.d fsel fld.d fstx.s fldgt.d movgr2fr.d vadd.w srl.d",
+    ),
+    "powerpc": (
+        "divw divwu divdu divwuo. divde modsd fmul fmuls fdiv. fsqrt fmadd fcmpu fctiwz fcfid frsp"
+        " fsel xsmuldp xscvdpsxws xvdivdp vaddfp vmaddfp vcmpeqfp. vrefp vctsxs vcfux vrfin vdivuw vmodsd",
+        "mullw mulhwu mulld mulhdu maddld fmr fabs fneg. lfd stfdx mffprd mtvsrd xxland xxsel xsabsdp"
+        " vmuluwm vaddudm vperm vcfuged rldicl",
+    ),
+    "riscv64": (
+        "div divu divuw remw fdiv.d fsqrt.s fmul.d fmadd.d fcvt.d.l fcvt.l.d feq.d fmin.d fclass.d",
+        "mul mulhu mulw fmv.d fmv.x.d fld fsd fence fence.i frrm fsflags sll srlw",
+    ),
+    "s390x": (
+        "d dr dlr dlgr dsgfr dsg vdlg vrf mdbr ddb sqdbr madbr cdbr kdbr cdgbr clgdbr cdlgbr didbr"
+        " ledbr wfmdb vfadb wfcdb vfsqdb wcdgb vcgdb wledb",
+        "mlgr msgr mlg ms alcgr slbgr slbr lb lgbr ldgr lgdr ldr lzdr vfeeb vfeneb vfaeb vmlf vgfmg"
+        " vmleb vmeb cs clc brasl lmg dsgfi",
     ),
 }
 
@@ -117,12 +201,14 @@ HELPERS = re.compile(
 PANICS = re.compile(r".*(panic|_fail(ed)?$|handle_alloc_error|capacity_overflow|raw_vec::handle_error)")
 
 # The operations `rind/src/low/vartime_planted.rs` plants, and the targets
-# each must be found on. armv7 has no 128-bit division routine: LLVM expands
-# the division inline as a loop, which branches on its operands and so is
-# ctgrind's to find.
+# each must be found on. 32-bit ARM and x86 have no 128-bit division
+# routine: LLVM expands the division inline as a loop, which branches on its
+# operands and so is ctgrind's to find.
 PLANTED = {
     "rind::low::vartime_planted::planted_division": TARGETS,
-    "rind::low::vartime_planted::planted_wide_division": [t for t in TARGETS if not t.startswith("armv7")],
+    "rind::low::vartime_planted::planted_wide_division": [
+        t for t in TARGETS if not t.startswith(("arm", "i686"))
+    ],
     "rind::low::vartime_planted::planted_float": TARGETS,
 }
 
@@ -139,7 +225,8 @@ LABEL = re.compile(r"^([0-9a-f]+) <(.+)>:$")
 INSN = re.compile(r"^\s+([0-9a-f]+):\s+(.*)$")
 RELOCS = re.compile(r"^RELOCATION RECORDS FOR \[(.+)\]:$")
 RELOC = re.compile(r"^([0-9a-f]+) \S+\s+(\S+?)(?:[+-]0x[0-9a-f]+)?$")
-SYMBOL = re.compile(r"^[0-9a-f]+ (.{7}) (\S+)\t[0-9a-f]+ (?:\.hidden |\.protected |\.internal )?(.+)$")
+# ELFv2's local entry offset, as in `0x60`, may follow a symbol's size.
+SYMBOL = re.compile(r"^([0-9a-f]+) (.{7}) (\S+)\t[0-9a-f]+ (?:0x[0-9a-f]+ )?(?:\.hidden |\.protected |\.internal )?(.+)$")
 # Unwind tables and debug info, which point at every function, call nothing.
 METADATA = re.compile(r"\.(eh_frame|debug|ARM\.ex|gcc_except_table|note|comment|llvm)")
 LLVM_SUFFIX = re.compile(r" ?\(?\.llvm\.\d+\)?$")
@@ -207,6 +294,7 @@ class Objects:
         self.names = {}
         self.local = {}
         self.defined = {}
+        self.opd = {}
         member = None
         for line, dline in zip(symbols, demangled):
             if m := MEMBER.match(line):
@@ -215,11 +303,13 @@ class Objects:
             m, dm = SYMBOL.match(line), SYMBOL.match(dline)
             if not m or not dm:
                 continue
-            flags, section, name = m.groups()
-            self.names[name] = LLVM_SUFFIX.sub("", dm[3])
+            value, flags, section, name = m.groups()
+            self.names[name] = LLVM_SUFFIX.sub("", dm[4])
             if section == "*UND*":
                 continue
             self.local[(member, name)] = section
+            if section == ".opd":
+                self.opd[(member, name)] = int(value, 16)
             if "g" in flags or "w" in flags:
                 self.defined.setdefault(name, (member, section))
 
@@ -233,10 +323,21 @@ class Objects:
             elif section and (m := RELOC.match(line)) and m[2] != "*ABS*":
                 self.relocs[(member, section)].append((int(m[1], 16), m[2]))
 
+        # An ELFv1 function's symbol names its descriptor in `.opd`, whose
+        # first word points at its code. Each code section takes the name of
+        # the function whose descriptor points at it.
+        self.entries = {}
+        for (member, name), offset in self.opd.items():
+            code = dict(self.relocs[(member, ".opd")]).get(offset)
+            if code is None:
+                sys.exit("ct-vartime: no code for descriptor {}".format(name))
+            self.entries[(member, name)] = code
+            self.names[code] = self.name(name)
+
         # Each section's labels, and its instructions as (offset, mnemonic).
         self.labels = collections.defaultdict(list)
         self.insns = collections.defaultdict(list)
-        syntax = ["-M", "intel"] if arch == "x86_64" else []
+        syntax = ["-M", "intel"] if arch == "x86" else []
         section = None
         for line in run([*args, "-d", "--no-show-raw-insn", *syntax], **quiet).splitlines():
             if m := MEMBER.match(line):
@@ -244,10 +345,14 @@ class Objects:
             elif m := SECTION.match(line):
                 section = (member, m[1])
             elif m := LABEL.match(line):
+                # LoongArch keeps the assembler's local labels, such as
+                # `.L0`, inside functions; none starts one.
+                if m[2].startswith(".L"):
+                    continue
                 self.labels[section].append((int(m[1], 16), m[2]))
             elif m := INSN.match(line):
                 words = m[2].split()
-                while len(words) > 1 and (words[0] in PREFIXES or words[0].startswith("{")):
+                while arch == "x86" and len(words) > 1 and (words[0] in PREFIXES or words[0].startswith("{")):
                     words.pop(0)
                 mnemonic = words[0] if words else ""
                 self.insns[section].append((int(m[1], 16), mnemonic))
@@ -272,11 +377,16 @@ class Objects:
     def resolve(self, member, target):
         """The section a relocation in `member` points into, or None for a
         symbol defined outside these archives."""
+        if (member, target) in self.entries:
+            return self.resolve(member, self.entries[(member, target)])
         if (member, target) in self.local:
             return (member, self.local[(member, target)])
         if target.startswith("."):
             return (member, target)
-        return self.defined.get(target)
+        defined = self.defined.get(target)
+        if defined and defined[1] == ".opd":
+            return self.resolve(defined[0], target)
+        return defined
 
 
 def scan(objects, roots, arch):
@@ -328,6 +438,41 @@ def describe(counts):
     )
 
 
+def check(tool, target, rind, others, public):
+    """Scans one target: its report's lines, and whether it failed."""
+    arch = target.split("-")[0]
+    arch = ARCH.get(arch, arch)
+    objects = Objects(tool, arch, rind + others)
+    roots = {m for m, _ in objects.insns if m.startswith(os.path.basename(rind[0]) + "(")}
+    findings, paths, reached = scan(objects, roots, arch)
+    lines = ["{}: reached {} sections".format(target, reached)]
+    failed = False
+
+    listed = {e["function"]: e["holds"][target] for e in public if target in e["holds"]}
+    for function, where in PLANTED.items():
+        if target in where and function not in findings:
+            lines.append("FAIL {}: found nothing planted".format(function))
+            failed = True
+    for function, counts in sorted(findings.items()):
+        if function in PLANTED:
+            lines.append("ok   planted {}: {}".format(function, describe(counts)))
+        elif listed.get(function) == describe(counts):
+            lines.append("ok   public {}: {}".format(function, describe(counts)))
+        elif function in listed:
+            lines.append("FAIL {}: {}, but listed public holding {}".format(
+                function, describe(counts), listed[function]))
+            failed = True
+        else:
+            lines.append("FAIL {}: {}".format(function, describe(counts)))
+            for caller in paths[function][:12]:
+                lines.append("       from " + caller)
+            failed = True
+    for function in sorted(set(listed) - set(findings)):
+        lines.append("FAIL {}: listed public, but holds nothing the scan refuses".format(function))
+        failed = True
+    return lines, failed
+
+
 def main():
     sys.stdout.reconfigure(line_buffering=True)
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -351,37 +496,16 @@ def main():
 
     tool = objdump()
     libs = build(targets)
-    failed = False
-    for target in targets:
-        arch = target.split("-")[0].replace("armv7", "arm")
-        rind, others = libs[target]
-        objects = Objects(tool, arch, rind + others)
-        roots = {m for m, _ in objects.insns if m.startswith(os.path.basename(rind[0]) + "(")}
-        findings, paths, reached = scan(objects, roots, arch)
-        print("{}: reached {} sections".format(target, reached))
-
-        listed = {e["function"]: e["holds"][target] for e in public if target in e["holds"]}
-        for function, where in PLANTED.items():
-            if target in where and function not in findings:
-                print("FAIL {}: found nothing planted".format(function))
-                failed = True
-        for function, counts in sorted(findings.items()):
-            if function in PLANTED:
-                print("ok   planted {}: {}".format(function, describe(counts)))
-            elif listed.get(function) == describe(counts):
-                print("ok   public {}: {}".format(function, describe(counts)))
-            elif function in listed:
-                print("FAIL {}: {}, but listed public holding {}".format(
-                    function, describe(counts), listed[function]))
-                failed = True
-            else:
-                print("FAIL {}: {}".format(function, describe(counts)))
-                for caller in paths[function][:12]:
-                    print("       from " + caller)
-                failed = True
-        for function in sorted(set(listed) - set(findings)):
-            print("FAIL {}: listed public, but holds nothing the scan refuses".format(function))
-            failed = True
+    # Each target's scan is independent, and most of its time is parsing.
+    context = multiprocessing.get_context("fork")
+    workers = min(len(targets), getattr(os, "process_cpu_count", os.cpu_count)() or 1)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
+        jobs = [pool.submit(check, tool, target, *libs[target], public) for target in targets]
+        failed = False
+        for job in jobs:
+            lines, fail = job.result()
+            print("\n".join(lines))
+            failed |= fail
     sys.exit(failed)
 
 

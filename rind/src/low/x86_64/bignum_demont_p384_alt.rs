@@ -70,6 +70,7 @@ macro_rules! montreds {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p384/bignum_demont_p384_alt.S.
 /// Convert from Montgomery form z := (x / 2^384) mod p_384, assuming x reduced
 ///
 /// Input x[6]; output z[6]
@@ -150,4 +151,15 @@ pub(crate) fn bignum_demont_p384_alt(z: &mut [u64; 6], x: &[u64; 6]) {
         out("rdx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_demont_p384_alt,
+        &mut crate::low::abi::Aligned([0; 6]).0,
+        &crate::low::abi::Aligned([0; 6]).0
+    );
 }

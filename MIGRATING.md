@@ -351,8 +351,7 @@ that returns a provider refuses one with the adapter's own
 `MissingFeature` instead, which displays rind's message. rind-rustls, whose
 signatures are rustls's provider's, does not. rind-ring, whose signatures
 are ring's, and rind-rcgen's `KeyPair`, whose errors are rcgen's, cannot.
-Call rind-ring's `cpu::check()`, or `rind::cpu::check()` for rind-rcgen,
-before using them.
+Call `rind::cpu::check()` before using them.
 
 ### rind-ring
 
@@ -366,9 +365,7 @@ features, by adding `[patch.crates-io] ring = { git =
 [rind-patch](https://github.com/moq-dev/rind-patch)'s unpublished crate named
 `ring`, which re-exports rind-ring, and `cargo tree -i ring` then prints only
 `ring v0.17.999` from rind-patch. It panics wherever ring
-panics, so its signatures stay ring's, and adds a `cpu` module wrapping
-rind's check, so the renamed crate refuses an unsupported CPU with
-`ring::cpu::check()` without depending on rind. Its [README](rind-ring/README.md) lists the
+panics, so its signatures stay ring's, and adds nothing to ring's API. Its [README](rind-ring/README.md) lists the
 items it leaves out and the inputs it refuses where ring takes them.
 
 ### rind-aws-lc-rs
@@ -393,7 +390,6 @@ what rind cannot back yet; see [rustls provider parity](quest/m3/parity/rustls.m
 |---|---|
 | `kx_group::MLKEM1024`, in `ALL_KX_GROUPS` | none |
 | ML-DSA, which `default_provider()` verifies and signs with | none |
-| `hpke` | none |
 
 Its [README](rind-rustls/README.md) lists where it behaves differently, such
 as its cipher suite order.

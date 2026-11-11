@@ -27,4 +27,36 @@ def high.digest.Digest.Insts.CoreCloneClone.clone (d : high.digest.Digest) :
     Result high.digest.Digest :=
   ok d
 
+/-! The header and AEAD models, lifted into what this translation calls them
+in. Each lift is what the Rust does: `key_len` is pure, and the `new`s return
+the error type this translation defines, not the models' own copy of it.
+Refusing a key is `fail .panic`, which is what `expect` does when the From
+impls call them, so each From impl panics exactly where it does. -/
+
+/-- `quic::Algorithm::key_len`. -/
+def aead.quic.Algorithm.key_len (self : aead.quic.Algorithm) : Result Usize :=
+  ok (rind.x86_64.aead.quic.Algorithm.key_len self)
+
+/-- `HeaderProtectionKey::new`, refusing as `expect` panics. -/
+def aead.quic.HeaderProtectionKey.new (algorithm : aead.quic.Algorithm) (key : Slice Std.U8) :
+    Result (core.result.Result aead.quic.HeaderProtectionKey error.Error) := do
+  let r ← rind.x86_64.aead.quic.HeaderProtectionKey.new algorithm key
+  match r with
+  | .Ok k => ok (.Ok k)
+  | .Err _ => fail .panic
+
+-- BEGIN aead (x86_64 only: its AEAD model and proofs are x86_64's)
+/-- `Algorithm::key_len`. -/
+def aead.Algorithm.key_len (self : aead.Algorithm) : Result Usize :=
+  ok (rind.x86_64.aead.Algorithm.key_len self)
+
+/-- `Key::new`, refusing as `expect` panics. -/
+def aead.Key.new (algorithm : aead.Algorithm) (key : Slice Std.U8) :
+    Result (core.result.Result aead.Key error.Error) := do
+  let r ← rind.x86_64.aead.Key.new algorithm key
+  match r with
+  | .Ok k => ok (.Ok k)
+  | .Err _ => fail .panic
+-- END aead
+
 end rind.x86_64.kdf

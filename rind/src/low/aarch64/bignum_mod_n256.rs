@@ -80,6 +80,7 @@ macro_rules! movbig {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p256/bignum_mod_n256_4.S.
 /// Reduce modulo group order, z := x mod n_256
 ///
 /// Input x[4]; output z[4]
@@ -136,4 +137,15 @@ pub(crate) fn bignum_mod_n256(z: &mut [u64; 4], x: &[u64; 4]) {
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_mod_n256,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
 }

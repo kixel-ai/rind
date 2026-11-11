@@ -44,14 +44,16 @@ core::arch::global_asm!(
 );
 
 pub(crate) fn sha1_compress_blocks(state: &mut [u32; 5], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     match HaveCryptoExt::check() {
         // Both routines run their loop at least once, so zero blocks would
         // read past `blocks`.
         Some(_) if !blocks.is_empty() => {
             // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and the
             // token proves the CPU has the SHA-1 instructions.
-            unsafe { sha1_block_data_order_hw(state, blocks.as_ptr(), blocks.len() / 64) }
+            unsafe {
+                asm_call!(unsafe extern "C" sha1_block_data_order_hw(state, blocks.as_ptr(), blocks.len() / 64))
+            }
         }
         Some(_) => {}
         None => generic::sha1::sha1_compress_blocks(state, blocks),
@@ -72,12 +74,14 @@ pub(crate) fn sha1_compress_padded(state: &mut [u32; 5], message: &[u8], length:
 }
 
 pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     match HaveCryptoExt::check() {
         Some(_) if !blocks.is_empty() => {
             // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and the
             // token proves the CPU has the SHA-256 instructions.
-            unsafe { sha256_block_data_order_hw(state, blocks.as_ptr(), blocks.len() / 64) }
+            unsafe {
+                asm_call!(unsafe extern "C" sha256_block_data_order_hw(state, blocks.as_ptr(), blocks.len() / 64))
+            }
         }
         Some(_) => {}
         None => generic::sha256::sha256_compress_blocks(state, blocks),
@@ -105,7 +109,7 @@ pub(crate) fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -
 }
 
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(128));
+    assert!(blocks.len().is_multiple_of(128));
     // Both routines run their loop at least once, so zero blocks would read
     // past `blocks`.
     if blocks.is_empty() {
@@ -115,9 +119,13 @@ pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
     match HaveNeon::check() {
         // SAFETY: `blocks` is `num` readable blocks, and the token proves the
         // CPU has NEON.
-        Some(_) => unsafe { sha512_block_data_order_neon(state, data, num) },
+        Some(_) => unsafe {
+            asm_call!(unsafe extern "C" sha512_block_data_order_neon(state, data, num))
+        },
         // SAFETY: `blocks` is `num` readable blocks.
-        None => unsafe { sha512_block_data_order_nohw(state, data, num) },
+        None => unsafe {
+            asm_call!(unsafe extern "C" sha512_block_data_order_nohw(state, data, num))
+        },
     }
 }
 
@@ -144,7 +152,9 @@ mod tests {
             let mut got = want;
             generic::sha1::sha1_compress_blocks(&mut want, blocks);
             // SAFETY: `blocks` is `n` blocks, and the CPU has the extension.
-            unsafe { sha1_block_data_order_hw(&mut got, blocks.as_ptr(), n) };
+            unsafe {
+                asm_call!(unsafe extern "C" sha1_block_data_order_hw(&mut got, blocks.as_ptr(), n))
+            };
             assert_eq!(got, want, "sha1, {n} blocks");
 
             let mut want = [
@@ -154,7 +164,9 @@ mod tests {
             let mut got = want;
             generic::sha256::sha256_compress_blocks(&mut want, blocks);
             // SAFETY: as above.
-            unsafe { sha256_block_data_order_hw(&mut got, blocks.as_ptr(), n) };
+            unsafe {
+                asm_call!(unsafe extern "C" sha256_block_data_order_hw(&mut got, blocks.as_ptr(), n))
+            };
             assert_eq!(got, want, "sha256, {n} blocks");
         }
     }
@@ -182,8 +194,8 @@ mod tests {
             let mut got = want;
             // SAFETY: `blocks` holds at least `n` blocks, and the CPU has NEON.
             unsafe {
-                sha512_block_data_order_nohw(&mut want, blocks.as_ptr(), n);
-                sha512_block_data_order_neon(&mut got, blocks.as_ptr(), n);
+                asm_call!(unsafe extern "C" sha512_block_data_order_nohw(&mut want, blocks.as_ptr(), n));
+                asm_call!(unsafe extern "C" sha512_block_data_order_neon(&mut got, blocks.as_ptr(), n));
             }
             assert_eq!(got, want, "{n} blocks");
         }

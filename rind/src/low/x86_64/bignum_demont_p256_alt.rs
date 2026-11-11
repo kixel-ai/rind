@@ -80,6 +80,7 @@ macro_rules! mulpadn {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p256/bignum_demont_p256_alt.S.
 /// Convert from Montgomery form z := (x / 2^256) mod p_256, assuming x reduced
 ///
 /// Input x[4]; output z[4]
@@ -152,4 +153,15 @@ pub(crate) fn bignum_demont_p256_alt(z: &mut [u64; 4], x: &[u64; 4]) {
         out("rdx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_demont_p256_alt,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
 }

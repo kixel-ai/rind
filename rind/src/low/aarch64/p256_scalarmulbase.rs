@@ -100,6 +100,7 @@ macro_rules! movbig {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p256/p256_scalarmulbase_alt.S.
 /// Scalar multiplication for precomputed point on NIST curve P-256
 ///
 /// Input scalar[4], blocksize, table[]; output res[8]
@@ -3104,4 +3105,16 @@ pub(crate) fn p256_scalarmulbase(res: &mut [u64; 8], scalar: &[u64; 4], table: &
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        p256_scalarmulbase,
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([[0; 256]; 43]).0
+    );
 }

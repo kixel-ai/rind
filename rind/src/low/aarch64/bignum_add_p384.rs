@@ -71,6 +71,7 @@ macro_rules! d5 {
     };
 }
 
+// Transliterated from s2n-bignum's arm/p384/bignum_add_p384.S.
 /// Add modulo p_384, z := (x + y) mod p_384, assuming x and y reduced
 ///
 /// Inputs x[6], y[6]; output z[6]
@@ -148,4 +149,16 @@ pub(crate) fn bignum_add_p384(z: &mut [u64; 6], x: &[u64; 6], y: &[u64; 6]) {
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_add_p384,
+        &mut crate::low::abi::Aligned([0; 6]).0,
+        &crate::low::abi::Aligned([0; 6]).0,
+        &crate::low::abi::Aligned([0; 6]).0
+    );
 }

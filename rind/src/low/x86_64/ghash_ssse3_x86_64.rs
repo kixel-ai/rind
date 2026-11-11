@@ -66,7 +66,9 @@ impl Ssse3Table {
         // SAFETY: `input` is `size_of_val(input)` readable bytes, a multiple
         // of 16, and `self` an aligned table. The routine needs only SSSE3,
         // and only a `HaveSsse3` token builds `self`.
-        unsafe { gcm_ghash_ssse3(xi, self, input.as_ptr().cast(), size_of_val(input)) }
+        unsafe {
+            asm_call!(unsafe extern "sysv64" gcm_ghash_ssse3(xi, self, input.as_ptr().cast(), size_of_val(input)))
+        }
     }
 }
 

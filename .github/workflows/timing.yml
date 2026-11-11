@@ -9,6 +9,15 @@ on:
   schedule:
     - cron: "0 4 * * 0"
   workflow_dispatch:
+  # A pull request checks only that the shells and the build still work.
+  pull_request:
+    branches: [main]
+    paths:
+      - rind-timing/**
+      - admin/timing
+      - flake.nix
+      - flake.lock
+      - .github/workflows/timing.yml
 
 concurrency:
   group: timing-${{ github.ref }}
@@ -21,11 +30,25 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      - name: Build and list the cases
+        run: nix develop .#timing --command admin/timing dudect --list
+
   # Each row but the first denies what the CPU it names lacks, as ctgrind's
   # rows do, so the code those CPUs run is timed too. A denial takes
   # `--cfg rind_cpu_disable`, so the release build stays the code that ships.
   dudect:
     name: dudect (${{ matrix.os }}, ${{ matrix.cpu }})
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -64,13 +87,14 @@ jobs:
           for feature in $DENY; do
             deny+=("RIND_CPU_DISABLE_$feature=1")
           done
-          nix develop .#timing --command env "${deny[@]}" admin/timing dudect
+          nix develop .#dudect --command env "${deny[@]}" admin/timing dudect
         env:
           DENY: ${{ matrix.deny }}
           RUSTFLAGS: ${{ matrix.deny && '--cfg rind_cpu_disable' || '' }}
 
   marvin:
     name: marvin (${{ matrix.os }}, RSA-${{ matrix.bits }})
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:

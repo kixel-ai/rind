@@ -78,6 +78,7 @@ macro_rules! V { () => { Q!("(16 * " N!() ")") } }
 macro_rules! W { () => { Q!("(20 * " N!() ")") } }
 macro_rules! Q8 { () => { Q!("(25 * " N!() ")") } }
 
+// Transliterated from s2n-bignum's x86/curve25519/edwards25519_decode.S.
 /// Decode compressed 256-bit form of edwards25519 point
 ///
 /// Input c[32] (bytes); output function return and z[8]
@@ -707,4 +708,19 @@ pub(crate) fn edwards25519_decode(z: &mut [u64; 8], c: &[u8; 32]) -> bool {
             )
     };
     ret == 0
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        edwards25519_decode,
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 32]).0
+    );
 }

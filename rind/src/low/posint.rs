@@ -808,6 +808,29 @@ fn mul_word_mod(u: &mut [u64], d: &[u64]) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::test::bignum::{div_r, mod_exp_vectors, mod_mul_vectors};
+
+    // Through the products and exponentiation this CPU picks, on every
+    // backend; the backends' own tests run each of their routines.
+    #[test]
+    fn aws_lc_mod_mul() {
+        for v in mod_mul_vectors() {
+            let int = |words: &[u64]| PosInt::<64>::from_words(words).unwrap();
+            let n = int(&v.m);
+            let got = int(&v.a).mont_mul(&int(&v.b), &n, n.mont_neg_inverse());
+            assert_eq!(got.as_words(), div_r(&v.want, &v.m), "{}", v.at);
+        }
+    }
+
+    #[test]
+    fn aws_lc_mod_exp() {
+        for v in mod_exp_vectors() {
+            let int = |words: &[u64]| PosInt::<128>::from_words(words).unwrap();
+            let n = int(&v.m);
+            let got = int(&v.a).mod_exp(&int(&v.e), &n, &n.montifier(), n.mont_neg_inverse());
+            assert_eq!(got.as_words(), v.want, "{}", v.at);
+        }
+    }
 
     /// Against the constant-time montifier, at the extremes of each width,
     /// including a top word of one.
@@ -894,6 +917,55 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Dual RSAZ takes a pair of 16-word moduli wherever the CPU runs it, and
+    /// leaves moduli of different widths, or an exponent wider than them, to
+    /// the exponentiations one at a time.
+    #[cfg(rind_backend = "x86_64")]
+    #[test]
+    fn mod_exp_pair_rsaz_takes_what_fits() {
+        let mut state = 0x3c6e_f372_fe94_f82bu64;
+        let mut random = |k: usize| {
+            let mut x = PosInt::<32>::zero();
+            x.used = k;
+            for w in &mut x.words[..k] {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                *w = state;
+            }
+            x
+        };
+        let mut odd = |k: usize| {
+            let mut n = random(k);
+            n.words[0] |= 1;
+            n.words[k - 1] |= 1 << 63;
+            n
+        };
+        let moduli = [odd(16), odd(16), odd(15)];
+        let montifiers = moduli.each_ref().map(PosInt::montifier);
+        // Each below every modulus, as a 15-word value is.
+        let base = random(15);
+        // Exponents of 16 and 17 words.
+        let exponents = [random(16), random(17)];
+        let pair = |[i, j]: [usize; 2], [ei, ej]: [usize; 2]| {
+            [(i, ei), (j, ej)].map(|(i, e)| ModExp {
+                base: &base,
+                e: &exponents[e],
+                n: &moduli[i],
+                n_montifier: &montifiers[i],
+                n_0: moduli[i].mont_neg_inverse(),
+            })
+        };
+
+        let rsaz = low::RsazAvx512::check(16).is_some();
+        assert_eq!(
+            PosInt::mod_exp_pair_rsaz(&pair([0, 1], [0, 0])).is_some(),
+            rsaz
+        );
+        assert!(PosInt::mod_exp_pair_rsaz(&pair([0, 2], [0, 0])).is_none());
+        assert!(PosInt::mod_exp_pair_rsaz(&pair([0, 1], [0, 1])).is_none());
     }
 
     /// The rare quotient estimates `pub_montifier`'s moduli never reach.

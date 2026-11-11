@@ -58,8 +58,7 @@ impl Aes {
 /// Counter mode is unauthenticated, so pair it with a MAC.
 pub struct AesCtr {
     key: AesKey,
-    /// The counter block's counting bits, which a `u128` stores so that the
-    /// value has no padding the drop cannot wipe.
+    /// The counter block's counting bits.
     counter_mask: u128,
 }
 
@@ -141,12 +140,15 @@ impl fmt::Debug for AesCtr {
     }
 }
 
+// The counter mask is not secret, but is wiped with the key, padding
+// included, so that the whole value reads zero.
 impl Drop for AesCtr {
     fn drop(&mut self) {
-        // not secret, but wiped so that the whole value reads zero
-        low::zeroise_value(&mut self.counter_mask);
+        low::zeroise_value(self);
     }
 }
+
+impl low::Zeroable for AesCtr {}
 
 /// Fails with [`Error::WrongLength`] if `len` bytes need more blocks than
 /// remain from block `counter` before the 32-bit counter wraps.
@@ -197,6 +199,69 @@ mod tests {
 
     fn algorithm(key: &[u8]) -> &'static Algorithm {
         crate::cipher::aes(key.len())
+    }
+
+    #[test]
+    fn acvp_ecb() {
+        for group in acvp("ACVP-AES-ECB-1.0") {
+            assert_eq!(group.str("direction"), "encrypt");
+            for test in group.tests() {
+                let mut key = test.hex("key");
+                match group.str("testType") {
+                    "AFT" => {
+                        let aes = Aes::new(algorithm(&key), &key).unwrap();
+                        let mut text = test.hex("pt");
+                        let (blocks, rest) = text.as_chunks_mut::<16>();
+                        assert!(rest.is_empty());
+                        for block in blocks {
+                            aes.encrypt_block(block);
+                        }
+                        assert_eq!(text, test.hex("ct"));
+                    }
+                    "MCT" => {
+                        let mut block: [u8; 16] = test.hex("pt").try_into().unwrap();
+                        for result in test["resultsArray"].as_array().unwrap() {
+                            assert_eq!(key, result.hex("key"));
+                            assert_eq!(block, &result.hex("pt")[..]);
+                            let aes = Aes::new(algorithm(&key), &key).unwrap();
+                            let mut previous = block;
+                            for _ in 0..1000 {
+                                previous = block;
+                                aes.encrypt_block(&mut block);
+                            }
+                            assert_eq!(block, &result.hex("ct")[..]);
+                            aes_mct_next_key(&mut key, &previous, &block);
+                        }
+                    }
+                    other => panic!("unexpected test type {other}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn acvp_ctr() {
+        for group in acvp("ACVP-AES-CTR-1.0") {
+            assert_eq!(group.str("internalTestType"), "RFC3686");
+            let (input, output) = match group.str("direction") {
+                "encrypt" => ("pt", "ct"),
+                "decrypt" => ("ct", "pt"),
+                other => panic!("unexpected direction {other}"),
+            };
+            for test in group.tests() {
+                let key = test.hex("key");
+                let ctr = AesCtr::new(algorithm(&key), &key, 32).unwrap();
+                let mut text = test.hex(input);
+                ctr.apply_keystream(&test.hex("iv").try_into().unwrap(), &mut text)
+                    .unwrap();
+                // A message of `len` bits fills its last byte from the top.
+                let spare_bits = text.len() * 8 - test.int("payloadLen");
+                if let Some(last) = text.last_mut() {
+                    *last &= 0xff << spare_bits;
+                }
+                assert_eq!(text, test.hex(output));
+            }
+        }
     }
 
     #[test]

@@ -20,10 +20,11 @@ on:
       - Check
       - coverage
       - ctgrind
+      - ctgrind debug
       - fuzz
+      - miri
       - mutants
       - prove
-      - Pullfrog
       - python
       - quality lints
       - Queue

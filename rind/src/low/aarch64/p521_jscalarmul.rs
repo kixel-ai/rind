@@ -114,6 +114,7 @@ macro_rules! movbig {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p521/p521_jscalarmul_alt.S.
 /// Jacobian form scalar multiplication for P-521
 ///
 /// Input scalar[9], point[27]; output res[27]
@@ -2184,4 +2185,16 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point: &[u
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        p521_jscalarmul,
+        &mut crate::low::abi::Aligned([0; 27]).0,
+        &crate::low::abi::Aligned([0; 9]).0,
+        &crate::low::abi::Aligned([0; 27]).0
+    );
 }

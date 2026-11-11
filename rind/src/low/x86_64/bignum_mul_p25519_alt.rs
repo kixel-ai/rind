@@ -92,6 +92,7 @@ macro_rules! combads {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/curve25519/bignum_mul_p25519_alt.S.
 /// Multiply modulo p_25519, z := (x * y) mod p_25519
 ///
 /// Inputs x[4], y[4]; output z[4]
@@ -253,4 +254,16 @@ pub(crate) fn bignum_mul_p25519_alt(z: &mut [u64; 4], x: &[u64; 4], y: &[u64; 4]
         out("rcx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_mul_p25519_alt,
+        &mut crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
 }

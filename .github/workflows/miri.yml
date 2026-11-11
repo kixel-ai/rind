@@ -1,0 +1,46 @@
+name: miri
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - rind/src/low/portable/**
+      - sh/miri.sh
+      - flake.nix
+      - flake.lock
+      - .github/workflows/miri.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: miri-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The portable backend's tests under Miri: forced on x86_64, and on s390x,
+  # which runs it big-endian. See `sh/miri.sh`.
+  miri:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-gnu, s390x-unknown-linux-gnu]
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+
+      - uses: ./.github/actions/nix
+
+      - name: Miri tests
+        run: nix develop .#miri --command sh/miri.sh ${{ matrix.target }}

@@ -21,6 +21,7 @@ use crate::low::macros::*;
 // Microsoft x64 ABI:   RCX = z, RDX = x, R8 = y, R9 = t
 // ----------------------------------------------------------------------------
 
+// Transliterated from s2n-bignum's x86/fastmul/bignum_kmul_16_32.S.
 /// Multiply z := x * y
 ///
 /// Inputs x[16], y[16]; output z[32]; temporary buffer t[>=32]
@@ -29,9 +30,9 @@ use crate::low::macros::*;
 /// it is retained in the prototype above for API consistency with ARM.
 #[inline(never)]
 pub(crate) fn bignum_kmul_16_32(z: &mut [u64], x: &[u64], y: &[u64], t: &mut [u64; 32]) {
-    debug_assert!(z.len() == 32);
-    debug_assert!(x.len() == 16);
-    debug_assert!(y.len() == 16);
+    assert!(z.len() == 32);
+    assert!(x.len() == 16);
+    assert!(y.len() == 16);
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -986,4 +987,21 @@ pub(crate) fn bignum_kmul_16_32(z: &mut [u64], x: &[u64], y: &[u64], t: &mut [u6
         out("rax") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        bignum_kmul_16_32,
+        &mut [0; 32],
+        &[1; 16],
+        &[2; 16],
+        &mut crate::low::abi::Aligned([0; 32]).0
+    );
 }

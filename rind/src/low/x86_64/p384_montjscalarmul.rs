@@ -91,6 +91,7 @@ macro_rules! selectblock_y {
     )}
 }
 
+// Transliterated from s2n-bignum's x86/p384/p384_montjscalarmul.S.
 /// Montgomery-Jacobian form scalar multiplication for P-384
 ///
 /// Input scalar[6], point[18]; output res[18]
@@ -7420,4 +7421,20 @@ pub(crate) fn p384_montjscalarmul(res: &mut [u64; 18], scalar: &[u64; 6], point:
         out("rcx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        p384_montjscalarmul,
+        &mut crate::low::abi::Aligned([0; 18]).0,
+        &crate::low::abi::Aligned([0; 6]).0,
+        &crate::low::abi::Aligned([0; 18]).0
+    );
 }

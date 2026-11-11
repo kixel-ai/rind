@@ -841,6 +841,7 @@ macro_rules! sub_p384 {
     )}
 }
 
+// Transliterated from s2n-bignum's arm/p384/p384_montjadd_alt.S.
 /// Point addition on NIST curve P-384 in Montgomery-Jacobian coordinates
 ///
 ///
@@ -1051,4 +1052,16 @@ pub(crate) fn p384_montjadd(p3: &mut [u64; 18], p1: &[u64; 18], p2: &[u64; 18]) 
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        p384_montjadd,
+        &mut crate::low::abi::Aligned([0; 18]).0,
+        &crate::low::abi::Aligned([0; 18]).0,
+        &crate::low::abi::Aligned([0; 18]).0
+    );
 }

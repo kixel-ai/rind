@@ -67,6 +67,7 @@ macro_rules! d5 {
     };
 }
 
+// Transliterated from s2n-bignum's arm/p384/bignum_neg_p384.S.
 /// Negate modulo p_384, z := (-x) mod p_384, assuming x reduced
 ///
 /// Input x[6]; output z[6]
@@ -127,4 +128,15 @@ pub(crate) fn bignum_neg_p384(z: &mut [u64; 6], x: &[u64; 6]) {
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_neg_p384,
+        &mut crate::low::abi::Aligned([0; 6]).0,
+        &crate::low::abi::Aligned([0; 6]).0
+    );
 }

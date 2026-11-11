@@ -132,6 +132,7 @@ macro_rules! e8 {
     };
 }
 
+// Transliterated from s2n-bignum's arm/generic/bignum_montredc.S.
 /// Montgomery reduce, z := (x' / 2^{64p}) MOD m
 ///
 /// Inputs x[n], m[k], p; output z[k]
@@ -142,7 +143,7 @@ macro_rules! e8 {
 /// answer.
 #[inline(never)]
 pub(crate) fn bignum_montredc(z: &mut [u64], x: &[u64], m: &[u64], p: u64) {
-    debug_assert!(z.len() == m.len());
+    assert!(z.len() == m.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -294,4 +295,11 @@ pub(crate) fn bignum_montredc(z: &mut [u64], x: &[u64], m: &[u64], p: u64) {
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_montredc, &mut [0; 4], &[1; 8], &[u64::MAX; 4], 1);
 }

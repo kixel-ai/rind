@@ -43,6 +43,7 @@ macro_rules! j {
     };
 }
 
+// Transliterated from s2n-bignum's x86/generic/bignum_digitsize.S.
 /// Return size of bignum in digits (64-bit word)
 ///
 /// Input x[k]; output function return
@@ -87,4 +88,11 @@ pub(crate) fn bignum_digitsize(z: &[u64]) -> usize {
             )
     };
     ret as usize
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_digitsize, &[1, 2, 0, 0]);
 }
