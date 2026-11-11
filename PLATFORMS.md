@@ -97,6 +97,11 @@ secrets, so it runs in constant time only where the integer multiplier does.
 rind has no masked multiply for the cores whose multiplier finishes early for
 some operands, so it is not constant-time on them:
 
+- `aarch64`: Arm's Cortex-A53 (Raspberry Pi 3 and Zero 2 W), whose 64-bit
+  multiply takes a cycle longer when both operands exceed 32 bits, as measured
+  on a Raspberry Pi 3 ([Gu and Shacham] 2.1). Arm's A53 manual documents no
+  such variation. The same likely holds for `umull` and `smull` on 32-bit
+  `arm` built for an A53, which no one has measured.
 - 32-bit `powerpc`: the 603e, 604e, 750 (G3), 7400 and 7410 (G4), 7441
   through 7457 (G4), and e300c1, each of whose `mullw`, `mulhw`, and `mulhwu`
   take fewer cycles when the top bits of an operand are all zeros or all ones
@@ -155,4 +160,5 @@ family since 2004, and of some AMD cores.
 [XScale]: https://download.intel.com/design/intelxscale/27347302.pdf
 [ARM1176 TRM]: https://developer.arm.com/documentation/ddi0301/h
 [BearSSL ctmul]: https://www.bearssl.org/ctmul.html
+[Gu and Shacham]: https://arxiv.org/abs/2311.14246
 [Intel DOIT]: https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/resources/data-operand-independent-timing-instructions.html
