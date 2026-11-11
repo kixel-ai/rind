@@ -432,7 +432,10 @@ mod arch {
                     compare(&mut broken, &XMM, &self.xmm, &after.xmm);
                 }
             }
-            if after.flags & DIRECTION_FLAG != 0 {
+            // `pushfq` mixes the direction flag with arithmetic flags the
+            // routine may have computed from secrets, so memcheck taints the
+            // whole word; only the direction flag is checked, and it is public.
+            if crate::low::ct::into_public(after.flags) & DIRECTION_FLAG != 0 {
                 broken.push("the direction flag: left set".into());
             }
             broken
@@ -1374,7 +1377,10 @@ mod tests {
         planted!(x19, "mov x19, xzr", "ret");
         planted!(x29, "add x29, x29, #16", "ret");
         planted!(d8, "movi d8, #0", "ret");
-        planted!(sp, "add sp, sp, #16", "ret");
+        // Lowered rather than raised: raising it would free the trampoline's
+        // saved frame, which memcheck, with no red zone on ARM, then reports
+        // undefined when the trampoline restores it.
+        planted!(sp, "sub sp, sp, #16", "ret");
         // The upper half of v8 is the caller's to save.
         planted!(scratch, "mov x9, xzr", "mov v8.d[1], xzr", "ret");
         #[cfg(target_os = "linux")]
@@ -1418,7 +1424,8 @@ mod tests {
         planted!(r4, "mov r4, #0", "bx lr");
         planted!(r11, "add r11, r11, #4", "bx lr");
         planted!(d8, ".fpu vfpv3", "vmov.f64 d8, #1.0", "bx lr");
-        planted!(sp, "add sp, sp, #8", "bx lr");
+        // Lowered rather than raised, as on aarch64.
+        planted!(sp, "sub sp, sp, #8", "bx lr");
         planted!(
             scratch,
             ".fpu vfpv3",
