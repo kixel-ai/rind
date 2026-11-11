@@ -1352,14 +1352,13 @@ mod tests {
             (n_minus(5), Scalar::small_u64(5)),
             (n_minus(1), n_minus(1)),
         ] {
-            let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
+            let sum = g.add(&p);
+            let expected = CURVE_GENERATOR.slow_multiply(&sum).xy;
             for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
-                assert_eq!(
-                    JacobianMontPoint::public_twin_multiply(&g, &p, rows)
-                        .as_affine()
-                        .xy,
-                    expected
-                );
+                let result = JacobianMontPoint::public_twin_multiply(&g, &p, rows);
+                assert_eq!(result.as_affine().xy, expected);
+                // Verification refuses a sum at infinity by this check.
+                assert_eq!(result.public_is_infinity(), sum.0 == [0; 6]);
             }
         }
 

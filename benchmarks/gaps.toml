@@ -95,14 +95,9 @@ on = ["portable"]
 reason = "Closed in part by [#614](https://github.com/moq-dev/rind/pull/614), after this data, which runs RSA and the NIST curves on 64-bit limbs on 64-bit targets. On a shared x86_64 host it measured, against aws-lc-rs's C without assembly: P-256 and P-384 at 0.44 to 0.76× its time, P-521 ECDH, key generation, and signing at 0.91 to 1.03×, RSA-2048 through 3072 signing at 0.88 to 1.01× and verification at 1.07×, the rustls handshakes at 0.64 to 0.96× but those the entries above name, and every ranked JWT benchmark at 0.55 to 1.06×. The next refresh drops this entry."
 
 [[gap]]
-operations = ["aes*-gcm*", "rustls-bulk/*"]
+operations = ["aes*-gcm*", "rustls-bulk/*", "aes*-ctr/*", "aes*-cbc-*"]
 on = ["portable"]
-quest = "/quest/m3/cold-speed/portable-aes-gcm.md"
-
-[[gap]]
-operations = ["aes*-ctr/*", "aes*-cbc-*"]
-on = ["portable"]
-reason = "The block cipher's throughput: rind's copy of libcrux-aes bitslices one block at a time, where aws-lc's `aes_nohw.c`, built with SSE2 on this row, bitslices 8, so modes that batch blocks (CTR, CBC decryption) trail by 8 to 9× and serial CBC encryption by 1.2×. [Portable AES-GCM](/quest/m3/cold-speed/portable-aes-gcm.md) measures its follow-up against a 64-bit port of `aes_nohw.c`."
+quest = "/quest/m3/cold-speed/portable-aes-nohw.md"
 
 [[gap]]
 operations = ["sha1/*", "hmac-sha1/*", "sha512*", "hmac-sha384/*", "hmac-sha512/*"]
