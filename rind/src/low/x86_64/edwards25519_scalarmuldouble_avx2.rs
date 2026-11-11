@@ -1203,6 +1203,7 @@ const BASE_ODD_MULTIPLES_LIMBS: [[[u32; 8]; 5]; 64] = [
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::super::adx_mux::tests::Rng;
+    use super::super::bignum_neg_p25519::bignum_neg_p25519;
     use super::super::edwards25519_scalarmulbase_alt::edwards25519_scalarmulbase_alt;
     use super::super::edwards25519_scalarmuldouble_alt::edwards25519_scalarmuldouble_alt;
     use super::*;
@@ -1264,6 +1265,124 @@ mod tests {
         let table = unsafe { odd_multiples(&[*x, *y, [1, 0, 0, 0], t]) };
         for (got, want) in table.iter().zip(BASE_ODD_MULTIPLES_LIMBS) {
             assert_eq!(got, &want);
+        }
+    }
+
+    /// p, below its limbs' widths.
+    const P: [u64; 4] = [
+        0xffff_ffff_ffff_ffed,
+        u64::MAX,
+        u64::MAX,
+        0x7fff_ffff_ffff_ffff,
+    ];
+
+    /// Which 32-bit lanes of each vector hold lane A's, B's, C's, and D's
+    /// low limb; the high limb is two lanes on.
+    const LOW_LANES: [usize; 4] = [0, 1, 4, 5];
+
+    /// Each lane's ten limbs.
+    fn limbs(x: &Fe4) -> [[u32; 10]; 4] {
+        // SAFETY: both are 32 bytes, and every bit pattern is a valid [u32; 8]
+        let vectors =
+            x.0.map(|v| unsafe { core::mem::transmute::<__m256i, [u32; 8]>(v) });
+        core::array::from_fn(|lane| {
+            core::array::from_fn(|i| vectors[i / 2][LOW_LANES[lane] + 2 * (i % 2)])
+        })
+    }
+
+    fn from_limbs(limbs: &[[u32; 10]; 4]) -> Fe4 {
+        Fe4(core::array::from_fn(|j| {
+            let mut lanes = [0; 8];
+            for (lane, limbs) in limbs.iter().enumerate() {
+                lanes[LOW_LANES[lane]] = limbs[2 * j];
+                lanes[LOW_LANES[lane] + 2] = limbs[2 * j + 1];
+            }
+            v(lanes)
+        }))
+    }
+
+    /// The field element of limbs of any size, reduced, by Horner's rule
+    /// on the scalar field arithmetic.
+    fn value(limbs: &[u32; 10]) -> [u64; 4] {
+        let mut acc = [0u64; 4];
+        for (i, &limb) in limbs.iter().enumerate().rev() {
+            let mut t = [0; 4];
+            bignum_mul_p25519_alt(&mut t, &acc, &[1 << (26 - (i & 1)), 0, 0, 0]);
+            // Below p + 2^32, which fits.
+            let mut carry = u64::from(limb);
+            for t in &mut t {
+                let (sum, c) = t.overflowing_add(carry);
+                (*t, carry) = (sum, u64::from(c));
+            }
+            bignum_mul_p25519_alt(&mut acc, &t, &[1, 0, 0, 0]);
+        }
+        acc
+    }
+
+    /// Ten random limbs, each below `bounds`' limb plus one.
+    fn random_limbs(rng: &mut Rng, bounds: &[u32; 10]) -> [u32; 10] {
+        bounds.map(|b| (rng.next() % (u64::from(b) + 1)) as u32)
+    }
+
+    #[test]
+    fn split_reduces() {
+        if HaveAvx2::check().is_none() {
+            return;
+        }
+
+        let mut rng = Rng(0x6a09_e667_f3bc_c908);
+        let check = |x: &Fe4| {
+            // SAFETY: the CPU has AVX2, checked above
+            let got = unsafe { x.split() };
+            for (got, limbs) in got.iter().zip(limbs(x)) {
+                assert_eq!(*got, value(&limbs), "{limbs:x?}");
+            }
+        };
+
+        // Around p, where the final subtraction decides: p - 1, p, and
+        // 2^255 - 1, with each limb within its width.
+        let mut p_1 = P;
+        p_1[0] -= 1;
+        // SAFETY: the CPU has AVX2, checked above
+        check(&unsafe { Fe4::new(&[p_1, P, [u64::MAX, u64::MAX, u64::MAX, P[3]], [0; 4]]) });
+        // Limbs of every size a lane holds, whose carries `split` folds.
+        check(&from_limbs(&[[u32::MAX; 10]; 4]));
+        for _ in 0..256 {
+            check(&from_limbs(&core::array::from_fn(|_| {
+                random_limbs(&mut rng, &[u32::MAX; 10])
+            })));
+        }
+    }
+
+    #[test]
+    fn reduce_and_neg_keep_values() {
+        if HaveAvx2::check().is_none() {
+            return;
+        }
+
+        // 16p's limbs, the most `neg` subtracts from.
+        // SAFETY: the CPU has AVX2, checked above
+        let p_limbs = limbs(&unsafe { Fe4::new(&[P; 4]) })[0];
+        let p16 = p_limbs.map(|l| l << 4);
+
+        let mut rng = Rng(0xbb67_ae85_84ca_a73b);
+        let check = |x: [[u32; 10]; 4]| {
+            let fe = from_limbs(&x);
+            // SAFETY: the CPU has AVX2, checked above
+            let (reduced, negated) = unsafe { (fe.reduce(), fe.neg()) };
+            for lane in 0..4 {
+                let want = value(&x[lane]);
+                assert_eq!(value(&limbs(&reduced)[lane]), want, "{x:x?}");
+                let mut neg = [0; 4];
+                bignum_neg_p25519(&mut neg, &want);
+                assert_eq!(value(&limbs(&negated)[lane]), neg, "{x:x?}");
+            }
+        };
+
+        check([[0; 10]; 4]);
+        check([p16; 4]);
+        for _ in 0..256 {
+            check(core::array::from_fn(|_| random_limbs(&mut rng, &p16)));
         }
     }
 
