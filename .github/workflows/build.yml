@@ -518,7 +518,7 @@ jobs:
       - name: Install qemu-user's binfmt handlers
         run: |
           sudo apt-get update
-          sudo apt-get install --yes qemu-user-static
+          sudo apt-get install --yes qemu-user-binfmt
 
       # Optimised for qemu, but keeping the checks a debug build has.
       - name: Run tests

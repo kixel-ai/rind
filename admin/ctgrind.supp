@@ -25,10 +25,11 @@
 }
 
 # rind-rcgen's PEM codec (`rind-rcgen/src/pem.rs`) frames base64ct's, whose
-# per-character arithmetic is branch-free. What they branch on is public:
-# whether the base64 was well-formed (`err == 0` in base64ct's `decode`),
-# where the PEM's delimiters and whitespace sit, and that the base64 is
-# ASCII, which `str::from_utf8` and `char_indices` check as they read it.
+# per-character arithmetic is branch-free. What they branch on or index by is
+# public: whether the base64 was well-formed (`err == 0` in base64ct's
+# `decode`), where the PEM's delimiters and whitespace sit, and that the
+# base64 is ASCII, which `str::from_utf8` and `char_indices` check as they
+# read it.
 # Frames are v0-mangled, or short names where a release build inlined them.
 {
    base64ct-decode-validity
@@ -81,4 +82,33 @@
    fun:*utf8*
    ...
    fun:*10rind_rcgen3pem*
+}
+{
+   rind-rcgen-pem-utf8-index-32bit
+   Memcheck:Value4
+   fun:*utf8*
+   ...
+   fun:*10rind_rcgen3pem*
+}
+{
+   rind-rcgen-pem-framing-index
+   Memcheck:Value8
+   fun:*10rind_rcgen3pem*read_until*
+}
+{
+   rind-rcgen-pem-framing-index-inlined
+   Memcheck:Value8
+   fun:read_until
+   fun:*10rind_rcgen3pem6decode*
+}
+{
+   rind-rcgen-pem-framing-32bit
+   Memcheck:Value4
+   fun:*10rind_rcgen3pem*read_until*
+}
+{
+   rind-rcgen-pem-framing-inlined-32bit
+   Memcheck:Value4
+   fun:read_until
+   fun:*10rind_rcgen3pem6decode*
 }
