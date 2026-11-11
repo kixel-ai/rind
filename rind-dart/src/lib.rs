@@ -178,8 +178,8 @@ free! {
     rind_dart_ed25519_key_pair_free: Ed25519KeyPair;
     rind_dart_rsa_key_pair_free: RsaKeyPair;
     rind_dart_public_key_free: PublicKey;
-    rind_dart_decapsulation_key_free: kem::DecapsulationKey;
-    rind_dart_encapsulation_key_free: kem::EncapsulationKey;
+    rind_dart_decapsulation_key_free: kem::DecapsulationKey<kem::MlKem768>;
+    rind_dart_encapsulation_key_free: kem::EncapsulationKey<kem::MlKem768>;
     rind_dart_decrypting_key_free: rsa::DecryptingKey;
     rind_dart_encrypting_key_free: rsa::EncryptingKey;
 }
@@ -337,9 +337,10 @@ fn rsa_key_size(id: u32) -> Result<rsa::KeySize, Misuse> {
     })
 }
 
-fn kem_algorithm(id: u32) -> Result<&'static kem::Algorithm, Misuse> {
+/// Checks that `id` names ML-KEM-768, the one set these bindings offer.
+fn kem_algorithm(id: u32) -> Result<(), Misuse> {
     match id {
-        0 => Ok(&kem::ML_KEM_768),
+        0 => Ok(()),
         _ => Err(Misuse("unknown KEM algorithm")),
     }
 }
@@ -1242,10 +1243,11 @@ pub unsafe extern "C" fn rind_dart_public_key_export(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_decapsulation_key_generate(
     algorithm: u32,
-    out: *mut *mut kem::DecapsulationKey,
+    out: *mut *mut kem::DecapsulationKey<kem::MlKem768>,
 ) -> isize {
     run(|| {
-        let key = kem::DecapsulationKey::generate(kem_algorithm(algorithm)?)?;
+        kem_algorithm(algorithm)?;
+        let key = kem::DecapsulationKey::generate()?;
         // SAFETY: forwarded from the caller.
         Ok(unsafe { store(out, key) })
     })
@@ -1253,7 +1255,7 @@ pub unsafe extern "C" fn rind_dart_decapsulation_key_generate(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_decapsulation_key_public_key(
-    key: *const kem::DecapsulationKey,
+    key: *const kem::DecapsulationKey<kem::MlKem768>,
     out: *mut u8,
     out_len: usize,
 ) -> isize {
@@ -1266,7 +1268,7 @@ pub unsafe extern "C" fn rind_dart_decapsulation_key_public_key(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_decapsulate(
-    key: *const kem::DecapsulationKey,
+    key: *const kem::DecapsulationKey<kem::MlKem768>,
     ciphertext: *const u8,
     ciphertext_len: usize,
     out: *mut u8,
@@ -1281,7 +1283,8 @@ pub unsafe extern "C" fn rind_dart_decapsulate(
                 output(out, out_len),
             )
         };
-        write(out, key.decapsulate(ciphertext)?.as_ref())
+        let ciphertext = kem::Ciphertext::new(ciphertext)?;
+        write(out, key.decapsulate(&ciphertext).as_ref())
     })
 }
 
@@ -1290,12 +1293,12 @@ pub unsafe extern "C" fn rind_dart_encapsulation_key_new(
     algorithm: u32,
     bytes: *const u8,
     bytes_len: usize,
-    out: *mut *mut kem::EncapsulationKey,
+    out: *mut *mut kem::EncapsulationKey<kem::MlKem768>,
 ) -> isize {
     run(|| {
-        let algorithm = kem_algorithm(algorithm)?;
+        kem_algorithm(algorithm)?;
         // SAFETY: forwarded from the caller.
-        let key = kem::EncapsulationKey::new(algorithm, unsafe { input(bytes, bytes_len) })?;
+        let key = kem::EncapsulationKey::new(unsafe { input(bytes, bytes_len) })?;
         // SAFETY: forwarded from the caller.
         Ok(unsafe { store(out, key) })
     })
@@ -1305,7 +1308,7 @@ pub unsafe extern "C" fn rind_dart_encapsulation_key_new(
 /// returning the ciphertext's length.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_encapsulate(
-    key: *const kem::EncapsulationKey,
+    key: *const kem::EncapsulationKey<kem::MlKem768>,
     ciphertext: *mut u8,
     ciphertext_len: usize,
     secret: *mut u8,

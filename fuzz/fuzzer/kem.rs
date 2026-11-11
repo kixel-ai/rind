@@ -14,7 +14,7 @@ use rind::kem as ours;
 mod edit;
 
 fuzz_target!(|edit: edit::Edit| {
-    let key = ours::DecapsulationKey::generate(&ours::ML_KEM_768).unwrap();
+    let key = ours::DecapsulationKey::<ours::MlKem768>::generate().unwrap();
     let (ciphertext, secret) =
         theirs::EncapsulationKey::new(&theirs::ML_KEM_768, key.public_key().as_ref())
             .unwrap()
@@ -23,8 +23,8 @@ fuzz_target!(|edit: edit::Edit| {
     let mut ciphertext = ciphertext.as_ref().to_vec();
     let changed = edit.apply(&mut ciphertext);
 
-    match (ciphertext.len(), key.decapsulate(&ciphertext)) {
-        (1088, Ok(ours)) => assert_eq!(ours.as_ref() == secret.as_ref(), !changed),
+    match (ciphertext.len(), ours::Ciphertext::new(&ciphertext)) {
+        (1088, Ok(c)) => assert_eq!(key.decapsulate(&c).as_ref() == secret.as_ref(), !changed),
         (1088, Err(e)) => panic!("refused a ciphertext of the right length: {e:?}"),
         (_, result) => assert_eq!(result.err(), Some(rind::Error::WrongLength)),
     }

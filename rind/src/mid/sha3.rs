@@ -119,16 +119,15 @@ impl Shake256 {
             .shake_read(output, &mut self.buffer, &mut self.buffer_offset);
     }
 
-    /// Compute `P` SHAKE256 outputs in one go, four at a time.
+    /// Compute an `L`-byte SHAKE256 output of each of `inputs` in one go,
+    /// four at a time.
     ///
     /// Each item of `inputs` shall be 40 bytes in length, which accommodates ML-KEM's `SamplePolyCBD`
     /// requirements of 33 bytes.  The 34th byte shall be `SHAKE_PAD_BYTE` and the remainder shall be
     /// zeroes.
-    pub(crate) fn one_shot_batch<const P: usize>(
-        inputs: &[[u8; 40]; P],
-        outputs: &mut [[u8; 128]; P],
-    ) {
+    pub(crate) fn one_shot_batch<const L: usize>(inputs: &[[u8; 40]], outputs: &mut [[u8; L]]) {
         debug_assert!(inputs.iter().all(|inp| inp[33] == SHAKE_PAD_BYTE));
+        debug_assert_eq!(inputs.len(), outputs.len());
 
         let mut states = [[0; 25]; 4];
 
@@ -142,19 +141,22 @@ impl Shake256 {
                 s[SHAKE_256_R_BYTES / size_of::<u64>() - 1] = 0x8000_0000_0000_0000;
             }
 
-            // A short batch leaves stale states in the unused lanes, whose
-            // outputs are never read.
-            match inputs.len() {
-                4 => sha3_keccak4_f1600(&mut states, &RC),
-                3 => sha3_keccak_nof4_f1600::<3>(&mut states, &RC),
-                2 => sha3_keccak_nof4_f1600::<2>(&mut states, &RC),
-                _ => sha3_keccak_nof4_f1600::<1>(&mut states, &RC),
-            }
+            // Each permutation yields a block of every output. A short batch
+            // leaves stale states in the unused lanes, whose outputs are never
+            // read.
+            for offset in (0..L).step_by(SHAKE_256_R_BYTES) {
+                match inputs.len() {
+                    4 => sha3_keccak4_f1600(&mut states, &RC),
+                    3 => sha3_keccak_nof4_f1600::<3>(&mut states, &RC),
+                    2 => sha3_keccak_nof4_f1600::<2>(&mut states, &RC),
+                    _ => sha3_keccak_nof4_f1600::<1>(&mut states, &RC),
+                }
 
-            for (s, output) in states.iter().zip(outputs) {
-                let (chunks, _) = output.as_chunks_mut::<8>();
-                for (ch, s) in chunks.iter_mut().zip(s) {
-                    *ch = s.to_le_bytes();
+                for (s, output) in states.iter().zip(outputs.iter_mut()) {
+                    let block = &mut output[offset..L.min(offset + SHAKE_256_R_BYTES)];
+                    for (out, s) in block.chunks_mut(8).zip(s) {
+                        out.copy_from_slice(&s.to_le_bytes()[..out.len()]);
+                    }
                 }
             }
         }
@@ -511,11 +513,14 @@ mod tests {
 
     #[test]
     fn one_shot_batch_matches_single() {
-        one_shot_batch_matches_single_n::<6>();
-        one_shot_batch_matches_single_n::<7>();
+        one_shot_batch_matches_single_n::<6, 128>();
+        one_shot_batch_matches_single_n::<7, 128>();
+        // Two blocks of output, as ML-KEM-512's `eta1 = 3` samples.
+        one_shot_batch_matches_single_n::<3, 192>();
+        one_shot_batch_matches_single_n::<5, 192>();
     }
 
-    fn one_shot_batch_matches_single_n<const P: usize>() {
+    fn one_shot_batch_matches_single_n<const P: usize, const L: usize>() {
         // build the 40-byte inputs in the format `one_shot_batch` requires:
         // SEED || index || SHAKE_PAD_BYTE || zeroes
         let mut inputs = [[0u8; 40]; P];
@@ -525,12 +530,12 @@ mod tests {
             inp[33] = SHAKE_PAD_BYTE;
         }
 
-        let mut batched = [[0u8; 128]; P];
+        let mut batched = [[0u8; L]; P];
         Shake256::one_shot_batch(&inputs, &mut batched);
 
         for (n, inp) in inputs.iter().enumerate() {
             // the absorbed message is the 33 bytes preceding the pad byte
-            let mut single = [0u8; 128];
+            let mut single = [0u8; L];
             Shake256::new(&[&inp[..33]]).read(&mut single);
             assert_eq!(batched[n], single);
         }

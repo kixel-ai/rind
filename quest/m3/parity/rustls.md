@@ -14,5 +14,4 @@ rind-rustls offers the rest of aws-lc-rs's rustls provider: the MLKEM1024 key-ex
 
 ## Required
 
-- [ML-KEM-512 and ML-KEM-1024](/quest/m3/parity/ml-kem.md) - rind's ML-KEM-1024
 - [ML-DSA-44, ML-DSA-65, and ML-DSA-87](/quest/m3/parity/ml-dsa.md) - rind's ML-DSA
