@@ -619,8 +619,11 @@ fn verify_internal<P: Params>(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) ->
 
     let mut polys = vec![Poly::ZERO; k * l + l];
     let (a, z) = polys.split_at_mut(k * l);
-    for (z, packed) in z.iter_mut().zip(z_packed.chunks_exact(P::Z_PACKED)) {
-        unpack_z::<P>(z, packed);
+    // Verification slices by index: zipping `chunks_exact` with a run-time
+    // size divides to count the chunks, which `admin/ct-vartime` refuses
+    // wherever the compiler leaves `Zip::new` outlined.
+    for (i, z) in z.iter_mut().enumerate() {
+        unpack_z::<P>(z, &z_packed[i * P::Z_PACKED..(i + 1) * P::Z_PACKED]);
         if low::mldsa_chknorm(&z.0, (P::GAMMA1 - P::BETA) as u64) != 0 {
             return Err(Error::BadSignature);
         }
@@ -636,12 +639,9 @@ fn verify_internal<P: Params>(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) ->
     let mut w1_packed = [0u8; 8 * 192];
     let w1_packed = &mut w1_packed[..k * P::W1_PACKED];
     let (mut w1, mut t1, mut h) = (Poly::ZERO, Poly::ZERO, Poly::ZERO);
-    for (i, ((row, t1_packed), packed)) in a
-        .chunks_exact(l)
-        .zip(pk[SEED_LEN..].as_chunks::<T1_PACKED>().0)
-        .zip(w1_packed.chunks_exact_mut(P::W1_PACKED))
-        .enumerate()
-    {
+    for (i, t1_packed) in pk[SEED_LEN..].as_chunks::<T1_PACKED>().0.iter().enumerate() {
+        let row = &a[i * l..(i + 1) * l];
+        let packed = &mut w1_packed[i * P::W1_PACKED..(i + 1) * P::W1_PACKED];
         low::mldsa_pointwise_acc(&mut w1.0, row, z);
         unpack_t1(&mut t1, t1_packed);
         for t in t1.0.iter_mut() {
@@ -1277,8 +1277,8 @@ mod tests {
 
     #[test]
     fn wycheproof() {
-        fn check<P: Params>(set: &str) {
-            wycheproof_sign::<P>(&format!("mldsa_{set}_sign_seed_test.json"), |group| {
+        fn check<P: Params>([seed, noseed, verify]: [&str; 3]) {
+            wycheproof_sign::<P>(seed, |group| {
                 let seed = group
                     .seed
                     .as_slice()
@@ -1286,14 +1286,24 @@ mod tests {
                     .map_err(|_| Error::WrongLength)?;
                 Ok(KeyPair::from_seed(seed))
             });
-            wycheproof_sign::<P>(&format!("mldsa_{set}_sign_noseed_test.json"), |group| {
-                KeyPair::from_secret_key(&group.private_key)
-            });
-            wycheproof_verify::<P>(&format!("mldsa_{set}_verify_test.json"));
+            wycheproof_sign::<P>(noseed, |group| KeyPair::from_secret_key(&group.private_key));
+            wycheproof_verify::<P>(verify);
         }
-        check::<MlDsa44>("44");
-        check::<MlDsa65>("65");
-        check::<MlDsa87>("87");
+        check::<MlDsa44>([
+            "mldsa_44_sign_seed_test.json",
+            "mldsa_44_sign_noseed_test.json",
+            "mldsa_44_verify_test.json",
+        ]);
+        check::<MlDsa65>([
+            "mldsa_65_sign_seed_test.json",
+            "mldsa_65_sign_noseed_test.json",
+            "mldsa_65_verify_test.json",
+        ]);
+        check::<MlDsa87>([
+            "mldsa_87_sign_seed_test.json",
+            "mldsa_87_sign_noseed_test.json",
+            "mldsa_87_verify_test.json",
+        ]);
     }
 
     #[test]

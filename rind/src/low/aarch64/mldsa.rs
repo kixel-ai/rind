@@ -8,7 +8,6 @@
 
 use crate::low;
 use crate::low::generic::mldsa_poly::{MldsaPoly, rows};
-
 pub(crate) use crate::low::generic::mldsa_poly::{mldsa_nttunpack, mldsa_reduce};
 
 /// Forward number-theoretic transform from ML-DSA

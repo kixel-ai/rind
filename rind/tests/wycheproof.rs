@@ -1405,13 +1405,15 @@ fn ml_dsa_pkcs8(arc: u8, private_key: &[u8]) -> Vec<u8> {
     der(0x30, &[version, algorithm, der(0x04, private_key)].concat())
 }
 
+/// One parameter set's files: its seed and expanded signing keys, and its
+/// verification tests.
 fn ml_dsa_wycheproof<P: sign::MlDsaParameterSet>(
-    set: &str,
+    [seed, noseed, verify]: [&str; 3],
     algorithm: &'static signature::VerificationAlgorithm,
     arc: u8,
 ) {
     let mut verified = 0;
-    for group in ml_dsa_file(&format!("mldsa_{set}_verify_test.json")).groups {
+    for group in ml_dsa_file(verify).groups {
         let public_key = hex::decode(group.public_key.unwrap()).unwrap();
         let key = signature::PublicKey::new(algorithm, &public_key);
         let from_spki = signature::PublicKey::from_spki(algorithm, &group.public_key_der);
@@ -1442,7 +1444,7 @@ fn ml_dsa_wycheproof<P: sign::MlDsaParameterSet>(
     assert_ne!(verified, 0);
 
     let mut signed = 0;
-    for group in ml_dsa_file(&format!("mldsa_{set}_sign_seed_test.json")).groups {
+    for group in ml_dsa_file(seed).groups {
         let key = sign::MlDsaKeyPair::<P>::from_seed(&group.private_seed);
         let from_pkcs8 = match group.private_key_pkcs8.is_empty() {
             true => None,
@@ -1482,7 +1484,7 @@ fn ml_dsa_wycheproof<P: sign::MlDsaParameterSet>(
     }
     assert_ne!(signed, 0);
 
-    for group in ml_dsa_file(&format!("mldsa_{set}_sign_noseed_test.json")).groups {
+    for group in ml_dsa_file(noseed).groups {
         let der = ml_dsa_pkcs8(arc, &der(0x04, &group.private_key));
         let Ok(key) = sign::MlDsaKeyPair::<P>::from_pkcs8(&der) else {
             // An inconsistent or misshapen key.
@@ -1501,7 +1503,31 @@ fn ml_dsa_wycheproof<P: sign::MlDsaParameterSet>(
 
 #[test]
 fn test_ml_dsa() {
-    ml_dsa_wycheproof::<sign::MlDsa44>("44", &verify::ML_DSA_44, 17);
-    ml_dsa_wycheproof::<sign::MlDsa65>("65", &verify::ML_DSA_65, 18);
-    ml_dsa_wycheproof::<sign::MlDsa87>("87", &verify::ML_DSA_87, 19);
+    ml_dsa_wycheproof::<sign::MlDsa44>(
+        [
+            "mldsa_44_sign_seed_test.json",
+            "mldsa_44_sign_noseed_test.json",
+            "mldsa_44_verify_test.json",
+        ],
+        &verify::ML_DSA_44,
+        17,
+    );
+    ml_dsa_wycheproof::<sign::MlDsa65>(
+        [
+            "mldsa_65_sign_seed_test.json",
+            "mldsa_65_sign_noseed_test.json",
+            "mldsa_65_verify_test.json",
+        ],
+        &verify::ML_DSA_65,
+        18,
+    );
+    ml_dsa_wycheproof::<sign::MlDsa87>(
+        [
+            "mldsa_87_sign_seed_test.json",
+            "mldsa_87_sign_noseed_test.json",
+            "mldsa_87_verify_test.json",
+        ],
+        &verify::ML_DSA_87,
+        19,
+    );
 }

@@ -92,17 +92,20 @@ fn negative_mask(a: i32) -> i32 {
 /// Forward NTT: coefficients bounded by `q` map to ones bounded by `9q`, in
 /// bit-reversed order.
 pub(crate) fn mldsa_ntt(a: &mut [i32; 256]) {
-    for layer in 1..9 {
-        let len = 256 >> layer;
-        let first = 1 << (layer - 1);
-        for (k, start) in (first..).zip((0..256).step_by(2 * len)) {
+    let mut k = 1;
+    let mut len = 128;
+    while len >= 1 {
+        for block in a.chunks_exact_mut(2 * len) {
             let zeta = ZETAS[k];
-            for j in start..start + len {
-                let t = fqmul(a[j + len], zeta);
-                a[j + len] = a[j].wrapping_sub(t);
-                a[j] = a[j].wrapping_add(t);
+            k += 1;
+            let (lo, hi) = block.split_at_mut(len);
+            for (lo, hi) in lo.iter_mut().zip(hi.iter_mut()) {
+                let t = fqmul(*hi, zeta);
+                *hi = lo.wrapping_sub(t);
+                *lo = lo.wrapping_add(t);
             }
         }
+        len >>= 1;
     }
 }
 
@@ -111,18 +114,20 @@ pub(crate) fn mldsa_ntt(a: &mut [i32; 256]) {
 pub(crate) fn mldsa_intt(a: &mut [i32; 256]) {
     // mont^2 / 256
     const F: i32 = 41978;
-    for layer in (1..9).rev() {
-        let len = 256 >> layer;
-        let mut k = (1 << layer) - 1;
-        for start in (0..256).step_by(2 * len) {
+    let mut k = 255;
+    let mut len = 1;
+    while len <= 128 {
+        for block in a.chunks_exact_mut(2 * len) {
             let zeta = ZETAS[k].wrapping_neg();
             k -= 1;
-            for j in start..start + len {
-                let t = a[j];
-                a[j] = t.wrapping_add(a[j + len]);
-                a[j + len] = fqmul(t.wrapping_sub(a[j + len]), zeta);
+            let (lo, hi) = block.split_at_mut(len);
+            for (lo, hi) in lo.iter_mut().zip(hi.iter_mut()) {
+                let t = *lo;
+                *lo = t.wrapping_add(*hi);
+                *hi = fqmul(t.wrapping_sub(*hi), zeta);
             }
         }
+        len <<= 1;
     }
     for c in a.iter_mut() {
         *c = fqmul(*c, F);
@@ -367,9 +372,9 @@ mod tests {
     //! Checks the backend's routines, which are s2n-bignum's where it has
     //! them, against this port.
 
-    use super::*;
-
     use MldsaPoly as Poly;
+
+    use super::*;
 
     struct Rng(u64);
 
