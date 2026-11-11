@@ -334,15 +334,18 @@ fn ct_binsec_ecdsa_p521() {
 fn ct_binsec_mont_mul() {
     use crate::low::{mont_mul, mont_sqr};
 
-    // An odd modulus, whose `-m^-1 mod 2^64` is 1.
-    let m = [u64::MAX; 32];
     checked(|| {
         for k in [16, 24, 32] {
             let (x, mut y, mut z) = ([1u64; 32], [2u64; 32], [0u64; 32]);
+            // CRT's modulus is a private prime, and its `-m^-1 mod 2^64`
+            // with it; the concrete values are an odd modulus and its 1.
+            let m = [u64::MAX; 32];
             ct::secret_slice(&x[..k]);
             ct::secret_slice(&y[..k]);
-            mont_mul(&mut z[..k], &x[..k], &y[..k], &m[..k], 1);
-            mont_sqr(&mut y[..k], &z[..k], &m[..k], 1);
+            ct::secret_slice(&m[..k]);
+            let n0 = ct::into_secret(1u64);
+            mont_mul(&mut z[..k], &x[..k], &y[..k], &m[..k], n0);
+            mont_sqr(&mut y[..k], &z[..k], &m[..k], n0);
             black_box(&y);
         }
     });
