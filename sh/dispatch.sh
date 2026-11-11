@@ -204,14 +204,6 @@ for module in "${selected[@]}"; do
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
             cargo nextest run "${packages[@]}" --locked --no-tests=warn
-            # Only the zeroing and heap scratch tests see the opt-in wipe,
-            # which the default build turns into no-ops.
-            if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind|--workspace'; then
-                cargo nextest run -p rind --features wipe --test zeroing --test heap_scratch --locked
-            fi
-            if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind-aws-lc-rs|--workspace'; then
-                cargo nextest run -p rind-aws-lc-rs --features wipe --test zeroing --locked
-            fi
             # Doc tests need a library. No packages at all means the workspace.
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
@@ -244,10 +236,11 @@ for module in "${selected[@]}"; do
                 cargo clippy -p rind --lib --locked --target armv7-unknown-linux-gnueabihf -- --deny warnings
             # wasm32 compiles on the portable backend; the browser target
             # needs getrandom's JavaScript source, WASI has its own.
-            for features in "" wipe; do
-                cargo clippy -p rind --lib --locked --target wasm32-wasip2 --features "$features" -- --deny warnings
-                cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown \
-                    --features "$features,getrandom/wasm_js" -- --deny warnings
+            # Both with the default `wipe` and without it.
+            for flags in "" --no-default-features; do
+                cargo clippy -p rind --lib --locked --target wasm32-wasip2 $flags -- --deny warnings
+                cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown $flags \
+                    --features getrandom/wasm_js -- --deny warnings
             done
             ;;
         check:structure) admin/structure ;;

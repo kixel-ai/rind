@@ -10,8 +10,9 @@ categories = ["network-programming", "cryptography"]
 rust-version.workspace = true
 
 [features]
-default = []
-# Wipes keys, keyed state, and private-key heap scratch on drop.
+default = ["wipe"]
+# Wipes keys, keyed state, and private-key heap scratch on drop; on by
+# default, as in aws-lc-rs. Turn off with `default-features = false`.
 wipe = []
 __ctgrind = ["dep:crabgrind"]
 

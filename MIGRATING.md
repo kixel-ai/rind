@@ -17,7 +17,7 @@ renames [rind-aws-lc-rs](#rind-aws-lc-rs) to `aws-lc-rs` the same way.
 | A `_FOR_LEGACY_USE_ONLY` suffix | a `legacy` submodule, such as `digest::legacy::SHA1` |
 | An allocated `Document`, `Vec`, or `Box` output | an owned value of fixed capacity, such as `encoding::Pkcs8` |
 | `error::Unspecified`, `error::KeyRejected` | `rind::Error`, by kind of call (see [error](#error)) |
-| aws-lc-rs wipes keys and keyed state on drop; ring doesn't | rind wipes them only under its `wipe` feature: enable `rind/wipe`, or rind-aws-lc-rs's `wipe`, to keep aws-lc-rs's behavior |
+| aws-lc-rs wipes keys and keyed state on drop; ring doesn't | rind wipes them too, under its default `wipe` feature; `default-features = false` turns it off |
 
 ## digest
 

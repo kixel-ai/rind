@@ -20,7 +20,7 @@ upstream = "1"
 # nothing. `fips` is left out, so a manifest asking for it fails to
 # resolve: rind is not FIPS validated.
 [features]
-default = ["aws-lc-sys", "alloc", "ring-io", "ring-sig-verify"]
+default = ["aws-lc-sys", "alloc", "ring-io", "ring-sig-verify", "wipe"]
 alloc = []
 asan = []
 aws-lc-sys = []
