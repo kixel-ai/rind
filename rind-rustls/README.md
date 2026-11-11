@@ -29,6 +29,8 @@ Where it behaves differently:
 - `hpke`'s suites are `&dyn Hpke`, not upstream's `&HpkeAwsLcRs<..>`.
 - `hpke`'s NIST suites refuse a compressed public key, which RFC 9180 does
   not define, where upstream seals to one a message no recipient opens.
+- `hpke`'s NIST suites refuse an X9.62 hybrid point (`0x06`/`0x07`) as a
+  public or encapsulated key, as rind does everywhere; upstream takes one.
 - `Ticketer` seals tickets with XChaCha20-Poly1305, where upstream's uses
   RFC 5077's AES-256-CBC and HMAC-SHA256.
 

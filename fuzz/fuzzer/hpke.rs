@@ -70,12 +70,14 @@ fuzz_target!(|input: Input| {
     }
     // Both take or refuse `enc` alike, compressed points included.
     let enc = EncapsulatedSecret(enc);
-    assert_eq!(
-        Recipient::new(suite, &private_key, &enc.0, &input.info).is_ok(),
-        theirs
-            .setup_opener(&enc, &input.info, &their_private())
-            .is_ok(),
-    );
+    if !hybrid(kem, &enc.0) {
+        assert_eq!(
+            Recipient::new(suite, &private_key, &enc.0, &input.info).is_ok(),
+            theirs
+                .setup_opener(&enc, &input.info, &their_private())
+                .is_ok(),
+        );
+    }
     let theirs_opened = theirs.open(&enc, &input.info, &input.aad, &ciphertext, &their_private());
     assert_eq!(ours.ok(), theirs_opened.ok());
 
@@ -93,7 +95,7 @@ fuzz_target!(|input: Input| {
     let ours = PublicKey::new(kem, &input.peer)
         .and_then(|peer| Sender::new(suite, &peer, &input.info))
         .is_ok();
-    if input.peer.len() == public_key.as_ref().len() {
+    if input.peer.len() == public_key.as_ref().len() && !hybrid(kem, &input.peer) {
         let theirs = theirs
             .setup_sealer(&input.info, &HpkePublicKey(input.peer))
             .is_ok();
@@ -102,3 +104,11 @@ fuzz_target!(|input: Input| {
         assert!(!ours);
     }
 });
+
+/// Whether `point` is a NIST KEM's point in X9.62's hybrid form, which
+/// aws-lc-rs takes and rind refuses everywhere: no consumer sends it, and
+/// neither side opens anything under a hybrid `enc`, since the KEM context
+/// hashes `enc` as sent and senders send it uncompressed.
+fn hybrid(kem: &Kem, point: &[u8]) -> bool {
+    !core::ptr::eq(kem, &DHKEM_X25519_HKDF_SHA256) && matches!(point.first(), Some(6 | 7))
+}
