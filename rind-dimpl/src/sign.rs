@@ -8,8 +8,7 @@ use dimpl::{CryptoError, CryptoOperation};
 use rind::signature::{
     EcdsaKeyPair, EcdsaSigningAlgorithm, PublicKey, VerificationAlgorithm, sign, verify,
 };
-use rustls_pki_types::PrivatePkcs8KeyDer;
-use rustls_pki_types::pem::PemObject;
+use rustls_pki_types::pem;
 use x509_cert::Certificate;
 use x509_cert::der::Decode;
 use x509_cert::spki::ObjectIdentifier;
@@ -55,8 +54,14 @@ impl KeyProvider for Keys {
         // dimpl's own providers also take a PEM-wrapped key, under any label.
         der_key(der)
             .or_else(|| {
-                let pem = PrivatePkcs8KeyDer::from_pem_slice(&relabel(der)?).ok()?;
-                der_key(pem.secret_pkcs8_der())
+                let relabeled = relabel(der)?;
+                let mut rest = relabeled.as_slice();
+                let (_, key) = pem::from_buf(&mut rest).ok()??;
+                // A second footer would otherwise outlive the section.
+                if !rest.is_empty() {
+                    return None;
+                }
+                der_key(&key)
             })
             .ok_or(CryptoError::InvalidPrivateKey)
     }

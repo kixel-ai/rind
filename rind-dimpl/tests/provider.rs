@@ -372,6 +372,8 @@ fn ecdsa_key_encodings_load_as_aws_lc() {
             let crlf = format!("{}\r\n", pem.trim_end());
             let blank_line = format!("{pem}\n");
             let space = format!("{pem} ");
+            let nul = format!("\0\n{pem}");
+            let second_footer = format!("{pem}-----END {label}-----\n");
             for (key, loads, what) in [
                 (&der[..], true, "DER"),
                 (pem.as_bytes(), true, "PEM"),
@@ -387,6 +389,8 @@ fn ecdsa_key_encodings_load_as_aws_lc() {
                 (crlf.as_bytes(), true, "CRLF ending"),
                 (blank_line.as_bytes(), false, "trailing blank line"),
                 (space.as_bytes(), false, "trailing space"),
+                (nul.as_bytes(), false, "NUL in the preamble"),
+                (second_footer.as_bytes(), false, "second footer"),
                 (&der[..der.len() - 1], false, "truncated DER"),
             ] {
                 let rind = rind().key_provider.load_private_key(key).is_ok();
