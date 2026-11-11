@@ -767,7 +767,7 @@ extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aea
 extract_kdf aarch64 Aarch64
 
 mkdir -p proofs/Rind/Aarch64/Kdf
-for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
+for file in Dispatch X25519 P384 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     CtEqual HmacApi DigestApi Hkdf Pbkdf2; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
