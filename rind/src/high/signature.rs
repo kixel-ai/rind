@@ -2570,6 +2570,7 @@ mod tests {
         let len = private_key
             .encode(&mut asn1::Encoder::new(&mut inner))
             .unwrap();
+        assert_eq!(private_key.encoded_len(), len);
         let mut out = vec![0; 20_000];
         let der = pkcs8::Key::construct(&inner[..len], public_key, oid.clone(), None)
             .encode(&mut out)

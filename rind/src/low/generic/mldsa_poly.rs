@@ -420,6 +420,34 @@ mod tests {
         a.iter().all(|c| c.abs() < bound)
     }
 
+    /// The port's own contracts, which `backend_matches_port` cannot check
+    /// where the backend runs the port.
+    #[test]
+    fn port_meets_contracts() {
+        let mut rng = Rng(0x0fed_cba9_8765_4321);
+        let mut a: [i32; 256] = core::array::from_fn(|_| (rng.next() as i32) >> 1);
+        a[0] = i32::MAX - (1 << 22);
+        a[1] = i32::MIN;
+        let want = canonical(&a);
+        mldsa_reduce(&mut a);
+        assert_eq!(canonical(&a), want);
+        assert!(a.iter().all(|c| (-6283009..=6283008).contains(c)));
+
+        for check in [mldsa_chknorm, low::mldsa_chknorm] {
+            for bound in [1, 1 << 17, (Q - 1) / 2] {
+                for c in [bound - 1, bound, -(bound - 1), -bound] {
+                    let mut a = Poly::ZERO;
+                    a.0[255] = c;
+                    assert_eq!(
+                        check(&a.0, bound as u64),
+                        u64::from(c.abs() >= bound),
+                        "chknorm {c} against {bound}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn backend_matches_port() {
         let mut rng = Rng(0x0123_4567_89ab_cdef);
