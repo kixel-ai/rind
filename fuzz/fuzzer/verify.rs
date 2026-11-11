@@ -133,6 +133,8 @@ enum Kind {
     Ecdsa,
     Rsa,
     Ed25519,
+    /// ML-DSA, with its parameter set's public key length.
+    MlDsa(usize),
 }
 
 /// The algorithm `selector` picks on each side, and its key type.
@@ -284,6 +286,21 @@ fn algorithm(selector: u8) -> Option<(&'static VerificationAlgorithm, Theirs, Ki
             Theirs::PssAnySalt(&digest::SHA512, aws_lc_sys::EVP_sha512),
             Kind::Rsa,
         ),
+        29 => (
+            &verify::ML_DSA_44,
+            Theirs::Rs(&theirs::ML_DSA_44),
+            Kind::MlDsa(1312),
+        ),
+        30 => (
+            &verify::ML_DSA_65,
+            Theirs::Rs(&theirs::ML_DSA_65),
+            Kind::MlDsa(1952),
+        ),
+        31 => (
+            &verify::ML_DSA_87,
+            Theirs::Rs(&theirs::ML_DSA_87),
+            Kind::MlDsa(2592),
+        ),
         _ => return None,
     })
 }
@@ -316,5 +333,8 @@ fn refused(kind: Kind, key: &[u8]) -> bool {
                 .is_some_and(|point| point.is_small_order()),
             Err(_) => true,
         },
+        // aws-lc-rs also takes a `SubjectPublicKeyInfo`; rind takes only the
+        // raw key, of which any bytes of its length are one.
+        Kind::MlDsa(len) => key.len() != len,
     }
 }

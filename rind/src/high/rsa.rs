@@ -15,10 +15,6 @@ use crate::mid::{rsa_priv, rsa_pub};
 /// room for the exponent.
 pub(crate) const MAX_PUBLIC_KEY_LEN: usize = rsa_pub::MAX_PUBLIC_MODULUS_BYTES + 64;
 
-/// The longest `SubjectPublicKeyInfo`: an `RSAPublicKey` in a bit string,
-/// after its algorithm identifier.
-pub(crate) const MAX_SPKI_LEN: usize = MAX_PUBLIC_KEY_LEN + 32;
-
 /// The longest PKCS#8 private key: an `RSAPrivateKey` in an octet string,
 /// after its version and algorithm identifier.
 pub(crate) const MAX_PKCS8_LEN: usize = SigningKey::MAX_PKCS1_BUFFER_LEN + 64;

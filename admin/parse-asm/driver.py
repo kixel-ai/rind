@@ -140,7 +140,7 @@ class Architecture_amd64(Architecture):
 
         for n in range(8, 16):
             n = str(n)
-            if reg in ["r" + n, "r" + n + "b", "r" + n + "w", "r" + n + "b"]:
+            if reg in ["r" + n, "r" + n + "d", "r" + n + "w", "r" + n + "b"]:
                 return "r" + n
 
         for n in range(0, 32):
@@ -1337,6 +1337,11 @@ ABI_ARGS = {
         None,
         "&[0x55; 168]",
         "&super::mlkem::MLKEM_REJ_UNIFORM_TABLE",
+    ],
+    "mldsa_rej_uniform_vartime": [
+        None,
+        "&[0x55; 840]",
+        "&super::mldsa::MLDSA_REJ_UNIFORM_TABLE",
     ],
 }
 # AES-GCM's `blocks` counts 128-byte strides, eight AES blocks each.
