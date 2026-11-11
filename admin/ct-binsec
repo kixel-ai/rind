@@ -30,7 +30,7 @@ import argparse, json, os, re, struct, subprocess, sys, tempfile
 # then let the test finish, and refuse a second region, which BINSEC would
 # never see.
 GDB = r"""
-import gdb
+import gdb, os
 gdb.execute("set pagination off")
 gdb.execute("set confirm off")
 # At each marker's first instruction, not past its prologue, where gdb
@@ -57,6 +57,16 @@ for sym in SYMBOLS:
 gdb.execute("queue-signal SIGUSR1")
 gdb.execute("generate-core-file " + CORE)
 gdb.execute("queue-signal 0")
+# The test binary binds every symbol at load, so its GOT holds the function
+# glibc picked for each, which its own calls into glibc take too.
+exe = os.path.realpath(gdb.current_progspace().filename)
+for line in open("/proc/{}/maps".format(pid)):
+    fields = line.split()
+    if len(fields) == 6 and fields[2] == "00000000" and os.path.realpath(fields[5]) == exe:
+        base = int(fields[0].split("-")[0], 16)
+        break
+for name, got in GOT.items():
+    print("LIBC {} {:#x}".format(name, int(gdb.parse_and_eval("*(unsigned long *){}".format(base + got)))))
 arch = gdb.selected_frame().architecture().name()
 args = {"i386:x86-64": ("$rdi", "$rsi"), "aarch64": ("$x0", "$x1"), "arm": ("$r0", "$r1")}[arch]
 public = gdb.Breakpoint("*rind_ct_binsec_public", internal=True)
@@ -91,10 +101,12 @@ UNDECODED = {
     "aarch64": ["aes", "pmull", "sha2", "sha3", "dit"],
 }
 
-# glibc's string functions take EVEX encodings on a CPU with AVX-512, so the
-# test runs with glibc's AVX2 ones.
+# glibc picks each of these for the runner's CPU, such as an EVEX one with
+# AVX-512, a TSX one that runs `xtest`, or aarch64's SVE one, which BINSEC
+# cannot decode, so the script replaces whichever it picked with a byte loop,
+# as valgrind replaces them.
 # See UPSTREAM.md, "BINSEC cannot decode glibc's string functions".
-TUNABLES = {"x86_64": "glibc.cpu.hwcaps=-AVX512F,-AVX512VL,-AVX512BW,-AVX512DQ,-AVX512CD"}
+LIBC = ["memcpy", "memmove", "memset", "memcmp", "bcmp"]
 
 # Instructions BINSEC cannot decode, but whose effect on its state is short
 # enough to give it: s2n-bignum's P-521 code sets the carry with `stc`, and
@@ -119,6 +131,54 @@ for src in range(8):
         STUBS["x86_64"] += "\nreplace opcode 0f 50 {:02x} by\n  {} := uext64 ({})\nend\n".format(
             0xC0 | dst << 3 | src, gp, lanes
         )
+
+# Each function in `LIBC` as a byte loop, which reads and writes only the
+# bytes it is given and returns from a comparison at the first byte that
+# differs. `libc_i` is the script's loop counter.
+LIBC_STUBS = {
+    "memmove": """
+replace {addr:#x} (dst, src, len) by
+  if dst <=u src then
+    libc_i := 0
+    while libc_i <u len do
+      @[dst + libc_i] := @[src + libc_i]
+      libc_i := libc_i + 1
+    end
+  else
+    libc_i := len
+    while libc_i <> 0 do
+      libc_i := libc_i - 1
+      @[dst + libc_i] := @[src + libc_i]
+    end
+  end
+  return dst
+end
+""",
+    "memset": """
+replace {addr:#x} (dst, byte, len) by
+  libc_i := 0
+  while libc_i <u len do
+    @[dst + libc_i] := byte{{7..0}}
+    libc_i := libc_i + 1
+  end
+  return dst
+end
+""",
+    "memcmp": """
+replace {addr:#x} (a, b, len) by
+  libc_i := 0
+  while libc_i <u len do
+    if @[a + libc_i] <> @[b + libc_i] then
+      return uext{word} @[a + libc_i] - uext{word} @[b + libc_i]
+    end
+    libc_i := libc_i + 1
+  end
+  return 0
+end
+""",
+}
+LIBC_STUBS["memcpy"] = LIBC_STUBS["memmove"]
+LIBC_STUBS["bcmp"] = LIBC_STUBS["memcmp"]
 
 # NT_PRPSINFO, NT_AUXV, and NT_FILE, which describe the process.
 PROCESS_NOTES = {3, 6, 0x46494C45}
@@ -145,6 +205,7 @@ SYMBOLS += ["getrandom", "free", "__rustc::rust_begin_unwind"]
 SCRIPT = """\
 starting from core with
   declassified<{word}> := 0
+  libc_i<{word}> := 0
 end
 
 {stubs}
@@ -170,7 +231,7 @@ end
 replace {free:#x} (ptr) by
   return
 end
-
+{libc}
 halt at {stop:#x}
 halt at {panic:#x}
 explore all
@@ -225,24 +286,40 @@ def is_planted(name):
 
 def dump(exe, name, target, tmp):
     """Runs `name` under gdb, dumping it at its region into `tmp`, and
-    returns the core's path and the addresses of the markers."""
+    returns the core's path, the addresses of the markers and of the
+    functions in `LIBC` glibc picked, and the values the region declassified."""
+    got = got_offsets(exe)
     core = os.path.join(tmp, "core")
     script = os.path.join(tmp, "dump.py")
     with open(script, "w") as f:
-        f.write("CORE = {!r}\nSYMBOLS = {!r}\n".format(core, SYMBOLS) + GDB)
+        f.write("CORE = {!r}\nSYMBOLS = {!r}\nGOT = {!r}\n".format(core, SYMBOLS, got) + GDB)
     cmd = ["gdb", "-batch", "-nx", "-x", script, "--args", exe]
     cmd += ["--ignored", "--exact", name, "--test-threads=1", "-q"]
-    env = dict(os.environ)
-    if arch(target) in TUNABLES:
-        env["GLIBC_TUNABLES"] = TUNABLES[arch(target)]
-    out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8", env=env).stdout
+    out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8").stdout
     symbols = dict((m[1], int(m[2], 16)) for m in re.finditer(r"^SYMBOL (\S+) (\S+)$", out, re.M))
+    libc = dict((m[1], int(m[2], 16)) for m in re.finditer(r"^LIBC (\S+) (\S+)$", out, re.M))
     public = [bytes.fromhex(m) for m in re.findall(r"^PUBLIC ([0-9a-f]*)$", out, re.M)]
     exit = re.search(r"^EXIT (\d+)$", out, re.M)
-    if len(set(symbols.values())) != len(SYMBOLS) or not exit or exit[1] != "0" or not os.path.exists(core):
+    if len(set(symbols.values())) != len(SYMBOLS) or len(libc) != len(got):
+        sys.exit("ct-binsec: {} failed under gdb:\n{}".format(name, out))
+    if not exit or exit[1] != "0" or not os.path.exists(core):
         sys.exit("ct-binsec: {} failed under gdb:\n{}".format(name, out))
     keep_first_thread(core)
-    return core, symbols, public
+    return core, symbols, libc, public
+
+
+def got_offsets(exe):
+    """The offset of the GOT entry of each function in `LIBC` the test binary
+    imports."""
+    out = subprocess.run(["readelf", "-dW", exe], stdout=subprocess.PIPE, check=True, encoding="utf-8").stdout
+    if not re.search(r"\(FLAGS\)\s+.*\bBIND_NOW\b", out):
+        sys.exit("ct-binsec: the test binary binds lazily, so its GOT may not hold glibc's picks")
+    out = subprocess.run(["readelf", "-rW", exe], stdout=subprocess.PIPE, check=True, encoding="utf-8").stdout
+    got = {}
+    for m in re.finditer(r"^([0-9a-f]+) +[0-9a-f]+ +R_\w+_(?:GLOB_DAT|JUMP_SLOT) +[0-9a-f]+ +(\w+)@", out, re.M):
+        if m[2] in LIBC:
+            got.setdefault(m[2], int(m[1], 16))
+    return got
 
 
 def keep_first_thread(path):
@@ -280,8 +357,13 @@ def keep_first_thread(path):
 
 def check(exe, name, target, timeout, tmp):
     """Returns BINSEC's verdict on `name`'s region, and its log."""
-    core, symbols, public = dump(exe, name, target, tmp)
+    core, symbols, libc, public = dump(exe, name, target, tmp)
     word = WORD[arch(target)]
+    stubs = {}
+    for fn, addr in libc.items():
+        # glibc may pick one function for memcpy and memmove, or for memcmp
+        # and bcmp, whose stubs are the same, and BINSEC takes one per address.
+        stubs[addr] = LIBC_STUBS[fn].format(addr=addr, word=word)
     declassify = ""
     for i, value in enumerate(public):
         if value:
@@ -297,6 +379,7 @@ def check(exe, name, target, timeout, tmp):
             SCRIPT.format(
                 word=word,
                 stubs=STUBS.get(arch(target), ""),
+                libc="".join(stubs.values()),
                 declassify=declassify,
                 secret=symbols["rind_ct_binsec_secret"],
                 public=symbols["rind_ct_binsec_public"],

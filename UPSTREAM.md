@@ -76,7 +76,7 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 ### Valgrind on ARM does not fault guard pages
 
 - **Breaks:** under valgrind on ARM, reading a `PROT_NONE` guard page does not fault, so `low::guard_pages`'s `planted_over_read_faults` fails.
-- **Workaround:** [moq-dev/rind#607](https://github.com/moq-dev/rind/pull/607) (open) leaves the `low::guard_pages` tests out of `__ctgrind` builds; plain `cargo test` still runs them.
+- **Workaround:** `rind/src/low/mod.rs` leaves the `low::guard_pages` tests out of `__ctgrind` builds; plain `cargo test` still runs them. Added in [moq-dev/rind#607](https://github.com/moq-dev/rind/pull/607).
 - **Reported:** no.
 - **Goes when:** valgrind faults the read on ARM, if the bounds tests are ever wanted under ctgrind.
 
@@ -103,8 +103,8 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 
 ### BINSEC cannot decode glibc's string functions
 
-- **Breaks:** glibc picks `memcpy` and friends for the CPU: EVEX ones with AVX-512, TSX ones that run `xtest`, and on aarch64 SVE ones, none of which BINSEC 0.11.3 decodes.
-- **Workaround:** `admin/ct-binsec` sets `GLIBC_TUNABLES` to hide AVX-512 from glibc. [moq-dev/rind#604](https://github.com/moq-dev/rind/pull/604) (open) replaces that with byte loops in place of glibc's `memcpy`, `memmove`, `memset`, `memcmp`, and `bcmp`, as valgrind replaces them, which also covers the TSX and SVE ones.
+- **Breaks:** glibc picks `memcpy` and friends for the CPU, and BINSEC 0.11.3 cannot decode the `xtest` in its TSX `_rtm` variants, the EVEX encodings of its AVX-512 ones, or aarch64's SVE `memcpy`.
+- **Workaround:** `admin/ct-binsec`'s `LIBC` replaces whichever `memcpy`, `memmove`, `memset`, `memcmp`, and `bcmp` glibc picked with byte loops, as valgrind replaces them. Added in [moq-dev/rind#604](https://github.com/moq-dev/rind/pull/604).
 - **Reported:** no.
 - **Goes when:** BINSEC decodes them; the byte loops then only shorten the search.
 

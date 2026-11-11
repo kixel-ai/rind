@@ -139,7 +139,10 @@ mod tests;
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod abi;
 
-#[cfg(all(test, unix))]
+// A bounds test, not a constant-time one: valgrind does not fault guard
+// pages on every target, so ctgrind builds leave it out.
+// See UPSTREAM.md, "Valgrind on ARM does not fault guard pages".
+#[cfg(all(test, unix, not(feature = "__ctgrind")))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod guard_pages;
 
