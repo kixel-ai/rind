@@ -345,6 +345,20 @@ checks pick Vale's tier. `Rind/X86_64/AeadDispatch.lean` models the AEAD API's
 function pointers (`Algorithm`'s `expand` and `Sealer`'s `Ops`), and
 `seal_in_place_append_tag`, which is generic over its buffer.
 
+`aead::gcm::Key`, which takes an IV of any length, is proven on the same
+tier for a 12-byte IV and full 16-byte tags, in `Rind/X86_64/GcmKey.lean`, a
+hand model over `AeadDispatch` that quotes `rind/src/aead/gcm.rs`. Its
+`new` for AES-128 or AES-256 holds the `aead::Key` for the algorithm, which
+refuses a key of another length, and its `seal_in_place_separate_tag`,
+`seal_in_place_append_tag`, `open_in_place`, and `open_in_place_separate_tag`
+are `aead::Key`'s: `gcm_key_new`, `gcm_key_seal`, `gcm_key_seal_append_tag`,
+`gcm_key_open`, and `gcm_key_open_separate_tag`. The seals take messages of 129
+bytes and more, as `aes_gcm_seal` does, and every theorem bounds AAD and
+messages under 2^32 bytes. The other IV lengths and truncated tags run
+`encrypt_any` and `decrypt_any`, which no proof covers; the model leaves those
+arms opaque, and [the by-8 intrinsics quest](/quest/m4/verified/aes-gcm-x86-intrinsics.md)
+owns them.
+
 `admin/prove` fails if a hand model's quote no longer matches the source, if
 the source names `Ops`, builds a `Masker`, or writes its `mask` outside the
 dispatch models' quotes, if it builds a digest `Algorithm` outside
@@ -375,9 +389,9 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   `Rind/HashSpecTest.lean`, their known-answer tests; `Rind/Vale.lean`,
   `Rind/ValeBytes.lean`, and `Rind/Gf128.lean`: Vale's AES and GF(2^128) specs
   and their lemmas.
-- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch}.lean`:
+- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch,GcmKey}.lean`:
   the hand models of the agreement, header-protection, digest, signature,
-  AEAD, and HMAC APIs' dispatch; `Rind/X86_64/HkdfExpand.lean` and
+  AEAD, and HMAC APIs' dispatch, and of `aead::gcm::Key` over the AEAD model; `Rind/X86_64/HkdfExpand.lean` and
   `Rind/X86_64/Kdf/{TypesExternal,FunsExternal}.lean`, of what the HKDF and
   PBKDF2 pass leaves opaque.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
@@ -386,7 +400,8 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   `Rind/X86_64/{DigestApi,HmacApi,Hkdf,Pbkdf2}.lean`, the digest, HMAC, HKDF,
   and PBKDF2 APIs'; `Rind/X86_64/HkdfAead.lean`, HKDF's conversion to AES-GCM
   keys; `Rind/X86_64/{AesKey,Ghash,PartialBlock,AesGcmGlue,AesGcm}.lean`:
-  the AES-GCM proof, on x86_64 alone.
+  the AES-GCM proof, on x86_64 alone; `Rind/X86_64/GcmKey.lean`, the hand model
+  of `aead::gcm::Key` and its proofs.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
   finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with

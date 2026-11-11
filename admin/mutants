@@ -145,6 +145,19 @@ while IFS= read -r file; do
     args+=(--exclude "$file")
 done < <(git grep -l '^// generated source' -- rind/src)
 
+# cargo-mutants' jobserver shares the CPUs between parallel jobs' builds, but
+# not their tests: each job's nextest would run one test per CPU. Split the
+# CPUs between the jobs' tests too.
+jobs=${CARGO_MUTANTS_JOBS:-1}
+prev=
+for arg in "$@"; do
+    [ "$arg" != -- ] || break
+    case $prev in -j | --jobs) jobs=$arg ;; esac
+    case $arg in -j?*) jobs=${arg#-j} ;; --jobs=*) jobs=${arg#--jobs=} ;; esac
+    prev=$arg
+done
+export NEXTEST_TEST_THREADS=$((($(nproc) + jobs - 1) / jobs))
+
 export "CARGO_TARGET_${triple}_RUNNER=$here/admin/mutants ${avx512:+--avx512 }--run"
 # A mutant that hangs the tests until the timeout is caught by them, so only
 # exit 3, timeouts alone, passes beside 0.

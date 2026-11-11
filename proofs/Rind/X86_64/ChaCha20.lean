@@ -310,7 +310,7 @@ theorem chacha20_new (key : Slice U8) :
   rcases x with a | e
   · obtain ⟨ha, hl⟩ := x_post
     have hk : key.length = 32 := by rw [Slice.length, ← ha]; exact a.property
-    simp [mid.chacha20.ChaCha20.new, low.ct.secret_slice, aead.quic.Masker.new, hk, lift, ha]
+    simp [mid.chacha20.ChaCha20.new, low.ct.into_secret, aead.quic.Masker.new, hk, ha]
   · simp [x_post]
 
 /-- A ChaCha20 header-protection key's mask for a sample: RFC 9001's, the

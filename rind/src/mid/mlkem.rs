@@ -1058,7 +1058,10 @@ mod tests {
                     dk.encapsulation_key().as_bytes().as_ref(),
                     &test.hex("ek")[..]
                 );
-                assert_eq!(dk.as_bytes().as_ref(), &test.hex("dk")[..]);
+                assert_eq!(
+                    low::ct::into_public(dk.as_bytes()).as_ref(),
+                    &test.hex("dk")[..]
+                );
             }
         }
 
@@ -1097,17 +1100,23 @@ mod tests {
                     ("encapsulation", "none") => {
                         let m = Message(test.hex("m").try_into().unwrap());
                         let (k, c) = ek().unwrap().encaps_internal(m);
-                        assert_eq!(k.as_ref(), &test.hex("k")[..]);
+                        assert_eq!(low::ct::into_public(*k.as_ref()), &test.hex("k")[..]);
                         assert_eq!(c.as_ref(), &test.hex("c")[..]);
                     }
                     ("decapsulation", "seed") => {
                         let dk = DecapKey::<P>::keygen_internal(&acvp_seed(test));
-                        assert_eq!(dk.as_bytes().as_ref(), &test.hex("dk")[..]);
-                        assert_eq!(dk.decaps(&ciphertext()).as_ref(), &test.hex("k")[..]);
+                        assert_eq!(
+                            low::ct::into_public(dk.as_bytes()).as_ref(),
+                            &test.hex("dk")[..]
+                        );
+                        assert_eq!(
+                            low::ct::into_public(*dk.decaps(&ciphertext()).as_ref()),
+                            &test.hex("k")[..]
+                        );
                     }
                     ("decapsulation", "expanded") => {
                         let k = dk().unwrap().decaps(&ciphertext());
-                        assert_eq!(k.as_ref(), &test.hex("k")[..]);
+                        assert_eq!(low::ct::into_public(*k.as_ref()), &test.hex("k")[..]);
                     }
                     ("decapsulationKeyCheck", "expanded") => {
                         assert_eq!(
