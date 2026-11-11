@@ -18,6 +18,22 @@ use fiat_crypto::{
     p384_scalar_32 as fiat_p384_scalar, p521_32 as fiat_p521,
 };
 
+/// `x`'s limbs, low first, which `buf` holds.
+fn limbs<'a, const N: usize>(x: &[u64], buf: &'a mut [Limb; N]) -> &'a [Limb] {
+    let buf = &mut buf[..2 * x.len()];
+    for (pair, word) in buf.as_chunks_mut::<2>().0.iter_mut().zip(x) {
+        *pair = [*word as u32, (*word >> 32) as u32];
+    }
+    buf
+}
+
+/// Joins pairs of `x`'s limbs into the words of `z`, as far as both go.
+fn join(x: &[Limb], z: &mut [u64]) {
+    for (z, [lo, hi]) in z.iter_mut().zip(x.as_chunks::<2>().0) {
+        *z = u64::from(*lo) | u64::from(*hi) << 32;
+    }
+}
+
 #[path = "mont.rs"]
 #[allow(clippy::duplicate_mod, reason = "shared with `limb64`")]
 pub(crate) mod mont;

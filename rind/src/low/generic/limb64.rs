@@ -16,6 +16,17 @@ use fiat_crypto::{
     p384_scalar_64 as fiat_p384_scalar, p521_64 as fiat_p521,
 };
 
+/// `x`'s limbs, which are its words, so `_buf` goes unused.
+fn limbs<'a, const N: usize>(x: &'a [u64], _buf: &'a mut [Limb; N]) -> &'a [Limb] {
+    x
+}
+
+/// Copies `x`'s limbs into the words of `z`, as far as both go.
+fn join(x: &[Limb], z: &mut [u64]) {
+    let n = x.len().min(z.len());
+    z[..n].copy_from_slice(&x[..n]);
+}
+
 #[path = "mont.rs"]
 #[allow(
     clippy::duplicate_mod,

@@ -2,14 +2,13 @@
 
 //! The s2n-bignum routines `low::PosInt` uses that multiply, with their
 //! contracts, in portable Rust over limbs of the width the parent module
-//! picks, and the portable backend's Montgomery multiplication, which armv7
-//! runs aws-lc's assembly for.
+//! picks, and the portable backend's Montgomery multiplication and squaring,
+//! which armv7 runs aws-lc's assembly for.
 //!
-//! A limb is half a register's width (`Wide`), so its products are one
-//! multiply instruction, or two for a 64-bit limb's low and high halves:
-//! 32-bit limbs where a 64 by 64-bit product's high half would be a library
-//! call, and 64-bit ones where the CPU has that instruction, for a quarter
-//! of the products.
+//! A limb is half of `Wide`, so its products are one multiply instruction,
+//! or two for a 64-bit limb's low and high halves: 32-bit limbs where a 64
+//! by 64-bit product's high half would be a library call, and 64-bit ones
+//! where the CPU has that instruction, for a quarter of the products.
 //!
 //! Each runs in time that depends only on its lengths, and its modulus's
 //! width in `bignum_montifier`, never on its values: loops run a count fixed
@@ -18,11 +17,12 @@
 //! branch on them.
 //!
 //! The algorithms are the textbook ones, each stated with its bound where
-//! it is defined: Montgomery multiplication and reduction (HAC 14.32 and
-//! 14.36), by Koç, Acar, and Kaliski's CIOS method.
+//! it is defined: Montgomery multiplication by Koç, Acar, and Kaliski's CIOS
+//! method, and Montgomery reduction (HAC 14.32) of a square formed with
+//! each cross product once (HAC 14.16).
 
 use super::super::bignum::{MAX_WORDS, nonzero, select, word};
-use super::{Limb, Wide};
+use super::{Limb, Wide, join, limbs};
 use crate::low::ct;
 
 /// Limbs in a 64-bit word.
@@ -40,9 +40,9 @@ const MAX_LIMBS: usize = MAX_WORDS * PER_WORD;
 /// depends on, and so reveals, m's width in limbs, as aws-lc's reveals its
 /// width in bits: an RSA key's encoding gives its primes' widths.
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
-    let n = m.len() * PER_WORD;
-    let m = limbs(m);
-    let m = &m[..n];
+    let mut m_limbs = [0; MAX_LIMBS];
+    let m = limbs(m, &mut m_limbs);
+    let n = m.len();
     let n0 = neg_inverse(m[0]);
 
     // 2^(bt) for m's top nonzero limb t, with b bits a limb, is below m, as
@@ -63,11 +63,10 @@ pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
         mod_double(r, m);
     }
     let e = Limb::BITS as usize * n;
-    let mut square = [0; MAX_LIMBS];
-    let square = &mut square[..n];
+    let mut square = [0; MAX_LIMBS * 2];
     for bit in (0..e.ilog2()).rev() {
-        mont_mul_limbs(square, r, r, m, n0);
-        r.copy_from_slice(square);
+        mont_sqr_limbs(&mut square[..2 * n], r, m, n0);
+        r.copy_from_slice(&square[n..2 * n]);
         if e >> bit & 1 == 1 {
             mod_double(r, m);
         }
@@ -84,33 +83,16 @@ pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
 /// p-fold Montgomery reduction w.r.t. a k-digit modulus m giving a k-digit
 /// answer.
 pub(crate) fn bignum_montredc(z: &mut [u64], x: &[u64], m: &[u64], p: u64) {
-    let (k, p) = (m.len() * PER_WORD, p as usize * PER_WORD);
-    let m = limbs(m);
-    let m = &m[..k];
-    let n0 = neg_inverse(m[0]);
+    let mut m_limbs = [0; MAX_LIMBS];
+    let m = limbs(m, &mut m_limbs);
+    let p = p as usize * PER_WORD;
     let mut t = [0; MAX_LIMBS * 2];
-    let t = &mut t[..p + k];
+    let t = &mut t[..p + m.len()];
     for (i, t) in t.iter_mut().enumerate() {
-        *t = limb(x, i);
+        *t = (word(x, i / PER_WORD) >> (Limb::BITS as usize * (i % PER_WORD))) as Limb;
     }
-
-    // Each step clears the lowest limb by adding a multiple of m. The carry
-    // out of the top of a step's sum waits in `top` for the next, as it lands
-    // where the next step's sum ends.
-    let mut top = 0;
-    for i in 0..p {
-        let u = t[i].wrapping_mul(n0);
-        let carry = mul_add(&mut t[i..i + k], m, u);
-        let sum = Wide::from(t[i + k]).wrapping_add(carry).wrapping_add(top);
-        t[i + k] = sum as Limb;
-        top = sum >> Limb::BITS;
-    }
-
-    // Below 2m, as x' <= 2^64p * m and the multiples are below 2^64p * m.
-    let r = &mut t[p..];
-    let below = cmp_lt_limbs(r, m);
-    sub_limbs_masked(r, m, Limb::wrapping_sub(0, top as Limb | (below ^ 1)));
-    join(r, z);
+    redc(t, m, neg_inverse(m[0]));
+    join(&t[p..], z);
 }
 
 /// Multiply z := x * y
@@ -119,11 +101,12 @@ pub(crate) fn bignum_montredc(z: &mut [u64], x: &[u64], m: &[u64], p: u64) {
 ///
 /// Truncates the result in general unless k >= m + n
 pub(crate) fn bignum_mul(z: &mut [u64], x: &[u64], y: &[u64]) {
-    let (m, n) = (x.len() * PER_WORD, y.len() * PER_WORD);
-    let (x, y) = (limbs(x), limbs(y));
+    let (mut x_limbs, mut y_limbs) = ([0; MAX_LIMBS], [0; MAX_LIMBS]);
+    let (x, y) = (limbs(x, &mut x_limbs), limbs(y, &mut y_limbs));
+    let n = y.len();
     let mut product = [0; MAX_LIMBS * 2];
-    for (i, x) in x[..m].iter().enumerate() {
-        product[i + n] = mul_add(&mut product[i..i + n], &y[..n], *x) as Limb;
+    for (i, x) in x.iter().enumerate() {
+        product[i + n] = mul_add(&mut product[i..i + n], y, *x) as Limb;
     }
     z.fill(0);
     join(&product, z);
@@ -142,29 +125,40 @@ pub(crate) fn bignum_mul(z: &mut [u64], x: &[u64], y: &[u64]) {
 pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
     let k = m.len();
     assert!(k >= 1 && z.len() == k && x.len() == k && y.len() == k);
-    let n = k * PER_WORD;
-    let (x, y, m) = (limbs(x), limbs(y), limbs(m));
-    let mut r = [0; MAX_LIMBS];
+    let mut buf = [[0; MAX_LIMBS]; 3];
+    let [x_limbs, y_limbs, m_limbs] = &mut buf;
+    let (x, y, m) = (limbs(x, x_limbs), limbs(y, y_limbs), limbs(m, m_limbs));
+    let mut t = [0; MAX_LIMBS + 2];
     // The low limb of `-m^-1 mod 2^64` is `-m^-1` mod a limb.
-    mont_mul_limbs(&mut r[..n], &x[..n], &y[..n], &m[..n], n0 as Limb);
-    join(&r[..n], z);
+    mont_mul_limbs(&mut t[..m.len() + 2], x, y, m, n0 as Limb);
+    join(&t, z);
 }
 
 /// `z = x^2 / 2^(64k) mod m`, as [`mont_mul`] takes them.
-#[cfg(rind_backend = "portable")]
+#[cfg(any(
+    rind_backend = "portable",
+    all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
+))]
 pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
-    mont_mul(z, x, x, m, n0);
+    let k = m.len();
+    assert!(k >= 1 && z.len() == k && x.len() == k);
+    let (mut x_limbs, mut m_limbs) = ([0; MAX_LIMBS], [0; MAX_LIMBS]);
+    let (x, m) = (limbs(x, &mut x_limbs), limbs(m, &mut m_limbs));
+    let n = m.len();
+    let mut t = [0; MAX_LIMBS * 2];
+    mont_sqr_limbs(&mut t[..2 * n], x, m, n0 as Limb);
+    join(&t[n..2 * n], z);
 }
 
-/// `z := x * y / 2^bn mod m`, for `x` and `y` below the odd `m`, each `n`
-/// limbs of `b` bits, where `n0` is `-m^-1 mod 2^b`.
+/// `t[..n] := x * y / 2^bn mod m`, for `x` and `y` below the odd `m`, each
+/// `n` limbs of `b` bits, where `t` is `n + 2` zero limbs and `n0` is
+/// `-m^-1 mod 2^b`.
 ///
-/// Koç, Acar, and Kaliski's CIOS method: each step adds `x[i] * y`, then
-/// clears the lowest limb by adding a multiple of `m` and shifts down a
-/// limb, keeping the running sum below 2m.
-fn mont_mul_limbs(z: &mut [Limb], x: &[Limb], y: &[Limb], m: &[Limb], n0: Limb) {
+/// Koç, Acar, and Kaliski's CIOS method: each step adds `x[i] * y` to `t`,
+/// then the multiple of `m` that clears its lowest limb, shifting `t` down a
+/// limb as it adds, which keeps `t` below 2m.
+fn mont_mul_limbs(t: &mut [Limb], x: &[Limb], y: &[Limb], m: &[Limb], n0: Limb) {
     let n = m.len();
-    let mut t = [0; MAX_LIMBS + 2];
     let t = &mut t[..n + 2];
     for x in x {
         let sum = Wide::from(t[n]).wrapping_add(mul_add(&mut t[..n], y, *x));
@@ -172,31 +166,98 @@ fn mont_mul_limbs(z: &mut [Limb], x: &[Limb], y: &[Limb], m: &[Limb], n0: Limb) 
         t[n + 1] = (sum >> Limb::BITS) as Limb;
 
         let u = t[0].wrapping_mul(n0);
-        let sum = Wide::from(t[n]).wrapping_add(mul_add(&mut t[..n], m, u));
-        t[n] = sum as Limb;
-        t[n + 1] = t[n + 1].wrapping_add((sum >> Limb::BITS) as Limb);
-        t.copy_within(1.., 0);
-        t[n + 1] = 0;
+        let mut carry = mul_add_limb(u, m[0], t[0], 0) >> Limb::BITS;
+        for j in 1..n {
+            let s = mul_add_limb(u, m[j], t[j], carry);
+            t[j - 1] = s as Limb;
+            carry = s >> Limb::BITS;
+        }
+        let sum = Wide::from(t[n]).wrapping_add(carry);
+        t[n - 1] = sum as Limb;
+        t[n] = t[n + 1].wrapping_add((sum >> Limb::BITS) as Limb);
     }
     let below = cmp_lt_limbs(&t[..n], m);
     let keep = Limb::wrapping_sub(0, t[n] | (below ^ 1));
     sub_limbs_masked(&mut t[..n], m, keep);
-    z.copy_from_slice(&t[..n]);
+}
+
+/// `t[n..] := x^2 / 2^bn mod m`, for `x` below the odd `m`, each `n` limbs
+/// of `b` bits, where `t` is `2n` zero limbs and `n0` is `-m^-1 mod 2^b`.
+///
+/// The square takes each product of two different limbs once, doubled, plus
+/// the square of each limb: n(n + 1) / 2 products where a multiplication
+/// takes n^2.
+fn mont_sqr_limbs(t: &mut [Limb], x: &[Limb], m: &[Limb], n0: Limb) {
+    let n = x.len();
+    let t = &mut t[..2 * n];
+    for i in 0..n {
+        t[i + n] = mul_add(&mut t[2 * i + 1..i + n], &x[i + 1..], x[i]) as Limb;
+    }
+
+    // The products sum to below x^2 / 2, so doubling them cannot overflow.
+    let mut out = 0;
+    for t in t.iter_mut() {
+        let next = *t >> (Limb::BITS - 1);
+        *t = *t << 1 | out;
+        out = next;
+    }
+
+    let mut carry = 0;
+    for (i, x) in x.iter().enumerate() {
+        let s = mul_add_limb(*x, *x, t[2 * i], carry);
+        t[2 * i] = s as Limb;
+        let s = Wide::from(t[2 * i + 1]).wrapping_add(s >> Limb::BITS);
+        t[2 * i + 1] = s as Limb;
+        carry = s >> Limb::BITS;
+    }
+
+    // x^2 is below m^2, so below 2^bn * m.
+    redc(t, m, n0);
+}
+
+/// `t[p..] := t / 2^bp mod m`, for `t` below 2^bp * m, where `p` is the
+/// limbs of `t` beyond `m`'s, each of `b` bits, and `n0` is `-m^-1 mod
+/// 2^b`.
+///
+/// Each step clears the lowest limb by adding a multiple of m. The carry out
+/// of the top of a step's sum waits in `top` for the next, as it lands where
+/// the next step's sum ends. The result is below 2m, as the multiples are
+/// below 2^bp * m too, so one subtraction reduces it.
+fn redc(t: &mut [Limb], m: &[Limb], n0: Limb) {
+    let k = m.len();
+    let p = t.len() - k;
+    let mut top = 0;
+    for i in 0..p {
+        let u = t[i].wrapping_mul(n0);
+        let carry = mul_add(&mut t[i..i + k], m, u);
+        let sum = Wide::from(t[i + k]).wrapping_add(carry).wrapping_add(top);
+        t[i + k] = sum as Limb;
+        top = sum >> Limb::BITS;
+    }
+
+    let r = &mut t[p..];
+    let below = cmp_lt_limbs(r, m);
+    sub_limbs_masked(r, m, Limb::wrapping_sub(0, top as Limb | (below ^ 1)));
 }
 
 /// `x += y * u`, returning the carry out of the top limb.
 fn mul_add(x: &mut [Limb], y: &[Limb], u: Limb) -> Wide {
     let mut carry = 0;
     for (x, y) in x.iter_mut().zip(y) {
-        // At most (2^b - 1)^2 + 2 (2^b - 1) = 2^2b - 1.
-        let t = Wide::from(u)
-            .wrapping_mul(Wide::from(*y))
-            .wrapping_add(Wide::from(*x))
-            .wrapping_add(carry);
+        let t = mul_add_limb(u, *y, *x, carry);
         *x = t as Limb;
         carry = t >> Limb::BITS;
     }
     carry
+}
+
+/// `a * b + c + d`, for a `d` that fits a limb, which fits `Wide`: at most
+/// (2^b - 1)^2 + 2 (2^b - 1) = 2^2b - 1.
+fn mul_add_limb(a: Limb, b: Limb, c: Limb, d: Wide) -> Wide {
+    Wide::from(a)
+        .wrapping_mul(Wide::from(b))
+        .wrapping_add(Wide::from(c))
+        .wrapping_add(d)
 }
 
 /// `r := 2r mod m`, for `r` below `m`.
@@ -240,30 +301,6 @@ fn sub_limbs_masked(x: &mut [Limb], y: &[Limb], keep: Limb) {
         let (diff, b2) = diff.overflowing_sub(borrow);
         *x = diff;
         borrow = Limb::from(b1 | b2);
-    }
-}
-
-/// Limb `i` of `x`, low first, or zero beyond its length.
-fn limb(x: &[u64], i: usize) -> Limb {
-    (word(x, i / PER_WORD) >> (Limb::BITS as usize * (i % PER_WORD))) as Limb
-}
-
-/// `x`'s limbs, low first.
-fn limbs(x: &[u64]) -> [Limb; MAX_LIMBS] {
-    let mut out = [0; MAX_LIMBS];
-    for (i, out) in out[..x.len() * PER_WORD].iter_mut().enumerate() {
-        *out = limb(x, i);
-    }
-    out
-}
-
-/// Joins `x`'s limbs into the words of `z`.
-fn join(x: &[Limb], z: &mut [u64]) {
-    for (z, limbs) in z.iter_mut().zip(x.as_chunks::<PER_WORD>().0) {
-        *z = 0;
-        for (i, limb) in limbs.iter().enumerate() {
-            *z |= u64::from(*limb) << (Limb::BITS as usize * i);
-        }
     }
 }
 
@@ -320,6 +357,10 @@ mod tests {
             low::bignum_negmodinv(&mut n0, &m[..1]);
             mont_mul(&mut ours, &sx, &sy, &sm, into_secret(n0[0]));
             low::mont_mul(&mut theirs, &x, &y, &m, n0[0]);
+            prop_assert_eq!(public(&ours), theirs.clone());
+
+            mont_sqr(&mut ours, &sx, &sm, into_secret(n0[0]));
+            low::mont_mul(&mut theirs, &x, &x, &m, n0[0]);
             prop_assert_eq!(public(&ours), theirs);
         }
     }
@@ -344,6 +385,8 @@ mod tests {
         // -m^-1 is one for an m of all ones.
         mont_mul(&mut ours, &x, &x, &m, 1);
         low::mont_mul(&mut theirs, &x, &x, &m, 1);
+        assert_eq!(ours, theirs);
+        mont_sqr(&mut ours, &x, &m, 1);
         assert_eq!(ours, theirs);
     }
 }
