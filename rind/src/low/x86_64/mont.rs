@@ -22,7 +22,7 @@ use super::cpu::HaveBmi2Adx;
 /// `z = x * y / 2^(64k) mod m`, for `x` and `y` below `m`, where `k` is the
 /// length of each and `n0` is `-m^-1 mod 2^64`.
 pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
-    debug_assert!(z.len() == m.len() && x.len() == m.len() && y.len() == m.len());
+    assert!(z.len() == m.len() && x.len() == m.len() && y.len() == m.len());
     match (HaveBmi2Adx::check(), m.len()) {
         (Some(_), 16 | 32) => karatsuba_mul(z, x, y, m, n0),
         (adx, k) if k >= 8 && k.is_multiple_of(4) => mul4x(z, x, y, m, n0, adx),
@@ -34,7 +34,7 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
 /// `z = x^2 / 2^(64k) mod m`, for `x` below `m`, where `k` is the length of
 /// each and `n0` is `-m^-1 mod 2^64`.
 pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
-    debug_assert!(z.len() == m.len() && x.len() == m.len());
+    assert!(z.len() == m.len() && x.len() == m.len());
     match (HaveBmi2Adx::check(), m.len()) {
         (Some(_), 16 | 32) => karatsuba_sqr(z, x, m, n0),
         (adx, k) if k >= 8 && k.is_multiple_of(8) => sqr8x(z, x, m, n0, adx),
@@ -89,8 +89,8 @@ fn mul4x(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64, adx: Option<Ha
     // token proves the CPU has the BMI2 and ADX `bn_mulx4x_mont` runs.
     unsafe {
         match adx {
-            Some(_) => bn_mulx4x_mont(z, x, y, m, &n0, k),
-            None => bn_mul4x_mont(z, x, y, m, &n0, k),
+            Some(_) => asm_call!(unsafe extern "sysv64" bn_mulx4x_mont(z, x, y, m, &n0, k)),
+            None => asm_call!(unsafe extern "sysv64" bn_mul4x_mont(z, x, y, m, &n0, k)),
         }
     };
 }
@@ -105,7 +105,9 @@ fn sqr8x(z: &mut [u64], x: &[u64], m: &[u64], n0: u64, adx: Option<HaveBmi2Adx>)
     // and writes for such a `k`, and it reads `n0` as one word. It runs
     // `mulx`, `adcx`, and `adox` only if `mulx_adx_capable` is nonzero,
     // which the token proves the CPU has.
-    unsafe { bn_sqr8x_mont(z.as_mut_ptr(), x.as_ptr(), mulx, m.as_ptr(), &n0, k) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" bn_sqr8x_mont(z.as_mut_ptr(), x.as_ptr(), mulx, m.as_ptr(), &n0, k))
+    };
 }
 
 /// `mont_mul` for any width from two words.
@@ -115,7 +117,9 @@ fn nohw(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
     // SAFETY: `z`, `x`, `y`, and `m` are each `k` words, as
     // `bn_mul_mont_nohw` reads and writes for such a `k`, and it reads `n0`
     // as one word.
-    unsafe { bn_mul_mont_nohw(z.as_mut_ptr(), x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, k) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" bn_mul_mont_nohw(z.as_mut_ptr(), x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, k))
+    };
 }
 
 // The routines take the System V ABI on every OS, since their text is

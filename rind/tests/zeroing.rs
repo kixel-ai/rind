@@ -138,6 +138,33 @@ fn mlkem768() {
 }
 
 #[test]
+fn hpke() {
+    use rind::hpke::*;
+    let suite = Suite {
+        kdf: &HKDF_SHA256,
+        aead: &AES_128_GCM,
+    };
+    for kem in [
+        &DHKEM_X25519_HKDF_SHA256,
+        &DHKEM_P256_HKDF_SHA256,
+        &DHKEM_P384_HKDF_SHA384,
+        &DHKEM_P521_HKDF_SHA512,
+    ] {
+        let key = PrivateKey::generate(kem).unwrap();
+        let (enc, sender) = Sender::new(suite, &key.public_key(), b"info").unwrap();
+        check_zeroed_on_drop(Box::pin(sender));
+        check_zeroed_on_drop(Box::pin(
+            Recipient::new(suite, &key, enc.as_ref(), b"info").unwrap(),
+        ));
+        check_zeroed_on_drop(Box::pin(
+            Exporter::recipient(&HKDF_SHA512, &key, enc.as_ref(), b"info").unwrap(),
+        ));
+        check_zeroed_on_drop(Box::pin(PrivateKey::derive(kem, b"ikm").unwrap()));
+        check_zeroed_on_drop(Box::pin(key));
+    }
+}
+
+#[test]
 fn hkdf() {
     use rind::hkdf::*;
 

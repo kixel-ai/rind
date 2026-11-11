@@ -11,7 +11,7 @@
 use super::cpu::HaveSha3;
 
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(128));
+    assert!(blocks.len().is_multiple_of(128));
     // Both routines run their loop at least once, so zero blocks would read
     // past `blocks`.
     if blocks.is_empty() {
@@ -35,7 +35,9 @@ unsafe fn compress_hw(_: HaveSha3, state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one, and the
     // token proves the CPU has the SHA-512 instructions, which Rust's `sha3`
     // feature includes.
-    unsafe { sha512_block_data_order_hw(state, blocks.as_ptr(), blocks.len() / 128) }
+    unsafe {
+        asm_call!(unsafe extern "C" sha512_block_data_order_hw(state, blocks.as_ptr(), blocks.len() / 128))
+    }
 }
 
 /// As [`compress_hw`], with the scalar routine.
@@ -45,7 +47,9 @@ unsafe fn compress_hw(_: HaveSha3, state: &mut [u64; 8], blocks: &[u8]) {
 /// `blocks` must hold at least one whole block.
 unsafe fn compress_nohw(state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one.
-    unsafe { sha512_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 128) }
+    unsafe {
+        asm_call!(unsafe extern "C" sha512_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 128))
+    }
 }
 
 /// The round constants, then a zero that ends the scalar routine's rounds.
@@ -121,8 +125,8 @@ mod tests {
             // SAFETY: `blocks` holds at least `n` blocks, and the CPU has the
             // SHA-512 instructions.
             unsafe {
-                sha512_block_data_order_nohw(&mut want, blocks.as_ptr(), n);
-                sha512_block_data_order_hw(&mut got, blocks.as_ptr(), n);
+                asm_call!(unsafe extern "C" sha512_block_data_order_nohw(&mut want, blocks.as_ptr(), n));
+                asm_call!(unsafe extern "C" sha512_block_data_order_hw(&mut got, blocks.as_ptr(), n));
             }
             assert_eq!(got, want, "{n} blocks");
         }

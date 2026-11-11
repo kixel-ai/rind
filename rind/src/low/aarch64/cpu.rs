@@ -22,7 +22,7 @@ pub(crate) fn leave_cpu_state(old: u32) {
 /// # Safety:
 /// There must be `len` writable bytes at `ptr`; with no alignment
 /// requirement.
-pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
+pub(in crate::low) unsafe fn zero_bytes(ptr: *mut u8, len: usize) {
     // SAFETY: inline assembly.
     unsafe {
         core::arch::asm!(
@@ -287,6 +287,28 @@ pub(in crate::low) fn prefetch_ro<T>(ptr: *const T) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::abi::call;
+
+    #[test]
+    fn abi() {
+        let mut bytes = [0xffu8; 100];
+        call!(zero_bytes, bytes.as_mut_ptr(), 100);
+        assert_eq!(bytes, [0; 100]);
+        call!(prefetch_ro::<u8>, bytes.as_ptr());
+        #[cfg(target_vendor = "apple")]
+        if std::arch::is_aarch64_feature_detected!("dit") {
+            // SAFETY: the CPU has DIT, which this leaves as it found it.
+            unsafe {
+                let on = call!(unsafe dit::read);
+                call!(unsafe dit::write, on);
+            }
+        }
+        let (a, b) = ([1u8; 37], [2u8; 37]);
+        // SAFETY: `a` and `b` are 37 readable bytes.
+        let diff = unsafe { call!(unsafe ct_compare_bytes, a.as_ptr(), b.as_ptr(), 37) };
+        assert_ne!(diff, 0);
+        assert_ne!(call!(ct_compare_16, &[1; 16], &[2; 16]), 0);
+    }
 
     /// Whether std detects every feature named, less those `test_toggle`
     /// denies.

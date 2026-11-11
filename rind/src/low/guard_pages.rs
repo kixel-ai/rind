@@ -287,7 +287,8 @@ fn compare_and_zero() {
         let src = message(len);
         a.each(&src, |a| {
             b.each(&src, |b| constant_time::verify(a, b).unwrap());
-            super::zero_bytes(a.as_mut_ptr(), a.len());
+            // SAFETY: `a` is `a.len()` writable bytes.
+            unsafe { super::zero_bytes(a.as_mut_ptr(), a.len()) };
             assert!(a.iter().all(|&x| x == 0));
         });
     }

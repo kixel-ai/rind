@@ -6,7 +6,7 @@ rind's `hpke` module offers the post-quantum KEMs registered for HPKE that `rind
 
 ## Plan
 
-Planned in the quest audit of 2026-11-09, which found these KEMs without an owner: [HPKE](/quest/m2/adoption/hpke.md) left them to the post-quantum epic, whose [X-Wing](/quest/m4/pq/x-wing.md) and [ML-KEM](/quest/m3/parity/ml-kem.md) quests stop at `rind::kem`.
+Planned in the quest audit of 2026-11-09, which found these KEMs without an owner: HPKE ([moq-dev/rind#585](https://github.com/moq-dev/rind/pull/585)) left them to the post-quantum epic, whose [X-Wing](/quest/m4/pq/x-wing.md) and [ML-KEM](/quest/m3/parity/ml-kem.md) quests stop at `rind::kem`.
 
 - These KEMs are not Diffie-Hellman: `Encap` and `Decap` are the KEM's own, and `DeriveKeyPair` takes the KEM's seed, as draft-ietf-hpke-pq defines it. That makes this quest the consumer ML-KEM's decapsulation key import and export waited for; add the seed form here, and nothing wider.
 - MLKEM768-P256 and MLKEM1024-P384 (`0x0050`, `0x0051`) join in [their own quest](/quest/m4/pq/cfrg-hybrids.md), which waits on the CFRG draft.
@@ -16,6 +16,5 @@ Planned in the quest audit of 2026-11-09, which found these KEMs without an owne
 
 ## Required
 
-- [HPKE and ECH](/quest/m2/adoption/hpke.md) - the `hpke` module and its KEM interface
 - [ML-KEM-512 and ML-KEM-1024](/quest/m3/parity/ml-kem.md) - ML-KEM-512 and ML-KEM-1024, and the typed KEM API
 - [X-Wing](/quest/m4/pq/x-wing.md) - X-Wing and its seed import

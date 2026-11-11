@@ -14,6 +14,7 @@ pub(super) mod hash;
 pub(super) mod hkdf;
 pub(super) mod hmac;
 pub(super) mod hmac_drbg;
+pub(super) mod hpke;
 pub(super) mod kem;
 pub(super) mod oaep;
 pub(super) mod pbkdf2;
