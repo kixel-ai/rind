@@ -27,6 +27,7 @@ fi
 slow=(
     aead::gcm::tests::cavp
     high::agreement::tests::agrees
+    high::agreement::tests::cavp_ecdh
     high::agreement::tests::decompresses_points
     high::agreement::tests::loads_in_constant_time
     high::agreement::tests::round_trips
@@ -46,8 +47,10 @@ slow=(
     high::ecdsa::tests::smoke_test_ecdsa_sign
     high::ecdsa::tests::smoke_test_loading_keys
     high::hmac::tests::cavp
+    high::hmac_drbg::tests::cavp
     high::hpke::tests::derives_from_any_length
     high::hpke::tests::every_suite_round_trips
+    high::hpke::tests::opens_compressed_enc
     high::hpke::tests::rfc9180
     high::hpke::tests::secret_decapsulation
     high::hpke::tests::wycheproof_decrypt
