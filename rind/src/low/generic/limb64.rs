@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! The portable public-key arithmetic on 64-bit limbs, for 64-bit targets,
-//! which form a 128-bit product in one or two multiply instructions, for a
-//! quarter of [`super::limb32`]'s products.
+//! The portable public-key arithmetic on 64-bit limbs, for 64-bit targets
+//! and wasm32 with its `wide-arithmetic` feature, which form a 128-bit
+//! product in one or two multiply instructions, for a quarter of
+//! [`super::limb32`]'s products.
 //!
 //! Each module here is also `limb32`'s, over 32-bit limbs.
-
-/// One limb.
-type Limb = u64;
-/// Twice a limb, which holds a product of two and two more limbs.
-type Wide = u128;
 
 use fiat_crypto::{
     p256_64 as fiat_p256, p256_scalar_64 as fiat_p256_scalar, p384_64 as fiat_p384,
     p384_scalar_64 as fiat_p384_scalar, p521_64 as fiat_p521,
 };
+
+/// One limb.
+type Limb = u64;
+/// Twice a limb, which holds a product of two and two more limbs.
+type Wide = u128;
 
 /// `x`'s limbs, which are its words, so `_buf` goes unused.
 fn limbs<'a, const N: usize>(x: &'a [u64], _buf: &'a mut [Limb; N]) -> &'a [Limb] {

@@ -157,6 +157,10 @@ pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
 /// Koç, Acar, and Kaliski's CIOS method: each step adds `x[i] * y` to `t`,
 /// then the multiple of `m` that clears its lowest limb, shifting `t` down a
 /// limb as it adds, which keeps `t` below 2m.
+#[cfg(any(
+    rind_backend = "portable",
+    all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
+))]
 fn mont_mul_limbs(t: &mut [Limb], x: &[Limb], y: &[Limb], m: &[Limb], n0: Limb) {
     let n = m.len();
     let t = &mut t[..n + 2];

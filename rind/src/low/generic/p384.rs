@@ -356,11 +356,7 @@ fn fe_to_mont(x: &[Limb; LIMBS]) -> Fe {
 
 /// `x + 2^384 top - m` if that is not negative, else `x`, for `x + 2^384
 /// top` below 2m.
-pub(super) fn subtract_if_above(
-    x: &[Limb; LIMBS],
-    top: Limb,
-    m: &[Limb; LIMBS],
-) -> [Limb; LIMBS] {
+pub(super) fn subtract_if_above(x: &[Limb; LIMBS], top: Limb, m: &[Limb; LIMBS]) -> [Limb; LIMBS] {
     let (diff, borrow) = sub(x, m);
     let mut r = [0; LIMBS];
     fp::fiat_p384_selectznz(&mut r, opaque(borrow & !(top as u8)), &diff, x);

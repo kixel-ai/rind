@@ -61,28 +61,22 @@ mod generic {
     pub(super) mod ctr;
     #[cfg(test)]
     pub(crate) mod ghash;
-    // The portable backend's public-key arithmetic on limbs as wide as the
-    // target's registers, which armv7 shares, also built on both widths in
+    // The portable backend's public-key arithmetic on limbs of `rind_limb`
+    // bits, whose 32-bit form armv7 shares, also built on both widths in
     // x86_64 and aarch64 tests to check each against s2n-bignum.
     #[cfg(any(
-        all(
-            any(rind_backend = "arm", rind_backend = "portable"),
-            not(target_pointer_width = "64")
-        ),
+        all(any(rind_backend = "arm", rind_backend = "portable"), rind_limb = "32"),
         all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
     ))]
     pub(crate) mod limb32;
     #[cfg(any(
-        all(rind_backend = "portable", target_pointer_width = "64"),
+        all(rind_backend = "portable", rind_limb = "64"),
         all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
     ))]
     pub(crate) mod limb64;
-    #[cfg(all(
-        any(rind_backend = "arm", rind_backend = "portable"),
-        not(target_pointer_width = "64")
-    ))]
+    #[cfg(all(any(rind_backend = "arm", rind_backend = "portable"), rind_limb = "32"))]
     pub(crate) use limb32 as limbs;
-    #[cfg(all(rind_backend = "portable", target_pointer_width = "64"))]
+    #[cfg(all(rind_backend = "portable", rind_limb = "64"))]
     pub(crate) use limb64 as limbs;
     // Every target's MD5: no CPU has instructions for it.
     pub(super) mod md5;
@@ -167,18 +161,8 @@ pub(crate) use generic::{
         bignum_add, bignum_bitsize, bignum_cmp_lt, bignum_coprime, bignum_copy_row_from_table,
         bignum_ctz, bignum_digitsize, bignum_modsub, bignum_negmodinv, bignum_optsub,
     },
-    limbs::mont::{bignum_montifier, bignum_montredc, bignum_mul},
     chacha20poly1305,
-    mlkem::{mlkem_compress_d4, mlkem_compress_d10, mlkem_frombytes, mlkem_unpack},
-    mlkem_poly::{
-        mlkem_basemul_k3, mlkem_intt, mlkem_mulcache_compute, mlkem_ntt, mlkem_reduce,
-        mlkem_rej_uniform_vartime, mlkem_tobytes, mlkem_tomont,
-    },
-    mlkem768::mlkem768_sample_poly_ntt_8x,
-    // libcrux's P-256 runs 64-bit limbs and recomputes the nonce's point to
-    // sign, it exports P-384 only as ECDH, and it has no P-521, so rind
-    // composes their arithmetic itself.
-    order::{bignum_demont, bignum_modadd, bignum_modinv, bignum_montmul},
+    limbs::mont::{bignum_montifier, bignum_montredc, bignum_mul},
     limbs::p256::{
         bignum_add_p256, bignum_demont_p256, bignum_inv_p256, bignum_mod_n256, bignum_montmul_p256,
         bignum_montsqr_p256, bignum_neg_p256, bignum_tomont_p256, p256_montjadd, p256_montjdouble,
@@ -195,6 +179,16 @@ pub(crate) use generic::{
         bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd, p521_jdouble, p521_jmixadd,
         p521_jscalarmul,
     },
+    mlkem::{mlkem_compress_d4, mlkem_compress_d10, mlkem_frombytes, mlkem_unpack},
+    mlkem_poly::{
+        mlkem_basemul_k3, mlkem_intt, mlkem_mulcache_compute, mlkem_ntt, mlkem_reduce,
+        mlkem_rej_uniform_vartime, mlkem_tobytes, mlkem_tomont,
+    },
+    mlkem768::mlkem768_sample_poly_ntt_8x,
+    // libcrux's P-256 runs 64-bit limbs and recomputes the nonce's point to
+    // sign, it exports P-384 only as ECDH, and it has no P-521, so rind
+    // composes their arithmetic itself.
+    order::{bignum_demont, bignum_modadd, bignum_modinv, bignum_montmul},
 };
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 pub(crate) use portable::{

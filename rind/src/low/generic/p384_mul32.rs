@@ -176,10 +176,9 @@ fn add(a: u32, b: u32, c: u32) -> (u32, u32) {
 /// -n_384^-1 mod 2^32.
 const N_INV_NEG: u32 = 0xe88f_dc45;
 
-
 /// Checks rind's Montgomery multiplication and squaring against
-/// fiat-crypto's, on every target with 32-bit limbs, since armv7 compiles them to different
-/// instructions.
+/// fiat-crypto's, on every target with 32-bit limbs, since armv7 compiles
+/// them to different instructions.
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod fiat_tests {

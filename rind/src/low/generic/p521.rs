@@ -448,11 +448,7 @@ fn sub(x: &[Limb; LIMBS], y: &[Limb; LIMBS]) -> ([Limb; LIMBS], Limb) {
 }
 
 /// `if_nonzero` if `flag` is 1, else `if_zero`.
-fn select_words(
-    flag: u8,
-    if_zero: &[Limb; LIMBS],
-    if_nonzero: &[Limb; LIMBS],
-) -> [Limb; LIMBS] {
+fn select_words(flag: u8, if_zero: &[Limb; LIMBS], if_nonzero: &[Limb; LIMBS]) -> [Limb; LIMBS] {
     let mask = Limb::from(flag).wrapping_neg();
     core::array::from_fn(|i| (if_nonzero[i] & mask) | (if_zero[i] & !mask))
 }
