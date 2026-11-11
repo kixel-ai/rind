@@ -130,7 +130,7 @@ Each crate's README shows its setup.
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
 | [rind-dart][] | Dart and Flutter, through FFI: the `rind` package, unpublished until its first pub.dev release |
 | [rind-python][] | Python, as the `pyrind` package on PyPI, with rind's own API |
-| [pyrind-cryptography][] | Python, pyca/cryptography's `hazmat` API on pyrind, unpublished until its first PyPI release |
+| [pyrind-cryptography][] | Python, as the `pyrind-cryptography` package on PyPI, with pyca/cryptography's `hazmat` API on pyrind |
 
 ## Wiping keys
 
