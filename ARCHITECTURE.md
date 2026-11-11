@@ -35,6 +35,9 @@ The modules:
   peer keys parsed from a point, compressed or not, or a
   `SubjectPublicKeyInfo`.
 - `kem`: ML-KEM-768.
+- `hpke`: RFC 9180's base mode and secret export, over DHKEM with X25519,
+  P-256, P-384, and P-521, HKDF, and the AEADs: a recipient's keys, and
+  sender, recipient, and export-only contexts.
 - `rsa`: RSA-OAEP encryption and decryption, with SHA-1 under `legacy`,
   and the key sizes and public-key components both RSA modules take.
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and

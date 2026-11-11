@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Copy aws-lc's and BoringSSL's vector files that rind's tests run into
-# thirdparty/vectors, from the revisions pinned here. Both repositories are
+# Copy aws-lc's and BoringSSL's vector files that rind's tests run, and RFC
+# 9180's HPKE vectors, into thirdparty/vectors, from the revisions pinned here. Both repositories are
 # hundreds of megabytes, so rind keeps copies of the files rather than
 # submodules. Bump a revision and rerun to update them.
 set -euo pipefail
 
 AWS_LC=2f9a0e95cc2c29235d9b98db8cf86e22b271b35a
 BORINGSSL=0131ae9d78e42fcc2c1811315e62410ad96d8230
+# RFC 9180's repository. hpkewg/hpke's revision of it repeats these vectors
+# unchanged.
+HPKE=b1f7cb0cdeab6906c61b3d6574e8bdfdbe1cd3fb
 
 # aws-lc's copy of each file BoringSSL also has holds every BoringSSL vector
 # for rind's algorithms, so BoringSSL contributes only its own files.
@@ -63,3 +66,11 @@ fetch() {
 
 fetch aws/aws-lc "$AWS_LC" aws-lc "${aws_lc_files[@]}"
 fetch google/boringssl "$BORINGSSL" boringssl "${boringssl_files[@]}"
+
+# The 5.9 MB file holds every mode; rind keeps base mode, one vector per
+# line, short of X448 (KEM 0x0021), which it does not offer.
+rm -rf rfc9180
+mkdir rfc9180
+curl --fail --silent --show-error --location \
+    "https://raw.githubusercontent.com/cfrg/draft-irtf-cfrg-hpke/$HPKE/test-vectors.json" |
+    jq -c '.[] | select(.mode == 0 and .kem_id != 33)' >rfc9180/test-vectors.json

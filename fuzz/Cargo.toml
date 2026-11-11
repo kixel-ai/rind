@@ -137,6 +137,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "hpke"
+path = "fuzzer/hpke.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "oaep"
 path = "fuzzer/oaep.rs"
 test = false

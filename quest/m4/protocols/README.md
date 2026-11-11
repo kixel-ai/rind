@@ -4,7 +4,7 @@
 
 rind offers the primitives that protocols above TLS build on, so their Rust implementations can run entirely on rind:
 
-- HPKE's post-quantum KEMs, and MLS through rind-openmls, on top of [HPKE](/quest/m2/adoption/hpke.md) (RFC 9180), which moved to m2 on 2026-11-10;
+- HPKE's post-quantum KEMs, and MLS through rind-openmls, on top of `rind::hpke` (RFC 9180);
 - RSA blind signatures (RFC 9474) and VOPRF/OPRF (RFC 9497), for Privacy Pass;
 - FROST threshold Schnorr signatures (RFC 9591);
 - ECVRF (RFC 9381);

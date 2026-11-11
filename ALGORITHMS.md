@@ -41,6 +41,7 @@ SHA-512.
 | SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  |  |  |  |
 | HMAC | Graviola ⚡ |  |  |  |  |
 | HKDF | rind ⚡ |  |  |  |  |
+| HPKE, over the rows it builds on | rind |  |  |  |  |
 | PBKDF2 | rind |  |  |  |  |
 | X25519 | s2n-bignum ✓ |  |  |  |  |
 | Ed25519 | s2n-bignum ✓ + Graviola |  |  |  |  |
@@ -98,6 +99,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  | OpenSSL ⚡ + Graviola | HACL* + Graviola |
 | HMAC | Graviola ⚡ |  |  |  |
 | HKDF | rind ⚡ |  |  |  |
+| HPKE, over the rows it builds on | rind |  |  |  |
 | PBKDF2 | rind |  |  |  |
 | X25519 | s2n-bignum ✓ |  | BoringSSL ⚡ + curve25519-dalek ⚡ | curve25519-dalek ⚡ |
 | Ed25519 | s2n-bignum ✓ + Graviola |  | curve25519-dalek ⚡ + rind ⚡ |  |
@@ -253,9 +255,9 @@ not cover rind's in-place calls.
 | `bignum_neg_p256` | `bignum_neg_p256`: none | `bignum_neg_p256`: none |
 | `bignum_neg_p384` | `bignum_neg_p384`: `BIGNUM_NEG_P384_SUBROUTINE_SAFE` | `bignum_neg_p384`: `BIGNUM_NEG_P384_SUBROUTINE_SAFE` |
 | `bignum_neg_p521` | `bignum_neg_p521`: `BIGNUM_NEG_P521_SUBROUTINE_SAFE` | `bignum_neg_p521`: `BIGNUM_NEG_P521_SUBROUTINE_SAFE` |
-| `bignum_negmodinv` | `bignum_negmodinv`: none | not imported |
+| `bignum_negmodinv` | `bignum_negmodinv`: none | `bignum_negmodinv`: none |
 | `bignum_optsub` | `bignum_optsub`: none | `bignum_optsub`: `BIGNUM_OPTSUB_SUBROUTINE_SAFE` |
-| `bignum_sqr_p521` | `bignum_sqr_p521`: `BIGNUM_SQR_P521_SUBROUTINE_SAFE` | not imported |
+| `bignum_sqr_p521` | `bignum_sqr_p521`: `BIGNUM_SQR_P521_SUBROUTINE_SAFE` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` |
 | `bignum_sqr_p521_alt` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` | not imported |
 | `bignum_tomont_p256` | `bignum_tomont_p256`: none | `bignum_tomont_p256`: none |
 | `bignum_tomont_p256_alt` | `bignum_tomont_p256_alt`: none | not imported |
