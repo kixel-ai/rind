@@ -14,7 +14,9 @@ use crate::mid::rng::{RandomSource, SystemRandom};
 /// How many bytes of context or identity one side may pass.
 const MAX_LABEL: usize = 1024;
 
-/// RFC 9383's P-256 point M, SEC1 compressed.
+/// RFC 9383's P-256 point M, SEC1 compressed. The handshake uses the
+/// uncompressed form; this is what the unit test checks that form against.
+#[cfg(test)]
 const M_COMPRESSED: [u8; 33] = [
     0x02, 0x88, 0x6e, 0x2f, 0x97, 0xac, 0xe4, 0x6e, 0x55, 0xba, 0x9d, 0xd7, 0x24, 0x25, 0x79, 0xf2,
     0x99, 0x3b, 0x64, 0xe1, 0x6e, 0xf3, 0xdc, 0xab, 0x95, 0xaf, 0xd4, 0x97, 0x33, 0x3d, 0x8f, 0xa1,
@@ -22,6 +24,7 @@ const M_COMPRESSED: [u8; 33] = [
 ];
 
 /// RFC 9383's P-256 point N, SEC1 compressed.
+#[cfg(test)]
 const N_COMPRESSED: [u8; 33] = [
     0x03, 0xd8, 0xbb, 0xd6, 0xc6, 0x39, 0xc6, 0x29, 0x37, 0xb0, 0x4d, 0x99, 0x7f, 0x38, 0xc3, 0x77,
     0x07, 0x19, 0xc6, 0x29, 0xd7, 0x01, 0x4d, 0x49, 0xa2, 0x4b, 0x4f, 0x98, 0xba, 0xa1, 0x29, 0x2b,
@@ -588,23 +591,10 @@ impl Keys {
 }
 
 fn points() -> Result<(Affine, Affine), Error> {
-    // Decompress once. Later handshakes reuse the affine points. The
-    // uncompressed constants are what the transcript hashes, and they have
-    // to be those decompressions.
-    static POINTS: std::sync::OnceLock<(Affine, Affine)> = std::sync::OnceLock::new();
-    if let Some(points) = POINTS.get() {
-        return Ok(*points);
-    }
-    let decoded = (
-        Affine::from_compressed(&M_COMPRESSED)?,
-        Affine::from_compressed(&N_COMPRESSED)?,
-    );
-    if decoded.0.to_uncompressed() != M_UNCOMPRESSED
-        || decoded.1.to_uncompressed() != N_UNCOMPRESSED
-    {
-        return Err(Error::Fault);
-    }
-    Ok(*POINTS.get_or_init(|| decoded))
+    Ok((
+        Affine::from_uncompressed(&M_UNCOMPRESSED)?,
+        Affine::from_uncompressed(&N_UNCOMPRESSED)?,
+    ))
 }
 
 /// `scalar * point`, with the generator standing in for the identity.

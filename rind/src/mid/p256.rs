@@ -39,9 +39,9 @@ impl PublicKey {
     /// `x` is below the field prime, and a point on the curve has that `x`.
     pub(crate) fn decompress<'a>(bytes: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let _entry = low::Entry::new_public();
-        let point = AffineMontPoint::from_x962_compressed(bytes)?;
+        let point = Affine::from_compressed(bytes)?;
         let output = output.get_mut(..Self::BYTES).ok_or(Error::WrongLength)?;
-        output.copy_from_slice(&point.as_bytes_uncompressed());
+        output.copy_from_slice(&point.to_uncompressed());
         Ok(output)
     }
 }
@@ -535,6 +535,8 @@ impl Affine {
     }
 
     /// Decodes a compressed X9.62 point.
+    ///
+    /// Holds an `Entry`, as [`Self::from_uncompressed`] does.
     pub(crate) fn from_compressed(bytes: &[u8]) -> Result<Self, Error> {
         low::Entry::assert_held();
         AffineMontPoint::from_x962_compressed(bytes).map(Self)
