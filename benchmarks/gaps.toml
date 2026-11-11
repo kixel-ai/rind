@@ -30,13 +30,8 @@ reason = "Noise: other work kept 5 CPUs busy during this run, in which PSS signi
 
 [[gap]]
 operations = ["ed25519-verify"]
-on = ["ovh-iad", "ovh-sea"]
+on = ["ovh-sea"]
 reason = "These VPSes' virtual CPUs hide ADX, and there rind ran s2n-bignum's verified `_alt` routines, which RustCrypto's AVX2 backend beats. Closed by [#415](https://github.com/moq-dev/rind/pull/415), after this data, which runs a port of that backend there: its collection measured rind at 1.08× RustCrypto's time on both VPSes. The next refresh drops this entry."
-
-[[gap]]
-operations = ["ed25519-sign"]
-on = ["ovh-iad"]
-reason = "Noise from the VPS's other tenants: `ovh-sea`, the same virtual CPU, measured 0.92× aws-lc-rs's time, and no dedicated host shows it. The next refresh rechecks it."
 
 [[gap]]
 operations = ["p256-ecdsa-verify/*"]
