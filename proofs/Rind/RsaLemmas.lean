@@ -164,4 +164,55 @@ theorem wordsNat_take_drop (l : List U64) (i : Nat) :
       2 ^ (64 * (l.take i).length) * rind.spec.wordsNat (l.drop i) := by
   rw [← wordsNat_append, List.take_append_drop]
 
+theorem wordsNat_take_mod (l : List U64) (k : Nat) :
+    rind.spec.wordsNat (l.take k) = rind.spec.wordsNat l % 2 ^ (64 * k) := by
+  have h := wordsNat_take_drop l k
+  by_cases hk : k ≤ l.length
+  · have hlen : (l.take k).length = k := by simp [hk]
+    rw [hlen] at h
+    have hlt := wordsNat_lt' (l.take k)
+    rw [hlen] at hlt
+    rw [h, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hlt]
+  · have ht : l.take k = l := List.take_of_length_le (by omega)
+    have hlt := wordsNat_lt' l
+    rw [ht, Nat.mod_eq_of_lt (lt_of_lt_of_le hlt (Nat.pow_le_pow_right (by norm_num) (by omega)))]
+
+/-! ## Montgomery exponentiation -/
+
+/-- A Montgomery product's result, by `R` coprime to `n`, cancelled. -/
+theorem mont_cancel {n R a b : Nat} (hR : Nat.Coprime R n) (h : a * R ≡ b * R [MOD n]) :
+    a ≡ b [MOD n] :=
+  Nat.ModEq.cancel_right_of_coprime (by rw [Nat.gcd_comm]; exact hR) h
+
+theorem coprime_two_pow_odd {n : Nat} (hn : n % 2 = 1) (k : Nat) : Nat.Coprime (2 ^ k) n :=
+  Nat.Coprime.pow_left _ ((Nat.coprime_two_left).mpr (Nat.odd_iff.mpr hn))
+
+/-- One bit of `e`, down from its top: `e / 2^j` is twice `e / 2^(j+1)`, plus the bit. -/
+theorem div_two_pow_succ (e j : Nat) : e / 2 ^ j = 2 * (e / 2 ^ (j + 1)) + e / 2 ^ j % 2 := by
+  rw [Nat.pow_succ, ← Nat.div_div_eq_div_mul]; omega
+
+section mont_exp
+variable {N R A C : Nat} (hR : Nat.Coprime R N)
+include hR
+
+/-- Squaring `C^t` in the Montgomery domain gives `C^(2t)`. -/
+theorem mont_exp_sqr {S t : Nat} (hA : A ≡ C ^ t * R [MOD N]) (hS : S * R ≡ A * A [MOD N]) :
+    S ≡ C ^ (2 * t) * R [MOD N] := by
+  apply mont_cancel hR
+  refine hS.trans ((hA.mul hA).trans (by unfold Nat.ModEq; congr 1; ring))
+
+/-- Multiplying `C^t` by `C` in the Montgomery domain gives `C^(t+1)`. -/
+theorem mont_exp_mul {M Cm t : Nat} (hA : A ≡ C ^ t * R [MOD N]) (hCm : Cm ≡ C * R [MOD N])
+    (hM : M * R ≡ A * Cm [MOD N]) : M ≡ C ^ (t + 1) * R [MOD N] := by
+  apply mont_cancel hR
+  refine hM.trans ((hA.mul hCm).trans (by unfold Nat.ModEq; congr 1; ring))
+
+/-- Multiplying `C^t` by `C` itself leaves the Montgomery domain with `C^(t+1)`. -/
+theorem mont_exp_out {M t : Nat} (hA : A ≡ C ^ t * R [MOD N]) (hM : M * R ≡ A * C [MOD N]) :
+    M ≡ C ^ (t + 1) [MOD N] := by
+  apply mont_cancel hR
+  refine hM.trans ((hA.mul_right C).trans (by unfold Nat.ModEq; congr 1; ring))
+
+end mont_exp
+
 end rind.spec.rsa
