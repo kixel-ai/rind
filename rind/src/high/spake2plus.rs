@@ -1250,24 +1250,20 @@ mod tests {
         let w1 = [0xa5; 40];
         ct::secret_slice(&w0);
         ct::secret_slice(&w1);
-        let prover = ProverSecrets::new(&w0, &w1).unwrap();
-        let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
-        let (share_p, prover) = prover
-            .start(&MATTER_PASE, b"CHIP", b"commissionee", b"commissioner")
-            .unwrap();
-        let (share_v, confirm_v, verifier) = verifier
-            .start(
-                &MATTER_PASE,
-                b"CHIP",
-                b"commissionee",
-                b"commissioner",
-                &share_p,
-            )
-            .unwrap();
-        let (confirm_p, key_p) = prover.finish(&share_v, &confirm_v).unwrap();
-        let key_v = verifier.finish(&confirm_p).unwrap();
-        ct::public_slice(key_p.as_ref());
-        ct::public_slice(key_v.as_ref());
-        assert_eq!(key_p.as_ref(), key_v.as_ref());
+        for suite in [&RFC9383, &MATTER_PASE] {
+            let prover = ProverSecrets::new(&w0, &w1).unwrap();
+            let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
+            let (share_p, prover) = prover
+                .start(suite, b"CHIP", b"commissionee", b"commissioner")
+                .unwrap();
+            let (share_v, confirm_v, verifier) = verifier
+                .start(suite, b"CHIP", b"commissionee", b"commissioner", &share_p)
+                .unwrap();
+            let (confirm_p, key_p) = prover.finish(&share_v, &confirm_v).unwrap();
+            let key_v = verifier.finish(&confirm_p).unwrap();
+            ct::public_slice(key_p.as_ref());
+            ct::public_slice(key_v.as_ref());
+            assert_eq!(key_p.as_ref(), key_v.as_ref());
+        }
     }
 }
