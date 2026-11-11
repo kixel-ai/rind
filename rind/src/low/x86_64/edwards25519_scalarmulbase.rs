@@ -8926,3 +8926,18 @@ pub(super) static edwards25519_scalarmulbase_constant: [u64; 6072] = [
     0x2503a1d065a497b9,
     0x0fef911191df895f,
 ];
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        edwards25519_scalarmulbase,
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
+}

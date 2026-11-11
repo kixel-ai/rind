@@ -10,14 +10,18 @@ pub(crate) fn mlkem_compress_d10(r: &mut [u8; 320], a: &[i16; 256]) {
     // SAFETY: `r` and `a` are the sizes the routine writes and reads, `a` and
     // the table are 32-byte aligned for its aligned loads, and `super::mlkem`
     // calls this only with AVX2.
-    unsafe { mlkem_poly_compress_d10_avx2_asm(r, a, &COMPRESS_D10_DATA) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" mlkem_poly_compress_d10_avx2_asm(r, a, &COMPRESS_D10_DATA))
+    }
 }
 
 /// `ByteEncode_4(Compress_4(a))`, for `a` in `[0, Q)`.
 pub(crate) fn mlkem_compress_d4(r: &mut [u8; 128], a: &[i16; 256]) {
     assert!((a.as_ptr() as usize).is_multiple_of(32));
     // SAFETY: as for `mlkem_compress_d10`.
-    unsafe { mlkem_poly_compress_d4_avx2_asm(r, a, &COMPRESS_D4_DATA) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" mlkem_poly_compress_d4_avx2_asm(r, a, &COMPRESS_D4_DATA))
+    }
 }
 
 #[repr(C, align(32))]

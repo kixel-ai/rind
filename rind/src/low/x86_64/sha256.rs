@@ -9,7 +9,7 @@ pub(in crate::low) fn sha256_compress_blocks_shaext(
     blocks: &[u8],
     _token: super::cpu::HaveSha256,
 ) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     // SAFETY: `_token` proves the caller checked the `sha`, `ssse3`, and
     // `sse4.1` features
     unsafe { sha256(state, blocks) }
@@ -241,7 +241,7 @@ pub(in crate::low) fn sha256_compress_blocks_avx2(
     blocks: &[u8],
     _token: super::cpu::HaveAvx2,
 ) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     // The routine runs its loop at least once, so zero blocks would read past
     // `blocks`.
     if blocks.is_empty() {
@@ -249,7 +249,9 @@ pub(in crate::low) fn sha256_compress_blocks_avx2(
     }
     // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and `_token`
     // proves AVX2, BMI1, and BMI2.
-    unsafe { sha256_block_data_order_avx2(state, blocks.as_ptr(), blocks.len() / 64) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha256_block_data_order_avx2(state, blocks.as_ptr(), blocks.len() / 64))
+    }
 }
 
 /// SHA-256 without the SHA extensions or AVX2 on Intel, with aws-lc's
@@ -261,14 +263,16 @@ pub(in crate::low) fn sha256_compress_blocks_avx(
     blocks: &[u8],
     _token: super::cpu::HaveAvx,
 ) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     // As for the AVX2 routine.
     if blocks.is_empty() {
         return;
     }
     // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and `_token`
     // proves AVX.
-    unsafe { sha256_block_data_order_avx(state, blocks.as_ptr(), blocks.len() / 64) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha256_block_data_order_avx(state, blocks.as_ptr(), blocks.len() / 64))
+    }
 }
 
 /// SHA-256 without the SHA extensions or AVX2 on other vendors' CPUs, with
@@ -278,26 +282,30 @@ pub(in crate::low) fn sha256_compress_blocks_ssse3(
     blocks: &[u8],
     _token: super::cpu::HaveSsse3,
 ) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     // As for the AVX2 routine.
     if blocks.is_empty() {
         return;
     }
     // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and `_token`
     // proves SSSE3.
-    unsafe { sha256_block_data_order_ssse3(state, blocks.as_ptr(), blocks.len() / 64) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha256_block_data_order_ssse3(state, blocks.as_ptr(), blocks.len() / 64))
+    }
 }
 
 /// SHA-256 on CPUs without SSSE3, with aws-lc's integer
 /// `sha256_block_data_order_nohw`, as aws-lc runs there.
 pub(in crate::low) fn sha256_compress_blocks_nohw(state: &mut [u32; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     // As for the AVX2 routine.
     if blocks.is_empty() {
         return;
     }
     // SAFETY: `blocks` is `blocks.len() / 64` readable blocks.
-    unsafe { sha256_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 64) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha256_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 64))
+    }
 }
 
 /// The round constants, each group of four twice for the vector additions,

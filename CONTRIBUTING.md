@@ -66,8 +66,8 @@ that runs only with SHA3, and `nix develop .#binsec --command admin/ct-binsec
 constant time for every secret, symbolically. None of them but BINSEC, which
 sees divisions, can see an instruction whose timing depends on its
 operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
-scans its release builds for x86_64, aarch64, and armv7, and its portable
-backend's, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
+scans its release builds for every architecture it builds for, and its
+portable backend's on x86_64 and armv7, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
 not list as taking only public operands.
 `nix develop .#dudect --command admin/timing dudect` times each secret
 operation whose secret the API lets it set (not key generation, encapsulation,

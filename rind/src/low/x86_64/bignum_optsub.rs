@@ -75,6 +75,8 @@ macro_rules! a {
 /// Returns carry-out as per usual subtraction, always 0 if p was zero.
 #[inline(never)]
 pub(crate) fn bignum_optsub(z: &mut [u64], x: &[u64], y: &[u64], p: u64) {
+    assert!(z.len() == x.len());
+    assert!(z.len() == y.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -127,4 +129,11 @@ pub(crate) fn bignum_optsub(z: &mut [u64], x: &[u64], y: &[u64], p: u64) {
         out("rax") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_optsub, &mut [0; 4], &[1; 4], &[2; 4], 1);
 }

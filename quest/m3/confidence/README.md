@@ -7,7 +7,3 @@ The confidence quests that open PRs claimed before the epic moved finish from th
 ## Plan
 
 [The epic](/quest/m2/confidence/README.md) moved to m2 with the maintainer on 2026-11-09, and holds the Goal, the Plan, and every other child. A claimed quest cannot move, since its branch is named after its path, so these stay until their PRs merge.
-
-## Required
-
-- [Mutation testing on armv7](/quest/m3/confidence/mutants-armv7.md) - the code only 32-bit ARM compiles, under qemu-arm

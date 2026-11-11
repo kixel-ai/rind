@@ -1915,3 +1915,14 @@ pub(crate) fn p521_jdouble_alt(p3: &mut [u64; 27], p1: &[u64; 27]) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        p521_jdouble_alt,
+        &mut crate::low::abi::Aligned([0; 27]).0,
+        &crate::low::abi::Aligned([0; 27]).0
+    );
+}

@@ -231,6 +231,7 @@ if __name__ == "__main__":
             rust_decl="fn bignum_copy_row_from_table(z: &mut [u64], table: &[u64], height: u64, width: u64, index: u64)",
             assertions=[
                 "z.len() as u64 == width",
+                "height.checked_mul(width) == Some(table.len() as u64)",
             ],
         )
         parse_file(input, d)
@@ -659,6 +660,7 @@ if __name__ == "__main__":
             rust_decl="fn bignum_copy_row_from_table(z: &mut [u64], table: &[u64], height: u64, width: u64, index: u64)",
             assertions=[
                 "z.len() as u64 == width",
+                "height.checked_mul(width) == Some(table.len() as u64)",
             ],
         )
         parse_file(input, d)
@@ -684,6 +686,7 @@ if __name__ == "__main__":
             rust_decl="fn bignum_copy_row_from_table_8n(z: &mut [u64], table: &[u64], height: u64, width: u64, index: u64)",
             assertions=[
                 "z.len() as u64 == width",
+                "height.checked_mul(width) == Some(table.len() as u64)",
                 "width.is_multiple_of(8)",
             ],
         )
@@ -709,6 +712,7 @@ if __name__ == "__main__":
             rust_decl="fn bignum_copy_row_from_table_16(z: &mut [u64], table: &[u64], height: u64, index: u64)",
             assertions=[
                 "z.len() == 16",
+                "height.checked_mul(16) == Some(table.len() as u64)",
             ],
         )
         parse_file(input, d)
@@ -733,7 +737,7 @@ if __name__ == "__main__":
             rust_decl="fn bignum_copy_row_from_table_32(z: &mut [u64], table: &[u64], height: u64, index: u64)",
             assertions=[
                 "z.len() == 32",
-                "crate::low::ct::into_public(index) < height",
+                "height.checked_mul(32) == Some(table.len() as u64)",
             ],
         )
         parse_file(input, d)

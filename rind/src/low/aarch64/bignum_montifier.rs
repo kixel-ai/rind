@@ -114,8 +114,8 @@ macro_rules! q {
 /// representation (2^{64k} * x) mod m just by Montgomery multiplication by z.
 #[inline(never)]
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], t: &mut [u64]) {
-    debug_assert!(z.len() == m.len());
-    debug_assert!(z.len() <= t.len());
+    assert!(z.len() == m.len());
+    assert!(z.len() <= t.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -537,4 +537,11 @@ pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], t: &mut [u64]) {
         out("x9") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_montifier, &mut [0; 4], &[u64::MAX; 4], &mut [0; 4]);
 }

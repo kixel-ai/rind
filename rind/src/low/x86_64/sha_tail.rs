@@ -9,8 +9,10 @@
 use core::arch::x86_64::*;
 
 /// The lanes of the padded last block of a message whose bytes past its
-/// whole blocks are `tail`, closed by `length`, and those of the block after
-/// it when the padding does not fit.
+/// whole blocks are `tail`, under 64 bytes, closed by `length`, and those of
+/// the block after it when the padding does not fit. A longer `tail` hashes
+/// wrongly but reads only its own bytes, so it goes unchecked: a check here
+/// slowed a one-block SHA-256 by a seventh.
 ///
 /// Reads `tail` where it is, a whole lane at a time and the rest in loads of
 /// 8, 4, 2, and 1 bytes from the lane's start, so each load is likely to lie
@@ -18,7 +20,6 @@ use core::arch::x86_64::*;
 // Inline, so the lanes stay in registers rather than return through memory.
 #[inline(always)]
 pub(super) fn padded_tail(tail: &[u8], length: [u8; 8]) -> ([__m128i; 4], Option<[__m128i; 4]>) {
-    debug_assert!(tail.len() < 64);
     let lane = |at: usize| {
         if at + 16 <= tail.len() {
             // SAFETY: bytes `at..at + 16` of `tail` are readable

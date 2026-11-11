@@ -143,6 +143,56 @@ pub mod kem {
     };
 }
 
+/// Hybrid public key encryption: [RFC 9180]'s base mode and secret export,
+/// over DHKEM with X25519, P-256, P-384, and P-521.
+///
+/// A [`hpke::Sender`] encapsulates a fresh secret to a recipient's public
+/// key and seals messages in order; the [`hpke::Recipient`] holding the
+/// private key opens them in the same order. Both export secrets from the
+/// shared context, as an [`hpke::Exporter`], which seals nothing, does
+/// alone. Every pairing of a KEM, a KDF, and an AEAD is valid; the KEM is
+/// the key's.
+///
+/// ```
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::hpke::*;
+///
+/// let private_key = PrivateKey::generate(&DHKEM_X25519_HKDF_SHA256)?;
+/// let public_key = private_key.public_key();
+/// let suite = Suite {
+///     kdf: &HKDF_SHA256,
+///     aead: &AES_128_GCM,
+/// };
+///
+/// // The sender sends the encapsulated key with its messages.
+/// let (enc, mut sender) = Sender::new(suite, &public_key, b"info")?;
+/// let mut message = b"hello".to_vec();
+/// sender.seal_in_place_append_tag(b"header", &mut message)?;
+///
+/// let mut recipient = Recipient::new(suite, &private_key, enc.as_ref(), b"info")?;
+/// let plaintext = recipient.open_in_place(b"header", &mut message)?;
+/// assert_eq!(plaintext, b"hello");
+///
+/// // Both sides export the same secrets.
+/// let mut ours = [0u8; 32];
+/// let mut theirs = [0u8; 32];
+/// sender.export(b"context", &mut ours)?;
+/// recipient.export(b"context", &mut theirs)?;
+/// assert_eq!(ours, theirs);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [RFC 9180]: https://www.rfc-editor.org/rfc/rfc9180.html
+pub mod hpke {
+    pub use crate::high::hpke::{
+        AES_128_GCM, AES_256_GCM, Aead, CHACHA20_POLY1305, DHKEM_P256_HKDF_SHA256,
+        DHKEM_P384_HKDF_SHA384, DHKEM_P521_HKDF_SHA512, DHKEM_X25519_HKDF_SHA256, EncapsulatedKey,
+        Exporter, HKDF_SHA256, HKDF_SHA384, HKDF_SHA512, Kdf, Kem, PrivateKey, PublicKey,
+        Recipient, Sender, Suite,
+    };
+}
+
 /// RSA encryption: RSA-OAEP with SHA-256, SHA-384, or SHA-512, and SHA-1
 /// under [`rsa::legacy`].
 ///
