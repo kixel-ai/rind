@@ -62,7 +62,7 @@ declare -A scope=(
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
     # rind's aarch64, armv7, portable, and wasm32 builds, which the host's
     # own build skips, and which a toolchain bump can break.
-    [cross]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
+    [cross]='^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
     # Variable-time instructions in rind's release builds, which a change to
     # its code, dependencies, toolchain, or the scan itself can bring.
     [vartime]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$|admin/ct-vartime)'
@@ -234,9 +234,14 @@ for module in "${selected[@]}"; do
             done
             ;;
         check:cross)
-            for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
-                cargo clippy -p rind --lib --locked --target "$target" -- --deny warnings
-            done
+            # The tests too, in the shells whose C toolchain builds their
+            # aws-lc-rs dev-dependency, so test code that only these targets
+            # compile is checked before it lands. aarch64 in release, as
+            # sh/qemu.sh explains: nixpkgs' cross gcc fails aws-lc's -O0 probes.
+            nix develop .#aarch64 --command cargo clippy -p rind --all-targets --locked --release \
+                --target aarch64-unknown-linux-gnu -- --deny warnings
+            nix develop .#armv7 --command cargo clippy -p rind --all-targets --locked \
+                --target armv7-unknown-linux-gnueabihf -- --deny warnings
             CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable" \
                 cargo clippy -p rind --lib --locked --target x86_64-unknown-linux-gnu -- --deny warnings
             # And on a 32-bit target, whose Poly1305 and GHASH differ.

@@ -630,6 +630,14 @@
             # other CI job would download.
             armv7 = pkgs.mkShell armv7-shell;
 
+            # `just qemu aarch64` tests the aarch64 build under qemu in it, and
+            # `just check`'s cross module lints rind's tests for aarch64 in it,
+            # where the aws-lc-rs dev-dependency needs an aarch64 C compiler.
+            aarch64 = qemu-shell {
+              target = "aarch64-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.aarch64-multiplatform;
+            };
+
             # `just qemu s390x` tests the portable backend on big-endian
             # s390x in it.
             s390x = qemu-shell {
