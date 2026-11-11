@@ -37,7 +37,8 @@ let CT_COMPARE_16_CORRECT = prove
           (\s. read PC s = word (pc + 0xc) /\
                (read X0 s = word 0 <=> a0 = b0 /\ a1 = b1))
           (MAYCHANGE [PC; X0; X1] ,, MAYCHANGE [events])`,
-  MAP_EVERY X_GEN_TAC [`a0:int64`; `a1:int64`; `b0:int64`; `b1:int64`; `pc:num`] THEN
+  MAP_EVERY X_GEN_TAC
+   [`a0:int64`; `a1:int64`; `b0:int64`; `b1:int64`; `pc:num`] THEN
   REWRITE_TAC[fst CT_COMPARE_16_EXEC] THEN
   ENSURES_INIT_TAC "s0" THEN
   ARM_STEPS_TAC CT_COMPARE_16_EXEC (1--3) THEN

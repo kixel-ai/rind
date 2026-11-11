@@ -11,8 +11,8 @@ pub(crate) fn ct_equal(a: &[u8], b: &[u8]) -> bool {
 
     // Every AEAD open checks a 16-byte tag, which compares as whole words
     // rather than through the byte loop.
-    let diff = match (a.try_into(), b.try_into()) {
-        (Ok(a), Ok(b)) => ct_compare_16(a, b),
+    let diff = match (<[u8; 16]>::try_from(a), <[u8; 16]>::try_from(b)) {
+        (Ok(a), Ok(b)) => ct_compare_16(&a, &b),
         _ => ct_compare_bytes(a, b).into(),
     };
     // The result stays secret: a caller that accepts or rejects on it

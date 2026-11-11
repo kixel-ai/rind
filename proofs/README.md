@@ -30,6 +30,14 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
 - `aarch64/bignum_eq.ml`: `BIGNUM_EQ_CORRECT`, s2n-bignum's proof of
   `bignum_eq` on the block in `low::aarch64::bignum_eq::bignum_eq`, which is
   s2n-bignum's routine without its `ret`.
+- `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64 and
+  aarch64: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`, that the
+  blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes` return
+  zero exactly when their inputs are equal, and `CT_COMPARE_16_SAFE` and
+  `CT_COMPARE_BYTES_SAFE`, in s2n-bignum's style, that their trace of loads
+  and branches is a function of the addresses and length alone, each load in
+  bounds. Both functions are `#[inline(never)]` with fixed registers, so the
+  proof covers their one copy.
 
 ## What is proven
 
@@ -190,9 +198,9 @@ HMAC model opaque below it; `Rind/X86_64/HkdfExpand.lean` models
 The theorems over an HMAC algorithm assume `RunsHmac`: `ShaBlocks` for SHA-1
 and SHA-256, `RunsSha512` for SHA-384 and SHA-512, so `Rind/<Arch>/Axioms.lean`
 checks their axioms.
-`hmac::verify` and `Secret::verify` compare in constant time through inline
-assembly no Lean proof covers, so their theorems take `CtEqual` as a
-hypothesis: the compare returns whether its inputs are equal.
+`hmac::verify` and `Secret::verify` compare through `low::generic::ct_equal`,
+which `Rind/X86_64/CtEqual.lean` proves returns whether its inputs are equal,
+from axioms restating the HOL Light proofs of the `asm!` compares below it.
 
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
 (`Algorithm`'s `generate` and `load`, and `Keyed`'s `Ops`), and `HeaderProtectionKey` each

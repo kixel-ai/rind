@@ -10,7 +10,8 @@ set_option linter.dupNamespace false
 The rind functions the x86_64 translation leaves opaque, beside those
 `Rind.X86_64.AesNi` models. No proof assumes anything about them beyond what
 `Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, and `Rind.X86_64.ValeAesGcm`
-state for s2n-bignum's, aws-lc's, and Vale's routines and what each theorem
+state for s2n-bignum's, aws-lc's, and Vale's routines, what
+`Rind.X86_64.CtEqual` states for the constant-time compares, and what each theorem
 takes as a hypothesis.
 -/
 
@@ -82,7 +83,13 @@ opaque low.x86_64.aes_gcm.tagged
   low.x86_64.aes.AesKey → low.x86_64.ghash.GhashTable → Std.Array Std.U8 12#usize →
     Slice Std.U8 → Slice Std.U8 → Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
 
-opaque low.generic.ct_equal.ct_equal : Slice Std.U8 → Slice Std.U8 → Result Bool
+/-! The constant-time compares behind `low::generic::ct_equal`, whose inline
+assembly `Rind.X86_64.CtEqual` states HOL Light's theorems about. -/
+
+opaque low.x86_64.cpu.ct_compare_16
+  : Array Std.U8 16#usize → Array Std.U8 16#usize → Result Std.Usize
+
+opaque low.x86_64.cpu.ct_compare_bytes : Slice Std.U8 → Slice Std.U8 → Result Std.U8
 
 opaque low.x86_64.vpaes_x86_64.VpaesKey.new
   : Slice Std.U8 → low.x86_64.cpu.HaveSsse3 → Result low.x86_64.vpaes_x86_64.VpaesKey

@@ -38,7 +38,8 @@ let CT_COMPARE_16_CORRECT = prove
                (read RAX s = word 0 <=> a0 = b0 /\ a1 = b1))
           (MAYCHANGE [RIP; RAX; RCX] ,, MAYCHANGE SOME_FLAGS ,,
            MAYCHANGE [events])`,
-  MAP_EVERY X_GEN_TAC [`a0:int64`; `a1:int64`; `b0:int64`; `b1:int64`; `pc:num`] THEN
+  MAP_EVERY X_GEN_TAC
+   [`a0:int64`; `a1:int64`; `b0:int64`; `b1:int64`; `pc:num`] THEN
   REWRITE_TAC[SOME_FLAGS; fst CT_COMPARE_16_EXEC] THEN
   ENSURES_INIT_TAC "s0" THEN
   X86_STEPS_TAC CT_COMPARE_16_EXEC (1--3) THEN

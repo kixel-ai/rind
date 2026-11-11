@@ -347,9 +347,12 @@ opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.load
   : high.agreement.Algorithm → high.agreement.Source →
     Result (core.result.Result (mid.p521.PrivateKey × high.agreement.PublicKey) error.Error)
 
-/-! The constant-time compare, which the translation never calls, but the HMAC
-model does: its inline assembly is left to HOL Light, and `CtEqual` states it. -/
+/-! The constant-time compares behind `low::generic::ct_equal`, whose inline
+assembly `Rind.Aarch64.CtEqual` states HOL Light's theorems about. -/
 
-opaque low.generic.ct_equal.ct_equal : Slice Std.U8 → Slice Std.U8 → Result Bool
+opaque low.aarch64.cpu.ct_compare_16
+  : Array Std.U8 16#usize → Array Std.U8 16#usize → Result Std.Usize
+
+opaque low.aarch64.cpu.ct_compare_bytes : Slice Std.U8 → Slice Std.U8 → Result Std.U8
 
 end rind.aarch64

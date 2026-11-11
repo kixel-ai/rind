@@ -1,5 +1,6 @@
 import Rind.X86_64.Hmac
 import Rind.X86_64.Sha512
+import Rind.X86_64.CtEqual
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
@@ -139,18 +140,24 @@ theorem bv_inj (x y : List U8) : bv x = bv y ↔ x = y := by
   · intro h; rw [← ofBv_bv x, ← ofBv_bv y, h]
   · intro h; rw [h]
 
-/-- What `verify` assumes of `low::generic::ct_equal`, which is not
-translated: it compares its slices. -/
-def CtEqual : Prop :=
-  ∀ x y : Slice U8, low.generic.ct_equal.ct_equal x y = ok (decide (x.val = y.val))
+/-- Every hash's routines need the entry guard held, which `ct_equal` checks. -/
+theorem RunsHmac.held {a : high.hmac.Algorithm} (hr : RunsHmac a) :
+    low.entry.Entry.assert_held = ok () := by
+  obtain ⟨-, h⟩ := hr
+  cases a
+  · exact h.held
+  · exact h.held
+  · exact h.2.1
+  · exact h.2.1
 
 /-- `verify` accepts exactly HMAC's tag of the message. -/
-theorem verify_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (hct : CtEqual) (key : List Byte)
+theorem verify_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (key : List Byte)
     (k : high.hmac.Key) (hk : KeyOf a key k) (m t : Slice U8)
     (hm : hmacBlock a + m.length ≤ maxInput) :
     high.hmac.verify k m t ⦃ r =>
       r = if bv t.val = hmacOf a key (bv m.val) then .Ok () else .Err .BadSignature ⦄ := by
   have hs := key_tag_spec a hr key k hk m hm
+  have hh := hr.held
   obtain ⟨⟨e, he⟩, -⟩ := hr
   unfold high.hmac.verify
   rw [he, bind_ok]
@@ -159,7 +166,8 @@ theorem verify_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (hct : CtEqual) 
   rintro d ⟨-, hd⟩
   unfold high.digest.Digest.ct_equal
   step with digest_as_ref_spec d as ⟨s, _, hsb⟩
-  rw [hct, bind_ok]
+  apply WP.spec_bind (ct_equal_spec hh s t)
+  rintro _ rfl
   simp only [low.ct.into_public, bind_ok]
   have : (s.val = t.val) = (bv t.val = hmacOf a key (bv m.val)) := by
     rw [← hd, ← hsb, bv_inj]
