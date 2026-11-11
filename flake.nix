@@ -11,7 +11,7 @@
     # The quest CLI, which also serves the quest guide and skills the stubs in
     # .claude/skills call. Bump the rev to upgrade them.
     quest = {
-      url = "github:moq-dev/quest/6a18b8a815c2d15d37d7433a619f961ec5a07165";
+      url = "github:moq-dev/quest";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
@@ -44,6 +44,14 @@
           # which `devShells.msrv` builds with. No rust-toolchain.toml: it
           # would override the nightly jobs' toolchains.
           rust-stable = pkgs.rust-bin.stable."1.98.1";
+          # `just ci`'s check of the unstable style options in
+          # .rustfmt.unstable.toml, which only a nightly rustfmt reads. Its own
+          # name keeps the stable rustfmt the one `cargo fmt` runs.
+          rustfmt-unstable = pkgs.writeShellScriptBin "rustfmt-unstable" ''
+            exec ${
+              pkgs.rust-bin.nightly."2025-02-14".minimal.override { extensions = [ "rustfmt" ]; }
+            }/bin/rustfmt "$@"
+          '';
           rust-toolchain = rust-stable.minimal.override {
             # `minimal` rather than `default`, which adds offline HTML docs to
             # a closure every CI job downloads.
@@ -54,15 +62,27 @@
               "rust-analyzer"
             ];
             # The gate lints rind's other backends without their C toolchains,
-            # the portable one forced on x86_64.
+            # the portable one forced on x86_64 and on wasm32.
             targets = [
               "aarch64-unknown-linux-gnu"
               "armv7-unknown-linux-gnueabihf"
+              "wasm32-unknown-unknown"
+              "wasm32-wasip2"
               "x86_64-unknown-linux-gnu"
             ];
           };
 
           quest-cli = quest.packages.${system}.default;
+
+          timing-shell = {
+            packages = [
+              rust-stable.minimal
+              # admin/timing finds the binary cargo built.
+              pkgs.jq
+            ]
+            # taskset pins the tests to one core.
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
+          };
 
           # rind itself builds for armv7 without C. Only its tests need this
           # ARM C toolchain, for the aws-lc-rs dev-dependency they check
@@ -99,12 +119,12 @@
           };
 
           # A shell that builds `target`, a target with no rind assembly, and
-          # runs its tests under qemu-user, as `just qemu` does. `cross` is the
-          # nixpkgs cross set whose C toolchain the tests' aws-lc-rs
-          # dev-dependency builds with; rind itself needs none. `cpu`, if set,
-          # is the core qemu emulates, so it traps any newer instruction.
-          # `rustflags`, if set, is passed to every build for `target`, its
-          # doctests included.
+          # runs its tests under qemu-user, as `just qemu` does, or natively
+          # where the host can, as x86_64 runs i686. `cross` is the nixpkgs
+          # cross set whose C toolchain the tests' aws-lc-rs dev-dependency
+          # builds with; rind itself needs none. `cpu`, if set, is the core
+          # qemu emulates, so it traps any newer instruction. `rustflags`, if
+          # set, is passed to every build for `target`, its doctests included.
           qemu-shell =
             {
               target,
@@ -117,6 +137,7 @@
               prefix = "${cc}/bin/${cc.targetPrefix}";
               var = pkgs.lib.toUpper (builtins.replaceStrings [ "-" ] [ "_" ] target);
               lower = builtins.replaceStrings [ "-" ] [ "_" ] target;
+              native = pkgs.stdenv.hostPlatform.canExecute cross.stdenv.hostPlatform;
             in
             pkgs.mkShell {
               packages = [
@@ -125,8 +146,8 @@
                   targets = [ target ];
                 })
                 cc
-                pkgs.qemu-user
-              ];
+              ]
+              ++ pkgs.lib.optional (!native) pkgs.qemu-user;
 
               env = {
                 RIND_QEMU_TARGET = target;
@@ -134,8 +155,10 @@
                 "CXX_${lower}" = "${prefix}c++";
                 "AR_${lower}" = "${prefix}ar";
                 "CARGO_TARGET_${var}_LINKER" = "${prefix}cc";
-                # The wrapper links against the store's glibc for the target
-                # by absolute path, so qemu needs no sysroot.
+              }
+              # The wrapper links against the store's glibc for the target by
+              # absolute path, so neither qemu nor the host needs a sysroot.
+              // pkgs.lib.optionalAttrs (!native) {
                 "CARGO_TARGET_${var}_RUNNER" = "qemu-${cross.stdenv.hostPlatform.qemuArch}";
               }
               // pkgs.lib.optionalAttrs (cpu != null) { QEMU_CPU = cpu; }
@@ -181,6 +204,52 @@
               }
             }/sde64";
           };
+
+          # BINSEC, whose checkct plugin `admin/ct-binsec` runs, built from
+          # its release with the decoders it takes from unisim-archisec and
+          # the Bitwuzla solver it links. nixpkgs packages neither BINSEC nor
+          # its `mula` dependency. BINSEC loads its plugins through findlib,
+          # so the wrapper points OCAMLPATH at its own.
+          binsec =
+            let
+              ocaml = pkgs.ocamlPackages;
+              mula = ocaml.buildDunePackage rec {
+                pname = "mula";
+                version = "0.1.2";
+                src = pkgs.fetchurl {
+                  url = "https://github.com/ifazk/mula/releases/download/${version}/mula-${version}.tbz";
+                  hash = "sha256-Hw7kKspz4zRZeWuqJgY7+C0pDLb0xyPT58mg5Y8eDXI=";
+                };
+              };
+            in
+            ocaml.buildDunePackage rec {
+              pname = "binsec";
+              version = "0.11.3";
+              src = pkgs.fetchurl {
+                url = "https://github.com/binsec/binsec/releases/download/${version}/binsec-${version}.tbz";
+                hash = "sha256-k/b+Q51IaxZgYu9t2SxM46oJR7Xhixw6p94vwwA6ptk=";
+              };
+              nativeBuildInputs = [
+                ocaml.menhir
+                ocaml.dypgen
+                pkgs.makeWrapper
+              ];
+              # Its parser generator, which is also a library BINSEC links.
+              buildInputs = [ ocaml.dypgen ];
+              propagatedBuildInputs = [
+                ocaml.ocamlgraph
+                ocaml.zarith
+                ocaml.dune-site
+                ocaml.toml
+                mula
+                ocaml.unisim_archisec
+                ocaml.bitwuzla-cxx
+              ];
+              postInstall = ''
+                wrapProgram $out/bin/binsec \
+                  --prefix OCAMLPATH : $out/lib/ocaml/${ocaml.ocaml.version}/site-lib
+              '';
+            };
 
           # `admin/parse-asm` calls cpp, as, and objdump by their Debian names,
           # as s2n-bignum's Makefiles do. Each maps to the target's tools,
@@ -353,6 +422,7 @@
                   # leased host.
                   flock
                   cargo-modules
+                  rustfmt-unstable
                   quest-cli
                 ]
                 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
@@ -371,12 +441,13 @@
               env.JOSERFC_SRC = pkgs.python3Packages.joserfc.src;
             };
 
-            # `admin/timing` and the timing workflow run in it: rind-timing's
-            # dudect cases, and the Marvin toolkit's RSA ciphertexts, timed by
-            # rind-timing and analysed by tlsfuzzer.
+            # dudect needs only Rust, without Marvin's Python and toolkit fetches.
+            dudect = pkgs.mkShell timing-shell;
+
+            # The Marvin toolkit's RSA ciphertexts, timed by rind-timing and
+            # analysed by tlsfuzzer.
             timing = pkgs.mkShell {
-              packages = [
-                rust-stable.minimal
+              packages = timing-shell.packages ++ [
                 (
                   (pkgs.python3.override {
                     packageOverrides = _: super: {
@@ -415,11 +486,7 @@
                 )
                 # The Marvin keys and certificates.
                 pkgs.openssl
-                # admin/timing finds the binary cargo built.
-                pkgs.jq
-              ]
-              # `taskset` pins the tests to one core.
-              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
+              ];
 
               env = {
                 MARVIN_TOOLKIT = pkgs.fetchFromGitHub {
@@ -493,7 +560,14 @@
                     "x86_64-unknown-linux-gnu"
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
+                    "arm-unknown-linux-gnueabihf"
+                    "i686-unknown-linux-gnu"
                     "loongarch64-unknown-linux-gnu"
+                    "powerpc-unknown-linux-gnu"
+                    "powerpc64-unknown-linux-gnu"
+                    "powerpc64le-unknown-linux-gnu"
+                    "riscv64gc-unknown-linux-gnu"
+                    "s390x-unknown-linux-gnu"
                   ];
                 })
                 pkgs.python3
@@ -567,6 +641,13 @@
               cross = pkgs.pkgsCross.s390x;
             };
 
+            # `just qemu i686` tests the portable backend on 32-bit x86 in it,
+            # natively on an x86_64 host.
+            i686 = qemu-shell {
+              target = "i686-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.gnu32;
+            };
+
             # `just qemu riscv64` and `just qemu riscv64-musl` test the
             # portable backend on riscv64gc Linux, glibc and musl, in them.
             riscv64 = qemu-shell {
@@ -604,10 +685,12 @@
             # powerpc` test the portable backend on PowerPC Linux in them,
             # the last two big-endian. Rust's powerpc64 target uses the ELFv1
             # ABI, unlike nixpkgs' default `ppc64`. Rust links both big-endian
-            # targets with its own lld, which refuses ELFv1 objects and, in a
-            # 32-bit PIE, gives an undefined weak function a nonzero address,
-            # so aws-lc calls its unset allocator hook. gcc obeys the last
-            # `-fuse-ld`, so a trailing one picks GNU ld.
+            # targets with its own lld, which refuses ELFv1 objects, and on
+            # 32-bit PowerPC supports only the Secure PLT: nixpkgs' ppc32 gcc
+            # is built without `--enable-secureplt`, so its objects, its
+            # `crtbeginS.o` included, use the BSS PLT, which lld links without
+            # error into a binary that crashes. GNU ld handles both. gcc obeys
+            # the last `-fuse-ld`, so a trailing one picks GNU ld.
             powerpc64le = qemu-shell {
               target = "powerpc64le-unknown-linux-gnu";
               cross = pkgs.pkgsCross.powernv;
@@ -621,6 +704,17 @@
               target = "powerpc-unknown-linux-gnu";
               cross = pkgs.pkgsCross.ppc32;
               rustflags = "-C link-arg=-fuse-ld=bfd";
+            };
+
+            # `admin/ct-binsec` runs in it: the release tests under gdb, which
+            # dumps each at its region, and BINSEC on the dump.
+            binsec = pkgs.mkShell {
+              packages = [
+                rust-stable.minimal
+                binsec
+                pkgs.gdb
+                pkgs.python3
+              ];
             };
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
@@ -648,7 +742,8 @@
             };
           }
           # `x86-cpu.yml` and `admin/x86-cpu sde-scan` run the tests and
-          # `rind-cpuid` under `sde` in it, and `admin/ct-sde` traces them.
+          # `rind-cpuid` under `sde` in it, `admin/ct-sde` traces them, and
+          # `admin/mutants --avx512` mutates under it.
           # SDE runs only on x86_64.
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             sde = pkgs.mkShell {
@@ -660,6 +755,8 @@
                 openssl
                 python3
                 sde
+                cargo-mutants
+                cargo-nextest
                 # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
                 util-linux
               ];

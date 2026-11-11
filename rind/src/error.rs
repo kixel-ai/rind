@@ -33,6 +33,10 @@ pub enum Error {
     /// bug, which the caller cannot fix.
     Fault,
 
+    /// An HPKE context sealed or opened as many messages as its sequence
+    /// number counts.
+    MessageLimitReached,
+
     /// A call was given an algorithm it does not take, such as a SHA-1
     /// digest to sign, or a digest for a key that verifies only messages.
     Unsupported,
@@ -133,6 +137,7 @@ impl core::fmt::Display for Error {
             Self::RngFailed => write!(f, "the system random source failed"),
             Self::NotEqual => write!(f, "values compared in constant time were not equal"),
             Self::Fault => write!(f, "an internal consistency check failed"),
+            Self::MessageLimitReached => write!(f, "a context reached its message limit"),
             Self::Unsupported => write!(f, "an algorithm the call does not take"),
         }
     }

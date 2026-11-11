@@ -12,8 +12,14 @@
 # Each test runs on this CPU and again with each row of features below denied,
 # so code only CPUs without them run, such as aws-lc's SSE2 AES, is tested
 # too. The x86_64 and aarch64 rows are ctgrind.yml's; armv7's also pick
-# qemu's CPU. No row reaches the AVX-512 paths a CPU without
-# AVX-512 never runs.
+# qemu's CPU.
+#
+# `admin/mutants --avx512 ...`, on x86_64 in `nix develop .#sde`, runs each
+# test under Intel SDE's Sapphire Rapids model instead, which takes every
+# AVX-512 path, though no campaign host has one. Each mutant's tests take
+# minutes there, so the other campaign leaves out the files only AVX-512
+# runs, and this one retests what that one missed: give it `--iterate` over
+# its `mutants.out`.
 #
 # cargo-mutants mutates code whatever its `cfg`, so a function only another
 # architecture compiles is missed here. `admin/mutants --survivors DIR...`
@@ -21,6 +27,12 @@
 # missed and none caught, and fails if there is one.
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+avx512=
+if [ "${1:-}" = --avx512 ]; then
+    shift
+    avx512=1
+fi
 
 if [ "${1:-}" = --survivors ]; then
     shift
@@ -58,12 +70,28 @@ portable=(
 runner=()
 profile=()
 base=()
-case ${target:-$(uname -m)} in
-    x86_64)
+# Darwin runs only the DIT code, which compiles for Apple's platforms alone;
+# the Linux runs cover the rest.
+only=()
+case ${target:-$(uname -sm)} in
+    "Darwin arm64")
+        triple=AARCH64_APPLE_DARWIN
+        skip=()
+        only=(
+            --file rind/src/low/cpu.rs --file rind/src/low/aarch64/cpu.rs
+            --re '(\bDit\b|enter_cpu_state|leave_cpu_state|\bdit::)'
+        )
+        rows=("dit")
+        ;;
+    "Linux x86_64")
         triple=X86_64_UNKNOWN_LINUX_GNU
         skip=(
             'rind/src/low/aarch64/**' 'rind/src/low/arm/**' "${portable[@]}"
             rind/src/low/generic/mlkem768.rs
+        )
+        [ -n "$avx512" ] || skip+=(
+            rind/src/low/x86_64/mlkem768_sample_poly_ntt_8x.rs
+            rind/src/low/x86_64/rsaz_avx512.rs
         )
         rows=(
             "adx vaes"
@@ -72,7 +100,7 @@ case ${target:-$(uname -m)} in
             "adx ssse3"
         )
         ;;
-    aarch64 | arm64)
+    "Linux aarch64")
         triple=AARCH64_UNKNOWN_LINUX_GNU
         skip=(
             'rind/src/low/x86_64/**' 'rind/src/low/arm/**' "${portable[@]}"
@@ -113,16 +141,36 @@ case ${target:-$(uname -m)} in
         )
         ;;
     *)
-        echo "admin/mutants: no campaign for ${target:-$(uname -m)}" >&2
+        echo "admin/mutants: no campaign for ${target:-$(uname -sm)}" >&2
         exit 1
         ;;
 esac
+[ -z "$avx512" ] || [ "$triple" = X86_64_UNKNOWN_LINUX_GNU ] || {
+    echo "admin/mutants: --avx512 runs only on Linux x86_64" >&2
+    exit 1
+}
 
 # The test runner: runs one test binary on each row, failing if any fails.
 # Nextest lists a binary's tests through the runner too, which needs one run.
 if [ "${1:-}" = --run ]; then
     shift
-    env "${base[@]}" "${runner[@]}" "$@"
+    if [ -n "$avx512" ]; then
+        # The tests' CPU check fails unless the model takes each AVX-512 path.
+        env RIND_TEST_X86_AVX512_AES_GCM=1 RIND_TEST_X86_AVX512_ML_KEM=1 \
+            RIND_TEST_X86_AVX512_RSA=1 sde -spr -- "$@"
+        # Each AVX-512 check must also refuse a CPU without any one feature it
+        # names, which no SDE model lacks alone. Only this test can tell.
+        case " $* " in
+            *::checks_need_their_features" "*)
+                for feature in avx512f avx512dq avx512ifma avx512bw avx512vl \
+                    avx512vbmi avx512vbmi2 vaes vpclmulqdq bmi2; do
+                    env "RIND_CPU_DISABLE_$feature=1" sde -spr -- "$@"
+                done
+                ;;
+        esac
+        exit 0
+    fi
+    env ${base[@]+"${base[@]}"} ${runner[@]+"${runner[@]}"} "$@"
     for arg in "$@"; do
         [ "$arg" != --list ] || exit 0
     done
@@ -135,24 +183,24 @@ if [ "${1:-}" = --run ]; then
                 *) deny+=("RIND_CPU_DISABLE_$word=1") ;;
             esac
         done
-        env "${deny[@]}" "${runner[@]}" "$@"
+        env "${deny[@]}" ${runner[@]+"${runner[@]}"} "$@"
     done
     exit 0
 fi
 
 cd "$here"
-args=()
-for glob in "${skip[@]}"; do
+args=(${only[@]+"${only[@]}"})
+for glob in ${skip[@]+"${skip[@]}"}; do
     args+=(--exclude "$glob")
 done
 while IFS= read -r file; do
     args+=(--exclude "$file")
 done < <(git grep -l '^// generated source' -- rind/src)
 
-export "CARGO_TARGET_${triple}_RUNNER=$here/admin/mutants${target:+ --target $target} --run"
+export "CARGO_TARGET_${triple}_RUNNER=$here/admin/mutants ${avx512:+--avx512 }${target:+--target $target }--run"
 # A mutant that hangs the tests until the timeout is caught by them, so only
 # exit 3, timeouts alone, passes beside 0.
 status=0
-cargo mutants "${profile[@]}" "${args[@]}" "$@" || status=$?
+cargo mutants ${profile[@]+"${profile[@]}"} "${args[@]}" "$@" || status=$?
 [ "$status" -ne 3 ] || status=0
 exit "$status"

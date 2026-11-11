@@ -74,6 +74,9 @@ if __name__ == "__main__":
                 ("inout", "r.as_mut_ptr() => _"),
                 ("inout", "a.as_ptr() => _"),
             ],
+            assertions=[
+                "(r.as_mut_ptr() as usize).is_multiple_of(32)",
+            ],
             rust_decl="fn mlkem_frombytes(r: &mut [i16; 256], a: &[u8; 384])",
         )
         parse_file(input, d)
@@ -88,6 +91,9 @@ if __name__ == "__main__":
             parameter_map=[
                 ("inout", "a.as_mut_ptr() => _"),
             ],
+            assertions=[
+                "(a.as_mut_ptr() as usize).is_multiple_of(32)",
+            ],
             rust_decl="fn mlkem_tomont(a: &mut [i16; 256])",
         )
         parse_file(input, d)
@@ -101,6 +107,9 @@ if __name__ == "__main__":
             "mlkem_unpack",
             parameter_map=[
                 ("inout", "a.as_mut_ptr() => _"),
+            ],
+            assertions=[
+                "(a.as_mut_ptr() as usize).is_multiple_of(32)",
             ],
             rust_decl="fn mlkem_unpack(a: &mut [i16; 256])",
         )
@@ -117,6 +126,11 @@ if __name__ == "__main__":
                 ("inout", "x.as_mut_ptr() => _"),
                 ("inout", "a.as_ptr() => _"),
                 ("inout", "qdata.as_ptr() => _"),
+            ],
+            assertions=[
+                "(x.as_mut_ptr() as usize).is_multiple_of(32)",
+                "(a.as_ptr() as usize).is_multiple_of(32)",
+                "(qdata.as_ptr() as usize).is_multiple_of(32)",
             ],
             rust_decl="fn mlkem_mulcache_compute(x: &mut [i16; 128], a: &[i16; 256], qdata: &[i16; 624])",
         )
@@ -135,6 +149,12 @@ if __name__ == "__main__":
                 ("inout", "b.as_ptr() => _"),
                 ("inout", "bt.as_ptr() => _"),
             ],
+            assertions=[
+                "(r.as_mut_ptr() as usize).is_multiple_of(32)",
+                "(a.as_ptr() as usize).is_multiple_of(32)",
+                "(b.as_ptr() as usize).is_multiple_of(32)",
+                "(bt.as_ptr() as usize).is_multiple_of(32)",
+            ],
             rust_decl="fn mlkem_basemul_k3(r: &mut [i16; 256], a: &[i16; 768], b: &[i16; 768], bt: &[i16; 384])",
         )
         parse_file(input, d)
@@ -148,6 +168,9 @@ if __name__ == "__main__":
             "mlkem_reduce",
             parameter_map=[
                 ("inout", "a.as_mut_ptr() => _"),
+            ],
+            assertions=[
+                "(a.as_mut_ptr() as usize).is_multiple_of(32)",
             ],
             rust_decl="fn mlkem_reduce(a: &mut [i16; 256])",
         )
@@ -170,7 +193,8 @@ if __name__ == "__main__":
                 ("inout", "table.as_ptr() => _"),
             ],
             return_map=("out", "ret"),
-            rust_decl="fn mlkem_rej_uniform_vartime(r: &mut [i16; 256], input: &[u8], table: &[i8]) -> u64",
+            assertions=["input.len().is_multiple_of(12)"],
+            rust_decl="fn mlkem_rej_uniform_vartime(r: &mut [i16; 256], input: &[u8], table: &[i8; 4096]) -> u64",
         )
         parse_file(input, d)
 
@@ -312,6 +336,6 @@ if __name__ == "__main__":
                 ("inout", "input.len() => _"),
                 ("inout", "table.as_ptr() => _"),
             ],
-            rust_decl="fn mlkem_rej_uniform_vartime(r: &mut [i16; 256], input: &[u8], table: &[i8]) -> u64",
+            rust_decl="fn mlkem_rej_uniform_vartime(r: &mut [i16; 256], input: &[u8], table: &[i8; 4096]) -> u64",
         )
         parse_file(input, d)

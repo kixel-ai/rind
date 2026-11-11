@@ -85,18 +85,39 @@ def aesRcon (i : Nat) : BitVec 32 :=
   if i = 4 then 0x10 else if i = 5 then 0x20 else if i = 6 then 0x40 else if i = 7 then 0x80 else
   if i = 8 then 0x1b else 0x36
 
-/-- FIPS 197's S-box (section 5.1.1), a fixed table no proof here looks inside. -/
-opaque sbox : BitVec 8 → BitVec 8
-
-/-- FIPS 197's `MixColumns` (section 5.1.3) on a state laid out as a `quad32`'s
-bytes, least significant first, column by column: Vale's `mix_columns_LE`. -/
-opaque mixColumns : Quad32 → Quad32
-
 /-- A `quad32` from its 16 bytes, least significant first. -/
 def ofBytes (f : Nat → BitVec 8) : Quad32 := leBytesToQuad32 ((List.range 16).map f)
 
 /-- Byte `i` of a `quad32`, least significant first. -/
 def byte (q : Quad32) (i : Nat) : BitVec 8 := q.extractLsb' (8 * i) 8
+
+/-- FIPS 197's `xtime` (section 4.2.1): multiplication by `x` in its field. -/
+def xtime (b : BitVec 8) : BitVec 8 := b <<< 1 ^^^ if b.msb then 0x1b else 0
+
+/-- FIPS 197's product in its field (section 4.2), by repeated `xtime`. -/
+def gfMul (a b : BitVec 8) : BitVec 8 :=
+  ((List.range 8).foldl (fun (p, x) i => (if b.getLsbD i then p ^^^ x else p, xtime x)) (0, a)).1
+
+/-- FIPS 197's S-box (section 5.1.1): the field inverse, `b ^ 254`, then the
+affine transformation. -/
+def fips197Sbox (b : BitVec 8) : BitVec 8 :=
+  let i := (List.range 254).foldl (fun p _ => gfMul p b) 1
+  i ^^^ i.rotateLeft 1 ^^^ i.rotateLeft 2 ^^^ i.rotateLeft 3 ^^^ i.rotateLeft 4 ^^^ 0x63
+
+/-- FIPS 197's `MixColumns` (section 5.1.3), row `r` of column `c` being byte `r + 4c`. -/
+def fips197MixColumns (q : Quad32) : Quad32 := ofBytes fun i =>
+  let a k := byte q (i / 4 * 4 + (i % 4 + k) % 4)
+  xtime (a 0) ^^^ xtime (a 1) ^^^ a 1 ^^^ a 2 ^^^ a 3
+
+/-- FIPS 197's S-box, opaque so that no proof looks inside its table; Vale's
+spec assumes it. `fips197Sbox` is what Lean runs, so `admin/prove` can test
+the AES instruction models that call it. -/
+opaque sbox : BitVec 8 → BitVec 8 := fips197Sbox
+
+/-- FIPS 197's `MixColumns` on a state laid out as a `quad32`'s bytes, least
+significant first, column by column: Vale's `mix_columns_LE`, opaque as its
+spec assumes it. `fips197MixColumns` is what Lean runs. -/
+opaque mixColumns : Quad32 → Quad32 := fips197MixColumns
 
 /-- `sub_bytes`: the S-box on each byte. -/
 def subBytes (q : Quad32) : Quad32 := ofBytes fun i => sbox (byte q i)

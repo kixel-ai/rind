@@ -1,4 +1,6 @@
-import Rind.X86_64.Funs
+module
+public import Rind.X86_64.Funs
+@[expose] public section
 open Aeneas Aeneas.Std Result
 
 /-!

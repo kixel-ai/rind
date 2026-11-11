@@ -192,7 +192,7 @@ fn transpose(batch: &mut Batch) {
 /// Bitslices up to `BATCH_SIZE` blocks, leaving the rest zero.
 #[target_feature(enable = "sse2")]
 fn to_batch(input: &[[u8; 16]]) -> Batch {
-    debug_assert!(input.len() <= BATCH_SIZE);
+    assert!(input.len() <= BATCH_SIZE);
     let mut out = Batch {
         w: [_mm_setzero_si128(); 8],
     };
@@ -206,7 +206,7 @@ fn to_batch(input: &[[u8; 16]]) -> Batch {
 /// Writes the first `out.len()` blocks of `batch`.
 #[target_feature(enable = "sse2")]
 fn from_batch(out: &mut [[u8; 16]], batch: &Batch) {
-    debug_assert!(out.len() <= BATCH_SIZE);
+    assert!(out.len() <= BATCH_SIZE);
     let mut copy = *batch;
     transpose(&mut copy);
     for (block, w) in out.iter_mut().zip(copy.w) {

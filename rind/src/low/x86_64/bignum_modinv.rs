@@ -267,9 +267,9 @@ macro_rules! n_nshort {
 /// assuming that a and b are coprime *and* that b is an odd number > 1.
 #[inline(never)]
 pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], t: &mut [u64]) {
-    debug_assert!(z.len() == a.len());
-    debug_assert!(z.len() == b.len());
-    debug_assert!(z.len() * 3 <= t.len());
+    assert!(z.len() == a.len());
+    assert!(z.len() == b.len());
+    assert!(z.len() * 3 <= t.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -881,4 +881,17 @@ pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], t: &mut [u64]) 
         out("rax") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_modinv,
+        &mut [0; 4],
+        &[3; 4],
+        &[u64::MAX; 4],
+        &mut [0; 12]
+    );
 }

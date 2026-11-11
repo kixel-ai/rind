@@ -324,7 +324,7 @@ def sha256E (msg : List U8) : Nat :=
 
 /-- The digest the ECDSA layer hashes `msg` to, given the block functions'
 contracts, encodes `sha256E`'s integer. -/
-theorem ecdsa_sha256_spec (hsha : ShaBlocks) (msg : Slice U8) (hm : msg.length ≤ maxInput) :
+theorem ecdsa_sha256_spec (hsha : Sha256Blocks) (msg : Slice U8) (hm : msg.length ≤ maxInput) :
     ∃ d dg, Sha256Sig.HashInst.hash msg = ok d ∧
       high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = ok dg ∧ 32 ≤ dg.length ∧
       beNat (dg.val.take 32) % n256 = sha256E msg.val := by
@@ -412,7 +412,7 @@ nonce in [1, n), neither zero. Signing is refused only if the nonce's random
 input cannot be drawn. The nonces, RFC 6979's hedged with that input, are
 outside the functional spec. -/
 theorem p256_ecdsa_sign (h : Runs) (hdrbg : Drbg) (hfill : Fills)
-    (hsha : ShaBlocks) (kp : high.signature.EcdsaKeyPair) (d : Nat) (hkp : EcdsaKeyPairOf kp d)
+    (hsha : Sha256Blocks) (kp : high.signature.EcdsaKeyPair) (d : Nat) (hkp : EcdsaKeyPairOf kp d)
     (msg : Slice U8) (hm : msg.length ≤ maxInput) :
     high.signature.EcdsaKeyPair.sign kp msg ⦃ r =>
       (∀ sig, r = .Ok sig → high.signature.Signature.Insts.CoreConvertAsRefSliceU8.as_ref sig ⦃ b =>
@@ -517,7 +517,7 @@ theorem p256_ecdsa_key_pair_public_key (h : Runs) (hheld : Held) (hc : Cached)
 /-- Verification with a key pair's public key: ECDSA's verification of
 `msg`'s SHA-256 under its scalar times the generator. -/
 theorem p256_ecdsa_key_pair_verify (h : Runs) (hheld : Held) (hc : Cached)
-    (hsha : ShaBlocks) (kp : high.signature.EcdsaKeyPair) (d : Nat) (hkp : EcdsaKeyPairOf kp d)
+    (hsha : Sha256Blocks) (kp : high.signature.EcdsaKeyPair) (d : Nat) (hkp : EcdsaKeyPairOf kp d)
     (msg sig : Slice U8) (hm : msg.length ≤ maxInput) :
     (do
       let pk ← high.signature.EcdsaKeyPair.impl.public_key kp
@@ -540,7 +540,7 @@ theorem p256_ecdsa_key_pair_verify (h : Runs) (hheld : Held) (hc : Cached)
 X9.62 uncompressed point on the curve, and otherwise its verification is
 ECDSA's of a message's SHA-256 under that point. -/
 theorem p256_ecdsa_public_key_new (ho : P256Order) (h : Runs) (hheld : Held) (hc : Cached)
-    (hsha : ShaBlocks) (bytes : Slice U8) :
+    (hsha : Sha256Blocks) (bytes : Slice U8) :
     high.signature.PublicKey.new high.signature.verify.ECDSA_P256_SHA256_FIXED bytes ⦃ r =>
       x962Outcome bytes.val (fun pk => ∀ (msg sig : Slice U8), msg.length ≤ maxInput →
         high.signature.PublicKey.verify pk msg sig ⦃ v =>

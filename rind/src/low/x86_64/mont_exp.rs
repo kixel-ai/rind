@@ -226,8 +226,10 @@ fn power5(z: &mut [u64], table: &[Row], m: &[u64], n0: u64, i: u64, adx: Option<
     // `bn_powerx5` runs.
     unsafe {
         match adx {
-            Some(_) => bn_powerx5(z, z, table, m, &n0, k as i32, i),
-            None => bn_power5(z, z, table, m, &n0, k as i32, i),
+            Some(_) => {
+                asm_call!(unsafe extern "sysv64" bn_powerx5(z, z, table, m, &n0, k as i32, i))
+            }
+            None => asm_call!(unsafe extern "sysv64" bn_power5(z, z, table, m, &n0, k as i32, i)),
         }
     };
 }

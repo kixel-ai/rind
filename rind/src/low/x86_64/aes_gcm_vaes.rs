@@ -51,8 +51,12 @@ impl VaesKernel {
         // proves the CPU has the kernel's features.
         unsafe {
             match width {
-                Width::Avx2(_) => gcm_init_vpclmulqdq_avx2(&mut htable, &words),
-                Width::Avx512(_) => gcm_init_vpclmulqdq_avx512(&mut htable, &words),
+                Width::Avx2(_) => {
+                    asm_call!(unsafe extern "sysv64" gcm_init_vpclmulqdq_avx2(&mut htable, &words))
+                }
+                Width::Avx512(_) => {
+                    asm_call!(unsafe extern "sysv64" gcm_init_vpclmulqdq_avx512(&mut htable, &words))
+                }
             }
         }
         Self { htable, width }
@@ -106,18 +110,26 @@ impl VaesKernel {
             // 16 for the AVX2 kernel.
             unsafe {
                 match (self.width, ENC) {
-                    (Width::Avx2(_), true) => aes_gcm_enc_update_vaes_avx2(
-                        inout, inout, len, key, &counter, htable, xi_ptr,
-                    ),
-                    (Width::Avx2(_), false) => aes_gcm_dec_update_vaes_avx2(
-                        inout, inout, len, key, &counter, htable, xi_ptr,
-                    ),
-                    (Width::Avx512(_), true) => aes_gcm_enc_update_vaes_avx512(
-                        inout, inout, len, key, &counter, htable, xi_ptr,
-                    ),
-                    (Width::Avx512(_), false) => aes_gcm_dec_update_vaes_avx512(
-                        inout, inout, len, key, &counter, htable, xi_ptr,
-                    ),
+                    (Width::Avx2(_), true) => {
+                        asm_call!(unsafe extern "sysv64" aes_gcm_enc_update_vaes_avx2(
+                            inout, inout, len, key, &counter, htable, xi_ptr,
+                        ))
+                    }
+                    (Width::Avx2(_), false) => {
+                        asm_call!(unsafe extern "sysv64" aes_gcm_dec_update_vaes_avx2(
+                            inout, inout, len, key, &counter, htable, xi_ptr,
+                        ))
+                    }
+                    (Width::Avx512(_), true) => {
+                        asm_call!(unsafe extern "sysv64" aes_gcm_enc_update_vaes_avx512(
+                            inout, inout, len, key, &counter, htable, xi_ptr,
+                        ))
+                    }
+                    (Width::Avx512(_), false) => {
+                        asm_call!(unsafe extern "sysv64" aes_gcm_dec_update_vaes_avx512(
+                            inout, inout, len, key, &counter, htable, xi_ptr,
+                        ))
+                    }
                 }
             }
             ghash.set_xi(&xi);

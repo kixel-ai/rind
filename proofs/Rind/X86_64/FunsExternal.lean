@@ -10,7 +10,8 @@ set_option linter.dupNamespace false
 The rind functions the x86_64 translation leaves opaque, beside those
 `Rind.X86_64.AesNi` models. No proof assumes anything about them beyond what
 `Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, and `Rind.X86_64.ValeAesGcm`
-state for s2n-bignum's, aws-lc's, and Vale's routines and what each theorem
+state for s2n-bignum's, aws-lc's, and Vale's routines, what
+`Rind.X86_64.CtEqual` states for the constant-time compares, and what each theorem
 takes as a hypothesis.
 -/
 
@@ -82,7 +83,13 @@ opaque low.x86_64.aes_gcm.tagged
   low.x86_64.aes.AesKey → low.x86_64.ghash.GhashTable → Std.Array Std.U8 12#usize →
     Slice Std.U8 → Slice Std.U8 → Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
 
-opaque low.generic.ct_equal.ct_equal : Slice Std.U8 → Slice Std.U8 → Result Bool
+/-! The constant-time compares behind `low::generic::ct_equal`, whose inline
+assembly `Rind.X86_64.CtEqual` states HOL Light's theorems about. -/
+
+opaque low.x86_64.cpu.ct_compare_16
+  : Array Std.U8 16#usize → Array Std.U8 16#usize → Result Std.Usize
+
+opaque low.x86_64.cpu.ct_compare_bytes : Slice Std.U8 → Slice Std.U8 → Result Std.U8
 
 opaque low.x86_64.vpaes_x86_64.VpaesKey.new
   : Slice Std.U8 → low.x86_64.cpu.HaveSsse3 → Result low.x86_64.vpaes_x86_64.VpaesKey
@@ -251,7 +258,7 @@ opaque low.x86_64.sha1_mux.path : Result low.x86_64.sha1_mux.Path
 opaque low.x86_64.sha256_mux.path : Result low.x86_64.sha256_mux.Path
 
 /-! SHA-1 and SHA-256's block and finishing functions, whose contracts `Rind.X86_64.ShaBlocks`
-states as hypotheses. SHA-1's block function is its whole dispatch, which `ShaBlocks` states
+states as hypotheses. SHA-1's block function is its whole dispatch, which `Sha1Blocks` states
 as one. -/
 
 opaque low.x86_64.sha1_mux.sha1_compress_blocks
@@ -367,47 +374,47 @@ opaque high.agreement.x25519_from_pkcs8
   : high.agreement.Algorithm → Slice Std.U8 →
     Result (core.result.Result (mid.x25519.PrivateKey × high.agreement.PublicKey) error.Error)
 
-opaque mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+opaque high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.encode_pkcs8
   : mid.x25519.PrivateKey → Slice Std.U8 → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.x25519.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+opaque high.agreement.X25519Curve.Insts.RindHighAgreementAgreePrivateKey.encode_scalar
   : mid.x25519.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+opaque high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_pkcs8
   : mid.p256.PrivateKey → Slice Std.U8 → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+opaque high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.encode_scalar
   : mid.p256.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+opaque high.curve.P384.Insts.RindHighAgreementAgreePrivateKey.encode_pkcs8
   : mid.p384.PrivateKey → Slice Std.U8 → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+opaque high.curve.P384.Insts.RindHighAgreementAgreePrivateKey.encode_scalar
   : mid.p384.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.encode_pkcs8
+opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.encode_pkcs8
   : mid.p521.PrivateKey → Slice Std.U8 → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.encode_scalar
+opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.encode_scalar
   : mid.p521.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.load
+opaque high.curve.P384.Insts.RindHighAgreementAgreePrivateKey.load
   : high.agreement.Algorithm → high.agreement.Source →
     Result (core.result.Result (mid.p384.PrivateKey × high.agreement.PublicKey) error.Error)
 
-opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.load
+opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.load
   : high.agreement.Algorithm → high.agreement.Source →
     Result (core.result.Result (mid.p521.PrivateKey × high.agreement.PublicKey) error.Error)
 
-opaque mid.p256.PrivateKey.Insts.RindHighAgreementAgree.load
+opaque high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.load
   : high.agreement.Algorithm → high.agreement.Source →
     Result (core.result.Result (mid.p256.PrivateKey × high.agreement.PublicKey) error.Error)
 

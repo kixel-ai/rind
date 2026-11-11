@@ -33,8 +33,9 @@ cargo bench
 
 `admin/bench-report collect` runs the report's benchmarks, then
 `admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev
-shell and under `quest gate --host`, which keeps other gated work off the
-host; it skips any host that is still busy, and writes their results and the hosts' details as JSON under
+shell and under `quest gate`, which waits for the host to have room but
+shares it with other gated work, so its numbers are noisier than the nightly
+`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under
 `.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly
 `bench` run's results, and `admin/bench-report render --from DIR` copies a
 collection's measured hosts into `benchmarks/data/` and writes
@@ -47,10 +48,11 @@ toolchain, and `just check` runs CI's gate over what the branch changed.
 On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
 with NEON alone, and with NEON denied. `just qemu <shell>` runs an entry of
-the nightly `qemu` job, which lints and tests the portable backend under
-qemu: `s390x` (big-endian), `riscv64`, `riscv64-musl`, `loongarch64`, `armv6`
-and `armv6-softfloat` (the Raspberry Pi 1's core), or `powerpc64le`,
-`powerpc64`, and `powerpc` (the last two big-endian).
+the nightly `qemu` job, which lints and tests the portable backend: `s390x`
+(big-endian), `riscv64`, `riscv64-musl`, `loongarch64`, `armv6` and
+`armv6-softfloat` (the Raspberry Pi 1's core), or `powerpc64le`, `powerpc64`,
+and `powerpc` (the last two big-endian) under qemu, or `i686` (32-bit x86)
+natively.
 `just miri` runs the nightly `miri` job, the portable backend's tests under
 Miri, on x86_64, and `just miri s390x-unknown-linux-gnu` big-endian.
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
@@ -60,17 +62,20 @@ valgrind cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
 admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
 qemu; on an aarch64 host, `nix develop .#ct-qemu-aarch64 --command
 admin/ct-qemu --target aarch64-unknown-linux-gnu` those of the aarch64 code
-that runs only with SHA3. None of them can see an instruction whose timing depends on its
+that runs only with SHA3, and `nix develop .#binsec --command admin/ct-binsec
+[--exact] [test]` has BINSEC prove the region of each `ct_binsec_...` test
+constant time for every secret, symbolically. None of them but BINSEC, which
+sees divisions, can see an instruction whose timing depends on its
 operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
-scans its release builds for x86_64, aarch64, and armv7, and its portable
-backend's, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
+scans its release builds for every architecture it builds for, and its
+portable backend's on x86_64 and armv7, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
 not list as taking only public operands.
-`nix develop .#timing --command admin/timing dudect` times each secret
+`nix develop .#dudect --command admin/timing dudect` times each secret
 operation whose secret the API lets it set (not key generation, encapsulation,
 or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,
 and `admin/timing marvin` runs the Marvin toolkit against RSA-OAEP decryption. They need quiet
 hardware: the weekly `timing` workflow runs them on GitHub's runners, and a
-shared host is held with `quest gate --host`.
+shared host adds noise that no gate removes.
 `nix develop .#prove --command admin/prove` checks rind's HOL Light proofs of
 its assembly, then translates the Rust under proof to Lean with Aeneas and
 checks the proofs in [`proofs/`](proofs/README.md).
@@ -103,7 +108,7 @@ Run `just ci` before every push, and mark the PR ready with `/quest-review` when
 Keep it a draft only while its description lists a decision the maintainer still owns.
 Fix any merge conflicts and failing CI checks.
 
-The platform workflows inherited from graviola run nightly or on demand with `gh workflow run <name> --ref <branch>`.
+The platform workflows inherited from graviola run nightly or on demand with `gh workflow run <name> --ref <branch>`, and on a pull request that touches their inputs, a cheap subset each: one ctgrind row, the armv7, portable, and Dart jobs of `build`, a mutation run over the PR's diff, and a timing build. These runs are advisory, since a path-filtered workflow cannot be a required check, but fix a red one before merging.
 PRs land on `main` through GitHub's merge queue, one PR at a time, as squash commits.
 Queue the reviewed head with `quest merge <pr> --land <sha>` (`/quest-merge` does this).
 The required `Queue` check skips on pull requests; the merge group runs `just ci` against the merge group's base on the self-hosted runner.

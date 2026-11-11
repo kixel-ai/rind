@@ -7,7 +7,3 @@ dependencies, a failing `main`, anything that breaks MoQ on a published
 rind release, a published adapter that diverges from its upstream's API,
 and hosted CI that blocks every PR. Otherwise empty while
 nothing is urgent.
-
-## Required
-
-- [Adapters offer exactly their upstream's API](/quest/m0/adapters/README.md) - every adapter swaps for its upstream's provider with no other change

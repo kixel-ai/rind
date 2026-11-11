@@ -21,7 +21,7 @@ pub(crate) fn leave_cpu_state(_old: u32) {}
 /// The caller must ensure that there are `len` bytes writable at `ptr`,
 /// and that the pointed-to object has a safe all-zeroes representation.
 /// (see `low::generic::zeroise` which expresses this within the type system).
-pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
+pub(in crate::low) unsafe fn zero_bytes(ptr: *mut u8, len: usize) {
     match HaveAvx2::check() {
         // SAFETY: the caller's guarantee, and the token proves AVX2
         Some(_) => unsafe { zero_bytes_avx2(ptr, len) },
@@ -105,56 +105,61 @@ unsafe fn zero_bytes_sse2(ptr: *mut u8, len: usize) {
     }
 }
 
-/// Effectively memcmp(a, b, len), but guaranteed to visit every element
-/// of a and b.
+/// Compares the first `min(a.len(), b.len())` bytes of `a` and `b`, reading
+/// every one of them whatever their values.
 ///
-/// The return value does not follow memcmp semantics: it is zero if
-/// `a == b`, otherwise it is non-zero.
-///
-/// # Safety
-/// The caller must ensure that there are `len` bytes readable at `a` and `b`,
-pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: usize) -> u8 {
-    let mut acc = 0u8;
-    // SAFETY: reads `len` bytes from `a` and `b`, which the caller guarantees
+/// Returns zero if they are equal, otherwise non-zero.
+#[inline(never)]
+pub(in crate::low) fn ct_compare_bytes(a: &[u8], b: &[u8]) -> u8 {
+    let (len, a, b) = (a.len().min(b.len()), a.as_ptr(), b.as_ptr());
+    let acc: u32;
+    // SAFETY: reads `len` bytes from `a` and `b`, which both hold.
+    // Its registers are fixed, and it is never inlined, so its proof in
+    // `proofs/hol-light/x86_64/ct_compare_bytes.ml` is of one copy.
     unsafe {
         core::arch::asm!(
-            "   2: cmp {len}, 0",
-            "      je  3f",
-            "      mov {tmp}, [{a}]",
-            "      xor {tmp}, [{b}]",
-            "      or  {acc}, {tmp}",
-            "      add {a}, 1",
-            "      add {b}, 1",
-            "      sub {len}, 1",
-            "      jmp 2b",
+            "   2: cmp   rdx, 0",
+            "      je    3f",
+            "      movzx ecx, byte ptr [rdi]",
+            "      movzx r8d, byte ptr [rsi]",
+            "      xor   ecx, r8d",
+            "      or    eax, ecx",
+            "      add   rdi, 1",
+            "      add   rsi, 1",
+            "      sub   rdx, 1",
+            "      jmp   2b",
             "   3:  ",
-            a = inout(reg) a => _,
-            b = inout(reg) b => _,
-            len = inout(reg) len => _,
-            tmp = inout(reg_byte) 0u8 => _,
-            acc = inout(reg_byte) acc,
+            inout("rdi") a => _,
+            inout("rsi") b => _,
+            inout("rdx") len => _,
+            inout("eax") 0u32 => acc,
+            out("ecx") _,
+            out("r8d") _,
+            options(nostack, readonly),
         );
     }
-    acc
+    acc as u8
 }
 
 /// Compares two 16-byte blocks, such as AEAD tags, in constant time.
 ///
 /// Returns zero if `a == b`, otherwise non-zero. The words are combined in
 /// assembly so the compiler cannot split the test into early exits.
+#[inline(never)]
 pub(in crate::low) fn ct_compare_16(a: &[u8; 16], b: &[u8; 16]) -> usize {
     let (a, b) = (u128::from_ne_bytes(*a), u128::from_ne_bytes(*b));
-    let mut diff = a as u64;
-    // SAFETY: register-only arithmetic.
+    let diff: u64;
+    // SAFETY: register-only arithmetic, proven in
+    // `proofs/hol-light/x86_64/ct_compare_16.ml`.
     unsafe {
         core::arch::asm!(
-            "xor {diff}, {b0}",
-            "xor {a1}, {b1}",
-            "or  {diff}, {a1}",
-            diff = inout(reg) diff,
-            a1 = inout(reg) (a >> 64) as u64 => _,
-            b0 = in(reg) b as u64,
-            b1 = in(reg) (b >> 64) as u64,
+            "xor rax, rdx",
+            "xor rcx, r8",
+            "or  rax, rcx",
+            inout("rax") a as u64 => diff,
+            inout("rcx") (a >> 64) as u64 => _,
+            in("rdx") b as u64,
+            in("r8") (b >> 64) as u64,
             options(pure, nomem, nostack),
         );
     }
@@ -532,6 +537,24 @@ pub(crate) fn prefetch<T>(table: &[T], stride: usize) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::abi::call;
+
+    #[test]
+    fn abi() {
+        let mut bytes = [0xffu8; 100];
+        // SAFETY: `bytes` is 100 writable bytes, and every x86_64 CPU has
+        // SSE2; AVX2 is checked.
+        unsafe {
+            call!(unsafe zero_bytes_sse2, bytes.as_mut_ptr(), 100);
+            if is_x86_feature_detected!("avx2") {
+                call!(unsafe zero_bytes_avx2, bytes.as_mut_ptr(), 100);
+            }
+        }
+        assert_eq!(bytes, [0; 100]);
+        let (a, b) = ([1u8; 37], [2u8; 37]);
+        assert_ne!(call!(ct_compare_bytes, &a, &b), 0);
+        assert_ne!(call!(ct_compare_16, &[1; 16], &[2; 16]), 0);
+    }
 
     /// Whether std detects every feature named, less those `test_toggle`
     /// denies.

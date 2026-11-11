@@ -60,7 +60,7 @@ fn addmulmod(r: *mut Fe1305x2, x: *const Fe1305x2, y: *const Fe1305x2, c: &Fe130
     // SAFETY: every argument points to a live, aligned `Fe1305x2`, which the
     // routine allows `r` to share with `x`. Only a `HaveNeon` token builds the
     // state they come from.
-    unsafe { openssl_poly1305_neon2_addmulmod(r, x, y, c) }
+    unsafe { asm_call!(unsafe extern "C" openssl_poly1305_neon2_addmulmod(r, x, y, c)) }
 }
 
 fn freeze(r: &mut Fe1305x2) {
@@ -236,7 +236,7 @@ impl Poly1305Neon {
             // SAFETY: `input` has `len` readable bytes, `self.h` is aligned,
             // and only a `HaveNeon` token builds `self`.
             let left = unsafe {
-                openssl_poly1305_neon2_blocks(&mut self.h, &self.precomp, input.as_ptr(), len)
+                asm_call!(unsafe extern "C" openssl_poly1305_neon2_blocks(&mut self.h, &self.precomp, input.as_ptr(), len))
             };
             input = &input[len - left..];
         }

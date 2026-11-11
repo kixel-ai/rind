@@ -37,7 +37,7 @@ while IFS= read -r path; do
     dir=${path%%/*}
     if [[ "$path" == */* && -n "${dirs[$dir]:-}" ]]; then
         selected[${dirs[$dir]}]=1
-    elif grep -qE '^(thirdparty/|Cargo\.(toml|lock)$|\.rustfmt\.toml$)' <<<"$path"; then
+    elif grep -qE '^(thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)' <<<"$path"; then
         echo --workspace
         exit
     fi
