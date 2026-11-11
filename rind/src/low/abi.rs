@@ -1372,7 +1372,10 @@ mod tests {
         planted!(x19, "mov x19, xzr", "ret");
         planted!(x29, "add x29, x29, #16", "ret");
         planted!(d8, "movi d8, #0", "ret");
-        planted!(sp, "add sp, sp, #16", "ret");
+        // Lowered rather than raised: raising it would free the trampoline's
+        // saved frame, which memcheck, with no red zone on arm64, then reports
+        // undefined when the trampoline restores it.
+        planted!(sp, "sub sp, sp, #16", "ret");
         // The upper half of v8 is the caller's to save.
         planted!(scratch, "mov x9, xzr", "mov v8.d[1], xzr", "ret");
         #[cfg(target_os = "linux")]
