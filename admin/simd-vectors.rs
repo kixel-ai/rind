@@ -120,7 +120,7 @@ fn main() {
         .collect();
     let mut out = String::from("import Rind.X86_64.Simd\nopen Aeneas Aeneas.Std Result\n\n");
     let mut guard =
-        |call: String, result: String| writeln!(out, "#guard reducesTo (R := BitVec _) ({call}) {result}").unwrap();
+        |call: String, result: String| writeln!(out, "#guard reducesTo (R := BitVec _) ( {call} ) {result}").unwrap();
 
     let binary: [(&str, Binary); 7] = [
         ("sse2._mm_xor_si128", |a, b| unsafe { _mm_xor_si128(a, b) }),
