@@ -32,6 +32,5 @@ Guidance:
 
 ## Related
 
-- [64-bit portable targets use 64-bit limbs](/quest/m3/cold-speed/portable-limbs.md) - the portable row's other large gap
 - [armv7 raw ciphers from libcrux](/quest/m3/libcrux-ciphers.md) - replaces the block cipher copy this builds on, once libcrux exports it
 - [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) - proves the AES-GCM paths this changes

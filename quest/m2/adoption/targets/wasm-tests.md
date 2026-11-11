@@ -19,7 +19,3 @@ Guidance:
 - Constant time: ctgrind, the trace comparisons, and `admin/ct-vartime` check native code. A wasm engine compiles rind again, and may turn a select into a branch. PLATFORMS.md says that plainly.
 - wasm32-unknown-unknown stays compile-only: its tests need a JavaScript host, which waits for a browser consumer, as WebCrypto does.
 - `quest/m0/adapters/ring.md` keeps ring's `wasm32_unknown_unknown_js` feature a no-op because rind did not build for wasm32. Now that it does, that feature must select getrandom's JavaScript backend as ring's does; its PR, [moq-dev/rind#516](https://github.com/moq-dev/rind/pull/516), must revisit it.
-
-## Related
-
-- [64-bit portable targets use 64-bit limbs](/quest/m3/cold-speed/portable-limbs.md) - picks wasm32's limb width

@@ -84,6 +84,10 @@ qemu. iOS devices' code is only built.
   `wasm32-wasip2` and `wasm32-unknown-unknown`, with and without `wipe`. The
   latter enables `getrandom/wasm_js` for JavaScript randomness; the WASI target
   uses its system random source. These are compile checks, not runtime tests.
+  RSA and the NIST curves run on 64-bit limbs on 64-bit targets and on
+  `wasm32` built with `-C target-feature=+wide-arithmetic` (stable from Rust
+  1.101), whose 128-bit products take one or two multiply instructions, and
+  on 32-bit limbs elsewhere, where a 128-bit product would be a library call.
   On 32-bit `x86` it needs Rust 1.94 rather than the 1.90 MSRV, since
   libcrux-platform 0.0.4 calls `__cpuid` outside `unsafe`
   ([libcrux#1646](https://github.com/celabshq/libcrux/issues/1646)).
