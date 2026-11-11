@@ -56,18 +56,15 @@ pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
     }
 }
 
-/// Effectively memcmp(a, b, len), but guaranteed to visit every element
-/// of a and b.
+/// Compares the first `min(a.len(), b.len())` bytes of `a` and `b`, reading
+/// every one of them whatever their values.
 ///
-/// The return value does not follow memcmp semantics: it is zero if
-/// `a == b`, otherwise it is non-zero.
-///
-/// # Safety
-/// The caller must ensure that there are `len` bytes readable at `a` and `b`,
+/// Returns zero if they are equal, otherwise non-zero.
 #[inline(never)]
-pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: usize) -> u8 {
+pub(in crate::low) fn ct_compare_bytes(a: &[u8], b: &[u8]) -> u8 {
+    let (len, a, b) = (a.len().min(b.len()), a.as_ptr(), b.as_ptr());
     let acc: u64;
-    // SAFETY: reads `len` bytes from `a` and `b`, which the caller guarantees.
+    // SAFETY: reads `len` bytes from `a` and `b`, which both hold.
     // Its registers are fixed, and it is never inlined, so its proof in
     // `proofs/hol-light/aarch64/ct_compare_bytes.ml` is of one copy.
     unsafe {

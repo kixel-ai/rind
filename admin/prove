@@ -567,6 +567,7 @@ extract() {
         --include 'crate::mid::p521::_::BYTES' \
         --include crate::low::ct \
         --include crate::low::generic::blockwise \
+        --include crate::low::generic::ct_equal \
         --include crate::low::generic::chacha20 \
         --include "crate::low::$arch::sha512::sha512_compress_blocks" \
         "$@" \
