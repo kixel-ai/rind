@@ -46,11 +46,13 @@ jobs:
 
       - name: Build benchmarks
         run: |
-          benches=$(cargo metadata --format-version 1 --no-deps |
+          mapfile -t benches < <(cargo metadata --format-version 1 --no-deps |
             jq -r --argjson shard ${{ matrix.shard }} '[.packages[] | select(.name == "rind-bench").targets[]
               | select(.kind == ["bench"]).name] | sort | to_entries[]
-              | select(.key % 3 == $shard - 1) | "--bench \(.value)"')
-          cargo codspeed build -p rind-bench --features __bench_codspeed $benches
+              | select(.key % 3 == $shard - 1) | "--bench", .value')
+          # Without --bench, cargo codspeed builds every target into one upload.
+          [ ${#benches[@]} -gt 0 ] || { echo "no bench targets for shard ${{ matrix.shard }}"; exit 1; }
+          cargo codspeed build -p rind-bench --features __bench_codspeed "${benches[@]}"
 
       - name: Run benchmarks
         uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
