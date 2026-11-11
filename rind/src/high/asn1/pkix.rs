@@ -1,7 +1,7 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use super::SetOf;
+use super::{Encoder, Error, OctetString, Parser, SetOf, Tag, Type};
 
 asn1_struct! {
     RSAPublicKey ::= SEQUENCE {
@@ -247,4 +247,58 @@ mod tests {
         assert_eq!(&buf, bytes);
         assert_eq!(len, bytes.len());
     }
+}
+
+/// RFC 9881's ML-DSA private key: its seed, its expanded key, or both.
+#[derive(Clone, Debug)]
+pub(crate) enum MlDsaPrivateKey<'a> {
+    /// `seed [0] IMPLICIT OCTET STRING`, the form rind writes.
+    Seed(OctetString<'a>),
+    /// `expandedKey OCTET STRING`.
+    ExpandedKey(OctetString<'a>),
+    /// `both SEQUENCE { seed, expandedKey }`.
+    Both(MlDsaSeedAndKey<'a>),
+}
+
+asn1_struct! {
+    MlDsaSeedAndKey ::= SEQUENCE {
+        seed         OCTET STRING,
+        expandedKey  OCTET STRING
+    }
+}
+
+impl MlDsaPrivateKey<'_> {
+    const SEED: Tag = Tag::context(0, false);
+}
+
+impl<'a> Type<'a> for MlDsaPrivateKey<'a> {
+    fn parse_with_tag(p: &mut Parser<'a>, _: Tag) -> Result<Self, Error> {
+        match p.peek_tag()?.0 {
+            tag if tag == Self::SEED.0 => {
+                Ok(Self::Seed(OctetString::parse_with_tag(p, Self::SEED)?))
+            }
+            Tag::OCTET_STRING => Ok(Self::ExpandedKey(OctetString::parse(p)?)),
+            Tag::SEQUENCE => Ok(Self::Both(MlDsaSeedAndKey::parse(p)?)),
+            _ => Err(Error::UnexpectedTag),
+        }
+    }
+
+    fn encode_with_tag(&self, encoder: &mut Encoder<'_>, _: Tag) -> Result<usize, Error> {
+        match self {
+            Self::Seed(seed) => seed.encode_with_tag(encoder, Self::SEED),
+            Self::ExpandedKey(key) => key.encode(encoder),
+            Self::Both(both) => both.encode(encoder),
+        }
+    }
+
+    fn encoded_len(&self) -> usize {
+        match self {
+            Self::Seed(seed) => seed.encoded_len(),
+            Self::ExpandedKey(key) => key.encoded_len(),
+            Self::Both(both) => both.encoded_len(),
+        }
+    }
+
+    // A CHOICE has no tag of its own.
+    const TAG: Tag = Tag(0);
 }

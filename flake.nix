@@ -602,6 +602,16 @@
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
             };
 
+            # `just wasm` runs the portable backend's tests on wasm32-wasip2
+            # in it, under wasmtime. The toolchain is the default shell's,
+            # which already carries the target.
+            wasm = pkgs.mkShell {
+              packages = [
+                rust-toolchain
+                pkgs.wasmtime
+              ];
+            };
+
             # `just miri` and the miri workflow run in it: Charon's nightly,
             # which already carries Miri, rather than a second nightly.
             miri = pkgs.mkShell {

@@ -20,7 +20,7 @@
   nearly every operation TLS and QUIC run, from the handshake to each
   packet's AEAD.
 - 🛡️ **Verified where it counts.** On x86_64 and aarch64, rind's
-  elliptic-curve, RSA, and ML-KEM arithmetic builds on [s2n-bignum]'s
+  elliptic-curve, RSA, ML-KEM, and ML-DSA arithmetic builds on [s2n-bignum]'s
   formally verified assembly, and rind's own [Lean proofs][proofs] carry
   X25519 and Ed25519 from its API down to it, as [Verified code][verified]
   lists.
@@ -91,7 +91,7 @@ ring and aws-lc-rs item to rind's.
 
 The `rind` crate's own API covers AES-GCM, ChaCha20-Poly1305, and
 XChaCha20-Poly1305, QUIC header protection, X25519 and ECDH, ML-KEM-768,
-HPKE, ECDSA, Ed25519, and RSA signatures, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
+HPKE, ECDSA, Ed25519, ML-DSA, and RSA signatures, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
 HMAC, HKDF, PBKDF2, and AES key wrap. Each algorithm is a constant and each key
 type has one role, so misuse fails to compile:
 
