@@ -209,12 +209,12 @@ fn relabel(pem: &[u8]) -> Option<Vec<u8>> {
     let rest = &pem[start + BEGIN.len()..];
     let label_len = rest.windows(DASHES.len()).position(|w| w == DASHES)?;
     let (label, rest) = rest.split_at(label_len);
-    // pem-rfc7468's label grammar: printable characters, single spaces or
-    // tabs between them or after them, and here single hyphens too.
+    // pem-rfc7468's label grammar: printable characters other than hyphens,
+    // with single spaces or tabs between or after them.
     let mut separated = true;
     for &c in label {
-        let separator = matches!(c, b' ' | b'\t' | b'-');
-        if !(separator || (0x21..=0x7e).contains(&c)) || (separator && separated) {
+        let separator = matches!(c, b' ' | b'\t');
+        if c == b'-' || !(separator || (0x21..=0x7e).contains(&c)) || (separator && separated) {
             return None;
         }
         separated = separator;

@@ -397,10 +397,13 @@ fn ecdsa_key_encodings_load_as_aws_lc() {
                 let aws_lc = reference.key_provider.load_private_key(key).is_ok();
                 assert_eq!((rind, aws_lc), (loads, loads), "{label} {what}");
             }
-            for bad in ["PRIVATE  KEY", " KEY", "KEY \t", "A--B", "K\x01EY"] {
+            for bad in ["PRIVATE  KEY", " KEY", "KEY \t", "A-B", "K\x01EY"] {
                 let key = pem::encode_config(&pem::Pem::new(bad, der.clone()), lf);
                 let rind = rind().key_provider.load_private_key(key.as_bytes()).is_ok();
-                let aws_lc = reference.key_provider.load_private_key(key.as_bytes()).is_ok();
+                let aws_lc = reference
+                    .key_provider
+                    .load_private_key(key.as_bytes())
+                    .is_ok();
                 assert_eq!((rind, aws_lc), (false, false), "label {bad:?}");
             }
         }
