@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! SHA-1 and SHA-256 compression with the AArch32 crypto extension where the
-//! CPU has it, using aws-lc's `sha1-armv4-large` and `sha256-armv4` routines,
-//! and rind's portable code otherwise. SHA-512 compression with aws-lc's
-//! `sha512-armv4` routines: NEON where the CPU has it, and scalar code
-//! otherwise.
+//! SHA-1, SHA-256, and SHA-512 compression with aws-lc's `sha1-armv4-large`,
+//! `sha256-armv4`, and `sha512-armv4` routines: the AArch32 crypto extension's
+//! for SHA-1 and SHA-256 where the CPU has it, else NEON where it has that,
+//! and integer code otherwise.
 //!
 //! The assembly is aws-lc's, imported by `admin/import-aws-lc`. It is not
 //! formally verified: its correctness rests on its use and testing in OpenSSL,
