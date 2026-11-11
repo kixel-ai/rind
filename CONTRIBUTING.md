@@ -145,6 +145,9 @@ rind began as a fork of [ctz/graviola](https://github.com/ctz/graviola) and no l
 Report bugs that also affect graviola, or any other source rind imports, upstream; never block on the fix.
 Each `Written for Graviola by ...` header is attribution; keep it on files that carry one.
 
+[UPSTREAM.md](UPSTREAM.md) lists every workaround for a bug or gap in a tool or dependency rind doesn't own.
+A PR that adds such a workaround adds its entry there and names the entry in the workaround's comment; a PR that drops one deletes its entry.
+
 # Releases
 
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.

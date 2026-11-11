@@ -187,6 +187,7 @@ pub(crate) use portable::{
 };
 
 // Declared outside `cfg_if!`, which cargo-mutants cannot see into.
+// See UPSTREAM.md, "cargo-mutants cannot see into `cfg_if!`".
 #[cfg(rind_backend = "aarch64")]
 mod aarch64;
 #[cfg(rind_backend = "arm")]

@@ -2,6 +2,7 @@
 
 # libcrux decides whether a tag verified, then branches on that decision. The
 # outcome is public, but libcrux does not declassify it for memcheck.
+# See UPSTREAM.md, "libcrux branches on an undeclassified tag check".
 {
    libcrux-aes-gcm-decrypt-outcome
    Memcheck:Cond
@@ -18,6 +19,7 @@
 # the default layout. With one instruction per superblock it flagged only the
 # readers of tests on round constants and pointers, even the `bne` after
 # `teq r1,r2`, which compares two public pointers.
+# See UPSTREAM.md, "Memcheck blames a public flag on a secret carry".
 {
    aws-lc-sha512-armv4-nohw-flags
    Memcheck:Cond

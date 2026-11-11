@@ -6,6 +6,7 @@
 // libcrux exposes whole operations rather than the field and bignum
 // arithmetic these build on, so the portable backend, which armv7 builds on,
 // swaps them at this layer. The declarations stay visible to cargo-mutants.
+// See UPSTREAM.md, "cargo-mutants cannot see into `cfg_if!`".
 #[cfg_attr(
     any(rind_backend = "arm", rind_backend = "portable"),
     path = "portable/aes_gcm.rs"
