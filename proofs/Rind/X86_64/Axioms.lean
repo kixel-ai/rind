@@ -3,6 +3,7 @@ import Rind.X86_64.Sha512
 import Rind.X86_64.Pbkdf2
 import Rind.X86_64.ChaCha20
 import Rind.X86_64.AesGcm
+import Rind.X86_64.GcmKey
 import Rind.X86_64.Ed25519
 open rind.x86_64
 
@@ -168,6 +169,46 @@ change to the trust base.
  gcm256_decrypt_opt_spec] -/
 #guard_msgs in
 #print axioms aes_gcm_open
+
+/-- info: 'rind.x86_64.gcm_key_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms gcm_key_new
+
+/-- info: 'rind.x86_64.gcm_key_seal' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ counter_block_spec,
+ gcm128_encrypt_opt_spec,
+ gcm256_encrypt_opt_spec] -/
+#guard_msgs in
+#print axioms gcm_key_seal
+
+/-- info: 'rind.x86_64.gcm_key_seal_append_tag' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ counter_block_spec,
+ gcm128_encrypt_opt_spec,
+ gcm256_encrypt_opt_spec] -/
+#guard_msgs in
+#print axioms gcm_key_seal_append_tag
+
+/-- info: 'rind.x86_64.gcm_key_open_separate_tag' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ counter_block_spec,
+ gcm128_decrypt_opt_spec,
+ gcm256_decrypt_opt_spec] -/
+#guard_msgs in
+#print axioms gcm_key_open_separate_tag
+
+/-- info: 'rind.x86_64.gcm_key_open' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ counter_block_spec,
+ gcm128_decrypt_opt_spec,
+ gcm256_decrypt_opt_spec] -/
+#guard_msgs in
+#print axioms gcm_key_open
 
 /-- info: 'rind.x86_64.ed25519_generate' depends on axioms: [propext,
  Classical.choice,

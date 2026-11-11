@@ -676,7 +676,7 @@ mod tests {
                 assert_eq!(key.public_key().as_ref(), test.hex("publicIut"));
                 let shared = key.agree(&test.hex("publicServer"));
                 match test.flag("testPassed") {
-                    true => assert_eq!(shared.unwrap().as_ref(), test.hex("z")),
+                    true => assert_eq!(public(&shared.unwrap()), test.hex("z")),
                     false => assert!(shared.is_err()),
                 }
             }
@@ -734,8 +734,8 @@ mod tests {
                     "ZIUT" => {
                         let key = PrivateKey::from_scalar(algorithm, &self.private).unwrap();
                         assert_eq!(key.public_key().as_ref(), self.public);
-                        let shared = key.agree(&self.peer).unwrap();
-                        assert_eq!(shared.as_ref(), fixed(&value, len));
+                        let shared = public(&key.agree(&self.peer).unwrap());
+                        assert_eq!(shared, fixed(&value, len));
                         self.tests += 1;
                     }
                     _ => panic!("unexpected value {name}"),
