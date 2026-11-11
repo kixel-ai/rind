@@ -1,5 +1,5 @@
 //! Differential tests against aws-lc, which Miri cannot run.
-#![cfg(not(miri))]
+#![cfg(not(any(miri, target_family = "wasm")))]
 
 use aws_lc_rs::{digest, hmac, signature::Ed25519KeyPair};
 use proptest::collection::vec;
@@ -2861,4 +2861,119 @@ mod hpke {
             }
         }
     }
+}
+
+/// ML-DSA against aws-lc-rs, which runs mldsa-native with the same
+/// s2n-bignum kernels.
+macro_rules! ml_dsa_crosschecks {
+    ($set:ident, $signing:ident, $verify:ident) => {
+        use aws_lc_rs::encoding::{AsDer, AsRawBytes};
+        use aws_lc_rs::signature::{KeyPair, PqdsaKeyPair, UnparsedPublicKey, $signing};
+        use proptest::collection::vec;
+        use proptest::prelude::*;
+        use proptest::sample::Index;
+        use rind::signature::sign::{MlDsaKeyPair, $set};
+        use rind::signature::{PublicKey, verify};
+
+        // Each case makes several signatures, which are slow in a debug
+        // build and under emulation.
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(16))]
+
+            #[test]
+            fn sign_verify(
+                seed in any::<[u8; 32]>(),
+                message in vec(any::<u8>(), 0..300),
+                flip in any::<Option<Index>>(),
+            ) {
+                // One seed gives both sides the same key and encodings.
+                let theirs = PqdsaKeyPair::from_seed(&$signing, &seed).unwrap();
+                let ours = MlDsaKeyPair::<$set>::from_seed(&seed).unwrap();
+                let public = theirs.public_key().as_ref();
+                let ours_public = ours.public_key();
+                prop_assert_eq!(ours_public.as_ref(), public);
+                let spki = theirs.public_key().as_der().unwrap();
+                let ours_spki = ours_public.to_spki();
+                prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
+                let (ours_pkcs8, theirs_pkcs8) = (ours.to_pkcs8(), theirs.to_pkcs8v1().unwrap());
+                prop_assert_eq!(ours_pkcs8.as_ref(), theirs_pkcs8.as_ref());
+
+                // Signing is hedged, so each verifies the other's signature
+                // rather than matching its bytes.
+                let ours_signature = ours.sign(&message).unwrap();
+                UnparsedPublicKey::new(&aws_lc_rs::signature::$verify, public)
+                    .verify(&message, ours_signature.as_ref())
+                    .unwrap();
+                let mut signature = vec![0; $signing.signature_len()];
+                theirs.sign(&message, &mut signature).unwrap();
+                let verifier = PublicKey::from_spki(&verify::$verify, spki.as_ref()).unwrap();
+                verifier.verify(&message, &signature).unwrap();
+
+                // Both refuse it with any one bit flipped.
+                if let Some(flip) = flip {
+                    let bit = flip.index(signature.len() * 8);
+                    signature[bit / 8] ^= 1 << (bit % 8);
+                    prop_assert!(verifier.verify(&message, &signature).is_err());
+                    prop_assert!(
+                        UnparsedPublicKey::new(&aws_lc_rs::signature::$verify, public)
+                            .verify(&message, &signature)
+                            .is_err()
+                    );
+                }
+            }
+
+            /// Both load the other's expanded key, which has no seed, and
+            /// sign alike with it.
+            #[test]
+            fn expanded(seed in any::<[u8; 32]>(), message in vec(any::<u8>(), 0..300)) {
+                let theirs = PqdsaKeyPair::from_seed(&$signing, &seed).unwrap();
+                let expanded = theirs.private_key().as_raw_bytes().unwrap();
+                let expanded = expanded.as_ref();
+                let ours = MlDsaKeyPair::<$set>::from_pkcs8(&expanded_pkcs8(
+                    theirs_pkcs8_prefix(&theirs),
+                    expanded,
+                ))
+                .unwrap();
+                prop_assert!(ours.to_seed().is_none());
+                let ours_public = ours.public_key();
+                prop_assert_eq!(ours_public.as_ref(), theirs.public_key().as_ref());
+
+                // Ours writes the expanded form, which theirs loads.
+                let ours_pkcs8 = ours.to_pkcs8();
+                let reloaded = PqdsaKeyPair::from_pkcs8(&$signing, ours_pkcs8.as_ref()).unwrap();
+                prop_assert_eq!(reloaded.public_key().as_ref(), theirs.public_key().as_ref());
+                let signature = ours.sign(&message).unwrap();
+                UnparsedPublicKey::new(&aws_lc_rs::signature::$verify, theirs.public_key().as_ref())
+                    .verify(&message, signature.as_ref())
+                    .unwrap();
+            }
+        }
+
+        /// The PKCS#8 v1 header up to the private key, from the seed form
+        /// aws-lc writes: version and algorithm identifier.
+        fn theirs_pkcs8_prefix(theirs: &PqdsaKeyPair) -> Vec<u8> {
+            let pkcs8 = theirs.to_pkcs8v1().unwrap();
+            // SEQUENCE { INTEGER 0, AlgorithmIdentifier (13 bytes), ... }
+            pkcs8.as_ref()[2..2 + 3 + 13].to_vec()
+        }
+
+        /// A PKCS#8 v1 key in RFC 9881's expanded form.
+        fn expanded_pkcs8(prefix: Vec<u8>, expanded: &[u8]) -> Vec<u8> {
+            let inner = super::der(0x04, expanded);
+            let body = [prefix, super::der(0x04, &inner)].concat();
+            super::der(0x30, &body)
+        }
+    };
+}
+
+mod ml_dsa_44 {
+    ml_dsa_crosschecks!(MlDsa44, ML_DSA_44_SIGNING, ML_DSA_44);
+}
+
+mod ml_dsa_65 {
+    ml_dsa_crosschecks!(MlDsa65, ML_DSA_65_SIGNING, ML_DSA_65);
+}
+
+mod ml_dsa_87 {
+    ml_dsa_crosschecks!(MlDsa87, ML_DSA_87_SIGNING, ML_DSA_87);
 }

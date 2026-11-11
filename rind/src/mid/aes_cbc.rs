@@ -152,7 +152,8 @@ impl AesCbcDecryptingKey {
         aes_cbc::decrypt(&self.key, iv, blocks);
 
         let last = blocks.last().unwrap();
-        let pad = last[15];
+        // Hidden once, so no mask below folds into a branch on it.
+        let pad = black_box(last[15]);
         // Bad if `pad` is 0 or over 16, or any of the last `pad` bytes is not
         // `pad`, computed without a branch on them.
         let mut bad = ct_mask_lt(16, pad) | ct_mask_lt(pad, 1);
@@ -219,10 +220,10 @@ impl fmt::Debug for AesCbcDecryptingKey {
     }
 }
 
-/// All ones if `a < b`, else zero, without a branch.
+/// All ones if `a < b`, else zero, without a branch where neither is known.
 #[inline]
 fn ct_mask_lt(a: u8, b: u8) -> u8 {
-    (u32::from(black_box(a)).wrapping_sub(u32::from(b)) >> 8) as u8
+    (u32::from(a).wrapping_sub(u32::from(b)) >> 8) as u8
 }
 
 #[cfg(test)]

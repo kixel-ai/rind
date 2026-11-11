@@ -4,6 +4,10 @@
 # Runs each mutant's tests in parallel, in about half `cargo test`'s time.
 test_tool = "nextest"
 
+# Turns on the zeroing and heap scratch tests, without which a wiping `Drop`
+# does nothing a test can see.
+features = ["rind/wipe"]
+
 exclude_globs = [
   # Constants imported with aws-lc's, BoringSSL's, and OpenSSL's assembly,
   # which proofs and differential tests own.
@@ -41,6 +45,7 @@ exclude_re = [
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace \| with \^ in (detect|detect_once)$',
   'rind/src/low/generic/bignum\.rs:\d+:\d+: replace \| with \^ in (add_masked|bignum_add|bignum_cmp_lt|bignum_modadd|bignum_montredc|bignum_mul|cmp_lt_limbs|gcd_step|join|mod_double|mod_halve|mont_mul|sub_limbs_masked|sub_masked)$',
   'rind/src/low/generic/chacha20\.rs:\d+:\d+: replace \| with \^ in quarter_round$',
+  'rind/src/low/generic/mldsa_poly\.rs:\d+:\d+: replace \| with \^ in (mldsa_polyz_unpack_17|mldsa_polyz_unpack_19|mldsa_rej_uniform_vartime)$',
   'rind/src/low/generic/mlkem\.rs:\d+:\d+: replace \| with \^ in (mlkem_compress_d10|mlkem_compress_d4|mlkem_frombytes)$',
   'rind/src/low/generic/mlkem_poly\.rs:\d+:\d+: replace \| with \^ in (mlkem_rej_uniform_vartime|mlkem_tobytes)$',
   'rind/src/low/generic/p256\.rs:\d+:\d+: replace \| with \^ in (booth_w5|join|select_u8|sqr_wide)$',
@@ -66,6 +71,7 @@ exclude_re = [
   'rind/src/mid/aes\.rs:\d+:\d+: replace \| with \^ in AesCtr::apply_keystream$',
   'rind/src/mid/aes_cbc\.rs:\d+:\d+: replace \| with \^ in AesCbcDecryptingKey::decrypt$',
   'rind/src/mid/ed25519\.rs:\d+:\d+: replace \| with \^ in EdwardsPoint::compress$',
+  'rind/src/mid/mldsa\.rs:\d+:\d+: replace \| with \^ in (pack_eta|pack_t0|pack_t1|pack_w1|pack_z|unpack_eta|unpack_t0|unpack_t1)$',
   'rind/src/mid/mlkem768\.rs:\d+:\d+: replace \| with \^ in Coeffs<\{K \*N\}, Normal>::decompress_from_bytes_du_10$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace \| with \^ in (<impl Iterator for BoothRecode<W>>::next|BoothRecode<W>::recode|JacobianMontPoint::public_x_is)$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace << with >> in BoothRecode<W>::recode$',
@@ -82,8 +88,10 @@ exclude_re = [
   'rind/src/high/rsa\.rs:16:\d+: replace \+ with \*$',
   'rind/src/high/rsa\.rs:20:\d+: replace \+ with \*$',
   'rind/src/high/sec1\.rs:14:\d+: replace \+ with \*$',
+  'rind/src/high/signature\.rs:(229|1683):\d+: replace \+ with \*$',
   'rind/src/low/generic/bignum\.rs:331:\d+: replace \+ with \* in mont_mul$',
   'rind/src/low/x86_64/mlkem768_sample_poly_ntt_8x\.rs:229:\d+: replace \+ with \* in _squeeze_rate_and_reject$',
+  'rind/src/mid/mldsa\.rs:(354|447|492):\d+: replace \+ with \* in (keygen|public_key_from_secret|sign_internal)$',
   'rind/src/mid/rsa_priv\.rs:311:\d+: replace / with \*$',
   'rind/src/mid/rsa_priv\.rs:296:44: replace \+ with \*$',
   'rind/src/mid/rsa_priv\.rs:298:\d+: replace \+ with \*$',
@@ -95,6 +103,8 @@ exclude_re = [
   'rind/src/high/ecdsa\.rs:\d+:\d+: replace > with >= in hash_to_scalar$',
   'rind/src/high/rsa\.rs:\d+:\d+: replace > with >= in public_exponent$',
   'rind/src/high/signature\.rs:\d+:\d+: replace > with >= in RsaScheme::min_bits$',
+  # Each call passes the larger value second.
+  'rind/src/high/signature\.rs:\d+:\d+: replace > with (==|>=) in max$',
   'rind/src/low/aarch64/aes\.rs:352:\d+: replace - with / in invert_round_keys$',
   'rind/src/low/generic/p256\.rs:\d+:\d+: replace <<= with >>= in sqr_wide$',
   'rind/src/low/generic/p256\.rs:\d+:\d+: replace > with >= in p256_scalarmulbase$',
@@ -118,6 +128,7 @@ exclude_re = [
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:\d+:\d+: replace < with <= in non_adjacent_form$',
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:109:\d+: replace - with / in non_adjacent_form$',
   'rind/src/low/x86_64/ghash\.rs:639:41: replace / with % in store_partial$',
+  'rind/src/low/x86_64/mldsa\.rs:\d+:\d+: replace < with <= in rej_uniform_table$',
   'rind/src/low/x86_64/rsaz\.rs:\d+:\d+: replace < with <= in mod_exp$',
   'rind/src/low/x86_64/rsaz_avx512\.rs:\d+:\d+: replace < with <= in (from_limbs|to_limbs)$',
   'rind/src/low/x86_64/rsaz_avx512\.rs:\d+:\d+: delete match arm 0 in mod_exp$',
@@ -128,14 +139,28 @@ exclude_re = [
   'rind/src/low/x86_64/sha1\.rs:\d+:\d+: replace match guard i == pairs\.len\(\) with true in sha1_avx2$',
   'rind/src/mid/aes\.rs:\d+:\d+: replace < with <= in AesCtr::apply_keystream$',
   'rind/src/mid/aes_kw\.rs:187:\d+: replace - with / in AesKek::unwrap_padded$',
+  'rind/src/mid/mldsa\.rs:814:\d+: replace < with <= in expand_s$',
   'rind/src/mid/mlkem768\.rs:467:\d+: replace \+ with \* in Coeffs<\{K \*K \*N\}, Ntt>::transpose$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace < with <= in (<impl Iterator for BoothRecode<W>>::next|JacobianMontPoint::public_twin_multiply|public_below_p)$',
   'rind/src/mid/p384\.rs:\d+:\d+: replace < with <= in JacobianMontPoint::public_twin_multiply$',
   'rind/src/mid/p521\.rs:\d+:\d+: replace < with <= in JacobianPoint::public_twin_multiply$',
   'rind/src/mid/rsa_priv/exponents\.rs:\d+:\d+: replace < with <= in (divide_exact_e|shift_right_secret)$',
   'rind/src/mid/util\.rs:\d+:\d+: replace < with <= in public_naf$',
+  # Equivalent: a constant no result depends on. `(q - 1) / n` truncates to
+  # `q / n` and `(q + 1) / n`; decompose's `r0` never lies at `(q + 1) / 2`;
+  # vpmuldq reads only the even lanes of ML-DSA's x86_64 `QDATA`; ExpandA's
+  # first squeeze, of a multiple of 3 bytes, yields the same samples at any
+  # length; and the seed index of its padding lanes picks outputs it drops.
+  'rind/src/low/generic/mldsa_poly\.rs:(38|39):27: replace - with [+/]$',
+  'rind/src/low/generic/mldsa_poly\.rs:206:\d+: replace - with [+/] in decompose$',
+  'rind/src/low/x86_64/mldsa\.rs:(209|211|213|215|237|239|241|243|245|247|249|251|257|259|269|277|283|285|287|293|295|537|539|541|543|549|551|565|569|571|575|577|579|581|583|587):5: delete -$',
+  'rind/src/mid/mldsa\.rs:87:52: replace - with [+/]$',
+  'rind/src/mid/mldsa\.rs:(686|693):\d+: replace - with [+/] in (decompose|use_hint)$',
+  'rind/src/mid/mldsa\.rs:746:\d+: replace \* with / in expand_a$',
+  'rind/src/mid/mldsa\.rs:750:\d+: replace - with [+/] in expand_a$',
   # Speed only: which of several implementations runs, or how far ahead it
   # prefetches. Each implementation is tested on its own against the others.
+  'rind/src/low/x86_64/mldsa\.rs:\d+:\d+: delete match arm \(Some\(_\), [457]\) in mldsa_pointwise_acc$',
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace <= with > in tagged_from$',
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace \+ with \* in tagged_from$',
   'rind/src/low/aarch64/bignum_copy_row_from_table_mux\.rs:\d+:\d+: replace match guard width\.is_multiple_of\(8\) with false in bignum_copy_row_from_table$',
@@ -232,6 +257,8 @@ exclude_re = [
   'rind/src/high/hkdf\.rs:110:\d+: replace <impl sealed::Len for usize>::len -> usize with 1$',
   'rind/src/high/hmac_drbg\.rs:\d+:\d+: replace \+= with \*= in HmacDrbg<H>::update$',
   'rind/src/high/rsa\.rs:\d+:\d+: delete match arm Error::Fault in SigningKey::decrypt_oaep$',
+  'rind/src/mid/mldsa\.rs:526:\d+: replace - with [+/] in sign_internal$',
+  'rind/src/mid/mldsa\.rs:762:\d+: replace < with > in expand_a$',
   'rind/src/low/aarch64/sha1\.rs:\d+:\d+: replace match guard blocks\.is_empty\(\) with false in sha1_compress_blocks$',
   'rind/src/low/entry\.rs:\d+:\d+: replace - with / in <impl Drop for Entry>::drop$',
   'rind/src/low/entry\.rs:\d+:\d+: replace - with \+ in <impl Drop for Entry>::drop$',

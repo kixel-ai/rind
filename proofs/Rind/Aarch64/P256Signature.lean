@@ -490,7 +490,7 @@ theorem key_pair_public_key_spec (h : Runs) (hheld : Held) (hc : Cached)
   step with encoded_point_as_ref_spec ep (by rw [hl]; decide) as ⟨sl1, hsl1⟩
   rw [hl] at hsl1
   have hsl1l : sl1.length = 65 := by simp only [Slice.length, hsl1]; exact hl65
-  step with copy_from_spec 1088#usize sl1 (by rw [hsl1l]; decide) as ⟨rb, b, hrb, hbl, hbt⟩
+  step with copy_from_spec 2592#usize sl1 (by rw [hsl1l]; decide) as ⟨rb, b, hrb, hbl, hbt⟩
   subst hrb
   simp only [bind_ok, WP.spec_ok]
   refine ⟨⟨vk, by rw [hq]; exact hvk, rfl⟩, by rw [hbl, hsl1l], ?_⟩
@@ -556,7 +556,7 @@ theorem p256_ecdsa_public_key_new (ho : P256Order) (h : Runs) (hheld : Held) (hc
     split_ifs at hr ⊢ with h4 hl hon
     · obtain ⟨vk, rfl, hvk⟩ := hr
       simp only
-      step with copy_from_ok 1088#usize bytes (by simp [hl]) as ⟨b, enc, hb'⟩
+      step with copy_from_ok 2592#usize bytes (by simp [hl]) as ⟨b, enc, hb'⟩
       subst hb'
       simp only [WP.spec_ok]
       refine ⟨_, rfl, fun msg sig hm => ?_⟩
