@@ -536,6 +536,7 @@ impl Affine {
 
     /// Decodes a compressed X9.62 point.
     pub(crate) fn from_compressed(bytes: &[u8]) -> Result<Self, Error> {
+        low::Entry::assert_held();
         AffineMontPoint::from_x962_compressed(bytes).map(Self)
     }
 
@@ -568,9 +569,28 @@ impl Affine {
     /// Equal points double, and opposite points become the identity. The
     /// identity's affine image is `(0, 0)`, which is not on the curve.
     pub(crate) fn add(self, other: Self) -> Self {
-        let sum =
-            JacobianMontPoint::from_affine(&self.0).add(&JacobianMontPoint::from_affine(&other.0));
+        let sum = JacobianMontPoint::from_affine(&self.0)
+            .complete_add(&JacobianMontPoint::from_affine(&other.0));
         Self(sum.as_affine())
+    }
+
+    /// The standard generator.
+    pub(crate) fn generator() -> Self {
+        Self(CURVE_GENERATOR)
+    }
+
+    /// 1 when this is the affine image of the identity, `(0, 0)`.
+    ///
+    /// The mask is 0 or 1 and does not branch on the coordinates.
+    pub(crate) fn identity_mask(self) -> u64 {
+        eq_mask(&self.0.xy[..4], &[0; 4]) & eq_mask(&self.0.xy[4..], &[0; 4])
+    }
+
+    /// `other` when `select` is 1, and `self` when it is 0.
+    pub(crate) fn select(self, other: Self, select: u64) -> Self {
+        let mut xy = [0u64; 8];
+        low::bignum_mux(select, &mut xy, &other.0.xy, &self.0.xy);
+        Self(AffineMontPoint { xy })
     }
 
     /// Whether the curve equation holds.
@@ -827,6 +847,18 @@ impl JacobianMontPoint {
         *self = r;
     }
 
+    /// `self + p` by `p256_montjadd`.
+    ///
+    /// Unspecified when the points are equal, opposite, or at infinity.
+    /// [`Self::complete_add`] covers those inputs. ECDSA's odd multiples
+    /// never hit them: each adds `2P` to a smaller odd multiple.
+    #[must_use]
+    fn add(&self, p: &Self) -> Self {
+        let mut r = Self::infinity();
+        low::p256_montjadd(&mut r.xyz, &self.xyz, &p.xyz);
+        r
+    }
+
     /// `self + p` for any Jacobian points, including infinity, equals, and
     /// opposites.
     ///
@@ -834,7 +866,7 @@ impl JacobianMontPoint {
     /// so those results are computed separately and selected with no branch
     /// on the coordinates.
     #[must_use]
-    fn add(&self, p: &Self) -> Self {
+    fn complete_add(&self, p: &Self) -> Self {
         let mut sum = Self::infinity();
         low::p256_montjadd(&mut sum.xyz, &self.xyz, &p.xyz);
         let doubled = self.double();
@@ -1324,6 +1356,21 @@ const CURVE_ORDER_MM: [u64; 4] = [
     0x66e12d94f3d95620,
 ];
 
+/// The standard generator, Montgomery coordinates. The same limbs are the
+/// first point of the generator table.
+const CURVE_GENERATOR: AffineMontPoint = AffineMontPoint {
+    xy: [
+        0x79e7_30d4_18a9_143c,
+        0x75ba_95fc_5fed_b601,
+        0x79fb_732b_7762_2510,
+        0x1890_5f76_a537_55c6,
+        0xddf2_5357_ce95_560a,
+        0x8b4a_b8e4_ba19_e45c,
+        0xd2e8_8688_dd21_f325,
+        0x8571_ff18_2588_5d85,
+    ],
+};
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -1644,6 +1691,99 @@ mod tests {
         assert!(Scalar::from_be_reduced(&[0u8; 129]).is_err());
     }
 
+    /// Lengths 1 through 128, including 128 itself, lengths past 33 that are
+    /// not multiples of 32, and `n - 1`, against aws-lc's `BN_div`.
+    #[test]
+    fn be_reduced_matches_aws_lc() {
+        let order = util::u64x4_to_big_endian(&CURVE_ORDER);
+        let mut n_minus_1 = order;
+        n_minus_1[31] -= 1;
+        assert_eq!(
+            Scalar::from_be_reduced(&n_minus_1).unwrap().as_bytes(),
+            n_minus_1
+        );
+        assert_eq!(aws_reduce(&n_minus_1).unwrap(), n_minus_1);
+
+        let mut wide_n = [0u8; 40];
+        wide_n[8..].copy_from_slice(&n_minus_1);
+        assert_eq!(
+            Scalar::from_be_reduced(&wide_n).unwrap().as_bytes(),
+            n_minus_1
+        );
+
+        let max = [0xffu8; 128];
+        assert_eq!(
+            Scalar::from_be_reduced(&max).unwrap().as_bytes(),
+            aws_reduce(&max).unwrap()
+        );
+
+        for len in 1..=128 {
+            let zeroes = vec![0u8; len];
+            let ones = vec![0xffu8; len];
+            let mut high = vec![0u8; len];
+            high[0] = 1;
+            let mut low_n = vec![0u8; len];
+            let copy = len.min(32);
+            low_n[len - copy..].copy_from_slice(&n_minus_1[32 - copy..]);
+            for bytes in [&zeroes, &ones, &high, &low_n] {
+                match aws_reduce(bytes) {
+                    Ok(reduced) => assert_eq!(
+                        Scalar::from_be_reduced(bytes).unwrap().as_bytes(),
+                        reduced,
+                        "len {len}"
+                    ),
+                    Err(()) => assert!(Scalar::from_be_reduced(bytes).is_err(), "len {len}"),
+                }
+            }
+        }
+    }
+
+    /// `bytes mod n` by aws-lc, or `Err` when the residue is zero.
+    #[allow(unsafe_code)]
+    fn aws_reduce(bytes: &[u8]) -> Result<[u8; 32], ()> {
+        use aws_lc_sys::{
+            BN_CTX_free, BN_CTX_new, BN_bin2bn, BN_bn2binpad, BN_div, BN_free, BN_is_zero, BN_new,
+        };
+
+        struct Owned(*mut aws_lc_sys::BIGNUM);
+        impl Drop for Owned {
+            fn drop(&mut self) {
+                // SAFETY: `self.0` was allocated by aws-lc and is not used after this.
+                #[allow(unsafe_code)]
+                unsafe {
+                    BN_free(self.0)
+                }
+            }
+        }
+
+        // SAFETY: each bignum is freed by `Owned`, and the context by the
+        // explicit free below. The inputs are the caller's bytes and n.
+        unsafe {
+            let value = Owned(BN_bin2bn(
+                bytes.as_ptr(),
+                bytes.len(),
+                core::ptr::null_mut(),
+            ));
+            let order = util::u64x4_to_big_endian(&CURVE_ORDER);
+            let n = Owned(BN_bin2bn(
+                order.as_ptr(),
+                order.len(),
+                core::ptr::null_mut(),
+            ));
+            let rem = Owned(BN_new());
+            let ctx = BN_CTX_new();
+            assert!(!value.0.is_null() && !n.0.is_null() && !rem.0.is_null() && !ctx.is_null());
+            assert_eq!(BN_div(core::ptr::null_mut(), rem.0, value.0, n.0, ctx,), 1);
+            BN_CTX_free(ctx);
+            if BN_is_zero(rem.0) == 1 {
+                return Err(());
+            }
+            let mut out = [0u8; 32];
+            assert_eq!(BN_bn2binpad(rem.0, out.as_mut_ptr(), 32), 32);
+            Ok(out)
+        }
+    }
+
     /// `p256_montjadd` is unspecified for equal or opposite points. Addition
     /// has to double, return infinity, and pass infinity through.
     #[test]
@@ -1673,13 +1813,13 @@ mod tests {
         let jacobian = JacobianMontPoint::from_affine(&CURVE_GENERATOR);
         let infinity = JacobianMontPoint::infinity();
         assert_eq!(
-            jacobian.add(&infinity).as_affine().xy,
+            jacobian.complete_add(&infinity).as_affine().xy,
             jacobian.as_affine().xy
         );
         assert_eq!(
-            infinity.add(&jacobian).as_affine().xy,
+            infinity.complete_add(&jacobian).as_affine().xy,
             jacobian.as_affine().xy
         );
-        assert!(infinity.add(&infinity).public_is_infinity());
+        assert!(infinity.complete_add(&infinity).public_is_infinity());
     }
 }
