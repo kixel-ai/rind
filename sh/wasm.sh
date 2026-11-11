@@ -17,7 +17,9 @@ fi
 # The tests open the vector files by their absolute paths under the
 # checkout, so wasmtime preopens it at the same path.
 root=$(pwd)
-export CARGO_TARGET_WASM32_WASIP2_RUNNER="wasmtime run --dir $root::$root"
+# wasmtime passes the guest no host environment unless asked, so SLOW_TESTS
+# is forwarded.
+export CARGO_TARGET_WASM32_WASIP2_RUNNER="wasmtime run --dir $root::$root --env SLOW_TESTS"
 
 # Optimised, as the armv7 run is, but keeping the checks a debug build has.
 export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
