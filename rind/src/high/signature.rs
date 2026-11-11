@@ -2082,7 +2082,9 @@ mod tests {
         ];
         let signing = &sign::ECDSA_P256_SHA256_FIXED;
         let pair = EcdsaKeyPair::generate(signing).unwrap();
+        // The subtraction below branches on the scalar in a debug build.
         let scalar = pair.to_scalar();
+        low::ct::public_slice(scalar.as_ref());
         let mut negated = [0u8; 32];
         let mut borrow = 0;
         for i in (0..32).rev() {
