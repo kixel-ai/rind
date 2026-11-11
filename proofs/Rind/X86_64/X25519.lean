@@ -212,11 +212,12 @@ theorem from_bytes_spec (h : Runs) (b : Slice U8) :
     mid.x25519.PrivateKey.from_bytes b ⦃ r =>
       if b.length = 32 then ∃ k, r = .Ok k ∧ wordsNat k.val = leNat b.val
       else r = .Err (.KeyRejected .WrongLength) ⦄ := by
-  unfold mid.x25519.PrivateKey.from_bytes low.ct.secret_slice
+  unfold mid.x25519.PrivateKey.from_bytes
   step
   step as ⟨o, ho⟩
   simp only [core.option.Option.map,
-    P.Insts.CoreOpsFunctionFnOnceTupleArrayU644PrivateKey.call_once, mid.x25519.PrivateKey.constructor,
+    mid.x25519.PrivateKey.from_bytes.closure.Insts.CoreOpsFunctionFnOnceTupleArrayU644PrivateKey.call_once,
+    low.ct.into_secret,
     error.Error.Insts.CoreConvertFromKeyFormatError.from, core.option.Option.ok_or]
   split_ifs at ho with hb
   · obtain ⟨w, rfl, hw⟩ := ho
