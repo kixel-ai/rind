@@ -1341,6 +1341,8 @@ mod tests {
     }
 
     #[test]
+    // Catches the panic, which a `panic = "abort"` target such as wasm cannot.
+    #[cfg(panic = "unwind")]
     fn panicking_append_spends_nonce() {
         let private_key = PrivateKey::generate(&DHKEM_X25519_HKDF_SHA256).unwrap();
         let suite = Suite {

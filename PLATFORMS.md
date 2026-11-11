@@ -83,7 +83,12 @@ qemu. iOS devices' code is only built.
   where `--cfg rind_portable` forces it. Every PR also compiles the library for
   `wasm32-wasip2` and `wasm32-unknown-unknown`, with and without `wipe`. The
   latter enables `getrandom/wasm_js` for JavaScript randomness; the WASI target
-  uses its system random source. These are compile checks, not runtime tests.
+  uses its system random source. The nightly `build.yml` runs the vector tests
+  on `wasm32-wasip2` under wasmtime (`just wasm`), without the differential
+  tests, since aws-lc does not build for wasm. `wasm32-unknown-unknown` stays
+  compile-only: its tests need a JavaScript host. Constant time is unchecked on
+  wasm: ctgrind and the trace checks inspect native code, and a wasm engine
+  compiles rind again, so its JIT may turn a select into a branch.
   On 32-bit `x86` it needs Rust 1.94 rather than the 1.90 MSRV, since
   libcrux-platform 0.0.4 calls `__cpuid` outside `unsafe`
   ([libcrux#1646](https://github.com/celabshq/libcrux/issues/1646)).
