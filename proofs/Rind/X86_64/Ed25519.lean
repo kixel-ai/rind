@@ -713,8 +713,8 @@ theorem compress_bytes_spec (p : Std.Array U64 8#usize) (P : EdPoint)
 
 theorem from_seed_spec (h : Runs) (hs : RunsSha512) (seed : Std.Array U8 32#usize) :
     mid.ed25519.SigningKey.from_seed seed ⦃ k => SeedKey k seed.val ⦄ := by
-  unfold mid.ed25519.SigningKey.from_seed low.ct.into_public low.ct.secret_slice
-  step
+  unfold mid.ed25519.SigningKey.from_seed low.ct.into_public low.ct.into_secret
+  simp only [bind_ok]
   step with context_new_spec as ⟨c, hc⟩
   step as ⟨s1, hs1⟩
   step with context_update_spec hs _ c [] s1 hc (by simp [Slice.length, hs1]) as ⟨c1, hc1⟩
@@ -724,8 +724,8 @@ theorem from_seed_spec (h : Runs) (hs : RunsSha512) (seed : Std.Array U8 32#usiz
   simp only [r_post, r1_post, core.result.Result.Ok.injEq] at *
   have hH : hh.val = sha512 seed.val := by rw [hhv, hs1]; simp [sha512, Array.val_to_slice]
   have hl64 : (sha512 seed.val).length = 64 := by rw [← hH]; exact hh.property
-  have hs3' : wordsNat s3.val = ed25519Scalar seed.val := by
-    rw [s3_post, ed25519Scalar]
+  have hs3' : wordsNat s2.val = ed25519Scalar seed.val := by
+    rw [s2_post, ed25519Scalar]
     simp_all [List.slice, Array.val_to_slice]
   refine ⟨rfl, hs3', ?_, ?_, ?_⟩
   · simp_all [List.slice, Array.val_to_slice]
