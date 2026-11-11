@@ -63,6 +63,13 @@
    fun:*16rustls_pki_types*3pem9PemObject14from_pem_slice*
 }
 {
+   rustls-pki-types-pem-read-until-newline-inlined
+   Memcheck:Cond
+   fun:{closure#0}<u8, rustls_pki_types::pem::read_until_newline::*
+   ...
+   fun:*16rustls_pki_types3pem*
+}
+{
    rustls-pki-types-pem-line-end-inlined
    Memcheck:Cond
    fun:{closure#0}
