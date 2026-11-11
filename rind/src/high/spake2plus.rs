@@ -106,6 +106,7 @@ impl Confirm {
     ///
     /// Fails with [`Error::WrongLength`] otherwise.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let _entry = Entry::new_public();
         let bytes: [u8; Self::BYTES] = bytes.try_into().map_err(|_| Error::WrongLength)?;
         Ok(Self(bytes))
     }
