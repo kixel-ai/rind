@@ -521,6 +521,61 @@ impl AffineMontPoint {
     }
 }
 
+/// An affine P-256 point in Montgomery coordinates, checked on the curve.
+#[derive(Clone, Copy)]
+pub(crate) struct Affine(AffineMontPoint);
+
+impl Affine {
+    pub(crate) const BYTES: usize = 65;
+
+    /// Decodes an uncompressed X9.62 point.
+    pub(crate) fn from_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
+        AffineMontPoint::from_x962_uncompressed(bytes).map(Self)
+    }
+
+    /// Decodes a compressed X9.62 point.
+    pub(crate) fn from_compressed(bytes: &[u8]) -> Result<Self, Error> {
+        AffineMontPoint::from_x962_compressed(bytes).map(Self)
+    }
+
+    /// Uncompressed X9.62 encoding. The coordinates are not declassified.
+    pub(crate) fn to_uncompressed(self) -> [u8; Self::BYTES] {
+        self.0.as_bytes_uncompressed()
+    }
+
+    /// `scalar * self`.
+    pub(crate) fn mul(self, scalar: &Scalar) -> Self {
+        Self(self.0.multiply(scalar))
+    }
+
+    /// `scalar * G`.
+    pub(crate) fn mul_base(scalar: &Scalar) -> Self {
+        Self(AffineMontPoint::base_multiply(scalar))
+    }
+
+    /// `-self`.
+    pub(crate) fn negate(self) -> Self {
+        let mut point = self.0;
+        point.negate_y();
+        Self(point)
+    }
+
+    /// `self + other`.
+    ///
+    /// `p256_montjadd` is unspecified when the points are equal or opposite.
+    /// A sum that is not on the curve is left for the caller to refuse.
+    pub(crate) fn add(self, other: Self) -> Self {
+        let sum =
+            JacobianMontPoint::from_affine(&self.0).add(&JacobianMontPoint::from_affine(&other.0));
+        Self(sum.as_affine())
+    }
+
+    /// Whether the curve equation holds.
+    pub(crate) fn on_curve(self) -> bool {
+        self.0.on_curve()
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct JacobianMontPoint {
     xyz: [u64; 12],
@@ -656,8 +711,8 @@ impl JacobianMontPoint {
         Self { xyz }
     }
 
-    // aarch64's `p256_scalarmul` makes its result affine itself.
-    #[cfg(any(test, not(rind_backend = "aarch64")))]
+    // aarch64's `p256_scalarmul` makes its result affine itself. Addition
+    // still returns Jacobian coordinates on every backend.
     fn as_affine(&self) -> AffineMontPoint {
         // inversion calculated outside montgomery domain
         // (benchmarked vs addition chain in montgomery)
@@ -1013,6 +1068,51 @@ impl Scalar {
     #[cfg(rind_backend = "x86_64")]
     fn booth_recoded<const W: usize>(&self) -> BoothRecode<W> {
         BoothRecode::new(self)
+    }
+
+    /// Another copy of this scalar.
+    ///
+    /// A type that implements [`Drop`] cannot move its scalar out, so it
+    /// copies one and lets the drop wipe the original.
+    pub(crate) fn copy(&self) -> Self {
+        Self(self.0)
+    }
+
+    /// `bytes` as a big-endian integer, reduced mod n.
+    ///
+    /// `bytes` is at most 128 bytes, which covers a password stretch that
+    /// carries 64 extra bits past n. An empty input is [`Error::WrongLength`].
+    /// Zero after reduction is [`KeyFormatError::ScalarOutOfRange`]. The
+    /// length is public; the value stays secret.
+    pub(crate) fn from_be_reduced(bytes: &[u8]) -> Result<Self, Error> {
+        const MAX: usize = 128;
+        if bytes.is_empty() || bytes.len() > MAX {
+            return Err(Error::WrongLength);
+        }
+
+        // Left-pad to a multiple of 32 so each step is `acc * 2^256 + limb`.
+        // `as_mont`'s limbs are that product mod n, as an integer. 32 is a
+        // power of two, so the pad is a mask, not a division.
+        let pad = (32 - (bytes.len() & 31)) & 31;
+        let mut acc = Self::default();
+        let mut done = 0;
+        while done < pad + bytes.len() {
+            let mut chunk = [0u8; 32];
+            for (j, slot) in chunk.iter_mut().enumerate() {
+                let src = done + j;
+                if src >= pad {
+                    *slot = bytes[src - pad];
+                }
+            }
+            let limb = Self::from_bytes_reduced(&chunk)?;
+            acc = acc.as_mont().add(&limb);
+            done += 32;
+        }
+
+        match low::ct::into_public(!acc.is_zero()) {
+            true => Ok(low::ct::into_secret(acc)),
+            false => Err(KeyFormatError::ScalarOutOfRange.into()),
+        }
     }
 
     /// The width-`W` non-adjacent form of this scalar, by
@@ -1418,5 +1518,35 @@ mod tests {
             let window = row.as_chunks::<8>().0.len().ilog2() + 1;
             base.double_inplace_n(window as usize);
         }
+    }
+
+    #[test]
+    fn be_reduced_mod_n() {
+        let one = Scalar::from_be_reduced(&[1]).unwrap();
+        assert_eq!(one.as_bytes()[31], 1);
+
+        let mut n = [0u8; 32];
+        n.copy_from_slice(&util::u64x4_to_big_endian(&CURVE_ORDER));
+        assert!(Scalar::from_be_reduced(&n).is_err());
+        // n + 1, as 33 bytes: a leading 0x01 is 2^256, and 2^256 - n + 1 = (2^256 mod n) + 1?
+        // A 33-byte encoding of n is 0x00 || n, which reduces to 0.
+        let mut wide = [0u8; 33];
+        wide[1..].copy_from_slice(&n);
+        assert!(Scalar::from_be_reduced(&wide).is_err());
+        wide[32] = wide[32].wrapping_add(1);
+        assert_eq!(
+            Scalar::from_be_reduced(&wide).unwrap().as_bytes(),
+            one.as_bytes()
+        );
+
+        // 2^256 mod n is `as_mont` of 1, and a 33-byte 0x01 followed by 32 zeros.
+        let mut pow = [0u8; 33];
+        pow[0] = 1;
+        let got = Scalar::from_be_reduced(&pow).unwrap();
+        let expect = Scalar::from_bytes_checked(&[1]).unwrap().as_mont();
+        assert_eq!(got.as_bytes(), expect.as_bytes());
+
+        assert!(Scalar::from_be_reduced(&[]).is_err());
+        assert!(Scalar::from_be_reduced(&[0u8; 129]).is_err());
     }
 }

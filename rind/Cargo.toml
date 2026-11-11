@@ -61,6 +61,10 @@ aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "
 aws-lc-sys = { version = "0.47", default-features = false }
 # HPKE, which aws-lc-rs does not expose either; `hazmat` reads its private keys.
 hpke-rs = { version = "0.8", default-features = false, features = ["hazmat", "rustcrypto", "std"] }
+# SPAKE2+ differential tests. aws-lc-rs has no SPAKE2+.
+pakery-crypto = { version = "0.6.2", default-features = false, features = ["std", "p256"] }
+pakery-spake2plus = { version = "0.6.2", default-features = false, features = ["std", "test-utils"] }
+p256 = { version = "0.14", default-features = false, features = ["arithmetic"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

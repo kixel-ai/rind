@@ -346,6 +346,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2f6c7dbe95a6ed67ad9f18e57daf93a2f034c524b99fd2b76d18fdfeb6660aa"
 dependencies = [
  "hybrid-array",
+ "zeroize",
 ]
 
 [[package]]
@@ -1021,6 +1022,7 @@ dependencies = [
  "const-oid 0.10.2",
  "crypto-common 0.2.2",
  "ctutils",
+ "zeroize",
 ]
 
 [[package]]
@@ -1415,6 +1417,16 @@ dependencies = [
  "cfg-if",
  "crunchy",
  "zerocopy",
+]
+
+[[package]]
+name = "hash2curve"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1eaf40612d7d854743e7189228a6d528f0f6e8502cf6a0cb831d28a218b7f3f6"
+dependencies = [
+ "digest 0.11.3",
+ "elliptic-curve",
 ]
 
 [[package]]
@@ -2619,6 +2631,7 @@ checksum = "d2c9239b2dbc807adbbe147e8cf72ea7450c3a0aabe62cb8e75ff4ec22e1f72a"
 dependencies = [
  "ecdsa",
  "elliptic-curve",
+ "hash2curve",
  "primefield",
  "primeorder",
  "sha2",
@@ -2660,6 +2673,49 @@ checksum = "30d5b2194ed13191c1999ae0704b7839fb18384fa22e49b57eeaa97d79ce40da"
 dependencies = [
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "pakery-core"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb44dd31ee1e4efba330cb49a1867812ab6cce7c5d650c12238b610b8750c7a4"
+dependencies = [
+ "pkg-config",
+ "rand_core 0.10.1",
+ "rustversion",
+ "subtle",
+ "zeroize",
+ "zeroize_derive",
+]
+
+[[package]]
+name = "pakery-crypto"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48f27010d725662c3ebc16678db85739b67590f7b847b3fe75ee0e9805100a47"
+dependencies = [
+ "digest 0.11.3",
+ "hkdf",
+ "hmac",
+ "p256",
+ "pakery-core",
+ "rand_core 0.10.1",
+ "sha2",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "pakery-spake2plus"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cc5b0ab63faeb66b6ad1e152f2322baf04756f89dbfbf67ab3ad20410b48bf7"
+dependencies = [
+ "pakery-core",
+ "rand_core 0.10.1",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -3235,6 +3291,9 @@ dependencies = [
  "libcrux-poly1305",
  "libcrux-sha2",
  "libcrux-traits",
+ "p256",
+ "pakery-crypto",
+ "pakery-spake2plus",
  "proptest",
  "serde",
  "serde_json",
