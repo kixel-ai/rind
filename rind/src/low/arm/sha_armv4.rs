@@ -167,10 +167,17 @@ mod tests {
     fn asm_matches_portable() {
         type Sha1 = unsafe extern "C" fn(*mut [u32; 5], *const u8, usize);
         type Sha256 = unsafe extern "C" fn(*mut [u32; 8], *const u8, usize);
-        let mut routines: Vec<(&str, Sha1, Sha256)> =
-            vec![("nohw", sha1_block_data_order_nohw, sha256_block_data_order_nohw)];
+        let mut routines: Vec<(&str, Sha1, Sha256)> = vec![(
+            "nohw",
+            sha1_block_data_order_nohw,
+            sha256_block_data_order_nohw,
+        )];
         if HaveNeon::check().is_some() {
-            routines.push(("neon", sha1_block_data_order_neon, sha256_block_data_order_neon));
+            routines.push((
+                "neon",
+                sha1_block_data_order_neon,
+                sha256_block_data_order_neon,
+            ));
         }
         if HaveCryptoExt::check().is_some() {
             routines.push(("hw", sha1_block_data_order_hw, sha256_block_data_order_hw));
