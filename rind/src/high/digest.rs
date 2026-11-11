@@ -449,6 +449,116 @@ mod tests {
     use crate::test::*;
 
     #[test]
+    fn acvp_sha256() {
+        acvp_hash("SHA2-256-1.0", &SHA256);
+    }
+
+    #[test]
+    fn acvp_sha384() {
+        acvp_hash("SHA2-384-1.0", &SHA384);
+    }
+
+    #[test]
+    fn acvp_sha512() {
+        acvp_hash("SHA2-512-1.0", &SHA512);
+    }
+
+    #[test]
+    fn acvp_sha512_256() {
+        acvp_hash("SHA2-512-256-1.0", &SHA512_256);
+    }
+
+    #[test]
+    fn acvp_sha3_256() {
+        acvp_hash("SHA3-256-2.0", &SHA3_256);
+    }
+
+    #[test]
+    fn acvp_sha3_384() {
+        acvp_hash("SHA3-384-2.0", &SHA3_384);
+    }
+
+    #[test]
+    fn acvp_sha3_512() {
+        acvp_hash("SHA3-512-2.0", &SHA3_512);
+    }
+
+    /// Runs an ACVP hash set: its messages, its Monte Carlo test, and, under
+    /// SLOW_TESTS, its messages of 1 to 8 GiB.
+    fn acvp_hash(name: &str, algorithm: &'static Algorithm) {
+        for group in acvp(name) {
+            for test in group.tests() {
+                let len = test.int("len") / 8;
+                match group.str("testType") {
+                    "AFT" => {
+                        let msg = test.hex("msg");
+                        assert_eq!(digest(algorithm, &msg[..len]).as_ref(), test.hex("md"));
+                    }
+                    "MCT" => acvp_hash_mct(algorithm, name.starts_with("SHA3"), &group, test),
+                    "LDT" if std::env::var_os("SLOW_TESTS").is_some() => {
+                        let large = &test["largeMsg"];
+                        assert_eq!(large.str("expansionTechnique"), "repeating");
+                        let content = large.hex("content");
+                        let chunk = content.repeat((1 << 20) / content.len());
+                        // Up to 8 GiB, more than a 32-bit `usize` holds.
+                        let full_len = large["fullLength"].as_u64().unwrap() / 8;
+                        let chunk_len = chunk.len() as u64;
+                        assert_eq!(full_len % chunk_len, 0);
+                        let mut ctx = Context::new(algorithm);
+                        for _ in 0..full_len / chunk_len {
+                            ctx.update(&chunk);
+                        }
+                        assert_eq!(ctx.finish().as_ref(), test.hex("md"));
+                    }
+                    "LDT" => {}
+                    other => panic!("unexpected test type {other}"),
+                }
+            }
+        }
+    }
+
+    /// The ACVP SHA specification's Monte Carlo tests: SHA-2 hashes the last
+    /// three digests together, in the alternate version cut or zero-padded to
+    /// the seed's length, and SHA-3 hashes the last digest alone.
+    fn acvp_hash_mct(
+        algorithm: &'static Algorithm,
+        sha3: bool,
+        group: &serde_json::Value,
+        test: &serde_json::Value,
+    ) {
+        let seed_len = test.int("len") / 8;
+        let alternate = match group.str("mctVersion") {
+            "standard" => false,
+            "alternate" if !sha3 => true,
+            other => panic!("unexpected Monte Carlo version {other}"),
+        };
+        let mut seed = test.hex("msg");
+        for result in test["resultsArray"].as_array().unwrap() {
+            if sha3 {
+                for _ in 0..1000 {
+                    seed = digest(algorithm, &seed).as_ref().to_vec();
+                }
+            } else {
+                let mut last = [seed.clone(), seed.clone(), seed];
+                for _ in 0..1000 {
+                    let mut msg = last.concat();
+                    if alternate {
+                        msg.resize(seed_len, 0);
+                    }
+                    last = [
+                        last[1].clone(),
+                        last[2].clone(),
+                        digest(algorithm, &msg).as_ref().to_vec(),
+                    ];
+                }
+                let [_, _, md] = last;
+                seed = md;
+            }
+            assert_eq!(seed, result.hex("md"));
+        }
+    }
+
+    #[test]
     fn secret_message() {
         // Under `admin/ctgrind`, nothing may branch on or index by the
         // message, which ends in a partial block of each hash.

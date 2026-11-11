@@ -40,8 +40,3 @@ Decided with the maintainer on 2026-11-03, after the benchmark report (`BENCHMAR
   - AES-GCM on the Vale tier for AAD or messages of 2^32 bytes and more (2026-11-07, from [moq-dev/rind#480](https://github.com/moq-dev/rind/pull/480)): Vale's routines cannot resume a GHASH or counter across chunks, so these run by-8, which [x86_64's by-8 and by-16 AES-GCM intrinsics are proven](/quest/m4/verified/aes-gcm-x86-intrinsics.md) proves along with the tier's short seals.
   - aarch64 SHA-256 on the SHA-2 instructions (2026-11-03): nothing proven runs at full speed, so its proof was planned on a pinned commit of the unmerged spec, as the calibration for every later HOL Light proof, and landed in [moq-dev/rind#552](https://github.com/moq-dev/rind/pull/552). s2n-bignum models the instructions but has no SHA-2 routine, and pyca/verified-garbage's Lean-proven one is 1.9x slower.
   - Randomness, including the HMAC-DRBG behind ECDSA's hedged nonces, is outside the functional spec: a proof shows the output is right for whatever was drawn.
-
-## Required
-
-- [x86_64 SHA-NI SHA-256 block function is proven](/quest/m3/verified/sha256-block.md) - today's routine proven on s2n-bignum's SHA-256 spec, or a proven one as fast
-- [AES-GCM's custom-IV key is proven for 12-byte IVs and full tags on the Vale tier](/quest/m3/verified/aes-gcm-key-vale.md) - `aead::gcm::Key`'s glue over the proven `aead::Key`

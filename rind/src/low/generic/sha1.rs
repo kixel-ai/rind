@@ -100,7 +100,7 @@ fn sha1_compress_block(state: &mut [u32; 5], block: &[u8; 64]) {
 }
 
 pub(crate) fn sha1_compress_blocks(state: &mut [u32; 5], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
 
     let (chunks, _) = blocks.as_chunks::<64>();
     for block in chunks {

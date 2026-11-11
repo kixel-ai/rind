@@ -1,0 +1,34 @@
+{
+ "vsId": 0,
+ "algorithm": "EDDSA",
+ "mode": "keyGen",
+ "revision": "1.0",
+ "isSample": true,
+ "testGroups": [
+  {
+   "tgId": 1,
+   "testType": "AFT",
+   "tests": [
+    {
+     "tcId": 1,
+     "deferred": true,
+     "d": "19165F660A63D78678924F2685FC0E868CFF1C8969A1889E30705A425D7D9869",
+     "q": "1B2D8A0851500FBEF13B18AE3E0A418D45BB803B1635012C906DDC96519C83F4"
+    },
+    {
+     "tcId": 2,
+     "deferred": true,
+     "d": "640CA510093F24625B8E43289D35B6DF0E7B34365344796EDD08AFB3D08CB874",
+     "q": "9929129EF72FE01841D2DF2B75C80E8A5095EFD5758CAC6352731282832A5B7D"
+    },
+    {
+     "tcId": 3,
+     "deferred": true,
+     "d": "76564304E0BC04E32F65568894D01662C5FCB3AFCD77705A6447C767BBB5DEEA",
+     "q": "EDEE7099AE2C4476CF78C9728E7A23E20DA651FEB2F2AF9734096A4DC7AB4CBF"
+    }
+   ],
+   "curve": "ED-25519"
+  }
+ ]
+}

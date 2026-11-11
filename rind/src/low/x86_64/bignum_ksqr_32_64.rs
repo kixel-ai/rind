@@ -33,8 +33,8 @@ use crate::low::macros::*;
 /// only uses 65 elements of t (64 + 1 for a suspended carry).
 #[inline(never)]
 pub(crate) fn bignum_ksqr_32_64(z: &mut [u64], x: &[u64], t: &mut [u64; 72]) {
-    debug_assert!(z.len() == 64);
-    debug_assert!(x.len() == 32);
+    assert!(z.len() == 64);
+    assert!(x.len() == 32);
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -1082,4 +1082,20 @@ pub(crate) fn bignum_ksqr_32_64(z: &mut [u64], x: &[u64], t: &mut [u64; 72]) {
         out("rcx") _,
             )
     };
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        bignum_ksqr_32_64,
+        &mut [0; 64],
+        &[1; 32],
+        &mut crate::low::abi::Aligned([0; 72]).0
+    );
 }

@@ -2418,3 +2418,14 @@ pub(crate) fn edwards25519_scalarmulbase_alt(res: &mut [u64; 8], scalar: &[u64; 
 // ****************************************************************************
 // The precomputed data (all read-only).
 // ****************************************************************************
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        edwards25519_scalarmulbase_alt,
+        &mut crate::low::abi::Aligned([0; 8]).0,
+        &crate::low::abi::Aligned([0; 4]).0
+    );
+}

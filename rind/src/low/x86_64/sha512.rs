@@ -21,7 +21,7 @@ enum Path {
 }
 
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(128));
+    assert!(blocks.len().is_multiple_of(128));
     // The routines other than the SHA512 instructions' run their loop at
     // least once, so zero blocks would read past `blocks`.
     if blocks.is_empty() {
@@ -68,7 +68,9 @@ fn pick() -> Path {
 unsafe fn compress_sha512ext(_: HaveSha512, state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, and the token proves
     // the SHA512 instructions and AVX2.
-    unsafe { sha512_block_data_order_sha512ext(state, blocks.as_ptr(), blocks.len() / 128) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha512_block_data_order_sha512ext(state, blocks.as_ptr(), blocks.len() / 128))
+    }
 }
 
 /// As [`compress_sha512ext`], with the AVX2 routine.
@@ -79,7 +81,9 @@ unsafe fn compress_sha512ext(_: HaveSha512, state: &mut [u64; 8], blocks: &[u8])
 unsafe fn compress_avx2(_: HaveAvx2, state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one, and the
     // token proves AVX2, BMI1, and BMI2.
-    unsafe { sha512_block_data_order_avx2(state, blocks.as_ptr(), blocks.len() / 128) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha512_block_data_order_avx2(state, blocks.as_ptr(), blocks.len() / 128))
+    }
 }
 
 /// As [`compress_sha512ext`], with the AVX routine.
@@ -90,7 +94,9 @@ unsafe fn compress_avx2(_: HaveAvx2, state: &mut [u64; 8], blocks: &[u8]) {
 unsafe fn compress_avx(_: HaveAvx, state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one, and the
     // token proves AVX.
-    unsafe { sha512_block_data_order_avx(state, blocks.as_ptr(), blocks.len() / 128) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha512_block_data_order_avx(state, blocks.as_ptr(), blocks.len() / 128))
+    }
 }
 
 /// As [`compress_sha512ext`], with the scalar routine.
@@ -100,7 +106,9 @@ unsafe fn compress_avx(_: HaveAvx, state: &mut [u64; 8], blocks: &[u8]) {
 /// `blocks` must hold at least one whole block.
 unsafe fn compress_nohw(state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one.
-    unsafe { sha512_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 128) }
+    unsafe {
+        asm_call!(unsafe extern "sysv64" sha512_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 128))
+    }
 }
 
 /// The round constants, each pair twice for the vector additions, then the

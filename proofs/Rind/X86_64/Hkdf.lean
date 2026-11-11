@@ -1,5 +1,6 @@
 import Rind.X86_64.Kdf.Funs
 import Rind.X86_64.HmacApi
+import Rind.X86_64.ChaCha20
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
@@ -402,5 +403,104 @@ theorem hkdf_fill (a : high.hmac.Algorithm) (hr : RunsHmac a) (inst : high.hkdf.
   · exact ⟨hr'.1, hr'.2.2⟩
   · rename_i hc
     exact absurd (And.intro hlen hL) hc
+
+/-! ## The conversions from `Okm`
+
+Each `From<Okm<..>>` fills a zeroed 64-byte buffer's first `len` bytes with
+`Prk::expand_into`, then makes its key of them. Its `len` is the length the
+key takes, so the buffer's `..len` is that many bytes. -/
+
+/-- `high::hmac::Key`'s conversion from `Okm` keys HMAC under `a` with the
+`tag_len` bytes of HKDF-Expand. -/
+theorem hmac_key_from_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (prk : List Byte)
+    (k : high.hmac.Key) (hk : KeyOf a prk k) (info : Slice (Slice U8))
+    (hinfo : hmacBlock a + tagLen a + (infoBytes info).length + 1 ≤ maxInput) :
+    high.hmac.Key.Insts.CoreConvertFromOkm0SharedStaticAlgorithm.from
+      { prk := k, info := info, len := a } ⦃ key =>
+      KeyOf a (hkdfExpand (hmacOf a) (tagLen a) prk (bv (infoBytes info)) (tagLen a)) key ⦄ := by
+  obtain ⟨m, hm, hmv⟩ := tagLen_eq a
+  have h64 : tagLen a ≤ 64 := by cases a <;> decide
+  have hpos := tagLen_pos a
+  unfold high.hmac.Key.Insts.CoreConvertFromOkm0SharedStaticAlgorithm.from
+  simp only [hm, bind_ok]
+  apply WP.spec_bind (Array.index_mut_SliceIndexRangeToUsizeSlice (Array.repeat 64#usize 0#u8)
+    { «end» := m } (by scalar_tac))
+  rintro ⟨bytes, back⟩ ⟨hb1, hb2, -⟩
+  have hblen : bytes.length = tagLen a := by rw [← hmv]; exact hb2
+  apply WP.spec_bind (expand_into_spec a hr prk k hk info hinfo bytes (by rw [hblen]; omega))
+  rintro bytes1 ⟨hl1, hl2⟩
+  have hbv : bv bytes1.val = hkdfExpand (hmacOf a) (tagLen a) prk (bv (infoBytes info)) (tagLen a) := by
+    rw [hl2, hblen]
+  apply WP.spec_mono (key_new_spec a hr bytes1 (by rw [hl1, hblen]; omega))
+  intro key' hkey
+  rw [hbv] at hkey
+  exact hkey
+
+/-- The header-protection key that `HeaderProtectionKey::new` gives ChaCha20 for
+32 bytes holds them, as `chacha20_new` states: the translation's wrapper refuses
+nothing that `new` accepts, and panics where `new` refuses. -/
+theorem header_new_spec (key : Slice U8) (hk : key.length = 32) :
+    aead.quic.HeaderProtectionKey.new rind.x86_64.aead.quic.CHACHA20 key ⦃ r =>
+      ∃ c : mid.chacha20.ChaCha20, r = .Ok (.ChaCha20 c) ∧ c.key.val = key.val ⦄ := by
+  unfold aead.quic.HeaderProtectionKey.new
+  apply WP.spec_bind (rind.x86_64.chacha20_new key)
+  intro r hr
+  rw [if_pos hk] at hr
+  obtain ⟨c, rfl, hc⟩ := hr
+  exact (WP.spec_ok _).mpr ⟨c, rfl, hc⟩
+
+/-- `aead::quic::HeaderProtectionKey`'s conversion from `Okm` keys ChaCha20 with
+the 32 bytes of HKDF-Expand. -/
+theorem header_key_from_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (prk : List Byte)
+    (k : high.hmac.Key) (hk : KeyOf a prk k) (info : Slice (Slice U8))
+    (hinfo : hmacBlock a + tagLen a + (infoBytes info).length + 1 ≤ maxInput) :
+    aead.quic.HeaderProtectionKey.Insts.CoreConvertFromOkm0SharedStaticAlgorithm.from
+      { prk := k, info := info, len := rind.x86_64.aead.quic.CHACHA20 } ⦃ key =>
+      ∃ c : mid.chacha20.ChaCha20, key = .ChaCha20 c ∧
+        bv c.key.val = hkdfExpand (hmacOf a) (tagLen a) prk (bv (infoBytes info)) 32 ⦄ := by
+  have hpos := tagLen_pos a
+  unfold aead.quic.HeaderProtectionKey.Insts.CoreConvertFromOkm0SharedStaticAlgorithm.from
+  unfold aead.quic.Algorithm.key_len
+  have hk32 : (rind.x86_64.aead.quic.Algorithm.key_len rind.x86_64.aead.quic.CHACHA20).val = 32 := rfl
+  simp only [bind_ok]
+  apply WP.spec_bind (Array.index_mut_SliceIndexRangeToUsizeSlice (Array.repeat 64#usize 0#u8)
+    { «end» := rind.x86_64.aead.quic.Algorithm.key_len rind.x86_64.aead.quic.CHACHA20 }
+    (by scalar_tac))
+  rintro ⟨bytes, back⟩ ⟨hb1, hb2, -⟩
+  have hblen : bytes.length = 32 := by rw [hb2]; exact hk32
+  apply WP.spec_bind (expand_into_spec a hr prk k hk info hinfo bytes (by rw [hblen]; omega))
+  rintro bytes1 ⟨hl1, hl2⟩
+  have hbv : bv bytes1.val = hkdfExpand (hmacOf a) (tagLen a) prk (bv (infoBytes info)) 32 := by
+    rw [hl2, hblen]
+  apply WP.spec_bind (header_new_spec bytes1 (by rw [hl1, hblen]))
+  rintro r ⟨c, rfl, hc⟩
+  unfold core.result.Result.expect
+  exact (WP.spec_ok _).mpr ⟨c, rfl, by rw [hc]; exact hbv⟩
+
+/-- `high::hkdf::Prk`'s conversion from `Okm` keys the PRK, which is HMAC's key,
+under `a` with the `tag_len` bytes of HKDF-Expand. -/
+theorem prk_from_spec (a : high.hmac.Algorithm) (hr : RunsHmac a) (prk : List Byte)
+    (k : high.hmac.Key) (hk : KeyOf a prk k) (info : Slice (Slice U8))
+    (hinfo : hmacBlock a + tagLen a + (infoBytes info).length + 1 ≤ maxInput) :
+    high.hkdf.Prk.Insts.CoreConvertFromOkm0SharedStaticAlgorithm.from
+      { prk := k, info := info, len := a } ⦃ key =>
+      KeyOf a (hkdfExpand (hmacOf a) (tagLen a) prk (bv (infoBytes info)) (tagLen a)) key ⦄ := by
+  obtain ⟨m, hm, hmv⟩ := tagLen_eq a
+  have h64 : tagLen a ≤ 64 := by cases a <;> decide
+  have hpos := tagLen_pos a
+  unfold high.hkdf.Prk.Insts.CoreConvertFromOkm0SharedStaticAlgorithm.from
+  simp only [hm, bind_ok]
+  apply WP.spec_bind (Array.index_mut_SliceIndexRangeToUsizeSlice (Array.repeat 64#usize 0#u8)
+    { «end» := m } (by scalar_tac))
+  rintro ⟨bytes, back⟩ ⟨hb1, hb2, -⟩
+  have hblen : bytes.length = tagLen a := by rw [← hmv]; exact hb2
+  apply WP.spec_bind (expand_into_spec a hr prk k hk info hinfo bytes (by rw [hblen]; omega))
+  rintro bytes1 ⟨hl1, hl2⟩
+  have hbv : bv bytes1.val = hkdfExpand (hmacOf a) (tagLen a) prk (bv (infoBytes info)) (tagLen a) := by
+    rw [hl2, hblen]
+  apply WP.spec_bind (key_new_spec a hr bytes1 (by rw [hl1, hblen]; omega))
+  intro key' hkey
+  rw [hbv] at hkey
+  exact (WP.spec_ok _).mpr hkey
 
 end rind.x86_64.kdf

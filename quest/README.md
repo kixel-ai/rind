@@ -17,12 +17,3 @@ m3 holds work deferred by priority or waiting on the outside world. m4 holds
 long-term work: C and regulated deployments, post-quantum and protocol
 building blocks, and a proof of every hot path. m5 holds the cold tiers'
 proofs.
-
-## Required
-
-- [m0: immediate priorities](/quest/m0/README.md) - urgent fixes and breakage on a published release
-- [m1: MoQ coverage](/quest/m1/README.md) - every primitive, backend, and adapter MoQ needs, released
-- [m2: later work](/quest/m2/README.md) - follow-ups to the release MoQ switches to
-- [m3: deferred](/quest/m3/README.md) - gated on the outside world, or speculative with no named consumer
-- [m4: long-term](/quest/m4/README.md) - an OpenSSL provider, FIPS 140-3, post-quantum, protocols, and every hot path proven
-- [m5: cold tiers](/quest/m5/README.md) - proofs of armv7 and the legacy and fallback tiers

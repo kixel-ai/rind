@@ -369,3 +369,14 @@ pub(crate) fn bignum_tomont_p384_alt(z: &mut [u64; 6], x: &[u64; 6]) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(
+        bignum_tomont_p384_alt,
+        &mut crate::low::abi::Aligned([0; 6]).0,
+        &crate::low::abi::Aligned([0; 6]).0
+    );
+}

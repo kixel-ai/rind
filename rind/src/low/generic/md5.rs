@@ -153,7 +153,7 @@ fn md5_compress_block(state: &mut [u32; 4], block: &[u8; 64]) {
 
 /// Compresses `blocks`, a whole number of 64-byte blocks, into `state`.
 pub(crate) fn md5_compress_blocks(state: &mut [u32; 4], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
 
     let (chunks, _) = blocks.as_chunks::<64>();
     for block in chunks {

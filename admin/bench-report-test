@@ -4,6 +4,7 @@
 Usage: admin/bench-report-test
 """
 
+import contextlib
 import fcntl
 import importlib.machinery
 import importlib.util
@@ -124,7 +125,7 @@ TIERS = {
                 "sha256/*/64B": {"rind": 100.0, "aws-lc-rs": 105.0, "ring": 95.0},
                 "sha256/*/16KB": {"rind": 1000.0, "aws-lc-rs": 990.0, "ring": 1200.0},
                 "rsa2048-key-generation/*": {"rind": 9e7, "aws-lc-rs": 1e7},
-                "jwt-ES256-sign/*": {"rind": 9e3, "aws-lc-rs": 1e3},
+                "jwt-es256-sign/*/load": {"rind": 9e3, "aws-lc-rs": 1e3},
             },
         },
         {
@@ -205,6 +206,10 @@ class Render(unittest.TestCase):
         self.assertEqual(cells[("AES-GCM", "no AES-NI")][1][0], 0.5)
         self.assertNotIn(("RSA signatures", "x86_64"), cells)
         self.assertEqual(len(cells), 2)
+
+    def test_refuses_a_benchmark_neither_ranked_nor_unranked(self):
+        with self.assertRaises(SystemExit):
+            br.tier_row("md6/*/32B")
 
     def test_report_states_what_is_not_measured(self):
         files = br.report(hosts(), None, VERIFIED, [])
@@ -318,6 +323,43 @@ class Gaps(unittest.TestCase):
         for entries in [[self.X25519], [self.SHA256], []]:
             with self.subTest(entries=entries), self.assertRaises(SystemExit):
                 self.load(*entries)
+
+    def test_gate_fails_only_on_an_undecided_gap_two_runs_show(self):
+        def run(directory, sha256, chacha, avx512):
+            os.makedirs(os.path.join(directory, "bench-x"))
+            results = [
+                {"id": "sha256/rind/64B", "ns": sha256},
+                {"id": "sha256/ring/64B", "ns": 80.0},
+                {"id": "chacha20poly1305/rind/32B", "ns": chacha},
+                {"id": "chacha20poly1305/aws-lc-rs/32B", "ns": 80.0},
+                {"id": "x25519-ecdh/rind", "ns": 1.0},
+            ]
+            saved = {"target": "x86_64-unknown-linux-gnu", "portable": False, "tier": "", "cpu": "c", "avx512": avx512}
+            saved["results"] = results
+            with open(os.path.join(directory, "bench-x", "bench-results.json"), "w") as f:
+                json.dump(saved, f)
+
+        with tempfile.TemporaryDirectory() as d:
+            gaps = os.path.join(d, "gaps.toml")
+            with open(gaps, "w") as f:
+                f.write('[[gap]]\noperations = ["sha256/*"]\non = ["x86_64"]\nreason = "r"\n')
+            run(os.path.join(d, "now"), 100.0, 100.0, True)
+            run(os.path.join(d, "then"), 100.0, 80.0, False)
+            saved, br.GAPS = br.GAPS, gaps
+            try:
+                # The ChaCha20-Poly1305 gap is new tonight, and the SHA-256
+                # one decided on whichever CPU the runner drew, so this
+                # passes; a single run fails.
+                args = type("Args", (), {"dir": os.path.join(d, "now"), "previous": os.path.join(d, "then")})
+                with io.StringIO() as out, contextlib.redirect_stdout(out):
+                    br.gate(args)
+                    self.assertIn("x25519-ecdh/* on x86_64 AVX-512", out.getvalue())
+                    self.assertNotIn("sha256/*/64B on", out.getvalue())
+                args.previous = None
+                with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+                    br.gate(args)
+            finally:
+                br.GAPS = saved
 
     def test_refuses_an_entry_that_is_no_gap(self):
         for extra in [

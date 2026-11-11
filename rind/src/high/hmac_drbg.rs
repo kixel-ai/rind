@@ -118,6 +118,78 @@ mod tests {
     use super::*;
     use crate::high::hash::Sha256;
 
+    /// CAVP's HMAC_DRBG vectors for the hashes ECDSA's nonces use, without
+    /// additional input, as rind's callers give none: each instantiates,
+    /// reseeds, and generates twice, checking the second output.
+    #[test]
+    fn cavp() {
+        use crate::high::hash::{Sha384, Sha512};
+        use crate::test::{CavpSink, Value, process_cavp};
+
+        #[derive(Default)]
+        struct State {
+            hash: String,
+            additional_input: bool,
+            entropy: Vec<u8>,
+            nonce: Vec<u8>,
+            personalization: Vec<u8>,
+            reseed: Vec<u8>,
+            tests: usize,
+        }
+
+        fn second_output<H: Hash>(state: &State, len: usize) -> Vec<u8> {
+            let mut drbg = HmacDrbg::<H>::new(&state.entropy, &state.nonce, &state.personalization);
+            // SP 800-90A section 10.1.2.4: reseeding updates with the new
+            // entropy and restarts the counter.
+            drbg.update(&[&state.reseed]);
+            drbg.reseed_counter = 1;
+            let mut out = vec![0; len];
+            drbg.fill(&mut out).unwrap();
+            drbg.fill(&mut out).unwrap();
+            out
+        }
+
+        impl CavpSink for State {
+            fn on_meta(&mut self, meta: &str) {
+                match meta.split_once(" = ") {
+                    Some(("AdditionalInputLen", len)) => self.additional_input = len != "0",
+                    Some(_) => {}
+                    None => self.hash = meta.to_string(),
+                }
+            }
+
+            fn on_value(&mut self, name: &str, value: Value<'_>) {
+                if self.additional_input {
+                    return;
+                }
+                match name {
+                    "COUNT" | "AdditionalInputReseed" | "AdditionalInput" => {}
+                    "EntropyInput" => self.entropy = value.bytes(),
+                    "Nonce" => self.nonce = value.bytes(),
+                    "PersonalizationString" => self.personalization = value.bytes(),
+                    "EntropyInputReseed" => self.reseed = value.bytes(),
+                    "ReturnedBits" => {
+                        let expected = value.bytes();
+                        let out = match self.hash.as_str() {
+                            "SHA-256" => second_output::<Sha256>(self, expected.len()),
+                            "SHA-384" => second_output::<Sha384>(self, expected.len()),
+                            "SHA-512" => second_output::<Sha512>(self, expected.len()),
+                            _ => return,
+                        };
+                        assert_eq!(out, expected);
+                        self.tests += 1;
+                    }
+                    _ => panic!("unexpected value {name}"),
+                }
+            }
+        }
+
+        let mut state = State::default();
+        process_cavp("../thirdparty/cavp/drbg/HMAC_DRBG.rsp", &mut state);
+        // Eight groups of 15 per hash lack additional input.
+        assert_eq!(state.tests, 3 * 8 * 15);
+    }
+
     #[test]
     fn rfc6979_example() {
         let x =

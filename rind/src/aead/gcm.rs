@@ -273,6 +273,46 @@ mod tests {
         Iv::assume_unique_for_key(iv).unwrap()
     }
 
+    #[test]
+    fn acvp() {
+        for name in ["ACVP-AES-GCM-1.0", "ACVP-AES-GMAC-1.0"] {
+            for group in crate::test::acvp(name) {
+                assert_eq!(group.str("ivGen"), "external");
+                let tag_len = match group.int("tagLen") {
+                    128 => TagLength::Full,
+                    32 => TagLength::Truncated32,
+                    other => panic!("unexpected tag length {other}"),
+                };
+                for test in group.tests() {
+                    let key = test.hex("key");
+                    let key = Key::new(crate::cipher::aes(key.len()), &key, tag_len).unwrap();
+                    let (iv_bytes, aad) = (test.hex("iv"), test.hex("aad"));
+                    let (pt, ct, tag) = (test.hex("pt"), test.hex("ct"), test.hex("tag"));
+                    match group.str("direction") {
+                        "encrypt" => {
+                            let mut text = pt;
+                            let sealed = key
+                                .seal_in_place_separate_tag(iv(&iv_bytes), &aad, &mut text)
+                                .unwrap();
+                            assert_eq!((text, sealed.as_ref()), (ct, &tag[..]));
+                        }
+                        "decrypt" => {
+                            let mut text = ct;
+                            let opened = key
+                                .open_in_place_separate_tag(iv(&iv_bytes), &aad, &tag, &mut text)
+                                .map(|pt| pt.to_vec());
+                            match test.flag("testPassed") {
+                                true => assert_eq!(opened.unwrap(), pt),
+                                false => assert_eq!(opened, Err(Error::DecryptFailed)),
+                            }
+                        }
+                        other => panic!("unexpected direction {other}"),
+                    }
+                }
+            }
+        }
+    }
+
     const TAG_LENGTHS: [TagLength; 7] = [
         TagLength::Full,
         TagLength::Truncated120,
