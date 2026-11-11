@@ -16,6 +16,6 @@ Planned with the maintainer on 2026-11-10, from [moq-dev/rind#554](https://githu
   - lld gives undefined weak functions a nonzero address in ppc32 PIEs, crashing on BSS-PLT objects ([moq-dev/rind#580](https://github.com/moq-dev/rind/pull/580)).
   - libcrux-platform calls `__cpuid` outside `unsafe`, holding i686 at Rust 1.94; reported as [celabshq/libcrux#1646](https://github.com/celabshq/libcrux/issues/1646) ([the x86 quest](/quest/m2/adoption/targets/x86.md)).
   - BINSEC cannot decode some of the code rind runs, which stays with `admin/ct-sde` and `admin/ct-qemu` ([the BINSEC quest](/quest/m2/confidence/binsec.md), still open; record the instructions it names once it lands).
-  - valgrind on ARM does not fault a read of a guard page so `__ctgrind` builds leave out `low::guard_pages`'s tests ([the ctgrind nightly quest](/quest/m0/ctgrind-nightly.md), from [moq-dev/rind#591](https://github.com/moq-dev/rind/pull/591)).
+  - valgrind on ARM does not fault a read of a guard page so `__ctgrind` builds leave out `low::guard_pages`'s tests ([moq-dev/rind#607](https://github.com/moq-dev/rind/pull/607), from [moq-dev/rind#591](https://github.com/moq-dev/rind/pull/591)).
   - Aeneas cannot translate several kinds of Rust, function-pointer dispatch among them, so `proofs/` models that Rust by hand ([its quest](/quest/m4/verified/aeneas-fn-pointers.md) lists each limitation).
 - Leave out what is not someone else's defect: rind's own bugs, deliberate choices (such as refusing hybrid X9.62 points), and plain version pins.

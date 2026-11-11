@@ -295,9 +295,9 @@ jobs:
   # secret at once, symbolically, on the code the runner's CPU takes short of
   # the instructions it cannot decode (see `admin/ct-binsec`). The portable
   # row forces the portable backend, as the `portable` job does. The aarch64
-  # row runs only the tests whose paths BINSEC decodes there: glibc's SVE
-  # `memcpy`, the `mrs` of the thread pointer in its `malloc`, and the `tbl`
-  # of vpaes and NEON ChaCha20 stop the rest, as
+  # row runs only the tests whose paths BINSEC decodes there: the `mrs` of
+  # the thread pointer in glibc's `malloc`, and the `tbl` of vpaes and NEON
+  # ChaCha20, stop the rest, as
   # `quest/m2/confidence/binsec.md` plans to fix. armv7 is left to valgrind
   # and `admin/ct-qemu`: BINSEC decodes none of its NEON table lookups or
   # crypto extension.
