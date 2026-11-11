@@ -1,14 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use core::mem::ManuallyDrop;
-
-use libcrux_aes::aes_gcm_128::portable::PortableAesGcm128;
-use libcrux_aes::aes_gcm_256::portable::PortableAesGcm256;
-use libcrux_traits::aead::arrayref::Aead;
-
 use super::aes::{check_gcm_iv, check_gcm_lengths};
 use crate::Error;
-use crate::low::{self, AesKey, Entry, NohwTable, ct_equal, zeroise, zeroise_value};
+use crate::low::{self, AesKey, Entry, NohwTable, ct_equal};
 #[cfg(rind_backend = "arm")]
 use crate::low::{AesHwKey, GhashTable, HaveCryptoExt};
 
@@ -42,7 +36,7 @@ impl AesGcm {
     /// The AES key's length in bytes, 16, 24, or 32.
     pub(crate) fn key_len(&self) -> usize {
         match self {
-            Self::Portable(key) => key.key_len,
+            Self::Portable(key) => key.key.key_len(),
             #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.key.key_len(),
         }
@@ -70,9 +64,9 @@ impl AesGcm {
         let _entry = Entry::new_secret();
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
         match self {
-            Self::Portable(key) => key.encrypt(nonce, aad, cipher_inout, tag_out)?,
+            Self::Portable(key) => *tag_out = key.tagged::<true>(nonce, aad, cipher_inout),
             #[cfg(rind_backend = "arm")]
-            Self::Hw(key) => key.encrypt(nonce, aad, cipher_inout, tag_out),
+            Self::Hw(key) => *tag_out = key.tagged::<true>(nonce, aad, cipher_inout),
         }
         low::ct::public_slice(cipher_inout);
         low::ct::public_slice(tag_out);
@@ -102,11 +96,12 @@ impl AesGcm {
     ) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
-        let result = match self {
-            Self::Portable(key) => key.decrypt(nonce, aad, cipher_inout, tag),
+        let want = match self {
+            Self::Portable(key) => key.tagged::<false>(nonce, aad, cipher_inout),
             #[cfg(rind_backend = "arm")]
-            Self::Hw(key) => key.decrypt(nonce, aad, cipher_inout, tag),
+            Self::Hw(key) => key.tagged::<false>(nonce, aad, cipher_inout),
         };
+        let result = ct_equal(&want, tag);
 
         if low::ct::into_public(result) {
             low::ct::public_slice(cipher_inout);
@@ -135,7 +130,7 @@ impl AesGcm {
         check_gcm_iv(iv)?;
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
         let tag = match self {
-            Self::Portable(key) => key.composed().tagged::<true>(iv, aad, cipher_inout),
+            Self::Portable(key) => key.tagged::<true>(iv, aad, cipher_inout),
             #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.tagged::<true>(iv, aad, cipher_inout),
         };
@@ -162,7 +157,7 @@ impl AesGcm {
         check_gcm_iv(iv)?;
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
         let want = match self {
-            Self::Portable(key) => key.composed().tagged::<false>(iv, aad, cipher_inout),
+            Self::Portable(key) => key.tagged::<false>(iv, aad, cipher_inout),
             #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.tagged::<false>(iv, aad, cipher_inout),
         };
@@ -179,95 +174,19 @@ impl AesGcm {
     }
 }
 
-/// libcrux's portable AES-GCM, for CPUs without the crypto extension, and
-/// [`Portable::composed`] for AES-192, which libcrux lacks.
+/// The bitsliced AES rind copies from libcrux and aws-lc's integer GHASH,
+/// for CPUs without the crypto extension. Both wipe themselves on drop.
 pub(crate) struct Portable {
-    key: [u8; 32],
-    key_len: usize,
+    key: AesKey,
+    table: NohwTable,
 }
 
 impl Portable {
     fn new(key: &[u8]) -> Self {
-        let mut r = Self {
-            key: [0u8; 32],
-            key_len: key.len(),
-        };
-        r.key[..key.len()].copy_from_slice(key);
-        r
-    }
-
-    fn encrypt(
-        &self,
-        nonce: &[u8; 12],
-        aad: &[u8],
-        cipher_inout: &mut [u8],
-        tag_out: &mut [u8; 16],
-    ) -> Result<(), Error> {
-        if self.key_len == 24 {
-            *tag_out = self.composed().tagged::<true>(nonce, aad, cipher_inout);
-            return Ok(());
-        }
-        // libcrux reads and writes separate buffers.
-        let plain = cipher_inout.to_vec();
-        let result = match self.key_len {
-            16 => PortableAesGcm128::encrypt(
-                cipher_inout,
-                tag_out,
-                self.key[..16].try_into().unwrap(),
-                nonce,
-                aad,
-                &plain,
-            ),
-            _ => PortableAesGcm256::encrypt(cipher_inout, tag_out, &self.key, nonce, aad, &plain),
-        };
-        result.map_err(|_| Error::WrongLength)
-    }
-
-    /// Decrypts in place, returning whether `tag` is right.
-    fn decrypt(
-        &self,
-        nonce: &[u8; 12],
-        aad: &[u8],
-        cipher_inout: &mut [u8],
-        tag: &[u8; 16],
-    ) -> bool {
-        if self.key_len == 24 {
-            let want = self.composed().tagged::<false>(nonce, aad, cipher_inout);
-            return ct_equal(&want, tag);
-        }
-        let cipher = cipher_inout.to_vec();
-        match self.key_len {
-            16 => PortableAesGcm128::decrypt(
-                cipher_inout,
-                self.key[..16].try_into().unwrap(),
-                nonce,
-                aad,
-                &cipher,
-                tag,
-            ),
-            _ => PortableAesGcm256::decrypt(cipher_inout, &self.key, nonce, aad, &cipher, tag),
-        }
-        .is_ok()
-    }
-
-    /// The bitsliced AES rind copies from libcrux and aws-lc's integer
-    /// GHASH, for IVs libcrux does not take, which start the counter
-    /// anywhere, and for truncated tags, which its tag check does not take.
-    /// Built for each call, as libcrux expands the key for each.
-    fn composed(&self) -> Composed {
-        let key = AesKey::new(&self.key[..self.key_len]);
+        let key = AesKey::new(key);
         let h = key.encrypt_block(&[0; 16]);
-        Composed {
-            table: ManuallyDrop::new(NohwTable::new(&h)),
-            key: ManuallyDrop::new(key),
-        }
-    }
-}
-
-impl Drop for Portable {
-    fn drop(&mut self) {
-        zeroise(&mut self.key);
-        zeroise_value(&mut self.key_len);
+        let table = NohwTable::new(&h);
+        Self { key, table }
     }
 }
 
@@ -290,27 +209,6 @@ impl Hw {
         let h = key.encrypt_block(&[0; 16]);
         let table = GhashTable::new(&h, token);
         Self { key, table }
-    }
-
-    fn encrypt(
-        &self,
-        nonce: &[u8; 12],
-        aad: &[u8],
-        cipher_inout: &mut [u8],
-        tag_out: &mut [u8; 16],
-    ) {
-        *tag_out = self.tagged::<true>(nonce, aad, cipher_inout);
-    }
-
-    /// Decrypts in place, returning whether `tag` is right.
-    fn decrypt(
-        &self,
-        nonce: &[u8; 12],
-        aad: &[u8],
-        cipher_inout: &mut [u8],
-        tag: &[u8; 16],
-    ) -> bool {
-        ct_equal(&self.tagged::<false>(nonce, aad, cipher_inout), tag)
     }
 }
 
@@ -420,15 +318,7 @@ impl Parts for Hw {
     }
 }
 
-/// See [`Portable::composed`].
-///
-/// Built for one call, so its parts skip their wipes.
-struct Composed {
-    key: ManuallyDrop<AesKey>,
-    table: ManuallyDrop<NohwTable>,
-}
-
-impl Parts for Composed {
+impl Parts for Portable {
     type Table = NohwTable;
 
     fn table(&self) -> &NohwTable {
@@ -509,54 +399,8 @@ mod tests {
         assert_eq!(cipher, [b'p'; 4164]);
     }
 
-    // Every other test sees only the path the CPU picks, so the crypto
-    // extension's is checked against libcrux's here: each key size, AAD and
-    // message lengths around the block and chunk boundaries, and a tampered
-    // tag.
-    #[cfg(rind_backend = "arm")]
-    #[test]
-    fn hw_matches_portable() {
-        let Some(token) = HaveCryptoExt::check() else {
-            return;
-        };
-        let bytes = |n: usize, seed: u32| -> Vec<u8> {
-            (0..n as u32)
-                .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
-                .collect()
-        };
-        for key_len in [16, 24, 32] {
-            let key = bytes(key_len, 1);
-            let portable = Portable::new(&key);
-            let hw = Hw::new(&key, token);
-            for aad_len in [0, 1, 15, 16, 17, 33] {
-                for msg_len in [0, 1, 15, 16, 17, 48, 127, 128, 129, 3071, 3072, 3073, 6200] {
-                    let nonce = bytes(12, msg_len as u32).try_into().unwrap();
-                    let aad = bytes(aad_len, 2);
-                    let plain = bytes(msg_len, 3);
-
-                    let (mut want, mut want_tag) = (plain.clone(), [0u8; 16]);
-                    portable
-                        .encrypt(&nonce, &aad, &mut want, &mut want_tag)
-                        .unwrap();
-                    let (mut got, mut got_tag) = (plain.clone(), [0u8; 16]);
-                    hw.encrypt(&nonce, &aad, &mut got, &mut got_tag);
-                    assert_eq!(
-                        (&got, got_tag),
-                        (&want, want_tag),
-                        "{key_len} {aad_len} {msg_len}"
-                    );
-
-                    assert!(hw.decrypt(&nonce, &aad, &mut got, &want_tag));
-                    assert_eq!(got, plain);
-                    want_tag[0] ^= 1;
-                    assert!(!hw.decrypt(&nonce, &aad, &mut want, &want_tag));
-                }
-            }
-        }
-    }
-
-    // The crypto extension's composition and the portable one rind runs
-    // for IVs libcrux does not take, against GCM by the book: each key size,
+    // The crypto extension's composition and the portable one, against GCM
+    // by the book: each key size,
     // IVs of 1, 12, and 17 bytes, message lengths around the block and chunk
     // boundaries, and counter blocks whose 32-bit counter wraps within the
     // message, as an IV other than 96 bits may hash to.
@@ -571,10 +415,10 @@ mod tests {
         };
         for key_len in [16, 24, 32] {
             let raw = bytes(key_len, 1);
-            let composed = Portable::new(&raw).composed();
+            let portable = Portable::new(&raw);
             #[cfg(rind_backend = "arm")]
             let hw = HaveCryptoExt::check().map(|token| Hw::new(&raw, token));
-            let encrypt = |b: &[u8; 16]| composed.encrypt_block(b);
+            let encrypt = |b: &[u8; 16]| portable.encrypt_block(b);
             let aad = bytes(17, 2);
             for msg_len in [0, 1, 16, 17, 100, 3071, 3073] {
                 let plain = bytes(msg_len, 3);
@@ -587,15 +431,15 @@ mod tests {
                         y0[..12].copy_from_slice(&iv);
                         y0[15] = 1;
                     } else {
-                        ghash(composed.table(), &mut y0, &iv);
-                        composed.table().ghash(&mut y0, &[lengths(0, iv_len)]);
+                        ghash(portable.table(), &mut y0, &iv);
+                        portable.table().ghash(&mut y0, &[lengths(0, iv_len)]);
                     }
                     runs.push((iv, y0));
                 }
 
                 for (iv, y0) in runs {
                     let want = gcm_model(encrypt, &y0, &aad, &plain);
-                    check(&composed, &iv, &aad, &plain, &want, &what);
+                    check(&portable, &iv, &aad, &plain, &want, &what);
                     #[cfg(rind_backend = "arm")]
                     if let Some(hw) = &hw {
                         check(hw, &iv, &aad, &plain, &want, &what);
@@ -608,15 +452,15 @@ mod tests {
         // hash, so the parts' own CTR is checked from a counter block about
         // to wrap: within one call, and across two split at a block, as
         // `tagged`'s chunks are.
-        let composed = Portable::new(&[7; 16]).composed();
+        let portable = Portable::new(&[7; 16]);
         let mut y0 = [3u8; 16];
         y0[12..].copy_from_slice(&0xffff_fffeu32.to_be_bytes());
         let plain = bytes(100, 4);
-        let (want, _) = gcm_model(|b| composed.encrypt_block(b), &y0, &[], &plain);
+        let (want, _) = gcm_model(|b| portable.encrypt_block(b), &y0, &[], &plain);
         let mut got = plain.clone();
         let mut next = add32(&y0, 1);
-        next = composed.ctr(&next, &mut got[..48]);
-        composed.ctr(&next, &mut got[48..]);
+        next = portable.ctr(&next, &mut got[..48]);
+        portable.ctr(&next, &mut got[48..]);
         assert_eq!(got, want);
         #[cfg(rind_backend = "arm")]
         if let Some(token) = HaveCryptoExt::check() {
