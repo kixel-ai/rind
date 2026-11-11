@@ -4,6 +4,18 @@ on:
   schedule:
     - cron: "0 18 * * *"
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - rind/src/**
+      - rind/Cargo.toml
+      - Cargo.lock
+      - flake.nix
+      - flake.lock
+      - .github/workflows/x86-cpu.yml
+
+permissions:
+  contents: read
 
 concurrency:
   group: x86-cpu-${{ github.ref }}

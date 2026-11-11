@@ -4,6 +4,23 @@ on:
   schedule:
     - cron: "0 18 * * *"
   workflow_dispatch:
+  # A pull request runs only the x86_64 release row of `build`, the one that
+  # fails fastest; the nightly runs the rest.
+  pull_request:
+    branches: [main]
+    paths:
+      - rind/src/**
+      - rind/Cargo.toml
+      - "**/tests/ctgrind.rs"
+      - admin/ctgrind
+      - admin/ctgrind.supp
+      - Cargo.lock
+      - flake.nix
+      - flake.lock
+      - .github/workflows/ctgrind.yml
+
+permissions:
+  contents: read
 
 concurrency:
   group: ctgrind-${{ github.ref }}
@@ -20,8 +37,8 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm]
-        build: ["", --release]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "ubuntu-24.04-arm"]') }}
+        build: ${{ fromJSON(github.event_name == 'pull_request' && '["--release"]' || '["", "--release"]') }}
 
     runs-on: ${{ matrix.os }}
     env:
@@ -62,6 +79,7 @@ jobs:
   # stays the code that ships.
   x86_64-portable:
     name: x86_64-portable (${{ matrix.cpu }})
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -101,6 +119,7 @@ jobs:
   # The portable backend, forced on x86_64 as `just portable` forces it, with
   # dalek's serial backend, which the architectures that need it run.
   portable:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -122,6 +141,7 @@ jobs:
   # hour.
   x86_64-sde:
     name: x86_64-sde (${{ matrix.test }})
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -145,6 +165,7 @@ jobs:
   # to check vpaes, NEON GHASH, and the scalar SHA-1 and SHA-256 that cores
   # without it run. The denial takes `--cfg rind_cpu_disable`, as above.
   aarch64-portable:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -183,6 +204,7 @@ jobs:
   # armhf valgrind for an arm64 host, and building it builds its gdb too.
   armv7:
     name: armv7 (${{ matrix.suite }}${{ matrix.neon == '0' && ', no-neon' || '' }})
+    if: github.event_name != 'pull_request'
     strategy:
       # One suite's failure says nothing about the others.
       fail-fast: false
@@ -232,6 +254,7 @@ jobs:
   # qemu-arm traces of its AES, GHASH, SHA-1, and SHA-256 for two secrets
   # instead, as `x86_64-sde` does with SDE.
   armv7-qemu:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -249,6 +272,7 @@ jobs:
   # traces them under qemu-aarch64 instead, natively built on the arm64
   # runner.
   aarch64-qemu:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

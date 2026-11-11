@@ -4,6 +4,21 @@ on:
   schedule:
     - cron: "0 18 * * *"
   workflow_dispatch:
+  # A pull request runs only the jobs whose inputs it touches, as `changes`
+  # decides: armv7 and portable on their backends and scripts, the Dart jobs
+  # on rind-dart. The nightly runs every job.
+  pull_request:
+    branches: [main]
+    paths:
+      - rind/src/low/arm/**
+      - rind/src/low/portable/**
+      - sh/armv7.sh
+      - sh/portable.sh
+      - rind-dart/**
+      - .github/workflows/build.yml
+
+permissions:
+  contents: read
 
 concurrency:
   group: build-${{ github.ref }}
@@ -13,7 +28,38 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      armv7: ${{ steps.match.outputs.armv7 }}
+      portable: ${{ steps.match.outputs.portable }}
+      dart: ${{ steps.match.outputs.dart }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # Outside a pull request every job runs.
+      - id: match
+        run: |
+          changed=
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            changed=$(sh/changed.sh)
+          fi
+          for rule in \
+            'armv7=^(rind/src/low/arm/|sh/armv7\.sh$|\.github/workflows/build\.yml$)' \
+            'portable=^(rind/src/low/portable/|sh/portable\.sh$|\.github/workflows/build\.yml$)' \
+            'dart=^(rind-dart/|\.github/workflows/build\.yml$)'; do
+            if [ "$GITHUB_EVENT_NAME" != pull_request ] || printf '%s\n' "$changed" | grep -qE "${rule#*=}"; then
+              echo "${rule%%=*}=true"
+            else
+              echo "${rule%%=*}=false"
+            fi
+          done >>"$GITHUB_OUTPUT"
+
   build:
+    if: github.event_name != 'pull_request'
     strategy:
       matrix:
         include:
@@ -120,6 +166,7 @@ jobs:
   # link, without the CPU feature passes. The bench and fuzz crates need C++
   # built for musl, which musl-tools lacks.
   musl:
+    if: github.event_name != 'pull_request'
     strategy:
       matrix:
         include:
@@ -159,6 +206,7 @@ jobs:
   # 32-bit x86 Windows on the portable backend, which the x86_64 runner runs
   # natively. The qemu job tests Linux's, and the android job Android's.
   i686-windows:
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     env:
       CARGO_BUILD_TARGET: i686-pc-windows-msvc
@@ -185,6 +233,8 @@ jobs:
   # then runs the gnueabihf tests under qemu on each of rind's armv7 tiers, as
   # a local run does.
   armv7:
+    needs: changes
+    if: needs.changes.outputs.armv7 == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -204,6 +254,7 @@ jobs:
   # big-endian, the armv6 shells run on qemu's ARM1176, and the runner runs
   # i686 natively.
   qemu:
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -226,6 +277,8 @@ jobs:
   # run natively, and its build hook cross-builds the mobile targets, whose
   # libraries the hook's test checks are for the right architecture.
   dart:
+    needs: changes
+    if: needs.changes.outputs.dart == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -270,6 +323,8 @@ jobs:
   # rind-dart/integration. The x86_64 image runs x86_64 natively, and armv7,
   # for its 32-bit pointers, under its ARM translation.
   dart-android:
+    needs: changes
+    if: needs.changes.outputs.dart == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -312,6 +367,8 @@ jobs:
 
   # rind-dart's tests on the iOS simulator, through the same Flutter app.
   dart-ios:
+    needs: changes
+    if: needs.changes.outputs.dart == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
     defaults:
@@ -346,6 +403,8 @@ jobs:
   # runs, forced on x86_64 so it runs without emulation. The recipe lints and
   # tests it with the checks a debug build has.
   portable:
+    needs: changes
+    if: needs.changes.outputs.portable == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -362,6 +421,7 @@ jobs:
   # The simulator runs the iOS tests natively on the Apple silicon runner;
   # devices' code is only built, since GitHub has no iOS device to run it.
   ios:
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -404,6 +464,7 @@ jobs:
   # have the crypto extension; i686's Atom N270 has none of x86's.
   # armv7 Linux covers the paths without it. ARMv5TE runs the portable backend.
   android:
+    if: github.event_name != 'pull_request'
     strategy:
       matrix:
         include:

@@ -44,6 +44,14 @@
           # which `devShells.msrv` builds with. No rust-toolchain.toml: it
           # would override the nightly jobs' toolchains.
           rust-stable = pkgs.rust-bin.stable."1.98.1";
+          # `just ci`'s check of the unstable style options in
+          # .rustfmt.unstable.toml, which only a nightly rustfmt reads. Its own
+          # name keeps the stable rustfmt the one `cargo fmt` runs.
+          rustfmt-unstable = pkgs.writeShellScriptBin "rustfmt-unstable" ''
+            exec ${
+              pkgs.rust-bin.nightly."2025-02-14".minimal.override { extensions = [ "rustfmt" ]; }
+            }/bin/rustfmt "$@"
+          '';
           rust-toolchain = rust-stable.minimal.override {
             # `minimal` rather than `default`, which adds offline HTML docs to
             # a closure every CI job downloads.
@@ -411,6 +419,7 @@
                   # leased host.
                   flock
                   cargo-modules
+                  rustfmt-unstable
                   quest-cli
                 ]
                 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [

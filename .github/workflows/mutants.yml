@@ -6,7 +6,8 @@ name: mutants
 # reports: kill it with a test, or list it under `exclude_re` in
 # .cargo/mutants.toml with why no test can. The x86_64 run's survivors are
 # tried again under Intel SDE, on the AVX-512 paths no runner takes.
-# Dispatched on a branch, it mutates what the branch changed since `base`.
+# Dispatched on a branch, it mutates what the branch changed since `base`; on
+# a pull request, what the pull request changed.
 
 on:
   schedule:
@@ -17,6 +18,14 @@ on:
         description: Mutate the changes since this revision, rather than the last day's
         required: false
         default: ""
+  # A pull request mutates its own diff.
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.rs"
+      - .cargo/mutants.toml
+      - admin/mutants
+      - .github/workflows/mutants.yml
 
 concurrency:
   group: mutants-${{ github.ref }}
@@ -56,7 +65,7 @@ jobs:
           fi
           git diff "$(git merge-base "$BASE" HEAD)" HEAD -- '*.rs' > "$RUNNER_TEMP/changes.diff"
         env:
-          BASE: ${{ inputs.base }}
+          BASE: ${{ inputs.base || github.event.pull_request.base.sha }}
 
       # Exit 2, a missed mutant, may be code only the other architecture
       # compiles, so `survivors` decides.

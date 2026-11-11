@@ -50,8 +50,10 @@ fi
 # pattern. An empty pattern is a repository-wide lint that runs on every diff.
 declare -A scope=(
     # sh/select.sh narrows this to the changed crates and their dependents.
-    [rs]='^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt\.toml$)'
+    [rs]='^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)'
     # Advisories, licenses, and sources move with any manifest or the policy.
+    # rind's low, mid, and high layers reference only the layers below them.
+    [structure]='^(rind/(src/|Cargo\.toml$)|admin/structure$)'
     [deny]='(^|/)Cargo\.(toml|lock)$|^deny\.toml$'
     # An adapter's manifest holds both its version and its upstream requirement.
     [versions]='^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)'
@@ -100,7 +102,9 @@ declare -A scope=(
 # since there a skip is indistinguishable from a pass.
 declare -A tools=(
     [rs]='cargo jq'
-    [check:rs]='cargo cargo-nextest jq'
+    [check:rs]='cargo cargo-nextest jq rustfmt-unstable'
+    [fix:rs]='cargo jq rustfmt-unstable'
+    [structure]='cargo cargo-modules'
     [deny]='cargo-deny'
     [versions]='cargo jq'
     [license]='find grep'
@@ -125,7 +129,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs msrv cross vartime deny versions license inplace testing compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs structure msrv cross vartime deny versions license inplace testing compat bench fixtures patch py dart quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -194,6 +198,7 @@ for module in "${selected[@]}"; do
             fi
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all --check
+            RUSTFMT=rustfmt-unstable cargo fmt --all --check -- --config-path=.rustfmt.unstable.toml
             cargo clippy "${packages[@]}" --all-targets --locked -- --deny warnings
             # nextest runs the test binaries in parallel but not doc tests. Like
             # `cargo test`, it passes a selection with no tests, such as the
@@ -216,6 +221,7 @@ for module in "${selected[@]}"; do
         fix:rs)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all
+            RUSTFMT=rustfmt-unstable cargo fmt --all -- --config-path=.rustfmt.unstable.toml
             cargo clippy "${packages[@]}" --all-targets --fix --allow-dirty --allow-staged
             ;;
         # Plain `cargo check` covers the lib and bin targets, all a dependent
@@ -244,6 +250,7 @@ for module in "${selected[@]}"; do
                     --features "$features,getrandom/wasm_js" -- --deny warnings
             done
             ;;
+        check:structure) admin/structure ;;
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;
         check:deny) cargo deny --locked check ;;
         check:versions) sh/adapter-versions.sh ;;

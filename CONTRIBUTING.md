@@ -108,7 +108,7 @@ Run `just ci` before every push, and mark the PR ready with `/quest-review` when
 Keep it a draft only while its description lists a decision the maintainer still owns.
 Fix any merge conflicts and failing CI checks.
 
-The platform workflows inherited from graviola run nightly or on demand with `gh workflow run <name> --ref <branch>`.
+The platform workflows inherited from graviola run nightly or on demand with `gh workflow run <name> --ref <branch>`, and on a pull request that touches their inputs, a cheap subset each: one ctgrind row, the armv7, portable, and Dart jobs of `build`, a mutation run over the PR's diff, and a timing build. These runs are advisory, since a path-filtered workflow cannot be a required check, but fix a red one before merging.
 PRs land on `main` through GitHub's merge queue, one PR at a time, as squash commits.
 Queue the reviewed head with `quest merge <pr> --land <sha>` (`/quest-merge` does this).
 The required `Queue` check skips on pull requests; the merge group runs `just ci` against the merge group's base on the self-hosted runner.
