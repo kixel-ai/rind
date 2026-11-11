@@ -369,6 +369,7 @@ mod tests {
         let output = key.private_op(&input).ok()?;
         let mut bytes = vec![0; key.modulus_len_bytes()];
         output.to_bytes(&mut bytes).unwrap();
+        low::ct::public_slice(&bytes);
         Some(bytes)
     }
 
