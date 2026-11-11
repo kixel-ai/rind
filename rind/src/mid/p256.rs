@@ -565,8 +565,8 @@ impl Affine {
 
     /// `self + other`.
     ///
-    /// `p256_montjadd` is unspecified when the points are equal or opposite.
-    /// A sum that is not on the curve is left for the caller to refuse.
+    /// Equal points double, and opposite points become the identity. The
+    /// identity's affine image is `(0, 0)`, which is not on the curve.
     pub(crate) fn add(self, other: Self) -> Self {
         let sum =
             JacobianMontPoint::from_affine(&self.0).add(&JacobianMontPoint::from_affine(&other.0));
@@ -827,11 +827,40 @@ impl JacobianMontPoint {
         *self = r;
     }
 
+    /// `self + p` for any Jacobian points, including infinity, equals, and
+    /// opposites.
+    ///
+    /// `p256_montjadd` is unspecified when the points are equal or opposite,
+    /// so those results are computed separately and selected with no branch
+    /// on the coordinates.
     #[must_use]
     fn add(&self, p: &Self) -> Self {
-        let mut r = Self::infinity();
-        low::p256_montjadd(&mut r.xyz, &self.xyz, &p.xyz);
-        r
+        let mut sum = Self::infinity();
+        low::p256_montjadd(&mut sum.xyz, &self.xyz, &p.xyz);
+        let doubled = self.double();
+        let identity = Self::infinity();
+
+        let z1sq = self.z().mont_sqr();
+        let z2sq = p.z().mont_sqr();
+        let x1 = self.x().mont_mul(&z2sq);
+        let x2 = p.x().mont_mul(&z1sq);
+        let y1 = self.y().mont_mul(&z2sq).mont_mul(&p.z());
+        let y2 = p.y().mont_mul(&z1sq).mont_mul(&self.z());
+        let x_eq = eq_mask(&x1.0, &x2.0);
+        let y_eq = eq_mask(&y1.0, &y2.0);
+        let y_neg = eq_mask(&y1.add(&y2).0, &[0; 4]);
+        let z1_zero = eq_mask(&self.z().0, &[0; 4]);
+        let z2_zero = eq_mask(&p.z().0, &[0; 4]);
+        let finite = (z1_zero ^ 1) & (z2_zero ^ 1);
+        let use_double = x_eq & y_eq & finite;
+        let use_identity = x_eq & y_neg & finite & (use_double ^ 1);
+        let use_self = z2_zero & (z1_zero ^ 1);
+        let use_other = z1_zero;
+
+        let acc = mux_point(use_double, &doubled, &sum);
+        let acc = mux_point(use_identity, &identity, &acc);
+        let acc = mux_point(use_self, self, &acc);
+        mux_point(use_other, p, &acc)
     }
 
     /// Return p0 if select == 0, p1 otherwise
@@ -843,6 +872,26 @@ impl JacobianMontPoint {
         low::bignum_mux(select, &mut r.xyz[..], &p1.xyz[..], &p0.xyz[..]);
         r
     }
+}
+
+/// 1 when the limbs are equal, else 0. The comparison does not branch.
+fn eq_mask(a: &[u64], b: &[u64]) -> u64 {
+    let mut diff = 0u64;
+    for i in 0..a.len().max(b.len()) {
+        diff |= a.get(i).copied().unwrap_or(0) ^ b.get(i).copied().unwrap_or(0);
+    }
+    let diff = core::hint::black_box(diff);
+    ((diff | diff.wrapping_neg()) >> 63) ^ 1
+}
+
+fn mux_point(
+    select: u64,
+    if_set: &JacobianMontPoint,
+    if_clear: &JacobianMontPoint,
+) -> JacobianMontPoint {
+    let mut point = JacobianMontPoint::zero();
+    low::bignum_mux(select, &mut point.xyz, &if_set.xyz, &if_clear.xyz);
+    point
 }
 
 /// Whether `v` is below p, for public `v`.
@@ -1593,5 +1642,44 @@ mod tests {
 
         assert!(Scalar::from_be_reduced(&[]).is_err());
         assert!(Scalar::from_be_reduced(&[0u8; 129]).is_err());
+    }
+
+    /// `p256_montjadd` is unspecified for equal or opposite points. Addition
+    /// has to double, return infinity, and pass infinity through.
+    #[test]
+    fn affine_add_handles_equal_opposite_and_infinity() {
+        let g = Affine(CURVE_GENERATOR);
+        let doubled = Affine(
+            JacobianMontPoint::from_affine(&CURVE_GENERATOR)
+                .double()
+                .as_affine(),
+        );
+        assert_eq!(g.add(g).to_uncompressed(), doubled.to_uncompressed());
+
+        let two_g = doubled;
+        let four_g = Affine(
+            JacobianMontPoint::from_affine(&two_g.0)
+                .double()
+                .as_affine(),
+        );
+        assert_eq!(two_g.add(two_g).to_uncompressed(), four_g.to_uncompressed());
+
+        let opposite = g.add(g.negate());
+        let mut identity = [0u8; 65];
+        identity[0] = 0x04;
+        assert_eq!(opposite.to_uncompressed(), identity);
+        assert!(!opposite.on_curve());
+
+        let jacobian = JacobianMontPoint::from_affine(&CURVE_GENERATOR);
+        let infinity = JacobianMontPoint::infinity();
+        assert_eq!(
+            jacobian.add(&infinity).as_affine().xy,
+            jacobian.as_affine().xy
+        );
+        assert_eq!(
+            infinity.add(&jacobian).as_affine().xy,
+            jacobian.as_affine().xy
+        );
+        assert!(infinity.add(&infinity).public_is_infinity());
     }
 }

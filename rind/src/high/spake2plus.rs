@@ -301,7 +301,14 @@ impl VerifierRecord {
         let v = secret_point(self.l.mul(&y))?;
         let keys = schedule_keys(
             suite.schedule,
-            &transcript(&labels, prover.as_ref(), share_v.as_ref(), &z, &v, &self.w0)?,
+            &transcript(
+                &labels,
+                prover.as_ref(),
+                share_v.as_ref(),
+                z.as_slice(),
+                v.as_slice(),
+                &self.w0,
+            )?,
         )?;
         let confirm_v = mac(keys.verifier_key(), prover.as_ref());
         let confirm_p = mac(keys.prover_key(), share_v.as_ref());
@@ -359,7 +366,14 @@ impl ProverAwaiting {
         let v = secret_point(diff.mul(&self.w1))?;
         let keys = schedule_keys(
             self.schedule,
-            &transcript(&self.labels, &self.share_p, verifier.as_ref(), &z, &v, &w0)?,
+            &transcript(
+                &self.labels,
+                &self.share_p,
+                verifier.as_ref(),
+                z.as_slice(),
+                v.as_slice(),
+                &w0,
+            )?,
         )?;
         let expect = mac(keys.verifier_key(), &self.share_p);
         let confirm_p = mac(keys.prover_key(), verifier.as_ref());
@@ -507,31 +521,65 @@ fn random_scalar() -> Result<Scalar, Error> {
     Err(Error::RngFailed)
 }
 
-/// Uncompressed encoding after a curve check. `public` declassifies the bytes.
-fn encode(point: Affine, public: bool) -> Result<[u8; Share::BYTES], Error> {
-    let ok = point.on_curve();
+struct EncodedPoint {
+    bytes: [u8; Share::BYTES],
+    len: u8,
+}
+
+impl EncodedPoint {
+    fn as_slice(&self) -> &[u8] {
+        &self.bytes[..usize::from(self.len)]
+    }
+}
+
+/// SEC 1 encoding after a curve check. The identity, which an opposite sum
+/// becomes, is the single octet `0x00`. `public` declassifies the bytes.
+fn encode(point: Affine, public: bool) -> Result<EncodedPoint, Error> {
     let bytes = point.to_uncompressed();
-    match ct::into_public(ok) {
+    let zeros = [0u8; Share::BYTES - 1];
+    // `(0, 0)` is the affine image of the identity, not a curve point.
+    let identity = ct_equal(&bytes[1..], &zeros) & ct_equal(&bytes[..1], &[0x04]);
+    if ct::into_public(identity) {
+        let mut stored = [0u8; Share::BYTES];
+        stored[0] = 0x00;
+        if public {
+            ct::public_slice(&stored[..1]);
+        }
+        return Ok(EncodedPoint {
+            bytes: stored,
+            len: 1,
+        });
+    }
+    match ct::into_public(point.on_curve()) {
         true => {
             if public {
                 ct::public_slice(&bytes);
             }
-            Ok(bytes)
+            Ok(EncodedPoint {
+                bytes,
+                len: Share::BYTES as u8,
+            })
         }
         false => Err(Error::Fault),
     }
 }
 
 fn publish(point: Affine) -> Result<Share, Error> {
-    Ok(Share(encode(point, true)?))
+    let encoded = encode(point, true)?;
+    if encoded.len != Share::BYTES as u8 {
+        return Err(KeyFormatError::NotOnCurve.into());
+    }
+    let mut bytes = [0u8; Share::BYTES];
+    bytes.copy_from_slice(&encoded.bytes);
+    Ok(Share(bytes))
 }
 
 fn publish_point(point: Affine) -> Result<Affine, Error> {
-    let bytes = encode(point, true)?;
-    Affine::from_uncompressed(&bytes)
+    let bytes = publish(point)?;
+    Affine::from_uncompressed(bytes.as_ref())
 }
 
-fn secret_point(point: Affine) -> Result<[u8; Share::BYTES], Error> {
+fn secret_point(point: Affine) -> Result<EncodedPoint, Error> {
     encode(point, false)
 }
 
@@ -970,6 +1018,102 @@ mod tests {
             prover.start(&RFC9383, &[0; MAX_LABEL + 1], b"", b"").err(),
             Some(Error::WrongLength)
         );
+    }
+
+    /// RFC 9383 still evaluates `X - w0*M` when `X` is `-w0*M` (a doubling)
+    /// or `w0*M` (the identity). The confirmation is the one those points
+    /// produce, and the identity is the SEC 1 octet `0x00`.
+    #[test]
+    fn exceptional_peer_share_follows_rfc9383() {
+        let w0 = [0x31u8; 40];
+        let w1 = [0x41u8; 40];
+        let w0s = Scalar::from_be_reduced(&w0).unwrap();
+        let w1s = Scalar::from_be_reduced(&w1).unwrap();
+        let y = scalar("000000000000000000000000000000000000000000000000000000000000000b");
+        let x = scalar("0000000000000000000000000000000000000000000000000000000000000007");
+        let two = Scalar::from_be_reduced(&[2]).unwrap();
+        let (m, n) = points().unwrap();
+        let labels = Labels::new(b"ctx", b"client", b"").unwrap();
+
+        let negated = m.mul(&w0s).negate();
+        let share_x = Share(negated.to_uncompressed());
+        let share_v = Share(n.mul(&w0s).add(Affine::mul_base(&y)).to_uncompressed());
+        let z = negated.mul(&two).mul(&y);
+        let v = Affine::mul_base(&w1s).mul(&y);
+        let tt = transcript(
+            &labels,
+            share_x.as_ref(),
+            share_v.as_ref(),
+            &z.to_uncompressed(),
+            &v.to_uncompressed(),
+            &w0s,
+        )
+        .unwrap();
+        let keys = schedule_keys(Schedule::Rfc9383, &tt).unwrap();
+        let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
+        let (got_share, got_confirm, state) = verifier
+            .start_at(&RFC9383, b"ctx", b"client", b"", &share_x, Some(y.copy()))
+            .unwrap();
+        assert_eq!(got_share.as_ref(), share_v.as_ref());
+        assert_eq!(
+            got_confirm.as_ref(),
+            mac(keys.verifier_key(), share_x.as_ref()).as_ref()
+        );
+        let key = state
+            .finish(&mac(keys.prover_key(), share_v.as_ref()))
+            .unwrap();
+        assert_eq!(key.as_ref(), keys.shared());
+
+        // X = w0*M makes Z the identity. SEC 1 encodes it as one zero byte.
+        let share_x = Share(m.mul(&w0s).to_uncompressed());
+        let v = Affine::mul_base(&w1s).mul(&y);
+        let tt = transcript(
+            &labels,
+            share_x.as_ref(),
+            share_v.as_ref(),
+            &[0x00],
+            &v.to_uncompressed(),
+            &w0s,
+        )
+        .unwrap();
+        let keys = schedule_keys(Schedule::Rfc9383, &tt).unwrap();
+        let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
+        let (_, got_confirm, _) = verifier
+            .start_at(&RFC9383, b"ctx", b"client", b"", &share_x, Some(y.copy()))
+            .unwrap();
+        assert_eq!(
+            got_confirm.as_ref(),
+            mac(keys.verifier_key(), share_x.as_ref()).as_ref()
+        );
+
+        // The prover's subtraction, Y = -w0*N.
+        let prover = ProverSecrets::new(&w0, &w1).unwrap();
+        let (share_p, prover) = prover
+            .start_at(&RFC9383, b"ctx", b"client", b"", Some(x.copy()))
+            .unwrap();
+        let negated = n.mul(&w0s).negate();
+        let share_y = Share(negated.to_uncompressed());
+        let diff = negated.mul(&two);
+        let z = diff.mul(&x);
+        let v = diff.mul(&w1s);
+        let tt = transcript(
+            &labels,
+            share_p.as_ref(),
+            share_y.as_ref(),
+            &z.to_uncompressed(),
+            &v.to_uncompressed(),
+            &w0s,
+        )
+        .unwrap();
+        let keys = schedule_keys(Schedule::Rfc9383, &tt).unwrap();
+        let (confirm_p, key) = prover
+            .finish(&share_y, &mac(keys.verifier_key(), share_p.as_ref()))
+            .unwrap();
+        assert_eq!(
+            confirm_p.as_ref(),
+            mac(keys.prover_key(), share_y.as_ref()).as_ref()
+        );
+        assert_eq!(key.as_ref(), keys.shared());
     }
 
     #[test]
