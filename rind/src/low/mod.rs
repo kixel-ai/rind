@@ -140,8 +140,9 @@ mod tests;
 pub(crate) mod abi;
 
 // A bounds test, not a constant-time one: valgrind does not fault guard
-// pages on every target, so ctgrind builds leave it out.
-#[cfg(all(test, unix, not(feature = "__ctgrind")))]
+// pages on every target, so ctgrind builds leave it out, and Miri cannot run
+// the PROT_NONE mappings it faults on.
+#[cfg(all(test, unix, not(feature = "__ctgrind"), not(miri)))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod guard_pages;
 
