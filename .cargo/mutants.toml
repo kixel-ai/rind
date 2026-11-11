@@ -218,7 +218,7 @@ exclude_re = [
   'rind/src/low/aarch64/vpaes_armv8\.rs:84:\d+: replace <impl Drop for VpaesKey>::drop with \(\)$',
   'rind/src/low/x86_64/\.\./generic/ghash_nohw\.rs:69:\d+: replace <impl Drop for NohwTable>::drop with \(\)$',
   'rind/src/low/x86_64/aes\.rs:122:\d+: replace <impl Drop for AesDecKey>::drop with \(\)$',
-  'rind/src/low/x86_64/aes_nohw\.rs:96:\d+: replace <impl Drop for NohwKey>::drop with \(\)$',
+  'rind/src/low/x86_64/\.\./generic/aes_nohw\.rs:950:\d+: replace <impl Drop for NohwKey>::drop with \(\)$',
   'rind/src/low/x86_64/ghash\.rs:103:\d+: replace <impl Drop for GhashTable>::drop with \(\)$',
   'rind/src/low/x86_64/ghash_ssse3_x86_64\.rs:75:\d+: replace <impl Drop for Ssse3Table>::drop with \(\)$',
   'rind/src/low/x86_64/vpaes_x86_64\.rs:135:\d+: replace <impl Drop for VpaesDecKey>::drop with \(\)$',

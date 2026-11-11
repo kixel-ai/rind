@@ -185,7 +185,8 @@ pub(crate) use generic::{
 };
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 pub(crate) use portable::{
-    bignum_eq::bignum_eq, curve25519::curve25519_x25519base, ghash_nohw::NohwTable,
+    aes::AesKey as PortableAesKey, bignum_eq::bignum_eq, curve25519::curve25519_x25519base,
+    ghash_nohw::NohwTable,
 };
 
 // Declared outside `cfg_if!`, which cargo-mutants cannot see into.
