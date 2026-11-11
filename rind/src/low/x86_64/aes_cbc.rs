@@ -33,14 +33,14 @@ fn hw_cbc(key: *const u8, iv: &[u8; 16], blocks: &mut [[u8; 16]], encrypt: bool)
     // direction. Only a `HaveAesHardware` token builds it, proving the AES-NI
     // and SSSE3 the routine uses. It returns at once for zero bytes.
     unsafe {
-        aes_hw_cbc_encrypt(
+        asm_call!(unsafe extern "sysv64" aes_hw_cbc_encrypt(
             blocks.as_ptr().cast(),
             blocks.as_mut_ptr().cast(),
             16 * blocks.len(),
             key,
             &mut ivec,
             i32::from(encrypt),
-        )
+        ))
     }
 }
 

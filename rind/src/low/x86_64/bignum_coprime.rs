@@ -267,7 +267,7 @@ macro_rules! arg4 {
 #[inline(never)]
 pub(crate) fn bignum_coprime(x: &[u64], y: &[u64], t: &mut [u64]) -> bool {
     let ret: u64;
-    debug_assert!(t.len() >= 2 * core::cmp::max(x.len(), y.len()));
+    assert!(t.len() >= 2 * core::cmp::max(x.len(), y.len()));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
@@ -690,4 +690,11 @@ pub(crate) fn bignum_coprime(x: &[u64], y: &[u64], t: &mut [u64]) -> bool {
             )
     };
     ret > 0
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_coprime, &[3; 4], &[5; 4], &mut [0; 8]);
 }

@@ -22,7 +22,7 @@ pub(crate) fn leave_cpu_state(old: u32) {
 /// # Safety:
 /// There must be `len` writable bytes at `ptr`; with no alignment
 /// requirement.
-pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
+pub(in crate::low) unsafe fn zero_bytes(ptr: *mut u8, len: usize) {
     // SAFETY: inline assembly.
     unsafe {
         core::arch::asm!(
@@ -290,6 +290,28 @@ pub(in crate::low) fn prefetch_ro<T>(ptr: *const T) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::abi::call;
+
+    #[test]
+    fn abi() {
+        let mut bytes = [0xffu8; 100];
+        call!(zero_bytes, bytes.as_mut_ptr(), 100);
+        assert_eq!(bytes, [0; 100]);
+        call!(prefetch_ro::<u8>, bytes.as_ptr());
+        #[cfg(target_vendor = "apple")]
+        if std::arch::is_aarch64_feature_detected!("dit") {
+            // SAFETY: the CPU has DIT, which this leaves as it found it.
+            unsafe {
+                let on = call!(unsafe dit::read);
+                call!(unsafe dit::write, on);
+            }
+        }
+        let (a, b) = ([1u8; 37], [2u8; 37]);
+        // SAFETY: `a` and `b` are 37 readable bytes.
+        let diff = unsafe { call!(unsafe ct_compare_bytes, a.as_ptr(), b.as_ptr(), 37) };
+        assert_ne!(diff, 0);
+        assert_ne!(call!(ct_compare_16, &[1; 16], &[2; 16]), 0);
+    }
 
     /// Whether std detects every feature named, less those `test_toggle`
     /// denies.
@@ -318,11 +340,14 @@ mod tests {
 
     // CI runs the aarch64 suite on a CPU with the crypto extension, then
     // again with it denied, and names which, so neither run silently tests
-    // only one path.
+    // only one path. Under valgrind, which hides SHA3, it names that too.
     #[test]
     fn detects_the_expected_cpu() {
         if let Some(expected) = std::env::var_os("RIND_TEST_ARM_CRYPTO_EXT") {
             assert_eq!(HaveCryptoExt::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_ARM_SHA3") {
+            assert_eq!(HaveSha3::check().is_some(), expected == "1");
         }
     }
 
@@ -337,6 +362,14 @@ mod tests {
         assert_eq!(features() & DIT != 0, expected);
         // A denied DIT is left alone, as under `admin/ctgrind`, whose
         // valgrind runs no DIT instruction.
+        if has_dit && !expected {
+            // SAFETY: this core has DIT, though `test_toggle` denies it.
+            unsafe { dit::write(0) };
+            drop(crate::low::Entry::new_secret());
+            let _held = crate::cpu::Dit::hold();
+            // SAFETY: as above.
+            assert_eq!(unsafe { dit::read() }, 0);
+        }
         if expected {
             // SAFETY: this core has DIT. Cleared, so only an `Entry` can set
             // it.

@@ -1,6 +1,36 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+/// Calls an `extern` assembly routine, through `abi`'s trampoline in tests,
+/// which checks it preserves what its ABI says it must.
+#[cfg(all(
+    test,
+    any(
+        rind_backend = "x86_64",
+        rind_backend = "aarch64",
+        rind_backend = "arm"
+    )
+))]
+macro_rules! asm_call {
+    (unsafe extern $abi:tt $f:tt($($arg:expr),* $(,)?)) => {
+        $crate::low::abi::call!(unsafe extern $abi $f, $($arg),*)
+    };
+}
+
+#[cfg(all(
+    not(test),
+    any(
+        rind_backend = "x86_64",
+        rind_backend = "aarch64",
+        rind_backend = "arm"
+    )
+))]
+macro_rules! asm_call {
+    (unsafe extern $abi:tt $f:tt($($arg:expr),* $(,)?)) => {
+        $f($($arg),*)
+    };
+}
+
 #[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
 #[macro_use]
 mod macros;
@@ -95,6 +125,17 @@ pub(crate) use posint::{ModExp, PosInt, SecretPosInt};
 #[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests;
+
+#[cfg(all(
+    test,
+    any(
+        rind_backend = "x86_64",
+        rind_backend = "aarch64",
+        rind_backend = "arm"
+    )
+))]
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub(crate) mod abi;
 
 #[cfg(all(test, unix))]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -260,6 +301,8 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::aes_cbc;
         pub(crate) use aarch64::aes_ctr;
         pub(crate) use aarch64::cpu::HaveCryptoExt;
+        #[cfg(test)]
+        pub(crate) use aarch64::ct_qemu;
         pub(crate) use aarch64::aes_gcm;
         pub(crate) use aarch64::bignum_add::bignum_add;
         pub(crate) use aarch64::bignum_add_p256::bignum_add_p256;

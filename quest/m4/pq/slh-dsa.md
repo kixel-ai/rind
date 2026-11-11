@@ -15,8 +15,4 @@ From [the scope](/quest/m4/pq/README.md), 2026-11-06. aws-lc-rs offers no SLH-DS
 - All twelve sets (maintainer, 2026-11-07), since RFC 9909 (X.509) and RFC 9814 (CMS) assign each an OID and the code is generic over them; BoringSSL ships only SHA2-128s and SHAKE-256f, and COSE's draft only the two 128s sets. SP 800-230's six "-24" sets, capped at 2^24 signatures per key, wait until it is final.
 - Signing is randomized by default, as FIPS 205 recommends; HashSLH-DSA, which RFC 9909 also defines, and context strings wait for a consumer.
 - Wipe `SK.seed` and `SK.prf`. Signing is constant time over them; ctgrind covers keygen and signing.
-- Tests: ACVP's SLH-DSA keyGen, sigGen, and sigVer vectors (`SLH-DSA-keyGen-FIPS205`, `-sigGen-`, and `-sigVer-`; Wycheproof still has none on 2026-11-09), run in [the ACVP harness](/quest/m2/confidence/acvp.md); differential against RustCrypto's `slh-dsa` and `fips205` as the [epic](/quest/m4/pq/README.md) decided, and a benchmark on every backend. If no earlier leaf has, add the epic's line to AGENTS.md's differential-testing rule.
-
-## Required
-
-- [rind passes NIST's ACVP vectors](/quest/m2/confidence/acvp.md) - the harness SLH-DSA's ACVP sets run in
+- Tests: ACVP's SLH-DSA keyGen, sigGen, and sigVer vectors (`SLH-DSA-keyGen-FIPS205`, `-sigGen-`, and `-sigVer-`; Wycheproof still has none on 2026-11-09), added to `admin/sync-acvp` and read with `crate::test::acvp` as the other ACVP sets are; differential against RustCrypto's `slh-dsa` and `fips205` as the [epic](/quest/m4/pq/README.md) decided, and a benchmark on every backend. If no earlier leaf has, add the epic's line to AGENTS.md's differential-testing rule.

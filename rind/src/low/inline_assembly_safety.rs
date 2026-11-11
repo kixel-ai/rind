@@ -24,15 +24,20 @@
 //! - the Rust type of the function.  For example, `bignum_inv_p256`
 //!   takes a pointer to four 64-bit quantities for its input: therefore
 //!   the input argument type of this function is `&[u64; 4]`.
-//! - a `debug_assert`, which checks the invariant (these are typically
-//!   the length of a slice, or a length relation between different
-//!   slices.  See `bignum_emontredc_8n` for a more complex example.)
+//! - an `assert`, which checks the invariant in every build (these are
+//!   typically the length of a slice, or a length relation between
+//!   different slices.  See `bignum_emontredc_8n` for a more complex
+//!   example.)  A `debug_assert` would leave a release build's soundness
+//!   to every caller, so no file under `low` that holds `unsafe` has one,
+//!   which `low::tests::no_debug_assert_beside_unsafe` checks.
 //!
 //! Rust itself ensures the correct alignment of slices
 //! (eg. `&[u64; 4].as_ptr()` is always correctly aligned according
 //! to the required alignment of `u64`.)  Note that `s2n-bignum`'s
 //! verification does not require alignment, but whether unaligned
-//! accesses are unsound is architecturally defined.
+//! accesses are unsound is architecturally defined.  The x86_64 ML-KEM
+//! routines load and store their polynomials with `vmovdqa`, which faults
+//! unless the address is 32-byte aligned, so each asserts that alignment.
 //!
 //! ## Incorrect clobbered registers
 //!
@@ -50,6 +55,22 @@
 //! automatically computed by _any_ mention of a register name in the
 //! assembly.  This notably includes cases where the assembly itself
 //! manually spills registers that it clobbers.)
+//!
+//! A text scan cannot see a routine break the calling convention, so tests
+//! check it: `crate::low::abi` calls every routine through a trampoline that
+//! loads canaries into each register the ABI says it must preserve, and
+//! fails when one, the stack pointer, or on x86_64 the direction flag comes
+//! back changed. That covers `rbx` and `rbp` on x86_64, and `x19` and `x29`
+//! on aarch64, which rustc refuses as operands, so the clobber list leaves
+//! out: a routine that writes one must restore it itself. It also canaries
+//! `x18` on Linux, which Apple, Windows, and Android reserve. A register the
+//! ABI lets a routine change shows nothing at the boundary, so
+//! `admin/prove-bytes clobbers` checks each s2n-bignum block declares every
+//! register its HOL Light theorem's `MAYCHANGE` list names, but the
+//! callee-saved ones the harness covers. A theorem that bounds its routine
+//! only by the ABI leaves that routine to the scan. A test also fails on an
+//! `options(nostack)` block that moves or names the stack pointer, since
+//! rustc may keep data below it across such a block.
 //!
 //! ## Using unsupported instructions
 //!

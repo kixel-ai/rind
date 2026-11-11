@@ -13,9 +13,5 @@ From [the scope](/quest/m4/pq/README.md), 2026-11-06, whose epic still owns the 
 - API, as the [epic](/quest/m4/pq/README.md) decided: sealed marker types `MlDsa44`, `MlDsa65`, `MlDsa87` parameterize `signature::sign::MlDsaKeyPair<P>` (`generate`, `from_seed`, `to_seed`, `from_pkcs8`, `to_pkcs8`, `public_key`, `sign`) and its fixed-size `MlDsaSignature<P>`, which can't fit `signature::Signature`'s RSA-sized buffer. Verification joins the existing path as `signature::verify::{ML_DSA_44, ML_DSA_65, ML_DSA_87}`, since a certificate names its algorithm at run time; `signature::PublicKey`'s buffer grows to ML-DSA-87's 2592 bytes.
 - Behavior follows aws-lc-rs and RFC 9881: pure ML-DSA with the empty context, as TLS (draft-ietf-tls-mldsa) and X.509 use it, hedged signing, PKCS#8 that accepts the seed and expanded private key forms and emits the seed. HashML-DSA, which RFC 9881 disallows, context strings, and external μ wait for a consumer.
 - Wipe the seed and the expanded `s1`, `s2`, `t0`, and `K`. Signing's rejection loop count is public, as FIPS 204 allows; ctgrind declassifies it where mldsa-native's valgrind annotations do.
-- Tests: Wycheproof's `mldsa_{44,65,87}_{sign_seed,sign_noseed,verify}` vectors, differential signing and verification against aws-lc-rs, ctgrind, and a benchmark on every backend.
+- Tests: Wycheproof's `mldsa_{44,65,87}_{sign_seed,sign_noseed,verify}` vectors, ACVP's `ML-DSA-keyGen-FIPS204`, `ML-DSA-sigGen-FIPS204`, and `ML-DSA-sigVer-FIPS204` sets, added to `admin/sync-acvp` and read with `crate::test::acvp` as the other ACVP sets are, differential signing and verification against aws-lc-rs, ctgrind, and a benchmark on every backend.
 - rind-rustls's ML-DSA signing and verification belong to [rustls provider parity](/quest/m3/parity/rustls.md).
-
-## Related
-
-- [rind passes NIST's ACVP vectors](/quest/m2/confidence/acvp.md) - its ML-DSA keyGen, sigGen, and sigVer sets, which this adds to the harness if it has landed

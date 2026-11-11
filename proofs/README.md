@@ -30,6 +30,14 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
 - `aarch64/bignum_eq.ml`: `BIGNUM_EQ_CORRECT`, s2n-bignum's proof of
   `bignum_eq` on the block in `low::aarch64::bignum_eq::bignum_eq`, which is
   s2n-bignum's routine without its `ret`.
+- `aarch64/sha256_block_data_order_hw.ml`: `SHA256_HW_SUBROUTINE_CORRECT`,
+  rind's proof that the naked function
+  `low::aarch64::sha256::sha256_block_data_order_hw`, aws-lc's routine for
+  the SHA-256 instructions, computes s2n-bignum's FIPS 180-4 spec,
+  `sha256_hash_blocks`. A naked function's object code is its whole section
+  with its relocations and the read-only data they reach, here the round
+  constants, which `admin/prove` extracts as an object file; the proof checks
+  the constants against FIPS 180-4's.
 - `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64 and
   aarch64: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`, that the
   blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes` return
@@ -38,6 +46,15 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
   and branches is a function of the addresses and length alone, each load in
   bounds. Both functions are `#[inline(never)]` with fixed registers, so the
   proof covers their one copy.
+
+`hol-light/s2n-bignum/` holds, at their paths in s2n-bignum, the specs these
+proofs need from s2n-bignum pull requests not yet merged, ahead of the
+submodule on HOL Light's load path. Each is the pull request's file unchanged,
+so a submodule bump past its merge deletes it:
+
+- `x86/proofs/utils/sha256_spec.ml`: SHA-256's, from
+  [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) at
+  `79120e64ed55e37c9652565ff272b7ef17f76738`.
 
 ## What is proven
 
@@ -120,7 +137,7 @@ public key's is any point on the curve, so `p256_ecdsa_public_key_new` takes
 `P256_GROUP_ELEMENT_ORDER` proves from the group's size, which Mathlib cannot
 count yet. Key generation and signing need only G's order. The message's
 SHA-256 is FIPS 180-4's (`sha256E`), through the SHA-256 proof below, so
-signing and verification take its `ShaBlocks` and messages of at most
+signing and verification take its `Sha256Blocks` and messages of at most
 `maxInput` bytes. Signing draws nonces until r and s are both
 nonzero, with no bound, so `p256_ecdsa_sign` says what a returned signature
 is, not that one returns. The nonces come from RFC 6979's HMAC-DRBG, hedged
@@ -163,13 +180,18 @@ against FIPS 180-4 and RFC 2104 as `Rind/HashSpec.lean` transliterates them:
   meeting `HashSpec`, and `hmac_sha256_sign`, `hmac_sha1_sign` over SHA-256
   and SHA-1.
 
-No proof covers a SHA-1 or SHA-256 block function rind runs on either target,
-so these theorems take `ShaBlocks` as a hypothesis, in each target's own
-`Rind/<Arch>/ShaBlocks.lean`: each routine computes FIPS 180-4's block
-function, x86_64's SHA extensions' routines for SHA-1's padded last blocks
-and SHA-256's finish pad, and SHA-256's encodes, as FIPS 180-4 does, and
-rind's checks pass. They add no axiom, which
-`Rind/<Arch>/HashAxioms.lean` checks. An input is at most `maxInput`
+Below rind's padding, these theorems take `Sha1Blocks` or `Sha256Blocks` as
+a hypothesis, in each target's own `Rind/<Arch>/ShaBlocks.lean`. No proof
+covers a SHA-1 block function rind runs, or a SHA-256 one on x86_64, so there
+each states that every routine computes FIPS 180-4's block function, x86_64's
+SHA extensions' routines for SHA-1's padded last blocks and SHA-256's finish
+pad, and SHA-256's encodes, as FIPS 180-4 does, and that rind's checks pass.
+On aarch64, `Sha256Blocks` states only that the CPU has the crypto extension
+and rind's checks pass: `Rind/Aarch64/Sha256Hw.lean` restates the HOL Light
+proof above as the axiom `sha256_block_data_order_hw_spec`, and
+`Rind/S2nSha256.lean` proves s2n-bignum's spec FIPS 180-4's block function.
+`Rind/<Arch>/HashAxioms.lean` checks the axioms each theorem rests on: none
+on x86_64, and that one for SHA-256 on aarch64. An input is at most `maxInput`
 (2^61 - 1) bytes, under FIPS 180-4's 2^64-bit limit. `Rind/HashSpecTest.lean`
 checks the transliterations against FIPS 180-4's, RFC 4231's, RFC 5869's, and
 RFC 6070's vectors.
@@ -189,14 +211,31 @@ and RFC 8018 as `Rind/HashSpec.lean` transliterates them:
 - `kdf.derive_spec`, `kdf.verify_spec` (`Rind/X86_64/Pbkdf2.lean`): PBKDF2's
   `Secret::derive` and `Secret::verify`.
 
+HKDF's `From<Okm>` conversions, each filling the key's length of HKDF-Expand
+into a zeroed buffer and keying it, in `Rind/X86_64/Hkdf.lean` on both targets
+and `Rind/X86_64/HkdfAead.lean` on x86_64:
+
+- `hmac_key_from_spec`, `prk_from_spec`: the `hmac::Key` and `Prk` are keyed
+  under the algorithm with the `tag_len` bytes of HKDF-Expand;
+- `header_key_from_spec`: ChaCha20 header protection holds the 32 bytes of
+  HKDF-Expand, through `header_new_spec` over `chacha20_new`;
+- `aead_key_from_spec`: an AES-128-GCM or AES-256-GCM key holds AES-GCM on
+  Vale's tier for the `4 * nk` bytes of HKDF-Expand, under `RunsValeAesGcm`,
+  through `aead_key_new_spec` over `aes_gcm_new`.
+
+The other keys `From<Okm>` converts to, AES-192-GCM, ChaCha20-Poly1305, and
+AES header protection, have no proof. `Rind/X86_64/Kdf/FunsExternal.lean`'s
+`new` wrappers turn a model's refusal into the panic its `expect` makes, so
+each conversion panics exactly where its `expect` does.
+
 `hmac::Key` and `Context` reach each hash through function pointers, which
 `Rind/X86_64/HmacDispatch.lean` models. HKDF and PBKDF2 call that model, so
 `admin/prove` translates `high::hkdf` and `high::pbkdf2` in a second pass,
 into `Rind/<Arch>/Kdf/{Types,Funs}.lean`, with the first pass's items and the
 HMAC model opaque below it; `Rind/X86_64/HkdfExpand.lean` models
 `Prk::expand_into`, whose slice of borrowed slices Aeneas cannot translate.
-The theorems over an HMAC algorithm assume `RunsHmac`: `ShaBlocks` for SHA-1
-and SHA-256, `RunsSha512` for SHA-384 and SHA-512, so `Rind/<Arch>/Axioms.lean`
+The theorems over an HMAC algorithm assume `RunsHmac`: `Sha1Blocks` for SHA-1,
+`Sha256Blocks` for SHA-256, and `RunsSha512` for SHA-384 and SHA-512, so `Rind/<Arch>/Axioms.lean`
 checks their axioms.
 `hmac::verify` and `Secret::verify` compare through `low::generic::ct_equal`,
 which `Rind/X86_64/CtEqual.lean` proves returns whether its inputs are equal,
@@ -316,7 +355,8 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
 
 ## Layout
 
-- `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine.
+- `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine, and
+  `hol-light/s2n-bignum/`, the unmerged s2n-bignum specs they use.
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
   writes and git ignores.
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
@@ -344,11 +384,14 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   ChaCha20, and Ed25519 proofs, `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
   SHA-1's, SHA-256's, and HMAC's, and
   `Rind/X86_64/{DigestApi,HmacApi,Hkdf,Pbkdf2}.lean`, the digest, HMAC, HKDF,
-  and PBKDF2 APIs'; `Rind/X86_64/{AesKey,Ghash,PartialBlock,AesGcmGlue,AesGcm}.lean`:
+  and PBKDF2 APIs'; `Rind/X86_64/HkdfAead.lean`, HKDF's conversion to AES-GCM
+  keys; `Rind/X86_64/{AesKey,Ghash,PartialBlock,AesGcmGlue,AesGcm}.lean`:
   the AES-GCM proof, on x86_64 alone.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
-  finish.
+  finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with
+  the SHA-256 instructions, and `Rind/S2nSha256.lean`, s2n-bignum's SHA-256
+  spec, transliterated, and its proof that it is `Rind/HashSpec.lean`'s.
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
 - `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate, and
@@ -387,7 +430,8 @@ Beyond Lean's kernel:
   `p256Pow`, and `p256Inv` in `Rind/Spec.lean` are trusted to be
   `weierstrass_add`, `group_pow`, and `ring_inv` on `p256_group`.
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
-  `processBlock_Common`.
+  `processBlock_Common`, and `Rind/S2nSha256.lean` transliterates
+  s2n-bignum's SHA-256 spec.
 - That `Rind/Spec.lean`'s ChaCha20 transliterates RFC 8439 and RFC 9001, its
   ECDSA FIPS 186-5, and
   `Rind/Ed25519.lean` RFC 8032 and s2n-bignum's encoding and decoding of
@@ -396,9 +440,14 @@ Beyond Lean's kernel:
 - That `Rind/Vale.lean` transliterates Vale's AES and GF(2^128) specs and
   `hkeys_reqs_pub`, with the round functions Vale's AES spec assumes read as
   FIPS 197's, the S-box and `MixColumns` opaque.
-- That `Rind/X86_64/Simd.lean`'s intrinsics compute what Intel's manual
-  defines their instructions to, as an instruction model is trusted for
-  s2n-bignum's and Vale's own proofs.
+- That `Rind/X86_64/Simd.lean`'s intrinsics compute what their instructions
+  do beyond the inputs `admin/prove` tests them on. `admin/simd-vectors.rs`
+  runs each instruction on the checking machine's CPU, on every immediate it
+  reads, zero and all-ones lanes, and random inputs from a fixed seed, and
+  Lean checks each model gives the same. The AES models run the S-box and
+  `MixColumns` as FIPS 197 computes them, bodies Lean evaluates while proofs
+  keep the two opaque. All are tested on hardware, none under an emulator;
+  `admin/prove` fails on a `core.core_arch` model it does not test.
 - That rind's inline assembly is s2n-bignum's, aws-lc's, and Vale's object
   code, as for `benchmarks/verified.toml`'s other entries, except where a
   proof in `hol-light/` covers the bytes rind's build emits. For those, HOL

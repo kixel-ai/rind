@@ -4,6 +4,7 @@ rind's build, to the instructions that proof checked.
 
 Usage: admin/prove-bytes list
        admin/prove-bytes check <dir>
+       admin/prove-bytes clobbers
        admin/prove-bytes inventory <dir>
        admin/prove-bytes aws-lc-revision
 
@@ -16,7 +17,12 @@ and their targets' bytes, and the upstream's to `<name>.proof` alike, or
 compares them, except a routine LLVM may inline, whose copies inside its
 callers no symbol marks: it fails if one has a `_SAFE` theorem, and otherwise
 the inventory marks it unchecked. Then it checks ALGORITHMS.md's inventory of
-the `_SAFE` theorems covering each, which `inventory` prints.
+the `_SAFE` theorems covering each, which `inventory` prints, and runs `clobbers`.
+
+`clobbers` checks each block declares every register its proof lets the
+code change, which rustc otherwise assumes it keeps. A callee-saved
+register is the exception: the block saves and restores it, and the ABI
+harness in `rind/src/low/abi.rs` checks that it does.
 
 s2n-bignum's proofs each assert the bytes of the object code they are about,
 as a list in the proof's source, which `define_assert_from_elf` checks
@@ -514,6 +520,102 @@ def safe_theorem(arch, source, proof):
     return found[0] if found else None
 
 
+# Registers an `asm!` block may change without declaring them: those its
+# Rust function's ABI preserves, which the block restores and the ABI harness
+# checks, and the program counter and stack pointer, which it returns as it
+# found them. aarch64's d8-d15 are the low halves of v8-v15, whose upper
+# halves the ABI does not preserve.
+UNDECLARED = {
+    "x86_64": {"RIP", "RSP", "RBX", "RBP", "R12", "R13", "R14", "R15"},
+    "aarch64": {"PC", "SP", *(f"X{i}" for i in range(19, 30)), *(f"D{i}" for i in range(8, 16))},
+}
+REGISTER = {
+    "x86_64": r"\b(R(?:AX|BX|CX|DX|SI|DI|BP|SP|IP|\d+)|ZMM\d+)\b",
+    "aarch64": r"\b([XQD]\d+|PC|SP)\b",
+}
+OPERAND = re.compile(r'\b(?:out|inout|lateout|inlateout)\("(\w+)"\)')
+
+# Registers a proof lets its routine change that the code never writes, so
+# its block need not declare them. `clobbers` fails once one is declared or
+# named in the block, so that this list stays exact.
+LOOSE = {
+    ("x86_64", "mlkem_unpack", "RAX"),
+    ("aarch64", "bignum_demont", "X12"),
+    ("aarch64", "bignum_demont", "X13"),
+    ("aarch64", "bignum_demont_p384", "X11"),
+    ("aarch64", "bignum_demont_p384", "X12"),
+    ("aarch64", "bignum_madd_n25519", "X17"),
+}
+
+
+def register(arch, name):
+    """The register `name` names, as a proof spells its full width, so that
+    an alias such as `eax`, `ymm3`, `w5`, `lr`, or `v8` matches."""
+    name = name.upper()
+    if arch == "x86_64":
+        m = re.fullmatch(r"[XYZ]MM(\d+)", name)
+        if m:
+            return "ZMM" + m.group(1)
+        m = re.fullmatch(r"R(\d+)[DWB]?", name)
+        if m:
+            return "R" + m.group(1)
+        wide = {"AL": "RAX", "BL": "RBX", "CL": "RCX", "DL": "RDX", "SIL": "RSI", "DIL": "RDI", "BPL": "RBP"}
+        if name in wide:
+            return wide[name]
+        if re.fullmatch(r"E?[A-D]X|E?[SD]I|E?BP", name):
+            return "R" + name[-2:]
+        return name
+    m = re.fullmatch(r"[XW](\d+)", name)
+    if m:
+        return "X" + m.group(1)
+    m = re.fullmatch(r"[VQ](\d+)", name)
+    if m:
+        return "Q" + m.group(1)
+    return {"FP": "X29", "LR": "X30"}.get(name, name)
+
+
+def maychange(arch, source):
+    """The registers the proof of `source` lets it change, or None when its
+    only theorems are of the subroutine, which let it change any register
+    the ABI does."""
+    text = open(os.path.join(S2N, ARCHES[arch], "proofs", os.path.basename(source) + ".ml")).read()
+    m = re.search(r"^let (?!LOCAL_)(?:(?!SUBROUTINE)\w)+_CORRECT = (?:time )?prove\b[^`]*`([^`]*)`", text, re.M)
+    if not m or "MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI" in m.group(1):
+        return None
+    regs = set()
+    for item in re.findall(r"\bMAYCHANGE\b\s*(\[[^\]]*\]|\w+)", m.group(1)):
+        if item == "SOME_FLAGS":
+            continue
+        if not item.startswith("["):
+            raise Check(f"its proof's MAYCHANGE {item} is not a list")
+        regs |= set(re.findall(REGISTER[arch], item))
+    return regs
+
+
+def clobbers(arch, path, source):
+    """Checks the block of `path` declares each register its proof lets it
+    change, but for those in UNDECLARED; returns False when the proof gives
+    no bound tighter than the ABI."""
+    regs = maychange(arch, source)
+    if regs is None:
+        return False
+    *module, name = path.split("::")[1:]
+    text = open(os.path.join(ROOT, "rind", "src", *module) + ".rs").read()
+    start = re.search(r"^pub\(crate\) (?:unsafe )?fn %s\b" % name, text, re.M).end()
+    body = text[start : text.index("\n}\n", start)]
+    declared = {register(arch, r) for r in OPERAND.findall(body)}
+    named = {register(arch, r) for r in re.findall(r"\b[a-z]+\d*\b", body)}
+    if 'clobber_abi("C")' in body:
+        return True
+    for reg in sorted(regs - UNDECLARED[arch] - declared):
+        if (arch, name, reg) not in LOOSE:
+            raise Check(f"its proof lets it change {reg}, which its block does not declare")
+    for a, n, reg in LOOSE:
+        if (a, n) == (arch, name) and (reg in declared or reg in named or reg not in regs):
+            raise Check(f"LOOSE lists {reg}, which its block names or its proof keeps")
+    return True
+
+
 INVENTORY = ("<!-- admin/prove-bytes inventory -->\n", "<!-- end admin/prove-bytes inventory -->\n")
 
 
@@ -570,6 +672,19 @@ def fmt(insn):
     return " ".join("??" if b is None else "%02x" % b for b in insn.data)
 
 
+def check_clobbers():
+    failed = 0
+    for arch, path, source, _ in routines():
+        try:
+            if not clobbers(arch, path, source):
+                print(f"{arch} {os.path.basename(source)}: clobbers bounded only by the ABI")
+        except Check as e:
+            print(f"admin/prove-bytes: {arch} {path}: {e}", file=sys.stderr)
+            failed += 1
+    if failed:
+        sys.exit(f"admin/prove-bytes: {failed} blocks omit a register their proofs let them change")
+
+
 def main():
     if sys.argv[1:] == ["list"]:
         for arch, path, source, _ in routines():
@@ -583,9 +698,13 @@ def main():
     if len(sys.argv) == 3 and sys.argv[1] == "inventory":
         print(inventory(sys.argv[2]), end="")
         return
+    if sys.argv[1:] == ["clobbers"]:
+        check_clobbers()
+        return
     if len(sys.argv) != 3 or sys.argv[1] != "check":
         sys.exit(__doc__.split("\n\n")[1])
     out = sys.argv[2]
+    check_clobbers()
     failed = 0
     for arch, path, source, inline in routines():
         theorem = inline and safe_theorem(arch, source, proven(arch, source))

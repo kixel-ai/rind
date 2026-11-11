@@ -54,10 +54,12 @@
               "rust-analyzer"
             ];
             # The gate lints rind's other backends without their C toolchains,
-            # the portable one forced on x86_64.
+            # the portable one forced on x86_64 and on wasm32.
             targets = [
               "aarch64-unknown-linux-gnu"
               "armv7-unknown-linux-gnueabihf"
+              "wasm32-unknown-unknown"
+              "wasm32-wasip2"
               "x86_64-unknown-linux-gnu"
             ];
           };
@@ -500,7 +502,14 @@
                     "x86_64-unknown-linux-gnu"
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
+                    "arm-unknown-linux-gnueabihf"
+                    "i686-unknown-linux-gnu"
                     "loongarch64-unknown-linux-gnu"
+                    "powerpc-unknown-linux-gnu"
+                    "powerpc64-unknown-linux-gnu"
+                    "powerpc64le-unknown-linux-gnu"
+                    "riscv64gc-unknown-linux-gnu"
+                    "s390x-unknown-linux-gnu"
                   ];
                 })
                 pkgs.python3
@@ -663,7 +672,8 @@
             };
           }
           # `x86-cpu.yml` and `admin/x86-cpu sde-scan` run the tests and
-          # `rind-cpuid` under `sde` in it, and `admin/ct-sde` traces them.
+          # `rind-cpuid` under `sde` in it, `admin/ct-sde` traces them, and
+          # `admin/mutants --avx512` mutates under it.
           # SDE runs only on x86_64.
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             sde = pkgs.mkShell {
@@ -675,6 +685,8 @@
                 openssl
                 python3
                 sde
+                cargo-mutants
+                cargo-nextest
                 # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
                 util-linux
               ];

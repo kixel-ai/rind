@@ -2487,3 +2487,19 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point: &[u
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        p521_jscalarmul,
+        &mut crate::low::abi::Aligned([0; 27]).0,
+        &crate::low::abi::Aligned([0; 9]).0,
+        &crate::low::abi::Aligned([0; 27]).0
+    );
+}
