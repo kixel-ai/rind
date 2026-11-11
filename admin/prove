@@ -571,6 +571,7 @@ extract() {
         --start-from crate::high::signature::Ed25519KeyPair::sign \
         --start-from '{impl core::convert::AsRef for crate::high::signature::Signature}' \
         --start-from crate::high::signature::Buffer::copy_from \
+        --start-from crate::mid::sha3 \
         --opaque crate::high::agreement::Algorithm \
         --opaque crate::high::agreement::Ops \
         --opaque crate::high::agreement::x25519_from_pkcs8 \
@@ -603,7 +604,6 @@ extract() {
         --opaque crate::high::digest::SHA3_384 \
         --opaque crate::high::digest::SHA3_512 \
         --opaque crate::mid::md5 \
-        --opaque crate::mid::sha3 \
         --opaque crate::low \
         --opaque 'crate::mid::p384::_::_' \
         --opaque 'crate::mid::p521::_::_' \
@@ -685,6 +685,8 @@ extract x86_64 X86_64 \
     --opaque crate::low::x86_64::sha256_mux::path \
     --include crate::low::x86_64::sha512::Path \
     --opaque crate::low::x86_64::sha512::path \
+    --include crate::low::x86_64::sha3_keccak4_f1600_shim \
+    --include crate::low::x86_64::sha3_keccak_nof4_f1600 \
     --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
     --start-from crate::aead::Key \
     --start-from crate::aead::AlgorithmId \
@@ -749,6 +751,9 @@ extract aarch64 Aarch64 \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
     --include crate::low::aarch64::sha1::sha1_compress_padded \
+    --include crate::low::aarch64::sha3_keccak_f1600_mux \
+    --include crate::low::aarch64::sha3_keccak4_f1600_mux \
+    --include crate::low::aarch64::sha3_keccak_nof4_f1600 \
     --include crate::low::aarch64::sha256 \
     --opaque crate::low::aarch64::sha256::compress_hw \
     --opaque crate::low::aarch64::sha256::compress_nohw
