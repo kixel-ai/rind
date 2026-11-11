@@ -61,6 +61,29 @@ mod generic {
     pub(super) mod ctr;
     #[cfg(test)]
     pub(crate) mod ghash;
+    // The portable backend's public-key arithmetic on limbs as wide as the
+    // target's registers, which armv7 shares, also built on both widths in
+    // x86_64 and aarch64 tests to check each against s2n-bignum.
+    #[cfg(any(
+        all(
+            any(rind_backend = "arm", rind_backend = "portable"),
+            not(target_pointer_width = "64")
+        ),
+        all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
+    ))]
+    pub(crate) mod limb32;
+    #[cfg(any(
+        all(rind_backend = "portable", target_pointer_width = "64"),
+        all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
+    ))]
+    pub(crate) mod limb64;
+    #[cfg(all(
+        any(rind_backend = "arm", rind_backend = "portable"),
+        not(target_pointer_width = "64")
+    ))]
+    pub(crate) use limb32 as limbs;
+    #[cfg(all(rind_backend = "portable", target_pointer_width = "64"))]
+    pub(crate) use limb64 as limbs;
     // Every target's MD5: no CPU has instructions for it.
     pub(super) mod md5;
     pub(crate) mod mlkem;
@@ -150,9 +173,9 @@ mod portable;
 pub(crate) use generic::{
     bignum::{
         bignum_add, bignum_bitsize, bignum_cmp_lt, bignum_coprime, bignum_copy_row_from_table,
-        bignum_ctz, bignum_digitsize, bignum_modsub, bignum_montifier, bignum_montredc, bignum_mul,
-        bignum_negmodinv, bignum_optsub,
+        bignum_ctz, bignum_digitsize, bignum_modsub, bignum_negmodinv, bignum_optsub,
     },
+    limbs::mont::{bignum_montifier, bignum_montredc, bignum_mul},
     chacha20poly1305,
     mlkem::{mlkem_compress_d4, mlkem_compress_d10, mlkem_frombytes, mlkem_unpack},
     mlkem_poly::{
@@ -423,7 +446,7 @@ cfg_if::cfg_if! {
         pub(crate) use portable::aes_ctr;
         pub(crate) use portable::chacha20;
         pub(crate) use portable::curve25519::curve25519_x25519;
-        pub(crate) use generic::bignum::{mont_mul, mont_sqr};
+        pub(crate) use generic::limbs::mont::{mont_mul, mont_sqr};
         pub(crate) use portable::keccak::{
             sha3_keccak4_f1600, sha3_keccak_f1600, sha3_keccak_nof4_f1600,
         };
