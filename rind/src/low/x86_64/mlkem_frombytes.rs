@@ -28,6 +28,7 @@ use crate::low::macros::*;
 /// in the range 0 <= a[i] < 2^12 (typically they will be < 3329, the ML-KEM prime).
 #[inline(never)]
 pub(crate) fn mlkem_frombytes(r: &mut [i16; 256], a: &[u8; 384]) {
+    assert!((r.as_mut_ptr() as usize).is_multiple_of(32));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

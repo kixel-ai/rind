@@ -11,7 +11,3 @@ Decided with the maintainer on 2026-11-09, after an audit of the whole tree: ✅
 The HOL Light tree itself, `proofs/hol-light/` checked by `admin/prove`, landed in [moq-dev/rind#533](https://github.com/moq-dev/rind/pull/533).
 
 Staging (maintainer, 2026-11-09): ✅ calibrate first, and move the cold tiers to m5 (rejected: calibrate only, leave the 2026-11-07 plan). The [m4 verified epic](/quest/m4/verified/README.md) plans dozens of HOL Light proofs of assembly nobody has proven, with no measured cost. The calibration proof here is the first of them, and every other quest that writes new HOL Light requires it.
-
-## Required
-
-- [The hash and KDF glue's constant-time compares are proven](/quest/m2/verified/hash-glue.md) - the compares behind `hmac::verify` and `pbkdf2::Secret::verify`, in HOL Light

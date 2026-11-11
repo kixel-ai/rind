@@ -31,11 +31,3 @@ Decided by the maintainer on 2026-10-30:
 - Each new primitive follows `AGENTS.md`: a verified source where one
   exists, Wycheproof vectors, differential tests against aws-lc-rs, ctgrind,
   and a benchmark, on every backend.
-
-## Required
-
-- [P-521 in rind-rcgen](/quest/m3/parity/rcgen-p521.md) - waiting on rcgen to export its P-521 algorithms without aws-lc-rs
-- [ML-KEM-512 and ML-KEM-1024](/quest/m3/parity/ml-kem.md) - the typed KEM API, and ML-KEM-1024 for rustls parity
-- [ML-DSA-44, ML-DSA-65, and ML-DSA-87](/quest/m3/parity/ml-dsa.md) - mldsa-native's proven kernels, for rustls parity and certificates
-- [rustls provider parity](/quest/m3/parity/rustls.md) - rind-rustls offers ML-KEM-1024 and ML-DSA, the last of what aws-lc-rs's provider does
-- [aws-lc-rs extras on demand](/quest/m3/parity/aws-lc-extras.md) - waiting on a consumer for each aws-lc-rs-only algorithm

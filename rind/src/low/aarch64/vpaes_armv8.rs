@@ -34,7 +34,7 @@ impl VpaesKey {
             asm_call!(unsafe extern "C" vpaes_set_encrypt_key(key.as_ptr(), key_bits(key), &mut r))
         };
         // aws-lc's always succeeds.
-        debug_assert_eq!(ret, 0);
+        assert_eq!(ret, 0);
         r
     }
 
@@ -113,7 +113,7 @@ impl VpaesDecKey {
             asm_call!(unsafe extern "C" vpaes_set_decrypt_key(key.as_ptr(), key_bits(key), &mut r))
         };
         // aws-lc's always succeeds.
-        debug_assert_eq!(ret, 0);
+        assert_eq!(ret, 0);
         r
     }
 

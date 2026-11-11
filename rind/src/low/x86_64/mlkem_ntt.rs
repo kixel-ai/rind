@@ -32,8 +32,8 @@ use crate::low::macros::*;
 /// repo or our "tests/test.c".
 #[inline(never)]
 pub(crate) fn mlkem_ntt(a: &mut [i16; 256], qdata: &[i16; 624]) {
-    debug_assert!((a.as_mut_ptr() as usize).is_multiple_of(32));
-    debug_assert!((qdata.as_ptr() as usize).is_multiple_of(32));
+    assert!((a.as_mut_ptr() as usize).is_multiple_of(32));
+    assert!((qdata.as_ptr() as usize).is_multiple_of(32));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

@@ -21,7 +21,7 @@ pub(crate) fn leave_cpu_state(_old: u32) {}
 /// The caller must ensure that there are `len` bytes writable at `ptr`,
 /// and that the pointed-to object has a safe all-zeroes representation.
 /// (see `low::generic::zeroise` which expresses this within the type system).
-pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
+pub(in crate::low) unsafe fn zero_bytes(ptr: *mut u8, len: usize) {
     match HaveAvx2::check() {
         // SAFETY: the caller's guarantee, and the token proves AVX2
         Some(_) => unsafe { zero_bytes_avx2(ptr, len) },

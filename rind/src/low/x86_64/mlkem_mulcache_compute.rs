@@ -46,6 +46,9 @@ use crate::low::macros::*;
 /// can be found in the mlkem-native repo or our "tests/test.c".
 #[inline(never)]
 pub(crate) fn mlkem_mulcache_compute(x: &mut [i16; 128], a: &[i16; 256], qdata: &[i16; 624]) {
+    assert!((x.as_mut_ptr() as usize).is_multiple_of(32));
+    assert!((a.as_ptr() as usize).is_multiple_of(32));
+    assert!((qdata.as_ptr() as usize).is_multiple_of(32));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

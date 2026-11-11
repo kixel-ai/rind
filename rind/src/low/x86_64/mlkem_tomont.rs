@@ -31,6 +31,7 @@ use crate::low::macros::*;
 /// modular reduction but with |output[i]| < 3329 guaranteed.
 #[inline(never)]
 pub(crate) fn mlkem_tomont(a: &mut [i16; 256]) {
+    assert!((a.as_mut_ptr() as usize).is_multiple_of(32));
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

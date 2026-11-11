@@ -14,7 +14,7 @@
 use super::cpu::HaveCryptoExt;
 
 pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     // Both routines run their loop at least once, so zero blocks would read
     // past `blocks`.
     if blocks.is_empty() {

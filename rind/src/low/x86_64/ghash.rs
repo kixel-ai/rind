@@ -246,7 +246,7 @@ impl GhashTableAvx512 {
     /// by the last `n`.
     fn powers(&self) -> &[__m512i; 4] {
         let powers = self.vaes.powers();
-        debug_assert_eq!(powers.len(), 16);
+        assert_eq!(powers.len(), 16);
         // SAFETY: the 512-bit kernel's table holds 16 powers, 64-byte
         // aligned as `__m512i` needs, and any bits are a valid `__m512i`.
         unsafe { &*powers.as_ptr().cast() }
@@ -488,6 +488,8 @@ pub(crate) fn _mul_tail(
     x: [__m512i; 4],
     len: usize,
 ) -> __m128i {
+    // `x` holds at most 16 blocks, and the table 16 powers.
+    assert!(len <= 256);
     let n = len.div_ceil(16);
     if n == 0 {
         return current;
@@ -591,7 +593,7 @@ fn load_be(block: &[u8; 16]) -> __m128i {
 #[inline]
 pub(crate) fn load_partial(bytes: &[u8]) -> __m128i {
     let n = bytes.len();
-    debug_assert!(n < 16);
+    assert!(n < 16);
     let le64 = |i: usize| u64::from_le_bytes(bytes[i..i + 8].try_into().unwrap());
     let le32 = |i: usize| u64::from(u32::from_le_bytes(bytes[i..i + 4].try_into().unwrap()));
     let (lo, hi) = match n {
@@ -614,7 +616,7 @@ pub(crate) fn load_partial(bytes: &[u8]) -> __m128i {
 #[inline]
 pub(crate) fn store_partial(out: &mut [u8], block: __m128i) {
     let n = out.len();
-    debug_assert!(n < 16);
+    assert!(n < 16);
     // SAFETY: every x86_64 CPU has SSE2
     let (lo, hi) = unsafe {
         (

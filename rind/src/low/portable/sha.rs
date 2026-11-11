@@ -15,7 +15,7 @@ const PIECE: usize = 1 << 31;
 
 /// Compresses whole 64-byte `blocks` into `state`.
 pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     for piece in blocks.chunks(PIECE) {
         sha256_update_nblocks(piece.len() as u32, piece, state);
     }
@@ -43,7 +43,7 @@ pub(crate) fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -
 
 /// Compresses whole 128-byte `blocks` into `state`.
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(128));
+    assert!(blocks.len().is_multiple_of(128));
     for piece in blocks.chunks(PIECE) {
         sha512_update_nblocks(piece.len() as u32, piece, state);
     }

@@ -29,9 +29,3 @@ The epic's own work, once every child has merged:
 
 - Rewrite [MIGRATE.md](/MIGRATE.md)'s rule that a library keeps its old backend as the default: a library whose targets rind covers may go rind-only.
 - Update [PLATFORMS.md](/PLATFORMS.md) and the README's Limitations.
-
-## Required
-
-- [32-bit x86](/quest/m2/adoption/targets/x86.md) - i686 on the 1.90 MSRV, once libcrux fixes `__cpuid`
-- [rind's tests run on wasm32](/quest/m2/adoption/targets/wasm-tests.md) - the vector tests on wasm32-wasip2 under wasmtime
-- [MIPS](/quest/m2/adoption/targets/mips.md) - mips and mips64 Linux, if ring or aws-lc-rs still supports them

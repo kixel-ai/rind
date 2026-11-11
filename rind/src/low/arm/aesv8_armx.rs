@@ -83,7 +83,7 @@ impl AesHwKey {
             asm_call!(unsafe extern "C" aes_hw_set_encrypt_key(key.as_ptr(), key_bits(key), &mut r))
         };
         // aws-lc refuses only a null pointer or another key size.
-        debug_assert_eq!(ret, 0);
+        assert_eq!(ret, 0);
         r
     }
 
@@ -159,7 +159,7 @@ impl AesHwDecKey {
             asm_call!(unsafe extern "C" aes_hw_set_decrypt_key(key.as_ptr(), key_bits(key), &mut r))
         };
         // aws-lc refuses only a null pointer or another key size.
-        debug_assert_eq!(ret, 0);
+        assert_eq!(ret, 0);
         r
     }
 

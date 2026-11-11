@@ -11,7 +11,7 @@
 use super::cpu::HaveSha3;
 
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(128));
+    assert!(blocks.len().is_multiple_of(128));
     // Both routines run their loop at least once, so zero blocks would read
     // past `blocks`.
     if blocks.is_empty() {

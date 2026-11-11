@@ -926,7 +926,7 @@ use crate::low::macros::*;
                     rtype, rname, _ = self.function_state.return_value
                     locals = "let %s: %s;" % (rname, rtype)
                 for a in assertions:
-                    locals += "debug_assert!(%s);" % a
+                    locals += "assert!(%s);" % a
 
                 print("", file=self.output)
 

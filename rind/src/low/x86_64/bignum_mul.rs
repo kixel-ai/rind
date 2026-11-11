@@ -102,7 +102,7 @@ macro_rules! d {
 /// Truncates the result in general unless k >= m + n
 #[inline(never)]
 pub(crate) fn bignum_mul(z: &mut [u64], x: &[u64], y: &[u64]) {
-    debug_assert!(z.len() >= x.len() + y.len());
+    assert!(z.len() >= x.len() + y.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(

@@ -44,7 +44,7 @@ core::arch::global_asm!(
 );
 
 pub(crate) fn sha1_compress_blocks(state: &mut [u32; 5], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     match HaveCryptoExt::check() {
         // Both routines run their loop at least once, so zero blocks would
         // read past `blocks`.
@@ -74,7 +74,7 @@ pub(crate) fn sha1_compress_padded(state: &mut [u32; 5], message: &[u8], length:
 }
 
 pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(64));
+    assert!(blocks.len().is_multiple_of(64));
     match HaveCryptoExt::check() {
         Some(_) if !blocks.is_empty() => {
             // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and the
@@ -109,7 +109,7 @@ pub(crate) fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -
 }
 
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
-    debug_assert!(blocks.len().is_multiple_of(128));
+    assert!(blocks.len().is_multiple_of(128));
     // Both routines run their loop at least once, so zero blocks would read
     // past `blocks`.
     if blocks.is_empty() {

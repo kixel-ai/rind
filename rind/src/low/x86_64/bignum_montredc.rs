@@ -150,7 +150,7 @@ macro_rules! jshort {
 /// answer.
 #[inline(never)]
 pub(crate) fn bignum_montredc(z: &mut [u64], x: &[u64], m: &[u64], p: u64) {
-    debug_assert!(z.len() == m.len());
+    assert!(z.len() == m.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.
     unsafe {
         core::arch::asm!(
