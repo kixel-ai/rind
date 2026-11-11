@@ -11,6 +11,8 @@ type Limb = u64;
 /// Twice a limb, which holds a product of two and two more limbs.
 type Wide = u128;
 
+use fiat_crypto::{p256_64 as fiat_p256, p256_scalar_64 as fiat_p256_scalar};
+
 #[path = "mont.rs"]
 #[allow(
     clippy::duplicate_mod,
@@ -20,3 +22,14 @@ type Wide = u128;
     reason = "shared with `limb32`, whose limbs are narrower than a word"
 )]
 pub(crate) mod mont;
+#[path = "p256.rs"]
+#[allow(
+    clippy::duplicate_mod,
+    clippy::modulo_one,
+    clippy::useless_conversion,
+    trivial_numeric_casts,
+    reason = "shared with `limb32`, whose limbs are narrower than a word"
+)]
+pub(crate) mod p256;
+#[path = "p256_mul64.rs"]
+mod p256_mul;

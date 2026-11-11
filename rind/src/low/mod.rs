@@ -99,8 +99,6 @@ mod generic {
     // The portable backend's P-256, P-384, and P-521, also built in tests
     // elsewhere to check them against s2n-bignum.
     #[cfg(any(rind_backend = "arm", rind_backend = "portable", test))]
-    pub(crate) mod p256;
-    #[cfg(any(rind_backend = "arm", rind_backend = "portable", test))]
     pub(crate) mod p384;
     #[cfg(any(rind_backend = "arm", rind_backend = "portable", test))]
     pub(crate) mod p521;
@@ -187,7 +185,7 @@ pub(crate) use generic::{
     // sign, it exports P-384 only as ECDH, and it has no P-521, so rind
     // composes their arithmetic itself.
     order::{bignum_demont, bignum_modadd, bignum_modinv, bignum_montmul},
-    p256::{
+    limbs::p256::{
         bignum_add_p256, bignum_demont_p256, bignum_inv_p256, bignum_mod_n256, bignum_montmul_p256,
         bignum_montsqr_p256, bignum_neg_p256, bignum_tomont_p256, p256_montjadd, p256_montjdouble,
         p256_montjmixadd, p256_montjscalarmul, p256_scalarmulbase,
