@@ -495,8 +495,8 @@ pub(crate) fn _mul_tail(
         return current;
     }
 
-    // `table.powers()` descends to H^1, so H^n is `n` blocks before its end.
-    let powers = table.powers().as_ptr().cast::<__m128i>();
+    // The powers descend to H^1, so H^n is `n` blocks before their end.
+    let powers = table.vaes.powers();
     let (mut lo, mut mi, mut hi) = (
         _mm512_setzero_si512(),
         _mm512_setzero_si512(),
@@ -507,11 +507,13 @@ pub(crate) fn _mul_tail(
             0 => _mm512_xor_epi64(x, _mm512_inserti32x4::<0>(_mm512_setzero_si512(), current)),
             _ => x,
         };
-        // Two quadwords per block, for up to four blocks left from here on.
-        let mask = u8::MAX >> (8 - 2 * (n - 4 * j).min(4));
-        // SAFETY: the vector starts at H^(n-4j), within `table.powers()`, and
-        // the mask stops it at H^1, the last; masked-off lanes are not read.
-        let h = unsafe { _mm512_maskz_loadu_epi64(mask, powers.add(16 - n + 4 * j).cast()) };
+        // Up to four blocks left from here on, from H^(n-4j); slicing them
+        // bounds the load by the table, whatever the arithmetic.
+        let h = &powers[16 - n + 4 * j..][..(n - 4 * j).min(4)];
+        // Two quadwords per block.
+        let mask = u8::MAX >> (8 - 2 * h.len());
+        // SAFETY: the mask covers `h`; masked-off lanes are not read.
+        let h = unsafe { _mm512_maskz_loadu_epi64(mask, h.as_ptr().cast()) };
         lo = _mm512_xor_epi32(lo, _mm512_clmulepi64_epi128(x, h, 0x00));
         mi = _mm512_ternarylogic_epi32(
             mi,

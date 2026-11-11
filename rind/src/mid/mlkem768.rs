@@ -774,6 +774,70 @@ const N: usize = 256;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test::{Acvp, acvp};
+
+    fn acvp_seed(test: &serde_json::Value) -> [u8; 64] {
+        [test.hex("d"), test.hex("z")].concat().try_into().unwrap()
+    }
+
+    #[test]
+    fn acvp_key_gen() {
+        for group in acvp("ML-KEM-keyGen-FIPS203") {
+            assert_eq!(group.str("parameterSet"), "ML-KEM-768");
+            for test in group.tests() {
+                let dk = DecapKey::keygen_internal(&acvp_seed(test));
+                assert_eq!(dk.encapsulation_key().as_bytes(), &test.hex("ek")[..]);
+                assert_eq!(dk.as_bytes(), &test.hex("dk")[..]);
+            }
+        }
+    }
+
+    #[test]
+    fn acvp_encap_decap() {
+        for group in acvp("ML-KEM-encapDecap-FIPS203-tr1") {
+            assert_eq!(group.str("parameterSet"), "ML-KEM-768");
+            for test in group.tests() {
+                let ek = || EncapKey::from_bytes(&test.hex("ek").try_into().unwrap());
+                let dk = || DecapKey::from_bytes(&test.hex("dk").try_into().unwrap());
+                let ciphertext =
+                    || Ciphertext::from(<[u8; 1088]>::try_from(test.hex("c")).unwrap());
+                match (group.str("function"), group.str("keyFormat")) {
+                    ("encapsulation", "none") => {
+                        let m = Message(test.hex("m").try_into().unwrap());
+                        let (k, c) = ek().unwrap().encaps_internal(m);
+                        assert_eq!(k.as_ref(), &test.hex("k")[..]);
+                        assert_eq!(c.as_ref(), &test.hex("c")[..]);
+                    }
+                    ("decapsulation", "seed") => {
+                        let dk = DecapKey::keygen_internal(&acvp_seed(test));
+                        assert_eq!(dk.as_bytes(), &test.hex("dk")[..]);
+                        assert_eq!(dk.decaps(&ciphertext()).as_ref(), &test.hex("k")[..]);
+                    }
+                    ("decapsulation", "expanded") => {
+                        let k = dk().unwrap().decaps(&ciphertext());
+                        assert_eq!(k.as_ref(), &test.hex("k")[..]);
+                    }
+                    ("decapsulationKeyCheck", "expanded") => {
+                        assert_eq!(
+                            dk().is_some(),
+                            test.flag("testPassed"),
+                            "{}",
+                            test.str("reason")
+                        );
+                    }
+                    ("encapsulationKeyCheck", "none") => {
+                        assert_eq!(
+                            ek().is_ok(),
+                            test.flag("testPassed"),
+                            "{}",
+                            test.str("reason")
+                        );
+                    }
+                    other => panic!("unexpected function {other:?}"),
+                }
+            }
+        }
+    }
 
     #[test]
     fn shared_secret_debug() {

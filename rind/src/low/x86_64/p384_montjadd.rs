@@ -1091,3 +1091,19 @@ pub(crate) fn p384_montjadd(p3: &mut [u64; 18], p1: &[u64; 18], p2: &[u64; 18]) 
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        p384_montjadd,
+        &mut crate::low::abi::Aligned([0; 18]).0,
+        &crate::low::abi::Aligned([0; 18]).0,
+        &crate::low::abi::Aligned([0; 18]).0
+    );
+}

@@ -1136,3 +1136,18 @@ pub(crate) unsafe fn aes256_gcm_enc(
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_aarch64_feature_detected!("aes")
+        && std::arch::is_aarch64_feature_detected!("pmull"))
+    {
+        return;
+    }
+    // SAFETY: the CPU has the features checked above.
+    unsafe {
+        crate::low::abi::call!(unsafe aes256_gcm_enc, [[0; 16]; 8].as_mut_ptr(), 1, &mut crate::low::abi::Aligned([0; 16]).0, &mut crate::low::abi::Aligned([0; 16]).0, &crate::low::abi::Aligned([crate::low::abi::zeroed(); 15]).0, &crate::low::abi::Aligned([crate::low::abi::zeroed(); 6]).0);
+    }
+}

@@ -37,7 +37,9 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
 unsafe fn compress_hw(_: HaveCryptoExt, state: &mut [u32; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 64` readable blocks, at least one, and the
     // token proves the CPU has the SHA-256 instructions.
-    unsafe { sha256_block_data_order_hw(state, blocks.as_ptr(), blocks.len() / 64) }
+    unsafe {
+        asm_call!(unsafe extern "C" sha256_block_data_order_hw(state, blocks.as_ptr(), blocks.len() / 64))
+    }
 }
 
 /// As [`compress_hw`], with the scalar routine.
@@ -47,7 +49,9 @@ unsafe fn compress_hw(_: HaveCryptoExt, state: &mut [u32; 8], blocks: &[u8]) {
 /// `blocks` must hold at least one whole block.
 unsafe fn compress_nohw(state: &mut [u32; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 64` readable blocks, at least one.
-    unsafe { sha256_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 64) }
+    unsafe {
+        asm_call!(unsafe extern "C" sha256_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 64))
+    }
 }
 
 /// Compresses the end of `message`, padded and closed by `length`.
@@ -137,8 +141,8 @@ mod tests {
             // SAFETY: `blocks` holds at least `n` blocks, and the CPU has the
             // SHA-256 instructions.
             unsafe {
-                sha256_block_data_order_nohw(&mut want, blocks.as_ptr(), n);
-                sha256_block_data_order_hw(&mut got, blocks.as_ptr(), n);
+                asm_call!(unsafe extern "C" sha256_block_data_order_nohw(&mut want, blocks.as_ptr(), n));
+                asm_call!(unsafe extern "C" sha256_block_data_order_hw(&mut got, blocks.as_ptr(), n));
             }
             assert_eq!(got, want, "{n} blocks");
         }

@@ -32,13 +32,13 @@ fn hw_ctr32(key: &HwKey, ivec: &[u8; 16], inout: &mut [[u8; 16]]) {
     // token builds `key`, proving the AES-NI and SSE4.1 the routine uses. It
     // returns at once for zero blocks.
     unsafe {
-        aes_hw_ctr32_encrypt_blocks(
+        asm_call!(unsafe extern "sysv64" aes_hw_ctr32_encrypt_blocks(
             inout.as_ptr().cast(),
             inout.as_mut_ptr().cast(),
             inout.len(),
             key.as_aes_key(),
             ivec,
-        )
+        ))
     }
 }
 

@@ -1083,3 +1083,19 @@ pub(crate) fn bignum_ksqr_32_64(z: &mut [u64], x: &[u64], t: &mut [u64; 72]) {
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    if !(std::arch::is_x86_feature_detected!("adx") && std::arch::is_x86_feature_detected!("bmi2"))
+    {
+        return;
+    }
+    crate::low::abi::call!(
+        bignum_ksqr_32_64,
+        &mut [0; 64],
+        &[1; 32],
+        &mut crate::low::abi::Aligned([0; 72]).0
+    );
+}

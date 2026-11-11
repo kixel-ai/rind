@@ -139,3 +139,10 @@ pub(crate) fn bignum_copy_row_from_table(
             )
     };
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_copy_row_from_table, &mut [0; 4], &[7; 12], 3, 4, 2);
+}

@@ -11,6 +11,11 @@ why = "Divides by the top word of a public RSA modulus, for `PosInt::pub_montifi
 "aarch64-unknown-linux-gnu" = "calls __udivti3"
 "x86_64-unknown-linux-gnu+portable" = "calls __udivti3"
 "loongarch64-unknown-linux-gnu" = "calls __udivti3"
+"powerpc-unknown-linux-gnu" = "calls __udivti3"
+"powerpc64-unknown-linux-gnu" = "calls __udivti3"
+"powerpc64le-unknown-linux-gnu" = "calls __udivti3"
+"riscv64gc-unknown-linux-gnu" = "calls __udivti3"
+"s390x-unknown-linux-gnu" = "calls __udivti3"
 
 [[public]]
 function = "<curve25519_dalek::scalar::Scalar>::as_radix_2w"
@@ -20,6 +25,13 @@ why = "Divides 256 by the window width, which is 4 for the basepoint table rind 
 "x86_64-unknown-linux-gnu+portable" = "div"
 "armv7-unknown-linux-gnueabihf+portable" = "calls __aeabi_uidiv"
 "loongarch64-unknown-linux-gnu" = "div.du"
+"i686-unknown-linux-gnu" = "div"
+"arm-unknown-linux-gnueabihf" = "calls __aeabi_uidiv"
+"powerpc-unknown-linux-gnu" = "divwu"
+"powerpc64-unknown-linux-gnu" = "divdu"
+"powerpc64le-unknown-linux-gnu" = "divdu"
+"riscv64gc-unknown-linux-gnu" = "divu"
+"s390x-unknown-linux-gnu" = "dlgr"
 
 [[public]]
 function = "<rind::high::pbkdf2::Secret>::derive"
@@ -31,6 +43,13 @@ why = "The length check and step_by iterator divide only the public output lengt
 "x86_64-unknown-linux-gnu+portable" = "div x4"
 "armv7-unknown-linux-gnueabihf+portable" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"
 "loongarch64-unknown-linux-gnu" = "div.du x2"
+"i686-unknown-linux-gnu" = "div x2"
+"arm-unknown-linux-gnueabihf" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"
+"powerpc-unknown-linux-gnu" = "divwu x2"
+"powerpc64-unknown-linux-gnu" = "divdu x2"
+"powerpc64le-unknown-linux-gnu" = "divdu x2"
+"riscv64gc-unknown-linux-gnu" = "divu x2"
+"s390x-unknown-linux-gnu" = "dlgr x2"
 
 [[public]]
 function = "<rind::high::pbkdf2::Secret>::verify"
@@ -42,3 +61,16 @@ why = "The length check and step_by iterator divide only the public stored-key l
 "x86_64-unknown-linux-gnu+portable" = "div x4"
 "armv7-unknown-linux-gnueabihf+portable" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"
 "loongarch64-unknown-linux-gnu" = "div.du x2"
+"i686-unknown-linux-gnu" = "div x2"
+"arm-unknown-linux-gnueabihf" = "calls __aeabi_uidiv, calls __aeabi_uidivmod"
+"powerpc-unknown-linux-gnu" = "divwu x2"
+"powerpc64-unknown-linux-gnu" = "divdu x2"
+"powerpc64le-unknown-linux-gnu" = "divdu x2"
+"riscv64gc-unknown-linux-gnu" = "divu x2"
+"s390x-unknown-linux-gnu" = "dlgr x2"
+
+[[public]]
+function = "<u64>::_fmt_inner"
+why = "Formats a number for Debug or Display output, which never holds a secret. Only 32-bit PowerPC reaches it, through the `.got2` table of addresses its position-independent code loads from, which the scan follows whole."
+[public.holds]
+"powerpc-unknown-linux-gnu" = "calls __udivdi3"

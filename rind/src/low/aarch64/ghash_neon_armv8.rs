@@ -28,7 +28,7 @@ impl NeonTable {
         let mut r = Self([0; 2]);
         // SAFETY: `r` is one `u128` of `Htable` and `h` two words. The
         // routine needs only NEON, which rind requires.
-        unsafe { gcm_init_neon(&mut r, &h) };
+        unsafe { asm_call!(unsafe extern "C" gcm_init_neon(&mut r, &h)) };
         r
     }
 
@@ -41,7 +41,9 @@ impl NeonTable {
         }
         // SAFETY: `input` is `size_of_val(input)` readable bytes, a multiple
         // of 16, and `self` a twisted key.
-        unsafe { gcm_ghash_neon(xi, self, input.as_ptr().cast(), size_of_val(input)) }
+        unsafe {
+            asm_call!(unsafe extern "C" gcm_ghash_neon(xi, self, input.as_ptr().cast(), size_of_val(input)))
+        }
     }
 }
 

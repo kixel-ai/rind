@@ -270,13 +270,13 @@ impl<const H: usize> Products<'_, H> {
         // takes `a` and `b` as `r` too, as aws-lc calls it; the token proves
         // the AVX-512 IFMA and BMI2 it uses.
         unsafe {
-            (self.routines.amm)(
+            asm_call!(unsafe extern "sysv64" (self.routines.amm)(
                 r.cast(),
                 a.cast(),
                 b.cast(),
                 self.m.0.as_ptr().cast(),
                 self.k0.as_ptr(),
-            )
+            ))
         };
     }
 
@@ -288,7 +288,12 @@ impl<const H: usize> Products<'_, H> {
         // whatever `i` is, and writes `2H` words; the token proves the
         // AVX-512 it uses.
         unsafe {
-            (self.routines.extract)(r.0.as_mut_ptr().cast(), table.as_ptr().cast(), i[0], i[1])
+            asm_call!(unsafe extern "sysv64" (self.routines.extract)(
+                r.0.as_mut_ptr().cast(),
+                table.as_ptr().cast(),
+                i[0],
+                i[1],
+            ))
         };
     }
 }

@@ -114,3 +114,10 @@ pub(crate) fn bignum_ctz(x: &[u64]) -> usize {
     };
     ret as usize
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[test]
+fn abi() {
+    crate::low::abi::call!(bignum_ctz, &[0, 0, 4, 1]);
+}

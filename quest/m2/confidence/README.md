@@ -23,15 +23,3 @@ The 2026-11-09 audit found no exploitable bug and no panic reachable from public
 
 - Fix what a check finds in its own quest's PR when it's small; otherwise plan a follow-up.
 - Slow suites run in their own workflows, not in `just ci`, as `AGENTS.md` asks.
-
-## Required
-
-- [rind passes NIST's ACVP vectors](/quest/m2/confidence/acvp.md) - every algorithm ACVP covers
-- [BINSEC checks the secret paths no proof covers](/quest/m2/confidence/binsec.md) - constant time for every secret, on the paths no proof covers, nightly on x86_64 and aarch64
-- [Adapter crates' surviving mutants](/quest/m2/confidence/mutants-adapters.md) - tests for the 103 adapter mutants no test catches
-- [Surviving mutants that need crafted inputs](/quest/m2/confidence/mutants-edge-cases.md) - the AVX2 Ed25519 field arithmetic, points at infinity, and other edges random inputs miss
-- [Mutation testing on AVX-512](/quest/m2/confidence/mutants-avx512.md) - the AVX-512 paths no campaign host runs, under Intel SDE
-- [An ABI harness checks every assembly routine](/quest/m2/confidence/asm-abi.md) - callee-saved registers, stack pointer, and flags after each routine
-- [The portable backend is fuzzed and mutation tested](/quest/m2/confidence/portable-fuzz-mutants.md) - nightly fuzzing and a mutation campaign for the backend every new target ships on
-- [Each adapter's API is diffed against its upstream's](/quest/m2/confidence/adapter-api-diff.md) - the exact-API rule machine-checked per feature set
-- [A PR that would redden a nightly learns before it merges](/quest/m2/confidence/nightlies-on-prs.md) - nightlies run on PRs that touch their inputs
