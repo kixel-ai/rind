@@ -1695,7 +1695,10 @@ mod tests {
 
     /// Lengths 1 through 128, including 128 itself, lengths past 33 that are
     /// not multiples of 32, and `n - 1`, against aws-lc's `BN_div`.
+    ///
+    /// `aws-lc-sys` is a dev-dependency only outside Miri.
     #[test]
+    #[cfg(not(miri))]
     fn be_reduced_matches_aws_lc() {
         let order = util::u64x4_to_big_endian(&CURVE_ORDER);
         let mut n_minus_1 = order;
@@ -1741,6 +1744,7 @@ mod tests {
     }
 
     /// `bytes mod n` by aws-lc, or `Err` when the residue is zero.
+    #[cfg(not(miri))]
     #[allow(unsafe_code)]
     fn aws_reduce(bytes: &[u8]) -> Result<[u8; 32], ()> {
         use aws_lc_sys::{
