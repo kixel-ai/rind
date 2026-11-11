@@ -133,7 +133,9 @@ fn kem() {
     let public = key.public_key();
     let shown = format!("{:?}", public.as_ref());
     assert_eq!(format!("{public:?}"), format!("EncapsulationKey({shown})"));
-    let (_, secret) = public.encapsulate().unwrap();
+    let (ciphertext, secret) = public.encapsulate().unwrap();
+    let shown = format!("{:?}", ciphertext.as_ref());
+    assert_eq!(format!("{ciphertext:?}"), format!("Ciphertext({shown})"));
     assert_eq!(format!("{secret:?}"), "SharedSecret(..)");
 }
 

@@ -1499,3 +1499,17 @@ pub unsafe extern "C" fn rind_dart_encrypting_key_max_message_len(
     // SAFETY: forwarded from the caller.
     run(|| Ok(unsafe { handle(key) }.max_message_len()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kem_refuses_an_unknown_algorithm() {
+        let mut key = std::ptr::null_mut();
+        // SAFETY: `key` is a writable handle slot.
+        let status = unsafe { rind_dart_decapsulation_key_generate(1, &mut key) };
+        assert_eq!(status, Status::Misuse as isize);
+        assert!(key.is_null());
+    }
+}

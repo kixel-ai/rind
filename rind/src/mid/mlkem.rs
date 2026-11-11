@@ -731,7 +731,7 @@ impl<M: Array<Poly>> Coeffs<M, Ntt> {
         let k = rank(polys.len());
 
         for i in 0..k {
-            for j in (i + 1)..k {
+            for j in 0..i {
                 polys.swap(i * k + j, j * k + i);
             }
         }

@@ -4,6 +4,10 @@
 # Runs each mutant's tests in parallel, in about half `cargo test`'s time.
 test_tool = "nextest"
 
+# Key wiping is opt-in, and rind/tests/zeroing.rs, which kills every mutant of
+# a `Drop` that wipes, runs only with it.
+features = ["rind/wipe"]
+
 exclude_globs = [
   # Constants imported with aws-lc's, BoringSSL's, and OpenSSL's assembly,
   # which proofs and differential tests own.
@@ -17,6 +21,7 @@ exclude_globs = [
   # Tools, not libraries.
   "rind-bench/**",
   "rind-cpuid/**",
+  "rind-timing/src/cases.rs",
   "fuzz/**",
 ]
 
@@ -64,7 +69,6 @@ exclude_re = [
   'rind/src/mid/aes\.rs:\d+:\d+: replace \| with \^ in AesCtr::apply_keystream$',
   'rind/src/mid/aes_cbc\.rs:\d+:\d+: replace \| with \^ in AesCbcDecryptingKey::decrypt$',
   'rind/src/mid/ed25519\.rs:\d+:\d+: replace \| with \^ in EdwardsPoint::compress$',
-  'rind/src/mid/mlkem768\.rs:\d+:\d+: replace \| with \^ in Coeffs<\{K \*N\}, Normal>::decompress_from_bytes_du_10$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace \| with \^ in JacobianMontPoint::public_x_is$',
   'rind/src/mid/p384\.rs:\d+:\d+: replace \| with \^ in (<impl Iterator for BoothRecodeW5>::next|BoothRecodeW5::recode|JacobianMontPoint::public_x_is)$',
   'rind/src/mid/p521\.rs:\d+:\d+: replace \| with \^ in (<impl Iterator for BoothRecodeW5>::next|BoothRecodeW5::recode|PrivateKey::generate)$',
@@ -80,7 +84,7 @@ exclude_re = [
   'rind/src/high/rsa\.rs:20:\d+: replace \+ with \*$',
   'rind/src/high/sec1\.rs:14:\d+: replace \+ with \*$',
   'rind/src/low/generic/bignum\.rs:331:\d+: replace \+ with \* in mont_mul$',
-  'rind/src/low/x86_64/mlkem768_sample_poly_ntt_8x\.rs:229:\d+: replace \+ with \* in _squeeze_rate_and_reject$',
+  'rind/src/low/x86_64/mlkem_sample_poly_ntt_8x\.rs:229:\d+: replace \+ with \* in _squeeze_rate_and_reject$',
   'rind/src/mid/rsa_priv\.rs:311:\d+: replace / with \*$',
   'rind/src/mid/rsa_priv\.rs:296:44: replace \+ with \*$',
   'rind/src/mid/rsa_priv\.rs:298:\d+: replace \+ with \*$',
@@ -122,7 +126,6 @@ exclude_re = [
   'rind/src/low/x86_64/sha1\.rs:\d+:\d+: replace match guard i == pairs\.len\(\) with true in sha1_avx2$',
   'rind/src/mid/aes\.rs:\d+:\d+: replace < with <= in AesCtr::apply_keystream$',
   'rind/src/mid/aes_kw\.rs:187:\d+: replace - with / in AesKek::unwrap_padded$',
-  'rind/src/mid/mlkem768\.rs:467:\d+: replace \+ with \* in Coeffs<\{K \*K \*N\}, Ntt>::transpose$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace < with <= in (JacobianMontPoint::public_twin_multiply|public_below_p)$',
   'rind/src/mid/p384\.rs:\d+:\d+: replace < with <= in JacobianMontPoint::public_twin_multiply$',
   'rind/src/mid/p521\.rs:\d+:\d+: replace < with <= in JacobianPoint::public_twin_multiply$',
