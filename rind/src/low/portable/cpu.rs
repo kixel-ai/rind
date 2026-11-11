@@ -26,18 +26,15 @@ pub(in crate::low) unsafe fn zero_bytes(ptr: *mut u8, len: usize) {
     }
 }
 
-/// Effectively memcmp(a, b, len), but guaranteed to visit every element
-/// of a and b.
+/// Compares the first `min(a.len(), b.len())` bytes of `a` and `b`, reading
+/// every one of them whatever their values.
 ///
-/// The return value does not follow memcmp semantics: it is zero if
-/// `a == b`, otherwise it is non-zero.
-///
-/// # Safety
-/// The caller must ensure that there are `len` bytes readable at `a` and `b`,
-pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: usize) -> u8 {
+/// Returns zero if they are equal, otherwise non-zero.
+pub(in crate::low) fn ct_compare_bytes(a: &[u8], b: &[u8]) -> u8 {
+    let (len, a, b) = (a.len().min(b.len()), a.as_ptr(), b.as_ptr());
     let mut acc = 0;
     for i in 0..len {
-        // SAFETY: the caller guarantees `len` readable bytes at each, and a
+        // SAFETY: both hold `len` readable bytes, and a
         // volatile read is one the compiler must keep, so it cannot stop
         // early once `acc` has every bit set.
         acc |= unsafe { a.add(i).read_volatile() ^ b.add(i).read_volatile() };

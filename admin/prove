@@ -236,6 +236,10 @@ asm_function() {
 hol_light_proofs=(
     "aarch64 bignum_eq.bin rind::low::aarch64::bignum_eq::bignum_eq"
     "aarch64 sha256_block_data_order_hw.o rind::low::aarch64::sha256::sha256_block_data_order_hw"
+    "aarch64 ct_compare_bytes.bin rind::low::aarch64::cpu::ct_compare_bytes"
+    "aarch64 ct_compare_16.bin rind::low::aarch64::cpu::ct_compare_16"
+    "x86_64 ct_compare_bytes.bin rind::low::x86_64::cpu::ct_compare_bytes"
+    "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
 )
 hol_light() {
     local dir=$out/hol-light root=$PWD arches arch file path proof
@@ -547,6 +551,7 @@ extract() {
         --start-from crate::mid::chacha20::ChaCha20::new \
         --start-from 'crate::high::hmac::HmacKey::_' \
         --start-from 'crate::high::hmac::Hmac::_' \
+        --start-from crate::low::generic::ct_equal::ct_equal \
         --start-from '{impl core::clone::Clone for crate::high::hmac::Hmac<_>}' \
         --start-from crate::high::ed25519::Ed25519VerifyingKey::from_bytes \
         --start-from crate::high::ed25519::Ed25519VerifyingKey::verify \
@@ -599,6 +604,7 @@ extract() {
         --include 'crate::mid::p521::_::BYTES' \
         --include crate::low::ct \
         --include crate::low::generic::blockwise \
+        --include crate::low::generic::ct_equal \
         --include crate::low::generic::chacha20 \
         --include "crate::low::$arch::sha512::sha512_compress_blocks" \
         "$@" \
@@ -749,7 +755,7 @@ extract_kdf aarch64 Aarch64
 mkdir -p proofs/Rind/Aarch64/Kdf
 for file in Dispatch X25519 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
-    HmacApi DigestApi Hkdf Pbkdf2; do
+    CtEqual HmacApi DigestApi Hkdf Pbkdf2; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 # The AEAD model imports nothing aarch64 has, and no aarch64 translation reaches it.

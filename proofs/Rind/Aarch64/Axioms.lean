@@ -11,7 +11,9 @@ open rind.aarch64
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
 in `Rind.Aarch64.S2nBignum` for X25519, P-256, and Ed25519, aws-lc's in
 `Rind.Aarch64.AwsLc` for the SHA-512 family, for HMAC, HKDF, and PBKDF2,
-which cover SHA-384 and SHA-512, and for Ed25519's hashes, and nothing else.
+which cover SHA-384 and SHA-512, and for Ed25519's hashes, rind's HOL Light
+proofs of its constant-time compares in `Rind.Aarch64.CtEqual` for HMAC's and
+PBKDF2's `verify`, and nothing else.
 A change here is a change to the trust base.
 -/
 
@@ -116,6 +118,8 @@ A change here is a change to the trust base.
  Classical.choice,
  Quot.sound,
  compress_nohw_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
  sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms verify_spec
@@ -180,6 +184,8 @@ A change here is a change to the trust base.
  Classical.choice,
  Quot.sound,
  compress_nohw_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
  sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms kdf.verify_spec
