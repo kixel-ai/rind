@@ -515,6 +515,7 @@ extract() {
         --start-from crate::mid::chacha20::ChaCha20::new \
         --start-from 'crate::high::hmac::HmacKey::_' \
         --start-from 'crate::high::hmac::Hmac::_' \
+        --start-from crate::low::generic::ct_equal::ct_equal \
         --start-from '{impl core::clone::Clone for crate::high::hmac::Hmac<_>}' \
         --start-from crate::high::ed25519::Ed25519VerifyingKey::from_bytes \
         --start-from crate::high::ed25519::Ed25519VerifyingKey::verify \

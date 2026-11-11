@@ -24,6 +24,7 @@ proofs/Rind/Aarch64/HmacDispatch.lean
 proofs/Rind/Aarch64/HkdfExpand.lean
 proofs/Rind/Aarch64/Kdf/TypesExternal.lean
 proofs/Rind/Aarch64/Kdf/FunsExternal.lean
+proofs/Rind/Aarch64/CtEqual.lean
 proofs/Rind/Aarch64/HmacApi.lean
 proofs/Rind/Aarch64/DigestApi.lean
 proofs/Rind/Aarch64/Hkdf.lean
