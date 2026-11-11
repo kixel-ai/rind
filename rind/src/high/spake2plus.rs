@@ -37,6 +37,10 @@ enum Schedule {
 }
 
 /// A SPAKE2+ ciphersuite. Only this module's constants build one.
+///
+/// [`RFC9383`] and [`MATTER_PASE`] are the same type. A prover and a verifier
+/// given different suites still exchange shares, and [`ProverAwaiting::finish`]
+/// returns [`Error::BadSignature`].
 #[derive(Clone, Copy, Debug)]
 pub struct Suite {
     schedule: Schedule,
@@ -1138,6 +1142,28 @@ mod tests {
             keys.push(key.as_ref().to_vec());
         }
         assert_ne!(keys[0], keys[1]);
+    }
+
+    /// The two schedules are one type, so a mixed handshake compiles. The
+    /// confirmation check is what refuses it.
+    #[test]
+    fn mixed_suites_fail_confirmation() {
+        let w0 = [0x31u8; 32];
+        let w1 = [0x41u8; 32];
+        let x = scalar("0000000000000000000000000000000000000000000000000000000000000007");
+        let y = scalar("000000000000000000000000000000000000000000000000000000000000000b");
+        let prover = ProverSecrets::new(&w0, &w1).unwrap();
+        let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
+        let (share_p, prover) = prover
+            .start_at(&RFC9383, b"ctx", b"client", b"", Some(x))
+            .unwrap();
+        let (share_v, confirm_v, _) = verifier
+            .start_at(&MATTER_PASE, b"ctx", b"client", b"", &share_p, Some(y))
+            .unwrap();
+        assert_eq!(
+            prover.finish(&share_v, &confirm_v).err(),
+            Some(Error::BadSignature)
+        );
     }
 
     #[test]
