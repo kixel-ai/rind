@@ -1187,14 +1187,16 @@ mod tests {
             (n_minus(5), Scalar::small_u64(5)),
             (n_minus(1), n_minus(1)),
         ] {
-            let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
+            let sum = g.add(&p);
+            let expected = CURVE_GENERATOR.slow_multiply(&sum).xy;
             for rows in [&[&odd_multiples][..], &[&odd_multiples, &more]] {
-                assert_eq!(
-                    JacobianPoint::public_twin_multiply(&g, &p, rows)
-                        .as_affine()
-                        .xy,
-                    expected
-                );
+                let result = JacobianPoint::public_twin_multiply(&g, &p, rows);
+                assert_eq!(result.as_affine().xy, expected);
+                // Verification refuses a sum at infinity by this check, and the
+                // constant-time multiplications keep infinity by the other.
+                let infinity = sum.0 == [0; 9];
+                assert_eq!(result.public_is_infinity(), infinity);
+                assert_eq!(result.is_infinity(), u8::from(infinity));
             }
         }
 
