@@ -33,8 +33,9 @@ pub(crate) fn mldsa_intt(a: &mut [i32; 256]) {
 /// Permutes NTT-domain coefficients sampled in natural order into the order
 /// [`mldsa_ntt`] produces
 pub(crate) fn mldsa_nttunpack(a: &mut [i32; 256]) {
-    if HaveAvx2::check().is_some() {
-        super::mldsa_nttunpack::mldsa_nttunpack(a);
+    match HaveAvx2::check() {
+        Some(_) => super::mldsa_nttunpack::mldsa_nttunpack(a),
+        None => portable::mldsa_nttunpack(a),
     }
 }
 

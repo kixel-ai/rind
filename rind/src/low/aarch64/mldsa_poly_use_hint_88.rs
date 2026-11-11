@@ -43,10 +43,10 @@ use crate::low::macros::*;
 ///
 /// Algorithm per coefficient:
 ///   1. Decompose: a1 = round_down(a / 190464), a0 = a - a1*190464
-/// If a > 87*GAMMA2 = 8285184, wrap: a1=0, a0=a-Q
+///      If a > 87*GAMMA2 = 8285184, wrap: a1=0, a0=a-Q
 ///   2. delta = (a0 <= 0) ? -1 : 1
 ///   3. b = min((a1 + delta * h) & ~mask_gt_43, 43)
-/// where mask_gt_43 clears values > 43 and umin clamps to 43
+///      where mask_gt_43 clears values > 43 and umin clamps to 43
 #[inline(never)]
 pub(crate) fn mldsa_poly_use_hint_88(b: &mut [i32; 256], a: &[i32; 256], h: &[i32; 256]) {
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.

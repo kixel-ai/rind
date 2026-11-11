@@ -100,6 +100,35 @@ def expand_gas_macros(path):
     return result
 
 
+def fix_docs(path):
+    """
+    Fixes the Markdown in `path`'s doc comments that rustdoc would misread:
+    the continuation lines of a numbered item, whose indentation the driver
+    strips, are indented under it again, and a leading `>` is escaped.
+    """
+    with open(path) as f:
+        lines = f.read().splitlines(keepends=True)
+    indent = None
+    for n, line in enumerate(lines):
+        if not line.startswith("///"):
+            indent = None
+            continue
+        text = line[3:].rstrip("\n").removeprefix(" ")
+        stripped = text.lstrip()
+        item = re.match(r"\d+\. ", stripped)
+        if item:
+            indent = len(text) - len(stripped) + item.end()
+        elif not stripped:
+            indent = None
+        elif indent is not None:
+            text = " " * indent + stripped
+        if text.startswith(">"):
+            text = "\\" + text
+        lines[n] = ("/// " + text).rstrip() + "\n"
+    with open(path, "w") as f:
+        f.write("".join(lines))
+
+
 def aligned(*names):
     return ["(%s as usize).is_multiple_of(32)" % n for n in names]
 
@@ -119,6 +148,7 @@ def emit(arch, source, output, symbol, rust_decl, parameter_map, **kwargs):
             **kwargs,
         )
         parse_file(input, d)
+    fix_docs("../../rind/src/low/%s/%s.rs" % (arch, output))
 
 
 def x86_64():

@@ -42,7 +42,7 @@ use crate::low::macros::*;
 ///
 /// Algorithm per coefficient:
 ///   1. Decompose: a1 = round_down(a / 523776), a0 = a - a1*523776
-/// If a > 31*GAMMA2 = 8118528, wrap: a1=0, a0=a-Q
+///      If a > 31*GAMMA2 = 8118528, wrap: a1=0, a0=a-Q
 ///   2. delta = (a0 <= 0) ? -1 : 1
 ///   3. b = (a1 + delta * h) & 15
 #[inline(never)]

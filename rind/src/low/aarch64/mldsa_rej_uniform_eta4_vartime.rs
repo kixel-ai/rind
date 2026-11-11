@@ -53,7 +53,7 @@ use crate::low::macros::*;
 /// written
 /// buf       (const uint8_t*)   — SHAKE256 output, buflen bytes
 /// buflen    (unsigned)         — number of bytes in buf (must be 8-divisible,
-/// >= 8)
+/// \>= 8)
 ///   table[4096] (const uint8_t*) — 256 × 16-byte TBL permutation table
 ///
 /// Output:

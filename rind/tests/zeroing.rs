@@ -106,6 +106,24 @@ fn ed25519() {
 }
 
 #[test]
+fn ml_dsa() {
+    use rind::signature::sign::{MlDsa44, MlDsa65, MlDsa87, MlDsaKeyPair, MlDsaParameterSet};
+    fn check<P: MlDsaParameterSet>() {
+        let key = MlDsaKeyPair::<P>::generate().unwrap();
+        check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
+        check_zeroed_on_drop(Box::pin(key.to_seed().unwrap()));
+        let seed = key.to_seed().unwrap();
+        check_zeroed_on_drop(Box::pin(
+            MlDsaKeyPair::<P>::from_seed(seed.as_ref()).unwrap(),
+        ));
+        check_zeroed_on_drop(Box::pin(key));
+    }
+    check::<MlDsa44>();
+    check::<MlDsa65>();
+    check::<MlDsa87>();
+}
+
+#[test]
 fn ecdh() {
     use rind::agreement::*;
     for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {

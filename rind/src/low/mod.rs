@@ -64,7 +64,9 @@ mod generic {
     // Every target's MD5: no CPU has instructions for it.
     pub(super) mod md5;
     // ML-DSA arithmetic for the portable backend and x86_64 CPUs without
-    // AVX2, and what s2n-bignum has no Neon routine for.
+    // AVX2, and what s2n-bignum has no Neon routine for. aarch64 runs the
+    // rest only in tests, to check its routines against.
+    #[cfg_attr(all(rind_backend = "aarch64", not(test)), allow(dead_code))]
     pub(crate) mod mldsa_poly;
     pub(crate) mod mlkem;
     #[cfg(not(rind_backend = "x86_64"))]

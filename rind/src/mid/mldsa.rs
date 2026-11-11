@@ -11,6 +11,10 @@
 //! Coefficient arithmetic wraps: the bounds rule out overflow, and a debug
 //! build's overflow check would branch on secret values.
 
+// A parameter set's dimensions are associated constants, which stable Rust
+// cannot pass as `as_chunks`'s const argument in generic code.
+#![allow(clippy::chunks_exact_to_as_chunks)]
+
 use core::fmt;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
@@ -26,7 +30,7 @@ const D: u32 = 13;
 
 /// The length of a key's seed, `xi`.
 pub(crate) const SEED_LEN: usize = 32;
-const TR_LEN: usize = 64;
+pub(crate) const TR_LEN: usize = 64;
 const MU_LEN: usize = 64;
 const RND_LEN: usize = 32;
 const T1_PACKED: usize = 320;
@@ -159,11 +163,14 @@ params! {
         OMEGA = 75, LAMBDA = 256, pk = 2592, sk = 4896, sig = 4627;
 }
 
-const fn public_key_len<P: Params>() -> usize {
+/// The length of a parameter set's public key encoding, which [`verify`]
+/// requires.
+pub(crate) const fn public_key_len<P: Params>() -> usize {
     SEED_LEN + P::K * T1_PACKED
 }
 
-const fn secret_key_len<P: Params>() -> usize {
+/// The length of a parameter set's expanded private key encoding.
+pub(crate) const fn secret_key_len<P: Params>() -> usize {
     2 * SEED_LEN + TR_LEN + (P::K + P::L) * P::ETA_PACKED + P::K * T0_PACKED
 }
 
@@ -194,12 +201,13 @@ impl<P: Params> KeyPair<P> {
     /// FIPS 204's `ML-DSA.KeyGen_internal`: the key pair seed `xi` expands to.
     pub(crate) fn from_seed(seed: &[u8; SEED_LEN]) -> Self {
         let _entry = Entry::new_secret();
+        let seed = low::ct::into_secret(*seed);
         let mut key = Self {
-            seed: Some(*seed),
+            seed: Some(seed),
             secret_key: P::SecretKey::zeroed(),
             public_key: P::PublicKey::zeroed(),
         };
-        keygen::<P>(seed, key.public_key.as_mut(), key.secret_key.as_mut());
+        keygen::<P>(&seed, key.public_key.as_mut(), key.secret_key.as_mut());
         key
     }
 
@@ -217,6 +225,7 @@ impl<P: Params> KeyPair<P> {
             return Err(KeyFormatError::WrongLength.into());
         }
         key.secret_key.as_mut().copy_from_slice(sk);
+        low::ct::secret_slice(key.secret_key.as_ref());
         match public_key_from_secret::<P>(key.secret_key.as_ref(), key.public_key.as_mut()) {
             true => Ok(key),
             false => Err(KeyFormatError::MlDsaSecretKey.into()),
@@ -239,6 +248,11 @@ impl<P: Params> KeyPair<P> {
         &self.public_key
     }
 
+    /// `tr`, the public key's hash, which the expanded private key stores.
+    pub(crate) fn tr(&self) -> &[u8; TR_LEN] {
+        tr_of::<P>(self.secret_key.as_ref())
+    }
+
     /// Signs `message` under context `context` with fresh randomness: FIPS
     /// 204's hedged `ML-DSA.Sign`.
     pub(crate) fn sign(&self, context: &[u8], message: &[u8]) -> Result<P::Signature, Error> {
@@ -246,13 +260,14 @@ impl<P: Params> KeyPair<P> {
         let mu = self.mu(context, message)?;
         let mut rnd = [0u8; RND_LEN];
         SystemRandom.fill(&mut rnd)?;
+        low::ct::secret_slice(&rnd);
         sign_internal::<P>(self.secret_key.as_ref(), &mu, &rnd)
     }
 
     /// `mu`, the message representative this key signs for `message` under
     /// `context`.
     pub(crate) fn mu(&self, context: &[u8], message: &[u8]) -> Result<[u8; MU_LEN], Error> {
-        mu(tr_of::<P>(self.secret_key.as_ref()), context, message)
+        mu(self.tr(), context, message)
     }
 
     /// FIPS 204's `ML-DSA.Sign_internal`, for tests to fix `rnd` and `mu`.
@@ -276,10 +291,10 @@ impl<P: Params> Drop for KeyPair<P> {
 impl<P: Params> low::Zeroable for KeyPair<P> {}
 
 /// `tr`, the hash of public key `pk` that `mu` binds in.
-pub(crate) fn tr<P: Params>(pk: &P::PublicKey) -> [u8; TR_LEN] {
+pub(crate) fn tr(pk: &[u8]) -> [u8; TR_LEN] {
     let _entry = Entry::new_public();
     let mut tr = [0u8; TR_LEN];
-    Shake256::new(&[pk.as_ref()]).read(&mut tr);
+    Shake256::new(&[pk]).read(&mut tr);
     tr
 }
 
@@ -300,7 +315,7 @@ pub(crate) fn mu(tr: &[u8; TR_LEN], context: &[u8], message: &[u8]) -> Result<[u
 /// Verifies `signature` over `message` and `context` under public key `pk`,
 /// whose hash is `tr`.
 pub(crate) fn verify<P: Params>(
-    pk: &P::PublicKey,
+    pk: &[u8],
     tr: &[u8; TR_LEN],
     context: &[u8],
     message: &[u8],
@@ -308,7 +323,7 @@ pub(crate) fn verify<P: Params>(
 ) -> Result<(), Error> {
     let _entry = Entry::new_public();
     let mu = mu(tr, context, message).map_err(|_| Error::BadSignature)?;
-    verify_internal::<P>(pk.as_ref(), &mu, signature)
+    verify_internal::<P>(pk, &mu, signature)
 }
 
 /// Polynomials on the heap, wiped before they are freed under the `wipe`
@@ -337,9 +352,9 @@ fn keygen<P: Params>(seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]) {
     low::ct::public_slice(rho);
 
     let mut scratch = Scratch::new(P::K * P::L + P::L + P::K);
-    let (a, rest) = scratch.0.split_at_mut(P::K * P::L);
-    let (s1, s2) = rest.split_at_mut(P::L);
-    expand_s::<P>(rho_prime.try_into().unwrap(), s1, s2);
+    let (a, s) = scratch.0.split_at_mut(P::K * P::L);
+    expand_s::<P>(rho_prime.try_into().unwrap(), s);
+    let (s1, s2) = s.split_at_mut(P::L);
 
     let layout = SecretKeyLayout::<P>::new();
     for (s, packed) in s1
@@ -457,7 +472,8 @@ fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8]) -> bool {
     let tr_matches = low::ct_equal(&tr, &sk[layout.tr]);
     low::ct::public_slice(pk);
 
-    low::ct::into_public(out_of_range == 0 && t0_matches && tr_matches)
+    // `&`, not `&&`, which would branch on each before declassifying.
+    low::ct::into_public((out_of_range == 0) & t0_matches & tr_matches)
 }
 
 /// FIPS 204's `ML-DSA.Sign_internal`: signs `mu` with expanded private key
@@ -594,7 +610,7 @@ fn rejected(check: u64) -> bool {
 /// FIPS 204's `ML-DSA.Verify_internal`: verifies `signature` over `mu` under
 /// public key `pk`.
 fn verify_internal<P: Params>(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) -> Result<(), Error> {
-    if signature.len() != signature_len::<P>() {
+    if pk.len() != public_key_len::<P>() || signature.len() != signature_len::<P>() {
         return Err(Error::BadSignature);
     }
     let (k, l) = (P::K, P::L);
@@ -756,8 +772,9 @@ fn expand_a<P: Params>(rho: &[u8; SEED_LEN], a: &mut [Poly]) {
     }
 }
 
-/// ExpandS: the secret vectors `s1` and `s2` from `rho_prime`.
-fn expand_s<P: Params>(rho_prime: &[u8; 64], s1: &mut [Poly], s2: &mut [Poly]) {
+/// ExpandS: the secret vectors `s1` and `s2`, in that order in `s`, from
+/// `rho_prime`.
+fn expand_s<P: Params>(rho_prime: &[u8; 64], s: &mut [Poly]) {
     // One block for eta = 2 and two for eta = 4 fill a polynomial with
     // overwhelming probability, as mldsa-native's AVX2 and Neon routines
     // expect.
@@ -768,8 +785,7 @@ fn expand_s<P: Params>(rho_prime: &[u8; 64], s1: &mut [Poly], s2: &mut [Poly]) {
         _ => low::mldsa_rej_uniform_eta4_vartime(&mut poly.0, offset, buf),
     };
 
-    let mut polys: Vec<&mut Poly> = s1.iter_mut().chain(s2.iter_mut()).collect();
-    for (batch, polys) in polys.chunks_mut(4).enumerate() {
+    for (batch, polys) in s.chunks_mut(4).enumerate() {
         let mut seeds = [[0u8; 66]; 4];
         for (n, seed) in seeds.iter_mut().enumerate() {
             seed[..64].copy_from_slice(rho_prime);
@@ -880,7 +896,7 @@ fn pack_t0(r: &mut [u8; T0_PACKED], a: &Poly) {
         .iter_mut()
         .zip(a.0.as_chunks::<8>().0)
     {
-        let t = a.map(|a| ((1 << (D - 1)) - a) as u32);
+        let t = a.map(|a| (1i32 << (D - 1)).wrapping_sub(a) as u32);
         r[0] = t[0] as u8;
         r[1] = ((t[0] >> 8) | (t[1] << 5)) as u8;
         r[2] = (t[1] >> 3) as u8;
@@ -914,7 +930,7 @@ fn unpack_t0(r: &mut Poly, a: &[u8; T0_PACKED]) {
         r[6] = (a[9] >> 6) | (a[10] << 2) | (a[11] << 10);
         r[7] = (a[11] >> 3) | (a[12] << 5);
         for r in r.iter_mut() {
-            *r = (1 << (D - 1)) - (*r & 0x1fff);
+            *r = (1i32 << (D - 1)).wrapping_sub(*r & 0x1fff);
         }
     }
 }
@@ -928,7 +944,7 @@ fn pack_eta<P: Params>(r: &mut [u8], a: &Poly) {
                 .iter_mut()
                 .zip(a.0.as_chunks::<8>().0)
             {
-                let t = a.map(|a| (2 - a) as u8);
+                let t = a.map(|a| 2i32.wrapping_sub(a) as u8);
                 r[0] = t[0] | (t[1] << 3) | (t[2] << 6);
                 r[1] = (t[2] >> 2) | (t[3] << 1) | (t[4] << 4) | (t[5] << 7);
                 r[2] = (t[5] >> 1) | (t[6] << 2) | (t[7] << 5);
@@ -936,7 +952,7 @@ fn pack_eta<P: Params>(r: &mut [u8], a: &Poly) {
         }
         _ => {
             for (r, a) in r.iter_mut().zip(a.0.as_chunks::<2>().0) {
-                *r = (4 - a[0]) as u8 | (((4 - a[1]) as u8) << 4);
+                *r = 4i32.wrapping_sub(a[0]) as u8 | ((4i32.wrapping_sub(a[1]) as u8) << 4);
             }
         }
     }
@@ -963,14 +979,14 @@ fn unpack_eta<P: Params>(r: &mut Poly, a: &[u8]) {
                 r[6] = (a[2] >> 2) & 7;
                 r[7] = (a[2] >> 5) & 7;
                 for r in r.iter_mut() {
-                    *r = 2 - *r;
+                    *r = 2i32.wrapping_sub(*r);
                 }
             }
         }
         _ => {
             for (r, a) in r.0.as_chunks_mut::<2>().0.iter_mut().zip(a) {
-                r[0] = 4 - (*a & 0x0f) as i32;
-                r[1] = 4 - (*a >> 4) as i32;
+                r[0] = 4i32.wrapping_sub((*a & 0x0f) as i32);
+                r[1] = 4i32.wrapping_sub((*a >> 4) as i32);
             }
         }
     }
@@ -985,7 +1001,7 @@ fn pack_z<P: Params>(r: &mut [u8], a: &Poly) {
                 .iter_mut()
                 .zip(a.0.as_chunks::<4>().0)
             {
-                let t = a.map(|a| (P::GAMMA1 - a) as u32);
+                let t = a.map(|a| P::GAMMA1.wrapping_sub(a) as u32);
                 r[0] = t[0] as u8;
                 r[1] = (t[0] >> 8) as u8;
                 r[2] = ((t[0] >> 16) | (t[1] << 2)) as u8;
@@ -1004,7 +1020,7 @@ fn pack_z<P: Params>(r: &mut [u8], a: &Poly) {
                 .iter_mut()
                 .zip(a.0.as_chunks::<2>().0)
             {
-                let t = a.map(|a| (P::GAMMA1 - a) as u32);
+                let t = a.map(|a| P::GAMMA1.wrapping_sub(a) as u32);
                 r[0] = t[0] as u8;
                 r[1] = (t[0] >> 8) as u8;
                 r[2] = ((t[0] >> 16) | (t[1] << 4)) as u8;
@@ -1047,7 +1063,7 @@ fn pack_w1<P: Params>(r: &mut [u8], a: &Poly) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test::{Acvp, acvp};
+    use crate::test::{Acvp, Expected, acvp, wycheproof_groups};
 
     /// Runs `$f::<P>($args)` for the parameter set ACVP names `$set`.
     macro_rules! by_set {
@@ -1094,7 +1110,7 @@ mod tests {
                 test.int("tcId")
             );
             assert_eq!(
-                key.secret_key().as_ref(),
+                low::ct::into_public(key.secret_key().clone()).as_ref(),
                 test.hex("sk"),
                 "tcId {}",
                 test.int("tcId")
@@ -1120,7 +1136,7 @@ mod tests {
                 true => [0; RND_LEN],
                 false => test.hex("rnd").try_into().unwrap(),
             };
-            let mu = acvp_mu(group, test, tr_of::<P>(key.secret_key().as_ref()));
+            let mu = acvp_mu(group, test, key.tr());
             let signature = key.sign_internal(&mu, &rnd).unwrap();
             assert_eq!(
                 signature.as_ref(),
@@ -1139,15 +1155,11 @@ mod tests {
     #[test]
     fn acvp_sig_ver() {
         fn check<P: Params>(group: &serde_json::Value, test: &serde_json::Value) {
-            let pk: P::PublicKey = {
-                let mut pk = P::PublicKey::zeroed();
-                pk.as_mut().copy_from_slice(&test.hex("pk"));
-                pk
-            };
-            let mu = acvp_mu(group, test, &tr::<P>(&pk));
+            let pk = test.hex("pk");
+            let mu = acvp_mu(group, test, &tr(&pk));
             let _entry = Entry::new_public();
             assert_eq!(
-                verify_internal::<P>(pk.as_ref(), &mu, &test.hex("signature")).is_ok(),
+                verify_internal::<P>(&pk, &mu, &test.hex("signature")).is_ok(),
                 test.flag("testPassed"),
                 "tcId {}: {}",
                 test.int("tcId"),
@@ -1161,32 +1173,144 @@ mod tests {
         }
     }
 
+    // The context and `mu` vectors need crate access, so these live here
+    // rather than in `tests/wycheproof.rs`.
+    #[derive(serde::Deserialize)]
+    struct WycheproofGroup {
+        #[serde(default, rename = "privateSeed", with = "hex::serde")]
+        seed: Vec<u8>,
+        #[serde(default, rename = "privateKey", with = "hex::serde")]
+        private_key: Vec<u8>,
+        // Hex, or null for a group whose private key is invalid.
+        #[serde(rename = "publicKey")]
+        public_key: Option<String>,
+        tests: Vec<WycheproofTest>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct WycheproofTest {
+        #[serde(rename = "tcId")]
+        id: usize,
+        #[serde(default, with = "hex::serde")]
+        msg: Vec<u8>,
+        #[serde(default, with = "hex::serde")]
+        ctx: Vec<u8>,
+        #[serde(default, with = "hex::serde")]
+        mu: Vec<u8>,
+        #[serde(default, with = "hex::serde")]
+        rnd: Vec<u8>,
+        #[serde(with = "hex::serde")]
+        sig: Vec<u8>,
+        result: Expected,
+        flags: Vec<String>,
+    }
+
+    impl WycheproofTest {
+        /// The `mu` this test signs: of its message and context, unless it
+        /// gives only `mu` (flag `Internal`). `None` if its context is too
+        /// long, so it has none.
+        fn mu(&self, tr: &[u8; TR_LEN]) -> Option<[u8; MU_LEN]> {
+            if self.flags.iter().any(|flag| flag == "Internal") {
+                return Some(self.mu.as_slice().try_into().unwrap());
+            }
+            let mu = mu(tr, &self.ctx, &self.msg).ok()?;
+            if !self.mu.is_empty() {
+                assert_eq!(mu[..], self.mu, "tcId {}", self.id);
+            }
+            Some(mu)
+        }
+    }
+
+    /// Runs a `sign_seed` or `sign_noseed` file: loads each group's key,
+    /// checks its public key, and signs each test with its `rnd`, or zeros.
+    fn wycheproof_sign<P: Params>(
+        name: &str,
+        load: fn(&WycheproofGroup) -> Result<KeyPair<P>, Error>,
+    ) {
+        for group in wycheproof_groups::<WycheproofGroup>(name) {
+            let key = match load(&group) {
+                Ok(key) => key,
+                Err(_) => {
+                    for test in &group.tests {
+                        assert_eq!(test.result, Expected::Invalid, "tcId {}", test.id);
+                    }
+                    continue;
+                }
+            };
+            let public_key = hex::decode(group.public_key.as_ref().unwrap()).unwrap();
+            assert_eq!(key.public_key().as_ref(), public_key);
+            // `tr` is the public key's hash, though a loaded private key's
+            // copy is marked secret.
+            let tr = low::ct::into_public(*key.tr());
+            for test in &group.tests {
+                let Some(mu) = test.mu(&tr) else {
+                    assert_eq!(test.result, Expected::Invalid, "tcId {}", test.id);
+                    continue;
+                };
+                assert_eq!(test.result, Expected::Valid, "tcId {}", test.id);
+                let rnd = match test.rnd.is_empty() {
+                    true => [0; RND_LEN],
+                    false => test.rnd.as_slice().try_into().unwrap(),
+                };
+                let signature = key.sign_internal(&mu, &rnd).unwrap();
+                assert_eq!(signature.as_ref(), test.sig, "tcId {}", test.id);
+                let _entry = Entry::new_public();
+                verify_internal::<P>(key.public_key().as_ref(), &mu, signature.as_ref()).unwrap();
+            }
+        }
+    }
+
+    fn wycheproof_verify<P: Params>(name: &str) {
+        for group in wycheproof_groups::<WycheproofGroup>(name) {
+            let pk = &hex::decode(group.public_key.as_ref().unwrap()).unwrap();
+            for test in &group.tests {
+                let result = verify::<P>(pk, &tr(pk), &test.ctx, &test.msg, &test.sig);
+                assert_eq!(
+                    result.is_ok(),
+                    test.result == Expected::Valid,
+                    "tcId {}",
+                    test.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn wycheproof() {
+        fn check<P: Params>(set: &str) {
+            wycheproof_sign::<P>(&format!("mldsa_{set}_sign_seed_test.json"), |group| {
+                let seed = group
+                    .seed
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| Error::WrongLength)?;
+                Ok(KeyPair::from_seed(seed))
+            });
+            wycheproof_sign::<P>(&format!("mldsa_{set}_sign_noseed_test.json"), |group| {
+                KeyPair::from_secret_key(&group.private_key)
+            });
+            wycheproof_verify::<P>(&format!("mldsa_{set}_verify_test.json"));
+        }
+        check::<MlDsa44>("44");
+        check::<MlDsa65>("65");
+        check::<MlDsa87>("87");
+    }
+
     #[test]
     fn sign_verify_round_trip() {
         fn check<P: Params>() {
             let key = KeyPair::<P>::generate().unwrap();
-            let tr = tr::<P>(key.public_key());
+            let pk = key.public_key().as_ref();
+            let tr = tr(pk);
+            assert_eq!(&tr, key.tr());
             let signature = key.sign(b"context", b"message").unwrap();
-            verify::<P>(
-                key.public_key(),
-                &tr,
-                b"context",
-                b"message",
-                signature.as_ref(),
-            )
-            .unwrap();
+            verify::<P>(pk, &tr, b"context", b"message", signature.as_ref()).unwrap();
             assert_eq!(
-                verify::<P>(key.public_key(), &tr, b"", b"message", signature.as_ref()),
+                verify::<P>(pk, &tr, b"", b"message", signature.as_ref()),
                 Err(Error::BadSignature)
             );
             assert_eq!(
-                verify::<P>(
-                    key.public_key(),
-                    &tr,
-                    b"context",
-                    b"massage",
-                    signature.as_ref()
-                ),
+                verify::<P>(pk, &tr, b"context", b"massage", signature.as_ref()),
                 Err(Error::BadSignature)
             );
             assert_eq!(

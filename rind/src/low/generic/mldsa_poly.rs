@@ -94,10 +94,9 @@ fn negative_mask(a: i32) -> i32 {
 pub(crate) fn mldsa_ntt(a: &mut [i32; 256]) {
     for layer in 1..9 {
         let len = 256 >> layer;
-        let mut k = 1 << (layer - 1);
-        for start in (0..256).step_by(2 * len) {
+        let first = 1 << (layer - 1);
+        for (k, start) in (first..).zip((0..256).step_by(2 * len)) {
             let zeta = ZETAS[k];
-            k += 1;
             for j in start..start + len {
                 let t = fqmul(a[j + len], zeta);
                 a[j + len] = a[j].wrapping_sub(t);
@@ -196,10 +195,10 @@ fn decompose<const GAMMA2: i32>(a1: &mut [i32; 256], a0: &mut [i32; 256]) {
             r1 &= 15;
         } else {
             r1 = r1.wrapping_mul(11275).wrapping_add(1 << 23) >> 24;
-            r1 &= !negative_mask(43 - r1);
+            r1 &= !negative_mask(43i32.wrapping_sub(r1));
         }
         let mut r0 = a.wrapping_sub(r1.wrapping_mul(2 * GAMMA2));
-        r0 = r0.wrapping_sub(negative_mask((Q - 1) / 2 - r0) & Q);
+        r0 = r0.wrapping_sub(negative_mask(((Q - 1) / 2).wrapping_sub(r0)) & Q);
         *a1 = r1;
         *a0 = r0;
     }
@@ -270,7 +269,7 @@ pub(crate) fn mldsa_polyz_unpack_17(r: &mut [i32; 256], b: &[u8; 576]) {
         r[2] = ((b[4] >> 4) | (b[5] << 4) | (b[6] << 12)) & 0x3ffff;
         r[3] = ((b[6] >> 6) | (b[7] << 2) | (b[8] << 10)) & 0x3ffff;
         for r in r.iter_mut() {
-            *r = GAMMA1 - *r;
+            *r = GAMMA1.wrapping_sub(*r);
         }
     }
 }
@@ -288,7 +287,7 @@ pub(crate) fn mldsa_polyz_unpack_19(r: &mut [i32; 256], b: &[u8; 640]) {
         r[0] = (b[0] | (b[1] << 8) | (b[2] << 16)) & 0xfffff;
         r[1] = (b[2] >> 4) | (b[3] << 4) | (b[4] << 12);
         for r in r.iter_mut() {
-            *r = GAMMA1 - *r;
+            *r = GAMMA1.wrapping_sub(*r);
         }
     }
 }
@@ -350,7 +349,7 @@ pub(crate) fn mldsa_rej_uniform_eta2_vartime(
     rej_eta(r, offset, buf, 15, |t| {
         // t mod 5, for t < 15
         let t = t.wrapping_sub((205u32.wrapping_mul(t) >> 10).wrapping_mul(5));
-        2 - t as i32
+        2i32.wrapping_sub(t as i32)
     })
 }
 
@@ -360,7 +359,7 @@ pub(crate) fn mldsa_rej_uniform_eta4_vartime(
     offset: usize,
     buf: &[u8],
 ) -> usize {
-    rej_eta(r, offset, buf, 9, |t| 4 - t as i32)
+    rej_eta(r, offset, buf, 9, |t| 4i32.wrapping_sub(t as i32))
 }
 
 #[cfg(test)]
@@ -572,6 +571,8 @@ mod tests {
                 let (mut want, mut got) = (Poly([0; 256]), Poly([0; 256]));
                 let n_want = sample_port(&mut want.0, 0, &buf[..len]);
                 let n_got = sample(&mut got.0, 0, &buf[..len]);
+                // The eta samplers return secret coefficients.
+                low::ct::public_slice(&got.0);
                 assert_eq!(
                     (n_got, &got.0[..n_got]),
                     (n_want, &want.0[..n_want]),
@@ -582,6 +583,7 @@ mod tests {
                 // short.
                 let n_want = sample_port(&mut want.0, n_want, &buf[..len]);
                 let n_got = sample(&mut got.0, n_got, &buf[..len]);
+                low::ct::public_slice(&got.0);
                 assert_eq!(
                     (n_got, got.0),
                     (n_want, want.0),
