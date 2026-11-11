@@ -23,7 +23,8 @@ pub(crate) struct SigningKey {
 
 impl SigningKey {
     pub(crate) fn from_seed(seed: &[u8; 32]) -> Self {
-        low::ct::secret_slice(seed);
+        // Mark rind's own copy secret, never the caller's buffer.
+        let seed = &low::ct::into_secret(*seed);
 
         // Step: rfc8032 5.1.5.1, 5.1.5.2
         // `h := SHA512(seed)`
