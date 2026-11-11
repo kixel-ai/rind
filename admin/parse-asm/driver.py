@@ -140,7 +140,7 @@ class Architecture_amd64(Architecture):
 
         for n in range(8, 16):
             n = str(n)
-            if reg in ["r" + n, "r" + n + "b", "r" + n + "w", "r" + n + "b"]:
+            if reg in ["r" + n, "r" + n + "d", "r" + n + "w", "r" + n + "b"]:
                 return "r" + n
 
         for n in range(0, 32):

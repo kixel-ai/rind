@@ -137,6 +137,7 @@ pub(crate) fn mldsa_rej_uniform_vartime(
         // clobbers
         out("r10") _,
         out("r8") _,
+        out("r9") _,
         out("rcx") _,
         out("zmm0") _,
         out("zmm1") _,

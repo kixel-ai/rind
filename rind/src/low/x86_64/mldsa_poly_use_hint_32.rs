@@ -93,6 +93,8 @@ pub(crate) fn mldsa_poly_use_hint_32(a: &mut [i32; 256], h: &[i32; 256]) {
         inout("rdi") a.as_mut_ptr() => _,
         inout("rsi") h.as_ptr() => _,
         // clobbers
+        out("r8") _,
+        out("r9") _,
         out("rax") _,
         out("rcx") _,
         out("zmm0") _,

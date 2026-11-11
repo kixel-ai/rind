@@ -171,7 +171,9 @@ pub(crate) fn mldsa_rej_uniform_eta4_vartime(
         out("rax") ret,
         // clobbers
         out("r10") _,
+        out("r11") _,
         out("r8") _,
+        out("r9") _,
         out("rcx") _,
         out("zmm0") _,
         out("zmm1") _,
