@@ -1373,7 +1373,7 @@ mod tests {
         planted!(x29, "add x29, x29, #16", "ret");
         planted!(d8, "movi d8, #0", "ret");
         // Lowered rather than raised: raising it would free the trampoline's
-        // saved frame, which memcheck, with no red zone on arm64, then reports
+        // saved frame, which memcheck, with no red zone on ARM, then reports
         // undefined when the trampoline restores it.
         planted!(sp, "sub sp, sp, #16", "ret");
         // The upper half of v8 is the caller's to save.
@@ -1419,7 +1419,8 @@ mod tests {
         planted!(r4, "mov r4, #0", "bx lr");
         planted!(r11, "add r11, r11, #4", "bx lr");
         planted!(d8, ".fpu vfpv3", "vmov.f64 d8, #1.0", "bx lr");
-        planted!(sp, "add sp, sp, #8", "bx lr");
+        // Lowered rather than raised, as on aarch64.
+        planted!(sp, "sub sp, sp, #8", "bx lr");
         planted!(
             scratch,
             ".fpu vfpv3",
