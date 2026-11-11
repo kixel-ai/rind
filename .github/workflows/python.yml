@@ -122,7 +122,7 @@ jobs:
         if: matrix.cpu
         run: |
           sudo apt-get update
-          sudo apt-get install --yes qemu-user-static
+          sudo apt-get install --yes qemu-user-binfmt
 
       - name: Test in container
         if: matrix.container
