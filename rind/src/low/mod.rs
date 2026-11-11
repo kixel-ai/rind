@@ -36,6 +36,8 @@ macro_rules! asm_call {
 mod macros;
 
 pub(crate) mod ct;
+#[cfg(test)]
+pub(crate) mod ct_binsec;
 
 #[cfg(rind_vartime_planted)]
 mod vartime_planted;

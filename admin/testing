@@ -7,9 +7,9 @@
 # - every item rind exports is named in the table's Exports column, or in the
 #   list of exports that are not primitives, and every name there is exported;
 # - every fuzz target, every differential test in `rind/tests/crosschecks.rs`,
-#   every `ct_sde_...` and `ct_qemu_...` test, every CCTV and imported-vector
-#   test, every test in `rind/tests/zeroing.rs`, and every Wycheproof and CAVP
-#   file the tests load is named in the table;
+#   every `ct_sde_...`, `ct_qemu_...`, and `ct_binsec_...` test, every CCTV and
+#   imported-vector test, every test in `rind/tests/zeroing.rs`, and every
+#   Wycheproof and CAVP file the tests load is named in the table;
 # - every row with a constant-time check names a zeroing test, or says why not;
 # - every function, fuzz target, and vector file the table names exists;
 # - every other fuzz target is an adapter's, named on the adapters line.
@@ -146,10 +146,11 @@ ct_tests = {
     name
     for p in SRC.rglob("*.rs")
     for name in tests(p)
-    if re.match(r"ct_(sde|qemu)_", name) and "_planted_" not in name
+    if re.match(r"ct_(sde|qemu|binsec)_", name) and "_planted_" not in name
 }
 # Imported-vector and CCTV unit tests use these suite prefixes, as the
-# trace tests use ct_sde_ and ct_qemu_. Integration suites include every test.
+# constant-time tests use ct_sde_, ct_qemu_, and ct_binsec_. Integration
+# suites include every test.
 vector_suites = {name: tests(ROOT / f"rind/tests/{name}.rs") for name in ["aws_lc", "cctv"]}
 vector_tests = {
     "::".join([*(p.parent if p.name == "mod.rs" else p.with_suffix("")).relative_to(SRC).parts, name])

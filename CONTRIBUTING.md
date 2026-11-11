@@ -62,7 +62,10 @@ valgrind cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
 admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
 qemu; on an aarch64 host, `nix develop .#ct-qemu-aarch64 --command
 admin/ct-qemu --target aarch64-unknown-linux-gnu` those of the aarch64 code
-that runs only with SHA3. None of them can see an instruction whose timing depends on its
+that runs only with SHA3, and `nix develop .#binsec --command admin/ct-binsec
+[--exact] [test]` has BINSEC prove the region of each `ct_binsec_...` test
+constant time for every secret, symbolically. None of them but BINSEC, which
+sees divisions, can see an instruction whose timing depends on its
 operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
 scans its release builds for every architecture it builds for, and its
 portable backend's on x86_64 and armv7, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does

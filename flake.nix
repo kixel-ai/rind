@@ -194,6 +194,52 @@
             }/sde64";
           };
 
+          # BINSEC, whose checkct plugin `admin/ct-binsec` runs, built from
+          # its release with the decoders it takes from unisim-archisec and
+          # the Bitwuzla solver it links. nixpkgs packages neither BINSEC nor
+          # its `mula` dependency. BINSEC loads its plugins through findlib,
+          # so the wrapper points OCAMLPATH at its own.
+          binsec =
+            let
+              ocaml = pkgs.ocamlPackages;
+              mula = ocaml.buildDunePackage rec {
+                pname = "mula";
+                version = "0.1.2";
+                src = pkgs.fetchurl {
+                  url = "https://github.com/ifazk/mula/releases/download/${version}/mula-${version}.tbz";
+                  hash = "sha256-Hw7kKspz4zRZeWuqJgY7+C0pDLb0xyPT58mg5Y8eDXI=";
+                };
+              };
+            in
+            ocaml.buildDunePackage rec {
+              pname = "binsec";
+              version = "0.11.3";
+              src = pkgs.fetchurl {
+                url = "https://github.com/binsec/binsec/releases/download/${version}/binsec-${version}.tbz";
+                hash = "sha256-k/b+Q51IaxZgYu9t2SxM46oJR7Xhixw6p94vwwA6ptk=";
+              };
+              nativeBuildInputs = [
+                ocaml.menhir
+                ocaml.dypgen
+                pkgs.makeWrapper
+              ];
+              # Its parser generator, which is also a library BINSEC links.
+              buildInputs = [ ocaml.dypgen ];
+              propagatedBuildInputs = [
+                ocaml.ocamlgraph
+                ocaml.zarith
+                ocaml.dune-site
+                ocaml.toml
+                mula
+                ocaml.unisim_archisec
+                ocaml.bitwuzla-cxx
+              ];
+              postInstall = ''
+                wrapProgram $out/bin/binsec \
+                  --prefix OCAMLPATH : $out/lib/ocaml/${ocaml.ocaml.version}/site-lib
+              '';
+            };
+
           # `admin/parse-asm` calls cpp, as, and objdump by their Debian names,
           # as s2n-bignum's Makefiles do. Each maps to the target's tools,
           # native where the host matches, so the disassembly it reads can't
@@ -645,6 +691,17 @@
               target = "powerpc-unknown-linux-gnu";
               cross = pkgs.pkgsCross.ppc32;
               rustflags = "-C link-arg=-fuse-ld=bfd";
+            };
+
+            # `admin/ct-binsec` runs in it: the release tests under gdb, which
+            # dumps each at its region, and BINSEC on the dump.
+            binsec = pkgs.mkShell {
+              packages = [
+                rust-stable.minimal
+                binsec
+                pkgs.gdb
+                pkgs.python3
+              ];
             };
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
