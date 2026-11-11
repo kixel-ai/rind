@@ -74,7 +74,7 @@ pub(in crate::low) fn sha256_finish_shaext(
     _token: super::cpu::HaveSha256,
 ) -> [u8; 32] {
     let (blocks, tail) = message.as_chunks::<64>();
-    let ([w0, w1, w2, w3, w4, w5, w6, w7], next) = padded_words(tail, length);
+    let padded = padded(tail, length);
     let (abcd, efgh): (__m128i, __m128i);
     // SAFETY: `_token` proves the caller checked the `sha`, `ssse3`, and
     // `sse4.1` features. The block reads `state`, `blocks.len()` blocks from
@@ -103,33 +103,46 @@ pub(in crate::low) fn sha256_finish_shaext(
             rounds!(),
             "test %rdx, %rdx",
             "jns 3b",
-            // The block after the padded one, when r15 holds its length:
-            // zeros and the length.
-            "test %r15, %r15",
+            // The block after the padded one, when r8 holds its length:
+            // zeros, then the length.
+            "test %r8, %r8",
             "je 5f",
-            "xor %eax, %eax",
-            "xor %r8d, %r8d",
             "xor %r9d, %r9d",
             "xor %r10d, %r10d",
             "xor %r11d, %r11d",
-            "xor %r12d, %r12d",
-            "xor %r13d, %r13d",
-            "mov %r15, %r14",
-            "xor %r15d, %r15d",
-            // The padded block, from its words.
+            "mov %r8, %rax",
+            "xor %r8d, %r8d",
+            // The padded block: r9 whole lanes from rsi, the lane r10 and
+            // r11 hold, zeros, and rax as the last lane's top word unless
+            // that lane is r10 and r11's.
             "2:",
-            "movq %rax, %xmm14",
-            "movq %r8, %xmm0",
-            "punpcklqdq %xmm0, %xmm14",
-            "movq %r9, %xmm15",
             "movq %r10, %xmm0",
-            "punpcklqdq %xmm0, %xmm15",
+            "movq %r11, %xmm2",
+            "punpcklqdq %xmm2, %xmm0",
+            "xor %r11d, %r11d",
+            "movq %r11, %xmm15",
             "movq %r11, %xmm1",
-            "movq %r12, %xmm0",
-            "punpcklqdq %xmm0, %xmm1",
-            "movq %r13, %xmm12",
-            "movq %r14, %xmm0",
-            "punpcklqdq %xmm0, %xmm12",
+            "movq %r11, %xmm12",
+            "movq %rax, %xmm2",
+            "punpcklqdq %xmm2, %xmm12",
+            "cmp $1, %r9",
+            "jb 6f",
+            "movdqu (%rsi), %xmm14",
+            "je 7f",
+            "movdqu 16(%rsi), %xmm15",
+            "cmp $2, %r9",
+            "je 8f",
+            "movdqu 32(%rsi), %xmm1",
+            "movdqa %xmm0, %xmm12",
+            "jmp 4b",
+            "6:",
+            "movdqa %xmm0, %xmm14",
+            "jmp 4b",
+            "7:",
+            "movdqa %xmm0, %xmm15",
+            "jmp 4b",
+            "8:",
+            "movdqa %xmm0, %xmm1",
             "jmp 4b",
             "5:",
             unload_state!(),
@@ -139,15 +152,11 @@ pub(in crate::low) fn sha256_finish_shaext(
             inout("rsi") blocks.as_ptr() => _,
             inout("rdx") blocks.len() => _,
             in("rcx") K.0.as_ptr(),
-            inout("rax") w0 => _,
-            inout("r8") w1 => _,
-            inout("r9") w2 => _,
-            inout("r10") w3 => _,
-            inout("r11") w4 => _,
-            inout("r12") w5 => _,
-            inout("r13") w6 => _,
-            inout("r14") w7 => _,
-            inout("r15") next => _,
+            inout("r8") padded.next => _,
+            inout("r9") padded.lanes => _,
+            inout("r10") padded.end[0] => _,
+            inout("r11") padded.end[1] => _,
+            inout("rax") padded.length => _,
             out("xmm0") _, out("xmm1") efgh, out("xmm2") abcd, out("xmm3") _,
             out("xmm4") _, out("xmm5") _, out("xmm6") _, out("xmm7") _,
             out("xmm8") _, out("xmm9") _, out("xmm10") _, out("xmm11") _,
@@ -164,36 +173,54 @@ pub(in crate::low) fn sha256_finish_shaext(
     digest
 }
 
-/// The last block of a message whose bytes past its whole blocks are `tail`,
-/// under 64 bytes, padded and closed by `length`, as eight little-endian
-/// words, and `length` as one when the padding needs a block after it, or
-/// otherwise zero, which a length that long cannot be. A longer `tail`
+/// The last block of a message, padded: whole lanes of the message's bytes,
+/// read from where they are, then the lane where the message ends, then
+/// zeros, closed by the length.
+struct Padded {
+    /// The message's whole 16-byte lanes in the block.
+    lanes: usize,
+    /// The lane after them, as two little-endian words: the message's last
+    /// bytes, the 0x80 that ends it, and, when it is the block's last lane
+    /// and the padding fits, the length.
+    end: [u64; 2],
+    /// The length, as the last lane's top word when that is not `end`.
+    length: u64,
+    /// The length, when the padding needs a block after this one, or
+    /// otherwise zero, which a length that long cannot be.
+    next: u64,
+}
+
+/// The last block of a message whose bytes past its whole blocks are
+/// `tail`, under 64 bytes, padded and closed by `length`. A longer `tail`
 /// hashes wrongly but reads only its own bytes, so it goes unchecked.
 ///
-/// Reads `tail` where it is, in loads of 8, 4, 2, and 1 bytes from each
-/// word's start, so each load is likely to lie within one store its writer
-/// made, and forward from it.
+/// Leaves the whole lanes for the block to load 16 bytes at a time, and
+/// reads the rest in loads of 8, 4, 2, and 1 bytes from the lane's start,
+/// so each load is likely to lie within one store its writer made, and
+/// forward from it: building the block from words read 8 bytes at a time
+/// made a one-block SHA-256 twice as slow on Arrow Lake.
 // Inline, so the words reach the block in registers: through memory, a
 // one-block SHA-256 measured 7.7% slower.
 #[inline(always)]
-fn padded_words(tail: &[u8], length: [u8; 8]) -> ([u64; 8], u64) {
-    let mut words = [0u64; 8];
-    let mut i = 0;
-    while i < 8 {
-        let at = 8 * i;
-        if at + 8 <= tail.len() {
-            words[i] = u64::from_le_bytes(*tail[at..].first_chunk::<8>().unwrap());
-        } else if at <= tail.len() {
-            words[i] = ended(&tail[at..]);
-        }
-        i += 1;
-    }
+fn padded(tail: &[u8], length: [u8; 8]) -> Padded {
+    let lanes = tail.len() / 16;
+    let part = &tail[16 * lanes..];
+    let mut end = match part.split_first_chunk::<8>() {
+        Some((first, rest)) => [u64::from_le_bytes(*first), ended(rest)],
+        None => [ended(part), 0],
+    };
     let length = u64::from_le_bytes(length);
-    if tail.len() + 1 + 8 <= 64 {
-        words[7] |= length;
-        (words, 0)
-    } else {
-        (words, length)
+    let mut next = 0;
+    if tail.len() + 1 + 8 > 64 {
+        next = length;
+    } else if lanes == 3 {
+        end[1] |= length;
+    }
+    Padded {
+        lanes,
+        end,
+        length,
+        next,
     }
 }
 
