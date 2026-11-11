@@ -139,6 +139,8 @@ mod tests {
     /// A build that panicked holds `BUILDING`, as one on another thread
     /// would: the value is built and returned, but no use keeps it.
     #[test]
+    // Catches the panic, which a `panic = "abort"` target such as wasm cannot.
+    #[cfg(panic = "unwind")]
     fn never_keeps_beside_a_build() {
         let cache = ReuseCache::<u64>::new();
         assert_eq!(cache.get_or_build(|| unreachable!()), None);
@@ -152,6 +154,8 @@ mod tests {
     /// Threads racing to build and read one cache each see the whole value,
     /// and Miri finds no data race between the build and a read.
     #[test]
+    // wasm32-wasip2 cannot spawn threads.
+    #[cfg(not(target_family = "wasm"))]
     fn shared_across_threads() {
         let cache = ReuseCache::<[u64; 4]>::new();
         std::thread::scope(|s| {
