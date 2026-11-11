@@ -1,3 +1,8 @@
+-- Vendored from SymCrypt (https://github.com/microsoft/SymCrypt), `SymCRust/lean/Spec/Defs.lean` at
+-- c2e575ace0ea4b6b7a4184c1f19b81d1d5b2b5be.
+-- Copyright (c) Microsoft Corporation. MIT License:
+-- https://github.com/microsoft/SymCrypt/blob/c2e575ace0ea4b6b7a4184c1f19b81d1d5b2b5be/LICENSE.txt
+-- Changed: `decide +kernel` replaces `native_decide`, which rind's proofs avoid.
 import Mathlib.Data.List.Defs
 import Mathlib.Data.ZMod.Defs
 import Aeneas
@@ -377,15 +382,17 @@ theorem Byte.ext_testBit (a b : Byte)
         _ ≤ 2 ^ i := Nat.pow_le_pow_right (by norm_num) hi8
     rw [Nat.testBit_eq_false_of_lt ha, Nat.testBit_eq_false_of_lt hb]
 
+set_option maxRecDepth 100000 in
 private theorem testBit_byte_of_bools (f : Fin 8 → Bool) (k : Fin 8) :
     (Fin.foldl 8 (fun (acc : Byte) (j : Fin 8) =>
       acc + (f j).toNat * (2 ^ j.val)) 0).toNat.testBit k.val = f k := by
-  native_decide +revert
+  decide +kernel +revert
 
+set_option maxRecDepth 100000 in
 private theorem byte_of_testBits (b : Byte) :
     Fin.foldl 8 (fun (acc : Byte) (j : Fin 8) =>
       acc + (b.toNat.testBit j.val).toNat * (2 ^ j.val)) 0 = b := by
-  native_decide +revert
+  decide +kernel +revert
 
 /-- Each bit of the pure `bitsToBytes` output matches the input. -/
 theorem bitsToBytes_testBit {ℓ : Nat} (b : Vector Bool (8 * ℓ))

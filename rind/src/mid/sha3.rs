@@ -233,6 +233,8 @@ impl SqueezingSponge4xShake128 {
 
     /// Squeezes three blocks of each sponge into `output`, returning the
     /// sponges, which then owe a Keccak-f as a `SqueezingSponge` expects.
+    // Indexed rather than zipped, which Aeneas cannot translate.
+    #[allow(clippy::needless_range_loop)]
     pub(crate) fn squeeze(
         mut self,
         output: &mut [[u8; SHAKE_128_R_BYTES * 3]; 4],

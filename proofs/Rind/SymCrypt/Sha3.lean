@@ -1,3 +1,8 @@
+-- Vendored from SymCrypt (https://github.com/microsoft/SymCrypt), `SymCRust/lean/Spec/SHA3/Spec.lean` at
+-- c2e575ace0ea4b6b7a4184c1f19b81d1d5b2b5be.
+-- Copyright (c) Microsoft Corporation. MIT License:
+-- https://github.com/microsoft/SymCrypt/blob/c2e575ace0ea4b6b7a4184c1f19b81d1d5b2b5be/LICENSE.txt
+-- Changed: the import path.
 import Rind.SymCrypt.Defs
 
 /-!
