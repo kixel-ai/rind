@@ -432,7 +432,10 @@ mod arch {
                     compare(&mut broken, &XMM, &self.xmm, &after.xmm);
                 }
             }
-            if after.flags & DIRECTION_FLAG != 0 {
+            // `pushfq` mixes the direction flag with arithmetic flags the
+            // routine may have computed from secrets, so memcheck taints the
+            // whole word; only the direction flag is checked, and it is public.
+            if crate::low::ct::into_public(after.flags) & DIRECTION_FLAG != 0 {
                 broken.push("the direction flag: left set".into());
             }
             broken
