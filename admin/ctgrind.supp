@@ -82,3 +82,21 @@
    ...
    fun:*10rind_rcgen3pem*
 }
+{
+   rind-rcgen-pem-utf8-index-32bit
+   Memcheck:Value4
+   fun:*utf8*
+   ...
+   fun:*10rind_rcgen3pem*
+}
+{
+   rind-rcgen-pem-framing-32bit
+   Memcheck:Value4
+   fun:*10rind_rcgen3pem*read_until*
+}
+{
+   rind-rcgen-pem-framing-inlined-32bit
+   Memcheck:Value4
+   fun:read_until
+   fun:*10rind_rcgen3pem6decode*
+}
