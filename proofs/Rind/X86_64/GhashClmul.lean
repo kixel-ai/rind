@@ -544,5 +544,226 @@ theorem clmul_add_spec (H : P) (hH : Small H) (t : low.x86_64.ghash.ClmulTable) 
   refine ⟨z, by rw [low.x86_64.ghash.ClmulTable.add, hy, bind_ok, hz], ?_⟩
   rw [hzp, hyp, padBlocks_split bytes, List.map_append, ghashPoly_append]
 
+/-! ## The table `ClmulTable::new` builds -/
+
+theorem gPower_add (H : P) (b : Nat) (hb : 1 ≤ b) : ∀ a, 1 ≤ a →
+    gf128MulRev (gPower H a) (gPower H b) = gPower H (a + b)
+  | 0, h => absurd h (by omega)
+  | 1, _ => by rw [gPower_one, Nat.add_comm, gPower_succ H hb]
+  | a + 2, _ => by
+    rw [gPower_succ H (show 1 ≤ a + 1 by omega), mulRev_assoc, gPower_add H b hb (a + 1) (by omega),
+      show a + 2 + b = (a + 1 + b) + 1 by omega, gPower_succ H (by omega)]
+
+/-- `ClmulTable::powers`'s eight powers, from H to H^8, each shifted. -/
+theorem ghashPowers_spec (h : BitVec 128) : ∀ i < 8,
+    toPoly (ghashPowers h)[i]! = shiftKey1 128 gf128ModulusLowTerms (gPower (toPoly h) (i + 1)) := by
+  obtain ⟨p1, p2, p3, p4, p5, p6⟩ := powers_spec h
+  have s := small_gPower (toPoly h) (small_toPoly h)
+  have p7 := mul_shiftKey1 _ _ (s 4) (s 3) _ _ p4 p3
+  have p8 := mul_shiftKey1 _ _ (s 4) (s 4) _ _ p4 p4
+  rw [gPower_add _ _ (by omega) _ (by omega)] at p7 p8
+  intro i hi
+  interval_cases i
+  · exact p1
+  · exact p2
+  · exact p3
+  · exact p4
+  · exact p5
+  · exact p6
+  · exact p7
+  · exact p8
+
+/-- `<[T; N]>::map`, for a closure that returns `g` of its argument. -/
+theorem map_eq {T F U : Type} {N : Std.Usize} (inst : core.ops.function.FnMut F T U) (g : T → U)
+    (hf : ∀ f x, inst.call_mut f x = ok (g x, f)) (a : Std.Array T N) (f : F) :
+    ∃ h, core.array.Array.map inst a f = ok (Std.Array.from (a.val.map g) h) := by
+  have key : ∀ (l : List T) (acc : List U), l.foldlM (fun (p : List U × F) x => do
+      let (y, f) ← inst.call_mut p.2 x
+      ok (p.1 ++ [y], f)) (acc, f) = ok (acc ++ l.map g, f) := by
+    intro l
+    induction l with
+    | nil => intro acc; simp only [List.foldlM_nil, List.map_nil, List.append_nil]; rfl
+    | cons x l ih =>
+      intro acc
+      have hy := hf f x
+      simp only [List.foldlM_cons, hy, bind_ok, bind_tc_ok, uncurry_apply_pair]
+      rw [ih]
+      simp
+  have hl : (a.val.map g).length = N.val := by rw [List.length_map, Std.Array.property]
+  refine ⟨hl, ?_⟩
+  unfold core.array.Array.map
+  simp only [key, List.nil_append, bind_ok, uncurry_apply_pair]
+  rw [dite_eq_left hl]
+
+theorem clmul_new_spec (h : Std.U128) (hw : low.x86_64.cpu.HaveAesHardware) :
+    ∃ t, low.x86_64.ghash.ClmulTable.new h hw = ok t ∧ TableFor (toPoly h.bv) t := by
+  obtain ⟨hl, hm⟩ := map_eq
+    low.x86_64.ghash.ClmulTable.with_powers.closure.Insts.CoreOpsFunctionFnMutTuple__m128i__m128i
+    (fun p => swap p ^^^ p)
+    (fun f x => by simp only [
+      low.x86_64.ghash.ClmulTable.with_powers.closure.Insts.CoreOpsFunctionFnMutTuple__m128i__m128i.call_mut,
+      low.x86_64.ghash.xor_halves, core.core_arch.x86.sse2._mm_shuffle_epi32,
+      core.core_arch.x86.sse2._mm_xor_si128, bind_ok, swap_lanes])
+    (Std.Array.make 8#usize (ghashPowers h.bv) (by simp [ghashPowers])) ()
+  refine ⟨_, by simp only [low.x86_64.ghash.ClmulTable.new, powers_eq, bind_ok,
+    low.x86_64.ghash.ClmulTable.with_powers, hm]; rfl, ?_⟩
+  intro i hi
+  refine ⟨ghashPowers_spec h.bv i hi, ?_⟩
+  have hlen : i < (ghashPowers h.bv).length := by simp [ghashPowers]; omega
+  rw [Std.Array.from_val, Std.Array.make_val, getElem!_pos _ i (by simpa using hlen),
+    getElem!_pos _ i hlen, List.getElem_map]
+
+/-! ## Vale's `ghash_LE` -/
+
+/-- A Vale block or hash, its bytes least significant first, as the
+polynomial rind's GHASH works on: of its bytes reversed. -/
+noncomputable def polyLE (q : Quad32) : P := toPoly (reverseBytesQuad32 q)
+
+theorem ofQuad32_eq (q : Quad32) : ofQuad32 q = toPoly q := rfl
+
+theorem sum_two_pow_lt (b : Nat → Bool) : ∀ n, (∑ i ∈ Finset.range n, if b i then 2 ^ i else 0) < 2 ^ n
+  | 0 => by simp
+  | n + 1 => by
+    rw [Finset.sum_range_succ, Nat.pow_succ]
+    have := sum_two_pow_lt b n
+    split <;> omega
+
+theorem testBit_sum (b : Nat → Bool) : ∀ n j,
+    (∑ i ∈ Finset.range n, if b i then 2 ^ i else 0).testBit j = (decide (j < n) && b j)
+  | 0, j => by simp
+  | n + 1, j => by
+    have hlt := sum_two_pow_lt b n
+    have ih := testBit_sum b n j
+    rw [Finset.sum_range_succ]
+    by_cases hb : b n
+    · rw [if_pos hb, Nat.add_comm]
+      rcases Nat.lt_trichotomy j n with h | h | h
+      · rw [Nat.testBit_two_pow_add_gt h, ih]; simp [h, show j < n + 1 by omega]
+      · subst h; rw [Nat.testBit_two_pow_add_eq, Nat.testBit_lt_two_pow hlt]; simp [hb]
+      · rw [Nat.testBit_lt_two_pow (lt_of_lt_of_le (show 2 ^ n + _ < 2 ^ (n + 1) by rw [Nat.pow_succ]; omega)
+          (Nat.pow_le_pow_right (by omega) h))]
+        simp [show ¬ j < n + 1 by omega]
+    · rw [if_neg hb, Nat.add_zero, ih]
+      by_cases h : j = n
+      · subst h; simp [hb]
+      · simp only [show (j < n + 1) = (j < n) by apply propext; omega]
+
+theorem ofQuad32_toQuad32 {p : P} (hp : Small p) : ofQuad32 (toQuad32 p) = p := by
+  ext j
+  rw [ofQuad32_eq, coeff_toPoly, toQuad32, BitVec.getLsbD_ofNat]
+  have hs := testBit_sum (fun i => decide (p.coeff i ≠ 0)) 128 j
+  simp only [decide_eq_true_eq] at hs
+  rw [hs]
+  by_cases hj : j < 128
+  · rcases zmod2_cases (p.coeff j) with h | h <;> simp [h, hj]
+  · rw [hp.coeff (by omega)]; simp [hj]
+
+theorem reverseBytes_xor (a b : Quad32) :
+    reverseBytesQuad32 (a ^^^ b) = reverseBytesQuad32 a ^^^ reverseBytesQuad32 b := by
+  apply eq_of_byte_eq; intro i hi
+  rw [byte_xor, byte_reverseBytes _ hi, byte_reverseBytes _ hi, byte_reverseBytes _ hi, byte_xor]
+
+theorem polyLE_xor (a b : Quad32) : polyLE (a ^^^ b) = polyLE a + polyLE b := by
+  rw [polyLE, reverseBytes_xor, toPoly_xor]; rfl
+
+theorem polyLE_zero : polyLE 0 = 0 := by
+  have := polyLE_xor 0 0
+  rw [BitVec.xor_self] at this
+  have h2 : (2 : P) = 0 := two_eq_zero_P
+  linear_combination this + polyLE 0 * h2
+
+theorem polyLE_mulLE (a b : Quad32) : polyLE (gf128MulLE a b) = gf128MulRev (polyLE a) (polyLE b) := by
+  rw [polyLE, gf128MulLE]
+  simp only [reverseBytesQuad32_involutive]
+  rw [← ofQuad32_eq]
+  exact ofQuad32_toQuad32 (small_mulRev _ _)
+
+theorem polyLE_foldl (h : Quad32) : ∀ (xs : List Quad32) (y : Quad32),
+    polyLE (xs.foldl (fun y xi => gf128MulLE (y ^^^ xi) h) y) = ghashPoly (polyLE h) (polyLE y) (xs.map polyLE)
+  | [], y => by rw [List.foldl_nil, List.map_nil, ghashPoly_nil]
+  | x :: xs, y => by
+    rw [List.foldl_cons, polyLE_foldl h xs, polyLE_mulLE, polyLE_xor, List.map_cons, ghashPoly_cons]
+
+/-- Vale's `ghash_LE` is GHASH from zero on the blocks' polynomials. -/
+theorem polyLE_ghashLE (h : Quad32) (xs : List Quad32) :
+    polyLE (ghashLE h xs) = ghashPoly (polyLE h) 0 (xs.map polyLE) := by
+  rw [ghashLE, polyLE_foldl, polyLE_zero]
+
+/-! ## Vale's padded blocks -/
+
+theorem chunksOf_map {α β : Type} (f : α → β) (k : Nat) (l : List α) :
+    chunksOf k (l.map f) = (chunksOf k l).map (List.map f) := by
+  simp [chunksOf, List.map_take, List.map_drop]
+
+theorem getElem!_take_drop {α : Type} [Inhabited α] (l : List α) (a c j : Nat) (hj : j < c) :
+    ((l.drop a).take c)[j]! = l[a + j]! := by
+  simp [getElem!_def, List.getElem?_take, List.getElem?_drop, hj]
+
+theorem leBytesToSeqQuad32_eq (b : List (BitVec 8)) :
+    leBytesToSeqQuad32 b = (chunksOf 16 b).map leBytesToQuad32 := by
+  unfold leBytesToSeqQuad32 seqToSeqFourLE chunksOf
+  have hw : (seqNat8ToSeqNat32LE b).length = b.length / 4 := by simp [seqNat8ToSeqNat32LE]
+  apply List.ext_getElem
+  · simp only [List.length_map, List.length_range, hw, Nat.div_div_eq_div_mul]
+  · intro n h1 _
+    simp only [List.length_map, List.length_range, hw, Nat.div_div_eq_div_mul] at h1
+    simp only [List.getElem_map, List.getElem_range]
+    apply eq_of_byte_eq; intro i hi
+    rw [byte_mkfour _ _ _ _ hi, byte_leBytesToQuad32 _ hi, getElem!_take_drop _ _ _ _ hi]
+    have hword : ∀ k, k < b.length / 4 → ∀ m, m < 4 →
+        wbyte (seqNat8ToSeqNat32LE b)[k]! m = b[4 * k + m]! := by
+      intro k hk m hm
+      rw [seqNat8ToSeqNat32LE, getElem!_range_map _ hk, wbyte, byte_word _ hm, getElem!_take_drop _ _ _ _ hm]
+    have hk : ∀ j, j < 4 → n * 4 + j < b.length / 4 := fun j hj => by
+      have : n * 16 + 16 ≤ b.length := by
+        have := Nat.mul_le_of_le_div 16 (n + 1) b.length (by omega); linarith
+      omega
+    by_cases a1 : i < 4
+    · rw [if_pos a1, hword (n * 4) (by have := hk 0 (by omega); omega) _ (by omega)]; congr 1; omega
+    by_cases a2 : i < 8
+    · rw [if_neg a1, if_pos a2, hword (n * 4 + 1) (hk 1 (by omega)) _ (by omega)]; congr 1; omega
+    by_cases a3 : i < 12
+    · rw [if_neg a1, if_neg a2, if_pos a3, hword (n * 4 + 2) (hk 2 (by omega)) _ (by omega)]; congr 1; omega
+    · rw [if_neg a1, if_neg a2, if_neg a3, hword (n * 4 + 3) (hk 3 (by omega)) _ (by omega)]; congr 1; omega
+
+theorem chunksOf_16 {α : Type} (l : List α) (h : l.length = 16) : chunksOf 16 l = [l] := by
+  rw [chunksOf_cons (by omega) (by omega), List.take_of_length_le (by omega),
+    chunksOf_of_lt (by simp; omega)]
+
+/-- Vale's zero-padded blocks of the bytes, as polynomials, are `padBlocks`'s. -/
+theorem padBlocks_vale (bytes : List U8) :
+    (leBytesToSeqQuad32 (padTo128Bits (bytes.map (·.bv)))).map polyLE = (padBlocks bytes).map toPoly := by
+  have hsplit := List.take_append_drop (16 * (bytes.length / 16)) bytes
+  have hA : (bytes.take (16 * (bytes.length / 16))).length = 16 * (bytes.length / 16) := by
+    simp; have := Nat.div_mul_le_self bytes.length 16; omega
+  have hr := chunksRest_length 16 bytes
+  have hR : (bytes.drop (16 * (bytes.length / 16))).length = bytes.length % 16 := hr
+  have hc : chunksOf 16 bytes = chunksOf 16 (bytes.take (16 * (bytes.length / 16))) := by
+    conv_lhs => rw [← hsplit]
+    rw [chunksOf_append (by omega) _ _ _ hA,
+      chunksOf_of_lt (l := bytes.drop (16 * (bytes.length / 16))) (by omega), List.append_nil]
+  have hbv : bytes.map (·.bv) = (bytes.take (16 * (bytes.length / 16))).map (·.bv) ++
+      (bytes.drop (16 * (bytes.length / 16))).map (·.bv) := by
+    rw [← List.map_append, hsplit]
+  rw [leBytesToSeqQuad32_eq, padTo128Bits, padBlocks, List.length_map]
+  split
+  · rename_i h0
+    have hrest : chunksRest 16 bytes = [] := List.eq_nil_of_length_eq_zero (by omega)
+    simp only [hrest, ite_true, List.append_nil, chunksOf_map, List.map_map]
+    rfl
+  · rename_i h0
+    have hrest : chunksRest 16 bytes ≠ [] := fun h => h0 (by rw [← hr, h]; rfl)
+    rw [if_neg hrest, hbv, List.append_assoc,
+      chunksOf_append (by omega) (bytes.length / 16) _ _ (by rw [List.length_map, hA]),
+      chunksOf_16 ((bytes.drop (16 * (bytes.length / 16))).map (·.bv) ++ List.replicate (16 - bytes.length % 16) 0)
+        (by simp only [List.length_append, List.length_map, List.length_replicate, hR]; omega),
+      chunksOf_map, ← hc]
+    have hb : ∀ c : List U8, polyLE (leBytesToQuad32 (c.map (·.bv))) = toPoly (blockBE c) := fun _ => rfl
+    have ht : polyLE (leBytesToQuad32 ((bytes.drop (16 * (bytes.length / 16))).map (·.bv) ++
+        List.replicate (16 - bytes.length % 16) 0)) = toPoly (tailBlock (chunksRest 16 bytes)) := by
+      rw [tailBlock, ← hb, hr, List.map_append, List.map_replicate]
+      rfl
+    simp only [List.map_append, List.map_map, List.map_cons, List.map_nil, Function.comp_def, hb, ht]
+
 end rind.x86_64
 
