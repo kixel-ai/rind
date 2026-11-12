@@ -110,7 +110,7 @@ theorem verify_pkcs1_core_spec (key : high.rsa.VerifyingKey) (hinv : PubKeyInv k
     simp [this] at hne
   · rename_i heq
     have hlen : signature.length = k.val := by simpa [UScalar.eq_equiv] using heq
-    step with from_bytes_spec signature (beNat_lt_8192 _ (by omega)) as ⟨r, c, hr, hcu, hcz, hcv, _⟩
+    step with posint_from_bytes_spec signature (beNat_lt_8192 _ (by omega)) as ⟨r, c, hr, hcu, hcz, hcv, _⟩
     subst hr
     simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
     have hC : wordsNat (lowWords c c.used) = beNat signature.val := hcv

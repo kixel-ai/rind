@@ -218,7 +218,7 @@ theorem beNat_lt_8192 (l : List U8) (h : l.length ≤ 1024) : beNat l < 2 ^ 8192
 /-- OS2IP: `from_bytes` reads big-endian bytes encoding a number below
 `2^8192` as that number, with no words set above its length, and its top
 word nonzero. -/
-theorem from_bytes_spec (bytes : Slice U8) (hlen : beNat bytes.val < 2 ^ 8192) :
+theorem posint_from_bytes_spec (bytes : Slice U8) (hlen : beNat bytes.val < 2 ^ 8192) :
     low.posint.PosInt.from_bytes 128#usize bytes ⦃ r => ∃ p, r = .Ok p ∧ p.used.val ≤ 128 ∧
       wordsNat (p.words.val.drop p.used.val) = 0 ∧ wordsNat (lowWords p p.used) = beNat bytes.val ∧
       (p.used.val = 0 ∨ 2 ^ (64 * (p.used.val - 1)) ≤ beNat bytes.val) ⦄ := by
@@ -294,7 +294,7 @@ theorem from_bytes_spec (bytes : Slice U8) (hlen : beNat bytes.val < 2 ^ 8192) :
 
 /-- `from_bytes` refuses a number of `2^8192` or more, too long for its
 words. -/
-theorem from_bytes_long_spec (bytes : Slice U8) (hlen : 2 ^ 8192 ≤ beNat bytes.val) :
+theorem posint_from_bytes_long_spec (bytes : Slice U8) (hlen : 2 ^ 8192 ≤ beNat bytes.val) :
     low.posint.PosInt.from_bytes 128#usize bytes ⦃ r => ∃ err, r = .Err err ⦄ := by
   unfold low.posint.PosInt.from_bytes
   step with trim_leading_zeroes_spec as ⟨b1, hb1v, hb1l, hb1h⟩

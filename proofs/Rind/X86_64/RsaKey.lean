@@ -1047,7 +1047,8 @@ theorem rsa_public_key_new_spec (h : low.entry.Entry.assert_held = ok ()) (n : R
     (hk : n.used.val ≤ 128)
     (htight : n.used.val = 0 ∨ 2 ^ (64 * (n.used.val - 1)) ≤ wordsNat (lowWords n n.used)) :
     mid.rsa_pub.RsaPublicKey.new n e ⦃ r => match r with
-      | .Ok key => key.n = n ∧ key.e = e ∧ PubKeyInv key
+      | .Ok key => key.n = n ∧ key.e = e ∧ PubKeyInv key ∧
+        key.n.used.val = ((wordsNat (lowWords n n.used)).size + 63) / 64
       | .Err _ => ¬ PubKeyOk n e ⦄ := by
   unfold mid.rsa_pub.RsaPublicKey.new low.posint.PosInt.is_even
   simp only [h, bind_ok, lift]
@@ -1135,6 +1136,10 @@ theorem rsa_public_key_new_spec (h : low.entry.Entry.assert_held = ok ()) (n : R
         as ⟨m, hmu, hm⟩
       step with mont_neg_inverse_spec n (by omega) hk (by rw [hN]; exact hodd') as ⟨n0, hn0⟩
       rw [hN] at hn0 hm
+      -- The modulus fills its words: `64(k - 1) < N.size ≤ 64k`.
+      have hs1 := Nat.size_le.mpr hNlt
+      have hs2 := Nat.lt_size.mpr htop
+      refine ⟨?_, by omega⟩
       unfold PubKeyInv
       dsimp only
       rw [hN]
@@ -1222,16 +1227,22 @@ theorem public_exponent_spec (e : Slice U8) :
 def KeyOk (N E : Nat) : Prop :=
   N % 2 = 1 ∧ 1024 ≤ N.size ∧ N.size ≤ 8192 ∧ E % 2 = 1 ∧ E ≠ 1 ∧ E < 2 ^ 33
 
+/-- `key` is the RSA public key `(N, E)`: it meets `PubKeyInv`, and its
+modulus fills its `k = ⌈N.size / 64⌉` words. -/
+def KeyLoaded (key : mid.rsa_pub.RsaPublicKey) (N E : Nat) : Prop :=
+  PubKeyInv key ∧ wordsNat (lowWords key.n key.n.used) = N ∧ key.e.val = E ∧
+    key.n.used.val = (N.size + 63) / 64
+
 /-- `VerifyingKey::from_unsigned` loads the key its big-endian modulus and
 exponent encode, or refuses them when `KeyOk` fails or the exponent takes
 more than eight bytes. -/
 theorem from_unsigned_spec (hheld : low.entry.Entry.assert_held = ok ()) (n e : Slice U8) :
     high.rsa.VerifyingKey.from_unsigned n e ⦃ r => match r with
-      | .Ok key => PubKeyInv key ∧ wordsNat (lowWords key.n key.n.used) = beNat n.val ∧ key.e.val = beNat e.val
+      | .Ok key => KeyLoaded key (beNat n.val) (beNat e.val)
       | .Err _ => ¬ (e.length ≤ 8 ∧ KeyOk (beNat n.val) (beNat e.val)) ⦄ := by
   unfold high.rsa.VerifyingKey.from_unsigned
   by_cases hN : beNat n.val < 2 ^ 8192
-  · step with from_bytes_spec n hN as ⟨r, p, hr, hpu, hpz, hpv, hpt⟩
+  · step with posint_from_bytes_spec n hN as ⟨r, p, hr, hpu, hpz, hpv, hpt⟩
     subst hr
     simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
     step with public_exponent_spec e as ⟨r2, hr2a, hr2b⟩
@@ -1240,9 +1251,9 @@ theorem from_unsigned_spec (hheld : low.entry.Entry.assert_held = ok ()) (n e : 
       simp only [bind_ok]
       step with rsa_public_key_new_spec hheld p v hpu (by rw [hpv]; exact hpt) as ⟨r3, hr3⟩
       split at hr3
-      · obtain ⟨rfl, rfl, hinv⟩ := hr3
+      · obtain ⟨rfl, rfl, hinv, hused⟩ := hr3
         simp only [bind_ok, WP.spec_ok]
-        exact ⟨hinv, hpv, hv⟩
+        exact ⟨hinv, hpv, hv, by rw [hused, hpv]⟩
       · simp only [bind_ok, core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
           core.convert.FromSame.from]
         simp only [bind_tc_ok, WP.spec_ok]
@@ -1256,7 +1267,7 @@ theorem from_unsigned_spec (hheld : low.entry.Entry.assert_held = ok ()) (n e : 
         core.convert.FromSame.from]
       simp only [bind_tc_ok, WP.spec_ok]
       rintro ⟨h8, -⟩; exact he h8
-  · step with from_bytes_long_spec n (by omega) as ⟨r, err, hr⟩
+  · step with posint_from_bytes_long_spec n (by omega) as ⟨r, err, hr⟩
     subst hr
     simp [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch,
       high.rsa.VerifyingKey.from_unsigned.closure.Insts.CoreOpsFunctionFnOnceTupleErrorKeyFormatError.call_once,
@@ -1270,7 +1281,7 @@ theorem from_unsigned_spec (hheld : low.entry.Entry.assert_held = ok ()) (n e : 
 component, and otherwise loads them as `from_unsigned` does. -/
 theorem from_components_spec (h : Runs) (hheld : low.entry.Entry.assert_held = ok ()) (n e : Slice U8) :
     high.rsa.VerifyingKey.from_components n e ⦃ r => match r with
-      | .Ok key => PubKeyInv key ∧ wordsNat (lowWords key.n key.n.used) = beNat n.val ∧ key.e.val = beNat e.val
+      | .Ok key => KeyLoaded key (beNat n.val) (beNat e.val)
       | .Err _ => ¬ (n.val.head? ≠ some 0#u8 ∧ e.val.head? ≠ some 0#u8 ∧ KeyOk (beNat n.val) (beNat e.val)) ⦄ := by
   unfold high.rsa.VerifyingKey.from_components
   step with new_public_spec h

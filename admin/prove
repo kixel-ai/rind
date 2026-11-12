@@ -455,6 +455,15 @@ check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
     'struct Verifier<K> {' 'impl<K> Verifier<K> {' 'pub struct PublicKey {' 'enum Parsed {' \
     'impl PublicKey {' 'impl AsRef<[u8]> for PublicKey {' 'impl fmt::Debug for PublicKey {' \
     'impl Ed25519KeyPair {' 'fn parse_ed25519(' '    pub static ED25519:'
+check_quote X86_64/RsaDispatch items rind/src/high/signature.rs 'enum HashId {' 'impl HashId {' \
+    'impl<const N: usize> Buffer<N> {' 'pub struct RsaVerificationAlgorithm {' \
+    'impl AsRef<VerificationAlgorithm> for RsaVerificationAlgorithm {' 'enum RsaPadding {' \
+    'struct RsaScheme {' 'type RsaVerify =' 'struct RsaVerifier {' 'impl RsaScheme {' \
+    'enum RsaVerification {' 'impl RsaVerification {' 'struct Rsa {' 'impl fmt::Debug for Rsa {' \
+    'impl Rsa {' 'const fn rsa_verification(' 'const fn rsa_algorithm(' 'const PKCS1_SHA256:' \
+    'const PSS_SHA256:' 'pub(super) const RSA_MIN_BITS:' \
+    '    pub static RSA_PKCS1_SHA256: RsaVerificationAlgorithm' \
+    '    pub static RSA_PSS_SHA256: RsaVerificationAlgorithm'
 # The models' `Ops` hold nothing, since the quoted constructor builds the only
 # one; `Masker<C>` holds only the key, since the quoted `Masker::new` builds
 # each with `C::mask`; and a digest `Algorithm` is which static it is. That
@@ -468,6 +477,10 @@ check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
 # SHA-256 and fixed-length signatures, which holds while the quotes have each
 # `Verification::Ecdsa`, `EcdsaP256`, and `EcdsaKey::`, each `EcdsaOps` and
 # `EcdsaPair` built, which `load` alone builds, and each read of their `ops`.
+# An RSA verification algorithm is its `Rsa`'s floor and `verify`, its
+# `parse` being `PublicKey::parse_rsa`, which holds while the quotes have each
+# `Rsa` literal, which `rsa_algorithm` alone builds, and each
+# `Verification::Rsa`.
 # An AEAD `Sealer<C>` is its key, since the quoted `Sealer::expand` builds
 # every `Ops`, of `C`'s own functions, while the quote has each mention of
 # `Ops` in `aead.rs` and each `Algorithm` it builds.
@@ -492,6 +505,9 @@ only_quoted rind/src/high/signature.rs "$out/signature.rs" 'EcdsaP256\b'
 only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" 'EcdsaKey::'
 only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" 'Ecdsa(Ops|Pair) \{'
 only_quoted rind/src/high/signature.rs "$out/EcdsaDispatch.rs" '\.ops\b'
+cat "$out/SignatureDispatch.rs" "$out/RsaDispatch.rs" >"$out/rsa-signature.rs"
+only_quoted rind/src/high/signature.rs "$out/rsa-signature.rs" 'Verification::Rsa\('
+only_quoted rind/src/high/signature.rs "$out/RsaDispatch.rs" '\bRsa \{'
 only_quoted rind/src/high/hmac.rs "$out/HmacDispatch.rs" '\.ops\b'
 only_quoted rind/src/high/hmac.rs "$out/HmacDispatch.rs" '(Key|Tag)Ops \{'
 only_quoted rind/src/high/hmac.rs "$out/HmacDispatch.rs" '= Algorithm \{'
