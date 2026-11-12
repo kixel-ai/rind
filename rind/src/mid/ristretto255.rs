@@ -10,8 +10,8 @@
 // ristretto255's consumers (OPRF, FROST, ECVRF, OPAQUE) are their own quests.
 #![cfg_attr(not(test), allow(dead_code))]
 
-pub(crate) use crate::mid::edwards25519::Scalar;
 use crate::low;
+pub(crate) use crate::mid::edwards25519::Scalar;
 use crate::mid::edwards25519::{Fe, Point};
 
 /// `sqrt(a * d - 1)`, for `a = -1`.
@@ -89,7 +89,7 @@ impl Element {
     }
 
     /// RFC 9496 4.3.2's encoding.
-    pub(crate) fn to_bytes(&self) -> [u8; 32] {
+    pub(crate) fn to_bytes(self) -> [u8; 32] {
         low::Entry::assert_held();
         let [x0, y0, z0, t0] = self.0.coordinates();
         let u1 = z0.add(&y0).mul(&z0.sub(&y0));
@@ -169,9 +169,15 @@ mod tests {
         let d = Fe::D;
         let minus_one = Fe::ONE.neg();
         // (a d - 1) = SQRT_AD_MINUS_ONE^2
-        assert_eq!(SQRT_AD_MINUS_ONE.square().0, minus_one.mul(&d).sub(&Fe::ONE).0);
+        assert_eq!(
+            SQRT_AD_MINUS_ONE.square().0,
+            minus_one.mul(&d).sub(&Fe::ONE).0
+        );
         // (a - d) INVSQRT_A_MINUS_D^2 = 1
-        assert_eq!(INVSQRT_A_MINUS_D.square().mul(&minus_one.sub(&d)).0, Fe::ONE.0);
+        assert_eq!(
+            INVSQRT_A_MINUS_D.square().mul(&minus_one.sub(&d)).0,
+            Fe::ONE.0
+        );
         assert_eq!(ONE_MINUS_D_SQ.0, Fe::ONE.sub(&d.square()).0);
         assert_eq!(D_MINUS_ONE_SQ.0, d.sub(&Fe::ONE).square().0);
     }

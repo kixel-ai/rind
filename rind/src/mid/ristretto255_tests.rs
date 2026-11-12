@@ -12,7 +12,10 @@ use crate::low;
 use crate::test::wycheproof;
 
 fn bytes<const N: usize>(hex: &str) -> [u8; N] {
-    hex::decode(hex.replace(' ', "")).unwrap().try_into().unwrap()
+    hex::decode(hex.replace(' ', ""))
+        .unwrap()
+        .try_into()
+        .unwrap()
 }
 
 fn scalar(n: u64) -> Scalar {
@@ -95,7 +98,10 @@ fn rfc9496_invalid_encodings() {
         // s = -1, which causes y = 0.
         "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
     ] {
-        assert!(Element::from_bytes(&bytes(encoding)).is_none(), "{encoding}");
+        assert!(
+            Element::from_bytes(&bytes(encoding)).is_none(),
+            "{encoding}"
+        );
     }
 }
 
@@ -265,7 +271,10 @@ fn scalar_bounds() {
     assert!(Scalar::from_canonical_bytes(&order).is_none());
     assert!(Scalar::from_canonical_bytes(&[0xff; 32]).is_none());
     order[0] -= 1;
-    assert_eq!(Scalar::from_canonical_bytes(&order).unwrap().to_bytes(), order);
+    assert_eq!(
+        Scalar::from_canonical_bytes(&order).unwrap().to_bytes(),
+        order
+    );
 }
 
 proptest! {

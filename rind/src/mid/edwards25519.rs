@@ -320,7 +320,7 @@ impl Scalar {
         s
     }
 
-    pub(crate) fn to_bytes(&self) -> [u8; 32] {
+    pub(crate) fn to_bytes(self) -> [u8; 32] {
         util::u64x4_to_little_endian(&self.0)
     }
 

@@ -31,7 +31,7 @@ impl Scalar {
         Self(curve25519_dalek::Scalar::from_bytes_mod_order_wide(bytes))
     }
 
-    pub(crate) fn to_bytes(&self) -> [u8; 32] {
+    pub(crate) fn to_bytes(self) -> [u8; 32] {
         self.0.to_bytes()
     }
 
@@ -71,7 +71,7 @@ impl Element {
     }
 
     /// RFC 9496 4.3.2's encoding.
-    pub(crate) fn to_bytes(&self) -> [u8; 32] {
+    pub(crate) fn to_bytes(self) -> [u8; 32] {
         low::Entry::assert_held();
         self.0.compress().to_bytes()
     }
