@@ -127,16 +127,30 @@ mod tests {
 
     #[test]
     fn params() {
-        assert_eq!(Params::new(8, 1, 1), Ok(Params { memory_kib: 8, passes: 1, lanes: 1 }));
+        assert_eq!(
+            Params::new(8, 1, 1),
+            Ok(Params {
+                memory_kib: 8,
+                passes: 1,
+                lanes: 1
+            })
+        );
         assert_eq!(Params::new(7, 1, 1), Err(Error::Unsupported));
         assert_eq!(Params::new(8, 0, 1), Err(Error::Unsupported));
         assert_eq!(Params::new(8, 1, 0), Err(Error::Unsupported));
         assert_eq!(Params::new(8 * 3, 1, 3).map(|p| p.lanes), Ok(3));
         assert_eq!(Params::new(8 * 3 - 1, 1, 3), Err(Error::Unsupported));
-        assert_eq!(Params::new(u32::MAX, 1, (1 << 24) - 1).map(|p| p.lanes), Ok((1 << 24) - 1));
+        assert_eq!(
+            Params::new(u32::MAX, 1, (1 << 24) - 1).map(|p| p.lanes),
+            Ok((1 << 24) - 1)
+        );
         assert_eq!(Params::new(u32::MAX, 1, 1 << 24), Err(Error::Unsupported));
         for recommended in [Params::FIRST_RECOMMENDED, Params::SECOND_RECOMMENDED] {
-            let Params { memory_kib, passes, lanes } = recommended;
+            let Params {
+                memory_kib,
+                passes,
+                lanes,
+            } = recommended;
             assert_eq!(Params::new(memory_kib, passes, lanes), Ok(recommended));
         }
     }
@@ -144,8 +158,14 @@ mod tests {
     #[test]
     fn lengths() {
         let mut out = [0u8; 4];
-        assert_eq!(derive(SMALL, b"password", &[0; 7], &mut out), Err(Error::WrongLength));
-        assert_eq!(verify(SMALL, b"password", &[0; 7], &out), Err(Error::WrongLength));
+        assert_eq!(
+            derive(SMALL, b"password", &[0; 7], &mut out),
+            Err(Error::WrongLength)
+        );
+        assert_eq!(
+            verify(SMALL, b"password", &[0; 7], &out),
+            Err(Error::WrongLength)
+        );
         assert_eq!(out, [0; 4]);
         derive(SMALL, b"", &[0; 8], &mut out).unwrap();
         assert_eq!(verify(SMALL, b"", &[0; 8], &out), Ok(()));
@@ -157,7 +177,10 @@ mod tests {
         // than any machine running the tests has.
         let mut out = [0u8; 4];
         let huge = Params::new(u32::MAX, 1, 1).unwrap();
-        assert_eq!(derive(huge, b"password", &[0; 8], &mut out), Err(Error::OutOfMemory));
+        assert_eq!(
+            derive(huge, b"password", &[0; 8], &mut out),
+            Err(Error::OutOfMemory)
+        );
         assert_eq!(out, [0; 4]);
     }
 
@@ -170,12 +193,24 @@ mod tests {
         for i in 0..key.len() {
             let mut wrong = key;
             wrong[i] ^= 1;
-            assert_eq!(verify(SMALL, b"password", salt, &wrong), Err(Error::BadSignature));
+            assert_eq!(
+                verify(SMALL, b"password", salt, &wrong),
+                Err(Error::BadSignature)
+            );
         }
-        assert_eq!(verify(SMALL, b"passwore", salt, &key), Err(Error::BadSignature));
-        assert_eq!(verify(SMALL, b"password", b"saltsalu", &key), Err(Error::BadSignature));
+        assert_eq!(
+            verify(SMALL, b"passwore", salt, &key),
+            Err(Error::BadSignature)
+        );
+        assert_eq!(
+            verify(SMALL, b"password", b"saltsalu", &key),
+            Err(Error::BadSignature)
+        );
         let more = Params::new(16, 3, 2).unwrap();
-        assert_eq!(verify(more, b"password", salt, &key), Err(Error::BadSignature));
+        assert_eq!(
+            verify(more, b"password", salt, &key),
+            Err(Error::BadSignature)
+        );
         // The tag length is hashed in, so a prefix of a longer key differs.
         let mut longer = [0u8; 21];
         derive(SMALL, b"password", salt, &mut longer).unwrap();

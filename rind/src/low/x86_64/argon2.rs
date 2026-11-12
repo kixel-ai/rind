@@ -82,14 +82,20 @@ fn round_rows(v: Vectors<'_>) {
     let [a0, a1, b0, b1, c0, c1, d0, d1] = v;
     gb(a0, b0, c0, d0);
     gb(a1, b1, c1, d1);
-    for (b, c, d) in [(&mut *b0, &mut *c0, &mut *d0), (&mut *b1, &mut *c1, &mut *d1)] {
+    for (b, c, d) in [
+        (&mut *b0, &mut *c0, &mut *d0),
+        (&mut *b1, &mut *c1, &mut *d1),
+    ] {
         *b = _mm256_permute4x64_epi64(*b, 0b00_11_10_01);
         *c = _mm256_permute4x64_epi64(*c, 0b01_00_11_10);
         *d = _mm256_permute4x64_epi64(*d, 0b10_01_00_11);
     }
     gb(a0, b0, c0, d0);
     gb(a1, b1, c1, d1);
-    for (b, c, d) in [(&mut *b0, &mut *c0, &mut *d0), (&mut *b1, &mut *c1, &mut *d1)] {
+    for (b, c, d) in [
+        (&mut *b0, &mut *c0, &mut *d0),
+        (&mut *b1, &mut *c1, &mut *d1),
+    ] {
         *b = _mm256_permute4x64_epi64(*b, 0b10_01_00_11);
         *c = _mm256_permute4x64_epi64(*c, 0b01_00_11_10);
         *d = _mm256_permute4x64_epi64(*d, 0b00_11_10_01);
@@ -170,7 +176,9 @@ mod tests {
         let mut block = || {
             let mut b = Argon2Block::ZERO;
             for w in &mut b.0 {
-                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 *w = seed;
             }
             b

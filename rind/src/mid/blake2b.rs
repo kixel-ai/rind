@@ -181,10 +181,7 @@ mod tests {
         for len in [127, 128, 129, 255, 256] {
             let whole = hash(64, &[&message[..len]]);
             for split in 0..=len {
-                assert_eq!(
-                    hash(64, &[&message[..split], &message[split..len]]),
-                    whole
-                );
+                assert_eq!(hash(64, &[&message[..split], &message[split..len]]), whole);
             }
         }
     }

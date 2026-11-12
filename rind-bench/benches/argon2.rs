@@ -16,9 +16,7 @@ fn argon2(c: &mut Criterion) {
     for (name, memory_kib, passes, lanes) in COSTS {
         let mut group = c.benchmark_group(format!("argon2id-{name}"));
         group.sample_size(10);
-        group.throughput(Throughput::Bytes(
-            memory_kib as u64 * 1024 * passes as u64,
-        ));
+        group.throughput(Throughput::Bytes(memory_kib as u64 * 1024 * passes as u64));
         let mut out = [0u8; 32];
 
         group.bench_function("rustcrypto", |b| {

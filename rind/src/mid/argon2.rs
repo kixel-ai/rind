@@ -186,7 +186,14 @@ impl Geometry {
 
     // The reference implementation's `index_alpha`: the column `random`
     // picks, nonuniformly, from the blocks this one may reference.
-    fn reference_index(&self, pass: u32, slice: usize, index: usize, random: u32, same_lane: bool) -> usize {
+    fn reference_index(
+        &self,
+        pass: u32,
+        slice: usize,
+        index: usize,
+        random: u32,
+        same_lane: bool,
+    ) -> usize {
         // The blocks finished before this one, less the one just before it,
         // which it takes anyway, and less, in another lane, the segment
         // being filled alongside this one.
@@ -367,8 +374,20 @@ mod tests {
             ),
         ] {
             let mut out = [0u8; 32];
-            argon2id(cost(1 << log_memory, passes, lanes), password, salt, &[], &[], &mut out).unwrap();
-            assert_eq!(hex::encode(out), tag, "m=2^{log_memory} t={passes} p={lanes}");
+            argon2id(
+                cost(1 << log_memory, passes, lanes),
+                password,
+                salt,
+                &[],
+                &[],
+                &mut out,
+            )
+            .unwrap();
+            assert_eq!(
+                hex::encode(out),
+                tag,
+                "m=2^{log_memory} t={passes} p={lanes}"
+            );
         }
     }
 
@@ -377,12 +396,22 @@ mod tests {
         // Memory that rounds down, lanes that do not divide it, several
         // passes, and tags around H''s 64-byte boundary and longer than a
         // block.
-        for (memory_kib, passes, lanes) in [(8, 1, 1), (19, 2, 1), (37, 3, 3), (64, 1, 8), (300, 2, 5)] {
+        for (memory_kib, passes, lanes) in
+            [(8, 1, 1), (19, 2, 1), (37, 3, 3), (64, 1, 8), (300, 2, 5)]
+        {
             for out_len in [4, 63, 64, 65, 96, 97, 1025] {
                 let password = b"correct horse battery staple";
                 let salt = b"NaCl and pepper";
                 let mut ours = vec![0u8; out_len];
-                argon2id(cost(memory_kib, passes, lanes), password, salt, b"key", b"data", &mut ours).unwrap();
+                argon2id(
+                    cost(memory_kib, passes, lanes),
+                    password,
+                    salt,
+                    b"key",
+                    b"data",
+                    &mut ours,
+                )
+                .unwrap();
 
                 let params = argon2::ParamsBuilder::new()
                     .m_cost(memory_kib)
@@ -400,8 +429,13 @@ mod tests {
                 )
                 .unwrap();
                 let mut expected = vec![0u8; out_len];
-                theirs.hash_password_into(password, salt, &mut expected).unwrap();
-                assert_eq!(ours, expected, "m={memory_kib} t={passes} p={lanes} T={out_len}");
+                theirs
+                    .hash_password_into(password, salt, &mut expected)
+                    .unwrap();
+                assert_eq!(
+                    ours, expected,
+                    "m={memory_kib} t={passes} p={lanes} T={out_len}"
+                );
             }
         }
     }

@@ -238,11 +238,15 @@ fn ml_dsa_set<P: rind::signature::sign::MlDsaParameterSet>(
 #[test]
 fn argon2() {
     let params = rind::argon2::Params::new(32, 2, 2).unwrap();
-    independent("Argon2id", [*b"password one", *b"password two"], |password| {
-        let mut out = [0u8; 32];
-        rind::argon2::derive(params, password, b"saltsalt", &mut out).unwrap();
-        black_box(out)
-    });
+    independent(
+        "Argon2id",
+        [*b"password one", *b"password two"],
+        |password| {
+            let mut out = [0u8; 32];
+            rind::argon2::derive(params, password, b"saltsalt", &mut out).unwrap();
+            black_box(out)
+        },
+    );
 }
 
 /// The key `seed` expands to, as PKCS#8 in RFC 9881's expanded form, which

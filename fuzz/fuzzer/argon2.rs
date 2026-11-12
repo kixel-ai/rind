@@ -31,12 +31,19 @@ fuzz_target!(|input: Input| {
     let ours_params = ours::Params::new(memory_kib, passes, lanes);
     let theirs_params = argon2::Params::new(memory_kib, passes, lanes, None);
     // RustCrypto refuses only what RFC 9106 does, as rind does.
-    assert_eq!(ours_params.is_ok(), theirs_params.is_ok(), "{ours_params:?}");
+    assert_eq!(
+        ours_params.is_ok(),
+        theirs_params.is_ok(),
+        "{ours_params:?}"
+    );
     let (Ok(ours_params), Ok(theirs_params)) = (ours_params, theirs_params) else {
         return;
     };
-    let theirs =
-        argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, theirs_params);
+    let theirs = argon2::Argon2::new(
+        argon2::Algorithm::Argon2id,
+        argon2::Version::V0x13,
+        theirs_params,
+    );
 
     // Lengths around BLAKE2b's 64-byte output, where H' changes form.
     match input.len % 6 {
@@ -56,7 +63,11 @@ fn check<const N: usize>(input: &Input, theirs: &argon2::Argon2, params: ours::P
     let mut theirs_out = [0; N];
     let theirs_result = theirs.hash_password_into(password, salt, &mut theirs_out);
     // Both refuse a salt shorter than 8 bytes.
-    assert_eq!(ours_result.is_ok(), theirs_result.is_ok(), "{ours_result:?}");
+    assert_eq!(
+        ours_result.is_ok(),
+        theirs_result.is_ok(),
+        "{ours_result:?}"
+    );
     if ours_result.is_err() {
         assert_eq!(ours_result, Err(rind::Error::WrongLength));
         return;
