@@ -35,11 +35,12 @@ theorem beNat_drop_zeros (l : List U8) (n : Nat) (h : ∀ x ∈ l.take n, x = 0#
 
 theorem trim_leading_zeroes_spec (bytes : Slice U8) :
     low.posint.trim_leading_zeroes bytes ⦃ s =>
-      beNat s.val = beNat bytes.val ∧ s.length ≤ bytes.length ⦄ := by
+      beNat s.val = beNat bytes.val ∧ s.length ≤ bytes.length ∧ (0 < s.length → s.val[0]! ≠ 0#u8) ⦄ := by
   unfold low.posint.trim_leading_zeroes low.posint.trim_leading_zeroes_loop
   step with loop.spec_decr_nat (fun st : Usize => bytes.length - st.val)
     (fun st : Usize => st.val ≤ bytes.length ∧ ∀ x ∈ bytes.val.take st.val, x = 0#u8)
-    (fun st : Usize => st.val ≤ bytes.length ∧ ∀ x ∈ bytes.val.take st.val, x = 0#u8) as ⟨start, hle, hz⟩
+    (fun st : Usize => st.val ≤ bytes.length ∧ (∀ x ∈ bytes.val.take st.val, x = 0#u8) ∧
+      (st.val < bytes.length → bytes.val[st.val]! ≠ 0#u8)) as ⟨start, hle, hz, hnz⟩
   · intro st ⟨hle, hz⟩
     unfold low.posint.trim_leading_zeroes_loop.body
     step*
@@ -51,11 +52,37 @@ theorem trim_leading_zeroes_spec (bytes : Slice U8) :
       · exact hz x hx
       · simp [List.getElem?_eq_getElem (by scalar_tac : st.val < bytes.val.length)] at hx
         rw [hx, ← i1_post]; assumption
-    all_goals exact ⟨hle, hz⟩
+    · refine ⟨hle, hz, fun _ => ?_⟩
+      rw [getElem!_pos _ _ (by scalar_tac), ← i1_post]
+      assumption
   · exact ⟨by simp, by simp⟩
   · step*
-    refine ⟨?_, by scalar_tac⟩
-    rw [s_post]; exact beNat_drop_zeros _ _ hz
+    refine ⟨?_, by scalar_tac, fun h => ?_⟩
+    · rw [s_post]; exact beNat_drop_zeros _ _ hz
+    · rw [s_post, List.getElem!_drop, Nat.add_zero]
+      apply hnz
+      have : s.length = bytes.length - start.val := by scalar_tac
+      omega
+
+/-- A number whose first byte is nonzero is at least `256` to the rest's
+length. -/
+theorem beNat_ge_of_head (l : List U8) (h : 0 < l.length) (h0 : l[0]! ≠ 0#u8) :
+    256 ^ (l.length - 1) ≤ beNat l := by
+  obtain ⟨x, t, rfl⟩ : ∃ x t, l = x :: t := by
+    cases l with
+    | nil => simp at h
+    | cons x t => exact ⟨x, t, rfl⟩
+  have hx : 1 ≤ x.val := by
+    by_contra hc
+    apply h0
+    simp only [List.getElem!_cons_zero]
+    rw [UScalar.eq_equiv]; simp; omega
+  rw [show x :: t = [x] ++ t from rfl, beNat_append, List.length_append, List.length_singleton,
+    Nat.add_sub_cancel_left]
+  have h1 : beNat [x] = x.val := by simp [beNat, leNat]
+  rw [h1]
+  have : 256 ^ t.length ≤ x.val * 256 ^ t.length := Nat.le_mul_of_pos_left _ hx
+  omega
 
 theorem set_append_replicate {α : Type} (ws : List α) (n : Nat) (z x : α) (hn : 1 ≤ n) :
     (ws ++ List.replicate n z).set ws.length x = (ws ++ [x]) ++ List.replicate (n - 1) z := by
@@ -183,13 +210,18 @@ theorem from_bytes_loop1_spec (b : Slice U8) (iter : core.ops.range.Range Usize)
   · exact ⟨rfl, hstart, htop⟩
 
 /-- OS2IP: `from_bytes` reads big-endian bytes, up to 1024 of them, as the
-number they encode, with no words set above its length. -/
+number they encode, with no words set above its length, and its top word
+nonzero. -/
 theorem from_bytes_spec (bytes : Slice U8) (hlen : bytes.length ≤ 1024) :
     low.posint.PosInt.from_bytes 128#usize bytes ⦃ r => ∃ p, r = .Ok p ∧ p.used.val ≤ 128 ∧
-      wordsNat (p.words.val.drop p.used.val) = 0 ∧ wordsNat (lowWords p p.used) = beNat bytes.val ⦄ := by
+      wordsNat (p.words.val.drop p.used.val) = 0 ∧ wordsNat (lowWords p p.used) = beNat bytes.val ∧
+      (p.used.val = 0 ∨ 2 ^ (64 * (p.used.val - 1)) ≤ beNat bytes.val) ⦄ := by
   unfold low.posint.PosInt.from_bytes low.posint.PosInt.zero
-  step with trim_leading_zeroes_spec as ⟨b1, hb1v, hb1l⟩
+  step with trim_leading_zeroes_spec as ⟨b1, hb1v, hb1l, hb1h⟩
   have hbL : b1.length = b1.val.length := rfl
+  have hb1ge : 0 < b1.length → 2 ^ (8 * (b1.length - 1)) ≤ beNat bytes.val := fun h => by
+    rw [← hb1v, pow_mul]
+    exact beNat_ge_of_head _ (by omega) (hb1h h)
   step*
   have hfull : full.val = b1.length / 8 := by rw [full_post]; rfl
   step with from_bytes_loop0_spec b1 (by omega) { start := 0#usize, «end» := full } hfull (by scalar_tac)
@@ -219,20 +251,34 @@ theorem from_bytes_spec (bytes : Slice U8) (hlen : bytes.length ≤ 1024) :
     have hnwv : nw.val = (ws ++ [top]) ++ List.replicate (128 - ws.length - 1) 0#u64 := by
       rw [hnw, Array.set_val_eq, hws, hfw, ← hwl, set_append_replicate _ _ _ _ (by omega)]
     have hu1' : u1.val = (ws ++ [top]).length := by simp [hu1, hfw]
-    refine ⟨_, rfl, by scalar_tac, ?_, ?_⟩
+    refine ⟨_, rfl, by scalar_tac, ?_, ?_, Or.inr ?_⟩
     · simp only [hnwv, hu1', List.drop_left]
       exact wordsNat_replicate_zero _
     · simp only [lowWords, hnwv, hu1', List.take_left]
       rw [wordsNat_append, ← hb1v, hval, hwl]
       simp [wordsNat]; ring
+    · have hi4p : 0 < i4.val := by
+        by_contra hc
+        have : i4.val = 0 := by omega
+        rw [this] at htop; simp [beNat, leNat] at htop; omega
+      have := hb1ge (by omega)
+      rw [hu1', List.length_append, List.length_singleton, Nat.add_sub_cancel, ← hfw]
+      calc 2 ^ (64 * full.val) ≤ 2 ^ (8 * (b1.length - 1)) := Nat.pow_le_pow_right (by norm_num) (by omega)
+        _ ≤ _ := this
   · rename_i heq
     have htop0 : top.val = 0 := by simpa [UScalar.eq_equiv] using heq
     simp only [WP.spec_ok]
-    refine ⟨_, rfl, by scalar_tac, ?_, ?_⟩
+    refine ⟨_, rfl, by scalar_tac, ?_, ?_, ?_⟩
     · simp only [hws, show full.val = ws.length by rw [hfull, hwl], List.drop_left]
       exact hz
     · simp only [lowWords, hws, show full.val = ws.length by rw [hfull, hwl], List.take_left]
       rw [← hb1v, hval, htop0]; simp
+    · rcases Nat.eq_zero_or_pos full.val with h0 | h0
+      · exact Or.inl h0
+      · refine Or.inr ?_
+        have := hb1ge (by omega)
+        calc 2 ^ (64 * (full.val - 1)) ≤ 2 ^ (8 * (b1.length - 1)) := Nat.pow_le_pow_right (by norm_num) (by omega)
+          _ ≤ _ := this
 
 /-- `to_bytes`'s loop, with `i` words written at the back of `out`'s first
 `8 used` bytes: those bytes read as the low `i` words. -/

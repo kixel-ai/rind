@@ -809,7 +809,7 @@ theorem verify_pss_core_spec (hs : HashSpec inst H B L max Abs CAbs) (hnew : ins
     simp [this] at hne
   · rename_i heq
     have hlen : signature.length = k.val := by simpa [UScalar.eq_equiv] using heq
-    step with from_bytes_spec signature (by omega) as ⟨r, c, hr, hcu, hcz, hcv⟩
+    step with from_bytes_spec signature (by omega) as ⟨r, c, hr, hcu, hcz, hcv, _⟩
     subst hr
     simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
     have hC : wordsNat (lowWords c c.used) = beNat signature.val := hcv
