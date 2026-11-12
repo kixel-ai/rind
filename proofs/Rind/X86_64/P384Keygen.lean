@@ -202,7 +202,7 @@ theorem infinity_spec : mid.p384.JacobianMontPoint.infinity ⦃ pt => jrep none 
 /-- `add_inplace_affine` keeps the point for a zero digit, and otherwise adds
 the affine point, which must differ from it. -/
 @[step]
-theorem add_inplace_affine_spec (h : Runs) (pt : mid.p384.JacobianMontPoint) (p : mid.p384.AffineMontPoint)
+theorem add_inplace_affine_spec (_h : Runs) (pt : mid.p384.JacobianMontPoint) (p : mid.p384.AffineMontPoint)
     (digit : U8) :
     mid.p384.JacobianMontPoint.add_inplace_affine pt p digit ⦃ r =>
       (digit.val = 0 → r = pt) ∧
@@ -217,7 +217,7 @@ theorem add_inplace_affine_spec (h : Runs) (pt : mid.p384.JacobianMontPoint) (p 
   simp only [h0, ↓reduceIte, jrep]
   exact ha P1 P2 h1 h2 hne
 
-theorem double_inplace_n_spec (h : Runs) (iter : core.ops.range.Range Usize) (pt : mid.p384.JacobianMontPoint)
+theorem double_inplace_n_spec (_h : Runs) (iter : core.ops.range.Range Usize) (pt : mid.p384.JacobianMontPoint)
     (P : nist.Point) (hP : jrep P pt) (hle : iter.start.val ≤ iter.end.val) :
     mid.p384.JacobianMontPoint.double_inplace_n_loop iter pt ⦃ r =>
       jrep (Nat.iterate (fun Q => p384Add Q Q) (iter.end.val - iter.start.val) P) r ⦄ := by
