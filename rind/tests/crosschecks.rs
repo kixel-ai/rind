@@ -3062,49 +3062,121 @@ macro_rules! slh_dsa_crosschecks {
 }
 
 mod slh_dsa_sha2_128s {
-    slh_dsa_crosschecks!(SlhDsaSha2_128s, SLH_DSA_SHA2_128S, Sha2_128s, slh_dsa_sha2_128s, 16);
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_128s,
+        SLH_DSA_SHA2_128S,
+        Sha2_128s,
+        slh_dsa_sha2_128s,
+        16
+    );
 }
 
 mod slh_dsa_sha2_128f {
-    slh_dsa_crosschecks!(SlhDsaSha2_128f, SLH_DSA_SHA2_128F, Sha2_128f, slh_dsa_sha2_128f, 16);
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_128f,
+        SLH_DSA_SHA2_128F,
+        Sha2_128f,
+        slh_dsa_sha2_128f,
+        16
+    );
 }
 
 mod slh_dsa_sha2_192s {
-    slh_dsa_crosschecks!(SlhDsaSha2_192s, SLH_DSA_SHA2_192S, Sha2_192s, slh_dsa_sha2_192s, 24);
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_192s,
+        SLH_DSA_SHA2_192S,
+        Sha2_192s,
+        slh_dsa_sha2_192s,
+        24
+    );
 }
 
 mod slh_dsa_sha2_192f {
-    slh_dsa_crosschecks!(SlhDsaSha2_192f, SLH_DSA_SHA2_192F, Sha2_192f, slh_dsa_sha2_192f, 24);
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_192f,
+        SLH_DSA_SHA2_192F,
+        Sha2_192f,
+        slh_dsa_sha2_192f,
+        24
+    );
 }
 
 mod slh_dsa_sha2_256s {
-    slh_dsa_crosschecks!(SlhDsaSha2_256s, SLH_DSA_SHA2_256S, Sha2_256s, slh_dsa_sha2_256s, 32);
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_256s,
+        SLH_DSA_SHA2_256S,
+        Sha2_256s,
+        slh_dsa_sha2_256s,
+        32
+    );
 }
 
 mod slh_dsa_sha2_256f {
-    slh_dsa_crosschecks!(SlhDsaSha2_256f, SLH_DSA_SHA2_256F, Sha2_256f, slh_dsa_sha2_256f, 32);
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_256f,
+        SLH_DSA_SHA2_256F,
+        Sha2_256f,
+        slh_dsa_sha2_256f,
+        32
+    );
 }
 
 mod slh_dsa_shake_128s {
-    slh_dsa_crosschecks!(SlhDsaShake128s, SLH_DSA_SHAKE_128S, Shake128s, slh_dsa_shake_128s, 16);
+    slh_dsa_crosschecks!(
+        SlhDsaShake128s,
+        SLH_DSA_SHAKE_128S,
+        Shake128s,
+        slh_dsa_shake_128s,
+        16
+    );
 }
 
 mod slh_dsa_shake_128f {
-    slh_dsa_crosschecks!(SlhDsaShake128f, SLH_DSA_SHAKE_128F, Shake128f, slh_dsa_shake_128f, 16);
+    slh_dsa_crosschecks!(
+        SlhDsaShake128f,
+        SLH_DSA_SHAKE_128F,
+        Shake128f,
+        slh_dsa_shake_128f,
+        16
+    );
 }
 
 mod slh_dsa_shake_192s {
-    slh_dsa_crosschecks!(SlhDsaShake192s, SLH_DSA_SHAKE_192S, Shake192s, slh_dsa_shake_192s, 24);
+    slh_dsa_crosschecks!(
+        SlhDsaShake192s,
+        SLH_DSA_SHAKE_192S,
+        Shake192s,
+        slh_dsa_shake_192s,
+        24
+    );
 }
 
 mod slh_dsa_shake_192f {
-    slh_dsa_crosschecks!(SlhDsaShake192f, SLH_DSA_SHAKE_192F, Shake192f, slh_dsa_shake_192f, 24);
+    slh_dsa_crosschecks!(
+        SlhDsaShake192f,
+        SLH_DSA_SHAKE_192F,
+        Shake192f,
+        slh_dsa_shake_192f,
+        24
+    );
 }
 
 mod slh_dsa_shake_256s {
-    slh_dsa_crosschecks!(SlhDsaShake256s, SLH_DSA_SHAKE_256S, Shake256s, slh_dsa_shake_256s, 32);
+    slh_dsa_crosschecks!(
+        SlhDsaShake256s,
+        SLH_DSA_SHAKE_256S,
+        Shake256s,
+        slh_dsa_shake_256s,
+        32
+    );
 }
 
 mod slh_dsa_shake_256f {
-    slh_dsa_crosschecks!(SlhDsaShake256f, SLH_DSA_SHAKE_256F, Shake256f, slh_dsa_shake_256f, 32);
+    slh_dsa_crosschecks!(
+        SlhDsaShake256f,
+        SLH_DSA_SHAKE_256F,
+        Shake256f,
+        slh_dsa_shake_256f,
+        32
+    );
 }
