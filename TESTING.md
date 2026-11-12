@@ -12,7 +12,7 @@ A primitive is checked five ways:
   files](thirdparty/vectors/README.md), run by `cargo test`.
 - **Fuzz target**: a `fuzz/fuzzer/` target that compares rind with aws-lc-rs
   on fuzzed input. `fuzz.yml` runs each nightly, then replays its corpus on
-  every tier.
+  every tier and fuzzes it again against the portable backend.
 - **Differential test**: a `rind/tests/crosschecks.rs` test that compares rind
   with aws-lc-rs, run by `cargo test`.
 - **Constant time**: a test that marks the secrets. `admin/ctgrind` runs the
@@ -92,13 +92,13 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 | armv7 | crypto extension (most 32-bit Android) | `just armv7`: qemu `max` | the arm64 runner, which runs armv7 natively | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
 | armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | denied | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
 | armv7 | no NEON | `just armv7`: qemu Cortex-A15, denied | denied | ctgrind: denied (`no-neon`) |
-| portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | none: fuzz jobs build the native backends | ctgrind: the `portable` job forces this backend |
-| portable | 32-bit x86 (`i686`) | `just qemu i686`: clippy and release vectors and differential tests, natively on an x86_64 host; `build.yml`'s `i686-windows` and `android` jobs | none, as above | ctgrind's forced run, of the same code built for x86_64 |
-| portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | none, as above | ctgrind's forced run, of the same code built for x86_64 |
-| portable | riscv64gc Linux, glibc and musl | `just qemu riscv64` and `just qemu riscv64-musl`: as s390x | none, as above | as s390x |
-| portable | PowerPC Linux: powerpc64le, big-endian powerpc64 and powerpc | `just qemu powerpc64le`, `just qemu powerpc64`, and `just qemu powerpc`: as s390x | none, as above | as s390x |
-| portable | ARM before ARMv7 (Raspberry Pi 1 and Zero) | `just qemu armv6` and `just qemu armv6-softfloat`: as s390x, on qemu's ARM1176; `build.yml`'s `android` job: ARMv5TE Android | none, as above | as s390x |
-| portable | wasm32-wasip2 | `just wasm`: release vectors under wasmtime, in the nightly `build.yml`; no differential tests, since aws-lc does not build for wasm, and `just portable` runs the same Rust against it | none, as above | unchecked: a wasm engine compiles rind again, and its JIT may turn a select into a branch |
+| portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | `fuzz.yml`'s `fuzz-portable` job: every target, from the x86_64 corpus and a corpus of its own | ctgrind: the `portable` job forces this backend |
+| portable | 32-bit x86 (`i686`) | `just qemu i686`: clippy and release vectors and differential tests, natively on an x86_64 host; `build.yml`'s `i686-windows` and `android` jobs | the forced run's, of the same code built for x86_64 | ctgrind's forced run, of the same code built for x86_64 |
+| portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | as above | ctgrind's forced run, of the same code built for x86_64 |
+| portable | riscv64gc Linux, glibc and musl | `just qemu riscv64` and `just qemu riscv64-musl`: as s390x | as above | as s390x |
+| portable | PowerPC Linux: powerpc64le, big-endian powerpc64 and powerpc | `just qemu powerpc64le`, `just qemu powerpc64`, and `just qemu powerpc`: as s390x | as above | as s390x |
+| portable | ARM before ARMv7 (Raspberry Pi 1 and Zero) | `just qemu armv6` and `just qemu armv6-softfloat`: as s390x, on qemu's ARM1176; `build.yml`'s `android` job: ARMv5TE Android | as above | as s390x |
+| portable | wasm32-wasip2 | `just wasm`: release vectors under wasmtime, in the nightly `build.yml`; no differential tests, since aws-lc does not build for wasm, and `just portable` runs the same Rust against it | as above | unchecked: a wasm engine compiles rind again, and its JIT may turn a select into a branch |
 
 ## Vector suites
 
