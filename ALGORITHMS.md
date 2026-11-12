@@ -404,10 +404,13 @@ RSA blind signatures (RFC 9474) take no arithmetic of their own: a client
 blinds a message's RSASSA-PSS encoding by the public operation on a random
 blind and a Montgomery multiplication, the server signs it by the private
 operation above, checked against its public key, and the client unblinds the
-reply by the blind's inverse, from `bignum_modinv`, and verifies it before
-returning it.  Blinding and unblinding run in constant time in the message,
-its prefix and salt, and the blind, revealing only which candidate blinds
-rejection sampling discards.
+reply by the blind's inverse, from `bignum_modinv`.  Rather than
+RSASSA-PSS-VERIFY, which would branch on what a malicious reply unblinds to
+(1 unblinds to the inverse itself), the client checks in constant time that
+the result's public operation gives the very encoding it blinded.  Blinding
+and unblinding run in constant time in the message, its prefix and salt, and
+the blind, revealing only which candidate blinds rejection sampling discards
+and whether the reply was good.
 
 RSA key generation is supported for five fixed key sizes between 2048-8192-bits.
 All generated keys have e = 0x10001 and, as in aws-lc, d reduced mod

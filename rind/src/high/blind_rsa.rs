@@ -275,7 +275,6 @@ impl PublicKey {
             key: self.clone(),
             unblinder: unblinder.expect("set by a successful blind"),
             prefix,
-            digest,
         };
         Ok((BlindedMessage(blinded), blinding))
     }
@@ -329,12 +328,12 @@ pub struct Blinding {
     key: PublicKey,
     unblinder: rsa::Unblinder,
     prefix: [u8; PREFIX_LEN],
-    digest: [u8; HASH_LEN],
 }
 
 impl Blinding {
     /// Unblinds the server's reply into a signature of the blinded
-    /// message, checked against the public key.
+    /// message, checked to be one in constant time, so a malicious reply
+    /// learns nothing of the blind.
     ///
     /// For a Randomized variant, the signature begins with the message's
     /// random prefix, which [`PublicKey::verify`] reads.
@@ -348,13 +347,7 @@ impl Blinding {
             let (prefix, rest) = output.split_at_mut(prefix_len);
             let len = prefix_len
                 + (self.key.key)
-                    .finalize_pss::<Sha384>(
-                        algorithm.salt,
-                        &self.digest,
-                        &self.unblinder,
-                        blind_signature,
-                        rest,
-                    )?
+                    .finalize(&self.unblinder, blind_signature, rest)?
                     .len();
             // The prefix is revealed with the signature it begins.
             prefix.copy_from_slice(&self.prefix[..prefix_len]);
@@ -784,7 +777,7 @@ mod tests {
 
     /// Under `admin/ctgrind`, memcheck fails this if blinding branches on or
     /// indexes by the message, its prefix, salt, or blind, or signing by the
-    /// key, or unblinding by the blind's inverse.
+    /// key, or unblinding by the blind's inverse, for good replies or bad.
     #[test]
     fn stays_secret() {
         for algorithm in ALGORITHMS {
@@ -803,11 +796,27 @@ mod tests {
             .concat();
             ct::secret_slice(&random);
 
-            let (blinded, blinding) = public_key
-                .blind_with(&message, &mut SliceRandomSource(&random))
-                .unwrap();
+            let blind = || {
+                public_key
+                    .blind_with(&message, &mut SliceRandomSource(&random))
+                    .unwrap()
+            };
+            let (blinded, blinding) = blind();
             let blind_signature = key_pair.blind_sign(blinded.as_ref()).unwrap();
-            let signature = blinding.finalize(blind_signature.as_ref()).unwrap();
+            let blind_signature = blind_signature.as_ref();
+
+            // A malicious signer's replies: 1, which unblinds to the inverse
+            // itself, and a tampered signature.
+            let mut one = vec![0; blind_signature.len()];
+            *one.last_mut().unwrap() = 1;
+            let mut tampered = blind_signature.to_vec();
+            tampered[9] ^= 1;
+            for reply in [one, tampered] {
+                let (_, blinding) = blind();
+                assert_eq!(blinding.finalize(&reply).err(), Some(Error::BadSignature));
+            }
+
+            let signature = blinding.finalize(blind_signature).unwrap();
             public_key.verify(&[0x5a; 40], signature.as_ref()).unwrap();
         }
     }

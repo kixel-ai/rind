@@ -400,7 +400,7 @@ impl VerifyingKey {
     /// Blinds the RSASSA-PSS encoding of a message whose `H` digest is
     /// `hash`, as RFC 9474's Blind does: writes `m * r^e mod n`, for an `r`
     /// drawn uniformly from `rng`, to the front of `blinded`, as long as the
-    /// modulus, and returns `r`'s inverse, which unblinds its signature.
+    /// modulus, and returns the [`Unblinder`] that finalizes its signature.
     ///
     /// Refuses a key whose modulus shares a factor with `m`, which only one
     /// made to attack its clients gives more than negligibly often.
@@ -449,18 +449,22 @@ impl VerifyingKey {
         let x = self.0.public_op(r)?;
         let z = ct::into_public(self.0.mul(&m, &x));
         i2osp(&z, blinded)?;
-        Ok((blinded, Unblinder(inverse)))
+        Ok((blinded, Unblinder { inverse, m }))
     }
 
     /// Unblinds `blind_signature` with `unblinder`, as RFC 9474's Finalize
-    /// does, writing the result to the front of `signature` once it is an
-    /// RSASSA-PSS signature of the message whose `H` digest is `hash`.
+    /// does, writing the result to the front of `signature` once it is a
+    /// signature of the blinded message.
+    ///
+    /// RFC 9474 checks the result with RSASSA-PSS-VERIFY. This checks that
+    /// it is a signature of the very encoding that was blinded, which also
+    /// pins its salt, in constant time: a reply from a malicious signer, such
+    /// as 1, can unblind to the secret inverse itself, which PSS decoding
+    /// would branch on.
     ///
     /// Every failure is [`Error::BadSignature`].
-    pub(crate) fn finalize_pss<'a, H: Hash>(
+    pub(crate) fn finalize<'a>(
         &self,
-        salt: PssSalt,
-        hash: &[u8],
         unblinder: &Unblinder,
         blind_signature: &[u8],
         signature: &'a mut [u8],
@@ -476,19 +480,24 @@ impl VerifyingKey {
             return Err(Error::BadSignature);
         }
 
-        // The signature and its message are the client's to reveal, once
-        // the signature is checked.
-        let s = ct::into_public(self.0.mul(&z, &unblinder.0));
-        i2osp(&s, signature)?;
-        ct::public_slice(hash);
-        self.verify_pss_digest::<H>(Some(salt), signature, hash)?;
+        // `z` and the inverse are below `n`, and so is their product.
+        let s = self.0.mul(&z, &unblinder.inverse);
+        let m = self.0.public_op(s.clone())?;
+        if !ct::into_public(m.equals(&unblinder.m)) {
+            return Err(Error::BadSignature);
+        }
+        // The signature is the client's to reveal, once it is checked.
+        i2osp(&ct::into_public(s), signature)?;
         Ok(signature)
     }
 }
 
-/// The inverse of a blinding factor `r` mod the modulus, which unblinds a
-/// signature of the blinded message.
-pub(crate) struct Unblinder(RsaInt);
+/// What finalizes a blinded message's signature: the inverse of its blind
+/// mod the modulus, and the encoding that was blinded, to check it against.
+pub(crate) struct Unblinder {
+    inverse: RsaInt,
+    m: RsaInt,
+}
 
 /// An integer at the width of the widest modulus.
 type RsaInt = PosInt<{ rsa_pub::MAX_PUBLIC_MODULUS_BYTES / 8 }>;
