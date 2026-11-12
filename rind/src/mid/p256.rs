@@ -1667,7 +1667,7 @@ mod tests {
     /// against public values, so they declassify the encoding first.
     fn public_bytes(scalar: &Scalar) -> [u8; Scalar::BYTES] {
         let bytes = scalar.as_bytes();
-        crate::low::ct::public_slice(&bytes);
+        low::ct::public_slice(&bytes);
         bytes
     }
 
