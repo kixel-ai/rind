@@ -204,11 +204,50 @@ fn signatures() {
             // Above the group order.
             let out_of_range = vec![0xff; rind_private.len()];
             assert!(rind().sign(scheme, b"data", &out_of_range).is_err());
+
+            // Both take the compressed point.
+            let (x, y) = rind_public[1..].split_at(rind_private.len());
+            let compressed = [&[2 | (y[y.len() - 1] & 1)], x].concat();
+            let signature = rind().sign(scheme, b"data", &rind_private).unwrap();
+            rind()
+                .verify_signature(scheme, b"data", &compressed, &signature)
+                .unwrap();
+            reference()
+                .verify_signature(scheme, b"data", &compressed, &signature)
+                .unwrap();
         }
     }
-    assert_eq!(
-        rind().signature_key_gen(SignatureScheme::ED448),
-        Err(CryptoError::UnsupportedSignatureScheme)
+    for scheme in [
+        SignatureScheme::ED448,
+        SignatureScheme::ECDSA_SECP521R1_SHA512,
+    ] {
+        assert_eq!(
+            rind().signature_key_gen(scheme),
+            Err(CryptoError::UnsupportedSignatureScheme)
+        );
+        assert_eq!(
+            reference().signature_key_gen(scheme),
+            Err(CryptoError::UnsupportedSignatureScheme)
+        );
+    }
+}
+
+#[test]
+fn ed25519_small_order() {
+    // The identity as the key, with R the identity and S zero, verifies any
+    // message under cofactorless verification; both refuse it.
+    let mut identity = [0u8; 32];
+    identity[0] = 1;
+    let signature = [&identity[..], &[0; 32]].concat();
+    assert!(
+        rind()
+            .verify_signature(SignatureScheme::ED25519, b"data", &identity, &signature)
+            .is_err()
+    );
+    assert!(
+        reference()
+            .verify_signature(SignatureScheme::ED25519, b"data", &identity, &signature)
+            .is_err()
     );
 }
 
@@ -299,12 +338,50 @@ fn hpke() {
             }
         }
     }
-    let x448 = HpkeConfig(
-        HpkeKemType::DhKem448,
-        HpkeKdfType::HkdfSha512,
-        HpkeAeadType::AesGcm256,
-    );
-    assert!(rind().derive_hpke_keypair(x448, &bytes(64)).is_err());
+    for kem in [HpkeKemType::DhKem448, HpkeKemType::DhKemP521] {
+        let config = || HpkeConfig(kem, HpkeKdfType::HkdfSha512, HpkeAeadType::AesGcm256);
+        assert!(rind().derive_hpke_keypair(config(), &bytes(66)).is_err());
+        assert!(
+            reference()
+                .derive_hpke_keypair(config(), &bytes(66))
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn hpke_export_length() {
+    for (kdf, hash_len) in [
+        (HpkeKdfType::HkdfSha256, 32),
+        (HpkeKdfType::HkdfSha384, 48),
+        (HpkeKdfType::HkdfSha512, 64),
+    ] {
+        let config = || HpkeConfig(HpkeKemType::DhKem25519, kdf, HpkeAeadType::Export);
+        let key = rind().derive_hpke_keypair(config(), &bytes(32)).unwrap();
+        // RFC 9180's longest export, 255 hash outputs, matches.
+        let (enc, secret) = rind()
+            .hpke_setup_sender_and_export(config(), &key.public, b"", b"", 255 * hash_len)
+            .unwrap();
+        let theirs = reference()
+            .hpke_setup_receiver_and_export(config(), &enc, &key.private, b"", b"", 255 * hash_len)
+            .unwrap();
+        assert_eq!(&*secret, &*theirs);
+        // A longer one, up to one that cannot be allocated, is refused first.
+        for len in [255 * hash_len + 1, usize::MAX] {
+            assert_eq!(
+                rind()
+                    .hpke_setup_sender_and_export(config(), &key.public, b"", b"", len)
+                    .err(),
+                Some(CryptoError::ExporterError)
+            );
+            assert_eq!(
+                rind()
+                    .hpke_setup_receiver_and_export(config(), &enc, &key.private, b"", b"", len)
+                    .err(),
+                Some(CryptoError::ExporterError)
+            );
+        }
+    }
 }
 
 #[test]

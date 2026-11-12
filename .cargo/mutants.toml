@@ -103,7 +103,7 @@ exclude_re = [
   'rind/src/mid/rsa_priv\.rs:296:44: replace \+ with \*$',
   'rind/src/mid/rsa_priv\.rs:298:\d+: replace \+ with \*$',
   'rind/src/mid/rsa_priv/exponents\.rs:57:\d+: replace \* with \+ in Exponents::derive$',
-  'rind-openmls/src/provider\.rs:188:\d+: replace \+ with \* in <impl OpenMlsCrypto for RustCrypto>::sign$',
+  'rind-openmls/src/provider\.rs:201:\d+: replace \+ with \* in <impl OpenMlsCrypto for RustCrypto>::sign$',
   # Equivalent: a comparison whose two forms differ only where both branches
   # give the same result, or a step that computes the same value another way,
   # such as squaring rather than multiplying to the same power.

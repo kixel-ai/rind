@@ -92,7 +92,6 @@ fn signatures() {
         SignatureScheme::ED25519,
         SignatureScheme::ECDSA_SECP256R1_SHA256,
         SignatureScheme::ECDSA_SECP384R1_SHA384,
-        SignatureScheme::ECDSA_SECP521R1_SHA512,
     ] {
         let crypto = RustCrypto::default();
         let (private, public_key) = crypto.signature_key_gen(scheme).unwrap();
@@ -111,7 +110,6 @@ fn hpke() {
         HpkeKemType::DhKem25519,
         HpkeKemType::DhKemP256,
         HpkeKemType::DhKemP384,
-        HpkeKemType::DhKemP521,
     ] {
         let config = || HpkeConfig(kem, HpkeKdfType::HkdfSha256, HpkeAeadType::AesGcm128);
         let crypto = RustCrypto::default();

@@ -10,11 +10,7 @@ use rind::signature::{
 use rind::{aead, digest, hmac, hpke};
 use tls_codec::SecretVLBytes;
 
-/// The ciphersuites openmls_rust_crypto offers, which are the classical
-/// ones openmls's default capabilities and basic credentials cover. rind also
-/// has every primitive of P-384's and P-521's suites, but openmls cannot
-/// create their credentials, and the MLS interop vectors for them break RFC
-/// 9420, so nothing checks them.
+/// The ciphersuites openmls_rust_crypto offers.
 const CIPHERSUITES: [Ciphersuite; 3] = [
     Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519,
     Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519,
@@ -161,12 +157,29 @@ impl OpenMlsCrypto for RustCrypto {
         pk: &[u8],
         signature: &[u8],
     ) -> Result<(), CryptoError> {
-        let algorithm = match alg {
-            SignatureScheme::ED25519 => &verify::ED25519,
-            _ => ecdsa(alg)?.0.verification,
+        let key = match alg {
+            SignatureScheme::ED25519 => PublicKey::new(&verify::ED25519, pk),
+            _ => {
+                let (algorithm, _) = ecdsa(alg)?;
+                // openmls_rust_crypto takes a compressed point too, which rind
+                // decompresses only inside a `SubjectPublicKeyInfo`:
+                // SEQUENCE { SEQUENCE { id-ecPublicKey, curve }, BIT STRING point }.
+                if pk.len() > MAX_POINT_LEN {
+                    return Err(CryptoError::CryptoLibraryError);
+                }
+                let id_len = EC_PUBLIC_KEY.len() + algorithm.curve.len();
+                let spki = [
+                    &[0x30, (5 + id_len + pk.len()) as u8, 0x30, id_len as u8],
+                    &EC_PUBLIC_KEY[..],
+                    algorithm.curve,
+                    &[0x03, 1 + pk.len() as u8, 0x00],
+                    pk,
+                ]
+                .concat();
+                PublicKey::from_spki(algorithm.verification, &spki)
+            }
         };
-        PublicKey::new(algorithm, pk)
-            .map_err(|_| CryptoError::CryptoLibraryError)?
+        key.map_err(|_| CryptoError::CryptoLibraryError)?
             .verify(data, signature)
             .map_err(|_| CryptoError::InvalidSignature)
     }
@@ -258,7 +271,7 @@ impl OpenMlsCrypto for RustCrypto {
     ) -> Result<(Vec<u8>, ExporterSecret), CryptoError> {
         let (kem, suite) = hpke_suite(&config)?;
         let pk_r = hpke::PublicKey::new(kem, pk_r).map_err(|_| CryptoError::InvalidPublicKey)?;
-        let mut secret = vec![0u8; exporter_length];
+        let mut secret = exporter_buffer(&config, exporter_length)?;
         // The AEAD is part of the context, so a suite with one exports from
         // its full context, not an export-only one.
         let (enc, exported) = match suite {
@@ -284,7 +297,7 @@ impl OpenMlsCrypto for RustCrypto {
         let (kem, suite) = hpke_suite(&config)?;
         let sk_r = hpke::PrivateKey::from_scalar(kem, sk_r)
             .map_err(|_| CryptoError::ReceiverSetupError)?;
-        let mut secret = vec![0u8; exporter_length];
+        let mut secret = exporter_buffer(&config, exporter_length)?;
         match suite {
             Some(suite) => hpke::Recipient::new(suite, &sk_r, enc, info)
                 .map(|recipient| recipient.export(exporter_context, &mut secret)),
@@ -350,32 +363,38 @@ impl std::fmt::Display for RandError {
 
 impl std::error::Error for RandError {}
 
-/// The longest ECDSA scalar, P-521's.
-const MAX_SCALAR_LEN: usize = 66;
+/// The longest ECDSA scalar, P-384's.
+const MAX_SCALAR_LEN: usize = 48;
+
+/// The longest ECDSA public key, P-384's uncompressed point.
+const MAX_POINT_LEN: usize = 1 + 2 * MAX_SCALAR_LEN;
+
+/// The DER of `id-ecPublicKey`'s OID.
+const EC_PUBLIC_KEY: [u8; 9] = [0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01];
 
 struct Ecdsa {
     signing: &'static EcdsaSigningAlgorithm,
     verification: &'static rind::signature::VerificationAlgorithm,
+    /// The DER of the curve's OID.
+    curve: &'static [u8],
 }
 
 /// Returns the ECDSA algorithms for `alg`, with DER signatures as MLS
-/// carries them, and its scalar's length.
+/// carries them, and its scalar's length. P-521, like openmls_rust_crypto,
+/// is unsupported.
 fn ecdsa(alg: SignatureScheme) -> Result<(Ecdsa, usize), CryptoError> {
-    let (signing, verification, scalar_len) = match alg {
+    let (signing, verification, curve, scalar_len): (_, _, &[u8], _) = match alg {
         SignatureScheme::ECDSA_SECP256R1_SHA256 => (
             &sign::ECDSA_P256_SHA256_ASN1,
             &verify::ECDSA_P256_SHA256_ASN1,
+            &[0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07],
             32,
         ),
         SignatureScheme::ECDSA_SECP384R1_SHA384 => (
             &sign::ECDSA_P384_SHA384_ASN1,
             &verify::ECDSA_P384_SHA384_ASN1,
+            &[0x06, 0x05, 0x2b, 0x81, 0x04, 0x00, 0x22],
             48,
-        ),
-        SignatureScheme::ECDSA_SECP521R1_SHA512 => (
-            &sign::ECDSA_P521_SHA512_ASN1,
-            &verify::ECDSA_P521_SHA512_ASN1,
-            66,
         ),
         _ => return Err(CryptoError::UnsupportedSignatureScheme),
     };
@@ -383,6 +402,7 @@ fn ecdsa(alg: SignatureScheme) -> Result<(Ecdsa, usize), CryptoError> {
         Ecdsa {
             signing,
             verification,
+            curve,
         },
         scalar_len,
     ))
@@ -413,6 +433,20 @@ fn aead_key(
     Ok((key, aead::Nonce::assume_unique_for_key(nonce)))
 }
 
+/// Returns a buffer for an export of `len` bytes, refusing one longer than
+/// RFC 9180 allows, 255 of the KDF's hash outputs, before allocating it.
+fn exporter_buffer(config: &HpkeConfig, len: usize) -> Result<Vec<u8>, CryptoError> {
+    let hash_len = match config.1 {
+        HpkeKdfType::HkdfSha256 => 32,
+        HpkeKdfType::HkdfSha384 => 48,
+        HpkeKdfType::HkdfSha512 => 64,
+    };
+    if len > 255 * hash_len {
+        return Err(CryptoError::ExporterError);
+    }
+    Ok(vec![0; len])
+}
+
 fn hpke_kdf(kdf: HpkeKdfType) -> &'static hpke::Kdf {
     match kdf {
         HpkeKdfType::HkdfSha256 => &hpke::HKDF_SHA256,
@@ -422,13 +456,13 @@ fn hpke_kdf(kdf: HpkeKdfType) -> &'static hpke::Kdf {
 }
 
 /// Returns `config`'s KEM, and its suite unless its AEAD is export-only.
+/// P-521, like openmls_rust_crypto, is unsupported.
 fn hpke_suite(
     config: &HpkeConfig,
 ) -> Result<(&'static hpke::Kem, Option<hpke::Suite>), CryptoError> {
     let kem = match config.0 {
         HpkeKemType::DhKemP256 => &hpke::DHKEM_P256_HKDF_SHA256,
         HpkeKemType::DhKemP384 => &hpke::DHKEM_P384_HKDF_SHA384,
-        HpkeKemType::DhKemP521 => &hpke::DHKEM_P521_HKDF_SHA512,
         HpkeKemType::DhKem25519 => &hpke::DHKEM_X25519_HKDF_SHA256,
         _ => return Err(CryptoError::UnsupportedCiphersuite),
     };

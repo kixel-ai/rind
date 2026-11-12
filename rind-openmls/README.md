@@ -15,7 +15,7 @@ let provider = OpenMlsRustCrypto::default();
 ```
 
 It offers the ciphersuites openmls_rust_crypto does: `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`, `MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519`, and `MLS_128_DHKEMP256_AES128GCM_SHA256_P256`.
-It signs and verifies with Ed25519 and ECDSA on P-256, P-384, and P-521, seals HPKE to X25519, P-256, P-384, and P-521, and draws randomness from the system's source.
+It signs and verifies with Ed25519 and ECDSA on P-256 and P-384, seals HPKE to X25519, P-256, and P-384, and draws randomness from the system's source.
 
 What rind cannot back:
 
