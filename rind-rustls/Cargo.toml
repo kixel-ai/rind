@@ -9,6 +9,13 @@ categories = ["network-programming", "cryptography"]
 rust-version.workspace = true
 readme = "README.md"
 
+# The provider admin/adapter-api diffs this crate's API against.
+[package.metadata.rind.api]
+crate = "rustls"
+module = "crypto::aws_lc_rs"
+features = ["aws_lc_rs"]
+skip = { fips = "builds AWS-LC's FIPS module, which rind does not offer" }
+
 [dependencies]
 rind = { version = "0.3.2", path = "../rind" }
 rustls = { version = "0.23.20", default-features = false, features = ["std", "tls12"] }

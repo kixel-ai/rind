@@ -19,6 +19,14 @@ upstream = "1"
 # `ring-io` and `ring-sig-verify` gate what they gate there; the rest change
 # nothing. `fips` is left out, so a manifest asking for it fails to
 # resolve: rind is not FIPS validated.
+# The provider admin/adapter-api diffs this crate's API against.
+[package.metadata.rind.api]
+crate = "aws-lc-rs"
+module = ""
+# aws-lc-rs fails to build without one of its C libraries.
+features = ["aws-lc-sys"]
+skip = { fips = "builds AWS-LC's FIPS module, which rind does not offer", asan = "builds AWS-LC under AddressSanitizer", bindgen = "generates AWS-LC's bindings with libclang" }
+
 [features]
 default = ["aws-lc-sys", "alloc", "ring-io", "ring-sig-verify"]
 alloc = []

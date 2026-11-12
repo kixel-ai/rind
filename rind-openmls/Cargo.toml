@@ -20,6 +20,11 @@ upstream = "0.6"
 # has, `draft-ietf-mls-pq-ciphersuites`, `targeted-messages-draft`, and
 # `virtual-clients-draft`, need primitives rind lacks, so a manifest naming one
 # fails to resolve instead.
+# The provider admin/adapter-api diffs this crate's API against.
+[package.metadata.rind.api]
+crate = "openmls_rust_crypto"
+module = ""
+
 [features]
 extensions-draft = [
   "openmls_traits/extensions-draft",
