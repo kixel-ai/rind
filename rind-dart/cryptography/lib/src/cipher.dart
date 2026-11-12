@@ -60,9 +60,13 @@ SecretBox _split(Uint8List sealed, List<int> nonce) {
 }
 
 /// [secretBox]'s ciphertext followed by its tag, as rind opens it.
+///
+/// A tag of another length never authenticates, even when the ciphertext's
+/// last bytes would complete it.
 Uint8List _joined(SecretBox secretBox) {
   final cipherText = secretBox.cipherText;
   final mac = secretBox.mac.bytes;
+  if (mac.length != 16) throw SecretBoxAuthenticationError();
   return Uint8List(cipherText.length + mac.length)
     ..setAll(0, cipherText)
     ..setAll(cipherText.length, mac);
@@ -170,7 +174,7 @@ final class _Chacha20Poly1305 extends Chacha20 with _Aead {
 /// XChaCha20-Poly1305, whose nonces rind always picks itself: a nonce the
 /// caller passes to [encrypt] throws [UnsupportedError].
 final class _Xchacha20Poly1305 extends Xchacha20 {
-  _Xchacha20Poly1305() : super.constructor();
+  _Xchacha20Poly1305(Random? random) : super.constructor(random: random);
 
   @override
   MacAlgorithm get macAlgorithm => DartXchacha20.poly1305AeadMacAlgorithm;

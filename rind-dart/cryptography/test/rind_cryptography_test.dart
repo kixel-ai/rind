@@ -279,6 +279,12 @@ void main() {
           SecretBox([1, 2, 4], nonce: box.nonce, mac: box.mac),
           SecretBox(box.cipherText, nonce: box.nonce, mac: Mac(_bytes(16))),
           SecretBox(box.cipherText, nonce: box.nonce, mac: Mac(_bytes(15))),
+          // The tag's first byte moved to the ciphertext's end.
+          SecretBox(
+            [...box.cipherText, box.mac.bytes[0]],
+            nonce: box.nonce,
+            mac: Mac(box.mac.bytes.sublist(1)),
+          ),
         ];
         for (final box in tampered) {
           await expectLater(
@@ -385,6 +391,17 @@ void main() {
       final first = await cipher.encrypt([1], secretKey: secretKey);
       final second = await cipher.encrypt([1], secretKey: secretKey);
       expect(first.nonce, isNot(second.nonce));
+      await expectLater(
+        cipher.decrypt(
+          SecretBox(
+            [...first.cipherText, first.mac.bytes[0]],
+            nonce: first.nonce,
+            mac: Mac(first.mac.bytes.sublist(1)),
+          ),
+          secretKey: secretKey,
+        ),
+        _throwsAuthentication,
+      );
     });
   });
 
@@ -396,6 +413,16 @@ void main() {
       await (await dartCipher.newSecretKey()).extractBytes(),
     );
     expect(rindCipher.newNonce(), dartCipher.newNonce());
+    expect(
+      await (await _rind
+              .withRandom(Random(3))
+              .xchacha20Poly1305Aead()
+              .newSecretKey())
+          .extractBytes(),
+      await (await DartCryptography(
+        random: Random(3),
+      ).xchacha20Poly1305Aead().newSecretKey()).extractBytes(),
+    );
 
     final rindPair = await _rind.withRandom(Random(2)).ed25519().newKeyPair();
     final dartPair = await DartCryptography(

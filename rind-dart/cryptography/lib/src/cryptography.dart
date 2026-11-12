@@ -152,7 +152,7 @@ final class RindCryptography extends Cryptography {
       throw _unsupported('XChaCha20 without Poly1305');
 
   @override
-  Xchacha20 xchacha20Poly1305Aead() => _Xchacha20Poly1305();
+  Xchacha20 xchacha20Poly1305Aead() => _Xchacha20Poly1305(_random);
 
   @override
   String toString() => 'RindCryptography()';
