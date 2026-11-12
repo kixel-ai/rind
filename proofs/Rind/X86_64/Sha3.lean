@@ -884,4 +884,42 @@ theorem padded_state_spec {R : Usize} {PAD : U8} (hR : 8 ≤ R.val ∧ R.val < 2
     (by simp) hw, hs1, hs, hu, hbv, absorb_keccakPad R.val ⟨by omega, by omega⟩ PAD.bv P r hP hr,
     show 8 * i2.val + 7 = R.val - 1 by omega]
 
+/-! ## SHA-3, `Sha3Context` -/
+
+/-- A SHA-3 context that has hashed `m`. -/
+def Sha3Hashed {R OUT : Usize} (c : mid.sha3.Sha3Context R OUT) (m : List U8) : Prop :=
+  SpongeAbsorbed R.val c.sponge.s c.sponge.used.val (bv m)
+
+/-- `Sha3Context::new` has hashed nothing. -/
+theorem sha3ctx_new_spec (R OUT : Usize) (hR : R.val = 200 - 2 * OUT.val) (hR0 : 0 < R.val) :
+    mid.sha3.Sha3Context.new R OUT ⦃ c => Sha3Hashed c [] ⦄ := by
+  unfold mid.sha3.Sha3Context.new
+  step*
+  all_goals try scalar_tac
+  step with sponge_new_spec R hR0 6#u8 as ⟨sp, hsp⟩
+  exact hsp
+
+/-- `update` adds `bytes` to what the context has hashed. -/
+theorem sha3ctx_update_spec (h : RunsSha3) {R OUT : Usize} (hR : 0 < R.val ∧ R.val ≤ 200)
+    (c : mid.sha3.Sha3Context R OUT) (m : List U8) (hc : Sha3Hashed c m) (bytes : Slice U8) :
+    mid.sha3.Sha3Context.update c bytes ⦃ c' => Sha3Hashed c' (m ++ bytes.val) ⦄ := by
+  unfold mid.sha3.Sha3Context.update
+  step with sponge_absorb_spec h hR c.sponge (bv m) hc bytes as ⟨sp, hsp⟩
+  simpa [Sha3Hashed, bv] using hsp
+
+/-- `finish` is FIPS 202's sponge on what the context has hashed. -/
+theorem sha3ctx_finish_spec (h : RunsSha3) {R OUT : Usize}
+    (hR : 8 ≤ R.val ∧ R.val < 200 ∧ R.val % 8 = 0) (c : mid.sha3.Sha3Context R OUT) (m : List U8)
+    (hc : Sha3Hashed c m) :
+    mid.sha3.Sha3Context.finish c ⦃ d => bv d.val = sponge R.val sha3Pad (bv m) OUT.val ⦄ := by
+  unfold mid.sha3.Sha3Context.finish
+  step with padded_state_spec hR c.sponge (bv m) hc as ⟨a, ha⟩
+  simp only [mid.sha3.SqueezingSponge.new, bind_ok]
+  step with Std.Array.to_slice_mut_spec (Array.repeat OUT 0#u8) as ⟨sl, back, hsl, hback⟩
+  step with squeeze_spec (R := R) h ⟨by omega, by omega⟩ { s := a } sl as ⟨ss, out, hol, hout, _⟩
+  have hsll : sl.length = OUT.val := by simp [Slice.length, hsl]
+  rw [hback, Std.Array.from_slice_val _ _ (by rw [← hsll]; exact hol), hout, hsll]
+  simp only [ha, sponge]
+  rfl
+
 end rind.x86_64
