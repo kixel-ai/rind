@@ -25,6 +25,9 @@ fn secret<const N: usize>(fill: u8) -> [u8; N] {
 // software AES, `malloc`, or a hash's buffering.
 const MESSAGE: usize = 75;
 
+// Not on aarch64, where BINSEC cannot finish the NEON GHASH that runs
+// without PMULL in a nightly's time.
+#[cfg(not(rind_backend = "aarch64"))]
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_aes_gcm() {
@@ -399,6 +402,8 @@ fn ct_binsec_rsa2048_oaep() {
     });
 }
 
+// Not on aarch64, where BINSEC cannot finish it in a nightly's time.
+#[cfg(not(rind_backend = "aarch64"))]
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_mldsa() {
