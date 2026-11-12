@@ -270,6 +270,19 @@
               ${link "aarch64" pkgs.pkgsCross.aarch64-multiplatform}
             '';
 
+          # The armv7 C compiler and qemu-arm that build and run the AArch32
+          # model's cosimulation executor, linked without the cross
+          # compiler's setup hooks, as debian-cross-tools are.
+          armv7-cosim-tools =
+            let
+              cross = pkgs.pkgsCross.armv7l-hf-multiplatform;
+            in
+            pkgs.runCommand "armv7-cosim-tools" { } ''
+              mkdir -p $out/bin
+              ln -s ${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}gcc $out/bin/armv7-linux-gnueabihf-gcc
+              ln -s ${pkgs.qemu-user}/bin/qemu-arm $out/bin/qemu-arm
+            '';
+
           # Otherwise cargo exports the host's OpenSSL CA paths, which on
           # Ubuntu lie under the /usr the SDE sandbox replaces, and the tests
           # that load the system's roots find none. A shell hook, since `nix
@@ -352,8 +365,9 @@
           # Light, the OCaml it compiles the proofs with, as s2n-bignum's
           # `tools/build-proof.sh` does, the Rust whose build emits the object
           # code they are of, with llvm-objdump to read it, the Python that
-          # compares that code with the code upstream's proofs check, and the
-          # cross tools that assemble Vale's and aws-lc's.
+          # compares that code with the code upstream's proofs check, the
+          # cross tools that assemble Vale's and aws-lc's, and those that run
+          # the AArch32 model's cosimulation.
           hol-light = pkgs.mkShell {
             packages = [
               (rust-stable.minimal.override {
@@ -371,6 +385,7 @@
               pkgs.git
               pkgs.python3
               debian-cross-tools
+              armv7-cosim-tools
             ];
           };
 

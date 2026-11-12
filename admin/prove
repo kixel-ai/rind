@@ -15,8 +15,9 @@
 # An argument checks only those proofs, `bytes` only that the assembly rind
 # imports is the object code its upstream's proofs checked, and declares
 # each register they let it change. `cosim`, which no other run includes
-# since it needs an x86_64 CPU with AVX2, checks the instructions rind adds
-# to s2n-bignum's x86 model against this CPU. Run it in the flake's `prove`
+# since it needs an x86_64 CPU with AVX2, checks the AArch32 model against
+# qemu-arm and the instructions rind adds to s2n-bignum's x86 model against
+# this CPU. Run it in the flake's `prove`
 # dev shell: `nix develop .#prove --command admin/prove`, or for the HOL
 # Light proofs, the cosimulation, or the bytes alone, `nix develop
 # .#hol-light --command admin/prove hol-light`.
@@ -314,20 +315,33 @@ hol_light_compile() {
         "$dir/$name.cmx" -o "$dir/$name.native"
 }
 
-# Cosimulates rind's additions to s2n-bignum's x86 model against this CPU with
+# Cosimulates the AArch32 model in `proofs/hol-light/s2n-bignum/aarch32/`
+# against qemu-arm, for `cases` random instructions after its directed ones,
+# with `aarch32/proofs/simulator.ml` and the executor `cosim_runner.c`, which
+# this builds as a static armv7 program. Then cosimulates rind's additions to
+# s2n-bignum's x86 model against this CPU with
 # `proofs/hol-light/s2n-bignum/x86-cosim.ml`, on s2n-bignum's simulator, whose
 # executor assembles each case with the C toolchain. The simulator's list of
 # s2n-bignum's own instructions is empty, so the one case of s2n-bignum's own
 # campaign that loading it runs is one of those it adds by hand.
 cosim() {
-    local dir=$out/cosim root=$PWD
+    local dir=$out/cosim root=$PWD cases=1000
+    local aarch32=proofs/hol-light/s2n-bignum/aarch32/proofs
+    s2n_bignum_model
+    rm -rf "$dir"
+    mkdir -p "$dir/tmp" "$out/s2n-bignum/x86"
+    armv7-linux-gnueabihf-gcc -O2 -marm -march=armv7-a -ffreestanding -fno-stack-protector \
+        -fomit-frame-pointer -nostdlib -static -Wall -Wextra -Werror -Wl,--no-warn-rwx-segments \
+        -o "$dir/aarch32-runner" "$aarch32/cosim_runner.c" "$aarch32/cosim_start.S" -lgcc
+    echo 'loadt "aarch32/proofs/simulator.ml";;' >"$dir/aarch32.ml"
+    hol_light_compile "$dir" aarch32
+    (cd "$dir" && S2N_BIGNUM_SEMATEST_CASES=$cases S2N_BIGNUM_SEMATEST_SECONDS=1200 \
+        RIND_AARCH32_EXECUTOR="qemu-arm -cpu cortex-a15 $root/$dir/aarch32-runner" \
+        ./aarch32.native) | grep -v -e '^OK: ' -e '^Stepping to state' -e '^CPU time'
     if [[ $(uname -m) != x86_64 ]] || ! grep -qw avx2 /proc/cpuinfo; then
         echo "admin/prove: cosim needs an x86_64 CPU with AVX2" >&2
         return 1
     fi
-    s2n_bignum_model
-    rm -rf "$dir"
-    mkdir -p "$dir/tmp" "$out/s2n-bignum/x86"
     printf 'let iclasses_regreg = [];;\nlet iclasses_simplemem = [];;\n' >"$out/s2n-bignum/x86/x86-insns.ml"
     echo 'loadt "x86-cosim.ml";;' >"$dir/cosim.ml"
     hol_light_compile "$dir" cosim
