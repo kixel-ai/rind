@@ -14,12 +14,16 @@ use rind_aws_lc_rs::aead::{self, quic};
 use rind_aws_lc_rs::signature::KeyPair;
 use rind_aws_lc_rs::{cipher, hkdf, hmac, iv, key_wrap, pbkdf2, signature};
 
-/// Marks `value` secret: memcheck flags any branch or index that depends on it.
+/// Marks `value`'s bytes secret: memcheck flags any branch or index that
+/// depends on them. `value` must be the bytes themselves, a slice or an
+/// array. A `Vec`'s header is its pointer, capacity, and length, and the
+/// length is public; marking the header taints every length derived from it.
 fn secret<T: ?Sized>(value: &T) {
     mark(value, MemState::Undefined);
 }
 
-/// Marks `value` public, so the test may branch on it.
+/// Marks `value`'s bytes public, so the test may branch on them. As with
+/// [`secret`], pass the bytes, not a `Vec`.
 fn public<T: ?Sized>(value: &T) {
     mark(value, MemState::Defined);
 }
@@ -270,14 +274,14 @@ fn ml_dsa() {
             .as_ref()
             .to_vec();
 
-        secret(&raw);
+        secret(&raw[..]);
         let key = signature::PqdsaKeyPair::from_raw_private_key(ours_sign, &raw).unwrap();
         let public_key = key.public_key().as_ref().to_vec();
-        public(&public_key);
+        public(&public_key[..]);
         assert_eq!(public_key, expected);
         let mut signature_bytes = vec![0; ours_sign.signature_len()];
         key.sign(b"ct", &mut signature_bytes).unwrap();
-        public(&signature_bytes);
+        public(&signature_bytes[..]);
 
         secret(&seed);
         let key = signature::PqdsaKeyPair::from_seed(ours_sign, &seed).unwrap();
@@ -288,9 +292,9 @@ fn ml_dsa() {
         public(der.as_ref());
         let mut signature_bytes = vec![0; ours_sign.signature_len()];
         cloned.sign(b"ct", &mut signature_bytes).unwrap();
-        public(&signature_bytes);
+        public(&signature_bytes[..]);
         let public_key = cloned.public_key().as_ref().to_vec();
-        public(&public_key);
+        public(&public_key[..]);
         assert_eq!(public_key, expected);
     }
 }
@@ -343,12 +347,12 @@ fn ml_dsa_pkcs8_sign_export() {
         let key =
             signature::PqdsaKeyPair::from_pkcs8(&signature::ML_DSA_65_SIGNING, pkcs8).unwrap();
         let public_key = key.public_key().as_ref().to_vec();
-        public(&public_key);
+        public(&public_key[..]);
         assert_eq!(public_key, expected);
 
         let mut sig = vec![0; signature::ML_DSA_65_SIGNING.signature_len()];
         let len = key.sign(b"message", &mut sig).unwrap();
-        public(&sig);
+        public(&sig[..]);
         assert!(
             aws_lc_rs::signature::UnparsedPublicKey::new(
                 &aws_lc_rs::signature::ML_DSA_65,
@@ -358,6 +362,9 @@ fn ml_dsa_pkcs8_sign_export() {
             .is_ok()
         );
 
+        // The load and the signature have used the secret bytes. Declassify
+        // the input document before comparing the export with it.
+        public(&pkcs8[..]);
         // Only the seed form exports; the expanded form has no seed.
         match key.to_pkcs8v1() {
             Ok(doc) => {
@@ -369,7 +376,6 @@ fn ml_dsa_pkcs8_sign_export() {
             }
             Err(_) => assert!(core::ptr::eq(pkcs8, &expanded_form)),
         }
-        public(&pkcs8[..]);
     }
 }
 
@@ -450,7 +456,7 @@ fn ml_dsa_other_private_key() {
         rest = next;
     }
     load(&pkcs8);
-    public(&pkcs8);
+    public(&pkcs8[..]);
 }
 
 fn der_contents(input: &[u8]) -> (&[u8], &[u8]) {
