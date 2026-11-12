@@ -35,8 +35,8 @@ theorem aes_gcm_new_vale_spec (h : RunsValeAesGcm) (alg : Algorithm) (key : Slic
   set kw := seqNat8ToSeqNat32LE (bvs key.val)
   have hkey : mid.aes.expand_key key ⦃ k => ∃ hwk, k = .Hw hwk ∧ HwKeyIs alg kw hwk ⦄ := by
     rcases hk with ⟨rfl, hl⟩ | ⟨rfl, hl⟩
-    · exact WP.spec_mono (expand_key128_spec h.2.1 h.2.2.1 key hl) fun k ⟨k128, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
-    · exact WP.spec_mono (expand_key256_spec h.2.1 h.2.2.1 key hl) fun k ⟨k256, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
+    · exact WP.spec_mono (expand_key128_spec h.aesNi key hl) fun k ⟨k128, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
+    · exact WP.spec_mono (expand_key256_spec h.aesNi key hl) fun k ⟨k256, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
   unfold mid.aes_gcm.AesGcm.new
   rw [he, bind_ok]
   apply WP.spec_bind hkey

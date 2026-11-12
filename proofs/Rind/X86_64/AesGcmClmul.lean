@@ -183,24 +183,6 @@ theorem cipher_by8 (ENC : Bool) (hk : low.x86_64.aes.HwKey) (g : low.x86_64.ghas
   simp only at hg
   rcases hg with rfl | ⟨a, rfl⟩ <;> rfl
 
-theorem encrypt_block_eq (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
-    (h : HwKeyIs alg kw hk) (b : Std.Array U8 16#usize) :
-    low.x86_64.aes.AesKey.encrypt_block (.Hw hk) b =
-      ok (low.x86_64.aes.store (aesEncrypt alg kw (low.x86_64.aes.load b.val))) := by
-  cases hk with
-  | Aes128 k =>
-    obtain ⟨rfl, hrk⟩ := h
-    simp only [low.x86_64.aes.AesKey.encrypt_block, low.x86_64.aes.HwKey.encrypt_block,
-      low.x86_64.aes.AesKey128.encrypt_block, aes128_block_spec, hrk, aesEncrypt]
-  | Aes192 k => exact h.elim
-  | Aes256 k =>
-    obtain ⟨rfl, hrk⟩ := h
-    simp only [low.x86_64.aes.AesKey.encrypt_block, low.x86_64.aes.HwKey.encrypt_block,
-      low.x86_64.aes.AesKey256.encrypt_block, aes256_block_spec, hrk, aesEncrypt]
-
-theorem store_bvs (v : BitVec 128) : bvs (low.x86_64.aes.store v).val = leQuad32ToBytes v := by
-  simp [low.x86_64.aes.store, Std.Array.from_val, Function.comp_def]
-
 /-- GHASH from zero over the padded AAD and ciphertext, then the length
 block, is `gcm_hash`'s, its bytes reversed. -/
 theorem gcmHash_eq (hLE : Quad32) (a c : List U8) (x : BitVec 128)
@@ -265,10 +247,10 @@ theorem tagged_from_spec (ENC : Bool) (hk : low.x86_64.aes.HwKey) (alg : Algorit
   apply WP.spec_bind (add_lengths_spec g t (polyLE hLE) (small_toPoly _) ht (by rw [hgt]; exact hg.clmulOf) _ _
     (by rw [Slice.len_val, hlen]; exact hin))
   rintro g' ⟨-, hg'⟩
-  simp only [encrypt_block_eq hk alg kw hkey, bind_ok, low.x86_64.ghash.Ghash.tag, byte_reverse_eq,
+  simp only [hw_encrypt_block hk alg kw hkey, bind_ok, low.x86_64.ghash.Ghash.tag, byte_reverse_eq,
     core.core_arch.x86.sse2._mm_xor_si128, load_store, WP.spec_ok]
   refine ⟨hlen, hout, ?_⟩
-  rw [store_bvs, gctr_block, ← hy, gcmHash_eq hLE aad.val _ g'.current ?_]
+  rw [store_bytes, gctr_block, ← hy, gcmHash_eq hLE aad.val _ g'.current ?_]
   rw [hg', hgh, toPoly_zero, Slice.len_val, Slice.len_val, hc]
 
 /-! ## `tagged`, `seal`, and `open` -/
@@ -338,6 +320,9 @@ def RunsClmulAesGcm : Prop :=
   low.x86_64.cpu.HaveAvxMovbeForAesGcm.check = ok none ∧
   low.entry.Entry.assert_held = ok ()
 
+theorem RunsClmulAesGcm.aesNi (h : RunsClmulAesGcm) : RunsAesNi :=
+  ⟨h.1, h.2.1, h.2.2.1⟩
+
 /-- An AES-GCM key on rind's SSE tier, for the AES key `kw` and `alg`: FIPS
 197's round keys, and the GHASH key's powers. -/
 def ReadyClmul (alg : Algorithm) (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) : Prop :=
@@ -349,12 +334,13 @@ GHASH key's powers. -/
 theorem aes_gcm_new_clmul_spec (h : RunsClmulAesGcm) (alg : Algorithm) (key : Slice U8)
     (hk : KeyLen alg key.length) :
     mid.aes_gcm.AesGcm.new key ⦃ g => ReadyClmul alg (seqNat8ToSeqNat32LE (bvs key.val)) g ⦄ := by
-  obtain ⟨⟨e, he⟩, ⟨hw, hhw⟩, hss, h512, hvaes, hmovbe, -⟩ := h
+  have hni := h.aesNi
+  obtain ⟨⟨e, he⟩, ⟨hw, hhw⟩, -, h512, hvaes, hmovbe, -⟩ := h
   set kw := seqNat8ToSeqNat32LE (bvs key.val)
   have hkey : mid.aes.expand_key key ⦃ k => ∃ hwk, k = .Hw hwk ∧ HwKeyIs alg kw hwk ⦄ := by
     rcases hk with ⟨rfl, hl⟩ | ⟨rfl, hl⟩
-    · exact WP.spec_mono (expand_key128_spec ⟨hw, hhw⟩ hss key hl) fun k ⟨k128, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
-    · exact WP.spec_mono (expand_key256_spec ⟨hw, hhw⟩ hss key hl) fun k ⟨k256, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
+    · exact WP.spec_mono (expand_key128_spec hni key hl) fun k ⟨k128, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
+    · exact WP.spec_mono (expand_key256_spec hni key hl) fun k ⟨k256, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
   unfold mid.aes_gcm.AesGcm.new
   rw [he, bind_ok]
   apply WP.spec_bind hkey
