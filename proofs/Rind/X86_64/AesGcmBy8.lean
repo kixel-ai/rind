@@ -418,4 +418,122 @@ theorem leBytesToSeqQuad32_load (b : List U8) :
   rw [leBytesToSeqQuad32_eq, chunksOf_map, List.map_map]
   rfl
 
+/-! ## GCTR on the whole input -/
+
+theorem chunksOf_take16 (b : List U8) : chunksOf 16 (b.take (b.length - b.length % 16)) = chunksOf 16 b := by
+  have hk : b.length - b.length % 16 = 16 * (b.length / 16) := by omega
+  have hA : (b.take (b.length - b.length % 16)).length = 16 * (b.length / 16) := by simp; omega
+  conv_rhs => rw [← List.take_append_drop (b.length - b.length % 16) b]
+  rw [chunksOf_append (by omega) _ _ _ hA, chunksOf_of_lt (l := b.drop (b.length - b.length % 16)) (by simp; omega),
+    List.append_nil]
+
+/-- `by8`'s output, the whole blocks then the last partial one, is Vale's GCTR. -/
+theorem by8_out (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) (b : List U8) :
+    ((gctrEncryptRecursive icb alg kw (blocksAll (chunksOf 128 b)) 0).flatMap low.x86_64.aes_gcm.bytes ++
+      ((gctrEncryptRecursive icb alg kw ((chunksOf 16 (chunksRest 128 b)).map low.x86_64.aes.load)
+          (0 + 8 * (chunksOf 128 b).length)).flatMap low.x86_64.aes_gcm.bytes ++
+        if (chunksRest 16 (chunksRest 128 b)).isEmpty = true then []
+        else List.take (chunksRest 16 (chunksRest 128 b)).length (low.x86_64.aes_gcm.bytes
+          (gctrEncryptBlock icb (low.x86_64.ghash.loadPadded (chunksRest 16 (chunksRest 128 b))) alg kw
+            (0 + 8 * (chunksOf 128 b).length +
+              ((chunksOf 16 (chunksRest 128 b)).map low.x86_64.aes.load).length))))).map (·.bv) =
+      gctrEncrypt icb (b.map (·.bv)) alg kw := by
+  have hch : ∀ c ∈ chunksOf 128 b, c.length = 128 := fun c h => chunksOf_length_mem h
+  have hB := length_blocksAll _ hch
+  have hall : (chunksOf 16 b).map low.x86_64.aes.load =
+      blocksAll (chunksOf 128 b) ++ (chunksOf 16 (chunksRest 128 b)).map low.x86_64.aes.load := blocks_split b
+  have hidx : 0 + 8 * (chunksOf 128 b).length + ((chunksOf 16 (chunksRest 128 b)).map low.x86_64.aes.load).length =
+      b.length / 16 := by
+    rw [← hB, Nat.zero_add, ← List.length_append, ← hall, List.length_map, chunksOf_length]
+  rw [← (chunks_128 b).2, hidx, show 0 + 8 * (chunksOf 128 b).length = 0 + (blocksAll (chunksOf 128 b)).length by
+    rw [hB], ← List.append_assoc, ← List.flatMap_append, ← gctr_append, ← hall]
+  have hr := chunksRest_length 16 b
+  simp only [gctrEncrypt, List.length_map]
+  by_cases h0 : b.length % 16 = 0
+  · have ht : chunksRest 16 b = [] := List.eq_nil_of_length_eq_zero (by omega)
+    simp only [ht, List.isEmpty_nil, ite_true, h0, List.append_nil, flatMap_bytes_bv, leBytesToSeqQuad32_load]
+  · have ht : (chunksRest 16 b).isEmpty = false := by
+      rw [List.isEmpty_eq_false_iff]; intro h; rw [h] at hr; simp at hr; omega
+    have hk : b.length - b.length % 16 = 16 * (b.length / 16) := by omega
+    have hd : b.drop (16 * (b.length / 16)) = chunksRest 16 b := rfl
+    have hpad : padTo128Bits ((chunksRest 16 b).map (·.bv)) =
+        (chunksRest 16 b).map (·.bv) ++ List.replicate (16 - b.length % 16) 0 := by
+      rw [padTo128Bits, List.length_map, hr, Nat.mod_mod, if_neg h0]
+    have hlp : low.x86_64.ghash.loadPadded (chunksRest 16 b) =
+        leBytesToQuad32 ((chunksRest 16 b).map (·.bv) ++ List.replicate (16 - b.length % 16) 0) := by
+      rw [low.x86_64.ghash.loadPadded, low.x86_64.aes.load, List.map_append, List.map_replicate, hr]
+      rfl
+    simp only [ht, Bool.false_eq_true, ite_false, h0, List.map_append, flatMap_bytes_bv, List.map_take, bytes_bv,
+      hk, ← List.map_take, ← List.map_drop, hd, leBytesToSeqQuad32_load, chunksOf_take16, hpad, hlp, hr,
+      show 16 * (b.length / 16) / 16 = b.length / 16 by omega]
+    rw [List.map_take, bytes_bv, ← hk, chunksOf_take16]
+
+/-! ## `by8` -/
+
+/-- `by8`: Vale's GCTR from the counter after `j0`, and GHASH over the AAD's
+and the ciphertext's padded blocks. -/
+theorem by8_spec (ENC : Bool) (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
+    (hkey : HwKeyIs alg kw hk) (H : P) (hH : Small H) (t : low.x86_64.ghash.ClmulTable) (ht : TableFor H t)
+    (ghash : low.x86_64.ghash.Ghash) (hg : ClmulOf ghash.table t) (j0 : Quad32) (y0 : Std.Array U8 16#usize)
+    (hy : low.x86_64.aes.load y0.val = reverseBytesQuad32 j0) (aad inout : Slice U8) :
+    ∃ g out, low.x86_64.aes_gcm.by8 ENC hk t ghash y0 aad inout = ok (g, out) ∧ g.table = ghash.table ∧
+      out.val.map (·.bv) = gctrEncrypt (inc32 j0 1) (inout.val.map (·.bv)) alg kw ∧
+      toPoly g.current = ghashPoly H (toPoly ghash.current)
+        ((padBlocks aad.val ++ padBlocks (if ENC then out.val else inout.val)).map toPoly) := by
+  choose F hF hFp using fun b x => clmul_add_spec H hH t ht b x
+  have hadd : ∀ c b, low.x86_64.ghash.Ghash.addBytes { ghash with current := c } b =
+      ok { ghash with current := F b c } := fun c b => by
+    rw [addBytes_clmul { ghash with current := c } t hg, hF, bind_ok]
+  have hadd0 : ∀ b, low.x86_64.ghash.Ghash.addBytes ghash b = ok { ghash with current := F b ghash.current } :=
+    fun b => hadd ghash.current b
+  obtain ⟨⟨f, rks, l⟩, hrk⟩ : ∃ r, hk.round_keys = r := ⟨_, rfl⟩
+  have henc : ∀ c, low.x86_64.aes_gcm.encrypt c f rks l = ok (aesEncrypt alg kw c) := by
+    intro c; have := encrypt_eq hk alg kw hkey c; rw [hrk] at this; exact this
+  have hcn : low.x86_64.aes_gcm.Counter.new y0 = ok (swap (inc32 (inc32 j0 1) 0)) := by
+    rw [inc32_zero]; exact counter_new j0 y0 hy
+  have hch : ∀ c ∈ chunksOf 128 inout.val, c.length = 128 := fun c h => chunksOf_length_mem h
+  have hlen_out : ∀ x : BitVec 128,
+      ((gctrEncryptRecursive (inc32 j0 1) alg kw (blocksAll (chunksOf 128 inout.val)) 0).flatMap
+          low.x86_64.aes_gcm.bytes ++
+        ((gctrEncryptRecursive (inc32 j0 1) alg kw
+            ((chunksOf 16 (chunksRest 128 inout.val)).map low.x86_64.aes.load)
+            (0 + 8 * (chunksOf 128 inout.val).length)).flatMap low.x86_64.aes_gcm.bytes ++
+          if (chunksRest 16 (chunksRest 128 inout.val)).isEmpty = true then []
+          else List.take (chunksRest 16 (chunksRest 128 inout.val)).length (low.x86_64.aes_gcm.bytes x))).length =
+        inout.val.length := by
+    intro x
+    have h1 := chunksRest_length 16 (chunksRest 128 inout.val)
+    have h2 := chunksRest_length 128 inout.val
+    have h3 := chunksOf_length 16 (chunksRest 128 inout.val)
+    have h4 := chunksOf_length 128 inout.val
+    have hl : (if (chunksRest 16 (chunksRest 128 inout.val)).isEmpty = true then []
+        else List.take (chunksRest 16 (chunksRest 128 inout.val)).length (low.x86_64.aes_gcm.bytes x)).length =
+        (chunksRest 16 (chunksRest 128 inout.val)).length := by
+      split
+      · rename_i he; simp only [List.isEmpty_iff] at he; rw [he]
+      · rw [List.length_take, length_bytes]; omega
+    rw [List.length_append, List.length_append, hl, length_flatMap_bytes, length_flatMap_bytes, length_gctr,
+      length_gctr, length_blocksAll _ hch, List.length_map]
+    omega
+  unfold low.x86_64.aes_gcm.by8
+  cases ENC <;>
+  simp only [hadd0, hadd, bind_ok, uncurry_apply_pair, hrk, hcn, by8_loop_eq henc _ H t ht _ _ hch,
+    ctr_blocks_eq henc, ctr_block_eq henc, ite_ok, Bool.false_eq_true, ite_false, ite_true] <;>
+  rw [dif_pos (by rw [hlen_out]; exact inout.property)] <;>
+  refine ⟨_, _, rfl, rfl, ?_, ?_⟩
+  · rw [Slice.from_val]; exact by8_out (inc32 j0 1) alg kw inout.val
+  · dsimp only
+    rw [hFp, hashChunks_spec H hH t ht _ _ _ (length_blocksAll _ hch), hFp, List.map_append, ghashPoly_append,
+      padBlocks_split inout.val, List.map_append, ghashPoly_append, padBlocks_head, List.map_map]
+  · rw [Slice.from_val]; exact by8_out (inc32 j0 1) alg kw inout.val
+  · dsimp only
+    rw [Slice.from_val, hFp, hashChunks_spec H hH t ht _ _ _ (by rw [length_gctr, length_blocksAll _ hch]), hFp,
+      padBlocks_append ((gctrEncryptRecursive (inc32 j0 1) alg kw (blocksAll (chunksOf 128 inout.val)) 0).flatMap
+        low.x86_64.aes_gcm.bytes) _ (by rw [length_flatMap_bytes]; omega),
+      padBlocks_append ((gctrEncryptRecursive (inc32 j0 1) alg kw
+        ((chunksOf 16 (chunksRest 128 inout.val)).map low.x86_64.aes.load)
+        (0 + 8 * (chunksOf 128 inout.val).length)).flatMap low.x86_64.aes_gcm.bytes) _
+        (by rw [length_flatMap_bytes]; omega)]
+    simp only [padBlocks_flatMap_bytes, List.map_append, ghashPoly_append, List.map_map]
+
 end rind.x86_64
