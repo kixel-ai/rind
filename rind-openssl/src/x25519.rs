@@ -33,7 +33,7 @@ impl Kind for X25519 {
     const TAG: u8 = 1;
 
     fn generate(ikm: Option<&[u8]>) -> Result<PrivateKey, Failure> {
-        let mut scalar = Zeroizing::new([0u8; LEN]);
+        let mut scalar = [0u8; LEN];
         match ikm {
             Some(ikm) if ikm.len() < LEN => {
                 return Err(Failure::invalid("dhkem-ikm must hold at least 32 bytes"));

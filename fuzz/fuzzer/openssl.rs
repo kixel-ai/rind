@@ -76,7 +76,12 @@ fuzz_target!(|input: Input| {
                 let expected = PublicKey::new(&verify::ED25519, &public)
                     .and_then(|key| key.verify(&message, &signature))
                     .is_ok();
-                assert_eq!(ok == 1, expected);
+                // Parameters may still refuse a valid signature, as a context
+                // string does, but never accept an invalid one.
+                match params.is_empty() {
+                    true => assert_eq!(ok == 1, expected),
+                    false => assert!(ok != 1 || expected),
+                }
             }
             provider.free_signature_ctx(ctx);
             keymgmt.free(key);

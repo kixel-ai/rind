@@ -10,7 +10,7 @@ use core::ffi::{CStr, c_int};
 use core::marker::PhantomData;
 use core::slice;
 
-use crate::ffi::{INTEGER, OCTET_STRING, Param, UNSIGNED_INTEGER, UTF8_PTR, UTF8_STRING};
+use crate::ffi::{INTEGER, OCTET_STRING, Param, REAL, UNSIGNED_INTEGER, UTF8_PTR, UTF8_STRING};
 
 /// A parameter array OpenSSL passes in, or none.
 #[derive(Clone, Copy)]
@@ -111,33 +111,59 @@ impl Param {
         })
     }
 
-    /// Sets an integer parameter of four or eight bytes, as
-    /// `OSSL_PARAM_set_int` does; a null `data` asks only the size.
+    /// Sets an integer or real parameter of any size that holds `value`,
+    /// as `OSSL_PARAM_set_int` does; a null `data` asks only the size.
     pub(crate) fn set_int(&mut self, value: c_int) -> bool {
-        let unsigned = match self.data_type {
-            INTEGER => false,
-            UNSIGNED_INTEGER if value >= 0 => true,
-            _ => {
-                self.return_size = 0;
-                return false;
+        self.return_size = 0;
+        let wide = i64::from(value);
+        match self.data_type {
+            INTEGER => {}
+            UNSIGNED_INTEGER if value >= 0 => {}
+            REAL => {
+                self.return_size = size_of::<f64>();
+                if self.data.is_null() {
+                    return true;
+                }
+                if self.data_size != size_of::<f64>() {
+                    return false;
+                }
+                // SAFETY: the data is valid for its size, a double's, and
+                // OpenSSL aligns real data for it. A double holds every
+                // `c_int` exactly.
+                unsafe { self.data.cast::<f64>().write(wide as f64) };
+                return true;
             }
-        };
-        self.return_size = 4;
+            _ => return false,
+        }
+        self.return_size = size_of::<c_int>();
         if self.data.is_null() {
             return true;
         }
-        // SAFETY: a parameter's data is valid for its size, which each arm
-        // checks, and OpenSSL aligns integer data for its type.
-        unsafe {
-            match (self.data_size, unsigned) {
-                (4, false) => self.data.cast::<i32>().write(value),
-                (4, true) => self.data.cast::<u32>().write(value as u32),
-                (8, false) => self.data.cast::<i64>().write(value.into()),
-                (8, true) => self.data.cast::<u64>().write(value as u64),
-                _ => return false,
+        // The value in `data_size` native-endian bytes, sign-extended or
+        // truncated, refused unless the truncated bytes are all sign and
+        // what is left keeps the sign, as `params.c`'s `copy_integer` does.
+        let size = self.data_size;
+        let fits = match size {
+            0 => false,
+            8.. => true,
+            _ if self.data_type == INTEGER => {
+                let half = 1i64 << (8 * size - 1);
+                (-half..half).contains(&wide)
             }
+            _ => wide < 1i64 << (8 * size),
+        };
+        if !fits {
+            return false;
         }
-        self.return_size = self.data_size;
+        let le = wide.to_le_bytes();
+        let pad = if value < 0 { 0xff } else { 0 };
+        for k in 0..size {
+            let at = if cfg!(target_endian = "little") { k } else { size - 1 - k };
+            // SAFETY: a parameter's data is valid for its size, and `at` is
+            // below it.
+            unsafe { self.data.cast::<u8>().add(at).write(*le.get(k).unwrap_or(&pad)) };
+        }
+        self.return_size = size;
         true
     }
 
@@ -154,11 +180,15 @@ impl Param {
     }
 
     fn set_string(&mut self, value: &[u8], data_type: u32) -> bool {
+        if self.data_type != data_type {
+            self.return_size = 0;
+            return false;
+        }
         self.return_size = value.len();
         if self.data.is_null() {
             return true;
         }
-        if self.data_type != data_type || self.data_size < value.len() {
+        if self.data_size < value.len() {
             return false;
         }
         // SAFETY: a parameter's data is valid for its size, which holds
@@ -175,10 +205,11 @@ impl Param {
     /// Points an `OSSL_PARAM_UTF8_PTR` at `value`, as
     /// `OSSL_PARAM_set_utf8_ptr` does.
     pub(crate) fn set_utf8_ptr(&mut self, value: &'static CStr) -> bool {
-        self.return_size = value.to_bytes().len();
         if self.data_type != UTF8_PTR {
+            self.return_size = 0;
             return false;
         }
+        self.return_size = value.to_bytes().len();
         if !self.data.is_null() {
             // SAFETY: a `UTF8_PTR` parameter's data holds a pointer, which
             // OpenSSL aligns.
@@ -237,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn set_int_fits_four_or_eight_bytes() {
+    fn set_int_converts_as_openssl_does() {
         let mut four = 0i32;
         let mut p = param(c"bits", INTEGER, (&raw mut four).cast(), 4);
         assert!(p.set_int(253));
@@ -248,13 +279,47 @@ mod tests {
         assert!(p.set_int(253));
         assert_eq!((eight, p.return_size), (253, 8));
         assert!(!p.set_int(-1));
+        assert_eq!(p.return_size, 0);
 
-        let mut two = 0u16;
+        // Any size that holds the value, sign-extended past eight bytes.
+        let mut two = 0i16;
         let mut p = param(c"bits", INTEGER, (&raw mut two).cast(), 2);
-        assert!(!p.set_int(1));
+        assert!(p.set_int(253));
+        assert_eq!((two, p.return_size), (253, 2));
+        assert!(p.set_int(-32768));
+        assert_eq!(two, -32768);
+        assert!(!p.set_int(32768));
+        let mut sixteen = [0u8; 16];
+        let mut p = param(c"bits", INTEGER, sixteen.as_mut_ptr().cast(), 16);
+        assert!(p.set_int(-2));
+        assert_eq!(i128::from_ne_bytes(sixteen), -2);
+        let mut one = 0u8;
+        let mut p = param(c"bits", UNSIGNED_INTEGER, (&raw mut one).cast(), 1);
+        assert!(p.set_int(255));
+        assert_eq!(one, 255);
+        assert!(!p.set_int(256));
+        let mut p = param(c"bits", INTEGER, (&raw mut one).cast(), 1);
+        assert!(!p.set_int(128));
+        let mut p = param(c"bits", INTEGER, (&raw mut one).cast(), 0);
+        assert!(!p.set_int(0));
+
+        let mut real = 0f64;
+        let mut p = param(c"bits", REAL, (&raw mut real).cast(), 8);
+        assert!(p.set_int(253));
+        assert_eq!((real, p.return_size), (253.0, 8));
 
         let mut p = param(c"bits", OCTET_STRING, (&raw mut four).cast(), 4);
         assert!(!p.set_int(1));
+        let mut p = param(c"bits", OCTET_STRING, core::ptr::null_mut(), 0);
+        assert!(!p.set_int(1));
+        assert_eq!(p.return_size, 0);
+    }
+
+    #[test]
+    fn set_string_refuses_another_type_before_its_size() {
+        let mut p = param(c"pub", UTF8_STRING, core::ptr::null_mut(), 0);
+        assert!(!p.set_octets(&[7; 32]));
+        assert_eq!(p.return_size, 0);
     }
 
     #[test]

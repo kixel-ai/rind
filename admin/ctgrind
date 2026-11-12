@@ -81,6 +81,13 @@ fi
 # Each adapter's ctgrind test marks the secrets it hands rind, while rind's
 # hooks mark the keys rind generates or parses. Python's tests run through
 # its extension, not a Rust lib test binary, which would need libpython.
+#
+# rind-openssl's tests link the target's OpenSSL, which the armv7 jobs'
+# cross toolchain lacks, as `build.yml`'s cross targets do. Its glue is the
+# same Rust on every target, and the unit suite checks rind's armv7 code.
 if [ "$suite" = all ] || [ "$suite" = adapters ]; then
+    case " $* " in
+        *armv7-unknown-linux-gnueabihf*) set -- --exclude rind-openssl "$@" ;;
+    esac
     cargo test --workspace --exclude rind --exclude rind-python --lib --test ctgrind --features rind/__ctgrind "$@"
 fi

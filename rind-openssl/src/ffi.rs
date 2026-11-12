@@ -116,6 +116,7 @@ pub(crate) const UNMODIFIED: usize = usize::MAX;
 // `OSSL_PARAM` data types.
 pub(crate) const INTEGER: c_uint = 1;
 pub(crate) const UNSIGNED_INTEGER: c_uint = 2;
+pub(crate) const REAL: c_uint = 3;
 pub(crate) const UTF8_STRING: c_uint = 4;
 pub(crate) const OCTET_STRING: c_uint = 5;
 pub(crate) const UTF8_PTR: c_uint = 6;

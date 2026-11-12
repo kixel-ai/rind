@@ -140,6 +140,28 @@ fn x25519() {
         public(&private);
         assert_eq!(private[31] & 0xc0, 0x40);
         EVP_PKEY_free(generated);
+
+        // RFC 9180's DeriveKeyPair, from secret input keying material.
+        let mut ikm = [0x5au8; 32];
+        secret(&ikm);
+        let params = [
+            OSSL_PARAM_construct_octet_string(
+                c"dhkem-ikm".as_ptr(),
+                ikm.as_mut_ptr().cast(),
+                ikm.len(),
+            ),
+            OSSL_PARAM_construct_end(),
+        ];
+        let gen_ctx = EVP_PKEY_CTX_new_from_name(ctx, c"X25519".as_ptr(), null());
+        assert_eq!(EVP_PKEY_keygen_init(gen_ctx), 1);
+        assert_eq!(EVP_PKEY_CTX_set_params(gen_ctx, params.as_ptr()), 1);
+        let mut derived = null_mut();
+        assert_eq!(EVP_PKEY_generate(gen_ctx, &mut derived), 1);
+        EVP_PKEY_CTX_free(gen_ctx);
+        let private = raw_private(derived);
+        public(&private);
+        assert_eq!(private[31] & 0xc0, 0x40);
+        EVP_PKEY_free(derived);
         EVP_PKEY_free(peer);
         EVP_PKEY_free(key);
         OSSL_LIB_CTX_free(ctx);
