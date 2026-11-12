@@ -19,8 +19,8 @@ verification, and the Keccak-f of SHA-3 and ML-KEM's SHAKE, aws-lc's in
 cover SHA-384 and SHA-512, and for Ed25519's hashes, Vale's in
 `Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proofs of its
 constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
-`verify`, for ChaCha20-Poly1305's and XChaCha20-Poly1305's tag checks, and for
-RSASSA-PSS's hash compare, and nothing else.
+`verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
+tag checks, and RSASSA-PSS's hash compare, and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
 hypothesis `RunsChaCha20Poly1305`, which no axiom states. A change here is a
 change to the trust base.
@@ -251,6 +251,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  counter_block_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
  gcm128_decrypt_opt_spec,
  gcm256_decrypt_opt_spec] -/
 #guard_msgs in
@@ -260,6 +262,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  counter_block_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
  gcm128_decrypt_opt_spec,
  gcm256_decrypt_opt_spec] -/
 #guard_msgs in
@@ -291,6 +295,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  counter_block_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
  gcm128_decrypt_opt_spec,
  gcm256_decrypt_opt_spec] -/
 #guard_msgs in
@@ -300,6 +306,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  counter_block_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
  gcm128_decrypt_opt_spec,
  gcm256_decrypt_opt_spec] -/
 #guard_msgs in
