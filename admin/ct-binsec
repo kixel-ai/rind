@@ -118,7 +118,8 @@ LIBC = ["memcpy", "memmove", "memset", "memcmp", "bcmp"]
 # test binary and glibc hold, since BINSEC matches an opcode byte for byte.
 # s2n-bignum's P-521 code sets the carry with `stc`, LLVM tests the portable
 # P-256 and P-384 for zero with `movmskps`, and loads and stores rind's AVX2
-# ChaCha20 state with `vinsertf128` and `vpermpd`. glibc's `malloc` reads the thread pointer with
+# ChaCha20 state with `vinsertf128` and `vpermpd`, and aws-lc's AVX2 ML-DSA
+# moves lanes with `vmovshdup` and samples with `vmovmskps`. glibc's `malloc` reads the thread pointer with
 # `mrs`, vpaes and aws-lc's NEON ChaCha20 look up bytes with `tbl`, and
 # ML-KEM's rejection sampling counts bits with `cnt`.
 GP = {"e" + r[1:]: r for r in ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi"]}
@@ -126,11 +127,13 @@ GP.update(("r{}d".format(n), "r{}".format(n)) for n in range(8, 16))
 
 
 def movmskps(ops, _):
-    """The sign bit of each lane."""
+    """The sign bit of each 32-bit lane."""
     src, dst = (o.lstrip("%") for o in ops)
-    if not src.startswith("xmm") or dst not in GP:
+    if not re.fullmatch(r"[xy]mm\d+", src) or dst not in GP:
         return None
-    return "{} := uext64 ({})".format(GP[dst], " :: ".join("{}{{{}}}".format(src, b) for b in (127, 95, 63, 31)))
+    lanes = 8 if src[0] == "y" else 4
+    bits = " :: ".join("{}{{{}}}".format(src, 32 * i + 31) for i in reversed(range(lanes)))
+    return "{} := uext64 ({})".format(GP[dst], bits)
 
 
 def vinsertf128(ops, _):
@@ -153,6 +156,18 @@ def vpermpd(ops, _):
     imm, src, dst = int(imm[1:], 16), src.lstrip("%"), dst.lstrip("%")
     lanes = ("{}{{{}..{}}}".format(src, 64 * (imm >> 2 * i & 3) + 63, 64 * (imm >> 2 * i & 3)) for i in range(4))
     return "{} := {}".format(dst, " :: ".join(reversed(list(lanes))))
+
+
+def vmovshdup(ops, _):
+    """Each odd 32-bit lane of `src`, into itself and the lane below."""
+    src, dst = ops
+    m = re.fullmatch(r"%([xy])mm\d+", src)
+    if not m or not re.fullmatch(r"%{}mm\d+".format(m[1]), dst):
+        return None
+    src, dst = src.lstrip("%"), dst.lstrip("%")
+    lanes = 8 if m[1] == "y" else 4
+    odd = ["{}{{{}..{}}}".format(src, 64 * i + 63, 64 * i + 32) for i in reversed(range(lanes // 2))]
+    return "{} := {}".format(dst, " :: ".join(o + " :: " + o for o in odd))
 
 
 def mrs(ops, tpidr):
@@ -204,7 +219,7 @@ def cnt(ops, _):
 
 STUBS = {
     "x86_64": {"stc": lambda *_: "cf := true", "clc": lambda *_: "cf := false"}
-    | {"movmskps": movmskps, "vinsertf128": vinsertf128, "vpermpd": vpermpd},
+    | {"movmskps": movmskps, "vmovmskps": movmskps, "vinsertf128": vinsertf128, "vpermpd": vpermpd, "vmovshdup": vmovshdup},
     "aarch64": {"mrs": mrs, "tbl": tbl, "cnt": cnt},
 }
 
@@ -313,7 +328,7 @@ WORD = {"x86_64": 64, "aarch64": 64, "arm": 32}
 # A path that panics ends where the panic begins, as one may where a value
 # declassified afresh lets it.
 SYMBOLS = ["rind_ct_binsec_stop", "rind_ct_binsec_secret", "rind_ct_binsec_public", "rind_ct_binsec_length"]
-SYMBOLS += ["getrandom", "free", "__rustc::rust_begin_unwind"]
+SYMBOLS += ["getrandom", "free", "mprotect", "__rustc::rust_begin_unwind"]
 
 # BINSEC replaces the secret marker with fresh secret bytes, and glibc's
 # getrandom, which rind's random bytes come from, with secret ones too,
@@ -324,7 +339,9 @@ SYMBOLS += ["getrandom", "free", "__rustc::rust_begin_unwind"]
 # that declassifies more than the real run did gets fresh public values.
 # glibc's free does nothing, as under valgrind, which replaces it: its
 # double-free check compares the freed bytes with a key, and they may be
-# secret.
+# secret. So `malloc` takes fresh memory where the real run reused freed
+# blocks, growing a thread's heap with `mprotect`, whose system call BINSEC
+# cannot make: it succeeds without one.
 SCRIPT = """\
 starting from core with
   declassified<{word}> := 0
@@ -360,6 +377,10 @@ end
 
 replace {free:#x} (ptr) by
   return
+end
+
+replace {mprotect:#x} (addr, len, prot) by
+  return 0
 end
 {libc}
 halt at {stop:#x}
@@ -520,6 +541,7 @@ def check(exe, name, target, timeout, tmp):
                 length=symbols["rind_ct_binsec_length"],
                 getrandom=symbols["getrandom"],
                 free=symbols["free"],
+                mprotect=symbols["mprotect"],
                 stop=symbols["rind_ct_binsec_stop"],
                 panic=symbols["__rustc::rust_begin_unwind"],
             )

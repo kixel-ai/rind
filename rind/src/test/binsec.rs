@@ -398,3 +398,20 @@ fn ct_binsec_rsa2048_oaep() {
         black_box(key.decrypt(ciphertext.as_ref(), b"").is_ok());
     });
 }
+
+#[test]
+#[ignore = "admin/ct-binsec runs it under BINSEC"]
+fn ct_binsec_mldsa() {
+    use crate::signature::sign::*;
+
+    fn sign<P: MlDsaParameterSet>() {
+        let key = MlDsaKeyPair::<P>::from_seed(&secret::<32>(1)).unwrap();
+        black_box(key.sign(&[2; 40]).is_ok());
+    }
+
+    checked(|| {
+        sign::<MlDsa44>();
+        sign::<MlDsa65>();
+        sign::<MlDsa87>();
+    });
+}
