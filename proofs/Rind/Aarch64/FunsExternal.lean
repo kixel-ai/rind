@@ -352,6 +352,12 @@ opaque low.aarch64.vpaes_armv8.VpaesKey.new
 opaque low.aarch64.vpaes_armv8.VpaesKey.encrypt_block
   : low.aarch64.vpaes_armv8.VpaesKey → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
 
+opaque low.aarch64.vpaes_armv8.VpaesDecKey.new
+  : Slice Std.U8 → Result low.aarch64.vpaes_armv8.VpaesDecKey
+
+opaque low.aarch64.vpaes_armv8.VpaesDecKey.decrypt_block
+  : low.aarch64.vpaes_armv8.VpaesDecKey → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
+
 /-! MD5, which no proof covers. -/
 
 opaque mid.md5.Md5State.new : Result mid.md5.Md5State

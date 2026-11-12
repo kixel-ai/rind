@@ -135,7 +135,7 @@ fn main() {
         writeln!(out, "#guard reducesTo (R := BitVec _) ( {call} ) {result}").unwrap()
     };
 
-    let binary: [(&str, Binary); 8] = [
+    let binary: [(&str, Binary); 10] = [
         ("sse2._mm_xor_si128", |a, b| unsafe { _mm_xor_si128(a, b) }),
         ("sse2._mm_and_si128", |a, b| unsafe { _mm_and_si128(a, b) }),
         ("sse2._mm_add_epi64", |a, b| unsafe { _mm_add_epi64(a, b) }),
@@ -154,6 +154,12 @@ fn main() {
         ("aes._mm_aesenclast_si128", |a, b| unsafe {
             _mm_aesenclast_si128(a, b)
         }),
+        ("aes._mm_aesdec_si128", |a, b| unsafe {
+            _mm_aesdec_si128(a, b)
+        }),
+        ("aes._mm_aesdeclast_si128", |a, b| unsafe {
+            _mm_aesdeclast_si128(a, b)
+        }),
     ];
     for (name, f) in binary {
         for &(a, b) in &pairs {
@@ -163,6 +169,11 @@ fn main() {
                 q(r),
             );
         }
+    }
+
+    for &a in &inputs {
+        let r = unsafe { _mm_aesimc_si128(v(a)) };
+        guard(format!("core.core_arch.x86.aes._mm_aesimc_si128 {}", q(v(a))), q(r));
     }
 
     let unary: [(&str, [Unary; 256]); 3] = [

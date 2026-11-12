@@ -76,7 +76,7 @@ fn main() {
     // `TBL`'s indices past 15 select zero: each pair's random second vector
     // has some, and these some at and around the edge.
     let tbl_edges = [0x0f10_1f20_7f80_ff00_0102_0304_0506_0708, 0x1011_1213_0f0e_0d0c_8000_7fff_4020_1008];
-    let binary: [(String, Binary); 4] = [
+    let binary: [(String, Binary); 5] = [
         (format!("{ARM}.veorq_u8"), |a, b| unsafe { veorq_u8(a, b) }),
         (format!("{AARCH64}.vqtbl1q_u8"), |a, b| unsafe {
             vqtbl1q_u8(a, b)
@@ -88,6 +88,7 @@ fn main() {
             ))
         }),
         (format!("{ARM}.vaeseq_u8"), |a, b| unsafe { vaeseq_u8(a, b) }),
+        (format!("{ARM}.vaesdq_u8"), |a, b| unsafe { vaesdq_u8(a, b) }),
     ];
     for (name, f) in binary {
         let edges = tbl_edges.iter().map(|&b| (inputs[3], b));
@@ -97,8 +98,9 @@ fn main() {
         }
     }
 
-    let unary: [(&str, Unary); 5] = [
+    let unary: [(&str, Unary); 6] = [
         ("vaesmcq_u8", |a| unsafe { vaesmcq_u8(a) }),
+        ("vaesimcq_u8", |a| unsafe { vaesimcq_u8(a) }),
         ("vreinterpretq_u32_u8", |a| unsafe {
             transmute(vreinterpretq_u32_u8(a))
         }),

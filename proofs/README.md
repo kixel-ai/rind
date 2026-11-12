@@ -361,8 +361,8 @@ theorems do not import. `PublicKey` reaches each algorithm's key parser, and
 each parsed key its verification, through function pointers, which
 `Rind/X86_64/SignatureDispatch.lean` models.
 
-AES-128 and AES-256 on x86_64 CPUs with AES-NI and aarch64 CPUs with the
-crypto extension, from `cipher::Aes` and the header-protection API's
+AES-128, AES-192, and AES-256 on x86_64 CPUs with AES-NI and aarch64 CPUs
+with the crypto extension, from `cipher::Aes` and the header-protection API's
 `HeaderProtectionKey` to rind's key expansion and block cipher on the AES
 instructions, in `Rind/X86_64/AesCipher.lean`, over each target's
 `Rind/<Arch>/AesKey.lean`:
@@ -378,13 +378,20 @@ instructions, in `Rind/X86_64/AesCipher.lean`, over each target's
 - `aes_header_mask`: the mask is RFC 9001's, the first five bytes of that
   cipher of the sample.
 
-`aesBlock` and `aesHeaderMask` are those specs on bytes, which `#guard`s
-check against FIPS 197's and RFC 9001's vectors. The theorems assume
-`RunsAesHw`, or for a key already made only its entry guard: rind's
+Each `AesKey.lean` also proves the decryption key `AesDecKey`, which AES-KW
+unwraps with, against FIPS 197's equivalent inverse cipher, which
+`Rind/AesInverse.lean` transliterates since Vale's spec only encrypts:
+
+- `dec_key_new_spec`: a key of the algorithm's length holds `KeyExpansionEIC`'s
+  round keys, reversed, which `invert_round_keys` computes from the cipher's;
+- `hw_decrypt_block_spec`: the block becomes `EqInvCipher` of it under them.
+
+`aesBlock`, `aesHeaderMask`, and `aesBlockDecrypt` are those specs on bytes,
+which `#guard`s check against FIPS 197's and RFC 9001's vectors. The theorems
+assume `RunsAesHw`, or for a key already made only its entry guard: rind's
 CPU-feature checks find AES-NI, or on aarch64 the crypto extension, which no
-input affects. AES-192 keys, which run `aes192_expand` and `aes_block`, and
-the decryption schedules have no proof: [the AES header-protection
-quest](/quest/m4/verified/aes-header-protection.md) owns them.
+input affects. AES-CBC decrypts through its own routines over the same round keys,
+which [the AES modes quest](/quest/m4/verified/aes-modes.md) owns.
 
 AES-128-GCM and AES-256-GCM on x86_64 CPUs with AVX and MOVBE but no VAES,
 from the AEAD API's `Key` to HACL*'s Vale AES-GCM routines, in
@@ -499,7 +506,8 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   `Rind/HashSpec.lean`: SHA-1's, SHA-256's, HMAC's, HKDF's, and PBKDF2's, and
   `Rind/HashSpecTest.lean`, their known-answer tests; `Rind/Vale.lean`,
   `Rind/ValeBytes.lean`, and `Rind/Gf128.lean`: Vale's AES and GF(2^128) specs
-  and their lemmas.
+  and their lemmas, and `Rind/AesInverse.lean`, FIPS 197's equivalent inverse
+  cipher.
 - `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch,GcmKey}.lean`:
   the hand models of the agreement, header-protection, digest, signature,
   AEAD, and HMAC APIs' dispatch, and of `aead::gcm::Key` over the AEAD model; `Rind/X86_64/HkdfExpand.lean` and

@@ -103,7 +103,16 @@ opaque low.x86_64.vpaes_x86_64.VpaesKey.new
 opaque low.x86_64.vpaes_x86_64.VpaesKey.encrypt_block
   : low.x86_64.vpaes_x86_64.VpaesKey → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)
 
+opaque low.x86_64.vpaes_x86_64.VpaesDecKey.new
+  : Slice Std.U8 → low.x86_64.cpu.HaveSsse3 → Result low.x86_64.vpaes_x86_64.VpaesDecKey
+
+opaque low.x86_64.vpaes_x86_64.VpaesDecKey.decrypt_block
+  : low.x86_64.vpaes_x86_64.VpaesDecKey → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)
+
 opaque low.x86_64.aes_nohw.NohwKey.new : Slice Std.U8 → Result low.x86_64.aes_nohw.NohwKey
+
+opaque low.x86_64.aes_nohw.NohwKey.decrypt_block
+  : low.x86_64.aes_nohw.NohwKey → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)
 
 opaque low.x86_64.aes_nohw.NohwKey.encrypt_block
   : low.x86_64.aes_nohw.NohwKey → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)

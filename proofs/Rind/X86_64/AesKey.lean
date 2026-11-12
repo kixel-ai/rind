@@ -525,6 +525,125 @@ theorem from_be_bytes_store (q : BitVec 128) :
   simp only [core.num.U128.from_be_bytes, reverseBytesQuad32, leBytesToQuad32, BitVec.fromBEBytes]
   rw [BitVec.getLsbD_setWidth, decide_eq_true hk, Bool.true_and, BitVec.getLsbD_cast, BitVec.getLsbD_cast, e]
 
+
+/-! ## The equivalent inverse cipher -/
+
+theorem aesdec_eq (s k : BitVec 128) :
+    core.core_arch.x86.aes._mm_aesdec_si128 s k = ok (eqInvRound s k) := by
+  simp only [core.core_arch.x86.aes._mm_aesdec_si128, eqInvRound, invSubBytes_invShiftRows]
+
+theorem hw_decrypt_block_loop_eq (s : Slice core.core_arch.x86.__m128i) (n : Nat) :
+    ∀ i block, s.val.length - i = n →
+      low.x86_64.aes.hw_decrypt_block_loop ⟨s, i⟩ block = ok ((s.val.drop i).foldl eqInvRound block) := by
+  induction n with
+  | zero =>
+    intro i block hn
+    unfold low.x86_64.aes.hw_decrypt_block_loop
+    rw [loop_done (z := block)]
+    · simp [List.drop_eq_nil_of_le (show s.val.length ≤ i by omega)]
+    · simp only [low.x86_64.aes.hw_decrypt_block_loop.body, core.slice.iter.IteratorSliceIter.next]
+      rw [dite_eq_right (by simp [Slice.len]; omega)]
+      simp
+  | succ n ih =>
+    intro i block hn
+    have hi : i < s.val.length := by omega
+    unfold low.x86_64.aes.hw_decrypt_block_loop
+    rw [loop_cont (y := (⟨s, i + 1⟩, eqInvRound block s.val[i]))]
+    · rw [List.drop_eq_getElem_cons hi, List.foldl_cons]
+      exact ih (i + 1) _ (by omega)
+    · simp only [low.x86_64.aes.hw_decrypt_block_loop.body, core.slice.iter.IteratorSliceIter.next]
+      rw [dite_eq_left (by simp [Slice.len]; omega)]
+      simp [aesdec_eq]
+      rfl
+
+/-- `hw_decrypt_block` runs FIPS 197's equivalent inverse cipher under its
+round keys reversed, the order `KeyExpansionEIC` expands them in. -/
+theorem hw_decrypt_block_eq {N : Usize} (alg : Algorithm) (hN : N.val = nr alg + 1)
+    (rk : Std.Array core.core_arch.x86.__m128i N) (b : Std.Array Std.U8 16#usize) :
+    low.x86_64.aes.hw_decrypt_block rk b = ok (storeBytes (eqInvCipher alg (loadBytes b.val) rk.val.reverse)) := by
+  have hnr : 1 ≤ nr alg := by cases alg <;> decide
+  have hl : rk.val.length = nr alg + 1 := by rw [rk.property, hN]
+  obtain ⟨i, hsub, hiv⟩ : ∃ i : Usize, N - 1#usize = ok i ∧ i.val = nr alg := by
+    refine ⟨⟨BitVec.ofNat _ (N.val - 1)⟩, ?_, ?_⟩
+    · show UScalar.sub _ _ = _
+      rw [UScalar.sub, ite_eq_right (by simp; omega)]
+      rfl
+    · have h1 : N.val - 1 < 2 ^ UScalarTy.Usize.numBits := by have := N.hBounds; omega
+      show (BitVec.ofNat _ (N.val - 1)).toNat = nr alg
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h1]; omega
+  unfold low.x86_64.aes.hw_decrypt_block
+  simp [load_eq, core.core_arch.x86.sse2._mm_xor_si128, Std.Array.index_usize, hl, hsub, hiv,
+    core.array.Array.index, SharedSlice.Insts.CoreIterTraitsCollectIntoIteratorSharedIter.into_iter,
+    core.ops.index.IndexSlice, core.slice.index.SliceIndexRangeUsizeSlice.index]
+  rw [ite_eq_left hnr, bind_ok, hw_decrypt_block_loop_eq _ _ 0 _ rfl, bind_ok,
+    core.core_arch.x86.aes._mm_aesdeclast_si128, bind_ok, store_eq]
+  congr 1
+  have hrl : rk.val.reverse.length = nr alg + 1 := by simp [hl]
+  simp only [eqInvCipher, eqInvRounds_foldl _ _ _ (show nr alg - 1 + 1 ≤ rk.val.reverse.length by omega),
+    show nr alg - 1 + 1 = nr alg by omega, ← reverse_slice rk.val.reverse hrl, List.reverse_reverse,
+    Slice.from_val, List.drop_zero, List.slice, invSubBytes_invShiftRows]
+  simp [hl]
+
+theorem invert_round_keys_loop_spec {N : Usize} (n : Nat) (i : Usize) (hi : i.val = n)
+    (iter : core.ops.range.Range Usize) (rk out : Std.Array core.core_arch.x86.__m128i N)
+    (hN : N.val = n + 1) (hs1 : 1 ≤ iter.start.val) (hs : iter.start.val ≤ n) (he : iter.end = i)
+    (ho : ∀ r < iter.start.val, out.val[r]! = invKey rk.val n r) :
+    low.x86_64.aes.invert_round_keys_loop i iter rk out ⦃ out' => ∀ r < n, out'.val[r]! = invKey rk.val n r ⦄ := by
+  unfold low.x86_64.aes.invert_round_keys_loop
+  apply loop.spec_decr_nat (fun x => n - x.1.start.val)
+    (fun x => 1 ≤ x.1.start.val ∧ x.1.start.val ≤ n ∧ x.1.end = i ∧
+      ∀ r < x.1.start.val, x.2.val[r]! = invKey rk.val n r)
+  · rintro ⟨it, out⟩ ⟨hs1, hs, he, ho⟩
+    simp only at hs1 hs he ho ⊢
+    unfold low.x86_64.aes.invert_round_keys_loop.body
+    by_cases hlt : it.start.val < it.end.val
+    · step with core.iter.range.IteratorRange.next_Usize_some_spec as ⟨o, it', ho', hst, hen⟩
+      subst ho'
+      simp only [core.core_arch.x86.aes._mm_aesimc_si128, bind_ok]
+      have hlt' : it.start.val < n := by rw [← hi, ← he]; exact hlt
+      step*
+      refine ⟨by omega, by omega, by rw [hen]; exact he, ?_, by omega⟩
+      intro r hr
+      rw [a_post, Std.Array.set_val_eq, getElem!_set _ _ _ (by simp; omega)]
+      split_ifs with h
+      · rw [← h, invKey, ite_eq_right (by omega), ite_eq_right (by omega), mi_post,
+          getElem!_pos rk.val _ (by rw [rk.property]; omega)]
+        simp only [i2_post, hi]
+      · exact ho r (by omega)
+    · step with core.iter.range.IteratorRange.next_Usize_none_spec as ⟨o, it', ho', hit⟩
+      subst ho'
+      simp only [WP.spec_ok]
+      have hge : n ≤ it.start.val := by rw [← hi, ← he]; omega
+      intro r hr
+      exact ho r (by omega)
+  · exact ⟨hs1, hs, he, ho⟩
+
+/-- `invert_round_keys` expands `KeyExpansionEIC`'s round keys from the
+cipher's, in reverse. -/
+theorem invert_round_keys_spec {N : Usize} (alg : Algorithm) (hN : N.val = nr alg + 1)
+    (rk : Std.Array core.core_arch.x86.__m128i N) :
+    low.x86_64.aes.invert_round_keys rk ⦃ out => out.val.reverse = eqInvRoundKeys alg rk.val ⦄ := by
+  have hnr : 1 ≤ nr alg := by cases alg <;> decide
+  unfold low.x86_64.aes.invert_round_keys
+  simp only [low.x86_64.aes.zero, core.core_arch.x86.sse2._mm_setzero_si128, bind_ok]
+  step*
+  apply WP.spec_bind (invert_round_keys_loop_spec (nr alg) i (by omega) _ rk a hN (by simp) (by simp; omega) rfl ?_)
+  · intro out1 h1
+    step*
+    apply invKeys_reverse alg rk.val _ (by simp [hN])
+    intro r hr
+    rw [out_post, Std.Array.set_val_eq, getElem!_set _ _ _ (by simp; omega)]
+    split_ifs with h
+    · rw [invKey, ite_eq_right (by omega), ite_eq_left (by omega), mi2_post, getElem!_pos]
+    · exact h1 r (by omega)
+  · intro r hr
+    have : r = 0 := by simpa using hr
+    subst this
+    rw [a_post, Std.Array.set_val_eq, getElem!_set _ _ _ (by simp; omega), ite_eq_left (by rfl), invKey,
+      ite_eq_left rfl, mi1_post, getElem!_pos rk.val _ (by rw [rk.property]; omega)]
+    simp only [i_post, hN]
+    rfl
+
 /-! ## `AesKey`: its CPU check, key expansion, and block cipher -/
 
 /-- rind runs its AES-NI key expansion and block cipher on this CPU: its entry
@@ -609,5 +728,76 @@ theorem hw_encrypt_block (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : Lis
     obtain ⟨rfl, hrk⟩ := h
     simp only [low.x86_64.aes.AesKey.encrypt_block, low.x86_64.aes.HwKey.encrypt_block,
       low.x86_64.aes.AesKey256.encrypt_block, aes256_block_spec, hrk, aesEncrypt]
+
+/-- The AES-NI decryption key holds `KeyExpansionEIC`'s round keys for the AES
+key `kw` and `alg`, in reverse. -/
+def HwDecKeyIs (alg : Algorithm) (kw : List (BitVec 32)) : low.x86_64.aes.HwDecKey → Prop
+  | .Aes128 k => alg = .AES_128 ∧ k.round_keys.val.reverse = eqInvRoundKeys alg (keyToRoundKeys alg kw)
+  | .Aes192 k => alg = .AES_192 ∧ k.round_keys.val.reverse = eqInvRoundKeys alg (keyToRoundKeys alg kw)
+  | .Aes256 k => alg = .AES_256 ∧ k.round_keys.val.reverse = eqInvRoundKeys alg (keyToRoundKeys alg kw)
+
+/-- `AesDecKey::new` expands `KeyExpansionEIC`'s round keys for the key bytes,
+which `alg` sizes. -/
+theorem dec_key_new_spec (h : RunsAesHw) (alg : Algorithm) (key : Slice U8) (hk : key.length = 4 * nk alg) :
+    low.x86_64.aes.AesDecKey.new key ⦃ k => ∃ hk, k = .Hw hk ∧
+      HwDecKeyIs alg (seqNat8ToSeqNat32LE (bvs key.val)) hk ⦄ := by
+  obtain ⟨-, ⟨hw, hhw⟩, ⟨ss, hss⟩⟩ := h
+  have hl : key.len.val = 4 * nk alg := by simpa using hk
+  unfold low.x86_64.aes.AesDecKey.new
+  cases alg
+  · have hl' : key.len = 16#usize := by simp [nk] at hl; scalar_tac
+    have hv : key.len.val = 16 := by simp [nk] at hl; exact hl
+    simp only [hhw, hss, bind_ok, hl', show ((16#usize : Usize) : Nat) = 16 from rfl,
+      core.array.TryFromSharedArraySlice.try_from, ↓reduceDIte,
+      core.result.Result.unwrap, low.x86_64.aes.AesKey128.new, low.x86_64.aes.AesKey128.inverse,
+      low.x86_64.aes.zero, core.core_arch.x86.sse2._mm_setzero_si128]
+    step*
+    apply WP.spec_bind (invert_round_keys_spec .AES_128 rfl _)
+    intro out hout
+    rw [WP.spec_ok]
+    refine ⟨_, rfl, rfl, ?_⟩
+    rw [hout, x_post, Std.Array.from_val]
+  · have hl' : key.len = 24#usize := by simp [nk] at hl; scalar_tac
+    have hv : key.len.val = 24 := by simp [nk] at hl; exact hl
+    simp only [hhw, hss, bind_ok, hl', show ((24#usize : Usize) : Nat) = 24 from rfl,
+      core.array.TryFromSharedArraySlice.try_from, ↓reduceDIte,
+      core.result.Result.unwrap, low.x86_64.aes.AesKey192.new, low.x86_64.aes.AesKey192.inverse,
+      low.x86_64.aes.zero, core.core_arch.x86.sse2._mm_setzero_si128]
+    step*
+    apply WP.spec_bind (invert_round_keys_spec .AES_192 rfl _)
+    intro out hout
+    rw [WP.spec_ok]
+    refine ⟨_, rfl, rfl, ?_⟩
+    rw [hout, x_post, Std.Array.from_val]
+  · have hl' : key.len = 32#usize := by simp [nk] at hl; scalar_tac
+    have hv : key.len.val = 32 := by simp [nk] at hl; exact hl
+    simp only [hhw, hss, bind_ok, hl', show ((32#usize : Usize) : Nat) = 32 from rfl,
+      core.array.TryFromSharedArraySlice.try_from, ↓reduceDIte,
+      core.result.Result.unwrap, low.x86_64.aes.AesKey256.new, low.x86_64.aes.AesKey256.inverse,
+      low.x86_64.aes.zero, core.core_arch.x86.sse2._mm_setzero_si128]
+    step*
+    apply WP.spec_bind (invert_round_keys_spec .AES_256 rfl _)
+    intro out hout
+    rw [WP.spec_ok]
+    refine ⟨_, rfl, rfl, ?_⟩
+    rw [hout, x_post, Std.Array.from_val]
+
+/-- `AesDecKey::decrypt_block` replaces the block with FIPS 197's decryption of it. -/
+theorem hw_decrypt_block_spec (hk : low.x86_64.aes.HwDecKey) (alg : Algorithm) (kw : List (BitVec 32))
+    (h : HwDecKeyIs alg kw hk) (b : Std.Array U8 16#usize) :
+    low.x86_64.aes.AesDecKey.decrypt_block (.Hw hk) b = ok (storeBytes (aesDecrypt alg kw (loadBytes b.val))) := by
+  cases hk with
+  | Aes128 k =>
+    obtain ⟨rfl, hrk⟩ := h
+    simp only [low.x86_64.aes.AesDecKey.decrypt_block, hw_decrypt_block_eq (N := 11#usize) .AES_128 rfl, hrk,
+      aesDecrypt]
+  | Aes192 k =>
+    obtain ⟨rfl, hrk⟩ := h
+    simp only [low.x86_64.aes.AesDecKey.decrypt_block, hw_decrypt_block_eq (N := 13#usize) .AES_192 rfl, hrk,
+      aesDecrypt]
+  | Aes256 k =>
+    obtain ⟨rfl, hrk⟩ := h
+    simp only [low.x86_64.aes.AesDecKey.decrypt_block, hw_decrypt_block_eq (N := 15#usize) .AES_256 rfl, hrk,
+      aesDecrypt]
 
 end rind.x86_64

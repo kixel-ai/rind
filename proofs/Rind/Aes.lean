@@ -1,5 +1,6 @@
 import Rind.ValeBytes
 import Rind.Lanes
+import Rind.AesInverse
 open Aeneas Aeneas.Std rind.simd
 
 /-!
@@ -42,6 +43,23 @@ def aesHeaderMask (alg : Algorithm) (key sample : List (BitVec 8)) : List (BitVe
 #guard aesBlock .AES_192 ((List.range 24).map fun i => BitVec.ofNat 8 i)
   ((List.range 16).map fun i => BitVec.ofNat 8 (17 * i)) ==
   [0xdd, 0xa9, 0x7c, 0xa4, 0x86, 0x4c, 0xdf, 0xe0, 0x6e, 0xaf, 0x70, 0xa0, 0xec, 0x0d, 0x71, 0x91]
+
+/-- FIPS 197's decryption of the 16 bytes `block` under the key bytes `key`,
+both read little-endian as `aesBlock` reads them. -/
+def aesBlockDecrypt (alg : Algorithm) (key block : List (BitVec 8)) : List (BitVec 8) :=
+  leQuad32ToBytes (aesDecrypt alg (seqNat8ToSeqNat32LE key) (leBytesToQuad32 block))
+
+-- FIPS 197's appendix C: each key size's ciphertext of `00112233...ff`
+-- decrypts to it.
+#guard aesBlockDecrypt .AES_128 ((List.range 16).map fun i => BitVec.ofNat 8 i)
+  [0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30, 0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4, 0xc5, 0x5a] ==
+  (List.range 16).map fun i => BitVec.ofNat 8 (17 * i)
+#guard aesBlockDecrypt .AES_192 ((List.range 24).map fun i => BitVec.ofNat 8 i)
+  [0xdd, 0xa9, 0x7c, 0xa4, 0x86, 0x4c, 0xdf, 0xe0, 0x6e, 0xaf, 0x70, 0xa0, 0xec, 0x0d, 0x71, 0x91] ==
+  (List.range 16).map fun i => BitVec.ofNat 8 (17 * i)
+#guard aesBlockDecrypt .AES_256 ((List.range 32).map fun i => BitVec.ofNat 8 i)
+  [0x8e, 0xa2, 0xb7, 0xca, 0x51, 0x67, 0x45, 0xbf, 0xea, 0xfc, 0x49, 0x90, 0x4b, 0x49, 0x60, 0x89] ==
+  (List.range 16).map fun i => BitVec.ofNat 8 (17 * i)
 
 /-- The key length `alg` takes, which rind's AES supports. -/
 def KeyLen (alg : Algorithm) (n : Nat) : Prop :=
@@ -411,19 +429,41 @@ theorem roundKey192_zero (key : List (BitVec 32)) : roundKey .AES_192 key 0 = ke
 /-- The low halves of `b` then `a`: `PUNPCKLQDQ` and `ZIP1`. -/
 theorem zip_lo (a b : BitVec 128) :
     lane64 a 0 ++ lane64 b 0 = mkfour (lane32 b 0) (lane32 b 1) (lane32 a 0) (lane32 a 1) := by
-  simp only [lane64, lane32, mkfour]; bv_decide
+  apply BitVec.eq_of_getElem_eq; intro i hi
+  simp only [lane64, lane32, mkfour, BitVec.getElem_append, BitVec.getElem_extractLsb']
+  split_ifs <;> first | omega | (congr 1; done) | (congr 1; omega)
 
 /-- The high half of `a`, then the low of `b`: `PALIGNR` and `EXT` by eight bytes. -/
 theorem ext_hi (a b : BitVec 128) :
     ((b ++ a) >>> 64).setWidth 128 = mkfour (lane32 a 2) (lane32 a 3) (lane32 b 0) (lane32 b 1) := by
-  simp only [lane32, mkfour]; bv_decide
+  apply BitVec.eq_of_getLsbD_eq; intro i hi
+  simp only [lane32, mkfour, BitVec.getLsbD_setWidth, BitVec.getLsbD_ushiftRight, BitVec.getLsbD_append,
+    BitVec.getLsbD_extractLsb', hi, decide_true, Bool.true_and]
+  by_cases h0 : i < 32
+  · simp only [h0, show 64 + i < 128 from by omega, ↓reduceIte, decide_true, Bool.true_and]
+  by_cases h1 : i < 64
+  · simp only [h0, show 64 + i < 128 from by omega, show i - 32 < 32 from by omega, ↓reduceIte, decide_true,
+      Bool.true_and]
+    exact congrArg _ (by omega)
+  by_cases h2 : i < 96
+  · simp only [h0, show ¬64 + i < 128 from by omega, show ¬i - 32 < 32 from by omega,
+      show i - 32 - 32 < 32 from by omega, ↓reduceIte, decide_true, Bool.true_and]
+    exact congrArg _ (by omega)
+  · simp only [h0, show ¬64 + i < 128 from by omega, show ¬i - 32 < 32 from by omega,
+      show ¬i - 32 - 32 < 32 from by omega, show i - 32 - 32 - 32 < 32 from by omega, ↓reduceIte, decide_true,
+      Bool.true_and]
+    exact congrArg _ (by omega)
 
 /-- The next step's last two words in `b`'s low half: each XORed with those
 below it and with `a`'s last. -/
 theorem lane32_next192 (a b : BitVec 128) :
     lane32 (b ^^^ b <<< 32 ^^^ ofLanes32 fun _ => lane32 a 3) 0 = lane32 b 0 ^^^ lane32 a 3 ∧
       lane32 (b ^^^ b <<< 32 ^^^ ofLanes32 fun _ => lane32 a 3) 1 = lane32 b 1 ^^^ (lane32 b 0 ^^^ lane32 a 3) := by
-  simp only [lane32, ofLanes32]; constructor <;> bv_decide
+  constructor <;> apply BitVec.eq_of_getLsbD_eq <;> intro i hi <;>
+    simp only [lane32, ofLanes32, BitVec.getLsbD_extractLsb', BitVec.getLsbD_xor, BitVec.getLsbD_shiftLeft,
+      BitVec.getLsbD_append, hi, decide_true, Bool.true_and]
+  · split_ifs <;> simp_all
+  · split_ifs <;> simp_all; omega
 
 /-- A step's last two words, in `b`'s low half, from the step before's and
 this step's first four. -/
@@ -459,5 +499,67 @@ theorem evalRounds_foldl (init : Quad32) (rk : List Quad32) {n : Nat} (h : n + 1
       List.getElem?_drop, List.getElem?_eq_getElem (by omega)]
     simp [List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem (show n + 1 < rk.length by omega),
       Nat.add_comm 1 n]
+
+/-! ## The equivalent inverse cipher's rounds as a fold -/
+
+theorem byte_invSubBytes (q : Quad32) {i : Nat} (hi : i < 16) : byte (invSubBytes q) i = invSbox (byte q i) :=
+  byte_ofBytes _ hi
+
+theorem byte_invShiftRows (q : Quad32) {i : Nat} (hi : i < 16) :
+    byte (invShiftRows q) i = byte q (i % 4 + 4 * ((i / 4 + 4 - i % 4) % 4)) :=
+  byte_ofBytes _ hi
+
+theorem invSubBytes_invShiftRows (q : Quad32) : invSubBytes (invShiftRows q) = invShiftRows (invSubBytes q) := by
+  apply eq_of_byte_eq; intro i hi
+  rw [byte_invSubBytes _ hi, byte_invShiftRows _ hi, byte_invShiftRows _ hi, byte_invSubBytes _ (by omega)]
+
+/-- An `EqInvCipher` round: `InvSubBytes`, `InvShiftRows`, and `InvMixColumns`,
+then the round key XORed. -/
+def eqInvRound (state roundKey : Quad32) : Quad32 :=
+  invMixColumns (invShiftRows (invSubBytes state)) ^^^ roundKey
+
+/-- `EqInvCipher`'s rounds `n` down to 1 fold its round keys `n` down to 1. -/
+theorem eqInvRounds_foldl (dw : List Quad32) (s : Quad32) (n : Nat) (h : n + 1 ≤ dw.length) :
+    eqInvRounds dw s n = ((dw.take (n + 1)).drop 1).reverse.foldl eqInvRound s := by
+  induction n generalizing s with
+  | zero => simp [eqInvRounds]
+  | succ n ih =>
+    rw [eqInvRounds, ih _ (by omega), List.take_add_one (i := n + 1), List.drop_append_of_le_length
+      (by simp; omega), List.reverse_append, List.getElem?_eq_getElem (show n + 1 < dw.length by omega)]
+    simp [eqInvRound, List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem (show n + 1 < dw.length by omega)]
+
+/-- The round keys reversed, less the first and last: those `EqInvCipher`'s
+rounds take, in the order they take them. -/
+theorem reverse_slice (l : List Quad32) {n : Nat} (hl : l.length = n + 1) :
+    (l.reverse.drop 1).take (n - 1) = ((l.take n).drop 1).reverse := by
+  apply List.ext_getElem (by simp [hl])
+  intro i h1 h2
+  simp only [List.getElem_take, List.getElem_drop, List.getElem_reverse, List.length_take, List.length_drop, hl]
+  simp at h1 h2
+  congr 1
+  omega
+
+/-- Both targets' `invert_round_keys`' output from the round keys `w`:
+`KeyExpansionEIC`'s round keys reversed, round key `r` being its round key
+`n - r`. -/
+def invKey (w : List (BitVec 128)) (n r : Nat) : BitVec 128 :=
+  if r = 0 then w[n]! else if r = n then w[0]! else invMixColumns w[n - r]!
+
+theorem invKeys_reverse (alg : Algorithm) (w out : List (BitVec 128)) (hl : out.length = nr alg + 1)
+    (h : ∀ r < nr alg + 1, out[r]! = invKey w (nr alg) r) : out.reverse = eqInvRoundKeys alg w := by
+  apply List.ext_getElem (by simp [hl, eqInvRoundKeys])
+  intro j h1 h2
+  have hj : j < nr alg + 1 := by simpa [hl] using h1
+  have := h (nr alg - j) (by omega)
+  rw [List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem (by omega)] at this
+  have this' : out[nr alg - j]'(by omega) = invKey w (nr alg) (nr alg - j) := by simpa using this
+  simp only [List.getElem_reverse, hl, eqInvRoundKeys, List.getElem_map, List.getElem_range,
+    show nr alg + 1 - 1 - j = nr alg - j by omega, this', invKey]
+  by_cases h0 : j = 0
+  · subst h0; simp; intro h; simp [h]
+  · by_cases hn : j = nr alg
+    · subst hn; simp
+    · rw [ite_eq_right (by omega), ite_eq_right (by omega), ite_eq_right (by omega),
+        show nr alg - (nr alg - j) = j by omega]
 
 end rind.vale

@@ -784,6 +784,8 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::chacha20poly1305::open \
     --include 'crate::mid::aes::_' \
     --include crate::low::x86_64::aes \
+    --start-from crate::low::x86_64::aes::AesDecKey::new \
+    --start-from crate::low::x86_64::aes::AesDecKey::decrypt_block \
     --opaque crate::low::x86_64::aes::HwKey::round_keys_512 \
     --opaque crate::low::x86_64::aes::RoundKeys512 \
     --include crate::low::x86_64::ghash \
@@ -834,6 +836,8 @@ extract aarch64 Aarch64 \
     --opaque crate::low::aarch64::sha256::compress_nohw \
     --include 'crate::mid::aes::_' \
     --include crate::low::aarch64::aes \
+    --start-from crate::low::aarch64::aes::AesDecKey::new \
+    --start-from crate::low::aarch64::aes::AesDecKey::decrypt_block \
     --opaque crate::low::aarch64::aes::_aes128_8_blocks \
     --opaque crate::low::aarch64::aes::_aes256_8_blocks \
     --opaque crate::low::aarch64::aes::_aes_8_blocks

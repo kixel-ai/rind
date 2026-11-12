@@ -31,8 +31,9 @@ opaque low.generic.reuse_cache.ReuseCache (T : Type) : Type
 functional spec leaves out. -/
 opaque high.hmac_drbg.HmacDrbg (H : Type _) (Clause0_Context : Type _) (Clause0_State : Type _) : Type
 
-/-- The NEON AES key aarch64 CPUs without the crypto extension run. -/
+/-- The NEON AES keys aarch64 CPUs without the crypto extension run. -/
 opaque low.aarch64.vpaes_armv8.VpaesKey : Type
+opaque low.aarch64.vpaes_armv8.VpaesDecKey : Type
 
 /-- MD5's chaining state, which no proof covers. -/
 opaque mid.md5.Md5State : Type

@@ -1,6 +1,7 @@
 module
 public import Aeneas
 public import Rind.Vale
+public import Rind.AesInverse
 public import Rind.Lanes
 @[expose] public section
 set_option linter.style.nameCheck false
@@ -18,7 +19,8 @@ reinterpretation between them changes nothing.
 
 `AESE` and `AESMC` run FIPS 197's rounds, `Rind.Vale`'s `subBytes`,
 `shiftRows`, and opaque `mixColumns`, the functions Vale's AES spec assumes,
-on the state laid out as x86_64's AES instructions take it. That these models
+and `AESD` and `AESIMC` their inverses in `Rind.AesInverse`, on the state laid
+out as x86_64's AES instructions take it. That these models
 are what the CPU computes is trusted, as an instruction model is for
 s2n-bignum's and Vale's own proofs, and `admin/neon-vectors.rs` tests them on
 an aarch64 CPU.
@@ -87,6 +89,16 @@ def core.core_arch.arm_shared.neon.generated.vaeseq_u8 (data key : core.core_arc
 def core.core_arch.arm_shared.neon.generated.vaesmcq_u8 (data : core.core_arch.arm_shared.neon.uint8x16_t) :
     Result core.core_arch.arm_shared.neon.uint8x16_t :=
   ok (mixColumns data)
+
+/-- `vaesdq_u8`, `AESD`: the round key XORed, then `InvShiftRows` and `InvSubBytes`. -/
+def core.core_arch.arm_shared.neon.generated.vaesdq_u8 (data key : core.core_arch.arm_shared.neon.uint8x16_t) :
+    Result core.core_arch.arm_shared.neon.uint8x16_t :=
+  ok (invSubBytes (invShiftRows (data ^^^ key)))
+
+/-- `vaesimcq_u8`, `AESIMC`: `InvMixColumns`. -/
+def core.core_arch.arm_shared.neon.generated.vaesimcq_u8 (data : core.core_arch.arm_shared.neon.uint8x16_t) :
+    Result core.core_arch.arm_shared.neon.uint8x16_t :=
+  ok (invMixColumns data)
 
 /-- `vreinterpretq_u8_p128`: the 128 bits, the least significant byte in lane 0. -/
 def core.core_arch.arm_shared.neon.generated.vreinterpretq_u8_p128 (a : Std.U128) :
