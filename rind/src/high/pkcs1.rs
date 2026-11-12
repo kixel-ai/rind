@@ -18,6 +18,7 @@ use crate::mid::rng::RandomSource;
 /// panics if the encoding cannot fit.  this is not reachable
 /// for the combinations of hash functions / key sizes that
 /// we support.
+#[allow(clippy::needless_range_loop)]
 pub(crate) fn encode_pkcs1_sig(out: &mut [u8], digest_info: &[u8], hash: &[u8]) {
     // 1.  Apply the hash function to the message M to produce a hash
     //     value H:
@@ -407,6 +408,7 @@ fn ct_mask(b: bool) -> u8 {
 ///
 /// By index rather than through closures, which Aeneas cannot translate, so
 /// `proofs/` can prove RSA verification.
+#[allow(clippy::needless_range_loop)]
 fn leading_zeroes(bytes: &[u8]) -> usize {
     let mut len = 0;
     let mut zeroes = true;

@@ -80,6 +80,7 @@ impl<const N: usize> PosInt<N> {
     // Indexes rather than taking `rchunks_exact` and returning early from
     // its loop, which Aeneas cannot translate, so `proofs/` can prove RSA's
     // encoding.
+    #[allow(clippy::needless_range_loop)]
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let bytes = trim_leading_zeroes(bytes);
         if bytes.len() > N * 8 {

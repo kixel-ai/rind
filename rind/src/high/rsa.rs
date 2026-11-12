@@ -33,6 +33,7 @@ static KEY_ALGORITHMS: [&asn1::ObjectId; 3] = [
 ///
 /// By index rather than folding through a closure, which Aeneas cannot
 /// translate, so `proofs/` can prove RSA key loading.
+#[allow(clippy::needless_range_loop)]
 fn public_exponent(e: &[u8]) -> Result<u64, Error> {
     if e.len() > 8 {
         return Err(KeyFormatError::RsaExponent.into());
@@ -84,7 +85,10 @@ fn pkcs1_components(bytes: &[u8]) -> Result<(&[u8], &[u8]), Error> {
     if decoded.publicExponent.is_negative() {
         return Err(KeyFormatError::RsaExponent.into());
     }
-    Ok((decoded.modulus.as_bytes(), decoded.publicExponent.as_bytes()))
+    Ok((
+        decoded.modulus.as_bytes(),
+        decoded.publicExponent.as_bytes(),
+    ))
 }
 
 /// How long an RSASSA-PSS salt is.
@@ -791,6 +795,7 @@ impl SigningKey {
 /// Its excess is read by index rather than folded through a closure, and it
 /// returns nothing borrowed, which Aeneas cannot translate past a `?`, so
 /// `proofs/` can prove RSA verification.
+#[allow(clippy::needless_range_loop)]
 fn i2osp<const N: usize>(x: &PosInt<N>, out: &mut [u8]) -> Result<(), Error> {
     let mut bytes = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
     let bytes = x.to_bytes(&mut bytes)?;
