@@ -32,9 +32,9 @@ Guidance:
 - HMAC keys pass through both hashes, so each new routine gets its ctgrind test, with NEON and with it denied.
 - The portable backend is unaffected: it runs HACL*'s SHA-256 and rind's SHA-1 in Rust.
 
-Conflict to settle in the same PR: [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) plans to prove exactly the Rust this may replace, SHA-256 and SHA-1 without the crypto extension, with Aeneas against FIPS 180-4. Under the rule above the faster source runs and its proof is planned. So for each routine that becomes assembly, move its bullet from that quest to [armv7's assembly is proven](/quest/m5/verified-armv7/assembly.md), which already holds `sha_armv4`'s other routines; a routine that stays Rust keeps its bullet.
+Conflict to settle in the same PR: [armv7's Rust AES-GCM and SHA are proven](/quest/m5/verified-armv7/prove.md) plans to prove exactly the Rust this may replace, SHA-256 and SHA-1 without the crypto extension, with Aeneas against FIPS 180-4. Under the rule above the faster source runs and its proof is planned. So for each routine that becomes assembly, move its bullet from that quest to [armv7's assembly is proven](/quest/m5/verified-armv7/assembly.md), which already holds `sha_armv4`'s other routines; a routine that stays Rust keeps its bullet.
 
 ## Related
 
-- [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) - plans to prove the Rust SHA-256 and SHA-1 this may replace
+- [armv7's Rust AES-GCM and SHA are proven](/quest/m5/verified-armv7/prove.md) - plans to prove the Rust SHA-256 and SHA-1 this may replace
 - [armv7's assembly is proven](/quest/m5/verified-armv7/assembly.md) - takes the proof of any assembly routine this imports
