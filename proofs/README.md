@@ -711,6 +711,6 @@ Beyond Lean's kernel:
   own theorems, with rind's additions in `hol-light/s2n-bignum/x86.patch`,
   which `admin/prove cosim` checks against the CPU as s2n-bignum checks its
   own.
-- The translation ignores drops, which here wipe keys and keyed state under
-  the `wipe` feature and restore CPU state, and computes nothing an output
+- The translation ignores drops, which here wipe keys and keyed state and
+  restore CPU state, and computes nothing an output
   depends on.

@@ -20,7 +20,7 @@ upstream = "1"
 # nothing. `fips` is left out, so a manifest asking for it fails to
 # resolve: rind is not FIPS validated.
 [features]
-default = ["aws-lc-sys", "alloc", "ring-io", "ring-sig-verify", "wipe"]
+default = ["aws-lc-sys", "alloc", "ring-io", "ring-sig-verify"]
 alloc = []
 asan = []
 aws-lc-sys = []
@@ -33,10 +33,6 @@ ring-io = []
 ring-sig-verify = []
 test_logging = []
 unstable = []
-
-# rind-aws-lc-rs's own: wipes rind's keys and the adapter's heap copies of
-# secrets on drop, as aws-lc-rs always does.
-wipe = ["rind/wipe"]
 
 [dependencies]
 rind = { version = "0.3.2", path = "../rind" }

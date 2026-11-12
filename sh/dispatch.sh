@@ -269,12 +269,9 @@ for module in "${selected[@]}"; do
                 cargo clippy -p rind --lib --locked --target armv7-unknown-linux-gnueabihf -- --deny warnings
             # wasm32 compiles on the portable backend; the browser target
             # needs getrandom's JavaScript source, WASI has its own.
-            # Both with the default `wipe` and without it.
-            for flags in "" --no-default-features; do
-                cargo clippy -p rind --lib --locked --target wasm32-wasip2 $flags -- --deny warnings
-                cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown $flags \
-                    --features getrandom/wasm_js -- --deny warnings
-            done
+            cargo clippy -p rind --lib --locked --target wasm32-wasip2 -- --deny warnings
+            cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown \
+                --features getrandom/wasm_js -- --deny warnings
             ;;
         check:structure) admin/structure ;;
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;

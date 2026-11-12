@@ -111,8 +111,8 @@ anything but `bytes` is copied first, so no other thread can change it
 mid-call. RSA key generation, RSA signing and decryption, and PBKDF2 release
 the GIL while they run.
 
-pyrind wipes keys and keyed state when Python frees them: the wheels build
-rind with its default `wipe` feature. Nothing wipes the `bytes` a key was loaded from or exported to;
+pyrind wipes keys and keyed state when Python frees them, as rind does.
+Nothing wipes the `bytes` a key was loaded from or exported to;
 Python owns those.
 
 ## Platforms

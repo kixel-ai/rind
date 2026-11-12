@@ -5,7 +5,7 @@
 A `rind-fips` crate builds a module that meets FIPS 140-3 Level 1's software
 requirements: a defined boundary with a load-time integrity test, the
 self-tests, an error state, approved services only, and the zeroization FIPS
-adds to rind's `wipe`. Its API is rind's, minus what is not approved, so
+adds to rind's key wiping. Its API is rind's, minus what is not approved, so
 `use rind_fips as rind` compiles wherever a consumer uses only approved
 algorithms.
 
@@ -43,7 +43,8 @@ From [the scope](/quest/m4/fips/README.md), 2026-11-11.
   SP 800-132's salt and output floors, AES-GCM sealing only with an
   internally generated IV ([its quest](/quest/m4/fips/gcm-iv.md)). A
   `version()` service names the module and version.
-- Zeroization, beyond `wipe`, which the module always enables:
+- Zeroization, beyond the keys, keyed state, and private-key heap scratch
+  rind always wipes:
   - SSPs that live only inside a call: ECDSA's nonce and its inverse, ECDH's
     shared secret and its intermediate points, ML-KEM's re-encryption
     message and implicit-rejection key, ML-DSA's `y` and `rnd`, RSA's CRT
@@ -62,7 +63,7 @@ From [the scope](/quest/m4/fips/README.md), 2026-11-11.
 
 ## Waiting
 
-- Maintainer: approve the module's exception to `AGENTS.md`'s wipe rule, which keeps stack temporaries and copies inside a call unwiped and leaves `wipe` opt-in. FIPS requires zeroizing SSPs once no longer needed, temporaries included. Options: add one line saying the FIPS module always wipes and also wipes SSPs inside a call (recommended: it confines the cost to `rind-fips`); or wipe temporaries in `rind` too, so the module needs no exception (slower for every consumer). An agent cannot change an `AGENTS.md` rule unprompted. Done once the rule is settled in the Plan and this item is deleted.
+- Maintainer: approve the module's exception to `AGENTS.md`'s wipe rule, which keeps stack temporaries and copies inside a call unwiped. FIPS requires zeroizing SSPs once no longer needed, temporaries included. Options: add one line saying the FIPS module always wipes and also wipes SSPs inside a call (recommended: it confines the cost to `rind-fips`); or wipe temporaries in `rind` too, so the module needs no exception (slower for every consumer). An agent cannot change an `AGENTS.md` rule unprompted. Done once the rule is settled in the Plan and this item is deleted.
 
 ## Required
 

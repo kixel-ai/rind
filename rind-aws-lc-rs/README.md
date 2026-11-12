@@ -22,9 +22,7 @@ Every aws-lc-rs feature but `fips` is accepted. `ring-io` and `ring-sig-verify` 
 
 ## Wiping keys
 
-Keys, and the adapter's own copies of secrets such as PKCS#8 documents, Ed25519 seeds, and ML-KEM shared secrets, are wiped on drop under the default `wipe` feature, which aws-lc-rs lacks since it always wipes.
-It turns on rind's own `wipe` feature too. Turning it off with `default-features = false` skips the wipe.
-It is the one item this crate adds to aws-lc-rs's API.
+Keys, and the adapter's own copies of secrets such as PKCS#8 documents, Ed25519 seeds, and ML-KEM shared secrets, are wiped on drop, as aws-lc-rs wipes them.
 
 ## Not offered
 

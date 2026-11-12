@@ -114,8 +114,7 @@ role. Failures throw a `RindException` whose `error` says what failed, as
 rind's `Error` does, and a refused key says why in its `reason`. SHA-1, MD5,
 and RSA keys below 2048 bits are in `package:rind/legacy.dart`.
 
-Keys live in native memory, and rind wipes them when Dart frees them: this
-package builds rind with its default `wipe` feature.
+Keys live in native memory, and rind wipes them when Dart frees them.
 
 Generating RSA keys, RSA's private-key operations, and PBKDF2 take
 milliseconds to seconds, so call them off the UI isolate, as with

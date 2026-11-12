@@ -14,8 +14,6 @@ readme = "README.md"
 default = ["pem"]
 # rcgen's PEM methods on `KeyPair`.
 pem = ["dep:base64ct", "rcgen/pem"]
-# rind-rcgen's own: wipes rind's keys and the key pair's PKCS#8 copy on drop.
-wipe = ["rind/wipe"]
 # rcgen's `impl Zeroize for KeyPair`, which clears its PKCS#8 copy.
 zeroize = []
 

@@ -11,7 +11,7 @@ Planned from the 2026-11-09 tooling audit. The exact-API rule has no machine che
 - A one-off comparison of rustdoc surfaces on 2026-11-08 found additions, changed signatures, and renamed items in every adapter ([the adapters epic](/quest/m0/adapters/README.md) records it). The PRs that fix them add no check, so the next drift is found by the next hand audit.
 - `sh/adapter-versions.sh` checks only that an adapter's version begins with its upstream's breaking part.
 - cargo-semver-checks, through release-plz, compares an adapter with its own last release, not with upstream.
-- No job builds an adapter's features one at a time: rind-aws-lc-rs declares 13 and rind-ring 3, and only the default set, `--no-default-features`, and `wipe` are built.
+- No job builds an adapter's features one at a time: rind-aws-lc-rs declares 13 and rind-ring 3, and only the default set and `--no-default-features` are built.
 
 Guidance:
 
