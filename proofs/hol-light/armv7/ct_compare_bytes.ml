@@ -13,6 +13,7 @@
    equal. Its loads and branches depend only on R0, R1, and R2. *)
 
 needs "aarch32/proofs/base.ml";;
+needs "common/consttime.ml";;
 
 (* admin/prove writes the block's bytes, as rind's release build emits them,
    to armv7/ct_compare_bytes.bin, and the definition fails unless they are
@@ -156,7 +157,7 @@ let CT_COMPARE_BYTES_CORRECT = prove
   VAL_INT32_TAC `n - (i + 1)` THEN
   AARCH32_STEPS_TAC CT_COMPARE_BYTES_EXEC (1--7) THEN
   MP_TAC(SPEC `n - (i + 1)` CT_COMPARE_BYTES_CARRY) THEN
-  ANTS_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  ANTS_TAC THENL [UNDISCH_TAC `n < 2 EXP 32` THEN ARITH_TAC; ALL_TAC] THEN
   DISCH_THEN(fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THEN
   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
   CONJ_TAC THENL
@@ -188,3 +189,80 @@ let CT_COMPARE_BYTES_CORRECT = prove
   REPEAT GEN_TAC THEN
   REWRITE_TAC[CT_COMPARE_BYTES_VAL] THEN
   CONJ_TAC THEN BITBLAST_TAC);;
+
+(* The trace, its loads and branches, is a function of R0, R1, and R2 alone,
+   and every load lands inside the two strings. *)
+let CT_COMPARE_BYTES_SAFE = prove
+ (`exists f_events.
+       forall e a b n pc.
+           ensures aarch32
+           (\s. aligned_bytes_loaded s (word pc) ct_compare_bytes_mc /\
+                read PC s = word pc /\
+                read R0 s = a /\ read R1 s = b /\ read R2 s = n /\
+                read events s = e)
+           (\s. read PC s = word (pc + 0x1c) /\
+                exists e2.
+                    read events s = APPEND e2 e /\
+                    e2 = f_events a b n pc /\
+                    memaccess_inbounds e2 [a,val n; b,val n] [])
+           (\s s'. true)`,
+  CONCRETIZE_F_EVENTS_TAC
+   `\(a:int32) (b:int32) (n:int32) (pc:num).
+      if val n = 0 then f_ev_zero a b n pc
+      else APPEND (f_ev_post a b n pc)
+             (APPEND (ENUMERATEL (val n) (f_ev_loop a b n pc))
+                     (f_ev_entry a b n pc))
+      :(aarch32_uarch_event) list` THEN
+  REPEAT META_EXISTS_TAC THEN STRIP_TAC THEN
+  MAP_EVERY X_GEN_TAC [`a:int32`; `b:int32`] THEN
+  W32_GEN_TAC `n:num` THEN X_GEN_TAC `pc:num` THEN
+  REWRITE_TAC[fst CT_COMPARE_BYTES_EXEC] THEN
+  ASM_CASES_TAC `n = 0` THENL
+   [ASM_REWRITE_TAC[] THEN
+    AARCH32_SIM_TAC ~preprocess_tac:(TRY STRIP_EXISTS_ASSUM_TAC)
+      ~canonicalize_pc_diff:false CT_COMPARE_BYTES_EXEC (1--2) THEN
+    ASM_REWRITE_TAC[WORD_SUB_0; VAL_WORD_0] THEN
+    DISCHARGE_SAFETY_PROPERTY_TAC;
+    ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  ENSURES_EVENTS_WHILE_UP2_TAC `n:num` `pc + 0x8` `pc + 0x1c`
+   `\i s. read R0 s = word_add a (word i) /\
+          read R1 s = word_add b (word i) /\
+          read R2 s = word_sub (word n) (word(i + 1))` THEN
+  ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL
+   [ENSURES_INIT_TAC "s0" THEN TRY STRIP_EXISTS_ASSUM_TAC THEN
+    AARCH32_STEPS_TAC CT_COMPARE_BYTES_EXEC (1--2) THEN
+    MP_TAC(SPEC `n:num` CT_COMPARE_BYTES_CARRY) THEN
+    ASM_REWRITE_TAC[] THEN
+    DISCH_THEN(fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[WORD_SUB_0; WORD_ADD_0; ADD_CLAUSES; VAL_WORD_0] THEN
+    DISCHARGE_SAFETY_PROPERTY_TAC;
+    ALL_TAC;
+    REWRITE_TAC[] THEN ENSURES_INIT_TAC "s0" THEN
+    TRY STRIP_EXISTS_ASSUM_TAC THEN
+    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+    DISCHARGE_SAFETY_PROPERTY_TAC] THEN
+  X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+  SUBGOAL_THEN `word_sub (word n) (word(i + 1)):int32 = word(n - (i + 1))`
+  SUBST1_TAC THENL
+   [ASM_SIMP_TAC[WORD_SUB; ARITH_RULE `i < n ==> i + 1 <= n`]; ALL_TAC] THEN
+  VAL_INT32_TAC `n - (i + 1)` THEN
+  REWRITE_TAC(!simulation_precanon_thms) THEN
+  ENSURES_INIT_TAC "s0" THEN TRY STRIP_EXISTS_ASSUM_TAC THEN
+  AARCH32_STEPS_TAC CT_COMPARE_BYTES_EXEC (1--7) THEN
+  MP_TAC(SPEC `n - (i + 1)` CT_COMPARE_BYTES_CARRY) THEN
+  ANTS_TAC THENL [UNDISCH_TAC `n < 2 EXP 32` THEN ARITH_TAC; ALL_TAC] THEN
+  DISCH_THEN(fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[ARITH_RULE `n - (i + 1) = 0 <=> ~(i + 1 < n)`] THEN
+  CONJ_TAC THENL [COND_CASES_TAC THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  CONJ_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+  CONJ_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+  CONJ_TAC THENL
+   [SUBGOAL_THEN `word(n - (i + 1)):int32 = word_sub (word n) (word(i + 1))`
+    SUBST1_TAC THENL
+     [ASM_SIMP_TAC[WORD_SUB; ARITH_RULE `i < n ==> i + 1 <= n`]; ALL_TAC] THEN
+    CONV_TAC WORD_RULE;
+    ALL_TAC] THEN
+  DISCHARGE_SAFETY_PROPERTY_TAC);;

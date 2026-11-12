@@ -252,3 +252,23 @@ let VAL_INT32_TAC =
     REWRITE_TAC[VAL_WORD_EQ_EQ; DIMINDEX_32] THEN ARITH_TAC) in
   fun t -> MP_TAC(SPEC t pth) THEN
            ANTS_TAC THENL [SIMPLE_ARITH_TAC THEN NO_TAC; DISCH_TAC];;
+
+(* ------------------------------------------------------------------------- *)
+(* The AAPCS's integer arguments, in R0-R3, and result, in R0.               *)
+(* ------------------------------------------------------------------------- *)
+
+let C_ARGUMENTS = define
+ `(C_ARGUMENTS [a1;a2;a3;a4] s <=>
+        read R0 s = a1 /\ read R1 s = a2 /\ read R2 s = a3 /\
+        read R3 s = a4) /\
+  (C_ARGUMENTS [a1;a2;a3] s <=>
+        read R0 s = a1 /\ read R1 s = a2 /\ read R2 s = a3) /\
+  (C_ARGUMENTS [a1;a2] s <=>
+        read R0 s = a1 /\ read R1 s = a2) /\
+  (C_ARGUMENTS [a1] s <=>
+        read R0 s = a1) /\
+  (C_ARGUMENTS [] s <=>
+        T)`;;
+
+let C_RETURN = define
+ `C_RETURN = read R0`;;
