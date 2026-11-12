@@ -1,0 +1,199 @@
+// SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
+//! Constant-time checks for each secret path through the provider, run under
+//! valgrind by `admin/ctgrind`, with keys handed in through OpenSSL's own API
+//! as an application would.
+//!
+//! Secret inputs are marked undefined, so memcheck flags any branch or memory
+//! index that depends on them. Outputs that are public by design are marked
+//! defined before the test checks them. rind itself marks the private keys it
+//! generates or parses.
+#![cfg(unix)]
+#![allow(clippy::undocumented_unsafe_blocks)]
+
+use std::ffi::{CStr, CString, c_char, c_int};
+use std::path::PathBuf;
+use std::ptr::{null, null_mut};
+
+use crabgrind::memcheck::{self, MemState};
+use crabgrind::valgrind::{self, RunningMode};
+use openssl_sys::*;
+
+unsafe extern "C" {
+    fn OSSL_LIB_CTX_load_config(ctx: *mut OSSL_LIB_CTX, file: *const c_char) -> c_int;
+    fn EVP_PKEY_CTX_new_from_pkey(
+        ctx: *mut OSSL_LIB_CTX,
+        pkey: *mut EVP_PKEY,
+        propq: *const c_char,
+    ) -> *mut EVP_PKEY_CTX;
+    fn EVP_DigestSignInit_ex(
+        ctx: *mut EVP_MD_CTX,
+        pctx: *mut *mut EVP_PKEY_CTX,
+        mdname: *const c_char,
+        libctx: *mut OSSL_LIB_CTX,
+        props: *const c_char,
+        pkey: *mut EVP_PKEY,
+        params: *const OSSL_PARAM,
+    ) -> c_int;
+}
+
+/// Marks `value` secret: memcheck flags any branch or index that depends on it.
+fn secret<T: ?Sized>(value: &T) {
+    mark(value, MemState::Undefined);
+}
+
+/// Marks `value` public, so the test may branch on it.
+fn public<T: ?Sized>(value: &T) {
+    mark(value, MemState::Defined);
+}
+
+fn mark<T: ?Sized>(value: &T, state: MemState) {
+    if let RunningMode::Valgrind = valgrind::running_mode() {
+        memcheck::mark_memory((value as *const T).cast(), size_of_val(value), state).unwrap();
+    }
+}
+
+/// A library context with the README's configuration, loading the library
+/// this build made.
+fn context() -> *mut OSSL_LIB_CTX {
+    let exe = std::env::current_exe().unwrap();
+    let library = exe.with_file_name(format!(
+        "{}rind_openssl{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX
+    ));
+    let config: String = include_str!("../openssl.cnf")
+        .lines()
+        .map(|line| match line.starts_with("module = ") {
+            true => format!("module = {}\n", library.display()),
+            false => format!("{line}\n"),
+        })
+        .collect();
+    let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("rind-openssl-ctgrind-{}.cnf", std::process::id()));
+    std::fs::write(&path, config).unwrap();
+    let path = CString::new(path.into_os_string().into_encoded_bytes()).unwrap();
+    unsafe {
+        let ctx = OSSL_LIB_CTX_new();
+        assert!(!ctx.is_null());
+        assert_eq!(OSSL_LIB_CTX_load_config(ctx, path.as_ptr()), 1);
+        ctx
+    }
+}
+
+fn private_key(ctx: *mut OSSL_LIB_CTX, algorithm: &CStr, private: &[u8; 32]) -> *mut EVP_PKEY {
+    let key = unsafe {
+        EVP_PKEY_new_raw_private_key_ex(
+            ctx,
+            algorithm.as_ptr(),
+            null(),
+            private.as_ptr(),
+            private.len(),
+        )
+    };
+    assert!(!key.is_null());
+    key
+}
+
+fn raw_private(key: *mut EVP_PKEY) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    let mut len = out.len();
+    assert_eq!(
+        unsafe { EVP_PKEY_get_raw_private_key(key, out.as_mut_ptr(), &mut len) },
+        1
+    );
+    out
+}
+
+#[test]
+fn x25519() {
+    let ctx = context();
+    let private = [0x77u8; 32];
+    secret(&private);
+    let key = private_key(ctx, c"X25519", &private);
+    let peer = unsafe {
+        EVP_PKEY_new_raw_public_key_ex(ctx, c"X25519".as_ptr(), null(), [9u8; 32].as_ptr(), 32)
+    };
+    assert!(!peer.is_null());
+    unsafe {
+        let pctx = EVP_PKEY_CTX_new_from_pkey(ctx, key, null());
+        assert_eq!(EVP_PKEY_derive_init(pctx), 1);
+        assert_eq!(EVP_PKEY_derive_set_peer(pctx, peer), 1);
+        let mut shared = [0u8; 32];
+        let mut len = shared.len();
+        assert_eq!(EVP_PKEY_derive(pctx, shared.as_mut_ptr(), &mut len), 1);
+        public(&shared);
+        assert_ne!(shared, [0; 32]);
+        EVP_PKEY_CTX_free(pctx);
+    }
+
+    // Reading the private key back, and generating one, which TLS does.
+    let back = raw_private(key);
+    public(&back);
+    assert_eq!(back, [0x77; 32]);
+    unsafe {
+        let gen_ctx = EVP_PKEY_CTX_new_from_name(ctx, c"X25519".as_ptr(), null());
+        assert_eq!(EVP_PKEY_keygen_init(gen_ctx), 1);
+        let mut generated = null_mut();
+        assert_eq!(EVP_PKEY_generate(gen_ctx, &mut generated), 1);
+        EVP_PKEY_CTX_free(gen_ctx);
+        let private = raw_private(generated);
+        public(&private);
+        assert_eq!(private[31] & 0xc0, 0x40);
+        EVP_PKEY_free(generated);
+        EVP_PKEY_free(peer);
+        EVP_PKEY_free(key);
+        OSSL_LIB_CTX_free(ctx);
+    }
+}
+
+#[test]
+fn ed25519() {
+    let ctx = context();
+    let seed = [0x9du8; 32];
+    secret(&seed);
+    let key = private_key(ctx, c"ED25519", &seed);
+    let message = b"rind as an OpenSSL provider";
+    unsafe {
+        let md = EVP_MD_CTX_new();
+        assert_eq!(
+            EVP_DigestSignInit_ex(md, null_mut(), null(), ctx, null(), key, null()),
+            1
+        );
+        let mut signature = [0u8; 64];
+        let mut len = signature.len();
+        assert_eq!(
+            EVP_DigestSign(
+                md,
+                signature.as_mut_ptr(),
+                &mut len,
+                message.as_ptr(),
+                message.len()
+            ),
+            1
+        );
+        public(&signature);
+        EVP_MD_CTX_free(md);
+
+        let md = EVP_MD_CTX_new();
+        assert_eq!(
+            EVP_DigestVerifyInit(md, null_mut(), null(), null_mut(), key),
+            1
+        );
+        assert_eq!(
+            EVP_DigestVerify(md, signature.as_ptr(), len, message.as_ptr(), message.len()),
+            1
+        );
+        EVP_MD_CTX_free(md);
+    }
+    // Two keys from the same secret seed match.
+    let again = private_key(ctx, c"ED25519", &seed);
+    assert_eq!(unsafe { EVP_PKEY_eq(key, again) }, 1);
+    let back = raw_private(key);
+    public(&back);
+    assert_eq!(back, [0x9d; 32]);
+    unsafe {
+        EVP_PKEY_free(again);
+        EVP_PKEY_free(key);
+        OSSL_LIB_CTX_free(ctx);
+    }
+}
