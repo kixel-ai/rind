@@ -91,9 +91,9 @@ fn double_base(a: &[u64; 4], b: &[u64; 4], point: &[[u64; 4]; 4]) -> [[u64; 4]; 
 
         let d = b_naf[i];
         if d > 0 {
-            q = q.add(&Cached(Fe4(BASE_ODD_MULTIPLES[d as usize / 2])));
+            q = q.add(&Cached::load(&BASE_ODD_MULTIPLES[d as usize / 2]));
         } else if d < 0 {
-            q = q.add(&Cached(Fe4(BASE_ODD_MULTIPLES[-d as usize / 2])).neg());
+            q = q.add(&Cached::load(&BASE_ODD_MULTIPLES[-d as usize / 2]).neg());
         }
     }
 
@@ -195,6 +195,11 @@ impl Extended {
 }
 
 impl Cached {
+    /// The point whose vectors' lanes these are.
+    fn load(x: &[[u32; 8]; 5]) -> Self {
+        Self(Fe4([v(x[0]), v(x[1]), v(x[2]), v(x[3]), v(x[4])]))
+    }
+
     #[target_feature(enable = "avx,avx2")]
     fn from(p: Extended) -> Self {
         let mut x = p.0;
@@ -767,23 +772,9 @@ impl Fe4 {
     }
 }
 
-/// `[B, 3B, 5B, ..., 127B]` as [`Cached`] points, B the base point.
-static BASE_ODD_MULTIPLES: [[__m256i; 5]; 64] = {
-    let mut out = [ZERO; 64];
-    let mut i = 0;
-    while i < 64 {
-        let mut j = 0;
-        while j < 5 {
-            out[i][j] = v(BASE_ODD_MULTIPLES_LIMBS[i][j]);
-            j += 1;
-        }
-        i += 1;
-    }
-    out
-};
-
+/// `[B, 3B, 5B, ..., 127B]` as [`Cached`] points' vectors' lanes, B the base point.
 #[rustfmt::skip]
-const BASE_ODD_MULTIPLES_LIMBS: [[[u32; 8]; 5]; 64] = [
+static BASE_ODD_MULTIPLES: [[[u32; 8]; 5]; 64] = [
     [
         [3571425, 10045002, 19036563, 1096096, 243332, 65897020, 0, 28963681],
         [30896895, 63055514, 1614915, 5095970, 0, 53791688, 0, 31258312],
@@ -1298,7 +1289,7 @@ mod tests {
 
         // SAFETY: the CPU has AVX2, checked above
         let table = unsafe { odd_multiples(&[*x, *y, [1, 0, 0, 0], t]) };
-        for (got, want) in table.iter().zip(BASE_ODD_MULTIPLES_LIMBS) {
+        for (got, want) in table.iter().zip(BASE_ODD_MULTIPLES) {
             assert_eq!(got, &want);
         }
     }
