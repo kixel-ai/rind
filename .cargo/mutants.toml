@@ -280,6 +280,9 @@ exclude_re = [
   'rind/src/low/(portable|x86_64)/\.\./generic/ghash_nohw\.rs:\d+:\d+: replace <impl Drop for NohwTable>::drop with \(\)$',
   'rind/src/low/x86_64/aes\.rs:\d+:\d+: replace <impl Drop for AesDecKey>::drop with \(\)$',
   'rind/src/low/x86_64/\.\./generic/aes_nohw\.rs:\d+:\d+: replace <impl Drop for NohwKey>::drop with \(\)$',
+  # The portable backend holds `NohwKey` only as a stack temporary that
+  # `schedule()` reads, which no test can see after it drops.
+  'rind/src/low/portable/\.\./generic/aes_nohw\.rs:\d+:\d+: replace <impl Drop for NohwKey>::drop with \(\)$',
   'rind/src/low/x86_64/ghash\.rs:\d+:\d+: replace <impl Drop for GhashTable>::drop with \(\)$',
   'rind/src/low/x86_64/ghash_ssse3_x86_64\.rs:\d+:\d+: replace <impl Drop for Ssse3Table>::drop with \(\)$',
   'rind/src/low/x86_64/vpaes_x86_64\.rs:\d+:\d+: replace <impl Drop for VpaesDecKey>::drop with \(\)$',
