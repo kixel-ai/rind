@@ -146,10 +146,10 @@ fn coordinates(p: &JacobianPoint) -> [FieldElement; 3] {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use p521::NistP521;
     use p521::elliptic_curve::array::typenum::U98;
     use p521::elliptic_curve::sec1::ToSec1Point;
     use p521::hash2curve::{self as rustcrypto, GroupDigest};
-    use p521::NistP521;
 
     use super::*;
     use crate::mid::hash_to_curve::tests;
@@ -160,11 +160,7 @@ mod tests {
 
     #[test]
     fn rfc9380() {
-        tests::check_suite::<FieldElement, Sha512Context>(
-            "P521_XMD_SHA-512_SSWU_RO_",
-            66,
-            affine,
-        );
+        tests::check_suite::<FieldElement, Sha512Context>("P521_XMD_SHA-512_SSWU_RO_", 66, affine);
     }
 
     #[test]

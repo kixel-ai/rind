@@ -329,7 +329,13 @@ pub(crate) mod tests {
             let file: ExpandFile = vectors(name);
             for test in file.tests {
                 let mut out = vec![0; test.uniform_bytes.len()];
-                expand(&file.hash, test.msg.as_bytes(), file.dst.as_bytes(), &mut out).unwrap();
+                expand(
+                    &file.hash,
+                    test.msg.as_bytes(),
+                    file.dst.as_bytes(),
+                    &mut out,
+                )
+                .unwrap();
                 assert_eq!(out, test.uniform_bytes);
                 count += 1;
             }
@@ -346,8 +352,14 @@ pub(crate) mod tests {
                 _ => 64,
             };
             let mut out = vec![0; 255 * size + 1];
-            assert_eq!(expand(hash, b"msg", b"", &mut out[..32]), Err(Error::WrongLength));
-            assert_eq!(expand(hash, b"msg", b"d", &mut out), Err(Error::WrongLength));
+            assert_eq!(
+                expand(hash, b"msg", b"", &mut out[..32]),
+                Err(Error::WrongLength)
+            );
+            assert_eq!(
+                expand(hash, b"msg", b"d", &mut out),
+                Err(Error::WrongLength)
+            );
             let mut longest = vec![0; 255 * size];
             expand(hash, b"msg", b"d", &mut longest).unwrap();
 
@@ -499,7 +511,8 @@ pub(crate) mod tests {
         let mut inputs = vec![vec![0; C::L], vec![0xff; C::L]];
         for _ in 0..32 {
             let mut random = vec![0; C::L];
-            crate::mid::rng::RandomSource::fill(&mut crate::mid::rng::SystemRandom, &mut random).unwrap();
+            crate::mid::rng::RandomSource::fill(&mut crate::mid::rng::SystemRandom, &mut random)
+                .unwrap();
             inputs.push(random);
         }
         for input in inputs {

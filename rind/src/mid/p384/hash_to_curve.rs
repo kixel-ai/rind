@@ -5,8 +5,8 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
 use super::{
-    CURVE_A_MONT, CURVE_B_MONT, CURVE_ONE_MONT, CURVE_ORDER_MM, FieldElement,
-    JacobianMontPoint, PublicKey, Scalar, util,
+    CURVE_A_MONT, CURVE_B_MONT, CURVE_ONE_MONT, CURVE_ORDER_MM, FieldElement, JacobianMontPoint,
+    PublicKey, Scalar, util,
 };
 use crate::error::{Error, KeyFormatError};
 use crate::low;
@@ -166,11 +166,7 @@ mod tests {
 
     #[test]
     fn rfc9380() {
-        tests::check_suite::<FieldElement, Sha384Context>(
-            "P384_XMD_SHA-384_SSWU_RO_",
-            48,
-            affine,
-        );
+        tests::check_suite::<FieldElement, Sha384Context>("P384_XMD_SHA-384_SSWU_RO_", 48, affine);
     }
 
     #[test]
@@ -216,10 +212,11 @@ mod tests {
             assert_eq!(ours.point.as_bytes_uncompressed()[..], theirs[..]);
 
             let ours = hash_to_scalar(&msg, &dst).unwrap();
-            let theirs = rustcrypto::hash_to_scalar::<NistP384, <NistP384 as GroupDigest>::ExpandMsg, U72>(
-                &[&msg],
-                &[&dst],
-            )
+            let theirs = rustcrypto::hash_to_scalar::<
+                NistP384,
+                <NistP384 as GroupDigest>::ExpandMsg,
+                U72,
+            >(&[&msg], &[&dst])
             .unwrap();
             assert_eq!(ours.as_bytes()[..], theirs.to_bytes()[..]);
         }

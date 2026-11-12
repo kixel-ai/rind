@@ -5,8 +5,8 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
 use super::{
-    CURVE_A_MONT, CURVE_B_MONT, CURVE_ONE_MONT, CURVE_ORDER_MM, FieldElement,
-    JacobianMontPoint, PublicKey, Scalar, util,
+    CURVE_A_MONT, CURVE_B_MONT, CURVE_ONE_MONT, CURVE_ORDER_MM, FieldElement, JacobianMontPoint,
+    PublicKey, Scalar, util,
 };
 use crate::error::{Error, KeyFormatError};
 use crate::low;
@@ -114,10 +114,7 @@ impl Curve for FieldElement {
         let x32_shifted = x32.mont_sqr_n(32);
         let x64 = x32_shifted.mont_mul(&x32);
         let x94 = x64.mont_sqr_n(30).mont_mul(&x30);
-        x32_shifted
-            .mont_mul(self)
-            .mont_sqr_n(190)
-            .mont_mul(&x94)
+        x32_shifted.mont_mul(self).mont_sqr_n(190).mont_mul(&x94)
     }
 
     fn sgn0(&self) -> u8 {
@@ -163,11 +160,7 @@ mod tests {
 
     #[test]
     fn rfc9380() {
-        tests::check_suite::<FieldElement, Sha256Context>(
-            "P256_XMD_SHA-256_SSWU_RO_",
-            32,
-            affine,
-        );
+        tests::check_suite::<FieldElement, Sha256Context>("P256_XMD_SHA-256_SSWU_RO_", 32, affine);
     }
 
     #[test]
@@ -213,10 +206,11 @@ mod tests {
             assert_eq!(ours.point.as_bytes_uncompressed()[..], theirs[..]);
 
             let ours = hash_to_scalar(&msg, &dst).unwrap();
-            let theirs = rustcrypto::hash_to_scalar::<NistP256, <NistP256 as GroupDigest>::ExpandMsg, U48>(
-                &[&msg],
-                &[&dst],
-            )
+            let theirs = rustcrypto::hash_to_scalar::<
+                NistP256,
+                <NistP256 as GroupDigest>::ExpandMsg,
+                U48,
+            >(&[&msg], &[&dst])
             .unwrap();
             assert_eq!(ours.as_bytes()[..], theirs.to_bytes()[..]);
         }

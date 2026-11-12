@@ -266,7 +266,14 @@ pub(crate) fn aws_lc_hash_to_curve(bits: u16, msg: &[u8], dst: &[u8]) -> Vec<u8>
         ) -> core::ffi::c_int = hash;
         let point = EC_POINT_new(group);
         assert_eq!(
-            hash(group, point, dst.as_ptr(), dst.len(), msg.as_ptr(), msg.len()),
+            hash(
+                group,
+                point,
+                dst.as_ptr(),
+                dst.len(),
+                msg.as_ptr(),
+                msg.len()
+            ),
             1
         );
         let mut out = vec![0; 1 + 2 * usize::from(bits / 8)];
