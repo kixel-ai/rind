@@ -220,8 +220,9 @@ The model departs from the Rust in these ways, and adds no axiom:
   precondition, so an `Iv` here is its bytes.
 - The arm for an IV that is not 12 bytes, which runs `encrypt_any` or
   `decrypt_any`, and `open`'s arm for a tag that is not 16 bytes, are opaque.
-  They run rind's by-8 kernels, which no proof covers (`proofs/README.md`), so
-  no theorem here reads them.
+  `encrypt_any` and `decrypt_any` are not translated, since their J0 for
+  other IV lengths and their truncated tags have no proof yet, so no theorem
+  here reads them.
 - `Tag::as_ref`'s `[..len]` is `take len`: a tag's `len` is one of the lengths
   `TagLength` names, all within its 16 bytes.
 -/
@@ -292,7 +293,7 @@ def aead.gcm.Key.new (algorithm : cipher.Algorithm) (key : Slice U8) (tag_len : 
     | .Ok k => ok (.Ok { key := k, tag_length := tag_len })
 
 /-- The arm of `seal_in_place_separate_tag` for an IV that is not 12 bytes,
-which runs `encrypt_any`. Opaque: rind's by-8 path, which no proof covers. -/
+which runs `encrypt_any`. Opaque: no proof covers it yet. -/
 opaque aead.gcm.Key.seal_other_iv (self : aead.gcm.Key) (iv : aead.gcm.Iv) (aad in_out : Slice U8) :
     Result ((core.result.Result aead.gcm.Tag error.Error) × Slice U8)
 
@@ -327,7 +328,7 @@ def aead.gcm.Key.seal_in_place_append_tag {InOut : Type}
   | .Err e => ok (.Err e, in_out)
 
 /-- The arm of `open` for an IV that is not 12 bytes or a tag that is not 16,
-which runs `decrypt_any`. Opaque: rind's by-8 path, which no proof covers. -/
+which runs `decrypt_any`. Opaque: no proof covers it yet. -/
 opaque aead.gcm.Key.open_other (self : aead.gcm.Key) (iv : aead.gcm.Iv) (aad tag in_out : Slice U8) :
     Result ((core.result.Result Unit error.Error) × Slice U8)
 

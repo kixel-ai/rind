@@ -636,14 +636,14 @@ theorem testBit_sum (b : Nat → Bool) : ∀ n j,
     have ih := testBit_sum b n j
     rw [Finset.sum_range_succ]
     by_cases hb : b n
-    · rw [if_pos hb, Nat.add_comm]
+    · rw [ite_eq_left hb, Nat.add_comm]
       rcases Nat.lt_trichotomy j n with h | h | h
       · rw [Nat.testBit_two_pow_add_gt h, ih]; simp [h, show j < n + 1 by omega]
       · subst h; rw [Nat.testBit_two_pow_add_eq, Nat.testBit_lt_two_pow hlt]; simp [hb]
       · rw [Nat.testBit_lt_two_pow (lt_of_lt_of_le (show 2 ^ n + _ < 2 ^ (n + 1) by rw [Nat.pow_succ]; omega)
           (Nat.pow_le_pow_right (by omega) h))]
         simp [show ¬ j < n + 1 by omega]
-    · rw [if_neg hb, Nat.add_zero, ih]
+    · rw [ite_eq_right hb, Nat.add_zero, ih]
       by_cases h : j = n
       · subst h; simp [hb]
       · simp only [show (j < n + 1) = (j < n) by apply propext; omega]
@@ -697,7 +697,7 @@ theorem chunksOf_map {α β : Type} (f : α → β) (k : Nat) (l : List α) :
 
 theorem getElem!_take_drop {α : Type} [Inhabited α] (l : List α) (a c j : Nat) (hj : j < c) :
     ((l.drop a).take c)[j]! = l[a + j]! := by
-  simp [getElem!_def, List.getElem?_take, List.getElem?_drop, hj]
+  simp [getElem!_def, List.getElem?_drop, hj]
 
 theorem leBytesToSeqQuad32_eq (b : List (BitVec 8)) :
     leBytesToSeqQuad32 b = (chunksOf 16 b).map leBytesToQuad32 := by
@@ -719,12 +719,12 @@ theorem leBytesToSeqQuad32_eq (b : List (BitVec 8)) :
         have := Nat.mul_le_of_le_div 16 (n + 1) b.length (by omega); linarith
       omega
     by_cases a1 : i < 4
-    · rw [if_pos a1, hword (n * 4) (by have := hk 0 (by omega); omega) _ (by omega)]; congr 1; omega
+    · rw [ite_eq_left a1, hword (n * 4) (by have := hk 0 (by omega); omega) _ (by omega)]; congr 1; omega
     by_cases a2 : i < 8
-    · rw [if_neg a1, if_pos a2, hword (n * 4 + 1) (hk 1 (by omega)) _ (by omega)]; congr 1; omega
+    · rw [ite_eq_right a1, ite_eq_left a2, hword (n * 4 + 1) (hk 1 (by omega)) _ (by omega)]; congr 1; omega
     by_cases a3 : i < 12
-    · rw [if_neg a1, if_neg a2, if_pos a3, hword (n * 4 + 2) (hk 2 (by omega)) _ (by omega)]; congr 1; omega
-    · rw [if_neg a1, if_neg a2, if_neg a3, hword (n * 4 + 3) (hk 3 (by omega)) _ (by omega)]; congr 1; omega
+    · rw [ite_eq_right a1, ite_eq_right a2, ite_eq_left a3, hword (n * 4 + 2) (hk 2 (by omega)) _ (by omega)]; congr 1; omega
+    · rw [ite_eq_right a1, ite_eq_right a2, ite_eq_right a3, hword (n * 4 + 3) (hk 3 (by omega)) _ (by omega)]; congr 1; omega
 
 theorem chunksOf_16 {α : Type} (l : List α) (h : l.length = 16) : chunksOf 16 l = [l] := by
   rw [chunksOf_cons (by omega) (by omega), List.take_of_length_le (by omega),
@@ -753,7 +753,7 @@ theorem padBlocks_vale (bytes : List U8) :
     rfl
   · rename_i h0
     have hrest : chunksRest 16 bytes ≠ [] := fun h => h0 (by rw [← hr, h]; rfl)
-    rw [if_neg hrest, hbv, List.append_assoc,
+    rw [ite_eq_right hrest, hbv, List.append_assoc,
       chunksOf_append (by omega) (bytes.length / 16) _ _ (by rw [List.length_map, hA]),
       chunksOf_16 ((bytes.drop (16 * (bytes.length / 16))).map (·.bv) ++ List.replicate (16 - bytes.length % 16) 0)
         (by simp only [List.length_append, List.length_map, List.length_replicate, hR]; omega),

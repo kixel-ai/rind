@@ -392,11 +392,11 @@ theorem padBlocks_append (a b : List U8) (ha : a.length % 16 = 0) :
   have hj : a.length = 16 * (a.length / 16) := by omega
   have hr : chunksRest 16 a = [] := List.eq_nil_of_length_eq_zero (by rw [chunksRest_length]; omega)
   rw [padBlocks, padBlocks, padBlocks, chunksOf_append (by omega) _ _ _ hj, chunksRest_append (by omega) _ _ _ hj,
-    hr, if_pos rfl, List.append_nil, List.map_append, List.append_assoc]
+    hr, ite_eq_left rfl, List.append_nil, List.map_append, List.append_assoc]
 
 theorem padBlocks_flatMap_bytes (qs : List (BitVec 128)) :
     padBlocks (qs.flatMap low.x86_64.aes_gcm.bytes) = qs.map reverseBytesQuad32 := by
-  rw [padBlocks, chunksOf_flatMap_bytes, chunksRest_flatMap_bytes, if_pos rfl, List.append_nil, List.map_map]
+  rw [padBlocks, chunksOf_flatMap_bytes, chunksRest_flatMap_bytes, ite_eq_left rfl, List.append_nil, List.map_map]
   refine List.map_congr_left (fun q _ => ?_)
   simp only [Function.comp, blockBE, low.x86_64.aes_gcm.bytes, load_store]
 
@@ -458,13 +458,13 @@ theorem by8_out (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) (b : Li
     have hd : b.drop (16 * (b.length / 16)) = chunksRest 16 b := rfl
     have hpad : padTo128Bits ((chunksRest 16 b).map (·.bv)) =
         (chunksRest 16 b).map (·.bv) ++ List.replicate (16 - b.length % 16) 0 := by
-      rw [padTo128Bits, List.length_map, hr, Nat.mod_mod, if_neg h0]
+      rw [padTo128Bits, List.length_map, hr, Nat.mod_mod, ite_eq_right h0]
     have hlp : low.x86_64.ghash.loadPadded (chunksRest 16 b) =
         leBytesToQuad32 ((chunksRest 16 b).map (·.bv) ++ List.replicate (16 - b.length % 16) 0) := by
       rw [low.x86_64.ghash.loadPadded, low.x86_64.aes.load, List.map_append, List.map_replicate, hr]
       rfl
-    simp only [ht, Bool.false_eq_true, ite_false, h0, List.map_append, flatMap_bytes_bv, List.map_take, bytes_bv,
-      hk, ← List.map_take, ← List.map_drop, hd, leBytesToSeqQuad32_load, chunksOf_take16, hpad, hlp, hr,
+    simp only [ht, Bool.false_eq_true, ite_false, h0, List.map_append, flatMap_bytes_bv,
+      hk, ← List.map_take, ← List.map_drop, hd, leBytesToSeqQuad32_load, hpad, hlp, hr,
       show 16 * (b.length / 16) / 16 = b.length / 16 by omega]
     rw [List.map_take, bytes_bv, ← hk, chunksOf_take16]
 
@@ -519,7 +519,7 @@ theorem by8_spec (ENC : Bool) (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw 
   cases ENC <;>
   simp only [hadd0, hadd, bind_ok, uncurry_apply_pair, hrk, hcn, by8_loop_eq henc _ H t ht _ _ hch,
     ctr_blocks_eq henc, ctr_block_eq henc, ite_ok, Bool.false_eq_true, ite_false, ite_true] <;>
-  rw [dif_pos (by rw [hlen_out]; exact inout.property)] <;>
+  rw [dite_eq_left (by rw [hlen_out]; exact inout.property)] <;>
   refine ⟨_, _, rfl, rfl, ?_, ?_⟩
   · rw [Slice.from_val]; exact by8_out (inc32 j0 1) alg kw inout.val
   · dsimp only
