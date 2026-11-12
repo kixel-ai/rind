@@ -49,8 +49,10 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
 
 `hol-light/s2n-bignum/` holds what these proofs add to s2n-bignum, ahead of
 the submodule on HOL Light's load path: specs from s2n-bignum pull requests
-not yet merged, and `x86.patch`, rind's additions to the x86 model, which
-`x86-cosim.ml` checks against the CPU. Its
+not yet merged, rind's own RFC 8439 spec of ChaCha20, Poly1305, and
+ChaCha20-Poly1305, `common/chacha20poly1305.ml`, whose known-answer tests
+`admin/prove hol-light` runs, and `x86.patch`, rind's additions to the x86
+model, which `x86-cosim.ml` checks against the CPU. Its
 [README](hol-light/s2n-bignum/README.md) lists each, so they can be offered
 upstream. `nix develop .#hol-light --command admin/prove cosim` runs the
 cosimulation, on an x86_64 CPU with AVX2.
@@ -402,7 +404,9 @@ HChaCha20, which derives XChaCha20's subkey, runs HACL*'s rounds, which
 CPU-feature checks find SSE4.1, and `OnePass`, that aws-lc's one-pass
 routines compute RFC 8439's AEAD, which no proof covers yet;
 [the ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-x86/aead.md)
-owns their HOL Light proofs. CPUs without SSE4.1 run the separate ChaCha20
+owns their HOL Light proofs, against `hol-light/s2n-bignum/common/chacha20poly1305.ml`,
+which `Rind/S2nChaCha20Poly1305.lean` proves is `Rind/Spec.lean`'s RFC 8439
+for a 32-byte key and a 12-byte nonce. CPUs without SSE4.1 run the separate ChaCha20
 and Poly1305 passes, which the model leaves opaque. `AeadDispatch` models
 `RandomizedNonceKey`, which reaches the system's random source, and
 `Rind/ChaCha20Poly1305Test.lean` checks `Rind/Spec.lean`'s transliterations
@@ -458,7 +462,9 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
   finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with
   the SHA-256 instructions, and `Rind/S2nSha256.lean`, s2n-bignum's SHA-256
-  spec, transliterated, and its proof that it is `Rind/HashSpec.lean`'s.
+  spec, transliterated, and its proof that it is `Rind/HashSpec.lean`'s;
+  `Rind/S2nChaCha20Poly1305.lean`, rind's HOL Light ChaCha20-Poly1305 spec,
+  transliterated, and its proof that it is `Rind/Spec.lean`'s.
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed.
 - `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate, and
@@ -497,8 +503,9 @@ Beyond Lean's kernel:
   `p256Pow`, and `p256Inv` in `Rind/Spec.lean` are trusted to be
   `weierstrass_add`, `group_pow`, and `ring_inv` on `p256_group`.
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
-  `processBlock_Common`, and `Rind/S2nSha256.lean` transliterates
-  s2n-bignum's SHA-256 spec.
+  `processBlock_Common`, `Rind/S2nSha256.lean` transliterates
+  s2n-bignum's SHA-256 spec, and `Rind/S2nChaCha20Poly1305.lean` rind's
+  HOL Light ChaCha20-Poly1305 spec.
 - That `Rind/Spec.lean`'s ChaCha20, Poly1305, and ChaCha20-Poly1305
   transliterate RFC 8439 and RFC 9001, its HChaCha20 and XChaCha20-Poly1305
   draft-irtf-cfrg-xchacha-03, its ECDSA FIPS 186-5, and
