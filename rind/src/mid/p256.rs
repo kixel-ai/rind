@@ -1663,10 +1663,18 @@ mod tests {
         }
     }
 
+    /// `from_be_reduced` keeps the scalar secret. These tests check it
+    /// against public values, so they declassify the encoding first.
+    fn public_bytes(scalar: &Scalar) -> [u8; Scalar::BYTES] {
+        let bytes = scalar.as_bytes();
+        crate::low::ct::public_slice(&bytes);
+        bytes
+    }
+
     #[test]
     fn be_reduced_mod_n() {
         let one = Scalar::from_be_reduced(&[1]).unwrap();
-        assert_eq!(one.as_bytes()[31], 1);
+        assert_eq!(public_bytes(&one)[31], 1);
 
         let mut n = [0u8; 32];
         n.copy_from_slice(&util::u64x4_to_big_endian(&CURVE_ORDER));
@@ -1678,8 +1686,8 @@ mod tests {
         assert!(Scalar::from_be_reduced(&wide).is_err());
         wide[32] = wide[32].wrapping_add(1);
         assert_eq!(
-            Scalar::from_be_reduced(&wide).unwrap().as_bytes(),
-            one.as_bytes()
+            public_bytes(&Scalar::from_be_reduced(&wide).unwrap()),
+            public_bytes(&one)
         );
 
         // 2^256 mod n is `as_mont` of 1, and a 33-byte 0x01 followed by 32 zeros.
@@ -1687,7 +1695,7 @@ mod tests {
         pow[0] = 1;
         let got = Scalar::from_be_reduced(&pow).unwrap();
         let expect = Scalar::from_bytes_checked(&[1]).unwrap().as_mont();
-        assert_eq!(got.as_bytes(), expect.as_bytes());
+        assert_eq!(public_bytes(&got), public_bytes(&expect));
 
         assert!(Scalar::from_be_reduced(&[]).is_err());
         assert!(Scalar::from_be_reduced(&[0u8; 129]).is_err());
@@ -1704,7 +1712,7 @@ mod tests {
         let mut n_minus_1 = order;
         n_minus_1[31] -= 1;
         assert_eq!(
-            Scalar::from_be_reduced(&n_minus_1).unwrap().as_bytes(),
+            public_bytes(&Scalar::from_be_reduced(&n_minus_1).unwrap()),
             n_minus_1
         );
         assert_eq!(aws_reduce(&n_minus_1).unwrap(), n_minus_1);
@@ -1712,13 +1720,13 @@ mod tests {
         let mut wide_n = [0u8; 40];
         wide_n[8..].copy_from_slice(&n_minus_1);
         assert_eq!(
-            Scalar::from_be_reduced(&wide_n).unwrap().as_bytes(),
+            public_bytes(&Scalar::from_be_reduced(&wide_n).unwrap()),
             n_minus_1
         );
 
         let max = [0xffu8; 128];
         assert_eq!(
-            Scalar::from_be_reduced(&max).unwrap().as_bytes(),
+            public_bytes(&Scalar::from_be_reduced(&max).unwrap()),
             aws_reduce(&max).unwrap()
         );
 
@@ -1733,7 +1741,7 @@ mod tests {
             for bytes in [&zeroes, &ones, &high, &low_n] {
                 match aws_reduce(bytes) {
                     Ok(reduced) => assert_eq!(
-                        Scalar::from_be_reduced(bytes).unwrap().as_bytes(),
+                        public_bytes(&Scalar::from_be_reduced(bytes).unwrap()),
                         reduced,
                         "len {len}"
                     ),

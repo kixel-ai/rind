@@ -820,6 +820,9 @@ mod tests {
 
         let (confirm_p, key_p) = prover.finish(&share_v, &confirm_v).unwrap();
         assert_eq!(confirm_p.as_ref(), hex(vector.confirm_p).as_slice());
+        // The shared key stays secret. The vector is public, so the check
+        // declassifies the key before it compares.
+        ct::public_slice(key_p.as_ref());
         assert_eq!(key_p.as_ref(), hex(vector.shared).as_slice());
 
         let (share_v, confirm_v, verifier) = from_w1
@@ -835,6 +838,7 @@ mod tests {
         let key_v = verifier.finish(&confirm_p).unwrap();
         assert_eq!(share_v.as_ref(), hex(vector.share_v).as_slice());
         assert_eq!(confirm_v.as_ref(), hex(vector.confirm_v).as_slice());
+        ct::public_slice(key_v.as_ref());
         assert_eq!(key_v.as_ref(), key_p.as_ref());
     }
 
@@ -1055,6 +1059,8 @@ mod tests {
         assert_eq!(confirm_v.as_ref(), their_confirm_v.as_slice());
         let their_out = their_prover.finish(&their_v, &their_confirm_v).unwrap();
         assert_eq!(confirm_p.as_ref(), their_out.confirm_p.as_slice());
+        // pakery's session key is public test output. Declassify ours first.
+        ct::public_slice(key.as_ref());
         assert_eq!(key.as_ref(), their_out.session_key.as_bytes());
         let their_key = their_verifier.finish(confirm_p.as_ref()).unwrap();
         assert_eq!(key.as_ref(), their_key.session_key.as_bytes());
@@ -1155,6 +1161,8 @@ mod tests {
         let key = state
             .finish(&mac::<Rfc9383>(keys.prover_key(), share_v.as_ref()))
             .unwrap();
+        ct::public_slice(key.as_ref());
+        ct::public_slice(keys.shared());
         assert_eq!(key.as_ref(), keys.shared());
 
         // X = w0*M makes the difference the identity. The verifier rejects it.
@@ -1197,6 +1205,8 @@ mod tests {
             confirm_p.as_ref(),
             mac::<Rfc9383>(keys.prover_key(), share_y.as_ref()).as_ref()
         );
+        ct::public_slice(key.as_ref());
+        ct::public_slice(keys.shared());
         assert_eq!(key.as_ref(), keys.shared());
 
         // Y = w0*N makes the prover's difference the identity.
@@ -1231,6 +1241,9 @@ mod tests {
     }
 
     fn point_share<S>(bytes: [u8; 65]) -> Share<S> {
+        // Built from secret scalars, then parsed as a public share. The
+        // encoding check branches; the bytes are public by the time it runs.
+        ct::public_slice(&bytes);
         Share {
             bytes,
             _kind: PhantomData,
@@ -1267,6 +1280,8 @@ mod tests {
                 .unwrap();
             let (confirm_p, key) = prover.finish(&share_v, &confirm_v).unwrap();
             let other = verifier.finish(&confirm_p).unwrap();
+            ct::public_slice(key.as_ref());
+            ct::public_slice(other.as_ref());
             assert_eq!(key.as_ref(), other.as_ref());
             key.as_ref().to_vec()
         }
@@ -1293,10 +1308,11 @@ mod tests {
         let (w0, w1) = stretched.split_at(40);
         let verifier_blob = matter_crypto::pake_passcode_verifier(pin, &salt, 1000).unwrap();
         let record = VerifierRecord::from_w1(w0, w1).unwrap();
-        assert_eq!(
-            &verifier_blob[..32],
-            Scalar::from_be_reduced(w0).unwrap().as_bytes()
-        );
+        let w0_reduced = Scalar::from_be_reduced(w0).unwrap().as_bytes();
+        // matter-crypto's verifier blob is public. Declassify the reduced
+        // scalar before comparing it.
+        ct::public_slice(&w0_reduced);
+        assert_eq!(&verifier_blob[..32], w0_reduced.as_slice());
         assert_eq!(&verifier_blob[32..], record.l.to_uncompressed().as_slice());
 
         let mut x_bytes = [0u8; 32];
@@ -1347,7 +1363,10 @@ mod tests {
             )
             .unwrap();
         let (confirm_p, key) = prover.finish(&share_v, &confirm_v).unwrap();
-        assert_eq!(key.as_ref(), verifier.finish(&confirm_p).unwrap().as_ref());
+        let key_v = verifier.finish(&confirm_p).unwrap();
+        ct::public_slice(key.as_ref());
+        ct::public_slice(key_v.as_ref());
+        assert_eq!(key.as_ref(), key_v.as_ref());
         assert_eq!(key.as_ref(), their_key.ke.as_slice());
     }
 
