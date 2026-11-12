@@ -11,7 +11,8 @@ from it, in pieces under 2^31 bytes, since HACL* takes a 32-bit length.
 Charon cannot translate the two functions: `krml::unroll_for!` unrolls their
 rounds into one body whose blocks nest deeper than Charon's recursion bound.
 So each is an axiom here, restating HACL*'s F* theorem about it under the
-composition rule, about the opaque function the translation calls.
+composition rule, about the opaque function the translation calls. See
+UPSTREAM.md, "Charon panics on HACL*'s unrolled SHA-2".
 
 The theorem is `Hacl.SHA2.Scalar32`'s `sha256_update_nblocks` and
 `sha512_update_nblocks`, of type `update_nblocks_vec_t'`

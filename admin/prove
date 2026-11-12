@@ -931,7 +931,8 @@ extract_kdf aarch64 Aarch64
 
 # The portable backend, which builds only under the cfg CI's portable jobs
 # build with, here on x86_64: the hashes, down to HACL*'s SHA-2 block
-# functions, which are opaque, and the Keccak-f. `proofs/Rind/Portable/Compare.lean`
+# functions, which are opaque (see UPSTREAM.md, "Charon panics on HACL*'s
+# unrolled SHA-2"), and the Keccak-f. `proofs/Rind/Portable/Compare.lean`
 # models its constant-time compares, which read through raw pointers and
 # `black_box`. The error type and `into_public`, which the other targets reach
 # through their curves, are start points of their own here.

@@ -627,9 +627,9 @@ these quests prove its code, whose proofs then run on this translation:
 - P-256, P-384, and P-521: [armv7's NIST curves](/quest/m5/verified-armv7/nist-curves.md),
   whose point arithmetic `low/generic/limb64.rs` builds again over
   fiat-crypto's 64-bit field and scalar arithmetic;
-- RSA: verification, whose glue `Rind/X86_64/RsaDispatch.lean` proves over
-  the Montgomery products as hypotheses, and
-  [signing](/quest/m4/verified/rsa-sign.md), both over
+- RSA: [verification](/quest/m4/verified/rsa-verify-portable.md), whose glue
+  `Rind/X86_64/RsaDispatch.lean` proves over the Montgomery products as
+  hypotheses, and [signing](/quest/m4/verified/rsa-sign.md), both over
   `low/generic/mont.rs`'s products, on 64-bit limbs here;
 - SHA-1: `low::generic::sha1`, the block function `Sha1Blocks` stands for
   here, in [SHA-1's quest](/quest/m5/verified/sha1.md);

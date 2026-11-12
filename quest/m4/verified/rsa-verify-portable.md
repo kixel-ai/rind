@@ -1,0 +1,19 @@
+# [L] The portable backend's RSA verification is proven
+
+## Goal
+
+RSA-2048 PKCS#1 v1.5 verification earns the ✓ on the portable backend (`arch = "portable"` in `benchmarks/verified.toml`): `Rind/X86_64/RsaDispatch.lean`'s proof runs on `admin/prove`'s portable translation, over `low/generic/mont.rs`'s Montgomery products, proven in Lean.
+
+## Plan
+
+Found by [the portable backend's proofs](https://github.com/moq-dev/rind/pull/649): [moq-dev/rind#624](https://github.com/moq-dev/rind/pull/624) proved RSA verification's glue on x86_64 over its Montgomery products as hypotheses (`MontProducts` in `Rind/X86_64/RsaMont.lean`), and no quest proved the portable backend's products.
+
+- Runs: `low/generic/mont.rs`'s `mont_mul` and `mont_sqr`, schoolbook products with a word-by-word reduction over `Limb`, which is `u64` on 64-bit targets since [moq-dev/rind#614](https://github.com/moq-dev/rind/pull/614), and its `bignum_montifier`, `bignum_montredc`, and `neg_inverse` for key loading.
+- Translation: add the RSA start points `admin/prove` gives x86_64 to the portable pass, with `low::generic::mont` included and `low::posint` translated as on x86_64.
+- Proof: prove `mont_mul` and `mont_sqr` return `MontResult` at every width, the textbook word-by-word Montgomery argument, then run `RsaDispatch.lean` and its imports on the portable translation by renaming the target, over a `RsaMont.lean` of the portable backend's own.
+- Report: a `verified.toml` row for `rsa2048-pkcs1-sha256-verify` with `arch = "portable"`, and the portable section of `proofs/README.md` updated.
+
+## Related
+
+- [RSA signing is proven](/quest/m4/verified/rsa-sign.md) - runs the same products for its private operation
+- [Portable RSA above 3072 bits keeps pace with aws-lc's C](/quest/m3/cold-speed/portable-rsa-karatsuba.md) - may add a Karatsuba product beside the loop this proves
