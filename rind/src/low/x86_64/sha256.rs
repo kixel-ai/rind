@@ -4,11 +4,12 @@
 use core::arch::asm;
 use core::arch::x86_64::{__m128i, _mm_storeu_si128};
 
-// The SHA extensions' routines are LLVM's output of the intrinsics Graviola
-// wrote, frozen into `asm!` blocks with fixed registers, so that their bytes
-// are those a HOL Light proof can be about. Each block reads the round
-// constants and byte-swap mask from `K` through `rcx` rather than at a
-// relocation. Out of line, so each block is in rind's build once.
+// The SHA extensions' routines are `asm!` blocks with fixed registers, so
+// that the bytes rind runs are those a HOL Light proof is about, and their
+// rounds are LLVM's output of the intrinsics Graviola wrote. Each block reads
+// the round constants and byte-swap mask from `K` through rcx, not at a
+// relocation, which the block's bytes alone could not resolve. Out of line,
+// so each block is in rind's build once.
 
 /// Compresses `blocks`.
 #[inline(never)]
@@ -64,8 +65,9 @@ pub(in crate::low) fn sha256_compress_blocks_shaext(
 /// The digest of `state` followed by `message`, padded and closed by
 /// `length`.
 ///
-/// The last block is padded in registers, and the digest is returned in
-/// them, so no load waits on a store that cannot forward.
+/// The last block's whole lanes are loaded where they lie and the rest is
+/// padded in registers, and the digest is returned in them, so no load
+/// waits on a store that cannot forward.
 #[inline(never)]
 pub(in crate::low) fn sha256_finish_shaext(
     state: &[u32; 8],
@@ -77,10 +79,10 @@ pub(in crate::low) fn sha256_finish_shaext(
     let padded = padded(tail, length);
     let (abcd, efgh): (__m128i, __m128i);
     // SAFETY: `_token` proves the caller checked the `sha`, `ssse3`, and
-    // `sse4.1` features. The block reads `state`, `blocks.len()` blocks and
-    // then `padded.lanes` lanes, at most three, from `message`, and `K`.
-    // Its registers are those of the System V ABI's arguments where it can
-    // take them, so the function saves none.
+    // `sse4.1` features. The block reads `state`, `blocks.len()` blocks of
+    // `message` and then `padded.lanes` lanes, or three when that is 4, all
+    // within `tail`, and `K`. It takes the System V ABI's argument registers where it
+    // can, and leaves rdi, so that few values move.
     unsafe {
         asm!(
             "movdqu (%rsi), %xmm0",
