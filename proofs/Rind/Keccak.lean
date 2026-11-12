@@ -215,7 +215,7 @@ theorem stateToString_lanesToState (L : List (BitVec 64)) :
   simp only [b] at hi
   simp only [stateToString, lanesToString, lanesToState, Vector.getElem_ofFn, w]
   rw [getElem_lane _ _ (by omega)]
-  congr 2 <;> omega
+  congr 2; omega
 
 /-- FIPS 202 section 3.2.2's Table 2, which Algorithm 2's loop computes. -/
 theorem ρ_offsets :

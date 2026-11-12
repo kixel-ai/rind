@@ -245,7 +245,7 @@ theorem keccak_nof4_f1600_spec (h : RunsSha3) (N : Usize) (hN : 1 ≤ N.val ∧ 
       have hi0 : i = 0 := by omega
       subst hi0
       rw [states_getElem! _ 0 (by omega), states_getElem! a 0 (by omega), himb, Std.Array.set_val_eq,
-        getElem!_set' _ _ _ _ (by simp), show (0#usize : Usize).val = 0 from rfl, if_pos rfl, lanes,
+        getElem!_set' _ _ _ _ (by simp), show (0#usize : Usize).val = 0 from rfl, ite_eq_left rfl, lanes,
         hy, hx, ← getElem!_pos, hfull]
     · simp only [hN2]
       step with Slice.index_mut_usize_spec as ⟨x, imb, hx, himb⟩
@@ -258,7 +258,7 @@ theorem keccak_nof4_f1600_spec (h : RunsSha3) (N : Usize) (hN : 1 ≤ N.val ∧ 
         Slice.set_val_eq, getElem!_set' _ _ _ _ (by omega), getElem!_set' _ _ _ _ (by omega)]
       simp only [show (0#usize : Usize).val = 0 from rfl, ite_true, show ¬((0 : Nat) = 1) by omega,
         ite_false, getElem!_append']
-      rw [if_pos (by simp; omega), pair_lanes hz i (by omega), hx0, getElem!_take' _ _ _ (by omega)]
+      rw [ite_eq_left (by simp; omega), pair_lanes hz i (by omega), hx0, getElem!_take' _ _ _ (by omega)]
     · simp only [hN3]
       step with Slice.index_mut_usize_spec as ⟨x, imb, hx, himb⟩
       step with sha3_keccak2_f1600_spec x _ rc_bv as ⟨z, hz⟩
@@ -278,10 +278,10 @@ theorem keccak_nof4_f1600_spec (h : RunsSha3) (N : Usize) (hN : 1 ≤ N.val ∧ 
       simp only [show (2#usize : Usize).val = 2 from rfl]
       by_cases hi2 : i = 2
       · subst hi2
-        rw [if_pos rfl, lanes, hw, hy, ← getElem!_pos, hr1, getElem!_append', if_neg (by simp),
+        rw [ite_eq_left rfl, lanes, hw, hy, ← getElem!_pos, hr1, getElem!_append', ite_eq_right (by simp),
           getElem!_drop']
         simp
-      · rw [if_neg (Ne.symm hi2), hr1, getElem!_append', if_pos (by simp; omega),
+      · rw [ite_eq_right (Ne.symm hi2), hr1, getElem!_append', ite_eq_left (by simp; omega),
           pair_lanes hz i (by omega), hx0, getElem!_take' _ _ _ (by omega)]
     · simp only [hN']
       step with Slice.index_mut_usize_spec as ⟨x, imb, hx, himb⟩
@@ -304,8 +304,8 @@ theorem keccak_nof4_f1600_spec (h : RunsSha3) (N : Usize) (hN : 1 ≤ N.val ∧ 
       intro i hi
       rw [states_getElem! _ i (by omega), states_getElem! a i (by omega), hr, getElem!_append', hzl]
       by_cases hi2 : i < 2
-      · rw [if_pos hi2, pair_lanes hz i hi2, hx0, getElem!_take' _ _ _ hi2]
-      · rw [if_neg hi2, pair_lanes hz2 _ (by omega), hx1, getElem!_drop',
+      · rw [ite_eq_left hi2, pair_lanes hz i hi2, hx0, getElem!_take' _ _ _ hi2]
+      · rw [ite_eq_right hi2, pair_lanes hz2 _ (by omega), hx1, getElem!_drop',
           show 2 + (i - 2) = i by omega]
 
 /-- `keccak4_f1600_spec`: four states. -/

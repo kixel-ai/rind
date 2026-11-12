@@ -66,12 +66,12 @@ theorem sbl_set_xor (L : List U64) (k : Nat) (hk : k < L.length) (x : U64) (w : 
     have hc : (8 * k + sh ≤ j ∧ j < 8 * k + sh + B.length) ↔
         (sh ≤ j % 8 ∧ j % 8 < sh + B.length) := by omega
     by_cases hin : sh ≤ j % 8 ∧ j % 8 < sh + B.length
-    · rw [if_pos hin, if_pos (hc.2 hin), testBit_xor_byte, sbl_testBit _ _ _ ht, hjk,
+    · rw [ite_eq_left hin, ite_eq_left (hc.2 hin), testBit_xor_byte, sbl_testBit _ _ _ ht, hjk,
         show j - (8 * k + sh) = j % 8 - sh by omega]
-    · rw [if_neg hin, if_neg (fun h => hin (hc.1 h)), sbl_testBit _ _ _ ht, hjk]
+    · rw [ite_eq_right hin, ite_eq_right (fun h => hin (hc.1 h)), sbl_testBit _ _ _ ht, hjk]
       simp
   · rw [List.getElem!_eq_getElem?_getD, List.getElem?_set_ne (Ne.symm hjk),
-      ← List.getElem!_eq_getElem?_getD, if_neg (by omega), sbl_testBit _ _ _ ht]
+      ← List.getElem!_eq_getElem?_getD, ite_eq_right (by omega), sbl_testBit _ _ _ ht]
 
 /-! ## `partial_lane`, `add_bytes` -/
 
@@ -101,10 +101,10 @@ theorem partial_lane_spec (bytes : Slice U8) (h : bytes.length ≤ 8) :
     show (8 * m + t) % 8 = t by omega, s_post2, s1_post]
   rw [getElem!_pos _ m (by simp [hm]), List.getElem_map, ← getElem!_pos]
   by_cases hmb : m < bytes.length
-  · rw [if_pos hmb, List.getElem!_setSlice!_middle _ _ _ _ ⟨by omega, by simpa using hmb, by simp; omega⟩,
+  · rw [ite_eq_left hmb, List.getElem!_setSlice!_middle _ _ _ _ ⟨by omega, by simpa using hmb, by simp; omega⟩,
       bv, getElem!_pos _ m (by simpa using hmb), List.getElem_map, ← getElem!_pos]
     rfl
-  · rw [if_neg hmb, List.getElem!_setSlice!_suffix _ _ _ _ (by simp [Slice.length] at hmb ⊢; omega)]
+  · rw [ite_eq_right hmb, List.getElem!_setSlice!_suffix _ _ _ _ (by simp [Slice.length] at hmb ⊢; omega)]
     have hz : (Array.repeat 8#usize 0#u8).val[m]! = 0#u8 := by
       rw [getElem!_pos _ m (by simp [hm])]; interval_cases m <;> rfl
     rw [hz]; simp [Byte.testBit]
@@ -112,7 +112,7 @@ theorem partial_lane_spec (bytes : Slice U8) (h : bytes.length ≤ 8) :
 @[simp] theorem xorAt_nil (S : List Byte) (off : Nat) : xorAt S off [] = S := by
   apply ext_getElem! (by simp)
   intro i hi
-  rw [getElem!_xorAt S off [] i (by simpa using hi), if_neg (by simp)]
+  rw [getElem!_xorAt S off [] i (by simpa using hi), ite_eq_right (by simp)]
 
 theorem getElem!_append_if {α : Type} [Inhabited α] (l1 l2 : List α) (i : Nat) :
     (l1 ++ l2)[i]! = if i < l1.length then l1[i]! else l2[i - l1.length]! := by
@@ -130,12 +130,12 @@ theorem xorAt_xorAt (S : List Byte) (off : Nat) (B1 B2 : List Byte) :
   rw [getElem!_xorAt _ _ _ _ (by simpa using hi), getElem!_xorAt _ _ _ _ hi,
     getElem!_xorAt _ _ _ _ hi, getElem!_append_if, List.length_append]
   by_cases h1 : off ≤ i ∧ i < off + B1.length
-  · rw [if_neg (by omega), if_pos h1, if_pos (by omega), if_pos (by omega)]
-  · rw [if_neg h1]
+  · rw [ite_eq_right (by omega), ite_eq_left h1, ite_eq_left (by omega), ite_eq_left (by omega)]
+  · rw [ite_eq_right h1]
     by_cases h2 : off + B1.length ≤ i ∧ i < off + B1.length + B2.length
-    · rw [if_pos h2, if_pos (by omega), if_neg (by omega), show i - (off + B1.length) =
+    · rw [ite_eq_left h2, ite_eq_left (by omega), ite_eq_right (by omega), show i - (off + B1.length) =
         i - off - B1.length by omega]
-    · rw [if_neg h2, if_neg (by omega)]
+    · rw [ite_eq_right h2, ite_eq_right (by omega)]
 
 /-- XORing a second run, if any, just after the first. -/
 theorem xorAt_xorAt' (S : List Byte) (off o2 : Nat) (B1 B2 : List Byte)
@@ -170,7 +170,7 @@ theorem setSlice!_set {α : Type} [Inhabited α] (L w : List α) (first c : Nat)
   · subst hjc
     rw [List.getElem!_setSlice!_middle _ _ _ _ ⟨by omega, by simp; omega, by omega⟩]
     simp [show first + c - first = c by omega, hc, hj]
-  · rw [if_neg hjc, ← List.getElem!_eq_getElem?_getD]
+  · rw [ite_eq_right hjc, ← List.getElem!_eq_getElem?_getD]
     by_cases hin : first ≤ j ∧ j < first + w.length
     · rw [List.getElem!_setSlice!_middle _ _ _ _ ⟨hin.1, by simp; omega, hj⟩,
         List.getElem!_setSlice!_middle _ _ _ _ ⟨hin.1, by omega, hj⟩,
@@ -187,7 +187,7 @@ theorem setSlice!_slice {α : Type} [Inhabited α] (L : List α) (a b : Nat) (h 
   by_cases hin : a ≤ j ∧ j < b
   · rw [List.getElem!_setSlice!_middle _ _ _ _ ⟨hin.1, by simp [List.slice]; omega, hj⟩]
     simp only [List.slice, List.getElem!_eq_getElem?_getD, List.getElem?_take, List.getElem?_drop]
-    rw [if_pos (by omega), show a + (j - a) = j by omega]
+    rw [ite_eq_left (by omega), show a + (j - a) = j by omega]
   · rw [List.getElem!_setSlice!_same _ _ _ _ (by simp [List.slice]; omega)]
 
 /-- The whole lanes' loop of `add_bytes` XORs lane `i` of `P` into state lane
@@ -235,7 +235,7 @@ theorem add_bytes_loop_spec (L : List U64) (hL : L.length = 25) (first nl : Nat)
             intro m t hm ht
             rw [i1_post, hc, BitVec.getElem!_cast, BitVec.fromLEBytes_getElem!,
               show (8 * m + t) / 8 = m by omega, show (8 * m + t) % 8 = t by omega,
-              if_pos ⟨Nat.zero_le _, by rw [Nat.zero_add, hcl]; omega⟩, Nat.sub_zero]
+              ite_eq_left ⟨Nat.zero_le _, by rw [Nat.zero_add, hcl]; omega⟩, Nat.sub_zero]
             rfl),
         hst, Nat.add_zero, show 8 * (first + it.count.val) = 8 * first + (bv (P.take (8 * it.count.val))).length by
           simp [bv]; omega,
@@ -291,9 +291,9 @@ theorem add_bytes_spec (s : Std.Array U64 25#usize) (off : Usize) (bytes : Slice
             show 8 * m + t - 8 * shift.val = 8 * (m - shift.val) + t by omega,
             hi3 (m - shift.val) t (by omega) ht, hhb]
           by_cases hc : m - shift.val < head.length
-          · rw [if_pos hc, if_pos ⟨hm', by omega⟩]
-          · rw [if_neg hc, if_neg (by omega)]
-        · rw [BitVec.getElem!_shiftLeft_false _ _ _ (Or.inl (by omega)), if_neg (by omega)]
+          · rw [ite_eq_left hc, ite_eq_left ⟨hm', by omega⟩]
+          · rw [ite_eq_right hc, ite_eq_right (by omega)]
+        · rw [BitVec.getElem!_shiftLeft_false _ _ _ (Or.inl (by omega)), ite_eq_right (by omega)]
       rw [s1_post, Std.Array.set_val_eq, sbl_set_xor s.val lane.val (by omega) i7 i5.bv hx7
         shift.val (bv head.val) (by omega) hw5, show 8 * lane.val + shift.val = off.val by omega]
   step with hhead as ⟨s1, hs1⟩
@@ -360,8 +360,8 @@ theorem add_bytes_spec (s : Std.Array U64 25#usize) (off : Usize) (bytes : Slice
       intro m t hm ht
       rw [hi6 m t hm ht, hbt, Nat.zero_add, Nat.sub_zero]
       by_cases hc : m < tail.length
-      · rw [if_pos hc, if_pos ⟨Nat.zero_le _, hc⟩]
-      · rw [if_neg hc, if_neg (by omega)]
+      · rw [ite_eq_left hc, ite_eq_left ⟨Nat.zero_le _, hc⟩]
+      · rw [ite_eq_right hc, ite_eq_right (by omega)]
     rw [r_post, Std.Array.set_val_eq, sbl_set_xor _ i8.val (by simp; omega) i10 i6.bv hx 0
       (bv tail.val) (by rw [hbt]; omega) hw, hcomb, xorAt_xorAt' _ _ _ _ _ (fun _ => by
         simp only [List.length_append, hhl, hTl]; omega), hsplit, List.append_assoc]
@@ -420,7 +420,7 @@ theorem store_bytes_spec (s : Std.Array U64 25#usize) (output : Slice U8) (h : o
             s2_post, getElem!_sbl, show j / 8 = i4.val by omega, show j % 8 = j - done.val by omega,
             hi5]
           simp only [List.slice, List.drop_zero, Array.val_to_slice, a_post]
-          rw [List.getElem!_eq_getElem?_getD, List.getElem?_take, if_pos (by omega),
+          rw [List.getElem!_eq_getElem?_getD, List.getElem?_take, ite_eq_left (by omega),
             List.getElem?_map, List.getElem?_eq_getElem (by simp; omega),
             List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem (by simp; omega)]
           rfl
@@ -435,7 +435,7 @@ theorem store_bytes_spec (s : Std.Array U64 25#usize) (output : Slice U8) (h : o
       intro j hj
       rw [bv, List.length_map] at hj
       rw [hpre j (by omega), List.getElem!_eq_getElem?_getD (l := List.take _ _), List.getElem?_take,
-        if_pos (by omega), ← List.getElem!_eq_getElem?_getD]
+        ite_eq_left (by omega), ← List.getElem!_eq_getElem?_getD]
   · exact ⟨rfl, by simp, by simp, by simp⟩
 
 /-! ## Keccak-f on the state's bytes -/
@@ -456,7 +456,7 @@ theorem stateLanes_stateBytes (L : List (BitVec 64)) (hL : L.length = 25) :
   rw [BitVec.eq_iff]
   intro p hp
   rw [BitVec.getElem!_setWidth _ _ _ hp, BitVec.fromLEBytes_getElem!, List.getElem!_eq_getElem?_getD,
-    List.getElem?_take, if_pos (by omega), List.getElem?_drop, ← List.getElem!_eq_getElem?_getD]
+    List.getElem?_take, ite_eq_left (by omega), List.getElem?_drop, ← List.getElem!_eq_getElem?_getD]
   have := testBit_flatMap_toLEBytes L (8 * i + p / 8) (p % 8) (by omega)
   rw [← stateBytes] at this
   simp only [Byte.testBit, List.getElem_range]
@@ -547,7 +547,7 @@ theorem squeeze_loop_spec (h : RunsSha3) {R : Usize} (hR : 0 < R.val ∧ R.val �
       · rw [getElem!_bv, List.getElem!_setSlice!_prefix _ _ _ _ hkd, ← getElem!_bv, hpre k hkd]
       · have hs1v : s1.val.length = sl.length := hs1l
         rw [getElem!_bv, List.getElem!_setSlice!_middle _ _ _ _ ⟨by omega, by omega, by omega⟩,
-          ← getElem!_bv, hs1, List.getElem!_eq_getElem?_getD, List.getElem?_take, if_pos (by omega),
+          ← getElem!_bv, hs1, List.getElem!_eq_getElem?_getD, List.getElem?_take, ite_eq_left (by omega),
           ← List.getElem!_eq_getElem?_getD, hsa]
         obtain ⟨hk1, hk2⟩ := div_block R.val c k hR.1 (by omega) (by omega)
         rw [hk1, hk2, hdc]
@@ -591,9 +591,9 @@ theorem squeeze_append (R c n : Nat) (hR : 0 < R) (T : List Byte) :
   rw [getElem!_append_if]
   simp only [squeeze, List.length_map, List.length_range]
   by_cases hkc : k < R * c
-  · rw [if_pos hkc, getElem!_pos _ k (by simp; omega), getElem!_pos _ k (by simp; omega)]
+  · rw [ite_eq_left hkc, getElem!_pos _ k (by simp; omega), getElem!_pos _ k (by simp; omega)]
     simp
-  · rw [if_neg hkc, getElem!_pos _ k (by simp; omega), getElem!_pos _ (k - R * c) (by simp; omega)]
+  · rw [ite_eq_right hkc, getElem!_pos _ k (by simp; omega), getElem!_pos _ (k - R * c) (by simp; omega)]
     simp only [List.getElem_map, List.getElem_range]
     rw [← Function.iterate_add_apply]
     have h1 : k / R = (k - R * c) / R + c := by
@@ -802,11 +802,11 @@ theorem xorAt_keccakPad (R : Nat) (hR : 0 < R ∧ R ≤ 200) (d : Byte) (A r : L
     simp only [keccakPad, Nat.mod_eq_of_lt hr]
     rw [getElem!_xorAt _ _ _ _ (by simp; omega)]
     by_cases h' : k = R - 1
-    · rw [if_pos ⟨by omega, by simp; omega⟩, if_pos h',
+    · rw [ite_eq_left ⟨by omega, by simp; omega⟩, ite_eq_left h',
         show k - (r.length + (R - r.length) - 1) = 0 by omega,
         show R - r.length - 1 = R - r.length - 1 from rfl]
       rfl
-    · rw [if_neg (by simp; omega), if_neg h']
+    · rw [ite_eq_right (by simp; omega), ite_eq_right h']
   have e1 : (r.length ≤ i ∧ i < r.length + 1) ↔ i = r.length := by omega
   have e2 : (R - 1 ≤ i ∧ i < R - 1 + 1) ↔ i = R - 1 := by omega
   by_cases hiR : i < R
@@ -827,13 +827,13 @@ theorem xorAt_append_left (X Y : List Byte) (o : Nat) (B : List Byte) :
     getElem!_append_if X (xorAt Y o B) i, getElem!_append_if X Y i]
   by_cases h : i < X.length
   · simp only [h, ite_true]
-    rw [if_neg (by omega)]
+    rw [ite_eq_right (by omega)]
   · simp only [h, ite_false]
     rw [getElem!_xorAt Y o B (i - X.length) (by omega)]
     by_cases h2 : X.length + o ≤ i ∧ i < X.length + o + B.length
-    · rw [if_pos h2, if_pos (show o ≤ i - X.length ∧ i - X.length < o + B.length by omega),
+    · rw [ite_eq_left h2, ite_eq_left (show o ≤ i - X.length ∧ i - X.length < o + B.length by omega),
         show i - (X.length + o) = i - X.length - o by omega]
-    · rw [if_neg h2, if_neg (show ¬(o ≤ i - X.length ∧ i - X.length < o + B.length) by omega)]
+    · rw [ite_eq_right h2, ite_eq_right (show ¬(o ≤ i - X.length ∧ i - X.length < o + B.length) by omega)]
 
 theorem keccakPad_append (R : Nat) (hR : 0 < R) (d : Byte) (P r : List Byte) (hP : P.length % R = 0)
     (hr : r.length < R) : keccakPad R d (P ++ r) = P ++ keccakPad R d r := by
@@ -1164,11 +1164,11 @@ theorem xorAt_append_zeros (S : List Byte) (o : Nat) (B : List Byte) (k : Nat) :
   rw [getElem!_xorAt _ _ _ _ hi, getElem!_xorAt _ _ _ _ hi, List.length_append,
     List.length_replicate, getElem!_append_if]
   by_cases h1 : o ≤ i ∧ i < o + B.length
-  · rw [if_pos ⟨h1.1, by omega⟩, if_pos h1, if_pos (by omega)]
-  · rw [if_neg h1]
+  · rw [ite_eq_left ⟨h1.1, by omega⟩, ite_eq_left h1, ite_eq_left (by omega)]
+  · rw [ite_eq_right h1]
     by_cases h2 : o ≤ i ∧ i < o + (B.length + k)
-    · rw [if_pos h2, if_neg (by omega), getElem!_replicate_zero]; exact BitVec.xor_zero
-    · rw [if_neg h2]
+    · rw [ite_eq_left h2, ite_eq_right (by omega), getElem!_replicate_zero]; exact BitVec.xor_zero
+    · rw [ite_eq_right h2]
 
 /-- `padded_block` is the state whose Keccak-f absorbs `M`, of a single block,
 which `input` holds before the pad byte `d` and zeros. -/
@@ -1205,7 +1205,7 @@ theorem array_set_getElem! {α : Type} [Inhabited α] {n : Usize} (a : Std.Array
   rw [Std.Array.set_val_eq, List.getElem!_eq_getElem?_getD, List.getElem?_set]
   split
   · subst_vars; simp
-  · rw [if_neg (by omega), ← List.getElem!_eq_getElem?_getD]
+  · rw [ite_eq_right (by omega), ← List.getElem!_eq_getElem?_getD]
 
 /-- The byte after a message of `padded_block`'s input is its pad byte. -/
 theorem pad_byte_at (input : Std.Array U8 40#usize) (d : Byte) (M : List Byte)
@@ -1223,7 +1223,7 @@ theorem sbl_states (a r : Std.Array (Std.Array U64 25#usize) 4#usize) (N : Nat)
     (hj4 : j < 4) : sbl (r.val[j]!).val = keccakF (sbl (a.val[j]!).val) := by
   apply keccakF_sbl
   have := congrArg (·[j]?) h
-  simp only [List.getElem?_take, List.getElem?_map, if_pos hj, states,
+  simp only [List.getElem?_take, List.getElem?_map, ite_eq_left hj, states,
     List.getElem?_eq_getElem (show j < r.val.length by simp; omega),
     List.getElem?_eq_getElem (show j < a.val.length by simp; omega), Option.map_some,
     Option.some.injEq] at this
@@ -1379,7 +1379,7 @@ theorem shake128x4_squeeze_inner_spec (x : mid.sha3.SqueezingSponge4xShake128)
       simp only [WP.spec_ok, true_and]
       intro j hj
       have := hst j hj
-      simp only [show j < it.start.val by omega, if_true] at this
+      simp only [show j < it.start.val by omega, ite_true] at this
       exact this
   · exact ⟨hs, he, ho⟩
 

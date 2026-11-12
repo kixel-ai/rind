@@ -266,14 +266,14 @@ theorem bitsOf_xorAt_block (R : Nat) (P : List Byte) {m : Nat} (Pb : Vector Bool
   rw [hB]
   simp only [e1]
   by_cases ht' : t < 8 * R
-  · rw [if_pos (by omega), testBit_xor_byte, dif_pos (by omega), hP]
+  · rw [ite_eq_left (by omega), testBit_xor_byte, dite_eq_left (by omega), hP]
     have e2 : (8 * (i * R) + t) / 8 = i * R + t / 8 := by omega
     have e3 : (8 * (i * R) + t) % 8 = t % 8 := by omega
     rw [e2, e3, List.getElem!_eq_getElem?_getD, List.getElem!_eq_getElem?_getD,
-      List.getElem?_take, if_pos (by omega), List.getElem?_drop, Nat.sub_zero,
+      List.getElem?_take, ite_eq_left (by omega), List.getElem?_drop, Nat.sub_zero,
       List.getElem!_eq_getElem?_getD]
     omega
-  · rw [if_neg (by omega), dif_neg (by omega)]
+  · rw [ite_eq_right (by omega), dite_eq_right (by omega)]
     simp
 
 /-- Absorbing `P`'s blocks into the zero state, as SymCrypt's
@@ -296,7 +296,7 @@ theorem bitsOf_absorb (R : Nat) (hR : 0 < R) (P : List Byte) {m : Nat} (Pb : Vec
     ext t ht
     have ht1 : t < 1600 := ht
     have hz : (List.replicate 200 (0 : Byte))[t / 8]! = 0 := by
-      rw [List.getElem!_eq_getElem?_getD, List.getElem?_replicate, if_pos (by omega)]
+      rw [List.getElem!_eq_getElem?_getD, List.getElem?_replicate, ite_eq_left (by omega)]
       rfl
     simp only [bitsOf, Vector.getElem_ofFn, hz]
     show _ = (Bits.ofNatLE 0 : Vector Bool b)[t]
@@ -355,12 +355,12 @@ theorem testBit_keccakPad (R : Nat) (hR : 0 < R) (d : Byte) (M : List Byte) (k t
       if k < M.length then M[k]! else if k = M.length then d else 0 := by
     rw [List.getElem!_eq_getElem?_getD, List.getElem!_eq_getElem?_getD]
     by_cases h1 : k < M.length
-    · rw [List.getElem?_append_left h1, if_pos h1]
-    · rw [List.getElem?_append_right (by omega), if_neg h1]
+    · rw [List.getElem?_append_left h1, ite_eq_left h1]
+    · rw [List.getElem?_append_right (by omega), ite_eq_right h1]
       by_cases h2 : k = M.length
       · subst h2; simp
-      · rw [if_neg h2, show k - M.length = (k - M.length - 1) + 1 by omega, List.getElem?_cons_succ,
-          List.getElem?_replicate, if_pos (by omega)]
+      · rw [ite_eq_right h2, show k - M.length = (k - M.length - 1) + 1 by omega, List.getElem?_cons_succ,
+          List.getElem?_replicate, ite_eq_left (by omega)]
         rfl
   unfold keccakPad
   rw [getElem!_xorAt _ _ _ _ (by simp; omega), hin]
@@ -427,16 +427,16 @@ theorem getElem_padded (R ℓ : Nat) (hR : 0 < R) (d : Byte) (sfx : Vector Bool 
     rw [getElem_vappend _ _ _ h1]
     split
     · rename_i h2
-      rw [getElem_bytesToBits_toB _ _ h2, if_pos (by omega), beq_false_of (by omega), Bool.false_and,
+      rw [getElem_bytesToBits_toB _ _ h2, ite_eq_left (by omega), beq_false_of (by omega), Bool.false_and,
         Bool.bne_false]
     · rename_i h2
-      rw [if_neg (by omega), beq_true_of (by omega), beq_false_of (show i % 8 ≠ 7 by omega),
-        Bool.and_false, Bool.bne_false, hd _ (by omega), dif_pos (by omega), Bool.true_and]
+      rw [ite_eq_right (by omega), beq_true_of (by omega), beq_false_of (show i % 8 ≠ 7 by omega),
+        Bool.and_false, Bool.bne_false, hd _ (by omega), dite_eq_left (by omega), Bool.true_and]
       congr 1; omega
   · rename_i h1
-    rw [getElem_pad101 _ _ _ (by omega), if_neg (by omega)]
+    rw [getElem_pad101 _ _ _ (by omega), ite_eq_right (by omega)]
     by_cases h2 : i / 8 = M.length
-    · rw [beq_true_of h2, hd _ (by omega), dif_neg (by omega), Bool.true_and]
+    · rw [beq_true_of h2, hd _ (by omega), dite_eq_right (by omega), Bool.true_and]
       by_cases h3 : i % 8 = ℓ
       · rw [beq_true_of (show i - (8 * M.length + ℓ) = 0 by omega),
           beq_false_of (show i % 8 ≠ 7 by omega), Bool.and_false]
@@ -481,7 +481,7 @@ theorem getElem_SPONGE (R ℓ r : Nat) (hR : 0 < R) (hr8 : r = 8 * R) (d : Byte)
       SPONGE.squeeze KECCAK_f (8 * R) (#v[] : Vector Bool 0) (SPONGE.absorb KECCAK_f (8 * R)
         ((bytesToBits (toB M) ‖ sfx) ‖ «pad10*1» (8 * R) (8 * M.length + ℓ))
         (padLen_dvd _ _) h1.1) h1 := rfl
-  rw [hS, getElem_squeeze _ _ _ _ _ hj, dif_neg (Nat.not_lt_zero _)]
+  rw [hS, getElem_squeeze _ _ _ _ _ hj, dite_eq_right (Nat.not_lt_zero _)]
   rw [← bitsOf_absorb R hR (keccakPad R d M) _ (by rw [length_keccakPad R hR, ← hpl])
     (fun i hi => getElem_padded R ℓ hR d sfx hℓ hd M i hi)]
   rw [← bitsOf_iterate_keccakF]
