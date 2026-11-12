@@ -148,7 +148,10 @@ impl<S> fmt::Debug for Share<S> {
 }
 
 /// A key-confirmation tag, the 32-byte HMAC-SHA256 of suite `S`.
-#[derive(Clone, Copy, PartialEq, Eq)]
+///
+/// Equality reads every byte and declassifies only whether the tags match,
+/// as [`crate::constant_time::verify`] does.
+#[derive(Clone, Copy, Eq)]
 pub struct Confirm<S> {
     bytes: [u8; 32],
     _kind: PhantomData<fn() -> S>,
@@ -174,6 +177,13 @@ impl<S> Confirm<S> {
 impl<S> AsRef<[u8]> for Confirm<S> {
     fn as_ref(&self) -> &[u8] {
         &self.bytes
+    }
+}
+
+impl<S> PartialEq for Confirm<S> {
+    fn eq(&self, other: &Self) -> bool {
+        let _entry = Entry::new_secret();
+        ct::into_public(ct_equal(self.as_ref(), other.as_ref()))
     }
 }
 
@@ -1345,14 +1355,28 @@ mod tests {
     fn secrets_stay_secret() {
         // Under `admin/ctgrind`, nothing may branch on w0, w1, or the
         // ephemeral scalars until the confirmation tags and, in this test,
-        // the shared key are declassified.
+        // the shared key are declassified. `from_record` loads that same
+        // secret `w0`; the stored point `L` is public.
         let w0 = [0x5a; 40];
         let w1 = [0xa5; 40];
         ct::secret_slice(&w0);
         ct::secret_slice(&w1);
         fn one<S: 'static>(suite: &'static Suite<S>, w0: &[u8], w1: &[u8]) {
-            let prover = ProverSecrets::new(w0, w1).unwrap();
             let verifier = VerifierRecord::from_w1(w0, w1).unwrap();
+            let l = verifier.l.to_uncompressed();
+            ct::public_slice(&l);
+            exchange(suite, ProverSecrets::new(w0, w1).unwrap(), verifier);
+            exchange(
+                suite,
+                ProverSecrets::new(w0, w1).unwrap(),
+                VerifierRecord::from_record(w0, &l).unwrap(),
+            );
+        }
+        fn exchange<S: 'static>(
+            suite: &'static Suite<S>,
+            prover: ProverSecrets,
+            verifier: VerifierRecord,
+        ) {
             let (share_p, prover) = prover
                 .start(suite, b"CHIP", b"commissionee", b"commissioner")
                 .unwrap();
@@ -1364,6 +1388,14 @@ mod tests {
             ct::public_slice(key_p.as_ref());
             ct::public_slice(key_v.as_ref());
             assert_eq!(key_p.as_ref(), key_v.as_ref());
+            // `mac` declassified the tag. Mark it secret again so `==` is
+            // checked the same way as the password scalars.
+            ct::secret_slice(confirm_p.as_ref());
+            assert_eq!(confirm_p, confirm_of::<S>(confirm_p.bytes));
+            let mut flipped = confirm_p.bytes;
+            flipped[0] ^= 1;
+            ct::secret_slice(&flipped);
+            assert_ne!(confirm_p, confirm_of::<S>(flipped));
         }
         one(&RFC9383, &w0, &w1);
         one(&MATTER_PASE, &w0, &w1);
