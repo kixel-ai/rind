@@ -94,8 +94,8 @@ impl Blake2b {
 // RFC 7693's F.
 fn compress(h: &mut [u64; 8], block: &[u8; BLOCK_LEN], t: u128, last: bool) {
     let mut m = [0u64; 16];
-    for (m, bytes) in m.iter_mut().zip(block.chunks_exact(8)) {
-        *m = u64::from_le_bytes(bytes.try_into().unwrap());
+    for (m, bytes) in m.iter_mut().zip(block.as_chunks::<8>().0) {
+        *m = u64::from_le_bytes(*bytes);
     }
 
     let mut v = [0u64; 16];

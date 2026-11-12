@@ -83,8 +83,8 @@ pub(crate) fn argon2id(
             h0[68..].copy_from_slice(&lane.to_le_bytes());
             long_hash(&[&h0], &mut bytes);
             let block = &mut memory[lane as usize * geometry.lane_len + column as usize];
-            for (word, bytes) in block.0.iter_mut().zip(bytes.chunks_exact(8)) {
-                *word = u64::from_le_bytes(bytes.try_into().unwrap());
+            for (word, bytes) in block.0.iter_mut().zip(bytes.as_chunks::<8>().0) {
+                *word = u64::from_le_bytes(*bytes);
             }
         }
     }
@@ -107,8 +107,8 @@ pub(crate) fn argon2id(
             *last ^= word;
         }
     }
-    for (bytes, word) in bytes.chunks_exact_mut(8).zip(&last.0) {
-        bytes.copy_from_slice(&word.to_le_bytes());
+    for (bytes, word) in bytes.as_chunks_mut::<8>().0.iter_mut().zip(&last.0) {
+        *bytes = word.to_le_bytes();
     }
     long_hash(&[&bytes], out);
 
