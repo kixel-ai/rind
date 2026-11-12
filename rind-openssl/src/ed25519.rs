@@ -38,16 +38,18 @@ const MAX_CONTEXT_LEN: usize = 255;
 
 pub(crate) struct Ed25519;
 
-/// A key pair, with the public key that verifies its signatures.
+/// A key pair, with its public key's bytes, which `priv` and `pub` read.
+/// Both halves wipe themselves, so the whole value is wiped on drop.
 pub(crate) struct Pair {
     pair: Ed25519KeyPair,
-    verifier: PublicKey,
+    public: Zeroizing<[u8; LEN]>,
 }
 
 impl Pair {
     fn new(pair: Ed25519KeyPair) -> Self {
-        let verifier = pair.public_key();
-        Self { pair, verifier }
+        let mut public = Zeroizing::new([0; LEN]);
+        public.copy_from_slice(pair.public_key().as_ref());
+        Self { pair, public }
     }
 }
 
@@ -92,7 +94,7 @@ impl Kind for Ed25519 {
     }
 
     fn public_of(private: &Pair) -> &[u8] {
-        private.verifier.as_ref()
+        &private.public[..]
     }
 
     fn private_bytes(private: &Pair) -> Ed25519Seed {
@@ -303,9 +305,15 @@ impl Signing {
     }
 
     fn verify(&self, signature: &[u8], message: &[u8]) -> Result<(), Failure> {
+        // A private key's verifier is a copy, not kept, so the key held
+        // stays one that wipes whole.
+        let owned;
         let verifier = match self.check()? {
             Key::Public(public) => public.verifier.as_ref(),
-            Key::Private(pair) => Some(&pair.verifier),
+            Key::Private(pair) => {
+                owned = pair.pair.public_key();
+                Some(&owned)
+            }
         };
         // OpenSSL's default provider raises no error for a signature that
         // fails, whether its length, its point, or its equation is wrong.
@@ -512,4 +520,29 @@ unsafe extern "C" fn set_ctx_params(ctx: *mut c_void, params: *const Param) -> c
 
 unsafe extern "C" fn settable_ctx_params(_ctx: *mut c_void, _provctx: *mut c_void) -> *const Param {
     SETTABLE_CTX.as_ptr()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::alloc::{Layout, dealloc};
+
+    use super::*;
+
+    /// A private key is zero in every byte once dropped, before it is freed.
+    /// Reading it then is a deliberate use after drop, as
+    /// `rind/tests/zeroing.rs` does: not sound in theory, but it catches a
+    /// part left unwiped in practice.
+    #[test]
+    fn a_private_key_wipes_whole() {
+        let key = Box::into_raw(Box::new(Ed25519::load(&[0x9d; LEN]).unwrap()));
+        let len = size_of::<Pair>();
+        // SAFETY: `key` is a live allocation of `len` bytes; it is dropped
+        // once, read before it is freed, and freed with its own layout.
+        unsafe {
+            core::ptr::drop_in_place(key);
+            let bytes = key.cast::<u8>();
+            assert!((0..len).all(|i| core::ptr::read_volatile(bytes.add(i)) == 0));
+            dealloc(bytes, Layout::new::<Pair>());
+        }
+    }
 }
