@@ -1104,4 +1104,58 @@ theorem sha3_family_digest (h : RunsSha3) (algorithm : high.digest.Algorithm)
     rw [hb, hsl, Array.val_to_slice, hd, List.nil_append]
     rfl
 
+/-! ## SHAKE, as ML-KEM calls it -/
+
+/-- `Sponge::finish` owes the Keccak-f that ends absorbing the padded message. -/
+theorem sponge_finish_spec {R : Usize} {PAD : U8} (hR : 8 ≤ R.val ∧ R.val < 200 ∧ R.val % 8 = 0)
+    (sp : mid.sha3.Sponge R PAD) (m : List Byte) (hm : SpongeAbsorbed R.val sp.s sp.used.val m) :
+    mid.sha3.Sponge.finish sp ⦃ ss =>
+      keccakF (sbl ss.s.val) = absorb R.val zeros (keccakPad R.val PAD.bv m) ⦄ := by
+  unfold mid.sha3.Sponge.finish
+  step with padded_state_spec hR sp m hm as ⟨a, ha⟩
+  simpa [mid.sha3.SqueezingSponge.new, WP.spec_ok] using ha
+
+theorem xorAt_append_zeros (S : List Byte) (o : Nat) (B : List Byte) (k : Nat) :
+    xorAt S o (B ++ List.replicate k 0) = xorAt S o B := by
+  apply ext_getElem! (by simp)
+  intro i hi
+  simp only [length_xorAt] at hi
+  rw [getElem!_xorAt _ _ _ _ hi, getElem!_xorAt _ _ _ _ hi, List.length_append,
+    List.length_replicate, getElem!_append_if]
+  by_cases h1 : o ≤ i ∧ i < o + B.length
+  · rw [if_pos ⟨h1.1, by omega⟩, if_pos h1, if_pos (by omega)]
+  · rw [if_neg h1]
+    by_cases h2 : o ≤ i ∧ i < o + (B.length + k)
+    · rw [if_pos h2, if_neg (by omega), getElem!_replicate_zero]; exact BitVec.xor_zero
+    · rw [if_neg h2]
+
+/-- `padded_block` is the state whose Keccak-f absorbs `M`, of a single block,
+which `input` holds before the pad byte `d` and zeros. -/
+theorem padded_block_spec (R : Usize) (hR : 48 ≤ R.val ∧ R.val < 200 ∧ R.val % 8 = 0)
+    (input : Std.Array U8 40#usize) (d : Byte) (M : List Byte) (hM : M.length < 40)
+    (hin : bv input.val = M ++ d :: List.replicate (39 - M.length) 0) :
+    mid.sha3.padded_block R input ⦃ s =>
+      keccakF (sbl s.val) = absorb R.val zeros (keccakPad R.val d M) ⦄ := by
+  unfold mid.sha3.padded_block
+  step as ⟨sl, hsl⟩
+  step with add_bytes_spec _ 0#usize sl (by simp [Slice.length, hsl]) as ⟨s1, hs1⟩
+  step*
+  have hi2 : i2.val < 25 := by omega
+  have hx : i4.bv = (s1.val[i2.val]!).bv ^^^ i.bv := by
+    simp only [i4_post1, i3_post, getElem!_pos s1.val i2.val (by simp; omega)]
+  have hw : ∀ m t, m < 8 → t < 8 → i.bv[8 * m + t]! =
+      if 7 ≤ m ∧ m < 7 + [(0x80 : Byte)].length then [(0x80 : Byte)][m - 7]!.toNat.testBit t
+      else false := by
+    intro m t hm ht
+    simp only [i_post1]
+    interval_cases m <;> interval_cases t <;> rfl
+  have h0 := absorb_keccakPad R.val ⟨by omega, by omega⟩ d [] M rfl (by omega)
+  rw [List.nil_append] at h0
+  rw [h0, s_post, Std.Array.set_val_eq, sbl_set_xor _ i2.val (by simp; omega) i4 i.bv hx 7 [0x80]
+    (by simp) hw, hs1, hsl, Array.val_to_slice, hin, sbl_zero,
+    show 8 * i2.val + 7 = R.val - 1 by omega, show d :: List.replicate (39 - M.length) 0 =
+      [d] ++ List.replicate (39 - M.length) 0 from rfl, ← List.append_assoc, xorAt_append_zeros,
+    ← xorAt_xorAt, Nat.zero_add]
+  simp [absorb, blocks_nil]
+
 end rind.x86_64
