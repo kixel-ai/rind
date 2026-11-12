@@ -333,3 +333,18 @@ fn random() {
     assert_eq!(rind().random_vec(100).unwrap().len(), 100);
     assert!(rind().random_vec(0).unwrap().is_empty());
 }
+
+#[test]
+fn rand_error_messages() {
+    use openmls_rust_crypto::RandError as Reference;
+    use rind_openmls::RandError;
+    for (ours, theirs) in [
+        (RandError::LockPoisoned, Reference::LockPoisoned),
+        (
+            RandError::NotEnoughRandomness,
+            Reference::NotEnoughRandomness,
+        ),
+    ] {
+        assert_eq!(ours.to_string(), theirs.to_string());
+    }
+}
