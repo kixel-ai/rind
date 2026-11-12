@@ -164,7 +164,20 @@ SECTIONS = [
             "rsa2048-pss-sha256-verify/{lib}",
         ],
     ),
-    ("ML-KEM", ["mlkem768-keygen/{lib}", "mlkem768-encaps/{lib}", "mlkem768-decaps/{lib}"]),
+    (
+        "ML-KEM",
+        [
+            "mlkem768-keygen/{lib}",
+            "mlkem768-encaps/{lib}",
+            "mlkem768-decaps/{lib}",
+            "mlkem1024-keygen/{lib}",
+            "mlkem1024-encaps/{lib}",
+            "mlkem1024-decaps/{lib}",
+            "mlkem512-keygen/{lib}",
+            "mlkem512-encaps/{lib}",
+            "mlkem512-decaps/{lib}",
+        ],
+    ),
     ("ML-DSA", ["mldsa65-keygen/{lib}", "mldsa65-sign/{lib}", "mldsa65-verify/{lib}"]),
     (
         "P-384 and P-521",
