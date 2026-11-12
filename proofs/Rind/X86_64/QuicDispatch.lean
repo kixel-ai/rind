@@ -99,7 +99,8 @@ The model departs from the Rust in three ways, and adds no axiom:
   `map_err(|_| Error::WrongLength)?` a `match` returning that error.
 
 Drops are not modelled, as everywhere in the translation. Of the
-header-protection statics, only `CHACHA20` is here. `admin/prove` writes the
+header-protection statics, only `CHACHA20` is here: `Rind.X86_64.Dispatch`
+models the AES ones, whose key setup armv7's translation leaves out. `admin/prove` writes the
 aarch64 and armv7 models from this file by renaming the target.
 -/
 
