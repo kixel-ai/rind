@@ -313,6 +313,62 @@ impl SqueezingSponge4xShake128 {
     }
 }
 
+/// Up to four SHAKE instances with rate `R`, each over an input shorter than
+/// one block, squeezed in step so their permutations run together.
+pub(crate) struct Shake4x<const R: usize> {
+    states: [[u64; 25]; 4],
+    /// How many of `states` are in use, from one to four.
+    lanes: usize,
+}
+
+/// Four SHAKE128 instances in step.
+pub(crate) type Shake128x4 = Shake4x<SHAKE_128_R_BYTES>;
+
+/// Four SHAKE256 instances in step.
+pub(crate) type Shake256x4 = Shake4x<SHAKE_256_R_BYTES>;
+
+impl<const R: usize> Shake4x<R> {
+    /// Absorbs each of `inputs`, one to four of them, into its own instance.
+    pub(crate) fn new<const LEN: usize>(inputs: &[[u8; LEN]]) -> Self {
+        const { assert!(LEN < R) };
+        assert!((1..=4).contains(&inputs.len()));
+        let mut states = [[0; 25]; 4];
+        for (s, input) in states.iter_mut().zip(inputs) {
+            add_bytes(s, 0, input);
+            add_bytes(s, LEN, &[SHAKE_PAD_BYTE]);
+            s[R / 8 - 1] ^= 0x80 << 56;
+        }
+        Self {
+            states,
+            lanes: inputs.len(),
+        }
+    }
+
+    /// Squeezes the next `N` bytes of each instance into its item of
+    /// `outputs`, a whole number of blocks. The items for lanes not in use
+    /// are left with unspecified contents.
+    pub(crate) fn squeeze<const N: usize>(&mut self, outputs: &mut [[u8; N]; 4]) {
+        const { assert!(N.is_multiple_of(R)) };
+        Entry::assert_held();
+        for block in 0..N / R {
+            // A short batch leaves stale states in the unused lanes, whose
+            // outputs are never read.
+            match self.lanes {
+                4 => sha3_keccak4_f1600(&mut self.states, &RC),
+                3 => sha3_keccak_nof4_f1600::<3>(&mut self.states, &RC),
+                2 => sha3_keccak_nof4_f1600::<2>(&mut self.states, &RC),
+                _ => sha3_keccak_nof4_f1600::<1>(&mut self.states, &RC),
+            }
+            for (s, output) in self.states.iter().zip(outputs.iter_mut()) {
+                let output = &mut output[block * R..(block + 1) * R];
+                for (ch, s) in output.as_chunks_mut::<8>().0.iter_mut().zip(s) {
+                    *ch = s.to_le_bytes();
+                }
+            }
+        }
+    }
+}
+
 /// A sponge absorbing input, XORed into the state as it arrives, so it needs
 /// no buffer.
 #[derive(Clone)]
@@ -429,7 +485,7 @@ const RC: [u64; 24] = [
 ];
 
 pub(crate) const SHAKE_128_R_BYTES: usize = (1600 - 256) / 8;
-const SHAKE_256_R_BYTES: usize = (1600 - 512) / 8;
+pub(crate) const SHAKE_256_R_BYTES: usize = (1600 - 512) / 8;
 
 /// This is 0b01_1 in keccak bit ordering.
 ///
@@ -566,6 +622,46 @@ mod tests {
             let mut tail = [0u8; TAIL];
             sponge.squeeze(&mut tail);
             assert_eq!(&tail[..], &single[SHAKE_128_R_BYTES * 3..]);
+        }
+    }
+
+    #[test]
+    fn shake4x_matches_single() {
+        let _entry = Entry::new_secret();
+        for lanes in 1..=4 {
+            let inputs: Vec<[u8; 66]> = (0..lanes)
+                .map(|n| core::array::from_fn(|i| (i * 7 + n * 31) as u8))
+                .collect();
+            let mut x4 = Shake256x4::new(&inputs);
+            let mut first = [[0u8; SHAKE_256_R_BYTES * 2]; 4];
+            x4.squeeze(&mut first);
+            let mut second = [[0u8; SHAKE_256_R_BYTES]; 4];
+            x4.squeeze(&mut second);
+            for (n, input) in inputs.iter().enumerate() {
+                let mut single = [0u8; SHAKE_256_R_BYTES * 3];
+                Shake256::new(&[input]).read(&mut single);
+                assert_eq!(
+                    first[n][..],
+                    single[..SHAKE_256_R_BYTES * 2],
+                    "{lanes} lanes"
+                );
+                assert_eq!(
+                    second[n][..],
+                    single[SHAKE_256_R_BYTES * 2..],
+                    "{lanes} lanes"
+                );
+            }
+
+            let inputs: Vec<[u8; 34]> = (0..lanes)
+                .map(|n| core::array::from_fn(|i| (i * 3 + n * 17) as u8))
+                .collect();
+            let mut out = [[0u8; SHAKE_128_R_BYTES * 5]; 4];
+            Shake128x4::new(&inputs).squeeze(&mut out);
+            for (n, input) in inputs.iter().enumerate() {
+                let mut single = [0u8; SHAKE_128_R_BYTES * 5];
+                Shake128::new(&[input]).read(&mut single);
+                assert_eq!(out[n], single, "{lanes} lanes");
+            }
         }
     }
 

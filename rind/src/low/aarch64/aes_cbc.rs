@@ -56,7 +56,21 @@ fn hw_encrypt<const N: usize>(
     for block in blocks {
         // SAFETY: `block` is 16 readable bytes
         let p = unsafe { vld1q_u8(block.as_ptr()) };
-        let mut b = vaesmcq_u8(vaeseq_u8(y, veorq_u8(p, first_last)));
+        // LLVM takes `aese` as commutative and makes the fresh operand its
+        // destination, which puts a `mov` of `y` on the chain each block,
+        // costing about a tenth of the throughput on Neoverse N2.
+        let mut b = veorq_u8(p, first_last);
+        // SAFETY: `aese` only reads and writes the two registers named, and
+        // the target feature enables it.
+        unsafe {
+            core::arch::asm!(
+                "aese {y:v}.16b, {b:v}.16b",
+                y = inout(vreg) y => b,
+                b = in(vreg) b,
+                options(pure, nomem, nostack, preserves_flags),
+            );
+        }
+        b = vaesmcq_u8(b);
         for round_key in &round_keys[1..N - 2] {
             b = vaesmcq_u8(vaeseq_u8(b, *round_key));
         }
