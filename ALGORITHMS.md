@@ -42,6 +42,7 @@ SHA-512.
 | HMAC | Graviola ⚡ |  |  |  |  |
 | HKDF | rind ⚡ |  |  |  |  |
 | HPKE, over the rows it builds on | rind |  |  |  |  |
+| ECVRF, over the rows it builds on | rind |  |  |  |  |
 | PBKDF2 | rind |  |  |  |  |
 | X25519 | s2n-bignum ✓ |  |  |  |  |
 | Ed25519 | s2n-bignum ✓ + Graviola |  |  |  |  |
@@ -105,6 +106,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | HMAC | Graviola ⚡ |  |  |  |
 | HKDF | rind ⚡ |  |  |  |
 | HPKE, over the rows it builds on | rind |  |  |  |
+| ECVRF, over the rows it builds on | rind |  |  |  |
 | PBKDF2 | rind |  |  |  |
 | X25519 | s2n-bignum ✓ |  | BoringSSL ⚡ + curve25519-dalek ⚡ | curve25519-dalek ⚡ |
 | Ed25519 | s2n-bignum ✓ + Graviola |  | curve25519-dalek ⚡ + rind ⚡ |  |
@@ -492,6 +494,18 @@ base point multiplication is the exception: its selection is inside
 s2n-bignum's verified `p256_scalarmulbase`.
 
 On x86_64 and aarch64, X25519 directly uses the s2n-bignum implementation.
+
+ECVRF (RFC 9381) is rind's, over the curves' code above: on edwards25519, the
+ristretto255 code's constant-time variable-point multiplication and
+s2n-bignum's base point multiplication and decoding, or curve25519-dalek's on
+armv7 and portable; on P256, the ECDH and ECDSA multiplications, and RFC6979
+over the HMAC-DRBG for the nonce, with no added randomness, as the suite's
+test vectors require. Proving runs in constant time in the key and the nonce.
+Verification multiplies by the proof's scalars in constant time too on
+edwards25519, where it is public data, as no variable-time multiplication of
+an arbitrary point is there to reuse; P256's computes `s G - c Y` as ECDSA
+verification does. Try-and-increment's loop runs in time that depends on the
+input, as RFC 9381 notes.
 
 ### ML-KEM-768
 On aarch64, and on x86_64 CPUs with AVX2, the core polynomial arithmetic -- the NTT, inverse NTT, base multiplication
