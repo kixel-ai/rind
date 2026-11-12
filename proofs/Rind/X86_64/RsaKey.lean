@@ -1,4 +1,4 @@
-import Rind.X86_64.RsaPublic
+import Rind.X86_64.RsaPss
 open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 
 /-!
@@ -645,5 +645,394 @@ theorem mul_word_mod_spec (u d : Slice U64) (hk2 : 2 ≤ d.length) (hu : u.lengt
         rintro (h | ⟨h, -⟩)
         · exact hge (hlt'.mpr h)
         · exact hne (heq'.mpr h)
+
+/-- One word of a left shift by `s` bits: the pair `w:wl` shifted, taking
+its high word, plus the bits `w` pushes out, gives `w·2^s` plus those `wl`
+pushes in. -/
+theorem shl_word (w wl s : Nat) (hwl : wl < 2 ^ 64) (hs : s < 64) :
+    (w * 2 ^ 64 + wl) * 2 ^ s % 2 ^ 128 / 2 ^ 64 % 2 ^ 64 + 2 ^ 64 * (w * 2 ^ s / 2 ^ 64) =
+      w * 2 ^ s + wl * 2 ^ s / 2 ^ 64 := by
+  have hB : (2 : Nat) ^ 64 = 2 ^ (64 - s) * 2 ^ s := by rw [← pow_add]; congr 1; omega
+  have h128 : (2 : Nat) ^ 128 = 2 ^ 64 * 2 ^ 64 := by norm_num
+  rw [h128, Nat.mod_mul_right_div_self, Nat.mod_mod_of_dvd _ (dvd_refl _)]
+  have e1 : (w * 2 ^ 64 + wl) * 2 ^ s / 2 ^ 64 = w * 2 ^ s + wl * 2 ^ s / 2 ^ 64 := by
+    rw [add_mul, show w * 2 ^ 64 * 2 ^ s = (w * 2 ^ s) * 2 ^ 64 by ring, Nat.add_comm,
+      Nat.add_mul_div_right _ _ (by positivity), Nat.add_comm]
+  rw [e1]
+  have hc : wl * 2 ^ s / 2 ^ 64 < 2 ^ s := by
+    rw [Nat.div_lt_iff_lt_mul (by positivity)]
+    exact Nat.mul_lt_mul_of_pos_right hwl (by positivity) |>.trans_eq (by ring)
+  have hm : w * 2 ^ s % 2 ^ 64 + 2 ^ s ≤ 2 ^ 64 := by
+    rw [hB, Nat.mul_mod_mul_right]
+    have := Nat.mod_lt w (show 0 < 2 ^ (64 - s) by positivity)
+    calc w % 2 ^ (64 - s) * 2 ^ s + 2 ^ s = (w % 2 ^ (64 - s) + 1) * 2 ^ s := by ring
+      _ ≤ 2 ^ (64 - s) * 2 ^ s := Nat.mul_le_mul_right _ this
+  have := Nat.div_add_mod (w * 2 ^ s) (2 ^ 64)
+  have e2 : (w * 2 ^ s + wl * 2 ^ s / 2 ^ 64) % 2 ^ 64 = w * 2 ^ s % 2 ^ 64 + wl * 2 ^ s / 2 ^ 64 := by
+    conv_lhs => rw [← this]
+    rw [Nat.add_assoc, Nat.mul_add_mod, Nat.mod_eq_of_lt (by omega)]
+  rw [e2]; omega
+
+/-- One word of a right shift by `s` bits: the pair `b:a` shifted, as a
+word, times `2^s`, plus the bits of `a` shifted out, gives `a` plus the
+bits `b` brings down. -/
+theorem shr_word (a b s : Nat) (ha : a < 2 ^ 64) (hs : s < 64) :
+    2 ^ s * ((b * 2 ^ 64 + a) / 2 ^ s % 2 ^ 64) + a % 2 ^ s = b % 2 ^ s * 2 ^ 64 + a := by
+  have hB : (2 : Nat) ^ 64 = 2 ^ s * 2 ^ (64 - s) := by rw [← pow_add]; congr 1; omega
+  have e1 : (b * 2 ^ 64 + a) / 2 ^ s = (b / 2 ^ s) * 2 ^ 64 + (b % 2 ^ s * 2 ^ 64 + a) / 2 ^ s := by
+    have := Nat.div_add_mod b (2 ^ s)
+    conv_lhs => rw [← this]
+    rw [add_mul, Nat.add_assoc, show 2 ^ s * (b / 2 ^ s) * 2 ^ 64 = (b / 2 ^ s * 2 ^ 64) * 2 ^ s by ring,
+      Nat.add_comm, Nat.add_mul_div_right _ _ (by positivity), Nat.add_comm]
+  have hlt : (b % 2 ^ s * 2 ^ 64 + a) / 2 ^ s < 2 ^ 64 := by
+    rw [Nat.div_lt_iff_lt_mul (by positivity)]
+    have := Nat.mod_lt b (show 0 < 2 ^ s by positivity)
+    have : b % 2 ^ s * 2 ^ 64 + 2 ^ 64 ≤ 2 ^ s * 2 ^ 64 := by nlinarith
+    nlinarith
+  rw [e1, Nat.add_comm (b / 2 ^ s * 2 ^ 64), Nat.add_mul_mod_self_right, Nat.mod_eq_of_lt hlt]
+  have hmod : (b % 2 ^ s * 2 ^ 64 + a) % 2 ^ s = a % 2 ^ s := by
+    rw [hB, show b % 2 ^ s * (2 ^ s * 2 ^ (64 - s)) = 2 ^ s * (b % 2 ^ s * 2 ^ (64 - s)) by ring,
+      Nat.mul_add_mod]
+  rw [← hmod]; exact Nat.div_add_mod _ _
+
+theorem clz_bound (x : U64) (hx : x ≠ 0#u64) :
+    x.val * 2 ^ (core.num.U64.leading_zeros x).val < 2 ^ 64 ∧ (core.num.U64.leading_zeros x).val < 64 := by
+  have hx' : x.bv ≠ 0 := by intro h; apply hx; rw [UScalar.eq_equiv]; simp [UScalar.val, h]
+  have hv0 : x.val ≠ 0 := by intro h; apply hx; rw [UScalar.eq_equiv]; simpa using h
+  have hxb : x.val < 2 ^ 64 := by scalar_tac
+  have hlog : Nat.log 2 x.val < 64 := Nat.log_lt_of_lt_pow hv0 hxb
+  have hlt := Nat.lt_pow_succ_log_self (b := 2) (by norm_num) x.val
+  have hv : (core.num.U64.leading_zeros x).val = 64 - Nat.log 2 x.val - 1 := by
+    simp only [core.num.U64.leading_zeros, BitVec.leadingZeros, hx', ↓reduceIte]
+    show (BitVec.ofNat 32 _).toNat = _
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]; rfl
+  rw [hv]
+  refine ⟨?_, by omega⟩
+  calc x.val * 2 ^ (64 - Nat.log 2 x.val - 1) < 2 ^ (Nat.log 2 x.val + 1) * 2 ^ (64 - Nat.log 2 x.val - 1) :=
+        Nat.mul_lt_mul_of_pos_right hlt (by positivity)
+    _ = 2 ^ 64 := by rw [← pow_add]; congr 1; omega
+
+/-- The bits word `j - 1` of `w` pushes into word `j` on a left shift by
+`s`, or none into word 0. -/
+def shlCarry (w : List U64) (s j : Nat) : Nat := if j = 0 then 0 else w[j - 1]!.val * 2 ^ s / 2 ^ 64
+
+/-- `pub_montifier`'s first loop shifts the modulus left by `shift` bits
+into `d`, word by word from the bottom, leaving out the bits pushed past
+word `k`. -/
+theorem pub_montifier_loop0_spec {N : Usize} (w : Std.Array U64 N) (shift : U32) (hs : shift.val < 64)
+    (k : Usize) (hk : k.val ≤ N.val) (iter : core.ops.range.Range Usize) (a : Std.Array U64 N)
+    (hend : iter.end = k) (hjk : iter.start.val ≤ k.val)
+    (hinv : wordsNat (a.val.take iter.start.val) + 2 ^ (64 * iter.start.val) * shlCarry w.val shift.val iter.start.val =
+      wordsNat (w.val.take iter.start.val) * 2 ^ shift.val) :
+    low.posint.PosInt.pub_montifier_loop0 iter w shift a ⦃ r =>
+      wordsNat (r.val.take k.val) + 2 ^ (64 * k.val) * shlCarry w.val shift.val k.val =
+        wordsNat (w.val.take k.val) * 2 ^ shift.val ⦄ := by
+  unfold low.posint.PosInt.pub_montifier_loop0
+  apply loop.spec_decr_nat (fun x => k.val - x.1.start.val)
+    (fun x : core.ops.range.Range Usize × Std.Array U64 N => x.1.end = k ∧ x.1.start.val ≤ k.val ∧
+      wordsNat (x.2.val.take x.1.start.val) + 2 ^ (64 * x.1.start.val) * shlCarry w.val shift.val x.1.start.val =
+        wordsNat (w.val.take x.1.start.val) * 2 ^ shift.val)
+  · rintro ⟨it, v⟩ ⟨he, hsk, hv⟩
+    simp only at he hsk hv
+    unfold low.posint.PosInt.pub_montifier_loop0.body
+    step as ⟨op, iter1, hop, hend1⟩
+    cases op with
+    | none =>
+      have : it.start.val = k.val := by
+        split at hop
+        · simp at hop
+        · rw [he] at *; scalar_tac
+      simp only [WP.spec_ok]
+      rw [← this]; exact hv
+    | some j =>
+      have hlt : it.start.val < it.end.val := by
+        by_contra hc; simp [hc] at hop
+      simp only [hlt, ↓reduceIte, Option.some.injEq] at hop
+      obtain ⟨rfl, hst⟩ := hop
+      rw [he] at hlt
+      have hwl : w.val.length = N.val := by simp
+      have hvl : v.val.length = N.val := by simp
+      apply WP.spec_bind (Pₘ := fun below : U64 => below.val = if 0 < it.start.val then w.val[it.start.val - 1]!.val else 0)
+      · split
+        · step as ⟨i1, hi1⟩
+          step as ⟨b, hb⟩
+          rw [ite_eq_left (by scalar_tac), hb, ← getElem!_pos, hi1]
+        · simp only [WP.spec_ok]
+          have : it.start.val = 0 := by scalar_tac
+          simp [this]
+      intro below hbelow
+      simp only [lift, bind_ok]
+      step as ⟨i1, hi1⟩
+      step as ⟨i3, hi3, _⟩
+      step as ⟨i5, hi5, _⟩
+      step as ⟨i6, hi6, _⟩
+      step as ⟨a2, ha2⟩
+      have hsz : U128.size = 2 ^ 128 := by simp [U128.size, U128.numBits]
+      have hW : i1 = w.val[it.start.val]! := by rw [hi1, ← getElem!_pos]
+      have hi1b : i1.val < 2 ^ 64 := by scalar_tac
+      have hbb : below.val < 2 ^ 64 := by scalar_tac
+      have hpair : (i3 ||| core.convert.num.FromU128U64.from below).val = i1.val * 2 ^ 64 + below.val := by
+        rw [UScalar.val_or, hi3, core.convert.num.FromU128U64.from_val_eq, core.convert.num.FromU128U64.from_val_eq,
+          hsz]
+        exact pair_val _ _ hi1b hbb
+      have hd : (UScalar.cast .U64 i6).val = (i1.val * 2 ^ 64 + below.val) * 2 ^ shift.val % 2 ^ 128 / 2 ^ 64 % 2 ^ 64 := by
+        rw [UScalar.cast_val_eq, hi6, hi5, hpair, hsz, Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]; rfl
+      have key := shl_word i1.val below.val shift.val hbb hs
+      rw [← hd] at key
+      have hcj : below.val * 2 ^ shift.val / 2 ^ 64 = shlCarry w.val shift.val it.start.val := by
+        rw [hbelow]; unfold shlCarry
+        split_ifs <;> first | rfl | omega
+      have hcj1 : shlCarry w.val shift.val (it.start.val + 1) = i1.val * 2 ^ shift.val / 2 ^ 64 := by
+        simp [shlCarry, hW]
+      rw [hcj, ← hcj1] at key
+      have hwj : it.start.val < w.val.length := by omega
+      have ha2l : it.start.val < a2.val.length := by rw [ha2]; simp; omega
+      have heq : wordsNat (List.take (it.start.val + 1) a2.val) + 2 ^ (64 * (it.start.val + 1)) *
+          shlCarry w.val shift.val (it.start.val + 1) = wordsNat (List.take (it.start.val + 1) w.val) * 2 ^ shift.val := by
+        rw [wordsNat_take_succ _ _ ha2l, wordsNat_take_succ _ _ hwj, ha2, Std.Array.set_val_eq,
+          List.take_set_of_le (le_refl _), getElem!_set_of_lt _ _ _ _ (by omega), ite_eq_left rfl, ← hW]
+        zify at hv key ⊢
+        linear_combination hv + 2 ^ (64 * it.start.val) * key
+      rw [hst]
+      refine ⟨by rw [hend1, he], by omega, heq, by omega⟩
+  · exact ⟨hend, hjk, hinv⟩
+
+/-- `pub_montifier`'s last loop shifts its result right by `shift` bits,
+word by word from the bottom, each word reading the one above it before
+that one changes. -/
+theorem pub_montifier_loop2_spec {N : Usize} (k : Usize) (shift : U32) (hs : shift.val < 64) (o : List U64)
+    (ho : o.length = N.val) (hk : k.val ≤ N.val) (iter : core.ops.range.Range Usize) (r : low.posint.PosInt N)
+    (hend : iter.end = k) (hjk : iter.start.val ≤ k.val)
+    (hsame : ∀ p, iter.start.val ≤ p → p < N.val → r.words.val[p]! = o[p]!)
+    (hinv : 2 ^ shift.val * wordsNat (r.words.val.take iter.start.val) + o[0]!.val % 2 ^ shift.val =
+      wordsNat (o.take iter.start.val) +
+        2 ^ (64 * iter.start.val) * ((if iter.start.val < k.val then o[iter.start.val]!.val else 0) % 2 ^ shift.val)) :
+    low.posint.PosInt.pub_montifier_loop2 iter k shift r ⦃ r' => r'.used = r.used ∧
+      2 ^ shift.val * wordsNat (r'.words.val.take k.val) + o[0]!.val % 2 ^ shift.val = wordsNat (o.take k.val) ⦄ := by
+  unfold low.posint.PosInt.pub_montifier_loop2
+  apply loop.spec_decr_nat (fun x => k.val - x.1.start.val)
+    (fun x : core.ops.range.Range Usize × low.posint.PosInt N => x.1.end = k ∧ x.1.start.val ≤ k.val ∧
+      x.2.used = r.used ∧ (∀ p, x.1.start.val ≤ p → p < N.val → x.2.words.val[p]! = o[p]!) ∧
+      2 ^ shift.val * wordsNat (x.2.words.val.take x.1.start.val) + o[0]!.val % 2 ^ shift.val =
+        wordsNat (o.take x.1.start.val) + 2 ^ (64 * x.1.start.val) *
+          ((if x.1.start.val < k.val then o[x.1.start.val]!.val else 0) % 2 ^ shift.val))
+  · rintro ⟨it, v⟩ ⟨he, hsk, hu, hvs, hv⟩
+    simp only at he hsk hu hvs hv
+    unfold low.posint.PosInt.pub_montifier_loop2.body
+    step as ⟨op, iter1, hop, hend1⟩
+    cases op with
+    | none =>
+      have : it.start.val = k.val := by
+        split at hop
+        · simp at hop
+        · rw [he] at *; scalar_tac
+      simp only [WP.spec_ok]
+      rw [this] at hv
+      simp only [lt_irrefl, ↓reduceIte, Nat.zero_mod, mul_zero, add_zero] at hv
+      exact ⟨hu, hv⟩
+    | some j =>
+      have hlt : it.start.val < it.end.val := by
+        by_contra hc; simp [hc] at hop
+      simp only [hlt, ↓reduceIte, Option.some.injEq] at hop
+      obtain ⟨rfl, hst⟩ := hop
+      rw [he] at hlt
+      step as ⟨j1, hj1⟩
+      apply WP.spec_bind (Pₘ := fun x : low.posint.PosInt N × U64 => x.1 = v ∧
+        x.2.val = if it.start.val + 1 < k.val then o[it.start.val + 1]!.val else 0)
+      · split
+        · step as ⟨b, hb⟩
+          rw [ite_eq_left (by scalar_tac), hb, ← getElem!_pos, hj1, hvs _ (by omega) (by scalar_tac)]
+        · simp only [WP.spec_ok, true_and]
+          rw [ite_eq_right (by scalar_tac)]; rfl
+      rintro ⟨v1, above⟩ ⟨rfl, habove⟩
+      simp only [lift, bind_ok]
+      step as ⟨i3, hi3, _⟩
+      step as ⟨i4, hi4⟩
+      step as ⟨i6, hi6, _⟩
+      step as ⟨a2, ha2⟩
+      dsimp only at habove hu hvs hv
+      have hsz : U128.size = 2 ^ 128 := by simp [U128.size, U128.numBits]
+      have hvl : v1.words.val.length = N.val := by simp
+      have hjN : it.start.val < N.val := by omega
+      have hi4o : i4 = o[it.start.val]! := by rw [hi4, ← getElem!_pos, hvs _ le_rfl hjN]
+      have hi4b : i4.val < 2 ^ 64 := by scalar_tac
+      have hab : above.val < 2 ^ 64 := by scalar_tac
+      have hpair : (i3 ||| core.convert.num.FromU128U64.from i4).val = above.val * 2 ^ 64 + i4.val := by
+        rw [UScalar.val_or, hi3, core.convert.num.FromU128U64.from_val_eq, core.convert.num.FromU128U64.from_val_eq,
+          hsz]
+        exact pair_val _ _ hab hi4b
+      have hd : (UScalar.cast .U64 i6).val = (above.val * 2 ^ 64 + i4.val) / 2 ^ shift.val % 2 ^ 64 := by
+        rw [UScalar.cast_val_eq, hi6, hpair, Nat.shiftRight_eq_div_pow]; rfl
+      have key := shr_word i4.val above.val shift.val hi4b hs
+      rw [← hd] at key
+      have ha2l : it.start.val < a2.val.length := by rw [ha2]; simp; omega
+      have hsame' : ∀ p, iter1.start.val ≤ p → p < N.val → a2.val[p]! = o[p]! := by
+        intro p hp hpN
+        rw [ha2, Std.Array.set_val_eq, getElem!_set_of_lt _ _ _ _ (by omega), ite_eq_right (by omega),
+          hvs _ (by omega) hpN]
+      have heq : 2 ^ shift.val * wordsNat (List.take (it.start.val + 1) a2.val) + o[0]!.val % 2 ^ shift.val =
+          wordsNat (List.take (it.start.val + 1) o) + 2 ^ (64 * (it.start.val + 1)) *
+            ((if it.start.val + 1 < k.val then o[it.start.val + 1]!.val else 0) % 2 ^ shift.val) := by
+        rw [← habove, wordsNat_take_succ _ _ ha2l, wordsNat_take_succ _ _ (by omega), ha2, Std.Array.set_val_eq,
+          List.take_set_of_le (le_refl _), getElem!_set_of_lt _ _ _ _ (by omega), ite_eq_left rfl, ← hi4o]
+        rw [ite_eq_left hlt, ← hi4o] at hv
+        zify at hv key ⊢
+        linear_combination hv + 2 ^ (64 * it.start.val) * key
+      rw [hst]
+      refine ⟨by rw [hend1, he], by omega, hu, by rw [← hst]; exact hsame', heq, by omega⟩
+  · exact ⟨hend, hjk, rfl, hsame, hinv⟩
+
+/-- `pub_montifier`'s middle loop: each pass multiplies `r` by `2^64`
+modulo `D`, the shifted modulus in the low `i` words of `a`. -/
+theorem pub_montifier_loop1_spec {N : Usize} (a : Std.Array U64 N) (i : Usize) (hk2 : 2 ≤ i.val)
+    (hkN : i.val ≤ N.val) (htop : 0 < (a.val[i.val - 1]!).val) (R0 : Nat) (E : Usize)
+    (iter : core.ops.range.Range Usize) (r : low.posint.PosInt N) (hused : r.used = i) (hend : iter.end = E)
+    (hjE : iter.start.val ≤ E.val)
+    (hinv : wordsNat (r.words.val.take i.val) = R0 * 2 ^ (64 * iter.start.val) % wordsNat (a.val.take i.val)) :
+    low.posint.PosInt.pub_montifier_loop1 iter a i r ⦃ r' => r'.used = i ∧
+      wordsNat (r'.words.val.take i.val) = R0 * 2 ^ (64 * E.val) % wordsNat (a.val.take i.val) ⦄ := by
+  unfold low.posint.PosInt.pub_montifier_loop1
+  apply loop.spec_decr_nat (fun x => E.val - x.1.start.val)
+    (fun x : core.ops.range.Range Usize × low.posint.PosInt N => x.1.end = E ∧ x.1.start.val ≤ E.val ∧
+      x.2.used = i ∧ wordsNat (x.2.words.val.take i.val) = R0 * 2 ^ (64 * x.1.start.val) % wordsNat (a.val.take i.val))
+  · rintro ⟨it, v⟩ ⟨he, hsk, hu, hv⟩
+    simp only at he hsk hu hv
+    unfold low.posint.PosInt.pub_montifier_loop1.body
+    step as ⟨op, iter1, hop, hend1⟩
+    cases op with
+    | none =>
+      have : it.start.val = E.val := by
+        split at hop
+        · simp at hop
+        · rw [he] at *; scalar_tac
+      simp only [WP.spec_ok]
+      rw [this] at hv
+      exact ⟨hu, hv⟩
+    | some j =>
+      have hlt : it.start.val < it.end.val := by
+        by_contra hc; simp [hc] at hop
+      simp only [hlt, ↓reduceIte, Option.some.injEq] at hop
+      obtain ⟨rfl, hst⟩ := hop
+      rw [he] at hlt
+      unfold low.posint.PosInt.as_mut_words low.posint.PosInt.as_words
+      step*
+      obtain ⟨s, back⟩ := x
+      dsimp only at *
+      step*
+      have hsv : s.val = v.words.val.take i.val := by rw [x_post, hu]; simp [List.slice]
+      have hs1v : s1.val = a.val.take i.val := by rw [s1_post]; simp [List.slice]
+      have hal : a.val.length = N.val := by simp
+      have hD : 0 < wordsNat (a.val.take i.val) := by
+        rw [wordsNat_top (a.val.take i.val) (i.val - 1) (by simp; omega)]
+        have : (List.take i.val a.val)[i.val - 1]! = a.val[i.val - 1]! := List.getElem!_take_of_lt _ _ _ (by omega)
+        rw [this]
+        positivity
+      step with mul_word_mod_spec s s1 (by omega) (by rw [x_post1, s1_post1, hu])
+        (by rw [s1_post1, hs1v, List.getElem!_take_of_lt _ _ _ (by omega)]; exact htop)
+        (by rw [hsv, hs1v, hv]; exact Nat.mod_lt _ hD) as ⟨s2, hs2l, hs2⟩
+      have hs2v : s2.val.length = i.val := by have : s2.val.length = s2.length := rfl; omega
+      have htk : (back s2).val.take i.val = s2.val := by
+        rw [x_post2, ← hs2v]
+        exact take_setSlice_zero _ _ (by simp; omega)
+      refine ⟨by rw [hend1, he], by omega, hu, ?_, by omega⟩
+      rw [htk, hst, hs2, hsv, hs1v, hv, Nat.mod_mul_mod,
+        show R0 * 2 ^ (64 * it.start.val) * 2 ^ 64 = R0 * 2 ^ (64 * (it.start.val + 1)) by ring]
+  · exact ⟨hend, hjE, hused, hinv⟩
+
+/-- `pub_montifier` returns `2^(128k) mod n` for a `k`-word odd modulus
+`n` of at least two words whose top word is nonzero. It shifts `n` left so
+its top word's top bit is set, starts from `2^shift` times `2^(64(k-1))`,
+multiplies by `2^64` `k + 1` times modulo the shifted modulus, and shifts
+the result back. -/
+theorem pub_montifier_spec (self : RsaInt) (hk2 : 2 ≤ self.used.val) (hk : self.used.val ≤ 128)
+    (hodd : wordsNat (lowWords self self.used) % 2 = 1)
+    (htop : 2 ^ (64 * (self.used.val - 1)) ≤ wordsNat (lowWords self self.used)) :
+    low.posint.PosInt.pub_montifier self ⦃ r => r.used = self.used ∧
+      wordsNat (lowWords r self.used) = 2 ^ (128 * self.used.val) % wordsNat (lowWords self self.used) ⦄ := by
+  unfold low.posint.PosInt.pub_montifier
+  simp only [lowWords] at hodd htop ⊢
+  have hwl : self.words.val.length = 128 := by simp
+  -- The top word is nonzero, since the words below it are less than `2^(64(k-1))`.
+  have htopw : self.words.val[self.used.val - 1]! ≠ 0#u64 := by
+    intro h0
+    have := wordsNat_top (self.words.val.take self.used.val) (self.used.val - 1) (by simp; omega)
+    rw [List.getElem!_take_of_lt _ _ _ (by omega), h0, List.take_take, Nat.min_eq_left (by omega)] at this
+    have hlt := wordsNat_lt' (self.words.val.take (self.used.val - 1))
+    simp only [List.length_take, Nat.min_eq_left (show self.used.val - 1 ≤ self.words.val.length by omega)] at hlt
+    simp at this
+    omega
+  rw [ite_eq_right (by scalar_tac)]
+  step as ⟨i, hi⟩
+  step as ⟨i1, hi1⟩
+  have hi1' : i1 = self.words.val[self.used.val - 1]! := by rw [hi1, ← getElem!_pos, hi]
+  rw [ite_eq_right (by rw [hi1']; exact htopw)]
+  step as ⟨i2, hi2⟩
+  have hi2' : i2 = self.words.val[self.used.val - 1]! := by rw [hi2, ← getElem!_pos, hi]
+  simp only [lift, bind_ok, low.posint.PosInt.zero]
+  obtain ⟨hclz, hs⟩ := clz_bound i2 (by rw [hi2']; exact htopw)
+  step with pub_montifier_loop0_spec self.words _ hs self.used (by simp; omega)
+    { start := 0#usize, «end» := self.used } (Std.Array.repeat 128#usize 0#u64) rfl (by simp)
+    (by simp [shlCarry, wordsNat_nil]) as ⟨a, ha⟩
+  step as ⟨i3, hi3, _⟩
+  step as ⟨i4, hi4⟩
+  step as ⟨a1, ha1⟩
+  step as ⟨i5, hi5⟩
+  -- Name the pieces: `k` words, shift `sh`, modulus `n`.
+  generalize hsh : (core.num.U64.leading_zeros i2).val = sh at hclz hs ha hi3
+  generalize hn : wordsNat (List.take self.used.val self.words.val) = n at hodd htop ha
+  have hcar : shlCarry self.words.val sh self.used.val = 0 := by
+    unfold shlCarry
+    rw [ite_eq_right (by omega), ← hi2']
+    exact Nat.div_eq_of_lt hclz
+  have hD : wordsNat (a.val.take self.used.val) = n * 2 ^ sh := by
+    rw [hcar, mul_zero, add_zero] at ha; exact ha
+  have hNlt : 2 ^ (64 * (self.used.val - 1)) < n := by
+    rcases Nat.lt_or_eq_of_le htop with h | h
+    · exact h
+    · exfalso
+      rw [← h, show 64 * (self.used.val - 1) = (64 * (self.used.val - 1) - 1) + 1 by omega, pow_succ,
+        Nat.mul_mod_left] at hodd
+      exact absurd hodd (by norm_num)
+  have hi3v : i3.val = 2 ^ sh := by
+    rw [hi3, Nat.one_shiftLeft, show U64.size = 2 ^ 64 by simp [U64.size, U64.numBits]]
+    exact Nat.mod_eq_of_lt (Nat.pow_lt_pow_right (by norm_num) hs)
+  have hal : a1.val.length = 128 := by simp
+  have hR0 : wordsNat (a1.val.take self.used.val) = 2 ^ (64 * (self.used.val - 1)) * 2 ^ sh := by
+    rw [wordsNat_top (a1.val.take self.used.val) (self.used.val - 1) (by simp; omega), List.take_take,
+      Nat.min_eq_left (by omega), List.getElem!_take_of_lt _ _ _ (by omega), ha1, Std.Array.set_val_eq,
+      List.take_set_of_le (by omega), getElem!_set_of_lt _ _ _ _ (by simp; omega), ite_eq_left (by omega), hi3v,
+      Std.Array.repeat_val, List.take_replicate, wordsNat_replicate_zero, zero_add]
+  have htopa : 0 < (a.val[self.used.val - 1]!).val := by
+    by_contra h0
+    have := wordsNat_top (a.val.take self.used.val) (self.used.val - 1) (by simp; omega)
+    rw [List.take_take, Nat.min_eq_left (by omega), List.getElem!_take_of_lt _ _ _ (by simp; omega),
+      show (a.val[self.used.val - 1]!).val = 0 by omega, mul_zero, add_zero, hD] at this
+    have hlt := wordsNat_lt' (a.val.take (self.used.val - 1))
+    simp only [List.length_take, Nat.min_eq_left (show self.used.val - 1 ≤ a.val.length by simp; omega)] at hlt
+    have : n ≤ n * 2 ^ sh := Nat.le_mul_of_pos_right _ (by positivity)
+    omega
+  have hR0D : 2 ^ (64 * (self.used.val - 1)) * 2 ^ sh < n * 2 ^ sh :=
+    Nat.mul_lt_mul_of_pos_right hNlt (by positivity)
+  step with pub_montifier_loop1_spec a self.used hk2 (by simp; omega) htopa (wordsNat (a1.val.take self.used.val)) i5
+    { start := 0#usize, «end» := i5 } { words := a1, used := self.used } rfl rfl (by simp)
+    (by simp only [hR0, hD]; simp; exact Nat.mod_eq_of_lt hR0D |>.symm) as ⟨r, hru, hr⟩
+  step with pub_montifier_loop2_spec self.used (core.num.U64.leading_zeros i2) (by rw [hsh]; exact hs) r.words.val
+    (by simp) (by simp; omega) { start := 0#usize, «end» := self.used } r rfl (by simp) (fun _ _ _ => rfl)
+    (by simp [wordsNat_nil, show 0 < self.used.val by omega]) as ⟨r', hr'u, hr'⟩
+  rw [hsh] at hr'
+  refine ⟨by rw [hr'u, hru], ?_⟩
+  have hpow : 2 ^ (64 * (self.used.val - 1)) * 2 ^ (64 * i5.val) = 2 ^ (128 * self.used.val) := by
+    rw [← pow_add, hi5]; congr 1; omega
+  have hfin : wordsNat (r.words.val.take self.used.val) = 2 ^ (128 * self.used.val) % n * 2 ^ sh := by
+    rw [hr, hR0, hD, show 2 ^ (64 * (self.used.val - 1)) * 2 ^ sh * 2 ^ (64 * i5.val) =
+      2 ^ (64 * (self.used.val - 1)) * 2 ^ (64 * i5.val) * 2 ^ sh by ring, Nat.mul_mod_mul_right, hpow]
+  rw [hfin] at hr'
+  have hc : (r.words.val[0]!).val % 2 ^ sh = 0 := by
+    have h1 := congrArg (· % 2 ^ sh) hr'
+    simp only [Nat.mul_add_mod, Nat.mod_mod, Nat.mul_mod_left] at h1
+    exact h1
+  rw [hc, add_zero, mul_comm] at hr'
+  exact Nat.eq_of_mul_eq_mul_right (by positivity) hr'
+
 
 end rind.x86_64
