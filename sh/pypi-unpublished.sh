@@ -41,8 +41,8 @@ case "$package" in
         fi
         # A version needing a pyrind release-plz has not cut yet waits for it,
         # rather than fail every push to main until then. One past pyrind
-        # still builds, so its install fails loudly without stopping pyrind's
-        # own release.
+        # still builds, so release.yml's install of this pyrind fails loudly
+        # without stopping pyrind's own release.
         pin=$(sh/python.sh pin "$pyrind")
         [ "$pin" != below ] || exit 0
         ref=$(git rev-parse HEAD)

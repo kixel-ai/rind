@@ -37,7 +37,7 @@ def under(s):
     floor = Version(s.version.removesuffix(".*"))
     if s.operator == ">":
         return version <= floor
-    return s.operator in (">=", "~=", "==") and version < floor
+    return s.operator in (">=", "~=", "==", "===") and version < floor
 
 
 if version in spec:
