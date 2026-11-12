@@ -9,6 +9,7 @@ use crate::error::{Error, KeyFormatError};
 use crate::low;
 use crate::mid::rng::{RandomSource, SystemRandom};
 
+pub(crate) mod hash_to_curve;
 mod precomp;
 
 /// A P-256 public key.
@@ -656,8 +657,6 @@ impl JacobianMontPoint {
         Self { xyz }
     }
 
-    // aarch64's `p256_scalarmul` makes its result affine itself.
-    #[cfg(any(test, not(rind_backend = "aarch64")))]
     fn as_affine(&self) -> AffineMontPoint {
         // inversion calculated outside montgomery domain
         // (benchmarked vs addition chain in montgomery)
@@ -1281,6 +1280,48 @@ mod tests {
         }
     }
 
+    #[cfg(rind_backend = "x86_64")]
+    #[test]
+    fn booth_recoding_sums_to_scalar() {
+        let mut n_minus_1 = CURVE_ORDER;
+        n_minus_1[0] -= 1;
+        // The third has every 7-bit window 64, the largest digit.
+        for words in [
+            [0; 4],
+            [1, 0, 0, 0],
+            [
+                0x4081_0204_0810_2040,
+                0x2040_8102_0408_1020,
+                0x1020_4081_0204_0810,
+                0x0810_2040_8102_0408,
+            ],
+            n_minus_1,
+            [u64::MAX; 4],
+        ] {
+            // Each digit at bit 7i, as a byte's multiple at byte 7i / 8.
+            let mut sum = [0i64; 33];
+            let mut windows = 0;
+            for (i, (digit, sign)) in Scalar(words).booth_recoded::<BASE_WINDOW>().enumerate() {
+                let digit = i64::from(digit) * if sign == 1 { -1 } else { 1 };
+                sum[7 * i / 8] += digit << (7 * i % 8);
+                windows += 1;
+            }
+            for i in 0..32 {
+                sum[i + 1] += sum[i] >> 8;
+                sum[i] &= 0xff;
+            }
+            let bytes: Vec<i64> = words
+                .iter()
+                .flat_map(|w| w.to_le_bytes())
+                .map(i64::from)
+                .collect();
+            assert_eq!(sum[..32], bytes[..], "{words:x?}");
+            assert_eq!(sum[32], 0, "{words:x?}");
+            // One window for each row of the generator table.
+            assert_eq!(windows, precomp::CURVE_GENERATOR_PRECOMP.len());
+        }
+    }
+
     #[test]
     fn twin_multiply_exceptional() {
         // The accumulator meets the point it adds: equal, which must double,
@@ -1302,14 +1343,13 @@ mod tests {
             (n_minus(1), n_minus(1)),
             (Scalar([0, 0, 0, 1 << 63]), Scalar([0, 0, 0, 1 << 63])),
         ] {
-            let expected = CURVE_GENERATOR.slow_multiply(&g.add(&p)).xy;
+            let sum = g.add(&p);
+            let expected = CURVE_GENERATOR.slow_multiply(&sum).xy;
             for more in [None, Some(&more)] {
-                assert_eq!(
-                    JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples, more)
-                        .as_affine()
-                        .xy,
-                    expected
-                );
+                let result = JacobianMontPoint::public_twin_multiply(&g, &p, &odd_multiples, more);
+                assert_eq!(result.as_affine().xy, expected);
+                // Verification refuses a sum at infinity by this check.
+                assert_eq!(result.public_is_infinity(), sum.0 == [0; 4]);
             }
         }
 

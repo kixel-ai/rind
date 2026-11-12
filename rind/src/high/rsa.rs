@@ -7,17 +7,13 @@ use crate::high::asn1::{self, Type, pkix};
 use crate::high::hash::{self, Hash};
 use crate::high::{pkcs1, pkcs8};
 use crate::low::{Entry, PosInt, ct};
-use crate::mid::rng::SystemRandom;
+use crate::mid::rng::{RandomSource, SystemRandom};
 use crate::mid::rsa_key_size::RsaKeySize;
 use crate::mid::{rsa_priv, rsa_pub};
 
 /// The longest PKCS#1 `RSAPublicKey`: the modulus and its DER framing, with
 /// room for the exponent.
 pub(crate) const MAX_PUBLIC_KEY_LEN: usize = rsa_pub::MAX_PUBLIC_MODULUS_BYTES + 64;
-
-/// The longest `SubjectPublicKeyInfo`: an `RSAPublicKey` in a bit string,
-/// after its algorithm identifier.
-pub(crate) const MAX_SPKI_LEN: usize = MAX_PUBLIC_KEY_LEN + 32;
 
 /// The longest PKCS#8 private key: an `RSAPrivateKey` in an octet string,
 /// after its version and algorithm identifier.
@@ -34,11 +30,65 @@ static KEY_ALGORITHMS: [&asn1::ObjectId; 3] = [
 
 /// Reads a big-endian public exponent for `RsaPublicKey::new` to bound; one
 /// too wide for a `u64` is far past that bound.
+///
+/// By index rather than folding through a closure, which Aeneas cannot
+/// translate, so `proofs/` can prove RSA key loading.
+#[allow(clippy::needless_range_loop)]
 fn public_exponent(e: &[u8]) -> Result<u64, Error> {
-    if e.len() > size_of::<u64>() {
+    if e.len() > 8 {
         return Err(KeyFormatError::RsaExponent.into());
     }
-    Ok(e.iter().fold(0, |e, byte| e << 8 | u64::from(*byte)))
+    let mut value = 0;
+    for i in 0..e.len() {
+        value = (value << 8) | u64::from(e[i]);
+    }
+    Ok(value)
+}
+
+/// The big-endian modulus and exponent of PKCS#1 `RSAPublicKey` or
+/// `SubjectPublicKeyInfo` DER.
+fn der_components(bytes: &[u8]) -> Result<(&[u8], &[u8]), Error> {
+    match asn1::opens_nested_sequence(bytes) {
+        true => spki_components(bytes),
+        false => pkcs1_components(bytes),
+    }
+}
+
+/// [`pkcs1_components`] of the key in `SubjectPublicKeyInfo` DER, whose
+/// algorithm must be one of [`KEY_ALGORITHMS`] with `NULL` parameters, as RFC
+/// 3279 section 2.3.1 requires for `rsaEncryption`, or none, which aws-lc
+/// also takes.
+fn spki_components(bytes: &[u8]) -> Result<(&[u8], &[u8]), Error> {
+    let spki = pkix::SubjectPublicKeyInfo::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
+    if !KEY_ALGORITHMS.contains(&&spki.algorithm.algorithm)
+        || !matches!(
+            spki.algorithm.parameters,
+            None | Some(asn1::Any::Null(asn1::Null))
+        )
+    {
+        return Err(KeyFormatError::MismatchedSpkiAlgorithm.into());
+    }
+    pkcs1_components(spki.subjectPublicKey.as_octets())
+}
+
+/// The big-endian modulus and exponent of PKCS#1 `RSAPublicKey` DER, refused
+/// if either is negative.
+///
+/// This format is defined in
+/// [RFC8017](https://datatracker.ietf.org/doc/html/rfc8017#appendix-A.1.1)
+/// (and earlier standards, including the original PKCS#1 standard).
+fn pkcs1_components(bytes: &[u8]) -> Result<(&[u8], &[u8]), Error> {
+    let decoded = pkix::RSAPublicKey::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
+    if decoded.modulus.is_negative() {
+        return Err(KeyFormatError::RsaModulus.into());
+    }
+    if decoded.publicExponent.is_negative() {
+        return Err(KeyFormatError::RsaExponent.into());
+    }
+    Ok((
+        decoded.modulus.as_bytes(),
+        decoded.publicExponent.as_bytes(),
+    ))
 }
 
 /// How long an RSASSA-PSS salt is.
@@ -68,7 +118,7 @@ impl PssSalt {
 ///
 /// Keys supported by this library have public moduli between
 /// 1024- and 8192-bits; each verification algorithm may set a higher floor.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey(rsa_pub::RsaPublicKey);
 
 impl VerifyingKey {
@@ -80,36 +130,19 @@ impl VerifyingKey {
         if n.first() == Some(&0) || e.first() == Some(&0) {
             return Err(KeyFormatError::LeadingZero.into());
         }
-
-        let n = PosInt::from_bytes(n).map_err(|_| KeyFormatError::RsaModulus)?;
-        Ok(Self(rsa_pub::RsaPublicKey::new(n, public_exponent(e)?)?))
+        Self::from_unsigned(n, e)
     }
 
     /// Decodes an RSA public key from PKCS#1 `RSAPublicKey` or
     /// `SubjectPublicKeyInfo` DER, as aws-lc-rs takes either.
     pub(crate) fn from_der(bytes: &[u8]) -> Result<Self, Error> {
-        match asn1::opens_nested_sequence(bytes) {
-            true => Self::from_spki_der(bytes),
-            false => Self::from_pkcs1_der(bytes),
-        }
-    }
-
-    /// Decodes an RSA public key from `SubjectPublicKeyInfo` DER, whose
-    /// algorithm must be one of [`KEY_ALGORITHMS`] with `NULL` parameters, as
-    /// RFC 3279 section 2.3.1 requires for `rsaEncryption`, or none, which
-    /// aws-lc also takes.
-    fn from_spki_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_public();
-        let spki = pkix::SubjectPublicKeyInfo::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
-        if !KEY_ALGORITHMS.contains(&&spki.algorithm.algorithm)
-            || !matches!(
-                spki.algorithm.parameters,
-                None | Some(asn1::Any::Null(asn1::Null))
-            )
-        {
-            return Err(KeyFormatError::MismatchedSpkiAlgorithm.into());
+        // A `match` rather than `?` on the borrowed pair, whose translation
+        // `proofs/` cannot check. The compiled code is the same.
+        match der_components(bytes) {
+            Ok((n, e)) => Self::from_unsigned(n, e),
+            Err(err) => Err(err),
         }
-        Self::from_pkcs1_der(spki.subjectPublicKey.as_octets())
     }
 
     /// Decodes an RSA public verification key from PKCS#1 DER format.
@@ -117,23 +150,17 @@ impl VerifyingKey {
     /// This format is defined in
     /// [RFC8017](https://datatracker.ietf.org/doc/html/rfc8017#appendix-A.1.1)
     /// (and earlier standards, including the original PKCS#1 standard).
-    fn from_pkcs1_der(bytes: &[u8]) -> Result<Self, Error> {
+    pub(crate) fn from_pkcs1_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_public();
-        let decoded = pkix::RSAPublicKey::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
+        let (n, e) = pkcs1_components(bytes)?;
+        Self::from_unsigned(n, e)
+    }
 
-        if decoded.modulus.is_negative() {
-            return Err(KeyFormatError::RsaModulus.into());
-        }
-        if decoded.publicExponent.is_negative() {
-            return Err(KeyFormatError::RsaExponent.into());
-        }
-
-        let n =
-            PosInt::from_bytes(decoded.modulus.as_ref()).map_err(|_| KeyFormatError::RsaModulus)?;
-        let e = public_exponent(decoded.publicExponent.as_ref())?;
-        let pub_key = rsa_pub::RsaPublicKey::new(n, e)?;
-
-        Ok(Self(pub_key))
+    /// Loads an RSA public key from its big-endian modulus and exponent,
+    /// which may have leading zero bytes, as DER's do when the top bit is set.
+    fn from_unsigned(n: &[u8], e: &[u8]) -> Result<Self, Error> {
+        let n = PosInt::from_bytes(n).map_err(|_| KeyFormatError::RsaModulus)?;
+        Ok(Self(rsa_pub::RsaPublicKey::new(n, public_exponent(e)?)?))
     }
 
     /// Encodes this RSA verification key in SubjectPublicKeyInfo DER format.
@@ -265,7 +292,8 @@ impl VerifyingKey {
         let m = self.0.public_op(c).map_err(|_| Error::BadSignature)?;
 
         let mut m_bytes = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
-        let m_bytes = i2osp(&m, &mut m_bytes[..self.0.modulus_len_bytes()])?;
+        let m_bytes = &mut m_bytes[..self.0.modulus_len_bytes()];
+        i2osp(&m, m_bytes)?;
 
         let mut actual_m = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
         let actual_m = &mut actual_m[..self.0.modulus_len_bytes()];
@@ -346,8 +374,17 @@ impl VerifyingKey {
         signature: &[u8],
         message: &[u8],
     ) -> Result<(), Error> {
-        let hash = H::hash(message);
+        self.verify_pss_digest::<H>(salt, signature, H::hash(message).as_ref())
+    }
 
+    /// Verifies `signature` as [`Self::verify_pss_sha256`] and its siblings
+    /// do, over a message whose `H` digest is `hash`.
+    pub(crate) fn verify_pss_digest<H: Hash>(
+        &self,
+        salt: Option<PssSalt>,
+        signature: &[u8],
+        hash: &[u8],
+    ) -> Result<(), Error> {
         if signature.len() != self.0.modulus_len_bytes() {
             return Err(Error::BadSignature);
         }
@@ -359,10 +396,11 @@ impl VerifyingKey {
         // multiple of eight, and `m` must fit them.
         let em_bits = self.0.modulus_len_bits() - 1;
         let mut em = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
-        let em = i2osp(&m, &mut em[..em_bits.div_ceil(8)]).map_err(|_| Error::BadSignature)?;
+        let em = &mut em[..em_bits.div_ceil(8)];
+        i2osp(&m, em).map_err(|_| Error::BadSignature)?;
 
-        let s_len = salt.map(|salt| salt.len(em.len(), hash.as_ref().len()));
-        pkcs1::verify_pss_sig::<H>(em, em_bits, hash.as_ref(), s_len)
+        let s_len = salt.map(|salt| salt.len(em.len(), hash.len()));
+        pkcs1::verify_pss_sig::<H>(em, em_bits, hash, s_len)
     }
 
     /// Encrypts `message` with RSAES-OAEP, using `H` and MGF1 with `H`,
@@ -387,20 +425,126 @@ impl VerifyingKey {
         let em = &mut em[..k];
         pkcs1::encode_oaep::<H>(em, &mut SystemRandom, message, label)?;
 
-        // The encoded message is secret, so it is read at the modulus's
-        // width rather than by `PosInt::from_bytes`, which skips its
-        // leading zeros.
-        let mut words = [0u64; rsa_pub::MAX_PUBLIC_MODULUS_BYTES / 8];
-        let words = &mut words[..k.div_ceil(8)];
-        for (word, bytes) in words.iter_mut().zip(em.rchunks(8)) {
-            *word = bytes.iter().fold(0, |w, b| w << 8 | u64::from(*b));
-        }
-        let m = PosInt::from_words(words)?;
-
         // `m` is below the modulus, as EM's first octet is zero.
-        let c = ct::into_public(self.0.public_op(m)?);
-        i2osp(&c, ciphertext).map(|c| &*c)
+        let c = ct::into_public(self.0.public_op(secret_int(em))?);
+        i2osp(&c, ciphertext)?;
+        Ok(ciphertext)
     }
+
+    /// Blinds the RSASSA-PSS encoding of a message whose `H` digest is
+    /// `hash`, as RFC 9474's Blind does: writes `m * r^e mod n`, for an `r`
+    /// drawn uniformly from `rng`, to the front of `blinded`, as long as the
+    /// modulus, and returns the [`Unblinder`] that finalizes its signature.
+    ///
+    /// Refuses a key whose modulus shares a factor with `m`, which only one
+    /// made to attack its clients gives more than negligibly often.
+    pub(crate) fn blind_pss<'a, H: Hash>(
+        &self,
+        salt: PssSalt,
+        hash: &[u8],
+        rng: &mut dyn RandomSource,
+        blinded: &'a mut [u8],
+    ) -> Result<(&'a [u8], Unblinder), Error> {
+        let _entry = Entry::new_secret();
+        let k = self.0.modulus_len_bytes();
+        let blinded = blinded.get_mut(..k).ok_or(Error::WrongLength)?;
+        let n = &self.0.n;
+
+        // RFC 8017 section 9.1.1, as `SigningKey::_sign_pss` encodes.
+        let em_bits = self.0.modulus_len_bits() - 1;
+        let mut em = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        let em = &mut em[..em_bits.div_ceil(8)];
+        let s_len = salt.len(em.len(), hash.len());
+        pkcs1::encode_pss_sig::<H>(em, em_bits, rng, hash, s_len)?;
+        let m = secret_int(em);
+        if !ct::into_public(m.is_coprime(n)) {
+            return Err(KeyFormatError::RsaModulus.into());
+        }
+
+        // Rejection sampling, revealing only which candidates are refused:
+        // one at least `n`, or, for a key that is not a product of two
+        // large primes, one sharing a factor with it.
+        let mut candidate = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        let candidate = &mut candidate[..k];
+        let (r, inverse) = loop {
+            rng.fill(candidate)?;
+            candidate[0] &= 0xff >> (k * 8 - self.0.modulus_len_bits());
+            let r = secret_int(candidate);
+            if !ct::into_public(r.less_than(n)) {
+                continue;
+            }
+            let inverse = r.mod_inverse(n);
+            if ct::into_public(self.0.mul(&r, &inverse).equals(&n.fixed_one())) {
+                break (r, inverse);
+            }
+        };
+
+        // `m` and `r` are below `n`, and so is `r^e`.
+        let x = self.0.public_op(r)?;
+        let z = ct::into_public(self.0.mul(&m, &x));
+        i2osp(&z, blinded)?;
+        Ok((blinded, Unblinder { inverse, m }))
+    }
+
+    /// Unblinds `blind_signature` with `unblinder`, as RFC 9474's Finalize
+    /// does, writing the result to the front of `signature` once it is a
+    /// signature of the blinded message.
+    ///
+    /// RFC 9474 checks the result with RSASSA-PSS-VERIFY. This checks that
+    /// it is a signature of the very encoding that was blinded, which also
+    /// pins its salt, in constant time: a reply from a malicious signer, such
+    /// as 1, can unblind to the secret inverse itself, which PSS decoding
+    /// would branch on.
+    ///
+    /// Every failure is [`Error::BadSignature`].
+    pub(crate) fn finalize<'a>(
+        &self,
+        unblinder: &Unblinder,
+        blind_signature: &[u8],
+        signature: &'a mut [u8],
+    ) -> Result<&'a [u8], Error> {
+        let _entry = Entry::new_secret();
+        let k = self.0.modulus_len_bytes();
+        let signature = signature.get_mut(..k).ok_or(Error::WrongLength)?;
+        if blind_signature.len() != k {
+            return Err(Error::BadSignature);
+        }
+        let z = RsaInt::from_bytes(blind_signature).map_err(|_| Error::BadSignature)?;
+        if !z.less_than(&self.0.n) {
+            return Err(Error::BadSignature);
+        }
+
+        // `z` and the inverse are below `n`, and so is their product.
+        let s = self.0.mul(&z, &unblinder.inverse);
+        let m = self.0.public_op(s.clone())?;
+        if !ct::into_public(m.equals(&unblinder.m)) {
+            return Err(Error::BadSignature);
+        }
+        // The signature is the client's to reveal, once it is checked.
+        i2osp(&ct::into_public(s), signature)?;
+        Ok(signature)
+    }
+}
+
+/// What finalizes a blinded message's signature: the inverse of its blind
+/// mod the modulus, and the encoding that was blinded, to check it against.
+pub(crate) struct Unblinder {
+    inverse: RsaInt,
+    m: RsaInt,
+}
+
+/// An integer at the width of the widest modulus.
+type RsaInt = PosInt<{ rsa_pub::MAX_PUBLIC_MODULUS_BYTES / 8 }>;
+
+/// Reads a secret big-endian value at the width of its bytes, rather than
+/// by `PosInt::from_bytes`, whose time depends on its leading zeros.
+fn secret_int(bytes: &[u8]) -> RsaInt {
+    let mut words = [0u64; rsa_pub::MAX_PUBLIC_MODULUS_BYTES / 8];
+    let words = &mut words[..bytes.len().div_ceil(8)];
+    for (word, bytes) in words.iter_mut().zip(bytes.rchunks(8)) {
+        *word = bytes.iter().fold(0, |w, b| w << 8 | u64::from(*b));
+    }
+    RsaInt::from_words(words).expect("no wider than the widest modulus")
 }
 
 /// An RSA signing private key.
@@ -422,6 +566,23 @@ impl SigningKey {
         let _entry = Entry::new_secret();
         rsa_priv::RsaPrivateKey::generate(size, &mut SystemRandom, &mut SystemRandom)
             .map(SigningKey)
+    }
+
+    /// The key [`Self::generate`] makes of the primes `p` and `q`, for
+    /// tests whose vectors give them.
+    #[cfg(test)]
+    pub(crate) fn from_primes(size: RsaKeySize, p: &[u8], q: &[u8]) -> Self {
+        use crate::high::hmac_drbg::HmacDrbg;
+        use crate::mid::rng::SliceRandomSource;
+        let _entry = Entry::new_secret();
+        Self(
+            rsa_priv::RsaPrivateKey::generate(
+                size,
+                &mut SliceRandomSource(&[p, q].concat()),
+                &mut HmacDrbg::<hash::Sha256>::new(b"", b"", b""),
+            )
+            .unwrap(),
+        )
     }
 
     /// Decodes an RSA signing key from PKCS#1 DER format.
@@ -740,9 +901,30 @@ impl SigningKey {
         // 2c.  Convert the message representative m to an encoded message
         //      EM of length k octets, which `m` below the modulus fits.
         let mut em = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
-        let em = i2osp(&m, &mut em[..k])?;
+        let em = &mut em[..k];
+        i2osp(&m, em)?;
 
         pkcs1::decode_oaep::<H>(em, label, plaintext)
+    }
+
+    /// Signs `blinded`, as RFC 9474's BlindSign does, writing the blind
+    /// signature to the front of `signature`, as long as the modulus.
+    ///
+    /// `blinded` must be as long as the modulus and below it, or this fails
+    /// with [`Error::WrongLength`]. The signature is checked against the
+    /// public key, as RFC 9474 requires, before it is returned.
+    pub(crate) fn blind_sign<'a>(
+        &self,
+        signature: &'a mut [u8],
+        blinded: &[u8],
+    ) -> Result<&'a [u8], Error> {
+        let _entry = Entry::new_secret();
+        if blinded.len() != self.0.modulus_len_bytes() {
+            return Err(Error::WrongLength);
+        }
+        let m = PosInt::from_bytes(blinded)?;
+        let s = ct::into_public(self.0.private_op(&m)?);
+        self.to_signature(&s, signature)
     }
 
     /// Writes `c` to the front of `signature` in exactly the modulus length.
@@ -754,7 +936,8 @@ impl SigningKey {
         let signature = signature
             .get_mut(..self.0.modulus_len_bytes())
             .ok_or(Error::WrongLength)?;
-        Ok(i2osp(c, signature)?)
+        i2osp(c, signature)?;
+        Ok(signature)
     }
 }
 
@@ -762,18 +945,27 @@ impl SigningKey {
 /// leading bytes are zero, and refuses an `x` that does not fit.
 ///
 /// Constant time in `x`, apart from whether it fits.
-fn i2osp<'a, const N: usize>(x: &PosInt<N>, out: &'a mut [u8]) -> Result<&'a mut [u8], Error> {
+///
+/// Its excess is read by index rather than folded through a closure, and it
+/// returns nothing borrowed, which Aeneas cannot translate past a `?`, so
+/// `proofs/` can prove RSA verification.
+#[allow(clippy::needless_range_loop)]
+fn i2osp<const N: usize>(x: &PosInt<N>, out: &mut [u8]) -> Result<(), Error> {
     let mut bytes = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
     let bytes = x.to_bytes(&mut bytes)?;
     let (excess, bytes) = bytes.split_at(bytes.len().saturating_sub(out.len()));
-    if ct::into_public(excess.iter().fold(0, |acc, b| acc | b)) != 0 {
+    let mut any = 0;
+    for i in 0..excess.len() {
+        any |= excess[i];
+    }
+    if ct::into_public(any) != 0 {
         return Err(Error::WrongLength);
     }
 
     let (zeroes, value) = out.split_at_mut(out.len() - bytes.len());
     zeroes.fill(0);
     value.copy_from_slice(bytes);
-    Ok(out)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -964,8 +1156,10 @@ mod tests {
     #[test]
     fn i2osp_refuses_what_does_not_fit() {
         let x = PosInt::<1>::from_bytes(&[1, 1, 0, 0]).unwrap();
-        assert_eq!(i2osp(&x, &mut [0; 2]).map(|_| ()), Err(Error::WrongLength));
-        assert_eq!(i2osp(&x, &mut [0xff; 5]).unwrap(), [0, 1, 1, 0, 0]);
+        assert_eq!(i2osp(&x, &mut [0; 2]), Err(Error::WrongLength));
+        let mut out = [0xff; 5];
+        i2osp(&x, &mut out).unwrap();
+        assert_eq!(out, [0, 1, 1, 0, 0]);
     }
 
     /// Primes of 20 words, a multiple of four but not of eight.
@@ -1102,7 +1296,7 @@ mod tests {
     /// `admin/ctgrind` this also checks Miller-Rabin on them and the
     /// derivation are constant time.
     #[test]
-    #[cfg(not(miri))]
+    #[cfg(not(any(miri, target_family = "wasm")))]
     fn key_generation_matches_aws_lc() {
         use aws_lc_rs::encoding::AsDer;
         use aws_lc_rs::rsa::{KeyPair, KeySize};
@@ -1364,7 +1558,7 @@ mod tests {
                 matches!(SigningKey::from_pkcs1_der(&der), Err(Error::KeyRejected(_))),
                 "{name}"
             );
-            #[cfg(not(miri))]
+            #[cfg(not(any(miri, target_family = "wasm")))]
             assert!(aws_lc_rs::rsa::KeyPair::from_der(&der).is_err(), "{name}");
         }
 
@@ -1376,7 +1570,7 @@ mod tests {
             ..key.clone()
         }
         .encode();
-        #[cfg(not(miri))]
+        #[cfg(not(any(miri, target_family = "wasm")))]
         aws_lc_rs::rsa::KeyPair::from_der(&der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(&der).unwrap();
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
@@ -1400,7 +1594,7 @@ mod tests {
         let der = include_bytes!("rsa/rsa2048-q-above-p.der");
         let key = Pkcs1::decode(der);
         assert!(key.q.len() == key.p.len() && key.q > key.p);
-        #[cfg(not(miri))]
+        #[cfg(not(any(miri, target_family = "wasm")))]
         aws_lc_rs::rsa::KeyPair::from_der(der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(der).unwrap();
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
@@ -1413,7 +1607,7 @@ mod tests {
         let der = include_bytes!("rsa/rsa2086-unbalanced.der");
         let key = Pkcs1::decode(der);
         assert!(key.q.len() > key.p.len());
-        #[cfg(not(miri))]
+        #[cfg(not(any(miri, target_family = "wasm")))]
         aws_lc_rs::rsa::KeyPair::from_der(der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(der).unwrap();
         check_all_algs(&mut [0u8; 261], &private_key, &private_key.public_key());
@@ -1431,7 +1625,9 @@ mod tests {
         let m = PosInt::from_bytes(&s).unwrap();
         let m = private_key.0.public_key().public_op(m).unwrap();
         let signature = ct::into_public(private_key.0.private_op(&m).unwrap());
-        assert_eq!(trim(i2osp(&signature, &mut [0u8; 256]).unwrap()), s);
+        let mut out = [0u8; 256];
+        i2osp(&signature, &mut out).unwrap();
+        assert_eq!(trim(&out), s);
     }
 
     /// rind generated `d` mod (p - 1)(q - 1) before it reduced `d` mod
@@ -1457,7 +1653,7 @@ mod tests {
             ..key
         }
         .encode();
-        #[cfg(not(miri))]
+        #[cfg(not(any(miri, target_family = "wasm")))]
         aws_lc_rs::rsa::KeyPair::from_der(&der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(&der).unwrap();
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
@@ -1513,7 +1709,7 @@ mod tests {
             }
             .encode();
             let ours = SigningKey::from_pkcs1_der(&der).map(|_| ()).err();
-            #[cfg(not(miri))]
+            #[cfg(not(any(miri, target_family = "wasm")))]
             assert!(
                 aws_lc_rs::rsa::KeyPair::from_der(&der).is_ok() == (e == [1, 0, 1]),
                 "{e:?}"
@@ -1546,7 +1742,7 @@ mod tests {
             pkcs1::DIGESTINFO_SHA256,
             hash::Sha256::hash(b"hello").as_ref(),
         );
-        #[cfg(not(miri))]
+        #[cfg(not(any(miri, target_family = "wasm")))]
         assert!(
             aws_lc_rs::signature::RsaPublicKeyComponents {
                 n: &key.n[..],

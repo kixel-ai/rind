@@ -2,13 +2,14 @@ module
 public import Aeneas
 public import Rind.X86_64.Types
 public import Rind.X86_64.AesNi
+public import Rind.X86_64.AesGcmModel
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-!
 The rind functions the x86_64 translation leaves opaque, beside those
-`Rind.X86_64.AesNi` models. No proof assumes anything about them beyond what
+`Rind.X86_64.AesNi` and `Rind.X86_64.AesGcmModel` model. No proof assumes anything about them beyond what
 `Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, and `Rind.X86_64.ValeAesGcm`
 state for s2n-bignum's, aws-lc's, and Vale's routines, what
 `Rind.X86_64.CtEqual` states for the constant-time compares, and what each theorem
@@ -28,6 +29,13 @@ opaque low.x86_64.curve25519_x25519base.curve25519_x25519base
   :
   Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64
     4#usize)
+
+opaque low.x86_64.sha3_keccak_f1600.sha3_keccak_f1600
+  : Array Std.U64 25#usize → Array Std.U64 24#usize → Result (Array Std.U64 25#usize)
+
+opaque low.x86_64.sha3_keccak4_f1600_alt.sha3_keccak4_f1600
+  : Array (Array Std.U64 25#usize) 4#usize → Array Std.U64 24#usize → Array Std.U64 4#usize →
+    Array Std.U64 4#usize → Result (Array (Array Std.U64 25#usize) 4#usize)
 
 opaque low.x86_64.bignum_eq.bignum_eq
   : Slice Std.U64 → Slice Std.U64 → Result Bool
@@ -75,13 +83,6 @@ opaque low.x86_64.aes_gcm_avx.aead
   low.x86_64.aes.HwKey → Std.Array core.core_arch.x86.__m128i 8#usize →
     low.x86_64.aes_gcm_avx.Buffers → low.x86_64.cpu.HaveAvxMovbeForAesGcm →
     Result (Std.U64 × low.x86_64.aes_gcm_avx.Buffers)
-
-/-! AES-GCM's other tiers, which the theorems' CPU never runs. -/
-
-opaque low.x86_64.aes_gcm.tagged
-  (ENC : Bool) :
-  low.x86_64.aes.AesKey → low.x86_64.ghash.GhashTable → Std.Array Std.U8 12#usize →
-    Slice Std.U8 → Slice Std.U8 → Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
 
 /-! The constant-time compares behind `low::generic::ct_equal`, whose inline
 assembly `Rind.X86_64.CtEqual` states HOL Light's theorems about. -/
@@ -133,22 +134,23 @@ opaque low.x86_64.aes_gcm_vaes.VaesKernel.avx2
 opaque low.generic.zeroise.zeroise_value {T : Type} (ZeroableInst : low.generic.zeroise.Zeroable T) :
   T → Result T
 
-/-! ChaCha20-Poly1305's AEAD, which no theorem here is about. -/
+/-! ChaCha20-Poly1305's routines: aws-lc's one-pass seal and open, behind
+their Rust wrapper, whose contract `Rind.X86_64.ChaCha20Poly1305`'s `OnePass`
+states as a hypothesis, and the separate passes CPUs without SSE4.1 run,
+which no theorem is about. -/
 
-opaque mid.chacha20poly1305.ChaCha20Poly1305.Insts.RindAeadCipher.new
-  : Slice Std.U8 → Result mid.chacha20poly1305.ChaCha20Poly1305
+opaque low.x86_64.chacha20poly1305.one_pass
+  : low.x86_64.cpu.HaveSse41 → Option low.x86_64.cpu.HaveAvx2 → Std.Array Std.U8 32#usize →
+    Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 → Bool →
+    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
 
-opaque mid.chacha20poly1305.ChaCha20Poly1305.Insts.RindAeadCipher.inner
-  : aead.Sealer mid.chacha20poly1305.ChaCha20Poly1305 → Result aead.Inner
+opaque low.generic.chacha20poly1305.seal
+  : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
 
-opaque mid.chacha20poly1305.ChaCha20Poly1305.Insts.RindAeadCipher.seal
-  : mid.chacha20poly1305.ChaCha20Poly1305 → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
-    Std.Array Std.U8 16#usize →
-    Result ((core.result.Result Unit error.Error) × (Slice Std.U8) × (Std.Array Std.U8 16#usize))
-
-opaque mid.chacha20poly1305.ChaCha20Poly1305.Insts.RindAeadCipher.open
-  : mid.chacha20poly1305.ChaCha20Poly1305 → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
-    Std.Array Std.U8 16#usize → Result ((core.result.Result Unit error.Error) × (Slice Std.U8))
+opaque low.generic.chacha20poly1305.open
+  : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
 
 /-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
 
@@ -252,6 +254,8 @@ opaque low.x86_64.cpu.HaveVaesAvx2ForAesGcm.avx_movbe
 
 opaque low.x86_64.cpu.HaveSsse3.check : Result (Option low.x86_64.cpu.HaveSsse3)
 
+opaque low.x86_64.cpu.HaveSse41.check : Result (Option low.x86_64.cpu.HaveSse41)
+
 /-- The SHA-1 and SHA-256 routines the CPU runs, each picked once. -/
 opaque low.x86_64.sha1_mux.path : Result low.x86_64.sha1_mux.Path
 
@@ -289,6 +293,117 @@ opaque low.x86_64.sha256.sha256_compress_blocks_ssse3
 opaque low.x86_64.sha256.sha256_compress_blocks_nohw
   : Array Std.U32 8#usize → Slice Std.U8 → Result (Array Std.U32 8#usize)
 
+/-! P-384's s2n-bignum routines, its table select, and `bignum_mux`. -/
+
+opaque low.x86_64.bignum_add_p384.bignum_add_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Array Std.U64 6#usize →
+    Result (Array Std.U64 6#usize)
+
+opaque low.x86_64.bignum_demont_p384.bignum_demont_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.x86_64.bignum_demont_p384_alt.bignum_demont_p384_alt
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.x86_64.bignum_inv_p384.bignum_inv_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.x86_64.bignum_montmul_p384.bignum_montmul_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Array Std.U64 6#usize →
+    Result (Array Std.U64 6#usize)
+
+opaque low.x86_64.bignum_montmul_p384_alt.bignum_montmul_p384_alt
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Array Std.U64 6#usize →
+    Result (Array Std.U64 6#usize)
+
+opaque low.x86_64.bignum_montsqr_p384.bignum_montsqr_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.x86_64.bignum_montsqr_p384_alt.bignum_montsqr_p384_alt
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.x86_64.bignum_mux.bignum_mux
+  :
+  Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Result
+    (Slice Std.U64)
+
+opaque low.x86_64.bignum_neg_p384.bignum_neg_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.x86_64.bignum_point_select.bignum_aff_point_select_p384
+  :
+  Array Std.U64 12#usize → Slice Std.U64 → Std.U8 → Result (Array Std.U64
+    12#usize)
+
+opaque low.x86_64.bignum_tomont_p384.bignum_tomont_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.x86_64.bignum_tomont_p384_alt.bignum_tomont_p384_alt
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.x86_64.p384_montjdouble.p384_montjdouble
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Result (Array Std.U64
+    18#usize)
+
+opaque low.x86_64.p384_montjdouble_alt.p384_montjdouble_alt
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Result (Array Std.U64
+    18#usize)
+
+opaque low.x86_64.p384_montjmixadd.p384_montjmixadd
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 12#usize
+    → Result (Array Std.U64 18#usize)
+
+opaque low.x86_64.p384_montjmixadd_alt.p384_montjmixadd_alt
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 12#usize
+    → Result (Array Std.U64 18#usize)
+
+opaque low.x86_64.p384_montjscalarmul.p384_montjscalarmul
+  :
+  Array Std.U64 18#usize → Array Std.U64 6#usize → Array Std.U64 18#usize
+    → Result (Array Std.U64 18#usize)
+
+opaque low.x86_64.p384_montjscalarmul_alt.p384_montjscalarmul_alt
+  :
+  Array Std.U64 18#usize → Array Std.U64 6#usize → Array Std.U64 18#usize
+    → Result (Array Std.U64 18#usize)
+
+opaque high.sec1.decode
+  : Slice Std.U8 → high.asn1.ObjectId → Result (core.result.Result high.sec1.Decoded error.Error)
+
+opaque high.sec1.decode_pkcs8
+  : Slice Std.U8 → high.asn1.ObjectId → Result (core.result.Result high.sec1.Decoded error.Error)
+
+opaque low.x86_64.bignum_mod_n384.bignum_mod_n384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
+  : Result high.asn1.ObjectId
+
 /-! The other curves, which X25519's results never depend on. -/
 
 opaque mid.p521.PrivateKey.new_random
@@ -303,9 +418,6 @@ opaque mid.p256.PrivateKey.new_random
 opaque mid.p521.PrivateKey.public_key_uncompressed
   : mid.p521.PrivateKey → Result (Array Std.U8 133#usize)
 
-opaque mid.p384.PrivateKey.public_key_uncompressed
-  : mid.p384.PrivateKey → Result (Array Std.U8 97#usize)
-
 opaque mid.p256.PrivateKey.public_key_uncompressed
   : mid.p256.PrivateKey → Result (Array Std.U8 65#usize)
 
@@ -317,14 +429,6 @@ opaque mid.p521.PrivateKey.diffie_hellman
 opaque mid.p521.PublicKey.from_x962_uncompressed
   : Slice Std.U8 → Result (core.result.Result mid.p521.PublicKey error.Error)
 
-opaque mid.p384.PrivateKey.diffie_hellman
-  :
-  mid.p384.PrivateKey → mid.p384.PublicKey → Result (core.result.Result
-    mid.p384.SharedSecret error.Error)
-
-opaque mid.p384.PublicKey.from_x962_uncompressed
-  : Slice Std.U8 → Result (core.result.Result mid.p384.PublicKey error.Error)
-
 opaque mid.p256.PrivateKey.diffie_hellman
   :
   mid.p256.PrivateKey → mid.p256.PublicKey → Result (core.result.Result
@@ -332,11 +436,6 @@ opaque mid.p256.PrivateKey.diffie_hellman
 
 opaque mid.p256.PublicKey.from_x962_uncompressed
   : Slice Std.U8 → Result (core.result.Result mid.p256.PublicKey error.Error)
-
-/-! AES, whose header protection no proof covers. -/
-
-opaque mid.aes.Aes.header_protection_mask
-  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 5#usize)
 
 /-! MD5, which no proof covers. -/
 
@@ -352,20 +451,6 @@ opaque mid.md5.Md5Context.update : mid.md5.Md5Context → Slice Std.U8 → Resul
 opaque mid.md5.Md5Context.finish : mid.md5.Md5Context → Result (Array Std.U8 16#usize)
 
 opaque mid.md5.Md5Context.Insts.CoreCloneClone.clone : mid.md5.Md5Context → Result mid.md5.Md5Context
-
-/-! SHA-3, whose sponge no proof covers. -/
-
-opaque mid.sha3.Sha3Context.new
-  (R : Std.Usize) (OUT : Std.Usize) : Result (mid.sha3.Sha3Context R OUT)
-
-opaque mid.sha3.Sha3Context.update {R : Std.Usize} {OUT : Std.Usize}
-  : mid.sha3.Sha3Context R OUT → Slice Std.U8 → Result (mid.sha3.Sha3Context R OUT)
-
-opaque mid.sha3.Sha3Context.finish {R : Std.Usize} {OUT : Std.Usize}
-  : mid.sha3.Sha3Context R OUT → Result (Array Std.U8 OUT)
-
-opaque mid.sha3.Sha3Context.Insts.CoreCloneClone.clone {R : Std.Usize} {OUT : Std.Usize}
-  : mid.sha3.Sha3Context R OUT → Result (mid.sha3.Sha3Context R OUT)
 
 /-! Agreement key encodings, and loading on the curves no theorem loads a key
 on, whose DER no proof covers. -/
@@ -406,10 +491,6 @@ opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.encode_scalar
   : mid.p521.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque high.curve.P384.Insts.RindHighAgreementAgreePrivateKey.load
-  : high.agreement.Algorithm → high.agreement.Source →
-    Result (core.result.Result (mid.p384.PrivateKey × high.agreement.PublicKey) error.Error)
-
 opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.load
   : high.agreement.Algorithm → high.agreement.Source →
     Result (core.result.Result (mid.p521.PrivateKey × high.agreement.PublicKey) error.Error)
@@ -417,5 +498,78 @@ opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.load
 opaque high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.load
   : high.agreement.Algorithm → high.agreement.Source →
     Result (core.result.Result (mid.p256.PrivateKey × high.agreement.PublicKey) error.Error)
+
+/-! s2n-bignum's routines for RSA, transliterated to inline assembly. -/
+
+opaque low.x86_64.bignum_negmodinv.bignum_negmodinv
+  : Slice Std.U64 → Slice Std.U64 → Result (Slice Std.U64)
+
+opaque low.x86_64.bignum_bitsize.bignum_bitsize
+  : Slice Std.U64 → Result Std.Usize
+
+opaque low.x86_64.bignum_optsub.bignum_optsub
+  :
+  Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Std.U64 → Result
+    (Slice Std.U64)
+
+opaque low.x86_64.bignum_emontredc_8n.bignum_emontredc_8n
+  :
+  Slice Std.U64 → Slice Std.U64 → Std.U64 → Result (Std.U64 × (Slice
+    Std.U64))
+
+opaque low.x86_64.bignum_kmul_16_32.bignum_kmul_16_32
+  :
+  Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Array Std.U64 32#usize
+    → Result ((Slice Std.U64) × (Array Std.U64 32#usize))
+
+opaque low.x86_64.bignum_kmul_32_64.bignum_kmul_32_64
+  :
+  Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Array Std.U64 96#usize
+    → Result ((Slice Std.U64) × (Array Std.U64 96#usize))
+
+opaque low.x86_64.bignum_ksqr_16_32.bignum_ksqr_16_32
+  :
+  Slice Std.U64 → Slice Std.U64 → Array Std.U64 24#usize → Result ((Slice
+    Std.U64) × (Array Std.U64 24#usize))
+
+opaque low.x86_64.bignum_ksqr_32_64.bignum_ksqr_32_64
+  :
+  Slice Std.U64 → Slice Std.U64 → Array Std.U64 72#usize → Result ((Slice
+    Std.U64) × (Array Std.U64 72#usize))
+
+opaque low.x86_64.bignum_montmul.bignum_montmul
+  :
+  Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 →
+    Result (Slice Std.U64)
+
+/-! aws-lc's Montgomery products, behind their Rust wrappers, which
+`Rind.X86_64.RsaMont`'s `AwsLcMont` states for the theorems that need them. -/
+
+opaque low.x86_64.mont.nohw
+  :
+  Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 →
+    Std.U64 → Result (Slice Std.U64)
+
+opaque low.x86_64.mont.mul4x
+  :
+  Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 →
+    Std.U64 → Option low.x86_64.cpu.HaveBmi2Adx → Result (Slice Std.U64)
+
+opaque low.x86_64.mont.sqr8x
+  :
+  Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Std.U64 → Option
+    low.x86_64.cpu.HaveBmi2Adx → Result (Slice Std.U64)
+
+/-! RSA's DER parsing and encoding, which the ✓ leaves out. -/
+
+opaque high.rsa.der_components
+  :
+  Slice Std.U8 → Result (core.result.Result ((Slice Std.U8) × (Slice
+    Std.U8)) error.Error)
+
+opaque high.rsa.VerifyingKey.to_pkcs1_der
+  :
+  high.rsa.VerifyingKey → Slice Std.U8 → Result ((core.result.Result (Slice
+    Std.U8) error.Error) × (Slice Std.U8))
 
 end rind.x86_64

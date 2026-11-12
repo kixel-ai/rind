@@ -29,24 +29,30 @@ crabgrind = { version = "0.4", optional = true }
 [target.'cfg(any(rind_portable, target_endian = "big", not(any(target_arch = "x86_64", target_arch = "aarch64"))))'.dependencies]
 curve25519-dalek = { version = "5", default-features = false, features = ["precomputed-tables"] }
 fiat-crypto = { version = "0.3", default-features = false }
-libcrux-aes = { version = "0.0.10", default-features = false }
 libcrux-hacl-rs = { version = "0.0.6", features = ["alloc"] }
 libcrux-macros = "0.0.4"
 libcrux-poly1305 = { version = "0.0.7", features = ["expose-hacl"] }
 libcrux-sha2 = { version = "0.0.9", features = ["expose-hacl"] }
-libcrux-traits = "0.0.9"
 
 # Reads the AArch32 crypto extension's HWCAP2 bits.
 [target.'cfg(all(target_arch = "arm", target_endian = "little", not(rind_portable), any(target_os = "linux", target_os = "android")))'.dependencies]
 libc = { version = "0.2", default-features = false }
 
 [dev-dependencies]
+# ristretto255's differential reference; aws-lc-rs has no ristretto255.
+curve25519-dalek = { version = "5", default-features = false, features = ["precomputed-tables"] }
 # Checks armv7's NIST curve arithmetic against s2n-bignum's on the other arches.
 fiat-crypto = { version = "0.3", default-features = false }
 # CCTV gzips its ML-KEM modulus vectors.
 flate2 = { version = "1.1.11", default-features = false, features = ["rust_backend"] }
 hex = { version = "0.4", features = ["serde"] }
-proptest = "1.5.0"
+# The reference for P-521's hash-to-curve, which aws-lc lacks, and for each
+# curve's hash to a scalar, which aws-lc does not export.
+p256 = { version = "0.14", default-features = false, features = ["group-digest"] }
+p384 = { version = "0.14", default-features = false, features = ["group-digest"] }
+p521 = { version = "0.14", default-features = false, features = ["group-digest"] }
+# Without `fork` and `timeout`, which spawn processes wasm cannot.
+proptest = { version = "1.5.0", default-features = false, features = ["std", "bit-set"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -54,14 +60,17 @@ serde_json = "1"
 [target.'cfg(unix)'.dev-dependencies]
 libc = { version = "0.2", default-features = false }
 
-# The differential tests' reference. Miri cannot run C, so its builds leave it
-# out, along with every test that calls it.
-[target.'cfg(not(miri))'.dev-dependencies]
+# The differential tests' reference. Miri cannot run C, and aws-lc does not
+# build for wasm, so those builds leave it out, along with every test that
+# calls it.
+[target.'cfg(not(any(miri, target_family = "wasm")))'.dev-dependencies]
 aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
 # aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
 aws-lc-sys = { version = "0.47", default-features = false }
 # HPKE, which aws-lc-rs does not expose either; `hazmat` reads its private keys.
 hpke-rs = { version = "0.8", default-features = false, features = ["hazmat", "rustcrypto", "std"] }
+# RSA blind signatures, which aws-lc-rs does not offer.
+blind-rsa-signatures = { version = "0.18", default-features = false }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
