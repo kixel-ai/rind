@@ -42,6 +42,7 @@ SHA-512.
 | HMAC | Graviola ⚡ |  |  |  |  |
 | HKDF | rind ⚡ |  |  |  |  |
 | HPKE, over the rows it builds on | rind |  |  |  |  |
+| ECVRF, over the rows it builds on | rind |  |  |  |  |
 | PBKDF2 | rind |  |  |  |  |
 | X25519 | s2n-bignum ✓ |  |  |  |  |
 | Ed25519 | s2n-bignum ✓ + Graviola |  |  |  |  |
@@ -105,6 +106,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | HMAC | Graviola ⚡ |  |  |  |
 | HKDF | rind ⚡ |  |  |  |
 | HPKE, over the rows it builds on | rind |  |  |  |
+| ECVRF, over the rows it builds on | rind |  |  |  |
 | PBKDF2 | rind |  |  |  |
 | X25519 | s2n-bignum ✓ |  | BoringSSL ⚡ + curve25519-dalek ⚡ | curve25519-dalek ⚡ |
 | Ed25519 | s2n-bignum ✓ + Graviola |  | curve25519-dalek ⚡ + rind ⚡ |  |
@@ -266,6 +268,7 @@ not cover rind's in-place calls.
 | `bignum_montsqr_p384` | `bignum_montsqr_p384`: `BIGNUM_MONTSQR_P384_SUBROUTINE_SAFE` | `bignum_montsqr_p384_alt`: `BIGNUM_MONTSQR_P384_ALT_SUBROUTINE_SAFE` |
 | `bignum_montsqr_p384_alt` | `bignum_montsqr_p384_alt`: `BIGNUM_MONTSQR_P384_ALT_SUBROUTINE_SAFE` | not imported |
 | `bignum_mul` | `bignum_mul`: none | `bignum_mul`: `BIGNUM_MUL_SUBROUTINE_SAFE` |
+| `bignum_mul_p25519` | `bignum_mul_p25519`: none | `bignum_mul_p25519_alt`: none |
 | `bignum_mul_p25519_alt` | `bignum_mul_p25519_alt`: none | not imported |
 | `bignum_mul_p521` | `bignum_mul_p521`: `BIGNUM_MUL_P521_SUBROUTINE_SAFE` | `bignum_mul_p521_alt`: `BIGNUM_MUL_P521_ALT_SUBROUTINE_SAFE` |
 | `bignum_mul_p521_alt` | `bignum_mul_p521_alt`: `BIGNUM_MUL_P521_ALT_SUBROUTINE_SAFE` | not imported |
@@ -276,6 +279,8 @@ not cover rind's in-place calls.
 | `bignum_neg_p521` | `bignum_neg_p521`: `BIGNUM_NEG_P521_SUBROUTINE_SAFE` | `bignum_neg_p521`: `BIGNUM_NEG_P521_SUBROUTINE_SAFE` |
 | `bignum_negmodinv` | `bignum_negmodinv`: none | `bignum_negmodinv`: none |
 | `bignum_optsub` | `bignum_optsub`: none | `bignum_optsub`: `BIGNUM_OPTSUB_SUBROUTINE_SAFE` |
+| `bignum_sqr_p25519` | `bignum_sqr_p25519`: none | `bignum_sqr_p25519_alt`: none |
+| `bignum_sqr_p25519_alt` | `bignum_sqr_p25519_alt`: none | not imported |
 | `bignum_sqr_p521` | `bignum_sqr_p521`: `BIGNUM_SQR_P521_SUBROUTINE_SAFE` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` |
 | `bignum_sqr_p521_alt` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` | not imported |
 | `bignum_tomont_p256` | `bignum_tomont_p256`: none | `bignum_tomont_p256`: none |
@@ -288,6 +293,12 @@ not cover rind's in-place calls.
 | `curve25519_x25519base_alt` | `curve25519_x25519base_alt`: `CURVE25519_X25519BASE_ALT_SUBROUTINE_SAFE` | not imported |
 | `edwards25519_decode` | `edwards25519_decode`: `EDWARDS25519_DECODE_SUBROUTINE_SAFE` | `edwards25519_decode_alt`: `EDWARDS25519_DECODE_ALT_SUBROUTINE_SAFE` |
 | `edwards25519_decode_alt` | `edwards25519_decode_alt`: `EDWARDS25519_DECODE_ALT_SUBROUTINE_SAFE` | not imported |
+| `edwards25519_epadd` | `edwards25519_epadd`: none | `edwards25519_epadd_alt`: none |
+| `edwards25519_epadd_alt` | `edwards25519_epadd_alt`: none | not imported |
+| `edwards25519_epdouble` | `edwards25519_epdouble`: none | `edwards25519_epdouble_alt`: none |
+| `edwards25519_epdouble_alt` | `edwards25519_epdouble_alt`: none | not imported |
+| `edwards25519_pdouble` | `edwards25519_pdouble`: none | `edwards25519_pdouble_alt`: none |
+| `edwards25519_pdouble_alt` | `edwards25519_pdouble_alt`: none | not imported |
 | `edwards25519_scalarmulbase` | `edwards25519_scalarmulbase`: `EDWARDS25519_SCALARMULBASE_SUBROUTINE_SAFE` | `edwards25519_scalarmulbase_alt`: `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_SAFE` |
 | `edwards25519_scalarmulbase_alt` | `edwards25519_scalarmulbase_alt`: `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_SAFE` | not imported |
 | `edwards25519_scalarmuldouble` | `edwards25519_scalarmuldouble`: `EDWARDS25519_SCALARMULDOUBLE_SUBROUTINE_SAFE` | `edwards25519_scalarmuldouble_alt`: `EDWARDS25519_SCALARMULDOUBLE_ALT_SUBROUTINE_SAFE` |
@@ -506,6 +517,18 @@ base point multiplication is the exception: its selection is inside
 s2n-bignum's verified `p256_scalarmulbase`.
 
 On x86_64 and aarch64, X25519 directly uses the s2n-bignum implementation.
+
+ECVRF (RFC 9381) is rind's, over the curves' code above: on edwards25519, the
+ristretto255 code's constant-time variable-point multiplication and
+s2n-bignum's base point multiplication and decoding, or curve25519-dalek's on
+armv7 and portable; on P256, the ECDH and ECDSA multiplications, and RFC6979
+over the HMAC-DRBG for the nonce, with no added randomness, as the suite's
+test vectors require. Proving runs in constant time in the key and the nonce.
+Verification multiplies by the proof's scalars in constant time too on
+edwards25519, where it is public data, as no variable-time multiplication of
+an arbitrary point is there to reuse; P256's computes `s G - c Y` as ECDSA
+verification does. Try-and-increment's loop runs in time that depends on the
+input, as RFC 9381 notes.
 
 ### ML-KEM-768
 On aarch64, and on x86_64 CPUs with AVX2, the core polynomial arithmetic -- the NTT, inverse NTT, base multiplication
