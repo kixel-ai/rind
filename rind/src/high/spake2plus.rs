@@ -642,12 +642,13 @@ impl EncodedPoint {
 }
 
 /// Uncompressed SEC 1 encoding after a curve check. `public` declassifies
-/// the bytes. An off-curve point is a protocol rejection: a hostile share
-/// can produce one, and that is not an internal fault.
+/// the bytes. Every point encoded here is computed from on-curve inputs (a
+/// peer's share is checked when it is decoded), so an off-curve result is an
+/// internal fault, as in [`VerifierRecord::from_w1`].
 fn encode(point: Affine, public: bool) -> Result<EncodedPoint, Error> {
     let bytes = point.to_uncompressed();
     if !ct::into_public(point.on_curve()) {
-        return Err(Error::BadSignature);
+        return Err(Error::Fault);
     }
     if public {
         ct::public_slice(&bytes);
