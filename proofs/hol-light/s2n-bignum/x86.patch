@@ -280,7 +280,7 @@
 -    decode_hi x v (to_wordsize sz) opc rm l
 +    read_opcode_ModRM rex l >>= \((opc,rm),l).
 +    if x /\ v /\ opc = word 6 then SOME (PUSH (operand_of_RM Full_64 rm),l)
-+    else decode_hi x v (to_wordsize sz) opc (operand_of_RM sz rm) l
++    else let rm = operand_of_RM sz rm in decode_hi x v (to_wordsize sz) opc rm l
    | _ -> NONE`;;
  
  let decode = new_definition `decode l =
