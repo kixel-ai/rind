@@ -11,7 +11,7 @@ codspeed-criterion-compat = { optional = true, version = "6" }
 
 [dev-dependencies]
 aes-gcm = "0.11"
-aws-lc-rs = { version = "1.16", features = ["non-fips"], default-features = false }
+aws-lc-rs = { version = "1.19", features = ["non-fips"], default-features = false }
 # For XChaCha20-Poly1305, which aws-lc-rs does not expose.
 aws-lc-sys = { version = "0.47", default-features = false }
 chacha20poly1305 = "0.11"
@@ -29,11 +29,13 @@ libcrux-ecdsa = "0.0.9"
 libcrux-ed25519 = { version = "0.0.10", features = ["rand"] }
 libcrux-hkdf = "0.0.9"
 libcrux-hmac = "0.0.9"
+libcrux-ml-dsa = "0.0.11"
 libcrux-ml-kem = { version = "0.0.11", default-features = false, features = ["mlkem768", "alloc"] }
 libcrux-rsa = "0.0.9"
 libcrux-sha2 = "0.0.9"
 libcrux-sha3 = "0.0.11"
 md5 = { package = "md-5", version = "0.11" }
+ml-dsa = "0.1"
 ml-kem = { version = "0.3", features = ["getrandom"] }
 p256 = { version = "0.14", features = ["ecdh", "getrandom"] }
 p384 = { version = "0.14", features = ["ecdh", "getrandom"] }
@@ -124,6 +126,10 @@ harness = false
 
 [[bench]]
 name = "hmac"
+harness = false
+
+[[bench]]
+name = "mldsa"
 harness = false
 
 [[bench]]
