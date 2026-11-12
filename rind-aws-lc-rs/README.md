@@ -51,6 +51,7 @@ These items are left out, so code using them fails to build:
 - An Ed25519 public key of small order verifies no signature, and a PKCS#8 v2 Ed25519 or ML-DSA key whose public key does not match is refused.
 - An ML-DSA `SubjectPublicKeyInfo` followed by more bytes is refused.
 - An ML-DSA PKCS#8 document followed by more bytes is refused.
+- An `id-ecPublicKey` PKCS#8 key on a curve rind lacks, such as secp256k1, is `InvalidEncoding` when loaded as ML-DSA. aws-lc-rs parses that key and reports `WrongAlgorithm`.
 - ECDSA and ECDH public keys in the X9.62 hybrid form are refused.
 - An RSA public key, from `rsa::PublicKey::from_der` or elsewhere, must have a modulus of 1024 to 8192 bits, the range rind verifies with.
 - An RSA-OAEP private key is bound to one algorithm in rind, so a `rsa::PrivateDecryptingKey` loads the key again the first time it decrypts with each other algorithm, and keeps it.

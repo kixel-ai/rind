@@ -493,7 +493,9 @@ fn parses_as_other_private_key(pkcs8: &[u8]) -> bool {
         [0x2b, 0x65, 0x6e] => {
             rind::agreement::PrivateKey::from_pkcs8(&rind::agreement::X25519, pkcs8).is_ok()
         }
-        // RFC 5480 `id-ecPublicKey`. The curve is in the parameters.
+        // RFC 5480 `id-ecPublicKey`. The curve is in the parameters. A curve
+        // rind does not implement, such as secp256k1, fails these parsers;
+        // aws-lc-rs can still parse it, and the README lists that difference.
         [0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01] => {
             use rind::signature::sign::{
                 ECDSA_P256_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, ECDSA_P521_SHA512_ASN1,

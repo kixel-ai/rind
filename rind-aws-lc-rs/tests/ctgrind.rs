@@ -372,3 +372,138 @@ fn ml_dsa_pkcs8_sign_export() {
         public(&pkcs8[..]);
     }
 }
+
+/// `PqdsaKeyPair::from_pkcs8` parses a non-ML-DSA key before refusing it.
+/// The seed or scalar of an Ed25519, X25519, or ECDSA key is marked secret,
+/// as is an RSA key's private exponent, primes, and CRT values.
+///
+/// Two parts of each RSA integer stay defined. The first two octets are the
+/// DER sign check in `Integer::minimum_magnitude_check`, and the low octet of
+/// each prime is the parity `RsaPrivateKey::new` branches on. The ECDSA
+/// scalar parse is the same `sec1` decoder
+/// `agreement::tests::loads_in_constant_time` checks.
+#[test]
+fn ml_dsa_other_private_key() {
+    let load = |pkcs8: &[u8]| {
+        let err =
+            signature::PqdsaKeyPair::from_pkcs8(&signature::ML_DSA_44_SIGNING, pkcs8).unwrap_err();
+        public(err.description_().as_bytes());
+        assert_eq!(err.description_(), "WrongAlgorithm");
+    };
+
+    for (curve, len) in [
+        (&[0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07][..], 32),
+        (&[0x2b, 0x81, 0x04, 0x00, 0x22][..], 48),
+        (&[0x2b, 0x81, 0x04, 0x00, 0x23][..], 66),
+    ] {
+        let mut scalar = vec![0u8; len];
+        scalar[len - 1] = 1;
+        let pkcs8 = ec_pkcs8(curve, &scalar);
+        let at = pkcs8
+            .windows(len)
+            .position(|window| window == scalar)
+            .unwrap();
+        secret(&pkcs8[at..at + len]);
+        load(&pkcs8);
+        public(&pkcs8[..at]);
+        public(&pkcs8[at + len..]);
+    }
+
+    for (oid, seed) in [
+        (&[0x2b, 0x65, 0x70][..], [3; 32]),
+        (&[0x2b, 0x65, 0x6e][..], [0x11; 32]),
+    ] {
+        let pkcs8 = octet_string_pkcs8(oid, &seed);
+        let at = pkcs8
+            .windows(seed.len())
+            .position(|window| window == seed)
+            .unwrap();
+        secret(&pkcs8[at..at + seed.len()]);
+        load(&pkcs8);
+        public(&pkcs8[..at]);
+        public(&pkcs8[at + seed.len()..]);
+    }
+
+    use aws_lc_rs::encoding::AsDer as _;
+    let rsa = aws_lc_rs::rsa::KeyPair::generate(aws_lc_rs::rsa::KeySize::Rsa2048)
+        .unwrap()
+        .as_der()
+        .unwrap();
+    let pkcs8 = rsa.as_ref().to_vec();
+    // version, modulus, and public exponent stay public. The remaining
+    // integers are the private exponent, the primes, and the CRT values.
+    let (body, _) = der_contents(&pkcs8);
+    let (_, body) = der_contents(body);
+    let (_, body) = der_contents(body);
+    let (octet, _) = der_contents(body);
+    let (mut rest, _) = der_contents(octet);
+    let mut which = 0;
+    while !rest.is_empty() {
+        let (integer, next) = der_contents(rest);
+        // 3 is d, 4 and 5 are the primes. The primes' low octet is their parity.
+        if which >= 3 && integer.len() > 3 {
+            let start = integer.as_ptr() as usize - pkcs8.as_ptr() as usize;
+            let end = start + integer.len() - usize::from(which == 4 || which == 5);
+            secret(&pkcs8[start + 2..end]);
+        }
+        which += 1;
+        rest = next;
+    }
+    load(&pkcs8);
+    public(&pkcs8);
+}
+
+fn der_contents(input: &[u8]) -> (&[u8], &[u8]) {
+    let (len, rest) = match input[1] {
+        len @ 0..=0x7f => (usize::from(len), &input[2..]),
+        0x81 => (usize::from(input[2]), &input[3..]),
+        0x82 => (
+            usize::from(u16::from_be_bytes([input[2], input[3]])),
+            &input[4..],
+        ),
+        _ => panic!("DER length is longer than two bytes"),
+    };
+    rest.split_at(len)
+}
+
+fn ec_pkcs8(curve: &[u8], scalar: &[u8]) -> Vec<u8> {
+    let private_key = der(0x30, &[der(0x02, &[1]), der(0x04, scalar)].concat());
+    let algorithm = [
+        der(0x06, &[0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01]),
+        der(0x06, curve),
+    ]
+    .concat();
+    der(
+        0x30,
+        &[
+            der(0x02, &[0]),
+            der(0x30, &algorithm),
+            der(0x04, &private_key),
+        ]
+        .concat(),
+    )
+}
+
+fn octet_string_pkcs8(oid: &[u8], seed: &[u8]) -> Vec<u8> {
+    der(
+        0x30,
+        &[
+            der(0x02, &[0]),
+            der(0x30, &der(0x06, oid)),
+            der(0x04, &der(0x04, seed)),
+        ]
+        .concat(),
+    )
+}
+
+fn der(tag: u8, contents: &[u8]) -> Vec<u8> {
+    let len = contents.len();
+    let mut out = vec![tag];
+    match len {
+        0..=0x7f => out.push(len as u8),
+        0x80..=0xff => out.extend([0x81, len as u8]),
+        _ => out.extend([0x82, (len >> 8) as u8, len as u8]),
+    }
+    out.extend_from_slice(contents);
+    out
+}

@@ -409,6 +409,24 @@ fn refused() {
     }
 }
 
+/// PKCS#8 v1 whose algorithm is `oid`, with `parameters` appended to the
+/// algorithm identifier when present, and `private_key` as the private key.
+fn pkcs8_private_key(oid: &[u8], parameters: Option<&[u8]>, private_key: &[u8]) -> Vec<u8> {
+    let mut algorithm = der(0x06, oid);
+    if let Some(parameters) = parameters {
+        algorithm.extend_from_slice(parameters);
+    }
+    der(
+        0x30,
+        &[
+            der(0x02, &[0]),
+            der(0x30, &algorithm),
+            der(0x04, private_key),
+        ]
+        .concat(),
+    )
+}
+
 /// A DER element tagged `tag` holding `contents`.
 fn der(tag: u8, contents: &[u8]) -> Vec<u8> {
     let len = contents.len();
@@ -813,6 +831,83 @@ fn ml_dsa_rejected() {
             ),
         );
     }
+    // v2 whose public key does not match. Both refuse it, so this is
+    // InvalidEncoding rather than WrongAlgorithm.
+    let mut mismatched = ed25519.to_pkcs8().unwrap().as_ref().to_vec();
+    let last = mismatched.len() - 1;
+    mismatched[last] ^= 0x01;
+    same_rejection(
+        ours::signature::PqdsaKeyPair::from_pkcs8(&ours::signature::ML_DSA_65_SIGNING, &mismatched),
+        theirs::signature::PqdsaKeyPair::from_pkcs8(
+            &theirs::signature::ML_DSA_65_SIGNING,
+            &mismatched,
+        ),
+    );
+
+    let as_ml_dsa = |pkcs8: &[u8]| {
+        same_rejection(
+            ours::signature::PqdsaKeyPair::from_pkcs8(&ours::signature::ML_DSA_44_SIGNING, pkcs8),
+            theirs::signature::PqdsaKeyPair::from_pkcs8(
+                &theirs::signature::ML_DSA_44_SIGNING,
+                pkcs8,
+            ),
+        );
+    };
+    // RFC 8410 X25519. aws-lc-rs does not encode one, so this is that document.
+    as_ml_dsa(&pkcs8_private_key(
+        &[0x2b, 0x65, 0x6e],
+        None,
+        &der(0x04, &[0x11; 32]),
+    ));
+    let rng = theirs::rand::SystemRandom::new();
+    for algorithm in [
+        &theirs::signature::ECDSA_P256_SHA256_ASN1_SIGNING,
+        &theirs::signature::ECDSA_P384_SHA384_ASN1_SIGNING,
+        &theirs::signature::ECDSA_P521_SHA512_ASN1_SIGNING,
+    ] {
+        let doc = theirs::signature::EcdsaKeyPair::generate_pkcs8(algorithm, &rng).unwrap();
+        as_ml_dsa(doc.as_ref());
+    }
+    as_ml_dsa(rsa_pkcs8());
+
+    // secp256k1 parses in aws-lc-rs. rind has no parser for it, so the
+    // refusal names differ; the README lists that. A key aws-lc-rs also
+    // rejects still agrees.
+    let scalar = [0u8; 31].into_iter().chain([1u8]).collect::<Vec<_>>();
+    let public = [
+        0x04, 0x79, 0xbe, 0x66, 0x7e, 0xf9, 0xdc, 0xbb, 0xac, 0x55, 0xa0, 0x62, 0x95, 0xce, 0x87,
+        0x0b, 0x07, 0x02, 0x9b, 0xfc, 0xdb, 0x2d, 0xce, 0x28, 0xd9, 0x59, 0xf2, 0x81, 0x5b, 0x16,
+        0xf8, 0x17, 0x98, 0x48, 0x3a, 0xda, 0x77, 0x26, 0xa3, 0xc4, 0x65, 0x5d, 0xa4, 0xfb, 0xfc,
+        0x0e, 0x11, 0x08, 0xa8, 0xfd, 0x17, 0xb4, 0x48, 0xa6, 0x85, 0x54, 0x19, 0x9c, 0x47, 0xd0,
+        0x8f, 0xfb, 0x10, 0xd4, 0xb8,
+    ];
+    let secp256k1 = |scalar: &[u8], public: Option<&[u8]>| {
+        let mut ec = [der(0x02, &[1]), der(0x04, scalar)].concat();
+        if let Some(public) = public {
+            ec.extend(der(0xa1, &der(0x03, &[&[0], public].concat())));
+        }
+        pkcs8_private_key(
+            &[0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01],
+            Some(&der(0x06, &[0x2b, 0x81, 0x04, 0x00, 0x0a])),
+            &der(0x30, &ec),
+        )
+    };
+    for pkcs8 in [secp256k1(&scalar, Some(&public)), secp256k1(&scalar, None)] {
+        let ours =
+            ours::signature::PqdsaKeyPair::from_pkcs8(&ours::signature::ML_DSA_44_SIGNING, &pkcs8)
+                .unwrap_err();
+        let theirs = theirs::signature::PqdsaKeyPair::from_pkcs8(
+            &theirs::signature::ML_DSA_44_SIGNING,
+            &pkcs8,
+        )
+        .unwrap_err();
+        assert_eq!(ours.description_(), "InvalidEncoding");
+        assert_eq!(theirs.description_(), "WrongAlgorithm");
+    }
+    as_ml_dsa(&secp256k1(&[0; 32], Some(&public)));
+    let mut bad_public = public;
+    bad_public[10] ^= 1;
+    as_ml_dsa(&secp256k1(&scalar, Some(&bad_public)));
 }
 
 /// Signatures that are not a parameter set's encoding, checked both before
