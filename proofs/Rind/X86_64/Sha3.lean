@@ -1816,7 +1816,7 @@ theorem squeeze_drop_append (R a b c : Nat) (S : List Byte) (hab : a ≤ b) (hbc
   rw [squeeze_take R b c S hbc, List.drop_append_of_le_length (by rw [length_squeeze]; omega)]
 
 /-- Bytes `a` to `b` squeezed, read from further output. -/
-theorem squeeze_drop_take (R a b c : Nat) (S : List Byte) (hab : a ≤ b) (hbc : b ≤ c) :
+theorem squeeze_drop_take (R a b c : Nat) (S : List Byte) (hbc : b ≤ c) :
     ((squeeze R c S).drop a).take (b - a) = (squeeze R b S).drop a := by
   rw [← List.drop_take, squeeze_take R b c S hbc]
 
@@ -1880,7 +1880,7 @@ theorem shake_read_spec (h : RunsSha3) {R : Usize} (hR : 8 ≤ R.val ∧ R.val <
           by simp [bv, List.map_take, List.map_drop],
         hbuf hlt, List.drop_drop, hsp, hsp, show R.val * k - R.val + x.buffer_offset.val = t by
           omega, show i1.val - x.buffer_offset.val = t + held.val - t by omega]
-      exact squeeze_drop_take _ _ _ _ _ (by omega) (by omega)
+      exact squeeze_drop_take _ _ _ _ _ (by omega)
   split
   · -- The buffer held all `output` asks for.
     rename_i heq
@@ -1939,7 +1939,7 @@ theorem shake_read_spec (h : RunsSha3) {R : Usize} (hR : 8 ≤ R.val ∧ R.val <
       omega
     have hb2 : (back1 s4).val = s1.val ++ s4.val ++ output.val.drop whole.val := by
       rw [hback1, Slice.setSlice!_val, hb1, setSlice!_eq _ _ _ (by simp; omega), hs4v]
-      simp only [List.take_append, hs1v, List.take_of_length_le (le_refl _), Nat.sub_self,
+      simp only [List.take_append, hs1v, Nat.sub_self,
         List.take_zero, List.append_nil, List.drop_append, List.drop_of_length_le (show
           s1.val.length ≤ held.val + R.val * i3.val by omega), List.nil_append, List.drop_drop]
       rw [List.take_of_length_le (by omega), show held.val + (held.val + R.val * i3.val - held.val)
@@ -2002,8 +2002,7 @@ theorem shake_read_spec (h : RunsSha3) {R : Usize} (hR : 8 ≤ R.val ∧ R.val <
       have hC : bv s8.val = (sponge R.val shakePad M (t + output.length)).drop
           (R.val * (k + i3.val)) := by
         have := squeeze_drop_take R.val (R.val * (k + i3.val)) (R.val * (k + i3.val) + i5.val)
-          (R.val * (k + i3.val) + R.val) (absorb R.val zeros (keccakPad R.val shakePad M))
-          (by omega) (by omega)
+          (R.val * (k + i3.val) + R.val) (absorb R.val zeros (keccakPad R.val shakePad M)) (by omega)
         rw [Nat.add_sub_cancel_left] at this
         have htl : t + output.length = R.val * (k + i3.val) + i5.val := by rw [hi5, hlo, hwq]; omega
         rw [htl, hs8, Array.val_to_slice, hbuf', List.slice, List.drop_zero, Nat.sub_zero, bv,
@@ -2090,20 +2089,20 @@ theorem shake4x_new_loop_spec (R : Usize) (hR : 8 ≤ R.val ∧ R.val < 200 ∧ 
             have : inputs.val.length = inputs.length := rfl
             omega)]
         · rw [ha3, ← getElem!_pos (back a2).val it.start.val (by simp; omega), hback,
-            array_set_getElem! _ _ _ _ (by simp; omega), if_pos rfl, ha2, ha0,
+            array_set_getElem! _ _ _ _ (by simp; omega), ite_eq_left rfl, ha2, ha0,
             ← getElem!_pos st.val it.start.val (by simp; omega), hz _ (le_refl _) hj4]
           simp [absorb, blocks_nil]
       step with sponge_pad_spec R 31#u8 hR a3 LEN _ hm as ⟨a4, ha4⟩
       refine ⟨by omega, by omega, ?_, ?_, by omega⟩
       · intro j hj1 hj2
-        rw [hback1, array_set_getElem! _ _ _ _ (by simp; omega), if_neg (by omega), hback,
-          array_set_getElem! _ _ _ _ (by simp; omega), if_neg (by omega)]
+        rw [hback1, array_set_getElem! _ _ _ _ (by simp; omega), ite_eq_right (by omega), hback,
+          array_set_getElem! _ _ _ _ (by simp; omega), ite_eq_right (by omega)]
         exact hz j (by omega) hj2
       · intro j hj
         rw [hback1, array_set_getElem! _ _ _ _ (by simp; omega)]
         split
         · subst_vars; exact ha4
-        · rw [hback, array_set_getElem! _ _ _ _ (by simp; omega), if_neg (by omega)]
+        · rw [hback, array_set_getElem! _ _ _ _ (by simp; omega), ite_eq_right (by omega)]
           exact hst j (by omega)
     · step with core.iter.range.IteratorRange.next_Usize_none_spec as ⟨o, it', ho, hit⟩
       subst ho
