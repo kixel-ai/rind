@@ -126,10 +126,7 @@ impl Shake256 {
 /// Each item of `inputs` shall be 40 bytes in length, which accommodates ML-KEM's `SamplePolyCBD`
 /// requirements of 33 bytes.  The 34th byte shall be `SHAKE_PAD_BYTE` and the remainder shall be
 /// zeroes.
-pub(crate) fn shake256_batch<const P: usize>(
-    inputs: &[[u8; 40]; P],
-    outputs: &mut [[u8; 128]; P],
-) {
+pub(crate) fn shake256_batch<const P: usize>(inputs: &[[u8; 40]; P], outputs: &mut [[u8; 128]; P]) {
     let mut states = [[0; 25]; 4];
     let mut done = 0;
     while done < P {
