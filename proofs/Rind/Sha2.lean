@@ -11,10 +11,11 @@ cryptol-specs' `Primitive::Keyless::Hash::SHA` defines them at the revision
 aws-lc-verification's proofs import (fba861b8): the message padded, parsed into
 128-byte blocks of sixteen big-endian words, each compressed into the chaining
 value in turn from the initial value, which is then written out big-endian and
-truncated. Its compression function, `processBlock_Common`, is transliterated
-from FIPS 180-4 section 6.4.2, as `Rind.HashSpec` transliterates SHA-256's, so
-the routines' contracts, aws-lc-verification's theorems restated in
-`Rind.<Arch>.AwsLc` and HACL*'s in `Rind.Portable.Hacl`, state one computation.
+truncated. Its compression function, `processBlock_Common`, is FIPS 180-4
+section 6.4.2's, transliterated as `fips512.compressBlock`:
+aws-lc-verification's theorems, restated in `Rind.<Arch>.AwsLc`, and rind's
+HOL Light proof, restated in `Rind.Aarch64.AwsLc` through `Rind.S2nSha512`, are
+what tie it to rind's routines.
 -/
 
 namespace rind.spec
@@ -32,7 +33,7 @@ def beBytes (w : U64) : List U8 :=
 def blockWords (block : List U8) : List U64 :=
   (List.range 16).map fun i => beWord ((block.drop (8 * i)).take 8)
 
-namespace sha512
+namespace fips512
 
 /-- FIPS 180-4 section 4.2.3's constants. -/
 def K : List (BitVec 64) :=
@@ -70,9 +71,9 @@ words, each further word from the four 2, 7, 15, and 16 before it. -/
 def schedule (M : List (BitVec 64)) : List (BitVec 64) :=
   (List.range 64).foldl (fun W t => W ++ [smallSigma1 W[t + 14]! + W[t + 9]! + smallSigma0 W[t + 1]! + W[t]!]) M
 
-/-- FIPS 180-4 section 6.4.2 steps 2 to 4: hash value `H` after the block
-whose words are `M`. -/
-def compressWords (H M : List (BitVec 64)) : List (BitVec 64) :=
+/-- FIPS 180-4 section 6.4.2 steps 2 to 4: hash value `H` after the block of
+words `M`. -/
+def compressBlock (H M : List (BitVec 64)) : List (BitVec 64) :=
   let W := schedule M
   let round := fun (s : List (BitVec 64)) t =>
     let T1 := s[7]! + bigSigma1 s[4]! + ch s[4]! s[5]! s[6]! + K[t]! + W[t]!
@@ -80,15 +81,18 @@ def compressWords (H M : List (BitVec 64)) : List (BitVec 64) :=
     [T1 + T2, s[0]!, s[1]!, s[2]!, s[3]! + T1, s[4]!, s[5]!, s[6]!]
   List.zipWith (· + ·) ((List.range 80).foldl round H) H
 
-end sha512
+end fips512
 
 /-- SHA-512's compression function, of the eight-word chaining value and a
 block's sixteen words: cryptol-specs' `processBlock_Common`, defined in
 `Primitive/Keyless/Hash/SHA.cry` at
 https://github.com/GaloisInc/cryptol-specs/blob/fba861b858fc62e6f77e7bc033d81eff6c0af9df/Primitive/Keyless/Hash/SHA.cry#L65
-with `SHA512.cry`'s constants and sigma functions, as FIPS 180-4 6.4.2 does. -/
-def processBlock (h m : List U64) : List U64 :=
-  (sha512.compressWords (h.map (·.bv)) (m.map (·.bv))).map (@UScalar.mk UScalarTy.U64)
+with `SHA512.cry`'s constants and sigma functions, which is FIPS 180-4
+section 6.4.2's, `fips512.compressBlock`. Irreducible, so that unification
+never unfolds its 80 rounds. -/
+@[irreducible]
+def processBlock (h w : List U64) : List U64 :=
+  (fips512.compressBlock (h.map (·.bv)) (w.map (·.bv))).map (@UScalar.mk UScalarTy.U64)
 
 /-- The chaining value `h` takes after each 128-byte block of `bytes` in
 turn: cryptol-specs' `processBlocks h bytes 0 (len / 128)` for at least one

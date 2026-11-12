@@ -47,7 +47,7 @@ theorem pad_append (p m : List U8) (hp : p.length % 128 = 0) :
 /-- The compression function keeps eight words. -/
 theorem processBlock_length (hv : List U64) (hl : hv.length = 8) (m : List U64) :
     (processBlock hv m).length = 8 := by
-  simp only [processBlock, sha512.compressWords, List.length_map, List.length_zipWith, hl]
+  simp only [processBlock, fips512.compressBlock, List.length_map, List.length_zipWith, hl]
   rw [show 80 = 79 + 1 from rfl, List.range_succ, List.foldl_append]
   simp
 
