@@ -1106,7 +1106,7 @@ impl<P: Params> Hasher<P> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::test::{Acvp, acvp};
+    use crate::test::{Acvp, CTGRIND_DEBUG, acvp};
 
     /// Runs `$f::<P>($args)` for the parameter set ACVP names `$set`.
     macro_rules! by_set {
@@ -1127,6 +1127,11 @@ mod tests {
                 other => panic!("unexpected parameter set {other}"),
             }
         };
+    }
+
+    /// Whether a group's parameter set is tested in this build.
+    fn runs(group: &serde_json::Value) -> bool {
+        !CTGRIND_DEBUG || group.str("parameterSet").ends_with("128f")
     }
 
     /// The prefix a test's message is signed under: none under the
@@ -1161,6 +1166,9 @@ mod tests {
             assert_eq!(loaded.public_key(), test.hex("pk"));
         }
         for group in acvp("SLH-DSA-keyGen-FIPS205") {
+            if !runs(&group) {
+                continue;
+            }
             for test in group.tests() {
                 by_set!(group.str("parameterSet"), check(test));
             }
@@ -1189,6 +1197,9 @@ mod tests {
             None => 1,
         };
         for group in acvp("SLH-DSA-sigGen-FIPS205") {
+            if !runs(&group) {
+                continue;
+            }
             for test in group.tests().iter().take(per_group) {
                 by_set!(group.str("parameterSet"), check(&group, test));
             }
@@ -1214,6 +1225,9 @@ mod tests {
             );
         }
         for group in acvp("SLH-DSA-sigVer-FIPS205") {
+            if !runs(&group) {
+                continue;
+            }
             for test in group.tests() {
                 by_set!(group.str("parameterSet"), check(&group, test));
             }
@@ -1246,9 +1260,12 @@ mod tests {
             );
         }
         check::<SlhDsaSha2_128f>();
+        check::<SlhDsaShake128f>();
+        if CTGRIND_DEBUG {
+            return;
+        }
         check::<SlhDsaSha2_192f>();
         check::<SlhDsaSha2_256f>();
-        check::<SlhDsaShake128f>();
         check::<SlhDsaShake192f>();
         check::<SlhDsaShake256f>();
     }

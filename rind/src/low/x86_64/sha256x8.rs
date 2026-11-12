@@ -238,7 +238,7 @@ mod tests {
             return;
         };
         let _entry = crate::low::Entry::new_secret();
-        let state = core::array::from_fn(|i| i as u32 * 0x9e3779b9);
+        let state = core::array::from_fn(|i| (i as u32).wrapping_mul(0x9e3779b9));
         let messages: [[u8; 200]; 8] =
             core::array::from_fn(|j| core::array::from_fn(|i| (j * 64 + i * 7) as u8));
         for len in [0, 1, 54, 55, 56, 63, 64, 65, 119, 120, 128, 200] {

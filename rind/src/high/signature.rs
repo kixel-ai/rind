@@ -3066,9 +3066,12 @@ mod tests {
             );
         }
         check::<SlhDsaSha2_128f>(&asn1::oid::id_slh_dsa_shake_128f);
+        check::<SlhDsaShake128f>(&asn1::oid::id_slh_dsa_sha2_128f);
+        if crate::test::CTGRIND_DEBUG {
+            return;
+        }
         check::<SlhDsaSha2_192f>(&asn1::oid::id_slh_dsa_sha2_192s);
         check::<SlhDsaSha2_256f>(&asn1::oid::id_slh_dsa_sha2_128f);
-        check::<SlhDsaShake128f>(&asn1::oid::id_slh_dsa_sha2_128f);
         check::<SlhDsaShake192f>(&asn1::oid::id_slh_dsa_shake_256f);
         check::<SlhDsaShake256f>(&asn1::oid::id_slh_dsa_shake_192f);
     }
@@ -3076,6 +3079,10 @@ mod tests {
     /// RFC 9909's examples: a key pair, and a certificate it signs itself.
     #[test]
     fn slh_dsa_rfc9909() {
+        // Its key is a 128s one, so slow to load under ctgrind's debug build.
+        if crate::test::CTGRIND_DEBUG {
+            return;
+        }
         let read = |name: &str| {
             std::fs::read(format!(
                 "{}/../thirdparty/vectors/rfc9909/{name}",
