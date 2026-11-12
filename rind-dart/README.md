@@ -110,9 +110,10 @@ void main() {
 ```
 
 The API is rind's own: each algorithm is a constant, and each key type has one
-role. Failures throw a `RindException` whose `error` says what failed, as
-rind's `Error` does, and a refused key says why in its `reason`. SHA-1, MD5,
-and RSA keys below 2048 bits are in `package:rind/legacy.dart`.
+role. [rind_cryptography](cryptography) offers the `cryptography` package's
+API on it instead. Failures throw a `RindException` whose `error` says what
+failed, as rind's `Error` does, and a refused key says why in its `reason`.
+SHA-1, MD5, and RSA keys below 2048 bits are in `package:rind/legacy.dart`.
 
 Keys live in native memory, and rind wipes them when Dart frees them.
 
