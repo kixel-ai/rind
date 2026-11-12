@@ -18,6 +18,10 @@
 //! secret is `SK.seed` and `SK.prf`, and the chain values and leaves they
 //! derive, which only constant-time hashes touch.
 
+// A parameter set's sizes are associated constants, which stable Rust cannot
+// pass as `as_chunks`'s const argument in generic code.
+#![allow(clippy::chunks_exact_to_as_chunks)]
+
 use core::fmt;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
@@ -423,11 +427,9 @@ fn hash_message<P: Params>(
     } else {
         // MGF1-SHA-X(R || PK.seed || SHA-X(R || PK.seed || PK.root || M), m)
         let (inner, len) = sha2::<P>(&[r, pk_seed, pk_root, prefix, message]);
-        let mut counter = 0u32;
-        for chunk in digest[..m].chunks_mut(len) {
+        for (counter, chunk) in (0u32..).zip(digest[..m].chunks_mut(len)) {
             let (block, _) = sha2::<P>(&[r, pk_seed, &inner[..len], &counter.to_be_bytes()]);
             chunk.copy_from_slice(&block[..chunk.len()]);
-            counter += 1;
         }
     }
 
@@ -771,7 +773,14 @@ fn fors_pk_from_sig<P: Params>(
         tree_addr.set_tree_height(0);
         tree_addr.set_tree_index(indices[i] + idx_offset);
         let leaf = hasher.thash1(sk, &tree_addr);
-        let root = compute_root::<P>(hasher, &leaf, indices[i], idx_offset, auth_path, &mut tree_addr);
+        let root = compute_root::<P>(
+            hasher,
+            &leaf,
+            indices[i],
+            idx_offset,
+            auth_path,
+            &mut tree_addr,
+        );
         roots[i * n..(i + 1) * n].copy_from_slice(&root[..n]);
     }
     hasher.thash1(&roots[..P::K * n], &roots_addr)
@@ -1159,9 +1168,17 @@ mod tests {
     #[test]
     fn acvp_key_gen() {
         fn check<P: Params>(test: &serde_json::Value) {
-            let key =
-                KeyPair::<P>::from_seeds(&test.hex("skSeed"), &test.hex("skPrf"), &test.hex("pkSeed"));
-            assert_eq!(key.public_key(), test.hex("pk"), "tcId {}", test.int("tcId"));
+            let key = KeyPair::<P>::from_seeds(
+                &test.hex("skSeed"),
+                &test.hex("skPrf"),
+                &test.hex("pkSeed"),
+            );
+            assert_eq!(
+                key.public_key(),
+                test.hex("pk"),
+                "tcId {}",
+                test.int("tcId")
+            );
             assert_eq!(
                 low::ct::into_public(key.secret_key().clone()).as_ref(),
                 test.hex("sk"),

@@ -249,7 +249,10 @@ fn signature() {
     assert_eq!(format!("{:?}", pair.to_pkcs8()), "Pkcs8(..)");
 
     use rind::signature::sign::{SlhDsaKeyPair, SlhDsaShake128f};
-    assert_eq!(format!("{:?}", verify::SLH_DSA_SHAKE_128F), "SLH-DSA-SHAKE-128f");
+    assert_eq!(
+        format!("{:?}", verify::SLH_DSA_SHAKE_128F),
+        "SLH-DSA-SHAKE-128f"
+    );
     let pair = SlhDsaKeyPair::<SlhDsaShake128f>::generate().unwrap();
     assert_eq!(
         format!("{pair:?}"),
@@ -263,7 +266,10 @@ fn signature() {
     );
     let signature = pair.sign(b"").unwrap();
     let bytes = format!("{:?}", signature.as_ref());
-    assert_eq!(format!("{signature:?}"), format!("SlhDsaSignature({bytes})"));
+    assert_eq!(
+        format!("{signature:?}"),
+        format!("SlhDsaSignature({bytes})")
+    );
     assert_eq!(format!("{:?}", pair.to_pkcs8()), "Pkcs8(..)");
 }
 

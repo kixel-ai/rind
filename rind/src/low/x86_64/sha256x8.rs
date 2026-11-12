@@ -38,7 +38,7 @@ fn finish_avx2(
     // Unused lanes hash the last message again.
     let lane = |j: usize| messages[Ord::min(j, messages.len() - 1)];
     let len = messages[0].len();
-    debug_assert!(messages.iter().all(|m| m.len() == len));
+    assert!(messages.iter().all(|m| m.len() == len));
 
     let mut states = [*state; 8];
     let (whole, _) = split_tail::<64, 8>(messages[0]);
@@ -52,7 +52,7 @@ fn finish_avx2(
         tails = pad(&lane(j)[whole.len()..], length, last).len() / 64;
     }
     for block in 0..tails {
-        let blocks = core::array::from_fn(|j| last[j][block]);
+        let blocks = last.map(|lane| lane[block]);
         sha256_compress_x8_avx2(&mut states, &blocks, token);
     }
     states.map(|h| sha256_digest(&h))
@@ -79,10 +79,8 @@ fn compress(states: &mut [[u32; 8]; 8], blocks: &[[u8; 64]; 8]) {
         unsafe {
             init[j] = _mm256_loadu_si256(states[j].as_ptr().cast());
             w[j] = _mm256_shuffle_epi8(_mm256_loadu_si256(blocks[j].as_ptr().cast()), bswap);
-            w[j + 8] = _mm256_shuffle_epi8(
-                _mm256_loadu_si256(blocks[j][32..].as_ptr().cast()),
-                bswap,
-            );
+            w[j + 8] =
+                _mm256_shuffle_epi8(_mm256_loadu_si256(blocks[j][32..].as_ptr().cast()), bswap);
         }
     }
     // Lane `j` of word `i` is block `j`'s word `i`, and likewise the state.
@@ -211,7 +209,10 @@ fn ch(e: __m256i, f: __m256i, g: __m256i) -> __m256i {
 
 #[target_feature(enable = "avx,avx2")]
 fn maj(a: __m256i, b: __m256i, c: __m256i) -> __m256i {
-    _mm256_or_si256(_mm256_and_si256(a, b), _mm256_and_si256(c, _mm256_or_si256(a, b)))
+    _mm256_or_si256(
+        _mm256_and_si256(a, b),
+        _mm256_and_si256(c, _mm256_or_si256(a, b)),
+    )
 }
 
 const K: [u32; 64] = [

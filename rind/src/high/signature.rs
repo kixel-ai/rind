@@ -13,13 +13,13 @@ use super::{pkcs8, sec1, spki};
 use crate::error::{Error, KeyFormatError};
 use crate::low::{self, Zeroable};
 use crate::mid::mldsa::{self, MlDsa44, MlDsa65, MlDsa87, Params as MlDsaParams};
+use crate::mid::rsa_key_size::RsaKeySize;
+use crate::mid::rsa_pub::MAX_PUBLIC_MODULUS_BYTES;
 use crate::mid::slhdsa::{
     self, Params as SlhDsaParams, SlhDsaSha2_128f, SlhDsaSha2_128s, SlhDsaSha2_192f,
     SlhDsaSha2_192s, SlhDsaSha2_256f, SlhDsaSha2_256s, SlhDsaShake128f, SlhDsaShake128s,
     SlhDsaShake192f, SlhDsaShake192s, SlhDsaShake256f, SlhDsaShake256s,
 };
-use crate::mid::rsa_key_size::RsaKeySize;
-use crate::mid::rsa_pub::MAX_PUBLIC_MODULUS_BYTES;
 use crate::mid::{p256, p384, p521};
 
 /// The hash a signature algorithm applies to the message.
@@ -1906,9 +1906,11 @@ pub struct SlhDsaAlgorithm {
     name: &'static str,
     oid: &'static asn1::ObjectId,
     public_key_len: usize,
-    /// `(key, message, signature)`.
-    verify: fn(&[u8], &[u8], &[u8]) -> Result<(), Error>,
+    verify: SlhDsaVerify,
 }
+
+/// Verifies `(key, message, signature)`.
+type SlhDsaVerify = fn(&[u8], &[u8], &[u8]) -> Result<(), Error>;
 
 impl SlhDsaAlgorithm {
     const fn new<P: SlhDsaParams>(name: &'static str, oid: &'static asn1::ObjectId) -> Self {
@@ -3014,7 +3016,11 @@ mod tests {
                 KeyFormatError::MismatchedPublicKey.into()
             );
             assert_eq!(
-                rejected(load(&slh_dsa_pkcs8(oid, sk, Some(&wrong[wrong.len() / 2..])))),
+                rejected(load(&slh_dsa_pkcs8(
+                    oid,
+                    sk,
+                    Some(&wrong[wrong.len() / 2..])
+                ))),
                 KeyFormatError::MismatchedPkcs8PublicKey.into()
             );
 
