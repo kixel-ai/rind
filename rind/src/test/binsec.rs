@@ -20,9 +20,9 @@ fn secret<const N: usize>(fill: u8) -> [u8; N] {
 }
 
 // Messages take a whole block, then a partial one, through each cipher's
-// tail handling. Where BINSEC's search stays short, they take every length
-// up to that: a length reaching `malloc` or a hash's buffering makes it
-// explore more paths than a nightly has time for.
+// tail handling. ChaCha20's take every length up to that; BINSEC cannot
+// explore each length of the others in a nightly's time, where it reaches
+// software AES, `malloc`, or a hash's buffering.
 const MESSAGE: usize = 75;
 
 #[test]
@@ -31,14 +31,12 @@ fn ct_binsec_aes_gcm() {
     use crate::aead::*;
 
     checked(|| {
-        let len = length(MESSAGE);
         for algorithm in [&AES_128_GCM, &AES_192_GCM, &AES_256_GCM] {
             let key = Key::new(algorithm, &secret::<32>(1)[..algorithm.key_len()]).unwrap();
             let nonce = || Nonce::assume_unique_for_key([2; 12]);
             let mut msg = secret::<MESSAGE>(3);
-            let msg = &mut msg[..len];
             let tag = key
-                .seal_in_place_separate_tag(nonce(), &[4; 21], msg)
+                .seal_in_place_separate_tag(nonce(), &[4; 21], &mut msg)
                 .unwrap();
             // libcrux's AES-128 and AES-256 open branch on whether the tag
             // verified before rind can declassify it, as `admin/ctgrind.supp`
@@ -47,7 +45,7 @@ fn ct_binsec_aes_gcm() {
                 continue;
             }
             black_box(
-                key.open_in_place_separate_tag(nonce(), &[4; 21], tag, msg)
+                key.open_in_place_separate_tag(nonce(), &[4; 21], tag, &mut msg)
                     .is_ok(),
             );
         }
@@ -106,14 +104,13 @@ fn ct_binsec_aes() {
     use crate::cipher::*;
 
     checked(|| {
-        let len = length(MESSAGE);
         for algorithm in [&AES_128, &AES_192, &AES_256] {
             let key = &secret::<32>(1)[..algorithm.key_len];
             Aes::new(algorithm, key)
                 .unwrap()
                 .encrypt_block(&mut secret(2));
             let ctr = AesCtr::new(algorithm, key, 32).unwrap();
-            ctr.apply_keystream(&[3; 16], &mut secret::<MESSAGE>(4)[..len])
+            ctr.apply_keystream(&[3; 16], &mut secret::<MESSAGE>(4))
                 .unwrap();
         }
     });
