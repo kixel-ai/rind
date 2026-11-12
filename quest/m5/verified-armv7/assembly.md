@@ -25,4 +25,3 @@ Route: prove each against the HOL Light or Lean specs the x86_64 and aarch64 que
 - [ChaCha20-Poly1305 is proven on x86_64](/quest/m4/verified/chacha20-poly1305-x86.md) - the RFC 8439 ChaCha20 and Poly1305 specs and the AEAD glue's proof
 - [x86_64 SHA-512 on AVX2 is proven](/quest/m4/verified/sha512-x86-avx2.md) - the pinned FIPS 180-4 SHA-512 spec and its Lean axiom shape
 - [The SHA-3 sponge is proven](/quest/m4/verified/sha3-sponge.md) - the FIPS 202 spec and sponge `keccak1600-armv4` sits under
-- [RSA verification is proven](/quest/m4/verified/rsa-verify.md) - the RSA glue, with the Montgomery products as the hypothesis these proofs discharge
