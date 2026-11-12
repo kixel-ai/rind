@@ -197,14 +197,17 @@ jobs:
 
       # `--iterate` skips what the x86_64 shards caught, read from the
       # `caught.txt` and `unviable.txt` they combine into one `mutants.out`.
+      # One artifact downloads into `x86_64` itself, several into a
+      # subdirectory each, so `find` reads both.
+      # One artifact downloads into `x86_64` itself, several into a
+      # subdirectory each.
       - name: Mutate
         run: |
-          shopt -s nullglob
           mkdir "$RUNNER_TEMP/mutants.out"
           for outcome in caught unviable; do
-            cat /dev/null "$RUNNER_TEMP"/x86_64/*/"$outcome.txt" > "$RUNNER_TEMP/mutants.out/$outcome.txt"
+            find "$RUNNER_TEMP/x86_64" -name "$outcome.txt" -exec cat /dev/null {} + > "$RUNNER_TEMP/mutants.out/$outcome.txt"
           done
-          cp "$RUNNER_TEMP"/x86_64/mutants-x86_64-0/changes.diff "$RUNNER_TEMP/"
+          find "$RUNNER_TEMP/x86_64" -name changes.diff -exec cp {} "$RUNNER_TEMP/" \; -quit
           nix develop .#sde --command admin/mutants --avx512 --workspace --iterate --in-diff "$RUNNER_TEMP/changes.diff" --output "$RUNNER_TEMP" || [ $? -eq 2 ]
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
