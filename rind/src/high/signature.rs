@@ -2624,6 +2624,7 @@ mod tests {
                 let key = load(&der).unwrap();
                 assert_eq!(key.public_key().as_ref(), pk);
                 assert_eq!(key.to_seed().is_some(), has_seed);
+                assert_eq!(key.has_seed(), has_seed);
                 let written = key.to_pkcs8();
                 let want = if has_seed { &seed_form } else { &expanded_form };
                 assert_eq!(written.as_ref(), want);
