@@ -300,7 +300,8 @@ proptest! {
     fn tls_record_keys(
         tls13 in any::<bool>(),
         aes256 in any::<bool>(),
-        separate in any::<bool>(),
+        mode in 0..3u8,
+        extra in vec(any::<u8>(), 1..3),
         key in vec(any::<u8>(), 32),
         start in any::<u64>(),
         steps in vec(0..3u64, 1..6),
@@ -325,11 +326,26 @@ proptest! {
                 nonce[4..].copy_from_slice(&counter.to_be_bytes());
                 let nonce = c::aead::Nonce::assume_unique_for_key(nonce);
                 let mut in_out = msg.clone();
-                let sealed = match separate {
-                    true => key
+                let sealed = match mode {
+                    0 => key.seal_in_place_append_tag(nonce, c::aead::Aad::empty(), &mut in_out),
+                    1 => key
                         .seal_in_place_separate_tag(nonce, c::aead::Aad::empty(), &mut in_out)
                         .map(|tag| in_out.extend_from_slice(tag.as_ref())),
-                    false => key.seal_in_place_append_tag(nonce, c::aead::Aad::empty(), &mut in_out),
+                    // Prefilled outputs show what a refused seal leaves in them.
+                    _ => {
+                        let mut tail = vec![0x55; extra.len() + algorithm.tag_len()];
+                        in_out.fill(0x55);
+                        let sealed = key.seal_out_of_place_scatter(
+                            nonce,
+                            c::aead::Aad::empty(),
+                            &msg,
+                            &mut in_out,
+                            &extra,
+                            &mut tail,
+                        );
+                        in_out.extend_from_slice(&tail);
+                        sealed
+                    }
                 };
                 out.push((sealed.is_ok(), in_out));
             }

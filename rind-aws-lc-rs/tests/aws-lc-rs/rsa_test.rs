@@ -527,12 +527,11 @@ fn test_rsa_public_key_components_rejects_invalid_exponent() {
 }
 
 // A 1024-bit RSA key is below the algorithm's accepted range
-// (`RSA_PKCS1_2048_8192_SHA256` accepts 2048..=8192). Note that the
-// bit-range check happens at verification time, not at construction: this
-// mirrors the behavior of `ParsedPublicKey::new`, which also defers the
-// range check to `verify_sig`. This test pins down that contract.
+// (`RSA_PKCS1_2048_8192_SHA256` accepts 2048..=8192).
+// rind-aws-lc-rs: aws-lc-rs checks the range when verifying, and named this
+// test `..._small_key_fails_at_verify`; rind checks it when the key is parsed.
 #[test]
-fn test_rsa_public_key_components_to_parsed_public_key_small_key_fails_at_verify() {
+fn test_rsa_public_key_components_to_parsed_public_key_small_key_fails() {
     // 1024-bit modulus taken from a valid RSA key.
     const N_HEX: &str = concat!(
         "a8b3b284af8eb50b387034a860f146c4919f318763cd6c5598c8ae4811a1e0ab",
@@ -546,8 +545,6 @@ fn test_rsa_public_key_components_to_parsed_public_key_small_key_fails_at_verify
         n: n.as_slice(),
         e: e.as_slice(),
     };
-    // rind-aws-lc-rs: rind refuses the key when it is parsed for an algorithm
-    // whose range excludes it, rather than when verifying.
     components
         .to_parsed_public_key(&signature::RSA_PKCS1_2048_8192_SHA256)
         .expect_err("rind checks the bit range at construction");

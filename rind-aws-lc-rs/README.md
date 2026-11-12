@@ -39,7 +39,7 @@ These items are left out, so code using them fails to build:
 - `aead::chacha20_poly1305_openssh`: rind has no SSH consumer.
 - `rsa::KeyPair::from_components` and `rsa::KeyPairComponents`: building a key from its private components means encoding them as DER here, which branches on their secret leading bytes. Load the key as PKCS#1 or PKCS#8.
 - `rsa::KeyPair::sign_digest`, `digest::Digest::import_less_safe`, and the PKCS#1 v1.5 encryption keys (`rsa::Pkcs1PublicEncryptingKey`, `rsa::Pkcs1PrivateDecryptingKey`): rind signs only digests it computed, and refuses PKCS#1 v1.5 encryption, which invites padding-oracle attacks.
-- `io::der`, `test`, `unstable`, `awslc_version`, `try_fips_self_test`, the FIPS-only functions, and `rand::unsealed`, which `dev-tests-only` exposes.
+- `io::der`, `test`, `unstable`, `awslc_version`, `try_fips_self_test`, the FIPS-only functions, and `rand::unsealed`, which aws-lc-rs's `dev-tests-only` feature exposes; rind-aws-lc-rs accepts that feature but adds nothing for it.
 
 ## Behaves differently
 
