@@ -138,7 +138,7 @@ library = "rind"
 operations = ["aes128-gcm/*", "aes128-gcm-open/*", "aes256-gcm/*", "aes256-gcm-open/*"]
 arch = "x86_64"
 cpu = ["aes", "pclmulqdq", "ssse3", "sse4.1", "avx", "movbe", "!vaes"]
-proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/AesGcm.lean"
 
 # aws-lc-rs: SHA-512 on Intel x86_64 alone. On aarch64, NSym's proof of

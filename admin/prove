@@ -478,13 +478,6 @@ check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Alg
     'pub static MD5:' 'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
     'pub static SHA512_256:' 'pub static SHA3_256:' 'pub static SHA3_384:' 'pub static SHA3_512:' \
     'pub struct Digest {' 'impl Digest {' 'impl AsRef<[u8]> for Digest {'
-aes_ni_items() {
-    items rind/src/low/x86_64/aes.rs 'const RCON' 'fn aes128_expand(' 'fn aes256_expand(' \
-        'fn sub_rot_word(' 'fn xor_prefix(' 'fn zero()' 'fn aes128_block(' 'fn aes256_block('
-    items rind/src/low/x86_64/ghash.rs 'fn u128_to_m128i(' 'const GF128_POLY_HI:' \
-        'const GF128_POLY_CARRY_MASK:'
-}
-check_quote X86_64/AesNi aes_ni_items
 check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static AES_128_GCM:' 'pub static AES_192_GCM:' 'pub static AES_256_GCM:' 'pub static CHACHA20_POLY1305:' 'impl Key {' \
     'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \
@@ -773,11 +766,7 @@ extract x86_64 X86_64 \
     --include crate::mid::aes::check_gcm_lengths \
     --include crate::mid::aes::check_counter \
     --include crate::low::x86_64::aes \
-    --opaque crate::low::x86_64::aes::aes128_expand \
     --opaque crate::low::x86_64::aes::aes192_expand \
-    --opaque crate::low::x86_64::aes::aes256_expand \
-    --opaque crate::low::x86_64::aes::aes128_block \
-    --opaque crate::low::x86_64::aes::aes256_block \
     --opaque crate::low::x86_64::aes::aes_block \
     --opaque crate::low::x86_64::aes::HwKey::round_keys_512 \
     --opaque crate::low::x86_64::aes::RoundKeys512 \
@@ -788,9 +777,6 @@ extract x86_64 X86_64 \
     --opaque 'crate::low::x86_64::ghash::_::add_tail' \
     --opaque 'crate::low::x86_64::ghash::_::mul_h' \
     --opaque crate::low::x86_64::ghash::Ghash \
-    --opaque crate::low::x86_64::ghash::u128_to_m128i \
-    --opaque crate::low::x86_64::ghash::GF128_POLY_HI \
-    --opaque crate::low::x86_64::ghash::GF128_POLY_CARRY_MASK \
     --include crate::low::x86_64::aes_gcm::seal \
     --include crate::low::x86_64::aes_gcm::open \
     --include crate::low::x86_64::aes_gcm::vale \

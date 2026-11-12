@@ -6,20 +6,6 @@ open Aeneas Aeneas.Std Result rind.vale
 
 namespace rind.x86_64
 
-@[step]
-theorem aes128_expand_step (key : Std.Array U8 16#usize) (out : Std.Array core.core_arch.x86.__m128i 11#usize) :
-    low.x86_64.aes.aes128_expand key out ⦃ rk =>
-      rk.val = keyToRoundKeys .AES_128 (seqNat8ToSeqNat32LE (bvs key.val)) ⦄ := by
-  obtain ⟨rk, h, hv⟩ := aes128_expand_spec key out
-  rw [h, WP.spec_ok]; exact hv
-
-@[step]
-theorem aes256_expand_step (key : Std.Array U8 32#usize) (out : Std.Array core.core_arch.x86.__m128i 15#usize) :
-    low.x86_64.aes.aes256_expand key out ⦃ rk =>
-      rk.val = keyToRoundKeys .AES_256 (seqNat8ToSeqNat32LE (bvs key.val)) ⦄ := by
-  obtain ⟨rk, h, hv⟩ := aes256_expand_spec key out
-  rw [h, WP.spec_ok]; exact hv
-
 /-- rind runs Vale's AES-GCM on this CPU: its entry guard passes, and its
 CPU-feature checks find AES-NI, PCLMULQDQ, AVX, and MOVBE, but neither tier
 with VAES. None reads an input. -/
@@ -42,7 +28,7 @@ theorem expand_key128_spec (h : RunsValeAesGcm) (key : Slice U8) (hk : key.lengt
   simp only [low.ct.secret_slice, hhw, hss, bind_ok, core.array.TryFromSharedArraySlice.try_from,
     hl', ↓reduceDIte, core.result.Result.unwrap, low.x86_64.aes.zero,
     core.core_arch.x86.sse2._mm_setzero_si128]
-  apply WP.spec_bind (aes128_expand_step _ _)
+  apply WP.spec_bind (aes128_expand_spec _ _)
   intro rk hrk
   rw [WP.spec_ok]
   refine ⟨_, rfl, ?_⟩
@@ -59,7 +45,7 @@ theorem expand_key256_spec (h : RunsValeAesGcm) (key : Slice U8) (hk : key.lengt
   simp only [low.ct.secret_slice, hhw, hss, bind_ok, core.array.TryFromSharedArraySlice.try_from,
     hl', ↓reduceDIte, core.result.Result.unwrap, low.x86_64.aes.zero,
     core.core_arch.x86.sse2._mm_setzero_si128]
-  apply WP.spec_bind (aes256_expand_step _ _)
+  apply WP.spec_bind (aes256_expand_spec _ _)
   intro rk hrk
   rw [WP.spec_ok]
   refine ⟨_, rfl, ?_⟩
@@ -82,7 +68,7 @@ def KeyLen (alg : Algorithm) (n : Nat) : Prop :=
 theorem encrypt_zero (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
     (h : HwKeyIs alg kw hk) :
     low.x86_64.aes.AesKey.encrypt_block (.Hw hk) (Std.Array.repeat 16#usize 0#u8) =
-      ok (low.x86_64.aes.store (aesEncrypt alg kw (mkfour 0 0 0 0))) := by
+      ok (storeBytes (aesEncrypt alg kw (mkfour 0 0 0 0))) := by
   cases hk with
   | Aes128 k =>
     obtain ⟨rfl, hrk⟩ := h
@@ -113,13 +99,13 @@ theorem aes_gcm_new_spec (h : RunsValeAesGcm) (alg : Algorithm) (key : Slice U8)
   simp only [encrypt_zero hwk alg kw hwk_is, bind_ok, lift, low.x86_64.ghash.GhashTable.new, hhw, h512,
     hvaes, htok]
   obtain ⟨px, hpx⟩ := clmul_new_eq (core.num.U128.from_be_bytes
-    (low.x86_64.aes.store (aesEncrypt alg kw (mkfour 0 0 0 0)))) hw
+    (storeBytes (aesEncrypt alg kw (mkfour 0 0 0 0)))) hw
   simp only [hpx, bind_ok, kernel_new_eq, WP.spec_ok]
   refine ⟨hwk, _, _, rfl, rfl, ?_, hwk_is, ?_⟩
   · rcases hk with ⟨rfl, hl⟩ | ⟨rfl, hl⟩ <;> simp [kw, seqNat8ToSeqNat32LE_length, hl, nk]
   · simp only [Std.Array.make_val]
     have := valeHkeys_spec (core.num.U128.from_be_bytes
-      (low.x86_64.aes.store (aesEncrypt alg kw (mkfour 0 0 0 0)))).bv
+      (storeBytes (aesEncrypt alg kw (mkfour 0 0 0 0)))).bv
     rw [from_be_bytes_store] at this ⊢; assumption
 
 @[step]
@@ -293,36 +279,86 @@ theorem aes_gcm_seal_append_tag (he : ∃ e, low.entry.Entry.new_secret = ok e) 
   subst hr
   exact WP.spec_bind (hext ct tag.bytes hlen henc) fun out h => (WP.spec_ok _).2 h
 
-/-- `Vec<u8>`'s `AsMut<[u8]>` impl views the whole vector. -/
-def VecAsMut (AsMutInst : core.convert.AsMut (alloc.vec.Vec U8) (Slice U8)) : Prop :=
-  ∀ v, AsMutInst.as_mut v = ok (alloc.vec.Vec.deref_mut v)
+/-- `Vec<u8>`'s `AsMut<[u8]>`. -/
+abbrev VecAsMut : core.convert.AsMut (alloc.vec.Vec U8) (Slice U8) :=
+  alloc.vec.Vec.Insts.CoreConvertAsMutSlice U8 alloc.alloc.Global
 
-/-- `Vec<u8>`'s `Extend<&u8>` impl appends a slice's bytes, as its
-`extend_from_slice` does. -/
-def VecExtend (ExtendInst : core.iter.traits.collect.Extend (alloc.vec.Vec U8) U8) : Prop :=
-  ∀ v s, ExtendInst.extend (SharedSlice.Insts.CoreIterTraitsCollectIntoIteratorSharedIter U8) v s =
-    alloc.vec.Vec.extend_from_slice core.clone.CloneU8 v s
+/-- `Vec<u8>`'s `Extend<&u8>`. -/
+abbrev VecExtend : core.iter.traits.collect.Extend (alloc.vec.Vec U8) U8 :=
+  alloc.vec.Vec.Insts.CoreIterTraitsCollectExtendSharedAT alloc.alloc.Global core.marker.CopyU8
+
+theorem vec_as_mut (v : alloc.vec.Vec U8) :
+    alloc.vec.Vec.Insts.CoreConvertAsMutSlice.as_mut alloc.alloc.Global v = ok (alloc.vec.Vec.deref_mut v) :=
+  rfl
+
+private theorem slice_next_lt {T : Type} (s : Slice T) (i : Nat) (h : i < s.length) :
+    core.slice.iter.IteratorSliceIter.next ⟨s, i⟩ = ok (some s.val[i], ⟨s, i + 1⟩) := by
+  unfold core.slice.iter.IteratorSliceIter.next
+  rw [dite_eq_left (by simpa [Slice.len, Slice.length] using h)]
+  rfl
+
+private theorem slice_next_ge {T : Type} (s : Slice T) (i : Nat) (h : ¬ i < s.length) :
+    core.slice.iter.IteratorSliceIter.next ⟨s, i⟩ = ok (none, ⟨s, i⟩) := by
+  unfold core.slice.iter.IteratorSliceIter.next
+  rw [dite_eq_right (by simpa [Slice.len, Slice.length] using h)]
+
+/-- A slice's iterator from `i` yields the elements from `i`. -/
+theorem iterToList_slice {T : Type} (s : Slice T) (i : Nat) (acc : List T) :
+    alloc.vec.FromIteratorVec.iterToList (core.iter.traits.iterator.IteratorSliceIter T) ⟨s, i⟩ acc =
+      ok (acc.reverse ++ s.val.drop i) := by
+  rw [alloc.vec.FromIteratorVec.iterToList]
+  by_cases h : i < s.length
+  · simp only [core.iter.traits.iterator.IteratorSliceIter, slice_next_lt s i h, bind_ok]
+    show alloc.vec.FromIteratorVec.iterToList (core.iter.traits.iterator.IteratorSliceIter T)
+      ⟨s, i + 1⟩ (s.val[i] :: acc) = _
+    rw [iterToList_slice s (i + 1)]
+    have hi : i < s.val.length := h
+    rw [List.reverse_cons, List.append_assoc, List.singleton_append, ← List.drop_eq_getElem_cons hi]
+  · simp only [core.iter.traits.iterator.IteratorSliceIter, slice_next_ge s i h, bind_ok]
+    show ok acc.reverse = _
+    simp [List.drop_eq_nil_of_le (show s.val.length ≤ i by simp [Slice.length] at h; omega)]
+termination_by s.length - i
+decreasing_by omega
+
+private theorem clone_u8 (l : List U8) :
+    List.clone (liftFun1 core.clone.impls.CloneU8.clone) l = ok ⟨l, rfl⟩ := by
+  induction l with
+  | nil => rfl
+  | cons a t ih =>
+    simp only [List.clone, List.mapM_with_length] at ih ⊢
+    rw [ih]
+    simp only [liftFun1, core.clone.impls.CloneU8.clone, bind_tc_ok]
+    rfl
+
+/-- `Vec<u8>`'s `extend` of a slice is its `extend_from_slice`. -/
+theorem vec_extend (v : alloc.vec.Vec U8) (s : Slice U8) :
+    VecExtend.extend (SharedSlice.Insts.CoreIterTraitsCollectIntoIteratorSharedIter U8) v s =
+      alloc.vec.Vec.extend_from_slice core.clone.CloneU8 v s := by
+  simp only [alloc.vec.Vec.Insts.CoreIterTraitsCollectExtendSharedAT.extend, alloc.vec.Vec.extend_from_slice,
+    SharedSlice.Insts.CoreIterTraitsCollectIntoIteratorSharedIter.into_iter, bind_ok, iterToList_slice,
+    List.reverse_nil, List.nil_append, List.drop_zero, clone_u8]
+  by_cases h : v.length + s.val.length ≤ Usize.max
+  · rw [dite_eq_left h, dite_eq_left (by simpa [Slice.length] using h), bind_tc_ok]
+  · rw [dite_eq_right h, dite_eq_right (by simpa [Slice.length] using h)]
 
 /-- Sealing a `Vec<u8>` with room for the tag: the vector becomes the
 ciphertext followed by the tag, Vale's `gcm_encrypt_LE` of the message. -/
 theorem aes_gcm_seal_append_tag_vec (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
     (key : List (BitVec 8)) (k : aead.Key) (hk : KeyReady alg key k) (nonce : aead.Nonce) (aad : Slice U8)
-    (AsMutInst : core.convert.AsMut (alloc.vec.Vec U8) (Slice U8))
-    (ExtendInst : core.iter.traits.collect.Extend (alloc.vec.Vec U8) U8) (hasmut : VecAsMut AsMutInst)
-    (hextend : VecExtend ExtendInst) (in_out : alloc.vec.Vec U8) (haad : aad.length < 2 ^ 32)
+    (in_out : alloc.vec.Vec U8) (haad : aad.length < 2 ^ 32)
     (hin : in_out.length < 2 ^ 32) (hlong : 129 ≤ in_out.length) (hroom : in_out.length + 16 ≤ Usize.max) :
-    k.seal_in_place_append_tag AsMutInst ExtendInst nonce aad in_out ⦃ r =>
+    k.seal_in_place_append_tag VecAsMut VecExtend nonce aad in_out ⦃ r =>
       r.1 = .Ok () ∧ r.2.length = in_out.length + 16 ∧
         (bvs (r.2.val.take in_out.length), bvs (r.2.val.drop in_out.length)) =
           gcmEncrypt alg key (bvs nonce.bytes.val) (bvs in_out.val) (bvs aad.val) ⦄ := by
   have hl : in_out.slice.length = in_out.length := rfl
-  apply aes_gcm_seal_append_tag he alg key k hk nonce aad AsMutInst ExtendInst in_out in_out.slice
-    (fun s => ⟨s⟩) (hasmut in_out) haad (by rw [hl]; exact hin) (by rw [hl]; exact hlong)
+  apply aes_gcm_seal_append_tag he alg key k hk nonce aad VecAsMut VecExtend in_out in_out.slice
+    (fun s => ⟨s⟩) (vec_as_mut in_out) haad (by rw [hl]; exact hin) (by rw [hl]; exact hlong)
   intro ct tag hlen henc
   have hct : ct.val.length = in_out.length := hlen
   have htag : tag.to_slice.val = tag.val := by simp [Std.Array.to_slice]
   have htl : tag.val.length = 16 := by simp
-  rw [hextend]
+  rw [vec_extend]
   unfold alloc.vec.Vec.extend_from_slice
   have hfit : (⟨ct⟩ : alloc.vec.Vec U8).length + tag.to_slice.length ≤ Usize.max := by
     change ct.val.length + tag.to_slice.val.length ≤ Usize.max
