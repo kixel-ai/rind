@@ -34,7 +34,7 @@ pub(in crate::low) fn sha256_compress_blocks_shaext(
             "pblendw $240, %xmm0, %xmm10",
             "test %rdx, %rdx",
             "je 3f",
-            load_constants!(),
+            "movdqa 256(%rcx), %xmm4",
             "2:",
             "movdqu (%rsi), %xmm14",
             "movdqu 16(%rsi), %xmm15",
@@ -88,7 +88,7 @@ pub(in crate::low) fn sha256_finish_shaext(
             "movdqa %xmm0, %xmm11",
             "palignr $8, %xmm10, %xmm11",
             "pblendw $240, %xmm0, %xmm10",
-            load_constants!(),
+            "movdqa 256(%rcx), %xmm4",
             // The message's whole blocks, counted down in rdx, which the
             // last borrow leaves at -1 for the padded blocks.
             "3:",
@@ -116,15 +116,6 @@ pub(in crate::low) fn sha256_finish_shaext(
             // r11 hold, zeros, and rax as the last lane's top word unless
             // that lane is r10 and r11's.
             "2:",
-            "movq %r10, %xmm0",
-            "movq %r11, %xmm2",
-            "punpcklqdq %xmm2, %xmm0",
-            "xor %r11d, %r11d",
-            "movq %r11, %xmm15",
-            "movq %r11, %xmm1",
-            "movq %r11, %xmm12",
-            "movq %rax, %xmm2",
-            "punpcklqdq %xmm2, %xmm12",
             "cmp $1, %r9",
             "jb 6f",
             "movdqu (%rsi), %xmm14",
@@ -133,16 +124,34 @@ pub(in crate::low) fn sha256_finish_shaext(
             "cmp $2, %r9",
             "je 8f",
             "movdqu 32(%rsi), %xmm1",
-            "movdqa %xmm0, %xmm12",
+            "movq %r10, %xmm12",
+            "movq %r11, %xmm0",
+            "punpcklqdq %xmm0, %xmm12",
             "jmp 4b",
             "6:",
-            "movdqa %xmm0, %xmm14",
-            "jmp 4b",
+            "movq %r10, %xmm14",
+            "movq %r11, %xmm0",
+            "punpcklqdq %xmm0, %xmm14",
+            "xor %r11d, %r11d",
+            "movq %r11, %xmm15",
+            "movq %r11, %xmm1",
+            "jmp 9f",
             "7:",
-            "movdqa %xmm0, %xmm15",
-            "jmp 4b",
+            "movq %r10, %xmm15",
+            "movq %r11, %xmm0",
+            "punpcklqdq %xmm0, %xmm15",
+            "xor %r11d, %r11d",
+            "movq %r11, %xmm1",
+            "jmp 9f",
             "8:",
-            "movdqa %xmm0, %xmm1",
+            "movq %r10, %xmm1",
+            "movq %r11, %xmm0",
+            "punpcklqdq %xmm0, %xmm1",
+            "xor %r11d, %r11d",
+            "9:",
+            "movq %r11, %xmm12",
+            "movq %rax, %xmm0",
+            "punpcklqdq %xmm0, %xmm12",
             "jmp 4b",
             "5:",
             unload_state!(),
@@ -244,25 +253,9 @@ fn ended(part: &[u8]) -> u64 {
     word
 }
 
-/// Loads the byte-swap mask into xmm4, and the last five groups of round
-/// constants into xmm5 to xmm9, leaving `rounds!` to read the rest from `K`.
-macro_rules! load_constants {
-    () => {
-        concat!(
-            "movdqa 256(%rcx), %xmm4\n",
-            "movdqa 176(%rcx), %xmm5\n",
-            "movdqa 192(%rcx), %xmm6\n",
-            "movdqa 208(%rcx), %xmm7\n",
-            "movdqa 224(%rcx), %xmm8\n",
-            "movdqa 240(%rcx), %xmm9\n",
-        )
-    };
-}
-use load_constants;
-
 /// Compresses the block whose bytes xmm14, xmm15, xmm1, and xmm12 hold into
-/// ABEF and CDGH in xmm11 and xmm10, with the mask and constants
-/// `load_constants!` loads.
+/// ABEF and CDGH in xmm11 and xmm10, with the byte-swap mask in xmm4 and the
+/// round constants at rcx.
 macro_rules! rounds {
     () => {
         concat!(
@@ -372,7 +365,7 @@ macro_rules! rounds {
             "movdqa %xmm15, %xmm0\n",
             "movdqa %xmm15, %xmm1\n",
             "palignr $4, %xmm14, %xmm1\n",
-            "paddd %xmm5, %xmm0\n",
+            "paddd 176(%rcx), %xmm0\n",
             "paddd %xmm12, %xmm1\n",
             "sha256msg2 %xmm15, %xmm1\n",
             "sha256rnds2 %xmm0, %xmm3, %xmm2\n",
@@ -387,7 +380,7 @@ macro_rules! rounds {
             "movdqa %xmm12, %xmm13\n",
             "palignr $4, %xmm1, %xmm13\n",
             "movdqa %xmm1, %xmm0\n",
-            "paddd %xmm6, %xmm0\n",
+            "paddd 192(%rcx), %xmm0\n",
             "sha256rnds2 %xmm0, %xmm3, %xmm2\n",
             "pshufd $14, %xmm0, %xmm0\n",
             "paddd %xmm14, %xmm13\n",
@@ -396,16 +389,16 @@ macro_rules! rounds {
             "movdqa %xmm13, %xmm1\n",
             "palignr $4, %xmm12, %xmm1\n",
             "movdqa %xmm12, %xmm0\n",
-            "paddd %xmm7, %xmm0\n",
+            "paddd 208(%rcx), %xmm0\n",
             "sha256rnds2 %xmm0, %xmm3, %xmm2\n",
             "pshufd $14, %xmm0, %xmm0\n",
             "sha256rnds2 %xmm0, %xmm2, %xmm3\n",
             "paddd %xmm15, %xmm1\n",
             "sha256msg2 %xmm13, %xmm1\n",
             "movdqa %xmm13, %xmm0\n",
-            "paddd %xmm8, %xmm0\n",
+            "paddd 224(%rcx), %xmm0\n",
             "sha256rnds2 %xmm0, %xmm3, %xmm2\n",
-            "paddd %xmm9, %xmm1\n",
+            "paddd 240(%rcx), %xmm1\n",
             "pshufd $14, %xmm0, %xmm0\n",
             "sha256rnds2 %xmm0, %xmm2, %xmm3\n",
             "movdqa %xmm1, %xmm0\n",
