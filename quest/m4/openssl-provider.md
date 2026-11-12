@@ -29,29 +29,30 @@ Planned by the maintainer on 2026-11-04 in m4. The provider, its documented
   ECDSA and ECDH data through `sh/openssl.sh`, the `openssl` fuzz target, and
   ctgrind.
 - Decided 2026-11-11 (maintainer, /quest-unblock): rind-openssl always
-  builds rind with `wipe`, and wipes the `OSSL_PARAM` buffers it fills with
-  key material (rejected: a build flag off by default as in rind; wiping
-  nothing). `AGENTS.md` leaves other scratch unwiped because safe Rust cannot
-  read freed memory; that reason does not cover these buffers. They are heap
-  scratch derived from a private key, which `AGENTS.md` wipes under `wipe`,
-  and the provider's heap is the host process's, which C code reads. OpenSSL's
-  own providers cleanse keys, so anything less is a regression for whoever
-  switches. Whether `wipe` is on by default for rind itself is a separate
-  question, open in [the wipe-default quest](/quest/m2/wipe-default.md).
-
-## Waiting
-
-- Maintainer: how the provider takes OpenSSL's `EC` key type, given that
-  registering it claims every curve. (a) Only when its configuration section
-  opts in with `ec = 1`, which a deployment on the NIST curves alone sets;
-  keys on other curves then fail with rind's error. `EVP_DigestSign` and
-  `EVP_DigestVerify` run on rind's message API, and `EVP_PKEY_sign` over a
-  bare digest fails as unsupported. (b) As (a), with rind gaining ECDSA over a
-  caller's digest, as aws-lc-rs's `EcdsaKeyPair::sign_digest` does, so
-  `EVP_PKEY_sign` works too, at the cost of a second way to sign in rind's
-  API. (c) Always, refusing other curves, which breaks secp256k1 and
-  Brainpool for every deployment that loads rind. (d) Never: EC stays the
-  default provider's, and this quest is deleted. Recommended: (a), which needs
-  no change to rind's API, keeps the common paths fast, and fails loudly
-  rather than falling back. An agent cannot pick: each option trades
-  breaking some deployments' curves or calls against rind's API surface.
+  wipes the keys it holds and the `OSSL_PARAM` buffers it fills with key
+  material (rejected: a build flag off by default; wiping nothing).
+  `AGENTS.md` leaves other scratch unwiped because safe Rust cannot read
+  freed memory; that reason does not cover these buffers. They are heap
+  scratch derived from a private key, and the provider's heap is the host
+  process's, which C code reads. OpenSSL's own providers cleanse keys, so
+  anything less is a regression for whoever switches.
+- Decided 2026-11-12 (maintainer, /quest-unblock): on a CPU rind refuses, the
+  provider loads anyway, reports status 0, and fails every key it would make
+  with rind's error naming the missing feature, as
+  [moq-dev/rind#658](https://github.com/moq-dev/rind/pull/658) does
+  (rejected: fail `OSSL_provider_init` and document OpenSSL's silent
+  fallback; abort the process from `OSSL_provider_init`). Since OpenSSL
+  3.0.13, 3.1.5, and 3.2.1, a provider whose init fails is a non-fatal
+  activation failure even under `config_diagnostics = 1`, so failing init
+  would leave every key on the default provider without a word. The EC key
+  type refuses the same way.
+- Decided 2026-11-12 (maintainer, /quest-unblock): the provider takes
+  OpenSSL's `EC` key type for P-256, P-384, and P-521 only when its
+  configuration section opts in with `ec = 1`. Keys on other curves then fail
+  with rind's error, `EVP_DigestSign` and `EVP_DigestVerify` run on rind's
+  message API, and `EVP_PKEY_sign` over a bare digest fails as unsupported
+  (rejected: also add ECDSA over a caller's digest to rind, as aws-lc-rs's
+  `EcdsaKeyPair::sign_digest`; register `EC` always, breaking secp256k1 and
+  Brainpool for every deployment that loads rind; never, deleting this
+  quest). It needs no change to rind's API and fails loudly rather than
+  falling back.
