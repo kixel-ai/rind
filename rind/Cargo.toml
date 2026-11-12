@@ -61,6 +61,12 @@ aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "
 aws-lc-sys = { version = "0.47", default-features = false }
 # HPKE, which aws-lc-rs does not expose either; `hazmat` reads its private keys.
 hpke-rs = { version = "0.8", default-features = false, features = ["hazmat", "rustcrypto", "std"] }
+# SLH-DSA, which aws-lc-rs lacks: RustCrypto's, whose stable 0.1 predates the
+# digest 0.11 stack the other dependencies share, and integritychain's.
+fips205 = "0.5"
+# Encodes RustCrypto's SLH-DSA keys.
+pkcs8 = { version = "0.11", default-features = false, features = ["alloc"] }
+slh-dsa = "=0.2.0-rc.5"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

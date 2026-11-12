@@ -180,11 +180,6 @@ pub(crate) const fn public_key_len<P: Params>() -> usize {
     2 * P::N
 }
 
-/// The length of a parameter set's signature.
-pub(crate) const fn signature_len<P: Params>() -> usize {
-    P::SIG_LEN
-}
-
 /// `m`, the message digest's length: the FORS indices, then the tree and
 /// leaf indices.
 const fn digest_len<P: Params>() -> usize {
@@ -1180,11 +1175,8 @@ mod tests {
         fn check<P: Params>(group: &serde_json::Value, test: &serde_json::Value) {
             let key = KeyPair::<P>::from_secret_key(&test.hex("sk")).unwrap();
             assert_eq!(key.public_key(), test.hex("pk"));
-            let addrnd = match group.flag("deterministic") {
-                true => test.hex("pk")[..P::N].to_vec(),
-                false => test.hex("additionalRandomness"),
-            };
             let prefix = acvp_prefix(group, test);
+            let addrnd = test.hex("additionalRandomness");
             let signature = key.sign_internal(&prefix, &test.hex("message"), &addrnd);
             assert_eq!(
                 *signature,
@@ -1193,8 +1185,14 @@ mod tests {
                 test.int("tcId")
             );
         }
+        // The s sets sign for seconds in a debug build, so only SLOW_TESTS
+        // takes every test; otherwise each group gives its first.
+        let per_group = match std::env::var_os("SLOW_TESTS") {
+            Some(_) => usize::MAX,
+            None => 1,
+        };
         for group in acvp("SLH-DSA-sigGen-FIPS205") {
-            for test in group.tests() {
+            for test in group.tests().iter().take(per_group) {
                 by_set!(group.str("parameterSet"), check(&group, test));
             }
         }
@@ -1231,7 +1229,7 @@ mod tests {
             let key = KeyPair::<P>::generate().unwrap();
             let pk = key.public_key();
             let signature = key.sign(&[0, 0], b"message").unwrap();
-            assert_eq!(signature.len(), signature_len::<P>());
+            assert_eq!(signature.len(), P::SIG_LEN);
             verify::<P>(pk, &[0, 0], b"message", &signature).unwrap();
             assert_eq!(
                 verify::<P>(pk, &[0, 0], b"massage", &signature),
