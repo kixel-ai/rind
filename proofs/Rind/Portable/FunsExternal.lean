@@ -37,7 +37,13 @@ opaque low.entry.Entry.new_secret : Result low.entry.Entry
 /-- Whether an entry guard is held, which a debug build asserts. -/
 opaque low.entry.Entry.assert_held : Result Unit
 
-/-! AES, whose header protection no proof covers. -/
+/-! AES, which no proof covers on this backend. -/
+
+opaque mid.aes.Aes.new
+  : cipher.Algorithm → Slice Std.U8 → Result (core.result.Result mid.aes.Aes error.Error)
+
+opaque mid.aes.Aes.encrypt_block
+  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
 
 opaque mid.aes.Aes.header_protection_mask
   : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 5#usize)

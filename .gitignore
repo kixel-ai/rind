@@ -46,5 +46,6 @@ proofs/Rind/Portable/HmacApi.lean
 proofs/Rind/Portable/DigestApi.lean
 proofs/Rind/Portable/Hkdf.lean
 proofs/Rind/Portable/Pbkdf2.lean
+proofs/Rind/Aarch64/Sha3.lean
 patch/*/Cargo.lock
 __pycache__/
