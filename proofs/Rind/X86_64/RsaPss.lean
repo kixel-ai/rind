@@ -11,13 +11,6 @@ any hash meeting `HashSpec`.
 
 namespace rind.x86_64
 
-theorem getElem!_set_of_lt {α : Type} [Inhabited α] (l : List α) (i p : Nat) (a : α) (hp : p < l.length) :
-    (l.set i a)[p]! = if p = i then a else l[p]! := by
-  simp only [List.getElem!_eq_getElem?_getD, List.getElem?_set]
-  by_cases h : i = p
-  · subst h; simp [hp]
-  · simp [h, Ne.symm h]
-
 /-- `mgf1_xor`'s inner loop XORs `term` into `out` from `done`. -/
 theorem mgf1_xor_inner_spec (o0 term : Slice U8) (done : Usize) (iter : core.ops.range.Range Usize)
     (hend : done.val + iter.end.val ≤ o0.length) (hterm : iter.end.val ≤ term.length)

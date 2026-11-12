@@ -16,6 +16,13 @@ abbrev RsaInt := low.posint.PosInt 128#usize
 /-- The words of `p` below `k`. -/
 def lowWords {N : Usize} (p : low.posint.PosInt N) (k : Nat) : List U64 := p.words.val.take k
 
+theorem getElem!_set_of_lt {α : Type} [Inhabited α] (l : List α) (i p : Nat) (a : α) (hp : p < l.length) :
+    (l.set i a)[p]! = if p = i then a else l[p]! := by
+  simp only [List.getElem!_eq_getElem?_getD, List.getElem?_set]
+  by_cases h : i = p
+  · subst h; simp [hp]
+  · simp [h, Ne.symm h]
+
 theorem take_setSlice_zero {α : Type} (l s : List α) (h : s.length ≤ l.length) :
     (l.setSlice! 0 s).take s.length = s := by
   simp [List.setSlice!, Nat.min_eq_left h]
