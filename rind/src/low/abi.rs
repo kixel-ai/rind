@@ -104,6 +104,19 @@ macro_rules! narrow_args {
 
 narrow_args!(bool u8 u32 i32);
 
+/// Eight bytes, which the Rust ABI passes in one register, as an integer.
+impl Arg for [u8; 8] {
+    fn pass(self, words: &mut Words) {
+        words.push(u64::from_ne_bytes(self) as Word);
+    }
+}
+
+/// A CPU feature token, which is zero-sized, so the Rust ABI passes nothing.
+#[cfg(target_arch = "x86_64")]
+impl Arg for crate::low::x86_64::cpu::HaveSha256 {
+    fn pass(self, _: &mut Words) {}
+}
+
 #[cfg(target_pointer_width = "64")]
 narrow_args!(u64);
 

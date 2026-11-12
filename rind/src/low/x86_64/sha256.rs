@@ -62,19 +62,20 @@ pub(in crate::low) fn sha256_compress_blocks_shaext(
     }
 }
 
-/// The digest of `state` followed by `message`, padded and closed by
-/// `length`.
+/// Writes to `digest` the digest of `state` followed by `message`, padded and
+/// closed by `length`.
 ///
 /// The last block's whole lanes are loaded where they lie and the rest is
 /// padded in registers, and the digest is returned in them, so no load
 /// waits on a store that cannot forward.
 #[inline(never)]
 pub(in crate::low) fn sha256_finish_shaext(
+    digest: &mut [u8; 32],
     state: &[u32; 8],
     message: &[u8],
     length: [u8; 8],
     _token: super::cpu::HaveSha256,
-) -> [u8; 32] {
+) {
     let (blocks, tail) = message.as_chunks::<64>();
     let padded = padded(tail, length);
     let (abcd, efgh): (__m128i, __m128i);
@@ -173,13 +174,11 @@ pub(in crate::low) fn sha256_finish_shaext(
             options(att_syntax, nostack, readonly),
         );
     }
-    let mut digest = [0u8; 32];
     // SAFETY: `digest` is 32 bytes and writable
     unsafe {
         _mm_storeu_si128(digest[0..].as_mut_ptr().cast(), abcd);
         _mm_storeu_si128(digest[16..].as_mut_ptr().cast(), efgh);
     }
-    digest
 }
 
 /// The last block of a message, padded: whole lanes of the message's bytes,
@@ -228,11 +227,7 @@ fn padded(tail: &[u8], length: [u8; 8]) -> Padded {
     if lanes == 3 {
         end[1] |= length;
     }
-    Padded {
-        lanes,
-        end,
-        length,
-    }
+    Padded { lanes, end, length }
 }
 
 /// `part`, under 8 bytes, then the 0x80 that ends a message, as a
@@ -690,8 +685,45 @@ mod tests {
             let mut padded = [[0u8; 64]; 2];
             let padded = crate::low::pad(rest, length, &mut padded);
             generic::sha256::sha256_compress_blocks(&mut wanted, padded);
-            let got = sha256_finish_shaext(&START, message, length, token);
+            let mut got = [0; 32];
+            sha256_finish_shaext(&mut got, &START, message, length, token);
             assert_eq!(got, crate::low::sha256_digest(&wanted), "{len} bytes");
         }
+    }
+
+    // The blocks declare every register they write; this checks they write
+    // no other the ABI preserves, on input that takes both blocks' loops and
+    // the finish's length block.
+    #[test]
+    fn abi() {
+        let Some(token) = HaveSha256::check() else {
+            return;
+        };
+        let message = [0x5a; 2 * 64 + 60];
+        let mut wanted = START;
+        generic::sha256::sha256_compress_blocks(&mut wanted, &message[..128]);
+        let mut got = START;
+        crate::low::abi::call!(
+            sha256_compress_blocks_shaext,
+            &mut got,
+            &message[..128],
+            token
+        );
+        assert_eq!(got, wanted);
+
+        let length = 0x0102030405060708u64.to_be_bytes();
+        let mut padded = [[0u8; 64]; 2];
+        let padded = crate::low::pad(&message[128..], length, &mut padded);
+        generic::sha256::sha256_compress_blocks(&mut wanted, padded);
+        let mut got = [0; 32];
+        crate::low::abi::call!(
+            sha256_finish_shaext,
+            &mut got,
+            &START,
+            &message[..],
+            length,
+            token
+        );
+        assert_eq!(got, crate::low::sha256_digest(&wanted));
     }
 }
