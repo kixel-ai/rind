@@ -53,9 +53,9 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 ### Valgrind cannot run x86_64's newest extensions
 
 - **Breaks:** valgrind (through 3.27) decodes no AVX-512, VAES, VPCLMULQDQ, or SHA instruction and hides them from `cpuid`, so ctgrind never reaches the code that uses them.
-- **Workaround:** `admin/ct-sde` compares Intel SDE traces of those paths for two secrets, through the `ct_sde` tests (`rind/src/low/x86_64/ct_sde.rs`), in `ctgrind.yml`'s `x86_64-sde` job. Unlike ctgrind it sees only addresses, not variable-time instructions.
+- **Workaround:** `admin/ct-sde` compares Intel SDE traces of those paths for two secrets, through the `ct_sde` tests (`rind/src/low/x86_64/ct_sde.rs`), in `ctgrind.yml`'s `x86_64-sde` job, all but AVX-512 ML-KEM, which samples only the public matrix. Unlike ctgrind it sees only addresses, not variable-time instructions.
 - **Reported:** no.
-- **Goes when:** valgrind decodes them; `admin/ct-sde` then duplicates ctgrind.
+- **Goes when:** valgrind decodes them and reports them in `cpuid`, and ctgrind runs on a host that has them; `admin/ct-sde` then duplicates ctgrind.
 
 ### Valgrind hides the ARM crypto extension and SHA3
 
@@ -114,7 +114,7 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 ### Aeneas cannot translate several kinds of Rust
 
 - **Breaks:** Aeneas cannot translate function pointers, `&dyn` calls, `'static` and nested borrows, raw-pointer loads, atomics, and some standard-library impls, so the Rust that uses them stays untranslated.
-- **Workaround:** `proofs/` models that Rust by hand, quote-checked against the source by `admin/prove`. [Its quest](/quest/m4/verified/aeneas-fn-pointers.md) lists each model with the Aeneas issue that blocks it.
+- **Workaround:** `proofs/` models that Rust by hand, quote-checked against the source by `admin/prove`. [Its quest](/quest/m4/verified/aeneas-fn-pointers.md) lists each model, with the Aeneas issue that blocks it where one exists.
 - **Reported:** per limitation, in that quest.
 - **Goes when:** each limitation lifts, model by model.
 

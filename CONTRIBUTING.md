@@ -146,7 +146,7 @@ Report bugs that also affect graviola, or any other source rind imports, upstrea
 Each `Written for Graviola by ...` header is attribution; keep it on files that carry one.
 
 [UPSTREAM.md](UPSTREAM.md) lists every workaround for a bug or gap in a tool or dependency rind doesn't own.
-A PR that adds such a workaround adds its entry there and names the entry in the workaround's comment; a PR that drops one deletes its entry.
+A PR that adds such a workaround adds its entry there and names the entry in the workaround's comment; a PR that drops one removes it from its entry, and deletes the entry once it lists no workaround.
 
 # Releases
 
