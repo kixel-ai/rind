@@ -73,12 +73,11 @@ pub struct DecryptingKey {
 }
 
 /// The key's algorithm.
-// Aligned like the private key's words, so on 32-bit targets the key's
-// padding falls inside this value, which `DecryptingKey`'s drop wipes whole,
-// rather than after it, where `tests/zeroing.rs` finds stale bytes.
+// Aligned like the private key's `u64` fields, which is 4 bytes on i686 and 8
+// on armv7, so any padding `DecryptingKey` needs falls inside this value,
+// which its drop wipes whole.
 #[derive(Clone, Copy)]
-#[repr(align(8))]
-struct AlgorithmRef(low::ZeroableRef<OaepAlgorithm>);
+struct AlgorithmRef(low::ZeroableRef<OaepAlgorithm>, [u64; 0]);
 
 impl low::Zeroable for AlgorithmRef {}
 
@@ -107,7 +106,7 @@ impl DecryptingKey {
     fn new(algorithm: &'static OaepAlgorithm, key: rsa::SigningKey) -> Self {
         Self {
             key,
-            algorithm: AlgorithmRef(low::ZeroableRef::new(algorithm)),
+            algorithm: AlgorithmRef(low::ZeroableRef::new(algorithm), []),
         }
     }
 

@@ -1345,3 +1345,189 @@ fn test_xchacha20poly1305() {
         }
     }
 }
+
+#[derive(Deserialize)]
+struct MlDsaFile {
+    #[serde(rename(deserialize = "testGroups"))]
+    groups: Vec<MlDsaGroup>,
+}
+
+#[derive(Deserialize)]
+struct MlDsaGroup {
+    #[serde(default, rename(deserialize = "privateSeed"), with = "hex::serde")]
+    private_seed: Vec<u8>,
+    // The seed form, absent from some groups.
+    #[serde(default, rename(deserialize = "privateKeyPkcs8"), with = "hex::serde")]
+    private_key_pkcs8: Vec<u8>,
+    #[serde(default, rename(deserialize = "privateKey"), with = "hex::serde")]
+    private_key: Vec<u8>,
+    // Hex, or null for a group whose private key is invalid.
+    #[serde(rename(deserialize = "publicKey"))]
+    public_key: Option<String>,
+    #[serde(default, rename(deserialize = "publicKeyDer"), with = "hex::serde")]
+    public_key_der: Vec<u8>,
+    tests: Vec<MlDsaTest>,
+}
+
+#[derive(Deserialize)]
+struct MlDsaTest {
+    #[serde(rename(deserialize = "tcId"))]
+    id: usize,
+    #[serde(default, with = "hex::serde")]
+    msg: Vec<u8>,
+    #[serde(default, with = "hex::serde")]
+    ctx: Vec<u8>,
+    #[serde(default, with = "hex::serde")]
+    sig: Vec<u8>,
+    result: ExpectedResult,
+    flags: Vec<String>,
+}
+
+impl MlDsaTest {
+    /// Whether this test signs a message with the empty context, as rind's
+    /// public API does, rather than a context or only `mu`.
+    fn pure(&self) -> bool {
+        self.ctx.is_empty() && !self.flags.iter().any(|flag| flag == "Internal")
+    }
+}
+
+fn ml_dsa_file(name: &str) -> MlDsaFile {
+    let file = File::open(vectors(name)).expect("failed to open data file");
+    serde_json::from_reader(BufReader::new(file)).expect("invalid test JSON")
+}
+
+/// A PKCS#8 v1 ML-DSA key of RFC 9881's `id-ml-dsa-*` OID with last arc
+/// `arc`, holding `private_key`, an encoded RFC 9881 CHOICE.
+fn ml_dsa_pkcs8(arc: u8, private_key: &[u8]) -> Vec<u8> {
+    let oid = [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, arc];
+    let algorithm = der(0x30, &der(0x06, &oid));
+    let version = der(0x02, &[0]);
+    der(0x30, &[version, algorithm, der(0x04, private_key)].concat())
+}
+
+/// One parameter set's files: its seed and expanded signing keys, and its
+/// verification tests.
+fn ml_dsa_wycheproof<P: sign::MlDsaParameterSet>(
+    [seed, noseed, verify]: [&str; 3],
+    algorithm: &'static signature::VerificationAlgorithm,
+    arc: u8,
+) {
+    let mut verified = 0;
+    for group in ml_dsa_file(verify).groups {
+        let public_key = hex::decode(group.public_key.unwrap()).unwrap();
+        let key = signature::PublicKey::new(algorithm, &public_key);
+        let from_spki = signature::PublicKey::from_spki(algorithm, &group.public_key_der);
+        match (&key, from_spki) {
+            (Ok(key), Ok(from_spki)) => {
+                assert_eq!(from_spki.as_ref(), key.as_ref());
+                assert_eq!(key.to_spki().as_ref(), &group.public_key_der[..]);
+            }
+            (Err(e), Err(from_spki)) => assert_eq!(*e, from_spki),
+            (key, from_spki) => panic!("{key:?} but from SPKI {from_spki:?}"),
+        }
+
+        for test in group.tests.iter().filter(|test| test.pure()) {
+            let result = match &key {
+                Ok(key) => key.verify(&test.msg, &test.sig),
+                Err(e) => Err(*e),
+            };
+            match (test.result, result) {
+                (ExpectedResult::Valid, Ok(())) => {}
+                (ExpectedResult::Invalid, Err(Error::BadSignature | Error::KeyRejected(_))) => {}
+                (expected, result) => {
+                    panic!("tcId {}: expected {expected:?} got {result:?}", test.id)
+                }
+            }
+            verified += 1;
+        }
+    }
+    assert_ne!(verified, 0);
+
+    let mut signed = 0;
+    for group in ml_dsa_file(seed).groups {
+        let key = sign::MlDsaKeyPair::<P>::from_seed(&group.private_seed);
+        let from_pkcs8 = match group.private_key_pkcs8.is_empty() {
+            true => None,
+            false => Some(sign::MlDsaKeyPair::<P>::from_pkcs8(
+                &group.private_key_pkcs8,
+            )),
+        };
+        let Some(public_key) = group.public_key else {
+            assert!(key.is_err());
+            assert!(from_pkcs8.is_none_or(|key| key.is_err()));
+            continue;
+        };
+        let key = key.unwrap();
+        let public_key = hex::decode(public_key).unwrap();
+        assert_eq!(key.public_key().as_ref(), public_key);
+        assert_eq!(key.to_seed().unwrap().as_ref(), group.private_seed);
+        // rind writes the seed form, as aws-lc and Wycheproof do.
+        if let Some(from_pkcs8) = from_pkcs8 {
+            assert_eq!(from_pkcs8.unwrap().public_key().as_ref(), public_key);
+            assert_eq!(key.to_pkcs8().as_ref(), group.private_key_pkcs8);
+        }
+
+        let verifier = signature::PublicKey::new(algorithm, &public_key).unwrap();
+        for test in group.tests.iter().filter(|test| test.pure()) {
+            // Signing is hedged, so check that the signature verifies rather
+            // than its bytes.
+            let signature = key.sign(&test.msg).unwrap();
+            verifier.verify(&test.msg, signature.as_ref()).unwrap();
+            assert_eq!(
+                verifier.verify(&test.msg, &test.sig).is_ok(),
+                test.result == ExpectedResult::Valid,
+                "tcId {}",
+                test.id
+            );
+            signed += 1;
+        }
+    }
+    assert_ne!(signed, 0);
+
+    for group in ml_dsa_file(noseed).groups {
+        let der = ml_dsa_pkcs8(arc, &der(0x04, &group.private_key));
+        let Ok(key) = sign::MlDsaKeyPair::<P>::from_pkcs8(&der) else {
+            // An inconsistent or misshapen key.
+            for test in &group.tests {
+                assert_eq!(test.result, ExpectedResult::Invalid, "tcId {}", test.id);
+            }
+            continue;
+        };
+        let public_key = hex::decode(group.public_key.unwrap()).unwrap();
+        assert_eq!(key.public_key().as_ref(), public_key);
+        // A key loaded in its expanded form has no seed, so it writes that.
+        assert!(key.to_seed().is_none());
+        assert_eq!(key.to_pkcs8().as_ref(), der);
+    }
+}
+
+#[test]
+fn test_ml_dsa() {
+    ml_dsa_wycheproof::<sign::MlDsa44>(
+        [
+            "mldsa_44_sign_seed_test.json",
+            "mldsa_44_sign_noseed_test.json",
+            "mldsa_44_verify_test.json",
+        ],
+        &verify::ML_DSA_44,
+        17,
+    );
+    ml_dsa_wycheproof::<sign::MlDsa65>(
+        [
+            "mldsa_65_sign_seed_test.json",
+            "mldsa_65_sign_noseed_test.json",
+            "mldsa_65_verify_test.json",
+        ],
+        &verify::ML_DSA_65,
+        18,
+    );
+    ml_dsa_wycheproof::<sign::MlDsa87>(
+        [
+            "mldsa_87_sign_seed_test.json",
+            "mldsa_87_sign_noseed_test.json",
+            "mldsa_87_verify_test.json",
+        ],
+        &verify::ML_DSA_87,
+        19,
+    );
+}
