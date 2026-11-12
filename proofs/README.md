@@ -38,6 +38,15 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
   with its relocations and the read-only data they reach, here the round
   constants, which `admin/prove` extracts as an object file; the proof checks
   the constants against FIPS 180-4's.
+- `x86_64/bn_mul_mont_nohw.ml`: `BN_MUL_MONT_NOHW_SUBROUTINE_CORRECT`, rind's
+  proof that the naked function `low::x86_64::mont::bn_mul_mont_nohw`,
+  aws-lc's word-serial Montgomery multiplication, writes the Montgomery
+  product `x * y / 2^(64k) mod m` of its `k`-word operands, from two words up,
+  as s2n-bignum's `bignum_montmul` states it, given `-m^-1 mod 2^64` and
+  `x * y <= 2^(64k) * m`. The theorem covers the whole function: its stack
+  frame of up to `8k + 1088` bytes below the stack pointer, aligned and probed
+  a page at a time, and the callee-saved registers it restores. The function
+  has no relocations, so its object is its section alone.
 - `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64 and
   aarch64: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`, that the
   blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes` return
@@ -296,7 +305,7 @@ digest API reaches each hash through function pointers too, which
 models the `Algorithm` statics that hold them, and `Digest`, whose
 `&'static Algorithm` Aeneas cannot end a borrow of `Digest` across.
 
-SHA3-256, SHA3-384, and SHA3-512, and the SHAKE calls ML-KEM makes, on x86_64
+SHA3-256, SHA3-384, and SHA3-512, and the SHAKE calls ML-KEM and ML-DSA make, on x86_64
 and aarch64, from rind's Rust sponge to s2n-bignum's Keccak-f routines, in
 `Rind/X86_64/Sha3.lean`, which `admin/prove` also writes for aarch64:
 
@@ -314,7 +323,14 @@ and aarch64, from rind's Rust sponge to s2n-bignum's Keccak-f routines, in
   writes the first 504 bytes of SHAKE128 on each of four 34-byte inputs, and
   returns the sponges to squeeze the rest;
 - `shake256_batch_spec`: `shake256_batch` writes the first 128 bytes of
-  SHAKE256 on each of its 33-byte inputs, four at a time.
+  SHAKE256 on each of its 33-byte inputs, four at a time;
+- `shake_new_spec`, `shake_read_spec`: a `Shake` reader on a `Sponge` that
+  has absorbed a message fills each `read`'s output with the next bytes of
+  SHAKE on it, as ML-DSA's H (SHAKE256) and SampleInBall;
+- `shake4x_new_spec`, `shake4x_squeeze_spec`: `Shake4x` absorbs one to four
+  inputs shorter than a block, and each `squeeze` writes each lane's next
+  whole blocks of SHAKE on its input, as ML-DSA's ExpandA (SHAKE128),
+  ExpandS, and ExpandMask (SHAKE256).
 
 The sponge is `Rind/Sha3.lean`'s, over bytes, which `sha3_256_eq` and its
 siblings, `shake128_eq` and `shake256_eq`, prove FIPS 202's as SymCrypt's
@@ -323,9 +339,9 @@ s2n-bignum's `keccak 24` on lanes, the spec its routines' theorems state,
 which `Rind/Keccak.lean` proves SymCrypt's KECCAK-f[1600].
 `Rind/<Arch>/KeccakDispatch.lean` proves what rind's dispatch to the one-,
 two-, and four-state routines computes, from those theorems. Each theorem
-assumes `RunsSha3`: rind's entry guard and CPU checks pass. ML-DSA's SHAKE
-readers are not translated, and x86_64's AVX-512 eight-way Keccak, which
-ML-KEM's sampler runs, has [its own quest](/quest/m4/verified/mlkem-avx512-sampler.md).
+assumes `RunsSha3`: rind's entry guard and CPU checks pass. x86_64's AVX-512
+eight-way Keccak, which ML-KEM's sampler runs, has
+[its own quest](/quest/m4/verified/mlkem-avx512-sampler.md).
 
 The portable backend's Keccak-f, which its SHA-3, ML-KEM, and ML-DSA run, in
 `Rind/Portable/Keccak.lean`, over a translation of `low/portable/keccak.rs`

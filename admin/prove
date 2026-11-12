@@ -199,11 +199,13 @@ symbol_bounds() {
 
 # Writes to `dest` an object holding the naked Rust function at `path`, as
 # rind's release build for `arch` Linux emits it: the function's own section,
-# renamed `.text`, its relocations, and the one read-only data section they
-# all refer to, renamed `.rodata`. s2n-bignum's `define_assert_relocs_from_elf`
-# reads it, failing unless its instructions and relocations are the ones the
-# proof lists, and gives the proof that section's bytes. Anything else fails:
-# a function that is not its whole section, or relocations to other sections.
+# renamed `.text`, and, if it has relocations, those and the one read-only
+# data section they all refer to, renamed `.rodata`. s2n-bignum's
+# `define_assert_relocs_from_elf` reads one with relocations, failing unless
+# its instructions and relocations are the ones the proof lists, and gives the
+# proof that section's bytes; `define_assert_from_elf` reads one without.
+# Anything else fails: a function that is not its whole section, or
+# relocations to other sections.
 asm_function() {
     local arch=$1 path=$2 dest=$3
     local found obj sym section size secsize target
@@ -216,6 +218,10 @@ asm_function() {
         return 1
     fi
     target=$(relocations "$obj" "$section" | awk '{ sub(/[-+].*/, "", $3); print $3 }' | sort -u)
+    if [[ -z $target ]]; then
+        "$tools/llvm-objcopy" --only-section="$section" --rename-section="$section=.text" "$obj" "$dest"
+        return
+    fi
     if [[ $(wc -l <<<"$target") != 1 || $target != .rodata.* ]]; then
         echo "admin/prove: $path's relocations refer to other than one .rodata section:" $target >&2
         return 1
@@ -262,6 +268,7 @@ hol_light_proofs=(
     "aarch64 ct_compare_16.bin rind::low::aarch64::cpu::ct_compare_16"
     "x86_64 ct_compare_bytes.bin rind::low::x86_64::cpu::ct_compare_bytes"
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
+    "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
 )
 hol_light() {
     local dir=$out/hol-light arches arch file path proof
@@ -617,8 +624,7 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # reaches it, and `SignatureDispatch.lean` defines it. SHA-1's and SHA-256's
 # padding is translated down to their block functions, which are opaque.
 # SHA-3's sponge is translated down to its Keccak-f routines, which are
-# opaque, from what the digest API and ML-KEM call: ML-DSA's SHAKE readers
-# loop over borrowed slices and zip iterators, which Aeneas cannot translate.
+# opaque, from what the digest API, ML-KEM, and ML-DSA call.
 # MD5, which no proof covers, is opaque.
 # P-256's key generation draws through a `dyn RandomSource`, so it is opaque
 # too, and `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the
@@ -683,6 +689,8 @@ extract() {
         --start-from crate::mid::sha3::Sponge::absorb \
         --start-from crate::mid::sha3::Sponge::finish \
         --start-from 'crate::mid::sha3::Sha3Context::_' \
+        --start-from 'crate::mid::sha3::Shake::_' \
+        --start-from 'crate::mid::sha3::Shake4x::_' \
         --opaque crate::high::agreement::Algorithm \
         --opaque crate::high::agreement::Ops \
         --opaque crate::high::agreement::x25519_from_pkcs8 \
