@@ -32,11 +32,7 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
 #[inline(never)]
 pub(crate) fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -> [u8; 32] {
     match path() {
-        Path::Shaext(token) => {
-            let mut digest = [0; 32];
-            x86_64::sha256::sha256_finish_shaext(&mut digest, state, message, length, token);
-            digest
-        }
+        Path::Shaext(token) => x86_64::sha256::sha256_finish_shaext(state, message, length, token),
         _ => {
             let mut h = *state;
             sha256_compress_padded(&mut h, message, length);
