@@ -102,7 +102,7 @@ theorem pair_val (a b : Nat) (ha : a < 2 ^ 64) (hb : b < 2 ^ 64) :
 it times the divisor's top two words `D2` exceeds the dividend's top three
 `T`, keeping `rem = num - q·d1` below `2^64`. `P` holds of each `q` it
 passes, and a `q` too large keeps it for `q - 1`. -/
-theorem mul_word_mod_loop1_spec (d1 d0 u0 : U64) (num T D2 : Nat) (hd1 : 0 < d1.val)
+theorem mul_word_mod_loop1_spec (d1 d0 u0 : U64) (num T D2 : Nat)
     (hD2 : D2 = d1.val * 2 ^ 64 + d0.val) (hT : T = num * 2 ^ 64 + u0.val) (P : Nat → Prop)
     (hdec : ∀ q, P q → T < q * D2 → P (q - 1)) (q rem : U128) (hq : q.val < 2 ^ 64)
     (hnum : q.val * d1.val + rem.val = num) (hP : P q.val) :
@@ -182,7 +182,7 @@ theorem lift_spec {α : Type} (x : α) : lift x ⦃ r => r = x ⦄ := by simp [l
 
 theorem wordsNat_take_succ (l : List U64) (i : Nat) (hi : i < l.length) :
     wordsNat (l.take (i + 1)) = wordsNat (l.take i) + 2 ^ (64 * i) * l[i]!.val := by
-  rw [List.take_succ, List.getElem?_eq_getElem hi, Option.toList_some, wordsNat_append, wordsNat_cons,
+  rw [List.take_add_one, List.getElem?_eq_getElem hi, Option.toList_some, wordsNat_append, wordsNat_cons,
     wordsNat_nil, List.length_take, getElem!_pos l i hi, Nat.min_eq_left hi.le]
   ring
 
@@ -584,7 +584,7 @@ theorem mul_word_mod_spec (u d : Slice U64) (hk2 : 2 ≤ d.length) (hu : u.lengt
     step as ⟨rem, hrem⟩
     have hDpos : 0 < wordsNat d.val := by omega
     step with mul_word_mod_loop1_spec d1 d0 u0 num.val (num.val * 2 ^ 64 + u0.val) (d1.val * 2 ^ 64 + d0.val)
-      hd1p rfl rfl (fun x => wordsNat u.val * 2 ^ 64 / wordsNat d.val ≤ x)
+      rfl rfl (fun x => wordsNat u.val * 2 ^ 64 / wordsNat d.val ≤ x)
       (fun x _ hlt => by
         have := knuth_gt (rD := wordsNat (d.val.take (d.length - 2))) hrN x hlt
         rw [← hW, ← hD2] at this
@@ -1149,6 +1149,175 @@ theorem rsa_public_key_new_spec (h : low.entry.Entry.assert_held = ok ()) (n : R
       rintro ⟨-, h1, h2, -⟩
       simp only [hN] at h1 h2
       exact hsz ⟨h1, h2⟩
+
+
+theorem beNat_take_succ (l : List U8) (i : Nat) (hi : i < l.length) :
+    beNat (l.take (i + 1)) = beNat (l.take i) * 256 + l[i]!.val := by
+  rw [List.take_add_one, List.getElem?_eq_getElem hi, Option.toList_some, beNat_append, getElem!_pos l i hi]
+  simp [beNat, leNat]
+
+/-- `public_exponent`'s loop reads the exponent's bytes big-endian. -/
+theorem public_exponent_loop_spec (e : Slice U8) (he : e.length ≤ 8) (iter : core.ops.range.Range Usize)
+    (value : U64) (hend : iter.end.val = e.length) (hs : iter.start.val ≤ e.length)
+    (hv : value.val = beNat (e.val.take iter.start.val)) :
+    high.rsa.public_exponent_loop iter e value ⦃ r => r.val = beNat e.val ⦄ := by
+  unfold high.rsa.public_exponent_loop
+  apply loop.spec_decr_nat (fun x => e.length - x.1.start.val)
+    (fun x : core.ops.range.Range Usize × U64 => x.1.end.val = e.length ∧ x.1.start.val ≤ e.length ∧
+      x.2.val = beNat (e.val.take x.1.start.val))
+  · rintro ⟨it, v⟩ ⟨he', hsk, hv'⟩
+    simp only at he' hsk hv'
+    unfold high.rsa.public_exponent_loop.body
+    step as ⟨op, iter1, hop, hend1⟩
+    cases op with
+    | none =>
+      have : it.start.val = e.length := by
+        split at hop
+        · simp at hop
+        · scalar_tac
+      simp only [WP.spec_ok]
+      rw [hv', this]
+      simp [Slice.length]
+    | some j =>
+      have hlt : it.start.val < it.end.val := by
+        by_contra hc; simp [hc] at hop
+      simp only [hlt, ↓reduceIte, Option.some.injEq] at hop
+      obtain ⟨rfl, hst⟩ := hop
+      simp only [lift, bind_ok]
+      have hvb : v.val < 2 ^ 56 := by
+        rw [hv']
+        calc beNat (e.val.take it.start.val) < 256 ^ (e.val.take it.start.val).length := beNat_lt _
+          _ ≤ 256 ^ 7 := Nat.pow_le_pow_right (by norm_num) (by simp [Slice.length] at *; omega)
+          _ = 2 ^ 56 := by norm_num
+      step as ⟨i1, hi1, _⟩
+      step as ⟨b, hb⟩
+      have hsz : U64.size = 2 ^ 64 := by simp [U64.size, U64.numBits]
+      have hbv : b.val < 256 := by scalar_tac
+      have hor : (i1 ||| core.convert.num.FromU64U8.from b).val = v.val * 256 + b.val := by
+        rw [UScalar.val_or, hi1, core.convert.num.FromU64U8.from_val_eq, hsz, Nat.shiftLeft_eq,
+          Nat.mod_eq_of_lt (by omega), show (256 : Nat) = 2 ^ 8 by rfl, ← Nat.shiftLeft_eq,
+          ← Nat.shiftLeft_add_eq_or_of_lt (by omega), Nat.shiftLeft_eq]
+      refine ⟨by rw [hend1]; exact he', by rw [hst]; omega, ?_, by rw [hst]; omega⟩
+      have hel : e.length = e.val.length := rfl
+      rw [hor, hst, beNat_take_succ _ _ (by omega), hv', hb, ← getElem!_pos]
+  · exact ⟨hend, hs, hv⟩
+
+/-- `public_exponent` reads up to eight big-endian bytes, and refuses more. -/
+theorem public_exponent_spec (e : Slice U8) :
+    high.rsa.public_exponent e ⦃ r => (e.length ≤ 8 → ∃ v, r = .Ok v ∧ v.val = beNat e.val) ∧
+      (8 < e.length → ∃ err, r = .Err err) ⦄ := by
+  unfold high.rsa.public_exponent
+  dsimp only
+  split
+  · simp only [core.convert.IntoFrom.into, error.Error.Insts.CoreConvertFromKeyFormatError.from, bind_ok,
+      WP.spec_ok]
+    refine ⟨fun h => by scalar_tac, fun _ => ⟨_, rfl⟩⟩
+  · rename_i h8
+    step with public_exponent_loop_spec e (by scalar_tac) { start := 0#usize, «end» := Slice.len e } 0#u64
+      (by simp) (by simp) (by simp [beNat, leNat]) as ⟨v, hv⟩
+    exact ⟨fun _ => ⟨v, rfl, hv⟩, fun h => by scalar_tac⟩
+
+/-- What RSA key loading accepts, as numbers: an odd modulus of 1024 to
+8192 bits and an odd exponent above one and below `2^33`. -/
+def KeyOk (N E : Nat) : Prop :=
+  N % 2 = 1 ∧ 1024 ≤ N.size ∧ N.size ≤ 8192 ∧ E % 2 = 1 ∧ E ≠ 1 ∧ E < 2 ^ 33
+
+/-- `VerifyingKey::from_unsigned` loads the key its big-endian modulus and
+exponent encode, or refuses them when `KeyOk` fails or the exponent takes
+more than eight bytes. -/
+theorem from_unsigned_spec (hheld : low.entry.Entry.assert_held = ok ()) (n e : Slice U8) :
+    high.rsa.VerifyingKey.from_unsigned n e ⦃ r => match r with
+      | .Ok key => PubKeyInv key ∧ wordsNat (lowWords key.n key.n.used) = beNat n.val ∧ key.e.val = beNat e.val
+      | .Err _ => ¬ (e.length ≤ 8 ∧ KeyOk (beNat n.val) (beNat e.val)) ⦄ := by
+  unfold high.rsa.VerifyingKey.from_unsigned
+  by_cases hN : beNat n.val < 2 ^ 8192
+  · step with from_bytes_spec n hN as ⟨r, p, hr, hpu, hpz, hpv, hpt⟩
+    subst hr
+    simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
+    step with public_exponent_spec e as ⟨r2, hr2a, hr2b⟩
+    by_cases he : e.length ≤ 8
+    · obtain ⟨v, rfl, hv⟩ := hr2a he
+      simp only [bind_ok]
+      step with rsa_public_key_new_spec hheld p v hpu (by rw [hpv]; exact hpt) as ⟨r3, hr3⟩
+      split at hr3
+      · obtain ⟨rfl, rfl, hinv⟩ := hr3
+        simp only [bind_ok, WP.spec_ok]
+        exact ⟨hinv, hpv, hv⟩
+      · simp only [bind_ok, core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+          core.convert.FromSame.from]
+        simp only [bind_tc_ok, WP.spec_ok]
+        rintro ⟨-, hk⟩
+        apply hr3
+        unfold PubKeyOk
+        rw [hpv, hv]
+        exact hk
+    · obtain ⟨err, rfl⟩ := hr2b (by omega)
+      simp only [bind_ok, core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+        core.convert.FromSame.from]
+      simp only [bind_tc_ok, WP.spec_ok]
+      rintro ⟨h8, -⟩; exact he h8
+  · step with from_bytes_long_spec n (by omega) as ⟨r, err, hr⟩
+    subst hr
+    simp [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch,
+      high.rsa.VerifyingKey.from_unsigned.closure.Insts.CoreOpsFunctionFnOnceTupleErrorKeyFormatError.call_once,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+      error.Error.Insts.CoreConvertFromKeyFormatError.from, KeyOk]
+    intro _ _ _ hs
+    have := Nat.lt_size.mpr (show 2 ^ 8192 ≤ beNat n.val by omega)
+    omega
+
+/-- `VerifyingKey::from_components` refuses a leading zero byte in either
+component, and otherwise loads them as `from_unsigned` does. -/
+theorem from_components_spec (h : Runs) (hheld : low.entry.Entry.assert_held = ok ()) (n e : Slice U8) :
+    high.rsa.VerifyingKey.from_components n e ⦃ r => match r with
+      | .Ok key => PubKeyInv key ∧ wordsNat (lowWords key.n key.n.used) = beNat n.val ∧ key.e.val = beNat e.val
+      | .Err _ => ¬ (n.val.head? ≠ some 0#u8 ∧ e.val.head? ≠ some 0#u8 ∧ KeyOk (beNat n.val) (beNat e.val)) ⦄ := by
+  unfold high.rsa.VerifyingKey.from_components
+  step with new_public_spec h
+  simp only [core.slice.Slice.first, core.option.Option.Insts.CoreCmpPartialEqOption.eq, bind_ok]
+  apply WP.spec_bind (Pₘ := fun b => b = true ↔ n.val.head? = some 0#u8)
+  · split
+    · simp_all
+    · simp_all [core.cmp.impls.PartialEqShared.eq]
+    · rename_i hx
+      simp only [WP.spec_ok, Bool.false_eq_true, false_iff]
+      intro hz; exact hx _ _ hz rfl
+  intro b hb
+  split
+  · rename_i hb1
+    simp [error.Error.Insts.CoreConvertFromKeyFormatError.from]
+    intro hn; exact absurd (hb.mp hb1) hn
+  apply WP.spec_bind (Pₘ := fun b => b = true ↔ e.val.head? = some 0#u8)
+  · split
+    · simp_all
+    · simp_all [core.cmp.impls.PartialEqShared.eq]
+    · rename_i hx
+      simp only [WP.spec_ok, Bool.false_eq_true, false_iff]
+      intro hz; exact hx _ _ hz rfl
+  intro b1 hb1
+  split
+  · rename_i hb2
+    simp [error.Error.Insts.CoreConvertFromKeyFormatError.from]
+    intro _ he; exact absurd (hb1.mp hb2) he
+  rename_i hb1' 
+  step with from_unsigned_spec hheld n e as ⟨r, hr⟩
+  split at hr
+  · exact hr
+  · rintro ⟨-, he0, hk⟩
+    apply hr
+    refine ⟨?_, hk⟩
+    by_contra h8
+    have hel : e.length = e.val.length := rfl
+    have hne : 0 < e.val.length := by omega
+    have h0 : e.val[0]! ≠ 0#u8 := by
+      intro hz; apply he0
+      cases hl : e.val with
+      | nil => simp [hl] at hne
+      | cons x t => simp_all
+    have hge := beNat_ge_of_head e.val hne h0
+    have : 256 ^ 8 ≤ 256 ^ (e.val.length - 1) := Nat.pow_le_pow_right (by norm_num) (by omega)
+    have := hk.2.2.2.2.2
+    omega
 
 
 end rind.x86_64
