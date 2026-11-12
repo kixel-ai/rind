@@ -49,6 +49,21 @@ jobs:
       - name: Prove
         run: nix develop .#hol-light --command admin/prove hol-light
 
+  # The instructions rind adds to s2n-bignum's x86_64 model, against the
+  # runner's CPU.
+  cosim:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      - name: Cosimulate
+        run: nix develop .#hol-light --command admin/prove cosim
+
   lean:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
