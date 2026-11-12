@@ -361,6 +361,7 @@
                 targets = [
                   "x86_64-unknown-linux-gnu"
                   "aarch64-unknown-linux-gnu"
+                  "armv7-unknown-linux-gnueabihf"
                 ];
               })
               pkgs.hol_light

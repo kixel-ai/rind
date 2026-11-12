@@ -13,7 +13,7 @@
    equal. Its loads and branches depend only on R0, R1, and R2. *)
 
 needs "aarch32/proofs/base.ml";;
-needs "common/consttime.ml";;
+needs "aarch32/proofs/consttime.ml";;
 
 (* admin/prove writes the block's bytes, as rind's release build emits them,
    to armv7/ct_compare_bytes.bin, and the definition fails unless they are
