@@ -10,11 +10,13 @@
 # x86_64 ones with the target renamed, which this writes too, all but each
 # target's own `ShaBlocks.lean` and `HashAxioms.lean`.
 #
-# Usage: admin/prove [bytes | hol-light | lean]
+# Usage: admin/prove [bytes | hol-light | lean | cosim]
 #
 # An argument checks only those proofs, `bytes` only that the assembly rind
 # imports is the object code its upstream's proofs checked, and declares
-# each register they let it change. Run it in the
+# each register they let it change. `cosim`, which no other mode runs,
+# checks the instructions rind adds to s2n-bignum's x86_64 model against this
+# CPU. Run it in the
 # flake's `prove` dev shell: `nix develop .#prove --command admin/prove`, or
 # for the HOL Light proofs or the bytes alone, `nix develop .#hol-light
 # --command admin/prove hol-light`.
@@ -25,9 +27,9 @@ out=.tmp/prove
 mkdir -p "$out"
 tools=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin
 case "${1:-}" in
-'' | bytes | hol-light | lean) only=${1:-} ;;
+'' | bytes | hol-light | lean | cosim) only=${1:-} ;;
 *)
-    echo "usage: admin/prove [bytes | hol-light | lean]" >&2
+    echo "usage: admin/prove [bytes | hol-light | lean | cosim]" >&2
     exit 2
     ;;
 esac
@@ -223,6 +225,29 @@ asm_function() {
         "$obj" "$dest"
 }
 
+# Writes to `dir/x86/proofs` s2n-bignum's x86_64 model with the instructions
+# `proofs/hol-light/x86-model.patch` adds, which goes ahead of the submodule
+# on HOL Light's load path. s2n-bignum lacks them; the patch's instructions
+# are checked against the CPU by `cosim`.
+x86_model() {
+    mkdir -p "$1/x86/proofs"
+    cp thirdparty/s2n-bignum/x86/proofs/{instruction,decode,x86}.ml "$1/x86/proofs/"
+    patch -s -d "$1" -p1 <proofs/hol-light/x86-model.patch
+}
+
+# Compiles the HOL Light program `name.ml` in `dir` to native code, as
+# s2n-bignum's `tools/build-proof.sh` does, and runs it there.
+hol_light_run() {
+    local dir=$1 name=$2 root=$PWD
+    (cd "$dir" && HOLLIGHT_LOAD_PATH="$root/$dir/model:$root/proofs/hol-light:$root/proofs/hol-light/s2n-bignum:$root/thirdparty/s2n-bignum" \
+        ocaml "$HOLLIGHT_DIR/inline_load.ml" "$name.ml" "$name-inlined.ml")
+    OCAMLRUNPARAM=l=2000000000 ocamlopt.byte -pp "$("$HOLLIGHT_DIR/hol.sh" -pp)" \
+        -I "$HOLLIGHT_DIR" -I +unix -c hol_lib.cmxa "$dir/$name-inlined.ml" -o "$dir/$name.cmx" -w -a
+    ocamlfind ocamlopt -package zarith,unix -linkpkg hol_lib.cmxa -I "$HOLLIGHT_DIR" \
+        "$dir/$name.cmx" -o "$dir/$name.native"
+    (cd "$dir" && "./$name.native")
+}
+
 # rind's own HOL Light proofs, each of the `asm!` block in a Rust function or
 # of a naked one, on s2n-bignum's model, tactics, and specs at its submodule's
 # commit, the revision rind's transliteration pins, with the specs of
@@ -242,10 +267,10 @@ hol_light_proofs=(
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
 )
 hol_light() {
-    local dir=$out/hol-light root=$PWD arches arch file path proof
+    local dir=$out/hol-light arches arch file path proof
     git submodule update --init --depth 1 thirdparty/s2n-bignum
     rm -rf "$dir"
-    mkdir -p "$dir"
+    x86_model "$dir/model"
     arches=$(printf '%s\n' "${hol_light_proofs[@]}" | cut -d' ' -f1 | sort -u)
     for arch in $arches; do
         build_asm "$arch"
@@ -262,14 +287,29 @@ hol_light() {
     done
     for arch in $arches; do
         printf 'check_axioms ();; Printf.printf "%s: %%.0f s\\n" (Unix.time () -. prove_start);;\n' "$arch" >>"$dir/$arch.ml"
-        (cd "$dir" && HOLLIGHT_LOAD_PATH="$root/proofs/hol-light:$root/proofs/hol-light/s2n-bignum:$root/thirdparty/s2n-bignum" \
-            ocaml "$HOLLIGHT_DIR/inline_load.ml" "$arch.ml" "$arch-inlined.ml")
-        OCAMLRUNPARAM=l=2000000000 ocamlopt.byte -pp "$("$HOLLIGHT_DIR/hol.sh" -pp)" \
-            -I "$HOLLIGHT_DIR" -I +unix -c hol_lib.cmxa "$dir/$arch-inlined.ml" -o "$dir/$arch.cmx" -w -a
-        ocamlfind ocamlopt -package zarith,unix -linkpkg hol_lib.cmxa -I "$HOLLIGHT_DIR" \
-            "$dir/$arch.cmx" -o "$dir/$arch.native"
-        (cd "$dir" && "./$arch.native")
+        hol_light_run "$dir" "$arch"
     done
+}
+
+# Cosimulates the model's added instructions on this CPU with s2n-bignum's
+# harness: `x86/proofs/simulator.ml` up to its instruction classes, then from
+# its template through `cosimulate_instructions`, then rind's cases.
+cosim() {
+    local dir=$out/cosim root=$PWD sim=thirdparty/s2n-bignum/x86/proofs/simulator.ml a b c
+    git submodule update --init --depth 1 thirdparty/s2n-bignum
+    rm -rf "$dir"
+    x86_model "$dir/model"
+    mkdir -p "$dir/tmp"
+    a=$(grep -n '^loadt "x86/x86-insns.ml";;$' "$sim" | cut -d: -f1)
+    b=$(grep -n '^let template =' "$sim" | cut -d: -f1)
+    c=$(grep -n '^let run_random_regsimulation () =' "$sim" | cut -d: -f1)
+    if [[ -z $a || -z $b || -z $c ]]; then
+        echo "admin/prove: $sim no longer has the parts cosim takes" >&2
+        return 1
+    fi
+    { sed -n "1,$((a - 1))p" "$sim"; sed -n "$b,$((c - 1))p" "$sim"; cat proofs/hol-light/x86_64/model_cosim.ml; } >"$dir/cosim.ml"
+    TMPDIR=$root/$dir/tmp S2N_BIGNUM_X86_64_EXECUTOR="$root/thirdparty/s2n-bignum/tools/simulate-persistent x86" \
+        hol_light_run "$dir" cosim
 }
 # Writes to `dest` the bytes of the routine at the symbol `sym` in the object
 # `obj`, through its size or, where it has none, to the next global symbol,
@@ -363,6 +403,9 @@ if [[ -z $only || $only == bytes ]]; then
 fi
 if [[ -z $only || $only == hol-light ]]; then
     hol_light
+fi
+if [[ $only == cosim ]]; then
+    cosim
 fi
 if [[ -n $only && $only != lean ]]; then
     exit 0
