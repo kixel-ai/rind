@@ -319,8 +319,9 @@ proptest! {
 fn constant_time() {
     let uniform = low::ct::into_secret([0x5a; 64]);
     let scalar = Scalar::from_uniform_bytes(&low::ct::into_secret([0xa5; 64]));
+    let canonical = Scalar::from_canonical_bytes(&low::ct::into_secret(scalar.to_bytes())).unwrap();
     let element = Element::from_uniform_bytes(&uniform);
-    let product = element.mul(&scalar);
+    let product = element.mul(&canonical);
     let sum = product.add(&Element::mul_base(&scalar));
     let inverse = scalar.invert().unwrap();
     let encoding = low::ct::into_public(sum.mul(&scalar.mul(&inverse)).to_bytes());

@@ -266,7 +266,9 @@ impl Point {
     fn select(table: &[[u64; 16]; 9], digit: i8) -> Self {
         let sign = digit >> 7; // 0 or -1, by an arithmetic shift
         let negative = (sign & 1) as u64;
-        let magnitude = ((digit ^ sign) - sign) as u64;
+        // Wrapping, so a debug build's overflow check adds no branch on the
+        // digit; `digit ^ sign` is at most 7 for a negative digit.
+        let magnitude = (digit ^ sign).wrapping_sub(sign) as u64;
         let mut p = [0u64; 16];
         for (i, row) in table.iter().enumerate() {
             // 1 where `i == magnitude`, hidden from the optimiser so it stays
@@ -352,10 +354,12 @@ impl Scalar {
             digits[2 * i + 1] = (byte >> 4) as i8;
         }
         for i in 0..63 {
-            // Arithmetic shifts, so the carry is branch-free.
-            let carry = (digits[i] + 8) >> 4;
-            digits[i] -= carry << 4;
-            digits[i + 1] += carry;
+            // Arithmetic shifts, so the carry is branch-free, and wrapping,
+            // so a debug build's overflow checks add no branch on the digits;
+            // every digit stays within `-8..=16`.
+            let carry = digits[i].wrapping_add(8) >> 4;
+            digits[i] = digits[i].wrapping_sub(carry << 4);
+            digits[i + 1] = digits[i + 1].wrapping_add(carry);
         }
         digits
     }
