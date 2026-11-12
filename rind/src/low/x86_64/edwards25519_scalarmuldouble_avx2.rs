@@ -17,6 +17,10 @@
 //! lanes interleaved in one vector as `(a0, b0, a1, b1, c0, d0, c1, d1)`.
 //! Every operation's bound on its inputs' limbs is dalek's, which its
 //! documentation gives with the formulas' derivation.
+//!
+//! Loops index their arrays, rather than iterate, since Aeneas translates
+//! no slice iterator.
+#![allow(clippy::needless_range_loop)]
 
 use core::arch::x86_64::*;
 
@@ -66,25 +70,30 @@ fn double_base(a: &[u64; 4], b: &[u64; 4], point: &[[u64; 4]; 4]) -> [[u64; 4]; 
         table_a[i + 1] = Cached::from(a2.add(&table_a[i]));
     }
 
-    let top = (0..256)
-        .rev()
-        .find(|&i| a_naf[i] != 0 || b_naf[i] != 0)
-        .unwrap_or(0);
+    // One past the highest nonzero digit.
+    let mut top = 256;
+    while top > 0 && a_naf[top - 1] == 0 && b_naf[top - 1] == 0 {
+        top -= 1;
+    }
 
     let mut q = Extended(Fe4(EXTENDED_IDENTITY));
-    for i in (0..=top).rev() {
+    let mut i = top;
+    while i > 0 {
+        i -= 1;
         q = q.double();
 
-        match a_naf[i] {
-            0 => {}
-            d if d > 0 => q = q.add(&table_a[d as usize / 2]),
-            d => q = q.add(&table_a[d.unsigned_abs() as usize / 2].neg()),
+        let d = a_naf[i];
+        if d > 0 {
+            q = q.add(&table_a[d as usize / 2]);
+        } else if d < 0 {
+            q = q.add(&table_a[-d as usize / 2].neg());
         }
 
-        match b_naf[i] {
-            0 => {}
-            d if d > 0 => q = q.add(&Cached(Fe4(BASE_ODD_MULTIPLES[d as usize / 2]))),
-            d => q = q.add(&Cached(Fe4(BASE_ODD_MULTIPLES[d.unsigned_abs() as usize / 2])).neg()),
+        let d = b_naf[i];
+        if d > 0 {
+            q = q.add(&Cached(Fe4(BASE_ODD_MULTIPLES[d as usize / 2])));
+        } else if d < 0 {
+            q = q.add(&Cached(Fe4(BASE_ODD_MULTIPLES[-d as usize / 2])).neg());
         }
     }
 
@@ -296,6 +305,61 @@ const P_TIMES_16_HI: __m256i = v([
 /// Each limb's bit offset within a field element, alternately 26 and 25 bits wide.
 const LIMB_OFFSETS: [u32; 10] = [0, 26, 51, 77, 102, 128, 153, 179, 204, 230];
 
+/// Reinterprets a vector as its eight 32-bit lanes.
+fn lanes(x: __m256i) -> [u32; 8] {
+    // SAFETY: both are 32 bytes, and every bit pattern is a valid [u32; 8]
+    unsafe { core::mem::transmute(x) }
+}
+
+/// Sums 64-bit lanes, first to last.
+#[target_feature(enable = "avx,avx2")]
+fn sum<const N: usize>(terms: [__m256i; N]) -> __m256i {
+    let mut acc = terms[0];
+    for i in 1..N {
+        acc = _mm256_add_epi64(acc, terms[i]);
+    }
+    acc
+}
+
+/// One field element's radix 2^51 limbs, each below 2^64, reduced to four
+/// words below p, as dalek's `reduce` then `to_bytes`: a weak carry leaves
+/// each limb below 2^51 + 2^13, `q` is 1 exactly when the value is at least
+/// p, and adding 19q then carrying and dropping 2^255 subtracts it, leaving
+/// every limb below 2^51.
+fn reduce_to_words(x: [u64; 5]) -> [u64; 4] {
+    const MASK: u64 = (1 << 51) - 1;
+    let c = [x[0] >> 51, x[1] >> 51, x[2] >> 51, x[3] >> 51, x[4] >> 51];
+    let mut l = [
+        x[0] & MASK,
+        x[1] & MASK,
+        x[2] & MASK,
+        x[3] & MASK,
+        x[4] & MASK,
+    ];
+    l[0] += 19 * c[4];
+    for i in 1..5 {
+        l[i] += c[i - 1];
+    }
+
+    let mut q = (l[0] + 19) >> 51;
+    for i in 1..5 {
+        q = (l[i] + q) >> 51;
+    }
+    l[0] += 19 * q;
+    for i in 0..4 {
+        l[i + 1] += l[i] >> 51;
+        l[i] &= MASK;
+    }
+    l[4] &= MASK;
+
+    [
+        l[0] | (l[1] << 51),
+        (l[1] >> 13) | (l[2] << 38),
+        (l[2] >> 26) | (l[3] << 25),
+        (l[3] >> 39) | (l[4] << 12),
+    ]
+}
+
 impl Fe4 {
     /// Packs four field elements below 2^255.
     #[target_feature(enable = "avx,avx2")]
@@ -311,9 +375,9 @@ impl Fe4 {
         };
 
         let mut out = ZERO;
-        for (i, out) in out.iter_mut().enumerate() {
+        for i in 0..5 {
             let (lo, hi) = (2 * i, 2 * i + 1);
-            *out = _mm256_setr_epi32(
+            out[i] = _mm256_setr_epi32(
                 limb(&x[0], lo),
                 limb(&x[1], lo),
                 limb(&x[0], hi),
@@ -330,55 +394,22 @@ impl Fe4 {
     /// Unpacks the four field elements, each reduced.
     #[target_feature(enable = "avx,avx2")]
     fn split(&self) -> [[u64; 4]; 4] {
-        let mut lanes = [[0u32; 8]; 5];
-        for (lanes, v) in lanes.iter_mut().zip(self.0) {
-            // SAFETY: `lanes` is 32 writable bytes
-            unsafe { _mm256_storeu_si256(lanes.as_mut_ptr().cast(), v) };
-        }
-
         // Each lane's radix 2^51 limbs, as in dalek's `split`.
         let mut out = [[0u64; 5]; 4];
-        for (i, l) in lanes.iter().enumerate() {
-            let l = l.map(u64::from);
-            out[0][i] = l[0] + (l[2] << 26);
-            out[1][i] = l[1] + (l[3] << 26);
-            out[2][i] = l[4] + (l[6] << 26);
-            out[3][i] = l[5] + (l[7] << 26);
+        for i in 0..5 {
+            let l = lanes(self.0[i]);
+            out[0][i] = l[0] as u64 + ((l[2] as u64) << 26);
+            out[1][i] = l[1] as u64 + ((l[3] as u64) << 26);
+            out[2][i] = l[4] as u64 + ((l[6] as u64) << 26);
+            out[3][i] = l[5] as u64 + ((l[7] as u64) << 26);
         }
 
-        out.map(|mut l| {
-            // dalek's `reduce` then `to_bytes`: a weak carry leaves each
-            // limb below 2^51 + 2^13, `q` is 1 exactly when the value is at
-            // least p, and adding 19q then carrying and dropping 2^255
-            // subtracts it, leaving every limb below 2^51.
-            const MASK: u64 = (1 << 51) - 1;
-            let c = l.map(|l| l >> 51);
-            for l in &mut l {
-                *l &= MASK;
-            }
-            l[0] += 19 * c[4];
-            for i in 1..5 {
-                l[i] += c[i - 1];
-            }
-
-            let mut q = (l[0] + 19) >> 51;
-            for l in &l[1..] {
-                q = (l + q) >> 51;
-            }
-            l[0] += 19 * q;
-            for i in 0..4 {
-                l[i + 1] += l[i] >> 51;
-                l[i] &= MASK;
-            }
-            l[4] &= MASK;
-
-            [
-                l[0] | (l[1] << 51),
-                (l[1] >> 13) | (l[2] << 38),
-                (l[2] >> 26) | (l[3] << 25),
-                (l[3] >> 39) | (l[4] << 12),
-            ]
-        })
+        [
+            reduce_to_words(out[0]),
+            reduce_to_words(out[1]),
+            reduce_to_words(out[2]),
+            reduce_to_words(out[3]),
+        ]
     }
 
     #[target_feature(enable = "avx,avx2")]
@@ -387,15 +418,19 @@ impl Fe4 {
             control[0], control[1], control[2], control[3], control[4], control[5], control[6],
             control[7],
         );
-        Self(self.0.map(|x| _mm256_permutevar8x32_epi32(x, c)))
+        let mut out = self.0;
+        for i in 0..5 {
+            out[i] = _mm256_permutevar8x32_epi32(out[i], c);
+        }
+        Self(out)
     }
 
     /// Takes the lanes `LANES` selects from `other`.
     #[target_feature(enable = "avx,avx2")]
     fn blend<const LANES: i32>(&self, other: Self) -> Self {
         let mut out = self.0;
-        for (out, other) in out.iter_mut().zip(other.0) {
-            *out = _mm256_blend_epi32::<LANES>(*out, other);
+        for i in 0..5 {
+            out[i] = _mm256_blend_epi32::<LANES>(out[i], other.0[i]);
         }
         Self(out)
     }
@@ -404,8 +439,8 @@ impl Fe4 {
     #[target_feature(enable = "avx,avx2")]
     fn add(&self, other: Self) -> Self {
         let mut out = self.0;
-        for (out, other) in out.iter_mut().zip(other.0) {
-            *out = _mm256_add_epi32(*out, other);
+        for i in 0..5 {
+            out[i] = _mm256_add_epi32(out[i], other.0[i]);
         }
         Self(out)
     }
@@ -557,9 +592,9 @@ impl Fe4 {
     fn unpack(&self) -> [__m256i; 10] {
         let zero = _mm256_setzero_si256();
         let mut out = [zero; 10];
-        for (i, v) in self.0.iter().enumerate() {
-            out[2 * i] = _mm256_unpacklo_epi32(*v, zero);
-            out[2 * i + 1] = _mm256_unpackhi_epi32(*v, zero);
+        for i in 0..5 {
+            out[2 * i] = _mm256_unpacklo_epi32(self.0[i], zero);
+            out[2 * i + 1] = _mm256_unpackhi_epi32(self.0[i], zero);
         }
         out
     }
@@ -568,14 +603,17 @@ impl Fe4 {
     #[target_feature(enable = "avx,avx2")]
     fn mul_small(&self, a: i32, b: i32, c: i32, d: i32) -> Self {
         let consts = _mm256_setr_epi32(a, 0, b, 0, c, 0, d, 0);
-        Self::reduce64(self.unpack().map(|x| _mm256_mul_epu32(x, consts)))
+        let mut z = self.unpack();
+        for i in 0..10 {
+            z[i] = _mm256_mul_epu32(z[i], consts);
+        }
+        Self::reduce64(z)
     }
 
     /// Squares each lane, then negates lane D.
     #[target_feature(enable = "avx,avx2")]
     fn square_and_negate_d(&self) -> Self {
         let m = |x, y| _mm256_mul_epu32(x, y);
-        let add = |x, y| _mm256_add_epi64(x, y);
         let dbl = |x| _mm256_slli_epi64::<1>(x);
         let v19 = _mm256_set1_epi64x(19);
 
@@ -596,48 +634,46 @@ impl Fe4 {
         let x8_19 = m(v19, x8);
         let x9_19 = m(v19, x9);
 
-        let sum = |terms: &[__m256i]| terms.iter().copied().reduce(add).unwrap();
-
-        let z0 = sum(&[
+        let z0 = sum([
             m(x0, x0),
             m(x2_2, x8_19),
             m(x4_2, x6_19),
-            dbl(sum(&[m(x1_2, x9_19), m(x3_2, x7_19), m(x5, x5_19)])),
+            dbl(sum([m(x1_2, x9_19), m(x3_2, x7_19), m(x5, x5_19)])),
         ]);
-        let z1 = sum(&[
+        let z1 = sum([
             m(x0_2, x1),
             m(x3_2, x8_19),
             m(x5_2, x6_19),
-            dbl(sum(&[m(x2, x9_19), m(x4, x7_19)])),
+            dbl(sum([m(x2, x9_19), m(x4, x7_19)])),
         ]);
-        let z2 = sum(&[
+        let z2 = sum([
             m(x0_2, x2),
             m(x1_2, x1),
             m(x4_2, x8_19),
             m(x6, x6_19),
-            dbl(sum(&[m(x3_2, x9_19), m(x5_2, x7_19)])),
+            dbl(sum([m(x3_2, x9_19), m(x5_2, x7_19)])),
         ]);
-        let z3 = sum(&[
+        let z3 = sum([
             m(x0_2, x3),
             m(x1_2, x2),
             m(x5_2, x8_19),
-            dbl(sum(&[m(x4, x9_19), m(x6, x7_19)])),
+            dbl(sum([m(x4, x9_19), m(x6, x7_19)])),
         ]);
-        let z4 = sum(&[
+        let z4 = sum([
             m(x0_2, x4),
             m(x1_2, x3_2),
             m(x2, x2),
             m(x6_2, x8_19),
-            dbl(sum(&[m(x5_2, x9_19), m(x7, x7_19)])),
+            dbl(sum([m(x5_2, x9_19), m(x7, x7_19)])),
         ]);
-        let z5 = sum(&[
+        let z5 = sum([
             m(x0_2, x5),
             m(x1_2, x4),
             m(x2_2, x3),
             m(x7_2, x8_19),
             dbl(m(x6, x9_19)),
         ]);
-        let z6 = sum(&[
+        let z6 = sum([
             m(x0_2, x6),
             m(x1_2, x5_2),
             m(x2_2, x4),
@@ -645,14 +681,14 @@ impl Fe4 {
             m(x8, x8_19),
             dbl(m(x7_2, x9_19)),
         ]);
-        let z7 = sum(&[
+        let z7 = sum([
             m(x0_2, x7),
             m(x1_2, x6),
             m(x2_2, x5),
             m(x3_2, x4),
             dbl(m(x8, x9_19)),
         ]);
-        let z8 = sum(&[
+        let z8 = sum([
             m(x0_2, x8),
             m(x1_2, x7_2),
             m(x2_2, x6),
@@ -660,7 +696,7 @@ impl Fe4 {
             m(x4, x4),
             dbl(m(x9, x9_19)),
         ]);
-        let z9 = sum(&[
+        let z9 = sum([
             m(x0_2, x9),
             m(x1_2, x8),
             m(x2_2, x7),
@@ -715,7 +751,6 @@ impl Fe4 {
         let x7_2 = _mm256_add_epi32(x7, x7);
         let x9_2 = _mm256_add_epi32(x9, x9);
 
-        let sum = |terms: [__m256i; 10]| terms.into_iter().reduce(|x, y| _mm256_add_epi64(x, y)).unwrap();
 
         Self::reduce64([
             sum([m(x0, y0), m(x1_2, y9_19), m(x2, y8_19), m(x3_2, y7_19), m(x4, y6_19), m(x5_2, y5_19), m(x6, y4_19), m(x7_2, y3_19), m(x8, y2_19), m(x9_2, y1_19)]),
@@ -1282,9 +1317,7 @@ mod tests {
 
     /// Each lane's ten limbs.
     fn limbs(x: &Fe4) -> [[u32; 10]; 4] {
-        // SAFETY: both are 32 bytes, and every bit pattern is a valid [u32; 8]
-        let vectors =
-            x.0.map(|v| unsafe { core::mem::transmute::<__m256i, [u32; 8]>(v) });
+        let vectors = x.0.map(lanes);
         core::array::from_fn(|lane| {
             core::array::from_fn(|i| vectors[i / 2][LOW_LANES[lane] + 2 * (i % 2)])
         })
@@ -1394,13 +1427,6 @@ mod tests {
         for i in 0..63 {
             table[i + 1] = Cached::from(p2.add(&table[i]));
         }
-        table.map(|c| {
-            c.0.0.map(|v| {
-                let mut lanes = [0u32; 8];
-                // SAFETY: `lanes` is 32 writable bytes
-                unsafe { _mm256_storeu_si256(lanes.as_mut_ptr().cast(), v) };
-                lanes
-            })
-        })
+        table.map(|c| c.0.0.map(lanes))
     }
 }
