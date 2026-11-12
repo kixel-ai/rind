@@ -38,6 +38,12 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
   with its relocations and the read-only data they reach, here the round
   constants, which `admin/prove` extracts as an object file; the proof checks
   the constants against FIPS 180-4's.
+- `aarch64/sha512_block_data_order_hw.ml`: `SHA512_HW_SUBROUTINE_CORRECT`,
+  rind's proof that the naked function
+  `low::aarch64::sha512::sha512_block_data_order_hw`, aws-lc's routine for
+  the SHA-512 instructions, computes s2n-bignum's FIPS 180-4 spec,
+  `sha512_hash_blocks`, and stores it to the state, as `sha256`'s above; the
+  proof checks its round constants against FIPS 180-4's.
 - `x86_64/sha512_block_data_order_avx2.ml`:
   `SHA512_AVX2_SUBROUTINE_CORRECT`, rind's proof that the naked function
   `low::x86_64::sha512::sha512_block_data_order_avx2`, OpenSSL's routine for
@@ -317,9 +323,12 @@ checked by `Rind/Sha2Test.lean` against its examples. Each theorem assumes
 with AVX but without AVX2, or OpenSSL's AVX2 routine, on a CPU with AVX2 but
 without the SHA512 instructions, whose proof is rind's HOL Light proof above,
 which `Rind/X86_64/AwsLc.lean` restates as the axiom
-`sha512_block_data_order_avx2_spec` and `Rind/S2nSha512.lean` proves
-`Rind/Sha2.lean`'s; and on aarch64 its scalar routine, on a CPU without the
-SHA-512 instructions; those are the routines whose proofs state their result. The
+`sha512_block_data_order_avx2_spec`; on aarch64 only that rind's checks pass,
+as both of aws-lc's routines there have proofs: aws-lc-verification's of its
+scalar routine, and rind's HOL Light proof above of its routine for the
+SHA-512 instructions, which `Rind/Aarch64/AwsLc.lean` restates as the axiom
+`sha512_block_data_order_hw_spec`. For both HOL Light proofs,
+`Rind/S2nSha512.lean` proves s2n-bignum's spec `Rind/Sha2.lean`'s. The
 digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
 models the `Algorithm` statics that hold them, and `Digest`, whose
