@@ -11,7 +11,8 @@ use std::num::NonZeroU32;
 use crabgrind::memcheck::{self, MemState};
 use crabgrind::valgrind::{self, RunningMode};
 use rind_aws_lc_rs::aead::{self, quic};
-use rind_aws_lc_rs::{cipher, hkdf, hmac, iv, key_wrap, pbkdf2};
+use rind_aws_lc_rs::signature::KeyPair;
+use rind_aws_lc_rs::{cipher, hkdf, hmac, iv, key_wrap, pbkdf2, signature};
 
 /// Marks `value` secret: memcheck flags any branch or index that depends on it.
 fn secret<T: ?Sized>(value: &T) {
@@ -241,4 +242,36 @@ fn key_wrap() {
         .unwrap();
     public(unwrapped);
     assert_eq!(unwrapped, key);
+}
+
+/// The adapter's wrap of an expanded ML-DSA private key into PKCS#8.
+/// Lengths are public; the key bytes are not.
+#[test]
+fn ml_dsa() {
+    use aws_lc_rs::encoding::AsRawBytes;
+    use aws_lc_rs::signature::{ML_DSA_44_SIGNING, PqdsaKeyPair};
+
+    let seed = [0x5au8; 32];
+    let raw = {
+        let key = PqdsaKeyPair::from_seed(&ML_DSA_44_SIGNING, &seed).unwrap();
+        key.private_key().as_raw_bytes().unwrap().as_ref().to_vec()
+    };
+    let expected = signature::PqdsaKeyPair::from_seed(&signature::ML_DSA_44_SIGNING, &seed)
+        .unwrap()
+        .public_key()
+        .as_ref()
+        .to_vec();
+
+    secret(&raw);
+    let key =
+        signature::PqdsaKeyPair::from_raw_private_key(&signature::ML_DSA_44_SIGNING, &raw).unwrap();
+    let public_key = key.public_key().as_ref().to_vec();
+    public(&public_key);
+    assert_eq!(public_key, expected);
+
+    secret(&seed);
+    let key = signature::PqdsaKeyPair::from_seed(&signature::ML_DSA_44_SIGNING, &seed).unwrap();
+    let public_key = key.public_key().as_ref().to_vec();
+    public(&public_key);
+    assert_eq!(public_key, expected);
 }

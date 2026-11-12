@@ -463,3 +463,341 @@ fn rsa_public_keys() {
             .is_err()
     );
 }
+
+/// ML-DSA against aws-lc-rs: the same seed, the same encodings, and each
+/// side's hedged signature verifies on the other.
+#[test]
+fn ml_dsa() {
+    for (seed, msg) in [([1u8; 32], &b"ml-dsa"[..]), ([9u8; 32], &b""[..])] {
+        ml_dsa_set(
+            &ours::signature::ML_DSA_44_SIGNING,
+            &ours::signature::ML_DSA_44,
+            &theirs::signature::ML_DSA_44_SIGNING,
+            &theirs::signature::ML_DSA_44,
+            &seed,
+            msg,
+        );
+        ml_dsa_set(
+            &ours::signature::ML_DSA_65_SIGNING,
+            &ours::signature::ML_DSA_65,
+            &theirs::signature::ML_DSA_65_SIGNING,
+            &theirs::signature::ML_DSA_65,
+            &seed,
+            msg,
+        );
+        ml_dsa_set(
+            &ours::signature::ML_DSA_87_SIGNING,
+            &ours::signature::ML_DSA_87,
+            &theirs::signature::ML_DSA_87_SIGNING,
+            &theirs::signature::ML_DSA_87,
+            &seed,
+            msg,
+        );
+    }
+}
+
+fn ml_dsa_set(
+    ours_sign: &'static ours::signature::PqdsaSigningAlgorithm,
+    ours_verify: &'static ours::signature::PqdsaVerificationAlgorithm,
+    theirs_sign: &'static theirs::signature::PqdsaSigningAlgorithm,
+    theirs_verify: &'static theirs::signature::PqdsaVerificationAlgorithm,
+    seed: &[u8; 32],
+    msg: &[u8],
+) {
+    use theirs::encoding::AsRawBytes;
+
+    assert_eq!(ours_sign.signature_len(), theirs_sign.signature_len());
+    assert_eq!(ours_sign.public_key_len(), theirs_sign.public_key_len());
+    assert_eq!(ours_sign.seed_len(), theirs_sign.seed_len());
+    assert_eq!(format!("{ours_sign:?}"), format!("{theirs_sign:?}"));
+    assert_eq!(format!("{ours_verify:?}"), format!("{theirs_verify:?}"));
+
+    let ours = ours::signature::PqdsaKeyPair::from_seed(ours_sign, seed).unwrap();
+    let theirs = theirs::signature::PqdsaKeyPair::from_seed(theirs_sign, seed).unwrap();
+    assert_eq!(ours.algorithm(), ours_sign);
+    assert_eq!(theirs.algorithm(), theirs_sign);
+    assert_eq!(ours.public_key().as_ref(), theirs.public_key().as_ref());
+    assert_eq!(
+        format!("{:?}", ours.public_key()),
+        format!("{:?}", theirs.public_key())
+    );
+    assert_eq!(format!("{ours:?}"), format!("{theirs:?}"));
+    assert_eq!(
+        format!("{:?}", ours.private_key()),
+        format!("{:?}", theirs.private_key())
+    );
+
+    let ours_pkcs8 = ours.to_pkcs8v1().unwrap();
+    let theirs_pkcs8 = theirs.to_pkcs8v1().unwrap();
+    assert_eq!(ours_pkcs8.as_ref(), theirs_pkcs8.as_ref());
+    let ours_der =
+        ours::encoding::AsDer::<ours::encoding::Pkcs8V1Der>::as_der(&ours.private_key()).unwrap();
+    let theirs_der =
+        theirs::encoding::AsDer::<theirs::encoding::Pkcs8V1Der>::as_der(&theirs.private_key())
+            .unwrap();
+    assert_eq!(ours_der.as_ref(), theirs_pkcs8.as_ref());
+    assert_eq!(theirs_der.as_ref(), theirs_pkcs8.as_ref());
+    assert_eq!(
+        ours.public_key().as_der().unwrap().as_ref(),
+        theirs.public_key().as_der().unwrap().as_ref()
+    );
+
+    let reloaded =
+        ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, theirs_pkcs8.as_ref()).unwrap();
+    assert_eq!(reloaded.public_key().as_ref(), theirs.public_key().as_ref());
+    assert_eq!(
+        reloaded.to_pkcs8v1().unwrap().as_ref(),
+        theirs_pkcs8.as_ref()
+    );
+    let reloaded =
+        theirs::signature::PqdsaKeyPair::from_pkcs8(theirs_sign, ours_pkcs8.as_ref()).unwrap();
+    assert_eq!(reloaded.public_key().as_ref(), ours.public_key().as_ref());
+
+    // Hedged signatures verify across, as raw keys and as SPKI, parsed once.
+    let mut ours_sig = vec![0x5a; ours_sign.signature_len() + 4];
+    assert!(
+        ours.sign(msg, &mut ours_sig[..ours_sign.signature_len() - 1])
+            .is_err()
+    );
+    let ours_len = ours.sign(msg, &mut ours_sig).unwrap();
+    assert_eq!(ours_len, ours_sign.signature_len());
+    assert_eq!(&ours_sig[ours_len..], &[0x5a; 4]);
+    let mut theirs_sig = vec![0u8; theirs_sign.signature_len()];
+    assert_eq!(theirs.sign(msg, &mut theirs_sig).unwrap(), theirs_sig.len());
+
+    let ours_spki = ours.public_key().as_der().unwrap();
+    let theirs_spki = theirs.public_key().as_der().unwrap();
+    for key in [theirs.public_key().as_ref(), theirs_spki.as_ref()] {
+        let key = ours::signature::UnparsedPublicKey::new(ours_verify, key);
+        assert!(key.verify(msg, &theirs_sig).is_ok());
+        assert!(key.verify(b"other message", &theirs_sig).is_err());
+        assert!(key.verify_digest(&digest(msg), &theirs_sig).is_err());
+        let parsed = key.parse().unwrap();
+        assert!(parsed.verify_sig(msg, &theirs_sig).is_ok());
+        assert!(parsed.verify_digest_sig(&digest(msg), &theirs_sig).is_err());
+    }
+    for key in [ours.public_key().as_ref(), ours_spki.as_ref()] {
+        let key = theirs::signature::UnparsedPublicKey::new(theirs_verify, key);
+        assert!(key.verify(msg, &ours_sig[..ours_len]).is_ok());
+        assert!(key.verify(b"other message", &ours_sig[..ours_len]).is_err());
+    }
+    let mut flipped = theirs_sig.clone();
+    flipped[0] ^= 0x01;
+    assert!(
+        ours::signature::UnparsedPublicKey::new(ours_verify, theirs.public_key().as_ref())
+            .verify(msg, &flipped)
+            .is_err()
+    );
+
+    // The expanded private key has no seed, so PKCS#8 export fails on both,
+    // and `from_raw_private_key` loads it.
+    let raw = theirs.private_key().as_raw_bytes().unwrap();
+    let ours_expanded =
+        ours::signature::PqdsaKeyPair::from_raw_private_key(ours_sign, raw.as_ref()).unwrap();
+    let theirs_expanded =
+        theirs::signature::PqdsaKeyPair::from_raw_private_key(theirs_sign, raw.as_ref()).unwrap();
+    assert_eq!(
+        ours_expanded.public_key().as_ref(),
+        theirs.public_key().as_ref()
+    );
+    assert_eq!(
+        theirs_expanded.public_key().as_ref(),
+        theirs.public_key().as_ref()
+    );
+    assert!(ours_expanded.to_pkcs8v1().is_err());
+    assert!(theirs_expanded.to_pkcs8v1().is_err());
+    assert!(
+        ours::encoding::AsDer::<ours::encoding::Pkcs8V1Der>::as_der(&ours_expanded.private_key())
+            .is_err()
+    );
+    assert!(
+        theirs::encoding::AsDer::<theirs::encoding::Pkcs8V1Der>::as_der(
+            &theirs_expanded.private_key()
+        )
+        .is_err()
+    );
+    let mut expanded_sig = vec![0; ours_sign.signature_len()];
+    ours_expanded.sign(msg, &mut expanded_sig).unwrap();
+    assert!(
+        theirs::signature::UnparsedPublicKey::new(theirs_verify, theirs.public_key().as_ref())
+            .verify(msg, &expanded_sig)
+            .is_ok()
+    );
+
+    let expanded_pkcs8 = ml_dsa_expanded_pkcs8(theirs_pkcs8.as_ref(), raw.as_ref());
+    let from_expanded =
+        ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, &expanded_pkcs8).unwrap();
+    let from_expanded_theirs =
+        theirs::signature::PqdsaKeyPair::from_pkcs8(theirs_sign, &expanded_pkcs8).unwrap();
+    assert_eq!(
+        from_expanded.public_key().as_ref(),
+        theirs.public_key().as_ref()
+    );
+    assert_eq!(
+        from_expanded_theirs.public_key().as_ref(),
+        theirs.public_key().as_ref()
+    );
+    assert!(from_expanded.to_pkcs8v1().is_err());
+    assert!(from_expanded_theirs.to_pkcs8v1().is_err());
+
+    let both = ml_dsa_both_pkcs8(theirs_pkcs8.as_ref(), seed, raw.as_ref());
+    let from_both = ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, &both).unwrap();
+    let from_both_theirs = theirs::signature::PqdsaKeyPair::from_pkcs8(theirs_sign, &both).unwrap();
+    assert_eq!(
+        from_both.public_key().as_ref(),
+        theirs.public_key().as_ref()
+    );
+    assert_eq!(
+        from_both_theirs.public_key().as_ref(),
+        theirs.public_key().as_ref()
+    );
+    assert_eq!(
+        from_both.to_pkcs8v1().unwrap().as_ref(),
+        theirs_pkcs8.as_ref()
+    );
+
+    let mut disagree = raw.as_ref().to_vec();
+    let last = disagree.len() - 1;
+    disagree[last] ^= 0x01;
+    let bad_both = ml_dsa_both_pkcs8(theirs_pkcs8.as_ref(), seed, &disagree);
+    same_rejection(
+        ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, &bad_both),
+        theirs::signature::PqdsaKeyPair::from_pkcs8(theirs_sign, &bad_both),
+    );
+}
+
+fn digest(msg: &[u8]) -> ours::digest::Digest {
+    ours::digest::digest(&ours::digest::SHA256, msg)
+}
+
+fn same_rejection<T, U>(
+    ours: Result<T, ours::error::KeyRejected>,
+    theirs: Result<U, theirs::error::KeyRejected>,
+) {
+    match (ours, theirs) {
+        (Err(ours), Err(theirs)) => assert_eq!(
+            ours.description_(),
+            theirs.description_(),
+            "{ours} vs {theirs}"
+        ),
+        (ours, theirs) => panic!(
+            "expected both to fail, got ok {} {}",
+            ours.is_ok(),
+            theirs.is_ok()
+        ),
+    }
+}
+
+/// The PKCS#8 header of a seed-form key: version and algorithm identifier.
+fn ml_dsa_pkcs8_header(seed_form: &[u8]) -> &[u8] {
+    &seed_form[2..2 + 3 + 13]
+}
+
+fn ml_dsa_expanded_pkcs8(seed_form: &[u8], raw: &[u8]) -> Vec<u8> {
+    let inner = der(0x04, raw);
+    der(
+        0x30,
+        &[ml_dsa_pkcs8_header(seed_form), &der(0x04, &inner)].concat(),
+    )
+}
+
+fn ml_dsa_both_pkcs8(seed_form: &[u8], seed: &[u8], raw: &[u8]) -> Vec<u8> {
+    let choice = der(0x30, &[der(0x04, seed), der(0x04, raw)].concat());
+    der(
+        0x30,
+        &[ml_dsa_pkcs8_header(seed_form), &der(0x04, &choice)].concat(),
+    )
+}
+
+/// Length and algorithm mismatches aws-lc-rs names the same way.
+#[test]
+fn ml_dsa_rejected() {
+    use theirs::encoding::AsRawBytes;
+
+    let algs = [
+        (
+            &ours::signature::ML_DSA_44_SIGNING,
+            &theirs::signature::ML_DSA_44_SIGNING,
+            &ours::signature::ML_DSA_65_SIGNING,
+            &theirs::signature::ML_DSA_65_SIGNING,
+        ),
+        (
+            &ours::signature::ML_DSA_65_SIGNING,
+            &theirs::signature::ML_DSA_65_SIGNING,
+            &ours::signature::ML_DSA_87_SIGNING,
+            &theirs::signature::ML_DSA_87_SIGNING,
+        ),
+        (
+            &ours::signature::ML_DSA_87_SIGNING,
+            &theirs::signature::ML_DSA_87_SIGNING,
+            &ours::signature::ML_DSA_44_SIGNING,
+            &theirs::signature::ML_DSA_44_SIGNING,
+        ),
+    ];
+    for (ours_sign, theirs_sign, ours_other, theirs_other) in algs {
+        same_rejection(
+            ours::signature::PqdsaKeyPair::from_seed(ours_sign, &[0; 31]),
+            theirs::signature::PqdsaKeyPair::from_seed(theirs_sign, &[0; 31]),
+        );
+        same_rejection(
+            ours::signature::PqdsaKeyPair::from_seed(ours_sign, &[0; 33]),
+            theirs::signature::PqdsaKeyPair::from_seed(theirs_sign, &[0; 33]),
+        );
+        same_rejection(
+            ours::signature::PqdsaKeyPair::from_seed(ours_sign, &[]),
+            theirs::signature::PqdsaKeyPair::from_seed(theirs_sign, &[]),
+        );
+        same_rejection(
+            ours::signature::PqdsaKeyPair::from_raw_private_key(ours_sign, &[7; 32]),
+            theirs::signature::PqdsaKeyPair::from_raw_private_key(theirs_sign, &[7; 32]),
+        );
+        same_rejection(
+            ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, &[]),
+            theirs::signature::PqdsaKeyPair::from_pkcs8(theirs_sign, &[]),
+        );
+
+        let seed = [4u8; 32];
+        let other = theirs::signature::PqdsaKeyPair::from_seed(theirs_other, &seed).unwrap();
+        let raw = other.private_key().as_raw_bytes().unwrap();
+        same_rejection(
+            ours::signature::PqdsaKeyPair::from_raw_private_key(ours_sign, raw.as_ref()),
+            theirs::signature::PqdsaKeyPair::from_raw_private_key(theirs_sign, raw.as_ref()),
+        );
+        let pkcs8 = other.to_pkcs8v1().unwrap();
+        same_rejection(
+            ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, pkcs8.as_ref()),
+            theirs::signature::PqdsaKeyPair::from_pkcs8(theirs_sign, pkcs8.as_ref()),
+        );
+        // The other parameter set still loads its own key.
+        assert!(ours::signature::PqdsaKeyPair::from_pkcs8(ours_other, pkcs8.as_ref()).is_ok());
+    }
+
+    let ed25519 = theirs::signature::Ed25519KeyPair::from_seed_unchecked(&[3; 32])
+        .unwrap()
+        .to_pkcs8v1()
+        .unwrap();
+    same_rejection(
+        ours::signature::PqdsaKeyPair::from_pkcs8(
+            &ours::signature::ML_DSA_65_SIGNING,
+            ed25519.as_ref(),
+        ),
+        theirs::signature::PqdsaKeyPair::from_pkcs8(
+            &theirs::signature::ML_DSA_65_SIGNING,
+            ed25519.as_ref(),
+        ),
+    );
+}
+
+/// The deprecated alias matches `to_pkcs8v1`, as aws-lc-rs's does.
+#[cfg(feature = "unstable")]
+#[allow(deprecated)]
+#[test]
+fn ml_dsa_to_pkcs8_alias() {
+    let key =
+        ours::signature::PqdsaKeyPair::from_seed(&ours::signature::ML_DSA_44_SIGNING, &[8; 32])
+            .unwrap();
+    assert_eq!(
+        key.to_pkcs8().unwrap().as_ref(),
+        key.to_pkcs8v1().unwrap().as_ref()
+    );
+}

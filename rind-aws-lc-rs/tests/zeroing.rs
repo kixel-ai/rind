@@ -136,6 +136,20 @@ fn cipher() {
     assert_eq!(leaked, 0);
 }
 
+/// An ML-DSA seed, and the PKCS#8 documents that hold it.
+#[test]
+fn ml_dsa() {
+    let seed: [u8; 32] = distinct(11);
+    let leaked = leaks(&seed, || {
+        let key = Box::new(
+            signature::PqdsaKeyPair::from_seed(&signature::ML_DSA_44_SIGNING, &seed).unwrap(),
+        );
+        let _pkcs8 = key.to_pkcs8v1().unwrap();
+        let _der: Pkcs8V1Der<'static> = key.private_key().as_der().unwrap();
+    });
+    assert_eq!(leaked, 0);
+}
+
 /// An ML-KEM shared secret, on both sides.
 #[test]
 fn kem() {
