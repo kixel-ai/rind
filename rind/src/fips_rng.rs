@@ -18,6 +18,7 @@ use std::sync::Once;
 use crate::Error;
 use crate::high::hash::Sha512;
 use crate::high::hmac_drbg::HmacDrbg;
+use crate::low::Entry;
 
 /// Bytes of entropy per instantiation and reseed: the security strength.
 const ENTROPY_LEN: usize = 32;
@@ -48,6 +49,8 @@ impl Drop for ThreadDrbg {
 /// Fails if the OS supplies no entropy, or if called while this thread is
 /// being torn down.
 pub(crate) fn fill(out: &mut [u8]) -> Result<(), Error> {
+    // `rand::fill` reaches here with no other entry held.
+    let _entry = Entry::new_secret();
     DRBG.try_with(|drbg| {
         let mut drbg = drbg.try_borrow_mut().map_err(|_| Error::RngFailed)?;
         let ThreadDrbg(drbg) = match &mut *drbg {
@@ -132,6 +135,7 @@ mod tests {
         assert!(out[out.len() - 64..].iter().any(|&b| b != 0));
     }
 
+    #[cfg(not(target_family = "wasm"))]
     #[test]
     fn threads_draw_independently() {
         let mut ours = [0u8; 32];
