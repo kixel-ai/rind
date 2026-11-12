@@ -13,3 +13,4 @@
 ## Required
 
 - [Specs](/quest/m4/verified/chacha20-poly1305-x86/specs.md) - the HOL Light ChaCha20, Poly1305, and AEAD specs the routines are proven against
+- [VG measured](/quest/m2/verified-garbage/bench.md) - whether pyca/verified-garbage's proven code beats what this would prove; if a switch replaces it, this quest is deleted or rewritten (maintainer, 2026-11-12)

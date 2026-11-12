@@ -14,3 +14,4 @@ ChaCha20-Poly1305, XChaCha20-Poly1305, and `cipher::ChaCha20` earn the ✓ on aa
 ## Required
 
 - [HOL Light specs of ChaCha20-Poly1305 equal the Lean ones](/quest/m4/verified/chacha20-poly1305-x86/specs.md) - the HOL Light ChaCha20 and Poly1305 specs; the Lean specs and the glue's Lean proof above aws-lc's routine have landed
+- [VG measured](/quest/m2/verified-garbage/bench.md) - whether pyca/verified-garbage's proven code beats what this would prove; if a switch replaces it, this quest is deleted or rewritten (maintainer, 2026-11-12)
