@@ -1747,8 +1747,8 @@ mod tests {
         let mut n = [0u8; 32];
         n.copy_from_slice(&util::u64x4_to_big_endian(&CURVE_ORDER));
         assert!(Scalar::from_be_reduced(&n).is_err());
-        // n + 1, as 33 bytes: a leading 0x01 is 2^256, and 2^256 - n + 1 = (2^256 mod n) + 1?
-        // A 33-byte encoding of n is 0x00 || n, which reduces to 0.
+        // A 33-byte encoding of n is 0x00 || n, which reduces to 0. Adding one
+        // to its last byte (n ends in 0x51, so nothing carries) gives n + 1.
         let mut wide = [0u8; 33];
         wide[1..].copy_from_slice(&n);
         assert!(Scalar::from_be_reduced(&wide).is_err());

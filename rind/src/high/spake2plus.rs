@@ -324,8 +324,9 @@ impl VerifierRecord {
         let _entry = Entry::new_secret();
         let w0 = Scalar::from_be_reduced(w0)?;
         let w1 = Scalar::from_be_reduced(w1)?;
-        // L is stored and later sent as a public point. Declassify the
-        // affine value itself; re-encoding it would decode the same bytes.
+        // L is half the stored record and must be kept from the prover's
+        // side as w0 is, but it is treated as public for timing: `from_record`
+        // parses it on the public path. Declassify the affine value itself.
         let l = ct::into_public(Affine::mul_base(&w1));
         if !l.on_curve() {
             return Err(Error::Fault);
@@ -334,6 +335,10 @@ impl VerifierRecord {
     }
 
     /// `L`, uncompressed, which [`Self::from_record`] loads with `w0`.
+    ///
+    /// Store `L` as carefully as `w0`. It is half the stored record, and
+    /// with Matter's short passcodes it is enough to recover the passcode
+    /// offline.
     pub fn l(&self) -> [u8; 65] {
         let _entry = Entry::new_public();
         self.l.to_uncompressed()
