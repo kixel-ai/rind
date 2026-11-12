@@ -274,7 +274,10 @@ impl<P: Params> DecapKey<P> {
 
         // 7. K‾ <- J(z || c)
         let mut k_bar = SharedSecret([0u8; 32]);
-        sha3::Shake256::new(&[&self.z, c.0.as_ref()]).read(&mut k_bar.0);
+        let mut j = sha3::Shake256Sponge::new();
+        j.absorb(&self.z);
+        j.absorb(c.0.as_ref());
+        j.finish().squeeze(&mut k_bar.0);
 
         // 8. c' <- K-PKE.Encrypt(ekPKE, m', r')
         let c_prime = self.ek_pke.kpke_encrypt(m_prime, r_prime);
@@ -961,14 +964,14 @@ fn sample_poly_cbd<'a>(
     polys: impl Iterator<Item = &'a mut Poly>,
 ) {
     match eta {
-        2 => sample_cbd::<128>(sigma, first, polys),
-        3 => sample_cbd::<192>(sigma, first, polys),
+        2 => sample_poly_cbd2(sigma, first, polys),
+        3 => sample_poly_cbd3(sigma, first, polys),
         _ => unreachable!(),
     }
 }
 
-/// [`sample_poly_cbd`] for `eta = L / 64`, four polynomials at a time.
-fn sample_cbd<'a, const L: usize>(
+/// [`sample_poly_cbd`] for `eta = 2`, four polynomials at a time.
+fn sample_poly_cbd2<'a>(
     sigma: &[u8; 32],
     mut n: u8,
     mut polys: impl Iterator<Item = &'a mut Poly>,
@@ -988,16 +991,37 @@ fn sample_cbd<'a, const L: usize>(
             n += 1;
         }
 
-        let mut samples = [[0; L]; 4];
-        sha3::Shake256::one_shot_batch(&bufs[..count], &mut samples[..count]);
+        let mut samples = [[0; 128]; 4];
+        match count {
+            1 => shake256_batch_of::<1>(&bufs, &mut samples),
+            2 => shake256_batch_of::<2>(&bufs, &mut samples),
+            3 => shake256_batch_of::<3>(&bufs, &mut samples),
+            _ => sha3::shake256_batch(&bufs, &mut samples),
+        }
 
         for (sample, poly) in samples.iter().zip(batch.into_iter().flatten()) {
-            match L {
-                128 => sample_cbd2(sample.as_ref().try_into().unwrap(), poly),
-                192 => sample_cbd3(sample.as_ref().try_into().unwrap(), poly),
-                _ => unreachable!(),
-            }
+            sample_cbd2(sample, poly);
         }
+    }
+}
+
+/// [`sha3::shake256_batch`] of the first `P` of four inputs.
+fn shake256_batch_of<const P: usize>(inputs: &[[u8; 40]; 4], outputs: &mut [[u8; 128]; 4]) {
+    sha3::shake256_batch::<P>(
+        inputs.first_chunk().unwrap(),
+        outputs.first_chunk_mut().unwrap(),
+    );
+}
+
+/// [`sample_poly_cbd`] for `eta = 3`, one polynomial at a time.
+fn sample_poly_cbd3<'a>(sigma: &[u8; 32], first: u8, polys: impl Iterator<Item = &'a mut Poly>) {
+    for (n, poly) in (first..).zip(polys) {
+        let mut prf = sha3::Shake256Sponge::new();
+        prf.absorb(sigma);
+        prf.absorb(&[n]);
+        let mut sample = [0; 192];
+        prf.finish().squeeze(&mut sample);
+        sample_cbd3(&sample, poly);
     }
 }
 
