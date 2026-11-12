@@ -1,21 +1,58 @@
 #!/usr/bin/env bash
-# Build pyrind's wheel and run its tests, or its benchmarks, against it.
+# Build pyrind's wheel and run its tests, or its benchmarks, against it, or
+# place a pyrind version against pyrind-cryptography's pyrind requirement.
 #
-# Usage: sh/python.sh test|bench [ARGS...]
+# Usage: sh/python.sh test|bench [ARGS...] | sh/python.sh pin VERSION
 # The tests need pyca/cryptography, the differential oracle, mypy, pytest,
 # and the Wycheproof submodule. They cover pyrind, then pyrind-cryptography,
 # then pyjwt's and joserfc's own suites run on pyrind-cryptography, from the
 # releases the dev shell pins (PYJWT_SRC and JOSERFC_SRC). The benchmarks
 # compare against cryptography, hashlib, and hmac. ARGS go to unittest or
-# the benchmark script.
+# the benchmark script. `pin` prints whether pyrind VERSION is `below`,
+# `within`, or `past` the requirement.
 set -euo pipefail
 
-usage="usage: sh/python.sh test|bench [ARGS...]"
+usage="usage: sh/python.sh test|bench [ARGS...] | sh/python.sh pin VERSION"
 action=${1:?$usage}
 shift
 
 cd "$(git rev-parse --show-toplevel)"
 root=$PWD
+
+pin() {
+    python3 - "$1" rind-python/cryptography/pyproject.toml <<'EOF'
+import sys
+import tomllib
+
+from packaging.requirements import Requirement
+from packaging.version import Version
+
+version = Version(sys.argv[1])
+with open(sys.argv[2], "rb") as f:
+    deps = [Requirement(d) for d in tomllib.load(f)["project"]["dependencies"]]
+spec = next(d.specifier for d in deps if d.name == "pyrind")
+
+
+def under(s):
+    floor = Version(s.version.removesuffix(".*"))
+    if s.operator == ">":
+        return version <= floor
+    return s.operator in (">=", "~=", "==") and version < floor
+
+
+if version in spec:
+    print("within")
+elif any(under(s) for s in spec):
+    print("below")
+else:
+    print("past")
+EOF
+}
+
+if [[ "$action" == pin ]]; then
+    pin "${1:?$usage}"
+    exit
+fi
 
 out=$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)/pyrind
 rm -rf "$out"
@@ -51,7 +88,12 @@ case "$action" in
         # The tests take pyrind from PYTHONPATH, never resolving
         # pyrind-cryptography's requirement, so a release PR bumping pyrind
         # past it would pass here and only fail release.yml once merged.
-        sh/pyrind-pin.sh "$(PYTHONPATH="$out/site" python3 -c 'from importlib.metadata import version; print(version("pyrind"))')" >/dev/null
+        version=$(PYTHONPATH="$out/site" python3 -c 'from importlib.metadata import version; print(version("pyrind"))')
+        state=$(pin "$version")
+        if [[ "$state" == past ]]; then
+            echo "error: pyrind $version is past pyrind-cryptography's pyrind requirement" >&2
+            exit 1
+        fi
         PYTHONPATH="$out/site" python3 -m unittest discover --start-directory rind-python/tests "$@"
         # Checks the type stubs against the built module.
         (cd "$out/site" && python3 -m mypy.stubtest pyrind)

@@ -7,8 +7,9 @@
 # to crates.io, so pyrind builds from that tag. release-plz does not know
 # pyrind-cryptography, whose version is bumped by hand in
 # rind-python/cryptography, so any version PyPI lacks is released and builds
-# from HEAD, once pyrind's version meets its pyrind requirement. release.yml publishes what this names, and retries on a later
-# push if publishing failed.
+# from HEAD, once pyrind's version reaches its pyrind requirement.
+# release.yml publishes what this names, and retries on a later push if
+# publishing failed.
 set -euo pipefail
 
 package=${1:?usage: sh/pypi-unpublished.sh pyrind|pyrind-cryptography}
@@ -39,9 +40,11 @@ case "$package" in
             exit 1
         fi
         # A version needing a pyrind release-plz has not cut yet waits for it,
-        # rather than fail every push to main until then.
-        pin=$(sh/pyrind-pin.sh "$pyrind")
-        [ "$pin" = within ] || exit 0
+        # rather than fail every push to main until then. One past pyrind
+        # still builds, so its install fails loudly without stopping pyrind's
+        # own release.
+        pin=$(sh/python.sh pin "$pyrind")
+        [ "$pin" != below ] || exit 0
         ref=$(git rev-parse HEAD)
         ;;
     *)
