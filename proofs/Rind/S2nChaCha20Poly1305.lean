@@ -6,9 +6,9 @@ open rind.spec
 
 The RFC 8439 spec of ChaCha20, Poly1305, and AEAD_CHACHA20_POLY1305 in
 `proofs/hol-light/s2n-bignum/common/chacha20poly1305.ml`, which rind's HOL
-Light proofs of aws-lc's routines state their results against, and the
-s2n-bignum definitions it uses, `num_of_bytelist` and `bytelist_of_num` from
-`common/words2.ml` and `MAP2` from HOL Light's `lists.ml`, transliterated:
+Light proofs of aws-lc's routines state their results against, with
+s2n-bignum's `num_of_bytelist` and `bytelist_of_num` (`common/words2.ml`) and
+HOL Light's `MAP2` (`lists.ml`) it uses, transliterated:
 HOL Light's `EL n l` is `l[n]!`, `SUB_LIST (m,n) l` is `(l.drop m).take n`,
 `list_of_seq f n` is `(List.range n).map f`, `ITLIST f l b` is `l.foldr f b`,
 `REPLICATE` is `List.replicate`, `APPEND` is `++`, `word_rol` is `rotateLeft`,
