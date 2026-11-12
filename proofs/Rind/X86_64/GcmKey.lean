@@ -374,10 +374,10 @@ theorem try_from_len (N : Usize) (s : Slice U8) (h : s.length = N.val) :
   refine ⟨_, rfl, ?_⟩
   simp [Std.Array.from_val]
 
-/-- `Key::new` for AES-128 or AES-256: a key of the algorithm's length holds
-AES-GCM, and any other length is refused. -/
+/-- `Key::new` for AES-128, AES-192, or AES-256: a key of the algorithm's
+length holds AES-GCM, and any other length is refused. -/
 theorem gcm_key_new (h : RunsAesGcm) (algorithm : cipher.Algorithm) (alg : Algorithm)
-    (halg : (algorithm.key_len = 16#usize ∧ alg = .AES_128) ∨
+    (halg : (algorithm.key_len = 16#usize ∧ alg = .AES_128) ∨ (algorithm.key_len = 24#usize ∧ alg = .AES_192) ∨
       (algorithm.key_len = 32#usize ∧ alg = .AES_256))
     (tag_len : aead.gcm.TagLength) (key : Slice U8) :
     aead.gcm.Key.new algorithm key tag_len ⦃ r =>
@@ -385,41 +385,31 @@ theorem gcm_key_new (h : RunsAesGcm) (algorithm : cipher.Algorithm) (alg : Algor
         ∃ k, r = .Ok k ∧ k.tag_length = tag_len ∧ KeyReady alg (bvs key.val) k.key
       else r = .Err .WrongLength ⦄ := by
   have hv := Slice.len_val key
+  obtain ⟨A, hA, hAlg, hkl⟩ : ∃ A, (if algorithm.key_len = 16#usize then aead.AES_128_GCM
+      else if algorithm.key_len = 24#usize then aead.AES_192_GCM else aead.AES_256_GCM) = A ∧
+      ((A = aead.AES_128_GCM ∧ alg = .AES_128) ∨ (A = aead.AES_192_GCM ∧ alg = .AES_192) ∨
+        (A = aead.AES_256_GCM ∧ alg = .AES_256)) ∧ algorithm.key_len.val = 4 * nk alg := by
+    rcases halg with ⟨h1, rfl⟩ | ⟨h1, rfl⟩ | ⟨h1, rfl⟩
+    · exact ⟨_, if_pos h1, Or.inl ⟨rfl, rfl⟩, by rw [h1]; rfl⟩
+    · have h16 : ¬ algorithm.key_len = 16#usize := by scalar_tac
+      exact ⟨_, by rw [if_neg h16, if_pos h1], Or.inr (Or.inl ⟨rfl, rfl⟩), by rw [h1]; rfl⟩
+    · have h16 : ¬ algorithm.key_len = 16#usize := by scalar_tac
+      have h24 : ¬ algorithm.key_len = 24#usize := by scalar_tac
+      exact ⟨_, by rw [if_neg h16, if_neg h24], Or.inr (Or.inr ⟨rfl, rfl⟩), by rw [h1]; rfl⟩
   unfold aead.gcm.Key.new
   dsimp only
-  rcases halg with ⟨h16, rfl⟩ | ⟨h32, rfl⟩
-  · rw [ite_eq_left h16, h16]
-    by_cases hl : key.length = 16
-    · have hu : key.len = 16#usize := by scalar_tac
-      rw [ite_eq_right (not_not.mpr hu)]
-      apply WP.spec_bind (aes_gcm_new h .AES_128 aead.AES_128_GCM (Or.inl ⟨rfl, rfl⟩) key)
-      rintro r hr
-      have hn : key.length = 4 * nk .AES_128 := by rw [hl]; rfl
-      rw [ite_eq_left hn] at hr
-      obtain ⟨k, rfl, hkr⟩ := hr
-      exact (WP.spec_ok _).2 (by
-        rw [ite_eq_left (show key.length = (16#usize).val from hl)]
-        exact ⟨_, rfl, rfl, hkr⟩)
-    · have hu : key.len ≠ 16#usize := by scalar_tac
-      rw [ite_eq_left hu]
-      exact (WP.spec_ok _).2 (by simp [hl])
-  · have h16' : ¬ algorithm.key_len = 16#usize := by scalar_tac
-    have h24' : ¬ algorithm.key_len = 24#usize := by scalar_tac
-    rw [ite_eq_right h16', ite_eq_right h24', h32]
-    by_cases hl : key.length = 32
-    · have hu : key.len = 32#usize := by scalar_tac
-      rw [ite_eq_right (not_not.mpr hu)]
-      apply WP.spec_bind (aes_gcm_new h .AES_256 aead.AES_256_GCM (Or.inr ⟨rfl, rfl⟩) key)
-      rintro r hr
-      have hn : key.length = 4 * nk .AES_256 := by rw [hl]; rfl
-      rw [ite_eq_left hn] at hr
-      obtain ⟨k, rfl, hkr⟩ := hr
-      exact (WP.spec_ok _).2 (by
-        rw [ite_eq_left (show key.length = (32#usize).val from hl)]
-        exact ⟨_, rfl, rfl, hkr⟩)
-    · have hu : key.len ≠ 32#usize := by scalar_tac
-      rw [ite_eq_left hu]
-      exact (WP.spec_ok _).2 (by simp [hl])
+  rw [hA]
+  by_cases hl : key.length = algorithm.key_len.val
+  · have hu : key.len = algorithm.key_len := by scalar_tac
+    rw [ite_eq_right (not_not.mpr hu)]
+    apply WP.spec_bind (aes_gcm_new h alg A hAlg key)
+    rintro r hr
+    rw [ite_eq_left (hl.trans hkl)] at hr
+    obtain ⟨k, rfl, hkr⟩ := hr
+    exact (WP.spec_ok _).2 (by rw [ite_eq_left hl]; exact ⟨_, rfl, rfl, hkr⟩)
+  · have hu : key.len ≠ algorithm.key_len := by intro he; apply hl; rw [← he]; scalar_tac
+    rw [ite_eq_left hu]
+    exact (WP.spec_ok _).2 (by simp [hl])
 
 /-- Sealing with a 12-byte IV on a key whose tags are full: the ciphertext in
 place and the 16-byte tag are AES-GCM's, for AAD under 2^61 bytes and
