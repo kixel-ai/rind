@@ -307,8 +307,9 @@ and aarch64, from rind's Rust sponge to s2n-bignum's Keccak-f routines, in
   SHA3-512;
 - `sponge_absorb_spec`, `sponge_finish_spec`, `squeezing_squeeze_spec`: a
   `Sponge` absorbs any message in any pieces, and once finished, each
-  `squeeze` writes the next bytes of FIPS 202's sponge on it, as ML-KEM's J
-  (SHAKE256) and its matrix sampling's tail draw;
+  `squeeze` writes FIPS 202's sponge on it from the next whole rate block,
+  skipping what the last call left of its block, as ML-KEM's J (SHAKE256)
+  and its matrix sampling's tail draw;
 - `shake128x4_new_spec`, `shake128x4_squeeze_spec`: `SqueezingSponge4xShake128`
   writes the first 504 bytes of SHAKE128 on each of four 34-byte inputs, and
   returns the sponges to squeeze the rest;
