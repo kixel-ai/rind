@@ -81,8 +81,20 @@ mod digest_shavs {
         });
     }
 
+    // rind-aws-lc-rs: read when the test runs rather than built in, since
+    // `thirdparty/cavp` is a submodule that a build need not check out.
+    fn vectors(name: &'static str) -> test::File<'static> {
+        let path = format!("{}/../thirdparty/{name}", env!("CARGO_MANIFEST_DIR"));
+        let contents = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+        test::File {
+            file_name: name,
+            contents: Box::leak(contents.into_boxed_str()),
+        }
+    }
+
     macro_rules! shavs_tests {
-        // rind-aws-lc-rs: the vectors are rind's copies of the same files, in `$dir`.
+        // rind-aws-lc-rs: the vectors are rind's copies of the same files, in
+        // `thirdparty/$dir`.
         ( $dir:literal, $file_name:ident, $algorithm_name:ident, $test_type:expr ) => {
             #[allow(non_snake_case)]
             mod $algorithm_name {
@@ -92,13 +104,12 @@ mod digest_shavs {
                     TestType, run_known_answer_test, run_monte_carlo_fips_180_4_test,
                     run_monte_carlo_fips_202_test,
                 };
-                use crate::test_file;
 
                 #[test]
                 fn short_msg_known_answer_test() {
                     run_known_answer_test(
                         &digest::$algorithm_name,
-                        test_file!(concat!($dir, stringify!($file_name), "ShortMsg.rsp")),
+                        super::vectors(concat!($dir, stringify!($file_name), "ShortMsg.rsp")),
                         $test_type,
                     );
                 }
@@ -106,7 +117,7 @@ mod digest_shavs {
                 fn long_msg_known_answer_test() {
                     run_known_answer_test(
                         &digest::$algorithm_name,
-                        test_file!(concat!($dir, stringify!($file_name), "LongMsg.rsp")),
+                        super::vectors(concat!($dir, stringify!($file_name), "LongMsg.rsp")),
                         $test_type,
                     );
                 }
@@ -116,12 +127,12 @@ mod digest_shavs {
                     if $test_type == TestType::Fips180_4 {
                         run_monte_carlo_fips_180_4_test(
                             &digest::$algorithm_name,
-                            test_file!(concat!($dir, stringify!($file_name), "Monte.rsp")),
+                            super::vectors(concat!($dir, stringify!($file_name), "Monte.rsp")),
                         );
                     } else {
                         run_monte_carlo_fips_202_test(
                             &digest::$algorithm_name,
-                            test_file!(concat!($dir, stringify!($file_name), "Monte.rsp")),
+                            super::vectors(concat!($dir, stringify!($file_name), "Monte.rsp")),
                         );
                     }
                 }
@@ -222,47 +233,17 @@ mod digest_shavs {
     }
 
     shavs_tests!(
-        "../../../thirdparty/cavp-sha1/",
+        "cavp-sha1/",
         SHA1,
         SHA1_FOR_LEGACY_USE_ONLY,
         TestType::Fips180_4
     );
-    shavs_tests!(
-        "../../../thirdparty/cavp/sha2/",
-        SHA256,
-        SHA256,
-        TestType::Fips180_4
-    );
-    shavs_tests!(
-        "../../../thirdparty/cavp/sha2/",
-        SHA384,
-        SHA384,
-        TestType::Fips180_4
-    );
-    shavs_tests!(
-        "../../../thirdparty/cavp/sha2/",
-        SHA512,
-        SHA512,
-        TestType::Fips180_4
-    );
-    shavs_tests!(
-        "../../../thirdparty/cavp/sha3/",
-        SHA3_256,
-        SHA3_256,
-        TestType::Fips202
-    );
-    shavs_tests!(
-        "../../../thirdparty/cavp/sha3/",
-        SHA3_384,
-        SHA3_384,
-        TestType::Fips202
-    );
-    shavs_tests!(
-        "../../../thirdparty/cavp/sha3/",
-        SHA3_512,
-        SHA3_512,
-        TestType::Fips202
-    );
+    shavs_tests!("cavp/sha2/", SHA256, SHA256, TestType::Fips180_4);
+    shavs_tests!("cavp/sha2/", SHA384, SHA384, TestType::Fips180_4);
+    shavs_tests!("cavp/sha2/", SHA512, SHA512, TestType::Fips180_4);
+    shavs_tests!("cavp/sha3/", SHA3_256, SHA3_256, TestType::Fips202);
+    shavs_tests!("cavp/sha3/", SHA3_384, SHA3_384, TestType::Fips202);
+    shavs_tests!("cavp/sha3/", SHA3_512, SHA3_512, TestType::Fips202);
 }
 
 /// Test some ways in which `Context::update` and/or `Context::finish`
