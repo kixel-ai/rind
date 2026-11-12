@@ -67,6 +67,17 @@ fn rsa_oaep() {
 }
 
 #[test]
+fn blind_rsa() {
+    use rind::blind_rsa::*;
+    let key = KeyPair::from_pkcs8(
+        &RSABSSA_SHA384_PSS_RANDOMIZED,
+        include_bytes!("../src/high/rsa/rsa8192.pkcs8.der"),
+    )
+    .unwrap();
+    check_zeroed_on_drop(Box::pin(key));
+}
+
+#[test]
 fn ecdsa() {
     use rind::signature::{EcdsaKeyPair, sign};
     for (algorithm, pkcs8) in [
@@ -103,6 +114,24 @@ fn ed25519() {
     let seed = ed25519.to_seed();
     check_zeroed_on_drop(Box::pin(Ed25519KeyPair::from_seed(seed.as_ref()).unwrap()));
     check_zeroed_on_drop(Box::pin(ed25519));
+}
+
+#[test]
+fn ml_dsa() {
+    use rind::signature::sign::{MlDsa44, MlDsa65, MlDsa87, MlDsaKeyPair, MlDsaParameterSet};
+    fn check<P: MlDsaParameterSet>() {
+        let key = MlDsaKeyPair::<P>::generate().unwrap();
+        check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
+        check_zeroed_on_drop(Box::pin(key.to_seed().unwrap()));
+        let seed = key.to_seed().unwrap();
+        check_zeroed_on_drop(Box::pin(
+            MlDsaKeyPair::<P>::from_seed(seed.as_ref()).unwrap(),
+        ));
+        check_zeroed_on_drop(Box::pin(key));
+    }
+    check::<MlDsa44>();
+    check::<MlDsa65>();
+    check::<MlDsa87>();
 }
 
 #[test]

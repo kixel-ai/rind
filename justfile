@@ -45,9 +45,17 @@ qemu SHELL:
 portable:
     nix develop --command sh/portable.sh
 
+# Test the portable backend on wasm32-wasip2 under wasmtime (Linux or macOS).
+wasm:
+    nix develop .#wasm --command sh/wasm.sh
+
 # Test the portable backend under Miri for TARGET, such as s390x-unknown-linux-gnu (Linux only).
 miri TARGET="x86_64-unknown-linux-gnu":
     nix develop .#miri --command sh/miri.sh {{TARGET}}
+
+# Run openmls's own test suite on rind-openmls, passing ARGS to cargo test.
+openmls *ARGS:
+    nix develop --command sh/openmls.sh {{ARGS}}
 
 # Check dependencies against advisories, licenses, and sources in deny.toml.
 audit:

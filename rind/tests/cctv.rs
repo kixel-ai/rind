@@ -3,7 +3,7 @@
 //! rejection vector in `src/high/ecdsa.rs`.
 
 // Each vector is checked against aws-lc, which Miri cannot run.
-#![cfg(not(miri))]
+#![cfg(not(any(miri, target_family = "wasm")))]
 
 use aws_lc_rs::signature::{ED25519, UnparsedPublicKey};
 use rind::Error;

@@ -651,7 +651,7 @@ def high.signature.verify.ECDSA_P256_SHA256_FIXED : high.signature.Verification 
     let r ← high.signature.parse_ecdsa_p256_sha256_fixed bytes
     match r with
     | .Ok key =>
-      let b ← high.signature.Buffer.copy_from 1088#usize bytes
+      let b ← high.signature.Buffer.copy_from 2592#usize bytes
       match b with
       | .Ok encoding => ok (.Ok { key, encoding })
       | .Err e => ok (.Err e)
@@ -729,7 +729,7 @@ def high.signature.EcdsaKeyPair.impl.public_key (self : high.signature.EcdsaKeyP
     let key ← core.result.Result.expect error.Error.Insts.CoreFmtDebug r
       (toStr "a key pair's own point")
     let s1 ← high.ecdsa.EncodedPoint.Insts.CoreConvertAsRefSliceU8.as_ref point
-    let b ← high.signature.Buffer.copy_from 1088#usize s1
+    let b ← high.signature.Buffer.copy_from 2592#usize s1
     let encoding ← core.result.Result.expect error.Error.Insts.CoreFmtDebug b
       (toStr "sized for the largest key")
     ok { key := .Other fun message signature =>

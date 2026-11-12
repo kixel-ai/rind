@@ -70,14 +70,25 @@ pub(crate) fn process_cavp(filename: impl AsRef<Path>, sink: &mut dyn CavpSink) 
 /// Reads every test from the Wycheproof vector file `name`.
 pub(crate) fn wycheproof<T: serde::de::DeserializeOwned>(name: &str) -> Vec<T> {
     #[derive(serde::Deserialize)]
-    struct TestFile<T> {
-        #[serde(rename = "testGroups")]
-        groups: Vec<TestGroup<T>>,
-    }
-
-    #[derive(serde::Deserialize)]
     struct TestGroup<T> {
         tests: Vec<T>,
+    }
+
+    let tests: Vec<T> = wycheproof_groups::<TestGroup<T>>(name)
+        .into_iter()
+        .flat_map(|g| g.tests)
+        .collect();
+    assert!(!tests.is_empty(), "{name} has no tests");
+    tests
+}
+
+/// Reads every test group from the Wycheproof vector file `name`, for tests
+/// that need a group's fields.
+pub(crate) fn wycheproof_groups<G: serde::de::DeserializeOwned>(name: &str) -> Vec<G> {
+    #[derive(serde::Deserialize)]
+    struct TestFile<G> {
+        #[serde(rename = "testGroups")]
+        groups: Vec<G>,
     }
 
     let path = format!(
@@ -85,11 +96,10 @@ pub(crate) fn wycheproof<T: serde::de::DeserializeOwned>(name: &str) -> Vec<T> {
         env!("CARGO_MANIFEST_DIR")
     );
     let file = File::open(&path).unwrap_or_else(|_| panic!("cannot open {path}"));
-    let file: TestFile<T> =
+    let file: TestFile<G> =
         serde_json::from_reader(BufReader::new(file)).expect("invalid test JSON");
-    let tests: Vec<T> = file.groups.into_iter().flat_map(|g| g.tests).collect();
-    assert!(!tests.is_empty(), "{path} has no tests");
-    tests
+    assert!(!file.groups.is_empty(), "{path} has no test groups");
+    file.groups
 }
 
 /// Reads the test groups of the ACVP vector set `name`, which
@@ -216,3 +226,67 @@ pub(crate) fn cctv_value<'a>(record: &'a [(String, Vec<u8>)], name: &str) -> &'a
 pub(crate) mod bignum;
 mod binsec;
 pub(crate) mod file_test;
+
+/// Messages and domain separation tags for crosschecking hashes to a curve:
+/// empty, short, and random messages, with tags of one byte, 255 bytes, and
+/// 256 bytes, the shortest RFC 9380 hashes down.
+pub(crate) fn hash_to_curve_inputs() -> Vec<(Vec<u8>, Vec<u8>)> {
+    let mut inputs = Vec::new();
+    for dst in [vec![b'D'], vec![b'D'; 255], vec![b'D'; 256]] {
+        for len in [0, 1, 64, 1000] {
+            let mut msg = vec![0; len];
+            getrandom::fill(&mut msg).unwrap();
+            inputs.push((msg, dst.clone()));
+        }
+    }
+    inputs
+}
+
+/// aws-lc's `EC_hash_to_curve_p256_xmd_sha256_sswu`, or its P-384 twin for
+/// `bits` of 384, as an X9.62 uncompressed point.
+#[cfg(not(any(miri, target_family = "wasm")))]
+pub(crate) fn aws_lc_hash_to_curve(bits: u16, msg: &[u8], dst: &[u8]) -> Vec<u8> {
+    use aws_lc_sys::*;
+
+    // SAFETY: each pointer is to a live buffer of the length passed with it,
+    // and the point is freed once encoded.
+    unsafe {
+        let (group, hash) = match bits {
+            256 => (EC_group_p256(), EC_hash_to_curve_p256_xmd_sha256_sswu as _),
+            384 => (EC_group_p384(), EC_hash_to_curve_p384_xmd_sha384_sswu as _),
+            _ => unreachable!(),
+        };
+        let hash: unsafe extern "C" fn(
+            *const EC_GROUP,
+            *mut EC_POINT,
+            *const u8,
+            usize,
+            *const u8,
+            usize,
+        ) -> core::ffi::c_int = hash;
+        let point = EC_POINT_new(group);
+        assert_eq!(
+            hash(
+                group,
+                point,
+                dst.as_ptr(),
+                dst.len(),
+                msg.as_ptr(),
+                msg.len()
+            ),
+            1
+        );
+        let mut out = vec![0; 1 + 2 * usize::from(bits / 8)];
+        let len = EC_POINT_point2oct(
+            group,
+            point,
+            point_conversion_form_t::POINT_CONVERSION_UNCOMPRESSED,
+            out.as_mut_ptr(),
+            out.len(),
+            core::ptr::null_mut(),
+        );
+        EC_POINT_free(point);
+        assert_eq!(len, out.len());
+        out
+    }
+}
