@@ -1053,6 +1053,12 @@ impl<P: Params> Hasher<P> {
         if P::SHAKE {
             // SHAKE256(PK.seed || ADRS || M)
             let pk_seed = &self.pk_seed[..P::N];
+            if let [input] = inputs {
+                // Verification's paths up the trees hash one lane at a
+                // time, which one state does with less to set up.
+                Shake256::new(&[pk_seed, &addrs[0].0, input]).read(&mut out[0][..P::N]);
+                return;
+            }
             let parts: [[&[u8]; 3]; 4] = core::array::from_fn(|j| {
                 let j = Ord::min(j, inputs.len() - 1);
                 [pk_seed, &addrs[j].0, inputs[j]]
