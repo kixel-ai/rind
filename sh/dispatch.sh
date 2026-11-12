@@ -250,8 +250,8 @@ for module in "${selected[@]}"; do
             if [[ ${#args[@]} -gt 0 ]]; then
                 nix develop .#msrv --command cargo check "${args[@]}" --locked
             fi
-            for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
-                nix develop .#msrv --command cargo check -p rind --lib --locked --target "$target"
+            for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf i686-unknown-linux-gnu; do
+                nix develop .#msrv --command cargo check -p rind -p rind-rustls --lib --locked --target "$target"
             done
             ;;
         check:cross)
