@@ -76,6 +76,10 @@ p256 = { version = "0.14", default-features = false, features = ["arithmetic"] }
 matter-crypto = { version = "0.5.1", default-features = false, features = ["test-support"] }
 # RSA blind signatures, which aws-lc-rs does not offer.
 blind-rsa-signatures = { version = "0.18", default-features = false }
+# ECVRF, which aws-lc-rs does not offer: key transparency's `akd` for
+# Edwards25519, and `vrf-rfc9381` for P-256.
+akd_core = { version = "0.13", default-features = false, features = ["vrf"] }
+vrf-rfc9381 = { version = "0.0.7", default-features = false, features = ["p256"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
