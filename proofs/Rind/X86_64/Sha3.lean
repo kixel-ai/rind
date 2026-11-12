@@ -365,4 +365,242 @@ theorem add_bytes_spec (s : Std.Array U64 25#usize) (off : Usize) (bytes : Slice
       (bv tail.val) (by rw [hbt]; omega) hw, hcomb, xorAt_xorAt' _ _ _ _ _ (fun _ => by
         simp only [List.length_append, hhl, hTl]; omega), hsplit, List.append_assoc]
 
+/-! ## `store_bytes` -/
+
+theorem getElem!_sbl (L : List U64) (j : Nat) :
+    (sbl L)[j]! = (L[j / 8]!).bv.toLEBytes[j % 8]! := by
+  apply Spec.Byte.ext_testBit
+  intro t ht
+  rw [sbl_testBit _ _ _ ht]
+  have := BitVec.toLEBytes_getElem!_testBit (L[j / 8]!).bv (j % 8) t ht
+  simp only [Byte.testBit] at this
+  rw [this]
+
+theorem getElem!_bv (l : List U8) (j : Nat) : (bv l)[j]! = (l[j]!).bv := by
+  simp only [bv, List.getElem!_eq_getElem?_getD, List.getElem?_map]
+  cases l[j]? <;> rfl
+
+/-- `store_bytes` writes the state's first bytes. -/
+theorem store_bytes_spec (s : Std.Array U64 25#usize) (output : Slice U8) (h : output.length ≤ 200) :
+    mid.sha3.store_bytes s output ⦃ r =>
+      r.length = output.length ∧ bv r.val = (sbl s.val).take output.length ⦄ := by
+  unfold mid.sha3.store_bytes mid.sha3.store_bytes_loop
+  apply loop.spec_decr_nat (fun x => output.length - x.2.val)
+    (fun x => x.1.length = output.length ∧ x.2.val ≤ output.length ∧
+      (x.2.val % 8 = 0 ∨ x.2.val = output.length) ∧
+      ∀ j, j < x.2.val → (bv x.1.val)[j]! = (sbl s.val)[j]!)
+  · rintro ⟨out, done⟩ ⟨hl, hd, hd8, hpre⟩
+    simp only at hl hd hd8 hpre ⊢
+    unfold mid.sha3.store_bytes_loop.body
+    have hlen : out.len.val = output.length := by rw [← hl]; rfl
+    have hol : out.val.length = output.length := hl
+    have hoL : output.length = output.val.length := rfl
+    have hs25 : s.val.length = 25 := by simp
+    simp only []
+    split
+    · rename_i hlt
+      have hdl : done.val < output.length := by
+        have : done.val < out.len.val := hlt
+        omega
+      step*
+      · rw [s1_post1, s2_post1, i3_post]
+        omega
+      · have hn : n.val = min 8 (output.length - done.val) := by
+          rw [n_post, core.cmp.impls.OrdUsize.min_val, i2_post, hlen]; rfl
+        have hd0 : done.val % 8 = 0 := by omega
+        refine ⟨by rw [s1_post2]; simp [hl], by omega, by omega, ?_, by omega⟩
+        intro j hj
+        rw [s1_post2, Slice.setSlice!_val, s3_post]
+        by_cases hjd : j < done.val
+        · rw [getElem!_bv, List.getElem!_setSlice!_prefix _ _ _ _ hjd, ← getElem!_bv, hpre j hjd]
+        · have hs2l : s2.val.length = n.val := s2_post1
+          have hi5 : s.val[i4.val]! = i5 := by rw [i5_post, getElem!_pos s.val i4.val (by omega)]
+          rw [getElem!_bv, List.getElem!_setSlice!_middle _ _ _ _ ⟨by omega, by omega, by omega⟩,
+            s2_post, getElem!_sbl, show j / 8 = i4.val by omega, show j % 8 = j - done.val by omega,
+            hi5]
+          simp only [List.slice, List.drop_zero, Array.val_to_slice, a_post]
+          rw [List.getElem!_eq_getElem?_getD, List.getElem?_take, if_pos (by omega),
+            List.getElem?_map, List.getElem?_eq_getElem (by simp; omega),
+            List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem (by simp; omega)]
+          rfl
+    · rename_i hnd
+      have hdl : done.val = output.length := by
+        have : ¬ done.val < out.len.val := hnd
+        omega
+      simp only [WP.spec_ok]
+      refine ⟨hl, ?_⟩
+      apply ext_getElem! (by
+        rw [bv, List.length_map, List.length_take, length_sbl, hs25]; omega)
+      intro j hj
+      rw [bv, List.length_map] at hj
+      rw [hpre j (by omega), List.getElem!_eq_getElem?_getD (l := List.take _ _), List.getElem?_take,
+        if_pos (by omega), ← List.getElem!_eq_getElem?_getD]
+  · exact ⟨rfl, by simp, by simp, by simp⟩
+
+/-! ## Keccak-f on the state's bytes -/
+
+theorem length_stateBytes (L : List (BitVec 64)) : (stateBytes L).length = 8 * L.length := by
+  induction L with
+  | nil => rfl
+  | cons a L ih =>
+    simp only [stateBytes, List.flatMap_cons, List.length_append, BitVec.toLEBytes_length,
+      List.length_cons] at ih ⊢
+    rw [ih]; ring
+
+theorem stateLanes_stateBytes (L : List (BitVec 64)) (hL : L.length = 25) :
+    stateLanes (stateBytes L) = L := by
+  apply List.ext_getElem (by simp [stateLanes, hL])
+  intro i h1 h2
+  simp only [stateLanes, List.getElem_map, List.getElem_range]
+  rw [BitVec.eq_iff]
+  intro p hp
+  rw [BitVec.getElem!_setWidth _ _ _ hp, BitVec.fromLEBytes_getElem!, List.getElem!_eq_getElem?_getD,
+    List.getElem?_take, if_pos (by omega), List.getElem?_drop, ← List.getElem!_eq_getElem?_getD]
+  have := testBit_flatMap_toLEBytes L (8 * i + p / 8) (p % 8) (by omega)
+  rw [← stateBytes] at this
+  simp only [Byte.testBit, List.getElem_range]
+  rw [this, show (8 * i + p / 8) / 8 = i by omega, show 8 * ((8 * i + p / 8) % 8) + p % 8 = p by omega,
+    getElem!_pos L i (by omega)]
+
+theorem keccakF_sbl (a r : Std.Array U64 25#usize) (h : lanes r = keccak 24 (lanes a)) :
+    sbl r.val = keccakF (sbl a.val) := by
+  rw [keccakF, sbl, stateLanes_stateBytes _ (by simp)]
+  exact congrArg stateBytes h
+
+@[simp] theorem length_sbl_array (a : Std.Array U64 25#usize) : (sbl a.val).length = 200 := by
+  rw [length_sbl]; simp
+
+/-! ## Squeezing, `SqueezingSponge::squeeze` -/
+
+theorem div_block (R c k : Nat) (_hR : 0 < R) (h1 : R * c ≤ k) (h2 : k < R * c + R) :
+    k / R = c ∧ k % R = k - R * c := by
+  have hd : k / R = c := by
+    apply Nat.div_eq_of_lt_le
+    · rw [Nat.mul_comm]; exact h1
+    · rw [Nat.add_mul, Nat.one_mul, Nat.mul_comm]; exact h2
+  refine ⟨hd, ?_⟩
+  have := Nat.mod_add_div k R
+  rw [hd] at this
+  omega
+
+theorem iterate_keccakF_succ (c : Nat) (S : List Byte) :
+    keccakF^[c] (keccakF S) = keccakF^[c + 1] S := by
+  rw [Function.iterate_succ_apply]
+
+theorem ceil_div_eq (R L c : Nat) (hR : 0 < R) (h1 : L ≤ R * c) (h2 : c = 0 ∨ R * (c - 1) < L) :
+    (L + R - 1) / R = c := by
+  rcases Nat.eq_zero_or_pos c with hc | hc
+  · subst hc; rw [Nat.mul_zero] at h1
+    rw [show L = 0 by omega]; exact Nat.div_eq_of_lt (by omega)
+  · have h2' : R * (c - 1) < L := by rcases h2 with h2 | h2 <;> omega
+    have key : R * (c - 1) + R = R * c := by
+      rw [← Nat.mul_succ]; congr 1; omega
+    apply Nat.div_eq_of_lt_le
+    · rw [Nat.mul_comm]; omega
+    · rw [Nat.add_mul, Nat.one_mul, Nat.mul_comm]; omega
+
+/-- The squeeze loop: block `c` of the output after `c + 1` Keccak-fs. -/
+theorem squeeze_loop_spec (h : RunsSha3) {R : Usize} (hR : 0 < R.val ∧ R.val ≤ 200) (S0 : List Byte)
+    (L : Nat) (self : mid.sha3.SqueezingSponge R) (output : Slice U8) (done : Usize) (c : Nat)
+    (hl : output.length = L) (hd : done.val = min (R.val * c) L) (hc : c = 0 ∨ R.val * (c - 1) < L)
+    (hs : sbl self.s.val = keccakF^[c] S0)
+    (hpre : ∀ k, k < done.val → (bv output.val)[k]! = (keccakF^[k / R.val + 1] S0)[k % R.val]!) :
+    mid.sha3.SqueezingSponge.squeeze_loop self output done ⦃ r =>
+      r.2.length = L ∧
+      (∀ k, k < L → (bv r.2.val)[k]! = (keccakF^[k / R.val + 1] S0)[k % R.val]!) ∧
+      sbl r.1.s.val = keccakF^[(L + R.val - 1) / R.val] S0 ⦄ := by
+  unfold mid.sha3.SqueezingSponge.squeeze_loop
+  apply loop.spec_decr_nat (fun x => L - x.2.2.val)
+    (fun x => ∃ c, x.2.1.length = L ∧ x.2.2.val = min (R.val * c) L ∧ (c = 0 ∨ R.val * (c - 1) < L) ∧
+      sbl x.1.s.val = keccakF^[c] S0 ∧
+      ∀ k, k < x.2.2.val → (bv x.2.1.val)[k]! = (keccakF^[k / R.val + 1] S0)[k % R.val]!)
+  · rintro ⟨self, out, done⟩ ⟨c, hl, hd, hc, hs, hpre⟩
+    simp only at hl hd hc hs hpre ⊢
+    unfold mid.sha3.SqueezingSponge.squeeze_loop.body
+    have hlen : out.len.val = L := by rw [← hl]; rfl
+    have hol : out.val.length = L := hl
+    simp only []
+    split
+    · rename_i hlt
+      have hdl : done.val < L := by
+        have : done.val < out.len.val := hlt
+        omega
+      have hdc : done.val = R.val * c := by
+        rcases Nat.le_total (R.val * c) L with h' | h' <;> simp [h'] at hd <;> omega
+      step as ⟨i2, i2_post, i2_post1⟩
+      step as ⟨n, n_post⟩
+      have hn : n.val = min R.val (L - done.val) := by
+        rw [n_post, core.cmp.impls.OrdUsize.min_val, i2_post, hlen]
+      step with keccak_f1600_spec h self.s as ⟨a, ha⟩
+      have hsa : sbl a.val = keccakF^[c + 1] S0 := by
+        rw [keccakF_sbl self.s a ha, hs, Function.iterate_succ_apply']
+      step as ⟨i3, hi3⟩
+      step as ⟨sl, back, hsl, hsll, hback⟩
+      step with store_bytes_spec a sl (by rw [hsll]; omega) as ⟨s1, hs1l, hs1⟩
+      have hRc : R.val * (c + 1) = R.val * c + R.val := Nat.mul_succ _ _
+      refine ⟨⟨c + 1, by rw [hback]; simp [hl], by rw [hi3, hn, hRc]; omega,
+        Or.inr (by rw [Nat.add_sub_cancel]; omega), hsa, ?_⟩, by omega⟩
+      intro k hk
+      rw [hback, Slice.setSlice!_val]
+      by_cases hkd : k < done.val
+      · rw [getElem!_bv, List.getElem!_setSlice!_prefix _ _ _ _ hkd, ← getElem!_bv, hpre k hkd]
+      · have hs1v : s1.val.length = sl.length := hs1l
+        rw [getElem!_bv, List.getElem!_setSlice!_middle _ _ _ _ ⟨by omega, by omega, by omega⟩,
+          ← getElem!_bv, hs1, List.getElem!_eq_getElem?_getD, List.getElem?_take, if_pos (by omega),
+          ← List.getElem!_eq_getElem?_getD, hsa]
+        obtain ⟨hk1, hk2⟩ := div_block R.val c k hR.1 (by omega) (by omega)
+        rw [hk1, hk2, hdc]
+    · rename_i hnd
+      have hdl : done.val = L := by
+        have : ¬ done.val < out.len.val := hnd
+        omega
+      simp only [WP.spec_ok]
+      refine ⟨hl, by rw [← hdl]; exact hpre, ?_⟩
+      rw [hs, ceil_div_eq R.val L c hR.1 (by omega) hc]
+  · exact ⟨c, hl, hd, hc, hs, hpre⟩
+
+/-- `squeeze` writes FIPS 202's output from a state owing its Keccak-f, and
+leaves the state as many Keccak-fs on as it took blocks. -/
+theorem squeeze_spec (h : RunsSha3) {R : Usize} (hR : 0 < R.val ∧ R.val ≤ 200)
+    (self : mid.sha3.SqueezingSponge R) (output : Slice U8) :
+    mid.sha3.SqueezingSponge.squeeze self output ⦃ r =>
+      r.2.length = output.length ∧
+      bv r.2.val = squeeze R.val output.length (keccakF (sbl self.s.val)) ∧
+      sbl r.1.s.val = keccakF^[(output.length + R.val - 1) / R.val] (sbl self.s.val) ⦄ := by
+  unfold mid.sha3.SqueezingSponge.squeeze
+  step with sha3_assert_held_spec h as ⟨u, _hu⟩
+  apply WP.spec_mono (squeeze_loop_spec h hR (sbl self.s.val) output.length self output 0#usize 0
+    rfl (by simp) (Or.inl rfl) (by simp) (by simp))
+  rintro r ⟨h1, h2, h3⟩
+  refine ⟨h1, ?_, h3⟩
+  apply ext_getElem! (by simp [bv, squeeze]; exact h1)
+  intro k hk
+  rw [bv, List.length_map] at hk
+  have hk' : k < output.length := by rw [← h1]; exact hk
+  rw [h2 k hk', squeeze, getElem!_pos _ k (by simp; omega), List.getElem_map, List.getElem_range,
+    iterate_keccakF_succ]
+
+/-- Squeezing on: the output past `c` whole blocks is the output of the state
+`c` Keccak-fs on. -/
+theorem squeeze_append (R c n : Nat) (hR : 0 < R) (T : List Byte) :
+    squeeze R (R * c + n) T = squeeze R (R * c) T ++ squeeze R n (keccakF^[c] T) := by
+  apply ext_getElem! (by simp [squeeze])
+  intro k hk
+  simp only [squeeze, List.length_map, List.length_range] at hk
+  rw [getElem!_append_if]
+  simp only [squeeze, List.length_map, List.length_range]
+  by_cases hkc : k < R * c
+  · rw [if_pos hkc, getElem!_pos _ k (by simp; omega), getElem!_pos _ k (by simp; omega)]
+    simp
+  · rw [if_neg hkc, getElem!_pos _ k (by simp; omega), getElem!_pos _ (k - R * c) (by simp; omega)]
+    simp only [List.getElem_map, List.getElem_range]
+    rw [← Function.iterate_add_apply]
+    have h1 : k / R = (k - R * c) / R + c := by
+      conv_lhs => rw [show k = (k - R * c) + R * c by omega]
+      rw [Nat.add_mul_div_left _ _ hR]
+    have h2 : k % R = (k - R * c) % R := by
+      conv_lhs => rw [show k = (k - R * c) + R * c by omega]
+      exact Nat.add_mul_mod_self_left _ _ _
+    rw [h1, h2]
+
 end rind.x86_64
