@@ -31,4 +31,4 @@ Found by the 2026-11-09 audit: the backend landed in [moq-dev/rind#458](https://
 
 - [The portable backend's Keccak-f is proven or replaced](/quest/m4/verified/keccak-portable.md) - the one portable routine with a proof quest before this
 - [64-bit portable targets use 64-bit limbs](/quest/m3/cold-speed/portable-limbs.md) - moves 64-bit targets to fiat-crypto's 64-bit field code and a `u64` Montgomery loop, changing what the curve and RSA proofs cover here
-- [armv7's Rust AES-GCM and SHA are proven](/quest/m5/verified-armv7/prove.md) - proves the same AES-GCM and SHA-1 Rust in 32-bit words
+- [armv7's Rust AES-GCM is proven](/quest/m5/verified-armv7/prove.md) - proves the same AES-GCM Rust in 32-bit words
