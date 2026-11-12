@@ -38,22 +38,25 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
   with its relocations and the read-only data they reach, here the round
   constants, which `admin/prove` extracts as an object file; the proof checks
   the constants against FIPS 180-4's.
-- `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64 and
-  aarch64: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`, that the
-  blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes` return
-  zero exactly when their inputs are equal, and `CT_COMPARE_16_SAFE` and
-  `CT_COMPARE_BYTES_SAFE`, in s2n-bignum's style, that their trace of loads
-  and branches is a function of the addresses and length alone, each load in
-  bounds. Both functions are `#[inline(never)]` with fixed registers, so the
-  proof covers their one copy.
+- `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64,
+  aarch64, and armv7: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`,
+  that the blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes`,
+  `low::arm::cpu` on armv7, return zero exactly when their inputs are equal,
+  and `CT_COMPARE_16_SAFE` and `CT_COMPARE_BYTES_SAFE`, in s2n-bignum's style,
+  that their trace of loads and branches is a function of the addresses and
+  length alone, each load in bounds. Both functions are `#[inline(never)]`
+  with fixed registers, so the proof covers their one copy. armv7's are on
+  the AArch32 model below.
 
 `hol-light/s2n-bignum/` holds what these proofs add to s2n-bignum, ahead of
 the submodule on HOL Light's load path: specs from s2n-bignum pull requests
-not yet merged, and `x86.patch`, rind's additions to the x86 model, which
-`x86-cosim.ml` checks against the CPU. Its
-[README](hol-light/s2n-bignum/README.md) lists each, so they can be offered
-upstream. `nix develop .#hol-light --command admin/prove cosim` runs the
-cosimulation, on an x86_64 CPU with AVX2.
+not yet merged, `x86.patch`, rind's additions to the x86 model, which
+`x86-cosim.ml` checks against the CPU, and `aarch32/`, an AArch32 model of the
+A32 instructions armv7's proofs need, which `aarch32/proofs/simulator.ml`
+checks against qemu-arm. Its [README](hol-light/s2n-bignum/README.md) lists
+each, so they can be offered upstream. `nix develop .#hol-light --command
+admin/prove cosim` runs both cosimulations, the x86 one on an x86_64 CPU with
+AVX2.
 
 ## What is proven
 

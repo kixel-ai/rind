@@ -59,3 +59,42 @@ also add its encodings to s2n-bignum's `x86/proofs/simulator.ml`, as
 s2n-bignum's own additions do. Posting to awslabs/s2n-bignum needs the
 maintainer's approval
 ([moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448)).
+
+## rind's AArch32 model
+
+`aarch32/proofs/` models the A32 instructions armv7's proofs need, after
+s2n-bignum's RV32IM model in `riscv/proofs/` and on the 32-bit infrastructure
+[awslabs/s2n-bignum#452](https://github.com/awslabs/s2n-bignum/pull/452)
+added: `instruction.ml` their semantics, from the Arm Architecture Reference
+Manual's AArch32 pseudocode (DDI 0487, part F), `decode.ml` their A32
+encodings, `aarch32.ml` the step relation, symbolic-execution tactics, and
+AAPCS argument and clobber lists, `consttime.ml` s2n-bignum's safety tactics
+specialized to it, and `base.ml` what a proof loads. The state is R0-R12, SP,
+LR, PC, the N, Z, C, and V flags, memory, and the event trace s2n-bignum's
+safety proofs read.
+
+| Instructions | Forms |
+| --- | --- |
+| `AND`, `EOR`, `SUB`, `RSB`, `ADD`, `ADC`, `SBC`, `RSC`, `ORR`, `BIC`, and their `S` forms | register with an immediate shift, or a modified immediate |
+| `TST`, `TEQ`, `CMP`, `CMN` | the same operands |
+| `MOV`, `MVN`, and their `S` forms | the same operands |
+| `MOVW`, `MOVT` | 16-bit immediate |
+| `LDR`, `LDRB`, `STR`, `STRB` | 12-bit immediate offset, pre-indexed, or post-indexed |
+| `B` | 24-bit offset |
+
+Each takes any condition but the unconditional space. The decoder refuses
+everything else: Thumb, register-shifted registers, PC as an operand or
+destination, `LDRT` and the other unprivileged forms, write-back to the
+transferred register, and every other encoding. Loads and stores may be
+unaligned, as Linux and Android leave them.
+
+`aarch32/proofs/simulator.ml` cosimulates the model as s2n-bignum's
+`riscv/proofs/simulator.ml` does its own: directed cases at the shifts' and
+carries' edges, then random instructions from every row above, each with a
+random condition and state, which `cosim_runner.c` and `cosim_start.S`, a
+static armv7 program, run under qemu-arm, and the model must prove reach the
+same state. `admin/prove cosim` runs 1000 random cases, printing the seed,
+which `S2N_BIGNUM_SEMATEST_SEED` repeats.
+
+Offering the model upstream is also a post to awslabs/s2n-bignum, which needs
+the maintainer's approval.
