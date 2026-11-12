@@ -1,14 +1,5 @@
 # Memcheck findings in dependencies that rind cannot fix in its own code.
 
-# libcrux decides whether a tag verified, then branches on that decision. The
-# outcome is public, but libcrux does not declassify it for memcheck.
-{
-   libcrux-aes-gcm-decrypt-outcome
-   Memcheck:Cond
-   src:aes_gcm.rs:99
-   fun:*libcrux_aes*
-}
-
 # On armv7 without NEON, memcheck reports aws-lc's integer SHA-512 at the
 # `beq` at sha512_block_data_order_nohw+460, which reads only the Z flag of
 # `tst r14,#1` (the K512 pointer) at +456. That `tst` takes its carry from the
