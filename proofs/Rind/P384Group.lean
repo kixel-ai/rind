@@ -227,21 +227,21 @@ theorem n384_nsmul_G (X : p384Curve.Point) (hX : nist.fromM X = p384G) : n384 �
     decide +kernel
   exact nist.nsmul_G (by simp [n384]) hm hN X (hX.trans hG)
 
-theorem fromM_G : ∃ X : p384Curve.Point, nist.fromM X = p384G ∧ X ≠ 0 ∧ n384 • X = 0 := by
+theorem p384_fromM_G : ∃ X : p384Curve.Point, nist.fromM X = p384G ∧ X ≠ 0 ∧ n384 • X = 0 := by
   obtain ⟨X, hX⟩ := p384_exists_fromM p384G p384OnCurve_G
   exact ⟨X, hX, by rintro rfl; simp [nist.fromM, p384G] at hX, n384_nsmul_G X hX⟩
 
 /-- A multiple of G by a scalar in [1, n) has order n, as G does. -/
 theorem p384_g_mult_order (d : Nat) (hd0 : 0 < d) (hd : d < n384) :
     nist.OrderOf p384 n384 (p384Pow p384G d) := by
-  obtain ⟨X, hX, hX0, hn⟩ := fromM_G
+  obtain ⟨X, hX, hX0, hn⟩ := p384_fromM_G
   rw [← hX]
   exact nist.mult_order X hX0 hn d hd0 hd
 
 /-- A multiple of G by a scalar in [1, n) is a finite point of the curve. -/
 theorem p384_g_mult (k : Nat) (hk0 : 0 < k) (hk : k < n384) :
     ∃ x y, p384Pow p384G k = some (x, y) ∧ p384OnCurve (some (x, y)) := by
-  obtain ⟨X, hX, hX0, hn⟩ := fromM_G
+  obtain ⟨X, hX, hX0, hn⟩ := p384_fromM_G
   rw [← hX]
   exact nist.mult_finite X hX0 hn k hk0 hk
 

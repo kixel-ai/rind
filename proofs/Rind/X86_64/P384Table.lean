@@ -49,7 +49,7 @@ theorem tabulated_of_ok {t : Std.Array (Std.Array U64 192#usize) 20#usize} (h : 
   simp only [combOk, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.mem_range,
     decide_eq_true_eq] at h
   obtain ⟨⟨hG, hrows⟩, hnext⟩ := h
-  obtain ⟨g, hg, -, -⟩ := fromM_G
+  obtain ⟨g, hg, -, -⟩ := p384_fromM_G
   let A j d := unmont (combEntry t j d)
   have hrow : ∀ j < 20, nist.fromM ((2 ^ (20 * j)) • g) = some (A j 1) →
       ∀ d, 1 ≤ d → d ≤ 16 → nist.fromM (d • (2 ^ (20 * j)) • g) = some (A j d) := by

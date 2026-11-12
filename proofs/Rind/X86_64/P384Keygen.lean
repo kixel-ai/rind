@@ -691,7 +691,7 @@ theorem comb_outer_spec (h : Runs) (hsel : AffSelect) (X : p384Curve.Point) (hX 
 theorem base_multiply_spec (h : Runs) (hsel : AffSelect) (htab : CombTabulated mid.p384.precomp.CURVE_GENERATOR_PRECOMP_COMB)
     (k : mid.p384.Scalar) (hk : wordsNat k.val < n384) :
     mid.p384.JacobianMontPoint.base_multiply k ⦃ r => jrep (p384Pow p384G (wordsNat k.val)) r ⦄ := by
-  obtain ⟨X, hX, hX0, hn⟩ := fromM_G
+  obtain ⟨X, hX, hX0, hn⟩ := p384_fromM_G
   have hord : addOrderOf X = n384 := addOrderOf_eq_prime hn hX0
   have hk384 : wordsNat k.val < 2 ^ 384 := lt_trans hk (by simp [n384])
   unfold mid.p384.JacobianMontPoint.base_multiply
