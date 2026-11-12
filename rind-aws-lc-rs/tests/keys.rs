@@ -908,6 +908,133 @@ fn ml_dsa_rejected() {
     let mut bad_public = public;
     bad_public[10] ^= 1;
     as_ml_dsa(&secp256k1(&scalar, Some(&bad_public)));
+
+    // aws-lc parses these. rind has no implementation, so the names differ
+    // and the README lists each one.
+    let differs = |pkcs8: &[u8]| {
+        let ours =
+            ours::signature::PqdsaKeyPair::from_pkcs8(&ours::signature::ML_DSA_44_SIGNING, pkcs8)
+                .unwrap_err();
+        let theirs = theirs::signature::PqdsaKeyPair::from_pkcs8(
+            &theirs::signature::ML_DSA_44_SIGNING,
+            pkcs8,
+        )
+        .unwrap_err();
+        assert_eq!(ours.description_(), "InvalidEncoding");
+        assert_eq!(theirs.description_(), "WrongAlgorithm");
+    };
+    let ec_on = |curve: &[u8], scalar: &[u8]| {
+        let ec = der(0x30, &[der(0x02, &[1]), der(0x04, scalar)].concat());
+        pkcs8_private_key(
+            &[0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01],
+            Some(&der(0x06, curve)),
+            &ec,
+        )
+    };
+    let mut p224 = vec![0u8; 28];
+    p224[27] = 1;
+    differs(&ec_on(&[0x2b, 0x81, 0x04, 0x00, 0x21], &p224));
+    as_ml_dsa(&ec_on(&[0x2b, 0x81, 0x04, 0x00, 0x21], &[0; 28]));
+    let mut brainpool = vec![0u8; 32];
+    brainpool[31] = 1;
+    differs(&ec_on(
+        &[0x2b, 0x24, 0x03, 0x03, 0x02, 0x08, 0x01, 0x01, 0x07],
+        &brainpool,
+    ));
+    let k1 = theirs::signature::EcdsaKeyPair::generate_pkcs8(
+        &theirs::signature::ECDSA_P256K1_SHA256_ASN1_SIGNING,
+        &rng,
+    )
+    .unwrap();
+    differs(k1.as_ref());
+
+    let (_, body, _) = der_split(rsa_pkcs8()).unwrap();
+    let (_, _, body) = der_split(body).unwrap();
+    let (_, _, body) = der_split(body).unwrap();
+    let (_, pkcs1, _) = der_split(body).unwrap();
+    let rsa_as = |oid: &[u8], parameters: Option<&[u8]>| pkcs8_private_key(oid, parameters, pkcs1);
+    let pss = [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a];
+    as_ml_dsa(&rsa_as(&pss, None));
+    as_ml_dsa(&rsa_as(&pss, Some(&[0x30, 0x00])));
+    as_ml_dsa(&rsa_as(&pss, Some(&[0x05, 0x00])));
+    as_ml_dsa(&rsa_as(
+        &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x07],
+        Some(&[0x05, 0x00]),
+    ));
+    as_ml_dsa(&rsa_as(&[0x55, 0x08, 0x01, 0x01], Some(&[0x05, 0x00])));
+    let sha256 = der(
+        0x30,
+        &[
+            der(
+                0x06,
+                &[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01],
+            ),
+            vec![0x05, 0x00],
+        ]
+        .concat(),
+    );
+    differs(&rsa_as(&pss, Some(&der(0x30, &der(0xa0, &sha256)))));
+
+    let kem512 = [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x01];
+    let seed = der(0x80, &[0x5a; 64]);
+    for oid in [
+        kem512,
+        [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x02],
+        [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x03],
+    ] {
+        as_ml_dsa(&pkcs8_private_key(&oid, None, &seed));
+    }
+    as_ml_dsa(&pkcs8_private_key(&kem512, None, &der(0x80, &[0x5a; 63])));
+    as_ml_dsa(&pkcs8_private_key(&kem512, Some(&[0x05, 0x00]), &seed));
+    as_ml_dsa(&pkcs8_private_key(
+        &kem512,
+        None,
+        &der(0x04, &vec![0x11; 1632]),
+    ));
+    as_ml_dsa(&pkcs8_private_key(
+        &kem512,
+        None,
+        &der(0x04, &vec![0x11; 1631]),
+    ));
+
+    let q = der_uint(
+        &[0x80]
+            .into_iter()
+            .chain([0u8; 18])
+            .chain([1])
+            .collect::<Vec<_>>(),
+    );
+    let p = der_uint(
+        &[0x01]
+            .into_iter()
+            .chain([0u8; 19])
+            .chain([1])
+            .collect::<Vec<_>>(),
+    );
+    let dsa = [0x2a, 0x86, 0x48, 0xce, 0x38, 0x04, 0x01];
+    let params = der(0x30, &[p, q, der_uint(&[2])].concat());
+    differs(&pkcs8_private_key(&dsa, Some(&params), &der_uint(&[1])));
+    let tiny = der(
+        0x30,
+        &[
+            der_uint(
+                &[0x01]
+                    .into_iter()
+                    .chain([0u8; 19])
+                    .chain([1])
+                    .collect::<Vec<_>>(),
+            ),
+            der_uint(&[3]),
+            der_uint(&[2]),
+        ]
+        .concat(),
+    );
+    as_ml_dsa(&pkcs8_private_key(&dsa, Some(&tiny), &der_uint(&[1])));
+    as_ml_dsa(&pkcs8_private_key(
+        &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x03, 0x01],
+        Some(&params),
+        &der_uint(&[1]),
+    ));
 }
 
 /// Signatures that are not a parameter set's encoding, checked both before
@@ -1311,6 +1438,31 @@ fn ml_dsa_short_seed(seed_form: &[u8]) -> Vec<u8> {
     let seed = &seed_form[seed_form.len() - 32..];
     let choice = der(0x80, &seed[..31]);
     der(0x30, &[header, &der(0x04, &choice)].concat())
+}
+
+/// A positive INTEGER whose magnitude is `mag`.
+fn der_uint(mag: &[u8]) -> Vec<u8> {
+    let body = if mag.first().is_some_and(|b| *b >= 0x80) {
+        [&[0u8][..], mag].concat()
+    } else {
+        mag.to_vec()
+    };
+    der(0x02, &body)
+}
+
+fn der_split(input: &[u8]) -> Option<(u8, &[u8], &[u8])> {
+    let (len, header) = match *input.get(1)? {
+        n @ 0..=0x7f => (usize::from(n), 2),
+        0x81 => (usize::from(*input.get(2)?), 3),
+        0x82 => (
+            usize::from(u16::from_be_bytes([*input.get(2)?, *input.get(3)?])),
+            4,
+        ),
+        _ => return None,
+    };
+    let rest = input.get(header..)?;
+    let (body, rest) = rest.split_at_checked(len)?;
+    Some((input[0], body, rest))
 }
 
 /// A seed-form PKCS#8 v1 document rewritten as v2 (RFC 5958) carrying

@@ -436,9 +436,67 @@ fn ml_dsa_other_private_key() {
         .as_der()
         .unwrap();
     let pkcs8 = rsa.as_ref().to_vec();
-    // version, modulus, and public exponent stay public. The remaining
-    // integers are the private exponent, the primes, and the CRT values.
+    mark_rsa_secrets(&pkcs8);
+    load(&pkcs8);
+    public(&pkcs8[..]);
+
+    // RSASSA-PSS with no parameters is the same RSA key under another OID.
+    // The integers are marked the same way.
     let (body, _) = der_contents(&pkcs8);
+    let (_, body) = der_contents(body);
+    let (_, body) = der_contents(body);
+    let (pkcs1, _) = der_contents(body);
+    let pss = der(
+        0x30,
+        &[
+            der(0x02, &[0]),
+            der(
+                0x30,
+                &der(
+                    0x06,
+                    &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a],
+                ),
+            ),
+            der(0x04, pkcs1),
+        ]
+        .concat(),
+    );
+    mark_rsa_secrets(&pss);
+    load(&pss);
+    public(&pss[..]);
+
+    // An ML-KEM-512 seed. Only its length is checked, so the seed bytes stay
+    // secret through the refusal.
+    let seed = [0x5au8; 64];
+    let kem = der(
+        0x30,
+        &[
+            der(0x02, &[0]),
+            der(
+                0x30,
+                &der(
+                    0x06,
+                    &[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x01],
+                ),
+            ),
+            der(0x04, &der(0x80, &seed)),
+        ]
+        .concat(),
+    );
+    let at = kem
+        .windows(seed.len())
+        .position(|window| window == seed)
+        .unwrap();
+    secret(&kem[at..at + seed.len()]);
+    load(&kem);
+    public(&kem[at..at + seed.len()]);
+}
+
+/// Marks the private exponent, primes, and CRT values in an RSA PKCS#8
+/// document. The first two octets of each integer are its DER sign check,
+/// and the low octet of each prime is its parity.
+fn mark_rsa_secrets(pkcs8: &[u8]) {
+    let (body, _) = der_contents(pkcs8);
     let (_, body) = der_contents(body);
     let (_, body) = der_contents(body);
     let (octet, _) = der_contents(body);
@@ -446,7 +504,6 @@ fn ml_dsa_other_private_key() {
     let mut which = 0;
     while !rest.is_empty() {
         let (integer, next) = der_contents(rest);
-        // 3 is d, 4 and 5 are the primes. The primes' low octet is their parity.
         if which >= 3 && integer.len() > 3 {
             let start = integer.as_ptr() as usize - pkcs8.as_ptr() as usize;
             let end = start + integer.len() - usize::from(which == 4 || which == 5);
@@ -455,8 +512,6 @@ fn ml_dsa_other_private_key() {
         which += 1;
         rest = next;
     }
-    load(&pkcs8);
-    public(&pkcs8[..]);
 }
 
 fn der_contents(input: &[u8]) -> (&[u8], &[u8]) {

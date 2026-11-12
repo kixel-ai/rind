@@ -73,6 +73,53 @@ pub(crate) fn pkcs8_algorithm(der: &[u8]) -> Option<&[u8]> {
     Some(oid.as_slice_less_safe())
 }
 
+/// A PKCS#8 document's algorithm parameters and private key, the parts a
+/// non-ML-DSA decoder inspects. `parameters` is empty when the algorithm
+/// identifier has none. Bytes after the outer sequence are ignored, as
+/// `EVP_parse_private_key` reads one value.
+pub(crate) struct Pkcs8Parts<'a> {
+    pub parameters: &'a [u8],
+    pub private_key: &'a [u8],
+}
+
+/// Splits a v1 or v2 PKCS#8 document. The version must be 0 or 1. An
+/// attributes set and a public key, in that order, may follow the private key.
+pub(crate) fn pkcs8_parts(der: &[u8]) -> Option<Pkcs8Parts<'_>> {
+    let mut outer = untrusted::Reader::new(untrusted::Input::from(der));
+    let body = read(&mut outer, SEQUENCE).ok()?;
+    let mut body = untrusted::Reader::new(body);
+    let version = read(&mut body, INTEGER).ok()?;
+    if !matches!(version.as_slice_less_safe(), [0] | [1]) {
+        return None;
+    }
+    let mut algorithm = untrusted::Reader::new(read(&mut body, SEQUENCE).ok()?);
+    read(&mut algorithm, OBJECT_IDENTIFIER).ok()?;
+    let parameters = algorithm.read_bytes_to_end().as_slice_less_safe();
+    let private_key = read(&mut body, 0x04).ok()?.as_slice_less_safe();
+    if body.peek(0xa0) {
+        read(&mut body, 0xa0).ok()?;
+    }
+    if body.peek(0x81) {
+        read(&mut body, 0x81).ok()?;
+    }
+    if !body.at_end() {
+        return None;
+    }
+    Some(Pkcs8Parts {
+        parameters,
+        private_key,
+    })
+}
+
+/// The tag and body of the first DER element in `der`. Bytes after it are
+/// left unread.
+pub(crate) fn first_element(der: &[u8]) -> Option<(u8, &[u8])> {
+    let tag = *der.first()?;
+    let mut input = untrusted::Reader::new(untrusted::Input::from(der));
+    let body = read(&mut input, tag).ok()?;
+    Some((tag, body.as_slice_less_safe()))
+}
+
 /// Whether `der` is a `SubjectPublicKeyInfo` rather than PKCS#1: its first
 /// field is a `SEQUENCE`, where PKCS#1's is an `INTEGER`.
 pub(crate) fn is_spki(der: &[u8]) -> bool {

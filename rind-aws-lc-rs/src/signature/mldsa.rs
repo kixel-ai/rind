@@ -508,10 +508,51 @@ fn parses_as_other_private_key(pkcs8: &[u8]) -> bool {
             .into_iter()
             .any(|algorithm| rind::signature::EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).is_ok())
         }
-        // RFC 8017 `rsaEncryption`.
-        [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01] => {
-            rind::signature::RsaKeyPair::from_pkcs8(pkcs8).is_ok()
-        }
+        // RFC 8017 `rsaEncryption`, RFC 4055 `id-RSAES-OAEP`, and X.509's
+        // `id-ea-rsa`. aws-lc decodes each with the RSA private-key parser,
+        // which requires NULL parameters.
+        [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01]
+        | [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x07]
+        | [0x55, 0x08, 0x01, 0x01] => rind::signature::RsaKeyPair::from_pkcs8(pkcs8).is_ok(),
+        // RFC 4055 `id-RSASSA-PSS`. Absent parameters, or an empty parameter
+        // sequence, take the defaults. Explicit hash or mask parameters are
+        // `InvalidEncoding` here; the README lists that.
+        [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a] => rsa_pss_private_key(pkcs8),
+        // RFC 9935 ML-KEM. The seed is 64 bytes and the expanded key has the
+        // parameter set's length. aws-lc accepts either encoding at that
+        // length and does not check the bytes further.
+        [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x01] => ml_kem_private_key(pkcs8, 1632),
+        [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x02] => ml_kem_private_key(pkcs8, 2400),
+        [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x03] => ml_kem_private_key(pkcs8, 3168),
+        // DSA, and an `id-ecPublicKey` curve rind does not implement, are not
+        // recognized. aws-lc parses those keys; the README lists the difference.
+        _ => false,
+    }
+}
+
+/// An RSASSA-PSS private key whose parameters are absent or an empty
+/// `RSASSA-PSS-params`, and whose private key is a PKCS#1 RSA key.
+fn rsa_pss_private_key(pkcs8: &[u8]) -> bool {
+    let Some(parts) = der::pkcs8_parts(pkcs8) else {
+        return false;
+    };
+    let defaults = parts.parameters.is_empty() || parts.parameters == [0x30, 0x00];
+    defaults && rind::signature::RsaKeyPair::from_pkcs1(parts.private_key).is_ok()
+}
+
+/// An ML-KEM private key in RFC 9935's seed form or expanded form.
+fn ml_kem_private_key(pkcs8: &[u8], expanded_len: usize) -> bool {
+    let Some(parts) = der::pkcs8_parts(pkcs8) else {
+        return false;
+    };
+    if !parts.parameters.is_empty() {
+        return false;
+    }
+    // aws-lc reads one inner value and does not require it to end the
+    // private key.
+    match der::first_element(parts.private_key) {
+        Some((0x80, seed)) => seed.len() == 64,
+        Some((0x04, expanded)) => expanded.len() == expanded_len,
         _ => false,
     }
 }
