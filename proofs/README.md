@@ -384,7 +384,7 @@ HChaCha20, which derives XChaCha20's subkey, runs HACL*'s rounds, which
 `hchacha20_spec` proves. The theorems assume `RunsChaCha20Poly1305`: rind's
 CPU-feature checks find SSE4.1, and `OnePass`, that aws-lc's one-pass
 routines compute RFC 8439's AEAD, which no proof covers yet;
-[the ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-x86.md)
+[the ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-x86/aead.md)
 owns their HOL Light proofs. CPUs without SSE4.1 run the separate ChaCha20
 and Poly1305 passes, which the model leaves opaque. `AeadDispatch` models
 `RandomizedNonceKey`, which reaches the system's random source, and
