@@ -166,8 +166,8 @@ curves, and `Rind/NistGroup.lean` proves it is multiplication in Mathlib's
 group of points on such a curve. `Rind/P384Group.lean` proves p and n prime,
 by Pratt certificates that `Rind/Pratt.lean` checks, and G's order n.
 
-ChaCha20 QUIC header protection on x86_64 and aarch64, from
-`HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
+ChaCha20 QUIC header protection on x86_64, aarch64, and the portable backend,
+from `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
 
 - `chacha20_new`: a key that is not 32 bytes is refused, and otherwise the
   key holds its bytes;
@@ -176,7 +176,9 @@ ChaCha20 QUIC header protection on x86_64 and aarch64, from
   little-endian block counter and the rest as the nonce.
 
 HACL*'s rounds are Rust, so they are translated and proven with the rest, and
-no axiom stands in for HACL*'s proof of them.
+no axiom stands in for HACL*'s proof of them. `chacha20_mask` assumes only
+`RunsChaCha20`, that the entry guard admits it, which each target's `Runs`
+implies.
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
 pass, which no input affects. `Rind/Aarch64/P256Table.lean` proves that
@@ -263,9 +265,10 @@ from axioms restating the HOL Light proofs of the `asm!` compares below it.
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
 (`Algorithm`'s `generate` and `load`, and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
 cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
-cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
-Lean definitions beside the Rust they model, with an agreement `Algorithm` as
-which static it is. P-256's key generation draws through a `dyn
+cannot translate. `Rind/X86_64/Dispatch.lean` models the agreement dispatch
+and `Rind/X86_64/QuicDispatch.lean` the header-protection one by hand, in Lean
+definitions beside the Rust they model, with an agreement `Algorithm` as which
+static it is. P-256's key generation draws through a `dyn
 RandomSource`, which Aeneas cannot translate either, and
 `Rind/Aarch64/P256Dispatch.lean` models it the same way, for
 `Rind/Aarch64/Dispatch.lean` to call; on x86_64, where no theorem is about
@@ -284,7 +287,8 @@ aarch64:
   finished, returns its hash, for messages under 2^64 bytes.
 
 The hash is cryptol-specs' FIPS 180-4 SHA-512, in `Rind/Sha2.lean`, with its
-block compression `processBlock_Common` opaque. Each theorem assumes
+block compression `processBlock_Common` transliterated from FIPS 180-4 and
+checked against known answers in `Rind/HashSpecTest.lean`. Each theorem assumes
 `RunsSha512`: on x86_64 that rind picks aws-lc's AVX routine, on an Intel CPU
 with AVX but without AVX2, and on aarch64 its scalar routine, on a CPU without the SHA-512
 instructions; those are the routines whose proofs state their result. The
@@ -416,6 +420,66 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
 `Verification::Ecdsa(`, `EcdsaP256`, or `EcdsaKey::`, builds an `EcdsaOps` or
 `EcdsaPair`, or reads an `ops` outside the signature models' quotes.
 
+## The portable backend
+
+`admin/prove` translates the portable backend too, under `--cfg
+rind_portable`, the cfg CI's portable jobs build with, on x86_64, into
+`Rind/Portable/`: the hash, HMAC, KDF, and header-protection paths alone. None
+of that Rust picks by pointer width or CPU, and Aeneas's `usize` is either
+width, so the theorems hold on every target the backend builds for. The
+x86_64 proofs of SHA-256's padding, the SHA-512 family, HMAC's keyed states,
+the digest, HMAC, HKDF, and PBKDF2 APIs, and ChaCha20 header protection are
+written for it with the target renamed, as for aarch64, over what differs:
+
+- `Rind/Portable/Hacl.lean`: HACL*'s SHA-256 and SHA-512 block functions,
+  which libcrux-sha2 ships as the Rust KaRaMeL prints, as the axioms
+  `sha256_update_nblocks_spec` and `sha512_update_nblocks_spec`, restating
+  HACL*'s F* theorems, and the proof of rind's loop that hands them pieces
+  under 2^31 bytes. Charon cannot translate the two functions:
+  `krml::unroll_for!` unrolls their rounds into one body whose blocks nest
+  deeper than its recursion bound.
+- `Rind/Portable/Sha512Entry.lean`: `RunsSha512`, which assumes only the
+  entry checks, as no dispatch picks a routine, and SHA-512's block function
+  in the form the SHA-512 proof takes it.
+- `Rind/Portable/ShaBlocks.lean`: `Sha256Blocks`, only the entry checks, and
+  `Sha1Blocks`, as on the other targets the contract of SHA-1's block
+  function, `low::generic::sha1`, which no proof covers here.
+- `Rind/Portable/Compare.lean` and `Rind/Portable/CtEqual.lean`: the
+  constant-time compares behind `hmac::verify` and `pbkdf2::Secret::verify`,
+  Rust here, read through raw pointers and `black_box`, so modelled by hand
+  and proven, where x86_64 and aarch64 take HOL Light's theorems as axioms.
+
+`Rind/Portable/HashAxioms.lean` and `Rind/Portable/Axioms.lean` check the
+axioms each theorem rests on: HACL*'s two, and for ChaCha20 header
+protection none.
+
+Every other operation the portable backend runs has no proof yet, and
+these quests prove its code, whose proofs then run on this translation:
+
+- SHA-3 and ML-KEM: [the sponge](/quest/m4/verified/sha3-sponge.md) over
+  [the portable Keccak-f](/quest/m4/verified/keccak-portable.md),
+  [the construction](/quest/m4/verified/mlkem-construction.md), and
+  [the portable arithmetic](/quest/m4/verified/mlkem-portable.md);
+- ChaCha20-Poly1305:
+  [Graviola's Poly1305 and the separate-pass glue](/quest/m5/verified/chacha20-poly1305-portable.md);
+- AES and AES-GCM: rind's `aes_nohw.c` and `gcm_nohw.c` ports, in
+  [armv7's Rust proofs](/quest/m5/verified-armv7/prove.md) and
+  [x86_64 without AES-NI](/quest/m5/verified/x86-no-aesni.md), which share one
+  source file across word widths;
+- X25519 and Ed25519: curve25519-dalek's serial backend under rind's glue, in
+  [armv7's Curve25519](/quest/m5/verified-armv7/curve25519.md);
+- P-256, P-384, and P-521: [armv7's NIST curves](/quest/m5/verified-armv7/nist-curves.md),
+  over field code [the 64-bit limbs quest](/quest/m3/cold-speed/portable-limbs.md)
+  replaces on 64-bit targets;
+- RSA: [verification](/quest/m4/verified/rsa-verify.md) and
+  [signing](/quest/m4/verified/rsa-sign.md);
+- SHA-1 and MD5: `low::generic::sha1` in
+  [armv7's Rust proofs](/quest/m5/verified-armv7/prove.md), and
+  [MD5](/quest/m5/verified/md5.md).
+
+[The re-audit](/quest/m4/verified/re-audit.md) plans whatever still lacks a
+proof after those.
+
 ## Layout
 
 - `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine, and
@@ -440,7 +504,7 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   `Rind/HashSpecTest.lean`, their known-answer tests; `Rind/Vale.lean`,
   `Rind/ValeBytes.lean`, and `Rind/Gf128.lean`: Vale's AES and GF(2^128) specs
   and their lemmas.
-- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch,GcmKey}.lean`:
+- `Rind/X86_64/{Dispatch,QuicDispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch,GcmKey}.lean`:
   the hand models of the agreement, header-protection, digest, signature,
   AEAD, and HMAC APIs' dispatch, and of `aead::gcm::Key` over the AEAD model; `Rind/X86_64/HkdfExpand.lean` and
   `Rind/X86_64/Kdf/{TypesExternal,FunsExternal}.lean`, of what the HKDF and
@@ -460,7 +524,11 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   the SHA-256 instructions, and `Rind/S2nSha256.lean`, s2n-bignum's SHA-256
   spec, transliterated, and its proof that it is `Rind/HashSpec.lean`'s.
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
-  `Rind/Aarch64/` with the target renamed.
+  `Rind/Aarch64/` with the target renamed, and the hash, KDF, and
+  header-protection ones to `Rind/Portable/`.
+- `Rind/Portable/{TypesExternal,FunsExternal,Compare,Hacl,Sha512Entry,ShaBlocks,CtEqual}.lean`:
+  the portable backend's opaque items, its compares' hand model, and its own
+  proofs, which [the portable backend](#the-portable-backend) describes.
 - `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate, and
   that `p256Add` is the addition of Mathlib's group of points on the curve;
   `Rind/N256Prime.lean`: that `n256` is prime; `Rind/P256Multiples.lean`: the
@@ -496,9 +564,13 @@ Beyond Lean's kernel:
   its HOL Light definition, transliterated, rather than opaque, so `p256Add`,
   `p256Pow`, and `p256Inv` in `Rind/Spec.lean` are trusted to be
   `weierstrass_add`, `group_pow`, and `ring_inv` on `p256_group`.
-- That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
-  `processBlock_Common`, and `Rind/S2nSha256.lean` transliterates
-  s2n-bignum's SHA-256 spec.
+- That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 and transliterates
+  its `processBlock_Common` from FIPS 180-4, and `Rind/S2nSha256.lean`
+  transliterates s2n-bignum's SHA-256 spec.
+- On the portable backend, HACL*'s F* theorems about its SHA-256 and SHA-512
+  block functions, restated as axioms in `Rind/Portable/Hacl.lean` under the
+  same composition rule, and that the Rust libcrux-sha2 ships is the code
+  KaRaMeL printed from the F* those theorems are about.
 - That `Rind/Spec.lean`'s ChaCha20, Poly1305, and ChaCha20-Poly1305
   transliterate RFC 8439 and RFC 9001, its HChaCha20 and XChaCha20-Poly1305
   draft-irtf-cfrg-xchacha-03, its ECDSA FIPS 186-5, and

@@ -8,7 +8,10 @@
 # so no Lean module imports both. The aarch64 hand models and its X25519,
 # SHA-512, ChaCha20, Ed25519, SHA-1, SHA-256, HMAC, digest, HKDF, and PBKDF2 proofs are the
 # x86_64 ones with the target renamed, which this writes too, all but each
-# target's own `ShaBlocks.lean` and `HashAxioms.lean`.
+# target's own `ShaBlocks.lean` and `HashAxioms.lean`. The portable backend,
+# translated for x86_64 into `proofs/Rind/Portable/`, takes the hash, HMAC,
+# HKDF, PBKDF2, and ChaCha20 header protection proofs the same way, over
+# HACL*'s SHA-2 instead of aws-lc's.
 #
 # Usage: admin/prove [bytes | hol-light | cosim | lean]
 #
@@ -452,7 +455,8 @@ items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
 items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {' >"$out/zeroise.rs"
 items rind/src/aead/quic.rs 'pub struct Algorithm ' 'impl Algorithm {' 'pub static CHACHA20:' \
     'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' 'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
-check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic.rs"
+check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs"
+check_quote X86_64/QuicDispatch cat "$out/quic.rs" "$out/zeroise.rs"
 p256_items() {
     items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn'
     items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
@@ -510,6 +514,8 @@ check_quote X86_64/HmacDispatch items rind/src/high/hmac.rs 'pub struct Algorith
     'impl<H: HmacHash> Clone for Keying<H> {' 'impl<H: HmacHash> Keying<H> {' 'struct Tagging<' \
     'struct TagOps<' 'impl<H: HmacHash> Clone for Tagging<H> {' 'impl<H: HmacHash> Tagging<H> {'
 check_quote X86_64/HkdfExpand items rind/src/high/hkdf.rs '    fn expand_into('
+check_quote Portable/Compare items rind/src/low/portable/cpu.rs 'pub(in crate::low) fn ct_compare_bytes(' \
+    'pub(in crate::low) fn ct_compare_16('
 check_quote X86_64/SignatureDispatch items rind/src/high/signature.rs \
     'pub struct VerificationAlgorithm(' 'enum Verification {' 'type Verify<K> =' \
     'struct Verifier<K> {' 'impl<K> Verifier<K> {' 'pub struct PublicKey {' 'enum Parsed {' \
@@ -579,8 +585,8 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # reaches each curve's `Agree` impl, `HeaderProtectionKey` each cipher's
 # `Mask` impl, `digest::Context` each hash's, and `signature::PublicKey` each
 # algorithm's parser and verifier, so the translation starts below that
-# dispatch, and `proofs/Rind/X86_64/Dispatch.lean`, `DigestDispatch.lean`, and
-# `SignatureDispatch.lean` model it by hand. `agreement::Algorithm` holds the
+# dispatch, and `proofs/Rind/X86_64/Dispatch.lean`, `QuicDispatch.lean`,
+# `DigestDispatch.lean`, and `SignatureDispatch.lean` model it by hand. `agreement::Algorithm` holds the
 # agreement API's, and its `PublicKey` holds an `Algorithm`, so it is opaque,
 # and `Dispatch.lean` models it. `digest::Algorithm` holds the
 # digest API's, so it is opaque too, and `DigestAlgorithm.lean` models it;
@@ -596,94 +602,98 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # `proofs/Rind/Aarch64/P256Table.lean` can prove it holds what s2n-bignum's
 # proof assumes. HMAC's keyed states are translated over any hash, and its
 # `Key` and `Context`, which hold function pointers, are not.
+# The hash, HMAC, and header-protection paths, which every target translates,
+# and the curves' and signatures', which only the assembly targets do.
+hashes=(
+    --start-from '{impl crate::high::digest::Variant for _}'
+    --start-from '{impl crate::high::hash::Hash for _}'
+    --start-from '{impl core::convert::AsRef for crate::high::digest::Digest}'
+    --start-from crate::high::digest::Context
+    --start-from crate::mid::sha2::Sha512_256Context::truncate
+    --start-from '{impl crate::aead::quic::Mask for crate::mid::chacha20::ChaCha20}'
+    --start-from '{impl crate::aead::quic::Mask for crate::mid::aes::Aes}'
+    --start-from crate::aead::quic::HeaderProtectionKey
+    --start-from crate::aead::quic::AlgorithmId
+    --start-from crate::mid::chacha20::ChaCha20::new
+    --start-from 'crate::high::hmac::HmacKey::_'
+    --start-from 'crate::high::hmac::Hmac::_'
+    --start-from crate::low::generic::ct_equal::ct_equal
+    --start-from '{impl core::clone::Clone for crate::high::hmac::Hmac<_>}'
+    --opaque crate::aead::quic::Masker
+    --opaque crate::mid::aes
+    --opaque crate::high::digest::Ops
+    --opaque crate::high::digest::Algorithm
+    --opaque crate::high::digest::Digest
+    --opaque 'crate::high::digest::_::zeroed'
+    --opaque 'crate::high::digest::_::as_mut'
+    --opaque 'crate::high::digest::_::ct_equal'
+    --opaque 'crate::high::digest::_::as_ref'
+    --opaque 'crate::high::digest::_::output_len'
+    --opaque crate::high::digest::MD5
+    --opaque crate::high::digest::SHA1
+    --opaque crate::high::digest::SHA256
+    --opaque crate::high::digest::SHA384
+    --opaque crate::high::digest::SHA512
+    --opaque crate::high::digest::SHA512_256
+    --opaque crate::high::digest::SHA3_256
+    --opaque crate::high::digest::SHA3_384
+    --opaque crate::high::digest::SHA3_512
+    --opaque crate::mid::md5
+    --opaque crate::mid::sha3
+    --opaque crate::low
+    --include crate::low::ct
+    --include crate::low::generic::blockwise
+    --include crate::low::generic::ct_equal
+    --include crate::low::generic::chacha20
+)
+curves=(
+    --start-from '{impl crate::high::agreement::Agree for crate::high::agreement::X25519Curve}'
+    --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P256}'
+    --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P384}'
+    --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P521}'
+    --start-from '{impl core::convert::AsRef for crate::high::agreement::PublicKey}'
+    --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}'
+    --start-from crate::high::agreement::PrivateKey
+    --start-from crate::high::agreement::AlgorithmId
+    --start-from crate::high::ed25519::Ed25519VerifyingKey::from_bytes
+    --start-from crate::high::ed25519::Ed25519VerifyingKey::verify
+    --start-from crate::high::ed25519::Ed25519VerifyingKey::as_bytes
+    --start-from crate::high::ed25519::Ed25519SigningKey::generate
+    --start-from crate::high::ed25519::Ed25519SigningKey::from_bytes
+    --start-from crate::high::ed25519::Ed25519SigningKey::sign
+    --start-from crate::high::ed25519::Ed25519SigningKey::public_key
+    --start-from crate::high::signature::Ed25519KeyPair::generate
+    --start-from crate::high::signature::Ed25519KeyPair::from_seed_and_public_key
+    --start-from crate::high::signature::Ed25519KeyPair::sign
+    --start-from '{impl core::convert::AsRef for crate::high::signature::Signature}'
+    --start-from crate::high::signature::Buffer::copy_from
+    --opaque crate::high::agreement::Algorithm
+    --opaque crate::high::agreement::Ops
+    --opaque crate::high::agreement::x25519_from_pkcs8
+    --opaque crate::high::agreement::x25519_to_pkcs8
+    --opaque crate::high::sec1::decode
+    --opaque crate::high::sec1::decode_pkcs8
+    --opaque crate::high::sec1::encode
+    --opaque crate::high::sec1::encode_pkcs8
+    --opaque 'crate::high::agreement::_::encode_pkcs8'
+    --opaque 'crate::high::agreement::_::encode_scalar'
+    --opaque '{impl crate::high::agreement::Agree for crate::high::curve::P521}::load'
+    --opaque 'crate::mid::p384::_::generate'
+    --opaque 'crate::high::curve::_::oid'
+    --opaque 'crate::mid::p384::_::new_random'
+    --opaque 'crate::mid::p521::_::_'
+    --include 'crate::mid::p521::_::BYTES'
+)
 extract() {
     local arch=$1 dir=$2
     shift 2
-    (cd rind && charon cargo --preset=aeneas \
-        --start-from '{impl crate::high::agreement::Agree for crate::high::agreement::X25519Curve}' \
-        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P256}' \
-        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P384}' \
-        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P521}' \
-        --start-from '{impl core::convert::AsRef for crate::high::agreement::PublicKey}' \
-        --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}' \
-        --start-from crate::high::agreement::PrivateKey \
-        --start-from crate::high::agreement::AlgorithmId \
-        --start-from '{impl crate::high::digest::Variant for _}' \
-        --start-from '{impl crate::high::hash::Hash for _}' \
-        --start-from '{impl core::convert::AsRef for crate::high::digest::Digest}' \
-        --start-from crate::high::digest::Context \
-        --start-from crate::mid::sha2::Sha512_256Context::truncate \
-        --start-from '{impl crate::aead::quic::Mask for crate::mid::chacha20::ChaCha20}' \
-        --start-from '{impl crate::aead::quic::Mask for crate::mid::aes::Aes}' \
-        --start-from crate::aead::quic::HeaderProtectionKey \
-        --start-from crate::aead::quic::AlgorithmId \
-        --start-from crate::mid::chacha20::ChaCha20::new \
-        --start-from 'crate::high::hmac::HmacKey::_' \
-        --start-from 'crate::high::hmac::Hmac::_' \
-        --start-from crate::low::generic::ct_equal::ct_equal \
-        --start-from '{impl core::clone::Clone for crate::high::hmac::Hmac<_>}' \
-        --start-from crate::high::ed25519::Ed25519VerifyingKey::from_bytes \
-        --start-from crate::high::ed25519::Ed25519VerifyingKey::verify \
-        --start-from crate::high::ed25519::Ed25519VerifyingKey::as_bytes \
-        --start-from crate::high::ed25519::Ed25519SigningKey::generate \
-        --start-from crate::high::ed25519::Ed25519SigningKey::from_bytes \
-        --start-from crate::high::ed25519::Ed25519SigningKey::sign \
-        --start-from crate::high::ed25519::Ed25519SigningKey::public_key \
-        --start-from crate::high::signature::Ed25519KeyPair::generate \
-        --start-from crate::high::signature::Ed25519KeyPair::from_seed_and_public_key \
-        --start-from crate::high::signature::Ed25519KeyPair::sign \
-        --start-from '{impl core::convert::AsRef for crate::high::signature::Signature}' \
-        --start-from crate::high::signature::Buffer::copy_from \
-        --opaque crate::high::agreement::Algorithm \
-        --opaque crate::high::agreement::Ops \
-        --opaque crate::high::agreement::x25519_from_pkcs8 \
-        --opaque crate::high::agreement::x25519_to_pkcs8 \
-        --opaque crate::high::sec1::decode \
-        --opaque crate::high::sec1::decode_pkcs8 \
-        --opaque crate::high::sec1::encode \
-        --opaque crate::high::sec1::encode_pkcs8 \
-        --opaque 'crate::high::agreement::_::encode_pkcs8' \
-        --opaque 'crate::high::agreement::_::encode_scalar' \
-        --opaque '{impl crate::high::agreement::Agree for crate::high::curve::P521}::load' \
-        --opaque crate::aead::quic::Masker \
-        --opaque crate::mid::aes \
-        --opaque crate::high::digest::Ops \
-        --opaque crate::high::digest::Algorithm \
-        --opaque crate::high::digest::Digest \
-        --opaque 'crate::high::digest::_::zeroed' \
-        --opaque 'crate::high::digest::_::as_mut' \
-        --opaque 'crate::high::digest::_::ct_equal' \
-        --opaque 'crate::high::digest::_::as_ref' \
-        --opaque 'crate::high::digest::_::output_len' \
-        --opaque crate::high::digest::MD5 \
-        --opaque crate::high::digest::SHA1 \
-        --opaque crate::high::digest::SHA256 \
-        --opaque crate::high::digest::SHA384 \
-        --opaque crate::high::digest::SHA512 \
-        --opaque crate::high::digest::SHA512_256 \
-        --opaque crate::high::digest::SHA3_256 \
-        --opaque crate::high::digest::SHA3_384 \
-        --opaque crate::high::digest::SHA3_512 \
-        --opaque crate::mid::md5 \
-        --opaque crate::mid::sha3 \
-        --opaque crate::low \
-        --opaque 'crate::mid::p384::_::generate' \
-        --opaque 'crate::high::curve::_::oid' \
-        --opaque 'crate::mid::p384::_::new_random' \
-        --opaque 'crate::mid::p521::_::_' \
-        --include 'crate::mid::p521::_::BYTES' \
-        --include crate::low::ct \
-        --include crate::low::generic::blockwise \
-        --include crate::low::generic::ct_equal \
-        --include crate::low::generic::chacha20 \
-        --include "crate::low::$arch::sha512::sha512_compress_blocks" \
-        "$@" \
-        --dest-file "$PWD/../$out/$arch.llbc" \
+    (cd rind && charon cargo --preset=aeneas "$@" \
+        --dest-file "$PWD/../$out/${dir,,}.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
     rm -rf "$out/lean"
     aeneas -backend lean -split-files -abort-on-error \
         -no-progress-bar -dest "$out/lean" -subdir "Rind/$dir" \
-        -namespace "rind.$arch" "$out/$arch.llbc"
+        -namespace "rind.${dir,,}" "$out/${dir,,}.llbc"
     cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
 }
 
@@ -716,12 +726,12 @@ extract_kdf() {
         --opaque crate::mid \
         --opaque crate::aead \
         "$@" \
-        --dest-file "$PWD/../$out/$arch-kdf.llbc" \
+        --dest-file "$PWD/../$out/${dir,,}-kdf.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
     rm -rf "$out/lean"
     aeneas -backend lean -split-files -abort-on-error \
         -no-progress-bar -dest "$out/lean" -subdir "Rind/$dir/Kdf" \
-        -namespace "rind.$arch.kdf" "$out/$arch-kdf.llbc"
+        -namespace "rind.${dir,,}.kdf" "$out/${dir,,}-kdf.llbc"
     mkdir -p "proofs/Rind/$dir/Kdf"
     # Aeneas names both of `ZeroablePrimitive`'s `Copy` clauses, which
     # `NonZeroU32::get` brings in, `markerCopyInst`, which Lean refuses as a
@@ -733,7 +743,8 @@ extract_kdf() {
         "$out/lean/Rind/$dir/Kdf/Funs.lean" >"proofs/Rind/$dir/Kdf/Funs.lean"
 }
 
-extract x86_64 X86_64 \
+extract x86_64 X86_64 "${hashes[@]}" "${curves[@]}" \
+    --include crate::low::x86_64::sha512::sha512_compress_blocks \
     --opaque '{impl crate::high::agreement::Agree for crate::high::curve::P256}::load' \
     --opaque 'crate::mid::p256::_::_' \
     --include crate::low::x86_64::adx_mux::bignum_demont_p384 \
@@ -800,7 +811,8 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::aes_gcm_avx \
     --opaque crate::low::x86_64::aes_gcm_avx::counter_block \
     --opaque crate::low::x86_64::aes_gcm_avx::aead
-extract aarch64 Aarch64 \
+extract aarch64 Aarch64 "${hashes[@]}" "${curves[@]}" \
+    --include crate::low::aarch64::sha512::sha512_compress_blocks \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
     --start-from crate::high::ecdsa::VerifyingKey::from_x962_uncompressed \
     --start-from crate::high::ecdsa::VerifyingKey::verify \
@@ -833,8 +845,19 @@ extract aarch64 Aarch64 \
 extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aead::Key}'
 extract_kdf aarch64 Aarch64
 
+# The portable backend, which builds only under the cfg CI's portable jobs
+# build with, here on x86_64: the hashes alone, down to HACL*'s SHA-2 block
+# functions, which are opaque. `proofs/Rind/Portable/Compare.lean` models its
+# constant-time compares, which read through raw pointers and `black_box`.
+# The error type and `into_public`, which the other targets reach through
+# their curves, are start points of their own here.
+portable_cfg='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
+RUSTFLAGS=$portable_cfg extract x86_64 Portable "${hashes[@]}" --include crate::low::portable::sha \
+    --start-from crate::error::Error --start-from crate::low::ct::into_public
+RUSTFLAGS=$portable_cfg extract_kdf x86_64 Portable
+
 mkdir -p proofs/Rind/Aarch64/Kdf
-for file in Dispatch X25519 P384 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
+for file in Dispatch QuicDispatch X25519 P384 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     CtEqual HmacApi DigestApi Hkdf Pbkdf2; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
@@ -842,6 +865,17 @@ done
 # The AEAD model imports nothing aarch64 has, and no aarch64 translation reaches it.
 sed -i '/Rind.Aarch64.AeadDispatch/d' proofs/Rind/Aarch64/Kdf/TypesExternal.lean
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Aarch64/Kdf/FunsExternal.lean
+# The portable backend's hash, HMAC, KDF, and header-protection proofs are the
+# x86_64 ones with the target renamed, over its own block functions' contracts
+# in `Hacl.lean` and `ShaBlocks.lean`, and its compares' proof in `CtEqual.lean`.
+mkdir -p proofs/Rind/Portable/Kdf
+for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwise Sha Hmac HmacDispatch \
+    HkdfExpand Kdf/TypesExternal Kdf/FunsExternal HmacApi DigestApi Hkdf Pbkdf2; do
+    sed 's/X86_64/Portable/g; s/x86_64/portable/g; s/Rind\.Portable\.AwsLc/Rind.Portable.Sha512Entry/' \
+        "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Portable/$file.lean"
+done
+sed -i '/Rind.Portable.AeadDispatch/d' proofs/Rind/Portable/Kdf/TypesExternal.lean
+sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.lean
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
 # Each hand model of a CPU intrinsic, a `core.core_arch` definition but its

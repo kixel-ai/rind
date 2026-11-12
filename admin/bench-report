@@ -895,7 +895,7 @@ def load_verified(path=VERIFIED):
         entries = tomllib.load(f).get("verified", [])
     rows = [row_name(op) for op in OPERATIONS]
     required = {"library", "operations", "proof", "link"}
-    optional = {"arch", "cpu", "os"}
+    optional = {"arch", "cpu", "os", "backend"}
     for i, e in enumerate(entries, 1):
         where = f"{os.path.relpath(path, ROOT)}: entry {i}"
         if set(e) - required - optional:
@@ -913,6 +913,10 @@ def load_verified(path=VERIFIED):
                 fail(f"{where}: unknown {e['arch']} CPU feature {feature}")
         if e.get("os", "linux") not in ("linux", "macos"):
             fail(f"{where}: unknown os {e['os']}")
+        if e.get("backend", "portable") != "portable":
+            fail(f"{where}: unknown backend {e['backend']}")
+        if "backend" in e and {"arch", "cpu"} & set(e):
+            fail(f"{where}: the portable backend runs on any architecture and CPU")
         for pattern in e["operations"]:
             if not fnmatch.filter(rows, pattern):
                 fail(f"{where}: {pattern} names no operation")
@@ -925,7 +929,8 @@ def proof_for(verified, library, row, host):
     """The entry that verifies a library's code for an operation on a host."""
     cpuid = host.get("rind_cpu", {}).get("cpuid", {})
     for e in verified:
-        if e["library"] != library or e.get("arch", host_arch(host)) != host_arch(host):
+        # A host's results time each library's native code, never rind's portable backend.
+        if e["library"] != library or "backend" in e or e.get("arch", host_arch(host)) != host_arch(host):
             continue
         if e.get("os", host_os(host)) != host_os(host):
             continue
@@ -1391,6 +1396,8 @@ def measured(host):
 
 
 def platform_of(entry):
+    if "backend" in entry:
+        return f"the {entry['backend']} backend"
     words = [entry.get("arch", "any architecture")]
     has = [f for f in entry.get("cpu", []) if not f.startswith("!")]
     lacks = [f.removeprefix("!") for f in entry.get("cpu", []) if f.startswith("!")]
