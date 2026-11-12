@@ -234,6 +234,49 @@ pub mod rsa {
     }
 }
 
+/// RSA blind signatures ([RFC 9474]): a server signs a message a client
+/// blinded, learning nothing of it, and the client unblinds the reply into an
+/// RSASSA-PSS signature that anyone verifies with the server's public key.
+///
+/// Each of the four RSABSSA-SHA384 variants is an [`Algorithm`](blind_rsa::Algorithm).
+/// Privacy Pass's publicly verifiable tokens ([RFC 9578], type `0x0002`) use
+/// [`RSABSSA_SHA384_PSS_DETERMINISTIC`](blind_rsa::RSABSSA_SHA384_PSS_DETERMINISTIC)
+/// with 2048-bit keys.
+///
+/// ```
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::blind_rsa::*;
+/// use rind::rsa::KeySize;
+///
+/// // The server generates a key, and publishes its public key.
+/// let key_pair = KeyPair::generate(&RSABSSA_SHA384_PSS_RANDOMIZED, KeySize::Rsa2048)?;
+/// let spki = key_pair.public_key().to_spki();
+///
+/// // The client blinds a message to it, and sends the server the blinded
+/// // message, keeping its blinding.
+/// let public_key = PublicKey::new(&RSABSSA_SHA384_PSS_RANDOMIZED, spki.as_ref())?;
+/// let (blinded_message, blinding) = public_key.blind(b"hello")?;
+///
+/// // The server signs it, and the client unblinds the reply.
+/// let blind_signature = key_pair.blind_sign(blinded_message.as_ref())?;
+/// let signature = blinding.finalize(blind_signature.as_ref())?;
+///
+/// // Anyone with the public key verifies the signature.
+/// public_key.verify(b"hello", signature.as_ref())?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [RFC 9474]: https://www.rfc-editor.org/rfc/rfc9474.html
+/// [RFC 9578]: https://www.rfc-editor.org/rfc/rfc9578.html
+pub mod blind_rsa {
+    pub use crate::high::blind_rsa::{
+        Algorithm, BlindSignature, BlindedMessage, Blinding, KeyPair, PublicKey,
+        RSABSSA_SHA384_PSS_DETERMINISTIC, RSABSSA_SHA384_PSS_RANDOMIZED,
+        RSABSSA_SHA384_PSSZERO_DETERMINISTIC, RSABSSA_SHA384_PSSZERO_RANDOMIZED, Signature,
+    };
+}
+
 /// Public key signatures: ECDSA on P-256, P-384, and P-521, RSA, and Ed25519.
 ///
 /// A key pair signs with a [`signature::sign`] algorithm, and a peer's
@@ -259,9 +302,22 @@ pub mod signature {
         VerificationAlgorithm,
     };
 
-    /// Algorithms a key pair signs with.
+    /// Algorithms a key pair signs with, and ML-DSA's key pair, whose
+    /// parameter set is a type.
     ///
-    /// Each signs as the [`verify`] algorithm of the same name verifies.
+    /// Each signs as the [`verify`] algorithm of the same name verifies:
+    /// [`MlDsaKeyPair<MlDsa65>`] as [`verify::ML_DSA_65`].
+    ///
+    /// ```
+    /// use rind::signature::sign::{MlDsa65, MlDsaKeyPair};
+    /// use rind::signature::{PublicKey, verify};
+    ///
+    /// let key = MlDsaKeyPair::<MlDsa65>::generate().unwrap();
+    /// let signature = key.sign(b"hello").unwrap();
+    ///
+    /// let public_key = PublicKey::new(&verify::ML_DSA_65, key.public_key().as_ref()).unwrap();
+    /// public_key.verify(b"hello", signature.as_ref()).unwrap();
+    /// ```
     pub mod sign {
         pub use crate::high::signature::sign::{
             ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_FIXED, ECDSA_P384_SHA384_ASN1,
@@ -269,6 +325,10 @@ pub mod signature {
             RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384,
             RSA_PSS_SHA512,
         };
+        pub use crate::high::signature::{
+            MlDsaKeyPair, MlDsaParameterSet, MlDsaSeed, MlDsaSignature,
+        };
+        pub use crate::mid::mldsa::{MlDsa44, MlDsa65, MlDsa87};
     }
 
     /// Algorithms a public key verifies with.
@@ -280,9 +340,9 @@ pub mod signature {
             ECDSA_P256_SHA512_ASN1, ECDSA_P384_SHA256_ASN1, ECDSA_P384_SHA384_ASN1,
             ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA512_ASN1, ECDSA_P521_SHA256_ASN1,
             ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED, ED25519,
-            RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256,
-            RSA_PSS_SHA256_ANY_SALT, RSA_PSS_SHA384, RSA_PSS_SHA384_ANY_SALT, RSA_PSS_SHA512,
-            RSA_PSS_SHA512_ANY_SALT,
+            ML_DSA_44, ML_DSA_65, ML_DSA_87, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512,
+            RSA_PSS_SHA256, RSA_PSS_SHA256_ANY_SALT, RSA_PSS_SHA384, RSA_PSS_SHA384_ANY_SALT,
+            RSA_PSS_SHA512, RSA_PSS_SHA512_ANY_SALT,
         };
 
         /// RSA algorithms with another modulus floor, or SHA-1, for old keys

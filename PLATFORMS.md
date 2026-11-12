@@ -27,7 +27,8 @@ qemu. iOS devices' code is only built.
   ChaCha20-Poly1305 runs [aws-lc]'s SSE4.1 assembly, ChaCha20, SHA1, and
   SHA256 its SSSE3 assembly, or for SHA its AVX assembly on Intel's cores,
   SHA-512 its scalar assembly on other vendors' cores,
-  ML-KEM's arithmetic runs a Rust port of [mlkem-native]'s portable C, and
+  ML-KEM's and ML-DSA's arithmetic runs Rust ports of [mlkem-native]'s and
+  [mldsa-native]'s portable C, and
   table lookups use SSE2 (see [ALGORITHMS.md](ALGORITHMS.md)). Without `sse4.1`,
   as on the first Core 2s and Atoms and AMD's Bobcat, ChaCha20 and Poly1305
   run in separate passes.
@@ -54,9 +55,9 @@ qemu. iOS devices' code is only built.
   rind-dimpl prefer ChaCha20-Poly1305, which is faster there: ChaCha20 runs
   aws-lc's assembly, and so does Poly1305 where the CPU has NEON. SHA-384,
   SHA-512, and SHA-512/256 always run aws-lc's assembly, with NEON where the
-  CPU has it, and with NEON, X25519's shared secret runs [BoringSSL]'s
-  assembly. SHA-3's and ML-KEM's Keccak-f runs [OpenSSL]'s assembly, on NEON
-  where the CPU has it.
+  CPU has it, as do SHA-1 and SHA-256 without the crypto extension, and with
+  NEON, X25519's shared secret runs [BoringSSL]'s assembly. SHA-3's, ML-KEM's,
+  and ML-DSA's Keccak-f runs [OpenSSL]'s assembly, on NEON where the CPU has it.
 
 - Builds with `-Z cf-protection=branch` or `-Z branch-protection=bti`, both
   unstable, are unsupported: rind calls aws-lc's x86_64 and aarch64 routines
@@ -89,9 +90,6 @@ qemu. iOS devices' code is only built.
   compile-only: its tests need a JavaScript host. Constant time is unchecked on
   wasm: ctgrind and the trace checks inspect native code, and a wasm engine
   compiles rind again, so its JIT may turn a select into a branch.
-  On 32-bit `x86` it needs Rust 1.94 rather than the 1.90 MSRV, since
-  libcrux-platform 0.0.4 calls `__cpuid` outside `unsafe`
-  ([libcrux#1646](https://github.com/celabshq/libcrux/issues/1646)).
 
 Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
 at startup to get an error naming the missing feature instead.
@@ -144,6 +142,7 @@ family since 2004, and of some AMD cores.
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [HACL\*]: https://github.com/hacl-star/hacl-star
 [mlkem-native]: https://github.com/pq-code-package/mlkem-native
+[mldsa-native]: https://github.com/pq-code-package/mldsa-native
 [libcrux]: https://github.com/cryspen/libcrux
 [aws-lc]: https://github.com/aws/aws-lc
 [BoringSSL]: https://boringssl.googlesource.com/boringssl

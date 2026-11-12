@@ -9,9 +9,10 @@ use super::ecdsa;
 use super::ed25519::{Ed25519SigningKey, Ed25519VerifyingKey};
 use super::hash::{Sha256, Sha384, Sha512, SignatureHash};
 use super::rsa::{self, PssSalt};
-use super::{sec1, spki};
+use super::{pkcs8, sec1, spki};
 use crate::error::{Error, KeyFormatError};
 use crate::low::{self, Zeroable};
+use crate::mid::mldsa::{self, MlDsa44, MlDsa65, MlDsa87, Params as MlDsaParams};
 use crate::mid::rsa_key_size::RsaKeySize;
 use crate::mid::rsa_pub::MAX_PUBLIC_MODULUS_BYTES;
 use crate::mid::{p256, p384, p521};
@@ -145,6 +146,7 @@ enum Verification {
     ),
     Rsa(Rsa),
     Ed25519(fn(&[u8]) -> Result<Parsed, Error>),
+    MlDsa(MlDsaAlgorithm),
 }
 
 impl fmt::Debug for Verification {
@@ -153,6 +155,7 @@ impl fmt::Debug for Verification {
             Self::Ecdsa(ecdsa, ..) => f.debug_tuple("Ecdsa").field(ecdsa).finish(),
             Self::Rsa(rsa) => f.debug_tuple("Rsa").field(rsa).finish(),
             Self::Ed25519(_) => f.write_str("Ed25519"),
+            Self::MlDsa(algorithm) => f.write_str(algorithm.name),
         }
     }
 }
@@ -215,7 +218,22 @@ impl fmt::Debug for RsaVerificationAlgorithm {
 /// key's are always its PKCS#1 `RSAPublicKey` DER.
 pub struct PublicKey {
     key: Parsed,
-    encoding: Buffer<{ rsa::MAX_PUBLIC_KEY_LEN }>,
+    encoding: Buffer<MAX_PUBLIC_KEY_LEN>,
+}
+
+/// The longest public key encoding: ML-DSA-87's, longer than RSA's largest.
+const MAX_PUBLIC_KEY_LEN: usize = max(rsa::MAX_PUBLIC_KEY_LEN, mldsa::public_key_len::<MlDsa87>());
+
+/// The longest `SubjectPublicKeyInfo`: the longest key in a bit string,
+/// after its algorithm identifier.
+const MAX_SPKI_LEN: usize = MAX_PUBLIC_KEY_LEN + 32;
+
+/// The longest PKCS#8 private key: RSA's, or an ML-DSA-87 key in its
+/// expanded form.
+const MAX_PKCS8_LEN: usize = max(rsa::MAX_PKCS8_LEN, MAX_ML_DSA_PRIVATE_KEY_LEN + 64);
+
+const fn max(a: usize, b: usize) -> usize {
+    if a > b { a } else { b }
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -225,6 +243,7 @@ enum Parsed {
     EcdsaP521(EcdsaVerifier<P521>, Ecdsa),
     Rsa(RsaVerifier, RsaVerification),
     Ed25519(Verifier<Ed25519VerifyingKey>),
+    MlDsa(MlDsaVerifier),
 }
 
 impl PublicKey {
@@ -232,8 +251,9 @@ impl PublicKey {
     /// refusing a malformed key before any signature arrives.
     ///
     /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
-    /// `RSAPublicKey` or `SubjectPublicKeyInfo` DER, and Ed25519 keys are
-    /// their 32 bytes. A compressed ECDSA point is refused, which
+    /// `RSAPublicKey` or `SubjectPublicKeyInfo` DER, Ed25519 keys are their
+    /// 32 bytes, and ML-DSA keys are FIPS 204's encoding. A compressed ECDSA
+    /// point is refused, which
     /// [`agreement::PublicKey::new`](crate::agreement::PublicKey::new)
     /// decompresses. So is an Ed25519 point of small order, which verifies
     /// signatures nobody made.
@@ -242,6 +262,7 @@ impl PublicKey {
             Verification::Ecdsa(ecdsa, parse, _) => parse(ecdsa, bytes)?,
             Verification::Rsa(rsa) => return (rsa.parse)(rsa, bytes),
             Verification::Ed25519(parse) => parse(bytes)?,
+            Verification::MlDsa(algorithm) => algorithm.parse(bytes)?,
         };
         Ok(Self {
             key,
@@ -264,8 +285,9 @@ impl PublicKey {
     ///
     /// An ECDSA key names `id-ecPublicKey` and the algorithm's curve, and
     /// its point may be compressed (RFC 5480), which this decompresses. An
-    /// RSA key names `rsaEncryption`, `id-RSAES-OAEP`, or `id-ea-rsa`, and an
-    /// Ed25519 key `id-Ed25519`.
+    /// RSA key names `rsaEncryption`, `id-RSAES-OAEP`, or `id-ea-rsa`, an
+    /// Ed25519 key `id-Ed25519`, and an ML-DSA key its parameter set's OID
+    /// (RFC 9881).
     pub fn from_spki(
         algorithm: &impl AsRef<VerificationAlgorithm>,
         der: &[u8],
@@ -289,12 +311,15 @@ impl PublicKey {
                 algorithm,
                 spki::decode(der, &[&asn1::oid::id_ed25519], None)?,
             ),
+            Verification::MlDsa(ml_dsa) => {
+                Self::new(algorithm, spki::decode(der, &[ml_dsa.oid], None)?)
+            }
         }
     }
 
     /// Encodes the public key as a `SubjectPublicKeyInfo`: ECDSA's
     /// `id-ecPublicKey` on its curve, with its uncompressed point, RSA's
-    /// `rsaEncryption`, or Ed25519's `id-Ed25519`.
+    /// `rsaEncryption`, Ed25519's `id-Ed25519`, or ML-DSA's parameter set.
     pub fn to_spki(&self) -> Spki {
         let ec = |curve| (&asn1::oid::id_ecPublicKey, Some(asn1::Any::ObjectId(curve)));
         let (algorithm, parameters) = match &self.key {
@@ -303,6 +328,7 @@ impl PublicKey {
             Parsed::EcdsaP521(..) => ec(P521::oid()),
             Parsed::Rsa(..) => (&asn1::oid::rsaEncryption, Some(asn1::Any::Null(asn1::Null))),
             Parsed::Ed25519(_) => (&asn1::oid::id_ed25519, None),
+            Parsed::MlDsa(key) => (key.algorithm.oid, None),
         };
         Spki(Buffer::encode(|output| {
             spki::encode(self.as_ref(), algorithm, parameters, output)
@@ -346,6 +372,7 @@ impl PublicKey {
                 (key.verify)(&key.key, verification.salt(), signature, message)
             }
             Parsed::Ed25519(key) => key.verify(message, signature),
+            Parsed::MlDsa(key) => key.verify(self.as_ref(), message, signature),
         }
     }
 
@@ -366,7 +393,7 @@ impl PublicKey {
             Parsed::EcdsaP256(key, _) => key.verify_digest(digest, signature),
             Parsed::EcdsaP384(key, _) => key.verify_digest(digest, signature),
             Parsed::EcdsaP521(key, _) => key.verify_digest(digest, signature),
-            Parsed::Rsa(..) | Parsed::Ed25519(_) => Err(Error::Unsupported),
+            Parsed::Rsa(..) | Parsed::Ed25519(_) | Parsed::MlDsa(_) => Err(Error::Unsupported),
         }
     }
 }
@@ -394,6 +421,7 @@ impl fmt::Debug for PublicKey {
             | Parsed::EcdsaP521(_, algorithm) => f.field("algorithm", algorithm),
             Parsed::Rsa(_, verification) => f.field("algorithm", verification),
             Parsed::Ed25519(_) => f.field("algorithm", &format_args!("Ed25519")),
+            Parsed::MlDsa(key) => f.field("algorithm", &format_args!("{}", key.algorithm.name)),
         };
         f.field("bytes", &self.as_ref()).finish()
     }
@@ -422,7 +450,7 @@ impl fmt::Debug for Signature {
 }
 
 /// A private key encoded as PKCS#8 DER, wiped on drop under the `wipe` feature.
-pub struct Pkcs8(pub(super) Buffer<{ rsa::MAX_PKCS8_LEN }>);
+pub struct Pkcs8(pub(super) Buffer<MAX_PKCS8_LEN>);
 
 impl AsRef<[u8]> for Pkcs8 {
     fn as_ref(&self) -> &[u8] {
@@ -444,7 +472,7 @@ impl Drop for Pkcs8 {
 
 /// A public key encoded as a `SubjectPublicKeyInfo` in DER.
 #[derive(Clone)]
-pub struct Spki(pub(super) Buffer<{ rsa::MAX_SPKI_LEN }>);
+pub struct Spki(pub(super) Buffer<MAX_SPKI_LEN>);
 
 impl AsRef<[u8]> for Spki {
     fn as_ref(&self) -> &[u8] {
@@ -1412,7 +1440,7 @@ impl RsaKeyPair {
                 },
                 RsaVerification::Scheme(algorithm.scheme),
             ),
-            encoding: self.public_key.0,
+            encoding: self.public_key.0.widen(),
         }
     }
 
@@ -1574,6 +1602,253 @@ fn parse_ed25519(bytes: &[u8]) -> Result<Parsed, Error> {
     }))
 }
 
+/// An ML-DSA parameter set, as FIPS 204 standardises them: [`MlDsa44`],
+/// [`MlDsa65`], or [`MlDsa87`], which fixes the sizes of its keys and
+/// signatures.
+pub trait MlDsaParameterSet: MlDsaParams {
+    #[doc(hidden)]
+    const ALGORITHM: MlDsaAlgorithm;
+}
+
+impl MlDsaParameterSet for MlDsa44 {
+    const ALGORITHM: MlDsaAlgorithm =
+        MlDsaAlgorithm::new::<Self>("ML-DSA-44", &asn1::oid::id_ml_dsa_44);
+}
+
+impl MlDsaParameterSet for MlDsa65 {
+    const ALGORITHM: MlDsaAlgorithm =
+        MlDsaAlgorithm::new::<Self>("ML-DSA-65", &asn1::oid::id_ml_dsa_65);
+}
+
+impl MlDsaParameterSet for MlDsa87 {
+    const ALGORITHM: MlDsaAlgorithm =
+        MlDsaAlgorithm::new::<Self>("ML-DSA-87", &asn1::oid::id_ml_dsa_87);
+}
+
+/// An ML-DSA parameter set's name, its OID (RFC 9881), and the function that
+/// verifies its signatures.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct MlDsaAlgorithm {
+    name: &'static str,
+    oid: &'static asn1::ObjectId,
+    public_key_len: usize,
+    verify: MlDsaVerify,
+}
+
+/// Verifies with an ML-DSA public key and its hash `tr`:
+/// `(key, tr, message, signature)`.
+type MlDsaVerify = fn(&[u8], &[u8; mldsa::TR_LEN], &[u8], &[u8]) -> Result<(), Error>;
+
+impl MlDsaAlgorithm {
+    const fn new<P: MlDsaParams>(name: &'static str, oid: &'static asn1::ObjectId) -> Self {
+        Self {
+            name,
+            oid,
+            public_key_len: mldsa::public_key_len::<P>(),
+            // Pure ML-DSA with the empty context, as TLS and X.509 sign.
+            verify: |pk, tr, message, signature| {
+                mldsa::verify::<P>(pk, tr, &[], message, signature)
+            },
+        }
+    }
+
+    /// Parses a public key: any encoding of the right length is one.
+    fn parse(self, bytes: &[u8]) -> Result<Parsed, Error> {
+        match bytes.len() == self.public_key_len {
+            true => Ok(Parsed::MlDsa(MlDsaVerifier {
+                algorithm: self,
+                tr: mldsa::tr(bytes),
+            })),
+            false => Err(KeyFormatError::WrongLength.into()),
+        }
+    }
+}
+
+/// An ML-DSA public key's algorithm and hash `tr`, which every signature it
+/// verifies binds in. Its encoding is the [`PublicKey`]'s.
+struct MlDsaVerifier {
+    algorithm: MlDsaAlgorithm,
+    tr: [u8; mldsa::TR_LEN],
+}
+
+impl MlDsaVerifier {
+    fn verify(&self, public_key: &[u8], message: &[u8], signature: &[u8]) -> Result<(), Error> {
+        (self.algorithm.verify)(public_key, &self.tr, message, signature)
+    }
+}
+
+/// The longest ML-DSA private key, ML-DSA-87's expanded form in its
+/// `OCTET STRING`.
+const MAX_ML_DSA_PRIVATE_KEY_LEN: usize = mldsa::secret_key_len::<MlDsa87>() + 4;
+
+/// An ML-DSA private key and its public key, of parameter set `P`.
+///
+/// It signs pure ML-DSA (FIPS 204) with the empty context, as TLS and X.509
+/// use it, hedged with fresh randomness, as [`verify::ML_DSA_44`],
+/// [`verify::ML_DSA_65`], and [`verify::ML_DSA_87`] verify.
+///
+/// It keeps FIPS 204's encodings, expanding them as each signature needs, as
+/// mldsa-native and aws-lc do.
+pub struct MlDsaKeyPair<P: MlDsaParameterSet>(mldsa::KeyPair<P>);
+
+impl<P: MlDsaParameterSet> MlDsaKeyPair<P> {
+    /// Generates a key pair from the system random source.
+    pub fn generate() -> Result<Self, Error> {
+        mldsa::KeyPair::generate().map(Self)
+    }
+
+    /// Expands a 32-byte seed, FIPS 204's `xi`, into its key pair.
+    pub fn from_seed(seed: &[u8]) -> Result<Self, Error> {
+        let seed = seed.try_into().map_err(|_| KeyFormatError::WrongLength)?;
+        Ok(Self(mldsa::KeyPair::from_seed(seed)))
+    }
+
+    /// Returns the private key's 32-byte seed, which [`Self::from_seed`]
+    /// loads, unless the key was loaded from its expanded form, which has
+    /// none.
+    pub fn to_seed(&self) -> Option<MlDsaSeed> {
+        self.0.seed().map(|seed| MlDsaSeed(*seed))
+    }
+
+    /// Loads a PKCS#8 ML-DSA key (RFC 9881), refused if it carries a public
+    /// key (v2, RFC 5958) that does not match.
+    ///
+    /// Its private key may be any of RFC 9881's forms: the seed, the expanded
+    /// key, which must be consistent as FIPS 204's key generation writes it,
+    /// or both, which must agree.
+    pub fn from_pkcs8(der: &[u8]) -> Result<Self, Error> {
+        let _entry = low::Entry::new_secret();
+        let p8 = pkcs8::Key::decode(der, &[P::ALGORITHM.oid], None)?;
+        let private_key =
+            pkix::MlDsaPrivateKey::from_bytes(p8.private_key()).map_err(KeyFormatError::Asn1)?;
+        let key = match private_key {
+            pkix::MlDsaPrivateKey::Seed(seed) => Self::from_seed(seed.as_octets())?,
+            pkix::MlDsaPrivateKey::ExpandedKey(key) => {
+                Self(mldsa::KeyPair::from_secret_key(key.as_octets())?)
+            }
+            pkix::MlDsaPrivateKey::Both(both) => {
+                let key = Self::from_seed(both.seed.as_octets())?;
+                let expanded = key.0.secret_key().as_ref();
+                if !low::ct::into_public(low::ct_equal(expanded, both.expandedKey.as_octets())) {
+                    return Err(KeyFormatError::MismatchedMlDsaSeed.into());
+                }
+                key
+            }
+        };
+        match p8.public_key() {
+            Some(public_key) if public_key != key.0.public_key().as_ref() => {
+                Err(KeyFormatError::MismatchedPkcs8PublicKey.into())
+            }
+            _ => Ok(key),
+        }
+    }
+
+    /// Encodes the private key as PKCS#8 v1 (RFC 9881): its seed, as aws-lc
+    /// writes it, or its expanded form if it was loaded from that and has no
+    /// seed.
+    pub fn to_pkcs8(&self) -> Pkcs8 {
+        let _entry = low::Entry::new_secret();
+        let private_key = match self.0.seed() {
+            Some(seed) => pkix::MlDsaPrivateKey::Seed(asn1::OctetString::new(seed)),
+            None => pkix::MlDsaPrivateKey::ExpandedKey(asn1::OctetString::new(
+                self.0.secret_key().as_ref(),
+            )),
+        };
+        let mut private_key_buf = [0u8; MAX_ML_DSA_PRIVATE_KEY_LEN];
+        let len = private_key
+            .encode(&mut asn1::Encoder::new(&mut private_key_buf))
+            .expect("sized for the largest key");
+        let pkcs8 = Pkcs8(Buffer::encode(|output| {
+            pkcs8::Key::construct(
+                &private_key_buf[..len],
+                None,
+                P::ALGORITHM.oid.clone(),
+                None,
+            )
+            .encode(output)
+        }));
+        low::ct::public_slice(pkcs8.as_ref());
+        pkcs8
+    }
+
+    /// Returns the public key, which verifies what this key pair signs.
+    pub fn public_key(&self) -> PublicKey {
+        // `tr` is the public key's hash, which the private key stores.
+        let tr = low::ct::into_public(*self.0.tr());
+        PublicKey {
+            key: Parsed::MlDsa(MlDsaVerifier {
+                algorithm: P::ALGORITHM,
+                tr,
+            }),
+            encoding: Buffer::encode(|output| {
+                let public_key = self.0.public_key().as_ref();
+                let output = &mut output[..public_key.len()];
+                output.copy_from_slice(public_key);
+                Ok(output)
+            }),
+        }
+    }
+
+    /// Signs `message`, with fresh randomness from the system random source.
+    pub fn sign(&self, message: &[u8]) -> Result<MlDsaSignature<P>, Error> {
+        self.0.sign(&[], message).map(MlDsaSignature)
+    }
+}
+
+impl<P: MlDsaParameterSet> fmt::Debug for MlDsaKeyPair<P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MlDsaKeyPair")
+            .field("algorithm", &format_args!("{}", P::ALGORITHM.name))
+            .finish_non_exhaustive()
+    }
+}
+
+/// An ML-DSA signature of parameter set `P`, FIPS 204's encoding.
+pub struct MlDsaSignature<P: MlDsaParameterSet>(P::Signature);
+
+impl<P: MlDsaParameterSet> Clone for MlDsaSignature<P> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<P: MlDsaParameterSet> AsRef<[u8]> for MlDsaSignature<P> {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl<P: MlDsaParameterSet> fmt::Debug for MlDsaSignature<P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("MlDsaSignature")
+            .field(&self.as_ref())
+            .finish()
+    }
+}
+
+/// An ML-DSA private key's 32-byte seed, wiped on drop under the `wipe`
+/// feature.
+pub struct MlDsaSeed([u8; mldsa::SEED_LEN]);
+
+impl AsRef<[u8]> for MlDsaSeed {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl fmt::Debug for MlDsaSeed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("MlDsaSeed").finish_non_exhaustive()
+    }
+}
+
+impl Drop for MlDsaSeed {
+    fn drop(&mut self) {
+        low::zeroise(&mut self.0);
+    }
+}
+
 /// Algorithms a key pair signs with.
 pub(crate) mod sign {
     use super::*;
@@ -1714,6 +1989,21 @@ pub(crate) mod verify {
     /// See [RFC8032](https://datatracker.ietf.org/doc/html/rfc8032).
     pub static ED25519: VerificationAlgorithm =
         VerificationAlgorithm(Verification::Ed25519(parse_ed25519));
+
+    /// ML-DSA-44 (FIPS 204), pure with the empty context: 1312-byte public
+    /// keys and 2420-byte signatures.
+    pub static ML_DSA_44: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::MlDsa(MlDsa44::ALGORITHM));
+
+    /// ML-DSA-65 (FIPS 204), pure with the empty context: 1952-byte public
+    /// keys and 3309-byte signatures.
+    pub static ML_DSA_65: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::MlDsa(MlDsa65::ALGORITHM));
+
+    /// ML-DSA-87 (FIPS 204), pure with the empty context: 2592-byte public
+    /// keys and 4627-byte signatures.
+    pub static ML_DSA_87: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::MlDsa(MlDsa87::ALGORITHM));
 
     /// Verification algorithms with a modulus floor other than 2048 bits, or SHA-1.
     pub(crate) mod legacy {
@@ -2267,6 +2557,176 @@ mod tests {
                 expected
             );
         }
+    }
+
+    /// A PKCS#8 ML-DSA key of `oid` holding `private_key`, and `public_key`
+    /// if given (v2).
+    fn ml_dsa_pkcs8(
+        oid: &asn1::ObjectId,
+        private_key: pkix::MlDsaPrivateKey<'_>,
+        public_key: Option<&[u8]>,
+    ) -> Vec<u8> {
+        let mut inner = vec![0; 10_000];
+        let len = private_key
+            .encode(&mut asn1::Encoder::new(&mut inner))
+            .unwrap();
+        assert_eq!(private_key.encoded_len(), len);
+        let mut out = vec![0; 20_000];
+        let der = pkcs8::Key::construct(&inner[..len], public_key, oid.clone(), None)
+            .encode(&mut out)
+            .unwrap();
+        der.to_vec()
+    }
+
+    #[test]
+    fn ml_dsa_encodings() {
+        fn check<P: MlDsaParameterSet>(other: &asn1::ObjectId) {
+            // This compares encodings of the key, so declassifies them.
+            let pair = MlDsaKeyPair::<P>::generate().unwrap();
+            let seed = low::ct::into_public(pair.to_seed().unwrap().0);
+            let seed = asn1::OctetString::new(&seed);
+            let sk = low::ct::into_public(pair.0.secret_key().clone());
+            let sk = sk.as_ref();
+            let expanded = asn1::OctetString::new(sk);
+            let pk = pair.0.public_key().as_ref();
+            let oid = P::ALGORITHM.oid;
+            let load = |der: &[u8]| MlDsaKeyPair::<P>::from_pkcs8(der);
+            let seed_form = ml_dsa_pkcs8(oid, pkix::MlDsaPrivateKey::Seed(seed.clone()), None);
+            assert_eq!(pair.to_pkcs8().as_ref(), seed_form);
+
+            // Each form loads, and a key without its seed writes the
+            // expanded form.
+            let both = |expanded| {
+                pkix::MlDsaPrivateKey::Both(pkix::MlDsaSeedAndKey {
+                    seed: seed.clone(),
+                    expandedKey: expanded,
+                })
+            };
+            let expanded_form = ml_dsa_pkcs8(
+                oid,
+                pkix::MlDsaPrivateKey::ExpandedKey(expanded.clone()),
+                None,
+            );
+            for (der, has_seed) in [
+                (seed_form.clone(), true),
+                (expanded_form.clone(), false),
+                (ml_dsa_pkcs8(oid, both(expanded.clone()), None), true),
+                (ml_dsa_pkcs8(oid, both(expanded.clone()), Some(pk)), true),
+            ] {
+                let key = load(&der).unwrap();
+                assert_eq!(key.public_key().as_ref(), pk);
+                assert_eq!(key.to_seed().is_some(), has_seed);
+                let written = key.to_pkcs8();
+                let want = if has_seed { &seed_form } else { &expanded_form };
+                assert_eq!(written.as_ref(), want);
+            }
+
+            // A seed and expanded key that disagree.
+            let mut wrong = sk.to_vec();
+            wrong[sk.len() - 1] ^= 1;
+            let der = ml_dsa_pkcs8(oid, both(asn1::OctetString::new(&wrong)), None);
+            assert_eq!(
+                rejected(load(&der)),
+                KeyFormatError::MismatchedMlDsaSeed.into()
+            );
+            let der = ml_dsa_pkcs8(oid, both(asn1::OctetString::new(&sk[1..])), None);
+            assert_eq!(
+                rejected(load(&der)),
+                KeyFormatError::MismatchedMlDsaSeed.into()
+            );
+
+            // An expanded key whose parts disagree: its `t0`, its `tr`.
+            let der = ml_dsa_pkcs8(
+                oid,
+                pkix::MlDsaPrivateKey::ExpandedKey(asn1::OctetString::new(&wrong)),
+                None,
+            );
+            assert_eq!(rejected(load(&der)), KeyFormatError::MlDsaSecretKey.into());
+            let mut wrong = sk.to_vec();
+            wrong[2 * 32] ^= 1;
+            let der = ml_dsa_pkcs8(
+                oid,
+                pkix::MlDsaPrivateKey::ExpandedKey(asn1::OctetString::new(&wrong)),
+                None,
+            );
+            assert_eq!(rejected(load(&der)), KeyFormatError::MlDsaSecretKey.into());
+
+            // A public key (v2) that does not match.
+            let other_pair = MlDsaKeyPair::<P>::generate().unwrap();
+            let der = ml_dsa_pkcs8(
+                oid,
+                pkix::MlDsaPrivateKey::Seed(seed.clone()),
+                Some(other_pair.0.public_key().as_ref()),
+            );
+            assert_eq!(
+                rejected(load(&der)),
+                KeyFormatError::MismatchedPkcs8PublicKey.into()
+            );
+
+            // Lengths, another parameter set, and trailing bytes.
+            for bad in [&sk[..31], &[0; 33][..]] {
+                let der = ml_dsa_pkcs8(
+                    oid,
+                    pkix::MlDsaPrivateKey::Seed(asn1::OctetString::new(bad)),
+                    None,
+                );
+                assert_eq!(rejected(load(&der)), KeyFormatError::WrongLength.into());
+                assert_eq!(
+                    rejected(MlDsaKeyPair::<P>::from_seed(bad)),
+                    KeyFormatError::WrongLength.into()
+                );
+            }
+            let der = ml_dsa_pkcs8(
+                oid,
+                pkix::MlDsaPrivateKey::ExpandedKey(asn1::OctetString::new(&sk[1..])),
+                None,
+            );
+            assert_eq!(rejected(load(&der)), KeyFormatError::WrongLength.into());
+            let der = ml_dsa_pkcs8(other, pkix::MlDsaPrivateKey::Seed(seed.clone()), None);
+            assert_eq!(
+                rejected(load(&der)),
+                KeyFormatError::MismatchedPkcs8Algorithm.into()
+            );
+            let mut der = seed_form.clone();
+            der.push(0);
+            assert!(load(&der).is_err());
+            // A private key of another tag, such as an explicit `[0]`.
+            let mut der = seed_form.clone();
+            let tag = der.len() - 34;
+            assert_eq!(der[tag], 0x80);
+            der[tag] = 0xa0;
+            assert!(load(&der).is_err());
+
+            // Public keys: lengths, another parameter set's SPKI, and no
+            // digest signing.
+            let public = pair.public_key();
+            let algorithm = VerificationAlgorithm(Verification::MlDsa(P::ALGORITHM));
+            let spki = public.to_spki();
+            let parsed = PublicKey::from_spki(&algorithm, spki.as_ref()).unwrap();
+            assert_eq!(parsed.as_ref(), pk);
+            for bad in [&pk[1..], &[pk, &[0]].concat()] {
+                assert_eq!(
+                    rejected(PublicKey::new(&algorithm, bad)),
+                    KeyFormatError::WrongLength.into()
+                );
+            }
+            let mut out = vec![0; 4096];
+            let other_spki = spki::encode(pk, other, None, &mut out).unwrap();
+            assert_eq!(
+                rejected(PublicKey::from_spki(&algorithm, other_spki)),
+                KeyFormatError::MismatchedSpkiAlgorithm.into()
+            );
+            let signature = pair.sign(b"message").unwrap();
+            parsed.verify(b"message", signature.as_ref()).unwrap();
+            let digest = crate::high::digest::digest(&crate::high::digest::SHA256, b"message");
+            assert_eq!(
+                parsed.verify_digest(&digest, signature.as_ref()),
+                Err(Error::Unsupported)
+            );
+        }
+        check::<MlDsa44>(&asn1::oid::id_ml_dsa_65);
+        check::<MlDsa65>(&asn1::oid::id_ml_dsa_87);
+        check::<MlDsa87>(&asn1::oid::id_ml_dsa_44);
     }
 
     #[test]
