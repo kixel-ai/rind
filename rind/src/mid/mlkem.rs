@@ -1013,15 +1013,33 @@ fn shake256_batch_of<const P: usize>(inputs: &[[u8; 40]; 4], outputs: &mut [[u8;
     );
 }
 
-/// [`sample_poly_cbd`] for `eta = 3`, one polynomial at a time.
-fn sample_poly_cbd3<'a>(sigma: &[u8; 32], first: u8, polys: impl Iterator<Item = &'a mut Poly>) {
-    for (n, poly) in (first..).zip(polys) {
-        let mut prf = sha3::Shake256Sponge::new();
-        prf.absorb(sigma);
-        prf.absorb(&[n]);
-        let mut sample = [0; 192];
-        prf.finish().squeeze(&mut sample);
-        sample_cbd3(&sample, poly);
+/// [`sample_poly_cbd`] for `eta = 3`, four polynomials at a time.
+fn sample_poly_cbd3<'a>(
+    sigma: &[u8; 32],
+    mut n: u8,
+    mut polys: impl Iterator<Item = &'a mut Poly>,
+) {
+    loop {
+        let batch: [Option<&mut Poly>; 4] = core::array::from_fn(|_| polys.next());
+        let count = batch.iter().take_while(|p| p.is_some()).count();
+        if count == 0 {
+            return;
+        }
+
+        let mut inputs = [[0; 33]; 4];
+        for input in &mut inputs[..count] {
+            input[..32].copy_from_slice(sigma);
+            input[32] = n;
+            n += 1;
+        }
+
+        // The 192 bytes each polynomial takes span two blocks.
+        let mut samples = [[0; 2 * sha3::SHAKE_256_R_BYTES]; 4];
+        sha3::Shake256x4::new(&inputs[..count]).squeeze(&mut samples);
+
+        for (sample, poly) in samples.iter().zip(batch.into_iter().flatten()) {
+            sample_cbd3(sample.first_chunk().unwrap(), poly);
+        }
     }
 }
 
