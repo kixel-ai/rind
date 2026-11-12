@@ -55,8 +55,7 @@ import sys
 import time
 import tomllib
 
-# The report's hosts, in the order they run. `jobs` caps the build: nixos2 is
-# a shared 15 GB machine that more jobs run out of memory. `ssh` is the
+# The report's hosts, in the order they run. `jobs` caps the build. `ssh` is the
 # destination where it isn't the name, and `note` describes the machine in the
 # report. Other work on a host with a `lease` holds that lock file with
 # flock(1) for its whole run, so collect holds it too, or skips the host as
@@ -65,7 +64,6 @@ VPS_NOTE = "OVH VPS in {}, 4 shared vCPUs: other tenants add noise that a dedica
 HOSTS = {
     "nixos": {"jobs": 16},
     "desktop": {"jobs": 12},
-    "nixos2": {"jobs": 3},
     "kixtop": {
         "jobs": 4,
         "note": "The maintainer's MacBook, in daily use. Its cores have DIT, which rind sets around each call "
@@ -806,7 +804,7 @@ TIER_ROWS = [
     ("AES-CBC", r"aes(128|192|256)-cbc-"),
     ("AES-KW, AES-KWP", r"aes(128|256)-kwp?-"),
     ("ChaCha20 (header protection)", r"quic-header-protection/chacha20/"),
-    ("ChaCha20-Poly1305, XChaCha20-Poly1305", r"x?chacha20poly1305/"),
+    ("ChaCha20-Poly1305, XChaCha20-Poly1305", r"x?chacha20poly1305(-open)?/"),
     ("SHA-1", r"sha1/"),
     ("SHA-256", r"sha256(-updates)?/"),
     ("SHA-384, SHA-512, SHA-512/256", r"sha(384|512|512-256)/"),
