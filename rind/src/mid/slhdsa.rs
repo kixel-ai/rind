@@ -1050,6 +1050,20 @@ impl<P: Params> Hasher<P> {
     /// `n` bytes to its item of `out`.
     fn thash(&self, inputs: &[&[u8]], addrs: &[Address], out: &mut [[u8; MAX_N]; MAX_LANES]) {
         debug_assert!(inputs.len() <= lanes::<P>() && addrs.len() >= inputs.len());
+        if P::SHAKE {
+            // SHAKE256(PK.seed || ADRS || M)
+            let pk_seed = &self.pk_seed[..P::N];
+            let parts: [[&[u8]; 3]; 4] = core::array::from_fn(|j| {
+                let j = Ord::min(j, inputs.len() - 1);
+                [pk_seed, &addrs[j].0, inputs[j]]
+            });
+            let mut digests = [[0u8; MAX_N]; 4];
+            shake256_x4(&parts[..inputs.len()], &mut digests);
+            for (out, digest) in out.iter_mut().zip(&digests[..inputs.len()]) {
+                out[..P::N].copy_from_slice(&digest[..P::N]);
+            }
+            return;
+        }
         // F and H fill a small buffer, which zeroing costs little against.
         match inputs[0].len() <= 2 * MAX_N {
             true => self.thash_in::<{ 64 + 2 * MAX_N }>(inputs, addrs, out),
@@ -1066,40 +1080,23 @@ impl<P: Params> Hasher<P> {
         let n = P::N;
         let lanes = inputs.len();
         let len = inputs[0].len();
-        if P::SHAKE {
-            // SHAKE256(PK.seed || ADRS || M)
-            let total = n + 32 + len;
-            let mut buffers = [[0u8; CAP]; 4];
-            for (buffer, (input, addr)) in buffers.iter_mut().zip(inputs.iter().zip(addrs)) {
-                buffer[..n].copy_from_slice(&self.pk_seed[..n]);
-                buffer[n..n + 32].copy_from_slice(&addr.0);
-                buffer[n + 32..total].copy_from_slice(input);
-            }
-            let messages: [&[u8]; 4] = core::array::from_fn(|j| &buffers[j][..total]);
-            let mut digests = [[0u8; MAX_N]; 4];
-            shake256_x4(&messages[..lanes], &mut digests);
-            for (out, digest) in out.iter_mut().zip(&digests[..lanes]) {
-                out[..n].copy_from_slice(&digest[..n]);
+        // SHA-X(PK.seed || 0 || ADRSc || M), from the state after its first
+        // block.
+        let total = 22 + len;
+        let mut buffers = [[0u8; CAP]; MAX_LANES];
+        for (buffer, (input, addr)) in buffers.iter_mut().zip(inputs.iter().zip(addrs)) {
+            buffer[..22].copy_from_slice(&addr.compressed());
+            buffer[22..total].copy_from_slice(input);
+        }
+        let messages: [&[u8]; MAX_LANES] = core::array::from_fn(|j| &buffers[j][..total]);
+        if P::N >= 24 && len > n {
+            for (out, message) in out.iter_mut().zip(&messages[..lanes]) {
+                out[..n].copy_from_slice(&self.sha512.finish_with(message)[..n]);
             }
         } else {
-            // SHA-X(PK.seed || 0 || ADRSc || M), from the state after its
-            // first block.
-            let total = 22 + len;
-            let mut buffers = [[0u8; CAP]; MAX_LANES];
-            for (buffer, (input, addr)) in buffers.iter_mut().zip(inputs.iter().zip(addrs)) {
-                buffer[..22].copy_from_slice(&addr.compressed());
-                buffer[22..total].copy_from_slice(input);
-            }
-            let messages: [&[u8]; MAX_LANES] = core::array::from_fn(|j| &buffers[j][..total]);
-            if P::N >= 24 && len > n {
-                for (out, message) in out.iter_mut().zip(&messages[..lanes]) {
-                    out[..n].copy_from_slice(&self.sha512.finish_with(message)[..n]);
-                }
-            } else {
-                let digests = self.sha256.finish_x8(&messages[..lanes]);
-                for (out, digest) in out.iter_mut().zip(&digests[..lanes]) {
-                    out[..n].copy_from_slice(&digest[..n]);
-                }
+            let digests = self.sha256.finish_x8(&messages[..lanes]);
+            for (out, digest) in out.iter_mut().zip(&digests[..lanes]) {
+                out[..n].copy_from_slice(&digest[..n]);
             }
         }
     }
