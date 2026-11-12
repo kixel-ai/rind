@@ -14,7 +14,7 @@ in `Rind.X86_64.S2nBignum` for X25519 and Ed25519, aws-lc's in
 cover SHA-384 and SHA-512, and for Ed25519's hashes, Vale's in
 `Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proofs of its
 constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
-`verify`, and nothing else. A change here is a
+`verify` and AES-GCM's tag check, and nothing else. A change here is a
 change to the trust base.
 -/
 
@@ -156,6 +156,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  counter_block_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
  gcm128_decrypt_opt_spec,
  gcm256_decrypt_opt_spec] -/
 #guard_msgs in
@@ -165,6 +167,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  counter_block_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
  gcm128_decrypt_opt_spec,
  gcm256_decrypt_opt_spec] -/
 #guard_msgs in
@@ -196,6 +200,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  counter_block_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
  gcm128_decrypt_opt_spec,
  gcm256_decrypt_opt_spec] -/
 #guard_msgs in
@@ -205,6 +211,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  counter_block_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
  gcm128_decrypt_opt_spec,
  gcm256_decrypt_opt_spec] -/
 #guard_msgs in

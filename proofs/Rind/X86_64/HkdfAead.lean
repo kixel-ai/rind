@@ -1,5 +1,5 @@
 import Rind.X86_64.Hkdf
-import Rind.X86_64.AesGcm
+import Rind.X86_64.AesGcmAead
 open Aeneas Aeneas.Std Result rind.vale rind.spec
 
 /-!
@@ -8,7 +8,7 @@ open Aeneas Aeneas.Std Result rind.vale rind.spec
 `From<Okm<&'static aead::Algorithm>> for aead::Key` fills the algorithm's key
 length of HKDF-Expand into a buffer, then keys AES-GCM with it through
 `Key::new`. This file composes that with `AesGcm`'s `aes_gcm_new`, so the key
-holds AES-GCM on Vale's tier for the HKDF bytes. It lives apart from `Hkdf`
+holds AES-GCM for the HKDF bytes. It lives apart from `Hkdf`
 because AES-GCM's proofs are x86_64's, and so `admin/prove` writes no aarch64
 copy of it.
 -/
@@ -16,9 +16,9 @@ copy of it.
 namespace rind.x86_64.kdf
 
 /-- `Key::new` of the AES-GCM algorithm `alg` names, for key bytes of its length,
-through the translation's wrapper: the key holds AES-GCM on Vale's tier for the
+through the translation's wrapper: the key holds AES-GCM for the
 bytes, as `aes_gcm_new` states, and the wrapper refuses only what `new` does. -/
-theorem aead_key_new_spec (h : RunsValeAesGcm) (alg : Algorithm) (algorithm : aead.Algorithm)
+theorem aead_key_new_spec (h : RunsAesGcm) (alg : Algorithm) (algorithm : aead.Algorithm)
     (halg : (algorithm = aead.AES_128_GCM ∧ alg = .AES_128) ∨
       (algorithm = aead.AES_256_GCM ∧ alg = .AES_256))
     (key : Slice U8) (hk : key.length = 4 * nk alg) :
@@ -30,10 +30,9 @@ theorem aead_key_new_spec (h : RunsValeAesGcm) (alg : Algorithm) (algorithm : ae
   obtain ⟨k, rfl, hk'⟩ := hr
   exact (WP.spec_ok _).mpr ⟨k, rfl, hk'⟩
 
-/-- `aead::Key`'s conversion from `Okm` holds AES-GCM on Vale's tier for the
-`4 * nk` bytes of HKDF-Expand, for AES-128-GCM and AES-256-GCM, which Vale's
-tier has routines for. -/
-theorem aead_key_from_spec (h : RunsValeAesGcm) (a : high.hmac.Algorithm) (hr : RunsHmac a)
+/-- `aead::Key`'s conversion from `Okm` holds AES-GCM for the `4 * nk` bytes
+of HKDF-Expand, for AES-128-GCM and AES-256-GCM. -/
+theorem aead_key_from_spec (h : RunsAesGcm) (a : high.hmac.Algorithm) (hr : RunsHmac a)
     (prk : List Byte) (k : high.hmac.Key) (hk : KeyOf a prk k) (info : Slice (Slice U8))
     (hinfo : hmacBlock a + tagLen a + (infoBytes info).length + 1 ≤ maxInput)
     (alg : Algorithm) (algorithm : aead.Algorithm)

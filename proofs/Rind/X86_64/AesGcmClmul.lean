@@ -1,4 +1,5 @@
 import Rind.X86_64.AesGcmBy8
+import Rind.X86_64.CtEqual
 open Aeneas Aeneas.Std Result rind.vale rind.simd
 
 /-!
@@ -322,5 +323,142 @@ theorem bvs_beq (a b : List U8) : (bvs a == bvs b) = decide (a = b) := by
   · subst h; simp
   · have : bvs a ≠ bvs b := fun e => h (List.map_injective_iff.2 hinj e)
     simp [h, this]
+
+/-! ## `AesGcm` on the by8 tier -/
+
+/-- rind runs its own SSE AES-GCM on this CPU: its entry guards pass, and
+its CPU-feature checks find AES-NI and PCLMULQDQ but no tier with AVX. None
+reads an input. -/
+def RunsClmulAesGcm : Prop :=
+  (∃ e, low.entry.Entry.new_secret = ok e) ∧
+  (∃ hw, low.x86_64.cpu.HaveAesHardware.check = ok (some hw)) ∧
+  (∃ s, low.x86_64.cpu.HaveSsse3.check = ok s) ∧
+  low.x86_64.cpu.HaveAvx512ForAesGcm.check = ok none ∧
+  low.x86_64.cpu.HaveVaesAvx2ForAesGcm.check = ok none ∧
+  low.x86_64.cpu.HaveAvxMovbeForAesGcm.check = ok none ∧
+  low.entry.Entry.assert_held = ok ()
+
+/-- An AES-GCM key on rind's SSE tier, for the AES key `kw` and `alg`: FIPS
+197's round keys, and the GHASH key's powers. -/
+def ReadyClmul (alg : Algorithm) (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) : Prop :=
+  ∃ hk t, g.key = .Hw hk ∧ HwKeyIs alg kw hk ∧ g.gh = .Clmul t ∧
+    TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t
+
+/-- `AesGcm::new` on the SSE tier sets up FIPS 197's round keys and the
+GHASH key's powers. -/
+theorem aes_gcm_new_clmul_spec (h : RunsClmulAesGcm) (alg : Algorithm) (key : Slice U8)
+    (hk : KeyLen alg key.length) :
+    mid.aes_gcm.AesGcm.new key ⦃ g => ReadyClmul alg (seqNat8ToSeqNat32LE (bvs key.val)) g ⦄ := by
+  obtain ⟨⟨e, he⟩, ⟨hw, hhw⟩, hss, h512, hvaes, hmovbe, -⟩ := h
+  set kw := seqNat8ToSeqNat32LE (bvs key.val)
+  have hkey : mid.aes.expand_key key ⦃ k => ∃ hwk, k = .Hw hwk ∧ HwKeyIs alg kw hwk ⦄ := by
+    rcases hk with ⟨rfl, hl⟩ | ⟨rfl, hl⟩
+    · exact WP.spec_mono (expand_key128_spec ⟨hw, hhw⟩ hss key hl) fun k ⟨k128, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
+    · exact WP.spec_mono (expand_key256_spec ⟨hw, hhw⟩ hss key hl) fun k ⟨k256, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
+  unfold mid.aes_gcm.AesGcm.new
+  rw [he, bind_ok]
+  apply WP.spec_bind hkey
+  rintro _ ⟨hwk, rfl, hwk_is⟩
+  obtain ⟨t, ht, htf⟩ := clmul_new_spec (core.num.U128.from_be_bytes
+    (low.x86_64.aes.store (aesEncrypt alg kw (mkfour 0 0 0 0)))) hw
+  simp only [encrypt_zero hwk alg kw hwk_is, bind_ok, lift, low.x86_64.ghash.GhashTable.new, hhw, h512,
+    hvaes, hmovbe, ht, WP.spec_ok]
+  refine ⟨hwk, t, rfl, hwk_is, rfl, ?_⟩
+  rw [from_be_bytes_store] at htf
+  exact htf
+
+/-- `AesGcm::encrypt` on a by8 table where `seal` declines Vale's routine,
+for AAD under 2^61 bytes and messages rind takes: the ciphertext in place and
+the tag are AES-GCM's. -/
+theorem aes_gcm_encrypt_by8 (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
+    (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) (hk : low.x86_64.aes.HwKey) (t : low.x86_64.ghash.ClmulTable)
+    (hkey : g.key = .Hw hk) (hhk : HwKeyIs alg kw hk) (hgt : By8Of g.gh t)
+    (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
+    (nonce : Std.Array U8 12#usize) (aad inout : Slice U8) (tag : Std.Array U8 16#usize)
+    (hv : low.x86_64.aes_gcm.vale true g.key g.gh aad inout ⦃ o => o = none ⦄)
+    (haad : aad.length < 2 ^ 61) (hin : inout.length ≤ 2 ^ 36 - 32) :
+    mid.aes_gcm.AesGcm.encrypt g nonce aad inout tag ⦃ r =>
+      r.1 = .Ok () ∧ r.2.1.length = inout.length ∧ (bvs r.2.1.val, bvs r.2.2.val) =
+        gcmEncrypt alg (seqNat32ToSeqNat8LE kw) (bvs nonce.val) (bvs inout.val) (bvs aad.val) ⦄ := by
+  obtain ⟨e, he⟩ := he
+  obtain ⟨key, gh⟩ := g
+  simp only at hkey hgt hv
+  subst hkey
+  unfold mid.aes_gcm.AesGcm.encrypt low.x86_64.aes_gcm.seal
+  rw [he, bind_ok]
+  step*
+  subst x_post
+  apply WP.spec_bind (tagged_seal_spec hk alg kw hhk t ht gh hgt nonce aad inout (by omega))
+  rintro ⟨tg, out⟩ ⟨hl, h⟩
+  step*
+
+/-- `AesGcm::decrypt` on a by8 table where `open` declines Vale's routine,
+for AAD under 2^61 bytes and messages rind takes: it succeeds exactly when the
+tag is AES-GCM's, leaving the plaintext in place, and otherwise fails,
+leaving zeros. -/
+theorem aes_gcm_decrypt_by8 (he : ∃ e, low.entry.Entry.new_secret = ok e)
+    (hheld : low.entry.Entry.assert_held = ok ()) (alg : Algorithm)
+    (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) (hk : low.x86_64.aes.HwKey) (t : low.x86_64.ghash.ClmulTable)
+    (hkey : g.key = .Hw hk) (hhk : HwKeyIs alg kw hk) (hgt : By8Of g.gh t)
+    (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
+    (nonce : Std.Array U8 12#usize) (aad inout : Slice U8) (tag : Std.Array U8 16#usize)
+    (hv : low.x86_64.aes_gcm.vale false g.key g.gh aad inout ⦃ o => o = none ⦄)
+    (haad : aad.length < 2 ^ 61) (hin : inout.length ≤ 2 ^ 36 - 32) :
+    mid.aes_gcm.AesGcm.decrypt g nonce aad inout tag ⦃ r =>
+      let out := gcmDecrypt alg (seqNat32ToSeqNat8LE kw) (bvs nonce.val) (bvs inout.val) (bvs aad.val)
+        (bvs tag.val)
+      if out.2 then r.1 = .Ok () ∧ bvs r.2.val = out.1
+      else r.1 = .Err .DecryptFailed ∧ r.2.val = List.replicate inout.length 0#u8 ⦄ := by
+  obtain ⟨e, he⟩ := he
+  obtain ⟨key, gh⟩ := g
+  simp only at hkey hgt hv
+  subst hkey
+  unfold mid.aes_gcm.AesGcm.decrypt low.x86_64.aes_gcm.open
+  rw [he, bind_ok]
+  step*
+  subst x_post
+  step with tagged_open_spec hk alg kw hhk t ht gh hgt nonce aad inout (by omega) as ⟨res, hl, h⟩
+  obtain ⟨tg, out⟩ := res
+  simp only at hl h
+  rw [h (bvs tag.val)]
+  dsimp only
+  simp only [lift, bind_ok]
+  step with ct_equal_spec hheld as ⟨b, hb⟩
+  have hb' : (bvs tg.val == bvs tag.val) = b := by
+    rw [hb, bvs_beq]; simp [Std.Array.to_slice, Slice.from_val]
+  rw [hb']
+  simp only [low.ct.into_public, bind_ok]
+  cases b
+  · simp only [Bool.false_eq_true, ite_false]
+    step*
+  · simp only [ite_true]
+    step*
+
+/-- On Vale's tier, `seal` and `open` decline its routines for AAD or
+messages of 2^32 bytes or more, and `seal` for messages under 129 bytes. -/
+theorem vale_avx_none (enc : Bool) (alg : Algorithm) (kw : List (BitVec 32)) (hk : low.x86_64.aes.HwKey)
+    (hhk : HwKeyIs alg kw hk) (t : low.x86_64.ghash.ClmulTable) (kernel : low.x86_64.aes_gcm_avx.AvxKernel)
+    (aad inout : Slice U8)
+    (hshort : ¬ (aad.length < 2 ^ 32 ∧ inout.length < 2 ^ 32 ∧ (enc = true → 129 ≤ inout.length))) :
+    low.x86_64.aes_gcm.vale enc (.Hw hk) (.Avx t kernel) aad inout ⦃ o => o = none ⦄ := by
+  have hal := Slice.len_val aad
+  have hil := Slice.len_val inout
+  unfold low.x86_64.aes_gcm.vale
+  cases hk with
+  | Aes192 k => exact hhk.elim
+  | Aes128 k | Aes256 k =>
+    cases enc <;> step*
+    all_goals
+      exfalso; apply hshort
+      refine ⟨?_, ?_, ?_⟩
+      · by_contra hc
+        rw [r_post1 (by rw [U32.max_eq]; omega)] at b_post
+        simp_all
+      · by_contra hc
+        rw [r1_post1 (by rw [U32.max_eq]; omega)] at b1_post
+        simp_all
+      · intro _
+        simp only [low.x86_64.aes_gcm.AVX_VALE_SEAL_FROM, ge_iff_le] at *
+        scalar_tac
 
 end rind.x86_64
