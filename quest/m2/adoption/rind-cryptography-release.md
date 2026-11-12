@@ -10,8 +10,11 @@ rind's.
 ## Plan
 
 - Publish from `rind-dart/cryptography` without its `pubspec_overrides.yaml`,
-  so it depends on rind 0.1.0 from pub.dev. Its `hooks` user-define reaches no
+  so it depends on rind from pub.dev. Its `hooks` user-define reaches no
   dependent app, as rind's pubspec explains.
+- Its AES-CBC, AES-CTR, and ChaCha20 use rind API newer than rind 0.1.0, so
+  first release rind with them (recommended 0.1.1, since they only add API)
+  and raise rind_cryptography's `rind` constraint to that release.
 - Add a job that publishes it on a `rind-cryptography-v{{version}}` tag
   through pub.dev's automated publishing, with the run's OIDC token in the
   `pub.dev` environment and no stored credential, after checking the tag

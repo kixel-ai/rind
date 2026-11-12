@@ -741,8 +741,13 @@ pub unsafe extern "C" fn rind_dart_chacha20_apply_keystream(
 ) -> isize {
     run(|| {
         // SAFETY: forwarded from the caller.
-        let (key, nonce, in_out) =
-            unsafe { (handle(key), input(nonce, nonce_len), output(in_out, in_out_len)) };
+        let (key, nonce, in_out) = unsafe {
+            (
+                handle(key),
+                input(nonce, nonce_len),
+                output(in_out, in_out_len),
+            )
+        };
         let nonce = nonce.try_into().map_err(|_| Error::WrongLength)?;
         key.apply_keystream(nonce, counter, in_out)?;
         Ok(in_out_len)
