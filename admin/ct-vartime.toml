@@ -74,3 +74,9 @@ function = "<u64>::_fmt_inner"
 why = "Formats a number for Debug or Display output, which never holds a secret. Only 32-bit PowerPC reaches it, through the `.got2` table of addresses its position-independent code loads from, which the scan follows whole."
 [public.holds]
 "powerpc-unknown-linux-gnu" = "calls __udivdi3"
+
+[[public]]
+function = "<core::iter::adapters::step_by::StepBy<core::ops::range::Range<i32>>>::next_back_index"
+why = "Divides a range's span by the iterator's step, both public. Big-endian powerpc64 reaches it from RSAPrivateKey::encoded_len, which only adds public ASN.1 lengths."
+[public.holds]
+"powerpc64-unknown-linux-gnu" = "divdu"
