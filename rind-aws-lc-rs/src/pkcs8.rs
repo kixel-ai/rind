@@ -9,7 +9,11 @@ pub struct Document(Wiped<Vec<u8>>);
 
 impl Document {
     pub(crate) fn new(der: &[u8]) -> Self {
-        Self(Wiped::new(der.to_vec()))
+        Self::from_vec(der.to_vec())
+    }
+
+    pub(crate) fn from_vec(der: Vec<u8>) -> Self {
+        Self(Wiped::new(der))
     }
 }
 

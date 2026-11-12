@@ -150,6 +150,28 @@ fn ml_dsa() {
     assert_eq!(leaked, 0);
 }
 
+/// An expanded ML-DSA key, whose PKCS#8 wrap copies it onto the heap.
+#[test]
+fn ml_dsa_expanded() {
+    use aws_lc_rs::encoding::AsRawBytes;
+    use aws_lc_rs::signature::{ML_DSA_44_SIGNING, PqdsaKeyPair};
+
+    let raw = {
+        let key = PqdsaKeyPair::from_seed(&ML_DSA_44_SIGNING, &distinct::<32>(13)).unwrap();
+        key.private_key().as_raw_bytes().unwrap().as_ref().to_vec()
+    };
+    // `K`, after the public `rho`. It is not part of the public key.
+    let canary = raw[32..32 + NEEDLE_LEN].to_vec();
+    let leaked = leaks(&canary, || {
+        let key =
+            signature::PqdsaKeyPair::from_raw_private_key(&signature::ML_DSA_44_SIGNING, &raw)
+                .unwrap();
+        let mut signature_bytes = vec![0; signature::ML_DSA_44_SIGNING.signature_len()];
+        key.sign(b"expanded", &mut signature_bytes).unwrap();
+    });
+    assert_eq!(leaked, 0);
+}
+
 /// An ML-KEM shared secret, on both sides.
 #[test]
 fn kem() {

@@ -92,14 +92,18 @@ impl PqdsaVerificationAlgorithm {
 impl signature::private::Verify for PqdsaVerificationAlgorithm {
     fn parse(&self, public_key: &[u8]) -> Result<rind::signature::PublicKey, KeyRejected> {
         let algorithm = self.id().verify();
-        // aws-lc-rs takes the raw public key or a `SubjectPublicKeyInfo`.
-        // The raw key's length is the parameter set's, and an SPKI is longer.
-        if public_key.len() == self.id().public_key_len() {
-            rind::signature::PublicKey::new(algorithm, public_key)
-        } else {
-            rind::signature::PublicKey::from_spki(algorithm, public_key)
+        // aws-lc-rs tries a `SubjectPublicKeyInfo` first, then the raw key.
+        // A raw key has this parameter set's length. Any other length makes
+        // the raw parse fail with `Unspecified`, and that error replaces the
+        // SPKI failure (`Result::or`).
+        if let Ok(key) = rind::signature::PublicKey::from_spki(algorithm, public_key) {
+            return Ok(key);
         }
-        .map_err(KeyRejected::rind)
+        if public_key.len() == self.id().public_key_len() {
+            return rind::signature::PublicKey::new(algorithm, public_key)
+                .map_err(KeyRejected::rind);
+        }
+        Err(KeyRejected::unspecified())
     }
 
     fn verify_parsed(
@@ -250,19 +254,20 @@ impl Key {
 
     fn has_seed(&self) -> bool {
         match self {
-            Self::MlDsa44(key) => key.to_seed().is_some(),
-            Self::MlDsa65(key) => key.to_seed().is_some(),
-            Self::MlDsa87(key) => key.to_seed().is_some(),
+            Self::MlDsa44(key) => key.has_seed(),
+            Self::MlDsa65(key) => key.has_seed(),
+            Self::MlDsa87(key) => key.has_seed(),
         }
     }
 
-    fn pkcs8(&self) -> Wiped<Vec<u8>> {
-        let bytes = match self {
+    /// One copy of rind's PKCS#8 bytes. The caller decides whether a seed is
+    /// present; rind would also encode the expanded form.
+    fn pkcs8_bytes(&self) -> Vec<u8> {
+        match self {
             Self::MlDsa44(key) => key.to_pkcs8().as_ref().to_vec(),
             Self::MlDsa65(key) => key.to_pkcs8().as_ref().to_vec(),
             Self::MlDsa87(key) => key.to_pkcs8().as_ref().to_vec(),
-        };
-        Wiped::new(bytes)
+        }
     }
 
     fn sign_into(&self, message: &[u8], out: &mut [u8]) -> Result<(), rind::Error> {
@@ -277,8 +282,8 @@ impl Key {
 
 /// An ML-DSA private key and its public key.
 ///
-/// Signing is hedged: each signature draws fresh randomness, as aws-lc-rs's
-/// does, and verification accepts either side's signature.
+/// Signing is hedged, so two signatures of the same message are not the same
+/// bytes. Each signature verifies under the public key.
 #[derive(Clone)]
 pub struct PqdsaKeyPair {
     algorithm: &'static PqdsaSigningAlgorithm,
@@ -362,7 +367,7 @@ impl PqdsaKeyPair {
     /// aws-lc-rs's does. rind would write the expanded form; that encoding
     /// is not returned here.
     pub fn to_pkcs8v1(&self) -> Result<Document, Unspecified> {
-        self.pkcs8_seed()
+        Ok(Document::from_vec(self.seed_pkcs8()?))
     }
 
     /// Deprecated alias for [`Self::to_pkcs8v1`].
@@ -402,12 +407,12 @@ impl PqdsaKeyPair {
         PqdsaPrivateKey(self)
     }
 
-    fn pkcs8_seed(&self) -> Result<Document, Unspecified> {
+    /// The seed-form PKCS#8, copied once out of rind's encoding.
+    fn seed_pkcs8(&self) -> Result<Vec<u8>, Unspecified> {
         if !self.key.has_seed() {
             return Err(Unspecified);
         }
-        let der = self.key.pkcs8();
-        Ok(Document::new(&der))
+        Ok(self.key.pkcs8_bytes())
     }
 }
 
@@ -432,8 +437,7 @@ pub struct PqdsaPrivateKey<'a>(pub(crate) &'a PqdsaKeyPair);
 
 impl AsDer<Pkcs8V1Der<'static>> for PqdsaPrivateKey<'_> {
     fn as_der(&self) -> Result<Pkcs8V1Der<'static>, Unspecified> {
-        let doc = self.0.pkcs8_seed()?;
-        Ok(Pkcs8V1Der::new(doc.as_ref().to_vec()))
+        Ok(Pkcs8V1Der::new(self.0.seed_pkcs8()?))
     }
 }
 
@@ -443,29 +447,88 @@ impl fmt::Debug for PqdsaPrivateKey<'_> {
     }
 }
 
-/// A PKCS#8 load failed. A key of another ML-DSA parameter set is
-/// `Unspecified`, matching aws-lc-rs's size check after a successful parse.
-/// Any other algorithm that still parsed as PKCS#8 is `WrongAlgorithm`.
-/// Anything that did not parse stays rind's refusal, whose `description_`
-/// is `InvalidEncoding`.
+/// A PKCS#8 load failed. The `AlgorithmIdentifier` is public, so it is read
+/// from the header and compared with [`algorithm_identifier`] instead of
+/// expanding the key as another parameter set or matching rind's error text.
+///
+/// Another ML-DSA set is `Unspecified`, as aws-lc-rs's size check is after a
+/// parse. Any other identifier is `WrongAlgorithm`. A header that is not an
+/// identifier, or the requested set's own, keeps rind's refusal.
 fn pkcs8_rejected(
     algorithm: &'static PqdsaSigningAlgorithm,
     pkcs8: &[u8],
     err: rind::Error,
 ) -> KeyRejected {
+    let Some(identifier) = pkcs8_algorithm_identifier(pkcs8) else {
+        return KeyRejected::rind(err);
+    };
+    if identifier == algorithm_identifier(algorithm.id()) {
+        return KeyRejected::rind(err);
+    }
     for other in SIGNING {
-        if other.id() == algorithm.id() {
-            continue;
-        }
-        if Key::from_pkcs8(other.id(), pkcs8).is_ok() {
+        if identifier == algorithm_identifier(other.id()) {
             return KeyRejected::unspecified();
         }
     }
-    let message = err.to_string();
-    if message.contains("mismatched PKCS#8 algorithm") {
-        KeyRejected::wrong_algorithm()
-    } else {
-        KeyRejected::rind(err)
+    KeyRejected::wrong_algorithm()
+}
+
+/// The `AlgorithmIdentifier` of a PKCS#8 key, when the header is one.
+/// Lengths and tags are public; the private key is not read.
+fn pkcs8_algorithm_identifier(pkcs8: &[u8]) -> Option<&[u8]> {
+    let (tag, body, rest) = tlv(pkcs8)?;
+    if tag != 0x30 || !rest.is_empty() {
+        return None;
+    }
+    let (tag, _, body) = tlv(body)?;
+    if tag != 0x02 {
+        return None;
+    }
+    let alg_len = tlv_size(body)?;
+    let (tag, _, _) = tlv(body)?;
+    if tag != 0x30 {
+        return None;
+    }
+    Some(&body[..alg_len])
+}
+
+/// `(tag, body, rest)` of the first DER element. A non-minimal length is
+/// refused.
+fn tlv(input: &[u8]) -> Option<(u8, &[u8], &[u8])> {
+    let (tag, len, header) = tlv_header(input)?;
+    let total = header.checked_add(len)?;
+    if input.len() < total {
+        return None;
+    }
+    Some((tag, &input[header..total], &input[total..]))
+}
+
+fn tlv_size(input: &[u8]) -> Option<usize> {
+    let (_, len, header) = tlv_header(input)?;
+    header.checked_add(len)
+}
+
+fn tlv_header(input: &[u8]) -> Option<(u8, usize, usize)> {
+    let (&tag, rest) = input.split_first()?;
+    let (&first, rest) = rest.split_first()?;
+    match first {
+        len @ 0x00..=0x7f => Some((tag, usize::from(len), 2)),
+        0x81 => {
+            let (&len, _) = rest.split_first()?;
+            if len < 0x80 {
+                return None;
+            }
+            Some((tag, usize::from(len), 3))
+        }
+        0x82 => {
+            let bytes: [u8; 2] = rest.get(..2)?.try_into().ok()?;
+            let len = u16::from_be_bytes(bytes);
+            if len < 0x100 {
+                return None;
+            }
+            Some((tag, usize::from(len), 4))
+        }
+        _ => None,
     }
 }
 
@@ -503,8 +566,15 @@ fn algorithm_identifier(id: AlgorithmId) -> &'static [u8] {
     }
 }
 
-/// Appends a DER element. `body.len()` is a public size.
+/// The longest body [`push_tlv`] writes: PKCS#8 around ML-DSA-87's expanded
+/// key (version, algorithm identifier, and two octet-string headers).
+const MAX_DER_BODY: usize = 3 + 13 + 1 + 3 + 1 + 3 + 4896;
+const _: () = assert!(MAX_DER_BODY <= 0xffff);
+
+/// Appends a DER element. `body.len()` is a public size, at most
+/// [`MAX_DER_BODY`].
 fn push_tlv(out: &mut Vec<u8>, tag: u8, body: &[u8]) {
+    debug_assert!(body.len() <= MAX_DER_BODY);
     out.push(tag);
     let len = body.len();
     if len < 0x80 {
@@ -512,8 +582,10 @@ fn push_tlv(out: &mut Vec<u8>, tag: u8, body: &[u8]) {
     } else if len <= 0xff {
         out.extend([0x81, len as u8]);
     } else {
-        let len = u16::try_from(len).expect("an ML-DSA key fits in two DER length bytes");
-        out.extend([0x82, (len >> 8) as u8, len as u8]);
+        // `MAX_DER_BODY` fits in two length bytes.
+        let len = len as u16;
+        out.push(0x82);
+        out.extend(len.to_be_bytes());
     }
     out.extend_from_slice(body);
 }
