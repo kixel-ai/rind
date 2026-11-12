@@ -35,7 +35,9 @@
 # routines, but convert between bytes and limbs in unverified Rust.
 #
 # rind: X25519, P-256 ECDH and ECDSA on aarch64, SHA-256, HMAC-SHA256, and
-# HKDF-SHA256 on aarch64 with the crypto extension, and SHA-512 and Ed25519
+# HKDF-SHA256 on aarch64 with the crypto extension, SHA3-256 and SHA3-512,
+# whose Rust sponge `proofs/` proves against SymCrypt's Lean FIPS 202 spec
+# and s2n-bignum's Keccak-f theorems, and SHA-512 and Ed25519
 # where the SHA-512 block routine's proof states the routine's result, whose
 # Rust `proofs/` proves against s2n-bignum's and aws-lc-verification's
 # theorems, ChaCha20 header protection, whose Rust `proofs/` proves against
@@ -117,6 +119,20 @@ arch = "aarch64"
 cpu = ["aes", "pmull", "sha2"]
 proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of HKDF-Expand's loop over its info slices, which Aeneas cannot translate, of its digest, HMAC, and HKDF APIs' SHA-256, padding included, down to aws-lc's sha256_block_data_order_hw, which rind runs with the crypto extension, composed with rind's HOL Light proof of that routine, of the object code rind's build emits, against s2n-bignum's FIPS 180-4 spec from awslabs/s2n-bignum#415, unmerged, which rind pins at 79120e64 and proves FIPS 180-4's"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/Sha256Hw.lean"
+
+[[verified]]
+library = "rind"
+operations = ["sha3-256/*", "sha3-512/*"]
+arch = "x86_64"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA3-256, SHA3-384, and SHA3-512, padding included, down to s2n-bignum's sha3_keccak_f1600, against FIPS 202 as SymCrypt's Lean spec states it, composed with s2n-bignum's HOL Light proof of sha3_keccak_f1600, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha3.lean"
+
+[[verified]]
+library = "rind"
+operations = ["sha3-256/*", "sha3-512/*"]
+arch = "aarch64"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA3-256, SHA3-384, and SHA3-512, padding included, down to s2n-bignum's sha3_keccak_f1600_alt, which rind runs with the SHA3 instructions, and sha3_keccak_f1600 otherwise, against FIPS 202 as SymCrypt's Lean spec states it, composed with s2n-bignum's HOL Light proofs of those routines, of s2n-bignum's own object code, which rind transliterates"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha3.lean"
 
 [[verified]]
 library = "rind"

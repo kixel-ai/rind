@@ -32,7 +32,7 @@ rind (DIT held) times rind with `rind::cpu::Dit::hold()` held across the timed l
 
 Measured 2026-11-06 at [`f95b91da`](https://github.com/moq-dev/rind/commit/f95b91da886bee265dbd836192a7ade2f9158c47), noisy, on NixOS 26.11 (Zokor) (Linux 6.18.56) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `nixos`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `nixos`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/nixos-dark.svg">
@@ -86,6 +86,12 @@ Not timed on `nixos`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify
 | SHA-512, 64 B | 138 ns | 224 ns | 198 ns | 192 ns | 206 ns | 246 ns ✓ | 355 ns |
 | SHA-512, 1350 B | 1.77 µs | 1.90 µs | 1.87 µs | 1.92 µs | 1.98 µs | 2.94 µs ✓ | 1.76 µs |
 | SHA-512, 16 KB | 16.28 µs | 25.17 µs | 25.38 µs | 24.12 µs | 21.04 µs | 29.75 µs ✓ | 15.14 µs |
+| SHA3-256, 64 B | - | - | - | - | - | - | - |
+| SHA3-256, 1350 B | - | - | - | - | - | - | - |
+| SHA3-256, 16 KB | - | - | - | - | - | - | - |
+| SHA3-512, 64 B | - | - | - | - | - | - | - |
+| SHA3-512, 1350 B | - | - | - | - | - | - | - |
+| SHA3-512, 16 KB | - | - | - | - | - | - | - |
 | HMAC-SHA256, 64 B | 147 ns | 264 ns | 214 ns | 155 ns | 172 ns | 851 ns ✓ | 2.57 µs |
 | HMAC-SHA256, 1350 B | 692 ns | 853 ns | 791 ns | 728 ns | 731 ns | 4.39 µs ✓ | 3.11 µs |
 | HKDF-SHA256 extract and expand | 257 ns | 369 ns | 399 ns | 309 ns | - | 1.37 µs ✓ | 2.72 µs |
@@ -113,7 +119,7 @@ Not timed on `nixos`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify
 
 Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/moq-dev/rind/commit/9e7f6a5a9ea59a0cf1251c24af6c5d4f21c2b0fd), on Ubuntu 26.04.1 LTS (Linux 7.0.0-42-generic) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `desktop`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `desktop`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/desktop-dark.svg">
@@ -167,6 +173,12 @@ Not timed on `desktop`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 veri
 | SHA-512, 64 B | 60 ns | 134 ns ✓ | 140 ns | 120 ns | 148 ns | 166 ns ✓ | 226 ns |
 | SHA-512, 1350 B | 249 ns | 1.24 µs ✓ | 1.26 µs | 1.17 µs | 1.49 µs | 1.72 µs ✓ | 1.17 µs |
 | SHA-512, 16 KB | 2.63 µs | 14.12 µs ✓ | 14.10 µs | 13.51 µs | 17.50 µs | 20.10 µs ✓ | 12.29 µs |
+| SHA3-256, 64 B | - | - | - | - | - | - | - |
+| SHA3-256, 1350 B | - | - | - | - | - | - | - |
+| SHA3-256, 16 KB | - | - | - | - | - | - | - |
+| SHA3-512, 64 B | - | - | - | - | - | - | - |
+| SHA3-512, 1350 B | - | - | - | - | - | - | - |
+| SHA3-512, 16 KB | - | - | - | - | - | - | - |
 | HMAC-SHA256, 64 B | 75 ns | 180 ns | 145 ns | 103 ns | 110 ns | 537 ns ✓ | 1.55 µs |
 | HMAC-SHA256, 1350 B | 328 ns | 435 ns | 397 ns | 356 ns | 358 ns | 2.68 µs ✓ | 1.81 µs |
 | HKDF-SHA256 extract and expand | 158 ns | 285 ns | 303 ns | 223 ns | - | 965 ns ✓ | 1.72 µs |
@@ -194,7 +206,7 @@ Not timed on `desktop`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 veri
 
 Measured 2026-11-06 at [`f95b91da`](https://github.com/moq-dev/rind/commit/f95b91da886bee265dbd836192a7ade2f9158c47), on NixOS 26.11 (Zokor) (Linux 6.18.56) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `nixos2`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `nixos2`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/nixos2-dark.svg">
@@ -248,6 +260,12 @@ Not timed on `nixos2`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verif
 | SHA-512, 64 B | 198 ns | 228 ns ✓ | 203 ns | 270 ns | 236 ns | 289 ns ✓ | 430 ns |
 | SHA-512, 1350 B | 1.65 µs | 1.97 µs ✓ | 1.93 µs | 2.67 µs | 2.35 µs | 3.08 µs ✓ | 1.90 µs |
 | SHA-512, 16 KB | 18.53 µs | 21.92 µs ✓ | 21.75 µs | 30.73 µs | 27.16 µs | 35.45 µs ✓ | 18.99 µs |
+| SHA3-256, 64 B | - | - | - | - | - | - | - |
+| SHA3-256, 1350 B | - | - | - | - | - | - | - |
+| SHA3-256, 16 KB | - | - | - | - | - | - | - |
+| SHA3-512, 64 B | - | - | - | - | - | - | - |
+| SHA3-512, 1350 B | - | - | - | - | - | - | - |
+| SHA3-512, 16 KB | - | - | - | - | - | - | - |
 | HMAC-SHA256, 64 B | 628 ns | 811 ns | 707 ns | 1.19 µs | 1.44 µs | 1.20 µs ✓ | 3.69 µs |
 | HMAC-SHA256, 1350 B | 2.79 µs | 3.30 µs | 3.19 µs | 5.80 µs | 7.05 µs | 6.02 µs ✓ | 5.94 µs |
 | HKDF-SHA256 extract and expand | 1.15 µs | 1.44 µs | 1.31 µs | 1.98 µs | - | 2.04 µs ✓ | 4.33 µs |
@@ -277,7 +295,7 @@ Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/moq-dev/rind/commit/9e7f6
 
 The maintainer's MacBook, in daily use. Its cores have DIT, which rind sets around each call that handles a secret and the other libraries never set; Known gaps gives its cost.
 
-Not timed on `kixtop`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `kixtop`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/kixtop-dark.svg">
@@ -331,6 +349,12 @@ Not timed on `kixtop`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verif
 | SHA-512, 64 B | 108 ns | 75 ns | 105 ns | 84 ns | 77 ns | 175 ns | 142 ns ✓ | 205 ns |
 | SHA-512, 1350 B | 810 ns | 730 ns | 768 ns | 743 ns | 723 ns | 1.87 µs | 1.56 µs ✓ | 893 ns |
 | SHA-512, 16 KB | 8.85 µs | 8.72 µs | 8.91 µs | 8.70 µs | 8.59 µs | 21.69 µs | 18.39 µs ✓ | 9.33 µs |
+| SHA3-256, 64 B | - | - | - | - | - | - | - | - |
+| SHA3-256, 1350 B | - | - | - | - | - | - | - | - |
+| SHA3-256, 16 KB | - | - | - | - | - | - | - | - |
+| SHA3-512, 64 B | - | - | - | - | - | - | - | - |
+| SHA3-512, 1350 B | - | - | - | - | - | - | - | - |
+| SHA3-512, 16 KB | - | - | - | - | - | - | - | - |
 | HMAC-SHA256, 64 B | 189 ns ✓ | 110 ns ✓ | 245 ns | 134 ns | 99 ns | 112 ns | 564 ns ✓ | 2.09 µs |
 | HMAC-SHA256, 1350 B | 559 ns ✓ | 487 ns ✓ | 597 ns | 502 ns | 545 ns | 562 ns | 2.80 µs ✓ | 2.41 µs |
 | HKDF-SHA256 extract and expand | 338 ns ✓ | 226 ns ✓ | 330 ns | 273 ns | 212 ns | - | 936 ns ✓ | 2.16 µs |
@@ -360,7 +384,7 @@ Measured 2026-11-06 at [`6b185382`](https://github.com/moq-dev/rind/commit/6b185
 
 OVH VPS in Virginia, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
 
-Not timed on `ovh-iad`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `ovh-iad`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
 
 graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 
@@ -416,6 +440,12 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 | SHA-512, 64 B | 321 ns | 389 ns ✓ | 321 ns | 435 ns | 462 ns ✓ | 699 ns |
 | SHA-512, 1350 B | 2.60 µs | 3.12 µs ✓ | 3.02 µs | 4.26 µs | 4.91 µs ✓ | 3.10 µs |
 | SHA-512, 16 KB | 33.08 µs | 35.17 µs ✓ | 35.28 µs | 53.82 µs | 59.59 µs ✓ | 32.22 µs |
+| SHA3-256, 64 B | - | - | - | - | - | - |
+| SHA3-256, 1350 B | - | - | - | - | - | - |
+| SHA3-256, 16 KB | - | - | - | - | - | - |
+| SHA3-512, 64 B | - | - | - | - | - | - |
+| SHA3-512, 1350 B | - | - | - | - | - | - |
+| SHA3-512, 16 KB | - | - | - | - | - | - |
 | HMAC-SHA256, 64 B | 1.16 µs | 1.60 µs | 1.64 µs | 2.13 µs | 2.36 µs ✓ | 6.68 µs |
 | HMAC-SHA256, 1350 B | 4.82 µs | 5.59 µs | 5.16 µs | 9.61 µs | 9.65 µs ✓ | 9.44 µs |
 | HKDF-SHA256 extract and expand | 2.10 µs | 2.36 µs | 2.08 µs | 3.39 µs | 3.73 µs ✓ | 10.10 µs |
@@ -445,7 +475,7 @@ Measured 2026-11-06 at [`6b185382`](https://github.com/moq-dev/rind/commit/6b185
 
 OVH VPS in Oregon, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
 
-Not timed on `ovh-sea`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `ovh-sea`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
 
 graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 
@@ -501,6 +531,12 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 | SHA-512, 64 B | 304 ns | 362 ns ✓ | 331 ns | 424 ns | 443 ns ✓ | 682 ns |
 | SHA-512, 1350 B | 2.54 µs | 3.04 µs ✓ | 2.97 µs | 4.17 µs | 4.66 µs ✓ | 2.99 µs |
 | SHA-512, 16 KB | 29.12 µs | 34.42 µs ✓ | 33.89 µs | 47.69 µs | 54.80 µs ✓ | 29.59 µs |
+| SHA3-256, 64 B | - | - | - | - | - | - |
+| SHA3-256, 1350 B | - | - | - | - | - | - |
+| SHA3-256, 16 KB | - | - | - | - | - | - |
+| SHA3-512, 64 B | - | - | - | - | - | - |
+| SHA3-512, 1350 B | - | - | - | - | - | - |
+| SHA3-512, 16 KB | - | - | - | - | - | - |
 | HMAC-SHA256, 64 B | 963 ns | 1.24 µs | 1.09 µs | 1.82 µs | 1.83 µs ✓ | 5.66 µs |
 | HMAC-SHA256, 1350 B | 4.31 µs | 5.11 µs | 4.97 µs | 8.95 µs | 9.24 µs ✓ | 9.08 µs |
 | HKDF-SHA256 extract and expand | 1.70 µs | 2.01 µs | 1.85 µs | 3.01 µs | 3.08 µs ✓ | 6.80 µs |
@@ -976,6 +1012,8 @@ A ✓ means a published, machine-checked proof shows that all the code computing
 | rind | `p256-ecdh` | aarch64 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, and bignum_mod_n256_4, of s2n-bignum's own object code, which rind transliterates, and rind's HOL Light proof of bignum_eq, of the object code rind's build emits, with rind's generator table proven to hold the multiples of G that s2n-bignum's proof assumes](https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/P256.lean) |
 | rind | `p256-ecdsa-sign`, `p256-ecdsa-verify` | aarch64 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of the nonces' draws through a dyn RandomSource, which Aeneas cannot translate, of its signature API's P-256 ECDSA with SHA-256 and fixed-length signatures, key generation and loading, signing, and verification, down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_montjadd_alt, p256_montjdouble_alt, p256_montjmixadd_alt, bignum_inv_p256, bignum_neg_p256, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, bignum_modadd, bignum_montmul, bignum_demont, and bignum_modinv, of s2n-bignum's own object code, which rind transliterates, and rind's HOL Light proof of bignum_eq, of the object code rind's build emits, with the group laws its twin multiplication relies on proven from Mathlib's and the generator's order n proven, assuming HOL Light's P256_GROUP_ELEMENT_ORDER, that a point has order n, only for verification with a parsed public key, and proving a signature right when signing returns, as its nonce loop has no bound](https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/P256Signature.lean) |
 | rind | `sha256/*`, `hmac-sha256/*`, `hkdf-sha256/*` | aarch64 with aes, pmull, sha2 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of HKDF-Expand's loop over its info slices, which Aeneas cannot translate, of its digest, HMAC, and HKDF APIs' SHA-256, padding included, down to aws-lc's sha256_block_data_order_hw, which rind runs with the crypto extension, composed with rind's HOL Light proof of that routine, of the object code rind's build emits, against s2n-bignum's FIPS 180-4 spec from awslabs/s2n-bignum#415, unmerged, which rind pins at 79120e64 and proves FIPS 180-4's](https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/Sha256Hw.lean) |
+| rind | `sha3-256/*`, `sha3-512/*` | x86_64 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA3-256, SHA3-384, and SHA3-512, padding included, down to s2n-bignum's sha3_keccak_f1600, against FIPS 202 as SymCrypt's Lean spec states it, composed with s2n-bignum's HOL Light proof of sha3_keccak_f1600, of s2n-bignum's own object code, which rind transliterates](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha3.lean) |
+| rind | `sha3-256/*`, `sha3-512/*` | aarch64 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA3-256, SHA3-384, and SHA3-512, padding included, down to s2n-bignum's sha3_keccak_f1600_alt, which rind runs with the SHA3 instructions, and sha3_keccak_f1600 otherwise, against FIPS 202 as SymCrypt's Lean spec states it, composed with s2n-bignum's HOL Light proofs of those routines, of s2n-bignum's own object code, which rind transliterates](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/Sha3.lean) |
 | rind | `quic-header-protection/chacha20` | x86_64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean) |
 | rind | `quic-header-protection/chacha20` | aarch64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean) |
 | rind | `aes128-gcm/*`, `aes128-gcm-open/*`, `aes256-gcm/*`, `aes256-gcm-open/*` | x86_64 with aes, pclmulqdq, ssse3, sse4.1, avx, movbe without vaes | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/AesGcm.lean) |
