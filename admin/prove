@@ -245,7 +245,11 @@ hol_light() {
     local dir=$out/hol-light root=$PWD arches arch file path proof
     git submodule update --init --depth 1 thirdparty/s2n-bignum
     rm -rf "$dir"
-    mkdir -p "$dir"
+    mkdir -p "$dir/model/x86/proofs"
+    # s2n-bignum's x86_64 model with `proofs/hol-light/x86-model.patch`'s
+    # instructions, ahead of the submodule on the load path.
+    cp thirdparty/s2n-bignum/x86/proofs/{instruction,decode,x86}.ml "$dir/model/x86/proofs/"
+    patch -s -d "$dir/model" -p1 <proofs/hol-light/x86-model.patch
     arches=$(printf '%s\n' "${hol_light_proofs[@]}" | cut -d' ' -f1 | sort -u)
     for arch in $arches; do
         build_asm "$arch"
@@ -262,7 +266,7 @@ hol_light() {
     done
     for arch in $arches; do
         printf 'check_axioms ();; Printf.printf "%s: %%.0f s\\n" (Unix.time () -. prove_start);;\n' "$arch" >>"$dir/$arch.ml"
-        (cd "$dir" && HOLLIGHT_LOAD_PATH="$root/proofs/hol-light:$root/proofs/hol-light/s2n-bignum:$root/thirdparty/s2n-bignum" \
+        (cd "$dir" && HOLLIGHT_LOAD_PATH="$root/$dir/model:$root/proofs/hol-light:$root/proofs/hol-light/s2n-bignum:$root/thirdparty/s2n-bignum" \
             ocaml "$HOLLIGHT_DIR/inline_load.ml" "$arch.ml" "$arch-inlined.ml")
         OCAMLRUNPARAM=l=2000000000 ocamlopt.byte -pp "$("$HOLLIGHT_DIR/hol.sh" -pp)" \
             -I "$HOLLIGHT_DIR" -I +unix -c hol_lib.cmxa "$dir/$arch-inlined.ml" -o "$dir/$arch.cmx" -w -a
