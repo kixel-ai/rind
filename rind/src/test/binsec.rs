@@ -220,6 +220,23 @@ fn ct_binsec_pbkdf2() {
 
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
+fn ct_binsec_argon2() {
+    use crate::argon2::*;
+
+    // The least memory, in one lane: two blocks of each slice, so both
+    // halves of the first pass, and a second pass, run in a short search.
+    // The data-dependent half's references are declassified, as Argon2id's
+    // exception to the constant-time rule allows.
+    let params = Params::new(8, 2, 1).unwrap();
+    checked(|| {
+        let mut out = [0; 32];
+        derive(params, &secret::<20>(1), &[2; 16], &mut out).unwrap();
+        black_box(verify(params, &secret::<20>(1), &[2; 16], &out).is_ok());
+    });
+}
+
+#[test]
+#[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_x25519() {
     use crate::agreement::*;
 
