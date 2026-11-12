@@ -210,9 +210,11 @@ impl<P: Params> KeyPair<P> {
         let n = P::N;
         let mut seeds = [0u8; 3 * MAX_N];
         SystemRandom.fill(&mut seeds[..3 * n])?;
-        let key = Self::from_seeds(&seeds[..n], &seeds[n..2 * n], &seeds[2 * n..3 * n]);
-        low::zeroise(&mut seeds);
-        Ok(key)
+        Ok(Self::from_seeds(
+            &seeds[..n],
+            &seeds[n..2 * n],
+            &seeds[2 * n..3 * n],
+        ))
     }
 
     /// FIPS 205's `slh_keygen_internal`: the key pair `SK.seed`, `SK.prf`,
