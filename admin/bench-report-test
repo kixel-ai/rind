@@ -61,8 +61,8 @@ def hosts():
                 ("aes256-gcm/{lib}/16KB", "aws-lc-rs", 1500.0),
             ],
         ),
-        "nixos2": host(
-            "nixos2",
+        "desktop": host(
+            "desktop",
             "x86_64",
             "NixOS (Linux 6.18)",
             COFFEE_LAKE,
@@ -148,10 +148,10 @@ class Render(unittest.TestCase):
     def test_overview_marks_each_measured_square(self):
         svg = br.overview_svg(hosts(), VERIFIED, "light")
         titles = squares(svg)
-        # nixos: x25519 3 + aes 2; nixos2: aes 2; kixtop: x25519 2; desktop
+        # nixos: x25519 3 + aes 2; desktop: aes 2; kixtop: x25519 2; ovh-iad
         # is unmeasured, so it has no squares.
         self.assertEqual(len(titles), 9)
-        self.assertIn("left to right: nixos, nixos2, kixtop.", svg)
+        self.assertIn("left to right: nixos, desktop, kixtop.", svg)
         # Only the libraries some host timed get a column.
         self.assertIn(">OpenSSL<", svg)
         self.assertNotIn(">graviola<", svg)
@@ -165,7 +165,7 @@ class Render(unittest.TestCase):
         self.assertEqual(
             sorted(titles),
             [
-                "AES-256-GCM seal, 16 KB, rind on nixos2: 2.00 µs, 1.00× the fastest; verified: aes proof",
+                "AES-256-GCM seal, 16 KB, rind on desktop: 2.00 µs, 1.00× the fastest; verified: aes proof",
                 "X25519, rind on nixos: 30.00 µs, 1.00× the fastest; verified: x86 proof",
                 "X25519, ring on kixtop: 40.00 µs, 2.00× the fastest; verified: any-arch proof",
                 "X25519, ring on nixos: 33.00 µs, 1.10× the fastest; verified: any-arch proof",
@@ -216,12 +216,12 @@ class Render(unittest.TestCase):
         md = files[br.REPORT]
         self.assertIn("on three machines", md)
         self.assertIn("Not timed on `kixtop`: full handshake, X25519MLKEM768, ", md)
-        self.assertIn("Not measured yet: `desktop`, `ovh-iad`, `ovh-sea`.", md)
-        self.assertNotIn("`desktop` |", md)
+        self.assertIn("Not measured yet: `ovh-iad`, `ovh-sea`.", md)
+        self.assertNotIn("`ovh-iad` |", md)
         self.assertIn("No nightly results yet.", md)
         self.assertEqual(
             sorted(os.path.basename(p) for p in files if p.endswith(".svg")),
-            sorted(f"{n}{s}.svg" for n in ["overview", "nixos", "nixos2", "kixtop"] for s in ["", "-dark"]),
+            sorted(f"{n}{s}.svg" for n in ["overview", "nixos", "desktop", "kixtop"] for s in ["", "-dark"]),
         )
         self.assertIn("| Operation | rind | aws-lc-rs | ring | OpenSSL |", md)
         self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | 300.00 µs |", md)
@@ -233,15 +233,15 @@ class Render(unittest.TestCase):
         for row in ["x25519-ecdh/graviola", "aes128-gcm/graviola/32B", "x25519-ecdh/rind/extra"]:
             self.assertFalse(regex.match(row), row)
         everyone = hosts()
-        everyone["nixos2"]["refused"] = {"graviola": ["bmi1", "adx"]}
+        everyone["desktop"]["refused"] = {"graviola": ["bmi1", "adx"]}
         md = br.report(everyone, None, VERIFIED, [])[br.REPORT]
-        self.assertIn("graviola isn't timed on `nixos2`: it requires BMI1 and ADX, which this CPU lacks.", md)
+        self.assertIn("graviola isn't timed on `desktop`: it requires BMI1 and ADX, which this CPU lacks.", md)
 
     def test_svgs_are_well_formed(self):
         import xml.etree.ElementTree as ET
 
         everyone = hosts()
-        for names in [list(everyone), ["nixos2"], []]:
+        for names in [list(everyone), ["desktop"], []]:
             files = br.report({n: everyone[n] for n in names}, TIERS, VERIFIED, [])
             with self.subTest(hosts=names):
                 self.assertEqual("## Speed" in files[br.REPORT], bool(names))
