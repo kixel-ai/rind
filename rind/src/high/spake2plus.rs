@@ -990,7 +990,7 @@ mod tests {
 
     /// A handshake pakery-spake2plus has not published as a vector.
     #[test]
-    #[cfg(not(miri))]
+    #[cfg(not(any(miri, target_family = "wasm")))]
     fn matches_pakery() {
         use p256::elliptic_curve::ff::PrimeField;
         use pakery_crypto::{
@@ -1030,7 +1030,7 @@ mod tests {
                 context,
                 id_prover,
                 id_verifier,
-                Some(scalar_bytes(&x)),
+                Some(Scalar::from_be_reduced(&x).unwrap()),
             )
             .unwrap();
         let l = compute_verifier::<Pakery>(&sc(&w1));
@@ -1042,7 +1042,7 @@ mod tests {
                 id_prover,
                 id_verifier,
                 &share_p,
-                Some(scalar_bytes(&y)),
+                Some(Scalar::from_be_reduced(&y).unwrap()),
             )
             .unwrap();
         let (confirm_p, key) = prover.finish(&share_v, &confirm_v).unwrap();
@@ -1078,10 +1078,6 @@ mod tests {
         assert_eq!(key.as_ref(), their_key.session_key.as_bytes());
     }
 
-    fn scalar_bytes(bytes: &[u8; 32]) -> Scalar {
-        Scalar::from_be_reduced(bytes).unwrap()
-    }
-
     /// A stored record, and the prover's secrets, serve more than one
     /// handshake, each with its own key.
     #[test]
@@ -1089,11 +1085,9 @@ mod tests {
         let w0 = [0x11; 40];
         let w1 = [0x22; 40];
         let prover = ProverSecrets::new(&w0, &w1).unwrap();
-        let record = VerifierRecord::from_record(
-            &w0,
-            &VerifierRecord::from_w1(&w0, &w1).unwrap().l(),
-        )
-        .unwrap();
+        let record =
+            VerifierRecord::from_record(&w0, &VerifierRecord::from_w1(&w0, &w1).unwrap().l())
+                .unwrap();
         let mut keys = Vec::new();
         for _ in 0..2 {
             let (share_p, prover) = prover.start(&RFC9383, b"ctx", b"a", b"b").unwrap();
@@ -1335,7 +1329,7 @@ mod tests {
     /// its test scalars. The context is SHA-256 of "CHIP PAKE V1 Commissioning",
     /// and both identities are empty.
     #[test]
-    #[cfg(not(miri))]
+    #[cfg(not(any(miri, target_family = "wasm")))]
     fn matches_matter_crypto() {
         use core::num::NonZeroU32;
 
