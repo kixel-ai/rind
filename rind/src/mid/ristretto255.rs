@@ -139,7 +139,7 @@ impl Element {
 fn map(bytes: &[u8; 32]) -> Point {
     let mut bytes = *bytes;
     bytes[31] &= 0x7f;
-    let t = Fe::from_le_bytes_reduced(&bytes);
+    let (t, _) = Fe::from_le_bytes(&bytes);
 
     let r = Fe::SQRT_M1.mul(&t.square());
     let u = r.add(&Fe::ONE).mul(&ONE_MINUS_D_SQ);

@@ -278,7 +278,9 @@ fn scalar_bounds() {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(64))]
+    // Miri takes four minutes over 64 cases, on the portable backend, where
+    // this compares dalek with itself.
+    #![proptest_config(ProptestConfig::with_cases(if cfg!(miri) { 4 } else { 64 }))]
 
     /// Every operation against curve25519-dalek's. On armv7 and the portable
     /// backend, which run dalek's, this checks only the wrapping.

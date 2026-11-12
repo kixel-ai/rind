@@ -37,17 +37,12 @@ impl Fe {
         0x2b8324804fc1df0b,
     ]);
 
-    /// Reads a little-endian field element, reducing it modulo `p`.
-    pub(crate) fn from_le_bytes_reduced(bytes: &[u8; 32]) -> Self {
-        // s2n-bignum's multiplication takes any 256-bit input.
-        Self::ONE.mul(&Self(util::little_endian_to_u64x4(bytes)))
-    }
-
-    /// Reads a little-endian field element, with 1 if it is below `p`, else 0.
-    /// A value of `p` or more stays unreduced, for the caller to reject.
+    /// Reads a little-endian integer modulo `p`, with 1 if it was below `p`,
+    /// that is, canonical, else 0.
     pub(crate) fn from_le_bytes(bytes: &[u8; 32]) -> (Self, u64) {
         let x = util::little_endian_to_u64x4(bytes);
-        (Self(x), low::bignum_cmp_lt(&x, &P))
+        // s2n-bignum's multiplication reduces any 256-bit input.
+        (Self::ONE.mul(&Self(x)), low::bignum_cmp_lt(&x, &P))
     }
 
     pub(crate) fn to_le_bytes(self) -> [u8; 32] {
