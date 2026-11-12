@@ -4,7 +4,8 @@ import Rind.MlKem
 # s2n-bignum's ML-KEM specs
 
 The functions s2n-bignum's ML-KEM postconditions name, from
-`common/mlkem_mldsa.ml` and `arm/proofs/mlkem_basemul_k3.ml` at b4f17ee7, which
+`common/mlkem_mldsa.ml`, `arm/proofs/mlkem_basemul_k3.ml`,
+`x86/proofs/mlkem_mulcache_compute.ml`, and `x86/proofs/mlkem_basemul_k3.ml` at b4f17ee7, which
 `thirdparty/s2n-bignum` holds, transliterated: HOL Light's `num->int` is
 `ℕ → ℤ`, `isum (0..127)` is `∑ j ∈ range 128`, `&a pow n` is `(a : ℤ) ^ n`, and
 `x rem &3329` is `x % 3329`, both the remainder in `[0, 3329)`. `bitreverse7`
@@ -14,8 +15,10 @@ Each postcondition holds modulo 3329, so the bridges state each in `Zq`,
 against FIPS 203's `NTT`, `NTTInv`, and `MultiplyNTTs`. `poly f` reads
 s2n-bignum's coefficient function as a FIPS 203 polynomial. The aarch64
 routines keep FIPS 203's coefficient order; the x86_64 AVX2 NTTs keep
-coefficient `avx2Layout p` at position `p`. The inverse NTTs and the base
-multiplication also scale by `2 ^ 16` and `2 ^ -16`, Montgomery's factor.
+coefficient `avx2Layout p` at position `p`, and x86_64's `mlkem_basemul_k3`
+reads each 32-coefficient block's pairs' even halves, then their odd halves.
+The inverse NTTs and the base multiplications also scale by `2 ^ 16` and
+`2 ^ -16`, Montgomery's factor.
 -/
 
 open Spec.MLKEM Finset rind.spec.mlkem
@@ -98,6 +101,47 @@ def basemul3Odd (x0 y0 x1 y1 x2 y2 : ℕ → ℤ) (i : ℕ) : ℤ :=
   pmulAcc3 (x0 (2 * i)) (x0 (2 * i + 1)) (y0 (2 * i + 1)) (y0 (2 * i))
     (x1 (2 * i)) (x1 (2 * i + 1)) (y1 (2 * i + 1)) (y1 (2 * i))
     (x2 (2 * i)) (x2 (2 * i + 1)) (y2 (2 * i + 1)) (y2 (2 * i))
+
+/-- `avx2_mulcache`, from `x86/proofs/mlkem_mulcache_compute.ml`. -/
+def avx2Mulcache (f : ℕ → ℤ) (k : ℕ) : ℤ :=
+  let r := k / 64
+  let q := k % 64
+  let s := r * 128 + 32 * (q / 16) + q % 16 + 16
+  let t := 64 * r + 2 * (q / 32) + 4 * (q % 16)
+  (f s * 17 ^ (2 * bitreverse7 t + 1)) % 3329
+
+/-- `pmul0`, from `x86/proofs/mlkem_basemul_k3.ml`, as are those below. -/
+def pmul0 (a b c dz : ℤ) : ℤ := b * dz + a * c
+
+/-- `pmul0_odd`. -/
+def pmul0Odd (a b c dz : ℤ) : ℤ := a * c - b * dz
+
+/-- `pmul1`. -/
+def pmul1 (a b c d : ℤ) : ℤ := b * c + a * d
+
+/-- `pmulacc0_k3`. -/
+def pmulacc0K3 (a0 b0 c0 _d0 dz0 a1 b1 c1 _d1 dz1 a2 b2 c2 _d2 dz2 : ℤ) : ℤ :=
+  pmul0 a0 b0 c0 dz0 + pmul0 a1 b1 c1 dz1 + pmul0 a2 b2 c2 dz2
+
+/-- `pmulacc0_odd_k3`. -/
+def pmulacc0OddK3 (a0 b0 c0 _d0 dz0 a1 b1 c1 _d1 dz1 a2 b2 c2 _d2 dz2 : ℤ) : ℤ :=
+  pmul0Odd a0 b0 c0 dz0 + pmul0Odd a1 b1 c1 dz1 + pmul0Odd a2 b2 c2 dz2
+
+/-- `pmulacc1_k3`. -/
+def pmulacc1K3 (a0 b0 c0 d0 _dz0 a1 b1 c1 d1 _dz1 a2 b2 c2 d2 _dz2 : ℤ) : ℤ :=
+  pmul1 a0 b0 c0 d0 + pmul1 a1 b1 c1 d1 + pmul1 a2 b2 c2 d2
+
+/-- `pmulaccred0_k3`. -/
+def pmulaccred0K3 (a0 b0 c0 d0 dz0 a1 b1 c1 d1 dz1 a2 b2 c2 d2 dz2 : ℤ) : ℤ :=
+  ((inverseMod : ℤ) * pmulacc0K3 a0 b0 c0 d0 dz0 a1 b1 c1 d1 dz1 a2 b2 c2 d2 dz2) % 3329
+
+/-- `pmulaccred0_odd_k3`. -/
+def pmulaccred0OddK3 (a0 b0 c0 d0 dz0 a1 b1 c1 d1 dz1 a2 b2 c2 d2 dz2 : ℤ) : ℤ :=
+  ((inverseMod : ℤ) * pmulacc0OddK3 a0 b0 c0 d0 dz0 a1 b1 c1 d1 dz1 a2 b2 c2 d2 dz2) % 3329
+
+/-- `pmulaccred1_k3`. -/
+def pmulaccred1K3 (a0 b0 c0 d0 dz0 a1 b1 c1 d1 dz1 a2 b2 c2 d2 dz2 : ℤ) : ℤ :=
+  ((inverseMod : ℤ) * pmulacc1K3 a0 b0 c0 d0 dz0 a1 b1 c1 d1 dz1 a2 b2 c2 d2 dz2) % 3329
 
 /-! ## Bridges -/
 
@@ -251,5 +295,143 @@ theorem avx2InverseNtt_eq (f : ℕ → ℤ) (g : Polynomial)
   refine congrArg (512 * ·) (sum_congr rfl fun j hj => ?_)
   obtain ⟨hlt, hl⟩ := avx2_inverse_index j (mem_range.1 hj) (k % 2) (Nat.mod_lt _ (by norm_num))
   rw [h _ hlt, hl]
+
+/-! ### x86_64's base multiplication
+
+x86_64's `mlkem_basemul_k3` postcondition names its inputs by block `j < 8`
+and lane `i < 16`: `a i j`, `b i j` are the first factor's coefficients at
+positions `32 * j + i` and `32 * j + 16 + i`, `c i j`, `d i j` the second's,
+and `dz i j` the second's `avx2Mulcache` at `16 * j + i`. Those positions hold
+pair `avx2Layout (32 * j + i) / 2`, whose root `avx2Mulcache` takes negated in
+odd blocks, which `pmul0_odd` subtracts back. -/
+
+theorem ζ_pow_congr {m n : ℕ} (h : m % 256 = n % 256) : ζ ^ m = ζ ^ n := by
+  rw [← pow_mod_orderOf ζ m, ← pow_mod_orderOf ζ n, orderOf_ζ, h]
+
+theorem avx2_pair_index : ∀ j < 8, ∀ i < 16,
+    bitRev 7 (avx2NttOrder (16 * j + i)) < 128 ∧
+    avx2Layout (32 * j + i) = 2 * bitRev 7 (avx2NttOrder (16 * j + i)) ∧
+    avx2Layout (32 * j + 16 + i) = 2 * bitRev 7 (avx2NttOrder (16 * j + i)) + 1 ∧
+    (16 * j + i) / 64 * 128 + 32 * ((16 * j + i) % 64 / 16) + (16 * j + i) % 64 % 16 + 16 =
+      32 * j + 16 + i ∧
+    (2 * bitreverse7 (64 * ((16 * j + i) / 64) + 2 * ((16 * j + i) % 64 / 32) +
+      4 * ((16 * j + i) % 64 % 16)) + 1) % 256 =
+      (2 * bitRev 7 (bitRev 7 (avx2NttOrder (16 * j + i))) + 1 + 128 * (j % 2)) % 256 := by
+  decide +kernel
+
+/-- `x` holds `X` in the AVX2 layout. -/
+def Avx2Holds (x : ℕ → ℤ) (X : Polynomial) : Prop := ∀ p < 256, (x p : Zq) = X[avx2Layout p]!
+
+/-- `avx2_mulcache`, which the x86_64 `mlkem_mulcache_compute` computes, is each
+odd coefficient times its pair's root, negated in odd blocks. -/
+theorem avx2Mulcache_eq (y : ℕ → ℤ) (Y : Polynomial) (hy : Avx2Holds y Y) (j i : ℕ) (hj : j < 8)
+    (hi : i < 16) :
+    (avx2Mulcache y (16 * j + i) : Zq) =
+      (-1) ^ (j % 2) * (Y[avx2Layout (32 * j + 16 + i)]! *
+        ζ ^ (2 * bitRev 7 (avx2Layout (32 * j + i) / 2) + 1)) := by
+  obtain ⟨_, h0, _, hs, he⟩ := avx2_pair_index j hj i hi
+  simp only [avx2Mulcache]
+  rw [cast_rem, hs]
+  push_cast
+  rw [hy _ (by omega), ζ_eq, ζ_pow_congr he, h0, show ∀ n, 2 * n / 2 = n by omega, pow_add, pow_mul,
+    ζ_128]
+  ring
+
+theorem pmul0_eq (x y yt : ℕ → ℤ) (X Y : Polynomial) (hx : Avx2Holds x X) (hy : Avx2Holds y Y)
+    (j i : ℕ) (hj : j < 8) (hi : i < 16) (hj2 : j % 2 = 0)
+    (hyt : (yt (16 * j + i) : Zq) = avx2Mulcache y (16 * j + i)) :
+    (pmul0 (x (32 * j + i)) (x (32 * j + 16 + i)) (y (32 * j + i)) (yt (16 * j + i)) : Zq) =
+      (MultiplyNTTs X Y)[avx2Layout (32 * j + i)]! := by
+  obtain ⟨hu, h0, h1, _, _⟩ := avx2_pair_index j hj i hi
+  rw [pmul0]
+  push_cast
+  rw [hyt, avx2Mulcache_eq y Y hy j i hj hi, hx _ (by omega), hx _ (by omega), hy _ (by omega), h0,
+    h1, multiplyNTTs_even _ _ _ hu, hj2, show ∀ n, 2 * n / 2 = n by omega]
+  ring
+
+theorem pmul0Odd_eq (x y yt : ℕ → ℤ) (X Y : Polynomial) (hx : Avx2Holds x X) (hy : Avx2Holds y Y)
+    (j i : ℕ) (hj : j < 8) (hi : i < 16) (hj2 : j % 2 = 1)
+    (hyt : (yt (16 * j + i) : Zq) = avx2Mulcache y (16 * j + i)) :
+    (pmul0Odd (x (32 * j + i)) (x (32 * j + 16 + i)) (y (32 * j + i)) (yt (16 * j + i)) : Zq) =
+      (MultiplyNTTs X Y)[avx2Layout (32 * j + i)]! := by
+  obtain ⟨hu, h0, h1, _, _⟩ := avx2_pair_index j hj i hi
+  rw [pmul0Odd]
+  push_cast
+  rw [hyt, avx2Mulcache_eq y Y hy j i hj hi, hx _ (by omega), hx _ (by omega), hy _ (by omega), h0,
+    h1, multiplyNTTs_even _ _ _ hu, hj2, show ∀ n, 2 * n / 2 = n by omega]
+  ring
+
+theorem pmul1_eq (x y : ℕ → ℤ) (X Y : Polynomial) (hx : Avx2Holds x X) (hy : Avx2Holds y Y)
+    (j i : ℕ) (hj : j < 8) (hi : i < 16) :
+    (pmul1 (x (32 * j + i)) (x (32 * j + 16 + i)) (y (32 * j + i)) (y (32 * j + 16 + i)) : Zq) =
+      (MultiplyNTTs X Y)[avx2Layout (32 * j + 16 + i)]! := by
+  obtain ⟨hu, h0, h1, _, _⟩ := avx2_pair_index j hj i hi
+  rw [pmul1]
+  push_cast
+  rw [hx _ (by omega), hx _ (by omega), hy _ (by omega), hy _ (by omega), h0, h1,
+    multiplyNTTs_odd _ _ _ hu]
+  ring
+
+/-- `pmulaccred0_k3`, which the x86_64 `mlkem_basemul_k3` computes at position
+`32 * j + i` of each even block, is the sum of three `MultiplyNTTs` products'
+coefficients there times `2 ^ -16`. -/
+theorem pmulaccred0K3_eq (x0 y0 y0t x1 y1 y1t x2 y2 y2t : ℕ → ℤ) (X0 Y0 X1 Y1 X2 Y2 : Polynomial)
+    (hx0 : Avx2Holds x0 X0) (hy0 : Avx2Holds y0 Y0) (hx1 : Avx2Holds x1 X1)
+    (hy1 : Avx2Holds y1 Y1) (hx2 : Avx2Holds x2 X2) (hy2 : Avx2Holds y2 Y2)
+    (j i : ℕ) (hj : j < 8) (hi : i < 16) (hj2 : j % 2 = 0)
+    (h0 : (y0t (16 * j + i) : Zq) = avx2Mulcache y0 (16 * j + i))
+    (h1 : (y1t (16 * j + i) : Zq) = avx2Mulcache y1 (16 * j + i))
+    (h2 : (y2t (16 * j + i) : Zq) = avx2Mulcache y2 (16 * j + i)) :
+    2 ^ 16 * (pmulaccred0K3
+      (x0 (32 * j + i)) (x0 (32 * j + 16 + i)) (y0 (32 * j + i)) (y0 (32 * j + 16 + i)) (y0t (16 * j + i))
+      (x1 (32 * j + i)) (x1 (32 * j + 16 + i)) (y1 (32 * j + i)) (y1 (32 * j + 16 + i)) (y1t (16 * j + i))
+      (x2 (32 * j + i)) (x2 (32 * j + 16 + i)) (y2 (32 * j + i)) (y2 (32 * j + 16 + i)) (y2t (16 * j + i))
+      : Zq) =
+      (MultiplyNTTs X0 Y0)[avx2Layout (32 * j + i)]! + (MultiplyNTTs X1 Y1)[avx2Layout (32 * j + i)]! +
+        (MultiplyNTTs X2 Y2)[avx2Layout (32 * j + i)]! := by
+  rw [pmulaccred0K3, cast_rem, Int.cast_mul, ← mul_assoc, inverseMod_eq, one_mul, pmulacc0K3,
+    Int.cast_add, Int.cast_add, pmul0_eq x0 y0 y0t X0 Y0 hx0 hy0 j i hj hi hj2 h0,
+    pmul0_eq x1 y1 y1t X1 Y1 hx1 hy1 j i hj hi hj2 h1, pmul0_eq x2 y2 y2t X2 Y2 hx2 hy2 j i hj hi hj2 h2]
+
+/-- `pmulaccred0_odd_k3`, which the x86_64 `mlkem_basemul_k3` computes at
+position `32 * j + i` of each odd block, is the sum of three `MultiplyNTTs`
+products' coefficients there times `2 ^ -16`. -/
+theorem pmulaccred0OddK3_eq (x0 y0 y0t x1 y1 y1t x2 y2 y2t : ℕ → ℤ) (X0 Y0 X1 Y1 X2 Y2 : Polynomial)
+    (hx0 : Avx2Holds x0 X0) (hy0 : Avx2Holds y0 Y0) (hx1 : Avx2Holds x1 X1)
+    (hy1 : Avx2Holds y1 Y1) (hx2 : Avx2Holds x2 X2) (hy2 : Avx2Holds y2 Y2)
+    (j i : ℕ) (hj : j < 8) (hi : i < 16) (hj2 : j % 2 = 1)
+    (h0 : (y0t (16 * j + i) : Zq) = avx2Mulcache y0 (16 * j + i))
+    (h1 : (y1t (16 * j + i) : Zq) = avx2Mulcache y1 (16 * j + i))
+    (h2 : (y2t (16 * j + i) : Zq) = avx2Mulcache y2 (16 * j + i)) :
+    2 ^ 16 * (pmulaccred0OddK3
+      (x0 (32 * j + i)) (x0 (32 * j + 16 + i)) (y0 (32 * j + i)) (y0 (32 * j + 16 + i)) (y0t (16 * j + i))
+      (x1 (32 * j + i)) (x1 (32 * j + 16 + i)) (y1 (32 * j + i)) (y1 (32 * j + 16 + i)) (y1t (16 * j + i))
+      (x2 (32 * j + i)) (x2 (32 * j + 16 + i)) (y2 (32 * j + i)) (y2 (32 * j + 16 + i)) (y2t (16 * j + i))
+      : Zq) =
+      (MultiplyNTTs X0 Y0)[avx2Layout (32 * j + i)]! + (MultiplyNTTs X1 Y1)[avx2Layout (32 * j + i)]! +
+        (MultiplyNTTs X2 Y2)[avx2Layout (32 * j + i)]! := by
+  rw [pmulaccred0OddK3, cast_rem, Int.cast_mul, ← mul_assoc, inverseMod_eq, one_mul, pmulacc0OddK3,
+    Int.cast_add, Int.cast_add, pmul0Odd_eq x0 y0 y0t X0 Y0 hx0 hy0 j i hj hi hj2 h0,
+    pmul0Odd_eq x1 y1 y1t X1 Y1 hx1 hy1 j i hj hi hj2 h1,
+    pmul0Odd_eq x2 y2 y2t X2 Y2 hx2 hy2 j i hj hi hj2 h2]
+
+/-- `pmulaccred1_k3`, which the x86_64 `mlkem_basemul_k3` computes at position
+`32 * j + 16 + i`, is the sum of three `MultiplyNTTs` products' coefficients
+there times `2 ^ -16`. -/
+theorem pmulaccred1K3_eq (x0 y0 dz0 x1 y1 dz1 x2 y2 dz2 : ℕ → ℤ) (X0 Y0 X1 Y1 X2 Y2 : Polynomial)
+    (hx0 : Avx2Holds x0 X0) (hy0 : Avx2Holds y0 Y0) (hx1 : Avx2Holds x1 X1)
+    (hy1 : Avx2Holds y1 Y1) (hx2 : Avx2Holds x2 X2) (hy2 : Avx2Holds y2 Y2)
+    (j i : ℕ) (hj : j < 8) (hi : i < 16) :
+    2 ^ 16 * (pmulaccred1K3
+      (x0 (32 * j + i)) (x0 (32 * j + 16 + i)) (y0 (32 * j + i)) (y0 (32 * j + 16 + i)) (dz0 (16 * j + i))
+      (x1 (32 * j + i)) (x1 (32 * j + 16 + i)) (y1 (32 * j + i)) (y1 (32 * j + 16 + i)) (dz1 (16 * j + i))
+      (x2 (32 * j + i)) (x2 (32 * j + 16 + i)) (y2 (32 * j + i)) (y2 (32 * j + 16 + i)) (dz2 (16 * j + i))
+      : Zq) =
+      (MultiplyNTTs X0 Y0)[avx2Layout (32 * j + 16 + i)]! +
+        (MultiplyNTTs X1 Y1)[avx2Layout (32 * j + 16 + i)]! +
+        (MultiplyNTTs X2 Y2)[avx2Layout (32 * j + 16 + i)]! := by
+  rw [pmulaccred1K3, cast_rem, Int.cast_mul, ← mul_assoc, inverseMod_eq, one_mul, pmulacc1K3,
+    Int.cast_add, Int.cast_add, pmul1_eq x0 y0 X0 Y0 hx0 hy0 j i hj hi,
+    pmul1_eq x1 y1 X1 Y1 hx1 hy1 j i hj hi, pmul1_eq x2 y2 X2 Y2 hx2 hy2 j i hj hi]
 
 end rind.spec.s2n
