@@ -396,7 +396,7 @@ impl VerifierRecord {
                 &self.w0,
             )?,
         )?;
-        let confirm_v: Confirm<S> = mac(keys.verifier_key(), prover.as_ref());
+        let confirm_v: Confirm<S> = sent(mac(keys.verifier_key(), prover.as_ref()));
         let confirm_p: Confirm<S> = mac(keys.prover_key(), share_v.as_ref());
         let mut shared = [0u8; 32];
         shared[..keys.shared().len()].copy_from_slice(keys.shared());
@@ -471,7 +471,7 @@ impl<S> ProverAwaiting<S> {
             )?,
         )?;
         let expect: Confirm<S> = mac(keys.verifier_key(), &self.share_p);
-        let confirm_p: Confirm<S> = mac(keys.prover_key(), verifier.as_ref());
+        let confirm_p: Confirm<S> = sent(mac(keys.prover_key(), verifier.as_ref()));
         let key = SharedKey::new(keys.shared());
         // `identity` is 1 exactly when Y = w0*N. The confirmation check
         // declassifies that bit together with the tag comparison.
@@ -659,6 +659,12 @@ fn encode(point: Affine, public: bool) -> Result<EncodedPoint, Error> {
     })
 }
 
+/// Declassifies a tag this side sends to the peer.
+fn sent<S>(confirm: Confirm<S>) -> Confirm<S> {
+    ct::public_slice(&confirm.bytes);
+    confirm
+}
+
 fn publish<S>(point: Affine) -> Result<Share<S>, Error> {
     let encoded = encode(point, true)?;
     Ok(Share {
@@ -745,11 +751,12 @@ fn schedule_keys(schedule: Schedule, transcript_hash: &[u8; 32]) -> Result<Keys,
     Ok(keys)
 }
 
+/// The tag stays secret. A tag this side sends is declassified by [`sent`];
+/// one it only compares against the peer's stays secret through `ct_equal`.
 fn mac<S>(key: &[u8], message: &[u8]) -> Confirm<S> {
     let tag = hmac::sign(&hmac::Key::new(&hmac::HMAC_SHA256, key), message);
     let mut bytes = [0u8; 32];
     bytes.copy_from_slice(tag.as_ref());
-    ct::public_slice(&bytes);
     Confirm {
         bytes,
         _kind: PhantomData,
@@ -1157,10 +1164,10 @@ mod tests {
         assert_eq!(got_share.as_ref(), share_v.as_ref());
         assert_eq!(
             got_confirm.as_ref(),
-            mac::<Rfc9383>(keys.verifier_key(), share_x.as_ref()).as_ref()
+            sent(mac::<Rfc9383>(keys.verifier_key(), share_x.as_ref())).as_ref()
         );
         let key = state
-            .finish(&mac::<Rfc9383>(keys.prover_key(), share_v.as_ref()))
+            .finish(&sent(mac::<Rfc9383>(keys.prover_key(), share_v.as_ref())))
             .unwrap();
         ct::public_slice(key.as_ref());
         ct::public_slice(keys.shared());
@@ -1199,12 +1206,12 @@ mod tests {
         let (confirm_p, key) = prover
             .finish(
                 &share_y,
-                &mac::<Rfc9383>(keys.verifier_key(), share_p.as_ref()),
+                &sent(mac::<Rfc9383>(keys.verifier_key(), share_p.as_ref())),
             )
             .unwrap();
         assert_eq!(
             confirm_p.as_ref(),
-            mac::<Rfc9383>(keys.prover_key(), share_y.as_ref()).as_ref()
+            sent(mac::<Rfc9383>(keys.prover_key(), share_y.as_ref())).as_ref()
         );
         ct::public_slice(key.as_ref());
         ct::public_slice(keys.shared());
@@ -1408,7 +1415,7 @@ mod tests {
             ct::public_slice(key_p.as_ref());
             ct::public_slice(key_v.as_ref());
             assert_eq!(key_p.as_ref(), key_v.as_ref());
-            // `mac` declassified the tag. Mark it secret again so `==` is
+            // `finish` declassified the tag it sends. Mark it secret again so `==` is
             // checked the same way as the password scalars.
             ct::secret_slice(confirm_p.as_ref());
             assert_eq!(confirm_p, confirm_of::<S>(confirm_p.bytes));
