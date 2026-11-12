@@ -473,9 +473,9 @@ these quests prove its code, whose proofs then run on this translation:
   replaces on 64-bit targets;
 - RSA: [verification](/quest/m4/verified/rsa-verify.md) and
   [signing](/quest/m4/verified/rsa-sign.md);
-- SHA-1 and MD5: `low::generic::sha1` in
-  [armv7's Rust proofs](/quest/m5/verified-armv7/prove.md), and
-  [MD5](/quest/m5/verified/md5.md).
+- SHA-1: `low::generic::sha1`, the block function `Sha1Blocks` stands for
+  here, in [SHA-1's quest](/quest/m5/verified/sha1.md);
+- MD5: [its own quest](/quest/m5/verified/md5.md).
 
 [The re-audit](/quest/m4/verified/re-audit.md) plans whatever still lacks a
 proof after those.

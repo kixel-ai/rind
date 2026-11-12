@@ -25,11 +25,11 @@
 #   cpu         optional: features the host has, or lacks with a leading `!`,
 #               as rind-cpuid names them; needs an arch
 #   os          optional: linux or macos, where the code differs by OS
-#   backend     optional: portable, for rind's portable backend, which runs on
-#               any architecture without CPU features, so it takes neither;
-#               no host's row shows it
 #   proof       whose proof, of which routines, and any restriction
 #   link        the proof itself
+#
+# An arch of portable names rind's portable backend, the report's portable
+# tier: it takes no cpu, and no host's row shows it.
 #
 # ring, RustCrypto + dalek, and OpenSSL have none: at most their field
 # arithmetic is verified, under unverified point formulas or ladders.
@@ -165,14 +165,14 @@ link = "https://github.com/awslabs/aws-lc-verification/blob/797302470c1703cbb1a3
 [[verified]]
 library = "rind"
 operations = ["sha256/*", "sha512/*", "hmac-sha256/*", "hkdf-sha256/*"]
-backend = "portable"
+arch = "portable"
 proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of HKDF-Expand's loop over its info slices, which Aeneas cannot translate, of its digest, HMAC, and HKDF APIs' SHA-256 and SHA-512, padding included, down to HACL*'s Hacl.SHA2.Scalar32 sha256_update_nblocks and sha512_update_nblocks, which rind runs in pieces under 2^31 bytes, composed with HACL*'s F* proofs of them, compiled to Rust by an unverified step"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/Portable/Hacl.lean"
 
 [[verified]]
 library = "rind"
 operations = ["quic-header-protection/chacha20"]
-backend = "portable"
+arch = "portable"
 proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included"
 link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean"
 
