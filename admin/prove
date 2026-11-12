@@ -63,8 +63,8 @@ build_asm() {
 # holds them.
 asm_block() {
     local arch=$1 path=$2 dest=$3 layout=${4:-}
-    local deps=$out/asm/$(triple "$arch")/release/deps
-    local found obj sym
+    local deps found obj sym
+    deps=$out/asm/$(triple "$arch")/release/deps
     found=$(rind_symbol "$arch" "$path")
     read -r obj sym <<<"$found"
     # The function's asm! blocks, and rustc's instructions before and after

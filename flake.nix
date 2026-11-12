@@ -273,15 +273,11 @@
           # The armv7 C compiler and qemu-arm that build and run the AArch32
           # model's cosimulation executor, linked without the cross
           # compiler's setup hooks, as debian-cross-tools are.
-          armv7-cosim-tools =
-            let
-              cross = pkgs.pkgsCross.armv7l-hf-multiplatform;
-            in
-            pkgs.runCommand "armv7-cosim-tools" { } ''
-              mkdir -p $out/bin
-              ln -s ${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}gcc $out/bin/armv7-linux-gnueabihf-gcc
-              ln -s ${pkgs.qemu-user}/bin/qemu-arm $out/bin/qemu-arm
-            '';
+          armv7-cosim-tools = pkgs.runCommand "armv7-cosim-tools" { } ''
+            mkdir -p $out/bin
+            ln -s ${armv7-prefix}gcc $out/bin/armv7-linux-gnueabihf-gcc
+            ln -s ${pkgs.qemu-user}/bin/qemu-arm $out/bin/qemu-arm
+          '';
 
           # Otherwise cargo exports the host's OpenSSL CA paths, which on
           # Ubuntu lie under the /usr the SDE sandbox replaces, and the tests
