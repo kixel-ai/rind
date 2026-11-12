@@ -779,10 +779,20 @@ fn ml_dsa_rejected() {
         flipped_tr[64] ^= 0x01;
         let mut zero_rho = raw.to_vec();
         zero_rho[..32].fill(0);
-        // s1 starts after rho, K, and tr. 0xff is outside eta's range.
+        // s1 starts after rho, K, and tr. s2 follows s1. 0xff is outside eta's range.
+        let s1 = 128;
+        let s2 = s1
+            + match ours_sign.public_key_len() {
+                1312 => 4 * 96,  // ML-DSA-44: L polynomials, eta 2
+                1952 => 5 * 128, // ML-DSA-65: L polynomials, eta 4
+                2592 => 7 * 96,  // ML-DSA-87: L polynomials, eta 2
+                len => panic!("unexpected ML-DSA public key length {len}"),
+            };
         let mut bad_s1 = raw.to_vec();
-        bad_s1[128] = 0xff;
-        for corrupted in [&flipped_tr, &zero_rho, &bad_s1] {
+        bad_s1[s1] = 0xff;
+        let mut bad_s2 = raw.to_vec();
+        bad_s2[s2] = 0xff;
+        for corrupted in [&flipped_tr, &zero_rho, &bad_s1, &bad_s2] {
             same_rejection(
                 ours::signature::PqdsaKeyPair::from_raw_private_key(ours_sign, corrupted),
                 theirs::signature::PqdsaKeyPair::from_raw_private_key(theirs_sign, corrupted),
