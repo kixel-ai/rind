@@ -2388,3 +2388,583 @@ let SHA512_AVX2_BLOCK_B = prove
   SHA512_START_TAC `mB:int64 list` `hB:int64 list` THEN
   SHA512_RUN_TO_TAC [SHA512_SIGMA_CODE] 0x1645 1 THEN
   SHA512_FINISH_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* The message in memory, and the blocks' results.                           *)
+(* ------------------------------------------------------------------------- *)
+
+(* The input as one region, with its words as the blocks' byte-swapped
+   message words: stepping keeps a fact about the whole region, and this
+   gives any block's words from it. *)
+let sha512_input_rel =
+  `!b j. b < n /\ j < 16
+         ==> word(bigdigit D (16 * b + j)):int64 = word_bytereverse (EL j ((m:num->int64 list) b))`;;
+
+let SHA512_BLOCK_DATA =
+  let base = `word_add (inp:int64) (word (128 * b))` in
+  prove
+  (list_mk_forall([`s:x86state`; `inp:int64`; `n:num`; `D:num`; `m:num->int64 list`; `b:num`],
+     mk_imp(list_mk_conj[`read (memory :> bytes(inp,128 * n)) s = D`; sha512_input_rel; `b < n`],
+            sha512_data_facts base `(m:num->int64 list) b`)),
+   REPEAT GEN_TAC THEN STRIP_TAC THEN
+   SUBGOAL_THEN
+    `!j. j < 16 ==> read (memory :> bytes64 (word_add inp (word (128 * b + 8 * j)))) s =
+                    word_bytereverse (EL j ((m:num->int64 list) b))`
+    (fun th -> MP_TAC(end_itlist CONJ
+       (map (fun j -> REWRITE_RULE[ADD_CLAUSES] (CONV_RULE NUM_REDUCE_CONV
+                        (SPEC (mk_small_numeral j) th))) (0--15)))) THENL
+    [REPEAT STRIP_TAC THEN
+     FIRST_X_ASSUM(MP_TAC o SPECL [`b:num`; `j:num`]) THEN ASM_REWRITE_TAC[] THEN
+     DISCH_THEN(SUBST1_TAC o SYM) THEN
+     MP_TAC(ISPECL [`16 * n`; `inp:int64`; `s:x86state`; `16 * b + j`] BIGDIGIT_BIGNUM_FROM_MEMORY) THEN
+     ASM_REWRITE_TAC[BIGNUM_FROM_MEMORY_BYTES; ARITH_RULE `8 * 16 * n = 128 * n`] THEN
+     ASM_SIMP_TAC[ARITH_RULE `b < n /\ j < 16 ==> 16 * b + j < 16 * n`] THEN
+     DISCH_THEN SUBST1_TAC THEN
+     REWRITE_TAC[WORD_VAL; ARITH_RULE `8 * (16 * b + j) = 128 * b + 8 * j`];
+     ALL_TAC] THEN
+   REWRITE_TAC[CONJUNCT1(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT)] THEN
+   REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD] THEN
+   CONV_TAC(DEPTH_CONV NUM_ADD_CONV) THEN SIMP_TAC[]);;
+
+(* Any 128 bytes are some block's byte-swapped message words: block B's
+   lane reads the frame when only one block is left. *)
+let WORD_BYTEREVERSE_BYTEREVERSE_64 = prove
+ (`!x:int64. word_bytereverse (word_bytereverse x) = x`,
+  CONV_TAC WORD_BLAST);;
+
+let SHA512_ANY_DATA =
+  let w j = subst [sha512_at `a:int64` (8*j),`x:int64`]
+              `word_bytereverse (read (memory :> bytes64 x) (s:x86state))` in
+  let witness = mk_list(map w (0--15), `:int64`) in
+  prove
+  (mk_forall(`s:x86state`, mk_forall(`a:int64`,
+     mk_exists(`mm:int64 list`, sha512_data_facts `a:int64` `mm:int64 list`))),
+   REPEAT GEN_TAC THEN EXISTS_TAC witness THEN
+   CONV_TAC(DEPTH_CONV EL_CONV) THEN
+   REWRITE_TAC[WORD_BYTEREVERSE_BYTEREVERSE_64;
+               CONJUNCT1(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT)] THEN
+   REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD] THEN
+   CONV_TAC(DEPTH_CONV NUM_ADD_CONV) THEN REWRITE_TAC[]);;
+
+let SHA512_BLOCK_EL = prove
+ (`!m h j. j < 8
+           ==> EL j (sha512_block m h) =
+               word_add (EL j (sha512_compress_rounds m h 80)) (EL j h)`,
+  REWRITE_TAC[sha512_block] THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  GEN_TAC THEN GEN_TAC THEN CONV_TAC EXPAND_CASES_CONV THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[]);;
+
+(* The input pointer and its end never wrap. *)
+let SHA512_VAL_INP = prove
+ (`!inp:int64 n c. val inp + 128 * (n + 1) < 2 EXP 64 /\ c <= 128 * (n + 1)
+                   ==> val (word_add inp (word c)) = val inp + c`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[VAL_WORD_ADD; VAL_WORD; DIMINDEX_64] THEN
+  SUBGOAL_THEN `c MOD 2 EXP 64 = c` SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC]);;
+
+(* ------------------------------------------------------------------------- *)
+(* The loop over pairs of blocks.                                            *)
+(* ------------------------------------------------------------------------- *)
+
+let sha512_hblocks k =
+  subst [k,`k:num`] `sha512_hash_blocks (m:num->int64 list) (h:int64 list) k`;;
+
+let sha512_els v =
+  map (fun j -> mk_comb(mk_comb(`EL:num->int64 list->int64`, mk_small_numeral j), v)) (0--7);;
+
+let sha512_ctx_facts v =
+  list_mk_conj(map2 (fun j e -> sha512_read64 `ctxp:int64` (8*j) e) (0--7) (sha512_els v));;
+
+let sha512_endp = `word_add inp (word (128 * n)):int64`;;
+
+(* At the loop head with 2 * i blocks done. *)
+let sha512_loop_inv =
+  let hb = sha512_hblocks `2 * i` in
+  list_mk_conj[
+   `bytes_loaded s (word pc) (sha512_avx2_mc pc k512) /\
+    read RIP s = word(pc + 0x80) /\ read RSP s = word_add stk (word 1184) /\
+    read RSI s = word_add (word_add inp (word (256 * i))) (word 128) /\
+    read R12 s = (if 2 * i + 1 < n then word_add inp (word (256 * i + 128))
+                  else word_add stk (word 1184)) /\
+    read (memory :> bytes(kt,1344)) s = kn /\
+    read (memory :> bytes(inp,128 * n)) s = D`;
+   subst [sha512_endp,`endp:int64`] sha512_frame_facts;
+   sha512_reg_facts sha512_scalar_regs (sha512_els hb);
+   sha512_ctx_facts hb];;
+
+let sha512_loop_post =
+  list_mk_conj[
+   `read RIP s = word(pc + 0x16b6) /\ read RBP s = word_add stk (word 1184) /\
+    read (memory :> bytes64 (word_add stk (word 1336))) s = rsp0`;
+   sha512_ctx_facts (sha512_hblocks `n:num`)];;
+
+let sha512_loop_frame =
+  list_mk_icomb ",," [sha512_frame; `MAYCHANGE [memory :> bytes(ctxp:int64,64)]`];;
+
+let sha512_loop_hyps =
+  list_mk_conj[sha512_k512_hyps;
+   `128 <= val (stk:int64) /\ val stk + 1344 <= 2 EXP 64`;
+   `nonoverlapping (stk:int64,1344) (inp:int64,128 * n) /\
+    nonoverlapping (stk,1344) (ctxp:int64,64) /\
+    nonoverlapping (word pc:int64,0x16dd) (ctxp,64) /\
+    nonoverlapping (ctxp,64) (kt:int64,1344) /\
+    nonoverlapping (ctxp,64) (inp,128 * n) /\
+    val inp + 128 * (n + 1) < 2 EXP 64 /\
+    num_of_bytelist sha512_avx2_k512 = kn`;
+   sha512_input_rel];;
+
+let sha512_loop_ensures inv =
+  list_mk_icomb "ensures" [`x86`; mk_abs(`s:x86state`, inv);
+                           mk_abs(`s:x86state`, sha512_loop_post); sha512_loop_frame];;
+
+let SHA512_AVX2_LOOP_GOAL =
+  let tm = mk_imp(sha512_loop_hyps,
+                  mk_forall(`i:num`, mk_imp(`2 * i < n`, sha512_loop_ensures sha512_loop_inv))) in
+  list_mk_forall(frees tm, tm);;
+
+let sha512_inst th l =
+  INST (map (fun (v,n) -> v, mk_var(n, type_of v)) l) (SPEC_ALL th);;
+
+let SHA512_RSI_END = prove
+ (`!inp:int64 n i.
+     val inp + 128 * (n + 1) < 2 EXP 64 /\ 2 * i < n
+     ==> (val (word_sub (word_add (word_add inp (word (256 * i))) (word 128))
+                        (word_add inp (word (128 * n)))) = 0 <=> 2 * i + 1 = n)`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[VAL_EQ_0; WORD_SUB_EQ_0] THEN
+  REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD; GSYM VAL_EQ] THEN
+  MP_TAC(SPECL [`inp:int64`; `n:num`; `256 * i + 128`] SHA512_VAL_INP) THEN
+  MP_TAC(SPECL [`inp:int64`; `n:num`; `128 * n`] SHA512_VAL_INP) THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT(ANTS_TAC THENL [ASM_ARITH_TAC; DISCH_THEN SUBST1_TAC]) THEN ARITH_TAC);;
+
+let SHA512_K512_LOADED = prove
+ (`!s kt. bytes_loaded s kt sha512_avx2_k512 <=>
+          read (memory :> bytes(kt,1344)) s = num_of_bytelist sha512_avx2_k512`,
+  REWRITE_TAC[bytes_loaded; READ_BYTELIST_EQ_BYTES;
+    CONV_RULE (RAND_CONV LENGTH_CONV) (AP_TERM `LENGTH:byte list->num` sha512_avx2_k512)]);;
+
+let SHA512_RSI_NEXT = prove
+ (`!inp:int64 n i.
+     val inp + 128 * (n + 1) < 2 EXP 64 /\ 2 * i + 2 <= n
+     ==> (val (word_add (word_add inp (word (256 * i))) (word 384)) <
+          val (word_add inp (word (128 * n))) <=> 2 * i + 3 < n) /\
+         (val (word_sub (word_add (word_add inp (word (256 * i))) (word 384))
+                        (word_add inp (word (128 * n)))) = 0 <=> 2 * i + 3 = n)`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[VAL_EQ_0; WORD_SUB_EQ_0] THEN
+  REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD; GSYM VAL_EQ] THEN
+  MP_TAC(SPECL [`inp:int64`; `n:num`; `256 * i + 384`] SHA512_VAL_INP) THEN
+  MP_TAC(SPECL [`inp:int64`; `n:num`; `128 * n`] SHA512_VAL_INP) THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT(ANTS_TAC THENL [ASM_ARITH_TAC; DISCH_THEN SUBST1_TAC]) THEN ARITH_TAC);;
+
+(* Arithmetic on the loop counters alone, away from the state's facts. *)
+let SHA512_ARITH_TAC =
+  let num_ty = `:num` in
+  W(fun (asl,w) ->
+    let hs = filter (fun (_,th) -> let c = concl th in
+               let fv = frees c in
+               fv <> [] && not (is_forall c) && forall (fun v -> type_of v = num_ty) fv) asl in
+    MAP_EVERY (fun (_,th) -> MP_TAC th) hs THEN ARITH_TAC);;
+
+(* Rewriting a fact leaves the rewrite's hypotheses on it, which can clash
+   with the stepper's own variable names (it names an instruction's length
+   n); this restates every assumption as itself. *)
+let SHA512_LAUNDER_TAC =
+  POP_ASSUM_LIST(fun ths -> MAP_EVERY (fun th -> ASSUME_TAC (ASSUME (concl th))) (rev ths));;
+
+(* Folds a block's feed-forward sums to the next hash state. *)
+let SHA512_FOLD_BLOCK_TAC k =
+  let k1 = mk_binop `(+):num->num->num` k `1` in
+  let eq j = subst [mk_small_numeral j,`j:num`; k,`k:num`; k1,`k1:num`]
+   `word_add (EL j (sha512_compress_rounds ((m:num->int64 list) k) (sha512_hash_blocks m h k) 80))
+             (EL j (sha512_hash_blocks m h k)) = EL j (sha512_hash_blocks m h k1)` in
+  SUBGOAL_THEN (list_mk_conj (map eq (0--7))) (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THENL
+   [REWRITE_TAC[sha512_hash_blocks] THEN SIMP_TAC[SHA512_BLOCK_EL; ARITH]; ALL_TAC];;
+
+let SHA512_PRE_TAC =
+  REWRITE_TAC[CONJUNCT1 sha512_compress_rounds; SHA512_K512_LOADED] THEN ASM_REWRITE_TAC[];;
+
+(* Block A's rounds and the context update after them, from the loop head
+   with block B's message at bB, to the branch on whether B is there. *)
+let SHA512_BLOCK_A_TAC bB mB =
+  let thA = sha512_inst SHA512_AVX2_BLOCK_A
+    [`word_add inp (word (256 * i)):int64`, "dA"; bB, "bB";
+     `(m:num->int64 list) (2 * i)`, "mA"; mB, "mB";
+     sha512_hblocks `2 * i`, "hA"; sha512_endp, "endp"] in
+  REWRITE_TAC[fst SHA512_AVX2_EXEC; SOME_FLAGS] THEN ENSURES_INIT_TAC "s0" THEN
+  MP_TAC(SPECL [`s0:x86state`; `inp:int64`; `n:num`; `D:num`; `m:num->int64 list`; `2 * i`] SHA512_BLOCK_DATA) THEN
+  ASM_REWRITE_TAC[ARITH_RULE `128 * (2 * i) = 256 * i`] THEN STRIP_TAC THEN
+  (fun g -> (if mB = `mB:int64 list` then
+     X_CHOOSE_THEN mB STRIP_ASSUME_TAC (SPECL [`s0:x86state`; bB] SHA512_ANY_DATA)
+   else
+     MP_TAC(SPECL [`s0:x86state`; `inp:int64`; `n:num`; `D:num`; `m:num->int64 list`; `2 * i + 1`] SHA512_BLOCK_DATA) THEN
+     ASM_REWRITE_TAC[ARITH_RULE `128 * (2 * i + 1) = 256 * i + 128`] THEN STRIP_TAC) g) THEN
+  MP_TAC thA THEN ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN NONOVERLAPPING_TAC; ALL_TAC] THEN
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [SOME_FLAGS] THEN
+  X86_BIGSTEP_TAC SHA512_AVX2_EXEC "s1" THENL [SHA512_PRE_TAC; ALL_TAC] THEN
+  X86_STEPS_TAC SHA512_AVX2_EXEC (2--22) THEN RULE_ASSUM_TAC SHA512_SCALAR_RULE THEN
+  MP_TAC(SPECL [`inp:int64`; `n:num`; `i:num`] SHA512_RSI_END) THEN ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THEN
+  SHA512_FOLD_BLOCK_TAC `2 * i`;;
+
+(* Block B's rounds and the context update after them, to the loop's
+   closing branch, with the branch's condition as one on i and n. *)
+let SHA512_BLOCK_B_TAC =
+  let thB = sha512_inst SHA512_AVX2_BLOCK_B
+    [`(m:num->int64 list) (2 * i + 1)`, "mB"; sha512_hblocks `2 * i + 1`, "hB";
+     `word_add (word_add inp (word (256 * i))) (word 128):int64`, "rsi0"; sha512_endp, "endp"] in
+  MP_TAC thB THEN ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [SOME_FLAGS] THEN
+  X86_BIGSTEP_TAC SHA512_AVX2_EXEC "s23" THENL [SHA512_PRE_TAC; ALL_TAC] THEN
+  X86_STEPS_TAC SHA512_AVX2_EXEC (24--47) THEN RULE_ASSUM_TAC SHA512_SCALAR_RULE THEN
+  SHA512_FOLD_BLOCK_TAC `2 * i + 1` THEN
+  MP_TAC(SPECL [`inp:int64`; `n:num`; `i:num`] SHA512_RSI_NEXT) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN SHA512_ARITH_TAC; ALL_TAC] THEN
+  DISCH_THEN(fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[ARITH_RULE `(2 * i + 1) + 1 = 2 * (i + 1)`]);;
+
+let SHA512_HASH_N_TAC k =
+  SUBGOAL_THEN (subst [k,`k:num`] `sha512_hash_blocks m h n = sha512_hash_blocks m h k`) SUBST1_TAC THENL
+   [FIRST_X_ASSUM(SUBST1_TAC o SYM o check (fun th -> let c = concl th in is_eq c && rand c = `n:num`)) THEN
+    (REFL_TAC ORELSE (AP_TERM_TAC THEN ARITH_TAC)); ALL_TAC];;
+
+let SHA512_AVX2_LOOP = prove
+ (SHA512_AVX2_LOOP_GOAL,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN (mk_forall(`d:num`, mk_forall(`i:num`,
+    mk_imp(`n - 2 * i = d`, mk_imp(`2 * i < n`, sha512_loop_ensures sha512_loop_inv)))))
+   (fun th -> X_GEN_TAC `i:num` THEN MP_TAC(SPECL [`n - 2 * i`; `i:num`] th) THEN REWRITE_TAC[]) THEN
+  MATCH_MP_TAC num_WF THEN X_GEN_TAC `d:num` THEN DISCH_TAC THEN X_GEN_TAC `i:num` THEN
+  REPEAT DISCH_TAC THEN
+  ASM_CASES_TAC `2 * i + 1 = n` THENL
+   [(* One block left: block B's lane reads the frame, and the routine ends
+       after block A. *)
+    SUBGOAL_THEN `~(2 * i + 1 < n)` (fun th -> REWRITE_TAC[th]) THENL [SHA512_ARITH_TAC; ALL_TAC] THEN
+    SHA512_BLOCK_A_TAC `word_add stk (word 1184):int64` `mB:int64 list` THEN
+    ENSURES_FINAL_STATE_TAC THEN SHA512_HASH_N_TAC `2 * i + 1` THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  SUBGOAL_THEN `2 * i + 1 < n` ASSUME_TAC THENL [SHA512_ARITH_TAC; ALL_TAC] THEN
+  ASM_CASES_TAC `2 * i + 2 = n` THENL
+   [(* Two blocks left: the loop ends after them. *)
+    ASM_REWRITE_TAC[] THEN
+    SHA512_BLOCK_A_TAC `word_add inp (word (256 * i + 128)):int64` `(m:num->int64 list) (2 * i + 1)` THEN
+    SHA512_BLOCK_B_TAC THEN
+    SUBGOAL_THEN `~(2 * i + 3 < n) /\ ~(2 * i + 3 = n)` (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THENL
+     [SHA512_ARITH_TAC; ALL_TAC] THEN
+    SHA512_LAUNDER_TAC THEN X86_STEPS_TAC SHA512_AVX2_EXEC [48] THEN
+    ENSURES_FINAL_STATE_TAC THEN SHA512_HASH_N_TAC `2 * (i + 1)` THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  (* More: the loop runs again from the head with two more blocks done. *)
+  SUBGOAL_THEN `2 * i + 3 <= n` ASSUME_TAC THENL [SHA512_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[GSYM CONJ_ASSOC; SOME_FLAGS] THEN
+  ENSURES_SEQUENCE_TAC `pc + 0x80`
+   (mk_abs(`s:x86state`, list_mk_conj(tl(tl(conjuncts(subst [`i + 1`,`i:num`] sha512_loop_inv)))))) THEN
+  CONJ_TAC THENL
+   [ASM_REWRITE_TAC[] THEN
+    SHA512_BLOCK_A_TAC `word_add inp (word (256 * i + 128)):int64` `(m:num->int64 list) (2 * i + 1)` THEN
+    SHA512_BLOCK_B_TAC THEN
+    SUBGOAL_THEN `2 * i + 3 < n \/ 2 * i + 3 = n` (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THENL
+     [SHA512_ARITH_TAC; ALL_TAC] THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    REWRITE_TAC[ARITH_RULE `2 * (i + 1) + 1 = 2 * i + 3`; ARITH_RULE `256 * (i + 1) + 128 = 256 * i + 384`;
+                ARITH_RULE `256 * (i + 1) = 256 * i + 256`] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD]) THEN
+    REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD; ARITH_RULE `(256 * i + 256) + 128 = 256 * i + 384`] THEN
+    ASM_CASES_TAC `2 * i + 3 = n` THEN ASM_REWRITE_TAC[LT_REFL] THEN
+    SUBGOAL_THEN `2 * i + 3 < n` ASSUME_TAC THENL [SHA512_ARITH_TAC; ASM_REWRITE_TAC[]];
+    FIRST_X_ASSUM(MP_TAC o SPEC `n - 2 * (i + 1)` o
+                  check (fun th -> is_forall (concl th) && free_in `d:num` (concl th))) THEN
+    ANTS_TAC THENL [SHA512_ARITH_TAC; DISCH_THEN(MP_TAC o SPEC `i + 1`)] THEN
+    REWRITE_TAC[] THEN
+    ANTS_TAC THENL [SHA512_ARITH_TAC; REWRITE_TAC[GSYM CONJ_ASSOC; SOME_FLAGS]] THEN
+    DISCH_THEN MATCH_ACCEPT_TAC]);;
+
+(* ------------------------------------------------------------------------- *)
+(* The stack frame.                                                          *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA512_STK_MASK = prove
+ (`!x:int64. word_and x (word 18446744073709549568) =
+             word_sub x (word_and x (word(2 EXP 11 - 1)))`,
+  CONV_TAC NUM_REDUCE_CONV THEN BITBLAST_TAC);;
+
+let SHA512_STK_LEMMA = prove
+ (`!sp0:int64.
+     4096 <= val sp0
+     ==> ?stk:int64.
+           word_add
+            (word_and
+             (word_sub
+              (word_sub
+               (word_sub
+                (word_sub
+                 (word_sub (word_sub (word_sub sp0 (word 8)) (word 8)) (word 8))
+                 (word 8))
+                (word 8))
+               (word 8))
+              (word 1312))
+             (word 18446744073709549568))
+            (word 1152) = word_add stk (word 1184) /\
+           aligned 32 stk /\ 128 <= val stk /\ val stk + 1344 <= 2 EXP 64 /\
+           contained_modulo (2 EXP 64) (val stk,1344)
+                            (val (word_sub sp0 (word 3440)),3440) /\
+           contained_modulo (2 EXP 64) (val stk,1344)
+                            (val (word_sub sp0 (word 3440)),3448) /\
+           nonoverlapping (stk,1344) (word_sub sp0 (word 48),56) /\
+           (?e. e + 1344 <= 3440 /\
+                word_add (word_sub sp0 (word 3440)) (word e) = stk)`,
+  GEN_TAC THEN DISCH_TAC THEN
+  SUBGOAL_THEN
+   `word_sub
+     (word_sub
+      (word_sub
+       (word_sub
+        (word_sub (word_sub (word_sub sp0 (word 8)) (word 8)) (word 8))
+        (word 8))
+       (word 8))
+      (word 8))
+     (word 1312) = word_sub sp0 (word 1360):int64`
+  SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+  SUBGOAL_THEN
+   `word_and (word_sub sp0 (word 1360)) (word 18446744073709549568):int64 =
+    word(2048 * ((val sp0 - 1360) DIV 2048))`
+  SUBST1_TAC THENL
+   [SUBGOAL_THEN
+     `word_and (word_sub sp0 (word 1360)) (word 18446744073709549568):int64 =
+      word_sub (word_sub sp0 (word 1360))
+               (word_and (word_sub sp0 (word 1360)) (word(2 EXP 11 - 1)))`
+    SUBST1_TAC THENL [REWRITE_TAC[SHA512_STK_MASK]; ALL_TAC] THEN
+    SUBGOAL_THEN `val(word_sub sp0 (word 1360):int64) = val sp0 - 1360`
+    ASSUME_TAC THENL
+     [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD; DIMINDEX_64] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN COND_CASES_TAC THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
+    REWRITE_TAC[GSYM VAL_EQ] THEN
+    GEN_REWRITE_TAC LAND_CONV [VAL_WORD_SUB_CASES] THEN
+    ASM_REWRITE_TAC[VAL_WORD_AND_MASK_WORD; MOD_LE; VAL_WORD; DIMINDEX_64] THEN
+    MP_TAC(SPEC `sp0:int64` VAL_BOUND_64) THEN
+    MP_TAC(SPECL [`val(sp0:int64) - 1360`; `2048`] (CONJUNCT2 DIVISION_SIMP)) THEN
+    CONV_TAC NUM_REDUCE_CONV THEN REPEAT STRIP_TAC THEN
+    W(MP_TAC o PART_MATCH (lhand o rand) MOD_LT o rand o snd) THEN
+    ANTS_TAC THENL [ASM_ARITH_TAC; DISCH_THEN SUBST1_TAC THEN ASM_ARITH_TAC];
+    ALL_TAC] THEN
+  ABBREV_TAC `q = (val(sp0:int64) - 1360) DIV 2048` THEN
+  SUBGOAL_THEN `1 <= q /\ 2048 * q <= val(sp0:int64) - 1360 /\
+                val(sp0:int64) - 1360 < 2048 * q + 2048`
+  STRIP_ASSUME_TAC THENL
+   [EXPAND_TAC "q" THEN
+    MP_TAC(SPECL [`val(sp0:int64) - 1360`; `2048`] DIVISION) THEN
+    REWRITE_TAC[ARITH_EQ] THEN
+    SIMP_TAC[LE_RDIV_EQ; ARITH_EQ] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  MP_TAC(SPEC `sp0:int64` VAL_BOUND_64) THEN DISCH_TAC THEN
+  EXISTS_TAC `word(2048 * q - 32):int64` THEN
+  SUBGOAL_THEN `val(word(2048 * q - 32):int64) = 2048 * q - 32` ASSUME_TAC THENL
+   [REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN MATCH_MP_TAC MOD_LT THEN
+    ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  SUBGOAL_THEN `val(word_sub sp0 (word 3440):int64) = val sp0 - 3440`
+  ASSUME_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD; DIMINDEX_64] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN COND_CASES_TAC THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  SUBGOAL_THEN `32 divides 2 EXP 64` ASSUME_TAC THENL
+   [CONV_TAC(RAND_CONV NUM_REDUCE_CONV THENC DIVIDES_CONV); ALL_TAC] THEN
+  ASM_REWRITE_TAC[aligned; DIMINDEX_64] THEN REPEAT CONJ_TAC THENL
+   [REWRITE_TAC[GSYM WORD_ADD; ARITH_RULE `1184 = 32 + 1152`] THEN
+    AP_TERM_TAC THEN ASM_ARITH_TAC;
+    SUBGOAL_THEN `2048 * q - 32 = 32 * (64 * q - 1)` SUBST1_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    NUMBER_TAC;
+    ASM_ARITH_TAC;
+    ASM_ARITH_TAC;
+    MATCH_MP_TAC CONTAINED_MODULO_SIMPLE THEN ASM_ARITH_TAC;
+    MATCH_MP_TAC CONTAINED_MODULO_SIMPLE THEN ASM_ARITH_TAC;
+    REWRITE_TAC[nonoverlapping; DIMINDEX_64] THEN
+    SUBGOAL_THEN `val(word_sub sp0 (word 48):int64) = val sp0 - 48`
+    SUBST1_TAC THENL
+     [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD; DIMINDEX_64] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN COND_CASES_TAC THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
+    MATCH_MP_TAC NONOVERLAPPING_MODULO_SIMPLE THEN ASM_ARITH_TAC;
+    EXISTS_TAC `2048 * q - 32 - (val(sp0:int64) - 3440)` THEN
+    CONJ_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[GSYM VAL_EQ; VAL_WORD_ADD; DIMINDEX_64] THEN
+    ASM_REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
+    SUBGOAL_THEN `(2048 * q - 32 - (val(sp0:int64) - 3440)) MOD 2 EXP 64 =
+                  2048 * q - 32 - (val sp0 - 3440)` SUBST1_TAC THENL
+     [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN `(val(sp0:int64) - 3440) + (2048 * q - 32 - (val sp0 - 3440)) =
+                  2048 * q - 32` SUBST1_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC]);;
+
+let SHA512_INPUT_REL = prove
+ (`!s inp n m.
+     (!i j. i < n /\ j < 16
+            ==> read (memory :> bytes64 (word_add inp (word (128 * i + 8 * j)))) s =
+                word_bytereverse (EL j ((m:num->int64 list) i)))
+     ==> !b j. b < n /\ j < 16
+               ==> word(bigdigit (read (memory :> bytes(inp,128 * n)) s)
+                                 (16 * b + j)):int64 =
+                   word_bytereverse (EL j (m b))`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[ARITH_RULE `128 * n = 8 * (16 * n)`; GSYM BIGNUM_FROM_MEMORY_BYTES;
+              BIGDIGIT_BIGNUM_FROM_MEMORY] THEN
+  SUBGOAL_THEN `16 * b + j < 16 * n` (fun th -> REWRITE_TAC[th]) THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[WORD_VAL; ARITH_RULE `8 * (16 * b + j) = 128 * b + 8 * j`] THEN
+  FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[]);;
+
+let SHA512_N_FACTS = prove
+ (`!inp:int64 n.
+     0 < n /\ val inp + 128 * (n + 1) < 2 EXP 64
+     ==> word_sub inp (word 18446744073709551488) = word_add inp (word 128) /\
+         word_add inp (word (8 * val (word_shl (word n:int64) 4))) =
+         word_add inp (word (128 * n)) /\
+         (val (word_sub (word_add inp (word 128)) (word_add inp (word (128 * n)))) = 0
+          <=> ~(1 < n))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN REPEAT CONJ_TAC THENL
+   [CONV_TAC WORD_BLAST;
+    AP_TERM_TAC THEN AP_TERM_TAC THEN
+    REWRITE_TAC[VAL_WORD_SHL; VAL_WORD; DIMINDEX_64] THEN
+    SUBGOAL_THEN `n MOD 2 EXP 64 = n` SUBST1_TAC THENL
+     [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN `(2 EXP 4 * n) MOD 2 EXP 64 = 16 * n` SUBST1_TAC THENL
+     [CONV_TAC(ONCE_DEPTH_CONV NUM_REDUCE_CONV) THEN MATCH_MP_TAC MOD_LT THEN
+      POP_ASSUM MP_TAC THEN CONV_TAC NUM_REDUCE_CONV THEN ARITH_TAC;
+      ARITH_TAC];
+    SUBGOAL_THEN
+     `word_sub (word_add inp (word 128)) (word_add inp (word (128 * n))):int64 =
+      word_sub (word 128) (word (128 * n))` SUBST1_TAC THENL
+     [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    REWRITE_TAC[VAL_EQ_0; WORD_SUB_EQ_0] THEN
+    REWRITE_TAC[GSYM VAL_EQ; VAL_WORD; DIMINDEX_64] THEN
+    SUBGOAL_THEN `(128 * n) MOD 2 EXP 64 = 128 * n` SUBST1_TAC THENL
+     [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN ASM_ARITH_TAC]);;
+
+let SHA512_SUBREGION_TAC =
+  let stkv = `val(stk:int64)` and big = [`val(word_sub stackpointer (word 3440):int64)`; `3448`] in
+  REWRITE_TAC[nonoverlapping; DIMINDEX_64] THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[nonoverlapping; DIMINDEX_64]) THEN
+  (fun (asl,w) ->
+    let (x,_),(y,_) = (dest_pair(rand(rator w))),(dest_pair(rand w)) in
+    (if x = stkv then ALL_TAC
+     else if y = stkv then ONCE_REWRITE_TAC[NONOVERLAPPING_MODULO_SYM]
+     else failwith "SHA512_SUBREGION_TAC") (asl,w)) THEN
+  (fun (asl,w) ->
+    let y,l = dest_pair(rand w) in
+    (MATCH_MP_TAC NONOVERLAPPING_MODULO_SUBREGIONS THEN
+     MAP_EVERY EXISTS_TAC (big @ [y; l]) THEN
+     ASM_REWRITE_TAC[CONTAINED_MODULO_REFL; LE_REFL]) (asl,w));;
+
+let SHA512_STK_TAC =
+  MP_TAC(SPEC `stackpointer:int64` SHA512_STK_LEMMA) THEN ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(X_CHOOSE_THEN `stk:int64`
+    (CONJUNCTS_THEN2 (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]))
+                     STRIP_ASSUME_TAC)) THEN
+  SUBGOAL_THEN
+   `nonoverlapping (word pc:int64,0x16dd) (stk:int64,1344) /\
+    nonoverlapping (stk,1344) (word k512:int64,1344) /\
+    nonoverlapping (stk,1344) (inp:int64,128 * n) /\
+    nonoverlapping (stk,1344) (ctxp:int64,64)`
+  STRIP_ASSUME_TAC THENL
+   [REPEAT CONJ_TAC THEN SHA512_SUBREGION_TAC; ALL_TAC];;
+
+(* The pushes leave their slots at nested word_sub addresses; the pops
+   read them back as word_add stackpointer (word (2 EXP 64 - 8 * k)). *)
+let SHA512_PUSH_SLOTS =
+  let sp = `stackpointer:int64` and w8 = `word 8:int64` in
+  let rec nest k = if k = 0 then sp else mk_binop `word_sub:int64->int64->int64` (nest(k-1)) w8 in
+  map (fun k ->
+    let neg = mk_comb(`word:num->int64`, mk_numeral(num_of_string "18446744073709551616" -/ num_of_string(string_of_int(8*k)))) in
+    let sub = mk_binop `word_sub:int64->int64->int64` sp (mk_comb(`word:num->int64`, mk_small_numeral(8*k))) in
+    let th2 = WORD_BLAST(mk_eq(sub, mk_binop `word_add:int64->int64->int64` sp neg)) in
+    if k = 1 then th2 else TRANS (WORD_RULE(mk_eq(nest k, sub))) th2) (1--6);;
+
+(* The frame: every stack address the routine writes, as an offset from
+   the bottom of the declared stack region. *)
+let SHA512_SUB_FRAME_TAC =
+  let sp = `stackpointer:int64` and b = `word_sub stackpointer (word 3440):int64` in
+  let wadd x y = mk_binop `word_add:int64->int64->int64` x y in
+  let wd n = mk_comb(`word:num->int64`, n) in
+  let slots = map (fun k ->
+    WORD_BLAST(mk_eq(
+      wadd sp (wd (mk_numeral(num_of_string "18446744073709551616" -/ num_of_string(string_of_int(8*k))))),
+      wadd b (wd (mk_small_numeral(3440 - 8*k)))))) (1--6) in
+  FIRST_X_ASSUM(fun th ->
+    if is_eq(concl th) && rand(concl th) = `stk:int64`
+    then RULE_ASSUM_TAC(REWRITE_RULE[SYM th]) else NO_TAC) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE slots) THEN
+  MONOTONE_MAYCHANGE_TAC;;
+
+(* ------------------------------------------------------------------------- *)
+(* The whole routine: its prologue, the loop, and its epilogue and return.   *)
+(* ------------------------------------------------------------------------- *)
+
+(* The prologue pushes six registers and then aligns its frame down to 2048
+   bytes, so the frame's place depends on the stack pointer's low bits. All
+   the routine writes on the stack lies in the 3440 bytes below it. *)
+let SHA512_AVX2_SUBROUTINE_GOAL =
+  let tm = mk_imp(
+   `0 < n /\ val (inp:int64) + 128 * (n + 1) < 2 EXP 64 /\
+    4096 <= val (stackpointer:int64) /\ aligned 32 (word k512:int64) /\
+    riprel32_within_bounds (k512 + 128) (pc + 150) /\
+    ALL (nonoverlapping (word_sub stackpointer (word 3440),3448))
+        [(word pc,0x16dd); (word k512,1344); (inp,128 * n); (ctxp:int64,64)] /\
+    ALL (nonoverlapping (ctxp,64)) [(word pc,0x16dd); (word k512,1344); (inp,128 * n)]`,
+   list_mk_icomb "ensures" [`x86`;
+    mk_abs(`s:x86state`, list_mk_conj[
+     `bytes_loaded s (word pc) (sha512_avx2_mc pc k512) /\
+      read RIP s = word pc /\ read RSP s = stackpointer /\
+      read (memory :> bytes64 stackpointer) s = returnaddress /\
+      C_ARGUMENTS [ctxp; inp; word n] s /\
+      bytes_loaded s (word k512) sha512_avx2_k512`;
+     sha512_ctx_facts `h:int64 list`;
+     `!i j. i < n /\ j < 16
+            ==> read (memory :> bytes64 (word_add inp (word (128 * i + 8 * j)))) s =
+                word_bytereverse (EL j ((m:num->int64 list) i))`]);
+    mk_abs(`s:x86state`, list_mk_conj[
+     `read RIP s = returnaddress /\ read RSP s = word_add stackpointer (word 8)`;
+     sha512_ctx_facts (sha512_hblocks `n:num`)]);
+    `MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+     MAYCHANGE [memory :> bytes(ctxp:int64,64);
+                memory :> bytes(word_sub stackpointer (word 3440),3440)]`]) in
+  list_mk_forall(frees tm, tm);;
+
+let SHA512_AVX2_SUBROUTINE_CORRECT = prove
+ (SHA512_AVX2_SUBROUTINE_GOAL,
+  let thL = sha512_inst SHA512_AVX2_LOOP
+    [`word k512:int64`, "kt"; `num_of_bytelist sha512_avx2_k512`, "kn";
+     `stackpointer:int64`, "rsp0"] in
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[ALL; C_ARGUMENTS; MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI; SOME_FLAGS] THEN
+  STRIP_TAC THEN
+  MAP_EVERY (fun c -> ENSURES_PRESERVED_TAC ("init_"^fst(dest_const c)) c)
+   [`RBX`; `RBP`; `R12`; `R13`; `R14`; `R15`] THEN
+  REWRITE_TAC[fst SHA512_AVX2_EXEC; SHA512_K512_LOADED] THEN ENSURES_INIT_TAC "s0" THEN
+  (* The input as one region, which the loop takes. *)
+  ABBREV_TAC `D = read (memory :> bytes(inp,128 * n)) s0` THEN
+  MP_TAC(SPECL [`s0:x86state`; `inp:int64`; `n:num`; `m:num->int64 list`] SHA512_INPUT_REL) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(K ALL_TAC o check (fun th -> is_forall(concl th) && free_in `s0:x86state` (concl th))) THEN
+  (* The pushes and the frame's alignment, then its first stores. *)
+  X86_STEPS_TAC SHA512_AVX2_EXEC (1--12) THEN
+  SHA512_STK_TAC THEN
+  X86_STEPS_TAC SHA512_AVX2_EXEC (13--30) THEN
+  MP_TAC(SPECL [`inp:int64`; `n:num`] SHA512_N_FACTS) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  DISCH_THEN(fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th; COND_SWAP])) THEN
+  (* The loop, from no blocks done. *)
+  MP_TAC thL THEN ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN NONOVERLAPPING_TAC; ALL_TAC] THEN
+  DISCH_THEN(MP_TAC o SPEC `0`) THEN
+  REWRITE_TAC[MULT_CLAUSES; ADD_CLAUSES; WORD_ADD_0; CONJUNCT1 sha512_hash_blocks] THEN
+  ASM_REWRITE_TAC[] THEN
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [SOME_FLAGS] THEN
+  X86_BIGSTEP_TAC SHA512_AVX2_EXEC "s31" THEN
+  (* The pops and the return. *)
+  RULE_ASSUM_TAC(REWRITE_RULE SHA512_PUSH_SLOTS) THEN
+  X86_STEPS_TAC SHA512_AVX2_EXEC (32--41) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  SHA512_SUB_FRAME_TAC);;

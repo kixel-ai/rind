@@ -265,6 +265,7 @@ hol_light_proofs=(
     "aarch64 ct_compare_16.bin rind::low::aarch64::cpu::ct_compare_16"
     "x86_64 ct_compare_bytes.bin rind::low::x86_64::cpu::ct_compare_bytes"
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
+    "x86_64 sha512_block_data_order_avx2.o rind::low::x86_64::sha512::sha512_block_data_order_avx2"
 )
 hol_light() {
     local dir=$out/hol-light arches arch file path proof
