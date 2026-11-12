@@ -801,3 +801,186 @@ fn ml_dsa_to_pkcs8_alias() {
         key.to_pkcs8v1().unwrap().as_ref()
     );
 }
+
+/// Generated keys, and malformed or mismatched inputs, against aws-lc-rs:
+/// wrong-length public keys, SPKIs, and signatures, another parameter set's
+/// keys and signatures, and a PKCS#8 v2 whose public key does not match.
+///
+/// Two refusals are rind's own, as the README lists: an SPKI with a byte
+/// after it, and a PKCS#8 v2 key whose public key does not match, both of
+/// which aws-lc-rs accepts.
+#[test]
+fn ml_dsa_malformed() {
+    use theirs::encoding::AsDer as _;
+
+    let sets = [
+        (
+            &ours::signature::ML_DSA_44_SIGNING,
+            &ours::signature::ML_DSA_44,
+            &theirs::signature::ML_DSA_44_SIGNING,
+            &theirs::signature::ML_DSA_44,
+        ),
+        (
+            &ours::signature::ML_DSA_65_SIGNING,
+            &ours::signature::ML_DSA_65,
+            &theirs::signature::ML_DSA_65_SIGNING,
+            &theirs::signature::ML_DSA_65,
+        ),
+        (
+            &ours::signature::ML_DSA_87_SIGNING,
+            &ours::signature::ML_DSA_87,
+            &theirs::signature::ML_DSA_87_SIGNING,
+            &theirs::signature::ML_DSA_87,
+        ),
+    ];
+    let msg = b"malformed";
+
+    // Each set's generated key pair, its raw public key, SPKI, signature,
+    // and seed-form PKCS#8, from both sides.
+    let keys: Vec<_> = sets
+        .iter()
+        .map(|&(ours_sign, _, theirs_sign, _)| {
+            let ours = ours::signature::PqdsaKeyPair::generate(ours_sign).unwrap();
+            let theirs = theirs::signature::PqdsaKeyPair::generate(theirs_sign).unwrap();
+            assert_eq!(ours.public_key().as_ref().len(), ours_sign.public_key_len());
+            assert_eq!(
+                theirs.public_key().as_ref().len(),
+                theirs_sign.public_key_len()
+            );
+            assert_ne!(ours.public_key().as_ref(), theirs.public_key().as_ref());
+
+            // Each side's generated key loads on the other, with the same
+            // public key.
+            let ours_pkcs8 = ours.to_pkcs8v1().unwrap();
+            let theirs_pkcs8 = theirs.to_pkcs8v1().unwrap();
+            let loaded =
+                theirs::signature::PqdsaKeyPair::from_pkcs8(theirs_sign, ours_pkcs8.as_ref())
+                    .unwrap();
+            assert_eq!(loaded.public_key().as_ref(), ours.public_key().as_ref());
+            let loaded =
+                ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, theirs_pkcs8.as_ref())
+                    .unwrap();
+            assert_eq!(loaded.public_key().as_ref(), theirs.public_key().as_ref());
+
+            let mut sig = vec![0; ours_sign.signature_len()];
+            assert_eq!(ours.sign(msg, &mut sig).unwrap(), sig.len());
+            // A short output buffer is refused on both sides.
+            let mut short = vec![0; ours_sign.signature_len() - 1];
+            assert!(ours.sign(msg, &mut short).is_err());
+            assert!(theirs.sign(msg, &mut short).is_err());
+
+            let public = ours.public_key().as_ref().to_vec();
+            let spki = ours.public_key().as_der().unwrap().as_ref().to_vec();
+            let theirs_spki = theirs.public_key().as_der().unwrap().as_ref().to_vec();
+            assert_eq!(
+                ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, theirs_pkcs8.as_ref())
+                    .unwrap()
+                    .public_key()
+                    .as_der()
+                    .unwrap()
+                    .as_ref(),
+                &theirs_spki[..]
+            );
+            (public, spki, sig, theirs_pkcs8.as_ref().to_vec(), theirs)
+        })
+        .collect();
+
+    for (i, &(ours_sign, ours_verify, theirs_sign, theirs_verify)) in sets.iter().enumerate() {
+        let (public, spki, sig, _, _) = &keys[i];
+        let verifies = |key: &[u8], sig: &[u8]| {
+            let ours = ours::signature::UnparsedPublicKey::new(ours_verify, key).verify(msg, sig);
+            let theirs =
+                theirs::signature::UnparsedPublicKey::new(theirs_verify, key).verify(msg, sig);
+            (ours.is_ok(), theirs.is_ok())
+        };
+        let agree = |key: &[u8], sig: &[u8]| {
+            let (ours, theirs) = verifies(key, sig);
+            assert_eq!(ours, theirs, "key {} sig {}", key.len(), sig.len());
+            ours
+        };
+
+        assert!(agree(public, sig));
+        assert!(agree(spki, sig));
+
+        // Public keys and SPKIs a byte short, a raw key a byte long, or an
+        // empty key.
+        for key in [public, spki] {
+            assert!(!agree(&key[..key.len() - 1], sig));
+        }
+        assert!(!agree(&[public, &[0][..]].concat(), sig));
+        assert!(!agree(&[], sig));
+        // aws-lc-rs ignores a byte after the SPKI; rind refuses it.
+        assert_eq!(verifies(&[spki, &[0][..]].concat(), sig), (false, true));
+
+        // Signatures a byte short or long, or empty.
+        assert!(!agree(public, &sig[..sig.len() - 1]));
+        assert!(!agree(public, &[&sig[..], &[0]].concat()));
+        assert!(!agree(public, &[]));
+
+        // Another parameter set's public key, SPKI, and signature.
+        for (j, (other_public, other_spki, other_sig, other_pkcs8, other_key)) in
+            keys.iter().enumerate()
+        {
+            if j == i {
+                continue;
+            }
+            assert!(!agree(other_public, sig));
+            assert!(!agree(other_spki, sig));
+            assert!(!agree(public, other_sig));
+            assert!(!agree(other_public, other_sig));
+            assert!(!agree(other_spki, other_sig));
+
+            // PKCS#8 v2: the key with its own public key loads on both.
+            let (_, _, _, own_pkcs8, own_key) = &keys[i];
+            let v2 = ml_dsa_pkcs8_v2(own_pkcs8, own_key.public_key().as_ref());
+            let ours = ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, &v2).unwrap();
+            let theirs = theirs::signature::PqdsaKeyPair::from_pkcs8(theirs_sign, &v2).unwrap();
+            assert_eq!(ours.public_key().as_ref(), theirs.public_key().as_ref());
+            assert_eq!(ours.public_key().as_ref(), own_key.public_key().as_ref());
+
+            // With another key's public key, aws-lc-rs ignores it and loads
+            // the private key; rind refuses the mismatch.
+            let v2 = ml_dsa_pkcs8_v2(own_pkcs8, other_key.public_key().as_ref());
+            let ours = ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, &v2).unwrap_err();
+            assert_eq!(ours.description_(), "InvalidEncoding");
+            assert_eq!(ours.to_string(), "mismatched PKCS#8 public key");
+            assert!(theirs::signature::PqdsaKeyPair::from_pkcs8(theirs_sign, &v2).is_ok());
+
+            // Another parameter set's key, with its own public key, is
+            // refused on both, as in seed form.
+            let v2 = ml_dsa_pkcs8_v2(other_pkcs8, other_key.public_key().as_ref());
+            same_rejection(
+                ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, &v2),
+                theirs::signature::PqdsaKeyPair::from_pkcs8(theirs_sign, &v2),
+            );
+
+            // Another parameter set's PKCS#8 whose seed is a byte short, and
+            // one cut off inside its header, are refused for the same reason.
+            let short = ml_dsa_short_seed(other_pkcs8);
+            for pkcs8 in [&short[..], &other_pkcs8[..10]] {
+                same_rejection(
+                    ours::signature::PqdsaKeyPair::from_pkcs8(ours_sign, pkcs8),
+                    theirs::signature::PqdsaKeyPair::from_pkcs8(theirs_sign, pkcs8),
+                );
+            }
+        }
+    }
+}
+
+/// A seed-form PKCS#8 v1 document with its 32-byte seed cut to 31.
+fn ml_dsa_short_seed(seed_form: &[u8]) -> Vec<u8> {
+    let header = ml_dsa_pkcs8_header(seed_form);
+    let seed = &seed_form[seed_form.len() - 32..];
+    let choice = der(0x80, &seed[..31]);
+    der(0x30, &[header, &der(0x04, &choice)].concat())
+}
+
+/// A seed-form PKCS#8 v1 document rewritten as v2 (RFC 5958) carrying
+/// `public_key`.
+fn ml_dsa_pkcs8_v2(seed_form: &[u8], public_key: &[u8]) -> Vec<u8> {
+    // The v1 body after its version: the algorithm identifier and the
+    // private key.
+    let rest = &seed_form[2 + 3..];
+    let public_key = der(0x81, &[&[0][..], public_key].concat());
+    der(0x30, &[&[0x02, 0x01, 0x01][..], rest, &public_key].concat())
+}

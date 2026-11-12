@@ -14,8 +14,8 @@ use rind::signature::sign::{MlDsa44, MlDsa65, MlDsa87, MlDsaKeyPair};
 use crate::encoding::{AsDer, Pkcs8V1Der, PublicKeyX509Der};
 use crate::error::{KeyRejected, Unspecified, unspecified};
 use crate::pkcs8::Document;
-use crate::signature;
 use crate::wipe::Wiped;
+use crate::{der, signature};
 
 /// Which ML-DSA parameter set a key uses. The names are aws-lc-rs's `Debug`
 /// text.
@@ -74,6 +74,18 @@ impl AlgorithmId {
         [Self::ML_DSA_44, Self::ML_DSA_65, Self::ML_DSA_87]
             .into_iter()
             .find(|id| id.raw_private_len() == len)
+    }
+
+    /// The parameter set whose object identifier's contents are `oid`.
+    fn from_oid(oid: &[u8]) -> Option<Self> {
+        [Self::ML_DSA_44, Self::ML_DSA_65, Self::ML_DSA_87]
+            .into_iter()
+            .find(|id| id.oid() == oid)
+    }
+
+    /// The object identifier's contents, without its tag and length.
+    fn oid(self) -> &'static [u8] {
+        &algorithm_identifier(self)[4..]
     }
 }
 
@@ -176,14 +188,23 @@ pub const ML_DSA_65_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_D
 /// Signing with ML-DSA-87.
 pub const ML_DSA_87_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_87);
 
-const SIGNING: [&PqdsaSigningAlgorithm; 3] =
-    [&ML_DSA_44_SIGNING, &ML_DSA_65_SIGNING, &ML_DSA_87_SIGNING];
-
-/// An ML-DSA public key's raw bytes.
+/// An ML-DSA public key's raw bytes, and its `SubjectPublicKeyInfo`.
+///
+/// Neither is secret, so neither is wiped, as with ECDSA's and Ed25519's
+/// public keys.
 #[derive(Clone)]
 pub struct PqdsaPublicKey {
-    algorithm: &'static PqdsaVerificationAlgorithm,
     octets: Box<[u8]>,
+    spki: Box<[u8]>,
+}
+
+impl PqdsaPublicKey {
+    fn new(key: &rind::signature::PublicKey) -> Self {
+        Self {
+            octets: key.as_ref().into(),
+            spki: key.to_spki().as_ref().into(),
+        }
+    }
 }
 
 impl AsRef<[u8]> for PqdsaPublicKey {
@@ -194,9 +215,7 @@ impl AsRef<[u8]> for PqdsaPublicKey {
 
 impl AsDer<PublicKeyX509Der<'static>> for PqdsaPublicKey {
     fn as_der(&self) -> Result<PublicKeyX509Der<'static>, Unspecified> {
-        let key = rind::signature::PublicKey::new(self.algorithm.id().verify(), &self.octets)
-            .map_err(unspecified)?;
-        Ok(PublicKeyX509Der::new(key.to_spki().as_ref().to_vec()))
+        Ok(PublicKeyX509Der::new(self.spki.to_vec()))
     }
 }
 
@@ -215,62 +234,56 @@ enum Key {
     MlDsa87(Box<MlDsaKeyPair<MlDsa87>>),
 }
 
+/// Builds a [`Key`] of parameter set `$id` by calling `MlDsaKeyPair::$ctor`.
+macro_rules! build {
+    ($id:expr, $ctor:ident($($arg:expr),*)) => {
+        match $id {
+            AlgorithmId::ML_DSA_44 => MlDsaKeyPair::$ctor($($arg),*).map(|k| Key::MlDsa44(Box::new(k))),
+            AlgorithmId::ML_DSA_65 => MlDsaKeyPair::$ctor($($arg),*).map(|k| Key::MlDsa65(Box::new(k))),
+            AlgorithmId::ML_DSA_87 => MlDsaKeyPair::$ctor($($arg),*).map(|k| Key::MlDsa87(Box::new(k))),
+        }
+    };
+}
+
+/// Evaluates `$body` with `$key` bound to whichever parameter set's key
+/// pair `$self` holds.
+macro_rules! each {
+    ($self:expr, $key:ident => $body:expr) => {
+        match $self {
+            Key::MlDsa44($key) => $body,
+            Key::MlDsa65($key) => $body,
+            Key::MlDsa87($key) => $body,
+        }
+    };
+}
+
 impl Key {
     fn generate(id: AlgorithmId) -> Result<Self, rind::Error> {
-        match id {
-            AlgorithmId::ML_DSA_44 => Ok(Self::MlDsa44(Box::new(MlDsaKeyPair::generate()?))),
-            AlgorithmId::ML_DSA_65 => Ok(Self::MlDsa65(Box::new(MlDsaKeyPair::generate()?))),
-            AlgorithmId::ML_DSA_87 => Ok(Self::MlDsa87(Box::new(MlDsaKeyPair::generate()?))),
-        }
+        build!(id, generate())
     }
 
     fn from_seed(id: AlgorithmId, seed: &[u8]) -> Result<Self, rind::Error> {
-        match id {
-            AlgorithmId::ML_DSA_44 => Ok(Self::MlDsa44(Box::new(MlDsaKeyPair::from_seed(seed)?))),
-            AlgorithmId::ML_DSA_65 => Ok(Self::MlDsa65(Box::new(MlDsaKeyPair::from_seed(seed)?))),
-            AlgorithmId::ML_DSA_87 => Ok(Self::MlDsa87(Box::new(MlDsaKeyPair::from_seed(seed)?))),
-        }
+        build!(id, from_seed(seed))
     }
 
     fn from_pkcs8(id: AlgorithmId, pkcs8: &[u8]) -> Result<Self, rind::Error> {
-        match id {
-            AlgorithmId::ML_DSA_44 => Ok(Self::MlDsa44(Box::new(MlDsaKeyPair::from_pkcs8(pkcs8)?))),
-            AlgorithmId::ML_DSA_65 => Ok(Self::MlDsa65(Box::new(MlDsaKeyPair::from_pkcs8(pkcs8)?))),
-            AlgorithmId::ML_DSA_87 => Ok(Self::MlDsa87(Box::new(MlDsaKeyPair::from_pkcs8(pkcs8)?))),
-        }
+        build!(id, from_pkcs8(pkcs8))
     }
 
-    fn public_bytes(&self) -> Box<[u8]> {
-        match self {
-            Self::MlDsa44(key) => key.public_key().as_ref().into(),
-            Self::MlDsa65(key) => key.public_key().as_ref().into(),
-            Self::MlDsa87(key) => key.public_key().as_ref().into(),
-        }
+    fn public_key(&self) -> rind::signature::PublicKey {
+        each!(self, key => key.public_key())
     }
 
     fn has_seed(&self) -> bool {
-        match self {
-            Self::MlDsa44(key) => key.to_seed().is_some(),
-            Self::MlDsa65(key) => key.to_seed().is_some(),
-            Self::MlDsa87(key) => key.to_seed().is_some(),
-        }
+        each!(self, key => key.to_seed().is_some())
     }
 
-    fn pkcs8(&self) -> Wiped<Vec<u8>> {
-        let bytes = match self {
-            Self::MlDsa44(key) => key.to_pkcs8().as_ref().to_vec(),
-            Self::MlDsa65(key) => key.to_pkcs8().as_ref().to_vec(),
-            Self::MlDsa87(key) => key.to_pkcs8().as_ref().to_vec(),
-        };
-        Wiped::new(bytes)
+    fn to_pkcs8(&self) -> rind::encoding::Pkcs8 {
+        each!(self, key => key.to_pkcs8())
     }
 
     fn sign_into(&self, message: &[u8], out: &mut [u8]) -> Result<(), rind::Error> {
-        match self {
-            Self::MlDsa44(key) => out.copy_from_slice(key.sign(message)?.as_ref()),
-            Self::MlDsa65(key) => out.copy_from_slice(key.sign(message)?.as_ref()),
-            Self::MlDsa87(key) => out.copy_from_slice(key.sign(message)?.as_ref()),
-        }
+        each!(self, key => out.copy_from_slice(key.sign(message)?.as_ref()));
         Ok(())
     }
 }
@@ -288,10 +301,7 @@ pub struct PqdsaKeyPair {
 
 impl PqdsaKeyPair {
     fn new(algorithm: &'static PqdsaSigningAlgorithm, key: Key) -> Self {
-        let pubkey = PqdsaPublicKey {
-            algorithm: algorithm.0,
-            octets: key.public_bytes(),
-        };
+        let pubkey = PqdsaPublicKey::new(&key.public_key());
         Self {
             algorithm,
             key: Arc::new(key),
@@ -312,9 +322,24 @@ impl PqdsaKeyPair {
         algorithm: &'static PqdsaSigningAlgorithm,
         pkcs8: &[u8],
     ) -> Result<Self, KeyRejected> {
-        match Key::from_pkcs8(algorithm.id(), pkcs8) {
-            Ok(key) => Ok(Self::new(algorithm, key)),
-            Err(err) => Err(pkcs8_rejected(algorithm, pkcs8, err)),
+        // The algorithm identifier is public, so it picks the refusal before
+        // any key is expanded. Only the parameter set it names is parsed.
+        let named = der::pkcs8_algorithm(pkcs8).map(AlgorithmId::from_oid);
+        match named {
+            // Another ML-DSA parameter set: aws-lc-rs parses the key as that
+            // set, then refuses it as `Unspecified` once its size is wrong,
+            // or as `InvalidEncoding` when it does not parse.
+            Some(Some(id)) if id != algorithm.id() => match Key::from_pkcs8(id, pkcs8) {
+                Ok(_) => Err(KeyRejected::unspecified()),
+                Err(err) => Err(KeyRejected::rind(err)),
+            },
+            // Another algorithm altogether.
+            Some(None) => Err(KeyRejected::wrong_algorithm()),
+            // This parameter set, or a document whose header does not parse,
+            // which rind refuses with its own reason.
+            Some(Some(_)) | None => Key::from_pkcs8(algorithm.id(), pkcs8)
+                .map(|key| Self::new(algorithm, key))
+                .map_err(KeyRejected::rind),
         }
     }
 
@@ -327,18 +352,16 @@ impl PqdsaKeyPair {
         raw_private_key: &[u8],
     ) -> Result<Self, KeyRejected> {
         // aws-lc-rs picks the parameter set from the length, then refuses
-        // the key when that set is not `algorithm`.
+        // the key when that set is not `algorithm`. The length is public, so
+        // that refusal comes before the key is expanded.
         let Some(id) = AlgorithmId::from_raw_len(raw_private_key.len()) else {
             return Err(KeyRejected::invalid_encoding());
-        };
-        let der = Wiped::new(expanded_pkcs8(id, raw_private_key));
-        let key = match Key::from_pkcs8(id, &der) {
-            Ok(key) => key,
-            Err(_) => return Err(KeyRejected::invalid_encoding()),
         };
         if id != algorithm.id() {
             return Err(KeyRejected::unspecified());
         }
+        let der = Wiped::new(expanded_pkcs8(id, raw_private_key));
+        let key = Key::from_pkcs8(id, &der).map_err(|_| KeyRejected::invalid_encoding())?;
         Ok(Self::new(algorithm, key))
     }
 
@@ -362,7 +385,7 @@ impl PqdsaKeyPair {
     /// aws-lc-rs's does. rind would write the expanded form; that encoding
     /// is not returned here.
     pub fn to_pkcs8v1(&self) -> Result<Document, Unspecified> {
-        self.pkcs8_seed()
+        Ok(Document::new(self.pkcs8_seed()?.as_ref()))
     }
 
     /// Deprecated alias for [`Self::to_pkcs8v1`].
@@ -402,12 +425,13 @@ impl PqdsaKeyPair {
         PqdsaPrivateKey(self)
     }
 
-    fn pkcs8_seed(&self) -> Result<Document, Unspecified> {
+    /// rind's PKCS#8 in seed form, wiped when dropped. Callers copy it once,
+    /// into the wiped value they return.
+    fn pkcs8_seed(&self) -> Result<rind::encoding::Pkcs8, Unspecified> {
         if !self.key.has_seed() {
             return Err(Unspecified);
         }
-        let der = self.key.pkcs8();
-        Ok(Document::new(&der))
+        Ok(self.key.to_pkcs8())
     }
 }
 
@@ -432,40 +456,13 @@ pub struct PqdsaPrivateKey<'a>(pub(crate) &'a PqdsaKeyPair);
 
 impl AsDer<Pkcs8V1Der<'static>> for PqdsaPrivateKey<'_> {
     fn as_der(&self) -> Result<Pkcs8V1Der<'static>, Unspecified> {
-        let doc = self.0.pkcs8_seed()?;
-        Ok(Pkcs8V1Der::new(doc.as_ref().to_vec()))
+        Ok(Pkcs8V1Der::new(self.0.pkcs8_seed()?.as_ref().to_vec()))
     }
 }
 
 impl fmt::Debug for PqdsaPrivateKey<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "PqdsaPrivateKey({:?})", self.0.algorithm.0.id())
-    }
-}
-
-/// A PKCS#8 load failed. A key of another ML-DSA parameter set is
-/// `Unspecified`, matching aws-lc-rs's size check after a successful parse.
-/// Any other algorithm that still parsed as PKCS#8 is `WrongAlgorithm`.
-/// Anything that did not parse stays rind's refusal, whose `description_`
-/// is `InvalidEncoding`.
-fn pkcs8_rejected(
-    algorithm: &'static PqdsaSigningAlgorithm,
-    pkcs8: &[u8],
-    err: rind::Error,
-) -> KeyRejected {
-    for other in SIGNING {
-        if other.id() == algorithm.id() {
-            continue;
-        }
-        if Key::from_pkcs8(other.id(), pkcs8).is_ok() {
-            return KeyRejected::unspecified();
-        }
-    }
-    let message = err.to_string();
-    if message.contains("mismatched PKCS#8 algorithm") {
-        KeyRejected::wrong_algorithm()
-    } else {
-        KeyRejected::rind(err)
     }
 }
 

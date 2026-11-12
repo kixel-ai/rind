@@ -1,10 +1,12 @@
 //! The little DER that aws-lc-rs's API needs rind-aws-lc-rs to read itself:
-//! a PKCS#1 RSA public key's fields, which rind keeps to itself. rind parses
-//! and encodes the keys; every byte read here is public.
+//! a PKCS#1 RSA public key's fields, which rind keeps to itself, and the
+//! algorithm a PKCS#8 document names. rind parses and encodes the keys; every
+//! byte read here is public.
 
 use crate::error::{Unspecified, unspecified};
 
 const INTEGER: u8 = 0x02;
+const OBJECT_IDENTIFIER: u8 = 0x06;
 const SEQUENCE: u8 = 0x30;
 
 /// Reads a DER element tagged `tag` and returns its contents, refusing a
@@ -56,6 +58,19 @@ pub(crate) fn rsa_public_key(der: &[u8]) -> Result<(&[u8], &[u8]), Unspecified> 
             Ok((positive_integer(input)?, positive_integer(input)?))
         })
     })
+}
+
+/// The contents of the object identifier in a PKCS#8 document's
+/// `privateKeyAlgorithm`, or `None` if its header does not parse. Only the
+/// version and the algorithm identifier are read, never the private key.
+pub(crate) fn pkcs8_algorithm(der: &[u8]) -> Option<&[u8]> {
+    let mut outer = untrusted::Reader::new(untrusted::Input::from(der));
+    let body = read(&mut outer, SEQUENCE).ok()?;
+    let mut body = untrusted::Reader::new(body);
+    read(&mut body, INTEGER).ok()?;
+    let mut algorithm = untrusted::Reader::new(read(&mut body, SEQUENCE).ok()?);
+    let oid = read(&mut algorithm, OBJECT_IDENTIFIER).ok()?;
+    Some(oid.as_slice_less_safe())
 }
 
 /// Whether `der` is a `SubjectPublicKeyInfo` rather than PKCS#1: its first

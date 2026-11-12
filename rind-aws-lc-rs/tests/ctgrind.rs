@@ -275,3 +275,73 @@ fn ml_dsa() {
     public(&public_key);
     assert_eq!(public_key, expected);
 }
+
+/// ML-DSA keys loaded from PKCS#8 in seed and expanded form, signing with
+/// them, and exporting the seed form. The documents' headers and lengths are
+/// public; their seed and expanded key are not.
+#[test]
+fn ml_dsa_pkcs8_sign_export() {
+    use aws_lc_rs::encoding::{AsDer as _, AsRawBytes};
+    use aws_lc_rs::signature::KeyPair as _;
+    use aws_lc_rs::signature::{ML_DSA_65_SIGNING, PqdsaKeyPair};
+    use rind_aws_lc_rs::encoding::{AsDer, Pkcs8V1Der};
+
+    let seed = [0x6bu8; 32];
+    let theirs = PqdsaKeyPair::from_seed(&ML_DSA_65_SIGNING, &seed).unwrap();
+    let seed_form = theirs.private_key().as_der().unwrap().as_ref().to_vec();
+    let raw = theirs
+        .private_key()
+        .as_raw_bytes()
+        .unwrap()
+        .as_ref()
+        .to_vec();
+    let expected = theirs.public_key().as_ref().to_vec();
+
+    // RFC 9881's expanded form: the raw key in an `OCTET STRING` inside
+    // PKCS#8's, after the seed form's version and algorithm identifier.
+    let header = &seed_form[2..2 + 3 + 13];
+    let len = |n: usize| [0x82, (n >> 8) as u8, n as u8];
+    let inner = [&[0x04][..], &len(raw.len()), &raw].concat();
+    let body = [header, &[0x04], &len(inner.len()), &inner].concat();
+    let expanded_form = [&[0x30][..], &len(body.len()), &body].concat();
+
+    for (pkcs8, key_bytes) in [
+        (&seed_form, seed_form.len() - 32..seed_form.len()),
+        (
+            &expanded_form,
+            expanded_form.len() - raw.len()..expanded_form.len(),
+        ),
+    ] {
+        secret(&pkcs8[key_bytes]);
+        let key =
+            signature::PqdsaKeyPair::from_pkcs8(&signature::ML_DSA_65_SIGNING, pkcs8).unwrap();
+        let public_key = key.public_key().as_ref().to_vec();
+        public(&public_key);
+        assert_eq!(public_key, expected);
+
+        let mut sig = vec![0; signature::ML_DSA_65_SIGNING.signature_len()];
+        let len = key.sign(b"message", &mut sig).unwrap();
+        public(&sig);
+        assert!(
+            aws_lc_rs::signature::UnparsedPublicKey::new(
+                &aws_lc_rs::signature::ML_DSA_65,
+                &expected
+            )
+            .verify(b"message", &sig[..len])
+            .is_ok()
+        );
+
+        // Only the seed form exports; the expanded form has no seed.
+        match key.to_pkcs8v1() {
+            Ok(doc) => {
+                let der: Pkcs8V1Der<'static> = key.private_key().as_der().unwrap();
+                public(doc.as_ref());
+                public(der.as_ref());
+                assert_eq!(doc.as_ref(), &seed_form[..]);
+                assert_eq!(der.as_ref(), &seed_form[..]);
+            }
+            Err(_) => assert!(core::ptr::eq(pkcs8, &expanded_form)),
+        }
+        public(&pkcs8[..]);
+    }
+}
