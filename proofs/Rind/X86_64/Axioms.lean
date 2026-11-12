@@ -198,6 +198,22 @@ change to the trust base.
 #guard_msgs in
 #print axioms randomized_nonce_key_open
 
+/-- info: 'rind.x86_64.aes_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_new
+
+/-- info: 'rind.x86_64.aes_encrypt_block' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_encrypt_block
+
+/-- info: 'rind.x86_64.aes_header_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_header_new
+
+/-- info: 'rind.x86_64.aes_header_mask' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_header_mask
+
 /-- info: 'rind.x86_64.aes_gcm_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms aes_gcm_new

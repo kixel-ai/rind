@@ -443,11 +443,6 @@ opaque mid.p256.PrivateKey.diffie_hellman
 opaque mid.p256.PublicKey.from_x962_uncompressed
   : Slice Std.U8 → Result (core.result.Result mid.p256.PublicKey error.Error)
 
-/-! AES, whose header protection no proof covers. -/
-
-opaque mid.aes.Aes.header_protection_mask
-  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 5#usize)
-
 /-! MD5, which no proof covers. -/
 
 opaque mid.md5.Md5State.new : Result mid.md5.Md5State

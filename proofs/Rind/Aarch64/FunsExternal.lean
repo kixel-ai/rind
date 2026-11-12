@@ -339,7 +339,13 @@ opaque mid.p521.PrivateKey.diffie_hellman
 opaque mid.p521.PublicKey.from_x962_uncompressed
   : Slice Std.U8 → Result (core.result.Result mid.p521.PublicKey error.Error)
 
-/-! AES, whose header protection no proof covers. -/
+/-! AES, whose key expansion, block cipher, and header protection no proof covers on aarch64. -/
+
+opaque mid.aes.Aes.new
+  : cipher.Algorithm → Slice Std.U8 → Result (core.result.Result mid.aes.Aes error.Error)
+
+opaque mid.aes.Aes.encrypt_block
+  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
 
 opaque mid.aes.Aes.header_protection_mask
   : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 5#usize)

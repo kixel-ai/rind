@@ -240,10 +240,13 @@ and `Rind/X86_64/HkdfAead.lean` on x86_64:
   through `aead_key_new_spec` over `aes_gcm_new`;
 - `aead_key_from_chacha20_poly1305_spec`: a ChaCha20-Poly1305 key holds the
   32 bytes of HKDF-Expand, through `aead_key_new_chacha20_poly1305_spec` over
-  `chacha20_poly1305_new`.
+  `chacha20_poly1305_new`;
+- `aes_header_key_from_spec`: AES-128 or AES-256 header protection holds
+  FIPS 197's round keys for the `4 * nk` bytes of HKDF-Expand, on x86_64 under
+  `RunsAesNi`, through `aes_header_new_spec` over `aes_header_new`.
 
-The other keys `From<Okm>` converts to, AES-192-GCM and AES header
-protection, have no proof. `Rind/X86_64/Kdf/FunsExternal.lean`'s
+The other keys `From<Okm>` converts to, AES-192-GCM and AES header protection
+on aarch64, have no proof. `Rind/X86_64/Kdf/FunsExternal.lean`'s
 `new` wrappers turn a model's refusal into the panic its `expect` makes, so
 each conversion panics exactly where its `expect` does.
 
@@ -357,6 +360,29 @@ which `ed25519_key_pair_verify` assumes, is the group's theory, which these
 theorems do not import. `PublicKey` reaches each algorithm's key parser, and
 each parsed key its verification, through function pointers, which
 `Rind/X86_64/SignatureDispatch.lean` models.
+
+AES-128 and AES-256 on x86_64 CPUs with AES-NI, from `cipher::Aes` and the
+header-protection API's `HeaderProtectionKey` to rind's AES-NI key expansion
+and block cipher, in `Rind/X86_64/AesCipher.lean`:
+
+- `aes_new`: a `cipher::Aes` key that is not the algorithm's length is
+  refused, and otherwise the key holds FIPS 197's round keys for its bytes,
+  as Vale's `key_to_round_keys_LE` lays them out;
+- `aes_encrypt_block`: the block becomes Vale's `aes_encrypt_LE` of it under
+  the key;
+- `aes_header_new`: the same for `aead::quic::AES_128` and `AES_256`, whose
+  keys reach `Aes::new` through the dispatch `Rind/X86_64/Dispatch.lean`
+  models;
+- `aes_header_mask`: the mask is RFC 9001's, the first five bytes of that
+  cipher of the sample.
+
+`aesBlock` and `aesHeaderMask` are those specs on bytes, which `#guard`s
+check against FIPS 197's and RFC 9001's vectors. The theorems assume
+`RunsAesNi`, or for a key already made only its entry guard: rind's
+CPU-feature checks find AES-NI, which no input affects. AES-192 keys, which
+run `aes192_expand` and `aes_block`, and aarch64, whose intrinsics nothing
+models yet, have no proof: [the AES header-protection
+quest](/quest/m4/verified/aes-header-protection.md) owns them.
 
 AES-128-GCM and AES-256-GCM on x86_64 CPUs with AVX and MOVBE but no VAES,
 from the AEAD API's `Key` to HACL*'s Vale AES-GCM routines, in
@@ -479,8 +505,10 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   ChaCha20, and Ed25519 proofs, `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
   SHA-1's, SHA-256's, and HMAC's, and
   `Rind/X86_64/{DigestApi,HmacApi,Hkdf,Pbkdf2}.lean`, the digest, HMAC, HKDF,
-  and PBKDF2 APIs'; `Rind/X86_64/HkdfAead.lean`, HKDF's conversion to AES-GCM
-  and ChaCha20-Poly1305 keys; `Rind/X86_64/{AesKey,Ghash,PartialBlock,AesGcmGlue,AesGcm}.lean`:
+  and PBKDF2 APIs'; `Rind/X86_64/HkdfAead.lean`, HKDF's conversion to AES-GCM,
+  ChaCha20-Poly1305, and AES header-protection keys;
+  `Rind/X86_64/AesCipher.lean`, `cipher::Aes` and AES header protection, and
+  `Rind/X86_64/{AesKey,Ghash,PartialBlock,AesGcmGlue,AesGcm}.lean`:
   the AES-GCM proof, on x86_64 alone; `Rind/X86_64/GcmKey.lean`, the hand model
   of `aead::gcm::Key` and its proofs; `Rind/X86_64/ChaCha20Poly1305.lean`, the
   ChaCha20-Poly1305 and XChaCha20-Poly1305 proof above aws-lc's routines.
