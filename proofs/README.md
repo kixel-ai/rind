@@ -38,6 +38,11 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
   with its relocations and the read-only data they reach, here the round
   constants, which `admin/prove` extracts as an object file; the proof checks
   the constants against FIPS 180-4's.
+- `aarch64/bn_mul_mont.ml`, in progress: segment lemmas toward s2n-bignum's
+  `bignum_montmul` spec for the naked function `low::aarch64::mont::bn_mul_mont`,
+  aws-lc's Montgomery multiplication, which has no relocations. So far they
+  cover the width-generic path's first pass (`GEN_LOOP1`, `GEN_SKIP1`) and its
+  inner loop's body (`GEN_IN_BODY`). No axiom in `Rind/` restates them yet.
 - `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64 and
   aarch64: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`, that the
   blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes` return
