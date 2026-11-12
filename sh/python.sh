@@ -48,6 +48,10 @@ compat() {
 
 case "$action" in
     test)
+        # The tests take pyrind from PYTHONPATH, never resolving
+        # pyrind-cryptography's requirement, so a release PR bumping pyrind
+        # past it would pass here and only fail release.yml once merged.
+        sh/pyrind-pin.sh "$(PYTHONPATH="$out/site" python3 -c 'from importlib.metadata import version; print(version("pyrind"))')" >/dev/null
         PYTHONPATH="$out/site" python3 -m unittest discover --start-directory rind-python/tests "$@"
         # Checks the type stubs against the built module.
         (cd "$out/site" && python3 -m mypy.stubtest pyrind)
