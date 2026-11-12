@@ -673,7 +673,8 @@ mod tests {
     fn rfc9381_vectors() {
         for v in &VECTORS {
             let key = SecretKey::from_bytes(v.algorithm, &h(v.secret_key)).unwrap();
-            assert_eq!(key.to_bytes().as_ref(), h(v.secret_key));
+            // `to_bytes` is the secret key, still secret under ctgrind.
+            assert_eq!(ct::into_public(key.to_bytes().0), &h(v.secret_key)[..]);
             assert_eq!(key.public_key().as_ref(), h(v.public_key));
             let (proof, output) = key.prove(&h(v.alpha));
             assert_eq!(proof.as_ref(), h(v.proof), "{}", v.proof);
