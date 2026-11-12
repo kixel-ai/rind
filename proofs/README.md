@@ -316,17 +316,22 @@ Ed25519 on x86_64 and aarch64, from the signature API's `Ed25519KeyPair` and
   multiple is a point of the group.
 
 The spec, in `Rind/Ed25519.lean`, is RFC 8032 over HOL Light's
-`edwards25519_group`, whose multiplication and power stay opaque, with
-s2n-bignum's `ed25519_encode` and `ed25519_decode` of its points. Each theorem
-assumes `Runs` and `RunsSha512`, and each with a message bounds it at
-2^64 - 64 bytes. The two that verify also assume `RunsDouble`: on x86_64
+`edwards25519_group`, whose multiplication and power transliterate HOL Light's
+`edwards_add` and `group_pow`, with s2n-bignum's `ed25519_encode` and
+`ed25519_decode` of its points. `Rind/Ed25519Group.lean` proves they are the
+addition and multiples of the twisted Edwards group in `Rind/Edwards.lean`.
+Each theorem assumes `Runs` and `RunsSha512`, and each with a message bounds
+it at 2^64 - 64 bytes. The two that verify also assume `RunsDouble`: on x86_64
 that a CPU without ADX lacks AVX2 too, since with it rind runs a port of
-curve25519-dalek's AVX2 backend, which nothing proves, and on aarch64
-nothing. That a multiple of the base point is a point of the group,
-which `ed25519_key_pair_verify` assumes, is the group's theory, which these
-theorems do not import. `PublicKey` reaches each algorithm's key parser, and
-each parsed key its verification, through function pointers, which
-`Rind/X86_64/SignatureDispatch.lean` models.
+curve25519-dalek's AVX2 backend, which is not yet proven, and on aarch64
+nothing. Of that port, `Rind/X86_64/Ed25519Avx2Table.lean` proves its table of
+the base point's odd multiples, `Rind/X86_64/Ed25519Avx2Naf.lean` its
+non-adjacent forms, and `Rind/Ed25519Points.lean` its point formulas over the
+field; its field arithmetic and its loop remain. That a multiple of the base
+point is a point of the group, which `ed25519_key_pair_verify` assumes, is the
+group's theory, which these theorems do not import. `PublicKey` reaches each
+algorithm's key parser, and each parsed key its verification, through function
+pointers, which `Rind/X86_64/SignatureDispatch.lean` models.
 
 AES-128-GCM and AES-256-GCM on x86_64 CPUs with AVX and MOVBE but no VAES,
 from the AEAD API's `Key` to HACL*'s Vale AES-GCM routines, in
@@ -431,7 +436,9 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   Vale's theorems, restated as axioms about the routines' Rust wrappers.
 - `Rind/X86_64/Simd.lean` and `Rind/X86_64/AesNi.lean`: models of the x86_64
   intrinsics rind's AES-GCM setup and partial blocks call, and of its AES-NI
-  key expansion and block cipher, which load and store through raw pointers.
+  key expansion and block cipher, which load and store through raw pointers;
+  `Rind/X86_64/Avx2.lean`: of the AVX2 intrinsics its Ed25519 double
+  multiplication calls.
 - `Rind/Spec.lean` and `Rind/Bytes.lean`: the elliptic-curve, ChaCha20,
   Poly1305, and ChaCha20-Poly1305 specs and byte-conversion lemmas, and
   `Rind/ChaCha20Poly1305Test.lean`, the AEAD specs' known-answer tests; `Rind/Sha2.lean` and
@@ -465,6 +472,15 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   that `p256Add` is the addition of Mathlib's group of points on the curve;
   `Rind/N256Prime.lean`: that `n256` is prime; `Rind/P256Multiples.lean`: the
   group laws and multiples ECDSA's twin multiplication relies on.
+- `Rind/Edwards.lean`: the twisted Edwards group law, from the Beneficial AI
+  Foundation's curve25519-dalek simulation under the MIT license;
+  `Rind/Ed25519Group.lean`: that `p25519` is prime and `d` a non-square, so
+  `edMul` and `edPow` are that group's addition and multiples;
+  `Rind/Ed25519Points.lean` and `Rind/Ed25519Limbs.lean`: extended and cached
+  coordinates with curve25519-dalek's doubling and addition, and the limbs of
+  its AVX2 backend's field elements; `Rind/X86_64/Ed25519Avx2Table.lean` and
+  `Rind/X86_64/Ed25519Avx2Naf.lean`: that backend's table of the base point's
+  odd multiples and its non-adjacent forms.
 - `Rind/Aarch64/P256Dispatch.lean`, `Rind/Aarch64/P256Table.lean`, and
   `Rind/Aarch64/P256.lean`: the hand model of P-256's key generation, the
   generator table's proof, and the P-256 ECDH proof.
@@ -495,7 +511,9 @@ Beyond Lean's kernel:
   does. A function a proof must compute, such as `group_pow p256_group`, is
   its HOL Light definition, transliterated, rather than opaque, so `p256Add`,
   `p256Pow`, and `p256Inv` in `Rind/Spec.lean` are trusted to be
-  `weierstrass_add`, `group_pow`, and `ring_inv` on `p256_group`.
+  `weierstrass_add`, `group_pow`, and `ring_inv` on `p256_group`, and `edMul`
+  and `edPow` in `Rind/Ed25519.lean` `edwards_add` and `group_pow` on
+  `edwards25519_group`.
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
   `processBlock_Common`, and `Rind/S2nSha256.lean` transliterates
   s2n-bignum's SHA-256 spec.
@@ -508,14 +526,15 @@ Beyond Lean's kernel:
 - That `Rind/Vale.lean` transliterates Vale's AES and GF(2^128) specs and
   `hkeys_reqs_pub`, with the round functions Vale's AES spec assumes read as
   FIPS 197's, the S-box and `MixColumns` opaque.
-- That `Rind/X86_64/Simd.lean`'s intrinsics compute what their instructions
-  do beyond the inputs `admin/prove` tests them on. `admin/simd-vectors.rs`
-  runs each instruction on the checking machine's CPU, on every immediate it
-  reads, zero and all-ones lanes, and random inputs from a fixed seed, and
-  Lean checks each model gives the same. The AES models run the S-box and
-  `MixColumns` as FIPS 197 computes them, bodies Lean evaluates while proofs
-  keep the two opaque. All are tested on hardware, none under an emulator;
-  `admin/prove` fails on a `core.core_arch` model it does not test.
+- That `Rind/X86_64/Simd.lean`'s and `Rind/X86_64/Avx2.lean`'s intrinsics
+  compute what their instructions do beyond the inputs `admin/prove` tests
+  them on. `admin/simd-vectors.rs` runs each instruction on the checking
+  machine's CPU, on every immediate it reads, zero and all-ones lanes, and
+  random inputs from a fixed seed, and Lean checks each model gives the same.
+  The AES models run the S-box and `MixColumns` as FIPS 197 computes them,
+  bodies Lean evaluates while proofs keep the two opaque. All are tested on
+  hardware, none under an emulator; `admin/prove` fails on a `core.core_arch`
+  model it does not test.
 - That rind's inline assembly is s2n-bignum's, aws-lc's, and Vale's object
   code, as for `benchmarks/verified.toml`'s other entries, except where a
   proof in `hol-light/` covers the bytes rind's build emits. For those, HOL
