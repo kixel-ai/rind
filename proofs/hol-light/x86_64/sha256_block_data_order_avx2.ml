@@ -2280,3 +2280,203 @@ let SHA256_AVX2_BLOCK_B = prove
   CONV_TAC(DEPTH_CONV EL_CONV) THEN
   REWRITE_TAC(map (INST [`MB:int32 list`,`M:int32 list`] o SHA256_CANON 64) (0--7)) THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* What the loop around the two halves needs: the frame the prologue makes,  *)
+(* the input pointer's comparisons, the message as one read, and the table.  *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA256_AVX2_BYTES_LOADED = prove
+ (`bytes_loaded s tab sha256_avx2_k256 <=>
+   read (memory :> bytes(tab,640)) s = num_of_bytelist sha256_avx2_k256`,
+  REWRITE_TAC[bytes_loaded; READ_BYTELIST_EQ_BYTES;
+    CONV_RULE (RAND_CONV LENGTH_CONV) (AP_TERM `LENGTH:byte list->num` sha256_avx2_k256)]);;
+
+(* The prologue rounds the stack pointer, less 592, down to 1024 bytes and
+   works 32 bytes above what this calls base. *)
+let SHA256_AVX2_BASE = prove
+ (`!stackpointer base:int64.
+     1648 <= val stackpointer /\
+     base = word_sub (word_and (word_sub stackpointer (word 592)) (word 18446744073709550592)) (word 32)
+     ==> aligned 32 base /\ 32 <= val base /\ val base + 576 <= 2 EXP 64 /\
+         val stackpointer - 1648 <= val base /\ val base + 624 <= val stackpointer`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPEC `stackpointer:int64` VAL_BOUND) THEN REWRITE_TAC[DIMINDEX_64] THEN DISCH_TAC THEN
+  SUBGOAL_THEN `val(word_sub stackpointer (word 592):int64) = val stackpointer - 592` ASSUME_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD; DIMINDEX_64] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN ASM_SIMP_TAC[ARITH_RULE `1648 <= x ==> 592 <= x`];
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+   `val(word_and (word_sub stackpointer (word 592)) (word 18446744073709550592):int64) =
+    1024 * ((val(stackpointer:int64) - 592) DIV 1024)`
+  ASSUME_TAC THENL
+   [REWRITE_TAC[WORD_BLAST
+     `word_and (y:int64) (word 18446744073709550592) = word_shl (word_ushr y 10) 10`] THEN
+    ASM_REWRITE_TAC[VAL_WORD_SHL; VAL_WORD_USHR; DIMINDEX_64] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  MP_TAC(SPECL [`val(stackpointer:int64) - 592`; `1024`] DIVISION) THEN
+  CONV_TAC(LAND_CONV(LAND_CONV NUM_REDUCE_CONV)) THEN REWRITE_TAC[] THEN STRIP_TAC THEN
+  SUBGOAL_THEN `1 <= (val(stackpointer:int64) - 592) DIV 1024` ASSUME_TAC THENL
+   [SIMP_TAC[LE_RDIV_EQ; ARITH_EQ] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `val(base:int64) = 1024 * ((val(stackpointer:int64) - 592) DIV 1024) - 32` ASSUME_TAC THENL
+   [ASM_REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD; DIMINDEX_64] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN COND_CASES_TAC THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  REWRITE_TAC[aligned; DIMINDEX_64] THEN
+  FIRST_ASSUM(fun th -> if (try lhs(concl th) = `val(base:int64)` with Failure _ -> false)
+                        then REWRITE_TAC[th] else failwith "") THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  CONV_TAC(ONCE_DEPTH_CONV DIVIDES_CONV) THEN REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THENL
+   [REWRITE_TAC[divides] THEN
+    EXISTS_TAC `32 * ((val(stackpointer:int64) - 592) DIV 1024) - 1` THEN ASM_ARITH_TAC;
+    ASM_ARITH_TAC; ASM_ARITH_TAC; ASM_ARITH_TAC; ASM_ARITH_TAC]);;
+
+(* The input pointer, 64 bytes per block, and the end it is compared to. *)
+let SHA256_AVX2_PTRS = prove
+ (`!data:int64 n j.
+     val data + 64 * (n + 1) < 2 EXP 64 /\ j <= n + 1
+     ==> (val (word_sub (word_add data (word (64 * j))) (word_add data (word (64 * n)))) = 0 <=>
+          j = n) /\
+         (val (word_add data (word (64 * j))) < val (word_add data (word (64 * n))) <=> j < n)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN `!k. k <= n + 1 ==> val(word_add data (word (64 * k)):int64) = val data + 64 * k`
+  ASSUME_TAC THENL
+   [REPEAT STRIP_TAC THEN REWRITE_TAC[VAL_WORD_ADD; VAL_WORD; DIMINDEX_64] THEN
+    CONV_TAC MOD_DOWN_CONV THEN MATCH_MP_TAC MOD_LT THEN
+    UNDISCH_TAC `val(data:int64) + 64 * (n + 1) < 2 EXP 64` THEN
+    UNDISCH_TAC `k <= n + 1` THEN ARITH_TAC;
+    ALL_TAC] THEN
+  ASM_SIMP_TAC[VAL_WORD_SUB_CASES; DIMINDEX_64; ARITH_RULE `n <= n + 1`] THEN
+  COND_CASES_TAC THEN ASM_ARITH_TAC);;
+
+(* Block b of the message, as block A or B's precondition reads it, from the
+   whole input's value. *)
+let SHA256_AVX2_DATA = prove
+ (`!(s:x86state) data n dv (m:num->int32 list) b.
+     read (memory :> bytes(data,64 * n)) s = dv /\
+     (!i j. i < n /\ j < 16
+            ==> (word((dv DIV 2 EXP (8 * (64 * i + 4 * j))) MOD 2 EXP (8 * 4)):int32) =
+                word_bytereverse (EL j (m i))) /\
+     b < n
+     ==> let a = word_add data (word (64 * b)) in
+         read (memory :> bytes128 a) s =
+          (word_join:int64->int64->int128) (word_join (word_bytereverse (EL 3 (m b))) (word_bytereverse (EL 2 (m b))))
+                                           (word_join (word_bytereverse (EL 1 (m b))) (word_bytereverse (EL 0 (m b)))) /\
+         read (memory :> bytes128 (word_add a (word 16))) s =
+          (word_join:int64->int64->int128) (word_join (word_bytereverse (EL 7 (m b))) (word_bytereverse (EL 6 (m b))))
+                                           (word_join (word_bytereverse (EL 5 (m b))) (word_bytereverse (EL 4 (m b)))) /\
+         read (memory :> bytes128 (word_add a (word 32))) s =
+          (word_join:int64->int64->int128) (word_join (word_bytereverse (EL 11 (m b))) (word_bytereverse (EL 10 (m b))))
+                                           (word_join (word_bytereverse (EL 9 (m b))) (word_bytereverse (EL 8 (m b)))) /\
+         read (memory :> bytes128 (word_add a (word 48))) s =
+          (word_join:int64->int64->int128) (word_join (word_bytereverse (EL 15 (m b))) (word_bytereverse (EL 14 (m b))))
+                                           (word_join (word_bytereverse (EL 13 (m b))) (word_bytereverse (EL 12 (m b))))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  SUBGOAL_THEN
+   `!j. j < 16
+        ==> read (memory :> bytes32 (word_add data (word (64 * b + 4 * j)))) s =
+            word_bytereverse (EL j ((m:num->int32 list) b))`
+  MP_TAC THENL
+   [REPEAT STRIP_TAC THEN FIRST_X_ASSUM(fun th -> REWRITE_TAC[GSYM(MATCH_MP th
+      (CONJ (ASSUME `b < n`) (ASSUME `j < 16`)))]) THEN
+    MATCH_MP_TAC SHA256_READ_SLICE32 THEN EXISTS_TAC `64 * n` THEN ASM_REWRITE_TAC[] THEN
+    UNDISCH_TAC `b < n` THEN UNDISCH_TAC `j < 16` THEN ARITH_TAC;
+    ALL_TAC] THEN
+  CONV_TAC(LAND_CONV EXPAND_CASES_CONV) THEN
+  CONV_TAC(LAND_CONV(DEPTH_CONV NUM_MULT_CONV)) THEN REWRITE_TAC[ADD_CLAUSES] THEN STRIP_TAC THEN
+  REWRITE_TAC[CONJUNCT1(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT);
+              CONJUNCT1(CONJUNCT2(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT))] THEN
+  REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD; GSYM ADD_ASSOC] THEN
+  CONV_TAC(DEPTH_CONV NUM_ADD_CONV) THEN ASM_REWRITE_TAC[ADD_CLAUSES]);;
+
+(* The whole function's stack frame holds what the prologue and the loop
+   write below the stack pointer. *)
+let SHA256_AVX2_STACK_SUBSUMED = prove
+ (`!stackpointer base:int64.
+     1648 <= val stackpointer /\
+     base = word_sub (word_and (word_sub stackpointer (word 592)) (word 18446744073709550592)) (word 32)
+     ==> MAYCHANGE [memory :> bytes(base,576); memory :> bytes(word_sub stackpointer (word 48),48)]
+         subsumed MAYCHANGE [memory :> bytes(word_sub stackpointer (word 1648),1648)]`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  FIRST_ASSUM(STRIP_ASSUME_TAC o MATCH_MP SHA256_AVX2_BASE) THEN
+  FIRST_X_ASSUM(STRIP_ASSUME_TAC o check (is_conj o concl)) THEN
+  MP_TAC(ISPEC `stackpointer:int64` VAL_BOUND) THEN REWRITE_TAC[DIMINDEX_64] THEN DISCH_TAC THEN
+  SUBGOAL_THEN `!k. k <= 1648 ==> val(word_sub stackpointer (word k):int64) = val stackpointer - k` ASSUME_TAC THENL
+   [REPEAT STRIP_TAC THEN REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD; DIMINDEX_64] THEN
+    SUBGOAL_THEN `k MOD 2 EXP 64 = k` SUBST1_TAC THENL
+     [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; COND_CASES_TAC THEN ASM_ARITH_TAC];
+    ALL_TAC] THEN
+  REWRITE_TAC[MAYCHANGE; SEQ_ID] THEN
+  MATCH_MP_TAC SUBSUMED_FOR_SEQ THEN REPEAT CONJ_TAC THENL
+   [REWRITE_TAC[GSYM MAYCHANGE_SING] THEN MAYCHANGE_IDEMPOT_TAC;
+    ALL_TAC; ALL_TAC] THEN
+  MATCH_MP_TAC SUBSUMED_ASSIGNS_SUBCOMPONENTS THEN
+  MATCH_MP_TAC SUBSUMED_ASSIGNS_BYTES THEN
+  REWRITE_TAC[contained_modulo; DIMINDEX_64] THEN
+  FIRST_ASSUM(fun th -> if is_forall(concl th)
+    then SIMP_TAC[th; ARITH_RULE `48 <= 1648`; ARITH_RULE `1648 <= 1648`] else failwith "") THEN
+  X_GEN_TAC `i:num` THEN DISCH_TAC THENL
+   [SUBGOAL_THEN `?d. val(base:int64) = d + (val(stackpointer:int64) - 1648) /\ d + 624 <= 1648`
+    STRIP_ASSUME_TAC THENL
+     [EXISTS_TAC `val(base:int64) - (val(stackpointer:int64) - 1648)` THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
+    EXISTS_TAC `d + i:num` THEN ASM_REWRITE_TAC[] THEN
+    CONJ_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+    MATCH_MP_TAC(MESON[CONG_REFL] `x = y ==> (x == y) (mod n)`) THEN ARITH_TAC;
+    EXISTS_TAC `1600 + i` THEN CONJ_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+    MATCH_MP_TAC(MESON[CONG_REFL] `x = y ==> (x == y) (mod n)`) THEN ASM_ARITH_TAC]);;
+
+(* The frame lies below what the prologue pushes and the return address. *)
+let SHA256_AVX2_PUSH_NONOVERLAP = prove
+ (`!stackpointer base:int64.
+     32 <= val base /\ val base + 624 <= val stackpointer
+     ==> nonoverlapping (base,576) (word_sub stackpointer (word 48),56)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPEC `stackpointer:int64` VAL_BOUND) THEN REWRITE_TAC[DIMINDEX_64] THEN DISCH_TAC THEN
+  SUBGOAL_THEN `val(word_sub stackpointer (word 48):int64) + 48 = val stackpointer` MP_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD; DIMINDEX_64] THEN CONV_TAC NUM_REDUCE_CONV THEN
+    COND_CASES_TAC THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  REWRITE_TAC[nonoverlapping; nonoverlapping_modulo; DIMINDEX_64; NOT_EXISTS_THM] THEN
+  SPEC_TAC(`val(word_sub stackpointer (word 48):int64)`,`y:num`) THEN GEN_TAC THEN DISCH_TAC THEN
+  MAP_EVERY X_GEN_TAC [`i:num`; `j:num`] THEN
+  REWRITE_TAC[num_congruent; int_congruent; NOT_EXISTS_THM;
+              TAUT `~(a /\ b /\ c) <=> a /\ b ==> ~c`] THEN
+  STRIP_TAC THEN X_GEN_TAC `d:int` THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM INT_OF_NUM_LE; GSYM INT_OF_NUM_LT; GSYM INT_OF_NUM_ADD;
+                              GSYM INT_OF_NUM_EQ]) THEN
+  REWRITE_TAC[GSYM INT_OF_NUM_ADD; GSYM INT_OF_NUM_POW] THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM INT_OF_NUM_POW]) THEN
+  DISJ_CASES_TAC(INT_ARITH `d:int = &0 \/ d <= -- &1 \/ &1 <= d`) THEN
+  REPEAT(FIRST_X_ASSUM DISJ_CASES_TAC) THEN
+  ASM_INT_ARITH_TAC);;
+
+(* The frame is inside the function's stack region, so disjoint from what
+   that region is disjoint from. *)
+let SHA256_AVX2_BASE_NONOVERLAP = prove
+ (`!stackpointer base:int64 x:int64 l.
+     1648 <= val stackpointer /\
+     val stackpointer - 1648 <= val base /\ val base + 624 <= val stackpointer /\
+     nonoverlapping (word_sub stackpointer (word 1648),1656) (x,l)
+     ==> nonoverlapping (base,576) (x,l)`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[nonoverlapping] THEN STRIP_TAC THEN
+  MATCH_MP_TAC NONOVERLAPPING_MODULO_SUBREGIONS THEN
+  MAP_EVERY EXISTS_TAC [`val(word_sub stackpointer (word 1648):int64)`; `1656`;
+                        `val(x:int64)`; `l:num`] THEN
+  ASM_REWRITE_TAC[CONTAINED_MODULO_REFL; LE_REFL; DIMINDEX_64] THEN
+  MP_TAC(ISPEC `stackpointer:int64` VAL_BOUND) THEN REWRITE_TAC[DIMINDEX_64] THEN DISCH_TAC THEN
+  SUBGOAL_THEN `val(word_sub stackpointer (word 1648):int64) = val stackpointer - 1648`
+  SUBST1_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD; DIMINDEX_64] THEN CONV_TAC NUM_REDUCE_CONV THEN
+    COND_CASES_TAC THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  REWRITE_TAC[contained_modulo] THEN X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+  SUBGOAL_THEN `?d. val(base:int64) = d + (val(stackpointer:int64) - 1648) /\ d + 624 <= 1648`
+  STRIP_ASSUME_TAC THENL
+   [EXISTS_TAC `val(base:int64) - (val(stackpointer:int64) - 1648)` THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  EXISTS_TAC `d + i:num` THEN ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  MATCH_MP_TAC(MESON[CONG_REFL] `x = y ==> (x == y) (mod n)`) THEN ARITH_TAC);;
