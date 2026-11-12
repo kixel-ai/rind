@@ -189,7 +189,7 @@ impl<S> PartialEq for Confirm<S> {
 
 impl<S> fmt::Debug for Confirm<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Confirm").field(&self.bytes).finish()
+        f.debug_struct("Confirm").finish_non_exhaustive()
     }
 }
 
