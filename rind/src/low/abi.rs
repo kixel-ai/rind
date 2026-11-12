@@ -1120,6 +1120,11 @@ mod tests {
             "a test, whose assembly only reads DIT",
         ),
         (
+            "aarch64/aes_cbc.rs",
+            "hw_encrypt",
+            "one `aese` on registers the compiler allocates, which no ABI governs",
+        ),
+        (
             "arm/ct_qemu.rs",
             "traced",
             "test-only hints, which touch no register",
