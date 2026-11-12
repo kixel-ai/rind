@@ -256,9 +256,9 @@ impl ProverSecrets {
     ///
     /// `context`, `id_prover`, and `id_verifier` go into the transcript under
     /// an 8-byte little-endian length, including when empty. Each is at most
-    /// 1024 bytes.
+    /// 1024 bytes. The secrets stay usable for another handshake.
     pub fn start<S: 'static>(
-        self,
+        &self,
         suite: &'static Suite<S>,
         context: &[u8],
         id_prover: &[u8],
@@ -268,7 +268,7 @@ impl ProverSecrets {
     }
 
     fn start_at<S: 'static>(
-        self,
+        &self,
         suite: &'static Suite<S>,
         context: &[u8],
         id_prover: &[u8],
@@ -333,6 +333,12 @@ impl VerifierRecord {
         Ok(Self { w0, l })
     }
 
+    /// `L`, uncompressed, which [`Self::from_record`] loads with `w0`.
+    pub fn l(&self) -> [u8; 65] {
+        let _entry = Entry::new_public();
+        self.l.to_uncompressed()
+    }
+
     /// Loads a stored record: reduced `w0`, and uncompressed `l`.
     ///
     /// Fails with [`Error::KeyRejected`] when `l` is not on the curve.
@@ -347,8 +353,9 @@ impl VerifierRecord {
     /// Answers `prover`'s share with this verifier's share and confirmation.
     ///
     /// The labels are the same strings the prover passed to [`ProverSecrets::start`].
+    /// The record stays usable for another handshake.
     pub fn start<S: 'static>(
-        self,
+        &self,
         suite: &'static Suite<S>,
         context: &[u8],
         id_prover: &[u8],
@@ -359,7 +366,7 @@ impl VerifierRecord {
     }
 
     fn start_at<S: 'static>(
-        self,
+        &self,
         suite: &'static Suite<S>,
         context: &[u8],
         id_prover: &[u8],
@@ -797,10 +804,7 @@ mod tests {
         let prover = ProverSecrets::new(&hex(vector.w0), &hex(vector.w1)).unwrap();
         let from_w1 = VerifierRecord::from_w1(&hex(vector.w0), &hex(vector.w1)).unwrap();
         let loaded = VerifierRecord::from_record(&hex(vector.w0), &hex(vector.l)).unwrap();
-        assert_eq!(
-            from_w1.l.to_uncompressed().as_slice(),
-            hex(vector.l).as_slice()
-        );
+        assert_eq!(from_w1.l().as_slice(), hex(vector.l).as_slice());
 
         let (share_p, prover) = prover
             .start_at(
@@ -1076,6 +1080,34 @@ mod tests {
 
     fn scalar_bytes(bytes: &[u8; 32]) -> Scalar {
         Scalar::from_be_reduced(bytes).unwrap()
+    }
+
+    /// A stored record, and the prover's secrets, serve more than one
+    /// handshake, each with its own key.
+    #[test]
+    fn a_record_serves_many_handshakes() {
+        let w0 = [0x11; 40];
+        let w1 = [0x22; 40];
+        let prover = ProverSecrets::new(&w0, &w1).unwrap();
+        let record = VerifierRecord::from_record(
+            &w0,
+            &VerifierRecord::from_w1(&w0, &w1).unwrap().l(),
+        )
+        .unwrap();
+        let mut keys = Vec::new();
+        for _ in 0..2 {
+            let (share_p, prover) = prover.start(&RFC9383, b"ctx", b"a", b"b").unwrap();
+            let (share_v, confirm_v, verifier) = record
+                .start(&RFC9383, b"ctx", b"a", b"b", &share_p)
+                .unwrap();
+            let (confirm_p, key) = prover.finish(&share_v, &confirm_v).unwrap();
+            let other = verifier.finish(&confirm_p).unwrap();
+            ct::public_slice(key.as_ref());
+            ct::public_slice(other.as_ref());
+            assert_eq!(key.as_ref(), other.as_ref());
+            keys.push(key.as_ref().to_vec());
+        }
+        assert_ne!(keys[0], keys[1]);
     }
 
     #[test]
