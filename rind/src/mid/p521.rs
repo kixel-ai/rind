@@ -98,10 +98,8 @@ impl VerifyingKey {
 
         // 6. Convert the field element xR to an integer xR using the conversion routine specified in Section 2.3.9.
         // 7. Set v = xR mod n.
-        let v = point.x_scalar();
-
         // 8. Compare v and r — if v = r, output "valid", and if v != r, output "invalid".
-        match v.public_eq(r) {
+        match point.public_x_is(r) {
             true => Ok(()),
             false => Err(Error::BadSignature),
         }
@@ -666,10 +664,28 @@ impl JacobianPoint {
         AffinePoint::from_xy(x, y)
     }
 
-    fn x_scalar(&self) -> Scalar {
-        // this is a faster version of `as_affine().x_scalar()`
-        let z2_inv = self.z().sqr().inv();
-        Scalar(self.x().mul(&z2_inv).0).reduce_mod_n()
+    /// Whether this point's x, reduced mod n, is `r`, for a point not at
+    /// infinity.
+    ///
+    /// x = X / z², so this checks X = r * z², and (r + n) * z² when that is
+    /// below p, the only other x that reduces to `r`. Unlike computing x,
+    /// that needs no inversion.
+    fn public_x_is(&self, r: &Scalar) -> bool {
+        let z2 = self.z().sqr();
+        let is = |x: [u64; 9]| FieldElement(x).mul(&z2).public_eq(&self.x());
+        if is(r.0) {
+            return true;
+        }
+        // Both are below 2^521, so the sum cannot carry out of the words.
+        let mut r_plus_n = [0; 9];
+        let mut carry = false;
+        for i in 0..9 {
+            let (s, c1) = r.0[i].overflowing_add(CURVE_ORDER[i]);
+            let (s, c2) = s.overflowing_add(u64::from(carry));
+            r_plus_n[i] = s;
+            carry = c1 | c2;
+        }
+        r_plus_n.iter().rev().lt(CURVE_PRIME.iter().rev()) && is(r_plus_n)
     }
 
     #[must_use]
@@ -843,11 +859,6 @@ impl Scalar {
 
     /// Private equality
     fn private_eq(&self, other: &Self) -> bool {
-        low::bignum_eq(&self.0, &other.0)
-    }
-
-    /// Public equality
-    fn public_eq(&self, other: &Self) -> bool {
         low::bignum_eq(&self.0, &other.0)
     }
 
@@ -1171,6 +1182,42 @@ mod tests {
         );
         assert!(g.public_add_affine(&neg_g).public_is_infinity());
         assert_eq!(infinity.public_add_affine(&CURVE_GENERATOR).xyz, g.xyz);
+    }
+
+    #[test]
+    fn public_x_is_either_x() {
+        // (x * l^2, y * l^3, l), so that z is not one.
+        let jacobian = |p: &AffinePoint| {
+            let l = FieldElement([7, 0, 0, 0, 0, 0, 0, 0, 0]);
+            let mut r = JacobianPoint::infinity();
+            r.xyz[JacobianPoint::X].copy_from_slice(&p.x().mul(&l.sqr()).0);
+            r.xyz[JacobianPoint::Y].copy_from_slice(&p.y().mul(&l.sqr().mul(&l)).0);
+            r.xyz[JacobianPoint::Z].copy_from_slice(&l.0);
+            r
+        };
+        let plus = |s: &Scalar, k: u64| Scalar([s.0[0] + k, s.0[1], s.0[2], s.0[3], s.0[4], s.0[5], s.0[6], s.0[7], s.0[8]]);
+
+        let g = jacobian(&CURVE_GENERATOR);
+        let gx = Scalar(CURVE_GENERATOR.x().0);
+        assert!(g.public_x_is(&gx));
+        assert!(!g.public_x_is(&plus(&gx, 1)));
+
+        // A point whose x is n + k, at or above n, which reduces to k: the
+        // first x above n + 1 whose y² is a square, whose root is y²'s
+        // (p + 1) / 4 = 2^519th power.
+        let point = (2..)
+            .find_map(|k| {
+                let x = FieldElement(plus(&Scalar(CURVE_ORDER), k).0);
+                let y2 = x.sqr().add(&CURVE_A).mul(&x).add(&CURVE_B);
+                let y = (0..519).fold(y2, |y, _| y.sqr());
+                y.sqr().public_eq(&y2).then(|| (k, AffinePoint::from_xy(x, y)))
+            });
+        let (k, point) = point.unwrap();
+        assert!(point.on_curve());
+        let p = jacobian(&point);
+        assert!(p.public_x_is(&Scalar::small_u64(k)));
+        assert!(!p.public_x_is(&Scalar::small_u64(k - 1)));
+        assert!(!p.public_x_is(&Scalar::small_u64(k + 1)));
     }
 
     #[test]

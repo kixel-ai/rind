@@ -475,23 +475,67 @@ fn join(x: &[Limb; LIMBS]) -> [u64; 9] {
     r
 }
 
-/// The words of a fully reduced field element.
+/// The bit at which fiat-crypto's limb `i` starts: limbs split 521 bits
+/// as evenly as they can, the wider first, as its `eval` lists them.
+const fn offset(i: usize) -> usize {
+    (521 * i).div_ceil(FE_LIMBS)
+}
+
+/// The field element of `x`, a value below 2^521, by cutting its words at
+/// the limbs' offsets: every limb is then within its width, so within
+/// fiat-crypto's tight bounds.
+///
+/// This and [`words`] convert by shifts rather than through
+/// fiat-crypto's byte encoding, which costs a third of a field
+/// multiplication a round trip, and every routine here converts each
+/// operand and result.
 fn fe(x: &[u64; 9]) -> Fe {
-    let mut bytes = [0u8; 72];
-    for (chunk, word) in bytes.as_chunks_mut::<8>().0.iter_mut().zip(x) {
-        *chunk = word.to_le_bytes();
-    }
-    let mut r = Fe([0; FE_LIMBS]);
-    fp::fiat_p521_from_bytes(&mut r, bytes[..66].try_into().unwrap());
-    r
+    Fe(core::array::from_fn(|i| {
+        let (start, width) = (offset(i), offset(i + 1) - offset(i));
+        let (word, shift) = (start / 64, start % 64);
+        let mut v = x[word] >> shift;
+        if shift + width > 64 {
+            v |= x[word + 1] << (64 - shift);
+        }
+        (v & ((1 << width) - 1)) as Limb
+    }))
 }
 
 /// The words of `x`, fully reduced.
+///
+/// A tight limb reaches one past its width, so the value can reach p and
+/// above.  As `fiat_p521_to_bytes` does, this subtracts p, limb by limb
+/// with the borrow carried, then adds p back if that borrowed out, which
+/// leaves each limb within its width; then it packs the limbs into words.
 fn words(x: &Fe) -> [u64; 9] {
-    let mut bytes = [0u8; 72];
-    fp::fiat_p521_to_bytes((&mut bytes[..66]).try_into().unwrap(), x);
-    let (chunks, _) = bytes.as_chunks::<8>();
-    core::array::from_fn(|i| u64::from_le_bytes(chunks[i]))
+    // Each limb of p is all ones across its width.
+    let mask = |i: usize| -> Limb { (1 << (offset(i + 1) - offset(i))) - 1 };
+    let mut borrow: Wide = 0;
+    let mut r: [Limb; FE_LIMBS] = core::array::from_fn(|i| {
+        let d = Wide::from(x.0[i])
+            .wrapping_sub(Wide::from(mask(i)))
+            .wrapping_sub(borrow);
+        borrow = d >> (Wide::BITS - 1);
+        d as Limb & mask(i)
+    });
+    let add_back = Limb::from(opaque(borrow as u8)).wrapping_neg();
+    let mut carry: Limb = 0;
+    for (i, r) in r.iter_mut().enumerate() {
+        let s = r.wrapping_add(mask(i) & add_back).wrapping_add(carry);
+        carry = s >> (offset(i + 1) - offset(i));
+        *r = s & mask(i);
+    }
+
+    let mut z = [0u64; 9];
+    for (i, limb) in r.iter().enumerate() {
+        let (word, shift) = (offset(i) / 64, offset(i) % 64);
+        let v = u64::from(*limb);
+        z[word] |= v << shift;
+        if shift + (offset(i + 1) - offset(i)) > 64 {
+            z[word + 1] |= v >> (64 - shift);
+        }
+    }
+    z
 }
 
 fn relax(x: &Fe) -> Loose {
