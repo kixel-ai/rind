@@ -603,4 +603,167 @@ theorem squeeze_append (R c n : Nat) (hR : 0 < R) (T : List Byte) :
       exact Nat.add_mul_mod_self_left _ _ _
     rw [h1, h2]
 
+/-! ## Absorbing, `Sponge::absorb` -/
+
+/-- The all-zero state. -/
+abbrev zeros : List Byte := List.replicate 200 0
+
+theorem blocks_single (R : Nat) (hR : 0 < R) (B : List Byte) (hB : B.length = R) :
+    rind.spec.blocks R B = [B] := by
+  rw [blocks_eq_map R hR, hB, Nat.div_self hR]
+  simp [← hB]
+
+theorem blocks_short (R : Nat) (hR : 0 < R) (r : List Byte) (hr : r.length < R) :
+    rind.spec.blocks R r = [] := by
+  rw [blocks_eq_map R hR, Nat.div_eq_of_lt hr]
+  rfl
+
+theorem absorb_append_block (R : Nat) (hR : 0 < R) (S P B : List Byte) (hP : P.length % R = 0)
+    (hB : B.length = R) : absorb R S (P ++ B) = keccakF (xorAt (absorb R S P) 0 B) := by
+  simp only [absorb]
+  rw [blocks_append hR _ _ hP, blocks_single R hR B hB, List.foldl_append]
+  rfl
+
+theorem absorb_append_short (R : Nat) (hR : 0 < R) (S P r : List Byte) (hP : P.length % R = 0)
+    (hr : r.length < R) : absorb R S (P ++ r) = absorb R S P := by
+  simp only [absorb]
+  rw [blocks_append hR _ _ hP, blocks_short R hR r hr, List.append_nil]
+
+/-- A sponge state that has absorbed `m`: its whole blocks `P` permuted in, and
+the `used` bytes after them XORed in. -/
+def SpongeAbsorbed (R : Nat) (s : Std.Array U64 25#usize) (used : Nat) (m : List Byte) : Prop :=
+  ∃ P r, m = P ++ r ∧ P.length % R = 0 ∧ r.length < R ∧ used = r.length ∧
+    sbl s.val = xorAt (absorb R zeros P) 0 r
+
+theorem sbl_zero : sbl (Std.Array.repeat 25#usize 0#u64).val = zeros := by
+  apply ext_getElem! (by simp [length_sbl])
+  intro j hj
+  rw [length_sbl] at hj; simp at hj
+  apply Spec.Byte.ext_testBit
+  intro t ht
+  rw [sbl_testBit _ _ _ ht, getElem!_pos zeros j (by simp; omega), List.getElem_replicate]
+  have : (Std.Array.repeat 25#usize 0#u64).val[j / 8]! = 0#u64 := by
+    have hr : (Std.Array.repeat 25#usize 0#u64).val = List.replicate 25 0#u64 := rfl
+    rw [hr, getElem!_pos _ (j / 8) (by simp; omega), List.getElem_replicate]
+  rw [this]
+  simp
+
+/-- `Sponge::new` has absorbed nothing. -/
+theorem sponge_new_spec (R : Usize) (hR : 0 < R.val) (PAD : U8) :
+    mid.sha3.Sponge.new R PAD ⦃ sp => SpongeAbsorbed R.val sp.s sp.used.val [] ⦄ := by
+  unfold mid.sha3.Sponge.new
+  simp only [WP.spec_ok]
+  refine ⟨[], [], rfl, by simp, by simpa using hR, rfl, ?_⟩
+  rw [sbl_zero]
+  simp [absorb, blocks_nil]
+
+/-- The absorb loop permutes in block after block. -/
+theorem absorb_loop_spec (h : RunsSha3) {R : Usize} (hR : 0 < R.val ∧ R.val ≤ 200) (m1 : List Byte)
+    (hm1 : m1.length % R.val = 0) (P : List U8) (nb : Nat) (hP : R.val * nb ≤ P.length)
+    (iter : core.slice.iter.Iter (Std.Array U8 R)) (hsl : iter.slice.val.length = nb)
+    (hel : ∀ i, i < nb → (iter.slice.val[i]!).val = (P.drop (i * R.val)).take R.val)
+    (hi : iter.i ≤ nb) (a : Std.Array U64 25#usize)
+    (ha : sbl a.val = absorb R.val zeros (m1 ++ bv (P.take (iter.i * R.val)))) :
+    mid.sha3.Sponge.absorb_loop iter a ⦃ r =>
+      sbl r.val = absorb R.val zeros (m1 ++ bv (P.take (nb * R.val))) ⦄ := by
+  unfold mid.sha3.Sponge.absorb_loop
+  apply loop.spec_decr_nat (fun x => nb - x.1.i)
+    (fun x => x.1.slice.val.length = nb ∧
+      (∀ i, i < nb → (x.1.slice.val[i]!).val = (P.drop (i * R.val)).take R.val) ∧ x.1.i ≤ nb ∧
+      sbl x.2.val = absorb R.val zeros (m1 ++ bv (P.take (x.1.i * R.val))))
+  · rintro ⟨it, a⟩ ⟨hsl, hel, hi, ha⟩
+    simp only at hsl hel hi ha ⊢
+    unfold mid.sha3.Sponge.absorb_loop.body
+    simp only [core.slice.iter.IteratorSliceIter.next]
+    split
+    · rename_i hlt
+      have hlt' : it.i < nb := by
+        have : it.i < it.slice.len.val := hlt
+        simpa [Slice.len, hsl] using this
+      have hblk : (it.slice[it.i]'hlt).val = (P.drop (it.i * R.val)).take R.val := by
+        rw [← hel it.i hlt', getElem!_pos it.slice.val it.i (by omega)]; rfl
+      have hbl : (it.slice[it.i]'hlt).val.length = R.val := by simp
+      simp only [bind_ok]
+      step as ⟨sl, hsl'⟩
+      step with add_bytes_spec a 0#usize sl (by simp [Slice.length, hsl', hbl]; omega) as ⟨a1, ha1⟩
+      step with keccak_f1600_spec h a1 as ⟨a2, ha2⟩
+      refine ⟨hsl, hel, by omega, ?_, by omega⟩
+      have hRi : R.val * (it.i + 1) ≤ P.length := by
+        have := Nat.mul_le_mul_left R.val (show it.i + 1 ≤ nb by omega); omega
+      have hRi' : it.i * R.val + R.val ≤ P.length := by
+        rw [show it.i * R.val + R.val = R.val * (it.i + 1) by ring]; exact hRi
+      rw [keccakF_sbl a1 a2 ha2, ha1, ha,
+        ← absorb_append_block R.val hR.1 _ _ _ (by
+          rw [List.length_append, bv, List.length_map, List.length_take,
+            Nat.min_eq_left (by omega), Nat.add_mod, hm1, Nat.mul_mod_left]; simp)
+        (by simp [bv, hsl', hbl]),
+        hsl', Array.val_to_slice, hblk, List.append_assoc, bv, bv, bv, ← List.map_append,
+        ← List.take_add, show it.i * R.val + R.val = (it.i + 1) * R.val by ring]
+    · rename_i hnd
+      have hi' : it.i = nb := by
+        have : ¬ it.i < it.slice.len.val := hnd
+        simp [Slice.len, hsl] at this; omega
+      rw [← hi']
+      simpa [WP.spec_ok] using ha
+  · exact ⟨hsl, hel, hi, ha⟩
+
+/-- `Sponge::absorb` absorbs `bytes` after what the sponge has absorbed. -/
+theorem sponge_absorb_spec (h : RunsSha3) {R : Usize} {PAD : U8} (hR : 0 < R.val ∧ R.val ≤ 200)
+    (sp : mid.sha3.Sponge R PAD) (m : List Byte) (hm : SpongeAbsorbed R.val sp.s sp.used.val m)
+    (bytes : Slice U8) :
+    mid.sha3.Sponge.absorb sp bytes ⦃ sp' =>
+      SpongeAbsorbed R.val sp'.s sp'.used.val (m ++ bv bytes.val) ⦄ := by
+  obtain ⟨P0, r0, hm, hP0, hr0, hu, hs⟩ := hm
+  have hbl : (bv bytes.val).length = bytes.length := by simp [bv, Slice.length]
+  unfold mid.sha3.Sponge.absorb
+  step as ⟨room, hroom⟩
+  split
+  · rename_i hlt
+    have hlt' : bytes.length < room.val := hlt
+    step with add_bytes_spec sp.s sp.used bytes (by omega) as ⟨a, ha⟩
+    step as ⟨u, hu'⟩
+    refine ⟨P0, r0 ++ bv bytes.val, by rw [hm, List.append_assoc], hP0,
+      by rw [List.length_append, hbl]; omega, by rw [hu', List.length_append, hbl, hu]; rfl, ?_⟩
+    rw [ha, hs, hu, ← xorAt_xorAt, Nat.zero_add]
+  · rename_i hge
+    have hge' : room.val ≤ bytes.length := by
+      have : ¬ bytes.len.val < room.val := hge
+      exact Nat.le_of_not_lt this
+    step with sha3_new_secret_spec h as ⟨e, _he⟩
+    step as ⟨head, bytes1, hhl, hb1l, hhv, hb1v⟩
+    step with add_bytes_spec sp.s sp.used head (by omega) as ⟨a, ha⟩
+    step with keccak_f1600_spec h a as ⟨a1, ha1⟩
+    have hhb : (bv head.val).length = room.val := by simp [bv, Slice.length] at hhl ⊢; exact hhl
+    have hblk : (r0 ++ bv head.val).length = R.val := by
+      rw [List.length_append, hhb]; omega
+    have hsa1 : sbl a1.val = absorb R.val zeros (P0 ++ (r0 ++ bv head.val)) := by
+      rw [keccakF_sbl a a1 ha1, ha, hs, hu, xorAt_xorAt' _ 0 _ _ _ (fun _ => by simp),
+        absorb_append_block R.val hR.1 _ _ _ hP0 hblk]
+    step with as_chunks_spec R bytes1 hR.1 as ⟨blocks, rest, hnb, hbe, hrest⟩
+    step as ⟨iter, hit, hit0⟩
+    have hm1 : (P0 ++ (r0 ++ bv head.val)).length % R.val = 0 := by
+      rw [List.length_append, hblk, Nat.add_mod, hP0, Nat.mod_self]; simp
+    have hnbR : R.val * blocks.val.length ≤ bytes1.val.length := by
+      rw [hnb, Nat.mul_comm]; exact Nat.div_mul_le_self _ _
+    step with absorb_loop_spec h hR _ hm1 bytes1.val blocks.val.length hnbR iter
+      (by rw [hit]) (by rw [hit]; exact hbe) (by omega) a1 (by rw [hit0, hsa1]; simp [bv])
+      as ⟨a2, ha2⟩
+    have hrl : rest.val.length < R.val := by
+      have e1 := Nat.div_add_mod' bytes1.length R.val
+      have e2 := Nat.mod_lt bytes1.length hR.1
+      have e3 : bytes1.val.length = bytes1.length := rfl
+      rw [hrest, List.length_drop]; omega
+    step with add_bytes_spec a2 0#usize rest (by simp [Slice.length]; omega) as ⟨a3, ha3⟩
+    refine ⟨P0 ++ (r0 ++ bv head.val) ++ bv (bytes1.val.take (blocks.val.length * R.val)),
+      bv rest.val, ?_, ?_, by simpa [bv] using hrl, by simp [bv, Slice.len], ?_⟩
+    · rw [hm, hrest, hhv, hb1v, hnb]
+      simp only [bv, List.append_assoc, ← List.map_drop, ← List.map_take]
+      rw [← List.map_append, ← List.map_append, List.take_append_drop, List.take_append_drop]
+    · have hT : (bv (bytes1.val.take (blocks.val.length * R.val))).length =
+          blocks.val.length * R.val := by
+        rw [bv, List.length_map, List.length_take]
+        exact Nat.min_eq_left (by rw [Nat.mul_comm]; exact hnbR)
+      rw [List.length_append, hT, Nat.add_mod, hm1, Nat.mul_mod_left]; simp
+    · rw [ha3, ha2]
+
 end rind.x86_64
