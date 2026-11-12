@@ -381,62 +381,192 @@ theorem getElem!_bv (l : List U8) (j : Nat) : (bv l)[j]! = (l[j]!).bv := by
   simp only [bv, List.getElem!_eq_getElem?_getD, List.getElem?_map]
   cases l[j]? <;> rfl
 
+theorem getElem!_list_set {α : Type} [Inhabited α] (l : List α) (j i : Nat) (v : α)
+    (hi : i < l.length) : (l.set j v)[i]! = if j = i then v else l[i]! := by
+  rw [getElem!_pos (l.set j v) i (by simp; omega), List.getElem_set, getElem!_pos l i hi]
+
+theorem length_toLEBytes64 (x : BitVec 64) : x.toLEBytes.length = 8 := by
+  simp [BitVec.toLEBytes_length]
+
+/-- The first `k` lanes' bytes are the state's first `8 * k`. -/
+theorem sbl_take (L : List U64) (k : Nat) : sbl (L.take k) = (sbl L).take (8 * k) := by
+  induction L generalizing k with
+  | nil => simp [stateBytes]
+  | cons x L ih =>
+    cases k with
+    | zero => simp [stateBytes]
+    | succ k =>
+      have := ih k
+      simp only [stateBytes, List.take_succ_cons, List.map_cons, List.flatMap_cons] at this ⊢
+      rw [this, List.take_append, length_toLEBytes64,
+        List.take_of_length_le (l := x.bv.toLEBytes) (by rw [length_toLEBytes64]; omega),
+        show 8 * (k + 1) - 8 = 8 * k by omega]
+
+/-- The state's bytes from lane `k` on are those lanes'. -/
+theorem sbl_drop (L : List U64) (k : Nat) : sbl (L.drop k) = (sbl L).drop (8 * k) := by
+  induction L generalizing k with
+  | nil => simp [stateBytes]
+  | cons x L ih =>
+    cases k with
+    | zero => simp [stateBytes]
+    | succ k =>
+      have := ih k
+      simp only [stateBytes, List.drop_succ_cons, List.map_cons, List.flatMap_cons] at this ⊢
+      rw [this, List.drop_append, length_toLEBytes64,
+        List.drop_of_length_le (l := x.bv.toLEBytes) (by rw [length_toLEBytes64]; omega),
+        List.nil_append, show 8 * (k + 1) - 8 = 8 * k by omega]
+
+theorem bv_to_le_bytes (x : U64) : bv (core.num.U64.to_le_bytes x).val = x.bv.toLEBytes := by
+  simp [bv, core.num.U64.to_le_bytes, Function.comp_def]
+
+/-- `store_bytes`' loop writes lane `i` of `whole` into chunk `i`. -/
+theorem store_bytes_loop_spec (whole : Slice U64) (iter : core.ops.range.Range Usize)
+    (lanes : Slice (Std.Array U8 8#usize)) (hs : iter.start.val ≤ lanes.length)
+    (he : iter.end.val = lanes.length) (hw : lanes.length ≤ whole.length)
+    (hpre : ∀ i < iter.start.val, bv (lanes.val[i]!).val = (whole.val[i]!).bv.toLEBytes) :
+    mid.sha3.store_bytes_loop iter lanes whole ⦃ r =>
+      r.length = lanes.length ∧
+      ∀ i < lanes.length, bv (r.val[i]!).val = (whole.val[i]!).bv.toLEBytes ⦄ := by
+  unfold mid.sha3.store_bytes_loop
+  apply loop.spec_decr_nat (fun x => lanes.length - x.1.start.val)
+    (fun x => x.1.start.val ≤ lanes.length ∧ x.1.end.val = lanes.length ∧
+      x.2.length = lanes.length ∧
+      ∀ i < x.1.start.val, bv (x.2.val[i]!).val = (whole.val[i]!).bv.toLEBytes)
+  · rintro ⟨it, ls⟩ ⟨hs, he, hl, hst⟩
+    simp only at hs he hl hst ⊢
+    unfold mid.sha3.store_bytes_loop.body
+    by_cases hlt : it.start.val < it.end.val
+    · step with core.iter.range.IteratorRange.next_Usize_some_spec as ⟨o, it', ho, hst', hen⟩
+      subst ho
+      have hen' : it'.end.val = it.end.val := by rw [hen]
+      step as ⟨x, hx⟩
+      step as ⟨a, ha⟩
+      step as ⟨ls', hls'⟩
+      refine ⟨by omega, by omega, by simp [Slice.length, hls']; exact hl, ?_, by omega⟩
+      intro i hi
+      rw [hls', Slice.set_val_eq, getElem!_list_set _ _ _ _ (by
+        have : ls.val.length = lanes.length := hl
+        omega)]
+      split
+      · subst_vars
+        have : it.start.val < whole.val.length := by
+          have : whole.val.length = whole.length := rfl
+          omega
+        rw [ha, getElem!_pos whole.val _ this]
+        simp [bv, Function.comp_def]
+      · exact hst i (by omega)
+    · step with core.iter.range.IteratorRange.next_Usize_none_spec as ⟨o, it', ho, hit⟩
+      subst ho
+      simp only [WP.spec_ok]
+      refine ⟨hl, ?_⟩
+      intro i hi
+      exact hst i (by omega)
+  · exact ⟨hs, he, rfl, hpre⟩
+
+/-- `as_chunks_mut`: `as_chunks`'s views, and a write back that joins them. -/
+theorem as_chunks_mut_spec {T : Type} [Inhabited T] (N : Usize) (s : Slice T) (hN : 0 < N.val) :
+    core.slice.Slice.as_chunks_mut N s ⦃ v back =>
+      v.1.val.length = s.length / N.val ∧
+      (∀ i, i < v.1.val.length → (v.1.val[i]!).val = (s.val.drop (i * N.val)).take N.val) ∧
+      v.2.val = s.val.drop (s.length / N.val * N.val) ∧
+      ∀ c r, (c.val.flatMap (·.val) ++ r.val).length ≤ Usize.max →
+        (back (c, r)).val = c.val.flatMap (·.val) ++ r.val ⦄ := by
+  unfold core.slice.Slice.as_chunks_mut
+  step with as_chunks_spec N s hN as ⟨v, hc, hci, hr⟩
+  refine ⟨hc, hci, hr, ?_⟩
+  intro c' r' hl
+  simp only [hl, ↓reduceDIte, Slice.from_val]
+
 /-- `store_bytes` writes the state's first bytes. -/
 theorem store_bytes_spec (s : Std.Array U64 25#usize) (output : Slice U8) (h : output.length ≤ 200) :
     mid.sha3.store_bytes s output ⦃ r =>
       r.length = output.length ∧ bv r.val = (sbl s.val).take output.length ⦄ := by
-  unfold mid.sha3.store_bytes mid.sha3.store_bytes_loop
-  apply loop.spec_decr_nat (fun x => output.length - x.2.val)
-    (fun x => x.1.length = output.length ∧ x.2.val ≤ output.length ∧
-      (x.2.val % 8 = 0 ∨ x.2.val = output.length) ∧
-      ∀ j, j < x.2.val → (bv x.1.val)[j]! = (sbl s.val)[j]!)
-  · rintro ⟨out, done⟩ ⟨hl, hd, hd8, hpre⟩
-    simp only at hl hd hd8 hpre ⊢
-    unfold mid.sha3.store_bytes_loop.body
-    have hlen : out.len.val = output.length := by rw [← hl]; rfl
-    have hol : out.val.length = output.length := hl
-    have hoL : output.length = output.val.length := rfl
-    have hs25 : s.val.length = 25 := by simp
-    simp only []
-    split
-    · rename_i hlt
-      have hdl : done.val < output.length := by
-        have : done.val < out.len.val := hlt
-        omega
-      step*
-      · rw [s1_post1, s2_post1, i3_post]
-        omega
-      · have hn : n.val = min 8 (output.length - done.val) := by
-          rw [n_post, core.cmp.impls.OrdUsize.min_val, i2_post, hlen]; rfl
-        have hd0 : done.val % 8 = 0 := by omega
-        refine ⟨by rw [s1_post2]; simp [hl], by omega, by omega, ?_, by omega⟩
-        intro j hj
-        rw [s1_post2, Slice.setSlice!_val, s3_post]
-        by_cases hjd : j < done.val
-        · rw [getElem!_bv, List.getElem!_setSlice!_prefix _ _ _ _ hjd, ← getElem!_bv, hpre j hjd]
-        · have hs2l : s2.val.length = n.val := s2_post1
-          have hi5 : s.val[i4.val]! = i5 := by rw [i5_post, getElem!_pos s.val i4.val (by omega)]
-          rw [getElem!_bv, List.getElem!_setSlice!_middle _ _ _ _ ⟨by omega, by omega, by omega⟩,
-            s2_post, getElem!_sbl, show j / 8 = i4.val by omega, show j % 8 = j - done.val by omega,
-            hi5]
-          simp only [List.slice, List.drop_zero, Array.val_to_slice, a_post]
-          rw [List.getElem!_eq_getElem?_getD, List.getElem?_take, ite_eq_left (by omega),
-            List.getElem?_map, List.getElem?_eq_getElem (by simp; omega),
-            List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem (by simp; omega)]
-          rfl
-    · rename_i hnd
-      have hdl : done.val = output.length := by
-        have : ¬ done.val < out.len.val := hnd
-        omega
-      simp only [WP.spec_ok]
-      refine ⟨hl, ?_⟩
-      apply ext_getElem! (by
-        rw [bv, List.length_map, List.length_take, length_sbl, hs25]; omega)
-      intro j hj
-      rw [bv, List.length_map] at hj
-      rw [hpre j (by omega), List.getElem!_eq_getElem?_getD (l := List.take _ _), List.getElem?_take,
-        ite_eq_left (by omega), ← List.getElem!_eq_getElem?_getD]
-  · exact ⟨rfl, by simp, by simp, by simp⟩
+  unfold mid.sha3.store_bytes
+  step with as_chunks_mut_spec 8#usize output (by decide)
+    as ⟨lanes, tail, back, hlen, hci, htail, hback⟩
+  have hol : output.val.length = output.length := rfl
+  have hk : lanes.length = output.length / 8 := hlen
+  have hll : lanes.len.val = lanes.length := by simp [Slice.length]
+  step as ⟨whole, hwhole, hwl⟩
+  step with store_bytes_loop_spec whole { start := 0#usize, «end» := lanes.len } lanes (by simp)
+    hll (by simp only [Slice.length] at hwl hll ⊢; omega) (fun i hi => absurd hi (by simp))
+    as ⟨lanes1, hl1, hlanes1⟩
+  have hs25 : s.val.length = 25 := by simp
+  have hwv : whole.val = s.val.take lanes.length := by
+    rw [hwhole, hll]; simp [List.slice]
+  have hL : bv (lanes1.val.flatMap (·.val)) = (sbl s.val).take (8 * lanes.length) := by
+    have hm : lanes1.val.map (fun a => bv a.val) = whole.val.map (fun x => x.bv.toLEBytes) := by
+      apply List.ext_getElem (by
+        simp only [List.length_map]
+        have : lanes1.val.length = lanes1.length := rfl
+        have : whole.val.length = whole.length := rfl
+        omega)
+      intro i h1 h2
+      simp only [List.length_map] at h1 h2
+      simp only [List.getElem_map]
+      have := hlanes1 i (by have : lanes1.val.length = lanes1.length := rfl; omega)
+      rwa [getElem!_pos _ i h1, getElem!_pos _ i h2] at this
+    rw [← sbl_take, ← hwv, bv, List.map_flatMap, List.flatMap_def]
+    simp only [stateBytes, List.flatMap_def, List.map_map]
+    simp only [bv] at hm
+    rw [hm]; rfl
+  have hLl : (bv (lanes1.val.flatMap (·.val))).length = 8 * lanes.length := by
+    rw [hL, List.length_take, length_sbl, hs25]; omega
+  have hLl' : (lanes1.val.flatMap (·.val)).length = 8 * lanes.length := by
+    simpa [bv] using hLl
+  step as ⟨b, hb⟩
+  split
+  · rename_i hbt
+    have ht0 : tail.val = [] := by
+      have : tail.length = 0 := by rw [← hb]; exact hbt
+      simpa [Slice.length] using this
+    have hlen8 : output.length = 8 * lanes.length := by
+      have := congrArg List.length htail
+      rw [ht0] at this; simp at this; omega
+    have hb' := hback lanes1 tail (by
+      rw [ht0, List.append_nil, hLl']; have := output.property; omega)
+    simp only [WP.spec_ok]
+    refine ⟨?_, ?_⟩
+    · show (back (lanes1, tail)).val.length = _
+      rw [hb', ht0, List.append_nil, hLl']; omega
+    · rw [hb', ht0, List.append_nil, hL, hlen8]
+  · rename_i hbf
+    have hn0 : tail.length ≠ 0 := by rw [hb] at hbf; exact hbf
+    have htl : tail.length = output.length - 8 * lanes.length := by
+      have := congrArg List.length htail
+      simp only [List.length_drop] at this
+      have : tail.val.length = tail.length := rfl
+      rw [hk]; omega
+    have hkl : lanes.length < 25 := by omega
+    have hl1' : lanes1.len.val = lanes.length := by
+      have : lanes1.val.length = lanes1.length := rfl
+      simp [Slice.length] at hl1 ⊢; omega
+    step as ⟨x, hx⟩
+    step as ⟨a, ha⟩
+    have htn : tail.len.val = tail.length := by simp [Slice.length]
+    step with core.slice.index.SliceIndexRangeToUsizeSlice.index.step_spec { «end» := tail.len }
+      a.to_slice (by simp [Slice.length]; scalar_tac) as ⟨s1, hs1, hs1l⟩
+    step with core.slice.Slice.copy_from_slice.step_spec _ tail s1 (by
+      rw [hs1l]; simp [Slice.len, Slice.length]) as ⟨tail1, ht1⟩
+    subst tail1
+    have hbs1 : bv s1.val = x.bv.toLEBytes.take tail.length := by
+      rw [hs1]; simp [List.slice, ha, bv, Function.comp_def, Slice.len, Slice.length]
+    have hb' := hback lanes1 s1 (by
+      rw [List.length_append, hLl']
+      have : s1.val.length = s1.length := rfl
+      have := output.property; omega)
+    have hxs : x = s.val[lanes.length]! := by
+      rw [hx, getElem!_pos s.val _ (by omega)]; simp [hl1']
+    refine ⟨?_, ?_⟩
+    · show (back (lanes1, s1)).val.length = _
+      rw [hb', List.length_append, hLl']
+      have : s1.val.length = s1.length := rfl
+      omega
+    · rw [hb', bv, List.map_append, ← bv, ← bv, hL, hbs1,
+        show output.length = 8 * lanes.length + tail.length by omega, List.take_add,
+        ← sbl_drop, List.drop_eq_getElem_cons (by omega), hxs, getElem!_pos s.val _ (by omega)]
+      simp only [stateBytes, List.map_cons, List.flatMap_cons]
+      rw [List.take_append_of_le_length (by rw [length_toLEBytes64]; omega)]
 
 /-! ## Keccak-f on the state's bytes -/
 
@@ -860,16 +990,18 @@ theorem absorb_keccakPad (R : Nat) (hR : 0 < R ∧ R ≤ 200) (d : Byte) (P r : 
       rw [length_keccakPad R hR.1, Nat.mod_eq_of_lt hr]; omega),
     xorAt_keccakPad R hR d _ r (length_absorb R _ P (by simp)) hr]
 
-/-- `padded_state` is the state whose Keccak-f ends absorbing the padded message. -/
-theorem padded_state_spec {R : Usize} {PAD : U8} (hR : 8 ≤ R.val ∧ R.val < 200 ∧ R.val % 8 = 0)
-    (sp : mid.sha3.Sponge R PAD) (m : List Byte) (hm : SpongeAbsorbed R.val sp.s sp.used.val m) :
-    mid.sha3.Sponge.padded_state sp ⦃ s =>
+/-- `pad` makes a state that has absorbed `m` the one whose Keccak-f ends
+absorbing `m` padded. -/
+theorem sponge_pad_spec (R : Usize) (PAD : U8) (hR : 8 ≤ R.val ∧ R.val < 200 ∧ R.val % 8 = 0)
+    (st : Std.Array U64 25#usize) (used : Usize) (m : List Byte)
+    (hm : SpongeAbsorbed R.val st used.val m) :
+    mid.sha3.pad R PAD st used ⦃ s =>
       keccakF (sbl s.val) = absorb R.val zeros (keccakPad R.val PAD.bv m) ⦄ := by
   obtain ⟨P, r, rfl, hP, hr, hu, hs⟩ := hm
-  unfold mid.sha3.Sponge.padded_state
+  unfold mid.sha3.pad
   step as ⟨sl, hsl⟩
   have hsl' : sl.val = [PAD] := by rw [hsl]; rfl
-  step with add_bytes_spec sp.s sp.used sl (by simp [Slice.length, hsl']; omega) as ⟨s1, hs1⟩
+  step with add_bytes_spec st used sl (by simp [Slice.length, hsl']; omega) as ⟨s1, hs1⟩
   step*
   have hi2 : i2.val < 25 := by omega
   have hx : i4.bv = (s1.val[i2.val]!).bv ^^^ i.bv := by
@@ -884,6 +1016,14 @@ theorem padded_state_spec {R : Usize} {PAD : U8} (hR : 8 ≤ R.val ∧ R.val < 2
   rw [s_post, Std.Array.set_val_eq, sbl_set_xor _ i2.val (by simp; omega) i4 i.bv hx 7 [0x80]
     (by simp) hw, hs1, hs, hu, hbv, absorb_keccakPad R.val ⟨by omega, by omega⟩ PAD.bv P r hP hr,
     show 8 * i2.val + 7 = R.val - 1 by omega]
+
+/-- `padded_state` is the state whose Keccak-f ends absorbing the padded message. -/
+theorem padded_state_spec {R : Usize} {PAD : U8} (hR : 8 ≤ R.val ∧ R.val < 200 ∧ R.val % 8 = 0)
+    (sp : mid.sha3.Sponge R PAD) (m : List Byte) (hm : SpongeAbsorbed R.val sp.s sp.used.val m) :
+    mid.sha3.Sponge.padded_state sp ⦃ s =>
+      keccakF (sbl s.val) = absorb R.val zeros (keccakPad R.val PAD.bv m) ⦄ := by
+  unfold mid.sha3.Sponge.padded_state
+  exact sponge_pad_spec R PAD hR sp.s sp.used m hm
 
 /-! ## SHA-3, `Sha3Context` -/
 

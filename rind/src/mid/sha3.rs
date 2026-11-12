@@ -356,8 +356,10 @@ fn padded_block<const R: usize>(input: &[u8; 40]) -> [u64; 25] {
 fn store_bytes(s: &[u64; 25], output: &mut [u8]) {
     let (lanes, tail) = output.as_chunks_mut::<8>();
     let whole = &s[..lanes.len()];
-    for (i, lane) in lanes.iter_mut().enumerate() {
-        *lane = whole[i].to_le_bytes();
+    // Indexed, since Aeneas cannot translate `iter_mut`.
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..lanes.len() {
+        lanes[i] = whole[i].to_le_bytes();
     }
     if !tail.is_empty() {
         let n = tail.len();
