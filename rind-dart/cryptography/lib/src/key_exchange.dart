@@ -145,6 +145,9 @@ final class _Ecdh extends Ecdh {
       remotePublicKey,
       () => key.agree(peer),
     );
+    // The view keeps the whole buffer alive, and destroy() overwrites only
+    // the view, so clear the bytes it leaves out now.
+    secret.fillRange(length, secret.length, 0);
     return SecretKeyData(
       Uint8List.sublistView(secret, 0, length),
       overwriteWhenDestroyed: true,
