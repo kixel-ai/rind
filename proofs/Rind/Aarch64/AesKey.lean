@@ -22,13 +22,6 @@ abbrev bvs (l : List U8) : List (BitVec 8) := l.map (·.bv)
 
 /-! ## Vectors as bytes -/
 
-/-- A byte array as `vld1q_u8` loads it: its bytes, the first in lane 0. -/
-def loadBytes (bytes : List U8) : BitVec 128 := leBytesToQuad32 (bytes.map (·.bv))
-
-/-- A vector's bytes as `vst1q_u8` stores them, lane 0 first. -/
-def storeBytes (v : BitVec 128) : Std.Array Std.U8 16#usize :=
-  Std.Array.from ((leQuad32ToBytes v).map fun b => ⟨b⟩) (by simp [leQuad32ToBytes])
-
 theorem load_eq (b : Std.Array Std.U8 16#usize) : low.aarch64.aes.load b = ok (loadBytes b.val) := by
   simp only [low.aarch64.aes.load, lift, core.num.U128.from_le_bytes, bind_ok,
     core.core_arch.arm_shared.neon.generated.vreinterpretq_u8_p128, loadBytes, leBytesToQuad32]

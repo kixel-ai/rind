@@ -75,6 +75,26 @@ fn alignr<const I: i32>(a: __m128i, b: __m128i) -> __m128i {
     _mm_alignr_epi8::<I>(a, b)
 }
 
+#[target_feature(enable = "sse2")]
+fn shufflelo<const I: i32>(a: __m128i) -> __m128i {
+    _mm_shufflelo_epi16::<I>(a)
+}
+
+#[target_feature(enable = "sse2")]
+fn shufflehi<const I: i32>(a: __m128i) -> __m128i {
+    _mm_shufflehi_epi16::<I>(a)
+}
+
+#[target_feature(enable = "sse2")]
+fn slli16<const I: i32>(a: __m128i) -> __m128i {
+    _mm_slli_epi16::<I>(a)
+}
+
+#[target_feature(enable = "sse2")]
+fn srli16<const I: i32>(a: __m128i) -> __m128i {
+    _mm_srli_epi16::<I>(a)
+}
+
 #[target_feature(enable = "pclmulqdq")]
 fn clmul<const I: i32>(a: __m128i, b: __m128i) -> __m128i {
     _mm_clmulepi64_si128::<I>(a, b)
@@ -135,10 +155,12 @@ fn main() {
         writeln!(out, "#guard reducesTo (R := BitVec _) ( {call} ) {result}").unwrap()
     };
 
-    let binary: [(&str, Binary); 10] = [
+    let binary: [(&str, Binary); 12] = [
         ("sse2._mm_xor_si128", |a, b| unsafe { _mm_xor_si128(a, b) }),
         ("sse2._mm_and_si128", |a, b| unsafe { _mm_and_si128(a, b) }),
+        ("sse2._mm_or_si128", |a, b| unsafe { _mm_or_si128(a, b) }),
         ("sse2._mm_add_epi64", |a, b| unsafe { _mm_add_epi64(a, b) }),
+        ("sse2._mm_add_epi32", |a, b| unsafe { _mm_add_epi32(a, b) }),
         ("sse2._mm_unpackhi_epi64", |a, b| unsafe {
             _mm_unpackhi_epi64(a, b)
         }),
@@ -176,10 +198,14 @@ fn main() {
         guard(format!("core.core_arch.x86.aes._mm_aesimc_si128 {}", q(v(a))), q(r));
     }
 
-    let unary: [(&str, [Unary; 256]); 3] = [
+    let unary: [(&str, [Unary; 256]); 7] = [
         ("_mm_srai_epi32", imm8!(srai)),
         ("_mm_shuffle_epi32", imm8!(shuffle)),
         ("_mm_slli_si128", imm8!(slli)),
+        ("_mm_shufflelo_epi16", imm8!(shufflelo)),
+        ("_mm_shufflehi_epi16", imm8!(shufflehi)),
+        ("_mm_slli_epi16", imm8!(slli16)),
+        ("_mm_srli_epi16", imm8!(srli16)),
     ];
     for (name, fs) in unary {
         for (imm, f) in fs.iter().enumerate() {

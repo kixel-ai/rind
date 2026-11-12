@@ -8,7 +8,7 @@ set_option linter.style.nameCheck false
 open Aeneas Aeneas.Std Result
 
 /-!
-# x86_64's 128-bit vectors and the intrinsics rind's AES-GCM setup and partial blocks call
+# x86_64's 128-bit vectors and the intrinsics rind's AES-GCM calls
 
 `core::arch` implements each intrinsic with an LLVM builtin, which Aeneas
 cannot translate, so these model them by hand, each as Intel's Software
@@ -64,6 +64,44 @@ def core.core_arch.x86.sse2._mm_setzero_si128 : Result core.core_arch.x86.__m128
 def core.core_arch.x86.sse2._mm_add_epi64 (a b : core.core_arch.x86.__m128i) :
     Result core.core_arch.x86.__m128i :=
   ok ((lane64 a 1 + lane64 b 1) ++ (lane64 a 0 + lane64 b 0))
+
+/-- `_mm_or_si128`, `POR`. -/
+def core.core_arch.x86.sse2._mm_or_si128 (a b : core.core_arch.x86.__m128i) :
+    Result core.core_arch.x86.__m128i :=
+  ok (a ||| b)
+
+/-- `_mm_add_epi32`, `PADDD`: each 32-bit lane's sum, wrapping. -/
+def core.core_arch.x86.sse2._mm_add_epi32 (a b : core.core_arch.x86.__m128i) :
+    Result core.core_arch.x86.__m128i :=
+  ok (ofLanes32 fun i => lane32 a i + lane32 b i)
+
+/-- `_mm_shufflelo_epi16::<IMM8>`, `PSHUFLW`: 16-bit lane `i` below 4 is the
+lane bits `2i` and `2i + 1` of `IMM8` select of the low four, and the high
+four are `a`'s. -/
+def core.core_arch.x86.sse2._mm_shufflelo_epi16 (IMM8 : Std.I32) (a : core.core_arch.x86.__m128i) :
+    Result core.core_arch.x86.__m128i :=
+  ok (ofLanes16 fun i => if i < 4 then lane16 a (IMM8.bv.toNat / 4 ^ i % 4) else lane16 a i)
+
+/-- `_mm_shufflehi_epi16::<IMM8>`, `PSHUFHW`: 16-bit lane `4 + i` is the lane
+bits `2i` and `2i + 1` of `IMM8` select of the high four, and the low four are
+`a`'s. -/
+def core.core_arch.x86.sse2._mm_shufflehi_epi16 (IMM8 : Std.I32) (a : core.core_arch.x86.__m128i) :
+    Result core.core_arch.x86.__m128i :=
+  ok (ofLanes16 fun i => if i < 4 then lane16 a i else lane16 a (4 + IMM8.bv.toNat / 4 ^ (i - 4) % 4))
+
+/-- `_mm_slli_epi16::<IMM8>`, `PSLLW`: each 16-bit lane shifted left by
+`IMM8` bits, or zero past 15. -/
+def core.core_arch.x86.sse2._mm_slli_epi16 (IMM8 : Std.I32) (a : core.core_arch.x86.__m128i) :
+    Result core.core_arch.x86.__m128i :=
+  let n := IMM8.bv.toNat % 256
+  ok (ofLanes16 fun i => if n > 15 then 0 else lane16 a i <<< n)
+
+/-- `_mm_srli_epi16::<IMM8>`, `PSRLW`: each 16-bit lane shifted right
+logically by `IMM8` bits, or zero past 15. -/
+def core.core_arch.x86.sse2._mm_srli_epi16 (IMM8 : Std.I32) (a : core.core_arch.x86.__m128i) :
+    Result core.core_arch.x86.__m128i :=
+  let n := IMM8.bv.toNat % 256
+  ok (ofLanes16 fun i => if n > 15 then 0 else lane16 a i >>> n)
 
 /-- `_mm_srai_epi32::<IMM8>`, `PSRAD`: each 32-bit lane shifted right
 arithmetically, by at most 31. -/
