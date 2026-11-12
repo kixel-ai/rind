@@ -331,12 +331,14 @@ theorem mont_neg_inverse_spec (n : RsaInt) (hk : 1 ≤ n.used.val) (hk' : n.used
 
 /-- What `RsaPublicKey::new` establishes about a key: the modulus `n` of
 `k` words is odd, `n0` is `-n⁻¹ mod 2^64`, the montifier is `R² mod n` for
-`R = 2^(64k)`, and the exponent is odd and above one. -/
+`R = 2^(64k)`, the exponent is odd and above one, and the modulus has 1024
+to 8192 bits. -/
 def PubKeyInv (key : mid.rsa_pub.RsaPublicKey) : Prop :=
   let k := key.n.used.val
   let N := wordsNat (lowWords key.n k)
   2 ≤ k ∧ k ≤ 128 ∧ N % 2 = 1 ∧ (N * key.n0.val + 1) % 2 ^ 64 = 0 ∧
-    wordsNat (lowWords key.montifier k) = 2 ^ (128 * k) % N ∧ key.e.val % 2 = 1 ∧ 3 ≤ key.e.val
+    wordsNat (lowWords key.montifier k) = 2 ^ (128 * k) % N ∧ key.e.val % 2 = 1 ∧ 3 ≤ key.e.val ∧
+    1024 ≤ N.size ∧ N.size ≤ 8192
 
 theorem div_pow_log2 (e : Nat) (he : e ≠ 0) : e / 2 ^ e.log2 = 1 := by
   apply Nat.div_eq_of_lt_le
@@ -354,7 +356,7 @@ theorem public_op_spec (key : mid.rsa_pub.RsaPublicKey) (hinv : PubKeyInv key)
           wordsNat (lowWords m key.n.used) =
             wordsNat (lowWords c c.used) ^ key.e.val % wordsNat (lowWords key.n key.n.used)
       | .Err _ => wordsNat (lowWords key.n key.n.used) ≤ wordsNat (lowWords c c.used) ⦄ := by
-  obtain ⟨hk2, hk, hodd, hn0, hmont, he, he3⟩ := hinv
+  obtain ⟨hk2, hk, hodd, hn0, hmont, he, he3, _⟩ := hinv
   unfold mid.rsa_pub.RsaPublicKey.public_op
   step with less_than_spec c key.n hcu hk as ⟨b, hb⟩
   unfold low.ct.into_public
