@@ -1,16 +1,15 @@
 module
 public import Aeneas
 public import Rind.X86_64.Types
-public import Rind.X86_64.AesNi
+public import Rind.X86_64.Simd
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-!
-The rind functions the x86_64 translation leaves opaque, beside those
-`Rind.X86_64.AesNi` models. No proof assumes anything about them beyond what
-`Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, and `Rind.X86_64.ValeAesGcm`
-state for s2n-bignum's, aws-lc's, and Vale's routines, what
+The rind functions the x86_64 translation leaves opaque. No proof assumes
+anything about them beyond what `Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`,
+and `Rind.X86_64.ValeAesGcm` state for s2n-bignum's, aws-lc's, and Vale's routines, what
 `Rind.X86_64.CtEqual` states for the constant-time compares, and what each theorem
 takes as a hypothesis.
 -/

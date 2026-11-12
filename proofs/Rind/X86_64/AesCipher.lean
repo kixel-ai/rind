@@ -48,20 +48,6 @@ def RunsAesNi : Prop :=
   (∃ hw, low.x86_64.cpu.HaveAesHardware.check = ok (some hw)) ∧
   (∃ s, low.x86_64.cpu.HaveSsse3.check = ok s)
 
-@[step]
-theorem aes128_expand_step (key : Std.Array U8 16#usize) (out : Std.Array core.core_arch.x86.__m128i 11#usize) :
-    low.x86_64.aes.aes128_expand key out ⦃ rk =>
-      rk.val = keyToRoundKeys .AES_128 (seqNat8ToSeqNat32LE (bvs key.val)) ⦄ := by
-  obtain ⟨rk, h, hv⟩ := aes128_expand_spec key out
-  rw [h, WP.spec_ok]; exact hv
-
-@[step]
-theorem aes256_expand_step (key : Std.Array U8 32#usize) (out : Std.Array core.core_arch.x86.__m128i 15#usize) :
-    low.x86_64.aes.aes256_expand key out ⦃ rk =>
-      rk.val = keyToRoundKeys .AES_256 (seqNat8ToSeqNat32LE (bvs key.val)) ⦄ := by
-  obtain ⟨rk, h, hv⟩ := aes256_expand_spec key out
-  rw [h, WP.spec_ok]; exact hv
-
 theorem expand_key128_spec (h : RunsAesNi) (key : Slice U8) (hk : key.length = 16) :
     mid.aes.expand_key key ⦃ k => ∃ k128, k = .Hw (.Aes128 k128) ∧
       k128.round_keys.val = keyToRoundKeys .AES_128 (seqNat8ToSeqNat32LE (bvs key.val)) ⦄ := by
@@ -73,7 +59,7 @@ theorem expand_key128_spec (h : RunsAesNi) (key : Slice U8) (hk : key.length = 1
   simp only [low.ct.secret_slice, hhw, hss, bind_ok, core.array.TryFromSharedArraySlice.try_from,
     hl', ↓reduceDIte, core.result.Result.unwrap, low.x86_64.aes.zero,
     core.core_arch.x86.sse2._mm_setzero_si128]
-  apply WP.spec_bind (aes128_expand_step _ _)
+  apply WP.spec_bind (aes128_expand_spec _ _)
   intro rk hrk
   rw [WP.spec_ok]
   refine ⟨_, rfl, ?_⟩
@@ -90,7 +76,7 @@ theorem expand_key256_spec (h : RunsAesNi) (key : Slice U8) (hk : key.length = 3
   simp only [low.ct.secret_slice, hhw, hss, bind_ok, core.array.TryFromSharedArraySlice.try_from,
     hl', ↓reduceDIte, core.result.Result.unwrap, low.x86_64.aes.zero,
     core.core_arch.x86.sse2._mm_setzero_si128]
-  apply WP.spec_bind (aes256_expand_step _ _)
+  apply WP.spec_bind (aes256_expand_spec _ _)
   intro rk hrk
   rw [WP.spec_ok]
   refine ⟨_, rfl, ?_⟩
@@ -110,7 +96,7 @@ def KeyLen (alg : Algorithm) (n : Nat) : Prop :=
 theorem hw_encrypt_block (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
     (h : HwKeyIs alg kw hk) (b : Std.Array U8 16#usize) :
     low.x86_64.aes.AesKey.encrypt_block (.Hw hk) b =
-      ok (low.x86_64.aes.store (aesEncrypt alg kw (low.x86_64.aes.load b.val))) := by
+      ok (storeBytes (aesEncrypt alg kw (loadBytes b.val))) := by
   cases hk with
   | Aes128 k =>
     obtain ⟨rfl, hrk⟩ := h
@@ -122,8 +108,8 @@ theorem hw_encrypt_block (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : Lis
     simp only [low.x86_64.aes.AesKey.encrypt_block, low.x86_64.aes.HwKey.encrypt_block,
       low.x86_64.aes.AesKey256.encrypt_block, aes256_block_spec, hrk, aesEncrypt]
 
-theorem store_bytes (q : BitVec 128) : bvs (low.x86_64.aes.store q).val = leQuad32ToBytes q := by
-  simp [low.x86_64.aes.store, Std.Array.from_val, Function.comp_def, bvs]
+theorem store_bytes (q : BitVec 128) : bvs (storeBytes q).val = leQuad32ToBytes q := by
+  simp [storeBytes, Std.Array.from_val, Function.comp_def, bvs]
 
 /-- An AES key holding FIPS 197's round keys for the key bytes `key`, which
 `alg` sizes, on AES-NI. -/
@@ -133,7 +119,7 @@ def AesIs (alg : Algorithm) (key : List (BitVec 8)) (k : mid.aes.Aes) : Prop :=
 theorem aes_encrypt (alg : Algorithm) (key : List (BitVec 8)) (k : mid.aes.Aes) (hk : AesIs alg key k)
     (b : Std.Array U8 16#usize) :
     low.x86_64.aes.AesKey.encrypt_block k b =
-      ok (low.x86_64.aes.store (aesEncrypt alg (seqNat8ToSeqNat32LE key) (leBytesToQuad32 (bvs b.val)))) := by
+      ok (storeBytes (aesEncrypt alg (seqNat8ToSeqNat32LE key) (leBytesToQuad32 (bvs b.val)))) := by
   obtain ⟨-, hwk, rfl, hwk_is⟩ := hk
   exact hw_encrypt_block hwk alg _ hwk_is b
 
@@ -230,8 +216,8 @@ theorem aes_header_mask (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : A
   simp only [mid.aes.Aes.Insts.RindAeadQuicMask.mask]
   unfold mid.aes.Aes.header_protection_mask low.ct.public_slice
   simp only [he, bind_ok, aes_encrypt alg key k hk]
-  have hl : (low.x86_64.aes.store (aesEncrypt alg (seqNat8ToSeqNat32LE key)
-      (leBytesToQuad32 (bvs sample.val)))).val.length = 16 := (low.x86_64.aes.store _).property
+  have hl : (storeBytes (aesEncrypt alg (seqNat8ToSeqNat32LE key)
+      (leBytesToQuad32 (bvs sample.val)))).val.length = 16 := (storeBytes _).property
   step*
   rw [aesHeaderMask, aesBlock, ← store_bytes]
   apply List.ext_getElem (by simp [Std.Array.make, bvs, hl])

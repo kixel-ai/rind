@@ -399,8 +399,8 @@ from the AEAD API's `Key` to HACL*'s Vale AES-GCM routines, in
   buffer: the ciphertext lands in the view its `as_mut` gives, and the call
   returns what its `extend` makes of that, handed the tag; and
   `aes_gcm_seal_append_tag_vec`: a `Vec<u8>` with room for the tag becomes
-  the ciphertext followed by the tag, assuming `VecAsMut` and `VecExtend`,
-  that std's impls view the whole vector and append the tag as
+  the ciphertext followed by the tag, through `Rind/Core.lean`'s models of
+  std's impls, which view the whole vector and append the tag as
   `extend_from_slice` does;
 - `aes_gcm_open_separate_tag` and `aes_gcm_open`: for AAD and messages under
   2^32 bytes, the call succeeds exactly when Vale's `gcm_decrypt_LE` accepts
@@ -480,14 +480,13 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
   writes and git ignores.
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
-  translation leaves opaque, and models of the few `core` items Aeneas's
-  library lacks.
+  translation leaves opaque, and models of the few standard-library items
+  Aeneas's library lacks.
 - `Rind/<Arch>/S2nBignum.lean`, `Rind/<Arch>/AwsLc.lean`, and
   `Rind/X86_64/ValeAesGcm.lean`: s2n-bignum's, aws-lc-verification's, and
   Vale's theorems, restated as axioms about the routines' Rust wrappers.
-- `Rind/X86_64/Simd.lean` and `Rind/X86_64/AesNi.lean`: models of the x86_64
-  intrinsics rind's AES-GCM setup and partial blocks call, and of its AES-NI
-  key expansion and block cipher, which load and store through raw pointers.
+- `Rind/X86_64/Simd.lean`: models of the x86_64 intrinsics rind's AES-GCM
+  setup and partial blocks call.
 - `Rind/Spec.lean` and `Rind/Bytes.lean`: the elliptic-curve, ChaCha20,
   Poly1305, and ChaCha20-Poly1305 specs and byte-conversion lemmas, and
   `Rind/ChaCha20Poly1305Test.lean`, the AEAD specs' known-answer tests; `Rind/Sha2.lean` and
