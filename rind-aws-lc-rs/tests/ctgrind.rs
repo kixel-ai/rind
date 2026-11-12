@@ -316,6 +316,14 @@ fn ml_dsa_pkcs8_sign_export() {
         .to_vec();
     let expected = theirs.public_key().as_ref().to_vec();
 
+    // Loading the ML-DSA-65 document as ML-DSA-44 refuses on the public
+    // algorithm identifier. The seed stays secret.
+    secret(&seed_form[seed_form.len() - 32..]);
+    assert!(
+        signature::PqdsaKeyPair::from_pkcs8(&signature::ML_DSA_44_SIGNING, &seed_form).is_err()
+    );
+    public(&seed_form[..seed_form.len() - 32]);
+
     // RFC 9881's expanded form: the raw key in an `OCTET STRING` inside
     // PKCS#8's, after the seed form's version and algorithm identifier.
     let header = &seed_form[2..2 + 3 + 13];

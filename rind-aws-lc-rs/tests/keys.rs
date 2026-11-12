@@ -800,20 +800,19 @@ fn ml_dsa_rejected() {
         }
     }
 
-    let ed25519 = theirs::signature::Ed25519KeyPair::from_seed_unchecked(&[3; 32])
-        .unwrap()
-        .to_pkcs8v1()
-        .unwrap();
-    same_rejection(
-        ours::signature::PqdsaKeyPair::from_pkcs8(
-            &ours::signature::ML_DSA_65_SIGNING,
-            ed25519.as_ref(),
-        ),
-        theirs::signature::PqdsaKeyPair::from_pkcs8(
-            &theirs::signature::ML_DSA_65_SIGNING,
-            ed25519.as_ref(),
-        ),
-    );
+    let ed25519 = theirs::signature::Ed25519KeyPair::from_seed_unchecked(&[3; 32]).unwrap();
+    for doc in [ed25519.to_pkcs8v1().unwrap(), ed25519.to_pkcs8().unwrap()] {
+        same_rejection(
+            ours::signature::PqdsaKeyPair::from_pkcs8(
+                &ours::signature::ML_DSA_65_SIGNING,
+                doc.as_ref(),
+            ),
+            theirs::signature::PqdsaKeyPair::from_pkcs8(
+                &theirs::signature::ML_DSA_65_SIGNING,
+                doc.as_ref(),
+            ),
+        );
+    }
 }
 
 /// Signatures that are not a parameter set's encoding, checked both before
@@ -983,9 +982,9 @@ fn ml_dsa_to_pkcs8_alias() {
 /// wrong-length public keys, SPKIs, and signatures, another parameter set's
 /// keys and signatures, and a PKCS#8 v2 whose public key does not match.
 ///
-/// Two refusals are rind's own, as the README lists: an SPKI with a byte
-/// after it, and a PKCS#8 v2 key whose public key does not match, both of
-/// which aws-lc-rs accepts.
+/// Two refusals are rind's own, as the README lists: an SPKI or a PKCS#8
+/// document with a byte after it, and a PKCS#8 v2 key whose public key does
+/// not match, all of which aws-lc-rs accepts.
 #[test]
 fn ml_dsa_malformed() {
     use theirs::encoding::AsDer as _;
@@ -1142,6 +1141,73 @@ fn ml_dsa_malformed() {
             }
         }
     }
+
+    // An Ed25519 OID whose key is one byte short, an unknown OID, and a
+    // truncated ML-DSA OID. aws-lc-rs has not parsed a key, so these are
+    // `InvalidEncoding`, not `WrongAlgorithm`.
+    let oid_key = |oid: &[u8], private_key: &[u8]| {
+        der(
+            0x30,
+            &[
+                der(0x02, &[0]),
+                der(0x30, &der(0x06, oid)),
+                der(0x04, private_key),
+            ]
+            .concat(),
+        )
+    };
+    let ed25519_oid = [0x2b, 0x65, 0x70];
+    let mldsa_oid_prefix = [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03];
+    for pkcs8 in [
+        oid_key(&ed25519_oid, &der(0x04, &[0; 31])),
+        oid_key(
+            &[&mldsa_oid_prefix[..], &[0x7f]].concat(),
+            &der(0x04, &[0; 32]),
+        ),
+        oid_key(&mldsa_oid_prefix, &der(0x04, &[0; 32])),
+    ] {
+        same_rejection(
+            ours::signature::PqdsaKeyPair::from_pkcs8(&ours::signature::ML_DSA_44_SIGNING, &pkcs8),
+            theirs::signature::PqdsaKeyPair::from_pkcs8(
+                &theirs::signature::ML_DSA_44_SIGNING,
+                &pkcs8,
+            ),
+        );
+    }
+
+    // A byte after a complete document. aws-lc-rs ignores it.
+    let (_, _, _, pkcs8_44, _) = &keys[0];
+    let trailed = [pkcs8_44.as_slice(), &[0]].concat();
+    assert_eq!(
+        (
+            ours::signature::PqdsaKeyPair::from_pkcs8(
+                &ours::signature::ML_DSA_44_SIGNING,
+                &trailed
+            )
+            .is_ok(),
+            theirs::signature::PqdsaKeyPair::from_pkcs8(
+                &theirs::signature::ML_DSA_44_SIGNING,
+                &trailed
+            )
+            .is_ok(),
+        ),
+        (false, true)
+    );
+    // The same trailing byte on ML-DSA-65, loaded as ML-DSA-44. aws-lc-rs
+    // still parses the key and then refuses the size. rind refuses the
+    // trailing byte first.
+    let (_, _, _, pkcs8_65, _) = &keys[1];
+    let trailed = [pkcs8_65.as_slice(), &[0]].concat();
+    let ours =
+        ours::signature::PqdsaKeyPair::from_pkcs8(&ours::signature::ML_DSA_44_SIGNING, &trailed)
+            .unwrap_err();
+    let theirs = theirs::signature::PqdsaKeyPair::from_pkcs8(
+        &theirs::signature::ML_DSA_44_SIGNING,
+        &trailed,
+    )
+    .unwrap_err();
+    assert_eq!(ours.description_(), "InvalidEncoding");
+    assert_eq!(theirs.description_(), "Unspecified");
 }
 
 /// A seed-form PKCS#8 v1 document with its 32-byte seed cut to 31.

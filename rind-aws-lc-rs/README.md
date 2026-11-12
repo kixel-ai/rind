@@ -50,6 +50,7 @@ These items are left out, so code using them fails to build:
 - `VerificationAlgorithm::verify_digest_sig` and `verify_digest` fail for RSA, as they do for Ed25519 and ML-DSA: rind verifies RSA only over a message it hashes itself, and pure ML-DSA has no digest verification.
 - An Ed25519 public key of small order verifies no signature, and a PKCS#8 v2 Ed25519 or ML-DSA key whose public key does not match is refused.
 - An ML-DSA `SubjectPublicKeyInfo` followed by more bytes is refused.
+- An ML-DSA PKCS#8 document followed by more bytes is refused.
 - ECDSA and ECDH public keys in the X9.62 hybrid form are refused.
 - An RSA public key, from `rsa::PublicKey::from_der` or elsewhere, must have a modulus of 1024 to 8192 bits, the range rind verifies with.
 - An RSA-OAEP private key is bound to one algorithm in rind, so a `rsa::PrivateDecryptingKey` loads the key again the first time it decrypts with each other algorithm, and keeps it.

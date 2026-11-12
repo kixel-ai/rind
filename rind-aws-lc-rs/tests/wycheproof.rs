@@ -76,10 +76,22 @@ fn hkdf() {
 /// Empty-context ML-DSA verification, the only form the adapter signs.
 #[test]
 fn ml_dsa_verify() {
-    for (file, algorithm) in [
-        ("mldsa_44_verify_test.json", &signature::ML_DSA_44),
-        ("mldsa_65_verify_test.json", &signature::ML_DSA_65),
-        ("mldsa_87_verify_test.json", &signature::ML_DSA_87),
+    for (file, algorithm, theirs_algorithm) in [
+        (
+            "mldsa_44_verify_test.json",
+            &signature::ML_DSA_44,
+            &aws_lc_rs::signature::ML_DSA_44,
+        ),
+        (
+            "mldsa_65_verify_test.json",
+            &signature::ML_DSA_65,
+            &aws_lc_rs::signature::ML_DSA_65,
+        ),
+        (
+            "mldsa_87_verify_test.json",
+            &signature::ML_DSA_87,
+            &aws_lc_rs::signature::ML_DSA_87,
+        ),
     ] {
         let data = File::open(format!(
             "{}/../thirdparty/wycheproof/testvectors_v1/{file}",
@@ -100,14 +112,32 @@ fn ml_dsa_verify() {
                     Ok(key) => key.verify_sig(&test.msg, &test.sig).is_ok(),
                     Err(_) => false,
                 };
-                match (test.result.as_str(), unparsed, parsed) {
-                    ("valid", true, true) => {}
-                    ("invalid", false, false) => {}
-                    ("acceptable", _, _) => {}
-                    (expected, unparsed, parsed) => panic!(
-                        "{file} {}: expected {expected}, unparsed {unparsed}, parsed {parsed}",
-                        test.id
-                    ),
+                match test.result.as_str() {
+                    "valid" => assert!(unparsed && parsed, "{file} {}", test.id),
+                    "invalid" => assert!(!unparsed && !parsed, "{file} {}", test.id),
+                    // Wycheproof allows either verdict. Match aws-lc-rs's.
+                    "acceptable" => {
+                        let theirs_unparsed = aws_lc_rs::signature::UnparsedPublicKey::new(
+                            theirs_algorithm,
+                            &group.public_key,
+                        )
+                        .verify(&test.msg, &test.sig)
+                        .is_ok();
+                        let theirs_parsed = match aws_lc_rs::signature::ParsedPublicKey::new(
+                            theirs_algorithm,
+                            &group.public_key,
+                        ) {
+                            Ok(key) => key.verify_sig(&test.msg, &test.sig).is_ok(),
+                            Err(_) => false,
+                        };
+                        assert_eq!(
+                            (unparsed, parsed),
+                            (theirs_unparsed, theirs_parsed),
+                            "{file} {}",
+                            test.id
+                        );
+                    }
+                    expected => panic!("{file} {}: unexpected result {expected}", test.id),
                 }
                 count += 1;
             }

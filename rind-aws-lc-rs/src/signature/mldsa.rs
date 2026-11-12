@@ -337,8 +337,17 @@ impl PqdsaKeyPair {
                 Ok(_) => Err(KeyRejected::unspecified()),
                 Err(err) => Err(KeyRejected::rind(err)),
             },
-            // Another algorithm altogether.
-            Some(None) => Err(KeyRejected::wrong_algorithm()),
+            // Another algorithm. aws-lc-rs says `WrongAlgorithm` only after
+            // `EVP_parse_private_key` succeeds on a non-ML-DSA key. An unknown
+            // or truncated OID, or a known OID whose key does not parse, is
+            // `InvalidEncoding`.
+            Some(None) => {
+                if parses_as_other_private_key(pkcs8) {
+                    Err(KeyRejected::wrong_algorithm())
+                } else {
+                    Err(KeyRejected::invalid_encoding())
+                }
+            }
             // This parameter set, or a document whose header does not parse,
             // which rind refuses with its own reason.
             Some(Some(_)) | None => Key::from_pkcs8(algorithm.id(), pkcs8)
@@ -467,6 +476,41 @@ impl AsDer<Pkcs8V1Der<'static>> for PqdsaPrivateKey<'_> {
 impl fmt::Debug for PqdsaPrivateKey<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "PqdsaPrivateKey({:?})", self.0.algorithm.0.id())
+    }
+}
+
+/// Whether `pkcs8` is a private key of a type aws-lc-rs parses that is not
+/// ML-DSA. The OID is public; only the parser for that OID runs, and only a
+/// successful parse is `WrongAlgorithm`.
+fn parses_as_other_private_key(pkcs8: &[u8]) -> bool {
+    let Some(oid) = der::pkcs8_algorithm(pkcs8) else {
+        return false;
+    };
+    match oid {
+        // RFC 8410 Ed25519.
+        [0x2b, 0x65, 0x70] => rind::signature::Ed25519KeyPair::from_pkcs8(pkcs8).is_ok(),
+        // RFC 8410 X25519.
+        [0x2b, 0x65, 0x6e] => {
+            rind::agreement::PrivateKey::from_pkcs8(&rind::agreement::X25519, pkcs8).is_ok()
+        }
+        // RFC 5480 `id-ecPublicKey`. The curve is in the parameters.
+        [0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01] => {
+            use rind::signature::sign::{
+                ECDSA_P256_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, ECDSA_P521_SHA512_ASN1,
+            };
+            [
+                &ECDSA_P256_SHA256_ASN1,
+                &ECDSA_P384_SHA384_ASN1,
+                &ECDSA_P521_SHA512_ASN1,
+            ]
+            .into_iter()
+            .any(|algorithm| rind::signature::EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).is_ok())
+        }
+        // RFC 8017 `rsaEncryption`.
+        [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01] => {
+            rind::signature::RsaKeyPair::from_pkcs8(pkcs8).is_ok()
+        }
+        _ => false,
     }
 }
 
