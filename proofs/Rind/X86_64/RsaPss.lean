@@ -680,4 +680,254 @@ theorem verify_pss_sig_spec (hs : HashSpec inst H B L max Abs CAbs) (hnew : inst
 
 end
 
+/-! ## RSASSA-PSS -/
+
+/-- RSASSA-PSS-VERIFY with a salt of `sLen` octets or, for `none`, of any
+length. -/
+def RsassaPss (n e : Nat) (H : List Byte → List Byte) (hLen : Nat) (M S : List Byte) :
+    Option Nat → Prop
+  | some s => rsassaPssVerify n e H hLen M S s
+  | none => ∃ s, rsassaPssVerify n e H hLen M S s
+
+/-- The salt length a `PssSalt` names, for an `emLen`-octet encoded message
+and an `hLen`-octet hash. -/
+def pssSaltLen (emLen hLen : Nat) : high.rsa.PssSalt → Nat
+  | .Hash => hLen
+  | .Max => emLen - (hLen + 2)
+  | .Len l => l.val
+
+theorem rsassaPss_some (n e : Nat) (H : List Byte → List Byte) (hLen : Nat) (M S : List Byte)
+    (o : Option Nat) (h : RsassaPss n e H hLen M S o) : ∃ s, rsassaPssVerify n e H hLen M S s := by
+  cases o with
+  | none => exact h
+  | some s => exact ⟨s, h⟩
+
+/-- RSASSA-PSS-VERIFY of a signature of the right length below the modulus:
+whether its representative's encoding passes EMSA-PSS-VERIFY. -/
+theorem rsassaPss_iff (N e : Nat) (H : List Byte → List Byte) (L : Nat) (M : List Byte) (sig : List U8)
+    (hlen : sig.length = octetLen N) (hCN : beNat sig < N) (em : List U8)
+    (hem : em.length = (N.size - 1 + 7) / 8) (hemv : beNat em = beNat sig ^ e % N) (o : Option Nat) :
+    RsassaPss N e H L M (bv sig) o ↔ PssAccepts H L M (bv em) (N.size - 1) o := by
+  have hi : i2osp (beNat sig ^ e % N) ((N.size - 1 + 7) / 8) = some (bv em) := by
+    rw [← hemv, ← hem, i2osp_beNat]
+  have hl : (bv sig).length = octetLen N := by rw [bv_length, hlen]
+  have h1 : ∀ s, rsassaPssVerify N e H L M (bv sig) s ↔ emsaPssVerify H L M (bv em) (N.size - 1) s := by
+    intro s
+    unfold rsassaPssVerify rsavp1
+    dsimp only
+    rw [os2ip_bv, ite_eq_left_of_eq_true _ _ (eq_true hCN)]
+    simp only [Option.some.injEq, exists_eq_left', hi, hl, true_and]
+  cases o with
+  | none => exact exists_congr h1
+  | some s => exact h1 s
+
+/-- A signature representative at or above the modulus verifies nothing. -/
+theorem rsassaPss_out_of_range (N e : Nat) (H : List Byte → List Byte) (L : Nat) (M : List Byte)
+    (sig : List U8) (hCN : N ≤ beNat sig) (o : Option Nat) : ¬ RsassaPss N e H L M (bv sig) o := by
+  intro h
+  obtain ⟨s, hv⟩ := rsassaPss_some _ _ _ _ _ _ _ h
+  unfold rsassaPssVerify rsavp1 at hv
+  rw [os2ip_bv, ite_eq_right_of_eq_false _ _ (eq_false (by omega))] at hv
+  simp at hv
+
+/-- Nor does one whose message representative is too long for `EM`. -/
+theorem rsassaPss_too_long (N e : Nat) (H : List Byte → List Byte) (L : Nat) (M : List Byte)
+    (sig : List U8) (hCN : beNat sig < N) (hbig : 256 ^ ((N.size - 1 + 7) / 8) ≤ beNat sig ^ e % N)
+    (o : Option Nat) : ¬ RsassaPss N e H L M (bv sig) o := by
+  intro h
+  obtain ⟨s, hv⟩ := rsassaPss_some _ _ _ _ _ _ _ h
+  unfold rsassaPssVerify rsavp1 at hv
+  rw [os2ip_bv, ite_eq_left_of_eq_true _ _ (eq_true hCN)] at hv
+  unfold i2osp at hv
+  simp [show ¬ beNat sig ^ e % N < 256 ^ ((N.size - 1 + 7) / 8) by omega] at hv
+
+theorem rsassaPss_length (N e : Nat) (H : List Byte → List Byte) (L : Nat) (M S : List Byte)
+    (o : Option Nat) (h : RsassaPss N e H L M S o) : S.length = octetLen N := by
+  obtain ⟨s, hv⟩ := rsassaPss_some _ _ _ _ _ _ _ h
+  exact hv.1
+
+section
+variable {Self C S : Type} {inst : high.hash.Hash Self C S} {H : List Byte → List Byte}
+  {B L max : Nat} {Abs : List U8 → S → Prop} {CAbs : List U8 → C → Prop}
+
+/-- `_verify_pss` reads `salt` as the salt length it names. -/
+theorem pss_salt_len_spec (salt : Option high.rsa.PssSalt) (em : Slice U8) (d : high.digest.Digest)
+    (hd : outLen d.algorithm = L) (hL : L ≤ 64) (hem : em.length ≤ 1024) :
+    core.option.Option.map (high.rsa.VerifyingKey._verify_pss.closure_3.Insts.CoreOpsFunctionFnOnceTuplePssSaltUsize
+      inst) salt (em, d) ⦃ o => o.map (·.val) = salt.map (pssSaltLen em.length L) ∧
+        ∀ s, o = some s → s.val ≤ 65535 ⦄ := by
+  cases salt with
+  | none => simp [core.option.Option.map]
+  | some p =>
+    simp only [core.option.Option.map]
+    unfold high.rsa.VerifyingKey._verify_pss.closure_3.Insts.CoreOpsFunctionFnOnceTuplePssSaltUsize.call_once
+    apply WP.spec_bind (Pₘ := fun x : Usize => x.val = pssSaltLen em.length L p ∧ x.val ≤ 65535)
+    · step with digest_as_ref_spec d as ⟨s, hsl, _⟩
+      unfold high.rsa.PssSalt.len
+      cases p with
+      | Hash =>
+        simp only [WP.spec_ok, pssSaltLen]
+        refine ⟨?_, ?_⟩
+        · show s.len.val = L; rw [← hd, ← hsl]; rfl
+        · show s.length ≤ 65535; omega
+      | Max =>
+        step as ⟨i, hi⟩
+        simp only [pssSaltLen]
+        refine ⟨?_, ?_⟩
+        · rw [usize_saturating_sub_val, hi]; show em.length - (s.length + 2) = _; rw [hsl, hd]
+        · rw [usize_saturating_sub_val]; show em.length - _ ≤ _; omega
+      | Len l =>
+        simp only [core.convert.IntoFrom.into, WP.spec_ok, pssSaltLen,
+          core.convert.num.FromUsizeU16.from_val_eq]
+        exact ⟨trivial, by scalar_tac⟩
+    · rintro x ⟨hx, hx'⟩
+      simp only [WP.spec_ok, Option.map_some, hx, Option.some.injEq, true_and]
+      rintro _ rfl
+      exact hx'
+
+/-- RSASSA-PSS-VERIFY over a hash meeting `HashSpec`: `_verify_pss` accepts
+exactly the signatures RFC 8017 does, with the salt length `salt` names or,
+for `None`, with any. -/
+theorem verify_pss_core_spec (hs : HashSpec inst H B L max Abs CAbs) (hnew : inst.new ⦃ c => CAbs [] c ⦄)
+    (hL : 0 < L) (hmax : 2048 ≤ max) (hheld : low.entry.Entry.assert_held = ok ())
+    (key : high.rsa.VerifyingKey) (hinv : PubKeyInv key) (hP : MontProducts key.n.used.val)
+    (salt : Option high.rsa.PssSalt) (signature message : Slice U8) (hm : message.length ≤ max) :
+    high.rsa.VerifyingKey._verify_pss inst key salt signature message ⦃ r =>
+      r = .Ok () ↔ RsassaPss (wordsNat (lowWords key.n key.n.used)) key.e.val H L (bv message.val)
+        (bv signature.val)
+        (salt.map (pssSaltLen (((wordsNat (lowWords key.n key.n.used)).size - 1 + 7) / 8) L)) ⦄ := by
+  have hinv' := hinv
+  obtain ⟨hk2, hk, hodd, hn0, hmont, he, he3, hs1, hs2⟩ := hinv'
+  have hL64 : L ≤ 64 := hs.out.2.1
+  unfold high.rsa.VerifyingKey._verify_pss
+  step with hs.hash_spec message hm as ⟨d, hdl, hdv⟩
+  step with modulus_len_bytes_spec key hinv as ⟨k, hkv⟩
+  have hk128 : 128 ≤ k.val := by rw [hkv, octetLen]; omega
+  have hk1024 : k.val ≤ 1024 := by rw [hkv, octetLen]; omega
+  have hsL : signature.length = signature.val.length := rfl
+  split
+  · rename_i hne
+    simp only [WP.spec_ok, reduceCtorEq, false_iff]
+    intro h
+    have hl := rsassaPss_length _ _ _ _ _ _ _ h
+    rw [bv_length] at hl
+    have : signature.len = k := by
+      rw [UScalar.eq_equiv, hkv, ← hl]; rfl
+    simp [this] at hne
+  · rename_i heq
+    have hlen : signature.length = k.val := by simpa [UScalar.eq_equiv] using heq
+    step with from_bytes_spec signature (by omega) as ⟨r, c, hr, hcu, hcz, hcv⟩
+    subst hr
+    simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
+    have hC : wordsNat (lowWords c c.used) = beNat signature.val := hcv
+    step with public_op_spec key hinv hP c hcu hcz as ⟨r2, hr2⟩
+    cases r2 with
+    | Err e =>
+      simp only at hr2
+      rw [hC] at hr2
+      simp [high.rsa.VerifyingKey._verify_pss.closure_1.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
+        core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+        core.convert.FromSame.from]
+      exact rsassaPss_out_of_range _ _ _ _ _ _ hr2 _
+    | Ok m =>
+      obtain ⟨hCN, hmu, hmv⟩ := hr2
+      rw [hC] at hCN hmv
+      unfold mid.rsa_pub.RsaPublicKey.modulus_len_bits
+      step with len_bits_spec key.n hk as ⟨b, hb⟩
+      step as ⟨em_bits, hemb⟩
+      have hemb' : em_bits.val = (wordsNat (lowWords key.n key.n.used)).size - 1 := by rw [hemb, hb]
+      unfold core.num.Usize.div_ceil
+      simp only [show ¬ (8#usize).val = 0 by decide, _root_.dite_false, bind_ok]
+      step as ⟨em1, _b, hem1, hem1l, _⟩
+      have hemL : em1.length = ((wordsNat (lowWords key.n key.n.used)).size - 1 + 7) / 8 := by
+        rw [hem1l, hemb']; omega
+      step with i2osp_spec m em1 (by rw [hmu]; exact hk) as ⟨r4, em2, hi, hi'⟩
+      rw [hmu, hmv] at hi hi'
+      by_cases hX : beNat signature.val ^ key.e.val % wordsNat (lowWords key.n key.n.used) < 256 ^ em1.length
+      · obtain ⟨rfl, hem2l, hem2v⟩ := hi hX
+        step with pss_salt_len_spec salt em2 d hdl hL64 (by omega) as ⟨so, hso, hsob⟩
+        step with digest_as_ref_spec d as ⟨sh, hshl, hshv⟩
+        apply WP.spec_bind (verify_pss_sig_spec hs hnew hL hmax hheld em2 em_bits (by omega) (by omega) sh
+          (bv message.val) (by rw [hshv, hdv]) so hsob)
+        rintro ⟨r6, x⟩ hr6
+        simp only [WP.uncurry'_pair] at hr6
+        refine (WP.spec_ok r6).mpr ?_
+        rw [hr6, rsassaPss_iff _ _ H L _ signature.val (by rw [← hsL, hlen, hkv]) hCN em2.val
+          (by rw [← Slice.length, hem2l, hemL]) hem2v, hso, hem2l, hemL, hemb']
+      · have := hi' (Nat.le_of_not_lt hX)
+        rw [hemL] at hX
+        subst this
+        simp [high.rsa.VerifyingKey._verify_pss.closure_2.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
+          core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+          core.convert.FromSame.from]
+        exact rsassaPss_too_long _ _ _ _ _ _ hCN (by omega) _
+
+end
+
+/-! ## Over each hash -/
+
+theorem maxInput_ge : 2048 ≤ maxInput := by unfold maxInput; scalar_tac
+
+theorem sha256_ctx_new_spec :
+    high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.new ⦃ c => Sha256Ctx [] c ⦄ := by
+  unfold high.hash.Sha256.Insts.RindHighHashHashSha256ContextSha256State.new mid.sha2.Sha256Context.new
+  step with sha256_new_spec as ⟨s, hs⟩
+  step with sha256_resume_spec [] s hs as ⟨c, hc⟩
+  exact hc
+
+theorem sha384_ctx_new_spec :
+    high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.new ⦃ c =>
+      Hashed sha384Iv c.inner [] ⦄ := by
+  simp only [high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.new,
+    mid.sha2.Sha384Context.new, mid.sha2.Sha384Context.resume]
+  step with sha384_initial_spec as ⟨st, hh, hn⟩
+  step with resume_spec _ st hh hn as ⟨c, hc⟩
+  simpa using hc
+
+theorem sha512_ctx_new_spec :
+    high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.new ⦃ c => Hashed sha512Iv c [] ⦄ := by
+  simp only [high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.new, mid.sha2.Sha512Context.new]
+  step with sha512_initial_spec as ⟨st, hh, hn⟩
+  step with resume_spec _ st hh hn as ⟨c, hc⟩
+  simpa using hc
+
+/-- RSASSA-PSS-VERIFY with SHA-256 and MGF1 with SHA-256. -/
+theorem verify_pss_sha256_spec (h : Runs) (hb : Sha256Blocks) (key : high.rsa.VerifyingKey)
+    (hinv : PubKeyInv key) (hP : MontProducts key.n.used.val) (salt : Option high.rsa.PssSalt)
+    (signature message : Slice U8) (hm : message.length ≤ maxInput) :
+    high.rsa.VerifyingKey.verify_pss_sha256 key salt signature message ⦃ r =>
+      r = .Ok () ↔ RsassaPss (wordsNat (lowWords key.n key.n.used)) key.e.val sha256.hash 32
+        (bv message.val) (bv signature.val)
+        (salt.map (pssSaltLen (((wordsNat (lowWords key.n key.n.used)).size - 1 + 7) / 8) 32)) ⦄ := by
+  unfold high.rsa.VerifyingKey.verify_pss_sha256
+  step with new_public_spec h
+  exact verify_pss_core_spec (sha256_hashSpec hb) sha256_ctx_new_spec (by decide) maxInput_ge hb.held key
+    hinv hP salt signature message hm
+
+/-- RSASSA-PSS-VERIFY with SHA-384 and MGF1 with SHA-384. -/
+theorem verify_pss_sha384_spec (h : Runs) (hs : RunsSha512) (key : high.rsa.VerifyingKey)
+    (hinv : PubKeyInv key) (hP : MontProducts key.n.used.val) (salt : Option high.rsa.PssSalt)
+    (signature message : Slice U8) (hm : message.length ≤ maxInput) :
+    high.rsa.VerifyingKey.verify_pss_sha384 key salt signature message ⦃ r =>
+      r = .Ok () ↔ RsassaPss (wordsNat (lowWords key.n key.n.used)) key.e.val sha384Bytes 48
+        (bv message.val) (bv signature.val)
+        (salt.map (pssSaltLen (((wordsNat (lowWords key.n key.n.used)).size - 1 + 7) / 8) 48)) ⦄ := by
+  unfold high.rsa.VerifyingKey.verify_pss_sha384
+  step with new_public_spec h
+  exact verify_pss_core_spec (sha384_hashSpec hs) sha384_ctx_new_spec (by decide) maxInput_ge hs.2.1 key
+    hinv hP salt signature message hm
+
+/-- RSASSA-PSS-VERIFY with SHA-512 and MGF1 with SHA-512. -/
+theorem verify_pss_sha512_spec (h : Runs) (hs : RunsSha512) (key : high.rsa.VerifyingKey)
+    (hinv : PubKeyInv key) (hP : MontProducts key.n.used.val) (salt : Option high.rsa.PssSalt)
+    (signature message : Slice U8) (hm : message.length ≤ maxInput) :
+    high.rsa.VerifyingKey.verify_pss_sha512 key salt signature message ⦃ r =>
+      r = .Ok () ↔ RsassaPss (wordsNat (lowWords key.n key.n.used)) key.e.val sha512Bytes 64
+        (bv message.val) (bv signature.val)
+        (salt.map (pssSaltLen (((wordsNat (lowWords key.n key.n.used)).size - 1 + 7) / 8) 64)) ⦄ := by
+  unfold high.rsa.VerifyingKey.verify_pss_sha512
+  step with new_public_spec h
+  exact verify_pss_core_spec (sha512_hashSpec hs) sha512_ctx_new_spec (by decide) maxInput_ge hs.2.1 key
+    hinv hP salt signature message hm
+
 end rind.x86_64
