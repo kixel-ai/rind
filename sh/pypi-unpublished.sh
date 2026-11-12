@@ -43,7 +43,7 @@ case "$package" in
         # release-plz to release a pyrind its requirement takes, rather than
         # fail every push to main until then. One past pyrind still builds,
         # so that install fails loudly without stopping pyrind's own release.
-        pin=$(sh/python.sh pin "$pyrind")
+        pin=$(python3 rind-python/cryptography/pin.py "$pyrind")
         if [ "$pin" = below ] || [ "$tagged" != 0 ]; then
             exit 0
         fi
