@@ -392,9 +392,11 @@ items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
     'pub static ECDH_P256:' 'pub static ECDH_P384:' 'pub static ECDH_P521:' 'pub struct PrivateKey {' \
     'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {' >"$out/agreement.rs"
 items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {' >"$out/zeroise.rs"
-items rind/src/aead/quic.rs 'pub struct Algorithm ' 'impl Algorithm {' 'pub static CHACHA20:' \
-    'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' 'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
-check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic.rs"
+items rind/src/aead/quic.rs 'pub struct Algorithm ' 'impl Algorithm {' 'pub static AES_128:' \
+    'pub static AES_256:' 'pub static CHACHA20:' 'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' \
+    'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
+items rind/src/cipher.rs 'pub static AES_128:' 'pub static AES_256:' >"$out/cipher.rs"
+check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic.rs" "$out/cipher.rs"
 p256_items() {
     items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn'
     items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
@@ -432,7 +434,6 @@ check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' '
     'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \
     'pub struct Nonce(' 'impl Nonce {' 'pub struct Tag(' 'impl AsRef<[u8]> for Tag {'
 gcm_items() {
-    items rind/src/cipher.rs 'pub struct Algorithm {' 'pub static AES_128:' 'pub static AES_192:' 'pub static AES_256:'
     items rind/src/aead/gcm.rs 'pub enum TagLength {' 'impl TagLength {' "pub struct Iv<'a>(&'a [u8]);" \
         'pub struct Key {' 'impl Key {' 'pub struct Tag {' 'impl AsRef<[u8]> for Tag {'
 }
@@ -508,7 +509,9 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # are translated. The other curves' functions are opaque; their types are
 # kept, since the agreement enums hold them. Then ChaCha20 header protection
 # from its `Mask` impl down to HACL*'s rounds, which are Rust and translated
-# too; AES's key and block cipher are opaque. Then Ed25519 from
+# too, and AES's from `cipher::Aes`, translated on x86_64 down to the AES-NI
+# key expansion and block cipher `AesNi.lean` models, and opaque on aarch64.
+# Then Ed25519 from
 # `high::signature`'s key pair and `high::ed25519` down to s2n-bignum's
 # routines and the SHA-512 context.
 #
@@ -555,6 +558,8 @@ extract() {
         --start-from crate::aead::quic::HeaderProtectionKey \
         --start-from crate::aead::quic::AlgorithmId \
         --start-from crate::mid::chacha20::ChaCha20::new \
+        --start-from crate::mid::aes::Aes::new \
+        --start-from crate::mid::aes::Aes::encrypt_block \
         --start-from 'crate::high::hmac::HmacKey::_' \
         --start-from 'crate::high::hmac::Hmac::_' \
         --start-from crate::low::generic::ct_equal::ct_equal \
@@ -693,9 +698,7 @@ extract x86_64 X86_64 \
     --opaque crate::aead::Ops \
     --start-from '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}' \
     --opaque '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}::_' \
-    --include crate::mid::aes::expand_key \
-    --include crate::mid::aes::check_gcm_lengths \
-    --include crate::mid::aes::check_counter \
+    --include 'crate::mid::aes::_' \
     --include crate::low::x86_64::aes \
     --opaque crate::low::x86_64::aes::aes128_expand \
     --opaque crate::low::x86_64::aes::aes192_expand \

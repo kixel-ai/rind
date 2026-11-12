@@ -71,8 +71,8 @@ Not timed on `nixos`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify
 | XChaCha20-Poly1305 seal, 32 B | 243 ns | 267 ns | - | 1.36 µs | 357 ns | 351 ns | - |
 | XChaCha20-Poly1305 seal, 1350 B | 775 ns | 723 ns | - | 2.18 µs | 1.31 µs | 2.70 µs | - |
 | XChaCha20-Poly1305 seal, 16 KB | 5.23 µs | 5.37 µs | - | 11.38 µs | 10.80 µs | 28.66 µs | - |
-| AES-128 header protection | 4 ns | 6 ns | 7 ns | - | - | - | - |
-| AES-256 header protection | 6 ns | 8 ns | 10 ns | - | - | - | - |
+| AES-128 header protection | 4 ns ✓ | 6 ns | 7 ns | - | - | - | - |
+| AES-256 header protection | 6 ns ✓ | 8 ns | 10 ns | - | - | - | - |
 | ChaCha20 header protection | 61 ns ✓ | 82 ns | 74 ns | - | - | - | - |
 | X25519 | 23.97 µs ✓ | 24.61 µs | 46.72 µs | 52.09 µs | 23.94 µs | 64.60 µs ✓ | 49.70 µs |
 | P-256 ECDH | 42.82 µs | 42.60 µs | 46.05 µs | 268.62 µs | 47.87 µs | 268.70 µs ✓ | 71.25 µs |
@@ -152,8 +152,8 @@ Not timed on `desktop`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 veri
 | XChaCha20-Poly1305 seal, 32 B | 186 ns | 199 ns | - | 1.15 µs | 255 ns | 244 ns | - |
 | XChaCha20-Poly1305 seal, 1350 B | 529 ns | 539 ns | - | 1.73 µs | 974 ns | 1.83 µs | - |
 | XChaCha20-Poly1305 seal, 16 KB | 4.17 µs | 4.23 µs | - | 8.15 µs | 8.40 µs | 19.61 µs | - |
-| AES-128 header protection | 2 ns | 3 ns | 3 ns | - | - | - | - |
-| AES-256 header protection | 2 ns | 5 ns | 5 ns | - | - | - | - |
+| AES-128 header protection | 2 ns ✓ | 3 ns | 3 ns | - | - | - | - |
+| AES-256 header protection | 2 ns ✓ | 5 ns | 5 ns | - | - | - | - |
 | ChaCha20 header protection | 53 ns ✓ | 68 ns | 60 ns | - | - | - | - |
 | X25519 | 18.20 µs ✓ | 19.24 µs | 35.63 µs | 36.06 µs | 18.09 µs | 42.68 µs ✓ | 33.95 µs |
 | P-256 ECDH | 29.52 µs | 31.77 µs | 33.64 µs | 121.30 µs | 33.67 µs | 171.68 µs ✓ | 52.92 µs |
@@ -233,8 +233,8 @@ Not timed on `nixos2`: ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verif
 | XChaCha20-Poly1305 seal, 32 B | 256 ns | 278 ns | - | 1.27 µs | 335 ns | 400 ns | - |
 | XChaCha20-Poly1305 seal, 1350 B | 804 ns | 831 ns | - | 2.20 µs | 1.32 µs | 3.16 µs | - |
 | XChaCha20-Poly1305 seal, 16 KB | 6.38 µs | 6.44 µs | - | 12.04 µs | 11.86 µs | 33.42 µs | - |
-| AES-128 header protection | 5 ns | 9 ns | 8 ns | - | - | - | - |
-| AES-256 header protection | 8 ns | 10 ns | 10 ns | - | - | - | - |
+| AES-128 header protection | 5 ns ✓ | 9 ns | 8 ns | - | - | - | - |
+| AES-256 header protection | 8 ns ✓ | 10 ns | 10 ns | - | - | - | - |
 | ChaCha20 header protection | 84 ns ✓ | 104 ns | 98 ns | - | - | - | - |
 | X25519 | 25.00 µs ✓ | 30.89 µs | 53.60 µs | 56.59 µs | 24.95 µs | 72.34 µs ✓ | 55.20 µs |
 | P-256 ECDH | 42.80 µs | 51.71 µs | 47.10 µs | 233.70 µs | 46.44 µs | 280.52 µs ✓ | 81.68 µs |
@@ -401,8 +401,8 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 | XChaCha20-Poly1305 seal, 32 B | 419 ns | 440 ns | - | 2.02 µs | 685 ns | - |
 | XChaCha20-Poly1305 seal, 1350 B | 1.34 µs | 1.37 µs | - | 3.59 µs | 5.18 µs | - |
 | XChaCha20-Poly1305 seal, 16 KB | 10.26 µs | 10.47 µs | - | 18.84 µs | 54.13 µs | - |
-| AES-128 header protection | 7 ns | 12 ns | 13 ns | - | - | - |
-| AES-256 header protection | 10 ns | 16 ns | 15 ns | - | - | - |
+| AES-128 header protection | 7 ns ✓ | 12 ns | 13 ns | - | - | - |
+| AES-256 header protection | 10 ns ✓ | 16 ns | 15 ns | - | - | - |
 | ChaCha20 header protection | 126 ns ✓ | 160 ns | 145 ns | - | - | - |
 | X25519 | 51.79 µs ✓ | 55.09 µs | 79.18 µs | 92.76 µs | 118.60 µs ✓ | 108.87 µs |
 | P-256 ECDH | 80.93 µs | 90.86 µs | 86.47 µs | 379.56 µs | 448.99 µs ✓ | 144.90 µs |
@@ -486,8 +486,8 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 | XChaCha20-Poly1305 seal, 32 B | 402 ns | 434 ns | - | 1.98 µs | 640 ns | - |
 | XChaCha20-Poly1305 seal, 1350 B | 1.26 µs | 1.29 µs | - | 3.40 µs | 4.82 µs | - |
 | XChaCha20-Poly1305 seal, 16 KB | 10.02 µs | 9.94 µs | - | 18.77 µs | 52.01 µs | - |
-| AES-128 header protection | 7 ns | 11 ns | 12 ns | - | - | - |
-| AES-256 header protection | 9 ns | 15 ns | 15 ns | - | - | - |
+| AES-128 header protection | 7 ns ✓ | 11 ns | 12 ns | - | - | - |
+| AES-256 header protection | 9 ns ✓ | 15 ns | 15 ns | - | - | - |
 | ChaCha20 header protection | 122 ns ✓ | 152 ns | 139 ns | - | - | - |
 | X25519 | 51.10 µs ✓ | 51.15 µs | 76.22 µs | 87.59 µs | 113.85 µs ✓ | 94.95 µs |
 | P-256 ECDH | 78.75 µs | 83.71 µs | 83.41 µs | 363.81 µs | 431.73 µs ✓ | 135.76 µs |
@@ -978,6 +978,7 @@ A ✓ means a published, machine-checked proof shows that all the code computing
 | rind | `sha256/*`, `hmac-sha256/*`, `hkdf-sha256/*` | aarch64 with aes, pmull, sha2 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of HKDF-Expand's loop over its info slices, which Aeneas cannot translate, of its digest, HMAC, and HKDF APIs' SHA-256, padding included, down to aws-lc's sha256_block_data_order_hw, which rind runs with the crypto extension, composed with rind's HOL Light proof of that routine, of the object code rind's build emits, against s2n-bignum's FIPS 180-4 spec from awslabs/s2n-bignum#415, unmerged, which rind pins at 79120e64 and proves FIPS 180-4's](https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/Sha256Hw.lean) |
 | rind | `quic-header-protection/chacha20` | x86_64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean) |
 | rind | `quic-header-protection/chacha20` | aarch64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean) |
+| rind | `quic-header-protection/aes128`, `quic-header-protection/aes256` | x86_64 with aes, pclmulqdq, ssse3, sse4.1 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its header-protection API's AES-128 and AES-256 against RFC 9001 and Vale's FIPS 197 spec](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/AesCipher.lean) |
 | rind | `aes128-gcm/*`, `aes128-gcm-open/*`, `aes256-gcm/*`, `aes256-gcm-open/*` | x86_64 with aes, pclmulqdq, ssse3, sse4.1, avx, movbe without vaes | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the AES-NI key expansion and block cipher's raw-pointer loads, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for AAD and messages under 2^32 bytes, down to HACL*'s Vale AES-GCM routines, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports](https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/AesGcm.lean) |
 | aws-lc-rs | `sha512/*` | x86_64 with intel, avx, ssse3 | [aws-lc-verification's SAW proof of SHA-512 through EVP_Digest, padding included, over sha512_block_data_order_avx, which aws-lc runs only on Intel; of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps](https://github.com/awslabs/aws-lc-verification/blob/797302470c1703cbb1a3a6fa98daffef0bfd3d80/SAW/proof/SHA512/verify-SHA512-x86.saw) |
 | libcrux | `sha256/*`, `sha512/*` | any architecture | [HACL*'s F* proof of Hacl.Streaming.SHA2's hash_256 and hash_512, compiled to Rust by an unverified step](https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/streaming/Hacl.Streaming.SHA2.fst) |
