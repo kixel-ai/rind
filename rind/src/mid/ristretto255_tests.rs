@@ -275,6 +275,15 @@ fn scalar_bounds() {
         Scalar::from_canonical_bytes(&order).unwrap().to_bytes(),
         order
     );
+
+    // Zero has no inverse, however it was reached.
+    assert!(
+        Scalar::from_canonical_bytes(&[0; 32])
+            .unwrap()
+            .invert()
+            .is_none()
+    );
+    assert!(Scalar::from_uniform_bytes(&[0; 64]).invert().is_none());
 }
 
 proptest! {
@@ -301,7 +310,8 @@ proptest! {
         prop_assert_eq!(pa.mul(&rs).to_bytes(), (da * ds).compress().to_bytes());
         prop_assert_eq!(Element::mul_base(&rs).to_bytes(), RistrettoPoint::mul_base(&ds).compress().to_bytes());
         prop_assert_eq!(rs.mul(&rs).to_bytes(), (ds * ds).to_bytes());
-        prop_assert_eq!(rs.invert().map(|i| i.to_bytes()), Some(ds.invert().to_bytes()));
+        let inverse = (ds != curve25519_dalek::Scalar::ZERO).then(|| ds.invert().to_bytes());
+        prop_assert_eq!(rs.invert().map(|i| i.to_bytes()), inverse);
 
         // An encoding of an element, and an arbitrary one, which dalek
         // mostly rejects.
