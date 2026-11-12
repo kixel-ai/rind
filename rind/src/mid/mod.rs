@@ -35,6 +35,7 @@ pub(super) mod rsa_pub;
 pub(super) mod sha1;
 pub(super) mod sha2;
 pub(super) mod sha3;
+pub(super) mod slhdsa;
 pub(super) mod util;
 pub(super) mod x25519;
 pub(super) mod xchacha20poly1305;

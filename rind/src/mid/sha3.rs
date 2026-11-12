@@ -369,6 +369,54 @@ impl<const R: usize> Shake4x<R> {
     }
 }
 
+/// SHAKE256 of each of `inputs`, one to four of equal length, four at once,
+/// writing the first `OUT` bytes of each, at most a block, to its item of
+/// `outputs`.
+pub(crate) fn shake256_x4<const OUT: usize>(inputs: &[&[u8]], outputs: &mut [[u8; OUT]]) {
+    const R: usize = SHAKE_256_R_BYTES;
+    const { assert!(OUT <= R) };
+    let lanes = inputs.len();
+    assert!((1..=4).contains(&lanes) && outputs.len() >= lanes);
+    let len = inputs[0].len();
+    debug_assert!(inputs.iter().all(|input| input.len() == len));
+    Entry::assert_held();
+
+    let mut states = [[0u64; 25]; 4];
+    let mut done = 0;
+    loop {
+        let take = Ord::min(R, len - done);
+        for (s, input) in states.iter_mut().zip(inputs) {
+            add_bytes(s, 0, &input[done..done + take]);
+        }
+        done += take;
+        // A block short of the rate, even an empty one, takes the padding.
+        let last = take < R;
+        if last {
+            for s in &mut states[..lanes] {
+                add_bytes(s, take, &[SHAKE_PAD_BYTE]);
+                s[R / 8 - 1] ^= 0x80 << 56;
+            }
+        }
+        // A short batch leaves stale states in the unused lanes, whose
+        // outputs are never read.
+        match lanes {
+            4 => sha3_keccak4_f1600(&mut states, &RC),
+            3 => sha3_keccak_nof4_f1600::<3>(&mut states, &RC),
+            2 => sha3_keccak_nof4_f1600::<2>(&mut states, &RC),
+            _ => sha3_keccak_nof4_f1600::<1>(&mut states, &RC),
+        }
+        if last {
+            break;
+        }
+    }
+
+    for (s, output) in states.iter().zip(outputs.iter_mut()) {
+        for (i, ch) in output.chunks_mut(8).enumerate() {
+            ch.copy_from_slice(&s[i].to_le_bytes()[..ch.len()]);
+        }
+    }
+}
+
 /// A sponge absorbing input, XORed into the state as it arrives, so it needs
 /// no buffer.
 #[derive(Clone)]
@@ -661,6 +709,25 @@ mod tests {
                 let mut single = [0u8; SHAKE_128_R_BYTES * 5];
                 Shake128::new(&[input]).read(&mut single);
                 assert_eq!(out[n], single, "{lanes} lanes");
+            }
+        }
+    }
+
+    #[test]
+    fn shake256_x4_matches_single() {
+        let _entry = Entry::new_secret();
+        let inputs: [[u8; 300]; 4] =
+            core::array::from_fn(|n| core::array::from_fn(|i| (i * 7 + n * 31) as u8));
+        for len in [0, 1, 135, 136, 137, 271, 272, 300] {
+            for lanes in 1..=4 {
+                let inputs: Vec<&[u8]> = inputs[..lanes].iter().map(|i| &i[..len]).collect();
+                let mut outputs = [[0u8; 40]; 4];
+                shake256_x4(&inputs, &mut outputs);
+                for (input, output) in inputs.iter().zip(&outputs) {
+                    let mut single = [0u8; 40];
+                    Shake256::new(&[input]).read(&mut single);
+                    assert_eq!(*output, single, "{len} bytes, {lanes} lanes");
+                }
             }
         }
     }
