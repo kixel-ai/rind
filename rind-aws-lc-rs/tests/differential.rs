@@ -295,11 +295,12 @@ proptest! {
     }
 
     // TLS 1.3 record keys, whose nonces must rise, and TLS 1.2's, whose
-    // explicit part must too.
+    // explicit part must too. A refused seal leaves its buffer as AWS-LC's does.
     #[test]
     fn tls_record_keys(
         tls13 in any::<bool>(),
         aes256 in any::<bool>(),
+        separate in any::<bool>(),
         key in vec(any::<u8>(), 32),
         start in any::<u64>(),
         steps in vec(0..3u64, 1..6),
@@ -322,16 +323,15 @@ proptest! {
                 counter = counter.wrapping_add(*step).wrapping_sub(1);
                 let mut nonce = [0x33u8; 12];
                 nonce[4..].copy_from_slice(&counter.to_be_bytes());
+                let nonce = c::aead::Nonce::assume_unique_for_key(nonce);
                 let mut in_out = msg.clone();
-                out.push(
-                    key.seal_in_place_append_tag(
-                        c::aead::Nonce::assume_unique_for_key(nonce),
-                        c::aead::Aad::empty(),
-                        &mut in_out,
-                    )
-                    .ok()
-                    .map(|()| in_out),
-                );
+                let sealed = match separate {
+                    true => key
+                        .seal_in_place_separate_tag(nonce, c::aead::Aad::empty(), &mut in_out)
+                        .map(|tag| in_out.extend_from_slice(tag.as_ref())),
+                    false => key.seal_in_place_append_tag(nonce, c::aead::Aad::empty(), &mut in_out),
+                };
+                out.push((sealed.is_ok(), in_out));
             }
             out
         });

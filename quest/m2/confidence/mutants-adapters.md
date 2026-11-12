@@ -13,4 +13,4 @@ The 103 mutants in the `rind-<consumer>` adapters that no test catches are kille
 ## Required
 
 - [Adapters offer exactly their upstream's API](/quest/m0/adapters/README.md) - the adapters' final code, so no test is written for a mutant its rewrite removes
-- [rind-aws-lc-rs passes aws-lc-rs's own test suite](/quest/m2/confidence/aws-lc-rs-upstream-tests.md) - upstream's tests kill rind-aws-lc-rs's mutants first, so none gets a hand-written test
+- [rind-aws-lc-rs runs aws-lc-rs's in-crate tests of its public API](/quest/m2/confidence/aws-lc-rs-unit-tests.md) - upstream's tests kill rind-aws-lc-rs's mutants first, so none gets a hand-written test
