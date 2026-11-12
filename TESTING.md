@@ -165,8 +165,7 @@ differential tests, `tests/crosschecks.rs` and `tests/cctv.rs` among them.
 
 ## Primitives
 
-A cell's "none" says why, or links the quest that fills it. Published vector
-sets rind does not run yet are [their own quest](/quest/m3/confidence/vectors.md).
+A cell's "none" says why, or links the quest that fills it.
 Verification and encryption under a public key handle no secret, so their
 constant-time and zeroing cells are empty by design. A row that marks a
 secret names a zeroing test, or says why it has none.
