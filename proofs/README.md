@@ -38,11 +38,18 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
   with its relocations and the read-only data they reach, here the round
   constants, which `admin/prove` extracts as an object file; the proof checks
   the constants against FIPS 180-4's.
-- `aarch64/bn_mul_mont.ml`, in progress: segment lemmas toward s2n-bignum's
-  `bignum_montmul` spec for the naked function `low::aarch64::mont::bn_mul_mont`,
-  aws-lc's Montgomery multiplication, which has no relocations. So far they
-  cover the width-generic path's first pass (`GEN_LOOP1`, `GEN_SKIP1`) and its
-  inner loop's body (`GEN_IN_BODY`). No axiom in `Rind/` restates them yet.
+- `aarch64/bn_mul_mont.ml`: `BN_MUL_MONT_GENERIC_SUBROUTINE_CORRECT`, rind's
+  proof that the naked function `low::aarch64::mont::bn_mul_mont`, aws-lc's
+  Montgomery multiplication, writes the Montgomery product
+  `x * y / 2^(64k) mod m` of its `k`-word operands, as s2n-bignum's
+  `bignum_montmul` states it, given `-m^-1 mod 2^64` and
+  `x * y <= 2^(64k) * m`, for every width from two up that is not a multiple
+  of four: those its width-generic path runs. The theorem covers the dispatch,
+  the stack frame of up to `8k + 72` bytes below the stack pointer, and the
+  callee-saved registers it restores. The widths that run `__bn_mul4x_mont`
+  and `__bn_sqr8x_mont`, which include every RSA modulus rind uses, are not
+  proven yet, and no axiom in `Rind/` restates the theorem yet. The function
+  has no relocations.
 - `x86_64/bn_mul_mont_nohw.ml`: `BN_MUL_MONT_NOHW_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::x86_64::mont::bn_mul_mont_nohw`,
   aws-lc's word-serial Montgomery multiplication, writes the Montgomery

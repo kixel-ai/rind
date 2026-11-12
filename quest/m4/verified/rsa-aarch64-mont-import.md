@@ -2,7 +2,7 @@
 
 ## Goal
 
-The HOL Light theorems for aarch64's `bn_mul_mont`, covering its generic path, `__bn_mul4x_mont`, and `__bn_sqr8x_mont`, enter `proofs/Rind/Aarch64/` as axioms under the composition rule, so RSA's Montgomery products on aarch64 need no hypothesis and RSA verification and signing earn the ✓ there once their glue is proven.
+The HOL Light theorems for aarch64's `bn_mul_mont`, covering its generic path (`BN_MUL_MONT_GENERIC_SUBROUTINE_CORRECT`, proven), `__bn_mul4x_mont`, and `__bn_sqr8x_mont`, enter `proofs/Rind/Aarch64/` as axioms under the composition rule, so RSA's Montgomery products on aarch64 need no hypothesis and RSA verification and signing earn the ✓ there once their glue is proven.
 
 ## Plan
 
@@ -11,6 +11,5 @@ The HOL Light theorems for aarch64's `bn_mul_mont`, covering its generic path, `
 
 ## Required
 
-- [Generic path](/quest/m4/verified/rsa-aarch64-mont.md) - its theorem for widths that are not a multiple of four
 - [4x routine](/quest/m4/verified/rsa-aarch64-mul4x.md) - its theorem for multiples of four
 - [8x squaring](/quest/m4/verified/rsa-aarch64-sqr8x.md) - its theorem for squaring at multiples of eight

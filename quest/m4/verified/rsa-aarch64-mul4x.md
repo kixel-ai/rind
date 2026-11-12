@@ -7,10 +7,7 @@ aws-lc's aarch64 `__bn_mul4x_mont`, which `bn_mul_mont` runs for widths that are
 ## Plan
 
 - Runs: the `__bn_mul4x_mont` part of `low/aarch64/aws_lc/bn_mul_mont.*.s` (aws-lc's `armv8-mont.pl`), about 380 instructions, entered from offset 0xc. It measured 1.15 to 2 times as fast as s2n-bignum's generic routines on a Neoverse-N2, and faster than its Karatsuba routines at RSA-2048's sizes, so switching fails the speed rule.
-- Route: extend `proofs/hol-light/aarch64/bn_mul_mont.ml` in s2n-bignum's aarch64 model, scalar instructions only, with the same statement as the generic path's top-level theorem for widths that are a multiple of four, reusing its carry lemmas (`PROD_BOUND`, `CARRY_ZERO_TAC`) and frame lemmas.
+- Route: extend `proofs/hol-light/aarch64/bn_mul_mont.ml` in s2n-bignum's aarch64 model, scalar instructions only, with the same statement as the generic path's `BN_MUL_MONT_GENERIC_SUBROUTINE_CORRECT` for widths that are a multiple of four, reusing its carry lemmas (`PROD_BOUND`, `CARRY_ZERO_TAC`), frame lemmas (`FRAME_TP`, `SUBFRAME`, `SUBFRAME_DISJ`), and composition tactics (`USE_ENSURES_TAC`, `REAL_EQS_TAC`, `GEN_BODY`'s shape for the loops). That theorem's proof is the template for the top level: `WORD_FORALL_OFFSET_TAC` by the frame-save size, the frame's subregions derived up front, the body as one `ARM_BIGSTEP_TAC`, and the frame's `MAYCHANGE` rewritten to offsets from the frame's base for `MONOTONE_MAYCHANGE_TAC`.
+- Simulator pitfalls the generic path hit: the nonoverlapping prover stalls on the flag facts the dispatch's `TST` leaves, so drop them before a big step; the code length must be a numeral (`fst BN_MUL_MONT_EXEC`) for the simulator's stack-store checks; and a lemma used through `ARM_BIGSTEP_TAC` must not state `aligned_bytes_loaded` in its postcondition.
 - Decided 2026-11-12 (maintainer, /quest-unblock): ✅ its own quest, after the generic path and before `__bn_sqr8x_mont` (rejected: one quest for all of `bn_mul_mont`). The theorem takes `n * n0 + 1 == 0 (mod 2^64)` as a hypothesis, matching `MontArgs` in `proofs/Rind/X86_64/RsaMont.lean`.
 - Upstream: offering this work to awslabs/s2n-bignum is optional, and there is no standing approval: stop and ask the maintainer before posting there or anywhere outside the moq-dev and kixelated orgs (decided with the maintainer on 2026-11-07 on [moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448)).
-
-## Required
-
-- [Generic path](/quest/m4/verified/rsa-aarch64-mont.md) - the lemmas, tactics, and top-level statement this extends
