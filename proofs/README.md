@@ -191,9 +191,10 @@ only this API: its other operations run assembly or Rust that other proofs
 are still to cover.
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
-pass, which no input affects. `Rind/Armv7/Runs.lean` states armv7's. `Rind/Aarch64/P256Table.lean` proves that
-rind's generator table holds the multiples of G that s2n-bignum's proof of
-`p256_scalarmulbase` assumes, so `p256_public_key` assumes nothing of it.
+pass, which no input affects. `Rind/Armv7/Runs.lean` states armv7's.
+`Rind/Aarch64/P256Table.lean` proves that rind's generator table holds the
+multiples of G that s2n-bignum's proof of `p256_scalarmulbase` assumes, so
+`p256_public_key` assumes nothing of it.
 `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
 SHA-1 and SHA-256's padding and finalization, and HMAC's keyed states over
