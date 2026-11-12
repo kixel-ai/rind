@@ -7,6 +7,7 @@ use core::ops::Range;
 use super::util;
 use crate::error::{Error, KeyFormatError};
 use crate::low;
+use crate::mid;
 use crate::mid::rng::{RandomSource, SystemRandom};
 
 pub(crate) mod hash_to_curve;
@@ -656,7 +657,7 @@ impl Affine {
     ///
     /// The mask is 0 or 1 and does not branch on the coordinates.
     pub(crate) fn identity_mask(self) -> u64 {
-        eq_mask(&self.0.xy[..4], &[0; 4]) & eq_mask(&self.0.xy[4..], &[0; 4])
+        u64::from(low::bignum_eq(&self.0.xy, &[0; 8]))
     }
 
     /// `other` when `select` is 1, and `self` when it is 0.
@@ -933,37 +934,18 @@ impl JacobianMontPoint {
     /// `self + p` for any Jacobian points, including infinity, equals, and
     /// opposites.
     ///
-    /// `p256_montjadd` is unspecified when the points are equal or opposite,
-    /// so those results are computed separately and selected with no branch
-    /// on the coordinates.
+    /// [`mid::hash_to_curve::sum`] covers equal and opposite finite points; a
+    /// point at infinity selects the other, with no branch on the coordinates.
     #[must_use]
     fn complete_add(&self, p: &Self) -> Self {
-        let mut sum = Self::infinity();
-        low::p256_montjadd(&mut sum.xyz, &self.xyz, &p.xyz);
-        let doubled = self.double();
-        let identity = Self::infinity();
-
-        let z1sq = self.z().mont_sqr();
-        let z2sq = p.z().mont_sqr();
-        let x1 = self.x().mont_mul(&z2sq);
-        let x2 = p.x().mont_mul(&z1sq);
-        let y1 = self.y().mont_mul(&z2sq).mont_mul(&p.z());
-        let y2 = p.y().mont_mul(&z1sq).mont_mul(&self.z());
-        let x_eq = eq_mask(&x1.0, &x2.0);
-        let y_eq = eq_mask(&y1.0, &y2.0);
-        let y_neg = eq_mask(&y1.add(&y2).0, &[0; 4]);
-        let z1_zero = eq_mask(&self.z().0, &[0; 4]);
-        let z2_zero = eq_mask(&p.z().0, &[0; 4]);
-        let finite = (z1_zero ^ 1) & (z2_zero ^ 1);
-        let use_double = x_eq & y_eq & finite;
-        let use_identity = x_eq & y_neg & finite & (use_double ^ 1);
-        let use_self = z2_zero & (z1_zero ^ 1);
-        let use_other = z1_zero;
-
-        let acc = mux_point(use_double, &doubled, &sum);
-        let acc = mux_point(use_identity, &identity, &acc);
-        let acc = mux_point(use_self, self, &acc);
-        mux_point(use_other, p, &acc)
+        let sum = hash_to_curve::jacobian(&mid::hash_to_curve::sum(
+            &hash_to_curve::coordinates(self),
+            &hash_to_curve::coordinates(p),
+        ));
+        let self_infinite = low::bignum_eq(&self.z().0, &[0; 4]);
+        let p_infinite = low::bignum_eq(&p.z().0, &[0; 4]);
+        let acc = mux_point(u64::from(p_infinite), self, &sum);
+        mux_point(u64::from(self_infinite), p, &acc)
     }
 
     /// Return p0 if select == 0, p1 otherwise
@@ -975,16 +957,6 @@ impl JacobianMontPoint {
         low::bignum_mux(select, &mut r.xyz[..], &p1.xyz[..], &p0.xyz[..]);
         r
     }
-}
-
-/// 1 when the limbs are equal, else 0. The comparison does not branch.
-fn eq_mask(a: &[u64], b: &[u64]) -> u64 {
-    let mut diff = 0u64;
-    for i in 0..a.len().max(b.len()) {
-        diff |= a.get(i).copied().unwrap_or(0) ^ b.get(i).copied().unwrap_or(0);
-    }
-    let diff = core::hint::black_box(diff);
-    ((diff | diff.wrapping_neg()) >> 63) ^ 1
 }
 
 fn mux_point(
