@@ -2,7 +2,7 @@
 
 ## Goal
 
-Every fuzz target also runs against the portable backend nightly, and a mutation campaign reaches every file only that backend compiles. Each mutant there that no test catches is killed by a test or recorded with its reason. [TESTING.md](/TESTING.md)'s portable row no longer says "none" for fuzzing.
+Every fuzz target also runs against the portable backend weekly, and a mutation campaign reaches every file only that backend compiles. Each mutant there that no test catches is killed by a test or recorded with its reason. [TESTING.md](/TESTING.md)'s portable row no longer says "none" for fuzzing.
 
 ## Plan
 
@@ -17,7 +17,7 @@ Guidance:
 - Force the backend on x86_64 with `--cfg rind_portable --cfg curve25519_dalek_backend="serial"`, as `sh/portable.sh:29` does, so neither check needs an emulator.
 - Fuzz it, don't only replay. The portable backend is Rust, so libFuzzer's coverage sees inside it, which it cannot in the assembly backends. Replay the native corpus too, since those inputs are free. Keep each target's corpus for this backend apart from the native one.
 - Mutation: give `admin/mutants` a portable campaign that skips the three assembly backends and has no feature rows, since the backend reads no CPU features. It may mutate the whole backend or only what armv7's campaign skips, whichever is simpler to keep right.
-- Both run nightly, in `fuzz.yml` and `mutants.yml`, not in `just ci`.
+- Both run weekly with the rest of `fuzz.yml` and `mutants.yml` ([the weekly quest](/quest/m0/ci-speed/weekly.md), [the mutants slim-down](/quest/m0/ci-speed/mutants-slim.md)), not in `just ci`. The slim-down drops the qemu armv7 campaign, so this portable campaign, forced on native x86_64, is what reaches the code armv7 shares with the portable backend.
 - Record survivors in `.cargo/mutants.toml` as the other campaigns do.
 
 ## Related
