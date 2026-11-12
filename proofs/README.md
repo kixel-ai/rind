@@ -304,6 +304,13 @@ assumes `RunsSha3`: rind's entry guard and CPU checks pass. ML-DSA's SHAKE
 readers are not translated, and x86_64's AVX-512 eight-way Keccak, which
 ML-KEM's sampler runs, has [its own quest](/quest/m4/verified/mlkem-avx512-sampler.md).
 
+The portable backend's Keccak-f, which its SHA-3, ML-KEM, and ML-DSA run, in
+`Rind/Portable/Keccak.lean`, over a translation of `low/portable/keccak.rs`
+under `--cfg rind_portable`: `keccak_f1600_spec`, `keccak4_f1600_spec`, and
+`keccak_nof4_f1600_spec` state what `Rind/<Arch>/KeccakDispatch.lean`'s do,
+given FIPS 202's round constants and nothing of the CPU. Each round is
+`keccak_round` written out, which `round_spec` proves by unfolding.
+
 Ed25519 on x86_64 and aarch64, from the signature API's `Ed25519KeyPair` and
 `PublicKey` to s2n-bignum's routines and the SHA-512 proof above, in
 `Rind/X86_64/Ed25519.lean`, which `admin/prove` also writes for aarch64:
@@ -435,8 +442,10 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
 - `Rind/SymCrypt/{Defs,Sha3}.lean`: SymCrypt's Lean FIPS 202 spec, vendored;
   `Rind/Keccak.lean`: s2n-bignum's Keccak spec, transliterated, and its proof
   that it is SymCrypt's; `Rind/Sha3.lean`: the sponge over bytes, and its
-  proof that it is SymCrypt's; `Rind/<Arch>/KeccakDispatch.lean`: rind's
-  Keccak-f dispatch on each target; `Rind/X86_64/Sha3.lean`: the SHA-3 and
+  proof that it is SymCrypt's; `Rind/KeccakStates.lean`: Keccak-f states as
+  lanes, shared by `Rind/<Arch>/KeccakDispatch.lean`: rind's Keccak-f dispatch
+  on each target, and `Rind/Portable/Keccak.lean`: the portable backend's
+  Keccak-f; `Rind/X86_64/Sha3.lean`: the SHA-3 and
   SHAKE proofs.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
