@@ -6,6 +6,9 @@
 //! Proving multiplies by the secret key and the nonce in constant time;
 //! try-and-increment (section 5.4.1.1) loops on the public key and the input,
 //! never on a secret.
+//!
+//! The SSWU and ELL2 suites are left out: no RFC 9381 consumer uses them, and
+//! Cardano's and Algorand's VRFs follow an incompatible pre-RFC draft.
 
 use core::fmt;
 
@@ -424,7 +427,7 @@ impl fmt::Debug for PublicKey {
 /// A proof of an output, which [`PublicKey::verify`] checks.
 #[derive(Clone)]
 pub struct Proof {
-    bytes: [u8; Proof::MAX_LEN],
+    bytes: [u8; Self::MAX_LEN],
     len: usize,
 }
 
@@ -448,7 +451,7 @@ impl fmt::Debug for Proof {
 /// same for every proof of one input.
 #[derive(Clone)]
 pub struct Output {
-    bytes: [u8; Output::MAX_LEN],
+    bytes: [u8; Self::MAX_LEN],
     len: usize,
 }
 
