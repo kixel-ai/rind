@@ -163,15 +163,19 @@ def vpermpd(ops, _):
 
 
 def vmovshdup(ops, _):
-    """Each odd 32-bit lane of `src`, into itself and the lane below."""
+    """Each odd 32-bit lane of `src`, into itself and the lane below. The
+    128-bit form zeroes the upper half of the `ymm` register, which BINSEC's
+    `xmm` names only the lower half of."""
     src, dst = ops
-    m = re.fullmatch(r"%([xy])mm\d+", src)
-    if not m or not re.fullmatch(r"%{}mm\d+".format(m[1]), dst):
+    m = re.fullmatch(r"%([xy])mm(\d+)", src)
+    d = re.fullmatch(r"%{}mm(\d+)".format(m[1]), dst) if m else None
+    if not d:
         return None
-    src, dst = src.lstrip("%"), dst.lstrip("%")
+    src = src.lstrip("%")
     lanes = 8 if m[1] == "y" else 4
     odd = ["{}{{{}..{}}}".format(src, 64 * i + 63, 64 * i + 32) for i in reversed(range(lanes // 2))]
-    return "{} := {}".format(dst, " :: ".join(o + " :: " + o for o in odd))
+    out = " :: ".join(o + " :: " + o for o in odd)
+    return "ymm{} := {}{}".format(d[1], "0<128> :: " if lanes == 4 else "", out)
 
 
 def mrs(ops, tpidr):
