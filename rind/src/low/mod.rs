@@ -63,6 +63,11 @@ mod generic {
     pub(crate) mod ghash;
     // Every target's MD5: no CPU has instructions for it.
     pub(super) mod md5;
+    // ML-DSA arithmetic for the portable backend and x86_64 CPUs without
+    // AVX2, and what s2n-bignum has no Neon routine for. aarch64 runs the
+    // rest only in tests, to check its routines against.
+    #[cfg_attr(all(rind_backend = "aarch64", not(test)), allow(dead_code))]
+    pub(crate) mod mldsa_poly;
     pub(crate) mod mlkem;
     #[cfg(not(rind_backend = "x86_64"))]
     pub(crate) mod mlkem768;
@@ -140,10 +145,13 @@ mod tests;
 pub(crate) mod abi;
 
 // A bounds test, not a constant-time one: valgrind does not fault guard
-// pages on every target, so ctgrind builds leave it out.
-#[cfg(all(test, unix, not(feature = "__ctgrind")))]
+// pages on every target, so ctgrind builds leave it out, and Miri cannot run
+// the PROT_NONE mappings it faults on.
+#[cfg(all(test, unix, not(feature = "__ctgrind"), not(miri)))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod guard_pages;
+
+pub(crate) use generic::mldsa_poly::MldsaPoly;
 
 // The portable backend, which armv7 builds on, and what both run alike.
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
@@ -156,6 +164,12 @@ pub(crate) use generic::{
         bignum_negmodinv, bignum_optsub,
     },
     chacha20poly1305,
+    mldsa_poly::{
+        mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88, mldsa_intt, mldsa_ntt,
+        mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc, mldsa_poly_use_hint_32,
+        mldsa_poly_use_hint_88, mldsa_polyz_unpack_17, mldsa_polyz_unpack_19, mldsa_reduce,
+        mldsa_rej_uniform_eta2_vartime, mldsa_rej_uniform_eta4_vartime, mldsa_rej_uniform_vartime,
+    },
     mlkem::{mlkem_compress_d4, mlkem_compress_d10, mlkem_frombytes, mlkem_unpack},
     mlkem_poly::{
         mlkem_basemul_k3, mlkem_intt, mlkem_mulcache_compute, mlkem_ntt, mlkem_reduce,
@@ -185,7 +199,8 @@ pub(crate) use generic::{
 };
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 pub(crate) use portable::{
-    bignum_eq::bignum_eq, curve25519::curve25519_x25519base, ghash_nohw::NohwTable,
+    aes::AesKey as PortableAesKey, bignum_eq::bignum_eq, curve25519::curve25519_x25519base,
+    ghash_nohw::NohwTable,
 };
 
 // Declared outside `cfg_if!`, which cargo-mutants cannot see into.
@@ -259,6 +274,13 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::edwards25519_scalarmulbase;
         pub(crate) use x86_64::adx_mux::edwards25519_scalarmuldouble;
         pub(crate) use x86_64::ghash;
+        pub(crate) use x86_64::mldsa::{
+            mldsa_ntt, mldsa_intt, mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc,
+            mldsa_reduce, mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88,
+            mldsa_poly_use_hint_32, mldsa_poly_use_hint_88, mldsa_polyz_unpack_17,
+            mldsa_polyz_unpack_19, mldsa_rej_uniform_vartime, mldsa_rej_uniform_eta2_vartime,
+            mldsa_rej_uniform_eta4_vartime,
+        };
         pub(crate) use x86_64::mlkem::{
             mlkem_ntt,
             mlkem_intt,
@@ -358,6 +380,13 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::edwards25519_decode::edwards25519_decode;
         pub(crate) use aarch64::edwards25519_scalarmulbase::edwards25519_scalarmulbase;
         pub(crate) use aarch64::edwards25519_scalarmuldouble::edwards25519_scalarmuldouble;
+        pub(crate) use aarch64::mldsa::{
+            mldsa_ntt, mldsa_intt, mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc,
+            mldsa_reduce, mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88,
+            mldsa_poly_use_hint_32, mldsa_poly_use_hint_88, mldsa_polyz_unpack_17,
+            mldsa_polyz_unpack_19, mldsa_rej_uniform_vartime, mldsa_rej_uniform_eta2_vartime,
+            mldsa_rej_uniform_eta4_vartime,
+        };
         pub(crate) use aarch64::mlkem::{
             mlkem_ntt,
             mlkem_intt,

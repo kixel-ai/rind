@@ -2224,6 +2224,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "libcrux-ml-dsa"
+version = "0.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31f8706f014055bed7b2706efb8e646e4590d95e447dfc146be2ed4705920dda"
+dependencies = [
+ "core-models",
+ "hax-lib 0.4.2",
+ "libcrux-intrinsics",
+ "libcrux-macros",
+ "libcrux-platform",
+ "libcrux-secrets",
+ "libcrux-sha3",
+ "tls_codec",
+]
+
+[[package]]
 name = "libcrux-ml-kem"
 version = "0.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2462,6 +2478,22 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ml-dsa"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f6d49c3f3f0e10e18ca975ffda66f8da0ec36521c1d911adcbc521bf0743f5c"
+dependencies = [
+ "const-oid 0.10.2",
+ "crypto-common 0.2.2",
+ "ctutils",
+ "hybrid-array",
+ "module-lattice",
+ "pkcs8 0.11.0",
+ "shake",
+ "signature 3.0.0",
 ]
 
 [[package]]
@@ -3377,11 +3409,13 @@ dependencies = [
  "libcrux-ed25519",
  "libcrux-hkdf",
  "libcrux-hmac",
+ "libcrux-ml-dsa",
  "libcrux-ml-kem",
  "libcrux-rsa",
  "libcrux-sha2",
  "libcrux-sha3",
  "md-5",
+ "ml-dsa",
  "ml-kem",
  "openssl",
  "openssl-sys",
@@ -3422,13 +3456,15 @@ dependencies = [
 
 [[package]]
 name = "rind-dimpl"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
  "dimpl",
+ "pem",
  "rcgen",
  "rind",
+ "rustls-pki-types",
  "x509-cert",
 ]
 
@@ -3455,7 +3491,7 @@ dependencies = [
 
 [[package]]
 name = "rind-jsonwebtoken"
-version = "11.0.3"
+version = "11.0.4"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -3467,7 +3503,7 @@ dependencies = [
 
 [[package]]
 name = "rind-object-store"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "async-trait",
  "aws-lc-rs",
