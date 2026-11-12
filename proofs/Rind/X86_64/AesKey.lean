@@ -5,13 +5,6 @@ namespace rind.x86_64
 
 /-! ## Vectors as bytes and `u128`s -/
 
-/-- A byte array as `_mm_loadu_si128` loads it: its bytes, the first lowest. -/
-def loadBytes (bytes : List U8) : BitVec 128 := leBytesToQuad32 (bytes.map (·.bv))
-
-/-- A vector's bytes as `_mm_storeu_si128` stores them, the lowest first. -/
-def storeBytes (v : BitVec 128) : Std.Array Std.U8 16#usize :=
-  Std.Array.from ((leQuad32ToBytes v).map fun b => ⟨b⟩) (by simp [leQuad32ToBytes])
-
 theorem load_eq (b : Std.Array Std.U8 16#usize) : low.x86_64.aes.load b = ok (loadBytes b.val) := by
   simp only [low.x86_64.aes.load, lift, core.num.U128.from_le_bytes, bind_ok, u128_to_m128i_eq, loadBytes,
     leBytesToQuad32]
