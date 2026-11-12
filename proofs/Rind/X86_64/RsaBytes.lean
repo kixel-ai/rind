@@ -209,10 +209,16 @@ theorem from_bytes_loop1_spec (b : Slice U8) (iter : core.ops.range.Range Usize)
       simp [beNat, leNat, htop1, i2_post]
   · exact ⟨rfl, hstart, htop⟩
 
-/-- OS2IP: `from_bytes` reads big-endian bytes, up to 1024 of them, as the
-number they encode, with no words set above its length, and its top word
-nonzero. -/
-theorem from_bytes_spec (bytes : Slice U8) (hlen : bytes.length ≤ 1024) :
+/-- Up to 1024 bytes read below `2^8192`. -/
+theorem beNat_lt_8192 (l : List U8) (h : l.length ≤ 1024) : beNat l < 2 ^ 8192 :=
+  calc beNat l < 256 ^ l.length := beNat_lt l
+    _ ≤ 256 ^ 1024 := Nat.pow_le_pow_right (by norm_num) h
+    _ = 2 ^ 8192 := by rw [show (256 : Nat) = 2 ^ 8 by rfl, ← pow_mul]
+
+/-- OS2IP: `from_bytes` reads big-endian bytes encoding a number below
+`2^8192` as that number, with no words set above its length, and its top
+word nonzero. -/
+theorem from_bytes_spec (bytes : Slice U8) (hlen : beNat bytes.val < 2 ^ 8192) :
     low.posint.PosInt.from_bytes 128#usize bytes ⦃ r => ∃ p, r = .Ok p ∧ p.used.val ≤ 128 ∧
       wordsNat (p.words.val.drop p.used.val) = 0 ∧ wordsNat (lowWords p p.used) = beNat bytes.val ∧
       (p.used.val = 0 ∨ 2 ^ (64 * (p.used.val - 1)) ≤ beNat bytes.val) ⦄ := by
@@ -222,6 +228,12 @@ theorem from_bytes_spec (bytes : Slice U8) (hlen : bytes.length ≤ 1024) :
   have hb1ge : 0 < b1.length → 2 ^ (8 * (b1.length - 1)) ≤ beNat bytes.val := fun h => by
     rw [← hb1v, pow_mul]
     exact beNat_ge_of_head _ (by omega) (hb1h h)
+  -- Trimmed of its leading zeros, a number below `2^8192` takes at most 1024 bytes.
+  have hlen : b1.length ≤ 1024 := by
+    by_contra hc
+    have := lt_of_le_of_lt (hb1ge (by omega)) hlen
+    have := (Nat.pow_lt_pow_iff_right (by norm_num)).mp this
+    omega
   step*
   have hfull : full.val = b1.length / 8 := by rw [full_post]; rfl
   step with from_bytes_loop0_spec b1 (by omega) { start := 0#usize, «end» := full } hfull (by scalar_tac)
@@ -279,6 +291,18 @@ theorem from_bytes_spec (bytes : Slice U8) (hlen : bytes.length ≤ 1024) :
         have := hb1ge (by omega)
         calc 2 ^ (64 * (full.val - 1)) ≤ 2 ^ (8 * (b1.length - 1)) := Nat.pow_le_pow_right (by norm_num) (by omega)
           _ ≤ _ := this
+
+/-- `from_bytes` refuses a number of `2^8192` or more, too long for its
+words. -/
+theorem from_bytes_long_spec (bytes : Slice U8) (hlen : 2 ^ 8192 ≤ beNat bytes.val) :
+    low.posint.PosInt.from_bytes 128#usize bytes ⦃ r => ∃ err, r = .Err err ⦄ := by
+  unfold low.posint.PosInt.from_bytes
+  step with trim_leading_zeroes_spec as ⟨b1, hb1v, hb1l, hb1h⟩
+  have : 1024 < b1.length := by
+    by_contra hc
+    have := beNat_lt_8192 b1.val (by have : b1.length = b1.val.length := rfl; omega)
+    omega
+  step*
 
 /-- `to_bytes`'s loop, with `i` words written at the back of `out`'s first
 `8 used` bytes: those bytes read as the low `i` words. -/
