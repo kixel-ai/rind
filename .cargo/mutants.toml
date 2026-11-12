@@ -97,7 +97,7 @@ exclude_re = [
   'rind/src/high/ecdsa\.rs:\d+:\d+: replace \+ with \* in SigningKey<C>::fixed_to_asn1$',
   'rind/src/high/rsa\.rs:20:\d+: replace \+ with -$',
   'rind/src/high/rsa\.rs:16:\d+: replace \+ with \*$',
-  'rind/src/high/signature\.rs:229:\d+: replace \+ with \*$',
+  'rind/src/high/rsa\.rs:20:\d+: replace \+ with \*$',
   'rind/src/high/sec1\.rs:14:\d+: replace \+ with \*$',
   'rind/src/high/signature\.rs:(229|1683):\d+: replace \+ with \*$',
   'rind/src/low/generic/mont\.rs:131:\d+: replace \+ with \* in mont_mul$',
