@@ -30,7 +30,7 @@ theorem word_below_spec (x : Slice U64) (i : Usize) (hi : 1 ≤ i.val) :
     obtain ⟨hle, hj, -⟩ := this
     step as ⟨r, hr⟩
     have hle' : i.val ≤ x.length := by scalar_tac
-    rw [if_pos hle', hr, ← getElem!_pos]
+    rw [ite_eq_left hle', hr, ← getElem!_pos]
     congr 1
 
 /-- `mul_word_mod`'s first loop moves each word of `u` up one place, from
@@ -81,9 +81,9 @@ theorem mul_word_mod_loop0_spec (u0 : Slice U64) (k : Usize) (hk : k.val = u0.le
         rw [hs, Slice.set_val_eq]
         by_cases hpi : p = i.val
         · subst hpi
-          rw [getElem!_set_of_lt _ _ _ _ (by omega), if_pos rfl, hw, ← getElem!_pos, hv _ (by omega),
-            if_neg (by scalar_tac), if_pos (by scalar_tac), hi1]
-        · rw [getElem!_set_of_lt _ _ _ _ (by omega), if_neg hpi, hv p hp]
+          rw [getElem!_set_of_lt _ _ _ _ (by omega), ite_eq_left rfl, hw, ← getElem!_pos, hv _ (by omega),
+            ite_eq_right (by scalar_tac), ite_eq_left (by scalar_tac), hi1]
+        · rw [getElem!_set_of_lt _ _ _ _ (by omega), ite_eq_right hpi, hv p hp]
           have : (k.val - it.start.val < p) ↔ (k.val - iter1.start.val < p) := by scalar_tac
           simp only [this]
       split_ands <;> first | exact hsl | exact hstep | scalar_tac
@@ -284,7 +284,7 @@ theorem mul_word_mod_loop2_spec (s0 d : Slice U64) (q : U128) (hq : q.val < 2 ^ 
         show s1.val.length = _; rw [hs1v, List.length_set]; exact hvl
       have hhi1 : ∀ p, iter1.start.val ≤ p → p < d.length → s1.val[p]! = s0.val[p]! := by
         intro p hp1 hp2
-        rw [hs1v, getElem!_set_of_lt _ _ _ _ (by omega), if_neg (by omega)]
+        rw [hs1v, getElem!_set_of_lt _ _ _ _ (by omega), ite_eq_right (by omega)]
         exact hv p (by omega) hp2
       have hid1 : (wordsNat (s0.val.take iter1.start.val) : Int) -
           q.val * wordsNat (d.val.take iter1.start.val) =
@@ -292,7 +292,7 @@ theorem mul_word_mod_loop2_spec (s0 d : Slice U64) (q : U128) (hq : q.val < 2 ^ 
             2 ^ (64 * iter1.start.val) * (carry1.val + (b1 || b2).toNat) := by
         rw [hst, wordsNat_take_succ _ _ (by omega), wordsNat_take_succ _ _ (by omega),
           wordsNat_take_succ _ _ (by rw [hs1v, List.length_set]; omega), hs1v,
-          List.take_set_of_le (le_refl _), getElem!_set_of_lt _ _ _ _ (by omega), if_pos rfl,
+          List.take_set_of_le (le_refl _), getElem!_set_of_lt _ _ _ _ (by omega), ite_eq_left rfl,
           ← hsw', ← hdw', hc1, hpv]
         have hdm := Nat.div_add_mod product.val (2 ^ 64)
         rw [hpv] at hdm
@@ -382,13 +382,13 @@ theorem mul_word_mod_loop3_spec (u0 d : Slice U64) (k : Usize) (hk : k.val = d.l
         show s1.val.length = _; rw [hs1v, List.length_set]; exact hvl
       have hhi1 : ∀ p, iter1.start.val ≤ p → p < d.length → s1.val[p]! = u0.val[p]! := by
         intro p hp1 hp2
-        rw [hs1v, getElem!_set_of_lt _ _ _ _ (by omega), if_neg (by omega)]
+        rw [hs1v, getElem!_set_of_lt _ _ _ _ (by omega), ite_eq_right (by omega)]
         exact hv p (by omega) hp2
       have hid1 : wordsNat (s1.val.take iter1.start.val) + 2 ^ (64 * iter1.start.val) * (c1 || c2).toNat =
           wordsNat (u0.val.take iter1.start.val) + wordsNat (d.val.take iter1.start.val) := by
         rw [hst, wordsNat_take_succ s1.val _ (by rw [hs1v, List.length_set]; omega),
           wordsNat_take_succ u0.val _ (by omega), wordsNat_take_succ d.val _ (by omega), hs1v,
-          List.take_set_of_le (le_refl _), getElem!_set_of_lt _ _ _ _ (by omega), if_pos rfl,
+          List.take_set_of_le (le_refl _), getElem!_set_of_lt _ _ _ _ (by omega), ite_eq_left rfl,
           ← hx', ← hy', Nat.mul_succ, pow_add]
         zify at hid hword ⊢
         linear_combination hid - 2 ^ (64 * it.start.val) * hword
@@ -400,5 +400,250 @@ theorem mul_word_mod_loop4_eq (iter : core.ops.range.Range Usize) (u d : Slice U
   unfold low.posint.mul_word_mod_loop4 low.posint.mul_word_mod_loop3 low.posint.mul_word_mod_loop4.body
     low.posint.mul_word_mod_loop3.body
   rfl
+
+/-- A number's top word above the rest. -/
+theorem wordsNat_top (l : List U64) (k : Nat) (hk : l.length = k + 1) :
+    wordsNat l = wordsNat (l.take k) + 2 ^ (64 * k) * (l[k]!).val := by
+  rw [← wordsNat_take_succ _ _ (by omega), List.take_of_length_le (by omega)]
+
+/-- The words below the top two, shifted up a word, are the third word
+from the top (or zero) above a remainder. -/
+theorem wordsNat_third (l : List U64) (k : Nat) (hk : l.length = k + 2) :
+    ∃ r, r < 2 ^ (64 * k) ∧ wordsNat (l.take k) * 2 ^ 64 =
+      (if 1 ≤ k then (l[k - 1]!).val else 0) * 2 ^ (64 * k) + r := by
+  rcases Nat.eq_zero_or_pos k with rfl | hk1
+  · exact ⟨0, by norm_num, by simp [wordsNat_nil]⟩
+  · obtain ⟨j, rfl⟩ : ∃ j, k = j + 1 := ⟨k - 1, by omega⟩
+    refine ⟨wordsNat (l.take j) * 2 ^ 64, ?_, ?_⟩
+    · have := wordsNat_lt' (l.take j)
+      rw [List.length_take, Nat.min_eq_left (by omega)] at this
+      rw [Nat.mul_succ, pow_add]
+      exact Nat.mul_lt_mul_of_pos_right this (by positivity)
+    · rw [wordsNat_take_succ _ _ (by omega), ite_eq_left (by omega), Nat.add_sub_cancel, Nat.mul_succ, pow_add]
+      ring
+
+/-- The arithmetic of one step of algorithm D on `U·B` over `D`, both laid
+out by their top words over `S`: the first estimate bounds the quotient
+from above, and the refined one meets `knuth_le_succ`'s conditions. -/
+theorem knuth_step {B S U D u2 u1 u0 d1 d0 Ut2 Dt2 rN : Nat} (hB : 0 < B) (hu1 : u1 < B) (hu0 : u0 < B)
+    (hd1 : 0 < d1) (hd0 : d0 < B) (hU : U = Ut2 + S * u1 + S * B * u2) (hUt2 : Ut2 < S)
+    (hD : D = Dt2 + S * d0 + S * B * d1) (hDt2 : Dt2 < S) (hrN : Ut2 * B = u0 * S + rN)
+    (hUD : U < D) :
+    U * B = ((u2 * B + u1) * B + u0) * S + rN ∧ D = (d1 * B + d0) * S + Dt2 ∧
+      U * B / D ≤ (if u2 < d1 then (u2 * B + u1) / d1 else B - 1) ∧ B ≤ d1 * B + d0 ∧
+      (u2 * B + u1) * B + u0 < (d1 * B + d0 + 1) * B ∧
+      (if u2 < d1 then (u2 * B + u1) / d1 else B - 1) < B ∧
+      (if u2 < d1 then (u2 * B + u1) / d1 else B - 1) * d1 ≤ u2 * B + u1 := by
+  have hS : 0 < S := by omega
+  have hW : U * B = ((u2 * B + u1) * B + u0) * S + rN := by rw [hU]; nlinarith
+  have hD' : D = (d1 * B + d0) * S + Dt2 := by rw [hD]; ring
+  -- `u2·B + u1` is at most `D2`, as `U < D`.
+  have hnum : u2 * B + u1 ≤ d1 * B + d0 := by
+    have h1 : (u2 * B + u1) * S ≤ U := by rw [hU]; nlinarith
+    have h2 : D < (d1 * B + d0 + 1) * S := by rw [hD']; nlinarith
+    have := Nat.lt_of_mul_lt_mul_right (lt_of_le_of_lt h1 (lt_trans hUD h2))
+    omega
+  have hu2d1 : u2 ≤ d1 := by
+    by_contra hc
+    push Not at hc
+    have : (d1 + 1) * B ≤ u2 * B := Nat.mul_le_mul_right _ hc
+    nlinarith
+  refine ⟨hW, hD', ?_, by nlinarith, by nlinarith, ?_, ?_⟩
+  · have := knuth_q0_ge (B := B) (S := S * B) (T2 := u2 * B + u1) (rU := Ut2 * B) (D := D) (d1 := d1)
+      (Nat.mul_lt_mul_of_pos_right hUt2 hB) (by rw [hD']; nlinarith) (by nlinarith) hd1
+    have hdiv : (u2 * B + u1) / B = u2 := by
+      rw [Nat.add_comm, Nat.add_mul_div_right _ _ hB, Nat.div_eq_of_lt hu1, Nat.zero_add]
+    rw [hdiv] at this
+    have hE : (u2 * B + u1) * (S * B) + Ut2 * B = U * B := by rw [hU]; ring
+    rw [hE] at this
+    exact this
+  · split
+    · rename_i h
+      rw [Nat.div_lt_iff_lt_mul hd1]
+      nlinarith
+    · omega
+  · split
+    · exact Nat.div_mul_le_self _ _
+    · rename_i h
+      have : u2 = d1 := by omega
+      subst this
+      have : (B - 1) * u2 ≤ u2 * B := by
+        rw [Nat.sub_mul, Nat.one_mul, Nat.mul_comm]; omega
+      omega
+
+/-- `mul_word_mod` replaces `u` with `u·2^64 mod d`, for `u` below `d`, as
+wide, of at least two words, `d`'s top word nonzero. -/
+theorem mul_word_mod_spec (u d : Slice U64) (hk2 : 2 ≤ d.length) (hu : u.length = d.length)
+    (hd1 : 0 < (d.val[d.length - 1]!).val) (hud : wordsNat u.val < wordsNat d.val) :
+    low.posint.mul_word_mod u d ⦃ r => r.length = d.length ∧
+      wordsNat r.val = wordsNat u.val * 2 ^ 64 % wordsNat d.val ⦄ := by
+  have hdL : d.length = d.val.length := rfl
+  have huL : u.length = u.val.length := rfl
+  unfold low.posint.mul_word_mod
+  dsimp only
+  split
+  · rename_i h0
+    have : d.len.val = 0 := by rw [h0]; rfl
+    have : d.len.val = d.length := rfl
+    omega
+  · have hkv : d.len.val = d.length := rfl
+    step as ⟨i, hi⟩
+    step as ⟨d1, hd1v⟩
+    step with word_below_spec d 2#usize (by decide) as ⟨d0, hd0v⟩
+    step with word_below_spec u 1#usize (by decide) as ⟨u2, hu2v⟩
+    step with word_below_spec u 2#usize (by decide) as ⟨u1, hu1v⟩
+    step with word_below_spec u 3#usize (by decide) as ⟨u0, hu0v⟩
+    rw [hkv] at hi
+    have hd1' : d1 = d.val[d.length - 1]! := by rw [hd1v, ← getElem!_pos, hi]
+    rw [ite_eq_left hk2] at hd0v
+    rw [ite_eq_left (by omega)] at hu2v hu1v
+    step with mul_word_mod_loop0_spec u d.len (by rw [hkv, hu]) { start := 1#usize, «end» := d.len } u rfl
+      (by show 1 ≤ 1; omega) (by show 1 ≤ d.len.val; omega) rfl (fun p hp => by
+        rw [ite_eq_right (by show ¬ d.len.val - 1 < p; omega)]) as ⟨u3, hu3l, hu3⟩
+    step as ⟨s, hs⟩
+    have hu3L : u3.length = u3.val.length := rfl
+    have hsv : s.val = 0#u64 :: u.val.take (d.length - 1) := by
+      have hsl : s.val.length = d.length := by
+        rw [hs, Slice.set_val_eq, List.length_set, ← hu3L, hu3l, hu]
+      apply List.ext_getElem
+      · rw [hsl, List.length_cons, List.length_take]; omega
+      · intro p h1 h2
+        rw [← getElem!_pos, ← getElem!_pos, hs, Slice.set_val_eq, getElem!_set_of_lt _ _ _ _ (by omega)]
+        cases p with
+        | zero => simp
+        | succ q =>
+          rw [ite_eq_right (by simp), hu3 (q + 1) (by omega), ite_eq_left (by omega)]
+          simp only [List.getElem!_cons_succ, Nat.add_sub_cancel]
+          rw [List.getElem!_take_of_lt _ _ _ (by omega)]
+    -- `W = u·2^64` is `u2` above `s`.
+    have hUtop := wordsNat_top u.val (d.length - 1) (by omega)
+    have hsN : wordsNat s.val = wordsNat (u.val.take (d.length - 1)) * 2 ^ 64 := by
+      rw [hsv, wordsNat_cons]; simp; ring
+    step with lift_spec as ⟨i1, hi1⟩
+    step as ⟨i2, hi2, _⟩
+    step with lift_spec as ⟨i3, hi3⟩
+    step with lift_spec as ⟨num, hnum⟩
+    have hsz : U128.size = 2 ^ 128 := by simp [U128.size, U128.numBits]
+    rw [hsz] at hi2
+    have hu2b : u2.val < 2 ^ 64 := by scalar_tac
+    have hu1b : u1.val < 2 ^ 64 := by scalar_tac
+    have hd1b : d1.val < 2 ^ 64 := by scalar_tac
+    have hnumv : num.val = u2.val * 2 ^ 64 + u1.val := by
+      rw [hnum, UScalar.val_or, hi2, hi1, hi3, core.convert.num.FromU128U64.from_val_eq,
+        core.convert.num.FromU128U64.from_val_eq]
+      exact pair_val _ _ hu2b hu1b
+    have hd1p : 0 < d1.val := by rw [hd1']; exact hd1
+    apply WP.spec_bind (Pₘ := fun q : U128 =>
+      q.val = if u2.val < d1.val then num.val / d1.val else 2 ^ 64 - 1)
+    · split
+      · rename_i hlt
+        step with lift_spec as ⟨i4, hi4⟩
+        step as ⟨q, hq⟩
+        rw [ite_eq_left (by scalar_tac), hq, hi4, core.convert.num.FromU128U64.from_val_eq]
+      · rename_i hlt
+        simp only [WP.spec_ok]
+        rw [ite_eq_right (by scalar_tac), core.convert.num.FromU128U64.from_val_eq]
+        rfl
+    intro q hq
+    -- Lay `u` and `d` out by their top words over `S = 2^(64(k-2))`.
+    have hu2' : u2.val = (u.val[d.length - 1]!).val := by rw [hu2v, hu]
+    have hu1' : u1.val = (u.val[d.length - 2]!).val := by rw [hu1v, hu]
+    have hd0' : d0.val = (d.val[d.length - 2]!).val := by rw [hd0v]
+    have hd1'' : d1.val = (d.val[d.length - 1]!).val := by rw [hd1']
+    have hlay : ∀ (l : List U64), l.length = d.length →
+        wordsNat l = wordsNat (l.take (d.length - 2)) + 2 ^ (64 * (d.length - 2)) * (l[d.length - 2]!).val +
+          2 ^ (64 * (d.length - 2)) * 2 ^ 64 * (l[d.length - 1]!).val := by
+      intro l hl
+      have h1 := wordsNat_top l (d.length - 1) (by omega)
+      have h2 := wordsNat_take_succ l (d.length - 2) (by omega)
+      rw [show d.length - 2 + 1 = d.length - 1 by omega] at h2
+      rw [h1, h2, show 64 * (d.length - 1) = 64 * (d.length - 2) + 64 by omega, pow_add]
+    have hU := hlay u.val (by omega)
+    have hD := hlay d.val (by omega)
+    rw [← hu2', ← hu1'] at hU
+    rw [← hd1'', ← hd0'] at hD
+    have hUt2 := wordsNat_lt' (u.val.take (d.length - 2))
+    have hDt2 := wordsNat_lt' (d.val.take (d.length - 2))
+    rw [List.length_take, Nat.min_eq_left (by omega)] at hUt2 hDt2
+    obtain ⟨rN, hrN, hrNe⟩ := wordsNat_third u.val (d.length - 2) (by omega)
+    have hu0' : (if 1 ≤ d.length - 2 then (u.val[d.length - 2 - 1]!).val else 0) = u0.val := by
+      rw [hu0v, hu]
+      by_cases h3 : 3 ≤ d.length
+      · rw [ite_eq_left (by omega), ite_eq_left h3, show d.length - 2 - 1 = d.length - 3 by omega]
+      · rw [ite_eq_right (by omega), ite_eq_right h3]; rfl
+    rw [hu0'] at hrNe
+    have hu0b : u0.val < 2 ^ 64 := by scalar_tac
+    have hd0b : d0.val < 2 ^ 64 := by scalar_tac
+    obtain ⟨hW, hD2, hq0, hBD2, hT, hq0B, hq0d1⟩ := knuth_step (B := 2 ^ 64) (by positivity) hu1b hu0b
+      hd1p hd0b hU hUt2 hD hDt2 hrNe hud
+    rw [← hnumv] at hW hq0 hT hq0B hq0d1
+    rw [← hq] at hq0 hq0B hq0d1
+    step with lift_spec as ⟨i4, hi4⟩
+    step as ⟨i5, hi5⟩
+    rw [hi4, core.convert.num.FromU128U64.from_val_eq] at hi5
+    step as ⟨rem, hrem⟩
+    have hDpos : 0 < wordsNat d.val := by omega
+    step with mul_word_mod_loop1_spec d1 d0 u0 num.val (num.val * 2 ^ 64 + u0.val) (d1.val * 2 ^ 64 + d0.val)
+      hd1p rfl rfl (fun x => wordsNat u.val * 2 ^ 64 / wordsNat d.val ≤ x)
+      (fun x _ hlt => by
+        have := knuth_gt (rD := wordsNat (d.val.take (d.length - 2))) hrN x hlt
+        rw [← hW, ← hD2] at this
+        show _ ≤ x - 1
+        omega)
+      q rem hq0B (by rw [hrem, hi5]; omega) hq0 as ⟨q1, hq1T, hq1P, hq1le⟩
+    have hq1up : q1.val ≤ wordsNat u.val * 2 ^ 64 / wordsNat d.val + 1 := by
+      have := knuth_le_succ (S := 2 ^ (64 * (d.length - 2))) (rN := rN) hDt2 (by positivity) hBD2 hT q1.val hq1T
+      rwa [← hW, ← hD2] at this
+    have hsl : s.length = d.length := by
+      show s.val.length = _; rw [hsv, List.length_cons, List.length_take]; omega
+    step with mul_word_mod_loop2_spec s d q1 (by omega) d.len hkv hsl { start := 0#usize, «end» := d.len } s
+      0#u64 false rfl (by show 0 ≤ d.len.val; omega) hsl (fun _ _ _ => rfl) (by simp [wordsNat_nil])
+      as ⟨u4, carry, borrow, hu4l, hsub⟩
+    -- `W - q1·D` is `u4` above `u2 - carry - borrow`.
+    have hWs : wordsNat u.val * 2 ^ 64 = wordsNat s.val + 2 ^ (64 * d.length) * u2.val := by
+      rw [hsN, hUtop, ← hu2', show 64 * d.length = 64 * (d.length - 1) + 64 by omega, pow_add]
+      ring
+    have hu4L : u4.length = u4.val.length := rfl
+    have hlow := wordsNat_lt' u4.val
+    rw [← hu4L, hu4l] at hlow
+    have hDK := wordsNat_lt' d.val
+    rw [← hdL] at hDK
+    have hms := msub_result (U := wordsNat u.val * 2 ^ 64) (q := q1.val) (low := wordsNat u4.val)
+      (u2 := u2.val) (cy := carry.val) (bw := borrow.toNat) hDpos hDK.le hlow (by cases borrow <;> simp)
+      hq1P hq1up (by rw [hWs]; push_cast; linear_combination hsub)
+    have haddback (hc : u2.val < carry.val ∨ (u2.val = carry.val ∧ borrow.toNat = 1)) :
+        low.posint.mul_word_mod_loop3 { start := 0#usize, «end» := d.len } u4 d false ⦃ r =>
+          r.length = d.length ∧ wordsNat r.val = wordsNat u.val * 2 ^ 64 % wordsNat d.val ⦄ := by
+      obtain ⟨hK, hres⟩ := hms.2 hc
+      step with mul_word_mod_loop3_spec u4 d d.len hkv hu4l { start := 0#usize, «end» := d.len } u4 false rfl
+        (by show 0 ≤ d.len.val; omega) hu4l (fun _ _ _ => rfl) (by simp [wordsNat_nil]) as ⟨r, hrl, hrv⟩
+      refine ⟨hrl, ?_⟩
+      rw [hrv, ← hres, Nat.mod_eq_sub_mod hK, Nat.mod_eq_of_lt (by omega)]
+    have hlt' : u2 < carry ↔ u2.val < carry.val := Iff.rfl
+    have heq' : u2 = carry ↔ u2.val = carry.val := UScalar.eq_equiv u2 carry
+    split
+    · rename_i hlt
+      exact haddback (Or.inl (hlt'.mp hlt))
+    · rename_i hge
+      split
+      · rename_i heq
+        split
+        · rename_i hb
+          rw [mul_word_mod_loop4_eq]
+          exact haddback (Or.inr ⟨heq'.mp heq, by rw [hb]; rfl⟩)
+        · rename_i hb
+          simp only [WP.spec_ok]
+          refine ⟨hu4l, hms.1 ?_⟩
+          rintro (h | ⟨-, h⟩)
+          · exact hge (hlt'.mpr h)
+          · cases borrow
+            · simp at h
+            · exact hb rfl
+      · rename_i hne
+        simp only [WP.spec_ok]
+        refine ⟨hu4l, hms.1 ?_⟩
+        rintro (h | ⟨h, -⟩)
+        · exact hge (hlt'.mpr h)
+        · exact hne (heq'.mpr h)
 
 end rind.x86_64
