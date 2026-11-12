@@ -3,14 +3,15 @@ public import Aeneas
 public import Rind.Core
 public import Rind.X86_64.DigestAlgorithm
 public import Rind.X86_64.Simd
+public import Rind.X86_64.Avx2
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch`,
 `Rind.X86_64.DigestDispatch`, and `Rind.X86_64.AeadDispatch` model the last six,
-`Rind.X86_64.DigestAlgorithm` `Algorithm` and `Digest`, and `Rind.X86_64.Simd`
-`__m128i`. -/
+`Rind.X86_64.DigestAlgorithm` `Algorithm` and `Digest`, `Rind.X86_64.Simd`
+`__m128i`, and `Rind.X86_64.Avx2` `__m256i`. -/
 
 namespace rind.x86_64
 

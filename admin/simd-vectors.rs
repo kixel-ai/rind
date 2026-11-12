@@ -1,5 +1,5 @@
-//! Runs each x86_64 intrinsic `proofs/Rind/X86_64/Simd.lean` models on this
-//! CPU and prints a Lean file of `#guard`s that each model computes what the
+//! Runs each x86_64 intrinsic `proofs/Rind/X86_64/Simd.lean` and
+//! `proofs/Rind/X86_64/Avx2.lean` model on this CPU and prints a Lean file of `#guard`s that each model computes what the
 //! instruction did: every immediate the instruction reads, zero and all-ones
 //! lanes, and random inputs from a fixed seed. `admin/prove` builds and
 //! checks it, so the instructions run on the machine that checks the models.
@@ -15,6 +15,8 @@ use std::mem::transmute;
 
 type Unary = unsafe fn(__m128i) -> __m128i;
 type Binary = unsafe fn(__m128i, __m128i) -> __m128i;
+type Unary256 = unsafe fn(__m256i) -> __m256i;
+type Binary256 = unsafe fn(__m256i, __m256i) -> __m256i;
 
 macro_rules! imm8 {
     ($f:ident) => {
@@ -75,6 +77,31 @@ fn clmul<const I: i32>(a: __m128i, b: __m128i) -> __m128i {
     _mm_clmulepi64_si128::<I>(a, b)
 }
 
+#[target_feature(enable = "avx2")]
+fn shuffle256<const I: i32>(a: __m256i) -> __m256i {
+    _mm256_shuffle_epi32::<I>(a)
+}
+
+#[target_feature(enable = "avx2")]
+fn slli32<const I: i32>(a: __m256i) -> __m256i {
+    _mm256_slli_epi32::<I>(a)
+}
+
+#[target_feature(enable = "avx2")]
+fn slli64<const I: i32>(a: __m256i) -> __m256i {
+    _mm256_slli_epi64::<I>(a)
+}
+
+#[target_feature(enable = "avx2")]
+fn srli64<const I: i32>(a: __m256i) -> __m256i {
+    _mm256_srli_epi64::<I>(a)
+}
+
+#[target_feature(enable = "avx2")]
+fn blend<const I: i32>(a: __m256i, b: __m256i) -> __m256i {
+    _mm256_blend_epi32::<I>(a, b)
+}
+
 /// SplitMix64, from a fixed seed.
 struct Rng(u64);
 
@@ -99,6 +126,15 @@ fn q(x: __m128i) -> String {
     format!("0x{:032x}#128", unsafe { transmute::<__m128i, u128>(x) })
 }
 
+fn w(x: [u128; 2]) -> __m256i {
+    unsafe { transmute(x) }
+}
+
+fn o(x: __m256i) -> String {
+    let [lo, hi] = unsafe { transmute::<__m256i, [u128; 2]>(x) };
+    format!("0x{hi:032x}{lo:032x}#256")
+}
+
 const SSE2: &str = "core.core_arch.x86.sse2";
 const RANDOM: usize = 64;
 
@@ -111,6 +147,7 @@ fn main() {
             std::arch::is_x86_feature_detected!("pclmulqdq"),
         ),
         ("aes", std::arch::is_x86_feature_detected!("aes")),
+        ("avx2", std::arch::is_x86_feature_detected!("avx2")),
     ];
     for (feature, present) in features {
         if !present {
@@ -125,7 +162,9 @@ fn main() {
         .iter()
         .flat_map(|&a| [(a, 0), (a, u128::MAX), (a, rng.u128())])
         .collect();
-    let mut out = String::from("import Rind.X86_64.Simd\nopen Aeneas Aeneas.Std Result\n\n");
+    let mut out = String::from(
+        "import Rind.X86_64.Simd\nimport Rind.X86_64.Avx2\nopen Aeneas Aeneas.Std Result\n\n",
+    );
     let mut guard = |call: String, result: String| {
         writeln!(out, "#guard reducesTo (R := BitVec _) ( {call} ) {result}").unwrap()
     };
@@ -220,6 +259,94 @@ fn main() {
                 q(v(a))
             ),
             format!("{}#64", r as u64),
+        );
+    }
+
+    // 256-bit vectors: the 128-bit inputs paired, and lanes of shift counts
+    // around the lane widths, so variable shifts reach every case.
+    let small = |rng: &mut Rng| -> u128 {
+        (0..4).fold(0, |acc, i| acc | (u128::from(rng.u64() % 72) << (32 * i)))
+    };
+    let mut wide: Vec<[u128; 2]> = inputs.iter().map(|&a| [a, rng.u128()]).collect();
+    wide.extend((0..RANDOM / 4).map(|_| [small(&mut rng), small(&mut rng)]));
+    let wide_pairs: Vec<([u128; 2], [u128; 2])> = wide
+        .iter()
+        .flat_map(|&a| {
+            [
+                (a, [u128::MAX, u128::MAX]),
+                (a, [rng.u128(), rng.u128()]),
+                (a, [small(&mut rng), small(&mut rng)]),
+            ]
+        })
+        .collect();
+    const AVX2: &str = "core.core_arch.x86.avx2";
+    let binary256: [(&str, Binary256); 10] = [
+        ("_mm256_and_si256", |a, b| unsafe { _mm256_and_si256(a, b) }),
+        ("_mm256_add_epi32", |a, b| unsafe { _mm256_add_epi32(a, b) }),
+        ("_mm256_sub_epi32", |a, b| unsafe { _mm256_sub_epi32(a, b) }),
+        ("_mm256_add_epi64", |a, b| unsafe { _mm256_add_epi64(a, b) }),
+        ("_mm256_sub_epi64", |a, b| unsafe { _mm256_sub_epi64(a, b) }),
+        ("_mm256_mul_epu32", |a, b| unsafe { _mm256_mul_epu32(a, b) }),
+        ("_mm256_permutevar8x32_epi32", |a, b| unsafe {
+            _mm256_permutevar8x32_epi32(a, b)
+        }),
+        ("_mm256_unpacklo_epi32", |a, b| unsafe {
+            _mm256_unpacklo_epi32(a, b)
+        }),
+        ("_mm256_unpackhi_epi32", |a, b| unsafe {
+            _mm256_unpackhi_epi32(a, b)
+        }),
+        ("_mm256_srlv_epi32", |a, b| unsafe {
+            _mm256_srlv_epi32(a, b)
+        }),
+    ];
+    for (name, f) in binary256 {
+        for &(a, b) in &wide_pairs {
+            let r = unsafe { f(w(a), w(b)) };
+            guard(format!("{AVX2}.{name} {} {}", o(w(a)), o(w(b))), o(r));
+        }
+    }
+    let unary256: [(&str, [Unary256; 256]); 4] = [
+        ("_mm256_shuffle_epi32", imm8!(shuffle256)),
+        ("_mm256_slli_epi32", imm8!(slli32)),
+        ("_mm256_slli_epi64", imm8!(slli64)),
+        ("_mm256_srli_epi64", imm8!(srli64)),
+    ];
+    for (name, fs) in unary256 {
+        for (imm, f) in fs.iter().enumerate() {
+            for a in [wide[1], [rng.u128(), rng.u128()]] {
+                let r = unsafe { f(w(a)) };
+                guard(format!("{AVX2}.{name} ⟨{imm}#32⟩ {}", o(w(a))), o(r));
+            }
+        }
+    }
+    let blends: [Binary256; 256] = imm8!(blend);
+    for (imm, f) in blends.iter().enumerate() {
+        let (a, b) = ([rng.u128(), rng.u128()], [rng.u128(), rng.u128()]);
+        let r = unsafe { f(w(a), w(b)) };
+        guard(
+            format!(
+                "{AVX2}._mm256_blend_epi32 ⟨{imm}#32⟩ {} {}",
+                o(w(a)),
+                o(w(b))
+            ),
+            o(r),
+        );
+    }
+    const AVX: &str = "core.core_arch.x86.avx";
+    guard(
+        format!("{AVX}._mm256_setzero_si256"),
+        o(unsafe { _mm256_setzero_si256() }),
+    );
+    for &a in &wide {
+        let l: [i32; 8] = unsafe { transmute(a) };
+        let r = unsafe { _mm256_setr_epi32(l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7]) };
+        let args: Vec<String> = l.iter().map(|x| format!("⟨{}#32⟩", *x as u32)).collect();
+        guard(format!("{AVX}._mm256_setr_epi32 {}", args.join(" ")), o(r));
+        let x = a[0] as i64;
+        guard(
+            format!("{AVX}._mm256_set1_epi64x ⟨{}#64⟩", x as u64),
+            o(unsafe { _mm256_set1_epi64x(x) }),
         );
     }
     print!("{out}");

@@ -187,11 +187,6 @@ opaque low.x86_64.edwards25519_scalarmuldouble_alt.edwards25519_scalarmuldouble_
   Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
     Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
 
-opaque low.x86_64.edwards25519_scalarmuldouble_avx2.edwards25519_scalarmuldouble
-  :
-  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
-    Array Std.U64 4#usize → low.x86_64.cpu.HaveAvx2 → Result (Array Std.U64 8#usize)
-
 opaque low.x86_64.bignum_madd_n25519_alt.bignum_madd_n25519_alt
   :
   Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
@@ -201,6 +196,16 @@ opaque low.x86_64.bignum_mod_n25519.bignum_mod_n25519
   : Array Std.U64 4#usize → Slice Std.U64 → Result (Array Std.U64 4#usize)
 
 opaque low.x86_64.bignum_neg_p25519.bignum_neg_p25519
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64
+    4#usize)
+
+opaque low.x86_64.bignum_mul_p25519_alt.bignum_mul_p25519_alt
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.bignum_inv_p25519.bignum_inv_p25519
   :
   Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64
     4#usize)
@@ -417,5 +422,21 @@ opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.load
 opaque high.curve.P256.Insts.RindHighAgreementAgreePrivateKey.load
   : high.agreement.Algorithm → high.agreement.Source →
     Result (core.result.Result (mid.p256.PrivateKey × high.agreement.PublicKey) error.Error)
+
+/-! The AVX2 double multiplication's reinterpretations of a vector as its
+32-bit lanes and back, `core::mem::transmute`s Aeneas cannot translate: on
+x86_64, little-endian, lane 0 is the lowest. -/
+
+/-- `v`: the vector whose 32-bit lanes these are. -/
+def low.x86_64.edwards25519_scalarmuldouble_avx2.v (x : Array Std.U32 8#usize) :
+    Result core.core_arch.x86.__m256i :=
+  ok (rind.avx2.ofLanes32 fun i => (x.val[i]!).bv)
+
+/-- `lanes`: the vector's 32-bit lanes. -/
+def low.x86_64.edwards25519_scalarmuldouble_avx2.lanes (x : core.core_arch.x86.__m256i) :
+    Result (Array Std.U32 8#usize) :=
+  ok (Array.make 8#usize [⟨rind.avx2.lane32 x 0⟩, ⟨rind.avx2.lane32 x 1⟩, ⟨rind.avx2.lane32 x 2⟩,
+    ⟨rind.avx2.lane32 x 3⟩, ⟨rind.avx2.lane32 x 4⟩, ⟨rind.avx2.lane32 x 5⟩, ⟨rind.avx2.lane32 x 6⟩,
+    ⟨rind.avx2.lane32 x 7⟩])
 
 end rind.x86_64

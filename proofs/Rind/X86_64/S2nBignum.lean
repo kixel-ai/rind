@@ -150,6 +150,23 @@ axiom bignum_neg_p25519_spec (z x : Std.Array U64 4#usize) :
     low.x86_64.bignum_neg_p25519.bignum_neg_p25519 z x ⦃ r =>
       wordsNat x.val ≤ p25519 → wordsNat r.val = (p25519 - wordsNat x.val) % p25519 ⦄
 
+/-- `BIGNUM_MUL_P25519_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_mul_p25519_alt.ml#L381 -/
+@[step]
+axiom bignum_mul_p25519_alt_spec (z x y : Std.Array U64 4#usize) :
+    low.x86_64.bignum_mul_p25519_alt.bignum_mul_p25519_alt z x y ⦃ r =>
+      wordsNat r.val = wordsNat x.val * wordsNat y.val % p25519 ⦄
+
+/-- `BIGNUM_INV_P25519_SUBROUTINE_CORRECT`, whose `inverse_mod p_25519 n`,
+for `n` coprime to the prime, is below it and its inverse mod it
+(`INVERSE_MOD_BOUND`, `INVERSE_MOD_RMUL`),
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_inv_p25519.ml#L4156 -/
+@[step]
+axiom bignum_inv_p25519_spec (z x : Std.Array U64 4#usize) :
+    low.x86_64.bignum_inv_p25519.bignum_inv_p25519 z x ⦃ r =>
+      wordsNat x.val % p25519 ≠ 0 →
+        wordsNat r.val < p25519 ∧ wordsNat x.val * wordsNat r.val % p25519 = 1 ⦄
+
 /-- `BIGNUM_LT_SUBROUTINE_CORRECT`, for the slices' lengths as `m` and `n`,
 https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_lt.ml#L412 -/
 @[step]
