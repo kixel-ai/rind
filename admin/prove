@@ -587,7 +587,10 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # `signature::PublicKey` holds the signature API's, so no translated function
 # reaches it, and `SignatureDispatch.lean` defines it. SHA-1's and SHA-256's
 # padding is translated down to their block functions, which are opaque.
-# MD5 and SHA-3's sponge, which no proof covers, are opaque.
+# SHA-3's sponge is translated down to its Keccak-f routines, which are
+# opaque, from what the digest API and ML-KEM call: ML-DSA's SHAKE readers
+# loop over borrowed slices and zip iterators, which Aeneas cannot translate.
+# MD5, which no proof covers, is opaque.
 # P-256's key generation draws through a `dyn RandomSource`, so it is opaque
 # too, and `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the
 # translated `PrivateKey::from_bytes`, as `EcdsaDispatch.lean` does for ECDSA,
@@ -635,6 +638,14 @@ extract() {
         --start-from crate::high::signature::Ed25519KeyPair::sign \
         --start-from '{impl core::convert::AsRef for crate::high::signature::Signature}' \
         --start-from crate::high::signature::Buffer::copy_from \
+        --start-from crate::mid::sha3::shake256_batch \
+        --start-from 'crate::mid::sha3::SqueezingSponge4xShake128::_' \
+        --start-from crate::mid::sha3::SqueezingSponge::new \
+        --start-from crate::mid::sha3::SqueezingSponge::squeeze \
+        --start-from crate::mid::sha3::Sponge::new \
+        --start-from crate::mid::sha3::Sponge::absorb \
+        --start-from crate::mid::sha3::Sponge::finish \
+        --start-from 'crate::mid::sha3::Sha3Context::_' \
         --opaque crate::high::agreement::Algorithm \
         --opaque crate::high::agreement::Ops \
         --opaque crate::high::agreement::x25519_from_pkcs8 \
@@ -666,7 +677,6 @@ extract() {
         --opaque crate::high::digest::SHA3_384 \
         --opaque crate::high::digest::SHA3_512 \
         --opaque crate::mid::md5 \
-        --opaque crate::mid::sha3 \
         --opaque crate::low \
         --opaque 'crate::mid::p384::_::generate' \
         --opaque 'crate::high::curve::_::oid' \
@@ -759,6 +769,8 @@ extract x86_64 X86_64 \
     --opaque crate::low::x86_64::sha256_mux::path \
     --include crate::low::x86_64::sha512::Path \
     --opaque crate::low::x86_64::sha512::path \
+    --include crate::low::x86_64::sha3_keccak4_f1600_shim \
+    --include crate::low::x86_64::sha3_keccak_nof4_f1600 \
     --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
     --start-from crate::aead::Key \
     --start-from crate::aead::AlgorithmId \
@@ -826,6 +838,9 @@ extract aarch64 Aarch64 \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
     --include crate::low::aarch64::sha1::sha1_compress_padded \
+    --include crate::low::aarch64::sha3_keccak_f1600_mux \
+    --include crate::low::aarch64::sha3_keccak4_f1600_mux \
+    --include crate::low::aarch64::sha3_keccak_nof4_f1600 \
     --include crate::low::aarch64::sha256 \
     --opaque crate::low::aarch64::sha256::compress_hw \
     --opaque crate::low::aarch64::sha256::compress_nohw
@@ -838,7 +853,7 @@ extract_kdf aarch64 Aarch64
 mkdir -p proofs/Rind/Aarch64/Kdf
 for file in Dispatch X25519 P384 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
-    CtEqual HmacApi DigestApi Hkdf Pbkdf2; do
+    CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 # The AEAD model imports nothing aarch64 has, and no aarch64 translation reaches it.
