@@ -207,8 +207,8 @@ impl SqueezingSponge4xShake128 {
     }
 }
 
-/// Up to four SHAKE instances with rate `R`, squeezed in step so their
-/// permutations run together.
+/// Up to four SHAKE instances with rate `R`, each over an input shorter than
+/// one block, squeezed in step so their permutations run together.
 pub(crate) struct Shake4x<const R: usize> {
     states: [[u64; 25]; 4],
     /// How many of `states` are in use, from one to four.
@@ -226,13 +226,13 @@ impl<const R: usize> Shake4x<R> {
     // Indexed rather than zipped, which Aeneas cannot translate.
     #[allow(clippy::needless_range_loop)]
     pub(crate) fn new<const LEN: usize>(inputs: &[[u8; LEN]]) -> Self {
+        const { assert!(LEN < R) };
         let lanes = inputs.len();
         assert!(lanes != 0 && lanes <= 4);
         let mut states = [[0; 25]; 4];
         for j in 0..lanes {
-            let mut sponge = Sponge::<R, SHAKE_PAD_BYTE>::new();
-            sponge.absorb(&inputs[j]);
-            states[j] = sponge.padded_state();
+            add_bytes(&mut states[j], 0, &inputs[j]);
+            pad::<R, SHAKE_PAD_BYTE>(&mut states[j], LEN);
         }
         Self { states, lanes }
     }
@@ -307,10 +307,16 @@ impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
     /// The state with the final block's padding added, owing its Keccak-f.
     fn padded_state(&self) -> [u64; 25] {
         let mut s = self.s;
-        add_bytes(&mut s, self.used, &[PAD]);
-        s[R / 8 - 1] ^= 0x80 << 56;
+        pad::<R, PAD>(&mut s, self.used);
         s
     }
+}
+
+/// Pads input absorbed `used` bytes into the state's block, under the rate
+/// `R`: the domain byte `PAD`, then the rate's last bit.
+fn pad<const R: usize, const PAD: u8>(s: &mut [u64; 25], used: usize) {
+    add_bytes(s, used, &[PAD]);
+    s[R / 8 - 1] ^= 0x80 << 56;
 }
 
 /// XORs `bytes` into the state's little-endian lanes from byte `offset`.
@@ -345,12 +351,17 @@ fn padded_block<const R: usize>(input: &[u8; 40]) -> [u64; 25] {
 
 /// Writes the state's first `output.len()` bytes, under the rate, into
 /// `output`: its lanes little-endian.
+// Inlined so that a squeeze of whole blocks stores them as vectors.
+#[inline(always)]
 fn store_bytes(s: &[u64; 25], output: &mut [u8]) {
-    let mut done = 0;
-    while done < output.len() {
-        let n = Ord::min(8, output.len() - done);
-        output[done..done + n].copy_from_slice(&s[done / 8].to_le_bytes()[..n]);
-        done += n;
+    let (lanes, tail) = output.as_chunks_mut::<8>();
+    let whole = &s[..lanes.len()];
+    for (i, lane) in lanes.iter_mut().enumerate() {
+        *lane = whole[i].to_le_bytes();
+    }
+    if !tail.is_empty() {
+        let n = tail.len();
+        tail.copy_from_slice(&s[lanes.len()].to_le_bytes()[..n]);
     }
 }
 
