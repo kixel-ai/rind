@@ -156,7 +156,7 @@ theorem length_bytelistOfNum (k n : Nat) : (bytelistOfNum k n).length = k := by
 
 theorem leNum_bytelistOfNum (k n : Nat) : poly1305.leNum (bytelistOfNum k n) = n % 256 ^ k := by
   induction k generalizing n with
-  | zero => simp [bytelistOfNum, poly1305.leNum]
+  | zero => simp [bytelistOfNum, poly1305.leNum, Nat.mod_one]
   | succ k ih =>
     have := ih (n / 256)
     simp only [poly1305.leNum] at this
@@ -164,11 +164,17 @@ theorem leNum_bytelistOfNum (k n : Nat) : poly1305.leNum (bytelistOfNum k n) = n
       BitVec.toNat_ofNat, pow_succ', Nat.mod_mul]
     omega
 
+theorem digits_lt (l : List (BitVec 8)) : ∀ x ∈ l.map BitVec.toNat, x < 256 := by
+  intro x hx
+  simp only [List.mem_map] at hx
+  obtain ⟨a, -, rfl⟩ := hx
+  exact a.isLt
+
 /-- Byte lists of one length are equal when they encode the same number. -/
 theorem eq_of_leNum_eq {l1 l2 : List (BitVec 8)} (hl : l1.length = l2.length)
     (h : poly1305.leNum l1 = poly1305.leNum l2) : l1 = l2 := by
   have hd := Nat.ofDigits_inj_of_len_eq (b := 256) (by norm_num) (by simpa using hl)
-    (by simp [BitVec.isLt]) (by simp [BitVec.isLt]) h
+    (digits_lt l1) (digits_lt l2) h
   exact List.map_injective_iff.mpr (fun a b hab => BitVec.eq_of_toNat_eq hab) hd
 
 theorem bytelistOfNum_eq (k n : Nat) : bytelistOfNum k n = (BitVec.ofNat (8 * k) n).toLEBytes := by
@@ -193,10 +199,15 @@ theorem map2_eq {α β γ : Type} [Inhabited β] (f : α → β → γ) (l1 : Li
 
 /-! ## The ChaCha20 block function -/
 
+theorem chacha20QuarterRound_eq (a b c d : BitVec 32) :
+    chacha20QuarterRound (a, b, c, d) = chacha20.qr a b c d := rfl
+
 theorem chacha20DoubleRound_eq (s : List (BitVec 32)) (hs : s.length = 16) :
     chacha20DoubleRound s = chacha20.innerBlock s := by
   match s, hs with
-  | [_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _], _ => rfl
+  | [s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15], _ =>
+    simp only [chacha20DoubleRound, chacha20QuarterRound_eq, chacha20.innerBlock, chacha20.quarterRound,
+      List.getElem!_cons_zero, List.getElem!_cons_succ, List.set_cons_zero, List.set_cons_succ]
 
 theorem length_innerBlock (s : List (BitVec 32)) : (chacha20.innerBlock s).length = s.length := by
   simp [chacha20.innerBlock, chacha20.quarterRound]
@@ -215,20 +226,19 @@ theorem take_four {l : List (BitVec 8)} {i : Nat} (h : 4 * i + 4 ≤ l.length) :
   apply List.ext_getElem (by simp; omega)
   intro j h1 _
   simp only [List.length_take, List.length_drop] at h1
-  have : j < 4 := by omega
-  interval_cases j <;> simp [List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem (by omega : 4 * i < l.length),
-    List.getElem?_eq_getElem (by omega : 4 * i + 1 < l.length),
-    List.getElem?_eq_getElem (by omega : 4 * i + 2 < l.length),
-    List.getElem?_eq_getElem (by omega : 4 * i + 3 < l.length), Nat.add_comm]
+  rw [getElem!_pos l (4 * i) (by omega), getElem!_pos l (4 * i + 1) (by omega),
+    getElem!_pos l (4 * i + 2) (by omega), getElem!_pos l (4 * i + 3) (by omega)]
+  rcases (by omega : j = 0 ∨ j = 1 ∨ j = 2 ∨ j = 3) with rfl | rfl | rfl | rfl <;> simp
 
 theorem le32_eq (b0 b1 b2 b3 : BitVec 8) :
     BitVec.ofNat 32 (numOfBytelist [b0, b1, b2, b3]) = chacha20.le32 b0 b1 b2 b3 := by
   apply BitVec.eq_of_toNat_eq
-  have h := toNat_fromLEBytes [b0, b1, b2, b3]
-  have hl : poly1305.leNum [b0, b1, b2, b3] < 2 ^ 32 :=
-    Nat.ofDigits_lt_base_pow_length (b := 256) (by norm_num) (by simp [BitVec.isLt])
-  rw [BitVec.toNat_ofNat, numOfBytelist_eq, Nat.mod_eq_of_lt hl]
-  exact h.symm
+  have h : (chacha20.le32 b0 b1 b2 b3).toNat = poly1305.leNum [b0, b1, b2, b3] :=
+    toNat_fromLEBytes [b0, b1, b2, b3]
+  have hl : poly1305.leNum [b0, b1, b2, b3] < 256 ^ 4 :=
+    Nat.ofDigits_lt_base_pow_length (by norm_num) (digits_lt _)
+  rw [h, BitVec.toNat_ofNat, numOfBytelist_eq]
+  exact Nat.mod_eq_of_lt (lt_of_lt_of_eq hl (by norm_num))
 
 theorem chacha20Words_eq (n : Nat) (b : List (BitVec 8)) (hb : b.length = 4 * n) :
     chacha20Words n b = chacha20.words b := by
@@ -265,17 +275,15 @@ theorem chacha20Block_eq (key : List (BitVec 8)) (counter : BitVec 32) (nonce : 
   have hs := length_chacha20State key counter nonce
   obtain ⟨hr, hl⟩ := chacha20Rounds_eq _ hs 10
   rw [chacha20Block]
-  simp only
-  rw [map2_eq _ _ _ (by rw [hl, hs]), foldr_bytelistOfNum, hr, ← chacha20State_eq _ _ _ hk hn]
+  rw [map2_eq _ _ _ (by rw [hl, hs]), foldr_bytelistOfNum, hr, chacha20State_eq _ _ _ hk hn]
   rfl
 
 theorem length_block (key : List (BitVec 8)) (counter : BitVec 32) (nonce : List (BitVec 8))
     (hk : key.length = 32) (hn : nonce.length = 12) :
     (chacha20.block key counter nonce).length = 64 := by
-  rw [← chacha20Block_eq _ _ _ hk hn, chacha20Block]
-  simp only
   have hs := length_chacha20State key counter nonce
-  simp [foldr_bytelistOfNum, List.length_flatMap, length_map2, (chacha20Rounds_eq _ hs 10).2]
+  rw [← chacha20Block_eq _ _ _ hk hn, chacha20Block, foldr_bytelistOfNum, List.length_flatMap]
+  simp [BitVec.toLEBytes_length, length_map2, (chacha20Rounds_eq _ hs 10).2]
 
 /-! ## ChaCha20 encryption -/
 
@@ -348,7 +356,8 @@ theorem poly1305Clamp_eq (r : Nat) : poly1305Clamp r = poly1305.clamp r := by
   by_cases hi : i < 128
   · simp [hi]
   · have : (0x0ffffffc0ffffffc0ffffffc0fffffff : Nat).testBit i = false :=
-      Nat.testBit_lt_two_pow (lt_of_lt_of_le (by norm_num) (Nat.pow_le_pow_right (by norm_num) (by omega)))
+      Nat.testBit_lt_two_pow (lt_of_lt_of_le (by norm_num : (0x0ffffffc0ffffffc0ffffffc0fffffff : Nat) < 2 ^ 128)
+        (Nat.pow_le_pow_right (by norm_num) (by omega)))
     simp [hi, this]
 
 theorem poly1305Acc_eq (r : Nat) (msg : List (BitVec 8)) (n : Nat) :
@@ -361,10 +370,11 @@ theorem poly1305Acc_eq (r : Nat) (msg : List (BitVec 8)) (n : Nat) :
     rw [poly1305Acc, ih, List.range_succ, List.foldl_append]
     simp [numOfBytelist_eq, p1305, poly1305.p]
 
-/-- `poly1305_mac` is `Rind.Spec`'s. -/
-theorem poly1305Mac_eq (key msg : List (BitVec 8)) : poly1305Mac key msg = poly1305.mac key msg := by
+/-- `poly1305_mac` is `Rind.Spec`'s, for a 32-byte key. -/
+theorem poly1305Mac_eq (key msg : List (BitVec 8)) (hk : key.length = 32) :
+    poly1305Mac key msg = poly1305.mac key msg := by
   simp only [poly1305Mac, poly1305.mac, poly1305Acc_eq, poly1305Clamp_eq, numOfBytelist_eq,
-    bytelistOfNum_eq, List.drop_zero]
+    bytelistOfNum_eq, List.drop_zero, List.take_of_length_le (by simp [hk] : (key.drop 16).length ≤ 16)]
 
 /-! ## ChaCha20-Poly1305 -/
 
@@ -385,8 +395,10 @@ theorem chacha20Poly1305Tag_eq (key nonce aad ct : List (BitVec 8)) (hk : key.le
     (hn : nonce.length = 12) :
     chacha20Poly1305Tag key nonce aad ct =
       poly1305.mac (chacha20poly1305.otk key nonce) (chacha20poly1305.macData aad ct) := by
+  have hl : (chacha20poly1305.otk key nonce).length = 32 := by
+    simp [chacha20poly1305.otk, length_block _ _ _ hk hn]
   rw [chacha20Poly1305Tag, chacha20Poly1305KeyGen_eq _ _ hk hn, chacha20Poly1305MacData_eq,
-    poly1305Mac_eq]
+    poly1305Mac_eq _ _ hl]
 
 /-- `chacha20_poly1305_seal` is `Rind.Spec`'s, for a 32-byte key and a
 12-byte nonce. -/
@@ -403,6 +415,8 @@ theorem chacha20Poly1305Open_eq (key nonce aad ct tag : List (BitVec 8)) (hk : k
     chacha20Poly1305Open key nonce aad ct tag = chacha20poly1305.open key nonce aad ct tag := by
   rw [chacha20Poly1305Open, chacha20poly1305.open, chacha20Encrypt_eq _ _ _ _ hk hn,
     chacha20Poly1305Tag_eq _ _ _ _ hk hn]
-  simp
+  congr 1
+  by_cases h : poly1305.mac (chacha20poly1305.otk key nonce) (chacha20poly1305.macData aad ct) = tag <;>
+    simp [h]
 
 end rind.spec.s2n
