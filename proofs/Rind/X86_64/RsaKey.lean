@@ -1035,4 +1035,120 @@ theorem pub_montifier_spec (self : RsaInt) (hk2 : 2 ≤ self.used.val) (hk : sel
   exact Nat.eq_of_mul_eq_mul_right (by positivity) hr'
 
 
+/-- What `RsaPublicKey::new` accepts: an odd modulus of 1024 to 8192 bits
+and an odd exponent above one and below `2^33`. -/
+def PubKeyOk (n : RsaInt) (e : U64) : Prop :=
+  let N := wordsNat (lowWords n n.used)
+  N % 2 = 1 ∧ 1024 ≤ N.size ∧ N.size ≤ 8192 ∧ e.val % 2 = 1 ∧ e.val ≠ 1 ∧ e.val < 2 ^ 33
+
+/-- `RsaPublicKey::new` returns a key meeting `PubKeyInv` for the modulus
+and exponent it was given, or refuses them when `PubKeyOk` fails. -/
+theorem rsa_public_key_new_spec (h : low.entry.Entry.assert_held = ok ()) (n : RsaInt) (e : U64)
+    (hk : n.used.val ≤ 128)
+    (htight : n.used.val = 0 ∨ 2 ^ (64 * (n.used.val - 1)) ≤ wordsNat (lowWords n n.used)) :
+    mid.rsa_pub.RsaPublicKey.new n e ⦃ r => match r with
+      | .Ok key => key.n = n ∧ key.e = e ∧ PubKeyInv key
+      | .Err _ => ¬ PubKeyOk n e ⦄ := by
+  unfold mid.rsa_pub.RsaPublicKey.new low.posint.PosInt.is_even
+  simp only [h, bind_ok, lift]
+  step as ⟨w0, hw0⟩
+  generalize hN : wordsNat (lowWords n n.used) = N at htight
+  have hwl : n.words.val.length = 128 := by simp
+  -- The modulus's parity is its low word's.
+  have hpar : 1 ≤ n.used.val → N % 2 = w0.val % 2 := by
+    intro h1
+    rw [← hN, lowWords, hw0, ← getElem!_pos]
+    generalize n.words.val = l at hwl ⊢
+    cases l with
+    | nil => simp at hwl
+    | cons x t =>
+      rw [show n.used.val = (n.used.val - 1) + 1 by omega, List.take_succ_cons, wordsNat_cons]
+      simp only [List.getElem!_cons_zero]
+      omega
+  have hw0and : (w0 &&& 1#u64).val = w0.val % 2 := by
+    rw [UScalar.val_and]; simp [Nat.and_one_is_mod]
+  have hzero : n.used.val = 0 → N = 0 := by
+    intro h0; rw [← hN, lowWords, h0]; simp [wordsNat_nil]
+  split
+  · rename_i heven
+    simp only [error.Error.Insts.CoreConvertFromKeyFormatError.from, bind_ok, WP.spec_ok]
+    have : w0.val % 2 = 0 := by
+      have := congrArg UScalar.val (of_decide_eq_true heven); rw [hw0and] at this; simpa using this
+    rintro ⟨hodd, -⟩
+    simp only [hN] at hodd
+    rcases Nat.eq_zero_or_pos n.used.val with h0 | h1
+    · rw [hzero h0] at hodd; simp at hodd
+    · rw [hpar h1] at hodd; omega
+  · rename_i hodd
+    step as ⟨ri, hri, hre, hrx⟩
+    step with len_bits_spec n hk as ⟨i, hi⟩
+    rw [hN] at hi
+    simp only [core.ops.range.RangeInclusive.contains, liftFun2, bind_ok, hri, hre, hrx,
+      core.cmp.impls.PartialOrdUsize.le, core.cmp.impls.PartialOrdUsize.lt, mid.rsa_pub.MIN_PUBLIC_MODULUS_BITS,
+      mid.rsa_pub.MAX_PUBLIC_MODULUS_BITS]
+    have e1024 : (1024#usize).val = 1024 := rfl
+    have e8192 : (8192#usize).val = 8192 := rfl
+    simp only [hi, e1024, e8192, Bool.false_eq_true, ↓reduceIte]
+    by_cases hsz : 1024 ≤ N.size ∧ N.size ≤ 8192
+    · simp only [hsz.1, hsz.2, decide_true, ↓reduceIte, bind_ok, core.num.U64.is_multiple_of,
+        UScalar.is_multiple_of]
+      have e2 : (2#u64).val = 2 := rfl
+      rw [e2]
+      by_cases he2 : e.val % 2 = 0
+      · simp only [he2, BEq.rfl, ↓reduceIte, bind_ok, error.Error.Insts.CoreConvertFromKeyFormatError.from,
+          WP.spec_ok]
+        rintro ⟨-, -, -, h, -⟩; omega
+      have : (e.val % 2 == 0) = false := by simpa using he2
+      simp only [this, Bool.false_eq_true, ↓reduceIte]
+      split
+      · rename_i he1
+        simp only [bind_ok, error.Error.Insts.CoreConvertFromKeyFormatError.from, WP.spec_ok]
+        rintro ⟨-, -, -, -, h, -⟩; exact h (by rw [he1]; rfl)
+      rename_i he1
+      have he1' : e.val ≠ 1 := fun h => he1 (by rw [UScalar.eq_equiv]; exact h)
+      have e33 : (mid.rsa_pub.MAX_PUBLIC_EXPONENT_BITS).val = 33 := by simp [mid.rsa_pub.MAX_PUBLIC_EXPONENT_BITS]
+      have h64 : (mid.rsa_pub.MAX_PUBLIC_EXPONENT_BITS).val < 64 := by rw [e33]; norm_num
+      step as ⟨i1, hi1, _⟩
+      rw [e33, Nat.shiftRight_eq_div_pow] at hi1
+      split
+      · rename_i hne
+        simp only [bind_ok, error.Error.Insts.CoreConvertFromKeyFormatError.from, WP.spec_ok]
+        rintro ⟨-, -, -, -, -, h⟩
+        have : i1.val = 0 := by rw [hi1]; exact Nat.div_eq_of_lt h
+        simp only [bne_iff_ne, ne_eq] at hne
+        exact hne (by rw [UScalar.eq_equiv]; exact this)
+      rename_i hne
+      -- The modulus fills its words: at least 1024 bits needs at least 16.
+      have hNlt : N < 2 ^ (64 * n.used.val) := by
+        have := wordsNat_lt' (lowWords n n.used)
+        rwa [lowWords_length n hk, hN] at this
+      have hk16 : 16 ≤ n.used.val := by
+        have := Nat.size_le.mpr hNlt
+        omega
+      have hodd' : N % 2 = 1 := by
+        rw [hpar (by omega)]
+        have h0 : ¬ (w0 &&& 1#u64).val = 0 := by
+          intro h0; apply hodd; simp only [decide_eq_true_eq]; rw [UScalar.eq_equiv]; exact h0
+        rw [hw0and] at h0; omega
+      have htop : 2 ^ (64 * (n.used.val - 1)) ≤ N := by rcases htight with h | h <;> [omega; exact h]
+      step with pub_montifier_spec n (by omega) hk (by rw [hN]; exact hodd') (by rw [hN]; exact htop)
+        as ⟨m, hmu, hm⟩
+      step with mont_neg_inverse_spec n (by omega) hk (by rw [hN]; exact hodd') as ⟨n0, hn0⟩
+      rw [hN] at hn0 hm
+      unfold PubKeyInv
+      dsimp only
+      rw [hN]
+      exact ⟨by omega, hk, hodd', hn0, hm, by omega, by omega, hsz.1, hsz.2⟩
+    · have : (if decide (1024 ≤ N.size) = true then ok (decide (N.size ≤ 8192)) else ok false) = ok false := by
+        by_cases h1 : 1024 ≤ N.size
+        · simp only [h1, decide_true, ↓reduceIte]; simp only [ok.injEq, decide_eq_false_iff_not]; omega
+        · simp [h1]
+      rw [this]
+      simp only [bind_ok, Bool.false_eq_true, ↓reduceIte, error.Error.Insts.CoreConvertFromKeyFormatError.from,
+        WP.spec_ok]
+      rintro ⟨-, h1, h2, -⟩
+      simp only [hN] at h1 h2
+      exact hsz ⟨h1, h2⟩
+
+
 end rind.x86_64
