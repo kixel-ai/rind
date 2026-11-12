@@ -437,17 +437,17 @@ fn aes256_expand(key: &[u8; 32], out: &mut [__m128i; 15]) {
 /// them from a vector's last word.
 #[target_feature(enable = "aes,ssse3")]
 fn aes192_expand(key: &[u8; 24]) -> [__m128i; 13] {
-    // SAFETY: `key` is 24 readable bytes
-    let (mut a, mut b) = unsafe {
-        (
-            _mm_loadu_si128(key.as_ptr().cast()),
-            _mm_loadl_epi64(key[16..].as_ptr().cast()),
-        )
-    };
+    let mut a = load(key[..16].try_into().unwrap());
+    let mut b = u128_to_m128i(u128::from(u64::from_le_bytes(
+        key[16..].try_into().unwrap(),
+    )));
     let rot_word_1 = _mm_setr_epi8(5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4);
     let mut out = [a; 13];
-    for (step, rcon) in (1..).zip(&RCON[..8]) {
-        let sub = _mm_aesenclast_si128(_mm_shuffle_epi8(b, rot_word_1), _mm_set1_epi32(*rcon));
+    for step in 1..9 {
+        let sub = _mm_aesenclast_si128(
+            _mm_shuffle_epi8(b, rot_word_1),
+            _mm_set1_epi32(RCON[step - 1]),
+        );
         a = _mm_xor_si128(xor_prefix(a), sub);
         if step % 2 == 1 {
             out[3 * (step - 1) / 2 + 1] = _mm_unpacklo_epi64(b, a);

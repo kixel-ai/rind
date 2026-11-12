@@ -17,7 +17,7 @@ def RunsValeAesGcm : Prop :=
   low.x86_64.cpu.HaveVaesAvx2ForAesGcm.check = ok none ∧
   (∃ t, low.x86_64.cpu.HaveAvxMovbeForAesGcm.check = ok (some t))
 
-theorem RunsValeAesGcm.aesNi (h : RunsValeAesGcm) : RunsAesNi :=
+theorem RunsValeAesGcm.aesNi (h : RunsValeAesGcm) : RunsAesHw :=
   ⟨h.1, h.2.1, h.2.2.1⟩
 
 /-- An AES-GCM key on Vale's tier, for the AES key `kw` and `alg`. -/

@@ -1,118 +1,28 @@
 import Rind.X86_64.AesKey
 import Rind.X86_64.Dispatch
-import Rind.X86_64.ValeAesGcm
 open Aeneas Aeneas.Std Result rind.vale
 
 /-!
-# `cipher::Aes` and AES header protection on AES-NI
+# `cipher::Aes` and AES header protection on the AES instructions
 
-`Aes::new` expands a key with rind's AES-NI key expansion, which
-`Rind.X86_64.AesKey` proves computes FIPS 197's round keys as Vale's AES spec
-lays them out, and `encrypt_block` and `header_protection_mask` run its AES-NI
-block cipher, which the same file proves is Vale's `aes_encrypt_LE`. These
-theorems compose the two through `mid::aes` and, for header protection, through
-`Rind.X86_64.Dispatch`'s model of `aead::quic`'s dispatch. AES-128 and AES-256
-alone: AES-192's key expansion and block cipher stay opaque.
+`Aes::new` expands a key with rind's key expansion on the CPU's AES
+instructions, which `Rind.X86_64.AesKey` proves computes FIPS 197's round keys
+as Vale's AES spec lays them out, and `encrypt_block` and
+`header_protection_mask` run its block cipher, which the same file proves is
+Vale's `aes_encrypt_LE`. These theorems compose the two through `mid::aes`
+and, for header protection, through `Rind.X86_64.Dispatch`'s model of
+`aead::quic`'s dispatch. AES-128 and AES-256 alone: no theorem here covers
+AES-192. `admin/prove` writes the aarch64 copy of this file, as it does
+`Dispatch`'s.
 -/
 
 namespace rind.x86_64
-
-/-- FIPS 197's cipher of the 16 bytes `block` under the key bytes `key`, as
-Vale's `aes_encrypt_LE` reads both, little-endian. -/
-def aesBlock (alg : Algorithm) (key block : List (BitVec 8)) : List (BitVec 8) :=
-  leQuad32ToBytes (aesEncrypt alg (seqNat8ToSeqNat32LE key) (leBytesToQuad32 block))
-
-/-- RFC 9001's AES header-protection mask: the first five bytes of the sample's
-AES cipher under the header-protection key. -/
-def aesHeaderMask (alg : Algorithm) (key sample : List (BitVec 8)) : List (BitVec 8) :=
-  (aesBlock alg key sample).take 5
-
--- RFC 9001's appendix A.2: the client's Initial header-protection mask. Lean
--- evaluates the S-box and `MixColumns` that proofs keep opaque, so these check
--- the specs above against known answers.
-#guard aesHeaderMask .AES_128
-  ([0x9f, 0x50, 0x44, 0x9e, 0x04, 0xa0, 0xe8, 0x10, 0x28, 0x3a, 0x1e, 0x99, 0x33, 0xad, 0xed, 0xd2] : List (BitVec 8))
-  [0xd1, 0xb1, 0xc9, 0x8d, 0xd7, 0x68, 0x9f, 0xb8, 0xec, 0x11, 0xd2, 0x42, 0xb1, 0x23, 0xdc, 0x9b] ==
-  [0x43, 0x7b, 0x9a, 0xec, 0x36]
-
--- FIPS 197's appendix C.3: AES-256 of `00112233...ff`.
-#guard aesBlock .AES_256 ((List.range 32).map fun i => BitVec.ofNat 8 i)
-  ((List.range 16).map fun i => BitVec.ofNat 8 (17 * i)) ==
-  [0x8e, 0xa2, 0xb7, 0xca, 0x51, 0x67, 0x45, 0xbf, 0xea, 0xfc, 0x49, 0x90, 0x4b, 0x49, 0x60, 0x89]
-
-/-- rind runs its AES-NI key expansion and block cipher on this CPU: its entry
-guard passes, and its CPU-feature checks find AES-NI, PCLMULQDQ, SSSE3, and
-SSE4.1. None reads an input. -/
-def RunsAesNi : Prop :=
-  (∃ e, low.entry.Entry.new_secret = ok e) ∧
-  (∃ hw, low.x86_64.cpu.HaveAesHardware.check = ok (some hw)) ∧
-  (∃ s, low.x86_64.cpu.HaveSsse3.check = ok s)
-
-theorem expand_key128_spec (h : RunsAesNi) (key : Slice U8) (hk : key.length = 16) :
-    mid.aes.expand_key key ⦃ k => ∃ k128, k = .Hw (.Aes128 k128) ∧
-      k128.round_keys.val = keyToRoundKeys .AES_128 (seqNat8ToSeqNat32LE (bvs key.val)) ⦄ := by
-  obtain ⟨-, ⟨hw, hhw⟩, ⟨ss, hss⟩⟩ := h
-  unfold mid.aes.expand_key low.x86_64.aes.AesKey.new low.x86_64.aes.AesKey128.new
-  step*
-  have hl : copy_key1.len.val = 16 := by rw [Slice.len_val, copy_key1_post]; exact hk
-  have hl' : copy_key1.len = 16#usize := by scalar_tac
-  simp only [low.ct.secret_slice, hhw, hss, bind_ok, core.array.TryFromSharedArraySlice.try_from,
-    hl', ↓reduceDIte, core.result.Result.unwrap, low.x86_64.aes.zero,
-    core.core_arch.x86.sse2._mm_setzero_si128]
-  apply WP.spec_bind (aes128_expand_spec _ _)
-  intro rk hrk
-  rw [WP.spec_ok]
-  refine ⟨_, rfl, ?_⟩
-  rw [hrk, Std.Array.from_val, copy_key1_post]
-
-theorem expand_key256_spec (h : RunsAesNi) (key : Slice U8) (hk : key.length = 32) :
-    mid.aes.expand_key key ⦃ k => ∃ k256, k = .Hw (.Aes256 k256) ∧
-      k256.round_keys.val = keyToRoundKeys .AES_256 (seqNat8ToSeqNat32LE (bvs key.val)) ⦄ := by
-  obtain ⟨-, ⟨hw, hhw⟩, ⟨ss, hss⟩⟩ := h
-  unfold mid.aes.expand_key low.x86_64.aes.AesKey.new low.x86_64.aes.AesKey256.new
-  step*
-  have hl : copy_key1.len.val = 32 := by rw [Slice.len_val, copy_key1_post]; exact hk
-  have hl' : copy_key1.len = 32#usize := by scalar_tac
-  simp only [low.ct.secret_slice, hhw, hss, bind_ok, core.array.TryFromSharedArraySlice.try_from,
-    hl', ↓reduceDIte, core.result.Result.unwrap, low.x86_64.aes.zero,
-    core.core_arch.x86.sse2._mm_setzero_si128]
-  apply WP.spec_bind (aes256_expand_spec _ _)
-  intro rk hrk
-  rw [WP.spec_ok]
-  refine ⟨_, rfl, ?_⟩
-  rw [hrk, Std.Array.from_val, copy_key1_post]
-
-/-- The AES-NI key holds Vale's round keys of the AES key `kw` for `alg`. -/
-def HwKeyIs (alg : Algorithm) (kw : List (BitVec 32)) : low.x86_64.aes.HwKey → Prop
-  | .Aes128 k => alg = .AES_128 ∧ k.round_keys.val = keyToRoundKeys .AES_128 kw
-  | .Aes192 _ => False
-  | .Aes256 k => alg = .AES_256 ∧ k.round_keys.val = keyToRoundKeys .AES_256 kw
-
-/-- The key length `alg` takes, which rind's AES supports. -/
-def KeyLen (alg : Algorithm) (n : Nat) : Prop :=
-  (alg = .AES_128 ∧ n = 16) ∨ (alg = .AES_256 ∧ n = 32)
-
-
-theorem hw_encrypt_block (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
-    (h : HwKeyIs alg kw hk) (b : Std.Array U8 16#usize) :
-    low.x86_64.aes.AesKey.encrypt_block (.Hw hk) b =
-      ok (storeBytes (aesEncrypt alg kw (loadBytes b.val))) := by
-  cases hk with
-  | Aes128 k =>
-    obtain ⟨rfl, hrk⟩ := h
-    simp only [low.x86_64.aes.AesKey.encrypt_block, low.x86_64.aes.HwKey.encrypt_block,
-      low.x86_64.aes.AesKey128.encrypt_block, aes128_block_spec, hrk, aesEncrypt]
-  | Aes192 k => exact h.elim
-  | Aes256 k =>
-    obtain ⟨rfl, hrk⟩ := h
-    simp only [low.x86_64.aes.AesKey.encrypt_block, low.x86_64.aes.HwKey.encrypt_block,
-      low.x86_64.aes.AesKey256.encrypt_block, aes256_block_spec, hrk, aesEncrypt]
 
 theorem store_bytes (q : BitVec 128) : bvs (storeBytes q).val = leQuad32ToBytes q := by
   simp [storeBytes, Std.Array.from_val, Function.comp_def, bvs]
 
 /-- An AES key holding FIPS 197's round keys for the key bytes `key`, which
-`alg` sizes, on AES-NI. -/
+`alg` sizes, on the AES instructions. -/
 def AesIs (alg : Algorithm) (key : List (BitVec 8)) (k : mid.aes.Aes) : Prop :=
   key.length = 4 * nk alg ∧ ∃ hk, k = .Hw hk ∧ HwKeyIs alg (seqNat8ToSeqNat32LE key) hk
 
@@ -125,7 +35,7 @@ theorem aes_encrypt (alg : Algorithm) (key : List (BitVec 8)) (k : mid.aes.Aes) 
 
 /-- A `cipher::Aes` key is refused unless it is the algorithm's length, and
 otherwise holds FIPS 197's round keys for its bytes. -/
-theorem aes_new (h : RunsAesNi) (alg : Algorithm) (algorithm : cipher.Algorithm)
+theorem aes_new (h : RunsAesHw) (alg : Algorithm) (algorithm : cipher.Algorithm)
     (halg : KeyLen alg algorithm.key_len.val) (key : Slice U8) :
     mid.aes.Aes.new algorithm key ⦃ r =>
       if key.length = 4 * nk alg then ∃ k, r = .Ok k ∧ AesIs alg (bvs key.val) k
@@ -169,7 +79,7 @@ theorem aes_encrypt_block (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg :
 
 /-- An AES header-protection key is refused unless it is the algorithm's
 length, and otherwise holds FIPS 197's round keys for its bytes. -/
-theorem aes_header_new (h : RunsAesNi) (alg : Algorithm) (algorithm : aead.quic.Algorithm)
+theorem aes_header_new (h : RunsAesHw) (alg : Algorithm) (algorithm : aead.quic.Algorithm)
     (halg : (algorithm = aead.quic.AES_128 ∧ alg = .AES_128) ∨
       (algorithm = aead.quic.AES_256 ∧ alg = .AES_256))
     (key : Slice U8) :

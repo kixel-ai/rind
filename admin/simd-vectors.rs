@@ -70,6 +70,11 @@ fn slli<const I: i32>(a: __m128i) -> __m128i {
     _mm_slli_si128::<I>(a)
 }
 
+#[target_feature(enable = "ssse3")]
+fn alignr<const I: i32>(a: __m128i, b: __m128i) -> __m128i {
+    _mm_alignr_epi8::<I>(a, b)
+}
+
 #[target_feature(enable = "pclmulqdq")]
 fn clmul<const I: i32>(a: __m128i, b: __m128i) -> __m128i {
     _mm_clmulepi64_si128::<I>(a, b)
@@ -130,12 +135,15 @@ fn main() {
         writeln!(out, "#guard reducesTo (R := BitVec _) ( {call} ) {result}").unwrap()
     };
 
-    let binary: [(&str, Binary); 7] = [
+    let binary: [(&str, Binary); 8] = [
         ("sse2._mm_xor_si128", |a, b| unsafe { _mm_xor_si128(a, b) }),
         ("sse2._mm_and_si128", |a, b| unsafe { _mm_and_si128(a, b) }),
         ("sse2._mm_add_epi64", |a, b| unsafe { _mm_add_epi64(a, b) }),
         ("sse2._mm_unpackhi_epi64", |a, b| unsafe {
             _mm_unpackhi_epi64(a, b)
+        }),
+        ("sse2._mm_unpacklo_epi64", |a, b| unsafe {
+            _mm_unpacklo_epi64(a, b)
         }),
         ("ssse3._mm_shuffle_epi8", |a, b| unsafe {
             _mm_shuffle_epi8(a, b)
@@ -170,18 +178,23 @@ fn main() {
             }
         }
     }
-    let clmuls: [Binary; 256] = imm8!(clmul);
-    for (imm, f) in clmuls.iter().enumerate() {
-        for (a, b) in [(inputs[1], inputs[1]), (rng.u128(), rng.u128())] {
-            let r = unsafe { f(v(a), v(b)) };
-            guard(
-                format!(
-                    "core.core_arch.x86.pclmulqdq._mm_clmulepi64_si128 ⟨{imm}#32⟩ {} {}",
-                    q(v(a)),
-                    q(v(b))
-                ),
-                q(r),
-            );
+    let binary_imm: [(&str, [Binary; 256]); 2] = [
+        ("pclmulqdq._mm_clmulepi64_si128", imm8!(clmul)),
+        ("ssse3._mm_alignr_epi8", imm8!(alignr)),
+    ];
+    for (name, fs) in binary_imm {
+        for (imm, f) in fs.iter().enumerate() {
+            for (a, b) in [(inputs[1], inputs[1]), (rng.u128(), rng.u128())] {
+                let r = unsafe { f(v(a), v(b)) };
+                guard(
+                    format!(
+                        "core.core_arch.x86.{name} ⟨{imm}#32⟩ {} {}",
+                        q(v(a)),
+                        q(v(b))
+                    ),
+                    q(r),
+                );
+            }
         }
     }
 

@@ -160,6 +160,14 @@ link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/X86_64/AesCipher.l
 
 [[verified]]
 library = "rind"
+operations = ["quic-header-protection/aes128", "quic-header-protection/aes256"]
+arch = "aarch64"
+cpu = ["aes", "pmull", "sha2"]
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, and of the NEON intrinsics as Arm's manual defines them, tested on an aarch64 CPU, of its header-protection API's AES-128 and AES-256 against RFC 9001 and Vale's FIPS 197 spec"
+link = "https://github.com/moq-dev/rind/blob/main/proofs/Rind/Aarch64/AesKey.lean"
+
+[[verified]]
+library = "rind"
 operations = ["aes128-gcm/*", "aes128-gcm-open/*", "aes256-gcm/*", "aes256-gcm-open/*"]
 arch = "x86_64"
 cpu = ["aes", "pclmulqdq", "ssse3", "sse4.1", "avx", "movbe", "!vaes"]
