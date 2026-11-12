@@ -47,14 +47,13 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
   bounds. Both functions are `#[inline(never)]` with fixed registers, so the
   proof covers their one copy.
 
-`hol-light/s2n-bignum/` holds, at their paths in s2n-bignum, the specs these
-proofs need from s2n-bignum pull requests not yet merged, ahead of the
-submodule on HOL Light's load path. Each is the pull request's file unchanged,
-so a submodule bump past its merge deletes it:
-
-- `x86/proofs/utils/sha256_spec.ml`: SHA-256's, from
-  [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) at
-  `79120e64ed55e37c9652565ff272b7ef17f76738`.
+`hol-light/s2n-bignum/` holds what these proofs add to s2n-bignum, ahead of
+the submodule on HOL Light's load path: specs from s2n-bignum pull requests
+not yet merged, and `x86.patch`, rind's additions to the x86 model, which
+`x86-cosim.ml` checks against the CPU. Its
+[README](hol-light/s2n-bignum/README.md) lists each, so they can be offered
+upstream. `nix develop .#hol-light --command admin/prove cosim` runs the
+cosimulation, on an x86_64 CPU with AVX2.
 
 ## What is proven
 
@@ -403,7 +402,8 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
 ## Layout
 
 - `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine, and
-  `hol-light/s2n-bignum/`, the unmerged s2n-bignum specs they use.
+  `hol-light/s2n-bignum/`, what they add to s2n-bignum: unmerged specs and
+  rind's additions to the x86 model, with its cosimulation.
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
   writes and git ignores.
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
@@ -503,7 +503,9 @@ Beyond Lean's kernel:
   code, as for `benchmarks/verified.toml`'s other entries, except where a
   proof in `hol-light/` covers the bytes rind's build emits. For those, HOL
   Light's kernel and s2n-bignum's instruction models, as for s2n-bignum's
-  own theorems.
+  own theorems, with rind's additions in `hol-light/s2n-bignum/x86.patch`,
+  which `admin/prove cosim` checks against the CPU as s2n-bignum checks its
+  own.
 - The translation ignores drops, which here wipe keys and keyed state under
   the `wipe` feature and restore CPU state, and computes nothing an output
   depends on.
