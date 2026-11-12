@@ -458,6 +458,11 @@ p256_items() {
     items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
 }
 check_quote Aarch64/P256Dispatch p256_items
+p384_items() {
+    items rind/src/mid/p384.rs '    pub(crate) fn new_random(' '    fn generate(rng: &mut dyn'
+    items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
+}
+check_quote X86_64/P384Dispatch p384_items
 ecdsa_items() {
     items rind/src/high/curve.rs 'impl Curve for P256 {'
     items rind/src/mid/p256.rs '    pub(crate) fn generate(rng: &mut dyn'
@@ -594,7 +599,9 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # with the signature API's ECDSA key pairs and statics, which hold function
 # pointers too. The generator table is translated, so
 # `proofs/Rind/Aarch64/P256Table.lean` can prove it holds what s2n-bignum's
-# proof assumes. HMAC's keyed states are translated over any hash, and its
+# proof assumes. P-384's key generation is opaque for the same reason, and
+# `proofs/Rind/X86_64/P384Dispatch.lean` models it on both targets; its comb
+# tables are translated, which `P384Table.lean` checks. HMAC's keyed states are translated over any hash, and its
 # `Key` and `Context`, which hold function pointers, are not.
 extract() {
     local arch=$1 dir=$2
@@ -834,7 +841,8 @@ extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aea
 extract_kdf aarch64 Aarch64
 
 mkdir -p proofs/Rind/Aarch64/Kdf
-for file in Dispatch X25519 P384 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
+for file in Dispatch P384Dispatch X25519 P384 P384Table P384Keygen DigestAlgorithm DigestDispatch Sha512 \
+    ChaCha20 SignatureDispatch Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     CtEqual HmacApi DigestApi Hkdf Pbkdf2; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
