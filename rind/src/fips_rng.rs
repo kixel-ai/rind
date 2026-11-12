@@ -76,10 +76,11 @@ fn instantiate() -> Result<HmacDrbg<Sha512>, Error> {
         }
     });
 
-    let mut seed = [0u8; ENTROPY_LEN + NONCE_LEN];
-    getrandom::fill(&mut seed).map_err(|_| Error::RngFailed)?;
-    let (entropy, nonce) = seed.split_at(ENTROPY_LEN);
-    Ok(HmacDrbg::new(entropy, nonce, b""))
+    let mut entropy = [0u8; ENTROPY_LEN];
+    let mut nonce = [0u8; NONCE_LEN];
+    getrandom::fill(&mut entropy).map_err(|_| Error::RngFailed)?;
+    getrandom::fill(&mut nonce).map_err(|_| Error::RngFailed)?;
+    Ok(HmacDrbg::new(&entropy, &nonce, b""))
 }
 
 /// Section 9.3.1's generate with prediction resistance: reseed from the OS,

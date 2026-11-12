@@ -266,6 +266,9 @@ exclude_re = [
   'rind/src/low/x86_64/cpu\.rs:11:\d+: replace enter_cpu_state -> u32 with 1$',
   'rind/src/low/x86_64/cpu\.rs:486:\d+: replace test_toggle -> bool with false$',
   'rind/src/low/x86_64/cpu\.rs:486:\d+: replace test_toggle -> bool with true$',
+  # The FIPS module's `SystemRandom`, compiled only under `--cfg rind_fips`,
+  # which no mutation run sets; `fips_rng`'s tests cover what it calls.
+  'rind/src/mid/rng\.rs:29:\d+: replace <impl RandomSource for SystemRandom>::fill -> Result<\(\), Error> with Ok\(\(\)\)$',
   # Wipes a thread's DRBG as the thread exits, where no test can read it;
   # `high::hmac_drbg::tests::zeroise_wipes_the_state_under_wipe` checks the wipe.
   'rind/src/fips_rng\.rs:\d+:\d+: replace <impl Drop for ThreadDrbg>::drop with \(\)$',
