@@ -80,13 +80,6 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Reported:** no.
 - **Goes when:** valgrind faults the read on ARM, if the bounds tests are ever wanted under ctgrind.
 
-### libcrux branches on an undeclassified tag check
-
-- **Breaks:** libcrux's AES-GCM decryption branches on whether the tag verified (`aes_gcm.rs:99`). The outcome is public, but libcrux does not declassify it, so memcheck flags the branch.
-- **Workaround:** the `libcrux-aes-gcm-decrypt-outcome` suppression in `admin/ctgrind.supp`.
-- **Reported:** no.
-- **Goes when:** libcrux marks the outcome public for valgrind.
-
 ### BINSEC cannot decode much of what rind runs
 
 - **Breaks:** BINSEC 0.11.3 stops at instructions it cannot decode: on x86_64, AES-NI, VAES, the SHA512 instructions, every EVEX encoding, and the `vinsertf128` LLVM emits for the AVX2 ChaCha20 kernel; on aarch64, the crypto extension's AES, PMULL, and SHA instructions, SHA3's, the `msr` that sets DIT, `tbl` (vpaes and NEON ChaCha20), and the `mrs` of `tpidr_el0` in glibc's `malloc`; on armv7, the NEON table lookups and the crypto extension.
@@ -133,14 +126,28 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Reported:** no.
 - **Goes when:** Aeneas names the clauses apart.
 
+### Lean cannot compile P-384's comb as one literal
+
+- **Breaks:** Lean cannot compile the Aeneas translation of P-384's precomputed comb when it is one array literal.
+- **Workaround:** `admin/p384-precomp` emits each table as its own constant, which Aeneas translates to its own Lean definition.
+- **Reported:** no.
+- **Goes when:** Lean compiles the whole comb as one literal.
+
+### s2n-bignum's x86_64 model lacks instructions aws-lc's routines use
+
+- **Breaks:** s2n-bignum's HOL Light x86_64 model cannot decode some instructions of aws-lc's ChaCha20-Poly1305 and ChaCha20 routines, so they cannot be proven on it.
+- **Workaround:** `proofs/hol-light/s2n-bignum/x86.patch` adds them, cosimulated against the CPU by `x86-cosim.ml`; [that directory's README](/proofs/hol-light/s2n-bignum/README.md) lists each, with the unmerged upstream specs rind vendors.
+- **Reported:** no.
+- **Goes when:** s2n-bignum's model decodes each, instruction by instruction.
+
 ## Mutation testing
 
 ### cargo-mutants cannot see into `cfg_if!`
 
 - **Breaks:** cargo-mutants finds no module declared inside a `cfg_if!` invocation, so it mutates none of that module's code.
-- **Workaround:** `rind/src/low/mod.rs` declares the backend modules outside `cfg_if!`, and `rind/src/mid/mod.rs` swaps its portable modules with `#[cfg_attr(..., path = ...)]`.
+- **Workaround:** `rind/src/low/mod.rs` declares the backend modules outside `cfg_if!`, and `rind/src/mid/mod.rs` swaps its portable modules with a `#[cfg]` pair and a plain `#[path]`, since cargo-mutants also ignores a `path` inside `cfg_attr`.
 - **Reported:** no.
-- **Goes when:** cargo-mutants expands `cfg_if!`, or rind stops using it.
+- **Goes when:** cargo-mutants expands `cfg_if!` and `cfg_attr`, or rind stops using them.
 
 ### cargo-mutants misses compound `cfg(test)`s
 

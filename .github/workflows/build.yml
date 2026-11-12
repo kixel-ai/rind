@@ -248,6 +248,23 @@ jobs:
       - name: Build, lint, and test
         run: just armv7
 
+  # wasm32-wasip2 on the portable backend, under wasmtime: the vector tests,
+  # without the differential ones, whose aws-lc does not build for wasm.
+  wasm:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+      - uses: ./.github/actions/just
+      - uses: ./.github/actions/nix
+
+      - name: Build and test
+        run: just wasm
+
   # Targets with no rind assembly, on the portable backend, under qemu-user
   # where the runner cannot run them natively. Each entry names the flake dev
   # shell that holds its target's toolchain. s390x, powerpc64, and powerpc are

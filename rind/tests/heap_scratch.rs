@@ -200,6 +200,68 @@ fn ed25519() {
 }
 
 #[test]
+fn ml_dsa() {
+    use aws_lc_rs::signature::{ML_DSA_44_SIGNING, ML_DSA_65_SIGNING, ML_DSA_87_SIGNING};
+    use rind::signature::sign::{MlDsa44, MlDsa65, MlDsa87};
+    ml_dsa_set::<MlDsa44>(&ML_DSA_44_SIGNING);
+    ml_dsa_set::<MlDsa65>(&ML_DSA_65_SIGNING);
+    ml_dsa_set::<MlDsa87>(&ML_DSA_87_SIGNING);
+}
+
+fn ml_dsa_set<P: rind::signature::sign::MlDsaParameterSet>(
+    theirs: &'static aws_lc_rs::signature::PqdsaSigningAlgorithm,
+) {
+    use rind::signature::sign::MlDsaKeyPair;
+    zeroed("ML-DSA key generation", || {
+        MlDsaKeyPair::<P>::generate().unwrap()
+    });
+    let seeds = [[1u8; 32], [2u8; 32]];
+    independent("ML-DSA seed load", seeds, |seed| {
+        MlDsaKeyPair::<P>::from_seed(seed).unwrap()
+    });
+    let keys = seeds.map(|seed| MlDsaKeyPair::<P>::from_seed(&seed).unwrap());
+    independent("ML-DSA export", keys.each_ref(), |key| key.to_pkcs8());
+    // The expanded form, whose load checks the key.
+    let expanded = seeds.map(|seed| ml_dsa_expanded_pkcs8(theirs, &seed));
+    independent("ML-DSA expanded load", expanded, |der| {
+        MlDsaKeyPair::<P>::from_pkcs8(der).unwrap()
+    });
+    // Signing is hedged, so even under one key its randomness varies: every
+    // block it frees must be wiped.
+    for key in &keys {
+        zeroed("ML-DSA signing", || key.sign(b"message").unwrap());
+    }
+}
+
+/// The key `seed` expands to, as PKCS#8 in RFC 9881's expanded form, which
+/// rind writes only for a key loaded from it, so aws-lc-rs expands it.
+fn ml_dsa_expanded_pkcs8(
+    algorithm: &'static aws_lc_rs::signature::PqdsaSigningAlgorithm,
+    seed: &[u8; 32],
+) -> Vec<u8> {
+    use aws_lc_rs::encoding::AsRawBytes;
+    use aws_lc_rs::signature::PqdsaKeyPair;
+    let key = PqdsaKeyPair::from_seed(algorithm, seed).unwrap();
+    let expanded = key.private_key().as_raw_bytes().unwrap();
+    // The seed form's version and `AlgorithmIdentifier`, which the expanded
+    // form shares: `SEQUENCE { INTEGER 0, SEQUENCE { OID } ...`.
+    let seed_form = key.to_pkcs8v1().unwrap();
+    let header = &seed_form.as_ref()[2..2 + 3 + 13];
+    let private_key = der(0x04, &der(0x04, expanded.as_ref()));
+    der(0x30, &[header, &private_key].concat())
+}
+
+/// A DER element of `tag` holding `body`, under 64 KiB.
+fn der(tag: u8, body: &[u8]) -> Vec<u8> {
+    let len = match body.len() {
+        len @ 0..=0x7f => vec![len as u8],
+        len @ 0x80..=0xff => vec![0x81, len as u8],
+        len => [&[0x82][..], &u16::try_from(len).unwrap().to_be_bytes()].concat(),
+    };
+    [&[tag][..], &len, body].concat()
+}
+
+#[test]
 fn ecdh() {
     use rind::agreement::{ECDH_P256, ECDH_P384, ECDH_P521, PrivateKey, X25519};
     for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
