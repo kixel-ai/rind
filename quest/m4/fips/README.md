@@ -1,9 +1,9 @@
-# rind ships a FIPS 140-3 validated module
+# rind builds a FIPS 140-3 module ready for validation
 
 ## Goal
 
-A `rind-fips` crate offers rind's approved algorithms from a module that
-holds a FIPS 140-3 Level 1 certificate, so a consumer that must use validated
+A `rind-fips` crate offers rind's approved algorithms from a module built to
+pass FIPS 140-3 Level 1 validation, so a consumer that must use validated
 cryptography (FedRAMP, FISMA, and the deployments behind
 [oven-sh/bun#4869](https://github.com/oven-sh/bun/issues/4869) and
 [denoland/deno#36906](https://github.com/denoland/deno/pull/36906)) can run on
@@ -29,6 +29,8 @@ timeline, against aws-lc's validated module
   accepting aws-lc 3's caveat "No assurance of the minimum strength of
   generated SSPs". An SP 800-90B entropy source with its own ESV certificate
   waits for a consumer that rejects that caveat.
-- The children build the module; [the submission](/quest/m4/fips/submission.md)
-  takes it through a lab and the CMVP, and holds the maintainer's decisions on
-  money and the vendor entity.
+- The children build the module, ready for a lab to test. The lab contract
+  and the CMVP submission are dropped until a consumer needs or funds a
+  certificate, as the maintainer decided on 2026-11-12;
+  [moq-dev/rind#638](https://github.com/moq-dev/rind/pull/638)'s body keeps
+  their cost (about $70k to $100k) and timeline (about 18 to 24 months).
