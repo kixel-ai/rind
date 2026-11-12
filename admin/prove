@@ -570,7 +570,11 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # from its `Mask` impl down to HACL*'s rounds, which are Rust and translated
 # too; AES's key and block cipher are opaque. Then Ed25519 from
 # `high::signature`'s key pair and `high::ed25519` down to s2n-bignum's
-# routines and the SHA-512 context. On x86_64, ChaCha20-Poly1305 and
+# routines and the SHA-512 context; on x86_64 that includes the port of
+# curve25519-dalek's AVX2 double multiplication, which is Rust over AVX2
+# intrinsics that `proofs/Rind/X86_64/Avx2.lean` models, but for its
+# `transmute`s between a vector and its lanes, which are opaque and which
+# `FunsExternal.lean` models. On x86_64, ChaCha20-Poly1305 and
 # XChaCha20-Poly1305 from their keys down to the call of aws-lc's one-pass
 # routine, which is opaque, as are the separate passes CPUs without SSE4.1
 # run, with HChaCha20 over HACL*'s rounds.
@@ -749,6 +753,9 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::edwards25519_decode \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmulbase \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmuldouble \
+    --include crate::low::x86_64::edwards25519_scalarmuldouble_avx2 \
+    --opaque crate::low::x86_64::edwards25519_scalarmuldouble_avx2::v \
+    --opaque crate::low::x86_64::edwards25519_scalarmuldouble_avx2::lanes \
     --include crate::low::x86_64::adx_mux::bignum_madd_n25519 \
     --include crate::low::x86_64::sha1_mux \
     --opaque crate::low::x86_64::sha1_mux::path \
