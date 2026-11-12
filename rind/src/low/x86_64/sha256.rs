@@ -77,53 +77,53 @@ pub(in crate::low) fn sha256_finish_shaext(
     let padded = padded(tail, length);
     let (abcd, efgh): (__m128i, __m128i);
     // SAFETY: `_token` proves the caller checked the `sha`, `ssse3`, and
-    // `sse4.1` features. The block reads `state`, `blocks.len()` blocks from
-    // `blocks`, and `K`.
+    // `sse4.1` features. The block reads `state`, `blocks.len()` blocks and
+    // then `padded.lanes` lanes, at most three, from `message`, and `K`.
+    // Its registers are those of the System V ABI's arguments where it can
+    // take them, so the function saves none.
     unsafe {
         asm!(
-            "movdqu (%rdi), %xmm0",
-            "movdqu 16(%rdi), %xmm1",
+            "movdqu (%rsi), %xmm0",
+            "movdqu 16(%rsi), %xmm1",
             "pshufd $177, %xmm0, %xmm0",
             "pshufd $27, %xmm1, %xmm10",
             "movdqa %xmm0, %xmm11",
             "palignr $8, %xmm10, %xmm11",
             "pblendw $240, %xmm0, %xmm10",
             "movdqa 256(%rcx), %xmm4",
-            // The message's whole blocks, counted down in rdx, which the
+            // The message's whole blocks, counted down in rax, which the
             // last borrow leaves at -1 for the padded blocks.
             "3:",
-            "sub $1, %rdx",
+            "sub $1, %rax",
             "jb 2f",
-            "movdqu (%rsi), %xmm14",
-            "movdqu 16(%rsi), %xmm15",
-            "movdqu 32(%rsi), %xmm1",
-            "movdqu 48(%rsi), %xmm12",
-            "add $64, %rsi",
+            "movdqu (%rdx), %xmm14",
+            "movdqu 16(%rdx), %xmm15",
+            "movdqu 32(%rdx), %xmm1",
+            "movdqu 48(%rdx), %xmm12",
+            "add $64, %rdx",
             "4:",
             rounds!(),
-            "test %rdx, %rdx",
+            "test %rax, %rax",
             "jns 3b",
-            // The block after the padded one, when r8 holds its length:
-            // zeros, then the length.
-            "test %r8, %r8",
-            "je 5f",
+            // The block after the padded one, when r9 is 4: zeros, then the
+            // length.
+            "cmp $4, %r9",
+            "jne 5f",
             "xor %r9d, %r9d",
             "xor %r10d, %r10d",
             "xor %r11d, %r11d",
-            "mov %r8, %rax",
-            "xor %r8d, %r8d",
-            // The padded block: r9 whole lanes from rsi, the lane r10 and
-            // r11 hold, zeros, and rax as the last lane's top word unless
-            // that lane is r10 and r11's.
+            // The padded block: r9 whole lanes from rdx, at most three, the
+            // lane r10 and r11 hold, zeros, and r8 as the last lane's top
+            // word unless that lane is r10 and r11's.
             "2:",
             "cmp $1, %r9",
             "jb 6f",
-            "movdqu (%rsi), %xmm14",
+            "movdqu (%rdx), %xmm14",
             "je 7f",
-            "movdqu 16(%rsi), %xmm15",
+            "movdqu 16(%rdx), %xmm15",
             "cmp $2, %r9",
             "je 8f",
-            "movdqu 32(%rsi), %xmm1",
+            "movdqu 32(%rdx), %xmm1",
             "movq %r10, %xmm12",
             "movq %r11, %xmm0",
             "punpcklqdq %xmm0, %xmm12",
@@ -150,25 +150,23 @@ pub(in crate::low) fn sha256_finish_shaext(
             "xor %r11d, %r11d",
             "9:",
             "movq %r11, %xmm12",
-            "movq %rax, %xmm0",
+            "movq %r8, %xmm0",
             "punpcklqdq %xmm0, %xmm12",
             "jmp 4b",
             "5:",
             unload_state!(),
             "pshufb %xmm4, %xmm2",
             "pshufb %xmm4, %xmm1",
-            inout("rdi") state.as_ptr() => _,
-            inout("rsi") blocks.as_ptr() => _,
-            inout("rdx") blocks.len() => _,
+            in("rsi") state.as_ptr(),
+            inout("rdx") blocks.as_ptr() => _,
+            inout("rax") blocks.len() => _,
             in("rcx") K.0.as_ptr(),
-            inout("r8") padded.next => _,
+            in("r8") padded.length,
             inout("r9") padded.lanes => _,
             inout("r10") padded.end[0] => _,
             inout("r11") padded.end[1] => _,
-            inout("rax") padded.length => _,
             out("xmm0") _, out("xmm1") efgh, out("xmm2") abcd, out("xmm3") _,
-            out("xmm4") _, out("xmm5") _, out("xmm6") _, out("xmm7") _,
-            out("xmm8") _, out("xmm9") _, out("xmm10") _, out("xmm11") _,
+            out("xmm4") _, out("xmm10") _, out("xmm11") _,
             out("xmm12") _, out("xmm13") _, out("xmm14") _, out("xmm15") _,
             options(att_syntax, nostack, readonly),
         );
@@ -186,17 +184,16 @@ pub(in crate::low) fn sha256_finish_shaext(
 /// read from where they are, then the lane where the message ends, then
 /// zeros, closed by the length.
 struct Padded {
-    /// The message's whole 16-byte lanes in the block.
+    /// The message's whole 16-byte lanes in the block, or 4 when there are
+    /// three and the length takes a block after this one.
     lanes: usize,
     /// The lane after them, as two little-endian words: the message's last
     /// bytes, the 0x80 that ends it, and, when it is the block's last lane
-    /// and the padding fits, the length.
+    /// and the length fits, the length.
     end: [u64; 2],
-    /// The length, as the last lane's top word when that is not `end`.
+    /// The length, as the last lane's top word when that is not `end`, and
+    /// in the block after this one.
     length: u64,
-    /// The length, when the padding needs a block after this one, or
-    /// otherwise zero, which a length that long cannot be.
-    next: u64,
 }
 
 /// The last block of a message whose bytes past its whole blocks are
@@ -219,17 +216,20 @@ fn padded(tail: &[u8], length: [u8; 8]) -> Padded {
         None => [ended(part), 0],
     };
     let length = u64::from_le_bytes(length);
-    let mut next = 0;
     if tail.len() + 1 + 8 > 64 {
-        next = length;
-    } else if lanes == 3 {
+        return Padded {
+            lanes: 4,
+            end,
+            length,
+        };
+    }
+    if lanes == 3 {
         end[1] |= length;
     }
     Padded {
         lanes,
         end,
         length,
-        next,
     }
 }
 
