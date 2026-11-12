@@ -21,6 +21,9 @@ Before the release PR merges, check what it proposes:
 - `rind` 0.4.0.
 - Each adapter at its next patch version, requiring rind 0.4.0. A `!` commit or a removed item makes release-plz propose an adapter's next breaking version, which `sh/adapter-versions.sh` fails (`CONTRIBUTING.md:144`). [moq-dev/rind#548](https://github.com/moq-dev/rind/pull/548) set rind-rustls, rind-rcgen, rind-ring, and rind-str0m by hand for the changes merged by then; a later adapter PR with a `!` title sets its own patch version, as [moq-dev/rind#522](https://github.com/moq-dev/rind/pull/522) did.
 - No breaking version for an adapter from the rind 0.4 requirement alone: its API did not change, so set its patch version by hand if release-plz proposes one.
+- No first version of rind-openmls. It is new ([moq-dev/rind#645](https://github.com/moq-dev/rind/pull/645)) and uses `rind::hpke`, which 0.3.2 lacks, so it cannot be published by hand before rind 0.4.0, as `CONTRIBUTING.md`'s Releases section asks of a new crate, and trusted publishing cannot create it: in the release, it would fail after rind publishes. A dry run of `cargo publish -p rind-openmls` from `main` on 2026-11-12 failed on that import.
+
+Decided 2026-11-12 (maintainer, rust2's /quest-unblock): keep rind-openmls out of the release ✅. Before the release PR merges, a PR sets `release = false` for it in `.release-plz.toml`. Once 0.4.0 is on crates.io, the maintainer publishes rind-openmls by hand from `main` with their own `cargo login`, adds its trusted publisher and turns on "require trusted publishing", and a PR removes the exclusion (rejected: merging the release and publishing rind-openmls by hand after its job fails, which leaves the release partial).
 
 Each change documents its own migration in MIGRATING.md, so this quest adds none. Delete it once 0.4.0 is published.
 
@@ -28,7 +31,7 @@ The benchmark report is refreshed once before each minor release (maintainer, 20
 
 ## Waiting
 
-- Maintainer: leave the release PR, [moq-dev/rind#511](https://github.com/moq-dev/rind/pull/511) or whichever replaces it, unmerged until the CPU-check removal is on `main` and MoQ's PR is ready, then merge it. An agent cannot: a release PR merges on the maintainer's approval (`CONTRIBUTING.md:118`), and `.release-plz.toml` configures no way to hold one crate back, which is why the hold is the unmerged PR. Check: `cargo search rind` shows 0.4.0.
+- Maintainer: leave the release PR, [moq-dev/rind#511](https://github.com/moq-dev/rind/pull/511) or whichever replaces it, unmerged until the CPU-check removal is on `main` and MoQ's PR is ready, then merge it. An agent cannot: a release PR merges on the maintainer's approval (`CONTRIBUTING.md:118`), and leaving rind alone out of the release (`release = false`) would not hold it, since every adapter's fix requires rind 0.4, which is why the hold is the unmerged PR. Check: `cargo search rind` shows 0.4.0.
 
 ## Required
 
