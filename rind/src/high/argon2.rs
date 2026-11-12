@@ -3,7 +3,7 @@
 //! Argon2id, standardized in [RFC 9106](https://datatracker.ietf.org/doc/html/rfc9106).
 
 use crate::Error;
-use crate::low::{Entry, ct, ct_equal};
+use crate::low::{Entry, ct, ct_equal, zeroise};
 use crate::mid::argon2::{Cost, argon2id};
 
 /// How much memory and time Argon2id spends: RFC 9106's `m`, `t`, and `p`.
@@ -77,10 +77,8 @@ pub fn derive<const N: usize>(
     const { assert!(N >= 4 && N as u64 <= u32::MAX as u64) };
     let _entry = Entry::new_secret();
     check_lengths(password, salt)?;
-    let mut key = [0u8; N];
-    argon2id(params.cost(), password, salt, &[], &[], &mut key)?;
-    *out = key;
-    Ok(())
+    // Argon2id fails only allocating its memory, before it writes `out`.
+    argon2id(params.cost(), password, salt, &[], &[], out)
 }
 
 /// Checks in constant time that `previously_derived` is what [`derive`] makes from `password` and `salt`.
@@ -96,9 +94,15 @@ pub fn verify<const N: usize>(
     const { assert!(N >= 4 && N as u64 <= u32::MAX as u64) };
     let _entry = Entry::new_secret();
     check_lengths(password, salt)?;
-    let mut key = [0u8; N];
-    argon2id(params.cost(), password, salt, &[], &[], &mut key)?;
-    match ct::into_public(ct_equal(&key, previously_derived)) {
+    // On the heap, since `N` may be far larger than a thread's stack.
+    let mut key = Vec::new();
+    key.try_reserve_exact(N).map_err(|_| Error::OutOfMemory)?;
+    key.resize(N, 0);
+    let result = argon2id(params.cost(), password, salt, &[], &[], &mut key)
+        .map(|()| ct::into_public(ct_equal(&key, previously_derived)));
+    // Heap scratch as good as a key derived from the password.
+    zeroise(&mut key);
+    match result? {
         true => Ok(()),
         false => Err(Error::BadSignature),
     }

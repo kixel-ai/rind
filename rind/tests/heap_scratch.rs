@@ -244,7 +244,8 @@ fn argon2() {
         |password| {
             let mut out = [0u8; 32];
             rind::argon2::derive(params, password, b"saltsalt", &mut out).unwrap();
-            black_box(out)
+            // Verifying derives its key on the heap.
+            black_box(rind::argon2::verify(params, password, b"saltsalt", &out).is_ok())
         },
     );
 }
