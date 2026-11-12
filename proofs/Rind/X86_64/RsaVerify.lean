@@ -47,12 +47,6 @@ theorem rsa_slice_eq_spec (s t : Slice U8) :
   intro b hb
   rw [hb, Slice.eq_iff]
 
-theorem bv_inj (a b : List U8) : bv a = bv b ↔ a = b := by
-  constructor
-  · intro h
-    exact List.map_injective_iff.mpr (fun x y hxy => by cases x; cases y; simp_all) h
-  · rintro rfl; rfl
-
 /-- `k` bytes hold any number below the modulus. -/
 theorem lt_octetLen (N x : Nat) (hx : x < N) : x < 256 ^ octetLen N := by
   calc x < N := hx
