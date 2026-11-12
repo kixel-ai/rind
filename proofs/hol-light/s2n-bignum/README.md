@@ -18,6 +18,17 @@ submodule bump past its merge deletes it.
   [awslabs/s2n-bignum#420](https://github.com/awslabs/s2n-bignum/pull/420) at
   `7ef7ba7c2d830d9c713512035ae6eb4aa8fe0a2b`.
 
+## rind's specs
+
+- `common/chacha20poly1305.ml`: RFC 8439's ChaCha20, Poly1305, and
+  AEAD_CHACHA20_POLY1305 on byte lists, which rind's proofs of aws-lc's
+  ChaCha20-Poly1305 and ChaCha20 routines state their results against, with
+  `CHACHA20_POLY1305_CONV`, which evaluates them on literals, and known-answer
+  tests from the RFC's sections 2.4.2, 2.5.2, and 2.8.2, which run as it
+  loads. Like `common/bignum.ml`, it loads after an architecture's
+  `proofs/base.ml`. `Rind/S2nChaCha20Poly1305.lean` proves it is
+  `Rind/Spec.lean`'s.
+
 ## rind's additions to the x86 model
 
 `x86.patch` adds what aws-lc's x86_64 ChaCha20-Poly1305 and ChaCha20 routines
