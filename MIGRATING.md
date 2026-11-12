@@ -221,10 +221,15 @@ ring has no `kem`.
 | `ED25519_PUBLIC_KEY_LEN` | none: always 32 |
 | `rsa::PublicKey::from_der` | `PublicKey::new(&verify::RSA_PKCS1_SHA256, der)`, for one algorithm and PKCS#1 or `SubjectPublicKeyInfo` DER |
 | `rsa::PublicKey::{modulus, exponent, modulus_len}`, `PublicKeyComponents::from(&key)` | none |
-| `PqdsaKeyPair`, `ML_DSA_65` and the other ML-DSA items | none; [ML-DSA](quest/m3/parity/ml-dsa.md) |
+| `PqdsaKeyPair::generate(&ML_DSA_65_SIGNING)` | `sign::MlDsaKeyPair::<MlDsa65>::generate()`, whose parameter set is a type |
+| `PqdsaKeyPair::from_seed(&alg, seed)`, `from_pkcs8(&alg, der)` | `MlDsaKeyPair::<P>::from_seed(seed)`, `from_pkcs8(der)`, which takes the seed, expanded, and both forms |
+| `PqdsaKeyPair::to_pkcs8v1()`, `to_pkcs8()` | `to_pkcs8()`, the seed form, or the expanded form for a key loaded without its seed, where aws-lc-rs fails |
+| `PqdsaKeyPair::sign(m, &mut sig)` | `sign(m)`, returning an `MlDsaSignature<P>` of the set's fixed length |
+| `PqdsaKeyPair::from_raw_private_key`, `private_key().as_raw_bytes()` | none: load the expanded key as PKCS#8 |
+| `ML_DSA_44`, `ML_DSA_65`, `ML_DSA_87` for verification | `verify::ML_DSA_44`, `ML_DSA_65`, `ML_DSA_87`, with `PublicKey::new` (the raw key) or `from_spki` |
 
-`PublicKey::new` refuses a compressed ECDSA point and an ECDSA or Ed25519
-`SubjectPublicKeyInfo`, which aws-lc-rs takes. `PublicKey::from_spki` takes
+`PublicKey::new` refuses a compressed ECDSA point and an ECDSA, Ed25519, or
+ML-DSA `SubjectPublicKeyInfo`, which aws-lc-rs takes. `PublicKey::from_spki` takes
 the latter, with its point compressed or not, and
 `agreement::PublicKey::new` decompresses a bare point. It takes an RSA key as
 PKCS#1 or as a `SubjectPublicKeyInfo`, as aws-lc-rs does, but refuses the
@@ -378,7 +383,8 @@ a `wipe` feature, since aws-lc-rs always wipes. Its [README](rind-aws-lc-rs/READ
 the items it leaves out, such as ML-DSA, SHA-224,
 and the PKCS#1 v1.5 encryption keys, and where it behaves differently. rustls's
 `aws_lc_rs` provider, rustls-webpki's `aws-lc-rs` feature, and rcgen's
-`aws_lc_rs` feature name ML-DSA, so they do not build on it until rind has it.
+`aws_lc_rs` feature name ML-DSA, so they do not build on it until it offers
+[ML-DSA](quest/m2/adoption/aws-lc-rs/ml-dsa.md).
 
 ### rind-rustls
 
@@ -412,10 +418,11 @@ what rcgen's default `KeyIdMethod::Sha256` computes.
 
 | aws-lc-rs backend | rind |
 |---|---|
-| dimpl's `crypto::aws_lc_rs::default_provider()` | `rind_dimpl::default_provider()?` |
-| str0m's default `aws-lc-rs` feature, or `str0m_aws_lc_rs::default_provider()` | `default-features = false`, with `set_crypto_provider(Arc::new(rind_str0m::default_provider()?))` |
-| object_store's `aws`, `azure`, and `gcp` features | the `*-base` features, with `with_crypto_provider(rind_object_store::default_provider()?)` |
-| jsonwebtoken's `crypto::aws_lc::DEFAULT_PROVIDER` | `rind_jsonwebtoken::default_provider()?` |
+| dimpl's `crypto::aws_lc_rs::default_provider()` | `rind_dimpl::default_provider()` |
+| str0m's default `aws-lc-rs` feature, or `str0m_aws_lc_rs::default_provider()` | `default-features = false`, with `set_crypto_provider(Arc::new(rind_str0m::default_provider()))` |
+| `str0m_aws_lc_rs::dimpl_crypto_provider()` | `rind_str0m::dimpl_crypto_provider()` |
+| object_store's `aws`, `azure`, and `gcp` features | the `*-base` features, with `with_crypto_provider(rind_object_store::default_provider())` |
+| jsonwebtoken's `crypto::aws_lc::DEFAULT_PROVIDER` | `rind_jsonwebtoken::DEFAULT_PROVIDER` |
 
 ## Crates with their own crypto backend
 

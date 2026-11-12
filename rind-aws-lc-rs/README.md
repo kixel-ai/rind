@@ -30,8 +30,8 @@ It is the one item this crate adds to aws-lc-rs's API.
 
 These items are left out, so code using them fails to build:
 
-- ML-DSA (`signature::ML_DSA_*`, `PqdsaKeyPair`, and the other `Pqdsa*` types): rind has no ML-DSA yet.
-  rustls's `aws_lc_rs` provider and rustls-webpki's `aws-lc-rs` feature name it, so they do not build on this crate yet.
+- ML-DSA (`signature::ML_DSA_*`, `PqdsaKeyPair`, and the other `Pqdsa*` types): rind has it, and this crate does not offer it yet.
+  rustls's `aws_lc_rs` provider and rustls-webpki's `aws-lc-rs` feature name these, so they do not build on this crate yet.
 - `kem::DecapsulationKey::new` and `key_bytes`: rind neither imports nor exports an ML-KEM private key.
 - SHA-224 (`digest::SHA224`, `hmac::HMAC_SHA224`, and the ECDSA algorithms with it), ECDSA with SHA-1 or SHA-3, and ECDSA on secp256k1 (`ECDSA_P256K1_*`).
 - AES-GCM-SIV, AES in ECB, CFB, or OFB mode, ISO 10126 padding, DES (`legacy-des`), CMAC (`cmac`), the KBKDF and SSKDF key derivations (`kdf`), the TLS 1.2 PRF (`tls_prf`), and the streaming cipher contexts (`cipher::StreamingEncryptingKey` and the others).

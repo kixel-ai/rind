@@ -81,6 +81,18 @@ fuzz_target!(|data: &[u8]| {
             theirs::Ed25519KeyPair::from_seed_unchecked(input),
             Expect::Agree,
         ),
+        43 => ml_dsa_pkcs8::<sign::MlDsa44>(&MLDSA_44, input),
+        44 => ml_dsa_pkcs8::<sign::MlDsa65>(&MLDSA_65, input),
+        45 => ml_dsa_pkcs8::<sign::MlDsa87>(&MLDSA_87, input),
+        46 => ml_dsa_seed::<sign::MlDsa44>(&MLDSA_44, input),
+        47 => ml_dsa_seed::<sign::MlDsa65>(&MLDSA_65, input),
+        48 => ml_dsa_seed::<sign::MlDsa87>(&MLDSA_87, input),
+        49 => ml_dsa_public(&MLDSA_44, input),
+        50 => ml_dsa_public(&MLDSA_65, input),
+        51 => ml_dsa_public(&MLDSA_87, input),
+        52 => ml_dsa_spki(&MLDSA_44, input),
+        53 => ml_dsa_spki(&MLDSA_65, input),
+        54 => ml_dsa_spki(&MLDSA_87, input),
         _ => {}
     }
 });
@@ -177,6 +189,35 @@ const RSA_3072: Rsa = Rsa {
     ours: &verify::legacy::RSA_PKCS1_3072_SHA384,
     theirs: &theirs::RSA_PKCS1_3072_8192_SHA384,
     min_bits: 3072,
+};
+
+/// An ML-DSA parameter set on each side, and its public key's length.
+struct MlDsa {
+    ours: &'static ours::VerificationAlgorithm,
+    theirs: &'static theirs::PqdsaSigningAlgorithm,
+    theirs_verify: &'static theirs::PqdsaVerificationAlgorithm,
+    public_key_len: usize,
+}
+
+const MLDSA_44: MlDsa = MlDsa {
+    ours: &verify::ML_DSA_44,
+    theirs: &theirs::ML_DSA_44_SIGNING,
+    theirs_verify: &theirs::ML_DSA_44,
+    public_key_len: 1312,
+};
+
+const MLDSA_65: MlDsa = MlDsa {
+    ours: &verify::ML_DSA_65,
+    theirs: &theirs::ML_DSA_65_SIGNING,
+    theirs_verify: &theirs::ML_DSA_65,
+    public_key_len: 1952,
+};
+
+const MLDSA_87: MlDsa = MlDsa {
+    ours: &verify::ML_DSA_87,
+    theirs: &theirs::ML_DSA_87_SIGNING,
+    theirs_verify: &theirs::ML_DSA_87,
+    public_key_len: 2592,
 };
 
 /// How rind's answer to an input may differ from aws-lc-rs's.
@@ -806,4 +847,97 @@ fn mlkem_public_of<A: our_kem::Algorithm>(
     assert_eq!(ours.as_ref(), input);
     let theirs = theirs.unwrap();
     assert_eq!(theirs.key_bytes().unwrap().as_ref(), input);
+}
+
+fn ml_dsa_pkcs8<P: sign::MlDsaParameterSet>(set: &MlDsa, input: &[u8]) {
+    let ours = sign::MlDsaKeyPair::<P>::from_pkcs8(input);
+    let theirs = theirs::PqdsaKeyPair::from_pkcs8(set.theirs, input);
+    // aws-lc ignores what rind refuses: bytes after the document or after
+    // its private key's CHOICE, a version 2 document's public key, and a
+    // `both` key whose expanded form differs from its seed's in `K`, which
+    // the public keys aws-lc compares leave out.
+    agree(&ours, &theirs, Expect::Stricter);
+    agree_ml_dsa(set, ours, theirs.ok());
+}
+
+fn ml_dsa_seed<P: sign::MlDsaParameterSet>(set: &MlDsa, input: &[u8]) {
+    let ours = sign::MlDsaKeyPair::<P>::from_seed(input);
+    let theirs = theirs::PqdsaKeyPair::from_seed(set.theirs, input);
+    agree(&ours, &theirs, Expect::Agree);
+    agree_ml_dsa(set, ours, theirs.ok());
+}
+
+/// A key pair rind loaded matches aws-lc-rs's, re-encodes to a document both
+/// load as the same key, and signs as aws-lc-rs verifies, and the reverse.
+fn agree_ml_dsa<P: sign::MlDsaParameterSet>(
+    set: &MlDsa,
+    ours: Result<sign::MlDsaKeyPair<P>, rind::Error>,
+    theirs: Option<theirs::PqdsaKeyPair>,
+) {
+    let Ok(ours) = ours else {
+        return;
+    };
+    let public = ours.public_key();
+    if let Some(theirs) = &theirs {
+        assert_eq!(public.as_ref(), theirs.public_key().as_ref());
+    }
+
+    let pkcs8 = ours.to_pkcs8();
+    let again = sign::MlDsaKeyPair::<P>::from_pkcs8(pkcs8.as_ref()).unwrap();
+    assert_eq!(again.public_key().as_ref(), public.as_ref());
+    let theirs = theirs::PqdsaKeyPair::from_pkcs8(set.theirs, pkcs8.as_ref()).unwrap();
+    assert_eq!(theirs.public_key().as_ref(), public.as_ref());
+    if let Some(seed) = ours.to_seed() {
+        let again = sign::MlDsaKeyPair::<P>::from_seed(seed.as_ref()).unwrap();
+        assert_eq!(again.public_key().as_ref(), public.as_ref());
+    }
+
+    let message = b"rind";
+    let signature = ours.sign(message).unwrap();
+    theirs::UnparsedPublicKey::new(set.theirs_verify, public.as_ref())
+        .verify(message, signature.as_ref())
+        .unwrap();
+    let mut signature = [0; 4627];
+    let len = theirs.sign(message, &mut signature).unwrap();
+    public.verify(message, &signature[..len]).unwrap();
+
+    ml_dsa_public(set, public.as_ref());
+    ml_dsa_spki(set, public.to_spki().as_ref());
+}
+
+fn ml_dsa_public(set: &MlDsa, input: &[u8]) {
+    let ours = ours::PublicKey::new(set.ours, input);
+    let theirs = theirs::ParsedPublicKey::new(set.theirs_verify, input);
+    // aws-lc-rs also takes a `SubjectPublicKeyInfo`; any bytes of the raw
+    // key's length are one.
+    let expect = match input.len() == set.public_key_len {
+        true => Expect::Agree,
+        false => Expect::Refused,
+    };
+    agree(&ours, &theirs, expect);
+    let Ok(ours) = ours else {
+        return;
+    };
+    assert_eq!(ours.as_ref(), input);
+    let spki = ours.to_spki();
+    assert_eq!(spki.as_ref(), theirs.unwrap().as_der().unwrap().as_ref());
+}
+
+fn ml_dsa_spki(set: &MlDsa, input: &[u8]) {
+    let ours = ours::PublicKey::from_spki(set.ours, input);
+    let theirs = theirs::ParsedPublicKey::new(set.theirs_verify, input);
+    // aws-lc-rs also takes the raw key.
+    let expect = match input.len() == set.public_key_len {
+        true => Expect::Refused,
+        false => Expect::Stricter,
+    };
+    agree(&ours, &theirs, expect);
+    let Ok(ours) = ours else {
+        return;
+    };
+    let spki = ours.to_spki();
+    assert_eq!(spki.as_ref(), theirs.unwrap().as_der().unwrap().as_ref());
+    let again = ours::PublicKey::from_spki(set.ours, spki.as_ref()).unwrap();
+    assert_eq!(again.as_ref(), ours.as_ref());
+    ml_dsa_public(set, ours.as_ref());
 }

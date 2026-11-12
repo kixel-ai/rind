@@ -102,6 +102,9 @@
               })
               armv7-cc
               pkgs.qemu-user
+              # admin/mutants --target armv7-unknown-linux-gnueabihf.
+              pkgs.cargo-mutants
+              pkgs.cargo-nextest
             ];
 
             env = {
@@ -504,7 +507,7 @@
             # The nightly MSRV job builds in it. The workspace's rust-version
             # names a minor release, which resolves to its latest patch, as
             # rustup does. The extra targets let it check rind's other
-            # backends, which `check` does without a C toolchain.
+            # backends and 32-bit x86, which `check` does without a C toolchain.
             msrv = pkgs.mkShell {
               packages = [
                 (pkgs.rust-bin.fromRustupToolchain {
@@ -513,6 +516,7 @@
                   targets = [
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
+                    "i686-unknown-linux-gnu"
                   ];
                 })
               ];
@@ -601,6 +605,16 @@
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
             };
 
+            # `just wasm` runs the portable backend's tests on wasm32-wasip2
+            # in it, under wasmtime. The toolchain is the default shell's,
+            # which already carries the target.
+            wasm = pkgs.mkShell {
+              packages = [
+                rust-toolchain
+                pkgs.wasmtime
+              ];
+            };
+
             # `just miri` and the miri workflow run in it: Charon's nightly,
             # which already carries Miri, rather than a second nightly.
             miri = pkgs.mkShell {
@@ -625,10 +639,19 @@
             };
 
             # `just armv7` enters it to lint and test the armv7 build under
-            # qemu. A separate shell because the ARM C toolchain, qemu-user,
-            # and the armv7 standard libraries add about 700 MB, which every
-            # other CI job would download.
+            # qemu, and the mutants workflow to mutate it. A separate shell
+            # because the ARM C toolchain, qemu-user, and the armv7 standard
+            # libraries add about 700 MB, which every other CI job would
+            # download.
             armv7 = pkgs.mkShell armv7-shell;
+
+            # `just qemu aarch64` tests the aarch64 build under qemu in it, and
+            # `just check`'s cross module lints rind's tests for aarch64 in it,
+            # where the aws-lc-rs dev-dependency needs an aarch64 C compiler.
+            aarch64 = qemu-shell {
+              target = "aarch64-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.aarch64-multiplatform;
+            };
 
             # `just qemu s390x` tests the portable backend on big-endian
             # s390x in it.

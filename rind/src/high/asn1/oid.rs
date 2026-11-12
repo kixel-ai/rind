@@ -87,3 +87,25 @@ asn1_oid! {
 asn1_oid! {
     id_ed25519 OBJECT IDENTIFIER ::= { 1 3 101 112 }
 }
+
+// RFC 9881's ML-DSA OIDs.
+asn1_oid! {
+    id_ml_dsa_44 OBJECT IDENTIFIER ::= {
+        joint_iso_itu_t(2) country(16) us(840) organization(1) gov(101)
+        csor(3) nistAlgorithm(4) sigAlgs(3) 17
+    }
+}
+
+asn1_oid! {
+    id_ml_dsa_65 OBJECT IDENTIFIER ::= {
+        joint_iso_itu_t(2) country(16) us(840) organization(1) gov(101)
+        csor(3) nistAlgorithm(4) sigAlgs(3) 18
+    }
+}
+
+asn1_oid! {
+    id_ml_dsa_87 OBJECT IDENTIFIER ::= {
+        joint_iso_itu_t(2) country(16) us(840) organization(1) gov(101)
+        csor(3) nistAlgorithm(4) sigAlgs(3) 19
+    }
+}

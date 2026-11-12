@@ -229,6 +229,25 @@ fn signature() {
         format!("Ed25519KeyPair {{ public_key: {bytes}, .. }}")
     );
     assert_eq!(format!("{:?}", pair.to_seed()), "Ed25519Seed(..)");
+
+    use rind::signature::sign::{MlDsa65, MlDsaKeyPair};
+    assert_eq!(format!("{:?}", verify::ML_DSA_65), "ML-DSA-65");
+    let pair = MlDsaKeyPair::<MlDsa65>::generate().unwrap();
+    assert_eq!(
+        format!("{pair:?}"),
+        "MlDsaKeyPair { algorithm: ML-DSA-65, .. }"
+    );
+    let public = pair.public_key();
+    let bytes = format!("{:?}", public.as_ref());
+    assert_eq!(
+        format!("{public:?}"),
+        format!("PublicKey {{ algorithm: ML-DSA-65, bytes: {bytes} }}")
+    );
+    let signature = pair.sign(b"").unwrap();
+    let bytes = format!("{:?}", signature.as_ref());
+    assert_eq!(format!("{signature:?}"), format!("MlDsaSignature({bytes})"));
+    assert_eq!(format!("{:?}", pair.to_seed().unwrap()), "MlDsaSeed(..)");
+    assert_eq!(format!("{:?}", pair.to_pkcs8()), "Pkcs8(..)");
 }
 
 #[test]

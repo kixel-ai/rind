@@ -265,9 +265,22 @@ pub mod signature {
         VerificationAlgorithm,
     };
 
-    /// Algorithms a key pair signs with.
+    /// Algorithms a key pair signs with, and ML-DSA's key pair, whose
+    /// parameter set is a type.
     ///
-    /// Each signs as the [`verify`] algorithm of the same name verifies.
+    /// Each signs as the [`verify`] algorithm of the same name verifies:
+    /// [`MlDsaKeyPair<MlDsa65>`] as [`verify::ML_DSA_65`].
+    ///
+    /// ```
+    /// use rind::signature::sign::{MlDsa65, MlDsaKeyPair};
+    /// use rind::signature::{PublicKey, verify};
+    ///
+    /// let key = MlDsaKeyPair::<MlDsa65>::generate().unwrap();
+    /// let signature = key.sign(b"hello").unwrap();
+    ///
+    /// let public_key = PublicKey::new(&verify::ML_DSA_65, key.public_key().as_ref()).unwrap();
+    /// public_key.verify(b"hello", signature.as_ref()).unwrap();
+    /// ```
     pub mod sign {
         pub use crate::high::signature::sign::{
             ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_FIXED, ECDSA_P384_SHA384_ASN1,
@@ -275,6 +288,10 @@ pub mod signature {
             RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384,
             RSA_PSS_SHA512,
         };
+        pub use crate::high::signature::{
+            MlDsaKeyPair, MlDsaParameterSet, MlDsaSeed, MlDsaSignature,
+        };
+        pub use crate::mid::mldsa::{MlDsa44, MlDsa65, MlDsa87};
     }
 
     /// Algorithms a public key verifies with.
@@ -286,9 +303,9 @@ pub mod signature {
             ECDSA_P256_SHA512_ASN1, ECDSA_P384_SHA256_ASN1, ECDSA_P384_SHA384_ASN1,
             ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA512_ASN1, ECDSA_P521_SHA256_ASN1,
             ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED, ED25519,
-            RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256,
-            RSA_PSS_SHA256_ANY_SALT, RSA_PSS_SHA384, RSA_PSS_SHA384_ANY_SALT, RSA_PSS_SHA512,
-            RSA_PSS_SHA512_ANY_SALT,
+            ML_DSA_44, ML_DSA_65, ML_DSA_87, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512,
+            RSA_PSS_SHA256, RSA_PSS_SHA256_ANY_SALT, RSA_PSS_SHA384, RSA_PSS_SHA384_ANY_SALT,
+            RSA_PSS_SHA512, RSA_PSS_SHA512_ANY_SALT,
         };
 
         /// RSA algorithms with another modulus floor, or SHA-1, for old keys
