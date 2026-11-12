@@ -37,7 +37,10 @@ Planned by the maintainer on 2026-11-04 in m4.
 - Decided 2026-11-11 (maintainer, /quest-unblock): rind-openssl always
   builds rind with `wipe`, and wipes the `OSSL_PARAM` buffers it fills with
   key material (rejected: a build flag off by default as in rind; wiping
-  nothing). `AGENTS.md`'s reason for keeping wiping opt-in, that safe Rust
-  cannot read freed memory, does not hold here: the provider's heap is the
-  host process's, which C code reads. OpenSSL's own providers cleanse keys,
-  so anything less is a regression for whoever switches.
+  nothing). `AGENTS.md` leaves other scratch unwiped because safe Rust cannot
+  read freed memory; that reason does not cover these buffers. They are heap
+  scratch derived from a private key, which `AGENTS.md` wipes under `wipe`,
+  and the provider's heap is the host process's, which C code reads. OpenSSL's
+  own providers cleanse keys, so anything less is a regression for whoever
+  switches. Whether `wipe` is on by default for rind itself is a separate
+  question, open in [the wipe-default quest](/quest/m2/wipe-default.md).
