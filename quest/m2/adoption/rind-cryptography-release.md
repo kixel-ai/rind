@@ -23,7 +23,12 @@ rind's.
 
 ## Waiting
 
-- Maintainer: publish 0.1.0 by hand (`cd rind-dart/cryptography && rm
+- Maintainer: first release rind-dart with its AES-CBC, AES-CTR, and
+  ChaCha20, as 0.1.1 (recommended: they only add API) or 0.2.0, by pushing
+  its `rind-dart-v{{version}}` tag; then raise rind_cryptography's `rind`
+  constraint to it. The version and tag are the maintainer's call. Done when
+  https://pub.dev/packages/rind lists that release.
+- Maintainer: then publish 0.1.0 by hand (`cd rind-dart/cryptography && rm
   pubspec_overrides.yaml && dart pub publish`), since pub.dev creates a new
   package only from an uploader's account, as it did for rind; then, on its
   admin page, enable automated publishing from moq-dev/rind for
