@@ -157,11 +157,16 @@ impl Param {
         }
         let le = wide.to_le_bytes();
         let pad = if value < 0 { 0xff } else { 0 };
+        let data = self.data.cast::<u8>();
         for k in 0..size {
-            let at = if cfg!(target_endian = "little") { k } else { size - 1 - k };
+            let byte = le.get(k).copied().unwrap_or(pad);
+            let at = match cfg!(target_endian = "little") {
+                true => k,
+                false => size - 1 - k,
+            };
             // SAFETY: a parameter's data is valid for its size, and `at` is
             // below it.
-            unsafe { self.data.cast::<u8>().add(at).write(*le.get(k).unwrap_or(&pad)) };
+            unsafe { data.add(at).write(byte) };
         }
         self.return_size = size;
         true
