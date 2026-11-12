@@ -17,8 +17,14 @@ mode's, one per line, for the KEMs rind offers. The revision in
 [hpkewg/hpke] repeats them unchanged. They are IETF contributions, under
 [BCP 78].
 
+`rfc9909/` holds [RFC 9909]'s appendix C examples, an SLH-DSA-SHA2-128s
+public key, private key, and self-signed certificate, decoded from the RFC's
+PEM to DER by hand, since no repository publishes them. They too are IETF
+contributions, under [BCP 78].
+
 [aws-lc]: https://github.com/aws/aws-lc
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [RFC 9180]: https://www.rfc-editor.org/rfc/rfc9180.html
+[RFC 9909]: https://www.rfc-editor.org/rfc/rfc9909.html
 [hpkewg/hpke]: https://github.com/hpkewg/hpke
 [BCP 78]: https://www.rfc-editor.org/info/bcp78

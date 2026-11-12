@@ -2970,6 +2970,145 @@ mod tests {
         check::<MlDsa87>(&asn1::oid::id_ml_dsa_44);
     }
 
+    /// A PKCS#8 SLH-DSA key of `oid` holding `private_key`, and `public_key`
+    /// if given (v2).
+    fn slh_dsa_pkcs8(
+        oid: &asn1::ObjectId,
+        private_key: &[u8],
+        public_key: Option<&[u8]>,
+    ) -> Vec<u8> {
+        let mut out = vec![0; 1024];
+        let der = pkcs8::Key::construct(private_key, public_key, oid.clone(), None)
+            .encode(&mut out)
+            .unwrap();
+        der.to_vec()
+    }
+
+    #[test]
+    fn slh_dsa_encodings() {
+        // Only the f sets: an s set's key costs a tenth of a second to load
+        // in a debug build, and its signature seconds. The differential
+        // tests match every set's encodings with RustCrypto's.
+        fn check<P: SlhDsaParameterSet>(other: &asn1::ObjectId) {
+            // This compares encodings of the key, so declassifies them.
+            let pair = SlhDsaKeyPair::<P>::generate().unwrap();
+            let sk = low::ct::into_public(pair.0.secret_key().clone());
+            let sk = sk.as_ref();
+            let pk = pair.0.public_key();
+            let oid = P::ALGORITHM.oid;
+            let load = |der: &[u8]| SlhDsaKeyPair::<P>::from_pkcs8(der);
+            let v1 = slh_dsa_pkcs8(oid, sk, None);
+            assert_eq!(pair.to_pkcs8().as_ref(), v1);
+            for der in [&v1, &slh_dsa_pkcs8(oid, sk, Some(pk))] {
+                let key = load(der).unwrap();
+                assert_eq!(key.public_key().as_ref(), pk);
+                assert_eq!(key.to_pkcs8().as_ref(), v1);
+            }
+
+            // A root its seeds do not make, and a public key (v2) that does
+            // not match.
+            let mut wrong = sk.to_vec();
+            wrong[sk.len() - 1] ^= 1;
+            assert_eq!(
+                rejected(load(&slh_dsa_pkcs8(oid, &wrong, None))),
+                KeyFormatError::MismatchedPublicKey.into()
+            );
+            assert_eq!(
+                rejected(load(&slh_dsa_pkcs8(oid, sk, Some(&wrong[wrong.len() / 2..])))),
+                KeyFormatError::MismatchedPkcs8PublicKey.into()
+            );
+
+            // Lengths, another parameter set, and trailing bytes.
+            for bad in [&sk[1..], &[sk, &[0]].concat()] {
+                assert_eq!(
+                    rejected(load(&slh_dsa_pkcs8(oid, bad, None))),
+                    KeyFormatError::WrongLength.into()
+                );
+            }
+            assert_eq!(
+                rejected(load(&slh_dsa_pkcs8(other, sk, None))),
+                KeyFormatError::MismatchedPkcs8Algorithm.into()
+            );
+            let mut der = v1.clone();
+            der.push(0);
+            assert!(load(&der).is_err());
+
+            // Public keys: lengths, another parameter set's SPKI, and no
+            // digest signing.
+            let public = pair.public_key();
+            let algorithm = VerificationAlgorithm(Verification::SlhDsa(P::ALGORITHM));
+            let spki = public.to_spki();
+            let parsed = PublicKey::from_spki(&algorithm, spki.as_ref()).unwrap();
+            assert_eq!(parsed.as_ref(), pk);
+            for bad in [&pk[1..], &[pk, &[0]].concat()] {
+                assert_eq!(
+                    rejected(PublicKey::new(&algorithm, bad)),
+                    KeyFormatError::WrongLength.into()
+                );
+            }
+            let mut out = vec![0; 1024];
+            let other_spki = spki::encode(pk, other, None, &mut out).unwrap();
+            assert_eq!(
+                rejected(PublicKey::from_spki(&algorithm, other_spki)),
+                KeyFormatError::MismatchedSpkiAlgorithm.into()
+            );
+            let signature = pair.sign(b"message").unwrap();
+            assert_eq!(signature.as_ref().len(), P::SIG_LEN);
+            parsed.verify(b"message", signature.as_ref()).unwrap();
+            assert_eq!(
+                parsed.verify(b"massage", signature.as_ref()),
+                Err(Error::BadSignature)
+            );
+            let digest = crate::high::digest::digest(&crate::high::digest::SHA256, b"message");
+            assert_eq!(
+                parsed.verify_digest(&digest, signature.as_ref()),
+                Err(Error::Unsupported)
+            );
+        }
+        check::<SlhDsaSha2_128f>(&asn1::oid::id_slh_dsa_shake_128f);
+        check::<SlhDsaSha2_192f>(&asn1::oid::id_slh_dsa_sha2_192s);
+        check::<SlhDsaSha2_256f>(&asn1::oid::id_slh_dsa_sha2_128f);
+        check::<SlhDsaShake128f>(&asn1::oid::id_slh_dsa_sha2_128f);
+        check::<SlhDsaShake192f>(&asn1::oid::id_slh_dsa_shake_256f);
+        check::<SlhDsaShake256f>(&asn1::oid::id_slh_dsa_shake_192f);
+    }
+
+    /// RFC 9909's examples: a key pair, and a certificate it signs itself.
+    #[test]
+    fn slh_dsa_rfc9909() {
+        let read = |name: &str| {
+            std::fs::read(format!(
+                "{}/../thirdparty/vectors/rfc9909/{name}",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap()
+        };
+        let (public, private, certificate) = (
+            read("public-key.der"),
+            read("private-key.der"),
+            read("certificate.der"),
+        );
+        let pair = SlhDsaKeyPair::<SlhDsaSha2_128s>::from_pkcs8(&private).unwrap();
+        assert_eq!(pair.to_pkcs8().as_ref(), private);
+        assert_eq!(pair.public_key().to_spki().as_ref(), public);
+
+        // Certificate ::= SEQUENCE { tbsCertificate, signatureAlgorithm,
+        // signatureValue BIT STRING }, each long enough for a two-byte
+        // length.
+        let field = |der: &[u8], tag: u8| -> usize {
+            assert_eq!(der[..2], [tag, 0x82]);
+            4 + usize::from(u16::from_be_bytes([der[2], der[3]]))
+        };
+        let body = &certificate[4..field(&certificate, 0x30)];
+        let tbs = &body[..field(body, 0x30)];
+        let algorithm = &body[tbs.len()..][..13];
+        assert_eq!(algorithm[..4], [0x30, 11, 6, 9]);
+        let signature = &body[tbs.len() + 13..];
+        let signature = &signature[..field(signature, 0x03)][5..];
+        let key = PublicKey::from_spki(&verify::SLH_DSA_SHA2_128S, &public).unwrap();
+        key.verify(tbs, signature).unwrap();
+    }
+
     #[test]
     fn ed25519_seed_and_public_key() {
         let seed = [7u8; 32];
