@@ -212,4 +212,210 @@ theorem encrypt_eq (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (Bit
       simp [low.x86_64.aes_gcm.encrypt, aesenc_eq, aesenclast_eq, List.foldlM,
         core.core_arch.x86.sse2._mm_xor_si128, evalCipher, evalRounds, nr]
 
+/-! ## CTR -/
+
+theorem length_gctr (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) :
+    ∀ (ps : List Quad32) (i : Nat), (gctrEncryptRecursive icb alg kw ps i).length = ps.length
+  | [], _ => rfl
+  | _ :: ps, i => by rw [gctrEncryptRecursive, List.length_cons, length_gctr icb alg kw ps (i + 1),
+      List.length_cons]
+
+theorem gctr_append (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) :
+    ∀ (ps ps' : List Quad32) (i : Nat), gctrEncryptRecursive icb alg kw (ps ++ ps') i =
+      gctrEncryptRecursive icb alg kw ps i ++ gctrEncryptRecursive icb alg kw ps' (i + ps.length)
+  | [], _, _ => rfl
+  | p :: ps, ps', i => by
+    rw [List.cons_append, gctrEncryptRecursive, gctrEncryptRecursive, gctr_append icb alg kw ps ps' (i + 1),
+      List.cons_append, List.length_cons, Nat.add_assoc, Nat.add_comm 1]
+
+section ctr
+variable {f l : BitVec 128} {rks : List (BitVec 128)} {alg : Algorithm} {kw : List (BitVec 32)}
+  (henc : ∀ c, low.x86_64.aes_gcm.encrypt c f rks l = ok (aesEncrypt alg kw c))
+include henc
+
+theorem ctr_block_eq (icb p : Quad32) (i : Nat) :
+    low.x86_64.aes_gcm.ctr_block (swap (inc32 icb i)) f rks l p =
+      ok (gctrEncryptBlock icb p alg kw i, swap (inc32 icb (i + 1))) := by
+  simp only [low.x86_64.aes_gcm.ctr_block, counter_next, bind_ok, uncurry_apply_pair, henc,
+    core.core_arch.x86.sse2._mm_xor_si128, inc32_inc32, gctrEncryptBlock, BitVec.xor_comm]
+
+theorem ctr_blocks_eq (icb : Quad32) : ∀ (ps : List Quad32) (i : Nat),
+    low.x86_64.aes_gcm.ctr_blocks f rks l ps (swap (inc32 icb i)) =
+      ok (gctrEncryptRecursive icb alg kw ps i, swap (inc32 icb (i + ps.length)))
+  | [], i => by simp [low.x86_64.aes_gcm.ctr_blocks, gctrEncryptRecursive]
+  | p :: ps, i => by
+    simp only [low.x86_64.aes_gcm.ctr_blocks, ctr_block_eq henc, bind_ok, uncurry_apply_pair,
+      ctr_blocks_eq icb ps (i + 1), gctrEncryptRecursive, List.length_cons, Nat.add_assoc, Nat.add_comm 1]
+
+end ctr
+
+/-! ## The loop over 128-byte chunks -/
+
+/-- The 16-byte blocks of 128-byte chunks, as vectors. -/
+def blocksAll (chunks : List (List U8)) : List Quad32 :=
+  chunks.flatMap fun c => (chunksOf 16 c).map low.x86_64.aes.load
+
+theorem length_blocksAll : ∀ (chunks : List (List U8)), (∀ c ∈ chunks, c.length = 128) →
+    (blocksAll chunks).length = 8 * chunks.length
+  | [], _ => rfl
+  | c :: cs, h => by
+    rw [blocksAll, List.flatMap_cons, ← blocksAll, List.length_append, List.length_map, chunksOf_length,
+      h c (by simp), length_blocksAll cs (fun c hc => h c (by simp [hc])), List.length_cons]
+    omega
+
+/-- `_mul8` of eight vectors' bytes reversed, the first XORed with `current`. -/
+def hashChunk (t : low.x86_64.ghash.ClmulTable) (current : BitVec 128) (hs : List (BitVec 128)) :
+    BitVec 128 :=
+  reduceAll ((tailInputs current (hs.map reverseBytesQuad32)).zip (powersDesc t 8))
+
+theorem mul8_hash (H : P) (t : low.x86_64.ghash.ClmulTable) (ht : TableFor H t) (current : BitVec 128)
+    (hs : List (BitVec 128)) (h8 : hs.length = 8) :
+    low.x86_64.ghash._mul8 t (current ^^^ reverseBytesQuad32 hs[0]!) (reverseBytesQuad32 hs[1]!)
+      (reverseBytesQuad32 hs[2]!) (reverseBytesQuad32 hs[3]!) (reverseBytesQuad32 hs[4]!)
+      (reverseBytesQuad32 hs[5]!) (reverseBytesQuad32 hs[6]!) (reverseBytesQuad32 hs[7]!) =
+      ok (hashChunk t current hs) := by
+  rw [mul8_eq H t ht, hashChunk]
+  conv_rhs => rw [eight hs h8]
+  rfl
+
+theorem chunksOf_self {α : Type} {k : Nat} (l : List α) (hk : 0 < k) (h : l.length = k) : chunksOf k l = [l] := by
+  rw [chunksOf_cons hk (by omega), List.take_of_length_le (by omega), chunksOf_of_lt (by simp; omega)]
+
+theorem hashChunks_spec (H : P) (hH : Small H) (t : low.x86_64.ghash.ClmulTable) (ht : TableFor H t) :
+    ∀ (n : Nat) (hs : List (BitVec 128)) (current : BitVec 128), hs.length = 8 * n →
+      toPoly ((chunksOf 8 hs).foldl (hashChunk t) current) =
+        ghashPoly H (toPoly current) (hs.map (toPoly ∘ reverseBytesQuad32))
+  | 0, hs, current, h => by
+    have : hs = [] := List.eq_nil_of_length_eq_zero (by simpa using h)
+    subst this
+    simp [chunksOf, ghashPoly_nil]
+  | n + 1, hs, current, h => by
+    have h8 : 8 ≤ hs.length := by omega
+    rw [chunksOf_cons (by omega) h8, List.foldl_cons,
+      hashChunks_spec H hH t ht n (hs.drop 8) _ (by simp; omega)]
+    conv_rhs => rw [← List.take_append_drop 8 hs]
+    rw [List.map_append, ghashPoly_append]
+    congr 1
+    have hl : (hs.take 8).length = 8 := by simp; omega
+    have hx := toPoly_reduceAll_powers H hH t ht (tailInputs current ((hs.take 8).map reverseBytesQuad32))
+      (by rw [length_tailInputs, List.length_map, hl])
+    rw [length_tailInputs, List.length_map, hl] at hx
+    rw [hashChunk, hx, sumPow_tailInputs H current _ (fun h => by
+      have := congrArg List.length h; rw [List.length_map, hl] at this; simp at this), List.map_map]
+
+section loop
+variable {f l : BitVec 128} {rks : List (BitVec 128)} {alg : Algorithm} {kw : List (BitVec 32)}
+  (henc : ∀ c, low.x86_64.aes_gcm.encrypt c f rks l = ok (aesEncrypt alg kw c))
+include henc
+
+theorem by8_loop_eq (ENC : Bool) (H : P) (t : low.x86_64.ghash.ClmulTable) (ht : TableFor H t) (icb : Quad32) :
+    ∀ (chunks : List (List U8)), (∀ c ∈ chunks, c.length = 128) → ∀ (i : Nat) (current : BitVec 128),
+      low.x86_64.aes_gcm.by8_loop ENC t f rks l chunks (swap (inc32 icb i)) current =
+        ok (swap (inc32 icb (i + 8 * chunks.length)),
+          (chunksOf 8 (if ENC then gctrEncryptRecursive icb alg kw (blocksAll chunks) i else blocksAll chunks)).foldl
+            (hashChunk t) current,
+          (gctrEncryptRecursive icb alg kw (blocksAll chunks) i).flatMap low.x86_64.aes_gcm.bytes)
+  | [], _, i, current => by simp [low.x86_64.aes_gcm.by8_loop, blocksAll, gctrEncryptRecursive, chunksOf]
+  | c :: cs, hc, i, current => by
+    have hc0 : c.length = 128 := hc c (by simp)
+    have hcs : ∀ c ∈ cs, c.length = 128 := fun c h => hc c (by simp [h])
+    have hp : ((chunksOf 16 c).map low.x86_64.aes.load).length = 8 := by
+      rw [List.length_map, chunksOf_length, hc0]
+    have hs8 : (if ENC then gctrEncryptRecursive icb alg kw ((chunksOf 16 c).map low.x86_64.aes.load) i
+        else (chunksOf 16 c).map low.x86_64.aes.load).length = 8 := by
+      cases ENC <;> simp only [Bool.false_eq_true, ite_false, ite_true, length_gctr, hp]
+    rw [low.x86_64.aes_gcm.by8_loop]
+    simp only [ctr_blocks_eq henc, bind_ok, uncurry_apply_pair, hp, low.x86_64.aes_gcm.BYTESWAP,
+      shuffle_byteswap, core.core_arch.x86.sse2._mm_xor_si128, mul8_hash H t ht current _ hs8,
+      by8_loop_eq ENC H t ht icb cs hcs (i + 8)]
+    have hb : blocksAll (c :: cs) = (chunksOf 16 c).map low.x86_64.aes.load ++ blocksAll cs := by
+      rw [blocksAll, List.flatMap_cons, ← blocksAll]
+    have hhash : (if ENC then gctrEncryptRecursive icb alg kw (blocksAll (c :: cs)) i else blocksAll (c :: cs)) =
+        (if ENC then gctrEncryptRecursive icb alg kw ((chunksOf 16 c).map low.x86_64.aes.load) i
+          else (chunksOf 16 c).map low.x86_64.aes.load) ++
+        (if ENC then gctrEncryptRecursive icb alg kw (blocksAll cs) (i + 8) else blocksAll cs) := by
+      rw [hb]; cases ENC <;> simp only [Bool.false_eq_true, ite_false, ite_true, gctr_append, hp]
+    rw [hhash, chunksOf_append (by omega) 1 _ _ (by rw [hs8]), chunksOf_self _ (by omega) hs8,
+      List.singleton_append, List.foldl_cons, hb, gctr_append, hp, List.flatMap_append, List.length_cons,
+      show i + 8 + 8 * cs.length = i + 8 * (cs.length + 1) by ring]
+
+end loop
+
+/-! ## Bytes and blocks -/
+
+/-- A GHASH table whose hashing is `ClmulTable::add` with `t`. -/
+def ClmulOf (g : low.x86_64.ghash.GhashTable) (t : low.x86_64.ghash.ClmulTable) : Prop :=
+  g = .Clmul t ∨ (∃ a, g = .Avx t a) ∨ ∃ a b, g = .VaesAvx2 t a b
+
+theorem addBytes_clmul (g : low.x86_64.ghash.Ghash) (t : low.x86_64.ghash.ClmulTable) (hg : ClmulOf g.table t)
+    (bytes : List U8) :
+    low.x86_64.ghash.Ghash.addBytes g bytes =
+      (do
+        let current ← low.x86_64.ghash.ClmulTable.add t bytes g.current
+        ok { g with current }) := by
+  obtain ⟨tb, cur⟩ := g
+  simp only at hg
+  rcases hg with rfl | ⟨a, rfl⟩ | ⟨a, b, rfl⟩ <;> rfl
+
+theorem length_bytes (q : BitVec 128) : (low.x86_64.aes_gcm.bytes q).length = 16 := by
+  simp [low.x86_64.aes_gcm.bytes, low.x86_64.aes.store, leQuad32ToBytes]
+
+theorem bytes_bv (q : BitVec 128) : (low.x86_64.aes_gcm.bytes q).map (·.bv) = leQuad32ToBytes q := by
+  simp only [low.x86_64.aes_gcm.bytes, low.x86_64.aes.store, Std.Array.from_val, List.map_map]
+  conv_rhs => rw [← List.map_id (leQuad32ToBytes q)]
+  rfl
+
+theorem flatMap_bytes_bv (qs : List (BitVec 128)) :
+    (qs.flatMap low.x86_64.aes_gcm.bytes).map (·.bv) = leSeqQuad32ToBytes qs := by
+  rw [leSeqQuad32ToBytes, List.map_flatMap]
+  simp only [bytes_bv]
+
+theorem length_flatMap_bytes (qs : List (BitVec 128)) :
+    (qs.flatMap low.x86_64.aes_gcm.bytes).length = 16 * qs.length := by
+  induction qs with
+  | nil => rfl
+  | cons q qs ih => rw [List.flatMap_cons, List.length_append, length_bytes, ih, List.length_cons]; ring
+
+theorem chunksOf_flatMap_bytes : ∀ (qs : List (BitVec 128)),
+    chunksOf 16 (qs.flatMap low.x86_64.aes_gcm.bytes) = qs.map low.x86_64.aes_gcm.bytes
+  | [] => rfl
+  | q :: qs => by
+    rw [List.flatMap_cons, chunksOf_append (by omega) 1 _ _ (by rw [length_bytes]),
+      chunksOf_self _ (by omega) (length_bytes q), chunksOf_flatMap_bytes qs, List.map_cons, List.singleton_append]
+
+theorem chunksRest_flatMap_bytes (qs : List (BitVec 128)) :
+    chunksRest 16 (qs.flatMap low.x86_64.aes_gcm.bytes) = [] :=
+  List.eq_nil_of_length_eq_zero (by rw [chunksRest_length, length_flatMap_bytes]; omega)
+
+theorem padBlocks_append (a b : List U8) (ha : a.length % 16 = 0) :
+    padBlocks (a ++ b) = padBlocks a ++ padBlocks b := by
+  have hj : a.length = 16 * (a.length / 16) := by omega
+  have hr : chunksRest 16 a = [] := List.eq_nil_of_length_eq_zero (by rw [chunksRest_length]; omega)
+  rw [padBlocks, padBlocks, padBlocks, chunksOf_append (by omega) _ _ _ hj, chunksRest_append (by omega) _ _ _ hj,
+    hr, if_pos rfl, List.append_nil, List.map_append, List.append_assoc]
+
+theorem padBlocks_flatMap_bytes (qs : List (BitVec 128)) :
+    padBlocks (qs.flatMap low.x86_64.aes_gcm.bytes) = qs.map reverseBytesQuad32 := by
+  rw [padBlocks, chunksOf_flatMap_bytes, chunksRest_flatMap_bytes, if_pos rfl, List.append_nil, List.map_map]
+  refine List.map_congr_left (fun q _ => ?_)
+  simp only [Function.comp, blockBE, low.x86_64.aes_gcm.bytes, load_store]
+
+theorem blocks_split (b : List U8) :
+    (chunksOf 16 b).map low.x86_64.aes.load =
+      blocksAll (chunksOf 128 b) ++ (chunksOf 16 (chunksRest 128 b)).map low.x86_64.aes.load := by
+  rw [(chunks_128 b).1, List.map_append, List.map_flatMap, blocksAll]
+
+theorem padBlocks_head (b : List U8) :
+    (chunksOf 128 b).flatMap padBlocks = (blocksAll (chunksOf 128 b)).map reverseBytesQuad32 := by
+  rw [blocksAll, List.map_flatMap]
+  apply List.flatMap_congr
+  intro c hc
+  rw [padBlocks_128 c (chunksOf_length_mem hc), List.map_map]
+  rfl
+
+theorem leBytesToSeqQuad32_load (b : List U8) :
+    leBytesToSeqQuad32 (b.map (·.bv)) = (chunksOf 16 b).map low.x86_64.aes.load := by
+  rw [leBytesToSeqQuad32_eq, chunksOf_map, List.map_map]
+  rfl
+
 end rind.x86_64
