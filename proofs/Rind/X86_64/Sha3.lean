@@ -1793,4 +1793,251 @@ theorem shake256_batch_spec (h : RunsSha3) {P : Usize}
   rw [hr i hi, shake256, sponge, squeeze_block 136 128 _ (by omega)
     (by rw [length_absorb 136 zeros _ (List.length_replicate ..)]; omega)]
 
+/-! ## ML-DSA's SHAKE
+
+ML-DSA reads SHAKE256 incrementally through `Shake`, and samples its matrix,
+secret vectors, and masks from up to four SHAKE instances at once through
+`Shake4x`. -/
+
+/-- The first `m` bytes squeezed are the same however many follow. -/
+theorem squeeze_take (R m n : Nat) (S : List Byte) (h : m ≤ n) :
+    (squeeze R n S).take m = squeeze R m S := by
+  apply ext_getElem! (by simp [length_squeeze]; omega)
+  intro j hj
+  simp only [List.length_take, length_squeeze] at hj
+  rw [getElem!_pos _ j (by simp [length_squeeze]; omega), getElem!_pos _ j (by
+    rw [length_squeeze]; omega)]
+  simp [squeeze]
+
+/-- Bytes `a` to `c` squeezed are bytes `a` to `b`, then `b` to `c`. -/
+theorem squeeze_drop_append (R a b c : Nat) (S : List Byte) (hab : a ≤ b) (hbc : b ≤ c) :
+    (squeeze R c S).drop a = (squeeze R b S).drop a ++ (squeeze R c S).drop b := by
+  conv_lhs => rw [← List.take_append_drop b (squeeze R c S)]
+  rw [squeeze_take R b c S hbc, List.drop_append_of_le_length (by rw [length_squeeze]; omega)]
+
+/-- Bytes `a` to `b` squeezed, read from further output. -/
+theorem squeeze_drop_take (R a b c : Nat) (S : List Byte) (hab : a ≤ b) (hbc : b ≤ c) :
+    ((squeeze R c S).drop a).take (b - a) = (squeeze R b S).drop a := by
+  rw [← List.drop_take, squeeze_take R b c S hbc]
+
+theorem shake_pad_bv : (31#u8 : U8).bv = shakePad := rfl
+
+/-- A SHAKE reader at rate `R` that has read the first `t` bytes of SHAKE on
+`M`. It has squeezed `k` blocks, and its buffer holds the last, of which
+`buffer_offset` bytes are read. -/
+def Reading {R : Usize} (x : mid.sha3.Shake R) (M : List Byte) (t : Nat) : Prop :=
+  ∃ k, Squeezing x.sponge shakePad M k ∧ x.buffer_offset.val ≤ R.val ∧
+    t + R.val = R.val * k + x.buffer_offset.val ∧
+    (x.buffer_offset.val < R.val →
+      bv x.buffer.val = (sponge R.val shakePad M (R.val * k)).drop (R.val * k - R.val))
+
+/-- `Shake::new` pads what its sponge absorbed, to read from the start. -/
+theorem shake_new_spec {R : Usize} (hR : 8 ≤ R.val ∧ R.val < 200 ∧ R.val % 8 = 0)
+    (sp : mid.sha3.Sponge R 31#u8) (M : List Byte) (hm : SpongeAbsorbed R.val sp.s sp.used.val M) :
+    mid.sha3.Shake.new sp ⦃ x => Reading x M 0 ⦄ := by
+  unfold mid.sha3.Shake.new
+  step with sponge_finish_spec hR sp M hm as ⟨ss, hss⟩
+  exact ⟨0, hss, le_refl _, by simp, fun h => absurd h (lt_irrefl _)⟩
+
+/-- `Shake::read` writes the next bytes of SHAKE into `output`. -/
+theorem shake_read_spec (h : RunsSha3) {R : Usize} (hR : 8 ≤ R.val ∧ R.val < 200 ∧ R.val % 8 = 0)
+    (x : mid.sha3.Shake R) (M : List Byte) (t : Nat) (hx : Reading x M t) (output : Slice U8) :
+    mid.sha3.Shake.read x output ⦃ x' out =>
+      out.length = output.length ∧
+      bv out.val = (sponge R.val shakePad M (t + output.length)).drop t ∧
+      Reading x' M (t + output.length) ⦄ := by
+  obtain ⟨k, hk, hoff, ht, hbuf⟩ := hx
+  have hol : output.val.length = output.length := rfl
+  unfold mid.sha3.Shake.read
+  step as ⟨i, hi⟩
+  step as ⟨held, hheld⟩
+  step as ⟨s, back, hs, hsl, hback⟩
+  step as ⟨i1, hi1⟩
+  step as ⟨s1, hs1, hs1l⟩
+  have hheld' : held.val = min (R.val - x.buffer_offset.val) output.length := by
+    rw [hheld, core.cmp.impls.OrdUsize.min_val, hi]; simp [Slice.length]
+  step with core.slice.Slice.copy_from_slice.step_spec _ s s1 (by rw [hsl, hs1l, hi1]; omega)
+    as ⟨s2, hs2⟩
+  subst s2
+  have hsp : ∀ n, sponge R.val shakePad M n = squeeze R.val n
+      (absorb R.val zeros (keccakPad R.val shakePad M)) := fun n => rfl
+  -- The bytes left in the buffer are the next.
+  have hA : bv s1.val = (sponge R.val shakePad M (t + held.val)).drop t := by
+    by_cases h0 : held.val = 0
+    · have : s1.val = [] := by
+        have : s1.val.length = s1.length := rfl
+        apply List.eq_nil_of_length_eq_zero; omega
+      rw [this, h0, Nat.add_zero, hsp, List.drop_of_length_le (by rw [length_squeeze])]; rfl
+    · have hlt : x.buffer_offset.val < R.val := by omega
+      have hRk : R.val ≤ R.val * k := by
+        rcases k with _ | k
+        · omega
+        · rw [Nat.mul_succ]; omega
+      have hbl : (bv x.buffer.val).length = R.val := by simp [bv]
+      rw [hs1, Array.val_to_slice, List.slice, show bv (List.take (i1.val - x.buffer_offset.val)
+          (List.drop x.buffer_offset.val x.buffer.val)) =
+          List.take (i1.val - x.buffer_offset.val) (List.drop x.buffer_offset.val (bv x.buffer.val))
+          by simp [bv, List.map_take, List.map_drop],
+        hbuf hlt, List.drop_drop, hsp, hsp, show R.val * k - R.val + x.buffer_offset.val = t by
+          omega, show i1.val - x.buffer_offset.val = t + held.val - t by omega]
+      exact squeeze_drop_take _ _ _ _ _ (by omega) (by omega)
+  split
+  · -- The buffer held all `output` asks for.
+    rename_i heq
+    have hhl : held.val = output.length := by
+      have := congrArg (·.val) heq; simp [Slice.length] at this ⊢; omega
+    simp only [WP.spec_ok]
+    have hs1v : s1.val.length = output.val.length := by
+      have : s1.val.length = s1.length := rfl
+      omega
+    have hout : (back s1).val = s1.val := by
+      rw [hback, setSlice!_eq _ _ _ (by omega), List.drop_of_length_le (by omega)]
+      simp
+    refine ⟨?_, ?_, ?_⟩
+    · show (back s1).val.length = _
+      rw [hout]; have : s1.val.length = s1.length := rfl; omega
+    · rw [hout, hA, hhl]
+    · refine ⟨k, hk, by simp only; omega, by simp only; omega, fun hlt => ?_⟩
+      exact hbuf (by simp only at hlt; omega)
+  · rename_i hne
+    have hlo : output.len.val = output.length := by simp [Slice.length]
+    have hhl : held.val < output.length := by
+      have : held.val ≠ output.len.val := fun e => hne (UScalar.eq_of_val_eq e)
+      omega
+    have hheq : held.val = R.val - x.buffer_offset.val := by omega
+    have hthk : t + held.val = R.val * k := by omega
+    have hs1v : s1.val.length = held.val := by
+      have : s1.val.length = s1.length := rfl
+      omega
+    have hb1 : (back s1).val = s1.val ++ output.val.drop held.val := by
+      rw [hback, setSlice!_eq _ _ _ (by omega), hs1v]; simp
+    have hb1l : (back s1).length = output.length := by
+      show (back s1).val.length = _
+      rw [hb1, List.length_append, List.length_drop]; omega
+    step as ⟨i2, hi2⟩
+    step as ⟨i3, hi3⟩
+    have hq := Nat.div_mul_le_self i2.val R.val
+    have hmax := output.property
+    have hmax' : output.length ≤ Usize.max := hmax
+    step with UScalar.mul_spec (x := i3) (y := R) (by rw [hi3, UScalar.max_USize_eq]; omega)
+      as ⟨i4, hi4⟩
+    step with UScalar.add_spec (x := held) (y := i4) (by rw [hi4, hi3, UScalar.max_USize_eq]; omega)
+      as ⟨whole, hwhole⟩
+    have hwl : whole.val ≤ output.length := by
+      have := Nat.div_mul_le_self i2.val R.val
+      rw [hwhole, hi4, hi3]; omega
+    step as ⟨s3, back1, hs3, hs3l, hback1⟩
+    step with squeezing_squeeze_spec h ⟨by omega, by omega⟩ x.sponge shakePad M k hk s3
+      as ⟨ss, s4, hs4l, hs4, hss⟩
+    have hm : s3.length = R.val * i3.val := by rw [hs3l, hwhole, hi4, Nat.mul_comm]; omega
+    have hq : (s3.length + R.val - 1) / R.val = i3.val := by
+      rw [hm, show R.val * i3.val + R.val - 1 = R.val * i3.val + (R.val - 1) by omega,
+        Nat.mul_add_div (by omega), Nat.div_eq_of_lt (by omega), Nat.add_zero]
+    rw [hq] at hss
+    have hs4v : s4.val.length = R.val * i3.val := by
+      have : s4.val.length = s4.length := rfl
+      omega
+    have hb2 : (back1 s4).val = s1.val ++ s4.val ++ output.val.drop whole.val := by
+      rw [hback1, Slice.setSlice!_val, hb1, setSlice!_eq _ _ _ (by simp; omega), hs4v]
+      simp only [List.take_append, hs1v, List.take_of_length_le (le_refl _), Nat.sub_self,
+        List.take_zero, List.append_nil, List.drop_append, List.drop_of_length_le (show
+          s1.val.length ≤ held.val + R.val * i3.val by omega), List.nil_append, List.drop_drop]
+      rw [List.take_of_length_le (by omega), show held.val + (held.val + R.val * i3.val - held.val)
+        = whole.val by rw [hwhole, hi4, Nat.mul_comm]; omega]
+    -- The whole blocks squeezed follow the buffer's bytes.
+    have hB : bv s4.val = (sponge R.val shakePad M (t + held.val + R.val * i3.val)).drop
+        (t + held.val) := by
+      rw [hs4, hm, hthk]
+    have hsq : ∀ a b c, a ≤ b → b ≤ c → (sponge R.val shakePad M c).drop a =
+        (sponge R.val shakePad M b).drop a ++ (sponge R.val shakePad M c).drop b := by
+      intro a b c hab hbc
+      rw [hsp]
+      exact squeeze_drop_append _ _ _ _ _ hab hbc
+    have hAB : bv s1.val ++ bv s4.val =
+        (sponge R.val shakePad M (t + held.val + R.val * i3.val)).drop t := by
+      rw [hA, hB]; exact (hsq t (t + held.val) _ (by omega) (by omega)).symm
+    split
+    · rename_i hwlt
+      have hwlt' : whole.val < output.length := by
+        have : whole.val < output.len.val := hwlt
+        omega
+      step as ⟨s5, tsb, hs5, htsb⟩
+      have hs5l : s5.length = R.val := by
+        show s5.val.length = _
+        rw [hs5]; simp
+      step with squeezing_squeeze_spec h ⟨by omega, by omega⟩ ss shakePad M (k + i3.val) hss s5
+        as ⟨ss1, s6, hs6l, hs6, hss1⟩
+      have hs6v : s6.val.length = R.val := by
+        have : s6.val.length = s6.length := rfl
+        omega
+      have hbuf' : (tsb s6).val = s6.val := by
+        rw [htsb, Array.from_slice_val _ _ (by simp [hs6v])]
+      have hb2l : (back1 s4).val.length = output.length := by
+        rw [hb2]; simp only [List.length_append, List.length_drop]; omega
+      step as ⟨s7, back2, hs7, hs7l, hback2⟩
+      step as ⟨i5, hi5, _⟩
+      have hRq : t + held.val + R.val * i3.val = R.val * (k + i3.val) := by rw [Nat.mul_add]; omega
+      have hwq : whole.val = held.val + R.val * i3.val := by rw [hwhole, hi4, Nat.mul_comm]
+      have hn : i5.val < R.val := by
+        rw [hi5, hlo, hwq, hi3, hi2, hlo]
+        have := Nat.div_add_mod (output.length - held.val) R.val
+        have := Nat.mod_lt (output.length - held.val) (show 0 < R.val by omega)
+        omega
+      step with core.slice.index.SliceIndexRangeToUsizeSlice.index.step_spec { «end» := i5 }
+        (tsb s6).to_slice (by simp [Slice.length, hbuf', hs6v]; omega) as ⟨s8, hs8, hs8l⟩
+      step with core.slice.Slice.copy_from_slice.step_spec _ s7 s8 (by
+        rw [hs7l, hs8l, hi5, hlo]; have : (back1 s4).length = output.length := hb2l; omega)
+        as ⟨s9, hs9⟩
+      subst s9
+      have hs8v : s8.val.length = i5.val := by
+        have : s8.val.length = s8.length := rfl
+        omega
+      have hl12 : (s1.val ++ s4.val).length = whole.val := by
+        rw [List.length_append, hs1v, hs4v, hwq]
+      have hout : (back2 s8).val = s1.val ++ s4.val ++ s8.val := by
+        rw [hback2, setSlice!_eq _ _ _ (by rw [hb2l, hs8v, hi5, hlo]; omega), hb2,
+          List.take_left' hl12, List.drop_of_length_le (by
+            simp only [List.length_append, List.length_drop, hs8v, hs1v, hs4v]; omega),
+          List.append_nil]
+      have hC : bv s8.val = (sponge R.val shakePad M (t + output.length)).drop
+          (R.val * (k + i3.val)) := by
+        have := squeeze_drop_take R.val (R.val * (k + i3.val)) (R.val * (k + i3.val) + i5.val)
+          (R.val * (k + i3.val) + R.val) (absorb R.val zeros (keccakPad R.val shakePad M))
+          (by omega) (by omega)
+        rw [Nat.add_sub_cancel_left] at this
+        have htl : t + output.length = R.val * (k + i3.val) + i5.val := by rw [hi5, hlo, hwq]; omega
+        rw [htl, hs8, Array.val_to_slice, hbuf', List.slice, List.drop_zero, Nat.sub_zero, bv,
+          List.map_take, ← bv, hs6, hs5l, hsp, hsp, this]
+      refine ⟨?_, ?_, ?_⟩
+      · show (back2 s8).val.length = _
+        rw [hout]; simp only [List.length_append]; omega
+      · rw [hout, bv, List.map_append, List.map_append, ← bv, ← bv, ← bv, hAB, hC, hRq,
+          ← hsq t _ _ (by omega) (by
+            have : i5.val = output.length - whole.val := by rw [hi5, hlo]
+            omega)]
+      · refine ⟨k + i3.val + 1, ?_, by simp only; omega, ?_, fun _ => ?_⟩
+        · have : (s5.length + R.val - 1) / R.val = 1 := by
+            rw [hs5l, show R.val + R.val - 1 = R.val * 1 + (R.val - 1) by omega,
+              Nat.mul_add_div (by omega), Nat.div_eq_of_lt (by omega)]
+          rw [this] at hss1; exact hss1
+        · simp only; rw [hi5, hlo, hwq, Nat.mul_add, Nat.mul_add] at *; omega
+        · simp only
+          rw [hbuf', hs6, hs5l, show R.val * (k + i3.val + 1) = R.val * (k + i3.val) + R.val by
+            rw [Nat.mul_add, Nat.mul_one], Nat.add_sub_cancel]
+    · rename_i hwge
+      have hwe : whole.val = output.length := by
+        have : ¬ whole.val < output.len.val := hwge
+        omega
+      simp only [WP.spec_ok]
+      refine ⟨?_, ?_, ?_⟩
+      · show (back1 s4).val.length = _
+        rw [hb2]; simp only [List.length_append, List.length_drop]; omega
+      · rw [hb2, List.drop_of_length_le (by omega), List.append_nil, bv, List.map_append, ← bv,
+          ← bv, hAB, show t + held.val + R.val * i3.val = t + output.length by
+            rw [hwhole, hi4, Nat.mul_comm] at hwe; omega]
+      · refine ⟨k + i3.val, hss, by simp only; omega, ?_, fun hlt => absurd hlt (by simp only; omega)⟩
+        simp only
+        rw [hwhole, hi4, Nat.mul_comm] at hwe
+        rw [Nat.mul_add]; omega
+
 end rind.x86_64
