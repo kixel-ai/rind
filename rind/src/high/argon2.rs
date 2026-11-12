@@ -171,10 +171,12 @@ mod tests {
         assert_eq!(verify(SMALL, b"", &[0; 8], &out), Ok(()));
     }
 
+    // Only a 32-bit address space is too small for Argon2's largest memory,
+    // 4 TiB; a 64-bit host may overcommit it and fail only once it is
+    // touched.
+    #[cfg(target_pointer_width = "32")]
     #[test]
     fn unallocatable() {
-        // More memory than any address space holds, or on 64-bit targets,
-        // than any machine running the tests has.
         let mut out = [0u8; 4];
         let huge = Params::new(u32::MAX, 1, 1).unwrap();
         assert_eq!(
