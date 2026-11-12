@@ -988,3 +988,17 @@ A ✓ means a published, machine-checked proof shows that all the code computing
 | libcrux | `ed25519-sign`, `ed25519-verify` | any architecture | [HACL*'s F* proof of Hacl.Ed25519's sign and verify, compiled to Rust by an unverified step](https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/ed25519/Hacl.Ed25519.fst) |
 | libcrux | `p256-ecdh`, `p256-ecdsa-sign`, `p256-ecdsa-verify` | any architecture | [HACL*'s F* proof of Hacl.P256's dh_initiator, dh_responder, ecdsa_sign_p256_sha2, and ecdsa_verif_p256_sha2, compiled to Rust by an unverified step](https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/ecdsap256/Hacl.P256.fst) |
 | libcrux | `rsa2048-pss-sha256-sign`, `rsa2048-pss-sha256-verify` | any architecture | [HACL*'s F* proof of Hacl.RSAPSS's rsapss_skey_sign and rsapss_pkey_verify, signing without the CRT, compiled to Rust by an unverified step](https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/code/rsapss/Hacl.RSAPSS.fst) |
+
+## Updating this report
+
+`admin/bench-report collect` runs the report's benchmarks, then
+`admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev
+shell and under `quest gate`, which waits for the host to have room but
+shares it with other gated work, so its numbers are noisier than the nightly
+`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under
+`.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly
+`bench` run's results, and `admin/bench-report render --from DIR` copies a
+collection's measured hosts into `benchmarks/data/` and writes
+`BENCHMARKS.md` and its SVGs, which the README shows too, from them, `benchmarks/verified.toml`, and
+`benchmarks/gaps.toml`, which must hold a quest or a reason for every gap
+over 10%.
