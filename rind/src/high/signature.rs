@@ -13,6 +13,11 @@ use super::{pkcs8, sec1, spki};
 use crate::error::{Error, KeyFormatError};
 use crate::low::{self, Zeroable};
 use crate::mid::mldsa::{self, MlDsa44, MlDsa65, MlDsa87, Params as MlDsaParams};
+use crate::mid::slhdsa::{
+    self, Params as SlhDsaParams, SlhDsaSha2_128f, SlhDsaSha2_128s, SlhDsaSha2_192f,
+    SlhDsaSha2_192s, SlhDsaSha2_256f, SlhDsaSha2_256s, SlhDsaShake128f, SlhDsaShake128s,
+    SlhDsaShake192f, SlhDsaShake192s, SlhDsaShake256f, SlhDsaShake256s,
+};
 use crate::mid::rsa_key_size::RsaKeySize;
 use crate::mid::rsa_pub::MAX_PUBLIC_MODULUS_BYTES;
 use crate::mid::{p256, p384, p521};
@@ -147,6 +152,7 @@ enum Verification {
     Rsa(Rsa),
     Ed25519(fn(&[u8]) -> Result<Parsed, Error>),
     MlDsa(MlDsaAlgorithm),
+    SlhDsa(SlhDsaAlgorithm),
 }
 
 impl fmt::Debug for Verification {
@@ -156,6 +162,7 @@ impl fmt::Debug for Verification {
             Self::Rsa(rsa) => f.debug_tuple("Rsa").field(rsa).finish(),
             Self::Ed25519(_) => f.write_str("Ed25519"),
             Self::MlDsa(algorithm) => f.write_str(algorithm.name),
+            Self::SlhDsa(algorithm) => f.write_str(algorithm.name),
         }
     }
 }
@@ -244,6 +251,7 @@ enum Parsed {
     Rsa(RsaVerifier, RsaVerification),
     Ed25519(Verifier<Ed25519VerifyingKey>),
     MlDsa(MlDsaVerifier),
+    SlhDsa(SlhDsaAlgorithm),
 }
 
 impl PublicKey {
@@ -263,6 +271,7 @@ impl PublicKey {
             Verification::Rsa(rsa) => return (rsa.parse)(rsa, bytes),
             Verification::Ed25519(parse) => parse(bytes)?,
             Verification::MlDsa(algorithm) => algorithm.parse(bytes)?,
+            Verification::SlhDsa(algorithm) => algorithm.parse(bytes)?,
         };
         Ok(Self {
             key,
@@ -314,6 +323,9 @@ impl PublicKey {
             Verification::MlDsa(ml_dsa) => {
                 Self::new(algorithm, spki::decode(der, &[ml_dsa.oid], None)?)
             }
+            Verification::SlhDsa(slh_dsa) => {
+                Self::new(algorithm, spki::decode(der, &[slh_dsa.oid], None)?)
+            }
         }
     }
 
@@ -329,6 +341,7 @@ impl PublicKey {
             Parsed::Rsa(..) => (&asn1::oid::rsaEncryption, Some(asn1::Any::Null(asn1::Null))),
             Parsed::Ed25519(_) => (&asn1::oid::id_ed25519, None),
             Parsed::MlDsa(key) => (key.algorithm.oid, None),
+            Parsed::SlhDsa(algorithm) => (algorithm.oid, None),
         };
         Spki(Buffer::encode(|output| {
             spki::encode(self.as_ref(), algorithm, parameters, output)
@@ -373,6 +386,7 @@ impl PublicKey {
             }
             Parsed::Ed25519(key) => key.verify(message, signature),
             Parsed::MlDsa(key) => key.verify(self.as_ref(), message, signature),
+            Parsed::SlhDsa(algorithm) => (algorithm.verify)(self.as_ref(), message, signature),
         }
     }
 
@@ -393,7 +407,9 @@ impl PublicKey {
             Parsed::EcdsaP256(key, _) => key.verify_digest(digest, signature),
             Parsed::EcdsaP384(key, _) => key.verify_digest(digest, signature),
             Parsed::EcdsaP521(key, _) => key.verify_digest(digest, signature),
-            Parsed::Rsa(..) | Parsed::Ed25519(_) | Parsed::MlDsa(_) => Err(Error::Unsupported),
+            Parsed::Rsa(..) | Parsed::Ed25519(_) | Parsed::MlDsa(_) | Parsed::SlhDsa(_) => {
+                Err(Error::Unsupported)
+            }
         }
     }
 }
@@ -422,6 +438,7 @@ impl fmt::Debug for PublicKey {
             Parsed::Rsa(_, verification) => f.field("algorithm", verification),
             Parsed::Ed25519(_) => f.field("algorithm", &format_args!("Ed25519")),
             Parsed::MlDsa(key) => f.field("algorithm", &format_args!("{}", key.algorithm.name)),
+            Parsed::SlhDsa(algorithm) => f.field("algorithm", &format_args!("{}", algorithm.name)),
         };
         f.field("bytes", &self.as_ref()).finish()
     }
@@ -1849,6 +1866,170 @@ impl Drop for MlDsaSeed {
     }
 }
 
+/// An SLH-DSA parameter set, as FIPS 205 standardises them, such as
+/// [`SlhDsaSha2_128s`] or [`SlhDsaShake256f`], which fixes its hash and the
+/// sizes of its keys and signatures.
+pub trait SlhDsaParameterSet: SlhDsaParams {
+    #[doc(hidden)]
+    const ALGORITHM: SlhDsaAlgorithm;
+}
+
+macro_rules! slh_dsa_sets {
+    ($($set:ident: $name:literal, $oid:ident;)*) => {$(
+        impl SlhDsaParameterSet for $set {
+            const ALGORITHM: SlhDsaAlgorithm =
+                SlhDsaAlgorithm::new::<Self>($name, &asn1::oid::$oid);
+        }
+    )*};
+}
+
+slh_dsa_sets! {
+    SlhDsaSha2_128s: "SLH-DSA-SHA2-128s", id_slh_dsa_sha2_128s;
+    SlhDsaSha2_128f: "SLH-DSA-SHA2-128f", id_slh_dsa_sha2_128f;
+    SlhDsaSha2_192s: "SLH-DSA-SHA2-192s", id_slh_dsa_sha2_192s;
+    SlhDsaSha2_192f: "SLH-DSA-SHA2-192f", id_slh_dsa_sha2_192f;
+    SlhDsaSha2_256s: "SLH-DSA-SHA2-256s", id_slh_dsa_sha2_256s;
+    SlhDsaSha2_256f: "SLH-DSA-SHA2-256f", id_slh_dsa_sha2_256f;
+    SlhDsaShake128s: "SLH-DSA-SHAKE-128s", id_slh_dsa_shake_128s;
+    SlhDsaShake128f: "SLH-DSA-SHAKE-128f", id_slh_dsa_shake_128f;
+    SlhDsaShake192s: "SLH-DSA-SHAKE-192s", id_slh_dsa_shake_192s;
+    SlhDsaShake192f: "SLH-DSA-SHAKE-192f", id_slh_dsa_shake_192f;
+    SlhDsaShake256s: "SLH-DSA-SHAKE-256s", id_slh_dsa_shake_256s;
+    SlhDsaShake256f: "SLH-DSA-SHAKE-256f", id_slh_dsa_shake_256f;
+}
+
+/// An SLH-DSA parameter set's name, its OID (RFC 9909), and the function
+/// that verifies its signatures.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct SlhDsaAlgorithm {
+    name: &'static str,
+    oid: &'static asn1::ObjectId,
+    public_key_len: usize,
+    /// `(key, message, signature)`.
+    verify: fn(&[u8], &[u8], &[u8]) -> Result<(), Error>,
+}
+
+impl SlhDsaAlgorithm {
+    const fn new<P: SlhDsaParams>(name: &'static str, oid: &'static asn1::ObjectId) -> Self {
+        Self {
+            name,
+            oid,
+            public_key_len: slhdsa::public_key_len::<P>(),
+            // Pure SLH-DSA with the empty context, as X.509 signs.
+            verify: |pk, message, signature| slhdsa::verify::<P>(pk, &[0, 0], message, signature),
+        }
+    }
+
+    /// Parses a public key: any encoding of the right length is one.
+    fn parse(self, bytes: &[u8]) -> Result<Parsed, Error> {
+        match bytes.len() == self.public_key_len {
+            true => Ok(Parsed::SlhDsa(self)),
+            false => Err(KeyFormatError::WrongLength.into()),
+        }
+    }
+}
+
+/// An SLH-DSA private key and its public key, of parameter set `P`.
+///
+/// It signs pure SLH-DSA (FIPS 205) with the empty context, as X.509 uses
+/// it (RFC 9909), randomized with fresh randomness as FIPS 205 recommends,
+/// as the `verify::SLH_DSA_*` algorithm of the same name verifies.
+pub struct SlhDsaKeyPair<P: SlhDsaParameterSet>(slhdsa::KeyPair<P>);
+
+impl<P: SlhDsaParameterSet> SlhDsaKeyPair<P> {
+    /// Generates a key pair from the system random source.
+    pub fn generate() -> Result<Self, Error> {
+        slhdsa::KeyPair::generate().map(Self)
+    }
+
+    /// Loads a PKCS#8 SLH-DSA key (RFC 9909), refused if it carries a public
+    /// key (v2, RFC 5958) that does not match.
+    ///
+    /// Its private key is FIPS 205's encoding, `SK.seed || SK.prf || PK.seed
+    /// || PK.root`, and is refused unless `PK.root` is the root its seeds
+    /// make, which costs as much as generating the key.
+    pub fn from_pkcs8(der: &[u8]) -> Result<Self, Error> {
+        let _entry = low::Entry::new_secret();
+        let p8 = pkcs8::Key::decode(der, &[P::ALGORITHM.oid], None)?;
+        let key = Self(slhdsa::KeyPair::from_secret_key(p8.private_key())?);
+        match p8.public_key() {
+            Some(public_key) if public_key != key.0.public_key() => {
+                Err(KeyFormatError::MismatchedPkcs8PublicKey.into())
+            }
+            _ => Ok(key),
+        }
+    }
+
+    /// Encodes the private key as PKCS#8 v1 (RFC 9909).
+    pub fn to_pkcs8(&self) -> Pkcs8 {
+        let _entry = low::Entry::new_secret();
+        let pkcs8 = Pkcs8(Buffer::encode(|output| {
+            pkcs8::Key::construct(
+                self.0.secret_key().as_ref(),
+                None,
+                P::ALGORITHM.oid.clone(),
+                None,
+            )
+            .encode(output)
+        }));
+        low::ct::public_slice(pkcs8.as_ref());
+        pkcs8
+    }
+
+    /// Returns the public key, which verifies what this key pair signs.
+    pub fn public_key(&self) -> PublicKey {
+        PublicKey {
+            key: Parsed::SlhDsa(P::ALGORITHM),
+            encoding: Buffer::encode(|output| {
+                let public_key = self.0.public_key();
+                let output = &mut output[..public_key.len()];
+                output.copy_from_slice(public_key);
+                Ok(output)
+            }),
+        }
+    }
+
+    /// Signs `message`, with fresh randomness from the system random source.
+    pub fn sign(&self, message: &[u8]) -> Result<SlhDsaSignature<P>, Error> {
+        self.0
+            .sign(&[0, 0], message)
+            .map(|signature| SlhDsaSignature(signature, core::marker::PhantomData))
+    }
+}
+
+impl<P: SlhDsaParameterSet> fmt::Debug for SlhDsaKeyPair<P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SlhDsaKeyPair")
+            .field("algorithm", &format_args!("{}", P::ALGORITHM.name))
+            .finish_non_exhaustive()
+    }
+}
+
+/// An SLH-DSA signature of parameter set `P`, FIPS 205's encoding: up to
+/// 49,856 bytes, so it lives on the heap.
+pub struct SlhDsaSignature<P: SlhDsaParameterSet>(Box<[u8]>, core::marker::PhantomData<P>);
+
+impl<P: SlhDsaParameterSet> Clone for SlhDsaSignature<P> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), core::marker::PhantomData)
+    }
+}
+
+impl<P: SlhDsaParameterSet> AsRef<[u8]> for SlhDsaSignature<P> {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl<P: SlhDsaParameterSet> fmt::Debug for SlhDsaSignature<P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("SlhDsaSignature")
+            .field(&self.as_ref())
+            .finish()
+    }
+}
+
 /// Algorithms a key pair signs with.
 pub(crate) mod sign {
     use super::*;
@@ -2004,6 +2185,66 @@ pub(crate) mod verify {
     /// keys and 4627-byte signatures.
     pub static ML_DSA_87: VerificationAlgorithm =
         VerificationAlgorithm(Verification::MlDsa(MlDsa87::ALGORITHM));
+
+    /// SLH-DSA-SHA2-128s (FIPS 205), pure with the empty context: 32-byte public keys
+    /// and 7,856-byte signatures.
+    pub static SLH_DSA_SHA2_128S: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaSha2_128s::ALGORITHM));
+
+    /// SLH-DSA-SHA2-128f (FIPS 205), pure with the empty context: 32-byte public keys
+    /// and 17,088-byte signatures.
+    pub static SLH_DSA_SHA2_128F: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaSha2_128f::ALGORITHM));
+
+    /// SLH-DSA-SHA2-192s (FIPS 205), pure with the empty context: 48-byte public keys
+    /// and 16,224-byte signatures.
+    pub static SLH_DSA_SHA2_192S: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaSha2_192s::ALGORITHM));
+
+    /// SLH-DSA-SHA2-192f (FIPS 205), pure with the empty context: 48-byte public keys
+    /// and 35,664-byte signatures.
+    pub static SLH_DSA_SHA2_192F: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaSha2_192f::ALGORITHM));
+
+    /// SLH-DSA-SHA2-256s (FIPS 205), pure with the empty context: 64-byte public keys
+    /// and 29,792-byte signatures.
+    pub static SLH_DSA_SHA2_256S: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaSha2_256s::ALGORITHM));
+
+    /// SLH-DSA-SHA2-256f (FIPS 205), pure with the empty context: 64-byte public keys
+    /// and 49,856-byte signatures.
+    pub static SLH_DSA_SHA2_256F: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaSha2_256f::ALGORITHM));
+
+    /// SLH-DSA-SHAKE-128s (FIPS 205), pure with the empty context: 32-byte public keys
+    /// and 7,856-byte signatures.
+    pub static SLH_DSA_SHAKE_128S: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaShake128s::ALGORITHM));
+
+    /// SLH-DSA-SHAKE-128f (FIPS 205), pure with the empty context: 32-byte public keys
+    /// and 17,088-byte signatures.
+    pub static SLH_DSA_SHAKE_128F: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaShake128f::ALGORITHM));
+
+    /// SLH-DSA-SHAKE-192s (FIPS 205), pure with the empty context: 48-byte public keys
+    /// and 16,224-byte signatures.
+    pub static SLH_DSA_SHAKE_192S: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaShake192s::ALGORITHM));
+
+    /// SLH-DSA-SHAKE-192f (FIPS 205), pure with the empty context: 48-byte public keys
+    /// and 35,664-byte signatures.
+    pub static SLH_DSA_SHAKE_192F: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaShake192f::ALGORITHM));
+
+    /// SLH-DSA-SHAKE-256s (FIPS 205), pure with the empty context: 64-byte public keys
+    /// and 29,792-byte signatures.
+    pub static SLH_DSA_SHAKE_256S: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaShake256s::ALGORITHM));
+
+    /// SLH-DSA-SHAKE-256f (FIPS 205), pure with the empty context: 64-byte public keys
+    /// and 49,856-byte signatures.
+    pub static SLH_DSA_SHAKE_256F: VerificationAlgorithm =
+        VerificationAlgorithm(Verification::SlhDsa(SlhDsaShake256f::ALGORITHM));
 
     /// Verification algorithms with a modulus floor other than 2048 bits, or SHA-1.
     pub(crate) mod legacy {
