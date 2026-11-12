@@ -21,6 +21,7 @@ enum Verification {
     ),
     Rsa(Rsa),
     Ed25519(fn(&[u8]) -> Result<Parsed, Error>),
+    MlDsa(MlDsaAlgorithm),
 }
 
 type Verify<K> = fn(&K, &[u8], &[u8]) -> Result<(), Error>;
@@ -38,7 +39,7 @@ impl<K> Verifier<K> {
 
 pub struct PublicKey {
     key: Parsed,
-    encoding: Buffer<{ rsa::MAX_PUBLIC_KEY_LEN }>,
+    encoding: Buffer<MAX_PUBLIC_KEY_LEN>,
 }
 
 enum Parsed {
@@ -47,6 +48,7 @@ enum Parsed {
     EcdsaP521(EcdsaVerifier<P521>, Ecdsa),
     Rsa(RsaVerifier, RsaVerification),
     Ed25519(Verifier<Ed25519VerifyingKey>),
+    MlDsa(MlDsaVerifier),
 }
 
 impl PublicKey {
@@ -54,8 +56,9 @@ impl PublicKey {
     /// refusing a malformed key before any signature arrives.
     ///
     /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
-    /// `RSAPublicKey` or `SubjectPublicKeyInfo` DER, and Ed25519 keys are
-    /// their 32 bytes. A compressed ECDSA point is refused, which
+    /// `RSAPublicKey` or `SubjectPublicKeyInfo` DER, Ed25519 keys are their
+    /// 32 bytes, and ML-DSA keys are FIPS 204's encoding. A compressed ECDSA
+    /// point is refused, which
     /// [`agreement::PublicKey::new`](crate::agreement::PublicKey::new)
     /// decompresses. So is an Ed25519 point of small order, which verifies
     /// signatures nobody made.
@@ -64,6 +67,7 @@ impl PublicKey {
             Verification::Ecdsa(ecdsa, parse, _) => parse(ecdsa, bytes)?,
             Verification::Rsa(rsa) => return (rsa.parse)(rsa, bytes),
             Verification::Ed25519(parse) => parse(bytes)?,
+            Verification::MlDsa(algorithm) => algorithm.parse(bytes)?,
         };
         Ok(Self {
             key,
@@ -86,8 +90,9 @@ impl PublicKey {
     ///
     /// An ECDSA key names `id-ecPublicKey` and the algorithm's curve, and
     /// its point may be compressed (RFC 5480), which this decompresses. An
-    /// RSA key names `rsaEncryption`, `id-RSAES-OAEP`, or `id-ea-rsa`, and an
-    /// Ed25519 key `id-Ed25519`.
+    /// RSA key names `rsaEncryption`, `id-RSAES-OAEP`, or `id-ea-rsa`, an
+    /// Ed25519 key `id-Ed25519`, and an ML-DSA key its parameter set's OID
+    /// (RFC 9881).
     pub fn from_spki(
         algorithm: &impl AsRef<VerificationAlgorithm>,
         der: &[u8],
@@ -111,12 +116,15 @@ impl PublicKey {
                 algorithm,
                 spki::decode(der, &[&asn1::oid::id_ed25519], None)?,
             ),
+            Verification::MlDsa(ml_dsa) => {
+                Self::new(algorithm, spki::decode(der, &[ml_dsa.oid], None)?)
+            }
         }
     }
 
     /// Encodes the public key as a `SubjectPublicKeyInfo`: ECDSA's
     /// `id-ecPublicKey` on its curve, with its uncompressed point, RSA's
-    /// `rsaEncryption`, or Ed25519's `id-Ed25519`.
+    /// `rsaEncryption`, Ed25519's `id-Ed25519`, or ML-DSA's parameter set.
     pub fn to_spki(&self) -> Spki {
         let ec = |curve| (&asn1::oid::id_ecPublicKey, Some(asn1::Any::ObjectId(curve)));
         let (algorithm, parameters) = match &self.key {
@@ -125,6 +133,7 @@ impl PublicKey {
             Parsed::EcdsaP521(..) => ec(P521::oid()),
             Parsed::Rsa(..) => (&asn1::oid::rsaEncryption, Some(asn1::Any::Null(asn1::Null))),
             Parsed::Ed25519(_) => (&asn1::oid::id_ed25519, None),
+            Parsed::MlDsa(key) => (key.algorithm.oid, None),
         };
         Spki(Buffer::encode(|output| {
             spki::encode(self.as_ref(), algorithm, parameters, output)
@@ -168,6 +177,7 @@ impl PublicKey {
                 (key.verify)(&key.key, verification.salt(), signature, message)
             }
             Parsed::Ed25519(key) => key.verify(message, signature),
+            Parsed::MlDsa(key) => key.verify(self.as_ref(), message, signature),
         }
     }
 
@@ -188,7 +198,7 @@ impl PublicKey {
             Parsed::EcdsaP256(key, _) => key.verify_digest(digest, signature),
             Parsed::EcdsaP384(key, _) => key.verify_digest(digest, signature),
             Parsed::EcdsaP521(key, _) => key.verify_digest(digest, signature),
-            Parsed::Rsa(..) | Parsed::Ed25519(_) => Err(Error::Unsupported),
+            Parsed::Rsa(..) | Parsed::Ed25519(_) | Parsed::MlDsa(_) => Err(Error::Unsupported),
         }
     }
 }
@@ -208,6 +218,7 @@ impl fmt::Debug for PublicKey {
             | Parsed::EcdsaP521(_, algorithm) => f.field("algorithm", algorithm),
             Parsed::Rsa(_, verification) => f.field("algorithm", verification),
             Parsed::Ed25519(_) => f.field("algorithm", &format_args!("Ed25519")),
+            Parsed::MlDsa(key) => f.field("algorithm", &format_args!("{}", key.algorithm.name)),
         };
         f.field("bytes", &self.as_ref()).finish()
     }
@@ -324,8 +335,8 @@ The model departs from the Rust in five ways, and adds no axiom:
   `signature.rs`, where only `parse_ed25519` and `Ed25519KeyPair::public_key`
   build a `Parsed::Ed25519`, each with that function. `admin/prove` checks
   that the quotes hold every mention of `Parsed::Ed25519(` there.
-- ECDSA's and RSA's variants, which no theorem here is about, are one
-  `Other` variant of each type, holding what `PublicKey::new` and
+- ECDSA's, RSA's, and ML-DSA's variants, which no theorem here is about,
+  are one `Other` variant of each type, holding what `PublicKey::new` and
   `PublicKey::verify` do for them. `Verification::Ecdsa`'s decompressor,
   which only `PublicKey::from_spki` reads, is left out.
 - `?` is a `match`, since each error it passes on is already an `Error`.
@@ -335,8 +346,9 @@ modelled: it computes no result. Nor are `PublicKey::verify_digest`,
 `from_spki`, and `to_spki`, or `Ed25519KeyPair`'s `from_seed` and
 `to_pkcs8v1`, which no theorem here is about: `from_spki` builds its key with
 `PublicKey::new`, and the others build no `Parsed`. Drops are not modelled, as everywhere in the
-translation. `rsa::MAX_PUBLIC_KEY_LEN` is 8192 / 8 + 64 =
-1088.
+translation. `MAX_PUBLIC_KEY_LEN` is the larger of `rsa::MAX_PUBLIC_KEY_LEN`,
+8192 / 8 + 64 = 1088, and ML-DSA-87's public key length, 32 + 8 * 320 =
+2592.
 -/
 
 namespace rind.x86_64
@@ -349,7 +361,7 @@ inductive high.signature.Parsed where
 /-- `PublicKey`. -/
 structure high.signature.PublicKey where
   key : high.signature.Parsed
-  encoding : high.signature.Buffer 1088#usize
+  encoding : high.signature.Buffer 2592#usize
 
 /-- `Verification`, and `VerificationAlgorithm`, which holds one. -/
 inductive high.signature.Verification where
@@ -375,7 +387,7 @@ def high.signature.PublicKey.new (algorithm : high.signature.Verification) (byte
     let r ← high.signature.parse_ed25519 bytes
     match r with
     | .Ok key =>
-      let b ← high.signature.Buffer.copy_from 1088#usize bytes
+      let b ← high.signature.Buffer.copy_from 2592#usize bytes
       match b with
       | .Ok encoding => ok (.Ok { key, encoding })
       | .Err e => ok (.Err e)
@@ -402,7 +414,7 @@ def high.signature.Ed25519KeyPair.impl.public_key (self : high.signature.Ed25519
     Result high.signature.PublicKey := do
   let key ← high.ed25519.Ed25519SigningKey.public_key self.key
   let b ← high.signature.Buffer.Insts.CoreConvertFromArrayU8N.from self.public_key
-  let encoding ← high.signature.Buffer.widen 1088#usize b
+  let encoding ← high.signature.Buffer.widen 2592#usize b
   ok { key := .Ed25519 key, encoding }
 
 end rind.x86_64
