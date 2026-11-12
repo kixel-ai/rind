@@ -10,7 +10,7 @@
 use core::hint::black_box;
 
 use crate::low::ct;
-use crate::low::ct_binsec::checked;
+use crate::low::ct_binsec::{checked, length};
 
 /// `N` bytes of `fill`, marked secret.
 fn secret<const N: usize>(fill: u8) -> [u8; N] {
@@ -20,7 +20,9 @@ fn secret<const N: usize>(fill: u8) -> [u8; N] {
 }
 
 // Messages take a whole block, then a partial one, through each cipher's
-// tail handling, at a length that keeps BINSEC's search short.
+// tail handling. Where BINSEC's search stays short, they take every length
+// up to that: a length reaching `malloc` or a hash's buffering makes it
+// explore more paths than a nightly has time for.
 const MESSAGE: usize = 75;
 
 #[test]
@@ -29,12 +31,14 @@ fn ct_binsec_aes_gcm() {
     use crate::aead::*;
 
     checked(|| {
+        let len = length(MESSAGE);
         for algorithm in [&AES_128_GCM, &AES_192_GCM, &AES_256_GCM] {
             let key = Key::new(algorithm, &secret::<32>(1)[..algorithm.key_len()]).unwrap();
             let nonce = || Nonce::assume_unique_for_key([2; 12]);
             let mut msg = secret::<MESSAGE>(3);
+            let msg = &mut msg[..len];
             let tag = key
-                .seal_in_place_separate_tag(nonce(), &[4; 21], &mut msg)
+                .seal_in_place_separate_tag(nonce(), &[4; 21], msg)
                 .unwrap();
             // libcrux's AES-128 and AES-256 open branch on whether the tag
             // verified before rind can declassify it, as `admin/ctgrind.supp`
@@ -43,7 +47,7 @@ fn ct_binsec_aes_gcm() {
                 continue;
             }
             black_box(
-                key.open_in_place_separate_tag(nonce(), &[4; 21], tag, &mut msg)
+                key.open_in_place_separate_tag(nonce(), &[4; 21], tag, msg)
                     .is_ok(),
             );
         }
@@ -59,11 +63,12 @@ fn ct_binsec_chacha20_poly1305() {
         let key = Key::new(&CHACHA20_POLY1305, &secret::<32>(1)).unwrap();
         let nonce = || Nonce::assume_unique_for_key([2; 12]);
         let mut msg = secret::<MESSAGE>(3);
+        let msg = &mut msg[..length(MESSAGE)];
         let tag = key
-            .seal_in_place_separate_tag(nonce(), &[4; 21], &mut msg)
+            .seal_in_place_separate_tag(nonce(), &[4; 21], msg)
             .unwrap();
         black_box(
-            key.open_in_place_separate_tag(nonce(), &[4; 21], tag, &mut msg)
+            key.open_in_place_separate_tag(nonce(), &[4; 21], tag, msg)
                 .is_ok(),
         );
     });
@@ -101,13 +106,14 @@ fn ct_binsec_aes() {
     use crate::cipher::*;
 
     checked(|| {
+        let len = length(MESSAGE);
         for algorithm in [&AES_128, &AES_192, &AES_256] {
             let key = &secret::<32>(1)[..algorithm.key_len];
             Aes::new(algorithm, key)
                 .unwrap()
                 .encrypt_block(&mut secret(2));
             let ctr = AesCtr::new(algorithm, key, 32).unwrap();
-            ctr.apply_keystream(&[3; 16], &mut secret::<MESSAGE>(4))
+            ctr.apply_keystream(&[3; 16], &mut secret::<MESSAGE>(4)[..len])
                 .unwrap();
         }
     });
@@ -137,8 +143,13 @@ fn ct_binsec_chacha20() {
     use crate::cipher::*;
 
     checked(|| {
+        // Eight blocks through x86_64's AVX2 kernel and a tail, then every
+        // shorter length, each of which takes its own path.
         let key = ChaCha20::new(&secret(1));
         key.apply_keystream(&[2; 12], 3, &mut secret::<{ 512 + MESSAGE }>(4))
+            .unwrap();
+        let mut msg = secret::<MESSAGE>(4);
+        key.apply_keystream(&[2; 12], 3, &mut msg[..length(MESSAGE)])
             .unwrap();
     });
 }
