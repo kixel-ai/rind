@@ -95,12 +95,22 @@ pub(in crate::low) fn sha256_finish_shaext(
             // last borrow leaves at -1 for the padded blocks.
             "3:",
             "sub $1, %rax",
-            "jb 2f",
-            "movdqu (%rdx), %xmm14",
-            "movdqu 16(%rdx), %xmm15",
-            "movdqu 32(%rdx), %xmm1",
-            "movdqu 48(%rdx), %xmm12",
-            "add $64, %rdx",
+            "jae 12f",
+            // The padded block: r9 whole lanes from rdx, at most three, the
+            // lane r10 and r11 hold, zeros, and r8 as the last lane's top
+            // word unless that lane is r10 and r11's.
+            "2:",
+            "cmp $1, %r9",
+            "jae 7f",
+            "movq %r10, %xmm14",
+            "movq %r11, %xmm0",
+            "punpcklqdq %xmm0, %xmm14",
+            "xor %r11d, %r11d",
+            "movq %r11, %xmm15",
+            "movq %r11, %xmm1",
+            "9:",
+            "movq %r8, %xmm12",
+            "pshufd $78, %xmm12, %xmm12",
             "4:",
             rounds!(),
             "test %rax, %rax",
@@ -112,46 +122,36 @@ pub(in crate::low) fn sha256_finish_shaext(
             "xor %r9d, %r9d",
             "xor %r10d, %r10d",
             "xor %r11d, %r11d",
-            // The padded block: r9 whole lanes from rdx, at most three, the
-            // lane r10 and r11 hold, zeros, and r8 as the last lane's top
-            // word unless that lane is r10 and r11's.
-            "2:",
-            "cmp $1, %r9",
-            "jb 6f",
+            "jmp 2b",
+            "7:",
             "movdqu (%rdx), %xmm14",
-            "je 7f",
+            "je 8f",
             "movdqu 16(%rdx), %xmm15",
             "cmp $2, %r9",
-            "je 8f",
+            "je 13f",
             "movdqu 32(%rdx), %xmm1",
             "movq %r10, %xmm12",
             "movq %r11, %xmm0",
             "punpcklqdq %xmm0, %xmm12",
             "jmp 4b",
-            "6:",
-            "movq %r10, %xmm14",
-            "movq %r11, %xmm0",
-            "punpcklqdq %xmm0, %xmm14",
-            "xor %r11d, %r11d",
-            "movq %r11, %xmm15",
-            "movq %r11, %xmm1",
-            "jmp 9f",
-            "7:",
+            "8:",
             "movq %r10, %xmm15",
             "movq %r11, %xmm0",
             "punpcklqdq %xmm0, %xmm15",
             "xor %r11d, %r11d",
             "movq %r11, %xmm1",
-            "jmp 9f",
-            "8:",
+            "jmp 9b",
+            "13:",
             "movq %r10, %xmm1",
             "movq %r11, %xmm0",
             "punpcklqdq %xmm0, %xmm1",
-            "xor %r11d, %r11d",
-            "9:",
-            "movq %r11, %xmm12",
-            "movq %r8, %xmm0",
-            "punpcklqdq %xmm0, %xmm12",
+            "jmp 9b",
+            "12:",
+            "movdqu (%rdx), %xmm14",
+            "movdqu 16(%rdx), %xmm15",
+            "movdqu 32(%rdx), %xmm1",
+            "movdqu 48(%rdx), %xmm12",
+            "add $64, %rdx",
             "jmp 4b",
             "5:",
             unload_state!(),
@@ -238,17 +238,20 @@ fn padded(tail: &[u8], length: [u8; 8]) -> Padded {
 #[inline(always)]
 fn ended(part: &[u8]) -> u64 {
     let mut word = 0x80 << (8 * part.len());
-    let mut at = 0;
-    if part.len() & 4 != 0 {
-        word |= u64::from(u32::from_le_bytes(*part.first_chunk::<4>().unwrap()));
-        at = 4;
+    let mut rest = part;
+    let mut shift = 0;
+    if let Some((four, after)) = rest.split_first_chunk::<4>() {
+        word |= u64::from(u32::from_le_bytes(*four));
+        rest = after;
+        shift = 32;
     }
-    if part.len() & 2 != 0 {
-        word |= u64::from(u16::from_le_bytes(*part[at..].first_chunk::<2>().unwrap())) << (8 * at);
-        at += 2;
+    if let Some((two, after)) = rest.split_first_chunk::<2>() {
+        word |= u64::from(u16::from_le_bytes(*two)) << shift;
+        rest = after;
+        shift += 16;
     }
-    if part.len() & 1 != 0 {
-        word |= u64::from(part[at]) << (8 * at);
+    if let Some(one) = rest.first() {
+        word |= u64::from(*one) << shift;
     }
     word
 }
