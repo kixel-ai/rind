@@ -244,36 +244,55 @@ fn key_wrap() {
     assert_eq!(unwrapped, key);
 }
 
-/// The adapter's wrap of an expanded ML-DSA private key into PKCS#8.
-/// Lengths are public; the key bytes are not.
+/// The adapter's wrap of an expanded ML-DSA private key into PKCS#8, and
+/// the seed-form export. Lengths are public; the key bytes are not.
 #[test]
 fn ml_dsa() {
     use aws_lc_rs::encoding::AsRawBytes;
-    use aws_lc_rs::signature::{ML_DSA_44_SIGNING, PqdsaKeyPair};
-
-    let seed = [0x5au8; 32];
-    let raw = {
-        let key = PqdsaKeyPair::from_seed(&ML_DSA_44_SIGNING, &seed).unwrap();
-        key.private_key().as_raw_bytes().unwrap().as_ref().to_vec()
+    use aws_lc_rs::signature::{
+        ML_DSA_44_SIGNING, ML_DSA_65_SIGNING, ML_DSA_87_SIGNING, PqdsaKeyPair,
     };
-    let expected = signature::PqdsaKeyPair::from_seed(&signature::ML_DSA_44_SIGNING, &seed)
-        .unwrap()
-        .public_key()
-        .as_ref()
-        .to_vec();
+    use rind_aws_lc_rs::encoding::AsDer as _;
 
-    secret(&raw);
-    let key =
-        signature::PqdsaKeyPair::from_raw_private_key(&signature::ML_DSA_44_SIGNING, &raw).unwrap();
-    let public_key = key.public_key().as_ref().to_vec();
-    public(&public_key);
-    assert_eq!(public_key, expected);
+    for (ours_sign, theirs_sign) in [
+        (&signature::ML_DSA_44_SIGNING, &ML_DSA_44_SIGNING),
+        (&signature::ML_DSA_65_SIGNING, &ML_DSA_65_SIGNING),
+        (&signature::ML_DSA_87_SIGNING, &ML_DSA_87_SIGNING),
+    ] {
+        let seed = [0x5au8; 32];
+        let raw = {
+            let key = PqdsaKeyPair::from_seed(theirs_sign, &seed).unwrap();
+            key.private_key().as_raw_bytes().unwrap().as_ref().to_vec()
+        };
+        let expected = signature::PqdsaKeyPair::from_seed(ours_sign, &seed)
+            .unwrap()
+            .public_key()
+            .as_ref()
+            .to_vec();
 
-    secret(&seed);
-    let key = signature::PqdsaKeyPair::from_seed(&signature::ML_DSA_44_SIGNING, &seed).unwrap();
-    let public_key = key.public_key().as_ref().to_vec();
-    public(&public_key);
-    assert_eq!(public_key, expected);
+        secret(&raw);
+        let key = signature::PqdsaKeyPair::from_raw_private_key(ours_sign, &raw).unwrap();
+        let public_key = key.public_key().as_ref().to_vec();
+        public(&public_key);
+        assert_eq!(public_key, expected);
+        let mut signature_bytes = vec![0; ours_sign.signature_len()];
+        key.sign(b"ct", &mut signature_bytes).unwrap();
+        public(&signature_bytes);
+
+        secret(&seed);
+        let key = signature::PqdsaKeyPair::from_seed(ours_sign, &seed).unwrap();
+        let cloned = key.clone();
+        let pkcs8 = key.to_pkcs8v1().unwrap();
+        public(pkcs8.as_ref());
+        let der = key.private_key().as_der().unwrap();
+        public(der.as_ref());
+        let mut signature_bytes = vec![0; ours_sign.signature_len()];
+        cloned.sign(b"ct", &mut signature_bytes).unwrap();
+        public(&signature_bytes);
+        let public_key = cloned.public_key().as_ref().to_vec();
+        public(&public_key);
+        assert_eq!(public_key, expected);
+    }
 }
 
 /// ML-DSA keys loaded from PKCS#8 in seed and expanded form, signing with

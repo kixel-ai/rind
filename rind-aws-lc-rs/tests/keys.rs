@@ -464,18 +464,18 @@ fn rsa_public_keys() {
     );
 }
 
-/// ML-DSA against aws-lc-rs: the same seed, the same encodings, and each
-/// side's hedged signature verifies on the other.
-#[test]
-fn ml_dsa() {
-    for (seed, msg) in [([1u8; 32], &b"ml-dsa"[..]), ([9u8; 32], &b""[..])] {
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(4))]
+
+    #[test]
+    fn ml_dsa(seed in any::<[u8; 32]>(), msg in vec(any::<u8>(), 0..80)) {
         ml_dsa_set(
             &ours::signature::ML_DSA_44_SIGNING,
             &ours::signature::ML_DSA_44,
             &theirs::signature::ML_DSA_44_SIGNING,
             &theirs::signature::ML_DSA_44,
             &seed,
-            msg,
+            &msg,
         );
         ml_dsa_set(
             &ours::signature::ML_DSA_65_SIGNING,
@@ -483,7 +483,7 @@ fn ml_dsa() {
             &theirs::signature::ML_DSA_65_SIGNING,
             &theirs::signature::ML_DSA_65,
             &seed,
-            msg,
+            &msg,
         );
         ml_dsa_set(
             &ours::signature::ML_DSA_87_SIGNING,
@@ -491,7 +491,7 @@ fn ml_dsa() {
             &theirs::signature::ML_DSA_87_SIGNING,
             &theirs::signature::ML_DSA_87,
             &seed,
-            msg,
+            &msg,
         );
     }
 }
@@ -770,6 +770,24 @@ fn ml_dsa_rejected() {
         );
         // The other parameter set still loads its own key.
         assert!(ours::signature::PqdsaKeyPair::from_pkcs8(ours_other, pkcs8.as_ref()).is_ok());
+
+        // A correctly sized expanded key whose parts no longer agree.
+        let good = theirs::signature::PqdsaKeyPair::from_seed(theirs_sign, &[6; 32]).unwrap();
+        let raw = good.private_key().as_raw_bytes().unwrap();
+        let raw = raw.as_ref();
+        let mut flipped_tr = raw.to_vec();
+        flipped_tr[64] ^= 0x01;
+        let mut zero_rho = raw.to_vec();
+        zero_rho[..32].fill(0);
+        // s1 starts after rho, K, and tr. 0xff is outside eta's range.
+        let mut bad_s1 = raw.to_vec();
+        bad_s1[128] = 0xff;
+        for corrupted in [&flipped_tr, &zero_rho, &bad_s1] {
+            same_rejection(
+                ours::signature::PqdsaKeyPair::from_raw_private_key(ours_sign, corrupted),
+                theirs::signature::PqdsaKeyPair::from_raw_private_key(theirs_sign, corrupted),
+            );
+        }
     }
 
     let ed25519 = theirs::signature::Ed25519KeyPair::from_seed_unchecked(&[3; 32])
@@ -786,6 +804,155 @@ fn ml_dsa_rejected() {
             ed25519.as_ref(),
         ),
     );
+}
+
+/// Signatures that are not a parameter set's encoding, checked both before
+/// and after the public key is parsed.
+#[test]
+fn ml_dsa_hostile_signatures() {
+    let sets = [
+        (
+            &ours::signature::ML_DSA_44_SIGNING,
+            &ours::signature::ML_DSA_44,
+            &theirs::signature::ML_DSA_44_SIGNING,
+            &theirs::signature::ML_DSA_44,
+        ),
+        (
+            &ours::signature::ML_DSA_65_SIGNING,
+            &ours::signature::ML_DSA_65,
+            &theirs::signature::ML_DSA_65_SIGNING,
+            &theirs::signature::ML_DSA_65,
+        ),
+        (
+            &ours::signature::ML_DSA_87_SIGNING,
+            &ours::signature::ML_DSA_87,
+            &theirs::signature::ML_DSA_87_SIGNING,
+            &theirs::signature::ML_DSA_87,
+        ),
+    ];
+    let message = b"hostile";
+    for (ours_sign, ours_verify, theirs_sign, theirs_verify) in sets {
+        let ours = ours::signature::PqdsaKeyPair::from_seed(ours_sign, &[2; 32]).unwrap();
+        let theirs = theirs::signature::PqdsaKeyPair::from_seed(theirs_sign, &[2; 32]).unwrap();
+        let pk = ours.public_key().as_ref();
+        assert_eq!(pk, theirs.public_key().as_ref());
+        let len = ours_sign.signature_len();
+        let mut signatures: Vec<Vec<u8>> = vec![
+            vec![],
+            vec![0; len - 1],
+            vec![0; len + 1],
+            vec![0; len],
+            vec![0xff; len],
+        ];
+        // An ML-DSA-65-length signature under a key of another set.
+        let len65 = theirs::signature::ML_DSA_65_SIGNING.signature_len();
+        if len != len65 {
+            signatures.push(vec![0; len65]);
+        }
+        let ours_parsed = ours::signature::ParsedPublicKey::new(ours_verify, pk).unwrap();
+        let theirs_parsed = theirs::signature::ParsedPublicKey::new(theirs_verify, pk).unwrap();
+        for signature in &signatures {
+            let ours_unparsed =
+                ours::signature::UnparsedPublicKey::new(ours_verify, pk).verify(message, signature);
+            let theirs_unparsed = theirs::signature::UnparsedPublicKey::new(theirs_verify, pk)
+                .verify(message, signature);
+            assert_eq!(
+                ours_unparsed.is_ok(),
+                theirs_unparsed.is_ok(),
+                "unparsed len {}",
+                signature.len()
+            );
+            assert_eq!(
+                ours_parsed.verify_sig(message, signature).is_ok(),
+                theirs_parsed.verify_sig(message, signature).is_ok(),
+                "parsed len {}",
+                signature.len()
+            );
+        }
+    }
+}
+
+/// Public keys aws-lc-rs refuses, with the same `KeyRejected` name.
+#[test]
+fn ml_dsa_hostile_keys() {
+    let ours_key =
+        ours::signature::PqdsaKeyPair::from_seed(&ours::signature::ML_DSA_44_SIGNING, &[5; 32])
+            .unwrap();
+    let theirs_key =
+        theirs::signature::PqdsaKeyPair::from_seed(&theirs::signature::ML_DSA_44_SIGNING, &[5; 32])
+            .unwrap();
+    assert_eq!(
+        ours_key.public_key().as_ref(),
+        theirs_key.public_key().as_ref()
+    );
+    let pk = theirs_key.public_key().as_ref().to_vec();
+    let other =
+        theirs::signature::PqdsaKeyPair::from_seed(&theirs::signature::ML_DSA_65_SIGNING, &[5; 32])
+            .unwrap()
+            .public_key()
+            .as_ref()
+            .to_vec();
+    let truncated = pk[..pk.len() - 1].to_vec();
+    let mut longer = pk.clone();
+    longer.push(0);
+    let mut wrong_oid = theirs_key.public_key().as_der().unwrap().as_ref().to_vec();
+    let id44 = [
+        0x30, 0x0b, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x11,
+    ];
+    let id65 = [
+        0x30, 0x0b, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x12,
+    ];
+    let at = wrong_oid
+        .windows(id44.len())
+        .position(|window| window == id44)
+        .unwrap();
+    wrong_oid[at..at + id44.len()].copy_from_slice(&id65);
+    let ed25519 = theirs::signature::Ed25519KeyPair::from_seed_unchecked(&[3; 32])
+        .unwrap()
+        .public_key()
+        .as_der()
+        .unwrap();
+    for (name, key) in [
+        ("truncated", truncated.as_slice()),
+        ("longer", longer.as_slice()),
+        ("empty", &[][..]),
+        ("wrong_oid", wrong_oid.as_slice()),
+        ("ed25519", ed25519.as_ref()),
+        ("other_raw", other.as_slice()),
+    ] {
+        let ours = ours::signature::ParsedPublicKey::new(&ours::signature::ML_DSA_44, key);
+        let theirs = theirs::signature::ParsedPublicKey::new(&theirs::signature::ML_DSA_44, key);
+        match (&ours, &theirs) {
+            (Err(ours), Err(theirs)) if ours.description_() == theirs.description_() => {}
+            _ => panic!(
+                "{name} len {} ours {} ({}) theirs {} ({})",
+                key.len(),
+                ours.as_ref()
+                    .err()
+                    .map(|e| e.description_())
+                    .unwrap_or("ok"),
+                ours.as_ref()
+                    .err()
+                    .map(|e| e.to_string())
+                    .unwrap_or_default(),
+                theirs
+                    .as_ref()
+                    .err()
+                    .map(|e| e.description_())
+                    .unwrap_or("ok"),
+                theirs
+                    .as_ref()
+                    .err()
+                    .map(|e| e.to_string())
+                    .unwrap_or_default(),
+            ),
+        }
+        same_rejection(ours, theirs);
+        same_rejection(
+            ours::signature::UnparsedPublicKey::new(&ours::signature::ML_DSA_44, key).parse(),
+            theirs::signature::UnparsedPublicKey::new(&theirs::signature::ML_DSA_44, key).parse(),
+        );
+    }
 }
 
 /// The deprecated alias matches `to_pkcs8v1`, as aws-lc-rs's does.

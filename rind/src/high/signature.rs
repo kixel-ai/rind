@@ -1711,6 +1711,14 @@ impl<P: MlDsaParameterSet> MlDsaKeyPair<P> {
         self.0.seed().map(|seed| MlDsaSeed(*seed))
     }
 
+    /// Whether the key still has the seed [`Self::to_seed`] returns.
+    ///
+    /// A key loaded from its expanded form does not. Unlike [`Self::to_seed`],
+    /// this does not copy the seed.
+    pub fn has_seed(&self) -> bool {
+        self.0.seed().is_some()
+    }
+
     /// Loads a PKCS#8 ML-DSA key (RFC 9881), refused if it carries a public
     /// key (v2, RFC 5958) that does not match.
     ///

@@ -211,6 +211,8 @@ fn ml_dsa_expanded() {
                 .unwrap(),
         );
         assert!(key.to_pkcs8v1().is_err());
+        let mut sig = vec![0; signature::ML_DSA_44_SIGNING.signature_len()];
+        key.sign(b"expanded", &mut sig).unwrap();
     });
     assert_eq!(leaked, 0);
 

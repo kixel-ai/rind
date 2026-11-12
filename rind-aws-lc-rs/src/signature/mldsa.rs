@@ -104,14 +104,18 @@ impl PqdsaVerificationAlgorithm {
 impl signature::private::Verify for PqdsaVerificationAlgorithm {
     fn parse(&self, public_key: &[u8]) -> Result<rind::signature::PublicKey, KeyRejected> {
         let algorithm = self.id().verify();
-        // aws-lc-rs takes the raw public key or a `SubjectPublicKeyInfo`.
-        // The raw key's length is the parameter set's, and an SPKI is longer.
-        if public_key.len() == self.id().public_key_len() {
-            rind::signature::PublicKey::new(algorithm, public_key)
-        } else {
-            rind::signature::PublicKey::from_spki(algorithm, public_key)
+        // aws-lc-rs tries a `SubjectPublicKeyInfo` first, then the raw key.
+        // A raw key has this parameter set's length. Any other length makes
+        // the raw parse fail with `Unspecified`, and that error replaces the
+        // SPKI failure (`Result::or`).
+        if let Ok(key) = rind::signature::PublicKey::from_spki(algorithm, public_key) {
+            return Ok(key);
         }
-        .map_err(KeyRejected::rind)
+        if public_key.len() == self.id().public_key_len() {
+            return rind::signature::PublicKey::new(algorithm, public_key)
+                .map_err(KeyRejected::rind);
+        }
+        Err(KeyRejected::unspecified())
     }
 
     fn verify_parsed(
@@ -275,7 +279,7 @@ impl Key {
     }
 
     fn has_seed(&self) -> bool {
-        each!(self, key => key.to_seed().is_some())
+        each!(self, key => key.has_seed())
     }
 
     fn to_pkcs8(&self) -> rind::encoding::Pkcs8 {
@@ -290,8 +294,8 @@ impl Key {
 
 /// An ML-DSA private key and its public key.
 ///
-/// Signing is hedged: each signature draws fresh randomness, as aws-lc-rs's
-/// does, and verification accepts either side's signature.
+/// Signing is hedged, so two signatures of the same message are not the same
+/// bytes. Each signature verifies under the public key.
 #[derive(Clone)]
 pub struct PqdsaKeyPair {
     algorithm: &'static PqdsaSigningAlgorithm,
@@ -500,8 +504,15 @@ fn algorithm_identifier(id: AlgorithmId) -> &'static [u8] {
     }
 }
 
-/// Appends a DER element. `body.len()` is a public size.
+/// The longest body [`push_tlv`] writes: PKCS#8 around ML-DSA-87's expanded
+/// key (version, algorithm identifier, and two octet-string headers).
+const MAX_DER_BODY: usize = 3 + 13 + 1 + 3 + 1 + 3 + 4896;
+const _: () = assert!(MAX_DER_BODY <= 0xffff);
+
+/// Appends a DER element. `body.len()` is a public size, at most
+/// [`MAX_DER_BODY`].
 fn push_tlv(out: &mut Vec<u8>, tag: u8, body: &[u8]) {
+    debug_assert!(body.len() <= MAX_DER_BODY);
     out.push(tag);
     let len = body.len();
     if len < 0x80 {
@@ -509,8 +520,10 @@ fn push_tlv(out: &mut Vec<u8>, tag: u8, body: &[u8]) {
     } else if len <= 0xff {
         out.extend([0x81, len as u8]);
     } else {
-        let len = u16::try_from(len).expect("an ML-DSA key fits in two DER length bytes");
-        out.extend([0x82, (len >> 8) as u8, len as u8]);
+        // `MAX_DER_BODY` fits in two length bytes.
+        let len = len as u16;
+        out.push(0x82);
+        out.extend(len.to_be_bytes());
     }
     out.extend_from_slice(body);
 }
