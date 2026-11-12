@@ -264,6 +264,177 @@ theorem aes256_expand_spec (key : Std.Array Std.U8 32#usize)
     · have : r = 0 := by simp at h; omega
       subst this; simp [h0]
 
+/-! ## AES-192 -/
+
+/-- `aes192_expand`'s `TBL` indices: RotWord of word 1 in each word. -/
+def rotWord1 : BitVec 128 := loadBytes low.aarch64.aes.aes192_expand.ROT_WORD_1.val
+
+/-- A step's first four words, whose first takes `RotWord`, `SubWord`, and the
+round constant of `b`'s word 1. -/
+theorem rot_step1 (a b : BitVec 128) (rcon : Std.U32) :
+    xorPrefix a ^^^ (shiftRows (subBytes (ofBytes fun i =>
+      if (byte rotWord1 i).toNat < 16 then byte b (byte rotWord1 i).toNat else 0)) ^^^
+        ofLanes32 fun _ => rcon.bv) = nextKey a (subWord (rotWord (lane32 b 1)) ^^^ rcon.bv) := by
+  apply eq_of_byte_eq
+  intro i hi
+  interval_cases i <;>
+    simp (config := { decide := true }) [rotWord1, loadBytes, low.aarch64.aes.aes192_expand.ROT_WORD_1,
+      Std.Array.make_val, xorPrefix, byte_xor, byte_shl, byte_ofLanes32, byte_subBytes, byte_shiftRows,
+      byte_ofBytes, byte_leBytesToQuad32, nextKey, byte_mkfour, wbyte_xor, wbyte_subWord, wbyte_rotWord,
+      wbyte_lane32, BitVec.xor_assoc]
+
+/-- `aes192_expand`'s loop: from step `iter.start`, with the step before's
+words in `a` and `b`'s low half, and the round keys they complete in `out`, it
+writes the rest. -/
+theorem aes192_loop_spec (kw : List (BitVec 32)) (iter : core.ops.range.Range Usize)
+    (a b m : core.core_arch.arm_shared.neon.uint8x16_t)
+    (out : Std.Array core.core_arch.arm_shared.neon.uint8x16_t 13#usize)
+    (hs1 : 1 ≤ iter.start.val) (hs : iter.start.val ≤ 8) (he : iter.end.val = 9) (hm : m = rotWord1)
+    (ha : a = key192 kw (iter.start.val - 1))
+    (hb0 : lane32 b 0 = keyWord .AES_192 kw (6 * (iter.start.val - 1) + 4))
+    (hb1 : lane32 b 1 = keyWord .AES_192 kw (6 * (iter.start.val - 1) + 5))
+    (ho : ∀ r, 4 * r + 4 ≤ 6 * iter.start.val → out.val[r]! = roundKey .AES_192 kw r) :
+    low.aarch64.aes.aes192_expand_loop iter a b m out ⦃ rk => ∀ r < 13, rk.val[r]! = roundKey .AES_192 kw r ⦄ := by
+  unfold low.aarch64.aes.aes192_expand_loop
+  apply loop.spec_decr_nat (fun x => 9 - x.1.start.val)
+    (fun x => 1 ≤ x.1.start.val ∧ x.1.start.val ≤ 8 ∧ x.1.end.val = 9 ∧
+      x.2.1 = key192 kw (x.1.start.val - 1) ∧
+      lane32 x.2.2.1 0 = keyWord .AES_192 kw (6 * (x.1.start.val - 1) + 4) ∧
+      lane32 x.2.2.1 1 = keyWord .AES_192 kw (6 * (x.1.start.val - 1) + 5) ∧
+      ∀ r, 4 * r + 4 ≤ 6 * x.1.start.val → x.2.2.2.val[r]! = roundKey .AES_192 kw r)
+  · rintro ⟨it, a, b, out⟩ ⟨hs1, hs, he, ha, hb0, hb1, ho⟩
+    simp only at hs1 hs he ha hb0 hb1 ho ⊢
+    unfold low.aarch64.aes.aes192_expand_loop.body
+    step with core.iter.range.IteratorRange.next_Usize_some_spec as ⟨o, it', ho', hst, hen⟩
+    subst ho' hm
+    have e3 : (3#i32).bv.toNat % 4 = 3 := by decide
+    have e8 : (8#i32).bv.toNat % 16 = 8 := by decide
+    have e12 : (12#i32).bv.toNat % 16 = 12 := by decide
+    simp only [xor_prefix_eq, core.core_arch.arm_shared.neon.generated.veorq_u8, bind_ok, zero_eq,
+      core.core_arch.aarch64.neon.generated.vqtbl1q_u8, core.core_arch.arm_shared.neon.generated.vaeseq_u8,
+      core.core_arch.arm_shared.neon.generated.vdupq_n_u32,
+      core.core_arch.arm_shared.neon.generated.vreinterpretq_u8_u32,
+      core.core_arch.arm_shared.neon.generated.vreinterpretq_u32_u8,
+      core.core_arch.arm_shared.neon.generated.vreinterpretq_u8_u64,
+      core.core_arch.arm_shared.neon.generated.vreinterpretq_u64_u8,
+      core.core_arch.aarch64.neon.generated.vzip1q_u64, core.core_arch.arm_shared.neon.generated.vextq_u8,
+      core.core_arch.arm_shared.neon.generated.vdupq_laneq_u32, e3, e8, e12, ext_zero _ 12 (by omega),
+      Nat.reduceMul, Nat.reduceSub, show ∀ x : BitVec 128, x ^^^ (0 : BitVec 128) = x from fun x => BitVec.xor_zero,
+      rot_step1, zip_lo, ext_hi]
+    step*
+    have hi1 : i1 = low.aarch64.aes.RCON.val[it.start.val - 1]! := by
+      rw [i1_post, ← i_post]; exact (getElem!_pos _ _ _).symm
+    have hA : nextKey a (subWord (rotWord (lane32 b 1)) ^^^ i1.bv) = key192 kw it.start.val := by
+      rw [hi1, ← rcon_eq (by omega), ha, hb1, ← key192_succ, Nat.sub_add_cancel hs1]
+    simp only [hA]
+    by_cases hp : it.start.val % 2 = 1
+    · obtain ⟨k, hk⟩ : ∃ k, it.start.val = 2 * k + 1 := ⟨it.start.val / 2, by omega⟩
+      have h2 : i2 = 1#usize := UScalar.eq_of_val_eq (by rw [i2_post, hp]; rfl)
+      have h8 : it.start ≠ 8#usize := fun h => by
+        have := congrArg UScalar.val h; simp at this; omega
+      have hj : it.start.val - 1 = 2 * k := by omega
+      rw [hj] at hb0 hb1
+      simp only [h2, h8, ite_true, ite_false]
+      step*
+      have hb := key192_b kw (2 * k) b hb0 hb1
+      have hx1 : x.val = 3 * k + 1 := by omega
+      have hx2 : i5.val = 3 * k + 2 := by omega
+      rw [hk] at a2_post out1_post
+      rw [hst, hk]
+      refine ⟨by omega, by omega, by rw [hen]; exact he, by simp, ?_, ?_, ?_, by omega⟩
+      · rw [show 2 * k + 1 + 1 - 1 = 2 * k + 1 by omega]; exact hb.1
+      · rw [show 2 * k + 1 + 1 - 1 = 2 * k + 1 by omega]; exact hb.2
+      · intro r hr
+        rw [a2_post, Std.Array.set_val_eq, getElem!_set _ _ _ (by simp; omega), out1_post, Std.Array.set_val_eq,
+          getElem!_set _ _ _ (by simp; omega)]
+        split_ifs with h h'
+        · rw [← h, hx2, roundKey192_odd2, hb.1, hb.2]
+        · rw [← h', hx1, roundKey192_odd1, hb0, hb1]
+        · exact ho r (by omega)
+    · obtain ⟨k, hk⟩ : ∃ k, it.start.val = 2 * k + 2 := ⟨it.start.val / 2 - 1, by omega⟩
+      have h2 : i2 ≠ 1#usize := fun h => by
+        have := congrArg UScalar.val h; simp at this; omega
+      simp only [h2, ite_false]
+      step*
+      all_goals
+        have hx : x.val = 3 * k + 3 := by omega
+        rw [hk] at out1_post
+      case h1 =>
+        have hk3 : k = 3 := by
+          have := congrArg UScalar.val ‹it.start = 8#usize›; simp at this; omega
+        intro r hr
+        rw [out1_post, Std.Array.set_val_eq, getElem!_set _ _ _ (by simp; omega)]
+        split_ifs with h
+        · rw [← h, hx, roundKey192_even]
+        · exact ho r (by omega)
+      have h8 : it.start.val ≠ 8 := fun h => ‹¬it.start = 8#usize› (UScalar.eq_of_val_eq (by rw [h]; rfl))
+      have hj : it.start.val - 1 = 2 * k + 1 := by omega
+      rw [hj] at hb0 hb1
+      have hb := key192_b kw (2 * k + 1) b hb0 hb1
+      rw [hst, hk]
+      refine ⟨by omega, by omega, by rw [hen]; exact he, by simp, ?_, ?_, ?_, by omega⟩
+      · rw [show 2 * k + 2 + 1 - 1 = 2 * k + 1 + 1 by omega]; exact hb.1
+      · rw [show 2 * k + 2 + 1 - 1 = 2 * k + 1 + 1 by omega]; exact hb.2
+      · intro r hr
+        rw [out1_post, Std.Array.set_val_eq, getElem!_set _ _ _ (by simp; omega)]
+        split_ifs with h
+        · rw [← h, hx, roundKey192_even]
+        · exact ho r (by omega)
+  · exact ⟨hs1, hs, he, ha, hb0, hb1, ho⟩
+
+/-- A `u64` read little-endian, widened to a vector: its bytes, the first lowest. -/
+theorem load64_eq (a : Std.Array Std.U8 8#usize) :
+    (core.convert.num.FromU128U64.from (core.num.U64.from_le_bytes a)).bv = loadBytes a.val := by
+  simp only [loadBytes, leBytesToQuad32, core.convert.num.FromU128U64.from_bv_eq, core.num.U64.from_le_bytes]
+  apply BitVec.eq_of_getLsbD_eq; intro i hi
+  simp [hi]
+
+/-- The AES-192 key `key` expands to FIPS 197's round keys, each its 16 bytes in order. -/
+@[step]
+theorem aes192_expand_spec (key : Std.Array Std.U8 24#usize) :
+    low.aarch64.aes.aes192_expand key ⦃ rk =>
+      rk.val = keyToRoundKeys .AES_192 (seqNat8ToSeqNat32LE (key.val.map (·.bv))) ⦄ := by
+  set l := key.val.map (·.bv)
+  set kw := seqNat8ToSeqNat32LE l
+  have hl : l.length = 24 := by simp [l]
+  unfold low.aarch64.aes.aes192_expand
+  step*
+  have hsl : s.len = 16#usize := by scalar_tac
+  simp only [core.array.TryFromSharedArraySlice.try_from, hsl, ↓reduceDIte, core.result.Result.unwrap,
+    bind_ok, load_eq]
+  step*
+  rcases r1 with a2 | ⟨⟩
+  swap
+  · exfalso; apply r1_post; simp [s1_post1]
+  obtain ⟨ha2, -⟩ := r1_post
+  simp only [bind_ok, lift, core.core_arch.arm_shared.neon.generated.vreinterpretq_u8_p128,
+    Std.Array.from_val, load64_eq]
+  have hkl : key.val.length = 24 := by simp
+  have h0 : loadBytes s.val = key192 kw 0 := by
+    simp only [key192, keyWord_key .AES_192 kw (show 0 < 6 by decide),
+      keyWord_key .AES_192 kw (show 1 < 6 by decide), keyWord_key .AES_192 kw (show 2 < 6 by decide),
+      keyWord_key .AES_192 kw (show 3 < 6 by decide), Nat.mul_zero, Nat.zero_add, loadBytes]
+    refine load_words l _ 0 (by omega) ?_
+    intro i hi
+    have hk : i < key.val.length := by omega
+    simp [l, s_post, List.slice, List.getElem!_eq_getElem?_getD, hi, List.getElem?_eq_getElem hk]
+  have hb : ∀ j < 2, lane32 (loadBytes a2.val) j = keyWord .AES_192 kw (4 + j) := by
+    intro j hj
+    rw [keyWord_key .AES_192 kw (show 4 + j < nk .AES_192 by simp [nk]; omega)]
+    apply eq_of_wbyte_eq; intro t ht
+    rw [wbyte_lane32 _ _ ht, loadBytes, byte_leBytesToQuad32 _ (by omega),
+      wbyte_seqNat8ToSeqNat32LE l (by omega) ht, ha2, s1_post]
+    simp [l, List.getElem!_eq_getElem?_getD, List.getElem?_drop]
+    rw [show 16 + (4 * j + t) = 4 * (4 + j) + t by omega]
+  apply WP.spec_mono (aes192_loop_spec kw _ _ _ _ _ (by simp) (by simp) (by simp) rfl (by rw [h0]; simp)
+    (by simpa using hb 0 (by omega)) (by simpa using hb 1 (by omega)) ?_)
+  · intro rk hrk
+    rw [keyToRoundKeys_eq]
+    exact eq_range_map _ _ (by simp [nr]) hrk
+  · intro r hr
+    have : r = 0 := by simp at hr; omega
+    subst this; simp [h0, roundKey192_zero]
+
 /-! ## The block cipher -/
 
 theorem aese_eq (s k : BitVec 128) :
@@ -271,6 +442,75 @@ theorem aese_eq (s k : BitVec 128) :
 
 theorem aesmc_eq (s : BitVec 128) : core.core_arch.arm_shared.neon.generated.vaesmcq_u8 s = ok (mixColumns s) :=
   rfl
+
+/-- `AESE` then `AESMC`: a round with its key XORed first. -/
+def aeseMc (s k : BitVec 128) : BitVec 128 := mixColumns (shiftRows (subBytes (s ^^^ k)))
+
+/-- Rounds that XOR each key first, then the next key, are Vale's rounds from
+the first key XORed: each state is Vale's with its next key not yet added. -/
+theorem foldl_aeseMc (rk : List (BitVec 128)) (s : BitVec 128) {n : Nat} (h : n + 1 ≤ rk.length) :
+    (rk.take n).foldl aeseMc s ^^^ rk[n]! = ((rk.drop 1).take n).foldl evalRound (s ^^^ rk[0]!) := by
+  induction n with
+  | zero => simp
+  | succ n ih =>
+    rw [List.take_add_one, List.take_add_one, List.foldl_append, List.foldl_append, ← ih (by omega),
+      List.getElem?_drop, List.getElem?_eq_getElem (show n < rk.length by omega),
+      List.getElem?_eq_getElem (show 1 + n < rk.length by omega)]
+    simp [aeseMc, evalRound, List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem (show n + 1 < rk.length by omega),
+      List.getElem?_eq_getElem (show n < rk.length by omega), Nat.add_comm 1 n]
+
+theorem aes_block_loop_eq (s : Slice core.core_arch.arm_shared.neon.uint8x16_t) (n : Nat) :
+    ∀ i block, s.val.length - i = n →
+      low.aarch64.aes.aes_block_loop ⟨s, i⟩ block = ok ((s.val.drop i).foldl aeseMc block) := by
+  induction n with
+  | zero =>
+    intro i block hn
+    unfold low.aarch64.aes.aes_block_loop
+    rw [loop_done (z := block)]
+    · simp [List.drop_eq_nil_of_le (show s.val.length ≤ i by omega)]
+    · simp only [low.aarch64.aes.aes_block_loop.body, core.slice.iter.IteratorSliceIter.next]
+      rw [dite_eq_right (by simp [Slice.len]; omega)]
+      simp
+  | succ n ih =>
+    intro i block hn
+    have hi : i < s.val.length := by omega
+    unfold low.aarch64.aes.aes_block_loop
+    rw [loop_cont (y := (⟨s, i + 1⟩, aeseMc block s.val[i]))]
+    · rw [List.drop_eq_getElem_cons hi, List.foldl_cons]
+      exact ih (i + 1) _ (by omega)
+    · simp only [low.aarch64.aes.aes_block_loop.body, core.slice.iter.IteratorSliceIter.next]
+      rw [dite_eq_left (by simp [Slice.len]; omega)]
+      simp [aese_eq, aesmc_eq, aeseMc]
+      rfl
+
+/-- `aes_block` encrypts with its `nr alg + 1` round keys as Vale's `eval_cipher` does. -/
+theorem aes_block_eq {N : Usize} (alg : Algorithm) (hN : N.val = nr alg + 1)
+    (rk : Std.Array core.core_arch.arm_shared.neon.uint8x16_t N) (b : Std.Array Std.U8 16#usize) :
+    low.aarch64.aes.aes_block rk b = ok (storeBytes (evalCipher alg (loadBytes b.val) rk.val)) := by
+  have hnr : 1 ≤ nr alg := by cases alg <;> decide
+  have hl : rk.val.length = nr alg + 1 := by rw [rk.property, hN]
+  have hsub : ∀ c : Usize, c.val ≤ N.val → ∃ i : Usize, N - c = ok i ∧ i.val = N.val - c.val := by
+    intro c hc
+    refine ⟨⟨BitVec.ofNat _ (N.val - c.val)⟩, ?_, ?_⟩
+    · show UScalar.sub _ _ = _
+      rw [UScalar.sub, ite_eq_right (by omega)]
+    · have h1 : N.val - c.val < 2 ^ UScalarTy.Usize.numBits := by have := N.hBounds; omega
+      show (BitVec.ofNat _ (N.val - c.val)).toNat = _
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h1]
+  obtain ⟨i, hi, hiv⟩ := hsub 2#usize (by simp; omega)
+  obtain ⟨i1, hi1, hi1v⟩ := hsub 1#usize (by simp; omega)
+  simp only [show (2#usize).val = 2 from rfl, show (1#usize).val = 1 from rfl] at hiv hi1v
+  unfold low.aarch64.aes.aes_block
+  simp [load_eq, Std.Array.index_usize, hl, hi, hiv, hi1, hi1v, aese_eq,
+    core.core_arch.arm_shared.neon.generated.veorq_u8,
+    core.array.Array.index, SharedSlice.Insts.CoreIterTraitsCollectIntoIteratorSharedIter.into_iter,
+    core.ops.index.IndexSlice, core.slice.index.SliceIndexRangeToUsizeSlice.index, hN,
+    aes_block_loop_eq _ _ 0 _ rfl, store_eq, show nr alg ≤ nr alg + 1 + 1 by omega]
+  have hn : nr alg - 1 + 1 ≤ rk.val.length := by omega
+  congr 2
+  all_goals first
+    | rw [evalRounds_foldl _ _ hn, ← foldl_aeseMc _ _ hn, getElem!_pos rk.val (nr alg - 1) (by omega)]
+    | rw [getElem!_pos rk.val (nr alg) (by omega)]
 
 /-- `aes128_block` encrypts with the round keys `rk` as Vale's `eval_cipher` does. -/
 theorem aes128_block_spec (rk : Std.Array core.core_arch.arm_shared.neon.uint8x16_t 11#usize)
@@ -335,9 +575,26 @@ theorem expand_key256_spec (h : RunsAesHw) (key : Slice U8) (hk : key.length = 3
   refine ⟨_, rfl, ?_⟩
   rw [hrk, Std.Array.from_val, copy_key1_post]
 
+theorem expand_key192_spec (h : RunsAesHw) (key : Slice U8) (hk : key.length = 24) :
+    mid.aes.expand_key key ⦃ k => ∃ k192, k = .Hw (.Aes192 k192) ∧
+      k192.round_keys.val = keyToRoundKeys .AES_192 (seqNat8ToSeqNat32LE (bvs key.val)) ⦄ := by
+  obtain ⟨-, ⟨hw, hhw⟩⟩ := h
+  unfold mid.aes.expand_key low.aarch64.aes.AesKey.new low.aarch64.aes.AesKey192.new
+  step*
+  have hl : copy_key1.len.val = 24 := by rw [Slice.len_val, copy_key1_post]; exact hk
+  have hl' : copy_key1.len = 24#usize := by scalar_tac
+  simp only [low.ct.secret_slice, hhw, bind_ok, core.array.TryFromSharedArraySlice.try_from,
+    hl', ↓reduceDIte, core.result.Result.unwrap]
+  apply WP.spec_bind (aes192_expand_spec _)
+  intro rk hrk
+  rw [WP.spec_ok]
+  refine ⟨_, rfl, ?_⟩
+  rw [hrk, Std.Array.from_val, copy_key1_post]
+
+/-- The crypto extension's key holds Vale's round keys of the AES key `kw` for `alg`. -/
 def HwKeyIs (alg : Algorithm) (kw : List (BitVec 32)) : low.aarch64.aes.HwKey → Prop
   | .Aes128 k => alg = .AES_128 ∧ k.round_keys.val = keyToRoundKeys .AES_128 kw
-  | .Aes192 _ => False
+  | .Aes192 k => alg = .AES_192 ∧ k.round_keys.val = keyToRoundKeys .AES_192 kw
   | .Aes256 k => alg = .AES_256 ∧ k.round_keys.val = keyToRoundKeys .AES_256 kw
 
 theorem hw_encrypt_block (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
@@ -349,7 +606,10 @@ theorem hw_encrypt_block (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : Li
     obtain ⟨rfl, hrk⟩ := h
     simp only [low.aarch64.aes.AesKey.encrypt_block,
       low.aarch64.aes.AesKey128.encrypt_block, aes128_block_spec, hrk, aesEncrypt]
-  | Aes192 k => exact h.elim
+  | Aes192 k =>
+    obtain ⟨rfl, hrk⟩ := h
+    simp only [low.aarch64.aes.AesKey.encrypt_block, low.aarch64.aes.AesKey192.encrypt_block,
+      aes_block_eq (N := 13#usize) .AES_192 rfl, hrk, aesEncrypt]
   | Aes256 k =>
     obtain ⟨rfl, hrk⟩ := h
     simp only [low.aarch64.aes.AesKey.encrypt_block,

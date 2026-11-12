@@ -38,6 +38,11 @@ def aesHeaderMask (alg : Algorithm) (key sample : List (BitVec 8)) : List (BitVe
   ((List.range 16).map fun i => BitVec.ofNat 8 (17 * i)) ==
   [0x8e, 0xa2, 0xb7, 0xca, 0x51, 0x67, 0x45, 0xbf, 0xea, 0xfc, 0x49, 0x90, 0x4b, 0x49, 0x60, 0x89]
 
+-- FIPS 197's appendix C.2: AES-192 of `00112233...ff`.
+#guard aesBlock .AES_192 ((List.range 24).map fun i => BitVec.ofNat 8 i)
+  ((List.range 16).map fun i => BitVec.ofNat 8 (17 * i)) ==
+  [0xdd, 0xa9, 0x7c, 0xa4, 0x86, 0x4c, 0xdf, 0xe0, 0x6e, 0xaf, 0x70, 0xa0, 0xec, 0x0d, 0x71, 0x91]
+
 /-- The key length `alg` takes, which rind's AES supports. -/
 def KeyLen (alg : Algorithm) (n : Nat) : Prop :=
   (alg = .AES_128 ∧ n = 16) ∨ (alg = .AES_256 ∧ n = 32)
@@ -330,5 +335,129 @@ theorem subBytes_shiftRows_dup (w : BitVec 32) :
   intro i hi
   interval_cases i <;>
     simp (config := { decide := true }) [byte_subBytes, byte_shiftRows, byte_ofLanes32, wbyte_subWord]
+
+/-! ## AES-192's schedule, six words at a time
+
+Both targets expand an AES-192 key six words a step: four in one vector and
+two in the low half of another, so every other round key straddles the two. -/
+
+/-- Words `6 * j` to `6 * j + 3` of AES-192's schedule. -/
+def key192 (key : List (BitVec 32)) (j : Nat) : Quad32 :=
+  mkfour (keyWord .AES_192 key (6 * j)) (keyWord .AES_192 key (6 * j + 1)) (keyWord .AES_192 key (6 * j + 2))
+    (keyWord .AES_192 key (6 * j + 3))
+
+theorem key192_succ (key : List (BitVec 32)) (j : Nat) :
+    key192 key (j + 1) = nextKey (key192 key j)
+      (subWord (rotWord (keyWord .AES_192 key (6 * j + 5))) ^^^ aesRcon j) := by
+  obtain ⟨l0, l1, l2, l3⟩ := lane32_mkfour (keyWord .AES_192 key (6 * j)) (keyWord .AES_192 key (6 * j + 1))
+    (keyWord .AES_192 key (6 * j + 2)) (keyWord .AES_192 key (6 * j + 3))
+  simp only [key192, nextKey, l0, l1, l2, l3]
+  have hnk : nk .AES_192 = 6 := rfl
+  have k0 := keyWord_rec .AES_192 key (i := 6 * (j + 1)) (by rw [hnk]; omega)
+  have k1 := keyWord_rec .AES_192 key (i := 6 * (j + 1) + 1) (by rw [hnk]; omega)
+  have k2 := keyWord_rec .AES_192 key (i := 6 * (j + 1) + 2) (by rw [hnk]; omega)
+  have k3 := keyWord_rec .AES_192 key (i := 6 * (j + 1) + 3) (by rw [hnk]; omega)
+  rw [hnk] at k0 k1 k2 k3
+  rw [ite_eq_left (by omega), show 6 * (j + 1) / 6 - 1 = j by omega, show 6 * (j + 1) - 6 = 6 * j by omega,
+    show 6 * (j + 1) - 1 = 6 * j + 5 by omega] at k0
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 6 * (j + 1) + 1 - 6 = 6 * j + 1 by omega,
+    show 6 * (j + 1) + 1 - 1 = 6 * (j + 1) by omega] at k1
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 6 * (j + 1) + 2 - 6 = 6 * j + 2 by omega,
+    show 6 * (j + 1) + 2 - 1 = 6 * (j + 1) + 1 by omega] at k2
+  rw [ite_eq_right (by omega), ite_eq_right (by omega), show 6 * (j + 1) + 3 - 6 = 6 * j + 3 by omega,
+    show 6 * (j + 1) + 3 - 1 = 6 * (j + 1) + 2 by omega] at k3
+  rw [k3, k2, k1, k0]
+
+theorem keyWord192_4 (key : List (BitVec 32)) (j : Nat) :
+    keyWord .AES_192 key (6 * j + 10) = keyWord .AES_192 key (6 * j + 4) ^^^ keyWord .AES_192 key (6 * j + 9) := by
+  have k := keyWord_rec .AES_192 key (i := 6 * j + 10) (by show 6 ≤ _; omega)
+  rw [show nk .AES_192 = 6 from rfl, ite_eq_right (by omega), ite_eq_right (by omega),
+    show 6 * j + 10 - 6 = 6 * j + 4 by omega, show 6 * j + 10 - 1 = 6 * j + 9 by omega] at k
+  exact k
+
+theorem keyWord192_5 (key : List (BitVec 32)) (j : Nat) :
+    keyWord .AES_192 key (6 * j + 11) = keyWord .AES_192 key (6 * j + 5) ^^^ keyWord .AES_192 key (6 * j + 10) := by
+  have k := keyWord_rec .AES_192 key (i := 6 * j + 11) (by show 6 ≤ _; omega)
+  rw [show nk .AES_192 = 6 from rfl, ite_eq_right (by omega), ite_eq_right (by omega),
+    show 6 * j + 11 - 6 = 6 * j + 5 by omega, show 6 * j + 11 - 1 = 6 * j + 10 by omega] at k
+  exact k
+
+/-- The round keys a step writes, as the words it holds: an even step's first
+four, or an odd step's last two of the step before and first two, and its
+first four's last two and last two. -/
+theorem roundKey192_even (key : List (BitVec 32)) (k : Nat) :
+    roundKey .AES_192 key (3 * k + 3) = key192 key (2 * k + 2) := by
+  rw [roundKey, key192, show 4 * (3 * k + 3) = 6 * (2 * k + 2) by omega]
+
+theorem roundKey192_odd1 (key : List (BitVec 32)) (k : Nat) :
+    roundKey .AES_192 key (3 * k + 1) = mkfour (keyWord .AES_192 key (6 * (2 * k) + 4))
+      (keyWord .AES_192 key (6 * (2 * k) + 5)) (lane32 (key192 key (2 * k + 1)) 0)
+      (lane32 (key192 key (2 * k + 1)) 1) := by
+  rw [key192, (lane32_mkfour _ _ _ _).1, (lane32_mkfour _ _ _ _).2.1, roundKey,
+    show 4 * (3 * k + 1) = 6 * (2 * k) + 4 by omega, show 6 * (2 * k) + 4 + 1 = 6 * (2 * k) + 5 by omega,
+    show 6 * (2 * k) + 4 + 2 = 6 * (2 * k + 1) by omega, show 6 * (2 * k) + 4 + 3 = 6 * (2 * k + 1) + 1 by omega]
+
+theorem roundKey192_odd2 (key : List (BitVec 32)) (k : Nat) :
+    roundKey .AES_192 key (3 * k + 2) = mkfour (lane32 (key192 key (2 * k + 1)) 2)
+      (lane32 (key192 key (2 * k + 1)) 3) (keyWord .AES_192 key (6 * (2 * k + 1) + 4))
+      (keyWord .AES_192 key (6 * (2 * k + 1) + 5)) := by
+  rw [key192, (lane32_mkfour _ _ _ _).2.2.1, (lane32_mkfour _ _ _ _).2.2.2, roundKey,
+    show 4 * (3 * k + 2) = 6 * (2 * k + 1) + 2 by omega, show 6 * (2 * k + 1) + 2 + 1 = 6 * (2 * k + 1) + 3 by omega,
+    show 6 * (2 * k + 1) + 2 + 2 = 6 * (2 * k + 1) + 4 by omega,
+    show 6 * (2 * k + 1) + 2 + 3 = 6 * (2 * k + 1) + 5 by omega]
+
+theorem roundKey192_zero (key : List (BitVec 32)) : roundKey .AES_192 key 0 = key192 key 0 := rfl
+
+/-- The low halves of `b` then `a`: `PUNPCKLQDQ` and `ZIP1`. -/
+theorem zip_lo (a b : BitVec 128) :
+    lane64 a 0 ++ lane64 b 0 = mkfour (lane32 b 0) (lane32 b 1) (lane32 a 0) (lane32 a 1) := by
+  simp only [lane64, lane32, mkfour]; bv_decide
+
+/-- The high half of `a`, then the low of `b`: `PALIGNR` and `EXT` by eight bytes. -/
+theorem ext_hi (a b : BitVec 128) :
+    ((b ++ a) >>> 64).setWidth 128 = mkfour (lane32 a 2) (lane32 a 3) (lane32 b 0) (lane32 b 1) := by
+  simp only [lane32, mkfour]; bv_decide
+
+/-- The next step's last two words in `b`'s low half: each XORed with those
+below it and with `a`'s last. -/
+theorem lane32_next192 (a b : BitVec 128) :
+    lane32 (b ^^^ b <<< 32 ^^^ ofLanes32 fun _ => lane32 a 3) 0 = lane32 b 0 ^^^ lane32 a 3 ∧
+      lane32 (b ^^^ b <<< 32 ^^^ ofLanes32 fun _ => lane32 a 3) 1 = lane32 b 1 ^^^ (lane32 b 0 ^^^ lane32 a 3) := by
+  simp only [lane32, ofLanes32]; constructor <;> bv_decide
+
+/-- A step's last two words, in `b`'s low half, from the step before's and
+this step's first four. -/
+theorem key192_b (key : List (BitVec 32)) (j : Nat) (b : BitVec 128)
+    (hb0 : lane32 b 0 = keyWord .AES_192 key (6 * j + 4)) (hb1 : lane32 b 1 = keyWord .AES_192 key (6 * j + 5)) :
+    lane32 (b ^^^ b <<< 32 ^^^ ofLanes32 fun _ => lane32 (key192 key (j + 1)) 3) 0 =
+        keyWord .AES_192 key (6 * (j + 1) + 4) ∧
+      lane32 (b ^^^ b <<< 32 ^^^ ofLanes32 fun _ => lane32 (key192 key (j + 1)) 3) 1 =
+        keyWord .AES_192 key (6 * (j + 1) + 5) := by
+  have h3 : lane32 (key192 key (j + 1)) 3 = keyWord .AES_192 key (6 * j + 9) := by
+    rw [key192, (lane32_mkfour _ _ _ _).2.2.2, show 6 * (j + 1) + 3 = 6 * j + 9 by omega]
+  obtain ⟨l0, l1⟩ := lane32_next192 (key192 key (j + 1)) b
+  rw [l0, l1, h3, hb0, hb1, ← keyWord192_4, ← keyWord192_5, show 6 * (j + 1) + 4 = 6 * j + 10 by omega,
+    show 6 * (j + 1) + 5 = 6 * j + 11 by omega]
+  exact ⟨rfl, rfl⟩
+
+/-! ## The cipher's rounds as a fold -/
+
+theorem loop_cont {α β : Type} {body : α → Result (ControlFlow α β)} {x y : α} (h : body x = Result.ok (.cont y)) :
+    loop body x = loop body y := by
+  rw [loop, h, bind_ok]
+
+theorem loop_done {α β : Type} {body : α → Result (ControlFlow α β)} {x : α} {z : β} (h : body x = Result.ok (.done z)) :
+    loop body x = Result.ok z := by
+  rw [loop, h, bind_ok]
+
+theorem evalRounds_foldl (init : Quad32) (rk : List Quad32) {n : Nat} (h : n + 1 ≤ rk.length) :
+    evalRounds init rk n = ((rk.drop 1).take n).foldl evalRound init := by
+  induction n with
+  | zero => rfl
+  | succ n ih =>
+    rw [evalRounds, ih (by omega), List.take_add_one, List.foldl_append,
+      List.getElem?_drop, List.getElem?_eq_getElem (by omega)]
+    simp [List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem (show n + 1 < rk.length by omega),
+      Nat.add_comm 1 n]
 
 end rind.vale

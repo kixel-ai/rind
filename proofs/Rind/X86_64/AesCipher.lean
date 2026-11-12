@@ -9,11 +9,11 @@ open Aeneas Aeneas.Std Result rind.vale
 instructions, which `Rind.X86_64.AesKey` proves computes FIPS 197's round keys
 as Vale's AES spec lays them out, and `encrypt_block` and
 `header_protection_mask` run its block cipher, which the same file proves is
-Vale's `aes_encrypt_LE`. These theorems compose the two through `mid::aes`
-and, for header protection, through `Rind.X86_64.Dispatch`'s model of
-`aead::quic`'s dispatch. AES-128 and AES-256 alone: no theorem here covers
-AES-192. `admin/prove` writes the aarch64 copy of this file, as it does
-`Dispatch`'s.
+Vale's `aes_encrypt_LE`. These theorems compose the two through `mid::aes`,
+for AES-128, AES-192, and AES-256, and, for header protection, which RFC 9001
+defines for AES-128 and AES-256 alone, through `Rind.X86_64.Dispatch`'s model
+of `aead::quic`'s dispatch. `admin/prove` writes the aarch64 copy of this
+file, as it does `Dispatch`'s.
 -/
 
 namespace rind.x86_64
@@ -36,12 +36,10 @@ theorem aes_encrypt (alg : Algorithm) (key : List (BitVec 8)) (k : mid.aes.Aes) 
 /-- A `cipher::Aes` key is refused unless it is the algorithm's length, and
 otherwise holds FIPS 197's round keys for its bytes. -/
 theorem aes_new (h : RunsAesHw) (alg : Algorithm) (algorithm : cipher.Algorithm)
-    (halg : KeyLen alg algorithm.key_len.val) (key : Slice U8) :
+    (hlen : algorithm.key_len.val = 4 * nk alg) (key : Slice U8) :
     mid.aes.Aes.new algorithm key ⦃ r =>
       if key.length = 4 * nk alg then ∃ k, r = .Ok k ∧ AesIs alg (bvs key.val) k
       else r = .Err .WrongLength ⦄ := by
-  have hlen : algorithm.key_len.val = 4 * nk alg := by
-    rcases halg with ⟨rfl, h⟩ | ⟨rfl, h⟩ <;> simp [h, nk]
   have he := h.1
   obtain ⟨e, he⟩ := he
   unfold mid.aes.Aes.new
@@ -52,9 +50,11 @@ theorem aes_new (h : RunsAesHw) (alg : Algorithm) (algorithm : cipher.Algorithm)
     simp only [hne, ite_eq_left hk]
     have hx : mid.aes.expand_key key ⦃ k => ∃ hwk, k = .Hw hwk ∧
         HwKeyIs alg (seqNat8ToSeqNat32LE (bvs key.val)) hwk ⦄ := by
-      rcases halg with ⟨rfl, -⟩ | ⟨rfl, -⟩
+      cases alg
       · exact WP.spec_mono (expand_key128_spec h key (by simpa [nk] using hk))
           fun k ⟨k128, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
+      · exact WP.spec_mono (expand_key192_spec h key (by simpa [nk] using hk))
+          fun k ⟨k192, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
       · exact WP.spec_mono (expand_key256_spec h key (by simpa [nk] using hk))
           fun k ⟨k256, hk1, hk2⟩ => ⟨_, hk1, rfl, hk2⟩
     apply WP.spec_bind hx
@@ -86,7 +86,7 @@ theorem aes_header_new (h : RunsAesHw) (alg : Algorithm) (algorithm : aead.quic.
     aead.quic.HeaderProtectionKey.new algorithm key ⦃ r =>
       if key.length = 4 * nk alg then ∃ k, r = .Ok (.Aes k) ∧ AesIs alg (bvs key.val) k
       else r = .Err .WrongLength ⦄ := by
-  have hnew : ∃ c : cipher.Algorithm, KeyLen alg c.key_len.val ∧ algorithm.new = (fun key => do
+  have hnew : ∃ c : cipher.Algorithm, c.key_len.val = 4 * nk alg ∧ algorithm.new = (fun key => do
       let r ← mid.aes.Aes.new c key
       match r with
       | .Ok a =>
@@ -94,8 +94,8 @@ theorem aes_header_new (h : RunsAesHw) (alg : Algorithm) (algorithm : aead.quic.
         ok (.Ok (.Aes m))
       | .Err e => ok (.Err e)) := by
     rcases halg with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
-    · exact ⟨cipher.AES_128, Or.inl ⟨rfl, rfl⟩, rfl⟩
-    · exact ⟨cipher.AES_256, Or.inr ⟨rfl, rfl⟩, rfl⟩
+    · exact ⟨cipher.AES_128, rfl, rfl⟩
+    · exact ⟨cipher.AES_256, rfl, rfl⟩
   obtain ⟨c, hc, hn⟩ := hnew
   have hx : algorithm.new key ⦃ r =>
       if key.length = 4 * nk alg then ∃ k, r = .Ok (.Aes k) ∧ AesIs alg (bvs key.val) k

@@ -33,7 +33,10 @@ theorem encrypt_zero (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (B
     obtain ⟨rfl, hrk⟩ := h
     simp only [low.x86_64.aes.AesKey.encrypt_block, low.x86_64.aes.HwKey.encrypt_block,
       low.x86_64.aes.AesKey128.encrypt_block, aes128_block_spec, load_zero, hrk, aesEncrypt]
-  | Aes192 k => exact h.elim
+  | Aes192 k =>
+    obtain ⟨rfl, hrk⟩ := h
+    simp only [low.x86_64.aes.AesKey.encrypt_block, low.x86_64.aes.HwKey.encrypt_block,
+      low.x86_64.aes.AesKey192.encrypt_block, aes_block_eq (N := 13#usize) .AES_192 rfl, load_zero, hrk, aesEncrypt]
   | Aes256 k =>
     obtain ⟨rfl, hrk⟩ := h
     simp only [low.x86_64.aes.AesKey.encrypt_block, low.x86_64.aes.HwKey.encrypt_block,
@@ -60,8 +63,12 @@ theorem aes_gcm_new_spec (h : RunsValeAesGcm) (alg : Algorithm) (key : Slice U8)
   obtain ⟨px, hpx⟩ := clmul_new_eq (core.num.U128.from_be_bytes
     (storeBytes (aesEncrypt alg kw (mkfour 0 0 0 0)))) hw
   simp only [hpx, bind_ok, kernel_new_eq, WP.spec_ok]
-  refine ⟨hwk, _, _, rfl, rfl, ?_, hwk_is, ?_⟩
+  refine ⟨hwk, _, _, rfl, rfl, ?_, ?_, ?_⟩
   · rcases hk with ⟨rfl, hl⟩ | ⟨rfl, hl⟩ <;> simp [kw, seqNat8ToSeqNat32LE_length, hl, nk]
+  · cases hwk with
+    | Aes128 k => exact hwk_is
+    | Aes192 k => rcases hk with ⟨h1, -⟩ | ⟨h1, -⟩ <;> exact absurd (hwk_is.1.symm.trans h1) (by decide)
+    | Aes256 k => exact hwk_is
   · simp only [Std.Array.make_val]
     have := valeHkeys_spec (core.num.U128.from_be_bytes
       (storeBytes (aesEncrypt alg kw (mkfour 0 0 0 0)))).bv
