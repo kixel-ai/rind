@@ -3,9 +3,9 @@
 
 # Fail OpenSSL's initialization on an error in this file, such as a section
 # it names but lacks, rather than carry on without the file. It must be in
-# the default section. A provider that fails to load is no such error:
-# OpenSSL carries on without it, so check that `openssl list -providers`
-# names rind.
+# the default section. Since OpenSSL 3.0.13, 3.1.5, and 3.2.1, a provider
+# that fails to load is no such error: OpenSSL carries on without it, so
+# check that `openssl list -providers` names rind.
 config_diagnostics = 1
 openssl_conf = openssl_init
 # Node.js reads its own section, unless run with --openssl-shared-config.

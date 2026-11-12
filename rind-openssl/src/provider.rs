@@ -179,8 +179,9 @@ fn raise(
 /// would make fails with `check`'s error instead, and its status is 0.
 ///
 /// It does not refuse to start, since OpenSSL carries on without a provider
-/// that does, even under `config_diagnostics`: every key OpenSSL makes would
-/// then be the default provider's, which is the fallback rind refuses.
+/// that does, even under `config_diagnostics`, from 3.0.13, 3.1.5, and 3.2.1
+/// on: every key OpenSSL makes would then be the default provider's, which
+/// is the fallback rind refuses.
 ///
 /// # Safety
 ///
