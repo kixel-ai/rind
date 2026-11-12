@@ -1,6 +1,6 @@
 import Rind.X86_64.AesKey
 import Rind.X86_64.Dispatch
-open Aeneas Aeneas.Std Result rind.vale
+open Aeneas Aeneas.Std Result rind.vale rind.simd
 
 /-!
 # `cipher::Aes` and AES header protection on the AES instructions

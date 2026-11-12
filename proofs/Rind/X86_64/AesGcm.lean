@@ -2,7 +2,7 @@ import Rind.X86_64.AesGcmGlue
 import Rind.X86_64.AesCipher
 import Rind.X86_64.Ghash
 import Rind.X86_64.AeadDispatch
-open Aeneas Aeneas.Std Result rind.vale
+open Aeneas Aeneas.Std Result rind.vale rind.simd
 
 namespace rind.x86_64
 
