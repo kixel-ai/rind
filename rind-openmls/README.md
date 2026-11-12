@@ -20,7 +20,7 @@ It signs and verifies with Ed25519 and ECDSA on P-256, P-384, and P-521, seals H
 What rind cannot back:
 
 - The X448 and Ed448 ciphersuites, which openmls_rust_crypto lacks too.
-- The P-384 and P-521 ciphersuites. rind has their primitives, but openmls's default capabilities and basic credentials cover neither, and the MLS interop vectors for them break RFC 9420: P-521 private keys missing their leading zero, and a P-384 signature over SHA-256.
+- The P-384 and P-521 ciphersuites, which openmls_rust_crypto lacks too. rind has their primitives, so they come once openmls_rust_crypto offers them or fixed test vectors can validate them: the MLS test vectors give some P-521 private keys without their leading zero ([mlswg/mls-implementations#176](https://github.com/mlswg/mls-implementations/issues/176)), and openmls's copy of the crypto-basics vectors signs both suites over SHA-256.
 - The `draft-ietf-mls-pq-ciphersuites` feature: rind's HPKE has no post-quantum KEM yet.
 - The `targeted-messages-draft` feature: rind's HPKE has no PSK mode.
 - The `virtual-clients-draft` feature: rind has no FF1.
