@@ -766,4 +766,122 @@ theorem sponge_absorb_spec (h : RunsSha3) {R : Usize} {PAD : U8} (hR : 0 < R.val
       rw [List.length_append, hT, Nat.add_mod, hm1, Nat.mul_mod_left]; simp
     · rw [ha3, ha2]
 
+/-! ## Padding, `Sponge::padded_state` -/
+
+theorem getElem!_replicate_zero (n k : Nat) : (List.replicate n (0 : Byte))[k]! = 0 := by
+  rw [List.getElem!_eq_getElem?_getD, List.getElem?_replicate]
+  split <;> rfl
+
+/-- The last block's padding XORed into the state is the message's tail, the
+pad byte after it, and the top bit of the block's last byte, in turn. -/
+theorem xorAt_keccakPad (R : Nat) (hR : 0 < R ∧ R ≤ 200) (d : Byte) (A r : List Byte)
+    (hA : A.length = 200) (hr : r.length < R) :
+    xorAt A 0 (keccakPad R d r) = xorAt (xorAt (xorAt A 0 r) r.length [d]) (R - 1) [0x80] := by
+  have hK : (keccakPad R d r).length = R := by
+    rw [length_keccakPad R hR.1, Nat.mod_eq_of_lt hr]; omega
+  apply ext_getElem! (by simp)
+  intro i hi
+  simp only [length_xorAt] at hi
+  rw [getElem!_xorAt _ _ _ _ hi, getElem!_xorAt _ _ _ _ (by simp; omega),
+    getElem!_xorAt _ _ _ _ (by simp; omega), getElem!_xorAt _ _ _ _ hi, hK]
+  have hY : ∀ k, (r ++ d :: List.replicate (R - r.length - 1) 0)[k]! =
+      if k < r.length then r[k]! else if k = r.length then d else 0 := by
+    intro k
+    rw [getElem!_append_if]
+    split
+    · rfl
+    · split
+      · rename_i h; rw [h, Nat.sub_self]; rfl
+      · rw [show k - r.length = (k - r.length - 1) + 1 by omega, List.getElem!_cons_succ,
+          getElem!_replicate_zero]
+  have hKi : ∀ k, k < R → (keccakPad R d r)[k]! =
+      if k = R - 1 then (r ++ d :: List.replicate (R - r.length - 1) 0)[k]! ^^^ 0x80
+      else (r ++ d :: List.replicate (R - r.length - 1) 0)[k]! := by
+    intro k hk
+    simp only [keccakPad, Nat.mod_eq_of_lt hr]
+    rw [getElem!_xorAt _ _ _ _ (by simp; omega)]
+    by_cases h' : k = R - 1
+    · rw [if_pos ⟨by omega, by simp; omega⟩, if_pos h',
+        show k - (r.length + (R - r.length) - 1) = 0 by omega,
+        show R - r.length - 1 = R - r.length - 1 from rfl]
+      rfl
+    · rw [if_neg (by simp; omega), if_neg h']
+  have e1 : (r.length ≤ i ∧ i < r.length + 1) ↔ i = r.length := by omega
+  have e2 : (R - 1 ≤ i ∧ i < R - 1 + 1) ↔ i = R - 1 := by omega
+  by_cases hiR : i < R
+  · simp only [List.length_singleton, Nat.zero_le, true_and, Nat.zero_add, Nat.sub_zero, e1, e2,
+      hiR, ite_true]
+    rw [hKi i hiR, hY]
+    split_ifs <;> subst_vars <;> simp_all [BitVec.xor_assoc] <;> omega
+  · simp only [List.length_singleton, Nat.zero_le, true_and, Nat.zero_add, Nat.sub_zero, e1, e2,
+      hiR, ite_false]
+    split_ifs <;> first | omega | rfl
+
+theorem xorAt_append_left (X Y : List Byte) (o : Nat) (B : List Byte) :
+    xorAt (X ++ Y) (X.length + o) B = X ++ xorAt Y o B := by
+  apply ext_getElem! (by simp)
+  intro i hi
+  simp only [length_xorAt, List.length_append] at hi
+  rw [getElem!_xorAt (X ++ Y) (X.length + o) B i (by simp; omega),
+    getElem!_append_if X (xorAt Y o B) i, getElem!_append_if X Y i]
+  by_cases h : i < X.length
+  · simp only [h, ite_true]
+    rw [if_neg (by omega)]
+  · simp only [h, ite_false]
+    rw [getElem!_xorAt Y o B (i - X.length) (by omega)]
+    by_cases h2 : X.length + o ≤ i ∧ i < X.length + o + B.length
+    · rw [if_pos h2, if_pos (show o ≤ i - X.length ∧ i - X.length < o + B.length by omega),
+        show i - (X.length + o) = i - X.length - o by omega]
+    · rw [if_neg h2, if_neg (show ¬(o ≤ i - X.length ∧ i - X.length < o + B.length) by omega)]
+
+theorem keccakPad_append (R : Nat) (hR : 0 < R) (d : Byte) (P r : List Byte) (hP : P.length % R = 0)
+    (hr : r.length < R) : keccakPad R d (P ++ r) = P ++ keccakPad R d r := by
+  have hm : (P ++ r).length % R = r.length % R := by
+    rw [List.length_append, Nat.add_mod, hP, Nat.zero_add, Nat.mod_mod]
+  simp only [keccakPad, hm, List.append_assoc]
+  rw [List.length_append, Nat.add_assoc, Nat.add_sub_assoc (by rw [Nat.mod_eq_of_lt hr]; omega),
+    xorAt_append_left, Nat.add_sub_assoc (by rw [Nat.mod_eq_of_lt hr]; omega)]
+
+theorem length_absorb (R : Nat) (S P : List Byte) (hS : S.length = 200) :
+    (absorb R S P).length = 200 := by
+  simp only [absorb]
+  generalize rind.spec.blocks R P = l
+  induction l generalizing S with
+  | nil => exact hS
+  | cons x l ih => rw [List.foldl_cons]; exact ih _ (by simp)
+
+/-- The padded message's absorbing ends on the last block's padding. -/
+theorem absorb_keccakPad (R : Nat) (hR : 0 < R ∧ R ≤ 200) (d : Byte) (P r : List Byte)
+    (hP : P.length % R = 0) (hr : r.length < R) :
+    absorb R zeros (keccakPad R d (P ++ r)) =
+      keccakF (xorAt (xorAt (xorAt (absorb R zeros P) 0 r) r.length [d]) (R - 1) [0x80]) := by
+  rw [keccakPad_append R hR.1 d P r hP hr, absorb_append_block R hR.1 _ _ _ hP (by
+      rw [length_keccakPad R hR.1, Nat.mod_eq_of_lt hr]; omega),
+    xorAt_keccakPad R hR d _ r (length_absorb R _ P (by simp)) hr]
+
+/-- `padded_state` is the state whose Keccak-f ends absorbing the padded message. -/
+theorem padded_state_spec {R : Usize} {PAD : U8} (hR : 8 ≤ R.val ∧ R.val < 200 ∧ R.val % 8 = 0)
+    (sp : mid.sha3.Sponge R PAD) (m : List Byte) (hm : SpongeAbsorbed R.val sp.s sp.used.val m) :
+    mid.sha3.Sponge.padded_state sp ⦃ s =>
+      keccakF (sbl s.val) = absorb R.val zeros (keccakPad R.val PAD.bv m) ⦄ := by
+  obtain ⟨P, r, rfl, hP, hr, hu, hs⟩ := hm
+  unfold mid.sha3.Sponge.padded_state
+  step as ⟨sl, hsl⟩
+  have hsl' : sl.val = [PAD] := by rw [hsl]; rfl
+  step with add_bytes_spec sp.s sp.used sl (by simp [Slice.length, hsl']; omega) as ⟨s1, hs1⟩
+  step*
+  have hi2 : i2.val < 25 := by omega
+  have hx : i4.bv = (s1.val[i2.val]!).bv ^^^ i.bv := by
+    simp only [i4_post1, i3_post, getElem!_pos s1.val i2.val (by simp; omega)]
+  have hw : ∀ m t, m < 8 → t < 8 → i.bv[8 * m + t]! =
+      if 7 ≤ m ∧ m < 7 + [(0x80 : Byte)].length then [(0x80 : Byte)][m - 7]!.toNat.testBit t
+      else false := by
+    intro m t hm ht
+    simp only [i_post1]
+    interval_cases m <;> interval_cases t <;> rfl
+  have hbv : bv sl.val = [PAD.bv] := by rw [hsl']; rfl
+  rw [s_post, Std.Array.set_val_eq, sbl_set_xor _ i2.val (by simp; omega) i4 i.bv hx 7 [0x80]
+    (by simp) hw, hs1, hs, hu, hbv, absorb_keccakPad R.val ⟨by omega, by omega⟩ PAD.bv P r hP hr,
+    show 8 * i2.val + 7 = R.val - 1 by omega]
+
 end rind.x86_64
