@@ -707,6 +707,7 @@ extract_armv7() {
         --start-from crate::aead::quic::HeaderProtectionKey \
         --start-from crate::aead::quic::AlgorithmId \
         --start-from crate::mid::chacha20::ChaCha20::new \
+        --start-from crate::error::Error \
         --opaque crate::aead::quic::Masker \
         --opaque crate::mid::aes \
         --opaque crate::low \
