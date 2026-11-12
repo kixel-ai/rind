@@ -571,8 +571,8 @@ impl AffineMontPoint {
     /// Becomes `row`'s point `digit - 1`, or zeros for a zero `digit`, with
     /// `y` negated if `negate` is 1, in constant time.
     #[cfg(rind_backend = "x86_64")]
-    fn select_w7(&mut self, row: &low::P256GeneratorRow, digit: u8, negate: u8) {
-        low::p256_select_w7(&mut self.xy, row, digit);
+    fn select_w7(&mut self, row: &[u64; 512], digit: u8, negate: u8) {
+        low::bignum_aff_point_select_p256(&mut self.xy, row, digit);
         let y = self.y();
         low::bignum_mux(
             negate.into(),
@@ -1208,7 +1208,7 @@ const BASE_WINDOW: usize = 7;
 ///
 /// 37 := 256 / 7 + 1, as Booth recoding carries into a window above the top bit.
 #[cfg(rind_backend = "x86_64")]
-type AffineMontPointTable = [low::P256GeneratorRow; 37];
+type AffineMontPointTable = [[u64; 512]; 37];
 
 /// 43 rows of the 32 multiples `i * 2^(6 * j) * G`, one row per 6-bit window.
 ///
