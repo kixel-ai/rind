@@ -93,15 +93,13 @@ pub(crate) type Shake256Sponge = Sponge<SHAKE_256_R_BYTES, SHAKE_PAD_BYTE>;
 /// This has one-shot input behaviour (all input must be provided to the
 /// constructor [`Shake256::new`]) and incremental output behaviour.
 ///
-/// ML-KEM squeezes the sponges directly, so only the tests use this.
-#[cfg(test)]
+/// ML-KEM squeezes the sponges directly; ML-DSA reads through this.
 pub(crate) struct Shake256 {
     sponge: SqueezingSponge<SHAKE_256_R_BYTES>,
     buffer: [u8; SHAKE_256_R_BYTES],
     buffer_offset: usize,
 }
 
-#[cfg(test)]
 impl Shake256 {
     /// Create a new SHAKE256 instance using `message` as input.
     ///
@@ -181,7 +179,6 @@ impl<const R: usize> SqueezingSponge<R> {
         }
     }
 
-    #[cfg(test)]
     fn shake_read(&mut self, output: &mut [u8], buffer: &mut [u8; R], buffer_offset: &mut usize) {
         let output = match *buffer_offset == buffer.len() {
             true => output,
@@ -328,7 +325,6 @@ impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
         Self { s: [0; _], used: 0 }
     }
 
-    #[cfg(test)]
     pub(crate) fn new_for_message(message: &[&[u8]]) -> SqueezingSponge<R> {
         let mut s = Self::new();
         for m in message {

@@ -525,7 +525,9 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # reaches it, and `SignatureDispatch.lean` defines it. SHA-1's and SHA-256's
 # padding is translated down to their block functions, which are opaque.
 # SHA-3's sponge is translated down to its Keccak-f routines, which are
-# opaque. MD5, which no proof covers, is opaque.
+# opaque, from what the digest API and ML-KEM call: ML-DSA's SHAKE readers
+# loop over borrowed slices and zip iterators, which Aeneas cannot translate.
+# MD5, which no proof covers, is opaque.
 # P-256's key generation draws through a `dyn RandomSource`, so it is opaque
 # too, and `proofs/Rind/Aarch64/P256Dispatch.lean` models it above the
 # translated `PrivateKey::from_bytes`, as `EcdsaDispatch.lean` does for ECDSA,
@@ -572,7 +574,14 @@ extract() {
         --start-from crate::high::signature::Ed25519KeyPair::sign \
         --start-from '{impl core::convert::AsRef for crate::high::signature::Signature}' \
         --start-from crate::high::signature::Buffer::copy_from \
-        --start-from crate::mid::sha3 \
+        --start-from crate::mid::sha3::shake256_batch \
+        --start-from 'crate::mid::sha3::SqueezingSponge4xShake128::_' \
+        --start-from crate::mid::sha3::SqueezingSponge::new \
+        --start-from crate::mid::sha3::SqueezingSponge::squeeze \
+        --start-from crate::mid::sha3::Sponge::new \
+        --start-from crate::mid::sha3::Sponge::absorb \
+        --start-from crate::mid::sha3::Sponge::finish \
+        --start-from 'crate::mid::sha3::Sha3Context::_' \
         --opaque crate::high::agreement::Algorithm \
         --opaque crate::high::agreement::Ops \
         --opaque crate::high::agreement::x25519_from_pkcs8 \
