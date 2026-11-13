@@ -370,10 +370,11 @@ where
         .iter()
         .map(|blind| blind.0.pick().ok_or(Error::Unsupported))
         .collect::<Result<Vec<_>, _>>()?;
-    let evaluated = decode_batch::<G>(evaluated_elements)?;
-    if evaluated.len() != states.len() {
+    // Refuse a wrong count before paying a decompression per element.
+    if evaluated_elements.len() != states.len() * G::ELEMENT_LEN {
         return Err(Error::WrongLength);
     }
+    let evaluated = decode_batch::<G>(evaluated_elements)?;
     let blinded = states.iter().map(|state| state.blinded).collect::<Vec<_>>();
     let mut blinded_bytes = Vec::with_capacity(evaluated_elements.len());
     for state in &states {
