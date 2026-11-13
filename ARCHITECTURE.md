@@ -61,8 +61,8 @@ The modules:
   types export.
 - `constant_time`: comparing secrets such as MACs without a timing leak.
 - `rand`: random bytes from the system.
-- `cpu`: whether AES runs in hardware, and `Dit`, which holds data-independent timing on across a
-  batch of calls.
+- `cpu`: whether AES runs in hardware, and `Dit`, which holds
+  data-independent timing on across a batch of calls.
 
 The public modules wrap three private layers:
 

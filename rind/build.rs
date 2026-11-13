@@ -7,7 +7,8 @@
 //! other architecture. A backend requires only what its target enables at
 //! compile time, so no CPU that runs the binary lacks a feature it needs:
 //! the aarch64 backend needs NEON, which only the `no_std`
-//! `*-none-softfloat` targets disable, so those get the portable backend. The 32-bit ARM assembly is cut for ARMv7, so a target
+//! `*-none-softfloat` targets disable, so those get the portable backend.
+//! The 32-bit ARM assembly is cut for ARMv7, so a target
 //! for an earlier core, such as ARMv6's `arm-unknown-linux-gnueabihf` or
 //! ARMv5TE's `arm-linux-androideabi`, gets the portable backend too.
 //! `--cfg rind_portable` forces it anywhere, so CI tests it on x86_64 without
