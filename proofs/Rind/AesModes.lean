@@ -18,6 +18,9 @@ namespace rind.vale
 def be128 (n : Nat) : List (BitVec 8) :=
   (List.range 16).map fun i => BitVec.ofNat 8 (n / 256 ^ (15 - i))
 
+/-- The 4 bytes of the 32-bit big-endian integer `n`. -/
+def be32 (n : Nat) : List (BitVec 8) := (be128 n).drop 12
+
 /-- The bytes `l` read as a big-endian integer. -/
 def ofBe (l : List (BitVec 8)) : Nat :=
   l.foldl (fun a b => 256 * a + b.toNat) 0
