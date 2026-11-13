@@ -342,7 +342,7 @@ final class _AesCbc extends AesCbc {
         length: clearText.length,
         nonce: nonce,
         // DartAesCbc leaves AAD to the MAC, which MacAlgorithm.empty ignores.
-        aad: const <int>[],
+        aad: macAlgorithm.supportsAad ? aad : const <int>[],
       ),
     );
     final iv = rind.CbcIv.assumeUnpredictable(_bytes(nonce));
@@ -380,7 +380,7 @@ final class _AesCbc extends AesCbc {
         length: cipherText.length,
         nonce: secretBox.nonce,
         // DartAesCbc leaves AAD to the MAC, which MacAlgorithm.empty ignores.
-        aad: const <int>[],
+        aad: macAlgorithm.supportsAad ? aad : const <int>[],
       ),
     );
     // Before decrypting, so that a forged ciphertext never reaches the

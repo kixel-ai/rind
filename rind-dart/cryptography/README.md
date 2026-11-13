@@ -91,11 +91,11 @@ these ways:
 - Each operation is one native call, which never yields to the event loop:
   seal large messages off the UI isolate, as with `Isolate.run`.
 
-`AesCbc`, `AesCtr`, and `Chacha20` compute their MAC over the ciphertext
-alone, as the package does, keyed with the cipher's own secret key. The
-nonce (CBC's IV) is outside it: `Hmac` ignores the nonce it is given, so
-changing a nonce changes the decrypted text undetected, all of it under CTR
-and ChaCha20 and the first block under CBC. Store integrity-sensitive data
+`AesCbc`, `AesCtr`, and `Chacha20` pass the ciphertext and nonce to their
+MAC, as the package does, keyed with the cipher's own secret key. `Hmac`
+ignores the nonce (CBC's IV), so under it changing a nonce changes the
+decrypted text undetected, all of it under CTR and ChaCha20 and the first
+block under CBC; `Chacha20.poly1305Aead()` authenticates the nonce. Store integrity-sensitive data
 with an AEAD such as `AesGcm`, or under a MAC that also covers the nonce.
 With `MacAlgorithm.empty`, nothing is authenticated, and AES-CBC's padding
 error is an oracle that decrypts.
