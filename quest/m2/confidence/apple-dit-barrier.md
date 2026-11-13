@@ -10,4 +10,4 @@ Found on 2026-11-12, reading pyca/verified-garbage's README, which says Apple as
 
 - `rind/src/low/aarch64/cpu.rs`'s `dit` module writes `msr DIT, #1` with no barrier after it.
 - Confirm the requirement in Apple's own documentation, "Writing ARM64 code for Apple platforms", before changing anything, and check what aws-lc does when it sets DIT.
-- If confirmed, add the barrier Apple names, likely `sb` where the CPU has FEAT_SB and `isb` otherwise, and measure its cost on `kixtop`.
+- If confirmed, add the barrier Apple names, `sb` where the CPU has FEAT_SB (`hw.optional.arm.FEAT_SB`) and `dsb nsh` then `isb sy` otherwise, and measure its cost on `kixtop`.
