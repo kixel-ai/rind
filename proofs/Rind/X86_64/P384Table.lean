@@ -9,7 +9,7 @@ open Aeneas Aeneas.Std rind.spec
 translates them, hold the multiples of G that `JacobianMontPoint::base_multiply`'s
 comb looks up: entry d of table j is d·2²⁰ʲ·G. The kernel checks each entry
 against the one before it with `addOk`, which needs no inversion, and each
-table's first entry against the last table's by `mulCheck`.
+table's first entry against the previous table's by `mulCheck`.
 -/
 
 set_option exponentiation.threshold 400

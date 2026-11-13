@@ -59,7 +59,7 @@ namespace P384
 
 /-- What `bignum_aff_point_select_p384` computes, viewing `table` as 16 rows
 of 12 words: row `index`, counting from 1, or zeros for any other index.
-rind selects with AVX2 or SSE2 vectors on x86_64 and NEON on aarch64, through
+rind selects with SIMD vectors (AVX2 or SSE2 on x86-64, NEON on Arm), through
 raw-pointer loads Aeneas cannot translate, and no hand model of them is proven
 yet, so the theorems below take this as a hypothesis. -/
 def AffSelect : Prop :=
