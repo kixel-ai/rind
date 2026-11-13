@@ -13,4 +13,4 @@ Decided 2026-11-12 (maintainer, /quest-audit): ✅ write it.
 - Supported versions: the latest release of `rind` and of each adapter, unless [the stability policy](/quest/m2/trust/stability-policy.md) has settled backports by then.
 - Make no promise the maintainer has not made: no response time, no bounty, no embargo length. Write the draft without them and ask the maintainer in the PR whether to add any.
 - RustSec is where Rust users look. Say that a fixed vulnerability gets a RustSec advisory, if the maintainer confirms that in the PR; filing one is a post outside the org and theirs to approve each time.
-- Link it from the README and from CONTRIBUTING.md.
+- Link it from the README's "Before you depend on it" section, which the landing page quotes, and from CONTRIBUTING.md.
