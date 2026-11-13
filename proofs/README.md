@@ -69,6 +69,20 @@ with uncommitted changes, which that commit does not name.
   the SHA-512 instructions, computes s2n-bignum's FIPS 180-4 spec,
   `sha512_hash_blocks`, and stores it to the state, as `sha256`'s above; the
   proof checks its round constants against FIPS 180-4's.
+- `aarch64/bn_mul_mont.ml`: `BN_MUL_MONT_GENERIC_SUBROUTINE_CORRECT`, rind's
+  proof that the naked function `low::aarch64::mont::bn_mul_mont`, aws-lc's
+  Montgomery multiplication, writes the Montgomery product
+  `x * y / 2^(64k) mod m` of its `k`-word operands, as s2n-bignum's
+  `bignum_montmul` states it, given `-m^-1 mod 2^64` and
+  `x * y <= 2^(64k) * m`, for every width from two up that is not a multiple
+  of four: those its width-generic path runs, for `k < 2^58`, a 16-aligned
+  stack pointer, and `z` and the stack frame disjoint from the code and the
+  inputs, so `z` may not alias `x`. The theorem covers the dispatch,
+  the stack frame of up to `8k + 72` bytes below the stack pointer, and the
+  callee-saved registers it restores. The widths that run `__bn_mul4x_mont`
+  and `__bn_sqr8x_mont`, which include every standard RSA size and its CRT
+  primes, are not proven yet, and no axiom in `Rind/` restates the theorem
+  yet. The function has no relocations.
 - `x86_64/bn_mul_mont_nohw.ml`: `BN_MUL_MONT_NOHW_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::x86_64::mont::bn_mul_mont_nohw`,
   aws-lc's word-serial Montgomery multiplication, writes the Montgomery
