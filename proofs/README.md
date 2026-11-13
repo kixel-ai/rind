@@ -485,8 +485,9 @@ rind's NEON CTR by 8 and CBC on the AES instructions, in
   the buffer zeroed, and a buffer of no or partial blocks fails unchanged.
 
 On x86_64, `Rind/X86_64/AesModesApi.lean` proves the same over
-`Rind/X86_64/AesModesLow.lean`, whose axioms restate HOL Light theorems of
-aws-lc's `aes_hw_ctr32_encrypt_blocks` and `aes_hw_cbc_encrypt` that are not
+`Rind/X86_64/AesModesLow.lean`, whose axioms `hw_ctr32_spec`,
+`hw_cbc_encrypt_spec`, and `hw_cbc_decrypt_spec` restate pending HOL Light
+theorems of aws-lc's `aes_hw_ctr32_encrypt_blocks` and `aes_hw_cbc_encrypt` that are not
 finished yet: `hol-light/x86_64/aes_hw_cbc_encrypt.ml` proves CBC
 encryption and most of decryption. Until they are, those theorems are not in
 `Rind/X86_64/Axioms.lean` and earn no ✓, which [the AES modes

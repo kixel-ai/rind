@@ -186,6 +186,7 @@ impl AesKek {
         let mut bad = black_box((key.len() as u64).wrapping_sub(claimed) >> 3);
         // Indexed rather than iterating `enumerate().skip()`, which Aeneas
         // cannot translate, so `proofs/` can prove it.
+        #[allow(clippy::needless_range_loop)]
         for i in key.len() - 8..key.len() {
             // all ones if `i` is at or past the claimed length
             let past = ((i as u64).wrapping_sub(claimed) >> 63).wrapping_sub(1);
