@@ -88,6 +88,34 @@ fn every_self_test_fails_when_broken() {
     }
 }
 
+/// Every pairwise consistency test, by the name the module prints, and the
+/// trigger that generates a key pair it checks.
+const PCTS: [(&str, &str); 2] = [
+    ("pct_ecdh", "trigger_ecdh_generate"),
+    ("pct_ml_kem", "trigger_ml_kem_generate"),
+];
+
+#[test]
+fn trigger_ecdh_generate() {
+    use rind_fips::agreement::{ECDH_P256, PrivateKey};
+    PrivateKey::generate(&ECDH_P256).unwrap();
+    eprintln!("trigger done");
+}
+
+#[test]
+fn trigger_ml_kem_generate() {
+    use rind_fips::kem::{DecapsulationKey, ML_KEM_768};
+    DecapsulationKey::generate(&ML_KEM_768).unwrap();
+    eprintln!("trigger done");
+}
+
+#[test]
+fn every_pairwise_test_fails_when_broken() {
+    for (name, trigger) in PCTS {
+        assert_breaks(trigger, name);
+    }
+}
+
 /// What the children run: one thread draws and exits, wiping its DRBG
 /// itself, and another draws and is still running as the process exits.
 #[test]
