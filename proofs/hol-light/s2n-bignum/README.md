@@ -52,7 +52,7 @@ also take the MMX form without the 66 prefix, which no proven routine runs.
 need, `chacha20_poly1305_{seal,open}`, `poly_hash_ad_internal`, and
 `ChaCha20_ctr32_ssse3_4x`, to `x86/proofs/instruction.ml`, `decode.ml`, and
 `x86.ml` (maintainer, 2026-11-11, on
-[moq-dev/rind#627](https://github.com/moq-dev/rind/pull/627)). Under it every
+[kixel-ai/rind#627](https://github.com/kixel-ai/rind/pull/627)). Under it every
 instruction of those routines, as rind's release build emits them, decodes.
 `admin/prove` applies it to the submodule's files after `pr450.patch`, and
 fails unless every hunk applies exactly, so a submodule bump that touches
@@ -89,4 +89,4 @@ simulator's simplification leaves folded. Offering the patch upstream would
 also add its encodings to s2n-bignum's `x86/proofs/simulator.ml`, as
 s2n-bignum's own additions do. Posting to awslabs/s2n-bignum needs the
 maintainer's approval
-([moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448)).
+([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
