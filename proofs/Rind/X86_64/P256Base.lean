@@ -334,6 +334,176 @@ theorem booth_w7_spec (k : mid.p256.Scalar) :
     (fun i hi => absurd hi (Nat.not_lt_zero _)) p (by rw [hd, hi3v]) (by rw [hsg, hi3v]) _ rfl a ha
   simpa using this
 
+/-! ## Points -/
+
+/-- A number's value as a field element in Montgomery form: it times 2⁻²⁵⁶. -/
+abbrev dec (x : Nat) : ZMod p256 := (p256RInv : ZMod p256) * x
+
+theorem R_mul_RInv : ((2 ^ 256 : Nat) : ZMod p256) * (p256RInv : ZMod p256) = 1 := by
+  have := congrArg (fun n : Nat => (n : ZMod p256)) p256RInv_spec.2
+  simpa only [Nat.cast_mul, ZMod.natCast_mod, Nat.cast_one] using this
+
+theorem RInv_ne_zero : (p256RInv : ZMod p256) ≠ 0 := fun h => by
+  have := R_mul_RInv; rw [h, mul_zero] at this; exact zero_ne_one this
+
+theorem cast_mod_p (x : Nat) : ((x % p256 : Nat) : ZMod p256) = x := ZMod.natCast_mod _ _
+
+/-- Numbers below p are equal when their values are. -/
+theorem eq_of_dec (x y : Nat) (hx : x < p256) (hy : y < p256) : x = y ↔ dec x = dec y := by
+  constructor
+  · intro h; rw [h]
+  · intro h
+    have h' : (x : ZMod p256) = y := mul_left_cancel₀ RInv_ne_zero h
+    rw [ZMod.natCast_eq_natCast_iff', Nat.mod_eq_of_lt hx, Nat.mod_eq_of_lt hy] at h'
+    exact h'
+
+theorem dec_mont_mul (a b : Nat) : dec (p256RInv * a * b % p256) = dec a * dec b := by
+  simp only [dec, cast_mod_p, Nat.cast_mul]; ring
+
+theorem dec_mont_sqr (a : Nat) : dec (p256RInv * a ^ 2 % p256) = dec a ^ 2 := by
+  simp only [dec, cast_mod_p, Nat.cast_mul, Nat.cast_pow]; ring
+
+theorem val_dec (x : Nat) : p256RInv * x % p256 = (dec x).val := by
+  rw [dec, ← Nat.cast_mul, ZMod.val_natCast]
+
+theorem ofJacobian_dec (x y z : Nat) :
+    p256OfJacobian (p256RInv * x % p256) (p256RInv * y % p256) (p256RInv * z % p256) =
+      if dec z = 0 then none
+      else some ((dec x * (dec z ^ 2)⁻¹).val, (dec y * (dec z ^ 3)⁻¹).val) := by
+  unfold p256OfJacobian
+  simp only [val_dec, ZMod.natCast_val, ZMod.cast_id', id, ZMod.val_eq_zero]
+
+theorem CURVE_ONE_MONT_val : feNat mid.p256.CURVE_ONE_MONT = 2 ^ 256 % p256 := by
+  simp only [feNat, mid.p256.CURVE_ONE_MONT, Array.make, wordsNat, p256]; decide
+
+theorem dec_one : dec (2 ^ 256 % p256) = 1 := by
+  rw [dec, cast_mod_p, mul_comm]; exact R_mul_RInv
+
+theorem tripleNat_append (a b : List U64) (ha : a.length = 8) (hb : b.length = 4) :
+    tripleNat (a ++ b) = ((pairNat a).1, (pairNat a).2, wordsNat b) := by
+  simp [tripleNat, pairNat, List.take_append, List.drop_append, ha, hb, List.take_of_length_le]
+
+/-- A pair of coordinates represents the point their values name. -/
+theorem rep2_dec (P : P256Point) (xy : Nat × Nat) (h : p256Represents2 P xy) :
+    xy.1 < p256 ∧ xy.2 < p256 ∧ P = some ((dec xy.1).val, (dec xy.2).val) := by
+  obtain ⟨h1, h2, h3⟩ := h
+  exact ⟨h1, h2, by rw [← h3, val_dec, val_dec]⟩
+
+/-- An affine point with a z of one in Montgomery form is the same point. -/
+theorem rep_one (P : P256Point) (x y : Nat) (h : p256Represents2 P (x, y)) :
+    p256Represents P (x, y, 2 ^ 256 % p256) := by
+  obtain ⟨h1, h2, rfl⟩ := rep2_dec P _ h
+  refine ⟨h1, h2, Nat.mod_lt _ p256_pos, ?_⟩
+  simp only
+  rw [ofJacobian_dec, dec_one]
+  simp
+
+theorem rep_none_z (t : Nat × Nat × Nat) (h : p256Represents none t) : t.2.2 = 0 := by
+  obtain ⟨-, -, hz, hP⟩ := h
+  rw [ofJacobian_dec] at hP
+  split_ifs at hP with h0
+  · exact (eq_of_dec _ 0 hz p256_pos).mpr (by rw [h0]; simp)
+
+theorem rep_some_z (P : P256Point) (t : Nat × Nat × Nat) (h : p256Represents P t) (hne : P ≠ none) :
+    t.2.2 ≠ 0 := by
+  obtain ⟨-, -, -, hP⟩ := h
+  intro hz
+  apply hne
+  rw [← hP, hz]
+  simp [p256OfJacobian]
+
+theorem rep_zero : p256Represents none (0, 0, 0) := by
+  refine ⟨p256_pos, p256_pos, p256_pos, ?_⟩
+  simp [p256OfJacobian]
+
+theorem rep2_neg (P : P256Point) (x y : Nat) (h : p256Represents2 P (x, y)) :
+    p256Represents2 (p256Neg P) (x, (p256 - y) % p256) := by
+  obtain ⟨hx, hy, rfl⟩ := h
+  refine ⟨hx, Nat.mod_lt _ p256_pos, ?_⟩
+  simp only [p256Neg, nist.neg, Option.some.injEq, Prod.mk.injEq, true_and]
+  have h1 : (((p256 - y % p256) % p256 : Nat) : ZMod p256) = -(y : ZMod p256) := nist.natCast_neg_mod y
+  have h2 : (((p256 - p256RInv * y % p256 % p256) % p256 : Nat) : ZMod p256) = -((p256RInv * y : Nat) : ZMod p256) :=
+    by rw [Nat.mod_mod]; exact nist.natCast_neg_mod _
+  simp only at hy h1
+  rw [Nat.mod_eq_of_lt hy] at h1
+  have L : p256RInv * ((p256 - y) % p256) % p256 = ((p256RInv * ((p256 - y) % p256) : Nat) : ZMod p256).val :=
+    (ZMod.val_natCast _ _).symm
+  have R : (p256 - p256RInv * y % p256 % p256) % p256 =
+      (((p256 - p256RInv * y % p256 % p256) % p256 : Nat) : ZMod p256).val :=
+    (ZMod.val_cast_of_lt (Nat.mod_lt _ p256_pos)).symm
+  rw [L, R, h2, Nat.cast_mul, h1]
+  push_cast; ring_nf
+
+theorem fromM_inj (X Y : p256Curve.Point) (h : nist.fromM X = nist.fromM Y) : X = Y := by
+  cases X <;> cases Y <;> simp [nist.fromM] at h ⊢
+  exact ⟨ZMod.val_injective _ h.1, ZMod.val_injective _ h.2⟩
+
+/-- The point `a·X`. -/
+abbrev gpt (X : p256Curve.Point) (a : Int) : P256Point := nist.fromM (a • X)
+
+theorem gpt_zero (X : p256Curve.Point) : gpt X 0 = none := by
+  simp only [gpt, zero_zsmul]; rfl
+
+theorem gpt_add (X : p256Curve.Point) (a b : Int) : p256Add (gpt X a) (gpt X b) = gpt X (a + b) := by
+  simp only [gpt, p256Add, nist.fromM_add, add_zsmul]
+
+theorem gpt_ne (X : p256Curve.Point) (hord : addOrderOf X = n256) (a b : Int) (h : ¬ a ≡ b [ZMOD n256]) :
+    gpt X a ≠ gpt X b := by
+  intro he
+  apply h
+  have := fromM_inj _ _ he
+  rw [zsmul_eq_zsmul_iff_modEq, hord] at this
+  exact this
+
+/-- No point's Montgomery-form coordinates are both zero, since (0, 0) is not
+on the curve. -/
+theorem rep2_ne_zero (X : p256Curve.Point) (a : Int) (xy : Nat × Nat) (h : p256Represents2 (gpt X a) xy) :
+    xy ≠ (0, 0) := by
+  rintro rfl
+  obtain ⟨-, -, h3⟩ := h
+  have hc : p256OnCurve (gpt X a) := nist.onCurve_fromM _
+  rw [← h3] at hc
+  exact not_onCurve_zero (by simpa using hc)
+
+theorem entry_point (X : p256Curve.Point) (hX : nist.fromM X = p256G) (w d s : Nat) :
+    (if s = 0 then p256Pow p256G (2 ^ (7 * w) * d) else p256Neg (p256Pow p256G (2 ^ (7 * w) * d))) =
+      gpt X (signed d s * 128 ^ w) := by
+  rw [← hX, p256Pow, nist.pow_fromM, ← natCast_zsmul]
+  have h128 : ((2 ^ (7 * w) * d : Nat) : Int) = (d : Int) * 128 ^ w := by
+    push_cast; rw [mul_comm]; congr 1; rw [show (128 : Int) = 2 ^ 7 by norm_num, ← pow_mul]
+  unfold signed
+  split_ifs
+  · rw [h128]
+  · rw [p256Neg, nist.neg_fromM, ← neg_zsmul, h128, neg_mul]
+
+/-- `select_w7` from row `w` of the generator table: zeros for a zero digit,
+and otherwise the digit's signed multiple of 2^(7w)·G. -/
+theorem select_entry (X : p256Curve.Point) (hX : nist.fromM X = p256G) (w : Nat) (hw : w < 37)
+    (pt : mid.p256.AffineMontPoint) (row : Std.Array U64 512#usize)
+    (hrow : row = mid.p256.precomp.CURVE_GENERATOR_PRECOMP.val[w]!) (dg sg : U8) (hdg : dg.val ≤ 64) :
+    mid.p256.AffineMontPoint.select_w7 pt row dg sg ⦃ r =>
+      (dg.val = 0 → pairNat r.xy.val = (0, 0)) ∧
+        (dg.val ≠ 0 → p256Represents2 (gpt X (signed dg.val sg.val * 128 ^ w)) (pairNat r.xy.val)) ⦄ := by
+  by_cases h0 : dg.val = 0
+  · have hz : pairNat (sel row dg.val) = (0, 0) := by rw [h0]; exact sel_zero row
+    apply WP.spec_mono (select_w7_spec pt row dg sg (by rw [hz]; exact Nat.zero_le _))
+    intro r hr
+    refine ⟨fun _ => ?_, fun h => absurd h0 h⟩
+    rw [hr, hz]
+    simp
+  · have hentry := tabulated w hw dg.val (by omega) hdg
+    rw [← hrow] at hentry
+    have hs : sel row dg.val = (row.val.drop (8 * (dg.val - 1))).take 8 := by
+      simp [sel, show 1 ≤ dg.val by omega, hdg]
+    rw [← pairNat_take8, ← hs] at hentry
+    apply WP.spec_mono (select_w7_spec pt row dg sg (le_of_lt hentry.2.1))
+    intro r hr
+    refine ⟨fun h => absurd h h0, fun _ => ?_⟩
+    rw [hr, ← entry_point X hX w dg.val sg.val]
+    split_ifs with hs0
+    · exact hentry
+    · exact rep2_neg _ _ _ hentry
+
 end P256Base
 
 end rind.x86_64
