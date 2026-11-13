@@ -1,4 +1,5 @@
 import Rind.X86_64.AesModesLow
+import Rind.AesModesBytes
 open Aeneas Aeneas.Std Result rind.vale rind.simd rind.modes
 
 /-!
@@ -13,6 +14,102 @@ names on that target.
 -/
 
 namespace rind.x86_64
+
+/-! ## CBC on whole blocks -/
+
+theorem length_cbcEncrypt (alg : Algorithm) (key : List (BitVec 8)) (n : Nat) :
+    ∀ iv p : List (BitVec 8), p.length ≤ n → (cbcEncrypt alg key iv p).length = p.length / 16 * 16 := by
+  induction n with
+  | zero =>
+    intro iv p hp
+    rw [cbcEncrypt, ite_eq_left (by omega)]
+    simp only [List.length_nil]
+    omega
+  | succ n ih =>
+    intro iv p hp
+    rw [cbcEncrypt]
+    by_cases h : p.length < 16
+    · rw [ite_eq_left h]
+      simp only [List.length_nil]
+      omega
+    · rw [ite_eq_right h]
+      simp only [List.length_append]
+      rw [ih _ _ (by rw [List.length_drop]; omega), List.length_drop]
+      simp only [aesBlock, leQuad32ToBytes, List.length_map, List.length_range]
+      omega
+
+theorem length_cbcDecrypt (alg : Algorithm) (key : List (BitVec 8)) (n : Nat) :
+    ∀ iv c : List (BitVec 8), iv.length = 16 → c.length ≤ n →
+      (cbcDecrypt alg key iv c).length = c.length / 16 * 16 := by
+  induction n with
+  | zero =>
+    intro iv c _ hc
+    rw [cbcDecrypt, ite_eq_left (by omega)]
+    simp only [List.length_nil]
+    omega
+  | succ n ih =>
+    intro iv c hiv hc
+    rw [cbcDecrypt]
+    by_cases h : c.length < 16
+    · rw [ite_eq_left h]
+      simp only [List.length_nil]
+      omega
+    · rw [ite_eq_right h]
+      simp only [List.length_append, List.length_zipWith]
+      rw [ih _ _ (by rw [List.length_take]; omega) (by rw [List.length_drop]; omega), List.length_drop]
+      simp only [aesBlockDecrypt, leQuad32ToBytes, List.length_map, List.length_range, hiv]
+      omega
+
+theorem flatMap_bvs_blocks (l : List (Std.Array U8 16#usize)) :
+    l.flatMap (fun b => bvs b.val) = bvs (l.flatMap (·.val)) := by
+  simp [bvs, List.map_flatMap]
+
+/-- The low-level CBC encryption as this file's callers use it. On x86_64 the
+routine needs the blocks' byte count to fit a `usize` and on aarch64 it does
+not, so the first form applies on one target and the second on the other. -/
+theorem cbc_encrypt_low (alg : Algorithm) (key : List (BitVec 8)) (k : low.x86_64.aes.AesKey)
+    (hk : ModeKeyIs alg key k) (iv : Std.Array U8 16#usize) (blocks : Slice (Std.Array U8 16#usize))
+    (hn : 16 * blocks.length ≤ Usize.max) :
+    low.x86_64.aes_cbc.encrypt k iv blocks ⦃ r => r.length = blocks.length ∧
+      bvs (r.val.flatMap (·.val)) = cbcEncrypt alg key (bvs iv.val) (bvs (blocks.val.flatMap (·.val))) ⦄ := by
+  have h : low.x86_64.aes_cbc.encrypt k iv blocks ⦃ r =>
+      r.val.flatMap (fun b => bvs b.val) =
+        cbcEncrypt alg key (bvs iv.val) (blocks.val.flatMap fun b => bvs b.val) ⦄ := by
+    first
+    | exact aes_cbc_encrypt_spec alg key k hk iv blocks hn
+    | exact aes_cbc_encrypt_spec alg key k hk iv blocks
+  apply WP.spec_mono h
+  intro r hr
+  rw [flatMap_bvs_blocks, flatMap_bvs_blocks] at hr
+  refine ⟨?_, hr⟩
+  have hlen := congrArg List.length hr
+  rw [length_cbcEncrypt alg key _ _ _ (le_refl _)] at hlen
+  simp only [bvs, List.length_map, length_flatMap16] at hlen
+  show r.val.length = blocks.val.length
+  omega
+
+/-- The low-level CBC decryption as this file's callers use it; see
+`cbc_encrypt_low`. -/
+theorem cbc_decrypt_low (alg : Algorithm) (key : List (BitVec 8)) (k : low.x86_64.aes.AesDecKey)
+    (hk : ModeDecKeyIs alg key k) (iv : Std.Array U8 16#usize) (blocks : Slice (Std.Array U8 16#usize))
+    (hn : 16 * blocks.length ≤ Usize.max) :
+    low.x86_64.aes_cbc.decrypt k iv blocks ⦃ r => r.length = blocks.length ∧
+      bvs (r.val.flatMap (·.val)) = cbcDecrypt alg key (bvs iv.val) (bvs (blocks.val.flatMap (·.val))) ⦄ := by
+  have h : low.x86_64.aes_cbc.decrypt k iv blocks ⦃ r =>
+      r.val.flatMap (fun b => bvs b.val) =
+        cbcDecrypt alg key (bvs iv.val) (blocks.val.flatMap fun b => bvs b.val) ⦄ := by
+    first
+    | exact aes_cbc_decrypt_spec alg key k hk iv blocks hn
+    | exact aes_cbc_decrypt_spec alg key k hk iv blocks
+  apply WP.spec_mono h
+  intro r hr
+  rw [flatMap_bvs_blocks, flatMap_bvs_blocks] at hr
+  refine ⟨?_, hr⟩
+  have hlen := congrArg List.length hr
+  rw [length_cbcDecrypt alg key _ _ _ (by simp [bvs]) (le_refl _)] at hlen
+  simp only [bvs, List.length_map, length_flatMap16] at hlen
+  show r.val.length = blocks.val.length
+  omega
 
 /-! ## CBC -/
 
@@ -69,7 +166,7 @@ theorem chunks_back {s : Slice U8} {p : Slice (Std.Array U8 16#usize) × Slice U
     (hback : ∀ c t, (c.val.flatMap (·.val) ++ t.val).length ≤ Usize.max →
       (back (c, t)).val = c.val.flatMap (·.val) ++ t.val) :
     p.1.val.flatMap (·.val) = s.val.take (s.length / 16 * 16) ∧ back (p.1, p.2) = s := by
-  have hf := flatMap_chunks s.val p.1.val hl hb
+  have hf := rind.modes.flatMap_chunks s.val p.1.val hl hb
   refine ⟨hf, Slice.ext _ _ ?_⟩
   rw [hback _ _ (by rw [hf, hr, List.take_append_drop]; exact Slice.length_ineq s), hf, hr,
     List.take_append_drop]
@@ -129,7 +226,7 @@ theorem aes_cbc_encrypt_blocks_spec (h : RunsAesHw) (alg : Algorithm) (key : Lis
   · have h16' : in_out.val.length % 16 = 0 := h16
     have hd : decide (rest.val.length = 0) = true := decide_eq_true (by omega)
     simp only [hd, h16, ↓reduceIte]
-    refine WP.spec_bind (WP.spec_bind (aes_cbc_encrypt_spec alg key k.key hk iv blocks
+    refine WP.spec_bind (WP.spec_bind (cbc_encrypt_low alg key k.key hk iv blocks
       (by show 16 * blocks.val.length ≤ Usize.max; omega)) (fun b hb => (WP.spec_ok _).2 hb)) ?_
     rintro blocks1 ⟨hl1, henc⟩
     have hl1' : blocks1.val.length = blocks.val.length := hl1
@@ -165,7 +262,7 @@ theorem aes_cbc_decrypt_blocks_spec (h : RunsAesHw) (alg : Algorithm) (key : Lis
   · have h16' : in_out.val.length % 16 = 0 := h16
     have hd : decide (rest.val.length = 0) = true := decide_eq_true (by omega)
     simp only [hd, h16, ↓reduceIte]
-    apply WP.spec_bind (aes_cbc_decrypt_spec alg key k.key hk iv blocks
+    apply WP.spec_bind (cbc_decrypt_low alg key k.key hk iv blocks
       (by show 16 * blocks.val.length ≤ Usize.max; omega))
     rintro blocks1 ⟨hl1, hdec⟩
     have hl1' : blocks1.val.length = blocks.val.length := hl1
@@ -220,7 +317,7 @@ theorem pkcs7Unpad_last (pre l : List (BitVec 8)) (h16 : l.length = 16) :
     have e : pre.length + 16 - n + (n - 1 - i) - pre.length = 15 - i := by omega
     simp only [e]
 
-theorem bvs_getElem! (l : List U8) {j : Nat} (hj : j < l.length) : (bvs l)[j]! = (l[j]!).bv := by
+theorem bvs_getElem!_lt (l : List U8) {j : Nat} (hj : j < l.length) : (bvs l)[j]! = (l[j]!).bv := by
   rw [getElem!_pos _ j (by rw [List.length_map]; exact hj), getElem!_pos l j hj, List.getElem_map]
 
 /-- `pkcs7Unpad_last` on a block of `U8`s. -/
@@ -232,11 +329,11 @@ theorem pkcs7Unpad_block (pre : List (BitVec 8)) (last : Std.Array U8 16#usize) 
       else none := by
   have hl : last.val.length = 16 := last.property
   have hn : (bvs last.val)[15]!.toNat = last.val[15]!.val :=
-    congrArg BitVec.toNat (bvs_getElem! _ (show 15 < last.val.length by omega))
+    congrArg BitVec.toNat (bvs_getElem!_lt _ (show 15 < last.val.length by omega))
   have hc : (∀ i < 16, i < last.val[15]!.val → (bvs last.val)[15 - i]! = (bvs last.val)[15]!) ↔
       (∀ i < 16, i < last.val[15]!.val → last.val[15 - i]! = last.val[15]!) := by
     refine forall_congr' fun i => imp_congr_right fun hi => imp_congr_right fun _ => ?_
-    rw [bvs_getElem! _ (by omega), bvs_getElem! _ (by omega), U8.eq_equiv_bv_eq]
+    rw [bvs_getElem!_lt _ (by omega), bvs_getElem!_lt _ (by omega), U8.eq_equiv_bv_eq]
   rw [pkcs7Unpad_last pre (bvs last.val) (by rw [List.length_map, hl]), hn]
   simp only [hc]
 
@@ -373,7 +470,7 @@ theorem aes_cbc_decrypting_key_decrypt_spec (h : RunsAesHw) (alg : Algorithm) (k
     exact ⟨by trivial, fun _ => hid'⟩
   have hd0 : decide (blocks.val.length = 0) = false := decide_eq_false (by omega)
   simp only [hd0, Bool.false_eq_true, ↓reduceIte]
-  apply WP.spec_bind (aes_cbc_decrypt_spec alg key k.key hk iv blocks
+  apply WP.spec_bind (cbc_decrypt_low alg key k.key hk iv blocks
     (by show 16 * blocks.val.length ≤ Usize.max; omega))
   rintro blocks1 ⟨hl1, hdec⟩
   have hl1' : blocks1.val.length = blocks.val.length := hl1
@@ -626,7 +723,7 @@ theorem aes_cbc_encrypt_vec_spec (h : RunsAesHw) (alg : Algorithm) (key : List (
   simp only [bind_ok, mid.aes_cbc.AesCbcEncryptingKey.encrypt_in_place, low.ct.secret_slice,
     low.ct.public_slice, bind_assoc_eq]
   have hwmax := Slice.length_ineq w.slice
-  refine WP.spec_bind (WP.spec_bind (aes_cbc_encrypt_spec alg key k.key hk iv blocks
+  refine WP.spec_bind (WP.spec_bind (cbc_encrypt_low alg key k.key hk iv blocks
     (by show 16 * blocks.val.length ≤ Usize.max; omega)) (fun b hb => (WP.spec_ok _).2 hb)) ?_
   rintro blocks1 ⟨hl1, henc⟩
   have hl1' : blocks1.val.length = blocks.val.length := hl1
@@ -780,7 +877,7 @@ theorem ofBe_toBEBytes (w : Nat) : ∀ (b : BitVec w), w % 8 = 0 → ofBe b.toBE
     intro b hw
     rw [BitVec.toBEBytes, BitVec.toLEBytes]
     by_cases h0 : w > 0
-    · rw [ite_eq_left h0, List.reverse_cons, ofBe_append, ← BitVec.toBEBytes,
+    · rw [ite_eq_left h0, List.reverse_cons, rind.modes.ofBe_append, ← BitVec.toBEBytes,
         ih (w - 8) (by omega) _ (by omega)]
       have h1 : ofBe [b.setWidth 8] = b.toNat % 2 ^ 8 := by simp [ofBe, BitVec.toNat_setWidth]
       rw [h1, List.length_singleton, pow_one, BitVec.toNat_setWidth, BitVec.toNat_ushiftRight,
@@ -800,14 +897,14 @@ theorem ofBe_toBEBytes (w : Nat) : ∀ (b : BitVec w), w % 8 = 0 → ofBe b.toBE
 theorem toNat_fromLEBytes : ∀ l : List (BitVec 8), (BitVec.fromLEBytes l).toNat = ofBe l.reverse
   | [] => by simp [BitVec.fromLEBytes, ofBe]
   | b :: l => by
-    have hy := ofBe_lt l.reverse
+    have hy := rind.modes.ofBe_lt l.reverse
     rw [List.length_reverse] at hy
     have hb := b.isLt
     have hp : 2 ^ (8 * (b :: l).length) = 256 ^ l.length * 256 := by
       rw [List.length_cons, Nat.mul_succ, pow_add, pow_mul]; norm_num
     have h1 : ofBe [b] = b.toNat := by simp [ofBe]
     rw [BitVec.fromLEBytes, BitVec.toNat_or, BitVec.toNat_setWidth, BitVec.toNat_shiftLeft,
-      BitVec.toNat_setWidth, toNat_fromLEBytes l, List.reverse_cons, ofBe_append, h1, List.length_singleton,
+      BitVec.toNat_setWidth, toNat_fromLEBytes l, List.reverse_cons, rind.modes.ofBe_append, h1, List.length_singleton,
       pow_one, Nat.shiftLeft_eq, hp]
     generalize ofBe l.reverse = y at hy ⊢
     have hP : 256 ≤ 256 ^ l.length * 256 := Nat.le_mul_of_pos_left _ (pow_pos (by norm_num) _)
@@ -841,10 +938,10 @@ theorem bvs_to_be_bytes128 (x : U128) : bvs (core.num.U128.to_be_bytes x).val = 
 theorem ofBe_nonce_counter (l : List (BitVec 8)) (hl : l.length = 16) :
     ofBe (l.take 12 ++ be32 (ofBe (l.drop 12))) = ofBe l := by
   have hd : (l.drop 12).length = 4 := by rw [List.length_drop, hl]
-  have hlt := ofBe_lt (l.drop 12)
+  have hlt := rind.modes.ofBe_lt (l.drop 12)
   rw [hd] at hlt
   conv_rhs => rw [← List.take_append_drop 12 l]
-  rw [ofBe_append, ofBe_append, ofBe_be32, length_be32, hd,
+  rw [rind.modes.ofBe_append, rind.modes.ofBe_append, rind.modes.ofBe_be32, rind.modes.length_be32, hd,
     Nat.mod_eq_of_lt (lt_of_lt_of_eq hlt (by norm_num))]
 
 theorem split_first_chunk12_spec (N : Usize) (hN : N.val = 12) (s : Slice U8) (h : 12 ≤ s.val.length) :

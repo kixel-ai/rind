@@ -601,15 +601,17 @@ key, from `iv`. -/
 theorem aes_cbc_encrypt_spec (alg : Algorithm) (key : List (BitVec 8)) (k : low.x86_64.aes.AesKey)
     (hk : ModeKeyIs alg key k) (iv : Std.Array U8 16#usize) (blocks : Slice (Std.Array U8 16#usize))
     (hn : 16 * blocks.length ≤ Usize.max) :
-    low.x86_64.aes_cbc.encrypt k iv blocks ⦃ r => r.length = blocks.length ∧
-      bvs (r.val.flatMap (·.val)) = cbcEncrypt alg key (bvs iv.val) (bvs (blocks.val.flatMap (·.val))) ⦄ := by
+    low.x86_64.aes_cbc.encrypt k iv blocks ⦃ r =>
+      r.val.flatMap (fun b => bvs b.val) =
+        cbcEncrypt alg key (bvs iv.val) (blocks.val.flatMap fun b => bvs b.val) ⦄ := by
   obtain ⟨-, hw, rfl, hwk, hr⟩ := hk
   obtain ⟨hs, he⟩ := hw_key_schedule hwk hr
   simp only [low.x86_64.aes_cbc.encrypt]
   apply WP.spec_mono (hw_cbc_encrypt_spec hw iv blocks hs (by have := usize_max_lt; omega))
   rintro r ⟨hl, h⟩
-  refine ⟨hl, ?_⟩
-  rw [bvs_eq_of_load rfl]
+  have e : ∀ l : List (Std.Array U8 16#usize), l.flatMap (fun b => bvs b.val) = bvs (l.flatMap (·.val)) :=
+    fun l => by simp [bvs, List.map_flatMap]
+  rw [e, e, bvs_eq_of_load rfl]
   exact cbc_encrypt_chain alg key _ he blocks.val r.val (loadBytes iv.val) hl h
 
 /-- `aes_cbc::decrypt` is SP 800-38A's CBC decryption of the blocks under the
@@ -617,15 +619,17 @@ key, from `iv`. -/
 theorem aes_cbc_decrypt_spec (alg : Algorithm) (key : List (BitVec 8)) (k : low.x86_64.aes.AesDecKey)
     (hk : ModeDecKeyIs alg key k) (iv : Std.Array U8 16#usize) (blocks : Slice (Std.Array U8 16#usize))
     (hn : 16 * blocks.length ≤ Usize.max) :
-    low.x86_64.aes_cbc.decrypt k iv blocks ⦃ r => r.length = blocks.length ∧
-      bvs (r.val.flatMap (·.val)) = cbcDecrypt alg key (bvs iv.val) (bvs (blocks.val.flatMap (·.val))) ⦄ := by
+    low.x86_64.aes_cbc.decrypt k iv blocks ⦃ r =>
+      r.val.flatMap (fun b => bvs b.val) =
+        cbcDecrypt alg key (bvs iv.val) (blocks.val.flatMap fun b => bvs b.val) ⦄ := by
   obtain ⟨-, hw, rfl, hwk, hr⟩ := hk
   obtain ⟨hs, hd⟩ := hw_dec_key_schedule hwk hr
   simp only [low.x86_64.aes_cbc.decrypt]
   apply WP.spec_mono (hw_cbc_decrypt_spec hw iv blocks hs (by have := usize_max_lt; omega))
   rintro r ⟨hl, h⟩
-  refine ⟨hl, ?_⟩
-  rw [bvs_eq_of_load rfl]
+  have e : ∀ l : List (Std.Array U8 16#usize), l.flatMap (fun b => bvs b.val) = bvs (l.flatMap (·.val)) :=
+    fun l => by simp [bvs, List.map_flatMap]
+  rw [e, e, bvs_eq_of_load rfl]
   exact cbc_decrypt_chain alg key _ hd blocks.val r.val (loadBytes iv.val) hl h
 
 end rind.x86_64
