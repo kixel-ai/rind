@@ -82,7 +82,8 @@ DROP = {
 # Compiler-internal traits that derives and auto-trait inference add or drop
 # without changing what a caller can do.
 # Drop too: it changes no signature, and rind wipes keys in fewer places than
-# aws-lc-rs frees C memory.
+# aws-lc-rs frees C memory. A type with a public field still compares it,
+# since it stops callers moving that field out.
 IGNORED_TRAITS = {
     "core::marker::StructuralPartialEq",
     "core::marker::Freeze",
@@ -165,7 +166,9 @@ class Api:
         self.paths = doc["paths"]
         self.entries = {}
         self.public = {}
-        root = self.index[str(doc["root"])]
+        # Types with a public field, which a `Drop` impl stops callers moving out.
+        self.open = set()
+        root =self.index[str(doc["root"])]
         # Items the crate exports outside the compared part, which the other
         # side names by their definition paths.
         self.walk_module(root, (), None, set())
@@ -240,7 +243,9 @@ class Api:
             )
             # A unit struct's name is also its public constructor, as are
             # `S()` and `S {}`, which have no fields at all.
-            if (ids or stripped) and not any(i is not None and self.index[str(i)]["visibility"] == "public" for i in ids):
+            if any(i is not None and self.index[str(i)]["visibility"] == "public" for i in ids):
+                self.open.add(item["id"])
+            elif ids or stripped:
                 sig["kind"] = "opaque"
         if kind in ("struct", "variant") and isinstance(sig["kind"], dict) and "tuple" in sig["kind"]:
             # Its fields are listed as children.
@@ -303,7 +308,9 @@ class Api:
                     child = self.index[str(child_id)]
                     if child["visibility"] == "public":
                         self.visit(child, path + (child["name"],), seen, owner, impl)
-            elif self.external(impl["trait"]["id"], impl["trait"]["path"]) not in IGNORED_TRAITS:
+            elif (trait := self.external(impl["trait"]["id"], impl["trait"]["path"])) not in IGNORED_TRAITS or (
+                trait == "core::ops::drop::Drop" and owner in self.open
+            ):
                 sig = {"trait": impl["trait"], "negative": impl["is_negative"]}
                 # Its associated types and consts are API; its methods are the trait's.
                 sig["assoc"] = {
