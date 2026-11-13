@@ -2,7 +2,7 @@
 
 ## Goal
 
-The maintainer decides `wipe`'s default based on measured cost. The PR reports, for every `rind-bench` benchmark on at least one x86_64 and one aarch64 host, the time with and without `rind/wipe`. The README's "Wiping keys" section states what wiping does and does not protect against. If the maintainer turns it on, the PR also moves `wipe` into `rind`'s default features.
+The maintainer decides `wipe`'s default based on measured cost. The PR reports, for every `rind-bench` benchmark on at least one x86_64 and one aarch64 host, the time with and without `rind/wipe`. The README's "Wiping keys" section states what wiping does and does not protect against. If the maintainer turns it on, the PR also makes it so: by moving `wipe` into `rind`'s default features, or, as the Plan's #609 proposes, by removing the feature so that wiping is unconditional.
 
 Non-goals: wiping the stack, and wiping anything `AGENTS.md` says not to (digest contexts, messages, other scratch). The policy on what gets wiped stays as it is. Only the default is in question.
 

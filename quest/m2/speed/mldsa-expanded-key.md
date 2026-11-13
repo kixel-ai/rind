@@ -2,7 +2,7 @@
 
 ## Goal
 
-An ML-DSA key pair or public key does its expansion when it is loaded, behind the API it has today, so each signature and each verification skips the work that depends only on the key: rebuilding the matrix `A` from its seed, and unpacking and transforming the secret vectors. BENCHMARKS.md shows sign and verify against aws-lc-rs with the key already loaded.
+An ML-DSA key pair or public key does its expansion once and keeps it, behind the API it has today, so each signature and each verification after that skips the work that depends only on the key: rebuilding the matrix `A` from its seed, and unpacking and transforming the secret vectors. When it happens is the Plan's to say: a public key expands on its first verification, not at load. BENCHMARKS.md shows sign and verify against aws-lc-rs with the key already loaded.
 
 ## Plan
 

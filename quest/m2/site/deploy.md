@@ -16,6 +16,7 @@ Decided 2026-11-12 (maintainer, /quest-plan): ✅ Cloudflare, deployed by CI (re
 - Check before the first deploy: `gh api repos/kixel-ai/rind/environments/site/deployment-branch-policies --jq '.branch_policies[].name'` prints `main` and nothing else, and `gh api repos/kixel-ai/rind/environments/site/secrets --jq '.secrets[].name'` lists both.
 - The deploy job runs on a push to `main` and names that environment. It is the only job in any workflow that does, and it does nothing but build and deploy, so the token reaches no other step. Pull requests keep the build job [the landing page](/quest/m2/site/landing.md) added, which needs no secret.
 - Deploy on any merge that changes `site/` or a file the build reads, and say in the workflow which files those are. If that list is hard to keep right, deploy on every merge: the build is small.
+- A release redeploys too. [The migration pages](/quest/m2/site/migrate.md) print the versions crates.io holds, and release-plz's version bump merges to `main` before the crates publish, so the deploy that push starts can build too early. Run the deploy again when the release workflow finishes on `main`, and confirm the `site` environment's branch rule admits that run before relying on it.
 - After the first deploy, fetch the site and its `llms.txt` from outside and put the result in the PR.
 
 ## Required
