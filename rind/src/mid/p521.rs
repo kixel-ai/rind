@@ -418,6 +418,7 @@ impl AffinePoint {
     }
 
     /// Returns table[i - 1] for a public index > 0
+    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
     fn public_lookup_comb(table: &[u64; 288], index: u8) -> Self {
         let offs = (index - 1) as usize * 18;
         let mut r = Self::default();
@@ -425,6 +426,7 @@ impl AffinePoint {
         r
     }
 
+    #[cfg(any(not(any(rind_backend = "arm", rind_backend = "portable")), test))]
     fn negate_y(&mut self) {
         let neg_y = self.y().negate();
         self.xy[Self::Y].copy_from_slice(&neg_y.0);
@@ -575,10 +577,55 @@ impl JacobianPoint {
             1 => util::public_naf::<5>(&p.0, &mut p_digits),
             _ => util::public_naf::<6>(&p.0, &mut p_digits),
         }
+        Self::public_twin_multiply_naf(&g_digits, &p_digits, odd_multiples)
+    }
+
+    /// `public_twin_multiply` from the digits, by the portable backend's own
+    /// routine, which keeps its coordinates in its field's limbs.
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
+    fn public_twin_multiply_naf(
+        g_digits: &[i8; 522],
+        p_digits: &[i8; 522],
+        odd_multiples: &[&[AffinePoint; 8]],
+    ) -> Self {
+        // G's odd multiples are the comb table's even rows.
+        let (g_rows, _) = precomp::CURVE_GENERATOR_PRECOMP_COMB[0].as_chunks::<18>();
+        let g_multiples: [[u64; 18]; 8] = core::array::from_fn(|i| g_rows[2 * i]);
+        let mut p_multiples = [[0; 18]; 16];
+        for (row, point) in p_multiples
+            .iter_mut()
+            .zip(odd_multiples.iter().flat_map(|row| row.iter()))
+        {
+            *row = point.xy;
+        }
+
+        let mut r = Self::infinity();
+        low::p521_public_twin_multiply(
+            &mut r.xyz,
+            &low::P521Naf {
+                digits: g_digits,
+                odd_multiples: &g_multiples,
+            },
+            &low::P521Naf {
+                digits: p_digits,
+                odd_multiples: &p_multiples[..odd_multiples.len() * 8],
+            },
+        );
+        r
+    }
+
+    /// `public_twin_multiply` from the digits, composed from s2n-bignum's
+    /// point routines.
+    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
+    fn public_twin_multiply_naf(
+        g_digits: &[i8; 522],
+        p_digits: &[i8; 522],
+        odd_multiples: &[&[AffinePoint; 8]],
+    ) -> Self {
         let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP_COMB[0];
 
         let mut result = Self::infinity();
-        for (g_digit, p_digit) in g_digits.iter().zip(&p_digits).rev() {
+        for (g_digit, p_digit) in g_digits.iter().zip(p_digits).rev() {
             // `p521_jdouble` requires a nonzero z.
             if !result.public_is_infinity() {
                 result = result.double();
@@ -606,6 +653,7 @@ impl JacobianPoint {
     ///
     /// `p521_jmixadd` is proven only for unequal points, so points with the
     /// same x never reach it.
+    #[cfg(any(not(any(rind_backend = "arm", rind_backend = "portable")), test))]
     fn public_add_affine(&self, p: &AffinePoint) -> Self {
         if self.public_is_infinity() {
             return Self::from_affine(p);
@@ -1195,7 +1243,19 @@ mod tests {
             r.xyz[JacobianPoint::Z].copy_from_slice(&l.0);
             r
         };
-        let plus = |s: &Scalar, k: u64| Scalar([s.0[0] + k, s.0[1], s.0[2], s.0[3], s.0[4], s.0[5], s.0[6], s.0[7], s.0[8]]);
+        let plus = |s: &Scalar, k: u64| {
+            Scalar([
+                s.0[0] + k,
+                s.0[1],
+                s.0[2],
+                s.0[3],
+                s.0[4],
+                s.0[5],
+                s.0[6],
+                s.0[7],
+                s.0[8],
+            ])
+        };
 
         let g = jacobian(&CURVE_GENERATOR);
         let gx = Scalar(CURVE_GENERATOR.x().0);
@@ -1205,13 +1265,14 @@ mod tests {
         // A point whose x is n + k, at or above n, which reduces to k: the
         // first x above n + 1 whose y² is a square, whose root is y²'s
         // (p + 1) / 4 = 2^519th power.
-        let point = (2..)
-            .find_map(|k| {
-                let x = FieldElement(plus(&Scalar(CURVE_ORDER), k).0);
-                let y2 = x.sqr().add(&CURVE_A).mul(&x).add(&CURVE_B);
-                let y = (0..519).fold(y2, |y, _| y.sqr());
-                y.sqr().public_eq(&y2).then(|| (k, AffinePoint::from_xy(x, y)))
-            });
+        let point = (2..).find_map(|k| {
+            let x = FieldElement(plus(&Scalar(CURVE_ORDER), k).0);
+            let y2 = x.sqr().add(&CURVE_A).mul(&x).add(&CURVE_B);
+            let y = (0..519).fold(y2, |y, _| y.sqr());
+            y.sqr()
+                .public_eq(&y2)
+                .then(|| (k, AffinePoint::from_xy(x, y)))
+        });
         let (k, point) = point.unwrap();
         assert!(point.on_curve());
         let p = jacobian(&point);
