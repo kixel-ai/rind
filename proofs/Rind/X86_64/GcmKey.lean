@@ -1,4 +1,4 @@
-import Rind.X86_64.AesGcmAead
+import Rind.X86_64.AesGcmAny
 import Rind.X86_64.AeadDispatch
 open Aeneas Aeneas.Std Result rind.vale
 
@@ -364,16 +364,6 @@ def aead.gcm.Key.open_in_place (self : aead.gcm.Key) (iv : aead.gcm.Iv) (aad in_
 
 /-! ## The glue -/
 
-/-- `try_into` of a slice of length `N` to an array holds the slice's bytes. -/
-theorem try_from_len (N : Usize) (s : Slice U8) (h : s.length = N.val) :
-    ∃ a : Std.Array U8 N, core.array.TryFromSharedArraySlice.try_from N s = ok (.Ok a) ∧
-      a.val = s.val := by
-  have hs : s.len = N := by scalar_tac
-  unfold core.array.TryFromSharedArraySlice.try_from
-  rw [dite_eq_left hs]
-  refine ⟨_, rfl, ?_⟩
-  simp [Std.Array.from_val]
-
 /-- `Key::new` for AES-128, AES-192, or AES-256: a key of the algorithm's
 length holds AES-GCM, and any other length is refused. -/
 theorem gcm_key_new (h : RunsAesGcm) (algorithm : cipher.Algorithm) (alg : Algorithm)
@@ -390,12 +380,12 @@ theorem gcm_key_new (h : RunsAesGcm) (algorithm : cipher.Algorithm) (alg : Algor
       ((A = aead.AES_128_GCM ∧ alg = .AES_128) ∨ (A = aead.AES_192_GCM ∧ alg = .AES_192) ∨
         (A = aead.AES_256_GCM ∧ alg = .AES_256)) ∧ algorithm.key_len.val = 4 * nk alg := by
     rcases halg with ⟨h1, rfl⟩ | ⟨h1, rfl⟩ | ⟨h1, rfl⟩
-    · exact ⟨_, if_pos h1, Or.inl ⟨rfl, rfl⟩, by rw [h1]; rfl⟩
+    · exact ⟨_, ite_eq_left h1, Or.inl ⟨rfl, rfl⟩, by rw [h1]; rfl⟩
     · have h16 : ¬ algorithm.key_len = 16#usize := by scalar_tac
-      exact ⟨_, by rw [if_neg h16, if_pos h1], Or.inr (Or.inl ⟨rfl, rfl⟩), by rw [h1]; rfl⟩
+      exact ⟨_, by rw [ite_eq_right h16, ite_eq_left h1], Or.inr (Or.inl ⟨rfl, rfl⟩), by rw [h1]; rfl⟩
     · have h16 : ¬ algorithm.key_len = 16#usize := by scalar_tac
       have h24 : ¬ algorithm.key_len = 24#usize := by scalar_tac
-      exact ⟨_, by rw [if_neg h16, if_neg h24], Or.inr (Or.inr ⟨rfl, rfl⟩), by rw [h1]; rfl⟩
+      exact ⟨_, by rw [ite_eq_right h16, ite_eq_right h24], Or.inr (Or.inr ⟨rfl, rfl⟩), by rw [h1]; rfl⟩
   unfold aead.gcm.Key.new
   dsimp only
   rw [hA]
