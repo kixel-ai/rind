@@ -33,10 +33,13 @@ final class CbcIv {
     fillRandom(bytes);
   }
 
-  /// Takes [bytes], which must be 16 bytes long and which the caller
-  /// promises an attacker cannot predict: never a constant, zero, or counter.
+  /// Takes [bytes], which the caller promises an attacker cannot predict:
+  /// never a constant, zero, or counter. Throws [RindError.wrongLength]
+  /// unless it is 16 bytes.
   CbcIv.assumeUnpredictable(Uint8List bytes)
-    : bytes = Uint8List.fromList(bytes);
+    : bytes = bytes.length == 16
+          ? Uint8List.fromList(bytes)
+          : throw const RindException(RindError.wrongLength);
 
   /// The IV's bytes, which the receiver needs to decrypt.
   final Uint8List bytes;
@@ -148,7 +151,8 @@ final class AesCtr extends _Handle {
   /// [counterBits] bits of each counter block.
   ///
   /// Throws [RindError.wrongLength] unless [key] is
-  /// [CipherAlgorithm.keyLength] bytes and [counterBits] is 1 to 128.
+  /// [CipherAlgorithm.keyLength] bytes and [counterBits] is 1 to 128, and
+  /// [RangeError] for a [counterBits] that is negative or over 32 bits.
   AesCtr(CipherAlgorithm algorithm, Uint8List key, int counterBits)
     : super(
         _newHandle(
@@ -199,7 +203,8 @@ final class ChaCha20 extends _Handle {
   /// operation.
   ///
   /// Throws [RindError.wrongLength] if [data] needs more blocks than remain
-  /// before the counter wraps: wrapping would repeat keystream.
+  /// before the counter wraps, since wrapping would repeat keystream, and
+  /// [RangeError] unless [counter] fits in 32 bits.
   Uint8List applyKeystream(Uint8List nonce, int counter, Uint8List data) {
     final inOut = Uint8List.fromList(data);
     _check(

@@ -618,10 +618,12 @@ pub unsafe extern "C" fn rind_dart_aes_cbc_encrypt(
         let (key, iv, in_out) =
             unsafe { (handle(key), input(iv, iv_len), output(in_out, in_out_len)) };
         let iv = cipher::CbcIv::assume_unpredictable(*block(iv)?);
-        let padded_len = if pad == 0 { len } else { (len / 16 + 1) * 16 };
-        if padded_len > in_out_len {
-            return Err(Misuse("no room for the plaintext and padding").into());
+        let padded_len = match pad {
+            0 => Some(len),
+            _ => (len / 16 + 1).checked_mul(16),
         }
+        .filter(|&padded_len| padded_len <= in_out_len)
+        .ok_or(Misuse("no room for the plaintext and padding"))?;
         if pad == 0 {
             key.encrypt_blocks(iv, &mut in_out[..len])?;
         } else {

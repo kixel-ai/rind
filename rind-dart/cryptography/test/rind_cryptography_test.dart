@@ -541,6 +541,33 @@ void main() {
       }
     });
 
+    test('AES-CBC without a MAC ignores AAD, as the Dart one does', () async {
+      final cipher = _rind.aesCbc(macAlgorithm: MacAlgorithm.empty);
+      const dart = DartAesCbc(macAlgorithm: MacAlgorithm.empty);
+      final secretKey = await cipher.newSecretKey();
+      final nonce = cipher.newNonce();
+      final box = await cipher.encrypt(
+        [1, 2, 3],
+        secretKey: secretKey,
+        nonce: nonce,
+        aad: [1],
+      );
+      expect(
+        box,
+        await dart.encrypt(
+          [1, 2, 3],
+          secretKey: secretKey,
+          nonce: nonce,
+          aad: [1],
+        ),
+      );
+      expect(await cipher.decrypt(box, secretKey: secretKey, aad: [2]), [
+        1,
+        2,
+        3,
+      ]);
+    });
+
     test('AES-CBC without a MAC refuses malformed padding', () async {
       final cipher = _rind.aesCbc(macAlgorithm: MacAlgorithm.empty);
       final secretKey = await cipher.newSecretKey();

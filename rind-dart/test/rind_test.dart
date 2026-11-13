@@ -297,6 +297,10 @@ void main() {
         throwsRind(RindError.wrongLength),
       );
       expect(
+        () => CbcIv.assumeUnpredictable(Uint8List(8)),
+        throwsRind(RindError.wrongLength),
+      );
+      expect(
         () => AesCbcEncryptingKey(CipherAlgorithm.aes256, key),
         throwsRind(RindError.wrongLength),
       );
