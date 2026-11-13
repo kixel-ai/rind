@@ -267,7 +267,7 @@ exclude_re = [
   # which no mutation run sets; `fips_rng`'s tests cover what it calls.
   'rind/src/mid/rng\.rs:29:\d+: replace <impl RandomSource for SystemRandom>::fill -> Result<\(\), Error> with Ok\(\(\)\)$',
   # Wipes a thread's DRBG as the thread exits, where no test can read it;
-  # `high::hmac_drbg::tests::zeroise_wipes_the_state_under_wipe` checks the wipe.
+  # `high::hmac_drbg::tests::zeroise_wipes_the_state` checks the wipe.
   'rind/src/fips_rng\.rs:\d+:\d+: replace <impl Drop for ThreadDrbg>::drop with \(\)$',
   # Wipes a key inside a type whose own `Drop` wipes all of it, which
   # rind/tests/zeroing.rs checks.

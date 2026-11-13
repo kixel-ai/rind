@@ -4,7 +4,7 @@
 //! Every function returns an `isize`: a byte count or zero on success, or a
 //! negative [`Status`] code. Keys and streaming states are boxed handles that
 //! the Dart side frees, through a `NativeFinalizer`, with the matching
-//! `*_free` function; dropping one wipes it, as rind wipes its keys.
+//! `*_free` function; freeing a key wipes it, as rind wipes its keys.
 //! Algorithms are small integer ids, matched by `lib/src/ffi.dart`.
 //!
 //! A pointer and length pair may be dangling or null when the length is
@@ -151,7 +151,7 @@ unsafe fn store<T>(out: *mut *mut T, value: T) -> usize {
 
 macro_rules! free {
     ($($name:ident: $ty:ty;)*) => {$(
-        /// Drops the handle, freeing what it holds without wiping it.
+        /// Drops the handle, wiping a key as it frees it.
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn $name(handle: *mut $ty) {
             if !handle.is_null() {
