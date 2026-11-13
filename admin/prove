@@ -243,12 +243,29 @@ asm_function() {
         "$obj" "$dest"
 }
 
-# Writes to `$out/s2n-bignum` the files of s2n-bignum's x86 model that
+# Takes `$out/<name>.lock`, waiting while another run in this worktree holds
+# it, until `release <name>` or exit. `scratch` guards what every run and
+# session rewrites: the asm build and its symbol index, and the submodule's
+# checkout. `hol-light` and `cosim` guard their own directories under `$out`
+# for a whole run. Everything else a run writes is its own.
+declare -A held
+hold() {
+    local fd
+    exec {fd}>"$out/$1.lock"
+    flock "$fd"
+    held[$1]=$fd
+}
+release() {
+    flock -u "${held[$1]}"
+}
+
+# Writes to `model` the files of s2n-bignum's x86 model that
 # `proofs/hol-light/s2n-bignum/x86.patch` changes, each the copy that
 # directory vendors or else the submodule's, with the patch applied, which
 # fails unless every hunk applies exactly. HOL Light loads them ahead of both.
+# The caller holds `scratch`, since this checks the submodule out.
 s2n_bignum_model() {
-    local model=$out/s2n-bignum carried=proofs/hol-light/s2n-bignum file
+    local model=$1 carried=proofs/hol-light/s2n-bignum file
     git submodule update --init --depth 1 thirdparty/s2n-bignum
     rm -rf "$model"
     while read -r file; do
@@ -290,13 +307,16 @@ hol_light_specs=(
 )
 hol_light() {
     local dir=$out/hol-light arches arch file proof spec
-    s2n_bignum_model
+    hold hol-light
+    hold scratch
     rm -rf "$dir"
+    s2n_bignum_model "$dir/s2n-bignum"
     arches=$(printf '%s\n' "${hol_light_proofs[@]}" | cut -d' ' -f1 | sort -u)
     for arch in $arches; do
-        hol_light_objects "$arch"
+        hol_light_objects "$arch" "$dir/$arch"
         echo 'let prove_start = Unix.time ();;' >"$dir/$arch.ml"
     done
+    release scratch
     for proof in "${hol_light_proofs[@]}"; do
         read -r arch file _ <<<"$proof"
         echo "loadt \"$arch/${file%.*}.ml\";;" >>"$dir/$arch.ml"
@@ -312,11 +332,11 @@ hol_light() {
     done
 }
 
-# Writes to `$out/hol-light/<arch>/` the object code each of the target's
-# proofs reads, the bytes `asm_block` writes or the object `asm_function`
-# writes.
+# Writes to `dir` the object code each of `arch`'s proofs reads, the bytes
+# `asm_block` writes or the object `asm_function` writes. The caller holds
+# `scratch`, since this rebuilds the asm.
 hol_light_objects() {
-    local arch=$1 dir=$out/hol-light/$1 proof parch file path
+    local arch=$1 dir=$2 proof parch file path
     build_asm "$arch"
     rm -rf "$dir"
     mkdir -p "$dir"
@@ -332,12 +352,12 @@ hol_light_objects() {
 
 # Compiles `dir/name.ml` into `dir/name.native`, as s2n-bignum's
 # `tools/build-proof.sh` compiles each of its proofs, with rind's HOL Light
-# files, the model `s2n_bignum_model` writes, what
+# files, the model `s2n_bignum_model` writes to `dir/s2n-bignum`, what
 # `proofs/hol-light/s2n-bignum/` carries, and the submodule on the load path,
 # in that order.
 hol_light_compile() {
     local dir=$1 name=$2 root=$PWD
-    (cd "$dir" && HOLLIGHT_LOAD_PATH="$root/proofs/hol-light:$root/$out/s2n-bignum:$root/proofs/hol-light/s2n-bignum:$root/thirdparty/s2n-bignum" \
+    (cd "$dir" && HOLLIGHT_LOAD_PATH="$root/proofs/hol-light:$root/$dir/s2n-bignum:$root/proofs/hol-light/s2n-bignum:$root/thirdparty/s2n-bignum" \
         ocaml "$HOLLIGHT_DIR/inline_load.ml" "$name.ml" "$name-inlined.ml")
     OCAMLRUNPARAM=l=2000000000 ocamlopt.byte -pp "$("$HOLLIGHT_DIR/hol.sh" -pp)" \
         -I "$HOLLIGHT_DIR" -I +unix -c hol_lib.cmxa "$dir/$name-inlined.ml" -o "$dir/$name.cmx" -w -a
@@ -356,10 +376,13 @@ cosim() {
         echo "admin/prove: cosim needs an x86_64 CPU with AVX2" >&2
         return 1
     fi
-    s2n_bignum_model
+    hold cosim
+    hold scratch
     rm -rf "$dir"
-    mkdir -p "$dir/tmp" "$out/s2n-bignum/x86"
-    printf 'let iclasses_regreg = [];;\nlet iclasses_simplemem = [];;\n' >"$out/s2n-bignum/x86/x86-insns.ml"
+    s2n_bignum_model "$dir/s2n-bignum"
+    release scratch
+    mkdir -p "$dir/tmp" "$dir/s2n-bignum/x86"
+    printf 'let iclasses_regreg = [];;\nlet iclasses_simplemem = [];;\n' >"$dir/s2n-bignum/x86/x86-insns.ml"
     echo 'loadt "x86-cosim.ml";;' >"$dir/cosim.ml"
     hol_light_compile "$dir" cosim
     (cd "$dir" && TMPDIR="$root/$dir/tmp" S2N_BIGNUM_SEMATEST_CASES=1 \
@@ -378,23 +401,21 @@ declare -A hol_light_base=([x86_64]=x86/proofs/base.ml [aarch64]=arm/proofs/base
 # the proofs to read. With `file`, it loads the file and exits, failing if any
 # of it fails; otherwise it reads OCaml from stdin. Loading the base file
 # takes minutes, so the session restores an image `session_image`
-# checkpointed after it, in under a second. Sessions in one worktree prepare
-# one at a time, since each rewrites what `$out` holds, and then run at once.
+# checkpointed after it, in under a second. It holds `scratch` only while it
+# prepares, so it runs beside other sessions and proof runs.
 session() {
-    local arch=$1 file=$2 root=$PWD setup lock
-    exec {lock}>"$out/session.lock"
-    flock "$lock"
+    local arch=$1 file=$2 root=$PWD setup
+    hold scratch
     git submodule update --init --depth 1 thirdparty/s2n-bignum
     if [[ -n $(git -C thirdparty/s2n-bignum status --porcelain) ]]; then
         echo "admin/prove: thirdparty/s2n-bignum has uncommitted changes, which its commit does not name" >&2
         return 1
     fi
-    hol_light_objects "$arch"
     session_dir=$(mktemp -d "$root/$out/session.XXXXXX")
     trap 'rm -rf "$session_dir"' EXIT
-    cp -r "$out/hol-light/$arch" "$session_dir/$arch"
+    hol_light_objects "$arch" "$session_dir/$arch"
     session_image "$arch"
-    exec {lock}>&-
+    release scratch
     # Marks the image used, for `session_image` to keep it.
     touch "$image"
     # The image keeps the load path it was built with, so this rebinds it to
@@ -427,7 +448,7 @@ ocaml_string() {
 
 # Sets `image` to the directory of the image `session` restores for `arch`:
 # HOL Light, checkpointed by DMTCP once the target's base file has loaded,
-# beside a copy of the patched model `s2n_bignum_model` writes. It sets a
+# beside the patched model `s2n_bignum_model` writes for it. It sets a
 # variable rather than printing, since a command substitution would not exit
 # on a failure while it builds the image. It builds the image unless
 # one has the same inputs: HOL Light, DMTCP, the submodule's commit, and what
@@ -462,11 +483,10 @@ let () = needs \"$base\"; ignore (input_line stdin); Gc.compact (); print_endlin
     exec {lock}>"$image.lock"
     flock "$lock"
     if [[ ! -d $image ]]; then
-        s2n_bignum_model
         find "$cache" -mindepth 1 -maxdepth 1 -name "$arch-*" -mtime +7 -exec rm -rf {} +
         rm -rf "$build"
         mkdir -p "$build"
-        cp -r "$out/s2n-bignum" "$build/s2n-bignum"
+        s2n_bignum_model "$build/s2n-bignum"
         cp -r proofs/hol-light/s2n-bignum "$build/carried"
         printf '%s\n' "$init" >"$build/init.ml"
         mkfifo "$build/stdin"
@@ -553,6 +573,7 @@ routine_layout() {
 # proofs, with the GNU assembler.
 bytes() {
     local dir=$out/bytes arch kind path name obj sym target found
+    hold scratch
     git submodule update --init --depth 1 thirdparty/s2n-bignum
     rm -rf "$dir"
     for arch in x86_64 aarch64; do
