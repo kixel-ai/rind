@@ -419,7 +419,9 @@ class Unordered(list):
 def elide(impl):
     """An impl header with each lifetime parameter it names only once written as `'_`."""
     # A lifetime the trait, its associated items, or the method also name relates them, so it stays.
-    named = [impl["for"], impl["generics"]["where_predicates"], impl.get("trait"), impl.get("assoc"), impl.get("item")]
+    # So does a type or const parameter's inline bound; a lifetime's own entry is its binder.
+    bounds = [p["kind"] for p in impl["generics"]["params"] if "lifetime" not in p["kind"]]
+    named = [impl["for"], impl["generics"]["where_predicates"], bounds, impl.get("trait"), impl.get("assoc"), impl.get("item")]
     uses = collections.Counter(re.findall(r"'[\w]+", json.dumps(named)))
     free = {
         p["name"]

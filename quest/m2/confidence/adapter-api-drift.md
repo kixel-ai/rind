@@ -20,3 +20,5 @@ Decisions (2026-11-13):
 
 `admin/adapter-api.drift` holds the full signatures; rerun `admin/adapter-api --bless` after each fix.
 [moq-dev/rind#679](https://github.com/moq-dev/rind/pull/679) changes rind-aws-lc-rs; rebase this onto it.
+
+The check itself has one known gap (CodeRabbit on #698, 2026-11-13): impls on an unexported type that a public item names, such as `impl RsaEncoding for Padding` behind ring's `RSA_PKCS1_SHA256`, are not compared, because the type renders as `$private` and is never visited. Collect the impls of exported traits for such types, keeping sealing traits out, before deleting the drift file.
