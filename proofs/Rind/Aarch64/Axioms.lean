@@ -9,6 +9,7 @@ import Rind.Aarch64.Sha3
 import Rind.Aarch64.P256Signature
 import Rind.Aarch64.AesModesLow
 import Rind.Aarch64.AesKw
+import Rind.Aarch64.AesModesApi
 open rind.aarch64
 
 /-!
@@ -519,3 +520,35 @@ A change here is a change to the trust base.
  ct_compare_bytes_spec] -/
 #guard_msgs in
 #print axioms kek_unwrap_padded_spec
+
+/-- info: 'rind.aarch64.aes_ctr_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_ctr_new_spec
+
+/-- info: 'rind.aarch64.aes_ctr_apply_keystream_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_ctr_apply_keystream_spec
+
+/-- info: 'rind.aarch64.aes_cbc_encrypting_key_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_cbc_encrypting_key_new_spec
+
+/-- info: 'rind.aarch64.aes_cbc_decrypting_key_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_cbc_decrypting_key_new_spec
+
+/-- info: 'rind.aarch64.aes_cbc_encrypt_blocks_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_cbc_encrypt_blocks_spec
+
+/-- info: 'rind.aarch64.aes_cbc_decrypt_blocks_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_cbc_decrypt_blocks_spec
+
+/-- info: 'rind.aarch64.aes_cbc_encrypt_vec_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_cbc_encrypt_vec_spec
+
+/-- info: 'rind.aarch64.aes_cbc_decrypting_key_decrypt_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_cbc_decrypting_key_decrypt_spec
