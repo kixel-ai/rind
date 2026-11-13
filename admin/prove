@@ -741,8 +741,10 @@ extract() {
         --dest-file "$PWD/../$out/$arch.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
     rm -rf "$out/lean"
+    # x86_64's generator table rows are 512-word literals, which elaborate
+    # past Aeneas's default recursion depth of 2048.
     aeneas -backend lean -split-files -abort-on-error \
-        -no-progress-bar -dest "$out/lean" -subdir "Rind/$dir" \
+        -no-progress-bar -max-recdepth 4096 -dest "$out/lean" -subdir "Rind/$dir" \
         -namespace "rind.$arch" "$out/$arch.llbc"
     cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
 }
