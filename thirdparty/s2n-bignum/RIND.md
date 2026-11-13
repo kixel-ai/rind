@@ -10,7 +10,8 @@ Base: `b4f17ee743ebc9b53a26c3cd1908f50f0658314f`
 Every file here is upstream's at that commit, unchanged, except this one and
 those listed under "Changed files", so each change can be offered upstream.
 `admin/regenerate` fails unless that holds: each file this lists differs from
-upstream's, or upstream has none, and every other file is upstream's.
+upstream's, or one of them lacks it, and every other file of either is the
+same in both.
 
 ## Moving the base
 
