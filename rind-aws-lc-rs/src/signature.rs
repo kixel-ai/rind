@@ -1,5 +1,5 @@
-//! Public key signatures: ECDSA on P-256, P-384, and P-521, RSA, and
-//! Ed25519.
+//! Public key signatures: ECDSA on P-256, P-384, and P-521, RSA, Ed25519,
+//! and ML-DSA.
 //!
 //! Calls that take a [`rand::SecureRandom`] to sign draw from the system
 //! random source inside rind, which `rng`, the only `SecureRandom`, also is.
@@ -17,6 +17,10 @@ use crate::encoding::{
     EcPublicKeyCompressedBin, EcPublicKeyUncompressedBin, Pkcs8V1Der, Pkcs8V2Der, PublicKeyX509Der,
 };
 use crate::error::{KeyRejected, Unspecified, unspecified};
+pub use crate::pqdsa::{
+    PqdsaKeyPair, PqdsaPrivateKey, PqdsaPublicKey, PqdsaSigningAlgorithm,
+    PqdsaVerificationAlgorithm,
+};
 pub use crate::rsa::signing::{
     RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384,
     RSA_PSS_SHA512, RsaEncoding, RsaSignatureEncoding,
@@ -959,3 +963,27 @@ impl AsDer<PublicKeyX509Der<'static>> for Ed25519PublicKey {
         Ok(PublicKeyX509Der::new(der))
     }
 }
+
+/// ML-DSA-44 verification.
+pub const ML_DSA_44: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
+    id: &crate::pqdsa::AlgorithmID::ML_DSA_44,
+};
+
+/// ML-DSA-65 verification.
+pub const ML_DSA_65: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
+    id: &crate::pqdsa::AlgorithmID::ML_DSA_65,
+};
+
+/// ML-DSA-87 verification.
+pub const ML_DSA_87: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
+    id: &crate::pqdsa::AlgorithmID::ML_DSA_87,
+};
+
+/// ML-DSA-44 signing.
+pub const ML_DSA_44_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_44);
+
+/// ML-DSA-65 signing.
+pub const ML_DSA_65_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_65);
+
+/// ML-DSA-87 signing.
+pub const ML_DSA_87_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_87);

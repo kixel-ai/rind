@@ -29,6 +29,7 @@ pub mod signature;
 
 mod buffer;
 mod der;
+mod pqdsa;
 mod wipe;
 
 /// Does nothing: rind needs no initialization. aws-lc-rs initializes AWS-LC here.
