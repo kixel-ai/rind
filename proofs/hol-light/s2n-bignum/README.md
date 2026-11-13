@@ -2,15 +2,14 @@
 
 rind's HOL Light proofs build on
 [s2n-bignum](https://github.com/awslabs/s2n-bignum) at the commit of rind's
-`thirdparty/s2n-bignum` submodule. This directory is rind's fork of it:
-every file rind changes or adds, each listed below so it can be offered
-upstream, as [CONTRIBUTING.md](/CONTRIBUTING.md#upstream) asks. HOL Light
-loads it ahead of the submodule.
+`thirdparty/s2n-bignum` submodule. This directory holds everything rind adds
+to it, each listed below so it can be offered upstream. HOL Light loads it
+ahead of the submodule.
 
 ## Specs from unmerged pull requests
 
-Each is the pull request's file at its path in s2n-bignum, so far unchanged
-by rind, and a submodule bump past its merge deletes it.
+Each is the pull request's file unchanged, at its path in s2n-bignum, so a
+submodule bump past its merge deletes it.
 
 - `x86/proofs/utils/sha256_spec.ml`: SHA-256's FIPS 180-4 spec, from
   [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) at

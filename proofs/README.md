@@ -631,7 +631,7 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
 ## Layout
 
 - `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine, and
-  `hol-light/s2n-bignum/`, rind's fork of s2n-bignum: unmerged specs and
+  `hol-light/s2n-bignum/`, what they add to s2n-bignum: unmerged specs and
   rind's additions to the x86 model, with its cosimulation.
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
   writes and git ignores.
