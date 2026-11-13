@@ -49,7 +49,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   # Each shard's estimated mutant time, leaving the 300-minute job limit room
-  # for setup, the baseline build and test (up to 31 minutes under SDE), and
+  # for setup, the baseline build and test (up to 35 minutes under SDE), and
   # mutants slower than the mean.
   SHARD_SECONDS: 10800
 
@@ -266,7 +266,7 @@ jobs:
           [ -z "$DIFF" ] || scope=(--in-diff "$RUNNER_TEMP/changes.diff")
           count=$(nix develop --command admin/mutants --avx512 "${crate[@]}" ${scope[@]+"${scope[@]}"} \
             --iterate --list --output "$RUNNER_TEMP/iterate" | wc -l)
-          shards=$(((count * 1800 + SHARD_SECONDS - 1) / SHARD_SECONDS))
+          shards=$(((count * 2100 + SHARD_SECONDS - 1) / SHARD_SECONDS))
           [ "$shards" -le 256 ] || { echo "::error::$shards jobs, more than a matrix's 256"; exit 1; }
           echo "avx512: $count mutants in $shards jobs" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "shards=$(jq -c -n --argjson n "$shards" '[range($n)]')" >> "$GITHUB_OUTPUT"
@@ -281,8 +281,8 @@ jobs:
           retention-days: 14
 
   # Retests what the x86_64 shards missed, and the files only AVX-512 runs,
-  # under SDE's Sapphire Rapids model, where a mutant the tests miss takes
-  # about 30 minutes, as most here do.
+  # under SDE's Sapphire Rapids model, where a mutant the tests miss, as most
+  # here are, takes 14 to 35 minutes, by the runner's CPU.
   avx512:
     needs: [shards, avx512-shards]
     # A skipped `mutants` would skip this too without the status check.
