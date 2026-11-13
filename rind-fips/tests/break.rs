@@ -7,6 +7,7 @@
 //!
 //! Each case runs a trigger test of this binary again in a child, which
 //! loads the module with the variable set.
+#![cfg(rind_fips_module)]
 #![cfg(feature = "__break_tests")]
 
 use std::process::Command;

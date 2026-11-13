@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
+// The module builds only for glibc Linux on x86_64 and aarch64; elsewhere
+// the crate is empty, and its build script says so.
+#![cfg(rind_fips_module)]
 #![doc = include_str!("../README.md")]
 #![warn(
     clippy::undocumented_unsafe_blocks,

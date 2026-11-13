@@ -55,6 +55,40 @@ extern "C" fn init() {
     if !integrity::check() {
         rind::fips::fail("integrity");
     }
+    // SAFETY: the handlers are `extern "C"` and never unwind.
+    if unsafe { pthread_atfork(Some(fork_prepare), Some(fork_release), Some(fork_release)) } != 0 {
+        // Only out of memory, at load.
+        std::eprintln!("rind-fips: cannot register its fork handlers");
+        std::process::abort();
+    }
+}
+
+unsafe extern "C" {
+    fn pthread_atfork(
+        prepare: Option<extern "C" fn()>,
+        parent: Option<extern "C" fn()>,
+        child: Option<extern "C" fn()>,
+    ) -> core::ffi::c_int;
+}
+
+std::thread_local! {
+    /// The DRBGs' hold, from a `fork` in this thread's prepare handler to
+    /// its parent's or child's handler.
+    static FORK: core::cell::RefCell<Option<rind::fips::DrbgHold>> =
+        const { core::cell::RefCell::new(None) };
+}
+
+/// Holds the DRBGs across `fork`, so a child of a process whose other
+/// threads were drawing can still draw, and wipe them at exit.
+extern "C" fn fork_prepare() {
+    let hold = rind::fips::hold_drbgs();
+    // A thread whose locals are torn down forks without the hold, which
+    // drops here.
+    let _ = FORK.try_with(move |fork| fork.replace(Some(hold)));
+}
+
+extern "C" fn fork_release() {
+    let _ = FORK.try_with(|fork| fork.take());
 }
 
 /// Runs as the process exits, after the exiting thread's destructors: wipes

@@ -3,6 +3,7 @@
 //! HMAC, HKDF, and PBKDF2 through the module agree with rind's, which its
 //! own tests check against Wycheproof and aws-lc-rs, and PBKDF2 refuses
 //! what SP 800-132 does not approve.
+#![cfg(rind_fips_module)]
 
 use std::num::NonZeroU32;
 

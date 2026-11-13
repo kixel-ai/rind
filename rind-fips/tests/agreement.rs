@@ -4,6 +4,7 @@
 //! against Wycheproof and aws-lc-rs: keys made on either side work on the
 //! other, every encoding round-trips byte for byte, and every malformed key
 //! is refused with rind's error.
+#![cfg(rind_fips_module)]
 
 use rind_fips::agreement::{self, PrivateKey, PublicKey};
 
@@ -273,5 +274,40 @@ fn refuses_what_rind_refuses() {
             &rind::agreement::PrivateKey::from_sec1(&rind::agreement::ECDH_P256, der),
             what,
         );
+    }
+}
+
+/// Dropping a private key wipes the copy of its public key it keeps outside
+/// the module, as rind's wipes its whole value.
+#[test]
+fn drop_wipes_the_public_key() {
+    use std::mem::{MaybeUninit, size_of};
+
+    // Reads the value's bytes after its drop, deliberately, as rind's
+    // zeroing tests do.
+    fn bytes(key: &MaybeUninit<PrivateKey>) -> Vec<u8> {
+        let start = key.as_ptr().cast::<u8>();
+        (0..size_of::<PrivateKey>())
+            // SAFETY: within the value's storage, which outlives the read.
+            .map(|i| unsafe { core::ptr::read_volatile(start.add(i)) })
+            .collect()
+    }
+
+    for algorithm in [
+        &agreement::ECDH_P256,
+        &agreement::ECDH_P384,
+        &agreement::ECDH_P521,
+    ] {
+        let mut key = MaybeUninit::new(PrivateKey::generate(algorithm).unwrap());
+        // SAFETY: initialized just above.
+        let public = unsafe { key.assume_init_ref() }
+            .public_key()
+            .as_ref()
+            .to_vec();
+        let holds = |bytes: &[u8]| bytes.windows(public.len()).any(|w| w == public);
+        assert!(holds(&bytes(&key)));
+        // SAFETY: initialized, and dropped only here.
+        unsafe { key.assume_init_drop() };
+        assert!(!holds(&bytes(&key)), "{algorithm:?}");
     }
 }

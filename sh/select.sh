@@ -5,7 +5,7 @@
 # Usage: sh/select.sh CHANGED_FILE [ALL] [--lib]
 # A change outside any crate's directory (the root manifest, the lockfile,
 # thirdparty/ test vectors) can reach every crate, so it selects --workspace,
-# as does a non-empty ALL, less rind-fips on a host it does not build for. --lib keeps only the crates with a library, which
+# as does a non-empty ALL. --lib keeps only the crates with a library, which
 # `cargo test --doc` requires.
 set -euo pipefail
 
@@ -18,21 +18,8 @@ if [[ $# -gt 3 || (-n "$lib" && "$lib" != --lib) ]]; then
     exit 2
 fi
 
-# rind-fips's module builds only for glibc Linux on x86_64 and aarch64, so
-# elsewhere it is left out.
-host=$(rustc -vV | sed -n 's/^host: //p')
-fips=
-[[ "$host" =~ ^(x86_64|aarch64)-unknown-linux-gnu$ ]] || fips=rind-fips
-
-workspace() {
-    echo --workspace
-    if [[ -n "$fips" ]]; then
-        printf -- '--exclude\n%s\n' "$fips"
-    fi
-}
-
 if [[ -n "$all" ]]; then
-    workspace
+    echo --workspace
     exit
 fi
 
@@ -47,17 +34,25 @@ done < <(jq -r --arg root "$root/" '.packages[] | [(.manifest_path | ltrimstr($r
 
 declare -A selected=()
 while IFS= read -r path; do
-    dir=${path%%/*}
+    # The innermost crate directory holding the path, so a nested crate such
+    # as rind-fips/module is selected rather than its parent.
+    dir=${path%/*}
+    while [[ "$dir" == */* && -z "${dirs[$dir]:-}" ]]; do
+        dir=${dir%/*}
+    done
     if [[ "$path" == */* && -n "${dirs[$dir]:-}" ]]; then
         selected[${dirs[$dir]}]=1
     elif grep -qE '^(thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)' <<<"$path"; then
-        workspace
+        echo --workspace
         exit
     fi
 done <"$changed"
 
-# Add workspace dependents until nothing new appears.
+# Add workspace dependents until nothing new appears. rind-fips's build
+# script builds rind-fips-module with a cargo of its own, an edge the
+# metadata does not show.
 edges=$(jq -r '.packages[] | .name as $n | .dependencies[] | select(.path != null) | [.name, $n] | @tsv' <<<"$metadata")
+edges+=$'\nrind-fips-module\trind-fips'
 grew=1
 while [[ -n "$grew" ]]; do
     grew=
@@ -71,9 +66,6 @@ done
 
 libs=$(jq -r '.packages[] | select(any(.targets[]; .kind | index("lib"))) | .name' <<<"$metadata")
 for name in "${!selected[@]}"; do
-    if [[ "$name" == "$fips" ]]; then
-        continue
-    fi
     if [[ -z "$lib" ]] || grep -qxF "$name" <<<"$libs"; then
         printf -- '-p\n%s\n' "$name"
     fi

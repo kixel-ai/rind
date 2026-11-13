@@ -3,6 +3,7 @@
 //! AES through the module agrees with rind's, which its own tests check
 //! against Wycheproof and aws-lc-rs: the block cipher, CTR, CBC, key
 //! wrapping, QUIC header protection, and AES-GCM opening what rind seals.
+#![cfg(rind_fips_module)]
 
 use rind_fips::{Error, aead, cipher, hkdf, key_wrap};
 

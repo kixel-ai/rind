@@ -201,6 +201,17 @@ pub fn zeroise_drbgs() -> usize {
     crate::fips_rng::zeroise_all()
 }
 
+/// Waits for every draw in progress, then holds every thread's DRBG still
+/// until the hold drops. The module holds one across `fork`, so the child
+/// inherits no draw in progress and no lock that only a thread it lacks
+/// would release.
+pub fn hold_drbgs() -> DrbgHold {
+    DrbgHold(crate::fips_rng::hold())
+}
+
+/// What [`hold_drbgs`] returns.
+pub struct DrbgHold(#[allow(dead_code)] crate::fips_rng::Hold);
+
 /// The name of the first CPU feature the module requires that this CPU
 /// lacks, as [`crate::cpu::check`] reports it.
 pub fn missing_cpu_feature() -> Option<&'static str> {

@@ -32,19 +32,27 @@ fn main() {
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     let target = env::var("TARGET").unwrap();
 
-    // The module's tested environments are Linux on x86_64 and aarch64, and
-    // its boundary is an ELF shared library.
+    // The module's tested environments are glibc Linux on x86_64 and
+    // aarch64, and its boundary is an ELF shared library. Elsewhere the crate
+    // builds empty, so a workspace build or test passes on every host.
+    println!("cargo::rustc-check-cfg=cfg(rind_fips_module)");
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
-    let arch = match env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
-        "x86_64" => Arch::X86_64,
-        "aarch64" => Arch::Aarch64,
-        other => panic!("rind-fips builds only for x86_64 and aarch64 Linux, not {other}"),
+    let arch = match (
+        env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str(),
+        os.as_str(),
+        target_env.as_str(),
+    ) {
+        ("x86_64", "linux", "gnu") => Arch::X86_64,
+        ("aarch64", "linux", "gnu") => Arch::Aarch64,
+        _ => {
+            println!(
+                "cargo::warning=rind-fips builds its module only for glibc Linux on x86_64 and aarch64, so for {target} it is empty"
+            );
+            return;
+        }
     };
-    assert!(
-        os == "linux" && target_env == "gnu",
-        "rind-fips builds only for glibc Linux, not {target}"
-    );
+    println!("cargo::rustc-cfg=rind_fips_module");
 
     for path in [
         "build.rs",
@@ -56,6 +64,8 @@ fn main() {
     ] {
         println!("cargo::rerun-if-changed={}", manifest.join(path).display());
     }
+    // rind reads it at compile time; see `admin/ctgrind`.
+    println!("cargo::rerun-if-env-changed=VALGRIND_BUG_494162");
 
     let built = build(&manifest, &out, &target);
     let mut library = fs::read(&built).unwrap();
@@ -85,6 +95,16 @@ fn build(manifest: &Path, out: &Path, target: &str) -> PathBuf {
         flags.extend(["--cfg", "rind_fips_break"]);
     }
     flags.push(concat!("-Clink-arg=-Wl,-soname,", "librind_fips_module.so"));
+    // Until `wipe` is rind's default, the module turns it on here: as a
+    // dependency in its manifest, it would turn it on for every crate a
+    // workspace build compiles with the module. Under valgrind the module
+    // keeps line tables, so ctgrind's suppressions match inlined frames.
+    let ctgrind = env::var_os("CARGO_FEATURE___CTGRIND").is_some();
+    let (features, debug) = if ctgrind {
+        ("rind/wipe,rind/__ctgrind", "line-tables-only")
+    } else {
+        ("rind/wipe", "false")
+    };
 
     let mut command = Command::new(env::var_os("CARGO").unwrap());
     command
@@ -100,10 +120,7 @@ fn build(manifest: &Path, out: &Path, target: &str) -> PathBuf {
         .arg(manifest.join("module/Cargo.toml"))
         .arg("--target-dir")
         .arg(&target_dir)
-        // Until `wipe` is rind's default, the module turns it on here: as a
-        // dependency in its manifest, it would turn it on for every crate a
-        // workspace build compiles with the module.
-        .args(["--features", "rind/wipe"])
+        .args(["--features", features])
         // These flags replace any the caller set, which would otherwise
         // reach the module through the environment.
         .env("CARGO_ENCODED_RUSTFLAGS", flags.join("\x1f"))
@@ -111,7 +128,7 @@ fn build(manifest: &Path, out: &Path, target: &str) -> PathBuf {
         .env("CARGO_PROFILE_RELEASE_PANIC", "abort")
         .env("CARGO_PROFILE_RELEASE_LTO", "fat")
         .env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "1")
-        .env("CARGO_PROFILE_RELEASE_DEBUG", "false")
+        .env("CARGO_PROFILE_RELEASE_DEBUG", debug)
         .env("CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS", "false")
         .env("CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS", "false")
         .env("CARGO_PROFILE_RELEASE_INCREMENTAL", "false")
