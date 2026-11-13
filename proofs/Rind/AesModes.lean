@@ -92,8 +92,8 @@ private def hex (s : String) : List (BitVec 8) :=
 -- The same, its counter wrapping in its low 8 bits: the second block's counter
 -- is `...fe00`, so it differs from the 128-bit count's `...ff00`.
 #guard aesCtr .AES_128 (hex "2b7e151628aed2a6abf7158809cf4f3c") 8 (hex "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff")
-  (hex "6bc1bee22e409f96e93d7e117393172a") ==
-  hex "874d6191b620e3261bef6864990db6ce"
+  (hex "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51") ==
+  hex "874d6191b620e3261bef6864990db6cee3256531c56fd498e4670c36587faba6"
 #guard pkcs7Unpad (pkcs7Pad (hex "0102")) == some (hex "0102")
 #guard (pkcs7Pad []).length == 16
 #guard pkcs7Unpad (hex "0102030405060708090a0b0c0d0e0f00") == none
