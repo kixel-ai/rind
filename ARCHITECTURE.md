@@ -44,6 +44,11 @@ The modules:
   that signs blinded messages, and a public key that blinds a message,
   finalizes the reply into a signature, and verifies it, as Privacy Pass's
   publicly verifiable tokens (RFC 9578) need.
+- `oprf`: RFC 9497's OPRF over ristretto255, P-256, P-384, and P-521: a
+  server's key that evaluates blinded elements, and a client's blind that
+  finalizes the reply into the output. Its `voprf` mode adds the server's
+  public key and a DLEQ proof over a batch, as Privacy Pass's privately
+  verifiable tokens (RFC 9578) need; OPAQUE uses the base mode.
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
   Ed25519 key pairs and verification, plus ECDSA over a `digest` the caller
   computed, with any SHA-2 hash, RSA keys given as their components, and
@@ -57,6 +62,8 @@ The modules:
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.
 - `hkdf`: HKDF over those HMACs, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
 - `pbkdf2`: PBKDF2 over those HMACs, deriving or verifying a key from a password.
+- `spake2plus`: SPAKE2+ on P-256 (RFC 9383, and Matter PASE's draft-01
+  schedule), a password-authenticated key exchange whose suite is a type.
 - `encoding`: the PKCS#8, SEC1, and `SubjectPublicKeyInfo` encodings key
   types export.
 - `constant_time`: comparing secrets such as MACs without a timing leak.

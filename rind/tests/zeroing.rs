@@ -153,6 +153,30 @@ fn ecdh() {
 }
 
 #[test]
+fn oprf() {
+    use rind::oprf::*;
+    for suite in [
+        &RISTRETTO255_SHA512,
+        &P256_SHA256,
+        &P384_SHA384,
+        &P521_SHA512,
+    ] {
+        let key = ServerKey::generate(suite).unwrap();
+        let (blind, _) = Blind::new(suite, b"input").unwrap();
+        check_zeroed_on_drop(Box::pin(key.evaluate(b"input").unwrap()));
+        check_zeroed_on_drop(Box::pin(key.to_bytes()));
+        check_zeroed_on_drop(Box::pin(blind));
+        check_zeroed_on_drop(Box::pin(key));
+
+        let key = voprf::ServerKey::generate(suite).unwrap();
+        let (blind, _) = voprf::Blind::new(suite, b"input").unwrap();
+        check_zeroed_on_drop(Box::pin(key.to_bytes()));
+        check_zeroed_on_drop(Box::pin(blind));
+        check_zeroed_on_drop(Box::pin(key));
+    }
+}
+
+#[test]
 fn vrf() {
     use rind::vrf::*;
     for algorithm in [&ECVRF_EDWARDS25519_SHA512_TAI, &ECVRF_P256_SHA256_TAI] {
@@ -224,6 +248,38 @@ fn hmac() {
         check_zeroed_on_drop(Box::pin(ctx));
         check_zeroed_on_drop(Box::pin(key));
     }
+}
+
+#[test]
+fn spake2plus() {
+    use rind::spake2plus::*;
+
+    let w0 = [0xff; 32];
+    let w1 = [0xee; 32];
+    check_zeroed_on_drop(Box::pin(ProverSecrets::new(&w0, &w1).unwrap()));
+    check_zeroed_on_drop(Box::pin(VerifierRecord::from_w1(&w0, &w1).unwrap()));
+
+    let (share_p, prover) = ProverSecrets::new(&w0, &w1)
+        .unwrap()
+        .start(&RFC9383, b"context", b"prover", b"verifier")
+        .unwrap();
+    let (_, _, verifier) = VerifierRecord::from_w1(&w0, &w1)
+        .unwrap()
+        .start(&RFC9383, b"context", b"prover", b"verifier", &share_p)
+        .unwrap();
+    check_zeroed_on_drop(Box::pin(prover));
+    check_zeroed_on_drop(Box::pin(verifier));
+
+    let (share_p, prover) = ProverSecrets::new(&w0, &w1)
+        .unwrap()
+        .start(&RFC9383, b"context", b"prover", b"verifier")
+        .unwrap();
+    let (share_v, confirm_v, _) = VerifierRecord::from_w1(&w0, &w1)
+        .unwrap()
+        .start(&RFC9383, b"context", b"prover", b"verifier", &share_p)
+        .unwrap();
+    let (_, key) = prover.finish(&share_v, &confirm_v).unwrap();
+    check_zeroed_on_drop(Box::pin(key));
 }
 
 #[test]

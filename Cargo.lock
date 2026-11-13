@@ -454,6 +454,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2f6c7dbe95a6ed67ad9f18e57daf93a2f034c524b99fd2b76d18fdfeb6660aa"
 dependencies = [
  "hybrid-array",
+ "zeroize",
 ]
 
 [[package]]
@@ -1115,6 +1116,7 @@ dependencies = [
  "curve25519-dalek-derive",
  "digest 0.10.7",
  "fiat-crypto 0.2.9",
+ "rand_core 0.6.4",
  "rustc_version",
  "subtle",
  "zeroize",
@@ -1221,6 +1223,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive-where"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e2b94854e8576378ccda7c8de8a66ed8b4e8acbd2c50ec3418ea6c8aaf4b567"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
 name = "derive_arbitrary"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1276,6 +1289,7 @@ dependencies = [
  "const-oid 0.10.2",
  "crypto-common 0.2.2",
  "ctutils",
+ "zeroize",
 ]
 
 [[package]]
@@ -3132,6 +3146,45 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
+name = "matter-cert"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4952b3fc9ef028781bea73ddb3ce4ceeb9b408f0e25d3160a76513efb06d5c01"
+dependencies = [
+ "bitflags",
+ "der 0.7.10",
+ "matter-codec",
+ "ring",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "matter-codec"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8abffdf066b9d8e10f5c68796c5d2dad27a728d40206ac983391dffed3f3ccb0"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "matter-crypto"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "466d8f4e5a26d47ecba82ee83d3fbe1405a3053dd37db2fdde56ca5a6a2602bf"
+dependencies = [
+ "aes 0.9.4",
+ "ccm",
+ "matter-cert",
+ "matter-codec",
+ "p256 0.14.0",
+ "ring",
+ "subtle",
+ "thiserror 2.0.21",
+ "zeroize",
+]
+
+[[package]]
 name = "md-5"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3597,6 +3650,18 @@ dependencies = [
 
 [[package]]
 name = "p521"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fc9e2161f1f215afdfce23677034ae137bbd45016a880c2eb3ba8eb95f085b2"
+dependencies = [
+ "base16ct 0.2.0",
+ "elliptic-curve 0.13.8",
+ "primeorder 0.13.6",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "p521"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ad64cc32c2dc466317c12ee5853e61f159f9eab1fe7efade0395dc2e7b43449"
@@ -3618,6 +3683,49 @@ checksum = "30d5b2194ed13191c1999ae0704b7839fb18384fa22e49b57eeaa97d79ce40da"
 dependencies = [
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "pakery-core"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb44dd31ee1e4efba330cb49a1867812ab6cce7c5d650c12238b610b8750c7a4"
+dependencies = [
+ "pkg-config",
+ "rand_core 0.10.1",
+ "rustversion",
+ "subtle",
+ "zeroize",
+ "zeroize_derive",
+]
+
+[[package]]
+name = "pakery-crypto"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48f27010d725662c3ebc16678db85739b67590f7b847b3fe75ee0e9805100a47"
+dependencies = [
+ "digest 0.11.3",
+ "hkdf 0.13.0",
+ "hmac 0.13.0",
+ "p256 0.14.0",
+ "pakery-core",
+ "rand_core 0.10.1",
+ "sha2 0.11.1",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "pakery-spake2plus"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cc5b0ab63faeb66b6ad1e152f2322baf04756f89dbfbf67ab3ad20410b48bf7"
+dependencies = [
+ "pakery-core",
+ "rand_core 0.10.1",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -4305,12 +4413,20 @@ dependencies = [
  "libcrux-macros 0.0.4",
  "libcrux-poly1305 0.0.7",
  "libcrux-sha2 0.0.9",
+ "matter-crypto",
+ "p256 0.13.2",
  "p256 0.14.0",
+ "p384 0.13.1",
  "p384 0.14.0",
- "p521",
+ "p521 0.13.3",
+ "p521 0.14.0",
+ "pakery-crypto",
+ "pakery-spake2plus",
  "proptest",
+ "rand_core 0.6.4",
  "serde",
  "serde_json",
+ "voprf",
  "vrf-rfc9381",
 ]
 
@@ -4366,7 +4482,7 @@ dependencies = [
  "openssl-sys",
  "p256 0.14.0",
  "p384 0.14.0",
- "p521",
+ "p521 0.14.0",
  "proptest",
  "rind",
  "rind-jsonwebtoken",
@@ -4476,7 +4592,7 @@ dependencies = [
 
 [[package]]
 name = "rind-python"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "pyo3",
  "rind",
@@ -5540,6 +5656,24 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "voprf"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28f59c30c76e2fea54cdece6a054e2662feffa7ab19658a7887524265ee39470"
+dependencies = [
+ "curve25519-dalek 4.1.3",
+ "derive-where",
+ "digest 0.10.7",
+ "displaydoc",
+ "elliptic-curve 0.13.8",
+ "generic-array",
+ "rand_core 0.6.4",
+ "sha2 0.10.9",
+ "subtle",
+ "zeroize",
+]
 
 [[package]]
 name = "vrf-rfc9381"

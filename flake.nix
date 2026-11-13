@@ -74,6 +74,31 @@
 
           quest-cli = quest.packages.${system}.default;
 
+          # admin/ scripts, and `sh/python.sh test`, which `admin/coverage`
+          # also runs.
+          python-shell = {
+            packages = [
+              # pyrind's tests and benchmarks check it against
+              # pyca/cryptography, and its type stubs with mypy's stubtest.
+              # pytest runs pyjwt's and joserfc's suites against
+              # pyrind-cryptography.
+              (pkgs.python3.withPackages (ps: [
+                ps.cryptography
+                ps.mypy
+                ps.pytest
+              ]))
+              # Builds pyrind (rind-python).
+              pkgs.maturin
+              pkgs.jq
+            ];
+            # The releases whose test suites `sh/python.sh test` runs against
+            # pyrind-cryptography, pinned with nixpkgs.
+            env = {
+              PYJWT_SRC = pkgs.python3Packages.pyjwt.src;
+              JOSERFC_SRC = pkgs.python3Packages.joserfc.src;
+            };
+          };
+
           timing-shell = {
             packages = [
               rust-stable.minimal
@@ -102,9 +127,6 @@
               })
               armv7-cc
               pkgs.qemu-user
-              # admin/mutants --target armv7-unknown-linux-gnueabihf.
-              pkgs.cargo-mutants
-              pkgs.cargo-nextest
             ];
 
             env = {
@@ -354,7 +376,10 @@
           # `tools/build-proof.sh` does, the Rust whose build emits the object
           # code they are of, with llvm-objdump to read it, the Python that
           # compares that code with the code upstream's proofs check, and the
-          # cross tools that assemble Vale's and aws-lc's.
+          # cross tools that assemble Vale's and aws-lc's, with flock, which
+          # keeps runs in one worktree from rewriting each other's files. On
+          # Linux, `admin/prove session` checkpoints and restores HOL Light
+          # with DMTCP.
           hol-light = pkgs.mkShell {
             packages = [
               (rust-stable.minimal.override {
@@ -371,7 +396,9 @@
               pkgs.git
               pkgs.python3
               debian-cross-tools
-            ];
+              pkgs.flock
+            ]
+            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.dmtcp;
           };
 
           sde-certs = ''
@@ -408,17 +435,6 @@
                   # sh/alert.sh reads the workflows.
                   yq-go
                   nixfmt
-                  # admin/ scripts, and pyrind's tests and benchmarks: they
-                  # check it against pyca/cryptography, and its type stubs
-                  # with mypy's stubtest. pytest runs pyjwt's and joserfc's
-                  # suites against pyrind-cryptography.
-                  (python3.withPackages (ps: [
-                    ps.cryptography
-                    ps.mypy
-                    ps.pytest
-                  ]))
-                  # Builds pyrind (rind-python).
-                  maturin
                   # admin/bench-report-test runs the script that holds a
                   # leased host.
                   flock
@@ -426,6 +442,7 @@
                   rustfmt-unstable
                   quest-cli
                 ]
+                ++ python-shell.packages
                 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
                   # Marked broken on Darwin in nixpkgs.
                   # See UPSTREAM.md, "nixpkgs marks release-plz broken on
@@ -435,13 +452,12 @@
                   valgrind
                 ];
 
-              # What sh/dispatch.sh checks before a scoped `just check` or `just
-              # fix`. IN_NIX_SHELL would also pass inside another project's shell.
-              env.IN_RIND_DEV_SHELL = "1";
-              # The releases whose test suites `sh/python.sh compat` runs
-              # against pyrind-cryptography, pinned with nixpkgs.
-              env.PYJWT_SRC = pkgs.python3Packages.pyjwt.src;
-              env.JOSERFC_SRC = pkgs.python3Packages.joserfc.src;
+              env = python-shell.env // {
+                # What sh/dispatch.sh checks before a scoped `just check` or
+                # `just fix`. IN_NIX_SHELL would also pass inside another
+                # project's shell.
+                IN_RIND_DEV_SHELL = "1";
+              };
             };
 
             # dudect needs only Rust, without Marvin's Python and toolkit fetches.
@@ -550,8 +566,14 @@
                 pkgs.cmake
                 pkgs.pkg-config
                 pkgs.openssl
+                # rind-dart's tests.
+                pkgs.dart
+                pkgs.git
               ]
+              ++ python-shell.packages
               ++ pkgs.lib.optionals (system == "x86_64-linux") [ sde ];
+
+              inherit (python-shell) env;
 
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };
@@ -645,10 +667,9 @@
             };
 
             # `just armv7` enters it to lint and test the armv7 build under
-            # qemu, and the mutants workflow to mutate it. A separate shell
-            # because the ARM C toolchain, qemu-user, and the armv7 standard
-            # libraries add about 700 MB, which every other CI job would
-            # download.
+            # qemu. A separate shell because the ARM C toolchain, qemu-user,
+            # and the armv7 standard libraries add about 700 MB, which every
+            # other CI job would download.
             armv7 = pkgs.mkShell armv7-shell;
 
             # `just qemu aarch64` tests the aarch64 build under qemu in it, and
@@ -769,8 +790,7 @@
             };
           }
           # `x86-cpu.yml` and `admin/x86-cpu sde-scan` run the tests and
-          # `rind-cpuid` under `sde` in it, `admin/ct-sde` traces them, and
-          # `admin/mutants --avx512` mutates under it.
+          # `rind-cpuid` under `sde` in it, and `admin/ct-sde` traces them.
           # SDE runs only on x86_64.
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             sde = pkgs.mkShell {
@@ -782,8 +802,6 @@
                 openssl
                 python3
                 sde
-                cargo-mutants
-                cargo-nextest
                 # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
                 util-linux
               ];
