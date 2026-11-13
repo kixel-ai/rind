@@ -381,7 +381,7 @@ declare -A hol_light_base=([x86_64]=x86/proofs/base.ml [aarch64]=arm/proofs/base
 # checkpointed after it, in under a second. Sessions in one worktree prepare
 # one at a time, since each rewrites what `$out` holds, and then run at once.
 session() {
-    local arch=$1 file=$2 root=$PWD image setup lock
+    local arch=$1 file=$2 root=$PWD setup lock
     exec {lock}>"$out/session.lock"
     flock "$lock"
     git submodule update --init --depth 1 thirdparty/s2n-bignum
@@ -393,7 +393,7 @@ session() {
     session_dir=$(mktemp -d "$root/$out/session.XXXXXX")
     trap 'rm -rf "$session_dir"' EXIT
     cp -r "$out/hol-light/$arch" "$session_dir/$arch"
-    image=$(session_image "$arch")
+    session_image "$arch"
     exec {lock}>&-
     # Marks the image used, for `session_image` to keep it.
     touch "$image"
@@ -425,15 +425,17 @@ ocaml_string() {
     printf '"%s"' "${s//\"/\\\"}"
 }
 
-# Prints the directory of the image `session` restores for `arch`: HOL Light,
-# checkpointed by DMTCP once the target's base file has loaded, beside a copy
-# of the patched model `s2n_bignum_model` writes. It builds the image unless
+# Sets `image` to the directory of the image `session` restores for `arch`:
+# HOL Light, checkpointed by DMTCP once the target's base file has loaded,
+# beside a copy of the patched model `s2n_bignum_model` writes. It sets a
+# variable rather than printing, since a command substitution would not exit
+# on a failure while it builds the image. It builds the image unless
 # one has the same inputs: HOL Light, DMTCP, the submodule's commit, and what
 # `proofs/hol-light/s2n-bignum/` carries. Images live outside the worktree, so
 # worktrees on the same inputs share one, and building one removes those of
 # `arch` no session has used in a week.
 session_image() {
-    local arch=$1 base=${hol_light_base[$1]} root=$PWD cache key image build lock line images
+    local arch=$1 base=${hol_light_base[$1]} root=$PWD cache key build lock line images
     local marker="rind: $base loaded"
     # The base file's `loads "update_database.ml"` is skipped, as HOL Light's
     # `inline_load.ml` skips it for `hol_light_compile`. An error in a file
@@ -501,7 +503,6 @@ let () = needs \"$base\"; ignore (input_line stdin); Gc.compact (); print_endlin
         mv -T "$build" "$image"
     fi
     exec {lock}>&-
-    echo "$image"
 }
 
 # Writes to `dest` the bytes of the routine at the symbol `sym` in the object
