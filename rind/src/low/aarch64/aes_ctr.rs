@@ -3,8 +3,9 @@
 use core::arch::aarch64::*;
 
 use super::aes::{_aes_8_blocks, _aes128_8_blocks, _aes256_8_blocks, HwKey};
+use super::vpaes_armv8::VpaesKey;
 use crate::low::AesKey;
-use crate::low::generic::ctr;
+use crate::low::generic::ctr::{self, Ctr32};
 
 /// XORs AES-CTR keystream into `inout`.
 ///
@@ -17,9 +18,7 @@ pub(crate) fn apply(key: &AesKey, nonce: &[u8; 12], counter: u32, inout: &mut [u
             // `AesKey256`, and rind requires NEON.
             unsafe { _apply_8(key, nonce, counter, chunk) }
         }),
-        AesKey::Vpaes(key) => ctr::blocks(nonce, counter, inout, |ivec, blocks| {
-            key.ctr32(ivec, blocks)
-        }),
+        AesKey::Vpaes(key) => ctr::blocks(key, nonce, counter, inout),
     }
 }
 
@@ -68,5 +67,11 @@ fn _apply_8(key: &HwKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8; 128]) 
         vst1q_u8(p.add(80), veorq_u8(b5, vld1q_u8(p.add(80))));
         vst1q_u8(p.add(96), veorq_u8(b6, vld1q_u8(p.add(96))));
         vst1q_u8(p.add(112), veorq_u8(b7, vld1q_u8(p.add(112))));
+    }
+}
+
+impl Ctr32 for VpaesKey {
+    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        Self::ctr32(self, ivec, blocks)
     }
 }

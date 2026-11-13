@@ -136,6 +136,27 @@ def core.slice.Slice.as_chunks_mut {T : Type _} (N : Std.Usize) (s : Slice T) :
     let l := chunks.val.flatMap (·.val) ++ rest.val
     if h : l.length ≤ Usize.max then Slice.from l h else s)
 
+/-- `core::hint::black_box`: the value itself. -/
+def core.hint.black_box {T : Type _} (x : T) : Result T := Std.Result.ok x
+
+/-- `usize::try_from(u64)`, which fails for a value past `usize::MAX`. -/
+def Usize.Insts.CoreConvertTryFromU64TryFromIntError.try_from (x : Std.U64) :
+    Result (core.result.Result Std.Usize core.num.error.TryFromIntError) :=
+  core.num.tryFromUScalar .Usize x
+
+/-- `<[T]>::split_first_chunk::<N>`: the first `N` elements and the rest, if
+there are that many. -/
+def core.slice.Slice.split_first_chunk {T : Type _} (N : Std.Usize) (s : Slice T) :
+    Result (Option ((Array T N) × (Slice T))) :=
+  if h : N.val ≤ s.length then
+    Std.Result.ok (some (Array.from (s.val.take N.val) (by simp [Slice.length] at h; simp [h]),
+      Slice.from (s.val.drop N.val) (by have := s.property; simp; omega)))
+  else Std.Result.ok none
+
+/-- `core::slice::from_mut`: the one-element slice, which writes back to it. -/
+def core.slice.raw.from_mut {T : Type _} (x : T) : Result ((Slice T) × (Slice T → T)) :=
+  Std.Result.ok (Slice.from [x] (by simp; scalar_tac), fun s => s.val.headD x)
+
 /-- `<[T]>::last`. -/
 def core.slice.Slice.last {T : Type _} (s : Slice T) : Result (Option T) :=
   Std.Result.ok s.val.getLast?

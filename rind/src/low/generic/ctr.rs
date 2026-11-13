@@ -29,28 +29,33 @@ pub(crate) fn by8(counter: u32, inout: &mut [u8], mut apply_8: impl FnMut(u32, &
     }
 }
 
-/// XORs AES-CTR keystream into `inout` with `ctr32`, which XORs it into
-/// whole blocks from the counter block given: every whole block in one call,
-/// then a final partial block in a copy.
+/// A key that XORs counter-mode keystream into whole blocks.
 #[cfg(not(rind_backend = "portable"))]
-pub(crate) fn blocks(
-    nonce: &[u8; 12],
-    counter: u32,
-    inout: &mut [u8],
-    ctr32: impl Fn(&[u8; 16], &mut [[u8; 16]]),
-) {
+pub(crate) trait Ctr32 {
+    /// XORs keystream into `blocks` from the counter block `ivec`, whose last
+    /// four bytes count big-endian, wrapping within 32 bits.
+    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]);
+}
+
+/// XORs AES-CTR keystream into `inout` with `key`: every whole block in one
+/// call, then a final partial block in a copy.
+///
+/// A trait rather than a closure, since Aeneas cannot model a closure that
+/// writes through a reference it takes.
+#[cfg(not(rind_backend = "portable"))]
+pub(crate) fn blocks(key: &impl Ctr32, nonce: &[u8; 12], counter: u32, inout: &mut [u8]) {
     let (blocks, tail) = inout.as_chunks_mut::<16>();
     let mut ivec = [0u8; 16];
     ivec[..12].copy_from_slice(nonce);
     ivec[12..].copy_from_slice(&counter.to_be_bytes());
-    ctr32(&ivec, blocks);
+    key.ctr32(&ivec, blocks);
 
     if !tail.is_empty() {
         let counter = counter.wrapping_add(blocks.len() as u32);
         ivec[12..].copy_from_slice(&counter.to_be_bytes());
         let mut buf = [0u8; 16];
         buf[..tail.len()].copy_from_slice(tail);
-        ctr32(&ivec, core::slice::from_mut(&mut buf));
+        key.ctr32(&ivec, core::slice::from_mut(&mut buf));
         tail.copy_from_slice(&buf[..tail.len()]);
     }
 }
