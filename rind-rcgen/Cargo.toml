@@ -17,6 +17,10 @@ items = ["KeyPair"]
 # rcgen's default backend, whose behavior the README documents.
 features = ["ring"]
 skip = { fips = "builds AWS-LC's FIPS module, which rind does not offer" }
+# Items rind cannot back, which the README names.
+omitted = [
+  "KeyPair::generate_rsa_for",
+]
 
 [features]
 # rcgen's default features include `pem`.
