@@ -129,8 +129,9 @@ with portable Rust in place of the assembly armv7 runs regardless.
   ML-DSA's Keccak-f is rind's, s2n-bignum's Keccak spec in Rust, which
   [`proofs/`](proofs/README.md) proves is FIPS 202's KECCAK-f[1600]; it
   measured as fast as RustCrypto's and libcrux-sha3's, which nothing proves.
-  RSA's Montgomery multiplication is rind's loop, which wipes its scratch,
-  rather than HACL*'s, which leaves scratch unwiped on the heap.
+  RSA's Montgomery multiplication is rind's own: an interleaved loop below 16
+  limbs, then a separate product and reduction, with Karatsuba from 32 limbs.
+  Its scratch is on the stack, never on the heap as HACL*'s is.
 - portable: RSA and the NIST curves run on 64-bit limbs on 64-bit targets,
   and on wasm32 built with the `wide-arithmetic` target feature (stable from
   Rust 1.101), and on armv7's 32-bit limbs on other 32-bit targets, where a
