@@ -56,6 +56,10 @@ WORK = ROOT / "target" / "adapter-api"
 
 # Keys that carry no API: locations, docs, ids replaced by paths, and the
 # children each listed separately under its own path.
+# Rustdoc writes an associated const's value as its source text, or `_` when
+# it is not a literal.
+LITERAL = re.compile(r'-?[0-9][0-9a-zA-Z_.]*|true|false|"(?:[^"\\]|\\.)*"|b?\'(?:[^\'\\]|\\.)+\'')
+
 DROP = {
     "id",
     "span",
@@ -286,10 +290,7 @@ class Api:
                     sig["generics"] = impl["generics"]
                 # Its associated types and consts are API; its methods are the trait's.
                 sig["assoc"] = {
-                    # An associated const's initializer is not API, as for a constant's.
-                    child["name"]: {k: v for k, v in child["inner"].get("assoc_const", child["inner"]).items() if k != "value"}
-                    if "assoc_const" in child["inner"]
-                    else child["inner"]
+                    child["name"]: assoc_item(child["inner"])
                     for child in map(lambda i: self.index[str(i)], impl["items"])
                     if "function" not in child["inner"]
                 }
@@ -388,6 +389,14 @@ AUTO_TRAITS = {
 
 class Unordered(list):
     """A list whose order is not API, sorted once its paths render."""
+
+
+def assoc_item(inner):
+    """A trait impl's associated item, keeping a const's value only when literal, as for a constant's."""
+    const = inner.get("assoc_const")
+    if const is None or const.get("value") is None or LITERAL.fullmatch(const["value"]):
+        return inner
+    return {"assoc_const": dict(const, value=None)}
 
 
 def plain(value):
