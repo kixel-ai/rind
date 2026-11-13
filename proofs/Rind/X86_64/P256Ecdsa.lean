@@ -399,14 +399,14 @@ theorem from_affine_spec (p : mid.p256.AffineMontPoint) (P : P256Point)
     simp
 
 @[step]
-theorem double_spec (pt : mid.p256.JacobianMontPoint) (P : P256Point) (h : jrep P pt) :
+theorem double_spec (_hr : Runs) (pt : mid.p256.JacobianMontPoint) (P : P256Point) (h : jrep P pt) :
     mid.p256.JacobianMontPoint.double pt ⦃ r => jrep (p256Add P P) r ⦄ := by
   unfold mid.p256.JacobianMontPoint.double mid.p256.JacobianMontPoint.zero
   step*
   exact a_post P h
 
 @[step]
-theorem add_inplace_affine_spec (pt : mid.p256.JacobianMontPoint) (p : mid.p256.AffineMontPoint)
+theorem add_inplace_affine_spec (_hr : Runs) (pt : mid.p256.JacobianMontPoint) (p : mid.p256.AffineMontPoint)
     (P1 P2 : P256Point) (h1 : jrep P1 pt) (h2 : p256Represents2 P2 (pairNat p.xy.val)) (hne : P1 ≠ P2) :
     mid.p256.JacobianMontPoint.add_inplace_affine pt p ⦃ r => jrep (p256Add P1 P2) r ⦄ := by
   unfold mid.p256.JacobianMontPoint.add_inplace_affine
@@ -414,7 +414,7 @@ theorem add_inplace_affine_spec (pt : mid.p256.JacobianMontPoint) (p : mid.p256.
   exact a_post P1 P2 h1 h2 hne
 
 @[step]
-theorem jac_add_spec (pt q : mid.p256.JacobianMontPoint) (P1 P2 : P256Point) (h1 : jrep P1 pt)
+theorem jac_add_spec (_hr : Runs) (pt q : mid.p256.JacobianMontPoint) (P1 P2 : P256Point) (h1 : jrep P1 pt)
     (h2 : jrep P2 q) (hne : P1 = P2 → P2 = none) :
     mid.p256.JacobianMontPoint.add pt q ⦃ r => jrep (p256Add P1 P2) r ⦄ := by
   unfold mid.p256.JacobianMontPoint.add
@@ -508,7 +508,7 @@ theorem add_affine_spec (_hr : Runs) (pt : mid.p256.JacobianMontPoint) (p : mid.
       split
       · rename_i hb2t
         have heq : P1 = P2 := by rw [← hP1eq, hP2, hxe, hyeq.mp hb2t]
-        step with double_spec pt P1 hP1' as ⟨r, hr⟩
+        step with double_spec _hr pt P1 hP1' as ⟨r, hr⟩
         rw [← heq]; exact hr
       · rename_i hb2f
         have hneg : P2 = p256Neg P1 := by
@@ -527,7 +527,7 @@ theorem add_affine_spec (_hr : Runs) (pt : mid.p256.JacobianMontPoint) (p : mid.
         intro h
         simp only [Option.some.injEq, Prod.mk.injEq] at h
         exact hb1f (hxeq.mpr h.1.symm)
-      step with add_inplace_affine_spec pt p P1 P2 ⟨hX, hY, hZ, by rw [ofJacobian_dec, ite_eq_right hZ0, hP1eq]⟩ h2 hne
+      step with add_inplace_affine_spec _hr pt p P1 P2 ⟨hX, hY, hZ, by rw [ofJacobian_dec, ite_eq_right hZ0, hP1eq]⟩ h2 hne
         as ⟨r, hr⟩
       exact hr
 
@@ -1086,7 +1086,7 @@ theorem twin_loop_spec (_hr : Runs) (Q : P256Point) (hQ : p256OnCurve Q)
           have h0 := hb.mp hbt
           rw [← p256Laws.twin_double p256G Q hGc hQ, h0, p256Laws.mul_none none trivial, ← h0]
           exact hres
-        · step with double_spec res _ hres as ⟨r1, hr1⟩
+        · step with double_spec _hr res _ hres as ⟨r1, hr1⟩
           rwa [p256Laws.twin_double p256G Q hGc hQ] at hr1
       intro r1 hr1
       apply WP.spec_bind (Pₘ := fun x : Option (Std.Array mid.p256.AffineMontPoint 8#usize) ×
@@ -1216,8 +1216,14 @@ theorem twin_multiply_spec (_hr : Runs) (g p : mid.p256.Scalar) (Q : P256Point)
   have hend : iter.iter.end.val = 257 := by rw [iter_post]; simp [s_post, Slice.len, hgl]
   have hgm : a1.to_slice.val = (mid.p256.precomp.CURVE_GENERATOR_PRECOMP.val[0]!).val := by
     rw [Array.val_to_slice, ha1, getElem_eq_getElem! _ _ (by simp)]
+  have hrow : p256GRow a1.to_slice.val := by
+    refine ⟨?_, hgm ▸ first_row⟩
+    have hl := a1.property
+    simp only [Array.val_to_slice] at hl ⊢
+    rw [hl]
+    simp
   apply WP.spec_mono (twin_loop_spec _hr Q hQ odd hodd more hmore gd pd hgd hpd a1.to_slice
-    (hgm ▸ first_row) iter (by rw [iter_post]; rfl)
+    hrow iter (by rw [iter_post]; rfl)
     (by omega) result (by
       rw [hend, List.drop_of_length_le (by omega), List.drop_of_length_le (by omega)]
       simp only [nafVal]
@@ -1639,7 +1645,7 @@ theorem batch_spec (_hr : Runs) (pts : Std.Array mid.p256.JacobianMontPoint 8#us
 
 theorem n256_big : 64 < n256 := by unfold n256; decide
 
-theorem odd_loop_spec (Q : P256Point) (hQ : p256OnCurve Q) (hQo : P256OrderOf Q)
+theorem odd_loop_spec (_hr : Runs) (Q : P256Point) (hQ : p256OnCurve Q) (hQo : P256OrderOf Q)
     (p2 : mid.p256.JacobianMontPoint) (hp2 : jrep (p256ZPow Q 2) p2) (iter : core.ops.range.Range Usize)
     (m : Std.Array mid.p256.JacobianMontPoint 8#usize) (hs1 : 1 ≤ iter.start.val) (hs : iter.start.val ≤ 8)
     (he : iter.end.val = 8) (hm : ∀ j : Nat, j < iter.start.val → jrep (p256ZPow Q (2 * (j : Int) + 1)) (m.val[j]!)) :
@@ -1663,7 +1669,7 @@ theorem odd_loop_spec (Q : P256Point) (hQ : p256OnCurve Q) (hQo : P256OrderOf Q)
       have hjmp' : jmp = mm.val[it.start.val - 1]! := by rw [hjmp, getElem_eq_getElem! _ _ (by omega), hi1]
       have hj := hmm (it.start.val - 1) (by omega)
       rw [← hjmp'] at hj
-      step with jac_add_spec jmp p2 _ _ hj hp2 (fun h => absurd h (p256Laws.zpow_ne Q hQ hQo _ _
+      step with jac_add_spec _hr jmp p2 _ _ hj hp2 (fun h => absurd h (p256Laws.zpow_ne Q hQ hQo _ _
         (by omega) (by omega))) as ⟨s1, hs1'⟩
       rw [p256Laws.mul_zpow Q hQ] at hs1'
       step as ⟨a, ha⟩
@@ -1691,12 +1697,12 @@ theorem odd_multiples_spec (_hr : Runs) (pt : mid.p256.AffineMontPoint) (Q : P25
   unfold mid.p256.AffineMontPoint.public_odd_multiples
   have hn := n256_big
   step with from_affine_spec pt Q h as ⟨p, hp⟩
-  step with double_spec p Q hp as ⟨p2, hp2⟩
+  step with double_spec _hr p Q hp as ⟨p2, hp2⟩
   have hQ1 := p256Laws.zpow_one Q hQ
   rw [← hQ1, p256Laws.mul_zpow Q hQ] at hp2
   rw [← hQ1] at hp
   step as ⟨sl, hsl⟩
-  step with odd_loop_spec Q hQ hQo p2 hp2 { start := 1#usize, «end» := Slice.len sl }
+  step with odd_loop_spec _hr Q hQ hQo p2 hp2 { start := 1#usize, «end» := Slice.len sl }
     (Array.repeat 8#usize p) (by simp) (by simp) (by simp [hsl, Slice.len])
     (by
       intro j hj
@@ -1781,7 +1787,7 @@ theorem more_odd_spec (_hr : Runs) (Q : P256Point) (hQ : p256OnCurve Q) (hQo : P
   step as ⟨a0, ha0⟩
   have h0 := hodd 0 (by norm_num)
   rw [← getElem_eq_getElem! _ _ (by omega), ← ha0, hz] at h0
-  step with add_inplace_affine_spec p16 a0 _ _ hp16 h0
+  step with add_inplace_affine_spec _hr p16 a0 _ _ hp16 h0
     (p256Laws.zpow_ne Q hQ hQo _ _ (by norm_num) (by norm_num; omega)) as ⟨p161, hp161⟩
   rw [p256Laws.mul_zpow Q hQ] at hp161
   have hadd : ∀ x, mid.p256.JacobianMontPoint.add_inplace_affine p161 x ⦃ r =>

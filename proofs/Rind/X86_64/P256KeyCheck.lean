@@ -10,7 +10,7 @@ comparison with the key's own encoding does, or, for an X9.62 uncompressed
 encoding, whether it encodes the key's scalar times G. x86_64 checks an
 uncompressed encoding without encoding its own: it parses the point and
 compares it with the generator multiplication's Jacobian result,
-`jacobian_base_multiply_spec`, scaled by that result's z, and stores the
+`jac_base_multiply_spec`, scaled by that result's z, and stores the
 encoding it checked as the key's.
 -/
 
@@ -54,7 +54,6 @@ theorem public_key_is_uncompressed_spec (h : Runs) (k : mid.p256.StaticPrivateKe
       b = true ↔ enc.length = 65 ∧ p256Pow p256G (scNat k.scalar) = some (x962Coords enc.val) ⦄ := by
   obtain ⟨x, y, hq, hc⟩ := g_mult _ hk0 hk
   unfold mid.p256.StaticPrivateKey.public_key_is_uncompressed low.ct.into_public
-  simp only [lift, bind_ok]
   rw [hq]
   step with new_secret_spec h
   step with public_from_x962_spec h enc as ⟨r, hr⟩
@@ -77,7 +76,7 @@ theorem public_key_is_uncompressed_spec (h : Runs) (k : mid.p256.StaticPrivateKe
   obtain ⟨pk, rfl, hpk⟩ := hr
   simp only
   have hl8 : pk.point.xy.val.length = 8 := pk.point.xy.property
-  step with jacobian_base_multiply_spec h k.scalar hk as ⟨prod, hprod⟩
+  step with jac_base_multiply_spec k.scalar hk as ⟨prod, hprod⟩
   rw [hq] at hprod
   obtain ⟨hX, hY, hZ, hP⟩ := hprod
   step with jac_z_spec prod as ⟨fz, hfz⟩
@@ -91,13 +90,13 @@ theorem public_key_is_uncompressed_spec (h : Runs) (k : mid.p256.StaticPrivateKe
   have hfe2v : feNat fe2 = (pairNat pk.point.xy.val).2 := by
     rw [pairNat_drop _ hl8]; simp [feNat, hfe2]
   step with mont_mul_spec h fe2 z3 (by rw [hfe2v]; exact hpk.2.1) (fe_lt_p256 _ _ hz3) as ⟨ym, hym⟩
+  simp only [lift, bind_ok]
   step with jac_x_spec prod as ⟨fx, hfx⟩
   have hfxv : feNat fx = (tripleNat prod.xyz.val).1 := by simp [feNat, hfx, tripleNat]
   step as ⟨b, hb⟩
   step with jac_y_spec prod as ⟨fy, hfy⟩
   have hfyv : feNat fy = (tripleNat prod.xyz.val).2.1 := by simp [feNat, hfy, tripleNat]
   step as ⟨b1, hb1⟩
-  simp only [WP.spec_ok]
   have hbv : b = decide (feNat xm = feNat fx) := by rw [hb]; simp [feNat]
   have hb1v : b1 = decide (feNat ym = feNat fy) := by rw [hb1]; simp [feNat]
   rw [hbv, hb1v, hxm, hym, hz3, hz2, hfe1v, hfe2v, hfzv, hfxv, hfyv,
@@ -143,7 +142,8 @@ theorem is_public_key_of (h : Runs) (hc : Cached) (key : P256SigningKey) (enc : 
   · simp only [Bool.false_eq_true, ↓reduceIte, WP.spec_ok]
     exact hfast false h4 hm
   · simp only [↓reduceIte]
-    step with hc.point_get_or_build_now_any _ key enc (key_check_build_spec enc (hm.mp rfl).1)
+    step with hc.point_get_or_build_now_any
+      (high.ecdsa.SigningKey.is_public_key.closure.Insts.CoreOpsFunctionFnOnceTupleEncodedPoint P256C) key enc (key_check_build_spec enc (hm.mp rfl).1)
     exact hfast true h4 hm
 
 end P256

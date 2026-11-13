@@ -50,10 +50,9 @@ theorem base_multiply_spec (_hr : Runs) (k : mid.p256.Scalar) (_hk : wordsNat k.
 
 /-- The generator table's first row holds G to 32G, which `tabulated` states
 of every row's multiples. -/
-theorem first_row : p256GRow (mid.p256.precomp.CURVE_GENERATOR_PRECOMP.val[0]!).val := by
-  refine ⟨?_, fun j hj1 hj => ?_⟩
-  · exact le_of_eq (mid.p256.precomp.CURVE_GENERATOR_PRECOMP.val[0]!).property.symm
-  · simpa using tabulated 0 (by norm_num) j hj1 hj
+theorem first_row : ∀ j, 1 ≤ j → j ≤ 32 →
+    p256Represents2 (p256Pow p256G j) (pairNat ((mid.p256.precomp.CURVE_GENERATOR_PRECOMP.val[0]!).val.drop (8 * (j - 1)))) :=
+  fun j hj1 hj => by simpa using tabulated 0 (by norm_num) j hj1 hj
 
 end P256
 
