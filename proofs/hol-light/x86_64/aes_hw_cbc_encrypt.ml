@@ -2037,3 +2037,109 @@ let GROUP_CASE_TAC =
 
 let GROUP = time prove
  (GROUP_GOAL, GROUP_SETUP_TAC THEN KEY_CASES_TAC THEN GROUP_CASE_TAC);;
+(* The 8-block loop, from its first group at 0x198 to 0x53e, where it has
+   left block p, the last of its last group, in xmm9 and e blocks after it. *)
+let LOOP_POST = `\s. read RIP s = word(pc + 0x53e) /\
+    read RDI s = word_add buf (word(16 * (p + 1))) /\
+    read RSI s = word_add buf (word(16 * p)) /\
+    read RDX s = word_sub (word(16 * (e + 8) - 112)) (word 128) /\
+    read XMM9 s = cbc_dec ks iv inp p /\
+    read XMM10 s = inp p /\
+    (6 <= e
+     ==> read XMM2 s = inp(p + 1) /\ read XMM3 s = inp(p + 2) /\
+         read XMM4 s = inp(p + 3) /\ read XMM5 s = inp(p + 4) /\
+         read XMM6 s = inp(p + 5) /\ read XMM7 s = inp(p + 6) /\
+         read XMM11 s = inp(p + 1) /\ read XMM12 s = inp(p + 2) /\
+         read XMM13 s = inp(p + 3) /\ read XMM14 s = inp(p + 4) /\
+         read XMM15 s = inp(p + 5)) /\
+    read (memory :> bytes(buf,16 * p)) s = cbc_num (cbc_dec ks iv inp) 0 p /\
+    read (memory :> bytes(word_add buf (word(16 * p)),16 * (e + 1))) s =
+      cbc_num inp p (e + 1)`;;
+
+let LOOP_GOAL = list_mk_forall
+ ([`key:int64`; `ks:int128 list`; `r:num`; `buf:int64`; `n:num`;
+   `iv:int128`; `inp:num->int128`; `pc:num`; `p:num`; `e:num`],
+  mk_imp
+   (`r IN {9,11,13} /\ LENGTH (ks:int128 list) = r + 2 /\ 16 * n < 2 EXP 64 /\
+     nonoverlapping (buf:int64,16 * n) (key:int64,16 * (r + 2)) /\
+     nonoverlapping (buf,16 * n) (word pc,0xbc9) /\
+     p + 1 + e = n /\ e < 8`,
+    list_mk_forall([`m:num`; `j:num`],
+     mk_imp(`j + m = n /\ 8 <= m /\ m MOD 8 = e`,
+      list_mk_icomb "ensures" [`x86`; GROUP_PRE; LOOP_POST; GFRAME]))));;
+
+let RDX_NEXT = prove
+ (`!m. 16 <= m
+       ==> word_sub (word(16 * m - 112)) (word 128):int64 = word(16 * (m - 8) - 112)`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `16 * (m - 8) - 112 = (16 * m - 112) - 128` SUBST1_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_SIMP_TAC[WORD_SUB; ARITH_RULE `16 <= m ==> 128 <= 16 * m - 112`]);;
+
+let MOD8_LAST = prove
+ (`!m. 8 <= m /\ m < 16 ==> m MOD 8 = m - 8`,
+  REPEAT STRIP_TAC THEN MATCH_MP_TAC MOD_UNIQ THEN EXISTS_TAC `1` THEN ASM_ARITH_TAC);;
+
+let MOD8_NEXT = prove
+ (`!m. 16 <= m ==> (m - 8) MOD 8 = m MOD 8`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `m = (m - 8) + 1 * 8` (fun th -> GEN_REWRITE_TAC (RAND_CONV o LAND_CONV) [th]) THENL
+   [ASM_ARITH_TAC; REWRITE_TAC[MOD_MULT_ADD]]);;
+
+let LOOP = time prove
+ (LOOP_GOAL,
+  REWRITE_TAC[SOME_FLAGS] THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MATCH_MP_TAC num_WF THEN X_GEN_TAC `m:num` THEN DISCH_TAC THEN
+  X_GEN_TAC `j:num` THEN STRIP_TAC THEN ASM_CASES_TAC `m < 16` THENL
+  [SUBGOAL_THEN `e = m - 8 /\ p = j + 7` (CONJUNCTS_THEN SUBST_ALL_TAC) THENL
+   [FIRST_X_ASSUM(SUBST_ALL_TAC o SYM o check (fun th -> concl th = `m MOD 8 = e`)) THEN
+    ASM_SIMP_TAC[MOD8_LAST] THEN UNDISCH_TAC `p + 1 + m MOD 8 = n` THEN
+    ASM_SIMP_TAC[MOD8_LAST] THEN NUM_ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  MP_TAC(SPECL [`key:int64`; `ks:int128 list`; `r:num`; `buf:int64`; `n:num`; `j:num`;
+                `m:num`; `iv:int128`; `inp:num->int128`; `pc:num`] GROUP) THEN
+  ASM_REWRITE_TAC[SOME_FLAGS] THEN
+  X86_BIGSTEP_TAC AES_HW_CBC_ENCRYPT_EXEC "s1" THEN
+  SUBGOAL_THEN `m < 15 \/ m = 15` ASSUME_TAC THENL [NUM_ASM_ARITH_TAC; ALL_TAC] THEN
+  X86_STEPS_TAC AES_HW_CBC_ENCRYPT_EXEC [2] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_SIMP_TAC[ARITH_RULE `(j + 7) + 1 = j + 8`; ARITH_RULE `8 <= m ==> (m - 8) + 8 = m`;
+               ARITH_RULE `8 <= m ==> (m - 8) + 1 = m - 7`;
+               ARITH_RULE `6 <= m - 8 <=> 14 <= m`] THEN
+  ASM_CASES_TAC `14 <= m` THEN ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[GSYM ADD_ASSOC] THEN CONV_TAC NUM_REDUCE_CONV;
+   SUBGOAL_THEN `16 <= m /\ 14 <= m /\ ~(m < 15) /\ ~(m = 15)` STRIP_ASSUME_TAC THENL
+   [NUM_ASM_ARITH_TAC; ALL_TAC] THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `m - 8`) THEN
+  ANTS_TAC THENL [NUM_ASM_ARITH_TAC; ALL_TAC] THEN
+  DISCH_THEN(MP_TAC o SPEC `j + 8`) THEN
+  ASM_SIMP_TAC[MOD8_NEXT; ARITH_RULE `16 <= m ==> 8 <= m - 8`] THEN
+  ANTS_TAC THENL [NUM_ASM_ARITH_TAC; DISCH_TAC] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  MP_TAC(SPECL [`key:int64`; `ks:int128 list`; `r:num`; `buf:int64`; `n:num`; `j:num`;
+                `m:num`; `iv:int128`; `inp:num->int128`; `pc:num`] GROUP) THEN
+  ASM_REWRITE_TAC[SOME_FLAGS] THEN
+  X86_BIGSTEP_TAC AES_HW_CBC_ENCRYPT_EXEC "s1" THEN
+  FIRST_X_ASSUM(STRIP_ASSUME_TAC o
+    REWRITE_RULE[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD;
+                 ARITH_RULE `16 * (j + 7) + 16 = 16 * (j + 8)`;
+                 ARITH_RULE `(j + 7) + 1 = j + 8`] o
+    REWRITE_RULE[MATCH_MP (ARITH_RULE `16 <= m ==> m - 7 = (m - 8) + 1`) (ASSUME `16 <= m`);
+                 READ_BLOCKS_CONS] o
+    check (fun th -> can (term_match []
+    `read (memory :> bytes(word_add buf (word(16 * (j + 7))),16 * (m - 7))) s1 = x`) (concl th))) THEN
+  REGHOST_YMMS_TAC THEN
+  X86_XSTEPS_TAC AES_HW_CBC_ENCRYPT_EXEC (2--4) THEN XMMS_OF_YMMS_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD;
+              ARITH_RULE `16 * (j + 7) + 16 = 16 * (j + 8)`]) THEN
+  SUBGOAL_THEN `read (memory :> bytes(buf,16 * (j + 8))) s4 =
+                cbc_num (cbc_dec ks iv inp) 0 (j + 8)` ASSUME_TAC THENL
+   [REWRITE_TAC[ARITH_RULE `j + 8 = (j + 7) + 1`; READ_BLOCKS_SNOC] THEN
+    ASM_REWRITE_TAC[ADD_CLAUSES];
+    ALL_TAC] THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[MATCH_MP RDX_NEXT (ASSUME `16 <= m`)]) THEN
+  FIRST_X_ASSUM(MP_TAC o check (fun th -> is_comb(concl th) && can (find_term ((=) `ensures:(x86state->x86state->bool)->(x86state->bool)->(x86state->bool)->(x86state->x86state->bool)->bool`)) (concl th))) THEN
+  REWRITE_TAC[ADD_EQ_0; ARITH_EQ; PRED_ADD] THEN
+  X86_BIGSTEP_TAC AES_HW_CBC_ENCRYPT_EXEC "s5" THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]]);;
