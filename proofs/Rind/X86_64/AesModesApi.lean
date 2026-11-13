@@ -192,7 +192,7 @@ theorem as_chunks16 (N : Usize) (hN : N.val = 16) (s : Slice U8) :
         (c.val.flatMap (fun b : Std.Array U8 N => b.val) ++ t.val).length ≤ Usize.max →
         (back (c, t)).val = c.val.flatMap (fun b : Std.Array U8 N => b.val) ++ t.val ⦄ := by
   obtain rfl : N = 16#usize := (UScalar.eq_equiv _ _).2 hN
-  apply WP.spec_mono (as_chunks_mut_spec (T := U8) 16#usize (by decide) s)
+  apply WP.spec_mono (rind.modes.as_chunks_mut_spec (T := U8) 16#usize (by decide) s)
   rintro ⟨⟨blocks, rest⟩, back⟩ ⟨hl, hb, hr, hback⟩
   simp only [show ((16#usize : Usize) : Nat) = 16 from rfl] at hl hb hr
   obtain ⟨hf, hid⟩ := chunks_back (s := s) (p := (blocks, rest)) (back := back) hl hb hr hback
