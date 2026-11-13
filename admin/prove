@@ -244,16 +244,19 @@ asm_function() {
 }
 
 # Takes `$out/<name>.lock`, waiting while another run in this worktree holds
-# it, until `release <name>` or exit. `scratch` guards what every run and
+# it, until `release <name>` or exit. Taking it again reuses this run's
+# descriptor, which holds it already rather than waiting on itself. `scratch` guards what every run and
 # session rewrites: the asm build and its symbol index, and the submodule's
 # checkout. `hol-light` and `cosim` guard their own directories under `$out`
 # for a whole run. Everything else a run writes is its own.
 declare -A held
 hold() {
     local fd
-    exec {fd}>"$out/$1.lock"
-    flock "$fd"
-    held[$1]=$fd
+    if [[ -z ${held[$1]:-} ]]; then
+        exec {fd}>"$out/$1.lock"
+        held[$1]=$fd
+    fi
+    flock "${held[$1]}"
 }
 release() {
     flock -u "${held[$1]}"
@@ -631,6 +634,7 @@ bytes() {
         found=$(rind_symbol "$arch" "$path")
         relocation_data "${found%% *}" "$dir/$arch/$name.bin.relocs" "$dir/$arch/$name.bin.data" "$arch"
     done <"$dir/routines"
+    release scratch
     admin/prove-bytes check "$dir"
 }
 if [[ -z $only || $only == bytes ]]; then
