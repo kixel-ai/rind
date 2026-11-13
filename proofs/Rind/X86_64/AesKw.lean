@@ -208,19 +208,21 @@ theorem wrap_blocks_loop_spec {alg : Algorithm} {key : List (BitVec 8)} {aes : m
     by_cases hlt : it.start.val < it.end.val
     · step with core.iter.range.IteratorRange.next_U64_some_spec as ⟨o, it', ho, hst, hen⟩
       subst ho
+      have h6 : (it.start.val + 1) * n ≤ 6 * n := Nat.mul_le_mul_right _ (by omega)
+      rw [Nat.add_mul, Nat.one_mul] at h6
       have hmul : it.start.val * nn.val ≤ U64.max := by
         have em : U64.max = 2 ^ 64 - 1 := by rw [U64.max_eq]; norm_num
-        rw [hnn, em]; nlinarith
+        rw [hnn, em]; omega
       step as ⟨i, i_post⟩
-      step with wrap_pass_spec hk it.start.val a i r (by rw [i_post, hnn, hn]) (by rw [hn]; nlinarith)
-        as ⟨res, hl, hres⟩
-      simp only [WP.spec_ok]
+      step with wrap_pass_spec hk it.start.val a i r (by rw [i_post, hnn, hn]) (by rw [hn]; omega)
+        as ⟨ra, rr, hl, hres⟩
+      try simp only [WP.spec_ok]
       refine ⟨by omega, by rw [hen]; exact he, by rw [hl, hn], ?_, by omega⟩
       rw [← hf]
       obtain ⟨m, hm⟩ : ∃ m, 6 - it.start.val = m + 1 := ⟨6 - it.start.val - 1, by omega⟩
       rw [hm, Nat.add_mul, Nat.one_mul, Nat.add_comm (m * n), ← List.range'_append_1, List.foldl_append]
       rw [hn] at hres
-      rw [← hres, show 6 - it'.start.val = m by omega, hst, Nat.add_mul, Nat.one_mul, hl, hn]
+      rw [← hres, show 6 - it'.start.val = m by omega, hst, Nat.add_mul, Nat.one_mul]
     · step with core.iter.range.IteratorRange.next_U64_none_spec as ⟨o, it', ho, hit⟩
       subst ho
       simp only [WP.spec_ok]
@@ -238,9 +240,9 @@ theorem wrap_blocks_spec {alg : Algorithm} {key : List (BitVec 8)} {aes : mid.ae
   unfold mid.aes_kw.wrap_blocks
   simp only [core.num.U64.from_ne_bytes, core.num.U64.to_ne_bytes, bind_ok]
   step as ⟨nn, hnn⟩
-  step with wrap_blocks_loop_spec hk r.length _ r nn _ rfl (by rw [hnn, cast_u64, Slice.len_val]) (by simp) (by simp) hb
-    as ⟨res, hl, hres⟩
-  simp only [WP.spec_ok]
+  step with wrap_blocks_loop_spec hk r.length { start := 0#u64, «end» := 6#u64 } r nn _ rfl
+    (by rw [hnn, cast_u64, Slice.len_val]) (by simp) (by simp) hb as ⟨rr, ra, hl, hres⟩
+  try simp only [WP.spec_ok]
   refine ⟨hl, ?_⟩
   rw [bvs_to_le, hres, le8_from]
   simp [List.range_eq_range']
@@ -264,15 +266,40 @@ theorem unwrap_pass_loop_spec {alg : Algorithm} {key : List (BitVec 8)} {aes : l
     by_cases hlt : it.start.val < it.end.val
     · step with core.iter.range.IteratorRange.next_Usize_some_spec as ⟨o, it', ho, hst, hen⟩
       subst ho
-      simp only [core.num.U64.from_ne_bytes, core.num.U64.to_be]
-      step*
+      simp only [core.num.U64.from_ne_bytes, core.num.U64.to_be, bind_ok, lift]
+      have hi : it.start.val < n := by omega
+      step as ⟨i1, hi1⟩
+      step as ⟨i2, hi2⟩
+      step as ⟨a1, ha1⟩
+      step as ⟨b, hbk⟩
+      have ht1' : (1#u64 : U64).val ≤ t.val := by simp; omega
+      step as ⟨t1, ht1⟩
       step with dec_bytes hk b as ⟨b1, hb1⟩
       have h8 : (8#usize : Usize).val ≤ b1.to_slice.length := by simp
       simp only [lift, bind_ok, core.slice.Slice.first_chunk, core.slice.Slice.last_chunk, h8,
         core.option.Option.unwrap, Result.ofOption]
       simp only [↓reduceDIte, bind_ok]
       step*
-      done
+      have hi2' : i2.val = n - 1 - it.start.val := by simp only [Slice.len_val] at hi1; omega
+      have hl : s2.length = n := by simp [s2_post, hn]
+      refine ⟨by omega, by rw [hen]; exact he, hl, by omega, ?_, by omega⟩
+      rw [← hf]
+      obtain ⟨m, hm⟩ : ∃ m, n - it.start.val = m + 1 := ⟨n - it.start.val - 1, by omega⟩
+      rw [hm, List.range'_concat, List.reverse_append, List.reverse_singleton, List.singleton_append,
+        List.foldl_cons, show n - it'.start.val = m by omega]
+      congr 1
+      have hkk : p * n + 1 * m = p * n + i2.val := by omega
+      have hmod : (p * n + i2.val) % n = i2.val := by
+        rw [Nat.add_comm, Nat.add_mul_mod_self_right, Nat.mod_eq_of_lt (by omega)]
+      have hri : (chunks r)[i2.val]! = bvs a1.val := by
+        have hi2n : i2.val < n := by omega
+        rw [ha1]; simp [chunks, getElem!_pos, hn, hi2n]
+      rw [le8_xor, le8_to_be] at hbk
+      simp only [uStep, hkk, hmod, hri]
+      rw [show p * n + i2.val + 1 = t.val by omega, ← hbk, ← hb1, le8_from]
+      congr 1
+      · simp [bvs, List.map_take]
+      · simp [s2_post, chunks, List.map_set, bvs, List.map_drop]
     · step with core.iter.range.IteratorRange.next_Usize_none_spec as ⟨o, it', ho, hit⟩
       subst ho
       simp only [WP.spec_ok]
@@ -314,21 +341,23 @@ theorem unwrap_blocks_loop_spec {alg : Algorithm} {key : List (BitVec 8)} {aes :
       step as ⟨i, i_post⟩
       have hmul : i.val * nn.val ≤ U64.max := by
         have em : U64.max = 2 ^ 64 - 1 := by rw [U64.max_eq]; norm_num
-        rw [hnn, em, i_post]; nlinarith
+        have : (6 - it.start.val) * n ≤ 6 * n := Nat.mul_le_mul_right _ (by omega)
+        rw [hnn, em, i_post]; omega
       step as ⟨i1, i1_post⟩
       have h65 : (6 - it.start.val) * n = (5 - it.start.val) * n + n := by
         rw [show 6 - it.start.val = (5 - it.start.val) + 1 by omega, Nat.add_mul, Nat.one_mul]
       have h5 : (5 - it.start.val) * n ≤ 5 * n := Nat.mul_le_mul_right _ (by omega)
       step with unwrap_pass_spec hk (5 - it.start.val) a i1 r
-        (by rw [i1_post, i_post, hnn, hn, ← h65]) (by rw [hn]; omega) as ⟨res, hl, hres⟩
-      simp only [WP.spec_ok]
+        (by rw [i1_post, i_post, hnn, hn, ← h65]) (by rw [hn]; omega) as ⟨ra, rr, hl, hres⟩
+      try simp only [WP.spec_ok]
       refine ⟨by omega, by rw [hen]; exact he, by rw [hl, hn], ?_, by omega⟩
       rw [← hf]
       obtain ⟨m, hm⟩ : ∃ m, 6 - it.start.val = m + 1 := ⟨6 - it.start.val - 1, by omega⟩
-      rw [hm, Nat.add_mul, Nat.one_mul, ← List.range'_append_1, List.reverse_append, List.foldl_append]
+      rw [hm, Nat.add_mul, Nat.one_mul, ← List.range'_append_1, List.reverse_append, List.foldl_append,
+        Nat.zero_add]
       rw [hn] at hres
-      rw [show 5 - it.start.val = m by omega, Nat.zero_add] at hres
-      rw [← hres, show 6 - it'.start.val = m by omega, hl, hn]
+      rw [show 5 - it.start.val = m by omega] at hres
+      rw [← hres, show 6 - it'.start.val = m by omega]
     · step with core.iter.range.IteratorRange.next_U64_none_spec as ⟨o, it', ho, hit⟩
       subst ho
       simp only [WP.spec_ok]
@@ -347,9 +376,9 @@ theorem unwrap_blocks_spec {alg : Algorithm} {key : List (BitVec 8)} {aes : low.
   unfold mid.aes_kw.unwrap_blocks
   simp only [core.num.U64.from_ne_bytes, core.num.U64.to_ne_bytes, bind_ok]
   step as ⟨nn, hnn⟩
-  step with unwrap_blocks_loop_spec hk r.length _ r nn _ rfl (by rw [hnn, cast_u64, Slice.len_val]) (by simp)
-    (by simp) hb as ⟨res, hl, hres⟩
-  simp only [WP.spec_ok]
+  step with unwrap_blocks_loop_spec hk r.length { start := 0#u64, «end» := 6#u64 } r nn _ rfl
+    (by rw [hnn, cast_u64, Slice.len_val]) (by simp) (by simp) hb as ⟨rr, ra, hl, hres⟩
+  try simp only [WP.spec_ok]
   refine ⟨hl, ?_⟩
   rw [bvs_to_le, hres, le8_from]
   simp [List.range_eq_range']
@@ -389,10 +418,17 @@ theorem as_chunks_mut_8 (s : Slice U8) (h8 : s.length % 8 = 0) :
       intro l; induction l with
       | nil => simp
       | cons x l ih => simp [List.flatMap_cons, ih]; ring
-    have hlen : (c.val.flatMap (·.val) ++ (Slice.from (s.val.drop (s.length / 8 * 8)) (by simp; omega) :
-        Slice U8).val).length = s.length := by
-      simp only [Slice.from_val?, hrest, List.append_nil, hflat]; simp only [Slice.length] at hc h8 ⊢; omega
-    sorry
+    have hlen : (c.val.flatMap (·.val)).length = s.length := by
+      rw [hflat]; simp only [Slice.length] at hc h8 ⊢; omega
+    have hbf : ∀ l : List (Std.Array U8 8#usize), bvs (l.flatMap (·.val)) = (l.map fun x => bvs x.val).flatten := by
+      intro l; induction l with
+      | nil => simp
+      | cons x l ih => rw [List.flatMap_cons, List.map_cons, List.flatten_cons, ← ih]; simp [bvs]
+    split
+    · rename_i hle
+      simp [hrest, hbf, chunks, Slice.length, hlen]
+    · rename_i hle
+      exfalso; apply hle; simp [hrest, hlen]
 
 /-- `wrap` refuses what the Rust refuses, and otherwise writes KW-AE of the key. -/
 theorem kek_wrap_spec (h : RunsAesHw) {alg : Algorithm} {kek : List (BitVec 8)} {self : mid.aes_kw.AesKek}
@@ -411,13 +447,12 @@ theorem kek_wrap_spec (h : RunsAesHw) {alg : Algorithm} {kek : List (BitVec 8)} 
   have hlt : ¬ Slice.len key < 16#usize := by scalar_tac
   simp only [hlt, ite_false]
   step as ⟨b, hb⟩
-  by_cases h8 : key.length % 8 = 0
-  swap
-  · have hbf : b = false := by simp only [hb, Slice.len_val]; simpa using h8
+  cases b
+  · have h8 : ¬ key.length % 8 = 0 := by simpa using hb
     have hn : ¬ (16 ≤ key.length ∧ key.length % 8 = 0 ∧ wrapped.length = key.length + 8) := by omega
-    simp only [hbf, hn, Bool.false_eq_true, ite_false, WP.spec_ok]
-  have hbt : b = true := by simp only [hb, Slice.len_val]; simpa using h8
-  simp only [hbt, ite_true]
+    simp only [hn, Bool.false_eq_true, ite_false, WP.spec_ok]
+  have h8 : key.length % 8 = 0 := by simpa using hb
+  simp only [ite_true]
   step as ⟨i4, hi4⟩
   by_cases hw : wrapped.length = key.length + 8
   swap
@@ -431,15 +466,16 @@ theorem kek_wrap_spec (h : RunsAesHw) {alg : Algorithm} {kek : List (BitVec 8)} 
   simp only [hne, Bool.false_eq_true, ite_false, hy, and_self, ite_true]
   step as ⟨ar, back, ha1, hr1, ha2, hr2, hback⟩
   step as ⟨r1, hr1'⟩
-  subst hr1'
+  subst r1
   simp only [low.ct.secret_slice, bind_ok]
   step with kek_key_spec hk as ⟨s, hsl, hsb⟩
   step with aes_key_new_spec h alg s hsl as ⟨ak, hak⟩
   rw [hsb] at hak
   simp only [core.mem.manually_drop.ManuallyDrop.new, core.mem.manually_drop.ManuallyDrop.Insts.CoreOpsDerefDeref.deref,
     bind_ok]
-  step with as_chunks_mut_8 key h8 as ⟨ch, cback, hcl, hch, hcback⟩
-  step with wrap_blocks_spec hak mid.aes_kw.IV ch.1 (by have := usize_lt key.len; rw [hcl]; simp at this; omega)
+  step with as_chunks_mut_8 key h8 as ⟨ch, rest, cback, hcl, hch, hcback⟩
+  step with wrap_blocks_spec hak mid.aes_kw.IV ch
+    (by have := usize_lt key.len; rw [Slice.len_val] at this; rw [hcl]; omega)
     as ⟨wb, hwl, hwb⟩
   done
 
