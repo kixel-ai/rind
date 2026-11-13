@@ -373,21 +373,28 @@ declare -A hol_light_base=([x86_64]=x86/proofs/base.ml [aarch64]=arm/proofs/base
 
 # Starts a HOL Light session for `arch` in which a proof in
 # `proofs/hol-light/<arch>/` loads as `admin/prove hol-light` compiles it: the
-# target's base file loaded, on `hol_light_compile`'s load path, in
-# `$out/hol-light`, where `hol_light_objects` writes the object code the
-# proofs read. With `file`, it loads the file and exits, failing if any of it
-# fails; otherwise it reads OCaml from stdin. Loading the base file takes
-# minutes and up to 20 GB, so the session restores an image `session_image`
-# checkpointed after it, in seconds.
+# target's base file loaded, on `hol_light_compile`'s load path, in a
+# directory of its own holding the object code `hol_light_objects` writes for
+# the proofs to read. With `file`, it loads the file and exits, failing if any
+# of it fails; otherwise it reads OCaml from stdin. Loading the base file
+# takes minutes, so the session restores an image `session_image`
+# checkpointed after it, in under a second. Sessions in one worktree prepare
+# one at a time, since each rewrites what `$out` holds, and then run at once.
 session() {
-    local arch=$1 file=$2 root=$PWD image setup
-    s2n_bignum_model
+    local arch=$1 file=$2 root=$PWD image setup lock
+    exec {lock}>"$out/session.lock"
+    flock "$lock"
+    git submodule update --init --depth 1 thirdparty/s2n-bignum
     if [[ -n $(git -C thirdparty/s2n-bignum status --porcelain) ]]; then
         echo "admin/prove: thirdparty/s2n-bignum has uncommitted changes, which its commit does not name" >&2
         return 1
     fi
     hol_light_objects "$arch"
+    session_dir=$(mktemp -d "$root/$out/session.XXXXXX")
+    trap 'rm -rf "$session_dir"' EXIT
+    cp -r "$out/hol-light/$arch" "$session_dir/$arch"
     image=$(session_image "$arch")
+    exec {lock}>&-
     # Marks the image used, for `session_image` to keep it.
     touch "$image"
     # The image keeps the load path it was built with, so this rebinds it to
@@ -396,7 +403,7 @@ session() {
     setup="load_path := [\".\"; \"\$\"; $(ocaml_string "$root/proofs/hol-light");"
     setup+=" $(ocaml_string "$image/s2n-bignum"); $(ocaml_string "$root/proofs/hol-light/s2n-bignum");"
     setup+=" $(ocaml_string "$root/thirdparty/s2n-bignum")];;"
-    setup+=" Sys.chdir $(ocaml_string "$root/$out/hol-light");;"
+    setup+=" Sys.chdir $(ocaml_string "$session_dir");;"
     # HOL Light colors what it prints, which only a terminal shows.
     if [[ ! -t 1 ]]; then
         setup+=" set_color_printer false;;"
@@ -453,6 +460,7 @@ let () = needs \"$base\"; ignore (input_line stdin); Gc.compact (); print_endlin
     exec {lock}>"$image.lock"
     flock "$lock"
     if [[ ! -d $image ]]; then
+        s2n_bignum_model
         find "$cache" -mindepth 1 -maxdepth 1 -name "$arch-*" -mtime +7 -exec rm -rf {} +
         rm -rf "$build"
         mkdir -p "$build"
