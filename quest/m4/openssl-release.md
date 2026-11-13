@@ -9,6 +9,9 @@ Rust toolchain.
 
 ## Plan
 
+- Decided (maintainer): the libraries ship as assets on rind-openssl's
+  GitHub releases under a `rind-openssl-v*` tag; distribution packages and
+  shipping nowhere were rejected.
 - rind-openssl is unpublished (`publish = false`): crates.io serves source,
   and OpenSSL loads a built library, so today the only route is
   `cargo build --release -p rind-openssl` from a checkout.
@@ -22,13 +25,3 @@ Rust toolchain.
   ships, as `rind-openssl/tests/provider.rs` does, before attaching it.
 - Version it as the crate is: 3.x for OpenSSL 3's provider ABI, bumped as
   rind-dart's version is.
-
-## Waiting
-
-- Maintainer: where the libraries go. (a) Assets on rind-openssl's GitHub
-  releases, a tag of its own as the other crates have. (b) Also distribution
-  packages (a Debian `.deb`, a Homebrew formula), which need a maintainer per
-  channel. (c) Nowhere: building from source stays the only route, and this
-  quest is deleted. Recommended: (a), the one channel the release workflow
-  can own end to end. An agent cannot pick: it decides what rind supports
-  and signs its name to.
