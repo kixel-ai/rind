@@ -301,16 +301,17 @@ class Api:
                         self.visit(child, path + (child["name"],), seen, owner, impl)
             elif self.external(impl["trait"]["id"], impl["trait"]["path"]) not in IGNORED_TRAITS:
                 sig = {"trait": impl["trait"], "negative": impl["is_negative"]}
-                # Bounds are API, including an auto trait's inferred ones.
-                # So is the type it is for, which tells apart impls on
-                # different instances of one generic type.
-                sig.update(elide({"generics": impl["generics"], "for": impl["for"]}))
                 # Its associated types and consts are API; its methods are the trait's.
                 sig["assoc"] = {
                     child["name"]: assoc_item(child["inner"])
                     for child in map(lambda i: self.index[str(i)], impl["items"])
                     if "function" not in child["inner"]
                 }
+                # Bounds are API, including an auto trait's inferred ones.
+                # So is the type it is for, which tells apart impls on
+                # different instances of one generic type.
+                header = {"generics": impl["generics"], "for": impl["for"], "trait": impl["trait"], "assoc": sig["assoc"]}
+                sig.update(elide(header))
                 self.add(path + ("{impl}",), "impl", self.sig(sig), owner)
 
     def external(self, id, fallback):
@@ -401,7 +402,9 @@ class Unordered(list):
 
 def elide(impl):
     """An impl header with each lifetime parameter it names only once written as `'_`."""
-    uses = collections.Counter(re.findall(r"'[\w]+", json.dumps([impl["for"], impl["generics"]["where_predicates"]])))
+    # A lifetime the trait or its associated items also name relates them, so it stays.
+    named = [impl["for"], impl["generics"]["where_predicates"], impl.get("trait"), impl.get("assoc")]
+    uses = collections.Counter(re.findall(r"'[\w]+", json.dumps(named)))
     free = {
         p["name"]
         for p in impl["generics"]["params"]
