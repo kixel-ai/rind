@@ -13,8 +13,8 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 ### s2n-bignum
 
-- **Fork:** `thirdparty/s2n-bignum`, the whole tree, in place of the submodule ([kixel-ai/rind#701](https://github.com/kixel-ai/rind/pull/701) moves it there from the `proofs/hol-light/s2n-bignum/` overlay).
-- **Changes:** listed beside the vendored tree, in `thirdparty/s2n-bignum/RIND.md`: unmerged upstream specs and model additions, rind's specs, and rind's additions to the x86 model.
+- **Fork:** `proofs/hol-light/s2n-bignum/`, the files rind changes or adds over the `thirdparty/s2n-bignum` submodule. [kixel-ai/rind#701](https://github.com/kixel-ai/rind/pull/701) replaces the submodule with the fork's whole tree, vendored in `thirdparty/s2n-bignum`, and folds this directory into it.
+- **Changes:** listed in [that directory's README](/proofs/hol-light/s2n-bignum/README.md): unmerged upstream specs and model additions, rind's specs, and rind's additions to the x86 model. Once #701 lands, the list is kept beside the vendored tree, in `thirdparty/s2n-bignum/RIND.md`.
 - **Offered:** no.
 
 ## Compilers and linkers
