@@ -568,4 +568,163 @@ theorem kek_unwrap_spec (h : RunsAesHw) (hheld : low.entry.Entry.assert_held = o
     step*
     done
 
+theorem next_multiple_of_8_spec (a : Usize) (h : a.val + 7 ≤ Usize.max) :
+    core.num.Usize.next_multiple_of a 8#usize ⦃ r => r.val = (a.val + 7) / 8 * 8 ⦄ := by
+  unfold core.num.Usize.next_multiple_of
+  step as ⟨m, hm⟩
+  split
+  · rename_i h0
+    have : m.val = 0 := by rw [h0]; rfl
+    simp only [WP.spec_ok]; omega
+  · rename_i h0
+    have : m.val ≠ 0 := fun h' => h0 (UScalar.eq_of_val_eq (by rw [h']; rfl))
+    step as ⟨d, hd⟩
+    step as ⟨r, hr⟩
+    omega
+
+/-- `wrap_padded` refuses what the Rust refuses, keys empty or of `2^32` bytes or
+more among them, and otherwise writes KWP-AE of the key. -/
+theorem kek_wrap_padded_spec (h : RunsAesHw) {alg : Algorithm} {kek : List (BitVec 8)}
+    {self : mid.aes_kw.AesKek} (hk : KekIs alg kek self) (key wrapped : Slice U8)
+    (hroom : key.length + 15 ≤ Usize.max) :
+    mid.aes_kw.AesKek.wrap_padded self key wrapped ⦃ res =>
+      if 0 < key.length ∧ key.length < 2 ^ 32 ∧ wrapped.length = (key.length + 7) / 8 * 8 + 8 then
+        res.1 = .Ok () ∧ bvs res.2.val = kwpAE alg kek (bvs key.val)
+      else res = (.Err .WrongLength, wrapped) ⦄ := by
+  obtain ⟨e, he⟩ := h.1
+  unfold mid.aes_kw.AesKek.wrap_padded
+  rw [he, bind_ok]
+  have hu32 : U32.max = 2 ^ 32 - 1 := by rw [U32.max_eq]; norm_num
+  step as ⟨r, hr1, hr2⟩
+  by_cases hbig : 2 ^ 32 ≤ key.length
+  · rw [hr2 (by rw [Slice.len_val]; omega)]
+    have hn : ¬ (0 < key.length ∧ key.length < 2 ^ 32 ∧
+      wrapped.length = (key.length + 7) / 8 * 8 + 8) := by omega
+    simp only [hn, ite_false, WP.spec_ok]
+  obtain ⟨len, rfl, hlen⟩ := hr1 (by rw [Slice.len_val]; omega)
+  simp only
+  step as ⟨b, hb⟩
+  by_cases h0 : key.length = 0
+  · have hbt : b = true := by rw [hb]; simpa using h0
+    have hn : ¬ (0 < key.length ∧ key.length < 2 ^ 32 ∧
+      wrapped.length = (key.length + 7) / 8 * 8 + 8) := by omega
+    simp only [hbt, ite_true, hn, ite_false, WP.spec_ok]
+  have hbf : b = false := by
+    cases b
+    · rfl
+    · simp at hb; exact absurd (by simp [Slice.length, hb]) h0
+  simp only [hbf, Bool.false_eq_true, ite_false]
+  step with next_multiple_of_8_spec (Slice.len key) (by rw [Slice.len_val]; omega) as ⟨i3, hi3⟩
+  step as ⟨i4, hi4⟩
+  by_cases hw : wrapped.length = (key.length + 7) / 8 * 8 + 8
+  swap
+  · have hne : (Slice.len wrapped != i4) = true := by
+      simp only [bne_iff_ne, ne_eq]; intro he; apply hw
+      rw [← Slice.len_val, he, hi4, hi3, Slice.len_val]
+    have hn : ¬ (0 < key.length ∧ key.length < 2 ^ 32 ∧
+      wrapped.length = (key.length + 7) / 8 * 8 + 8) := by omega
+    simp only [hne, hn, ite_true, ite_false, WP.spec_ok]
+  have hne : ¬ (Slice.len wrapped != i4) = true := by
+    simp only [bne_iff_ne, ne_eq, not_not]; apply UScalar.eq_of_val_eq
+    rw [hi4, hi3, Slice.len_val, Slice.len_val, hw]
+  have hy : 0 < key.length ∧ key.length < 2 ^ 32 ∧ wrapped.length = (key.length + 7) / 8 * 8 + 8 :=
+    ⟨by omega, by omega, hw⟩
+  simp only [hne, Bool.false_eq_true, ite_false, hy, and_self, ite_true]
+  have hkw : key.length + 8 ≤ wrapped.length := by omega
+  have hclone : core.clone.CloneU8.clone 0#u8 ⦃ v' => v' = 0#u8 ⦄ := by
+    simp [liftFun1]
+  step*
+  have haiv : bvs (index_mut_back1 s5).val = icv2 ++ be32 key.length := by
+    have e0 : (Std.Array.repeat 8#usize 0#u8).val = List.replicate 4 0#u8 ++ List.replicate 4 0#u8 := by simp
+    have hA : mid.aes_kw.AIV.val.length = 4 := by simp
+    have e1 := rind.spec.setSlice!_append [] (List.replicate 4 0#u8) (List.replicate 4 0#u8)
+      mid.aes_kw.AIV.val (by simp)
+    have e2 := rind.spec.setSlice!_append mid.aes_kw.AIV.val (List.replicate 4 0#u8) [] a.val (by simp)
+    simp only [List.length_nil, List.nil_append, List.append_nil, hA] at e1 e2
+    rw [s3_post2, s_post2, e0, s5_post, s4_post, Std.Array.val_to_slice, s2_post, s1_post,
+      Std.Array.val_to_slice, e1, e2, bvs_append, bvs_AIV, a_post]
+    simp only [bvs, List.map_map, Function.comp_def, List.map_id']
+    rw [toBEBytes_32]
+    show _ ++ be32 len.val = _
+    rw [hlen, Slice.len_val]
+  have hpad : r_pad.length = (8 - key.length % 8) % 8 := by
+    rw [r_key_post1, a1_post1, Slice.len_val]; omega
+  obtain ⟨hr2v, hr2l⟩ := r_key_post4 r_key1 r_pad1 (by rw [r_key1_post]; simp)
+    (by rw [r_pad1_post, r_key_post1])
+  have hr2 : bvs (split_at_mut_back1 (r_key1, r_pad1)).val = kwpPad (bvs key.val) := by
+    rw [hr2v, bvs_append, r_key1_post, r_pad1_post1, hpad]; simp [kwpPad, bvs]
+  have hr2len : (split_at_mut_back1 (r_key1, r_pad1)).length = (key.length + 7) / 8 * 8 := by
+    rw [hr2l, a1_post1]; omega
+  set aiv2 := index_mut_back1 s5 with haiv2
+  set r2 := split_at_mut_back1 (r_key1, r_pad1) with hr2def
+  simp only [low.ct.secret_slice, bind_ok]
+  step with kek_key_spec hk as ⟨s6, hsl, hsb⟩
+  step with aes_key_new_spec h alg s6 hsl as ⟨ak, hak⟩
+  rw [hsb] at hak
+  simp only [core.mem.manually_drop.ManuallyDrop.new,
+    core.mem.manually_drop.ManuallyDrop.Insts.CoreOpsDerefDeref.deref, bind_ok]
+  have e8 : (8#usize : Usize).val = 8 := rfl
+  have hpl : (bvs key.val).length = key.length := by simp [bvs, Slice.length]
+  split
+  · rename_i h8r
+    have hk8 : key.length ≤ 8 := by
+      have := congrArg UScalar.val h8r; rw [Slice.len_val, hr2len, e8] at this; omega
+    have hw16 : wrapped.length = 16 := by omega
+    have hr28 : r2.length = 8 := by rw [hr2len]; omega
+    step*
+    obtain ⟨s7, back2⟩ := x
+    dsimp only at *
+    have hs7 : s7.length = aiv2.to_slice.length := by simp [x_post1]
+    obtain ⟨hw2v, hw2l⟩ := a1_post4 a1 r2 a1_post (by rw [hr28, hw16])
+    try simp only [lift, bind_ok]
+    step as ⟨s9, hs9⟩
+    step as ⟨y, hyv, hyl, hyb⟩
+    obtain ⟨s10, back3⟩ := y
+    dsimp only at *
+    have hs10 : s10.length = r2.length := by rw [hyl, hr28]
+    step as ⟨s11, hs11⟩
+    step with enc_bytes hak (back3 s11) as ⟨a2, ha2⟩
+    try simp only [lift, bind_ok]
+    have hs12l : (split_at_mut_back (a1, r2)).length = a2.to_slice.length := by simp [hw2l, hw16]
+    step as ⟨s12, hs12⟩
+    simp only [low.ct.public_slice, bind_ok, WP.spec_ok]
+    refine ⟨trivial, ?_⟩
+    have hA : aiv2.val.length = 8 := by simp
+    have eb0 : (Std.Array.repeat 16#usize 0#u8).val = List.replicate 8 0#u8 ++ List.replicate 8 0#u8 := by
+      simp
+    have eb1 := rind.spec.setSlice!_append [] (List.replicate 8 0#u8) (List.replicate 8 0#u8) aiv2.val
+      (by simp)
+    have eb2 := rind.spec.setSlice!_append aiv2.val (List.replicate 8 0#u8) [] r2.val (by simp [hr28])
+    simp only [List.length_nil, List.nil_append, List.append_nil, hA] at eb1 eb2
+    have hblk : (back3 s11).val = aiv2.val ++ r2.val := by
+      rw [hyb, x_post2, eb0, hs9, Std.Array.val_to_slice, eb1, hs11, eb2]
+    rw [hs12, Std.Array.val_to_slice, ha2, hblk, bvs_append, haiv, hr2]
+    simp only [kwpAE, hpl, hk8, ite_true]
+  · rename_i h8r
+    have hk8 : ¬ key.length ≤ 8 := by
+      intro hk8; apply h8r; apply UScalar.eq_of_val_eq; rw [Slice.len_val, hr2len, e8]; omega
+    have hr8 : r2.length % 8 = 0 := by rw [hr2len]; omega
+    step with as_chunks_mut_8 r2 hr8 as ⟨x, hcl, hch, hcback⟩
+    obtain ⟨⟨ch, rest⟩, cback⟩ := x
+    dsimp only at *
+    rw [← hr2def] at hcl hch hcback
+    step with wrap_blocks_spec hak aiv2 ch
+      (by rw [hcl, hr2len]; omega) as ⟨w, hwl, hwb⟩
+    obtain ⟨wa, wr⟩ := w
+    dsimp only at *
+    rw [← haiv2] at hwb
+    have hc := hcback wr (by rw [hwl, hcl])
+    simp only [lift, bind_ok]
+    have hlen8 : a1.length = wa.to_slice.length := by simp [a1_post]
+    step as ⟨a3, ha3⟩
+    have hs := a1_post4 a3 (cback (wr, rest)) (by rw [ha3]; simp) (by rw [hc.2, hr2len]; omega)
+    simp only [low.ct.public_slice, bind_ok, WP.spec_ok]
+    refine ⟨trivial, ?_⟩
+    rw [hs.1, bvs_append, ha3, Std.Array.val_to_slice, hc.1]
+    have hn8 : (kwpPad (bvs key.val)).length / 8 = ch.length := by
+      rw [hcl, ← hr2]; simp [bvs, Slice.length]
+    rw [haiv, hch, hr2, ← hn8] at hwb
+    simp only [kwpAE, hpl, hk8, ite_false, kwW]
+    rw [← hwb]
+
 end rind.x86_64
