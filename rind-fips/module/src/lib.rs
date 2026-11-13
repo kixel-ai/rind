@@ -26,6 +26,7 @@ mod digest;
 mod ids;
 mod image;
 mod integrity;
+mod mac;
 mod scrub;
 mod selftest;
 

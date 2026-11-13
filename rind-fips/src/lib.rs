@@ -52,6 +52,26 @@ pub fn self_test() {
 /// ```
 pub mod digest;
 
+/// Message authentication with HMAC.
+///
+/// A [`hmac::Key`] precomputes its keyed hash states once; each message then
+/// signs through a [`hmac::Context`] started from it, or the one-shot
+/// [`hmac::sign`] and [`hmac::verify`].
+///
+/// ```
+/// use rind_fips::hmac;
+///
+/// let key = hmac::Key::new(&hmac::HMAC_SHA256, b"secret");
+///
+/// let mut ctx = hmac::Context::with_key(&key);
+/// ctx.update(b"hello, ");
+/// ctx.update(b"world");
+/// let tag = ctx.sign();
+///
+/// hmac::verify(&key, b"hello, world", tag.as_ref()).unwrap();
+/// ```
+pub mod hmac;
+
 /// Constant-time comparison, for checking a secret such as a MAC or token.
 ///
 /// ```
@@ -80,6 +100,58 @@ pub mod constant_time {
         })
     }
 }
+
+/// Key derivation with HKDF.
+///
+/// A [`hkdf::Salt`] extracts a [`hkdf::Prk`] from a secret, which then expands
+/// into any number of keys, each exactly as long as what it becomes.
+///
+/// ```
+/// use rind_fips::{hkdf, hmac};
+///
+/// let prk = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt").extract(b"input key material");
+///
+/// let hmac_key = hmac::Key::from(prk.expand(&[b"hmac"], &hmac::HMAC_SHA256));
+///
+/// let info: [&[u8]; 2] = [b"label", b"context"];
+/// let mut bytes = [0u8; 16];
+/// prk.expand(&info, bytes.len()).fill(&mut bytes).unwrap();
+/// ```
+pub mod hkdf;
+
+/// Password-based key derivation with PBKDF2.
+///
+/// A [`pbkdf2::Secret`] keys HMAC with a password once, then derives a key
+/// for a salt and iteration count, or checks one derived before. Only what
+/// SP 800-132 approves derives: a password of at least 14 bytes, a salt of
+/// at least 16, at least 1000 iterations, and a key of at least 14 bytes.
+/// This example takes the iteration count OWASP suggests for SHA-256, so it
+/// is not run as a test.
+///
+/// ```no_run
+/// use std::num::NonZeroU32;
+///
+/// use rind_fips::pbkdf2;
+///
+/// let iterations = NonZeroU32::new(600_000).unwrap();
+/// let secret = pbkdf2::Secret::new(&pbkdf2::PBKDF2_HMAC_SHA256, b"correct horse battery");
+///
+/// let mut stored = [0u8; 32];
+/// secret
+///     .derive(iterations, b"a per-user salt!", &mut stored)
+///     .unwrap();
+///
+/// secret
+///     .verify(iterations, b"a per-user salt!", &stored)
+///     .unwrap();
+/// ```
+pub mod pbkdf2;
+
+/// Encoded keys: PKCS#8 and SEC1 private keys, and `SubjectPublicKeyInfo`
+/// public keys.
+///
+/// Every key type that exports itself returns these, whatever its module.
+pub mod encoding;
 
 /// Random bytes from the module's SP 800-90A DRBG, seeded from the system.
 ///

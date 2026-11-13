@@ -145,6 +145,32 @@ macro_rules! free {
 }
 pub(crate) use free;
 
+/// An encoding a service made, such as a key's PKCS#8 or a ciphertext:
+/// rind's own type, so a private one wipes itself when freed, behind a
+/// handle the caller reads it through.
+pub(crate) struct Encoded(Box<dyn AsRef<[u8]> + Send + Sync>);
+
+/// Boxes `value` as an [`Encoded`] handle.
+pub(crate) fn encoded(value: impl AsRef<[u8]> + Send + Sync + 'static) -> *mut Encoded {
+    handle(Encoded(Box::new(value)))
+}
+
+/// The bytes of `encoded`, writing their length to `len`; they live as
+/// long as the handle.
+///
+/// # Safety
+/// `encoded` must be live, and `len` valid for a write.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_fips_encoded_bytes(encoded: *const Encoded, len: *mut usize) -> *const u8 {
+    // SAFETY: the caller's contract.
+    let bytes = unsafe { (*(*encoded).0).as_ref() };
+    // SAFETY: the caller's contract.
+    unsafe { put(len, bytes.len()) };
+    bytes.as_ptr()
+}
+
+free!(rind_fips_encoded_free, Encoded);
+
 /// The module's name and version, writing its length to `len`. The string
 /// lives as long as the module.
 ///
