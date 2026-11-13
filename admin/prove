@@ -270,6 +270,7 @@ hol_light_proofs=(
     "x86_64 ct_compare_bytes.bin rind::low::x86_64::cpu::ct_compare_bytes"
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
     "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
+    "x86_64 aes_hw_cbc_encrypt.o rind::low::x86_64::aes_cbc::aes_hw_cbc_encrypt"
 )
 # The specs that no proof above loads yet, each loaded into the named target's
 # program so its known-answer tests run.
