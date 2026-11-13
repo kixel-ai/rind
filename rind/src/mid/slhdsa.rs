@@ -1160,6 +1160,16 @@ mod tests {
         !CTGRIND_DEBUG || group.str("parameterSet").ends_with("128f")
     }
 
+    /// How many tests of each keyGen and sigGen group run: the s sets build
+    /// trees for seconds in a debug build, so only SLOW_TESTS takes every
+    /// test; otherwise each group gives its first.
+    fn per_group() -> usize {
+        match std::env::var_os("SLOW_TESTS") {
+            Some(_) => usize::MAX,
+            None => 1,
+        }
+    }
+
     /// The prefix a test's message is signed under: none under the
     /// internal interface, or pure SLH-DSA's for its context under the
     /// external one.
@@ -1203,7 +1213,7 @@ mod tests {
             if !runs(&group) {
                 continue;
             }
-            for test in group.tests() {
+            for test in group.tests().iter().take(per_group()) {
                 by_set!(group.str("parameterSet"), check(test));
             }
         }
@@ -1224,17 +1234,11 @@ mod tests {
                 test.int("tcId")
             );
         }
-        // The s sets sign for seconds in a debug build, so only SLOW_TESTS
-        // takes every test; otherwise each group gives its first.
-        let per_group = match std::env::var_os("SLOW_TESTS") {
-            Some(_) => usize::MAX,
-            None => 1,
-        };
         for group in acvp("SLH-DSA-sigGen-FIPS205") {
             if !runs(&group) {
                 continue;
             }
-            for test in group.tests().iter().take(per_group) {
+            for test in group.tests().iter().take(per_group()) {
                 by_set!(group.str("parameterSet"), check(&group, test));
             }
         }

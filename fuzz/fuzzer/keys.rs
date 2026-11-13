@@ -1007,7 +1007,9 @@ fn slh_dsa_spki<R: slh_dsa::ParameterSet>(set: &SlhDsa, input: &[u8]) {
     use pkcs8::DecodePublicKey;
     let ours = ours::PublicKey::from_spki(set.ours, input);
     let theirs = slh_dsa::VerifyingKey::<R>::from_public_key_der(input);
-    agree(&ours, &theirs, Expect::Agree);
+    // RustCrypto checks only the OID, so it takes algorithm parameters RFC
+    // 9909 says are absent.
+    agree(&ours, &theirs, Expect::Stricter);
     let Ok(ours) = ours else {
         return;
     };
