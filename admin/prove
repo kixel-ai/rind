@@ -487,6 +487,8 @@ let () = needs \"$base\"; ignore (input_line stdin); Gc.compact (); print_endlin
             HOLLIGHT_LOAD_PATH="$build/s2n-bignum:$build/carried:$root/thirdparty/s2n-bignum" \
             exec dmtcp_launch --new-coordinator --coord-port 0 --port-file port --no-gzip --ckptdir ckpt \
             hol_light <stdin 2>&1)
+        # HOL Light exits nonzero whether it failed or was checkpointed and
+        # killed, so the image, which only a checkpoint writes, says which.
         wait $! || true
         exec {stdin}>&-
         images=("$build"/ckpt/ckpt_*.dmtcp)
