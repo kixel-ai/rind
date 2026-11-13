@@ -16,4 +16,3 @@ Measured 2026-11-12 over 381 merge groups: build median 2.5 min, p90 11.7, max 2
 ## Related
 
 - [The merge queue runs rind's tests natively on aarch64](/quest/m0/mac-mini-runner.md) - the second runner this must not slow
-- [just ci runs only what a change can break, concurrently](/quest/m0/ci-speed/ci-scope.md) - shortens the build itself; this quest removes the time around it
