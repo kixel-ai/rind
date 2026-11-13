@@ -78,7 +78,7 @@ or intrinsic-based implementations for a certain platform.
 
 `rind/build.rs` picks one backend per target and sets `rind_backend` to it:
 `x86_64`, `aarch64`, or `arm` on little-endian targets of those
-architectures (`arm` only from ARMv7 on), and `portable` everywhere else, or wherever `--cfg
+architectures (`aarch64` only with NEON, `arm` only from ARMv7 on), and `portable` everywhere else, or wherever `--cfg
 rind_portable` forces it. Code outside `low` gates on `rind_backend`, never
 `target_arch`. `low::portable` is pure Rust and needs no CPU features; the
 `arm` backend wraps its types with the crypto extension's, NEON's, and
