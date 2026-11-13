@@ -527,9 +527,10 @@ first `tag_len` bytes of its tag (`gcm_key_seal`), and
 `seal_in_place_append_tag` returns what its `extend` makes of that, handed
 the tag (`gcm_key_seal_append_tag`), and `open_in_place` and
 `open_in_place_separate_tag` succeed exactly when the tag is those bytes,
-leaving the plaintext, and otherwise fail, leaving zeros (`gcm_key_open`,
-`gcm_key_open_separate_tag`); a tag that is not the key's length is
-refused. SP 800-38D's MSB_t truncation is the first bytes of Vale's tag, which
+leaving the plaintext, and otherwise fail (`gcm_key_open`,
+`gcm_key_open_separate_tag`). Only an authentication failure clears the
+ciphertext to zeros; a refusal, of an input shorter than the tag or a
+separate tag that is not the key's length, leaves the buffer unchanged. SP 800-38D's MSB_t truncation is the first bytes of Vale's tag, which
 `gcmDecryptTrunc` compares. A seal under a 12-byte IV runs `aead::Key`'s path
 and truncates its tag, and an open runs that path only under a 12-byte IV
 with a 16-byte tag; the model's other arms run `AesGcm::encrypt_any` and `decrypt_any`, which

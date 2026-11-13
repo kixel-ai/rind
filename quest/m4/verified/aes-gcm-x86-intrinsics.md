@@ -2,7 +2,7 @@
 
 ## Goal
 
-rind's last x86_64 AES-GCM intrinsics path is proven: the AVX-512 by-16 AES-CTR and GHASH, which run messages from 256 bytes to 2 KB on CPUs with AVX-512, VAES, and VPCLMULQDQ, so every input rind takes on AES-NI CPUs reaches a proof once [the VAES quest](/quest/m4/verified/aes-gcm-x86-vaes.md) proves BoringSSL's kernels and key setup.
+rind's last x86_64 AES-GCM intrinsics path is proven: the AVX-512 by-16 AES-CTR and GHASH, which run messages from 256 bytes to 2 KB on CPUs with AVX-512, VAES, and VPCLMULQDQ, so every input rind takes on CPUs with AES-NI, PCLMULQDQ, SSSE3, and SSE4.1 (an AES-NI CPU without SSSE3 runs the unverified `ghash_nohw`) reaches a proof once [the VAES quest](/quest/m4/verified/aes-gcm-x86-vaes.md) proves BoringSSL's kernels and key setup.
 
 ## Plan
 
