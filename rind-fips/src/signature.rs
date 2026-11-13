@@ -372,14 +372,13 @@ impl fmt::Debug for Signature {
 /// public_key.verify(b"hello", signature.as_ref()).unwrap();
 /// ```
 pub mod sign {
-    use super::rsa::RsaScheme;
-    use super::{CurveId, EcdsaEncoding, EcdsaSigningAlgorithm, HashId, RsaSigningAlgorithm, ids};
+    use ids::signature as id;
 
     pub use super::ml_dsa::{
         MlDsa44, MlDsa65, MlDsa87, MlDsaKeyPair, MlDsaParameterSet, MlDsaSeed, MlDsaSignature,
     };
-
-    use ids::signature as id;
+    use super::rsa::RsaScheme;
+    use super::{CurveId, EcdsaEncoding, EcdsaSigningAlgorithm, HashId, RsaSigningAlgorithm, ids};
 
     /// ECDSA on P-256 with SHA-256, ASN.1 signatures.
     pub static ECDSA_P256_SHA256_ASN1: EcdsaSigningAlgorithm = EcdsaSigningAlgorithm::new(
@@ -460,13 +459,13 @@ pub mod sign {
 /// 8192. RSA-PSS takes only a salt as long as its hash: there is no
 /// `RSA_PSS_*_ANY_SALT`.
 pub mod verify {
+    use ids::signature as id;
+
     use super::rsa::RsaScheme;
     use super::{
         CurveId, EcdsaEncoding, HashId, RsaVerificationAlgorithm, Verification,
         VerificationAlgorithm, ids,
     };
-
-    use ids::signature as id;
 
     const fn ecdsa(
         id: u32,

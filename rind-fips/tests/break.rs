@@ -90,9 +90,13 @@ fn every_self_test_fails_when_broken() {
 
 /// Every pairwise consistency test, by the name the module prints, and the
 /// trigger that generates a key pair it checks.
-const PCTS: [(&str, &str); 2] = [
+const PCTS: [(&str, &str); 6] = [
     ("pct_ecdh", "trigger_ecdh_generate"),
     ("pct_ml_kem", "trigger_ml_kem_generate"),
+    ("pct_ecdsa", "trigger_ecdsa_generate"),
+    ("pct_ed25519", "trigger_ed25519_generate"),
+    ("pct_rsa", "trigger_rsa_generate"),
+    ("pct_ml_dsa", "trigger_ml_dsa_generate"),
 ];
 
 #[test]
@@ -106,6 +110,33 @@ fn trigger_ecdh_generate() {
 fn trigger_ml_kem_generate() {
     use rind_fips::kem::{DecapsulationKey, ML_KEM_768};
     DecapsulationKey::generate(&ML_KEM_768).unwrap();
+    eprintln!("trigger done");
+}
+
+#[test]
+fn trigger_ecdsa_generate() {
+    use rind_fips::signature::{EcdsaKeyPair, sign};
+    EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_ASN1).unwrap();
+    eprintln!("trigger done");
+}
+
+#[test]
+fn trigger_ed25519_generate() {
+    rind_fips::signature::Ed25519KeyPair::generate().unwrap();
+    eprintln!("trigger done");
+}
+
+#[test]
+fn trigger_rsa_generate() {
+    use rind_fips::{rsa::KeySize, signature::RsaKeyPair};
+    RsaKeyPair::generate(KeySize::Rsa2048).unwrap();
+    eprintln!("trigger done");
+}
+
+#[test]
+fn trigger_ml_dsa_generate() {
+    use rind_fips::signature::sign::{MlDsa44, MlDsaKeyPair};
+    MlDsaKeyPair::<MlDsa44>::generate().unwrap();
     eprintln!("trigger done");
 }
 

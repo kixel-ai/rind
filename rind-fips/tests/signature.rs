@@ -6,6 +6,7 @@
 //! malformed input fails with the same error. The module refuses the RSA
 //! moduli FIPS 186-5 does not approve, which rind takes.
 
+use rind::signature as theirs;
 use rind_fips::rsa::{KeySize, PublicKeyComponents};
 use rind_fips::signature::sign::{MlDsa44, MlDsa65, MlDsa87, MlDsaKeyPair, MlDsaParameterSet};
 use rind_fips::signature::{
@@ -13,8 +14,6 @@ use rind_fips::signature::{
     RsaSigningAlgorithm, VerificationAlgorithm, sign, verify,
 };
 use rind_fips::{Error, digest};
-
-use rind::signature as theirs;
 
 const MESSAGE: &[u8] = b"rind-fips differential test";
 
