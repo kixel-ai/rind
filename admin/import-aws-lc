@@ -228,6 +228,9 @@ IMPORTS_64 = [
     },
     # The mixed addition of P-256's generator multiplication, as aws-lc's
     # `ecp_nistz256_point_mul_base` runs it, with `mulq` or with BMI2 and ADX.
+    # Each carries its field helpers, and `poly` runs on through `ONE_mont`,
+    # so a routine's object is one section of code reading one table, which
+    # its HOL Light proof in `proofs/hol-light/x86_64/` takes whole.
     {
         "arch": "x86_64",
         "source": "p256-x86_64-asm.S",
@@ -239,21 +242,26 @@ IMPORTS_64 = [
             "Copyright (c) 2015 CloudFlare, Inc.",
             "SPDX-License-Identifier: Apache-2.0",
         ],
-        "tables": ["poly", "ONE_mont"],
+        "tables": ["poly"],
+        "packed": ["poly"],
         "routines": [
             "ecp_nistz256_point_add_affine",
             "ecp_nistz256_point_add_affinex",
         ],
-        "helpers": [
-            "__ecp_nistz256_mul_montq",
-            "__ecp_nistz256_sqr_montq",
-            "__ecp_nistz256_sub_fromq",
-            "__ecp_nistz256_subq",
-            "__ecp_nistz256_mul_montx",
-            "__ecp_nistz256_sqr_montx",
-            "__ecp_nistz256_sub_fromx",
-            "__ecp_nistz256_subx",
-        ],
+        "carries": {
+            "ecp_nistz256_point_add_affine": [
+                "__ecp_nistz256_mul_montq",
+                "__ecp_nistz256_sqr_montq",
+                "__ecp_nistz256_sub_fromq",
+                "__ecp_nistz256_subq",
+            ],
+            "ecp_nistz256_point_add_affinex": [
+                "__ecp_nistz256_mul_montx",
+                "__ecp_nistz256_sqr_montx",
+                "__ecp_nistz256_sub_fromx",
+                "__ecp_nistz256_subx",
+            ],
+        },
         "dispatches": ["ecp_nistz256_point_add_affine"],
     },
     # The rest of the x86_64 imports are for CPUs without AVX2.
