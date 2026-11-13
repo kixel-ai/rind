@@ -29,6 +29,7 @@ mod integrity;
 mod mac;
 mod scrub;
 mod selftest;
+mod signature;
 
 #[global_allocator]
 static ALLOCATOR: alloc::Zeroing = alloc::Zeroing;

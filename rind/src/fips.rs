@@ -213,6 +213,31 @@ pub fn error_from_code(code: u32) -> Option<Error> {
     ERRORS.get((code as usize).checked_sub(1)?).copied()
 }
 
+/// A digest of `algorithm` holding `value`, as the caller computed it, for
+/// signing or verifying a digest; `None` unless `value` is its length.
+pub fn digest(
+    algorithm: &'static crate::digest::Algorithm,
+    value: &[u8],
+) -> Option<crate::digest::Digest> {
+    (value.len() == algorithm.output_len()).then(|| crate::digest::Digest::new(algorithm, value))
+}
+
+/// Refuses an RSA key whose modulus FIPS 186-5 does not approve, as
+/// aws-lc's service indicator does: an even length of 2048 bits or more,
+/// or exactly 1024 bits if `legacy_1024`, for verifying old signatures. A
+/// key that is not RSA passes.
+pub fn check_rsa_modulus(
+    key: &crate::signature::PublicKey,
+    legacy_1024: bool,
+) -> Result<(), Error> {
+    match key.rsa_modulus_bits() {
+        Some(bits) if !((bits >= 2048 && bits % 2 == 0) || (legacy_1024 && bits == 1024)) => {
+            Err(KeyFormatError::RsaModulus.into())
+        }
+        _ => Ok(()),
+    }
+}
+
 /// The known answers, from the standards' own examples where they give one.
 mod kat {
     use super::broken;
