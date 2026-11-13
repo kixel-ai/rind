@@ -860,7 +860,7 @@ theorem p384_montjscalarmul_mux_spec (h : Runs) (res : Std.Array U64 18#usize) (
 theorem p384_montjdouble_mux_spec (h : Runs) (p3 p1 : Std.Array U64 18#usize) :
     low.x86_64.adx_mux.p384_montjdouble p3 p1 ⦃ r =>
       ∀ P, p384Represents P (tripleNat6 p1.val) → p384Represents (p384Add P P) (tripleNat6 r.val) ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.p384_montjdouble
   rw [ht]
   cases t <;> step*
@@ -870,7 +870,7 @@ theorem p384_montjmixadd_mux_spec (h : Runs) (p3 p1 : Std.Array U64 18#usize) (p
     low.x86_64.adx_mux.p384_montjmixadd p3 p1 p2 ⦃ r =>
       ∀ P1 P2, p384Represents P1 (tripleNat6 p1.val) → p384Represents2 P2 (pairNat6 p2.val) →
         P1 ≠ P2 → p384Represents (p384Add P1 P2) (tripleNat6 r.val) ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.p384_montjmixadd
   rw [ht]
   cases t <;> step*

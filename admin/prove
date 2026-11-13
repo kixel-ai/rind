@@ -754,6 +754,8 @@ select_items() {
     items rind/src/low/x86_64/cpu.rs 'pub(crate) fn prefetch<'
 }
 check_quote X86_64/PointSelectModel select_items
+check_quote Aarch64/PointSelectModel items rind/src/low/aarch64/bignum_point_select.rs \
+    'pub(crate) fn bignum_aff_point_select_p384(' 'fn select<' '#[target_feature(enable = "neon")]'
 check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static AES_128_GCM:' 'pub static AES_192_GCM:' 'pub static AES_256_GCM:' 'pub static CHACHA20_POLY1305:' 'impl Key {' \
     'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \

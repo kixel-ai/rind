@@ -28,8 +28,7 @@ constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
 tag checks, and RSASSA-PSS's hash compare, and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, and P-384's key generation its table
-select as `AffSelect`, which no axiom states. The generator
+hypothesis `RunsChaCha20Poly1305`, which no axiom states. The generator
 tables' point selects rest on no axiom, only on the hand model in
 `Rind.X86_64.PointSelectModel`. P-256's generator multiplication also rests
 on a placeholder in `Rind.X86_64.S2nBignum`, `p256_point_add_affine_spec`,
