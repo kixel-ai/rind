@@ -177,11 +177,33 @@ mod tests {
     fn chunking() {
         // Every split of messages around the block boundary, including one
         // exactly a block long, whose block must be compressed as the last.
+        // Expected digests from Python's `hashlib.blake2b(bytes(range(len)))`.
         let message: Vec<u8> = (0..=255u8).collect();
-        for len in [127, 128, 129, 255, 256] {
-            let whole = hash(64, &[&message[..len]]);
+        for (len, expected) in [
+            (
+                127,
+                "b6292669ccd38d5f01caae96ba272c76a879a45743afa0725d83b9ebb26665b731f1848c52f11972b6644f554c064fa90780dbbbf3a89d4fc31f67df3e5857ef",
+            ),
+            (
+                128,
+                "2319e3789c47e2daa5fe807f61bec2a1a6537fa03f19ff32e87eecbfd64b7e0e8ccff439ac333b040f19b0c4ddd11a61e24ac1fe0f10a039806c5dcc0da3d115",
+            ),
+            (
+                129,
+                "f59711d44a031d5f97a9413c065d1e614c417ede998590325f49bad2fd444d3e4418be19aec4e11449ac1a57207898bc57d76a1bcf3566292c20c683a5c4648f",
+            ),
+            (
+                255,
+                "5b21c5fd8868367612474fa2e70e9cfa2201ffeee8fafab5797ad58fefa17c9b5b107da4a3db6320baaf2c8617d5a51df914ae88da3867c2d41f0cc14fa67928",
+            ),
+            (
+                256,
+                "1ecc896f34d3f9cac484c73f75f6a5fb58ee6784be41b35f46067b9c65c63a6794d3d744112c653f73dd7deb6666204c5a9bfa5b46081fc10fdbe7884fa5cbf8",
+            ),
+        ] {
             for split in 0..=len {
-                assert_eq!(hash(64, &[&message[..split], &message[split..len]]), whole);
+                let digest = hash(64, &[&message[..split], &message[split..len]]);
+                assert_eq!(hex::encode(digest), expected);
             }
         }
     }
