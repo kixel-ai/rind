@@ -37,3 +37,4 @@ The benchmark report is refreshed once before each minor release (maintainer, 20
 
 - [Benchmark report refresh, before rind 0.4](/quest/m2/bench/report-refresh.md) - the report and the README's claims, current for the release
 - [rind needs no runtime CPU check](/quest/m2/api/cpu-check.md) - `cpu::check` and `MissingFeature` removed, the last of the three
+- [Releases publish only after the full suite passes locally](/quest/m0/ci-speed/release-check.md) - the local full-suite run every release PR now passes before it merges
