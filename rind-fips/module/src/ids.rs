@@ -15,6 +15,14 @@ pub(crate) mod hash {
     pub(crate) const SHA3_512: u32 = 8;
 }
 
+/// AES key sizes, for the block cipher's modes, key wrapping, AES-GCM of
+/// any IV length, and QUIC header protection.
+pub(crate) mod aes {
+    pub(crate) const AES_128: u32 = 1;
+    pub(crate) const AES_192: u32 = 2;
+    pub(crate) const AES_256: u32 = 3;
+}
+
 /// AES-GCM, by key length.
 pub(crate) mod aead {
     pub(crate) const AES_128_GCM: u32 = 1;

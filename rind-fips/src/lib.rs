@@ -107,10 +107,11 @@ pub mod constant_time {
 /// into any number of keys, each exactly as long as what it becomes.
 ///
 /// ```
-/// use rind_fips::{hkdf, hmac};
+/// use rind_fips::{aead, hkdf, hmac};
 ///
 /// let prk = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt").extract(b"input key material");
 ///
+/// let aead_key = aead::Key::from(prk.expand(&[b"aead"], &aead::AES_256_GCM));
 /// let hmac_key = hmac::Key::from(prk.expand(&[b"hmac"], &hmac::HMAC_SHA256));
 ///
 /// let info: [&[u8]; 2] = [b"label", b"context"];
@@ -146,6 +147,67 @@ pub mod hkdf;
 ///     .unwrap();
 /// ```
 pub mod pbkdf2;
+
+/// Authenticated decryption with AES-GCM.
+///
+/// An [`aead::Key`] is built from an algorithm constant and key bytes, and
+/// opens what a peer sealed under its nonces. It does not seal: FIPS 140-3
+/// approves AES-GCM encryption only under an IV the module generates, which
+/// this crate does not offer yet.
+///
+/// ```
+/// use rind_fips::aead::*;
+///
+/// let key = Key::new(&AES_128_GCM, &[0; 16]).unwrap();
+///
+/// // A block of zeros, sealed elsewhere: McGrew and Viega's test case 2.
+/// let mut in_out = [
+///     0x03, 0x88, 0xda, 0xce, 0x60, 0xb6, 0xa3, 0x92, 0xf3, 0x28, 0xc2, 0xb9, 0x71, 0xb2, 0xfe,
+///     0x78, 0xab, 0x6e, 0x47, 0xd4, 0x2c, 0xec, 0x13, 0xbd, 0xf5, 0x3a, 0x67, 0xb2, 0x12, 0x57,
+///     0xbd, 0xdf,
+/// ];
+/// let nonce = Nonce::assume_unique_for_key([0; 12]);
+/// let plaintext = key.open_in_place(nonce, b"", &mut in_out).unwrap();
+/// assert_eq!(plaintext, [0; 16]);
+/// ```
+pub mod aead;
+
+/// Unauthenticated ciphers, for protocols that specify one alongside their own integrity protection.
+///
+/// Prefer [`aead`] unless a protocol requires one of these. Decrypting
+/// AES-CBC before verifying a MAC over its ciphertext is a padding oracle.
+pub mod cipher;
+
+mod aes_kw;
+
+/// Key wrapping with AES-KW, RFC 3394, as WebCrypto's `AES-KW` and JWE's
+/// `A128KW`, `A192KW`, and `A256KW` use it, and with AES-KWP, RFC 5649,
+/// which pads keys of any length.
+///
+/// ```
+/// use rind_fips::key_wrap::{AES_256, AesKek};
+///
+/// let kek = AesKek::new(&AES_256, &[0x42; 32]).unwrap();
+///
+/// let key = [0x24; 16];
+/// let mut wrapped = [0u8; 24];
+/// kek.wrap(&key, &mut wrapped).unwrap();
+///
+/// let mut unwrapped = [0u8; 16];
+/// kek.unwrap(&wrapped, &mut unwrapped).unwrap();
+/// assert_eq!(unwrapped, key);
+///
+/// let key = [0x24; 20];
+/// let mut wrapped = [0u8; 32];
+/// kek.wrap_padded(&key, &mut wrapped).unwrap();
+///
+/// let mut unwrapped = [0u8; 24];
+/// assert_eq!(kek.unwrap_padded(&wrapped, &mut unwrapped).unwrap(), key);
+/// ```
+pub mod key_wrap {
+    pub use crate::aes_kw::AesKek;
+    pub use crate::cipher::{AES_128, AES_192, AES_256};
+}
 
 /// Encoded keys: PKCS#8 and SEC1 private keys, and `SubjectPublicKeyInfo`
 /// public keys.
