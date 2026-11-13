@@ -196,11 +196,12 @@ def low.x86_64.bignum_point_select.select_avx2_row (N V : Nat)
     else ok st.2.2
   ok (index, acc, tail)
 
-/-- `select_avx2::<N, V>`, with `_select_avx2` inlined. -/
+/-- `select_avx2::<N, V>`, with `_select_avx2` inlined. `N = 0` panics, as
+`as_chunks::<0>` does. -/
 def low.x86_64.bignum_point_select.select_avx2 (N : Std.Usize) (V : Nat)
     (_z : Std.Array U64 N) (table : Slice U64) (index : U8) (_token : low.x86_64.cpu.HaveAvx2) :
     Result (Std.Array U64 N) :=
-  if N.val = 4 * V ∨ N.val = 4 * V + 2 then do
+  if 0 < N.val ∧ (N.val = 4 * V ∨ N.val = 4 * V + 2) then do
     let zero ← core.core_arch.x86.avx._mm256_setzero_si256
     let tail ← core.core_arch.x86.sse2._mm_setzero_si128
     let desired ← core.core_arch.x86.avx._mm256_set1_epi32 ⟨index.bv.setWidth 32⟩
@@ -225,10 +226,10 @@ def low.x86_64.bignum_point_select.select_sse2_row (V : Nat)
     core.core_arch.x86.sse2._mm_xor_si128 (st.2.getD i 0) word
   ok (index, acc)
 
-/-- `select_sse2::<N, V>`. -/
+/-- `select_sse2::<N, V>`. `N = 0` panics, as `as_chunks::<0>` does. -/
 def low.x86_64.bignum_point_select.select_sse2 (N : Std.Usize) (V : Nat)
     (_z : Std.Array U64 N) (table : Slice U64) (index : U8) : Result (Std.Array U64 N) :=
-  if N.val = 2 * V then do
+  if 0 < N.val ∧ N.val = 2 * V then do
     let zero ← core.core_arch.x86.sse2._mm_setzero_si128
     let desired ← core.core_arch.x86.sse2._mm_set1_epi32 ⟨index.bv.setWidth 32⟩
     let ones ← core.core_arch.x86.sse2._mm_set1_epi32 1#i32

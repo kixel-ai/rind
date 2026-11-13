@@ -16,7 +16,8 @@
 # imports is the object code its upstream's proofs checked, and declares
 # each register they let it change. `cosim`, which no other run includes
 # since it needs an x86_64 CPU with AVX2, checks the instructions rind adds
-# to s2n-bignum's x86 model against this CPU. Run it in the flake's `prove`
+# to s2n-bignum's x86 model against this CPU. The Lean proofs need an x86_64
+# CPU with AVX2 too, to test the intrinsic models. Run it in the flake's `prove`
 # dev shell: `nix develop .#prove --command admin/prove`, or for the HOL
 # Light proofs, the cosimulation, or the bytes alone, `nix develop
 # .#hol-light --command admin/prove hol-light`.

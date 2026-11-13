@@ -398,13 +398,14 @@ theorem i32_mk_bv (x : BitVec 32) : (⟨x⟩ : Std.I32).bv = x := rfl
 
 theorem one_i32_bv : (1#i32 : Std.I32).bv = 1#32 := rfl
 
-theorem select_avx2_spec (N : Std.Usize) (V : Nat) (hN : N.val = 4 * V ∨ N.val = 4 * V + 2)
+theorem select_avx2_spec (N : Std.Usize) (V : Nat) (h0 : 0 < N.val)
+    (hN : N.val = 4 * V ∨ N.val = 4 * V + 2)
     (z : Std.Array U64 N) (table : Slice U64) (index : U8) (token : low.x86_64.cpu.HaveAvx2)
     (hrows : table.length / N.val < 2 ^ 32) :
     low.x86_64.bignum_point_select.select_avx2 N V z table index token ⦃ r =>
       r.val = tableRow N.val table.val index.val ⦄ := by
   unfold low.x86_64.bignum_point_select.select_avx2
-  rw [ite_eq_left hN]
+  rw [ite_eq_left ⟨h0, hN⟩]
   have hrows' : table.val.length / N.val < 2 ^ 32 := hrows
   have hloop := avx2_loop N.val table.val index V _ hrows'
   rw [avx2After_zero] at hloop
@@ -422,13 +423,13 @@ theorem select_avx2_spec (N : Std.Usize) (V : Nat) (hN : N.val = 4 * V ∨ N.val
   · simp only [hp, ite_false, and_false, avx2_out_zero N.val V hN]
     rw [dite_eq_left (List.length_replicate ..), WP.spec_ok, Array.from_val]
 
-theorem select_sse2_spec (N : Std.Usize) (V : Nat) (hN : N.val = 2 * V)
+theorem select_sse2_spec (N : Std.Usize) (V : Nat) (h0 : 0 < N.val) (hN : N.val = 2 * V)
     (z : Std.Array U64 N) (table : Slice U64) (index : U8)
     (hrows : table.length / N.val < 2 ^ 32) :
     low.x86_64.bignum_point_select.select_sse2 N V z table index ⦃ r =>
       r.val = tableRow N.val table.val index.val ⦄ := by
   unfold low.x86_64.bignum_point_select.select_sse2
-  rw [ite_eq_left hN]
+  rw [ite_eq_left ⟨h0, hN⟩]
   have hrows' : table.val.length / N.val < 2 ^ 32 := hrows
   have hloop := sse2_loop N.val table.val index V _ hrows'
   rw [sse2After_zero] at hloop
@@ -459,8 +460,8 @@ theorem bignum_aff_point_select_p256_spec (hc : RunsSelect) (z : Std.Array U64 8
   unfold low.x86_64.bignum_point_select.bignum_aff_point_select_p256
   simp only [ht, bind_ok, bind_tc_ok]
   cases t with
-  | some token => exact select_avx2_spec 8#usize 2 (Or.inl rfl) z table index token hrows
-  | none => exact select_sse2_spec 8#usize 4 rfl z table index hrows
+  | some token => exact select_avx2_spec 8#usize 2 (by decide) (Or.inl rfl) z table index token hrows
+  | none => exact select_sse2_spec 8#usize 4 (by decide) rfl z table index hrows
 
 /-- `bignum_aff_point_select_p384` returns row `index` of P-384's table of
 12-word affine points, or zeros. -/
@@ -473,8 +474,8 @@ theorem bignum_aff_point_select_p384_spec (hc : RunsSelect) (z : Std.Array U64 1
   unfold low.x86_64.bignum_point_select.bignum_aff_point_select_p384
   simp only [ht, bind_ok, bind_tc_ok]
   cases t with
-  | some token => exact select_avx2_spec 12#usize 3 (Or.inl rfl) z table index token hrows
-  | none => exact select_sse2_spec 12#usize 6 rfl z table index hrows
+  | some token => exact select_avx2_spec 12#usize 3 (by decide) (Or.inl rfl) z table index token hrows
+  | none => exact select_sse2_spec 12#usize 6 (by decide) rfl z table index hrows
 
 /-- `bignum_aff_point_select_p521` returns row `index` of P-521's table of
 18-word affine points, or zeros. -/
@@ -487,8 +488,8 @@ theorem bignum_aff_point_select_p521_spec (hc : RunsSelect) (z : Std.Array U64 1
   unfold low.x86_64.bignum_point_select.bignum_aff_point_select_p521
   simp only [ht, bind_ok, bind_tc_ok]
   cases t with
-  | some token => exact select_avx2_spec 18#usize 4 (Or.inr rfl) z table index token hrows
-  | none => exact select_sse2_spec 18#usize 9 rfl z table index hrows
+  | some token => exact select_avx2_spec 18#usize 4 (by decide) (Or.inr rfl) z table index token hrows
+  | none => exact select_sse2_spec 18#usize 9 (by decide) rfl z table index hrows
 
 /-- `bignum_aff_point_select_p384` on a 16-row table, in the form P-384's
 key generation takes it. -/

@@ -511,7 +511,8 @@ least 3k words,
 https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_modinv.ml#L4793 -/
 @[step]
 axiom bignum_modinv_spec (z a b w : Slice U64) (ha : a.length = z.length)
-    (hb : b.length = z.length) (hw : 3 * z.length ≤ w.length) :
+    (hb : b.length = z.length) (hw : 3 * z.length ≤ w.length)
+    (hk : z.length < 2 ^ 57) :
     low.x86_64.bignum_modinv.bignum_modinv z a b w ⦃ r =>
       r.1.length = z.length ∧
         (Nat.Coprime (wordsNat a.val) (wordsNat b.val) → wordsNat b.val % 2 = 1 → wordsNat b.val ≠ 1 →

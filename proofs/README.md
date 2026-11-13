@@ -758,6 +758,9 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
 
 Beyond Lean's kernel:
 
+- x86_64 P-256's mixed addition, `p256_point_add_affine_spec`, which no
+  proof covers yet.
+
 - Charon and Aeneas's translation, and Aeneas's models of `core`, with
   `Rind/Core.lean`'s.
 - That each hand model computes what the Rust it quotes does. They add no
@@ -765,8 +768,7 @@ Beyond Lean's kernel:
 - That `Rind/HashSpec.lean` transliterates FIPS 180-4, RFC 2104, RFC 5869,
   and RFC 8018.
 - The restatement of each s2n-bignum and aws-lc-verification theorem, and of
-  each of rind's own HOL Light theorems, such as x86_64 P-256's mixed
-  addition's, as an axiom, under the composition rule in the
+  each of rind's own HOL Light theorems, as an axiom, under the composition rule in the
   [verification epic](/quest/m3/verified/README.md), and on aarch64 the
   caveats aws-lc-verification lists for its NSym proof. It lets a
   group-membership fact a proof must decide be its defining equation, so
