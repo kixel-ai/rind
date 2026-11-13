@@ -678,6 +678,7 @@ extract() {
         --start-from crate::mid::aes_cbc::AesCbcDecryptingKey::new \
         --start-from crate::mid::aes_cbc::AesCbcDecryptingKey::decrypt \
         --start-from crate::mid::aes_cbc::AesCbcDecryptingKey::decrypt_blocks \
+        --start-from 'crate::mid::aes_kw::AesKek::_' \
         --start-from 'crate::high::hmac::HmacKey::_' \
         --start-from 'crate::high::hmac::Hmac::_' \
         --start-from crate::low::generic::ct_equal::ct_equal \
