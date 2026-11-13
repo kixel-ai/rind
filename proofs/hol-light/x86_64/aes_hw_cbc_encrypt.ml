@@ -1861,3 +1861,179 @@ let TAIL_B = time prove
   DISCH_THEN(REPEAT_TCL DISJ_CASES_THEN SUBST_ALL_TAC) THEN
   CONV_TAC WORD_NUM_REDUCE_CONV THENL
    [TAIL_PATH_TAC 0x9e0 DEC6 6; TAIL_PATH_TAC 0xac0 DEC8 8]);;
+let GFRAME = `MAYCHANGE [RIP; RDX; RSI; RDI; RBP] ,,
+    MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
+               ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+    MAYCHANGE SOME_FLAGS ,,
+    MAYCHANGE [memory :> bytes(buf,16 * n)] ,,
+    MAYCHANGE [events]`;;
+
+let GROUP_PRE = `\s. bytes_loaded s (word pc) aes_hw_cbc_encrypt_mc /\
+    read RIP s = word(pc + 0x198) /\
+    read RCX s = word_add key (word 112) /\ read RAX s = word r /\
+    read RDI s = word_add buf (word(16 * j)) /\
+    read RSI s = word_add buf (word(16 * j)) /\
+    read RDX s = word(16 * m - 112) /\
+    read (memory :> bytes(key,16 * (r + 2))) s = aes_key_num ks /\
+    read XMM0 s = EL 0 ks /\
+    read XMM2 s = inp j /\ read XMM3 s = inp(j + 1) /\ read XMM4 s = inp(j + 2) /\
+    read XMM5 s = inp(j + 3) /\ read XMM6 s = inp(j + 4) /\ read XMM7 s = inp(j + 5) /\
+    read XMM11 s = inp j /\ read XMM12 s = inp(j + 1) /\ read XMM13 s = inp(j + 2) /\
+    read XMM14 s = inp(j + 3) /\ read XMM15 s = inp(j + 4) /\
+    read XMM10 s = (if j = 0 then iv else inp(j - 1)) /\
+    read (memory :> bytes(buf,16 * j)) s = cbc_num (cbc_dec ks iv inp) 0 j /\
+    read (memory :> bytes(word_add buf (word(16 * j)),16 * m)) s = cbc_num inp j m`;;
+
+let GROUP_GOAL = list_mk_forall
+ ([`key:int64`; `ks:int128 list`; `r:num`; `buf:int64`; `n:num`; `j:num`; `m:num`;
+   `iv:int128`; `inp:num->int128`; `pc:num`],
+  mk_imp
+   (`r IN {9,11,13} /\ LENGTH (ks:int128 list) = r + 2 /\ 16 * n < 2 EXP 64 /\
+     nonoverlapping (buf:int64,16 * n) (key:int64,16 * (r + 2)) /\
+     nonoverlapping (buf,16 * n) (word pc,0xbc9) /\
+     j + m = n /\ 8 <= m`,
+    list_mk_icomb "ensures" [`x86`; GROUP_PRE;
+     `\s. read RIP s = word(pc + 0x538) /\
+          read RDI s = word_add buf (word(16 * (j + 8))) /\
+          read RSI s = word_add buf (word(16 * (j + 7))) /\
+          read RDX s = word_sub (word(16 * m - 112)) (word 128) /\
+          (read CF s <=> m < 15) /\ (read ZF s <=> m = 15) /\
+          read XMM0 s = EL 0 ks /\
+          read XMM9 s = cbc_dec ks iv inp (j + 7) /\
+          read XMM10 s = inp(j + 7) /\
+          read XMM2 s = inp(if 14 <= m then j + 8 else j) /\
+          read XMM3 s = inp((if 14 <= m then j + 8 else j) + 1) /\
+          read XMM4 s = inp((if 14 <= m then j + 8 else j) + 2) /\
+          read XMM5 s = inp((if 14 <= m then j + 8 else j) + 3) /\
+          read XMM6 s = inp((if 14 <= m then j + 8 else j) + 4) /\
+          read XMM7 s = inp((if 14 <= m then j + 8 else j) + 5) /\
+          read XMM11 s = inp(if 14 <= m then j + 8 else j) /\
+          read XMM12 s = inp((if 14 <= m then j + 8 else j) + 1) /\
+          read XMM13 s = inp((if 14 <= m then j + 8 else j) + 2) /\
+          read XMM14 s = inp((if 14 <= m then j + 8 else j) + 3) /\
+          read XMM15 s = inp((if 14 <= m then j + 8 else j) + 4) /\
+          read (memory :> bytes(buf,16 * (j + 7))) s =
+            cbc_num (cbc_dec ks iv inp) 0 (j + 7) /\
+          read (memory :> bytes(word_add buf (word(16 * (j + 7))),16 * (m - 7))) s =
+            cbc_num inp (j + 7) (m - 7)`;
+     GFRAME]));;
+
+let READ_BLOCKS_SPLIT_GEN = prove
+ (`!k l (f:num->int128) j (a:int64) s.
+     read (memory :> bytes(a,16 * (k + l))) s = cbc_num f j (k + l) <=>
+     read (memory :> bytes(a,16 * k)) s = cbc_num f j k /\
+     read (memory :> bytes(word_add a (word(16 * k)),16 * l)) s = cbc_num f (j + k) l`,
+  REWRITE_TAC[READ_BLOCKS] THEN
+  REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD; GSYM LEFT_ADD_DISTRIB; GSYM ADD_ASSOC] THEN
+  REPEAT GEN_TAC THEN EQ_TAC THEN REPEAT STRIP_TAC THENL
+   [FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_ARITH_TAC;
+    FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_ARITH_TAC;
+    ASM_CASES_TAC `i < k` THEN ASM_SIMP_TAC[] THEN
+    FIRST_X_ASSUM(MP_TAC o SPEC `i - k:num`) THEN
+    ANTS_TAC THENL [ASM_ARITH_TAC; ASM_SIMP_TAC[ARITH_RULE `~(i < k) ==> k + i - k = i`]]]);;
+
+let BLOCK_AT = prove
+ (`!(a:int64) (f:num->int128) j m s q k.
+     read (memory :> bytes(word_add a (word(16 * j)),16 * m)) s = cbc_num f j m /\
+     j <= q /\ q + k < j + m
+     ==> read (memory :> bytes128(word_add a (word(16 * q + 16 * k)))) s = f(q + k)`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[READ_BLOCKS] THEN STRIP_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `(q + k) - j:num`) THEN
+  ANTS_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD] THEN
+  ASM_SIMP_TAC[ARITH_RULE `j <= q ==> 16 * j + 16 * ((q + k) - j) = 16 * q + 16 * k`;
+               ARITH_RULE `j <= q ==> j + ((q + k) - j) = q + k`]);;
+
+let VAL_GROUP_RDX = prove
+ (`!m. 16 * m < 2 EXP 64 ==> val(word(16 * m - 112):int64) = 16 * m - 112`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
+  MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC);;
+
+let ZF_GROUP = prove
+ (`!m. 16 * m < 2 EXP 64 /\ 8 <= m
+       ==> (val(word_sub (word(16 * m - 112)) (word 128):int64) = 0 <=> m = 15)`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[VAL_EQ_0; WORD_SUB_EQ_0] THEN
+  REWRITE_TAC[GSYM VAL_EQ; VAL_WORD; DIMINDEX_64] THEN
+  SUBGOAL_THEN `(16 * m - 112) MOD 2 EXP 64 = 16 * m - 112` SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; CONV_TAC NUM_REDUCE_CONV THEN ASM_ARITH_TAC]);;
+let PREFETCH = prove
+ (`!(buf:int64) j m.
+     word_add (word_and (word_add (word 18446744073709551615)
+                                  (word(bitval(16 * m - 112 < 112))))
+                        (word 128))
+              (word_add buf (word(16 * j))):int64 =
+     word_add buf (word(16 * (if 14 <= m then j + 8 else j)))`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[ARITH_RULE `16 * m - 112 < 112 <=> ~(14 <= m)`] THEN
+  COND_CASES_TAC THEN REWRITE_TAC[bitval] THEN CONV_TAC WORD_REDUCE_CONV THEN
+  REWRITE_TAC[WORD_ADD_0; LEFT_ADD_DISTRIB; WORD_ADD] THEN CONV_TAC WORD_RULE);;
+
+(* The first eight blocks of the group as single blocks, and the rest. *)
+let GROUP_MEM_TAC =
+  FIRST_X_ASSUM(MP_TAC o check (fun th -> can (term_match []
+    `read (memory :> bytes(word_add buf (word(16 * j)),16 * m)) s =
+     cbc_num inp j m`) (concl th))) THEN
+  SUBGOAL_THEN `m = 8 + (m - 8)` (fun th -> GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [th]) THENL
+   [UNDISCH_TAC `8 <= m` THEN ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[READ_BLOCKS_SPLIT_GEN] THEN
+  CONV_TAC(LAND_CONV(LAND_CONV BLOCKS_EXPAND_CONV)) THEN
+  CONV_TAC(LAND_CONV NUM_REDUCE_CONV) THEN
+  REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD] THEN
+  STRIP_TAC;;
+
+(* The six blocks from q that the group loads for the next one. *)
+let GROUP_Q_TAC =
+  MAP_EVERY (fun k ->
+    FIRST_ASSUM(fun th ->
+      if can (term_match [] `read (memory :> bytes(word_add buf (word(16 * j)),16 * m)) s =
+                             cbc_num inp j m`) (concl th)
+      then MP_TAC(SPECL [`q:num`; mk_small_numeral k]
+              (MATCH_MP (REWRITE_RULE[IMP_CONJ] BLOCK_AT) th))
+      else failwith "") THEN
+    ANTS_TAC THENL [NUM_ASM_ARITH_TAC; ALL_TAC] THEN
+    ANTS_TAC THENL [NUM_ASM_ARITH_TAC; ALL_TAC] THEN
+    CONV_TAC(ONCE_DEPTH_CONV NUM_REDUCE_CONV) THEN REWRITE_TAC[ADD_CLAUSES] THEN
+    DISCH_TAC) (0--5);;
+
+(* rbp, from the carry of rdx - 0x70, as the address of block q. *)
+let RBP_Q_TAC =
+  FIRST_X_ASSUM(fun th ->
+    if is_eq(concl th) && can (term_match [] `read RBP s`) (lhs(concl th))
+    then ASSUME_TAC(REWRITE_RULE[PREFETCH; ASSUME `(if 14 <= m then j + 8 else j) = q`] th)
+    else failwith "");;
+
+let BLOCKS7_CONV t =
+  if can (term_match [] `read (memory :> bytes(word_add buf (word(16 * j)),16 * 7)) s =
+                          cbc_num f j 7`) t
+  then BLOCKS_EXPAND_CONV t else failwith "";;
+
+let GROUP_FINAL_TAC =
+  XMMS_OF_YMMS_TAC THEN ENSURES_FINAL_STATE_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD; AESDECLAST_XOR]) THEN
+  REWRITE_TAC[READ_BLOCKS_SPLIT; READ_BLOCKS_CONS;
+              MATCH_MP (ARITH_RULE `8 <= m ==> m - 7 = (m - 8) + 1`) (ASSUME `8 <= m`)] THEN
+  REWRITE_TAC[ADD_CLAUSES] THEN CONV_TAC(ONCE_DEPTH_CONV BLOCKS7_CONV) THEN
+  REWRITE_TAC[LEFT_ADD_DISTRIB; GSYM WORD_ADD_ASSOC; GSYM WORD_ADD;
+              ARITH_RULE `(j + 7) + 1 = j + 8`; GSYM ADD_ASSOC] THEN
+  CONV_TAC(DEPTH_CONV NUM_MULT_CONV THENC DEPTH_CONV NUM_ADD_CONV) THEN
+  REWRITE_TAC[cbc_dec; ADD_EQ_0; ARITH_EQ; PRED_ADD] THEN AES_EXPAND_TAC THEN
+  ASM_REWRITE_TAC[ARITH_RULE `16 * m - 112 < 128 <=> m < 15`] THEN
+  TRY(MATCH_MP_TAC ZF_GROUP THEN NUM_ASM_ARITH_TAC);;
+
+let GROUP_SETUP_TAC =
+  REWRITE_TAC[SOME_FLAGS] THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ABBREV_TAC `q = if 14 <= m then j + 8 else j` THEN
+  SUBGOAL_THEN `j <= q /\ q + 6 <= j + m` STRIP_ASSUME_TAC THENL
+   [EXPAND_TAC "q" THEN COND_CASES_TAC THEN NUM_ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `16 * m < 2 EXP 64` ASSUME_TAC THENL [NUM_ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `val(word(16 * m - 112):int64) = 16 * m - 112` ASSUME_TAC THENL
+   [MATCH_MP_TAC VAL_GROUP_RDX THEN NUM_ASM_ARITH_TAC; ALL_TAC];;
+
+let GROUP_CASE_TAC =
+  ENSURES_INIT_TAC "s0" THEN GROUP_Q_TAC THEN GROUP_MEM_TAC THEN GHOST_YMMS_TAC THEN
+  X86_XSTEPS_UNTIL_TAC AES_HW_CBC_ENCRYPT_EXEC 0x211 1 THEN RBP_Q_TAC THEN
+  (fun g -> X86_XSTEPS_UNTIL_TAC AES_HW_CBC_ENCRYPT_EXEC 0x538 (next_index g) g) THEN
+  GROUP_FINAL_TAC;;
+
+let GROUP = time prove
+ (GROUP_GOAL, GROUP_SETUP_TAC THEN KEY_CASES_TAC THEN GROUP_CASE_TAC);;
