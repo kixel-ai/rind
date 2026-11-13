@@ -88,6 +88,8 @@ slow=(
     low::generic::ct_equal::tests::matches_eq
     low::posint::tests::mont_exp_matches_square_and_multiply
     mid::aes::tests::cavp
+    mid::argon2::tests::matches_rustcrypto
+    mid::argon2::tests::reference_kat
     mid::aes::tests::srtp_aes_cm
     mid::p256::tests::base_point_precomp
     mid::p256::tests::multiply_matches_double_and_add
