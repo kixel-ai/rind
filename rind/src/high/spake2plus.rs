@@ -526,8 +526,8 @@ impl<S> ProverAwaiting<S> {
         let (_, n) = points()?;
         let peer = Affine::from_uncompressed(verifier.as_ref())?;
         let diff = peer.add(mul_or_identity(n, &self.w0, self.w0_zero).negate());
-        let identity = diff.identity_mask();
-        let base = diff.select(Affine::generator(), identity);
+        // As the verifier's `mul_defined` does, but `base` also takes `w1`.
+        let (base, identity) = defined(diff);
         let z = secret_point(base.mul(&self.x))?;
         let v = encode_maybe_identity(mul_or_identity(base, &self.w1, self.w1_zero), self.w1_zero)?;
         let keys = schedule_keys(
@@ -682,13 +682,20 @@ fn points() -> Result<(Affine, Affine), Error> {
     ))
 }
 
-/// `scalar * point`, with the generator standing in for the identity.
+/// `point`, with the generator standing in for the identity.
 ///
-/// Returns the product and 1 when `point` was the identity. `(0, 0)` is not
-/// a curve point, and the scalar multiplication is unspecified on it.
-fn mul_defined(point: Affine, scalar: &Scalar) -> (Affine, u64) {
+/// Returns the point to multiply and 1 when `point` was the identity.
+/// `(0, 0)` is not a curve point, and the scalar multiplication is
+/// unspecified on it. The mask stays secret.
+fn defined(point: Affine) -> (Affine, u64) {
     let identity = point.identity_mask();
-    let base = point.select(Affine::generator(), identity);
+    (point.select(Affine::generator(), identity), identity)
+}
+
+/// `scalar * point`, with the generator standing in for the identity, as
+/// [`defined`] picks it, and 1 when `point` was the identity.
+fn mul_defined(point: Affine, scalar: &Scalar) -> (Affine, u64) {
+    let (base, identity) = defined(point);
     (base.mul(scalar), identity)
 }
 
