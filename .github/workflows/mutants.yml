@@ -9,7 +9,12 @@ name: mutants
 # Nightly, it mutates the Rust that changed in the last day. Dispatched, it
 # runs a whole campaign, which `admin/mutants` refuses off GitHub-hosted
 # runners: every architecture's over the workspace, or one crate's, one
-# architecture's, or the changes since `base`, as in
+# architecture's, or the changes since `base`. `admin/mutants` copies that
+# diff onto the `..` names cargo-mutants 27.1.0 records for a `#[path]`.
+# Without that, a change to a shared generic source selects nothing and the
+# campaign passes.
+# See UPSTREAM.md, "cargo-mutants matches `#[path]` with `..` literally".
+# Dispatch one crate with
 # `gh workflow run mutants.yml --ref <branch> -f package=rind-rustls`.
 # Like fuzzing, it never runs on pull requests: a large diff's mutants take
 # hours of every architecture's runners.
@@ -107,6 +112,7 @@ jobs:
             jq -e --arg p "$PACKAGE" 'any(.packages[]; .name == $p)' > /dev/null ||
             { echo "::error::no workspace crate is named '$PACKAGE'"; exit 1; }
           scope=()
+          # admin/mutants expands `#[path]` names that still contain `..`.
           [ -z "$DIFF" ] || scope=(--in-diff "$RUNNER_TEMP/changes.diff")
           crate=(--workspace)
           [ -z "$PACKAGE" ] || crate=(-p "$PACKAGE")
@@ -184,6 +190,7 @@ jobs:
         run: |
           read -ra args <<<"$ARGS"
           scope=()
+          # admin/mutants expands `#[path]` names that still contain `..`.
           [ -z "$DIFF" ] || [ "$RUNNER_OS" = macOS ] || scope=(--in-diff "$RUNNER_TEMP/changes.diff")
           nix develop --command admin/mutants "${args[@]}" ${scope[@]+"${scope[@]}"} \
             --shard "$SHARD/$SHARDS" --sharding round-robin --output "$RUNNER_TEMP" || [ $? -eq 2 ]
