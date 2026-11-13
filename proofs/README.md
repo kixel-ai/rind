@@ -235,8 +235,13 @@ port of aws-lc's Booth-recoded generator multiplication, computes k·G for k
 below n (`base_multiply_spec`, and `jac_base_multiply_spec` before its affine
 conversion): `Rind/P256Booth.lean` proves the recoded digits sum to k and that
 no addition doubles, and `Rind/X86_64/P256Table.lean` that its 37-row table
-holds j·2⁷ⁱ·G. The table select and aws-lc's mixed addition are placeholder
-axioms in `Rind/X86_64/S2nBignum.lean` until their proofs land.
+holds j·2⁷ⁱ·G. Its table select is rind's Rust, which
+`Rind/X86_64/PointSelect.lean` proves on both the AVX2 and SSE2 paths, under
+`RunsSelect`, that `HaveAvx2::check` returns, which `Runs` includes. aws-lc's
+mixed addition is the placeholder axiom `p256_point_add_affine_spec` in
+`Rind/X86_64/S2nBignum.lean`, which no proof covers yet, so x86_64's P-256
+theorems rest on it and earn no ✓ until rind's HOL Light proof of the
+addition lands.
 `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
 SHA-1 and SHA-256's padding and finalization, and HMAC's keyed states over
