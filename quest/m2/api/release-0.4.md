@@ -37,7 +37,7 @@ The benchmark report is refreshed once before each minor release (maintainer, 20
 ## Required
 
 - [ML-KEM-512 and ML-KEM-1024](/quest/m3/parity/ml-kem.md) - the `kem` API over all three parameter sets, a breaking change to `kem`
-- [Measure what wiping costs, and decide whether it is on by default](/quest/m2/wipe-default.md) - wiping made mandatory and the `wipe` feature removed
+- [Measure what wiping costs, and decide whether it is on by default](/quest/m2/wipe-default.md) - the default decided; its open PR, kixel-ai/rind#609, removes the `wipe` feature, which is the breaking change
 - [The API takes one shape](/quest/m2/api/shape.md) - the spike's verdict, and the renames and moves of whichever shape wins
 - [HKDF PRKs load from bytes and fill a slice](/quest/m2/api/hkdf-prk.md) - `expand(info, usize)` replaced by `fill`
 - [Benchmark report refresh, before rind 0.4](/quest/m2/bench/report-refresh.md) - the report and the README's claims, current for the release

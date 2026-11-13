@@ -10,7 +10,8 @@ Decided 2026-11-12 (maintainer, /quest-audit): ✅ a `no_std` build is one of th
 
 Where `rind` uses `std` on `main` that day, by `grep`, outside tests:
 
-- Run-time CPU feature detection: `is_x86_feature_detected!` in 83 places and `is_aarch64_feature_detected!` in 27, almost all in `rind/src/low/{x86_64,aarch64,arm}/cpu.rs`.
+- Run-time CPU feature detection, in one `detect` function per backend: `is_x86_feature_detected!` in `rind/src/low/x86_64/cpu.rs:437`, `is_aarch64_feature_detected!` in `rind/src/low/aarch64/cpu.rs:179`, and `libc::getauxval` in `rind/src/low/arm/cpu.rs:67`, which needs no `std`. The macros' other uses, over a hundred lines of them, are in tests, mostly the generated assembly wrappers' `abi` checks, and can keep `std`.
+- `std::env::var` in each backend's `test_toggle`, which reads `RIND_CPU_DISABLE_<id>` in debug builds and under `--cfg rind_cpu_disable` (`x86_64/cpu.rs:503`).
 - `OnceLock`, three times, caching which SHA routine a CPU runs (`rind/src/low/x86_64/sha256_mux.rs:57` and its siblings).
 - `thread_local!`, three times: the constant-time guard count (`rind/src/low/cpu.rs:121`), a debug-only check (`rind/src/low/entry.rs:8`), and the FIPS generator's per-thread state (`rind/src/fips_rng.rs:33`).
 - `low/abi.rs`, and `Vec` and `Box`, which only need `alloc`.

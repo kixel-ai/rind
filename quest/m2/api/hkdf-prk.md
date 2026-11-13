@@ -6,7 +6,7 @@ A caller that holds a pseudorandom key as bytes, and wants HKDF-Expand written i
 
 ## Plan
 
-Found by the 2026-11-12 audit. `Prk` can be made only by `Salt::extract`, since its constructor from bytes is `pub(crate)` (`rind/src/high/hkdf.rs:79`). A protocol that receives a PRK, as TLS 1.3's key schedule and MLS's do, has no way in, so three adapters wrote HKDF-Expand over `rind::hmac`: `rind-ring/src/hkdf.rs:105`, `rind-aws-lc-rs/src/hkdf.rs:123` (`expand_into`), and `rind-openmls/src/provider.rs:60`.
+Found by the 2026-11-12 audit. `Prk` can be made by `Salt::extract`, or from another `Prk`'s `expand` (`impl From<Okm<'_, &'static Algorithm>> for Prk`, `rind/src/high/hkdf.rs:211`), but not from bytes: that constructor is `pub(crate)` (`hkdf.rs:79`). A protocol that receives a PRK, as TLS 1.3's key schedule and MLS's do, has no way in, so three adapters wrote HKDF-Expand over `rind::hmac`: `rind-ring/src/hkdf.rs:105`, `rind-aws-lc-rs/src/hkdf.rs:123` (`expand_into`), and `rind-openmls/src/provider.rs:60`.
 
 - Make the constructor public. The audit recommends the name `Prk::new(algorithm, bytes)`, which is what it is called inside the crate. aws-lc-rs and ring call theirs `new_less_safe`, and AGENTS.md borrows their name only when it is as clear: `less_safe` warns of nothing a caller can act on, since a PRK from bytes is how these protocols work.
 - Replace `expand(info, len).fill(out)` with `fill(&self, info: &[&[u8]], out: &mut [u8]) -> Result<(), Error>`. Today the length is given twice, once to `expand` as a `usize` standing in for a key type and again as the slice's length, and a mismatch is a runtime error. Dropping `KeyType for usize` is the breaking change, so the commit is `feat(hkdf)!:`.

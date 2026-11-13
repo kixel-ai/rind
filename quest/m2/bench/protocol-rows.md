@@ -2,7 +2,7 @@
 
 ## Goal
 
-HPKE, the VRF, and blind RSA each have rows in BENCHMARKS.md against the fastest maintained Rust implementation of the same thing, so a gap in any of them, or in the ristretto255 and hash-to-curve code under them, shows up the way one in AES-GCM would.
+HPKE, the VRF, and blind RSA each have rows in BENCHMARKS.md against the fastest maintained Rust implementation of the same thing, so a gap in any of them shows up the way one in AES-GCM would.
 
 ## Plan
 
@@ -10,7 +10,7 @@ Found by the 2026-11-12 audit: `rind::hpke`, `rind::vrf`, and `rind::blind_rsa` 
 
 - Pick each comparison by what a user would otherwise reach for, and confirm it is maintained before timing it. The audit's starting points: hpke-rs, or rustls's aws-lc-rs HPKE suites, for HPKE, and the `blind-rsa-signatures` crate for blind RSA. For the VRF, find one that implements RFC 9381's ECVRF-EDWARDS25519-SHA512-TAI and ECVRF-P256-SHA256-TAI, and if none is maintained, give rind's rows alone and say so.
 - One row per operation a protocol runs per message: HPKE setup, seal, and open at the report's packet size; VRF prove and verify per suite; blind RSA blind, sign, finalize, and verify.
-- ristretto255 (`rind/src/mid/ristretto255.rs`) and hash-to-curve (`rind/src/mid/hash_to_curve.rs`) are not public, so they are timed through what calls them. When OPRF ([kixel-ai/rind#705](https://github.com/kixel-ai/rind/pull/705)) or SPAKE2+ ([kixel-ai/rind#689](https://github.com/kixel-ai/rind/pull/689)) is on `main`, it gets rows the same way, against curve25519-dalek's ristretto255 for the group work.
+- These rows do not reach ristretto255 (`rind/src/mid/ristretto255.rs`) or hash-to-curve (`rind/src/mid/hash_to_curve.rs`). Neither is public, and nothing in `rind/src/high` calls either on `main`: the VRF's suites are try-and-increment. They are timed through their first caller. When OPRF ([kixel-ai/rind#705](https://github.com/kixel-ai/rind/pull/705)) or SPAKE2+ ([kixel-ai/rind#689](https://github.com/kixel-ai/rind/pull/689)) is on `main`, it gets rows the same way, against curve25519-dalek's ristretto255 for the group work.
 - The comparison libraries are dev-dependencies of rind-bench only, and `deny.toml` has to accept them.
-- A gap found here is a follow-up quest, not this one's work. One lead for whoever triages them: edwards25519's variable-base multiplication (`rind/src/mid/edwards25519.rs:287`) was written for ristretto255 and has never been timed against anything.
+- A gap found here is a follow-up quest, not this one's work. One lead for whoever triages them: edwards25519's variable-base multiplication (`rind/src/mid/edwards25519.rs:293`) has never been timed against anything, and the VRF's Ed25519 suite is its one public caller (`rind/src/high/vrf.rs:190`), so the VRF rows are the first to time it.
 - Every new benchmark ID needs its decision in `admin/bench-report`, which refuses one that has none.

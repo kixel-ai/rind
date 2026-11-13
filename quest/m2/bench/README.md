@@ -16,6 +16,6 @@ All three have landed since: the nightly fails on a gap nobody decided ([moq-dev
 
 Decided 2026-11-12 (maintainer, /quest-audit), after an audit of what the benchmarks still cannot see:
 
-- Hosts: `fedora` joins the report as its AVX-512 host ✅ (rejected: ad hoc runs only; leave the host list alone). This reopens the 2026-11-03 host list on new evidence: no report host has AVX-512, so the AVX-512 AES-GCM kernel, the IFMA RSA routines, and ML-KEM's 8-way sampler are timed only under SDE's emulation, which measures nothing. `nixos2` is dead and leaves the report in [the refresh](/quest/m2/bench/report-refresh.md).
+- Hosts: `fedora` joins the report as its AVX-512 host ✅ (rejected: ad hoc runs only; leave the host list alone). This reopens the 2026-11-03 host list: no report host has AVX-512, so no host table shows the AVX-512 AES-GCM kernel, the IFMA RSA routines, or ML-KEM's 8-way sampler against every library. The CPU tier table does time them nightly, on GitHub's EPYC runners against aws-lc-rs and ring, which the interview missed, so [the quest](/quest/m2/bench/fedora.md) asks the maintainer to confirm it. `nixos2` is dead and leaves the report in [the refresh](/quest/m2/bench/report-refresh.md).
 - Rows: HPKE, the VRF, and blind RSA, which landed without one, and rind-rustls handshakes across threads, get rows.
 - Left out: binary size per target, which `admin/build-cost` already reports in BENCHMARKS.md, and a wasm row, which no consumer has asked for.
