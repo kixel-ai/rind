@@ -98,7 +98,8 @@ decrypted text undetected, all of it under CTR and ChaCha20 and the first
 block under CBC; `Chacha20.poly1305Aead()` authenticates the nonce. Store integrity-sensitive data
 with an AEAD such as `AesGcm`, or under a MAC that also covers the nonce.
 With `MacAlgorithm.empty`, nothing is authenticated, and AES-CBC's padding
-error is an oracle that decrypts.
+error is an oracle that decrypts. Under `Hmac` it is one too for a one-block
+AES-CBC ciphertext, since changing the unauthenticated IV changes its padding.
 
 ## Tested against
 

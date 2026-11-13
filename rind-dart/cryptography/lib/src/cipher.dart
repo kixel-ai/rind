@@ -293,10 +293,8 @@ Uint8List _xorFrom(
 ) {
   final skip = keyStreamIndex % blockLength;
   final data = Uint8List(skip + input.length)..setAll(skip, input);
-  return Uint8List.sublistView(
-    apply(keyStreamIndex ~/ blockLength, data),
-    skip,
-  );
+  // A copy, not a view: the skipped prefix holds raw keystream.
+  return apply(keyStreamIndex ~/ blockLength, data).sublist(skip);
 }
 
 /// AES-CBC with the package's MAC over its ciphertext, as `DartAesCbc`
