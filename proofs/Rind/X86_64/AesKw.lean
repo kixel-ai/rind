@@ -391,6 +391,8 @@ theorem bvs_IV : bvs mid.aes_kw.IV.val = icv1 := by
 theorem bvs_AIV : bvs mid.aes_kw.AIV.val = icv2 := by
   simp [mid.aes_kw.AIV, bvs, icv2, Std.Array.make]
 
+theorem bvs_append (l l' : List U8) : bvs (l ++ l') = bvs l ++ bvs l' := List.map_append
+
 theorem bvs_inj {l l' : List U8} : bvs l = bvs l' ↔ l = l' := by
   constructor
   · intro h
@@ -464,7 +466,7 @@ theorem kek_wrap_spec (h : RunsAesHw) {alg : Algorithm} {kek : List (BitVec 8)} 
     simp only [bne_iff_ne, ne_eq, not_not]; apply UScalar.eq_of_val_eq; rw [hi4, Slice.len_val, Slice.len_val, hw]
   have hy : 16 ≤ key.length ∧ key.length % 8 = 0 ∧ wrapped.length = key.length + 8 := ⟨by omega, h8, hw⟩
   simp only [hne, Bool.false_eq_true, ite_false, hy, and_self, ite_true]
-  step as ⟨ar, back, ha1, hr1, ha2, hr2, hback⟩
+  step as ⟨ar, rr, sback, hal, hrl, harv, hrrv, hsback⟩
   step as ⟨r1, hr1'⟩
   subst r1
   simp only [low.ct.secret_slice, bind_ok]
@@ -476,7 +478,18 @@ theorem kek_wrap_spec (h : RunsAesHw) {alg : Algorithm} {kek : List (BitVec 8)} 
   step with as_chunks_mut_8 key h8 as ⟨ch, rest, cback, hcl, hch, hcback⟩
   step with wrap_blocks_spec hak mid.aes_kw.IV ch
     (by have := usize_lt key.len; rw [Slice.len_val] at this; rw [hcl]; omega)
-    as ⟨wb, hwl, hwb⟩
-  done
+    as ⟨wa, wr, hwl, hwb⟩
+  have hc := hcback wr (by rw [hwl, hcl])
+  simp only [lift, bind_ok]
+  have hlen8 : ar.length = wa.to_slice.length := by simp [hal]
+  step*
+  have hs := hsback a2 (cback (wr, rest)) (by rw [a2_post]; simp) (by rw [hc.2]; omega)
+  simp only [low.ct.public_slice, bind_ok, WP.spec_ok]
+  refine ⟨trivial, ?_⟩
+  have hn8 : (bvs key.val).length / 8 = ch.length := by rw [hcl]; simp [bvs, Slice.length]
+  rw [hs.1, bvs_append, a2_post, Std.Array.val_to_slice, hc.1]
+  rw [bvs_IV, hch, ← hn8] at hwb
+  simp only [kwAE, kwW]
+  rw [← hwb]
 
 end rind.x86_64
