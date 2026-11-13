@@ -61,11 +61,11 @@ enum Schedule {
 
 /// Marker for [`RFC9383`]. A [`Share`] or [`Confirm`] of this suite is not a
 /// [`MatterPase`] value, so a mixed handshake does not compile.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rfc9383;
 
 /// Marker for [`MATTER_PASE`].
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MatterPase;
 
 /// A SPAKE2+ ciphersuite. Only this module's constants build one.
@@ -1094,8 +1094,10 @@ mod tests {
             VerifierRecord::from_record(&w0, &VerifierRecord::from_w1(&w0, &w1).unwrap().l())
                 .unwrap();
         let mut keys = Vec::new();
+        let mut shares = Vec::new();
         for _ in 0..2 {
             let (share_p, prover) = prover.start(&RFC9383, b"ctx", b"a", b"b").unwrap();
+            shares.push(share_p);
             let (share_v, confirm_v, verifier) = record
                 .start(&RFC9383, b"ctx", b"a", b"b", &share_p)
                 .unwrap();
@@ -1107,6 +1109,7 @@ mod tests {
             keys.push(key.as_ref().to_vec());
         }
         assert_ne!(keys[0], keys[1]);
+        assert_ne!(shares[0], shares[1]);
     }
 
     #[test]

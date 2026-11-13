@@ -9,6 +9,7 @@
 - Add a test beside `high::spake2plus::matches_matter_crypto` that runs a PASE handshake with injected ephemeral scalars through rs-matter's prover and verifier and through rind's, and compares the shares, confirmations, and `Ke`.
 - Take rs-matter, or the crate that publishes its engine, as a crates.io dev-dependency only; `deny.toml` denies git dependencies.
 - Decided with the maintainer on 2026-11-12: connectedhomeip's vectors and the `matter-crypto` differential are enough for SPAKE2+ to land; this test comes once rs-matter publishes its engine (rejected: block SPAKE2+ on rs-matter now).
+- Decided with the maintainer on 2026-11-13: ✅ keep this quest (rejected: drop it).
 
 ## Waiting
 
