@@ -2,7 +2,7 @@
 
 ## Goal
 
-`.github/dependabot.yml` also covers the `cargo` ecosystem: one grouped weekly PR of the workspace's routine crate updates, with the same 7-day cooldown the GitHub Actions updates use.
+`.github/dependabot.yml` also covers the `cargo` ecosystem: one grouped weekly PR of the workspace's routine crate updates, with the same 7-day cooldown the GitHub Actions updates use. Dependabot is not known to hold the transitive crates a bump pulls in to that cooldown (dependabot-core #16428 reports a Cargo lockfile update that skipped it), so reviewing each PR includes checking its `Cargo.lock` diff for versions published in the last 7 days.
 
 ## Plan
 
