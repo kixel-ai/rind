@@ -22,11 +22,13 @@
 
 mod abi;
 mod aes;
+mod agreement;
 mod alloc;
 mod digest;
 mod ids;
 mod image;
 mod integrity;
+mod kem;
 mod mac;
 mod scrub;
 mod selftest;

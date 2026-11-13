@@ -215,6 +215,79 @@ pub mod key_wrap {
 /// Every key type that exports itself returns these, whatever its module.
 pub mod encoding;
 
+/// Key agreement: ECDH on P-256, P-384, and P-521.
+///
+/// A shared secret is not uniformly random, so derive keys from it with a KDF
+/// such as [`hkdf`] rather than using its bytes directly.
+///
+/// ```
+/// use rind_fips::agreement::*;
+/// use rind_fips::hkdf;
+///
+/// let alice = PrivateKey::generate(&ECDH_P256).unwrap();
+/// let bob = PrivateKey::generate(&ECDH_P256).unwrap();
+///
+/// let alice_pub = alice.public_key();
+/// let bob_pub = bob.public_key();
+///
+/// let alice_secret = alice
+///     .agree(bob_pub.as_ref())
+///     .expect("bob gave an invalid public key");
+/// let bob_secret = bob
+///     .agree(alice_pub.as_ref())
+///     .expect("alice gave an invalid public key");
+///
+/// // Each side derives the same key from its secret and the handshake's salt.
+/// let salt = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"handshake salt");
+/// let mut alice_key = [0u8; 32];
+/// let mut bob_key = [0u8; 32];
+/// salt.extract(alice_secret.as_ref())
+///     .expand(&[b"key"], alice_key.len())
+///     .fill(&mut alice_key)
+///     .unwrap();
+/// salt.extract(bob_secret.as_ref())
+///     .expand(&[b"key"], bob_key.len())
+///     .fill(&mut bob_key)
+///     .unwrap();
+/// assert_eq!(alice_key, bob_key);
+/// ```
+pub mod agreement;
+
+/// Key encapsulation: ML-KEM-768.
+///
+/// ```
+/// # fn main() -> Result<(), rind_fips::Error> {
+/// use rind_fips::kem::*;
+///
+/// // The recipient generates a key pair, and sends the encapsulation key to
+/// // the sender.
+/// let decapsulation_key = DecapsulationKey::generate(&ML_KEM_768)?;
+/// let encapsulation_key = decapsulation_key.public_key();
+///
+/// // The sender parses the encapsulation key, encapsulates a fresh secret,
+/// // and sends the ciphertext back to the recipient.
+/// let peer_key = EncapsulationKey::new(&ML_KEM_768, encapsulation_key.as_ref())?;
+/// let (ciphertext, sender_secret) = peer_key.encapsulate()?;
+///
+/// // The recipient decapsulates the ciphertext, recovering the same secret.
+/// let recipient_secret = decapsulation_key.decapsulate(ciphertext.as_ref())?;
+///
+/// // Each side derives its keys from the secret with a KDF.
+/// let salt = rind_fips::hkdf::Salt::new(&rind_fips::hkdf::HKDF_SHA256, b"");
+/// let mut sender_key = [0u8; 32];
+/// let mut recipient_key = [0u8; 32];
+/// salt.extract(sender_secret.as_ref())
+///     .expand(&[b"key"], sender_key.len())
+///     .fill(&mut sender_key)?;
+/// salt.extract(recipient_secret.as_ref())
+///     .expand(&[b"key"], recipient_key.len())
+///     .fill(&mut recipient_key)?;
+/// assert_eq!(sender_key, recipient_key);
+/// # Ok(())
+/// # }
+/// ```
+pub mod kem;
+
 /// Random bytes from the module's SP 800-90A DRBG, seeded from the system.
 ///
 /// ```
