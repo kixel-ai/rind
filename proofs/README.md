@@ -28,8 +28,9 @@ back.
 `hol-light/<arch>/` holds rind's own [HOL Light](https://hol-light.github.io/)
 proofs of the `asm!` blocks it runs, for routines whose published proofs do
 not cover them, on [s2n-bignum](https://github.com/awslabs/s2n-bignum)'s
-instruction models, tactics, and specs at the commit of rind's
-`thirdparty/s2n-bignum` submodule, the revision rind's transliteration pins.
+instruction models, tactics, and specs in rind's fork of it,
+`thirdparty/s2n-bignum`, the revision rind's transliteration pins with rind's
+changes, which [its `RIND.md`](/thirdparty/s2n-bignum/RIND.md) lists.
 Each proof's object code is the block's bytes as rind's release build emits
 them, which `admin/prove` extracts, so no transliteration is trusted: the
 proof lists the bytes and fails unless the build's are the same. An axiom in
@@ -45,12 +46,9 @@ holding the object code the proofs read. Given a file, such as
 `proofs/hol-light/x86_64/ct_compare_16.ml`, it loads it and exits, failing if
 any of it fails; otherwise it reads OCaml from stdin. Loading `base.ml`
 takes minutes, so the first session on a set of inputs (HOL Light, DMTCP,
-the submodule's commit, and what `hol-light/s2n-bignum/` carries)
-checkpoints it with DMTCP into an image of about 400 MB in
-`~/.cache/rind/hol-light/`, which every later session on those inputs, in
-any worktree, restores in under a second. Like `admin/prove`, a session
-first checks the submodule out at the commit rind pins, and it refuses one
-with uncommitted changes, which that commit does not name.
+the kernel, and the fork's files) checkpoints it with DMTCP into an image of
+about 400 MB in `~/.cache/rind/hol-light/`, which every later session on
+those inputs, in any worktree, restores in under a second.
 
 - `aarch64/bignum_eq.ml`: `BIGNUM_EQ_CORRECT`, s2n-bignum's proof of
   `bignum_eq` on the block in `low::aarch64::bignum_eq::bignum_eq`, which is
@@ -102,17 +100,14 @@ with uncommitted changes, which that commit does not name.
   bounds. Both functions are `#[inline(never)]` with fixed registers, so the
   proof covers their one copy.
 
-`hol-light/s2n-bignum/` holds what these proofs add to s2n-bignum, ahead of
-the submodule on HOL Light's load path: specs from s2n-bignum pull requests
-not yet merged, rind's own RFC 8439 spec of ChaCha20, Poly1305, and
-ChaCha20-Poly1305, `common/chacha20poly1305.ml`, whose known-answer tests
-`admin/prove hol-light` runs, `pr450.patch`, the SHA extensions and other
-instructions an s2n-bignum pull request adds to the x86 model, and
-`x86.patch`, rind's own additions, which `x86-cosim.ml` checks against the
-CPU with the pull request's. Its
-[README](hol-light/s2n-bignum/README.md) lists each, so they can be offered
-upstream. `nix develop .#hol-light --command admin/prove cosim` runs the
-cosimulation, on an x86_64 CPU with AVX2.
+The fork adds what these proofs need to s2n-bignum: specs from s2n-bignum
+pull requests not yet merged, rind's own RFC 8439 spec of ChaCha20,
+Poly1305, and ChaCha20-Poly1305, `common/chacha20poly1305.ml`, whose
+known-answer tests `admin/prove hol-light` runs, the SHA extensions and
+other instructions an s2n-bignum pull request adds to the x86 model, and
+rind's own additions to it, which `x86/proofs/rind_cosim.ml` checks against
+the CPU with the pull request's. `nix develop .#hol-light --command
+admin/prove cosim` runs the cosimulation, on an x86_64 CPU with AVX2.
 
 ## What is proven
 
@@ -586,7 +581,7 @@ HChaCha20, which derives XChaCha20's subkey, runs HACL*'s rounds, which
 CPU-feature checks find SSE4.1, and `OnePass`, that aws-lc's one-pass
 routines compute RFC 8439's AEAD, which no proof covers yet;
 [the ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-x86/aead.md)
-owns their HOL Light proofs, against `hol-light/s2n-bignum/common/chacha20poly1305.ml`,
+owns their HOL Light proofs, against the s2n-bignum fork's `common/chacha20poly1305.ml`,
 which `Rind/S2nChaCha20Poly1305.lean` proves is `Rind/Spec.lean`'s RFC 8439
 for a 32-byte key and a 12-byte nonce. CPUs without SSE4.1 run the separate ChaCha20
 and Poly1305 passes, which the model leaves opaque. `AeadDispatch` models
@@ -647,9 +642,8 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
 
 ## Layout
 
-- `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine, and
-  `hol-light/s2n-bignum/`, what they add to s2n-bignum: unmerged specs and
-  rind's additions to the x86 model, with its cosimulation.
+- `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine, on
+  rind's fork of s2n-bignum in `thirdparty/s2n-bignum`.
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
   writes and git ignores.
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
@@ -799,8 +793,8 @@ Beyond Lean's kernel:
   code, as for `benchmarks/verified.toml`'s other entries, except where a
   proof in `hol-light/` covers the bytes rind's build emits. For those, HOL
   Light's kernel and s2n-bignum's instruction models, as for s2n-bignum's
-  own theorems, with the additions in `hol-light/s2n-bignum/pr450.patch`,
-  from awslabs/s2n-bignum#450, and rind's own in `x86.patch`, which
+  own theorems, with the fork's additions to the x86 model, from
+  awslabs/s2n-bignum#450 and rind's own, which
   `admin/prove cosim` checks against the CPU as s2n-bignum checks its own.
 - The translation ignores drops, which here wipe keys and keyed state under
   the `wipe` feature and restore CPU state, and computes nothing an output

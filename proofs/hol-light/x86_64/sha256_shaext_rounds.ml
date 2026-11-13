@@ -19,7 +19,7 @@
 
    The proof steps the 148 instructions symbolically, as awslabs/s2n-bignum
    pull request #450 does aws-lc's routine on the same instructions, on the
-   model additions proofs/hol-light/s2n-bignum/pr450.patch carries. It keeps
+   model additions rind's fork of s2n-bignum carries. It keeps
    each register as four words of the spec, sha256_quad, rewriting each
    SHA256RNDS2 to two rounds and each SHA256MSG1, PALIGNR, PADDD, and
    SHA256MSG2 to message schedule words, so nothing case-splits on the

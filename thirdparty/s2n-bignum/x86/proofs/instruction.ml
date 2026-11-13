@@ -300,20 +300,33 @@ let instruction_INDUCTION,instruction_RECURSION = define_type
    | OR operand operand
    | PADDD operand operand
    | PADDQ operand operand
+   | PALIGNR operand operand operand
    | PAND operand operand
    | PBLENDW operand operand operand
    | PCMPGTD operand operand
    | PCMPGTW operand operand
    | PEXT operand operand operand
+   | PEXTRB operand operand operand
+   | PEXTRQ operand operand operand
+   | PINSRB operand operand operand
    | PINSRD operand operand operand
    | PINSRQ operand operand operand
    | PMOVMSKB operand operand
    | POP operand
    | POPCNT operand operand
+   | POR operand operand
    | PSHUFB operand operand
    | PSHUFD operand operand operand
+   | PSLLD operand operand
+   | PSLLDQ operand operand
    | PSRAD operand operand
+   | PSRLD operand operand
+   | PSRLDQ operand operand
    | PSRLW operand operand
+   | PUNPCKHDQ operand operand
+   | PUNPCKHQDQ operand operand
+   | PUNPCKLDQ operand operand
+   | PUNPCKLQDQ operand operand
    | PUSH operand
    | PXOR operand operand
    | RCL operand operand
@@ -324,6 +337,9 @@ let instruction_INDUCTION,instruction_RECURSION = define_type
    | SAR operand operand
    | SBB operand operand
    | SET condition operand
+   | SHA256MSG1 operand operand
+   | SHA256MSG2 operand operand
+   | SHA256RNDS2 operand operand
    | SHL operand operand
    | SHR operand operand
    | SHLD operand operand operand
@@ -333,6 +349,7 @@ let instruction_INDUCTION,instruction_RECURSION = define_type
    | SUB operand operand
    | TEST operand operand
    | TZCNT operand operand
+   | VBROADCASTI128 operand operand
    | VMOVD operand operand
    | VMOVMSKPS operand operand
    | VMOVQ operand operand
@@ -345,6 +362,7 @@ let instruction_INDUCTION,instruction_RECURSION = define_type
    | VPADDW operand operand operand
    | VPADDD operand operand operand
    | VPADDQ operand operand operand
+   | VPALIGNR operand operand operand operand
    | VPAND operand operand operand
    | VPANDN operand operand operand
    | VPBLENDD operand operand operand operand

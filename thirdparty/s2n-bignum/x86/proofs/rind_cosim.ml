@@ -3,8 +3,8 @@
  *)
 
 (* ========================================================================= *)
-(* Random-instruction cosimulation of the instructions x86.patch and          *)
-(* pr450.patch add to s2n-bignum's x86 model, against this CPU.              *)
+(* Random-instruction cosimulation of the instructions rind's fork adds to   *)
+(* s2n-bignum's x86 model, against this CPU.                                 *)
 (* ========================================================================= *)
 
 (* s2n-bignum's simulator checks each case: it runs the instruction on a
@@ -16,8 +16,8 @@
    widths and ignored W bits, and the memory forms on [rsp + disp8], 16-byte
    aligned for the legacy SSE forms that require it, the SHA extensions'
    included where the CPU has them. RSP itself is never an operand, since
-   the model's is symbolic. The F3 prefix the patch lets RET
-   take is not cosimulated, since RET leaves the simulator's harness. *)
+   the model's is symbolic. The F3 prefix the fork lets RET take is not
+   cosimulated, since RET leaves the simulator's harness. *)
 
 loadt "x86/proofs/simulator.ml";;
 
