@@ -13,6 +13,16 @@ build on, from s2n-bignum, Vale, and aws-lc, is in rind's build the object
 code its own proof is about. The `prove` workflow runs it nightly and on pull
 requests that change rind's source or these files.
 
+`lakefile.toml` turns on Lake's artifact cache, which lives in the Lean
+toolchain's directory under `~/.elan` and every checkout of a user shares, so
+a new worktree hard-links, or across filesystems copies, the Mathlib and
+Aeneas builds and the unchanged modules another checkout already fetched or
+built rather than unpacking or building its own. The cache outlives the
+worktrees: uninstalling the old toolchain after a bump with `elan toolchain
+uninstall` drops it, and `lake cache clean` in `proofs/` empties it at any
+time, since each checkout keeps its own links and its next build puts them
+back.
+
 ## HOL Light proofs
 
 `hol-light/<arch>/` holds rind's own [HOL Light](https://hol-light.github.io/)
@@ -38,6 +48,12 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
   with its relocations and the read-only data they reach, here the round
   constants, which `admin/prove` extracts as an object file; the proof checks
   the constants against FIPS 180-4's.
+- `aarch64/sha512_block_data_order_hw.ml`: `SHA512_HW_SUBROUTINE_CORRECT`,
+  rind's proof that the naked function
+  `low::aarch64::sha512::sha512_block_data_order_hw`, aws-lc's routine for
+  the SHA-512 instructions, computes s2n-bignum's FIPS 180-4 spec,
+  `sha512_hash_blocks`, and stores it to the state, as `sha256`'s above; the
+  proof checks its round constants against FIPS 180-4's.
 - `x86_64/bn_mul_mont_nohw.ml`: `BN_MUL_MONT_NOHW_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::x86_64::mont::bn_mul_mont_nohw`,
   aws-lc's word-serial Montgomery multiplication, writes the Montgomery
@@ -88,8 +104,11 @@ writes for aarch64:
 
 `rfcx25519` is HOL Light's RFC 7748 X25519, clamping and masking included.
 
-P-256 ECDH on aarch64, from the same `PrivateKey` to s2n-bignum's routines, in
-`Rind/Aarch64/P256.lean`:
+P-256 ECDH, from the same `PrivateKey` to s2n-bignum's routines, in
+`Rind/Aarch64/P256.lean` on aarch64, and, for its agreement alone, in
+`Rind/X86_64/P256Agree.lean`, which `admin/prove` also writes for aarch64, so
+`p256_agree` and `p256_shared_secret` hold on x86_64 too, where key generation
+runs aws-lc's generator multiplication, which no proof covers yet:
 
 - `p256_generate`: the key's scalar is the first of up to 64 draws whose
   bytes, read big-endian, are in [1, n), it holds its public key, and the key
@@ -245,8 +264,9 @@ and RFC 8018 as `Rind/HashSpec.lean` transliterates them:
   `Secret::derive` and `Secret::verify`.
 
 HKDF's `From<Okm>` conversions, each filling the key's length of HKDF-Expand
-into a zeroed buffer and keying it, in `Rind/X86_64/Hkdf.lean` on both targets
-and `Rind/X86_64/HkdfAead.lean` on x86_64:
+into a zeroed buffer and keying it, in `Rind/X86_64/Hkdf.lean` and
+`Rind/X86_64/HkdfAes.lean` on both targets and `Rind/X86_64/HkdfAead.lean` on
+x86_64:
 
 - `hmac_key_from_spec`, `prk_from_spec`: the `hmac::Key` and `Prk` are keyed
   under the algorithm with the `tag_len` bytes of HKDF-Expand;
@@ -259,11 +279,10 @@ and `Rind/X86_64/HkdfAead.lean` on x86_64:
   32 bytes of HKDF-Expand, through `aead_key_new_chacha20_poly1305_spec` over
   `chacha20_poly1305_new`;
 - `aes_header_key_from_spec`: AES-128 or AES-256 header protection holds
-  FIPS 197's round keys for the `4 * nk` bytes of HKDF-Expand, on x86_64 under
-  `RunsAesNi`, through `aes_header_new_spec` over `aes_header_new`.
+  FIPS 197's round keys for the `4 * nk` bytes of HKDF-Expand, under
+  `RunsAesHw`, through `aes_header_new_spec` over `aes_header_new`.
 
-The other keys `From<Okm>` converts to, AES-192-GCM and AES header protection
-on aarch64, have no proof. `Rind/X86_64/Kdf/FunsExternal.lean`'s
+The other key `From<Okm>` converts to, AES-192-GCM, has no proof. `Rind/X86_64/Kdf/FunsExternal.lean`'s
 `new` wrappers turn a model's refusal into the panic its `expect` makes, so
 each conversion panics exactly where its `expect` does.
 
@@ -287,9 +306,8 @@ cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
 Lean definitions beside the Rust they model, with an agreement `Algorithm` as
 which static it is. P-256's key generation draws through a `dyn
 RandomSource`, which Aeneas cannot translate either, and
-`Rind/Aarch64/P256Dispatch.lean` models it the same way, for
-`Rind/Aarch64/Dispatch.lean` to call; on x86_64, where no theorem is about
-P-256, `Rind/X86_64/P256Dispatch.lean` leaves it opaque. The signature API's `EcdsaKeyPair` reaches each curve's code, and
+`Rind/X86_64/P256Dispatch.lean`, which `admin/prove` also writes for aarch64,
+models it the same way, for `Rind/<Arch>/Dispatch.lean` to call. The signature API's `EcdsaKeyPair` reaches each curve's code, and
 `PublicKey` each ECDSA key's parser and verifier, through function pointers,
 and P-256's ECDSA key generation draws through a `dyn RandomSource`;
 `Rind/Aarch64/EcdsaDispatch.lean` models them for P-256 with SHA-256 and
@@ -304,10 +322,16 @@ aarch64:
   finished, returns its hash, for messages under 2^64 bytes.
 
 The hash is cryptol-specs' FIPS 180-4 SHA-512, in `Rind/Sha2.lean`, with its
-block compression `processBlock_Common` opaque. Each theorem assumes
+block compression `processBlock_Common` transliterated from FIPS 180-4 and
+checked by `Rind/Sha2Test.lean` against its examples. Each theorem assumes
 `RunsSha512`: on x86_64 that rind picks aws-lc's AVX routine, on an Intel CPU
-with AVX but without AVX2, and on aarch64 its scalar routine, on a CPU without the SHA-512
-instructions; those are the routines whose proofs state their result. The
+with AVX but without AVX2, the routine whose proof states its result; on
+aarch64 only that rind's checks pass, as both of aws-lc's routines there have
+proofs: aws-lc-verification's of its scalar routine, and rind's HOL Light proof
+above of its routine for the SHA-512 instructions, which
+`Rind/Aarch64/AwsLc.lean` restates as the axiom
+`sha512_block_data_order_hw_spec` and `Rind/S2nSha512.lean` proves
+`Rind/Sha2.lean`'s. The
 digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
 models the `Algorithm` statics that hold them, and `Digest`, whose
@@ -407,9 +431,11 @@ theorems do not import. `PublicKey` reaches each algorithm's key parser, and
 each parsed key its verification, through function pointers, which
 `Rind/X86_64/SignatureDispatch.lean` models.
 
-AES-128 and AES-256 on x86_64 CPUs with AES-NI, from `cipher::Aes` and the
-header-protection API's `HeaderProtectionKey` to rind's AES-NI key expansion
-and block cipher, in `Rind/X86_64/AesCipher.lean`:
+AES-128, AES-192, and AES-256 on x86_64 CPUs with AES-NI and aarch64 CPUs
+with the crypto extension, from `cipher::Aes` and the header-protection API's
+`HeaderProtectionKey` to rind's key expansion and block cipher on the AES
+instructions, in `Rind/X86_64/AesCipher.lean`, over each target's
+`Rind/<Arch>/AesKey.lean`:
 
 - `aes_new`: a `cipher::Aes` key that is not the algorithm's length is
   refused, and otherwise the key holds FIPS 197's round keys for its bytes,
@@ -422,13 +448,20 @@ and block cipher, in `Rind/X86_64/AesCipher.lean`:
 - `aes_header_mask`: the mask is RFC 9001's, the first five bytes of that
   cipher of the sample.
 
-`aesBlock` and `aesHeaderMask` are those specs on bytes, which `#guard`s
-check against FIPS 197's and RFC 9001's vectors. The theorems assume
-`RunsAesNi`, or for a key already made only its entry guard: rind's
-CPU-feature checks find AES-NI, which no input affects. AES-192 keys, which
-run `aes192_expand` and `aes_block`, and aarch64, whose intrinsics nothing
-models yet, have no proof: [the AES header-protection
-quest](/quest/m4/verified/aes-header-protection.md) owns them.
+Each `AesKey.lean` also proves the decryption key `AesDecKey`, which AES-KW
+unwraps with, against FIPS 197's equivalent inverse cipher, which
+`Rind/AesInverse.lean` transliterates since Vale's spec only encrypts:
+
+- `dec_key_new_spec`: a key of the algorithm's length holds `KeyExpansionEIC`'s
+  round keys, reversed, which `invert_round_keys` computes from the cipher's;
+- `hw_decrypt_block_spec`: the block becomes `EqInvCipher` of it under them.
+
+`aesBlock`, `aesHeaderMask`, and `aesBlockDecrypt` are those specs on bytes,
+which `#guard`s check against FIPS 197's and RFC 9001's vectors. The theorems
+assume `RunsAesHw`, or for a key already made only its entry guard: rind's
+CPU-feature checks find AES-NI, or on aarch64 the crypto extension, which no
+input affects. AES-CBC decrypts through its own routines over the same round keys,
+which [the AES modes quest](/quest/m4/verified/aes-modes.md) owns.
 
 AES-128-GCM and AES-256-GCM on x86_64 CPUs with AES-NI and PCLMULQDQ, from
 the AEAD API's `Key` down to HACL*'s Vale AES-GCM routines on CPUs with AVX and
@@ -448,8 +481,8 @@ AVX and for what Vale's routines do not take, in
   buffer: the ciphertext lands in the view its `as_mut` gives, and the call
   returns what its `extend` makes of that, handed the tag; and
   `aes_gcm_seal_append_tag_vec`: a `Vec<u8>` with room for the tag becomes
-  the ciphertext followed by the tag, assuming `VecAsMut` and `VecExtend`,
-  that std's impls view the whole vector and append the tag as
+  the ciphertext followed by the tag, through `Rind/Core.lean`'s models of
+  std's impls, which view the whole vector and append the tag as
   `extend_from_slice` does;
 - `aes_gcm_open_separate_tag` and `aes_gcm_open`: for the same lengths, the
   call succeeds exactly when Vale's `gcm_decrypt_LE` accepts the tag, leaving
@@ -470,9 +503,10 @@ key `Rind/X86_64/GhashClmul.lean` proves equal to it.
 `compute_iv_BE`'s, the length block `gcm_hash`'s, and the tag GCTR on the
 hash under it, which by-8's `open` compares through `ct_equal`, so the opens
 rest on `Rind/X86_64/CtEqual.lean`'s contracts too. AES-192 keys run by-8 as
-well, which no proof covers, since Vale's AES spec has no AES-192. The key
+well, which no proof covers yet: [the x86_64 AES-GCM
+quest](/quest/m4/verified/aes-gcm-x86-intrinsics.md) owns them. The key
 setup is rind's: its AES-NI key expansion and block cipher, which
-`Rind/X86_64/AesCipher.lean` proves for AES header protection too, and its
+`Rind/X86_64/AesKey.lean` proves for AES header protection too, and its
 PCLMULQDQ GHASH key powers, whose Karatsuba product and reduction
 `Rind/Gf128.lean` proves to be Vale's `gf128_mul_rev` of the shifted keys
 (`mul_shiftKey1`). Around Vale's routines, the Rust zero-pads the partial
@@ -590,26 +624,31 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
   writes and git ignores.
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
-  translation leaves opaque, and models of the few `core` items Aeneas's
-  library lacks.
+  translation leaves opaque, and models of the few standard-library items
+  Aeneas's library lacks.
 - `Rind/<Arch>/S2nBignum.lean`, `Rind/<Arch>/AwsLc.lean`, and
   `Rind/X86_64/ValeAesGcm.lean`: s2n-bignum's, aws-lc-verification's, and
   Vale's theorems, restated as axioms about the routines' Rust wrappers.
-- `Rind/X86_64/Simd.lean` and `Rind/X86_64/AesNi.lean`: models of the x86_64
-  intrinsics rind's AES-GCM setup, partial blocks, and by-8 kernels call, and
-  of its AES-NI key expansion and block cipher, which load and store through
-  raw pointers; `Rind/X86_64/AesGcmModel.lean`: a hand model, over those
-  intrinsics, of its PCLMULQDQ GHASH and by-8 AES-GCM, whose raw pointers,
-  `transmute` constants, `as_chunks`, and zipped iterators Aeneas cannot
-  translate.
+- `Rind/X86_64/Simd.lean`: models of the x86_64 intrinsics rind's AES,
+  AES-GCM setup, partial blocks, and by-8 kernels call;
+  `Rind/X86_64/AesGcmModel.lean`: a hand model, over those intrinsics, of its
+  PCLMULQDQ GHASH and by-8 AES-GCM, whose raw pointers, `transmute`
+  constants, `as_chunks`, and zipped iterators Aeneas cannot translate;
+  `Rind/Aarch64/Neon.lean`, of the aarch64 intrinsics rind's AES calls, and
+  `Rind/Aarch64/NeonVectors.lean`, the vectors `admin/neon-vectors.rs` tests
+  them with; `Rind/Lanes.lean`, both targets' vector lanes and bytes.
 - `Rind/Spec.lean` and `Rind/Bytes.lean`: the elliptic-curve, ChaCha20,
   Poly1305, and ChaCha20-Poly1305 specs and byte-conversion lemmas, and
   `Rind/ChaCha20Poly1305Test.lean`, the AEAD specs' known-answer tests; `Rind/Sha2.lean` and
-  `Rind/Sha2Lemmas.lean`: SHA-512's; `Rind/Ed25519.lean`: Ed25519's;
+  `Rind/Sha2Lemmas.lean`: SHA-512's, and `Rind/Sha2Test.lean`, its
+  known-answer tests; `Rind/S2nSha512.lean`, s2n-bignum's SHA-512 spec,
+  transliterated, and its proof that it is `Rind/Sha2.lean`'s;
+  `Rind/Ed25519.lean`: Ed25519's;
   `Rind/HashSpec.lean`: SHA-1's, SHA-256's, HMAC's, HKDF's, and PBKDF2's, and
   `Rind/HashSpecTest.lean`, their known-answer tests; `Rind/Vale.lean`,
   `Rind/ValeBytes.lean`, and `Rind/Gf128.lean`: Vale's AES and GF(2^128) specs
-  and their lemmas.
+  and their lemmas, and `Rind/AesInverse.lean`, FIPS 197's equivalent inverse
+  cipher.
 - `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch,GcmKey}.lean`:
   the hand models of the agreement, header-protection, digest, signature,
   AEAD, and HMAC APIs' dispatch, and of `aead::gcm::Key` over the AEAD model; `Rind/X86_64/HkdfExpand.lean` and
@@ -619,10 +658,13 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   ChaCha20, and Ed25519 proofs, `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
   SHA-1's, SHA-256's, and HMAC's, and
   `Rind/X86_64/{DigestApi,HmacApi,Hkdf,Pbkdf2}.lean`, the digest, HMAC, HKDF,
-  and PBKDF2 APIs'; `Rind/X86_64/HkdfAead.lean`, HKDF's conversion to AES-GCM,
-  ChaCha20-Poly1305, and AES header-protection keys;
+  and PBKDF2 APIs'; `Rind/X86_64/HkdfAead.lean`, HKDF's conversion to AES-GCM
+  and ChaCha20-Poly1305 keys, and `Rind/X86_64/HkdfAes.lean`, to AES
+  header-protection keys; `Rind/Aes.lean`, FIPS 197's AES on bytes and its
+  key schedule word by word; `Rind/<Arch>/AesKey.lean`, each target's key
+  expansion and block cipher on the AES instructions;
   `Rind/X86_64/AesCipher.lean`, `cipher::Aes` and AES header protection, and
-  `Rind/X86_64/{AesKey,Ghash,PartialBlock,AesGcmGlue,AesGcm,GhashClmul,AesGcmBy8,AesGcmClmul,AesGcmAead}.lean`:
+  `Rind/X86_64/{Ghash,PartialBlock,AesGcmGlue,AesGcm,GhashClmul,AesGcmBy8,AesGcmClmul,AesGcmAead}.lean`:
   the AES-GCM proof, on x86_64 alone; `Rind/X86_64/GcmKey.lean`, the hand model
   of `aead::gcm::Key` and its proofs; `Rind/X86_64/ChaCha20Poly1305.lean`, the
   ChaCha20-Poly1305 and XChaCha20-Poly1305 proof above aws-lc's routines.
@@ -659,9 +701,10 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate;
   `Rind/N256Prime.lean`: that `n256` is prime; `Rind/P256Multiples.lean`: the
   group laws and multiples ECDSA's twin multiplication relies on.
-- `Rind/Aarch64/P256Dispatch.lean`, `Rind/Aarch64/P256Table.lean`, and
-  `Rind/Aarch64/P256.lean`: the hand model of P-256's key generation, the
-  generator table's proof, and the P-256 ECDH proof.
+- `Rind/X86_64/P256Dispatch.lean`, `Rind/X86_64/P256Agree.lean`,
+  `Rind/Aarch64/P256Table.lean`, and `Rind/Aarch64/P256.lean`: the hand model
+  of P-256's key generation, the P-256 agreement proof on both targets, and
+  aarch64's generator table and key generation proofs.
 - `Rind/Aarch64/EcdsaDispatch.lean`, `Rind/Aarch64/P256Ecdsa.lean`, and
   `Rind/Aarch64/P256Signature.lean`: the hand model of ECDSA's dispatch and
   key generation, the proof of `high::ecdsa` and `mid::p256`'s ECDSA at
@@ -696,10 +739,10 @@ Beyond Lean's kernel:
 - That `Rind/SymCrypt/MlKem.lean` is FIPS 203, as SymCrypt's authors state,
   and that `Rind/S2nMlKem.lean` transliterates the s2n-bignum ML-KEM specs it
   names.
-- That `Rind/Sha2.lean` restates cryptol-specs' SHA-512 around
-  `processBlock_Common`, `Rind/S2nSha256.lean` transliterates
-  s2n-bignum's SHA-256 spec, and `Rind/S2nChaCha20Poly1305.lean` rind's
-  HOL Light ChaCha20-Poly1305 spec.
+- That `Rind/Sha2.lean` restates cryptol-specs' SHA-512, its
+  `processBlock_Common` as FIPS 180-4's, `Rind/S2nSha256.lean` and
+  `Rind/S2nSha512.lean` transliterate s2n-bignum's SHA-256 and SHA-512 specs,
+  and `Rind/S2nChaCha20Poly1305.lean` rind's HOL Light ChaCha20-Poly1305 spec.
 - That `Rind/Rsa.lean` transliterates RFC 8017's RSASSA-PKCS1-v1_5 and
   RSASSA-PSS verification.
 - That `Rind/Spec.lean`'s ChaCha20, Poly1305, and ChaCha20-Poly1305
@@ -711,11 +754,15 @@ Beyond Lean's kernel:
 - That `Rind/Vale.lean` transliterates Vale's AES and GF(2^128) specs and
   `hkeys_reqs_pub`, with the round functions Vale's AES spec assumes read as
   FIPS 197's, the S-box and `MixColumns` opaque.
-- That `Rind/X86_64/Simd.lean`'s intrinsics compute what their instructions
-  do beyond the inputs `admin/prove` tests them on. `admin/simd-vectors.rs`
-  runs each instruction on the checking machine's CPU, on every immediate it
-  reads, zero and all-ones lanes, and random inputs from a fixed seed, and
-  Lean checks each model gives the same. The AES models run the S-box and
+- That `Rind/X86_64/Simd.lean`'s and `Rind/Aarch64/Neon.lean`'s intrinsics
+  compute what their instructions do beyond the inputs they are tested on.
+  `admin/simd-vectors.rs` runs each x86_64 instruction on the checking
+  machine's CPU, on every immediate it reads, zero and all-ones lanes, and
+  random inputs from a fixed seed, and Lean checks each model gives the
+  same. `admin/neon-vectors.rs` does the same for the aarch64 ones; its
+  output is committed as `Rind/Aarch64/NeonVectors.lean`, which Lean checks
+  on any host, and the `prove` workflow reruns it on an aarch64 CPU and fails
+  if the output changed. The AES models run the S-box and
   `MixColumns` as FIPS 197 computes them, bodies Lean evaluates while proofs
   keep the two opaque. All are tested on hardware, none under an emulator;
   `admin/prove` fails on a `core.core_arch` model it does not test.

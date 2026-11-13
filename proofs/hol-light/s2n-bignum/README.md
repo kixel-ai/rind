@@ -14,6 +14,9 @@ submodule bump past its merge deletes it.
 - `x86/proofs/utils/sha256_spec.ml`: SHA-256's FIPS 180-4 spec, from
   [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) at
   `79120e64ed55e37c9652565ff272b7ef17f76738`.
+- `x86/proofs/utils/sha512_spec.ml`: SHA-512's FIPS 180-4 spec, from
+  [awslabs/s2n-bignum#420](https://github.com/awslabs/s2n-bignum/pull/420) at
+  `7ef7ba7c2d830d9c713512035ae6eb4aa8fe0a2b`.
 
 ## rind's specs
 
@@ -32,7 +35,7 @@ submodule bump past its merge deletes it.
 need, `chacha20_poly1305_{seal,open}`, `poly_hash_ad_internal`, and
 `ChaCha20_ctr32_ssse3_4x`, to `x86/proofs/instruction.ml`, `decode.ml`, and
 `x86.ml` (maintainer, 2026-11-11, on
-[moq-dev/rind#627](https://github.com/moq-dev/rind/pull/627)). Under it every
+[kixel-ai/rind#627](https://github.com/kixel-ai/rind/pull/627)). Under it every
 instruction of those routines, as rind's release build emits them, decodes.
 `admin/prove` applies it to the files it changes, where this directory
 vendors one, or else to the submodule's, and fails unless every hunk applies
@@ -69,7 +72,7 @@ cosim`, which the `prove` workflow runs. Offering the patch upstream would
 also add its encodings to s2n-bignum's `x86/proofs/simulator.ml`, as
 s2n-bignum's own additions do. Posting to awslabs/s2n-bignum needs the
 maintainer's approval
-([moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448)).
+([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
 
 ## rind's AArch32 model
 
