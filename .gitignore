@@ -39,3 +39,6 @@ proofs/Rind/Aarch64/Pbkdf2.lean
 proofs/Rind/Aarch64/Sha3.lean
 patch/*/Cargo.lock
 __pycache__/
+site/node_modules/
+site/dist/
+site/.astro/
