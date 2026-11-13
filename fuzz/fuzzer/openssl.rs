@@ -67,7 +67,12 @@ fuzz_target!(|input: Input| {
             let ctx = provider.signature_ctx();
             let init: DigestInit = provider.signature(DIGEST_VERIFY_INIT);
             // SAFETY: the context and key are live, and the parameters end.
-            if unsafe { init(ctx, null(), key, Params::new(&params).as_ptr()) } == 1 {
+            let initialized = unsafe { init(ctx, null(), key, Params::new(&params).as_ptr()) };
+            // Without parameters nothing can refuse a key that imported.
+            if params.is_empty() {
+                assert_eq!(initialized, 1);
+            }
+            if initialized == 1 {
                 let verified = provider.signature::<DigestVerify>(DIGEST_VERIFY);
                 // SAFETY: each buffer is valid for its length.
                 let ok = unsafe {
@@ -654,7 +659,8 @@ impl Keymgmt {
         let get: GetParams = self.get(KEYMGMT_GET_PARAMS);
         for (name, half) in [(c"pub", &exported.public), (c"priv", &exported.private)] {
             for size in [0, 31, 32, 64] {
-                let mut buf = [0u8; 64];
+                // Exactly `size`, so a sanitizer catches a write past it.
+                let mut buf = vec![0u8; size];
                 let mut params = [
                     Param {
                         key: name.as_ptr(),
