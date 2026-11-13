@@ -404,19 +404,23 @@ fn add_middle(z: &mut [Limb], d: &mut [Limb], h: usize, negative: Limb) {
 /// limbs of `t` beyond `m`'s, each of `b` bits, and `n0` is `-m^-1 mod
 /// 2^b`.
 ///
-/// Each step clears the lowest limb by adding a multiple of m. The carry out
-/// of the top of a step's sum waits in `top` for the next, as it lands where
-/// the next step's sum ends. The result is below 2m, as the multiples are
-/// below 2^bp * m too, so one subtraction reduces it.
+/// Each step clears the lowest limb by adding a multiple of m, two steps a
+/// pass: the second's multiple comes from the next limb as the first leaves
+/// it. The carry out of the top of a pass's sum waits in `top` for the
+/// next, as it lands where the next pass's sum ends. The result is below
+/// 2m, as the multiples are below 2^bp * m too, so one subtraction reduces
+/// it.
 fn redc(t: &mut [Limb], m: &[Limb], n0: Limb) {
     let k = m.len();
     let p = t.len() - k;
     let mut top = 0;
     let mut i = 0;
-    while i + 1 < p {
+    // For a one-limb m, `top` lands on the limb the second step's multiple
+    // comes from, so each pass takes one step.
+    while k > 1 && i + 1 < p {
         let u = t[i].wrapping_mul(n0);
         let low = mul_add_limb(u, m[0], t[i], 0) >> Limb::BITS;
-        let next = mul_add_limb(u, m.get(1).copied().unwrap_or(0), t[i + 1], low);
+        let next = mul_add_limb(u, m[1], t[i + 1], low);
         let v = (next as Limb).wrapping_mul(n0);
         let rest = mul_add2(&mut t[i..i + k], m, u, v, 0);
         let sum = Wide::from(t[i + k])
@@ -430,12 +434,13 @@ fn redc(t: &mut [Limb], m: &[Limb], n0: Limb) {
         top = sum >> Limb::BITS;
         i += 2;
     }
-    if i < p {
+    while i < p {
         let u = t[i].wrapping_mul(n0);
         let carry = mul_add(&mut t[i..i + k], m, u);
         let sum = Wide::from(t[i + k]).wrapping_add(carry).wrapping_add(top);
         t[i + k] = sum as Limb;
         top = sum >> Limb::BITS;
+        i += 1;
     }
 
     let r = &mut t[p..];
