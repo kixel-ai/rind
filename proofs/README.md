@@ -13,6 +13,16 @@ build on, from s2n-bignum, Vale, and aws-lc, is in rind's build the object
 code its own proof is about. The `prove` workflow runs it nightly and on pull
 requests that change rind's source or these files.
 
+`lakefile.toml` turns on Lake's artifact cache, which lives in the Lean
+toolchain's directory under `~/.elan` and every checkout of a user shares, so
+a new worktree hard-links, or across filesystems copies, the Mathlib and
+Aeneas builds and the unchanged modules another checkout already fetched or
+built rather than unpacking or building its own. The cache outlives the
+worktrees: uninstalling the old toolchain after a bump with `elan toolchain
+uninstall` drops it, and `lake cache clean` in `proofs/` empties it at any
+time, since each checkout keeps its own links and its next build puts them
+back.
+
 ## HOL Light proofs
 
 `hol-light/<arch>/` holds rind's own [HOL Light](https://hol-light.github.io/)
@@ -50,7 +60,9 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
   `x * y / 2^(64k) mod m` of its `k`-word operands, as s2n-bignum's
   `bignum_montmul` states it, given `-m^-1 mod 2^64` and
   `x * y <= 2^(64k) * m`, for every width from two up that is not a multiple
-  of four: those its width-generic path runs. The theorem covers the dispatch,
+  of four: those its width-generic path runs, for `k < 2^58`, a 16-aligned
+  stack pointer, and `z` and the stack frame disjoint from the code and the
+  inputs, so `z` may not alias `x`. The theorem covers the dispatch,
   the stack frame of up to `8k + 72` bytes below the stack pointer, and the
   callee-saved registers it restores. The widths that run `__bn_mul4x_mont`
   and `__bn_sqr8x_mont`, which include every standard RSA size and its CRT
