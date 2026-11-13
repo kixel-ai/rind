@@ -253,8 +253,8 @@ def disassembly(target, path):
         text = re.split(r"\s+(?://|# |<)", " ".join(fields[1:]))[0].split(None, 1)
         if not text or text[0] not in handlers:
             continue
-        # Operands split at commas outside a register list.
-        ops = re.split(r",\s*(?![^{]*\})", text[1].strip()) if len(text) > 1 else []
+        # Operands split at commas outside a register list or memory operand.
+        ops = re.split(r",\s*(?![^{(]*[})])", text[1].strip()) if len(text) > 1 else []
         # aarch64's objdump prints each instruction as a little-endian word.
         opcode = bytes.fromhex(fields[0].replace(" ", ""))
         if arch(target) == "aarch64":
