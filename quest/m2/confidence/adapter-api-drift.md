@@ -10,7 +10,12 @@ Every `drift` entry in an adapter's `[package.metadata.rind.api]` is gone: the a
 
 - rind-ring: `rsa` and the RSA items in `signature` exist without `alloc`, where ring gates them behind it; `error::KeyRejected` and `error::Unspecified` implement `std::error::Error` without `std`.
 - rind-aws-lc-rs: `aead::Nonce`'s `From` impls, `aead::RandomizedNonceKey::seal_in_place_append_tag`'s lifetime, `signature::VerificationAlgorithm`'s bounds, `rand::SystemRandom`'s impls, an added `modulus_len` on `rsa::PublicKey` and `signature::RsaSubjectPublicKey`, and `rand::SecureRandom` and `rand::RandomlyConstructable` under `dev-tests-only`.
-- rind-rustls: `Ticketer` exists without `std`, and the TLS 1.2 suites without `tls12`, where rustls gates them; `hpke`'s suites are `&dyn Hpke`, not `&HpkeAwsLcRs<..>` (documented in the README as deliberate, so it may belong in `omitted` instead).
+- rind-rustls: `Ticketer` exists without `std`, and the TLS 1.2 suites without `tls12`, where rustls gates them; `hpke`'s suites are `&dyn Hpke`, not `&HpkeAwsLcRs<..>`.
+
+Decisions (2026-11-13):
+
+- ✅ The `drift` lists may only shrink, so new drift fails now (rejected: fix all drift before the check lands).
+- ✅ rind-rustls's `hpke` suite type is drift to fix, since a divergence is a bug; match upstream's `&HpkeAwsLcRs<..>` type and drop the README note (rejected: move it to `omitted`).
 
 Run `admin/adapter-api <adapter>` for the full signatures.
 [moq-dev/rind#679](https://github.com/moq-dev/rind/pull/679) changes rind-aws-lc-rs; rebase this onto it.
