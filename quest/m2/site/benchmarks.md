@@ -8,7 +8,7 @@ The site has a benchmarks page that shows what BENCHMARKS.md shows, built from t
 
 Decided 2026-11-12 (maintainer, /quest-plan): ✅ one of the site's three showpieces.
 
-- The data is `benchmarks/data/*.json` for the hosts and `benchmarks/data/tiers.json` for the CPU tiers, with `benchmarks/verified.toml` for the ✓ marks and `benchmarks/gaps.toml` for the known gaps. `admin/bench-report` decides which hosts and rows the report shows; read the same list, so the site and BENCHMARKS.md cannot disagree about what counts.
+- The data is `benchmarks/data/*.json` for the hosts and `benchmarks/data/tiers.json` for the CPU tiers, with `benchmarks/verified.toml` for the ✓ marks and `benchmarks/gaps.toml` for the known gaps. `admin/bench-report` decides which hosts and rows the report shows (`HOSTS`, `OPERATIONS`, `TIERS`, and `TIER_ROWS`). It is Python and the site's build is not, so have it write those lists as data the site reads; a second copy in the site would let the two disagree about what counts.
 - The launch post's charts drew this data in SolidJS ([moq-dev/moq.dev](https://github.com/moq-dev/moq.dev), `src/components/rind/`, under MIT and Apache-2.0). Port what fits to Svelte and credit it; do not import them unchanged.
 - The data files are about 800 KB together. Reduce them at build time to what the page draws, and keep each time available in the Markdown twin as a table an agent can read.
 - Show where rind loses as plainly as where it wins, with the reason `gaps.toml` gives. The colour rule is the report's: within 10% of the fastest counts as fastest.
