@@ -235,8 +235,12 @@ class Api:
             ids = inner["kind"]["tuple"] if "tuple" in inner.get("kind", {}) else inner.get("fields") or []
             if isinstance(inner.get("kind"), dict) and "plain" in inner["kind"]:
                 ids = inner["kind"]["plain"]["fields"]
-            # A unit struct's name is also its public constructor.
-            if inner.get("kind") != "unit" and not any(i is not None and self.index[str(i)]["visibility"] == "public" for i in ids):
+            stripped = inner.get("has_stripped_fields") or (
+                isinstance(inner.get("kind"), dict) and inner["kind"].get("plain", {}).get("has_stripped_fields")
+            )
+            # A unit struct's name is also its public constructor, as are
+            # `S()` and `S {}`, which have no fields at all.
+            if (ids or stripped) and not any(i is not None and self.index[str(i)]["visibility"] == "public" for i in ids):
                 sig["kind"] = "opaque"
         if kind in ("struct", "variant") and isinstance(sig["kind"], dict) and "tuple" in sig["kind"]:
             # Its fields are listed as children.
@@ -256,7 +260,8 @@ class Api:
             sig = {"non_exhaustive": sig}
         self.add(path, kind, sig, owner)
         if kind in ("struct", "union", "enum"):
-            fields = inner.get("kind", {})
+            # A union lists its fields directly.
+            fields = inner["fields"] if kind == "union" else inner.get("kind", {})
             if isinstance(fields, dict):
                 fields = fields.get("plain", fields.get("tuple", fields))
             if isinstance(fields, dict):
@@ -297,7 +302,9 @@ class Api:
             elif self.external(impl["trait"]["id"], impl["trait"]["path"]) not in IGNORED_TRAITS:
                 sig = {"trait": impl["trait"], "negative": impl["is_negative"]}
                 # Bounds are API, including an auto trait's inferred ones.
-                sig["generics"] = impl["generics"]
+                # So is the type it is for, which tells apart impls on
+                # different instances of one generic type.
+                sig.update(elide({"generics": impl["generics"], "for": impl["for"]}))
                 # Its associated types and consts are API; its methods are the trait's.
                 sig["assoc"] = {
                     child["name"]: assoc_item(child["inner"])
