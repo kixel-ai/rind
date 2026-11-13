@@ -247,7 +247,7 @@ class Api:
             sig["kind"] = {"tuple": len(sig["kind"]["tuple"])}
         if impl is not None:
             # A method's callers also meet its impl block's bounds and target.
-            sig = {"impl": self.sig(elide({"generics": impl["generics"], "for": impl["for"]})), "item": sig}
+            sig = {"impl": self.sig(elide({"generics": impl["generics"], "for": impl["for"], "item": inner})), "item": sig}
         if kind == "variant" and inner.get("discriminant"):
             # Callers see the evaluated value, not the source expression.
             sig["discriminant"] = inner["discriminant"]["value"]
@@ -402,8 +402,8 @@ class Unordered(list):
 
 def elide(impl):
     """An impl header with each lifetime parameter it names only once written as `'_`."""
-    # A lifetime the trait or its associated items also name relates them, so it stays.
-    named = [impl["for"], impl["generics"]["where_predicates"], impl.get("trait"), impl.get("assoc")]
+    # A lifetime the trait, its associated items, or the method also name relates them, so it stays.
+    named = [impl["for"], impl["generics"]["where_predicates"], impl.get("trait"), impl.get("assoc"), impl.get("item")]
     uses = collections.Counter(re.findall(r"'[\w]+", json.dumps(named)))
     free = {
         p["name"]
@@ -528,6 +528,8 @@ def main():
     base = None
     if "--base" in args:
         i = args.index("--base")
+        if i + 1 == len(args):
+            sys.exit("error: --base needs a revision")
         base = args[i + 1]
         del args[i : i + 2]
     wanted = set(args)
@@ -600,11 +602,13 @@ def main():
         print(f"no configured adapter is named {sorted(wanted - ran)}")
         failed = True
     if bless:
-        write_drift({**{k: v for k, v in known.items() if k[0] not in ran}, **found})
+        write_drift({**{k: v for k, v in known.items() if wanted and k[0] not in ran}, **found})
         known = read_drift(DRIFT.read_text())
     else:
         for key, labels in sorted(known.items()):
-            stale = labels - found.get(key, set()) if key[0] in ran else set()
+            # A full run checks every entry, including one for an adapter
+            # that no longer exists or is no longer compared.
+            stale = labels - found.get(key, set()) if key[0] in ran or not wanted else set()
             if stale:
                 print(f"{key[0]}: drift {key[1]} {key[2]} no longer shows in {sorted(stale)}; rerun with --bless")
                 failed = True
