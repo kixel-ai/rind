@@ -1,7 +1,7 @@
 <h1 align="center">rind-openssl</h1>
-<img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png">
+<img width="40%" align="right" src="https://raw.githubusercontent.com/kixel-ai/rind/main/admin/logo.png">
 
-An [OpenSSL 3 provider](https://docs.openssl.org/3.5/man7/provider/) backed by [rind](https://github.com/moq-dev/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
+An [OpenSSL 3 provider](https://docs.openssl.org/3.5/man7/provider/) backed by [rind](https://github.com/kixel-ai/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
 OpenSSL loads it through its configuration file, so whatever links OpenSSL 3, such as Node.js, Python's `cryptography`, Ruby, or nginx, signs with Ed25519 and agrees with X25519 through rind, with no change to its code.
 
 ## Setup

@@ -350,13 +350,11 @@ ring has none.
 
 ## Adapter crates
 
-Each `rind-*` crate stands in for a crate's aws-lc-rs or ring backend. rind
-panics on a CPU missing a feature it requires, so every adapter function
-that returns a provider refuses one with the adapter's own
-`MissingFeature` instead, which displays rind's message. rind-rustls, whose
-signatures are rustls's provider's, does not. rind-ring, whose signatures
-are ring's, and rind-rcgen's `KeyPair`, whose errors are rcgen's, cannot.
-Call `rind::cpu::check()` before using them.
+Each `rind-*` crate stands in for a crate's crypto backend, such as its
+aws-lc-rs, ring, or RustCrypto one, and offers that backend's signatures, so
+none returns an error for a CPU it lacks.
+Call `rind::cpu::check()` at startup to get that error, as the [cpu](#cpu)
+section describes.
 
 ### rind-ring
 
@@ -365,9 +363,9 @@ in with `ring = { package = "rind-ring", version = "0.17" }` and no code
 changes. The rename reaches only that crate. A binary moves every crate in
 its tree on ring 0.17, such as rustls or quinn-proto on their `ring`
 features, by adding `[patch.crates-io] ring = { git =
-"https://github.com/moq-dev/rind-patch" }` to its workspace's root
+"https://github.com/kixel-ai/rind-patch" }` to its workspace's root
 `Cargo.toml` and running `cargo update -p ring`. That builds
-[rind-patch](https://github.com/moq-dev/rind-patch)'s unpublished crate named
+[rind-patch](https://github.com/kixel-ai/rind-patch)'s unpublished crate named
 `ring`, which re-exports rind-ring, and `cargo tree -i ring` then prints only
 `ring v0.17.999` from rind-patch. It panics wherever ring
 panics, so its signatures stay ring's, and adds nothing to ring's API. Its [README](rind-ring/README.md) lists the

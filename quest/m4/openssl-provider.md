@@ -12,7 +12,7 @@ change.
 
 Planned by the maintainer on 2026-11-04 in m4. The provider, its documented
 `openssl.cnf`, and its tests landed for X25519 and Ed25519 in
-[moq-dev/rind#658](https://github.com/moq-dev/rind/pull/658); this is the rest.
+[kixel-ai/rind#658](https://github.com/kixel-ai/rind/pull/658); this is the rest.
 
 - OpenSSL gives every curve one `EC` key type and one `ECDSA` and `ECDH`
   algorithm each, so a provider that registers them gets every EC key on any
@@ -39,7 +39,7 @@ Planned by the maintainer on 2026-11-04 in m4. The provider, its documented
 - Decided 2026-11-12 (maintainer, /quest-unblock): on a CPU rind refuses, the
   provider loads anyway, reports status 0, and fails every key it would make
   with rind's error naming the missing feature, as
-  [moq-dev/rind#658](https://github.com/moq-dev/rind/pull/658) does
+  [kixel-ai/rind#658](https://github.com/kixel-ai/rind/pull/658) does
   (rejected: fail `OSSL_provider_init` and document OpenSSL's silent
   fallback; abort the process from `OSSL_provider_init`). Since OpenSSL
   3.0.13, 3.1.5, and 3.2.1, a provider whose init fails is a non-fatal
