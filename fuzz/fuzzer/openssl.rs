@@ -50,11 +50,17 @@ fuzz_target!(|input: Input| {
             message,
         } => sign(provider, &seed, mdname, &params, size, &message),
         Input::Verify {
-            public,
+            mut public,
+            signed,
             params,
-            signature,
+            mut signature,
             message,
         } => {
+            if let Some(seed) = signed {
+                let pair = Ed25519KeyPair::from_seed(&seed).unwrap();
+                public.copy_from_slice(pair.public_key().as_ref());
+                signature = pair.sign(&message).as_ref().to_vec();
+            }
             let keymgmt = provider.keymgmt(true);
             let key = keymgmt.import(PUBLIC_KEY, &[Arg::octets(c"pub", &public)]);
             assert!(!key.is_null());
@@ -117,9 +123,12 @@ enum Input {
         size: u8,
         message: Vec<u8>,
     },
-    /// Verifies as `EVP_DigestVerify` does.
+    /// Verifies as `EVP_DigestVerify` does. With a seed, the key is the
+    /// seed's and the signature its own over the message, so verification
+    /// passes too, not only random signatures that fail.
     Verify {
         public: [u8; 32],
+        signed: Option<[u8; 32]>,
         params: Vec<Arg>,
         signature: Vec<u8>,
         message: Vec<u8>,
