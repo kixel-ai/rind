@@ -512,9 +512,10 @@ hand model over `AeadDispatch` that quotes `rind/src/aead/gcm.rs`. Its `new`
 for AES-128, AES-192, or AES-256 holds the `aead::Key` for the algorithm,
 which refuses a key of another length (`gcm_key_new`). For an IV of 1 to
 2^61 - 1 bytes and the same AAD and message lengths, its
-`seal_in_place_separate_tag` and `seal_in_place_append_tag` leave AES-GCM's
-ciphertext and the first `tag_len` bytes of its tag (`gcm_key_seal`,
-`gcm_key_seal_append_tag`), and `open_in_place` and
+`seal_in_place_separate_tag` leaves AES-GCM's ciphertext and returns the
+first `tag_len` bytes of its tag (`gcm_key_seal`), and
+`seal_in_place_append_tag` returns what its `extend` makes of that, handed
+the tag (`gcm_key_seal_append_tag`), and `open_in_place` and
 `open_in_place_separate_tag` succeed exactly when the tag is those bytes,
 leaving the plaintext, and otherwise fail, leaving zeros (`gcm_key_open`,
 `gcm_key_open_separate_tag`); a tag that is not the key's length is
@@ -522,13 +523,16 @@ refused. SP 800-38D's MSB_t truncation is the first bytes of Vale's tag, which
 `gcmDecryptTrunc` compares. A seal under a 12-byte IV runs `aead::Key`'s path
 and truncates its tag, as does an open under one with a 16-byte tag; the
 model's other arms run `AesGcm::encrypt_any` and `decrypt_any`, which
-`Rind/X86_64/AesGcmAny.lean` proves: `initial_counter` is `compute_iv_BE`'s
-GHASH branch, through by-8's table and the IV's length block, and the
+`Rind/X86_64/AesGcmAny.lean` proves: `initial_counter` is `compute_iv_BE`: the
+96-bit counter block for a 12-byte IV, and otherwise the GHASH branch,
+through by-8's table and the IV's length block, and the
 tag's prefix is compared through `ct_equal`. They refuse an empty IV, one of
 2^61 bytes or more, and AAD and messages past GCM's bounds with
 `WrongLength`, leaving the buffer as it was (`check_gcm_iv_spec`,
-`check_gcm_lengths_eq`); the 96-bit path's theorems still take those bounds
-as hypotheses.
+`check_gcm_lengths_eq`), but those refusals are stated only for
+`encrypt_any` and `decrypt_any`: the 96-bit path's theorems, and the
+`gcm::Key` theorems above both, still take the AAD and message bounds as
+hypotheses.
 The AVX-512 tier's by-16 AES-CTR and GHASH, from 256 bytes to 2 KB, have no
 proof yet: [the AVX-512 by-16 quest](/quest/m4/verified/aes-gcm-x86-intrinsics.md)
 owns them.
