@@ -1758,7 +1758,7 @@ let dgoal hyp pre =
   let tm = mk_imp(mk_conj(DHYP, hyp), ens) in
   list_mk_forall(filter (fun v -> mem v (frees tm))
    [`key:int64`; `ks:int128 list`; `r:num`; `buf:int64`; `n:num`;
-    `j:num`; `m:num`; `iv:int128`; `inp:num->int128`; `ivec:int64`;
+    `j:num`; `m:num`; `p:num`; `e:num`; `iv:int128`; `inp:num->int128`; `ivec:int64`;
     `fp:int64`; `stackpointer:int64`; `rbp0:int64`; `pc:num`], tm);;
 
 let TAIL_A_GOAL = dgoal
@@ -2143,3 +2143,88 @@ let LOOP = time prove
   REWRITE_TAC[ADD_EQ_0; ARITH_EQ; PRED_ADD] THEN
   X86_BIGSTEP_TAC AES_HW_CBC_ENCRYPT_EXEC "s5" THEN
   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]]);;
+
+(* From the loop's exit at 0x53e: block p in xmm9 and e blocks after it. *)
+let EXIT_GOAL = dgoal
+ `(p + 1) + e = n /\ e < 8 /\
+  nonoverlapping (word_add (stackpointer:int64) (word 18446744073709551608),8) (word pc,0xbc9)`
+ `read RIP s = word(pc + 0x53e) /\
+  read RCX s = word_add key (word 112) /\
+  read RDI s = word_add buf (word(16 * (p + 1))) /\
+  read RSI s = word_add buf (word(16 * p)) /\
+  read RDX s = word_sub (word(16 * (e + 8) - 112)) (word 128) /\
+  read XMM9 s = cbc_dec ks iv inp p /\
+  read XMM10 s = inp p /\
+  (6 <= e
+   ==> read XMM2 s = inp(p + 1) /\ read XMM3 s = inp(p + 2) /\
+       read XMM4 s = inp(p + 3) /\ read XMM5 s = inp(p + 4) /\
+       read XMM6 s = inp(p + 5) /\ read XMM7 s = inp(p + 6) /\
+       read XMM11 s = inp(p + 1) /\ read XMM12 s = inp(p + 2) /\
+       read XMM13 s = inp(p + 3) /\ read XMM14 s = inp(p + 4) /\
+       read XMM15 s = inp(p + 5)) /\
+  read (memory :> bytes(buf,16 * p)) s = cbc_num (cbc_dec ks iv inp) 0 p /\
+  read (memory :> bytes(word_add buf (word(16 * p)),16 * (e + 1))) s =
+    cbc_num inp p (e + 1)`;;
+
+let WORD_CLOSED_REDUCE_CONV =
+  DEPTH_CONV(fun t ->
+    if is_comb t && is_const(rator t) && fst(dest_const(rator t)) = "word" &&
+       frees(rand t) = [] && not(is_numeral(rand t))
+    then RAND_CONV NUM_REDUCE_CONV t else failwith "");;
+
+let EXIT_SPLIT_TAC =
+  FIRST_X_ASSUM(STRIP_ASSUME_TAC o
+    REWRITE_RULE[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD;
+                 ARITH_RULE `16 * p + 16 = 16 * (p + 1)`] o
+    REWRITE_RULE[READ_BLOCKS_CONS] o
+    check (fun th -> can (term_match []
+     `read (memory :> bytes(word_add buf (word(16 * p)),16 * (e + 1))) s = x`) (concl th)));;
+
+let EXIT_STEP_TAC target =
+  ENSURES_INIT_TAC "s0" THEN EXIT_SPLIT_TAC THEN GHOST_YMMS_TAC THEN
+  X86_XSTEPS_UNTIL_TAC AES_HW_CBC_ENCRYPT_EXEC target 1 THEN
+  XMMS_OF_YMMS_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD;
+                              ARITH_RULE `16 * p + 16 = 16 * (p + 1)`]);;
+
+let P1_ADD = ARITH_RULE
+  `(p + 1) + 1 = p + 2 /\ (p + 1) + 2 = p + 3 /\ (p + 1) + 3 = p + 4 /\
+   (p + 1) + 4 = p + 5 /\ (p + 1) + 5 = p + 6`;;
+
+let EXIT_TAIL_TAC target lemma m (asl,w as g) =
+  let s = rand w in
+  (SUBGOAL_THEN (subst [s,`s:x86state`]
+     `read (memory :> bytes(buf,16 * (p + 1))) s = cbc_num (cbc_dec ks iv inp) 0 (p + 1)`)
+     ASSUME_TAC THENL
+    [REWRITE_TAC[READ_BLOCKS_SNOC] THEN ASM_REWRITE_TAC[ADD_CLAUSES]; ALL_TAC] THEN
+   MP_TAC(REWRITE_RULE[P1_ADD]
+          (SPECL [`key:int64`; `ks:int128 list`; `r:num`; `buf:int64`; `n:num`;
+                 `p + 1`; mk_small_numeral m; `iv:int128`; `inp:num->int128`;
+                 `ivec:int64`; `fp:int64`; `stackpointer:int64`; `rbp0:int64`; `pc:num`] lemma)) THEN
+   CONV_TAC WORD_CLOSED_REDUCE_CONV THEN
+   ASM_REWRITE_TAC[ALL; SOME_FLAGS; ADD_EQ_0; ARITH_EQ; ADD_SUB] THEN
+   TRY(ANTS_TAC THENL [ASM_ARITH_TAC; ALL_TAC]) THEN
+   X86_BIGSTEP_TAC AES_HW_CBC_ENCRYPT_EXEC ("s"^string_of_int(next_index g)) THEN
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]) g;;
+
+
+let EXIT = prove(EXIT_GOAL,
+  REWRITE_TAC[ALL; SOME_FLAGS] THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN `e = 0 \/ e = 1 \/ e = 2 \/ e = 3 \/ e = 4 \/ e = 5 \/ e = 6 \/ e = 7` MP_TAC THENL
+   [UNDISCH_TAC `e < 8` THEN ARITH_TAC; ALL_TAC] THEN
+  DISCH_THEN(REPEAT_TCL DISJ_CASES_THEN SUBST_ALL_TAC) THEN
+  CONV_TAC WORD_CLOSED_REDUCE_CONV THENL
+   [FIRST_X_ASSUM(SUBST_ALL_TAC o SYM o check (fun th -> concl th = `(p + 1) + 0 = n`)) THEN
+    ENSURES_INIT_TAC "s0" THEN GHOST_YMMS_TAC THEN
+    X86_XSTEPS_UNTIL_TAC AES_HW_CBC_ENCRYPT_EXEC 0x870 1 THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[READ_BLOCKS_SNOC; ADD_CLAUSES; ADD_SUB];
+    EXIT_STEP_TAC 0x654 THEN EXIT_TAIL_TAC 0x654 TAIL_A 1;
+    EXIT_STEP_TAC 0x654 THEN EXIT_TAIL_TAC 0x654 TAIL_A 2;
+    EXIT_STEP_TAC 0x654 THEN EXIT_TAIL_TAC 0x654 TAIL_A 3;
+    EXIT_STEP_TAC 0x654 THEN EXIT_TAIL_TAC 0x654 TAIL_A 4;
+    EXIT_STEP_TAC 0x654 THEN EXIT_TAIL_TAC 0x654 TAIL_A 5;
+    REWRITE_TAC[ARITH_RULE `(6 <= 6 <=> T) /\ (6 <= 7 <=> T)`] THEN
+    EXIT_STEP_TAC 0x566 THEN EXIT_TAIL_TAC 0x566 TAIL_B 6;
+    REWRITE_TAC[ARITH_RULE `(6 <= 6 <=> T) /\ (6 <= 7 <=> T)`] THEN
+    EXIT_STEP_TAC 0x566 THEN EXIT_TAIL_TAC 0x566 TAIL_B 7]);;
