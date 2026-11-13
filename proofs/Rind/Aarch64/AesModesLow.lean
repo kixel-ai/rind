@@ -1229,7 +1229,7 @@ theorem ctr_vec (nonce : Std.Array U8 12#usize) (base : List U8) (hb : base.leng
 
 theorem getElem!_take_drop {α : Type _} [Inhabited α] (l : List α) (a n k : Nat) (hk : k < n) :
     ((l.drop a).take n)[k]! = l[a + k]! := by
-  simp [List.getElem!_eq_getElem?_getD, List.getElem?_take, List.getElem?_drop, hk]
+  simp [List.getElem!_eq_getElem?_getD, List.getElem?_drop, hk]
 
 theorem storeBytes_getElem! (q : BitVec 128) (k : Nat) (hk : k < 16) : ((storeBytes q).val[k]!).bv = byte q k := by
   rw [← bvs_getElem! (storeBytes q).val k (by have := (storeBytes q).property; simp at this ⊢; omega),
@@ -1324,7 +1324,7 @@ theorem apply_8_spec (alg : Algorithm) (key : List (BitVec 8)) (hk : low.aarch64
     rw [hback4 _ _ (by rw [List.length_append, length_flatMap_val, hl8, hs4]; simp; scalar_tac), hs4,
       List.append_nil]
   rw [Array.from_slice_val _ _ (by rw [hflat, length_flatMap_val, hl8]; rfl), hflat]
-  apply ext_getElem! (by simp [length_ctrXor, length_flatMap_val, hl8])
+  apply ext_getElem! (by simp [length_ctrXor, hl8])
   intro i hi
   have hi : i < 128 := by simpa [length_flatMap_val, hl8] using hi
   rw [bvs_getElem! _ _ (by rw [length_flatMap_val, hl8]; simpa using hi),
@@ -1467,7 +1467,7 @@ theorem by8_spec {T : Type} (inst : low.generic.ctr.Ctr8 T) (key : T) (nonce : S
     refine hfin s2 (by simpa using hs2l) (fun t ht => ?_)
     have h1 : (s2.val[t]!) = buf2.val[t]! := by
       rw [hs2]
-      simp [Array.to_slice, List.getElem!_eq_getElem?_getD, List.getElem?_take, ht]
+      simp [Array.to_slice, List.getElem!_eq_getElem?_getD, ht]
     have h2 : (bk s1).val[t]! = tail.val[t]! := by
       rw [hbk, List.getElem!_setSlice!_middle _ _ _ _ (by simp [hs1]; omega), hs1]
       simp
