@@ -16,11 +16,11 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-cargo build -p rind-openssl --locked
-target=$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)
-library=$(find "$target/debug" -maxdepth 1 -name 'librind_openssl.so' -o -maxdepth 1 -name 'librind_openssl.dylib' | head -n 1)
-if [[ -z "$library" ]]; then
-    echo "error: no rind-openssl library in $target/debug" >&2
+# The library this build made, wherever a configured target puts it.
+library=$(cargo build -p rind-openssl --locked --message-format=json |
+    jq -r 'select(.reason == "compiler-artifact" and (.target.kind | index("cdylib"))) | .filenames[] | select(test("\\.(so|dylib)$"))')
+if [[ -z "$library" || "$library" == *$'\n'* ]]; then
+    echo "error: expected one rind-openssl library from the build, got: ${library:-none}" >&2
     exit 1
 fi
 
