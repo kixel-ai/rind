@@ -714,6 +714,136 @@ theorem jac_base_multiply_spec (k : mid.p256.Scalar) (hk : wordsNat k.val < n256
     rw [← hX, p256Pow, nist.pow_fromM, ← natCast_zsmul]
     exact ha4
 
+/-! ## Affine conversion -/
+
+theorem fe_inv_spec (a : mid.p256.FieldElement) :
+    mid.p256.FieldElement.inv a ⦃ r => feNat r < p256 ∧
+      (feNat a % p256 = 0 → feNat r = 0) ∧ (feNat a % p256 ≠ 0 → feNat a * feNat r % p256 = 1) ⦄ := by
+  unfold mid.p256.FieldElement.inv mid.p256.FieldElement.Insts.CoreDefaultDefault.default
+    core.default.DefaultArray.default
+  step*
+
+/-- A finite point's Jacobian coordinates, as their values: z is nonzero and
+the point is (x/z², y/z³). -/
+theorem rep_some (P : P256Point) (t : Nat × Nat × Nat) (h : p256Represents P t) (hne : P ≠ none) :
+    t.1 < p256 ∧ t.2.1 < p256 ∧ t.2.2 < p256 ∧ dec t.2.2 ≠ 0 ∧
+      P = some ((dec t.1 * (dec t.2.2 ^ 2)⁻¹).val, (dec t.2.1 * (dec t.2.2 ^ 3)⁻¹).val) := by
+  obtain ⟨hX, hY, hZ, hP⟩ := h
+  rw [ofJacobian_dec] at hP
+  have hZ0 : dec t.2.2 ≠ 0 := fun h0 => by
+    rw [ite_eq_left_iff.mpr (fun h => absurd h0 h)] at hP; exact hne hP.symm
+  rw [ite_eq_right_iff.mpr (fun h => absurd h hZ0)] at hP
+  exact ⟨hX, hY, hZ, hZ0, hP.symm⟩
+
+theorem as_affine_by_spec (_hr : Runs) (pt : mid.p256.JacobianMontPoint) (P : P256Point)
+    (h : p256Represents P (tripleNat pt.xyz.val)) (hne : P ≠ none)
+    (zi : mid.p256.FieldElement) (hzi : feNat zi < p256)
+    (hinv : dec (feNat zi) = (dec (tripleNat pt.xyz.val).2.2)⁻¹) :
+    mid.p256.JacobianMontPoint.as_affine_by pt zi ⦃ a => p256Represents2 P (pairNat a.xy.val) ⦄ := by
+  obtain ⟨hX, hY, hZ, hZ0, rfl⟩ := rep_some P _ h hne
+  have hlt : ∀ x, x % p256 < p256 := fun x => Nat.mod_lt _ p256_pos
+  unfold mid.p256.JacobianMontPoint.as_affine_by
+  step with mont_sqr_spec _hr zi hzi as ⟨z2, hz2⟩
+  step with mont_mul_spec _hr z2 zi (by rw [hz2]; exact hlt _) hzi as ⟨z3, hz3⟩
+  step with jac_x_spec pt as ⟨fx, hfx⟩
+  have hfxX : feNat fx = (tripleNat pt.xyz.val).1 := by simp [tripleNat, feNat, hfx]
+  step with mont_mul_spec _hr fx z2 (by rw [hfxX]; exact hX) (by rw [hz2]; exact hlt _) as ⟨x, hx⟩
+  step with jac_y_spec pt as ⟨fy, hfy⟩
+  have hfyY : feNat fy = (tripleNat pt.xyz.val).2.1 := by simp [tripleNat, feNat, hfy]
+  step with mont_mul_spec _hr fy z3 (by rw [hfyY]; exact hY) (by rw [hz3]; exact hlt _) as ⟨y, hy⟩
+  step as ⟨a, ha⟩
+  rw [ha, pairNat_append _ _ x.property y.property]
+  refine ⟨by rw [show wordsNat x.val = feNat x from rfl, hx]; exact hlt _,
+    by rw [show wordsNat y.val = feNat y from rfl, hy]; exact hlt _, ?_⟩
+  rw [show wordsNat x.val = feNat x from rfl, show wordsNat y.val = feNat y from rfl, val_dec, val_dec, hx, hy,
+    dec_mont_mul, dec_mont_mul, hz3, hz2, dec_mont_mul, dec_mont_sqr, hinv, hfxX, hfyY]
+  congr 3 <;> field_simp
+
+/-- With a zero inverse, infinity's, `as_affine_by` gives zeros. -/
+theorem as_affine_by_zero (_hr : Runs) (pt : mid.p256.JacobianMontPoint) (hX : (tripleNat pt.xyz.val).1 < p256)
+    (hY : (tripleNat pt.xyz.val).2.1 < p256) (zi : mid.p256.FieldElement) (hzi : feNat zi = 0) :
+    mid.p256.JacobianMontPoint.as_affine_by pt zi ⦃ a => pairNat a.xy.val = (0, 0) ⦄ := by
+  unfold mid.p256.JacobianMontPoint.as_affine_by
+  have hz : feNat zi < p256 := by rw [hzi]; exact p256_pos
+  step with mont_sqr_spec _hr zi hz as ⟨z2, hz2⟩
+  have hz2' : feNat z2 = 0 := by rw [hz2, hzi]; simp
+  step with mont_mul_spec _hr z2 zi (by rw [hz2']; exact p256_pos) hz as ⟨z3, hz3⟩
+  have hz3' : feNat z3 = 0 := by rw [hz3, hzi]; simp
+  step with jac_x_spec pt as ⟨fx, hfx⟩
+  have hfxX : feNat fx = (tripleNat pt.xyz.val).1 := by simp [tripleNat, feNat, hfx]
+  step with mont_mul_spec _hr fx z2 (by rw [hfxX]; exact hX) (by rw [hz2']; exact p256_pos) as ⟨x, hx⟩
+  step with jac_y_spec pt as ⟨fy, hfy⟩
+  have hfyY : feNat fy = (tripleNat pt.xyz.val).2.1 := by simp [tripleNat, feNat, hfy]
+  step with mont_mul_spec _hr fy z3 (by rw [hfyY]; exact hY) (by rw [hz3']; exact p256_pos) as ⟨y, hy⟩
+  step as ⟨a, ha⟩
+  rw [ha, pairNat_append _ _ x.property y.property]
+  rw [show wordsNat x.val = feNat x from rfl, show wordsNat y.val = feNat y from rfl, hx, hy, hz2', hz3']
+  simp
+
+theorem tomont_rinv (x : Nat) (hx : x < p256) : 2 ^ 256 * (p256RInv * x % p256) % p256 = x := by
+  rw [Nat.mul_mod, Nat.mod_mod, ← Nat.mul_mod, ← Nat.mul_assoc, Nat.mul_mod, p256RInv_spec.2, one_mul,
+    Nat.mod_mod, Nat.mod_eq_of_lt hx]
+
+theorem pow_onCurve (n : Nat) : p256OnCurve (p256Pow p256G n) := by
+  obtain ⟨X, hX, -, -⟩ := fromM_G
+  rw [← hX, p256Pow, nist.pow_fromM]
+  exact nist.onCurve_fromM _
+
+/-- x86_64's `base_multiply` computes k·G for k below n, as aarch64's
+s2n-bignum `p256_scalarmulbase` does for every k: Montgomery-form
+coordinates, and zeros for infinity. -/
+theorem base_multiply_spec (_hr : Runs) (k : mid.p256.Scalar) (hk : wordsNat k.val < n256) :
+    mid.p256.AffineMontPoint.base_multiply k ⦃ q =>
+      ∃ rx ry, p256AffineZ (rx, ry) (p256Pow p256G (wordsNat k.val)) ∧
+        pairNat q.xy.val = (2 ^ 256 * rx % p256, 2 ^ 256 * ry % p256) ⦄ := by
+  unfold mid.p256.AffineMontPoint.base_multiply mid.p256.JacobianMontPoint.as_affine
+  step with jac_base_multiply_spec k hk as ⟨jac, hjac⟩
+  step with jac_z_spec jac as ⟨fz, hfz⟩
+  have hzf : feNat fz = (tripleNat jac.xyz.val).2.2 := by simp [tripleNat, feNat, hfz]
+  obtain ⟨hX, hY, hZ, -⟩ := id hjac
+  step with demont_spec _hr fz (by rw [hzf]; exact hZ) as ⟨fz1, hfz1⟩
+  step with fe_inv_spec fz1 as ⟨fz2, hlt2, h0, h1⟩
+  step with as_mont_spec _hr fz2 as ⟨fz3, hfz3⟩
+  by_cases hP0 : p256Pow p256G (wordsNat k.val) = none
+  · rw [hP0] at hjac
+    have hz0 : (tripleNat jac.xyz.val).2.2 = 0 := rep_none_z _ hjac
+    have e1 : feNat fz1 = 0 := by rw [hfz1, hzf, hz0]; simp
+    have e2 : feNat fz2 = 0 := h0 (by rw [e1]; simp)
+    have e3 : feNat fz3 = 0 := by rw [hfz3, e2]; simp
+    apply WP.spec_mono (as_affine_by_zero _hr jac hX hY fz3 e3)
+    intro q hq
+    refine ⟨0, 0, ?_, ?_⟩
+    · rw [hP0]; simp [p256AffineZ]
+    · rw [hq]; simp
+  · obtain ⟨-, -, -, hZ0, -⟩ := rep_some _ _ hjac hP0
+    have hfz1d : ((feNat fz1 : Nat) : ZMod p256) = dec (tripleNat jac.xyz.val).2.2 := by
+      rw [hfz1, cast_mod_p, Nat.cast_mul, hzf]
+    have hne : feNat fz1 % p256 ≠ 0 := by
+      intro h
+      apply hZ0
+      rw [← hfz1d, ← cast_mod_p (feNat fz1), h, Nat.cast_zero]
+    have hm : (feNat fz1 : ZMod p256) * (feNat fz2 : ZMod p256) = 1 := by
+      have := congrArg (fun n : Nat => (n : ZMod p256)) (h1 hne)
+      simpa only [Nat.cast_mul, ZMod.natCast_mod, Nat.cast_one] using this
+    have hfz2 : (feNat fz2 : ZMod p256) = (feNat fz1 : ZMod p256)⁻¹ := eq_inv_of_mul_eq_one_right hm
+    have hinv : dec (feNat fz3) = (dec (tripleNat jac.xyz.val).2.2)⁻¹ := by
+      show (p256RInv : ZMod p256) * ((feNat fz3 : Nat) : ZMod p256) = _
+      rw [hfz3, cast_mod_p, Nat.cast_mul, ← mul_assoc, mul_comm (p256RInv : ZMod p256), R_mul_RInv, one_mul,
+        hfz2, hfz1d]
+    apply WP.spec_mono (as_affine_by_spec _hr jac _ hjac hP0 fz3 (by rw [hfz3]; exact Nat.mod_lt _ p256_pos) hinv)
+    intro q hq
+    obtain ⟨hq1, hq2, hq3⟩ := hq
+    refine ⟨p256RInv * (pairNat q.xy.val).1 % p256, p256RInv * (pairNat q.xy.val).2 % p256, ?_, ?_⟩
+    · unfold p256AffineZ
+      split_ifs with h00
+      · exfalso
+        have hc := pow_onCurve (wordsNat k.val)
+        simp only at h00
+        rw [← hq3, h00.1, h00.2] at hc
+        exact not_onCurve_zero hc
+      · rw [← hq3, Nat.mod_mod, Nat.mod_mod]
+    · rw [tomont_rinv _ hq1, tomont_rinv _ hq2]
+
 end P256Base
 
 end rind.x86_64
