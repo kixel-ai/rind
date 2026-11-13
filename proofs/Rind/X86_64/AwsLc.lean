@@ -21,7 +21,8 @@ The restatement, and that rind's naked function is aws-lc's object code with
 the wrapper passing the pointers and block count the spec names, are trusted.
 
 For OpenSSL's AVX2 routine, `sha512_block_data_order_avx2`, which rind runs on
-every CPU with AVX2 but without the SHA512 instructions, rind proves the
+CPUs with AVX2, BMI1, BMI2, POPCNT, and SSSE3 but without the SHA512
+instructions, rind proves the
 routine itself: its HOL Light proof `SHA512_AVX2_SUBROUTINE_CORRECT`, in
 `proofs/hol-light/x86_64/sha512_block_data_order_avx2.ml` at rind's commit,
 that rind's naked function, as rind's build emits it, computes s2n-bignum's
