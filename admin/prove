@@ -979,7 +979,8 @@ cd proofs
 # checkout already put them there. `--no-cache` keeps Lake from unpacking a
 # copy of Aeneas's release archive. Otherwise start from clean, so Lake fetches
 # that archive rather than building Aeneas's modules the cache lacks, and put
-# all of Mathlib and Aeneas in the cache for the next checkout.
+# all of Mathlib and Aeneas in the cache for the next checkout. See
+# UPSTREAM.md, "Mathlib's cache unpacks a copy into each checkout".
 status=0
 lake build --no-build --no-cache Mathlib Aeneas || status=$?
 if ((status == 3)); then
