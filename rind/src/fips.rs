@@ -195,6 +195,12 @@ errors! {
     ],
 }
 
+/// Wipes every thread's DRBG, returning how many, and fails every draw
+/// after: the module's destructor, as the process exits.
+pub fn zeroise_drbgs() -> usize {
+    crate::fips_rng::zeroise_all()
+}
+
 /// The name of the first CPU feature the module requires that this CPU
 /// lacks, as [`crate::cpu::check`] reports it.
 pub fn missing_cpu_feature() -> Option<&'static str> {

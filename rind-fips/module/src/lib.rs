@@ -52,3 +52,18 @@ extern "C" fn init() {
         rind::fips::fail("integrity");
     }
 }
+
+/// Runs as the process exits, after the exiting thread's destructors: wipes
+/// the DRBG of every thread still running, whose own never run.
+#[used]
+#[unsafe(link_section = ".fini_array")]
+static FINI: extern "C" fn() = fini;
+
+extern "C" fn fini() {
+    let wiped = rind::fips::zeroise_drbgs();
+    // The break build shows the lab that it ran.
+    #[cfg(rind_fips_break)]
+    std::eprintln!("rind-fips: zeroised {wiped} DRBG instances at exit");
+    #[cfg(not(rind_fips_break))]
+    let _ = wiped;
+}
