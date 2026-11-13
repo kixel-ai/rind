@@ -19,7 +19,7 @@ cannot: the accumulator is the sum of the lower windows, which is smaller in
 magnitude than the window's own term, and their difference is below n except
 at the last window, where equality would need k ≥ n.
 
-This follows the P-384 comb's arithmetic in moq-dev/rind#654, base 128
+This follows the P-384 comb's arithmetic in kixel-ai/rind#654, base 128
 instead of 32 and with no comb.
 -/
 
