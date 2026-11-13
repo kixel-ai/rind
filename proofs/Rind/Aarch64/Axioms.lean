@@ -7,6 +7,7 @@ import Rind.Aarch64.ChaCha20
 import Rind.Aarch64.Ed25519
 import Rind.Aarch64.Sha3
 import Rind.Aarch64.P256Signature
+import Rind.Aarch64.AesModesLow
 open rind.aarch64
 
 /-!
@@ -469,3 +470,23 @@ A change here is a change to the trust base.
  sha3_keccak_f1600_spec] -/
 #guard_msgs in
 #print axioms shake256_batch_spec
+
+/-- info: 'rind.aarch64.expand_key_mode_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms expand_key_mode_spec
+
+/-- info: 'rind.aarch64.dec_key_new_mode_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms dec_key_new_mode_spec
+
+/-- info: 'rind.aarch64.aes_ctr_apply_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_ctr_apply_spec
+
+/-- info: 'rind.aarch64.aes_cbc_encrypt_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_cbc_encrypt_spec
+
+/-- info: 'rind.aarch64.aes_cbc_decrypt_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms aes_cbc_decrypt_spec

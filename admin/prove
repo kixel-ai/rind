@@ -936,7 +936,7 @@ extract aarch64 Aarch64 \
     --start-from crate::low::aarch64::aes::AesDecKey::new \
     --start-from crate::low::aarch64::aes::AesDecKey::decrypt_block \
     --include crate::low::aarch64::aes_ctr \
-    --include crate::low::generic::ctr::by8 \
+    --include crate::low::generic::ctr \
     --start-from crate::low::aarch64::aes_ctr::apply \
     --include crate::low::aarch64::aes_cbc \
     --start-from crate::low::aarch64::aes_cbc::encrypt \

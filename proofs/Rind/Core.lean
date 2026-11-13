@@ -243,3 +243,7 @@ opaque getrandom.fill :
 /-- `core::array::from_fn`. -/
 opaque core.array.from_fn {T F : Type _} (N : Std.Usize)
     (_ : core.ops.function.FnMut F Std.Usize T) : F → Result (Array T N)
+
+/-- `u32::swap_bytes`: the four bytes in the other order. -/
+def core.num.U32.swap_bytes (x : Std.U32) : Result Std.U32 :=
+  Std.Result.ok ⟨x.bv.extractLsb' 0 8 ++ x.bv.extractLsb' 8 8 ++ x.bv.extractLsb' 16 8 ++ x.bv.extractLsb' 24 8⟩
