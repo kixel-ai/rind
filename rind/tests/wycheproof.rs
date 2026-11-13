@@ -243,9 +243,13 @@ fn hkdf_tests() {
                 summary.start(&test);
 
                 let mut okm = vec![0u8; test.size];
-                let prk = hkdf::Salt::new(algorithm, &test.salt).extract(&test.ikm);
+                let prk = hkdf::Salt::new(algorithm, &test.salt)
+                    .extract(&test.ikm)
+                    .unwrap();
                 let info = [test.info.as_slice()];
-                let result = prk.expand(&info, okm.len()).fill(&mut okm);
+                let result = prk
+                    .expand(&info, okm.len())
+                    .and_then(|okm_| okm_.fill(&mut okm));
 
                 match (test.result, result) {
                     (ExpectedResult::Valid, Ok(())) => assert_eq!(okm, test.okm),

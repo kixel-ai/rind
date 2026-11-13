@@ -742,7 +742,7 @@ pub unsafe extern "C" fn rind_dart_hkdf_extract(
 ) -> isize {
     run(|| {
         // SAFETY: forwarded from the caller.
-        let prk = unsafe { handle(salt) }.extract(unsafe { input(secret, secret_len) });
+        let prk = unsafe { handle(salt) }.extract(unsafe { input(secret, secret_len) })?;
         // SAFETY: forwarded from the caller.
         Ok(unsafe { store(out, prk) })
     })
@@ -762,7 +762,7 @@ pub unsafe extern "C" fn rind_dart_hkdf_expand(
         // SAFETY: forwarded from the caller.
         let (prk, info, out) =
             unsafe { (handle(prk), input(info, info_len), output(out, out_len)) };
-        prk.expand(&[info], out.len()).fill(out)?;
+        prk.expand(&[info], out.len())?.fill(out)?;
         Ok(out_len)
     })
 }

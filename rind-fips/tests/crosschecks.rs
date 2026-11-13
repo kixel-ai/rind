@@ -350,7 +350,9 @@ fn hkdf() {
             let mut out = vec![0u8; out_len];
             hkdf::Salt::new(ours, &salt)
                 .extract(&secret)
+                .unwrap()
                 .expand(&info, out_len)
+                .unwrap()
                 .fill(&mut out)
                 .unwrap();
             let mut theirs_out = vec![0u8; out_len];

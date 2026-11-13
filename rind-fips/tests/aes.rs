@@ -507,14 +507,26 @@ fn hkdf_derives_the_keys_rind_does() {
         (&aead::quic::AES_256, &rind::aead::quic::AES_256),
     ];
     for (ours, theirs) in hkdfs {
-        let prk = hkdf::Salt::new(ours, b"salt").extract(b"secret");
-        let reference = rind::hkdf::Salt::new(theirs, b"salt").extract(b"secret");
+        let prk = hkdf::Salt::new(ours, b"salt").extract(b"secret").unwrap();
+        let reference = rind::hkdf::Salt::new(theirs, b"salt")
+            .extract(b"secret")
+            .unwrap();
+        // FIPS 140-3 approves no empty info.
+        assert_eq!(
+            prk.expand(&[], &aead::AES_128_GCM).unwrap_err(),
+            Error::WrongLength
+        );
+        assert_eq!(
+            prk.expand(&[], &aead::quic::AES_128).unwrap_err(),
+            Error::WrongLength
+        );
         let (a, b) = (bytes("a", 10), bytes("b", 300));
-        let infos: [&[&[u8]]; 3] = [&[], &[&a], &[&a, &b]];
+        let infos: [&[&[u8]]; 2] = [&[&a], &[&a, &b]];
         for info in infos {
             for (aead_ours, aead_theirs) in AEADS {
-                let key = aead::Key::from(prk.expand(info, aead_ours));
-                let reference_key = rind::aead::Key::from(reference.expand(info, aead_theirs));
+                let key = aead::Key::from(prk.expand(info, aead_ours).unwrap());
+                let reference_key =
+                    rind::aead::Key::from(reference.expand(info, aead_theirs).unwrap());
                 same_debug(&key, &reference_key);
                 let mut sealed = b"hello".to_vec();
                 reference_key
@@ -531,9 +543,10 @@ fn hkdf_derives_the_keys_rind_does() {
                 );
             }
             for (quic_ours, quic_theirs) in quics {
-                let key = aead::quic::HeaderProtectionKey::from(prk.expand(info, quic_ours));
+                let key =
+                    aead::quic::HeaderProtectionKey::from(prk.expand(info, quic_ours).unwrap());
                 let reference_key = rind::aead::quic::HeaderProtectionKey::from(
-                    reference.expand(info, quic_theirs),
+                    reference.expand(info, quic_theirs).unwrap(),
                 );
                 same_debug(&key, &reference_key);
                 let sample = [0x5a; 16];

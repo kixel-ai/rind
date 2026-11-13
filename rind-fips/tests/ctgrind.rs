@@ -54,11 +54,16 @@ fn hmac_hkdf_and_pbkdf2() {
 
     let ikm = [0x0c; 32];
     secret(&ikm);
-    let prk = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt").extract(&ikm);
+    let prk = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt")
+        .extract(&ikm)
+        .unwrap();
     let mut okm = [0u8; 42];
-    prk.expand(&[b"info"], okm.len()).fill(&mut okm).unwrap();
+    prk.expand(&[b"info"], okm.len())
+        .unwrap()
+        .fill(&mut okm)
+        .unwrap();
     public(&okm);
-    let key = hmac::Key::from(prk.expand(&[b"info"], &hmac::HMAC_SHA256));
+    let key = hmac::Key::from(prk.expand(&[b"info"], &hmac::HMAC_SHA256).unwrap());
     let tag = hmac::sign(&key, MESSAGE);
     public(tag.as_ref());
 

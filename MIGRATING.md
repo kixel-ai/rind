@@ -54,11 +54,11 @@ renames [rind-aws-lc-rs](#rind-aws-lc-rs) to `aws-lc-rs` the same way.
 
 | aws-lc-rs | rind |
 |---|---|
-| `Salt::new(HKDF_SHA256, salt)`, `extract` | `Salt::new(&HKDF_SHA256, salt)`, `extract` |
+| `Salt::new(HKDF_SHA256, salt)`, `extract(secret)` | `Salt::new(&HKDF_SHA256, salt)`, `extract(secret)?`, which never fails in rind; rind-fips refuses an empty salt |
 | `Salt::none(alg)` | `Salt::new(&alg, &[])`, which extracts the same key as RFC 5869's absent salt |
 | `HKDF_SHA256`, `HKDF_SHA384`, `HKDF_SHA512` | the same |
 | `HKDF_SHA1_FOR_LEGACY_USE_ONLY` | `legacy::HKDF_SHA1` |
-| `prk.expand(info, len)?` | `prk.expand(info, len)`, which cannot fail; `Okm::fill` checks a byte length |
+| `prk.expand(info, len)?` | the same, failing with `Error::WrongLength` beyond 255 hash outputs; rind-fips also refuses an empty `info` |
 | your own `KeyType` | none: it is sealed, for a `usize` byte length or an `aead`, `aead::quic`, `hmac`, or `hkdf` algorithm |
 | `UnboundKey::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)`, `Prk::from(okm)` | `aead::Key::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)`, `Prk::from(okm)` with `&HKDF_SHA256` |
 | `Okm::fill(out)` | the same, for a `usize` length only |

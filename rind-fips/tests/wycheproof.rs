@@ -258,9 +258,15 @@ fn hkdf() {
             for test in group.tests {
                 summary.start();
                 let mut okm = vec![0u8; test.size];
-                let prk = hkdf::Salt::new(algorithm, &test.salt).extract(&test.ikm);
                 let info = [test.info.as_slice()];
-                let result = prk.expand(&info, okm.len()).fill(&mut okm);
+                let result = hkdf::Salt::new(algorithm, &test.salt)
+                    .extract(&test.ikm)
+                    .and_then(|prk| prk.expand(&info, okm.len())?.fill(&mut okm));
+                // FIPS 140-3 approves no empty salt or info.
+                if test.salt.is_empty() || test.info.is_empty() {
+                    assert_eq!(result, Err(Error::WrongLength), "{file} {}", test.id);
+                    continue;
+                }
                 match (test.result, result) {
                     (ExpectedResult::Valid, Ok(())) => assert_eq!(okm, test.okm),
                     // Longer than 255 hash blocks.

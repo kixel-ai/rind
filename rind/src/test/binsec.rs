@@ -193,9 +193,14 @@ fn ct_binsec_hkdf() {
     use crate::hkdf::*;
 
     checked(|| {
-        let prk = Salt::new(&HKDF_SHA256, &[1; 32]).extract(&secret::<32>(2));
+        let prk = Salt::new(&HKDF_SHA256, &[1; 32])
+            .extract(&secret::<32>(2))
+            .unwrap();
         let mut okm = [0; 80];
-        prk.expand(&[b"info"], okm.len()).fill(&mut okm).unwrap();
+        prk.expand(&[b"info"], okm.len())
+            .unwrap()
+            .fill(&mut okm)
+            .unwrap();
     });
 }
 

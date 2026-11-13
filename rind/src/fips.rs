@@ -347,10 +347,11 @@ mod kat {
     pub(super) fn hkdf() -> Result<(), &'static str> {
         use crate::high::hkdf::{HKDF_SHA256, Salt};
         let salt = Salt::new(&HKDF_SHA256, &hex("000102030405060708090a0b0c"));
-        let prk = salt.extract(&input("hkdf", [0x0b; 22]));
         let mut okm = [0u8; 42];
         let info = hex("f0f1f2f3f4f5f6f7f8f9");
-        let filled = prk.expand(&[&info], okm.len()).fill(&mut okm);
+        let filled = salt
+            .extract(&input("hkdf", [0x0b; 22]))
+            .and_then(|prk| prk.expand(&[&info], okm.len())?.fill(&mut okm));
         check(
             "hkdf",
             filled.is_ok()
