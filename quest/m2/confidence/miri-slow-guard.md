@@ -1,0 +1,22 @@
+# [XS] Miri's slow list names real tests
+
+## Goal
+
+`sh/miri.sh` fails when a name in its `slow` list matches no test, so a
+renamed or misspelled entry cannot silently put a slow test back into the
+Miri run.
+
+## Plan
+
+Decided 2026-11-12 (user, /quest-plan), from rind's trimmed Pullfrog
+learnings. The matching guard for `.cargo/mutants.toml`'s exclusions is
+[mutants-pins](/quest/m2/confidence/mutants-pins.md)'s, in open PR
+[moq-dev/rind#699](https://github.com/moq-dev/rind/pull/699), so this quest
+covers only the Miri list.
+
+Open PR [moq-dev/rind#693](https://github.com/moq-dev/rind/pull/693) rewrites
+the list and moves Miri to nightly; build on whatever it lands.
+
+Recommended: before running Miri, list the test names (`cargo nextest list`
+or `cargo test -- --list` under the same features) and fail naming each
+`slow` entry that matches none, the way #699 checks mutants exclusions.
