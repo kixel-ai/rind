@@ -45,7 +45,11 @@ fn hmac_matches_rind() {
                 let data = bytes("data", data_len);
                 let expected = rind::hmac::sign(&reference, &data);
                 let tag = hmac::sign(&key, &data);
-                assert_eq!(tag.as_ref(), expected.as_ref(), "{ours:?}, key {key_len}, data {data_len}");
+                assert_eq!(
+                    tag.as_ref(),
+                    expected.as_ref(),
+                    "{ours:?}, key {key_len}, data {data_len}"
+                );
                 assert_eq!(hmac::sign(&key.clone(), &data).as_ref(), expected.as_ref());
 
                 let (head, tail) = data.split_at(data_len / 3);
@@ -62,9 +66,15 @@ fn hmac_matches_rind() {
                 let mut flipped = tag.as_ref().to_vec();
                 let at = data_len % flipped.len();
                 flipped[at] ^= 1;
-                assert_eq!(hmac::verify(&key, &data, &flipped), Err(Error::BadSignature));
+                assert_eq!(
+                    hmac::verify(&key, &data, &flipped),
+                    Err(Error::BadSignature)
+                );
                 let truncated = &tag.as_ref()[..tag.as_ref().len() - 1];
-                assert_eq!(hmac::verify(&key, &data, truncated), Err(Error::BadSignature));
+                assert_eq!(
+                    hmac::verify(&key, &data, truncated),
+                    Err(Error::BadSignature)
+                );
             }
         }
     }
@@ -97,13 +107,17 @@ fn hkdf_matches_rind() {
                         let mut expected = vec![0; len];
                         prk.expand(info, len).fill(&mut out).unwrap();
                         reference.expand(info, len).fill(&mut expected).unwrap();
-                        assert_eq!(out, expected, "{ours:?}, salt {salt_len}, secret {secret_len}");
+                        assert_eq!(
+                            out, expected,
+                            "{ours:?}, salt {salt_len}, secret {secret_len}"
+                        );
                     }
 
                     // Into an HMAC key, and into a further PRK.
                     for (hmac_ours, hmac_theirs) in HMACS {
                         let key = hmac::Key::from(prk.expand(info, hmac_ours));
-                        let reference_key = rind::hmac::Key::from(reference.expand(info, hmac_theirs));
+                        let reference_key =
+                            rind::hmac::Key::from(reference.expand(info, hmac_theirs));
                         assert_eq!(
                             hmac::sign(&key, b"message").as_ref(),
                             rind::hmac::sign(&reference_key, b"message").as_ref()
@@ -111,28 +125,54 @@ fn hkdf_matches_rind() {
                     }
                     for (next_ours, next_theirs, _) in HKDFS {
                         let next = hkdf::Prk::from(prk.expand(info, next_ours));
-                        let reference_next = rind::hkdf::Prk::from(reference.expand(info, next_theirs));
+                        let reference_next =
+                            rind::hkdf::Prk::from(reference.expand(info, next_theirs));
                         let (mut out, mut expected) = ([0; 42], [0; 42]);
                         next.expand(&[b"next"], 42).fill(&mut out).unwrap();
-                        reference_next.expand(&[b"next"], 42).fill(&mut expected).unwrap();
+                        reference_next
+                            .expand(&[b"next"], 42)
+                            .fill(&mut expected)
+                            .unwrap();
                         assert_eq!(out, expected);
                     }
                 }
 
                 // Beyond 255 blocks, or not the length expanded for.
                 let mut out = vec![0; 255 * hash_len + 1];
-                assert_eq!(prk.expand(&[], out.len()).fill(&mut out), Err(Error::WrongLength));
-                assert_eq!(prk.expand(&[], 31).fill(&mut [0; 32]), Err(Error::WrongLength));
+                assert_eq!(
+                    prk.expand(&[], out.len()).fill(&mut out),
+                    Err(Error::WrongLength)
+                );
+                assert_eq!(
+                    prk.expand(&[], 31).fill(&mut [0; 32]),
+                    Err(Error::WrongLength)
+                );
             }
         }
     }
 }
 
 const PBKDF2S: [(&pbkdf2::Algorithm, &rind::pbkdf2::Algorithm, usize); 4] = [
-    (&pbkdf2::legacy::PBKDF2_HMAC_SHA1, &rind::pbkdf2::legacy::PBKDF2_HMAC_SHA1, 20),
-    (&pbkdf2::PBKDF2_HMAC_SHA256, &rind::pbkdf2::PBKDF2_HMAC_SHA256, 32),
-    (&pbkdf2::PBKDF2_HMAC_SHA384, &rind::pbkdf2::PBKDF2_HMAC_SHA384, 48),
-    (&pbkdf2::PBKDF2_HMAC_SHA512, &rind::pbkdf2::PBKDF2_HMAC_SHA512, 64),
+    (
+        &pbkdf2::legacy::PBKDF2_HMAC_SHA1,
+        &rind::pbkdf2::legacy::PBKDF2_HMAC_SHA1,
+        20,
+    ),
+    (
+        &pbkdf2::PBKDF2_HMAC_SHA256,
+        &rind::pbkdf2::PBKDF2_HMAC_SHA256,
+        32,
+    ),
+    (
+        &pbkdf2::PBKDF2_HMAC_SHA384,
+        &rind::pbkdf2::PBKDF2_HMAC_SHA384,
+        48,
+    ),
+    (
+        &pbkdf2::PBKDF2_HMAC_SHA512,
+        &rind::pbkdf2::PBKDF2_HMAC_SHA512,
+        64,
+    ),
 ];
 
 #[test]
@@ -150,15 +190,24 @@ fn pbkdf2_matches_rind() {
                     let mut expected = vec![0; len];
                     secret.derive(iterations, &salt, &mut out).unwrap();
                     reference.derive(iterations, &salt, &mut expected).unwrap();
-                    assert_eq!(out, expected, "{ours:?}, password {password_len}, salt {salt_len}");
+                    assert_eq!(
+                        out, expected,
+                        "{ours:?}, password {password_len}, salt {salt_len}"
+                    );
 
                     if len >= hash_len {
                         secret.verify(iterations, &salt, &out).unwrap();
                         out[len - 1] ^= 1;
-                        assert_eq!(secret.verify(iterations, &salt, &out), Err(Error::BadSignature));
+                        assert_eq!(
+                            secret.verify(iterations, &salt, &out),
+                            Err(Error::BadSignature)
+                        );
                     } else {
                         // Easier to match than the whole hash, as in rind.
-                        assert_eq!(secret.verify(iterations, &salt, &out), Err(Error::WrongLength));
+                        assert_eq!(
+                            secret.verify(iterations, &salt, &out),
+                            Err(Error::WrongLength)
+                        );
                     }
                 }
             }

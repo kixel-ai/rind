@@ -12,7 +12,8 @@ opaque! {
 
 unsafe extern "C" {
     fn rind_fips_hkdf_salt_new(id: u32, value: *const u8, len: usize) -> *mut HkdfSalt;
-    fn rind_fips_hkdf_extract(salt: *const HkdfSalt, secret: *const u8, len: usize) -> *mut HkdfPrk;
+    fn rind_fips_hkdf_extract(salt: *const HkdfSalt, secret: *const u8, len: usize)
+    -> *mut HkdfPrk;
     fn rind_fips_hkdf_fill(
         prk: *const HkdfPrk,
         info: *const Bytes,
@@ -73,7 +74,8 @@ impl Salt {
     /// Keys `algorithm` with `value`; an empty `value` is RFC 5869's absent salt.
     pub fn new(algorithm: &'static Algorithm, value: &[u8]) -> Self {
         // SAFETY: `value` is readable.
-        let handle = unsafe { rind_fips_hkdf_salt_new(algorithm.0.id, value.as_ptr(), value.len()) };
+        let handle =
+            unsafe { rind_fips_hkdf_salt_new(algorithm.0.id, value.as_ptr(), value.len()) };
         Self {
             algorithm,
             handle: Handle::new(handle),
@@ -84,7 +86,8 @@ impl Salt {
     #[must_use]
     pub fn extract(&self, secret: &[u8]) -> Prk {
         // SAFETY: the handle is live, and `secret` readable.
-        let handle = unsafe { rind_fips_hkdf_extract(self.handle.ptr(), secret.as_ptr(), secret.len()) };
+        let handle =
+            unsafe { rind_fips_hkdf_extract(self.handle.ptr(), secret.as_ptr(), secret.len()) };
         Prk {
             algorithm: self.algorithm,
             handle: Handle::new(handle),
@@ -182,7 +185,13 @@ impl Okm<'_, usize> {
         // SAFETY: the handle is live, `info` lists readable strings, and
         // `out` is writable.
         ffi::check(unsafe {
-            rind_fips_hkdf_fill(self.prk.handle.ptr(), info.as_ptr(), info.len(), out.as_mut_ptr(), out.len())
+            rind_fips_hkdf_fill(
+                self.prk.handle.ptr(),
+                info.as_ptr(),
+                info.len(),
+                out.as_mut_ptr(),
+                out.len(),
+            )
         })
     }
 }
@@ -191,8 +200,9 @@ impl From<Okm<'_, &'static hmac::Algorithm>> for hmac::Key {
     fn from(okm: Okm<'_, &'static hmac::Algorithm>) -> Self {
         let info = okm.info();
         // SAFETY: the handle is live, and `info` lists readable strings.
-        let handle =
-            unsafe { rind_fips_hkdf_expand_hmac(okm.prk.handle.ptr(), info.as_ptr(), info.len(), okm.len.id) };
+        let handle = unsafe {
+            rind_fips_hkdf_expand_hmac(okm.prk.handle.ptr(), info.as_ptr(), info.len(), okm.len.id)
+        };
         Self::from_handle(okm.len, handle)
     }
 }
@@ -201,8 +211,14 @@ impl From<Okm<'_, &'static Algorithm>> for Prk {
     fn from(okm: Okm<'_, &'static Algorithm>) -> Self {
         let info = okm.info();
         // SAFETY: the handle is live, and `info` lists readable strings.
-        let handle =
-            unsafe { rind_fips_hkdf_expand_prk(okm.prk.handle.ptr(), info.as_ptr(), info.len(), okm.len.0.id) };
+        let handle = unsafe {
+            rind_fips_hkdf_expand_prk(
+                okm.prk.handle.ptr(),
+                info.as_ptr(),
+                info.len(),
+                okm.len.0.id,
+            )
+        };
         Self {
             algorithm: okm.len,
             handle: Handle::new(handle),

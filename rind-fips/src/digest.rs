@@ -93,7 +93,14 @@ pub static SHA3_512: Algorithm = Algorithm {
 pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
     let mut digest = Digest::zeroed(algorithm);
     // SAFETY: `data` is readable, and `digest.value` is 64 writable bytes.
-    unsafe { rind_fips_digest(algorithm.id, data.as_ptr(), data.len(), digest.value.as_mut_ptr()) };
+    unsafe {
+        rind_fips_digest(
+            algorithm.id,
+            data.as_ptr(),
+            data.len(),
+            digest.value.as_mut_ptr(),
+        )
+    };
     digest
 }
 

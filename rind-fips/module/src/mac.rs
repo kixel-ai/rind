@@ -88,7 +88,11 @@ unsafe fn write_tag(tag: &hmac::Tag, out: *mut u8) -> usize {
 /// # Safety
 /// `key` must be valid for `len` reads.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rind_fips_hmac_key_new(id: u32, key: *const u8, len: usize) -> *mut hmac::Key {
+pub unsafe extern "C" fn rind_fips_hmac_key_new(
+    id: u32,
+    key: *const u8,
+    len: usize,
+) -> *mut hmac::Key {
     let Some(algorithm) = hmac_algorithm(id) else {
         return core::ptr::null_mut();
     };
@@ -123,7 +127,9 @@ pub unsafe extern "C" fn rind_fips_hmac_sign(
     // SAFETY: the caller's contract.
     let (key, data) = unsafe { (&*key, bytes(data, len)) };
     // SAFETY: the caller's contract.
-    scrubbed(Depth::Small, || unsafe { write_tag(&hmac::sign(key, data), out) })
+    scrubbed(Depth::Small, || unsafe {
+        write_tag(&hmac::sign(key, data), out)
+    })
 }
 
 /// Checks that the `tag_len` bytes at `tag` are the tag of the `len` bytes
@@ -174,7 +180,9 @@ pub unsafe extern "C" fn rind_fips_hmac_context_update(
 /// # Safety
 /// `context` must be live.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rind_fips_hmac_context_clone(context: *const hmac::Context) -> *mut hmac::Context {
+pub unsafe extern "C" fn rind_fips_hmac_context_clone(
+    context: *const hmac::Context,
+) -> *mut hmac::Context {
     // SAFETY: the caller's contract.
     new_handle(|| unsafe { (*context).clone() })
 }
@@ -186,7 +194,10 @@ pub unsafe extern "C" fn rind_fips_hmac_context_clone(context: *const hmac::Cont
 /// `context` must be live, and not used again, and `out` valid for 64
 /// writes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rind_fips_hmac_context_sign(context: *mut hmac::Context, out: *mut u8) -> usize {
+pub unsafe extern "C" fn rind_fips_hmac_context_sign(
+    context: *mut hmac::Context,
+    out: *mut u8,
+) -> usize {
     // SAFETY: the caller's contract.
     let context = unsafe { Box::from_raw(context) };
     // SAFETY: the caller's contract.
@@ -202,7 +213,11 @@ free!(rind_fips_hmac_context_free, hmac::Context);
 /// # Safety
 /// `value` must be valid for `len` reads.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rind_fips_hkdf_salt_new(id: u32, value: *const u8, len: usize) -> *mut hkdf::Salt {
+pub unsafe extern "C" fn rind_fips_hkdf_salt_new(
+    id: u32,
+    value: *const u8,
+    len: usize,
+) -> *mut hkdf::Salt {
     let Some(algorithm) = hkdf_algorithm(id) else {
         return core::ptr::null_mut();
     };
@@ -242,7 +257,9 @@ pub unsafe extern "C" fn rind_fips_hkdf_fill(
 ) -> Status {
     // SAFETY: the caller's contract.
     let (prk, info, out) = unsafe { (&*prk, byte_list(info, info_len), bytes_mut(out, len)) };
-    scrubbed(Depth::Small, || status(prk.expand(&info, out.len()).fill(out)))
+    scrubbed(Depth::Small, || {
+        status(prk.expand(&info, out.len()).fill(out))
+    })
 }
 
 /// The HMAC key for the hash `id` names that `prk` expands to for `info`,
@@ -320,7 +337,11 @@ impl Secret {
 /// # Safety
 /// `secret` must be valid for `len` reads.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rind_fips_pbkdf2_secret_new(id: u32, secret: *const u8, len: usize) -> *mut Secret {
+pub unsafe extern "C" fn rind_fips_pbkdf2_secret_new(
+    id: u32,
+    secret: *const u8,
+    len: usize,
+) -> *mut Secret {
     let Some(algorithm) = pbkdf2_algorithm(id) else {
         return core::ptr::null_mut();
     };

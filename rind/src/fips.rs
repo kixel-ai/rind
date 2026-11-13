@@ -293,8 +293,7 @@ mod kat {
         let tag = sign(&key, b"what do ya want for nothing?");
         check(
             "hmac",
-            tag.as_ref()
-                == hex("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"),
+            tag.as_ref() == hex("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"),
         )
     }
 
@@ -420,10 +419,9 @@ mod kat {
         )?;
 
         let message = input("ecdsa_verify", *b"rind-fips ECDSA self-test");
-        let verified = VerifyingKey::<P256>::from_x962_uncompressed(
-            key.public_key_uncompressed().as_ref(),
-        )
-        .and_then(|k| k.verify::<Sha256>(&message, &signature));
+        let verified =
+            VerifyingKey::<P256>::from_x962_uncompressed(key.public_key_uncompressed().as_ref())
+                .and_then(|k| k.verify::<Sha256>(&message, &signature));
         check("ecdsa_verify", verified.is_ok())
     }
 
@@ -442,7 +440,8 @@ mod kat {
         check(
             "ecdh",
             secret.is_ok_and(|s| {
-                *s.as_ref() == hex("46fc62106420ff012e54a434fbdd2d25ccc5852060561e68040dd7778997bd7b")
+                *s.as_ref()
+                    == hex("46fc62106420ff012e54a434fbdd2d25ccc5852060561e68040dd7778997bd7b")
             }),
         )
     }
@@ -463,7 +462,8 @@ mod kat {
 
         let public_key = hex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
         let signature = input("ed25519_verify", signature);
-        let verified = PublicKey::new(&ED25519, &public_key).and_then(|k| k.verify(b"", &signature));
+        let verified =
+            PublicKey::new(&ED25519, &public_key).and_then(|k| k.verify(b"", &signature));
         check("ed25519_verify", verified.is_ok())
     }
 
@@ -652,8 +652,8 @@ mod tests {
     fn rsa_and_ecdsa_answers_match_aws_lc() {
         use aws_lc_rs::signature::{self, KeyPair};
 
-        let key =
-            signature::RsaKeyPair::from_pkcs8(include_bytes!("high/rsa/rsa2048.pkcs8.der")).unwrap();
+        let key = signature::RsaKeyPair::from_pkcs8(include_bytes!("high/rsa/rsa2048.pkcs8.der"))
+            .unwrap();
         let mut sig = vec![0; key.public_modulus_len()];
         key.sign(
             &signature::RSA_PKCS1_SHA256,

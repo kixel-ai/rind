@@ -13,7 +13,8 @@ opaque! {
 unsafe extern "C" {
     fn rind_fips_hmac_key_new(id: u32, key: *const u8, len: usize) -> *mut HmacKey;
     fn rind_fips_hmac_key_clone(key: *const HmacKey) -> *mut HmacKey;
-    fn rind_fips_hmac_sign(key: *const HmacKey, data: *const u8, len: usize, out: *mut u8) -> usize;
+    fn rind_fips_hmac_sign(key: *const HmacKey, data: *const u8, len: usize, out: *mut u8)
+    -> usize;
     fn rind_fips_hmac_verify(
         key: *const HmacKey,
         data: *const u8,
@@ -43,7 +44,9 @@ impl Algorithm {
 
 impl fmt::Debug for Algorithm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Algorithm").field(&format_args!("{}", self.name)).finish()
+        f.debug_tuple("Algorithm")
+            .field(&format_args!("{}", self.name))
+            .finish()
     }
 }
 
@@ -94,7 +97,8 @@ impl Key {
     /// Keys `algorithm` with `key_value`, which may be any length.
     pub fn new(algorithm: &'static Algorithm, key_value: &[u8]) -> Self {
         // SAFETY: `key_value` is readable.
-        let handle = unsafe { rind_fips_hmac_key_new(algorithm.id, key_value.as_ptr(), key_value.len()) };
+        let handle =
+            unsafe { rind_fips_hmac_key_new(algorithm.id, key_value.as_ptr(), key_value.len()) };
         Self::from_handle(algorithm, handle)
     }
 
@@ -114,7 +118,9 @@ impl Key {
 impl Clone for Key {
     fn clone(&self) -> Self {
         // SAFETY: the handle is live.
-        Self::from_handle(self.algorithm, unsafe { rind_fips_hmac_key_clone(self.handle.ptr()) })
+        Self::from_handle(self.algorithm, unsafe {
+            rind_fips_hmac_key_clone(self.handle.ptr())
+        })
     }
 }
 
@@ -186,7 +192,14 @@ pub fn sign(key: &Key, data: &[u8]) -> Tag {
     let mut tag = Tag::zeroed(key.algorithm);
     // SAFETY: the handle is live, `data` readable, and `tag.value` 64
     // writable bytes.
-    unsafe { rind_fips_hmac_sign(key.handle.ptr(), data.as_ptr(), data.len(), tag.value.as_mut_ptr()) };
+    unsafe {
+        rind_fips_hmac_sign(
+            key.handle.ptr(),
+            data.as_ptr(),
+            data.len(),
+            tag.value.as_mut_ptr(),
+        )
+    };
     tag
 }
 
@@ -199,7 +212,13 @@ pub fn sign(key: &Key, data: &[u8]) -> Tag {
 pub fn verify(key: &Key, data: &[u8], tag: &[u8]) -> Result<(), Error> {
     // SAFETY: the handle is live, and `data` and `tag` readable.
     ffi::check(unsafe {
-        rind_fips_hmac_verify(key.handle.ptr(), data.as_ptr(), data.len(), tag.as_ptr(), tag.len())
+        rind_fips_hmac_verify(
+            key.handle.ptr(),
+            data.as_ptr(),
+            data.len(),
+            tag.as_ptr(),
+            tag.len(),
+        )
     })
 }
 

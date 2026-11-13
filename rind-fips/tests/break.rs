@@ -60,7 +60,10 @@ fn run(trigger: &str, name: &str) -> (bool, String) {
 /// its name, before the trigger's own output.
 fn assert_breaks(trigger: &str, name: &str) {
     let (succeeded, stderr) = run(trigger, name);
-    assert!(!succeeded, "breaking {name} did not fail {trigger}: {stderr}");
+    assert!(
+        !succeeded,
+        "breaking {name} did not fail {trigger}: {stderr}"
+    );
     assert!(
         stderr.contains(&format!("rind-fips: {name} self-test failed")),
         "breaking {name} failed {trigger} otherwise: {stderr}"

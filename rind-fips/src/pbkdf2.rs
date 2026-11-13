@@ -79,7 +79,8 @@ impl Secret {
     /// one of at least 14 bytes derives.
     pub fn new(algorithm: &'static Algorithm, secret: &[u8]) -> Self {
         // SAFETY: `secret` is readable.
-        let handle = unsafe { rind_fips_pbkdf2_secret_new(algorithm.0.id, secret.as_ptr(), secret.len()) };
+        let handle =
+            unsafe { rind_fips_pbkdf2_secret_new(algorithm.0.id, secret.as_ptr(), secret.len()) };
         Self {
             algorithm,
             handle: Handle::new(handle),
