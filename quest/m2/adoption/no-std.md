@@ -19,7 +19,7 @@ Where `rind` uses `std` on `main` that day, by `grep`, outside tests:
 The audit's recommendations, for whoever does this to confirm against the code:
 
 - No `std` feature. A feature a dependent must remember to turn off is how `no_std` support rots, and rind has one way to do each job. Use `std` only under `cfg` for the targets that have an OS, and only for what needs one.
-- x86_64 reads CPUID through `core::arch` with no OS. aarch64 and arm have no portable way to ask from user code without one, so on a target with no OS a tier is chosen from the compile-time target features alone. PLATFORMS.md says so.
+- x86_64 reads CPUID through `core::arch` with no OS. CPUID says what the CPU has, not what the OS switched on: `is_x86_feature_detected!` (`rind/src/low/x86_64/cpu.rs:440`), which is `std`'s, also reads XCR0 through XGETBV and reports AVX or AVX-512 only where the OS saves those registers. Whatever replaces it checks OSXSAVE and XCR0 the same way before it picks an AVX tier, or a kernel that never enabled them takes a fault on the first `vmovdqu`. aarch64 and arm have no portable way to ask from user code without one, so on a target with no OS a tier is chosen from the compile-time target features alone. PLATFORMS.md says so.
 - An atomic replaces each `OnceLock`, since what it caches is a small enum computed the same on every thread.
 - The guard count is per thread because the CPU's constant-time flag is. Without threads there is one count; say in the code what a `no_std` target with its own threads has to provide, or refuse to build the guard there until someone needs it.
 - `getrandom` already supports targets without an OS through a caller-supplied source. rind passes that through and documents it; it does not grow a generator of its own.

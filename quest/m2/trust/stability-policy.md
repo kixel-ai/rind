@@ -11,7 +11,7 @@ Decided 2026-11-12 (maintainer, /quest-audit): ✅ write it. An adopter pinning 
 Draft it from what the repository already does, and change no practice:
 
 - Breaking changes go in a minor release while rind is 0.x, are batched so adapters re-pin once ([rind 0.4 ships once](/quest/m2/api/release-0.4.md)), and each has its row in MIGRATING.md.
-- The minimum Rust version is the workspace's `rust-version` (1.90 that day), and CI checks it (`sh/dispatch.sh`'s `msrv` module, `.github/workflows/lints.yml`). What is not written anywhere is when it may rise and whether a rise is a breaking change.
+- The minimum Rust version is the workspace's `rust-version` (1.90 that day), and CI checks it (`sh/dispatch.sh`'s `msrv` module, `.github/workflows/lints.yml`). One crate sets its own: rind-openmls declares 1.91 (`rind-openmls/Cargo.toml:10`). The policy says an adapter may need a newer Rust than rind where its upstream does, and where a reader finds each crate's. What is not written anywhere is when it may rise and whether a rise is a breaking change.
 - An adapter's version begins with its upstream's breaking version, and its API is its upstream's (`CONTRIBUTING.md`'s Releases section, `sh/adapter-versions.sh`). Link there; don't restate it.
 - Which CPUs and targets are supported is PLATFORMS.md's. Link there too.
 
