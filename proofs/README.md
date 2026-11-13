@@ -105,24 +105,26 @@ those inputs, in any worktree, restores in under a second.
   the byte-swap mask through rcx from the static `low::x86_64::sha256::K`,
   whose bytes `admin/prove` extracts and the proof checks against FIPS
   180-4's.
-- `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64 and
-  aarch64: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`, that the
-  blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes` return
-  zero exactly when their inputs are equal, and `CT_COMPARE_16_SAFE` and
-  `CT_COMPARE_BYTES_SAFE`, in s2n-bignum's style, that their trace of loads
-  and branches is a function of the addresses and length alone, each load in
-  bounds. Both functions are `#[inline(never)]` with fixed registers, so the
-  proof covers their one copy.
+- `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64,
+  aarch64, and armv7: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`,
+  that the blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes`,
+  `low::arm::cpu` on armv7, return zero exactly when their inputs are equal,
+  and `CT_COMPARE_16_SAFE` and `CT_COMPARE_BYTES_SAFE`, in s2n-bignum's style,
+  that their trace of loads and branches is a function of the addresses and
+  length alone, each load in bounds. Both functions are `#[inline(never)]`
+  with fixed registers, so the proof covers their one copy. armv7's are on
+  the fork's AArch32 model below.
 
 The fork adds what these proofs need to s2n-bignum: specs from s2n-bignum
 pull requests not yet merged, rind's own RFC 8439 spec of ChaCha20,
 Poly1305, and ChaCha20-Poly1305, `common/chacha20poly1305.ml`, whose
 known-answer tests `admin/prove hol-light` runs, the SHA extensions and
-other instructions an s2n-bignum pull request adds to the x86 model, and
-rind's own additions to it, which `x86/proofs/rind_cosim.ml` checks against
-the CPU with the pull request's. `nix develop .#hol-light --command
-admin/prove cosim` runs the cosimulation, on an x86_64 CPU with AVX2.
-
+other instructions an s2n-bignum pull request adds to the x86 model, rind's
+own additions to it, which `x86/proofs/rind_cosim.ml` checks against the CPU
+with the pull request's, and `aarch32/`, an AArch32 model of the A32
+instructions armv7's proofs need, which `aarch32/proofs/simulator.ml` checks
+against qemu-arm. `nix develop .#hol-light --command admin/prove cosim` runs
+both cosimulations, on an x86_64 CPU with AVX2.
 ## What is proven
 
 X25519 on x86_64 and aarch64, from the agreement API's `PrivateKey` to

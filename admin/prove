@@ -17,21 +17,21 @@
 # each register they let it change. `hol-light <arch>` checks only that
 # target's HOL Light proofs, so CI runs each target in its own job.
 # `cosim`, which no other run includes
-# since it needs an x86_64 CPU with AVX2, checks the instructions rind adds
-# to s2n-bignum's x86 model, in its fork in `thirdparty/s2n-bignum`, against
-# this CPU. `session` checks nothing: it starts a HOL Light session for
-# developing the proofs of `arch`, `x86_64` or `aarch64`, which `session`
-# below describes. Run it in the flake's
+# since it needs an x86_64 CPU with AVX2, checks the AArch32 model against
+# qemu-arm and the instructions rind adds to s2n-bignum's x86 model against
+# this CPU, both in its fork in `thirdparty/s2n-bignum`. `session` checks
+# nothing: it starts a HOL Light session for developing the proofs of `arch`,
+# `x86_64` or `aarch64`, which `session` below describes. Run it in the flake's
 # `prove` dev shell: `nix develop .#prove --command admin/prove`, or for the
 # HOL Light proofs, the cosimulation, the bytes alone, or a session, `nix
 # develop .#hol-light --command admin/prove hol-light`.
 set -euo pipefail
 
-usage="usage: admin/prove [bytes | hol-light [x86_64 | aarch64] | cosim | lean | session <x86_64 | aarch64> [<file>]]"
+usage="usage: admin/prove [bytes | hol-light [x86_64 | aarch64 | armv7] | cosim | lean | session <x86_64 | aarch64> [<file>]]"
 case "${1:-}" in
 '' | bytes | cosim | lean) only=${1:-} ;;
 hol-light)
-    if [[ $# -gt 2 || ($# -eq 2 && $2 != x86_64 && $2 != aarch64) ]]; then
+    if [[ $# -gt 2 || ($# -eq 2 && $2 != x86_64 && $2 != aarch64 && $2 != armv7) ]]; then
         echo "$usage" >&2
         exit 2
     fi
@@ -56,11 +56,19 @@ out=.tmp/prove
 mkdir -p "$out"
 tools=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin
 
+# Prints the target triple of `arch` Linux: armv7's names its hard-float ABI.
+triple() {
+    case $1 in
+    armv7) echo armv7-unknown-linux-gnueabihf ;;
+    *) echo "$1-unknown-linux-gnu" ;;
+    esac
+}
+
 # Builds rind's release library for `arch` Linux with its assembly, for
 # `asm_block` and `relocation_data` to read.
 build_asm() {
     local arch=$1
-    cargo rustc -q -p rind --lib --release --target "$arch-unknown-linux-gnu" \
+    cargo rustc -q -p rind --lib --release --target "$(triple "$arch")" \
         --target-dir "$out/asm" -- --emit=asm -C codegen-units=16
     rm -rf "$out/asm/$arch-units"
 }
@@ -76,8 +84,8 @@ build_asm() {
 # holds them.
 asm_block() {
     local arch=$1 path=$2 dest=$3 layout=${4:-}
-    local deps=$out/asm/$arch-unknown-linux-gnu/release/deps
-    local found obj sym
+    local deps found obj sym
+    deps=$out/asm/$(triple "$arch")/release/deps
     found=$(rind_symbol "$arch" "$path")
     read -r obj sym <<<"$found"
     # The function's asm! blocks, and rustc's instructions before and after
@@ -88,8 +96,8 @@ asm_block() {
         $0 == s { p = 1; next }
         !p { next }
         /^\.Lfunc_end/ { exit }
-        /^\t(\/\/|#)APP$/ { blocks++; start = n; inside = 1; next }
-        /^\t(\/\/|#)NO_APP$/ { inside = 0; m = 0; next }
+        /^\t(\/\/|#|@)APP$/ { blocks++; start = n; inside = 1; next }
+        /^\t(\/\/|#|@)NO_APP$/ { inside = 0; m = 0; next }
         /^\t[a-z]/ && !inside { n++; m++ }
         END { print blocks + 0, start + 0, m + 0 }' "$deps/$(basename "${obj%.o}").s")
     local -a addrs
@@ -158,10 +166,10 @@ rind_index() {
     if [[ ! -f "$units/index" ]]; then
         rm -rf "$units"
         mkdir -p "$units"
-        "$tools/llvm-ar" x --output "$units" "$out/asm/$arch-unknown-linux-gnu/release/deps"/librind-*.rlib
+        "$tools/llvm-ar" x --output "$units" "$out/asm/$(triple "$arch")/release/deps"/librind-*.rlib
         for unit in "$units"/*.rcgu.o; do
             paste <("$tools/llvm-nm" --defined-only "$unit") <("$tools/llvm-nm" --defined-only -C "$unit") |
-                awk -F '\t' -v u="$unit" '{ d = substr($2, 20); sub(/ \(\.llvm\.[0-9]+\)$/, "", d); print u "\t" substr($1, 20) "\t" d }'
+                awk -F '\t' -v u="$unit" '{ s = $1; d = $2; sub(/^[^ ]* [^ ]* /, "", s); sub(/^[^ ]* [^ ]* /, "", d); sub(/ \(\.llvm\.[0-9]+\)$/, "", d); print u "\t" s "\t" d }'
         done >"$units/index.tmp"
         mv "$units/index.tmp" "$units/index"
     fi
@@ -309,6 +317,8 @@ hol_light_proofs=(
     "aarch64 ct_compare_16.bin rind::low::aarch64::cpu::ct_compare_16"
     "x86_64 ct_compare_bytes.bin rind::low::x86_64::cpu::ct_compare_bytes"
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
+    "armv7 ct_compare_bytes.bin rind::low::arm::cpu::ct_compare_bytes"
+    "armv7 ct_compare_16.bin rind::low::arm::cpu::ct_compare_16"
     "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
     "x86_64 sha256_compress_blocks_shaext.bin rind::low::x86_64::sha256::sha256_compress_blocks_shaext"
     "x86_64 sha256_finish_shaext.bin rind::low::x86_64::sha256::sha256_finish_shaext"
@@ -392,14 +402,19 @@ hol_light_compile() {
         "$dir/$name.cmx" -o "$dir/$name.native"
 }
 
-# Cosimulates rind's additions to s2n-bignum's x86 model against this CPU with
+# Cosimulates the fork's AArch32 model in `aarch32/` against qemu-arm, for
+# `cases` random instructions after its directed ones, with
+# `aarch32/proofs/simulator.ml` and the executor `cosim_runner.c`, which this
+# builds as a static armv7 program. Then cosimulates rind's additions to
+# s2n-bignum's x86 model against this CPU with
 # the fork's `x86/proofs/rind_cosim.ml`, on s2n-bignum's simulator, whose
 # executor assembles each case with the C toolchain. The simulator's list of
 # s2n-bignum's own instructions is empty, so the one case of s2n-bignum's own
 # campaign that loading it runs is one of those it adds by hand. The SHA
 # extensions' instructions run only where the CPU has them.
 cosim() {
-    local dir=$out/cosim root=$PWD sha=0
+    local dir=$out/cosim root=$PWD sha=0 cases=1000
+    local aarch32=thirdparty/s2n-bignum/aarch32/proofs
     if [[ $(uname -m) != x86_64 ]] || ! grep -qw avx2 /proc/cpuinfo; then
         echo "admin/prove: cosim needs an x86_64 CPU with AVX2" >&2
         return 1
@@ -410,6 +425,14 @@ cosim() {
     hold cosim
     rm -rf "$dir"
     mkdir -p "$dir/tmp" "$dir/generated/x86"
+    armv7-linux-gnueabihf-gcc -O2 -marm -march=armv7-a -ffreestanding -fno-stack-protector \
+        -fomit-frame-pointer -nostdlib -static -Wall -Wextra -Werror -Wl,--no-warn-rwx-segments \
+        -o "$dir/aarch32-runner" "$aarch32/cosim_runner.c" "$aarch32/cosim_start.S" -lgcc
+    echo 'loadt "aarch32/proofs/simulator.ml";;' >"$dir/aarch32.ml"
+    hol_light_compile "$dir" aarch32
+    (cd "$dir" && S2N_BIGNUM_SEMATEST_CASES=$cases S2N_BIGNUM_SEMATEST_SECONDS=1200 \
+        RIND_AARCH32_EXECUTOR="qemu-arm -cpu cortex-a15 $root/$dir/aarch32-runner" \
+        ./aarch32.native) | grep -v -e '^OK: ' -e '^Stepping to state' -e '^CPU time'
     printf 'let iclasses_regreg = [];;\nlet iclasses_simplemem = [];;\n' >"$dir/generated/x86/x86-insns.ml"
     echo 'loadt "x86/proofs/rind_cosim.ml";;' >"$dir/cosim.ml"
     hol_light_compile "$dir" cosim

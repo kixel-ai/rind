@@ -293,6 +293,15 @@
               ${link "aarch64" pkgs.pkgsCross.aarch64-multiplatform}
             '';
 
+          # The armv7 C compiler and qemu-arm that build and run the AArch32
+          # model's cosimulation executor, linked without the cross
+          # compiler's setup hooks, as debian-cross-tools are.
+          armv7-cosim-tools = pkgs.runCommand "armv7-cosim-tools" { } ''
+            mkdir -p $out/bin
+            ln -s ${armv7-prefix}gcc $out/bin/armv7-linux-gnueabihf-gcc
+            ln -s ${pkgs.qemu-user}/bin/qemu-arm $out/bin/qemu-arm
+          '';
+
           # Otherwise cargo exports the host's OpenSSL CA paths, which on
           # Ubuntu lie under the /usr the SDE sandbox replaces, and the tests
           # that load the system's roots find none. A shell hook, since `nix
@@ -375,11 +384,12 @@
           # Light, the OCaml it compiles the proofs with, as s2n-bignum's
           # `tools/build-proof.sh` does, the Rust whose build emits the object
           # code they are of, with llvm-objdump to read it, the Python that
-          # compares that code with the code upstream's proofs check, and the
-          # cross tools that assemble Vale's and aws-lc's, with flock, which
+          # compares that code with the code upstream's proofs check, the
+          # cross tools that assemble Vale's and aws-lc's, and flock, which
           # keeps runs in one worktree from rewriting each other's files. On
           # Linux, `admin/prove session` checkpoints and restores HOL Light
-          # with DMTCP.
+          # with DMTCP, and the AArch32 model's cosimulation runs under
+          # qemu-arm; qemu-user builds only on Linux.
           hol-light = pkgs.mkShell {
             packages = [
               (rust-stable.minimal.override {
@@ -387,6 +397,7 @@
                 targets = [
                   "x86_64-unknown-linux-gnu"
                   "aarch64-unknown-linux-gnu"
+                  "armv7-unknown-linux-gnueabihf"
                 ];
               })
               pkgs.hol_light
@@ -398,7 +409,10 @@
               debian-cross-tools
               pkgs.flock
             ]
-            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.dmtcp;
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+              pkgs.dmtcp
+              armv7-cosim-tools
+            ];
           };
 
           sde-certs = ''
