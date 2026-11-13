@@ -1539,6 +1539,9 @@ mod tests {
     /// `X = -w0*M` is a doubling and still confirms. `X = w0*M` makes the
     /// difference the identity; that is rejected after the same multiplication
     /// rather than encoded, and `(0, 0)` is not a scalar-multiplication input.
+    /// `Y = w0*N` is the prover's matching case. The tags are those of the
+    /// generator standing in for that difference, and a tag that matches them
+    /// is still refused.
     #[test]
     fn exceptional_peer_share_follows_rfc9383() {
         let w0 = [0x31u8; 40];
@@ -1625,16 +1628,32 @@ mod tests {
         ct::public_slice(keys.shared());
         assert_eq!(key.as_ref(), keys.shared());
 
-        // Y = w0*N makes the prover's difference the identity.
-        let prover = ProverSecrets::new(&w0, &w1).unwrap();
-        let (_, prover) = prover
-            .start_at(&RFC9383, b"ctx", b"client", b"", Some(x))
+        // Y = w0*N makes the prover's difference the identity. Multiplication
+        // uses the generator, so Z is x*G and V is w1*G. A confirmation that
+        // matches that transcript is still rejected: the identity mask fails,
+        // not a mismatched tag.
+        let z = Affine::mul_base(&x).to_uncompressed();
+        let v = Affine::mul_base(&w1s).to_uncompressed();
+        let (share_p, prover) = ProverSecrets::new(&w0, &w1)
+            .unwrap()
+            .start_at(&RFC9383, b"ctx", b"client", b"", Some(x.copy()))
             .unwrap();
         let share_y = point_share::<Rfc9383>(n.mul(&w0s).to_uncompressed());
+        let tt = transcript(&labels, share_p.as_ref(), share_y.as_ref(), &z, &v, &w0s).unwrap();
+        let keys = schedule_keys(Schedule::Rfc9383, &tt).unwrap();
+        let confirm_v = mac::<Rfc9383>(keys.verifier_key(), share_p.as_ref());
+        let (confirm_p, _key, ok) = prover.compute(&share_y, &confirm_v).unwrap();
+        assert!(ct::into_public(ct_equal(
+            confirm_p.as_ref(),
+            mac::<Rfc9383>(keys.prover_key(), share_y.as_ref()).as_ref(),
+        )));
+        assert_eq!(ct::into_public(ok), 0);
+        let (_, prover) = ProverSecrets::new(&w0, &w1)
+            .unwrap()
+            .start_at(&RFC9383, b"ctx", b"client", b"", Some(x))
+            .unwrap();
         assert_eq!(
-            prover
-                .finish(&share_y, &confirm_of::<Rfc9383>([0; 32]))
-                .err(),
+            prover.finish(&share_y, &confirm_v).err(),
             Some(Error::BadSignature)
         );
     }
