@@ -15,7 +15,7 @@
    schedule computes them, and the second block's rounds read the words the
    first pass left on the stack. Its result is s2n-bignum's FIPS 180-4 spec,
    sha512_hash_blocks, from s2n-bignum pull request #420, which
-   proofs/hol-light/s2n-bignum/ holds until it merges. The proof steps the
+   rind's fork in thirdparty/s2n-bignum/ holds until it merges. The proof steps the
    instructions symbolically through both blocks of a pass, folding each
    round's registers and each message schedule lane into the spec's terms as
    they appear, so no term grows past one round. *)
