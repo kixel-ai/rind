@@ -226,8 +226,7 @@ The model departs from the Rust in six ways, and adds no axiom:
 - `PrivateKey::algorithm`, `to_pkcs8`, and `to_scalar`, and `Keyed`'s, are
   left out: no theorem states what they return.
 - `ZeroableRef<T>` is its `T`: only the drop that wipes it leaves it `None`.
-- `?` is a `match`, since each error it passes on is already an `Error`, and
-  `map_err(|_| Error::WrongLength)?` a `match` returning that error.
+- `?` is a `match`, since each error it passes on is already an `Error`.
 
 Drops are not modelled, as everywhere in the translation.
 

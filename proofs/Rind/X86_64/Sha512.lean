@@ -6,7 +6,7 @@ import Rind.Bytes
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
-# The SHA-512 family, proven from rind's digest API to aws-lc's contract
+# The SHA-512 family, proven from rind's digest API to the block routine's contract
 
 `sha512_family_digest` and `sha512_family_context` state what the digest API
 returns for SHA-384, SHA-512, and SHA-512/256, in terms of `Rind.Sha2`'s spec,
@@ -568,7 +568,7 @@ theorem sha512_ctx_clone_spec (c : mid.sha2.Sha512Context) :
 theorem maxInput_lt (n : Nat) (h : n ≤ maxInput) : n < 2 ^ 64 := by
   unfold maxInput at h; simp only [U64.max_eq] at h; omega
 
-/-- SHA-512's `Hash` impl computes FIPS 180-4's SHA-512, given aws-lc's routine. -/
+/-- SHA-512's `Hash` impl computes FIPS 180-4's SHA-512, given the block routine (`RunsSha512`). -/
 theorem sha512_hashSpec (h : RunsSha512) :
     HashSpec high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State sha512Bytes 128 64
       maxInput (Sha512Absorbed sha512Iv) (fun p c => Hashed sha512Iv c p) where
@@ -623,7 +623,7 @@ theorem sha512_hashSpec (h : RunsSha512) :
     step with sha512_ctx_clone_spec as ⟨c', h'⟩
     exact h' ▸ hc
 
-/-- SHA-384's `Hash` impl computes FIPS 180-4's SHA-384, given aws-lc's routine. -/
+/-- SHA-384's `Hash` impl computes FIPS 180-4's SHA-384, given the block routine (`RunsSha512`). -/
 theorem sha384_hashSpec (h : RunsSha512) :
     HashSpec high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State sha384Bytes 128 48
       maxInput (Sha512Absorbed sha384Iv) (fun p c => Hashed sha384Iv c.inner p) where
