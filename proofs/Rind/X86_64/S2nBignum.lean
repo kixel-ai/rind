@@ -270,6 +270,83 @@ axiom p256_scalarmul_alt_spec (res : Std.Array U64 8#usize) (scalar : Std.Array 
       ∀ P, p256OnCurve P → p256Affine (pairNat point.val) P →
         p256AffineZ (pairNat r.val) (p256Pow P (wordsNat scalar.val)) ⦄
 
+/-- `BIGNUM_INV_P256_SUBROUTINE_CORRECT`, with `inverse_mod p_256 n` stated
+as what it is: the number below p that n times is 1 mod p,
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_inv_p256.ml#L3950 -/
+@[step]
+axiom bignum_inv_p256_spec (z x : Std.Array U64 4#usize) :
+    low.x86_64.bignum_inv_p256.bignum_inv_p256 z x ⦃ r =>
+      wordsNat r.val < p256 ∧
+        (wordsNat x.val % p256 = 0 → wordsNat r.val = 0) ∧
+        (wordsNat x.val % p256 ≠ 0 → wordsNat x.val * wordsNat r.val % p256 = 1) ⦄
+
+/-- `BIGNUM_NEG_P256_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_neg_p256.ml#L124 -/
+@[step]
+axiom bignum_neg_p256_spec (z x : Std.Array U64 4#usize) :
+    low.x86_64.bignum_neg_p256.bignum_neg_p256 z x ⦃ r =>
+      wordsNat x.val ≤ p256 → wordsNat r.val = (p256 - wordsNat x.val) % p256 ⦄
+
+/-- `BIGNUM_MUX_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_mux.ml#L141 -/
+@[step]
+axiom bignum_mux_spec (p : U64) (z x y : Slice U64) (hx : x.length = z.length)
+    (hy : y.length = z.length) :
+    low.x86_64.bignum_mux.bignum_mux p z x y ⦃ r =>
+      r.length = z.length ∧ wordsNat r.val = if p.val ≠ 0 then wordsNat x.val else wordsNat y.val ⦄
+
+/-- The three coordinates at `xyz` as HOL Light's
+`bignum_triple_from_memory (xyz,4)` reads them. -/
+def tripleNat (xyz : List U64) : Nat × Nat × Nat :=
+  (wordsNat (xyz.take 4), wordsNat ((xyz.drop 4).take 4), wordsNat ((xyz.drop 8).take 4))
+
+/-- `weierstrass_of_jacobian (integer_mod_ring p_256) (x, y, z)`: infinity for
+z of zero, and otherwise (x / z², y / z³) in the field of integers mod p, whose
+inverses `ZMod`'s are,
+https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/jacobian.ml#L21 -/
+def p256OfJacobian (x y z : Nat) : P256Point :=
+  if z = 0 then none
+  else some (((x : ZMod p256) * ((z : ZMod p256) ^ 2)⁻¹).val, ((y : ZMod p256) * ((z : ZMod p256) ^ 3)⁻¹).val)
+
+/-- `represents_p256 P (x, y, z)`: each coordinate is below p, and the
+Jacobian point their Montgomery forms decode to (`montgomery_decode`) is `P`,
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/p256_montjmixadd.ml#L2915 -/
+def p256Represents (P : P256Point) (xyz : Nat × Nat × Nat) : Prop :=
+  xyz.1 < p256 ∧ xyz.2.1 < p256 ∧ xyz.2.2 < p256 ∧
+    p256OfJacobian (p256RInv * xyz.1 % p256) (p256RInv * xyz.2.1 % p256)
+      (p256RInv * xyz.2.2 % p256) = P
+
+/-! ### P-256's generator multiplication
+
+PLACEHOLDERS until the proofs land: the select's Lean hand model and the
+HOL Light proof of aws-lc's mixed addition each replace one of these. -/
+
+/-- What `bignum_aff_point_select_p256` computes, viewing `table` as 64 rows
+of 8 words: row `index`, counting from 1, or zeros for any other index. -/
+@[step]
+axiom bignum_aff_point_select_p256_spec (z : Std.Array U64 8#usize) (table : Slice U64) (index : U8)
+    (ht : table.length = 512) :
+    low.x86_64.bignum_point_select.bignum_aff_point_select_p256 z table index ⦃ r =>
+      r.val = if 1 ≤ index.val ∧ index.val ≤ 64 then (table.val.drop (8 * (index.val - 1))).take 8
+        else List.replicate 8 0#u64 ⦄
+
+/-- What aws-lc's `ecp_nistz256_point_add_affine` and `_affinex` compute,
+in place, for coordinates below p: `p1` itself when `p2` is all zeros, the
+affine infinity; `p2` with a Montgomery-form z of one when `p1`'s z is zero,
+the Jacobian infinity; and otherwise the sum of the points they represent,
+unless those are equal, which it cannot double. -/
+@[step]
+axiom p256_point_add_affine_spec (p1 : Std.Array U64 12#usize) (p2 : Std.Array U64 8#usize) :
+    low.x86_64.ecp_nistz256.p256_point_add_affine p1 p2 ⦃ r =>
+      (tripleNat p1.val).1 < p256 → (tripleNat p1.val).2.1 < p256 → (tripleNat p1.val).2.2 < p256 →
+      (pairNat p2.val).1 < p256 → (pairNat p2.val).2 < p256 →
+        (pairNat p2.val = (0, 0) → tripleNat r.val = tripleNat p1.val) ∧
+        (pairNat p2.val ≠ (0, 0) → (tripleNat p1.val).2.2 = 0 →
+          tripleNat r.val = ((pairNat p2.val).1, (pairNat p2.val).2, 2 ^ 256 % p256)) ∧
+        (pairNat p2.val ≠ (0, 0) → (tripleNat p1.val).2.2 ≠ 0 →
+          ∀ P1 P2, p256Represents P1 (tripleNat p1.val) → p256Represents2 P2 (pairNat p2.val) →
+            P1 ≠ P2 → p256Represents (p256Add P1 P2) (tripleNat r.val)) ⦄
+
 /-! ### P-384 -/
 
 /-- `BIGNUM_TOMONT_P384_SUBROUTINE_CORRECT`,

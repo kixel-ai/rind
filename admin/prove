@@ -634,10 +634,10 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # too, and `proofs/Rind/X86_64/P256Dispatch.lean` models it above the
 # translated `PrivateKey::from_bytes`, as `EcdsaDispatch.lean` does for ECDSA,
 # with the signature API's ECDSA key pairs and statics, which hold function
-# pointers too. The generator table is translated, so
+# pointers too. Each target's generator table is translated, so
 # `proofs/Rind/Aarch64/P256Table.lean` can prove it holds what s2n-bignum's
-# proof assumes; x86_64's `base_multiply`, aws-lc's, which no proof covers
-# yet, is opaque. HMAC's keyed states are translated over any hash, and its
+# proof assumes, and `proofs/Rind/X86_64/P256Table.lean` what x86_64's
+# Booth driver, which is translated, reads. HMAC's keyed states are translated over any hash, and its
 # `Key` and `Context`, which hold function pointers, are not.
 # On x86_64, RSA verification is translated from `high::rsa::VerifyingKey`
 # down to `low::posint` and the Montgomery products' dispatch in
@@ -798,7 +798,6 @@ extract x86_64 X86_64 \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
-    --opaque 'crate::mid::p256::_::base_multiply' \
     --include crate::low::x86_64::adx_mux::bignum_demont_p256 \
     --include crate::low::x86_64::adx_mux::bignum_montmul_p256 \
     --include crate::low::x86_64::adx_mux::bignum_montsqr_p256 \

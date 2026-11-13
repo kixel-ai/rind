@@ -454,11 +454,20 @@ opaque low.x86_64.p256_scalarmul_alt.p256_scalarmul_alt
   Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
     Result (Array Std.U64 8#usize)
 
-/-! P-256's generator multiplication, aws-lc's on x86_64, which no proof
-covers yet. -/
+opaque low.x86_64.bignum_inv_p256.bignum_inv_p256
+  : Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
 
-opaque mid.p256.AffineMontPoint.base_multiply
-  : mid.p256.Scalar → Result mid.p256.AffineMontPoint
+opaque low.x86_64.bignum_neg_p256.bignum_neg_p256
+  : Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+/-! P-256's generator multiplication: rind's table select and aws-lc's mixed
+addition. -/
+
+opaque low.x86_64.bignum_point_select.bignum_aff_point_select_p256
+  : Array Std.U64 8#usize → Slice Std.U64 → Std.U8 → Result (Array Std.U64 8#usize)
+
+opaque low.x86_64.ecp_nistz256.p256_point_add_affine
+  : Array Std.U64 12#usize → Array Std.U64 8#usize → Result (Array Std.U64 12#usize)
 
 /-! P-256's key generation, which draws through a `dyn RandomSource`:
 `Rind.X86_64.P256Dispatch` models it. -/
