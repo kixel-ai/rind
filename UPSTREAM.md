@@ -1,11 +1,21 @@
 # Upstream workarounds
 
-Every place rind works around a bug or gap in a tool or dependency it doesn't own.
+Every upstream rind forks, and every place it works around a bug or gap in a tool or dependency it doesn't own.
 Each entry says what breaks, how to see it, the workaround and where it lives, whether it is reported upstream, and what lets the workaround go.
 Each workaround's comment names its entry by heading, as [CONTRIBUTING.md](CONTRIBUTING.md#upstream) asks.
 
 rind's own bugs, deliberate choices, and plain version pins are not listed.
 "Reported" names an upstream issue rind filed or found; "no" means none is linked yet.
+
+## Forks
+
+Each upstream rind changes, with where its fork is vendored and where the list of rind's changes to it lives, as [CONTRIBUTING.md](CONTRIBUTING.md#upstream) asks.
+
+### s2n-bignum
+
+- **Fork:** `proofs/hol-light/s2n-bignum/`, the files rind changes or adds, which HOL Light loads ahead of the `thirdparty/s2n-bignum` submodule.
+- **Changes:** listed in [that directory's README](/proofs/hol-light/s2n-bignum/README.md): unmerged upstream specs and model additions, rind's specs, and rind's additions to the x86 model.
+- **Offered:** no.
 
 ## Compilers and linkers
 
