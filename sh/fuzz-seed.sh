@@ -73,12 +73,21 @@ done
 { printf '\x2a'; head -c 32 /dev/zero | tr '\0' '\1'; } >"$corpus/42-ones"
 seed 33 "$asn1/spki-rsa-2k.bin"
 
+# unhex: decode stdin's hex, failing on odd length or a non-hex digit, which
+# `xxd -r -p` would silently drop.
+unhex() {
+    local hex
+    hex=$(cat)
+    [[ $hex =~ ^([0-9A-Fa-f]{2})*$ ]] || { echo "fuzz-seed: malformed hex: $hex" >&2; exit 1; }
+    xxd -r -p <<<"$hex"
+}
+
 # wycheproof SELECTOR FILE JQ: a seed for each distinct key JQ finds in the
 # Wycheproof FILE, in hex: the selector byte, then the key.
 wycheproof() {
     local selector=$1 file=$2 filter=$3 key
     jq -r "[$filter] | unique[]" "thirdparty/wycheproof/testvectors_v1/$file" | while read -r key; do
-        printf %02x%s "$selector" "$key" | xxd -r -p >"$corpus/$selector-${file%_test.json}-${key: -16}"
+        printf %02x%s "$selector" "$key" | unhex >"$corpus/$selector-${file%_test.json}-${key: -16}"
     done
 }
 
@@ -126,7 +135,7 @@ verify() {
         | .tests[]
         | "\(.tcId) \($selector + ($key | hex16) + $key + (.sig | hex16) + .sig + .msg)"
     ' "$wycheproof/$file" | while read -r id seed; do
-        xxd -r -p <<<"$seed" >"$corpus/$selector-${file%_test.json}${sha:+-$sha}-$id"
+        unhex <<<"$seed" >"$corpus/$selector-${file%_test.json}${sha:+-$sha}-$id"
     done
 }
 
