@@ -634,8 +634,8 @@ bytes() {
         found=$(rind_symbol "$arch" "$path")
         relocation_data "${found%% *}" "$dir/$arch/$name.bin.relocs" "$dir/$arch/$name.bin.data" "$arch"
     done <"$dir/routines"
-    release scratch
     admin/prove-bytes check "$dir"
+    release scratch
 }
 if [[ -z $only || $only == bytes ]]; then
     bytes
