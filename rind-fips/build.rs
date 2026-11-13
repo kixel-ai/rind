@@ -33,18 +33,20 @@ fn main() {
     let target = env::var("TARGET").unwrap();
 
     // The module's tested environments are glibc Linux on x86_64 and
-    // aarch64, and its boundary is an ELF shared library. Elsewhere the crate
-    // builds empty, so a workspace build or test passes on every host.
+    // aarch64, and its boundary is a little-endian ELF64 shared library.
+    // Elsewhere, x32 and big-endian aarch64 included, the crate builds empty,
+    // so a workspace build or test passes on every host.
     println!("cargo::rustc-check-cfg=cfg(rind_fips_module)");
-    let os = env::var("CARGO_CFG_TARGET_OS").unwrap();
-    let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
+    let cfg = |name: &str| env::var(format!("CARGO_CFG_TARGET_{name}")).unwrap();
     let arch = match (
-        env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str(),
-        os.as_str(),
-        target_env.as_str(),
+        cfg("ARCH").as_str(),
+        cfg("OS").as_str(),
+        cfg("ENV").as_str(),
+        cfg("ENDIAN").as_str(),
+        cfg("POINTER_WIDTH").as_str(),
     ) {
-        ("x86_64", "linux", "gnu") => Arch::X86_64,
-        ("aarch64", "linux", "gnu") => Arch::Aarch64,
+        ("x86_64", "linux", "gnu", "little", "64") => Arch::X86_64,
+        ("aarch64", "linux", "gnu", "little", "64") => Arch::Aarch64,
         _ => {
             println!(
                 "cargo::warning=rind-fips builds its module only for glibc Linux on x86_64 and aarch64, so for {target} it is empty"

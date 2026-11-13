@@ -80,8 +80,29 @@ struct ForkHold {
     drbgs: rind::fips::DrbgHold,
 }
 
-std::thread_local! {
-    static FORK: core::cell::RefCell<Option<ForkHold>> = const { core::cell::RefCell::new(None) };
+/// The hold of the `fork` in progress. Only a thread holding both of its
+/// locks touches it, from its prepare handler to its parent or child
+/// handler, and those locks admit one such thread at a time. A static,
+/// unlike a thread local, still holds for a thread whose locals are torn
+/// down, as when a destructor forks.
+struct ForkSlot(core::cell::UnsafeCell<Option<ForkHold>>);
+
+// SAFETY: the locks it holds serialize every access, as above; the guards
+// it holds are released by the thread that took them, or by the child's
+// copy of it.
+unsafe impl Sync for ForkSlot {}
+
+static FORK: ForkSlot = ForkSlot(core::cell::UnsafeCell::new(None));
+
+impl ForkSlot {
+    /// Swaps the hold in the slot for `hold`.
+    ///
+    /// # Safety
+    /// This thread must hold the locks of the hold it takes or puts.
+    unsafe fn replace(&self, hold: Option<ForkHold>) -> Option<ForkHold> {
+        // SAFETY: the caller's contract, so no other thread accesses it.
+        unsafe { core::mem::replace(&mut *self.0.get(), hold) }
+    }
 }
 
 /// Holds the self-tests and the DRBGs across `fork`, so a child of a process
@@ -90,19 +111,21 @@ std::thread_local! {
 extern "C" fn fork_prepare() {
     let self_tests = selftest::hold();
     let drbgs = rind::fips::hold_drbgs();
-    // A thread whose locals are torn down forks without the hold, which
-    // drops here.
-    let _ = FORK.try_with(move |fork| fork.replace(Some(ForkHold { self_tests, drbgs })));
+    // SAFETY: this thread now holds both locks.
+    unsafe { FORK.replace(Some(ForkHold { self_tests, drbgs })) };
 }
 
 extern "C" fn fork_parent() {
-    let _ = FORK.try_with(|fork| fork.take());
+    // SAFETY: this thread's prepare handler took both locks.
+    drop(unsafe { FORK.replace(None) });
 }
 
 /// Also wipes and forgets the DRBGs of the parent's other threads, which the
 /// child copied but does not run.
 extern "C" fn fork_child() {
-    if let Ok(Some(hold)) = FORK.try_with(|fork| fork.take()) {
+    // SAFETY: the parent's forking thread, which this one copies, took both
+    // locks in its prepare handler.
+    if let Some(hold) = unsafe { FORK.replace(None) } {
         hold.drbgs.release_in_child();
     }
 }

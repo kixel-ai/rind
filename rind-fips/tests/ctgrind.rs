@@ -7,8 +7,10 @@
 //! Secret inputs are marked undefined, so memcheck flags any branch or memory
 //! index inside the module that depends on them. Outputs that are public by
 //! design are marked defined before the test checks them. The module's build
-//! of rind, with `rind/__ctgrind`, marks the keys it generates or parses and
-//! declassifies what it makes public.
+//! of rind, with `rind/__ctgrind`, adds its own marks, such as on RSA's
+//! private integers, and declassifies what it makes public. The DRBG's
+//! output is not marked, so a key the module generates is checked only once
+//! the test marks it, as `key_imports` marks each encoding.
 #![cfg(rind_fips_module)]
 #![cfg(feature = "__ctgrind")]
 
@@ -51,6 +53,18 @@ fn hmac_hkdf_and_pbkdf2() {
     public(tag.as_ref());
     assert_eq!(tag.as_ref(), expected.as_ref());
     assert!(hmac::verify(&key, MESSAGE, tag.as_ref()).is_ok());
+
+    // A streamed tag, and a clone forked partway, match the one-shot tag.
+    let mut context = hmac::Context::with_key(&key);
+    context.update(&MESSAGE[..3]);
+    let mut forked = context.clone();
+    context.update(&MESSAGE[3..]);
+    forked.update(&MESSAGE[3..]);
+    let (streamed, forked) = (context.sign(), forked.sign());
+    public(streamed.as_ref());
+    public(forked.as_ref());
+    assert_eq!(streamed.as_ref(), expected.as_ref());
+    assert_eq!(forked.as_ref(), expected.as_ref());
 
     let ikm = [0x0c; 32];
     secret(&ikm);
@@ -101,6 +115,46 @@ fn aes() {
         .unwrap();
     public(&*opened);
     assert_eq!(opened, MESSAGE);
+
+    // GCM with a truncated tag and an IV that is not 96 bits, which GCM
+    // hashes under the key into its counter.
+    let iv = [9u8; 7];
+    let reference = rind::aead::gcm::Key::new(
+        &rind::cipher::AES_256,
+        &[0x42; 32],
+        rind::aead::gcm::TagLength::Truncated96,
+    )
+    .unwrap();
+    let mut sealed = MESSAGE.to_vec();
+    reference
+        .seal_in_place_append_tag(
+            rind::aead::gcm::Iv::assume_unique_for_key(&iv).unwrap(),
+            b"aad",
+            &mut sealed,
+        )
+        .unwrap();
+    let gcm =
+        aead::gcm::Key::new(&cipher::AES_256, &key, aead::gcm::TagLength::Truncated96).unwrap();
+    let mut forged = sealed.clone();
+    *forged.last_mut().unwrap() ^= 1;
+    let opened = gcm
+        .open_in_place(
+            aead::gcm::Iv::assume_unique_for_key(&iv).unwrap(),
+            b"aad",
+            &mut sealed,
+        )
+        .unwrap();
+    public(&*opened);
+    assert_eq!(opened, MESSAGE);
+    assert_eq!(
+        gcm.open_in_place(
+            aead::gcm::Iv::assume_unique_for_key(&iv).unwrap(),
+            b"aad",
+            &mut forged,
+        )
+        .err(),
+        Some(rind_fips::Error::DecryptFailed),
+    );
 
     let mut block = [7u8; 16];
     cipher::Aes::new(&cipher::AES_256, &key)
@@ -220,6 +274,112 @@ fn signatures() {
             .verify(MESSAGE, signature.as_ref())
             .is_ok()
     );
+}
+
+/// Copies `der`, marking secret where it holds `private`.
+fn with_secret(der: &[u8], private: &[u8]) -> Vec<u8> {
+    // Searched for in copies the test may branch on.
+    let (haystack, needle) = (der.to_vec(), private.to_vec());
+    public(&haystack[..]);
+    public(&needle[..]);
+    let at = haystack
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .unwrap();
+    let der = der.to_vec();
+    secret(&der[at..at + private.len()]);
+    der
+}
+
+/// Copies the PKCS#1 `RSAPrivateKey` `der`, marking secret its private
+/// integers, d, p, q, dp, dq, and qinv, but for their sign byte and top
+/// word, whose bit length rind reads and the DER length nearly gives, and
+/// their last byte, whose parity rind checks and every valid key fixes.
+fn rsa_with_secret(der: &[u8]) -> Vec<u8> {
+    let der = der.to_vec();
+    // The length of the element at `at`'s tag and length, and its length.
+    let header = |at: usize| -> (usize, usize) {
+        match der[at + 1] {
+            len @ 0..0x80 => (2, usize::from(len)),
+            0x81 => (3, usize::from(der[at + 2])),
+            0x82 => (
+                4,
+                usize::from(u16::from_be_bytes([der[at + 2], der[at + 3]])),
+            ),
+            _ => unreachable!(),
+        }
+    };
+    let (mut at, _) = header(0);
+    for index in 0..9 {
+        let (head, len) = header(at);
+        if index >= 3 {
+            secret(&der[at + head + 9..at + head + len - 1]);
+        }
+        at += head + len;
+    }
+    der
+}
+
+/// Loads private keys from DER, marked secret where they hold the private
+/// key and public in their framing and public key.
+#[test]
+fn key_imports() {
+    let algorithm = &sign::ECDSA_P256_SHA256_ASN1;
+    let ecdsa = EcdsaKeyPair::generate(algorithm).unwrap();
+    let scalar = ecdsa.to_scalar().as_ref().to_vec();
+    let public_key = ecdsa.public_key().as_ref().to_vec();
+    let pkcs8 = with_secret(ecdsa.to_pkcs8().as_ref(), &scalar);
+    let loaded = EcdsaKeyPair::from_pkcs8(algorithm, &pkcs8).unwrap();
+    assert_eq!(loaded.public_key().as_ref(), public_key);
+    let sec1 = with_secret(ecdsa.to_sec1().as_ref(), &scalar);
+    let loaded = EcdsaKeyPair::from_sec1(algorithm, &sec1).unwrap();
+    assert_eq!(loaded.public_key().as_ref(), public_key);
+
+    // A public key that is not the private key's fails the consistency
+    // check. Each encoding ends with it.
+    let other = EcdsaKeyPair::generate(algorithm).unwrap();
+    let mut mismatched = pkcs8;
+    let at = mismatched.len() - public_key.len();
+    assert_eq!(mismatched[at..], public_key);
+    mismatched[at..].copy_from_slice(other.public_key().as_ref());
+    assert!(EcdsaKeyPair::from_pkcs8(algorithm, &mismatched).is_err());
+
+    let ed25519 = Ed25519KeyPair::generate().unwrap();
+    let seed = ed25519.to_seed().as_ref().to_vec();
+    let public_key = ed25519.public_key().as_ref().to_vec();
+    for pkcs8 in [ed25519.to_pkcs8(), ed25519.to_pkcs8v1()] {
+        let pkcs8 = with_secret(pkcs8.as_ref(), &seed);
+        let loaded = Ed25519KeyPair::from_pkcs8(&pkcs8).unwrap();
+        assert_eq!(loaded.public_key().as_ref(), public_key);
+    }
+    let mut mismatched = with_secret(ed25519.to_pkcs8().as_ref(), &seed);
+    let at = mismatched.len() - public_key.len();
+    assert_eq!(mismatched[at..], public_key);
+    mismatched[at..].copy_from_slice(Ed25519KeyPair::generate().unwrap().public_key().as_ref());
+    assert!(Ed25519KeyPair::from_pkcs8(&mismatched).is_err());
+
+    let ml_dsa = MlDsaKeyPair::<MlDsa65>::generate().unwrap();
+    let seed = ml_dsa.to_seed().unwrap().as_ref().to_vec();
+    let pkcs8 = with_secret(ml_dsa.to_pkcs8().as_ref(), &seed);
+    let loaded = MlDsaKeyPair::<MlDsa65>::from_pkcs8(&pkcs8).unwrap();
+    assert_eq!(loaded.public_key().as_ref(), ml_dsa.public_key().as_ref());
+
+    // PKCS#1's `RSAPrivateKey` is the OCTET STRING that ends PKCS#8's
+    // 26-byte framing for a 2048-bit key.
+    let rsa = RsaKeyPair::generate(rind_fips::rsa::KeySize::Rsa2048).unwrap();
+    let public_key = rsa.to_spki();
+    let pkcs8 = rsa.to_pkcs8();
+    let pkcs8 = [
+        &pkcs8.as_ref()[..26],
+        &rsa_with_secret(&pkcs8.as_ref()[26..]),
+    ]
+    .concat();
+    for loaded in [
+        RsaKeyPair::from_pkcs8(&pkcs8),
+        RsaKeyPair::from_pkcs1(&pkcs8[26..]),
+    ] {
+        assert_eq!(loaded.unwrap().to_spki().as_ref(), public_key.as_ref());
+    }
 }
 
 #[test]

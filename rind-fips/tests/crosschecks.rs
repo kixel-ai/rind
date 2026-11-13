@@ -212,15 +212,30 @@ fn rsa() {
 }
 
 #[test]
-fn ml_dsa_65() {
-    use aws_lc_rs::signature::{ML_DSA_65, ML_DSA_65_SIGNING, PqdsaKeyPair};
-    use rind_fips::signature::sign::{MlDsa65, MlDsaKeyPair};
+fn ml_dsa() {
+    use aws_lc_rs::signature::{
+        ML_DSA_44, ML_DSA_44_SIGNING, ML_DSA_65, ML_DSA_65_SIGNING, ML_DSA_87, ML_DSA_87_SIGNING,
+    };
+    use rind_fips::signature::sign::{MlDsa44, MlDsa65, MlDsa87};
+
+    check::<MlDsa44>(&ML_DSA_44_SIGNING, &ML_DSA_44, &verify::ML_DSA_44);
+    check::<MlDsa65>(&ML_DSA_65_SIGNING, &ML_DSA_65, &verify::ML_DSA_65);
+    check::<MlDsa87>(&ML_DSA_87_SIGNING, &ML_DSA_87, &verify::ML_DSA_87);
+}
+
+fn check<P: sign::MlDsaParameterSet>(
+    theirs_signing: &'static theirs::PqdsaSigningAlgorithm,
+    theirs_verifying: &'static theirs::PqdsaVerificationAlgorithm,
+    ours_verifying: &'static signature::VerificationAlgorithm,
+) {
+    use aws_lc_rs::signature::PqdsaKeyPair;
+    use rind_fips::signature::sign::MlDsaKeyPair;
 
     for _ in 0..ROUNDS {
         // One seed gives both sides the same key and encodings.
         let seed = random(32);
-        let theirs_key = PqdsaKeyPair::from_seed(&ML_DSA_65_SIGNING, &seed).unwrap();
-        let ours = MlDsaKeyPair::<MlDsa65>::from_seed(&seed).unwrap();
+        let theirs_key = PqdsaKeyPair::from_seed(theirs_signing, &seed).unwrap();
+        let ours = MlDsaKeyPair::<P>::from_seed(&seed).unwrap();
         let public = theirs_key.public_key().as_ref().to_vec();
         assert_eq!(ours.public_key().as_ref(), public);
         assert_eq!(
@@ -232,12 +247,12 @@ fn ml_dsa_65() {
         // than matching its bytes.
         let message = random(100);
         let signature = ours.sign(&message).unwrap();
-        theirs::UnparsedPublicKey::new(&ML_DSA_65, &public)
+        theirs::UnparsedPublicKey::new(theirs_verifying, &public)
             .verify(&message, signature.as_ref())
             .unwrap();
-        let mut theirs_signature = vec![0; ML_DSA_65_SIGNING.signature_len()];
+        let mut theirs_signature = vec![0; theirs_signing.signature_len()];
         theirs_key.sign(&message, &mut theirs_signature).unwrap();
-        signature::PublicKey::new(&verify::ML_DSA_65, &public)
+        signature::PublicKey::new(ours_verifying, &public)
             .unwrap()
             .verify(&message, &theirs_signature)
             .unwrap();

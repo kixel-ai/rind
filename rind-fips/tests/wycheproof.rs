@@ -1250,6 +1250,7 @@ fn ml_dsa<P: sign::MlDsaParameterSet>(
     }
     assert_ne!(signed, 0);
 
+    let mut expanded = 0;
     for group in read::<MlDsaFile>(noseed).groups {
         let der = ml_dsa_pkcs8(arc, &der(0x04, &group.private_key));
         let Ok(key) = sign::MlDsaKeyPair::<P>::from_pkcs8(&der) else {
@@ -1264,7 +1265,22 @@ fn ml_dsa<P: sign::MlDsaParameterSet>(
         // A key loaded in its expanded form has no seed, so it writes that.
         assert!(key.to_seed().is_none());
         assert_eq!(key.to_pkcs8().as_ref(), der);
+
+        // It signs from that form what its public key verifies.
+        let verifier = signature::PublicKey::new(algorithm, &public_key).unwrap();
+        for test in group.tests.iter().filter(|test| test.pure()) {
+            let signature = key.sign(&test.msg).unwrap();
+            verifier.verify(&test.msg, signature.as_ref()).unwrap();
+            assert_eq!(
+                verifier.verify(&test.msg, &test.sig).is_ok(),
+                test.result == ExpectedResult::Valid,
+                "{noseed} {}",
+                test.id
+            );
+            expanded += 1;
+        }
     }
+    assert_ne!(expanded, 0);
 }
 
 #[test]

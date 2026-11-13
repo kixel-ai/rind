@@ -7,6 +7,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use rind::Error;
 pub(crate) use rind::fips::SelfTest;
 use rind::fips::{broken, fail};
 
@@ -67,4 +68,21 @@ pub(crate) fn pct(name: &str, passed: impl FnOnce() -> bool) {
     if broken(name) || !passed() {
         fail(name);
     }
+}
+
+/// A pairwise consistency test that first draws from the DRBG, as signing or
+/// encapsulating does: `draw`'s [`Error::RngFailed`] is returned, as any
+/// service returns it, rather than taken for an inconsistent key. Anything
+/// else `draw` or `check` finds fails as [`pct`] does.
+pub(crate) fn pct_drawing<T>(
+    name: &str,
+    draw: impl FnOnce() -> Result<T, Error>,
+    check: impl FnOnce(T) -> bool,
+) -> Result<(), Error> {
+    let drawn = draw();
+    if let Err(Error::RngFailed) = drawn {
+        return Err(Error::RngFailed);
+    }
+    pct(name, || drawn.is_ok_and(check));
+    Ok(())
 }
