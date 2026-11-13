@@ -247,6 +247,6 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 ### Ubuntu's AppArmor denies Intel SDE's sandbox
 
 - **Breaks:** the flake's `sde` runs Intel's unmodified binaries in a bubblewrap sandbox, which needs the unprivileged user namespaces Ubuntu's AppArmor denies a program it has no profile for.
-- **Workaround:** each job that runs `sde` (`coverage.yml`, `ctgrind.yml`, `fuzz.yml`, `mutants.yml`, `x86-cpu.yml`) first sets `kernel.apparmor_restrict_unprivileged_userns=0`.
+- **Workaround:** each job that runs `sde` (`coverage.yml`, `ctgrind.yml`, `fuzz.yml`, `x86-cpu.yml`) first sets `kernel.apparmor_restrict_unprivileged_userns=0`.
 - **Reported:** no.
 - **Goes when:** the runner image allows the Nix store's bubblewrap a user namespace.
