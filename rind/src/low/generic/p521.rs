@@ -319,10 +319,12 @@ pub(crate) fn p521_public_twin_multiply(res: &mut [u64; 27], g: &Naf<'_>, p: &Na
                 None => Some([x, y, one]),
                 Some(acc) => {
                     let start = jmixadd_start(&acc, &x, &y);
-                    match (public_is_zero(&start.xd), public_is_zero(&start.yd)) {
-                        (false, _) => Some(jmixadd_finish(&acc, &start)),
-                        (true, true) => Some(jdouble(&acc)),
-                        (true, false) => None,
+                    if !public_is_zero(&start.xd) {
+                        Some(jmixadd_finish(&acc, &start))
+                    } else if public_is_zero(&start.yd) {
+                        Some(jdouble(&acc))
+                    } else {
+                        None
                     }
                 }
             };
