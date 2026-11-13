@@ -37,9 +37,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  bytes:
+  # Each target's HOL Light proofs run in their own job, so the wall time is
+  # the slower target's rather than the sum. Each limit only catches a hang:
+  # it sits well above the target's measured time, with room for the proofs
+  # queued next, and `admin/prove` prints each proof's time to show where it
+  # goes.
+  hol-light-aarch64:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -50,23 +55,12 @@ jobs:
       - name: Bytes
         run: nix develop .#hol-light --command admin/prove bytes
 
-  # A job per target, since each compiles its own program and they share only
-  # the s2n-bignum model. Each limit, which only catches a hang, leaves room
-  # over the target's measured time for the proofs planned next.
-  hol-light:
-    name: hol-light (${{ matrix.arch }})
+      - name: Prove
+        run: nix develop .#hol-light --command admin/prove hol-light aarch64
+
+  hol-light-x86_64:
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ matrix.timeout }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            timeout: 60
-          - arch: aarch64
-            timeout: 30
-          - arch: armv7
-            timeout: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -75,7 +69,20 @@ jobs:
       - uses: ./.github/actions/nix
 
       - name: Prove
-        run: nix develop .#hol-light --command admin/prove hol-light ${{ matrix.arch }}
+        run: nix develop .#hol-light --command admin/prove hol-light x86_64
+
+  hol-light-armv7:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      - name: Prove
+        run: nix develop .#hol-light --command admin/prove hol-light armv7
 
   cosim:
     runs-on: ubuntu-24.04
