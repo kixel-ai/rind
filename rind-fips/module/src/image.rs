@@ -98,6 +98,10 @@ pub(crate) fn kind(arch: Arch, kind: u32) -> Option<Kind> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(
+    dead_code,
+    reason = "build.rs hashes either architecture's module; the module only its own"
+)]
 pub(crate) enum Arch {
     X86_64,
     Aarch64,
