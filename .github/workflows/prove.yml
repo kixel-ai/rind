@@ -39,7 +39,10 @@ concurrency:
 jobs:
   hol-light:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # The limit only catches a hang: x86_64's SHA-NI proofs took the job past
+    # 30 minutes on slower runners. quest/m2/confidence/prove-time-limit.md
+    # splits it.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
