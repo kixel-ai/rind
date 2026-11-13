@@ -243,6 +243,13 @@ def p256Represents (P : P256Point) (xyz : Nat × Nat × Nat) : Prop :=
     p256OfJacobian (p256RInv * xyz.1 % p256) (p256RInv * xyz.2.1 % p256)
       (p256RInv * xyz.2.2 % p256) = P
 
+/-- `row` holds G, 2G, ..., 32G, the multiples the twin multiplication of
+ECDSA verification looks up, in its first 256 words: entry `j`, counting
+from 1, is jG in Montgomery form. Each target's generator table's first row
+is one, whatever its other rows and its width. -/
+def p256GRow (row : List U64) : Prop :=
+  256 ≤ row.length ∧ ∀ j, 1 ≤ j → j ≤ 32 → p256Represents2 (p256Pow p256G j) (pairNat (row.drop (8 * (j - 1))))
+
 /-! ## ChaCha20 and QUIC header protection -/
 
 namespace chacha20

@@ -1,4 +1,4 @@
-import Rind.Aarch64.SignatureDispatch
+import Rind.X86_64.SignatureDispatch
 open Aeneas Aeneas.Std Result
 
 /-!
@@ -579,7 +579,7 @@ Drops are not modelled, as everywhere in the translation.
 `SIGNATURE_MAX_LEN` is RSA's largest modulus, 8192 / 8 = 1024.
 -/
 
-namespace rind.aarch64
+namespace rind.x86_64
 
 /-- The loop of `p256::PrivateKey::generate(rng)`, with `n` draws left. -/
 def mid.p256.PrivateKey.generate_from_loop {T : Type} (inst : mid.rng.RandomSource T) :
@@ -746,4 +746,4 @@ def high.signature.EcdsaKeyPair.sign (self : high.signature.EcdsaKeyPair) (messa
       high.ecdsa.SigningKey.sign P256C Sha256Sig signing message output
   | .Other sign _ => sign message
 
-end rind.aarch64
+end rind.x86_64

@@ -403,6 +403,11 @@ opaque low.x86_64.bignum_mod_n384.bignum_mod_n384
 opaque high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
   : Result high.asn1.ObjectId
 
+/-- P-256's ECDSA key generation, which the signing theorems model. -/
+opaque high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.generate_random_key
+  {T0 : Type _} (midrngRandomSourceInst : mid.rng.RandomSource T0) :
+  T0 → Result ((core.result.Result mid.p256.StaticPrivateKey error.Error) × T0)
+
 opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
   : Result high.asn1.ObjectId
 

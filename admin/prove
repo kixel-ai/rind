@@ -492,7 +492,7 @@ ecdsa_items() {
         'impl EcdsaKeyPair {' '    pub static ECDSA_P256_SHA256_FIXED: EcdsaSigningAlgorithm' \
         '    pub static ECDSA_P256_SHA256_FIXED: VerificationAlgorithm'
 }
-check_quote Aarch64/EcdsaDispatch ecdsa_items
+check_quote X86_64/EcdsaDispatch ecdsa_items
 check_quote X86_64/DigestAlgorithm items rind/src/high/digest.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static MD5:' 'pub static SHA1:' 'pub static SHA256:' 'pub static SHA384:' 'pub static SHA512:' \
     'pub static SHA512_256:' 'pub static SHA3_256:' 'pub static SHA3_384:' 'pub static SHA3_512:' \
@@ -636,8 +636,10 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # with the signature API's ECDSA key pairs and statics, which hold function
 # pointers too. The generator table is translated, so
 # `proofs/Rind/Aarch64/P256Table.lean` can prove it holds what s2n-bignum's
-# proof assumes; x86_64's `base_multiply`, aws-lc's, which no proof covers
-# yet, is opaque. HMAC's keyed states are translated over any hash, and its
+# proof assumes, and each target's `P256Base.lean` that its first row holds G
+# to 32G, which ECDSA verification looks up. x86_64's `base_multiply`, rind's
+# Booth driver over aws-lc's mixed addition, is opaque, and
+# `proofs/Rind/X86_64/P256Base.lean` states it. HMAC's keyed states are translated over any hash, and its
 # `Key` and `Context`, which hold function pointers, are not.
 # On x86_64, RSA verification is translated from `high::rsa::VerifyingKey`
 # down to `low::posint` and the Montgomery products' dispatch in
@@ -741,7 +743,9 @@ extract() {
         --dest-file "$PWD/../$out/$arch.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
     rm -rf "$out/lean"
-    aeneas -backend lean -split-files -abort-on-error \
+    # Above its default 2048, which the `global_simps` attribute of x86_64's
+    # 512-word generator table rows exceeds.
+    aeneas -backend lean -split-files -abort-on-error -max-recdepth 4096 \
         -no-progress-bar -dest "$out/lean" -subdir "Rind/$dir" \
         -namespace "rind.$arch" "$out/$arch.llbc"
     cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
@@ -966,9 +970,12 @@ mkdir -p proofs/Rind/Portable
 cp "$out/lean/Rind/Portable/Types.lean" "$out/lean/Rind/Portable/Funs.lean" proofs/Rind/Portable/
 
 mkdir -p proofs/Rind/Aarch64/Kdf
+# P-256's generator multiplication and its table differ per target, so each
+# target has its own `P256Base` stating it, and `P256KeyCheck` for the key
+# check x86_64 shortcuts; key generation and ECDSA above them are shared.
 for file in Dispatch P256Dispatch P256Agree X25519 P384 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
-    CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes; do
+    CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes P256 EcdsaDispatch P256Ecdsa P256Signature; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 # The AEAD model imports nothing aarch64 has, and no aarch64 translation reaches it.
