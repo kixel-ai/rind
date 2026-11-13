@@ -184,17 +184,16 @@ where `N` is not a multiple of 4, the tail, and the counter steps by `ones`. -/
 def low.x86_64.bignum_point_select.select_avx2_row (N V : Nat)
     (desired ones : core.core_arch.x86.__m256i) (st : Avx2State) (row : List U64) :
     Result Avx2State := do
-  let (index, acc, tail) := st
-  let mask ← core.core_arch.x86.avx2._mm256_cmpeq_epi32 index desired
-  let index ← core.core_arch.x86.avx2._mm256_add_epi32 index ones
+  let mask ← core.core_arch.x86.avx2._mm256_cmpeq_epi32 st.1 desired
+  let index ← core.core_arch.x86.avx2._mm256_add_epi32 st.1 ones
   let acc ← (List.range V).mapM fun i => do
     let word ← core.core_arch.x86.avx2._mm256_and_si256 (load256 row (4 * i)) mask
-    core.core_arch.x86.avx2._mm256_xor_si256 (acc.getD i 0) word
+    core.core_arch.x86.avx2._mm256_xor_si256 (st.2.1.getD i 0) word
   let tail ← if N > 4 * V then do
       let low ← core.core_arch.x86.avx._mm256_castsi256_si128 mask
       let word ← core.core_arch.x86.sse2._mm_and_si128 (load128 row (4 * V)) low
-      core.core_arch.x86.sse2._mm_xor_si128 tail word
-    else ok tail
+      core.core_arch.x86.sse2._mm_xor_si128 st.2.2 word
+    else ok st.2.2
   ok (index, acc, tail)
 
 /-- `select_avx2::<N, V>`, with `_select_avx2` inlined. -/
@@ -206,10 +205,10 @@ def low.x86_64.bignum_point_select.select_avx2 (N : Std.Usize) (V : Nat)
     let tail ← core.core_arch.x86.sse2._mm_setzero_si128
     let desired ← core.core_arch.x86.avx._mm256_set1_epi32 ⟨index.bv.setWidth 32⟩
     let ones ← core.core_arch.x86.avx._mm256_set1_epi32 1#i32
-    let (_, acc, tail) ← (chunksOf N.val table.val).foldlM
+    let st ← (chunksOf N.val table.val).foldlM
       (low.x86_64.bignum_point_select.select_avx2_row N.val V desired ones)
       (ones, List.replicate V zero, tail)
-    let out := acc.flatMap store256 ++ if N.val > 4 * V then store128 tail else []
+    let out := st.2.1.flatMap store256 ++ if N.val > 4 * V then store128 st.2.2 else []
     if h : out.length = N.val then ok (Std.Array.from out h) else fail .panic
   else fail .panic
 
@@ -219,12 +218,11 @@ def low.x86_64.bignum_point_select.select_sse2_row (V : Nat)
     (desired ones : core.core_arch.x86.__m128i)
     (st : core.core_arch.x86.__m128i × List core.core_arch.x86.__m128i) (row : List U64) :
     Result (core.core_arch.x86.__m128i × List core.core_arch.x86.__m128i) := do
-  let (index, acc) := st
-  let mask ← core.core_arch.x86.sse2._mm_cmpeq_epi32 index desired
-  let index ← core.core_arch.x86.sse2._mm_add_epi32 index ones
+  let mask ← core.core_arch.x86.sse2._mm_cmpeq_epi32 st.1 desired
+  let index ← core.core_arch.x86.sse2._mm_add_epi32 st.1 ones
   let acc ← (List.range V).mapM fun i => do
     let word ← core.core_arch.x86.sse2._mm_and_si128 (load128 row (2 * i)) mask
-    core.core_arch.x86.sse2._mm_xor_si128 (acc.getD i 0) word
+    core.core_arch.x86.sse2._mm_xor_si128 (st.2.getD i 0) word
   ok (index, acc)
 
 /-- `select_sse2::<N, V>`. -/
@@ -234,9 +232,9 @@ def low.x86_64.bignum_point_select.select_sse2 (N : Std.Usize) (V : Nat)
     let zero ← core.core_arch.x86.sse2._mm_setzero_si128
     let desired ← core.core_arch.x86.sse2._mm_set1_epi32 ⟨index.bv.setWidth 32⟩
     let ones ← core.core_arch.x86.sse2._mm_set1_epi32 1#i32
-    let (_, acc) ← (chunksOf N.val table.val).foldlM
+    let st ← (chunksOf N.val table.val).foldlM
       (low.x86_64.bignum_point_select.select_sse2_row V desired ones) (ones, List.replicate V zero)
-    let out := acc.flatMap store128
+    let out := st.2.flatMap store128
     if h : out.length = N.val then ok (Std.Array.from out h) else fail .panic
   else fail .panic
 
