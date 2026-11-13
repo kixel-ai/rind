@@ -6,9 +6,9 @@ The portable backend's SHA-256 and SHA-512 block functions, libcrux-sha2's `sha2
 
 ## Plan
 
-Follows [the portable backend's proofs](https://github.com/moq-dev/rind/pull/649), which took the axiom route because Charon cannot translate the two functions.
+Follows [the portable backend's proofs](https://github.com/kixel-ai/rind/pull/649), which took the axiom route because Charon cannot translate the two functions.
 
-Decided 2026-11-12 (maintainer, /quest-unblock): ✅ approve the HACL* axioms route for [moq-dev/rind#649](https://github.com/moq-dev/rind/pull/649), so two restated F* theorems join the trust base, and replace them here once Charon is fixed (rejected: hold that PR until Charon is fixed).
+Decided 2026-11-12 (maintainer, /quest-unblock): ✅ approve the HACL* axioms route for [kixel-ai/rind#649](https://github.com/kixel-ai/rind/pull/649), so two restated F* theorems join the trust base, and replace them here once Charon is fixed (rejected: hold that PR until Charon is fixed).
 
 - The blocker: libcrux-macros' `unroll_for!` unrolls each function's 64 or 80 rounds into one deeply nested body, and Charon panics translating it when it reaches its fixed `MAX_STACK_DEPTH` of 1024 (`charon/src/utils.rs`). `admin/prove`'s portable pass therefore leaves them opaque, as Charon leaves other crates' bodies.
 - Once Charon translates them, have `admin/prove`'s portable pass translate the two bodies and prove each against `Rind/HashSpec.lean`'s `sha256.compress` and `Rind/Sha2.lean`'s `processBlock`, as `Rind/X86_64/ChaCha20.lean` proves HACL*'s ChaCha20 rounds. The axioms' statements are the theorems to prove, so nothing above `Hacl.lean` changes.

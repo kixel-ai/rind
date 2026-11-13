@@ -13,6 +13,16 @@ build on, from s2n-bignum, Vale, and aws-lc, is in rind's build the object
 code its own proof is about. The `prove` workflow runs it nightly and on pull
 requests that change rind's source or these files.
 
+`lakefile.toml` turns on Lake's artifact cache, which lives in the Lean
+toolchain's directory under `~/.elan` and every checkout of a user shares, so
+a new worktree hard-links, or across filesystems copies, the Mathlib and
+Aeneas builds and the unchanged modules another checkout already fetched or
+built rather than unpacking or building its own. The cache outlives the
+worktrees: uninstalling the old toolchain after a bump with `elan toolchain
+uninstall` drops it, and `lake cache clean` in `proofs/` empties it at any
+time, since each checkout keeps its own links and its next build puts them
+back.
+
 ## HOL Light proofs
 
 `hol-light/<arch>/` holds rind's own [HOL Light](https://hol-light.github.io/)
@@ -26,6 +36,21 @@ proof lists the bytes and fails unless the build's are the same. An axiom in
 `Rind/<Arch>/` that restates one of these theorems names the file, whose
 revision is rind's commit. `nix develop .#hol-light --command admin/prove
 hol-light` checks them alone, in nixpkgs' HOL Light.
+
+To develop one, `nix develop .#hol-light --command admin/prove session
+<arch> [<file>]` starts a HOL Light session, on Linux, in which a proof
+loads as `admin/prove hol-light` compiles it: s2n-bignum's `base.ml` for
+`x86_64` or `aarch64` loaded, on the same load path, in the directory
+holding the object code the proofs read. Given a file, such as
+`proofs/hol-light/x86_64/ct_compare_16.ml`, it loads it and exits, failing if
+any of it fails; otherwise it reads OCaml from stdin. Loading `base.ml`
+takes minutes, so the first session on a set of inputs (HOL Light, DMTCP,
+the submodule's commit, and what `hol-light/s2n-bignum/` carries)
+checkpoints it with DMTCP into an image of about 400 MB in
+`~/.cache/rind/hol-light/`, which every later session on those inputs, in
+any worktree, restores in under a second. Like `admin/prove`, a session
+first checks the submodule out at the commit rind pins, and it refuses one
+with uncommitted changes, which that commit does not name.
 
 - `aarch64/bignum_eq.ml`: `BIGNUM_EQ_CORRECT`, s2n-bignum's proof of
   `bignum_eq` on the block in `low::aarch64::bignum_eq::bignum_eq`, which is
