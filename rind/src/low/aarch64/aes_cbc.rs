@@ -45,6 +45,7 @@ pub(crate) fn decrypt(key: &AesDecKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
 /// round key.
 // Loops by index, each in its own function: Aeneas translates no loop that
 // writes through an iterator's references, nor one nested in another.
+#[allow(clippy::needless_range_loop)]
 #[target_feature(enable = "aes,neon")]
 fn hw_encrypt<const N: usize>(
     round_keys: &[uint8x16_t; N],
@@ -98,6 +99,7 @@ fn aese_chained(y: uint8x16_t, b: uint8x16_t) -> uint8x16_t {
 /// units pipeline them; the rest go one at a time. The round keys are the
 /// equivalent inverse cipher's, as `hw_decrypt_block` takes them, and the
 /// last joins the chaining block off the critical path.
+#[allow(clippy::needless_range_loop)]
 #[target_feature(enable = "aes,neon")]
 fn hw_decrypt<const N: usize>(
     round_keys: &[uint8x16_t; N],
@@ -121,6 +123,7 @@ fn hw_decrypt<const N: usize>(
 
 /// [`hw_decrypt`] of eight blocks chained from `prev`, returning the last
 /// ciphertext block, the next chaining block.
+#[allow(clippy::needless_range_loop)]
 #[inline]
 #[target_feature(enable = "aes,neon")]
 fn decrypt_8<const N: usize>(
@@ -149,6 +152,7 @@ fn decrypt_8<const N: usize>(
 }
 
 /// An `aesd` and `aesimc` round of each of eight blocks.
+#[allow(clippy::needless_range_loop)]
 #[inline]
 #[target_feature(enable = "aes,neon")]
 fn decrypt_round_8(mut b: [uint8x16_t; 8], round_key: uint8x16_t) -> [uint8x16_t; 8] {

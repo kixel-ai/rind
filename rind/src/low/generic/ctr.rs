@@ -23,6 +23,7 @@ pub(crate) trait Ctr8 {
 ///
 /// A trait rather than a closure, since Aeneas cannot model a closure that
 /// writes through a reference it takes.
+#[allow(clippy::needless_range_loop)]
 #[cfg(rind_backend = "aarch64")]
 pub(crate) fn by8(key: &impl Ctr8, nonce: &[u8; 12], counter: u32, inout: &mut [u8]) {
     let (chunks, tail) = inout.as_chunks_mut::<128>();

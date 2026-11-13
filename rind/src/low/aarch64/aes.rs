@@ -622,6 +622,7 @@ pub(crate) fn _aes192_8_blocks(
 
 /// Eight blocks under any key size, by its number of round keys,
 /// interleaved as [`_aes128_8_blocks`] does.
+#[allow(clippy::needless_range_loop)]
 #[target_feature(enable = "aes")]
 #[inline]
 pub(crate) fn _aes_8_blocks<const N: usize>(
@@ -640,6 +641,7 @@ pub(crate) fn _aes_8_blocks<const N: usize>(
 }
 
 /// An `aese` and `aesmc` round of each of eight blocks.
+#[allow(clippy::needless_range_loop)]
 #[target_feature(enable = "aes")]
 #[inline]
 fn _aes_round_8(mut b: [uint8x16_t; 8], round_key: uint8x16_t) -> [uint8x16_t; 8] {
