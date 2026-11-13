@@ -14,6 +14,7 @@ Every entry in `admin/adapter-api.drift` is gone, and the file with it: the adap
 
 Decisions (2026-11-13):
 
+- ✅ Keep this follow-up, picked with the check's PR (#698) (rejected: drop).
 - ✅ The `drift` lists may only shrink, so new drift fails now (rejected: fix all drift before the check lands).
 - ✅ rind-rustls's `hpke` suite type is drift to fix, since a divergence is a bug; match upstream's `&HpkeAwsLcRs<..>` type and drop the README note (rejected: move it to `omitted`).
 
