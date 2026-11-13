@@ -513,7 +513,7 @@ theorem kek_unwrap_spec (h : RunsAesHw) (hheld : low.entry.Entry.assert_held = o
   step as ⟨b, hb⟩
   cases b
   · have h8 : ¬ wrapped.length % 8 = 0 := by simpa using hb
-    simp only [h8, not_false_eq_true, ite_true, Bool.false_eq_true, ite_false, WP.spec_ok]
+    simp [h8]
   have h8 : wrapped.length % 8 = 0 := by simpa using hb
   simp only [ite_true, h8, ne_eq, not_true_eq_false, ite_false]
   step as ⟨i4, hi4⟩
@@ -531,8 +531,8 @@ theorem kek_unwrap_spec (h : RunsAesHw) (hheld : low.entry.Entry.assert_held = o
   step as ⟨key1, hkey1⟩
   subst key1
   step with kek_key_spec hk as ⟨s, hsl, hsb⟩
-  step with dec_key_new_spec h alg s hsl as ⟨adk, hadk⟩
-  have hdk : AesDecIs alg kek adk := by rw [← hsb]; exact hadk
+  step with dec_key_new_spec h alg s hsl as ⟨adk, hwk, hadk1, hadk2⟩
+  have hdk : AesDecIs alg kek adk := ⟨hwk, hadk1, by rw [← hsb]; exact hadk2⟩
   simp only [core.mem.manually_drop.ManuallyDrop.new, core.mem.manually_drop.ManuallyDrop.Insts.CoreOpsDerefDeref.deref,
     bind_ok]
   step as ⟨r, hr⟩
@@ -554,7 +554,6 @@ theorem kek_unwrap_spec (h : RunsAesHw) (hheld : low.entry.Entry.assert_held = o
       if bvs ua.val = icv1 then some (chunks ur).flatten else none := by
     have ht : (bvs wrapped.val).take 8 = bvs arr.val := by rw [harr, hwav]; simp [bvs, List.map_take]
     have hd : (bvs wrapped.val).drop 8 = bvs wc.val := by rw [hwcv]; simp [bvs, List.map_drop]
-    rw [bvs_IV] at hub
     rw [hch, ← hn8] at hub
     simp only [kwAD, kwWInv, ht, hd, ← hub]
   rw [hAD]
