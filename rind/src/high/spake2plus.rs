@@ -1283,6 +1283,68 @@ mod tests {
         );
     }
 
+    /// A share loads only as the uncompressed encoding of a point on P-256,
+    /// and a label of exactly `MAX_LABEL` bytes is accepted.
+    #[test]
+    fn share_and_label_edges() {
+        let prover = ProverSecrets::new(&[0x11; 40], &[0x22; 40]).unwrap();
+        let (share_p, _) = prover.start(&RFC9383, b"ctx", b"a", b"b").unwrap();
+        let good = share_p.bytes;
+        let rejected = |bytes: &[u8]| Share::<Rfc9383>::from_bytes(bytes).is_err();
+        assert!(!rejected(&good));
+
+        // P-256's field prime, big-endian.
+        let mut p = [0u8; 32];
+        p[..4].copy_from_slice(&[0xff; 4]);
+        p[7] = 1;
+        p[20..].copy_from_slice(&[0xff; 12]);
+        // A coordinate at p or above is not canonical.
+        for coordinate in [1..33, 33..65] {
+            let mut at_p = good;
+            at_p[coordinate.clone()].copy_from_slice(&p);
+            assert!(rejected(&at_p));
+            let mut above = good;
+            above[coordinate].copy_from_slice(&[0xff; 32]);
+            assert!(rejected(&above));
+        }
+        // Only the uncompressed tag, and not the compressed encoding.
+        for tag in [0x00, 0x02, 0x03, 0x06, 0x07] {
+            let mut tagged = good;
+            tagged[0] = tag;
+            assert!(rejected(&tagged));
+        }
+        let mut compressed = [0u8; 33];
+        compressed[0] = 0x02 | (good[64] & 1);
+        compressed[1..].copy_from_slice(&good[1..33]);
+        assert!(rejected(&compressed));
+        // (0, 0), the identity's affine image, and SEC1's identity byte.
+        let mut zero = [0u8; 65];
+        zero[0] = 0x04;
+        assert!(rejected(&zero));
+        assert!(rejected(&[0x00]));
+        assert!(rejected(&[]));
+
+        let max: &[u8] = &[0x61; MAX_LABEL];
+        let over: &[u8] = &[0x61; MAX_LABEL + 1];
+        let none: &[u8] = b"";
+        for (context, id_p, id_v) in [(max, none, none), (none, max, max)] {
+            assert!(prover.start(&RFC9383, context, id_p, id_v).is_ok());
+        }
+        for (context, id_p, id_v) in [(over, none, none), (none, over, none), (none, none, over)] {
+            assert_eq!(
+                prover.start(&RFC9383, context, id_p, id_v).err(),
+                Some(Error::WrongLength)
+            );
+        }
+        let verifier = VerifierRecord::from_w1(&[0x11; 40], &[0x22; 40]).unwrap();
+        let (share_p, _) = prover.start(&RFC9383, max, max, max).unwrap();
+        assert!(verifier.start(&RFC9383, max, max, max, &share_p).is_ok());
+        assert_eq!(
+            verifier.start(&RFC9383, over, none, none, &share_p).err(),
+            Some(Error::WrongLength)
+        );
+    }
+
     /// A stored record loads only as uncompressed `L` on the curve.
     ///
     /// A zero `w0` is a residue, not a malformed encoding. `zero_residue_fails_closed`
