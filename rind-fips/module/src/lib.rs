@@ -21,6 +21,7 @@
 #![cfg(rind_fips)]
 
 mod abi;
+mod aes;
 mod alloc;
 mod digest;
 mod ids;
