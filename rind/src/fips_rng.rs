@@ -188,6 +188,10 @@ mod tests {
     #[cfg(all(unix, not(miri)))]
     #[test]
     fn fork_during_self_test() {
+        // Runs everything the child will once first, so an emulator such as
+        // Intel SDE has translated it before the fork rather than in the child.
+        assert!(cast());
+        instantiate().unwrap();
         STALL.store(true, Ordering::Release);
         // A test thread already past `stall` can set the flag again after
         // the reset, letting the drawer skip the self-test; draw again then.
@@ -218,7 +222,8 @@ mod tests {
         RELEASE.store(true, Ordering::Release);
         drawer.join().unwrap();
         let mut status = 0;
-        for _ in 0..1000 {
+        // Up to a minute, since emulators run the child slowly.
+        for _ in 0..6000 {
             // SAFETY: `pid` is our child and `status` a valid out pointer.
             let done = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
             if done == pid {
