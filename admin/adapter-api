@@ -41,6 +41,7 @@
 # The rustdoc JSON format is unstable, so this runs on the flake's pinned
 # stable toolchain, with RUSTC_BOOTSTRAP to unlock the flag.
 
+import collections
 import fnmatch
 import json
 import os
@@ -385,18 +386,19 @@ class Unordered(list):
 
 
 def elide(impl):
-    """An impl header with each unbounded lifetime parameter written as `'_`."""
+    """An impl header with each lifetime parameter it names only once written as `'_`."""
+    uses = collections.Counter(re.findall(r"'[\w]+", json.dumps([impl["for"], impl["generics"]["where_predicates"]])))
     free = {
         p["name"]
         for p in impl["generics"]["params"]
-        if "lifetime" in p["kind"] and not p["kind"]["lifetime"]["outlives"]
+        if "lifetime" in p["kind"] and not p["kind"]["lifetime"]["outlives"] and uses[p["name"]] == 1
     }
 
     def walk(value):
         if isinstance(value, list):
             return [walk(v) for v in value]
         if isinstance(value, dict):
-            if value.keys() == {"lifetime"} and value["lifetime"] in free:
+            if value.keys() == {"lifetime"} and isinstance(value["lifetime"], str) and value["lifetime"] in free:
                 return {"lifetime": "'_"}
             return {k: walk(v) for k, v in value.items()}
         return value
