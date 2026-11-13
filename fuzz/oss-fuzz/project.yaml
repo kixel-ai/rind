@@ -1,5 +1,5 @@
-homepage: "https://github.com/moq-dev/rind"
-main_repo: "https://github.com/moq-dev/rind"
+homepage: "https://github.com/kixel-ai/rind"
+main_repo: "https://github.com/kixel-ai/rind"
 language: rust
 primary_contact: "kixelated@gmail.com"
 sanitizers:
