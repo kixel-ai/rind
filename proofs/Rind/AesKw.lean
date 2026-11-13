@@ -1,4 +1,5 @@
 import Rind.AesModes
+import Rind.Bytes
 open Aeneas Aeneas.Std
 
 /-!
@@ -127,5 +128,80 @@ private def hex (s : String) : List (BitVec 8) :=
   (hex "afbeb0f07dfbf5419200f2ccb50bb24f") == some (hex "466f7250617369")
 #guard kwpAD .AES_192 (hex "5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a8")
   (hex "afbeb0f07dfbf5419200f2ccb50bb24e") == none
+
+/-! ## Bytes as Rust's integer conversions write them, for `Rind.X86_64.AesKw` -/
+
+theorem toLEBytes_cast {w w' : Nat} (h : w = w') (x : BitVec w) :
+    (x.cast h).toLEBytes = x.toLEBytes := by
+  subst h; rfl
+
+theorem toLEBytes_fromLEBytes (l : List (BitVec 8)) : (BitVec.fromLEBytes l).toLEBytes = l := by
+  apply List.ext_getElem (by simp; omega)
+  intro i h1 h2
+  apply BitVec.eq_of_getElem_eq
+  intro j hj
+  rw [BitVec.getElem_toLEBytes_eq_getElem _ _ _ h1 hj (by omega),
+    BitVec.fromLEBytes_getElem _ _ (by omega)]
+  have h8 : (8 * i + j) / 8 = i := by omega
+  have h8' : (8 * i + j) % 8 = j := by omega
+  simp only [h8, h8', Byte.testBit, BitVec.getElem_eq_testBit_toNat]
+
+theorem toLEBytes_xor {w : Nat} (x y : BitVec w) :
+    (x ^^^ y).toLEBytes = xorBytes x.toLEBytes y.toLEBytes := by
+  apply List.ext_getElem (by simp [xorBytes])
+  intro i h1 h2
+  apply BitVec.eq_of_getElem_eq
+  intro j hj
+  simp only [xorBytes, List.getElem_zipWith, BitVec.getElem_xor]
+  have hi : i < x.toLEBytes.length := by simp at h1 ⊢; omega
+  have hi' : i < y.toLEBytes.length := by simp at h1 ⊢; omega
+  by_cases hw : 8 * i + j < w
+  · rw [BitVec.getElem_toLEBytes_eq_getElem _ _ _ h1 hj hw, BitVec.getElem_toLEBytes_eq_getElem _ _ _ hi hj hw,
+      BitVec.getElem_toLEBytes_eq_getElem _ _ _ hi' hj hw, BitVec.getElem_xor]
+  · rw [BitVec.getElem_toLEBytes_eq_false _ _ _ h1 hj (by omega), BitVec.getElem_toLEBytes_eq_false _ _ _ hi hj (by omega),
+      BitVec.getElem_toLEBytes_eq_false _ _ _ hi' hj (by omega)]
+    rfl
+
+theorem be128_drop (n k : Nat) :
+    (be128 n).drop k = (List.range (16 - k)).map fun i => BitVec.ofNat 8 (n / 256 ^ (15 - k - i)) := by
+  apply List.ext_getElem (by simp [be128])
+  intro i h1 h2
+  simp only [be128, List.getElem_drop, List.getElem_map, List.getElem_range, Nat.sub_add_eq]
+
+theorem toBEBytes_eq {w : Nat} (m : Nat) (hw : w = 8 * m) (x : BitVec w) :
+    x.toBEBytes = (List.range m).map fun i => BitVec.ofNat 8 (x.toNat / 256 ^ (m - 1 - i)) := by
+  apply List.ext_getElem (by simp; omega)
+  intro i h1 h2
+  have hi : i < m := by simpa using h2
+  have hl : x.toLEBytes.length = m := by simp; omega
+  apply BitVec.eq_of_getElem_eq
+  intro j hj
+  simp only [BitVec.toBEBytes, List.getElem_reverse, List.getElem_map, List.getElem_range]
+  rw [BitVec.getElem_toLEBytes_eq_getElem _ _ _ _ hj (by rw [hl]; omega)]
+  have hp : 256 ^ (m - 1 - i) = 2 ^ (8 * (m - 1 - i)) := by rw [pow_mul]; norm_num
+  simp only [BitVec.getElem_eq_testBit_toNat, BitVec.toNat_ofNat, Nat.testBit_mod_two_pow, hp,
+    Nat.testBit_div_two_pow, hj, decide_true, Bool.true_and, hl]
+  congr 1; omega
+
+theorem toBEBytes_64 (x : BitVec 64) : x.toBEBytes = be64 x.toNat := by
+  rw [toBEBytes_eq 8 rfl, be64, be128_drop]
+
+theorem toBEBytes_32 (x : BitVec 32) : x.toBEBytes = be32 x.toNat := by
+  rw [toBEBytes_eq 4 rfl, be32, be128_drop]
+
+theorem ofBe_foldl (l : List (BitVec 8)) (acc : Nat) :
+    l.foldl (fun a b => 256 * a + b.toNat) acc =
+      acc * 256 ^ l.length + Nat.ofDigits 256 (l.reverse.map (·.toNat)) := by
+  induction l generalizing acc with
+  | nil => simp
+  | cons b l ih =>
+    rw [List.foldl_cons, ih, List.reverse_cons, List.map_append, Nat.ofDigits_append]
+    simp only [List.length_cons, List.length_map, List.length_reverse, List.map_cons, List.map_nil,
+      Nat.ofDigits_singleton, pow_succ]
+    ring
+
+theorem toNat_fromBEBytes (l : List (BitVec 8)) : (BitVec.fromBEBytes l).toNat = ofBe l := by
+  rw [BitVec.fromBEBytes, BitVec.toNat_cast, rind.spec.toNat_fromLEBytes, ofBe, ofBe_foldl]
+  simp
 
 end rind.vale
