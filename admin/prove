@@ -197,6 +197,23 @@ symbol_bounds() {
         b[m] == s && a[n] != "*UND*" { print a[n], a[1], b[1] }'
 }
 
+# Writes to `dest` the bytes of the static at `path`, as rind's release build
+# for `arch` Linux emits them, failing if its section has relocations, which
+# would leave bytes for the linker to fill.
+rind_static() {
+    local arch=$1 path=$2 dest=$3 found obj sym section value size
+    found=$(rind_symbol "$arch" "$path")
+    read -r obj sym <<<"$found"
+    read -r section value size < <(symbol_bounds "$obj" "$sym")
+    if [[ -n "$(relocations "$obj" "$section")" ]]; then
+        echo "admin/prove: $path's section has relocations" >&2
+        return 1
+    fi
+    "$tools/llvm-objcopy" --dump-section="$section=$dest.section" "$obj" "$dest.o"
+    tail -c +$((16#$value + 1)) "$dest.section" | head -c $((16#$size)) >"$dest"
+    rm "$dest.section" "$dest.o"
+}
+
 # Writes to `dest` an object holding the naked Rust function at `path`, as
 # rind's release build for `arch` Linux emits it: the function's own section,
 # renamed `.text`, and, if it has relocations, those and the one read-only
@@ -232,22 +249,23 @@ asm_function() {
 }
 
 # Writes to `$out/s2n-bignum` the files of s2n-bignum's x86 model that
-# `proofs/hol-light/s2n-bignum/x86.patch` changes, each the copy that
-# directory vendors or else the submodule's, with the patch applied, which
-# fails unless every hunk applies exactly. HOL Light loads them ahead of both.
+# `proofs/hol-light/s2n-bignum/`'s patches change: the submodule's, with the
+# changes of s2n-bignum pull requests not yet merged, then rind's
+# `x86.patch`, each failing unless every hunk applies exactly. HOL Light loads
+# them ahead of the submodule.
 s2n_bignum_model() {
-    local model=$out/s2n-bignum carried=proofs/hol-light/s2n-bignum file
+    local model=$out/s2n-bignum carried=proofs/hol-light/s2n-bignum file patch
     git submodule update --init --depth 1 thirdparty/s2n-bignum
     rm -rf "$model"
-    while read -r file; do
-        mkdir -p "$model/$(dirname "$file")"
-        if [[ -f $carried/$file ]]; then
-            cp "$carried/$file" "$model/$file"
-        else
-            cp "thirdparty/s2n-bignum/$file" "$model/$file"
-        fi
-    done < <(sed -n 's|^+++ b/||p' "$carried/x86.patch")
-    patch --quiet --fuzz=0 --no-backup-if-mismatch -p1 -d "$model" <"$carried/x86.patch"
+    for patch in "$carried/pr450.patch" "$carried/x86.patch"; do
+        while read -r file; do
+            if [[ ! -f $model/$file ]]; then
+                mkdir -p "$model/$(dirname "$file")"
+                cp "thirdparty/s2n-bignum/$file" "$model/$file"
+            fi
+        done < <(sed -n 's|^+++ b/||p' "$patch")
+        patch --quiet --fuzz=0 --no-backup-if-mismatch -p1 -d "$model" <"$patch"
+    done
 }
 
 # rind's own HOL Light proofs, each of the `asm!` block in a Rust function or
@@ -270,6 +288,14 @@ hol_light_proofs=(
     "x86_64 ct_compare_bytes.bin rind::low::x86_64::cpu::ct_compare_bytes"
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
     "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
+    "x86_64 sha256_compress_blocks_shaext.bin rind::low::x86_64::sha256::sha256_compress_blocks_shaext"
+    "x86_64 sha256_finish_shaext.bin rind::low::x86_64::sha256::sha256_finish_shaext"
+)
+# The statics the proofs above read through a register, each `<arch>/<file>`
+# the static's bytes, which `rind_static` writes and the proof asserts are
+# what it lists.
+hol_light_data=(
+    "x86_64 sha256_shaext_k.bin rind::low::x86_64::sha256::K"
 )
 # The specs that no proof above loads yet, each loaded into the named target's
 # program so its known-answer tests run.
@@ -277,7 +303,7 @@ hol_light_specs=(
     "x86_64 common/chacha20poly1305.ml"
 )
 hol_light() {
-    local dir=$out/hol-light arches arch file path proof spec
+    local dir=$out/hol-light arches arch file path proof spec data
     s2n_bignum_model
     rm -rf "$dir"
     mkdir -p "$dir"
@@ -286,6 +312,10 @@ hol_light() {
         build_asm "$arch"
         mkdir -p "$dir/$arch"
         echo 'let prove_start = Unix.time ();;' >"$dir/$arch.ml"
+    done
+    for data in "${hol_light_data[@]}"; do
+        read -r arch file path <<<"$data"
+        rind_static "$arch" "$path" "$dir/$arch/$file"
     done
     for proof in "${hol_light_proofs[@]}"; do
         read -r arch file path <<<"$proof"
