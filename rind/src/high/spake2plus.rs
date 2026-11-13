@@ -1639,7 +1639,7 @@ mod tests {
             .start_at(&RFC9383, b"ctx", b"client", b"", Some(x.copy()))
             .unwrap();
         let share_y = point_share::<Rfc9383>(n.mul(&w0s).to_uncompressed());
-        let tt = transcript(&labels, share_p.as_ref(), share_y.as_ref(), &z, &v, &w0s).unwrap();
+        let tt = transcript(&labels, share_p.as_ref(), share_y.as_ref(), &z, &v, &w0s);
         let keys = schedule_keys(Schedule::Rfc9383, &tt).unwrap();
         let confirm_v = mac::<Rfc9383>(keys.verifier_key(), share_p.as_ref());
         let (confirm_p, _key, ok) = prover.compute(&share_y, &confirm_v).unwrap();
