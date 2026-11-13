@@ -171,7 +171,12 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
         // x * y is below m^2, so below 2^bn * m.
         let mut t = [0; MAX_LIMBS * 2];
         let t = &mut t[..2 * n];
-        mul_limbs(t, x, y, &mut [0; SCRATCH]);
+        // The limb count is public, so this branch leaks nothing.
+        if n < KARATSUBA_MUL {
+            mul_limbs(t, x, y, &mut []);
+        } else {
+            mul_limbs(t, x, y, &mut [0; SCRATCH]);
+        }
         redc(t, m, n0);
         join(&t[n..], z);
     }
