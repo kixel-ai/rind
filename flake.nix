@@ -652,6 +652,16 @@
               ];
             };
 
+            # `just release-check` builds the fuzz targets in it, with the
+            # nightly AddressSanitizer needs, to replay the fuzz workflow's
+            # corpora.
+            fuzz = pkgs.mkShell {
+              packages = [
+                rust-charon
+                pkgs.cargo-fuzz
+              ];
+            };
+
             # `admin/regenerate` and the regenerate workflow run in it. A
             # separate shell because the aarch64 cross compiler, for its cpp,
             # adds about 500 MB.
@@ -692,6 +702,14 @@
             i686 = qemu-shell {
               target = "i686-unknown-linux-gnu";
               cross = pkgs.pkgsCross.gnu32;
+            };
+
+            # `just qemu x86_64-musl`, and `just release-check`'s run of
+            # the build workflow's musl job, test the musl build natively in
+            # it.
+            x86_64-musl = qemu-shell {
+              target = "x86_64-unknown-linux-musl";
+              cross = pkgs.pkgsCross.musl64;
             };
 
             # `just qemu riscv64` and `just qemu riscv64-musl` test the

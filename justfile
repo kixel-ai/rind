@@ -61,6 +61,10 @@ openmls *ARGS:
 audit:
     cargo deny check
 
+# Run the scheduled suites on the checked-out release PR for the crates it versions, and record the result (Linux x86_64 only).
+release-check *ARGS:
+    nix develop --command sh/release-check.sh {{ARGS}}
+
 # Open or update the release PR, then publish a release PR landed since BEFORE.
 release $BEFORE="":
     sh/release.sh "$BEFORE"

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Run `just check`, `just fix`, or `just ci` over one resolved branch diff.
 # `--query` prints the selection before CI installs its toolchain and caches.
+# `--paths=FILE` takes the changed paths from FILE instead of a diff.
 set -euo pipefail
 
-usage="usage: sh/dispatch.sh check|fix|ci [BASE|--all] [--query]"
+usage="usage: sh/dispatch.sh check|fix|ci [BASE|--all|--paths=FILE] [--query]"
 action=${1:?$usage}
 base=${2:-}
 query=${3:-}
@@ -35,6 +36,8 @@ trap 'rm -f "$changed"' EXIT
 all=
 if [[ "$base" == --all ]]; then
     all=1
+elif [[ "$base" == --paths=* ]]; then
+    cp "${base#--paths=}" "$changed"
 else
     sh/changed.sh "$base" >"$changed"
 
@@ -93,9 +96,10 @@ declare -A scope=(
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
-    # alert.yml must watch every workflow that runs outside a pull request, and
-    # every third-party action must be pinned.
-    [gh]='^(\.github/|sh/(alert|pins)\.sh$)'
+    # alert.yml must watch every workflow that runs outside a pull request,
+    # every third-party action must be pinned, and the release check must
+    # place every job of the workflows it runs.
+    [gh]='^(\.github/|sh/(alert|pins|release-check)\.sh$)'
     [shell]=''
     [nix]=''
 )
@@ -324,6 +328,7 @@ for module in "${selected[@]}"; do
             fi
             sh/alert.sh check
             sh/pins.sh
+            sh/release-check.sh --check >/dev/null
             ;;
         check:shell) files 'sh/*.sh' | xargs -0 shellcheck ;;
         check:nix) files '*.nix' | xargs -0 nixfmt --check ;;

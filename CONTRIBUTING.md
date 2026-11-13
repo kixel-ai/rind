@@ -77,6 +77,11 @@ A PR that adds such a workaround adds its entry there and names the entry in the
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions.
 
+A release PR merges only after `just release-check` passes at its head, so nothing publishes that the full suite has not passed.
+On a Linux x86_64 host, check out the PR's head (`gh pr checkout <PR> --detach`) and run it, through `quest gate` on a shared host; an agent merging a release PR, as `/quest-merge` does, runs it first.
+It runs every suite the scheduled workflows run on a Linux x86_64 runner, for the crates the PR versions plus their dependents, and requires each workflow's latest scheduled run on `main` to have passed its other rows, such as macOS, Windows, and arm64.
+It records the result as the `release-check` status on the head it ran, linking that nightly `build` run, so a release-plz update to the PR needs a new run.
+
 Each published `rind-<consumer>` adapter's version begins with the breaking part of the upstream version it adapts (major.minor below 1.0, major from 1.0 on), so rind-rustls 0.23.x adapts rustls 0.23; the rest of the version is the adapter's own.
 `sh/adapter-versions.sh`, in `just ci`, fails when the two drift.
 An adapter's API is its upstream's, so it changes only with upstream's; the PR that moves an adapter to upstream's next breaking release sets the adapter's version to match.
