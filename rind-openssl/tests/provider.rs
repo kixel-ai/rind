@@ -217,8 +217,13 @@ impl Context {
     }
 
     fn derive(&self, key: &Key, peer: &Key) -> (Vec<u8>, String) {
+        self.derive_on(key, peer, null())
+    }
+
+    /// Derives on the provider `propq` picks, such as `DEFAULT`.
+    fn derive_on(&self, key: &Key, peer: &Key, propq: *const c_char) -> (Vec<u8>, String) {
         unsafe {
-            let ctx = non_null(EVP_PKEY_CTX_new_from_pkey(self.0, key.0, null()));
+            let ctx = non_null(EVP_PKEY_CTX_new_from_pkey(self.0, key.0, propq));
             check(EVP_PKEY_derive_init(ctx));
             check(EVP_PKEY_derive_set_peer(ctx, peer.0));
             let mut len = 0;
@@ -236,21 +241,22 @@ impl Context {
     /// Signs `message` with `key` as `EVP_DigestSign` does, returning the
     /// signature and the provider that made it.
     fn sign(&self, key: &Key, message: &[u8]) -> Result<(Vec<u8>, String), String> {
-        self.sign_with(key, message, null())
+        self.sign_with(key, message, null(), null())
     }
 
+    /// Signs on the provider `propq` picks, such as `DEFAULT`, with `params`.
     fn sign_with(
         &self,
         key: &Key,
         message: &[u8],
+        propq: *const c_char,
         params: *const OSSL_PARAM,
     ) -> Result<(Vec<u8>, String), String> {
         unsafe {
             let md = non_null(EVP_MD_CTX_new());
             let mut pctx = null_mut();
             let result = (|| {
-                if EVP_DigestSignInit_ex(md, &mut pctx, null(), self.0, null(), key.0, params) != 1
-                {
+                if EVP_DigestSignInit_ex(md, &mut pctx, null(), self.0, propq, key.0, params) != 1 {
                     return Err(errors());
                 }
                 let mut signature = [0u8; 64];
@@ -398,10 +404,14 @@ fn x25519_agrees_with_the_default_provider() {
         (shared, "rind".into())
     );
 
-    // Fresh keys from each provider agree too.
+    // Fresh keys from each provider agree too, and with the default
+    // provider's own exchange.
     let a = ctx.generate(c"X25519");
     let b = ctx.private(c"X25519", DEFAULT, &ctx.generate(c"X25519").raw_private());
-    assert_eq!(ctx.derive(&a, &b).0, ctx.derive(&b, &a).0);
+    let reference = ctx.derive_on(&b, &a, DEFAULT.as_ptr());
+    assert_eq!(reference.1, "default");
+    assert_eq!(ctx.derive(&a, &b).0, reference.0);
+    assert_eq!(ctx.derive(&b, &a).0, reference.0);
     // And a generated key is clamped, as the default provider stores one.
     let private = a.raw_private();
     assert_eq!((private[0] & 7, private[31] & 0xc0), (0, 0x40));
@@ -478,9 +488,15 @@ fn ed25519_signs_as_the_default_provider_does() {
         (expected.clone(), "rind".into())
     );
 
+    // A fresh key signs as the default provider's own signature does.
     let message = b"rind as an OpenSSL provider";
-    let (signature, _) = ctx.sign(&ctx.generate(c"ED25519"), message).unwrap();
-    assert_eq!(signature.len(), 64);
+    let fresh = ctx.generate(c"ED25519");
+    let (signature, _) = ctx.sign(&fresh, message).unwrap();
+    let reference = ctx
+        .sign_with(&fresh, message, DEFAULT.as_ptr(), null())
+        .unwrap();
+    assert_eq!(reference.1, "default");
+    assert_eq!(signature, reference.0);
     let (signature, _) = ctx.sign(&rind, message).unwrap();
     assert_eq!(
         ctx.verify(&rind, message, &signature),
@@ -509,7 +525,7 @@ fn ed25519_refuses_what_rind_cannot_back() {
         ]
     };
     let error = ctx
-        .sign_with(&key, b"message", params.as_ptr())
+        .sign_with(&key, b"message", null(), params.as_ptr())
         .unwrap_err();
     assert!(error.contains("unsupported by rind"), "{error}");
 
@@ -525,7 +541,10 @@ fn ed25519_refuses_what_rind_cannot_back() {
             OSSL_PARAM_construct_end(),
         ]
     };
-    assert!(ctx.sign_with(&key, b"message", params.as_ptr()).is_err());
+    assert!(
+        ctx.sign_with(&key, b"message", null(), params.as_ptr())
+            .is_err()
+    );
 }
 
 #[test]

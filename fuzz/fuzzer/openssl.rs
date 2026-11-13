@@ -363,6 +363,8 @@ type Callback = unsafe extern "C" fn(*const Param, *mut c_void) -> c_int;
 type Export = unsafe extern "C" fn(*mut c_void, c_int, Callback, *mut c_void) -> c_int;
 type Dup = unsafe extern "C" fn(*const c_void, c_int) -> *mut c_void;
 type NewCtx = unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void;
+/// A key exchange's context takes no property query, unlike a signature's.
+type ExchangeNewCtx = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
 type ExchangeInit = unsafe extern "C" fn(*mut c_void, *mut c_void, *const Param) -> c_int;
 type SetPeer = unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_int;
 type Derive = unsafe extern "C" fn(*mut c_void, *mut u8, *mut usize, usize) -> c_int;
@@ -782,14 +784,14 @@ fn derive(provider: &Provider, private: &[u8; 32], peer: &[u8], encoded: bool, s
         keymgmt.free(key);
         return;
     }
-    let new: NewCtx = lookup(provider.keyexch, KEYEXCH_NEWCTX);
+    let new: ExchangeNewCtx = lookup(provider.keyexch, KEYEXCH_NEWCTX);
     let init: ExchangeInit = lookup(provider.keyexch, KEYEXCH_INIT);
     let set_peer: SetPeer = lookup(provider.keyexch, KEYEXCH_SET_PEER);
     let derive: Derive = lookup(provider.keyexch, KEYEXCH_DERIVE);
     let free: Free = lookup(provider.keyexch, KEYEXCH_FREECTX);
     // SAFETY: the provider's context, the keys, and the buffer are live.
     unsafe {
-        let ctx = new(provider.provctx, null());
+        let ctx = new(provider.provctx);
         assert_eq!(init(ctx, key, null()), 1);
         assert_eq!(set_peer(ctx, peer_key), 1);
         let mut secret = vec![0u8; size.into()];

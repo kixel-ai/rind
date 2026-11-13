@@ -89,7 +89,7 @@ declare -A scope=(
     [dart]='^rind-dart/'
     # OpenSSL's own tests with rind-openssl loaded, against the OpenSSL the
     # flake pins. rind's own changes reach the provider through its tests.
-    [openssl]='^(rind-openssl/|sh/openssl\.sh$|flake\.lock$)'
+    [openssl]='^(rind-openssl/|sh/openssl\.sh$|flake\.(nix|lock)$)'
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
