@@ -849,21 +849,21 @@ theorem dec_chain {N : Usize} (alg : Algorithm) (hN : N.val = nr alg + 1) (key :
     (rk : Std.Array V N)
     (hrk : rk.val.reverse = eqInvRoundKeys alg (keyToRoundKeys alg (seqNat8ToSeqNat32LE key)))
     (R : List (BitVec 8)) :
-    ∀ (as ds : List (Std.Array U8 16#usize)) (cB : List (BitVec 8)), cB.length = 16 →
-      ds.length = as.length →
-      (∀ j < as.length, ds[j]! = storeBytes (decRounds rk (loadBytes (as[j]!).val) ^^^
-        (rk.val[N.val - 1]! ^^^ if j = 0 then leBytesToQuad32 cB else loadBytes (as[j - 1]!).val))) →
-      ds.flatMap blockBytes ++ cbcDecrypt alg key ((cB :: as.map blockBytes).getLast (by simp)) R =
-        cbcDecrypt alg key cB (as.flatMap blockBytes ++ R)
+    ∀ (xs ds : List (Std.Array U8 16#usize)) (cB : List (BitVec 8)), cB.length = 16 →
+      ds.length = xs.length →
+      (∀ j < xs.length, ds[j]! = storeBytes (decRounds rk (loadBytes (xs[j]!).val) ^^^
+        (rk.val[N.val - 1]! ^^^ if j = 0 then leBytesToQuad32 cB else loadBytes (xs[j - 1]!).val))) →
+      ds.flatMap blockBytes ++ cbcDecrypt alg key ((cB :: xs.map blockBytes).getLast (by simp)) R =
+        cbcDecrypt alg key cB (xs.flatMap blockBytes ++ R)
   | [], ds, cB, _, hl, _ => by
     rw [List.length_nil, List.length_eq_zero_iff] at hl
     subst hl
     simp
-  | a :: as, [], cB, _, hl, _ => by simp at hl
-  | a :: as, d :: ds, cB, hcB, hl, hd => by
+  | a :: xs, [], cB, _, hl, _ => by simp at hl
+  | a :: xs, d :: ds, cB, hcB, hl, hd => by
     have h0 : d = storeBytes (decRounds rk (loadBytes a.val) ^^^ (rk.val[N.val - 1]! ^^^ leBytesToQuad32 cB)) := by
       simpa using hd 0 (by simp)
-    have ih := dec_chain alg hN key rk hrk R as ds (blockBytes a) (bvs_length a) (by simpa using hl) (by
+    have ih := dec_chain alg hN key rk hrk R xs ds (blockBytes a) (bvs_length a) (by simpa using hl) (by
       intro j hj
       have := hd (j + 1) (by simp; omega)
       cases j with
@@ -873,7 +873,7 @@ theorem dec_chain {N : Usize} (alg : Algorithm) (hN : N.val = nr alg + 1) (key :
       ← dec_block alg hN key rk hrk a cB _ hcB, ← ih, h0]
     simp only [List.map_cons, List.getLast_cons_cons]
 
-/-- Eight blocks of CBC decryption as `decrypt_8_spec` gives them. -/
+/-- Eight blocks of CBC decryption xs `decrypt_8_spec` gives them. -/
 theorem dec_chunk {N : Usize} (alg : Algorithm) (hN : N.val = nr alg + 1) (key : List (BitVec 8))
     (rk : Std.Array V N)
     (hrk : rk.val.reverse = eqInvRoundKeys alg (keyToRoundKeys alg (seqNat8ToSeqNat32LE key)))
@@ -925,8 +925,7 @@ theorem hw_decrypt_spec {N : Usize} (alg : Algorithm) (hN : N.val = nr alg + 1) 
   step as ⟨last, hlast⟩
   rw [← getElem!_pos, hiv] at hlast
   subst hlast
-  step with as_chunks_mut_spec 8#usize blocks (by simp) as ⟨v, back, hcl, hci, htl, hback⟩
-  obtain ⟨chunks, tail⟩ := v
+  step with as_chunks_mut_spec 8#usize blocks (by simp) as ⟨chunks, tail, back, hcl, hci, htl, hback⟩
   have hcl' : chunks.val.length = blocks.val.length / 8 := by simpa using hcl
   have htl' : tail.val = blocks.val.drop (blocks.val.length / 8 * 8) := by simpa using htl
   have hjoin : blocks.val.flatMap blockBytes =
@@ -935,7 +934,6 @@ theorem hw_decrypt_spec {N : Usize} (alg : Algorithm) (hN : N.val = nr alg + 1) 
     have h1' : chunks.val.flatMap (·.val) = blocks.val.take (blocks.val.length / 8 * 8) := by
       simpa [hcl'] using h1
     rw [← List.flatMap_assoc, h1', htl', ← List.flatMap_append, List.take_append_drop]
-  simp only
   -- The eight-block chunks.
   apply WP.spec_bind (Pₘ := fun st : V × Slice (Std.Array (Std.Array U8 16#usize) 8#usize) =>
     st.2.val.length = chunks.val.length ∧ ∃ cB : List (BitVec 8), cB.length = 16 ∧ st.1 = leBytesToQuad32 cB ∧
@@ -1086,15 +1084,8 @@ theorem aesCtr_eq (alg : Algorithm) (key : List (BitVec 8)) (m : Nat) (t0 data :
     aesCtr alg key m t0 data = ctrXor (fun j => aesBlock alg key (be128 (ctrBlock m (ofBe t0) j))) 0 data := by
   simp [aesCtr, ctrXor]
 
-theorem ext_getElem! {α : Type _} [Inhabited α] {l l' : List α} (hl : l.length = l'.length)
-    (h : ∀ i < l.length, l[i]! = l'[i]!) : l = l' := by
-  apply List.ext_getElem hl
-  intro i h1 h2
-  rw [← getElem!_pos, ← getElem!_pos]
-  exact h i h1
-
 theorem bvs_getElem! (l : List U8) (i : Nat) (hi : i < l.length) : (bvs l)[i]! = (l[i]!).bv := by
-  rw [getElem!_pos _ _ (by simpa using hi), getElem!_pos _ _ hi, List.getElem_map]
+  rw [getElem!_pos (bvs l) i (by simpa using hi), getElem!_pos l i hi, List.getElem_map]
 
 theorem getElem!_append_left' {α : Type _} [Inhabited α] (a b : List α) (i : Nat) (h : i < a.length) :
     (a ++ b)[i]! = a[i]! := by
@@ -1170,7 +1161,6 @@ theorem be128_ofBe (l : List (BitVec 8)) (hl : l.length = 16) : be128 (ofBe l) =
   simp only [be128, List.getElem_map, List.getElem_range]
   apply BitVec.eq_of_toNat_eq
   rw [BitVec.toNat_ofNat, ← ofBe_digit l i h2 (15 - i) (by omega)]
-  rfl
 
 theorem length_be32 (c : Nat) : (be32 c).length = 4 := by
   simp [be32, be128]
@@ -1189,7 +1179,8 @@ theorem ctr_block_eq (n : List (BitVec 8)) (hn : n.length = 12) (c j : Nat) (hc 
     be128 (ctrBlock 32 (ofBe (n ++ be32 c)) j) = n ++ be32 ((c + j) % 2 ^ 32) := by
   rw [← be128_ofBe (n ++ be32 ((c + j) % 2 ^ 32)) (by simp [hn, length_be32])]
   congr 1
-  rw [ctrBlock, ofBe_append, ofBe_append, ofBe_be32 _ hc, ofBe_be32 _ (Nat.mod_lt _ (by positivity)), length_be32]
+  rw [ctrBlock, ofBe_append, ofBe_append, ofBe_be32 _ hc, ofBe_be32 _ (Nat.mod_lt _ (by positivity))]
+  simp only [length_be32]
   generalize ofBe n = A
   norm_num
   omega
@@ -1205,12 +1196,12 @@ theorem swap_wbyte (x : BitVec 32) (b : Nat) (hb : b < 4) :
   all_goals
     simp only [wbyte, BitVec.getLsbD_extractLsb', BitVec.getLsbD_append]
     simp [hk]
-    try (split_ifs <;> first | omega | (congr 1; omega))
+    try (split_ifs <;> first | omega | (rw [decide_eq_true (by omega), Bool.true_and]; congr 1; omega))
 
 theorem extract_eq_ofNat (x : BitVec 32) (k : Nat) :
     x.extractLsb' (8 * k) 8 = BitVec.ofNat 8 (x.toNat / 256 ^ k) := by
   apply BitVec.eq_of_toNat_eq
-  rw [BitVec.toNat_extractLsb', BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow, pow_mul]
+  rw [BitVec.extractLsb'_toNat, BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow, pow_mul]
   norm_num
 
 theorem be32_getElem! (v b : Nat) (hb : b < 4) : (be32 v)[b]! = BitVec.ofNat 8 (v / 256 ^ (3 - b)) := by
@@ -1240,10 +1231,6 @@ theorem getElem!_take_drop {α : Type _} [Inhabited α] (l : List α) (a n k : N
     ((l.drop a).take n)[k]! = l[a + k]! := by
   simp [List.getElem!_eq_getElem?_getD, List.getElem?_take, List.getElem?_drop, hk]
 
-theorem getElem!_drop' {α : Type _} [Inhabited α] (l : List α) (a k : Nat) :
-    (l.drop a)[k]! = l[a + k]! := by
-  simp [List.getElem!_eq_getElem?_getD, List.getElem?_drop]
-
 theorem storeBytes_getElem! (q : BitVec 128) (k : Nat) (hk : k < 16) : ((storeBytes q).val[k]!).bv = byte q k := by
   rw [← bvs_getElem! (storeBytes q).val k (by have := (storeBytes q).property; simp at this ⊢; omega),
     show bvs (storeBytes q).val = leQuad32ToBytes q from bvs_storeBytes q, leQuad32ToBytes_getElem! _ hk]
@@ -1255,14 +1242,17 @@ theorem ctr_call_eq (nonce : Std.Array U8 12#usize) (base : Std.Array U8 16#usiz
     low.aarch64.aes_ctr._apply_8.closure.Insts.CoreOpsFunctionFnTupleU32uint8x16_t.call
         (counter, loadBytes base.val) j =
       ok (leBytesToQuad32 (bvs nonce.val ++ be32 ((counter.val + j.val) % 2 ^ 32))) := by
-  simp only [low.aarch64.aes_ctr._apply_8.closure.Insts.CoreOpsFunctionFnTupleU32uint8x16_t.call, lift, bind_ok,
-    core.num.U32.swap_bytes, core.core_arch.arm_shared.neon.generated.vsetq_lane_u32,
+  unfold low.aarch64.aes_ctr._apply_8.closure.Insts.CoreOpsFunctionFnTupleU32uint8x16_t.call
+  simp only [lift, bind_ok, core.num.U32.swap_bytes, core.core_arch.arm_shared.neon.generated.vsetq_lane_u32,
     core.core_arch.arm_shared.neon.generated.vreinterpretq_u8_u32]
+  show ok (ofLanes32 fun i => if i = (3#i32).bv.toNat % 4 then
+      (core.num.U32.wrapping_add counter j).bv.extractLsb' 0 8 ++ (core.num.U32.wrapping_add counter j).bv.extractLsb' 8 8 ++
+        (core.num.U32.wrapping_add counter j).bv.extractLsb' 16 8 ++
+        (core.num.U32.wrapping_add counter j).bv.extractLsb' 24 8
+      else lane32 (loadBytes base.val) i) = _
   congr 1
   rw [show (3#i32).bv.toNat % 4 = 3 by decide, ctr_vec nonce base.val (by simp) hbase]
   congr 3
-  show (counter.bv + j.bv).toNat = (counter.bv.toNat + j.bv.toNat) % 2 ^ 32
-  rw [BitVec.toNat_add]
 
 theorem apply_8_spec (alg : Algorithm) (key : List (BitVec 8)) (hk : low.aarch64.aes.HwKey)
     (h : HwKeyIs alg (seqNat8ToSeqNat32LE key) hk) (nonce : Std.Array U8 12#usize) (counter : U32)
@@ -1283,8 +1273,7 @@ theorem apply_8_spec (alg : Algorithm) (key : List (BitVec 8)) (hk : low.aarch64
   apply WP.spec_bind (encrypt_8_spec hk alg _ h _ _ _ _ _ _ _ _)
   rintro _ rfl
   simp only [Array.to_slice_mut]
-  step with as_chunks_mut_spec 16#usize (Array.to_slice inout) (by simp) as ⟨v, back4, hcl, hci, htl, hback4⟩
-  obtain ⟨blocks, s4⟩ := v
+  step with as_chunks_mut_spec 16#usize (Array.to_slice inout) (by simp) as ⟨blocks, s4, back4, hcl, hci, htl, hback4⟩
   have hin : (Array.to_slice inout).val = inout.val := by simp [Array.to_slice]
   have hlen : blocks.val.length = 8 := by simpa [hin] using hcl
   have hs4 : s4.val = [] := by simpa [hin] using htl
@@ -1292,7 +1281,7 @@ theorem apply_8_spec (alg : Algorithm) (key : List (BitVec 8)) (hk : low.aarch64
     intro q hq
     simpa [hin] using hci q (by omega)
   have hl0 : blocks.val.length = 8 := hlen
-  simp only [load_eq, core.core_arch.arm_shared.neon.generated.veorq_u8, store_eq, bind_ok]
+  simp only [core.core_arch.arm_shared.neon.generated.veorq_u8, store_eq, bind_ok]
   step with Slice.index_usize_spec blocks 0#usize (by simp [hl0]) as ⟨a0, ha0⟩
   rw [← getElem!_pos] at ha0
   step with Slice.update_spec blocks 0#usize _ (by simp [hl0]) as ⟨B1, hB1⟩
@@ -1328,11 +1317,12 @@ theorem apply_8_spec (alg : Algorithm) (key : List (BitVec 8)) (hk : low.aarch64
   have hB : ∀ q < 8, B8.val[q]! = storeBytes (aesEncrypt alg (seqNat8ToSeqNat32LE key)
       (leBytesToQuad32 (bvs nonce.val ++ be32 ((counter.val + q) % 2 ^ 32))) ^^^ loadBytes (blocks.val[q]!).val) := by
     intro q hq
-    interval_cases q <;> simp [hB8, hB7, hB6, hB5, hB4, hB3, hB2, hB1, ha7, ha6, ha5, ha4, ha3, ha2, ha1, ha0, Slice.set_val_eq, getElem!_set, hlen]
+    interval_cases q <;>
+      simp [hB8, hB7, hB6, hB5, hB4, hB3, hB2, hB1, ha7, ha6, ha5, ha4, ha3, ha2, ha1, ha0, Slice.set_val_eq, hlen]
   have h16 : (16#usize).val = 16 := by simp
   have hflat : (back4 (B8, s4)).val = B8.val.flatMap (·.val) := by
-    rw [hback4 _ _ (by rw [List.length_append, length_flatMap_val, hl8, hs4]; simp), hs4, List.append_nil]
-  simp only [WP.spec_ok]
+    rw [hback4 _ _ (by rw [List.length_append, length_flatMap_val, hl8, hs4]; simp; scalar_tac), hs4,
+      List.append_nil]
   rw [Array.from_slice_val _ _ (by rw [hflat, length_flatMap_val, hl8]; rfl), hflat]
   apply ext_getElem! (by simp [length_ctrXor, length_flatMap_val, hl8])
   intro i hi
@@ -1354,8 +1344,7 @@ theorem by8_spec {T : Type} (inst : low.generic.ctr.Ctr8 T) (key : T) (nonce : S
       inst.ctr8 key nonce ctr chunk ⦃ out => bvs out.val = ctrXor ks (8 * m) (bvs chunk.val) ⦄) :
     low.generic.ctr.by8 inst key nonce counter inout ⦃ r => bvs r.val = ctrXor ks 0 (bvs inout.val) ⦄ := by
   unfold low.generic.ctr.by8
-  step with as_chunks_mut_spec 128#usize inout (by simp) as ⟨v, back, hcl, hci, htl, hback⟩
-  obtain ⟨chunks, tail⟩ := v
+  step with as_chunks_mut_spec 128#usize inout (by simp) as ⟨chunks, tail, back, hcl, hci, htl, hback⟩
   have hcl' : chunks.val.length = inout.val.length / 128 := by simpa using hcl
   have htl' : tail.val = inout.val.drop (inout.val.length / 128 * 128) := by simpa using htl
   have hci' : ∀ q < chunks.val.length, (chunks.val[q]!).val = (inout.val.drop (q * 128)).take 128 := by
@@ -1365,7 +1354,6 @@ theorem by8_spec {T : Type} (inst : low.generic.ctr.Ctr8 T) (key : T) (nonce : S
     rw [htl', List.length_drop, hcl']
   have hdm := Nat.div_mul_le_self inout.val.length 128
   have hmd : inout.val.length - inout.val.length / 128 * 128 < 128 := by omega
-  simp only
   apply WP.spec_bind (Pₘ := fun st : Slice (Std.Array U8 128#usize) × U32 =>
     st.1.val.length = chunks.val.length ∧ st.2.val = (counter.val + 8 * chunks.val.length) % 2 ^ 32 ∧
     ∀ q < chunks.val.length, bvs (st.1.val[q]!).val = ctrXor ks (8 * q) (bvs (chunks.val[q]!).val))
@@ -1384,15 +1372,16 @@ theorem by8_spec {T : Type} (inst : low.generic.ctr.Ctr8 T) (key : T) (nonce : S
       rw [← getElem!_pos, getElem!_of_drop_eq hdrop] at ha
       subst ha hbk
       step with hctr it.start.val ctr _ hc as ⟨a1, ha1⟩
-      simp only [lift, bind_ok]
+      rw [show lift (core.num.U32.wrapping_add ctr 8#u32) = ok (core.num.U32.wrapping_add ctr 8#u32) from rfl,
+        bind_ok]
+      simp only [WP.spec_ok]
       refine ⟨it', (cs.set it.start a1, core.num.U32.wrapping_add ctr 8#u32), rfl, hst, by rw [hen, he], ?_⟩
       simp only [Slice.set_val_eq]
       refine ⟨by simp [hlen], by rw [drop_set_succ, ← List.drop_drop, hdrop, List.drop_drop], ?_, ?_⟩
-      · have h8 : (8#u32).bv.toNat = 8 := by decide
-        show (ctr.bv + (8#u32).bv).toNat = (counter.val + 8 * (it.start.val + 1)) % 2 ^ 32
-        rw [BitVec.toNat_add, h8]
-        show (ctr.val + 8) % 2 ^ 32 = _
-        rw [hc]
+      · have h8 : (8#u32).val = 8 := rfl
+        have hsz : UScalar.size UScalarTy.U32 = 2 ^ 32 := by simp [UScalar.size_def]
+        rw [show core.num.U32.wrapping_add ctr 8#u32 = UScalar.wrapping_add ctr 8#u32 from rfl,
+          UScalar.wrapping_add_val_eq, hc, h8, hsz]
         omega
       · intro q hq
         rw [getElem!_set _ _ _ (by omega)]
@@ -1467,15 +1456,14 @@ theorem by8_spec {T : Type} (inst : low.generic.ctr.Ctr8 T) (key : T) (nonce : S
   · rename_i hz
     have hz : tail.val.length ≠ 0 := by simpa [hb] using hz
     have hle : (Slice.len tail).val ≤ 128 := by simp; omega
-    step with Array.index_mut_SliceIndexRangeToUsizeSlice _ _ (by scalar_tac) as ⟨s, bk, hs, hsl, hbk⟩
-    step with core.slice.Slice.copy_from_slice.step_spec _ _ _ (by simp [hsl]) as ⟨s1, hs1⟩
+    step with Array.index_mut_SliceIndexRangeToUsizeSlice (Array.repeat 128#usize 0#u8) { «end» := Slice.len tail }
+      (by scalar_tac) as ⟨s, bk, hs, hsl, hbk⟩
+    step with core.slice.Slice.copy_from_slice.step_spec core.marker.CopyU8 s tail (by rw [hsl]; simp) as ⟨s1, hs1⟩
     step with hctr chunks.val.length ctr1 _ hc1 as ⟨buf2, hbuf2⟩
-    simp only [Array.index_SliceIndexRangeToUsizeSlice]
-    step with core.slice.index.SliceIndexRangeToUsizeSlice.index.step_spec _ _ (by simp [Array.to_slice]; omega)
-      as ⟨s2, hs2, hs2l⟩
-    step with core.slice.Slice.copy_from_slice.step_spec _ _ _ (by simp [hs2l]) as ⟨tail1, htail1⟩
-    simp only [WP.spec_ok]
-    subst htail1 hs1
+    step as ⟨s2, hs2, hs2l⟩
+    step with core.slice.Slice.copy_from_slice.step_spec core.marker.CopyU8 tail s2 (by rw [hs2l]; simp)
+      as ⟨tail1, htail1⟩
+    rw [htail1]
     refine hfin s2 (by simpa using hs2l) (fun t ht => ?_)
     have h1 : (s2.val[t]!) = buf2.val[t]! := by
       rw [hs2]
