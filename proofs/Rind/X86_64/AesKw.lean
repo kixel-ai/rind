@@ -492,4 +492,81 @@ theorem kek_wrap_spec (h : RunsAesHw) {alg : Algorithm} {kek : List (BitVec 8)} 
   simp only [kwAE, kwW]
   rw [← hwb]
 
+/-- `unwrap` refuses what the Rust refuses, returns `DecryptFailed` with the key
+cleared exactly when KW-AD fails, and otherwise writes KW-AD's plaintext. -/
+theorem kek_unwrap_spec (h : RunsAesHw) (hheld : low.entry.Entry.assert_held = ok ()) {alg : Algorithm}
+    {kek : List (BitVec 8)} {self : mid.aes_kw.AesKek} (hk : KekIs alg kek self) (wrapped key : Slice U8) :
+    mid.aes_kw.AesKek.unwrap self wrapped key ⦃ res =>
+      if wrapped.length < 24 ∨ wrapped.length % 8 ≠ 0 then res = (.Err .DecryptFailed, key)
+      else if key.length ≠ wrapped.length - 8 then res = (.Err .WrongLength, key)
+      else match kwAD alg kek (bvs wrapped.val) with
+        | some p => res.1 = .Ok () ∧ bvs res.2.val = p
+        | none => res.1 = .Err .DecryptFailed ∧ res.2.val = List.replicate key.length 0#u8 ⦄ := by
+  obtain ⟨e, he⟩ := h.1
+  unfold mid.aes_kw.AesKek.unwrap
+  rw [he, bind_ok]
+  by_cases h24 : wrapped.length < 24
+  · have hlt : Slice.len wrapped < 24#usize := by scalar_tac
+    simp only [hlt, ite_true, h24, true_or, WP.spec_ok]
+  have hlt : ¬ Slice.len wrapped < 24#usize := by scalar_tac
+  simp only [hlt, ite_false, h24, false_or]
+  step as ⟨b, hb⟩
+  cases b
+  · have h8 : ¬ wrapped.length % 8 = 0 := by simpa using hb
+    simp only [h8, not_false_eq_true, ite_true, Bool.false_eq_true, ite_false, WP.spec_ok]
+  have h8 : wrapped.length % 8 = 0 := by simpa using hb
+  simp only [ite_true, h8, ne_eq, not_true_eq_false, ite_false]
+  step as ⟨i4, hi4⟩
+  by_cases hw : key.length = wrapped.length - 8
+  swap
+  · have hne : (Slice.len key != i4) = true := by
+      simp only [bne_iff_ne, ne_eq]; intro he; apply hw; rw [← Slice.len_val, he, hi4, Slice.len_val]
+    simp only [hne, hw, ite_true, not_false_eq_true, WP.spec_ok]
+  have hne : ¬ (Slice.len key != i4) = true := by
+    simp only [bne_iff_ne, ne_eq, not_not]; apply UScalar.eq_of_val_eq
+    rw [hi4, Slice.len_val, Slice.len_val, hw]
+  simp only [hne, Bool.false_eq_true, ite_false, hw, not_true_eq_false]
+  step as ⟨wa, wc, hwal, hwcl, hwav, hwcv⟩
+  have hkc : key.length = wc.length := by omega
+  step as ⟨key1, hkey1⟩
+  subst key1
+  step with kek_key_spec hk as ⟨s, hsl, hsb⟩
+  step with dec_key_new_spec h alg s hsl as ⟨adk, hadk⟩
+  have hdk : AesDecIs alg kek adk := by rw [← hsb]; exact hadk
+  simp only [core.mem.manually_drop.ManuallyDrop.new, core.mem.manually_drop.ManuallyDrop.Insts.CoreOpsDerefDeref.deref,
+    bind_ok]
+  step as ⟨r, hr⟩
+  rcases r with arr | ⟨⟩
+  swap
+  · exact absurd hwal hr
+  obtain ⟨harr, -⟩ := hr
+  simp only [core.result.Result.unwrap, bind_ok]
+  have hc8 : wc.length % 8 = 0 := by omega
+  step with as_chunks_mut_8 wc hc8 as ⟨ch, rest, cback, hcl, hch, hcback⟩
+  step with unwrap_blocks_spec hdk arr ch
+    (by have := usize_lt wc.len; rw [Slice.len_val] at this; rw [hcl]; omega) as ⟨ua, ur, hul, hub⟩
+  simp only [lift, bind_ok]
+  step with ct_equal_spec hheld as ⟨b1, hb1⟩
+  simp only [low.ct.into_public, bind_ok]
+  have hc := hcback ur (by rw [hul, hcl])
+  have hn8 : (bvs wc.val).length / 8 = ch.length := by rw [hcl]; simp [bvs, Slice.length]
+  have hAD : kwAD alg kek (bvs wrapped.val) =
+      if bvs ua.val = icv1 then some (chunks ur).flatten else none := by
+    have ht : (bvs wrapped.val).take 8 = bvs arr.val := by rw [harr, hwav]; simp [bvs, List.map_take]
+    have hd : (bvs wrapped.val).drop 8 = bvs wc.val := by rw [hwcv]; simp [bvs, List.map_drop]
+    rw [bvs_IV] at hub
+    rw [hch, ← hn8] at hub
+    simp only [kwAD, kwWInv, ht, hd, ← hub]
+  rw [hAD]
+  have hiv : (ua.to_slice.val = mid.aes_kw.IV.to_slice.val) ↔ bvs ua.val = icv1 := by
+    rw [Std.Array.val_to_slice, Std.Array.val_to_slice, ← bvs_IV, bvs_inj]
+  by_cases hok : bvs ua.val = icv1
+  · have hb1t : b1 = true := by rw [hb1]; simpa using hiv.2 hok
+    simp only [hb1t, ite_true, hok, low.ct.public_slice, bind_ok, WP.spec_ok]
+    exact ⟨trivial, hc.1⟩
+  · have hb1f : b1 = false := by rw [hb1]; simpa using fun h => hok (hiv.1 h)
+    simp only [hb1f, Bool.false_eq_true, ite_false, hok]
+    step*
+    done
+
 end rind.x86_64
