@@ -141,8 +141,8 @@ private key on drop, as aws-lc-rs does; ring never does. Wiping does not
 stop an attacker who can read memory while a key is in use, as Heartbleed
 could: the key is still there to read. What it does is shorten how long a
 key that is no longer in use stays in memory, in freed blocks a later
-allocation reuses, in swap, in core dumps and crash reports, and in memory
-read after the fact. It does not wipe stack copies, digest contexts, or
+allocation reuses, in swap, in core dumps and crash reports taken later, and
+in memory read after the fact; copies already written out stay. It does not wipe stack copies, digest contexts, or
 messages. The adapters wipe their own copies of secrets too, such as
 rind-aws-lc-rs's PKCS#8 documents.
 
