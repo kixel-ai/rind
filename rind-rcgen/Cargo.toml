@@ -12,6 +12,9 @@ readme = "README.md"
 [features]
 # rcgen's default features include `pem`.
 default = ["pem"]
+# Does nothing: rind always wipes keys now. Kept so a build that asked for it
+# before still resolves; a patch release cannot remove a feature.
+wipe = []
 # rcgen's PEM methods on `KeyPair`.
 pem = ["dep:base64ct", "rcgen/pem"]
 # rcgen's `impl Zeroize for KeyPair`, which clears its PKCS#8 copy.
