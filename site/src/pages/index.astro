@@ -35,7 +35,7 @@ import { home } from "../lib/pages";
 			<Fragment set:html={html(landing.agentLead)} />
 			<div class="prompt">
 				<pre><code>{landing.prompt}</code></pre>
-				<CopyButton client:load text={landing.prompt} />
+				<CopyButton client:only="svelte" text={landing.prompt} />
 			</div>
 			<Fragment set:html={html(landing.agentAfter)} />
 		</section>

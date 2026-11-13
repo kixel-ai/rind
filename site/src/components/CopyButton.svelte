@@ -1,15 +1,8 @@
 <script>
-	// Copies `text`. It renders only once hydrated, so a page read without
+	// Copies `text`. Pages render it `client:only`, so a page read without
 	// JavaScript shows no button that does nothing.
-	import { onMount } from "svelte";
-
 	let { text } = $props();
-	let ready = $state(false);
 	let label = $state("Copy");
-
-	onMount(() => {
-		ready = true;
-	});
 
 	async function copy() {
 		try {
@@ -24,9 +17,7 @@
 	}
 </script>
 
-{#if ready}
-	<button type="button" onclick={copy}>{label}</button>
-{/if}
+<button type="button" onclick={copy}>{label}</button>
 
 <style>
 	button {
