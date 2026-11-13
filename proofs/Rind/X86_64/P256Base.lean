@@ -390,8 +390,8 @@ theorem rep2_dec (P : P256Point) (xy : Nat × Nat) (h : p256Represents2 P xy) :
   exact ⟨h1, h2, by rw [← h3, val_dec, val_dec]⟩
 
 /-- An affine point with a z of one in Montgomery form is the same point. -/
-theorem rep_one (P : P256Point) (x y : Nat) (h : p256Represents2 P (x, y)) :
-    p256Represents P (x, y, 2 ^ 256 % p256) := by
+theorem rep_one (P : P256Point) (xy : Nat × Nat) (h : p256Represents2 P xy) :
+    p256Represents P (xy.1, xy.2, 2 ^ 256 % p256) := by
   obtain ⟨h1, h2, rfl⟩ := rep2_dec P _ h
   refine ⟨h1, h2, Nat.mod_lt _ p256_pos, ?_⟩
   simp only
@@ -503,6 +503,216 @@ theorem select_entry (X : p256Curve.Point) (hX : nist.fromM X = p256G) (w : Nat)
     split_ifs with hs0
     · exact hentry
     · exact rep2_neg _ _ _ hentry
+
+/-! ## The driver -/
+
+theorem jac_x_spec (pt : mid.p256.JacobianMontPoint) :
+    mid.p256.JacobianMontPoint.x pt ⦃ fe => fe.val = (pt.xyz.val.drop 0).take 4 ⦄ := by
+  unfold mid.p256.JacobianMontPoint.x
+  have hl : (pt.xyz.val).length = 12 := pt.xyz.property
+  step*
+  · simp [mid.p256.JacobianMontPoint.X]
+  · simp [mid.p256.JacobianMontPoint.X]
+  · rcases r with a | _
+    · exact ⟨a, rfl⟩
+    · exact absurd (by simp [s_post1, mid.p256.JacobianMontPoint.X]) r_post
+  · subst r_post
+    obtain ⟨ha, -⟩ := r_post
+    simp [ha, s_post, mid.p256.JacobianMontPoint.X, List.slice]
+
+theorem jac_y_spec (pt : mid.p256.JacobianMontPoint) :
+    mid.p256.JacobianMontPoint.y pt ⦃ fe => fe.val = (pt.xyz.val.drop 4).take 4 ⦄ := by
+  unfold mid.p256.JacobianMontPoint.y
+  have hl : (pt.xyz.val).length = 12 := pt.xyz.property
+  step*
+  · simp [mid.p256.JacobianMontPoint.Y]
+  · simp [mid.p256.JacobianMontPoint.Y]
+  · rcases r with a | _
+    · exact ⟨a, rfl⟩
+    · exact absurd (by simp [s_post1, mid.p256.JacobianMontPoint.Y]) r_post
+  · subst r_post
+    obtain ⟨ha, -⟩ := r_post
+    simp [ha, s_post, mid.p256.JacobianMontPoint.Y, List.slice]
+
+theorem jac_z_spec (pt : mid.p256.JacobianMontPoint) :
+    mid.p256.JacobianMontPoint.z pt ⦃ fe => fe.val = (pt.xyz.val.drop 8).take 4 ⦄ := by
+  unfold mid.p256.JacobianMontPoint.z
+  have hl : (pt.xyz.val).length = 12 := pt.xyz.property
+  step*
+  · simp [mid.p256.JacobianMontPoint.Z]
+  · simp [mid.p256.JacobianMontPoint.Z]
+  · rcases r with a | _
+    · exact ⟨a, rfl⟩
+    · exact absurd (by simp [s_post1, mid.p256.JacobianMontPoint.Z]) r_post
+  · subst r_post
+    obtain ⟨ha, -⟩ := r_post
+    simp [ha, s_post, mid.p256.JacobianMontPoint.Z, List.slice]
+
+theorem from_affine_val (p : mid.p256.AffineMontPoint) :
+    mid.p256.JacobianMontPoint.from_affine p ⦃ pt => pt.xyz.val = p.xy.val ++ mid.p256.CURVE_ONE_MONT.val ⦄ := by
+  unfold mid.p256.JacobianMontPoint.from_affine core.default.DefaultArray.default
+  have hl : (p.xy.val).length = 8 := p.xy.property
+  step*
+  · simp [mid.p256.JacobianMontPoint.XY]
+  · simp [mid.p256.JacobianMontPoint.XY]
+  · simp [s_post1, s1_post, mid.p256.JacobianMontPoint.XY, hl]
+  · simp [mid.p256.JacobianMontPoint.Z]
+  · simp [mid.p256.JacobianMontPoint.Z]
+  · simp [s3_post1, s4_post, mid.p256.JacobianMontPoint.Z, mid.p256.CURVE_ONE_MONT, Array.make]
+  · rw [s3_post2, s5_post, s4_post, s2_post, s_post2, s1_post]
+    simp only [mid.p256.JacobianMontPoint.XY, mid.p256.JacobianMontPoint.Z, Array.val_to_slice]
+    generalize p.xy.val = l at hl ⊢
+    match l, hl with
+    | [a, b, c, d, e, f, g, h], _ =>
+      simp [Array.repeat, mid.p256.CURVE_ONE_MONT, Array.make, List.setSlice!]
+
+/-- The loop adds windows 1 to 36: each adds its digit's multiple of G to the
+accumulator, which holds the sum of the windows below it. -/
+theorem loop_spec (X : p256Curve.Point) (hX : nist.fromM X = p256G) (hord : addOrderOf X = n256)
+    (k : Nat) (hk : k < n256) (windows : Std.Array (U8 × U8) 37#usize) (hw : WindowsOk k windows 37)
+    (iter : core.ops.range.Range Usize) (hs1 : 1 ≤ iter.start.val) (hs : iter.start.val ≤ 37)
+    (he : iter.end.val = 37) (point : mid.p256.AffineMontPoint) (a : Std.Array U64 12#usize)
+    (ha : p256Represents (gpt X (acc (digit k) iter.start.val)) (tripleNat a.val)) :
+    mid.p256.JacobianMontPoint.base_multiply_loop iter windows point a ⦃ r =>
+      p256Represents (gpt X (acc (digit k) 37)) (tripleNat r.val) ⦄ := by
+  have hk256 : k < 2 ^ 256 := lt_trans hk (by simp [n256])
+  unfold mid.p256.JacobianMontPoint.base_multiply_loop
+  apply loop.spec_decr_nat (fun x => 37 - x.1.start.val)
+    (fun x => 1 ≤ x.1.start.val ∧ x.1.start.val ≤ 37 ∧ x.1.end.val = 37 ∧
+      p256Represents (gpt X (acc (digit k) x.1.start.val)) (tripleNat x.2.2.val))
+  · rintro ⟨it, pt, res⟩ ⟨hs1, hs, he, hres⟩
+    simp only at hs1 hs he hres ⊢
+    unfold mid.p256.JacobianMontPoint.base_multiply_loop.body
+    step as ⟨o, iter1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      have he1' : iter1.end.val = it.end.val := by rw [he1]
+      step as ⟨pr, hpr⟩
+      obtain ⟨dg, sg⟩ := pr
+      step as ⟨row, hrow⟩
+      set w := it.start.val with hwdef
+      have hwk := hw w (by omega)
+      have hpr' : windows.val[w]! = (dg, sg) := by
+        rw [getElem!_pos _ _ (by rw [windows.property]; scalar_tac)]; exact hpr.symm
+      rw [hpr'] at hwk
+      obtain ⟨hdg, hsg⟩ := hwk
+      simp only at hdg hsg
+      have hdig : digit k w = signed dg.val sg.val := by rw [digit, hdg, hsg]
+      have hd64 : dg.val ≤ 64 := by rw [hdg]; exact boothD_le _ (window_lt _ _)
+      have hrow' : row = mid.p256.precomp.CURVE_GENERATOR_PRECOMP.val[w]! := by
+        rw [hrow, getElem!_pos _ _ (by rw [Std.Array.property]; scalar_tac)]
+      step with select_entry X hX w (by omega) pt row hrow' dg sg hd64 as ⟨pt1, hz, hP2⟩
+      step as ⟨r1, hr1⟩
+      obtain ⟨hX1, hY1, hZ1, -⟩ := id hres
+      have hacc : acc (digit k) iter1.start.val = acc (digit k) w + digit k w * 128 ^ w := by
+        rw [hst, acc_succ]
+      refine ⟨by omega, by omega, by rw [he1', he], ?_, by omega⟩
+      rw [hacc]
+      by_cases hd0 : dg.val = 0
+      · have hz' := hz hd0
+        have hd : digit k w = 0 := by rw [hdig, hd0]; simp [signed]
+        rw [hd, zero_mul, add_zero,
+          (hr1 hX1 hY1 hZ1 (by rw [hz']; exact p256_pos) (by rw [hz']; exact p256_pos)).1 hz']
+        exact hres
+      · have hP2' := hP2 hd0
+        rw [← hdig] at hP2'
+        have hne0 := rep2_ne_zero X _ _ hP2'
+        have hr := hr1 hX1 hY1 hZ1 hP2'.1 hP2'.2.1
+        have hdne : digit k w ≠ 0 := by rw [hdig]; unfold signed; split <;> omega
+        by_cases hA : acc (digit k) w = 0
+        · rw [hA] at hres ⊢
+          rw [gpt_zero] at hres
+          have hz0 := rep_none_z _ hres
+          rw [hr.2.1 hne0 hz0, zero_add]
+          exact rep_one _ _ hP2'
+        · have hne : gpt X (acc (digit k) w) ≠ none := by
+            rw [← gpt_zero X]
+            exact gpt_ne X hord _ _ (fun h => hA (acc_modEq_zero _ (fun w _ => digit_abs k w) w (by omega) h))
+          have hP12 := gpt_ne X hord _ _ (booth_ne (digit k) (fun w _ => digit_abs k w) (digit_36 k hk256) k
+            (booth_sum k hk256) hk w (by omega) hdne)
+          rw [← gpt_add]
+          exact hr.2.2 hne0 (rep_some_z _ _ hres hne) _ _ hres hP2' hP12
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only [WP.spec_ok]
+      rwa [show (37 : Nat) = it.start.val by omega]
+  · exact ⟨hs1, hs, he, ha⟩
+
+/-- x86_64's Jacobian `base_multiply` represents k·G, for k below n. -/
+theorem jac_base_multiply_spec (k : mid.p256.Scalar) (hk : wordsNat k.val < n256) :
+    mid.p256.JacobianMontPoint.base_multiply k ⦃ r =>
+      p256Represents (p256Pow p256G (wordsNat k.val)) (tripleNat r.xyz.val) ⦄ := by
+  obtain ⟨X, hX, hX0, hn⟩ := fromM_G
+  have hord : addOrderOf X = n256 := addOrderOf_eq_prime hn hX0
+  have hk256 : wordsNat k.val < 2 ^ 256 := lt_trans hk (by simp [n256])
+  unfold mid.p256.JacobianMontPoint.base_multiply mid.p256.AffineMontPoint.Insts.CoreDefaultDefault.default
+    core.default.DefaultArray.default
+  step with booth_w7_spec k as ⟨windows, hw⟩
+  step as ⟨pr, hpr⟩
+  obtain ⟨dg, sg⟩ := pr
+  step as ⟨row, hrow⟩
+  have hwk := hw 0 (by norm_num)
+  have hpr' : windows.val[0]! = (dg, sg) := by
+    rw [getElem!_pos _ _ (by rw [windows.property]; scalar_tac)]; exact hpr.symm
+  rw [hpr'] at hwk
+  obtain ⟨hdg, hsg⟩ := hwk
+  simp only at hdg hsg
+  have hdig : digit (wordsNat k.val) 0 = signed dg.val sg.val := by rw [digit, hdg, hsg]
+  have hd64 : dg.val ≤ 64 := by rw [hdg]; exact boothD_le _ (window_lt _ _)
+  have hrow' : row = mid.p256.precomp.CURVE_GENERATOR_PRECOMP.val[0]! := by
+    rw [hrow, getElem!_pos _ _ (by rw [Std.Array.property]; scalar_tac)]
+  step with select_entry X hX 0 (by norm_num) _ row hrow' dg sg hd64 as ⟨pt1, hz, hP2⟩
+  step with from_affine_val pt1 as ⟨res, hres⟩
+  step*
+  · simp [mid.p256.JacobianMontPoint.Z]
+  · simp [mid.p256.JacobianMontPoint.Z]
+  · simp [s1_post, s_post1, mid.p256.JacobianMontPoint.Z]
+  · simp [s2_post, s_post1, mid.p256.JacobianMontPoint.Z]
+  · have hn := from_u8_val dg
+    have hZ : mid.p256.JacobianMontPoint.Z = { start := 8#usize, «end» := 12#usize } := by
+      simp [mid.p256.JacobianMontPoint.Z]
+    have hsl : s3.val.length = 4 := by
+      have : s3.length = 4 := by rw [s3_post, s_post1, hZ]; rfl
+      simpa [Slice.length] using this
+    have hv : (index_mut_back s3).val = pt1.xy.val ++ s3.val := by
+      rw [s_post2, hZ, hres]
+      simp only
+      have h8 : pt1.xy.val.length = 8 := pt1.xy.property
+      generalize pt1.xy.val = l at h8 ⊢
+      match l, h8 with
+      | [a0, a1, a2, a3, a4, a5, a6, a7], _ =>
+        generalize s3.val = q at hsl ⊢
+        match q, hsl with
+        | [b0, b1, b2, b3], _ =>
+          simp [List.setSlice!, mid.p256.CURVE_ONE_MONT, Array.make]
+    have hz3 : wordsNat s3.val = if dg.val ≠ 0 then 2 ^ 256 % p256 else 0 := by
+      rw [s3_post1, hn, s1_post, s2_post]
+      simp only [Array.val_to_slice]
+      split_ifs
+      · exact CURVE_ONE_MONT_val
+      · simp [Array.repeat, wordsNat, Nat.ofDigits]
+    have htrip : tripleNat (index_mut_back s3).val =
+        ((pairNat pt1.xy.val).1, (pairNat pt1.xy.val).2, if dg.val ≠ 0 then 2 ^ 256 % p256 else 0) := by
+      rw [hv, tripleNat_append _ _ pt1.xy.property hsl, hz3]
+    have hinit : p256Represents (gpt X (acc (digit (wordsNat k.val)) 1)) (tripleNat (index_mut_back s3).val) := by
+      rw [htrip]
+      have h1 : acc (digit (wordsNat k.val)) 1 = signed dg.val sg.val := by simp [acc, hdig]
+      rw [h1]
+      by_cases hd0 : dg.val = 0
+      · simp only [hd0, ne_eq, not_true_eq_false, ↓reduceIte]
+        rw [hz hd0]
+        simp only [signed, Nat.cast_zero, neg_zero, ite_self, gpt_zero]
+        exact rep_zero
+      · simp only [hd0, ne_eq, not_false_eq_true, ↓reduceIte]
+        have := hP2 hd0
+        simp only [pow_zero, mul_one] at this
+        exact rep_one _ _ this
+    step with loop_spec X hX hord (wordsNat k.val) hk windows hw { start := 1#usize, «end» := 37#usize }
+      (by simp) (by simp) (by simp) pt1 (index_mut_back s3) (by simpa using hinit)
+      as ⟨a4, ha4⟩
+    rw [show acc (digit (wordsNat k.val)) 37 = wordsNat k.val from booth_sum _ hk256] at ha4
+    rw [← hX, p256Pow, nist.pow_fromM, ← natCast_zsmul]
+    exact ha4
 
 end P256Base
 
