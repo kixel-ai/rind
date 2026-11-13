@@ -189,6 +189,7 @@
           # the same arguments.
           # Ubuntu's AppArmor denies the sandbox its user namespace until
           # `kernel.apparmor_restrict_unprivileged_userns=0`, as the workflows set.
+          # See UPSTREAM.md, "Ubuntu's AppArmor denies Intel SDE's sandbox".
           sde = pkgs.buildFHSEnv {
             name = "sde";
             runScript = "${
@@ -350,7 +351,10 @@
           # `tools/build-proof.sh` does, the Rust whose build emits the object
           # code they are of, with llvm-objdump to read it, the Python that
           # compares that code with the code upstream's proofs check, and the
-          # cross tools that assemble Vale's and aws-lc's.
+          # cross tools that assemble Vale's and aws-lc's, with flock, which
+          # keeps runs in one worktree from rewriting each other's files. On
+          # Linux, `admin/prove session` checkpoints and restores HOL Light
+          # with DMTCP.
           hol-light = pkgs.mkShell {
             packages = [
               (rust-stable.minimal.override {
@@ -367,7 +371,9 @@
               pkgs.git
               pkgs.python3
               debian-cross-tools
-            ];
+              pkgs.flock
+            ]
+            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.dmtcp;
           };
 
           sde-certs = ''
@@ -424,6 +430,8 @@
                 ]
                 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
                   # Marked broken on Darwin in nixpkgs.
+                  # See UPSTREAM.md, "nixpkgs marks release-plz broken on
+                  # Darwin".
                   release-plz
                   # admin/ctgrind's constant-time checks.
                   valgrind
@@ -504,7 +512,7 @@
             # The nightly MSRV job builds in it. The workspace's rust-version
             # names a minor release, which resolves to its latest patch, as
             # rustup does. The extra targets let it check rind's other
-            # backends, which `check` does without a C toolchain.
+            # backends and 32-bit x86, which `check` does without a C toolchain.
             msrv = pkgs.mkShell {
               packages = [
                 (pkgs.rust-bin.fromRustupToolchain {
@@ -513,6 +521,7 @@
                   targets = [
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
+                    "i686-unknown-linux-gnu"
                   ];
                 })
               ];
@@ -536,6 +545,8 @@
                 # Its tests build with nixpkgs' rustc, whose instrumented
                 # binaries crash on exit, so the cache has no build. rind's
                 # coverage builds with the toolchain above instead.
+                # See UPSTREAM.md, "nixpkgs' Rust crashes cargo-llvm-cov's
+                # tests".
                 (pkgs.cargo-llvm-cov.overrideAttrs { doCheck = false; })
                 # aws-lc-rs builds C.
                 pkgs.cmake
@@ -577,6 +588,7 @@
             # Aeneas releases for it. Lake fetches the Lean toolchain that
             # `proofs/lean-toolchain` names, whose bundled `leantar` reads
             # Mathlib's cache, which nixpkgs' Lean cannot.
+            # See UPSTREAM.md, "nixpkgs' Lean cannot read Mathlib's cache".
             prove = pkgs.mkShell {
               inputsFrom = [ hol-light ];
               packages = [
@@ -599,6 +611,16 @@
               ];
 
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+            };
+
+            # `just wasm` runs the portable backend's tests on wasm32-wasip2
+            # in it, under wasmtime. The toolchain is the default shell's,
+            # which already carries the target.
+            wasm = pkgs.mkShell {
+              packages = [
+                rust-toolchain
+                pkgs.wasmtime
+              ];
             };
 
             # `just miri` and the miri workflow run in it: Charon's nightly,
@@ -629,6 +651,14 @@
             # and the armv7 standard libraries add about 700 MB, which every
             # other CI job would download.
             armv7 = pkgs.mkShell armv7-shell;
+
+            # `just qemu aarch64` tests the aarch64 build under qemu in it, and
+            # `just check`'s cross module lints rind's tests for aarch64 in it,
+            # where the aws-lc-rs dev-dependency needs an aarch64 C compiler.
+            aarch64 = qemu-shell {
+              target = "aarch64-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.aarch64-multiplatform;
+            };
 
             # `just qemu s390x` tests the portable backend on big-endian
             # s390x in it.
@@ -687,6 +717,8 @@
             # `crtbeginS.o` included, use the BSS PLT, which lld links without
             # error into a binary that crashes. GNU ld handles both. gcc obeys
             # the last `-fuse-ld`, so a trailing one picks GNU ld.
+            # See UPSTREAM.md, "rust-lld cannot link ELFv1" and "lld links
+            # BSS-PLT objects into a crashing ppc32 binary".
             powerpc64le = qemu-shell {
               target = "powerpc64le-unknown-linux-gnu";
               cross = pkgs.pkgsCross.powernv;
@@ -738,8 +770,7 @@
             };
           }
           # `x86-cpu.yml` and `admin/x86-cpu sde-scan` run the tests and
-          # `rind-cpuid` under `sde` in it, `admin/ct-sde` traces them, and
-          # `admin/mutants --avx512` mutates under it.
+          # `rind-cpuid` under `sde` in it, and `admin/ct-sde` traces them.
           # SDE runs only on x86_64.
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             sde = pkgs.mkShell {
@@ -751,8 +782,6 @@
                 openssl
                 python3
                 sde
-                cargo-mutants
-                cargo-nextest
                 # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
                 util-linux
               ];

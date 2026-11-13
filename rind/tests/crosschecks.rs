@@ -1,5 +1,5 @@
 //! Differential tests against aws-lc, which Miri cannot run.
-#![cfg(not(miri))]
+#![cfg(not(any(miri, target_family = "wasm")))]
 
 use aws_lc_rs::{digest, hmac, signature::Ed25519KeyPair};
 use proptest::collection::vec;
@@ -2859,6 +2859,414 @@ mod hpke {
             if let Some(ct) = ct {
                 prop_assert_eq!(their_recipient.open(&aad, &ct).unwrap(), plaintext);
             }
+        }
+    }
+}
+
+/// ML-DSA against aws-lc-rs, which runs mldsa-native with the same
+/// s2n-bignum kernels.
+macro_rules! ml_dsa_crosschecks {
+    ($set:ident, $signing:ident, $verify:ident) => {
+        use aws_lc_rs::encoding::{AsDer, AsRawBytes};
+        use aws_lc_rs::signature::{KeyPair, PqdsaKeyPair, UnparsedPublicKey, $signing};
+        use proptest::collection::vec;
+        use proptest::prelude::*;
+        use proptest::sample::Index;
+        use rind::signature::sign::{MlDsaKeyPair, $set};
+        use rind::signature::{PublicKey, verify};
+
+        // Each case makes several signatures, which are slow in a debug
+        // build and under emulation.
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(16))]
+
+            #[test]
+            fn sign_verify(
+                seed in any::<[u8; 32]>(),
+                message in vec(any::<u8>(), 0..300),
+                flip in any::<Option<Index>>(),
+            ) {
+                // One seed gives both sides the same key and encodings.
+                let theirs = PqdsaKeyPair::from_seed(&$signing, &seed).unwrap();
+                let ours = MlDsaKeyPair::<$set>::from_seed(&seed).unwrap();
+                let public = theirs.public_key().as_ref();
+                let ours_public = ours.public_key();
+                prop_assert_eq!(ours_public.as_ref(), public);
+                let spki = theirs.public_key().as_der().unwrap();
+                let ours_spki = ours_public.to_spki();
+                prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
+                let (ours_pkcs8, theirs_pkcs8) = (ours.to_pkcs8(), theirs.to_pkcs8v1().unwrap());
+                prop_assert_eq!(ours_pkcs8.as_ref(), theirs_pkcs8.as_ref());
+
+                // Signing is hedged, so each verifies the other's signature
+                // rather than matching its bytes.
+                let ours_signature = ours.sign(&message).unwrap();
+                UnparsedPublicKey::new(&aws_lc_rs::signature::$verify, public)
+                    .verify(&message, ours_signature.as_ref())
+                    .unwrap();
+                let mut signature = vec![0; $signing.signature_len()];
+                theirs.sign(&message, &mut signature).unwrap();
+                let verifier = PublicKey::from_spki(&verify::$verify, spki.as_ref()).unwrap();
+                verifier.verify(&message, &signature).unwrap();
+
+                // Both refuse it with any one bit flipped.
+                if let Some(flip) = flip {
+                    let bit = flip.index(signature.len() * 8);
+                    signature[bit / 8] ^= 1 << (bit % 8);
+                    prop_assert!(verifier.verify(&message, &signature).is_err());
+                    prop_assert!(
+                        UnparsedPublicKey::new(&aws_lc_rs::signature::$verify, public)
+                            .verify(&message, &signature)
+                            .is_err()
+                    );
+                }
+            }
+
+            /// Both load the other's expanded key, which has no seed, and
+            /// sign alike with it.
+            #[test]
+            fn expanded(seed in any::<[u8; 32]>(), message in vec(any::<u8>(), 0..300)) {
+                let theirs = PqdsaKeyPair::from_seed(&$signing, &seed).unwrap();
+                let expanded = theirs.private_key().as_raw_bytes().unwrap();
+                let expanded = expanded.as_ref();
+                let ours = MlDsaKeyPair::<$set>::from_pkcs8(&expanded_pkcs8(
+                    theirs_pkcs8_prefix(&theirs),
+                    expanded,
+                ))
+                .unwrap();
+                prop_assert!(ours.to_seed().is_none());
+                let ours_public = ours.public_key();
+                prop_assert_eq!(ours_public.as_ref(), theirs.public_key().as_ref());
+
+                // Ours writes the expanded form, which theirs loads.
+                let ours_pkcs8 = ours.to_pkcs8();
+                let reloaded = PqdsaKeyPair::from_pkcs8(&$signing, ours_pkcs8.as_ref()).unwrap();
+                prop_assert_eq!(reloaded.public_key().as_ref(), theirs.public_key().as_ref());
+                let signature = ours.sign(&message).unwrap();
+                UnparsedPublicKey::new(&aws_lc_rs::signature::$verify, theirs.public_key().as_ref())
+                    .verify(&message, signature.as_ref())
+                    .unwrap();
+            }
+        }
+
+        /// The PKCS#8 v1 header up to the private key, from the seed form
+        /// aws-lc writes: version and algorithm identifier.
+        fn theirs_pkcs8_prefix(theirs: &PqdsaKeyPair) -> Vec<u8> {
+            let pkcs8 = theirs.to_pkcs8v1().unwrap();
+            // SEQUENCE { INTEGER 0, AlgorithmIdentifier (13 bytes), ... }
+            pkcs8.as_ref()[2..2 + 3 + 13].to_vec()
+        }
+
+        /// A PKCS#8 v1 key in RFC 9881's expanded form.
+        fn expanded_pkcs8(prefix: Vec<u8>, expanded: &[u8]) -> Vec<u8> {
+            let inner = super::der(0x04, expanded);
+            let body = [prefix, super::der(0x04, &inner)].concat();
+            super::der(0x30, &body)
+        }
+    };
+}
+
+mod ml_dsa_44 {
+    ml_dsa_crosschecks!(MlDsa44, ML_DSA_44_SIGNING, ML_DSA_44);
+}
+
+mod ml_dsa_65 {
+    ml_dsa_crosschecks!(MlDsa65, ML_DSA_65_SIGNING, ML_DSA_65);
+}
+
+mod ml_dsa_87 {
+    ml_dsa_crosschecks!(MlDsa87, ML_DSA_87_SIGNING, ML_DSA_87);
+}
+
+/// Each side of RFC 9474's protocol against blind-rsa-signatures' other
+/// side, for each variant.
+mod blind_rsa {
+    use blind_rsa_signatures::{
+        DefaultRng, Deterministic, MessagePrepare, MessageRandomizer, PSS, PSSZero, Randomized,
+        SaltMode, SecretKey, Sha384,
+    };
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use rind::blind_rsa::*;
+
+    // Their keys are 2048 to 4096 bits.
+    const KEYS: [&[u8]; 2] = [
+        include_bytes!("../src/high/rsa/rsa2048.pkcs8.der"),
+        include_bytes!("../src/high/rsa/rsa4096.pkcs8.der"),
+    ];
+
+    fn check<S: SaltMode, M: MessagePrepare>(algorithm: &'static Algorithm, message: &[u8]) {
+        for der in KEYS {
+            let ours = KeyPair::from_pkcs8(algorithm, der).unwrap();
+            let theirs = SecretKey::<Sha384, S, M>::from_der(der).unwrap();
+            let our_public = ours.public_key();
+            let their_public = theirs.public_key().unwrap();
+            let spki = their_public.to_spki().unwrap();
+            assert_eq!(our_public.to_spki().as_ref(), spki);
+            PublicKey::new(algorithm, &spki).unwrap();
+
+            // Our client, their server.
+            let (blinded, blinding) = our_public.blind(message).unwrap();
+            let blind_signature = theirs.blind_sign(blinded.as_ref()).unwrap();
+            let signature = blinding.finalize(&blind_signature).unwrap();
+            let (prefix, rsa_signature) = signature.as_ref().split_at(match M::RANDOMIZE {
+                true => 32,
+                false => 0,
+            });
+            let randomizer = M::RANDOMIZE.then(|| MessageRandomizer(prefix.try_into().unwrap()));
+            their_public
+                .verify(&rsa_signature.to_vec().into(), randomizer, message)
+                .unwrap();
+
+            // Their client, our server.
+            let result = their_public.blind(&mut DefaultRng, message).unwrap();
+            let blind_signature = ours.blind_sign(&result.blind_message).unwrap();
+            let blind_signature = blind_signature.as_ref().to_vec().into();
+            let signature = their_public
+                .finalize(&blind_signature, &result, message)
+                .unwrap();
+            let prefix = result.msg_randomizer.as_ref().map_or(&[][..], |r| &r.0[..]);
+            our_public
+                .verify(message, &[prefix, &signature].concat())
+                .unwrap();
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(16))]
+
+        #[test]
+        fn matches_blind_rsa_signatures(message in vec(any::<u8>(), 0..300)) {
+            check::<PSS, Randomized>(&RSABSSA_SHA384_PSS_RANDOMIZED, &message);
+            check::<PSSZero, Randomized>(&RSABSSA_SHA384_PSSZERO_RANDOMIZED, &message);
+            check::<PSS, Deterministic>(&RSABSSA_SHA384_PSS_DETERMINISTIC, &message);
+            check::<PSSZero, Deterministic>(&RSABSSA_SHA384_PSSZERO_DETERMINISTIC, &message);
+        }
+    }
+}
+
+/// ECVRF against `akd_core`'s Edwards25519 suite, which key transparency's
+/// `akd` runs, and `vrf-rfc9381`'s P-256 suite: each proves the same bytes
+/// for a key and input, and verifies the other's proofs.
+mod vrf {
+    use akd_core::ecvrf::{VRFPrivateKey, VRFPublicKey};
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use rind::vrf::*;
+    use vrf_rfc9381::ec::p256::EcVrfProof;
+    use vrf_rfc9381::ec::p256::tai::{EcVrfP256TaiPublicKey, EcVrfP256TaiSecretKey};
+    use vrf_rfc9381::{Proof as _, Prover as _, Verifier as _};
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn matches_akd(seed in any::<[u8; 32]>(), alpha in vec(any::<u8>(), 0..300)) {
+            let ours = SecretKey::from_bytes(&ECVRF_EDWARDS25519_SHA512_TAI, &seed).unwrap();
+            let theirs = VRFPrivateKey::try_from(&seed[..]).unwrap();
+            let their_public = VRFPublicKey::from(&theirs);
+            prop_assert_eq!(ours.public_key().as_ref(), their_public.as_bytes());
+
+            let (proof, output) = ours.prove(&alpha);
+            let their_proof = theirs.prove(&alpha);
+            prop_assert_eq!(proof.as_ref(), their_proof.to_bytes());
+            their_public.verify(&their_proof, &alpha).unwrap();
+
+            let public_key =
+                PublicKey::new(&ECVRF_EDWARDS25519_SHA512_TAI, their_public.as_bytes()).unwrap();
+            let verified = public_key.verify(&alpha, &their_proof.to_bytes()).unwrap();
+            prop_assert_eq!(verified.as_ref(), output.as_ref());
+        }
+
+        #[test]
+        fn matches_vrf_rfc9381(alpha in vec(any::<u8>(), 0..300)) {
+            let ours = SecretKey::generate(&ECVRF_P256_SHA256_TAI).unwrap();
+            let theirs = EcVrfP256TaiSecretKey::from_slice(ours.to_bytes().as_ref()).unwrap();
+            let their_public = theirs.verifier();
+
+            let (proof, output) = ours.prove(&alpha);
+            let their_proof = theirs.prove(&alpha).unwrap();
+            prop_assert_eq!(proof.as_ref(), &their_proof.encode_to_pi()[..]);
+            prop_assert!(
+                EcVrfP256TaiPublicKey::from_slice(ours.public_key().as_ref()).unwrap()
+                    == their_public
+            );
+            let their_output = their_public
+                .verify(&alpha, EcVrfProof::decode_pi(proof.as_ref()).unwrap())
+                .unwrap();
+            prop_assert_eq!(&their_output[..], output.as_ref());
+
+            let verified = ours
+                .public_key()
+                .verify(&alpha, &their_proof.encode_to_pi())
+                .unwrap();
+            prop_assert_eq!(verified.as_ref(), output.as_ref());
+        }
+    }
+}
+
+mod oprf {
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use rand_core_voprf::OsRng;
+    use rind::oprf::voprf as rind_voprf;
+    use rind::oprf::{P256_SHA256, P384_SHA384, P521_SHA512, RISTRETTO255_SHA512};
+    use voprf::{
+        BlindedElement, EvaluationElement, Group, OprfClient, OprfServer, Proof, VoprfClient,
+        VoprfServer,
+    };
+
+    /// Each suite against the `voprf` crate: the same key from one seed,
+    /// rind's clients finalizing the crate's evaluations and proofs, the
+    /// crate's clients finalizing rind's, and both servers' direct outputs.
+    macro_rules! matches_voprf {
+        ($cs:ty, $suite:expr, $seed:expr, $info:expr, $inputs:expr) => {{
+            let (seed, info, inputs): ([u8; 32], Vec<u8>, Vec<Vec<u8>>) = ($seed, $info, $inputs);
+            type G = <$cs as voprf::CipherSuite>::Group;
+            let suite = $suite;
+
+            // The OPRF mode.
+            let ours = rind::oprf::ServerKey::derive(suite, &seed, &info).unwrap();
+            let theirs = OprfServer::<$cs>::new_from_seed(&seed, &info).unwrap();
+            // The crate derives the same key: loaded from rind's
+            // encoding, it evaluates as the key it derived.
+            let loaded = OprfServer::<$cs>::new_with_key(ours.to_bytes().as_ref()).unwrap();
+            prop_assert_eq!(
+                &loaded.evaluate(b"key").unwrap()[..],
+                &theirs.evaluate(b"key").unwrap()[..]
+            );
+            for input in &inputs {
+                let direct = theirs.evaluate(input).unwrap();
+                let output = ours.evaluate(input).unwrap();
+                prop_assert_eq!(output.as_ref(), &direct[..]);
+
+                let (blind, blinded) = rind::oprf::Blind::new(suite, input).unwrap();
+                let evaluated =
+                    theirs.blind_evaluate(&BlindedElement::deserialize(blinded.as_ref()).unwrap());
+                let output = blind.finalize(&evaluated.serialize()).unwrap();
+                prop_assert_eq!(output.as_ref(), &direct[..]);
+
+                let blinded = OprfClient::<$cs>::blind(input, &mut OsRng).unwrap();
+                let evaluated = ours.blind_evaluate(&blinded.message.serialize()).unwrap();
+                let output = blinded
+                    .state
+                    .finalize(
+                        input,
+                        &EvaluationElement::deserialize(evaluated.as_ref()).unwrap(),
+                    )
+                    .unwrap();
+                prop_assert_eq!(&output[..], &direct[..]);
+            }
+
+            // The VOPRF mode, batched.
+            let ours = rind_voprf::ServerKey::derive(suite, &seed, &info).unwrap();
+            let theirs = VoprfServer::<$cs>::new_from_seed(&seed, &info).unwrap();
+            prop_assert_eq!(
+                ours.public_key().as_ref(),
+                &G::serialize_elem(theirs.get_public_key())[..]
+            );
+            let direct = inputs
+                .iter()
+                .map(|input| theirs.evaluate(input).unwrap().to_vec())
+                .collect::<Vec<_>>();
+            for (input, direct) in inputs.iter().zip(&direct) {
+                let output = ours.evaluate(input).unwrap();
+                prop_assert_eq!(output.as_ref(), &direct[..]);
+            }
+
+            let mut blinds = Vec::new();
+            let mut blinded = Vec::new();
+            for input in &inputs {
+                let (blind, element) = rind_voprf::Blind::new(suite, input).unwrap();
+                blinds.push(blind);
+                blinded.push(BlindedElement::<$cs>::deserialize(element.as_ref()).unwrap());
+            }
+            let evaluated = theirs.batch_blind_evaluate(&mut OsRng, &blinded).unwrap();
+            let messages = evaluated
+                .messages
+                .iter()
+                .flat_map(|message| message.serialize())
+                .collect::<Vec<_>>();
+            let public_key =
+                rind_voprf::PublicKey::new(suite, &G::serialize_elem(theirs.get_public_key()))
+                    .unwrap();
+            let outputs = rind_voprf::Blind::finalize_batch(
+                blinds,
+                &messages,
+                &evaluated.proof.serialize(),
+                &public_key,
+            )
+            .unwrap();
+            for (output, direct) in outputs.iter().zip(&direct) {
+                prop_assert_eq!(output.as_ref(), &direct[..]);
+            }
+
+            let mut clients = Vec::new();
+            let mut blinded = Vec::new();
+            for input in &inputs {
+                let result = VoprfClient::<$cs>::blind(input, &mut OsRng).unwrap();
+                clients.push(result.state);
+                blinded.extend_from_slice(&result.message.serialize());
+            }
+            let (evaluated, proof) = ours.blind_evaluate(&blinded).unwrap();
+            let element_len = evaluated.as_ref().len() / inputs.len();
+            let messages = evaluated
+                .as_ref()
+                .chunks(element_len)
+                .map(|bytes| EvaluationElement::<$cs>::deserialize(bytes).unwrap())
+                .collect::<Vec<_>>();
+            let proof = Proof::<$cs>::deserialize(proof.as_ref()).unwrap();
+            let outputs = VoprfClient::batch_finalize(
+                &inputs,
+                &clients,
+                &messages,
+                &proof,
+                theirs.get_public_key(),
+            )
+            .unwrap();
+            for (output, direct) in outputs.zip(&direct) {
+                prop_assert_eq!(&output.unwrap()[..], &direct[..]);
+            }
+        }};
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(16))]
+
+        #[test]
+        fn ristretto255_matches_voprf(
+            seed in any::<[u8; 32]>(),
+            info in vec(any::<u8>(), 0..40),
+            inputs in vec(vec(any::<u8>(), 0..100), 1..4),
+        ) {
+            matches_voprf!(voprf::Ristretto255, &RISTRETTO255_SHA512, seed, info, inputs);
+        }
+
+        #[test]
+        fn p256_matches_voprf(
+            seed in any::<[u8; 32]>(),
+            info in vec(any::<u8>(), 0..40),
+            inputs in vec(vec(any::<u8>(), 0..100), 1..4),
+        ) {
+            matches_voprf!(p256_voprf::NistP256, &P256_SHA256, seed, info, inputs);
+        }
+
+        #[test]
+        fn p384_matches_voprf(
+            seed in any::<[u8; 32]>(),
+            info in vec(any::<u8>(), 0..40),
+            inputs in vec(vec(any::<u8>(), 0..100), 1..4),
+        ) {
+            matches_voprf!(p384_voprf::NistP384, &P384_SHA384, seed, info, inputs);
+        }
+
+        #[test]
+        fn p521_matches_voprf(
+            seed in any::<[u8; 32]>(),
+            info in vec(any::<u8>(), 0..40),
+            inputs in vec(vec(any::<u8>(), 0..100), 1..4),
+        ) {
+            matches_voprf!(p521_voprf::NistP521, &P521_SHA512, seed, info, inputs);
         }
     }
 }

@@ -144,7 +144,11 @@ SECTIONS = [
     (
         "Hashes and KDFs",
         [
-            *(f"{hash}/{{lib}}/{size}" for hash in ["sha256", "sha512"] for size in ["64B", "1350B", "16KB"]),
+            *(
+                f"{hash}/{{lib}}/{size}"
+                for hash in ["sha256", "sha512", "sha3-256", "sha3-512"]
+                for size in ["64B", "1350B", "16KB"]
+            ),
             "hmac-sha256/{lib}/64B",
             "hmac-sha256/{lib}/1350B",
             "hkdf-sha256/extract-expand/{lib}",
@@ -161,6 +165,7 @@ SECTIONS = [
         ],
     ),
     ("ML-KEM", ["mlkem768-keygen/{lib}", "mlkem768-encaps/{lib}", "mlkem768-decaps/{lib}"]),
+    ("ML-DSA", ["mldsa65-keygen/{lib}", "mldsa65-sign/{lib}", "mldsa65-verify/{lib}"]),
     (
         "P-384 and P-521",
         [
@@ -217,6 +222,7 @@ CRATES = {
         "p384",
         "p521",
         "rsa",
+        "ml-dsa",
         "ml-kem",
         "ed25519-dalek",
         "x25519-dalek",
@@ -230,6 +236,7 @@ CRATES = {
         "libcrux-ed25519",
         "libcrux-hkdf",
         "libcrux-hmac",
+        "libcrux-ml-dsa",
         "libcrux-ml-kem",
         "libcrux-rsa",
         "libcrux-sha2",
@@ -667,7 +674,7 @@ REPORT_DIR = os.path.join(ROOT, "benchmarks")
 DATA_DIR = os.path.join(REPORT_DIR, "data")
 VERIFIED = os.path.join(REPORT_DIR, "verified.toml")
 GAPS = os.path.join(REPORT_DIR, "gaps.toml")
-REPO = "moq-dev/rind"
+REPO = "kixel-ai/rind"
 
 # The report's columns, in order, by library.
 COLUMNS = {
@@ -721,6 +728,8 @@ NAMES = {
     "p256-ecdsa-verify": "P-256 ECDSA verify",
     "sha256": "SHA-256",
     "sha512": "SHA-512",
+    "sha3-256": "SHA3-256",
+    "sha3-512": "SHA3-512",
     "hmac-sha256": "HMAC-SHA256",
     "hkdf-sha256/extract-expand": "HKDF-SHA256 extract and expand",
     "hkdf-sha256/expand": "HKDF-SHA256 expand",
@@ -731,6 +740,9 @@ NAMES = {
     "mlkem768-keygen": "ML-KEM-768 key generation",
     "mlkem768-encaps": "ML-KEM-768 encapsulate",
     "mlkem768-decaps": "ML-KEM-768 decapsulate",
+    "mldsa65-keygen": "ML-DSA-65 key generation",
+    "mldsa65-sign": "ML-DSA-65 sign",
+    "mldsa65-verify": "ML-DSA-65 verify",
     "p384-ecdh": "P-384 ECDH",
     "p384-ecdsa-sign": "P-384 ECDSA sign",
     "p384-ecdsa-verify": "P-384 ECDSA verify",
@@ -794,7 +806,7 @@ TIER_ROWS = [
     ("AES-CBC", r"aes(128|192|256)-cbc-"),
     ("AES-KW, AES-KWP", r"aes(128|256)-kwp?-"),
     ("ChaCha20 (header protection)", r"quic-header-protection/chacha20/"),
-    ("ChaCha20-Poly1305, XChaCha20-Poly1305", r"x?chacha20poly1305/"),
+    ("ChaCha20-Poly1305, XChaCha20-Poly1305", r"x?chacha20poly1305(-open)?/"),
     ("SHA-1", r"sha1/"),
     ("SHA-256", r"sha256(-updates)?/"),
     ("SHA-384, SHA-512, SHA-512/256", r"sha(384|512|512-256)/"),
@@ -809,6 +821,7 @@ TIER_ROWS = [
     ("P-384 ECDH, ECDSA", r"p384-"),
     ("P-521 ECDH, ECDSA", r"p521-"),
     ("ML-KEM-768", r"mlkem768-"),
+    ("ML-DSA", r"mldsa(44|65|87)-"),
     ("RSA signatures", r"rsa\d+-(pkcs1|pss|load)"),
     ("RSA-OAEP", r"rsa\d+-oaep-"),
     ("JSON Web Tokens", r"jwt-[^/]+/\*/token$"),
@@ -1624,7 +1637,23 @@ def report(hosts, tiers, verified, gaps):
     for e in verified:
         ops = ", ".join(f"`{p}`" for p in e["operations"])
         md.append(f"| {COLUMNS[e['library']]} | {ops} | {platform_of(e)} | [{e['proof']}]({e['link']}) |")
-    md.append("")
+    md += [
+        "",
+        "## Updating this report",
+        "",
+        "`admin/bench-report collect` runs the report's benchmarks, then",
+        "`admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev",
+        "shell and under `quest gate`, which waits for the host to have room but",
+        "shares it with other gated work, so its numbers are noisier than the nightly",
+        "`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under",
+        "`.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly",
+        "`bench` run's results, and `admin/bench-report render --from DIR` copies a",
+        "collection's measured hosts into `benchmarks/data/` and writes",
+        "`BENCHMARKS.md` and its SVGs, which the README shows too, from them, `benchmarks/verified.toml`, and",
+        "`benchmarks/gaps.toml`, which must hold a quest or a reason for every gap",
+        "over 10%.",
+        "",
+    ]
     files = {os.path.join(REPORT_DIR, k): v for k, v in files.items()}
     files[REPORT] = "\n".join(md)
     return files

@@ -359,9 +359,9 @@ def targets(arch, insns):
 X86_ENDBR64 = bytes.fromhex("f30f1efa")
 # Opcodes, in the 0F map with a 66 prefix, of the VEX instructions whose two
 # sources commute, which LLVM swaps to fit the two-byte VEX prefix where the
-# GNU assembler keeps the order it was given: vpaddq, vpmullw, vpmulhw, vpor,
-# vpxor, vpaddw, vpaddd.
-COMMUTATIVE_VEX = {0xD4, 0xD5, 0xE5, 0xEB, 0xEF, 0xFD, 0xFE}
+# GNU assembler keeps the order it was given: vpaddq, vpmullw, vpmulhuw,
+# vpmulhw, vpor, vpxor, vpaddw, vpaddd.
+COMMUTATIVE_VEX = {0xD4, 0xD5, 0xE4, 0xE5, 0xEB, 0xEF, 0xFD, 0xFE}
 
 
 def nop(arch, insn):

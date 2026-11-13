@@ -1,22 +1,17 @@
 //! <h1 align="center">rind-jsonwebtoken</h1>
-//! <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png">
+//! <img width="40%" align="right" src="https://raw.githubusercontent.com/kixel-ai/rind/main/admin/logo.png">
 //!
-//! This crate provides an integration between [jsonwebtoken](https://github.com/Keats/jsonwebtoken) and [rind](https://github.com/moq-dev/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
+//! This crate provides an integration between [jsonwebtoken](https://github.com/Keats/jsonwebtoken) and [rind](https://github.com/kixel-ai/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
 //!
 //! Use it like:
 //!
 //! ```rust
-//! # fn main() -> Result<(), rind_jsonwebtoken::MissingFeature> {
-//! rind_jsonwebtoken::default_provider()?
+//! rind_jsonwebtoken::DEFAULT_PROVIDER
 //!     .install_default()
 //!     .unwrap();
-//! # Ok(())
-//! # }
 //! ```
 //!
 //! And then use jsonwebtoken as normal.
-
-use core::fmt;
 
 use jsonwebtoken::crypto::{CryptoProvider, JwtSigner, JwtVerifier, KeyUtils};
 use jsonwebtoken::errors::{Error, ErrorKind, Result};
@@ -31,26 +26,9 @@ use rind::signature::{
 };
 use rind::{digest, hmac};
 
-/// A CPU feature rind requires that this CPU lacks.
-#[derive(Debug)]
-pub struct MissingFeature(rind::cpu::MissingFeature);
-
-impl fmt::Display for MissingFeature {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl std::error::Error for MissingFeature {}
-
-/// Returns a jsonwebtoken [`CryptoProvider`] that signs and verifies every
-/// algorithm with rind, or the CPU feature rind requires that this CPU lacks.
-pub fn default_provider() -> std::result::Result<&'static CryptoProvider, MissingFeature> {
-    rind::cpu::check().map_err(MissingFeature)?;
-    Ok(&PROVIDER)
-}
-
-static PROVIDER: CryptoProvider = CryptoProvider {
+/// The jsonwebtoken [`CryptoProvider`] that signs and verifies every algorithm
+/// with rind.
+pub static DEFAULT_PROVIDER: CryptoProvider = CryptoProvider {
     signer_factory: new_signer,
     verifier_factory: new_verifier,
     key_utils: KeyUtils {

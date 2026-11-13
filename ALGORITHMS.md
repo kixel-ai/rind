@@ -36,20 +36,24 @@ SHA-512.
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | aws-lc ⚡ |  |  | HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | HACL* ✓ + Graviola ⚡ |
 | MD5 | rind |  |  |  |  |
 | SHA-1 | rind | aws-lc |  |  |  |
-| SHA-256 | Graviola ⚡ | aws-lc ⚡ |  |  |  |
+| SHA-256 | Graviola ⚡ + rind ⚡ | aws-lc ⚡ |  |  |  |
 | SHA-384, SHA-512, SHA-512/256 | OpenSSL ⚡ | aws-lc ⚡ |  |  |  |
 | SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  |  |  |  |
 | HMAC | Graviola ⚡ |  |  |  |  |
 | HKDF | rind ⚡ |  |  |  |  |
 | HPKE, over the rows it builds on | rind |  |  |  |  |
+| ECVRF, over the rows it builds on | rind |  |  |  |  |
+| OPRF, VOPRF, over the rows it builds on | rind |  |  |  |  |
 | PBKDF2 | rind |  |  |  |  |
 | X25519 | s2n-bignum ✓ |  |  |  |  |
 | Ed25519 | s2n-bignum ✓ + Graviola |  |  |  |  |
+| ristretto255 | s2n-bignum ✓ + rind |  |  |  |  |
 | P-256 ECDH, ECDSA | s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ |  |  |  |  |
 | P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  |  |  |  |
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  |  |  |  |
 | ML-KEM-768 | s2n-bignum ✓ + mlkem-native ✓ + Graviola ⚡ | mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
-| RSA signatures, OAEP, key generation | s2n-bignum ✓ + aws-lc ⚡ + rind ⚡ | s2n-bignum ✓ + aws-lc ⚡ |  |  |  |
+| ML-DSA-44, ML-DSA-65, ML-DSA-87 | s2n-bignum ✓ + mldsa-native ⚡ | mldsa-native ⚡ + s2n-bignum ✓ |  |  |  |
+| RSA signatures, OAEP, blind signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ + rind ⚡ | s2n-bignum ✓ + aws-lc ⚡ |  |  |  |
 
 - RSA: x86_64 with ADX multiplies 1024- and 2048-bit moduli by
   [s2n-bignum]'s verified Karatsuba routines, as [#224] decided, rather than
@@ -75,6 +79,10 @@ SHA-512.
 - ChaCha20-Poly1305 without AES-NI and on SSE2, which lack SSE4.1: rind runs
   Graviola's scalar Poly1305 there, and aws-lc BoringSSL's SSE2
   `poly1305_vec.c`, which rind doesn't port for CPUs older than Westmere.
+- ML-DSA: the FIPS 204 construction, and without AVX2 the arithmetic, run a
+  Rust port of [mldsa-native]'s C, outside its CBMC proofs, rather than
+  [libcrux]'s ML-DSA, which measured slower at every parameter set, with
+  AVX2 and on the portable backend (see [ML-DSA](#ml-dsa)).
 
 aarch64 runs with the crypto extension and the SHA-512 and SHA-3
 instructions; no crypto denies them, as a Raspberry Pi 4 lacks them. armv7
@@ -87,39 +95,55 @@ with portable Rust in place of the assembly armv7 runs regardless.
 
 | Algorithm | aarch64 | no crypto | armv7 | portable |
 |---|---|---|---|---|
-| AES-GCM | s2n-bignum + Graviola + rind | aws-lc + rind |  | libcrux-aes + aws-lc + rind |
-| AES block, AES-CTR | Graviola + rind | aws-lc |  | libcrux-aes + rind |
-| AES-KW, AES-KWP, AES-CBC | Graviola + rind | aws-lc + rind |  | libcrux-aes + rind |
+| AES-GCM | s2n-bignum + Graviola + rind | aws-lc + rind |  | aws-lc + rind |
+| AES block, AES-CTR | Graviola + rind | aws-lc |  | aws-lc |
+| AES-KW, AES-KWP, AES-CBC | Graviola + rind | aws-lc + rind |  | aws-lc + rind |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | aws-lc ⚡ |  |  | HACL* ✓ + Graviola |
 | MD5 | rind |  |  |  |
 | SHA-1 | rind | aws-lc |  | rind |
-| SHA-256 | aws-lc ⚡ | aws-lc | aws-lc ⚡ / Graviola without crypto | HACL* ✓ |
+| SHA-256 | aws-lc ⚡ | aws-lc |  | HACL* ✓ |
 | SHA-384, SHA-512, SHA-512/256 | aws-lc | aws-lc ✓ | aws-lc ⚡ | HACL* ✓ |
-| SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  | OpenSSL ⚡ + Graviola | HACL* + Graviola |
+| SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  | OpenSSL ⚡ + Graviola | rind + Graviola |
 | HMAC | Graviola ⚡ |  |  |  |
 | HKDF | rind ⚡ |  |  |  |
 | HPKE, over the rows it builds on | rind |  |  |  |
+| ECVRF, over the rows it builds on | rind |  |  |  |
+| OPRF, VOPRF, over the rows it builds on | rind |  |  |  |
 | PBKDF2 | rind |  |  |  |
 | X25519 | s2n-bignum ✓ |  | BoringSSL ⚡ + curve25519-dalek ⚡ | curve25519-dalek ⚡ |
 | Ed25519 | s2n-bignum ✓ + Graviola |  | curve25519-dalek ⚡ + rind ⚡ |  |
-| P-256 ECDH, ECDSA | s2n-bignum ✓ + Graviola |  | fiat-crypto ✓ + rind ⚡ + Graviola ⚡ |  |
-| P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  | fiat-crypto ✓ + rind ⚡ |  |
+| ristretto255 | s2n-bignum ✓ + rind |  | curve25519-dalek | curve25519-dalek |
+| P-256 ECDH, ECDSA | s2n-bignum ✓ + Graviola |  | fiat-crypto ✓ + rind ⚡ + Graviola ⚡ | fiat-crypto ✓ + rind + Graviola ⚡ |
+| P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  | fiat-crypto ✓ + rind ⚡ | fiat-crypto ✓ + rind |
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  | fiat-crypto ✓ + rind ⚡ |  |
-| ML-KEM-768 | s2n-bignum ✓ + Graviola ⚡ |  | mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ | mlkem-native ⚡ + HACL* + Graviola ⚡ |
-| RSA signatures, OAEP, key generation | s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ |  | aws-lc ⚡ + Graviola ⚡ + rind ⚡ | Graviola ⚡ + rind ⚡ |
+| ML-KEM-768 | s2n-bignum ✓ + Graviola ⚡ |  | mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ | mlkem-native ⚡ + rind + Graviola ⚡ |
+| ML-DSA-44, ML-DSA-65, ML-DSA-87 | s2n-bignum ✓ + mldsa-native ⚡ |  | mldsa-native ⚡ + OpenSSL ⚡ | mldsa-native ⚡ + rind |
+| RSA signatures, OAEP, blind signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ |  | aws-lc ⚡ + Graviola ⚡ + rind ⚡ | Graviola ⚡ + rind ⚡ |
 
 - AES header protection on aarch64 pays the same indirect call as AES-GCM
   key setup on x86_64.
-- armv7 without crypto: SHA-256 keeps Graviola. Its [native 32-bit comparison](benchmarks/armv7-sha256.md)
-  measured 28–30% lower latency than HACL* at 64 B and 1350 B.
+- armv7 without crypto: SHA-256 and SHA-1 run aws-lc's NEON routines, or
+  its integer ones without NEON. A [native 32-bit comparison](benchmarks/armv7-sha256.md)
+  measured them 1.2 to 2.2× faster than Graviola's SHA-256 and rind's SHA-1,
+  which in turn ran SHA-256 28–30% faster than HACL*.
 - portable: ChaCha20-Poly1305's Poly1305 is Graviola's on 64-bit targets
   and HACL*'s ✓ on 32-bit ones, whose streaming state counts its input in a
-  32-bit length that a 64-bit AEAD can overflow. SHA-3's and ML-KEM's
-  Keccak-f is a hand port of HACL*'s, outside its proofs, as libcrux-sha3 is
-  unverified and exposes no permutation. RSA's Montgomery multiplication is
-  rind's 32-bit-limb loop, which wipes its scratch, rather than HACL*'s,
-  which leaves scratch unwiped on the heap.
+  32-bit length that a 64-bit AEAD can overflow. SHA-3's, ML-KEM's, and
+  ML-DSA's Keccak-f is rind's, s2n-bignum's Keccak spec in Rust, which
+  [`proofs/`](proofs/README.md) proves is FIPS 202's KECCAK-f[1600]; it
+  measured as fast as RustCrypto's and libcrux-sha3's, which nothing proves.
+  RSA's Montgomery multiplication is rind's loop, which wipes its scratch,
+  rather than HACL*'s, which leaves scratch unwiped on the heap.
+- portable: RSA and the NIST curves run on 64-bit limbs on 64-bit targets,
+  and on wasm32 built with the `wide-arithmetic` target feature (stable from
+  Rust 1.101), and on armv7's 32-bit limbs on other 32-bit targets, where a
+  64-bit limb's product would be a library call. On 64-bit limbs P-256 and
+  P-384 run fiat-crypto's field and scalar arithmetic whole: LLVM keeps its
+  carry chains in registers there, and on x86_64 armv7's P-256 loop widened
+  to `u128` ran ECDH and verification no faster end to end. The 64-bit columns
+  are the ones this table's portable column describes; 32-bit portable
+  targets run armv7's sources.
 - P-521 on armv7: rind and aws-lc-rs both run [fiat-crypto]'s field
   arithmetic, which spills no carry flag there. A `umaal` multiply ran more
   instructions in [#281], so rind keeps the verified code.
@@ -133,11 +157,11 @@ tests use [Wycheproof]'s vectors.
 |---|---|---|---|
 | [Graviola] | copied: rind began as a copy of it, and rind-rustls of its rustls-graviola; its aarch64 ChaCha20 and its Poly1305 began as [cifra], CC0-1.0 | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | rind | its own code | Apache-2.0 OR ISC OR MIT-0 | nothing |
-| [s2n-bignum] | copied: its assembly for the elliptic curves, RSA, ML-KEM, Keccak-f, and aarch64 AES-GCM, transliterated into Rust `asm!` by `admin/parse-asm`, which ends each x86_64 routine using 256-bit registers with `vzeroupper` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM and aarch64 Keccak-f routines (from mlkem-native) Apache-2.0 OR ISC OR MIT; its x86_64 single-state Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs)) that each routine's object code computes its specified result for all inputs; some also prove that its memory accesses stay in bounds and that its branches and addresses depend on no secret. `admin/prove bytes` checks that rind's build of each routine holds the instructions its proof lists, with the differences [below](#s2n-bignums-constant-time-theorems), so the proofs are of rind's code. rind runs the aarch64 AES-GCM kernels in place, outside their proofs, which assume separate input and output buffers. |
-| [HACL\*] | dependency, through libcrux-hacl-rs and libcrux-poly1305; copied, from libcrux-chacha20poly1305: the ChaCha20 rounds, for HChaCha20 and QUIC header protection and for x86_64's ChaCha20 up to one block, 128 bytes without AVX2, and every length without SSSE3, and armv7's ChaCha20 state setup, and every ChaCha20 length on the portable backend; ported, by hand from `Hacl_Hash_SHA3.c` at the same revision: Keccak-f, for the portable backend; dependency, through libcrux-sha2: SHA-256 and SHA-384/512 for the portable backend; copied, by `admin/import-hacl`: Vale's x86_64 AES-GCM assembly, as Rust naked functions | Apache-2.0; Vale's AES-GCM routines port OpenSSL's `aesni_gcm`, Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star/tree/f557259007db9933442dde10aa995c1b00bd3446) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified, nor is rind's hand port of Keccak-f, which its tests check against the Keccak team's intermediate values. rind's code that loads the rounds' state and XORs their keystream is not covered, except for header protection, which rind's own Lean proof covers with the rounds. Vale's [F\* proofs](https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/vale/code/arch/x64/interop/Vale.Wrapper.X64.GCMencryptOpt.fsti) that its x86_64 AES-GCM, as Vale prints it, computes AES-128-GCM and AES-256-GCM, tag check included, for any AAD and message under 2^32 bytes, in place or not, from the counter block its own routine computes, which rind runs for it, and the round keys and GHASH key powers its own routines compute. `admin/prove bytes` checks that rind's copies of the routines it runs assemble to the instructions of Vale's printed text. rind computes those keys and powers itself, and its tests check them byte for byte against Vale's routines. [`proofs/`](proofs/README.md) proves that code, and rind's Rust that splits the message into the routines' blocks and copies the partial ones, as EverCrypt's proven Low\* wrapper does, from its AEAD API down to Vale's routines. |
+| [s2n-bignum] | copied: its assembly for the elliptic curves, RSA, ML-KEM, ML-DSA, Keccak-f, and aarch64 AES-GCM, transliterated into Rust `asm!` by `admin/parse-asm`, which ends each x86_64 routine using 256-bit registers with `vzeroupper` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM, ML-DSA, and aarch64 Keccak-f routines (from mlkem-native and mldsa-native) Apache-2.0 OR ISC OR MIT; its x86_64 single-state Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs)) that each routine's object code computes its specified result for all inputs; some also prove that its memory accesses stay in bounds and that its branches and addresses depend on no secret. `admin/prove bytes` checks that rind's build of each routine holds the instructions its proof lists, with the differences [below](#s2n-bignums-constant-time-theorems), so the proofs are of rind's code. rind runs the aarch64 AES-GCM kernels in place, outside their proofs, which assume separate input and output buffers. |
+| [HACL\*] | dependency, through libcrux-hacl-rs and libcrux-poly1305; copied, from libcrux-chacha20poly1305: the ChaCha20 rounds, for HChaCha20 and QUIC header protection and for x86_64's ChaCha20 up to one block, 128 bytes without AVX2, and every length without SSSE3, and armv7's ChaCha20 state setup, and every ChaCha20 length on the portable backend; dependency, through libcrux-sha2: SHA-256 and SHA-384/512 for the portable backend; copied, by `admin/import-hacl`: Vale's x86_64 AES-GCM assembly, as Rust naked functions | Apache-2.0; Vale's AES-GCM routines port OpenSSL's `aesni_gcm`, Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star/tree/f557259007db9933442dde10aa995c1b00bd3446) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. rind's code that loads the rounds' state and XORs their keystream is not covered, except for header protection, which rind's own Lean proof covers with the rounds. Vale's [F\* proofs](https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/vale/code/arch/x64/interop/Vale.Wrapper.X64.GCMencryptOpt.fsti) that its x86_64 AES-GCM, as Vale prints it, computes AES-128-GCM and AES-256-GCM, tag check included, for any AAD and message under 2^32 bytes, in place or not, from the counter block its own routine computes, which rind runs for it, and the round keys and GHASH key powers its own routines compute. `admin/prove bytes` checks that rind's copies of the routines it runs assemble to the instructions of Vale's printed text. rind computes those keys and powers itself, and its tests check them byte for byte against Vale's routines. [`proofs/`](proofs/README.md) proves that code, and rind's Rust that splits the message into the routines' blocks and copies the partial ones, as EverCrypt's proven Low\* wrapper does, from its AEAD API down to Vale's routines. |
 | [mlkem-native] | ported: its portable C polynomial arithmetic (the NTT, inverse NTT, base multiplication, reductions, byte encoding, and rejection sampling), to Rust, for armv7 and x86_64 CPUs without AVX2; copied, by `admin/import-aws-lc` from aws-lc's copy: its x86_64 AVX2 ciphertext compression, which rind ends with `vzeroupper` | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mlkem-native/tree/d1b2fe782888bdb761a50336012923180be7f502/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port. [HOL Light proofs](https://github.com/pq-code-package/mlkem-native/tree/d1b2fe782888bdb761a50336012923180be7f502/proofs/hol_light/x86_64) that its AVX2 compression's object code computes its specified result for all inputs, of mlkem-native's own build, at the revision aws-lc's copy takes. |
-| [libcrux-aes] | dependency for AES-GCM on armv7 without the crypto extension and on the portable backend; copied: the block cipher, which rind inverts in its representation for decryption | Apache-2.0 | nothing: libcrux marks it pre-verification |
-| [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine and its aarch64 one for the SHA-256 instructions, Montgomery multiplication and the x86_64 exponentiation's `bn_power5` (with one deliberate change: rind's `bn_sqr8x_mont` and `bn_powerx5` zero two scratch words their `mulx` squaring reads unwritten, which valgrind reports though results and timing do not depend on them), AVX2 and dual AVX-512 RSAZ exponentiation, AES-NI AES-CTR, P-256's generator multiplication (its row scan and mixed addition), and SSE4.1 and AVX2 ChaCha20-Poly1305 (with one deliberate change: rind's copy reads the choice of AVX2 from the block rind passes it rather than aws-lc's `OPENSSL_ia32cap_P`), its aarch64 NEON ChaCha20-Poly1305 and eight-way AES-192-GCM, its x86_64 assembly for CPUs without AVX2 (SSSE3 ChaCha20, SSSE3 and AVX SHA-1, and SSSE3 SHA-256) without AES-NI (SSSE3 AES and GHASH), and without SSSE3 (integer SHA-1 and SHA-256), its aarch64 Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, Montgomery multiplication, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`; and the C that drives that Poly1305, RSAZ, and `bn_power5`, that sets up its x86_64 SSSE3 GHASH table, and that computes its constant-time SSE2 AES and integer GHASH for x86_64 CPUs without SSSE3, ported to Rust, the GHASH also for armv7 without the crypto extension and the portable backend. aws-lc takes its Poly1305, ChaCha20-Poly1305, SSSE3 GHASH, and constant-time AES and GHASH from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305, ChaCha20-Poly1305, SSSE3 and integer GHASH, and constant-time AES ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification/tree/797302470c1703cbb1a3a6fa98daffef0bfd3d80) that its x86_64 AVX and aarch64 scalar SHA-384/512 routines compute their specified result for all inputs. The proof of its aarch64 routine for the SHA-512 instructions ends with the result in registers, before the routine stores it, so earns no ✓. `admin/prove bytes` checks that rind's copies of those two routines assemble to the instructions of aws-lc's text at the revision the proofs pin, so the proofs are of rind's code. They do not cover its 32-bit ARM code. [`proofs/`](proofs/README.md) proves rind's SHA-384/512 around the AVX and aarch64 scalar routines. |
+| [mldsa-native] | ported: its C FIPS 204 construction (`sign.c`, `packing.c`, `poly.c`, and `poly_kl.c`) on every CPU, and its portable C polynomial arithmetic for armv7, the portable backend, and x86_64 CPUs without AVX2, to Rust, at v2.0.0 | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mldsa-native/tree/834a90d5e846ffa1e1611bd24e160bb2e9b86d35/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port, which rind's tests check against s2n-bignum's routines, [Wycheproof], ACVP, and aws-lc-rs. |
+| [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine and its aarch64 one for the SHA-256 instructions, Montgomery multiplication and the x86_64 exponentiation's `bn_power5` (with one deliberate change: rind's `bn_sqr8x_mont` and `bn_powerx5` zero two scratch words their `mulx` squaring reads unwritten, which valgrind reports though results and timing do not depend on them), AVX2 and dual AVX-512 RSAZ exponentiation, AES-NI AES-CTR, P-256's generator multiplication (its row scan and mixed addition), and SSE4.1 and AVX2 ChaCha20-Poly1305 (with one deliberate change: rind's copy reads the choice of AVX2 from the block rind passes it rather than aws-lc's `OPENSSL_ia32cap_P`), its aarch64 NEON ChaCha20-Poly1305 and eight-way AES-192-GCM, its x86_64 assembly for CPUs without AVX2 (SSSE3 ChaCha20, SSSE3 and AVX SHA-1, and SSSE3 SHA-256) without AES-NI (SSSE3 AES and GHASH), and without SSSE3 (integer SHA-1 and SHA-256), its aarch64 Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-1 and SHA-256 (NEON and integer), SHA-384/512, Montgomery multiplication, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`; and the C that drives that Poly1305, RSAZ, and `bn_power5`, that sets up its x86_64 SSSE3 GHASH table, and that computes its constant-time SSE2 AES and integer GHASH for x86_64 CPUs without SSSE3, ported to Rust, both also for armv7 without the crypto extension and the portable backend. aws-lc takes its Poly1305, ChaCha20-Poly1305, SSSE3 GHASH, and constant-time AES and GHASH from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305, ChaCha20-Poly1305, SSSE3 and integer GHASH, and constant-time AES ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification/tree/797302470c1703cbb1a3a6fa98daffef0bfd3d80) that its x86_64 AVX and aarch64 scalar SHA-384/512 routines compute their specified result for all inputs. Their proof of its aarch64 routine for the SHA-512 instructions ends with the result in registers, before the routine stores it, so rind's own HOL Light proof covers that routine, of the object code rind's build emits, against s2n-bignum's FIPS 180-4 spec. `admin/prove bytes` checks that rind's copies of the first two routines assemble to the instructions of aws-lc's text at the revision the proofs pin, so the proofs are of rind's code. They do not cover its 32-bit ARM code. [`proofs/`](proofs/README.md) proves rind's SHA-384/512 around the AVX and both aarch64 routines. |
 | [BoringSSL] | copied, by `admin/import-boringssl`: its x86_64 VAES AES-GCM assembly, `aes-gcm-avx2-x86_64` and `aes-gcm-avx512-x86_64`, as Rust naked functions; its 32-bit ARM NEON X25519 assembly, in Rust `global_asm!`, which BoringSSL takes from [SUPERCOP]'s `neon2`, public domain | Apache-2.0 | nothing |
 | [OpenSSL] | copied, by `admin/import-openssl`: its x86_64 AVX2 SHA-256 and SHA-512 assembly and its SHA-512 assembly for the SHA512 instructions, from `sha512-x86_64`, as Rust naked functions; its 32-bit ARM Keccak-f assembly, integer and NEON, `keccak1600-armv4`, in Rust `global_asm!` | Apache-2.0 | nothing |
 | [curve25519-dalek] | dependency, with its serial backend, for armv7 and the portable backend; ported: its AVX2 backend's field arithmetic, point formulas, and base point table, and its scalars' non-adjacent forms, to Rust intrinsics, for Ed25519 verification on x86_64 CPUs with AVX2 but without ADX | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written, as is the AVX2 backend's. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
@@ -152,8 +176,8 @@ files Graviola wrote keep their `Written for Graviola by ...` header. The
 (Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND BSD-3-Clause`. The
 adapter crates copy nothing under another license, so they stay
 `Apache-2.0 OR ISC OR MIT-0`.
-rind-ring runs ring's own tests, which keep ring's licenses and stay out of
-the published crate.
+rind-ring runs ring's own tests, and rind-aws-lc-rs aws-lc-rs's, which keep
+their sources' licenses and stay out of the published crates.
 
 A change that copies code from a new source, or moves an algorithm to a
 different one, updates this table and [LICENSE] in the same PR.
@@ -198,6 +222,7 @@ not cover rind's in-place calls.
 | `aes256_gcm_enc` | not imported | `aes256_gcm_enc`: `AES256_GCM_ENC_NOIBT_SUBROUTINE_SAFE` |
 | `aes256_gcm_enc_alt` | not imported | `aes256_gcm_enc_alt`: `AES256_GCM_ENC_ALT_NOIBT_SUBROUTINE_SAFE` |
 | `bignum_add` | `bignum_add`: none | `bignum_add`: none |
+| `bignum_add_p25519` | `bignum_add_p25519`: none | `bignum_add_p25519`: none |
 | `bignum_add_p256` | `bignum_add_p256`: none | `bignum_add_p256`: none |
 | `bignum_add_p384` | `bignum_add_p384`: `BIGNUM_ADD_P384_SUBROUTINE_SAFE` | `bignum_add_p384`: `BIGNUM_ADD_P384_SUBROUTINE_SAFE` |
 | `bignum_add_p521` | `bignum_add_p521`: `BIGNUM_ADD_P521_SUBROUTINE_SAFE` | `bignum_add_p521`: `BIGNUM_ADD_P521_SUBROUTINE_SAFE` |
@@ -221,6 +246,8 @@ not cover rind's in-place calls.
 | `bignum_inv_p256` | `bignum_inv_p256`: none | `bignum_inv_p256`: none |
 | `bignum_inv_p384` | `bignum_inv_p384`: none | `bignum_inv_p384`: none |
 | `bignum_inv_p521` | `bignum_inv_p521`: `BIGNUM_INV_P521_SUBROUTINE_SAFE` | `bignum_inv_p521`: `BIGNUM_INV_P521_SUBROUTINE_SAFE` |
+| `bignum_invsqrt_p25519` | `bignum_invsqrt_p25519`: none | `bignum_invsqrt_p25519_alt`: none |
+| `bignum_invsqrt_p25519_alt` | `bignum_invsqrt_p25519_alt`: none | not imported |
 | `bignum_kmul_16_32` | `bignum_kmul_16_32`: none | not imported |
 | `bignum_kmul_32_64` | `bignum_kmul_32_64`: none | not imported |
 | `bignum_ksqr_16_32` | `bignum_ksqr_16_32`: none | not imported |
@@ -248,6 +275,7 @@ not cover rind's in-place calls.
 | `bignum_montsqr_p384` | `bignum_montsqr_p384`: `BIGNUM_MONTSQR_P384_SUBROUTINE_SAFE` | `bignum_montsqr_p384_alt`: `BIGNUM_MONTSQR_P384_ALT_SUBROUTINE_SAFE` |
 | `bignum_montsqr_p384_alt` | `bignum_montsqr_p384_alt`: `BIGNUM_MONTSQR_P384_ALT_SUBROUTINE_SAFE` | not imported |
 | `bignum_mul` | `bignum_mul`: none | `bignum_mul`: `BIGNUM_MUL_SUBROUTINE_SAFE` |
+| `bignum_mul_p25519` | `bignum_mul_p25519`: none | `bignum_mul_p25519_alt`: none |
 | `bignum_mul_p25519_alt` | `bignum_mul_p25519_alt`: none | not imported |
 | `bignum_mul_p521` | `bignum_mul_p521`: `BIGNUM_MUL_P521_SUBROUTINE_SAFE` | `bignum_mul_p521_alt`: `BIGNUM_MUL_P521_ALT_SUBROUTINE_SAFE` |
 | `bignum_mul_p521_alt` | `bignum_mul_p521_alt`: `BIGNUM_MUL_P521_ALT_SUBROUTINE_SAFE` | not imported |
@@ -258,8 +286,11 @@ not cover rind's in-place calls.
 | `bignum_neg_p521` | `bignum_neg_p521`: `BIGNUM_NEG_P521_SUBROUTINE_SAFE` | `bignum_neg_p521`: `BIGNUM_NEG_P521_SUBROUTINE_SAFE` |
 | `bignum_negmodinv` | `bignum_negmodinv`: none | `bignum_negmodinv`: none |
 | `bignum_optsub` | `bignum_optsub`: none | `bignum_optsub`: `BIGNUM_OPTSUB_SUBROUTINE_SAFE` |
+| `bignum_sqr_p25519` | `bignum_sqr_p25519`: none | `bignum_sqr_p25519_alt`: none |
+| `bignum_sqr_p25519_alt` | `bignum_sqr_p25519_alt`: none | not imported |
 | `bignum_sqr_p521` | `bignum_sqr_p521`: `BIGNUM_SQR_P521_SUBROUTINE_SAFE` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` |
 | `bignum_sqr_p521_alt` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` | not imported |
+| `bignum_sub_p25519` | `bignum_sub_p25519`: none | `bignum_sub_p25519`: none |
 | `bignum_tomont_p256` | `bignum_tomont_p256`: none | `bignum_tomont_p256`: none |
 | `bignum_tomont_p256_alt` | `bignum_tomont_p256_alt`: none | not imported |
 | `bignum_tomont_p384` | `bignum_tomont_p384`: `BIGNUM_TOMONT_P384_SUBROUTINE_SAFE` | `bignum_tomont_p384`: `BIGNUM_TOMONT_P384_SUBROUTINE_SAFE` |
@@ -270,10 +301,35 @@ not cover rind's in-place calls.
 | `curve25519_x25519base_alt` | `curve25519_x25519base_alt`: `CURVE25519_X25519BASE_ALT_SUBROUTINE_SAFE` | not imported |
 | `edwards25519_decode` | `edwards25519_decode`: `EDWARDS25519_DECODE_SUBROUTINE_SAFE` | `edwards25519_decode_alt`: `EDWARDS25519_DECODE_ALT_SUBROUTINE_SAFE` |
 | `edwards25519_decode_alt` | `edwards25519_decode_alt`: `EDWARDS25519_DECODE_ALT_SUBROUTINE_SAFE` | not imported |
+| `edwards25519_epadd` | `edwards25519_epadd`: none | `edwards25519_epadd_alt`: none |
+| `edwards25519_epadd_alt` | `edwards25519_epadd_alt`: none | not imported |
+| `edwards25519_epdouble` | `edwards25519_epdouble`: none | `edwards25519_epdouble_alt`: none |
+| `edwards25519_epdouble_alt` | `edwards25519_epdouble_alt`: none | not imported |
+| `edwards25519_pdouble` | `edwards25519_pdouble`: none | `edwards25519_pdouble_alt`: none |
+| `edwards25519_pdouble_alt` | `edwards25519_pdouble_alt`: none | not imported |
 | `edwards25519_scalarmulbase` | `edwards25519_scalarmulbase`: `EDWARDS25519_SCALARMULBASE_SUBROUTINE_SAFE` | `edwards25519_scalarmulbase_alt`: `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_SAFE` |
 | `edwards25519_scalarmulbase_alt` | `edwards25519_scalarmulbase_alt`: `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_SAFE` | not imported |
 | `edwards25519_scalarmuldouble` | `edwards25519_scalarmuldouble`: `EDWARDS25519_SCALARMULDOUBLE_SUBROUTINE_SAFE` | `edwards25519_scalarmuldouble_alt`: `EDWARDS25519_SCALARMULDOUBLE_ALT_SUBROUTINE_SAFE` |
 | `edwards25519_scalarmuldouble_alt` | `edwards25519_scalarmuldouble_alt`: `EDWARDS25519_SCALARMULDOUBLE_ALT_SUBROUTINE_SAFE` | not imported |
+| `mldsa_caddq` | `mldsa_caddq`: `MLDSA_CADDQ_SUBROUTINE_SAFE` | `mldsa_caddq`: `MLDSA_CADDQ_SUBROUTINE_SAFE` |
+| `mldsa_chknorm` | `mldsa_chknorm`: `MLDSA_CHKNORM_SUBROUTINE_SAFE` | `mldsa_chknorm`: `MLDSA_CHKNORM_SUBROUTINE_SAFE` |
+| `mldsa_decompose_32` | `mldsa_decompose_32`: `MLDSA_DECOMPOSE_32_SUBROUTINE_SAFE` | `mldsa_decompose_32`: `MLDSA_DECOMPOSE_32_SUBROUTINE_SAFE` |
+| `mldsa_decompose_88` | `mldsa_decompose_88`: `MLDSA_DECOMPOSE_88_SUBROUTINE_SAFE` | `mldsa_decompose_88`: `MLDSA_DECOMPOSE_88_SUBROUTINE_SAFE` |
+| `mldsa_intt` | `mldsa_intt`: none | `mldsa_intt`: `MLDSA_INTT_SUBROUTINE_SAFE` |
+| `mldsa_ntt` | `mldsa_ntt`: none | `mldsa_ntt`: `MLDSA_NTT_SUBROUTINE_SAFE` |
+| `mldsa_nttunpack` | `mldsa_nttunpack`: `MLDSA_NTTUNPACK_SUBROUTINE_SAFE` | not imported |
+| `mldsa_pointwise` | `mldsa_pointwise`: `MLDSA_POINTWISE_SUBROUTINE_SAFE` | `mldsa_pointwise`: `MLDSA_POINTWISE_SUBROUTINE_SAFE` |
+| `mldsa_pointwise_acc_l4` | `mldsa_pointwise_acc_l4`: `MLDSA_POINTWISE_ACC_L4_SUBROUTINE_SAFE` | `mldsa_pointwise_acc_l4`: `MLDSA_POINTWISE_ACC_L4_SUBROUTINE_SAFE` |
+| `mldsa_pointwise_acc_l5` | `mldsa_pointwise_acc_l5`: `MLDSA_POINTWISE_ACC_L5_SUBROUTINE_SAFE` | `mldsa_pointwise_acc_l5`: `MLDSA_POINTWISE_ACC_L5_SUBROUTINE_SAFE` |
+| `mldsa_pointwise_acc_l7` | `mldsa_pointwise_acc_l7`: `MLDSA_POINTWISE_ACC_L7_SUBROUTINE_SAFE` | `mldsa_pointwise_acc_l7`: `MLDSA_POINTWISE_ACC_L7_SUBROUTINE_SAFE` |
+| `mldsa_poly_use_hint_32` | `mldsa_poly_use_hint_32`: `MLDSA_POLY_USE_HINT_32_SUBROUTINE_SAFE` | `mldsa_poly_use_hint_32`: `MLDSA_USE_HINT_32_SUBROUTINE_SAFE` |
+| `mldsa_poly_use_hint_88` | `mldsa_poly_use_hint_88`: `MLDSA_POLY_USE_HINT_88_SUBROUTINE_SAFE` | `mldsa_poly_use_hint_88`: `MLDSA_USE_HINT_88_SUBROUTINE_SAFE` |
+| `mldsa_polyz_unpack_17` | `mldsa_polyz_unpack_17`: `MLDSA_POLYZ_UNPACK_17_SUBROUTINE_SAFE` | `mldsa_polyz_unpack_17`: `MLDSA_POLYZ_UNPACK_17_SUBROUTINE_SAFE` |
+| `mldsa_polyz_unpack_19` | `mldsa_polyz_unpack_19`: `MLDSA_POLYZ_UNPACK_19_SUBROUTINE_SAFE` | `mldsa_polyz_unpack_19`: `MLDSA_POLYZ_UNPACK_19_SUBROUTINE_SAFE` |
+| `mldsa_reduce` | `mldsa_reduce`: none | not imported |
+| `mldsa_rej_uniform_eta2_vartime` | `mldsa_rej_uniform_eta2_VARIABLE_TIME`: `MLDSA_REJ_UNIFORM_ETA2_SUBROUTINE_SAFE` | `mldsa_rej_uniform_eta2_VARIABLE_TIME`: `MLDSA_REJ_UNIFORM_ETA2_SUBROUTINE_SAFE` |
+| `mldsa_rej_uniform_eta4_vartime` | `mldsa_rej_uniform_eta4_VARIABLE_TIME`: `MLDSA_REJ_UNIFORM_ETA4_SUBROUTINE_SAFE` | `mldsa_rej_uniform_eta4_VARIABLE_TIME`: `MLDSA_REJ_UNIFORM_ETA4_SUBROUTINE_SAFE` |
+| `mldsa_rej_uniform_vartime` | `mldsa_rej_uniform_VARIABLE_TIME`: `MLDSA_REJ_UNIFORM_SUBROUTINE_SAFE` | `mldsa_rej_uniform_VARIABLE_TIME`: `MLDSA_REJ_UNIFORM_SUBROUTINE_SAFE` |
 | `mlkem_basemul_k3` | `mlkem_basemul_k3`: none | `mlkem_basemul_k3`: `MLKEM_BASEMUL_K3_SUBROUTINE_SAFE` |
 | `mlkem_frombytes` | `mlkem_frombytes`: none | not imported |
 | `mlkem_intt` | `mlkem_intt`: none | `mlkem_intt`: `MLKEM_INTT_SUBROUTINE_SAFE` |
@@ -290,9 +346,8 @@ not cover rind's in-place calls.
 | `p256_montjdouble_alt` | `p256_montjdouble_alt`: `P256_MONTJDOUBLE_ALT_SUBROUTINE_SAFE` | not imported |
 | `p256_montjmixadd` | `p256_montjmixadd`: none | `p256_montjmixadd_alt`: none |
 | `p256_montjmixadd_alt` | `p256_montjmixadd_alt`: none | not imported |
-| `p256_montjscalarmul` | `p256_montjscalarmul`: `P256_MONTJSCALARMUL_SUBROUTINE_SAFE` | not imported |
-| `p256_montjscalarmul_alt` | `p256_montjscalarmul_alt`: `P256_MONTJSCALARMUL_ALT_SUBROUTINE_SAFE` | not imported |
-| `p256_scalarmul` | not imported | `p256_scalarmul_alt`: none |
+| `p256_scalarmul` | `p256_scalarmul`: none | `p256_scalarmul_alt`: none |
+| `p256_scalarmul_alt` | `p256_scalarmul_alt`: none | not imported |
 | `p256_scalarmulbase` | not imported | `p256_scalarmulbase_alt`: none |
 | `p384_montjadd` | `p384_montjadd`: `P384_MONTJADD_SUBROUTINE_SAFE` | `p384_montjadd_alt`: `P384_MONTJADD_ALT_SUBROUTINE_SAFE` |
 | `p384_montjadd_alt` | `p384_montjadd_alt`: `P384_MONTJADD_ALT_SUBROUTINE_SAFE` | not imported |
@@ -335,8 +390,12 @@ armv7 runs the same exponentiation over aws-lc's 32-bit ARM `bn_mul_mont`
 routines as aws-lc picks them (`bn_mul8x_mont_neon` with NEON for moduli whose
 width in 32-bit words is a multiple of eight, and `bn_mul_mont_nohw`
 otherwise), and the rest of the arithmetic in rind's portable Rust. The
-portable backend runs it all in that Rust, its Montgomery products by rind's
-32-bit-limb loop.
+portable backend runs it all in that Rust, its Montgomery products by
+rind's loop (Koç, Acar, and Kaliski's CIOS method) and its squarings by
+forming each cross product once before reducing, over 64-bit limbs on
+64-bit targets and 32-bit ones elsewhere. RSA-2048 signing measured level
+with aws-lc's C without assembly on x86_64, and 4096 bits and up slower,
+where aws-lc switches to Karatsuba.
 On x86_64 CPUs with AVX2 but without ADX, the private operation's exponentiation modulo each 1024-bit
 prime of RSA-2048 runs aws-lc's RSAZ, as aws-lc does there: Montgomery
 products on AVX2 over 29-bit limbs, and a 5-bit fixed window whose table
@@ -374,6 +433,18 @@ constant time through its padding check, and fails every malformed
 ciphertext with the same error, so it is no Manger oracle.  PKCS#1 v1.5
 encryption, which invites padding-oracle attacks, is refused.
 
+RSA blind signatures (RFC 9474) take no arithmetic of their own: a client
+blinds a message's RSASSA-PSS encoding by the public operation on a random
+blind and a Montgomery multiplication, the server signs it by the private
+operation above, checked against its public key, and the client unblinds the
+reply by the blind's inverse, from `bignum_modinv`.  Rather than
+RSASSA-PSS-VERIFY, which would branch on what a malicious reply unblinds to
+(1 unblinds to the inverse itself), the client checks in constant time that
+the result's public operation gives the very encoding it blinded.  Blinding
+and unblinding run in constant time in the message, its prefix and salt, and
+the blind, revealing only which candidate blinds rejection sampling discards
+and whether the reply was good.
+
 RSA key generation is supported for five fixed key sizes between 2048-8192-bits.
 All generated keys have e = 0x10001 and, as in aws-lc, d reduced mod
 lcm(p - 1, q - 1).  Generation runs in constant time in the primes, revealing
@@ -398,9 +469,8 @@ by its SSE2 or AVX2 routine and added by its mixed addition, with `mulq` or
 with BMI2 and ADX, as aws-lc's `ecp_nistz256_point_mul_base` runs them. On
 aarch64 it is s2n-bignum's `p256_scalarmulbase`, over 6-bit Booth windows and
 a table of each window's 32 multiples (an 88KB constant table). Variable
-point multiplication is s2n-bignum's `p256_montjscalarmul` on x86_64, and on
-aarch64 its `p256_scalarmul`, whose proof covers the conversion back to
-affine coordinates.
+point multiplication is s2n-bignum's `p256_scalarmul` on both, whose proof
+covers the conversion back to affine coordinates.
 
 armv7 runs the aarch64 algorithms for P256 in portable Rust, over
 fiat-crypto's field and scalar arithmetic, except its Montgomery
@@ -412,7 +482,9 @@ accumulators (`umaal`) instead, in 560 instructions run to fiat-crypto's
 its bounds checks fail at every 32-bit limb count from 9 to 16. armv7's
 P384 runs rind's Montgomery multiplication and squaring the same way, in
 1,151 instructions to fiat-crypto's 2,254, over fiat-crypto's other field
-and scalar arithmetic.
+and scalar arithmetic. The portable backend runs the same on 32-bit
+targets, and on 64-bit ones over fiat-crypto's 64-bit arithmetic whole, its
+multiplication included.
 
 P384 base point multiplication uses a comb of 20 tables of 16 affine points
 (a 30KB constant table) over 5-bit Booth windows, as aws-lc does. Variable
@@ -454,6 +526,30 @@ s2n-bignum's verified `p256_scalarmulbase`.
 
 On x86_64 and aarch64, X25519 directly uses the s2n-bignum implementation.
 
+ECVRF (RFC 9381) is rind's, over the curves' code above: on edwards25519, the
+ristretto255 code's constant-time variable-point multiplication and
+s2n-bignum's base point multiplication and decoding, or curve25519-dalek's on
+armv7 and portable; on P256, the ECDH and ECDSA multiplications, and RFC6979
+over the HMAC-DRBG for the nonce, with no added randomness, as the suite's
+test vectors require. Proving runs in constant time in the key and the nonce.
+Verification multiplies by the proof's scalars in constant time too on
+edwards25519, where it is public data, as no variable-time multiplication of
+an arbitrary point is there to reuse; P256's computes `s G - c Y` as ECDSA
+verification does. Try-and-increment's loop runs in time that depends on the
+input, as RFC 9381 notes.
+
+The OPRFs (RFC 9497) are rind's too, over the same code: ristretto255's
+constant-time multiplications and RFC 9496 map, or curve25519-dalek's on
+armv7 and portable, and the NIST curves' ECDH multiplications and RFC 9380
+hash-to-curve, with `expand_message_xmd` over the suite's SHA-2 for each
+hash to a scalar. Blinding, evaluation, proving, and finalization run in
+constant time in the input, the blind, the key, and the proof's nonce.
+Verifying a DLEQ proof handles public data only: ristretto255's still
+multiplies in constant time, as with ECVRF on edwards25519, and the NIST
+curves' compute `s G + c Y` as ECDSA verification does, and their other
+sums from constant-time products. The suites' vectors and the `voprf` crate
+cover the composition; nothing in it is proven.
+
 ### ML-KEM-768
 On aarch64, and on x86_64 CPUs with AVX2, the core polynomial arithmetic -- the NTT, inverse NTT, base multiplication
 and reduction -- is provided by s2n-bignum (contributed by the mlkem-native
@@ -473,8 +569,8 @@ otherwise. Keccak-f dominates ML-KEM there, and compiled code spills its
 state. With NEON it measured 1.5x faster than libcrux's portable ML-KEM for
 key generation and encapsulation, and 2.8x for decapsulation. Without NEON,
 under qemu, it ran key generation and encapsulation in 1.3x fewer
-instructions. The portable backend runs it with a Rust port of HACL*'s
-Keccak-f.
+instructions. The portable backend runs it with rind's Keccak-f, proven in
+[`proofs/`](proofs/README.md).
 
 Compression and decompression are division-free, avoiding the variable-time
 division behind the KyberSlash attacks.
@@ -492,15 +588,45 @@ have some different options depending on CPU features:
   SHA3 instructions where the CPU has them.
 - We have OpenSSL's Keccak-f, on NEON or bit-interleaved in integer code, on
   armv7.
-- We have a Rust port of HACL*'s Keccak-f, one state at a time, on the
-  portable backend.
+- We have rind's Keccak-f, proven in [`proofs/`](proofs/README.md), one state
+  at a time, on the portable backend.
+
+### ML-DSA
+ML-DSA-44, ML-DSA-65, and ML-DSA-87 share one FIPS 204 construction (key
+generation, signing, verification, and the key and signature encodings): a
+Rust port of [mldsa-native]'s C. On aarch64, and on x86_64 CPUs with AVX2,
+its polynomial arithmetic and rejection sampling run s2n-bignum's verified
+routines, contributed by the mldsa-native developers: the NTT and its
+inverse, pointwise multiplication, reduction, decomposition, hints, norm
+checks, and unpacking.
+
+x86_64 CPUs without AVX2, armv7, and the portable backend run a Rust port of
+mldsa-native's portable C arithmetic instead. Its NTT walks each layer
+through split slices, which leave its butterflies without bounds checks;
+indexing as the C does left portable signing 1.07-1.12x slower than
+aws-lc-rs. Keccak-f, which expands the matrix and samples the secrets, the
+mask, and the challenge, runs as ML-KEM's does (see
+[ML-KEM-768](#ml-kem-768)), four states at a time where the CPU allows.
+
+Signing declassifies which attempt it accepts, and why it rejects the
+others, as mldsa-native does: FIPS 204's security argument makes them
+public.
+
+On an AMD Ryzen 9 9950X shared with other jobs, so noisy, rind took
+0.64-0.75x aws-lc-rs's time with AVX2, 0.82-0.91x without it, and
+0.83-0.92x on the portable backend, for key generation, signing, and
+verification at each parameter set. libcrux's, RustCrypto's, and
+OpenSSL's ML-DSA were slower than aws-lc-rs's with AVX2, and libcrux's
+portable ML-DSA was no faster than aws-lc-rs without assembly.
 
 ### Symmetric cryptography
 SHA1 and SHA256 have straightforward implementations using hashing intrinsics
 (aka "SHA-NI" on x86_64, "sha" extension on aarch64), except that aarch64 runs
 aws-lc's SHA256 assembly for those instructions: it keeps a register copy off
 each round's dependency chain, where LLVM's code for the intrinsics puts one
-on it. Without SHA-NI, x86_64
+on it, and x86_64 runs LLVM's code for its SHA256 intrinsics frozen into
+inline assembly, so that a proof can be about the bytes it runs, with the
+last block's padding in Rust. Without SHA-NI, x86_64
 selects at runtime an AVX2 message schedule with scalar rounds for SHA1, as
 aws-lc does, and for SHA256 runs OpenSSL's AVX2 routine, which aws-lc leaves
 out: 1.12x faster than aws-lc's AVX routine on an i7-8700 and 1.13x on Arrow
@@ -531,6 +657,10 @@ where the CPU has NEON, and its scalar routine otherwise.
 
 SHA3-256, SHA3-384, and SHA3-512 run Graviola's sponge over the Keccak-f
 ML-KEM uses (see [ML-KEM-768](#ml-kem-768)), one state at a time.
+[`proofs/`](proofs/README.md) proves the sponge, and ML-KEM's SHAKE calls,
+against FIPS 202 down to s2n-bignum's Keccak-f routines on x86_64 and
+aarch64, and the portable backend's Keccak-f against the spec those routines'
+proofs state.
 
 x86_64 decides once per process whether the CPU has AES-NI and PCLMULQDQ,
 and SSSE3. Without the first two, as on Core 2 and Nehalem, AES and AES-CTR
@@ -543,8 +673,7 @@ circuit, and `gcm_nohw.c`, which multiplies with integer multiplies of
 operands masked to every fourth bit, so no carry reaches a bit it keeps.
 Neither branches or indexes memory by a secret. Composed the same way,
 AES-GCM and AES-CTR measured 0.82-0.92x aws-lc's time; libcrux's portable
-AES-GCM measured 3-7x slower, and its bitsliced block level with the port's
-for one block. With AES-NI and PCLMULQDQ, AES-CTR runs aws-lc's
+AES-GCM measured 3-7x slower. With AES-NI and PCLMULQDQ, AES-CTR runs aws-lc's
 `aes_hw_ctr32_encrypt_blocks`, 1.1-2x faster than rind's by-8 intrinsics at
 every length, with or without AVX.
 
@@ -561,8 +690,10 @@ measured 0.94-1.19x its time there on Coffee Lake (medians 1.04-1.06x). rind com
 in the layout Vale's proof assumes, since Vale's own setup measured twice as
 slow, and `proofs/` proves them and the Rust around Vale's routines end to
 end. Vale's proof stops at 2^32 bytes of message or AAD, so longer ones run
-the by-8 code, which no proof covers, as do those short seals, IVs other than 96 bits, and the
-opening of truncated tags, whose tag check Vale's routine does not take. Every 256- and 512-bit kernel rind runs ends with
+the by-8 code, as do those short seals, IVs other than 96 bits, and the
+opening of truncated tags, whose tag check Vale's routine does not take.
+`proofs/` proves the by-8 code against Vale's AES-GCM spec without that
+bound, for 96-bit IVs and full tags, with AES-128 and AES-256. Every 256- and 512-bit kernel rind runs ends with
 `vzeroupper`, so SSE code after one pays no AVX-SSE transition or false
 dependency. There is also an optional AVX-512 by-16 AES-CTR
 and GHASH.  It uses dynamic CPU feature detection, so AVX-512 is not required at runtime.
@@ -604,28 +735,32 @@ and GHASH over each eight blocks in turn, as aws-lc composes them.
 
 32-bit `arm` decides once per process from `AT_HWCAP2`: with the crypto
 extension, AES and AES-GCM keys use aws-lc's `aesv8-armx` and `ghashv8-armx`
-assembly, composed as aws-lc does on that architecture; without it, libcrux's
-bitsliced AES and AES-GCM. libcrux's AES-GCM takes only 96-bit nonces and
-checks only whole tags, so without the extension, other IVs and truncated tags
-run the bitsliced block cipher rind copies from libcrux and a port of aws-lc's
-`gcm_nohw.c` in its 32-bit configuration, composed the same way. The portable
-backend always takes the paths without the extension, and runs `gcm_nohw.c`
-in its 64-bit configuration on 64-bit targets.
+assembly, composed as aws-lc does on that architecture; without it, the
+same `aes_nohw.c` port x86_64 runs without SSSE3, in its 32-bit
+configuration, which bitslices two blocks into 32-bit words, and for AES-GCM a
+port of aws-lc's `gcm_nohw.c` in its 32-bit configuration, composed the same
+way. A key expands both once, when it is made, holding its round keys
+bitsliced, and seals and opens in place. The portable backend always takes the
+paths without the extension, and runs both ports in their 64-bit
+configurations on 64-bit targets, four blocks into 64-bit words. On x86_64
+under `--cfg rind_portable` they measured 0.18x the time of the libcrux
+bitsliced block cipher they replaced for AES-GCM from 1200 bytes, and
+0.93-1.03x aws-lc's time there, whose C bitslices eight blocks into SSE2
+registers on that row; AES-CTR and CBC decryption measured 1.08-1.23x it.
 
 AES-192 takes each of these paths with 12 rounds, but for three sources with
 no AES-192: Vale's AES-GCM, so x86_64 runs the by-8 code where Vale would
 run; s2n-bignum's aarch64 AES-GCM kernels, so aarch64 runs aws-lc's by-8
 `aesv8_gcm_8x_enc_192` and `aesv8_gcm_8x_dec_192` past `short`'s lengths on a
 core with SHA3, which aws-lc runs on Apple and Neoverse V cores, and AES-CTR
-and GHASH in turn without it; and libcrux's bitsliced AES-GCM, so armv7
-without the crypto extension composes its block cipher with `gcm_nohw.c`.
+and GHASH in turn without it.
 aws-lc's routines are not verified. Valgrind hides SHA3 from
 `admin/ctgrind`, so `admin/ct-qemu` checks them, and the eight-way kernels,
 under qemu-aarch64.
 AES-NI and ARMv8 expand an AES-192 key six words per vector step, with the
 SubWord the other sizes take, measured 0.88-0.94x aws-lc-rs's AES-GCM key
-setup on Zen 3 and Neoverse N2; armv7's bitsliced path runs FIPS 197's
-word-by-word schedule. Against aws-lc-rs, AES-192-GCM measured 0.43-0.57x on
+setup on Zen 3 and Neoverse N2; the bitsliced path runs aws-lc's schedule,
+which keeps a window of a block and a half. Against aws-lc-rs, AES-192-GCM measured 0.43-0.57x on
 Zen 3 with VAES and 0.44-1.03x without AVX2, as AES-128 did, 0.43-0.47x on
 N2 at 32 bytes and 0.74-0.84x from 1200 bytes, where aws-lc runs its by-4
 routine, and 0.90-1.02x on Apple M1 and 0.92-0.99x on M4 from 1200 bytes
@@ -686,8 +821,9 @@ HACL*'s verified Poly1305 without NEON.
 [cifra]: https://github.com/ctz/cifra
 [s2n-bignum]: https://github.com/awslabs/s2n-bignum
 [HACL\*]: https://github.com/hacl-star/hacl-star
-[libcrux-aes]: https://github.com/cryspen/libcrux/tree/main/crates/algorithms/aes
+[libcrux]: https://github.com/cryspen/libcrux
 [mlkem-native]: https://github.com/pq-code-package/mlkem-native
+[mldsa-native]: https://github.com/pq-code-package/mldsa-native
 [aws-lc]: https://github.com/aws/aws-lc
 [fiat-crypto]: https://github.com/mit-plv/fiat-crypto
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
@@ -695,13 +831,13 @@ HACL*'s verified Poly1305 without NEON.
 [SUPERCOP]: https://bench.cr.yp.to/supercop.html
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
-[run 41550703300]: https://github.com/moq-dev/rind/actions/runs/41550703300
-[run 41585945720]: https://github.com/moq-dev/rind/actions/runs/41585945720
-[run 41657617706]: https://github.com/moq-dev/rind/actions/runs/41657617706
-[run 41678532920]: https://github.com/moq-dev/rind/actions/runs/41678532920
-[run 41697909102]: https://github.com/moq-dev/rind/actions/runs/41697909102
-[run 41861521276]: https://github.com/moq-dev/rind/actions/runs/41861521276
-[run 41861526675]: https://github.com/moq-dev/rind/actions/runs/41861526675
-[#224]: https://github.com/moq-dev/rind/pull/224
-[#281]: https://github.com/moq-dev/rind/pull/281
+[run 41550703300]: https://github.com/kixel-ai/rind/actions/runs/41550703300
+[run 41585945720]: https://github.com/kixel-ai/rind/actions/runs/41585945720
+[run 41657617706]: https://github.com/kixel-ai/rind/actions/runs/41657617706
+[run 41678532920]: https://github.com/kixel-ai/rind/actions/runs/41678532920
+[run 41697909102]: https://github.com/kixel-ai/rind/actions/runs/41697909102
+[run 41861521276]: https://github.com/kixel-ai/rind/actions/runs/41861521276
+[run 41861526675]: https://github.com/kixel-ai/rind/actions/runs/41861526675
+[#224]: https://github.com/kixel-ai/rind/pull/224
+[#281]: https://github.com/kixel-ai/rind/pull/281
 [LICENSE]: LICENSE

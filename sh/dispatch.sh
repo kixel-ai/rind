@@ -62,13 +62,16 @@ declare -A scope=(
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
     # rind's aarch64, armv7, portable, and wasm32 builds, which the host's
     # own build skips, and which a toolchain bump can break.
-    [cross]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
+    [cross]='^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
     # Variable-time instructions in rind's release builds, which a change to
     # its code, dependencies, toolchain, or the scan itself can bring.
     [vartime]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$|admin/ct-vartime)'
     # s2n-bignum's proofs assume separate input and output, so the kernels
     # rind runs in place are walked, after planting faults in each.
     [inplace]='^(rind/src/low/|admin/parse-asm/)'
+    # .cargo/mutants.toml's exclusions name mutants by file, line, and
+    # function, so moving code can leave one matching nothing.
+    [mutants]='^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)'
     # TESTING.md's table names every export, test, and vector file.
     [testing]='^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)'
     # COMPATIBILITY.md is generated from the CPU scans.
@@ -112,6 +115,7 @@ declare -A tools=(
     [cross]='cargo'
     [vartime]='nix'
     [inplace]='python3'
+    [mutants]='cargo-mutants python3'
     [testing]='python3'
     [compat]='python3'
     [bench]='python3'
@@ -129,7 +133,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs structure msrv cross vartime deny versions license inplace testing compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs structure msrv cross vartime deny versions license inplace mutants testing compat bench fixtures patch py dart quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -191,10 +195,10 @@ for module in "${selected[@]}"; do
         check:rs)
             # The tests read these vectors, and otherwise fail partway through.
             # s2n-bignum only feeds admin/parse-asm, so it is not required.
-            unfetched=$(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
-            if [[ -n "$unfetched" ]]; then
-                echo "error: test vectors not checked out; run: git submodule update --init ${unfetched//$'\n'/ }" >&2
-                exit 1
+            # Only uninitialized ones, so a local submodule bump stays put.
+            mapfile -t unfetched < <(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
+            if ((${#unfetched[@]} > 0)); then
+                git submodule update --init --depth 1 -- "${unfetched[@]}"
             fi
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all --check
@@ -228,16 +232,51 @@ for module in "${selected[@]}"; do
         # builds.
         check:msrv)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
-            nix develop .#msrv --command cargo check "${packages[@]}" --locked
-            for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
-                nix develop .#msrv --command cargo check -p rind --lib --locked --target "$target"
+            # An adapter whose upstream needs a newer Rust declares that
+            # rust-version instead, which its users need anyway, so it is
+            # left out.
+            mapfile -t newer < <(cargo metadata --format-version 1 --no-deps --locked |
+                jq -r '(.packages[] | select(.name == "rind") | .rust_version) as $v | .packages[] | select(.rust_version != $v) | .name')
+            args=()
+            for ((i = 0; i < ${#packages[@]}; i++)); do
+                if [[ "${packages[i]}" == -p ]]; then
+                    i=$((i + 1))
+                    if ! printf '%s\n' "${newer[@]}" | grep -qxF "${packages[i]}"; then
+                        args+=(-p "${packages[i]}")
+                    fi
+                elif [[ "${packages[i]}" == --workspace ]]; then
+                    args+=(--workspace)
+                    for name in "${newer[@]}"; do
+                        args+=(--exclude "$name")
+                    done
+                fi
+            done
+            if [[ ${#args[@]} -gt 0 ]]; then
+                nix develop .#msrv --command cargo check "${args[@]}" --locked
+            fi
+            for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf i686-unknown-linux-gnu; do
+                nix develop .#msrv --command cargo check -p rind -p rind-rustls --lib --locked --target "$target"
             done
             ;;
         check:cross)
-            for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
-                cargo clippy -p rind --lib --locked --target "$target" -- --deny warnings
-            done
-            CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable" \
+            # The tests too, in the shells whose C toolchain builds their
+            # aws-lc-rs dev-dependency, so test code that only these targets
+            # compile is checked before it lands. aarch64 in release, as
+            # sh/qemu.sh explains: nixpkgs' cross gcc fails aws-lc's -O0 probes.
+            # Those shells are Linux-only, so elsewhere the library alone.
+            if [[ $(uname -s) == Linux ]]; then
+                nix develop .#aarch64 --command cargo clippy -p rind --all-targets --locked --release \
+                    --target aarch64-unknown-linux-gnu -- --deny warnings
+                nix develop .#armv7 --command cargo clippy -p rind --all-targets --locked \
+                    --target armv7-unknown-linux-gnueabihf -- --deny warnings
+            else
+                for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
+                    cargo clippy -p rind --lib --locked --target "$target" -- --deny warnings
+                done
+            fi
+            # The FIPS module's source rides along: its cfg touches only where
+            # randomness comes from, which no backend changes.
+            CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable --cfg rind_fips" \
                 cargo clippy -p rind --lib --locked --target x86_64-unknown-linux-gnu -- --deny warnings
             # And on a 32-bit target, whose Poly1305 and GHASH differ.
             CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS="$portable" \
@@ -256,6 +295,7 @@ for module in "${selected[@]}"; do
         check:versions) sh/adapter-versions.sh ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
+        check:mutants) admin/mutants --pins ;;
         # It finds the generated kernels relative to its own directory.
         check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
         check:testing) python3 admin/testing ;;
@@ -277,6 +317,11 @@ for module in "${selected[@]}"; do
         fix:patch) cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:gh)
             actionlint
+            # See queue-build.yml: main's copy runs against every group's tree.
+            if grep -nE '^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]*\./' .github/workflows/queue-build.yml; then
+                echo "error: queue-build.yml must use no local action; put the setup in \`just ci\`" >&2
+                exit 1
+            fi
             sh/alert.sh check
             sh/pins.sh
             ;;

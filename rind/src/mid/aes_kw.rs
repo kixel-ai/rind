@@ -220,47 +220,49 @@ impl Zeroable for AesKek {}
 
 /// RFC 3394's wrapping of `r` in place under the initial value `a`,
 /// returning the integrity value.
+///
+/// A stays in a register and each block is built afresh: copying it through
+/// one buffer the cipher returns into put store-to-load round trips on the
+/// serial chain, a few nanoseconds a block.
 fn wrap_blocks(aes: &AesKey, a: [u8; 8], r: &mut [u8]) -> [u8; 8] {
-    // `block` is A followed by each R[i] in turn.
-    let mut block = [0u8; 16];
-    block[..8].copy_from_slice(&a);
+    let mut a = u64::from_ne_bytes(a);
     let mut t = 0u64;
     for _ in 0..6 {
         for r_i in r.as_chunks_mut::<8>().0 {
             t += 1;
-            block[8..].copy_from_slice(r_i);
-            block = aes.encrypt_block(&block);
-            xor_counter(&mut block, t);
-            r_i.copy_from_slice(&block[8..]);
+            let out = aes.encrypt_block(&block(a, r_i));
+            a = u64::from_ne_bytes(*out.first_chunk().unwrap()) ^ t.to_be();
+            *r_i = *out.last_chunk().unwrap();
         }
     }
-    *block.first_chunk().unwrap()
+    a.to_ne_bytes()
 }
 
 /// RFC 3394's unwrapping of `r` in place from the integrity value `a`,
 /// returning the initial value for the caller to check.
 fn unwrap_blocks(aes: &AesDecKey, a: [u8; 8], r: &mut [u8]) -> [u8; 8] {
-    let mut block = [0u8; 16];
-    block[..8].copy_from_slice(&a);
+    let mut a = u64::from_ne_bytes(a);
     let r = r.as_chunks_mut::<8>().0;
     let mut t = 6 * r.len() as u64;
     for _ in 0..6 {
         for r_i in r.iter_mut().rev() {
-            xor_counter(&mut block, t);
+            let mut b = block(a ^ t.to_be(), r_i);
             t -= 1;
-            block[8..].copy_from_slice(r_i);
-            aes.decrypt_block(&mut block);
-            r_i.copy_from_slice(&block[8..]);
+            aes.decrypt_block(&mut b);
+            a = u64::from_ne_bytes(*b.first_chunk().unwrap());
+            *r_i = *b.last_chunk().unwrap();
         }
     }
-    *block.first_chunk().unwrap()
+    a.to_ne_bytes()
 }
 
-/// XORs the step counter `t`, big-endian, into A.
+/// A, in native byte order, followed by R[i].
 #[inline]
-fn xor_counter(block: &mut [u8; 16], t: u64) {
-    let a: &mut [u8; 8] = block.first_chunk_mut().unwrap();
-    *a = (u64::from_ne_bytes(*a) ^ t.to_be()).to_ne_bytes();
+fn block(a: u64, r_i: &[u8; 8]) -> [u8; 16] {
+    let mut block = [0u8; 16];
+    block[..8].copy_from_slice(&a.to_ne_bytes());
+    block[8..].copy_from_slice(r_i);
+    block
 }
 
 #[cfg(test)]

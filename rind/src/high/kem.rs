@@ -310,7 +310,7 @@ mod tests {
             10_000
         };
 
-        let mut rng = Shake128::new(&[]);
+        let mut rng = Shake128::new(&Shake128Sponge::new());
         let mut acc = Shake128Sponge::new();
         let hash = |acc: &Shake128Sponge| {
             let mut out = [0u8; 32];
@@ -498,7 +498,7 @@ mod tests {
 
     // Exporting our decapsulation key needs crate access, so this
     // differential test lives here rather than in `tests/crosschecks.rs`.
-    #[cfg(not(miri))]
+    #[cfg(not(any(miri, target_family = "wasm")))]
     mod crosscheck {
         use aws_lc_rs::kem::{self, ML_KEM_768};
         use proptest::prelude::*;

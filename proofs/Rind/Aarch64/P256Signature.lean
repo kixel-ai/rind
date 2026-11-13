@@ -490,7 +490,7 @@ theorem key_pair_public_key_spec (h : Runs) (hheld : Held) (hc : Cached)
   step with encoded_point_as_ref_spec ep (by rw [hl]; decide) as ⟨sl1, hsl1⟩
   rw [hl] at hsl1
   have hsl1l : sl1.length = 65 := by simp only [Slice.length, hsl1]; exact hl65
-  step with copy_from_spec 1088#usize sl1 (by rw [hsl1l]; decide) as ⟨rb, b, hrb, hbl, hbt⟩
+  step with copy_from_spec 2592#usize sl1 (by rw [hsl1l]; decide) as ⟨rb, b, hrb, hbl, hbt⟩
   subst hrb
   simp only [bind_ok, WP.spec_ok]
   refine ⟨⟨vk, by rw [hq]; exact hvk, rfl⟩, by rw [hbl, hsl1l], ?_⟩
@@ -539,7 +539,7 @@ theorem p256_ecdsa_key_pair_verify (h : Runs) (hheld : Held) (hc : Cached)
 /-- A P-256 public key parsed from its encoding: refused unless it is an
 X9.62 uncompressed point on the curve, and otherwise its verification is
 ECDSA's of a message's SHA-256 under that point. -/
-theorem p256_ecdsa_public_key_new (ho : P256Order) (h : Runs) (hheld : Held) (hc : Cached)
+theorem p256_ecdsa_public_key_new (h : Runs) (hheld : Held) (hc : Cached)
     (hsha : Sha256Blocks) (bytes : Slice U8) :
     high.signature.PublicKey.new high.signature.verify.ECDSA_P256_SHA256_FIXED bytes ⦃ r =>
       x962Outcome bytes.val (fun pk => ∀ (msg sig : Slice U8), msg.length ≤ maxInput →
@@ -556,13 +556,13 @@ theorem p256_ecdsa_public_key_new (ho : P256Order) (h : Runs) (hheld : Held) (hc
     split_ifs at hr ⊢ with h4 hl hon
     · obtain ⟨vk, rfl, hvk⟩ := hr
       simp only
-      step with copy_from_ok 1088#usize bytes (by simp [hl]) as ⟨b, enc, hb'⟩
+      step with copy_from_ok 2592#usize bytes (by simp [hl]) as ⟨b, enc, hb'⟩
       subst hb'
       simp only [WP.spec_ok]
       refine ⟨_, rfl, fun msg sig hm => ?_⟩
       obtain ⟨dd, dg, hhash, hdg', hdg, he⟩ := ecdsa_sha256_spec hsha msg hm
       rw [← he]
-      exact WP.spec_mono (ecdsa_verify_spec h hc Sha256Sig vk _ hvk (ho _ hvk.1 hvk.2.1) msg sig dg dd hhash
+      exact WP.spec_mono (ecdsa_verify_spec h hc Sha256Sig vk _ hvk (p256_order _ hvk.1 hvk.2.1) msg sig dg dd hhash
         hdg' hdg)
         fun r hr => verdict_of_outcome hr
     · subst hr; simp

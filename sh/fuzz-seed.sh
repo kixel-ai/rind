@@ -73,13 +73,21 @@ done
 { printf '\x2a'; head -c 32 /dev/zero | tr '\0' '\1'; } >"$corpus/42-ones"
 seed 33 "$asn1/spki-rsa-2k.bin"
 
+# unhex: decode stdin's hex, failing on odd length or a non-hex digit, which
+# `xxd -r -p` would silently drop.
+unhex() {
+    local hex
+    hex=$(cat)
+    [[ $hex =~ ^([0-9A-Fa-f]{2})*$ ]] || { echo "fuzz-seed: malformed hex: $hex" >&2; exit 1; }
+    xxd -r -p <<<"$hex"
+}
+
 # wycheproof SELECTOR FILE JQ: a seed for each distinct key JQ finds in the
-# Wycheproof FILE, in hex, uppercase as older basenc requires: the selector
-# byte, then the key.
+# Wycheproof FILE, in hex: the selector byte, then the key.
 wycheproof() {
     local selector=$1 file=$2 filter=$3 key
     jq -r "[$filter] | unique[]" "thirdparty/wycheproof/testvectors_v1/$file" | while read -r key; do
-        printf %02X%s "$selector" "${key^^}" | basenc --base16 -d >"$corpus/$selector-${file%_test.json}-${key: -16}"
+        printf %02x%s "$selector" "$key" | unhex >"$corpus/$selector-${file%_test.json}-${key: -16}"
     done
 }
 
@@ -97,6 +105,14 @@ wycheproof 38 x25519_asn_test.json '.testGroups[].tests[].public'
 wycheproof 39 ecdh_secp256r1_test.json '.testGroups[].tests[].public'
 wycheproof 40 ecdh_secp384r1_test.json '.testGroups[].tests[].public'
 wycheproof 41 ecdh_secp521r1_test.json '.testGroups[].tests[].public'
+# ML-DSA's private keys as PKCS#8 and as seeds, and its public keys, raw and
+# in a `SubjectPublicKeyInfo`.
+for set in 0:44 1:65 2:87; do
+    wycheproof $((43 + ${set%:*})) "mldsa_${set#*:}_sign_seed_test.json" '.testGroups[].privateKeyPkcs8 // empty'
+    wycheproof $((46 + ${set%:*})) "mldsa_${set#*:}_sign_seed_test.json" '.testGroups[].privateSeed // empty'
+    wycheproof $((49 + ${set%:*})) "mldsa_${set#*:}_verify_test.json" '.testGroups[].publicKey // empty'
+    wycheproof $((52 + ${set%:*})) "mldsa_${set#*:}_verify_test.json" '.testGroups[].publicKeyDer // empty'
+done
 
 # Version 2 documents, which the ECDSA and RSA loaders refuse: one with its
 # public key, one with an empty one, and two without, which aws-lc-rs takes.
@@ -123,11 +139,11 @@ verify() {
         def hex16: (length / 2) as $n
             | [4096, 256, 16, 1] | map(($n / . | floor) % 16 | "0123456789abcdef"[.:. + 1]) | join("");
         .testGroups[] | select($sha == "" or .sha == $sha)
-        | (.publicKey.uncompressed // .publicKey.pk // .publicKeyAsn // .keyAsn) as $key
+        | ((.publicKey | if type == "string" then . else .uncompressed // .pk end) // .publicKeyAsn // .keyAsn) as $key
         | .tests[]
-        | "\(.tcId) \($selector + ($key | hex16) + $key + (.sig | hex16) + .sig + .msg | ascii_upcase)"
+        | "\(.tcId) \($selector + ($key | hex16) + $key + (.sig | hex16) + .sig + .msg)"
     ' "$wycheproof/$file" | while read -r id seed; do
-        basenc --base16 -d <<<"$seed" >"$corpus/$selector-${file%_test.json}${sha:+-$sha}-$id"
+        unhex <<<"$seed" >"$corpus/$selector-${file%_test.json}${sha:+-$sha}-$id"
     done
 }
 
@@ -167,3 +183,6 @@ verify 27 rsa_pss_misc_test.json SHA-384
 verify 28 rsa_pss_4096_sha512_mgf1_32_test.json
 verify 28 rsa_pss_4096_sha512_mgf1_64_test.json
 verify 28 rsa_pss_misc_test.json SHA-512
+verify 29 mldsa_44_verify_test.json
+verify 30 mldsa_65_verify_test.json
+verify 31 mldsa_87_verify_test.json

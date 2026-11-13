@@ -39,12 +39,24 @@ The modules:
   P-256, P-384, and P-521, HKDF, and the AEADs: a recipient's keys, and
   sender, recipient, and export-only contexts.
 - `rsa`: RSA-OAEP encryption and decryption, with SHA-1 under `legacy`,
-  and the key sizes and public-key components both RSA modules take.
+  and the key sizes and public-key components the RSA modules take.
+- `blind_rsa`: RFC 9474's four RSABSSA-SHA384 variants: a server's key pair
+  that signs blinded messages, and a public key that blinds a message,
+  finalizes the reply into a signature, and verifies it, as Privacy Pass's
+  publicly verifiable tokens (RFC 9578) need.
+- `oprf`: RFC 9497's OPRF over ristretto255, P-256, P-384, and P-521: a
+  server's key that evaluates blinded elements, and a client's blind that
+  finalizes the reply into the output. Its `voprf` mode adds the server's
+  public key and a DLEQ proof over a batch, as Privacy Pass's privately
+  verifiable tokens (RFC 9578) need; OPAQUE uses the base mode.
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
   Ed25519 key pairs and verification, plus ECDSA over a `digest` the caller
   computed, with any SHA-2 hash, RSA keys given as their components, and
   SHA-1 and 1024-bit RSA for verifying old signatures. Keys load from and
   export as PKCS#8, a `SubjectPublicKeyInfo`, raw bytes, and SEC1 for ECDSA.
+  ML-DSA-44, ML-DSA-65, and ML-DSA-87 (pure, with the empty context) verify
+  through the same `PublicKey`, and sign with `sign::MlDsaKeyPair<P>`, whose
+  parameter set is a type, so its signature is a fixed-size array.
 - `digest`: MD5 and SHA-1 (legacy only), SHA-256, SHA-384, SHA-512,
   SHA-512/256, SHA3-256, SHA3-384, and SHA3-512.
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.

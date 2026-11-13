@@ -67,6 +67,17 @@ fn rsa_oaep() {
 }
 
 #[test]
+fn blind_rsa() {
+    use rind::blind_rsa::*;
+    let key = KeyPair::from_pkcs8(
+        &RSABSSA_SHA384_PSS_RANDOMIZED,
+        include_bytes!("../src/high/rsa/rsa8192.pkcs8.der"),
+    )
+    .unwrap();
+    check_zeroed_on_drop(Box::pin(key));
+}
+
+#[test]
 fn ecdsa() {
     use rind::signature::{EcdsaKeyPair, sign};
     for (algorithm, pkcs8) in [
@@ -106,6 +117,24 @@ fn ed25519() {
 }
 
 #[test]
+fn ml_dsa() {
+    use rind::signature::sign::{MlDsa44, MlDsa65, MlDsa87, MlDsaKeyPair, MlDsaParameterSet};
+    fn check<P: MlDsaParameterSet>() {
+        let key = MlDsaKeyPair::<P>::generate().unwrap();
+        check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
+        check_zeroed_on_drop(Box::pin(key.to_seed().unwrap()));
+        let seed = key.to_seed().unwrap();
+        check_zeroed_on_drop(Box::pin(
+            MlDsaKeyPair::<P>::from_seed(seed.as_ref()).unwrap(),
+        ));
+        check_zeroed_on_drop(Box::pin(key));
+    }
+    check::<MlDsa44>();
+    check::<MlDsa65>();
+    check::<MlDsa87>();
+}
+
+#[test]
 fn ecdh() {
     use rind::agreement::*;
     for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
@@ -119,6 +148,40 @@ fn ecdh() {
         check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
         let loaded = PrivateKey::from_pkcs8(algorithm, key.to_pkcs8().as_ref()).unwrap();
         check_zeroed_on_drop(Box::pin(loaded));
+        check_zeroed_on_drop(Box::pin(key));
+    }
+}
+
+#[test]
+fn oprf() {
+    use rind::oprf::*;
+    for suite in [
+        &RISTRETTO255_SHA512,
+        &P256_SHA256,
+        &P384_SHA384,
+        &P521_SHA512,
+    ] {
+        let key = ServerKey::generate(suite).unwrap();
+        let (blind, _) = Blind::new(suite, b"input").unwrap();
+        check_zeroed_on_drop(Box::pin(key.evaluate(b"input").unwrap()));
+        check_zeroed_on_drop(Box::pin(key.to_bytes()));
+        check_zeroed_on_drop(Box::pin(blind));
+        check_zeroed_on_drop(Box::pin(key));
+
+        let key = voprf::ServerKey::generate(suite).unwrap();
+        let (blind, _) = voprf::Blind::new(suite, b"input").unwrap();
+        check_zeroed_on_drop(Box::pin(key.to_bytes()));
+        check_zeroed_on_drop(Box::pin(blind));
+        check_zeroed_on_drop(Box::pin(key));
+    }
+}
+
+#[test]
+fn vrf() {
+    use rind::vrf::*;
+    for algorithm in [&ECVRF_EDWARDS25519_SHA512_TAI, &ECVRF_P256_SHA256_TAI] {
+        let key = SecretKey::generate(algorithm).unwrap();
+        check_zeroed_on_drop(Box::pin(key.to_bytes()));
         check_zeroed_on_drop(Box::pin(key));
     }
 }

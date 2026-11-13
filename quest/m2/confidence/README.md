@@ -8,8 +8,6 @@ Every primitive, on every backend and CPU tier, has published test vectors, a di
 
 Decided with the maintainer on 2026-11-07, in m3. Moved to m2 with the maintainer on 2026-11-09, after an audit of the whole tree: ✅ m2 (rejected: redefine m3 to hold assurance, move only the security check). This is active work, not deferred, and m3 is for waits and work deferred by priority.
 
-Four children claimed before the move finish from [the m3 directory](/quest/m3/confidence/README.md), since a claimed quest cannot move. Delete that README once the last of them has merged.
-
 rind already has these:
 - differential fuzz targets against aws-lc-rs, run nightly;
 - Wycheproof and cross-checks against aws-lc-rs;
@@ -21,5 +19,9 @@ rind already has these:
 
 The 2026-11-09 audit found no exploitable bug and no panic reachable from public input, and planned the eleven children from the hostile-input fuzz target down: each is a hole it confirmed in the code that no test, fuzzer, or proof sees today.
 
+Three coverage children joined on 2026-11-12, with the maintainer, from the nightly `coverage.yml` report: it measures only published code under the tests that call it, rind-aws-lc-rs runs aws-lc-rs's own tests, and every published function then runs under a test.
+
+[The proof job's time limit](/quest/m2/confidence/prove-time-limit.md) joined on 2026-11-13, found while landing a PR: the `hol-light` job is cancelled at its limit on runs that prove nothing new, so the check fails when no proof has.
+
 - Fix what a check finds in its own quest's PR when it's small; otherwise plan a follow-up.
-- Slow suites run in their own workflows, not in `just ci`, as `AGENTS.md` asks.
+- Slow suites run in their own workflows, not in `just ci`.

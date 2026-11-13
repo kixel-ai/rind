@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/moq-dev/rind/main/admin/wordmark.svg">
-    <img width="280" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/wordmark-light.svg" alt="rind: a curled strip of green graviola peel forms the r, followed by ind">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/kixel-ai/rind/main/admin/wordmark.svg">
+    <img width="280" src="https://raw.githubusercontent.com/kixel-ai/rind/main/admin/wordmark-light.svg" alt="rind: a curled strip of green graviola peel forms the r, followed by ind">
   </picture>
 </p>
 
@@ -13,14 +13,14 @@
 <p align="center">
   <a href="https://crates.io/crates/rind"><img alt="Latest release" src="https://img.shields.io/crates/v/rind"></a>
   <a href="https://docs.rs/rind/"><img alt="Documentation" src="https://img.shields.io/docsrs/rind"></a>
-  <a href="https://github.com/moq-dev/rind/actions/workflows/build.yml?query=branch%3Amain"><img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/moq-dev/rind/build.yml"></a>
+  <a href="https://github.com/kixel-ai/rind/actions/workflows/build.yml?query=branch%3Amain"><img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/kixel-ai/rind/build.yml"></a>
 </p>
 
 - 🏎️ **As fast as aws-lc-rs and ring.** rind matches or beats both on
   nearly every operation TLS and QUIC run, from the handshake to each
   packet's AEAD.
 - 🛡️ **Verified where it counts.** On x86_64 and aarch64, rind's
-  elliptic-curve, RSA, and ML-KEM arithmetic builds on [s2n-bignum]'s
+  elliptic-curve, RSA, ML-KEM, and ML-DSA arithmetic builds on [s2n-bignum]'s
   formally verified assembly, and rind's own [Lean proofs][proofs] carry
   X25519 and Ed25519 from its API down to it, as [Verified code][verified]
   lists.
@@ -31,8 +31,8 @@
 ## Every benchmark, on every CPU
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/moq-dev/rind/main/benchmarks/overview-dark.svg">
-  <img alt="Time over the fastest library's, by operation, library, and host" src="https://raw.githubusercontent.com/moq-dev/rind/main/benchmarks/overview.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/kixel-ai/rind/main/benchmarks/overview-dark.svg">
+  <img alt="Time over the fastest library's, by operation, library, and host" src="https://raw.githubusercontent.com/kixel-ai/rind/main/benchmarks/overview.svg">
 </picture>
 
 Each row is an operation and each column a library, with one square per
@@ -79,7 +79,7 @@ Paste this into your coding agent, in your repository:
 
 ```text
 Move this repository from ring or aws-lc-rs to rind, following
-https://raw.githubusercontent.com/moq-dev/rind/main/MIGRATE.md
+https://raw.githubusercontent.com/kixel-ai/rind/main/MIGRATE.md
 ```
 
 It migrates on a local branch, reports the build time, binary size,
@@ -91,7 +91,7 @@ ring and aws-lc-rs item to rind's.
 
 The `rind` crate's own API covers AES-GCM, ChaCha20-Poly1305, and
 XChaCha20-Poly1305, QUIC header protection, X25519 and ECDH, ML-KEM-768,
-HPKE, ECDSA, Ed25519, and RSA signatures, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
+HPKE, ECDSA, Ed25519, ML-DSA, and RSA signatures, RSA blind signatures, ECVRF, OPRFs, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
 HMAC, HKDF, PBKDF2, and AES key wrap. Each algorithm is a constant and each key
 type has one role, so misuse fails to compile:
 
@@ -125,12 +125,14 @@ Each crate's README shows its setup.
 | [rind-aws-lc-rs][] | aws-lc-rs 1.x's API, name for name, for every item rind backs |
 | [rind-dimpl][] | DTLS 1.2 and 1.3 through [dimpl](https://github.com/algesten/dimpl) |
 | [rind-str0m][] | WebRTC through [str0m](https://github.com/algesten/str0m) |
+| [rind-openmls][] | MLS through [OpenMLS](https://github.com/openmls/openmls) |
 | [rind-jsonwebtoken][] | JWTs through [jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
 | [rind-object-store][] | S3, Azure, and GCS request signing through [object_store](https://github.com/apache/arrow-rs-object-store) |
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
-| [rind-dart][] | Dart and Flutter, through FFI: the `rind` package, unpublished until its first pub.dev release |
+| [rind-dart][] | Dart and Flutter, through FFI, as the `rind` package on [pub.dev](https://pub.dev/packages/rind) |
+| [rind_cryptography][] | Dart and Flutter, as the `rind_cryptography` package, with the `cryptography` package's API on rind |
 | [rind-python][] | Python, as the `pyrind` package on PyPI, with rind's own API |
-| [pyrind-cryptography][] | Python, pyca/cryptography's `hazmat` API on pyrind, unpublished until its first PyPI release |
+| [pyrind-cryptography][] | Python, as the `pyrind-cryptography` package on PyPI, with pyca/cryptography's `hazmat` API on pyrind |
 
 ## Wiping keys
 
@@ -177,16 +179,14 @@ rind-rustls and the other adapters, and does nothing off Apple's platforms.
 ## Platforms
 
 rind has assembly for x86_64, aarch64, and 32-bit arm from ARMv7 on, and runs
-portable Rust on any other architecture (on 32-bit x86, only with Rust 1.94
-rather than its 1.90 MSRV). CI tests Linux (glibc and musl), macOS, and
-Windows on x86_64 and aarch64, Linux and Windows on 32-bit x86, iOS in the
-simulator, Android on aarch64, armv7, ARMv5TE, x86_64, and 32-bit x86, and
-Linux on armv7, ARMv6, big-endian s390x, riscv64gc (glibc and musl),
-loongarch64, powerpc64le, and big-endian powerpc64 and powerpc. Any
-x86_64 CPU runs it,
-little-endian aarch64 needs NEON, and every operation panics on a CPU missing a feature
-rind requires: call `rind::cpu::check()` at startup to get an error naming
-it instead.
+portable Rust on any other architecture. CI tests Linux (glibc and musl),
+macOS, and Windows on x86_64 and aarch64, Linux and Windows on 32-bit x86, iOS
+in the simulator, Android on aarch64, armv7, ARMv5TE, x86_64, and 32-bit x86,
+and Linux on armv7, ARMv6, big-endian s390x, riscv64gc (glibc and musl),
+loongarch64, powerpc64le, and big-endian powerpc64 and powerpc. Any x86_64 CPU
+runs it, little-endian aarch64 needs NEON, and every operation panics on a CPU
+missing a feature rind requires: call `rind::cpu::check()` at startup to get an
+error naming it instead.
 [PLATFORMS.md][platforms] lists what each architecture runs without each
 feature.
 
@@ -241,7 +241,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 
 [Graviola]: https://github.com/ctz/graviola
 [graviola-logo]: https://github.com/ctz/graviola/blob/main/admin/picture.png
-[rind-wordmark]: https://raw.githubusercontent.com/moq-dev/rind/main/admin/wordmark.svg
+[rind-wordmark]: https://raw.githubusercontent.com/kixel-ai/rind/main/admin/wordmark.svg
 [aws-lc-rs]: https://github.com/aws/aws-lc-rs
 [s2n-bignum]: https://github.com/awslabs/s2n-bignum
 [HACL\*]: https://github.com/hacl-star/hacl-star
@@ -249,29 +249,31 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [fiat-crypto]: https://github.com/mit-plv/fiat-crypto
 [docs]: https://docs.rs/rind/
 [quest-setup]: https://github.com/moq-dev/quest/blob/main/SETUP.md
-[LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
-[rind-rustls]: https://github.com/moq-dev/rind/tree/main/rind-rustls
-[rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
-[rind-aws-lc-rs]: https://github.com/moq-dev/rind/tree/main/rind-aws-lc-rs
-[rind-dimpl]: https://github.com/moq-dev/rind/tree/main/rind-dimpl
-[rind-str0m]: https://github.com/moq-dev/rind/tree/main/rind-str0m
-[rind-jsonwebtoken]: https://github.com/moq-dev/rind/tree/main/rind-jsonwebtoken
-[rind-object-store]: https://github.com/moq-dev/rind/tree/main/rind-object-store
-[rind-rcgen]: https://github.com/moq-dev/rind/tree/main/rind-rcgen
-[rind-dart]: https://github.com/moq-dev/rind/tree/main/rind-dart
-[rind-python]: https://github.com/moq-dev/rind/tree/main/rind-python
-[pyrind-cryptography]: https://github.com/moq-dev/rind/tree/main/rind-python/cryptography
-[quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
+[LICENSE]: https://github.com/kixel-ai/rind/blob/main/LICENSE
+[rind-rustls]: https://github.com/kixel-ai/rind/tree/main/rind-rustls
+[rind-ring]: https://github.com/kixel-ai/rind/tree/main/rind-ring
+[rind-aws-lc-rs]: https://github.com/kixel-ai/rind/tree/main/rind-aws-lc-rs
+[rind-dimpl]: https://github.com/kixel-ai/rind/tree/main/rind-dimpl
+[rind-str0m]: https://github.com/kixel-ai/rind/tree/main/rind-str0m
+[rind-openmls]: https://github.com/kixel-ai/rind/tree/main/rind-openmls
+[rind-jsonwebtoken]: https://github.com/kixel-ai/rind/tree/main/rind-jsonwebtoken
+[rind-object-store]: https://github.com/kixel-ai/rind/tree/main/rind-object-store
+[rind-rcgen]: https://github.com/kixel-ai/rind/tree/main/rind-rcgen
+[rind-dart]: https://github.com/kixel-ai/rind/tree/main/rind-dart
+[rind_cryptography]: https://github.com/kixel-ai/rind/tree/main/rind-dart/cryptography
+[rind-python]: https://github.com/kixel-ai/rind/tree/main/rind-python
+[pyrind-cryptography]: https://github.com/kixel-ai/rind/tree/main/rind-python/cryptography
+[quests]: https://github.com/kixel-ai/rind/blob/main/quest/README.md
 [launch-post]: https://moq.dev/blog/rind/
-[contributing]: https://github.com/moq-dev/rind/blob/main/CONTRIBUTING.md
-[migrating]: https://github.com/moq-dev/rind/blob/main/MIGRATING.md
-[benchmarks]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md
-[gaps]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#known-gaps
-[build-cost]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#build-cost
-[verified]: https://github.com/moq-dev/rind/blob/main/BENCHMARKS.md#verified-code
-[testing]: https://github.com/moq-dev/rind/blob/main/TESTING.md#primitives
-[proofs]: https://github.com/moq-dev/rind/blob/main/proofs/README.md
-[algorithms]: https://github.com/moq-dev/rind/blob/main/ALGORITHMS.md
-[sources]: https://github.com/moq-dev/rind/blob/main/ALGORITHMS.md#sources
-[platforms]: https://github.com/moq-dev/rind/blob/main/PLATFORMS.md
-[architecture]: https://github.com/moq-dev/rind/blob/main/ARCHITECTURE.md
+[contributing]: https://github.com/kixel-ai/rind/blob/main/CONTRIBUTING.md
+[migrating]: https://github.com/kixel-ai/rind/blob/main/MIGRATING.md
+[benchmarks]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md
+[gaps]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#known-gaps
+[build-cost]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost
+[verified]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code
+[testing]: https://github.com/kixel-ai/rind/blob/main/TESTING.md#primitives
+[proofs]: https://github.com/kixel-ai/rind/blob/main/proofs/README.md
+[algorithms]: https://github.com/kixel-ai/rind/blob/main/ALGORITHMS.md
+[sources]: https://github.com/kixel-ai/rind/blob/main/ALGORITHMS.md#sources
+[platforms]: https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md
+[architecture]: https://github.com/kixel-ai/rind/blob/main/ARCHITECTURE.md
