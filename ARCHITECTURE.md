@@ -48,7 +48,7 @@ The modules:
   server's key that evaluates blinded elements, and a client's blind that
   finalizes the reply into the output. Its `voprf` mode adds the server's
   public key and a DLEQ proof over a batch, as Privacy Pass's privately
-  verifiable tokens (RFC 9578) and OPAQUE need.
+  verifiable tokens (RFC 9578) need; OPAQUE uses the base mode.
 - `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
   Ed25519 key pairs and verification, plus ECDSA over a `digest` the caller
   computed, with any SHA-2 hash, RSA keys given as their components, and
