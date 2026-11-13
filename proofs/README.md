@@ -189,6 +189,19 @@ curves, and `Rind/NistGroup.lean` proves it is multiplication in Mathlib's
 group of points on such a curve. `Rind/P384Group.lean` proves p and n prime,
 by Pratt certificates that `Rind/Pratt.lean` checks, and G's order n.
 
+The comb's constant-time row select on x86_64, `bignum_aff_point_select_p384`,
+and P-256's and P-521's, in `Rind/X86_64/PointSelect.lean`:
+
+- `bignum_aff_point_select_p256_spec`, `_p384_spec`, `_p521_spec`: the select
+  returns row `index` of a table of 8-, 12-, or 18-word affine points,
+  counting from 1, or zeros for an index of 0 or past the last row, on both
+  its AVX2 and SSE2 paths, for a table of fewer than 2^32 rows;
+- `bignum_aff_point_select_p384_rows16`: the same on P-384's 16-row comb
+  tables, as P-384's key generation takes it.
+
+They assume `RunsSelect`: `HaveAvx2::check` returns, as `Runs` assumes of
+`HaveBmi2Adx::check`. aarch64's NEON select has no model yet.
+
 ChaCha20 QUIC header protection on x86_64 and aarch64, from
 `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
 
@@ -617,10 +630,13 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   `Rind/X86_64/ValeAesGcm.lean`: s2n-bignum's, aws-lc-verification's, and
   Vale's theorems, restated as axioms about the routines' Rust wrappers.
 - `Rind/X86_64/Simd.lean`: models of the x86_64 intrinsics rind's AES,
-  AES-GCM setup, partial blocks, and by-8 kernels call;
+  AES-GCM setup, partial blocks, by-8 kernels, and point select call;
   `Rind/X86_64/AesGcmModel.lean`: a hand model, over those intrinsics, of its
   PCLMULQDQ GHASH and by-8 AES-GCM, whose raw pointers, `transmute`
   constants, `as_chunks`, and zipped iterators Aeneas cannot translate;
+  `Rind/X86_64/PointSelectModel.lean`, of its AVX2 and SSE2 point selects,
+  whose raw-pointer loads and `as_chunks` Aeneas cannot translate, and
+  `Rind/X86_64/PointSelect.lean`, their proofs;
   `Rind/Aarch64/Neon.lean`, of the aarch64 intrinsics rind's AES calls, and
   `Rind/Aarch64/NeonVectors.lean`, the vectors `admin/neon-vectors.rs` tests
   them with; `Rind/Lanes.lean`, both targets' vector lanes and bytes.

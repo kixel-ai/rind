@@ -446,4 +446,61 @@ theorem select_sse2_spec (N : Std.Usize) (V : Nat) (hN : N.val = 2 * V)
   · simp only [hp, ite_false, sse2_out_zero V, ← hN]
     rw [dif_pos (List.length_replicate ..), WP.spec_ok, Array.from_val]
 
+/-! ## The dispatch -/
+
+/-- `bignum_aff_point_select_p256` returns row `index` of P-256's table of
+8-word affine points, or zeros. -/
+@[step]
+theorem bignum_aff_point_select_p256_spec (hc : RunsSelect) (z : Std.Array U64 8#usize)
+    (table : Slice U64) (index : U8) (hrows : table.length / 8 < 2 ^ 32) :
+    low.x86_64.bignum_point_select.bignum_aff_point_select_p256 z table index ⦃ r =>
+      r.val = tableRow 8 table.val index.val ⦄ := by
+  obtain ⟨t, ht⟩ := hc
+  unfold low.x86_64.bignum_point_select.bignum_aff_point_select_p256
+  simp only [ht, bind_ok, bind_tc_ok]
+  cases t with
+  | some token => exact select_avx2_spec 8#usize 2 (Or.inl rfl) z table index token hrows
+  | none => exact select_sse2_spec 8#usize 4 rfl z table index hrows
+
+/-- `bignum_aff_point_select_p384` returns row `index` of P-384's table of
+12-word affine points, or zeros. -/
+@[step]
+theorem bignum_aff_point_select_p384_spec (hc : RunsSelect) (z : Std.Array U64 12#usize)
+    (table : Slice U64) (index : U8) (hrows : table.length / 12 < 2 ^ 32) :
+    low.x86_64.bignum_point_select.bignum_aff_point_select_p384 z table index ⦃ r =>
+      r.val = tableRow 12 table.val index.val ⦄ := by
+  obtain ⟨t, ht⟩ := hc
+  unfold low.x86_64.bignum_point_select.bignum_aff_point_select_p384
+  simp only [ht, bind_ok, bind_tc_ok]
+  cases t with
+  | some token => exact select_avx2_spec 12#usize 3 (Or.inl rfl) z table index token hrows
+  | none => exact select_sse2_spec 12#usize 6 rfl z table index hrows
+
+/-- `bignum_aff_point_select_p521` returns row `index` of P-521's table of
+18-word affine points, or zeros. -/
+@[step]
+theorem bignum_aff_point_select_p521_spec (hc : RunsSelect) (z : Std.Array U64 18#usize)
+    (table : Slice U64) (index : U8) (hrows : table.length / 18 < 2 ^ 32) :
+    low.x86_64.bignum_point_select.bignum_aff_point_select_p521 z table index ⦃ r =>
+      r.val = tableRow 18 table.val index.val ⦄ := by
+  obtain ⟨t, ht⟩ := hc
+  unfold low.x86_64.bignum_point_select.bignum_aff_point_select_p521
+  simp only [ht, bind_ok, bind_tc_ok]
+  cases t with
+  | some token => exact select_avx2_spec 18#usize 4 (Or.inr rfl) z table index token hrows
+  | none => exact select_sse2_spec 18#usize 9 rfl z table index hrows
+
+/-- `bignum_aff_point_select_p384` on a 16-row table, in the form P-384's
+key generation takes it. -/
+theorem bignum_aff_point_select_p384_rows16 (hc : RunsSelect) :
+    ∀ (z : Std.Array U64 12#usize) (table : Slice U64) (index : U8), table.length = 192 →
+      low.x86_64.bignum_point_select.bignum_aff_point_select_p384 z table index ⦃ r =>
+        r.val = if 1 ≤ index.val ∧ index.val ≤ 16 then (table.val.drop (12 * (index.val - 1))).take 12
+          else List.replicate 12 0#u64 ⦄ := by
+  intro z table index h
+  have h' : table.val.length = 192 := h
+  have := bignum_aff_point_select_p384_spec hc z table index (by rw [h]; decide)
+  simp only [tableRow, h'] at this
+  exact this
+
 end rind.x86_64

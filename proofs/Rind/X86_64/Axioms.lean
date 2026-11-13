@@ -10,6 +10,7 @@ import Rind.X86_64.GcmKey
 import Rind.X86_64.Ed25519
 import Rind.X86_64.RsaDispatch
 import Rind.X86_64.Sha3
+import Rind.X86_64.PointSelect
 open rind.x86_64
 
 /-!
@@ -23,8 +24,9 @@ constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
 tag checks, and RSASSA-PSS's hash compare, and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states. A change here is a
-change to the trust base.
+hypothesis `RunsChaCha20Poly1305`, which no axiom states. The generator
+tables' point selects rest on no axiom, only on the hand model in
+`Rind.X86_64.PointSelectModel`. A change here is a change to the trust base.
 -/
 
 /-- info: 'rind.x86_64.x25519_generate' depends on axioms: [propext,
@@ -501,3 +503,19 @@ change to the trust base.
  sha3_keccak_f1600_spec] -/
 #guard_msgs in
 #print axioms shake256_batch_spec
+
+/-- info: 'rind.x86_64.bignum_aff_point_select_p256_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms bignum_aff_point_select_p256_spec
+
+/-- info: 'rind.x86_64.bignum_aff_point_select_p384_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms bignum_aff_point_select_p384_spec
+
+/-- info: 'rind.x86_64.bignum_aff_point_select_p521_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms bignum_aff_point_select_p521_spec
+
+/-- info: 'rind.x86_64.bignum_aff_point_select_p384_rows16' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms bignum_aff_point_select_p384_rows16
