@@ -430,6 +430,9 @@ session() {
     if [[ ! -t 1 ]]; then
         setup+=" set_color_printer false;;"
     fi
+    # A session never checkpoints itself: `--interval 0` overrides any
+    # `DMTCP_CHECKPOINT_INTERVAL`, and a checkpoint would go to its own
+    # directory rather than over the shared image.
     {
         printf '%s\n' "$setup"
         if [[ -n $file ]]; then
@@ -438,7 +441,8 @@ session() {
         else
             cat
         fi
-    } | dmtcp_restart --new-coordinator --coord-port 0 --quiet "$image"/ckpt/ckpt_*.dmtcp
+    } | dmtcp_restart --new-coordinator --coord-port 0 --interval 0 --ckptdir "$session_dir/ckpt" \
+        --quiet "$image"/ckpt/ckpt_*.dmtcp
 }
 
 # Prints `s` as an OCaml string literal.
