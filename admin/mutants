@@ -266,7 +266,8 @@ if [ "${1:-}" = --run ]; then
     exit 0
 fi
 
-# The Darwin campaign names its files itself.
+# A diff, named files, or a listing runs anywhere, as does the Darwin
+# campaign, which names its files itself.
 if [ -z "$listing$scoped" ] && [ ${#only[@]} -eq 0 ] && [ "${RUNNER_ENVIRONMENT:-}" != github-hosted ]; then
     case $campaign in
         armv7-unknown-linux-gnueabihf) name=armv7 ;;
