@@ -105,11 +105,11 @@ pub(crate) fn hold() -> Hold {
     Hold(LIVE.write().unwrap_or_else(PoisonError::into_inner))
 }
 
-/// In a forked child, under the hold its parent's `fork` took: wipes the
-/// instance of every thread but this one, the child's only thread, and
-/// forgets them. The child holds a copy of each, still
-/// mapped, but no thread that would unregister it, and may reuse the memory
-/// for threads of its own.
+/// In a forked child, under the hold its parent's `fork` took: wipes, frees,
+/// and forgets the instance of every thread but this one, the child's only
+/// thread. The child holds a copy of each, but no thread that would
+/// unregister or free it, so a process that forks and forks again would
+/// otherwise accumulate them.
 pub(crate) fn forked(hold: Hold) {
     let Hold(mut live) = hold;
     // This thread called `fork`, so it is inside no draw, and its instance
@@ -121,10 +121,12 @@ pub(crate) fn forked(hold: Hold) {
     for &address in &live.instances {
         if Some(address) != own {
             // SAFETY: the parent registered `address` as a live thread's
-            // instance under a write of `LIVE`, and its `fork` held that
-            // lock, so the child's copy is whole, and no thread of the child
-            // uses it.
-            unsafe { (*(address as *mut HmacDrbg<Sha512>)).zeroise() };
+            // instance, allocated by `ThreadDrbg::new`, under a write of
+            // `LIVE`, and its `fork` held that lock, so the child's copy is
+            // whole. No thread of the child holds its `ThreadDrbg`, so
+            // nothing else frees or uses it.
+            let mut drbg = unsafe { Box::from_raw(address as *mut HmacDrbg<Sha512>) };
+            drbg.zeroise();
         }
     }
     live.instances.retain(|&address| Some(address) == own);
