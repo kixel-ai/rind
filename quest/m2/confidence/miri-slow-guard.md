@@ -17,6 +17,11 @@ covers only the Miri list.
 Open PR [moq-dev/rind#693](https://github.com/moq-dev/rind/pull/693) rewrites
 the list and moves Miri to nightly; build on whatever it lands.
 
-Recommended: before running Miri, list the test names (`cargo nextest list`
-or `cargo test -- --list` under the same features) and fail naming each
-`slow` entry that matches none, the way #699 checks mutants exclusions.
+Recommended: before running Miri, list the test names with `cargo nextest
+list` under the Miri run's own `RUSTFLAGS`, features, `--target`, and test
+targets (today `--cfg rind_portable`, `--features wipe`, and `--lib --test cpu
+--test debug`, `sh/miri.sh:122-125`), and fail naming each `slow` entry that
+matches none, the way #699 checks mutants exclusions. A host listing without
+`rind_portable` misses tests such as
+`low::posint::tests::mont_exp_matches_square_and_multiply`, which
+`rind/src/low/posint.rs` compiles only off the x86_64 backend.
