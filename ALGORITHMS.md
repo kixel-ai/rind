@@ -45,6 +45,7 @@ SHA-512.
 | ECVRF, over the rows it builds on | rind |  |  |  |  |
 | OPRF, VOPRF, over the rows it builds on | rind |  |  |  |  |
 | PBKDF2 | rind |  |  |  |  |
+| SPAKE2+ | rind, over P-256 |  |  |  |  |
 | X25519 | s2n-bignum ✓ |  |  |  |  |
 | Ed25519 | s2n-bignum ✓ + Graviola |  |  |  |  |
 | ristretto255 | s2n-bignum ✓ + rind |  |  |  |  |
@@ -111,6 +112,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | ECVRF, over the rows it builds on | rind |  |  |  |
 | OPRF, VOPRF, over the rows it builds on | rind |  |  |  |
 | PBKDF2 | rind |  |  |  |
+| SPAKE2+ | rind, over P-256 |  |  |  |
 | X25519 | s2n-bignum ✓ |  | BoringSSL ⚡ + curve25519-dalek ⚡ | curve25519-dalek ⚡ |
 | Ed25519 | s2n-bignum ✓ + Graviola |  | curve25519-dalek ⚡ + rind ⚡ |  |
 | ristretto255 | s2n-bignum ✓ + rind |  | curve25519-dalek | curve25519-dalek |
