@@ -14,5 +14,6 @@ The evidence is thinner than the interview said, so weigh it before starting. Th
 
 - The sequence number is big-endian in the last eight bytes, as RFC 8446 section 5.3 and RFC 9180 section 5.2 both specify.
 - HPKE calls it and deletes its loop. rind-rustls keeps rustls's helper, which its upstream provider uses too.
+- Its documentation says what the caller still promises. `Nonce` already says each value seals once under a key, and here that means a sequence number is used once under an IV and key: the counter never repeats, wraps, or starts over while the key lives. The constructor cannot check that, so it says so where the counter is handed in, and HPKE keeps refusing to seal once its counter would wrap.
 - Test it against RFC 9180's test vectors, which give the nonce for each sequence number.
 - It is additive, so it does not hold rind 0.4. MIGRATING.md's `NonceSequence` row names it.

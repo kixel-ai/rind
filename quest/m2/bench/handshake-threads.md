@@ -12,4 +12,4 @@ Found by the 2026-11-12 audit. Every benchmark rind has runs on one thread, and 
 - Count allocations with a counting global allocator in a rind-rustls test, for one full handshake per key type, and assert the count equals what it measures on the day. The number is whatever it is; the test exists so a change to it is seen and explained, and its failure message says to update the number if the change was meant.
 - Count the aws-lc-rs provider's the same way once, for the report's text, not as a test.
 - A gap or a surprising count found here is a follow-up quest.
-- Every new benchmark ID needs its decision in `admin/bench-report`.
+- Every new benchmark ID needs its decision in `admin/bench-report`. Add the threaded rows to `SECTIONS` with their labels: `collect` runs only the operations `SECTIONS` names (`admin/bench-report:181` builds `OPERATIONS` from it), so a bench file alone puts nothing in BENCHMARKS.md or in front of the gate.
