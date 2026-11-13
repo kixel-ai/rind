@@ -90,6 +90,10 @@ theorem assert_held_spec (h : RunsSha512) : low.entry.Entry.assert_held ⦃ _ =>
   obtain ⟨-, he, -⟩ := h
   simp [he]
 
+/-- The entry guard is held, as `ct_equal` checks, which every target's
+`RunsSha512` states. -/
+theorem RunsSha512.held (h : RunsSha512) : low.entry.Entry.assert_held = ok () := h.2.1
+
 /-- The dispatch runs either routine on a whole number of blocks, and returns
 the state for none. -/
 @[step]

@@ -28,6 +28,9 @@
 #   proof       whose proof, of which routines, and any restriction
 #   link        the proof itself
 #
+# An arch of portable names rind's portable backend, the report's portable
+# tier: it takes no cpu, and no host's row shows it.
+#
 # ring, RustCrypto + dalek, and OpenSSL have none: at most their field
 # arithmetic is verified, under unverified point formulas or ladders.
 #
@@ -46,9 +49,12 @@
 # against Vale's FIPS 197 spec, and AES-GCM on x86_64 with AES-NI but no VAES,
 # whose Rust, key setup and by-8 kernels included, `proofs/` proves against
 # Vale's specs, and with AVX and MOVBE against Vale's theorems for its
-# routines. On x86_64 CPUs with AVX2, or AMD's, rind runs OpenSSL's or aws-lc's
-# unproven routines, which are faster there, so neither SHA-512 nor Ed25519
-# earns the ✓ there. Every other rind operation runs unverified code,
+# routines. On the portable backend, SHA-256 and the SHA-512 family, with HMAC
+# and HKDF over them, whose Rust `proofs/` proves against HACL*'s theorems for
+# its SHA-2 block functions, and ChaCha20 header protection. On x86_64 CPUs
+# with AVX2, or AMD's, rind runs OpenSSL's or aws-lc's unproven routines,
+# which are faster there, so neither SHA-512 nor Ed25519 earns the ✓ there.
+# Every other rind operation runs unverified code,
 # such as SHA-256's block function on x86_64 or without the crypto extension,
 # under padding and HMAC glue that `proofs/` proves, ChaCha20-Poly1305's
 # aws-lc one-pass routines on x86_64, under glue `proofs/` proves, or x86_64
@@ -208,6 +214,20 @@ arch = "x86_64"
 cpu = ["intel", "avx", "ssse3"]
 proof = "aws-lc-verification's SAW proof of SHA-512 through EVP_Digest, padding included, over sha512_block_data_order_avx, which aws-lc runs only on Intel; of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps"
 link = "https://github.com/awslabs/aws-lc-verification/blob/797302470c1703cbb1a3a6fa98daffef0bfd3d80/SAW/proof/SHA512/verify-SHA512-x86.saw"
+
+[[verified]]
+library = "rind"
+operations = ["sha256/*", "sha512/*", "hmac-sha256/*", "hkdf-sha256/*"]
+arch = "portable"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of HKDF-Expand's loop over its info slices, which Aeneas cannot translate, of its digest, HMAC, and HKDF APIs' SHA-256 and SHA-512, padding included, down to HACL*'s Hacl.SHA2.Scalar32 sha256_update_nblocks and sha512_update_nblocks, which rind runs in pieces under 2^31 bytes, composed with HACL*'s F* proofs of them, compiled to Rust by an unverified step"
+link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Portable/Hacl.lean"
+
+[[verified]]
+library = "rind"
+operations = ["quic-header-protection/chacha20"]
+arch = "portable"
+proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included"
+link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean"
 
 # libcrux: portable Rust that KaRaMeL generates from HACL*, with no CPU
 # dispatch. libcrux records no HACL* revision, so these link to HACL*'s main
