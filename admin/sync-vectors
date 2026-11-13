@@ -227,17 +227,21 @@ cctv_files=(
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../thirdparty/vectors"
 
+# Downloads into a scratch directory and swaps it in only once every file
+# arrived, so a failed refresh leaves the committed copy whole.
 fetch() {
-    local repo=$1 rev=$2 dir=$3
+    local repo=$1 rev=$2 dir=$3 new=$3.new
     shift 3
-    rm -rf "$dir"
-    mkdir -p "$dir"
-    echo "https://github.com/$repo/tree/$rev" >"$dir/REVISION"
+    rm -rf "$new"
+    mkdir -p "$new"
     for file in "$@"; do
-        mkdir -p "$dir/$(dirname "$file")"
-        curl --fail --silent --show-error --location --output "$dir/$file" \
+        mkdir -p "$new/$(dirname "$file")"
+        curl --fail --silent --show-error --location --output "$new/$file" \
             "https://raw.githubusercontent.com/$repo/$rev/$file"
     done
+    echo "https://github.com/$repo/tree/$rev" >"$new/REVISION"
+    rm -rf "$dir"
+    mv "$new" "$dir"
 }
 
 fetch aws/aws-lc "$AWS_LC" aws-lc "${aws_lc_files[@]}"

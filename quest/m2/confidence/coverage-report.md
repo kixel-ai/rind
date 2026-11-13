@@ -22,7 +22,7 @@ Guidance:
 
 - `cargo llvm-cov show-env` already exports the instrumentation flags, so `admin/coverage` can build rind-dart's library and rind-python's extension in that environment, then run `dart test` and pytest against them before `cargo llvm-cov report`. The coverage dev shell then needs the Dart SDK and Python, which `flake.nix`'s `dart` and Python shells already pin.
 - `admin/coverage` ends with `cargo run --example client https://jbp.io`, which reaches the network. Check whether that example still exists and earns a place in the report.
-- A plain local `cargo llvm-cov` reports less than the nightly run, since it skips the Wycheproof, CAVP, and CCTV submodules, `SLOW_TESTS=1`, and the CPU-feature reruns. Say in [TESTING.md](/TESTING.md) that `admin/coverage` is the way to measure, and where the nightly report is.
+- A plain local `cargo llvm-cov` reports less than the nightly run, since it skips `SLOW_TESTS=1` and the CPU-feature reruns. Say in [TESTING.md](/TESTING.md) that `admin/coverage` is the way to measure, and where the nightly report is.
 
 ## Related
 
