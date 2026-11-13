@@ -52,6 +52,10 @@ env:
   # for setup, the baseline build and test (up to 35 minutes under SDE), and
   # mutants slower than the mean.
   SHARD_SECONDS: 10800
+  # A test run under SDE that outlasts this hangs: twice the slowest mutant
+  # seen, 2066 seconds, against cargo-mutants' default of five times the
+  # baseline, up to 169 minutes, which no shard has room for.
+  AVX512_TIMEOUT: 4200
 
 jobs:
   shards:
@@ -104,6 +108,10 @@ jobs:
         id: count
         run: |
           [[ "$PACKAGE" =~ ^[A-Za-z0-9_-]*$ ]] || { echo "::error::no crate is named '$PACKAGE'"; exit 1; }
+          # cargo-mutants only warns of a crate it can't find, and lists nothing.
+          [ -z "$PACKAGE" ] || nix develop --command cargo metadata --no-deps --format-version 1 |
+            jq -e --arg p "$PACKAGE" 'any(.packages[]; .name == $p)' > /dev/null ||
+            { echo "::error::no workspace crate is named '$PACKAGE'"; exit 1; }
           scope=()
           [ -z "$DIFF" ] || scope=(--in-diff "$RUNNER_TEMP/changes.diff")
           crate=(--workspace)
@@ -266,7 +274,10 @@ jobs:
           [ -z "$DIFF" ] || scope=(--in-diff "$RUNNER_TEMP/changes.diff")
           count=$(nix develop --command admin/mutants --avx512 "${crate[@]}" ${scope[@]+"${scope[@]}"} \
             --iterate --list --output "$RUNNER_TEMP/iterate" | wc -l)
-          shards=$(((count * 2100 + SHARD_SECONDS - 1) / SHARD_SECONDS))
+          # A shard holds what fits in SHARD_SECONDS at 2100 seconds a mutant
+          # with one of them hanging until AVX512_TIMEOUT: 4 mutants.
+          per=$(((SHARD_SECONDS - AVX512_TIMEOUT) / 2100 + 1))
+          shards=$(((count + per - 1) / per))
           [ "$shards" -le 256 ] || { echo "::error::$shards jobs, more than a matrix's 256"; exit 1; }
           echo "avx512: $count mutants in $shards jobs" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "shards=$(jq -c -n --argjson n "$shards" '[range($n)]')" >> "$GITHUB_OUTPUT"
@@ -322,12 +333,15 @@ jobs:
           name: changes
           path: ${{ runner.temp }}
 
+      # A mutant's build takes under a minute after the baseline's, so one
+      # that takes ten hangs too.
       - name: Mutate
         run: |
           read -ra crate <<<"$CRATE"
           scope=()
           [ -z "$DIFF" ] || scope=(--in-diff "$RUNNER_TEMP/changes.diff")
           nix develop .#sde --command admin/mutants --avx512 "${crate[@]}" ${scope[@]+"${scope[@]}"} --iterate \
+            --timeout "$AVX512_TIMEOUT" --build-timeout 600 \
             --shard "$SHARD/$SHARDS" --sharding round-robin --output "$RUNNER_TEMP" || [ $? -eq 2 ]
         env:
           CRATE: ${{ needs.shards.outputs.avx512 }}
