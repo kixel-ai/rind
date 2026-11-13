@@ -135,8 +135,8 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 
 ### s2n-bignum's x86_64 model lacks instructions aws-lc's routines use
 
-- **Breaks:** s2n-bignum's HOL Light x86_64 model cannot decode some instructions of aws-lc's ChaCha20-Poly1305 and ChaCha20 routines, so they cannot be proven on it.
-- **Workaround:** `proofs/hol-light/s2n-bignum/x86.patch` adds them, cosimulated against the CPU by `x86-cosim.ml`; [that directory's README](/proofs/hol-light/s2n-bignum/README.md) lists each, with the unmerged upstream specs rind vendors.
+- **Breaks:** s2n-bignum's HOL Light x86_64 model cannot decode some instructions of aws-lc's ChaCha20-Poly1305 and ChaCha20 routines, or the SHA extensions rind's SHA-256 blocks run, so they cannot be proven on it.
+- **Workaround:** `proofs/hol-light/s2n-bignum/pr450.patch` carries the instructions [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450) adds, the SHA extensions among them, and `x86.patch` adds the rest, both cosimulated against the CPU by `x86-cosim.ml`; [that directory's README](/proofs/hol-light/s2n-bignum/README.md) lists each, with the unmerged upstream specs rind vendors.
 - **Reported:** no.
 - **Goes when:** s2n-bignum's model decodes each, instruction by instruction.
 

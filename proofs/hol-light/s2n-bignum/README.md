@@ -32,8 +32,9 @@ than #450's files, since those unchanged would revert the three later
 submodule commits to them (#429, #438, and #452). `admin/prove` applies it
 to the submodule's files, then `x86.patch` over it, failing unless every
 hunk applies exactly, and a submodule bump past #450's merge deletes it.
-#450's decoders of the three legacy SSE instructions, unlike `x86.patch`'s,
-also take the MMX form without the 66 prefix, which no proven routine runs.
+#450's decoders of its three legacy SSE instructions also take the MMX form
+without the 66 prefix, which no proven routine runs, where `x86.patch`'s
+decoders of its own legacy SSE instructions refuse it.
 
 ## rind's specs
 

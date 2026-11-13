@@ -198,17 +198,19 @@ symbol_bounds() {
 }
 
 # Writes to `dest` the bytes of the static at `path`, as rind's release build
-# for `arch` Linux emits them, failing if its section has relocations, which
+# for `arch` Linux emits them, failing if a relocation falls in them, which
 # would leave bytes for the linker to fill.
 rind_static() {
-    local arch=$1 path=$2 dest=$3 found obj sym section value size
+    local arch=$1 path=$2 dest=$3 found obj sym section value size off
     found=$(rind_symbol "$arch" "$path")
     read -r obj sym <<<"$found"
     read -r section value size < <(symbol_bounds "$obj" "$sym")
-    if [[ -n "$(relocations "$obj" "$section")" ]]; then
-        echo "admin/prove: $path's section has relocations" >&2
-        return 1
-    fi
+    while read -r off _ _; do
+        if ((16#$off >= 16#$value && 16#$off < 16#$value + 16#$size)); then
+            echo "admin/prove: $path has a relocation" >&2
+            return 1
+        fi
+    done < <(relocations "$obj" "$section")
     "$tools/llvm-objcopy" --dump-section="$section=$dest.section" "$obj" "$dest.o"
     tail -c +$((16#$value + 1)) "$dest.section" | head -c $((16#$size)) >"$dest"
     rm "$dest.section" "$dest.o"

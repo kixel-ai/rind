@@ -774,9 +774,9 @@ Beyond Lean's kernel:
   code, as for `benchmarks/verified.toml`'s other entries, except where a
   proof in `hol-light/` covers the bytes rind's build emits. For those, HOL
   Light's kernel and s2n-bignum's instruction models, as for s2n-bignum's
-  own theorems, with rind's additions in `hol-light/s2n-bignum/x86.patch`,
-  which `admin/prove cosim` checks against the CPU as s2n-bignum checks its
-  own.
+  own theorems, with the additions in `hol-light/s2n-bignum/pr450.patch`,
+  from awslabs/s2n-bignum#450, and rind's own in `x86.patch`, which
+  `admin/prove cosim` checks against the CPU as s2n-bignum checks its own.
 - The translation ignores drops, which here wipe keys and keyed state under
   the `wipe` feature and restore CPU state, and computes nothing an output
   depends on.
