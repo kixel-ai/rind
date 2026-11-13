@@ -69,6 +69,9 @@ declare -A scope=(
     # s2n-bignum's proofs assume separate input and output, so the kernels
     # rind runs in place are walked, after planting faults in each.
     [inplace]='^(rind/src/low/|admin/parse-asm/)'
+    # .cargo/mutants.toml's exclusions name mutants by file, line, and
+    # function, so moving code can leave one matching nothing.
+    [mutants]='^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)'
     # TESTING.md's table names every export, test, and vector file.
     [testing]='^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)'
     # COMPATIBILITY.md is generated from the CPU scans.
@@ -112,6 +115,7 @@ declare -A tools=(
     [cross]='cargo'
     [vartime]='nix'
     [inplace]='python3'
+    [mutants]='cargo-mutants python3'
     [testing]='python3'
     [compat]='python3'
     [bench]='python3'
@@ -129,7 +133,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs structure msrv cross vartime deny versions license inplace testing compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs structure msrv cross vartime deny versions license inplace mutants testing compat bench fixtures patch py dart quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -284,6 +288,7 @@ for module in "${selected[@]}"; do
         check:versions) sh/adapter-versions.sh ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
+        check:mutants) admin/mutants --pins ;;
         # It finds the generated kernels relative to its own directory.
         check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
         check:testing) python3 admin/testing ;;
@@ -305,6 +310,11 @@ for module in "${selected[@]}"; do
         fix:patch) cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:gh)
             actionlint
+            # See queue-build.yml: main's copy runs against every group's tree.
+            if grep -nE '^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]*\./' .github/workflows/queue-build.yml; then
+                echo "error: queue-build.yml must use no local action; put the setup in \`just ci\`" >&2
+                exit 1
+            fi
             sh/alert.sh check
             sh/pins.sh
             ;;

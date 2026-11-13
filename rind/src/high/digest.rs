@@ -634,6 +634,7 @@ mod tests {
 
         for (file, algorithm) in [
             ("../thirdparty/cavp-sha1/SHA1ShortMsg.rsp", &SHA1),
+            ("../thirdparty/cavp-sha1/SHA1LongMsg.rsp", &SHA1),
             (
                 "../thirdparty/vectors/cavp/sha2/SHA256ShortMsg.rsp",
                 &SHA256,

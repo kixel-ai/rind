@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Copy the vector files rind's tests read from aws-lc, BoringSSL,
 # Wycheproof, CAVP, and CCTV, and RFC 9180's HPKE, RFC 9380's hash-to-curve,
-# and RFC 9474's blind RSA vectors, into thirdparty/vectors, from the
-# revisions pinned here. The tests read a small part of each repository, so
-# rind keeps copies of those files rather than submodules. Bump a revision
-# and rerun to update them; each test opens its files by name and fails on a
-# missing one, so a file a test newly reads goes in its list here.
+# RFC 9474's blind RSA, and RFC 9497's OPRF vectors, into thirdparty/vectors,
+# from the revisions pinned here. The tests read a small part of each
+# repository, so rind keeps copies of those files rather than submodules.
+# Bump a revision and rerun to update them; each test opens its files by name
+# and fails on a missing one, so a file a test newly reads goes in its list
+# here.
 set -euo pipefail
 
 AWS_LC=2f9a0e95cc2c29235d9b98db8cf86e22b271b35a
@@ -22,6 +23,8 @@ WYCHEPROOF=dab4ea2ed021eb633874959ca601004f3457d911
 # ctz/cavp mirrors NIST's CAVP sample responses.
 CAVP=0220357e399badc6e9b87e237c428463a00d0992
 CCTV=b88c4b206254ac543df240097e0f1fcc6a664821
+# RFC 9497's repository, whose `poc/vectors/allVectors.json` is its Appendix A.
+VOPRF=5d7d94c8dc7589dc3baa116c1b9c169a7c33ac4e
 
 # aws-lc's copy of each file BoringSSL also has holds every BoringSSL vector
 # for rind's algorithms, so BoringSSL contributes only its own files.
@@ -272,3 +275,11 @@ rm -rf rfc9474
 mkdir rfc9474
 curl --fail --silent --show-error --location --output rfc9474/test-vectors.json \
     "https://raw.githubusercontent.com/jedisct1/rust-blind-rsa-signatures/$BLIND_RSA/tests/test_vectors_rfc9474.json"
+
+# The OPRF and VOPRF modes of the suites rind offers, short of decaf448 and
+# the POPRF mode.
+rm -rf rfc9497
+mkdir rfc9497
+curl --fail --silent --show-error --location \
+    "https://raw.githubusercontent.com/cfrg/draft-irtf-cfrg-voprf/$VOPRF/poc/vectors/allVectors.json" |
+    jq '[.[] | select(.mode != 2 and .identifier != "decaf448-SHAKE256")]' >rfc9497/allVectors.json
