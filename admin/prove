@@ -119,9 +119,7 @@ asm_block() {
         done >"$dest.insns"
     fi
     "$tools/llvm-objcopy" --dump-section="$section=$dest.section" "$obj" "$dest.o"
-    # `head` first: a `head` after `tail` can stop reading early, failing
-    # `tail` with a broken pipe under pipefail.
-    head -c "$end" "$dest.section" | tail -c +$((start + 1)) >"$dest"
+    head -c $((end)) "$dest.section" | tail -c +$((start + 1)) >"$dest"
     rm "$dest.section" "$dest.o"
 }
 
@@ -606,7 +604,7 @@ routine_layout() {
         fi
     done < <(relocations "$obj" "$section")
     "$tools/llvm-objcopy" --dump-section="$section=$dest.section" "$obj" "$dest.o"
-    head -c "$end" "$dest.section" | tail -c +$((start + 1)) >"$dest"
+    head -c $((end)) "$dest.section" | tail -c +$((start + 1)) >"$dest"
     rm "$dest.section" "$dest.o"
 }
 
