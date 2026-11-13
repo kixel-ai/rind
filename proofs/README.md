@@ -218,6 +218,13 @@ Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
 pass, which no input affects. `Rind/Aarch64/P256Table.lean` proves that
 rind's generator table holds the multiples of G that s2n-bignum's proof of
 `p256_scalarmulbase` assumes, so `p256_public_key` assumes nothing of it.
+On x86_64, `Rind/X86_64/P256Base.lean` proves that `base_multiply`, rind's
+port of aws-lc's Booth-recoded generator multiplication, computes k·G for k
+below n (`base_multiply_spec`, and `jac_base_multiply_spec` before its affine
+conversion): `Rind/P256Booth.lean` proves the recoded digits sum to k and that
+no addition doubles, and `Rind/X86_64/P256Table.lean` that its 37-row table
+holds j·2⁷ⁱ·G. The table select and aws-lc's mixed addition are placeholder
+axioms in `Rind/X86_64/S2nBignum.lean` until their proofs land.
 `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
 SHA-1 and SHA-256's padding and finalization, and HMAC's keyed states over
@@ -708,6 +715,9 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   `Rind/Aarch64/P256Table.lean`, and `Rind/Aarch64/P256.lean`: the hand model
   of P-256's key generation, the P-256 agreement proof on both targets, and
   aarch64's generator table and key generation proofs.
+- `Rind/P256Booth.lean`, `Rind/X86_64/P256Table.lean`, and
+  `Rind/X86_64/P256Base.lean`: the arithmetic of x86_64's Booth-recoded
+  generator multiplication, its table, and the proof of its driver.
 - `Rind/Aarch64/EcdsaDispatch.lean`, `Rind/Aarch64/P256Ecdsa.lean`, and
   `Rind/Aarch64/P256Signature.lean`: the hand model of ECDSA's dispatch and
   key generation, the proof of `high::ecdsa` and `mid::p256`'s ECDSA at
