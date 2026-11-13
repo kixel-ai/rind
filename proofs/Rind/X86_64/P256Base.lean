@@ -18,8 +18,9 @@ The driver Booth-recodes k into 37 signed 7-bit digits (`booth_w7_spec`,
 whose arithmetic `Rind.P256Booth` proves), selects each digit's multiple of
 2⁷ʷ·G from row w of the generator table, which `Rind.X86_64.P256Table` checks,
 and adds it with aws-lc's mixed addition, which never doubles (`booth_ne`).
-The select and the addition are opaque: `S2nBignum.lean`'s placeholders state
-what they compute until their proofs land.
+The select is rind's Rust, which `Rind.X86_64.PointSelect` proves; the addition
+is opaque, and `S2nBignum.lean`'s placeholder `p256_point_add_affine_spec`
+states what it computes until its HOL Light proof lands.
 -/
 
 set_option exponentiation.threshold 400
