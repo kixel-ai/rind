@@ -214,9 +214,10 @@ case $campaign in
         exit 1
         ;;
 esac
-# armv7 cross-builds and runs under qemu; any other architecture's campaign
-# only lists here.
-[ "$campaign" = "$host" ] || [ "$campaign" = armv7-unknown-linux-gnueabihf ] || [ -n "$listing" ] || {
+# armv7 cross-builds and runs under qemu, and the portable backend runs on
+# the x86_64 host checked above; any other architecture's campaign only lists
+# here.
+[ "$campaign" = "$host" ] || [ "$campaign" = armv7-unknown-linux-gnueabihf ] || [ -n "$portable_backend" ] || [ -n "$listing" ] || {
     echo "admin/mutants: $campaign's campaign runs only on its own architecture; here it only lists" >&2
     exit 1
 }
