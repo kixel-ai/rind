@@ -286,7 +286,10 @@ class Api:
                     sig["generics"] = impl["generics"]
                 # Its associated types and consts are API; its methods are the trait's.
                 sig["assoc"] = {
-                    child["name"]: child["inner"]
+                    # An associated const's initializer is not API, as for a constant's.
+                    child["name"]: {k: v for k, v in child["inner"].get("assoc_const", child["inner"]).items() if k != "value"}
+                    if "assoc_const" in child["inner"]
+                    else child["inner"]
                     for child in map(lambda i: self.index[str(i)], impl["items"])
                     if "function" not in child["inner"]
                 }

@@ -293,10 +293,11 @@ for module in "${selected[@]}"; do
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;
         check:deny) cargo deny --locked check ;;
         check:versions) sh/adapter-versions.sh ;;
-        # The drift list only shrinks against the diff's base.
+        # The drift list only shrinks against the diff's merge base. --all
+        # has no diff, so nothing to shrink from.
         check:adapters)
-            if [[ -n "$base" && -z "$all" ]]; then
-                python3 admin/adapter-api --base "$base"
+            if [[ -z "$all" ]]; then
+                python3 admin/adapter-api --base "$(sh/changed.sh --merge-base "$base")"
             else
                 python3 admin/adapter-api
             fi
