@@ -796,9 +796,31 @@ extract_kdf() {
 
 extract x86_64 X86_64 \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
+    --start-from crate::high::ecdsa::VerifyingKey::from_x962_uncompressed \
+    --start-from crate::high::ecdsa::VerifyingKey::verify \
+    --start-from crate::high::ecdsa::SigningKey::new \
+    --start-from crate::high::ecdsa::SigningKey::generate \
+    --start-from '{impl core::clone::Clone for crate::high::ecdsa::VerifyingKey<_>}' \
+    --start-from '{impl core::clone::Clone for crate::mid::p256::VerifyingKey}' \
+    --start-from '{impl crate::high::hash::SignatureHash for crate::high::hash::Sha256}' \
+    --start-from crate::high::ecdsa::SigningKey::from_private_key_and_public_key \
+    --start-from crate::high::ecdsa::SigningKey::public_key_uncompressed \
+    --start-from '{impl core::convert::AsRef for crate::high::ecdsa::EncodedPoint}' \
+    --start-from crate::high::ecdsa::SigningKey::sign \
+    --opaque crate::high::hmac_drbg \
+    --start-from crate::high::ecdsa::hash_to_scalar \
+    --start-from '{impl crate::high::curve::Curve for crate::high::curve::P256}' \
+    --start-from '{impl crate::high::curve::PrivateKey for crate::mid::p256::StaticPrivateKey}' \
+    --start-from '{impl crate::high::curve::PublicKey for crate::mid::p256::VerifyingKey}' \
+    --start-from '{impl crate::high::curve::Scalar for crate::mid::p256::Scalar}' \
+    --start-from crate::mid::p256::StaticPrivateKey::from_bytes \
+    --opaque 'crate::high::curve::_::generate_random_key' \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
     --opaque 'crate::mid::p256::_::base_multiply' \
+    --include crate::low::x86_64::adx_mux::p256_montjadd \
+    --include crate::low::x86_64::adx_mux::p256_montjdouble \
+    --include crate::low::x86_64::adx_mux::p256_montjmixadd \
     --include crate::low::x86_64::adx_mux::bignum_demont_p256 \
     --include crate::low::x86_64::adx_mux::bignum_montmul_p256 \
     --include crate::low::x86_64::adx_mux::bignum_montsqr_p256 \

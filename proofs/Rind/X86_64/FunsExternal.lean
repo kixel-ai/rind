@@ -454,11 +454,103 @@ opaque low.x86_64.p256_scalarmul_alt.p256_scalarmul_alt
   Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
     Result (Array Std.U64 8#usize)
 
-/-! P-256's generator multiplication, aws-lc's on x86_64, which no proof
-covers yet. -/
+opaque low.x86_64.bignum_inv_p256.bignum_inv_p256
+  : Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.bignum_neg_p256.bignum_neg_p256
+  : Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.p256_montjadd.p256_montjadd
+  :
+  Array Std.U64 12#usize → Array Std.U64 12#usize → Array Std.U64 12#usize
+    → Result (Array Std.U64 12#usize)
+
+opaque low.x86_64.p256_montjadd_alt.p256_montjadd_alt
+  :
+  Array Std.U64 12#usize → Array Std.U64 12#usize → Array Std.U64 12#usize
+    → Result (Array Std.U64 12#usize)
+
+opaque low.x86_64.p256_montjdouble.p256_montjdouble
+  : Array Std.U64 12#usize → Array Std.U64 12#usize → Result (Array Std.U64 12#usize)
+
+opaque low.x86_64.p256_montjdouble_alt.p256_montjdouble_alt
+  : Array Std.U64 12#usize → Array Std.U64 12#usize → Result (Array Std.U64 12#usize)
+
+opaque low.x86_64.p256_montjmixadd.p256_montjmixadd
+  :
+  Array Std.U64 12#usize → Array Std.U64 12#usize → Array Std.U64 8#usize
+    → Result (Array Std.U64 12#usize)
+
+opaque low.x86_64.p256_montjmixadd_alt.p256_montjmixadd_alt
+  :
+  Array Std.U64 12#usize → Array Std.U64 12#usize → Array Std.U64 8#usize
+    → Result (Array Std.U64 12#usize)
+
+/-! ECDSA's scalar arithmetic mod n, s2n-bignum's generic routines. -/
+
+opaque low.x86_64.bignum_modadd.bignum_modadd
+  :
+  Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 →
+    Result (Slice Std.U64)
+
+opaque low.x86_64.bignum_demont.bignum_demont
+  : Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Result (Slice Std.U64)
+
+opaque low.x86_64.bignum_modinv.bignum_modinv
+  :
+  Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 →
+    Result ((Slice Std.U64) × (Slice Std.U64))
+
+/-! P-256's generator multiplication, rind's Booth driver over aws-lc's mixed
+addition, which `Rind.X86_64.P256Base` states. -/
 
 opaque mid.p256.AffineMontPoint.base_multiply
   : mid.p256.Scalar → Result mid.p256.AffineMontPoint
+
+opaque mid.p256.JacobianMontPoint.base_multiply
+  : mid.p256.Scalar → Result mid.p256.JacobianMontPoint
+
+/-! The HMAC-DRBG an ECDSA signature draws its nonces from. -/
+
+opaque high.hmac_drbg.HmacDrbg.new
+  {H : Type _} {Clause0_Context : Type _} {Clause0_State : Type _}
+  (hashHashInst : high.hash.Hash H Clause0_Context Clause0_State) :
+  Slice Std.U8 → Slice Std.U8 → Slice Std.U8 →
+    Result (high.hmac_drbg.HmacDrbg H Clause0_Context Clause0_State)
+
+opaque high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource.fill
+  {H : Type _} {Clause0_Context : Type _} {Clause0_State : Type _}
+  (hashHashInst : high.hash.Hash H Clause0_Context Clause0_State) :
+  high.hmac_drbg.HmacDrbg H Clause0_Context Clause0_State → Slice Std.U8 →
+    Result ((core.result.Result Unit error.Error) × (high.hmac_drbg.HmacDrbg H
+    Clause0_Context Clause0_State) × (Slice Std.U8))
+
+/-! The verifying key's caches of P, ..., 15P and 17P, ..., 31P, and the
+signing key's of its encoded public key, which the ECDSA theorems take what
+they need of as a hypothesis. -/
+
+opaque low.generic.reuse_cache.ReuseCache.new
+  {T : Type _} (coremarkerCopyInst : core.marker.Copy T)
+  (coredefaultDefaultInst : core.default.Default T) :
+  Result (low.generic.reuse_cache.ReuseCache T)
+
+opaque low.generic.reuse_cache.ReuseCache.get_or_build_now
+  {T : Type _} {T1 : Type _} (coremarkerCopyInst : core.marker.Copy T)
+  (coredefaultDefaultInst : core.default.Default T)
+  (coreopsfunctionFnOnceT1TupleTInst : core.ops.function.FnOnce T1 Unit T) :
+  low.generic.reuse_cache.ReuseCache T → T1 → Result T
+
+opaque low.generic.reuse_cache.ReuseCache.get_or_build
+  {T : Type _} {T1 : Type _} (coremarkerCopyInst : core.marker.Copy T)
+  (coredefaultDefaultInst : core.default.Default T)
+  (coreopsfunctionFnOnceT1TupleTInst : core.ops.function.FnOnce T1 Unit T) :
+  low.generic.reuse_cache.ReuseCache T → T1 → Result (Option T)
+
+opaque low.generic.reuse_cache.ReuseCache.Insts.CoreCloneClone.clone
+  {T : Type _} (coremarkerCopyInst : core.marker.Copy T)
+  (coredefaultDefaultInst : core.default.Default T) :
+  low.generic.reuse_cache.ReuseCache T → Result
+    (low.generic.reuse_cache.ReuseCache T)
 
 /-! P-256's key generation, which draws through a `dyn RandomSource`:
 `Rind.X86_64.P256Dispatch` models it. -/
