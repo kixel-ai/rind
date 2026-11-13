@@ -2,7 +2,7 @@
 
 ## Goal
 
-On the nightly's portable row, P-521 ECDSA verification takes no more than aws-lc's C time without assembly, or `benchmarks/gaps.toml` records why not.
+On the weekly bench's portable row, P-521 ECDSA verification takes no more than aws-lc's C time without assembly, or `benchmarks/gaps.toml` records why not.
 
 ## Plan
 

@@ -1,8 +1,9 @@
 name: bench
 
+# Weekly, at its own hour: see TESTING.md, "Scheduled workflows".
 on:
   schedule:
-    - cron: "0 18 * * *"
+    - cron: "23 12 * * 6"
   workflow_dispatch:
 
 concurrency:
@@ -77,7 +78,7 @@ jobs:
   # of CPUs without it, such as Zen 3 and Intel's client cores, whichever CPU
   # the runner draws; an RSA change's A/B reads it. Another denies all of
   # AVX-512 but keeps VAES and VPCLMULQDQ, so the VAES AVX2 path of Zen 3 and
-  # Intel's client cores is timed every night, not only when the native row
+  # Intel's client cores is timed every run, not only when the native row
   # draws a CPU without AVX-512.
   # Two more x86_64 rows time mostly AES: one also denies AVX, as Westmere
   # and the Goldmont Atoms lack it, and one AES-NI, PCLMULQDQ, and SSE4.1
@@ -293,7 +294,7 @@ jobs:
           ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_LIB_DIR: /usr/lib/arm-linux-gnueabihf
 
       # Every benchmark's estimate, which the gate job checks and
-      # `admin/bench-report nightly` turns into BENCHMARKS.md's CPU-tier
+      # `admin/bench-report weekly` turns into BENCHMARKS.md's CPU-tier
       # heatmap.
       - name: Save results
         shell: bash
@@ -346,8 +347,8 @@ jobs:
 
   # Fails the scheduled run, and so alerts, on a gap over 10% that
   # benchmarks/gaps.toml holds no decision for and that the previous
-  # scheduled run showed too: GitHub draws a different CPU each night, so one
-  # night's gap may be the runner's. A dispatched run is an experiment.
+  # scheduled run showed too: GitHub draws a different CPU each run, so one
+  # run's gap may be the runner's. A dispatched run is an experiment.
   gate:
     needs: native
     if: github.event_name == 'schedule'

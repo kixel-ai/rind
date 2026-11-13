@@ -8,7 +8,6 @@ The jobs a pull request triggers on GitHub-hosted runners are the fast, high-sig
 
 Measured 2026-11-12 over 14 days; see [the epic](/quest/m0/ci-speed/README.md) for the decisions it shares.
 
-- `miri` runs on path-filtered PRs and never finished: 0 of 34 runs, each cut at the 6 h timeout, about 240 h. Take it off PRs; [the weekly quest](/quest/m0/ci-speed/weekly.md) makes its scheduled run finish.
 - `x86-cpu` runs every SDE model on 304 PRs (median 61 min). On a PR, run only the models whose dispatch paths its diff can reach (`admin/x86-cpu`'s scans already group models by path set), and only the tests for the primitives it changed, from [ci-scope](/quest/m0/ci-speed/ci-scope.md)'s map; the weekly run keeps all of them.
 - `build`, `ctgrind`, `x86-cpu`, and `prove` compile from scratch on every run (`build` median about 11 min of compile). Give them a build cache, as `check.yml`'s `Swatinem/rust-cache` step does, keyed so a PR restores main's (`fuzz.yml` caches only its corpus).
 - Dispatched `bench` was 1,123 h from 195 runs off quest branches. A dispatch measures only the benchmark groups for the primitives the branch changed, unless asked for all.

@@ -9,7 +9,7 @@ Every primitive, on every backend and CPU tier, has published test vectors, a di
 Decided with the maintainer on 2026-11-07, in m3. Moved to m2 with the maintainer on 2026-11-09, after an audit of the whole tree: ✅ m2 (rejected: redefine m3 to hold assurance, move only the security check). This is active work, not deferred, and m3 is for waits and work deferred by priority.
 
 rind already has these:
-- differential fuzz targets against aws-lc-rs, run nightly;
+- differential fuzz targets against aws-lc-rs, run weekly;
 - Wycheproof and cross-checks against aws-lc-rs;
 - Intel SDE CPU models for every x86_64 dispatch path;
 - ctgrind, `admin/ct-sde`, and `admin/ct-qemu` for secret-dependent branches and addresses;
