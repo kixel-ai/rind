@@ -168,7 +168,7 @@ class Api:
         self.public = {}
         # Types with a public field, which a `Drop` impl stops callers moving out.
         self.open = set()
-        root =self.index[str(doc["root"])]
+        root = self.index[str(doc["root"])]
         # Items the crate exports outside the compared part, which the other
         # side names by their definition paths.
         self.walk_module(root, (), None, set())
@@ -247,6 +247,11 @@ class Api:
                 self.open.add(item["id"])
             elif ids or stripped:
                 sig["kind"] = "opaque"
+        if kind == "enum" and any(
+            isinstance(self.index[str(v)]["inner"]["variant"]["kind"], dict) for v in inner["variants"]
+        ):
+            # A variant's fields are always public.
+            self.open.add(item["id"])
         if kind in ("struct", "variant") and isinstance(sig["kind"], dict) and "tuple" in sig["kind"]:
             # Its fields are listed as children.
             sig["kind"] = {"tuple": len(sig["kind"]["tuple"])}
