@@ -653,6 +653,14 @@ impl Affine {
         Self(CURVE_GENERATOR)
     }
 
+    /// The affine image of the identity, `(0, 0)`.
+    ///
+    /// Not a curve point. [`Self::add`] treats it as infinity, and a scalar
+    /// multiplication is unspecified on it.
+    pub(crate) fn identity() -> Self {
+        Self(AffineMontPoint::default())
+    }
+
     /// 1 when this is the affine image of the identity, `(0, 0)`.
     ///
     /// The mask is 0 or 1 and does not branch on the coordinates.
@@ -1148,6 +1156,26 @@ impl Scalar {
         self.private_eq(&Self::default())
     }
 
+    /// 1 when this scalar is zero, and 0 otherwise.
+    ///
+    /// The mask stays secret. A caller that cannot multiply by zero folds it
+    /// into one declassified decision, after the work a nonzero scalar does.
+    pub(crate) fn zero_mask(&self) -> u64 {
+        u64::from(self.is_zero())
+    }
+
+    /// `other` when `select` is nonzero, and `self` when it is zero.
+    pub(crate) fn select(&self, other: &Self, select: u64) -> Self {
+        let mut limbs = [0u64; 4];
+        low::bignum_mux(select, &mut limbs, &other.0, &self.0);
+        Self(limbs)
+    }
+
+    /// The scalar 1, in range for the scalar multiplication.
+    pub(crate) fn one() -> Self {
+        Self([1, 0, 0, 0])
+    }
+
     /// Private equality
     fn private_eq(&self, other: &Self) -> bool {
         low::bignum_eq(&self.0, &other.0)
@@ -1236,8 +1264,9 @@ impl Scalar {
     ///
     /// `bytes` is at most 128 bytes, which covers a password stretch that
     /// carries 64 extra bits past n. An empty input is [`Error::WrongLength`].
-    /// Zero after reduction is [`KeyFormatError::ScalarOutOfRange`]. The
-    /// length is public; the value stays secret.
+    /// The length is public. The residue stays secret, zero included:
+    /// [`Self::zero_mask`] reports that without a branch. Rejecting it here
+    /// would publish that a password is 0 mod n.
     pub(crate) fn from_be_reduced(bytes: &[u8]) -> Result<Self, Error> {
         low::Entry::assert_held();
         const MAX: usize = 128;
@@ -1264,10 +1293,7 @@ impl Scalar {
             done += 32;
         }
 
-        match low::ct::into_public(!acc.is_zero()) {
-            true => Ok(low::ct::into_secret(acc)),
-            false => Err(KeyFormatError::ScalarOutOfRange.into()),
-        }
+        Ok(low::ct::into_secret(acc))
     }
 
     /// The width-`W` non-adjacent form of this scalar, by
@@ -1746,12 +1772,23 @@ mod tests {
 
         let mut n = [0u8; 32];
         n.copy_from_slice(&util::u64x4_to_big_endian(&CURVE_ORDER));
-        assert!(Scalar::from_be_reduced(&n).is_err());
-        // A 33-byte encoding of n is 0x00 || n, which reduces to 0. Adding one
-        // to its last byte (n ends in 0x51, so nothing carries) gives n + 1.
+        // n and 0x00 || n both reduce to 0. The residue is returned; the mask
+        // is the secret zero bit, declassified here because the input is a
+        // public test vector.
+        let reduced_n = Scalar::from_be_reduced(&n).unwrap();
+        assert_eq!(public_bytes(&reduced_n), [0u8; 32]);
+        assert_eq!(low::ct::into_public(reduced_n.zero_mask()), 1);
         let mut wide = [0u8; 33];
         wide[1..].copy_from_slice(&n);
-        assert!(Scalar::from_be_reduced(&wide).is_err());
+        let reduced_wide = Scalar::from_be_reduced(&wide).unwrap();
+        assert_eq!(public_bytes(&reduced_wide), [0u8; 32]);
+        assert_eq!(low::ct::into_public(reduced_wide.zero_mask()), 1);
+        assert_eq!(
+            low::ct::into_public(Scalar::from_be_reduced(&[1]).unwrap().zero_mask()),
+            0
+        );
+        // Adding one to n's last byte (it ends in 0x51, so nothing carries)
+        // gives n + 1.
         wide[32] = wide[32].wrapping_add(1);
         assert_eq!(
             public_bytes(&Scalar::from_be_reduced(&wide).unwrap()),
@@ -1783,7 +1820,7 @@ mod tests {
             public_bytes(&Scalar::from_be_reduced(&n_minus_1).unwrap()),
             n_minus_1
         );
-        assert_eq!(aws_reduce(&n_minus_1).unwrap(), n_minus_1);
+        assert_eq!(aws_reduce(&n_minus_1), n_minus_1);
 
         let mut wide_n = [0u8; 40];
         wide_n[8..].copy_from_slice(&n_minus_1);
@@ -1795,7 +1832,7 @@ mod tests {
         let max = [0xffu8; 128];
         assert_eq!(
             public_bytes(&Scalar::from_be_reduced(&max).unwrap()),
-            aws_reduce(&max).unwrap()
+            aws_reduce(&max)
         );
 
         for len in 1..=128 {
@@ -1807,24 +1844,21 @@ mod tests {
             let copy = len.min(32);
             low_n[len - copy..].copy_from_slice(&n_minus_1[32 - copy..]);
             for bytes in [&zeroes, &ones, &high, &low_n] {
-                match aws_reduce(bytes) {
-                    Ok(reduced) => assert_eq!(
-                        public_bytes(&Scalar::from_be_reduced(bytes).unwrap()),
-                        reduced,
-                        "len {len}"
-                    ),
-                    Err(()) => assert!(Scalar::from_be_reduced(bytes).is_err(), "len {len}"),
-                }
+                assert_eq!(
+                    public_bytes(&Scalar::from_be_reduced(bytes).unwrap()),
+                    aws_reduce(bytes),
+                    "len {len}"
+                );
             }
         }
     }
 
-    /// `bytes mod n` by aws-lc, or `Err` when the residue is zero.
+    /// `bytes mod n` by aws-lc, including a zero residue.
     #[cfg(not(any(miri, target_family = "wasm")))]
     #[allow(unsafe_code)]
-    fn aws_reduce(bytes: &[u8]) -> Result<[u8; 32], ()> {
+    fn aws_reduce(bytes: &[u8]) -> [u8; 32] {
         use aws_lc_sys::{
-            BN_CTX_free, BN_CTX_new, BN_bin2bn, BN_bn2binpad, BN_div, BN_free, BN_is_zero, BN_new,
+            BN_CTX_free, BN_CTX_new, BN_bin2bn, BN_bn2binpad, BN_div, BN_free, BN_new,
         };
 
         struct Owned(*mut aws_lc_sys::BIGNUM);
@@ -1857,12 +1891,9 @@ mod tests {
             assert!(!value.0.is_null() && !n.0.is_null() && !rem.0.is_null() && !ctx.is_null());
             assert_eq!(BN_div(core::ptr::null_mut(), rem.0, value.0, n.0, ctx,), 1);
             BN_CTX_free(ctx);
-            if BN_is_zero(rem.0) == 1 {
-                return Err(());
-            }
             let mut out = [0u8; 32];
             assert_eq!(BN_bn2binpad(rem.0, out.as_mut_ptr(), 32), 32);
-            Ok(out)
+            out
         }
     }
 
