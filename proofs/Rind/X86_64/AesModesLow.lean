@@ -8,15 +8,17 @@ open Aeneas Aeneas.Std Result rind.vale rind.simd rind.modes
 
 `low::x86_64::aes_ctr::apply` and `low::x86_64::aes_cbc::{encrypt, decrypt}`
 run aws-lc's `aes_hw_ctr32_encrypt_blocks` and `aes_hw_cbc_encrypt` for a key
-`expand_key` or `AesDecKey::new` expanded on the AES instructions. rind proves
-both routines in HOL Light, as rind's build emits them, in
-`proofs/hol-light/x86_64/aes_hw_ctr32_encrypt_blocks.ml` and
-`proofs/hol-light/x86_64/aes_hw_cbc_encrypt.ml`, stating each block's result
-in `proofs/hol-light/x86_64/aes_hw_spec.ml`'s `aes_hw_encrypt`,
+`expand_key` or `AesDecKey::new` expanded on the AES instructions. The axioms
+below assume HOL Light theorems of both routines, as rind's build emits them,
+that are not proven yet: `proofs/hol-light/x86_64/aes_hw_cbc_encrypt.ml`
+proves CBC encryption and part of decryption, and CTR has no proof, so
+`Axioms.lean` lists none of them and [the AES modes
+quest](/quest/m4/verified/aes-modes.md) owns the rest. Each states its block's
+result in `proofs/hol-light/x86_64/aes_hw_spec.ml`'s `aes_hw_encrypt`,
 `aes_hw_decrypt`, and `aes_ctr32_block`: the round keys `ks`, read
 little-endian from the `AES_KEY` 16 bytes apart, and its round count `r`, the
 32-bit word at byte 240, with `ks` of length `r + 2` and `r` 9, 11, or 13. The
-axioms below restate those theorems about the Rust wrappers `hw_ctr32`,
+axioms restate those theorems about the Rust wrappers `hw_ctr32`,
 `hw_encrypt`, and `hw_decrypt`, over Lean's definitions here of
 `aes_hw_encrypt`, `aes_hw_decrypt`, and `aes_ctr32_block`. Trusted: the
 restatement; that HOL Light's `aesenc`, `aesenclast`, `aesdec`, and
@@ -87,8 +89,7 @@ def hwDecRounds : low.x86_64.aes.HwDecKey → Nat
 
 /-! ## The routines, restated -/
 
-/-- `aes_hw_ctr32_encrypt_blocks`' theorem in
-`proofs/hol-light/x86_64/aes_hw_ctr32_encrypt_blocks.ml`: block `i`, read
+/-- `aes_hw_ctr32_encrypt_blocks`' theorem, not yet proven: block `i`, read
 little-endian, becomes itself XORed with `aes_hw_encrypt ks
 (aes_ctr32_block iv i)`, for `iv` the counter block read little-endian. -/
 @[step]
@@ -99,8 +100,9 @@ axiom hw_ctr32_spec (k : low.x86_64.aes.HwKey) (ivec : Std.Array U8 16#usize)
       ∀ i < blocks.length, loadBytes r.val[i]!.val = loadBytes blocks.val[i]!.val ^^^
         aesHwEncrypt (hwRoundKeys k) (aesCtr32Block (loadBytes ivec.val) i) ⦄
 
-/-- `aes_hw_cbc_encrypt`'s theorem for encryption in
-`proofs/hol-light/x86_64/aes_hw_cbc_encrypt.ml`: block `i`, read
+/-- `aes_hw_cbc_encrypt`'s theorem for encryption, which
+`proofs/hol-light/x86_64/aes_hw_cbc_encrypt.ml` proves as
+`AES_HW_CBC_ENCRYPT_ENCRYPT_SUBROUTINE_CORRECT`: block `i`, read
 little-endian, becomes `aes_hw_encrypt ks` of itself XORed with the IV for the
 first and the previous output block for the rest. -/
 @[step]
@@ -112,8 +114,7 @@ axiom hw_cbc_encrypt_spec (k : low.x86_64.aes.HwKey) (iv : Std.Array U8 16#usize
         (loadBytes blocks.val[i]!.val ^^^
           if i = 0 then loadBytes iv.val else loadBytes r.val[i - 1]!.val) ⦄
 
-/-- `aes_hw_cbc_encrypt`'s theorem for decryption in
-`proofs/hol-light/x86_64/aes_hw_cbc_encrypt.ml`: block `i`, read
+/-- `aes_hw_cbc_encrypt`'s theorem for decryption, not yet proven: block `i`, read
 little-endian, becomes `aes_hw_decrypt ks` of itself XORed with the IV for the
 first and the previous input block for the rest. -/
 @[step]

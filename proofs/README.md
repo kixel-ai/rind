@@ -486,10 +486,10 @@ rind's NEON CTR by 8 and CBC on the AES instructions, in
 
 On x86_64, `Rind/X86_64/AesModesApi.lean` proves the same over
 `Rind/X86_64/AesModesLow.lean`, whose axioms `hw_ctr32_spec`,
-`hw_cbc_encrypt_spec`, and `hw_cbc_decrypt_spec` restate pending HOL Light
-theorems of aws-lc's `aes_hw_ctr32_encrypt_blocks` and `aes_hw_cbc_encrypt` that are not
-finished yet: `hol-light/x86_64/aes_hw_cbc_encrypt.ml` proves CBC
-encryption and most of decryption. Until they are, those theorems are not in
+`hw_cbc_encrypt_spec`, and `hw_cbc_decrypt_spec` restate HOL Light theorems
+of aws-lc's `aes_hw_ctr32_encrypt_blocks` and `aes_hw_cbc_encrypt` that are
+pending: `hol-light/x86_64/aes_hw_cbc_encrypt.ml` proves CBC encryption and
+most of decryption, and CTR has no proof yet. Until they are, those theorems are not in
 `Rind/X86_64/Axioms.lean` and earn no ✓, which [the AES modes
 quest](/quest/m4/verified/aes-modes.md) owns.
 
@@ -499,11 +499,17 @@ transliteration, whose `#guard`s check RFC 3394's and RFC 5649's vectors:
 
 - `kek_new_spec`: a key that is not the algorithm's length is refused, and
   otherwise the KEK holds it;
-- `kek_wrap_spec` and `kek_unwrap_spec`: KW-AE and KW-AD, refusing keys under
-  two semiblocks, not whole semiblocks, or an output of the wrong length,
-  and on a failed unwrap returning `DecryptFailed` with the key buffer zeroed;
-- `kek_wrap_padded_spec` and `kek_unwrap_padded_spec`: KWP-AE and KWP-AD, the
-  same, with empty keys and keys of 2^32 bytes or more refused.
+- `kek_wrap_spec` and `kek_unwrap_spec`: KW-AE and KW-AD. A wrap refuses keys
+  under two semiblocks, not whole semiblocks, or an output of the wrong
+  length; an unwrap refuses input under three semiblocks or not whole
+  semiblocks with `DecryptFailed`, and a key buffer of the wrong length with
+  `WrongLength`, both leaving the buffer as it was, and returns
+  `DecryptFailed` with the buffer zeroed when KW-AD's integrity check fails;
+- `kek_wrap_padded_spec` and `kek_unwrap_padded_spec`: KWP-AE and KWP-AD. A
+  wrap takes any key of 1 to 2^32 - 1 bytes, aligned or not, into an output of
+  the key padded to whole semiblocks plus one, and refuses anything else; an
+  unwrap refuses as KW's does from two semiblocks of input, and zeroes the
+  buffer when KWP-AD's integrity check fails.
 
 The unwraps' integrity check rests on the constant-time compares'
 `Rind/<Arch>/CtEqual.lean` contracts; the rest rests on nothing.
