@@ -140,6 +140,14 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Reported:** no.
 - **Goes when:** s2n-bignum's model decodes each, instruction by instruction.
 
+### dmtcp_command fails a checkpoint that succeeds
+
+- **Breaks:** `dmtcp_command --kcheckpoint` sends a blocking checkpoint and then a checkpoint, which the coordinator refuses once the first has killed the computation, so DMTCP 4.1.1's command prints `Computation was checkpointed and killed.` and exits 2.
+- **Reproduce:** `dmtcp_launch --new-coordinator --port-file port sleep 100 &`, then `dmtcp_command --coord-port "$(<port)" --kcheckpoint; echo $?` prints 2 beside the checkpoint it wrote.
+- **Workaround:** `admin/prove`'s `session_image` reads that message instead of the exit status.
+- **Reported:** no.
+- **Goes when:** `dmtcp_command --kcheckpoint` exits 0 once it has checkpointed and killed the computation.
+
 ## Mutation testing
 
 ### cargo-mutants cannot see into `cfg_if!`
