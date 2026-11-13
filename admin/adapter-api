@@ -212,7 +212,7 @@ class Api:
     def add(self, path, kind, sig, owner=None):
         self.entries.setdefault("::".join(path), []).append((kind, sig, owner))
 
-    def visit(self, item, path, seen, owner=None):
+    def visit(self, item, path, seen, owner=None, impl=None):
         if (item["id"], path) in seen or len(path) > 16:
             return
         seen.add((item["id"], path))
@@ -234,11 +234,15 @@ class Api:
             ids = inner["kind"]["tuple"] if "tuple" in inner.get("kind", {}) else inner.get("fields") or []
             if isinstance(inner.get("kind"), dict) and "plain" in inner["kind"]:
                 ids = inner["kind"]["plain"]["fields"]
-            if not any(i is not None and self.index[str(i)]["visibility"] == "public" for i in ids):
+            # A unit struct's name is also its public constructor.
+            if inner.get("kind") != "unit" and not any(i is not None and self.index[str(i)]["visibility"] == "public" for i in ids):
                 sig["kind"] = "opaque"
         if kind in ("struct", "variant") and isinstance(sig["kind"], dict) and "tuple" in sig["kind"]:
             # Its fields are listed as children.
             sig["kind"] = {"tuple": len(sig["kind"]["tuple"])}
+        if impl is not None:
+            # A method's callers also meet its impl block's bounds and target.
+            sig = {"impl": self.sig(elide({"generics": impl["generics"], "for": impl["for"]})), "item": sig}
         if "non_exhaustive" in item["attrs"]:
             # The one attribute that limits what a caller can write.
             sig = {"non_exhaustive": sig}
@@ -281,13 +285,11 @@ class Api:
                 for child_id in impl["items"]:
                     child = self.index[str(child_id)]
                     if child["visibility"] == "public":
-                        self.visit(child, path + (child["name"],), seen, owner)
+                        self.visit(child, path + (child["name"],), seen, owner, impl)
             elif self.external(impl["trait"]["id"], impl["trait"]["path"]) not in IGNORED_TRAITS:
                 sig = {"trait": impl["trait"], "negative": impl["is_negative"]}
-                # An auto trait's bounds come from the private fields, whether
-                # inferred or written as an unsafe impl.
-                if not impl["is_synthetic"] and self.external(impl["trait"]["id"], None) not in AUTO_TRAITS:
-                    sig["generics"] = impl["generics"]
+                # Bounds are API, including an auto trait's inferred ones.
+                sig["generics"] = impl["generics"]
                 # Its associated types and consts are API; its methods are the trait's.
                 sig["assoc"] = {
                     child["name"]: assoc_item(child["inner"])
@@ -378,17 +380,29 @@ class Api:
         return f"{kind} {text}"
 
 
-AUTO_TRAITS = {
-    "core::marker::Send",
-    "core::marker::Sync",
-    "core::marker::Unpin",
-    "core::panic::unwind_safe::UnwindSafe",
-    "core::panic::unwind_safe::RefUnwindSafe",
-}
-
-
 class Unordered(list):
     """A list whose order is not API, sorted once its paths render."""
+
+
+def elide(impl):
+    """An impl header with each unbounded lifetime parameter written as `'_`."""
+    free = {
+        p["name"]
+        for p in impl["generics"]["params"]
+        if "lifetime" in p["kind"] and not p["kind"]["lifetime"]["outlives"]
+    }
+
+    def walk(value):
+        if isinstance(value, list):
+            return [walk(v) for v in value]
+        if isinstance(value, dict):
+            if value.keys() == {"lifetime"} and value["lifetime"] in free:
+                return {"lifetime": "'_"}
+            return {k: walk(v) for k, v in value.items()}
+        return value
+
+    generics = dict(impl["generics"], params=[p for p in impl["generics"]["params"] if p["name"] not in free])
+    return {"generics": walk(generics), "for": walk(impl["for"])}
 
 
 def assoc_item(inner):
