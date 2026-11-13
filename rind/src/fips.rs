@@ -260,8 +260,18 @@ mod kat {
     use super::broken;
     use crate::high::hash::{Hash, Sha256};
 
+    /// The SHA-256 of a self-test's output, which the test compares with
+    /// the expected answer's.
     fn sha256_of(data: &[u8]) -> [u8; 32] {
-        Sha256::hash(data).as_ref().try_into().unwrap()
+        known(Sha256::hash(data).as_ref()).try_into().unwrap()
+    }
+
+    /// `value`, marked public for ctgrind: a self-test computes from fixed
+    /// inputs, so comparing its output reveals nothing, though rind marks
+    /// the keys and secrets it derives as secret.
+    fn known(value: &[u8]) -> &[u8] {
+        crate::low::ct::public_slice(value);
+        value
     }
 
     /// `input` with its first bit flipped if `test` is broken.
@@ -476,7 +486,7 @@ mod kat {
         check(
             "ecdh",
             secret.is_ok_and(|s| {
-                *s.as_ref()
+                known(s.as_ref())
                     == hex("46fc62106420ff012e54a434fbdd2d25ccc5852060561e68040dd7778997bd7b")
             }),
         )

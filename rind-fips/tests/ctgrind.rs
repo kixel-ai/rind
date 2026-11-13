@@ -42,7 +42,7 @@ const MESSAGE: &[u8] = b"message";
 fn hmac_hkdf_and_pbkdf2() {
     let key_value = [0x0b; 32];
     let expected = rind::hmac::sign(
-        &rind::hmac::Key::new(rind::hmac::HMAC_SHA256, &key_value),
+        &rind::hmac::Key::new(&rind::hmac::HMAC_SHA256, &key_value),
         MESSAGE,
     );
     secret(&key_value);
@@ -56,9 +56,7 @@ fn hmac_hkdf_and_pbkdf2() {
     secret(&ikm);
     let prk = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt").extract(&ikm);
     let mut okm = [0u8; 42];
-    prk.expand(&[b"info"], Len(okm.len()))
-        .fill(&mut okm)
-        .unwrap();
+    prk.expand(&[b"info"], okm.len()).fill(&mut okm).unwrap();
     public(&okm);
     let key = hmac::Key::from(prk.expand(&[b"info"], &hmac::HMAC_SHA256));
     let tag = hmac::sign(&key, MESSAGE);
@@ -72,14 +70,6 @@ fn hmac_hkdf_and_pbkdf2() {
     derived.derive(iterations, &[5; 16], &mut out).unwrap();
     secret(&out);
     assert!(derived.verify(iterations, &[5; 16], &out).is_ok());
-}
-
-struct Len(usize);
-
-impl hkdf::KeyType for Len {
-    fn len(&self) -> usize {
-        self.0
-    }
 }
 
 #[test]
@@ -123,8 +113,7 @@ fn aes() {
     let mut padded = MESSAGE.to_vec();
     cipher::AesCbcEncryptingKey::new(&cipher::AES_256, &key)
         .unwrap()
-        .encrypt(cipher::CbcIv::assume_unpredictable([3; 16]), &mut padded)
-        .unwrap();
+        .encrypt(cipher::CbcIv::assume_unpredictable([3; 16]), &mut padded);
     public(&padded[..]);
     let plaintext = cipher::AesCbcDecryptingKey::new(&cipher::AES_256, &key)
         .unwrap()

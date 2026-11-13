@@ -164,6 +164,12 @@ impl Summary {
         self.started += count;
         self.skipped += count;
     }
+
+    /// Counts `count` tests the module refused as a group, as it must: each
+    /// is checked, not skipped.
+    fn refused(&mut self, count: usize) {
+        self.started += count;
+    }
 }
 
 impl Drop for Summary {
@@ -841,7 +847,7 @@ fn rsa_pkcs1_verify() {
                         signature::PublicKey::from_components(algorithm, &components),
                         "RSA modulus",
                     );
-                    summary.skip(group.tests.len());
+                    summary.refused(group.tests.len());
                     continue;
                 }
                 let key = key.unwrap();
@@ -931,7 +937,7 @@ fn rsa_pkcs1_legacy_verify() {
                 let key = signature::PublicKey::new(algorithm, &group.key_asn);
                 if !rsa_size_approved(group.key_size, min_bits) {
                     rejected(key, "RSA modulus");
-                    summary.skip(group.tests.len());
+                    summary.refused(group.tests.len());
                     continue;
                 }
                 let key = key.unwrap();
@@ -967,7 +973,7 @@ fn rsa_pkcs1_sign() {
             let key = signature::RsaKeyPair::from_pkcs8(&group.private_key_pkcs8);
             if !rsa_size_approved(group.key_size, 2048) {
                 rejected(key, "RSA modulus");
-                summary.skip(group.tests.len());
+                summary.refused(group.tests.len());
                 continue;
             }
             let key = key.unwrap();
@@ -1043,9 +1049,12 @@ fn rsa_pss_verify() {
                     Some(len) => len.parse().unwrap(),
                     None => group.salt_len,
                 };
-                let expected = match salt_len == hash_len {
-                    true => test.result,
-                    false => ExpectedResult::Invalid,
+                // A group with another salt length marks invalid a signature
+                // changed to the hash's, which the module rightly takes.
+                let expected = match (salt_len == hash_len, group.salt_len == hash_len) {
+                    (true, true) => test.result,
+                    (true, false) => ExpectedResult::Valid,
+                    (false, _) => ExpectedResult::Invalid,
                 };
                 match (expected, result) {
                     (ExpectedResult::Valid, Ok(())) => {}
