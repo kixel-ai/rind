@@ -244,6 +244,13 @@ class Api:
         if impl is not None:
             # A method's callers also meet its impl block's bounds and target.
             sig = {"impl": self.sig(elide({"generics": impl["generics"], "for": impl["for"]})), "item": sig}
+        if kind == "variant" and inner.get("discriminant"):
+            # Callers see the evaluated value, not the source expression.
+            sig["discriminant"] = inner["discriminant"]["value"]
+        reprs = [a["repr"] for a in item["attrs"] if isinstance(a, dict) and "repr" in a]
+        if reprs:
+            # Layout, alignment, and integer representation are observable.
+            sig = {"repr": reprs, "item": sig}
         if "non_exhaustive" in item["attrs"]:
             # The one attribute that limits what a caller can write.
             sig = {"non_exhaustive": sig}
@@ -514,6 +521,13 @@ def main():
         base = args[i + 1]
         del args[i : i + 2]
     wanted = set(args)
+    if base is not None:
+        resolved = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"], cwd=ROOT, capture_output=True
+        )
+        # Only a real revision without the file may skip the growth check.
+        if resolved.returncode != 0:
+            sys.exit(f"error: --base {base} does not resolve to a commit")
     meta = cargo_metadata("--no-deps")
     failed = False
     known = read_drift(DRIFT.read_text()) if DRIFT.exists() else {}
@@ -572,6 +586,9 @@ def main():
             if f"`{o}`" not in readme and f"`{o}!`" not in readme:
                 print(f"{package['name']}: omits {o}, which its README does not name")
                 failed = True
+    if wanted - ran:
+        print(f"no configured adapter is named {sorted(wanted - ran)}")
+        failed = True
     if bless:
         write_drift({**{k: v for k, v in known.items() if k[0] not in ran}, **found})
         known = read_drift(DRIFT.read_text())
