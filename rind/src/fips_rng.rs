@@ -188,13 +188,21 @@ mod tests {
     #[cfg(all(unix, not(miri)))]
     #[test]
     fn fork_during_self_test() {
-        CAST_PASSED.store(false, Ordering::Release);
         STALL.store(true, Ordering::Release);
-        // A fresh thread has no DRBG yet, so its draw instantiates.
-        let drawer = std::thread::spawn(|| fill(&mut [0u8; 32]).unwrap());
-        while !STALLED.load(Ordering::Acquire) {
-            std::thread::yield_now();
-        }
+        // A test thread already past `stall` can set the flag again after
+        // the reset, letting the drawer skip the self-test; draw again then.
+        let drawer = loop {
+            CAST_PASSED.store(false, Ordering::Release);
+            // A fresh thread has no DRBG yet, so its draw instantiates.
+            let drawer = std::thread::spawn(|| fill(&mut [0u8; 32]).unwrap());
+            while !STALLED.load(Ordering::Acquire) && !drawer.is_finished() {
+                std::thread::yield_now();
+            }
+            if STALLED.load(Ordering::Acquire) {
+                break drawer;
+            }
+            drawer.join().unwrap();
+        };
 
         // SAFETY: the child calls only `instantiate`, which allocates
         // nothing, and leaves through `_exit`.
