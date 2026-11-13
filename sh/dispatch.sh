@@ -59,7 +59,7 @@ declare -A scope=(
     [versions]='^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)'
     # Each adapter's API against its upstream's, which reaches rind only
     # through a lockfile change. rind-object-store has none to copy.
-    [adapters]='^(rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|admin/adapter-api(\.drift)?$)'
+    [adapters]='^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.lock$|admin/adapter-api(\.drift)?$)'
     [license]='^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)'
     # Dependents may build with the workspace's declared rust-version.
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
@@ -72,6 +72,9 @@ declare -A scope=(
     # s2n-bignum's proofs assume separate input and output, so the kernels
     # rind runs in place are walked, after planting faults in each.
     [inplace]='^(rind/src/low/|admin/parse-asm/)'
+    # .cargo/mutants.toml's exclusions name mutants by file, line, and
+    # function, so moving code can leave one matching nothing.
+    [mutants]='^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)'
     # TESTING.md's table names every export, test, and vector file.
     [testing]='^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)'
     # COMPATIBILITY.md is generated from the CPU scans.
@@ -116,6 +119,7 @@ declare -A tools=(
     [cross]='cargo'
     [vartime]='nix'
     [inplace]='python3'
+    [mutants]='cargo-mutants python3'
     [testing]='python3'
     [compat]='python3'
     [bench]='python3'
@@ -133,7 +137,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs structure msrv cross vartime deny versions adapters license inplace testing compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs structure msrv cross vartime deny versions adapters license inplace mutants testing compat bench fixtures patch py dart quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -195,10 +199,10 @@ for module in "${selected[@]}"; do
         check:rs)
             # The tests read these vectors, and otherwise fail partway through.
             # s2n-bignum only feeds admin/parse-asm, so it is not required.
-            unfetched=$(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
-            if [[ -n "$unfetched" ]]; then
-                echo "error: test vectors not checked out; run: git submodule update --init ${unfetched//$'\n'/ }" >&2
-                exit 1
+            # Only uninitialized ones, so a local submodule bump stays put.
+            mapfile -t unfetched < <(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
+            if ((${#unfetched[@]} > 0)); then
+                git submodule update --init --depth 1 -- "${unfetched[@]}"
             fi
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all --check
@@ -298,13 +302,15 @@ for module in "${selected[@]}"; do
         # --all has no diff to shrink from.
         check:adapters)
             if [[ "$base" != --all ]]; then
-                python3 admin/adapter-api --base "$(sh/changed.sh --merge-base "$base")"
+                drift_base=$(sh/changed.sh --merge-base "$base")
+                python3 admin/adapter-api --base "$drift_base"
             else
                 python3 admin/adapter-api
             fi
             ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
+        check:mutants) admin/mutants --pins ;;
         # It finds the generated kernels relative to its own directory.
         check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
         check:testing) python3 admin/testing ;;
@@ -326,6 +332,11 @@ for module in "${selected[@]}"; do
         fix:patch) cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:gh)
             actionlint
+            # See queue-build.yml: main's copy runs against every group's tree.
+            if grep -nE '^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]*\./' .github/workflows/queue-build.yml; then
+                echo "error: queue-build.yml must use no local action; put the setup in \`just ci\`" >&2
+                exit 1
+            fi
             sh/alert.sh check
             sh/pins.sh
             ;;
