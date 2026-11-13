@@ -2,7 +2,7 @@
 
 ## Goal
 
-The AArch32 model in `proofs/hol-light/s2n-bignum/aarch32/` holds the NEON register file and decodes, and cosimulates against qemu-arm, every Advanced SIMD and ARMv8 crypto-extension instruction armv7's assembly in `low/arm/` runs, so [armv7's assembly](/quest/m5/verified-armv7/assembly.md) can prove its NEON and crypto routines on it.
+The AArch32 model in `thirdparty/s2n-bignum/aarch32/` holds the NEON register file and decodes, and cosimulates against qemu-arm, every Advanced SIMD and ARMv8 crypto-extension instruction armv7's assembly in `low/arm/` runs, so [armv7's assembly](/quest/m5/verified-armv7/assembly.md) can prove its NEON and crypto routines on it.
 
 ## Plan
 

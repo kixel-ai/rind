@@ -2,7 +2,7 @@
 
 ## Goal
 
-Every assembly routine armv7 runs is proven on the AArch32 model in `proofs/hol-light/s2n-bignum/aarch32/`, so SHA-2, SHA-1, ChaCha20-Poly1305, AES and AES-GCM with the crypto extension, ML-KEM, RSA, and the constant-time compare earn the ✓ on armv7.
+Every assembly routine armv7 runs is proven on the AArch32 model in `thirdparty/s2n-bignum/aarch32/`, so SHA-2, SHA-1, ChaCha20-Poly1305, AES and AES-GCM with the crypto extension, ML-KEM, RSA, and the constant-time compare earn the ✓ on armv7.
 
 ## Plan
 

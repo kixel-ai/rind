@@ -2,7 +2,7 @@
 
 ## Goal
 
-The AArch32 model in `proofs/hol-light/s2n-bignum/aarch32/` decodes, and cosimulates against qemu-arm, every A32 integer instruction armv7's assembly in `low/arm/` runs, so [armv7's assembly](/quest/m5/verified-armv7/assembly.md) can prove its integer routines on it.
+The AArch32 model in `thirdparty/s2n-bignum/aarch32/` decodes, and cosimulates against qemu-arm, every A32 integer instruction armv7's assembly in `low/arm/` runs, so [armv7's assembly](/quest/m5/verified-armv7/assembly.md) can prove its integer routines on it.
 
 ## Plan
 
