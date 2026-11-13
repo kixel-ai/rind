@@ -416,8 +416,6 @@ session() {
     hol_light_objects "$arch" "$session_dir/$arch"
     session_image "$arch"
     release scratch
-    # Marks the image used, for `session_image` to keep it.
-    touch "$image"
     # The image keeps the load path it was built with, so this rebinds it to
     # this worktree's, in `hol_light_compile`'s order, with the image's copy of
     # the patched model, whose contents the image's key fixes.
@@ -483,7 +481,7 @@ let () = needs \"$base\"; ignore (input_line stdin); Gc.compact (); print_endlin
     exec {lock}>"$image.lock"
     flock "$lock"
     if [[ ! -d $image ]]; then
-        find "$cache" -mindepth 1 -maxdepth 1 -name "$arch-*" -mtime +7 -exec rm -rf {} +
+        session_evict "$arch"
         rm -rf "$build"
         mkdir -p "$build"
         s2n_bignum_model "$build/s2n-bignum"
@@ -493,36 +491,58 @@ let () = needs \"$base\"; ignore (input_line stdin); Gc.compact (); print_endlin
         exec {stdin}<>"$build/stdin"
         echo 'exit 1;;' >&"$stdin"
         echo "admin/prove: loading $base into a HOL Light image, logging to $build/log" >&2
-        # `dmtcp_command --kcheckpoint` exits 2 once it has checkpointed and
-        # killed the session, so its message says it succeeded.
+        # The only checkpoint is the one taken here, after the marker:
+        # `--interval 0` overrides any `DMTCP_CHECKPOINT_INTERVAL`. HOL Light
+        # holds none of this shell's locks. It holds its stdin open for writing
+        # itself, so it never reads an end of file, and a session the
+        # checkpoint did not kill is killed here. `dmtcp_command
+        # --kcheckpoint` exits 2 once it has checkpointed and killed the
+        # session and prints the same when the session died instead, so the
+        # image file, once the session has exited, says whether it succeeded.
         # See UPSTREAM.md, "dmtcp_command fails a checkpoint that succeeds".
+        local message=''
         while IFS= read -r line; do
             printf '%s\n' "$line" >>"$build/log"
             if [[ $line == *"$marker" ]]; then
-                line=$(dmtcp_command --coord-port "$(<"$build/port")" --kcheckpoint || true)
-                if [[ $line != "Computation was checkpointed and killed." ]]; then
-                    echo "admin/prove: checkpointing HOL Light failed: $line" >&2
-                    return 1
-                fi
+                message=$(dmtcp_command --coord-port "$(<"$build/port")" --kcheckpoint 2>&1 || true)
+                [[ $message == "Computation was checkpointed and killed." ]] || kill $! 2>/dev/null || true
             fi
-        done < <(cd "$build" && HOL_ML_PATH=$build/init.ml LINE_EDITOR=exec \
-            HOLLIGHT_LOAD_PATH="$build/s2n-bignum:$build/carried:$root/thirdparty/s2n-bignum" \
-            exec dmtcp_launch --new-coordinator --coord-port 0 --port-file port --no-gzip --ckptdir ckpt \
-            hol_light <stdin 2>&1)
-        # HOL Light exits nonzero whether it failed or was checkpointed and
-        # killed, so the image, which only a checkpoint writes, says which.
+        done < <(scratch=${held[scratch]} && exec {scratch}>&- {lock}>&- && cd "$build" &&
+            HOL_ML_PATH=$build/init.ml LINE_EDITOR=exec \
+                HOLLIGHT_LOAD_PATH="$build/s2n-bignum:$build/carried:$root/thirdparty/s2n-bignum" \
+                exec dmtcp_launch --new-coordinator --coord-port 0 --port-file port --interval 0 --no-gzip \
+                --ckptdir ckpt hol_light <stdin 2>&1)
+        # HOL Light exits nonzero whether it failed or was checkpointed.
         wait $! || true
         exec {stdin}>&-
         images=("$build"/ckpt/ckpt_*.dmtcp)
-        if [[ ! -f ${images[0]} ]]; then
+        if [[ $message != "Computation was checkpointed and killed." || ! -f ${images[0]} ]]; then
             tail -n 20 "$build/log" >&2
-            echo "admin/prove: HOL Light did not load $base; see $build/log" >&2
+            echo "admin/prove: HOL Light did not load $base and checkpoint (${message:-no marker}); see $build/log" >&2
             return 1
         fi
         rm "$build/stdin" "$build/port"
         mv -T "$build" "$image"
     fi
+    # Marks the image used while it is locked, so `session_evict` keeps it.
+    touch "$image"
     exec {lock}>&-
+}
+
+# Removes the images of `arch`, and the builds of them left by a failed run,
+# that no session has used in a week, each only while its lock is free.
+# Lock files stay, since removing one a session holds would let another
+# lock a new file of the same name.
+session_evict() {
+    local arch=$1 entry old
+    for entry in "$cache/$arch"-*; do
+        [[ $entry != *.lock && -n $(find "$entry" -maxdepth 0 -mtime +7) ]] || continue
+        exec {old}>"${entry%.build}.lock"
+        if flock -n "$old" && [[ -n $(find "$entry" -maxdepth 0 -mtime +7) ]]; then
+            rm -rf "$entry"
+        fi
+        exec {old}>&-
+    done
 }
 
 # Writes to `dest` the bytes of the routine at the symbol `sym` in the object

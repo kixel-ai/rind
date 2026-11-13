@@ -142,9 +142,9 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 
 ### dmtcp_command fails a checkpoint that succeeds
 
-- **Breaks:** `dmtcp_command --kcheckpoint` sends a blocking checkpoint and then a checkpoint, which the coordinator refuses once the first has killed the computation, so DMTCP 4.1.1's command prints `Computation was checkpointed and killed.` and exits 2.
+- **Breaks:** `dmtcp_command --kcheckpoint` sends a blocking checkpoint and then a checkpoint, which the coordinator refuses once the first has killed the computation, so DMTCP 4.1.1's command prints `Computation was checkpointed and killed.` and exits 2. It prints the same when the computation dies during the checkpoint, having written nothing.
 - **Reproduce:** `dmtcp_launch --new-coordinator --port-file port sleep 100 &`, then `dmtcp_command --coord-port "$(<port)" --kcheckpoint; echo $?` prints 2 beside the checkpoint it wrote.
-- **Workaround:** `admin/prove`'s `session_image` reads that message instead of the exit status.
+- **Workaround:** `admin/prove`'s `session_image` ignores the exit status and requires the checkpoint file once the computation has exited.
 - **Reported:** no.
 - **Goes when:** `dmtcp_command --kcheckpoint` exits 0 once it has checkpointed and killed the computation.
 
