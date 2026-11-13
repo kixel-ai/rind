@@ -75,12 +75,17 @@ change to the trust base.
  bignum_demont_p256_alt_spec,
  bignum_demont_p256_spec,
  bignum_eq_spec,
+ bignum_inv_p256_spec,
  bignum_mod_n256_spec,
  bignum_montmul_p256_alt_spec,
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_alt_spec,
  bignum_montsqr_p256_spec,
- P256.base_multiply_spec] -/
+ bignum_mux_spec,
+ bignum_neg_p256_spec,
+ bignum_tomont_p256_alt_spec,
+ bignum_tomont_p256_spec,
+ p256_point_add_affine_spec] -/
 #guard_msgs in
 #print axioms p256_generate
 
@@ -91,12 +96,17 @@ change to the trust base.
  bignum_demont_p256_alt_spec,
  bignum_demont_p256_spec,
  bignum_eq_spec,
+ bignum_inv_p256_spec,
  bignum_mod_n256_spec,
  bignum_montmul_p256_alt_spec,
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_alt_spec,
  bignum_montsqr_p256_spec,
- P256.base_multiply_spec] -/
+ bignum_mux_spec,
+ bignum_neg_p256_spec,
+ bignum_tomont_p256_alt_spec,
+ bignum_tomont_p256_spec,
+ p256_point_add_affine_spec] -/
 #guard_msgs in
 #print axioms p256_from_scalar
 
@@ -456,15 +466,17 @@ change to the trust base.
  bignum_demont_p256_alt_spec,
  bignum_demont_p256_spec,
  bignum_eq_spec,
+ bignum_inv_p256_spec,
  bignum_mod_n256_spec,
  bignum_montmul_p256_alt_spec,
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_alt_spec,
  bignum_montsqr_p256_spec,
+ bignum_mux_spec,
+ bignum_neg_p256_spec,
  bignum_tomont_p256_alt_spec,
  bignum_tomont_p256_spec,
- P256.base_multiply_spec,
- P256.jac_base_multiply_spec] -/
+ p256_point_add_affine_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_from_scalar_and_public_key
 
@@ -476,6 +488,7 @@ change to the trust base.
  bignum_demont_p256_spec,
  bignum_demont_spec,
  bignum_eq_spec,
+ bignum_inv_p256_spec,
  bignum_mod_n256_spec,
  bignum_modadd_spec,
  bignum_modinv_spec,
@@ -484,7 +497,11 @@ change to the trust base.
  bignum_montmul_spec,
  bignum_montsqr_p256_alt_spec,
  bignum_montsqr_p256_spec,
- P256.base_multiply_spec] -/
+ bignum_mux_spec,
+ bignum_neg_p256_spec,
+ bignum_tomont_p256_alt_spec,
+ bignum_tomont_p256_spec,
+ p256_point_add_affine_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_sign
 
@@ -495,13 +512,16 @@ change to the trust base.
  bignum_demont_p256_alt_spec,
  bignum_demont_p256_spec,
  bignum_eq_spec,
+ bignum_inv_p256_spec,
  bignum_montmul_p256_alt_spec,
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_alt_spec,
  bignum_montsqr_p256_spec,
+ bignum_mux_spec,
+ bignum_neg_p256_spec,
  bignum_tomont_p256_alt_spec,
  bignum_tomont_p256_spec,
- P256.base_multiply_spec] -/
+ p256_point_add_affine_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_key_pair_public_key
 
@@ -521,6 +541,7 @@ change to the trust base.
  bignum_montmul_spec,
  bignum_montsqr_p256_alt_spec,
  bignum_montsqr_p256_spec,
+ bignum_mux_spec,
  bignum_neg_p256_spec,
  bignum_tomont_p256_alt_spec,
  bignum_tomont_p256_spec,
@@ -530,8 +551,7 @@ change to the trust base.
  p256_montjdouble_spec,
  p256_montjmixadd_alt_spec,
  p256_montjmixadd_spec,
- P256.base_multiply_spec,
- P256.first_row] -/
+ p256_point_add_affine_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_key_pair_verify
 
@@ -559,8 +579,7 @@ change to the trust base.
  p256_montjdouble_alt_spec,
  p256_montjdouble_spec,
  p256_montjmixadd_alt_spec,
- p256_montjmixadd_spec,
- P256.first_row] -/
+ p256_montjmixadd_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_public_key_new
 
