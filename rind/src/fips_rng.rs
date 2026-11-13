@@ -65,13 +65,15 @@ pub(crate) fn fill(out: &mut [u8]) -> Result<(), Error> {
     .map_err(|_| Error::RngFailed)?
 }
 
+/// Whether the self-test has passed in this process.
+static CAST_PASSED: AtomicBool = AtomicBool::new(false);
+
 fn instantiate() -> Result<HmacDrbg<Sha512>, Error> {
     // The self-test passes once per process, before the first instantiation.
     // A plain flag, not a `Once`: `fork` copies a `Once` that another thread
     // is inside, and the child, which lacks that thread, then waits forever
     // on its first draw. Threads that race here each run the test, which is
     // pure, so the race only repeats it.
-    static CAST_PASSED: AtomicBool = AtomicBool::new(false);
     if !CAST_PASSED.load(Ordering::Acquire) {
         if !cast() {
             // A FIPS module enters its error state on a self-test failure;
@@ -112,7 +114,7 @@ fn cast() -> bool {
     const ADDITIONAL_RESEED: [u8; 32] = *b"\xb9\xed\x8e\x35\xad\x01\x8a\x37\x5b\x61\x18\x9c\x8d\x36\x5b\x00\x50\x7c\xb1\xb4\x51\x0d\x21\xca\xc2\x12\x35\x6b\x5b\xba\xa8\xb2";
     const ADDITIONAL_1: [u8; 32] = *b"\xb7\x99\x89\x98\xea\xf9\xe5\xd3\x4e\x64\xff\x7f\x03\xde\x76\x5b\x31\xf4\x07\x89\x9d\x20\x53\x55\x73\xe6\x70\xc1\xb4\x02\xc2\x6a";
     const ADDITIONAL_2: [u8; 32] = *b"\x20\x89\xd4\x9d\x63\xe0\xc4\xdf\x58\x87\x9d\x0c\xb1\xba\x99\x8e\x5b\x3d\x1a\x77\x86\xb7\x85\xe7\xcf\x13\xca\x5e\xa5\xe3\x3c\xfd";
-    #[cfg(all(test, unix))]
+    #[cfg(all(test, unix, not(miri)))]
     tests::stall();
 
     const EXPECTED: [u8; 64] = *b"\x5b\x70\xf3\xe4\xda\x95\x26\x42\x33\xef\xba\xb1\x55\xb8\x28\xd4\xe2\x31\xb6\x7c\xc9\x27\x57\xfe\xca\x40\x7c\xc9\x61\x5a\x66\x08\x71\xcb\x07\xad\x1a\x2e\x9a\x99\x41\x2f\xed\xa8\xee\x34\xdc\x9c\x57\xfa\x08\xd3\xf8\x22\x5b\x30\xd2\x98\x87\xd2\x09\x07\xd1\x23";
@@ -160,16 +162,16 @@ mod tests {
         assert_ne!(ours, theirs);
     }
 
-    /// Set by the fork test's child process, so the self-test waits inside
-    /// itself until `RELEASE` is set.
-    #[cfg(unix)]
+    /// Set by the fork test, so a thread inside the self-test waits there
+    /// until `RELEASE` is set.
+    #[cfg(all(unix, not(miri)))]
     static STALL: AtomicBool = AtomicBool::new(false);
-    #[cfg(unix)]
+    #[cfg(all(unix, not(miri)))]
     static STALLED: AtomicBool = AtomicBool::new(false);
-    #[cfg(unix)]
+    #[cfg(all(unix, not(miri)))]
     static RELEASE: AtomicBool = AtomicBool::new(false);
 
-    #[cfg(unix)]
+    #[cfg(all(unix, not(miri)))]
     pub(super) fn stall() {
         if STALL.load(Ordering::Acquire) {
             STALLED.store(true, Ordering::Release);
@@ -180,36 +182,27 @@ mod tests {
     }
 
     /// A process forked while another thread is inside the self-test still
-    /// draws. It runs in a fresh process, where the self-test has not yet
-    /// run.
-    #[cfg(unix)]
+    /// instantiates. Clearing the passed flag first makes the next
+    /// instantiation run the self-test again, whatever other tests did, so
+    /// this needs no fresh process.
+    #[cfg(all(unix, not(miri)))]
     #[test]
     fn fork_during_self_test() {
-        let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "fips_rng::tests::fork_during_self_test_child"])
-            .args(["--ignored", "--test-threads=1"])
-            .status()
-            .unwrap();
-        assert!(status.success());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    #[ignore = "run by fork_during_self_test in its own process"]
-    fn fork_during_self_test_child() {
+        CAST_PASSED.store(false, Ordering::Release);
         STALL.store(true, Ordering::Release);
+        // A fresh thread has no DRBG yet, so its draw instantiates.
         let drawer = std::thread::spawn(|| fill(&mut [0u8; 32]).unwrap());
         while !STALLED.load(Ordering::Acquire) {
             std::thread::yield_now();
         }
 
-        // SAFETY: the child calls only `fill`, which allocates nothing, and
-        // leaves through `_exit`.
+        // SAFETY: the child calls only `instantiate`, which allocates
+        // nothing, and leaves through `_exit`.
         let pid = unsafe { libc::fork() };
         assert!(pid >= 0);
         if pid == 0 {
             RELEASE.store(true, Ordering::Release);
-            let ok = fill(&mut [0u8; 32]).is_ok();
+            let ok = instantiate().is_ok();
             // SAFETY: ends the child without running the parent's destructors.
             unsafe { libc::_exit(if ok { 0 } else { 1 }) };
         }
@@ -228,6 +221,6 @@ mod tests {
         }
         // SAFETY: `pid` is our child, still running.
         unsafe { libc::kill(pid, libc::SIGKILL) };
-        panic!("the forked child hung on its first draw");
+        panic!("the forked child hung instantiating");
     }
 }
