@@ -1,5 +1,6 @@
 import Rind.X86_64.X25519
 import Rind.X86_64.P256Agree
+import Rind.X86_64.P256
 import Rind.X86_64.P384
 import Rind.X86_64.Sha512
 import Rind.X86_64.Pbkdf2
@@ -10,12 +11,13 @@ import Rind.X86_64.GcmKey
 import Rind.X86_64.Ed25519
 import Rind.X86_64.RsaDispatch
 import Rind.X86_64.Sha3
+import Rind.X86_64.P256Signature
 open rind.x86_64
 
 /-!
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
-in `Rind.X86_64.S2nBignum` for X25519, P-256 and P-384 ECDH, Ed25519, RSA
-verification, and the Keccak-f of SHA-3 and ML-KEM's SHAKE, aws-lc's in
+in `Rind.X86_64.S2nBignum` for X25519, P-256 key generation, ECDH, and
+ECDSA, P-384 ECDH, Ed25519, RSA verification, and the Keccak-f of SHA-3 and ML-KEM's SHAKE, aws-lc's in
 `Rind.X86_64.AwsLc` for the SHA-512 family, for HMAC, HKDF, and PBKDF2, which
 cover SHA-384 and SHA-512, and for Ed25519's hashes, Vale's in
 `Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proofs of its
@@ -23,8 +25,10 @@ constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
 tag checks, and RSASSA-PSS's hash compare, and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states. A change here is a
-change to the trust base.
+hypothesis `RunsChaCha20Poly1305`, which no axiom states. P-256's key
+generation and ECDSA also rest on what `Rind.X86_64.P256Base` states of
+x86_64's generator multiplication and table, axioms until their proof lands.
+A change here is a change to the trust base.
 -/
 
 /-- info: 'rind.x86_64.x25519_generate' depends on axioms: [propext,
@@ -59,6 +63,42 @@ change to the trust base.
 /-- info: 'rind.x86_64.x25519_shared_secret' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms x25519_shared_secret
+
+/-- info: 'rind.x86_64.p256_generate' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_p256_spec,
+ bignum_demont_p256_alt_spec,
+ bignum_demont_p256_spec,
+ bignum_eq_spec,
+ bignum_mod_n256_spec,
+ bignum_montmul_p256_alt_spec,
+ bignum_montmul_p256_spec,
+ bignum_montsqr_p256_alt_spec,
+ bignum_montsqr_p256_spec,
+ P256.base_multiply_spec] -/
+#guard_msgs in
+#print axioms p256_generate
+
+/-- info: 'rind.x86_64.p256_from_scalar' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_p256_spec,
+ bignum_demont_p256_alt_spec,
+ bignum_demont_p256_spec,
+ bignum_eq_spec,
+ bignum_mod_n256_spec,
+ bignum_montmul_p256_alt_spec,
+ bignum_montmul_p256_spec,
+ bignum_montsqr_p256_alt_spec,
+ bignum_montsqr_p256_spec,
+ P256.base_multiply_spec] -/
+#guard_msgs in
+#print axioms p256_from_scalar
+
+/-- info: 'rind.x86_64.p256_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms p256_public_key
 
 /-- info: 'rind.x86_64.p256_agree' depends on axioms: [propext,
  Classical.choice,
@@ -396,6 +436,129 @@ change to the trust base.
  edwards25519_scalarmuldouble_spec] -/
 #guard_msgs in
 #print axioms ed25519_public_key_new
+
+/-- info: 'rind.x86_64.p256_ecdsa_generate' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_eq_spec,
+ bignum_mod_n256_spec] -/
+#guard_msgs in
+#print axioms p256_ecdsa_generate
+
+/-- info: 'rind.x86_64.p256_ecdsa_from_scalar_and_public_key' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_p256_spec,
+ bignum_demont_p256_alt_spec,
+ bignum_demont_p256_spec,
+ bignum_eq_spec,
+ bignum_mod_n256_spec,
+ bignum_montmul_p256_alt_spec,
+ bignum_montmul_p256_spec,
+ bignum_montsqr_p256_alt_spec,
+ bignum_montsqr_p256_spec,
+ bignum_tomont_p256_alt_spec,
+ bignum_tomont_p256_spec,
+ P256.base_multiply_spec,
+ P256.jac_base_multiply_spec] -/
+#guard_msgs in
+#print axioms p256_ecdsa_from_scalar_and_public_key
+
+/-- info: 'rind.x86_64.p256_ecdsa_sign' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_p256_spec,
+ bignum_demont_p256_alt_spec,
+ bignum_demont_p256_spec,
+ bignum_demont_spec,
+ bignum_eq_spec,
+ bignum_mod_n256_spec,
+ bignum_modadd_spec,
+ bignum_modinv_spec,
+ bignum_montmul_p256_alt_spec,
+ bignum_montmul_p256_spec,
+ bignum_montmul_spec,
+ bignum_montsqr_p256_alt_spec,
+ bignum_montsqr_p256_spec,
+ P256.base_multiply_spec] -/
+#guard_msgs in
+#print axioms p256_ecdsa_sign
+
+/-- info: 'rind.x86_64.p256_ecdsa_key_pair_public_key' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_p256_spec,
+ bignum_demont_p256_alt_spec,
+ bignum_demont_p256_spec,
+ bignum_eq_spec,
+ bignum_montmul_p256_alt_spec,
+ bignum_montmul_p256_spec,
+ bignum_montsqr_p256_alt_spec,
+ bignum_montsqr_p256_spec,
+ bignum_tomont_p256_alt_spec,
+ bignum_tomont_p256_spec,
+ P256.base_multiply_spec] -/
+#guard_msgs in
+#print axioms p256_ecdsa_key_pair_public_key
+
+/-- info: 'rind.x86_64.p256_ecdsa_key_pair_verify' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_p256_spec,
+ bignum_demont_p256_alt_spec,
+ bignum_demont_p256_spec,
+ bignum_demont_spec,
+ bignum_eq_spec,
+ bignum_inv_p256_spec,
+ bignum_mod_n256_spec,
+ bignum_modinv_spec,
+ bignum_montmul_p256_alt_spec,
+ bignum_montmul_p256_spec,
+ bignum_montmul_spec,
+ bignum_montsqr_p256_alt_spec,
+ bignum_montsqr_p256_spec,
+ bignum_neg_p256_spec,
+ bignum_tomont_p256_alt_spec,
+ bignum_tomont_p256_spec,
+ p256_montjadd_alt_spec,
+ p256_montjadd_spec,
+ p256_montjdouble_alt_spec,
+ p256_montjdouble_spec,
+ p256_montjmixadd_alt_spec,
+ p256_montjmixadd_spec,
+ P256.base_multiply_spec,
+ P256.first_row] -/
+#guard_msgs in
+#print axioms p256_ecdsa_key_pair_verify
+
+/-- info: 'rind.x86_64.p256_ecdsa_public_key_new' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_p256_spec,
+ bignum_demont_p256_alt_spec,
+ bignum_demont_p256_spec,
+ bignum_demont_spec,
+ bignum_eq_spec,
+ bignum_inv_p256_spec,
+ bignum_mod_n256_spec,
+ bignum_modinv_spec,
+ bignum_montmul_p256_alt_spec,
+ bignum_montmul_p256_spec,
+ bignum_montmul_spec,
+ bignum_montsqr_p256_alt_spec,
+ bignum_montsqr_p256_spec,
+ bignum_neg_p256_spec,
+ bignum_tomont_p256_alt_spec,
+ bignum_tomont_p256_spec,
+ p256_montjadd_alt_spec,
+ p256_montjadd_spec,
+ p256_montjdouble_alt_spec,
+ p256_montjdouble_spec,
+ p256_montjmixadd_alt_spec,
+ p256_montjmixadd_spec,
+ P256.first_row] -/
+#guard_msgs in
+#print axioms p256_ecdsa_public_key_new
 
 /-- info: 'rind.x86_64.rsa_pkcs1_sha256_new_spec' depends on axioms: [propext,
  Classical.choice,

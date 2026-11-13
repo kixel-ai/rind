@@ -623,17 +623,6 @@ abbrev P256SigningKey :=
 abbrev P256VerifyingKey :=
   high.ecdsa.VerifyingKey high.curve.P256 mid.p256.StaticPrivateKey mid.p256.VerifyingKey mid.p256.Scalar
 
-/-- `Buffer::write`, with `write` a Lean function. -/
-def high.signature.Buffer.write (N : Std.Usize)
-    (write : Slice Std.U8 → Result (core.result.Result (Slice Std.U8) error.Error × Slice Std.U8)) :
-    Result (core.result.Result (high.signature.Buffer N) error.Error) := do
-  let buffer ← high.signature.Buffer.new N
-  let (s, to_slice_mut_back) ← lift (Array.to_slice_mut buffer.bytes)
-  let r ← write s
-  match r.1 with
-  | .Ok span => ok (.Ok { bytes := to_slice_mut_back r.2, len := span.len })
-  | .Err e => ok (.Err e)
-
 /-- `parse_ecdsa::<P256, Sha256, Fixed>`, whose `Verifier`'s `verify` is
 `VerifyingKey::verify::<Sha256>`. -/
 def high.signature.parse_ecdsa_p256_sha256_fixed (bytes : Slice Std.U8) :
