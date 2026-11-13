@@ -10,7 +10,7 @@ comparison with the key's own encoding does, or, for an X9.62 uncompressed
 encoding, whether it encodes the key's scalar times G. x86_64 checks an
 uncompressed encoding without encoding its own: it parses the point and
 compares it with the generator multiplication's Jacobian result,
-`jac_base_multiply_spec`, scaled by that result's z, and stores the
+`P256Base.jac_base_multiply_spec`, scaled by that result's z, and stores the
 encoding it checked as the key's.
 -/
 
@@ -76,7 +76,7 @@ theorem public_key_is_uncompressed_spec (h : Runs) (k : mid.p256.StaticPrivateKe
   obtain ⟨pk, rfl, hpk⟩ := hr
   simp only
   have hl8 : pk.point.xy.val.length = 8 := pk.point.xy.property
-  step with jac_base_multiply_spec k.scalar hk as ⟨prod, hprod⟩
+  step with P256Base.jac_base_multiply_spec (P256Base.runsSelect_of_runs h) k.scalar hk as ⟨prod, hprod⟩
   rw [hq] at hprod
   obtain ⟨hX, hY, hZ, hP⟩ := hprod
   step with jac_z_spec prod as ⟨fz, hfz⟩

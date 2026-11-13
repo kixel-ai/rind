@@ -507,6 +507,13 @@ aes_gcm_items() {
         'const BYTESWAP:' 'const BYTESWAP_EPI64:'
 }
 check_quote X86_64/AesGcmModel aes_gcm_items
+select_items() {
+    items rind/src/low/x86_64/bignum_point_select.rs 'pub(crate) fn bignum_aff_point_select_p384(' \
+        'pub(crate) fn bignum_aff_point_select_p256(' 'pub(crate) fn bignum_aff_point_select_p521(' \
+        'fn select_avx2<' '#[target_feature(enable = "avx,avx2")]' '#[target_feature(enable = "sse2")]'
+    items rind/src/low/x86_64/cpu.rs 'pub(crate) fn prefetch<'
+}
+check_quote X86_64/PointSelectModel select_items
 check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static AES_128_GCM:' 'pub static AES_192_GCM:' 'pub static AES_256_GCM:' 'pub static CHACHA20_POLY1305:' 'impl Key {' \
     'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \
@@ -634,12 +641,11 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # too, and `proofs/Rind/X86_64/P256Dispatch.lean` models it above the
 # translated `PrivateKey::from_bytes`, as `EcdsaDispatch.lean` does for ECDSA,
 # with the signature API's ECDSA key pairs and statics, which hold function
-# pointers too. The generator table is translated, so
+# pointers too. Each target's generator table is translated, so
 # `proofs/Rind/Aarch64/P256Table.lean` can prove it holds what s2n-bignum's
-# proof assumes, and each target's `P256Base.lean` that its first row holds G
-# to 32G, which ECDSA verification looks up. x86_64's `base_multiply`, rind's
-# Booth driver over aws-lc's mixed addition, is opaque, and
-# `proofs/Rind/X86_64/P256Base.lean` states it. HMAC's keyed states are translated over any hash, and its
+# proof assumes, and `proofs/Rind/X86_64/P256Table.lean` what x86_64's
+# Booth driver, which is translated, reads, and each target's `P256Base.lean`
+# that its first row holds G to 32G, which ECDSA verification looks up. HMAC's keyed states are translated over any hash, and its
 # `Key` and `Context`, which hold function pointers, are not.
 # On x86_64, RSA verification is translated from `high::rsa::VerifyingKey`
 # down to `low::posint` and the Montgomery products' dispatch in
@@ -743,10 +749,10 @@ extract() {
         --dest-file "$PWD/../$out/$arch.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
     rm -rf "$out/lean"
-    # Above its default 2048, which the `global_simps` attribute of x86_64's
-    # 512-word generator table rows exceeds.
-    aeneas -backend lean -split-files -abort-on-error -max-recdepth 4096 \
-        -no-progress-bar -dest "$out/lean" -subdir "Rind/$dir" \
+    # x86_64's generator table rows are 512-word literals, which elaborate
+    # past Aeneas's default recursion depth of 2048.
+    aeneas -backend lean -split-files -abort-on-error \
+        -no-progress-bar -max-recdepth 4096 -dest "$out/lean" -subdir "Rind/$dir" \
         -namespace "rind.$arch" "$out/$arch.llbc"
     cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
 }
@@ -821,7 +827,6 @@ extract x86_64 X86_64 \
     --opaque 'crate::high::curve::_::generate_random_key' \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
-    --opaque 'crate::mid::p256::_::base_multiply' \
     --include crate::low::x86_64::adx_mux::p256_montjadd \
     --include crate::low::x86_64::adx_mux::p256_montjdouble \
     --include crate::low::x86_64::adx_mux::p256_montjmixadd \

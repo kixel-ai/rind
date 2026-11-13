@@ -97,8 +97,8 @@ routines, in `Rind/X86_64/P256Agree.lean` and `Rind/X86_64/P256.lean`, which
 generator as each target's `Rind/<Arch>/P256Base.lean` states it: aarch64 by
 s2n-bignum's `p256_scalarmulbase`, and x86_64 by rind's Booth driver, which
 selects each table row's point by rind's Rust select and adds it by aws-lc's
-mixed addition, `ecp_nistz256_point_add_affine`, that rind's HOL Light proof
-covers:
+mixed addition, `ecp_nistz256_point_add_affine`, which a placeholder axiom
+states until rind's HOL Light proof of it lands:
 
 - `p256_generate`: the key's scalar is the first of up to 64 draws whose
   bytes, read big-endian, are in [1, n), it holds its public key, and the key
@@ -198,6 +198,19 @@ curves, and `Rind/NistGroup.lean` proves it is multiplication in Mathlib's
 group of points on such a curve. `Rind/P384Group.lean` proves p and n prime,
 by Pratt certificates that `Rind/Pratt.lean` checks, and G's order n.
 
+The comb's constant-time row select on x86_64, `bignum_aff_point_select_p384`,
+and P-256's and P-521's, in `Rind/X86_64/PointSelect.lean`:
+
+- `bignum_aff_point_select_p256_spec`, `_p384_spec`, `_p521_spec`: the select
+  returns row `index` of a table of 8-, 12-, or 18-word affine points,
+  counting from 1, or zeros for an index of 0 or past the last row, on both
+  its AVX2 and SSE2 paths, for a table of fewer than 2^32 rows;
+- `bignum_aff_point_select_p384_rows16`: the same on P-384's 16-row comb
+  tables, as P-384's key generation takes it.
+
+They assume `RunsSelect`: `HaveAvx2::check` returns, as `Runs` assumes of
+`HaveBmi2Adx::check`. aarch64's NEON select has no model yet.
+
 ChaCha20 QUIC header protection on x86_64 and aarch64, from
 `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
 
@@ -217,6 +230,13 @@ multiplication reads, on aarch64 those s2n-bignum's proof of
 `p256_scalarmulbase` assumes, and `Rind/<Arch>/P256Base.lean` that its first
 row holds G to 32G, which ECDSA verification's twin multiplication reads, so
 no theorem assumes anything of the tables.
+On x86_64, `Rind/X86_64/P256Base.lean` proves that `base_multiply`, rind's
+port of aws-lc's Booth-recoded generator multiplication, computes k·G for k
+below n (`base_multiply_spec`, and `jac_base_multiply_spec` before its affine
+conversion): `Rind/P256Booth.lean` proves the recoded digits sum to k and that
+no addition doubles, and `Rind/X86_64/P256Table.lean` that its 37-row table
+holds j·2⁷ⁱ·G. The table select and aws-lc's mixed addition are placeholder
+axioms in `Rind/X86_64/S2nBignum.lean` until their proofs land.
 `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
 SHA-1 and SHA-256's padding and finalization, and HMAC's keyed states over
@@ -629,10 +649,13 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   `Rind/X86_64/ValeAesGcm.lean`: s2n-bignum's, aws-lc-verification's, and
   Vale's theorems, restated as axioms about the routines' Rust wrappers.
 - `Rind/X86_64/Simd.lean`: models of the x86_64 intrinsics rind's AES,
-  AES-GCM setup, partial blocks, and by-8 kernels call;
+  AES-GCM setup, partial blocks, by-8 kernels, and point select call;
   `Rind/X86_64/AesGcmModel.lean`: a hand model, over those intrinsics, of its
   PCLMULQDQ GHASH and by-8 AES-GCM, whose raw pointers, `transmute`
   constants, `as_chunks`, and zipped iterators Aeneas cannot translate;
+  `Rind/X86_64/PointSelectModel.lean`, of its AVX2 and SSE2 point selects,
+  whose raw-pointer loads and `as_chunks` Aeneas cannot translate, and
+  `Rind/X86_64/PointSelect.lean`, their proofs;
   `Rind/Aarch64/Neon.lean`, of the aarch64 intrinsics rind's AES calls, and
   `Rind/Aarch64/NeonVectors.lean`, the vectors `admin/neon-vectors.rs` tests
   them with; `Rind/Lanes.lean`, both targets' vector lanes and bytes.
@@ -703,6 +726,8 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
 - `Rind/X86_64/P256Dispatch.lean`, `Rind/X86_64/P256Agree.lean`, and
   `Rind/X86_64/P256.lean`: the hand model of P-256's key generation, and the
   P-256 agreement and key generation proofs, on both targets.
+- `Rind/P256Booth.lean`: the arithmetic of x86_64's Booth-recoded generator
+  multiplication.
 - `Rind/<Arch>/P256Table.lean` and `Rind/<Arch>/P256Base.lean`, one per
   target: its generator table's proof, and what the shared proofs take of its
   generator multiplication and table, `base_multiply_spec` and `first_row`,

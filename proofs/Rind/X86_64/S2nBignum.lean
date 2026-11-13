@@ -340,6 +340,35 @@ axiom p256_montjmixadd_alt_spec (p3 p1 : Std.Array U64 12#usize) (p2 : Std.Array
       ∀ P1 P2, p256Represents P1 (tripleNat p1.val) → p256Represents2 P2 (pairNat p2.val) →
         P1 ≠ P2 → p256Represents (p256Add P1 P2) (tripleNat r.val) ⦄
 
+/-- `BIGNUM_MUX_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/x86/proofs/bignum_mux.ml#L141 -/
+@[step]
+axiom bignum_mux_spec (p : U64) (z x y : Slice U64) (hx : x.length = z.length)
+    (hy : y.length = z.length) :
+    low.x86_64.bignum_mux.bignum_mux p z x y ⦃ r =>
+      r.length = z.length ∧ wordsNat r.val = if p.val ≠ 0 then wordsNat x.val else wordsNat y.val ⦄
+
+/-! ### P-256's generator multiplication
+
+PLACEHOLDER until the HOL Light proof of aws-lc's mixed addition lands. -/
+
+/-- What aws-lc's `ecp_nistz256_point_add_affine` and `_affinex` compute,
+in place, for coordinates below p: `p1` itself when `p2` is all zeros, the
+affine infinity; `p2` with a Montgomery-form z of one when `p1`'s z is zero,
+the Jacobian infinity; and otherwise the sum of the points they represent,
+unless those are equal, which it cannot double. -/
+@[step]
+axiom p256_point_add_affine_spec (p1 : Std.Array U64 12#usize) (p2 : Std.Array U64 8#usize) :
+    low.x86_64.ecp_nistz256.p256_point_add_affine p1 p2 ⦃ r =>
+      (tripleNat p1.val).1 < p256 → (tripleNat p1.val).2.1 < p256 → (tripleNat p1.val).2.2 < p256 →
+      (pairNat p2.val).1 < p256 → (pairNat p2.val).2 < p256 →
+        (pairNat p2.val = (0, 0) → tripleNat r.val = tripleNat p1.val) ∧
+        (pairNat p2.val ≠ (0, 0) → (tripleNat p1.val).2.2 = 0 →
+          tripleNat r.val = ((pairNat p2.val).1, (pairNat p2.val).2, 2 ^ 256 % p256)) ∧
+        (pairNat p2.val ≠ (0, 0) → (tripleNat p1.val).2.2 ≠ 0 →
+          ∀ P1 P2, p256Represents P1 (tripleNat p1.val) → p256Represents2 P2 (pairNat p2.val) →
+            P1 ≠ P2 → p256Represents (p256Add P1 P2) (tripleNat r.val)) ⦄
+
 /-! ### P-384 -/
 
 /-- `BIGNUM_TOMONT_P384_SUBROUTINE_CORRECT`,
@@ -567,10 +596,10 @@ axiom bignum_negmodinv_spec (z x : Slice U64) (hx : x.length = z.length) :
           (wordsNat x.val * wordsNat r.val + 1) % 2 ^ (64 * z.length) = 0) ⦄
 
 /-- rind runs on this CPU: its entry guards' CPU-feature checks pass, and its
-BMI2/ADX dispatch reads the CPU. None reads an input. -/
+BMI2/ADX and AVX2 dispatches read the CPU. None reads an input. -/
 def Runs : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧ (∃ e, low.entry.Entry.new_public = ok e) ∧
-    ∃ t, low.x86_64.cpu.HaveBmi2Adx.check = ok t
+    (∃ t, low.x86_64.cpu.HaveBmi2Adx.check = ok t) ∧ ∃ t, low.x86_64.cpu.HaveAvx2.check = ok t
 
 /-- Ed25519 verification's double scalar multiplication runs one of
 s2n-bignum's routines: a CPU without ADX lacks AVX2 too, since with it rind
@@ -593,7 +622,7 @@ theorem new_public_spec (h : Runs) : low.entry.Entry.new_public ⦃ _ => True �
 theorem curve25519_x25519_mux_spec (h : Runs) (res scalar point : Std.Array U64 4#usize) :
     low.x86_64.adx_mux.curve25519_x25519 res scalar point ⦃ r =>
       wordsNat r.val = rfcx25519 (wordsNat scalar.val) (wordsNat point.val) ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.curve25519_x25519
   rw [ht]
   cases t <;> step*
@@ -602,7 +631,7 @@ theorem curve25519_x25519_mux_spec (h : Runs) (res scalar point : Std.Array U64 
 theorem curve25519_x25519base_mux_spec (h : Runs) (res scalar : Std.Array U64 4#usize) :
     low.x86_64.adx_mux.curve25519_x25519base res scalar ⦃ r =>
       wordsNat r.val = rfcx25519 (wordsNat scalar.val) 9 ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.curve25519_x25519base
   rw [ht]
   cases t <;> step*
@@ -613,7 +642,7 @@ theorem edwards25519_decode_mux_spec (h : Runs) (z : Std.Array U64 8#usize)
     low.x86_64.adx_mux.edwards25519_decode z c ⦃ r =>
       (r.1 = true ↔ edValidEncode (leNat c.val)) ∧
         (edValidEncode (leNat c.val) → pairNat r.2.val = edModEncodePair (edDecode (leNat c.val))) ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.edwards25519_decode
   rw [ht]
   cases t <;> step*
@@ -623,7 +652,7 @@ theorem edwards25519_scalarmulbase_mux_spec (h : Runs) (res : Std.Array U64 8#us
     (scalar : Std.Array U64 4#usize) :
     low.x86_64.adx_mux.edwards25519_scalarmulbase res scalar ⦃ r =>
       pairNat r.val = edModEncodePair (edPow edB (wordsNat scalar.val)) ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.edwards25519_scalarmulbase
   rw [ht]
   cases t <;> step*
@@ -636,7 +665,7 @@ theorem edwards25519_scalarmuldouble_mux_spec (h : Runs) (hd : RunsDouble)
       ∀ P, edOnCurve P → edModDecodePair (pairNat point.val) = P →
         pairNat r.val =
           edModEncodePair (edMul (edPow P (wordsNat scalar.val)) (edPow edB (wordsNat bscalar.val))) ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.edwards25519_scalarmuldouble
   rw [ht]
   cases t
@@ -648,7 +677,7 @@ theorem edwards25519_scalarmuldouble_mux_spec (h : Runs) (hd : RunsDouble)
 theorem bignum_madd_n25519_mux_spec (h : Runs) (z x y c : Std.Array U64 4#usize) :
     low.x86_64.adx_mux.bignum_madd_n25519 z x y c ⦃ r =>
       wordsNat r.val = (wordsNat x.val * wordsNat y.val + wordsNat c.val) % n25519 ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.bignum_madd_n25519
   rw [ht]
   cases t <;> step*
@@ -657,7 +686,7 @@ theorem bignum_madd_n25519_mux_spec (h : Runs) (z x y c : Std.Array U64 4#usize)
 theorem bignum_tomont_p256_mux_spec (h : Runs) (z x : Std.Array U64 4#usize) :
     low.x86_64.adx_mux.bignum_tomont_p256 z x ⦃ r =>
       wordsNat r.val = 2 ^ 256 * wordsNat x.val % p256 ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.bignum_tomont_p256
   rw [ht]
   cases t <;> step*
@@ -666,7 +695,7 @@ theorem bignum_tomont_p256_mux_spec (h : Runs) (z x : Std.Array U64 4#usize) :
 theorem bignum_demont_p256_mux_spec (h : Runs) (z x : Std.Array U64 4#usize) :
     low.x86_64.adx_mux.bignum_demont_p256 z x ⦃ r =>
       wordsNat x.val < p256 → wordsNat r.val = p256RInv * wordsNat x.val % p256 ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.bignum_demont_p256
   rw [ht]
   cases t <;> step*
@@ -676,7 +705,7 @@ theorem bignum_montmul_p256_mux_spec (h : Runs) (z x y : Std.Array U64 4#usize) 
     low.x86_64.adx_mux.bignum_montmul_p256 z x y ⦃ r =>
       wordsNat x.val * wordsNat y.val ≤ 2 ^ 256 * p256 →
         wordsNat r.val = p256RInv * wordsNat x.val * wordsNat y.val % p256 ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.bignum_montmul_p256
   rw [ht]
   cases t <;> step*
@@ -686,7 +715,7 @@ theorem bignum_montsqr_p256_mux_spec (h : Runs) (z x : Std.Array U64 4#usize) :
     low.x86_64.adx_mux.bignum_montsqr_p256 z x ⦃ r =>
       wordsNat x.val ^ 2 ≤ 2 ^ 256 * p256 →
         wordsNat r.val = p256RInv * wordsNat x.val ^ 2 % p256 ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.bignum_montsqr_p256
   rw [ht]
   cases t <;> step*
@@ -697,7 +726,7 @@ theorem p256_scalarmul_mux_spec (h : Runs) (res : Std.Array U64 8#usize) (scalar
     low.x86_64.adx_mux.p256_scalarmul res scalar point ⦃ r =>
       ∀ P, p256OnCurve P → p256Affine (pairNat point.val) P →
         p256AffineZ (pairNat r.val) (p256Pow P (wordsNat scalar.val)) ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.p256_scalarmul
   rw [ht]
   cases t <;> step*
@@ -707,7 +736,7 @@ theorem p256_montjadd_mux_spec (h : Runs) (p3 p1 p2 : Std.Array U64 12#usize) :
     low.x86_64.adx_mux.p256_montjadd p3 p1 p2 ⦃ r =>
       ∀ P1 P2, p256Represents P1 (tripleNat p1.val) → p256Represents P2 (tripleNat p2.val) →
         (P1 = P2 → P2 = none) → p256Represents (p256Add P1 P2) (tripleNat r.val) ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.p256_montjadd
   rw [ht]
   cases t <;> step*
@@ -716,7 +745,7 @@ theorem p256_montjadd_mux_spec (h : Runs) (p3 p1 p2 : Std.Array U64 12#usize) :
 theorem p256_montjdouble_mux_spec (h : Runs) (p3 p1 : Std.Array U64 12#usize) :
     low.x86_64.adx_mux.p256_montjdouble p3 p1 ⦃ r =>
       ∀ P, p256Represents P (tripleNat p1.val) → p256Represents (p256Add P P) (tripleNat r.val) ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.p256_montjdouble
   rw [ht]
   cases t <;> step*
@@ -726,7 +755,7 @@ theorem p256_montjmixadd_mux_spec (h : Runs) (p3 p1 : Std.Array U64 12#usize) (p
     low.x86_64.adx_mux.p256_montjmixadd p3 p1 p2 ⦃ r =>
       ∀ P1 P2, p256Represents P1 (tripleNat p1.val) → p256Represents2 P2 (pairNat p2.val) →
         P1 ≠ P2 → p256Represents (p256Add P1 P2) (tripleNat r.val) ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.p256_montjmixadd
   rw [ht]
   cases t <;> step*
@@ -736,7 +765,7 @@ set_option exponentiation.threshold 384 in
 theorem bignum_tomont_p384_mux_spec (h : Runs) (z x : Std.Array U64 6#usize) :
     low.x86_64.adx_mux.bignum_tomont_p384 z x ⦃ r =>
       wordsNat r.val = 2 ^ 384 * wordsNat x.val % p384 ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.bignum_tomont_p384
   rw [ht]
   cases t <;> step*
@@ -745,7 +774,7 @@ theorem bignum_tomont_p384_mux_spec (h : Runs) (z x : Std.Array U64 6#usize) :
 theorem bignum_demont_p384_mux_spec (h : Runs) (z x : Std.Array U64 6#usize) :
     low.x86_64.adx_mux.bignum_demont_p384 z x ⦃ r =>
       wordsNat x.val < p384 → wordsNat r.val = p384RInv * wordsNat x.val % p384 ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.bignum_demont_p384
   rw [ht]
   cases t <;> step*
@@ -756,7 +785,7 @@ theorem bignum_montmul_p384_mux_spec (h : Runs) (z x y : Std.Array U64 6#usize) 
     low.x86_64.adx_mux.bignum_montmul_p384 z x y ⦃ r =>
       wordsNat x.val * wordsNat y.val ≤ 2 ^ 384 * p384 →
         wordsNat r.val = p384RInv * wordsNat x.val * wordsNat y.val % p384 ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.bignum_montmul_p384
   rw [ht]
   cases t <;> step*
@@ -767,7 +796,7 @@ theorem bignum_montsqr_p384_mux_spec (h : Runs) (z x : Std.Array U64 6#usize) :
     low.x86_64.adx_mux.bignum_montsqr_p384 z x ⦃ r =>
       wordsNat x.val ^ 2 ≤ 2 ^ 384 * p384 →
         wordsNat r.val = p384RInv * wordsNat x.val ^ 2 % p384 ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.bignum_montsqr_p384
   rw [ht]
   cases t <;> step*
@@ -778,7 +807,7 @@ theorem p384_montjscalarmul_mux_spec (h : Runs) (res : Std.Array U64 18#usize) (
     low.x86_64.adx_mux.p384_montjscalarmul res scalar point ⦃ r =>
       ∀ P, p384OnCurve P → p384Represents P (tripleNat6 point.val) →
         p384Represents (p384Pow P (wordsNat scalar.val)) (tripleNat6 r.val) ⦄ := by
-  obtain ⟨-, -, t, ht⟩ := h
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.p384_montjscalarmul
   rw [ht]
   cases t <;> step*

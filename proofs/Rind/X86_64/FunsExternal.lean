@@ -2,13 +2,14 @@ module
 public import Aeneas
 public import Rind.X86_64.Types
 public import Rind.X86_64.AesGcmModel
+public import Rind.X86_64.PointSelectModel
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-!
 The rind functions the x86_64 translation leaves opaque, beside those
-`Rind.X86_64.AesGcmModel` models. No proof assumes anything about them beyond what
+`Rind.X86_64.AesGcmModel` and `Rind.X86_64.PointSelectModel` model. No proof assumes anything about them beyond what
 `Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, and `Rind.X86_64.ValeAesGcm`
 state for s2n-bignum's, aws-lc's, and Vale's routines, what
 `Rind.X86_64.CtEqual` states for the constant-time compares, and what each theorem
@@ -237,6 +238,33 @@ opaque low.x86_64.cpu.HaveBmi2Adx.check
 
 opaque low.x86_64.cpu.HaveAvx2.check : Result (Option low.x86_64.cpu.HaveAvx2)
 
+/-! The table selects, over `Rind.X86_64.PointSelectModel`'s model of
+`select_avx2` and `select_sse2`, which quotes them. -/
+
+/-- `bignum_aff_point_select_p256`. -/
+def low.x86_64.bignum_point_select.bignum_aff_point_select_p256 (z : Array Std.U64 8#usize)
+    (table : Slice Std.U64) (index : Std.U8) : Result (Array Std.U64 8#usize) := do
+  let o ← low.x86_64.cpu.HaveAvx2.check
+  match o with
+  | some token => low.x86_64.bignum_point_select.select_avx2 8#usize 2 z table index token
+  | none => low.x86_64.bignum_point_select.select_sse2 8#usize 4 z table index
+
+/-- `bignum_aff_point_select_p384`. -/
+def low.x86_64.bignum_point_select.bignum_aff_point_select_p384 (z : Array Std.U64 12#usize)
+    (table : Slice Std.U64) (index : Std.U8) : Result (Array Std.U64 12#usize) := do
+  let o ← low.x86_64.cpu.HaveAvx2.check
+  match o with
+  | some token => low.x86_64.bignum_point_select.select_avx2 12#usize 3 z table index token
+  | none => low.x86_64.bignum_point_select.select_sse2 12#usize 6 z table index
+
+/-- `bignum_aff_point_select_p521`. -/
+def low.x86_64.bignum_point_select.bignum_aff_point_select_p521 (z : Array Std.U64 18#usize)
+    (table : Slice Std.U64) (index : Std.U8) : Result (Array Std.U64 18#usize) := do
+  let o ← low.x86_64.cpu.HaveAvx2.check
+  match o with
+  | some token => low.x86_64.bignum_point_select.select_avx2 18#usize 4 z table index token
+  | none => low.x86_64.bignum_point_select.select_sse2 18#usize 9 z table index
+
 opaque low.x86_64.cpu.HaveAesHardware.check : Result (Option low.x86_64.cpu.HaveAesHardware)
 
 opaque low.x86_64.cpu.HaveAvxMovbeForAesGcm.check
@@ -292,7 +320,7 @@ opaque low.x86_64.sha256.sha256_compress_blocks_ssse3
 opaque low.x86_64.sha256.sha256_compress_blocks_nohw
   : Array Std.U32 8#usize → Slice Std.U8 → Result (Array Std.U32 8#usize)
 
-/-! P-384's s2n-bignum routines, its table select, and `bignum_mux`. -/
+/-! P-384's s2n-bignum routines and `bignum_mux`. -/
 
 opaque low.x86_64.bignum_add_p384.bignum_add_p384
   :
@@ -343,11 +371,6 @@ opaque low.x86_64.bignum_neg_p384.bignum_neg_p384
   :
   Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
     6#usize)
-
-opaque low.x86_64.bignum_point_select.bignum_aff_point_select_p384
-  :
-  Array Std.U64 12#usize → Slice Std.U64 → Std.U8 → Result (Array Std.U64
-    12#usize)
 
 opaque low.x86_64.bignum_tomont_p384.bignum_tomont_p384
   :
@@ -506,14 +529,10 @@ opaque low.x86_64.bignum_modinv.bignum_modinv
   Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 →
     Result ((Slice Std.U64) × (Slice Std.U64))
 
-/-! P-256's generator multiplication, rind's Booth driver over aws-lc's mixed
-addition, which `Rind.X86_64.P256Base` states. -/
+/-! P-256's generator multiplication's mixed addition, aws-lc's. -/
 
-opaque mid.p256.AffineMontPoint.base_multiply
-  : mid.p256.Scalar → Result mid.p256.AffineMontPoint
-
-opaque mid.p256.JacobianMontPoint.base_multiply
-  : mid.p256.Scalar → Result mid.p256.JacobianMontPoint
+opaque low.x86_64.ecp_nistz256.p256_point_add_affine
+  : Array Std.U64 12#usize → Array Std.U64 8#usize → Result (Array Std.U64 12#usize)
 
 /-! The HMAC-DRBG an ECDSA signature draws its nonces from. -/
 
