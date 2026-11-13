@@ -19,8 +19,8 @@ mod x25519;
 
 /// The entry point OpenSSL calls when it loads the provider.
 ///
-/// It refuses to start, raising rind's error, on a CPU missing a feature
-/// rind requires.
+/// On a CPU missing a feature rind requires, it starts anyway and fails
+/// each use of X25519 and Ed25519 with rind's error naming the feature.
 ///
 /// # Safety
 ///

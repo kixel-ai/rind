@@ -339,9 +339,14 @@ unsafe fn bytes<'a>(data: *const u8, len: usize) -> Option<&'a [u8]> {
 }
 
 unsafe extern "C" fn newctx(provctx: *mut c_void, _propq: *const c_char) -> *mut c_void {
+    // SAFETY: OpenSSL passes the provider's context.
+    let provider = unsafe { Provider::from_context(provctx) };
+    // Every signature starts here, after OpenSSL has settled the provider.
+    if !provider.usable() {
+        return core::ptr::null_mut();
+    }
     Box::into_raw(Box::new(Signing {
-        // SAFETY: OpenSSL passes the provider's context.
-        provider: unsafe { Provider::from_context(provctx) },
+        provider,
         key: None,
         instance_preset: false,
         prehashed: false,

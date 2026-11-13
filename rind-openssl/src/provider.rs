@@ -51,6 +51,11 @@ impl Provider {
         }
     }
 
+    /// Whether rind refuses this CPU, raising nothing.
+    pub(crate) fn refuses(&self) -> bool {
+        self.refused.is_some()
+    }
+
     /// The provider whose context OpenSSL passes, which the caller now holds
     /// a reference to as well.
     ///
@@ -176,7 +181,8 @@ fn raise(
 }
 
 /// Starts the provider. If `check` fails, it starts refusing: each key it
-/// would make fails with `check`'s error instead, and its status is 0.
+/// would generate, read, or export and each signature and exchange fail
+/// with `check`'s error instead, and its status is 0.
 ///
 /// It does not refuse to start, since OpenSSL carries on without a provider
 /// that does, even under `config_diagnostics`, from 3.0.13, 3.1.5, and 3.2.1
@@ -353,10 +359,11 @@ mod tests {
     use core::ptr::{null, null_mut};
 
     use openssl_sys::{
-        ERR_get_error_all, EVP_PKEY, EVP_PKEY_CTX_free, EVP_PKEY_CTX_new_from_name, EVP_PKEY_free,
-        EVP_PKEY_generate, EVP_PKEY_keygen_init, EVP_PKEY_new_raw_public_key_ex, OSSL_LIB_CTX,
-        OSSL_LIB_CTX_free, OSSL_LIB_CTX_new, OSSL_PROVIDER, OSSL_PROVIDER_load,
-        OSSL_PROVIDER_unload,
+        BIO, BIO_free_all, BIO_new_mem_buf, ERR_get_error_all, EVP_MD_CTX, EVP_MD_CTX_free,
+        EVP_MD_CTX_new, EVP_PKEY, EVP_PKEY_CTX, EVP_PKEY_CTX_free, EVP_PKEY_CTX_new_from_name,
+        EVP_PKEY_free, EVP_PKEY_generate, EVP_PKEY_get_raw_public_key, EVP_PKEY_keygen_init,
+        EVP_PKEY_new_raw_private_key_ex, OSSL_LIB_CTX, OSSL_LIB_CTX_free, OSSL_LIB_CTX_new,
+        OSSL_PROVIDER, OSSL_PROVIDER_load, OSSL_PROVIDER_unload,
     };
 
     use super::*;
@@ -378,7 +385,36 @@ mod tests {
         fn OSSL_LIB_CTX_load_config(ctx: *mut OSSL_LIB_CTX, file: *const c_char) -> c_int;
         fn OSSL_PROVIDER_get_params(provider: *const OSSL_PROVIDER, params: *mut Param) -> c_int;
         fn ERR_error_string_n(error: core::ffi::c_ulong, buf: *mut c_char, len: usize);
+        fn PEM_read_bio_PrivateKey_ex(
+            bio: *mut BIO,
+            out: *mut *mut EVP_PKEY,
+            callback: *mut c_void,
+            arg: *mut c_void,
+            ctx: *mut OSSL_LIB_CTX,
+            propq: *const c_char,
+        ) -> *mut EVP_PKEY;
+        fn EVP_PKEY_CTX_new_from_pkey(
+            ctx: *mut OSSL_LIB_CTX,
+            pkey: *mut EVP_PKEY,
+            propq: *const c_char,
+        ) -> *mut EVP_PKEY_CTX;
+        fn EVP_PKEY_derive_init(ctx: *mut EVP_PKEY_CTX) -> c_int;
+        fn EVP_DigestSignInit_ex(
+            ctx: *mut EVP_MD_CTX,
+            pctx: *mut *mut EVP_PKEY_CTX,
+            mdname: *const c_char,
+            libctx: *mut OSSL_LIB_CTX,
+            props: *const c_char,
+            pkey: *mut EVP_PKEY,
+            params: *const Param,
+        ) -> c_int;
     }
+
+    /// RFC 8410's example Ed25519 private key.
+    const ED25519_PEM: &[u8] = b"-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
+-----END PRIVATE KEY-----
+";
 
     const MISSING: &str = "rind requires neon CPU support on aarch64";
 
@@ -416,9 +452,9 @@ mod tests {
     }
 
     /// On a CPU rind refuses, the README's configuration still loads, and
-    /// each key of rind's algorithms fails with rind's error rather than
-    /// fall back to the default provider. The default provider keeps the
-    /// rest.
+    /// each use of rind's algorithms fails with rind's error rather than
+    /// fall back to the default provider, even with a key the default
+    /// provider made. The default provider keeps the rest.
     #[test]
     fn a_refused_cpu_fails_each_use_with_rinds_error() {
         // SAFETY: each call takes the context, live until freed, and C
@@ -467,22 +503,79 @@ mod tests {
                 ok
             };
             let refusal = format!("rind does not run on this CPU: {MISSING}");
+            let refused = |what: &str| {
+                let error = first_error();
+                assert!(error.contains(&refusal), "{what}: {error}");
+            };
+            // Each use of a key, which OpenSSL starts by moving the key to
+            // the operation's provider, rind.
+            let sign_fails = |key: *mut EVP_PKEY, propq: &CStr| {
+                let md = EVP_MD_CTX_new();
+                let ok =
+                    EVP_DigestSignInit_ex(md, null_mut(), null(), ctx, propq.as_ptr(), key, null());
+                EVP_MD_CTX_free(md);
+                ok != 1
+            };
+            let derive_fails = |key: *mut EVP_PKEY| {
+                let pctx = EVP_PKEY_CTX_new_from_pkey(ctx, key, null());
+                let ok = !pctx.is_null() && EVP_PKEY_derive_init(pctx) == 1;
+                EVP_PKEY_CTX_free(pctx);
+                !ok
+            };
+            let read_fails = |key: *mut EVP_PKEY| {
+                let (mut out, mut len) = ([0u8; 32], 32);
+                EVP_PKEY_get_raw_public_key(key, out.as_mut_ptr(), &mut len) != 1
+            };
             for algorithm in [c"ED25519", c"X25519"] {
                 assert!(!generate(algorithm));
-                let error = first_error();
-                assert!(error.contains(&refusal), "{error}");
+                refused("generate");
 
-                let key = EVP_PKEY_new_raw_public_key_ex(
+                // Importing lands, empty, so the key's every use fails.
+                let key = EVP_PKEY_new_raw_private_key_ex(
                     ctx,
                     algorithm.as_ptr(),
                     null(),
                     [9; 32].as_ptr(),
                     32,
                 );
-                assert!(key.is_null());
-                let error = first_error();
-                assert!(error.contains(&refusal), "{error}");
+                assert!(!key.is_null(), "{}", first_error());
+                assert!(read_fails(key));
+                refused("read");
+                match algorithm == c"ED25519" {
+                    true => assert!(sign_fails(key, c"")),
+                    false => assert!(derive_fails(key)),
+                }
+                refused("use");
+                EVP_PKEY_free(key);
+
+                // A key the default provider made, asked for by name.
+                let key = EVP_PKEY_new_raw_private_key_ex(
+                    ctx,
+                    algorithm.as_ptr(),
+                    c"provider=default".as_ptr(),
+                    [9; 32].as_ptr(),
+                    32,
+                );
+                assert!(!key.is_null(), "{}", first_error());
+                match algorithm == c"ED25519" {
+                    true => assert!(sign_fails(key, c"")),
+                    false => assert!(derive_fails(key)),
+                }
+                refused("a default provider key");
+                EVP_PKEY_free(key);
             }
+
+            // A decoded key, which the default provider's decoder makes and
+            // keeps.
+            let bio = BIO_new_mem_buf(ED25519_PEM.as_ptr().cast(), ED25519_PEM.len() as c_int);
+            let key =
+                PEM_read_bio_PrivateKey_ex(bio, null_mut(), null_mut(), null_mut(), ctx, null());
+            BIO_free_all(bio);
+            assert!(!key.is_null(), "{}", first_error());
+            assert!(sign_fails(key, c""));
+            refused("a decoded key");
+            EVP_PKEY_free(key);
+
             assert!(generate(c"X448"), "{}", first_error());
             OSSL_LIB_CTX_free(ctx);
         }

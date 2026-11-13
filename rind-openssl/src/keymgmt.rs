@@ -212,10 +212,9 @@ pub(crate) use functions;
 pub(crate) unsafe extern "C" fn new<K: Kind>(provctx: *mut c_void) -> *mut c_void {
     // SAFETY: OpenSSL passes the provider's context.
     let provider = unsafe { Provider::from_context(provctx) };
-    // Every key, and so every operation, starts here or in `gen_init`.
-    if !provider.usable() {
-        return core::ptr::null_mut();
-    }
+    // On a CPU rind refuses, a key moving here from another provider still
+    // lands, empty, so that its operation fails with rind's error: were the
+    // move refused, OpenSSL would run the operation on the key's own provider.
     KeyData::<K>::boxed(provider, None)
 }
 
@@ -253,13 +252,16 @@ pub(crate) unsafe extern "C" fn matches<K: Kind>(
     }) else {
         return 0;
     };
+    equal(a.key.as_deref(), b.key.as_deref(), selection).into()
+}
+
+/// Whether two keys match on `selection`: the public keys decide when both
+/// are asked for and present, else the private keys, as OpenSSL's do; a
+/// selection neither key can answer does not match.
+fn equal<K: Kind>(a: Option<&Key<K>>, b: Option<&Key<K>>, selection: c_int) -> bool {
     if selection & SELECT_KEYPAIR == 0 {
-        return 1;
+        return true;
     }
-    let (a, b) = (a.key.as_deref(), b.key.as_deref());
-    // The public keys decide when both are asked for and present, else the
-    // private keys, as OpenSSL's do; a selection neither key can answer
-    // does not match.
     let equal = match (a, b) {
         (Some(a), Some(b)) if selection & SELECT_PUBLIC_KEY != 0 => Some(a.public() == b.public()),
         _ if selection & SELECT_PRIVATE_KEY != 0 => {
@@ -276,7 +278,7 @@ pub(crate) unsafe extern "C" fn matches<K: Kind>(
         }
         _ => None,
     };
-    (equal == Some(true)).into()
+    equal == Some(true)
 }
 
 pub(crate) unsafe extern "C" fn validate<K: Kind>(
@@ -317,6 +319,10 @@ pub(crate) unsafe extern "C" fn import<K: Kind>(
     };
     if selection & SELECT_KEYPAIR == 0 {
         return 0;
+    }
+    // See `new`: the key stays empty, and its every use fails.
+    if data.provider.refuses() {
+        return 1;
     }
     let result = load::<K>(selection, params).map(|key| data.key = Some(Arc::new(key)));
     data.provider.status(result)
@@ -373,6 +379,9 @@ pub(crate) unsafe extern "C" fn export<K: Kind>(
     else {
         return 0;
     };
+    if !data.provider.usable() {
+        return 0;
+    }
     let Some(key) = data.key.as_deref() else {
         return 0;
     };
@@ -413,6 +422,9 @@ pub(crate) unsafe extern "C" fn get_params<K: Kind>(
     }) else {
         return 0;
     };
+    if !data.provider.usable() {
+        return 0;
+    }
     let key = data.key.as_deref();
     let sizes = [
         (c"bits", K::BITS),
@@ -596,4 +608,33 @@ pub(crate) unsafe extern "C" fn dup<K: Kind>(
             _ => None,
         });
     KeyData::<K>::boxed(data.provider.clone(), key)
+}
+
+#[cfg(test)]
+mod tests {
+    use crabgrind::memcheck::{self, MemState};
+    use crabgrind::valgrind::{self, RunningMode};
+
+    use super::*;
+    use crate::{ed25519::Ed25519, x25519::X25519};
+
+    /// Under `admin/ctgrind`, memcheck fails this if comparing private keys
+    /// alone, which only the dispatch table asks for, branches on them.
+    #[test]
+    fn private_keys_match_in_constant_time() {
+        fn check<K: Kind>() {
+            let key = |byte: u8| {
+                let bytes = [byte; LEN];
+                if let RunningMode::Valgrind = valgrind::running_mode() {
+                    memcheck::mark_memory(bytes.as_ptr().cast(), LEN, MemState::Undefined).unwrap();
+                }
+                Key::<K>::Private(K::load(&bytes).unwrap())
+            };
+            let (a, again, b) = (key(0x9d), key(0x9d), key(0x5a));
+            assert!(equal(Some(&a), Some(&again), SELECT_PRIVATE_KEY));
+            assert!(!equal(Some(&a), Some(&b), SELECT_PRIVATE_KEY));
+        }
+        check::<Ed25519>();
+        check::<X25519>();
+    }
 }

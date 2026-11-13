@@ -24,6 +24,12 @@ unsafe extern "C" {
     fn OSSL_PROVIDER_get0_name(provider: *const OSSL_PROVIDER) -> *const c_char;
     fn EVP_PKEY_get0_provider(pkey: *const EVP_PKEY) -> *const OSSL_PROVIDER;
     fn EVP_PKEY_CTX_get0_provider(ctx: *const EVP_PKEY_CTX) -> *const OSSL_PROVIDER;
+    fn EVP_PKEY_todata(
+        pkey: *const EVP_PKEY,
+        selection: c_int,
+        params: *mut *mut OSSL_PARAM,
+    ) -> c_int;
+    fn OSSL_PARAM_free(params: *mut OSSL_PARAM);
     fn EVP_PKEY_CTX_new_from_pkey(
         ctx: *mut OSSL_LIB_CTX,
         pkey: *mut EVP_PKEY,
@@ -134,6 +140,16 @@ fn raw_private(key: *mut EVP_PKEY) -> [u8; 32] {
     out
 }
 
+/// Exports the key pair, as encoders and other providers take it.
+fn export(key: *mut EVP_PKEY) {
+    const KEYPAIR: c_int = 0x03;
+    let mut params = null_mut();
+    unsafe {
+        assert_eq!(EVP_PKEY_todata(key, KEYPAIR, &mut params), 1);
+        OSSL_PARAM_free(params);
+    }
+}
+
 #[test]
 fn x25519() {
     let ctx = context();
@@ -159,6 +175,7 @@ fn x25519() {
     }
 
     // Reading the private key back, and generating one, which TLS does.
+    export(key);
     let back = raw_private(key);
     public(&back);
     assert_eq!(back, [0x77; 32]);
@@ -248,6 +265,7 @@ fn ed25519() {
     // Two keys from the same secret seed match.
     let again = private_key(ctx, c"ED25519", &seed);
     assert_eq!(unsafe { EVP_PKEY_eq(key, again) }, 1);
+    export(key);
     let back = raw_private(key);
     public(&back);
     assert_eq!(back, [0x9d; 32]);

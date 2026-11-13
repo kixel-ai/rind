@@ -46,7 +46,7 @@ OpenSSL's `evp_test` passes on its X25519 and Ed25519 data with this provider lo
 
 - A key given with both halves is refused if its public half is not its private half's.
 - An Ed25519 public key of small order verifies no signature, as rind refuses such keys.
-- On a CPU rind does not run on, the provider still loads, reports status 0, and fails each X25519 or Ed25519 key with an error naming the feature the CPU lacks, such as `rind does not run on this CPU: rind requires neon CPU support on aarch64`. Since OpenSSL 3.0.13, 3.1.5, and 3.2.1, OpenSSL carries on without a provider that refuses to load, even under `config_diagnostics`, and would leave every key on the default provider.
+- On a CPU rind does not run on, the provider still loads, reports status 0, and fails each X25519 or Ed25519 key generation, signature, exchange, and key read or export with an error naming the feature the CPU lacks, such as `rind does not run on this CPU: rind requires neon CPU support on aarch64`. Since OpenSSL 3.0.13, 3.1.5, and 3.2.1, OpenSSL carries on without a provider that refuses to load, even under `config_diagnostics`, and would leave every key on the default provider. Importing a key still succeeds, so that a key another provider made, such as one decoded from PEM, moves to rind and fails when used rather than run on its own provider.
 - It wipes every key it holds, and the key bytes it gives OpenSSL to move a key between providers, once it is done with them, as OpenSSL's own providers do.
 
 License: Apache-2.0 OR ISC OR MIT-0
