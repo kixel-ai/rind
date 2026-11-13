@@ -2,7 +2,7 @@
 name = "rind"
 version = "0.3.2"
 edition = "2024"
-repository = "https://github.com/moq-dev/rind"
+repository = "https://github.com/kixel-ai/rind"
 license = "(Apache-2.0 OR ISC OR MIT-0) AND (Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND BSD-3-Clause"
 readme = "README.md"
 description = "Pure-Rust cryptography for MoQ, forked from graviola"
@@ -84,6 +84,9 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   "cfg(rind_vartime_planted)",
   # Forces the portable backend, for testing it on x86_64 (see build.rs).
   "cfg(rind_portable)",
+  # Builds the FIPS module's source, which draws every random value from its
+  # DRBG (`src/fips_rng.rs`).
+  "cfg(rind_fips)",
   # curve25519-dalek's backend overrides, which armv7 refuses.
   'cfg(curve25519_dalek_bits, values("32", "64"))',
   'cfg(curve25519_dalek_backend, values("fiat", "serial", "simd", "avx512"))',
