@@ -627,7 +627,7 @@ pub unsafe extern "C" fn rind_dart_aes_cbc_encrypt(
         if pad == 0 {
             key.encrypt_blocks(iv, &mut in_out[..len])?;
         } else {
-            key.encrypt(iv, &mut Room { buf: in_out, len });
+            key.encrypt(iv, &mut Room { buf: in_out, len })?;
         }
         Ok(padded_len)
     })

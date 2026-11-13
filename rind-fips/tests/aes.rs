@@ -363,8 +363,10 @@ fn cbc_matches_rind() {
             // Padded, both ways.
             let mut ours_buf = plaintext.clone();
             let mut theirs_buf = plaintext.clone();
-            encrypting.encrypt(ours_iv(), &mut ours_buf);
-            theirs_encrypting.encrypt(theirs_iv(), &mut theirs_buf);
+            same(
+                &encrypting.encrypt(ours_iv(), &mut ours_buf),
+                &theirs_encrypting.encrypt(theirs_iv(), &mut theirs_buf),
+            );
             assert_eq!(ours_buf, theirs_buf);
             assert_eq!(decrypting.decrypt(&iv, &mut ours_buf).unwrap(), plaintext);
 
@@ -420,22 +422,29 @@ impl<'a> Extend<&'a u8> for Window {
 }
 
 #[test]
-fn cbc_padding_a_window_matches_rind() {
+fn cbc_refuses_a_buffer_padding_cannot_grow() {
     // Padding leaves a window of 1 or 17 bytes as it was, which then holds
-    // no whole block, or one and a byte. Each encrypts its whole blocks, as
-    // rind does, rather than panicking.
+    // no whole block, or one and a byte. Each is refused, as rind and
+    // aws-lc-rs refuse it, and its plaintext stays as it was.
     let (ours, theirs, key_len) = CIPHERS[0];
     let key_value = bytes("key", key_len);
     let encrypting = cipher::AesCbcEncryptingKey::new(ours, &key_value).unwrap();
     let theirs_encrypting = rind::cipher::AesCbcEncryptingKey::new(theirs, &key_value).unwrap();
     for window in [1, 17] {
-        let mut ours_buf = Window(bytes("plaintext", window), window);
-        let mut theirs_buf = Window(bytes("plaintext", window), window);
-        encrypting.encrypt(cipher::CbcIv::assume_unpredictable([3; 16]), &mut ours_buf);
-        theirs_encrypting.encrypt(
-            rind::cipher::CbcIv::assume_unpredictable([3; 16]),
-            &mut theirs_buf,
+        let plaintext = bytes("plaintext", window);
+        let mut ours_buf = Window(plaintext.clone(), window);
+        let mut theirs_buf = Window(plaintext.clone(), window);
+        let result =
+            encrypting.encrypt(cipher::CbcIv::assume_unpredictable([3; 16]), &mut ours_buf);
+        assert_eq!(result, Err(Error::WrongLength), "{window}");
+        same(
+            &result,
+            &theirs_encrypting.encrypt(
+                rind::cipher::CbcIv::assume_unpredictable([3; 16]),
+                &mut theirs_buf,
+            ),
         );
+        assert_eq!(ours_buf.0[..window], plaintext);
         assert_eq!(ours_buf.0, theirs_buf.0);
     }
 }

@@ -565,7 +565,8 @@ fn aes_cbc() {
             let mut ours = message.clone();
             cipher::AesCbcEncryptingKey::new(algorithm, &key)
                 .unwrap()
-                .encrypt(cipher::CbcIv::assume_unpredictable(iv), &mut ours);
+                .encrypt(cipher::CbcIv::assume_unpredictable(iv), &mut ours)
+                .unwrap();
             let mut theirs = message.clone();
             PaddedBlockEncryptingKey::cbc_pkcs7(aws_cipher_key(&key))
                 .unwrap()

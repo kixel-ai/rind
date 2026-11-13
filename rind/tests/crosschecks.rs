@@ -271,7 +271,8 @@ mod cipher {
             let theirs_dec = PaddedBlockDecryptingKey::cbc_pkcs7(aws_aes_key(&key)).unwrap();
 
             let mut ours = msg.clone();
-            enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ours);
+            enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ours)
+                .unwrap();
             let mut theirs = msg.clone();
             PaddedBlockEncryptingKey::cbc_pkcs7(aws_aes_key(&key))
                 .unwrap()

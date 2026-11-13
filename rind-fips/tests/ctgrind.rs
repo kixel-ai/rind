@@ -172,7 +172,8 @@ fn aes() {
     let mut padded = MESSAGE.to_vec();
     cipher::AesCbcEncryptingKey::new(&cipher::AES_256, &key)
         .unwrap()
-        .encrypt(cipher::CbcIv::assume_unpredictable([3; 16]), &mut padded);
+        .encrypt(cipher::CbcIv::assume_unpredictable([3; 16]), &mut padded)
+        .unwrap();
     public(&padded[..]);
     let plaintext = cipher::AesCbcDecryptingKey::new(&cipher::AES_256, &key)
         .unwrap()
@@ -296,7 +297,8 @@ fn with_secret(der: &[u8], private: &[u8]) -> Vec<u8> {
 /// and p's and q's last bytes. rind reads only public facts from those: the
 /// top byte's bit length, and p's and q's parity, which every valid key
 /// fixes. But memcheck tracks the reads only per byte, through a comparison
-/// with zero and a parity test, so the bytes stay public.
+/// with zero and a parity test, so the bytes stay public until
+/// `/quest/m2/confidence/rsa-der-ct.md` makes those checks constant time.
 fn rsa_with_secret(der: &[u8]) -> Vec<u8> {
     let der = der.to_vec();
     // The length of the element at `at`'s tag and length, and its length.

@@ -676,7 +676,8 @@ fn aes_cbc_pkcs7() {
                 (ExpectedResult::Valid, Ok(pt)) => {
                     assert_eq!(pt, test.msg);
                     let mut ct = test.msg.clone();
-                    enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ct);
+                    enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ct)
+                        .unwrap();
                     assert_eq!(ct, test.ct);
                 }
                 // Every invalid test is a whole number of blocks whose

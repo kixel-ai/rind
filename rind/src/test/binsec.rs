@@ -124,7 +124,7 @@ fn ct_binsec_aes_cbc() {
             let mut msg = secret::<MESSAGE>(2).to_vec();
             let iv = CbcIv::assume_unpredictable([3; 16]);
             let encrypting = AesCbcEncryptingKey::new(algorithm, key).unwrap();
-            encrypting.encrypt(iv, &mut msg);
+            encrypting.encrypt(iv, &mut msg).unwrap();
             let decrypting = AesCbcDecryptingKey::new(algorithm, key).unwrap();
             black_box(decrypting.decrypt(&[3; 16], &mut msg).is_ok());
         }
