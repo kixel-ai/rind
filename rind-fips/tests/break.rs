@@ -10,7 +10,8 @@
 #![cfg(rind_fips_module)]
 #![cfg(feature = "__break_tests")]
 
-use std::process::Command;
+use std::os::unix::process::ExitStatusExt;
+use std::process::{Command, ExitStatus};
 
 /// Every known-answer test, by the name the module prints, and the
 /// integrity test.
@@ -44,26 +45,28 @@ const SELF_TESTS: [&str; 26] = [
 ];
 
 /// Runs trigger test `trigger` in a child with `RIND_FIPS_BREAK=name`,
-/// returning whether it succeeded and its standard error.
-fn run(trigger: &str, name: &str) -> (bool, String) {
+/// returning how it exited and its standard error.
+fn run(trigger: &str, name: &str) -> (ExitStatus, String) {
     let output = Command::new(std::env::current_exe().unwrap())
         .args(["--exact", trigger, "--test-threads=1", "--nocapture"])
         .env("RIND_FIPS_BREAK", name)
         .output()
         .unwrap();
     (
-        output.status.success(),
+        output.status,
         String::from_utf8_lossy(&output.stderr).into_owned(),
     )
 }
 
-/// Asserts that breaking `name` makes `trigger` fail at that test, printing
+/// Asserts that breaking `name` makes `trigger` abort at that test, printing
 /// its name, before the trigger's own output.
 fn assert_breaks(trigger: &str, name: &str) {
-    let (succeeded, stderr) = run(trigger, name);
-    assert!(
-        !succeeded,
-        "breaking {name} did not fail {trigger}: {stderr}"
+    const SIGABRT: i32 = 6;
+    let (status, stderr) = run(trigger, name);
+    assert_eq!(
+        status.signal(),
+        Some(SIGABRT),
+        "breaking {name} did not abort {trigger}: {status}: {stderr}"
     );
     assert!(
         stderr.contains(&format!("rind-fips: {name} self-test failed")),
@@ -168,8 +171,8 @@ fn trigger_exit_with_a_running_thread() {
 
 #[test]
 fn exit_wipes_the_drbgs_of_running_threads() {
-    let (succeeded, stderr) = run("trigger_exit_with_a_running_thread", "");
-    assert!(succeeded, "{stderr}");
+    let (status, stderr) = run("trigger_exit_with_a_running_thread", "");
+    assert!(status.success(), "{stderr}");
     assert!(
         stderr.contains("rind-fips: zeroised 1 DRBG instances at exit"),
         "{stderr}"
@@ -210,8 +213,8 @@ fn trigger_fork_with_a_running_thread() {
 // forks, so finds none at exit, while the parent wipes the thread's own.
 #[test]
 fn a_forked_child_wipes_its_parents_drbgs() {
-    let (succeeded, stderr) = run("trigger_fork_with_a_running_thread", "");
-    assert!(succeeded, "{stderr}");
+    let (status, stderr) = run("trigger_fork_with_a_running_thread", "");
+    assert!(status.success(), "{stderr}");
     assert!(
         stderr.contains("rind-fips: zeroised 0 DRBG instances at exit"),
         "{stderr}"
@@ -224,6 +227,6 @@ fn a_forked_child_wipes_its_parents_drbgs() {
 
 #[test]
 fn an_unknown_name_breaks_nothing() {
-    let (succeeded, stderr) = run("trigger_self_test", "sha");
-    assert!(succeeded, "{stderr}");
+    let (status, stderr) = run("trigger_self_test", "sha");
+    assert!(status.success(), "{stderr}");
 }

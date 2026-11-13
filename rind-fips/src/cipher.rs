@@ -235,8 +235,12 @@ impl AesCbcEncryptingKey {
     {
         let pad = 16 - in_out.as_mut().len() % 16;
         in_out.extend(&[pad as u8; 16][..pad]);
-        self.encrypt_blocks(iv, in_out.as_mut())
-            .expect("padding makes whole blocks");
+        // As rind does: the whole blocks, which are all of a buffer whose
+        // `extend` appends to what `as_mut` returns.
+        let in_out = in_out.as_mut();
+        let whole = in_out.len() - in_out.len() % 16;
+        self.encrypt_blocks(iv, &mut in_out[..whole])
+            .expect("whole blocks");
     }
 
     /// Encrypts `in_out` in place under `iv`, without padding.

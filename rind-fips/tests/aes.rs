@@ -404,6 +404,42 @@ fn cbc_matches_rind() {
     same_debug(&a, &rind::cipher::CbcIv::assume_unpredictable([0; 16]));
 }
 
+/// A buffer that shows a fixed window, `extend` notwithstanding.
+struct Window(Vec<u8>, usize);
+
+impl AsMut<[u8]> for Window {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0[..self.1]
+    }
+}
+
+impl<'a> Extend<&'a u8> for Window {
+    fn extend<I: IntoIterator<Item = &'a u8>>(&mut self, iter: I) {
+        self.0.extend(iter);
+    }
+}
+
+#[test]
+fn cbc_padding_a_window_matches_rind() {
+    // Padding leaves a window of 1 or 17 bytes as it was, which then holds
+    // no whole block, or one and a byte. Each encrypts its whole blocks, as
+    // rind does, rather than panicking.
+    let (ours, theirs, key_len) = CIPHERS[0];
+    let key_value = bytes("key", key_len);
+    let encrypting = cipher::AesCbcEncryptingKey::new(ours, &key_value).unwrap();
+    let theirs_encrypting = rind::cipher::AesCbcEncryptingKey::new(theirs, &key_value).unwrap();
+    for window in [1, 17] {
+        let mut ours_buf = Window(bytes("plaintext", window), window);
+        let mut theirs_buf = Window(bytes("plaintext", window), window);
+        encrypting.encrypt(cipher::CbcIv::assume_unpredictable([3; 16]), &mut ours_buf);
+        theirs_encrypting.encrypt(
+            rind::cipher::CbcIv::assume_unpredictable([3; 16]),
+            &mut theirs_buf,
+        );
+        assert_eq!(ours_buf.0, theirs_buf.0);
+    }
+}
+
 #[test]
 fn key_wrap_matches_rind() {
     for (ours, theirs, key_len) in CIPHERS {

@@ -308,6 +308,6 @@ fn drop_wipes_the_public_key() {
         assert_eq!(read(&key), public);
         // SAFETY: initialized, and dropped only here.
         unsafe { key.assume_init_drop() };
-        assert_ne!(read(&key), public, "{algorithm:?}");
+        assert_eq!(read(&key), vec![0; public.len()], "{algorithm:?}");
     }
 }

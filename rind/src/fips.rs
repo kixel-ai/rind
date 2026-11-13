@@ -372,20 +372,25 @@ mod kat {
         )
     }
 
-    // RFC 7914's PBKDF2-HMAC-SHA256 example with one iteration.
+    // aws-lc's PBKDF2-HMAC-SHA256 vector: two iterations, as IG 10.3.A
+    // asks, so the chained HMACs run, with a password and salt the
+    // service's floors admit.
     pub(super) fn pbkdf2() -> Result<(), &'static str> {
         use crate::high::pbkdf2::{PBKDF2_HMAC_SHA256, Secret};
-        let secret = Secret::new(&PBKDF2_HMAC_SHA256, &input("pbkdf2", *b"passwd"));
-        let mut out = [0u8; 64];
-        let derived = secret.derive(core::num::NonZeroU32::MIN, b"salt", &mut out);
+        let secret = Secret::new(
+            &PBKDF2_HMAC_SHA256,
+            &input("pbkdf2", *b"AWS-LCFIPSpassword"),
+        );
+        let mut out = [0u8; 25];
+        let iterations = core::num::NonZeroU32::MIN.saturating_add(1);
+        let derived = secret.derive(
+            iterations,
+            b"saltSALTsaltSALTsaltSALTsaltSALTsalt",
+            &mut out,
+        );
         check(
             "pbkdf2",
-            derived.is_ok()
-                && out[..]
-                    == hex(concat!(
-                        "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc",
-                        "49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783"
-                    )),
+            derived.is_ok() && out[..] == hex("c6ac0779e4a117c922287f5e10e7ee6ba74d8b19519b4cc738"),
         )
     }
 
