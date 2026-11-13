@@ -2,15 +2,15 @@
 
 //! The module against aws-lc-rs, through its C ABI and its own optimized
 //! build of rind: each side verifies, opens, decapsulates, or agrees on what
-//! the other made, loads the other's stored keys, and derives the same bytes
-//! from the same inputs.
+//! the other made, loads the other's stored keys, and derives, hashes,
+//! encrypts, or wraps the same inputs to the same bytes.
 #![cfg(rind_fips_module)]
 
 use std::num::NonZeroU32;
 
 use aws_lc_rs::signature::{self as theirs, KeyPair as _};
 use rind_fips::signature::{self, sign, verify};
-use rind_fips::{aead, agreement, hkdf, hmac, kem, pbkdf2};
+use rind_fips::{aead, agreement, cipher, digest, hkdf, hmac, kem, pbkdf2};
 
 /// `len` random bytes, from the module.
 fn random(len: usize) -> Vec<u8> {
@@ -437,6 +437,199 @@ fn aes_gcm() {
                 .open_in_place(aead::Nonce::assume_unique_for_key(nonce), &aad, &mut sealed)
                 .unwrap();
             assert_eq!(opened, message);
+        }
+    }
+}
+
+#[test]
+fn digest() {
+    use aws_lc_rs::digest as theirs;
+
+    for (ours, theirs_algorithm) in [
+        (&digest::SHA256, &theirs::SHA256),
+        (&digest::SHA384, &theirs::SHA384),
+        (&digest::SHA512, &theirs::SHA512),
+        (&digest::SHA512_256, &theirs::SHA512_256),
+        (&digest::SHA3_256, &theirs::SHA3_256),
+        (&digest::SHA3_384, &theirs::SHA3_384),
+        (&digest::SHA3_512, &theirs::SHA3_512),
+    ] {
+        // Each side of SHA-2's length field and SHA-3's padding byte.
+        for len in [
+            0, 1, 55, 56, 64, 71, 72, 103, 104, 111, 112, 128, 135, 136, 1000,
+        ] {
+            let message = random(len);
+            let wanted = theirs::digest(theirs_algorithm, &message);
+            assert_eq!(digest::digest(ours, &message).as_ref(), wanted.as_ref());
+            let mut context = digest::Context::new(ours);
+            let (head, tail) = message.split_at(len / 3);
+            context.update(head);
+            context.update(tail);
+            assert_eq!(context.finish().as_ref(), wanted.as_ref());
+        }
+    }
+}
+
+/// aws-lc-rs's cipher key for `key`, by its length.
+fn aws_cipher_key(key: &[u8]) -> aws_lc_rs::cipher::UnboundCipherKey {
+    use aws_lc_rs::cipher::{AES_128, AES_192, AES_256, UnboundCipherKey};
+    let algorithm = match key.len() {
+        16 => &AES_128,
+        24 => &AES_192,
+        _ => &AES_256,
+    };
+    UnboundCipherKey::new(algorithm, key).unwrap()
+}
+
+/// Each AES key size, with its length.
+const AES_KEYS: [(&cipher::Algorithm, usize); 3] = [
+    (&cipher::AES_128, 16),
+    (&cipher::AES_192, 24),
+    (&cipher::AES_256, 32),
+];
+
+#[test]
+fn aes_block() {
+    use aws_lc_rs::cipher::{EncryptingKey, EncryptionContext};
+
+    for (algorithm, key_len) in AES_KEYS {
+        for _ in 0..ROUNDS {
+            let key = random(key_len);
+            let block: [u8; 16] = random(16).try_into().unwrap();
+            let mut ours = block;
+            cipher::Aes::new(algorithm, &key)
+                .unwrap()
+                .encrypt_block(&mut ours);
+            let mut theirs = block;
+            EncryptingKey::ecb(aws_cipher_key(&key))
+                .unwrap()
+                .less_safe_encrypt(&mut theirs, EncryptionContext::None)
+                .unwrap();
+            assert_eq!(ours, theirs);
+        }
+    }
+}
+
+#[test]
+fn aes_ctr() {
+    use aws_lc_rs::cipher::{EncryptingKey, EncryptionContext};
+
+    for (algorithm, key_len) in AES_KEYS {
+        // The last counter block wraps all 128 bits, as aws-lc-rs's does.
+        for (len, counter_block) in [(1, None), (16, None), (1000, None), (100, Some([0xff; 16]))] {
+            let key = random(key_len);
+            let counter_block: [u8; 16] =
+                counter_block.unwrap_or_else(|| random(16).try_into().unwrap());
+            let message = random(len);
+            let mut ours = message.clone();
+            cipher::AesCtr::new(algorithm, &key, 128)
+                .unwrap()
+                .apply_keystream(&counter_block, &mut ours)
+                .unwrap();
+            let mut theirs = message.clone();
+            EncryptingKey::ctr(aws_cipher_key(&key))
+                .unwrap()
+                .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(counter_block.into()))
+                .unwrap();
+            assert_eq!(ours, theirs);
+        }
+    }
+}
+
+#[test]
+fn aes_cbc() {
+    use aws_lc_rs::cipher::{
+        DecryptionContext, EncryptionContext, PaddedBlockDecryptingKey, PaddedBlockEncryptingKey,
+    };
+
+    for (algorithm, key_len) in AES_KEYS {
+        for len in [0, 1, 15, 16, 17, 1000] {
+            let key = random(key_len);
+            let iv: [u8; 16] = random(16).try_into().unwrap();
+            let message = random(len);
+            let mut ours = message.clone();
+            cipher::AesCbcEncryptingKey::new(algorithm, &key)
+                .unwrap()
+                .encrypt(cipher::CbcIv::assume_unpredictable(iv), &mut ours);
+            let mut theirs = message.clone();
+            PaddedBlockEncryptingKey::cbc_pkcs7(aws_cipher_key(&key))
+                .unwrap()
+                .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(iv.into()))
+                .unwrap();
+            assert_eq!(ours, theirs);
+
+            // Each decrypts what the other encrypted.
+            let decrypting = cipher::AesCbcDecryptingKey::new(algorithm, &key).unwrap();
+            assert_eq!(decrypting.decrypt(&iv, &mut theirs).unwrap(), &message[..]);
+            let opened = PaddedBlockDecryptingKey::cbc_pkcs7(aws_cipher_key(&key))
+                .unwrap()
+                .decrypt(&mut ours, DecryptionContext::Iv128(iv.into()))
+                .unwrap();
+            assert_eq!(opened, &message[..]);
+        }
+    }
+}
+
+#[test]
+fn key_wrap() {
+    use aws_lc_rs::key_wrap::{AES_128, AES_256, AesKek, KeyWrap, KeyWrapPadded};
+
+    // aws-lc-rs offers no AES-192 key-encryption key.
+    for (ours, theirs_algorithm, kek_len) in [
+        (&rind_fips::key_wrap::AES_128, &AES_128, 16),
+        (&rind_fips::key_wrap::AES_256, &AES_256, 32),
+    ] {
+        for len in [16, 24, 32, 40] {
+            let (kek, key) = (random(kek_len), random(len));
+            let ours_kek = rind_fips::key_wrap::AesKek::new(ours, &kek).unwrap();
+            let theirs = || AesKek::new(theirs_algorithm, &kek).unwrap();
+
+            let mut wrapped = vec![0u8; len + 8];
+            ours_kek.wrap(&key, &mut wrapped).unwrap();
+            let mut wanted = vec![0u8; len + 8];
+            assert_eq!(theirs().wrap(&key, &mut wanted).unwrap(), &wrapped[..]);
+            let mut unwrapped = vec![0u8; len];
+            ours_kek.unwrap(&wanted, &mut unwrapped).unwrap();
+            assert_eq!(unwrapped, key);
+        }
+        for len in [1, 7, 8, 9, 31, 32] {
+            let (kek, key) = (random(kek_len), random(len));
+            let ours_kek = rind_fips::key_wrap::AesKek::new(ours, &kek).unwrap();
+            let theirs = || AesKek::new(theirs_algorithm, &kek).unwrap();
+
+            let mut wrapped = vec![0u8; len.next_multiple_of(8) + 8];
+            ours_kek.wrap_padded(&key, &mut wrapped).unwrap();
+            let mut wanted = vec![0u8; len + 15];
+            let wanted = theirs().wrap_with_padding(&key, &mut wanted).unwrap();
+            assert_eq!(wanted, &wrapped[..]);
+            let mut unwrapped = vec![0u8; wanted.len() - 8];
+            assert_eq!(
+                ours_kek.unwrap_padded(wanted, &mut unwrapped).unwrap(),
+                &key[..]
+            );
+        }
+    }
+}
+
+#[test]
+fn quic_header_protection() {
+    use aws_lc_rs::aead::quic;
+
+    for (ours, theirs) in [
+        (&aead::quic::AES_128, &quic::AES_128),
+        (&aead::quic::AES_256, &quic::AES_256),
+    ] {
+        for _ in 0..ROUNDS {
+            let key = random(ours.key_len());
+            let sample: [u8; 16] = random(16).try_into().unwrap();
+            let mask = aead::quic::HeaderProtectionKey::new(ours, &key)
+                .unwrap()
+                .mask(&sample);
+            let wanted = quic::HeaderProtectionKey::new(theirs, &key)
+                .unwrap()
+                .new_mask(&sample)
+                .unwrap();
+            assert_eq!(mask, wanted);
         }
     }
 }

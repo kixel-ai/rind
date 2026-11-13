@@ -56,7 +56,7 @@ extern "C" fn init() {
         rind::fips::fail("integrity");
     }
     // SAFETY: the handlers are `extern "C"` and never unwind.
-    if unsafe { pthread_atfork(Some(fork_prepare), Some(fork_release), Some(fork_release)) } != 0 {
+    if unsafe { pthread_atfork(Some(fork_prepare), Some(fork_parent), Some(fork_child)) } != 0 {
         // Only out of memory, at load.
         std::eprintln!("rind-fips: cannot register its fork handlers");
         std::process::abort();
@@ -71,24 +71,40 @@ unsafe extern "C" {
     ) -> core::ffi::c_int;
 }
 
-std::thread_local! {
-    /// The DRBGs' hold, from a `fork` in this thread's prepare handler to
-    /// its parent's or child's handler.
-    static FORK: core::cell::RefCell<Option<rind::fips::DrbgHold>> =
-        const { core::cell::RefCell::new(None) };
+/// What a `fork` holds, from this thread's prepare handler to its parent's
+/// or child's handler.
+struct ForkHold {
+    // A self-test may draw, so the self-tests are held first.
+    #[allow(dead_code)]
+    self_tests: selftest::Hold,
+    drbgs: rind::fips::DrbgHold,
 }
 
-/// Holds the DRBGs across `fork`, so a child of a process whose other
-/// threads were drawing can still draw, and wipe them at exit.
+std::thread_local! {
+    static FORK: core::cell::RefCell<Option<ForkHold>> = const { core::cell::RefCell::new(None) };
+}
+
+/// Holds the self-tests and the DRBGs across `fork`, so a child of a process
+/// whose other threads were testing or drawing inherits neither half done,
+/// and can still test, draw, and wipe its DRBGs at exit.
 extern "C" fn fork_prepare() {
-    let hold = rind::fips::hold_drbgs();
+    let self_tests = selftest::hold();
+    let drbgs = rind::fips::hold_drbgs();
     // A thread whose locals are torn down forks without the hold, which
     // drops here.
-    let _ = FORK.try_with(move |fork| fork.replace(Some(hold)));
+    let _ = FORK.try_with(move |fork| fork.replace(Some(ForkHold { self_tests, drbgs })));
 }
 
-extern "C" fn fork_release() {
+extern "C" fn fork_parent() {
     let _ = FORK.try_with(|fork| fork.take());
+}
+
+/// Also wipes and forgets the DRBGs of the parent's other threads, which the
+/// child copied but does not run.
+extern "C" fn fork_child() {
+    if let Ok(Some(hold)) = FORK.try_with(|fork| fork.take()) {
+        hold.drbgs.release_in_child();
+    }
 }
 
 /// Runs as the process exits, after the exiting thread's destructors: wipes

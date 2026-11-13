@@ -83,13 +83,42 @@ pub(crate) fn zeroise_all() -> usize {
 
 /// The registry held for writing, so no draw, instantiation, or wipe runs
 /// until it drops.
-pub(crate) struct Hold(#[allow(dead_code)] RwLockWriteGuard<'static, Live>);
+pub(crate) struct Hold(RwLockWriteGuard<'static, Live>);
 
 /// Waits for every draw in progress, then holds the registry, as the module
 /// does across `fork`: the child then inherits no instance mid-draw and no
 /// lock held by a thread it lacks.
 pub(crate) fn hold() -> Hold {
     Hold(LIVE.write().unwrap_or_else(PoisonError::into_inner))
+}
+
+/// In a forked child, under the hold its parent's `fork` took: wipes the
+/// instance of every thread but this one, the child's only thread, and
+/// forgets them. The child holds a copy of each, still
+/// mapped, but no thread that would unregister it, and may reuse the memory
+/// for threads of its own.
+pub(crate) fn forked(hold: Hold) {
+    let Hold(mut live) = hold;
+    // This thread called `fork`, so it is inside no draw, and its instance
+    // is not borrowed.
+    let own = DRBG
+        .try_with(|drbg| {
+            let mut drbg = drbg.try_borrow_mut().ok()?;
+            drbg.as_mut()
+                .map(|instance| core::ptr::from_mut(instance) as usize)
+        })
+        .ok()
+        .flatten();
+    for &address in &live.instances {
+        if Some(address) != own {
+            // SAFETY: the parent registered `address` as a live thread's
+            // instance under a write of `LIVE`, and its `fork` held that
+            // lock, so the child's copy is whole, and no thread of the child
+            // uses it.
+            unsafe { (*(address as *mut ThreadDrbg)).0.zeroise() };
+        }
+    }
+    live.instances.retain(|&address| Some(address) == own);
 }
 
 /// Fills `out` from this thread's DRBG, instantiating it on first use.

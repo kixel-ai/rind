@@ -176,6 +176,52 @@ fn exit_wipes_the_drbgs_of_running_threads() {
     );
 }
 
+unsafe extern "C" {
+    fn fork() -> i32;
+    fn waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
+}
+
+/// What the children run: one thread draws and keeps running while another
+/// forks, and the forked child exits at once.
+#[test]
+fn trigger_fork_with_a_running_thread() {
+    let (drawn, wait) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        rind_fips::rand::fill(&mut [0; 16]).unwrap();
+        drawn.send(()).unwrap();
+        loop {
+            std::thread::park();
+        }
+    });
+    wait.recv().unwrap();
+    // SAFETY: the child only exits.
+    let pid = unsafe { fork() };
+    assert!(pid >= 0, "fork failed");
+    if pid == 0 {
+        std::process::exit(0);
+    }
+    let mut status = 0;
+    // SAFETY: `pid` is our child, and `status` writable.
+    assert_eq!(unsafe { waitpid(pid, &mut status, 0) }, pid);
+    assert_eq!(status, 0);
+}
+
+// The child wipes and forgets the copy of the running thread's DRBG as it
+// forks, so finds none at exit, while the parent wipes the thread's own.
+#[test]
+fn a_forked_child_wipes_its_parents_drbgs() {
+    let (succeeded, stderr) = run("trigger_fork_with_a_running_thread", "");
+    assert!(succeeded, "{stderr}");
+    assert!(
+        stderr.contains("rind-fips: zeroised 0 DRBG instances at exit"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("rind-fips: zeroised 1 DRBG instances at exit"),
+        "{stderr}"
+    );
+}
+
 #[test]
 fn an_unknown_name_breaks_nothing() {
     let (succeeded, stderr) = run("trigger_self_test", "sha");

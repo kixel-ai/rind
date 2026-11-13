@@ -31,7 +31,8 @@ lab to test.
 - **Random.** Every random value comes from an SP 800-90A HMAC_DRBG seeded
   from the OS, outside the module's boundary: one per thread, which wipes
   itself as its thread exits, and as the process exits, the module wipes
-  those of threads still running.
+  those of threads still running. A forked child wipes its copies of the
+  DRBGs of its parent's other threads, which it does not run.
 
 ## Running
 

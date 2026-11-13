@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! A process that forks while another of its threads draws randomness
-//! leaves the child a DRBG registry it can use: the child draws on a thread
-//! of its own, which registers a new instance, and exits through the
-//! module's destructor, which wipes every instance. Without the module's
-//! fork handlers, the child would inherit a lock held by a thread it lacks
-//! and hang.
+//! A process that forks while another of its threads draws randomness or
+//! runs the self-tests leaves the child a module it can use: the child draws
+//! or tests on a thread of its own and exits through the module's
+//! destructor, which wipes every instance. Without the module's fork
+//! handlers, the child would inherit a lock held by a thread it lacks and
+//! hang.
 #![cfg(rind_fips_module)]
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -21,27 +22,29 @@ unsafe extern "C" {
 const WNOHANG: i32 = 1;
 const SIGKILL: i32 = 9;
 
-#[test]
-fn a_child_forked_mid_draw_draws_and_exits() {
-    static STOP: AtomicBool = AtomicBool::new(false);
-    let drawer = thread::spawn(|| {
-        let mut out = [0u8; 32];
-        while !STOP.load(Ordering::Relaxed) {
-            rind_fips::rand::fill(&mut out).unwrap();
+/// Forks 32 times while `busy` runs in a loop on another thread, checking
+/// that each child runs `child` on a new thread, which must succeed, and
+/// exits.
+fn fork_while(busy: fn(), child: fn() -> bool) {
+    let stop = Arc::new(AtomicBool::new(false));
+    let worker = thread::spawn({
+        let stop = stop.clone();
+        move || {
+            while !stop.load(Ordering::Relaxed) {
+                busy();
+            }
         }
     });
 
-    // The drawer holds the registry for most of each draw, so some of these
-    // forks land inside one.
+    // The worker holds the module's locks for most of each call, so some of
+    // these forks land inside one.
     for _ in 0..32 {
-        // SAFETY: the child only draws on a new thread and exits.
+        // SAFETY: the child only runs `child` on a new thread and exits.
         let pid = unsafe { fork() };
         assert!(pid >= 0, "fork failed");
         if pid == 0 {
-            let drew = thread::spawn(|| rind_fips::rand::fill(&mut [0u8; 32]).is_ok())
-                .join()
-                .unwrap_or(false);
-            std::process::exit(if drew { 0 } else { 1 });
+            let ok = thread::spawn(child).join().unwrap_or(false);
+            std::process::exit(if ok { 0 } else { 1 });
         }
 
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -64,9 +67,33 @@ fn a_child_forked_mid_draw_draws_and_exits() {
                 }
             }
         }
-        assert_eq!(status, 0, "the forked child failed to draw or exit");
+        assert_eq!(status, 0, "the forked child failed or did not exit");
     }
 
-    STOP.store(true, Ordering::Relaxed);
-    drawer.join().unwrap();
+    stop.store(true, Ordering::Relaxed);
+    worker.join().unwrap();
+}
+
+fn draw() -> bool {
+    rind_fips::rand::fill(&mut [0u8; 32]).is_ok()
+}
+
+#[test]
+fn a_child_forked_mid_draw_draws_and_exits() {
+    fork_while(
+        || {
+            draw();
+        },
+        draw,
+    );
+}
+
+// The self-tests hold their lock while any runs, which `self_test` does for
+// every test, so most of these forks land inside one.
+#[test]
+fn a_child_forked_mid_self_test_tests_and_exits() {
+    fork_while(rind_fips::self_test, || {
+        rind_fips::self_test();
+        true
+    });
 }

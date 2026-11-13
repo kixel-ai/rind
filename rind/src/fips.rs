@@ -210,7 +210,16 @@ pub fn hold_drbgs() -> DrbgHold {
 }
 
 /// What [`hold_drbgs`] returns.
-pub struct DrbgHold(#[allow(dead_code)] crate::fips_rng::Hold);
+pub struct DrbgHold(crate::fips_rng::Hold);
+
+impl DrbgHold {
+    /// Releases the hold in a forked child, after wiping and forgetting the
+    /// DRBG of every thread but this one: the child copied them but runs
+    /// none of their threads, so none would unregister or wipe its own.
+    pub fn release_in_child(self) {
+        crate::fips_rng::forked(self.0);
+    }
+}
 
 /// The name of the first CPU feature the module requires that this CPU
 /// lacks, as [`crate::cpu::check`] reports it.
