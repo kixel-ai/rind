@@ -1468,12 +1468,12 @@ theorem by8_spec {T : Type} (inst : low.generic.ctr.Ctr8 T) (key : T) (nonce : S
     have h1 : (s2.val[t]!) = buf2.val[t]! := by
       rw [hs2]
       simp [Array.to_slice, List.getElem!_eq_getElem?_getD, List.getElem?_take, ht]
-    have h2 : (bk tail).val[t]! = tail.val[t]! := by
-      rw [hbk, List.getElem!_setSlice!_middle _ _ _ _ (by simp; omega)]
+    have h2 : (bk s1).val[t]! = tail.val[t]! := by
+      rw [hbk, List.getElem!_setSlice!_middle _ _ _ _ (by simp [hs1]; omega), hs1]
       simp
     rw [h1, ← bvs_getElem! buf2.val t (by rw [buf2.property]; simp; omega), hbuf2,
-      getElem!_ctrXor _ _ _ _ (by rw [bvs, List.length_map, (bk tail).property]; simp; omega),
-      bvs_getElem! _ _ (by rw [(bk tail).property]; simp; omega), h2]
+      getElem!_ctrXor _ _ _ _ (by rw [bvs, List.length_map, (bk s1).property]; simp; omega),
+      bvs_getElem! _ _ (by rw [(bk s1).property]; simp; omega), h2]
 
 /-- `low::aarch64::aes_ctr::apply` is SP 800-38A's CTR mode with the nonce
 and counter as the first counter block, counting in its last four bytes. -/
@@ -1500,7 +1500,3 @@ theorem aes_ctr_apply_spec (alg : Algorithm) (key : List (BitVec 8)) (k : low.aa
     simp only [ctrXor, ctr_block_eq _ hn _ _ hc, Nat.zero_add, hj]
 
 end rind.aarch64
-
-#print axioms rind.aarch64.apply_8_spec
-#print axioms rind.aarch64.by8_spec
-#print axioms rind.aarch64.aes_ctr_apply_spec
