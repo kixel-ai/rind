@@ -444,7 +444,7 @@ impl VerifierRecord {
                 z.as_slice(),
                 v.as_slice(),
                 &self.w0,
-            )?,
+            ),
         )?;
         let confirm_v: Confirm<S> = sent(mac(keys.verifier_key(), prover.as_ref()));
         let confirm_p: Confirm<S> = mac(keys.prover_key(), share_v.as_ref());
@@ -539,7 +539,7 @@ impl<S> ProverAwaiting<S> {
                 z.as_slice(),
                 v.as_slice(),
                 &self.w0,
-            )?,
+            ),
         )?;
         let expect: Confirm<S> = mac(keys.verifier_key(), &self.share_p);
         let confirm_p: Confirm<S> = mac(keys.prover_key(), verifier.as_ref());
@@ -818,14 +818,14 @@ fn transcript(
     z: &[u8],
     v: &[u8],
     w0: &Scalar,
-) -> Result<[u8; 32], Error> {
+) -> [u8; 32] {
     let mut hash = digest::Context::new(&digest::SHA256);
     absorb(&mut hash, labels.context.as_slice());
     absorb(&mut hash, labels.id_prover.as_slice());
     absorb(&mut hash, labels.id_verifier.as_slice());
-    let (m, n) = points()?;
-    absorb(&mut hash, &m.to_uncompressed());
-    absorb(&mut hash, &n.to_uncompressed());
+    // `m_and_n_match_their_compressed_form` checks these are M and N.
+    absorb(&mut hash, &M_UNCOMPRESSED);
+    absorb(&mut hash, &N_UNCOMPRESSED);
     absorb(&mut hash, share_p);
     absorb(&mut hash, share_v);
     absorb(&mut hash, z);
@@ -834,7 +834,7 @@ fn transcript(
     let digest = hash.finish();
     let mut out = [0u8; 32];
     out.copy_from_slice(digest.as_ref());
-    Ok(out)
+    out
 }
 
 fn expand(prk: &hkdf::Prk, info: &[u8], out: &mut [u8]) -> Result<(), Error> {
@@ -1436,7 +1436,7 @@ mod tests {
             .unwrap();
         let reduced = Scalar::from_be_reduced(w0).unwrap();
         let labels = Labels::new(b"ctx", b"a", b"b").unwrap();
-        let tt = transcript(&labels, share_p.as_ref(), share_v.as_ref(), z, v, &reduced).unwrap();
+        let tt = transcript(&labels, share_p.as_ref(), share_v.as_ref(), z, v, &reduced);
         let keys = schedule_keys(Schedule::Rfc9383, &tt).unwrap();
         let expect_v = mac::<Rfc9383>(keys.verifier_key(), share_p.as_ref());
         assert!(ct::into_public(ct_equal(
@@ -1495,8 +1495,7 @@ mod tests {
             &z.to_uncompressed(),
             &v.to_uncompressed(),
             &w0s,
-        )
-        .unwrap();
+        );
         let keys = schedule_keys(Schedule::Rfc9383, &tt).unwrap();
         let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
         let (got_share, got_confirm, state) = verifier
@@ -1541,8 +1540,7 @@ mod tests {
             &z.to_uncompressed(),
             &v.to_uncompressed(),
             &w0s,
-        )
-        .unwrap();
+        );
         let keys = schedule_keys(Schedule::Rfc9383, &tt).unwrap();
         let (confirm_p, key) = prover
             .finish(
