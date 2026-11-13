@@ -58,7 +58,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
-      matrix: ${{ steps.count.outputs.matrix }}
+      mutants: ${{ steps.count.outputs.mutants }}
+      armv7: ${{ steps.count.outputs.armv7 }}
       diff: ${{ steps.diff.outputs.diff }}
       avx512: ${{ steps.count.outputs.avx512 }}
     steps:
@@ -93,8 +94,9 @@ jobs:
           path: ${{ runner.temp }}/changes.diff
           retention-days: 14
 
-      # Seconds a mutant took on each runner, from the shards' `outcomes.json`
-      # on 2026-11-12; portable's is estimated from x86_64's.
+      # Seconds a mutant takes on each runner: the higher of two diffs' means
+      # in the shards' `outcomes.json`, measured in November 2026, since a
+      # diff's mean varies by twice that, by which tests its code has.
       # macOS mutates only the DIT code, all of it whenever its files changed,
       # since a test change there can let any of its mutants survive: few
       # enough mutants for one job.
@@ -132,18 +134,22 @@ jobs:
               '. + [range($shards) | {name: $name, os: $os, shell: $shell, args: $args, shard: ., shards: $shards}]' <<<"$matrix")
           }
           # `--target` lets this x86_64 runner list another's campaign.
-          add x86_64 ubuntu-latest default 28 --target x86_64-unknown-linux-gnu "${crate[@]}"
-          add aarch64 ubuntu-24.04-arm default 12 --target aarch64-unknown-linux-gnu "${crate[@]}"
+          add x86_64 ubuntu-latest default 68 --target x86_64-unknown-linux-gnu "${crate[@]}"
+          add aarch64 ubuntu-24.04-arm default 24 --target aarch64-unknown-linux-gnu "${crate[@]}"
           # macos-latest is Apple silicon, the only cores rind sets DIT on.
           add macos macos-latest default 0 --target aarch64-apple-darwin -p rind
-          add armv7 ubuntu-latest armv7 152 --target armv7-unknown-linux-gnueabihf -p rind
+          add armv7 ubuntu-latest armv7 280 --target armv7-unknown-linux-gnueabihf -p rind
           # What only the portable backend compiles, and what armv7's assembly
           # replaces. Its adapters' code is the same as on x86_64.
-          add portable ubuntu-latest default 20 --portable -p rind
-          jobs=$(jq length <<<"$matrix")
-          # GitHub runs at most 256 jobs a matrix.
-          [ "$jobs" -le 256 ] || { echo "::error::$jobs jobs, more than a matrix's 256"; exit 1; }
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          add portable ubuntu-latest default 66 --portable -p rind
+          # armv7's shards, the most, get a matrix of their own, since GitHub
+          # runs at most 256 jobs a matrix.
+          for job in mutants armv7; do
+            rows=$(jq -c --arg job "$job" 'map(select((.name == "armv7") == ($job == "armv7")))' <<<"$matrix")
+            jobs=$(jq length <<<"$rows")
+            [ "$jobs" -le 256 ] || { echo "::error::$jobs $job jobs, more than a matrix's 256"; exit 1; }
+            echo "$job=$rows" >> "$GITHUB_OUTPUT"
+          done
           # The files only AVX-512 runs may hold mutants when x86_64's hold none.
           if [ "$CAMPAIGN" = all ] || [ "$CAMPAIGN" = x86_64 ]; then
             echo "avx512=${crate[*]}" >> "$GITHUB_OUTPUT"
@@ -155,17 +161,18 @@ jobs:
 
   mutants:
     needs: shards
-    if: needs.shards.outputs.matrix != '[]'
+    if: needs.shards.outputs.mutants != '[]'
     strategy:
       fail-fast: false
-      # Leaves most of the organisation's 60 hosted jobs to pull requests.
-      max-parallel: 20
+      # So do armv7's and avx512's, which starts after this, so a campaign
+      # holds at most 20 of the organisation's 60 hosted jobs.
+      max-parallel: 10
       matrix:
-        include: ${{ fromJSON(needs.shards.outputs.matrix) }}
+        include: ${{ fromJSON(needs.shards.outputs.mutants) }}
     name: mutants (${{ matrix.name }}, ${{ matrix.shard }}/${{ matrix.shards }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 300
-    steps:
+    steps: &mutate
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -203,6 +210,19 @@ jobs:
           path: ${{ runner.temp }}/mutants.out
           retention-days: 14
           if-no-files-found: ignore
+
+  armv7:
+    needs: shards
+    if: needs.shards.outputs.armv7 != '[]'
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include: ${{ fromJSON(needs.shards.outputs.armv7) }}
+    name: mutants (${{ matrix.name }}, ${{ matrix.shard }}/${{ matrix.shards }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    steps: *mutate
 
   # Lists what the x86_64 shards caught, timed out, or found unviable, which
   # `avx512` skips, and splits the rest, what they missed and the files only
@@ -246,7 +266,7 @@ jobs:
           [ -z "$DIFF" ] || scope=(--in-diff "$RUNNER_TEMP/changes.diff")
           count=$(nix develop --command admin/mutants --avx512 "${crate[@]}" ${scope[@]+"${scope[@]}"} \
             --iterate --list --output "$RUNNER_TEMP/iterate" | wc -l)
-          shards=$(((count * 1591 + SHARD_SECONDS - 1) / SHARD_SECONDS))
+          shards=$(((count * 1800 + SHARD_SECONDS - 1) / SHARD_SECONDS))
           [ "$shards" -le 256 ] || { echo "::error::$shards jobs, more than a matrix's 256"; exit 1; }
           echo "avx512: $count mutants in $shards jobs" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "shards=$(jq -c -n --argjson n "$shards" '[range($n)]')" >> "$GITHUB_OUTPUT"
@@ -261,15 +281,15 @@ jobs:
           retention-days: 14
 
   # Retests what the x86_64 shards missed, and the files only AVX-512 runs,
-  # under SDE's Sapphire Rapids model, where each mutant's tests take about
-  # 26 minutes.
+  # under SDE's Sapphire Rapids model, where a mutant the tests miss takes
+  # about 30 minutes, as most here do.
   avx512:
     needs: [shards, avx512-shards]
     # A skipped `mutants` would skip this too without the status check.
     if: ${{ !cancelled() && !failure() && needs.avx512-shards.result == 'success' && needs.avx512-shards.outputs.shards != '[]' }}
     strategy:
       fail-fast: false
-      max-parallel: 20
+      max-parallel: 10
       matrix:
         shard: ${{ fromJSON(needs.avx512-shards.outputs.shards) }}
     name: avx512 (${{ matrix.shard }}/${{ strategy.job-total }})
@@ -325,7 +345,7 @@ jobs:
 
   # Runs once every shard has passed, a stage with nothing to mutate skipped.
   survivors:
-    needs: [mutants, avx512]
+    needs: [mutants, armv7, avx512]
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
