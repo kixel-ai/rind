@@ -255,7 +255,7 @@ class Api:
         if reprs:
             # Layout, alignment, and integer representation are observable.
             sig = {"repr": reprs, "item": sig}
-            if kind in ("struct", "union") and any(r["kind"] == "c" for r in reprs) and sig["item"]["kind"] != "opaque":
+            if kind == "struct" and any(r["kind"] == "c" for r in reprs) and sig["item"].get("kind") != "opaque":
                 # A C layout places public fields by declaration order; how
                 # private ones are stored stays opaque, as it does without it.
                 sig["order"] = [self.index[str(i)]["name"] for i in ids if i is not None]
