@@ -93,6 +93,10 @@ trait Group: Sized + 'static {
     /// `Ns`.
     const SCALAR_LEN: usize;
 
+    /// Whether `Ne` zero bytes encode the identity, as in ristretto255; no
+    /// X9.62 compressed encoding is the point at infinity.
+    const ZEROS_ARE_IDENTITY: bool;
+
     /// The suite's hash, which `expand_message_xmd` runs too.
     type Hash: Xmd + Clone;
 
@@ -166,6 +170,7 @@ impl Group for Ristretto255 {
     const NAME: &'static [u8] = b"ristretto255-SHA512";
     const ELEMENT_LEN: usize = 32;
     const SCALAR_LEN: usize = 32;
+    const ZEROS_ARE_IDENTITY: bool = true;
     type Hash = Sha512Context;
     type Scalar = ristretto255::Scalar;
     type Element = ristretto255::Element;
@@ -240,16 +245,17 @@ impl Group for Ristretto255 {
         ristretto255::Element::mul_base(scalar)
     }
 
-    /// ristretto255 encodes the identity, so this is never `None`.
+    /// `None` at the identity, as the NIST curves', so every suite refuses
+    /// the same proofs.
     fn public_mul_base_add(
         g: &Self::Scalar,
         element: &Self::Element,
         p: &Self::Scalar,
     ) -> Option<Self::Element> {
-        Some(ristretto255::Element::mul_base(g).add(&element.mul(p)))
+        not_identity(ristretto255::Element::mul_base(g).add(&element.mul(p)))
     }
 
-    /// `None` only for no terms: ristretto255 encodes the identity.
+    /// `None` at the identity, or for no terms, as the NIST curves'.
     fn public_mul_sum<'a>(
         terms: impl IntoIterator<Item = (&'a Self::Element, &'a Self::Scalar)>,
     ) -> Option<Self::Element> {
@@ -257,7 +263,14 @@ impl Group for Ristretto255 {
             .into_iter()
             .map(|(element, scalar)| element.mul(scalar))
             .reduce(|sum, product| sum.add(&product))
+            .and_then(not_identity)
     }
+}
+
+/// A public ristretto255 element, or `None` for the identity, whose only
+/// encoding is zeros.
+fn not_identity(element: ristretto255::Element) -> Option<ristretto255::Element> {
+    (element.to_bytes() != [0; 32]).then_some(element)
 }
 
 /// A NIST curve's group and its suite's hash, over `mid`'s curve.
@@ -270,6 +283,7 @@ macro_rules! nist_group {
             const NAME: &'static [u8] = $name;
             const ELEMENT_LEN: usize = $curve::Point::COMPRESSED_BYTES;
             const SCALAR_LEN: usize = $curve::Scalar::BYTES;
+            const ZEROS_ARE_IDENTITY: bool = false;
             type Hash = $hash;
             type Scalar = $curve::Scalar;
             type Element = $curve::Point;
@@ -498,7 +512,7 @@ fn decode<G: Group>(bytes: &[u8]) -> Result<G::Element, Error> {
         return Err(KeyFormatError::WrongLength.into());
     }
     G::element_from_bytes(bytes).ok_or_else(|| {
-        match bytes.iter().all(|b| *b == 0) {
+        match G::ZEROS_ARE_IDENTITY && bytes.iter().all(|b| *b == 0) {
             true => KeyFormatError::SmallOrder,
             false => KeyFormatError::NotOnCurve,
         }

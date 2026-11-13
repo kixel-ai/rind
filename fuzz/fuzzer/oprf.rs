@@ -11,6 +11,7 @@
 use std::sync::LazyLock;
 
 use libfuzzer_sys::{arbitrary, arbitrary::Arbitrary, fuzz_target};
+use rind::Error;
 use rind::oprf::voprf::{Blind, ServerKey};
 use rind::oprf::{P256_SHA256, P384_SHA384, P521_SHA512, RISTRETTO255_SHA512, Suite};
 
@@ -43,6 +44,12 @@ fuzz_target!(|input: Input| {
     let mut blinds = Vec::new();
     let mut blinded = Vec::new();
     for input in inputs {
+        // RFC 9497 5.1 refuses inputs of `2^16 - 1` bytes or more.
+        if input.len() >= usize::from(u16::MAX) {
+            assert_eq!(Blind::new(suite, input).unwrap_err(), Error::WrongLength);
+            assert_eq!(key.evaluate(input).unwrap_err(), Error::WrongLength);
+            return;
+        }
         let (blind, element) = Blind::new(suite, input).unwrap();
         blinds.push(blind);
         blinded.extend_from_slice(element.as_ref());

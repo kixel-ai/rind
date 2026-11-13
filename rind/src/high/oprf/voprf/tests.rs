@@ -368,7 +368,14 @@ fn refuses_bad_public_keys() {
             0x80
         };
         let cases: [(&[u8], KeyFormatError); 4] = [
-            (&zero, KeyFormatError::SmallOrder),
+            // Zeros encode ristretto255's identity, and no NIST point.
+            (
+                &zero,
+                match suite == &RISTRETTO255_SHA512 {
+                    true => KeyFormatError::SmallOrder,
+                    false => KeyFormatError::NotOnCurve,
+                },
+            ),
             (&off_curve, KeyFormatError::NotOnCurve),
             (&good[1..], KeyFormatError::WrongLength),
             (&[good, &[0]].concat(), KeyFormatError::WrongLength),

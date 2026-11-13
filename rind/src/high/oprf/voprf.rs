@@ -301,7 +301,9 @@ impl Blind {
     /// A proof that does not verify against `public_key` is refused with
     /// [`Error::BadSignature`], an element that does not decode, or is the
     /// identity, with [`Error::KeyRejected`], and a public key for another
-    /// suite with [`Error::Unsupported`].
+    /// suite with [`Error::Unsupported`]. The element is read as a batch of
+    /// one, so one of the wrong length is refused as a batch of the wrong
+    /// length, with [`Error::WrongLength`].
     pub fn finalize(
         self,
         evaluated_element: &[u8],
