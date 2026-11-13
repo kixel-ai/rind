@@ -172,7 +172,8 @@ theorem wrap_pass_loop_spec {alg : Algorithm} {key : List (BitVec 8)} {aes : mid
       rw [← hf, this, Nat.sub_self, List.range'_zero, List.foldl_nil]
   · exact ⟨hs, he, hn, ht, rfl⟩
 
-theorem usize_lt (x : Usize) : x.val < 2 ^ 64 := by
+-- Private, since `AesGcmAny` proves the same under this name and `Axioms` imports both.
+private theorem usize_lt (x : Usize) : x.val < 2 ^ 64 := by
   have := x.hBounds
   rcases System.Platform.numBits_eq with h | h <;> simp only [UScalarTy.numBits, h] at this <;> omega
 
