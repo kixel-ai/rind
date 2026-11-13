@@ -16,8 +16,10 @@
 pub(crate) fn by8(counter: u32, inout: &mut [u8], mut apply_8: impl FnMut(u32, &mut [u8; 128])) {
     let (chunks, tail) = inout.as_chunks_mut::<128>();
     let mut counter = counter;
-    for chunk in chunks {
-        apply_8(counter, chunk);
+    // By index: Aeneas translates no loop that writes through an iterator's
+    // references.
+    for i in 0..chunks.len() {
+        apply_8(counter, &mut chunks[i]);
         counter = counter.wrapping_add(8);
     }
 
