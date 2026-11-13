@@ -407,10 +407,12 @@ declare -A hol_light_base=([x86_64]=x86/proofs/base.ml [aarch64]=arm/proofs/base
 # checkpointed after it, in under a second. It holds `scratch` only while it
 # prepares, so it runs beside other sessions and proof runs.
 session() {
-    local arch=$1 file=$2 root=$PWD setup
+    local arch=$1 file=$2 root=$PWD setup changes
     hold scratch
     git submodule update --init --depth 1 thirdparty/s2n-bignum
-    if [[ -n $(git -C thirdparty/s2n-bignum status --porcelain) ]]; then
+    # Assigned on its own line, so a failed `git status` stops the session.
+    changes=$(git -C thirdparty/s2n-bignum status --porcelain)
+    if [[ -n $changes ]]; then
         echo "admin/prove: thirdparty/s2n-bignum has uncommitted changes, which its commit does not name" >&2
         return 1
     fi
@@ -480,12 +482,14 @@ session_image() {
 use_file_raise_failure := true;;
 let loads s = if s <> \"update_database.ml\" then loads s;;
 let () = needs \"$base\"; ignore (input_line stdin); Gc.compact (); print_endline \"$marker\";;"
+    # Each input is read on its own line, where a failure stops the session,
+    # rather than inside the substitution below, which would hash around it.
+    local dmtcp kernel commit
+    dmtcp=$(command -v dmtcp_restart)
+    kernel=$(uname -r)
+    commit=$(git -C thirdparty/s2n-bignum rev-parse HEAD)
     key=$({
-        echo "$HOLLIGHT_DIR"
-        command -v dmtcp_restart
-        uname -r
-        git -C thirdparty/s2n-bignum rev-parse HEAD
-        echo "$init"
+        printf '%s\n' "$HOLLIGHT_DIR" "$dmtcp" "$kernel" "$commit" "$init"
         cd proofs/hol-light/s2n-bignum && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
     } | sha256sum)
     cache=${XDG_CACHE_HOME:-$HOME/.cache}/rind/hol-light
