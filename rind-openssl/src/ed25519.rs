@@ -6,6 +6,7 @@
 //! and Ed25519ctx instances OpenSSL's `ED25519` also takes.
 
 use core::ffi::{c_char, c_int, c_void};
+use core::mem::ManuallyDrop;
 use core::slice;
 use std::sync::Arc;
 
@@ -54,10 +55,25 @@ impl Pair {
 }
 
 /// A public key alone, which verifies nothing if rind refuses its point, as
-/// one of small order or off the curve.
+/// one of small order or off the curve. It wipes its whole value on drop,
+/// parsed verifier included, which rind's `PublicKey` does not wipe itself.
 pub(crate) struct Public {
-    bytes: Zeroizing<[u8; LEN]>,
-    verifier: Option<PublicKey>,
+    bytes: [u8; LEN],
+    verifier: ManuallyDrop<Option<PublicKey>>,
+}
+
+impl Drop for Public {
+    fn drop(&mut self) {
+        // SAFETY: the verifier is dropped once, here, and no field is read
+        // after; the wipe only writes `self`'s own bytes.
+        unsafe {
+            ManuallyDrop::drop(&mut self.verifier);
+            let bytes = (self as *mut Self).cast::<u8>();
+            for i in 0..size_of::<Self>() {
+                core::ptr::write_volatile(bytes.add(i), 0);
+            }
+        }
+    }
 }
 
 impl Kind for Ed25519 {
@@ -84,8 +100,8 @@ impl Kind for Ed25519 {
 
     fn public(bytes: [u8; LEN]) -> Public {
         Public {
-            verifier: PublicKey::new(&verify::ED25519, &bytes).ok(),
-            bytes: Zeroizing::new(bytes),
+            verifier: ManuallyDrop::new(PublicKey::new(&verify::ED25519, &bytes).ok()),
+            bytes,
         }
     }
 
@@ -537,6 +553,29 @@ mod tests {
     /// Reading it then is a deliberate use after drop, as
     /// `rind/tests/zeroing.rs` does: not sound in theory, but it catches a
     /// part left unwiped in practice.
+    /// A public key alone, its parsed verifier included, is zero in every
+    /// byte once dropped, as a private key is.
+    #[test]
+    fn a_public_key_wipes_whole() {
+        let key = Box::into_raw(Box::new(Ed25519::public(
+            Ed25519::load(&[0x9d; LEN])
+                .unwrap()
+                .public
+                .as_slice()
+                .try_into()
+                .unwrap(),
+        )));
+        // SAFETY: `key` is a live allocation of `Public`'s size; it is
+        // dropped once, read before it is freed, and freed with its layout.
+        unsafe {
+            assert!((*key).verifier.is_some());
+            core::ptr::drop_in_place(key);
+            let bytes = key.cast::<u8>();
+            assert!((0..size_of::<Public>()).all(|i| core::ptr::read_volatile(bytes.add(i)) == 0));
+            dealloc(bytes, Layout::new::<Public>());
+        }
+    }
+
     #[test]
     fn a_private_key_wipes_whole() {
         let key = Box::into_raw(Box::new(Ed25519::load(&[0x9d; LEN]).unwrap()));
