@@ -11,7 +11,3 @@ AES-GCM, AES header protection, and the AES modes earn the ✓ on x86_64 CPUs wi
 - Route: HOL Light proofs of the vpaes and SSSE3 GHASH routines in s2n-bignum's x86_64 model against `common/fips197.ml` and `common/gcm.ml`; Aeneas to Lean for the two Rust ports, whose S-box circuit and masked-multiply GHASH reduce to finite checks over every input byte and limb pattern.
 - The AES and GCM specs are moving: the draft [awslabs/s2n-bignum#490](https://github.com/awslabs/s2n-bignum/pull/490) rewrites `common/gcm.ml` and `common/fips197.ml` (seen 2026-11-09). Build on the pin [the in-place quest](/quest/m4/verified/aes-gcm-aarch64-in-place.md) lands once #490 merges, not on today's `b4f17ee`.
 - Upstream: offering this work to awslabs/s2n-bignum is optional, and there is no standing approval: stop and ask the maintainer before posting there or anywhere outside the moq-dev and kixelated orgs (decided with the maintainer on 2026-11-07 on [moq-dev/rind#448](https://github.com/moq-dev/rind/pull/448)).
-
-## Required
-
-- [x86_64's by-8 and by-16 AES-GCM intrinsics are proven](/quest/m4/verified/aes-gcm-x86-intrinsics.md) - the AES-GCM glue and specs this tier reuses
