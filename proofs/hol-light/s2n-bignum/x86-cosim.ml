@@ -64,6 +64,10 @@ let register_forms = [
   (fun () -> sse [0x0f; 0x6a] 3 (rnd 16) (rnd 16) []);         (* PUNPCKHDQ *)
   (fun () -> sse [0x0f; 0x6c] 3 (rnd 16) (rnd 16) []);         (* PUNPCKLQDQ *)
   (fun () -> sse [0x0f; 0x6d] 3 (rnd 16) (rnd 16) []);         (* PUNPCKHQDQ *)
+  (fun () -> sse [0x0f; 0xdf] 3 (rnd 16) (rnd 16) []);         (* PANDN *)
+  (fun () -> sse [0x0f; 0x76] 3 (rnd 16) (rnd 16) []);         (* PCMPEQD *)
+  (* Equal lanes, which random ones almost never are. *)
+  (fun () -> let r = rnd 16 in sse [0x0f; 0x76] 3 r r []);     (* PCMPEQD *)
 ];;
 
 (* Memory forms on [rsp + d], run as cosimulate_instructions (Some 0) 32:
@@ -91,6 +95,8 @@ let memory_forms = [
   (fun () -> sse [0x0f; 0x6a] 1 (rnd 16) 4 (mem (aligned ())));   (* PUNPCKHDQ *)
   (fun () -> sse [0x0f; 0x6c] 1 (rnd 16) 4 (mem (aligned ())));   (* PUNPCKLQDQ *)
   (fun () -> sse [0x0f; 0x6d] 1 (rnd 16) 4 (mem (aligned ())));   (* PUNPCKHQDQ *)
+  (fun () -> sse [0x0f; 0xdf] 1 (rnd 16) 4 (mem (aligned ())));   (* PANDN *)
+  (fun () -> sse [0x0f; 0x76] 1 (rnd 16) 4 (mem (aligned ())));   (* PCMPEQD *)
 ];;
 
 let rind_cosim memop add_assum form =
