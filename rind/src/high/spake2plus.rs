@@ -240,19 +240,30 @@ impl Zeroable for SharedKey {}
 pub struct ProverSecrets {
     w0: Scalar,
     w1: Scalar,
+    /// 1 when `w0` reduced to 0. Secret: a branch would publish the password.
+    w0_zero: u64,
+    /// 1 when `w1` reduced to 0.
+    w1_zero: u64,
 }
 
 impl ProverSecrets {
     /// Reduces big-endian `w0` and `w1` mod the group order.
     ///
     /// Each is at most 128 bytes, so a stretch with 64 extra bits past the
-    /// order fits. Fails with [`Error::WrongLength`] past that or when empty,
-    /// and with [`Error::KeyRejected`] when either reduces to zero.
+    /// order fits. Fails with [`Error::WrongLength`] past that or when empty.
+    /// A residue of zero is not an error from this function. The handshake
+    /// treats it as the identity and [`ProverAwaiting::finish`] returns
+    /// [`Error::BadSignature`] after the same work as a bad confirmation tag.
+    /// Returning that from here would publish that the password is 0 mod n.
     pub fn new(w0: &[u8], w1: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
+        let (w0, w0_zero) = password_scalar(w0)?;
+        let (w1, w1_zero) = password_scalar(w1)?;
         Ok(Self {
-            w0: Scalar::from_be_reduced(w0)?,
-            w1: Scalar::from_be_reduced(w1)?,
+            w0,
+            w1,
+            w0_zero,
+            w1_zero,
         })
     }
 
@@ -286,12 +297,16 @@ impl ProverSecrets {
             None => random_scalar()?,
         };
         let (m, _) = points()?;
-        let share = publish(m.mul(&self.w0).add(Affine::mul_base(&x)))?;
+        // `0 * M` is the identity, so the share is `x * G`. The multiplication
+        // is only called on a scalar in `1..n-1`.
+        let share = publish(mul_or_identity(m, &self.w0, self.w0_zero).add(Affine::mul_base(&x)))?;
         let state = ProverAwaiting {
             schedule: suite.schedule,
             labels,
             w0: self.w0.copy(),
             w1: self.w1.copy(),
+            w0_zero: self.w0_zero,
+            w1_zero: self.w1_zero,
             x,
             share_p: share.bytes,
             _kind: PhantomData,
@@ -317,25 +332,35 @@ impl Zeroable for ProverSecrets {}
 /// The verifier's record, `w0` and `L = w1 * G`, wiped on drop under `wipe`.
 pub struct VerifierRecord {
     w0: Scalar,
+    /// 1 when `w0` reduced to 0. Secret, as on [`ProverSecrets`].
+    w0_zero: u64,
     l: Affine,
+    /// 1 when `w1` reduced to 0, which makes `l` the identity.
+    l_zero: u64,
 }
 
 impl VerifierRecord {
     /// Builds a record from `w0` and `w1`, setting `L` to `w1` times the generator.
     ///
-    /// The scalar rules are [`ProverSecrets::new`]'s.
+    /// The scalar rules are [`ProverSecrets::new`]'s. A zero `w1` stores the
+    /// identity as `L`. [`Self::from_record`] rejects that encoding; this
+    /// in-memory record still fails the handshake at confirmation.
     pub fn from_w1(w0: &[u8], w1: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        let w0 = Scalar::from_be_reduced(w0)?;
-        let w1 = Scalar::from_be_reduced(w1)?;
-        // L is half the stored record and must be kept from the prover's
-        // side as w0 is, but it is treated as public for timing: `from_record`
-        // parses it on the public path. Declassify the affine value itself.
-        let l = ct::into_public(Affine::mul_base(&w1));
-        if !l.on_curve() {
-            return Err(Error::Fault);
-        }
-        Ok(Self { w0, l })
+        let (w0, w0_zero) = password_scalar(w0)?;
+        let (w1, w1_zero) = password_scalar(w1)?;
+        // The multiplication is checked on a scalar in `1..n-1`. A zero `w1`
+        // then selects the identity. L is half the stored record and must be
+        // kept from the prover's side as w0 is, but it is treated as public
+        // for timing: `from_record` parses it on the public path. Declassify
+        // the affine value itself, identity included.
+        let l = ct::into_public(base_for_record(&w1, w1_zero)?);
+        Ok(Self {
+            w0,
+            w0_zero,
+            l,
+            l_zero: w1_zero,
+        })
     }
 
     /// `L`, uncompressed, which [`Self::from_record`] loads with `w0`.
@@ -350,12 +375,20 @@ impl VerifierRecord {
 
     /// Loads a stored record: reduced `w0`, and uncompressed `l`.
     ///
-    /// Fails with [`Error::KeyRejected`] when `l` is not on the curve.
+    /// Fails with [`Error::KeyRejected`] when `l` is not on the curve. A zero
+    /// `w0` loads; the handshake then fails as [`ProverSecrets::new`] describes.
+    /// The identity encoding of a zero `w1` is not a curve point, so it is
+    /// rejected here rather than reloaded as some other scalar.
     pub fn from_record(w0: &[u8], l: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
+        let (w0, w0_zero) = password_scalar(w0)?;
         Ok(Self {
-            w0: Scalar::from_be_reduced(w0)?,
+            w0,
+            w0_zero,
             l: Affine::from_uncompressed(l)?,
+            // A curve point is not the identity. `from_w1` keeps that case
+            // in memory, where `l_zero` still rejects the handshake.
+            l_zero: 0,
         })
     }
 
@@ -391,8 +424,9 @@ impl VerifierRecord {
         };
         let (m, n) = points()?;
         let peer = Affine::from_uncompressed(prover.as_ref())?;
-        let share_v = publish(n.mul(&self.w0).add(Affine::mul_base(&y)))?;
-        let diff = peer.add(m.mul(&self.w0).negate());
+        let share_v =
+            publish(mul_or_identity(n, &self.w0, self.w0_zero).add(Affine::mul_base(&y)))?;
+        let diff = peer.add(mul_or_identity(m, &self.w0, self.w0_zero).negate());
         // X = w0*M makes the difference the identity. Its affine image is
         // (0, 0), which the scalar multiplication does not accept. Multiply
         // the generator instead, then reject. RFC 9383 allows that abort.
@@ -400,7 +434,7 @@ impl VerifierRecord {
         // transcript work as a share that is not the identity.
         let (z_point, identity) = mul_defined(diff, &y);
         let z = secret_point(z_point)?;
-        let v = secret_point(self.l.mul(&y))?;
+        let v = encode_maybe_identity(mul_or_identity(self.l, &y, self.l_zero), self.l_zero)?;
         let keys = schedule_keys(
             suite.schedule,
             &transcript(
@@ -420,6 +454,7 @@ impl VerifierRecord {
             confirm_p: confirm_p.bytes,
             shared,
             shared_len: keys.shared().len() as u8,
+            rejected: self.w0_zero | self.l_zero,
             _kind: PhantomData,
         };
         if ct::into_public(identity) == 1 {
@@ -451,6 +486,8 @@ pub struct ProverAwaiting<S> {
     labels: Labels,
     w0: Scalar,
     w1: Scalar,
+    w0_zero: u64,
+    w1_zero: u64,
     x: Scalar,
     share_p: [u8; Affine::BYTES],
     _kind: PhantomData<fn() -> S>,
@@ -460,21 +497,39 @@ impl<S> ProverAwaiting<S> {
     /// Checks `confirm`, then returns this prover's confirmation and the shared key.
     ///
     /// Fails with [`Error::BadSignature`] when `confirm` is not the verifier's
-    /// tag over this prover's share, and when the verifier's share makes a
-    /// derived point the identity. The shared key is not returned on failure.
+    /// tag over this prover's share, when the verifier's share makes a derived
+    /// point the identity, and when `w0` or `w1` reduced to zero. The shared
+    /// key is not returned on failure.
     pub fn finish(
         self,
         verifier: &Share<S>,
         confirm: &Confirm<S>,
     ) -> Result<(Confirm<S>, SharedKey), Error> {
         let _entry = Entry::new_secret();
+        let (confirm_p, key, ok) = self.compute(verifier, confirm)?;
+        // One declassification covers the tag, the identity, and a zero
+        // password scalar. `ok` is a mask, not a `bool`: moving a secret
+        // `bool` out of a `Result` makes rustc check that it is 0 or 1,
+        // and that check branches on it. The tag this side sends is
+        // declassified only when it is returned.
+        match ct::into_public(ok) {
+            1 => Ok((sent(confirm_p), key)),
+            _ => Err(Error::BadSignature),
+        }
+    }
+
+    fn compute(
+        &self,
+        verifier: &Share<S>,
+        confirm: &Confirm<S>,
+    ) -> Result<(Confirm<S>, SharedKey, u64), Error> {
         let (_, n) = points()?;
         let peer = Affine::from_uncompressed(verifier.as_ref())?;
-        let diff = peer.add(n.mul(&self.w0).negate());
+        let diff = peer.add(mul_or_identity(n, &self.w0, self.w0_zero).negate());
         let identity = diff.identity_mask();
         let base = diff.select(Affine::generator(), identity);
         let z = secret_point(base.mul(&self.x))?;
-        let v = secret_point(base.mul(&self.w1))?;
+        let v = encode_maybe_identity(mul_or_identity(base, &self.w1, self.w1_zero), self.w1_zero)?;
         let keys = schedule_keys(
             self.schedule,
             &transcript(
@@ -487,15 +542,15 @@ impl<S> ProverAwaiting<S> {
             )?,
         )?;
         let expect: Confirm<S> = mac(keys.verifier_key(), &self.share_p);
-        let confirm_p: Confirm<S> = sent(mac(keys.prover_key(), verifier.as_ref()));
+        let confirm_p: Confirm<S> = mac(keys.prover_key(), verifier.as_ref());
         let key = SharedKey::new(keys.shared());
-        // `identity` is 1 exactly when Y = w0*N. The confirmation check
-        // declassifies that bit together with the tag comparison.
-        let ok = ct_equal(expect.as_ref(), confirm.as_ref()) & (identity == 0);
-        match ct::into_public(ok) {
-            true => Ok((confirm_p, key)),
-            false => Err(Error::BadSignature),
-        }
+        // `identity` is 1 exactly when Y = w0*N. A zero password scalar is
+        // rejected here too, so the result is the same error as a bad tag.
+        // Each factor is 0 or 1. The product is 1 only when every check passes.
+        let ok = u64::from(ct_equal(expect.as_ref(), confirm.as_ref()))
+            & (identity ^ 1)
+            & ((self.w0_zero | self.w1_zero) ^ 1);
+        Ok((confirm_p, key, ok))
     }
 }
 
@@ -518,17 +573,21 @@ pub struct VerifierAwaiting<S> {
     confirm_p: [u8; 32],
     shared: [u8; 32],
     shared_len: u8,
+    /// 1 when `w0` or `w1` reduced to 0. Combined with the tag check below.
+    rejected: u64,
     _kind: PhantomData<fn() -> S>,
 }
 
 impl<S> VerifierAwaiting<S> {
     /// Returns the shared key when `confirm` is the prover's tag.
     ///
-    /// Fails with [`Error::BadSignature`] otherwise, and the key is wiped.
+    /// Fails with [`Error::BadSignature`] when it is not, and when `w0` or
+    /// `w1` reduced to zero. The key is wiped on failure.
     pub fn finish(self, confirm: &Confirm<S>) -> Result<SharedKey, Error> {
         let _entry = Entry::new_secret();
         let key = SharedKey::new(&self.shared[..usize::from(self.shared_len)]);
-        match ct::into_public(ct_equal(&self.confirm_p, confirm.as_ref())) {
+        let ok = ct_equal(&self.confirm_p, confirm.as_ref()) & (self.rejected == 0);
+        match ct::into_public(ok) {
             true => Ok(key),
             false => Err(Error::BadSignature),
         }
@@ -631,6 +690,60 @@ fn mul_defined(point: Affine, scalar: &Scalar) -> (Affine, u64) {
     let identity = point.identity_mask();
     let base = point.select(Affine::generator(), identity);
     (base.mul(scalar), identity)
+}
+
+/// Reduces `bytes` and reports whether the residue is zero.
+///
+/// The mask stays secret. [`Scalar::from_be_reduced`] does not branch on it.
+fn password_scalar(bytes: &[u8]) -> Result<(Scalar, u64), Error> {
+    let scalar = Scalar::from_be_reduced(bytes)?;
+    let zero = scalar.zero_mask();
+    Ok((scalar, zero))
+}
+
+/// `w1 * G` for a record, using a scalar in `1..n-1`.
+///
+/// A zero residue selects the identity after the multiplication. Off-curve
+/// here is a fault in that routine: the scalar it sees is never zero, so the
+/// check does not reveal the residue.
+fn base_for_record(scalar: &Scalar, zero: u64) -> Result<Affine, Error> {
+    let point = Affine::mul_base(&scalar.select(&Scalar::one(), zero));
+    if !ct::into_public(point.on_curve()) {
+        return Err(Error::Fault);
+    }
+    Ok(point.select(Affine::identity(), zero))
+}
+
+/// `scalar * point`, or the identity when `zero` is 1.
+///
+/// `0 * P` is the identity. The multiplication is specified for a curve
+/// point and a scalar in `1..n-1`, so a zero scalar substitutes both and
+/// the product is replaced. `point` itself may be the identity only when
+/// `zero` is already 1, as a stored `L` from [`VerifierRecord::from_w1`].
+fn mul_or_identity(point: Affine, scalar: &Scalar, zero: u64) -> Affine {
+    let safe_point = point.select(Affine::generator(), zero);
+    let safe_scalar = scalar.select(&Scalar::one(), zero);
+    safe_point
+        .mul(&safe_scalar)
+        .select(Affine::identity(), zero)
+}
+
+/// Encodes `point`, which is the identity exactly when `identity_ok` is 1.
+///
+/// A normal product is on the curve and `identity_ok` is 0. The identity is
+/// off the curve and `identity_ok` is 1. Both leave the fault bit clear, so
+/// rejecting an unexpected off-curve point does not reveal a zero residue.
+fn encode_maybe_identity(point: Affine, identity_ok: u64) -> Result<EncodedPoint, Error> {
+    let bytes = point.to_uncompressed();
+    let on_curve = u64::from(point.on_curve());
+    let fault = (on_curve ^ 1) & (identity_ok ^ 1);
+    if ct::into_public(fault) == 1 {
+        return Err(Error::Fault);
+    }
+    Ok(EncodedPoint {
+        bytes,
+        len: Affine::BYTES as u8,
+    })
 }
 
 fn random_scalar() -> Result<Scalar, Error> {
@@ -1155,7 +1268,6 @@ mod tests {
         assert!(Share::<Rfc9383>::from_bytes(&off[..64]).is_err());
         assert!(Confirm::<Rfc9383>::from_bytes(&[0; 16]).is_err());
         assert!(ProverSecrets::new(&[], &w1).is_err());
-        assert!(ProverSecrets::new(&[0; 32], &w1).is_err());
         assert!(VerifierRecord::from_w1(&w0, &[0; 129]).is_err());
         let prover = ProverSecrets::new(&w0, &w1).unwrap();
         assert_eq!(
@@ -1164,8 +1276,10 @@ mod tests {
         );
     }
 
-    /// A stored record loads only as uncompressed `L` on the curve with a
-    /// nonzero `w0`.
+    /// A stored record loads only as uncompressed `L` on the curve.
+    ///
+    /// A zero `w0` is a residue, not a malformed encoding. `zero_residue_fails_closed`
+    /// rejects it at confirmation.
     #[test]
     fn from_record_rejects_a_malformed_record() {
         let w0 = [0x11; 40];
@@ -1189,7 +1303,168 @@ mod tests {
         let mut identity = [0u8; 65];
         identity[0] = 4;
         assert!(rejected(&identity));
-        assert!(VerifierRecord::from_record(&[0; 32], &l).is_err());
+    }
+
+    /// A zero residue is not reported by reduction. Both sides still run the
+    /// handshake, then fail with the same error as a bad tag, including when
+    /// that tag would match. A zero scalar's messages are the identity's, so
+    /// they are not the messages of scalar 1.
+    #[test]
+    fn zero_residue_fails_closed() {
+        let zero = [0u8; 40];
+        let normal = [0x22u8; 40];
+        let mut scalar_one = [0u8; 32];
+        scalar_one[31] = 1;
+        ct::secret_slice(&zero);
+        ct::secret_slice(&normal);
+        ct::secret_slice(&scalar_one);
+
+        for (w0, w1) in [
+            (zero.as_slice(), normal.as_slice()),
+            (normal.as_slice(), zero.as_slice()),
+            (zero.as_slice(), zero.as_slice()),
+        ] {
+            let prover = ProverSecrets::new(w0, w1).unwrap();
+            let verifier = VerifierRecord::from_w1(w0, w1).unwrap();
+            let (share_p, prover) = prover.start(&RFC9383, b"ctx", b"a", b"b").unwrap();
+            let (share_v, confirm_v, verifier) = verifier
+                .start(&RFC9383, b"ctx", b"a", b"b", &share_p)
+                .unwrap();
+            assert_eq!(
+                prover.finish(&share_v, &confirm_v).err(),
+                Some(Error::BadSignature)
+            );
+            // The stored tag matches itself. Failure is the zero residue.
+            let expected = verifier.confirm_p;
+            assert_eq!(
+                verifier.finish(&confirm_of::<Rfc9383>(expected)).err(),
+                Some(Error::BadSignature)
+            );
+        }
+
+        let n = hex("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
+        ct::secret_slice(&n);
+        let prover = ProverSecrets::new(&n, &normal).unwrap();
+        let verifier = VerifierRecord::from_w1(&n, &normal).unwrap();
+        let (share_p, prover) = prover.start(&RFC9383, b"ctx", b"a", b"b").unwrap();
+        let (share_v, confirm_v, _) = verifier
+            .start(&RFC9383, b"ctx", b"a", b"b", &share_p)
+            .unwrap();
+        assert_eq!(
+            prover.finish(&share_v, &confirm_v).err(),
+            Some(Error::BadSignature)
+        );
+
+        let x = scalar("0000000000000000000000000000000000000000000000000000000000000007");
+        let y = scalar("000000000000000000000000000000000000000000000000000000000000000b");
+        let (share_p, _) = ProverSecrets::new(&zero, &normal)
+            .unwrap()
+            .start_at(&RFC9383, b"ctx", b"a", b"b", Some(x.copy()))
+            .unwrap();
+        let expect = Affine::mul_base(&x).to_uncompressed();
+        ct::public_slice(&expect);
+        ct::public_slice(share_p.as_ref());
+        assert_eq!(share_p.as_ref(), &expect);
+        let (share_v, _, _) = VerifierRecord::from_w1(&zero, &normal)
+            .unwrap()
+            .start_at(&RFC9383, b"ctx", b"a", b"b", &share_p, Some(y.copy()))
+            .unwrap();
+        let expect_v = Affine::mul_base(&y).to_uncompressed();
+        ct::public_slice(&expect_v);
+        ct::public_slice(share_v.as_ref());
+        assert_eq!(share_v.as_ref(), &expect_v);
+
+        // The tags are the identity's: `0 * P` contributes nothing, and a
+        // zero `w1` contributes the identity encoding. The mask is what
+        // rejects them. A substitute of scalar 1 would not match.
+        // Honest shares cancel `w0`, so `Z` is `x*y*G` whether or not `w0`
+        // is zero. A zero `w1` puts the identity encoding in `V`.
+        let w1s = Scalar::from_be_reduced(&normal).unwrap();
+        let z = Affine::mul_base(&x).mul(&y).to_uncompressed();
+        let v = Affine::mul_base(&w1s).mul(&y).to_uncompressed();
+        let identity = identity_point();
+        tags_match_transcript(&zero, &normal, &x, &y, &z, &v);
+        tags_match_transcript(&normal, &zero, &x, &y, &z, &identity);
+        tags_match_transcript(&zero, &zero, &x, &y, &z, &identity);
+
+        refuses_alias(&zero, &normal, &scalar_one, &normal, &x, &y);
+        refuses_alias(&normal, &zero, &normal, &scalar_one, &x, &y);
+
+        let l = VerifierRecord::from_w1(&normal, &normal).unwrap().l();
+        let loaded = VerifierRecord::from_record(&zero, &l).unwrap();
+        let (share_p, prover) = ProverSecrets::new(&zero, &normal)
+            .unwrap()
+            .start(&RFC9383, b"ctx", b"a", b"b")
+            .unwrap();
+        let (share_v, confirm_v, verifier) = loaded
+            .start(&RFC9383, b"ctx", b"a", b"b", &share_p)
+            .unwrap();
+        assert_eq!(
+            prover.finish(&share_v, &confirm_v).err(),
+            Some(Error::BadSignature)
+        );
+        let expected = verifier.confirm_p;
+        assert_eq!(
+            verifier.finish(&confirm_of::<Rfc9383>(expected)).err(),
+            Some(Error::BadSignature)
+        );
+
+        let identity_l = VerifierRecord::from_w1(&normal, &zero).unwrap().l();
+        let mut identity = [0u8; 65];
+        identity[0] = 4;
+        assert_eq!(identity_l, identity);
+    }
+
+    fn identity_point() -> [u8; 65] {
+        let mut bytes = [0u8; 65];
+        bytes[0] = 4;
+        bytes
+    }
+
+    /// Both sides' tags match a transcript built with `z` and `v`, and the
+    /// handshake still fails. `z` and `v` are the identity arithmetic, so a
+    /// wrong product (scalar 1, or a negation of `(0, 0)` that is not the
+    /// identity) fails this before the mask does.
+    fn tags_match_transcript(w0: &[u8], w1: &[u8], x: &Scalar, y: &Scalar, z: &[u8], v: &[u8]) {
+        let (share_p, prover) = ProverSecrets::new(w0, w1)
+            .unwrap()
+            .start_at(&RFC9383, b"ctx", b"a", b"b", Some(x.copy()))
+            .unwrap();
+        let (share_v, confirm_v, verifier) = VerifierRecord::from_w1(w0, w1)
+            .unwrap()
+            .start_at(&RFC9383, b"ctx", b"a", b"b", &share_p, Some(y.copy()))
+            .unwrap();
+        let reduced = Scalar::from_be_reduced(w0).unwrap();
+        let labels = Labels::new(b"ctx", b"a", b"b").unwrap();
+        let tt = transcript(&labels, share_p.as_ref(), share_v.as_ref(), z, v, &reduced).unwrap();
+        let keys = schedule_keys(Schedule::Rfc9383, &tt).unwrap();
+        let expect_v = mac::<Rfc9383>(keys.verifier_key(), share_p.as_ref());
+        assert!(ct::into_public(ct_equal(
+            confirm_v.as_ref(),
+            expect_v.as_ref()
+        )));
+        let (confirm_p, _key, ok) = prover.compute(&share_v, &confirm_v).unwrap();
+        let expect_p = mac::<Rfc9383>(keys.prover_key(), share_v.as_ref());
+        assert!(ct::into_public(ct_equal(
+            confirm_p.as_ref(),
+            expect_p.as_ref()
+        )));
+        assert_eq!(ct::into_public(ok), 0);
+        assert_eq!(verifier.finish(&confirm_p).err(), Some(Error::BadSignature));
+    }
+
+    fn refuses_alias(pw0: &[u8], pw1: &[u8], vw0: &[u8], vw1: &[u8], x: &Scalar, y: &Scalar) {
+        let (share_p, prover) = ProverSecrets::new(pw0, pw1)
+            .unwrap()
+            .start_at(&RFC9383, b"ctx", b"a", b"b", Some(x.copy()))
+            .unwrap();
+        let (share_v, confirm_v, verifier) = VerifierRecord::from_w1(vw0, vw1)
+            .unwrap()
+            .start_at(&RFC9383, b"ctx", b"a", b"b", &share_p, Some(y.copy()))
+            .unwrap();
+        let (confirm_p, _key, ok) = prover.compute(&share_v, &confirm_v).unwrap();
+        assert_eq!(ct::into_public(ok), 0);
+        assert_eq!(verifier.finish(&confirm_p).err(), Some(Error::BadSignature));
     }
 
     /// `X = -w0*M` is a doubling and still confirms. `X = w0*M` makes the
@@ -1449,7 +1724,8 @@ mod tests {
         // Under `admin/ctgrind`, nothing may branch on w0, w1, or the
         // ephemeral scalars until the confirmation tags and, in this test,
         // the shared key are declassified. `from_record` loads that same
-        // secret `w0`; the stored point `L` is public.
+        // secret `w0`; the stored point `L` is public. A residue of zero is
+        // `zero_residue_fails_closed`: it stays secret until that same check.
         let w0 = [0x5a; 40];
         let w1 = [0xa5; 40];
         ct::secret_slice(&w0);
