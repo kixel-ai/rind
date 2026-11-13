@@ -540,7 +540,6 @@
 	adcxq	%r13,%r13
 	adoxq	%rcx,%r10
 	adcxq	%r14,%r14
-.byte	0x67
 	mulxq	%rdx,%rcx,%rbp
 	movq	24+128(%rsi),%rdx
 	adoxq	%rax,%r11
@@ -548,7 +547,6 @@
 	adoxq	%rcx,%r12
 	movq	$32,%rsi
 	adoxq	%rbp,%r13
-.byte	0x67,0x67
 	mulxq	%rdx,%rcx,%rax
 	movq	{poly}+24(%rip),%rdx
 	adoxq	%rcx,%r14

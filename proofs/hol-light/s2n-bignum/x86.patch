@@ -43,7 +43,16 @@
     | PUSH operand
     | PXOR operand operand
     | RCL operand operand
-@@ -333,6 +348,7 @@
+@@ -326,6 +341,8 @@
+    | SET condition operand
+    | SHL operand operand
+    | SHR operand operand
++   | SHLX operand operand operand
++   | SHRX operand operand operand
+    | SHLD operand operand operand
+    | SHRD operand operand operand
+    | STCF
+@@ -333,6 +350,7 @@
     | SUB operand operand
     | TEST operand operand
     | TZCNT operand operand
@@ -51,7 +60,7 @@
     | VMOVD operand operand
     | VMOVMSKPS operand operand
     | VMOVQ operand operand
-@@ -345,6 +361,7 @@
+@@ -345,6 +363,7 @@
     | VPADDW operand operand operand
     | VPADDD operand operand operand
     | VPADDQ operand operand operand
@@ -246,7 +255,25 @@
          | [0x79:8] ->
            let sz = vexL_size L in
            (read_ModRM rex l >>= \((reg,rm),l).
-@@ -1152,6 +1277,13 @@
+@@ -818,6 +943,17 @@
+              if L then NONE
+              else SOME (MULX4 (reg, %(Gpr v sz)) (%(Gpr (word 2) sz), rm), l)
+           | _ -> NONE)
++        | [0xf7:8] ->
++          let sz = if rex_W rex then Full_64 else Lower_32 in
++          read_ModRM_operand rex sz l >>= \((reg,rm),l).
++          (match pfxs with
++          | (T, Rep0, SG0) ->
++             if L then NONE
++             else SOME (SHLX reg rm (%(Gpr v sz)), l)
++          | (F, RepNZ, SG0) ->
++             if L then NONE
++             else SOME (SHRX reg rm (%(Gpr v sz)), l)
++          | _ -> NONE)
+         | _ -> NONE)
+     | VEXM_0F ->
+         read_byte l >>= \(b,l).
+@@ -1152,6 +1288,13 @@
              match pfxs with
              | (T, Rep0, SG0) -> SOME (VPBLENDW (mmreg reg sz) (mmreg v sz) (simd_of_RM sz rm) imm8,l)
              | _ -> NONE)
@@ -441,7 +468,24 @@
  let x86_RCL = new_definition
   `x86_RCL dest c s =
          let x = read dest s
-@@ -1738,6 +1868,22 @@
+@@ -1590,6 +1720,16 @@
+           AF := read AF s
+         else UNDEFINED_VALUES[AF])) s`;;
+ 
++let x86_SHLX = new_definition
++ `x86_SHLX dest src c (s:x86state) =
++      let x:N word = read src s in
++      (dest := word_shl x c) s`;;
++
++let x86_SHRX = new_definition
++ `x86_SHRX dest src c (s:x86state) =
++      let x:N word = read src s in
++      (dest := word_ushr x c) s`;;
++
+ let x86_SHLD = new_definition
+  `x86_SHLD dest src c s =
+       let h:N word = read dest s
+@@ -1738,6 +1878,22 @@
          let res:(128)word = simd2 word_add (word_zx x) (word_zx y) in
          (dest := (word_zx res):N word) s`;;
  
@@ -464,7 +508,7 @@
  let x86_VPADDW = new_definition
    `x86_VPADDW dest src1 src2 (s:x86state) =
        let (x:N word) = read src1 s
-@@ -1795,6 +1941,12 @@
+@@ -1795,6 +1951,12 @@
          let res:(128)word = f (word_zx x) (word_zx y) in
          (dest := (word_zx res):N word) s`;;
  
@@ -477,7 +521,7 @@
  let x86_VPBROADCASTD = new_definition
    `x86_VPBROADCASTD (dest:(x86state,(N)word)component) src (s:x86state) =
        let (x:M word) = read src s in
-@@ -3113,6 +3265,11 @@
+@@ -3113,6 +3275,11 @@
         (add_load_event dest s ,, add_load_event src s ,,
          add_store_event dest s ,,
         (\s. x86_PADDQ (OPERAND128_SSE dest s) (OPERAND128_SSE src s) s)) s
@@ -489,7 +533,7 @@
      | PAND dest src ->
         (add_load_event dest s ,, add_load_event src s ,,
          add_store_event dest s ,,
-@@ -3137,6 +3294,25 @@
+@@ -3137,6 +3304,25 @@
            64 -> x86_PEXT (OPERAND64 dest s) (OPERAND64 src1 s) (OPERAND64 src2 s)
          | 32 -> x86_PEXT (OPERAND32 dest s) (OPERAND32 src1 s) (OPERAND32 src2 s))
            s)) s
@@ -515,7 +559,7 @@
      | PINSRD dest src imm8 ->
         (add_load_event src s ,, add_load_event dest s ,,
          add_store_event dest s ,,
-@@ -3163,6 +3339,10 @@
+@@ -3163,6 +3349,10 @@
             64 -> x86_POPCNT (OPERAND64 dest s) (OPERAND64 src s)
           | 32 -> x86_POPCNT (OPERAND32 dest s) (OPERAND32 src s)
           | 16 -> x86_POPCNT (OPERAND16 dest s) (OPERAND16 src s)) s)) s
@@ -526,7 +570,7 @@
      | PSHUFB dest src ->
         (add_load_event src s ,, add_load_event dest s ,,
          add_store_event dest s ,,
-@@ -3172,12 +3352,40 @@
+@@ -3172,12 +3362,40 @@
          add_store_event dest s ,,
         (\s. x86_PSHUFD (OPERAND128_SSE dest s) (OPERAND128_SSE src s)
                         (OPERAND8 imm8 s) s)) s
@@ -567,7 +611,7 @@
      | PUSH src ->
         (add_load_event src s ,,
         (\s. (match operand_size src with
-@@ -3187,6 +3395,14 @@
+@@ -3187,6 +3405,14 @@
         (add_load_event dest s ,, add_load_event src s ,,
          add_store_event dest s ,,
         (\s. x86_PXOR (OPERAND128_SSE dest s) (OPERAND128_SSE src s) s)) s
@@ -582,7 +626,30 @@
      | RCL dest src ->
         (add_load_event dest s ,, add_load_event src s ,,
          add_store_event dest s ,,
-@@ -3336,6 +3552,9 @@
+@@ -3262,6 +3488,22 @@
+        (\s. (match operand_size dest with
+            8 -> x86_SET cc (OPERAND8 dest s)
+          | _ -> ARB) s)) s
++    | SHLX dest src cnt ->
++       (add_load_event src s ,, add_load_event cnt s ,,
++        add_store_event dest s ,,
++       (\s. (match operand_size dest with
++           64 -> x86_SHLX (OPERAND64 dest s) (OPERAND64 src s)
++                          (val(read (OPERAND64 cnt s) s) MOD 64)
++         | 32 -> x86_SHLX (OPERAND32 dest s) (OPERAND32 src s)
++                          (val(read (OPERAND32 cnt s) s) MOD 32)) s)) s
++    | SHRX dest src cnt ->
++       (add_load_event src s ,, add_load_event cnt s ,,
++        add_store_event dest s ,,
++       (\s. (match operand_size dest with
++           64 -> x86_SHRX (OPERAND64 dest s) (OPERAND64 src s)
++                          (val(read (OPERAND64 cnt s) s) MOD 64)
++         | 32 -> x86_SHRX (OPERAND32 dest s) (OPERAND32 src s)
++                          (val(read (OPERAND32 cnt s) s) MOD 32)) s)) s
+     | SHL dest src ->
+        (add_load_event dest s ,, add_load_event src s ,,
+         add_store_event dest s ,,
+@@ -3336,6 +3578,9 @@
             64 -> x86_TZCNT (OPERAND64 dest s) (OPERAND64 src s)
           | 32 -> x86_TZCNT (OPERAND32 dest s) (OPERAND32 src s)
           | 16 -> x86_TZCNT (OPERAND16 dest s) (OPERAND16 src s)) s)) s
@@ -592,7 +659,7 @@
      | VMOVDQA dest src ->
          (add_load_event src s ,,
           add_store_event dest s ,,
-@@ -3391,6 +3610,14 @@
+@@ -3391,6 +3636,14 @@
                              (OPERAND256 src2 s)
          | 128 -> x86_VPADDQ (OPERAND128 dest s) (OPERAND128 src1 s)
                              (OPERAND128 src2 s)) s)) s
@@ -607,7 +674,7 @@
      | VPADDW dest src1 src2 ->
          (add_load_event src1 s ,, add_load_event src2 s ,,
           add_store_event dest s ,,
-@@ -3992,6 +4219,8 @@
+@@ -3992,6 +4245,8 @@
     (match 32 with 64 -> a | 32 -> b) = b /\
     (match 32 with 32 -> a | 16 -> b) = a /\
     (match 16 with 32 -> a | 16 -> b) = b /\
@@ -616,7 +683,7 @@
     (match (32,128) with (32,128) -> a | (128,32) -> b) = a /\
     (match (128,32) with (32,128) -> a | (128,32) -> b) = b /\
     (match (64,128) with (64,128) -> a | (128,64) -> b) = a /\
-@@ -4614,6 +4843,7 @@
+@@ -4614,6 +4869,7 @@
  let x86_PADDQ_ALT = EXPAND_SIMD_RULE x86_PADDQ;;
  let x86_PBLENDW_ALT = EXPAND_SIMD_RULE x86_PBLENDW;;
  let x86_PCMPGTD_ALT = EXPAND_SIMD_RULE x86_PCMPGTD;;
@@ -624,7 +691,7 @@
  let x86_PCMPGTW_ALT = EXPAND_SIMD_RULE x86_PCMPGTW;;
  
  let x86_PEXT_ALT =
-@@ -4628,6 +4858,8 @@
+@@ -4628,6 +4884,8 @@
  let x86_PSHUFB_ALT = EXPAND_SIMD_RULE x86_PSHUFB;;
  let x86_PSHUFD_ALT = EXPAND_SIMD_RULE x86_PSHUFD;;
  let x86_PSRAD_ALT = EXPAND_SIMD_RULE x86_PSRAD;;
@@ -633,7 +700,7 @@
  let x86_PSRLW_ALT = EXPAND_SIMD_RULE x86_PSRLW;;
  let x86_VMOVDQA_ALT = EXPAND_SIMD_RULE x86_VMOVDQA;;
  let x86_VMOVDQU_ALT = EXPAND_SIMD_RULE x86_VMOVDQU;;
-@@ -4637,6 +4869,7 @@
+@@ -4637,6 +4895,7 @@
  let x86_VPADDD_ALT = EXPAND_SIMD_RULE x86_VPADDD;;
  let x86_VPADDQ_ALT = EXPAND_SIMD_RULE x86_VPADDQ;;
  let x86_VPADDW_ALT = EXPAND_SIMD_RULE x86_VPADDW;;
@@ -641,7 +708,7 @@
  let x86_VPBLENDD_ALT = EXPAND_SIMD_RULE x86_VPBLENDD;;
  let x86_VPBLENDW_ALT = EXPAND_SIMD_RULE x86_VPBLENDW;;
  let x86_VPCLMULQDQ_ALT = EXPAND_SIMD_RULE x86_VPCLMULQDQ;;
-@@ -4712,13 +4945,16 @@
+@@ -4712,13 +4971,16 @@
      x86_MOV; x86_MOVAPS; x86_MOVDQA; x86_MOVDQU; x86_MOVD; x86_MOVQ; x86_VMOVD; x86_VMOVQ;
      x86_VMOVHPD; x86_MOVSX; x86_MOVUPS; x86_MOVSB_ALT;
      x86_MOVZX; x86_MUL2; x86_MULX4; x86_NEG; x86_NOP; x86_NOP_N; x86_NOT; x86_OR;
@@ -661,12 +728,12 @@
      x86_VPADDB_ALT; x86_VPADDD_ALT; x86_VPADDQ_ALT; x86_VPADDW_ALT; x86_VPMULHRSW_ALT; x86_VPMULHUW_ALT; x86_VPMULHW_ALT; x86_VPINSRD; x86_VPINSRQ; x86_VPINSRW; x86_VINSERTI128; x86_VEXTRACTI128;
      x86_VPCMPGTD_ALT; x86_VPCMPGTW_ALT;
      x86_VPEXTRD; x86_VPEXTRQ; x86_VPEXTRW; x86_VPMULLD_ALT; x86_VPMULLW_ALT; x86_VPSUBD_ALT; x86_VPSUBQ_ALT; x86_VPSUBW_ALT; x86_VPXOR;
-@@ -4730,6 +4966,8 @@
+@@ -4730,6 +4992,8 @@
      x86_VPUNPCKLQDQ_ALT; x86_VPUNPCKHQDQ_ALT; x86_VPBROADCASTQ_ALT; x86_VPERM2I128_ALT;
      x86_VMOVMSKPS_ALT; x86_VPABSD_ALT; x86_VPMOVMSKB_ALT; x86_VPMOVSXBD_ALT;
      x86_VPMOVZXBD_ALT; x86_VPMOVZXBW_ALT; x86_VPSUBB_ALT; x86_VPTEST_ALT; x86_VZEROUPPER_ALT;
-+    (*** Legacy SSE instructions aws-lc's P-256 mixed addition uses ***)
-+    x86_PANDN; x86_PCMPEQD_ALT;
++    (*** What aws-lc's P-256 mixed additions use ***)
++    x86_PANDN; x86_PCMPEQD_ALT; x86_SHLX; x86_SHRX;
      (*** 32/8-bit backups since the ALT forms are 64-bit only ***)
      INST_TYPE[`:32`,`:N`] x86_ADC;
      INST_TYPE[`:32`,`:N`] x86_ADCX;

@@ -40,6 +40,13 @@ let vex map w v l opcode md reg rm tail =
    (w lsl 7) lor (((lnot v) land 15) lsl 3) lor (l lsl 2) lor 1;
    opcode; modrm md reg rm] @ tail;;
 
+(* A BMI2 shift by register: a three-byte VEX prefix for the 0F38 map with
+   prefix bits pp, 1 for SHLX's 66 and 3 for SHRX's F2, W for its width,
+   and opcode F7, on general registers. *)
+let shiftx pp w reg rm v =
+  [0xc4; ((1 - reg / 8) lsl 7) lor (1 lsl 6) lor ((1 - rm / 8) lsl 5) lor 2;
+   (w lsl 7) lor (((lnot v) land 15) lsl 3) lor pp; 0xf7; modrm 3 reg rm];;
+
 (* A random register other than RSP. *)
 let gpr () = let r = rnd 15 in if r >= 4 then r + 1 else r;;
 
@@ -66,6 +73,8 @@ let register_forms = [
   (fun () -> sse [0x0f; 0x6d] 3 (rnd 16) (rnd 16) []);         (* PUNPCKHQDQ *)
   (fun () -> sse [0x0f; 0xdf] 3 (rnd 16) (rnd 16) []);         (* PANDN *)
   (fun () -> sse [0x0f; 0x76] 3 (rnd 16) (rnd 16) []);         (* PCMPEQD *)
+  (fun () -> shiftx 1 (rnd 2) (gpr ()) (gpr ()) (gpr ()));     (* SHLX *)
+  (fun () -> shiftx 3 (rnd 2) (gpr ()) (gpr ()) (gpr ()));     (* SHRX *)
   (* Equal lanes, which random ones almost never are. *)
   (fun () -> let r = rnd 16 in sse [0x0f; 0x76] 3 r r []);     (* PCMPEQD *)
 ];;
