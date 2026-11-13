@@ -1,0 +1,14 @@
+[package]
+name = "rind-fips-module"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+publish = false
+license = "(Apache-2.0 OR ISC OR MIT-0) AND (Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND BSD-3-Clause"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rind = { path = "../../rind", features = ["wipe"] }
+libc = { version = "0.2", default-features = false }

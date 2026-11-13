@@ -69,10 +69,7 @@ fn instantiate() -> Result<HmacDrbg<Sha512>, Error> {
     static CAST: Once = Once::new();
     CAST.call_once(|| {
         if !cast() {
-            // A FIPS module enters its error state on a self-test failure;
-            // rind's, as aws-lc's, does so by aborting.
-            std::eprintln!("rind: HMAC_DRBG self-test failed");
-            std::process::abort();
+            crate::fips::fail("drbg");
         }
     });
 
@@ -98,7 +95,7 @@ fn generate(drbg: &mut HmacDrbg<Sha512>, out: &mut [u8]) -> Result<(), Error> {
 /// `HMAC_DRBG.rsp` with personalization and additional input. Its second
 /// generate is shortened to one block, since a shorter request returns a
 /// prefix of a longer one.
-fn cast() -> bool {
+pub(crate) fn cast() -> bool {
     const ENTROPY: [u8; 32] = *b"\xda\x74\x0c\xbc\x36\x05\x7a\x8e\x28\x2a\xe7\x17\xfe\x7d\xfb\xb2\x45\xe9\xe5\xd4\x99\x08\xa0\x11\x9c\x5d\xbc\xf0\xa1\xf2\xd5\xab";
     const NONCE: [u8; 16] = *b"\x46\x56\x1f\xf6\x12\x21\x7b\xa3\xff\x91\xba\xa0\x6d\x4b\x54\x40";
     const PERSONALIZATION: [u8; 32] = *b"\xfc\x22\x72\x93\x52\x3e\xcb\x5b\x1e\x28\xc8\x78\x63\x62\x66\x27\xd9\x58\xac\xc5\x58\xa6\x72\xb1\x48\xce\x19\xe2\xab\xd2\xdd\xe4";
@@ -108,7 +105,11 @@ fn cast() -> bool {
     const ADDITIONAL_2: [u8; 32] = *b"\x20\x89\xd4\x9d\x63\xe0\xc4\xdf\x58\x87\x9d\x0c\xb1\xba\x99\x8e\x5b\x3d\x1a\x77\x86\xb7\x85\xe7\xcf\x13\xca\x5e\xa5\xe3\x3c\xfd";
     const EXPECTED: [u8; 64] = *b"\x5b\x70\xf3\xe4\xda\x95\x26\x42\x33\xef\xba\xb1\x55\xb8\x28\xd4\xe2\x31\xb6\x7c\xc9\x27\x57\xfe\xca\x40\x7c\xc9\x61\x5a\x66\x08\x71\xcb\x07\xad\x1a\x2e\x9a\x99\x41\x2f\xed\xa8\xee\x34\xdc\x9c\x57\xfa\x08\xd3\xf8\x22\x5b\x30\xd2\x98\x87\xd2\x09\x07\xd1\x23";
 
-    let mut drbg = HmacDrbg::<Sha512>::new(&ENTROPY, &NONCE, &PERSONALIZATION);
+    let mut entropy = ENTROPY;
+    if crate::fips::broken("drbg") {
+        entropy[0] ^= 1;
+    }
+    let mut drbg = HmacDrbg::<Sha512>::new(&entropy, &NONCE, &PERSONALIZATION);
     drbg.reseed(&ENTROPY_RESEED, &ADDITIONAL_RESEED);
     let mut out = [0u8; 256];
     drbg.generate(&mut out, &ADDITIONAL_1);

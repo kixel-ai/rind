@@ -52,6 +52,13 @@ mod error;
 #[cfg(any(test, rind_fips))]
 mod fips_rng;
 
+/// What the FIPS module (`rind-fips`) needs beyond the public API: its
+/// self-tests, its error state, and its errors' codes. Only the module's own
+/// build compiles it.
+#[cfg(any(test, rind_fips))]
+#[doc(hidden)]
+pub mod fips;
+
 /// Test infrastructure.
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
