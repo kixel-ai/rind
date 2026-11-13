@@ -6,7 +6,7 @@ The AArch32 model in `proofs/hol-light/s2n-bignum/aarch32/` decodes, and cosimul
 
 ## Plan
 
-- Route (maintainer, 2026-11-12, on [moq-dev/rind#663](https://github.com/moq-dev/rind/pull/663)): ✅ HOL Light in s2n-bignum's style (rejected: Lean generated from Arm's Sail model).
+- Route (maintainer, 2026-11-12, on [kixel-ai/rind#663](https://github.com/kixel-ai/rind/pull/663)): ✅ HOL Light in s2n-bignum's style (rejected: Lean generated from Arm's Sail model).
 - The model follows s2n-bignum's RV32IM model. It already holds data processing with an immediate shift or a modified immediate, `MOVW` and `MOVT`, immediate-offset `LDR`, `LDRB`, `STR`, and `STRB`, and `B`, each under any condition; `aarch32/proofs/simulator.ml` cosimulates them, and `proofs/hol-light/armv7/ct_compare_*.ml` prove rind's compares on them.
 - Add what a scan of `low/arm/{aws_lc,boringssl,openssl}/*.s` finds the integer paths use: register-shifted register operands, PC as an operand (`adr`, literal `ldr`), register-offset loads and stores, `LDM` and `STM` with write-back (`push` and `pop` among them), `LDRD` and `STRD`, `BL` and `BX`, `MUL`, `UMULL`, and `UMLAL`, `REV`, `DMB`, and `NOP` (`neg` is `RSB` from zero, already there). Rescan when a routine lands, since `.byte` and `.inst` spellings hide instructions from a mnemonic search.
 - Thumb stays out: rind's armv7 targets build A32, and the sources' `it` instructions assemble to nothing there. `BX` to an address with bit 0 set would enter Thumb, so the model refuses it rather than step into a state it cannot represent.
