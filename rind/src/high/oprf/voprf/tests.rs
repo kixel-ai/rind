@@ -2,6 +2,7 @@
 
 use serde_json::Value;
 
+use super::super::evaluate;
 use super::super::tests::{Run, derived, field, h, run, scalar, str_field, suite_of, suites};
 use super::super::{
     BlindInner as OprfBlindInner, P256_SHA256, P384_SHA384, P521_SHA512, RISTRETTO255_SHA512,
@@ -251,8 +252,7 @@ fn round_trips() {
         let (blinds, blinded) = blind_batch(suite, 3);
         let (evaluated, proof) = server.blind_evaluate(&blinded).unwrap();
         let outputs =
-            Blind::finalize_batch(blinds, evaluated.as_ref(), proof.as_ref(), &public_key)
-                .unwrap();
+            Blind::finalize_batch(blinds, evaluated.as_ref(), proof.as_ref(), &public_key).unwrap();
         for (i, output) in outputs.iter().enumerate() {
             let direct = server.evaluate(format!("input {i}").as_bytes()).unwrap();
             assert_eq!(
@@ -362,7 +362,11 @@ fn refuses_bad_public_keys() {
         let zero = vec![0u8; good.len()];
         let mut off_curve = good.to_vec();
         // A negative ristretto255 encoding, or an X9.62 tag no point has.
-        off_curve[0] ^= if suite == &RISTRETTO255_SHA512 { 1 } else { 0x80 };
+        off_curve[0] ^= if suite == &RISTRETTO255_SHA512 {
+            1
+        } else {
+            0x80
+        };
         let cases: [(&[u8], KeyFormatError); 4] = [
             (&zero, KeyFormatError::SmallOrder),
             (&off_curve, KeyFormatError::NotOnCurve),
@@ -370,10 +374,7 @@ fn refuses_bad_public_keys() {
             (&[good, &[0]].concat(), KeyFormatError::WrongLength),
         ];
         for (bad, error) in cases {
-            assert_eq!(
-                PublicKey::new(suite, bad).unwrap_err(),
-                Error::from(error)
-            );
+            assert_eq!(PublicKey::new(suite, bad).unwrap_err(), Error::from(error));
         }
         let parsed = PublicKey::new(suite, good).unwrap();
         assert_eq!(parsed.as_ref(), good);

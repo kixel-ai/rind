@@ -468,10 +468,7 @@ struct Bytes<const N: usize> {
 
 impl<const N: usize> Bytes<N> {
     fn zeroed(len: usize) -> Self {
-        Self {
-            bytes: [0; N],
-            len,
-        }
+        Self { bytes: [0; N], len }
     }
 
     fn as_mut(&mut self) -> &mut [u8] {
@@ -847,7 +844,9 @@ impl AsRef<[u8]> for BlindedElement {
 
 impl fmt::Debug for BlindedElement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("BlindedElement").field(&self.as_ref()).finish()
+        f.debug_tuple("BlindedElement")
+            .field(&self.as_ref())
+            .finish()
     }
 }
 

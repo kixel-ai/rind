@@ -13,9 +13,6 @@
 //!
 //! [RFC 9380]: https://www.rfc-editor.org/rfc/rfc9380.html
 
-// Nothing hashes to a curve yet: the OPRF is the first consumer.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use crate::error::Error;
 use crate::mid::sha2::{Sha256Context, Sha384Context, Sha512Context};
 
@@ -446,7 +443,8 @@ pub(crate) mod tests {
         let _entry = low::Entry::new_public();
         for v in &file.vectors {
             let mut uniform = vec![0; 2 * C::L];
-            expand_message_xmd::<H>(&[v.msg.as_bytes()], file.dst.as_bytes(), &mut uniform).unwrap();
+            expand_message_xmd::<H>(&[v.msg.as_bytes()], file.dst.as_bytes(), &mut uniform)
+                .unwrap();
             let u: Vec<_> = uniform.chunks(C::L).map(C::from_wide).collect();
             for (u, expect) in u.iter().zip(&v.u) {
                 // `(u, u)` is not on the curve, but encodes `u` all the same.

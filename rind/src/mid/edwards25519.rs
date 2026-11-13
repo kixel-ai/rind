@@ -8,9 +8,6 @@
 //! module composes from them (the ladder, the square root of a ratio, the
 //! inversion, and the signed recoding) is rind's own, covered by tests only.
 
-// ristretto255's consumers (OPRF, FROST, OPAQUE) are their own quests.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use crate::error::Error;
 use crate::low;
 use crate::mid::rng::{RandomSource, SystemRandom};
@@ -374,6 +371,8 @@ impl Scalar {
     }
 
     /// `self * other mod L`.
+    // Only tests multiply scalars alone until FROST does.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn mul(&self, other: &Self) -> Self {
         self.mul_add(other, &Self([0; 4]))
     }

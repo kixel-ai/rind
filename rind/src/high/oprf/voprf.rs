@@ -7,8 +7,8 @@ use core::fmt;
 
 use super::{
     Bytes, ClientState, Group, Key, KeyInner, MAX_ELEMENT, MAX_OUTPUT, MAX_SCALAR, Mode, Output,
-    P256, P384, P521, Pick, Ristretto255, ServerKeyBytes, Suite, SuiteId, decode, derive_scalar, dispatch,
-    encode, evaluate, hash_to_scalar, identity, len_prefix, scalar_bytes, scalar_from_key, suited,
+    P256, P384, P521, Pick, Ristretto255, ServerKeyBytes, Suite, SuiteId, decode, derive_scalar,
+    dispatch, encode, hash_to_scalar, identity, len_prefix, scalar_bytes, scalar_from_key, suited,
     with_group,
 };
 use crate::error::Error;
@@ -152,7 +152,10 @@ impl ServerKey {
     /// whole number of elements is refused with [`Error::WrongLength`], and
     /// one with an element that does not decode, or is the identity, with
     /// [`Error::KeyRejected`].
-    pub fn blind_evaluate(&self, blinded_elements: &[u8]) -> Result<(EvaluatedElements, Proof), Error> {
+    pub fn blind_evaluate(
+        &self,
+        blinded_elements: &[u8],
+    ) -> Result<(EvaluatedElements, Proof), Error> {
         let _entry = Entry::new_secret();
         dispatch!(KeyInner, &self.key, key => key.blind_evaluate(&self.public.0, blinded_elements))
     }
@@ -178,7 +181,9 @@ impl<G: Group> Key<G> {
     where
         PublicInner: Pick<Public<G>>,
     {
-        let public = public.pick().expect("a key keeps its own suite's public key");
+        let public = public
+            .pick()
+            .expect("a key keeps its own suite's public key");
         self.blind_evaluate_with(public, blinded_elements, G::random_scalar()?)
     }
 
@@ -278,7 +283,10 @@ impl Blind {
     ///
     /// An `input` of `2^16 - 1` bytes or more is refused with
     /// [`Error::WrongLength`].
-    pub fn new(suite: &'static Suite, input: &[u8]) -> Result<(Self, super::BlindedElement), Error> {
+    pub fn new(
+        suite: &'static Suite,
+        input: &[u8],
+    ) -> Result<(Self, super::BlindedElement), Error> {
         let _entry = Entry::new_secret();
         with_group!(suite, G => {
             let (blind, blinded) = VerifiableState::<G>::new(input, G::random_scalar()?)?;
@@ -439,10 +447,13 @@ impl fmt::Debug for Proof {
 
 /// Decodes a batch of 1 to [`MAX_BATCH`] concatenated elements.
 fn decode_batch<G: Group>(bytes: &[u8]) -> Result<Vec<G::Element>, Error> {
-    if bytes.is_empty() || bytes.len() % G::ELEMENT_LEN != 0 || bytes.len() / G::ELEMENT_LEN > MAX_BATCH {
+    if bytes.is_empty()
+        || !bytes.len().is_multiple_of(G::ELEMENT_LEN)
+        || bytes.len() / G::ELEMENT_LEN > MAX_BATCH
+    {
         return Err(Error::WrongLength);
     }
-    bytes.chunks_exact(G::ELEMENT_LEN).map(decode::<G>).collect()
+    bytes.chunks(G::ELEMENT_LEN).map(decode::<G>).collect()
 }
 
 /// RFC 9497 2.2.1's composite weights `d_i` for the blinded elements `C_i`
@@ -464,8 +475,8 @@ fn composite_weights<G: Group>(
     let seed = &seed[..G::Hash::OUTPUT];
 
     blinded
-        .chunks_exact(G::ELEMENT_LEN)
-        .zip(evaluated.chunks_exact(G::ELEMENT_LEN))
+        .chunks(G::ELEMENT_LEN)
+        .zip(evaluated.chunks(G::ELEMENT_LEN))
         .enumerate()
         .map(|(i, (c, d))| {
             // `decode_batch` bounds the batch at 2^16 elements.

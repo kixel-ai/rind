@@ -61,8 +61,12 @@ pub(super) fn run(suite: &Value, step: impl Run) {
 /// The suite's key, by `DeriveKeyPair` over its seed and info.
 pub(super) fn derived<G: Group>(mode: Mode, suite: &Value) -> G::Scalar {
     let _entry = Entry::new_secret();
-    let k = derive_scalar::<G>(mode, &str_field(suite, "seed"), &str_field(suite, "keyInfo"))
-        .unwrap();
+    let k = derive_scalar::<G>(
+        mode,
+        &str_field(suite, "seed"),
+        &str_field(suite, "keyInfo"),
+    )
+    .unwrap();
     assert_eq!(
         ct::into_public(scalar_bytes::<G>(&k)).as_ref(),
         str_field(suite, "skSm")
@@ -91,17 +95,27 @@ fn rfc9497_oprf_vectors() {
             for v in suite["vectors"].as_array().unwrap() {
                 let input = str_field(v, "Input");
                 let blind = scalar::<G>(&str_field(v, "Blind"));
-                let (state, _, blinded) = ClientState::<G>::blind(Mode::Oprf, &input, blind).unwrap();
+                let (state, _, blinded) =
+                    ClientState::<G>::blind(Mode::Oprf, &input, blind).unwrap();
                 assert_eq!(blinded.as_ref(), str_field(v, "BlindedElement"));
                 let evaluated = encode::<G>(&key.mul(&decode::<G>(blinded.as_ref()).unwrap()));
-                assert_eq!(ct::into_public(evaluated.clone()).as_ref(), str_field(v, "EvaluationElement"));
+                assert_eq!(
+                    ct::into_public(evaluated.clone()).as_ref(),
+                    str_field(v, "EvaluationElement")
+                );
                 let output = state.finalize(&decode::<G>(evaluated.as_ref()).unwrap());
-                assert_eq!(ct::into_public(output.0.clone()).as_ref(), str_field(v, "Output"));
+                assert_eq!(
+                    ct::into_public(output.0.clone()).as_ref(),
+                    str_field(v, "Output")
+                );
 
                 let output = Blind(state.into())
                     .finalize(&str_field(v, "EvaluationElement"))
                     .unwrap();
-                assert_eq!(ct::into_public(output.0.clone()).as_ref(), str_field(v, "Output"));
+                assert_eq!(
+                    ct::into_public(output.0.clone()).as_ref(),
+                    str_field(v, "Output")
+                );
             }
 
             let suite_ref = G::suite();
@@ -117,10 +131,15 @@ fn rfc9497_oprf_vectors() {
                 str_field(suite, "skSm")
             );
             for v in suite["vectors"].as_array().unwrap() {
-                let evaluated = server.blind_evaluate(&str_field(v, "BlindedElement")).unwrap();
+                let evaluated = server
+                    .blind_evaluate(&str_field(v, "BlindedElement"))
+                    .unwrap();
                 assert_eq!(evaluated.as_ref(), str_field(v, "EvaluationElement"));
                 let output = server.evaluate(&str_field(v, "Input")).unwrap();
-                assert_eq!(ct::into_public(output.0.clone()).as_ref(), str_field(v, "Output"));
+                assert_eq!(
+                    ct::into_public(output.0.clone()).as_ref(),
+                    str_field(v, "Output")
+                );
             }
         }
     }
@@ -133,7 +152,12 @@ fn rfc9497_oprf_vectors() {
 /// matches the server's direct evaluation.
 #[test]
 fn round_trips() {
-    for suite in [&RISTRETTO255_SHA512, &P256_SHA256, &P384_SHA384, &P521_SHA512] {
+    for suite in [
+        &RISTRETTO255_SHA512,
+        &P256_SHA256,
+        &P384_SHA384,
+        &P521_SHA512,
+    ] {
         let server = ServerKey::generate(suite).unwrap();
         let loaded = ServerKey::from_bytes(suite, server.to_bytes().as_ref()).unwrap();
         for input in [&b""[..], b"input", &[0x5a; MAX_INPUT]] {
@@ -156,7 +180,12 @@ fn round_trips() {
 #[test]
 fn refuses_long_inputs() {
     let long = vec![0u8; MAX_INPUT + 1];
-    for suite in [&RISTRETTO255_SHA512, &P256_SHA256, &P384_SHA384, &P521_SHA512] {
+    for suite in [
+        &RISTRETTO255_SHA512,
+        &P256_SHA256,
+        &P384_SHA384,
+        &P521_SHA512,
+    ] {
         assert_eq!(Blind::new(suite, &long).unwrap_err(), Error::WrongLength);
         let server = ServerKey::generate(suite).unwrap();
         assert_eq!(server.evaluate(&long).unwrap_err(), Error::WrongLength);
@@ -221,14 +250,23 @@ fn refuses_bad_keys() {
 /// on both sides.
 #[test]
 fn refuses_bad_elements() {
-    for suite in [&RISTRETTO255_SHA512, &P256_SHA256, &P384_SHA384, &P521_SHA512] {
+    for suite in [
+        &RISTRETTO255_SHA512,
+        &P256_SHA256,
+        &P384_SHA384,
+        &P521_SHA512,
+    ] {
         let server = ServerKey::generate(suite).unwrap();
         let (_, blinded) = Blind::new(suite, b"input").unwrap();
         let good = blinded.as_ref();
         let zero = vec![0u8; good.len()];
         let mut off_curve = good.to_vec();
         // A negative ristretto255 encoding, or an X9.62 tag no point has.
-        off_curve[0] ^= if suite == &RISTRETTO255_SHA512 { 1 } else { 0x80 };
+        off_curve[0] ^= if suite == &RISTRETTO255_SHA512 {
+            1
+        } else {
+            0x80
+        };
         let cases: [(&[u8], KeyFormatError); 4] = [
             (&zero, KeyFormatError::SmallOrder),
             (&off_curve, KeyFormatError::NotOnCurve),
@@ -236,10 +274,7 @@ fn refuses_bad_elements() {
             (&[good, &[0]].concat(), KeyFormatError::WrongLength),
         ];
         for (bad, error) in cases {
-            assert_eq!(
-                server.blind_evaluate(bad).unwrap_err(),
-                Error::from(error)
-            );
+            assert_eq!(server.blind_evaluate(bad).unwrap_err(), Error::from(error));
             let (blind, _) = Blind::new(suite, b"input").unwrap();
             assert_eq!(blind.finalize(bad).unwrap_err(), Error::from(error));
         }
@@ -252,7 +287,8 @@ fn refuses_bad_elements() {
 fn identity_is_refused() {
     let _entry = Entry::new_secret();
     assert!(Ristretto255::element_from_bytes(&[0; 32]).is_none());
-    let identity = ristretto255::Element::mul_base(&ristretto255::Scalar::from_uniform_bytes(&[0; 64]));
+    let identity =
+        ristretto255::Element::mul_base(&ristretto255::Scalar::from_uniform_bytes(&[0; 64]));
     assert_eq!(identity.to_bytes(), [0; 32]);
 }
 
@@ -283,16 +319,23 @@ fn stays_secret() {
         {
             let seed = str_field(suite, "seed");
             ct::secret_slice(&seed);
-            let server = ServerKey::derive(G::suite(), &seed, &str_field(suite, "keyInfo")).unwrap();
+            let server =
+                ServerKey::derive(G::suite(), &seed, &str_field(suite, "keyInfo")).unwrap();
             for v in suite["vectors"].as_array().unwrap() {
                 let input = str_field(v, "Input");
                 ct::secret_slice(&input);
                 let (blind, blinded) = Blind::new(G::suite(), &input).unwrap();
                 let evaluated = server.blind_evaluate(blinded.as_ref()).unwrap();
                 let output = blind.finalize(evaluated.as_ref()).unwrap();
-                assert_eq!(ct::into_public(output.0.clone()).as_ref(), str_field(v, "Output"));
+                assert_eq!(
+                    ct::into_public(output.0.clone()).as_ref(),
+                    str_field(v, "Output")
+                );
                 let output = server.evaluate(&input).unwrap();
-                assert_eq!(ct::into_public(output.0.clone()).as_ref(), str_field(v, "Output"));
+                assert_eq!(
+                    ct::into_public(output.0.clone()).as_ref(),
+                    str_field(v, "Output")
+                );
             }
         }
     }

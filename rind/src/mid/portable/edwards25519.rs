@@ -3,9 +3,6 @@
 //! The edwards25519 group over curve25519-dalek's, whose operations run in
 //! constant time, for Ed25519, ristretto255, and ECVRF.
 
-// ristretto255's consumers (OPRF, FROST, OPAQUE) are their own quests.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 
 use crate::error::Error;
@@ -117,6 +114,8 @@ impl Scalar {
     }
 
     /// `self * other mod L`.
+    // Only tests multiply scalars alone until FROST does.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn mul(&self, other: &Self) -> Self {
         Self(self.0 * other.0)
     }
