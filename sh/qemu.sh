@@ -30,5 +30,17 @@ export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
 # _FORTIFY_SOURCE at -O0, which fails aws-lc's compiler probes and so its
 # big-endian build.
 cargo clippy "${packages[@]}" --locked --release --target "$target" --all-targets -- --deny warnings
-cargo test "${packages[@]}" --locked --release --target "$target"
+
+# RIND_SCOPE=BASE runs only the tests of the primitives the branch changed
+# since BASE, as sh/primitives.sh maps them for the portable backend.
+filter=()
+if [[ -n "${RIND_SCOPE:-}" ]]; then
+    scope=$(sh/changed.sh "$RIND_SCOPE" | sh/primitives.sh tests - portable)
+    mapfile -t filter <<<"$scope"
+fi
+case "${filter[0]:-all}" in
+    all) cargo test "${packages[@]}" --locked --release --target "$target" ;;
+    none) echo "qemu: nothing changed since $RIND_SCOPE reaches the portable backend's tests" >&2 ;;
+    *) cargo test "${packages[@]}" --locked --release --target "$target" -- "${filter[@]}" ;;
+esac
 cargo test -p rind --features wipe --test zeroing --test heap_scratch --locked --release --target "$target"

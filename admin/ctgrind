@@ -69,18 +69,36 @@ export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER="$self --run"
 
+# RIND_SCOPE=BASE runs only the tests of the primitives the branch changed
+# since BASE, as `sh/primitives.sh` maps them. They are not narrowed to one
+# backend, since RUSTFLAGS or `--target` may pick another than the host's.
+filter=
+if [ -n "${RIND_SCOPE:-}" ]; then
+    root=$(dirname "$self")/..
+    changed=$("$root/sh/changed.sh" "$RIND_SCOPE")
+    filter=$(printf '%s\n' "$changed" | "$root/sh/primitives.sh" tests -)
+    case "$filter" in
+        all) filter= ;;
+        none)
+            echo "ctgrind: nothing changed since $RIND_SCOPE reaches rind's tests" >&2
+            exit 0
+            ;;
+    esac
+fi
+
 # rind's unit tests mark its secrets through the `__ctgrind` hooks. Wycheproof
 # runs without them, since its harness compares secret outputs directly.
+# The unquoted filter splits into its names, which hold no space or glob.
 if [ "$suite" = all ] || [ "$suite" = unit ]; then
-    cargo test -p rind --lib --features __ctgrind "$@"
+    cargo test -p rind --lib --features __ctgrind "$@" ${filter:+-- $filter}
 fi
 if [ "$suite" = all ] || [ "$suite" = wycheproof ]; then
-    cargo test -p rind --test wycheproof "$@"
+    cargo test -p rind --test wycheproof "$@" ${filter:+-- $filter}
 fi
 
 # Each adapter's ctgrind test marks the secrets it hands rind, while rind's
 # hooks mark the keys rind generates or parses. Python's tests run through
 # its extension, not a Rust lib test binary, which would need libpython.
 if [ "$suite" = all ] || [ "$suite" = adapters ]; then
-    cargo test --workspace --exclude rind --exclude rind-python --lib --test ctgrind --features rind/__ctgrind "$@"
+    cargo test --workspace --exclude rind --exclude rind-python --lib --test ctgrind --features rind/__ctgrind "$@" ${filter:+-- $filter}
 fi
