@@ -26,8 +26,8 @@ def GcmReady (alg : Algorithm) (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) 
     ∀ kernel, g.gh = .Avx t kernel → alg = .AES_192 ∨ KernelKeys alg hk kw kernel
 
 /-- `AesGcm::new` on Vale's tier sets up Vale's AES-GCM: FIPS 197's round
-keys and the GHASH key powers `hkeys_reqs_pub` requires, which `by8`'s table
-holds too. -/
+keys, `by8`'s table of the GHASH key's powers, and, unless the key is AES-192,
+which Vale's routines do not take, the powers `hkeys_reqs_pub` requires. -/
 theorem aes_gcm_new_vale_spec (h : RunsValeAesGcm) (alg : Algorithm) (key : Slice U8)
     (hk : KeyLen alg key.length) :
     mid.aes_gcm.AesGcm.new key ⦃ g => GcmReady alg (seqNat8ToSeqNat32LE (bvs key.val)) g ⦄ := by

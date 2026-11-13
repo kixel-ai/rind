@@ -4,8 +4,9 @@ open Aeneas Aeneas.Std Result rind.vale rind.simd
 /-!
 # AES-GCM under any IV, with tags of any length
 
-`AesGcm::encrypt_any` and `decrypt_any`, which `aead::gcm::Key` runs for an
-IV other than 96 bits or a tag shorter than 16 bytes, on either tier
+`AesGcm::encrypt_any` and `decrypt_any`, which `aead::gcm::Key` seals with
+for an IV other than 96 bits, and opens with for such an IV or a tag shorter
+than 16 bytes, on either tier
 `AesGcmAead` covers: the counter block is `compute_iv_BE`'s, the GHASH of the
 IV's padded blocks and its bit length unless the IV is 96 bits, the rest is
 `tagged_from`, and a tag of `t` bytes is the first `t` of Vale's, as SP

@@ -519,7 +519,8 @@ ciphertext and the first `tag_len` bytes of its tag (`gcm_key_seal`,
 leaving the plaintext, and otherwise fail, leaving zeros (`gcm_key_open`,
 `gcm_key_open_separate_tag`); a tag that is not the key's length is
 refused. SP 800-38D's MSB_t truncation is the first bytes of Vale's tag, which
-`gcmDecryptTrunc` compares. A 12-byte IV runs `aead::Key`'s path, and the
+`gcmDecryptTrunc` compares. A seal under a 12-byte IV runs `aead::Key`'s path
+and truncates its tag, as does an open under one with a 16-byte tag; the
 model's other arms run `AesGcm::encrypt_any` and `decrypt_any`, which
 `Rind/X86_64/AesGcmAny.lean` proves: `initial_counter` is `compute_iv_BE`'s
 GHASH branch, through by-8's table and the IV's length block, and the
