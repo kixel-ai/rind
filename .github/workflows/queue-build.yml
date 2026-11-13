@@ -67,7 +67,8 @@ jobs:
       # The host collects only at job boundaries (MBX_GC_AUTO=false), but Dart's
       # build hooks drop MBX_* variables, so the Cargo that rind-dart's hook
       # runs would collect the shared store down to mbx's default budgets. The
-      # global config reaches it.
+      # global config reaches it. It finds the same store because the host's
+      # MBX_CACHE_DIR is mbx's default, ~/.cache/mbx, and HOME reaches it.
       - name: Collect only at job boundaries
         run: mbx settings set gc.auto false
       # The shim is how mbx reaches Cargo; the action only puts `mbx` on PATH.
