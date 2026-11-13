@@ -33,6 +33,12 @@ contributions, under [BCP 78].
 CFRG draft's repository holds stale ones. They are IETF contributions, under
 [BCP 78].
 
+`rfc9497/allVectors.json` holds [RFC 9497]'s OPRF vectors, its Appendix A,
+from the CFRG draft's `poc/vectors` at the revision `admin/sync-vectors`
+pins: the OPRF and VOPRF modes of the ristretto255, P-256, P-384, and P-521
+suites, without decaf448 and the POPRF mode, which rind does not offer.
+They are IETF contributions, under [BCP 78].
+
 [aws-lc]: https://github.com/aws/aws-lc
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [RFC 9180]: https://www.rfc-editor.org/rfc/rfc9180.html
@@ -40,5 +46,6 @@ CFRG draft's repository holds stale ones. They are IETF contributions, under
 [RFC 9909]: https://www.rfc-editor.org/rfc/rfc9909.html
 [hpkewg/hpke]: https://github.com/hpkewg/hpke
 [RFC 9474]: https://www.rfc-editor.org/rfc/rfc9474.html
+[RFC 9497]: https://www.rfc-editor.org/rfc/rfc9497.html
 [blind-rsa-signatures]: https://github.com/jedisct1/rust-blind-rsa-signatures
 [BCP 78]: https://www.rfc-editor.org/info/bcp78
