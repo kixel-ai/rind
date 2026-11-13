@@ -368,8 +368,8 @@ theorem avx2_out (row : List U64) (N V : Nat) (hN : N = 4 * V ∨ N = 4 * V + 2)
       (if N > 4 * V then store128 tail else []) = row := by
   rw [List.flatMap_map, flatMap_store256 row V (by omega)]
   rcases hN with h | h
-  · rw [if_neg (by omega), List.append_nil, List.take_of_length_le (by omega)]
-  · rw [if_pos (by omega), htail (by omega), store128_load128, ← List.singleton_append, ← List.append_assoc,
+  · rw [ite_eq_right (by omega), List.append_nil, List.take_of_length_le (by omega)]
+  · rw [ite_eq_left (by omega), htail (by omega), store128_load128, ← List.singleton_append, ← List.append_assoc,
       ← take_add_getD _ _ (by omega), ← List.append_nil [row.getD (4 * V + 1) 0#u64],
       List.singleton_append, ← take_add_getD _ _ (by omega), List.take_of_length_le (by omega)]
 
@@ -379,8 +379,8 @@ theorem avx2_out_zero (N V : Nat) (hN : N = 4 * V ∨ N = 4 * V + 2) :
       (if N > 4 * V then store128 0 else []) = List.replicate N 0#u64 := by
   rw [List.flatMap_map, store256_zero, flatMap_replicate]
   rcases hN with h | h
-  · rw [if_neg (by omega), List.append_nil, h, Nat.mul_comm]
-  · rw [if_pos (by omega), store128_zero, ← List.replicate_add, h, Nat.mul_comm]
+  · rw [ite_eq_right (by omega), List.append_nil, h, Nat.mul_comm]
+  · rw [ite_eq_left (by omega), store128_zero, ← List.replicate_add, h, Nat.mul_comm]
 
 /-- `select_sse2`'s stores, once the accumulators hold a row's words, write
 that row. -/
@@ -404,7 +404,7 @@ theorem select_avx2_spec (N : Std.Usize) (V : Nat) (hN : N.val = 4 * V ∨ N.val
     low.x86_64.bignum_point_select.select_avx2 N V z table index token ⦃ r =>
       r.val = tableRow N.val table.val index.val ⦄ := by
   unfold low.x86_64.bignum_point_select.select_avx2
-  rw [if_pos hN]
+  rw [ite_eq_left hN]
   have hrows' : table.val.length / N.val < 2 ^ 32 := hrows
   have hloop := avx2_loop N.val table.val index V _ hrows'
   rw [avx2After_zero] at hloop
@@ -417,10 +417,10 @@ theorem select_avx2_spec (N : Std.Usize) (V : Nat) (hN : N.val = 4 * V ∨ N.val
   by_cases hp : picked index (table.val.length / N.val)
   · have hlen := row_length N.val table.val (r := index.val - 1) (by unfold picked at hp; omega)
     simp only [hp, ite_true, and_true]
-    simp only [avx2_out _ _ _ hN hlen _ (fun h => if_pos h)]
-    rw [dif_pos hlen, WP.spec_ok, Array.from_val]
+    simp only [avx2_out _ _ _ hN hlen _ (fun h => ite_eq_left h)]
+    rw [dite_eq_left hlen, WP.spec_ok, Array.from_val]
   · simp only [hp, ite_false, and_false, avx2_out_zero N.val V hN]
-    rw [dif_pos (List.length_replicate ..), WP.spec_ok, Array.from_val]
+    rw [dite_eq_left (List.length_replicate ..), WP.spec_ok, Array.from_val]
 
 theorem select_sse2_spec (N : Std.Usize) (V : Nat) (hN : N.val = 2 * V)
     (z : Std.Array U64 N) (table : Slice U64) (index : U8)
@@ -428,7 +428,7 @@ theorem select_sse2_spec (N : Std.Usize) (V : Nat) (hN : N.val = 2 * V)
     low.x86_64.bignum_point_select.select_sse2 N V z table index ⦃ r =>
       r.val = tableRow N.val table.val index.val ⦄ := by
   unfold low.x86_64.bignum_point_select.select_sse2
-  rw [if_pos hN]
+  rw [ite_eq_left hN]
   have hrows' : table.val.length / N.val < 2 ^ 32 := hrows
   have hloop := sse2_loop N.val table.val index V _ hrows'
   rw [sse2After_zero] at hloop
@@ -442,9 +442,9 @@ theorem select_sse2_spec (N : Std.Usize) (V : Nat) (hN : N.val = 2 * V)
     simp only [hp, ite_true]
     have hlen2 : (row N.val table.val (index.val - 1)).length = 2 * V := by rw [hlen, hN]
     simp only [sse2_out _ V hlen2]
-    rw [dif_pos hlen, WP.spec_ok, Array.from_val]
+    rw [dite_eq_left hlen, WP.spec_ok, Array.from_val]
   · simp only [hp, ite_false, sse2_out_zero V, ← hN]
-    rw [dif_pos (List.length_replicate ..), WP.spec_ok, Array.from_val]
+    rw [dite_eq_left (List.length_replicate ..), WP.spec_ok, Array.from_val]
 
 /-! ## The dispatch -/
 
