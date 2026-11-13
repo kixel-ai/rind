@@ -654,6 +654,7 @@ impl JacobianMontPoint {
             &[0; 4],
         );
 
+        #[allow(clippy::needless_range_loop)]
         for w in 1..37 {
             let (digit, sign) = windows[w];
             point.select_w7(&precomp::CURVE_GENERATOR_PRECOMP[w], digit, sign);
