@@ -29,14 +29,6 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-      # Edited: give the agent the dev shell and the test vectors its `just
-      # test` reads, since the agent cannot write `.git` to fetch them. This
-      # checkout is the default branch (dispatch only), so nothing here runs
-      # a PR head's code.
-      - uses: ./.github/actions/nix
-      - uses: ./.github/actions/vectors
-      - name: Build the dev shell
-        run: nix develop --command true
       - name: Run agent
         uses: pullfrog/pullfrog@0741f79ecebfa4469a010644d2aed2d96d32d489 # v0.1.127
         with:

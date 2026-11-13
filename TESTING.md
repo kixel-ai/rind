@@ -7,8 +7,8 @@ and [ALGORITHMS.md](ALGORITHMS.md) whose code each tier runs.
 A primitive is checked five ways:
 
 - **Vectors**: published known-answer tests, from [Wycheproof] (each file's
-  name below, in `thirdparty/wycheproof/testvectors_v1/`), NIST's CAVP
-  (`thirdparty/cavp/`) and [ACVP](thirdparty/acvp/README.md) samples, the RFCs, [CCTV], and the [aws-lc and BoringSSL
+  name below, in `thirdparty/vectors/wycheproof/testvectors_v1/`), NIST's CAVP
+  (`thirdparty/vectors/cavp/`) and [ACVP](thirdparty/acvp/README.md) samples, the RFCs, [CCTV], and the [aws-lc and BoringSSL
   files](thirdparty/vectors/README.md), run by `cargo test`.
 - **Fuzz target**: a `fuzz/fuzzer/` target that compares rind with aws-lc-rs
   on fuzzed input. `fuzz.yml` runs each nightly, then replays its corpus on

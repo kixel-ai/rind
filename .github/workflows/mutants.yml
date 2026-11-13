@@ -72,8 +72,6 @@ jobs:
           # The diff's base can lie anywhere in the history.
           fetch-depth: 0
 
-      - uses: ./.github/actions/vectors
-
       - uses: ./.github/actions/nix
 
       - name: Diff
@@ -127,8 +125,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: ./.github/actions/vectors
 
       - uses: ./.github/actions/nix
 

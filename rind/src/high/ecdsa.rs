@@ -1377,7 +1377,10 @@ mod tests {
             }
         }
 
-        process_cavp("../thirdparty/cavp/ecdsa/SigVer.rsp", &mut State::default());
+        process_cavp(
+            "../thirdparty/vectors/cavp/ecdsa/SigVer.rsp",
+            &mut State::default(),
+        );
     }
 
     fn pad(v: &mut Vec<u8>, l: usize) {

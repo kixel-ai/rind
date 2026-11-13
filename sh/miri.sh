@@ -14,12 +14,6 @@ fi
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-unfetched=$(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
-if [[ -n "$unfetched" ]]; then
-    echo "error: test vectors not checked out; run: git submodule update --init ${unfetched//$'\n'/ }" >&2
-    exit 1
-fi
-
 # Tests that each took Miri over five minutes, on a busy host: vector sets, RSA beyond one
 # private-key operation, and many scalar multiplications. Each primitive keeps
 # a quicker test that reaches the same unsafe code and builds and drops its

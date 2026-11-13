@@ -28,6 +28,5 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: ./.github/actions/vectors
       - name: Check and test the merge group
         run: nix develop --command quest gate just ci "$BASE"
