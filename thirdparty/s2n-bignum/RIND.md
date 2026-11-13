@@ -12,30 +12,14 @@ those listed under "Changed files", so each change can be offered upstream.
 `admin/regenerate` fails unless that holds: each file this lists differs from
 upstream's, or upstream has none, and every other file is upstream's.
 
-## What it keeps
+## Moving the base
 
-Only the files something in rind reads, about half of upstream's 90 MB:
-
-- The HOL Light files rind's proofs, the cosimulation, and a session's
-  `base.ml` load: the x86 and arm models, `common/`, and the specs.
-- The `.S` sources `admin/parse-asm` transliterates, with the two headers
-  they include.
-- The proof of each routine rind runs, whose bytes and `_SAFE` theorems
-  `admin/prove bytes` reads.
-- The x86 simulator `admin/prove cosim` runs: `tools/simulate-persistent`,
-  `x86/proofs/x86simulate`, `template.S`, and `simulator.c`.
-- `LICENSE`, `NOTICE`, `README.md`, and `.gitattributes`.
-
-Everything else is dropped: the other routines' sources and proofs, the
-AT&T-syntax copies, riscv, the tests, benchmarks, and build and CI files,
-which rind neither runs nor checks. A proof that needs another file copies
-it from upstream at the base commit, which `admin/upstream s2n-bignum` checks
-out into `.tmp/upstream/s2n-bignum`.
-
-Moving the base means checking out the new commit there, replacing each
-unchanged file with its copy, merging each change below into upstream's new
-version, deleting what upstream merged, and running `admin/regenerate` and
-`admin/prove`.
+The fork holds upstream's whole tree, so moving the base is a merge: apply
+upstream's changes from the base to the new commit, which
+`admin/upstream s2n-bignum <commit>` checks out into
+`.tmp/upstream/s2n-bignum@<commit>`, resolve them against each change below,
+delete a change upstream has merged, set the base above, and run
+`admin/regenerate` and `admin/prove`.
 
 ## Changed files
 
