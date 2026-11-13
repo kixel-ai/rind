@@ -189,6 +189,14 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Reported:** no.
 - **Goes when:** the debug JIT runs under the translation.
 
+### LeakSanitizer deadlocks under Intel SDE
+
+- **Breaks:** at exit, LeakSanitizer clones a thread that ptrace-stops the program's threads to scan them. Under SDE that tracer sometimes waits forever on a futex with the main thread stopped, so a replay that printed libFuzzer's `Done` never exits, and `fuzz.yml`'s SDE replays ran into their 60-minute timeout.
+- **Reproduce:** replay any ASan fuzz target's corpus with `sde -dmr -- TARGET -runs=0 CORPUS` in `nix develop .#sde` a few dozen times; about one run in eight hangs, its main thread in `ptrace_stop` and traced by its own clone.
+- **Workaround:** `sh/fuzz-replay.sh` sets `ASAN_OPTIONS=detect_leaks=0` for the `x86_64-sde` tiers; the native x86_64 fuzzing and replay still check leaks. Diagnosed in [kixel-ai/rind#743](https://github.com/kixel-ai/rind/pull/743).
+- **Reported:** no (Intel SDE has no public tracker; LLVM documents that LeakSanitizer does not work under ptrace).
+- **Goes when:** an SDE release runs LeakSanitizer's stop-the-world without hanging.
+
 ## Dependencies
 
 ### libcrux-platform calls `__cpuid` outside `unsafe`

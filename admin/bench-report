@@ -3,7 +3,7 @@
 
 Usage:
   admin/bench-report collect [--commit REV] [--host NAME]... [--out DIR]
-  admin/bench-report nightly
+  admin/bench-report weekly
   admin/bench-report render [--from DIR] [--check]
   admin/bench-report gate DIR [--previous DIR]
   admin/bench-report summary DIR
@@ -17,7 +17,7 @@ others. A host that is busy, unreachable, or fails is recorded and skipped,
 never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
 `<host>.json` per host, with its CPU, OS, toolchain, and library versions.
 
-`nightly` saves the latest nightly `bench` run's results on main, with gh, as
+`weekly` saves the latest weekly `bench` run's results on main, with gh, as
 the report's CPU tiers. `render` writes BENCHMARKS.md and its SVGs, among
 them the overview the README shows, from benchmarks/data, the verified code in
 benchmarks/verified.toml, and the decision on each gap in
@@ -26,9 +26,9 @@ given by `--from`. It fails on a gap over 10% without a
 decision, or a decision that covers no gap the data measures. `--check` fails if they are out of
 date instead.
 
-`gate` fails on a gap over 10% in a nightly run's downloaded artifacts that
+`gate` fails on a gap over 10% in a weekly run's downloaded artifacts that
 benchmarks/gaps.toml holds no decision for, counting only a gap the previous
-run, given by `--previous`, showed too. The nightly bench runs it.
+run, given by `--previous`, showed too. The weekly bench runs it.
 
 `summary` prints a Markdown table of a collection: rind's time per operation
 and host, against the fastest other library's.
@@ -580,7 +580,7 @@ def collect_host(host, commit, out_dir):
         f"--target-dir ../target --out result.json"
     )
     # The gate admits the run only while the host has room, but other gated
-    # work may share it, so these numbers are noisier than the nightly
+    # work may share it, so these numbers are noisier than the weekly
     # runners'. The gate is this checkout's quest, so a commit pinning an
     # older one still runs, in its own dev shell.
     with open(os.path.join(ROOT, "flake.lock")) as f:
@@ -668,7 +668,7 @@ def summary(args):
 # --- report -----------------------------------------------------------------
 
 REPORT = os.path.join(ROOT, "BENCHMARKS.md")
-# The report's SVGs, and its inputs: each host's result, the nightly CPU
+# The report's SVGs, and its inputs: each host's result, the weekly CPU
 # tiers, and the table of verified code.
 REPORT_DIR = os.path.join(ROOT, "benchmarks")
 DATA_DIR = os.path.join(REPORT_DIR, "data")
@@ -776,7 +776,7 @@ CPU_FEATURES = {
     "aarch64": {"aes", "dit", "neon", "pmull", "sha2", "sha3"},
 }
 
-# The nightly bench's columns, by target, portability, and denied tier, as
+# The weekly bench's columns, by target, portability, and denied tier, as
 # bench.yml's `native` matrix defines them.
 TIERS = [
     (("x86_64-unknown-linux-gnu", False, ""), "x86_64"),
@@ -795,10 +795,10 @@ TIERS = [
     (("x86_64-unknown-linux-gnu", True, "generic"), "portable"),
 ]
 
-# The libraries the nightly bench times rind against.
+# The libraries the weekly bench times rind against.
 BASELINES = ["aws-lc-rs", "ring"]
 
-# The CPU-tier rows, as patterns over a nightly benchmark ID with `*` in the
+# The CPU-tier rows, as patterns over a weekly benchmark ID with `*` in the
 # library's place.
 TIER_ROWS = [
     ("AES-GCM", r"aes(128|192|256)-gcm(-open)?/"),
@@ -829,7 +829,7 @@ TIER_ROWS = [
     ("rind-rustls 1 MB transfer", r"rustls-bulk/"),
 ]
 
-# The nightly benchmarks no CPU-tier row ranks, and why. Every other
+# The weekly benchmarks no CPU-tier row ranks, and why. Every other
 # benchmark must match a row, so a new one cannot go unwatched.
 UNRANKED = [
     (r"rsa\d+-key-generation", "RSA key generation varies too much from run to run to rank"),
@@ -976,7 +976,7 @@ def tier_name(tier):
     CPU the runner drew."""
     name = dict(TIERS).get((tier["target"], tier["portable"], tier["tier"]))
     if name is None:
-        fail(f"nightly results name an unknown tier: {tier['target']} {tier['tier']}")
+        fail(f"weekly results name an unknown tier: {tier['target']} {tier['tier']}")
     return name
 
 
@@ -998,11 +998,11 @@ def tier_columns(tiers):
 
 
 def tier_row(key):
-    """The CPU-tier row a nightly benchmark belongs to, or None for one
+    """The CPU-tier row a weekly benchmark belongs to, or None for one
     UNRANKED lists, refusing a benchmark in neither."""
     row = next((name for name, pattern in TIER_ROWS if re.match(pattern, key)), None)
     if row is None and not any(re.match(pattern, key) for pattern, _ in UNRANKED):
-        fail(f"nightly benchmark {key} matches neither a TIER_ROWS row nor UNRANKED")
+        fail(f"weekly benchmark {key} matches neither a TIER_ROWS row nor UNRANKED")
     return row
 
 
@@ -1054,7 +1054,7 @@ def gap_entries(path=GAPS):
 def load_gaps(hosts, tiers, path=GAPS):
     """The decision on each gap, with the gaps it covers, refusing a gap
     without one and an entry that covers no gap where the data measures. A
-    nightly gap can come and go with the runner's CPU, so an entry need not
+    weekly gap can come and go with the runner's CPU, so an entry need not
     match a gap everywhere it names."""
     entries = gap_entries(path)
     found = gaps_of(hosts, tiers)
@@ -1578,11 +1578,11 @@ def report(hosts, tiers, verified, gaps):
 
     md += ["## CPU tiers", ""]
     if tiers is None:
-        md += ["No nightly results yet.", ""]
+        md += ["No weekly results yet.", ""]
     else:
         cpus = sorted({t["cpu"] for t in tiers["tiers"]})
         md += [
-            "GitHub's runners, timed by the nightly `bench` workflow with CPU features denied as `bench.yml` "
+            "GitHub's runners, timed by the weekly `bench` workflow with CPU features denied as `bench.yml` "
             "describes: x86_64 runs every feature, its name suffixed with the AES-GCM tier the runner drew (AVX-512 or VAES AVX2); no IFMA denies AVX-512 IFMA, and no AVX-512 all of AVX-512 but "
             "VAES and VPCLMULQDQ; from no ADX, each column denies more (no ADX: ADX and AVX-512 IFMA; "
             "no AVX2: also AVX2, BMI2, SHA-NI, AVX-512, VAES, and VPCLMULQDQ; no AVX: also AVX; no AES-NI: "
@@ -1644,9 +1644,9 @@ def report(hosts, tiers, verified, gaps):
         "`admin/bench-report collect` runs the report's benchmarks, then",
         "`admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev",
         "shell and under `quest gate`, which waits for the host to have room but",
-        "shares it with other gated work, so its numbers are noisier than the nightly",
+        "shares it with other gated work, so its numbers are noisier than the weekly",
         "`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under",
-        "`.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly",
+        "`.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly",
         "`bench` run's results, and `admin/bench-report render --from DIR` copies a",
         "collection's measured hosts into `benchmarks/data/` and writes",
         "`BENCHMARKS.md` and its SVGs, which the README shows too, from them, `benchmarks/verified.toml`, and",
@@ -1715,7 +1715,7 @@ def significant(ns):
 
 
 def load_run(paths):
-    """A nightly run's tiers from its `bench-*/bench-results.json` artifacts,
+    """A weekly run's tiers from its `bench-*/bench-results.json` artifacts,
     each benchmark's times by library under its ID with `*` in the library's
     place."""
     tiers = []
@@ -1775,8 +1775,8 @@ def gate(args):
     print(f"Every gap over {SLOWER}× has a decision in benchmarks/gaps.toml.")
 
 
-def nightly(args):
-    """Saves the latest nightly bench's results on main as the CPU tiers,
+def weekly(args):
+    """Saves the latest weekly bench's results on main as the CPU tiers,
     from a run that timed every tier, since the report reads an empty cell as
     code that tier shares with the one to its left."""
     runs = json.loads(
@@ -1785,7 +1785,7 @@ def nightly(args):
             + ["schedule", "--limit", "20", "--json", "databaseId,headSha,createdAt,url,status"]
         )
     )
-    scratch = os.path.join(ROOT, ".tmp", "bench-report", "nightly")
+    scratch = os.path.join(ROOT, ".tmp", "bench-report", "weekly")
     incomplete = []
     for run in runs:
         if run["status"] != "completed":
@@ -1824,7 +1824,7 @@ def nightly(args):
         shutil.rmtree(scratch)
         print(f"bench-report: tiers from run {run['databaseId']}", file=sys.stderr)
         return
-    fail("no completed nightly bench run on main timed every tier" + "".join(f"; run {r}" for r in incomplete))
+    fail("no completed weekly bench run on main timed every tier" + "".join(f"; run {r}" for r in incomplete))
 
 
 def main():
@@ -1846,10 +1846,10 @@ def main():
     p.add_argument("--check", action="store_true", help="fail if BENCHMARKS.md or its SVGs are out of date")
     p.set_defaults(func=render)
 
-    p = sub.add_parser("nightly", help="save the latest nightly bench's results as the CPU tiers")
-    p.set_defaults(func=nightly)
+    p = sub.add_parser("weekly", help="save the latest weekly bench's results as the CPU tiers")
+    p.set_defaults(func=weekly)
 
-    p = sub.add_parser("gate", help="fail on a nightly run's gap without a decision")
+    p = sub.add_parser("gate", help="fail on a weekly run's gap without a decision")
     p.add_argument("dir", help="the run's downloaded bench-* artifacts")
     p.add_argument("--previous", metavar="DIR", help="the previous run's, to fail only on a gap both show")
     p.set_defaults(func=gate)

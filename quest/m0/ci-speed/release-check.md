@@ -17,5 +17,4 @@ Decided with the maintainer on 2026-11-12:
 
 ## Related
 
-- [The heavy suites run weekly and finish](/quest/m0/ci-speed/weekly.md) - the same suites, on every crate, on hosted runners
 - [rind 0.4 ships once](/quest/m2/api/release-0.4.md) - the next release this gates

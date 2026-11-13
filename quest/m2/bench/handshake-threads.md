@@ -2,7 +2,7 @@
 
 ## Goal
 
-BENCHMARKS.md has a row for rind-rustls handshakes run on several threads at once, against rustls's aws-lc-rs provider, and a test pins how many heap allocations one rind-rustls handshake makes. The nightly gate then catches rind falling behind that provider on the threaded rows, the test catches an added allocation, and how throughput scales from one thread to all of them is read at each report refresh.
+BENCHMARKS.md has a row for rind-rustls handshakes run on several threads at once, against rustls's aws-lc-rs provider, and a test pins how many heap allocations one rind-rustls handshake makes. The weekly bench's gate then catches rind falling behind that provider on the threaded rows, the test catches an added allocation, and how throughput scales from one thread to all of them is read at each report refresh.
 
 ## Plan
 
