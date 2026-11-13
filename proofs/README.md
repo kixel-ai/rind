@@ -53,6 +53,21 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
   frame of up to `8k + 1088` bytes below the stack pointer, aligned and probed
   a page at a time, and the callee-saved registers it restores. The function
   has no relocations, so its object is its section alone.
+- `x86_64/sha256_compress_blocks_shaext.ml` and
+  `x86_64/sha256_finish_shaext.ml`: `SHA256_COMPRESS_BLOCKS_SHAEXT_CORRECT`
+  and `SHA256_FINISH_SHAEXT_CORRECT`, rind's proofs that the blocks in
+  `low::x86_64::sha256::sha256_compress_blocks_shaext` and
+  `sha256_finish_shaext`, its routines for the SHA extensions, compute
+  s2n-bignum's FIPS 180-4 spec, `sha256_hash_blocks`. The first stores it to
+  the state over its blocks, any number of them. The second leaves the
+  digest's bytes in xmm2 and xmm1, over its blocks and then the padded block,
+  or two, that it builds from the tail's whole 16-byte lanes in memory, the
+  lane where the message ends as r10 and r11, and the length's word in r8.
+  Both run one round body, which `x86_64/sha256_shaext_rounds.ml` proves
+  once, `SHA256_SHAEXT_ROUNDS_CORRECT`. They read the round constants and
+  the byte-swap mask through rcx from the static `low::x86_64::sha256::K`,
+  whose bytes `admin/prove` extracts and the proof checks against FIPS
+  180-4's.
 - `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64 and
   aarch64: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`, that the
   blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes` return
@@ -66,8 +81,10 @@ hol-light` checks them alone, in nixpkgs' HOL Light.
 the submodule on HOL Light's load path: specs from s2n-bignum pull requests
 not yet merged, rind's own RFC 8439 spec of ChaCha20, Poly1305, and
 ChaCha20-Poly1305, `common/chacha20poly1305.ml`, whose known-answer tests
-`admin/prove hol-light` runs, and `x86.patch`, rind's additions to the x86
-model, which `x86-cosim.ml` checks against the CPU. Its
+`admin/prove hol-light` runs, `pr450.patch`, the SHA extensions and other
+instructions an s2n-bignum pull request adds to the x86 model, and
+`x86.patch`, rind's own additions, which `x86-cosim.ml` checks against the
+CPU with the pull request's. Its
 [README](hol-light/s2n-bignum/README.md) lists each, so they can be offered
 upstream. `nix develop .#hol-light --command admin/prove cosim` runs the
 cosimulation, on an x86_64 CPU with AVX2.
@@ -221,8 +238,8 @@ against FIPS 180-4 and RFC 2104 as `Rind/HashSpec.lean` transliterates them:
 
 Below rind's padding, these theorems take `Sha1Blocks` or `Sha256Blocks` as
 a hypothesis, in each target's own `Rind/<Arch>/ShaBlocks.lean`. No proof
-covers a SHA-1 block function rind runs, or a SHA-256 one on x86_64, so there
-each states that every routine computes FIPS 180-4's block function, x86_64's
+covers a SHA-1 block function rind runs, and no Lean theorem yet restates the
+HOL Light proofs above of SHA-256's on x86_64, so there each states that every routine computes FIPS 180-4's block function, x86_64's
 SHA extensions' routines for SHA-1's padded last blocks and SHA-256's finish
 pad, and SHA-256's encodes, as FIPS 180-4 does, and that rind's checks pass.
 On aarch64, `Sha256Blocks` states only that the CPU has the crypto extension

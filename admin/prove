@@ -355,12 +355,16 @@ hol_light_compile() {
 # `proofs/hol-light/s2n-bignum/x86-cosim.ml`, on s2n-bignum's simulator, whose
 # executor assembles each case with the C toolchain. The simulator's list of
 # s2n-bignum's own instructions is empty, so the one case of s2n-bignum's own
-# campaign that loading it runs is one of those it adds by hand.
+# campaign that loading it runs is one of those it adds by hand. The SHA
+# extensions' instructions run only where the CPU has them.
 cosim() {
-    local dir=$out/cosim root=$PWD
+    local dir=$out/cosim root=$PWD sha=0
     if [[ $(uname -m) != x86_64 ]] || ! grep -qw avx2 /proc/cpuinfo; then
         echo "admin/prove: cosim needs an x86_64 CPU with AVX2" >&2
         return 1
+    fi
+    if grep -qw sha_ni /proc/cpuinfo; then
+        sha=1
     fi
     s2n_bignum_model
     rm -rf "$dir"
@@ -368,7 +372,7 @@ cosim() {
     printf 'let iclasses_regreg = [];;\nlet iclasses_simplemem = [];;\n' >"$out/s2n-bignum/x86/x86-insns.ml"
     echo 'loadt "x86-cosim.ml";;' >"$dir/cosim.ml"
     hol_light_compile "$dir" cosim
-    (cd "$dir" && TMPDIR="$root/$dir/tmp" S2N_BIGNUM_SEMATEST_CASES=1 \
+    (cd "$dir" && TMPDIR="$root/$dir/tmp" S2N_BIGNUM_SEMATEST_CASES=1 RIND_COSIM_SHA=$sha \
         S2N_BIGNUM_X86_64_EXECUTOR="$root/thirdparty/s2n-bignum/tools/simulate-persistent x86" \
         ./cosim.native)
 }

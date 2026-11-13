@@ -27,7 +27,7 @@
     | PUNPCKLQDQ operand operand
     | PUSH operand
     | PXOR operand operand
-@@ -339,6 +349,7 @@
+@@ -333,6 +346,7 @@
     | SUB operand operand
     | TEST operand operand
     | TZCNT operand operand
@@ -35,7 +35,7 @@
     | VMOVD operand operand
     | VMOVMSKPS operand operand
     | VMOVQ operand operand
-@@ -351,6 +362,7 @@
+@@ -345,6 +359,7 @@
     | VPADDW operand operand operand
     | VPADDD operand operand operand
     | VPADDQ operand operand operand
@@ -81,7 +81,7 @@
        | [0x22:8] -> if has_unhandled_pfxs pfxs then NONE else
          read_ModRM rex l >>= \((reg,rm),l).
          read_imm Byte l >>= \(imm8,l).
-@@ -441,6 +470,13 @@
+@@ -424,6 +461,13 @@
        let sz = op_size T (rex_W rex) T pfxs in
        read_ModRM_operand rex sz l >>= \((reg,rm),l).
        SOME (CMOV (decode_condition c) reg rm,l)
@@ -109,7 +109,7 @@
      | [0x6c:8] -> if has_unhandled_pfxs pfxs then NONE else
        let sz = Lower_128 in
        read_ModRM rex l >>= \((reg,rm),l).
-@@ -497,6 +540,32 @@
+@@ -472,6 +537,32 @@
         | RM_reg _ -> if (word_zx reg):(3 word) = word 0b100 then
           (read_imm Byte l >>= \(imm8,l).
            SOME (PSRAD (simd_of_RM sz rm) imm8, l))
@@ -142,7 +142,7 @@
           else NONE
         | _ -> NONE)
      | [0x7e:8] ->
-@@ -601,6 +670,12 @@
+@@ -576,6 +667,12 @@
        let sz = Lower_128 in
        read_ModRM rex l >>= \((reg,rm),l).
        SOME (PAND (mmreg reg sz) (simd_of_RM sz rm), l)
@@ -155,7 +155,7 @@
      | [0xef:8] -> if has_unhandled_pfxs pfxs then NONE else
        let sz = Lower_128 in
        read_ModRM rex l >>= \((reg,rm),l).
-@@ -687,8 +762,11 @@
+@@ -662,8 +759,11 @@
      if opc = word 6 then NONE else
      read_byte l >>= \(b,l).
      SOME (decode_binop (rex_reg T opc) rm (Imm8 b),l)
@@ -169,7 +169,7 @@
    | [0b1100010:7; vl] -> if has_pfxs pfxs then NONE else
      if is_some rex then NONE else
      read_VEX vl l >>= \((rex,m,v,L,pfxs),l).
-@@ -811,6 +889,19 @@
+@@ -786,6 +886,19 @@
                         else simd_of_RM Lower_128 rm in
               SOME (VPBROADCASTQ (mmreg reg sz) sop,l)
             | _ -> NONE)
@@ -189,7 +189,7 @@
          | [0x79:8] ->
            let sz = vexL_size L in
            (read_ModRM rex l >>= \((reg,rm),l).
-@@ -1177,6 +1268,13 @@
+@@ -1152,6 +1265,13 @@
              match pfxs with
              | (T, Rep0, SG0) -> SOME (VPBLENDW (mmreg reg sz) (mmreg v sz) (simd_of_RM sz rm) imm8,l)
              | _ -> NONE)
@@ -205,7 +205,7 @@
             (if L then NONE else
 --- a/x86/proofs/x86.ml
 +++ b/x86/proofs/x86.ml
-@@ -1440,6 +1440,31 @@
+@@ -1300,6 +1312,31 @@
                      (read events s) ,,
       dest := res) s`;;
  
@@ -237,7 +237,7 @@
  let x86_PINSRD = new_definition
   `x86_PINSRD dest src imm8 (s:x86state) =
      let x:int128 = read dest s
-@@ -1484,6 +1509,12 @@
+@@ -1344,6 +1381,12 @@
                          bitval(bit 7 (word_subword x (8 * i,8):byte))))
              :int32) s`;;
  
@@ -250,7 +250,7 @@
  (*** Push and pop are a bit odd in several ways. First of all, there is  ***)
  (*** an implicit memory operand so this doesn't have quite the same      ***)
  (*** "shallowness": we refer to the memory component explicitly. And we  ***)
-@@ -1548,6 +1579,23 @@
+@@ -1408,6 +1451,23 @@
          word_subword src ((val od)*32,32)) od in
      (dest := res) s`;;
  
@@ -274,7 +274,7 @@
  let x86_PSRAD = new_definition
    `x86_PSRAD dest imm8 s =
      let d = read dest s in
-@@ -1555,6 +1603,22 @@
+@@ -1415,6 +1475,22 @@
      let res:(128)word = usimd4 (\x. word_ishr x count) d in
      (dest := res) s`;;
  
@@ -326,7 +326,7 @@
  let x86_PXOR = new_definition
    `x86_PXOR dest src s =
      let x = read dest s in
-@@ -1878,6 +1964,22 @@
+@@ -1738,6 +1853,22 @@
          let res:(128)word = simd2 word_add (word_zx x) (word_zx y) in
          (dest := (word_zx res):N word) s`;;
  
@@ -349,7 +349,7 @@
  let x86_VPADDW = new_definition
    `x86_VPADDW dest src1 src2 (s:x86state) =
        let (x:N word) = read src1 s
-@@ -1935,6 +2037,12 @@
+@@ -1795,6 +1926,12 @@
          let res:(128)word = f (word_zx x) (word_zx y) in
          (dest := (word_zx res):N word) s`;;
  
@@ -362,7 +362,7 @@
  let x86_VPBROADCASTD = new_definition
    `x86_VPBROADCASTD (dest:(x86state,(N)word)component) src (s:x86state) =
        let (x:M word) = read src s in
-@@ -3295,6 +3403,25 @@
+@@ -3137,6 +3279,25 @@
            64 -> x86_PEXT (OPERAND64 dest s) (OPERAND64 src1 s) (OPERAND64 src2 s)
          | 32 -> x86_PEXT (OPERAND32 dest s) (OPERAND32 src1 s) (OPERAND32 src2 s))
            s)) s
@@ -388,7 +388,7 @@
      | PINSRD dest src imm8 ->
         (add_load_event src s ,, add_load_event dest s ,,
          add_store_event dest s ,,
-@@ -3321,6 +3448,10 @@
+@@ -3163,6 +3324,10 @@
             64 -> x86_POPCNT (OPERAND64 dest s) (OPERAND64 src s)
           | 32 -> x86_POPCNT (OPERAND32 dest s) (OPERAND32 src s)
           | 16 -> x86_POPCNT (OPERAND16 dest s) (OPERAND16 src s)) s)) s
@@ -436,7 +436,7 @@
      | PUNPCKLQDQ dest src ->
         (add_load_event dest s ,, add_load_event src s ,,
          add_store_event dest s ,,
-@@ -3502,6 +3653,9 @@
+@@ -3336,6 +3529,9 @@
             64 -> x86_TZCNT (OPERAND64 dest s) (OPERAND64 src s)
           | 32 -> x86_TZCNT (OPERAND32 dest s) (OPERAND32 src s)
           | 16 -> x86_TZCNT (OPERAND16 dest s) (OPERAND16 src s)) s)) s
@@ -446,7 +446,7 @@
      | VMOVDQA dest src ->
          (add_load_event src s ,,
           add_store_event dest s ,,
-@@ -3557,6 +3711,14 @@
+@@ -3391,6 +3587,14 @@
                              (OPERAND256 src2 s)
          | 128 -> x86_VPADDQ (OPERAND128 dest s) (OPERAND128 src1 s)
                              (OPERAND128 src2 s)) s)) s
@@ -461,7 +461,7 @@
      | VPADDW dest src1 src2 ->
          (add_load_event src1 s ,, add_load_event src2 s ,,
           add_store_event dest s ,,
-@@ -4158,6 +4320,8 @@
+@@ -3992,6 +4196,8 @@
     (match 32 with 64 -> a | 32 -> b) = b /\
     (match 32 with 32 -> a | 16 -> b) = a /\
     (match 16 with 32 -> a | 16 -> b) = b /\
@@ -470,7 +470,7 @@
     (match (32,128) with (32,128) -> a | (128,32) -> b) = a /\
     (match (128,32) with (32,128) -> a | (128,32) -> b) = b /\
     (match (64,128) with (64,128) -> a | (128,64) -> b) = a /\
-@@ -4794,6 +4958,8 @@
+@@ -4628,6 +4834,8 @@
  let x86_PSHUFB_ALT = EXPAND_SIMD_RULE x86_PSHUFB;;
  let x86_PSHUFD_ALT = EXPAND_SIMD_RULE x86_PSHUFD;;
  let x86_PSRAD_ALT = EXPAND_SIMD_RULE x86_PSRAD;;
@@ -479,7 +479,7 @@
  let x86_PSRLW_ALT = EXPAND_SIMD_RULE x86_PSRLW;;
  let x86_VMOVDQA_ALT = EXPAND_SIMD_RULE x86_VMOVDQA;;
  let x86_VMOVDQU_ALT = EXPAND_SIMD_RULE x86_VMOVDQU;;
-@@ -4803,6 +4969,7 @@
+@@ -4637,6 +4845,7 @@
  let x86_VPADDD_ALT = EXPAND_SIMD_RULE x86_VPADDD;;
  let x86_VPADDQ_ALT = EXPAND_SIMD_RULE x86_VPADDQ;;
  let x86_VPADDW_ALT = EXPAND_SIMD_RULE x86_VPADDW;;

@@ -14,9 +14,26 @@ submodule bump past its merge deletes it.
 - `x86/proofs/utils/sha256_spec.ml`: SHA-256's FIPS 180-4 spec, from
   [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) at
   `79120e64ed55e37c9652565ff272b7ef17f76738`.
+  [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450)
+  carries the same file but for one comment line, so this copy serves both.
 - `x86/proofs/utils/sha512_spec.ml`: SHA-512's FIPS 180-4 spec, from
   [awslabs/s2n-bignum#420](https://github.com/awslabs/s2n-bignum/pull/420) at
   `7ef7ba7c2d830d9c713512035ae6eb4aa8fe0a2b`.
+
+## Model additions from unmerged pull requests
+
+`pr450.patch` is #450's change to `x86/proofs/decode.ml`, `instruction.ml`,
+and `x86.ml` at `7ef212f3f517635c57174475f413c74013ae79a5`, from its base
+`7948ca13`, with every line it adds or removes unchanged and only its
+context moved onto the submodule's commit. It adds `SHA256RNDS2`,
+`SHA256MSG1`, `SHA256MSG2`, and the legacy SSE `PALIGNR`, `PUNPCKLQDQ`, and
+`PUNPCKHQDQ`, which x86_64's SHA-NI SHA-256 blocks run. It is a patch rather
+than #450's files, since those unchanged would revert the three later
+submodule commits to them (#429, #438, and #452). `admin/prove` applies it
+to the submodule's files, then `x86.patch` over it, failing unless every
+hunk applies exactly, and a submodule bump past #450's merge deletes it.
+#450's decoders of the three legacy SSE instructions, unlike `x86.patch`'s,
+also take the MMX form without the 66 prefix, which no proven routine runs.
 
 ## rind's specs
 
@@ -37,13 +54,12 @@ need, `chacha20_poly1305_{seal,open}`, `poly_hash_ad_internal`, and
 `x86.ml` (maintainer, 2026-11-11, on
 [moq-dev/rind#627](https://github.com/moq-dev/rind/pull/627)). Under it every
 instruction of those routines, as rind's release build emits them, decodes.
-`admin/prove` applies it to the files it changes, where this directory
-vendors one, or else to the submodule's, and fails unless every hunk applies
-exactly, so a submodule bump that touches them means redoing it.
+`admin/prove` applies it to the submodule's files after `pr450.patch`, and
+fails unless every hunk applies exactly, so a submodule bump that touches
+them means redoing it.
 
 | Instruction | Encoding | Note |
 | --- | --- | --- |
-| `PALIGNR xmm, xmm/m128, imm8` | 66 0F 3A 0F /r ib | semantics as in [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450) |
 | `VPALIGNR xmm/ymm, xmm/ymm, xmm/ymm/m, imm8` | VEX.128/256.66.0F3A.WIG 0F /r ib | `PALIGNR` in each 128-bit lane |
 | `PSLLD xmm, imm8` | 66 0F 72 /6 ib | |
 | `PSRLD xmm, imm8` | 66 0F 72 /2 ib | |
@@ -55,20 +71,21 @@ exactly, so a submodule bump that touches them means redoing it.
 | `POR xmm, xmm/m128` | 66 0F EB /r | |
 | `PUNPCKLDQ xmm, xmm/m128` | 66 0F 62 /r | |
 | `PUNPCKHDQ xmm, xmm/m128` | 66 0F 6A /r | |
-| `PUNPCKLQDQ xmm, xmm/m128` | 66 0F 6C /r | semantics as in #450 |
-| `PUNPCKHQDQ xmm, xmm/m128` | 66 0F 6D /r | semantics as in #450 |
 | `VBROADCASTI128 ymm, m128` | VEX.256.66.0F38.W0 5A /r | |
 | `RET` with the F3 prefix | F3 C3 | aws-lc's `rep ret`, which every CPU runs as `RET` |
 
 The legacy SSE forms write only the low 128 bits of their register, as the
 model's other legacy SSE instructions do, and decode only with the 66 prefix
-and no other, where #439 and #450 also take the MMX form without it.
+and no other, where #439 also takes the MMX form without it.
 `OPERAND_SIZE_CASES` gains the 32-or-8-bit operand case `PINSRB` and
 `PEXTRB` dispatch on.
 
 `x86-cosim.ml` checks every row but the last against the CPU, as s2n-bignum
-checks its own instructions: `nix develop .#hol-light --command admin/prove
-cosim`, which the `prove` workflow runs. Offering the patch upstream would
+checks its own instructions, and `pr450.patch`'s instructions too, which #450
+does not, the SHA extensions' only where the CPU has them: `nix develop
+.#hol-light --command admin/prove cosim`, which the `prove` workflow runs.
+For those it evaluates #450's SHA-256 operations on constants, which the
+simulator's simplification leaves folded. Offering the patch upstream would
 also add its encodings to s2n-bignum's `x86/proofs/simulator.ml`, as
 s2n-bignum's own additions do. Posting to awslabs/s2n-bignum needs the
 maintainer's approval
