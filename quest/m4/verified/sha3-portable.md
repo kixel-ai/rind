@@ -12,7 +12,7 @@ Found by [the portable backend's proofs](https://github.com/kixel-ai/rind/pull/6
 
 - Translation: move the `mid::sha3` start points in `admin/prove` from the `assembly` list to `hashes`, and drop the portable pass's `--opaque crate::mid::sha3` and `Rind/Portable/{Types,Funs}External.lean`'s SHA-3 stand-ins.
 - Proof: a `Rind/Portable/KeccakDispatch.lean` states `RunsSha3` as the entry guard alone, as `Sha512Entry.lean` does for SHA-512, and gives `Sha3.lean` the dispatch theorems it uses from `Keccak.lean`'s, with FIPS 202's round constants discharged by `mid::sha3::RC`. Then `admin/prove` writes `Sha3.lean` for the portable backend by renaming the target, as it does for aarch64. Rename `Keccak.lean`'s theorems where they clash with the dispatch's.
-- Report: a `verified.toml` row for `sha3-256/*` and `sha3-512/*` with `arch = "portable"`, and the portable section of `proofs/README.md` updated.
+- Report: a `verified.toml` row for `sha3-256/*`, `sha3-384/*`, and `sha3-512/*` with `arch = "portable"`, and the portable section of `proofs/README.md` updated.
 
 ## Related
 
