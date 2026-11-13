@@ -29,6 +29,11 @@ pub(crate) mod curve {
     pub(crate) const P521: u32 = 3;
 }
 
+/// Key encapsulation mechanisms.
+pub(crate) mod kem {
+    pub(crate) const ML_KEM_768: u32 = 1;
+}
+
 /// ML-DSA's parameter sets.
 pub(crate) mod ml_dsa {
     pub(crate) const ML_DSA_44: u32 = 1;
