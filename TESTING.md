@@ -228,7 +228,13 @@ edited in flight. A panic, a hang, or an answer that differs from aws-lc-rs's
 fails the run, as does a failed open that leaves plaintext in the caller's
 buffer.
 
-Adapter fuzz targets: `fuzz::rustls`, `fuzz::dimpl`, `fuzz::str0m`.
+rind-openssl's target calls its C ABI as OpenSSL does, through
+`OSSL_provider_init` and the dispatch tables it returns, with parameter
+arrays of any names, types, and sizes and output buffers of any length. Each
+answer must match rind's own API, and each error must reach OpenSSL's core
+with a known reason and a format that reads no arguments.
+
+Adapter fuzz targets: `fuzz::rustls`, `fuzz::dimpl`, `fuzz::str0m`, `fuzz::openssl`.
 
 ## Coverage
 

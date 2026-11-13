@@ -206,6 +206,27 @@
             installPhase = "install -D ct-qemu-plugin.so $out/lib/ct-qemu-plugin.so";
           };
 
+          # OpenSSL's `evp_test` and its X25519 and Ed25519 data, from the
+          # source of the OpenSSL the dev shell has. `sh/openssl.sh` runs them
+          # with rind-openssl loaded and preferred. A static build, so the
+          # test runs the library it was built with, and the default provider
+          # inside it.
+          openssl-evp-test = pkgs.stdenv.mkDerivation {
+            pname = "openssl-evp-test";
+            inherit (pkgs.openssl) version src;
+            nativeBuildInputs = [ pkgs.perl ];
+            configurePhase = "perl Configure no-shared no-docs";
+            # Naming the target skips the headers `make` generates first.
+            buildPhase = ''
+              make -j$NIX_BUILD_CORES build_generated
+              make -j$NIX_BUILD_CORES test/evp_test
+            '';
+            installPhase = ''
+              install -D test/evp_test $out/bin/evp_test
+              install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_{ecx,ecx_sigalg,ecx_kem,mismatch_ecx}.txt
+            '';
+          };
+
           # Intel SDE, which `x86-cpu.yml`, `coverage.yml`, `admin/x86-cpu`,
           # and `admin/ct-sde` run to emulate Intel CPU models. Its license allows use and
           # redistribution only unmodified, so its 64-bit launcher runs as
@@ -578,6 +599,16 @@
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };
 
+            # `just check` runs `sh/openssl.sh` in it, which builds rind-openssl
+            # and runs OpenSSL's `evp_test` with it.
+            openssl = pkgs.mkShell {
+              packages = [
+                rust-toolchain
+                pkgs.jq
+              ];
+              env.OPENSSL_EVP_TEST = openssl-evp-test;
+            };
+
             # `just check` runs `admin/ct-vartime` in it: llvm-objdump, and the
             # standard library of each target it builds rind's rlib for.
             ct-vartime = pkgs.mkShell {
@@ -626,8 +657,10 @@
               packages = [
                 rust-stable.minimal
                 pkgs.valgrind
-                # crabgrind finds valgrind's headers through it.
+                # crabgrind finds valgrind's headers through it, and
+                # rind-openssl's tests OpenSSL's.
                 pkgs.pkg-config
+                pkgs.openssl
               ];
 
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";

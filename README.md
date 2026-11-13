@@ -129,6 +129,7 @@ Each crate's README shows its setup.
 | [rind-jsonwebtoken][] | JWTs through [jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
 | [rind-object-store][] | S3, Azure, and GCS request signing through [object_store](https://github.com/apache/arrow-rs-object-store) |
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
+| [rind-openssl][] | X25519 and Ed25519 for whatever links OpenSSL 3, as a provider its configuration loads; built from source |
 | [rind-dart][] | Dart and Flutter, through FFI, as the `rind` package on [pub.dev](https://pub.dev/packages/rind) |
 | [rind_cryptography][] | Dart and Flutter, as the `rind_cryptography` package, with the `cryptography` package's API on rind |
 | [rind-python][] | Python, as the `pyrind` package on PyPI, with rind's own API |
@@ -257,6 +258,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [rind-str0m]: https://github.com/kixel-ai/rind/tree/main/rind-str0m
 [rind-openmls]: https://github.com/kixel-ai/rind/tree/main/rind-openmls
 [rind-jsonwebtoken]: https://github.com/kixel-ai/rind/tree/main/rind-jsonwebtoken
+[rind-openssl]: https://github.com/kixel-ai/rind/tree/main/rind-openssl
 [rind-object-store]: https://github.com/kixel-ai/rind/tree/main/rind-object-store
 [rind-rcgen]: https://github.com/kixel-ai/rind/tree/main/rind-rcgen
 [rind-dart]: https://github.com/kixel-ai/rind/tree/main/rind-dart

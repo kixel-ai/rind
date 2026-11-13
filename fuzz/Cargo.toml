@@ -20,6 +20,7 @@ curve25519-dalek = { version = "5", default-features = false }
 arrayvec = "0.7"
 dimpl = { version = "0.9", default-features = false, features = ["aws-lc-rs", "_crypto-common"] }
 rind-dimpl = { path = "../rind-dimpl" }
+rind-openssl = { path = "../rind-openssl" }
 rind-rcgen = { path = "../rind-rcgen" }
 rind-rustls = { path = "../rind-rustls" }
 rind-str0m = { path = "../rind-str0m" }
@@ -188,6 +189,13 @@ bench = false
 [[bin]]
 name = "str0m"
 path = "fuzzer/str0m.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "openssl"
+path = "fuzzer/openssl.rs"
 test = false
 doc = false
 bench = false

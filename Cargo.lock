@@ -4542,6 +4542,7 @@ dependencies = [
  "rcgen",
  "rind",
  "rind-dimpl",
+ "rind-openssl",
  "rind-rcgen",
  "rind-rustls",
  "rind-str0m",
@@ -4588,6 +4589,16 @@ dependencies = [
  "openmls_traits",
  "rind",
  "tls_codec",
+]
+
+[[package]]
+name = "rind-openssl"
+version = "3.0.0"
+dependencies = [
+ "crabgrind 0.4.0",
+ "openssl-sys",
+ "rind",
+ "zeroize",
 ]
 
 [[package]]
