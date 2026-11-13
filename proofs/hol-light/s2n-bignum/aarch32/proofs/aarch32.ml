@@ -47,6 +47,11 @@ let AARCH32_THM =
             ("AARCH32_THM: cannot decompose PC expression: " ^
              string_of_term (concl pc_th)) in
     let _ =
+      if pc_ofs >= Array.length execth2 then
+        failwith
+          ("AARCH32_THM: no decoded instruction at `pc + " ^
+           string_of_int pc_ofs ^ "`") in
+    let _ =
       if !aarch32_print_log then
         let opt = option_get execth2.(pc_ofs) in
         let t = snd (strip_forall (concl opt)) in
