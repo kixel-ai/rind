@@ -33,7 +33,8 @@ submodule bump past its merge deletes it.
 
 `x86.patch` adds what aws-lc's x86_64 ChaCha20-Poly1305 and ChaCha20 routines
 need, `chacha20_poly1305_{seal,open}`, `poly_hash_ad_internal`, and
-`ChaCha20_ctr32_ssse3_4x`, to `x86/proofs/instruction.ml`, `decode.ml`, and
+`ChaCha20_ctr32_ssse3_4x`, and its AES-CTR and AES-CBC routines,
+`aes_hw_ctr32_encrypt_blocks` and `aes_hw_cbc_encrypt`, to `x86/proofs/instruction.ml`, `decode.ml`, and
 `x86.ml` (maintainer, 2026-11-11, on
 [moq-dev/rind#627](https://github.com/moq-dev/rind/pull/627)). Under it every
 instruction of those routines, as rind's release build emits them, decodes.
@@ -59,6 +60,9 @@ exactly, so a submodule bump that touches them means redoing it.
 | `PUNPCKHQDQ xmm, xmm/m128` | 66 0F 6D /r | semantics as in #450 |
 | `VBROADCASTI128 ymm, m128` | VEX.256.66.0F38.W0 5A /r | |
 | `RET` with the F3 prefix | F3 C3 | aws-lc's `rep ret`, which every CPU runs as `RET` |
+| `XORPS xmm, xmm/m128` | 0F 57 /r | decoded as `PXOR`, the same bitwise XOR of the low 128 bits |
+| `PREFETCHT0 m8` | 0F 18 /1 | decoded as `NOP_N`: a prefetch changes no architectural state |
+| `STOSB`, `REP STOSB` | AA, F3 AA | allows every next state, a sound over-approximation: it decodes so the code after it can be stepped, and a proof that reaches it proves nothing |
 
 The legacy SSE forms write only the low 128 bits of their register, as the
 model's other legacy SSE instructions do, and decode only with the 66 prefix
@@ -66,7 +70,7 @@ and no other, where #439 and #450 also take the MMX form without it.
 `OPERAND_SIZE_CASES` gains the 32-or-8-bit operand case `PINSRB` and
 `PEXTRB` dispatch on.
 
-`x86-cosim.ml` checks every row but the last against the CPU, as s2n-bignum
+`x86-cosim.ml` checks every row but `RET` and `STOSB` against the CPU, as s2n-bignum
 checks its own instructions: `nix develop .#hol-light --command admin/prove
 cosim`, which the `prove` workflow runs. Offering the patch upstream would
 also add its encodings to s2n-bignum's `x86/proofs/simulator.ml`, as

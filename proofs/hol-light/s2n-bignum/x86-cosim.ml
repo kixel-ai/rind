@@ -16,7 +16,8 @@
    widths and ignored W bits, and the memory forms on [rsp + disp8], 16-byte
    aligned for the legacy SSE forms that require it. RSP itself is never an
    operand, since the model's is symbolic. The F3 prefix the patch lets RET
-   take is not cosimulated, since RET leaves the simulator's harness. *)
+   take is not cosimulated, since RET leaves the simulator's harness, nor is
+   STOSB, whose model allows every next state. *)
 
 loadt "x86/proofs/simulator.ml";;
 
@@ -32,6 +33,12 @@ let sse ?(w=0) opcode md reg rm tail =
   let pre = if w = 1 || reg > 7 || rm > 7 || rnd 4 = 0
             then [rex w reg rm] else [] in
   [0x66] @ pre @ opcode @ [modrm md reg rm] @ tail;;
+
+(* [REX] <opcode> with ModRM fields reg and rm and no 66 prefix, the REX
+   byte also present at random where nothing needs it. *)
+let ps opcode md reg rm tail =
+  let pre = if reg > 7 || rm > 7 || rnd 4 = 0 then [rex 0 reg rm] else [] in
+  pre @ opcode @ [modrm md reg rm] @ tail;;
 
 (* A three-byte VEX prefix for the 0F (1), 0F38 (2) or 0F3A (3) map with
    the 66 prefix. *)
@@ -64,6 +71,7 @@ let register_forms = [
   (fun () -> sse [0x0f; 0x6a] 3 (rnd 16) (rnd 16) []);         (* PUNPCKHDQ *)
   (fun () -> sse [0x0f; 0x6c] 3 (rnd 16) (rnd 16) []);         (* PUNPCKLQDQ *)
   (fun () -> sse [0x0f; 0x6d] 3 (rnd 16) (rnd 16) []);         (* PUNPCKHQDQ *)
+  (fun () -> ps [0x0f; 0x57] 3 (rnd 16) (rnd 16) []);          (* XORPS *)
 ];;
 
 (* Memory forms on [rsp + d], run as cosimulate_instructions (Some 0) 32:
@@ -91,6 +99,8 @@ let memory_forms = [
   (fun () -> sse [0x0f; 0x6a] 1 (rnd 16) 4 (mem (aligned ())));   (* PUNPCKHDQ *)
   (fun () -> sse [0x0f; 0x6c] 1 (rnd 16) 4 (mem (aligned ())));   (* PUNPCKLQDQ *)
   (fun () -> sse [0x0f; 0x6d] 1 (rnd 16) 4 (mem (aligned ())));   (* PUNPCKHQDQ *)
+  (fun () -> ps [0x0f; 0x57] 1 (rnd 16) 4 (mem (aligned ())));    (* XORPS *)
+  (fun () -> ps [0x0f; 0x18] 1 1 4 (mem (rnd 128)));              (* PREFETCHT0 *)
 ];;
 
 let rind_cosim memop add_assum form =
