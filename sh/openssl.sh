@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Run OpenSSL's own `evp_test` on its X25519 and Ed25519 data with
-# rind-openssl loaded and preferred, as its README's configuration does.
+# rind-openssl loaded and preferred, as its README's configuration does;
+# `-provider rind` fails the run if rind does not load, instead of letting
+# the default provider pass it.
 #
 # Usage: nix develop .#openssl --command sh/openssl.sh
 # That dev shell builds `evp_test` from the source of the OpenSSL the default
@@ -37,4 +39,4 @@ for file in "$OPENSSL_EVP_TEST"/share/evp_test/*.txt; do
 done
 echo "Left out $skipped stanzas for Ed25519ctx or Ed25519ph through Ed25519's instance." >&2
 
-"$OPENSSL_EVP_TEST/bin/evp_test" -config "$work/openssl.cnf" "$work"/evppkey_*.txt
+"$OPENSSL_EVP_TEST/bin/evp_test" -config "$work/openssl.cnf" -provider rind "$work"/evppkey_*.txt

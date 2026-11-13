@@ -13,6 +13,7 @@
 use std::ffi::{CStr, CString, c_char, c_int};
 use std::path::PathBuf;
 use std::ptr::{null, null_mut};
+use std::sync::OnceLock;
 
 use crabgrind::memcheck::{self, MemState};
 use crabgrind::valgrind::{self, RunningMode};
@@ -20,12 +21,24 @@ use openssl_sys::*;
 
 unsafe extern "C" {
     fn OSSL_LIB_CTX_load_config(ctx: *mut OSSL_LIB_CTX, file: *const c_char) -> c_int;
+    fn OSSL_PROVIDER_get0_name(provider: *const OSSL_PROVIDER) -> *const c_char;
+    fn EVP_PKEY_get0_provider(pkey: *const EVP_PKEY) -> *const OSSL_PROVIDER;
+    fn EVP_PKEY_CTX_get0_provider(ctx: *const EVP_PKEY_CTX) -> *const OSSL_PROVIDER;
     fn EVP_PKEY_CTX_new_from_pkey(
         ctx: *mut OSSL_LIB_CTX,
         pkey: *mut EVP_PKEY,
         propq: *const c_char,
     ) -> *mut EVP_PKEY_CTX;
     fn EVP_DigestSignInit_ex(
+        ctx: *mut EVP_MD_CTX,
+        pctx: *mut *mut EVP_PKEY_CTX,
+        mdname: *const c_char,
+        libctx: *mut OSSL_LIB_CTX,
+        props: *const c_char,
+        pkey: *mut EVP_PKEY,
+        params: *const OSSL_PARAM,
+    ) -> c_int;
+    fn EVP_DigestVerifyInit_ex(
         ctx: *mut EVP_MD_CTX,
         pctx: *mut *mut EVP_PKEY_CTX,
         mdname: *const c_char,
@@ -52,9 +65,31 @@ fn mark<T: ?Sized>(value: &T, state: MemState) {
     }
 }
 
+/// Asserts rind backs a key or operation: a provider that fails to activate
+/// leaves the default provider serving it, which would pass every check here.
+fn assert_rind(provider: *const OSSL_PROVIDER) {
+    assert!(!provider.is_null());
+    assert_eq!(
+        unsafe { CStr::from_ptr(OSSL_PROVIDER_get0_name(provider)) },
+        c"rind"
+    );
+}
+
 /// A library context with the README's configuration, loading the library
 /// this build made.
 fn context() -> *mut OSSL_LIB_CTX {
+    static CONFIG: OnceLock<CString> = OnceLock::new();
+    let path = CONFIG.get_or_init(write_config);
+    unsafe {
+        let ctx = OSSL_LIB_CTX_new();
+        assert!(!ctx.is_null());
+        assert_eq!(OSSL_LIB_CTX_load_config(ctx, path.as_ptr()), 1);
+        ctx
+    }
+}
+
+/// Writes the configuration once, since the tests run in parallel.
+fn write_config() -> CString {
     let exe = std::env::current_exe().unwrap();
     let library = exe.with_file_name(format!(
         "{}rind_openssl{}",
@@ -71,13 +106,7 @@ fn context() -> *mut OSSL_LIB_CTX {
     let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
         .join(format!("rind-openssl-ctgrind-{}.cnf", std::process::id()));
     std::fs::write(&path, config).unwrap();
-    let path = CString::new(path.into_os_string().into_encoded_bytes()).unwrap();
-    unsafe {
-        let ctx = OSSL_LIB_CTX_new();
-        assert!(!ctx.is_null());
-        assert_eq!(OSSL_LIB_CTX_load_config(ctx, path.as_ptr()), 1);
-        ctx
-    }
+    CString::new(path.into_os_string().into_encoded_bytes()).unwrap()
 }
 
 fn private_key(ctx: *mut OSSL_LIB_CTX, algorithm: &CStr, private: &[u8; 32]) -> *mut EVP_PKEY {
@@ -91,6 +120,7 @@ fn private_key(ctx: *mut OSSL_LIB_CTX, algorithm: &CStr, private: &[u8; 32]) -> 
         )
     };
     assert!(!key.is_null());
+    assert_rind(unsafe { EVP_PKEY_get0_provider(key) });
     key
 }
 
@@ -115,8 +145,10 @@ fn x25519() {
     };
     assert!(!peer.is_null());
     unsafe {
+        assert_rind(EVP_PKEY_get0_provider(peer));
         let pctx = EVP_PKEY_CTX_new_from_pkey(ctx, key, null());
         assert_eq!(EVP_PKEY_derive_init(pctx), 1);
+        assert_rind(EVP_PKEY_CTX_get0_provider(pctx));
         assert_eq!(EVP_PKEY_derive_set_peer(pctx, peer), 1);
         let mut shared = [0u8; 32];
         let mut len = shared.len();
@@ -136,6 +168,7 @@ fn x25519() {
         let mut generated = null_mut();
         assert_eq!(EVP_PKEY_generate(gen_ctx, &mut generated), 1);
         EVP_PKEY_CTX_free(gen_ctx);
+        assert_rind(EVP_PKEY_get0_provider(generated));
         let private = raw_private(generated);
         public(&private);
         assert_eq!(private[31] & 0xc0, 0x40);
@@ -158,6 +191,7 @@ fn x25519() {
         let mut derived = null_mut();
         assert_eq!(EVP_PKEY_generate(gen_ctx, &mut derived), 1);
         EVP_PKEY_CTX_free(gen_ctx);
+        assert_rind(EVP_PKEY_get0_provider(derived));
         let private = raw_private(derived);
         public(&private);
         assert_eq!(private[31] & 0xc0, 0x40);
@@ -177,10 +211,12 @@ fn ed25519() {
     let message = b"rind as an OpenSSL provider";
     unsafe {
         let md = EVP_MD_CTX_new();
+        let mut pctx = null_mut();
         assert_eq!(
-            EVP_DigestSignInit_ex(md, null_mut(), null(), ctx, null(), key, null()),
+            EVP_DigestSignInit_ex(md, &mut pctx, null(), ctx, null(), key, null()),
             1
         );
+        assert_rind(EVP_PKEY_CTX_get0_provider(pctx));
         let mut signature = [0u8; 64];
         let mut len = signature.len();
         assert_eq!(
@@ -197,10 +233,12 @@ fn ed25519() {
         EVP_MD_CTX_free(md);
 
         let md = EVP_MD_CTX_new();
+        let mut pctx = null_mut();
         assert_eq!(
-            EVP_DigestVerifyInit(md, null_mut(), null(), null_mut(), key),
+            EVP_DigestVerifyInit_ex(md, &mut pctx, null(), ctx, null(), key, null()),
             1
         );
+        assert_rind(EVP_PKEY_CTX_get0_provider(pctx));
         assert_eq!(
             EVP_DigestVerify(md, signature.as_ptr(), len, message.as_ptr(), message.len()),
             1
