@@ -8,8 +8,9 @@ Linux on `armv7`, ARMv6, big-endian `s390x`, `riscv64gc` (glibc and musl),
 `loongarch64`, `powerpc64le`, and big-endian `powerpc64` and `powerpc` under
 qemu. iOS devices' code is only built.
 
-- `aarch64` requires NEON, which every aarch64 target rind builds for (all
-  have `std`) enables at compile time. Where the CPU has the crypto
+- The `aarch64` assembly backend requires NEON, which every aarch64 target
+  with `std` enables at compile time; a build without it uses the portable
+  backend. Where the CPU has the crypto
   extension (`aes`, `pmull`, and `sha2`), as the Raspberry Pi 5 and most
   aarch64 servers and phones do, AES, GHASH, SHA1, and SHA256 run on its
   instructions. Without it, as on the Raspberry Pi 4, CM4, and Zero 2 W, they
