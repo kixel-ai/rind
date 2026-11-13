@@ -967,7 +967,7 @@ cp "$out/lean/Rind/Portable/Types.lean" "$out/lean/Rind/Portable/Funs.lean" proo
 mkdir -p proofs/Rind/Aarch64/Kdf
 for file in Dispatch P256Dispatch P256Agree X25519 P384 DigestAlgorithm DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
-    CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes; do
+    CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes AesModesApi; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 # The AEAD model imports nothing aarch64 has, and no aarch64 translation reaches it.
