@@ -582,7 +582,9 @@ fn scalar_from_key<G: Group>(bytes: &[u8]) -> Result<G::Scalar, Error> {
     }
     let mut secret = Bytes::<MAX_SCALAR>::zeroed(bytes.len());
     secret.as_mut().copy_from_slice(bytes);
-    match G::scalar_from_bytes(ct::into_secret(secret).as_ref()) {
+    // The key's bytes are secret; their length is not.
+    ct::secret_slice(secret.as_ref());
+    match G::scalar_from_bytes(secret.as_ref()) {
         Some(scalar) if !ct::into_public(G::is_zero(&scalar)) => Ok(scalar),
         _ => Err(KeyFormatError::ScalarOutOfRange.into()),
     }

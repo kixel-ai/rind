@@ -453,7 +453,16 @@ fn decode_batch<G: Group>(bytes: &[u8]) -> Result<Vec<G::Element>, Error> {
     {
         return Err(Error::WrongLength);
     }
-    bytes.chunks(G::ELEMENT_LEN).map(decode::<G>).collect()
+    // A loop over the count, not `chunks`, whose size hint divides by the
+    // element length at run time, which `admin/ct-vartime` refuses.
+    let count = bytes.len() / G::ELEMENT_LEN;
+    let mut elements = Vec::with_capacity(count);
+    for i in 0..count {
+        elements.push(decode::<G>(
+            &bytes[i * G::ELEMENT_LEN..(i + 1) * G::ELEMENT_LEN],
+        )?);
+    }
+    Ok(elements)
 }
 
 /// RFC 9497 2.2.1's composite weights `d_i` for the blinded elements `C_i`
@@ -474,11 +483,12 @@ fn composite_weights<G: Group>(
     hash.finish_into(&mut seed);
     let seed = &seed[..G::Hash::OUTPUT];
 
-    blinded
-        .chunks(G::ELEMENT_LEN)
-        .zip(evaluated.chunks(G::ELEMENT_LEN))
-        .enumerate()
-        .map(|(i, (c, d))| {
+    // As in `decode_batch`, a loop over the count rather than `chunks`.
+    let count = blinded.len() / G::ELEMENT_LEN;
+    (0..count)
+        .map(|i| {
+            let range = i * G::ELEMENT_LEN..(i + 1) * G::ELEMENT_LEN;
+            let (c, d) = (&blinded[range.clone()], &evaluated[range]);
             // `decode_batch` bounds the batch at 2^16 elements.
             let i = (i as u16).to_be_bytes();
             hash_to_scalar::<G>(
