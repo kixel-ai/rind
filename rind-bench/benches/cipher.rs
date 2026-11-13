@@ -33,6 +33,26 @@ fn bench_aes_ctr(c: &mut Criterion) {
                 let key = rind::cipher::AesCtr::new(rind_aes(key_len), key, 128).unwrap();
                 b.iter(|| key.apply_keystream(&iv, &mut buf).unwrap());
             });
+            // verified-garbage takes the IV only with the key, so each
+            // message expands the key again.
+            group.bench_function(BenchmarkId::new("verified-garbage", size_name), |b| {
+                use verified_garbage::cipher::aes::AesCtr;
+                let mut expect = vec![0u8; size];
+                rind::cipher::AesCtr::new(rind_aes(key_len), key, 128)
+                    .unwrap()
+                    .apply_keystream(&iv, &mut expect)
+                    .unwrap();
+                let mut ct = vec![0u8; size];
+                AesCtr::new(key, &iv)
+                    .unwrap()
+                    .apply_keystream_final(&mut ct);
+                assert_eq!(ct, expect);
+                b.iter(|| {
+                    AesCtr::new(key, &iv)
+                        .unwrap()
+                        .apply_keystream_final(&mut buf)
+                });
+            });
         }
     }
 }
@@ -97,6 +117,48 @@ fn bench_aes_cbc(c: &mut Criterion) {
                         }
                     });
                 });
+                // verified-garbage has no padding, so its row pads and unpads
+                // here, and takes the IV only with the key, so each message
+                // expands the key again.
+                group.bench_function(BenchmarkId::new("verified-garbage", size_name), |b| {
+                    use verified_garbage::cipher::aes::{AesCbcDecryptor, AesCbcEncryptor};
+                    let run = |buf: &mut Vec<u8>| {
+                        buf.clear();
+                        buf.extend_from_slice(&input);
+                        if op == "encrypt" {
+                            let pad = 16 - size % 16;
+                            buf.resize(size + pad, pad as u8);
+                            AesCbcEncryptor::new(key, &iv)
+                                .unwrap()
+                                .encrypt(buf)
+                                .unwrap();
+                        } else {
+                            AesCbcDecryptor::new(key, &iv)
+                                .unwrap()
+                                .decrypt(buf)
+                                .unwrap();
+                            let pad = buf[buf.len() - 1] as usize;
+                            assert!((1..=16).contains(&pad));
+                            buf.truncate(buf.len() - pad);
+                        }
+                    };
+                    let mut expect = input.clone();
+                    if op == "encrypt" {
+                        AesCbcEncryptingKey::new(algorithm, key)
+                            .unwrap()
+                            .encrypt(CbcIv::assume_unpredictable(iv), &mut expect);
+                    } else {
+                        let len = AesCbcDecryptingKey::new(algorithm, key)
+                            .unwrap()
+                            .decrypt(&iv, &mut expect)
+                            .unwrap()
+                            .len();
+                        expect.truncate(len);
+                    }
+                    run(&mut buf);
+                    assert_eq!(buf, expect);
+                    b.iter(|| run(&mut buf));
+                });
             }
         }
     }
@@ -141,6 +203,38 @@ fn bench_header_protection(c: &mut Criterion) {
                 b.iter(|| key.mask(&sample));
             });
         }
+        group.bench_function(format!("{name}/verified-garbage"), |b| {
+            use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};
+            use verified_garbage::cipher::aes::AesEcb;
+            use verified_garbage::cipher::chacha20::ChaCha20;
+            let algorithm = match name {
+                "aes128" => &AES_128,
+                "aes256" => &AES_256,
+                _ => &CHACHA20,
+            };
+            let expect = HeaderProtectionKey::new(algorithm, key)
+                .unwrap()
+                .mask(&sample);
+            // As rustls does, the AES key is expanded once; ChaCha20 takes the
+            // sample as its counter and nonce, so each mask starts a cipher.
+            let aes = (name != "chacha20").then(|| AesEcb::new(key).unwrap());
+            let mut chacha = [0u8; 32];
+            chacha[..key_len].copy_from_slice(key);
+            let mask = || {
+                let mut mask = [0u8; 5];
+                match &aes {
+                    Some(aes) => {
+                        let mut block = sample;
+                        aes.encrypt(&mut block).unwrap();
+                        mask.copy_from_slice(&block[..5]);
+                    }
+                    None => ChaCha20::new(&chacha, &sample).apply_keystream(&mut mask),
+                }
+                mask
+            };
+            assert_eq!(mask(), expect);
+            b.iter(mask);
+        });
     }
 }
 
