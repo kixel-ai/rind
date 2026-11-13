@@ -1406,3 +1406,109 @@ let ENC_INV = `\i s.
         read (memory :> bytes(word_add buf (word(16 * i)),16 * (n - i))) s =
         cbc_num inp i (n - i)) /\
        (read CF s <=> i = n)`;;
+(* The proofs below are scripts of tactics, each applied to the first goal
+   still open, as HOL Light's interactive e applies them. *)
+let prove_steps (tm,tacs) =
+  match rev_itlist (fun tac gs -> by (VALID tac) gs) tacs
+          (mk_goalstate([],tm)) with
+    (_,[],just) ->
+      let th = just null_inst [] in
+      if hyp th = [] && aconv (concl th) tm then th
+      else failwith "prove_steps: wrong theorem"
+  | _ -> failwith "prove_steps: unsolved goals";;
+
+(* SP 800-38A's CBC decryption of the blocks inp 0, inp 1, ... chained from
+   iv: cbc_dec ks iv inp i is the ith plaintext block. *)
+let cbc_dec = new_definition
+ `cbc_dec ks iv (inp:num->int128) i =
+    word_xor (aes_hw_decrypt ks (inp i)) (if i = 0 then iv else inp(i - 1))`;;
+
+(* The code XORs the chaining block into AESDECLAST's round key. *)
+let AESDECLAST_XOR = prove
+ (`!s c k:int128. aesdeclast s (word_xor c k) = word_xor (aesdeclast s k) c`,
+  REWRITE_TAC[aesdeclast] THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REPEAT GEN_TAC THEN CONV_TAC WORD_BITWISE_RULE);;
+
+let READ_KEY_R = prove
+ (`!ks (a:int64) s r.
+     LENGTH ks = r + 2 /\
+     read (memory :> bytes(a,16 * (r + 2))) s = aes_key_num ks
+     ==> !i. i < r + 2
+             ==> read (memory :> bytes128(word_add a (word(16 * i)))) s =
+                 EL i ks`,
+  MESON_TAC[READ_KEY]);;
+
+let read_value c s asl =
+  rhs(concl(snd(find (fun (_,th) ->
+    let t = concl th in
+    is_eq t && (let l = lhs t in
+                is_comb l && rand l = s && is_comb(rator l) &&
+                rand(rator l) = c)) asl)));;
+
+(* Splits on the key size and expands AES into rounds, keeping the key
+   schedule's region as it is, for proofs that call the helpers. *)
+let KEY_CASES_KEEP_TAC =
+  FIRST_X_ASSUM(MP_TAC o check (can (term_match [] `(r:num) IN s`) o concl)) THEN
+  REWRITE_TAC[IN_INSERT; NOT_IN_EMPTY] THEN
+  DISCH_THEN(REPEAT_TCL DISJ_CASES_THEN SUBST_ALL_TAC) THEN
+  FIRST_ASSUM(fun th ->
+    if is_eq(concl th) && lhand(concl th) = `LENGTH(ks:int128 list)`
+    then ASSUME_TAC(CONV_RULE(RAND_CONV NUM_REDUCE_CONV) th)
+    else failwith "") THEN
+  AES_EXPAND_TAC;;
+
+(* In the current state, the round keys from the key schedule's region. *)
+let KEY_READS_TAC (asl,w as g) =
+  let s = rand w in
+  let th = snd(find (fun (_,th) ->
+    can (term_match [] (subst [s,`s:x86state`]
+      `read (memory :> bytes (key,16 * (r + 2))) s = aes_key_num ks`)) (concl th)) asl) in
+  let r = lhand(rand(rand(rand(rand(lhand(lhs(concl th))))))) in
+  let lth = snd(find (fun (_,th) -> concl th =
+     mk_eq(`LENGTH(ks:int128 list)`, mk_binop `(+):num->num->num` r `2`)) asl) in
+  (MP_TAC(MATCH_MP READ_KEY_R (CONJ lth th)) THEN
+   CONV_TAC(LAND_CONV(NUM_REDUCE_CONV THENC EXPAND_CASES_CONV THENC
+                      NUM_REDUCE_CONV)) THEN
+   REWRITE_TAC[WORD_ADD_0] THEN STRIP_TAC) g;;
+let WORD_SUB_BLOCKS_END = prove
+ (`!n. word_sub (word(16 * n)) (word(16 * (n + 1))):int64 =
+       word 18446744073709551600`,
+  REWRITE_TAC[ARITH_RULE `16 * (n + 1) = 16 * n + 16`; WORD_ADD] THEN
+  GEN_TAC THEN TRANS_TAC EQ_TRANS `word_neg(word 16):int64` THEN
+  CONJ_TAC THENL [CONV_TAC WORD_RULE; CONV_TAC WORD_REDUCE_CONV]);;
+
+let ENC_LOOP = time prove_steps
+ (ENC_LOOP_GOAL,
+ [
+  (REWRITE_TAC[SOME_FLAGS] THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
+   ENSURES_WHILE_PUP_TAC `n:num` `pc + 0x30` `pc + 0x6e` ENC_INV THEN
+   ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC);
+  (* Into the loop. *)
+  (REWRITE_TAC[MULT_CLAUSES; ADD_CLAUSES; SUB_0; WORD_ADD_0; cbc_num] THEN
+   REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_TRIVIAL] THEN
+   ENSURES_INIT_TAC "s0" THEN ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]);
+  (* Block i. *)
+  (X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+   ASM_SIMP_TAC[ARITH_RULE `i < n ==> n - i = (n - (i + 1)) + 1`] THEN
+   GEN_REWRITE_TAC (RATOR_CONV o RATOR_CONV o RAND_CONV o ABS_CONV o DEPTH_CONV)
+     [READ_BLOCKS_CONS] THEN
+   GEN_REWRITE_TAC (RATOR_CONV o RAND_CONV o ABS_CONV o DEPTH_CONV)
+     [READ_BLOCKS_SNOC] THEN
+   REWRITE_TAC[ADD_EQ_0; ARITH_EQ; ADD_SUB; ADD_CLAUSES] THEN
+   ABBREV_TAC `chn:int128 = if i = 0 then iv else cbc_enc ks iv inp (i - 1)` THEN
+   ONCE_REWRITE_TAC[CBC_ENC] THEN ASM_REWRITE_TAC[] THEN
+   KEY_CASES_TAC THEN ENSURES_INIT_TAC "s0" THEN GHOST_YMMS_TAC THEN
+   X86_XSTEPS_UNTIL_TAC AES_HW_CBC_ENCRYPT_EXEC 0x6e 1 THEN
+   XMMS_OF_YMMS_TAC THEN ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+   RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_BLOCK]) THEN
+   ASM_REWRITE_TAC[WORD_XOR_ROT; WORD_ADD_BLOCK; WORD_SUB_BLOCK] THEN
+   W(MP_TAC o PART_MATCH (lhand o rand) VAL_WORD_SUB_BLOCKS o lhand o lhand o snd) THEN
+   (ANTS_TAC THENL [NUM_ASM_ARITH_TAC; DISCH_THEN SUBST1_TAC THEN NUM_ASM_ARITH_TAC]));
+  (* Back to the top. *)
+  (X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+   ENSURES_INIT_TAC "s0" THEN X86_STEPS_TAC AES_HW_CBC_ENCRYPT_EXEC [1] THEN
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]);
+  (* Out of the loop. *)
+  (ENSURES_INIT_TAC "s0" THEN X86_STEPS_TAC AES_HW_CBC_ENCRYPT_EXEC [1] THEN
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[WORD_SUB_BLOCKS_END])
+ ]);;
