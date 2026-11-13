@@ -71,8 +71,9 @@ Each bullet names one file.
 ### Instructions from awslabs/s2n-bignum#450
 
 #450's changes to the three model files at
-`7ef212f3f517635c57174475f413c74013ae79a5`, every line it adds or removes
-unchanged, merged onto the base, since its files branch from `7948ca13` and
+`7ef212f3f517635c57174475f413c74013ae79a5`, merged onto the base with every
+line it adds or removes unchanged but two lines of `x86.ml`'s instruction
+list, which also name rind's instructions, since its files branch from `7948ca13` and
 would otherwise revert three later upstream commits to them (#429, #438, and
 #452). They add `SHA256RNDS2`, `SHA256MSG1`, `SHA256MSG2`, and the legacy SSE
 `PALIGNR`, `PUNPCKLQDQ`, and `PUNPCKHQDQ`, which x86_64's SHA-NI SHA-256
