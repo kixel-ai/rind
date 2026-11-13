@@ -433,16 +433,21 @@ session() {
     # A session never checkpoints itself: `--interval 0` overrides any
     # `DMTCP_CHECKPOINT_INTERVAL`, and a checkpoint would go to its own
     # directory rather than over the shared image.
-    {
-        printf '%s\n' "$setup"
-        if [[ -n $file ]]; then
-            printf 'let () = try loadt %s; exit 0 with e -> print_endline (Printexc.to_string e); exit 1;;\n' \
-                "$(ocaml_string "$file")"
-        else
-            cat
-        fi
-    } | dmtcp_restart --new-coordinator --coord-port 0 --interval 0 --ckptdir "$session_dir/ckpt" \
-        --quiet "$image"/ckpt/ckpt_*.dmtcp
+    # The forwarder of stdin may still be waiting on a terminal once the
+    # session exits, so it is stopped then, and the session's status kept.
+    local status=0
+    dmtcp_restart --new-coordinator --coord-port 0 --interval 0 --ckptdir "$session_dir/ckpt" \
+        --quiet "$image"/ckpt/ckpt_*.dmtcp < <(
+            printf '%s\n' "$setup"
+            if [[ -n $file ]]; then
+                printf 'let () = try loadt %s; exit 0 with e -> print_endline (Printexc.to_string e); exit 1;;\n' \
+                    "$(ocaml_string "$file")"
+            else
+                exec cat
+            fi
+        ) || status=$?
+    kill $! 2>/dev/null || true
+    return $status
 }
 
 # Prints `s` as an OCaml string literal.
@@ -456,7 +461,8 @@ ocaml_string() {
 # beside the patched model `s2n_bignum_model` writes for it. It sets a
 # variable rather than printing, since a command substitution would not exit
 # on a failure while it builds the image. It builds the image unless
-# one has the same inputs: HOL Light, DMTCP, the submodule's commit, and what
+# one has the same inputs: HOL Light, DMTCP, the kernel, whose vDSO DMTCP
+# checks on restore, the submodule's commit, and what
 # `proofs/hol-light/s2n-bignum/` carries. Images live outside the worktree, so
 # worktrees on the same inputs share one, and building one removes those of
 # `arch` no session has used in a week.
@@ -477,6 +483,7 @@ let () = needs \"$base\"; ignore (input_line stdin); Gc.compact (); print_endlin
     key=$({
         echo "$HOLLIGHT_DIR"
         command -v dmtcp_restart
+        uname -r
         git -C thirdparty/s2n-bignum rev-parse HEAD
         echo "$init"
         cd proofs/hol-light/s2n-bignum && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
@@ -515,7 +522,7 @@ let () = needs \"$base\"; ignore (input_line stdin); Gc.compact (); print_endlin
                 [[ $message == "Computation was checkpointed and killed." ]] || kill $! 2>/dev/null || true
             fi
         done < <(scratch=${held[scratch]} && exec {scratch}>&- {lock}>&- && cd "$build" &&
-            HOL_ML_PATH=$build/init.ml LINE_EDITOR=exec \
+            HOL_ML_PATH=init.ml LINE_EDITOR=exec \
                 HOLLIGHT_LOAD_PATH="$build/s2n-bignum:$build/carried:$root/thirdparty/s2n-bignum" \
                 exec dmtcp_launch --new-coordinator --coord-port 0 --port-file port --interval 0 --no-gzip \
                 --ckptdir ckpt hol_light <stdin 2>&1)
