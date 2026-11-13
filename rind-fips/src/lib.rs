@@ -209,6 +209,61 @@ pub mod key_wrap {
     pub use crate::cipher::{AES_128, AES_192, AES_256};
 }
 
+/// Public key signatures: ECDSA on P-256, P-384, and P-521, RSA, Ed25519,
+/// and ML-DSA.
+///
+/// A key pair signs with a [`signature::sign`] algorithm, and a peer's
+/// public key is parsed for a [`signature::verify`] algorithm:
+///
+/// ```
+/// # fn main() -> Result<(), rind_fips::Error> {
+/// use rind_fips::signature::{EcdsaKeyPair, PublicKey, sign, verify};
+///
+/// let key_pair = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_ASN1)?;
+/// let signature = key_pair.sign(b"hello")?;
+///
+/// let encoded = key_pair.public_key();
+/// let public_key = PublicKey::new(&verify::ECDSA_P256_SHA256_ASN1, encoded.as_ref())?;
+/// public_key.verify(b"hello", signature.as_ref())?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// RSA-PSS takes only a salt as long as its hash, which is all FIPS
+/// 140-3's tested configurations approve, so neither a custom salt length
+/// nor any-salt verification is here:
+///
+/// ```compile_fail
+/// use rind_fips::signature::verify::RSA_PSS_SHA256_ANY_SALT;
+/// ```
+///
+/// ```compile_fail
+/// use rind_fips::signature::RsaPssSaltLength;
+/// ```
+pub mod signature;
+
+/// RSA keys' sizes and components, which RSA signatures under [`signature`]
+/// take.
+///
+/// RSA-OAEP is in `rind` alone, outside the module.
+///
+/// ```
+/// # fn main() -> Result<(), rind_fips::Error> {
+/// use rind_fips::rsa::KeySize;
+/// use rind_fips::signature::{PublicKey, RsaKeyPair, sign, verify};
+///
+/// let key_pair = RsaKeyPair::generate(KeySize::Rsa2048)?;
+/// let signature = key_pair.sign(&sign::RSA_PSS_SHA256, b"hello")?;
+///
+/// let public_key = PublicKey::from_spki(&verify::RSA_PSS_SHA256, key_pair.to_spki().as_ref())?;
+/// public_key.verify(b"hello", signature.as_ref())?;
+/// # Ok(())
+/// # }
+/// ```
+pub mod rsa {
+    pub use crate::signature::rsa::{KeySize, PublicKeyComponents};
+}
+
 /// Encoded keys: PKCS#8 and SEC1 private keys, and `SubjectPublicKeyInfo`
 /// public keys.
 ///
