@@ -382,8 +382,9 @@
               pkgs.git
               pkgs.python3
               debian-cross-tools
-              armv7-cosim-tools
-            ];
+            ]
+            # qemu-user, which the cosimulation runs under, builds only on Linux.
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ armv7-cosim-tools ];
           };
 
           sde-certs = ''
