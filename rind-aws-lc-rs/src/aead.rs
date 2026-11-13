@@ -372,8 +372,18 @@ impl LessSafeKey {
         A: AsRef<[u8]>,
         InOut: AsMut<[u8]> + for<'in_out> Extend<&'in_out u8>,
     {
-        let tag = self.seal_in_place_separate_tag(nonce, aad, in_out.as_mut())?;
-        in_out.extend(tag.as_ref());
+        // `Extend` need not grow `in_out`, so room for the tag is made and
+        // checked before sealing, leaving the plaintext as it was if it is
+        // missing, as aws-lc-rs does.
+        let plaintext_len = in_out.as_mut().len();
+        in_out.extend(&[0; TAG_LEN]);
+        let in_out = in_out.as_mut();
+        if in_out.len() != plaintext_len + TAG_LEN {
+            return Err(error::Unspecified);
+        }
+        let (plaintext, tag_out) = in_out.split_at_mut(plaintext_len);
+        let tag = self.seal_in_place_separate_tag(nonce, aad, plaintext)?;
+        tag_out.copy_from_slice(tag.as_ref());
         Ok(())
     }
 
