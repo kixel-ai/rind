@@ -15,4 +15,4 @@ Every operation earns the ✓ on aarch64 cores without the crypto extension (the
 ## Required
 
 - [AES-GCM on aarch64 is proven](/quest/m4/verified/aes-gcm-aarch64.md) - the AEAD glue this tier shares
-- [aarch64's AES-GCM kernels are proven in place](/quest/m4/verified/aes-gcm-aarch64-in-place.md) - the s2n-bignum pin with #490's `common/gcm.ml` and `common/fips197.ml`, which this proof is written against
+- [aarch64's AES-GCM kernels are proven in place](/quest/m4/verified/aes-gcm-aarch64-in-place.md) - the s2n-bignum pin this proof is written against: #490's `common/gcm.ml` and `common/fips197.ml`, or today's if #490 closes unmerged
