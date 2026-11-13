@@ -19,13 +19,6 @@ skip = { fips = "builds AWS-LC's FIPS module, which rind does not offer" }
 omitted = [
   "kx_group::MLKEM1024",
 ]
-# Divergences that are bugs, until quest/m2/confidence/adapter-api-drift.md fixes them.
-drift = [
-  "Ticketer",
-  "cipher_suite::TLS_ECDHE_*",
-  "hpke::DH_KEM_*",
-  "hpke::HpkeAwsLcRs",
-]
 
 [dependencies]
 rind = { version = "0.3.2", path = "../rind" }

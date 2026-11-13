@@ -59,7 +59,7 @@ declare -A scope=(
     [versions]='^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)'
     # Each adapter's API against its upstream's, which reaches rind only
     # through a lockfile change. rind-object-store has none to copy.
-    [adapters]='^(rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|admin/adapter-api$)'
+    [adapters]='^(rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|admin/adapter-api(\.drift)?$)'
     [license]='^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)'
     # Dependents may build with the workspace's declared rust-version.
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
@@ -293,7 +293,14 @@ for module in "${selected[@]}"; do
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;
         check:deny) cargo deny --locked check ;;
         check:versions) sh/adapter-versions.sh ;;
-        check:adapters) python3 admin/adapter-api ;;
+        # The drift list only shrinks against the diff's base.
+        check:adapters)
+            if [[ -n "$base" && -z "$all" ]]; then
+                python3 admin/adapter-api --base "$base"
+            else
+                python3 admin/adapter-api
+            fi
+            ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
         # It finds the generated kernels relative to its own directory.

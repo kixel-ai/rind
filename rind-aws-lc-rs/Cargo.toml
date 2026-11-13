@@ -78,17 +78,6 @@ omitted = [
   "try_fips_self_test",
   "unstable",
 ]
-# Divergences that are bugs, until quest/m2/confidence/adapter-api-drift.md fixes them.
-drift = [
-  "aead::Nonce::{impl}",
-  "aead::RandomizedNonceKey::seal_in_place_append_tag",
-  "signature::VerificationAlgorithm",
-  "rsa::PublicKey::modulus_len",
-  "signature::RsaSubjectPublicKey::modulus_len",
-  "rand::SystemRandom::{impl}",
-  "rand::RandomlyConstructable",
-  "rand::SecureRandom",
-]
 
 [features]
 default = ["aws-lc-sys", "alloc", "ring-io", "ring-sig-verify"]

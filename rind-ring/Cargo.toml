@@ -28,13 +28,6 @@ omitted = [
   "rsa::KeyPair::from_components",
   "rsa::KeyPairComponents",
 ]
-# Divergences that are bugs, until quest/m2/confidence/adapter-api-drift.md fixes them.
-drift = [
-  "rsa",
-  "signature::RSA_*",
-  "signature::Rsa*",
-  "error::*::{impl}",
-]
 
 # ring's feature names, so a manifest naming them builds unchanged. rind-ring
 # always has `alloc` and `std`, rind's random source already falls back to
