@@ -56,7 +56,7 @@ exclude_re = [
   'rind/src/low/generic/limb(32|64)\.rs:\d+:\d+: replace \| with \^ in join$',
   'rind/src/low/generic/chacha20\.rs:\d+:\d+: replace \| with \^ in quarter_round$',
   'rind/src/low/generic/mldsa_poly\.rs:\d+:\d+: replace \| with \^ in (mldsa_polyz_unpack_17|mldsa_polyz_unpack_19|mldsa_rej_uniform_vartime)$',
-  'rind/src/low/generic/mlkem\.rs:\d+:\d+: replace \| with \^ in (mlkem_compress_d10|mlkem_compress_d4|mlkem_frombytes)$',
+  'rind/src/low/generic/mlkem\.rs:\d+:\d+: replace \| with \^ in (compress|compress_one|mlkem_frombytes)$',
   'rind/src/low/generic/mlkem_poly\.rs:\d+:\d+: replace \| with \^ in (mlkem_rej_uniform_vartime|mlkem_tobytes)$',
   'rind/src/low/generic/p256\.rs:\d+:\d+: replace \| with \^ in (booth_w5|join|select_u8)$',
   'rind/src/low/generic/p256_mul32\.rs:\d+:\d+: replace \| with \^ in sqr_wide$',
