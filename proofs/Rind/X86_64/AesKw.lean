@@ -727,4 +727,329 @@ theorem kek_wrap_padded_spec (h : RunsAesHw) {alg : Algorithm} {kek : List (BitV
     simp only [kwpAE, hpl, hk8, ite_false, kwW]
     rw [← hwb]
 
+/-! ## `unwrap_padded` -/
+
+theorem kw_from_be_bytes32 (a : Std.Array U8 4#usize) :
+    (core.num.U32.from_be_bytes a).val = ofBe (bvs a.val) := by
+  unfold core.num.U32.from_be_bytes
+  simp only [UScalar.val, BitVec.toNat_cast]
+  exact toNat_fromBEBytes _
+
+/-- One step of `unwrap_padded`'s padding check. -/
+theorem pad_step (bad x : BitVec 64) (k : BitVec 8) :
+    (bad ||| (((x >>> 63) - 1#64) &&& k.setWidth 64)) = 0#64 ↔ (bad = 0#64 ∧ (x.msb = false → k = 0#8)) := by
+  have hk : k.setWidth 64 = 0#64 ↔ k = 0#8 := by
+    constructor
+    · intro h; apply BitVec.eq_of_toNat_eq; have := congrArg BitVec.toNat h
+      simp only [BitVec.toNat_setWidth, BitVec.toNat_ofNat] at this; have := k.isLt; simp; omega
+    · rintro rfl; rfl
+  have hx := x.isLt
+  rw [BitVec.or_eq_zero_iff, BitVec.msb_eq_decide]
+  by_cases hm : 2 ^ 63 ≤ x.toNat
+  · have hs : x >>> 63 = 1#64 := by
+      apply BitVec.eq_of_toNat_eq
+      simp only [BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow, BitVec.toNat_ofNat]
+      omega
+    rw [hs, show (1#64 - 1#64) = 0#64 from by decide, BitVec.zero_and]
+    constructor
+    · rintro ⟨h, -⟩; exact ⟨h, fun h' => absurd h' (by simp; omega)⟩
+    · rintro ⟨h, -⟩; exact ⟨h, rfl⟩
+  · have hs : x >>> 63 = 0#64 := by
+      apply BitVec.eq_of_toNat_eq
+      simp only [BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow, BitVec.toNat_ofNat]
+      omega
+    rw [hs, show (0#64 - 1#64) = BitVec.allOnes 64 from by decide, BitVec.allOnes_and, hk]
+    constructor
+    · rintro ⟨h1, h2⟩; exact ⟨h1, fun _ => h2⟩
+    · rintro ⟨h1, h2⟩; exact ⟨h1, h2 (decide_eq_false hm)⟩
+
+/-- Every byte of `key` from `s` on at or past `c`, as the padding check's mask
+computes it, is zero. -/
+def PadZero (key : Slice U8) (c : U64) (s : Nat) : Prop :=
+  ∀ j, s ≤ j → j < key.length → (BitVec.ofNat 64 j - c.bv).msb = false → (bvs key.val)[j]! = 0#8
+
+theorem padZero_succ (key : Slice U8) (c : U64) (s : Nat) (hs : s < key.length) :
+    PadZero key c s ↔ (((BitVec.ofNat 64 s - c.bv).msb = false → (bvs key.val)[s]! = 0#8) ∧
+      PadZero key c (s + 1)) := by
+  constructor
+  · intro h; exact ⟨h s le_rfl hs, fun j hj => h j (by omega)⟩
+  · rintro ⟨h0, h1⟩ j hj
+    rcases Nat.eq_or_lt_of_le hj with rfl | hj
+    · intro _; exact h0
+    · exact h1 j hj
+
+theorem unwrap_padded_loop_spec (key : Slice U8) (c : U64) (iter : core.ops.range.Range Usize) (bad : U64)
+    (he : iter.end.val = key.length) (hs : iter.start.val ≤ key.length) :
+    mid.aes_kw.AesKek.unwrap_padded_loop iter key c bad ⦃ r =>
+      (r.bv = 0#64 ↔ bad.bv = 0#64 ∧ PadZero key c iter.start.val) ⦄ := by
+  unfold mid.aes_kw.AesKek.unwrap_padded_loop
+  apply loop.spec_decr_nat (fun x => key.length - x.1.start.val)
+    (fun x => x.1.start.val ≤ key.length ∧ x.1.end.val = key.length ∧
+      ((x.2.bv = 0#64 ∧ PadZero key c x.1.start.val) ↔ (bad.bv = 0#64 ∧ PadZero key c iter.start.val)))
+  · rintro ⟨it, b⟩ ⟨hs, he, hf⟩
+    simp only at hs he hf ⊢
+    unfold mid.aes_kw.AesKek.unwrap_padded_loop.body
+    by_cases hlt : it.start.val < it.end.val
+    · step with core.iter.range.IteratorRange.next_Usize_some_spec as ⟨o, it', ho, hst, hen⟩
+      subst ho
+      simp only [core.hint.black_box]
+      step*
+      simp only [lift, bind_ok, WP.spec_ok]
+      refine ⟨by omega, by rw [hen]; exact he, ?_, by omega⟩
+      rw [← hf, padZero_succ key c it.start.val (by omega), hst]
+      have hi1 : i1.bv = BitVec.ofNat 64 it.start.val := by
+        have := usize_lt it.start
+        apply BitVec.eq_of_toNat_eq; rw [UScalar.bv_toNat, i1_post, cast_u64]; simp; omega
+      have hjl : it.start.val < key.val.length := by
+        have : it.start.val < key.length := by omega
+        simpa [Slice.length] using this
+      have hk : (bvs key.val)[it.start.val]! = i4.bv := by
+        rw [i4_post]; simp [bvs, getElem!_pos, hjl]
+      simp only [UScalar.bv_or, UScalar.bv_and, past_post, core.num.U64.wrapping_sub_bv_eq, i3_post1, i2_post,
+        hi1, core.convert.num.FromU64U8.from_bv_eq]
+      rw [show U64.bv 1#u64 = 1#64 from rfl, pad_step, hk, and_assoc]
+    · step with core.iter.range.IteratorRange.next_Usize_none_spec as ⟨o, it', ho, hit⟩
+      subst ho
+      simp only [WP.spec_ok]
+      have hz : PadZero key c it.start.val := fun j h1 h2 => absurd h2 (by omega)
+      rw [← hf]
+      simp [hz]
+  · exact ⟨hs, he, Iff.rfl⟩
+
+theorem u64_bv_zero (x : U64) : x.bv = 0#64 ↔ x.val = 0 := by
+  constructor
+  · intro h; have h' := congrArg BitVec.toNat h; simp only [BitVec.toNat_zero] at h'; exact h'
+  · intro h; apply BitVec.eq_of_toNat_eq; exact h
+
+theorem u64_eq_bv (x y : U64) : x = y ↔ x.bv = y.bv := by
+  constructor
+  · rintro rfl; rfl
+  · intro h; cases x; cases y; simp_all
+
+theorem or_flag_zero (x : U64) (b : Bool) :
+    (x ||| core.convert.num.FromU64Bool.from (decide ¬b = true) = 0#u64) ↔ (x.bv = 0#64 ∧ b = true) := by
+  rw [u64_eq_bv]
+  cases b
+  · change (x.bv ||| 1#64 = 0#64) ↔ _
+    rw [BitVec.or_eq_zero_iff]
+    simp
+  · change (x.bv ||| 0#64 = 0#64) ↔ _
+    simp only [BitVec.or_zero, and_true]
+
+theorem msb_sub_iff (j : Nat) (c : U64) (hj : j < 2 ^ 63) (hc : c.val < 2 ^ 63) :
+    (BitVec.ofNat 64 j - c.bv).msb = false ↔ c.val ≤ j := by
+  rw [BitVec.msb_eq_false_iff_two_mul_lt, BitVec.toNat_sub, BitVec.toNat_ofNat]
+  have : c.bv.toNat = c.val := rfl
+  rw [this]
+  omega
+
+theorem drop_zero_iff (p : List (BitVec 8)) (m : Nat) :
+    (∀ b ∈ p.drop m, b = 0#8) ↔ ∀ j, m ≤ j → j < p.length → p[j]! = 0#8 := by
+  constructor
+  · intro h j hm hj
+    apply h
+    rw [List.mem_iff_getElem]
+    refine ⟨j - m, by simp; omega, ?_⟩
+    simp [getElem!_pos, hj, show m + (j - m) = j by omega]
+  · intro h b hb
+    rw [List.mem_iff_getElem] at hb
+    obtain ⟨i, hi, rfl⟩ := hb
+    simp only [List.length_drop] at hi
+    have := h (m + i) (by omega) (by omega)
+    simpa [getElem!_pos, show m + i < p.length by omega] using this
+
+/-- What `unwrap_padded` decrypts, before its checks: KWP-AD's `A` and padded
+plaintext. -/
+def kwpDec (alg : Algorithm) (key c : List (BitVec 8)) : List (BitVec 8) × List (BitVec 8) :=
+  if c.length / 8 - 1 = 1 then
+    let s := aesBlockDecrypt alg key c
+    (s.take 8, s.drop 8)
+  else kwWInv alg key (c.take 8) (c.drop 8)
+
+theorem kwpAD_eq (alg : Algorithm) (key c : List (BitVec 8)) :
+    kwpAD alg key c = (fun ap : List (BitVec 8) × List (BitVec 8) =>
+      if ap.1.take 4 = icv2 ∧ 8 * (c.length / 8 - 1 - 1) < ofBe (ap.1.drop 4) ∧
+        ofBe (ap.1.drop 4) ≤ 8 * (c.length / 8 - 1) ∧ ∀ b ∈ ap.2.drop (ofBe (ap.1.drop 4)), b = 0
+      then some (ap.2.take (ofBe (ap.1.drop 4))) else none) (kwpDec alg key c) := by
+  unfold kwpAD kwpDec; rfl
+
+/-- `unwrap_padded`'s result, once its lengths pass: KWP-AD's plaintext, or
+`DecryptFailed` with the key cleared. -/
+def padPost (alg : Algorithm) (kek c : List (BitVec 8)) (len : Nat)
+    (res : core.result.Result (Slice U8) error.Error × (core.result.Result (Slice U8) error.Error → Slice U8)) :
+    Prop :=
+  match kwpAD alg kek c with
+  | some p => ∃ s, res.1 = .Ok s ∧ bvs s.val = p
+  | none => res.1 = .Err .DecryptFailed ∧ (res.2 res.1).val = List.replicate len 0#u8
+
+/-- `unwrap_padded` refuses what the Rust refuses, returns `DecryptFailed` with
+the key cleared exactly when KWP-AD fails, and otherwise returns KWP-AD's
+plaintext. -/
+theorem kek_unwrap_padded_spec (h : RunsAesHw) (hheld : low.entry.Entry.assert_held = ok ()) {alg : Algorithm}
+    {kek : List (BitVec 8)} {self : mid.aes_kw.AesKek} (hk : KekIs alg kek self) (wrapped key : Slice U8) :
+    mid.aes_kw.AesKek.unwrap_padded self wrapped key ⦃ res =>
+      if wrapped.length < 16 ∨ wrapped.length % 8 ≠ 0 then res.1 = .Err .DecryptFailed ∧ res.2 res.1 = key
+      else if key.length ≠ wrapped.length - 8 then res.1 = .Err .WrongLength ∧ res.2 res.1 = key
+      else match kwpAD alg kek (bvs wrapped.val) with
+        | some p => ∃ s, res.1 = .Ok s ∧ bvs s.val = p
+        | none => res.1 = .Err .DecryptFailed ∧ (res.2 res.1).val = List.replicate key.length 0#u8 ⦄ := by
+  obtain ⟨e, he⟩ := h.1
+  unfold mid.aes_kw.AesKek.unwrap_padded
+  rw [he, bind_ok]
+  by_cases h16 : wrapped.length < 16
+  · have hlt : Slice.len wrapped < 16#usize := by scalar_tac
+    simp only [hlt, ite_true, h16, true_or, WP.spec_ok, and_self]
+  have hlt : ¬ Slice.len wrapped < 16#usize := by scalar_tac
+  simp only [hlt, ite_false, h16, false_or]
+  step as ⟨b, hb⟩
+  cases b
+  · have h8 : ¬ wrapped.length % 8 = 0 := by simpa using hb
+    simp [h8]
+  have h8 : wrapped.length % 8 = 0 := by simpa using hb
+  simp only [ite_true, h8, ne_eq, not_true_eq_false, ite_false]
+  step as ⟨i4, hi4⟩
+  by_cases hw : key.length = wrapped.length - 8
+  swap
+  · have hne : (Slice.len key != i4) = true := by
+      simp only [bne_iff_ne, ne_eq]; intro he; apply hw; rw [← Slice.len_val, he, hi4, Slice.len_val]
+    simp only [hne, hw, ite_true, not_false_eq_true, WP.spec_ok, and_self]
+  have hne : ¬ (Slice.len key != i4) = true := by
+    simp only [bne_iff_ne, ne_eq, not_not]; apply UScalar.eq_of_val_eq
+    rw [hi4, Slice.len_val, Slice.len_val, hw]
+  simp only [hne, Bool.false_eq_true, ite_false, hw, not_true_eq_false]
+  step with kek_key_spec hk as ⟨s, hsl, hsb⟩
+  step with dec_key_new_spec h alg s hsl as ⟨adk, hwk, hadk1, hadk2⟩
+  have hdk : AesDecIs alg kek adk := ⟨hwk, hadk1, by rw [← hsb]; exact hadk2⟩
+  simp only [core.mem.manually_drop.ManuallyDrop.new,
+    core.mem.manually_drop.ManuallyDrop.Insts.CoreOpsDerefDeref.deref, bind_ok]
+  have hwl : (bvs wrapped.val).length = wrapped.length := by simp [bvs, Slice.length]
+  change WP.spec _ (padPost alg kek (bvs wrapped.val) (wrapped.length - 8))
+  apply WP.spec_bind (Pₘ := fun p => p.1.length = key.length ∧
+    (bvs p.2.val, bvs p.1.val) = kwpDec alg kek (bvs wrapped.val))
+  · split
+    · rename_i h8k
+      have hk8 : key.length = 8 := by
+        have := congrArg UScalar.val h8k; rw [Slice.len_val] at this; simpa using this
+      have hw16 : wrapped.length = 16 := by omega
+      step as ⟨r, hr⟩
+      rcases r with arr | ⟨⟩
+      swap
+      · exact absurd hw16 hr
+      obtain ⟨harr, -⟩ := hr
+      simp only [core.result.Result.unwrap, bind_ok]
+      step with dec_bytes hdk arr as ⟨blk, hblk⟩
+      step*
+      subst key2 s2
+      have h8' : (8#usize : Usize).val ≤ blk.to_slice.length := by simp
+      simp only [core.slice.Slice.first_chunk, h8', ↓reduceDIte, core.option.Option.unwrap, Result.ofOption,
+        bind_ok, WP.spec_ok]
+      refine ⟨by rw [s1_post1]; simp [hk8], ?_⟩
+      have h1 : (bvs wrapped.val).length / 8 - 1 = 1 := by rw [hwl, hw16]
+      simp only [kwpDec, h1, ite_true]
+      rw [← harr, ← hblk, s1_post]
+      simp [bvs, List.map_take, List.map_drop]
+    · rename_i h8k
+      have hk8 : key.length ≠ 8 := by
+        intro h'; apply h8k; apply UScalar.eq_of_val_eq; rw [Slice.len_val, h']; rfl
+      step as ⟨wa, wc, hwal, hwcl, hwav, hwcv⟩
+      step as ⟨key2, hkey2⟩
+      subst key2
+      step as ⟨r, hr⟩
+      rcases r with arr | ⟨⟩
+      swap
+      · exact absurd hwal hr
+      obtain ⟨harr, -⟩ := hr
+      simp only [core.result.Result.unwrap, bind_ok]
+      have hc8 : wc.length % 8 = 0 := by omega
+      step with as_chunks_mut_8 wc hc8 as ⟨ch, rest, cback, hcl, hch, hcback⟩
+      step with unwrap_blocks_spec hdk arr ch
+        (by have := usize_lt wc.len; rw [Slice.len_val] at this; rw [hcl]; omega) as ⟨ua, ur, hul, hub⟩
+      have hc := hcback ur (by rw [hul, hcl])
+      refine ⟨by rw [hc.2]; omega, ?_⟩
+      have ht : (bvs wrapped.val).take 8 = bvs arr.val := by rw [harr, hwav]; simp [bvs, List.map_take]
+      have hd : (bvs wrapped.val).drop 8 = bvs wc.val := by rw [hwcv]; simp [bvs, List.map_drop]
+      have hn8 : (bvs wc.val).length / 8 = ch.length := by rw [hcl]; simp [bvs, Slice.length]
+      rw [hch, ← hn8] at hub
+      simp only [kwpDec, hwl, show ¬(wrapped.length / 8 - 1 = 1) by omega, ite_false, kwWInv, ht, hd, ← hub, hc.1]
+  · rintro ⟨key1, aiv⟩ ⟨hl1, hdec⟩
+    simp only at hl1 hdec
+    simp only [Std.uncurry]
+    have h4 : (4#usize : Usize).val ≤ aiv.to_slice.length := by simp
+    simp only [lift, bind_ok, core.slice.Slice.last_chunk, core.option.Option.unwrap,
+      Result.ofOption, core.hint.black_box]
+    rw [dite_eq_left_of_eq_true (eq_true h4)]
+    simp only [bind_ok]
+    set a := Std.Array.from (List.drop (aiv.to_slice.length - (4#usize : Usize).val) aiv.to_slice.val) _ with ha
+    set claimed := core.convert.num.FromU64U32.from (core.num.U32.from_be_bytes a) with hclaimed
+    step as ⟨bad, hbad, hbad'⟩
+    step as ⟨i12, hi12⟩
+    have hkl := Slice.len_val key1
+    step with unwrap_padded_loop_spec key1 claimed { start := i12, «end» := Slice.len key1 } bad
+      (by simp only [hkl]) (by simp only; omega) as ⟨bad1, hbad1⟩
+    step as ⟨s2, hs2⟩
+    step with ct_equal_spec hheld as ⟨b1, hb1⟩
+    simp only [low.ct.into_public, bind_ok]
+    -- the claimed length
+    have hav : bvs a.val = (bvs aiv.val).drop 4 := by
+      rw [ha]; simp [bvs, List.map_drop]
+    have hm : claimed.val = ofBe ((bvs aiv.val).drop 4) := by
+      rw [hclaimed, core.convert.num.FromU64U32.from_val_eq, kw_from_be_bytes32, hav]
+    have hm32 : claimed.val < 2 ^ 32 := by
+      rw [hclaimed, core.convert.num.FromU64U32.from_val_eq]; scalar_tac
+    have hLlt := usize_lt key1.len
+    rw [hkl] at hLlt
+    have hL : key1.length = wrapped.length - 8 := by omega
+    have hbadz : bad.bv = 0#64 ↔ (key1.length - 8 < claimed.val ∧ claimed.val ≤ key1.length) := by
+      rw [u64_bv_zero, hbad, core.num.U64.wrapping_sub_val_eq, cast_u64, hkl, Nat.shiftRight_eq_div_pow]
+      simp only [UScalar.size, UScalarTy.numBits]
+      omega
+    have hb1' : b1 = true ↔ (bvs aiv.val).take 4 = icv2 := by
+      rw [hb1, decide_eq_true_iff, ← bvs_AIV, ← Std.Array.val_to_slice, ← bvs_inj, hs2]
+      simp [bvs, List.map_take]
+    have hpad : key1.length - 8 < claimed.val → claimed.val ≤ key1.length →
+        (PadZero key1 claimed i12.val ↔ ∀ b ∈ (bvs key1.val).drop claimed.val, b = 0#8) := by
+      intro h1 h2
+      rw [drop_zero_iff, hi12, hkl]
+      have hbl : (bvs key1.val).length = key1.length := by simp [bvs, Slice.length]
+      constructor
+      · intro hz j hmj hj
+        rw [hbl] at hj
+        exact hz j (by omega) hj ((msb_sub_iff j claimed (by omega) (by omega)).2 hmj)
+      · intro hz j _ hj hmsb
+        exact hz j ((msb_sub_iff j claimed (by omega) (by omega)).1 hmsb) (by rw [hbl]; exact hj)
+    have hn : (bvs wrapped.val).length / 8 - 1 = key1.length / 8 := by rw [hwl]; omega
+    have hcond : (bad1 ||| core.convert.num.FromU64Bool.from (decide ¬b1 = true) = 0#u64) ↔
+        ((bvs aiv.val).take 4 = icv2 ∧ 8 * ((bvs wrapped.val).length / 8 - 1 - 1) < ofBe ((bvs aiv.val).drop 4) ∧
+          ofBe ((bvs aiv.val).drop 4) ≤ 8 * ((bvs wrapped.val).length / 8 - 1) ∧
+          ∀ b ∈ (bvs key1.val).drop (ofBe ((bvs aiv.val).drop 4)), b = 0) := by
+      rw [or_flag_zero, hbad1, hb1', hn, ← hm]
+      constructor
+      · rintro ⟨⟨hz, hp⟩, hi⟩
+        obtain ⟨h1, h2⟩ := hbadz.1 hz
+        exact ⟨hi, by omega, by omega, (hpad h1 h2).1 hp⟩
+      · rintro ⟨hi, h1, h2, hp⟩
+        have h1' : key1.length - 8 < claimed.val := by omega
+        have h2' : claimed.val ≤ key1.length := by omega
+        exact ⟨⟨hbadz.2 ⟨h1', h2'⟩, (hpad h1' h2').2 hp⟩, hi⟩
+    unfold padPost
+    rw [kwpAD_eq, ← hdec]
+    dsimp only
+    by_cases hc : (bvs aiv.val).take 4 = icv2 ∧ 8 * ((bvs wrapped.val).length / 8 - 1 - 1) < ofBe ((bvs aiv.val).drop 4) ∧
+          ofBe ((bvs aiv.val).drop 4) ≤ 8 * ((bvs wrapped.val).length / 8 - 1) ∧
+          ∀ b ∈ (bvs key1.val).drop (ofBe ((bvs aiv.val).drop 4)), b = 0
+    · rw [ite_eq_left (hcond.2 hc), ite_eq_left hc]
+      simp only [low.ct.public_slice, bind_ok]
+      have hmle : claimed.val ≤ key1.length := by rw [hn, ← hm] at hc; omega
+      have hcast : (UScalar.cast .Usize claimed).val = claimed.val := by
+        rw [UScalar.cast_val_eq]; apply Nat.mod_eq_of_lt
+        have : 2 ^ 32 ≤ 2 ^ UScalarTy.Usize.numBits := Nat.pow_le_pow_right (by norm_num) (by cases System.Platform.numBits_eq <;> simp [*])
+        omega
+      step as ⟨s4, back, hs4⟩
+      refine ⟨s4, rfl, ?_⟩
+      rw [hs4, hcast, hm]
+      simp [bvs, List.map_take]
+    · rw [ite_eq_right (fun h => hc (hcond.1 h)), ite_eq_right hc]
+      step as ⟨key2, hkey2, hkey2v⟩
+      rw [hkey2v, hL]
+
 end rind.x86_64

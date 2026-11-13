@@ -8,6 +8,7 @@ import Rind.Aarch64.Ed25519
 import Rind.Aarch64.Sha3
 import Rind.Aarch64.P256Signature
 import Rind.Aarch64.AesModesLow
+import Rind.Aarch64.AesKw
 open rind.aarch64
 
 /-!
@@ -20,7 +21,7 @@ there of aws-lc's routine for the SHA-512 instructions; rind's HOL Light proof
 of SHA-256's routine for the crypto extension in `Rind.Aarch64.Sha256Hw`, for
 the theorems over every HMAC algorithm; rind's HOL Light proofs of its
 constant-time compares in `Rind.Aarch64.CtEqual` for HMAC's and PBKDF2's
-`verify`; and nothing else.
+`verify` and key wrap's `unwrap` and `unwrap_padded`; and nothing else.
 A change here is a change to the trust base.
 -/
 
@@ -490,3 +491,31 @@ A change here is a change to the trust base.
 /-- info: 'rind.aarch64.aes_cbc_decrypt_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms aes_cbc_decrypt_spec
+
+/-- info: 'rind.aarch64.kek_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms kek_new_spec
+
+/-- info: 'rind.aarch64.kek_wrap_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms kek_wrap_spec
+
+/-- info: 'rind.aarch64.kek_unwrap_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec] -/
+#guard_msgs in
+#print axioms kek_unwrap_spec
+
+/-- info: 'rind.aarch64.kek_wrap_padded_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms kek_wrap_padded_spec
+
+/-- info: 'rind.aarch64.kek_unwrap_padded_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec] -/
+#guard_msgs in
+#print axioms kek_unwrap_padded_spec
