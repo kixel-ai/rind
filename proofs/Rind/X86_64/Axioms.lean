@@ -1,5 +1,6 @@
 import Rind.X86_64.X25519
 import Rind.X86_64.P256Agree
+import Rind.X86_64.P256Base
 import Rind.X86_64.P384
 import Rind.X86_64.Sha512
 import Rind.X86_64.Pbkdf2
@@ -23,8 +24,11 @@ constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
 tag checks, and RSASSA-PSS's hash compare, and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states. A change here is a
-change to the trust base.
+hypothesis `RunsChaCha20Poly1305`, which no axiom states. P-256's generator
+multiplication also rests on two placeholders in `Rind.X86_64.S2nBignum`,
+`bignum_aff_point_select_p256_spec` and `p256_point_add_affine_spec`, until
+the select's model and the mixed addition's HOL Light proof replace them. A
+change here is a change to the trust base.
 -/
 
 /-- info: 'rind.x86_64.x25519_generate' depends on axioms: [propext,
@@ -501,3 +505,40 @@ change to the trust base.
  sha3_keccak_f1600_spec] -/
 #guard_msgs in
 #print axioms shake256_batch_spec
+
+/-- info: 'rind.x86_64.P256Base.tabulated' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms P256Base.tabulated
+
+/-- info: 'rind.x86_64.P256Base.first_row' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms P256Base.first_row
+
+/-- info: 'rind.x86_64.P256Base.jac_base_multiply_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_aff_point_select_p256_spec,
+ bignum_mux_spec,
+ bignum_neg_p256_spec,
+ p256_point_add_affine_spec] -/
+#guard_msgs in
+#print axioms P256Base.jac_base_multiply_spec
+
+/-- info: 'rind.x86_64.P256Base.base_multiply_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_aff_point_select_p256_spec,
+ bignum_demont_p256_alt_spec,
+ bignum_demont_p256_spec,
+ bignum_inv_p256_spec,
+ bignum_montmul_p256_alt_spec,
+ bignum_montmul_p256_spec,
+ bignum_montsqr_p256_alt_spec,
+ bignum_montsqr_p256_spec,
+ bignum_mux_spec,
+ bignum_neg_p256_spec,
+ bignum_tomont_p256_alt_spec,
+ bignum_tomont_p256_spec,
+ p256_point_add_affine_spec] -/
+#guard_msgs in
+#print axioms P256Base.base_multiply_spec
