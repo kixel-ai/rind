@@ -43,10 +43,12 @@ SHA-512.
 | HKDF | rind ⚡ |  |  |  |  |
 | HPKE, over the rows it builds on | rind |  |  |  |  |
 | ECVRF, over the rows it builds on | rind |  |  |  |  |
+| OPRF, VOPRF, over the rows it builds on | rind |  |  |  |  |
 | PBKDF2 | rind |  |  |  |  |
 | SPAKE2+ | rind, over P-256 |  |  |  |  |
 | X25519 | s2n-bignum ✓ |  |  |  |  |
 | Ed25519 | s2n-bignum ✓ + Graviola |  |  |  |  |
+| ristretto255 | s2n-bignum ✓ + rind |  |  |  |  |
 | P-256 ECDH, ECDSA | s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ |  |  |  |  |
 | P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  |  |  |  |
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  |  |  |  |
@@ -108,10 +110,12 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | HKDF | rind ⚡ |  |  |  |
 | HPKE, over the rows it builds on | rind |  |  |  |
 | ECVRF, over the rows it builds on | rind |  |  |  |
+| OPRF, VOPRF, over the rows it builds on | rind |  |  |  |
 | PBKDF2 | rind |  |  |  |
 | SPAKE2+ | rind, over P-256 |  |  |  |
 | X25519 | s2n-bignum ✓ |  | BoringSSL ⚡ + curve25519-dalek ⚡ | curve25519-dalek ⚡ |
 | Ed25519 | s2n-bignum ✓ + Graviola |  | curve25519-dalek ⚡ + rind ⚡ |  |
+| ristretto255 | s2n-bignum ✓ + rind |  | curve25519-dalek | curve25519-dalek |
 | P-256 ECDH, ECDSA | s2n-bignum ✓ + Graviola |  | fiat-crypto ✓ + rind ⚡ + Graviola ⚡ | fiat-crypto ✓ + rind + Graviola ⚡ |
 | P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  | fiat-crypto ✓ + rind ⚡ | fiat-crypto ✓ + rind |
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  | fiat-crypto ✓ + rind ⚡ |  |
@@ -174,8 +178,8 @@ files Graviola wrote keep their `Written for Graviola by ...` header. The
 (Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND BSD-3-Clause`. The
 adapter crates copy nothing under another license, so they stay
 `Apache-2.0 OR ISC OR MIT-0`.
-rind-ring runs ring's own tests, which keep ring's licenses and stay out of
-the published crate.
+rind-ring runs ring's own tests, and rind-aws-lc-rs aws-lc-rs's, which keep
+their sources' licenses and stay out of the published crates.
 
 A change that copies code from a new source, or moves an algorithm to a
 different one, updates this table and [LICENSE] in the same PR.
@@ -220,6 +224,7 @@ not cover rind's in-place calls.
 | `aes256_gcm_enc` | not imported | `aes256_gcm_enc`: `AES256_GCM_ENC_NOIBT_SUBROUTINE_SAFE` |
 | `aes256_gcm_enc_alt` | not imported | `aes256_gcm_enc_alt`: `AES256_GCM_ENC_ALT_NOIBT_SUBROUTINE_SAFE` |
 | `bignum_add` | `bignum_add`: none | `bignum_add`: none |
+| `bignum_add_p25519` | `bignum_add_p25519`: none | `bignum_add_p25519`: none |
 | `bignum_add_p256` | `bignum_add_p256`: none | `bignum_add_p256`: none |
 | `bignum_add_p384` | `bignum_add_p384`: `BIGNUM_ADD_P384_SUBROUTINE_SAFE` | `bignum_add_p384`: `BIGNUM_ADD_P384_SUBROUTINE_SAFE` |
 | `bignum_add_p521` | `bignum_add_p521`: `BIGNUM_ADD_P521_SUBROUTINE_SAFE` | `bignum_add_p521`: `BIGNUM_ADD_P521_SUBROUTINE_SAFE` |
@@ -243,6 +248,8 @@ not cover rind's in-place calls.
 | `bignum_inv_p256` | `bignum_inv_p256`: none | `bignum_inv_p256`: none |
 | `bignum_inv_p384` | `bignum_inv_p384`: none | `bignum_inv_p384`: none |
 | `bignum_inv_p521` | `bignum_inv_p521`: `BIGNUM_INV_P521_SUBROUTINE_SAFE` | `bignum_inv_p521`: `BIGNUM_INV_P521_SUBROUTINE_SAFE` |
+| `bignum_invsqrt_p25519` | `bignum_invsqrt_p25519`: none | `bignum_invsqrt_p25519_alt`: none |
+| `bignum_invsqrt_p25519_alt` | `bignum_invsqrt_p25519_alt`: none | not imported |
 | `bignum_kmul_16_32` | `bignum_kmul_16_32`: none | not imported |
 | `bignum_kmul_32_64` | `bignum_kmul_32_64`: none | not imported |
 | `bignum_ksqr_16_32` | `bignum_ksqr_16_32`: none | not imported |
@@ -285,6 +292,7 @@ not cover rind's in-place calls.
 | `bignum_sqr_p25519_alt` | `bignum_sqr_p25519_alt`: none | not imported |
 | `bignum_sqr_p521` | `bignum_sqr_p521`: `BIGNUM_SQR_P521_SUBROUTINE_SAFE` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` |
 | `bignum_sqr_p521_alt` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` | not imported |
+| `bignum_sub_p25519` | `bignum_sub_p25519`: none | `bignum_sub_p25519`: none |
 | `bignum_tomont_p256` | `bignum_tomont_p256`: none | `bignum_tomont_p256`: none |
 | `bignum_tomont_p256_alt` | `bignum_tomont_p256_alt`: none | not imported |
 | `bignum_tomont_p384` | `bignum_tomont_p384`: `BIGNUM_TOMONT_P384_SUBROUTINE_SAFE` | `bignum_tomont_p384`: `BIGNUM_TOMONT_P384_SUBROUTINE_SAFE` |
@@ -532,6 +540,18 @@ an arbitrary point is there to reuse; P256's computes `s G - c Y` as ECDSA
 verification does. Try-and-increment's loop runs in time that depends on the
 input, as RFC 9381 notes.
 
+The OPRFs (RFC 9497) are rind's too, over the same code: ristretto255's
+constant-time multiplications and RFC 9496 map, or curve25519-dalek's on
+armv7 and portable, and the NIST curves' ECDH multiplications and RFC 9380
+hash-to-curve, with `expand_message_xmd` over the suite's SHA-2 for each
+hash to a scalar. Blinding, evaluation, proving, and finalization run in
+constant time in the input, the blind, the key, and the proof's nonce.
+Verifying a DLEQ proof handles public data only: ristretto255's still
+multiplies in constant time, as with ECVRF on edwards25519, and the NIST
+curves' compute `s G + c Y` as ECDSA verification does, and their other
+sums from constant-time products. The suites' vectors and the `voprf` crate
+cover the composition; nothing in it is proven.
+
 ### ML-KEM-768
 On aarch64, and on x86_64 CPUs with AVX2, the core polynomial arithmetic -- the NTT, inverse NTT, base multiplication
 and reduction -- is provided by s2n-bignum (contributed by the mlkem-native
@@ -600,6 +620,8 @@ On an AMD Ryzen 9 9950X shared with other jobs, so noisy, rind took
 verification at each parameter set. libcrux's, RustCrypto's, and
 OpenSSL's ML-DSA were slower than aws-lc-rs's with AVX2, and libcrux's
 portable ML-DSA was no faster than aws-lc-rs without assembly.
+rind-aws-lc-rs offers the same three parameter sets through aws-lc-rs's
+`PqdsaKeyPair` and `ML_DSA_*` items.
 
 ### Symmetric cryptography
 SHA1 and SHA256 have straightforward implementations using hashing intrinsics
@@ -813,13 +835,13 @@ HACL*'s verified Poly1305 without NEON.
 [SUPERCOP]: https://bench.cr.yp.to/supercop.html
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
-[run 41550703300]: https://github.com/moq-dev/rind/actions/runs/41550703300
-[run 41585945720]: https://github.com/moq-dev/rind/actions/runs/41585945720
-[run 41657617706]: https://github.com/moq-dev/rind/actions/runs/41657617706
-[run 41678532920]: https://github.com/moq-dev/rind/actions/runs/41678532920
-[run 41697909102]: https://github.com/moq-dev/rind/actions/runs/41697909102
-[run 41861521276]: https://github.com/moq-dev/rind/actions/runs/41861521276
-[run 41861526675]: https://github.com/moq-dev/rind/actions/runs/41861526675
-[#224]: https://github.com/moq-dev/rind/pull/224
-[#281]: https://github.com/moq-dev/rind/pull/281
+[run 41550703300]: https://github.com/kixel-ai/rind/actions/runs/41550703300
+[run 41585945720]: https://github.com/kixel-ai/rind/actions/runs/41585945720
+[run 41657617706]: https://github.com/kixel-ai/rind/actions/runs/41657617706
+[run 41678532920]: https://github.com/kixel-ai/rind/actions/runs/41678532920
+[run 41697909102]: https://github.com/kixel-ai/rind/actions/runs/41697909102
+[run 41861521276]: https://github.com/kixel-ai/rind/actions/runs/41861521276
+[run 41861526675]: https://github.com/kixel-ai/rind/actions/runs/41861526675
+[#224]: https://github.com/kixel-ai/rind/pull/224
+[#281]: https://github.com/kixel-ai/rind/pull/281
 [LICENSE]: LICENSE
