@@ -3,8 +3,9 @@
 use core::arch::aarch64::*;
 
 use super::aes::{_aes128_8_blocks, _aes192_8_blocks, _aes256_8_blocks, HwKey, load, store};
+use super::vpaes_armv8::VpaesKey;
 use crate::low::AesKey;
-use crate::low::generic::ctr;
+use crate::low::generic::ctr::{self, Ctr8, Ctr32};
 
 /// XORs AES-CTR keystream into `inout`.
 ///
@@ -12,14 +13,8 @@ use crate::low::generic::ctr;
 /// `counter + 1`, and so on, wrapping within 32 bits.
 pub(crate) fn apply(key: &AesKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8]) {
     match key {
-        AesKey::Hw(key) => ctr::by8(counter, inout, |counter, chunk| {
-            // SAFETY: only a `HaveCryptoExt` token builds `AesKey128` and
-            // `AesKey256`, and rind requires NEON.
-            unsafe { _apply_8(key, nonce, counter, chunk) }
-        }),
-        AesKey::Vpaes(key) => ctr::blocks(nonce, counter, inout, |ivec, blocks| {
-            key.ctr32(ivec, blocks)
-        }),
+        AesKey::Hw(key) => ctr::by8(key, nonce, counter, inout),
+        AesKey::Vpaes(key) => ctr::blocks(key, nonce, counter, inout),
     }
 }
 
@@ -87,5 +82,19 @@ fn encrypt_8(
         HwKey::Aes128(a128) => _aes128_8_blocks(a128.round_keys(), b0, b1, b2, b3, b4, b5, b6, b7),
         HwKey::Aes192(a192) => _aes192_8_blocks(a192.round_keys(), b0, b1, b2, b3, b4, b5, b6, b7),
         HwKey::Aes256(a256) => _aes256_8_blocks(a256.round_keys(), b0, b1, b2, b3, b4, b5, b6, b7),
+    }
+}
+
+impl Ctr8 for HwKey {
+    fn ctr8(&self, nonce: &[u8; 12], counter: u32, chunk: &mut [u8; 128]) {
+        // SAFETY: only a `HaveCryptoExt` token builds `HwKey`, and rind
+        // requires NEON.
+        unsafe { _apply_8(self, nonce, counter, chunk) }
+    }
+}
+
+impl Ctr32 for VpaesKey {
+    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        Self::ctr32(self, ivec, blocks)
     }
 }
