@@ -286,14 +286,27 @@ fn ecdh() {
 
 #[test]
 fn spake2plus() {
-    use rind::spake2plus::{ProverSecrets, VerifierRecord};
-    // No randomness: the freed blocks are the scalar reduction and L = w1*G.
+    use rind::spake2plus::{ProverSecrets, RFC9383, VerifierRecord};
+    // SPAKE2+ allocates nothing today; this holds it to wiping if it starts
+    // to. A handshake's heap scratch would derive from the password or the
+    // ephemeral scalars, so a block freed unwiped differs between the runs
+    // and fails, even one only the randomness reached.
     let passwords = [[0x11u8; 40], [0x22u8; 40]];
     independent("SPAKE2+ prover", passwords, |w0| {
         ProverSecrets::new(w0, &[0x33; 40]).unwrap()
     });
     independent("SPAKE2+ verifier", passwords, |w0| {
         VerifierRecord::from_w1(w0, &[0x33; 40]).unwrap()
+    });
+    independent("SPAKE2+ handshake", passwords, |w0| {
+        let prover = ProverSecrets::new(w0, &[0x33; 40]).unwrap();
+        let record = VerifierRecord::from_w1(w0, &[0x33; 40]).unwrap();
+        let (share_p, prover) = prover.start(&RFC9383, b"ctx", b"a", b"b").unwrap();
+        let (share_v, confirm_v, verifier) = record
+            .start(&RFC9383, b"ctx", b"a", b"b", &share_p)
+            .unwrap();
+        let (confirm_p, key) = prover.finish(&share_v, &confirm_v).unwrap();
+        (key, verifier.finish(&confirm_p).unwrap())
     });
 }
 

@@ -101,6 +101,10 @@ pub static RFC9383: Suite<Rfc9383> = Suite {
 ///
 /// The group operations, M, N, and the transcript match [`RFC9383`]. The key
 /// schedule splits the transcript hash instead of feeding it to HKDF.
+///
+/// Matter's context is SHA-256 over "CHIP PAKE V1 Commissioning", the
+/// PBKDFParamRequest, and the PBKDFParamResponse, and both identities are
+/// empty.
 pub static MATTER_PASE: Suite<MatterPase> = Suite {
     schedule: Schedule::Draft01,
     _kind: PhantomData,
@@ -1158,6 +1162,34 @@ mod tests {
             prover.start(&RFC9383, &[0; MAX_LABEL + 1], b"", b"").err(),
             Some(Error::WrongLength)
         );
+    }
+
+    /// A stored record loads only as uncompressed `L` on the curve with a
+    /// nonzero `w0`.
+    #[test]
+    fn from_record_rejects_a_malformed_record() {
+        let w0 = [0x11; 40];
+        let l = VerifierRecord::from_w1(&w0, &[0x22; 40]).unwrap().l();
+        assert!(VerifierRecord::from_record(&w0, &l).is_ok());
+        let rejected = |l: &[u8]| {
+            matches!(
+                VerifierRecord::from_record(&w0, l).err(),
+                Some(Error::KeyRejected(_))
+            )
+        };
+        let mut off = l;
+        off[40] ^= 1;
+        assert!(rejected(&off));
+        let mut compressed = [0u8; 33];
+        compressed[0] = 2 | (l[64] & 1);
+        compressed[1..].copy_from_slice(&l[1..33]);
+        assert!(rejected(&compressed));
+        assert!(rejected(&l[..64]));
+        assert!(rejected(&[]));
+        let mut identity = [0u8; 65];
+        identity[0] = 4;
+        assert!(rejected(&identity));
+        assert!(VerifierRecord::from_record(&[0; 32], &l).is_err());
     }
 
     /// `X = -w0*M` is a doubling and still confirms. `X = w0*M` makes the
