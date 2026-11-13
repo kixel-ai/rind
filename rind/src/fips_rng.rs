@@ -13,6 +13,7 @@
 //! draws from it in the module's build, because HMAC lives in `high`.
 
 use core::cell::RefCell;
+use std::sync::Once;
 
 use crate::Error;
 use crate::high::hash::Sha512;
@@ -65,15 +66,15 @@ pub(crate) fn fill(out: &mut [u8]) -> Result<(), Error> {
 }
 
 fn instantiate() -> Result<HmacDrbg<Sha512>, Error> {
-    // Each thread's first instantiation runs the self-test. A process-wide
-    // `Once` does not survive `fork`: a child that inherits another thread's
-    // unfinished call waits forever on its first draw.
-    if !cast() {
-        // A FIPS module enters its error state on a self-test failure;
-        // rind's, as aws-lc's, does so by aborting.
-        std::eprintln!("rind: HMAC_DRBG self-test failed");
-        std::process::abort();
-    }
+    static CAST: Once = Once::new();
+    CAST.call_once(|| {
+        if !cast() {
+            // A FIPS module enters its error state on a self-test failure;
+            // rind's, as aws-lc's, does so by aborting.
+            std::eprintln!("rind: HMAC_DRBG self-test failed");
+            std::process::abort();
+        }
+    });
 
     let mut entropy = [0u8; ENTROPY_LEN];
     let mut nonce = [0u8; NONCE_LEN];
