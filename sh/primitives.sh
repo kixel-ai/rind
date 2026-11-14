@@ -126,7 +126,9 @@ while IFS= read -r path; do
         continue
     fi
     # These suites test the adapters too, and rind-bench times two of them.
-    if [[ "$path" =~ ^rind-([a-z0-9-]+)/(src/|tests/|build\.rs$|Cargo\.toml$) ]]; then
+    # A Rust crate nested in one, such as the FIPS module in rind-fips/module/,
+    # counts as the adapter; Dart's lib/src/ does not.
+    if [[ "$path" =~ ^rind-([a-z0-9-]+)/((src/|tests/|build\.rs$|Cargo\.toml$)|([^/]+/)+(src/.*\.rs$|build\.rs$|Cargo\.toml$)) ]]; then
         all_tests=1
         name=${BASH_REMATCH[1]//-/_}
         [[ ! -f "rind-bench/benches/$name.rs" ]] || benches[$name]=1
