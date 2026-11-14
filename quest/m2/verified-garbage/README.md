@@ -31,5 +31,5 @@ Measured on 2026-11-13 at VG `d004ffae` ([kixel-ai/rind#741](https://github.com/
 - P-521, every tier but the portable one: 1.03 to 1.69 (ECDH up to 1.32, signing 1.03 to 1.17, verification 1.09 to 1.69).
 - ML-DSA key generation 1.02 to 2.43; verification up to 1.09 on x86_64 (ML-DSA-87 0.96 with AVX-512, but ML-DSA-44 1.03), 1.01 to 2.66 on aarch64; signing with AVX2 1.04 to 1.10, aarch64 0.99 to 1.05; armv7 1.8 to 2.1.
 - ML-KEM-768 decapsulation without AVX-512: 1.17 to 2.48.
-- RSA, but for the cells in its quest: the Haswell VPSes about 2.0 to 2.2 (no ADX), aarch64 signing 1.03 to 1.31, armv7 1.2 to 3.8, and key generation below 4096 bits 1.26 to 1.74.
+- RSA, but for the cells in its quest: private operation with ADX but without IFMA 1.02 to 1.65 (VG won 3072, 6144, and 8192 bits on the no-IFMA tier, but not every size), the Haswell VPSes about 2.0 to 2.2 (no ADX), aarch64 signing 1.03 to 1.31, armv7 1.2 to 3.8, and key generation below 4096 bits 1.26 to 1.74.
 - Not cells: the portable tier, where VG won nearly everything (0.29 to 1.00), times VG's x86_64 assembly against rind's portable Rust, which runs only where rind has no assembly; and the `rsa*-load` rows time VG's import from parsed components against rind's DER parse.

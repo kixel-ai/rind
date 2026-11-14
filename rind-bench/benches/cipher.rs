@@ -164,6 +164,42 @@ fn bench_aes_cbc(c: &mut Criterion) {
     }
 }
 
+// The bare ChaCha20 stream cipher, a fresh nonce per message. aws-lc-rs and
+// ring expose no ChaCha20 without Poly1305.
+fn bench_chacha20(c: &mut Criterion) {
+    let key = [7u8; 32];
+    let nonce = [9u8; 12];
+    let mut counter_nonce = [0u8; 16];
+    counter_nonce[4..].copy_from_slice(&nonce);
+    let mut group = c.benchmark_group("chacha20");
+    for (size, size_name) in criterion::SIZES {
+        let mut buf = vec![0u8; size];
+        group.throughput(Throughput::Bytes(size as u64));
+
+        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+            let key = rind::cipher::ChaCha20::new(&key);
+            b.iter(|| key.apply_keystream(&nonce, 0, &mut buf).unwrap());
+        });
+        group.bench_function(BenchmarkId::new("verified-garbage", size_name), |b| {
+            use verified_garbage::cipher::chacha20::ChaCha20;
+            let mut expect = vec![0u8; size];
+            rind::cipher::ChaCha20::new(&key)
+                .apply_keystream(&nonce, 0, &mut expect)
+                .unwrap();
+            let mut cipher = ChaCha20::new(&key, &counter_nonce);
+            let mut ct = vec![0u8; size];
+            cipher.apply_keystream(&mut ct);
+            assert_eq!(ct, expect);
+            // Restarting the keystream for the nonce is VG's per-message
+            // cost, as rind's call starts from the key and nonce.
+            b.iter(|| {
+                cipher.reset_nonce(&counter_nonce);
+                cipher.apply_keystream(&mut buf);
+            });
+        });
+    }
+}
+
 // The QUIC header protection mask: one cipher call on a 16-byte sample.
 fn bench_header_protection(c: &mut Criterion) {
     let sample = [0x5au8; 16];
@@ -250,6 +286,7 @@ criterion_group!(
     benches,
     bench_aes_ctr,
     bench_aes_cbc,
+    bench_chacha20,
     bench_header_protection
 );
 criterion_main!(benches);
