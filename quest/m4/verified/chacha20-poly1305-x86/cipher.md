@@ -7,7 +7,4 @@
 ## Plan
 
 - Prove rind's AVX2 kernels with Aeneas over modelled intrinsics, and aws-lc's `ChaCha20_ctr32_ssse3_4x` (486 instructions, all decoded under rind's model additions) in HOL Light against `thirdparty/s2n-bignum/common/chacha20poly1305.ml`'s `chacha20_encrypt`, and compose them with the HACL* rounds' proof.
-
-## Required
-
-- [VG measured](/quest/m2/verified-garbage/bench.md) - whether pyca/verified-garbage's proven code beats what this would prove; if a switch replaces it, this quest is deleted or rewritten (maintainer, 2026-11-12)
+- pyca/verified-garbage (VG) measured slower on 2026-11-13 (ChaCha20 header protection 1.21 to 1.37x rind's time), so rind keeps this code ([the m2 VG epic](/quest/m2/verified-garbage/README.md)).

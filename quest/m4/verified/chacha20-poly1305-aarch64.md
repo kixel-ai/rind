@@ -13,4 +13,4 @@ ChaCha20-Poly1305, XChaCha20-Poly1305, and `cipher::ChaCha20` earn the ✓ on aa
 
 ## Required
 
-- [VG measured](/quest/m2/verified-garbage/bench.md) - whether pyca/verified-garbage's proven code beats what this would prove; if a switch replaces it, this quest is deleted or rewritten (maintainer, 2026-11-12)
+- [ChaCha20-Poly1305 on aarch64 runs pyca/verified-garbage's code where it is faster](/quest/m2/verified-garbage/chacha20-poly1305-aarch64.md) - VG's seal and open measured 0.60 to 0.92 of aws-lc's time; once switched, this quest keeps only `cipher::ChaCha20` and XChaCha20's HChaCha20, which VG doesn't replace
