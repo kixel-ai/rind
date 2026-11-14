@@ -6,13 +6,14 @@ on:
     - cron: "23 7 * * 6"
   workflow_dispatch:
   # A pull request runs only the x86_64 release row of `build`, the one that
-  # fails fastest; the weekly run runs the rest.
+  # fails fastest, and `binsec`; the weekly run runs the rest.
   pull_request:
     branches: [main]
     paths:
       - rind/src/**
       - rind/Cargo.toml
       - "**/tests/ctgrind.rs"
+      - rind-fips/**
       - admin/ctgrind
       - admin/ctgrind.supp
       - admin/ct-binsec
@@ -57,6 +58,8 @@ jobs:
 
       - name: ctgrind tests
         run: nix develop .#ctgrind --command admin/ctgrind ${{ matrix.build }}
+      - name: ctgrind FIPS module tests
+        run: nix develop .#ctgrind --command admin/ctgrind fips ${{ matrix.build }}
 
   # Valgrind hides ADX, which `admin/ctgrind`'s build switch overrides to
   # check s2n-bignum's ADX routines, so this job denies it to check what
