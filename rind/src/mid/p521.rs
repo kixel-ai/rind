@@ -98,10 +98,8 @@ impl VerifyingKey {
 
         // 6. Convert the field element xR to an integer xR using the conversion routine specified in Section 2.3.9.
         // 7. Set v = xR mod n.
-        let v = point.x_scalar();
-
         // 8. Compare v and r — if v = r, output "valid", and if v != r, output "invalid".
-        match v.public_eq(r) {
+        match point.public_x_is(r) {
             true => Ok(()),
             false => Err(Error::BadSignature),
         }
@@ -267,6 +265,77 @@ impl StaticPrivateKey {
 /// It is not wiped on drop: `agreement::SharedSecret` wipes it.
 pub(crate) struct SharedSecret(pub(crate) [u8; FieldElement::BYTES]);
 
+/// A P-521 point other than infinity, for protocols built on the group,
+/// such as the OPRF.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Point(AffinePoint);
+
+// Plain words, so all zeroes is a value it can hold.
+impl low::Zeroable for Point {}
+
+impl Point {
+    /// The length of an X9.62 compressed point.
+    pub(crate) const COMPRESSED_BYTES: usize = 1 + FieldElement::BYTES;
+
+    /// Decodes an X9.62 compressed point, as [`PublicKey::decompress`] does,
+    /// or `None`.
+    ///
+    /// Only public encodings are decoded: whether one decodes is public.
+    pub(crate) fn from_compressed(bytes: &[u8]) -> Option<Self> {
+        AffinePoint::from_x962_compressed(bytes).ok().map(Self)
+    }
+
+    /// The X9.62 compressed encoding, in constant time.
+    pub(crate) fn to_compressed(self) -> [u8; Self::COMPRESSED_BYTES] {
+        let mut r = [0u8; Self::COMPRESSED_BYTES];
+        r[0] = 0x02 | (self.0.y().0[0] & 1) as u8;
+        r[1..].copy_from_slice(&self.0.x().as_bytes());
+        r
+    }
+
+    /// `scalar * G`, in constant time, for a scalar from 1 to n - 1.
+    pub(crate) fn mul_base(scalar: &Scalar) -> Self {
+        Self(JacobianPoint::base_multiply(scalar).as_affine())
+    }
+
+    /// `scalar * self`, in constant time, for a scalar from 1 to n - 1.
+    pub(crate) fn mul(&self, scalar: &Scalar) -> Self {
+        Self(JacobianPoint::multiply(scalar, &self.0).as_affine())
+    }
+
+    /// `g * G + p * self` for public scalars, or `None` at infinity.
+    pub(crate) fn public_mul_base_add(&self, g: &Scalar, p: &Scalar) -> Option<Self> {
+        let odd_multiples = self.0.public_odd_multiples();
+        let sum = JacobianPoint::public_twin_multiply(g, p, &[&odd_multiples]);
+        (!sum.public_is_infinity()).then(|| Self(sum.as_affine()))
+    }
+
+    /// The sum of `scalar * point` over `terms`, for public scalars and
+    /// points, or `None` at infinity.
+    ///
+    /// A zero scalar's product, at infinity, is skipped, as the
+    /// multiplications take only points that are not; every other product
+    /// is not, as the group's order is prime.
+    pub(crate) fn public_mul_sum<'a>(
+        terms: impl IntoIterator<Item = (&'a Self, &'a Scalar)>,
+    ) -> Option<Self> {
+        let mut sum = JacobianPoint::infinity();
+        for (point, scalar) in terms {
+            if !scalar.is_zero() {
+                let product = JacobianPoint::multiply(scalar, &point.0).as_affine();
+                sum = sum.public_add_affine(&product);
+            }
+        }
+        (!sum.public_is_infinity()).then(|| Self(sum.as_affine()))
+    }
+}
+
+impl From<PublicKey> for Point {
+    fn from(key: PublicKey) -> Self {
+        Self(key.point)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 struct AffinePoint {
     xy: [u64; 18],
@@ -420,6 +489,7 @@ impl AffinePoint {
     }
 
     /// Returns table[i - 1] for a public index > 0
+    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
     fn public_lookup_comb(table: &[u64; 288], index: u8) -> Self {
         let offs = (index - 1) as usize * 18;
         let mut r = Self::default();
@@ -427,6 +497,7 @@ impl AffinePoint {
         r
     }
 
+    #[cfg(any(not(any(rind_backend = "arm", rind_backend = "portable")), test))]
     fn negate_y(&mut self) {
         let neg_y = self.y().negate();
         self.xy[Self::Y].copy_from_slice(&neg_y.0);
@@ -577,10 +648,55 @@ impl JacobianPoint {
             1 => util::public_naf::<5>(&p.0, &mut p_digits),
             _ => util::public_naf::<6>(&p.0, &mut p_digits),
         }
+        Self::public_twin_multiply_naf(&g_digits, &p_digits, odd_multiples)
+    }
+
+    /// `public_twin_multiply` from the digits, by the portable backend's own
+    /// routine, which keeps its coordinates in its field's limbs.
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
+    fn public_twin_multiply_naf(
+        g_digits: &[i8; 522],
+        p_digits: &[i8; 522],
+        odd_multiples: &[&[AffinePoint; 8]],
+    ) -> Self {
+        // G's odd multiples are the comb table's even rows.
+        let (g_rows, _) = precomp::CURVE_GENERATOR_PRECOMP_COMB[0].as_chunks::<18>();
+        let g_multiples: [[u64; 18]; 8] = core::array::from_fn(|i| g_rows[2 * i]);
+        let mut p_multiples = [[0; 18]; 16];
+        for (row, point) in p_multiples
+            .iter_mut()
+            .zip(odd_multiples.iter().flat_map(|row| row.iter()))
+        {
+            *row = point.xy;
+        }
+
+        let mut r = Self::infinity();
+        low::p521_public_twin_multiply(
+            &mut r.xyz,
+            &low::P521Naf {
+                digits: g_digits,
+                odd_multiples: &g_multiples,
+            },
+            &low::P521Naf {
+                digits: p_digits,
+                odd_multiples: &p_multiples[..odd_multiples.len() * 8],
+            },
+        );
+        r
+    }
+
+    /// `public_twin_multiply` from the digits, composed from s2n-bignum's
+    /// point routines.
+    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
+    fn public_twin_multiply_naf(
+        g_digits: &[i8; 522],
+        p_digits: &[i8; 522],
+        odd_multiples: &[&[AffinePoint; 8]],
+    ) -> Self {
         let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP_COMB[0];
 
         let mut result = Self::infinity();
-        for (g_digit, p_digit) in g_digits.iter().zip(&p_digits).rev() {
+        for (g_digit, p_digit) in g_digits.iter().zip(p_digits).rev() {
             // `p521_jdouble` requires a nonzero z.
             if !result.public_is_infinity() {
                 result = result.double();
@@ -666,10 +782,28 @@ impl JacobianPoint {
         AffinePoint::from_xy(x, y)
     }
 
-    fn x_scalar(&self) -> Scalar {
-        // this is a faster version of `as_affine().x_scalar()`
-        let z2_inv = self.z().sqr().inv();
-        Scalar(self.x().mul(&z2_inv).0).reduce_mod_n()
+    /// Whether this point's x, reduced mod n, is `r`, for a point not at
+    /// infinity.
+    ///
+    /// x = X / z², so this checks X = r * z², and (r + n) * z² when that is
+    /// below p, the only other x that reduces to `r`. Unlike computing x,
+    /// that needs no inversion.
+    fn public_x_is(&self, r: &Scalar) -> bool {
+        let z2 = self.z().sqr();
+        let is = |x: [u64; 9]| FieldElement(x).mul(&z2).public_eq(&self.x());
+        if is(r.0) {
+            return true;
+        }
+        // Both are below 2^521, so the sum cannot carry out of the words.
+        let mut r_plus_n = [0; 9];
+        let mut carry = false;
+        for i in 0..9 {
+            let (s, c1) = r.0[i].overflowing_add(CURVE_ORDER[i]);
+            let (s, c2) = s.overflowing_add(u64::from(carry));
+            r_plus_n[i] = s;
+            carry = c1 | c2;
+        }
+        r_plus_n.iter().rev().lt(CURVE_PRIME.iter().rev()) && is(r_plus_n)
     }
 
     #[must_use]
@@ -785,6 +919,9 @@ impl FieldElement {
 #[derive(Default)]
 pub(crate) struct Scalar([u64; 9]);
 
+// Plain words, so all zeroes is a value it can hold.
+impl low::Zeroable for Scalar {}
+
 impl Scalar {
     pub(crate) const BYTES: usize = 66;
 
@@ -812,6 +949,37 @@ impl Scalar {
             Self(util::big_endian_slice_any_size_to_u64x9(bytes).ok_or(Error::WrongLength)?)
                 .reduce_mod_n(),
         )
+    }
+
+    /// Reads a big-endian scalar of exactly 66 bytes, or `None` unless it
+    /// is below n. Zero is accepted.
+    ///
+    /// Whether it is below n is public; the value stays secret.
+    pub(crate) fn from_bytes_below_n(bytes: &[u8; Self::BYTES]) -> Option<Self> {
+        let full = Self(util::big_endian_slice_any_size_to_u64x9(bytes).unwrap());
+        low::ct::into_public(full.reduce_mod_n().private_eq(&full)).then_some(full)
+    }
+
+    /// A uniformly random scalar from 1 to n - 1, from the system's random
+    /// source.
+    pub(crate) fn random() -> Result<Self, Error> {
+        let _entry = low::Entry::new_secret();
+        PrivateKey::generate(&mut SystemRandom).map(|key| key.scalar)
+    }
+
+    /// `n - self mod n`.
+    pub(crate) fn neg(&self) -> Self {
+        let mut r = Self::default();
+        low::bignum_modsub(&mut r.0, &[0; 9], &self.0, &CURVE_ORDER);
+        r
+    }
+
+    /// `self * other + addend mod n`.
+    pub(crate) fn mul_add(&self, other: &Self, addend: &Self) -> Self {
+        self.as_mont()
+            .mont_mul(&other.as_mont())
+            .demont()
+            .add(addend)
     }
 
     fn into_range_check(self) -> Result<Self, Error> {
@@ -843,11 +1011,6 @@ impl Scalar {
 
     /// Private equality
     fn private_eq(&self, other: &Self) -> bool {
-        low::bignum_eq(&self.0, &other.0)
-    }
-
-    /// Public equality
-    fn public_eq(&self, other: &Self) -> bool {
         low::bignum_eq(&self.0, &other.0)
     }
 
@@ -891,8 +1054,8 @@ impl Scalar {
         r
     }
 
-    /// Find the multiplicative inverse of `self` mod n
-    fn inv(&self) -> Self {
+    /// Find the multiplicative inverse of `self` mod n, in constant time
+    pub(crate) fn inv(&self) -> Self {
         let mut r = Self::default();
         let mut temp = [0u64; 9 * 3];
         low::bignum_modinv(&mut r.0, &self.0, &CURVE_ORDER, &mut temp);
@@ -1171,6 +1334,55 @@ mod tests {
         );
         assert!(g.public_add_affine(&neg_g).public_is_infinity());
         assert_eq!(infinity.public_add_affine(&CURVE_GENERATOR).xyz, g.xyz);
+    }
+
+    #[test]
+    fn public_x_is_either_x() {
+        // (x * l^2, y * l^3, l), so that z is not one.
+        let jacobian = |p: &AffinePoint| {
+            let l = FieldElement([7, 0, 0, 0, 0, 0, 0, 0, 0]);
+            let mut r = JacobianPoint::infinity();
+            r.xyz[JacobianPoint::X].copy_from_slice(&p.x().mul(&l.sqr()).0);
+            r.xyz[JacobianPoint::Y].copy_from_slice(&p.y().mul(&l.sqr().mul(&l)).0);
+            r.xyz[JacobianPoint::Z].copy_from_slice(&l.0);
+            r
+        };
+        let plus = |s: &Scalar, k: u64| {
+            Scalar([
+                s.0[0] + k,
+                s.0[1],
+                s.0[2],
+                s.0[3],
+                s.0[4],
+                s.0[5],
+                s.0[6],
+                s.0[7],
+                s.0[8],
+            ])
+        };
+
+        let g = jacobian(&CURVE_GENERATOR);
+        let gx = Scalar(CURVE_GENERATOR.x().0);
+        assert!(g.public_x_is(&gx));
+        assert!(!g.public_x_is(&plus(&gx, 1)));
+
+        // A point whose x is n + k, at or above n, which reduces to k: the
+        // first x above n + 1 whose y² is a square, whose root is y²'s
+        // (p + 1) / 4 = 2^519th power.
+        let point = (2..).find_map(|k| {
+            let x = FieldElement(plus(&Scalar(CURVE_ORDER), k).0);
+            let y2 = x.sqr().add(&CURVE_A).mul(&x).add(&CURVE_B);
+            let y = (0..519).fold(y2, |y, _| y.sqr());
+            y.sqr()
+                .public_eq(&y2)
+                .then(|| (k, AffinePoint::from_xy(x, y)))
+        });
+        let (k, point) = point.unwrap();
+        assert!(point.on_curve());
+        let p = jacobian(&point);
+        assert!(p.public_x_is(&Scalar::small_u64(k)));
+        assert!(!p.public_x_is(&Scalar::small_u64(k - 1)));
+        assert!(!p.public_x_is(&Scalar::small_u64(k + 1)));
     }
 
     #[test]

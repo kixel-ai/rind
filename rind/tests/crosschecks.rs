@@ -271,7 +271,8 @@ mod cipher {
             let theirs_dec = PaddedBlockDecryptingKey::cbc_pkcs7(aws_aes_key(&key)).unwrap();
 
             let mut ours = msg.clone();
-            enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ours);
+            enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ours)
+                .unwrap();
             let mut theirs = msg.clone();
             PaddedBlockEncryptingKey::cbc_pkcs7(aws_aes_key(&key))
                 .unwrap()
@@ -638,8 +639,8 @@ mod hkdf {
             let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
 
             let mut ours_out = vec![0u8; len];
-            let prk = hkdf::Salt::new(ours, &salt).extract(&ikm);
-            let result = prk.expand(&info, len).fill(&mut ours_out);
+            let prk = hkdf::Salt::new(ours, &salt).extract(&ikm).unwrap();
+            let result = prk.expand(&info, len).and_then(|okm| okm.fill(&mut ours_out));
 
             let prk = theirs::Salt::new(their_alg, &salt).extract(&ikm);
             match prk.expand(&info, Len(len)) {
@@ -667,7 +668,7 @@ mod hkdf {
         ) {
             let (ours_prk_alg, theirs_prk_alg, _) = algorithms()[algorithm];
             let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
-            let ours = hkdf::Salt::new(ours_prk_alg, b"salt").extract(&ikm);
+            let ours = hkdf::Salt::new(ours_prk_alg, b"salt").extract(&ikm).unwrap();
             let theirs = theirs::Salt::new(theirs_prk_alg, b"salt").extract(&ikm);
 
             for (ours_alg, theirs_alg) in [
@@ -675,7 +676,7 @@ mod hkdf {
                 (&aead::AES_256_GCM, &their_aead::AES_256_GCM),
                 (&aead::CHACHA20_POLY1305, &their_aead::CHACHA20_POLY1305),
             ] {
-                let ours_key = aead::Key::from(ours.expand(&info, ours_alg));
+                let ours_key = aead::Key::from(ours.expand(&info, ours_alg).unwrap());
                 let mut ours_sealed = msg.clone();
                 ours_key
                     .seal_in_place_append_tag(
@@ -705,17 +706,17 @@ mod hkdf {
                 (&hmac::HMAC_SHA384, their_hmac::HMAC_SHA384),
                 (&hmac::HMAC_SHA512, their_hmac::HMAC_SHA512),
             ] {
-                let ours_key = hmac::Key::from(ours.expand(&info, ours_alg));
+                let ours_key = hmac::Key::from(ours.expand(&info, ours_alg).unwrap());
                 let theirs_key = their_hmac::Key::from(theirs.expand(&info, theirs_alg).unwrap());
                 let ours_tag = hmac::sign(&ours_key, &msg);
                 let theirs_tag = their_hmac::sign(&theirs_key, &msg);
                 prop_assert_eq!(ours_tag.as_ref(), theirs_tag.as_ref());
             }
 
-            let ours = hkdf::Prk::from(ours.expand(&info, ours_prk_alg));
+            let ours = hkdf::Prk::from(ours.expand(&info, ours_prk_alg).unwrap());
             let theirs = theirs::Prk::from(theirs.expand(&info, theirs_prk_alg).unwrap());
             let mut ours_out = [0u8; 100];
-            ours.expand(&info, ours_out.len()).fill(&mut ours_out).unwrap();
+            ours.expand(&info, ours_out.len()).unwrap().fill(&mut ours_out).unwrap();
             let mut theirs_out = [0u8; 100];
             theirs.expand(&info, Len(theirs_out.len())).unwrap().fill(&mut theirs_out).unwrap();
             prop_assert_eq!(ours_out, theirs_out);
@@ -2446,6 +2447,54 @@ mod pkcs8_attributes {
         }
     }
 
+    /// `pkcs8`, a v1 document, as version 2 without a public key.
+    fn as_v2(pkcs8: &[u8]) -> Vec<u8> {
+        let mut v2 = pkcs8.to_vec();
+        let (header, _) = element(&v2);
+        assert_eq!(v2[header..header + 3], [0x02, 0x01, 0x00]);
+        v2[header + 2] = 0x01;
+        v2
+    }
+
+    /// RFC 5958 makes a v2 document's public key optional, and both sides
+    /// take one without it, for every key type.
+    #[test]
+    fn v2_without_public_key() {
+        use aws_lc_rs::signature::{ML_DSA_44_SIGNING, PqdsaKeyPair};
+        use rind::signature::sign::{MlDsa44, MlDsaKeyPair};
+
+        for key in keys() {
+            let v1 = match key.v2 {
+                // Drop the Ed25519 document's trailing 32-byte public key.
+                true => {
+                    let mut body = key.pkcs8[2..key.pkcs8.len() - 35].to_vec();
+                    body[2] = 0x00;
+                    [&[0x30, body.len() as u8][..], &body].concat()
+                }
+                false => key.pkcs8.clone(),
+            };
+            let public = (key.ours)(&v1).unwrap();
+            let v2 = as_v2(&v1);
+            assert_eq!((key.ours)(&v2).as_deref(), Some(&public[..]), "{v2:02x?}");
+            assert_eq!((key.theirs)(&v2).as_deref(), Some(&public[..]), "{v2:02x?}");
+        }
+
+        let ours = MlDsaKeyPair::<MlDsa44>::from_seed(&[7; 32]).unwrap();
+        let v2 = as_v2(ours.to_pkcs8().as_ref());
+        let theirs = PqdsaKeyPair::from_pkcs8(&ML_DSA_44_SIGNING, &v2).unwrap();
+        let ours = MlDsaKeyPair::<MlDsa44>::from_pkcs8(&v2).unwrap();
+        assert_eq!(ours.public_key().as_ref(), theirs.public_key().as_ref());
+
+        let private = [9; 32];
+        let ours =
+            rind::agreement::PrivateKey::from_scalar(&rind::agreement::X25519, &private).unwrap();
+        let v2 = as_v2(ours.to_pkcs8().as_ref());
+        assert_eq!(crate::ecdh_scalars::aws_lc_x25519_from_pkcs8(&v2), private);
+        let loaded =
+            rind::agreement::PrivateKey::from_pkcs8(&rind::agreement::X25519, &v2).unwrap();
+        assert_eq!(loaded.public_key().as_ref(), ours.public_key().as_ref());
+    }
+
     #[test]
     fn attributes() {
         // RFC 8410's example, and contents that are not DER at all.
@@ -2651,7 +2700,7 @@ mod ecdh_scalars {
     }
 
     /// The X25519 key aws-lc parses from PKCS#8 `der`.
-    fn aws_lc_x25519_from_pkcs8(der: &[u8]) -> [u8; 32] {
+    pub(crate) fn aws_lc_x25519_from_pkcs8(der: &[u8]) -> [u8; 32] {
         use aws_lc_sys::*;
         // SAFETY: as `aws_lc_x25519_pkcs8`.
         unsafe {
@@ -3067,7 +3116,7 @@ mod vrf {
             let their_public = VRFPublicKey::from(&theirs);
             prop_assert_eq!(ours.public_key().as_ref(), their_public.as_bytes());
 
-            let (proof, output) = ours.prove(&alpha);
+            let (proof, output) = ours.prove(&alpha).unwrap();
             let their_proof = theirs.prove(&alpha);
             prop_assert_eq!(proof.as_ref(), their_proof.to_bytes());
             their_public.verify(&their_proof, &alpha).unwrap();
@@ -3084,7 +3133,7 @@ mod vrf {
             let theirs = EcVrfP256TaiSecretKey::from_slice(ours.to_bytes().as_ref()).unwrap();
             let their_public = theirs.verifier();
 
-            let (proof, output) = ours.prove(&alpha);
+            let (proof, output) = ours.prove(&alpha).unwrap();
             let their_proof = theirs.prove(&alpha).unwrap();
             prop_assert_eq!(proof.as_ref(), &their_proof.encode_to_pi()[..]);
             prop_assert!(
@@ -3101,6 +3150,172 @@ mod vrf {
                 .verify(&alpha, &their_proof.encode_to_pi())
                 .unwrap();
             prop_assert_eq!(verified.as_ref(), output.as_ref());
+        }
+    }
+}
+
+mod oprf {
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use rand_core_voprf::OsRng;
+    use rind::oprf::voprf as rind_voprf;
+    use rind::oprf::{P256_SHA256, P384_SHA384, P521_SHA512, RISTRETTO255_SHA512};
+    use voprf::{
+        BlindedElement, EvaluationElement, Group, OprfClient, OprfServer, Proof, VoprfClient,
+        VoprfServer,
+    };
+
+    /// Each suite against the `voprf` crate: the same key from one seed,
+    /// rind's clients finalizing the crate's evaluations and proofs, the
+    /// crate's clients finalizing rind's, and both servers' direct outputs.
+    macro_rules! matches_voprf {
+        ($cs:ty, $suite:expr, $seed:expr, $info:expr, $inputs:expr) => {{
+            let (seed, info, inputs): ([u8; 32], Vec<u8>, Vec<Vec<u8>>) = ($seed, $info, $inputs);
+            type G = <$cs as voprf::CipherSuite>::Group;
+            let suite = $suite;
+
+            // The OPRF mode.
+            let ours = rind::oprf::ServerKey::derive(suite, &seed, &info).unwrap();
+            let theirs = OprfServer::<$cs>::new_from_seed(&seed, &info).unwrap();
+            // The crate derives the same key: loaded from rind's
+            // encoding, it evaluates as the key it derived.
+            let loaded = OprfServer::<$cs>::new_with_key(ours.to_bytes().as_ref()).unwrap();
+            prop_assert_eq!(
+                &loaded.evaluate(b"key").unwrap()[..],
+                &theirs.evaluate(b"key").unwrap()[..]
+            );
+            for input in &inputs {
+                let direct = theirs.evaluate(input).unwrap();
+                let output = ours.evaluate(input).unwrap();
+                prop_assert_eq!(output.as_ref(), &direct[..]);
+
+                let (blind, blinded) = rind::oprf::Blind::new(suite, input).unwrap();
+                let evaluated =
+                    theirs.blind_evaluate(&BlindedElement::deserialize(blinded.as_ref()).unwrap());
+                let output = blind.finalize(&evaluated.serialize()).unwrap();
+                prop_assert_eq!(output.as_ref(), &direct[..]);
+
+                let blinded = OprfClient::<$cs>::blind(input, &mut OsRng).unwrap();
+                let evaluated = ours.blind_evaluate(&blinded.message.serialize()).unwrap();
+                let output = blinded
+                    .state
+                    .finalize(
+                        input,
+                        &EvaluationElement::deserialize(evaluated.as_ref()).unwrap(),
+                    )
+                    .unwrap();
+                prop_assert_eq!(&output[..], &direct[..]);
+            }
+
+            // The VOPRF mode, batched.
+            let ours = rind_voprf::ServerKey::derive(suite, &seed, &info).unwrap();
+            let theirs = VoprfServer::<$cs>::new_from_seed(&seed, &info).unwrap();
+            prop_assert_eq!(
+                ours.public_key().as_ref(),
+                &G::serialize_elem(theirs.get_public_key())[..]
+            );
+            let direct = inputs
+                .iter()
+                .map(|input| theirs.evaluate(input).unwrap().to_vec())
+                .collect::<Vec<_>>();
+            for (input, direct) in inputs.iter().zip(&direct) {
+                let output = ours.evaluate(input).unwrap();
+                prop_assert_eq!(output.as_ref(), &direct[..]);
+            }
+
+            let mut blinds = Vec::new();
+            let mut blinded = Vec::new();
+            for input in &inputs {
+                let (blind, element) = rind_voprf::Blind::new(suite, input).unwrap();
+                blinds.push(blind);
+                blinded.push(BlindedElement::<$cs>::deserialize(element.as_ref()).unwrap());
+            }
+            let evaluated = theirs.batch_blind_evaluate(&mut OsRng, &blinded).unwrap();
+            let messages = evaluated
+                .messages
+                .iter()
+                .flat_map(|message| message.serialize())
+                .collect::<Vec<_>>();
+            let public_key =
+                rind_voprf::PublicKey::new(suite, &G::serialize_elem(theirs.get_public_key()))
+                    .unwrap();
+            let outputs = rind_voprf::Blind::finalize_batch(
+                blinds,
+                &messages,
+                &evaluated.proof.serialize(),
+                &public_key,
+            )
+            .unwrap();
+            for (output, direct) in outputs.iter().zip(&direct) {
+                prop_assert_eq!(output.as_ref(), &direct[..]);
+            }
+
+            let mut clients = Vec::new();
+            let mut blinded = Vec::new();
+            for input in &inputs {
+                let result = VoprfClient::<$cs>::blind(input, &mut OsRng).unwrap();
+                clients.push(result.state);
+                blinded.extend_from_slice(&result.message.serialize());
+            }
+            let (evaluated, proof) = ours.blind_evaluate(&blinded).unwrap();
+            let element_len = evaluated.as_ref().len() / inputs.len();
+            let messages = evaluated
+                .as_ref()
+                .chunks(element_len)
+                .map(|bytes| EvaluationElement::<$cs>::deserialize(bytes).unwrap())
+                .collect::<Vec<_>>();
+            let proof = Proof::<$cs>::deserialize(proof.as_ref()).unwrap();
+            let outputs = VoprfClient::batch_finalize(
+                &inputs,
+                &clients,
+                &messages,
+                &proof,
+                theirs.get_public_key(),
+            )
+            .unwrap();
+            for (output, direct) in outputs.zip(&direct) {
+                prop_assert_eq!(&output.unwrap()[..], &direct[..]);
+            }
+        }};
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(16))]
+
+        #[test]
+        fn ristretto255_matches_voprf(
+            seed in any::<[u8; 32]>(),
+            info in vec(any::<u8>(), 0..40),
+            inputs in vec(vec(any::<u8>(), 0..100), 1..4),
+        ) {
+            matches_voprf!(voprf::Ristretto255, &RISTRETTO255_SHA512, seed, info, inputs);
+        }
+
+        #[test]
+        fn p256_matches_voprf(
+            seed in any::<[u8; 32]>(),
+            info in vec(any::<u8>(), 0..40),
+            inputs in vec(vec(any::<u8>(), 0..100), 1..4),
+        ) {
+            matches_voprf!(p256_voprf::NistP256, &P256_SHA256, seed, info, inputs);
+        }
+
+        #[test]
+        fn p384_matches_voprf(
+            seed in any::<[u8; 32]>(),
+            info in vec(any::<u8>(), 0..40),
+            inputs in vec(vec(any::<u8>(), 0..100), 1..4),
+        ) {
+            matches_voprf!(p384_voprf::NistP384, &P384_SHA384, seed, info, inputs);
+        }
+
+        #[test]
+        fn p521_matches_voprf(
+            seed in any::<[u8; 32]>(),
+            info in vec(any::<u8>(), 0..40),
+            inputs in vec(vec(any::<u8>(), 0..100), 1..4),
+        ) {
+            matches_voprf!(p521_voprf::NistP521, &P521_SHA512, seed, info, inputs);
         }
     }
 }

@@ -91,8 +91,8 @@ ring and aws-lc-rs item to rind's.
 
 The `rind` crate's own API covers AES-GCM, ChaCha20-Poly1305, and
 XChaCha20-Poly1305, QUIC header protection, X25519 and ECDH, ML-KEM-768,
-HPKE, ECDSA, Ed25519, ML-DSA, and RSA signatures, RSA blind signatures, ECVRF, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
-HMAC, HKDF, PBKDF2, and AES key wrap. Each algorithm is a constant and each key
+HPKE, ECDSA, Ed25519, ML-DSA, and RSA signatures, RSA blind signatures, ECVRF, OPRFs, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
+HMAC, HKDF, PBKDF2, SPAKE2+, and AES key wrap. Each algorithm is a constant and each key
 type has one role, so misuse fails to compile:
 
 ```rust
@@ -197,7 +197,8 @@ AI reviews and contributions are welcome. rind plans its work as quests,
 Markdown files under [`quest/`][quests], with skills for Claude Code and
 Codex. With [quest][quest-setup] installed, have your agent run
 `/quest-plan` to propose a change or report a finding, or `/quest-start` to
-take a quest from the backlog. [CONTRIBUTING.md][contributing] covers
+take a quest from the backlog. Report a vulnerability privately instead, as
+[SECURITY.md][security] says. [CONTRIBUTING.md][contributing] covers
 building, testing, and how a PR lands.
 
 ## Learn more
@@ -268,6 +269,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [quests]: https://github.com/kixel-ai/rind/blob/main/quest/README.md
 [launch-post]: https://moq.dev/blog/rind/
 [contributing]: https://github.com/kixel-ai/rind/blob/main/CONTRIBUTING.md
+[security]: https://github.com/kixel-ai/rind/blob/main/SECURITY.md
 [migrating]: https://github.com/kixel-ai/rind/blob/main/MIGRATING.md
 [benchmarks]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md
 [gaps]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#known-gaps

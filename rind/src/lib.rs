@@ -52,6 +52,13 @@ mod error;
 #[cfg(any(test, rind_fips))]
 mod fips_rng;
 
+/// What the FIPS module (`rind-fips`) needs beyond the public API: its
+/// self-tests, its error state, and its errors' codes. Only the module's own
+/// build compiles it.
+#[cfg(any(test, rind_fips))]
+#[doc(hidden)]
+pub mod fips;
+
 /// Test infrastructure.
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -93,12 +100,10 @@ pub mod doc {
 /// let mut alice_key = [0u8; 32];
 /// let mut bob_key = [0u8; 32];
 /// salt.extract(alice_secret.as_ref())
-///     .expand(&[b"key"], alice_key.len())
-///     .fill(&mut alice_key)
+///     .and_then(|prk| prk.expand(&[b"key"], alice_key.len())?.fill(&mut alice_key))
 ///     .unwrap();
 /// salt.extract(bob_secret.as_ref())
-///     .expand(&[b"key"], bob_key.len())
-///     .fill(&mut bob_key)
+///     .and_then(|prk| prk.expand(&[b"key"], bob_key.len())?.fill(&mut bob_key))
 ///     .unwrap();
 /// assert_eq!(alice_key, bob_key);
 /// ```
@@ -129,14 +134,14 @@ pub mod agreement {
 /// let recipient_secret = decapsulation_key.decapsulate(ciphertext.as_ref())?;
 ///
 /// // Each side derives its keys from the secret with a KDF.
-/// let salt = rind::hkdf::Salt::new(&rind::hkdf::HKDF_SHA256, b"");
+/// let salt = rind::hkdf::Salt::new(&rind::hkdf::HKDF_SHA256, b"session salt");
 /// let mut sender_key = [0u8; 32];
 /// let mut recipient_key = [0u8; 32];
-/// salt.extract(sender_secret.as_ref())
-///     .expand(&[b"key"], sender_key.len())
+/// salt.extract(sender_secret.as_ref())?
+///     .expand(&[b"key"], sender_key.len())?
 ///     .fill(&mut sender_key)?;
-/// salt.extract(recipient_secret.as_ref())
-///     .expand(&[b"key"], recipient_key.len())
+/// salt.extract(recipient_secret.as_ref())?
+///     .expand(&[b"key"], recipient_key.len())?
 ///     .fill(&mut recipient_key)?;
 /// assert_eq!(sender_key, recipient_key);
 /// # Ok(())
@@ -282,6 +287,53 @@ pub mod blind_rsa {
     };
 }
 
+/// Oblivious pseudorandom functions ([RFC 9497]) over ristretto255, P-256,
+/// P-384, and P-521.
+///
+/// A client learns the server's PRF of an input without the server learning
+/// the input or the client learning the server's key. The client blinds the
+/// input, the server evaluates the blinded element, and the client finalizes
+/// the evaluated element into the output. The [`voprf`](oprf::voprf) mode
+/// adds a proof that the server used the key it published, for one input or
+/// a batch; Privacy Pass's privately verifiable tokens run it on
+/// [`P384_SHA384`](oprf::P384_SHA384) and their batched ones on
+/// [`RISTRETTO255_SHA512`](oprf::RISTRETTO255_SHA512). The POPRF mode is not
+/// offered.
+///
+/// Everything holding the input, the blind, or the server's key runs in
+/// constant time.
+///
+/// ```
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::oprf::{RISTRETTO255_SHA512, voprf};
+///
+/// let server = voprf::ServerKey::generate(&RISTRETTO255_SHA512)?;
+/// let public_key = voprf::PublicKey::new(&RISTRETTO255_SHA512, server.public_key().as_ref())?;
+///
+/// let (blind, blinded_element) = voprf::Blind::new(&RISTRETTO255_SHA512, b"password")?;
+/// let (evaluated, proof) = server.blind_evaluate(blinded_element.as_ref())?;
+/// let output = blind.finalize(evaluated.as_ref(), proof.as_ref(), &public_key)?;
+///
+/// // The server, holding the input, computes the same output directly.
+/// assert_eq!(output.as_ref(), server.evaluate(b"password")?.as_ref());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [RFC 9497]: https://www.rfc-editor.org/rfc/rfc9497.html
+pub mod oprf {
+    pub use crate::high::oprf::{
+        Blind, BlindedElement, EvaluatedElement, Output, P256_SHA256, P384_SHA384, P521_SHA512,
+        RISTRETTO255_SHA512, ServerKey, ServerKeyBytes, Suite,
+    };
+
+    /// RFC 9497's VOPRF mode: the OPRF, with a proof that the server
+    /// evaluated every blinded element in a batch with the key it published.
+    pub mod voprf {
+        pub use crate::high::oprf::voprf::{Blind, EvaluatedElements, Proof, PublicKey, ServerKey};
+    }
+}
+
 /// Verifiable random functions: ECVRF ([RFC 9381]) on edwards25519 and P-256.
 ///
 /// The holder of a secret key proves an output for any input; anyone with
@@ -292,6 +344,11 @@ pub mod blind_rsa {
 /// Each suite encodes its input to the curve by try-and-increment, whose
 /// running time depends on the input, so an input that must stay secret
 /// from an observer of timing needs another suite (RFC 9381 section 5.4.1.1).
+/// P-256's nonce is RFC 6979's: a candidate not from 1 to n - 1 draws
+/// another block, with probability about 2^-32, and that retry is not
+/// constant time. An Edwards25519 seed is an RFC 8032 seed dedicated to
+/// the VRF. Signing with it reuses the nonce and reveals the scalar; see
+/// [`SecretKey`](vrf::SecretKey).
 /// [`PublicKey::verify`](vrf::PublicKey::verify) always validates the key
 /// (`validate_key = TRUE`).
 ///
@@ -300,7 +357,7 @@ pub mod blind_rsa {
 /// use rind::vrf::*;
 ///
 /// let secret_key = SecretKey::generate(&ECVRF_EDWARDS25519_SHA512_TAI)?;
-/// let (proof, output) = secret_key.prove(b"alice@example.com");
+/// let (proof, output) = secret_key.prove(b"alice@example.com")?;
 ///
 /// // A verifier parses the public key and recovers the same output.
 /// let encoded = secret_key.public_key().as_ref();
@@ -477,16 +534,19 @@ pub mod constant_time {
 /// into any number of keys, each exactly as long as what it becomes.
 ///
 /// ```
+/// # fn main() -> Result<(), rind::Error> {
 /// use rind::{aead, hkdf, hmac};
 ///
-/// let prk = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt").extract(b"input key material");
+/// let prk = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt").extract(b"input key material")?;
 ///
-/// let aead_key = aead::Key::from(prk.expand(&[b"aead"], &aead::AES_256_GCM));
-/// let hmac_key = hmac::Key::from(prk.expand(&[b"hmac"], &hmac::HMAC_SHA256));
+/// let aead_key = aead::Key::from(prk.expand(&[b"aead"], &aead::AES_256_GCM)?);
+/// let hmac_key = hmac::Key::from(prk.expand(&[b"hmac"], &hmac::HMAC_SHA256)?);
 ///
 /// let info: [&[u8]; 2] = [b"label", b"context"];
 /// let mut bytes = [0u8; 16];
-/// prk.expand(&info, bytes.len()).fill(&mut bytes).unwrap();
+/// prk.expand(&info, bytes.len())?.fill(&mut bytes)?;
+/// # Ok(())
+/// # }
 /// ```
 pub mod hkdf {
     pub use super::high::hkdf::{
@@ -497,6 +557,40 @@ pub mod hkdf {
     pub mod legacy {
         pub use crate::high::hkdf::HKDF_SHA1;
     }
+}
+
+/// SPAKE2+ on P-256 with SHA-256, HKDF, and HMAC.
+///
+/// [`RFC9383`](spake2plus::RFC9383) is RFC 9383. [`MATTER_PASE`](spake2plus::MATTER_PASE)
+/// is draft-bar-cfrg-spake2plus-01, the key schedule Matter's commissioning uses.
+/// The group, the points M and N, and the transcript are the same. The suites
+/// are different types, so a share from one does not type-check as the other's.
+/// The caller stretches the password and passes `w0` and `w1`. A verifier
+/// stores `w0` and `L = w1 * G`, not `w1`.
+///
+/// ```
+/// use rind::spake2plus::{ProverSecrets, RFC9383, VerifierRecord};
+///
+/// let w0 = [0x11; 40];
+/// let w1 = [0x22; 40];
+/// let prover = ProverSecrets::new(&w0, &w1).unwrap();
+/// let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
+///
+/// let (share_p, prover) = prover
+///     .start(&RFC9383, b"app", b"client", b"server")
+///     .unwrap();
+/// let (share_v, confirm_v, verifier) = verifier
+///     .start(&RFC9383, b"app", b"client", b"server", &share_p)
+///     .unwrap();
+/// let (confirm_p, prover_key) = prover.finish(&share_v, &confirm_v).unwrap();
+/// let verifier_key = verifier.finish(&confirm_p).unwrap();
+/// assert_eq!(prover_key.as_ref(), verifier_key.as_ref());
+/// ```
+pub mod spake2plus {
+    pub use super::high::spake2plus::{
+        Confirm, MATTER_PASE, MatterPase, ProverAwaiting, ProverSecrets, RFC9383, Rfc9383, Share,
+        SharedKey, Suite, VerifierAwaiting, VerifierRecord,
+    };
 }
 
 /// Password-based key derivation with PBKDF2.
@@ -537,8 +631,9 @@ pub mod pbkdf2 {
 /// Authenticated encryption.
 ///
 /// An [`aead::Key`] is built from an algorithm constant and key bytes, and
-/// seals with the caller's nonces, which must never repeat under one key. An
-/// [`aead::RandomizedNonceKey`] picks its own.
+/// seals with the caller's nonces, which must never repeat under one key.
+/// [`aead::Nonce::from_sequence`] builds TLS 1.3's, QUIC's, and HPKE's from an
+/// IV and a sequence number. An [`aead::RandomizedNonceKey`] picks its own.
 ///
 /// ```
 /// use rind::aead::*;
