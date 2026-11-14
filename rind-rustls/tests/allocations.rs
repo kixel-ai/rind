@@ -1,9 +1,9 @@
 //! How many heap allocations one full TLS 1.3 handshake makes, both peers
-//! together, per certificate key type. Backends differ in what they allocate,
-//! so the count is pinned on x86_64's assembly backend alone, where it was
-//! measured. RSA's private-key routines allocate differently with ADX or
-//! AVX-512 IFMA than without, so RSA certificates are not pinned yet.
-#![cfg(all(target_arch = "x86_64", not(rind_portable)))]
+//! together, per certificate key type. Pinned on x86_64 alone, where it was
+//! measured, on the assembly and portable backends alike. RSA's private-key
+//! routines allocate differently by backend and with ADX or AVX-512 IFMA, so
+//! RSA certificates are not pinned yet.
+#![cfg(target_arch = "x86_64")]
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;

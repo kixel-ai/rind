@@ -30,8 +30,3 @@ tokio-rustls = { version = "0.26", default-features = false }
 
 [features]
 default = []
-
-[lints.rust]
-# Forces rind's portable backend (see rind/build.rs), whose allocation count
-# tests/allocations.rs does not pin.
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(rind_portable)"] }
