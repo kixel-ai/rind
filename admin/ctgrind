@@ -69,7 +69,7 @@ export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER="$self --run"
 
-# RIND_SCOPE=BASE runs only the tests of the primitives the branch changed
+# RIND_SCOPE=BASE runs only rind's tests of the primitives the branch changed
 # since BASE, as `sh/primitives.sh` maps them. They are not narrowed to one
 # backend, since RUSTFLAGS or `--target` may pick another than the host's.
 filter=
@@ -99,6 +99,8 @@ fi
 # Each adapter's ctgrind test marks the secrets it hands rind, while rind's
 # hooks mark the keys rind generates or parses. Python's tests run through
 # its extension, not a Rust lib test binary, which would need libpython.
+# They run unfiltered: their names are protocol steps, such as a TLS key
+# schedule, not the primitives beneath them.
 if [ "$suite" = all ] || [ "$suite" = adapters ]; then
-    cargo test --workspace --exclude rind --exclude rind-python --lib --test ctgrind --features rind/__ctgrind "$@" ${filter:+-- $filter}
+    cargo test --workspace --exclude rind --exclude rind-python --lib --test ctgrind --features rind/__ctgrind "$@"
 fi

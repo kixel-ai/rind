@@ -257,8 +257,8 @@ natively.
 Miri, on x86_64, and `just miri s390x-unknown-linux-gnu` big-endian.
 With `RIND_SCOPE=BASE` set, such as `origin/main`, `just armv7`, `just qemu`,
 `just miri`, and `admin/ctgrind` run only the tests of the primitives the
-branch changed since BASE, as `sh/primitives.sh` maps them; pull requests'
-armv7 and ctgrind jobs set it.
+branch changed since BASE, as `sh/primitives.sh` maps them (ctgrind still
+runs every adapter test); pull requests' armv7 and ctgrind jobs set it.
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
 constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code

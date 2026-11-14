@@ -57,10 +57,10 @@ cd "$(git rev-parse --show-toplevel)"
 primitives=(
     'aes|aes|gcm|ghash|gmac|compute_iv|^cipher\.rs$|^aead(\.rs$|/)|aes gcm ghash gmac cipher aead quic|aes_gcm cipher key_wrap'
     'chacha|chacha|poly1305|poly_hash|^aead(\.rs$|/)|chacha poly1305 aead quic|chacha20poly1305 xchacha20poly1305'
-    'sha1|sha1|sha_armv4|^low/portable/sha\.rs$|sha1 digest hashes|sha1'
-    'sha2|sha256|sha512|sha_|sha-?2|^low/portable/sha\.rs$|^high/(digest|hash|hmac|hkdf|pbkdf2|hmac_drbg)\.rs$|sha2 sha256 sha384 sha512 digest hash hashes hmac hkdf pbkdf2 drbg|sha2 hmac hkdf pbkdf2'
+    'sha1|sha1|sha_armv4|^low/portable/sha\.rs$|sha1 digest hashes compress_blocks hmac hkdf pbkdf2|sha1 hmac'
+    'sha2|sha256|sha512|sha_|sha-?2|^low/portable/sha\.rs$|^high/(digest|hash|hmac|hkdf|pbkdf2|hmac_drbg)\.rs$|sha2 sha256 sha384 sha512 digest hash hashes compress_blocks hmac hkdf pbkdf2 drbg|sha2 hmac hkdf pbkdf2'
     'sha3|sha3|keccak|shake|sha3 shake keccak digest hashes|sha3'
-    'md5|md5|md5 digest hashes|md5'
+    'md5|md5|md5 digest hashes compress_blocks|md5'
     # The NIST curves' shared code: ECDSA, ECDH, their encodings, and the
     # portable backend's group orders.
     'ec|^high/(ecdsa|agreement|curve|sec1)\.rs$|^high/ecdsa/|hash_to_curve|^low/generic/order\.rs$|p256 p384 p521 ecdsa agreement ecdh curve sec1 hash_to_curve|p256 p384 p521'
@@ -68,6 +68,9 @@ primitives=(
     'p384|p384|n384|p384 ecdsa agreement ecdh|p384'
     'p521|p521|n521|p521 ecdsa agreement ecdh|p521'
     '25519|25519|edwards|ristretto|^high/agreement\.rs$|25519 edwards ristretto agreement|x25519 ed25519'
+    # s2n-bignum's generic kernels that the curves call too, with secret
+    # operands, and the point selection over their precomputed tables.
+    'curve-bignum|bignum_(eq|mux|cmp_lt|modadd|modsub|modinv|montifier|montmul|demont|copy_row_from_table|point_select)|^low/generic/(bignum|mont)\.rs$|p256 p384 p521 ecdsa agreement ecdh hash_to_curve 25519 edwards ristretto|p256 p384 p521 x25519 ed25519'
     # aws-lc's `bn_` Montgomery kernels and RSAZ, s2n-bignum's generic
     # bignum routines, and the arithmetic over them.
     'rsa|rsa|bn_|mont|bignum|posint|extract_multiplier|^high/(oaep|pkcs1)\.rs$|rsa oaep pkcs1 pss posint bignum mont|rsa_priv rsa_pub rsa_gen'
