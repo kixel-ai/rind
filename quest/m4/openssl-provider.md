@@ -23,6 +23,12 @@ Planned by the maintainer on 2026-11-04 in m4. The provider, its documented
   provider the message and a digest name, which rind's message API covers
   where the digest is the one rind pairs with the curve. `EVP_PKEY_sign` hands
   it a digest the caller made, which rind's API does not take.
+- rind verifies SHA-256, SHA-384, and SHA-512 on each curve (such as
+  `ECDSA_P384_SHA256_ASN1`) but signs only with the curve's own digest, so
+  under `ec = 1` an `EVP_DigestSign` with another, such as P-384 with
+  SHA-256, fails with rind's unsupported error rather than falling back, and
+  the README lists it. A deployment that signs so keeps `ec` off.
+  Recommended: add unpaired signing to rind only once a consumer needs it.
 - Register only what measures faster, on `openssl speed` and on Node and
   Python workloads, and test it as the X25519 and Ed25519 work does:
   differentially against the default provider, OpenSSL's `evp_test` on its

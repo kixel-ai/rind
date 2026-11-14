@@ -105,10 +105,7 @@ impl Param {
         }
         // SAFETY: a parameter's data is valid for its size.
         let bytes = unsafe { slice::from_raw_parts(self.data.cast::<u8>(), self.data_size) };
-        Some(match bytes.iter().position(|&b| b == 0) {
-            Some(end) => &bytes[..end],
-            None => bytes,
-        })
+        bytes.split(|&b| b == 0).next()
     }
 
     /// Sets an integer or real parameter of any size that holds `value`,
