@@ -174,7 +174,10 @@ exclude_re = [
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace <= with > in tagged_from$',
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace \+ with \* in tagged_from$',
   'rind/src/low/aarch64/bignum_copy_row_from_table_mux\.rs:\d+:\d+: replace match guard width\.is_multiple_of\(8\) with false in bignum_copy_row_from_table$',
-  'rind/src/low/aarch64/cpu\.rs:293:\d+: replace prefetch_ro with \(\)$',
+  'rind/src/low/aarch64/cpu\.rs:317:\d+: replace prefetch_ro with \(\)$',
+  # Invisible to a test: whether the speculation barrier after setting DIT
+  # runs, and which one.
+  'rind/src/low/aarch64/cpu\.rs:\d+:\d+: (replace dit::speculation_barrier with \(\)|replace (!= with ==|& with [|^]) in dit::write)$',
   'rind/src/low/aarch64/mont\.rs:\d+:\d+: replace match guard k >= 2 with false in (mont_mul|mont_sqr)$',
   'rind/src/low/generic/order\.rs:\d+:\d+: replace (order -> Option<Order> with None|== with != in order)$',
   'rind/src/low/generic/blockwise\.rs:\d+:\d+: replace > with >= in Blockwise<N>::complete_blocks$',
@@ -238,13 +241,20 @@ exclude_re = [
   # module and the portable AES-GCM's crypto-extension half.
   'rind/src/low/abi\.rs:(895|897|898|904|905|911|914|924):\d+: ',
   'rind/src/mid/portable/aes_gcm\.rs:\d+:\d+: (replace (<impl Ghash for GhashTable>::ghash|<impl Parts for Hw>::\w+)( -> .*)? with .*|.* in <impl Parts for Hw>::\w+)$',
+  # DIT, which rind sets only on Apple's cores, where no campaign runs:
+  # elsewhere `enter_cpu_state` changes nothing for `Dit`, `Entry`, and
+  # `leave_cpu_state` to restore, and `dit` compiles only for Apple.
+  # `enables_dit_whenever_the_cpu_has_it` tests it on macOS.
+  'rind/src/low/aarch64/cpu\.rs:\d+:\d+: (replace (enter_cpu_state -> u32 with [01]|leave_cpu_state with \(\))|.* dit::\w+( -> .*)?( with .*)?)$',
+  'rind/src/low/cpu\.rs:\d+:\d+: (replace (Dit::hold -> Self with .*|<impl Drop for Dit>::drop with \(\))|.* in (Dit::hold|<impl Drop for Dit>::drop))$',
+  'rind/src/low/entry\.rs:\d+:\d+: replace <impl Drop for Entry>::drop with \(\)$',
   # Reached only on a CPU without a feature that every test host has and no
   # denial row in `admin/mutants` denies alone, only in a release build,
   # which tests never are, or only off Linux.
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace && with \|\| in detect$',
-  'rind/src/low/aarch64/cpu\.rs:167:\d+: replace << with >>$',
-  'rind/src/low/aarch64/cpu\.rs:271:\d+: replace test_toggle -> bool with false$',
-  'rind/src/low/aarch64/cpu\.rs:271:\d+: replace test_toggle -> bool with true$',
+  'rind/src/low/aarch64/cpu\.rs:169:\d+: replace << with >>$',
+  'rind/src/low/aarch64/cpu\.rs:295:\d+: replace test_toggle -> bool with false$',
+  'rind/src/low/aarch64/cpu\.rs:295:\d+: replace test_toggle -> bool with true$',
   # The portable backend has no CPU state to save, so `leave_cpu_state`
   # ignores it.
   'rind/src/low/portable/cpu\.rs:\d+:\d+: replace enter_cpu_state -> u32 with 1$',
@@ -357,8 +367,8 @@ exclude_re = [
   'rind-ring/src/rand\.rs:79:\d+: replace sealed::<impl RandomlyConstructable for \[u8; N\]>::as_mut_bytes -> &mut\[u8\] with Vec::leak\(vec!\[0\]\)$',
   'rind-ring/src/rand\.rs:79:\d+: replace sealed::<impl RandomlyConstructable for \[u8; N\]>::as_mut_bytes -> &mut\[u8\] with Vec::leak\(vec!\[1\]\)$',
   'rind-ring/src/rsa\.rs:\d+:\d+: replace - with \+ in PublicKey::modulus_bits$',
-  'rind-ring/src/rsa\.rs:199:\d+: replace <impl fmt::Debug for RsaParameters>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-ring/src/rsa\.rs:316:\d+: replace padding::<impl fmt::Debug for Padding>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
+  'rind-ring/src/rsa\.rs:200:\d+: replace <impl fmt::Debug for RsaParameters>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
+  'rind-ring/src/rsa\.rs:317:\d+: replace padding::<impl fmt::Debug for Padding>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-ring/src/signature\.rs:256:\d+: replace <impl PartialEq for EcdsaSigningAlgorithm>::eq -> bool with false$',
   'rind-ring/src/signature\.rs:256:\d+: replace <impl PartialEq for EcdsaSigningAlgorithm>::eq -> bool with true$',
   'rind-ring/src/signature\.rs:250:\d+: replace <impl fmt::Debug for EcdsaSigningAlgorithm>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
