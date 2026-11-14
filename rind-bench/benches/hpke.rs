@@ -174,7 +174,7 @@ fn seal(c: &mut Criterion) {
 }
 
 // Open a context's first message. A context opens each sequence number once,
-// so each iteration gets a fresh context and ciphertext, untimed.
+// so each iteration gets a fresh context and ciphertext, made and dropped untimed.
 fn open(c: &mut Criterion) {
     let mut group = c.benchmark_group("hpke-x25519-aes128-gcm-open");
     group.throughput(Throughput::Bytes(MESSAGE.len() as u64));
@@ -183,7 +183,7 @@ fn open(c: &mut Criterion) {
         use rind::hpke::{DHKEM_X25519_HKDF_SHA256, PrivateKey, Recipient, Sender};
         let private_key = PrivateKey::generate(&DHKEM_X25519_HKDF_SHA256).unwrap();
         let public_key = private_key.public_key();
-        b.iter_batched(
+        b.iter_batched_ref(
             || {
                 let (enc, mut sender) = Sender::new(rind_suite(), &public_key, INFO).unwrap();
                 let mut ciphertext = MESSAGE.to_vec();
@@ -194,8 +194,8 @@ fn open(c: &mut Criterion) {
                     Recipient::new(rind_suite(), &private_key, enc.as_ref(), INFO).unwrap();
                 (recipient, ciphertext)
             },
-            |(mut recipient, mut ciphertext)| {
-                black_box(recipient.open_in_place(AAD, &mut ciphertext).unwrap().len());
+            |(recipient, ciphertext)| {
+                black_box(recipient.open_in_place(AAD, ciphertext).unwrap().len());
             },
             BatchSize::SmallInput,
         );
@@ -203,14 +203,14 @@ fn open(c: &mut Criterion) {
 
     group.bench_function("aws-lc-rs/1350B", |b| {
         let (public_key, private_key) = AWS_LC_RS.generate_key_pair().unwrap();
-        b.iter_batched(
+        b.iter_batched_ref(
             || {
                 let (enc, mut sealer) = AWS_LC_RS.setup_sealer(INFO, &public_key).unwrap();
                 let ciphertext = sealer.seal(AAD, &MESSAGE).unwrap();
                 let opener = AWS_LC_RS.setup_opener(&enc, INFO, &private_key).unwrap();
                 (opener, ciphertext)
             },
-            |(mut opener, ciphertext)| black_box(opener.open(AAD, &ciphertext).unwrap()),
+            |(opener, ciphertext)| black_box(opener.open(AAD, ciphertext).unwrap()),
             BatchSize::SmallInput,
         );
     });
@@ -218,7 +218,7 @@ fn open(c: &mut Criterion) {
     group.bench_function("rustcrypto/1350B", |b| {
         use hpke::{Kem, OpModeR, OpModeS};
         let (private_key, public_key) = RcKem::gen_keypair();
-        b.iter_batched(
+        b.iter_batched_ref(
             || {
                 let (enc, mut sender) =
                     hpke::setup_sender::<RcAead, RcKdf, RcKem>(&OpModeS::Base, &public_key, INFO)
@@ -233,7 +233,7 @@ fn open(c: &mut Criterion) {
                 .unwrap();
                 (recipient, ciphertext)
             },
-            |(mut recipient, ciphertext)| black_box(recipient.open(&ciphertext, AAD).unwrap()),
+            |(recipient, ciphertext)| black_box(recipient.open(ciphertext, AAD).unwrap()),
             BatchSize::SmallInput,
         );
     });
@@ -241,7 +241,7 @@ fn open(c: &mut Criterion) {
     group.bench_function("libcrux/1350B", |b| {
         let mut hpke = libcrux_hpke();
         let key_pair = hpke.generate_key_pair().unwrap();
-        b.iter_batched(
+        b.iter_batched_ref(
             || {
                 let (enc, mut sender) = hpke
                     .setup_sender(key_pair.public_key(), INFO, None, None, None)
@@ -252,7 +252,7 @@ fn open(c: &mut Criterion) {
                     .unwrap();
                 (recipient, ciphertext)
             },
-            |(mut recipient, ciphertext)| black_box(recipient.open(AAD, &ciphertext).unwrap()),
+            |(recipient, ciphertext)| black_box(recipient.open(AAD, ciphertext).unwrap()),
             BatchSize::SmallInput,
         );
     });
