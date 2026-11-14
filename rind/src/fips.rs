@@ -266,7 +266,7 @@ pub fn check_rsa_floor(
 /// or exactly 1024 bits if `legacy_1024`, for verifying old signatures.
 pub fn check_rsa_modulus(key: &crate::rsa::PublicKey, legacy_1024: bool) -> Result<(), Error> {
     let bits = key.modulus_bits();
-    match (bits >= 2048 && bits % 2 == 0) || (legacy_1024 && bits == 1024) {
+    match (bits >= 2048 && bits.is_multiple_of(2)) || (legacy_1024 && bits == 1024) {
         true => Ok(()),
         false => Err(KeyFormatError::RsaModulus.into()),
     }

@@ -318,6 +318,7 @@ enum Verification {
 }
 
 /// A public key and, for RSA, the algorithm it verifies with.
+#[allow(clippy::large_enum_variant)]
 pub enum PublicKey {
     Ecdsa(ecdsa::PublicKey),
     Ed25519(ed25519::PublicKey),

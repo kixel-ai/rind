@@ -1148,7 +1148,7 @@ mod tests {
                 kem.scalar_len
             );
             for suite in suites() {
-                let (enc, mut sender) = Sender::new(suite, &public_key, b"info").unwrap();
+                let (enc, mut sender) = Sender::new(suite, public_key, b"info").unwrap();
                 let mut recipient =
                     Recipient::new(suite, &private_key, enc.as_ref(), b"info").unwrap();
                 for message in [&b""[..], b"one", &[7; 1000]] {
@@ -1169,7 +1169,7 @@ mod tests {
                     Err(Error::WrongLength)
                 );
 
-                let (enc, exporter) = Exporter::sender(suite.kdf, &public_key, b"info").unwrap();
+                let (enc, exporter) = Exporter::sender(suite.kdf, public_key, b"info").unwrap();
                 let other =
                     Exporter::recipient(suite.kdf, &private_key, enc.as_ref(), b"info").unwrap();
                 assert_eq!(
@@ -1472,7 +1472,7 @@ mod tests {
             kdf: &HKDF_SHA384,
             aead: &AES_256_GCM,
         };
-        let (_, sender) = Sender::new(suite, &key.public_key(), b"").unwrap();
+        let (_, sender) = Sender::new(suite, key.public_key(), b"").unwrap();
         assert_eq!(format!("{sender:?}"), "Sender { .. }");
     }
 }

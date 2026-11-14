@@ -74,6 +74,7 @@ enum Theirs {
 }
 
 /// A public key rind parsed for a [`Theirs`].
+#[allow(clippy::large_enum_variant)]
 enum Reference {
     Ecdsa(rind::ecdsa::PublicKey),
     Ed25519(rind::ed25519::PublicKey),
@@ -115,9 +116,7 @@ impl Theirs {
             Self::MlDsa44 => Reference::MlDsa44(rind::ml_dsa::PublicKey::from_spki(der)?),
             Self::MlDsa65 => Reference::MlDsa65(rind::ml_dsa::PublicKey::from_spki(der)?),
             Self::MlDsa87 => Reference::MlDsa87(rind::ml_dsa::PublicKey::from_spki(der)?),
-            Self::Rsa(algorithm) => {
-                rsa_reference(rind::rsa::PublicKey::from_spki(der), algorithm)?
-            }
+            Self::Rsa(algorithm) => rsa_reference(rind::rsa::PublicKey::from_spki(der), algorithm)?,
         })
     }
 }
@@ -490,10 +489,7 @@ fn every_verify_algorithm_verifies_as_rind_does() {
             &case.public_key[..case.public_key.len() - 1],
             &[],
         ] {
-            same_error(
-                &PublicKey::new(case.ours, bad),
-                &case.theirs.parse(bad),
-            );
+            same_error(&PublicKey::new(case.ours, bad), &case.theirs.parse(bad));
         }
     }
 }
@@ -609,7 +605,10 @@ fn ecdsa_key_pairs_match_rind() {
         assert_eq!(key.to_pkcs8().as_ref(), reference.to_pkcs8().as_ref());
         assert_eq!(key.to_sec1().as_ref(), reference.to_sec1().as_ref());
         assert_eq!(key.to_scalar().as_ref(), reference.to_scalar().as_ref());
-        assert_eq!(key.to_spki().as_ref(), reference.public_key().to_spki().as_ref());
+        assert_eq!(
+            key.to_spki().as_ref(),
+            reference.public_key().to_spki().as_ref()
+        );
         same_debug_unprefixed(&key.to_pkcs8(), &reference.to_pkcs8());
         same_debug_unprefixed(&key.to_sec1(), &reference.to_sec1());
         same_debug_unprefixed(&key.to_scalar(), &reference.to_scalar());
@@ -744,7 +743,10 @@ fn rsa_key_pairs_match_rind() {
         let key = RsaKeyPair::from_pkcs8(pkcs8).unwrap();
         same_debug_unprefixed(&key, &reference);
         assert_eq!(key.to_pkcs8().as_ref(), reference.to_pkcs8().as_ref());
-        assert_eq!(key.to_spki().as_ref(), reference.public_key().to_spki().as_ref());
+        assert_eq!(
+            key.to_spki().as_ref(),
+            reference.public_key().to_spki().as_ref()
+        );
 
         for (ours, theirs_alg, our_verify, their_verify) in RSA_SIGNING {
             same_debug_unprefixed(ours, theirs_alg);
@@ -820,7 +822,10 @@ fn generated_rsa_keys_work_in_rind() {
     same_debug(&KeySize::Rsa2048, &rind::rsa::KeySize::Rsa2048);
     let key = RsaKeyPair::generate(KeySize::Rsa2048).unwrap();
     let reference = rind::rsa::KeyPair::from_pkcs8(key.to_pkcs8().as_ref()).unwrap();
-    assert_eq!(key.to_spki().as_ref(), reference.public_key().to_spki().as_ref());
+    assert_eq!(
+        key.to_spki().as_ref(),
+        reference.public_key().to_spki().as_ref()
+    );
     let signature = key.sign(&sign::RSA_PSS_SHA256, MESSAGE).unwrap();
     rind::rsa::PublicKey::from_spki(key.to_spki().as_ref())
         .unwrap()
@@ -985,7 +990,10 @@ fn ed25519_key_pairs_match_rind() {
     assert_eq!(key.to_pkcs8v1().as_ref(), reference.to_pkcs8v1().as_ref());
     assert_eq!(key.to_seed().as_ref(), reference.to_seed().as_ref());
     same_debug_unprefixed(&key.to_seed(), &reference.to_seed());
-    assert_eq!(key.to_spki().as_ref(), reference.public_key().to_spki().as_ref());
+    assert_eq!(
+        key.to_spki().as_ref(),
+        reference.public_key().to_spki().as_ref()
+    );
 
     for pkcs8 in [reference.to_pkcs8(), reference.to_pkcs8v1()] {
         let loaded = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
@@ -1063,8 +1071,7 @@ fn ml_dsa_matches_rind<P: MlDsaParameterSet, Q: rind::ml_dsa::ParameterSet>(
     );
 
     let generated = MlDsaKeyPair::<P>::generate().unwrap();
-    let reloaded =
-        rind::ml_dsa::KeyPair::<Q>::from_pkcs8(generated.to_pkcs8().as_ref()).unwrap();
+    let reloaded = rind::ml_dsa::KeyPair::<Q>::from_pkcs8(generated.to_pkcs8().as_ref()).unwrap();
     assert_eq!(
         generated.public_key().as_ref(),
         reloaded.public_key().as_ref()

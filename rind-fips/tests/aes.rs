@@ -524,9 +524,7 @@ fn key_wrap_matches_rind() {
                 let mut ours_buf = vec![0xaa; wrapped_len - 8];
                 let mut theirs_buf = ours_buf.clone();
                 let result = kek.unwrap_padded(&wrapped, &mut ours_buf).map(|_| ());
-                let expected = padded
-                    .unwrap_key(&wrapped, &mut theirs_buf)
-                    .map(|_| ());
+                let expected = padded.unwrap_key(&wrapped, &mut theirs_buf).map(|_| ());
                 assert_eq!(result, Err(Error::DecryptFailed));
                 same(&result, &expected);
                 assert_eq!(ours_buf, theirs_buf);

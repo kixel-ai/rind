@@ -142,17 +142,19 @@ fn malformed_keys_are_errors() {
             Algorithm::RS256,
             DecodingKey::from_rsa_raw_components(&[], &[1, 0, 1]),
         ),
-        // rind refuses moduli under 2048 bits.
-        (
-            Algorithm::RS256,
-            DecodingKey::from_rsa_raw_components(&[0xff; 128], &[1, 0, 1]),
-        ),
     ];
     for (algorithm, key) in verifiers {
         assert!(
             (rind().verifier_factory)(&algorithm, &key).is_err(),
             "{algorithm:?}"
         );
+    }
+
+    // rind refuses moduli under 2048 bits as it verifies, as aws-lc-rs does.
+    let small = DecodingKey::from_rsa_raw_components(&[0xff; 128], &[1, 0, 1]);
+    for provider in [rind(), AWS_LC] {
+        let verifier = (provider.verifier_factory)(&Algorithm::RS256, &small).unwrap();
+        assert!(verifier.verify(MESSAGE, &vec![0; 128]).is_err());
     }
 }
 

@@ -1162,9 +1162,9 @@ mod tests {
             .start_at(
                 &RFC9383,
                 &Session {
-                    context: context,
-                    id_prover: id_prover,
-                    id_verifier: id_verifier,
+                    context,
+                    id_prover,
+                    id_verifier,
                 },
                 Some(Scalar::from_be_reduced(&x).unwrap()),
             )
@@ -1175,9 +1175,9 @@ mod tests {
             .start_at(
                 &RFC9383,
                 &Session {
-                    context: context,
-                    id_prover: id_prover,
-                    id_verifier: id_verifier,
+                    context,
+                    id_prover,
+                    id_verifier,
                 },
                 &share_p,
                 Some(Scalar::from_be_reduced(&y).unwrap()),

@@ -72,6 +72,7 @@ pub(crate) mod private {
 
     /// A public key rind parsed, of the algorithm that parsed it, which
     /// only rind-aws-lc-rs can name.
+    #[allow(clippy::large_enum_variant)]
     pub enum ParsedKey {
         Ecdsa(rind::ecdsa::PublicKey),
         Ed25519(rind::ed25519::PublicKey),

@@ -2836,13 +2836,13 @@ mod hpke {
             // Our sender to their recipient.
             let (enc, our_export, ct) = match aead {
                 Some(aead) => {
-                    let (enc, mut sender) = Sender::new(Suite { kdf, aead }, &public_key, &info).unwrap();
+                    let (enc, mut sender) = Sender::new(Suite { kdf, aead }, public_key, &info).unwrap();
                     let mut ct = plaintext.clone();
                     sender.seal_in_place_append_tag(&aad, &mut ct).unwrap();
                     (enc, export(|out| sender.export(&context, out), len), Some(ct))
                 }
                 None => {
-                    let (enc, sender) = Exporter::sender(kdf, &public_key, &info).unwrap();
+                    let (enc, sender) = Exporter::sender(kdf, public_key, &info).unwrap();
                     (enc, export(|out| sender.export(&context, out), len), None)
                 }
             };

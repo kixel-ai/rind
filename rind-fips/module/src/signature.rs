@@ -55,6 +55,7 @@ fn unsupported() -> Status {
 
 /// A public key a handle holds, in its algorithm's module, and for RSA the
 /// algorithm it verifies with.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum PublicKey {
     Ecdsa(ecdsa::PublicKey),
     Ed25519(ed25519::PublicKey),
@@ -128,9 +129,9 @@ impl Verification {
             Self::MlDsa44 => ml_dsa::PublicKey::new(bytes).map(PublicKey::MlDsa44),
             Self::MlDsa65 => ml_dsa::PublicKey::new(bytes).map(PublicKey::MlDsa65),
             Self::MlDsa87 => ml_dsa::PublicKey::new(bytes).map(PublicKey::MlDsa87),
-            Self::Rsa(..) => self.rsa(
-                rsa::PublicKey::new(bytes).or_else(|_| rsa::PublicKey::from_spki(bytes)),
-            ),
+            Self::Rsa(..) => {
+                self.rsa(rsa::PublicKey::new(bytes).or_else(|_| rsa::PublicKey::from_spki(bytes)))
+            }
         }
     }
 
@@ -165,33 +166,42 @@ impl Verification {
 fn verification(id: u32) -> Option<Verification> {
     use Verification::Rsa;
     let (algorithm, tests): (Verification, &[T]) = match id {
-        id::ECDSA_P256_SHA256_ASN1 => {
-            (Verification::Ecdsa(&ecdsa::verify::P256_SHA256_ASN1), &[T::Ecdsa, T::Sha256])
-        }
-        id::ECDSA_P256_SHA384_ASN1 => {
-            (Verification::Ecdsa(&ecdsa::verify::P256_SHA384_ASN1), &[T::Ecdsa, T::Sha512])
-        }
-        id::ECDSA_P256_SHA512_ASN1 => {
-            (Verification::Ecdsa(&ecdsa::verify::P256_SHA512_ASN1), &[T::Ecdsa, T::Sha512])
-        }
-        id::ECDSA_P384_SHA256_ASN1 => {
-            (Verification::Ecdsa(&ecdsa::verify::P384_SHA256_ASN1), &[T::Ecdsa, T::Sha256])
-        }
-        id::ECDSA_P384_SHA384_ASN1 => {
-            (Verification::Ecdsa(&ecdsa::verify::P384_SHA384_ASN1), &[T::Ecdsa, T::Sha512])
-        }
-        id::ECDSA_P384_SHA512_ASN1 => {
-            (Verification::Ecdsa(&ecdsa::verify::P384_SHA512_ASN1), &[T::Ecdsa, T::Sha512])
-        }
-        id::ECDSA_P521_SHA256_ASN1 => {
-            (Verification::Ecdsa(&ecdsa::verify::P521_SHA256_ASN1), &[T::Ecdsa, T::Sha256])
-        }
-        id::ECDSA_P521_SHA384_ASN1 => {
-            (Verification::Ecdsa(&ecdsa::verify::P521_SHA384_ASN1), &[T::Ecdsa, T::Sha512])
-        }
-        id::ECDSA_P521_SHA512_ASN1 => {
-            (Verification::Ecdsa(&ecdsa::verify::P521_SHA512_ASN1), &[T::Ecdsa, T::Sha512])
-        }
+        id::ECDSA_P256_SHA256_ASN1 => (
+            Verification::Ecdsa(&ecdsa::verify::P256_SHA256_ASN1),
+            &[T::Ecdsa, T::Sha256],
+        ),
+        id::ECDSA_P256_SHA384_ASN1 => (
+            Verification::Ecdsa(&ecdsa::verify::P256_SHA384_ASN1),
+            &[T::Ecdsa, T::Sha512],
+        ),
+        id::ECDSA_P256_SHA512_ASN1 => (
+            Verification::Ecdsa(&ecdsa::verify::P256_SHA512_ASN1),
+            &[T::Ecdsa, T::Sha512],
+        ),
+        id::ECDSA_P384_SHA256_ASN1 => (
+            Verification::Ecdsa(&ecdsa::verify::P384_SHA256_ASN1),
+            &[T::Ecdsa, T::Sha256],
+        ),
+        id::ECDSA_P384_SHA384_ASN1 => (
+            Verification::Ecdsa(&ecdsa::verify::P384_SHA384_ASN1),
+            &[T::Ecdsa, T::Sha512],
+        ),
+        id::ECDSA_P384_SHA512_ASN1 => (
+            Verification::Ecdsa(&ecdsa::verify::P384_SHA512_ASN1),
+            &[T::Ecdsa, T::Sha512],
+        ),
+        id::ECDSA_P521_SHA256_ASN1 => (
+            Verification::Ecdsa(&ecdsa::verify::P521_SHA256_ASN1),
+            &[T::Ecdsa, T::Sha256],
+        ),
+        id::ECDSA_P521_SHA384_ASN1 => (
+            Verification::Ecdsa(&ecdsa::verify::P521_SHA384_ASN1),
+            &[T::Ecdsa, T::Sha512],
+        ),
+        id::ECDSA_P521_SHA512_ASN1 => (
+            Verification::Ecdsa(&ecdsa::verify::P521_SHA512_ASN1),
+            &[T::Ecdsa, T::Sha512],
+        ),
         id::ECDSA_P256_SHA256_FIXED => (
             Verification::Ecdsa(&ecdsa::verify::P256_SHA256_FIXED),
             &[T::Ecdsa, T::Sha256],
@@ -627,8 +637,12 @@ pub unsafe extern "C" fn rind_fips_ecdsa_to_sec1(key: *const EcdsaKeyPair) -> *m
 /// `key` must be live.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_fips_ecdsa_to_spki(key: *const EcdsaKeyPair) -> *mut Encoded {
+    // rind encodes it as it does any public key's, which reaches a little
+    // deeper than the curve's own encoder did.
     // SAFETY: the caller's contract.
-    scrubbed(Depth::Small, || encoded(unsafe { (*key).public_key().to_spki() }))
+    scrubbed(Depth::Medium, || {
+        encoded(unsafe { (*key).public_key().to_spki() })
+    })
 }
 
 free!(rind_fips_ecdsa_free, EcdsaKeyPair);
@@ -799,7 +813,9 @@ pub unsafe extern "C" fn rind_fips_ed25519_to_seed(key: *const Ed25519KeyPair) -
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_fips_ed25519_to_spki(key: *const Ed25519KeyPair) -> *mut Encoded {
     // SAFETY: the caller's contract.
-    scrubbed(Depth::Small, || encoded(unsafe { (*key).public_key().to_spki() }))
+    scrubbed(Depth::Small, || {
+        encoded(unsafe { (*key).public_key().to_spki() })
+    })
 }
 
 free!(rind_fips_ed25519_free, Ed25519KeyPair);
@@ -827,9 +843,8 @@ unsafe fn rsa_load(
 ) -> Status {
     ensure(&[T::Rsa, T::Sha256]);
     scrubbed(Depth::Large, || {
-        let key = load().and_then(|key| {
-            rind::fips::check_rsa_modulus(key.public_key(), false).map(|()| key)
-        });
+        let key = load()
+            .and_then(|key| rind::fips::check_rsa_modulus(key.public_key(), false).map(|()| key));
         // SAFETY: the caller's contract.
         unsafe { put_handle(key, out) }
     })
@@ -910,7 +925,9 @@ pub unsafe extern "C" fn rind_fips_rsa_public_key(
     };
     // SAFETY: the caller's contract.
     let key = unsafe { (*key).public_key() };
-    scrubbed(Depth::Small, || handle(PublicKey::Rsa(key.clone(), algorithm)))
+    scrubbed(Depth::Small, || {
+        handle(PublicKey::Rsa(key.clone(), algorithm))
+    })
 }
 
 /// Signs the `len` bytes at `message` with `key` and signing algorithm
@@ -956,7 +973,9 @@ pub unsafe extern "C" fn rind_fips_rsa_to_pkcs8(key: *const RsaKeyPair) -> *mut 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_fips_rsa_to_spki(key: *const RsaKeyPair) -> *mut Encoded {
     // SAFETY: the caller's contract.
-    scrubbed(Depth::Medium, || encoded(unsafe { (*key).public_key().to_spki() }))
+    scrubbed(Depth::Medium, || {
+        encoded(unsafe { (*key).public_key().to_spki() })
+    })
 }
 
 free!(rind_fips_rsa_free, RsaKeyPair);
