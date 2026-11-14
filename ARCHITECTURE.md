@@ -63,6 +63,8 @@ The modules:
 - `hkdf`: HKDF over those HMACs, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
 - `pbkdf2`: PBKDF2 over those HMACs, deriving or verifying a key from a password.
 - `argon2`: Argon2id, deriving or verifying a key from a password at a memory and time cost.
+- `spake2plus`: SPAKE2+ on P-256 (RFC 9383, and Matter PASE's draft-01
+  schedule), a password-authenticated key exchange whose suite is a type.
 - `encoding`: the PKCS#8, SEC1, and `SubjectPublicKeyInfo` encodings key
   types export.
 - `constant_time`: comparing secrets such as MACs without a timing leak.
