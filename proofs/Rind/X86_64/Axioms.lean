@@ -3,6 +3,7 @@ import Rind.X86_64.P256Agree
 import Rind.X86_64.P256
 import Rind.X86_64.P256Base
 import Rind.X86_64.P384
+import Rind.X86_64.P384Keygen
 import Rind.X86_64.Sha512
 import Rind.X86_64.Pbkdf2
 import Rind.X86_64.ChaCha20
@@ -19,7 +20,8 @@ open rind.x86_64
 /-!
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
 in `Rind.X86_64.S2nBignum` for X25519, P-256 key generation, ECDH, and
-ECDSA, P-384 ECDH, Ed25519, RSA verification, and the Keccak-f of SHA-3 and ML-KEM's SHAKE, aws-lc's in
+ECDSA, P-384, Ed25519, RSA verification, and the Keccak-f of SHA-3 and
+ML-KEM's SHAKE, aws-lc's in
 `Rind.X86_64.AwsLc` for the SHA-512 family, for HMAC, HKDF, and PBKDF2, which
 cover SHA-384 and SHA-512, and for Ed25519's hashes, Vale's in
 `Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proofs of its
@@ -27,11 +29,12 @@ constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
 tag checks, and RSASSA-PSS's hash compare, and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states. The generator
-tables' point selects rest on no axiom, only on the hand model in
-`Rind.X86_64.PointSelectModel`. P-256's generator multiplication also rests
-on a placeholder in `Rind.X86_64.S2nBignum`, `p256_point_add_affine_spec`,
-until the mixed addition's HOL Light proof replaces it. A change here is a
+hypothesis `RunsChaCha20Poly1305`, and P-384's key generation its table
+select as `AffSelect`, which no axiom states. P-256's generator table selects
+rest on no axiom, only on the hand model in `Rind.X86_64.PointSelectModel`.
+P-256's generator multiplication also rests on a placeholder in
+`Rind.X86_64.S2nBignum`, `p256_point_add_affine_spec`, until the mixed
+addition's HOL Light proof replaces it. A change here is a
 change to the trust base.
 -/
 
@@ -135,6 +138,58 @@ change to the trust base.
 /-- info: 'rind.x86_64.p256_shared_secret' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms p256_shared_secret
+
+/-- info: 'rind.x86_64.p384_generate' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_p384_spec,
+ bignum_demont_p384_alt_spec,
+ bignum_demont_p384_spec,
+ bignum_eq_spec,
+ bignum_inv_p384_spec,
+ bignum_mod_n384_spec,
+ bignum_montmul_p384_alt_spec,
+ bignum_montmul_p384_spec,
+ bignum_montsqr_p384_alt_spec,
+ bignum_montsqr_p384_spec,
+ bignum_mux_spec,
+ bignum_neg_p384_spec,
+ bignum_tomont_p384_alt_spec,
+ bignum_tomont_p384_spec,
+ p384_montjdouble_alt_spec,
+ p384_montjdouble_spec,
+ p384_montjmixadd_alt_spec,
+ p384_montjmixadd_spec] -/
+#guard_msgs in
+#print axioms p384_generate
+
+/-- info: 'rind.x86_64.p384_from_scalar' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_p384_spec,
+ bignum_demont_p384_alt_spec,
+ bignum_demont_p384_spec,
+ bignum_eq_spec,
+ bignum_inv_p384_spec,
+ bignum_mod_n384_spec,
+ bignum_montmul_p384_alt_spec,
+ bignum_montmul_p384_spec,
+ bignum_montsqr_p384_alt_spec,
+ bignum_montsqr_p384_spec,
+ bignum_mux_spec,
+ bignum_neg_p384_spec,
+ bignum_tomont_p384_alt_spec,
+ bignum_tomont_p384_spec,
+ p384_montjdouble_alt_spec,
+ p384_montjdouble_spec,
+ p384_montjmixadd_alt_spec,
+ p384_montjmixadd_spec] -/
+#guard_msgs in
+#print axioms p384_from_scalar
+
+/-- info: 'rind.x86_64.p384_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms p384_public_key
 
 /-- info: 'rind.x86_64.p384_agree' depends on axioms: [propext,
  Classical.choice,
