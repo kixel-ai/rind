@@ -26,7 +26,10 @@ fuzz_target!(|input: Input| {
             let keymgmt = provider.keymgmt(ed25519);
             let key = keymgmt.import(selection.into(), &params);
             if !key.is_null() {
-                keymgmt.check(key);
+                let public = keymgmt.check(key);
+                // A key holding nothing, such as a private key imported
+                // beside another's public key, fails each use.
+                assert_eq!(provider.begins(ed25519, key), public);
                 keymgmt.free(key);
             }
         }
@@ -38,7 +41,10 @@ fuzz_target!(|input: Input| {
             let keymgmt = provider.keymgmt(ed25519);
             let key = keymgmt.generate(selection.into(), &params);
             if !key.is_null() {
-                keymgmt.check(key);
+                let public = keymgmt.check(key);
+                // A key holding nothing, such as a private key imported
+                // beside another's public key, fails each use.
+                assert_eq!(provider.begins(ed25519, key), public);
                 keymgmt.free(key);
             }
         }
@@ -536,6 +542,31 @@ impl Provider {
         // SAFETY: the context is live, and this is its last use.
         unsafe { free(ctx) };
     }
+
+    /// Whether `key` begins an operation: verification for Ed25519, an
+    /// exchange for X25519.
+    fn begins(&self, ed25519: bool, key: *mut c_void) -> bool {
+        if ed25519 {
+            let ctx = self.signature_ctx();
+            let init: DigestInit = self.signature(DIGEST_VERIFY_INIT);
+            // SAFETY: the context and key are live, and the parameters end.
+            let ok = unsafe { init(ctx, null(), key, Params::new(&[]).as_ptr()) } == 1;
+            self.free_signature_ctx(ctx);
+            ok
+        } else {
+            let new: ExchangeNewCtx = lookup(self.keyexch, KEYEXCH_NEWCTX);
+            let init: ExchangeInit = lookup(self.keyexch, KEYEXCH_INIT);
+            let free: Free = lookup(self.keyexch, KEYEXCH_FREECTX);
+            // SAFETY: the provider's context and the key are live, and the
+            // exchange's context is freed after its last use.
+            unsafe {
+                let ctx = new(self.provctx);
+                let ok = init(ctx, key, null()) == 1;
+                free(ctx);
+                ok
+            }
+        }
+    }
 }
 
 /// A key's halves, as `export` gives them.
@@ -624,8 +655,8 @@ impl Keymgmt {
     }
 
     /// What a key holds must agree with itself and with rind, however it is
-    /// read.
-    fn check(&self, key: *mut c_void) {
+    /// read. Returns whether it holds a public key.
+    fn check(&self, key: *mut c_void) -> bool {
         let has: Has = self.get(KEYMGMT_HAS);
         // SAFETY: the key is live.
         let (public, private) = unsafe { (has(key, PUBLIC_KEY) == 1, has(key, PRIVATE_KEY) == 1) };
@@ -701,6 +732,7 @@ impl Keymgmt {
             }
             self.free(copy);
         }
+        public
     }
 }
 

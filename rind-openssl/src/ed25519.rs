@@ -231,8 +231,8 @@ impl Signing {
     ) -> Result<(), Failure> {
         // SAFETY: per the caller.
         let key = unsafe { KeyData::<Ed25519>::from_ptr(keydata) }
-            .and_then(|data| data.key.clone())
-            .ok_or_else(|| Failure::invalid("no key is set"))?;
+            .ok_or_else(|| Failure::invalid("no key is set"))?
+            .operand()?;
         self.key = Some(key);
         self.instance_preset = instance_preset;
         self.prehashed = prehashed;

@@ -83,6 +83,16 @@ impl<K: Kind> Key<K> {
     }
 }
 
+/// What a key object holds.
+enum Held<K: Kind> {
+    /// No key, until one is generated or imported.
+    Empty,
+    Key(Arc<Key<K>>),
+    /// An imported private key whose public key is not its own: see
+    /// `import`.
+    Mismatched,
+}
+
 /// The key object OpenSSL holds: empty until a key is generated or
 /// imported into it.
 ///
@@ -93,17 +103,39 @@ pub(crate) struct KeyData<K: Kind> {
     // First, so a pointer to any `KeyData` reads it.
     tag: u8,
     pub(crate) provider: Arc<Provider>,
-    pub(crate) key: Option<Arc<Key<K>>>,
+    held: Held<K>,
 }
 
 impl<K: Kind> KeyData<K> {
-    fn boxed(provider: Arc<Provider>, key: Option<Arc<Key<K>>>) -> *mut c_void {
+    fn boxed(provider: Arc<Provider>, held: Held<K>) -> *mut c_void {
         Box::into_raw(Box::new(Self {
             tag: K::TAG,
             provider,
-            key,
+            held,
         }))
         .cast()
+    }
+
+    /// The key a query reads, which finds none in a mismatched key.
+    pub(crate) fn key(&self) -> Option<&Key<K>> {
+        match &self.held {
+            Held::Key(key) => Some(key),
+            Held::Empty | Held::Mismatched => None,
+        }
+    }
+
+    /// The key an operation runs on, or why there is none.
+    pub(crate) fn operand(&self) -> Result<Arc<Key<K>>, Failure> {
+        match &self.held {
+            Held::Key(key) => Ok(key.clone()),
+            Held::Empty => Err(Failure::invalid("no key is set")),
+            Held::Mismatched => Err(mismatched()),
+        }
+    }
+
+    /// Holds `key` in place of whatever it held.
+    pub(crate) fn set(&mut self, key: Key<K>) {
+        self.held = Held::Key(Arc::new(key));
     }
 
     /// The key object OpenSSL passes, or `None` if it is null or of the
@@ -215,7 +247,7 @@ pub(crate) unsafe extern "C" fn new<K: Kind>(provctx: *mut c_void) -> *mut c_voi
     // On a CPU rind refuses, a key moving here from another provider still
     // lands, empty, so that its operation fails with rind's error: were the
     // move refused, OpenSSL would run the operation on the key's own provider.
-    KeyData::<K>::boxed(provider, None)
+    KeyData::<K>::boxed(provider, Held::Empty)
 }
 
 pub(crate) unsafe extern "C" fn free<K: Kind>(keydata: *mut c_void) {
@@ -231,7 +263,7 @@ pub(crate) unsafe extern "C" fn has<K: Kind>(keydata: *const c_void, selection: 
     let Some(data) = (unsafe { KeyData::<K>::from_ptr(keydata) }) else {
         return 0;
     };
-    let key = data.key.as_deref();
+    let key = data.key();
     // Neither kind has domain parameters, so it always has those it needs.
     let public = selection & SELECT_PUBLIC_KEY == 0 || key.is_some();
     let private = selection & SELECT_PRIVATE_KEY == 0 || key.and_then(Key::private).is_some();
@@ -252,7 +284,7 @@ pub(crate) unsafe extern "C" fn matches<K: Kind>(
     }) else {
         return 0;
     };
-    equal(a.key.as_deref(), b.key.as_deref(), selection).into()
+    equal(a.key(), b.key(), selection).into()
 }
 
 /// Whether two keys match on `selection`: the public keys decide when both
@@ -286,9 +318,16 @@ pub(crate) unsafe extern "C" fn validate<K: Kind>(
     selection: c_int,
     _checktype: c_int,
 ) -> c_int {
+    // SAFETY: OpenSSL passes a key object it holds.
+    let Some(data) = (unsafe { KeyData::<K>::from_ptr(keydata) }) else {
+        return 0;
+    };
+    if let Held::Mismatched = data.held {
+        return data.provider.status(Err(mismatched()));
+    }
     // A private key's public key is the one rind computed or checked when it
     // loaded the key, so a key pair is always consistent.
-    // SAFETY: OpenSSL passes a key object it holds.
+    // SAFETY: as above.
     unsafe { has::<K>(keydata, selection) }
 }
 
@@ -324,13 +363,16 @@ pub(crate) unsafe extern "C" fn import<K: Kind>(
     if data.provider.refuses() {
         return 1;
     }
-    let result = load::<K>(selection, params).map(|key| data.key = Some(Arc::new(key)));
+    // A mismatched key imports too, for the same reason: OpenSSL moves a key
+    // here from another provider, which may hold it mismatched, before each
+    // use, and runs the use on that provider when the move fails.
+    let result = load::<K>(selection, params).map(|held| data.held = held);
     data.provider.status(result)
 }
 
-/// The key `params` hold for `selection`: a private key, refused unless any
-/// public key beside it is its own, or a public key alone.
-fn load<K: Kind>(selection: c_int, params: Params<'_>) -> Result<Key<K>, Failure> {
+/// The key `params` hold for `selection`: a private key, `Mismatched` unless
+/// any public key beside it is its own, or a public key alone.
+fn load<K: Kind>(selection: c_int, params: Params<'_>) -> Result<Held<K>, Failure> {
     fn bytes<'a>(param: &'a Param, what: &str) -> Result<&'a [u8], Failure> {
         match param.octets() {
             Some(bytes) if bytes.len() == LEN => Ok(bytes),
@@ -350,22 +392,28 @@ fn load<K: Kind>(selection: c_int, params: Params<'_>) -> Result<Key<K>, Failure
             .map(|param| bytes(param, "priv"))
             .transpose()?,
     };
-    match (private, public) {
+    let key = match (private, public) {
         (Some(private), public) => {
             let private = K::load(private)?;
             if public.is_some_and(|public| public != K::public_of(&private)) {
-                return Err(Failure::Raise(
-                    crate::provider::Reason::KeyRejected,
-                    "the public key is not the private key's".into(),
-                ));
+                return Ok(Held::Mismatched);
             }
-            Ok(Key::Private(private))
+            Key::Private(private)
         }
-        (None, Some(public)) => Ok(Key::Public(K::public(
+        (None, Some(public)) => Key::Public(K::public(
             public.try_into().expect("checked to be LEN bytes"),
-        ))),
-        (None, None) => Err(Failure::invalid("neither pub nor priv is given")),
-    }
+        )),
+        (None, None) => return Err(Failure::invalid("neither pub nor priv is given")),
+    };
+    Ok(Held::Key(Arc::new(key)))
+}
+
+/// Why a mismatched key fails each use.
+fn mismatched() -> Failure {
+    Failure::Raise(
+        crate::provider::Reason::KeyRejected,
+        "the public key is not the private key's".into(),
+    )
 }
 
 pub(crate) unsafe extern "C" fn export<K: Kind>(
@@ -382,8 +430,10 @@ pub(crate) unsafe extern "C" fn export<K: Kind>(
     if !data.provider.usable() {
         return 0;
     }
-    let Some(key) = data.key.as_deref() else {
-        return 0;
+    let key = match &data.held {
+        Held::Key(key) => key,
+        Held::Empty => return 0,
+        Held::Mismatched => return data.provider.status(Err(mismatched())),
     };
     if selection & SELECT_KEYPAIR == 0 {
         return 0;
@@ -425,7 +475,7 @@ pub(crate) unsafe extern "C" fn get_params<K: Kind>(
     if !data.provider.usable() {
         return 0;
     }
-    let key = data.key.as_deref();
+    let key = data.key();
     let sizes = [
         (c"bits", K::BITS),
         (c"security-bits", K::SECURITY_BITS),
@@ -568,10 +618,10 @@ pub(crate) unsafe extern "C" fn generate<K: Kind>(
     let provider = generation.provider.clone();
     // Asked for no key, as for parameters alone, it gives an empty key.
     if generation.selection & SELECT_KEYPAIR == 0 {
-        return KeyData::<K>::boxed(provider, None);
+        return KeyData::<K>::boxed(provider, Held::Empty);
     }
     match K::generate(generation.ikm.as_deref().map(Vec::as_slice)) {
-        Ok(private) => KeyData::<K>::boxed(provider, Some(Arc::new(Key::Private(private)))),
+        Ok(private) => KeyData::<K>::boxed(provider, Held::Key(Arc::new(Key::Private(private)))),
         Err(failure) => {
             provider.status(Err(failure));
             core::ptr::null_mut()
@@ -594,20 +644,24 @@ pub(crate) unsafe extern "C" fn dup<K: Kind>(
     let Some(data) = (unsafe { KeyData::<K>::from_ptr(keydata) }) else {
         return core::ptr::null_mut();
     };
-    let key = data
-        .key
-        .as_ref()
-        .and_then(|key| match (&**key, selection & SELECT_KEYPAIR) {
+    let held = match &data.held {
+        Held::Key(key) => match (&**key, selection & SELECT_KEYPAIR) {
             (Key::Private(_), SELECT_KEYPAIR | SELECT_PRIVATE_KEY)
-            | (Key::Public(_), SELECT_KEYPAIR | SELECT_PUBLIC_KEY) => Some(key.clone()),
-            (Key::Private(private), SELECT_PUBLIC_KEY) => Some(Arc::new(Key::Public(K::public(
-                K::public_of(private)
-                    .try_into()
-                    .expect("a public key is LEN bytes"),
-            )))),
-            _ => None,
-        });
-    KeyData::<K>::boxed(data.provider.clone(), key)
+            | (Key::Public(_), SELECT_KEYPAIR | SELECT_PUBLIC_KEY) => Held::Key(key.clone()),
+            (Key::Private(private), SELECT_PUBLIC_KEY) => {
+                Held::Key(Arc::new(Key::Public(K::public(
+                    K::public_of(private)
+                        .try_into()
+                        .expect("a public key is LEN bytes"),
+                ))))
+            }
+            _ => Held::Empty,
+        },
+        // A copy of either half fails each use as the original does.
+        Held::Mismatched if selection & SELECT_KEYPAIR != 0 => Held::Mismatched,
+        Held::Mismatched | Held::Empty => Held::Empty,
+    };
+    KeyData::<K>::boxed(data.provider.clone(), held)
 }
 
 #[cfg(test)]

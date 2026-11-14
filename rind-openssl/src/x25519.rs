@@ -88,7 +88,7 @@ impl Kind for X25519 {
             else {
                 return false;
             };
-            data.key = Some(Arc::new(Key::Public(Zeroizing::new(public))));
+            data.set(Key::Public(Zeroizing::new(public)));
         }
         // rind fetches nothing, so it has no use for a property query.
         params
@@ -165,8 +165,8 @@ impl Exchange {
     unsafe fn key(&self, keydata: *mut c_void) -> Result<Arc<Key<X25519>>, Failure> {
         // SAFETY: per the caller.
         unsafe { KeyData::<X25519>::from_ptr(keydata) }
-            .and_then(|data| data.key.clone())
-            .ok_or_else(|| Failure::invalid("no key is set"))
+            .ok_or_else(|| Failure::invalid("no key is set"))?
+            .operand()
     }
 
     fn derive(&self, secret: *mut u8, secretlen: *mut usize, outlen: usize) -> Result<(), Failure> {

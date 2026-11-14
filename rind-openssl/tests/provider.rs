@@ -547,42 +547,71 @@ fn ed25519_refuses_what_rind_cannot_back() {
     );
 }
 
+/// A private key beside another's public key fails each use with rind's
+/// error, whichever provider made it: one the default provider holds moves to
+/// rind before each use, and were that move refused, OpenSSL would run the
+/// use there instead.
 #[test]
-fn import_refuses_a_mismatched_public_key() {
+fn a_mismatched_key_fails_every_use() {
     let ctx = Context::new();
-    let ours = ctx.generate(c"ED25519");
-    let theirs = ctx.generate(c"ED25519");
-    let mut private = ours.raw_private();
-    let mut public = theirs.raw_public();
-    unsafe {
-        let mut params = [
-            OSSL_PARAM_construct_octet_string(
-                c"priv".as_ptr(),
-                private.as_mut_ptr().cast(),
-                private.len(),
-            ),
-            OSSL_PARAM_construct_octet_string(
-                c"pub".as_ptr(),
-                public.as_mut_ptr().cast(),
-                public.len(),
-            ),
-            OSSL_PARAM_construct_end(),
-        ];
-        let pctx = non_null(EVP_PKEY_CTX_new_from_name(
-            ctx.0,
-            c"ED25519".as_ptr(),
-            null(),
-        ));
-        check(EVP_PKEY_fromdata_init(pctx));
-        let mut key = null_mut();
-        assert_ne!(
-            EVP_PKEY_fromdata(pctx, &mut key, EVP_PKEY_KEYPAIR, params.as_mut_ptr()),
-            1
-        );
-        EVP_PKEY_CTX_free(pctx);
+    for algorithm in [c"X25519", c"ED25519"] {
+        let ours = ctx.generate(algorithm);
+        let theirs = ctx.generate(algorithm);
+        let mut private = ours.raw_private();
+        let mut public = theirs.raw_public();
+        // Through the configuration's preference, rind's, and the default
+        // provider's.
+        for (propq, provider) in [(None, "rind"), (Some(DEFAULT), "default")] {
+            let key = unsafe {
+                let mut params = [
+                    OSSL_PARAM_construct_octet_string(
+                        c"priv".as_ptr(),
+                        private.as_mut_ptr().cast(),
+                        private.len(),
+                    ),
+                    OSSL_PARAM_construct_octet_string(
+                        c"pub".as_ptr(),
+                        public.as_mut_ptr().cast(),
+                        public.len(),
+                    ),
+                    OSSL_PARAM_construct_end(),
+                ];
+                let pctx = non_null(EVP_PKEY_CTX_new_from_name(
+                    ctx.0,
+                    algorithm.as_ptr(),
+                    propq.map_or(null(), CStr::as_ptr),
+                ));
+                check(EVP_PKEY_fromdata_init(pctx));
+                let mut key = null_mut();
+                check(EVP_PKEY_fromdata(
+                    pctx,
+                    &mut key,
+                    EVP_PKEY_KEYPAIR,
+                    params.as_mut_ptr(),
+                ));
+                EVP_PKEY_CTX_free(pctx);
+                Key(key)
+            };
+            assert_eq!(key.provider(), provider);
+            unsafe { ERR_clear_error() };
+            let failed = if algorithm == c"ED25519" {
+                ctx.sign(&key, b"message").err()
+            } else {
+                unsafe {
+                    let pctx = non_null(EVP_PKEY_CTX_new_from_pkey(ctx.0, key.0, null()));
+                    let ok = EVP_PKEY_derive_init(pctx) == 1
+                        && EVP_PKEY_derive_set_peer(pctx, theirs.0) == 1;
+                    EVP_PKEY_CTX_free(pctx);
+                    (!ok).then(errors)
+                }
+            };
+            let error = failed.unwrap_or_else(|| panic!("{algorithm:?} from {provider} was used"));
+            assert!(
+                error.contains("not the private key's"),
+                "{algorithm:?} from {provider}: {error:?}"
+            );
+        }
     }
-    let error = errors();
-    assert!(error.contains("not the private key's"), "{error}");
 }
 
 /// Keys move through OpenSSL's encoders and decoders, which are the default
