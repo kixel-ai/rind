@@ -192,6 +192,31 @@ fn aes() {
     kek.unwrap(&wrapped, &mut unwrapped).unwrap();
     public(&unwrapped);
     assert_eq!(unwrapped, [0x24; 32]);
+    wrapped[9] ^= 1;
+    assert_eq!(
+        kek.unwrap(&wrapped, &mut unwrapped),
+        Err(rind_fips::Error::DecryptFailed)
+    );
+
+    // RFC 5649's padding: a key of 8 bytes or fewer takes the single-block
+    // path, and a longer one the wrapping loop, each unpadded after.
+    for len in [5, 8, 20] {
+        let wrapped_key = vec![0x42u8; len];
+        secret(&wrapped_key[..]);
+        let mut wrapped = vec![0u8; len.next_multiple_of(8) + 8];
+        kek.wrap_padded(&wrapped_key, &mut wrapped).unwrap();
+        public(&wrapped[..]);
+        let mut unwrapped = vec![0u8; wrapped.len() - 8];
+        let key = kek.unwrap_padded(&wrapped, &mut unwrapped).unwrap();
+        public(key);
+        assert_eq!(key, &vec![0x42; len][..], "{len}");
+        wrapped[9] ^= 1;
+        assert_eq!(
+            kek.unwrap_padded(&wrapped, &mut unwrapped).err(),
+            Some(rind_fips::Error::DecryptFailed),
+            "{len}"
+        );
+    }
 }
 
 #[test]
@@ -304,7 +329,7 @@ fn rsa_with_secret(der: &[u8]) -> Vec<u8> {
     // The length of the element at `at`'s tag and length, and its length.
     let header = |at: usize| -> (usize, usize) {
         match der[at + 1] {
-            len @ 0..0x80 => (2, usize::from(len)),
+            len @ 0..=0x7f => (2, usize::from(len)),
             0x81 => (3, usize::from(der[at + 2])),
             0x82 => (
                 4,
