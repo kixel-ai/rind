@@ -249,8 +249,8 @@ stripped.
 Every private key loader refuses bytes after the encoded key, which
 aws-lc-rs ignores and ring refuses. The ECDSA and RSA PKCS#8 loaders take
 version 1 only, as ring does, and the Ed25519 one also takes version 2 with
-its public key. Each refuses version 2 without a public key, which aws-lc-rs
-takes: RFC 5958 sets version 2 only when the public key is present.
+its public key. rind itself also takes version 2 without a public key, as
+aws-lc-rs does.
 
 ## rsa
 
