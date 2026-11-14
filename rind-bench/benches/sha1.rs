@@ -56,8 +56,10 @@ fn sha1(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
             b.iter(|| test_rind_sha1(input))
         });
+        let mut ctx = verified_garbage::hashes::sha1::Sha1::new();
+        ctx.update(&input);
         assert_eq!(
-            verified_garbage::hashes::sha1::Sha1::digest(&input),
+            ctx.finalize(),
             rind::digest::digest(&rind::digest::legacy::SHA1, &input).as_ref()
         );
         group.bench_with_input(

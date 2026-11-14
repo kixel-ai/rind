@@ -89,8 +89,10 @@ fn vg_row<H: verified_garbage::hashes::HashFunction>(
     size_name: &str,
     input: &[u8],
 ) {
+    let mut ctx = H::new();
+    ctx.update(input);
     assert_eq!(
-        H::digest(input).as_ref(),
+        ctx.finalize().as_ref(),
         rind::digest::digest(ours, input).as_ref()
     );
     group.bench_with_input(

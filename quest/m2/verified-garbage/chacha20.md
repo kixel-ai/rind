@@ -14,6 +14,6 @@ On each tier below where pyca/verified-garbage (VG) measures at least as fast as
 
 Cells VG may win:
 
-- x86_64 with AVX2 (`desktop`, noisy): 0.88 to 0.93 at 32 B and 1200 B, 0.52 to 0.85 at 1350 B, and 0.63 to 0.75 at 16 KB, against rind's AVX2 kernels. A switch there shrinks [the x86_64 cipher proof quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md) to the SSSE3 routine.
+- x86_64 with AVX2 (`desktop`, noisy): 0.88 to 0.93 at 32 B and 1200 B, 0.52 to 0.85 at 1350 B, and 0.63 to 0.75 at 16 KB, against rind's AVX2 kernels. AVX-512 CPUs run the same AVX2 kernels, so [the x86_64 cipher proof quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md) drops them only if both tiers switch.
 - Unmeasured: AVX-512, aarch64 (where a switch shrinks [the aarch64 proof quest](/quest/m4/verified/chacha20-poly1305-aarch64.md) to the AEAD), and armv7.
 - Lost: x86_64 without AVX2 (aws-lc's SSSE3 routine), 1.08 to 1.37 from 1200 B up, though 0.94 at 32 B.

@@ -45,8 +45,9 @@ fn bench<V: verified_garbage::kdf::pbkdf2_hmac::Pbkdf2Hash>(
     rind::pbkdf2::Secret::new(ours, b"password")
         .derive(iterations, b"salt", &mut expected)
         .unwrap();
-    verified_garbage::kdf::pbkdf2_hmac::derive::<V>(b"password", b"salt", iterations, &mut out);
-    assert_eq!(out, expected);
+    let mut got = vec![0u8; len];
+    verified_garbage::kdf::pbkdf2_hmac::derive::<V>(b"password", b"salt", iterations, &mut got);
+    assert_eq!(got, expected);
     group.bench_function("verified-garbage", |b| {
         b.iter(|| {
             verified_garbage::kdf::pbkdf2_hmac::derive::<V>(

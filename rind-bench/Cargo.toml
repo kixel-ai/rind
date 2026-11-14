@@ -2,7 +2,8 @@
 name = "rind-bench"
 version = "0.1.0"
 edition = "2024"
-rust-version.workspace = true
+# pyca/verified-garbage needs 1.95, so the MSRV check leaves this crate out.
+rust-version = "1.95"
 publish = false
 
 [dependencies]

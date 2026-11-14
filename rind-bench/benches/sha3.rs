@@ -49,8 +49,10 @@ fn bench<R: sha3::Digest, V: verified_garbage::hashes::HashFunction>(
                 black_box(ctx.finish())
             })
         });
+        let mut ctx = V::new();
+        ctx.update(&input);
         assert_eq!(
-            V::digest(&input).as_ref(),
+            ctx.finalize().as_ref(),
             rind::digest::digest(ours, &input).as_ref()
         );
         group.bench_with_input(

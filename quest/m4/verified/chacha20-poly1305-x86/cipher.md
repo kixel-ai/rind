@@ -11,4 +11,4 @@
 
 ## Required
 
-- [cipher::ChaCha20 runs pyca/verified-garbage's code where it is faster](/quest/m2/verified-garbage/chacha20.md) - if it switches with AVX2, this quest shrinks to the SSSE3 routine; delete it if it switches every tier, and drop this link if it switches none
+- [cipher::ChaCha20 runs pyca/verified-garbage's code where it is faster](/quest/m2/verified-garbage/chacha20.md) - this quest drops a kernel only once no tier runs it, such as the AVX2 kernels if both the AVX2 and AVX-512 tiers switch; delete it if every tier switches, and drop this link if none does

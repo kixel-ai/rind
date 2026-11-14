@@ -914,6 +914,7 @@ UNRANKED = [
         r"(blind-rsa\d+|v?oprf|vrf|spake2plus)-",
         "neither aws-lc-rs nor ring offers the protocol, so no baseline; the report's hosts compare it",
     ),
+    (r"chacha20/", "neither aws-lc-rs nor ring offers ChaCha20 without Poly1305, so no baseline"),
 ]
 
 # rind's time over the fastest library's above which benchmarks/gaps.toml
