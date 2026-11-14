@@ -333,6 +333,10 @@ class Api:
             for id in inner["items"]:
                 child = self.index[str(id)]
                 self.visit(child, path + (child["name"],), seen)
+            # Impls for the crate's own types are compared under each type;
+            # the rest, such as one for `[u8]`, are listed only here.
+            others = [id for id in inner["implementations"] if not self.local(self.index[str(id)]["inner"]["impl"]["for"])]
+            self.walk_impls(others, path, seen, None)
 
     def walk_impls(self, impls, path, seen, owner):
         for id in impls:
@@ -360,6 +364,11 @@ class Api:
                 header = {"generics": impl["generics"], "for": impl["for"], "trait": impl["trait"], "assoc": sig["assoc"]}
                 sig.update(elide(header))
                 self.add(path + ("{impl}",), "impl", self.sig(sig), owner)
+
+    def local(self, ty):
+        """Whether a type is one this crate defines."""
+        id = ty.get("resolved_path", {}).get("id")
+        return id is not None and (str(id) in self.index or self.paths.get(str(id), {}).get("crate_id") == 0)
 
     def external(self, id, fallback):
         if id is not None and str(id) in self.paths:
