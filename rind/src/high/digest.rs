@@ -145,9 +145,15 @@ pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
 pub struct Context(State);
 
 // `repr(u8)` lays every variant out as the tag then its `Hashing`, so `ops`
-// sits at one offset in each.
+// sits at one offset in each, and each context 16 bytes in.
+//
+// Aligned to a cache line, so the layouts of the contexts it holds decide
+// which loads and stores cross one. A load cannot take its bytes from a
+// store still in flight that crosses a line, or from two stores, and waits
+// for them to reach the cache. That cost a SHA-256 context, against a
+// one-shot hash, 16 ns at 16 bytes on Zen 5.
 #[derive(Clone)]
-#[repr(u8)]
+#[repr(u8, align(64))]
 enum State {
     Md5(Hashing<Md5Context>),
     Sha1(Hashing<Sha1Context>),
@@ -209,15 +215,7 @@ struct Ops<C> {
 
 impl<C: Variant> Hashing<C> {
     fn start() -> State {
-        C::state(Self {
-            ops: const {
-                &Ops {
-                    update: C::update,
-                    finish: C::finish_reset,
-                }
-            },
-            context: C::NEW,
-        })
+        C::STATE
     }
 
     fn update(&mut self, data: &[u8]) {
@@ -236,7 +234,12 @@ trait Variant: HashContext + 'static {
     // copies it from read-only memory instead of building it on the stack.
     const NEW: Self;
 
-    fn state(hashing: Hashing<Self>) -> State;
+    /// A [`State`] holding [`Self::NEW`].
+    // The whole `State`, so starting one copies all its cache lines with a
+    // `memcpy`'s whole-line stores: a `Box` or another move of it then loads
+    // each line from one store, which it can take its bytes from, rather than
+    // from the eight that copying this variant alone would make.
+    const STATE: State;
 
     /// The digest of the message so far, leaving `self` as [`Self::NEW`].
     fn finish_reset(&mut self) -> Digest {
@@ -251,9 +254,13 @@ macro_rules! variant {
         impl Variant for $context {
             const NEW: Self = $new;
 
-            fn state(hashing: Hashing<Self>) -> State {
-                State::$variant(hashing)
-            }
+            const STATE: State = State::$variant(Hashing {
+                ops: &Ops {
+                    update: Self::update,
+                    finish: Self::finish_reset,
+                },
+                context: Self::NEW,
+            });
         }
     };
 }
@@ -687,6 +694,24 @@ mod tests {
         ] {
             let got = digest(&MD5, message.as_bytes());
             assert_eq!(got.as_ref(), hex::decode(wanted).unwrap(), "{message:?}");
+        }
+    }
+
+    // Each context starts on a 16-byte boundary of a cache-line-aligned
+    // `Context`, which `mid::sha2`'s layout test builds on.
+    #[test]
+    fn layout() {
+        assert_eq!(core::mem::align_of::<Context>(), 64);
+        for algorithm in [&SHA256, &SHA384, &SHA512, &SHA512_256] {
+            let ctx = Context::new(algorithm);
+            let context: *const u8 = match &ctx.0 {
+                State::Sha256(hashing) => core::ptr::from_ref(&hashing.context).cast(),
+                State::Sha384(hashing) => core::ptr::from_ref(&hashing.context).cast(),
+                State::Sha512(hashing) => core::ptr::from_ref(&hashing.context).cast(),
+                State::Sha512_256(hashing) => core::ptr::from_ref(&hashing.context).cast(),
+                _ => unreachable!(),
+            };
+            assert_eq!((context as usize - core::ptr::from_ref(&ctx) as usize) % 16, 0);
         }
     }
 
