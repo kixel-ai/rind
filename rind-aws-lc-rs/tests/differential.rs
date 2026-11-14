@@ -478,8 +478,14 @@ fn rsa_range_at_verify() {
     // tests/data/rsa-range as `<bits>-<tag>.sig`. No PSS-SHA-512 signature
     // with a salt as long as the hash fits a 1024-bit key.
     let fixture = |bits: usize, tag: &str| {
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rsa-range");
-        std::fs::read(format!("{dir}/{bits}-{tag}.sig")).ok()
+        if (bits, tag) == (1024, "pss-sha512") {
+            return None;
+        }
+        let path = format!(
+            "{}/tests/data/rsa-range/{bits}-{tag}.sig",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        Some(std::fs::read(&path).unwrap_or_else(|err| panic!("{path}: {err}")))
     };
     let signers = [
         &include_bytes!("aws-lc-rs/data/rsa_test_private_key_2048.p8")[..],
