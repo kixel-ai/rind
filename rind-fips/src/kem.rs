@@ -47,7 +47,7 @@ const CIPHERTEXT_LEN: usize = 1088;
 
 /// A key encapsulation mechanism.
 pub struct Algorithm {
-    id: u32,
+    pub(crate) id: u32,
     name: &'static str,
 }
 

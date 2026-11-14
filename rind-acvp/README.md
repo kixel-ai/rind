@@ -1,0 +1,54 @@
+# rind-acvp
+
+Answers ACVP test sets for [rind-fips](../rind-fips/README.md)'s module, as
+the module wrapper of aws-lc's `acvptool` (`util/fipstools/acvp/`), so the
+lab can run NIST's ACVP server against the module, and rind's CI can run
+NIST's sample sets offline. Unpublished: it is a test tool.
+
+`acvptool` handles ACVP's sessions, authentication, and JSON, and asks the
+wrapper for each answer over stdin and stdout (aws-lc's
+`ACVP.md`). `rind-acvp` answers through `rind-fips`'s API, and through the
+deterministic forms of the randomized services, which FIPS 203 and 204 allow
+only for testing: the DRBG from given entropy, ML-KEM from given seeds, and
+ML-DSA from a given seed and `rnd`. Only the module's ACVP build has those,
+which `rind-fips`'s hidden `__acvp` feature builds; a program's module never
+does. `rind-acvp`'s `module` feature asks for it, so a workspace build
+without it compiles nothing here.
+
+[`src/config.json`](src/config.json) registers the module's capabilities,
+which `acvptool -wrapper target/debug/rind-acvp -regcap` prints.
+
+## Running
+
+`nix develop` provides `acvptool`. The offline test answers NIST's sample
+sets (`thirdparty/acvp/`) and sets it builds from CAVP's and Wycheproof's
+vectors for what the samples lack, once for each CPU path this host can
+take, by the module's load-time `RIND_CPU_DISABLE_<feature>` mask:
+
+```sh
+cargo test -p rind-acvp --features module
+SLOW_TESTS=1 cargo test --release -p rind-acvp --features module  # with the 15 GiB large-data hash tests
+```
+
+`just ci` runs it when `rind-fips`, `rind-acvp`, or the sample sets change.
+x86-cpu.yml runs it under Intel SDE's Diamond Rapids, for the AVX-512
+paths, and build.yml's nightly with the large-data tests on x86_64 and
+aarch64.
+
+Against NIST's demo server, with a credential in `acvptool`'s
+`config.json`, `-run` fetches an algorithm's fresh sets and answers them:
+
+```sh
+cargo build -p rind-acvp --features module
+acvptool -wrapper target/debug/rind-acvp -run ML-DSA
+```
+
+Each CPU path is its own ACVP implementation: run the server's sets once
+per `RIND_CPU_DISABLE_<feature>` mask, as the offline test does.
+
+## What it does not answer yet
+
+- AES-GCM sealing with internally generated IVs, which the module does not
+  offer yet; it registers opening only.
+- ML-KEM-512 and ML-KEM-1024, which the module does not offer yet.
+- The TLS 1.3 KDF, which no module service derives through yet.

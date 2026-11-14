@@ -191,6 +191,16 @@
               };
             };
 
+          # aws-lc's ACVP client, of the aws-lc release nixpkgs pins. Its
+          # `-json` mode answers vector sets offline through a module wrapper,
+          # as `rind-acvp`'s tests run it on rind's FIPS module.
+          acvptool = pkgs.buildGoModule {
+            pname = "acvptool";
+            inherit (pkgs.aws-lc) version src;
+            subPackages = [ "util/fipstools/acvp/acvptool" ];
+            vendorHash = "sha256-495bUr3Cuo7kuhuNLMVhrVg9NXTAXyFmnXRmBrCHovA=";
+          };
+
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
           # built against the plugin API of the qemu-user its shells run.
           ct-qemu-plugin = pkgs.stdenv.mkDerivation {
@@ -441,6 +451,8 @@
                   cargo-modules
                   rustfmt-unstable
                   quest-cli
+                  # rind-acvp's tests answer ACVP's vector sets through it.
+                  acvptool
                 ]
                 ++ python-shell.packages
                 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
@@ -633,6 +645,17 @@
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
             };
 
+            # build.yml's nightly ACVP job answers ACVP's sets in it, with
+            # the large-data hash tests, on x86_64 and aarch64.
+            acvp = pkgs.mkShell {
+              packages = [
+                rust-stable.minimal
+                acvptool
+                # The aws-lc-rs dev-dependency builds C.
+                pkgs.cmake
+              ];
+            };
+
             # `just wasm` runs the portable backend's tests on wasm32-wasip2
             # in it, under wasmtime. The toolchain is the default shell's,
             # which already carries the target.
@@ -802,6 +825,8 @@
                 openssl
                 python3
                 sde
+                # x86-cpu.yml answers ACVP's sets on Sapphire Rapids with it.
+                acvptool
                 # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
                 util-linux
               ];

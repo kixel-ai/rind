@@ -66,8 +66,9 @@ impl DecapKey {
     /// Decode a key encoded as [`Self::as_bytes()`] encodes it, or `None` if
     /// its `H(ek)` is not that of its encapsulation key.
     ///
-    /// This is used for testing: rind generates keys only from seeds.
-    #[cfg(test)]
+    /// This is used for testing, and by the FIPS module's ACVP build: rind
+    /// generates keys only from seeds.
+    #[cfg(any(test, rind_fips))]
     pub(crate) fn from_bytes(dk: &[u8; K * 768 + 96]) -> Option<Self> {
         let (dk_pke, rest) = dk.split_at(K * 384);
         let (ek, rest) = rest.split_at(K * 384 + 32);

@@ -226,13 +226,23 @@ for module in "${selected[@]}"; do
             # workspace build leaves off, and only for glibc Linux on x86_64
             # and aarch64, where rind-fips is not empty. Its break build
             # checks, on every call, the stack each service zeroes, and fails
-            # each self-test.
-            if printf '%s\n' "${packages[@]}" | grep -qxE 'rind-fips|--workspace' &&
+            # each self-test. Its ACVP build adds the deterministic forms
+            # rind-acvp answers ACVP with, and rind-acvp compiles only with
+            # the `module` feature that builds it; its offline run answers
+            # every vector set on each of this CPU's paths, with the dev
+            # shell's acvptool.
+            if printf '%s\n' "${packages[@]}" | grep -qxE 'rind-fips|rind-acvp|--workspace' &&
                 [[ "$(rustc -vV | sed -n 's/^host: //p')" =~ ^(x86_64|aarch64)-unknown-linux-gnu$ ]]; then
-                RUSTFLAGS='--cfg rind_fips --cfg rind_cpu_disable' cargo clippy -p rind-fips-module \
-                    --locked --target-dir target/fips-module -- --deny warnings
+                for features in '' acvp; do
+                    RUSTFLAGS='--cfg rind_fips --cfg rind_cpu_disable' cargo clippy -p rind-fips-module \
+                        --features "$features" --locked --target-dir target/fips-module -- --deny warnings
+                done
+                cargo clippy -p rind-acvp --features module --all-targets --locked -- --deny warnings
                 if [[ -n "$all" ]] || grep -q '^rind-fips/' "$changed"; then
                     cargo nextest run -p rind-fips --features __break_tests --locked
+                fi
+                if [[ -n "$all" ]] || grep -qE '^(rind-fips|rind-acvp|thirdparty/acvp)/' "$changed"; then
+                    cargo nextest run -p rind-acvp --features module --locked
                 fi
             fi
             # Doc tests need a library. No packages at all means the workspace.

@@ -33,7 +33,7 @@ const D: u32 = 13;
 /// The length of a key's seed, `xi`.
 pub(crate) const SEED_LEN: usize = 32;
 pub(crate) const TR_LEN: usize = 64;
-const MU_LEN: usize = 64;
+pub(crate) const MU_LEN: usize = 64;
 const RND_LEN: usize = 32;
 const T1_PACKED: usize = 320;
 const T0_PACKED: usize = 416;
@@ -320,6 +320,18 @@ pub(crate) fn mu(tr: &[u8; TR_LEN], context: &[u8], message: &[u8]) -> Result<[u
     h.absorb(message);
     Shake256::new(&h).read(&mut mu);
     Ok(mu)
+}
+
+/// `mu = H(tr || M')` for the internal interface's message `M'`, which ACVP
+/// tests as it is.
+#[cfg(any(test, rind_fips))]
+pub(crate) fn mu_internal(tr: &[u8; TR_LEN], message: &[u8]) -> [u8; MU_LEN] {
+    let mut mu = [0u8; MU_LEN];
+    let mut h = Shake256Sponge::new();
+    h.absorb(tr);
+    h.absorb(message);
+    Shake256::new(&h).read(&mut mu);
+    mu
 }
 
 /// Verifies `signature` over `message` and `context` under public key `pk`,
@@ -633,7 +645,11 @@ fn rejected(check: u64) -> bool {
 
 /// FIPS 204's `ML-DSA.Verify_internal`: verifies `signature` over `mu` under
 /// public key `pk`.
-fn verify_internal<P: Params>(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) -> Result<(), Error> {
+pub(crate) fn verify_internal<P: Params>(
+    pk: &[u8],
+    mu: &[u8; MU_LEN],
+    signature: &[u8],
+) -> Result<(), Error> {
     if pk.len() != public_key_len::<P>() || signature.len() != signature_len::<P>() {
         return Err(Error::BadSignature);
     }
@@ -1118,14 +1134,7 @@ mod tests {
             return test.hex("mu").try_into().unwrap();
         }
         match group.str("signatureInterface") {
-            "internal" => {
-                let mut mu = [0u8; MU_LEN];
-                let mut h = Shake256Sponge::new();
-                h.absorb(tr);
-                h.absorb(&test.hex("message"));
-                Shake256::new(&h).read(&mut mu);
-                mu
-            }
+            "internal" => mu_internal(tr, &test.hex("message")),
             "external" => mu(tr, &test.hex("context"), &test.hex("message")).unwrap(),
             other => panic!("unexpected interface {other}"),
         }

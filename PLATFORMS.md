@@ -106,7 +106,7 @@ Linux on `x86_64` and `aarch64`, and runs only the fastest paths there: on
 `movbe`, `avx`, `avx2`, `bmi1`, `bmi2`, and `adx`, as on Broadwell, Zen, and
 later cores, and on `aarch64` the crypto extension. It refuses to load on a
 CPU without them, naming the first missing, so each path it can take gets its
-own ACVP run and no other path is in it.
+own ACVP run ([rind-acvp](rind-acvp/README.md)) and no other path is in it.
 
 rind's secret-dependent code divides no secret and does no floating-point
 arithmetic on any architecture, as `admin/ct-vartime` checks, but it multiplies

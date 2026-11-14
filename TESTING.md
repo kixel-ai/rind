@@ -135,7 +135,9 @@ The `acvp_...` unit tests read NIST's ACVP sample sets in `thirdparty/acvp/`,
 which `admin/sync-acvp` trims to the groups rind runs; a group a test does not
 expect fails it. The SHA-2 and SHA-3 sets' 1 to 8 GiB messages run only with
 `SLOW_TESTS=1`. HMAC_DRBG and ECDH read CAVP's files, as ACVP's samples test
-neither as rind uses them.
+neither as rind uses them. [rind-acvp](rind-acvp/README.md)'s offline test
+answers the sets for rind-fips's module through aws-lc's `acvptool`, on each
+CPU path, with the sets it builds for what the samples lack.
 
 These suites run wherever the [tier table](#tiers) runs `cargo test`, including
 the forced portable backend. The nightly `build.yml` runs the million-case
