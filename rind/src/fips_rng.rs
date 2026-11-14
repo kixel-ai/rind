@@ -188,10 +188,6 @@ mod tests {
     #[cfg(all(unix, not(miri)))]
     #[test]
     fn fork_during_self_test() {
-        // Runs everything the child will once first, so an emulator such as
-        // Intel SDE has translated it before the fork rather than in the child.
-        assert!(cast());
-        instantiate().unwrap();
         STALL.store(true, Ordering::Release);
         // A test thread already past `stall` can set the flag again after
         // the reset, letting the drawer skip the self-test; draw again then.
@@ -208,9 +204,23 @@ mod tests {
             drawer.join().unwrap();
         };
 
+        // The test build checks each assembly call under one lock, which a
+        // child forked while another test thread held it could never take.
+        #[cfg(any(
+            rind_backend = "x86_64",
+            rind_backend = "aarch64",
+            rind_backend = "arm"
+        ))]
+        let abi = crate::low::abi::hold();
         // SAFETY: the child calls only `instantiate`, which allocates
         // nothing, and leaves through `_exit`.
         let pid = unsafe { libc::fork() };
+        #[cfg(any(
+            rind_backend = "x86_64",
+            rind_backend = "aarch64",
+            rind_backend = "arm"
+        ))]
+        drop(abi);
         assert!(pid >= 0);
         if pid == 0 {
             RELEASE.store(true, Ordering::Release);
@@ -222,8 +232,7 @@ mod tests {
         RELEASE.store(true, Ordering::Release);
         drawer.join().unwrap();
         let mut status = 0;
-        // Up to a minute, since emulators run the child slowly.
-        for _ in 0..6000 {
+        for _ in 0..1000 {
             // SAFETY: `pid` is our child and `status` a valid out pointer.
             let done = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
             if done == pid {
