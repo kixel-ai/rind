@@ -61,7 +61,7 @@ openmls *ARGS:
 audit:
     cargo deny check
 
-# Run the scheduled suites on the checked-out release PR for the crates it versions, and record the result (Linux x86_64 only).
+# Dispatch every scheduled workflow on the release PR (default: the open one), wait, and record the result on its head.
 release-check *ARGS:
     nix develop --command sh/release-check.sh {{ARGS}}
 

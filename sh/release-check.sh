@@ -96,13 +96,23 @@ if [[ -n "$problems" ]]; then
 fi
 
 # Nightly, mutants mutates the last day's changes; here, every change since
-# the release before.
-git fetch --quiet --tags origin "refs/heads/$branch"
+# the release before: the newest tagged commit the head contains. The tags
+# come from the API, since fetching them can clash with local ones.
+git fetch --quiet origin "refs/heads/$branch"
 if [[ $(git rev-parse FETCH_HEAD) != "$head" ]]; then
     echo "error: $branch moved while starting; run again" >&2
     exit 1
 fi
-previous=$(git rev-parse "$(git describe --tags --abbrev=0 "$head")^{commit}")
+tagged=$(gh api --paginate "repos/{owner}/{repo}/tags" --jq '.[].commit.sha' | sort -u)
+previous=$(for sha in $tagged; do
+    if git merge-base --is-ancestor "$sha" "$head" 2>/dev/null; then
+        echo "$(git show -s --format=%ct "$sha") $sha"
+    fi
+done | sort -n | tail -1 | cut -d' ' -f2)
+if [[ -z "$previous" ]]; then
+    echo "error: $head contains no tagged release" >&2
+    exit 1
+fi
 declare -A inputs=([mutants]="-f base=$previous")
 
 record() {
