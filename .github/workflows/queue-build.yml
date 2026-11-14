@@ -14,10 +14,14 @@ permissions:
   contents: read
 
 jobs:
+  # Its context, `Queue build / Build`, is the one main's ruleset requires, so
+  # the group's result is this job's own: a failed, cancelled, or timed-out
+  # build fails the group with no job after it waiting on a hosted runner.
   build:
     name: Build
-    # A caller's own event decides this, so a pull request's workflow that
-    # calls this file still gets no runner.
+    # A caller's own event decides this. On a pull request the job skips
+    # without a runner, which reports the required context as passed so GitHub
+    # admits the PR to the queue.
     if: github.event_name == 'merge_group'
     runs-on: [self-hosted, rind-queue]
     # Below the queue's 90-minute response window, so a hung build reports
@@ -42,8 +46,11 @@ jobs:
       # mbx keys every compilation on its compiler, target, and inputs, so the
       # runner's store serves every group without a cache key of ours, and its
       # managed target, outside the checkout, survives the checkout's clean.
-      # The host's ci-runners.nix supplies the store's environment, bounds,
-      # and job-boundary collection.
+      # The host's ci-runners.nix supplies the store's bounds and job-boundary
+      # collection in the runner's global mbx config, not only its environment:
+      # Dart's build hooks drop MBX_* variables, so the Cargo that rind-dart's
+      # hook runs reads only that config, and finds the same store because the
+      # store is mbx's default ~/.cache/mbx.
       - uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1.7.3
         id: mbx
         with:
@@ -64,13 +71,6 @@ jobs:
             mkdir -p "${stamp%/*}"
             printf '%s\n' "$VERSION" > "$stamp"
           fi
-      # The host collects only at job boundaries (MBX_GC_AUTO=false), but Dart's
-      # build hooks drop MBX_* variables, so the Cargo that rind-dart's hook
-      # runs would collect the shared store down to mbx's default budgets. The
-      # global config reaches it. It finds the same store because the host's
-      # MBX_CACHE_DIR is mbx's default, ~/.cache/mbx, and HOME reaches it.
-      - name: Collect only at job boundaries
-        run: mbx settings set gc.auto false
       # The shim is how mbx reaches Cargo; the action only puts `mbx` on PATH.
       # flake.nix finds the shim through `mbx setup --status` and puts it ahead
       # of each dev shell's pinned toolchain. The shim existing is the
@@ -85,4 +85,8 @@ jobs:
             exit 1
           fi
       - name: Check and test the merge group
+        # Every group waits on this build, so it waits only for memory, never
+        # behind the host's agent load.
+        env:
+          QUEST_GATE_PRIORITY: 1
         run: nix develop --command quest gate just ci "$BASE"
