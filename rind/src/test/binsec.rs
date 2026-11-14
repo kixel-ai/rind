@@ -226,6 +226,10 @@ fn ct_binsec_pbkdf2() {
     });
 }
 
+// Not on aarch64, where BINSEC cannot finish it in a nightly's time. Its
+// portable kernels pass here on the portable backend, and ctgrind's arm64
+// rows run `high::argon2::secret_password`.
+#[cfg(not(rind_backend = "aarch64"))]
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_argon2() {
