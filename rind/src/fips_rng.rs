@@ -224,6 +224,8 @@ mod tests {
         assert!(pid >= 0);
         if pid == 0 {
             RELEASE.store(true, Ordering::Release);
+            // Whatever another thread published, the child runs the self-test.
+            CAST_PASSED.store(false, Ordering::Release);
             let ok = instantiate().is_ok();
             // SAFETY: ends the child without running the parent's destructors.
             unsafe { libc::_exit(if ok { 0 } else { 1 }) };
