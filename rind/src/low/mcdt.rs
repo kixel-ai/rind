@@ -16,12 +16,11 @@
 //! rind does no floating-point arithmetic, as `admin/ct-vartime` checks, which
 //! also checks that every instruction Intel lists runs under an `Mcdt`.
 
-use core::sync::atomic::{AtomicU8, Ordering};
-
 #[cfg(target_arch = "x86")]
 use core::arch::x86::{__cpuid, __cpuid_count};
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::{__cpuid, __cpuid_count};
+use core::sync::atomic::{AtomicU8, Ordering};
 
 /// What Intel's mitigation loads: every exception masked and flagged.
 const MITIGATED: u32 = 0x1fbf;
