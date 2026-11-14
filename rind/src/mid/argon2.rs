@@ -44,6 +44,7 @@ pub(crate) fn argon2id(
     let segment_len = cost.memory_kib as usize / (SYNC_POINTS * lanes);
     let geometry = Geometry {
         lanes: cost.lanes,
+        lane_reciprocal: (u64::MAX / cost.lanes as u64).wrapping_add(1),
         passes: cost.passes,
         segment_len,
         lane_len: segment_len * SYNC_POINTS,
@@ -121,6 +122,8 @@ pub(crate) fn argon2id(
 #[derive(Clone, Copy)]
 struct Geometry {
     lanes: u32,
+    // 2^64 / lanes rounded up, wrapping to 0 for one lane, for `lane_of`.
+    lane_reciprocal: u64,
     passes: u32,
     segment_len: usize,
     lane_len: usize,
@@ -174,7 +177,7 @@ impl Geometry {
 
             let reference_lane = match pass == 0 && slice == 0 {
                 true => lane,
-                false => ((random >> 32) % self.lanes as u64) as u32,
+                false => self.lane_of((random >> 32) as u32),
             };
             let reference = reference_lane as usize * self.lane_len
                 + self.reference_index(pass, slice, index, random as u32, reference_lane == lane);
@@ -182,6 +185,15 @@ impl Geometry {
             let (out, previous, reference) = three(memory, current, previous, reference);
             argon2_compress(previous, reference, out, pass > 0);
         }
+    }
+
+    // `word % lanes` by Lemire, Kaser, and Kurz's "Faster remainder by direct
+    // computation" (2019), exact for every 32-bit word and lane count. The
+    // loop holds no division, so `admin/ct-vartime` finds only the setup's,
+    // however the compiler duplicates the loop.
+    fn lane_of(&self, word: u32) -> u32 {
+        let fraction = self.lane_reciprocal.wrapping_mul(word as u64);
+        ((fraction as u128 * self.lanes as u128) >> 64) as u32
     }
 
     // The reference implementation's `index_alpha`: the column `random`
@@ -282,6 +294,39 @@ mod tests {
             memory_kib,
             passes,
             lanes,
+        }
+    }
+
+    #[test]
+    fn lane_of_is_remainder() {
+        // Every lane count up to RFC 9106's limit is a 24-bit one; the words
+        // straddle each multiple and power of two the reduction could slip at.
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        for lanes in (1..=64).chain([255, 256, 257, 1 << 16, (1 << 24) - 1]) {
+            let geometry = Geometry {
+                lanes,
+                lane_reciprocal: (u64::MAX / lanes as u64).wrapping_add(1),
+                passes: 1,
+                segment_len: 2,
+                lane_len: 8,
+            };
+            let edges = (0..4u32).flat_map(|k| {
+                [
+                    k,
+                    lanes.wrapping_mul(k).wrapping_sub(1),
+                    lanes.wrapping_mul(k),
+                    u32::MAX - k,
+                ]
+            });
+            let random = (0..1000).map(|_| {
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                (state >> 32) as u32
+            });
+            for word in edges.chain(random).collect::<Vec<_>>() {
+                assert_eq!(geometry.lane_of(word), word % lanes, "{word} % {lanes}");
+            }
         }
     }
 
