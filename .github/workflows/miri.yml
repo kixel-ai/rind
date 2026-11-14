@@ -22,11 +22,19 @@ env:
 jobs:
   # The portable backend's tests under Miri: forced on x86_64, and on s390x,
   # which runs it big-endian. See `sh/miri.sh`.
+  #
+  # One job ran past GitHub's 6-hour limit: unsharded, the x86_64 tests
+  # summed to over 9 CPU-hours on a fast desktop core, some taking an hour
+  # alone. nextest's `slice` deals the tests to the shards in turn, so each
+  # shard takes about a quarter of the total, bounded below by its slowest
+  # test.
   miri:
+    name: miri (${{ matrix.target }}, ${{ matrix.shard }}/4)
     strategy:
       fail-fast: false
       matrix:
         target: [x86_64-unknown-linux-gnu, s390x-unknown-linux-gnu]
+        shard: [1, 2, 3, 4]
 
     runs-on: ubuntu-latest
     steps:
@@ -39,4 +47,4 @@ jobs:
       - uses: ./.github/actions/nix
 
       - name: Miri tests
-        run: nix develop .#miri --command sh/miri.sh ${{ matrix.target }}
+        run: nix develop .#miri --command sh/miri.sh ${{ matrix.target }} --partition slice:${{ matrix.shard }}/4

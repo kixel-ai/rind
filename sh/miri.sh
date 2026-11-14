@@ -3,14 +3,16 @@
 # runs it in the dev shell's `miri` shell: x86_64-unknown-linux-gnu, with the
 # backend forced, or s390x-unknown-linux-gnu, which is big-endian. Miri fails
 # a test on undefined behavior, such as an invalid value left for a drop, a
-# misaligned or out-of-bounds pointer, or a data race.
+# misaligned or out-of-bounds pointer, or a data race. Extra arguments go to
+# nextest, such as the `--partition` that splits `miri.yml`'s run into shards.
 set -euo pipefail
 
 target=${1:-}
 if [[ -z "$target" ]]; then
-    echo "usage: sh/miri.sh TARGET" >&2
+    echo "usage: sh/miri.sh TARGET [NEXTEST_ARGS...]" >&2
     exit 1
 fi
+shift
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -145,4 +147,4 @@ filter="not (${filter}test(/::acvp/))"
 export RUSTFLAGS='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
 export MIRIFLAGS=-Zmiri-disable-isolation
 cargo miri nextest run -p rind --features wipe --locked --target "$target" \
-    --lib --test cpu --test debug --no-fail-fast -E "$filter"
+    --lib --test cpu --test debug --no-fail-fast -E "$filter" "$@"
