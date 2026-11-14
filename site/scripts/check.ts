@@ -111,10 +111,35 @@ function check(from: string, url: string, resource: boolean) {
 	}
 }
 
-// Stylesheets, inline or built, load through url() and a quoted @import.
+// Stylesheets, inline or built, load through url() and a quoted @import, in
+// any case, since CSS names are ASCII case-insensitive.
 function css(file: string, body: string) {
-	for (const m of body.matchAll(/url\(\s*['"]?([^'")]+)/g)) check(file, m[1], true);
-	for (const m of body.matchAll(/@import\s+['"]([^'"]+)/g)) check(file, m[1], true);
+	for (const m of body.matchAll(/url\(\s*['"]?([^'")]+)/gi)) check(file, m[1], true);
+	for (const m of body.matchAll(/@import\s+['"]([^'"]+)/gi)) check(file, m[1], true);
+}
+
+// Each start tag's lowercased name and attributes, however their values are
+// quoted, with character references in the values decoded.
+function* tags(html: string): Generator<[string, [string, string][]]> {
+	const decode = (v: string) =>
+		v.replace(/&(?:#(\d+)|#x([\da-f]+)|(amp|quot|apos|lt|gt));/gi, (_, dec, hex, named) =>
+			dec || hex
+				? String.fromCodePoint(Number.parseInt(dec ?? hex, dec ? 10 : 16))
+				: { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" }[named.toLowerCase() as "amp"],
+		);
+	const tag = /<([a-z][^\s/>]*)((?:\s*[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*\/?>/gi;
+	const attr = /([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+	// Script and style bodies are raw text, and comments hold no tags.
+	const markup = html
+		.replace(/<!--[\s\S]*?-->/g, "")
+		.replace(/(<(script|style)\b[^>]*>)[\s\S]*?<\/\2\s*>/gi, "$1");
+	for (const m of markup.matchAll(tag)) {
+		const attrs = [...m[2].matchAll(attr)].map((a): [string, string] => [
+			a[1].toLowerCase(),
+			decode(a[2] ?? a[3] ?? a[4] ?? ""),
+		]);
+		yield [m[1].toLowerCase(), attrs];
+	}
 }
 
 // Scripts, inline or built, load every module specifier, local ones included:
@@ -127,14 +152,24 @@ function js(file: string, body: string) {
 for (const file of files) {
 	if (file.endsWith(".html")) {
 		const html = text(file);
-		for (const m of html.matchAll(/<a\s[^>]*\bhref="([^"]*)"/g)) check(file, m[1], false);
-		for (const m of html.matchAll(/<link\s[^>]*\bhref="([^"]*)"/g)) check(file, m[1], true);
-		for (const m of html.matchAll(/\s(?:src|component-url|renderer-url)="([^"]*)"/g)) check(file, m[1], true);
-		for (const m of html.matchAll(/\ssrcset="([^"]*)"/g)) {
-			for (const candidate of m[1].split(",")) check(file, candidate.trim().split(/\s+/)[0], true);
+		for (const [tag, attrs] of tags(html)) {
+			for (const [name, value] of attrs) {
+				if (name === "srcset" || name === "imagesrcset") {
+					for (const candidate of value.split(",")) check(file, candidate.trim().split(/\s+/)[0], true);
+				} else if (name === "href" && (tag === "a" || tag === "area")) {
+					check(file, value, false);
+				} else if (["href", "xlink:href", "src", "poster", "data", "ping", "component-url", "renderer-url"].includes(name)) {
+					check(file, value, true);
+				} else if (name === "style") {
+					css(file, value);
+				}
+			}
 		}
-		css(file, html);
-		for (const m of html.matchAll(/<script(?:\s+type="module")?\s*>([\s\S]*?)<\/script>/g)) js(file, m[1]);
+		for (const m of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) css(file, m[1]);
+		for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+			const type = m[1].match(/\btype\s*=\s*["']?([^"'\s>]+)/i)?.[1].toLowerCase();
+			if (type === undefined || type === "module" || type.endsWith("javascript")) js(file, m[2]);
+		}
 	} else if (file.endsWith(".css")) {
 		css(file, text(file));
 	} else if (file.endsWith(".js")) {
