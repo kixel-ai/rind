@@ -6,6 +6,6 @@
 
 ## Plan
 
-- Reproduce on a hosted `macos-latest` runner, or on the Mac mini once [its runner quest](/quest/m0/mac-mini-runner.md) lands, with `flutter test -v` and the simulator's log (`xcrun simctl spawn <udid> log stream`) to find where it stops: installing the app, launching it, or attaching to its VM service.
+- Reproduce on a hosted `macos-latest` runner, or on the Mac mini once [its runner quest](/quest/m0/mac-mini-runner.md) lands, with the job's own command run verbosely (`flutter test integration_test -d "$udid" -v`) and the simulator's log (`xcrun simctl spawn <udid> log stream`) to find where it stops: installing the app, launching it, or attaching to its VM service.
 - Fix that cause. Raising the timeout or retrying the job only hides it.
 - Recommendation: add `-v` to the job's `flutter test` if the cause is intermittent, so the next hang names its step.
