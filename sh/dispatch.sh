@@ -444,7 +444,8 @@ step() {
             fi
             if reaches "$backends" portable; then
                 # The FIPS module's source rides along: its cfg touches only
-                # where randomness comes from, which no backend changes.
+                # where randomness comes from, which no backend changes, and
+                # the CPU check, which only the backends it builds on have.
                 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable --cfg rind_fips" \
                     run cargo clippy -p rind --lib --locked --target x86_64-unknown-linux-gnu -- --deny warnings
                 # And on a 32-bit target, whose Poly1305 and GHASH differ.
