@@ -17,8 +17,8 @@ use std::num::NonZeroU32;
 use std::sync::OnceLock;
 
 use rind::{
-    aead, agreement, cipher, constant_time, digest, hkdf, hmac, kem, key_wrap, pbkdf2, rsa,
-    signature,
+    aead, agreement, cipher, constant_time, digest, ecdsa, ed25519, hkdf, hmac, kem, key_wrap,
+    pbkdf2, rsa,
 };
 
 use crate::dudect::{Classes, Config, Report, classes, measure, measure_built};
@@ -369,21 +369,21 @@ fn cipher_cases(cases: &mut Vec<Case>) {
     }));
 
     cases.push(case("key-wrap/aes-256/wrap-kek", |config| {
-        let new = |kek: &Vec<u8>| key_wrap::AesKek::new(&key_wrap::AES_256, kek).unwrap();
+        let new = |kek: &Vec<u8>| key_wrap::AesKek::new(&key_wrap::AES_256_KW, kek).unwrap();
         let key = random::<32>();
         measure_built(config, &secrets(32), new, |kek| {
             let mut wrapped = [0; 40];
-            kek.wrap(&key, &mut wrapped).map(|()| wrapped)
+            kek.wrap_key(&key, &mut wrapped).map(|()| wrapped)
         })
     }));
     cases.push(case("key-wrap/aes-256/wrap-key", move |config| {
-        let kek = key_wrap::AesKek::new(&key_wrap::AES_256, &random::<32>()).unwrap();
+        let kek = key_wrap::AesKek::new(&key_wrap::AES_256_KW, &random::<32>()).unwrap();
         measure(
             config,
             &classes(VALUES, fixed(random::<32>()), random::<32>),
             |key| {
                 let mut wrapped = [0; 40];
-                kek.wrap(key, &mut wrapped).map(|()| wrapped)
+                kek.wrap_key(key, &mut wrapped).map(|()| wrapped)
             },
         )
     }));
@@ -392,38 +392,37 @@ fn cipher_cases(cases: &mut Vec<Case>) {
         let wrapped = random::<40>();
         measure(config, &secrets(32), |kek| {
             let mut key = [0; 32];
-            key_wrap::AesKek::new(&key_wrap::AES_256, kek)
-                .and_then(|kek| kek.unwrap(&wrapped, &mut key))
-                .map(|()| key)
+            key_wrap::AesKek::new(&key_wrap::AES_256_KW, kek)
+                .and_then(|kek| kek.unwrap_key(&wrapped, &mut key).map(|key| key.len()))
         })
     }));
     // The integrity value an unwrap recovers, compared with RFC 3394's: keys
     // wrapped by hand from wrong initial values, all of one key.
     cases.push(case("key-wrap/aes-256/unwrap-integrity", |config| {
         let secret = random::<32>();
-        let kek = key_wrap::AesKek::new(&key_wrap::AES_256, &secret).unwrap();
+        let kek = key_wrap::AesKek::new(&key_wrap::AES_256_KW, &secret).unwrap();
         let key = random::<32>();
         let wrap = |iv: &Vec<u8>| wrap_from(&secret, iv[..].try_into().unwrap(), &key);
         let mut wrapped = [0; 40];
-        kek.wrap(&key, &mut wrapped).unwrap();
+        kek.wrap_key(&key, &mut wrapped).unwrap();
         assert_eq!(wrap(&vec![0xa6; 8]), wrapped);
         let wrapped = mismatches(&[0xa6; 8]).map(|ivs| ivs.iter().map(wrap).collect());
         measure(config, &wrapped, |wrapped| {
             let mut key = [0; 32];
-            kek.unwrap(wrapped, &mut key).map(|()| key)
+            kek.unwrap_key(wrapped, &mut key).map(|key| key.len())
         })
     }));
     // RFC 5649's integrity value adds the key's length, which a flip of its
     // last bit would leave valid, so the fixed one's is out of range.
     cases.push(case("key-wrap/aes-256/unwrap-padded-integrity", |config| {
         let secret = random::<32>();
-        let kek = key_wrap::AesKek::new(&key_wrap::AES_256, &secret).unwrap();
+        let kek = key_wrap::AesKek::new(&key_wrap::AES_256_KWP, &secret).unwrap();
         let key = random::<20>();
         let padded = [&key[..], &[0; 4]].concat();
         let wrap = |aiv: &Vec<u8>| wrap_from(&secret, aiv[..].try_into().unwrap(), &padded);
         let aiv = [0xa6, 0x59, 0x59, 0xa6, 0, 0, 0, 20];
         let mut wrapped = [0; 32];
-        kek.wrap_padded(&key, &mut wrapped).unwrap();
+        kek.wrap_key(&key, &mut wrapped).unwrap();
         assert_eq!(wrap(&aiv.to_vec()), wrapped);
         let mut late = aiv;
         late[7] ^= 0x80;
@@ -437,7 +436,7 @@ fn cipher_cases(cases: &mut Vec<Case>) {
         let wrapped = aivs.map(|aivs| aivs.iter().map(wrap).collect());
         measure(config, &wrapped, |wrapped| {
             let mut key = [0; 24];
-            kek.unwrap_padded(wrapped, &mut key).map(|key| key.len())
+            kek.unwrap_key(wrapped, &mut key).map(|key| key.len())
         })
     }));
 }
@@ -512,31 +511,32 @@ fn kem_cases(cases: &mut Vec<Case>) {
 fn rsa_cases(cases: &mut Vec<Case>) {
     for (bits, size) in RSA_SIZES {
         let name = |op: &str| format!("rsa-{bits}/{op}");
-        let signing = |der: &Vec<u8>| signature::RsaKeyPair::from_pkcs8(der).unwrap();
+        let signing = |der: &Vec<u8>| rsa::KeyPair::from_pkcs8(der).unwrap();
         let decrypting =
             |der: &[u8]| rsa::DecryptingKey::from_pkcs8(&rsa::OAEP_SHA256, der).unwrap();
 
         cases.push(case(name("from-pkcs1"), move |config| {
             measure(config, rsa_keys_one_modulus(size), |der| {
-                signature::RsaKeyPair::from_pkcs1(der)
+                rsa::KeyPair::from_pkcs1(der)
             })
         }));
         cases.push(case(name("sign-key"), move |config| {
             measure_built(config, rsa_keys(size), signing, |key| {
-                key.sign(&signature::sign::RSA_PKCS1_SHA256, MESSAGE)
+                key.sign(&rsa::sign::PKCS1_SHA256, MESSAGE)
             })
         }));
         cases.push(case(name("sign-message"), move |config| {
             let key = signing(&rsa_keys(size)[0][0]);
             let messages = classes(VALUES, fixed(random::<32>()), random::<32>);
             measure(config, &messages, |message| {
-                key.sign(&signature::sign::RSA_PKCS1_SHA256, message)
+                key.sign(&rsa::sign::PKCS1_SHA256, message)
             })
         }));
         cases.push(case(name("oaep-decrypt-key"), move |config| {
             // Each key with a ciphertext of its own.
             let encrypted = |der: &Vec<u8>| {
-                let public = decrypting(der).public_key();
+                let key = decrypting(der);
+                let public = key.public_key();
                 let c = full_length(|| {
                     public
                         .encrypt(&random::<32>(), b"")
@@ -604,7 +604,7 @@ fn rsa_keys(size: rsa::KeySize) -> &'static Classes<Vec<u8>> {
     let i = RSA_SIZES.iter().position(|&(_, s)| s == size).unwrap();
     KEYS[i].get_or_init(|| {
         let generate = || {
-            let key = signature::RsaKeyPair::generate(size).unwrap();
+            let key = rsa::KeyPair::generate(size).unwrap();
             key.to_pkcs8().as_ref().to_vec()
         };
         classes(RSA_KEYS, fixed(generate()), generate)
@@ -620,7 +620,7 @@ fn rsa_keys_one_modulus(size: rsa::KeySize) -> &'static Classes<Vec<u8>> {
     KEYS[i].get_or_init(|| {
         // A key may have no other variant of the same widths; draw another.
         let keys = loop {
-            let pkcs8 = signature::RsaKeyPair::generate(size).unwrap().to_pkcs8();
+            let pkcs8 = rsa::KeyPair::generate(size).unwrap().to_pkcs8();
             let keys = crate::rsa_keys::variants(pkcs8.as_ref());
             if keys.len() > 1 {
                 break keys;
@@ -635,23 +635,23 @@ fn rsa_keys_one_modulus(size: rsa::KeySize) -> &'static Classes<Vec<u8>> {
 
 fn signature_cases(cases: &mut Vec<Case>) {
     for (name, algorithm) in [
-        ("p256", &signature::sign::ECDSA_P256_SHA256_FIXED),
-        ("p384", &signature::sign::ECDSA_P384_SHA384_FIXED),
-        ("p521", &signature::sign::ECDSA_P521_SHA512_FIXED),
+        ("p256", &ecdsa::sign::P256_SHA256_FIXED),
+        ("p384", &ecdsa::sign::P384_SHA384_FIXED),
+        ("p521", &ecdsa::sign::P521_SHA512_FIXED),
     ] {
         let der = move || {
-            signature::EcdsaKeyPair::generate(algorithm)
+            ecdsa::KeyPair::generate(algorithm)
                 .unwrap()
                 .to_pkcs8()
                 .as_ref()
                 .to_vec()
         };
-        let from = move |der: &[u8]| signature::EcdsaKeyPair::from_pkcs8(algorithm, der).unwrap();
+        let from = move |der: &[u8]| ecdsa::KeyPair::from_pkcs8(algorithm, der).unwrap();
 
         cases.push(case(format!("ecdsa/{name}/from-pkcs8"), move |config| {
             let ders = classes(VALUES, fixed(der()), der);
             measure(config, &ders, |der| {
-                signature::EcdsaKeyPair::from_pkcs8(algorithm, der)
+                ecdsa::KeyPair::from_pkcs8(algorithm, der)
             })
         }));
         cases.push(case(format!("ecdsa/{name}/sign-key"), move |config| {
@@ -666,18 +666,16 @@ fn signature_cases(cases: &mut Vec<Case>) {
     }
 
     let seed = || {
-        signature::Ed25519KeyPair::generate()
+        ed25519::KeyPair::generate()
             .unwrap()
             .to_seed()
             .as_ref()
             .to_vec()
     };
-    let from = |seed: &[u8]| signature::Ed25519KeyPair::from_seed(seed).unwrap();
+    let from = |seed: &[u8]| ed25519::KeyPair::from_seed(seed).unwrap();
     cases.push(case("ed25519/from-seed", move |config| {
         let seeds = classes(VALUES, fixed(seed()), seed);
-        measure(config, &seeds, |seed| {
-            signature::Ed25519KeyPair::from_seed(seed)
-        })
+        measure(config, &seeds, |seed| ed25519::KeyPair::from_seed(seed))
     }));
     cases.push(case("ed25519/sign-key", move |config| {
         let seeds = classes(VALUES, fixed(seed()), seed);

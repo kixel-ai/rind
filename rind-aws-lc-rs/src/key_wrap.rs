@@ -4,6 +4,7 @@ use core::fmt;
 
 use crate::error::{Unspecified, unspecified};
 use crate::sealed::Sealed;
+use crate::wipe::Wiped;
 
 /// A block cipher's identity.
 #[non_exhaustive]
@@ -31,10 +32,14 @@ pub struct AesBlockCipher {
 }
 
 impl BlockCipherId {
-    fn rind(self) -> &'static rind::cipher::Algorithm {
-        match self {
-            Self::Aes128 => &rind::key_wrap::AES_128,
-            Self::Aes256 => &rind::key_wrap::AES_256,
+    /// rind's algorithm for this cipher, with padding (RFC 5649) or without
+    /// (RFC 3394).
+    fn rind(self, padded: bool) -> &'static rind::key_wrap::Algorithm {
+        match (self, padded) {
+            (Self::Aes128, false) => &rind::key_wrap::AES_128_KW,
+            (Self::Aes128, true) => &rind::key_wrap::AES_128_KWP,
+            (Self::Aes256, false) => &rind::key_wrap::AES_256_KW,
+            (Self::Aes256, true) => &rind::key_wrap::AES_256_KWP,
         }
     }
 }
@@ -115,15 +120,28 @@ pub type AesKek = KeyEncryptionKey<AesBlockCipher>;
 /// A key encryption key, which wraps other keys.
 pub struct KeyEncryptionKey<Cipher: BlockCipher> {
     cipher: &'static Cipher,
-    kek: rind::key_wrap::AesKek,
+    /// The key, its first [`BlockCipher::key_len`] bytes, which rind binds
+    /// to a mode only as each call picks one.
+    key: Wiped<[u8; 32]>,
 }
 
 impl<Cipher: BlockCipher> KeyEncryptionKey<Cipher> {
     /// Makes a key encryption key from `key`, which must be `cipher`'s key
     /// length.
     pub fn new(cipher: &'static Cipher, key: &[u8]) -> Result<Self, Unspecified> {
-        let kek = rind::key_wrap::AesKek::new(cipher.id().rind(), key).map_err(unspecified)?;
-        Ok(Self { cipher, kek })
+        let mut bytes = Wiped::new([0; 32]);
+        bytes
+            .get_mut(..cipher.key_len())
+            .filter(|_| key.len() == cipher.key_len())
+            .ok_or(Unspecified)?
+            .copy_from_slice(key);
+        Ok(Self { cipher, key: bytes })
+    }
+
+    /// rind's key encryption key, with padding or without.
+    fn rind(&self, padded: bool) -> Result<rind::key_wrap::AesKek, Unspecified> {
+        let key = &self.key[..self.cipher.key_len()];
+        rind::key_wrap::AesKek::new(self.cipher.id().rind(padded), key).map_err(unspecified)
     }
 
     /// The block cipher's identity.
@@ -142,7 +160,9 @@ impl KeyWrap for KeyEncryptionKey<AesBlockCipher> {
     ) -> Result<&'output mut [u8], Unspecified> {
         let len = plaintext.len().checked_add(8).ok_or(Unspecified)?;
         let output = output.get_mut(..len).ok_or(Unspecified)?;
-        self.kek.wrap(plaintext, output).map_err(unspecified)?;
+        self.rind(false)?
+            .wrap_key(plaintext, output)
+            .map_err(unspecified)?;
         Ok(output)
     }
 
@@ -153,8 +173,9 @@ impl KeyWrap for KeyEncryptionKey<AesBlockCipher> {
     ) -> Result<&'output mut [u8], Unspecified> {
         let len = ciphertext.len().checked_sub(8).ok_or(Unspecified)?;
         let output = output.get_mut(..len).ok_or(Unspecified)?;
-        self.kek.unwrap(ciphertext, output).map_err(unspecified)?;
-        Ok(output)
+        self.rind(false)?
+            .unwrap_key(ciphertext, output)
+            .map_err(unspecified)
     }
 }
 
@@ -170,8 +191,8 @@ impl KeyWrapPadded for KeyEncryptionKey<AesBlockCipher> {
             .and_then(|len| len.checked_add(8))
             .ok_or(Unspecified)?;
         let output = output.get_mut(..len).ok_or(Unspecified)?;
-        self.kek
-            .wrap_padded(plaintext, output)
+        self.rind(true)?
+            .wrap_key(plaintext, output)
             .map_err(unspecified)?;
         Ok(output)
     }
@@ -183,8 +204,8 @@ impl KeyWrapPadded for KeyEncryptionKey<AesBlockCipher> {
     ) -> Result<&'output mut [u8], Unspecified> {
         let len = ciphertext.len().checked_sub(8).ok_or(Unspecified)?;
         let output = output.get_mut(..len).ok_or(Unspecified)?;
-        self.kek
-            .unwrap_padded(ciphertext, output)
+        self.rind(true)?
+            .unwrap_key(ciphertext, output)
             .map_err(unspecified)
     }
 }

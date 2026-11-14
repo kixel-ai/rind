@@ -5,7 +5,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use rind::cipher::{self, CbcIv};
-use rind::key_wrap::AesKek;
+use rind::key_wrap::{self, AesKek};
 
 use crate::{Bytes, WrongLength, algorithm, bytes, bytes_with, constants, error};
 
@@ -84,24 +84,50 @@ impl AesCbcDecryptingKey {
 /// An AES key-encryption key, which wraps keys with AES-KW (RFC 3394) and
 /// AES-KWP (RFC 5649).
 #[pyclass(frozen, module = "pyrind.key_wrap", name = "AesKek")]
-struct Kek(Box<AesKek>);
+struct Kek {
+    /// The key expanded for AES-KW.
+    kw: Box<AesKek>,
+    /// The key expanded for AES-KWP.
+    kwp: Box<AesKek>,
+}
 
 #[pymethods]
 impl Kek {
     /// Expands `key` for `algorithm`; raises `WrongLength` unless it is that size.
     #[new]
     fn new(algorithm: &Bound<'_, Algorithm>, key: Bytes<'_>) -> PyResult<Self> {
-        AesKek::new(algorithm.get().inner, &key)
-            .map(Box::new)
-            .map(Self)
-            .map_err(error)
+        let algorithm = algorithm.get().inner;
+        let (kw, kwp) = [
+            (
+                &cipher::AES_128,
+                &key_wrap::AES_128_KW,
+                &key_wrap::AES_128_KWP,
+            ),
+            (
+                &cipher::AES_192,
+                &key_wrap::AES_192_KW,
+                &key_wrap::AES_192_KWP,
+            ),
+            (
+                &cipher::AES_256,
+                &key_wrap::AES_256_KW,
+                &key_wrap::AES_256_KWP,
+            ),
+        ]
+        .into_iter()
+        .find_map(|(cipher, kw, kwp)| core::ptr::eq(cipher, algorithm).then_some((kw, kwp)))
+        .ok_or_else(|| error(rind::Error::Unsupported))?;
+        Ok(Self {
+            kw: Box::new(AesKek::new(kw, &key).map_err(error)?),
+            kwp: Box::new(AesKek::new(kwp, &key).map_err(error)?),
+        })
     }
 
     /// Wraps `key`, a multiple of 8 bytes from 16, with AES-KW; raises
     /// `WrongLength` for any other length.
     fn wrap<'py>(&self, py: Python<'py>, key: Bytes<'_>) -> PyResult<Bound<'py, PyBytes>> {
         bytes_with(py, &[], key.len() + 8, |out| {
-            self.0.wrap(&key, out).map_err(error)
+            self.kw.wrap_key(&key, out).map_err(error)
         })
     }
 
@@ -112,14 +138,14 @@ impl Kek {
             return Err(error(rind::Error::DecryptFailed));
         }
         bytes_with(py, &[], wrapped.len() - 8, |out| {
-            self.0.unwrap(&wrapped, out).map_err(error)
+            self.kw.unwrap_key(&wrapped, out).map(|_| ()).map_err(error)
         })
     }
 
     /// Wraps `key`, of any length from 1 byte, with AES-KWP.
     fn wrap_padded<'py>(&self, py: Python<'py>, key: Bytes<'_>) -> PyResult<Bound<'py, PyBytes>> {
         bytes_with(py, &[], key.len().next_multiple_of(8) + 8, |out| {
-            self.0.wrap_padded(&key, out).map_err(error)
+            self.kwp.wrap_key(&key, out).map_err(error)
         })
     }
 
@@ -135,8 +161,8 @@ impl Kek {
         }
         let mut key = vec![0; wrapped.len() - 8];
         let len = self
-            .0
-            .unwrap_padded(&wrapped, &mut key)
+            .kwp
+            .unwrap_key(&wrapped, &mut key)
             .map_err(error)?
             .len();
         Ok(bytes(py, &key[..len]))

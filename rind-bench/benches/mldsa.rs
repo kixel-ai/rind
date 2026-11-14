@@ -53,7 +53,7 @@ const MAX_SIGNATURE_LEN: usize = 4627;
 macro_rules! ml_dsa {
     (
         $bench:ident, $id:literal,
-        rind: $rind:ident, $rind_verify:ident,
+        rind: $rind:ident,
         aws_lc_rs: $aws_signing:ident, $aws_verify:ident,
         libcrux: $libcrux:ident,
         rustcrypto: $rustcrypto:ident,
@@ -101,10 +101,10 @@ macro_rules! ml_dsa {
             });
 
             group.bench_function("rind", |b| {
-                use rind::signature::sign::{MlDsaKeyPair, $rind};
+                use rind::ml_dsa::{KeyPair, $rind};
 
                 b.iter(|| {
-                    let key = MlDsaKeyPair::<$rind>::generate().unwrap();
+                    let key = KeyPair::<$rind>::generate().unwrap();
                     black_box(key.public_key());
                 })
             });
@@ -168,8 +168,8 @@ macro_rules! ml_dsa {
             });
 
             group.bench_function("rind", |b| {
-                use rind::signature::sign::{MlDsaKeyPair, $rind};
-                let key = MlDsaKeyPair::<$rind>::generate().unwrap();
+                use rind::ml_dsa::{KeyPair, $rind};
+                let key = KeyPair::<$rind>::generate().unwrap();
 
                 b.iter(|| {
                     black_box(key.sign(MESSAGE).unwrap());
@@ -183,8 +183,8 @@ macro_rules! ml_dsa {
             group.throughput(Throughput::Elements(1));
 
             let (public_key, signature) = {
-                use rind::signature::sign::{MlDsaKeyPair, $rind};
-                let key = MlDsaKeyPair::<$rind>::generate().unwrap();
+                use rind::ml_dsa::{KeyPair, $rind};
+                let key = KeyPair::<$rind>::generate().unwrap();
                 let signature = key.sign(MESSAGE).unwrap();
                 (
                     key.public_key().as_ref().to_vec(),
@@ -245,8 +245,8 @@ macro_rules! ml_dsa {
             });
 
             group.bench_function("rind", |b| {
-                use rind::signature::{PublicKey, verify};
-                let key = PublicKey::new(&verify::$rind_verify, &public_key).unwrap();
+                use rind::ml_dsa::{PublicKey, $rind};
+                let key = PublicKey::<$rind>::new(&public_key).unwrap();
 
                 b.iter(|| {
                     key.verify(MESSAGE, &signature).unwrap();
@@ -259,7 +259,7 @@ macro_rules! ml_dsa {
 
 ml_dsa!(
     mldsa44, "mldsa44",
-    rind: MlDsa44, ML_DSA_44,
+    rind: MlDsa44,
     aws_lc_rs: ML_DSA_44_SIGNING, ML_DSA_44,
     libcrux: ml_dsa_44,
     rustcrypto: MlDsa44,
@@ -268,7 +268,7 @@ ml_dsa!(
 
 ml_dsa!(
     mldsa65, "mldsa65",
-    rind: MlDsa65, ML_DSA_65,
+    rind: MlDsa65,
     aws_lc_rs: ML_DSA_65_SIGNING, ML_DSA_65,
     libcrux: ml_dsa_65,
     rustcrypto: MlDsa65,
@@ -277,7 +277,7 @@ ml_dsa!(
 
 ml_dsa!(
     mldsa87, "mldsa87",
-    rind: MlDsa87, ML_DSA_87,
+    rind: MlDsa87,
     aws_lc_rs: ML_DSA_87_SIGNING, ML_DSA_87,
     libcrux: ml_dsa_87,
     rustcrypto: MlDsa87,
