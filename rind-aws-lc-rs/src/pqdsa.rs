@@ -174,11 +174,14 @@ pub struct PqdsaKeyPair {
 
 impl PqdsaKeyPair {
     fn new(algorithm: &'static PqdsaSigningAlgorithm, key: Key) -> Self {
-        let public_key = with_key!(&key, k => k.public_key());
+        let public_key = with_key!(&key, k => k.public_key().as_ref().to_vec());
         Self {
             algorithm,
             key: Arc::new(key),
-            public_key: PqdsaPublicKey(Arc::new(public_key)),
+            public_key: PqdsaPublicKey {
+                id: algorithm.0.id,
+                bytes: Arc::new(Wiped::new(public_key)),
+            },
         }
     }
 
@@ -236,6 +239,13 @@ impl PqdsaKeyPair {
             Some(_) => Ok(pkcs8::Document::new(k.to_pkcs8().as_ref())),
             None => Err(Unspecified),
         })
+    }
+
+    /// Encodes the private key as [`Self::to_pkcs8v1`] does.
+    #[cfg(feature = "unstable")]
+    #[deprecated(since = "1.18.0", note = "use `PqdsaKeyPair::to_pkcs8v1`")]
+    pub fn to_pkcs8(&self) -> Result<pkcs8::Document, Unspecified> {
+        self.to_pkcs8v1()
     }
 
     /// Signs `msg` into `signature`, which must hold at least
@@ -332,19 +342,25 @@ impl fmt::Debug for PqdsaPrivateKey<'_> {
     }
 }
 
-/// An ML-DSA public key, FIPS 204's encoding.
+/// An ML-DSA key pair's public key, FIPS 204's encoding; wiped on drop under
+/// the `wipe` feature, as the key pair is.
 #[derive(Clone)]
-pub struct PqdsaPublicKey(Arc<rind::signature::PublicKey>);
+pub struct PqdsaPublicKey {
+    id: &'static AlgorithmID,
+    bytes: Arc<Wiped<Vec<u8>>>,
+}
 
 impl AsRef<[u8]> for PqdsaPublicKey {
     fn as_ref(&self) -> &[u8] {
-        (*self.0).as_ref()
+        &self.bytes
     }
 }
 
 impl AsDer<PublicKeyX509Der<'static>> for PqdsaPublicKey {
     fn as_der(&self) -> Result<PublicKeyX509Der<'static>, Unspecified> {
-        Ok(PublicKeyX509Der::new(self.0.to_spki().as_ref().to_vec()))
+        let key =
+            rind::signature::PublicKey::new(self.id.rind(), &self.bytes).map_err(unspecified)?;
+        Ok(PublicKeyX509Der::new(key.to_spki().as_ref().to_vec()))
     }
 }
 

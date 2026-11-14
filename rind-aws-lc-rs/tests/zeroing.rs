@@ -17,6 +17,7 @@ use rind_aws_lc_rs::encoding::{
     AsBigEndian, AsDer, Curve25519SeedBin, EcPrivateKeyBin, EcPrivateKeyRfc5915Der, Pkcs8V1Der,
     Pkcs8V2Der,
 };
+use rind_aws_lc_rs::signature::KeyPair as _;
 use rind_aws_lc_rs::{agreement, cipher, kem, rsa, signature};
 
 #[global_allocator]
@@ -157,13 +158,24 @@ fn kem() {
 #[test]
 fn ml_dsa() {
     let seed: [u8; 32] = distinct(5);
-    let leaked = leaks(&seed, || {
-        let key = signature::PqdsaKeyPair::from_seed(&signature::ML_DSA_65_SIGNING, &seed).unwrap();
-        let _clone = key.clone();
-        let _v1 = key.to_pkcs8v1().unwrap();
-        let _der: Pkcs8V1Der<'static> = key.private_key().as_der().unwrap();
-    });
-    assert_eq!(leaked, 0);
+    let public_key = signature::PqdsaKeyPair::from_seed(&signature::ML_DSA_65_SIGNING, &seed)
+        .unwrap()
+        .public_key()
+        .as_ref()
+        .to_vec();
+    // The public key's bytes past its public seed `rho`.
+    let public_needle = &public_key[32..];
+    for needle in [&seed[..], public_needle] {
+        let leaked = leaks(needle, || {
+            let key =
+                signature::PqdsaKeyPair::from_seed(&signature::ML_DSA_65_SIGNING, &seed).unwrap();
+            let _clone = key.clone();
+            let _public = key.public_key().clone();
+            let _v1 = key.to_pkcs8v1().unwrap();
+            let _der: Pkcs8V1Der<'static> = key.private_key().as_der().unwrap();
+        });
+        assert_eq!(leaked, 0);
+    }
 
     let raw = {
         let key = aws_lc_rs::signature::PqdsaKeyPair::from_seed(
