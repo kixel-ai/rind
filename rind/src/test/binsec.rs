@@ -228,7 +228,7 @@ fn ct_binsec_argon2() {
 
     // The least memory, in one lane: two blocks of each slice, so both
     // halves of the first pass, and a second pass, run in a short search.
-    // The data-dependent half's references are declassified, as Argon2id's
+    // The data-dependent references are declassified, as Argon2id's
     // exception to the constant-time rule allows.
     let params = Params::new(8, 2, 1).unwrap();
     checked(|| {

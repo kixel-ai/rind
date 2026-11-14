@@ -638,8 +638,8 @@ pub mod pbkdf2 {
 /// argon2::verify(params, b"password", b"per-user salt", &stored).unwrap();
 /// ```
 ///
-/// Argon2id's second half reads memory at offsets that depend on the
-/// password, so an attacker who can watch the cache while it runs learns
+/// After the first half of its first pass, Argon2id reads memory at offsets
+/// that depend on the password, so an attacker who can watch the cache learns
 /// something about the password. That is the price of its resistance to
 /// trading memory for time, which RFC 9106 accepts.
 pub mod argon2 {

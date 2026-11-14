@@ -35,7 +35,7 @@ why = "Divides 256 by the window width, which is 4 for the basepoint table rind 
 
 [[public]]
 function = "rind::mid::argon2::argon2id"
-why = "Divides the public memory cost by the public lane count into segments, and takes a reference's lane as the public lane count's remainder of a random word that is public or, in Argon2id's data-dependent half, declassified, as AGENTS.md excepts."
+why = "Divides the public memory cost by the public lane count into segments, and takes a reference's lane as the public lane count's remainder of a random word that is public or, in Argon2id's data-dependent addressing, declassified, as AGENTS.md excepts."
 [public.holds]
 "x86_64-unknown-linux-gnu" = "div x2"
 "aarch64-unknown-linux-gnu" = "udiv x2"
