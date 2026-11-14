@@ -39,7 +39,8 @@ for (const page of pages) {
 }
 
 // The ids a built page's anchors can name.
-const ids = (file: string) => new Set([...text(file).matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
+const ids = (file: string) =>
+	new Set([...tags(text(file))].flatMap(([, attrs]) => attrs.filter(([name]) => name === "id").map(([, value]) => value)));
 
 // GitHub's anchor for each heading of a repository Markdown file.
 function anchors(file: string): Set<string> {
