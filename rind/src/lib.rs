@@ -501,8 +501,8 @@ pub mod ed25519 {
 /// # }
 /// ```
 pub mod ml_dsa {
-    pub use crate::high::signature::ml_dsa::{KeyPair, ParameterSet, Seed, Signature};
-    pub use crate::mid::mldsa::{MlDsa44, MlDsa65, MlDsa87, PublicKey};
+    pub use crate::high::signature::ml_dsa::{KeyPair, ParameterSet, PublicKey, Seed, Signature};
+    pub use crate::mid::mldsa::{MlDsa44, MlDsa65, MlDsa87};
 }
 
 /// Cryptographic hash functions.

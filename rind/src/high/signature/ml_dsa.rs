@@ -10,7 +10,7 @@ use crate::error::{Error, KeyFormatError};
 use crate::high::asn1::{self, Type, pkix};
 use crate::high::{pkcs8, spki};
 use crate::low;
-use crate::mid::mldsa::{self, MlDsa44, MlDsa65, MlDsa87, Params, PublicKey};
+use crate::mid::mldsa::{self, MlDsa44, MlDsa65, MlDsa87, Params};
 
 /// An ML-DSA parameter set, as FIPS 204 standardises them: [`MlDsa44`],
 /// [`MlDsa65`], or [`MlDsa87`], which fixes the sizes of its keys and
@@ -49,11 +49,15 @@ pub struct Algorithm {
     oid: &'static asn1::ObjectId,
 }
 
+/// An ML-DSA public key of parameter set `P`: FIPS 204's encoding, and its
+/// hash `tr`, which every signature it verifies binds in.
+pub struct PublicKey<P: ParameterSet>(mldsa::PublicKey<P>);
+
 impl<P: ParameterSet> PublicKey<P> {
     /// Parses FIPS 204's encoding of a public key: any bytes of the
     /// parameter set's length are one.
     pub fn new(bytes: &[u8]) -> Result<Self, Error> {
-        Self::from_bytes(bytes)
+        mldsa::PublicKey::from_bytes(bytes).map(Self)
     }
 
     /// Parses a public key from its `SubjectPublicKeyInfo` DER, which names
@@ -73,7 +77,19 @@ impl<P: ParameterSet> PublicKey<P> {
     /// Verifies `signature` over `message`: pure ML-DSA with the empty
     /// context, as TLS and X.509 sign.
     pub fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
-        mldsa::verify::<P>(self.as_ref(), &self.tr, &[], message, signature)
+        mldsa::verify::<P>(self.as_ref(), &self.0.tr, &[], message, signature)
+    }
+}
+
+impl<P: ParameterSet> Clone for PublicKey<P> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<P: ParameterSet> AsRef<[u8]> for PublicKey<P> {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
     }
 }
 
@@ -97,25 +113,37 @@ pub(super) const MAX_PRIVATE_KEY_LEN: usize = mldsa::secret_key_len::<MlDsa87>()
 ///
 /// It keeps FIPS 204's encodings, expanding them as each signature needs, as
 /// mldsa-native and aws-lc do.
-pub struct KeyPair<P: ParameterSet>(mldsa::KeyPair<P>);
+///
+/// It wipes its whole value on drop under the `wipe` feature.
+pub struct KeyPair<P: ParameterSet> {
+    pair: mldsa::KeyPair<P>,
+    public: PublicKey<P>,
+}
 
 impl<P: ParameterSet> KeyPair<P> {
+    fn from_parts((pair, public): (mldsa::KeyPair<P>, mldsa::PublicKey<P>)) -> Self {
+        Self {
+            pair,
+            public: PublicKey(public),
+        }
+    }
+
     /// Generates a key pair from the system random source.
     pub fn generate() -> Result<Self, Error> {
-        mldsa::KeyPair::generate().map(Self)
+        mldsa::KeyPair::generate().map(Self::from_parts)
     }
 
     /// Expands a 32-byte seed, FIPS 204's `xi`, into its key pair.
     pub fn from_seed(seed: &[u8]) -> Result<Self, Error> {
         let seed = seed.try_into().map_err(|_| KeyFormatError::WrongLength)?;
-        Ok(Self(mldsa::KeyPair::from_seed(seed)))
+        Ok(Self::from_parts(mldsa::KeyPair::from_seed(seed)))
     }
 
     /// Returns the private key's 32-byte seed, which [`Self::from_seed`]
     /// loads, unless the key was loaded from its expanded form, which has
     /// none.
     pub fn to_seed(&self) -> Option<Seed> {
-        self.0.seed().map(|seed| Seed(*seed))
+        self.pair.seed().map(|seed| Seed(*seed))
     }
 
     /// Loads a PKCS#8 ML-DSA key (RFC 9881), refused if it carries a public
@@ -132,11 +160,11 @@ impl<P: ParameterSet> KeyPair<P> {
         let key = match private_key {
             pkix::MlDsaPrivateKey::Seed(seed) => Self::from_seed(seed.as_octets())?,
             pkix::MlDsaPrivateKey::ExpandedKey(key) => {
-                Self(mldsa::KeyPair::from_secret_key(key.as_octets())?)
+                Self::from_parts(mldsa::KeyPair::from_secret_key(key.as_octets())?)
             }
             pkix::MlDsaPrivateKey::Both(both) => {
                 let key = Self::from_seed(both.seed.as_octets())?;
-                let expanded = key.0.secret_key().as_ref();
+                let expanded = key.pair.secret_key().as_ref();
                 if !low::ct::into_public(low::ct_equal(expanded, both.expandedKey.as_octets())) {
                     return Err(KeyFormatError::MismatchedMlDsaSeed.into());
                 }
@@ -144,7 +172,7 @@ impl<P: ParameterSet> KeyPair<P> {
             }
         };
         match p8.public_key() {
-            Some(public_key) if public_key != key.0.public_key().as_ref() => {
+            Some(public_key) if public_key != key.public.as_ref() => {
                 Err(KeyFormatError::MismatchedPkcs8PublicKey.into())
             }
             _ => Ok(key),
@@ -156,10 +184,10 @@ impl<P: ParameterSet> KeyPair<P> {
     /// seed.
     pub fn to_pkcs8(&self) -> Pkcs8 {
         let _entry = low::Entry::new_secret();
-        let private_key = match self.0.seed() {
+        let private_key = match self.pair.seed() {
             Some(seed) => pkix::MlDsaPrivateKey::Seed(asn1::OctetString::new(seed)),
             None => pkix::MlDsaPrivateKey::ExpandedKey(asn1::OctetString::new(
-                self.0.secret_key().as_ref(),
+                self.pair.secret_key().as_ref(),
             )),
         };
         let mut private_key_buf = [0u8; MAX_PRIVATE_KEY_LEN];
@@ -181,12 +209,12 @@ impl<P: ParameterSet> KeyPair<P> {
 
     /// Returns the public key, which verifies what this key pair signs.
     pub fn public_key(&self) -> &PublicKey<P> {
-        self.0.public_key()
+        &self.public
     }
 
     /// Signs `message`, with fresh randomness from the system random source.
     pub fn sign(&self, message: &[u8]) -> Result<Signature<P>, Error> {
-        self.0.sign(&[], message).map(Signature)
+        self.pair.sign(&[], message).map(Signature)
     }
 }
 
@@ -194,7 +222,7 @@ impl<P: ParameterSet> KeyPair<P> {
 impl<P: ParameterSet> KeyPair<P> {
     /// The key pair the mid layer holds.
     pub(crate) fn inner(&self) -> &mldsa::KeyPair<P> {
-        &self.0
+        &self.pair
     }
 
     /// The parameter set's OID.
@@ -208,6 +236,15 @@ impl<P: ParameterSet> fmt::Debug for KeyPair<P> {
         f.debug_struct("KeyPair")
             .field("algorithm", &format_args!("{}", P::ALGORITHM.name))
             .finish_non_exhaustive()
+    }
+}
+
+// Every field is bytes, or the private key's, whose seed is `None` zeroed.
+impl<P: ParameterSet> low::Zeroable for KeyPair<P> {}
+
+impl<P: ParameterSet> Drop for KeyPair<P> {
+    fn drop(&mut self) {
+        low::zeroise_value(self);
     }
 }
 

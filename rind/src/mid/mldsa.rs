@@ -188,12 +188,11 @@ const fn signature_len<P: Params>() -> usize {
 pub(crate) struct KeyPair<P: Params> {
     seed: Option<[u8; SEED_LEN]>,
     secret_key: P::SecretKey,
-    public_key: PublicKey<P>,
 }
 
-/// An ML-DSA public key of parameter set `P`: FIPS 204's encoding, and its
-/// hash `tr`, which every signature it verifies binds in.
-pub struct PublicKey<P: Params> {
+/// A public key of parameter set `P`: FIPS 204's encoding, and its hash
+/// `tr`, which every signature it verifies binds in.
+pub(crate) struct PublicKey<P: Params> {
     pub(crate) bytes: P::PublicKey,
     pub(crate) tr: [u8; TR_LEN],
 }
@@ -234,51 +233,50 @@ impl<P: Params> AsRef<[u8]> for PublicKey<P> {
 }
 
 impl<P: Params> KeyPair<P> {
-    /// Generates a key pair from the system random source.
-    pub(crate) fn generate() -> Result<Self, Error> {
+    /// Generates a key pair from the system random source, and its public
+    /// key.
+    pub(crate) fn generate() -> Result<(Self, PublicKey<P>), Error> {
         let _entry = Entry::new_secret();
         let mut seed = [0u8; SEED_LEN];
         SystemRandom.fill(&mut seed)?;
         Ok(Self::from_seed(&seed))
     }
 
-    /// FIPS 204's `ML-DSA.KeyGen_internal`: the key pair seed `xi` expands to.
-    pub(crate) fn from_seed(seed: &[u8; SEED_LEN]) -> Self {
+    /// FIPS 204's `ML-DSA.KeyGen_internal`: the key pair seed `xi` expands
+    /// to, and its public key.
+    pub(crate) fn from_seed(seed: &[u8; SEED_LEN]) -> (Self, PublicKey<P>) {
         let _entry = Entry::new_secret();
         let seed = low::ct::into_secret(*seed);
         let mut key = Self {
             seed: Some(seed),
             secret_key: P::SecretKey::zeroed(),
-            public_key: PublicKey::zeroed(),
         };
-        keygen::<P>(
-            &seed,
-            key.public_key.bytes.as_mut(),
-            key.secret_key.as_mut(),
-        );
-        key.public_key.tr = low::ct::into_public(*key.tr());
-        key
+        let mut public_key = PublicKey::<P>::zeroed();
+        keygen::<P>(&seed, public_key.bytes.as_mut(), key.secret_key.as_mut());
+        public_key.tr = low::ct::into_public(*key.tr());
+        (key, public_key)
     }
 
     /// Loads the expanded private key `sk`, checking it as mldsa-native's
     /// `mld_sign_pk_from_sk` does: its `s1` and `s2` must be in range, and its
-    /// `t0` and `tr` must be those its other parts compute.
-    pub(crate) fn from_secret_key(sk: &[u8]) -> Result<Self, Error> {
+    /// `t0` and `tr` must be those its other parts compute. Returns its
+    /// public key too.
+    pub(crate) fn from_secret_key(sk: &[u8]) -> Result<(Self, PublicKey<P>), Error> {
         let _entry = Entry::new_secret();
         let mut key = Self {
             seed: None,
             secret_key: P::SecretKey::zeroed(),
-            public_key: PublicKey::zeroed(),
         };
         if sk.len() != key.secret_key.as_ref().len() {
             return Err(KeyFormatError::WrongLength.into());
         }
         key.secret_key.as_mut().copy_from_slice(sk);
         low::ct::secret_slice(key.secret_key.as_ref());
-        match public_key_from_secret::<P>(key.secret_key.as_ref(), key.public_key.bytes.as_mut()) {
+        let mut public_key = PublicKey::<P>::zeroed();
+        match public_key_from_secret::<P>(key.secret_key.as_ref(), public_key.bytes.as_mut()) {
             true => {
-                key.public_key.tr = low::ct::into_public(*key.tr());
-                Ok(key)
+                public_key.tr = low::ct::into_public(*key.tr());
+                Ok((key, public_key))
             }
             false => Err(KeyFormatError::MlDsaSecretKey.into()),
         }
@@ -293,11 +291,6 @@ impl<P: Params> KeyPair<P> {
     /// FIPS 204's expanded private key encoding.
     pub(crate) fn secret_key(&self) -> &P::SecretKey {
         &self.secret_key
-    }
-
-    /// The public key.
-    pub(crate) fn public_key(&self) -> &PublicKey<P> {
-        &self.public_key
     }
 
     /// `tr`, the public key's hash, which the expanded private key stores.
@@ -1184,9 +1177,9 @@ mod tests {
     #[test]
     fn acvp_key_gen() {
         fn check<P: Params>(test: &serde_json::Value) {
-            let key = KeyPair::<P>::from_seed(&test.hex("seed").try_into().unwrap());
+            let (key, public_key) = KeyPair::<P>::from_seed(&test.hex("seed").try_into().unwrap());
             assert_eq!(
-                key.public_key().as_ref(),
+                public_key.as_ref(),
                 test.hex("pk"),
                 "tcId {}",
                 test.int("tcId")
@@ -1198,8 +1191,8 @@ mod tests {
                 test.int("tcId")
             );
 
-            let loaded = KeyPair::<P>::from_secret_key(&test.hex("sk")).unwrap();
-            assert_eq!(loaded.public_key().as_ref(), test.hex("pk"));
+            let (loaded, public_key) = KeyPair::<P>::from_secret_key(&test.hex("sk")).unwrap();
+            assert_eq!(public_key.as_ref(), test.hex("pk"));
             assert!(loaded.seed().is_none());
         }
         for group in acvp("ML-DSA-keyGen-FIPS204") {
@@ -1212,8 +1205,8 @@ mod tests {
     #[test]
     fn acvp_sig_gen() {
         fn check<P: Params>(group: &serde_json::Value, test: &serde_json::Value) {
-            let key = KeyPair::<P>::from_secret_key(&test.hex("sk")).unwrap();
-            assert_eq!(key.public_key().as_ref(), test.hex("pk"));
+            let (key, public_key) = KeyPair::<P>::from_secret_key(&test.hex("sk")).unwrap();
+            assert_eq!(public_key.as_ref(), test.hex("pk"));
             let rnd = match group.flag("deterministic") {
                 true => [0; RND_LEN],
                 false => test.hex("rnd").try_into().unwrap(),
@@ -1307,11 +1300,11 @@ mod tests {
     /// checks its public key, and signs each test with its `rnd`, or zeros.
     fn wycheproof_sign<P: Params>(
         name: &str,
-        load: fn(&WycheproofGroup) -> Result<KeyPair<P>, Error>,
+        load: fn(&WycheproofGroup) -> Result<(KeyPair<P>, PublicKey<P>), Error>,
     ) {
         for group in wycheproof_groups::<WycheproofGroup>(name) {
-            let key = match load(&group) {
-                Ok(key) => key,
+            let (key, loaded_public_key) = match load(&group) {
+                Ok(loaded) => loaded,
                 Err(_) => {
                     for test in &group.tests {
                         assert_eq!(test.result, Expected::Invalid, "tcId {}", test.id);
@@ -1320,7 +1313,7 @@ mod tests {
                 }
             };
             let public_key = hex::decode(group.public_key.as_ref().unwrap()).unwrap();
-            assert_eq!(key.public_key().as_ref(), public_key);
+            assert_eq!(loaded_public_key.as_ref(), public_key);
             // `tr` is the public key's hash, though a loaded private key's
             // copy is marked secret.
             let tr = low::ct::into_public(*key.tr());
@@ -1337,7 +1330,7 @@ mod tests {
                 let signature = key.sign_internal(&mu, &rnd).unwrap();
                 assert_eq!(signature.as_ref(), test.sig, "tcId {}", test.id);
                 let _entry = Entry::new_public();
-                verify_internal::<P>(key.public_key().as_ref(), &mu, signature.as_ref()).unwrap();
+                verify_internal::<P>(loaded_public_key.as_ref(), &mu, signature.as_ref()).unwrap();
             }
         }
     }
@@ -1391,8 +1384,8 @@ mod tests {
     #[test]
     fn sign_verify_round_trip() {
         fn check<P: Params>() {
-            let key = KeyPair::<P>::generate().unwrap();
-            let pk = key.public_key().as_ref();
+            let (key, public_key) = KeyPair::<P>::generate().unwrap();
+            let pk = public_key.as_ref();
             let tr = tr(pk);
             assert_eq!(&tr, key.tr());
             let signature = key.sign(b"context", b"message").unwrap();

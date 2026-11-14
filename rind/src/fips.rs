@@ -600,10 +600,10 @@ mod kat {
         use crate::mid::mldsa::{KeyPair, MlDsa44, verify};
 
         let seed: [u8; 32] = hex_array(ML_DSA_SEED);
-        let key = KeyPair::<MlDsa44>::from_seed(&input("ml_dsa_keygen", seed));
+        let (key, public_key) = KeyPair::<MlDsa44>::from_seed(&input("ml_dsa_keygen", seed));
         check(
             "ml_dsa_keygen",
-            sha256_of(key.public_key().as_ref())[..] == hex(ML_DSA_PK_SHA256)
+            sha256_of(public_key.as_ref())[..] == hex(ML_DSA_PK_SHA256)
                 && sha256_of(key.secret_key().as_ref())[..] == hex(ML_DSA_SK_SHA256),
         )?;
 
@@ -620,7 +620,7 @@ mod kat {
         )?;
 
         let verified = verify::<MlDsa44>(
-            key.public_key().as_ref(),
+            public_key.as_ref(),
             key.tr(),
             b"",
             &input("ml_dsa_verify", message),
