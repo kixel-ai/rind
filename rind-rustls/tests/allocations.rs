@@ -100,13 +100,14 @@ fn transfer(from: &mut Connection, to: &mut Connection, buf: &mut Vec<u8>) {
 /// The allocations one full handshake makes, both peers' and the server's
 /// session tickets included.
 fn count(client: &Arc<ClientConfig>, server: &Arc<ServerConfig>) -> u64 {
+    // Allocated before counting, and sized for any flight so that it never
+    // grows: the harness's buffer is not the handshake's.
+    let mut buf = Vec::with_capacity(1 << 16);
     let before = ALLOCATIONS.with(Cell::get);
     let mut client = Connection::Client(
         ClientConnection::new(client.clone(), "localhost".try_into().unwrap()).unwrap(),
     );
     let mut server = Connection::Server(ServerConnection::new(server.clone()).unwrap());
-    // Sized for any flight, so that its growth stays out of the count.
-    let mut buf = Vec::with_capacity(1 << 16);
     while client.is_handshaking() || server.is_handshaking() || server.wants_write() {
         transfer(&mut client, &mut server, &mut buf);
         transfer(&mut server, &mut client, &mut buf);
@@ -117,10 +118,10 @@ fn count(client: &Arc<ClientConfig>, server: &Arc<ServerConfig>) -> u64 {
 /// Each key type's allocations per handshake over rind-rustls's default
 /// provider, which leads with X25519MLKEM768.
 const EXPECTED: [(&str, u64); 4] = [
-    ("ecdsa-p256", 246),
-    ("ecdsa-p384", 250),
-    ("ecdsa-p521", 254),
-    ("ed25519", 246),
+    ("ecdsa-p256", 245),
+    ("ecdsa-p384", 249),
+    ("ecdsa-p521", 253),
+    ("ed25519", 245),
 ];
 
 #[test]

@@ -1523,10 +1523,10 @@ def report(hosts, tiers, verified, gaps):
             "the host didn't time it, as its section says.",
             "",
             "The rustls rows run both peers in one process. The every-logical-CPU rows run one handshake per "
-            "thread on all of the host's logical CPUs at once, against one shared server config, and give the "
+            "thread on all of the host's logical CPUs at once, each thread with its own client and server, and give the "
             "machine's time per handshake; each host's text gives rind-rustls's throughput there over its "
-            "one-thread rate. A full handshake over rind-rustls's default provider, both peers, makes 246 heap "
-            "allocations with an ECDSA P-256 certificate and 250 with RSA-2048 on x86_64, against 215 for both "
+            "one-thread rate. A full handshake over rind-rustls's default provider, both peers, makes 245 heap "
+            "allocations with an ECDSA P-256 certificate and 249 with RSA-2048 on x86_64, against 214 for both "
             "over rustls's aws-lc-rs provider, as of 2026-11-13; `rind-rustls/tests/allocations.rs` pins rind's for ECDSA and Ed25519.",
             "",
             *(
