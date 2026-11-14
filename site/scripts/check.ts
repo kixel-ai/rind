@@ -150,27 +150,33 @@ function js(file: string, body: string) {
 	for (const m of body.matchAll(/\b(?:import\s*\(?|from)\s*["']([^"']+)["']/g)) check(file, m[1], true);
 }
 
-for (const file of files) {
-	if (file.endsWith(".html")) {
-		const html = text(file);
-		for (const [tag, attrs] of tags(html)) {
-			for (const [name, value] of attrs) {
-				if (name === "srcset" || name === "imagesrcset") {
-					for (const candidate of value.split(",")) check(file, candidate.trim().split(/\s+/)[0], true);
-				} else if (name === "href" && (tag === "a" || tag === "area")) {
-					check(file, value, false);
-				} else if (["href", "xlink:href", "src", "poster", "data", "ping", "component-url", "renderer-url"].includes(name)) {
-					check(file, value, true);
-				} else if (name === "style") {
-					css(file, value);
-				}
+// A page's markup, or an iframe's `srcdoc`, which the browser renders as one.
+function page(file: string, html: string) {
+	for (const [tag, attrs] of tags(html)) {
+		for (const [name, value] of attrs) {
+			if (name === "srcset" || name === "imagesrcset") {
+				for (const candidate of value.split(",")) check(file, candidate.trim().split(/\s+/)[0], true);
+			} else if (name === "href" && (tag === "a" || tag === "area")) {
+				check(file, value, false);
+			} else if (["href", "xlink:href", "src", "poster", "data", "ping", "component-url", "renderer-url"].includes(name)) {
+				check(file, value, true);
+			} else if (name === "style") {
+				css(file, value);
+			} else if (name === "srcdoc") {
+				page(file, value);
 			}
 		}
-		for (const m of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) css(file, m[1]);
-		for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
-			const type = m[1].match(/\btype\s*=\s*["']?([^"'\s>]+)/i)?.[1].toLowerCase();
-			if (type === undefined || type === "module" || type.endsWith("javascript")) js(file, m[2]);
-		}
+	}
+	for (const m of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) css(file, m[1]);
+	for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+		const type = m[1].match(/\btype\s*=\s*["']?([^"'\s>]+)/i)?.[1].toLowerCase();
+		if (type === undefined || type === "module" || type.endsWith("javascript")) js(file, m[2]);
+	}
+}
+
+for (const file of files) {
+	if (file.endsWith(".html")) {
+		page(file, text(file));
 	} else if (file.endsWith(".css")) {
 		css(file, text(file));
 	} else if (file.endsWith(".js")) {
