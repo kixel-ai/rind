@@ -75,6 +75,23 @@ if (!dispatch) throw new Error("sh/dispatch.sh has no [site] scope");
 const scope = new RegExp(dispatch[1]);
 const repoFiles = new Set<string>(sources);
 
+// The build reads repository files only through repo.ts's `read`, which takes
+// one of `sources`, so the scope check above sees every file it reads: no other
+// source file may touch the file system or import from outside site/.
+const site = path.join(root, "site");
+for (const file of walk(path.join(site, "src"))) {
+	const rel = path.relative(site, file);
+	const body = readFileSync(file, "utf8");
+	for (const m of body.matchAll(/\b(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
+		if (/^(?:node:)?fs(?:\/|$)/.test(m[1]) && rel !== path.join("src", "lib", "repo.ts")) {
+			fail(`${rel}: imports ${m[1]}; read repository files through repo.ts's read() instead`);
+		}
+		if (m[1].startsWith(".") && path.relative(site, path.resolve(path.dirname(file), m[1])).startsWith("..")) {
+			fail(`${rel}: imports ${m[1]}, outside site/; read it through repo.ts's read() instead`);
+		}
+	}
+}
+
 const blob = new RegExp(`^${repoUrl}/(?:blob|tree)/main/([^#?]+)`);
 const raw = /^https:\/\/raw\.githubusercontent\.com\/kixel-ai\/rind\/main\/([^#?]+)/;
 
@@ -119,13 +136,38 @@ function css(file: string, body: string) {
 	for (const m of body.matchAll(/@import\s+['"]([^'"]+)/gi)) check(file, m[1], true);
 }
 
+// A numeric character reference's character, or U+FFFD where HTML gives one
+// for zero, a surrogate, or a value past Unicode.
+const codePoint = (n: number) =>
+	n === 0 || n > 0x10ffff || (n >= 0xd800 && n <= 0xdfff) ? "\ufffd" : String.fromCodePoint(n);
+
+// The URLs of a srcset's candidates. A URL may hold commas, as a data: URL
+// does, so a candidate ends at whitespace, or at a comma closing the URL.
+function srcset(value: string): string[] {
+	const urls: string[] = [];
+	let rest = value;
+	for (;;) {
+		rest = rest.replace(/^[\s,]+/, "");
+		if (rest === "") return urls;
+		const url = rest.match(/^\S+/)?.[0] ?? "";
+		rest = rest.slice(url.length);
+		if (url.endsWith(",")) {
+			urls.push(url.replace(/,+$/, ""));
+			continue;
+		}
+		urls.push(url);
+		// Skip the descriptors, up to the comma that ends the candidate.
+		rest = rest.replace(/^(?:[^,(]|\([^)]*\))*/, "");
+	}
+}
+
 // Each start tag's lowercased name and attributes, however their values are
 // quoted, with character references in the values decoded.
 function* tags(html: string): Generator<[string, [string, string][]]> {
 	const decode = (v: string) =>
 		v.replace(/&(?:#(\d+)|#x([\da-f]+)|(amp|quot|apos|lt|gt));/gi, (_, dec, hex, named) =>
 			dec || hex
-				? String.fromCodePoint(Number.parseInt(dec ?? hex, dec ? 10 : 16))
+				? codePoint(Number.parseInt(dec ?? hex, dec ? 10 : 16))
 				: { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" }[named.toLowerCase() as "amp"],
 		);
 	const tag = /<([a-z][^\s/>]*)((?:\s*[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*\/?>/gi;
@@ -144,18 +186,23 @@ function* tags(html: string): Generator<[string, [string, string][]]> {
 }
 
 // Scripts, inline or built, load every module specifier, local ones included:
-// `import "x"`, `import("x")`, and the `from "x"` of named imports and
-// re-exports, minified or not.
+// `import "x"`, `import("x")` or ``import(`x`)``, and the `from "x"` of named
+// imports and re-exports, minified or not.
 function js(file: string, body: string) {
-	for (const m of body.matchAll(/\b(?:import\s*\(?|from)\s*["']([^"']+)["']/g)) check(file, m[1], true);
+	for (const m of body.matchAll(/\b(?:import\s*\(?|from)\s*(["'`])((?:(?!\1).)+)\1/g)) {
+		// A template literal with a substitution names no one module to check.
+		if (m[1] !== "`" || !m[2].includes("${")) check(file, m[2], true);
+	}
 }
 
 // A page's markup, or an iframe's `srcdoc`, which the browser renders as one.
 function page(file: string, html: string) {
 	for (const [tag, attrs] of tags(html)) {
 		for (const [name, value] of attrs) {
-			if (name === "srcset" || name === "imagesrcset") {
-				for (const candidate of value.split(",")) check(file, candidate.trim().split(/\s+/)[0], true);
+			if (tag === "base" && name === "href") {
+				fail(`${file}: <base href> changes how every URL resolves, which this check does not follow`);
+			} else if (name === "srcset" || name === "imagesrcset") {
+				for (const url of srcset(value)) check(file, url, true);
 			} else if (name === "href" && (tag === "a" || tag === "area")) {
 				check(file, value, false);
 			} else if (["href", "xlink:href", "src", "poster", "data", "ping", "component-url", "renderer-url"].includes(name)) {

@@ -16,6 +16,13 @@ export interface Page {
 	markdown: () => string;
 }
 
+// A fenced code block holding `code`, its fence longer than any backtick run in it.
+function fence(code: string): string {
+	const longest = Math.max(0, ...[...code.matchAll(/`+/g)].map((m) => m[0].length));
+	const ticks = "`".repeat(Math.max(3, longest + 1));
+	return `${ticks}text\n${code}\n${ticks}`;
+}
+
 // The Markdown twin's path: `/` has no name of its own, so it is `/index.md`.
 export const twinPath = (page: Page) => (page.path === "/" ? "/index.md" : `${page.path}.md`);
 
@@ -30,7 +37,7 @@ export const home: Page = {
 			...landing.claims.map((c) => `## ${c.icon} ${link(c.title, c.proof)}\n\n${inline(c.body).trim()}`),
 			"## Switch with an agent",
 			markdown(landing.agentLead),
-			"```text\n" + landing.prompt + "\n```",
+			fence(landing.prompt),
 			markdown(landing.agentAfter),
 			`## ${landing.candorTitle}`,
 			markdown(landing.candor),

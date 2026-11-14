@@ -1,17 +1,9 @@
 import { expect, test } from "bun:test";
-import type { Token } from "marked";
-import { hrefs, inline, lex, markdown } from "./markdown";
+import { hrefs, html, lex, markdown } from "./markdown";
 
-// Each link's destination and title, nested ones included.
-function links(tokens: Token[]): [string, string | null | undefined][] {
-	return tokens.flatMap((t) => [
-		...(t.type === "link" ? [[t.href, t.title] as [string, string | null | undefined]] : []),
-		...("tokens" in t && t.tokens ? links(t.tokens) : []),
-	]);
-}
-
-// A destination with any character survives being written back as Markdown.
+// The twin's Markdown renders to the same HTML as the source it was written from.
 test.each([
+	// Link destinations and titles.
 	"[a](<https://example.com/a)b>)",
 	"[a](https://en.wikipedia.org/wiki/X_(y))",
 	"[a](<https://example.com/a b>)",
@@ -19,27 +11,25 @@ test.each([
 	"[a](https://example.com/a\\b)",
 	'[a](https://example.com "say \\"hi\\" \\\\ there")',
 	"[a][r]\n\n[r]: <https://example.com/(r> 'ref'",
+	// Link labels, whose escapes marked removes.
+	"[a\\]b](/guide)",
+	"[a\\[b\\*c\\_d](/guide)",
+	"[x `]` y](/z) and [**bold \\] text**](/w)",
+	// Lists: starts, and items continued past markers of any width.
+	"3. three\n4. four",
+	"3. parent\n   - child",
+	"10. parent\n    - child",
+	"- one\n- two\n\n  more of two",
 ])("%s", (source) => {
-	const before = lex(source);
-	const paragraph = before.find((t) => t.type === "paragraph");
-	const written = inline(paragraph && "tokens" in paragraph ? (paragraph.tokens ?? []) : []);
-	expect(links(lex(written))).toEqual(links(before));
-	expect(links(before).length).toBe(1);
-});
-
-// Links in table cells, header and body, are found like any other.
-test("hrefs reads table cells", () => {
-	expect(hrefs(lex("| [Head](/head) |\n| --- |\n| [Missing](/missing) |"))).toEqual(["/head", "/missing"]);
-});
-
-// An ordered list keeps the number it starts at.
-test("markdown keeps an ordered list's start", () => {
-	const written = markdown(lex("3. three\n4. four"));
-	expect(written).toBe("3. three\n4. four");
-	expect(lex(written).find((t) => t.type === "list")).toMatchObject({ ordered: true, start: 3 });
+	expect(html(lex(markdown(lex(source))))).toBe(html(lex(source)));
 });
 
 // A task item's checkbox has no rendering, so it fails rather than vanish.
 test("markdown refuses a task list", () => {
 	expect(() => markdown(lex("- [ ] todo"))).toThrow("task list item");
+});
+
+// Links in table cells, header and body, are found like any other.
+test("hrefs reads table cells", () => {
+	expect(hrefs(lex("| [Head](/head) |\n| --- |\n| [Missing](/missing) |"))).toEqual(["/head", "/missing"]);
 });

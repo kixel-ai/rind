@@ -30,6 +30,8 @@ export function markdown(blocks: Token[]): string {
 function block(token: Token): string {
 	switch (token.type) {
 		case "space":
+		// A reference definition is written inline at each link that uses it.
+		case "def":
 			return "";
 		case "paragraph":
 			return inline(token.tokens ?? []);
@@ -43,7 +45,8 @@ function block(token: Token): string {
 					if (item.task) throw new Error(`no Markdown rendering for a task list item: ${item.raw}`);
 					const marker = list.ordered ? `${start + i}.` : "-";
 					const body = item.tokens.map((t) => (t.type === "text" ? inline(t.tokens ?? []) : block(t)));
-					return `${marker} ${body.join("\n").replaceAll("\n", "\n  ")}`;
+					// A continuation line is indented past the marker, or it leaves the item.
+					return `${marker} ${body.join("\n").replaceAll("\n", `\n${" ".repeat(marker.length + 1)}`)}`;
 				})
 				.join("\n");
 		}
@@ -52,18 +55,22 @@ function block(token: Token): string {
 	}
 }
 
-export function inline(tokens: Token[]): string {
+// Inline tokens as Markdown. In a link's label, marked has already removed the
+// escapes from text, so `label` puts them back where a character would close the
+// label or start a span.
+export function inline(tokens: Token[], label = false): string {
 	return tokens
 		.map((t) => {
 			switch (t.type) {
 				case "text":
-					return t.tokens ? inline(t.tokens) : t.raw;
+					if (t.tokens) return inline(t.tokens, label);
+					return label ? t.raw.replace(/[\\[\]*_`<!]/g, "\\$&") : t.raw;
 				case "strong":
-					return `**${inline(t.tokens ?? [])}**`;
+					return `**${inline(t.tokens ?? [], label)}**`;
 				case "em":
-					return `*${inline(t.tokens ?? [])}*`;
+					return `*${inline(t.tokens ?? [], label)}*`;
 				case "link":
-					return link(inline(t.tokens ?? []), t.href, t.title);
+					return link(inline(t.tokens ?? [], true), t.href, t.title);
 				case "codespan":
 				case "escape":
 				case "br":
