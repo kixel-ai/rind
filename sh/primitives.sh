@@ -57,7 +57,7 @@ cd "$(git rev-parse --show-toplevel)"
 # also runs the CPU tests (`::cpu::`), which assert a run took the dispatch
 # path its CI step names.
 primitives=(
-    'aes|aes|gcm|ghash|gmac|compute_iv|^cipher\.rs$|^aead(\.rs$|/)|aes gcm ghash gmac cipher aead quic|aes_gcm cipher key_wrap'
+    'aes|aes|gcm|ghash|gmac|compute_iv|^cipher\.rs$|^aead(\.rs$|/)|aes gcm ghash gmac cipher aead quic key_wrap|aes_gcm cipher key_wrap'
     'chacha|chacha|poly1305|poly_hash|^aead(\.rs$|/)|chacha poly1305 aead quic|chacha20poly1305 xchacha20poly1305'
     'sha1|sha1|sha_armv4|^low/portable/sha\.rs$|sha1 digest hashes compress_blocks hmac hkdf pbkdf2|sha1 hmac'
     'sha2|sha256|sha512|sha_|sha-?2|^low/portable/sha\.rs$|^high/(digest|hash|hmac|hkdf|pbkdf2|hmac_drbg)\.rs$|sha2 sha256 sha384 sha512 digest hash hashes compress_blocks hmac hkdf pbkdf2 drbg ed25519|sha2 hmac hkdf pbkdf2 ed25519'

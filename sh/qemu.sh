@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build, lint, and test a target with no rind assembly, under qemu-user
+# Build, lint, and test a target other than armv7, under qemu-user
 # unless the host runs it natively, as `just qemu <shell>` runs it inside that
 # flake dev shell, which names the target. Optimised for qemu, but keeping the
 # checks a debug build has.
@@ -32,15 +32,21 @@ export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
 cargo clippy "${packages[@]}" --locked --release --target "$target" --all-targets -- --deny warnings
 
 # RIND_SCOPE=BASE runs only the tests of the primitives the branch changed
-# since BASE, as sh/primitives.sh maps them for the portable backend.
+# since BASE, as sh/primitives.sh maps them for the target's backend, which
+# rind/build.rs picks: aarch64's own, and the portable one for every other
+# target these shells name.
+case "$target" in
+    aarch64-*) backend=aarch64 ;;
+    *) backend=portable ;;
+esac
 filter=()
 if [[ -n "${RIND_SCOPE:-}" ]]; then
-    scope=$(sh/changed.sh "$RIND_SCOPE" | sh/primitives.sh tests - portable)
+    scope=$(sh/changed.sh "$RIND_SCOPE" | sh/primitives.sh tests - "$backend")
     mapfile -t filter <<<"$scope"
 fi
 case "${filter[0]:-all}" in
     all) cargo test "${packages[@]}" --locked --release --target "$target" ;;
-    none) echo "qemu: nothing changed since $RIND_SCOPE reaches the portable backend's tests" >&2 ;;
+    none) echo "qemu: nothing changed since $RIND_SCOPE reaches the $backend backend's tests" >&2 ;;
     *) cargo test "${packages[@]}" --locked --release --target "$target" -- "${filter[@]}" ;;
 esac
 cargo test -p rind --features wipe --test zeroing --test heap_scratch --locked --release --target "$target"
