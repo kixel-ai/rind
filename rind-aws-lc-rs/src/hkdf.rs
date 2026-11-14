@@ -6,6 +6,7 @@
 
 use core::fmt;
 
+use crate::wipe::Wiped;
 use crate::{error, hmac};
 
 /// An HKDF algorithm, chosen by one of this module's constants.
@@ -57,7 +58,7 @@ impl Salt {
         let prk = hmac::sign(&self.0, secret);
         Prk(
             hmac::Key::new(self.0.algorithm(), prk.as_ref()),
-            PrkMode::ExtractExpand,
+            Wiped::new(true),
         )
     }
 
@@ -89,29 +90,15 @@ pub trait KeyType {
 
 /// A pseudorandom key, from which [`Prk::expand`] derives any number of keys;
 /// wiped on drop under the `wipe` feature.
+// The flag records whether HKDF-Extract made it, which only `Debug` shows, as
+// aws-lc-rs's does; it is wiped with the key.
 #[derive(Clone)]
-pub struct Prk(hmac::Key, PrkMode);
-
-// How a `Prk` was made, which only its `Debug` shows, as aws-lc-rs's does.
-#[derive(Clone, Copy)]
-enum PrkMode {
-    Expand,
-    ExtractExpand,
-}
-
-impl fmt::Debug for PrkMode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Expand => f.debug_struct("Expand").finish_non_exhaustive(),
-            Self::ExtractExpand => f.debug_struct("ExtractExpand").finish_non_exhaustive(),
-        }
-    }
-}
+pub struct Prk(hmac::Key, Wiped<bool>);
 
 impl Prk {
     /// Takes `value` as the pseudorandom key itself, skipping HKDF-Extract.
     pub fn new_less_safe(algorithm: Algorithm, value: &[u8]) -> Self {
-        Self(hmac::Key::new(algorithm.0, value), PrkMode::Expand)
+        Self(hmac::Key::new(algorithm.0, value), Wiped::new(false))
     }
 
     /// Derives key material for the concatenation of `info` (HKDF-Expand),
@@ -161,14 +148,20 @@ impl fmt::Debug for Prk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("hkdf::Prk")
             .field("algorithm", &self.0.algorithm())
-            .field("mode", &self.1)
+            .field(
+                "mode",
+                &format_args!(
+                    "{} {{ .. }}",
+                    if *self.1 { "ExtractExpand" } else { "Expand" }
+                ),
+            )
             .finish()
     }
 }
 
 impl From<Okm<'_, Algorithm>> for Prk {
     fn from(okm: Okm<'_, Algorithm>) -> Self {
-        Self(hmac::Key::from(okm.into_hmac()), PrkMode::Expand)
+        Self(hmac::Key::from(okm.into_hmac()), Wiped::new(false))
     }
 }
 
