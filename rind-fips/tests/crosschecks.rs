@@ -366,13 +366,20 @@ fn hkdf() {
             hkdf::Salt::new(ours, &salt)
                 .extract(&secret)
                 .unwrap()
-                .expand(&info, out_len)
-                .unwrap()
-                .fill(&mut out)
+                .fill(&info, &mut out)
                 .unwrap();
             let mut theirs_out = vec![0u8; out_len];
             aws_lc_rs::hkdf::Salt::new(theirs_algorithm, &salt)
                 .extract(&secret)
+                .expand(&info, Len(out_len))
+                .unwrap()
+                .fill(&mut theirs_out)
+                .unwrap();
+            assert_eq!(out, theirs_out);
+
+            // The secret taken as a PRK as it is.
+            hkdf::Prk::new(ours, &secret).fill(&info, &mut out).unwrap();
+            aws_lc_rs::hkdf::Prk::new_less_safe(theirs_algorithm, &secret)
                 .expand(&info, Len(out_len))
                 .unwrap()
                 .fill(&mut theirs_out)

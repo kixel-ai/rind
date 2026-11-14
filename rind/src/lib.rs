@@ -530,8 +530,10 @@ pub mod constant_time {
 
 /// Key derivation with HKDF.
 ///
-/// A [`hkdf::Salt`] extracts a [`hkdf::Prk`] from a secret, which then expands
-/// into any number of keys, each exactly as long as what it becomes.
+/// A [`hkdf::Salt`] extracts a [`hkdf::Prk`] from a secret, or
+/// [`hkdf::Prk::new`] takes one a protocol already holds. It then expands
+/// into any number of keys, each exactly as long as what it becomes, or fills
+/// a buffer.
 ///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
@@ -544,7 +546,10 @@ pub mod constant_time {
 ///
 /// let info: [&[u8]; 2] = [b"label", b"context"];
 /// let mut bytes = [0u8; 16];
-/// prk.expand(&info, bytes.len())?.fill(&mut bytes)?;
+/// prk.fill(&info, &mut bytes)?;
+///
+/// let loaded = hkdf::Prk::new(&hkdf::HKDF_SHA256, &[0x0b; 32]);
+/// loaded.fill(&info, &mut bytes)?;
 /// # Ok(())
 /// # }
 /// ```
