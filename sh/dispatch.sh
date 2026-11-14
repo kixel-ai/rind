@@ -239,6 +239,9 @@ for module in "${selected[@]}"; do
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
                 cargo test "${libs[@]}" --locked --doc
+                # A broken or private intra-doc link renders as plain text on
+                # docs.rs.
+                RUSTDOCFLAGS='--deny warnings' cargo doc "${libs[@]}" --no-deps --locked
             fi
             ;;
         fix:rs)
