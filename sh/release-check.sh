@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run, at a release PR's head on a Linux x86_64 host, every suite the scheduled
-# workflows run on a Linux x86_64 runner, for the crates the PR versions plus
-# their dependents, then record the result as the `release-check` commit status
+# workflows run on a Linux x86_64 runner that reaches the crates the PR versions
+# or their dependents, then record the result as the `release-check` commit status
 # on that head, so a later release-plz update visibly needs a re-run.
 #
 # Usage: sh/release-check.sh --check
@@ -15,7 +15,9 @@
 # a job it cannot place, so a new Linux job joins this check or fails its PR.
 # Rows this host cannot run (macOS, Windows, arm64, and those `classify`
 # leaves to the runners) need the latest scheduled run of their workflow on
-# `main` to have passed; the status links build's.
+# `main` to have passed; the status links build's. The selection scopes
+# `just ci` and skips whole jobs (see `gate` in `classify`); a job that runs
+# its own steps runs them unchanged, as its workflow does.
 #
 # PR defaults to the open release-plz PR. Naming JOBs (globs over
 # `workflow/job`, `ci`, or `qemu/SHELL`) runs only those and records nothing.
@@ -166,9 +168,12 @@ run_steps() {
             echo "--> skipping step: $name" >&2
             continue
         fi
-        # Lifting a sysctl takes root, so the host must already have it.
+        # Lifting a sysctl takes root, so the host must already have it. A
+        # host without the key, such as one without Ubuntu's AppArmor
+        # patches, has nothing to lift.
         if [[ "$run" =~ ^sudo\ sysctl\ -w\ ([a-z0-9_.]+)=([^[:space:]]+)[[:space:]]*$ ]]; then
-            if [[ $(sysctl -n "${BASH_REMATCH[1]}") != "${BASH_REMATCH[2]}" ]]; then
+            local value
+            if value=$(sysctl -n "${BASH_REMATCH[1]}" 2>/dev/null) && [[ "$value" != "${BASH_REMATCH[2]}" ]]; then
                 echo "error: run: sudo sysctl -w ${BASH_REMATCH[1]}=${BASH_REMATCH[2]}" >&2
                 return 1
             fi
@@ -454,9 +459,13 @@ done
 
 # Every target the flake can test under qemu, beyond the qemu job's matrix.
 # shellcheck disable=SC2016
-mapfile -t qemu < <(nix eval --json "$PWD#devShells.x86_64-linux" \
+qemu=$(nix eval --json "$PWD#devShells.x86_64-linux" \
     --apply 's: builtins.filter (n: s.${n} ? RIND_QEMU_TARGET) (builtins.attrNames s)' | jq -r '.[]')
-for shell in "${qemu[@]}"; do
+[[ -n "$qemu" ]] || {
+    echo "error: the flake defines no qemu shells" >&2
+    exit 1
+}
+for shell in $qemu; do
     yq -e ".jobs.qemu.strategy.matrix.shell[] | select(. == \"$shell\")" .github/workflows/build.yml >/dev/null 2>&1 && continue
     want "qemu/$shell" || continue
     echo "==> qemu/$shell" >&2
