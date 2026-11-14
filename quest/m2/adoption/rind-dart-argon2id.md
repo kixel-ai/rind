@@ -15,10 +15,10 @@ rind-dart exposes rind's `argon2` module, and
   filling a `&mut [u8]`, as one API for Rust and FFI callers (rejected: an
   FFI-only entry point in rind-dart).
 - `cryptography`'s `Argon2id` takes `memory`, `parallelism`, `iterations`,
-  and `hashLength` at runtime, while `rind::argon2::Params::new` takes
-  memory, passes, and lanes at runtime and `derive` fixes the output length
-  at compile time; the decision above gives both a runtime form the FFI passes
-  the package's choices through.
+  and `hashLength` at runtime. Today `rind::argon2::Params::new` takes memory,
+  passes, and lanes at runtime, but `derive` and `verify` take a `[u8; N]`
+  whose length is fixed at compile time; the decision above changes both to
+  slices, so the FFI passes the package's choices through.
 - Its `deriveKey` also takes an optional secret and associated data, which
   rind's `derive` does not; recommended: throw `UnsupportedError` when either
   is non-empty, as the adapter does for other unsupported parameters.
