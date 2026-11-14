@@ -203,13 +203,28 @@ pub mod hpke {
     };
 }
 
-/// RSA encryption: RSA-OAEP with SHA-256, SHA-384, or SHA-512, and SHA-1
-/// under [`rsa::legacy`].
+/// RSA: PKCS#1 v1.5 and PSS signatures, and RSA-OAEP encryption.
 ///
-/// RSA signatures are under [`signature`], and take this module's
-/// [`KeySize`](rsa::KeySize) and [`PublicKeyComponents`](rsa::PublicKeyComponents)
-/// too. PKCS#1 v1.5 encryption, which invites padding-oracle attacks, is
-/// refused.
+/// A [`KeyPair`](rsa::KeyPair) signs with any [`rsa::sign`] algorithm, and
+/// a [`PublicKey`](rsa::PublicKey) verifies with any [`rsa::verify`]
+/// algorithm whose floor its modulus meets: neither is bound to a padding,
+/// as TLS picks one per handshake.
+///
+/// ```
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::rsa::{KeyPair, KeySize, PublicKey, sign, verify};
+///
+/// let key_pair = KeyPair::generate(KeySize::Rsa2048)?;
+/// let signature = key_pair.sign(&sign::PSS_SHA256, b"hello")?;
+///
+/// let public_key = PublicKey::new(key_pair.public_key().as_ref())?;
+/// public_key.verify(&verify::PSS_SHA256, b"hello", signature.as_ref())?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// An RSA-OAEP key is bound to its algorithm. PKCS#1 v1.5 encryption,
+/// which invites padding-oracle attacks, is refused.
 ///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
@@ -217,11 +232,11 @@ pub mod hpke {
 ///
 /// // The recipient generates a key, and sends its public key to the sender.
 /// let decrypting_key = DecryptingKey::generate(&OAEP_SHA256, KeySize::Rsa2048)?;
-/// let public_key = decrypting_key.to_spki();
+/// let public_key = decrypting_key.public_key().to_spki();
 ///
 /// // The sender parses the public key for the same algorithm, and encrypts
 /// // a message to it.
-/// let encrypting_key = EncryptingKey::new(&OAEP_SHA256, public_key.as_ref())?;
+/// let encrypting_key = EncryptingKey::from_spki(&OAEP_SHA256, public_key.as_ref())?;
 /// let ciphertext = encrypting_key.encrypt(b"hello", b"")?;
 ///
 /// // The recipient decrypts it with the same label.
@@ -235,8 +250,36 @@ pub mod rsa {
         Ciphertext, DecryptingKey, EncryptingKey, OAEP_SHA256, OAEP_SHA384, OAEP_SHA512,
         OaepAlgorithm, Plaintext,
     };
-    pub use crate::high::signature::PublicKeyComponents;
+    pub use crate::high::signature::rsa::{
+        KeyPair, PssSaltLength, PublicKey, PublicKeyComponents, Signature, SigningAlgorithm,
+        VerificationAlgorithm,
+    };
     pub use crate::mid::rsa_key_size::RsaKeySize as KeySize;
+
+    /// Algorithms a key pair signs with.
+    pub mod sign {
+        pub use crate::high::signature::rsa::sign::{
+            PKCS1_SHA256, PKCS1_SHA384, PKCS1_SHA512, PSS_SHA256, PSS_SHA384, PSS_SHA512,
+        };
+    }
+
+    /// Algorithms a public key verifies with, for moduli of 2048 to 8192
+    /// bits.
+    pub mod verify {
+        pub use crate::high::signature::rsa::verify::{
+            PKCS1_SHA256, PKCS1_SHA384, PKCS1_SHA512, PSS_SHA256, PSS_SHA256_ANY_SALT, PSS_SHA384,
+            PSS_SHA384_ANY_SALT, PSS_SHA512, PSS_SHA512_ANY_SALT,
+        };
+
+        /// Algorithms with another modulus floor, or SHA-1, for old keys
+        /// and signatures.
+        pub mod legacy {
+            pub use crate::high::signature::rsa::verify::legacy::{
+                PKCS1_1024_SHA1, PKCS1_1024_SHA256, PKCS1_1024_SHA512, PKCS1_3072_SHA384,
+                PKCS1_SHA1,
+            };
+        }
+    }
 
     /// RSA-OAEP with SHA-1, for protocols that still require it.
     pub mod legacy {
@@ -264,7 +307,7 @@ pub mod rsa {
 ///
 /// // The client blinds a message to it, and sends the server the blinded
 /// // message, keeping its blinding.
-/// let public_key = PublicKey::new(&RSABSSA_SHA384_PSS_RANDOMIZED, spki.as_ref())?;
+/// let public_key = PublicKey::from_spki(&RSABSSA_SHA384_PSS_RANDOMIZED, spki.as_ref())?;
 /// let (blinded_message, blinding) = public_key.blind(b"hello")?;
 ///
 /// // The server signs it, and the client unblinds the reply.
@@ -324,7 +367,7 @@ pub mod blind_rsa {
 pub mod oprf {
     pub use crate::high::oprf::{
         Blind, BlindedElement, EvaluatedElement, Output, P256_SHA256, P384_SHA384, P521_SHA512,
-        RISTRETTO255_SHA512, ServerKey, ServerKeyBytes, Suite,
+        RISTRETTO255_SHA512, Scalar, ServerKey, Suite,
     };
 
     /// RFC 9497's VOPRF mode: the OPRF, with a proof that the server
@@ -348,7 +391,7 @@ pub mod oprf {
 /// another block, with probability about 2^-32, and that retry is not
 /// constant time. An Edwards25519 seed is an RFC 8032 seed dedicated to
 /// the VRF. Signing with it reuses the nonce and reveals the scalar; see
-/// [`SecretKey`](vrf::SecretKey).
+/// [`KeyPair`](vrf::KeyPair).
 /// [`PublicKey::verify`](vrf::PublicKey::verify) always validates the key
 /// (`validate_key = TRUE`).
 ///
@@ -356,11 +399,11 @@ pub mod oprf {
 /// # fn main() -> Result<(), rind::Error> {
 /// use rind::vrf::*;
 ///
-/// let secret_key = SecretKey::generate(&ECVRF_EDWARDS25519_SHA512_TAI)?;
-/// let (proof, output) = secret_key.prove(b"alice@example.com")?;
+/// let key_pair = KeyPair::generate(&ECVRF_EDWARDS25519_SHA512_TAI)?;
+/// let (proof, output) = key_pair.prove(b"alice@example.com")?;
 ///
 /// // A verifier parses the public key and recovers the same output.
-/// let encoded = secret_key.public_key().as_ref();
+/// let encoded = key_pair.public_key().as_ref();
 /// let public_key = PublicKey::new(&ECVRF_EDWARDS25519_SHA512_TAI, encoded)?;
 /// let verified = public_key.verify(b"alice@example.com", proof.as_ref())?;
 /// assert_eq!(verified.as_ref(), output.as_ref());
@@ -371,88 +414,95 @@ pub mod oprf {
 /// [RFC 9381]: https://www.rfc-editor.org/rfc/rfc9381.html
 pub mod vrf {
     pub use crate::high::vrf::{
-        Algorithm, ECVRF_EDWARDS25519_SHA512_TAI, ECVRF_P256_SHA256_TAI, Output, Proof, PublicKey,
-        SecretKey, SecretKeyBytes,
+        Algorithm, ECVRF_EDWARDS25519_SHA512_TAI, ECVRF_P256_SHA256_TAI, KeyPair, Output, Proof,
+        PublicKey, Seed,
     };
 }
 
-/// Public key signatures: ECDSA on P-256, P-384, and P-521, RSA, and Ed25519.
+/// ECDSA signatures on P-256, P-384, and P-521.
 ///
-/// A key pair signs with a [`signature::sign`] algorithm, and a peer's
-/// public key is parsed for a [`signature::verify`] algorithm:
+/// A key pair signs with an [`ecdsa::sign`] algorithm, and its public key,
+/// or a peer's parsed for an [`ecdsa::verify`] algorithm, verifies:
 ///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
-/// use rind::signature::{EcdsaKeyPair, PublicKey, sign, verify};
+/// use rind::ecdsa::{KeyPair, PublicKey, sign, verify};
 ///
-/// let key_pair = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_ASN1)?;
+/// let key_pair = KeyPair::generate(&sign::P256_SHA256_ASN1)?;
 /// let signature = key_pair.sign(b"hello")?;
 ///
-/// let encoded = key_pair.public_key();
-/// let public_key = PublicKey::new(&verify::ECDSA_P256_SHA256_ASN1, encoded.as_ref())?;
+/// let encoded = key_pair.public_key().as_ref();
+/// let public_key = PublicKey::new(&verify::P256_SHA256_ASN1, encoded)?;
 /// public_key.verify(b"hello", signature.as_ref())?;
 /// # Ok(())
 /// # }
 /// ```
-pub mod signature {
-    pub use crate::high::signature::{
-        EcdsaKeyPair, EcdsaScalar, EcdsaSigningAlgorithm, Ed25519KeyPair, Ed25519Seed, PublicKey,
-        RsaKeyPair, RsaPssSaltLength, RsaSigningAlgorithm, RsaVerificationAlgorithm, Signature,
-        VerificationAlgorithm,
+pub mod ecdsa {
+    pub use crate::high::signature::ecdsa::{
+        KeyPair, PublicKey, Scalar, Signature, SigningAlgorithm, VerificationAlgorithm,
     };
 
-    /// Algorithms a key pair signs with, and ML-DSA's key pair, whose
-    /// parameter set is a type.
+    /// Algorithms a key pair signs with.
     ///
-    /// Each signs as the [`verify`] algorithm of the same name verifies:
-    /// [`MlDsaKeyPair<MlDsa65>`] as [`verify::ML_DSA_65`].
-    ///
-    /// ```
-    /// use rind::signature::sign::{MlDsa65, MlDsaKeyPair};
-    /// use rind::signature::{PublicKey, verify};
-    ///
-    /// let key = MlDsaKeyPair::<MlDsa65>::generate().unwrap();
-    /// let signature = key.sign(b"hello").unwrap();
-    ///
-    /// let public_key = PublicKey::new(&verify::ML_DSA_65, key.public_key().as_ref()).unwrap();
-    /// public_key.verify(b"hello", signature.as_ref()).unwrap();
-    /// ```
+    /// Each signs as the [`verify`] algorithm of the same name verifies.
     pub mod sign {
-        pub use crate::high::signature::sign::{
-            ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_FIXED, ECDSA_P384_SHA384_ASN1,
-            ECDSA_P384_SHA384_FIXED, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED,
-            RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384,
-            RSA_PSS_SHA512,
+        pub use crate::high::signature::ecdsa::sign::{
+            P256_SHA256_ASN1, P256_SHA256_FIXED, P384_SHA384_ASN1, P384_SHA384_FIXED,
+            P521_SHA512_ASN1, P521_SHA512_FIXED,
         };
-        pub use crate::high::signature::{
-            MlDsaKeyPair, MlDsaParameterSet, MlDsaSeed, MlDsaSignature,
-        };
-        pub use crate::mid::mldsa::{MlDsa44, MlDsa65, MlDsa87};
     }
 
     /// Algorithms a public key verifies with.
-    ///
-    /// RSA algorithms accept moduli of 2048 to 8192 bits.
     pub mod verify {
-        pub use crate::high::signature::verify::{
-            ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_FIXED, ECDSA_P256_SHA384_ASN1,
-            ECDSA_P256_SHA512_ASN1, ECDSA_P384_SHA256_ASN1, ECDSA_P384_SHA384_ASN1,
-            ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA512_ASN1, ECDSA_P521_SHA256_ASN1,
-            ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED, ED25519,
-            ML_DSA_44, ML_DSA_65, ML_DSA_87, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512,
-            RSA_PSS_SHA256, RSA_PSS_SHA256_ANY_SALT, RSA_PSS_SHA384, RSA_PSS_SHA384_ANY_SALT,
-            RSA_PSS_SHA512, RSA_PSS_SHA512_ANY_SALT,
+        pub use crate::high::signature::ecdsa::verify::{
+            P256_SHA256_ASN1, P256_SHA256_FIXED, P256_SHA384_ASN1, P256_SHA512_ASN1,
+            P384_SHA256_ASN1, P384_SHA384_ASN1, P384_SHA384_FIXED, P384_SHA512_ASN1,
+            P521_SHA256_ASN1, P521_SHA384_ASN1, P521_SHA512_ASN1, P521_SHA512_FIXED,
         };
-
-        /// RSA algorithms with another modulus floor, or SHA-1, for old keys
-        /// and signatures.
-        pub mod legacy {
-            pub use crate::high::signature::verify::legacy::{
-                RSA_PKCS1_1024_SHA1, RSA_PKCS1_1024_SHA256, RSA_PKCS1_1024_SHA512,
-                RSA_PKCS1_3072_SHA384, RSA_PKCS1_SHA1,
-            };
-        }
     }
+}
+
+/// Ed25519 signatures ([RFC 8032]).
+///
+/// ```
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::ed25519::{KeyPair, PublicKey};
+///
+/// let key_pair = KeyPair::generate()?;
+/// let signature = key_pair.sign(b"hello");
+///
+/// let public_key = PublicKey::new(key_pair.public_key().as_ref())?;
+/// public_key.verify(b"hello", signature.as_ref())?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [RFC 8032]: https://www.rfc-editor.org/rfc/rfc8032.html
+pub mod ed25519 {
+    pub use crate::high::signature::ed25519::{KeyPair, PublicKey, Seed, Signature};
+}
+
+/// ML-DSA signatures (FIPS 204): ML-DSA-44, ML-DSA-65, and ML-DSA-87, pure
+/// with the empty context.
+///
+/// The parameter set is a type, so a key of one set fails to compile where
+/// another's is expected, and a signature is a fixed-size array.
+///
+/// ```
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::ml_dsa::{KeyPair, MlDsa65, PublicKey};
+///
+/// let key_pair = KeyPair::<MlDsa65>::generate()?;
+/// let signature = key_pair.sign(b"hello")?;
+///
+/// let public_key = PublicKey::<MlDsa65>::new(key_pair.public_key().as_ref())?;
+/// public_key.verify(b"hello", signature.as_ref())?;
+/// # Ok(())
+/// # }
+/// ```
+pub mod ml_dsa {
+    pub use crate::high::signature::ml_dsa::{KeyPair, ParameterSet, Seed, Signature};
+    pub use crate::mid::mldsa::{MlDsa44, MlDsa65, MlDsa87, PublicKey};
 }
 
 /// Cryptographic hash functions.
@@ -569,27 +619,28 @@ pub mod hkdf {
 /// stores `w0` and `L = w1 * G`, not `w1`.
 ///
 /// ```
-/// use rind::spake2plus::{ProverSecrets, RFC9383, VerifierRecord};
+/// use rind::spake2plus::{ProverSecrets, RFC9383, Session, VerifierRecord};
 ///
 /// let w0 = [0x11; 40];
 /// let w1 = [0x22; 40];
 /// let prover = ProverSecrets::new(&w0, &w1).unwrap();
 /// let verifier = VerifierRecord::from_w1(&w0, &w1).unwrap();
+/// let session = Session {
+///     context: b"app",
+///     id_prover: b"client",
+///     id_verifier: b"server",
+/// };
 ///
-/// let (share_p, prover) = prover
-///     .start(&RFC9383, b"app", b"client", b"server")
-///     .unwrap();
-/// let (share_v, confirm_v, verifier) = verifier
-///     .start(&RFC9383, b"app", b"client", b"server", &share_p)
-///     .unwrap();
+/// let (share_p, prover) = prover.start(&RFC9383, &session).unwrap();
+/// let (share_v, confirm_v, verifier) = verifier.start(&RFC9383, &session, &share_p).unwrap();
 /// let (confirm_p, prover_key) = prover.finish(&share_v, &confirm_v).unwrap();
 /// let verifier_key = verifier.finish(&confirm_p).unwrap();
 /// assert_eq!(prover_key.as_ref(), verifier_key.as_ref());
 /// ```
 pub mod spake2plus {
     pub use super::high::spake2plus::{
-        Confirm, MATTER_PASE, MatterPase, ProverAwaiting, ProverSecrets, RFC9383, Rfc9383, Share,
-        SharedKey, Suite, VerifierAwaiting, VerifierRecord,
+        Confirm, MATTER_PASE, MatterPase, ProverAwaiting, ProverSecrets, RFC9383, Rfc9383, Session,
+        Share, SharedKey, Suite, VerifierAwaiting, VerifierRecord,
     };
 }
 
@@ -667,29 +718,31 @@ pub mod cipher;
 /// `A128KW`, `A192KW`, and `A256KW` use it, and with AES-KWP, RFC 5649,
 /// which pads keys of any length.
 ///
+/// The algorithm fixes the mode, as an AEAD's does, so a key-encryption key
+/// wraps one way.
+///
 /// ```
-/// use rind::key_wrap::{AES_256, AesKek};
+/// use rind::key_wrap::{AES_256_KW, AES_256_KWP, AesKek};
 ///
-/// let kek = AesKek::new(&AES_256, &[0x42; 32]).unwrap();
-///
+/// let kek = AesKek::new(&AES_256_KW, &[0x42; 32]).unwrap();
 /// let key = [0x24; 16];
 /// let mut wrapped = [0u8; 24];
-/// kek.wrap(&key, &mut wrapped).unwrap();
-///
+/// kek.wrap_key(&key, &mut wrapped).unwrap();
 /// let mut unwrapped = [0u8; 16];
-/// kek.unwrap(&wrapped, &mut unwrapped).unwrap();
-/// assert_eq!(unwrapped, key);
+/// assert_eq!(kek.unwrap_key(&wrapped, &mut unwrapped).unwrap(), key);
 ///
+/// let kek = AesKek::new(&AES_256_KWP, &[0x42; 32]).unwrap();
 /// let key = [0x24; 20];
 /// let mut wrapped = [0u8; 32];
-/// kek.wrap_padded(&key, &mut wrapped).unwrap();
-///
+/// kek.wrap_key(&key, &mut wrapped).unwrap();
 /// let mut unwrapped = [0u8; 24];
-/// assert_eq!(kek.unwrap_padded(&wrapped, &mut unwrapped).unwrap(), key);
+/// assert_eq!(kek.unwrap_key(&wrapped, &mut unwrapped).unwrap(), key);
 /// ```
 pub mod key_wrap {
-    pub use crate::cipher::{AES_128, AES_192, AES_256};
-    pub use crate::mid::aes_kw::AesKek;
+    pub use crate::mid::aes_kw::{
+        AES_128_KW, AES_128_KWP, AES_192_KW, AES_192_KWP, AES_256_KW, AES_256_KWP, AesKek,
+        Algorithm,
+    };
 }
 
 /// CPU support.

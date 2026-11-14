@@ -188,7 +188,49 @@ const fn signature_len<P: Params>() -> usize {
 pub(crate) struct KeyPair<P: Params> {
     seed: Option<[u8; SEED_LEN]>,
     secret_key: P::SecretKey,
-    public_key: P::PublicKey,
+    public_key: PublicKey<P>,
+}
+
+/// An ML-DSA public key of parameter set `P`: FIPS 204's encoding, and its
+/// hash `tr`, which every signature it verifies binds in.
+pub struct PublicKey<P: Params> {
+    pub(crate) bytes: P::PublicKey,
+    pub(crate) tr: [u8; TR_LEN],
+}
+
+impl<P: Params> PublicKey<P> {
+    fn zeroed() -> Self {
+        Self {
+            bytes: P::PublicKey::zeroed(),
+            tr: [0; TR_LEN],
+        }
+    }
+
+    /// Takes `bytes`, which must be `P`'s length, hashing them into `tr`.
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let mut key = Self::zeroed();
+        if bytes.len() != key.bytes.as_ref().len() {
+            return Err(KeyFormatError::WrongLength.into());
+        }
+        key.bytes.as_mut().copy_from_slice(bytes);
+        key.tr = tr(bytes);
+        Ok(key)
+    }
+}
+
+impl<P: Params> Clone for PublicKey<P> {
+    fn clone(&self) -> Self {
+        Self {
+            bytes: self.bytes.clone(),
+            tr: self.tr,
+        }
+    }
+}
+
+impl<P: Params> AsRef<[u8]> for PublicKey<P> {
+    fn as_ref(&self) -> &[u8] {
+        self.bytes.as_ref()
+    }
 }
 
 impl<P: Params> KeyPair<P> {
@@ -207,9 +249,14 @@ impl<P: Params> KeyPair<P> {
         let mut key = Self {
             seed: Some(seed),
             secret_key: P::SecretKey::zeroed(),
-            public_key: P::PublicKey::zeroed(),
+            public_key: PublicKey::zeroed(),
         };
-        keygen::<P>(&seed, key.public_key.as_mut(), key.secret_key.as_mut());
+        keygen::<P>(
+            &seed,
+            key.public_key.bytes.as_mut(),
+            key.secret_key.as_mut(),
+        );
+        key.public_key.tr = low::ct::into_public(*key.tr());
         key
     }
 
@@ -221,15 +268,18 @@ impl<P: Params> KeyPair<P> {
         let mut key = Self {
             seed: None,
             secret_key: P::SecretKey::zeroed(),
-            public_key: P::PublicKey::zeroed(),
+            public_key: PublicKey::zeroed(),
         };
         if sk.len() != key.secret_key.as_ref().len() {
             return Err(KeyFormatError::WrongLength.into());
         }
         key.secret_key.as_mut().copy_from_slice(sk);
         low::ct::secret_slice(key.secret_key.as_ref());
-        match public_key_from_secret::<P>(key.secret_key.as_ref(), key.public_key.as_mut()) {
-            true => Ok(key),
+        match public_key_from_secret::<P>(key.secret_key.as_ref(), key.public_key.bytes.as_mut()) {
+            true => {
+                key.public_key.tr = low::ct::into_public(*key.tr());
+                Ok(key)
+            }
             false => Err(KeyFormatError::MlDsaSecretKey.into()),
         }
     }
@@ -245,8 +295,8 @@ impl<P: Params> KeyPair<P> {
         &self.secret_key
     }
 
-    /// FIPS 204's public key encoding.
-    pub(crate) fn public_key(&self) -> &P::PublicKey {
+    /// The public key.
+    pub(crate) fn public_key(&self) -> &PublicKey<P> {
         &self.public_key
     }
 
