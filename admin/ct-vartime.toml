@@ -46,10 +46,10 @@ why = "Divides the public memory cost by the public lane count into segments, an
 "arm-unknown-linux-gnueabihf" = "calls __aeabi_uidiv, calls __aeabi_uidivmod x2"
 "loongarch64-unknown-linux-gnu" = "div.du, mod.du, mod.wu"
 "powerpc-unknown-linux-gnu" = "divwu x3"
-"powerpc64-unknown-linux-gnu" = "divdu, divwu"
+"powerpc64-unknown-linux-gnu" = "divdu x2, divwu"
 "powerpc64le-unknown-linux-gnu" = "divdu x2, divwu"
 "riscv64gc-unknown-linux-gnu" = "divu, remu, remuw"
-"s390x-unknown-linux-gnu" = "dlgr, dlr"
+"s390x-unknown-linux-gnu" = "dlgr x2, dlr"
 
 [[public]]
 function = "<rind::high::pbkdf2::Secret>::derive"
