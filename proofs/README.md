@@ -260,8 +260,9 @@ which Aeneas cannot translate, and are not modelled yet.
 proves it is multiplication in Mathlib's group of points on such a curve. `Rind/P384Group.lean` proves p and n prime,
 by Pratt certificates that `Rind/Pratt.lean` checks, and G's order n.
 
-ChaCha20 QUIC header protection on x86_64 and aarch64, from
-`HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
+ChaCha20 QUIC header protection on x86_64, aarch64, and armv7, from
+`HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`,
+which `admin/prove` also writes for aarch64 and armv7:
 
 - `chacha20_new`: a key that is not 32 bytes is refused, and otherwise the
   key holds its bytes;
@@ -270,12 +271,15 @@ ChaCha20 QUIC header protection on x86_64 and aarch64, from
   little-endian block counter and the rest as the nonce.
 
 HACL*'s rounds are Rust, so they are translated and proven with the rest, and
-no axiom stands in for HACL*'s proof of them.
+no axiom stands in for HACL*'s proof of them. armv7's translation reaches
+only this API: its other operations run assembly or Rust that other proofs
+are still to cover.
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
-pass, which no input affects. `Rind/Aarch64/P256Table.lean` proves that
-rind's generator table holds the multiples of G that s2n-bignum's proof of
-`p256_scalarmulbase` assumes, so `p256_public_key` assumes nothing of it.
+pass, which no input affects. `Rind/Armv7/Runs.lean` states armv7's.
+`Rind/Aarch64/P256Table.lean` proves that rind's generator table holds the
+multiples of G that s2n-bignum's proof of `p256_scalarmulbase` assumes, so
+`p256_public_key` assumes nothing of it.
 `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
 SHA-1 and SHA-256's padding and finalization, and HMAC's keyed states over
@@ -359,7 +363,7 @@ from axioms restating the HOL Light proofs of the `asm!` compares below it.
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
 (`Algorithm`'s `generate` and `load`, and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
 cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
-cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
+cannot translate. `Rind/X86_64/Dispatch.lean` and `QuicDispatch.lean` model that dispatch by hand, in
 Lean definitions beside the Rust they model, with an agreement `Algorithm` as
 which static it is. P-256's key generation draws through a `dyn
 RandomSource`, which Aeneas cannot translate either, and
@@ -724,7 +728,7 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   `Rind/ValeBytes.lean`, and `Rind/Gf128.lean`: Vale's AES and GF(2^128) specs
   and their lemmas, and `Rind/AesInverse.lean`, FIPS 197's equivalent inverse
   cipher.
-- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch,GcmKey}.lean`:
+- `Rind/X86_64/{Dispatch,QuicDispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch,GcmKey}.lean`:
   the hand models of the agreement, header-protection, digest, signature,
   AEAD, and HMAC APIs' dispatch, and of `aead::gcm::Key` over the AEAD model; `Rind/X86_64/HkdfExpand.lean` and
   `Rind/X86_64/Kdf/{TypesExternal,FunsExternal}.lean`, of what the HKDF and

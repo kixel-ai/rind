@@ -324,6 +324,7 @@
             targets = [
               "x86_64-unknown-linux-gnu"
               "aarch64-unknown-linux-gnu"
+              "armv7-unknown-linux-gnueabihf"
             ];
           };
 
@@ -338,7 +339,7 @@
             [source.vendored-sources]
             directory = "$(rustc --print sysroot)/lib/rustlib/src/rust/library/vendor"
             END
-            for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
               sysroot=$(cargo miri setup --target=$target --print-sysroot)
             done
             mkdir -p $out

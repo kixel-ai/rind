@@ -8,7 +8,8 @@
 # so no Lean module imports both. The aarch64 hand models and its X25519,
 # SHA-512, ChaCha20, Ed25519, SHA-1, SHA-256, HMAC, digest, HKDF, and PBKDF2 proofs are the
 # x86_64 ones with the target renamed, which this writes too, all but each
-# target's own `ShaBlocks.lean` and `HashAxioms.lean`.
+# target's own `ShaBlocks.lean` and `HashAxioms.lean`. So are armv7's
+# header-protection model and ChaCha20 proof.
 #
 # Usage: admin/prove [bytes | hol-light [<arch>] | cosim | lean | session <arch> [<file>]]
 #
@@ -701,11 +702,12 @@ items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
     'pub static ECDH_P256:' 'pub static ECDH_P384:' 'pub static ECDH_P521:' 'pub struct PrivateKey {' \
     'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {' >"$out/agreement.rs"
 items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {' >"$out/zeroise.rs"
-items rind/src/aead/quic.rs 'pub struct Algorithm ' 'impl Algorithm {' 'pub static AES_128:' \
-    'pub static AES_256:' 'pub static CHACHA20:' 'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' \
-    'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
+items rind/src/aead/quic.rs 'pub struct Algorithm ' 'impl Algorithm {' 'pub static CHACHA20:' \
+    'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' 'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
+items rind/src/aead/quic.rs 'pub static AES_128:' 'pub static AES_256:' >"$out/quic-aes.rs"
 items rind/src/cipher.rs 'pub static AES_128:' 'pub static AES_256:' >"$out/cipher.rs"
-check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic.rs" "$out/cipher.rs"
+check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic-aes.rs" "$out/cipher.rs"
+check_quote X86_64/QuicDispatch cat "$out/zeroise.rs" "$out/quic.rs"
 p256_items() {
     items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn'
     items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
@@ -813,8 +815,9 @@ only_quoted() {
 }
 only_quoted rind/src/high/agreement.rs "$out/agreement.rs" '\bOps\b'
 only_quoted rind/src/high/agreement.rs "$out/agreement.rs" '= Algorithm \{'
-only_quoted rind/src/aead/quic.rs "$out/quic.rs" 'Masker(<[^>]*>)? *\{'
-only_quoted rind/src/aead/quic.rs "$out/quic.rs" '\.mask *=[^=]'
+cat "$out/quic.rs" "$out/quic-aes.rs" >"$out/quic-all.rs"
+only_quoted rind/src/aead/quic.rs "$out/quic-all.rs" 'Masker(<[^>]*>)? *\{'
+only_quoted rind/src/aead/quic.rs "$out/quic-all.rs" '\.mask *=[^=]'
 only_quoted rind/src/high/digest.rs "$out/DigestDispatch.rs" '\bOps\b'
 only_quoted rind/src/high/digest.rs "$out/DigestAlgorithm.rs" '= Algorithm \{'
 only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Verification::Ed25519\('
@@ -982,11 +985,40 @@ extract() {
         "$@" \
         --dest-file "$PWD/../$out/$arch.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
+    to_lean "$arch" "$dir"
+}
+
+# Translates `$out/<arch>.llbc` into `proofs/Rind/<dir>/{Types,Funs}.lean`.
+to_lean() {
+    local arch=$1 dir=$2
     rm -rf "$out/lean"
     aeneas -backend lean -split-files -abort-on-error \
         -no-progress-bar -dest "$out/lean" -subdir "Rind/$dir" \
         -namespace "rind.$arch" "$out/$arch.llbc"
     cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
+}
+
+# armv7's translation reaches only the header-protection API, ChaCha20's the
+# one armv7 path that is Rust down to code a proof covers: the rest of armv7's
+# operations run assembly, which no instruction model covers yet, or Rust its
+# own proof quests translate. `Rind/Armv7/{Types,Funs}External.lean` define
+# what it leaves opaque.
+extract_armv7() {
+    (cd rind && charon cargo --preset=aeneas \
+        --start-from '{impl crate::aead::quic::Mask for crate::mid::chacha20::ChaCha20}' \
+        --start-from '{impl crate::aead::quic::Mask for crate::mid::aes::Aes}' \
+        --start-from crate::aead::quic::HeaderProtectionKey \
+        --start-from crate::aead::quic::AlgorithmId \
+        --start-from crate::mid::chacha20::ChaCha20::new \
+        --start-from crate::error::Error \
+        --opaque crate::aead::quic::Masker \
+        --opaque crate::mid::aes \
+        --opaque crate::low \
+        --include crate::low::ct \
+        --include crate::low::generic::chacha20 \
+        --dest-file "$PWD/../$out/armv7.llbc" \
+        -- -p rind --lib --target armv7-unknown-linux-gnueabihf)
+    to_lean armv7 Armv7
 }
 
 # HKDF and PBKDF2, in a second translation above the HMAC API, whose dispatch
@@ -1171,6 +1203,7 @@ extract aarch64 Aarch64 \
 # are x86_64's, as AES-GCM's are.
 extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aead::Key}'
 extract_kdf aarch64 Aarch64
+extract_armv7
 
 # The portable backend's Keccak-f, in a third translation: the backend builds
 # only under the cfg CI's portable jobs build with, here on x86_64.
@@ -1188,7 +1221,7 @@ mkdir -p proofs/Rind/Portable
 cp "$out/lean/Rind/Portable/Types.lean" "$out/lean/Rind/Portable/Funs.lean" proofs/Rind/Portable/
 
 mkdir -p proofs/Rind/Aarch64/Kdf
-for file in Dispatch P256Dispatch P256Agree P384Dispatch X25519 P384 P384Table P384Keygen DigestAlgorithm \
+for file in Dispatch QuicDispatch P256Dispatch P256Agree P384Dispatch X25519 P384 P384Table P384Keygen DigestAlgorithm \
     DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes; do
@@ -1197,6 +1230,12 @@ done
 # The AEAD model imports nothing aarch64 has, and no aarch64 translation reaches it.
 sed -i '/Rind.Aarch64.AeadDispatch/d' proofs/Rind/Aarch64/Kdf/TypesExternal.lean
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Aarch64/Kdf/FunsExternal.lean
+# armv7's header protection takes its `Runs` from `Rind.Armv7.Runs`, which
+# states only the entry guard armv7's translation reaches.
+for file in QuicDispatch ChaCha20; do
+    sed 's/X86_64/Armv7/g; s/x86_64/armv7/g; s/^import Rind\.Armv7\.S2nBignum$/import Rind.Armv7.Runs/' \
+        "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
+done
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
 # Each hand model of a CPU intrinsic, a `core.core_arch` definition but its

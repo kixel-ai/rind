@@ -774,6 +774,8 @@ CPU_FEATURES = {
         "sha",
     },
     "aarch64": {"aes", "dit", "neon", "pmull", "sha2", "sha3"},
+    # rind-cpuid reads no armv7 features, so an armv7 entry names none.
+    "armv7": set(),
 }
 
 # The nightly bench's columns, by target, portability, and denied tier, as
@@ -888,7 +890,7 @@ def bin_of(value, edges):
 
 def host_arch(host):
     arch = host["cpu"]["arch"]
-    return {"arm64": "aarch64", "amd64": "x86_64"}.get(arch, arch)
+    return {"arm64": "aarch64", "amd64": "x86_64", "armv7l": "armv7", "armv8l": "armv7"}.get(arch, arch)
 
 
 def host_os(host):
