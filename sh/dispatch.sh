@@ -756,7 +756,10 @@ done
 # Name every failed module after all independent work has completed.
 if ((${#failed[@]})); then
     for name in "${failed[@]}"; do
-        failed_modules=$(sed -n 's/^[0-9]* [0-9]* \(.*\) (failed)$/\1/p' "$logs/$name.times")
+        # A lane killed before its first record leaves no times file.
+        failed_modules=
+        [[ ! -e "$logs/$name.times" ]] ||
+            failed_modules=$(sed -n 's/^[0-9]* [0-9]* \(.*\) (failed)$/\1/p' "$logs/$name.times")
         while IFS= read -r module; do
             if github; then echo "::error::$action: $module failed"; else echo "$action: $module failed" >&2; fi
         done <<<"${failed_modules:-${members[$name]# }}"
