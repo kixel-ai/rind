@@ -334,36 +334,37 @@ base=$(git merge-base "$(jq -r .baseRefOid <<<"$info")" HEAD) || {
     exit 1
 }
 
-# The crates whose version the PR changes. Their dependents join through
-# sh/select.sh, given every file of these crates as changed, as `just ci` is.
+# The crates whose version the PR changes, then, through sh/select.sh, their
+# dependents. `just ci` takes every file of each selected crate as changed.
 mkdir -p "$out"
 paths=$out/paths
-: >"$paths"
+members=$(cargo metadata --format-version 1 --no-deps --locked |
+    jq -r --arg root "$PWD/" '.packages[] | [(.manifest_path | ltrimstr($root) | rtrimstr("/Cargo.toml")), .name, .version] | @tsv')
+declare -A dirs=()
 versioned=()
-while IFS=$'\t' read -r manifest name version; do
-    before=$( (git show "$base:$manifest" 2>/dev/null || true) | yq -p toml '.package.version // ""')
+: >"$paths"
+while IFS=$'\t' read -r dir name version; do
+    dirs[$name]=$dir
+    before=$( (git show "$base:$dir/Cargo.toml" 2>/dev/null || true) | yq -p toml -oy '.package.version // ""')
     if [[ "$before" != "$version" ]]; then
         versioned+=("$name")
-        git ls-files -- "$(dirname "$manifest")" >>"$paths"
+        echo "$dir/Cargo.toml" >>"$paths"
     fi
-done < <(cargo metadata --format-version 1 --no-deps --locked |
-    jq -r --arg root "$PWD/" '.packages[] | [(.manifest_path | ltrimstr($root)), .name, .version] | @tsv')
+done <<<"$members"
 if ((${#versioned[@]} == 0)); then
     echo "error: $(jq -r .url <<<"$info") changes no crate's version" >&2
     exit 1
 fi
+selection=$(sh/select.sh "$paths")
 declare -A selected=()
-while IFS= read -r arg; do
-    case "$arg" in
-        -p) ;;
-        --workspace)
-            while IFS= read -r name; do
-                selected[$name]=1
-            done < <(cargo metadata --format-version 1 --no-deps --locked | jq -r '.packages[].name')
-            ;;
-        *) selected[$arg]=1 ;;
-    esac
-done < <(sh/select.sh "$paths")
+for name in "${!dirs[@]}"; do
+    if grep -qxF -e --workspace -e "$name" <<<"$selection"; then
+        selected[$name]=1
+    fi
+done
+for name in "${!selected[@]}"; do
+    git ls-files -- "${dirs[$name]}"
+done >"$paths"
 echo "release-check: $(jq -r .url <<<"$info") at $head versions ${versioned[*]}; checking ${!selected[*]}" >&2
 
 plan=$(plan)
