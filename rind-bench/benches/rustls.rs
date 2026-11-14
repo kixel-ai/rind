@@ -274,21 +274,33 @@ fn threaded_handshake(c: &mut Criterion) {
                         let (work, jobs) = mpsc::channel::<u64>();
                         let done_tx = done_tx.clone();
                         s.spawn(move || {
-                            let provider = with_group(name, NamedGroup::X25519).unwrap();
-                            let (client, server) =
-                                configs(provider, "ecdsa-p256", resumption).unwrap();
-                            // Seeds a resuming client's tickets.
-                            handshake(&client, &server);
-                            // Each batch reports whether every handshake was of
-                            // `kind`, rather than panic and leave the timer waiting.
-                            let run = |n| {
-                                (0..n)
-                                    .all(|_| handshake_kind(&handshake(&client, &server).1) == kind)
-                            };
-                            done_tx.send(run(1)).unwrap();
-                            for n in jobs {
-                                let ok = panic::catch_unwind(AssertUnwindSafe(|| run(n)));
+                            // Each step reports whether it ran and every handshake
+                            // was of `kind`, rather than panic and leave the main
+                            // thread waiting on this one.
+                            let report = |f: &mut dyn FnMut() -> bool| {
+                                let ok = panic::catch_unwind(AssertUnwindSafe(f));
                                 done_tx.send(matches!(ok, Ok(true))).unwrap();
+                            };
+                            let mut pair = None;
+                            report(&mut || {
+                                let provider = with_group(name, NamedGroup::X25519).unwrap();
+                                let (client, server) =
+                                    configs(provider, "ecdsa-p256", resumption).unwrap();
+                                // Seeds a resuming client's tickets.
+                                handshake(&client, &server);
+                                let ok = handshake_kind(&handshake(&client, &server).1) == kind;
+                                pair = Some((client, server));
+                                ok
+                            });
+                            let Some((client, server)) = pair else {
+                                return;
+                            };
+                            for n in jobs {
+                                report(&mut || {
+                                    (0..n).all(|_| {
+                                        handshake_kind(&handshake(&client, &server).1) == kind
+                                    })
+                                });
                             }
                         });
                         work
@@ -297,7 +309,10 @@ fn threaded_handshake(c: &mut Criterion) {
                 drop(done_tx);
                 let wait = || {
                     let ok = (0..threads).all(|_| done.recv().unwrap());
-                    assert!(ok, "a {bench} handshake over {name} was not {kind:?}");
+                    assert!(
+                        ok,
+                        "a {bench} handshake over {name} failed or was not {kind:?}"
+                    );
                 };
                 wait();
                 group.bench_function(format!("x25519/{name}"), |b| {
