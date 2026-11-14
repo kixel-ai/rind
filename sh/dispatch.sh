@@ -494,7 +494,10 @@ step() {
             ;;
         check:quest) run quest check ;;
         check:license) run bash admin/scan-license ;;
-        check:mutants) run admin/mutants --pins ;;
+        check:mutants)
+            run admin/mutants --pins
+            run admin/mutants --expand-diff-self-test
+            ;;
         # It finds the generated kernels relative to its own directory.
         check:inplace) (cd admin/parse-asm && run python3 inplace.py) ;;
         check:testing) run python3 admin/testing ;;
