@@ -174,7 +174,7 @@ class Api:
         self.discriminants = {}
         for item in self.index.values():
             if "enum" in item["inner"]:
-                self.number(item["inner"]["enum"])
+                self.number(item)
         root = self.index[str(doc["root"])]
         # Items the crate exports outside the compared part, which the other
         # side names by their definition paths.
@@ -185,13 +185,17 @@ class Api:
             root = self.find(root, name)
         self.walk_module(root, (), items, set())
 
-    def number(self, enum):
+    def number(self, item):
         """Records each variant's discriminant, implicit ones only where a caller sees them."""
+        enum = item["inner"]["enum"]
         variants = [self.index[str(id)] for id in enum["variants"]]
-        # `as` casts see a fieldless enum's values, and `PartialOrd` their
-        # order. A hidden variant would shift the implicit ones after it.
+        # `as` casts see a fieldless enum's values, a primitive or C `repr`
+        # lays them out for pointer reads, and `PartialOrd` sees their order.
+        # A hidden variant would shift the implicit ones after it.
+        reprs = [a["repr"] for a in item["attrs"] if isinstance(a, dict) and "repr" in a]
         visible = not enum["has_stripped_variants"] and (
             all(fieldless(v["inner"]["variant"]["kind"]) for v in variants)
+            or any(r["int"] is not None or r["kind"] == "c" for r in reprs)
             or any(
                 self.external(trait["id"], trait["path"]) == "core::cmp::PartialOrd"
                 for trait in (self.index[str(id)]["inner"]["impl"]["trait"] for id in enum["impls"])
