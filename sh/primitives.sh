@@ -59,7 +59,7 @@ primitives=(
     'chacha|chacha|poly1305|poly_hash|^aead(\.rs$|/)|chacha poly1305 aead quic|chacha20poly1305 xchacha20poly1305'
     'sha1|sha1|sha_armv4|^low/portable/sha\.rs$|sha1 digest hashes compress_blocks hmac hkdf pbkdf2|sha1 hmac'
     'sha2|sha256|sha512|sha_|sha-?2|^low/portable/sha\.rs$|^high/(digest|hash|hmac|hkdf|pbkdf2|hmac_drbg)\.rs$|sha2 sha256 sha384 sha512 digest hash hashes compress_blocks hmac hkdf pbkdf2 drbg|sha2 hmac hkdf pbkdf2'
-    'sha3|sha3|keccak|shake|sha3 shake keccak digest hashes|sha3'
+    'sha3|sha3|keccak|shake|sha3 shake keccak digest hashes mlkem ml_kem kem mldsa ml_dsa|sha3 mlkem768 mldsa'
     'md5|md5|md5 digest hashes compress_blocks|md5'
     # The NIST curves' shared code: ECDSA, ECDH, their encodings, and the
     # portable backend's group orders.
