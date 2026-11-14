@@ -20,14 +20,35 @@ declare -A skipped=(
     # Its gate compares one scheduled night on main with the one before, and
     # skips a dispatched run, which only measures.
     [bench]="measures speed; its gate runs only on main's schedule"
+    # It packages rind-dart against rind from crates.io at the version the
+    # release has yet to publish; dart-release.yml runs it after. build.yml's
+    # dart jobs test rind-dart from source.
+    [dart-libraries]="builds against the crates the release publishes"
 )
+
+# The workflow files at REV, or in the working tree when REV is empty.
+rev=
+workflow_files() {
+    if [[ -n "$rev" ]]; then
+        git ls-tree --name-only "$rev" .github/workflows/ | grep '\.yml$'
+    else
+        ls .github/workflows/*.yml
+    fi
+}
+workflow() {
+    if [[ -n "$rev" ]]; then
+        git show "$rev:.github/workflows/$1.yml"
+    else
+        cat ".github/workflows/$1.yml"
+    fi
+}
 
 # The scheduled workflows the check dispatches, one name per line.
 scheduled() {
     local file name
-    for file in .github/workflows/*.yml; do
-        [[ $(yq '.on | has("schedule")' "$file") == true ]] || continue
+    for file in $(workflow_files); do
         name=$(basename "$file" .yml)
+        [[ $(workflow "$name" | yq '.on | has("schedule")') == true ]] || continue
         [[ -z "${skipped[$name]:-}" ]] || continue
         echo "$name"
     done
@@ -37,14 +58,15 @@ scheduled() {
 # workflow_dispatch, a required input, or a job or step that runs only on a
 # schedule or skips a dispatch.
 partial() {
-    local file=.github/workflows/$1.yml
-    if [[ $(yq '.on | has("workflow_dispatch")' "$file") != true ]]; then
+    local text
+    text=$(workflow "$1")
+    if [[ $(yq '.on | has("workflow_dispatch")' <<<"$text") != true ]]; then
         echo "takes no workflow_dispatch"
         return
     fi
-    yq -r '.on.workflow_dispatch.inputs // {} | to_entries[] | select(.value.required == true) | .key' "$file" |
+    yq -r '.on.workflow_dispatch.inputs // {} | to_entries[] | select(.value.required == true) | .key' <<<"$text" |
         sed 's/^/requires the input /'
-    yq -r '[.jobs[] | (.if, .steps[]?.if)] | .[] | select(. != null)' "$file" |
+    yq -r '[.jobs[] | (.if, .steps[]?.if)] | .[] | select(. != null)' <<<"$text" |
         grep -E "event_name *(== *'schedule'|!= *'workflow_dispatch')" | sed 's/^/runs only on a schedule: /' || true
 }
 
@@ -84,6 +106,13 @@ if [[ $(jq -r .state <<<"$info") != OPEN || $(jq -r .isCrossRepository <<<"$info
     exit 1
 fi
 
+# The workflows come from the head the runs test, not this checkout.
+git fetch --quiet origin "refs/heads/$branch"
+if [[ $(git rev-parse FETCH_HEAD) != "$head" ]]; then
+    echo "error: $branch moved while starting; run again" >&2
+    exit 1
+fi
+rev=$head
 workflows=$(scheduled)
 problems=
 for workflow in $workflows; do
@@ -98,11 +127,6 @@ fi
 # Nightly, mutants mutates the last day's changes; here, every change since
 # the release before: the newest tagged commit the head contains. The tags
 # come from the API, since fetching them can clash with local ones.
-git fetch --quiet origin "refs/heads/$branch"
-if [[ $(git rev-parse FETCH_HEAD) != "$head" ]]; then
-    echo "error: $branch moved while starting; run again" >&2
-    exit 1
-fi
 tagged=$(gh api --paginate "repos/{owner}/{repo}/tags" --jq '.[].commit.sha' | sort -u)
 previous=$(for sha in $tagged; do
     if git merge-base --is-ancestor "$sha" "$head" 2>/dev/null; then
