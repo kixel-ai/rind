@@ -1264,7 +1264,8 @@ mod tests {
             let mu = acvp_mu(group, test, &tr(&pk));
             let _entry = Entry::new_public();
             assert_eq!(
-                verify_internal::<P>(&pk, &low::ReuseCache::new(), &mu, &test.hex("signature")).is_ok(),
+                verify_internal::<P>(&pk, &low::ReuseCache::new(), &mu, &test.hex("signature"))
+                    .is_ok(),
                 test.flag("testPassed"),
                 "tcId {}: {}",
                 test.int("tcId"),
@@ -1451,12 +1452,7 @@ mod tests {
             // keeps its own, both failing; the kept one then verifies.
             assert_eq!(verify(b"", b"message"), Err(Error::BadSignature));
             assert_eq!(verify(b"context", b"massage"), Err(Error::BadSignature));
-            assert!(
-                verifying
-                    .expanded
-                    .get_or_build(|| unreachable!())
-                    .is_some()
-            );
+            assert!(verifying.expanded.get_or_build(|| unreachable!()).is_some());
             verify(b"context", b"message").unwrap();
             assert_eq!(verify(b"context", b"massage"), Err(Error::BadSignature));
             assert_eq!(
