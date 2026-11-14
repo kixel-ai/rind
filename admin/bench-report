@@ -815,6 +815,8 @@ NAMES = {
     "spake2plus-p256-verifier-start": "SPAKE2+ P-256 verifier share and confirmation",
     "spake2plus-p256-prover-finish": "SPAKE2+ P-256 prover confirmation and key",
     "spake2plus-p256-verifier-finish": "SPAKE2+ P-256 verifier key",
+    "argon2id-16MiB-t1-p1": "Argon2id 16 MiB t=1 p=1",
+    "argon2id-64MiB-t3-p4": "Argon2id 64 MiB t=3 p=4",
 }
 
 # Each build of admin/build-cost, as the report names it.
