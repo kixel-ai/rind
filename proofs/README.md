@@ -820,7 +820,12 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   finite point has order n, by counting the curve's points;
   `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate;
   `Rind/N256Prime.lean`: that `n256` is prime; `Rind/P256Multiples.lean`: the
-  group laws and multiples ECDSA's twin multiplication relies on.
+  group laws and multiples ECDSA's twin multiplication relies on;
+  `Rind/P384Multiples.lean`: the same for P-384, which no ECDSA proof uses
+  yet.
+- `Rind/X86_64/Naf.lean`, on both targets: that `mid::util::public_naf`
+  writes a scalar's width-5 or width-6 non-adjacent form, for any number of
+  words, which P-256's ECDSA verification reads.
 - `Rind/X86_64/P256Dispatch.lean`, `Rind/X86_64/P256Agree.lean`, and
   `Rind/X86_64/P256.lean`: the hand model of P-256's key generation, and the
   P-256 agreement and key generation proofs, on both targets.
