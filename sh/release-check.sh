@@ -26,37 +26,41 @@ declare -A skipped=(
     [dart-libraries]="builds against the crates the release publishes"
 )
 
-# The workflow files at REV, or in the working tree when REV is empty.
+# The workflow files, by file name, at REV, or in the working tree when REV is
+# empty.
 rev=
 workflow_files() {
     if [[ -n "$rev" ]]; then
-        git ls-tree --name-only "$rev" .github/workflows/ | grep '\.yml$'
+        git ls-tree --name-only "$rev" .github/workflows/ | grep -E '\.ya?ml$' | xargs -n1 basename
     else
-        ls .github/workflows/*.yml
+        find .github/workflows -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) -printf '%f\n' | sort
     fi
 }
 workflow() {
     if [[ -n "$rev" ]]; then
-        git show "$rev:.github/workflows/$1.yml"
+        git show "$rev:.github/workflows/$1"
     else
-        cat ".github/workflows/$1.yml"
+        cat ".github/workflows/$1"
     fi
 }
 
-# The scheduled workflows the check dispatches, one name per line.
+# The scheduled workflows the check dispatches, by file name, one per line.
 scheduled() {
-    local file name
+    local file
     for file in $(workflow_files); do
-        name=$(basename "$file" .yml)
-        [[ $(workflow "$name" | yq '.on | has("schedule")') == true ]] || continue
-        [[ -z "${skipped[$name]:-}" ]] || continue
-        echo "$name"
+        [[ $(workflow "$file" | yq '.on | has("schedule")') == true ]] || continue
+        [[ -z "${skipped[${file%.*}]:-}" ]] || continue
+        echo "$file"
     done
 }
 
 # Print why a dispatch would not run WORKFLOW whole, if it would not: no
-# workflow_dispatch, a required input, or a job or step that runs only on a
-# schedule or skips a dispatch.
+# workflow_dispatch, a required input, or anywhere outside a comment, such as
+# a job's or step's `if:` or a matrix, a comparison of the event with
+# `schedule` or `workflow_dispatch` that a dispatch fails. It flags such a
+# comparison even where a dispatch would pass it too; a script's own check of
+# the event, as mutants makes, needs a dispatch input instead, as `inputs`
+# gives below.
 partial() {
     local text
     text=$(workflow "$1")
@@ -66,8 +70,9 @@ partial() {
     fi
     yq -r '.on.workflow_dispatch.inputs // {} | to_entries[] | select(.value.required == true) | .key' <<<"$text" |
         sed 's/^/requires the input /'
-    yq -r '[.jobs[] | (.if, .steps[]?.if)] | .[] | select(. != null)' <<<"$text" |
-        grep -E "event_name *(== *'schedule'|!= *'workflow_dispatch')" | sed 's/^/runs only on a schedule: /' || true
+    grep -vE '^[[:space:]]*#' <<<"$text" |
+        grep -E "event_name *(==|!=) *'(schedule|workflow_dispatch)'|'(schedule|workflow_dispatch)' *(==|!=) *github\.event_name" |
+        sed 's/^[[:space:]]*/compares the event: /' || true
 }
 
 if [[ "${1:-}" == --check ]]; then
@@ -80,7 +85,7 @@ if [[ "${1:-}" == --check ]]; then
         problems=$(partial "$workflow")
         if [[ -n "$problems" ]]; then
             while IFS= read -r problem; do
-                echo "error: $workflow.yml $problem" >&2
+                echo "error: $workflow $problem" >&2
             done <<<"$problems"
             errors=1
         fi
@@ -94,7 +99,7 @@ fi
 
 pr=${1:-}
 if [[ -z "$pr" ]]; then
-    pr=$(gh pr list --state open --json number,headRefName \
+    pr=$(gh pr list --state open --limit 1000 --json number,headRefName \
         --jq '[.[] | select(.headRefName | startswith("release-plz-")) | .number] | if length == 1 then .[0] else error("expected one open release-plz PR, found \(length)") end')
 fi
 info=$(gh pr view "$pr" --json state,url,headRefName,headRefOid,isCrossRepository)
@@ -114,10 +119,7 @@ if [[ $(git rev-parse FETCH_HEAD) != "$head" ]]; then
 fi
 rev=$head
 workflows=$(scheduled)
-problems=
-for workflow in $workflows; do
-    problems+=$(partial "$workflow" | sed "s|^|$workflow.yml |")
-done
+problems=$(for workflow in $workflows; do partial "$workflow" | sed "s|^|$workflow |"; done)
 if [[ -n "$problems" ]]; then
     echo "error: a dispatch would not run these whole:" >&2
     echo "$problems" >&2
@@ -150,13 +152,13 @@ record pending "Dispatched the scheduled workflows"
 declare -A runs=() links=()
 for workflow in $workflows; do
     # shellcheck disable=SC2086
-    created=$(gh workflow run "$workflow.yml" --ref "$branch" ${inputs[$workflow]:-} 2>&1) || {
-        echo "error: dispatching $workflow.yml failed: $created" >&2
+    created=$(gh workflow run "$workflow" --ref "$branch" ${inputs[${workflow%.*}]:-} 2>&1) || {
+        echo "error: dispatching $workflow failed: $created" >&2
         exit 1
     }
     link=$(grep -oE 'https://[^ ]+/actions/runs/[0-9]+' <<<"$created" | head -1) || true
     if [[ -z "$link" ]]; then
-        echo "error: dispatching $workflow.yml named no run: $created" >&2
+        echo "error: dispatching $workflow named no run: $created" >&2
         exit 1
     fi
     runs[$workflow]=${link##*/}
@@ -193,6 +195,6 @@ if ((${#failed[@]} > 0)); then
     printf 'error: %s\n' "${failed[@]}" >&2
     exit 1
 fi
-build=${links[build]}
+build=${links[build.yml]}
 record success "Every scheduled workflow passed on this head" "$build"
 echo "release-check: $url passed at $head" >&2
