@@ -209,6 +209,39 @@ fn test_agreement_ecdh_p521() {
     assert_eq!(result, Ok(()));
 }
 
+// rind-aws-lc-rs: added, since the known-answer tests above agree with `agree`,
+// so that a successful `agree_ephemeral` still runs.
+#[test]
+fn agree_ephemeral_matches_agree() {
+    let rng = rand::SystemRandom::new();
+    for alg in [
+        &agreement::X25519,
+        &agreement::ECDH_P256,
+        &agreement::ECDH_P384,
+        &agreement::ECDH_P521,
+    ] {
+        let peer = agreement::PrivateKey::generate(alg).unwrap();
+        let peer_public = peer.compute_public_key().unwrap();
+        let mine = agreement::EphemeralPrivateKey::generate(alg, &rng).unwrap();
+        let my_public = mine.compute_public_key().unwrap();
+        let expected = agreement::agree(
+            &peer,
+            agreement::UnparsedPublicKey::new(alg, my_public.as_ref()),
+            (),
+            |key_material| Ok(key_material.to_vec()),
+        )
+        .unwrap();
+        let actual = agreement::agree_ephemeral(
+            mine,
+            agreement::UnparsedPublicKey::new(alg, peer_public.as_ref()),
+            (),
+            |key_material| Ok(key_material.to_vec()),
+        )
+        .unwrap();
+        assert_eq!(actual, expected);
+    }
+}
+
 #[test]
 fn agreement_traits() {
     let rng = rand::SystemRandom::new();
