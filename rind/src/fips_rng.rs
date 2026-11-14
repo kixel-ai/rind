@@ -188,6 +188,9 @@ mod tests {
     #[cfg(all(unix, not(miri)))]
     #[test]
     fn fork_during_self_test() {
+        // Finishes every lazy initialization the child reaches, such as
+        // SHA-512's routine choice, so no other thread is inside one at fork.
+        assert!(cast());
         STALL.store(true, Ordering::Release);
         // A test thread already past `stall` can set the flag again after
         // the reset, letting the drawer skip the self-test; draw again then.
@@ -221,7 +224,10 @@ mod tests {
             rind_backend = "arm"
         ))]
         drop(abi);
-        assert!(pid >= 0);
+        if pid < 0 {
+            RELEASE.store(true, Ordering::Release);
+            panic!("fork failed");
+        }
         if pid == 0 {
             RELEASE.store(true, Ordering::Release);
             // Whatever another thread published, the child runs the self-test.
