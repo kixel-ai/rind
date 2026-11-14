@@ -35,8 +35,14 @@ enum Check {
     /// Every answer must equal the expected set's.
     Answers(Value),
     /// The answers have no expected values; this checks each response.
-    Validate(Box<dyn Fn(&Value, &Value) -> Result<(), String>>),
+    Validate(Box<Validate>),
 }
+
+/// Checks a response's group against the prompt's.
+type Validate = dyn Fn(&Value, &Value) -> Result<(), String>;
+
+/// Each tier of CPU features to deny, and whether this CPU has a feature.
+type Tiers = (&'static [&'static [&'static str]], fn(&str) -> bool);
 
 #[test]
 fn every_cpu_path_answers_every_set() {
@@ -90,7 +96,7 @@ fn acvptool() -> PathBuf {
 /// CPU lacks repeats the path before it, so it is skipped.
 fn cpu_paths() -> Vec<Vec<&'static str>> {
     #[cfg(target_arch = "x86_64")]
-    let (tiers, has): (&[&[&str]], fn(&str) -> bool) = (
+    let (tiers, has): Tiers = (
         &[
             &[],
             &[
@@ -127,11 +133,10 @@ fn cpu_paths() -> Vec<Vec<&'static str>> {
         },
     );
     #[cfg(target_arch = "aarch64")]
-    let (tiers, has): (&[&[&str]], fn(&str) -> bool) =
-        (&[&[], &["sha3"]], |feature| match feature {
-            "sha3" => std::arch::is_aarch64_feature_detected!("sha3"),
-            _ => unreachable!(),
-        });
+    let (tiers, has): Tiers = (&[&[], &["sha3"]], |feature| match feature {
+        "sha3" => std::arch::is_aarch64_feature_detected!("sha3"),
+        _ => unreachable!(),
+    });
     let mut masks = Vec::new();
     let mut mask = Vec::new();
     for (i, tier) in tiers.iter().enumerate() {
@@ -657,7 +662,7 @@ fn kas_ecc_ssc() -> Vec<Set> {
         }
         tc += 1;
         let mut z = fields["ZIUT"].clone();
-        let refused = tc % 2 == 0;
+        let refused = tc.is_multiple_of(2);
         if refused {
             // Flip the last byte.
             let last = u8::from_str_radix(&z[z.len() - 2..], 16).unwrap() ^ 1;
@@ -703,7 +708,7 @@ fn kas_ecc_ssc() -> Vec<Set> {
             "tgId": tg,
             "testType": kind,
             "domainParameterGenerationMode": curve,
-            "kasRole": if tg % 2 == 0 { "responder" } else { "initiator" },
+            "kasRole": if tg.is_multiple_of(2) { "responder" } else { "initiator" },
             "scheme": "ephemeralUnified",
             "tests": tests,
         })
@@ -750,7 +755,7 @@ fn kas_ecc_ssc() -> Vec<Set> {
             );
             let z = agreement::agree(
                 key,
-                agreement::UnparsedPublicKey::new(*algorithm, &iut),
+                agreement::UnparsedPublicKey::new(algorithm, &iut),
                 "the IUT's public key",
                 |z| Ok(z.to_vec()),
             )?;
