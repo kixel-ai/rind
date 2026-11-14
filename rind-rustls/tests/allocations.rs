@@ -2,7 +2,7 @@
 //! together, per certificate key type. Pinned on x86_64 alone, where it was
 //! measured, on the assembly and portable backends alike. RSA's private-key
 //! routines allocate differently by backend and with ADX or AVX-512 IFMA, so
-//! RSA certificates are not pinned yet.
+//! RSA certificates are not pinned.
 #![cfg(target_arch = "x86_64")]
 
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -65,7 +65,8 @@ fn configs(key: &str) -> (Arc<ClientConfig>, Arc<ServerConfig>) {
         .add(CertificateDer::from_pem_file(format!("{dir}/ca.cert")).unwrap())
         .unwrap();
     let provider = Arc::new(match std::env::var("ALLOCATIONS_PROVIDER").as_deref() {
-        // For comparison by hand; the test's counts are rind's.
+        // For comparison by hand; the test's counts are rind's. This counts
+        // only aws-lc-rs's Rust allocations, not AWS-LC's own `malloc` calls.
         Ok("aws-lc-rs") => rustls::crypto::aws_lc_rs::default_provider(),
         _ => rind_rustls::default_provider(),
     });
