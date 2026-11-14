@@ -168,6 +168,12 @@ class Api:
         self.public = {}
         # Types with a public field, which a `Drop` impl stops callers moving out.
         self.open = set()
+        # Each variant's observable discriminant, which rustdoc gives only
+        # when explicit.
+        self.discriminants = {}
+        for item in self.index.values():
+            if "enum" in item["inner"]:
+                self.number(item["inner"]["enum"])
         root = self.index[str(doc["root"])]
         # Items the crate exports outside the compared part, which the other
         # side names by their definition paths.
@@ -177,6 +183,26 @@ class Api:
         for name in module:
             root = self.find(root, name)
         self.walk_module(root, (), items, set())
+
+    def number(self, enum):
+        """Records each variant's discriminant, implicit ones only where a caller sees them."""
+        variants = [self.index[str(id)] for id in enum["variants"]]
+        # `as` casts see a fieldless enum's values, and `PartialOrd` their
+        # order. A hidden variant would shift the implicit ones after it.
+        visible = not enum["has_stripped_variants"] and (
+            all(fieldless(v["inner"]["variant"]["kind"]) for v in variants)
+            or any(
+                self.external(trait["id"], trait["path"]) == "core::cmp::PartialOrd"
+                for trait in (self.index[str(id)]["inner"]["impl"]["trait"] for id in enum["impls"])
+                if trait is not None
+            )
+        )
+        value = -1
+        for variant in variants:
+            explicit = variant["inner"]["variant"]["discriminant"]
+            value = int(explicit["value"]) if explicit else value + 1
+            if explicit or visible:
+                self.discriminants[variant["id"]] = str(value)
 
     def find(self, module, name):
         for id in module["inner"]["module"]["items"]:
@@ -258,9 +284,9 @@ class Api:
         if impl is not None:
             # A method's callers also meet its impl block's bounds and target.
             sig = {"impl": self.sig(elide({"generics": impl["generics"], "for": impl["for"], "item": inner})), "item": sig}
-        if kind == "variant" and inner.get("discriminant"):
+        if kind == "variant" and item["id"] in self.discriminants:
             # Callers see the evaluated value, not the source expression.
-            sig["discriminant"] = inner["discriminant"]["value"]
+            sig["discriminant"] = self.discriminants[item["id"]]
         reprs = [a["repr"] for a in item["attrs"] if isinstance(a, dict) and "repr" in a]
         if reprs:
             # Layout, alignment, and integer representation are observable.
@@ -410,6 +436,15 @@ class Api:
             text,
         )
         return f"{kind} {text}"
+
+
+def fieldless(kind):
+    """Whether a variant of this kind holds no fields, as `as` casts need."""
+    if kind == "plain":
+        return True
+    if "tuple" in kind:
+        return not kind["tuple"]
+    return not kind["struct"]["fields"] and not kind["struct"]["has_stripped_fields"]
 
 
 class Unordered(list):
