@@ -153,9 +153,8 @@ a misaligned or out-of-bounds pointer, or a data race in `ReuseCache`, in rind
 or in the libcrux, fiat-crypto, and curve25519-dalek code it calls; a
 byte-order assumption fails the test's own assertions on s390x. Miri runs no
 assembly, so the other backends are out. It runs weekly, not on pull
-requests: a run takes hours, even split into four shards for each target,
-so a change to the portable backend runs `just miri` locally or dispatches
-the workflow before it lands.
+requests: a run takes hours, so a change to the portable backend runs
+`just miri` locally or dispatches the workflow before it lands.
 
 Miri runs each test hundreds of times slower than a native build, so it runs a
 subset: the unit tests and `tests/cpu.rs` and `tests/debug.rs`, without the
@@ -285,10 +284,10 @@ checks the proofs in [`proofs/`](proofs/README.md).
 ## Scheduled workflows
 
 The heavy suites run weekly on GitHub's hosted runners: `fuzz`, `ctgrind`,
-and `bench` on Saturday, `miri`, `x86-cpu`, and `timing` on Sunday (UTC),
+`bench`, and `mutants` on Saturday, `miri`, `x86-cpu`, and `timing` on Sunday (UTC),
 each hours from the others, as their `cron:` lines set, so no two fill the
 organization's 60 concurrent hosted jobs together, and off the hour, which
-GitHub delays most. `build`, `asan`, `coverage`, `lints`, `mutants`, `prove`,
+GitHub delays most. `build`, `asan`, `coverage`, `lints`, `prove`,
 `python`, `dart-libraries`, and `regenerate` run daily. Each runs on demand with
 `gh workflow run <name> --ref <branch>`. `alert.yml` posts a scheduled run
 that fails, times out, or is cancelled to Discord: a job past its timeout
