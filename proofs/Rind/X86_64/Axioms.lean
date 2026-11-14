@@ -20,7 +20,8 @@ open rind.x86_64
 /-!
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
 in `Rind.X86_64.S2nBignum` for X25519, P-256 key generation, ECDH, and
-ECDSA, P-384, Ed25519, RSA verification, and the Keccak-f of SHA-3 and ML-KEM's SHAKE, aws-lc's in
+ECDSA, P-384, Ed25519, RSA verification, and the Keccak-f of SHA-3 and
+ML-KEM's SHAKE, aws-lc's in
 `Rind.X86_64.AwsLc` for the SHA-512 family, for HMAC, HKDF, and PBKDF2, which
 cover SHA-384 and SHA-512, and for Ed25519's hashes, Vale's in
 `Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proofs of its

@@ -20,8 +20,8 @@
 # since it needs an x86_64 CPU with AVX2, checks the instructions rind adds
 # to s2n-bignum's x86 model, in its fork in `thirdparty/s2n-bignum`, against
 # this CPU. The Lean proofs need an x86_64 CPU with AVX2 too, to test the
-# intrinsic models. `session` checks nothing: it starts a HOL Light session
-# for developing the proofs of `arch`, `x86_64` or `aarch64`, which `session`
+# intrinsic models. `session` checks nothing: it starts a HOL Light session for
+# developing the proofs of `arch`, `x86_64` or `aarch64`, which `session`
 # below describes. Run it in the flake's
 # `prove` dev shell: `nix develop .#prove --command admin/prove`, or for the
 # HOL Light proofs, the cosimulation, the bytes alone, or a session, `nix
