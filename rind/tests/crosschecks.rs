@@ -271,7 +271,8 @@ mod cipher {
             let theirs_dec = PaddedBlockDecryptingKey::cbc_pkcs7(aws_aes_key(&key)).unwrap();
 
             let mut ours = msg.clone();
-            enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ours);
+            enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ours)
+                .unwrap();
             let mut theirs = msg.clone();
             PaddedBlockEncryptingKey::cbc_pkcs7(aws_aes_key(&key))
                 .unwrap()
@@ -638,8 +639,8 @@ mod hkdf {
             let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
 
             let mut ours_out = vec![0u8; len];
-            let prk = hkdf::Salt::new(ours, &salt).extract(&ikm);
-            let result = prk.expand(&info, len).fill(&mut ours_out);
+            let prk = hkdf::Salt::new(ours, &salt).extract(&ikm).unwrap();
+            let result = prk.expand(&info, len).and_then(|okm| okm.fill(&mut ours_out));
 
             let prk = theirs::Salt::new(their_alg, &salt).extract(&ikm);
             match prk.expand(&info, Len(len)) {
@@ -667,7 +668,7 @@ mod hkdf {
         ) {
             let (ours_prk_alg, theirs_prk_alg, _) = algorithms()[algorithm];
             let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
-            let ours = hkdf::Salt::new(ours_prk_alg, b"salt").extract(&ikm);
+            let ours = hkdf::Salt::new(ours_prk_alg, b"salt").extract(&ikm).unwrap();
             let theirs = theirs::Salt::new(theirs_prk_alg, b"salt").extract(&ikm);
 
             for (ours_alg, theirs_alg) in [
@@ -675,7 +676,7 @@ mod hkdf {
                 (&aead::AES_256_GCM, &their_aead::AES_256_GCM),
                 (&aead::CHACHA20_POLY1305, &their_aead::CHACHA20_POLY1305),
             ] {
-                let ours_key = aead::Key::from(ours.expand(&info, ours_alg));
+                let ours_key = aead::Key::from(ours.expand(&info, ours_alg).unwrap());
                 let mut ours_sealed = msg.clone();
                 ours_key
                     .seal_in_place_append_tag(
@@ -705,17 +706,17 @@ mod hkdf {
                 (&hmac::HMAC_SHA384, their_hmac::HMAC_SHA384),
                 (&hmac::HMAC_SHA512, their_hmac::HMAC_SHA512),
             ] {
-                let ours_key = hmac::Key::from(ours.expand(&info, ours_alg));
+                let ours_key = hmac::Key::from(ours.expand(&info, ours_alg).unwrap());
                 let theirs_key = their_hmac::Key::from(theirs.expand(&info, theirs_alg).unwrap());
                 let ours_tag = hmac::sign(&ours_key, &msg);
                 let theirs_tag = their_hmac::sign(&theirs_key, &msg);
                 prop_assert_eq!(ours_tag.as_ref(), theirs_tag.as_ref());
             }
 
-            let ours = hkdf::Prk::from(ours.expand(&info, ours_prk_alg));
+            let ours = hkdf::Prk::from(ours.expand(&info, ours_prk_alg).unwrap());
             let theirs = theirs::Prk::from(theirs.expand(&info, theirs_prk_alg).unwrap());
             let mut ours_out = [0u8; 100];
-            ours.expand(&info, ours_out.len()).fill(&mut ours_out).unwrap();
+            ours.expand(&info, ours_out.len()).unwrap().fill(&mut ours_out).unwrap();
             let mut theirs_out = [0u8; 100];
             theirs.expand(&info, Len(theirs_out.len())).unwrap().fill(&mut theirs_out).unwrap();
             prop_assert_eq!(ours_out, theirs_out);
@@ -2446,6 +2447,54 @@ mod pkcs8_attributes {
         }
     }
 
+    /// `pkcs8`, a v1 document, as version 2 without a public key.
+    fn as_v2(pkcs8: &[u8]) -> Vec<u8> {
+        let mut v2 = pkcs8.to_vec();
+        let (header, _) = element(&v2);
+        assert_eq!(v2[header..header + 3], [0x02, 0x01, 0x00]);
+        v2[header + 2] = 0x01;
+        v2
+    }
+
+    /// RFC 5958 makes a v2 document's public key optional, and both sides
+    /// take one without it, for every key type.
+    #[test]
+    fn v2_without_public_key() {
+        use aws_lc_rs::signature::{ML_DSA_44_SIGNING, PqdsaKeyPair};
+        use rind::signature::sign::{MlDsa44, MlDsaKeyPair};
+
+        for key in keys() {
+            let v1 = match key.v2 {
+                // Drop the Ed25519 document's trailing 32-byte public key.
+                true => {
+                    let mut body = key.pkcs8[2..key.pkcs8.len() - 35].to_vec();
+                    body[2] = 0x00;
+                    [&[0x30, body.len() as u8][..], &body].concat()
+                }
+                false => key.pkcs8.clone(),
+            };
+            let public = (key.ours)(&v1).unwrap();
+            let v2 = as_v2(&v1);
+            assert_eq!((key.ours)(&v2).as_deref(), Some(&public[..]), "{v2:02x?}");
+            assert_eq!((key.theirs)(&v2).as_deref(), Some(&public[..]), "{v2:02x?}");
+        }
+
+        let ours = MlDsaKeyPair::<MlDsa44>::from_seed(&[7; 32]).unwrap();
+        let v2 = as_v2(ours.to_pkcs8().as_ref());
+        let theirs = PqdsaKeyPair::from_pkcs8(&ML_DSA_44_SIGNING, &v2).unwrap();
+        let ours = MlDsaKeyPair::<MlDsa44>::from_pkcs8(&v2).unwrap();
+        assert_eq!(ours.public_key().as_ref(), theirs.public_key().as_ref());
+
+        let private = [9; 32];
+        let ours =
+            rind::agreement::PrivateKey::from_scalar(&rind::agreement::X25519, &private).unwrap();
+        let v2 = as_v2(ours.to_pkcs8().as_ref());
+        assert_eq!(crate::ecdh_scalars::aws_lc_x25519_from_pkcs8(&v2), private);
+        let loaded =
+            rind::agreement::PrivateKey::from_pkcs8(&rind::agreement::X25519, &v2).unwrap();
+        assert_eq!(loaded.public_key().as_ref(), ours.public_key().as_ref());
+    }
+
     #[test]
     fn attributes() {
         // RFC 8410's example, and contents that are not DER at all.
@@ -2651,7 +2700,7 @@ mod ecdh_scalars {
     }
 
     /// The X25519 key aws-lc parses from PKCS#8 `der`.
-    fn aws_lc_x25519_from_pkcs8(der: &[u8]) -> [u8; 32] {
+    pub(crate) fn aws_lc_x25519_from_pkcs8(der: &[u8]) -> [u8; 32] {
         use aws_lc_sys::*;
         // SAFETY: as `aws_lc_x25519_pkcs8`.
         unsafe {
