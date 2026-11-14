@@ -1,7 +1,7 @@
 //! The little DER that ring's API needs rind-ring to read itself: an RSA
-//! public key's fields, a PKCS#8 document's version, an ECDSA PKCS#8 document's public key, and an
-//! Ed25519 PKCS#8 document's structure, whose secret seed it slices out but
-//! never branches on.
+//! public key's fields, a PKCS#8 document's version, an ECDSA PKCS#8
+//! document's public key, and an Ed25519 PKCS#8 document's structure, whose
+//! secret seed it slices out but never branches on.
 
 use crate::error::{self, KeyRejected};
 
