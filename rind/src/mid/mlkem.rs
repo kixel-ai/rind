@@ -59,7 +59,7 @@ pub trait Params: fmt::Debug + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe 
     #[doc(hidden)]
     type CiphertextBytes: Array<u8>;
     /// An expanded decapsulation key: `768 * K + 96` bytes.
-    #[cfg(test)]
+    #[cfg(any(test, rind_fips))]
     type DecapKeyBytes: Array<u8>;
     /// FIPS-203's name for the set.
     #[cfg(test)]
@@ -75,7 +75,7 @@ impl Params for MlKem512 {
     type Matrix = [Poly; 4];
     type EncapKeyBytes = [u8; 800];
     type CiphertextBytes = [u8; 768];
-    #[cfg(test)]
+    #[cfg(any(test, rind_fips))]
     type DecapKeyBytes = [u8; 1632];
     #[cfg(test)]
     const NAME: &'static str = "ML-KEM-512";
@@ -90,7 +90,7 @@ impl Params for MlKem768 {
     type Matrix = [Poly; 9];
     type EncapKeyBytes = [u8; 1184];
     type CiphertextBytes = [u8; 1088];
-    #[cfg(test)]
+    #[cfg(any(test, rind_fips))]
     type DecapKeyBytes = [u8; 2400];
     #[cfg(test)]
     const NAME: &'static str = "ML-KEM-768";
@@ -105,7 +105,7 @@ impl Params for MlKem1024 {
     type Matrix = [Poly; 16];
     type EncapKeyBytes = [u8; 1568];
     type CiphertextBytes = [u8; 1568];
-    #[cfg(test)]
+    #[cfg(any(test, rind_fips))]
     type DecapKeyBytes = [u8; 3168];
     #[cfg(test)]
     const NAME: &'static str = "ML-KEM-1024";
@@ -206,8 +206,8 @@ impl<P: Params> DecapKey<P> {
 
     /// Encode the key as bytes.
     ///
-    /// This is used for testing.
-    #[cfg(test)]
+    /// This is used for testing, and by the FIPS module's self-test.
+    #[cfg(any(test, rind_fips))]
     pub(crate) fn as_bytes(&self) -> P::DecapKeyBytes {
         let _entry = low::Entry::new_secret();
         let mut out = P::DecapKeyBytes::filled(0);
