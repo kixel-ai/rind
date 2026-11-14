@@ -24,9 +24,6 @@ upstream = "1"
 [features]
 default = ["aws-lc-sys", "alloc", "ring-io", "ring-sig-verify"]
 alloc = []
-# Does nothing: rind always wipes keys now. Kept so a build that asked for it
-# before still resolves; a patch release cannot remove a feature.
-wipe = []
 asan = []
 aws-lc-sys = []
 bindgen = []
