@@ -207,7 +207,10 @@ SECTIONS = [
         "VRF",
         [f"vrf-{curve}-{step}/{{lib}}" for curve in ["edwards25519", "p256"] for step in ["prove", "verify"]],
     ),
-    ("SPAKE2+", ["spake2plus-p256-prover/{lib}", "spake2plus-p256-verifier/{lib}"]),
+    (
+        "SPAKE2+",
+        [f"spake2plus-p256-{side}-{step}/{{lib}}" for step in ["start", "finish"] for side in ["prover", "verifier"]],
+    ),
 ]
 OPERATIONS = [op for _, ops in SECTIONS for op in ops]
 
@@ -806,8 +809,10 @@ NAMES = {
     "vrf-edwards25519-verify": "ECVRF edwards25519 verify",
     "vrf-p256-prove": "ECVRF P-256 prove",
     "vrf-p256-verify": "ECVRF P-256 verify",
-    "spake2plus-p256-prover": "SPAKE2+ P-256 prover",
-    "spake2plus-p256-verifier": "SPAKE2+ P-256 verifier",
+    "spake2plus-p256-prover-start": "SPAKE2+ P-256 prover share",
+    "spake2plus-p256-verifier-start": "SPAKE2+ P-256 verifier share and confirmation",
+    "spake2plus-p256-prover-finish": "SPAKE2+ P-256 prover confirmation and key",
+    "spake2plus-p256-verifier-finish": "SPAKE2+ P-256 verifier key",
 }
 
 # Each build of admin/build-cost, as the report names it.
@@ -895,7 +900,7 @@ UNRANKED = [
     (r"rsa\d+-key-generation", "RSA key generation varies too much from run to run to rank"),
     (r"jwt-[^/]+/\*/load$", "a token's key loading, the part of `token` spent on the key"),
     (
-        r"(blind-rsa|v?oprf|vrf|spake2plus)-",
+        r"(blind-rsa\d+|v?oprf|vrf|spake2plus)-",
         "neither aws-lc-rs nor ring offers the protocol, so no baseline; the report's hosts compare it",
     ),
 ]

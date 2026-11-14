@@ -1,11 +1,11 @@
-//! RFC 9383's SPAKE2+-P256-SHA256-HKDF-SHA256-HMAC-SHA256: each side's work
-//! in one exchange, from its share to the shared key. The other side's steps
-//! run between them, untimed.
+//! RFC 9383's SPAKE2+-P256-SHA256-HKDF-SHA256-HMAC-SHA256, one row per step
+//! of an exchange: the prover's share, the verifier's share and
+//! confirmation, the prover's confirmation and key, and the verifier's key.
+//! The steps before each run untimed.
 mod criterion;
 use std::hint::black_box;
-use std::time::{Duration, Instant};
 
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use getrandom::{SysRng, rand_core::UnwrapErr};
 use rind::spake2plus::{ProverSecrets, RFC9383, VerifierRecord};
 use spake2plus::{Context, P256Sha256, Prover, ProverSecret, Verifier};
@@ -50,110 +50,124 @@ fn check_interop() {
     assert_eq!(prover_key.as_ref(), verifier_key.as_bytes().as_ref());
 }
 
-fn prover(c: &mut Criterion) {
+fn bench(c: &mut Criterion) {
     check_interop();
-    let mut group = c.benchmark_group("spake2plus-p256-prover");
-    group.throughput(Throughput::Elements(1));
+    let secrets = ProverSecrets::new(&W0S, &W1S).unwrap();
+    let record = VerifierRecord::from_w1(&W0S, &W1S).unwrap();
+    let rc_secret = rustcrypto_secret();
+    let rc_record = rc_secret.verifier_record();
+    let context = context();
+    let rng = || UnwrapErr(SysRng);
 
+    let mut group = c.benchmark_group("spake2plus-p256-prover-start");
+    group.throughput(Throughput::Elements(1));
     group.bench_function("rind", |b| {
-        let secrets = ProverSecrets::new(&W0S, &W1S).unwrap();
-        let record = VerifierRecord::from_w1(&W0S, &W1S).unwrap();
-        b.iter_custom(|iters| {
-            let mut timed = Duration::ZERO;
-            for _ in 0..iters {
-                let start = Instant::now();
+        b.iter(|| black_box(secrets.start(&RFC9383, CONTEXT, PROVER, VERIFIER).unwrap()));
+    });
+    group.bench_function("rustcrypto", |b| {
+        let mut rng = rng();
+        b.iter(|| black_box(Prover::start(&rc_secret, &context, &mut rng)));
+    });
+    group.finish();
+
+    // The verifier's share and its confirmation of the prover's share.
+    let mut group = c.benchmark_group("spake2plus-p256-verifier-start");
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("rind", |b| {
+        let (share_p, _) = secrets.start(&RFC9383, CONTEXT, PROVER, VERIFIER).unwrap();
+        b.iter(|| {
+            black_box(
+                record
+                    .start(&RFC9383, CONTEXT, PROVER, VERIFIER, &share_p)
+                    .unwrap(),
+            )
+        });
+    });
+    group.bench_function("rustcrypto", |b| {
+        let mut rng = rng();
+        let (_, share_p) = Prover::start(&rc_secret, &context, &mut rng);
+        b.iter(|| {
+            let (verifier, share_v) = Verifier::start(&rc_record, &context, &mut rng);
+            black_box((share_v, verifier.receive(&share_p).unwrap()))
+        });
+    });
+    group.finish();
+
+    // Each side's finish consumes its state, so each iteration runs the
+    // steps before it, untimed.
+    let mut group = c.benchmark_group("spake2plus-p256-prover-finish");
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("rind", |b| {
+        b.iter_batched(
+            || {
                 let (share_p, prover) = secrets.start(&RFC9383, CONTEXT, PROVER, VERIFIER).unwrap();
-                timed += start.elapsed();
                 let (share_v, confirm_v, _) = record
                     .start(&RFC9383, CONTEXT, PROVER, VERIFIER, &share_p)
                     .unwrap();
-                let start = Instant::now();
-                black_box(prover.finish(&share_v, &confirm_v).unwrap());
-                timed += start.elapsed();
-            }
-            timed
-        });
+                (prover, share_v, confirm_v)
+            },
+            |(prover, share_v, confirm_v)| black_box(prover.finish(&share_v, &confirm_v).unwrap()),
+            BatchSize::SmallInput,
+        );
     });
-
     group.bench_function("rustcrypto", |b| {
-        let secret = rustcrypto_secret();
-        let record = secret.verifier_record();
-        let context = context();
-        let mut rng = UnwrapErr(SysRng);
-        b.iter_custom(|iters| {
-            let mut timed = Duration::ZERO;
-            for _ in 0..iters {
-                let start = Instant::now();
-                let (prover, share_p) = Prover::start(&secret, &context, &mut rng);
-                timed += start.elapsed();
-                let (verifier, share_v) = Verifier::start(&record, &context, &mut rng);
+        let mut rng = rng();
+        b.iter_batched(
+            || {
+                let (prover, share_p) = Prover::start(&rc_secret, &context, &mut rng);
+                let (verifier, share_v) = Verifier::start(&rc_record, &context, &mut rng);
                 let (_, confirm_v) = verifier.receive(&share_p).unwrap();
-                let start = Instant::now();
+                (prover, share_v, confirm_v)
+            },
+            |(prover, share_v, confirm_v)| {
                 black_box(
                     prover
                         .receive(&share_v)
                         .unwrap()
                         .finish(&confirm_v)
                         .unwrap(),
-                );
-                timed += start.elapsed();
-            }
-            timed
-        });
+                )
+            },
+            BatchSize::SmallInput,
+        );
     });
-}
+    group.finish();
 
-fn verifier(c: &mut Criterion) {
-    let mut group = c.benchmark_group("spake2plus-p256-verifier");
+    let mut group = c.benchmark_group("spake2plus-p256-verifier-finish");
     group.throughput(Throughput::Elements(1));
-
     group.bench_function("rind", |b| {
-        let secrets = ProverSecrets::new(&W0S, &W1S).unwrap();
-        let record = VerifierRecord::from_w1(&W0S, &W1S).unwrap();
-        b.iter_custom(|iters| {
-            let mut timed = Duration::ZERO;
-            for _ in 0..iters {
+        b.iter_batched(
+            || {
                 let (share_p, prover) = secrets.start(&RFC9383, CONTEXT, PROVER, VERIFIER).unwrap();
-                let start = Instant::now();
                 let (share_v, confirm_v, verifier) = record
                     .start(&RFC9383, CONTEXT, PROVER, VERIFIER, &share_p)
                     .unwrap();
-                timed += start.elapsed();
                 let (confirm_p, _) = prover.finish(&share_v, &confirm_v).unwrap();
-                let start = Instant::now();
-                black_box(verifier.finish(&confirm_p).unwrap());
-                timed += start.elapsed();
-            }
-            timed
-        });
+                (verifier, confirm_p)
+            },
+            |(verifier, confirm_p)| black_box(verifier.finish(&confirm_p).unwrap()),
+            BatchSize::SmallInput,
+        );
     });
-
     group.bench_function("rustcrypto", |b| {
-        let secret = rustcrypto_secret();
-        let record = secret.verifier_record();
-        let context = context();
-        let mut rng = UnwrapErr(SysRng);
-        b.iter_custom(|iters| {
-            let mut timed = Duration::ZERO;
-            for _ in 0..iters {
-                let (prover, share_p) = Prover::start(&secret, &context, &mut rng);
-                let start = Instant::now();
-                let (verifier, share_v) = Verifier::start(&record, &context, &mut rng);
+        let mut rng = rng();
+        b.iter_batched(
+            || {
+                let (prover, share_p) = Prover::start(&rc_secret, &context, &mut rng);
+                let (verifier, share_v) = Verifier::start(&rc_record, &context, &mut rng);
                 let (verifier, confirm_v) = verifier.receive(&share_p).unwrap();
-                timed += start.elapsed();
                 let (confirm_p, _) = prover
                     .receive(&share_v)
                     .unwrap()
                     .finish(&confirm_v)
                     .unwrap();
-                let start = Instant::now();
-                black_box(verifier.finish(&confirm_p).unwrap());
-                timed += start.elapsed();
-            }
-            timed
-        });
+                (verifier, confirm_p)
+            },
+            |(verifier, confirm_p)| black_box(verifier.finish(&confirm_p).unwrap()),
+            BatchSize::SmallInput,
+        );
     });
 }
 
-criterion_group!(benches, prover, verifier);
+criterion_group!(benches, bench);
 criterion_main!(benches);
