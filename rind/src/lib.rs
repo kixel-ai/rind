@@ -100,10 +100,10 @@ pub mod doc {
 /// let mut alice_key = [0u8; 32];
 /// let mut bob_key = [0u8; 32];
 /// salt.extract(alice_secret.as_ref())
-///     .and_then(|prk| prk.expand(&[b"key"], alice_key.len())?.fill(&mut alice_key))
+///     .and_then(|prk| prk.fill(&[b"key"], &mut alice_key))
 ///     .unwrap();
 /// salt.extract(bob_secret.as_ref())
-///     .and_then(|prk| prk.expand(&[b"key"], bob_key.len())?.fill(&mut bob_key))
+///     .and_then(|prk| prk.fill(&[b"key"], &mut bob_key))
 ///     .unwrap();
 /// assert_eq!(alice_key, bob_key);
 /// ```
@@ -138,11 +138,9 @@ pub mod agreement {
 /// let mut sender_key = [0u8; 32];
 /// let mut recipient_key = [0u8; 32];
 /// salt.extract(sender_secret.as_ref())?
-///     .expand(&[b"key"], sender_key.len())?
-///     .fill(&mut sender_key)?;
+///     .fill(&[b"key"], &mut sender_key)?;
 /// salt.extract(recipient_secret.as_ref())?
-///     .expand(&[b"key"], recipient_key.len())?
-///     .fill(&mut recipient_key)?;
+///     .fill(&[b"key"], &mut recipient_key)?;
 /// assert_eq!(sender_key, recipient_key);
 /// # Ok(())
 /// # }

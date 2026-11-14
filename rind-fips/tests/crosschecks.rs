@@ -377,9 +377,11 @@ fn hkdf() {
                 .unwrap();
             assert_eq!(out, theirs_out);
 
-            // The secret taken as a PRK as it is.
-            hkdf::Prk::new(ours, &secret).fill(&info, &mut out).unwrap();
-            aws_lc_rs::hkdf::Prk::new_less_safe(theirs_algorithm, &secret)
+            // The secret taken as a PRK as it is, up to the 64 bytes
+            // aws-lc-rs's `new_less_safe` holds before it panics.
+            let prk = &secret[..secret.len().min(64)];
+            hkdf::Prk::new(ours, prk).fill(&info, &mut out).unwrap();
+            aws_lc_rs::hkdf::Prk::new_less_safe(theirs_algorithm, prk)
                 .expand(&info, Len(out_len))
                 .unwrap()
                 .fill(&mut theirs_out)

@@ -122,10 +122,8 @@ impl Prk {
 // As ring's, which holds an HMAC key.
 impl fmt::Debug for Prk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let key = format_args!(
-            "Key {{ algorithm: {:?} }}",
-            self.algorithm.0.digest_algorithm()
-        );
+        let digest = self.algorithm.0.digest_algorithm();
+        let key = format_args!("Key {{ algorithm: {digest:?} }}");
         f.debug_tuple("Prk").field(&key).finish()
     }
 }

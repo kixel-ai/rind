@@ -638,15 +638,17 @@ mod hkdf {
             };
             let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
 
-            // An extracted PRK, then the salt taken as a PRK as it is.
+            // An extracted PRK, then the salt taken as a PRK as it is, up to
+            // the 64 bytes aws-lc-rs's `new_less_safe` holds before it panics.
+            let prk = &salt[..salt.len().min(64)];
             let pairs = [
                 (
                     hkdf::Salt::new(ours, &salt).extract(&ikm).unwrap(),
                     theirs::Salt::new(their_alg, &salt).extract(&ikm),
                 ),
                 (
-                    hkdf::Prk::new(ours, &salt),
-                    theirs::Prk::new_less_safe(their_alg, &salt),
+                    hkdf::Prk::new(ours, prk),
+                    theirs::Prk::new_less_safe(their_alg, prk),
                 ),
             ];
             for (ours, theirs) in pairs {
