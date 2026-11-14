@@ -95,7 +95,10 @@ if [ -n "${RIND_SCOPE:-}" ]; then
         *rind_portable*) backend=portable ;;
     esac
     root=$(dirname "$self")/..
-    reached=$("$root/sh/changed.sh" "$RIND_SCOPE" | "$root/sh/backends.sh" -)
+    # Its own command, so a base it cannot resolve fails the run under
+    # `set -e` rather than reading as an empty diff.
+    changed=$("$root/sh/changed.sh" "$RIND_SCOPE")
+    reached=$(printf '%s\n' "$changed" | "$root/sh/backends.sh" -)
     if ! printf '%s\n' "$reached" | grep -qxE "all|$backend"; then
         echo "ctgrind: nothing changed since $RIND_SCOPE reaches the $backend backend" >&2
         exit 0

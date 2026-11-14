@@ -107,8 +107,9 @@ module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|f
     tools='cargo' compiles
 # Dependents may build with the workspace's declared rust-version. Plain
 # `cargo check` covers the lib and bin targets, all a dependent builds, so a
-# crate's tests, benches, and docs cannot break it.
-module msrv '^(rind[^/]*/(src/|build\.rs$|Cargo\.toml$)|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+# crate's tests, benches, and docs cannot break it. A Rust crate nested in
+# an adapter, such as rind-fips/module/, counts too.
+module msrv '^(rind[^/]*/(src/|build\.rs$|Cargo\.toml$)|rind[^/]*/([^/]+/)+(src/.*\.rs$|build\.rs$|Cargo\.toml$)|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools='nix cargo jq' compiles
 # Variable-time instructions in rind's release builds, which a change to its
 # code, dependencies, toolchain, or the scan itself can bring. A change under
