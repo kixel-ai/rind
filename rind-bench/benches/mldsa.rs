@@ -253,6 +253,74 @@ macro_rules! ml_dsa {
                 })
             });
             group.finish();
+
+            // Load a public key and verify one signature with it, as a TLS
+            // handshake does with its peer's certificate.
+            let mut group = c.benchmark_group(concat!($id, "-load-verify"));
+            group.throughput(Throughput::Elements(1));
+
+            #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+            if ossl::available() {
+                group.bench_function("openssl", |b| {
+                    use openssl::pkey::{KeyType, PKey};
+                    use openssl::sign::Verifier;
+
+                    b.iter(|| {
+                        let key = PKey::public_key_from_raw_bytes_ex(
+                            None,
+                            KeyType::$openssl_type,
+                            None,
+                            &public_key,
+                        )
+                        .unwrap();
+                        let mut verifier = Verifier::new_without_digest(&key).unwrap();
+                        assert!(verifier.verify_oneshot(&signature, MESSAGE).unwrap());
+                    })
+                });
+            }
+
+            group.bench_function("aws-lc-rs", |b| {
+                use aws_lc_rs::signature::{ParsedPublicKey, $aws_verify};
+
+                b.iter(|| {
+                    let key = ParsedPublicKey::new(&$aws_verify, &public_key).unwrap();
+                    key.verify_sig(MESSAGE, &signature).unwrap();
+                })
+            });
+
+            group.bench_function("libcrux", |b| {
+                use libcrux_ml_dsa::{MLDSASignature, MLDSAVerificationKey};
+
+                b.iter(|| {
+                    let key = MLDSAVerificationKey::new(public_key.as_slice().try_into().unwrap());
+                    let signature = MLDSASignature::new(signature.as_slice().try_into().unwrap());
+                    libcrux_ml_dsa::$libcrux::verify(&key, MESSAGE, b"", &signature).unwrap();
+                })
+            });
+
+            group.bench_function("rustcrypto", |b| {
+                use ml_dsa::{EncodedVerifyingKey, Signature, Verifier, VerifyingKey, $rustcrypto};
+
+                b.iter(|| {
+                    let key = VerifyingKey::<$rustcrypto>::decode(
+                        &EncodedVerifyingKey::<$rustcrypto>::try_from(public_key.as_slice())
+                            .unwrap(),
+                    );
+                    let signature =
+                        Signature::<$rustcrypto>::try_from(signature.as_slice()).unwrap();
+                    key.verify(MESSAGE, &signature).unwrap();
+                })
+            });
+
+            group.bench_function("rind", |b| {
+                use rind::signature::{PublicKey, verify};
+
+                b.iter(|| {
+                    let key = PublicKey::new(&verify::$rind_verify, &public_key).unwrap();
+                    key.verify(MESSAGE, &signature).unwrap();
+                })
+            });
+            group.finish();
         }
     };
 }
