@@ -1296,12 +1296,12 @@ mod tests {
         }
     }
 
+    /// A key pair and its public key, as the constructors return them.
+    type Loaded<P> = Result<(KeyPair<P>, PublicKey<P>), Error>;
+
     /// Runs a `sign_seed` or `sign_noseed` file: loads each group's key,
     /// checks its public key, and signs each test with its `rnd`, or zeros.
-    fn wycheproof_sign<P: Params>(
-        name: &str,
-        load: fn(&WycheproofGroup) -> Result<(KeyPair<P>, PublicKey<P>), Error>,
-    ) {
+    fn wycheproof_sign<P: Params>(name: &str, load: fn(&WycheproofGroup) -> Loaded<P>) {
         for group in wycheproof_groups::<WycheproofGroup>(name) {
             let (key, loaded_public_key) = match load(&group) {
                 Ok(loaded) => loaded,
