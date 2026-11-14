@@ -16,7 +16,9 @@
 #![allow(clippy::chunks_exact_to_as_chunks)]
 
 use core::fmt;
+use core::ops::{Deref, DerefMut};
 use core::panic::{RefUnwindSafe, UnwindSafe};
+use std::sync::OnceLock;
 
 use crate::Error;
 use crate::error::KeyFormatError;
@@ -180,15 +182,29 @@ const fn signature_len<P: Params>() -> usize {
     P::CTILDE_LEN + P::L * P::Z_PACKED + P::OMEGA + P::K
 }
 
-/// A key pair: the encodings FIPS 204 defines, and the seed it was generated
-/// from, if known. Signing expands them as it goes, as mldsa-native and
-/// aws-lc do, which keeps the key small.
+/// A key pair: the encodings FIPS 204 defines, the seed it was generated
+/// from, if known, and the expansion every signature reads, which loading
+/// computes once.
 ///
-/// It wipes its whole value on drop under the `wipe` feature.
+/// It wipes its whole value on drop under the `wipe` feature, its expansion
+/// included.
 pub(crate) struct KeyPair<P: Params> {
     seed: Option<[u8; SEED_LEN]>,
     secret_key: P::SecretKey,
     public_key: P::PublicKey,
+    /// `A`, then `s1`, `s2`, and `t0`, all in the NTT domain.
+    expanded: Polys,
+}
+
+/// The polynomials a key pair's expansion holds: `A`, then `s1`, `s2`, and
+/// `t0`.
+const fn secret_expansion_len<P: Params>() -> usize {
+    P::K * P::L + P::L + 2 * P::K
+}
+
+/// The polynomials a public key's expansion holds: `A`, then `t1 * 2^d`.
+const fn public_expansion_len<P: Params>() -> usize {
+    P::K * P::L + P::K
 }
 
 impl<P: Params> KeyPair<P> {
@@ -208,8 +224,14 @@ impl<P: Params> KeyPair<P> {
             seed: Some(seed),
             secret_key: P::SecretKey::zeroed(),
             public_key: P::PublicKey::zeroed(),
+            expanded: Polys::new(secret_expansion_len::<P>()),
         };
-        keygen::<P>(&seed, key.public_key.as_mut(), key.secret_key.as_mut());
+        keygen::<P>(
+            &seed,
+            key.public_key.as_mut(),
+            key.secret_key.as_mut(),
+            &mut key.expanded,
+        );
         key
     }
 
@@ -218,17 +240,23 @@ impl<P: Params> KeyPair<P> {
     /// `t0` and `tr` must be those its other parts compute.
     pub(crate) fn from_secret_key(sk: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
+        if sk.len() != secret_key_len::<P>() {
+            return Err(KeyFormatError::WrongLength.into());
+        }
         let mut key = Self {
             seed: None,
             secret_key: P::SecretKey::zeroed(),
             public_key: P::PublicKey::zeroed(),
+            expanded: Polys::new(secret_expansion_len::<P>()),
         };
-        if sk.len() != key.secret_key.as_ref().len() {
-            return Err(KeyFormatError::WrongLength.into());
-        }
         key.secret_key.as_mut().copy_from_slice(sk);
         low::ct::secret_slice(key.secret_key.as_ref());
-        match public_key_from_secret::<P>(key.secret_key.as_ref(), key.public_key.as_mut()) {
+        let consistent = public_key_from_secret::<P>(
+            key.secret_key.as_ref(),
+            key.public_key.as_mut(),
+            &mut key.expanded,
+        );
+        match consistent {
             true => Ok(key),
             false => Err(KeyFormatError::MlDsaSecretKey.into()),
         }
@@ -263,7 +291,7 @@ impl<P: Params> KeyPair<P> {
         let mut rnd = [0u8; RND_LEN];
         SystemRandom.fill(&mut rnd)?;
         low::ct::secret_slice(&rnd);
-        sign_internal::<P>(self.secret_key.as_ref(), &mu, &rnd)
+        sign_internal::<P>(self.secret_key.as_ref(), &self.expanded, &mu, &rnd)
     }
 
     /// `mu`, the message representative this key signs for `message` under
@@ -281,12 +309,14 @@ impl<P: Params> KeyPair<P> {
         rnd: &[u8; RND_LEN],
     ) -> Result<P::Signature, Error> {
         let _entry = Entry::new_secret();
-        sign_internal::<P>(self.secret_key.as_ref(), mu, rnd)
+        sign_internal::<P>(self.secret_key.as_ref(), &self.expanded, mu, rnd)
     }
 }
 
 impl<P: Params> Drop for KeyPair<P> {
     fn drop(&mut self) {
+        // Free the expansion first: wiping the value forgets where it is.
+        self.expanded.free();
         low::zeroise_value(self);
     }
 }
@@ -322,50 +352,91 @@ pub(crate) fn mu(tr: &[u8; TR_LEN], context: &[u8], message: &[u8]) -> Result<[u
     Ok(mu)
 }
 
-/// Verifies `signature` over `message` and `context` under public key `pk`,
-/// whose hash is `tr`.
-pub(crate) fn verify<P: Params>(
-    pk: &[u8],
-    tr: &[u8; TR_LEN],
-    context: &[u8],
-    message: &[u8],
-    signature: &[u8],
-) -> Result<(), Error> {
-    let _entry = Entry::new_public();
-    let mu = mu(tr, context, message).map_err(|_| Error::BadSignature)?;
-    verify_internal::<P>(pk, &mu, signature)
+/// A public key's hash `tr`, and the expansion its first verification
+/// computes and later ones reuse: `A`, then `t1 * 2^d`, in the NTT domain.
+/// The key's encoding is its owner's, passed to each verification.
+pub(crate) struct VerifyingKey {
+    tr: [u8; TR_LEN],
+    expanded: OnceLock<Polys>,
+}
+
+impl VerifyingKey {
+    /// The key whose encoding hashes to `tr`, not yet expanded.
+    pub(crate) fn new(tr: [u8; TR_LEN]) -> Self {
+        Self {
+            tr,
+            expanded: OnceLock::new(),
+        }
+    }
+
+    /// Verifies `signature` over `message` and `context` under this key,
+    /// whose encoding is `pk`.
+    pub(crate) fn verify<P: Params>(
+        &self,
+        pk: &[u8],
+        context: &[u8],
+        message: &[u8],
+        signature: &[u8],
+    ) -> Result<(), Error> {
+        let _entry = Entry::new_public();
+        let mu = mu(&self.tr, context, message).map_err(|_| Error::BadSignature)?;
+        verify_internal::<P>(pk, &self.expanded, &mu, signature)
+    }
 }
 
 /// Polynomials on the heap, wiped before they are freed under the `wipe`
-/// feature, as heap scratch derived from a private key must be.
-struct Scratch(Vec<Poly>);
+/// feature, as heap scratch derived from a private key must be. All-zero
+/// bytes are none, so a key holding them can wipe its whole value.
+struct Polys(Option<Box<[Poly]>>);
 
-impl Scratch {
+impl Polys {
     fn new(polys: usize) -> Self {
-        Self(vec![Poly::ZERO; polys])
+        Self(Some(vec![Poly::ZERO; polys].into_boxed_slice()))
+    }
+
+    /// Wipes and frees the polynomials, leaving none.
+    fn free(&mut self) {
+        if let Some(mut polys) = self.0.take() {
+            low::zeroise(&mut polys);
+        }
     }
 }
 
-impl Drop for Scratch {
+impl Deref for Polys {
+    type Target = [Poly];
+
+    fn deref(&self) -> &[Poly] {
+        self.0.as_deref().unwrap_or_default()
+    }
+}
+
+impl DerefMut for Polys {
+    fn deref_mut(&mut self) -> &mut [Poly] {
+        self.0.as_deref_mut().unwrap_or_default()
+    }
+}
+
+impl Drop for Polys {
     fn drop(&mut self) {
-        low::zeroise(&mut self.0);
+        self.free();
     }
 }
 
-/// FIPS 204's `ML-DSA.KeyGen_internal`, writing `pk` and `sk`.
-fn keygen<P: Params>(seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]) {
-    let mut expanded = [0u8; 2 * SEED_LEN + 64];
+/// FIPS 204's `ML-DSA.KeyGen_internal`, writing `pk` and `sk`, and the key
+/// pair's expansion into `expanded`.
+fn keygen<P: Params>(seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8], expanded: &mut [Poly]) {
+    let mut seeds = [0u8; 2 * SEED_LEN + 64];
     let mut h = Shake256Sponge::new();
     h.absorb(seed);
     h.absorb(&[P::K as u8, P::L as u8]);
-    Shake256::new(&h).read(&mut expanded);
-    let (rho, rest) = expanded.split_at(SEED_LEN);
+    Shake256::new(&h).read(&mut seeds);
+    let (rho, rest) = seeds.split_at(SEED_LEN);
     let (rho_prime, key) = rest.split_at(64);
     let rho: &[u8; SEED_LEN] = rho.try_into().unwrap();
     low::ct::public_slice(rho);
 
-    let mut scratch = Scratch::new(P::K * P::L + P::L + P::K);
-    let (a, s) = scratch.0.split_at_mut(P::K * P::L);
+    let (a, rest) = expanded.split_at_mut(P::K * P::L);
+    let (s, t0) = rest.split_at_mut(P::L + P::K);
     expand_s::<P>(rho_prime.try_into().unwrap(), s);
     let (s1, s2) = s.split_at_mut(P::L);
 
@@ -377,13 +448,11 @@ fn keygen<P: Params>(seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]) {
     {
         pack_eta::<P>(packed, s);
     }
-    for s in s1.iter_mut() {
-        low::mldsa_ntt(&mut s.0);
-    }
+    ntt_all(s1);
 
     pk[..SEED_LEN].copy_from_slice(rho);
     expand_a::<P>(rho, a);
-    compute_t::<P>(a, s1, s2, &mut pk[SEED_LEN..], &mut sk[layout.t0]);
+    compute_t::<P>(a, s1, s2, &mut pk[SEED_LEN..], t0, &mut sk[layout.t0]);
     low::ct::public_slice(pk);
 
     sk[..SEED_LEN].copy_from_slice(rho);
@@ -391,6 +460,15 @@ fn keygen<P: Params>(seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]) {
     let mut h = Shake256Sponge::new();
     h.absorb(pk);
     Shake256::new(&h).read(&mut sk[layout.tr]);
+    ntt_all(s2);
+    ntt_all(t0);
+}
+
+/// Moves each of `polys` into the NTT domain.
+fn ntt_all(polys: &mut [Poly]) {
+    for poly in polys {
+        low::mldsa_ntt(&mut poly.0);
+    }
 }
 
 /// Where an expanded private key's parts lie.
@@ -419,24 +497,25 @@ impl<P: Params> SecretKeyLayout<P> {
 }
 
 /// `t = A * s1 + s2`, split into `t1`, packed into `t1_packed`, and `t0`,
-/// packed into `t0_packed`, for `s1` in the NTT domain.
+/// written to `t0` and packed into `t0_packed`, for `s1` in the NTT domain.
 fn compute_t<P: Params>(
     a: &[Poly],
     s1_hat: &[Poly],
     s2: &[Poly],
     t1_packed: &mut [u8],
+    t0: &mut [Poly],
     t0_packed: &mut [u8],
 ) {
-    let mut t = Poly::ZERO;
-    for (((row, s2), t1_packed), t0_packed) in a
+    for ((((row, s2), t), t1_packed), t0_packed) in a
         .chunks_exact(P::L)
         .zip(s2)
+        .zip(t0)
         .zip(t1_packed.as_chunks_mut::<T1_PACKED>().0)
         .zip(t0_packed.as_chunks_mut::<T0_PACKED>().0)
     {
         low::mldsa_pointwise_acc(&mut t.0, row, s1_hat);
         low::mldsa_intt(&mut t.0);
-        add(&mut t, s2);
+        add(t, s2);
         low::mldsa_reduce(&mut t.0);
         low::mldsa_caddq(&mut t.0);
 
@@ -447,21 +526,22 @@ fn compute_t<P: Params>(
             *t = t.wrapping_sub(*t1 << D);
         }
         pack_t1(t1_packed, &t1);
-        pack_t0(t0_packed, &t);
+        pack_t0(t0_packed, t);
     }
 }
 
 /// mldsa-native's `mld_sign_pk_from_sk`: writes the public key expanded
-/// private key `sk` computes into `pk`, returning whether `sk` is
-/// consistent. Its time does not depend on `sk`.
-fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8]) -> bool {
+/// private key `sk` computes into `pk`, and the key pair's expansion into
+/// `expanded`, returning whether `sk` is consistent. Its time does not
+/// depend on `sk`.
+fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8], expanded: &mut [Poly]) -> bool {
     let layout = SecretKeyLayout::<P>::new();
     let rho: &[u8; SEED_LEN] = sk[..SEED_LEN].try_into().unwrap();
     low::ct::public_slice(rho);
 
-    let mut scratch = Scratch::new(P::K * P::L + P::L + P::K);
-    let (a, rest) = scratch.0.split_at_mut(P::K * P::L);
-    let (s1, s2) = rest.split_at_mut(P::L);
+    let (a, rest) = expanded.split_at_mut(P::K * P::L);
+    let (s1, rest) = rest.split_at_mut(P::L);
+    let (s2, t0) = rest.split_at_mut(P::K);
     let mut out_of_range = 0;
     for (s, packed) in s1
         .iter_mut()
@@ -471,16 +551,16 @@ fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8]) -> bool {
         unpack_eta::<P>(s, packed);
         out_of_range |= low::mldsa_chknorm(&s.0, (P::ETA + 1) as u64);
     }
-    for s in s1.iter_mut() {
-        low::mldsa_ntt(&mut s.0);
-    }
+    ntt_all(s1);
 
+    // A consistent `sk` holds the `t0` this recomputes, so the expansion
+    // keeps the recomputed one.
     pk[..SEED_LEN].copy_from_slice(rho);
     expand_a::<P>(rho, a);
-    let mut t0 = vec![0u8; P::K * T0_PACKED];
-    compute_t::<P>(a, s1, s2, &mut pk[SEED_LEN..], &mut t0);
-    let t0_matches = low::ct_equal(&t0, &sk[layout.t0]);
-    low::zeroise(&mut t0);
+    let mut t0_packed = vec![0u8; P::K * T0_PACKED];
+    compute_t::<P>(a, s1, s2, &mut pk[SEED_LEN..], t0, &mut t0_packed);
+    let t0_matches = low::ct_equal(&t0_packed, &sk[layout.t0]);
+    low::zeroise(&mut t0_packed);
 
     let mut tr = [0u8; TR_LEN];
     let mut h = Shake256Sponge::new();
@@ -488,45 +568,31 @@ fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8]) -> bool {
     Shake256::new(&h).read(&mut tr);
     let tr_matches = low::ct_equal(&tr, &sk[layout.tr]);
     low::ct::public_slice(pk);
+    ntt_all(s2);
+    ntt_all(t0);
 
     // `&`, not `&&`, which would branch on each before declassifying.
     low::ct::into_public((out_of_range == 0) & t0_matches & tr_matches)
 }
 
 /// FIPS 204's `ML-DSA.Sign_internal`: signs `mu` with expanded private key
-/// `sk` and randomness `rnd`.
+/// `sk`, whose expansion is `expanded`, and randomness `rnd`.
 fn sign_internal<P: Params>(
     sk: &[u8],
+    expanded: &[Poly],
     mu: &[u8; MU_LEN],
     rnd: &[u8; RND_LEN],
 ) -> Result<P::Signature, Error> {
-    let layout = SecretKeyLayout::<P>::new();
-    let rho: &[u8; SEED_LEN] = sk[..SEED_LEN].try_into().unwrap();
-    low::ct::public_slice(rho);
     let key = &sk[SEED_LEN..2 * SEED_LEN];
-
     let (k, l) = (P::K, P::L);
-    let mut scratch = Scratch::new(k * l + 3 * l + 4 * k);
-    let (a, rest) = scratch.0.split_at_mut(k * l);
-    let (s1, rest) = rest.split_at_mut(l);
-    let (s2, rest) = rest.split_at_mut(k);
-    let (t0, rest) = rest.split_at_mut(k);
-    let (y, rest) = rest.split_at_mut(l);
+    let (a, rest) = expanded.split_at(k * l);
+    let (s1, rest) = rest.split_at(l);
+    let (s2, t0) = rest.split_at(k);
+
+    let mut scratch = Polys::new(2 * l + 2 * k);
+    let (y, rest) = scratch.split_at_mut(l);
     let (y_hat, rest) = rest.split_at_mut(l);
     let (w0, w1) = rest.split_at_mut(k);
-
-    for (s, packed) in s1
-        .iter_mut()
-        .chain(s2.iter_mut())
-        .zip(sk[layout.s1.start..layout.s2.end].chunks_exact(P::ETA_PACKED))
-    {
-        unpack_eta::<P>(s, packed);
-        low::mldsa_ntt(&mut s.0);
-    }
-    for (t, packed) in t0.iter_mut().zip(sk[layout.t0].as_chunks::<T0_PACKED>().0) {
-        unpack_t0(t, packed);
-        low::mldsa_ntt(&mut t.0);
-    }
 
     let mut rho_prime = [0u8; 64];
     let mut h = Shake256Sponge::new();
@@ -534,7 +600,6 @@ fn sign_internal<P: Params>(
     h.absorb(rnd);
     h.absorb(mu);
     Shake256::new(&h).read(&mut rho_prime);
-    expand_a::<P>(rho, a);
 
     let mut signature = P::Signature::zeroed();
     let mut w1_packed = [0u8; 8 * 192];
@@ -631,9 +696,20 @@ fn rejected(check: u64) -> bool {
     low::ct::into_public(check) != 0
 }
 
+/// The most polynomials in a vector of length `L`, ML-DSA-87's.
+const MAX_L: usize = 7;
+
 /// FIPS 204's `ML-DSA.Verify_internal`: verifies `signature` over `mu` under
-/// public key `pk`.
-fn verify_internal<P: Params>(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) -> Result<(), Error> {
+/// public key `pk`, whose expansion `expanded` holds once computed.
+///
+/// A signature refused by its encoding or its `z`'s norm is refused before
+/// the key is expanded.
+fn verify_internal<P: Params>(
+    pk: &[u8],
+    expanded: &OnceLock<Polys>,
+    mu: &[u8; MU_LEN],
+    signature: &[u8],
+) -> Result<(), Error> {
     if pk.len() != public_key_len::<P>() || signature.len() != signature_len::<P>() {
         return Err(Error::BadSignature);
     }
@@ -641,8 +717,8 @@ fn verify_internal<P: Params>(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) ->
     let (c_tilde, rest) = signature.split_at(P::CTILDE_LEN);
     let (z_packed, hints) = rest.split_at(l * P::Z_PACKED);
 
-    let mut polys = vec![Poly::ZERO; k * l + l];
-    let (a, z) = polys.split_at_mut(k * l);
+    let mut z = [Poly::ZERO; MAX_L];
+    let z = &mut z[..l];
     // Verification slices by index: zipping `chunks_exact` with a run-time
     // size divides to count the chunks, which `admin/ct-vartime` refuses
     // wherever the compiler leaves `Zip::new` outlined.
@@ -654,7 +730,8 @@ fn verify_internal<P: Params>(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) ->
         low::mldsa_ntt(&mut z.0);
     }
 
-    expand_a::<P>(pk[..SEED_LEN].try_into().unwrap(), a);
+    let expanded = expanded.get_or_init(|| expand_public::<P>(pk));
+    let (a, t1_hat) = expanded.split_at(k * l);
     let mut c = Poly::ZERO;
     sample_in_ball::<P>(&mut c, c_tilde);
     low::mldsa_ntt(&mut c.0);
@@ -662,19 +739,13 @@ fn verify_internal<P: Params>(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) ->
     // w1' = UseHint(h, A * z - c * t1 * 2^d)
     let mut w1_packed = [0u8; 8 * 192];
     let w1_packed = &mut w1_packed[..k * P::W1_PACKED];
-    let (mut w1, mut t1, mut h) = (Poly::ZERO, Poly::ZERO, Poly::ZERO);
-    for (i, t1_packed) in pk[SEED_LEN..].as_chunks::<T1_PACKED>().0.iter().enumerate() {
+    let (mut w1, mut ct1, mut h) = (Poly::ZERO, Poly::ZERO, Poly::ZERO);
+    for (i, t1_hat) in t1_hat.iter().enumerate() {
         let row = &a[i * l..(i + 1) * l];
         let packed = &mut w1_packed[i * P::W1_PACKED..(i + 1) * P::W1_PACKED];
         low::mldsa_pointwise_acc(&mut w1.0, row, z);
-        unpack_t1(&mut t1, t1_packed);
-        for t in t1.0.iter_mut() {
-            *t <<= D;
-        }
-        low::mldsa_ntt(&mut t1.0);
-        let t1_hat = t1;
-        low::mldsa_pointwise(&mut t1.0, &t1_hat.0, &c.0);
-        sub(&mut w1, &t1);
+        low::mldsa_pointwise(&mut ct1.0, &t1_hat.0, &c.0);
+        sub(&mut w1, &ct1);
         low::mldsa_reduce(&mut w1.0);
         low::mldsa_intt(&mut w1.0);
         low::mldsa_caddq(&mut w1.0);
@@ -695,6 +766,22 @@ fn verify_internal<P: Params>(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) ->
         true => Ok(()),
         false => Err(Error::BadSignature),
     }
+}
+
+/// A public key's expansion from its encoding `pk`: `A`, then `t1 * 2^d`,
+/// in the NTT domain.
+fn expand_public<P: Params>(pk: &[u8]) -> Polys {
+    let mut expanded = Polys::new(public_expansion_len::<P>());
+    let (a, t1) = expanded.split_at_mut(P::K * P::L);
+    expand_a::<P>(pk[..SEED_LEN].try_into().unwrap(), a);
+    for (t1, packed) in t1.iter_mut().zip(pk[SEED_LEN..].as_chunks::<T1_PACKED>().0) {
+        unpack_t1(t1, packed);
+        for t in t1.0.iter_mut() {
+            *t <<= D;
+        }
+        low::mldsa_ntt(&mut t1.0);
+    }
+    expanded
 }
 
 fn add(a: &mut Poly, b: &Poly) {
@@ -942,28 +1029,6 @@ fn pack_t0(r: &mut [u8; T0_PACKED], a: &Poly) {
     }
 }
 
-fn unpack_t0(r: &mut Poly, a: &[u8; T0_PACKED]) {
-    for (r, a) in
-        r.0.as_chunks_mut::<8>()
-            .0
-            .iter_mut()
-            .zip(a.as_chunks::<13>().0)
-    {
-        let a = a.map(i32::from);
-        r[0] = a[0] | (a[1] << 8);
-        r[1] = (a[1] >> 5) | (a[2] << 3) | (a[3] << 11);
-        r[2] = (a[3] >> 2) | (a[4] << 6);
-        r[3] = (a[4] >> 7) | (a[5] << 1) | (a[6] << 9);
-        r[4] = (a[6] >> 4) | (a[7] << 4) | (a[8] << 12);
-        r[5] = (a[8] >> 1) | (a[9] << 7);
-        r[6] = (a[9] >> 6) | (a[10] << 2) | (a[11] << 10);
-        r[7] = (a[11] >> 3) | (a[12] << 5);
-        for r in r.iter_mut() {
-            *r = (1i32 << (D - 1)).wrapping_sub(*r & 0x1fff);
-        }
-    }
-}
-
 fn pack_eta<P: Params>(r: &mut [u8], a: &Poly) {
     match P::ETA {
         2 => {
@@ -1191,7 +1256,7 @@ mod tests {
             let mu = acvp_mu(group, test, &tr(&pk));
             let _entry = Entry::new_public();
             assert_eq!(
-                verify_internal::<P>(&pk, &mu, &test.hex("signature")).is_ok(),
+                verify_internal::<P>(&pk, &OnceLock::new(), &mu, &test.hex("signature")).is_ok(),
                 test.flag("testPassed"),
                 "tcId {}: {}",
                 test.int("tcId"),
@@ -1274,6 +1339,8 @@ mod tests {
             // `tr` is the public key's hash, though a loaded private key's
             // copy is marked secret.
             let tr = low::ct::into_public(*key.tr());
+            // One expansion for the group, as a loaded public key keeps.
+            let expansion = OnceLock::new();
             for test in &group.tests {
                 let Some(mu) = test.mu(&tr) else {
                     assert_eq!(test.result, Expected::Invalid, "tcId {}", test.id);
@@ -1287,7 +1354,13 @@ mod tests {
                 let signature = key.sign_internal(&mu, &rnd).unwrap();
                 assert_eq!(signature.as_ref(), test.sig, "tcId {}", test.id);
                 let _entry = Entry::new_public();
-                verify_internal::<P>(key.public_key().as_ref(), &mu, signature.as_ref()).unwrap();
+                verify_internal::<P>(
+                    key.public_key().as_ref(),
+                    &expansion,
+                    &mu,
+                    signature.as_ref(),
+                )
+                .unwrap();
             }
         }
     }
@@ -1295,8 +1368,11 @@ mod tests {
     fn wycheproof_verify<P: Params>(name: &str) {
         for group in wycheproof_groups::<WycheproofGroup>(name) {
             let pk = &hex::decode(group.public_key.as_ref().unwrap()).unwrap();
+            // One key for the group, so its tests after the first that
+            // expands it verify with the expansion that one kept.
+            let key = VerifyingKey::new(tr(pk));
             for test in &group.tests {
-                let result = verify::<P>(pk, &tr(pk), &test.ctx, &test.msg, &test.sig);
+                let result = key.verify::<P>(pk, &test.ctx, &test.msg, &test.sig);
                 assert_eq!(
                     result.is_ok(),
                     test.result == Expected::Valid,
@@ -1338,6 +1414,19 @@ mod tests {
         ]);
     }
 
+    /// The heap a loaded key holds, as `MlDsaKeyPair` and `PublicKey`
+    /// document it, in KiB.
+    #[test]
+    fn expansion_sizes() {
+        fn kib<P: Params>() -> [usize; 2] {
+            [secret_expansion_len::<P>(), public_expansion_len::<P>()]
+                .map(|polys| polys * size_of::<Poly>() / 1024)
+        }
+        assert_eq!(kib::<MlDsa44>(), [28, 20]);
+        assert_eq!(kib::<MlDsa65>(), [47, 36]);
+        assert_eq!(kib::<MlDsa87>(), [79, 64]);
+    }
+
     #[test]
     fn sign_verify_round_trip() {
         fn check<P: Params>() {
@@ -1346,15 +1435,16 @@ mod tests {
             let tr = tr(pk);
             assert_eq!(&tr, key.tr());
             let signature = key.sign(b"context", b"message").unwrap();
-            verify::<P>(pk, &tr, b"context", b"message", signature.as_ref()).unwrap();
-            assert_eq!(
-                verify::<P>(pk, &tr, b"", b"message", signature.as_ref()),
-                Err(Error::BadSignature)
-            );
-            assert_eq!(
-                verify::<P>(pk, &tr, b"context", b"massage", signature.as_ref()),
-                Err(Error::BadSignature)
-            );
+            let verifying = VerifyingKey::new(tr);
+            let verify = |context: &[u8], message: &[u8]| {
+                verifying.verify::<P>(pk, context, message, signature.as_ref())
+            };
+            // The first verification, which expands the key, fails, and the
+            // expansion it keeps still verifies.
+            assert_eq!(verify(b"", b"message"), Err(Error::BadSignature));
+            verify(b"context", b"message").unwrap();
+            assert_eq!(verify(b"context", b"massage"), Err(Error::BadSignature));
+            assert!(verifying.expanded.get().is_some());
             assert_eq!(
                 key.sign(&[0; 256], b"message").err(),
                 Some(Error::WrongLength)
