@@ -136,15 +136,14 @@ filter=$(printf 'test(=%s) | ' "${slow[@]}")
 # NIST's ACVP sample vectors are vector sets too, each test too slow for Miri.
 filter="not (${filter}test(/::acvp/))"
 
-# RIND_SCOPE=BASE runs only the tests of the primitives the branch changed
-# since BASE that reach the portable backend, as sh/primitives.sh maps them.
+# RIND_SCOPE=BASE skips the run when nothing the branch changed since BASE
+# reaches the portable backend, as sh/backends.sh decides.
 if [[ -n "${RIND_SCOPE:-}" ]]; then
-    scope=$(sh/changed.sh "$RIND_SCOPE" | sh/primitives.sh filter - portable)
-    if [[ "$scope" == 'none()' ]]; then
-        echo "miri: nothing changed since $RIND_SCOPE reaches the portable backend's tests" >&2
+    reached=$(sh/changed.sh "$RIND_SCOPE" | sh/backends.sh -)
+    if ! grep -qxE 'all|portable' <<<"$reached"; then
+        echo "miri: nothing changed since $RIND_SCOPE reaches the portable backend" >&2
         exit 0
     fi
-    filter="($filter) & ($scope)"
 fi
 
 # `--cfg rind_portable` forces the portable backend on x86_64, and dalek's

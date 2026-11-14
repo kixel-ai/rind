@@ -48,7 +48,7 @@ else
 
     # These files hold the map and the recipes that call it, and match no
     # module, so a change to them would otherwise validate none of it.
-    if grep -qE '^(justfile|sh/(dispatch|changed|select|primitives)\.sh)$' "$changed"; then
+    if grep -qE '^(justfile|sh/(dispatch|changed|select|backends)\.sh)$' "$changed"; then
         echo "$action: root orchestration changed; running everything." >&2
         all=1
     fi
@@ -145,9 +145,6 @@ module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
 # runs in place are walked, after planting faults in each.
 module inplace '^(rind/src/low/|admin/parse-asm/)' \
     tools='python3'
-# sh/primitives.sh maps each primitive to the bench targets that time it.
-module primitives '^rind-bench/(benches/|Cargo\.toml$)' \
-    tools='cargo jq'
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq'
@@ -189,7 +186,7 @@ reach() {
     if grep -qv '^rind/src/' <<<"$matching"; then
         echo all
     else
-        sh/primitives.sh backends - <<<"$matching"
+        sh/backends.sh - <<<"$matching"
     fi
 }
 
@@ -479,7 +476,6 @@ step() {
         check:mutants) run admin/mutants --pins ;;
         # It finds the generated kernels relative to its own directory.
         check:inplace) (cd admin/parse-asm && run python3 inplace.py) ;;
-        check:primitives) run sh/primitives.sh check ;;
         check:testing) run python3 admin/testing ;;
         check:compat)
             run python3 admin/x86-cpu markdown-table >"$logs/compat.md"
