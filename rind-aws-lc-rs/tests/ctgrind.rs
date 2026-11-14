@@ -270,7 +270,7 @@ fn ml_dsa() {
         PqdsaKeyPair::from_raw_private_key(&ML_DSA_65_SIGNING, &raw).unwrap(),
     ] {
         let public_key = key.public_key().as_ref().to_vec();
-        public(&public_key);
+        public(public_key.as_slice());
         let mut sig = [0u8; 3309];
         key.sign(msg, &mut sig).unwrap();
         public(&sig);
