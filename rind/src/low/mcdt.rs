@@ -9,7 +9,7 @@
 //! <https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/best-practices/mxcsr-configuration-dependent-timing.html>.
 //! Neither aws-lc nor BoringSSL mitigates it.
 //!
-//! [`Mcdt`] runs Intel's sequence on every CPU that does not report
+//! [`Mcdt`] runs Intel's sequence on every Intel CPU that does not report
 //! `MCDT_NO`: it saves MXCSR, loads `0x1FBF`, and runs `lfence`, then on drop
 //! runs `lfence` and restores the saved value. `0x1FBF` is MXCSR's default
 //! with every exception flag already set, so it changes nothing rind computes:
@@ -99,9 +99,11 @@ fn mxcsr() -> u32 {
     value
 }
 
-/// Whether this CPU may need the mitigation: it does not report `MCDT_NO`.
-/// Intel's cores before Skylake and its Atoms do not either, but need none;
-/// rind mitigates there too rather than keep a list of models.
+/// Whether this CPU may need the mitigation: an Intel one that does not
+/// report `MCDT_NO`. Intel's cores before Skylake and its Atoms do not either,
+/// but need none; rind mitigates there too rather than keep a list of models.
+/// Other vendors' cores report no `MCDT_NO` either, but Intel's guidance is
+/// for its own.
 #[inline]
 fn needed() -> bool {
     match NEEDED.load(Ordering::Relaxed) {
@@ -119,9 +121,19 @@ static NEEDED: AtomicU8 = AtomicU8::new(UNKNOWN);
 #[cold]
 #[inline(never)]
 fn detect_once() -> bool {
-    let needed = !reports_mcdt_no();
+    let needed = is_intel() && !reports_mcdt_no();
     NEEDED.store(if needed { YES } else { NO }, Ordering::Relaxed);
     needed
+}
+
+/// Whether `cpuid` names the vendor `GenuineIntel`.
+fn is_intel() -> bool {
+    // `__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV.
+    #[allow(unused_unsafe)]
+    // SAFETY: every CPU that runs SSE2 has `cpuid`.
+    let leaf = unsafe { __cpuid(0) };
+    // "Genu", "ineI", "ntel", little-endian.
+    [leaf.ebx, leaf.edx, leaf.ecx] == [0x756e_6547, 0x4965_6e69, 0x6c65_746e]
 }
 
 /// Whether `cpuid` reports `MCDT_NO`, leaf 7, subleaf 2, EDX bit 5.
@@ -167,8 +179,9 @@ mod tests {
     fn guard_follows_cpuid() {
         let before = mxcsr();
         let guard = Mcdt::enter();
-        assert_eq!(guard.0.is_some(), !reports_mcdt_no());
-        assert_eq!(mxcsr() == MITIGATED, !reports_mcdt_no());
+        let needed = is_intel() && !reports_mcdt_no();
+        assert_eq!(guard.0.is_some(), needed);
+        assert_eq!(mxcsr() == MITIGATED, needed);
         drop(guard);
         assert_eq!(mxcsr(), before);
     }

@@ -161,7 +161,7 @@ Intel guarantees the timing of the instructions it lists as data-independent
   guests, and rind knows of no other kernel that does. Intel's list leaves out
   the `VSHA512` instructions, which SHA-384 and SHA-512 run where the CPU has
   them, as from Arrow Lake and Lunar Lake on.
-- On processors that do not report `MCDT_NO`, such as Intel's Core processors
+- On Intel processors that do not report `MCDT_NO`, such as its Core processors
   from Skylake to Alder Lake, only while MXCSR holds `0x1FBF`: otherwise some
   vector integer multiplies, such as `vpmuludq` and `vpmullw`, may take a cycle
   longer for some values ([Intel MCDT]), and SGX enclaves are no exception.
