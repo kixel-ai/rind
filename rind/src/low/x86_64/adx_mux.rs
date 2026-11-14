@@ -77,14 +77,27 @@ pub(crate) fn edwards25519_scalarmuldouble(
         Some(_) => super::edwards25519_scalarmuldouble::edwards25519_scalarmuldouble(
             res, scalar, point, bscalar,
         ),
-        None => match HaveAvx2::check() {
-            Some(token) => super::edwards25519_scalarmuldouble_avx2::edwards25519_scalarmuldouble(
-                res, scalar, point, bscalar, token,
-            ),
-            None => super::edwards25519_scalarmuldouble_alt::edwards25519_scalarmuldouble_alt(
-                res, scalar, point, bscalar,
-            ),
-        },
+        None => super::edwards25519_scalarmuldouble_alt::edwards25519_scalarmuldouble_alt(
+            res, scalar, point, bscalar,
+        ),
+    }
+}
+
+/// Ed25519 verification's `[base]B + [s0]P0 + [s1]P1`. Without ADX, CPUs
+/// with AVX2 run curve25519-dalek's AVX2 backend, which measured faster than
+/// the `_alt` point routines there.
+#[inline]
+pub(crate) fn edwards25519_msm(
+    res: &mut [u64; 12],
+    base: &[u64; 4],
+    scalars: &[[u64; 4]; 2],
+    points: &[[u64; 16]; 2],
+) {
+    match (HaveBmi2Adx::check(), HaveAvx2::check()) {
+        (None, Some(token)) => {
+            super::edwards25519_msm_avx2::edwards25519_msm(res, base, scalars, points, token)
+        }
+        _ => crate::low::generic::edwards25519_msm::edwards25519_msm(res, base, scalars, points),
     }
 }
 

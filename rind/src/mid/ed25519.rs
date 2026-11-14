@@ -2,6 +2,7 @@
 
 use crate::error::{Error, KeyFormatError};
 use crate::low;
+use crate::mid::half_size;
 use crate::mid::sha2::Sha512Context;
 use crate::mid::util;
 
@@ -137,6 +138,11 @@ impl VerifyingKey {
         // S must be in the range [0, order) to prevent signature malleability.
         let s = Scalar::try_from_le_bytes(s).ok_or(Error::BadSignature)?;
 
+        // `R` must be a point's canonical encoding, since RFC 8032 5.1.7.3
+        // compares `[S]B - [k]A`'s encoding with it.
+        let r = EdwardsPoint::decompress_from(r_sig.try_into().unwrap())
+            .map_err(|_| Error::BadSignature)?;
+
         // Step: rfc8032 5.1.7.2
         // Compute the challenge `k := SHA512(dom2(F, C) || R || A || msg)`
         let k = {
@@ -145,10 +151,19 @@ impl VerifyingKey {
         };
 
         // Step: rfc8032 5.1.7.3
-        // Compute `R := [S]B - [k]A`.
-        let r = EdwardsPoint::scalarmuldouble(&k, &self.point.negate(), &s).compress();
+        // `R = [S]B - [k]A`, checked as `[v S]B - [v]R - [u]A = O` for the
+        // half-size `u ≡ v k (mod 8L)` of `half_size`, which accepts the same.
+        let split = half_size::split(&k.0);
+        let vs = Scalar::madd_n25519(&split.v, &s.0, &[0; 4]);
+        let a = match split.u_negative {
+            true => self.point.extended(),
+            false => self.point.negate().extended(),
+        };
+        let mut q = [0u64; 12];
+        low::edwards25519_msm(&mut q, &vs.0, &[split.v, split.u], &[r.negate().extended(), a]);
 
-        if r_sig == r.0 {
+        // The identity is (0 : Z : Z), and the coordinates are reduced.
+        if q[..4] == [0; 4] && q[4..8] == q[8..12] {
             Ok(())
         } else {
             Err(Error::BadSignature)
@@ -202,10 +217,13 @@ impl EdwardsPoint {
         0x0000000000000000,
     ]);
 
-    /// Compute `A := [scalar]Point + [bscalar]B`.
-    fn scalarmuldouble(scalar: &Scalar, point: &Self, bscalar: &Scalar) -> Self {
-        let mut out = Self([0u64; 8]);
-        low::edwards25519_scalarmuldouble(&mut out.0, &scalar.0, &point.0, &bscalar.0);
+    /// `(x, y, 1, x y)`, the point in extended coordinates.
+    fn extended(&self) -> [u64; 16] {
+        let mut out = [0u64; 16];
+        out[..8].copy_from_slice(&self.0);
+        out[8] = 1;
+        let (x, y) = (self.0[..4].try_into().unwrap(), self.0[4..].try_into().unwrap());
+        low::bignum_mul_p25519(out[12..].as_mut().try_into().unwrap(), x, y);
         out
     }
 
@@ -357,6 +375,117 @@ mod test {
         0xffffffffffffffff,
         0x7fffffffffffffff,
     ];
+
+    /// RFC 8032's check as written, `[S]B - [k]A` encoding as `R`, over
+    /// `mid::edwards25519`'s constant-time multiplication rather than
+    /// `verify`'s half-size one.
+    fn verify_reference(vk: &VerifyingKey, sig: &[u8; 64], msg: &[u8]) -> bool {
+        use mid::edwards25519::{Point, Scalar as S};
+        let (r_sig, s) = sig.split_at(32);
+        let Some(s) = Scalar::try_from_le_bytes(s.try_into().unwrap()) else {
+            return false;
+        };
+        let k = Scalar::reduce_from_le_bytes(&ed25519_digest(r_sig, &vk.bytes, msg));
+        let a = Point::from_bytes(&vk.bytes).unwrap();
+        Point::mul_base(&S(s.0)).add(&a.neg().mul(&S(k.0))).to_bytes() == r_sig
+    }
+
+    /// Keys and commitments with every torsion component, whose
+    /// signatures the plain check accepts exactly when the torsion of `R`
+    /// cancels `[k]`'s of `A`, as `half_size`'s argument says the half-size
+    /// check must too.
+    #[test]
+    fn half_size_check_matches_the_plain_one_with_torsion() {
+        use mid::edwards25519::{Point, Scalar as S};
+        let _entry = low::Entry::new_public();
+        let mut rng = TestRng::new(202611131);
+        let random_scalar = |rng: &mut TestRng| {
+            let mut s = Scalar([0; 4]);
+            low::bignum_mod_n25519(&mut s.0, &util::little_endian_to_u64x8(&rng.next::<64>()));
+            s
+        };
+
+        // A point of order 8, and its multiples: the torsion subgroup.
+        let t8 = Point::from_bytes(&[
+            0x26, 0xe8, 0x95, 0x8f, 0xc2, 0xb2, 0x27, 0xb0, 0x45, 0xc3, 0xf4, 0x89, 0xf2, 0xef,
+            0x98, 0xf0, 0xd5, 0xdf, 0xac, 0x05, 0xd3, 0xc6, 0x33, 0x39, 0xb1, 0x38, 0x02, 0x88,
+            0x6d, 0x53, 0xfc, 0x05,
+        ])
+        .unwrap();
+        let mut torsion = [Point::IDENTITY; 8];
+        for i in 1..8 {
+            torsion[i] = torsion[i - 1].add(&t8);
+        }
+
+        let (mut accepted, mut torsion_accepted) = (0, 0);
+        for round in 0..512 {
+            let (i, j) = (round % 8, round / 8 % 8);
+            let a = random_scalar(&mut rng);
+            let a_bytes = Point::mul_base(&S(a.0)).add(&torsion[i]).to_bytes();
+            let vk = VerifyingKey::from_bytes(&a_bytes).unwrap();
+            let r = random_scalar(&mut rng);
+            let r_bytes = Point::mul_base(&S(r.0)).add(&torsion[j]).to_bytes();
+            let msg = rng.next::<16>();
+            let k = Scalar::reduce_from_le_bytes(&ed25519_digest(&r_bytes, &a_bytes, &msg));
+
+            // S = r + k a makes the prime-order parts agree; the torsion
+            // parts agree only when [j]T8 = -[k i]T8.
+            let s = Scalar::madd_n25519(&k.0, &a.0, &r.0);
+            let mut sig = [0u8; 64];
+            sig[..32].copy_from_slice(&r_bytes);
+            sig[32..].copy_from_slice(&s.to_le_bytes());
+
+            let want = verify_reference(&vk, &sig, &msg);
+            assert_eq!(vk.verify(&sig, &msg).is_ok(), want, "{i} {j} {sig:x?}");
+            accepted += u32::from(want);
+            torsion_accepted += u32::from(want && (i, j) != (0, 0));
+
+            // Any one bit flipped, in R or S.
+            let mut flipped = sig;
+            let bit = round * 37 % 512;
+            flipped[bit / 8] ^= 1 << (bit % 8);
+            let want = verify_reference(&vk, &flipped, &msg);
+            assert_eq!(vk.verify(&flipped, &msg).is_ok(), want, "{i} {j} {flipped:x?}");
+        }
+        assert!(accepted > 64 && torsion_accepted > 0, "{accepted} {torsion_accepted}");
+    }
+
+    /// An `R` that is no point's canonical encoding: `y` of `p` or above,
+    /// no point with that `y`, and `x = 0` with the sign bit set.
+    #[test]
+    fn non_canonical_commitments_are_refused() {
+        let _entry = low::Entry::new_public();
+        let sk = SigningKey::from_seed(&[3; 32]);
+        let msg = b"message";
+        let sig = sk.sign(msg);
+        let vk = sk.verifying_key();
+        vk.verify(&sig, msg).unwrap();
+
+        let mut encodings = vec![];
+        for y in 0..19u8 {
+            // p + y, below 2^255.
+            let mut e = [0xff; 32];
+            e[0] = 0xed + y;
+            e[31] = 0x7f;
+            encodings.push(e);
+        }
+        // y = 1 has x = 0, so its sign bit must be clear.
+        let mut negative_zero = [0; 32];
+        negative_zero[0] = 1;
+        negative_zero[31] = 0x80;
+        encodings.push(negative_zero);
+        // y = 2 is no point's: (y^2 - 1) / (d y^2 + 1) is not a square.
+        let mut off_curve = [0; 32];
+        off_curve[0] = 2;
+        encodings.push(off_curve);
+
+        for e in encodings {
+            let mut forged = sig;
+            forged[..32].copy_from_slice(&e);
+            assert!(!verify_reference(vk, &forged, msg), "{e:x?}");
+            assert_eq!(vk.verify(&forged, msg), Err(Error::BadSignature), "{e:x?}");
+        }
+    }
 
     #[test]
     fn test_rfc8032_test_vectors() {
