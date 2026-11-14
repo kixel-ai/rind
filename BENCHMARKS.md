@@ -1042,6 +1042,7 @@ shares it with other gated work, so its numbers are noisier than the nightly
 `.tmp/bench-report/`. `admin/bench-report nightly` saves the latest nightly
 `bench` run's results, and `admin/bench-report render --from DIR` copies a
 collection's measured hosts into `benchmarks/data/` and writes
-`BENCHMARKS.md` and its SVGs, which the README shows too, from them, `benchmarks/verified.toml`, and
+`BENCHMARKS.md`, its SVGs, which the README shows too, and the README's comparison table from them,
+`benchmarks/verified.toml`, and
 `benchmarks/gaps.toml`, which must hold a quest or a reason for every gap
 over 10%.
