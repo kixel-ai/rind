@@ -138,6 +138,7 @@ if [[ -z "$previous" ]]; then
     exit 1
 fi
 declare -A inputs=([mutants]="-f base=$previous")
+echo "release-check: mutants mutates the changes since $previous" >&2
 
 record() {
     gh api --silent "repos/{owner}/{repo}/statuses/$head" -f context=release-check \
@@ -146,17 +147,21 @@ record() {
 trap 'status=$?; ((status == 0)) || record failure "Failed; see the run that started it"' EXIT
 record pending "Dispatched the scheduled workflows"
 
-declare -A runs=()
+declare -A runs=() links=()
 for workflow in $workflows; do
     # shellcheck disable=SC2086
-    created=$(gh workflow run "$workflow.yml" --ref "$branch" ${inputs[$workflow]:-} 2>&1)
-    run=$(grep -oE 'actions/runs/[0-9]+' <<<"$created" | head -1 | cut -d/ -f3) || true
-    if [[ -z "$run" ]]; then
+    created=$(gh workflow run "$workflow.yml" --ref "$branch" ${inputs[$workflow]:-} 2>&1) || {
+        echo "error: dispatching $workflow.yml failed: $created" >&2
+        exit 1
+    }
+    link=$(grep -oE 'https://[^ ]+/actions/runs/[0-9]+' <<<"$created" | head -1) || true
+    if [[ -z "$link" ]]; then
         echo "error: dispatching $workflow.yml named no run: $created" >&2
         exit 1
     fi
-    runs[$workflow]=$run
-    echo "release-check: $workflow: $(gh run view "$run" --json url --jq .url)" >&2
+    runs[$workflow]=${link##*/}
+    links[$workflow]=$link
+    echo "release-check: $workflow: $link" >&2
 done
 
 # Waits as long as the slowest run; a run on another commit, from a push
@@ -188,6 +193,6 @@ if ((${#failed[@]} > 0)); then
     printf 'error: %s\n' "${failed[@]}" >&2
     exit 1
 fi
-build=$(gh run view "${runs[build]}" --json url --jq .url)
+build=${links[build]}
 record success "Every scheduled workflow passed on this head" "$build"
 echo "release-check: $url passed at $head" >&2
