@@ -173,11 +173,11 @@ pub(in crate::low) fn ct_compare_16(a: &[u8; 16], b: &[u8; 16]) -> usize {
 pub(crate) struct HaveAvx512ForAesGcm(());
 
 impl HaveAvx512ForAesGcm {
+    /// Refuses the cores that slow down for 512-bit registers, which run the
+    /// 256-bit VAES kernels instead.
     pub(crate) fn check() -> Option<Self> {
-        match has(AES_GCM_BASE | AVX512F | AVX512BW | AVX512VL | VPCLMULQDQ | VAES) {
-            true => Some(Self(())),
-            false => None,
-        }
+        let wanted = AES_GCM_BASE | AVX512F | AVX512BW | AVX512VL | VPCLMULQDQ | VAES;
+        (has(wanted) && !has(SLOW_ZMM)).then_some(Self(()))
     }
 }
 
@@ -220,12 +220,12 @@ impl HaveAvxMovbeForAesGcm {
 pub(crate) struct HaveAvx512ForMlKem(());
 
 impl HaveAvx512ForMlKem {
+    /// Refuses the cores that slow down for 512-bit registers, which run the
+    /// 4-way AVX2 sampler instead.
     pub(crate) fn check() -> Option<Self> {
         // It runs inside rind's AVX2 ML-KEM.
-        match has(AVX2_KERNELS | AVX512F | AVX512BW | AVX512VBMI | AVX512VBMI2) {
-            true => Some(Self(())),
-            false => None,
-        }
+        let wanted = AVX2_KERNELS | AVX512F | AVX512BW | AVX512VBMI | AVX512VBMI2;
+        (has(wanted) && !has(SLOW_ZMM)).then_some(Self(()))
     }
 }
 
@@ -397,6 +397,8 @@ const AVX512DQ: u32 = 1 << 18;
 const AVX512IFMA: u32 = 1 << 19;
 const BMI1: u32 = 1 << 20;
 const SHA512: u32 = 1 << 21;
+/// Not a feature: set on the cores [`slows_for_zmm`] names.
+const SLOW_ZMM: u32 = 1 << 22;
 const INTEL: u32 = 1 << 30;
 /// What rind's AVX2 kernels use, for [`HaveAvx2`].
 const AVX2_KERNELS: u32 = AVX | AVX2 | BMI1 | BMI2 | POPCNT | SSSE3;
@@ -450,7 +452,14 @@ fn detect() -> u32 {
     #[allow(unused_unsafe)]
     // SAFETY: every x86_64 CPU has `cpuid`.
     let id = unsafe { __cpuid(0) };
-    let intel = (id.ebx, id.edx, id.ecx) == (0x756e_6547, 0x4965_6e69, 0x6c65_746e);
+    let intel = test_toggle(
+        "intel",
+        (id.ebx, id.edx, id.ecx) == (0x756e_6547, 0x4965_6e69, 0x6c65_746e),
+    );
+    // `__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV.
+    #[allow(unused_unsafe)]
+    // SAFETY: every x86_64 CPU has `cpuid` leaf 1.
+    let slow_zmm = slows_for_zmm(intel, unsafe { __cpuid(1) }.eax);
 
     // Valgrind runs ADX instructions but hides them from `cpuid`
     // (https://bugs.kde.org/show_bug.cgi?id=494162), so `admin/ctgrind` builds
@@ -459,11 +468,9 @@ fn detect() -> u32 {
     // See UPSTREAM.md, "Valgrind hides ADX from `cpuid`".
     let adx = is_x86_feature_detected!("adx") || option_env!("VALGRIND_BUG_494162").is_some();
 
-    (if test_toggle("intel", intel) {
-        INTEL
-    } else {
-        0
-    }) | (if test_toggle("adx", adx) { ADX } else { 0 })
+    (if intel { INTEL } else { 0 })
+        | (if slow_zmm { SLOW_ZMM } else { 0 })
+        | (if test_toggle("adx", adx) { ADX } else { 0 })
         | detect!("aes", AES)
         | detect!("vaes", VAES)
         | detect!("pclmulqdq", PCLMULQDQ)
@@ -485,6 +492,37 @@ fn detect() -> u32 {
         | detect!("sha", SHA)
         | detect!("sha512", SHA512)
         | detect!("movbe", MOVBE)
+}
+
+/// Whether the CPU, given whether it is Intel's and its `cpuid` leaf 1
+/// signature (`eax`), lowers its clock while 512-bit registers are in use,
+/// slowing whatever else shares the core: Intel's Skylake server through Ice
+/// Lake and Tiger Lake. The kernels
+/// that would use them run their 256-bit siblings there instead.
+///
+/// The list is the union of BoringSSL's `CRYPTO_cpu_avoid_zmm_registers`
+/// (`crypto/cpu_intel.cc` at 8f2554dc344d403fd6d628773d39637c323eb801) and
+/// Linux's `zmm_exclusion_list` (`arch/x86/kernel/cpu/intel.c` at
+/// 23c62304dde29abe92013d85910d03a77dada35d), which adds Ice Lake NNPI. Both
+/// projects measured it; rind has no such core and borrows it unmeasured.
+/// aws-lc has no such rule, so here rind follows BoringSSL instead.
+fn slows_for_zmm(intel: bool, signature: u32) -> bool {
+    let family = (signature >> 8) & 0xf;
+    // Family 6 extends its model with bits 16 to 19.
+    let model = ((signature >> 12) & 0xf0) | ((signature >> 4) & 0xf);
+    intel
+        && family == 6
+        && matches!(
+            model,
+            0x55 // Skylake, Cascade Lake, and Cooper Lake server
+                | 0x6a // Ice Lake server
+                | 0x6c // Ice Lake micro server
+                | 0x7d // Ice Lake client
+                | 0x7e // Ice Lake mobile
+                | 0x9d // Ice Lake NNPI
+                | 0x8c // Tiger Lake mobile
+                | 0x8d // Tiger Lake client
+        )
 }
 
 #[cfg(not(any(debug_assertions, rind_cpu_disable)))]
@@ -623,6 +661,7 @@ mod tests {
             AVX512IFMA,
             BMI1,
             SHA512,
+            SLOW_ZMM,
             INTEL,
             DETECTED,
         ];
@@ -637,6 +676,15 @@ mod tests {
     // independently of the bits `detect` packs them into.
     #[test]
     fn checks_need_their_features() {
+        // SAFETY: every x86_64 CPU has `cpuid`.
+        #[allow(unused_unsafe)]
+        let id = unsafe { __cpuid(0) };
+        let vendor = [id.ebx, id.edx, id.ecx].map(u32::to_le_bytes);
+        let intel = vendor.as_flattened() == b"GenuineIntel" && !denied("intel");
+        // SAFETY: every x86_64 CPU has `cpuid` leaf 1.
+        #[allow(unused_unsafe)]
+        let fast_zmm = !slows_for_zmm(intel, unsafe { __cpuid(1) }.eax);
+
         let adx = (is_x86_feature_detected!("adx") || option_env!("VALGRIND_BUG_494162").is_some())
             && !denied("adx");
         let gcm = available!(
@@ -651,7 +699,8 @@ mod tests {
         let checks = [
             (
                 HaveAvx512ForAesGcm::check().is_some(),
-                gcm && available!("avx512f", "avx512bw", "avx512vl", "vpclmulqdq", "vaes"),
+                gcm && fast_zmm
+                    && available!("avx512f", "avx512bw", "avx512vl", "vpclmulqdq", "vaes"),
             ),
             (
                 HaveVaesAvx2ForAesGcm::check().is_some(),
@@ -663,7 +712,8 @@ mod tests {
             ),
             (
                 HaveAvx512ForMlKem::check().is_some(),
-                available!("avx", "avx2", "bmi1", "bmi2", "popcnt", "ssse3")
+                fast_zmm
+                    && available!("avx", "avx2", "bmi1", "bmi2", "popcnt", "ssse3")
                     && available!("avx512f", "avx512bw", "avx512vbmi", "avx512vbmi2"),
             ),
             (
@@ -705,15 +755,38 @@ mod tests {
         for (i, (check, expected)) in checks.into_iter().enumerate() {
             assert_eq!(check, expected, "check {i}");
         }
+        assert_eq!(is_intel(), intel);
+    }
 
-        // SAFETY: every x86_64 CPU has `cpuid`.
-        #[allow(unused_unsafe)]
-        let id = unsafe { __cpuid(0) };
-        let vendor = [id.ebx, id.edx, id.ecx].map(u32::to_le_bytes);
-        assert_eq!(
-            is_intel(),
-            vendor.as_flattened() == b"GenuineIntel" && !denied("intel")
-        );
+    // Signatures (`cpuid` leaf 1 `eax`) of shipped steppings. The model is
+    // split across two fields, and only family 6 matches, so a family-15
+    // part whose fields spell a listed model does not, nor does another
+    // vendor's.
+    #[test]
+    fn slow_zmm_cores() {
+        for (name, signature, slow) in [
+            ("Skylake server", 0x0005_0654, true),
+            ("Cascade Lake", 0x0005_0657, true),
+            ("Cooper Lake", 0x0005_065b, true),
+            ("Ice Lake server", 0x0006_06a6, true),
+            ("Ice Lake micro server", 0x0006_06c1, true),
+            ("Ice Lake client", 0x0007_06d0, true),
+            ("Ice Lake mobile", 0x0007_06e5, true),
+            ("Ice Lake NNPI", 0x0009_06d0, true),
+            ("Tiger Lake mobile", 0x0008_06c1, true),
+            ("Tiger Lake client", 0x0008_06d1, true),
+            ("Skylake client", 0x0005_06e3, false),
+            ("Cannon Lake", 0x0006_0663, false),
+            ("Rocket Lake", 0x000a_0671, false),
+            ("Alder Lake", 0x0009_0672, false),
+            ("Sapphire Rapids", 0x0008_06f8, false),
+            ("Granite Rapids", 0x000a_06d1, false),
+            ("Zen 4", 0x00a1_0f11, false),
+            ("family 15, fields spelling 0x55", 0x0005_0f54, false),
+        ] {
+            assert_eq!(slows_for_zmm(true, signature), slow, "{name}");
+            assert!(!slows_for_zmm(false, signature), "{name}, not Intel");
+        }
     }
 
     // CI runs the suite again with features denied, and names the path each

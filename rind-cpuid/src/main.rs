@@ -44,9 +44,19 @@ fn main() {
     let has = |name| cpuid.iter().any(|&(n, v)| n == name && v);
 
     let compatible = rind::cpu::check().is_ok();
-    let avx512_aes_gcm = ["avx512f", "avx512bw", "avx512vl", "vaes", "vpclmulqdq"]
-        .into_iter()
-        .all(has);
+    // The cores `slows_for_zmm` in `rind/src/low/x86_64/cpu.rs` lists run
+    // AES-GCM's 256-bit kernel instead.
+    // SAFETY: every x86_64 CPU has `cpuid` leaf 1.
+    #[allow(unused_unsafe)]
+    let signature = unsafe { __cpuid(1) }.eax;
+    let model = ((signature >> 12) & 0xf0) | ((signature >> 4) & 0xf);
+    let slow_zmm = intel
+        && (signature >> 8) & 0xf == 6
+        && matches!(model, 0x55 | 0x6a | 0x6c | 0x7d | 0x7e | 0x9d | 0x8c | 0x8d);
+    let avx512_aes_gcm = !slow_zmm
+        && ["avx512f", "avx512bw", "avx512vl", "vaes", "vpclmulqdq"]
+            .into_iter()
+            .all(has);
 
     let cpuid = cpuid
         .iter()

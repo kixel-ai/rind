@@ -290,6 +290,30 @@ jobs:
           RIND_TEST_X86_AVX512_ML_KEM: 0
           RIND_TEST_X86_AVX512_RSA: 0
 
+      # Ice Lake has AVX-512 but lowers its clock while 512-bit registers are
+      # in use, so AES-GCM runs on 256-bit vectors and ML-KEM samples 4-way,
+      # while RSA keeps its AVX-512 RSAZ, which uses 256-bit registers. Ice
+      # Lake server and Tiger Lake select the same paths; Skylake server,
+      # Cascade Lake, and Cooper Lake fall under the same rule but lack VAES
+      # and VBMI anyway.
+      - name: Check Ice Lake
+        run: nix develop .#sde --command cargo test --release --workspace --exclude rind-fips --features rind/wipe
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -icl --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 1
+          RIND_TEST_X86_AES_HARDWARE: 1
+          RIND_TEST_X86_AVX: 1
+          RIND_TEST_X86_AVX2: 1
+          RIND_TEST_X86_BMI2_ADX: 1
+          RIND_TEST_X86_SHA: 1
+          RIND_TEST_X86_SHA512: 0
+          RIND_TEST_X86_VAES_AES_GCM: 1
+          RIND_TEST_X86_AVX_MOVBE_AES_GCM: 1
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
+          RIND_TEST_X86_AVX512_RSA: 1
+
       # Granite Rapids limited to 256-bit AVX10 hides AVX-512F, so it selects
       # Alder Lake's paths, checking that rind takes no AVX-512 path there.
       - name: Check Granite Rapids (AVX10.1 / 256VL)
@@ -311,8 +335,8 @@ jobs:
           RIND_TEST_X86_AVX512_RSA: 0
 
       # Granite Rapids selects every path but the SHA512 instructions',
-      # including AVX-512 AES-GCM, ML-KEM, and RSA. Ice Lake, Ice Lake server,
-      # Tiger Lake, and Sapphire and Emerald Rapids select the same paths.
+      # including AVX-512 AES-GCM, ML-KEM, and RSA. Sapphire and Emerald
+      # Rapids select the same paths.
       - name: Check Granite Rapids
         run: nix develop .#sde --command cargo test --release --workspace --exclude rind-fips --features rind/wipe
         env:

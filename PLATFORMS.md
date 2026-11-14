@@ -43,7 +43,15 @@ qemu. iOS devices' code is only built.
   RSAZ exponentiation, and Ed25519 verification a port of
   [curve25519-dalek]'s AVX2 backend. With `avx512ifma`, as on Ice Lake,
   Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048, 3072, and 4096 signing
-  runs aws-lc's dual AVX-512 RSAZ.
+  runs aws-lc's dual AVX-512 RSAZ. AES-GCM and ML-KEM's matrix sampling run
+  512-bit kernels where the CPU has AVX-512, except on Intel's Skylake
+  server through Ice Lake and Tiger Lake (Skylake-SP, Cascade Lake, Cooper
+  Lake, Ice Lake, and Tiger Lake), which lower their clock while 512-bit
+  registers are in use and so slow whatever else runs on the core. There
+  they run the 256-bit VAES and AVX2 kernels instead. The list is
+  BoringSSL's and Linux's, borrowed unmeasured: no host here has such a
+  core. Measuring AES-GCM throughput on one core while another runs scalar
+  work, with and without the rule, would settle it.
 - 32-bit `arm` from ARMv7 on (tested on `armv7-unknown-linux-gnueabihf` and
   `armv7-linux-androideabi`) runs portable Rust instead, mostly from
   [libcrux] (see [ALGORITHMS.md](ALGORITHMS.md)), and needs no CPU features. RSA's

@@ -13,7 +13,7 @@ The interview gave the maintainer a stronger reason than the code supports. It s
 - ✅ Accept the noise, as [the Mac mini](/quest/m2/bench/mac-mini.md) does: the machine also runs CI runners and agents, so it benchmarks under plain `quest gate`, and its section says so.
 - Add it as `kixtop` was added in [kixel-ai/rind#435](https://github.com/kixel-ai/rind/pull/435), starting with `admin/bench-report`'s `HOSTS`.
 - Record which OpenSSL it compares against in its host data, since each distribution ships its own.
-- Zen 5 does not lower its clock for 512-bit vectors, so this host cannot measure what [the 256-bit rule](/quest/m2/speed/avoid-zmm.md) is about. Say so in its section.
+- Zen 5 does not lower its clock for 512-bit vectors, so this host cannot measure the rule PLATFORMS.md describes for the Intel cores that do. Say so in its section.
 - Its first run is a `collect` on this host alone, added to the report the refresh left. Ask the maintainer then whether the other hosts rerun with it: rind 0.4 waits for more now than when the refresh was planned, so the report may be due another before the release anyway.
 - A gap it shows that nobody decided is triaged as [the refresh](/quest/m2/bench/report-refresh.md)'s Plan sets out.
 
