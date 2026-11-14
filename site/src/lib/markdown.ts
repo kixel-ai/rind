@@ -35,14 +35,18 @@ function block(token: Token): string {
 			return inline(token.tokens ?? []);
 		case "code":
 			return token.raw.trimEnd();
-		case "list":
-			return (token as Tokens.List).items
+		case "list": {
+			const list = token as Tokens.List;
+			const start = list.start === "" ? 1 : list.start;
+			return list.items
 				.map((item, i) => {
-					const marker = (token as Tokens.List).ordered ? `${i + 1}.` : "-";
+					if (item.task) throw new Error(`no Markdown rendering for a task list item: ${item.raw}`);
+					const marker = list.ordered ? `${start + i}.` : "-";
 					const body = item.tokens.map((t) => (t.type === "text" ? inline(t.tokens ?? []) : block(t)));
 					return `${marker} ${body.join("\n").replaceAll("\n", "\n  ")}`;
 				})
 				.join("\n");
+		}
 		default:
 			throw new Error(`no Markdown rendering for a ${token.type} block`);
 	}

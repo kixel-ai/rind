@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Token } from "marked";
-import { hrefs, inline, lex } from "./markdown";
+import { hrefs, inline, lex, markdown } from "./markdown";
 
 // Each link's destination and title, nested ones included.
 function links(tokens: Token[]): [string, string | null | undefined][] {
@@ -30,4 +30,16 @@ test.each([
 // Links in table cells, header and body, are found like any other.
 test("hrefs reads table cells", () => {
 	expect(hrefs(lex("| [Head](/head) |\n| --- |\n| [Missing](/missing) |"))).toEqual(["/head", "/missing"]);
+});
+
+// An ordered list keeps the number it starts at.
+test("markdown keeps an ordered list's start", () => {
+	const written = markdown(lex("3. three\n4. four"));
+	expect(written).toBe("3. three\n4. four");
+	expect(lex(written).find((t) => t.type === "list")).toMatchObject({ ordered: true, start: 3 });
+});
+
+// A task item's checkbox has no rendering, so it fails rather than vanish.
+test("markdown refuses a task list", () => {
+	expect(() => markdown(lex("- [ ] todo"))).toThrow("task list item");
 });
