@@ -51,6 +51,8 @@ impl Rsaz {
         rr: &[u64; 16],
         n0: u64,
     ) {
+        // `vpmuludq` multiplies the secrets.
+        let _mcdt = low::Mcdt::enter();
         mod_exp(self.0, z, x, e, m, rr, n0);
     }
 }

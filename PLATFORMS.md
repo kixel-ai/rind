@@ -149,6 +149,28 @@ some operands, so it is not constant-time on them:
 - `x86_64` and 32-bit `x86`: VIA's Nano 2000 series ([BearSSL ctmul]). Intel
   lists `mul` and `imul` as data-independent-time ([Intel DOIT]).
 
+Intel guarantees the timing of the instructions it lists as data-independent
+([Intel DOIT]) only on two conditions:
+
+- On processors that enumerate DOITM, those from Ice Lake and Gracemont on
+  with current microcode, only while the operating system sets it in
+  `IA32_UARCH_MISC_CTL`, which user code cannot. A processor that does not
+  enumerate it with current microcode behaves as if it were set, and an SGX
+  enclave on one that does runs with it set whatever the OS does
+  ([Intel DOITM]). Linux does not set it, as of 7.4, nor does KVM pass it to
+  guests, and rind knows of no other kernel that does. Intel's list leaves out
+  the `VSHA512` instructions, which SHA-384 and SHA-512 run where the CPU has
+  them, as from Arrow Lake and Lunar Lake on.
+- On processors that do not report `MCDT_NO`, such as Intel's Core processors
+  from Skylake to Alder Lake, only while MXCSR holds `0x1FBF`: otherwise some
+  vector integer multiplies, such as `vpmuludq` and `vpmullw`, may take a cycle
+  longer for some values ([Intel MCDT]), and SGX enclaves are no exception.
+  rind loads `0x1FBF` around its x86_64 ML-KEM, ML-DSA, RSA exponentiation
+  with AVX2 or AVX-512, and Ed25519 verification with AVX2, and around every
+  call on 32-bit `x86`, whose compiled arithmetic may use them anywhere, then
+  restores the caller's MXCSR. `admin/ct-vartime` checks that the x86_64
+  backend runs none outside it. aws-lc and BoringSSL do not mitigate this.
+
 [COMPATIBILITY.md](COMPATIBILITY.md) lists the features of each Intel CPU
 family since 2004, and of some AMD cores.
 
@@ -180,3 +202,5 @@ family since 2004, and of some AMD cores.
 [BearSSL ctmul]: https://www.bearssl.org/ctmul.html
 [Gu and Shacham]: https://arxiv.org/abs/2311.14246
 [Intel DOIT]: https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/resources/data-operand-independent-timing-instructions.html
+[Intel DOITM]: https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/best-practices/data-operand-independent-timing-isa-guidance.html
+[Intel MCDT]: https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/best-practices/mxcsr-configuration-dependent-timing.html
