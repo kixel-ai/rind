@@ -418,41 +418,55 @@ fn x25519_agrees_with_the_default_provider() {
 }
 
 /// RFC 9180's `DeriveKeyPair`, which OpenSSL runs as key generation from
-/// `dhkem-ikm`, gives the default provider's key for the same input.
+/// `dhkem-ikm`, gives the RFC's keys. Its vectors, rather than the default
+/// provider, decide, since OpenSSL before 3.2 ignores `dhkem-ikm`.
 #[test]
-fn x25519_derives_a_key_pair_as_the_default_provider_does() {
+fn x25519_derives_the_rfc_9180_key_pair() {
     let ctx = Context::new();
-    for len in [32, 64] {
-        let ikm: Vec<u8> = (0..len).map(|i| i as u8 ^ 0x5a).collect();
-        let [ours, theirs] =
-            [(None, "rind"), (Some(DEFAULT), "default")].map(|(propq, provider)| {
-                let mut ikm = ikm.clone();
-                let key = unsafe {
-                    let params = [
-                        OSSL_PARAM_construct_octet_string(
-                            c"dhkem-ikm".as_ptr(),
-                            ikm.as_mut_ptr().cast(),
-                            ikm.len(),
-                        ),
-                        OSSL_PARAM_construct_end(),
-                    ];
-                    let gen_ctx = non_null(EVP_PKEY_CTX_new_from_name(
-                        ctx.0,
-                        c"X25519".as_ptr(),
-                        propq.map_or(null(), CStr::as_ptr),
-                    ));
-                    check(EVP_PKEY_keygen_init(gen_ctx));
-                    check(EVP_PKEY_CTX_set_params(gen_ctx, params.as_ptr()));
-                    let mut key = null_mut();
-                    check(EVP_PKEY_generate(gen_ctx, &mut key));
-                    EVP_PKEY_CTX_free(gen_ctx);
-                    Key(key)
-                };
-                assert_eq!(key.provider(), provider);
-                key
-            });
-        assert_eq!(ours.raw_private(), theirs.raw_private());
-        assert_eq!(ours.raw_public(), theirs.raw_public());
+    // RFC 9180 appendix A.1.1: ikmE to skEm and pkEm, and ikmR to skRm and
+    // pkRm.
+    let vectors = [
+        (
+            "7268600d403fce431561aef583ee1613527cff655c1343f29812e66706df3234",
+            "52c4a758a802cd8b936eceea314432798d5baf2d7e9235dc084ab1b9cfa2f736",
+            "37fda3567bdbd628e88668c3c8d7e97d1d1253b6d4ea6d44c150f741f1bf4431",
+        ),
+        (
+            "6db9df30aa07dd42ee5e8181afdb977e538f5e1fec8a06223f33f7013e525037",
+            "4612c550263fc8ad58375df3f557aac531d26850903e55a9f23f21d8534e8ac8",
+            "3948cfe0ad1ddb695d780e59077195da6c56506b027329794ab02bca80815c4d",
+        ),
+    ];
+    for (ikm, private, public) in vectors {
+        let mut ikm = hex(ikm);
+        let key = unsafe {
+            let params = [
+                OSSL_PARAM_construct_octet_string(
+                    c"dhkem-ikm".as_ptr(),
+                    ikm.as_mut_ptr().cast(),
+                    ikm.len(),
+                ),
+                OSSL_PARAM_construct_end(),
+            ];
+            let gen_ctx = non_null(EVP_PKEY_CTX_new_from_name(
+                ctx.0,
+                c"X25519".as_ptr(),
+                null(),
+            ));
+            check(EVP_PKEY_keygen_init(gen_ctx));
+            check(EVP_PKEY_CTX_set_params(gen_ctx, params.as_ptr()));
+            let mut key = null_mut();
+            check(EVP_PKEY_generate(gen_ctx, &mut key));
+            EVP_PKEY_CTX_free(gen_ctx);
+            Key(key)
+        };
+        assert_eq!(key.provider(), "rind");
+        // Clamped, as OpenSSL stores a key it makes.
+        let mut private = hex(private);
+        private[0] &= 248;
+        private[31] = private[31] & 127 | 64;
+        assert_eq!(key.raw_private(), private);
+        assert_eq!(key.raw_public(), hex(public));
     }
 }
 
