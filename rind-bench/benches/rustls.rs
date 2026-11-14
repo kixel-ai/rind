@@ -279,26 +279,31 @@ fn threaded_handshake(c: &mut Criterion) {
     }
 }
 
-/// The wall time for `clients`' threads to share `iters` handshakes.
+/// The wall time for `clients`' threads to share `iters` handshakes, from
+/// their release to the last one's end, thread startup excluded.
 fn run_threads(clients: &[Arc<ClientConfig>], server: &Arc<ServerConfig>, iters: u64) -> Duration {
     let n = clients.len() as u64;
-    let start = Barrier::new(clients.len() + 1);
+    let ready = Barrier::new(clients.len() + 1);
+    let go = Barrier::new(clients.len() + 1);
     thread::scope(|s| {
         let workers: Vec<_> = clients
             .iter()
             .zip(0..)
             .map(|(client, i)| {
-                let start = &start;
+                let (ready, go) = (&ready, &go);
                 s.spawn(move || {
-                    start.wait();
+                    ready.wait();
+                    go.wait();
                     for _ in 0..iters / n + u64::from(i < iters % n) {
                         handshake(client, server);
                     }
                 })
             })
             .collect();
-        start.wait();
+        ready.wait();
+        // Before the release, so no handshake can start untimed.
         let t = Instant::now();
+        go.wait();
         for w in workers {
             w.join().unwrap();
         }

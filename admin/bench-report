@@ -1527,7 +1527,7 @@ def report(hosts, tiers, verified, gaps):
             "machine's time per handshake; each host's text gives rind-rustls's throughput there over its "
             "one-thread rate. A full handshake over rind-rustls's default provider, both peers, makes 246 heap "
             "allocations with an ECDSA P-256 certificate and 250 with RSA-2048 on x86_64, against 215 for both "
-            "over rustls's aws-lc-rs provider, as of 2026-11-13; `rind-rustls/tests/allocations.rs` pins rind's.",
+            "over rustls's aws-lc-rs provider, as of 2026-11-13; `rind-rustls/tests/allocations.rs` pins rind's for ECDSA and Ed25519.",
             "",
             *(
                 [

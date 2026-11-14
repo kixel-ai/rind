@@ -1,7 +1,8 @@
 //! How many heap allocations one full TLS 1.3 handshake makes, both peers
 //! together, per certificate key type. Backends differ in what they allocate,
 //! so the count is pinned on x86_64's assembly backend alone, where it was
-//! measured.
+//! measured. RSA's private-key routines allocate differently with ADX or
+//! AVX-512 IFMA than without, so RSA certificates are not pinned yet.
 #![cfg(all(target_arch = "x86_64", not(rind_portable)))]
 
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -115,14 +116,11 @@ fn count(client: &Arc<ClientConfig>, server: &Arc<ServerConfig>) -> u64 {
 
 /// Each key type's allocations per handshake over rind-rustls's default
 /// provider, which leads with X25519MLKEM768.
-const EXPECTED: [(&str, u64); 7] = [
+const EXPECTED: [(&str, u64); 4] = [
     ("ecdsa-p256", 246),
     ("ecdsa-p384", 250),
     ("ecdsa-p521", 254),
     ("ed25519", 246),
-    ("rsa-2048", 250),
-    ("rsa-3072", 252),
-    ("rsa-4096", 250),
 ];
 
 #[test]
