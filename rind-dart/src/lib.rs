@@ -1428,9 +1428,10 @@ pub unsafe extern "C" fn rind_dart_public_key_new(
             (1, Verification::Ed25519) => {
                 ed25519::PublicKey::from_spki(bytes).map(PublicKey::Ed25519)
             }
-            (0, Verification::Rsa(algorithm)) => {
-                rsa::PublicKey::new(bytes).map(|key| PublicKey::Rsa(key, algorithm))
-            }
+            // PKCS#1 or SPKI, as the Dart API documents.
+            (0, Verification::Rsa(algorithm)) => rsa::PublicKey::new(bytes)
+                .or_else(|_| rsa::PublicKey::from_spki(bytes))
+                .map(|key| PublicKey::Rsa(key, algorithm)),
             (1, Verification::Rsa(algorithm)) => {
                 rsa::PublicKey::from_spki(bytes).map(|key| PublicKey::Rsa(key, algorithm))
             }

@@ -158,6 +158,27 @@ fn malformed_keys_are_errors() {
     }
 }
 
+#[test]
+fn rsa_spki_verifies_on_both_providers() {
+    // aws-lc-rs's verifier takes an RSA key as PKCS#1 or SPKI DER.
+    let (private, public) = common::rsa_key();
+    let spki = rind::rsa::PublicKey::new(public).unwrap().to_spki();
+    let signer = EncodingKey::from_rsa_der(private);
+    let signature = (rind().signer_factory)(&Algorithm::RS256, &signer)
+        .unwrap()
+        .try_sign(MESSAGE)
+        .unwrap();
+    for der in [public, spki.as_ref()] {
+        let key = DecodingKey::from_rsa_der(der);
+        for provider in [rind(), AWS_LC] {
+            (provider.verifier_factory)(&Algorithm::RS256, &key)
+                .unwrap()
+                .verify(MESSAGE, &signature)
+                .unwrap();
+        }
+    }
+}
+
 fn common_point(algorithm: Algorithm) -> DecodingKey {
     common::all()
         .into_iter()

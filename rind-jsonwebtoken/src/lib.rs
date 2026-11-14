@@ -119,7 +119,10 @@ fn new_verifier(algorithm: &Algorithm, key: &DecodingKey) -> Result<Box<dyn JwtV
     };
     let rsa = |verification: &'static RsaVerificationAlgorithm| -> Result<Box<dyn JwtVerifier>> {
         let key = match key.kind() {
-            DecodingKeyKind::SecretOrDer(der) => rsa::PublicKey::new(der),
+            // PKCS#1 or SPKI, as aws-lc-rs's verifier takes either.
+            DecodingKeyKind::SecretOrDer(der) => {
+                rsa::PublicKey::new(der).or_else(|_| rsa::PublicKey::from_spki(der))
+            }
             DecodingKeyKind::RsaModulusExponent { n, e } => {
                 rsa::PublicKey::from_components(&PublicKeyComponents { n, e })
             }
