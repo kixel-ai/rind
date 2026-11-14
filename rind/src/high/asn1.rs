@@ -1,11 +1,12 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use crate::low::ct;
 use core::fmt::Debug;
 use core::marker::PhantomData;
 use core::mem;
 use core::mem::size_of;
+
+use crate::low::ct;
 
 macro_rules! _asn1_struct_ty(
     ([$context:literal] EXPLICIT $($itty:ident)+) => { $crate::high::asn1::Context<'a, $context, true, $crate::high::asn1::_asn1_struct_ty!($($itty)+)> };
@@ -531,9 +532,9 @@ impl<'a> Integer<'a> {
         // That is, the first octet is not bit 8 of the second, extended. A
         // private key's integers are secret, so only the verdict is
         // revealed.
-        if let Some(&[first, second]) = twos_complement.get(..2) {
-            let extended = 0u8.wrapping_sub(second >> 7);
-            if ct::into_public(first == extended) {
+        if let Some(first_two) = twos_complement.get(..2) {
+            let extended = 0u8.wrapping_sub(first_two[1] >> 7);
+            if ct::into_public(first_two[0] == extended) {
                 return Err(Error::IntegerOutOfRange);
             }
         }

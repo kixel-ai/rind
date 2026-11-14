@@ -107,13 +107,22 @@ impl<const N: usize> PosInt<N> {
         Ok(r)
     }
 
-    /// Like `from_bytes`, for secret `bytes`: it branches on none of them
-    /// and reveals only how many lead with zero, which sets the width.
+    /// Like `from_bytes`, for secret `bytes`: it reads none of them through
+    /// a branch or an index, so the value is as wide as `bytes`, leading
+    /// zeroes included, and `fit` sets the width it needs.
     pub(crate) fn from_secret_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let bytes = &bytes[low::ct::into_public(leading_zeroes(bytes))..];
-        if bytes.len() > N * 8 {
-            return Err(Error::WrongLength);
-        }
+        // A DER integer this wide fits only with a zero sign byte, so the
+        // check reveals only whether it is too wide to be valid.
+        let bytes = match bytes.split_first() {
+            Some((&sign, rest)) if bytes.len() == N * 8 + 1 => {
+                if !low::ct::into_public(sign == 0) {
+                    return Err(Error::WrongLength);
+                }
+                rest
+            }
+            _ if bytes.len() > N * 8 => return Err(Error::WrongLength),
+            _ => bytes,
+        };
 
         let mut r = Self::zero();
         for (word, chunk) in r.words.iter_mut().zip(bytes.rchunks(8)) {
@@ -123,6 +132,21 @@ impl<const N: usize> PosInt<N> {
         }
         r.used = bytes.len().div_ceil(8);
         Ok(r)
+    }
+
+    /// Sets the width to `words`, returning whether the value fits in it,
+    /// without branching on the value. A value that does not fit loses its
+    /// words above `words`.
+    #[must_use]
+    pub(crate) fn fit(&mut self, words: usize) -> bool {
+        assert!(words <= N);
+        let mut high = 0;
+        for word in self.words.iter_mut().take(self.used).skip(words) {
+            high |= *word;
+            *word = 0;
+        }
+        self.used = words;
+        high == 0
     }
 
     // Indexes rather than zipping reversed `as_chunks_mut`, which Aeneas
@@ -777,21 +801,6 @@ fn trim_leading_zeroes(bytes: &[u8]) -> &[u8] {
     &bytes[start..]
 }
 
-/// How many of `bytes` lead with zero, counted without branching on any.
-fn leading_zeroes(bytes: &[u8]) -> usize {
-    let mut zeroes = 0usize;
-    // One while every byte so far is zero, through `black_box` so the
-    // compiler cannot stop at the first nonzero byte. The sum wraps, as a
-    // debug build would branch on its overflow check.
-    let mut leading = 1;
-    for &b in bytes {
-        leading &= (u32::from(b).wrapping_sub(1) >> 31) as usize;
-        leading = core::hint::black_box(leading);
-        zeroes = zeroes.wrapping_add(leading);
-    }
-    zeroes
-}
-
 /// The word `i` from the top of `x`, or zero if it is not that wide.
 fn word_below(x: &[u64], i: usize) -> u64 {
     match x.len().checked_sub(i) {
@@ -1052,11 +1061,12 @@ mod tests {
         }
     }
 
-    /// `from_secret_bytes` reads what `from_bytes` does, at the same width,
-    /// and under `admin/ctgrind` branches on none of the bytes.
+    /// `from_secret_bytes` reads the value `from_bytes` does, as wide as its
+    /// input, and `fit` narrows it to any width it fits in. Under
+    /// `admin/ctgrind` neither branches on the bytes.
     #[test]
-    fn from_secret_bytes() {
-        for len in 0..=20 {
+    fn from_secret_bytes_and_fit() {
+        for len in 0..=17 {
             for zeroes in 0..=len {
                 let mut bytes = vec![0u8; len];
                 for (i, b) in bytes.iter_mut().enumerate().skip(zeroes) {
@@ -1067,11 +1077,31 @@ mod tests {
                         (i % 3) as u8 * 0x55
                     };
                 }
-                let want = PosInt::<2>::from_bytes(&bytes).map(|r| (r.used, r.words));
+                let want = PosInt::<2>::from_bytes(&bytes);
                 low::ct::secret_slice(&bytes);
-                let got = PosInt::<2>::from_secret_bytes(&bytes)
-                    .map(|r| (r.used, low::ct::into_public(r.words)));
-                assert_eq!(got, want, "{len} bytes, {zeroes} leading zeroes");
+                let got = PosInt::<2>::from_secret_bytes(&bytes);
+                let (want, mut got) = match (want, got) {
+                    (Ok(want), Ok(got)) => (want, got),
+                    (want, got) => {
+                        // Only a nonzero byte above two words is refused.
+                        assert_eq!(len, 17, "{len} bytes, {zeroes} leading zeroes");
+                        assert_eq!(want.is_err(), zeroes == 0);
+                        assert_eq!(got.is_err(), zeroes == 0);
+                        continue;
+                    }
+                };
+                assert_eq!(got.used, len.min(16).div_ceil(8));
+                for words in 0..=2 {
+                    let mut fitted = got.clone();
+                    let fits = low::ct::into_public(fitted.fit(words));
+                    assert_eq!(fits, want.used <= words, "{len} bytes, {zeroes} zeroes");
+                    assert_eq!(fitted.used, words);
+                    if fits {
+                        assert!(low::ct::into_public(fitted).pub_equals(&want));
+                    }
+                }
+                assert!(low::ct::into_public(got.fit(2)));
+                assert!(low::ct::into_public(got).pub_equals(&want));
             }
         }
     }
