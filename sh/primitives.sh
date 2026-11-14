@@ -49,16 +49,18 @@ cd "$(git rev-parse --show-toplevel)"
 # The map: a primitive, the paths under rind/src/ that implement it (matched
 # case-insensitively, since aws-lc names some kernels in capitals), the
 # substrings of the test names that check it, and the bench targets that time
-# it. A path matching several primitives selects them all; a path under
-# rind/src/ matching none, such as `lib.rs`, a `mod.rs`, or a CPU dispatch
-# file, is shared and selects everything. Every selection also runs the CPU
-# tests (`::cpu::`), which assert a run took the dispatch path its CI step
-# names.
+# it. A hash or bignum kernel also selects the constructions that feed it
+# secrets directly, such as HMAC, Ed25519, ML-KEM, or a curve, since only
+# their tests mark those secrets. A path matching several primitives selects
+# them all; a path under rind/src/ matching none, such as `lib.rs`, a `mod.rs`,
+# or a CPU dispatch file, is shared and selects everything. Every selection
+# also runs the CPU tests (`::cpu::`), which assert a run took the dispatch
+# path its CI step names.
 primitives=(
     'aes|aes|gcm|ghash|gmac|compute_iv|^cipher\.rs$|^aead(\.rs$|/)|aes gcm ghash gmac cipher aead quic|aes_gcm cipher key_wrap'
     'chacha|chacha|poly1305|poly_hash|^aead(\.rs$|/)|chacha poly1305 aead quic|chacha20poly1305 xchacha20poly1305'
     'sha1|sha1|sha_armv4|^low/portable/sha\.rs$|sha1 digest hashes compress_blocks hmac hkdf pbkdf2|sha1 hmac'
-    'sha2|sha256|sha512|sha_|sha-?2|^low/portable/sha\.rs$|^high/(digest|hash|hmac|hkdf|pbkdf2|hmac_drbg)\.rs$|sha2 sha256 sha384 sha512 digest hash hashes compress_blocks hmac hkdf pbkdf2 drbg|sha2 hmac hkdf pbkdf2'
+    'sha2|sha256|sha512|sha_|sha-?2|^low/portable/sha\.rs$|^high/(digest|hash|hmac|hkdf|pbkdf2|hmac_drbg)\.rs$|sha2 sha256 sha384 sha512 digest hash hashes compress_blocks hmac hkdf pbkdf2 drbg ed25519|sha2 hmac hkdf pbkdf2 ed25519'
     'sha3|sha3|keccak|shake|sha3 shake keccak digest hashes mlkem ml_kem kem mldsa ml_dsa|sha3 mlkem768 mldsa'
     'md5|md5|md5 digest hashes compress_blocks|md5'
     # The NIST curves' shared code: ECDSA, ECDH, their encodings, and the
