@@ -3,7 +3,9 @@
 
 mod criterion;
 use std::io::{Read, Write};
-use std::sync::Arc;
+use std::sync::{Arc, Barrier};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rustls::client::Resumption;
@@ -241,6 +243,69 @@ fn resumed_handshake(c: &mut Criterion) {
     }
 }
 
+/// Full and resumed TLS 1.3 handshakes over X25519 with an ECDSA P-256
+/// certificate, run on every logical CPU at once against one shared server config,
+/// each thread with a client of its own. A row's time is the machine's: wall
+/// time over the handshakes all threads completed, so its ratio to the
+/// single-thread row is how throughput scales.
+fn threaded_handshake(c: &mut Criterion) {
+    let threads = thread::available_parallelism().unwrap().get();
+    for (bench, resumption, kind) in [
+        ("rustls-full-handshake-threads", false, HandshakeKind::Full),
+        (
+            "rustls-resumed-handshake-threads",
+            true,
+            HandshakeKind::Resumed,
+        ),
+    ] {
+        let mut group = c.benchmark_group(bench);
+        group.throughput(Throughput::Elements(1));
+        for name in providers() {
+            let provider = || with_group(name, NamedGroup::X25519).unwrap();
+            let (_, server) = configs(provider(), "ecdsa-p256", resumption).unwrap();
+            let clients: Vec<_> = (0..threads)
+                .map(|_| {
+                    let (client, _) = configs(provider(), "ecdsa-p256", resumption).unwrap();
+                    // Seeds a resuming client's tickets.
+                    handshake(&client, &server);
+                    assert_eq!(handshake_kind(&handshake(&client, &server).1), kind);
+                    client
+                })
+                .collect();
+            group.bench_function(format!("x25519/{name}"), |b| {
+                b.iter_custom(|iters| run_threads(&clients, &server, iters))
+            });
+        }
+    }
+}
+
+/// The wall time for `clients`' threads to share `iters` handshakes.
+fn run_threads(clients: &[Arc<ClientConfig>], server: &Arc<ServerConfig>, iters: u64) -> Duration {
+    let n = clients.len() as u64;
+    let start = Barrier::new(clients.len() + 1);
+    thread::scope(|s| {
+        let workers: Vec<_> = clients
+            .iter()
+            .zip(0..)
+            .map(|(client, i)| {
+                let start = &start;
+                s.spawn(move || {
+                    start.wait();
+                    for _ in 0..iters / n + u64::from(i < iters % n) {
+                        handshake(client, server);
+                    }
+                })
+            })
+            .collect();
+        start.wait();
+        let t = Instant::now();
+        for w in workers {
+            w.join().unwrap();
+        }
+        t.elapsed()
+    })
+}
+
 /// 1 MB from server to client in full records, per TLS 1.3 cipher suite:
 /// each byte is sealed once and opened once.
 fn bulk(c: &mut Criterion) {
@@ -280,6 +345,7 @@ criterion_group!(
     full_handshake_by_group,
     full_handshake_by_key,
     resumed_handshake,
+    threaded_handshake,
     bulk
 );
 criterion_main!(benches);
