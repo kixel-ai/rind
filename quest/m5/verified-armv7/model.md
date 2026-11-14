@@ -12,4 +12,4 @@ The AArch32 model in `thirdparty/s2n-bignum/aarch32/` decodes, and cosimulates a
 - Thumb stays out: rind's armv7 targets build A32, and the sources' `it` instructions assemble to nothing there. `BX` to an address with bit 0 set would enter Thumb, so the model refuses it rather than step into a state it cannot represent.
 - Each added form gets cosimulation cases, the multi-register memory forms through SP into the executor's scratch buffer, as the single loads and stores do now.
 - Add the AAPCS subroutine wrappers s2n-bignum's other models have, such as `ARM_ADD_RETURN_NOSTACK_TAC`'s, once a routine ends in `bx lr`.
-- Offering the model to awslabs/s2n-bignum needs the maintainer's approval first, as any post outside [the orgs AGENTS.md lists](/AGENTS.md#development) does.
+- Offering the model to awslabs/s2n-bignum is [upstream-reports](/quest/m2/upstream-reports.md)'s, with the fork's other changes, and needs the maintainer's approval first, as any post outside [the orgs AGENTS.md lists](/AGENTS.md#development) does.
