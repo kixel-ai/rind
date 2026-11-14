@@ -18,6 +18,7 @@ use crate::scrub::{Depth, scrubbed};
 use crate::selftest::{SelfTest, ensure, pct_drawing};
 
 /// A decapsulation key of any parameter set, boxed as a handle.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Decapsulation {
     MlKem512(DecapsulationKey<MlKem512>),
     MlKem768(DecapsulationKey<MlKem768>),
@@ -25,6 +26,7 @@ pub(crate) enum Decapsulation {
 }
 
 /// An encapsulation key of any parameter set, boxed as a handle.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone)]
 pub(crate) enum Encapsulation {
     MlKem512(EncapsulationKey<MlKem512>),
