@@ -417,6 +417,45 @@ fn x25519_agrees_with_the_default_provider() {
     assert_eq!((private[0] & 7, private[31] & 0xc0), (0, 0x40));
 }
 
+/// RFC 9180's `DeriveKeyPair`, which OpenSSL runs as key generation from
+/// `dhkem-ikm`, gives the default provider's key for the same input.
+#[test]
+fn x25519_derives_a_key_pair_as_the_default_provider_does() {
+    let ctx = Context::new();
+    for len in [32, 64] {
+        let ikm: Vec<u8> = (0..len).map(|i| i as u8 ^ 0x5a).collect();
+        let [ours, theirs] =
+            [(None, "rind"), (Some(DEFAULT), "default")].map(|(propq, provider)| {
+                let mut ikm = ikm.clone();
+                let key = unsafe {
+                    let params = [
+                        OSSL_PARAM_construct_octet_string(
+                            c"dhkem-ikm".as_ptr(),
+                            ikm.as_mut_ptr().cast(),
+                            ikm.len(),
+                        ),
+                        OSSL_PARAM_construct_end(),
+                    ];
+                    let gen_ctx = non_null(EVP_PKEY_CTX_new_from_name(
+                        ctx.0,
+                        c"X25519".as_ptr(),
+                        propq.map_or(null(), CStr::as_ptr),
+                    ));
+                    check(EVP_PKEY_keygen_init(gen_ctx));
+                    check(EVP_PKEY_CTX_set_params(gen_ctx, params.as_ptr()));
+                    let mut key = null_mut();
+                    check(EVP_PKEY_generate(gen_ctx, &mut key));
+                    EVP_PKEY_CTX_free(gen_ctx);
+                    Key(key)
+                };
+                assert_eq!(key.provider(), provider);
+                key
+            });
+        assert_eq!(ours.raw_private(), theirs.raw_private());
+        assert_eq!(ours.raw_public(), theirs.raw_public());
+    }
+}
+
 #[test]
 fn x25519_refuses_a_small_order_peer() {
     let ctx = Context::new();
