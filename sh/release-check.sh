@@ -218,7 +218,7 @@ run_fuzz() {
             ;;
     esac
 
-    if [[ ! -d "$out/fuzz/corpus" ]]; then
+    if [[ -z "${corpora:-}" ]]; then
         local run
         run=$(last_run fuzz)
         [[ $(jq -r '.conclusion // empty' <<<"$run") == success ]] || {
@@ -226,9 +226,14 @@ run_fuzz() {
             return 1
         }
         echo "--> corpora from $(jq -r .url <<<"$run")" >&2
+        rm -rf "$out/fuzz/corpus" "$out/fuzz/corpus.part"
         mkdir -p "$out/fuzz/corpus.part"
-        gh run download "$(jq -r .databaseId <<<"$run")" -p 'fuzz-corpus-*' -p 'fuzz-portable-corpus-*' -D "$out/fuzz/corpus.part"
+        gh run download "$(jq -r .databaseId <<<"$run")" -p 'fuzz-corpus-*' -p 'fuzz-portable-corpus-*' -D "$out/fuzz/corpus.part" || {
+            echo "error: that run uploaded no corpora; start one: gh workflow run fuzz.yml --ref main" >&2
+            return 1
+        }
         mv "$out/fuzz/corpus.part" "$out/fuzz/corpus"
+        corpora=1
     fi
 
     local corpus=$out/fuzz/corpus artifacts=$out/fuzz/artifacts
@@ -398,7 +403,7 @@ nightly=
 for wf in "${!elsewhere[@]}"; do
     run=$(last_run "$wf")
     if [[ $(jq -r '.conclusion // empty' <<<"$run") != success ]]; then
-        echo "error: the latest scheduled $wf run on main did not pass: $(jq -r '.url // "none"' <<<"$run")" >&2
+        echo "error: the latest scheduled $wf run on main did not pass: $(jq -r '.url // "none"' <<<"$run"); once main is fixed, start one: gh workflow run $wf.yml --ref main" >&2
         exit 1
     fi
     echo "release-check: $wf's other rows passed in $(jq -r .url <<<"$run") at $(jq -r .headSha <<<"$run")" >&2
