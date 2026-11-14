@@ -1522,7 +1522,10 @@ struct KemTest {
 fn ml_kem() {
     ml_kem_set::<kem::MlKem512>(["mlkem_512_encaps_test.json", "mlkem_512_test.json"], 768);
     ml_kem_set::<kem::MlKem768>(["mlkem_768_encaps_test.json", "mlkem_768_test.json"], 1088);
-    ml_kem_set::<kem::MlKem1024>(["mlkem_1024_encaps_test.json", "mlkem_1024_test.json"], 1568);
+    ml_kem_set::<kem::MlKem1024>(
+        ["mlkem_1024_encaps_test.json", "mlkem_1024_test.json"],
+        1568,
+    );
 }
 
 /// Checks set `A` against its `[encapsulation, decapsulation]` files.

@@ -119,8 +119,7 @@ impl<A: Algorithm> DecapsulationKey<A> {
         let out = bytes.as_mut();
         // SAFETY: the handle is live, of set `A`, and `out` holds its
         // encapsulation key's length in writable bytes.
-        let handle =
-            unsafe { rind_fips_kem_public_key(self.0.ptr(), out.as_mut_ptr(), out.len()) };
+        let handle = unsafe { rind_fips_kem_public_key(self.0.ptr(), out.as_mut_ptr(), out.len()) };
         EncapsulationKey {
             handle: Handle::new(handle),
             bytes,

@@ -75,8 +75,7 @@ fn interoperates_with_rind() {
 
             // rind decapsulates what the module encapsulated to its key.
             let reference = rind::kem::DecapsulationKey::<S::Theirs>::generate().unwrap();
-            let peer =
-                EncapsulationKey::<S::Ours>::new(reference.public_key().as_ref()).unwrap();
+            let peer = EncapsulationKey::<S::Ours>::new(reference.public_key().as_ref()).unwrap();
             assert_eq!(peer.as_ref(), reference.public_key().as_ref());
             for peer in [peer.clone(), peer] {
                 let (ciphertext, secret) = peer.encapsulate().unwrap();
