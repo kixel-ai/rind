@@ -82,17 +82,18 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 
 ### BINSEC cannot decode much of what rind runs
 
-- **Breaks:** BINSEC 0.11.3 stops at instructions it cannot decode: on x86_64, AES-NI, VAES, the SHA512 instructions, every EVEX encoding, and the `vinsertf128` LLVM emits for the AVX2 ChaCha20 kernel; on aarch64, the crypto extension's AES, PMULL, and SHA instructions, SHA3's, the `msr` that sets DIT, `tbl` (vpaes and NEON ChaCha20), and the `mrs` of `tpidr_el0` in glibc's `malloc`; on armv7, the NEON table lookups and the crypto extension.
-- **Workaround:** `admin/ct-binsec`'s `UNDECODED` denies those features, leaving their paths to `admin/ctgrind`, `admin/ct-sde`, and `admin/ct-qemu`; `ct_binsec_chacha20` (`rind/src/test/binsec.rs`) checks one block; `ctgrind.yml`'s aarch64 `binsec` row runs only the harnesses BINSEC decodes, and armv7 has none. [The BINSEC quest](/quest/m2/confidence/binsec.md) plans stubs for some.
+- **Breaks:** BINSEC 0.11.3 stops at instructions it cannot decode: on x86_64, AES-NI, VAES, the SHA512 instructions, and every EVEX encoding; on aarch64, the crypto extension's AES, PMULL, and SHA instructions, SHA3's, and the `msr` that sets DIT; on armv7, the NEON table lookups and the crypto extension.
+- **Workaround:** `admin/ct-binsec`'s `UNDECODED` denies those features, leaving their paths to `admin/ctgrind`, `admin/ct-sde`, and `admin/ct-qemu`, and armv7 has no `binsec` row in `ctgrind.yml`.
 - **Reported:** no.
 - **Goes when:** a BINSEC release decodes each, feature by feature.
 
-### BINSEC cannot decode `stc`, `clc`, or `movmskps`
+### BINSEC cannot decode instructions `admin/ct-binsec` stubs
 
-- **Breaks:** BINSEC 0.11.3 stops at the `stc` that s2n-bignum's P-521 code sets the carry with, and at the `movmskps` LLVM tests the portable P-256 and P-384 for zero with.
-- **Workaround:** `admin/ct-binsec`'s `STUBS` gives each its effect in BINSEC's script language.
+- **Breaks:** BINSEC 0.11.3 stops with `uninterpreted` at these instructions rind's code or glibc runs: on x86_64, `stc` (`f9`), `clc` (`f8`), `movmskps` and VEX `vmovmskps`, `vinsertf128` (VEX.256 0F3A 18), `vpermpd` (VEX.256.W1 0F3A 01), `vmovshdup` (VEX F3 0F 16), and the `syscall` in glibc's `mprotect`; on aarch64, `mrs xN, tpidr_el0` (glibc's `malloc`), `tbl` with one to four table registers (8B and 16B), and `cnt` (8B and 16B).
+- **Reproduce:** `admin/ct-binsec` with `STUBS` emptied stops at the first one its harnesses reach, such as `stc` in `ct_binsec_ecdh_p521` on x86_64 or `tbl` in `ct_binsec_aes` on aarch64.
+- **Workaround:** `admin/ct-binsec`'s `STUBS` gives each its effect in BINSEC's script language, generated per encoding from objdump's disassembly of the test binary and glibc, since `replace opcode` matches exact bytes; `tbl`, a constant-time table lookup, becomes a shift of the whole table, which needs no branch. Its script makes `mprotect` succeed without its system call.
 - **Reported:** no.
-- **Goes when:** a BINSEC release decodes them.
+- **Goes when:** a BINSEC release decodes them, or `replace opcode` matches an encoding by mask, so one stub covers every encoding of an instruction.
 
 ### BINSEC cannot decode glibc's string functions
 
@@ -133,12 +134,20 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Reported:** no.
 - **Goes when:** Lean compiles the whole comb as one literal.
 
-### s2n-bignum's x86_64 model lacks instructions aws-lc's routines use
+### s2n-bignum lacks instructions and specs rind's proofs use
 
-- **Breaks:** s2n-bignum's HOL Light x86_64 model cannot decode some instructions of aws-lc's ChaCha20-Poly1305 and ChaCha20 routines, so they cannot be proven on it.
-- **Workaround:** `proofs/hol-light/s2n-bignum/x86.patch` adds them, cosimulated against the CPU by `x86-cosim.ml`; [that directory's README](/proofs/hol-light/s2n-bignum/README.md) lists each, with the unmerged upstream specs rind vendors.
+- **Breaks:** s2n-bignum's HOL Light x86_64 model cannot decode some instructions of aws-lc's ChaCha20-Poly1305 and ChaCha20 routines, or the SHA extensions rind's SHA-256 blocks run, and its SHA-256 and SHA-512 specs are in pull requests not yet merged, so those routines cannot be proven on it.
+- **Workaround:** rind forks s2n-bignum in `thirdparty/s2n-bignum` (maintainer, 2026-11-13, on [kixel-ai/rind#701](https://github.com/kixel-ai/rind/pull/701)). Each change, with its upstream pull request, is in [its `RIND.md`](/thirdparty/s2n-bignum/RIND.md), which `admin/regenerate` checks lists every file that differs from upstream's: the model additions of [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450), the SHA extensions among them, rind's own additions, both cosimulated against the CPU, and the specs of [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) and [#420](https://github.com/awslabs/s2n-bignum/pull/420).
+- **Reported:** found #415, #420, and #450, all open; rind's own additions are not offered, which needs the maintainer's approval ([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
+- **Goes when:** s2n-bignum merges each change and the fork's base moves past it.
+
+### dmtcp_command fails a checkpoint that succeeds
+
+- **Breaks:** `dmtcp_command --kcheckpoint` sends a blocking checkpoint and then a checkpoint, which the coordinator refuses once the first has killed the computation, so DMTCP 4.1.1's command prints `Computation was checkpointed and killed.` and exits 2. It prints the same when the computation dies during the checkpoint, having written nothing.
+- **Reproduce:** `dmtcp_launch --new-coordinator --port-file port sleep 100 &`, then `dmtcp_command --coord-port "$(<port)" --kcheckpoint; echo $?` prints 2 beside the checkpoint it wrote.
+- **Workaround:** `admin/prove`'s `session_image` ignores the exit status and requires the checkpoint file once the computation has exited.
 - **Reported:** no.
-- **Goes when:** s2n-bignum's model decodes each, instruction by instruction.
+- **Goes when:** `dmtcp_command --kcheckpoint` exits 0 once it has checkpointed and killed the computation.
 
 ### Mathlib's cache unpacks a copy into each checkout
 
@@ -224,11 +233,21 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Reported:** no.
 - **Goes when:** nixpkgs builds release-plz on Darwin.
 
+## CI tools
+
+### actionlint rejects `concurrency.queue`
+
+- **Breaks:** actionlint 1.7.12 errors on `queue: max`, which GitHub's concurrency groups accept since May 2026, as `unexpected key "queue" for "concurrency" section`.
+- **Reproduce:** `actionlint .github/workflows/mutants.yml` without the ignore below.
+- **Workaround:** `.github/actionlint.yaml` ignores that error in `mutants.yml`.
+- **Reported:** [rhysd/actionlint#657](https://github.com/rhysd/actionlint/issues/657), with a fix in [rhysd/actionlint#654](https://github.com/rhysd/actionlint/pull/654).
+- **Goes when:** an actionlint release in nixpkgs accepts `queue`.
+
 ## CI runner images
 
 ### Ubuntu's AppArmor denies Intel SDE's sandbox
 
 - **Breaks:** the flake's `sde` runs Intel's unmodified binaries in a bubblewrap sandbox, which needs the unprivileged user namespaces Ubuntu's AppArmor denies a program it has no profile for.
-- **Workaround:** each job that runs `sde` (`coverage.yml`, `ctgrind.yml`, `fuzz.yml`, `mutants.yml`, `x86-cpu.yml`) first sets `kernel.apparmor_restrict_unprivileged_userns=0`.
+- **Workaround:** each job that runs `sde` (`coverage.yml`, `ctgrind.yml`, `fuzz.yml`, `x86-cpu.yml`) first sets `kernel.apparmor_restrict_unprivileged_userns=0`.
 - **Reported:** no.
 - **Goes when:** the runner image allows the Nix store's bubblewrap a user namespace.

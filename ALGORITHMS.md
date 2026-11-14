@@ -43,9 +43,12 @@ SHA-512.
 | HKDF | rind ⚡ |  |  |  |  |
 | HPKE, over the rows it builds on | rind |  |  |  |  |
 | ECVRF, over the rows it builds on | rind |  |  |  |  |
+| OPRF, VOPRF, over the rows it builds on | rind |  |  |  |  |
 | PBKDF2 | rind |  |  |  |  |
+| SPAKE2+ | rind, over P-256 |  |  |  |  |
 | X25519 | s2n-bignum ✓ |  |  |  |  |
 | Ed25519 | s2n-bignum ✓ + Graviola |  |  |  |  |
+| ristretto255 | s2n-bignum ✓ + rind |  |  |  |  |
 | P-256 ECDH, ECDSA | s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ |  |  |  |  |
 | P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  |  |  |  |
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  |  |  |  |
@@ -107,9 +110,12 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | HKDF | rind ⚡ |  |  |  |
 | HPKE, over the rows it builds on | rind |  |  |  |
 | ECVRF, over the rows it builds on | rind |  |  |  |
+| OPRF, VOPRF, over the rows it builds on | rind |  |  |  |
 | PBKDF2 | rind |  |  |  |
+| SPAKE2+ | rind, over P-256 |  |  |  |
 | X25519 | s2n-bignum ✓ |  | BoringSSL ⚡ + curve25519-dalek ⚡ | curve25519-dalek ⚡ |
 | Ed25519 | s2n-bignum ✓ + Graviola |  | curve25519-dalek ⚡ + rind ⚡ |  |
+| ristretto255 | s2n-bignum ✓ + rind |  | curve25519-dalek | curve25519-dalek |
 | P-256 ECDH, ECDSA | s2n-bignum ✓ + Graviola |  | fiat-crypto ✓ + rind ⚡ + Graviola ⚡ | fiat-crypto ✓ + rind + Graviola ⚡ |
 | P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  | fiat-crypto ✓ + rind ⚡ | fiat-crypto ✓ + rind |
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  | fiat-crypto ✓ + rind ⚡ |  |
@@ -129,8 +135,9 @@ with portable Rust in place of the assembly armv7 runs regardless.
   ML-DSA's Keccak-f is rind's, s2n-bignum's Keccak spec in Rust, which
   [`proofs/`](proofs/README.md) proves is FIPS 202's KECCAK-f[1600]; it
   measured as fast as RustCrypto's and libcrux-sha3's, which nothing proves.
-  RSA's Montgomery multiplication is rind's loop, which wipes its scratch,
-  rather than HACL*'s, which leaves scratch unwiped on the heap.
+  RSA's Montgomery multiplication is rind's own: an interleaved loop below 16
+  limbs, then a separate product and reduction, with Karatsuba from 32 limbs.
+  Its scratch is on the stack, never on the heap as HACL*'s is.
 - portable: RSA and the NIST curves run on 64-bit limbs on 64-bit targets,
   and on wasm32 built with the `wide-arithmetic` target feature (stable from
   Rust 1.101), and on armv7's 32-bit limbs on other 32-bit targets, where a
@@ -172,8 +179,8 @@ files Graviola wrote keep their `Written for Graviola by ...` header. The
 (Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND BSD-3-Clause`. The
 adapter crates copy nothing under another license, so they stay
 `Apache-2.0 OR ISC OR MIT-0`.
-rind-ring runs ring's own tests, which keep ring's licenses and stay out of
-the published crate.
+rind-ring runs ring's own tests, and rind-aws-lc-rs aws-lc-rs's, which keep
+their sources' licenses and stay out of the published crates.
 
 A change that copies code from a new source, or moves an algorithm to a
 different one, updates this table and [LICENSE] in the same PR.
@@ -184,8 +191,9 @@ s2n-bignum's `_SAFE` theorems prove, for every input, that the instructions a
 routine executes and the addresses it accesses depend on no secret, and that
 it runs no instruction whose timing depends on its operands. `admin/prove
 bytes`, in the `prove` workflow, checks that each routine's `asm!` block in
-rind's release build holds the instructions its proof lists, at the
-submodule's commit, so those theorems are about the code rind runs. A block
+rind's release build holds the instructions its proof lists, upstream's
+proof at the base commit of rind's fork, `thirdparty/s2n-bignum`, so those
+theorems are about the code rind runs. A block
 differs from its proof's code only as `admin/prove-bytes` lists, none of the
 changes altering the result the proof states or making a branch, address, or
 timing depend on a secret: the final `ret` is gone, as the Rust function
@@ -218,6 +226,7 @@ not cover rind's in-place calls.
 | `aes256_gcm_enc` | not imported | `aes256_gcm_enc`: `AES256_GCM_ENC_NOIBT_SUBROUTINE_SAFE` |
 | `aes256_gcm_enc_alt` | not imported | `aes256_gcm_enc_alt`: `AES256_GCM_ENC_ALT_NOIBT_SUBROUTINE_SAFE` |
 | `bignum_add` | `bignum_add`: none | `bignum_add`: none |
+| `bignum_add_p25519` | `bignum_add_p25519`: none | `bignum_add_p25519`: none |
 | `bignum_add_p256` | `bignum_add_p256`: none | `bignum_add_p256`: none |
 | `bignum_add_p384` | `bignum_add_p384`: `BIGNUM_ADD_P384_SUBROUTINE_SAFE` | `bignum_add_p384`: `BIGNUM_ADD_P384_SUBROUTINE_SAFE` |
 | `bignum_add_p521` | `bignum_add_p521`: `BIGNUM_ADD_P521_SUBROUTINE_SAFE` | `bignum_add_p521`: `BIGNUM_ADD_P521_SUBROUTINE_SAFE` |
@@ -241,6 +250,8 @@ not cover rind's in-place calls.
 | `bignum_inv_p256` | `bignum_inv_p256`: none | `bignum_inv_p256`: none |
 | `bignum_inv_p384` | `bignum_inv_p384`: none | `bignum_inv_p384`: none |
 | `bignum_inv_p521` | `bignum_inv_p521`: `BIGNUM_INV_P521_SUBROUTINE_SAFE` | `bignum_inv_p521`: `BIGNUM_INV_P521_SUBROUTINE_SAFE` |
+| `bignum_invsqrt_p25519` | `bignum_invsqrt_p25519`: none | `bignum_invsqrt_p25519_alt`: none |
+| `bignum_invsqrt_p25519_alt` | `bignum_invsqrt_p25519_alt`: none | not imported |
 | `bignum_kmul_16_32` | `bignum_kmul_16_32`: none | not imported |
 | `bignum_kmul_32_64` | `bignum_kmul_32_64`: none | not imported |
 | `bignum_ksqr_16_32` | `bignum_ksqr_16_32`: none | not imported |
@@ -283,6 +294,7 @@ not cover rind's in-place calls.
 | `bignum_sqr_p25519_alt` | `bignum_sqr_p25519_alt`: none | not imported |
 | `bignum_sqr_p521` | `bignum_sqr_p521`: `BIGNUM_SQR_P521_SUBROUTINE_SAFE` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` |
 | `bignum_sqr_p521_alt` | `bignum_sqr_p521_alt`: `BIGNUM_SQR_P521_ALT_SUBROUTINE_SAFE` | not imported |
+| `bignum_sub_p25519` | `bignum_sub_p25519`: none | `bignum_sub_p25519`: none |
 | `bignum_tomont_p256` | `bignum_tomont_p256`: none | `bignum_tomont_p256`: none |
 | `bignum_tomont_p256_alt` | `bignum_tomont_p256_alt`: none | not imported |
 | `bignum_tomont_p384` | `bignum_tomont_p384`: `BIGNUM_TOMONT_P384_SUBROUTINE_SAFE` | `bignum_tomont_p384`: `BIGNUM_TOMONT_P384_SUBROUTINE_SAFE` |
@@ -382,12 +394,14 @@ armv7 runs the same exponentiation over aws-lc's 32-bit ARM `bn_mul_mont`
 routines as aws-lc picks them (`bn_mul8x_mont_neon` with NEON for moduli whose
 width in 32-bit words is a multiple of eight, and `bn_mul_mont_nohw`
 otherwise), and the rest of the arithmetic in rind's portable Rust. The
-portable backend runs it all in that Rust, its Montgomery products by
-rind's loop (Koç, Acar, and Kaliski's CIOS method) and its squarings by
-forming each cross product once before reducing, over 64-bit limbs on
-64-bit targets and 32-bit ones elsewhere. RSA-2048 signing measured level
-with aws-lc's C without assembly on x86_64, and 4096 bits and up slower,
-where aws-lc switches to Karatsuba.
+portable backend runs it all in that Rust, over 64-bit limbs on 64-bit
+targets and 32-bit ones elsewhere: its Montgomery products below 16 limbs by
+rind's loop (Koç, Acar, and Kaliski's CIOS method), and wider ones and its
+squarings by forming the product, each square's cross products once, then
+reducing it, adding two rows a pass in two carry chains. Products split by
+Karatsuba's method from 32 limbs and squares from 64, as aws-lc's C does
+from 16 words. RSA signing and verification at 2048 to 8192 bits measured
+at 0.85 to 0.97× aws-lc's C time without assembly on x86_64.
 On x86_64 CPUs with AVX2 but without ADX, the private operation's exponentiation modulo each 1024-bit
 prime of RSA-2048 runs aws-lc's RSAZ, as aws-lc does there: Montgomery
 products on AVX2 over 29-bit limbs, and a 5-bit fixed window whose table
@@ -534,6 +548,18 @@ edwards25519, where it is public data, as no variable-time multiplication of
 an arbitrary point is there to reuse; P256's computes `s G - c Y` as ECDSA
 verification does. Try-and-increment's loop runs in time that depends on the
 input, as RFC 9381 notes.
+
+The OPRFs (RFC 9497) are rind's too, over the same code: ristretto255's
+constant-time multiplications and RFC 9496 map, or curve25519-dalek's on
+armv7 and portable, and the NIST curves' ECDH multiplications and RFC 9380
+hash-to-curve, with `expand_message_xmd` over the suite's SHA-2 for each
+hash to a scalar. Blinding, evaluation, proving, and finalization run in
+constant time in the input, the blind, the key, and the proof's nonce.
+Verifying a DLEQ proof handles public data only: ristretto255's still
+multiplies in constant time, as with ECVRF on edwards25519, and the NIST
+curves' compute `s G + c Y` as ECDSA verification does, and their other
+sums from constant-time products. The suites' vectors and the `voprf` crate
+cover the composition; nothing in it is proven.
 
 ### ML-KEM-768
 On aarch64, and on x86_64 CPUs with AVX2, the core polynomial arithmetic -- the NTT, inverse NTT, base multiplication
