@@ -2,7 +2,7 @@
 
 //! HKDF against aws-lc-rs for any salt, secret, info, and output length, up
 //! to twice the most HKDF-Expand allows, from an extracted pseudorandom key
-//! or one loaded from bytes.
+//! or one loaded from up to 64 bytes.
 
 use aws_lc_rs::hkdf as theirs;
 use libfuzzer_sys::{arbitrary, arbitrary::Arbitrary, fuzz_target};
@@ -43,10 +43,14 @@ fuzz_target!(|input: Input| {
     let info: Vec<&[u8]> = input.info.iter().map(Vec::as_slice).collect();
 
     let (ours_prk, theirs_prk) = match input.loaded {
-        true => (
-            ours::Prk::new(ours_algorithm, &input.secret),
-            theirs::Prk::new_less_safe(theirs_algorithm, &input.secret),
-        ),
+        // Up to the 64 bytes aws-lc-rs's `new_less_safe` holds before it panics.
+        true => {
+            let prk = &input.secret[..input.secret.len().min(64)];
+            (
+                ours::Prk::new(ours_algorithm, prk),
+                theirs::Prk::new_less_safe(theirs_algorithm, prk),
+            )
+        }
         false => (
             ours::Salt::new(ours_algorithm, &input.salt)
                 .extract(&input.secret)
