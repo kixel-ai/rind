@@ -10,6 +10,9 @@ proofs/Rind/*/Kdf/Types.lean
 proofs/Rind/*/Kdf/Funs.lean
 proofs/Rind/Aarch64/X25519.lean
 proofs/Rind/Aarch64/P384.lean
+proofs/Rind/Aarch64/P384Dispatch.lean
+proofs/Rind/Aarch64/P384Table.lean
+proofs/Rind/Aarch64/P384Keygen.lean
 proofs/Rind/Aarch64/Dispatch.lean
 proofs/Rind/Aarch64/P256Dispatch.lean
 proofs/Rind/Aarch64/P256Agree.lean
@@ -34,5 +37,9 @@ proofs/Rind/Aarch64/AesCipher.lean
 proofs/Rind/Aarch64/HkdfAes.lean
 proofs/Rind/Aarch64/Pbkdf2.lean
 proofs/Rind/Aarch64/Sha3.lean
+proofs/Rind/Aarch64/P256.lean
+proofs/Rind/Aarch64/EcdsaDispatch.lean
+proofs/Rind/Aarch64/P256Ecdsa.lean
+proofs/Rind/Aarch64/P256Signature.lean
 patch/*/Cargo.lock
 __pycache__/
