@@ -235,10 +235,14 @@ impl PqdsaKeyPair {
     /// Encodes the private key's seed as PKCS#8 v1, failing for a key loaded
     /// from its expanded form, which has none.
     pub fn to_pkcs8v1(&self) -> Result<pkcs8::Document, Unspecified> {
-        with_key!(&*self.key, k => match k.to_seed() {
-            Some(_) => Ok(pkcs8::Document::new(k.to_pkcs8().as_ref())),
-            None => Err(Unspecified),
-        })
+        // rind encodes the seed when the key has one, else the expanded key,
+        // so only a seed's encoding is shorter than the expanded key. This
+        // asks without `to_seed`, whose copy would be wiped on drop.
+        let pkcs8 = with_key!(&*self.key, k => k.to_pkcs8());
+        if pkcs8.as_ref().len() >= self.algorithm.0.id.private_key_len() {
+            return Err(Unspecified);
+        }
+        Ok(pkcs8::Document::new(pkcs8.as_ref()))
     }
 
     /// Encodes the private key as [`Self::to_pkcs8v1`] does.

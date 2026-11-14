@@ -68,6 +68,16 @@ pub(crate) mod private {
         /// Parses an encoded public key.
         fn parse(&self, public_key: &[u8]) -> Result<rind::signature::PublicKey, KeyRejected>;
 
+        /// Parses an encoded public key to keep, also returning whether it
+        /// can verify for this algorithm. aws-lc-rs keeps an RSA key outside
+        /// the algorithm's range and fails its verifications.
+        fn parse_kept(
+            &self,
+            public_key: &[u8],
+        ) -> Result<(rind::signature::PublicKey, bool), KeyRejected> {
+            self.parse(public_key).map(|key| (key, true))
+        }
+
         /// Verifies `signature` over `msg`.
         fn verify_parsed(
             &self,
@@ -227,6 +237,9 @@ impl<B: AsRef<[u8]>> fmt::Debug for UnparsedPublicKey<B> {
 pub struct ParsedPublicKey {
     algorithm: &'static dyn VerificationAlgorithm,
     key: Arc<rind::signature::PublicKey>,
+    /// Whether `key` can verify for `algorithm`, false for an RSA key
+    /// outside its range.
+    verifies: bool,
     bytes: Box<[u8]>,
 }
 
@@ -236,18 +249,20 @@ impl ParsedPublicKey {
         algorithm: &'static dyn VerificationAlgorithm,
         bytes: B,
     ) -> Result<Self, KeyRejected> {
-        let key = algorithm.parse(bytes.as_ref())?;
-        Ok(Self::from_parts(algorithm, key, bytes.as_ref()))
+        let (key, verifies) = algorithm.parse_kept(bytes.as_ref())?;
+        Ok(Self::from_parts(algorithm, key, verifies, bytes.as_ref()))
     }
 
     pub(crate) fn from_parts(
         algorithm: &'static dyn VerificationAlgorithm,
         key: rind::signature::PublicKey,
+        verifies: bool,
         bytes: &[u8],
     ) -> Self {
         Self {
             algorithm,
             key: Arc::new(key),
+            verifies,
             bytes: bytes.into(),
         }
     }
@@ -260,11 +275,17 @@ impl ParsedPublicKey {
 
     /// Verifies `signature` over `message`.
     pub fn verify_sig(&self, message: &[u8], signature: &[u8]) -> Result<(), Unspecified> {
+        if !self.verifies {
+            return Err(Unspecified);
+        }
         self.algorithm.verify_parsed(&self.key, message, signature)
     }
 
     /// Verifies `signature` over the message `digest` hashes.
     pub fn verify_digest_sig(&self, digest: &Digest, signature: &[u8]) -> Result<(), Unspecified> {
+        if !self.verifies {
+            return Err(Unspecified);
+        }
         self.algorithm
             .verify_parsed_digest(&self.key, digest, signature)
     }

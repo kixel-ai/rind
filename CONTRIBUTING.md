@@ -46,10 +46,10 @@ Have at least these sections:
 
 Run `just ci` before every push.
 
-The platform workflows inherited from graviola run nightly or on demand with `gh workflow run <name> --ref <branch>`, and on a pull request that touches their inputs, a cheap subset each: one ctgrind row, the armv7, portable, and Dart jobs of `build`, and a timing build. `mutants` never runs on a pull request; mutate its diff with `admin/mutants --in-diff`, and dispatch a whole campaign, which `admin/mutants` runs only on GitHub-hosted runners. These runs are advisory, since a path-filtered workflow cannot be a required check, but fix a red one before merging.
+The scheduled workflows run nightly (`timing`, `ctgrind-debug`, and `mutants` weekly) or on demand with `gh workflow run <name> --ref <branch>`, and some on a pull request that touches their inputs: ctgrind's x86_64 release row and its BINSEC rows, the armv7, portable, Dart, and openmls jobs of `build`, a timing build, the fuzz targets' builds, aarch64 clippy, and all of `x86-cpu`, `prove`, and `regenerate`. `mutants` never runs on a pull request; mutate its diff with `admin/mutants --in-diff`, and dispatch a whole campaign, which `admin/mutants` runs only on GitHub-hosted runners. These runs are advisory, since a path-filtered workflow cannot be a required check, but fix a red one before merging.
 PRs land on `main` through GitHub's merge queue, one PR at a time, as squash commits.
 Queue the reviewed head with `quest merge <pr> --land <sha>` (`/quest-merge` does this).
-The required `Queue` check skips on pull requests; the merge group runs `just ci` against the merge group's base on the self-hosted runner.
+The required `Queue build / Build` check skips on pull requests; the merge group runs `just ci` against the merge group's base on the self-hosted runner, and that job's own result decides the group.
 That build lives in `.github/workflows/queue-build.yml`, which the merge group calls from `main`, so a PR's edit to it runs only after the PR lands.
 A PR the queue drops for a failed build or a conflict gets a Codex fixer, which requeues it or hands it back with a diagnosis.
 The admin bypass of `main`'s ruleset is for emergencies.
@@ -58,6 +58,11 @@ The admin bypass of `main`'s ruleset is for emergencies.
 
 AI-assisted issues, pull requests, reviews, and comments are welcome.
 Prefer a quest for work needing durable scope or coordination.
+
+# Vulnerabilities
+
+Report a vulnerability privately, as [SECURITY.md](SECURITY.md) says, never in
+an issue, pull request, or quest.
 
 # Reviews
 
@@ -69,6 +74,10 @@ rind began as a fork of [ctz/graviola](https://github.com/ctz/graviola) and no l
 Report bugs that also affect graviola, or any other source rind imports, upstream; never block on the fix.
 Each `Written for Graviola by ...` header is attribution; keep it on files that carry one.
 
+When rind needs an upstream changed, by its own fix or an unmerged upstream pull request, it forks that upstream and vendors the fork's whole tree in this repository, in place of a submodule, and takes upstream's later commits by merging them into it.
+Never vendor an upstream file unchanged from an older base, or only the changed files over a pinned upstream: the first reverts every later upstream commit to that file, and the second silently shadows them.
+[UPSTREAM.md](UPSTREAM.md#forks) names each fork and where its list of rind's changes lives, so they can be offered upstream.
+
 [UPSTREAM.md](UPSTREAM.md) lists every workaround for a bug or gap in a tool or dependency rind doesn't own.
 A PR that adds such a workaround adds its entry there and names the entry in the workaround's comment; a PR that drops one removes it from its entry, and deletes the entry once it lists no workaround.
 
@@ -76,6 +85,12 @@ A PR that adds such a workaround adds its entry there and names the entry in the
 
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions.
+
+A release PR merges only after `just release-check` passes at its head, so nothing publishes that the full suite has not passed.
+It dispatches every scheduled workflow but `bench` and `dart-libraries` on the PR's branch, so each runs its whole scheduled matrix on the head, and waits for them all, which takes as long as the slowest. Mutation testing covers every change since the previous release.
+An agent merging a release PR, as `/quest-merge` does, runs it first.
+It records the result as the `release-check` status on the head the runs tested, so a release-plz update to the PR needs a new run.
+`just ci` fails a scheduled workflow that a dispatch would not run whole.
 
 Each published `rind-<consumer>` adapter's version begins with the breaking part of the upstream version it adapts (major.minor below 1.0, major from 1.0 on), so rind-rustls 0.23.x adapts rustls 0.23; the rest of the version is the adapter's own.
 `sh/adapter-versions.sh`, in `just ci`, fails when the two drift.
