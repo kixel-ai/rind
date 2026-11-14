@@ -14,8 +14,8 @@ license = "MIT"
 [dependencies]
 rand = "0.10.3"
 rand_core = "0.10.1"
-rsa = { version = "0.10.0-rc.18", features = ["hazmat"] }
-crypto-bigint = "0.7.5"
+rsa = { version = "0.10", features = ["hazmat"] }
+crypto-bigint = "0.7.11"
 crypto-primes = { version = "=0.7.0", default-features = false }
 digest = "0.11.3"
 hmac-sha256 = { version = "1.1.14", features = ["traits011"] }

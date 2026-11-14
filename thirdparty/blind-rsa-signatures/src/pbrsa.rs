@@ -38,7 +38,7 @@
 use std::convert::TryFrom;
 use std::marker::PhantomData;
 
-use crypto_bigint::modular::{BoxedMontyForm, BoxedMontyParams};
+use crypto_bigint::modular::{BoxedMontyForm, BoxedMontyParams, MontyParams};
 use crypto_bigint::{BoxedUint, Gcd, Integer, NonZero, Odd, Resize};
 use digest::DynDigest;
 use rsa::hazmat::rsa_decrypt_and_check;
@@ -49,7 +49,7 @@ use rsa::pkcs8::{
 use rsa::rand_core::CryptoRng;
 use rsa::traits::{PrivateKeyParts, PublicKeyParts};
 use rsa::CrtValue;
-use rsa::{RsaPrivateKey, RsaPublicKey};
+use rsa::{PrivateKey as RsaPrivateKey, PublicKey as RsaPublicKey};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -333,12 +333,12 @@ struct PbrsaRawKey {
     n: NonZero<BoxedUint>,
     e: BoxedUint,
     d: BoxedUint,
-    primes: Vec<BoxedUint>,
+    primes: Vec<Odd<BoxedUint>>,
     n_params: BoxedMontyParams,
 }
 
 impl PbrsaRawKey {
-    fn new(n: BoxedUint, e: BoxedUint, d: BoxedUint, primes: Vec<BoxedUint>) -> Result<Self, Error> {
+    fn new(n: BoxedUint, e: BoxedUint, d: BoxedUint, primes: Vec<Odd<BoxedUint>>) -> Result<Self, Error> {
         let n_odd = Odd::new(n.clone())
             .into_option()
             .ok_or(Error::InternalError)?;
@@ -373,7 +373,7 @@ impl PrivateKeyParts for PbrsaRawKey {
         &self.d
     }
 
-    fn primes(&self) -> &[BoxedUint] {
+    fn primes(&self) -> &[Odd<BoxedUint>] {
         &self.primes
     }
 
@@ -393,11 +393,11 @@ impl PrivateKeyParts for PbrsaRawKey {
         None
     }
 
-    fn p_params(&self) -> Option<&BoxedMontyParams> {
+    fn p(&self) -> Option<&MontyParams<BoxedUint>> {
         None
     }
 
-    fn q_params(&self) -> Option<&BoxedMontyParams> {
+    fn q(&self) -> Option<&MontyParams<BoxedUint>> {
         None
     }
 }
@@ -483,8 +483,8 @@ impl<H: HashAlgorithm, S: SaltMode, M: MessagePrepare> PartiallyBlindPublicKey<H
         if der.len() > 800 {
             return Err(Error::EncodingError);
         }
-        let inner = rsa::RsaPublicKey::from_public_key_der(der)
-            .or_else(|_| rsa::RsaPublicKey::from_pkcs1_der(der))
+        let inner = RsaPublicKey::from_public_key_der(der)
+            .or_else(|_| RsaPublicKey::from_pkcs1_der(der))
             .map_err(|_| Error::EncodingError)?;
         // For PBRSA public keys, we allow non-standard exponents
         let modulus_bits = inner.size() * 8;
@@ -505,8 +505,8 @@ impl<H: HashAlgorithm, S: SaltMode, M: MessagePrepare> PartiallyBlindPublicKey<H
             return Err(Error::EncodingError);
         }
         let pem = pem.trim();
-        let inner = rsa::RsaPublicKey::from_public_key_pem(pem)
-            .or_else(|_| rsa::RsaPublicKey::from_pkcs1_pem(pem))
+        let inner = RsaPublicKey::from_public_key_pem(pem)
+            .or_else(|_| RsaPublicKey::from_pkcs1_pem(pem))
             .map_err(|_| Error::EncodingError)?;
         let modulus_bits = inner.size() * 8;
         if !(1024..=4096).contains(&modulus_bits) {
@@ -539,7 +539,7 @@ impl<H: HashAlgorithm, S: SaltMode, M: MessagePrepare> PartiallyBlindPublicKey<H
     ) -> Result<BlindingResult, Error> {
         let msg = msg.as_ref();
         let modulus_bytes = self.inner.size();
-        let modulus_bits = self.inner.n().as_ref().bits() as usize;
+        let modulus_bits = self.inner.n().as_ref().bit_width() as usize;
 
         let msg_randomizer = if M::RANDOMIZE {
             let mut noise = [0u8; 32];
@@ -650,7 +650,7 @@ enum SecretKeyInner {
         n: BoxedUint,
         e: BoxedUint,
         d: BoxedUint,
-        primes: Vec<BoxedUint>,
+        primes: Vec<Odd<BoxedUint>>,
     },
 }
 
@@ -709,7 +709,7 @@ impl<H: HashAlgorithm, S: SaltMode, M: MessagePrepare> PartiallyBlindSecretKey<H
         }
     }
 
-    fn new_derived(n: BoxedUint, e: BoxedUint, d: BoxedUint, primes: Vec<BoxedUint>) -> Self {
+    fn new_derived(n: BoxedUint, e: BoxedUint, d: BoxedUint, primes: Vec<Odd<BoxedUint>>) -> Self {
         Self {
             inner: SecretKeyInner::Derived { n, e, d, primes },
             _phantom: PhantomData,
@@ -723,7 +723,7 @@ impl<H: HashAlgorithm, S: SaltMode, M: MessagePrepare> PartiallyBlindSecretKey<H
         }
     }
 
-    fn primes(&self) -> &[BoxedUint] {
+    fn primes(&self) -> &[Odd<BoxedUint>] {
         match &self.inner {
             SecretKeyInner::Master(k) => {
                 use rsa::traits::PrivateKeyParts as _;
@@ -734,7 +734,7 @@ impl<H: HashAlgorithm, S: SaltMode, M: MessagePrepare> PartiallyBlindSecretKey<H
     }
 
     fn size(&self) -> usize {
-        (self.n().bits() as usize).div_ceil(8)
+        (self.n().bit_width() as usize).div_ceil(8)
     }
 
     pub fn to_der(&self) -> Result<Vec<u8>, Error> {
@@ -751,8 +751,8 @@ impl<H: HashAlgorithm, S: SaltMode, M: MessagePrepare> PartiallyBlindSecretKey<H
     }
 
     pub fn from_der(der: &[u8]) -> Result<Self, Error> {
-        let mut inner = rsa::RsaPrivateKey::from_pkcs8_der(der)
-            .or_else(|_| rsa::RsaPrivateKey::from_pkcs1_der(der))
+        let mut inner = RsaPrivateKey::from_pkcs8_der(der)
+            .or_else(|_| RsaPrivateKey::from_pkcs1_der(der))
             .map_err(|_| Error::EncodingError)?;
         inner.validate().map_err(|_| Error::InvalidKey)?;
         inner.precompute().map_err(|_| Error::InvalidKey)?;
@@ -789,8 +789,8 @@ impl<H: HashAlgorithm, S: SaltMode, M: MessagePrepare> PartiallyBlindSecretKey<H
     }
 
     pub fn from_pem(pem: &str) -> Result<Self, Error> {
-        let mut inner = rsa::RsaPrivateKey::from_pkcs8_pem(pem)
-            .or_else(|_| rsa::RsaPrivateKey::from_pkcs1_pem(pem))
+        let mut inner = RsaPrivateKey::from_pkcs8_pem(pem)
+            .or_else(|_| RsaPrivateKey::from_pkcs1_pem(pem))
             .map_err(|_| Error::EncodingError)?;
         inner.validate().map_err(|_| Error::InvalidKey)?;
         inner.precompute().map_err(|_| Error::InvalidKey)?;
