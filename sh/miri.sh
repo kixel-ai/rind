@@ -136,6 +136,16 @@ filter=$(printf 'test(=%s) | ' "${slow[@]}")
 # NIST's ACVP sample vectors are vector sets too, each test too slow for Miri.
 filter="not (${filter}test(/::acvp/))"
 
+# RIND_SCOPE=BASE skips the run when nothing the branch changed since BASE
+# reaches the portable backend, as sh/backends.sh decides.
+if [[ -n "${RIND_SCOPE:-}" ]]; then
+    reached=$(sh/changed.sh "$RIND_SCOPE" | sh/backends.sh -)
+    if ! grep -qxE 'all|portable' <<<"$reached"; then
+        echo "miri: nothing changed since $RIND_SCOPE reaches the portable backend" >&2
+        exit 0
+    fi
+fi
+
 # `--cfg rind_portable` forces the portable backend on x86_64, and dalek's
 # serial backend is the one the targets that need it run. The tests read the
 # vector files, which Miri's isolation forbids. `tests/zeroing.rs` reads a
