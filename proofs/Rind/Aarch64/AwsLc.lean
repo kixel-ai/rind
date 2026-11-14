@@ -9,7 +9,7 @@ aws-lc-verification's NSym proof that aws-lc's `sha512_block_data_order_nohw`
 computes `sha512_block_data_order_array_spec`, at the revision rind's README
 cites (79730247), restated as an axiom about the opaque Rust wrapper
 `compress_nohw` around rind's copy of that routine. rind copies it from aws-lc
-91c93a8e, whose `sha512-armv8.pl` is the proven c21d40da's.
+5ed12cce, whose `sha512-armv8.pl` is the proven c21d40da's.
 
 aws-lc-verification's SAW proof of the C assumes that spec on aarch64 and its
 NSym proof discharges it, with the caveats its README lists: NSym's spec of
