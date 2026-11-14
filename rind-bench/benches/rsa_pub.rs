@@ -8,7 +8,7 @@ use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 fn vg_components(public_key: &[u8]) -> (Vec<u8>, Vec<u8>) {
     use rsa::pkcs1::DecodeRsaPublicKey;
     use rsa::traits::PublicKeyParts;
-    let key = rsa::RsaPublicKey::from_pkcs1_der(public_key).unwrap();
+    let key = rsa::PublicKey::from_pkcs1_der(public_key).unwrap();
     (key.n_bytes().to_vec(), key.e_bytes().to_vec())
 }
 

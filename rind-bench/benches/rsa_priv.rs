@@ -27,8 +27,8 @@ fn vg_key(private_key: &[u8]) -> verified_garbage::rsa::PrivateKey {
     use rsa::pkcs8::DecodePrivateKey;
     use rsa::traits::{PrivateKeyParts, PublicKeyParts};
     use verified_garbage::rsa::{BigUint, PrivateKey};
-    let key = rsa::RsaPrivateKey::from_pkcs1_der(private_key)
-        .or_else(|_| rsa::RsaPrivateKey::from_pkcs8_der(private_key))
+    let key = rsa::PrivateKey::from_pkcs1_der(private_key)
+        .or_else(|_| rsa::PrivateKey::from_pkcs8_der(private_key))
         .unwrap();
     let [p, q] = key.primes() else {
         panic!("a two-prime key")
@@ -459,7 +459,7 @@ fn rsa_load(c: &mut Criterion) {
             use rsa::pkcs1::DecodeRsaPrivateKey;
             use rsa::traits::{PrivateKeyParts, PublicKeyParts};
             use verified_garbage::rsa::{BigUint, PrivateKey};
-            let key = rsa::RsaPrivateKey::from_pkcs1_der(private_key).unwrap();
+            let key = rsa::PrivateKey::from_pkcs1_der(private_key).unwrap();
             let components = [
                 key.n_bytes().to_vec(),
                 key.e_bytes().to_vec(),

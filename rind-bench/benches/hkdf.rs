@@ -210,7 +210,9 @@ fn vg<V: verified_garbage::hmac::HmacHash>(
     let mut expected = [0u8; 32];
     rind::hkdf::Salt::new(ours, b"salt")
         .extract(secret)
+        .unwrap()
         .expand(&[info], expected.len())
+        .unwrap()
         .fill(&mut expected)
         .unwrap();
     let mut out = [0u8; 32];

@@ -148,7 +148,8 @@ fn bench_aes_cbc(c: &mut Criterion) {
                     if op == "encrypt" {
                         AesCbcEncryptingKey::new(algorithm, key)
                             .unwrap()
-                            .encrypt(CbcIv::assume_unpredictable(iv), &mut expect);
+                            .encrypt(CbcIv::assume_unpredictable(iv), &mut expect)
+                            .unwrap();
                     } else {
                         let len = AesCbcDecryptingKey::new(algorithm, key)
                             .unwrap()
