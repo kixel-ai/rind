@@ -19,9 +19,6 @@ mod x25519;
 
 /// The entry point OpenSSL calls when it loads the provider.
 ///
-/// On a CPU missing a feature rind requires, it starts anyway and fails
-/// each use of X25519 and Ed25519 with rind's error naming the feature.
-///
 /// # Safety
 ///
 /// OpenSSL calls it with its core's handle and dispatch table, and two
@@ -34,9 +31,5 @@ pub unsafe extern "C" fn OSSL_provider_init(
     provctx: *mut *mut c_void,
 ) -> c_int {
     // SAFETY: per the caller; the pointers are OpenSSL's, cast to its types.
-    unsafe {
-        provider::init(handle.cast(), core.cast(), out.cast(), provctx, || {
-            rind::cpu::check().map_err(|missing| missing.to_string())
-        })
-    }
+    unsafe { provider::init(handle.cast(), core.cast(), out.cast(), provctx) }
 }

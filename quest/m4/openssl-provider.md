@@ -42,16 +42,6 @@ Planned by the maintainer on 2026-11-04 in m4. The provider, its documented
   scratch derived from a private key, and the provider's heap is the host
   process's, which C code reads. OpenSSL's own providers cleanse keys, so
   anything less is a regression for whoever switches.
-- Decided 2026-11-12 (maintainer, /quest-unblock): on a CPU rind refuses, the
-  provider loads anyway, reports status 0, and fails every key it would make
-  with rind's error naming the missing feature, as
-  [kixel-ai/rind#658](https://github.com/kixel-ai/rind/pull/658) does
-  (rejected: fail `OSSL_provider_init` and document OpenSSL's silent
-  fallback; abort the process from `OSSL_provider_init`). Since OpenSSL
-  3.0.13, 3.1.5, and 3.2.1, a provider whose init fails is a non-fatal
-  activation failure even under `config_diagnostics = 1`, so failing init
-  would leave every key on the default provider without a word. The EC key
-  type refuses the same way.
 - Decided 2026-11-12 (maintainer, /quest-unblock): the provider takes
   OpenSSL's `EC` key type for P-256, P-384, and P-521 only when its
   configuration section opts in with `ec = 1`. Keys on other curves then fail

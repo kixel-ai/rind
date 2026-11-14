@@ -315,7 +315,7 @@ unsafe extern "C" fn vset_error(
     format: *const c_char,
     _args: *mut c_void,
 ) {
-    assert!((1..=5).contains(&reason), "unknown reason {reason}");
+    assert!((1..=4).contains(&reason), "unknown reason {reason}");
     // SAFETY: the provider passes a C string.
     let format = unsafe { CStr::from_ptr(format) }.to_bytes();
     let mut at = 0;

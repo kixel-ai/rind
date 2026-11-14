@@ -791,42 +791,22 @@ fn tls13_handshake_over_x25519_and_ed25519() {
 }
 
 /// The documented configuration, read from `OPENSSL_CONF` as OpenSSL
-/// initializes, loads rind into the default library context. An AArch64
-/// debug build can deny NEON, which rind requires there, to show that each
-/// use then fails with rind's error; `a_refused_cpu_fails_each_use_with_rinds_error`
-/// shows it on every target.
+/// initializes, loads rind into the default library context.
 #[test]
 fn documented_config_loads_rind() {
-    if let Some(refused) = std::env::var_os("RIND_OPENSSL_CHILD") {
+    if std::env::var_os("RIND_OPENSSL_CHILD").is_some() {
         // SAFETY: OpenSSL reads `OPENSSL_CONF` as it initializes.
         check(unsafe { OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, null()) });
         // The null context is OpenSSL's default one.
         let ctx = Context(null_mut());
-        if refused == "1" {
-            let pctx = non_null(unsafe {
-                EVP_PKEY_CTX_new_from_name(null_mut(), c"ED25519".as_ptr(), null())
-            });
-            assert_ne!(unsafe { EVP_PKEY_keygen_init(pctx) }, 1);
-            unsafe { EVP_PKEY_CTX_free(pctx) };
-            let error = errors();
-            assert!(
-                error.contains("rind requires neon CPU support on aarch64"),
-                "{error}"
-            );
-        } else {
-            assert_eq!(ctx.generate(c"ED25519").provider(), "rind");
-        }
+        assert_eq!(ctx.generate(c"ED25519").provider(), "rind");
         return;
     }
-    let refused = cfg!(all(target_arch = "aarch64", debug_assertions));
     let mut child = Command::new(std::env::current_exe().unwrap());
     child
         .args(["--exact", "documented_config_loads_rind", "--nocapture"])
         .env("OPENSSL_CONF", config())
-        .env("RIND_OPENSSL_CHILD", if refused { "1" } else { "0" });
-    if refused {
-        child.env("RIND_CPU_DISABLE_neon", "1");
-    }
+        .env("RIND_OPENSSL_CHILD", "1");
     let output = child.output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(

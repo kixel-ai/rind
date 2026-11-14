@@ -198,10 +198,6 @@ impl Exchange {
 unsafe extern "C" fn newctx(provctx: *mut c_void) -> *mut c_void {
     // SAFETY: OpenSSL passes the provider's context.
     let provider = unsafe { Provider::from_context(provctx) };
-    // Every exchange starts here, after OpenSSL has settled the provider.
-    if !provider.usable() {
-        return core::ptr::null_mut();
-    }
     Box::into_raw(Box::new(Exchange {
         provider,
         key: None,

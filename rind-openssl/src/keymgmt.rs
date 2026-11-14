@@ -244,9 +244,6 @@ pub(crate) use functions;
 pub(crate) unsafe extern "C" fn new<K: Kind>(provctx: *mut c_void) -> *mut c_void {
     // SAFETY: OpenSSL passes the provider's context.
     let provider = unsafe { Provider::from_context(provctx) };
-    // On a CPU rind refuses, a key moving here from another provider still
-    // lands, empty, so that its operation fails with rind's error: were the
-    // move refused, OpenSSL would run the operation on the key's own provider.
     KeyData::<K>::boxed(provider, Held::Empty)
 }
 
@@ -359,13 +356,10 @@ pub(crate) unsafe extern "C" fn import<K: Kind>(
     if selection & SELECT_KEYPAIR == 0 {
         return 0;
     }
-    // See `new`: the key stays empty, and its every use fails.
-    if data.provider.refuses() {
-        return 1;
-    }
-    // A mismatched key imports too, for the same reason: OpenSSL moves a key
-    // here from another provider, which may hold it mismatched, before each
-    // use, and runs the use on that provider when the move fails.
+    // A mismatched key imports, so that its every use fails with rind's
+    // error: OpenSSL moves a key here from another provider, which may hold
+    // it mismatched, before each use, and runs the use on that provider when
+    // the move fails.
     let result = load::<K>(selection, params).map(|held| data.held = held);
     data.provider.status(result)
 }
@@ -427,9 +421,6 @@ pub(crate) unsafe extern "C" fn export<K: Kind>(
     else {
         return 0;
     };
-    if !data.provider.usable() {
-        return 0;
-    }
     let key = match &data.held {
         Held::Key(key) => key,
         Held::Empty => return 0,
@@ -472,9 +463,6 @@ pub(crate) unsafe extern "C" fn get_params<K: Kind>(
     }) else {
         return 0;
     };
-    if !data.provider.usable() {
-        return 0;
-    }
     let key = data.key();
     let sizes = [
         (c"bits", K::BITS),
@@ -537,9 +525,6 @@ pub(crate) unsafe extern "C" fn gen_init<K: Kind>(
 ) -> *mut c_void {
     // SAFETY: OpenSSL passes the provider's context.
     let provider = unsafe { Provider::from_context(provctx) };
-    if !provider.usable() {
-        return core::ptr::null_mut();
-    }
     let generation = Box::into_raw(Box::new(Gen::<K> {
         provider,
         selection,
