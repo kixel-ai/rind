@@ -80,7 +80,7 @@ declare -A scope=(
     [testing]='^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)'
     # AUDIT.md's pins table is generated from the files that hold the pins,
     # and the quests it links name gaps that finishing them closes.
-    [audit]='^(AUDIT\.md$|admin/(audit|import-[a-z]+|prove-bytes|sync-(acvp|vectors))$|thirdparty/(s2n-bignum/RIND\.md|wycheproof|cavp|cctv)$|(rind/)?Cargo\.(toml|lock)$|quest/)'
+    [audit]='^(AUDIT\.md$|admin/(audit|import-[a-z-]+|prove-bytes|sync-(acvp|vectors))$|thirdparty/(s2n-bignum/RIND\.md|wycheproof|cavp|cctv)$|(rind/)?Cargo\.(toml|lock)$|quest/)'
     # COMPATIBILITY.md is generated from the CPU scans.
     [compat]='^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))'
     # BENCHMARKS.md is generated from the results, the verified-code table,
