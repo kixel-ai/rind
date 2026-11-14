@@ -138,6 +138,16 @@ fn build(manifest: &Path, out: &Path, target: &str) -> PathBuf {
         .env_remove("RUSTC_WORKSPACE_WRAPPER")
         .env_remove("CARGO_TARGET_DIR")
         .env_remove("CARGO_BUILD_TARGET");
+    // Cargo sets these for this script from the caller's cfgs and features,
+    // and sets them again for each nested build script only where they hold
+    // there, so one the caller's flags set, such as `rind_portable`, would
+    // otherwise reach rind's build script and pick its backend.
+    for (name, _) in env::vars_os() {
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with("CARGO_CFG_") || name_str.starts_with("CARGO_FEATURE_") {
+            command.env_remove(&name);
+        }
+    }
     let status = command
         .status()
         .expect("cannot run cargo to build the module");
