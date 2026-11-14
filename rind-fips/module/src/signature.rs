@@ -10,12 +10,12 @@
 //! - A PSS salt is as long as the hash: the length ACVP tests.
 //! - A pairwise consistency test follows every key pair generation.
 
-use rind::Error;
-use rind::rsa::{KeySize, PublicKeyComponents};
-use rind::signature::sign::{self, MlDsa44, MlDsa65, MlDsa87, MlDsaKeyPair};
-use rind::signature::{
-    self, EcdsaKeyPair, Ed25519KeyPair, PublicKey, RsaKeyPair, RsaSigningAlgorithm, verify,
-};
+use rind::ecdsa::KeyPair as EcdsaKeyPair;
+use rind::ed25519::KeyPair as Ed25519KeyPair;
+use rind::encoding::Spki;
+use rind::ml_dsa::{KeyPair as MlDsaKeyPair, MlDsa44, MlDsa65, MlDsa87};
+use rind::rsa::{KeyPair as RsaKeyPair, KeySize, PublicKeyComponents};
+use rind::{Error, ecdsa, ed25519, ml_dsa, rsa};
 
 use crate::abi::{Encoded, Status, bytes, bytes_mut, copy_out, encoded, free, handle, put, status};
 use crate::ids::{self, signature as id};
@@ -53,106 +53,185 @@ fn unsupported() -> Status {
     status(Err(Error::Unsupported))
 }
 
-/// A verification algorithm, as rind's constants type it.
+/// A public key a handle holds, in its algorithm's module, and for RSA the
+/// algorithm it verifies with.
+pub(crate) enum PublicKey {
+    Ecdsa(ecdsa::PublicKey),
+    Ed25519(ed25519::PublicKey),
+    MlDsa44(ml_dsa::PublicKey<MlDsa44>),
+    MlDsa65(ml_dsa::PublicKey<MlDsa65>),
+    MlDsa87(ml_dsa::PublicKey<MlDsa87>),
+    Rsa(rsa::PublicKey, &'static rsa::VerificationAlgorithm),
+}
+
+impl PublicKey {
+    fn bytes(&self) -> &[u8] {
+        match self {
+            Self::Ecdsa(key) => key.as_ref(),
+            Self::Ed25519(key) => key.as_ref(),
+            Self::MlDsa44(key) => key.as_ref(),
+            Self::MlDsa65(key) => key.as_ref(),
+            Self::MlDsa87(key) => key.as_ref(),
+            Self::Rsa(key, _) => key.as_ref(),
+        }
+    }
+
+    fn to_spki(&self) -> Spki {
+        match self {
+            Self::Ecdsa(key) => key.to_spki(),
+            Self::Ed25519(key) => key.to_spki(),
+            Self::MlDsa44(key) => key.to_spki(),
+            Self::MlDsa65(key) => key.to_spki(),
+            Self::MlDsa87(key) => key.to_spki(),
+            Self::Rsa(key, _) => key.to_spki(),
+        }
+    }
+
+    fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
+        match self {
+            Self::Ecdsa(key) => key.verify(message, signature),
+            Self::Ed25519(key) => key.verify(message, signature),
+            Self::MlDsa44(key) => key.verify(message, signature),
+            Self::MlDsa65(key) => key.verify(message, signature),
+            Self::MlDsa87(key) => key.verify(message, signature),
+            Self::Rsa(key, algorithm) => key.verify(algorithm, message, signature),
+        }
+    }
+
+    fn verify_digest(&self, digest: &rind::digest::Digest, signature: &[u8]) -> Result<(), Error> {
+        match self {
+            Self::Ecdsa(key) => key.verify_digest(digest, signature),
+            _ => Err(Error::Unsupported),
+        }
+    }
+}
+
+/// A verification algorithm, in its module.
 #[derive(Clone, Copy)]
 enum Verification {
-    Any(&'static signature::VerificationAlgorithm),
+    Ecdsa(&'static ecdsa::VerificationAlgorithm),
+    Ed25519,
+    MlDsa44,
+    MlDsa65,
+    MlDsa87,
     /// An RSA algorithm, and whether it takes a 1024-bit modulus.
-    Rsa(&'static signature::RsaVerificationAlgorithm, bool),
+    Rsa(&'static rsa::VerificationAlgorithm, bool),
 }
 
 impl Verification {
+    /// Parses a public key's encoding: an RSA key's PKCS#1 or
+    /// `SubjectPublicKeyInfo` DER.
     fn parse(self, bytes: &[u8]) -> Result<PublicKey, Error> {
         match self {
-            Self::Any(algorithm) => PublicKey::new(algorithm, bytes),
-            Self::Rsa(algorithm, legacy) => checked(PublicKey::new(algorithm, bytes), legacy),
+            Self::Ecdsa(algorithm) => ecdsa::PublicKey::new(algorithm, bytes).map(PublicKey::Ecdsa),
+            Self::Ed25519 => ed25519::PublicKey::new(bytes).map(PublicKey::Ed25519),
+            Self::MlDsa44 => ml_dsa::PublicKey::new(bytes).map(PublicKey::MlDsa44),
+            Self::MlDsa65 => ml_dsa::PublicKey::new(bytes).map(PublicKey::MlDsa65),
+            Self::MlDsa87 => ml_dsa::PublicKey::new(bytes).map(PublicKey::MlDsa87),
+            Self::Rsa(..) => self.rsa(
+                rsa::PublicKey::new(bytes).or_else(|_| rsa::PublicKey::from_spki(bytes)),
+            ),
         }
     }
 
     fn parse_spki(self, der: &[u8]) -> Result<PublicKey, Error> {
         match self {
-            Self::Any(algorithm) => PublicKey::from_spki(algorithm, der),
-            Self::Rsa(algorithm, legacy) => checked(PublicKey::from_spki(algorithm, der), legacy),
+            Self::Ecdsa(algorithm) => {
+                ecdsa::PublicKey::from_spki(algorithm, der).map(PublicKey::Ecdsa)
+            }
+            Self::Ed25519 => ed25519::PublicKey::from_spki(der).map(PublicKey::Ed25519),
+            Self::MlDsa44 => ml_dsa::PublicKey::from_spki(der).map(PublicKey::MlDsa44),
+            Self::MlDsa65 => ml_dsa::PublicKey::from_spki(der).map(PublicKey::MlDsa65),
+            Self::MlDsa87 => ml_dsa::PublicKey::from_spki(der).map(PublicKey::MlDsa87),
+            Self::Rsa(..) => self.rsa(rsa::PublicKey::from_spki(der)),
         }
     }
-}
 
-/// `key`, refused unless FIPS 186-5 approves its RSA modulus.
-fn checked(key: Result<PublicKey, Error>, legacy_1024: bool) -> Result<PublicKey, Error> {
-    key.and_then(|key| rind::fips::check_rsa_modulus(&key, legacy_1024).map(|()| key))
+    /// Binds an RSA `key` to this algorithm, refused if its modulus is below
+    /// the algorithm's floor, which rind checks only as it verifies, or
+    /// unless FIPS 186-5 approves the modulus for it.
+    fn rsa(self, key: Result<rsa::PublicKey, Error>) -> Result<PublicKey, Error> {
+        let Self::Rsa(algorithm, legacy_1024) = self else {
+            return Err(Error::Unsupported);
+        };
+        let key = key?;
+        rind::fips::check_rsa_floor(&key, algorithm)?;
+        rind::fips::check_rsa_modulus(&key, legacy_1024)?;
+        Ok(PublicKey::Rsa(key, algorithm))
+    }
 }
 
 /// The verification algorithm `id` names, after its self-tests.
 fn verification(id: u32) -> Option<Verification> {
-    use Verification::{Any, Rsa};
+    use Verification::Rsa;
     let (algorithm, tests): (Verification, &[T]) = match id {
         id::ECDSA_P256_SHA256_ASN1 => {
-            (Any(&verify::ECDSA_P256_SHA256_ASN1), &[T::Ecdsa, T::Sha256])
+            (Verification::Ecdsa(&ecdsa::verify::P256_SHA256_ASN1), &[T::Ecdsa, T::Sha256])
         }
         id::ECDSA_P256_SHA384_ASN1 => {
-            (Any(&verify::ECDSA_P256_SHA384_ASN1), &[T::Ecdsa, T::Sha512])
+            (Verification::Ecdsa(&ecdsa::verify::P256_SHA384_ASN1), &[T::Ecdsa, T::Sha512])
         }
         id::ECDSA_P256_SHA512_ASN1 => {
-            (Any(&verify::ECDSA_P256_SHA512_ASN1), &[T::Ecdsa, T::Sha512])
+            (Verification::Ecdsa(&ecdsa::verify::P256_SHA512_ASN1), &[T::Ecdsa, T::Sha512])
         }
         id::ECDSA_P384_SHA256_ASN1 => {
-            (Any(&verify::ECDSA_P384_SHA256_ASN1), &[T::Ecdsa, T::Sha256])
+            (Verification::Ecdsa(&ecdsa::verify::P384_SHA256_ASN1), &[T::Ecdsa, T::Sha256])
         }
         id::ECDSA_P384_SHA384_ASN1 => {
-            (Any(&verify::ECDSA_P384_SHA384_ASN1), &[T::Ecdsa, T::Sha512])
+            (Verification::Ecdsa(&ecdsa::verify::P384_SHA384_ASN1), &[T::Ecdsa, T::Sha512])
         }
         id::ECDSA_P384_SHA512_ASN1 => {
-            (Any(&verify::ECDSA_P384_SHA512_ASN1), &[T::Ecdsa, T::Sha512])
+            (Verification::Ecdsa(&ecdsa::verify::P384_SHA512_ASN1), &[T::Ecdsa, T::Sha512])
         }
         id::ECDSA_P521_SHA256_ASN1 => {
-            (Any(&verify::ECDSA_P521_SHA256_ASN1), &[T::Ecdsa, T::Sha256])
+            (Verification::Ecdsa(&ecdsa::verify::P521_SHA256_ASN1), &[T::Ecdsa, T::Sha256])
         }
         id::ECDSA_P521_SHA384_ASN1 => {
-            (Any(&verify::ECDSA_P521_SHA384_ASN1), &[T::Ecdsa, T::Sha512])
+            (Verification::Ecdsa(&ecdsa::verify::P521_SHA384_ASN1), &[T::Ecdsa, T::Sha512])
         }
         id::ECDSA_P521_SHA512_ASN1 => {
-            (Any(&verify::ECDSA_P521_SHA512_ASN1), &[T::Ecdsa, T::Sha512])
+            (Verification::Ecdsa(&ecdsa::verify::P521_SHA512_ASN1), &[T::Ecdsa, T::Sha512])
         }
         id::ECDSA_P256_SHA256_FIXED => (
-            Any(&verify::ECDSA_P256_SHA256_FIXED),
+            Verification::Ecdsa(&ecdsa::verify::P256_SHA256_FIXED),
             &[T::Ecdsa, T::Sha256],
         ),
         id::ECDSA_P384_SHA384_FIXED => (
-            Any(&verify::ECDSA_P384_SHA384_FIXED),
+            Verification::Ecdsa(&ecdsa::verify::P384_SHA384_FIXED),
             &[T::Ecdsa, T::Sha512],
         ),
         id::ECDSA_P521_SHA512_FIXED => (
-            Any(&verify::ECDSA_P521_SHA512_FIXED),
+            Verification::Ecdsa(&ecdsa::verify::P521_SHA512_FIXED),
             &[T::Ecdsa, T::Sha512],
         ),
-        id::RSA_PKCS1_SHA256 => (Rsa(&verify::RSA_PKCS1_SHA256, false), &[T::Rsa, T::Sha256]),
-        id::RSA_PKCS1_SHA384 => (Rsa(&verify::RSA_PKCS1_SHA384, false), &[T::Rsa, T::Sha512]),
-        id::RSA_PKCS1_SHA512 => (Rsa(&verify::RSA_PKCS1_SHA512, false), &[T::Rsa, T::Sha512]),
-        id::RSA_PSS_SHA256 => (Rsa(&verify::RSA_PSS_SHA256, false), &[T::Rsa, T::Sha256]),
-        id::RSA_PSS_SHA384 => (Rsa(&verify::RSA_PSS_SHA384, false), &[T::Rsa, T::Sha512]),
-        id::RSA_PSS_SHA512 => (Rsa(&verify::RSA_PSS_SHA512, false), &[T::Rsa, T::Sha512]),
-        id::ED25519 => (Any(&verify::ED25519), &[T::Ed25519, T::Sha512]),
-        id::ML_DSA_44 => (Any(&verify::ML_DSA_44), &[T::MlDsa]),
-        id::ML_DSA_65 => (Any(&verify::ML_DSA_65), &[T::MlDsa]),
-        id::ML_DSA_87 => (Any(&verify::ML_DSA_87), &[T::MlDsa]),
+        id::RSA_PKCS1_SHA256 => (Rsa(&rsa::verify::PKCS1_SHA256, false), &[T::Rsa, T::Sha256]),
+        id::RSA_PKCS1_SHA384 => (Rsa(&rsa::verify::PKCS1_SHA384, false), &[T::Rsa, T::Sha512]),
+        id::RSA_PKCS1_SHA512 => (Rsa(&rsa::verify::PKCS1_SHA512, false), &[T::Rsa, T::Sha512]),
+        id::RSA_PSS_SHA256 => (Rsa(&rsa::verify::PSS_SHA256, false), &[T::Rsa, T::Sha256]),
+        id::RSA_PSS_SHA384 => (Rsa(&rsa::verify::PSS_SHA384, false), &[T::Rsa, T::Sha512]),
+        id::RSA_PSS_SHA512 => (Rsa(&rsa::verify::PSS_SHA512, false), &[T::Rsa, T::Sha512]),
+        id::ED25519 => (Verification::Ed25519, &[T::Ed25519, T::Sha512]),
+        id::ML_DSA_44 => (Verification::MlDsa44, &[T::MlDsa]),
+        id::ML_DSA_65 => (Verification::MlDsa65, &[T::MlDsa]),
+        id::ML_DSA_87 => (Verification::MlDsa87, &[T::MlDsa]),
         id::RSA_PKCS1_SHA1 => (
-            Rsa(&verify::legacy::RSA_PKCS1_SHA1, false),
+            Rsa(&rsa::verify::legacy::PKCS1_SHA1, false),
             &[T::Rsa, T::Sha1],
         ),
         id::RSA_PKCS1_1024_SHA1 => (
-            Rsa(&verify::legacy::RSA_PKCS1_1024_SHA1, true),
+            Rsa(&rsa::verify::legacy::PKCS1_1024_SHA1, true),
             &[T::Rsa, T::Sha1],
         ),
         id::RSA_PKCS1_1024_SHA256 => (
-            Rsa(&verify::legacy::RSA_PKCS1_1024_SHA256, true),
+            Rsa(&rsa::verify::legacy::PKCS1_1024_SHA256, true),
             &[T::Rsa, T::Sha256],
         ),
         id::RSA_PKCS1_1024_SHA512 => (
-            Rsa(&verify::legacy::RSA_PKCS1_1024_SHA512, true),
+            Rsa(&rsa::verify::legacy::PKCS1_1024_SHA512, true),
             &[T::Rsa, T::Sha512],
         ),
         id::RSA_PKCS1_3072_SHA384 => (
-            Rsa(&verify::legacy::RSA_PKCS1_3072_SHA384, false),
+            Rsa(&rsa::verify::legacy::PKCS1_3072_SHA384, false),
             &[T::Rsa, T::Sha512],
         ),
         _ => return None,
@@ -162,14 +241,14 @@ fn verification(id: u32) -> Option<Verification> {
 }
 
 /// The ECDSA signing algorithm `id` names, after its self-tests.
-fn ecdsa_algorithm(id: u32) -> Option<&'static signature::EcdsaSigningAlgorithm> {
+fn ecdsa_algorithm(id: u32) -> Option<&'static ecdsa::SigningAlgorithm> {
     let (algorithm, hash) = match id {
-        id::ECDSA_P256_SHA256_ASN1 => (&sign::ECDSA_P256_SHA256_ASN1, T::Sha256),
-        id::ECDSA_P384_SHA384_ASN1 => (&sign::ECDSA_P384_SHA384_ASN1, T::Sha512),
-        id::ECDSA_P521_SHA512_ASN1 => (&sign::ECDSA_P521_SHA512_ASN1, T::Sha512),
-        id::ECDSA_P256_SHA256_FIXED => (&sign::ECDSA_P256_SHA256_FIXED, T::Sha256),
-        id::ECDSA_P384_SHA384_FIXED => (&sign::ECDSA_P384_SHA384_FIXED, T::Sha512),
-        id::ECDSA_P521_SHA512_FIXED => (&sign::ECDSA_P521_SHA512_FIXED, T::Sha512),
+        id::ECDSA_P256_SHA256_ASN1 => (&ecdsa::sign::P256_SHA256_ASN1, T::Sha256),
+        id::ECDSA_P384_SHA384_ASN1 => (&ecdsa::sign::P384_SHA384_ASN1, T::Sha512),
+        id::ECDSA_P521_SHA512_ASN1 => (&ecdsa::sign::P521_SHA512_ASN1, T::Sha512),
+        id::ECDSA_P256_SHA256_FIXED => (&ecdsa::sign::P256_SHA256_FIXED, T::Sha256),
+        id::ECDSA_P384_SHA384_FIXED => (&ecdsa::sign::P384_SHA384_FIXED, T::Sha512),
+        id::ECDSA_P521_SHA512_FIXED => (&ecdsa::sign::P521_SHA512_FIXED, T::Sha512),
         _ => return None,
     };
     ensure(&[T::Ecdsa, hash]);
@@ -177,14 +256,14 @@ fn ecdsa_algorithm(id: u32) -> Option<&'static signature::EcdsaSigningAlgorithm>
 }
 
 /// The RSA signing algorithm `id` names, after its self-tests.
-fn rsa_algorithm(id: u32) -> Option<&'static RsaSigningAlgorithm> {
+fn rsa_algorithm(id: u32) -> Option<&'static rsa::SigningAlgorithm> {
     let (algorithm, hash) = match id {
-        id::RSA_PKCS1_SHA256 => (&sign::RSA_PKCS1_SHA256, T::Sha256),
-        id::RSA_PKCS1_SHA384 => (&sign::RSA_PKCS1_SHA384, T::Sha512),
-        id::RSA_PKCS1_SHA512 => (&sign::RSA_PKCS1_SHA512, T::Sha512),
-        id::RSA_PSS_SHA256 => (&sign::RSA_PSS_SHA256, T::Sha256),
-        id::RSA_PSS_SHA384 => (&sign::RSA_PSS_SHA384, T::Sha512),
-        id::RSA_PSS_SHA512 => (&sign::RSA_PSS_SHA512, T::Sha512),
+        id::RSA_PKCS1_SHA256 => (&rsa::sign::PKCS1_SHA256, T::Sha256),
+        id::RSA_PKCS1_SHA384 => (&rsa::sign::PKCS1_SHA384, T::Sha512),
+        id::RSA_PKCS1_SHA512 => (&rsa::sign::PKCS1_SHA512, T::Sha512),
+        id::RSA_PSS_SHA256 => (&rsa::sign::PSS_SHA256, T::Sha256),
+        id::RSA_PSS_SHA384 => (&rsa::sign::PSS_SHA384, T::Sha512),
+        id::RSA_PSS_SHA512 => (&rsa::sign::PSS_SHA512, T::Sha512),
         _ => return None,
     };
     ensure(&[T::Rsa, hash]);
@@ -253,7 +332,7 @@ pub unsafe extern "C" fn rind_fips_public_key_from_components(
     e_len: usize,
     out: *mut *mut PublicKey,
 ) -> Status {
-    let Some(Verification::Rsa(algorithm, legacy)) = verification(id) else {
+    let Some(algorithm @ Verification::Rsa(..)) = verification(id) else {
         return unsupported();
     };
     // SAFETY: the caller's contract.
@@ -263,9 +342,9 @@ pub unsafe extern "C" fn rind_fips_public_key_from_components(
             e: bytes(e, e_len),
         }
     };
-    let key = PublicKey::from_components(algorithm, &components);
+    let key = algorithm.rsa(rsa::PublicKey::from_components(&components));
     // SAFETY: the caller's contract.
-    unsafe { put_handle(checked(key, legacy), out) }
+    unsafe { put_handle(key, out) }
 }
 
 /// The encoding of `key`, writing its length to `len`; it lives as long as
@@ -279,7 +358,7 @@ pub unsafe extern "C" fn rind_fips_public_key_bytes(
     len: *mut usize,
 ) -> *const u8 {
     // SAFETY: the caller's contract.
-    let bytes = unsafe { (*key).as_ref() };
+    let bytes = unsafe { (*key).bytes() };
     // SAFETY: the caller's contract.
     unsafe { put(len, bytes.len()) };
     bytes.as_ptr()
@@ -359,7 +438,7 @@ fn ecdsa_pct(key: &EcdsaKeyPair) -> Result<(), Error> {
 unsafe fn ecdsa_load(
     id: u32,
     out: *mut *mut EcdsaKeyPair,
-    load: impl FnOnce(&'static signature::EcdsaSigningAlgorithm) -> Result<EcdsaKeyPair, Error>,
+    load: impl FnOnce(&'static ecdsa::SigningAlgorithm) -> Result<EcdsaKeyPair, Error>,
 ) -> Status {
     let Some(algorithm) = ecdsa_algorithm(id) else {
         return unsupported();
@@ -460,7 +539,8 @@ pub unsafe extern "C" fn rind_fips_ecdsa_from_scalar_and_public_key(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_fips_ecdsa_public_key(key: *const EcdsaKeyPair) -> *mut PublicKey {
     // SAFETY: the caller's contract.
-    scrubbed(Depth::Medium, || handle(unsafe { (*key).public_key() }))
+    let key = unsafe { (*key).public_key() };
+    scrubbed(Depth::Medium, || handle(PublicKey::Ecdsa(key.clone())))
 }
 
 /// Signs the `len` bytes at `message` with `key`, writing the signature to
@@ -548,7 +628,7 @@ pub unsafe extern "C" fn rind_fips_ecdsa_to_sec1(key: *const EcdsaKeyPair) -> *m
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_fips_ecdsa_to_spki(key: *const EcdsaKeyPair) -> *mut Encoded {
     // SAFETY: the caller's contract.
-    scrubbed(Depth::Small, || encoded(unsafe { (*key).to_spki() }))
+    scrubbed(Depth::Small, || encoded(unsafe { (*key).public_key().to_spki() }))
 }
 
 free!(rind_fips_ecdsa_free, EcdsaKeyPair);
@@ -657,7 +737,8 @@ pub unsafe extern "C" fn rind_fips_ed25519_public_key(
     key: *const Ed25519KeyPair,
 ) -> *mut PublicKey {
     // SAFETY: the caller's contract.
-    scrubbed(Depth::Medium, || handle(unsafe { (*key).public_key() }))
+    let key = unsafe { (*key).public_key() };
+    scrubbed(Depth::Medium, || handle(PublicKey::Ed25519(key.clone())))
 }
 
 /// Signs the `len` bytes at `message` with `key`, writing the 64-byte
@@ -718,7 +799,7 @@ pub unsafe extern "C" fn rind_fips_ed25519_to_seed(key: *const Ed25519KeyPair) -
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_fips_ed25519_to_spki(key: *const Ed25519KeyPair) -> *mut Encoded {
     // SAFETY: the caller's contract.
-    scrubbed(Depth::Small, || encoded(unsafe { (*key).to_spki() }))
+    scrubbed(Depth::Small, || encoded(unsafe { (*key).public_key().to_spki() }))
 }
 
 free!(rind_fips_ed25519_free, Ed25519KeyPair);
@@ -727,12 +808,12 @@ free!(rind_fips_ed25519_free, Ed25519KeyPair);
 
 fn rsa_pct(key: &RsaKeyPair) -> bool {
     // PKCS#1 v1.5 signs without drawing.
-    let algorithm = &sign::RSA_PKCS1_SHA256;
-    key.sign(algorithm, PCT_MESSAGE).is_ok_and(|signature| {
-        key.public_key(algorithm)
-            .verify(PCT_MESSAGE, signature.as_ref())
-            .is_ok()
-    })
+    key.sign(&rsa::sign::PKCS1_SHA256, PCT_MESSAGE)
+        .is_ok_and(|signature| {
+            key.public_key()
+                .verify(&rsa::verify::PKCS1_SHA256, PCT_MESSAGE, signature.as_ref())
+                .is_ok()
+        })
 }
 
 /// Loads an RSA key pair with `load`, refused unless FIPS 186-5 approves its
@@ -747,8 +828,7 @@ unsafe fn rsa_load(
     ensure(&[T::Rsa, T::Sha256]);
     scrubbed(Depth::Large, || {
         let key = load().and_then(|key| {
-            rind::fips::check_rsa_modulus(&key.public_key(&sign::RSA_PKCS1_SHA256), false)
-                .map(|()| key)
+            rind::fips::check_rsa_modulus(key.public_key(), false).map(|()| key)
         });
         // SAFETY: the caller's contract.
         unsafe { put_handle(key, out) }
@@ -822,13 +902,15 @@ pub unsafe extern "C" fn rind_fips_rsa_public_key(
     key: *const RsaKeyPair,
     id: u32,
 ) -> *mut PublicKey {
-    let Some(algorithm) = rsa_algorithm(id) else {
+    // Each signing algorithm's id is the verification algorithm's of the
+    // same name.
+    let (Some(_), Some(Verification::Rsa(algorithm, _))) = (rsa_algorithm(id), verification(id))
+    else {
         return core::ptr::null_mut();
     };
     // SAFETY: the caller's contract.
-    scrubbed(Depth::Small, || {
-        handle(unsafe { (*key).public_key(algorithm) })
-    })
+    let key = unsafe { (*key).public_key() };
+    scrubbed(Depth::Small, || handle(PublicKey::Rsa(key.clone(), algorithm)))
 }
 
 /// Signs the `len` bytes at `message` with `key` and signing algorithm
@@ -874,7 +956,7 @@ pub unsafe extern "C" fn rind_fips_rsa_to_pkcs8(key: *const RsaKeyPair) -> *mut 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_fips_rsa_to_spki(key: *const RsaKeyPair) -> *mut Encoded {
     // SAFETY: the caller's contract.
-    scrubbed(Depth::Medium, || encoded(unsafe { (*key).to_spki() }))
+    scrubbed(Depth::Medium, || encoded(unsafe { (*key).public_key().to_spki() }))
 }
 
 free!(rind_fips_rsa_free, RsaKeyPair);
@@ -1043,7 +1125,11 @@ pub unsafe extern "C" fn rind_fips_ml_dsa_public_key(key: *const MlDsa) -> *mut 
     // SAFETY: the caller's contract.
     let key = unsafe { &*key };
     scrubbed(Depth::Medium, || {
-        handle(on_ml_dsa!(key, |key| key.public_key()))
+        handle(match key {
+            MlDsa::MlDsa44(key) => PublicKey::MlDsa44(key.public_key().clone()),
+            MlDsa::MlDsa65(key) => PublicKey::MlDsa65(key.public_key().clone()),
+            MlDsa::MlDsa87(key) => PublicKey::MlDsa87(key.public_key().clone()),
+        })
     })
 }
 

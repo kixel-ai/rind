@@ -352,6 +352,15 @@ impl PublicKey {
     }
 }
 
+#[cfg(any(test, rind_fips))]
+impl VerificationAlgorithm {
+    /// The smallest modulus this algorithm verifies with, which the FIPS
+    /// module checks as it parses a key bound to the algorithm.
+    pub(crate) fn min_bits(&self) -> usize {
+        self.min_bits
+    }
+}
+
 impl AsRef<[u8]> for PublicKey {
     fn as_ref(&self) -> &[u8] {
         self.encoding.0.as_ref()
