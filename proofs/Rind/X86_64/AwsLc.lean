@@ -72,9 +72,9 @@ axiom sha512_block_data_order_avx2_spec (t : low.x86_64.cpu.HaveAvx2)
 
 /-- rind's SHA-512 runs one of the two routines with a proof on this CPU:
 aws-lc's AVX routine, on Intel's CPUs with AVX and SSSE3 but not AVX2, or
-OpenSSL's AVX2 routine, on CPUs with AVX2, BMI1, and BMI2 but not the SHA512
-instructions; and its entry guard and the debug build's check that one is
-held pass. None reads an input. -/
+OpenSSL's AVX2 routine, on CPUs with AVX2, BMI1, BMI2, POPCNT, and SSSE3 but
+not the SHA512 instructions; and its entry guard and the debug build's check
+that one is held pass. None reads an input. -/
 def RunsSha512 : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧ low.entry.Entry.assert_held = ok () ∧
     ((∃ t, low.x86_64.sha512.path = ok (low.x86_64.sha512.Path.Avx t)) ∨
