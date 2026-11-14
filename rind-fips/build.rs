@@ -116,7 +116,6 @@ fn build(manifest: &Path, out: &Path, target: &str) -> PathBuf {
         .arg(manifest.join("module/Cargo.toml"))
         .arg("--target-dir")
         .arg(&target_dir)
-        .args(ctgrind.then_some(["--features", "rind/__ctgrind"]).into_iter().flatten())
         // These flags replace any the caller set, which would otherwise
         // reach the module through the environment.
         .env("CARGO_ENCODED_RUSTFLAGS", flags.join("\x1f"))
@@ -132,6 +131,9 @@ fn build(manifest: &Path, out: &Path, target: &str) -> PathBuf {
         .env_remove("RUSTC_WORKSPACE_WRAPPER")
         .env_remove("CARGO_TARGET_DIR")
         .env_remove("CARGO_BUILD_TARGET");
+    if ctgrind {
+        command.args(["--features", "rind/__ctgrind"]);
+    }
     // Cargo sets these for this script from the caller's cfgs and features,
     // and sets them again for each nested build script only where they hold
     // there, so one the caller's flags set, such as `rind_portable`, would
