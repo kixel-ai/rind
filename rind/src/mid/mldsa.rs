@@ -18,7 +18,6 @@
 use core::fmt;
 use core::ops::{Deref, DerefMut};
 use core::panic::{RefUnwindSafe, UnwindSafe};
-use std::sync::OnceLock;
 
 use crate::Error;
 use crate::error::KeyFormatError;
@@ -352,12 +351,13 @@ pub(crate) fn mu(tr: &[u8; TR_LEN], context: &[u8], message: &[u8]) -> Result<[u
     Ok(mu)
 }
 
-/// A public key's hash `tr`, and the expansion its first verification
-/// computes and later ones reuse: `A`, then `t1 * 2^d`, in the NTT domain.
-/// The key's encoding is its owner's, passed to each verification.
+/// A public key's hash `tr`, and its expansion, `A`, then `t1 * 2^d`, in
+/// the NTT domain, which its second verification keeps for later ones, so a
+/// key used once never holds it. The key's encoding is its owner's, passed
+/// to each verification.
 pub(crate) struct VerifyingKey {
     tr: [u8; TR_LEN],
-    expanded: OnceLock<Polys>,
+    expanded: low::ReuseCache<Polys>,
 }
 
 impl VerifyingKey {
@@ -365,7 +365,7 @@ impl VerifyingKey {
     pub(crate) fn new(tr: [u8; TR_LEN]) -> Self {
         Self {
             tr,
-            expanded: OnceLock::new(),
+            expanded: low::ReuseCache::new(),
         }
     }
 
@@ -387,6 +387,7 @@ impl VerifyingKey {
 /// Polynomials on the heap, wiped before they are freed under the `wipe`
 /// feature, as heap scratch derived from a private key must be. All-zero
 /// bytes are none, so a key holding them can wipe its whole value.
+#[derive(Default)]
 struct Polys(Option<Box<[Poly]>>);
 
 impl Polys {
@@ -700,13 +701,13 @@ fn rejected(check: u64) -> bool {
 const MAX_L: usize = 7;
 
 /// FIPS 204's `ML-DSA.Verify_internal`: verifies `signature` over `mu` under
-/// public key `pk`, whose expansion `expanded` holds once computed.
+/// public key `pk`, whose expansion `expanded` keeps once built.
 ///
 /// A signature refused by its encoding or its `z`'s norm is refused before
 /// the key is expanded.
 fn verify_internal<P: Params>(
     pk: &[u8],
-    expanded: &OnceLock<Polys>,
+    expanded: &low::ReuseCache<Polys>,
     mu: &[u8; MU_LEN],
     signature: &[u8],
 ) -> Result<(), Error> {
@@ -730,7 +731,14 @@ fn verify_internal<P: Params>(
         low::mldsa_ntt(&mut z.0);
     }
 
-    let expanded = expanded.get_or_init(|| expand_public::<P>(pk));
+    let unkept;
+    let expanded = match expanded.get_or_build(|| expand_public::<P>(pk)) {
+        Some(expanded) => expanded,
+        None => {
+            unkept = expand_public::<P>(pk);
+            &unkept
+        }
+    };
     let (a, t1_hat) = expanded.split_at(k * l);
     let mut c = Poly::ZERO;
     sample_in_ball::<P>(&mut c, c_tilde);
@@ -1256,7 +1264,7 @@ mod tests {
             let mu = acvp_mu(group, test, &tr(&pk));
             let _entry = Entry::new_public();
             assert_eq!(
-                verify_internal::<P>(&pk, &OnceLock::new(), &mu, &test.hex("signature")).is_ok(),
+                verify_internal::<P>(&pk, &low::ReuseCache::new(), &mu, &test.hex("signature")).is_ok(),
                 test.flag("testPassed"),
                 "tcId {}: {}",
                 test.int("tcId"),
@@ -1340,7 +1348,7 @@ mod tests {
             // copy is marked secret.
             let tr = low::ct::into_public(*key.tr());
             // One expansion for the group, as a loaded public key keeps.
-            let expansion = OnceLock::new();
+            let expansion = low::ReuseCache::new();
             for test in &group.tests {
                 let Some(mu) = test.mu(&tr) else {
                     assert_eq!(test.result, Expected::Invalid, "tcId {}", test.id);
@@ -1368,8 +1376,8 @@ mod tests {
     fn wycheproof_verify<P: Params>(name: &str) {
         for group in wycheproof_groups::<WycheproofGroup>(name) {
             let pk = &hex::decode(group.public_key.as_ref().unwrap()).unwrap();
-            // One key for the group, so its tests after the first that
-            // expands it verify with the expansion that one kept.
+            // One key for the group, so its tests after the second, which
+            // keeps the expansion, verify with the kept one.
             let key = VerifyingKey::new(tr(pk));
             for test in &group.tests {
                 let result = key.verify::<P>(pk, &test.ctx, &test.msg, &test.sig);
@@ -1439,12 +1447,18 @@ mod tests {
             let verify = |context: &[u8], message: &[u8]| {
                 verifying.verify::<P>(pk, context, message, signature.as_ref())
             };
-            // The first verification, which expands the key, fails, and the
-            // expansion it keeps still verifies.
+            // The first verification keeps no expansion and the second
+            // keeps its own, both failing; the kept one then verifies.
             assert_eq!(verify(b"", b"message"), Err(Error::BadSignature));
+            assert_eq!(verify(b"context", b"massage"), Err(Error::BadSignature));
+            assert!(
+                verifying
+                    .expanded
+                    .get_or_build(|| unreachable!())
+                    .is_some()
+            );
             verify(b"context", b"message").unwrap();
             assert_eq!(verify(b"context", b"massage"), Err(Error::BadSignature));
-            assert!(verifying.expanded.get().is_some());
             assert_eq!(
                 key.sign(&[0; 256], b"message").err(),
                 Some(Error::WrongLength)

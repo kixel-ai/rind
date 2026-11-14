@@ -217,9 +217,9 @@ impl fmt::Debug for RsaVerificationAlgorithm {
 /// Its bytes are its encoding, as [`PublicKey::new`] takes it, but an RSA
 /// key's are always its PKCS#1 `RSAPublicKey` DER.
 ///
-/// An ML-DSA key expands its encoding on its first verification and keeps
-/// the expansion on the heap for the next: 20 KiB for ML-DSA-44, 36 KiB for
-/// ML-DSA-65, and 64 KiB for ML-DSA-87.
+/// An ML-DSA key keeps its encoding's expansion on the heap from its second
+/// verification on, so a key used once never holds it: 20 KiB for
+/// ML-DSA-44, 36 KiB for ML-DSA-65, and 64 KiB for ML-DSA-87.
 pub struct PublicKey {
     key: Parsed,
     encoding: Buffer<MAX_PUBLIC_KEY_LEN>,
@@ -1679,8 +1679,8 @@ impl MlDsaAlgorithm {
     }
 }
 
-/// An ML-DSA public key's algorithm, and its hash and expansion, which its
-/// first verification computes. Its encoding is the [`PublicKey`]'s.
+/// An ML-DSA public key's algorithm, its hash, and the expansion its second
+/// verification keeps. Its encoding is the [`PublicKey`]'s.
 struct MlDsaVerifier {
     algorithm: MlDsaAlgorithm,
     key: mldsa::VerifyingKey,
