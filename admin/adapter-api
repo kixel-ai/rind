@@ -137,7 +137,8 @@ def probe(name, deps):
 
 
 def rustdoc(path, package):
-    env = dict(os.environ, RUSTC_BOOTSTRAP="1", RUSTDOCFLAGS="-Zunstable-options --output-format json")
+    # `#[doc(hidden)]` items are still public, and callers use them.
+    env = dict(os.environ, RUSTC_BOOTSTRAP="1", RUSTDOCFLAGS="-Zunstable-options --output-format json --document-hidden-items")
     env.pop("RUSTFLAGS", None)
     subprocess.run(
         [

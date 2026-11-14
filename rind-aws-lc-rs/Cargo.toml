@@ -76,6 +76,8 @@ omitted = [
   "signature::ECDSA_P521_SHA224_*",
   "signature::ML_DSA_*",
   "signature::Pqdsa*",
+  "io::der",
+  "test",
   "test_file",
   "try_fips_self_test",
   "unstable",

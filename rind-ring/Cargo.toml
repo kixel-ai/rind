@@ -24,9 +24,12 @@ module = ""
 omitted = [
   "aead::chacha20_poly1305_openssh",
   "io",
+  "test",
+  "deprecated_test",
   "test_file",
   "rsa::KeyPair::from_components",
   "rsa::KeyPairComponents",
+  "signature::RsaEncoding::encode",
 ]
 
 # ring's feature names, so a manifest naming them builds unchanged. rind-ring
