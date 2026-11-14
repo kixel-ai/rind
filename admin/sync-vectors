@@ -230,21 +230,28 @@ cctv_files=(
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../thirdparty/vectors"
 
-# Downloads into a scratch directory and swaps it in only once every file
-# arrived, so a failed refresh leaves the committed copy whole.
+# Each refresh writes into `<dir>.new` and swaps it in only once every file
+# arrived, so a failed one leaves the committed copy whole.
+stage() {
+    rm -rf "$1.new"
+    mkdir "$1.new"
+}
+swap() {
+    rm -rf "$1"
+    mv "$1.new" "$1"
+}
+
 fetch() {
-    local repo=$1 rev=$2 dir=$3 new=$3.new
+    local repo=$1 rev=$2 dir=$3
     shift 3
-    rm -rf "$new"
-    mkdir -p "$new"
+    stage "$dir"
     for file in "$@"; do
-        mkdir -p "$new/$(dirname "$file")"
-        curl --fail --silent --show-error --location --output "$new/$file" \
+        mkdir -p "$dir.new/$(dirname "$file")"
+        curl --fail --silent --show-error --location --output "$dir.new/$file" \
             "https://raw.githubusercontent.com/$repo/$rev/$file"
     done
-    echo "https://github.com/$repo/tree/$rev" >"$new/REVISION"
-    rm -rf "$dir"
-    mv "$new" "$dir"
+    echo "https://github.com/$repo/tree/$rev" >"$dir.new/REVISION"
+    swap "$dir"
 }
 
 fetch aws/aws-lc "$AWS_LC" aws-lc "${aws_lc_files[@]}"
@@ -255,31 +262,31 @@ fetch C2SP/CCTV "$CCTV" cctv "${cctv_files[@]}"
 
 # The 5.9 MB file holds every mode; rind keeps base mode, one vector per
 # line, short of X448 (KEM 0x0021), which it does not offer.
-rm -rf rfc9180
-mkdir rfc9180
+stage rfc9180
 curl --fail --silent --show-error --location \
     "https://raw.githubusercontent.com/cfrg/draft-irtf-cfrg-hpke/$HPKE/test-vectors.json" |
-    jq -c '.[] | select(.mode == 0 and .kem_id != 33)' >rfc9180/test-vectors.json
+    jq -c '.[] | select(.mode == 0 and .kem_id != 33)' >rfc9180.new/test-vectors.json
+swap rfc9180
 
 # The suites rind offers and the expand_message_xmd vectors, renamed without
 # the colons Windows cannot check out.
-rm -rf rfc9380
-mkdir rfc9380
+stage rfc9380
 for file in P256_XMD:SHA-256_SSWU_RO_ P384_XMD:SHA-384_SSWU_RO_ P521_XMD:SHA-512_SSWU_RO_ \
     expand_message_xmd_SHA256_38 expand_message_xmd_SHA256_256 expand_message_xmd_SHA512_38; do
-    curl --fail --silent --show-error --location --output "rfc9380/${file//:/_}.json" \
+    curl --fail --silent --show-error --location --output "rfc9380.new/${file//:/_}.json" \
         "https://raw.githubusercontent.com/cfrg/draft-irtf-cfrg-hash-to-curve/$HASH_TO_CURVE/poc/vectors/$file.json"
 done
+swap rfc9380
 
-rm -rf rfc9474
-mkdir rfc9474
-curl --fail --silent --show-error --location --output rfc9474/test-vectors.json \
+stage rfc9474
+curl --fail --silent --show-error --location --output rfc9474.new/test-vectors.json \
     "https://raw.githubusercontent.com/jedisct1/rust-blind-rsa-signatures/$BLIND_RSA/tests/test_vectors_rfc9474.json"
+swap rfc9474
 
 # The OPRF and VOPRF modes of the suites rind offers, short of decaf448 and
 # the POPRF mode.
-rm -rf rfc9497
-mkdir rfc9497
+stage rfc9497
 curl --fail --silent --show-error --location \
     "https://raw.githubusercontent.com/cfrg/draft-irtf-cfrg-voprf/$VOPRF/poc/vectors/allVectors.json" |
-    jq '[.[] | select(.mode != 2 and .identifier != "decaf448-SHAKE256")]' >rfc9497/allVectors.json
+    jq '[.[] | select(.mode != 2 and .identifier != "decaf448-SHAKE256")]' >rfc9497.new/allVectors.json
+swap rfc9497
