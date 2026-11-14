@@ -1,6 +1,7 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use crate::low::ct;
 use core::fmt::Debug;
 use core::marker::PhantomData;
 use core::mem;
@@ -527,12 +528,12 @@ impl<'a> Integer<'a> {
         // the first octet and bit 8 of the second octet
         // a) shall not be ones; and
         // b) shall not be zero"
-        if let Some(first_two) = twos_complement.get(..2) {
-            if first_two[0] == 0xff && first_two[1] & 0x80 == 0x80 {
-                return Err(Error::IntegerOutOfRange);
-            }
-
-            if first_two[0] == 0x00 && first_two[1] & 0x80 == 0x00 {
+        // That is, the first octet is not bit 8 of the second, extended. A
+        // private key's integers are secret, so only the verdict is
+        // revealed.
+        if let Some(&[first, second]) = twos_complement.get(..2) {
+            let extended = 0u8.wrapping_sub(second >> 7);
+            if ct::into_public(first == extended) {
                 return Err(Error::IntegerOutOfRange);
             }
         }

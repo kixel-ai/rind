@@ -610,16 +610,16 @@ impl SigningKey {
         let e = public_exponent(decoded.publicExponent.as_ref())?;
 
         let prime = |x: &asn1::Integer<'_>| {
-            PosInt::from_bytes(x.as_ref()).map_err(|_| KeyFormatError::RsaPrimes)
+            PosInt::from_secret_bytes(x.as_ref()).map_err(|_| KeyFormatError::RsaPrimes)
         };
         let p = prime(&decoded.prime1)?;
         let q = prime(&decoded.prime2)?;
         // A component too wide for its slot cannot agree with the others.
         let mismatched = |_| KeyFormatError::MismatchedRsaComponents;
-        let d = PosInt::from_bytes(decoded.privateExponent.as_ref()).map_err(mismatched)?;
-        let dp = PosInt::from_bytes(decoded.exponent1.as_ref()).map_err(mismatched)?;
-        let dq = PosInt::from_bytes(decoded.exponent2.as_ref()).map_err(mismatched)?;
-        let iqmp = PosInt::from_bytes(decoded.coefficient.as_ref()).map_err(mismatched)?;
+        let d = PosInt::from_secret_bytes(decoded.privateExponent.as_ref()).map_err(mismatched)?;
+        let dp = PosInt::from_secret_bytes(decoded.exponent1.as_ref()).map_err(mismatched)?;
+        let dq = PosInt::from_secret_bytes(decoded.exponent2.as_ref()).map_err(mismatched)?;
+        let iqmp = PosInt::from_secret_bytes(decoded.coefficient.as_ref()).map_err(mismatched)?;
 
         let priv_key = rsa_priv::RsaPrivateKey::new(p, q, d, dp, dq, iqmp, n, e)?;
         Ok(Self(priv_key))
@@ -1611,6 +1611,51 @@ mod tests {
         aws_lc_rs::rsa::KeyPair::from_der(der).unwrap();
         let private_key = SigningKey::from_pkcs1_der(der).unwrap();
         check_all_algs(&mut [0u8; 261], &private_key, &private_key.public_key());
+    }
+
+    /// Loads keys with every byte of their private integers secret, sign
+    /// bytes included, so under `admin/ctgrind` this checks that decoding
+    /// and checking them branches on and indexes by none.
+    #[test]
+    fn loads_secret_integers_in_constant_time() {
+        /// Marks secret the private integers of the PKCS#1 key `pkcs1`.
+        fn mark(pkcs1: &[u8]) {
+            let key = pkix::RSAPrivateKey::from_bytes(pkcs1).unwrap();
+            for x in [
+                key.privateExponent,
+                key.prime1,
+                key.prime2,
+                key.exponent1,
+                key.exponent2,
+                key.coefficient,
+            ] {
+                ct::secret_slice(x.as_ref());
+            }
+        }
+
+        for pkcs1 in [
+            &include_bytes!("rsa/rsa2048.der")[..],
+            include_bytes!("rsa/rsa2048-q-above-p.der"),
+            include_bytes!("rsa/rsa2086-unbalanced.der"),
+            include_bytes!("rsa/rsa4096.der"),
+        ] {
+            let der = pkcs1.to_vec();
+            mark(&der);
+            let key = SigningKey::from_pkcs1_der(&der).unwrap();
+            let mut buffer = [0u8; SigningKey::MAX_PKCS1_BUFFER_LEN];
+            assert_eq!(key.to_pkcs1_der(&mut buffer).unwrap(), pkcs1);
+        }
+
+        let pkcs8 = include_bytes!("rsa/rsa2048.pkcs8.der");
+        let der = pkcs8.to_vec();
+        mark(
+            pkcs8::Key::decode(&der, &KEY_ALGORITHMS, Some(asn1::Any::Null(asn1::Null)))
+                .unwrap()
+                .private_key(),
+        );
+        let key = SigningKey::from_pkcs8_der(&der).unwrap();
+        let mut buffer = [0u8; SigningKey::MAX_PKCS1_BUFFER_LEN + 32];
+        assert_eq!(key.to_pkcs8_der(&mut buffer).unwrap(), pkcs8);
     }
 
     /// With q above p, `s mod q` can exceed `p + s mod p`, which a random

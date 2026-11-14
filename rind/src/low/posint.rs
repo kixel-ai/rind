@@ -107,6 +107,24 @@ impl<const N: usize> PosInt<N> {
         Ok(r)
     }
 
+    /// Like `from_bytes`, for secret `bytes`: it branches on none of them
+    /// and reveals only how many lead with zero, which sets the width.
+    pub(crate) fn from_secret_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let bytes = &bytes[low::ct::into_public(leading_zeroes(bytes))..];
+        if bytes.len() > N * 8 {
+            return Err(Error::WrongLength);
+        }
+
+        let mut r = Self::zero();
+        for (word, chunk) in r.words.iter_mut().zip(bytes.rchunks(8)) {
+            let mut be = [0; 8];
+            be[8 - chunk.len()..].copy_from_slice(chunk);
+            *word = u64::from_be_bytes(be);
+        }
+        r.used = bytes.len().div_ceil(8);
+        Ok(r)
+    }
+
     // Indexes rather than zipping reversed `as_chunks_mut`, which Aeneas
     // cannot translate, so `proofs/` can prove RSA's encoding.
     pub(crate) fn to_bytes<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error> {
@@ -759,6 +777,21 @@ fn trim_leading_zeroes(bytes: &[u8]) -> &[u8] {
     &bytes[start..]
 }
 
+/// How many of `bytes` lead with zero, counted without branching on any.
+fn leading_zeroes(bytes: &[u8]) -> usize {
+    let mut zeroes = 0usize;
+    // One while every byte so far is zero, through `black_box` so the
+    // compiler cannot stop at the first nonzero byte. The sum wraps, as a
+    // debug build would branch on its overflow check.
+    let mut leading = 1;
+    for &b in bytes {
+        leading &= (u32::from(b).wrapping_sub(1) >> 31) as usize;
+        leading = core::hint::black_box(leading);
+        zeroes = zeroes.wrapping_add(leading);
+    }
+    zeroes
+}
+
 /// The word `i` from the top of `x`, or zero if it is not that wide.
 fn word_below(x: &[u64], i: usize) -> u64 {
     match x.len().checked_sub(i) {
@@ -1016,6 +1049,30 @@ mod tests {
         ] {
             super::mul_word_mod(&mut u, &d);
             assert_eq!(u, want, "{why}");
+        }
+    }
+
+    /// `from_secret_bytes` reads what `from_bytes` does, at the same width,
+    /// and under `admin/ctgrind` branches on none of the bytes.
+    #[test]
+    fn from_secret_bytes() {
+        for len in 0..=20 {
+            for zeroes in 0..=len {
+                let mut bytes = vec![0u8; len];
+                for (i, b) in bytes.iter_mut().enumerate().skip(zeroes) {
+                    // Nonzero first, then zero every third byte.
+                    *b = if i == zeroes {
+                        0x80
+                    } else {
+                        (i % 3) as u8 * 0x55
+                    };
+                }
+                let want = PosInt::<2>::from_bytes(&bytes).map(|r| (r.used, r.words));
+                low::ct::secret_slice(&bytes);
+                let got = PosInt::<2>::from_secret_bytes(&bytes)
+                    .map(|r| (r.used, low::ct::into_public(r.words)));
+                assert_eq!(got, want, "{len} bytes, {zeroes} leading zeroes");
+            }
         }
     }
 

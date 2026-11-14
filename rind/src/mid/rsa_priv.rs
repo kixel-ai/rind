@@ -38,13 +38,18 @@ impl RsaPrivateKey {
         n: RsaPosIntModN,
         e: u64,
     ) -> Result<Self, Error> {
-        let (p_len, q_len) = (p.len_bytes(), q.len_bytes());
         if n.len_bits() < MIN_MODULUS_BITS {
             return Err(KeyFormatError::RsaModulus.into());
         }
-        if p.is_even()
-            || q.is_even()
-            || q.len_bits() < 2
+        // The primes are secret, but their bit lengths follow from n's and
+        // their parity is fixed in any valid key, so these are revealed.
+        let (p_bits, q_bits) = (
+            low::ct::into_public(p.len_bits()),
+            low::ct::into_public(q.len_bits()),
+        );
+        let p_len = p_bits.div_ceil(8);
+        if low::ct::into_public(p.is_even() | q.is_even())
+            || q_bits < 2
             || !(MIN_PRIVATE_MODULUS_BYTES..=MAX_PRIVATE_MODULUS_BYTES).contains(&p_len)
         {
             return Err(KeyFormatError::RsaPrimes.into());
@@ -66,7 +71,7 @@ impl RsaPrivateKey {
         // The CRT reduces `c` mod each prime by Montgomery reduction, which
         // needs `c` below 2^(64w) times the prime for a w-word prime. Working
         // at the wider prime's width meets that for unbalanced primes too.
-        if p_len < q_len {
+        if p_bits < q_bits {
             p.expand(&q);
         } else {
             q.expand(&p);
