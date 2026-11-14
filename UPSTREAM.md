@@ -1,11 +1,23 @@
 # Upstream workarounds
 
-Every place rind works around a bug or gap in a tool or dependency it doesn't own.
+Every upstream rind forks, and every place it works around a bug or gap in a tool or dependency it doesn't own.
 Each entry says what breaks, how to see it, the workaround and where it lives, whether it is reported upstream, and what lets the workaround go.
 Each workaround's comment names its entry by heading, as [CONTRIBUTING.md](CONTRIBUTING.md#upstream) asks.
 
 rind's own bugs, deliberate choices, and plain version pins are not listed.
 "Reported" names an upstream issue rind filed or found; "no" means none is linked yet.
+
+## Forks
+
+Each upstream rind changes, with where its fork is vendored and where the list of rind's changes to it lives, as [CONTRIBUTING.md](CONTRIBUTING.md#upstream) asks.
+
+### s2n-bignum
+
+- **Breaks:** s2n-bignum's HOL Light x86_64 model cannot decode some instructions of aws-lc's ChaCha20-Poly1305 and ChaCha20 routines, or the SHA extensions rind's SHA-256 blocks run, and its SHA-256 and SHA-512 specs are in pull requests not yet merged, so those routines cannot be proven on it.
+- **Fork:** `thirdparty/s2n-bignum`, upstream's whole tree at the base its `RIND.md` names (maintainer, 2026-11-13, on [kixel-ai/rind#701](https://github.com/kixel-ai/rind/pull/701)).
+- **Changes:** listed in [its `RIND.md`](/thirdparty/s2n-bignum/RIND.md), which `admin/regenerate` checks lists every file that differs from upstream's: the model additions of [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450), the SHA extensions among them, rind's own additions, both cosimulated against the CPU, rind's ChaCha20-Poly1305 spec, and the specs of [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) and [#420](https://github.com/awslabs/s2n-bignum/pull/420).
+- **Offered:** no. #415, #420, and #450 are upstream's own open pull requests; rind's own changes need the maintainer's approval to post ([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)), which [upstream-reports](/quest/m2/upstream-reports.md) asks for.
+- **Goes when:** s2n-bignum merges each change and the fork's base moves past it.
 
 ## Compilers and linkers
 
@@ -133,13 +145,6 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Workaround:** `admin/p384-precomp` emits each table as its own constant, which Aeneas translates to its own Lean definition.
 - **Reported:** no.
 - **Goes when:** Lean compiles the whole comb as one literal.
-
-### s2n-bignum lacks instructions and specs rind's proofs use
-
-- **Breaks:** s2n-bignum's HOL Light x86_64 model cannot decode some instructions of aws-lc's ChaCha20-Poly1305 and ChaCha20 routines, or the SHA extensions rind's SHA-256 blocks run, and its SHA-256 and SHA-512 specs are in pull requests not yet merged, so those routines cannot be proven on it.
-- **Workaround:** rind forks s2n-bignum in `thirdparty/s2n-bignum` (maintainer, 2026-11-13, on [kixel-ai/rind#701](https://github.com/kixel-ai/rind/pull/701)). Each change, with its upstream pull request, is in [its `RIND.md`](/thirdparty/s2n-bignum/RIND.md), which `admin/regenerate` checks lists every file that differs from upstream's: the model additions of [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450), the SHA extensions among them, rind's own additions, both cosimulated against the CPU, and the specs of [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) and [#420](https://github.com/awslabs/s2n-bignum/pull/420).
-- **Reported:** found #415, #420, and #450, all open; rind's own additions are not offered, which needs the maintainer's approval ([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
-- **Goes when:** s2n-bignum merges each change and the fork's base moves past it.
 
 ### dmtcp_command fails a checkpoint that succeeds
 

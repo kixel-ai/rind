@@ -17,5 +17,5 @@ Found by the 2026-11-09 audit: [kixel-ai/rind#460](https://github.com/kixel-ai/r
 
 ## Required
 
-- [aarch64's AES-GCM kernels are proven in place](/quest/m4/verified/aes-gcm-aarch64-in-place.md) - the pin with s2n-bignum's shared eight-way proofs and in-place theorems
+- [aarch64's AES-GCM kernels are proven in place](/quest/m4/verified/aes-gcm-aarch64-in-place.md) - the fork with s2n-bignum's shared eight-way proofs and in-place theorems
 - [AES-GCM on aarch64 is proven](/quest/m4/verified/aes-gcm-aarch64.md) - the Lean proof of `aes_gcm.rs` these kernels' axioms slot into
