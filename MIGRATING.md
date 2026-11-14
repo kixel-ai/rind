@@ -84,7 +84,7 @@ reuses it. `verify` refuses a stored value shorter than the HMAC output with
 | aws-lc-rs | rind |
 |---|---|
 | `LessSafeKey::new(UnboundKey::new(&alg, key)?)` | `Key::new(&alg, key)?` |
-| `SealingKey`, `OpeningKey`, `BoundKey`, `NonceSequence`, `nonce_sequence::{Counter32, Counter64}` and their builders | `Key`, given a `Nonce` per call from a sequence number the protocol keeps |
+| `SealingKey`, `OpeningKey`, `BoundKey`, `NonceSequence`, `nonce_sequence::{Counter32, Counter64}` and their builders | `Key`, given a `Nonce` per call from a sequence number the protocol keeps: `Nonce::from_sequence(&iv, seq)` XORs it into the IV's last eight bytes, as TLS 1.3, QUIC, and HPKE do, and gives `Counter64`'s nonce from an IV of its identifier then eight zero bytes |
 | `seal_in_place_append_tag(nonce, Aad::from(aad), in_out)` | `seal_in_place_append_tag(nonce, aad, in_out)`, with `aad: &[u8]` |
 | `seal_in_place_separate_tag`, `open_in_place` | the same, with `aad: &[u8]` |
 | `open_in_place_separate_tag(nonce, aad, tag, in_out)`, which ring takes as `(nonce, aad, tag, in_out, range)` | `open_in_place_separate_tag(nonce, aad, Tag::try_from(tag)?, ciphertext)` |
@@ -249,10 +249,10 @@ curve's length, as ring does, where aws-lc-rs takes leading zeros added or
 stripped.
 
 Every private key loader refuses bytes after the encoded key, which
-aws-lc-rs ignores and ring refuses. The ECDSA and RSA PKCS#8 loaders take
-version 1 only, as ring does, and the Ed25519 one also takes version 2 with
-its public key. Each refuses version 2 without a public key, which aws-lc-rs
-takes: RFC 5958 sets version 2 only when the public key is present.
+aws-lc-rs ignores and ring refuses. Every PKCS#8 loader takes version 2
+without a public key, as aws-lc-rs does, and the Ed25519 one also takes
+version 2 with its public key; ring, and so rind-ring, takes only version 1
+for ECDSA and RSA, and version 2 only with its public key for Ed25519.
 
 ## rsa
 
