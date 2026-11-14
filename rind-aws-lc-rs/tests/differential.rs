@@ -466,3 +466,112 @@ fn tls_scatter_keeps_nonce() {
     });
     assert_eq!(results, ((false, true), (false, true)));
 }
+
+/// An RSA key outside a verification algorithm's modulus range parses, then
+/// verifies nothing, on both sides of each algorithm's range.
+#[test]
+fn rsa_range_at_verify() {
+    use theirs::signature::{self as sig, KeyPair as _, RsaKeyPair};
+    // aws-lc-rs signs with no key under 2048 bits, so the 1024-bit key is
+    // public, checked against a signature of zeros.
+    let signers = [
+        &include_bytes!("aws-lc-rs/data/rsa_test_private_key_2048.p8")[..],
+        include_bytes!("aws-lc-rs/data/rsa_test_private_key_8192.p8"),
+    ]
+    .map(|der| RsaKeyPair::from_pkcs8(der).unwrap());
+    let small = include_bytes!("aws-lc-rs/data/rsa_test_public_key_1024.x509");
+    let keys = [
+        (theirs::rsa::PublicKey::from_der(small).unwrap(), None),
+        (signers[0].public_key().clone(), Some(&signers[0])),
+        (signers[1].public_key().clone(), Some(&signers[1])),
+    ];
+    // Each verification algorithm with an encoding that signs for it.
+    macro_rules! algorithms {
+        ($(($verify:ident, $sign:ident)),* $(,)?) => {
+            [$((stringify!($verify), &sig::$sign as &'static dyn sig::RsaEncoding)),*]
+        };
+    }
+    let algorithms = algorithms![
+        (
+            RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            RSA_PKCS1_SHA256
+        ),
+        (
+            RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+            RSA_PKCS1_SHA256
+        ),
+        (
+            RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+            RSA_PKCS1_SHA512
+        ),
+        (
+            RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            RSA_PKCS1_SHA256
+        ),
+        (RSA_PKCS1_2048_8192_SHA256, RSA_PKCS1_SHA256),
+        (RSA_PKCS1_2048_8192_SHA384, RSA_PKCS1_SHA384),
+        (RSA_PKCS1_2048_8192_SHA512, RSA_PKCS1_SHA512),
+        (RSA_PKCS1_3072_8192_SHA384, RSA_PKCS1_SHA384),
+        (RSA_PSS_2048_8192_SHA256, RSA_PSS_SHA256),
+        (RSA_PSS_2048_8192_SHA384, RSA_PSS_SHA384),
+        (RSA_PSS_2048_8192_SHA512, RSA_PSS_SHA512),
+    ];
+    let rng = theirs::rand::SystemRandom::new();
+    let mut verified = false;
+    for (key, signer) in &keys {
+        let public = key.as_ref();
+        let n = key.modulus().big_endian_without_leading_zero();
+        let e = key.exponent().big_endian_without_leading_zero();
+        let bits = key.modulus_len() * 8;
+        for (name, encoding) in algorithms {
+            let mut signature = vec![0; key.modulus_len()];
+            if let Some(signer) = signer {
+                signer
+                    .sign(encoding, &rng, b"message", &mut signature)
+                    .unwrap();
+            }
+            let results = both!(|c| {
+                use c::signature as s;
+                let algorithm: &'static s::RsaParameters = match name {
+                    "RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY" => {
+                        &s::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY
+                    }
+                    "RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY" => {
+                        &s::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY
+                    }
+                    "RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY" => {
+                        &s::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY
+                    }
+                    "RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY" => {
+                        &s::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY
+                    }
+                    "RSA_PKCS1_2048_8192_SHA256" => &s::RSA_PKCS1_2048_8192_SHA256,
+                    "RSA_PKCS1_2048_8192_SHA384" => &s::RSA_PKCS1_2048_8192_SHA384,
+                    "RSA_PKCS1_2048_8192_SHA512" => &s::RSA_PKCS1_2048_8192_SHA512,
+                    "RSA_PKCS1_3072_8192_SHA384" => &s::RSA_PKCS1_3072_8192_SHA384,
+                    "RSA_PSS_2048_8192_SHA256" => &s::RSA_PSS_2048_8192_SHA256,
+                    "RSA_PSS_2048_8192_SHA384" => &s::RSA_PSS_2048_8192_SHA384,
+                    _ => &s::RSA_PSS_2048_8192_SHA512,
+                };
+                let parsed = s::ParsedPublicKey::new(algorithm, public).unwrap();
+                let unparsed = s::UnparsedPublicKey::new(algorithm, public);
+                let components = s::RsaPublicKeyComponents { n, e }
+                    .to_parsed_public_key(algorithm)
+                    .unwrap();
+                [
+                    parsed.verify_sig(b"message", &signature).is_ok(),
+                    unparsed
+                        .parse()
+                        .unwrap()
+                        .verify_sig(b"message", &signature)
+                        .is_ok(),
+                    unparsed.verify(b"message", &signature).is_ok(),
+                    components.verify_sig(b"message", &signature).is_ok(),
+                ]
+            });
+            assert_eq!(results.0, results.1, "{name} with a {bits}-bit key");
+            verified |= results.0.contains(&true);
+        }
+    }
+    assert!(verified, "an in-range key verifies");
+}
