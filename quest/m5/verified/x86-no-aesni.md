@@ -14,5 +14,4 @@ AES-GCM, AES header protection, and the AES modes earn the ✓ on x86_64 CPUs wi
 
 ## Required
 
-- [x86_64's by-8 and by-16 AES-GCM intrinsics are proven](/quest/m4/verified/aes-gcm-x86-intrinsics.md) - the AES-GCM glue and specs this tier reuses
 - [aarch64's AES-GCM kernels are proven in place](/quest/m4/verified/aes-gcm-aarch64-in-place.md) - merges #490's `common/gcm.ml` and `common/fips197.ml`, which this proof is written against, into rind's s2n-bignum fork
