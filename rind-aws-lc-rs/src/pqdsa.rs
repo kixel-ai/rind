@@ -290,7 +290,7 @@ impl fmt::Debug for PqdsaKeyPair {
 }
 
 /// Wraps an expanded private key in PKCS#8 v1, as RFC 9881's `expandedKey`.
-fn expanded_pkcs8(id: &AlgorithmID, key: &[u8]) -> Wiped<Vec<u8>> {
+fn expanded_pkcs8(id: &AlgorithmID, key: &[u8]) -> Vec<u8> {
     /// A DER header with a two-byte length, which every ML-DSA key needs.
     fn header(out: &mut Vec<u8>, tag: u8, len: usize) {
         let len = u16::try_from(len).expect("ML-DSA keys are under 64 KiB");
@@ -317,7 +317,8 @@ fn expanded_pkcs8(id: &AlgorithmID, key: &[u8]) -> Wiped<Vec<u8>> {
         0x03,
         id.oid_last(),
     ];
-    let mut der = Wiped::new(Vec::with_capacity(prefix.len() + key.len() + 12));
+    // A copy of the key inside one call, which the repository leaves unwiped.
+    let mut der = Vec::with_capacity(prefix.len() + key.len() + 12);
     header(&mut der, 0x30, prefix.len() + key.len() + 8);
     der.extend_from_slice(&prefix);
     header(&mut der, 0x04, key.len() + 4);

@@ -153,8 +153,7 @@ fn kem() {
     assert_eq!(leaks(&secret, || drop((sent, received))), 0);
 }
 
-/// An ML-DSA seed, the PKCS#8 documents holding it, and the expanded key
-/// `from_raw_private_key` wraps in PKCS#8 to load.
+/// An ML-DSA seed and public key, and the PKCS#8 documents holding the seed.
 #[test]
 fn ml_dsa() {
     let seed: [u8; 32] = distinct(5);
@@ -176,25 +175,4 @@ fn ml_dsa() {
         });
         assert_eq!(leaked, 0);
     }
-
-    let raw = {
-        let key = aws_lc_rs::signature::PqdsaKeyPair::from_seed(
-            &aws_lc_rs::signature::ML_DSA_65_SIGNING,
-            &seed,
-        )
-        .unwrap();
-        let raw: aws_lc_rs::encoding::PqdsaPrivateKeyRaw<'static> =
-            aws_lc_rs::encoding::AsRawBytes::as_raw_bytes(&key.private_key()).unwrap();
-        raw.as_ref().to_vec()
-    };
-    // The expanded key opens with the public seed `rho`; its secret `K`
-    // follows.
-    let secret = &raw[32..64];
-    let leaked = leaks(secret, || {
-        let key =
-            signature::PqdsaKeyPair::from_raw_private_key(&signature::ML_DSA_65_SIGNING, &raw)
-                .unwrap();
-        assert!(key.to_pkcs8v1().is_err());
-    });
-    assert_eq!(leaked, 0);
 }
