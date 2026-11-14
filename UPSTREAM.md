@@ -181,6 +181,14 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Reported:** no.
 - **Goes when:** cargo-mutants treats any `cfg` that requires `test` as test-only.
 
+### cargo-mutants matches `#[path]` with `..` literally
+
+- **Breaks:** cargo-mutants 27.1.0, the version nixpkgs pins in `flake.lock`, records a module included by `#[path = "../generic/aes_nohw.rs"]` as `rind/src/low/portable/../generic/aes_nohw.rs` (and the `x86_64` twin). `--in-diff` compares that string to the Git path, which has no `..`. Nothing matches, and a diff that selects no mutants exits 0, so the portable campaign reports success without testing the change. The same gap hits every campaign, because `x86_64` includes that file through the same kind of path.
+- **Reproduce:** `cargo mutants --list -p rind | grep /\.\./` prints the names, and `cargo mutants --list -p rind --in-diff` over a diff of `rind/src/low/generic/aes_nohw.rs` lists none of them; `admin/mutants --expand-diff-self-test` checks the rewrite. `SourceFile::load` in cargo-mutants 27.1.0 `src/source.rs` keeps a path whose `..` never climbs out of the tree, and `diff_filter` in `src/in_diff.rs` matches it with no normalization; `NoMutants` uses the success exit code.
+- **Workaround:** `admin/mutants` copies each diff section onto those un-normalized names before passing `--in-diff`. Survivor aggregation still strips one `/<dir>/../` when it joins outcomes.
+- **Reported:** no.
+- **Goes when:** cargo-mutants normalizes `..` before matching a diff.
+
 ## Emulators
 
 ### cross's i686 Android image cannot run its binaries natively
@@ -199,13 +207,6 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 
 ## Dependencies
 
-### libcrux-platform calls `__cpuid` outside `unsafe`
-
-- **Breaks:** libcrux-platform 0.0.4, which libcrux-aes pulled in, calls `__cpuid` outside `unsafe`, which compiles only since `__cpuid` became safe in Rust 1.94. rind dropped libcrux-aes with [kixel-ai/rind#613](https://github.com/kixel-ai/rind/pull/613), but README.md and PLATFORMS.md still state a 1.94 exception on 32-bit x86.
-- **Workaround:** README.md and PLATFORMS.md state the exception, and CI checks i686 only on stable.
-- **Reported:** [celabshq/libcrux#1646](https://github.com/celabshq/libcrux/issues/1646).
-- **Goes when:** [the x86 quest](/quest/m2/adoption/targets/x86.md) checks i686 on the MSRV and drops the exception.
-
 ### aws-lc cannot deny 32-bit ARM features at run time
 
 - **Breaks:** aws-lc reads `OPENSSL_armcap` to deny CPU features on aarch64, but its 32-bit ARM detection has no such variable.
@@ -219,6 +220,14 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Workaround:** `build.yml`'s iOS job exports `rustc --print deployment-target` before building.
 - **Reported:** no.
 - **Goes when:** aws-lc-sys builds for the deployment target rustc uses.
+
+### blind-rsa-signatures 0.18 does not build on rsa 0.10.0
+
+- **Breaks:** blind-rsa-signatures 0.18.0, the latest release, accepts `rsa` `^0.10.0-rc.18` but implements the release candidates' `PrivateKeyParts`, so it fails to compile against 0.10.0, the first release patched for RUSTSEC-2023-0071. A workspace holds one `rsa` 0.10, so rind-bench's 0.10.0 breaks rind's tests, which check blind RSA against it.
+- **Reproduce:** `cargo check -p rind --tests` without the workspace's `[patch.crates-io]` entry for it.
+- **Workaround:** rind forks it in `thirdparty/blind-rsa-signatures`, ported to `rsa` 0.10.0, each change listed in [its `RIND.md`](/thirdparty/blind-rsa-signatures/RIND.md).
+- **Reported:** no; offering it needs the maintainer's approval, which [upstream-reports](/quest/m2/upstream-reports.md) asks for.
+- **Goes when:** a blind-rsa-signatures release builds on `rsa` 0.10.0.
 
 ### nixpkgs' Rust crashes cargo-llvm-cov's tests
 
@@ -250,6 +259,13 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Workaround:** `.github/actionlint.yaml` ignores that error in `mutants.yml`.
 - **Reported:** [rhysd/actionlint#657](https://github.com/rhysd/actionlint/issues/657), with a fix in [rhysd/actionlint#654](https://github.com/rhysd/actionlint/pull/654).
 - **Goes when:** an actionlint release in nixpkgs accepts `queue`.
+
+### Dependabot's Cargo lockfile updates skip its cooldown
+
+- **Breaks:** Dependabot pins the crate it bumps to a release older than its cooldown, but not the crates that release newly needs, which `cargo update` resolves to their newest compatible releases, however young. It does not pin a crate declared in `[workspace.dependencies]` either, so one would take its newest release too; rind declares none.
+- **Workaround:** REVIEW.md has a Dependabot PR's reviewer run `sh/cooldown.sh`, which lists each release its `Cargo.lock` gains that is younger than the cooldown.
+- **Reported:** [dependabot/dependabot-core#16428](https://github.com/dependabot/dependabot-core/issues/16428), for `[workspace.dependencies]`; no, for the crates a release newly needs.
+- **Goes when:** Dependabot holds its whole lockfile update to the cooldown.
 
 ## CI runner images
 
