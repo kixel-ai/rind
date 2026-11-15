@@ -631,8 +631,9 @@ pub mod pbkdf2 {
 /// Authenticated encryption.
 ///
 /// An [`aead::Key`] is built from an algorithm constant and key bytes, and
-/// seals with the caller's nonces, which must never repeat under one key. An
-/// [`aead::RandomizedNonceKey`] picks its own.
+/// seals with the caller's nonces, which must never repeat under one key.
+/// [`aead::Nonce::from_sequence`] builds TLS 1.3's, QUIC's, and HPKE's from an
+/// IV and a sequence number. An [`aead::RandomizedNonceKey`] picks its own.
 ///
 /// ```
 /// use rind::aead::*;
@@ -693,18 +694,8 @@ pub mod key_wrap {
 }
 
 /// CPU support.
-///
-/// Every operation panics on a CPU missing a feature rind requires. Check at
-/// startup to refuse cleanly instead:
-///
-/// ```
-/// if let Err(missing) = rind::cpu::check() {
-///     eprintln!("{missing}");
-///     std::process::exit(1);
-/// }
-/// ```
 pub mod cpu {
-    pub use crate::low::cpu::{Dit, MissingFeature, check, has_aes_hardware};
+    pub use crate::low::cpu::{Dit, has_aes_hardware};
 }
 
 /// Random bytes from the system's secure random source.
