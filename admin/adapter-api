@@ -324,17 +324,21 @@ class Api:
         self.entries.setdefault("::".join(path), []).append((kind, sig, owner, needs))
 
     def hidden(self, value, bounds=True):
-        """The unexported types `value` names, leaving out trait bounds unless `bounds`."""
+        """The unexported types `value` names, leaving out trait bounds unless `bounds`.
+
+        They come in an order both sides share when their APIs match: by key,
+        not declaration order, and an unordered list by its items' shape."""
         if isinstance(value, Lazy):
             entry = self.paths.get(str(value.id))
             if entry and entry["crate_id"] == 0 and value.id not in self.exported and entry["kind"] in ("struct", "enum", "union"):
                 yield value.id
         elif isinstance(value, dict):
-            for k, v in value.items():
+            for k, v in sorted(value.items()):
                 if bounds or k != "trait_bound":
                     yield from self.hidden(v, bounds)
         elif isinstance(value, list):
-            for v in value:
+            items = sorted(value, key=shape) if isinstance(value, Unordered) else value
+            for v in items:
                 yield from self.hidden(v, bounds)
 
     def visit(self, item, path, seen, owner=None, impl=None):
@@ -512,11 +516,9 @@ class Api:
                 bounds.setdefault(key, []).extend(pred["bound_predicate"]["bounds"])
             else:
                 other.append(pred)
-        preds = [
-            {"bounds": Unordered(self.norm(b)), "type": self.norm(json.loads(k))}
-            for k, b in sorted(bounds.items())
-        ]
-        return {"params": self.norm(params), "where": preds + self.norm(other)}
+        preds = [{"bounds": Unordered(self.norm(b)), "type": self.norm(json.loads(k))} for k, b in bounds.items()]
+        # Their order is not API, and keys hold rustdoc's crate-local IDs.
+        return {"params": self.norm(params), "where": Unordered(preds + self.norm(other))}
 
     def norm(self, value):
         if isinstance(value, list):
@@ -627,6 +629,16 @@ def plain(value):
             items.sort(key=lambda v: json.dumps(v, sort_keys=True))
         return items
     return value
+
+
+def shape(value):
+    """`value` as JSON with the crate's own paths left out, an order that holds across crates."""
+
+    def path(lazy):
+        entry = lazy.api.paths.get(str(lazy.id))
+        return "$local" if entry and entry["crate_id"] == 0 else lazy.api.external(lazy.id, lazy.fallback)
+
+    return json.dumps(value, sort_keys=True, default=path)
 
 
 class Lazy:
