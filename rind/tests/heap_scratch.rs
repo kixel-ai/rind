@@ -293,10 +293,12 @@ fn argon2() {
         "Argon2id",
         [*b"password one", *b"password two"],
         |password| {
+            // The secret keeps its password on the heap.
+            let secret = rind::argon2::Secret::new(password);
             let mut out = [0u8; 32];
-            rind::argon2::derive(params, password, b"saltsalt", &mut out).unwrap();
+            secret.derive(params, b"saltsalt", &mut out).unwrap();
             // Verifying derives its key on the heap.
-            black_box(rind::argon2::verify(params, password, b"saltsalt", &out).is_ok())
+            black_box(secret.verify(params, b"saltsalt", &out).is_ok())
         },
     );
 }

@@ -142,17 +142,15 @@ fn ml_dsa() {
 #[test]
 fn slh_dsa() {
     use rind::slh_dsa::{
-        KeyPair, ParameterSet, SlhDsaSha2_128f, SlhDsaSha2_192f, SlhDsaSha2_256f,
-        SlhDsaShake128f, SlhDsaShake192f, SlhDsaShake256f,
+        KeyPair, ParameterSet, SlhDsaSha2_128f, SlhDsaSha2_192f, SlhDsaSha2_256f, SlhDsaShake128f,
+        SlhDsaShake192f, SlhDsaShake256f,
     };
     // The f sets, whose keys are quick to make, cover each key size.
     fn check<P: ParameterSet>() {
         let key = KeyPair::<P>::generate().unwrap();
         check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
         let pkcs8 = key.to_pkcs8();
-        check_zeroed_on_drop(Box::pin(
-            KeyPair::<P>::from_pkcs8(pkcs8.as_ref()).unwrap(),
-        ));
+        check_zeroed_on_drop(Box::pin(KeyPair::<P>::from_pkcs8(pkcs8.as_ref()).unwrap()));
         check_zeroed_on_drop(Box::pin(key));
     }
     check::<SlhDsaSha2_128f>();
@@ -357,6 +355,11 @@ fn pbkdf2() {
     ] {
         check_zeroed_on_drop(Box::pin(Secret::new(algorithm, b"password")));
     }
+}
+
+#[test]
+fn argon2() {
+    check_zeroed_on_drop(Box::pin(rind::argon2::Secret::new(b"password")));
 }
 
 #[test]

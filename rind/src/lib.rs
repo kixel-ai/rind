@@ -715,20 +715,23 @@ pub mod pbkdf2 {
 
 /// Password hashing and key derivation with Argon2id.
 ///
-/// [`argon2::derive`] derives a key from a password and salt at the memory
-/// and time [`argon2::Params`] sets, and [`argon2::verify`] checks one
-/// derived before. This example takes RFC 9106's second recommendation,
-/// 64 MiB over three passes, so it is not run as a test.
+/// An [`argon2::Secret`] holds a password, whose
+/// [`derive`](argon2::Secret::derive) derives a key from a salt at the memory
+/// and time [`argon2::Params`] sets, and whose
+/// [`verify`](argon2::Secret::verify) checks one derived before, as
+/// [`pbkdf2::Secret`]'s do. This example takes RFC 9106's second
+/// recommendation, 64 MiB over three passes, so it is not run as a test.
 ///
 /// ```no_run
 /// use rind::argon2;
 ///
 /// let params = argon2::Params::SECOND_RECOMMENDED;
+/// let secret = argon2::Secret::new(b"password");
 /// let mut stored = [0u8; 32];
 /// // Each account's salt is its own, stored beside its key.
-/// argon2::derive(params, b"password", b"per-user salt", &mut stored).unwrap();
+/// secret.derive(params, b"per-user salt", &mut stored).unwrap();
 ///
-/// argon2::verify(params, b"password", b"per-user salt", &stored).unwrap();
+/// secret.verify(params, b"per-user salt", &stored).unwrap();
 /// ```
 ///
 /// After the first half of its first pass, Argon2id reads memory at offsets
@@ -736,7 +739,7 @@ pub mod pbkdf2 {
 /// something about the password. That is the price of its resistance to
 /// trading memory for time, which RFC 9106 accepts.
 pub mod argon2 {
-    pub use super::high::argon2::{Params, derive, verify};
+    pub use super::high::argon2::{Params, Secret};
 }
 
 /// Authenticated encryption.

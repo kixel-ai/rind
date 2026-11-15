@@ -262,10 +262,7 @@ fn signature() {
     }
     let signature = pair.sign(b"").unwrap();
     let bytes = format!("{:?}", signature.as_ref());
-    assert_eq!(
-        format!("{signature:?}"),
-        format!("Signature({bytes})")
-    );
+    assert_eq!(format!("{signature:?}"), format!("Signature({bytes})"));
 }
 
 #[test]

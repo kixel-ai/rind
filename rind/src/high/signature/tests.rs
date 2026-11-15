@@ -674,7 +674,11 @@ fn slh_dsa_encodings() {
             KeyFormatError::MismatchedPublicKey.into()
         );
         assert_eq!(
-            rejected(load(&slh_dsa_pkcs8(oid, sk, Some(&wrong[wrong.len() / 2..])))),
+            rejected(load(&slh_dsa_pkcs8(
+                oid,
+                sk,
+                Some(&wrong[wrong.len() / 2..])
+            ))),
             KeyFormatError::MismatchedPkcs8PublicKey.into()
         );
 

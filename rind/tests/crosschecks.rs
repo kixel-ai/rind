@@ -3123,111 +3123,51 @@ macro_rules! slh_dsa_crosschecks {
 }
 
 mod slh_dsa_sha2_128s {
-    slh_dsa_crosschecks!(
-        SlhDsaSha2_128s,
-        Sha2_128s,
-        slh_dsa_sha2_128s,
-        16
-    );
+    slh_dsa_crosschecks!(SlhDsaSha2_128s, Sha2_128s, slh_dsa_sha2_128s, 16);
 }
 
 mod slh_dsa_sha2_128f {
-    slh_dsa_crosschecks!(
-        SlhDsaSha2_128f,
-        Sha2_128f,
-        slh_dsa_sha2_128f,
-        16
-    );
+    slh_dsa_crosschecks!(SlhDsaSha2_128f, Sha2_128f, slh_dsa_sha2_128f, 16);
 }
 
 mod slh_dsa_sha2_192s {
-    slh_dsa_crosschecks!(
-        SlhDsaSha2_192s,
-        Sha2_192s,
-        slh_dsa_sha2_192s,
-        24
-    );
+    slh_dsa_crosschecks!(SlhDsaSha2_192s, Sha2_192s, slh_dsa_sha2_192s, 24);
 }
 
 mod slh_dsa_sha2_192f {
-    slh_dsa_crosschecks!(
-        SlhDsaSha2_192f,
-        Sha2_192f,
-        slh_dsa_sha2_192f,
-        24
-    );
+    slh_dsa_crosschecks!(SlhDsaSha2_192f, Sha2_192f, slh_dsa_sha2_192f, 24);
 }
 
 mod slh_dsa_sha2_256s {
-    slh_dsa_crosschecks!(
-        SlhDsaSha2_256s,
-        Sha2_256s,
-        slh_dsa_sha2_256s,
-        32
-    );
+    slh_dsa_crosschecks!(SlhDsaSha2_256s, Sha2_256s, slh_dsa_sha2_256s, 32);
 }
 
 mod slh_dsa_sha2_256f {
-    slh_dsa_crosschecks!(
-        SlhDsaSha2_256f,
-        Sha2_256f,
-        slh_dsa_sha2_256f,
-        32
-    );
+    slh_dsa_crosschecks!(SlhDsaSha2_256f, Sha2_256f, slh_dsa_sha2_256f, 32);
 }
 
 mod slh_dsa_shake_128s {
-    slh_dsa_crosschecks!(
-        SlhDsaShake128s,
-        Shake128s,
-        slh_dsa_shake_128s,
-        16
-    );
+    slh_dsa_crosschecks!(SlhDsaShake128s, Shake128s, slh_dsa_shake_128s, 16);
 }
 
 mod slh_dsa_shake_128f {
-    slh_dsa_crosschecks!(
-        SlhDsaShake128f,
-        Shake128f,
-        slh_dsa_shake_128f,
-        16
-    );
+    slh_dsa_crosschecks!(SlhDsaShake128f, Shake128f, slh_dsa_shake_128f, 16);
 }
 
 mod slh_dsa_shake_192s {
-    slh_dsa_crosschecks!(
-        SlhDsaShake192s,
-        Shake192s,
-        slh_dsa_shake_192s,
-        24
-    );
+    slh_dsa_crosschecks!(SlhDsaShake192s, Shake192s, slh_dsa_shake_192s, 24);
 }
 
 mod slh_dsa_shake_192f {
-    slh_dsa_crosschecks!(
-        SlhDsaShake192f,
-        Shake192f,
-        slh_dsa_shake_192f,
-        24
-    );
+    slh_dsa_crosschecks!(SlhDsaShake192f, Shake192f, slh_dsa_shake_192f, 24);
 }
 
 mod slh_dsa_shake_256s {
-    slh_dsa_crosschecks!(
-        SlhDsaShake256s,
-        Shake256s,
-        slh_dsa_shake_256s,
-        32
-    );
+    slh_dsa_crosschecks!(SlhDsaShake256s, Shake256s, slh_dsa_shake_256s, 32);
 }
 
 mod slh_dsa_shake_256f {
-    slh_dsa_crosschecks!(
-        SlhDsaShake256f,
-        Shake256f,
-        slh_dsa_shake_256f,
-        32
-    );
+    slh_dsa_crosschecks!(SlhDsaShake256f, Shake256f, slh_dsa_shake_256f, 32);
 }
 
 /// Each side of RFC 9474's protocol against blind-rsa-signatures' other

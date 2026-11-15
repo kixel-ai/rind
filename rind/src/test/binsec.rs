@@ -246,9 +246,10 @@ fn ct_binsec_argon2() {
     // exception to the constant-time rule allows.
     let params = Params::new(8, 2, 1).unwrap();
     checked(|| {
+        let password = Secret::new(&secret::<20>(1));
         let mut out = [0; 32];
-        derive(params, &secret::<20>(1), &[2; 16], &mut out).unwrap();
-        black_box(verify(params, &secret::<20>(1), &[2; 16], &out).is_ok());
+        password.derive(params, &[2; 16], &mut out).unwrap();
+        black_box(password.verify(params, &[2; 16], &out).is_ok());
     });
 }
 

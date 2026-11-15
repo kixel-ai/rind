@@ -17,7 +17,7 @@ renames [rind-aws-lc-rs](#rind-aws-lc-rs) to `aws-lc-rs` the same way.
 | A `_FOR_LEGACY_USE_ONLY` suffix | a `legacy` submodule, such as `digest::legacy::SHA1` |
 | An allocated `Document`, `Vec`, or `Box` output | an owned value of fixed capacity, such as `encoding::Pkcs8` |
 | `error::Unspecified`, `error::KeyRejected` | `rind::Error`, by kind of call (see [error](#error)) |
-| One `signature` module for every algorithm | a module for each: [ecdsa](#ecdsa), [ed25519](#ed25519), [ml_dsa](#ml_dsa), and [rsa](#rsa) (see [signature](#signature)) |
+| One `signature` module for every algorithm | a module for each: [ecdsa](#ecdsa), [ed25519](#ed25519), [ml_dsa](#ml_dsa), [rsa](#rsa), and [slh_dsa](#slh_dsa) (see [signature](#signature)) |
 | aws-lc-rs wipes keys and keyed state on drop; ring doesn't | rind wipes them only under its `wipe` feature: enable `rind/wipe`, or rind-aws-lc-rs's `wipe`, to keep aws-lc-rs's behavior |
 
 ## digest
@@ -166,7 +166,7 @@ agreement keys refuse.
 |---|---|
 | `ML_KEM_512`, `ML_KEM_768`, `ML_KEM_1024` | the types `MlKem512`, `MlKem768`, `MlKem1024`, which parameterize every key, ciphertext, and secret |
 | `DecapsulationKey::generate(&ML_KEM_768)` | `DecapsulationKey::<MlKem768>::generate()` |
-| `encapsulation_key()?`, then `EncapsulationKey::key_bytes()?` | `public_key()`, and its bytes through `AsRef<[u8]>` |
+| `encapsulation_key()?`, then `EncapsulationKey::key_bytes()?` | `public_key()`, a borrowed `EncapsulationKey` built once at load, and its bytes through `AsRef<[u8]>` |
 | `EncapsulationKey::new(&ML_KEM_768, bytes)`, `encapsulate()` | `EncapsulationKey::<MlKem768>::new(bytes)`, `encapsulate()` |
 | `decapsulate(Ciphertext::from(bytes))` | `decapsulate(&Ciphertext::<MlKem768>::new(bytes)?)`, where `new` checks the length and `decapsulate` cannot fail |
 | `DecapsulationKey::new(alg, bytes)`, `DecapsulationKey::key_bytes()` | none: decapsulation keys are ephemeral |
@@ -177,8 +177,9 @@ ring has no `kem`.
 ## signature
 
 rind has no `signature` module: each algorithm is a module of its own,
-[ecdsa](#ecdsa), [ed25519](#ed25519), [ml_dsa](#ml_dsa), and
-[rsa](#rsa), each with a `KeyPair`, a `PublicKey`, and a `Signature`.
+[ecdsa](#ecdsa), [ed25519](#ed25519), [ml_dsa](#ml_dsa), [rsa](#rsa),
+and [slh_dsa](#slh_dsa), each with a `KeyPair`, a `PublicKey`, and a
+`Signature`.
 A key's type names its algorithm, so a key of one cannot reach a call of
 another, and a program links only the algorithms it names. A protocol that
 picks the algorithm at run time, as TLS and JWS do, holds an enum of the
@@ -268,6 +269,14 @@ one set fails to compile where another's is expected.
 
 `ml_dsa::PublicKey::new` refuses a `SubjectPublicKeyInfo`, which aws-lc-rs
 takes, and `from_spki` takes it.
+
+## slh_dsa
+
+Neither ring nor aws-lc-rs has SLH-DSA (FIPS 205). rind's is shaped as
+[ml_dsa](#ml_dsa) is: the parameter set is a type, such as
+`SlhDsaSha2_128s`, parameterizing `slh_dsa::KeyPair<P>`, `PublicKey<P>`,
+and `Signature<P>`. Keys load from and export as RFC 9909's PKCS#8 and
+`SubjectPublicKeyInfo`, and `PublicKey::new` takes FIPS 205's raw encoding.
 
 ## rsa
 
