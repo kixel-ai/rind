@@ -20,10 +20,10 @@ from, and exit through. Today the child sometimes hangs until the test's
 - First get the hung child's stacks. `ptrace_scope` 1 blocks attaching gdb
   to it from outside, so run the test under gdb with `detach-on-fork off`,
   or have the child arm an alarm that dumps its own threads.
-- Suspects: a lock the module's `fork_prepare` does not hold, such as
-  `rind/src/fips_rng.rs`'s per-process DRBG self-test `Once`, which
-  [kixel-ai/rind#723](https://github.com/kixel-ai/rind/pull/723) replaces
-  with an `AtomicBool`; check whether #723 alone fixes it before writing
-  another fix.
+- Suspects: a lock the module's `fork_prepare` does not hold.
+  [kixel-ai/rind#723](https://github.com/kixel-ai/rind/pull/723), which
+  replaced `rind/src/fips_rng.rs`'s per-process DRBG self-test `Once` with
+  an `AtomicBool`, did not fix it: on 2026-11-15, #606's merge of `main` at
+  d9fd1a34 still failed 5 of 50 runs.
 - Fix it at the root, holding the lock across `fork` or making the child
   never wait on it; the test's deadline and fork count stay as they are.
