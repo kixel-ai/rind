@@ -458,9 +458,13 @@ class Comparison(unittest.TestCase):
         self.assertEqual(rows["aws-lc-rs"][1], "XChaCha20-Poly1305 (aws-lc has it, through aws-lc-sys), X25519")
         self.assertEqual(rows["ring"][1], "AES-GCM, XChaCha20-Poly1305")
 
-    def test_verified_by_arch_marks_cpu_or_os_limits(self):
+    def test_verified_by_arch_marks_cpu_os_or_operation_limits(self):
         _, rows = self.cells(hosts())
-        self.assertIn("[aarch64: X25519 (some CPUs); x86_64: AES-GCM (some CPUs), X25519 (some CPUs)]", rows["rind"][2])
+        # The AES proof covers AES-256-GCM's seal alone, of AES-GCM's rows.
+        self.assertIn(
+            "[aarch64: X25519 (some CPUs); x86_64: AES-GCM (some CPUs, some operations), X25519 (some CPUs)]",
+            rows["rind"][2],
+        )
         # An entry with no arch runs the same code on every one.
         self.assertIn("[all: X25519]", rows["ring"][2])
         self.assertIn("[none]", rows["RustCrypto + dalek"][2])
