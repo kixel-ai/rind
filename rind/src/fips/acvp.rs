@@ -200,5 +200,5 @@ pub fn ml_dsa_verify<P: MlDsaParameterSet>(
     let mu = message
         .mu(&mldsa::tr(pk))
         .map_err(|_| Error::BadSignature)?;
-    mldsa::verify_internal::<P>(pk, &mu, signature)
+    mldsa::VerifyingKey::new(mldsa::tr(pk)).verify_mu::<P>(pk, &mu, signature)
 }

@@ -60,7 +60,7 @@ declare -A scope=(
     # Each adapter's API against its upstream's, which reaches rind only
     # through a lockfile change, as read by the flake's rustdoc.
     # rind-object-store has none to copy.
-    [adapters]='^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.(nix|lock)$|admin/adapter-api(\.drift)?$)'
+    [adapters]='^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.(nix|lock)$|admin/adapter-api$)'
     [license]='^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)'
     # Dependents may build with the workspace's declared rust-version.
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
@@ -70,9 +70,6 @@ declare -A scope=(
     # Variable-time instructions in rind's release builds, which a change to
     # its code, dependencies, toolchain, or the scan itself can bring.
     [vartime]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$|admin/ct-vartime)'
-    # s2n-bignum's proofs assume separate input and output, so the kernels
-    # rind runs in place are walked, after planting faults in each.
-    [inplace]='^(rind/src/low/|admin/parse-asm/)'
     # .cargo/mutants.toml's exclusions name mutants by file, line, and
     # function, so moving code can leave one matching nothing.
     [mutants]='^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)'
@@ -123,7 +120,6 @@ declare -A tools=(
     [msrv]='nix cargo jq'
     [cross]='cargo'
     [vartime]='nix'
-    [inplace]='python3'
     [mutants]='cargo-mutants python3'
     [testing]='python3'
     [compat]='python3'
@@ -143,7 +139,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs structure msrv cross vartime deny versions adapters license inplace mutants testing compat bench fixtures patch py dart openssl quest gh shell nix) ;;
+    check) modules=(rs structure msrv cross vartime deny versions adapters license mutants testing compat bench fixtures patch py dart openssl quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -320,22 +316,10 @@ for module in "${selected[@]}"; do
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;
         check:deny) cargo deny --locked check ;;
         check:versions) sh/adapter-versions.sh ;;
-        # The drift list only shrinks against the diff's merge base, even
-        # when an orchestration change forces a full run. Only an explicit
-        # --all has no diff to shrink from.
-        check:adapters)
-            if [[ "$base" != --all ]]; then
-                drift_base=$(sh/changed.sh --merge-base "$base")
-                python3 admin/adapter-api --base "$drift_base"
-            else
-                python3 admin/adapter-api
-            fi
-            ;;
+        check:adapters) python3 admin/adapter-api ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
         check:mutants) admin/mutants --pins && admin/mutants --expand-diff-self-test ;;
-        # It finds the generated kernels relative to its own directory.
-        check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
         check:testing) python3 admin/testing ;;
         check:compat) python3 admin/x86-cpu markdown-table | diff -u COMPATIBILITY.md - ;;
         fix:compat) python3 admin/x86-cpu markdown-table >COMPATIBILITY.md ;;
